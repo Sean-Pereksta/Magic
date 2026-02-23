@@ -268,6 +268,46 @@
     .mpDot.buy{ background:var(--warn); box-shadow:0 0 0 2px rgba(244,200,74,.16); }
     .mpDot.ready{ background:var(--accent); box-shadow:0 0 0 2px rgba(87,178,255,.16); }
     .mpDot.elim{ background:var(--bad); box-shadow:0 0 0 2px rgba(255,91,107,.16); }
+
+    .mobileHudTop,.mobileActions,.mobileResource{ display:none; }
+    .fullBtn{ display:none; }
+    .moreRow{ display:flex; gap:8px; flex-wrap:wrap; }
+    .mobileDrawerHandle,.drawerBack{ display:none; }
+
+    .shopModal{ max-height:min(92vh,900px); display:flex; flex-direction:column; }
+    .shopModalHead{ position:sticky; top:0; z-index:2; background:rgba(8,12,28,.94); padding-top:calc(8px + env(safe-area-inset-top)); }
+    .shopModalBody{ padding:12px 14px 14px; overflow:auto; }
+
+    .winnerBack{ position:fixed; inset:0; display:none; z-index:85; background:rgba(2,5,14,.9); padding:20px; }
+    .winnerBack.show{ display:flex; align-items:center; justify-content:center; }
+    .winnerCard{ width:min(640px,100%); text-align:center; border:1px solid var(--line); border-radius:20px; background:linear-gradient(180deg, rgba(87,178,255,.14), rgba(0,0,0,.4)); padding:28px 16px; }
+
+    @media (max-width: 780px){
+      .wrap{ padding:calc(8px + env(safe-area-inset-top)) 8px calc(88px + env(safe-area-inset-bottom)); }
+      .top{ grid-template-columns:1fr; }
+      .fullBtn{ display:inline-flex; }
+      .ph .pillRow{ display:none; }
+      .mobileHudTop{ display:block; position:sticky; top:0; z-index:20; background:rgba(8,12,28,.95); margin:-12px -14px 8px; padding:8px 14px 10px; border-bottom:1px solid var(--line); }
+      .mobileMeta{ font-size:12px; color:var(--muted); margin-top:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .mobileResource{ display:block; font-size:14px; color:var(--ink); margin:8px 0; }
+      .bigScore{ gap:8px; }
+      .scoreBox{ min-width:0; padding:10px; }
+      .scoreBox:last-child{ display:none; }
+      .mobileActions{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; position:sticky; bottom:calc(env(safe-area-inset-bottom) + 8px); z-index:25; background:rgba(8,12,28,.95); padding:8px; border:1px solid var(--line); border-radius:12px; }
+      .mobileActions .btn{ padding:12px 6px; font-size:13px; }
+      .moreRow{ display:none; }
+      .moreRow.show{ display:flex; }
+      .hand{ min-height:88px; padding:6px; gap:6px; flex-wrap:nowrap; overflow-x:auto; }
+      .card{ width:66px; height:92px; padding:8px; flex:0 0 auto; }
+      .card .rank,.card .suit{ font-size:16px; }
+      .card .chips{ font-size:10px; left:6px; right:6px; }
+
+      #sidePanel{ position:fixed; top:0; right:0; height:100vh; width:min(84vw,360px); transform:translateX(105%); transition:transform .2s ease; z-index:72; overflow:auto; padding-top:calc(env(safe-area-inset-top) + 8px); padding-bottom:calc(env(safe-area-inset-bottom) + 10px); }
+      body.drawerOpen #sidePanel{ transform:translateX(0); }
+      .mobileDrawerHandle{ display:block; position:fixed; right:0; top:40%; z-index:73; border-radius:14px 0 0 14px; border:1px solid var(--line); border-right:0; background:rgba(8,12,28,.95); color:var(--ink); padding:10px 8px; }
+      .drawerBack{ position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:71; }
+      body.drawerOpen .drawerBack{ display:block; }
+    }
   </style>
 </head>
 
@@ -275,9 +315,10 @@
   <div class="wrap">
     <div class="top">
       <!-- LEFT: Gameplay -->
-      <div class="panel">
+      <div class="panel" id="sidePanel">
         <div class="ph">
           <h2>Round</h2>
+          <button class="btn mini fullBtn" id="btnFullscreen">⛶ Full</button>
           <div class="pillRow">
             <div class="pill"><span class="dot" id="blindDot"></span> <span id="blindName">—</span></div>
             <div class="pill">Round <b id="roundNum">—</b>/5</div>
@@ -289,6 +330,15 @@
         </div>
 
         <div class="content">
+          <div class="mobileHudTop">
+            <div class="row" style="justify-content:space-between; align-items:center;">
+              <div><b>Target:</b> <span id="mTarget">—</span></div>
+              <div><b>Score:</b> <span id="mScore">0</span></div>
+            </div>
+            <div class="bar" id="mTargetBar"><i></i></div>
+            <div class="mobileMeta" id="mobileMetaLine">—</div>
+          </div>
+
           <div class="bigScore">
             <div class="scoreBox">
               <div class="label">Target (survive this round)</div>
@@ -312,14 +362,25 @@
 
           <div class="sep"></div>
 
+          <div class="mobileResource" id="mobileResourceLine">🖐 Hands: — • 🗑 Discards: —</div>
+
+          <div class="mobileActions">
+            <button class="btn primary" id="btnPlayM">Play Selected</button>
+            <button class="btn" id="btnDiscardM">Discard Selected</button>
+            <button class="btn" id="btnClearM">Clear</button>
+          </div>
+
           <div class="row">
             <button class="btn primary" id="btnPlay">Play Selected</button>
             <button class="btn" id="btnDiscard">Discard Selected</button>
             <button class="btn" id="btnClear">Clear Selection</button>
-            <button class="btn" id="btnSortRank">Sort: Rank</button>
-            <button class="btn" id="btnSortSuit">Sort: Suit</button>
-            <button class="btn good" id="btnFinish" title="Enabled once you reach the target">Finish Round</button>
-            <button class="btn mini" id="btnHow">How this works</button>
+            <button class="btn mini" id="btnMore">⋯ More</button>
+            <div class="moreRow" id="moreRow">
+              <button class="btn" id="btnSortRank">Sort: Rank</button>
+              <button class="btn" id="btnSortSuit">Sort: Suit</button>
+              <button class="btn good" id="btnFinish" title="Enabled once you reach the target">Finish Round</button>
+              <button class="btn mini" id="btnHow">How this works</button>
+            </div>
             <span class="note">Select 1–5 cards, then <span class="kbd">Play</span>. Beat the target to survive.</span>
           </div>
 
@@ -357,7 +418,8 @@
 
           <div class="row" style="justify-content:space-between; align-items:center;">
             <div class="pill">Jokers <b id="jokerCount">0</b>/5</div>
-            <div class="pill">Consumables <b id="consCount">0</b>/2</div>
+            <div class="pill">Consumables <b id="consCount">0</b>/3</div>
+            <div class="pill">Vouchers <b id="voucherCount">0</b></div>
             <div class="pill" style="margin-left:auto">💰 <b id="money">—</b></div>
           </div>
 
@@ -378,23 +440,14 @@
 
           <div class="sep"></div>
 
-          <div id="shopBlock" style="display:none;">
-            <div class="row" style="justify-content:space-between; align-items:center;">
-              <div class="pill"><span class="dot warn"></span> Buy Phase <b id="buyTimer">—</b></div>
-              <div class="row">
-                <button class="btn mini" id="btnReroll">Reroll ($2)</button>
-                <button class="btn mini good" id="btnReady">Ready</button>
-              </div>
-            </div>
-            <div class="small tight">Buys are local-only (they help your run, not others). Next round starts when all survivors are Ready.</div>
-            <div class="sep"></div>
-            <div class="list" id="shopList"></div>
-          </div>
+          
 
           <div id="waitBlock" style="display:none;">
             <div class="item">
               <div class="itemName" id="waitTitle">—</div>
               <div class="itemMeta" id="waitText">—</div>
+              <div class="small tight" id="readyCountLine">Ready: 0/0</div>
+              <div class="list" id="readyList"></div>
             </div>
           </div>
 
@@ -403,6 +456,13 @@
               <div class="itemName" id="runEndTitle">—</div>
               <div class="itemMeta" id="runEndText">—</div>
             </div>
+          </div>
+
+
+          <div class="sep"></div>
+          <div class="item">
+            <div class="itemName">Owned Build Summary</div>
+            <div class="itemMeta" id="ownedSummary">No purchases yet.</div>
           </div>
 
           <div class="item">
@@ -417,6 +477,40 @@
 
         </div>
       </div>
+    </div>
+  </div>
+
+  <button class="mobileDrawerHandle" id="btnDrawer" aria-label="Open sidebar">☰ Stats</button>
+  <div class="drawerBack" id="drawerBack"></div>
+
+  <div class="modalBack" id="shopBack" aria-hidden="true">
+    <div class="modal shopModal" role="dialog" aria-modal="true">
+      <div class="ph shopModalHead">
+        <h2>Shop</h2>
+        <div class="row">
+          <div class="pill">💰 <b id="shopMoney">—</b></div>
+          <div class="pill"><span class="dot warn"></span> Buy <b id="buyTimer">—</b></div>
+          <button class="btn mini" id="btnReroll">Reroll ($2)</button>
+          <button class="btn mini good" id="btnReady">Ready</button>
+        </div>
+      </div>
+      <div class="shopModalBody">
+        <div class="small tight">Buys are local-only (they help your run, not others). Next round starts when all survivors are Ready.</div>
+        <div class="sep"></div>
+        <div class="small">Shop Offers</div>
+        <div class="list" id="shopList"></div>
+        <div class="sep"></div>
+        <div class="small">Your Owned Items (Sell for 50%)</div>
+        <div class="list" id="ownedShopList"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="winnerBack" id="winnerBack">
+    <div class="winnerCard">
+      <div class="itemName" id="winnerTitle">🏆 Winner</div>
+      <div class="itemMeta" id="winnerText">—</div>
+      <div style="margin-top:14px;"><button class="btn" id="btnWinnerClose">Close</button></div>
     </div>
   </div>
 
@@ -603,6 +697,15 @@
   // Toast
   // ---------------------------
   let toastT=null;
+  function toggleShopModal(open){
+    const back = $("shopBack");
+    if(!back) return;
+    back.classList.toggle("show", !!open);
+    back.setAttribute("aria-hidden", open?"false":"true");
+  }
+
+  function setDrawer(open){ document.body.classList.toggle("drawerOpen", !!open); }
+
   function toast(msg){
     const t=$("toast");
     t.textContent=msg;
@@ -839,51 +942,56 @@
   }
 
   const JOKER_POOL = [
-    { kind:"joker", name:"Chip Booster", cost:6, desc:"+15 Chips on every hand.",
-      apply(ctx){ ctx.addChips += 15; ctx.log.push("Chip Booster: +15 Chips"); } },
-    { kind:"joker", name:"Pair Enthusiast", cost:7, desc:"+2 Mult when you play Pair or Two Pair.",
-      apply(ctx){ if(ctx.handName==="Pair" || ctx.handName==="Two Pair"){ ctx.addMult += 2; ctx.log.push("Pair Enthusiast: +2 Mult"); } } },
-    { kind:"joker", name:"Arcane Lens", cost:8, desc:"×1.5 Mult if your hand includes any face card (J/Q/K).",
-      apply(ctx){ const hasFace = ctx.cards.some(c=>c.rank==="J"||c.rank==="Q"||c.rank==="K"); if(hasFace){ ctx.mulMult *= 1.5; ctx.log.push("Arcane Lens: ×1.5 Mult"); } } },
-    { kind:"joker", name:"Suit Strategist", cost:9, desc:"+25 Chips when you play a Flush.",
-      apply(ctx){ if(ctx.handName==="Flush"){ ctx.addChips += 25; ctx.log.push("Suit Strategist: +25 Chips"); } } },
-    { kind:"joker", name:"Straight Shooter", cost:10, desc:"×2 Mult when you play a Straight.",
-      apply(ctx){ if(ctx.handName==="Straight"){ ctx.mulMult *= 2; ctx.log.push("Straight Shooter: ×2 Mult"); } } },
-    { kind:"joker", name:"Lucky Coin", cost:6, desc:"+$1 whenever you play exactly 5 cards.",
-      apply(ctx){ if(ctx.cards.length===5){ ctx.onPayout.push(()=>{ game.money += 1; toast("Lucky Coin: +$1"); }); ctx.log.push("Lucky Coin: +$1 (after scoring)"); } } },
-    { kind:"joker", name:"Growing Grin", cost:11, desc:"Starts at +0 Mult. Gains +1 Mult permanently each time you play a hand.",
-      initState(){ return {bonus:0}; },
-      apply(ctx){
-        ctx.addMult += (this.state.bonus||0);
-        ctx.onAfter.push(()=>{ this.state.bonus = (this.state.bonus||0) + 1; toast(`Growing Grin: now +${this.state.bonus} Mult`); renderRight(); });
-        ctx.log.push(`Growing Grin: +${this.state.bonus||0} Mult, then grows`);
-      } },
-    { kind:"joker", name:"Clean Cuts", cost:9, desc:"+8 Chips per card played (stacks).",
-      apply(ctx){ const add = 8 * ctx.cards.length; ctx.addChips += add; ctx.log.push(`Clean Cuts: +${add} Chips`); } },
-    { kind:"joker", name:"Boss Breaker", cost:12, desc:"During Boss: ×1.75 Mult.",
-      apply(ctx){ if(game.blindType==="Boss"){ ctx.mulMult *= 1.75; ctx.log.push("Boss Breaker: ×1.75 Mult"); } } },
+    { kind:"joker", name:"Chip Booster", cost:6, desc:"+15 Chips on every hand.", apply(ctx){ ctx.addChips += 15; } },
+    { kind:"joker", name:"Pair Enthusiast", cost:7, desc:"+2 Mult when you play Pair or Two Pair.", apply(ctx){ if(ctx.handName==="Pair" || ctx.handName==="Two Pair") ctx.addMult += 2; } },
+    { kind:"joker", name:"Arcane Lens", cost:8, desc:"×1.5 Mult if your hand includes any face card (J/Q/K).", apply(ctx){ if(ctx.cards.some(c=>["J","Q","K"].includes(c.rank))) ctx.mulMult *= 1.5; } },
+    { kind:"joker", name:"Suit Strategist", cost:9, desc:"+25 Chips when you play a Flush.", apply(ctx){ if(ctx.handName==="Flush") ctx.addChips += 25; } },
+    { kind:"joker", name:"Straight Shooter", cost:10, desc:"×2 Mult when you play a Straight.", apply(ctx){ if(ctx.handName==="Straight") ctx.mulMult *= 2; } },
+    { kind:"joker", name:"Lucky Coin", cost:6, desc:"+$1 whenever you play exactly 5 cards.", apply(ctx){ if(ctx.cards.length===5) ctx.onPayout.push(()=>{ game.money += 1; }); } },
+    { kind:"joker", name:"Growing Grin", cost:11, desc:"Starts at +0 Mult. Gains +1 Mult permanently each time you play a hand.", initState(){ return {bonus:0}; }, apply(ctx){ ctx.addMult += (this.state.bonus||0); ctx.onAfter.push(()=>{ this.state.bonus = (this.state.bonus||0) + 1; }); } },
+    { kind:"joker", name:"Clean Cuts", cost:9, desc:"+8 Chips per card played (stacks).", apply(ctx){ ctx.addChips += 8 * ctx.cards.length; } },
+    { kind:"joker", name:"Boss Breaker", cost:12, desc:"During Boss: ×1.75 Mult.", apply(ctx){ if(game.blindType==="Boss") ctx.mulMult *= 1.75; } },
+
+    { kind:"joker", name:"King’s Ransom", cost:10, desc:"+12 Chips per King played.", apply(ctx){ ctx.addChips += 12 * ctx.cards.filter(c=>c.rank==="K").length; } },
+    { kind:"joker", name:"Crown Breaker", cost:9, desc:"If hand contains a King, ×1.25 Mult.", apply(ctx){ if(ctx.cards.some(c=>c.rank==="K")) ctx.mulMult *= 1.25; } },
+    { kind:"joker", name:"Queen’s Court", cost:9, desc:"+1 Mult per Queen played.", apply(ctx){ ctx.addMult += ctx.cards.filter(c=>c.rank==="Q").length; } },
+    { kind:"joker", name:"Jackpot Jacks", cost:8, desc:"If hand contains a Jack, +$1 after scoring.", apply(ctx){ if(ctx.cards.some(c=>c.rank==="J")) ctx.onPayout.push(()=>{ game.money += 1; }); } },
+    { kind:"joker", name:"Ace High", cost:11, desc:"Aces give +15 Chips each.", apply(ctx){ ctx.addChips += 15 * ctx.cards.filter(c=>c.rank==="A").length; } },
+
+    { kind:"joker", name:"Heartthrob", cost:9, desc:"+2 Mult per Heart in the played hand.", apply(ctx){ ctx.addMult += 2 * ctx.cards.filter(c=>c.suit==="H").length; } },
+    { kind:"joker", name:"Spade Tactician", cost:9, desc:"If hand has 3+ Spades, +30 Chips.", apply(ctx){ if(ctx.cards.filter(c=>c.suit==="S").length>=3) ctx.addChips += 30; } },
+    { kind:"joker", name:"Diamond Dealer", cost:9, desc:"+$1 per Diamond played (after scoring).", apply(ctx){ const n = ctx.cards.filter(c=>c.suit==="D").length; if(n) ctx.onPayout.push(()=>{ game.money += n; }); } },
+    { kind:"joker", name:"Club Enforcer", cost:8, desc:"+10 Chips per Club played.", apply(ctx){ ctx.addChips += 10 * ctx.cards.filter(c=>c.suit==="C").length; } },
+
+    { kind:"joker", name:"Flush Engine", cost:12, desc:"Whenever you play a Flush, permanently +5 Chips to Flush base.", apply(ctx){ if(ctx.handName==="Flush") ctx.onAfter.push(()=>{ handUp["Flush"].chips += 5; }); } },
+    { kind:"joker", name:"Straight Ladder", cost:12, desc:"Whenever you play a Straight, permanently +0.25 Mult to Straight base.", apply(ctx){ if(ctx.handName==="Straight") ctx.onAfter.push(()=>{ handUp["Straight"].mult += 0.25; }); } },
+    { kind:"joker", name:"Pair Machine", cost:9, desc:"Pairs and Two Pair gain +20 Chips.", apply(ctx){ if(ctx.handName==="Pair"||ctx.handName==="Two Pair") ctx.addChips += 20; } },
+    { kind:"joker", name:"Full House Feast", cost:10, desc:"Full House gives +60 Chips.", apply(ctx){ if(ctx.handName==="Full House") ctx.addChips += 60; } },
+    { kind:"joker", name:"Fourfold Fury", cost:12, desc:"Four of a Kind: ×1.75 Mult.", apply(ctx){ if(ctx.handName==="Four of a Kind") ctx.mulMult *= 1.75; } },
+
+    { kind:"joker", name:"Discard Dynamo", cost:10, desc:"Gains +5 Chips permanently each time you Discard.", initState(){ return {bonus:0}; }, apply(ctx){ ctx.addChips += (this.state.bonus||0); } },
+    { kind:"joker", name:"Hand Grinder", cost:11, desc:"Gains +0.5 Mult permanently each time you Play a hand.", initState(){ return {bonus:0}; }, apply(ctx){ ctx.addMult += (this.state.bonus||0); ctx.onAfter.push(()=>{ this.state.bonus = Number((this.state.bonus||0)+0.5); }); } },
+    { kind:"joker", name:"Streak Bonus", cost:9, desc:"If your last hand type repeats, +25 Chips.", apply(ctx){ if(game.lastHandType && game.lastHandType===ctx.handName) ctx.addChips += 25; } },
   ];
 
   const VOUCHER_POOL = [
-    { kind:"voucher", name:"Extra Discard", cost:8, desc:"+1 Discard each round (permanent).", buy(){ game.perma.discards += 1; } },
-    { kind:"voucher", name:"Extra Hand", cost:10, desc:"+1 Hand each round (permanent).", buy(){ game.perma.hands += 1; } },
-    { kind:"voucher", name:"Bigger Hand", cost:9, desc:"+1 hand size (permanent).", buy(){ game.perma.handSize += 1; } },
+    { kind:"voucher", name:"Extra Discard", cost:8, desc:"+1 Discard each round (permanent).", applyBuy(){ game.perma.discards += 1; }, revertSell(){ game.perma.discards = Math.max(0, game.perma.discards-1); } },
+    { kind:"voucher", name:"Extra Hand", cost:10, desc:"+1 Hand each round (permanent).", applyBuy(){ game.perma.hands += 1; }, revertSell(){ game.perma.hands = Math.max(0, game.perma.hands-1); } },
+    { kind:"voucher", name:"Bigger Hand", cost:9, desc:"+1 hand size (permanent).", applyBuy(){ game.perma.handSize += 1; }, revertSell(){ game.perma.handSize = Math.max(0, game.perma.handSize-1); } },
+    { kind:"voucher", name:"Coupon Book", cost:10, desc:"First shop purchase each round costs -$2.", applyBuy(){ game.perma.coupon = (game.perma.coupon||0)+1; }, revertSell(){ game.perma.coupon = Math.max(0,(game.perma.coupon||0)-1); } },
+    { kind:"voucher", name:"Free Reroll", cost:8, desc:"First reroll each Buy phase is free.", applyBuy(){ game.perma.freeReroll = (game.perma.freeReroll||0)+1; }, revertSell(){ game.perma.freeReroll = Math.max(0,(game.perma.freeReroll||0)-1); } },
+    { kind:"voucher", name:"Bigger Wallet", cost:11, desc:"Interest gives +1 extra per $10.", applyBuy(){ game.perma.interestBoost = (game.perma.interestBoost||0)+1; }, revertSell(){ game.perma.interestBoost = Math.max(0,(game.perma.interestBoost||0)-1); } },
+    { kind:"voucher", name:"Sixth Joker Slot", cost:13, desc:"Increase joker cap from 5 to 6.", applyBuy(){ game.perma.jokerCap = Math.min(6,(game.perma.jokerCap||5)+1); }, revertSell(){ game.perma.jokerCap = Math.max(5,(game.perma.jokerCap||5)-1); } },
   ];
 
   const CONSUME_POOL = [
-    { kind:"cons", name:"Tarot: Chip Paint", cost:5,
-      desc:"One-time: Click a card in your hand to give it +5 chip value permanently (this run).",
-      use(){
-        if(game.mode!=="play"){ toast("Use consumables during Play."); return; }
-        game.pendingUse = { type:"chipPaint" };
-        toast("Click a card to apply +5 chips.");
-      } },
-    { kind:"cons", name:"Planet: Train Hand", cost:6,
-      desc:"One-time: Choose a hand type; it gains +0.5 base Mult (this run).",
-      use(){ if(game.mode!=="play"){ toast("Use consumables during Play."); return; } openHandTypePicker(); } },
-    { kind:"cons", name:"Tarot: Cash Burst", cost:4,
-      desc:"One-time: Gain +$5 immediately.",
-      use(){ game.money += 5; toast("Cash Burst: +$5"); renderTop(); renderRight(); } }
+    { kind:"cons", name:"Tarot: Chip Paint", cost:5, desc:"Click a card in your hand to give it +5 chip value permanently (this run).", use(){ if(game.mode!=="play"){ toast("Use consumables during Play."); return; } game.pendingUse = { type:"chipPaint" }; toast("Click a card to apply +5 chips."); } },
+    { kind:"cons", name:"Planet: Train Hand", cost:6, desc:"Choose a hand type; it gains +0.5 base Mult (this run).", use(){ if(game.mode!=="play"){ toast("Use consumables during Play."); return; } openHandTypePicker(); } },
+    { kind:"cons", name:"Tarot: Cash Burst", cost:4, desc:"Gain +$5 immediately.", use(){ game.money += 5; renderTop(); renderRight(); } },
+    { kind:"cons", name:"Tarot: Suit Paint", cost:6, desc:"Choose a card; change its suit permanently.", use(){ if(game.mode!=="play"){ toast("Use consumables during Play."); return; } game.pendingUse = { type:"suitPaint" }; toast("Tap a card to repaint suit."); } },
+    { kind:"cons", name:"Tarot: Rank Polish", cost:6, desc:"Choose a card; +8 chips permanently.", use(){ if(game.mode!=="play"){ toast("Use consumables during Play."); return; } game.pendingUse = { type:"rankPolish" }; toast("Tap a card to polish rank."); } },
+    { kind:"cons", name:"Planet: Hand Training+", cost:7, desc:"Choose a hand type; +10 chips and +0.25 mult base.", use(){ if(game.mode!=="play"){ toast("Use consumables during Play."); return; } openHandTypePicker(true); } },
+    { kind:"cons", name:"Spectral: Duplicate", cost:8, desc:"Choose a card; duplicate it into your discard.", use(){ if(game.mode!=="play"){ toast("Use consumables during Play."); return; } game.pendingUse = { type:"duplicate" }; toast("Tap a card to duplicate."); } },
   ];
 
   // Game state (local only)
@@ -901,13 +1009,18 @@
 
     money:10,
 
-    perma:{ hands:0, discards:0, handSize:0 },
+    perma:{ hands:0, discards:0, handSize:0, coupon:0, freeReroll:0, interestBoost:0, jokerCap:5 },
 
     handsLeft:0,
     discardsLeft:0,
 
     jokers:[],
     cons:[],
+    vouchers:[],
+
+    shopRoundPurchaseCount:0,
+    shopRoundRerollCount:0,
+    lastHandType:null,
 
     boss:{},
     bossRule:null, // local copy (from match)
@@ -935,16 +1048,18 @@
 
   function rollShopOffers(){
     shopOffers = [];
-    const a = rng.pick(JOKER_POOL);
-    const b = rng.pick(JOKER_POOL);
-    const cPool = [rng.pick(VOUCHER_POOL), rng.pick(CONSUME_POOL), rng.pick(JOKER_POOL)];
-    const c = rng.pick(cPool);
-
-    shopOffers.push({ ...a, _id:"o1", _kind:a.kind, _obj: (a.kind==="joker") ? mkJoker(a) : a });
-    shopOffers.push({ ...b, _id:"o2", _kind:b.kind, _obj: (b.kind==="joker") ? mkJoker(b) : b });
-    shopOffers.push({ ...c, _id:"o3", _kind:c.kind, _obj: (c.kind==="joker") ? mkJoker(c) : c });
-
+    const pools = [JOKER_POOL, JOKER_POOL, VOUCHER_POOL, CONSUME_POOL, [rng.pick(JOKER_POOL), rng.pick(VOUCHER_POOL), rng.pick(CONSUME_POOL)]];
+    pools.forEach((pool, i)=>{
+      const pick = Array.isArray(pool) ? rng.pick(pool) : rng.pick(pool);
+      shopOffers.push({ ...pick, _id:"o"+(i+1), _kind:pick.kind, _obj: (pick.kind==="joker") ? mkJoker(pick) : { ...pick } });
+    });
     renderShop();
+  }
+
+  function effectiveOfferCost(o){
+    let c = Number(o.cost||0);
+    if(game.shopRoundPurchaseCount===0 && (game.perma.coupon||0)>0) c = Math.max(0, c-2);
+    return c;
   }
 
   function buyOffer(offerId){
@@ -952,35 +1067,28 @@
     const idx = shopOffers.findIndex(o=>o._id===offerId);
     if(idx<0) return;
     const o = shopOffers[idx];
-    const cost = o.cost||0;
+    const cost = effectiveOfferCost(o);
     if(game.money < cost){ toast("Not enough money."); return; }
 
     if(o._kind==="joker"){
-      if(game.jokers.length>=5){ toast("Joker slots full (5)."); return; }
+      const cap = Number(game.perma.jokerCap||5);
+      if(game.jokers.length>=cap){ toast(`Joker slots full (${cap}).`); return; }
       game.money -= cost;
       game.jokers.push(o._obj);
-      toast(`Bought joker: ${o.name}`);
-      shopOffers.splice(idx,1);
-      renderAll();
-      return;
-    }
-    if(o._kind==="voucher"){
+    } else if(o._kind==="voucher"){
       game.money -= cost;
-      o.buy();
-      toast(`Bought voucher: ${o.name}`);
-      shopOffers.splice(idx,1);
-      renderAll();
-      return;
-    }
-    if(o._kind==="cons"){
-      if(game.cons.length>=2){ toast("Consumable slots full (2)."); return; }
+      const v = { ...o._obj, vid: "V"+Math.random().toString(16).slice(2), kind:"voucher" };
+      v.applyBuy?.();
+      game.vouchers.push(v);
+    } else if(o._kind==="cons"){
+      if(game.cons.length>=3){ toast("Consumable slots full (3)."); return; }
       game.money -= cost;
-      game.cons.push({ ...o, use:o.use });
-      toast(`Bought consumable: ${o.name}`);
-      shopOffers.splice(idx,1);
-      renderAll();
-      return;
+      game.cons.push({ ...o._obj, boughtCost: o.cost||0 });
     }
+    game.shopRoundPurchaseCount += 1;
+    toast(`Bought ${o.name}`);
+    shopOffers.splice(idx,1);
+    renderAll();
   }
 
   function sellJoker(jid){
@@ -995,6 +1103,28 @@
     renderAll();
   }
 
+  function sellVoucher(vid){
+    if(game.mode!=="shop") return;
+    const i = game.vouchers.findIndex(v=>v.vid===vid);
+    if(i<0) return;
+    const v = game.vouchers[i];
+    v.revertSell?.();
+    const val = Math.max(1, Math.floor((v.cost||6) * 0.5));
+    game.money += val;
+    game.vouchers.splice(i,1);
+    renderAll();
+  }
+
+  function sellConsumable(index){
+    if(game.mode!=="shop") return;
+    const c = game.cons[index];
+    if(!c) return;
+    const val = Math.max(1, Math.floor((c.cost||4) * 0.5));
+    game.money += val;
+    game.cons.splice(index,1);
+    renderAll();
+  }
+
   function useConsumable(index){
     if(game.mode!=="play"){ toast("Use only during Play."); return; }
     const c = game.cons[index];
@@ -1002,6 +1132,17 @@
     game.cons.splice(index,1);
     renderRight();
     c.use();
+  }
+
+  function rerollShop(){
+    if(game.mode!=="shop"){ toast("Not in buy."); return; }
+    let price = 2;
+    if(game.shopRoundRerollCount===0 && (game.perma.freeReroll||0)>0) price = 0;
+    if(game.money < price){ toast("Need $"+price+" to reroll."); return; }
+    game.money -= price;
+    game.shopRoundRerollCount += 1;
+    rollShopOffers();
+    renderAll();
   }
 
   // Boss restrictions
@@ -1035,12 +1176,16 @@
     game.sel = new Set();
 
     game.money = 10;
-    game.perma = {hands:0, discards:0, handSize:0};
+    game.perma = {hands:0, discards:0, handSize:0, coupon:0, freeReroll:0, interestBoost:0, jokerCap:5};
     game.jokers = [];
     game.cons = [];
+    game.vouchers = [];
+    game.lastHandType = null;
 
     game.boss = {};
     game.bossRule = null;
+    game.shopRoundPurchaseCount = 0;
+    game.shopRoundRerollCount = 0;
 
     for(const k of HAND_KEYS) handUp[k] = {chips:0, mult:0};
 
@@ -1084,7 +1229,7 @@
     drawToHand();
 
     // UI
-    $("shopBlock").style.display="none";
+    toggleShopModal(false);
     $("waitBlock").style.display="none";
     $("runEndBlock").style.display="none";
 
@@ -1115,6 +1260,7 @@
     game.hand = game.hand.filter(c=>!set.has(c.id));
     for(const c of cards) game.discard.push(c);
     game.discardsLeft -= 1;
+    for(const j of game.jokers){ if(j.name==="Discard Dynamo"){ j.state.bonus = (j.state.bonus||0)+5; } }
     game.sel.clear();
     drawToHand();
 
@@ -1163,6 +1309,7 @@
     drawToHand();
 
     for(const fn of ctx.onAfter) fn();
+    game.lastHandType = h.name;
     for(const fn of ctx.onPayout) fn();
 
     game.last.hand = `${h.name} ${h.detail}`;
@@ -1193,12 +1340,15 @@
   function enterBuyPhase(reward){
     game.mode="shop";
     $("waitBlock").style.display="none";
-    $("shopBlock").style.display="block";
+    toggleShopModal(true);
     $("runEndBlock").style.display="none";
 
     // payout model (local)
     game.money += reward;
-    game.money += Math.floor(game.money/10); // interest
+    const interest = Math.floor(game.money/10) + Math.floor(game.money/10) * (game.perma.interestBoost||0);
+    game.money += interest;
+    game.shopRoundPurchaseCount = 0;
+    game.shopRoundRerollCount = 0;
     rollShopOffers();
     renderAll();
   }
@@ -1244,7 +1394,7 @@
       me.finished = true;
 
       game.mode = "wait";
-      $("shopBlock").style.display="none";
+      toggleShopModal(false);
       $("waitBlock").style.display="block";
       $("waitTitle").textContent = "✅ Finished Round 5";
       $("waitText").textContent = "Waiting for other players…";
@@ -1279,7 +1429,7 @@
 
     const now = nowMs();
     me.status = "ready";
-    $("shopBlock").style.display="none";
+    toggleShopModal(false);
     $("waitBlock").style.display="block";
     $("waitTitle").textContent = "🕒 Ready";
     $("waitText").textContent = "Waiting for other survivors to be Ready…";
@@ -1303,7 +1453,7 @@
     const now = nowMs();
 
     game.mode = "end";
-    $("shopBlock").style.display="none";
+    toggleShopModal(false);
     $("waitBlock").style.display="none";
     $("runEndBlock").style.display="block";
     $("runEndTitle").textContent = "❌ Eliminated";
@@ -1331,6 +1481,7 @@
     $("roundNum").textContent = game.round;
     $("blindName").textContent = game.blindType;
     $("money").textContent = fmt(game.money);
+    if($("shopMoney")) $("shopMoney").textContent = fmt(game.money);
 
     $("target").textContent = fmt(game.target);
     $("blindScore").textContent = fmt(game.blindScore);
@@ -1342,6 +1493,12 @@
     $("targetBar").classList.toggle("bad", pct<.35);
     $("targetBar").querySelector("i").style.width = (pct*100).toFixed(1)+"%";
     $("blindProgressText").textContent = `${(pct*100).toFixed(1)}% of target`;
+    $("mTarget").textContent = fmt(game.target);
+    $("mScore").textContent = fmt(game.blindScore);
+    $("mTargetBar").classList.toggle("good", pct>=1);
+    $("mTargetBar").querySelector("i").style.width = (pct*100).toFixed(1)+"%";
+    $("mobileMetaLine").textContent = `Round ${game.round}/5 • ${game.blindType} • ${$("roundTimer").textContent} • ${$("phasePill").textContent}`;
+    $("mobileResourceLine").textContent = `🖐 Hands: ${game.handsLeft} • 🗑 Discards: ${game.discardsLeft}`;
 
     const dot = $("blindDot");
     dot.className = "dot";
@@ -1372,6 +1529,7 @@
     $("btnClear").disabled = !playEnabled;
     $("btnSortRank").disabled = !playEnabled;
     $("btnSortSuit").disabled = !playEnabled;
+    if($("btnPlayM")){ $("btnPlayM").disabled = $("btnPlay").disabled; $("btnDiscardM").disabled = $("btnDiscard").disabled; $("btnClearM").disabled = $("btnClear").disabled; }
 
     $("phasePill").textContent =
       me.eliminated ? "OBSERVE" :
@@ -1381,6 +1539,7 @@
       (game.mode==="play") ? "PLAY" :
       (game.mode==="shop") ? "BUY" :
       (game.mode==="wait") ? "WAIT" : "—";
+    $("mobileMetaLine").textContent = `Round ${game.round}/5 • ${game.blindType} • ${$("roundTimer").textContent} • ${$("phasePill").textContent}`;
   }
 
   function renderHand(){
@@ -1407,6 +1566,28 @@
           renderHand();
           return;
         }
+        if(game.pendingUse?.type==="rankPolish"){
+          c.bonusChip += 8;
+          game.pendingUse = null;
+          toast("Rank Polish applied (+8 chips)");
+          renderHand();
+          return;
+        }
+        if(game.pendingUse?.type==="suitPaint"){
+          const next = {S:"H",H:"D",D:"C",C:"S"}[c.suit] || "H";
+          const suitObj = SUITS.find(x=>x.k===next);
+          c.suit = suitObj.k; c.suitSym = suitObj.sym; c.red = suitObj.red;
+          game.pendingUse = null;
+          toast("Suit Paint applied.");
+          renderHand();
+          return;
+        }
+        if(game.pendingUse?.type==="duplicate"){
+          game.discard.push({ ...c, id:`dup_${Math.random().toString(16).slice(2)}` });
+          game.pendingUse = null;
+          toast("Card duplicated into discard.");
+          return;
+        }
 
         if(game.sel.has(c.id)){
           game.sel.delete(c.id);
@@ -1423,6 +1604,8 @@
   function renderRight(){
     $("jokerCount").textContent = game.jokers.length;
     $("consCount").textContent = game.cons.length;
+    $("voucherCount").textContent = game.vouchers.length;
+    $("jokerCount").parentElement.innerHTML = `Jokers <b id="jokerCount">${game.jokers.length}</b>/${game.perma.jokerCap||5}`;
 
     const jl = $("jokerList");
     jl.innerHTML = "";
@@ -1430,8 +1613,9 @@
       jl.innerHTML = `<div class="item"><div class="itemMeta">No jokers yet. Buy them in the Buy Phase.</div></div>`;
     } else {
       for(const j of game.jokers){
-        const stateLine = (j.name==="Growing Grin")
-          ? `<div class="small tight">Current: +${(j.state.bonus||0)} Mult</div>` : "";
+        const stateLine = (j.name==="Growing Grin" || j.name==="Hand Grinder")
+          ? `<div class="small tight">Current: +${(j.state.bonus||0)} Mult</div>`
+          : (j.name==="Discard Dynamo" ? `<div class="small tight">Current: +${(j.state.bonus||0)} Chips</div>` : "");
         const it = document.createElement("div");
         it.className = "item";
         it.innerHTML = `
@@ -1475,8 +1659,11 @@
       });
     }
 
+    const boosted = HAND_KEYS.filter(k=>(handUp[k].chips||0)||(handUp[k].mult||0)).map(k=>`${k} (+${handUp[k].chips||0}c, +${(handUp[k].mult||0).toFixed(2)}m)`).join("; ");
+    $("ownedSummary").innerHTML = `Jokers: <b>${game.jokers.map(j=>j.name).join(", ") || "None"}</b><br/>Vouchers: <b>${game.vouchers.map(v=>v.name).join(", ") || "None"}</b><br/>Consumables: <b>${game.cons.map(c=>c.name).join(", ") || "None"}</b><br/>Hand upgrades: <b>${boosted || "None"}</b>`;
+
     if(game.mode==="shop"){
-      $("shopBlock").style.display="block";
+      toggleShopModal(true);
       renderShop();
     }
   }
@@ -1488,7 +1675,6 @@
 
     if(shopOffers.length===0){
       sl.innerHTML = `<div class="item"><div class="itemMeta">Shop is empty. Ready up.</div></div>`;
-      return;
     }
 
     for(const o of shopOffers){
@@ -1502,7 +1688,7 @@
             <div class="itemMeta">${o.desc}</div>
           </div>
           <div class="rightAlign">
-            <div class="pill">Cost <b>$${o.cost}</b></div>
+            <div class="pill">Cost <b>$${effectiveOfferCost(o)}</b></div>
             <div style="height:8px"></div>
             <div class="itemBtns">
               <button class="btn mini primary" data-buy="${o._id}">Buy</button>
@@ -1513,6 +1699,21 @@
       it.querySelector("[data-buy]").addEventListener("click", ()=>buyOffer(o._id));
       sl.appendChild(it);
     }
+
+    const ol = $("ownedShopList");
+    ol.innerHTML = "";
+    const owned = [];
+    game.jokers.forEach(j=>owned.push({name:j.name, desc:j.desc, sell:Math.max(1, Math.floor((j.cost||6)*0.5)), act:()=>sellJoker(j.jid)}));
+    game.vouchers.forEach(v=>owned.push({name:v.name, desc:v.desc, sell:Math.max(1, Math.floor((v.cost||6)*0.5)), act:()=>sellVoucher(v.vid)}));
+    game.cons.forEach((c,idx)=>owned.push({name:c.name, desc:c.desc, sell:Math.max(1, Math.floor((c.cost||4)*0.5)), act:()=>sellConsumable(idx)}));
+    if(!owned.length){ ol.innerHTML = `<div class="item"><div class="itemMeta">No owned items to sell.</div></div>`; }
+    owned.forEach((x,idx)=>{
+      const it = document.createElement("div");
+      it.className = "item";
+      it.innerHTML = `<div class="itemTop"><div><div class="itemName">${x.name}</div><div class="itemMeta">${x.desc}</div></div><div class="itemBtns"><button class="btn mini bad" data-os="${idx}">Sell +$${x.sell}</button></div></div>`;
+      it.querySelector("[data-os]").addEventListener("click", x.act);
+      ol.appendChild(it);
+    });
   }
 
   function renderAll(){
@@ -1530,12 +1731,12 @@
   function showHow(){ $("howBack").classList.add("show"); $("howBack").setAttribute("aria-hidden","false"); }
   function hideHow(){ $("howBack").classList.remove("show"); $("howBack").setAttribute("aria-hidden","true"); }
 
-  function openHandTypePicker(){
+  function openHandTypePicker(plus=false){
     const back = $("howBack");
     const modal = back.querySelector(".modal");
     const ph = modal.querySelector(".ph h2");
     const oldTitle = ph.textContent;
-    ph.textContent = "Pick a hand type to upgrade (+0.5 base Mult)";
+    ph.textContent = plus ? "Pick a hand type (+10 chips, +0.25 mult)" : "Pick a hand type to upgrade (+0.5 base Mult)";
 
     const content = $("howContent");
     const original = content.innerHTML;
@@ -1568,8 +1769,8 @@
     content.querySelectorAll("button[data-hand]").forEach(btn=>{
       btn.addEventListener("click", ()=>{
         const k = btn.getAttribute("data-hand");
-        handUp[k].mult += 0.5;
-        toast(`Upgraded ${k}: +0.5 base Mult`);
+        if(plus){ handUp[k].chips += 10; handUp[k].mult += 0.25; toast(`Upgraded ${k}: +10 chips and +0.25 mult`); }
+        else { handUp[k].mult += 0.5; toast(`Upgraded ${k}: +0.5 base Mult`); }
         renderAll();
         cleanup();
       });
@@ -1647,6 +1848,21 @@
     return total;
   }
 
+  function renderReadyInfo(){
+    const arr = [...allPlayers.entries()].map(([name,d])=>({name,...(d||{})}));
+    const survivors = arr.filter(p=>p.status!=="eliminated");
+    const ready = survivors.filter(p=>p.status==="ready" || p.status==="finished");
+    $("readyCountLine").textContent = `Ready: ${ready.length}/${Math.max(1,survivors.length)}`;
+    const list = $("readyList");
+    list.innerHTML = "";
+    survivors.forEach(p=>{
+      const it=document.createElement("div"); it.className="item";
+      const ok = (p.status==="ready"||p.status==="finished") ? "✅" : "⌛";
+      it.innerHTML = `<div class="itemMeta">${ok} ${p.name} — ${statusLabel(p)}</div>`;
+      list.appendChild(it);
+    });
+  }
+
   function renderScoreboard(){
     const box = $("mpList");
     box.innerHTML = "";
@@ -1715,6 +1931,7 @@
     } else {
       $("matchBadge").textContent = "—";
     }
+    renderReadyInfo();
   }
 
   // ---------------------------
@@ -1993,7 +2210,7 @@
             me.status = "play";
             me.buyStartAt = 0;
             me.buyDeadlineAt = 0;
-            $("shopBlock").style.display="none";
+            toggleShopModal(false);
             $("waitBlock").style.display="none";
 
             applyRoundConfig(r, cfg);
@@ -2020,13 +2237,16 @@
         const w = match.winnerName;
         const ws = match.winnerScore;
 
-        $("shopBlock").style.display="none";
+        toggleShopModal(false);
         $("waitBlock").style.display="none";
         $("runEndBlock").style.display="block";
 
         if(w){
           $("runEndTitle").textContent = `🏆 Winner: ${w}`;
           $("runEndText").innerHTML = `Final winner score: <b>${fmt(ws||0)}</b><br/><span class="small">You can still view the full scoreboard.</span>`;
+          $("winnerTitle").textContent = `🏆 ${w} Wins!`;
+          $("winnerText").innerHTML = `Final score: <b>${fmt(ws||0)}</b>`;
+          $("winnerBack").classList.add("show");
         } else {
           $("runEndTitle").textContent = "Match ended";
           $("runEndText").textContent = "No winner recorded.";
@@ -2057,7 +2277,7 @@
         if(me.status==="eliminated" && !me.eliminated){
           me.eliminated = true;
           game.mode = "end";
-          $("shopBlock").style.display="none";
+          toggleShopModal(false);
           $("waitBlock").style.display="none";
           $("runEndBlock").style.display="block";
           $("runEndTitle").textContent = "❌ Eliminated";
@@ -2073,7 +2293,7 @@
 
         if(me.status==="ready" && game.mode!=="wait" && !me.eliminated && !me.finished){
           game.mode = "wait";
-          $("shopBlock").style.display="none";
+          toggleShopModal(false);
           $("waitBlock").style.display="block";
           $("waitTitle").textContent = "🕒 Ready";
           $("waitText").textContent = "Waiting for other survivors to be Ready…";
@@ -2083,7 +2303,7 @@
         if(me.status==="finished" && !me.finished){
           me.finished = true;
           game.mode = "wait";
-          $("shopBlock").style.display="none";
+          toggleShopModal(false);
           $("waitBlock").style.display="block";
           $("waitTitle").textContent = "✅ Finished";
           $("waitText").textContent = "Waiting for match end…";
@@ -2106,16 +2326,24 @@
   $("btnSortSuit").addEventListener("click", sortHandBySuit);
   $("btnFinish").addEventListener("click", ()=>finishRound(false));
 
-  $("btnReroll").addEventListener("click", ()=>{
-    if(game.mode!=="shop"){ toast("Not in buy."); return; }
-    if(game.money < 2){ toast("Need $2 to reroll."); return; }
-    game.money -= 2;
-    rollShopOffers();
-    renderAll();
-    toast("Shop rerolled.");
-  });
+  $("btnReroll").addEventListener("click", rerollShop);
 
   $("btnReady").addEventListener("click", markReady);
+
+  $("btnPlayM").addEventListener("click", playSelected);
+  $("btnDiscardM").addEventListener("click", discardSelected);
+  $("btnClearM").addEventListener("click", clearSelection);
+  $("btnMore").addEventListener("click", ()=> $("moreRow").classList.toggle("show"));
+  $("btnDrawer").addEventListener("click", ()=>setDrawer(true));
+  $("drawerBack").addEventListener("click", ()=>setDrawer(false));
+  $("btnFullscreen").addEventListener("click", async ()=>{
+    try{
+      if(!document.fullscreenElement && document.documentElement.requestFullscreen){ await document.documentElement.requestFullscreen(); }
+      else if(document.fullscreenElement && document.exitFullscreen){ await document.exitFullscreen(); }
+    }catch(e){ toast("Fullscreen not supported on this device."); }
+  });
+  $("shopBack").addEventListener("click", (e)=>{ if(e.target===$("shopBack")) toggleShopModal(false); });
+  $("btnWinnerClose").addEventListener("click", ()=>$("winnerBack").classList.remove("show"));
 
   $("btnHow").addEventListener("click", showHow);
   $("btnCloseHow").addEventListener("click", hideHow);
@@ -2127,7 +2355,7 @@
     toast("Local run reset.");
   });
 
-  window.addEventListener("keydown", (e)=>{ if(e.key==="Escape") hideHow(); });
+  window.addEventListener("keydown", (e)=>{ if(e.key==="Escape"){ hideHow(); toggleShopModal(false); setDrawer(false); $("winnerBack").classList.remove("show"); } });
 
   // ---------------------------
   // Boot
