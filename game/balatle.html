@@ -128,6 +128,9 @@
       position:relative;
       padding:10px;
       user-select:none;
+      cursor:pointer;
+      touch-action:manipulation;
+      -webkit-tap-highlight-color:transparent;
       transition:transform .08s ease, filter .12s ease, outline .12s ease;
       outline:2px solid transparent;
     }
@@ -283,6 +286,7 @@
     .winnerCard{ width:min(640px,100%); text-align:center; border:1px solid var(--line); border-radius:20px; background:linear-gradient(180deg, rgba(87,178,255,.14), rgba(0,0,0,.4)); padding:28px 16px; }
 
     @media (max-width: 780px){
+      html,body{ height:auto; min-height:100%; overflow-y:auto; }
       .wrap{ padding:calc(8px + env(safe-area-inset-top)) 8px calc(88px + env(safe-area-inset-bottom)); }
       .top{ grid-template-columns:1fr; }
       .fullBtn{ display:inline-flex; }
@@ -297,12 +301,12 @@
       .mobileActions .btn{ padding:12px 6px; font-size:13px; }
       .moreRow{ display:none; }
       .moreRow.show{ display:flex; }
-      .hand{ min-height:88px; padding:6px; gap:6px; flex-wrap:nowrap; overflow-x:auto; }
-      .card{ width:66px; height:92px; padding:8px; flex:0 0 auto; }
+      .hand{ min-height:88px; padding:6px; gap:6px; display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); overflow:visible; }
+      .card{ width:100%; height:auto; min-height:92px; aspect-ratio:66/92; padding:8px; }
       .card .rank,.card .suit{ font-size:16px; }
       .card .chips{ font-size:10px; left:6px; right:6px; }
 
-      #statsPanel{ position:fixed; top:0; right:0; height:100vh; width:min(84vw,360px); transform:translateX(105%); transition:transform .2s ease; z-index:72; overflow:auto; padding-top:calc(env(safe-area-inset-top) + 8px); padding-bottom:calc(env(safe-area-inset-bottom) + 10px); }
+      #statsPanel{ position:fixed; top:0; right:0; height:100vh; width:min(84vw,360px); transform:translateX(105%); transition:transform .2s ease; z-index:72; overflow:auto; padding-top:calc(env(safe-area-inset-top) + 8px); padding-bottom:calc(env(safe-area-inset-bottom) + 10px); background:#0b1020; border-left:1px solid rgba(255,255,255,.2); }
       body.drawerOpen #statsPanel{ transform:translateX(0); }
       body.drawerOpen{ overflow:hidden; }
       .mobileDrawerHandle{ display:block; position:fixed; right:0; top:40%; z-index:73; border-radius:14px 0 0 14px; border:1px solid var(--line); border-right:0; background:rgba(8,12,28,.95); color:var(--ink); padding:10px 8px; }
