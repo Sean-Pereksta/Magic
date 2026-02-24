@@ -42,8 +42,6 @@
     #topStats[open] summary{margin-bottom:8px;}
     #topStats .statsGrid{display:none;gap:8px;flex-wrap:wrap;}
     #topStats[open] .statsGrid{display:flex;}
-    #topStats .statsHeader{display:none;width:100%;justify-content:flex-end;}
-    #topStats .statsCloseBtn{width:28px;height:28px;padding:0;border-radius:999px;font-size:17px;line-height:1;}
     .chipRow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;pointer-events:auto;}
     .chip{
       background:rgba(15,27,51,.78);
@@ -198,7 +196,6 @@
       #desktopBattleHud{display:none !important;}
       #topbar{right:8px;left:8px;top:8px;}
       #topStats{max-width:64%;}
-      #topStats[open] .statsHeader{display:flex;}
       #topbar .chipRow:last-child{gap:6px;}
       #topbar .chipRow:last-child .btn{padding:7px 8px;font-size:12px;}
     }
@@ -215,9 +212,6 @@
           <div class="chip">👥 <b id="army">0</b> • 💰 <b id="gold">0</b> • 🍖 <b id="food">0</b></div>
         </summary>
         <div class="statsGrid">
-          <div class="statsHeader">
-            <button class="btn statsCloseBtn" id="topStatsCloseBtn" aria-label="Close stats">×</button>
-          </div>
           <div class="chip"><span class="dot" id="modeDot"></span><b id="modeLabel">MAP</b><span id="modeSub" class="tag">WASD move • E interact</span></div>
           <div class="chip"><span class="dot" id="bannerDot"></span>🏳 <b id="banner">Independent</b></div>
           <div class="chip">⭐ Lv <b id="lvl">1</b> <span class="tag mono" id="xp">0/60</span></div>
@@ -1240,11 +1234,6 @@
   ui.btnArmy.onclick = () => { togglePanel('army'); if(state.panelsOpen.army) renderArmyPanel(); };
   ui.btnDip.onclick = () => { togglePanel('diplomacy'); if(state.panelsOpen.diplomacy) renderDiplomacyPanel(); };
   ui.btnHelp.onclick = () => { togglePanel('help'); if(state.panelsOpen.help) renderHelpPanel(); };
-  ui.topStatsCloseBtn.onclick = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    ui.topStats.removeAttribute('open');
-  };
   ui.btnFullscreen.onclick = async () => {
     try{
       if(!document.fullscreenElement) await frame.requestFullscreen();
