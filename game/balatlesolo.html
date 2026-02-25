@@ -257,6 +257,7 @@
             <div class="pill"><span class="dot" id="blindDot"></span> <span id="blindName">—</span></div>
             <div class="pill">Round <b id="roundNum">—</b></div>
             <div class="pill">Phase <b id="phasePill">—</b></div>
+            <div class="pill">Lives <b id="livesPill">2</b></div>
             <div class="pill">Solo <b id="youName">Player</b></div>
           </div>
         </div>
@@ -441,7 +442,8 @@
               <li>Rounds cycle <b>Small → Big → Boss</b> (Boss is every <b>3rd</b> round).</li>
               <li>Boss rounds add <b>limitations</b> (no discards, exact 5 cards, suit demands, etc.).</li>
               <li>Once you reach target, you may keep scoring or hit <b>Finish Round</b> to shop.</li>
-              <li>No timers: the run ends only if you run out of hands before reaching the target (or you finish below target).</li>
+              <li>No timers: if you have no discards left and no legal plays, you lose 1 life and the round restarts.</li>
+              <li>You have <b>2 lives</b>; the run ends when all lives are gone.</li>
             </ol>
           </div>
         </div>
@@ -956,6 +958,8 @@
 
     pendingUse:null,
 
+    livesLeft:2,
+
     last:{ hand:"—", math:"—" },
     bestThisRun:0,
   };
@@ -1194,6 +1198,7 @@
     toggleShopModal(false);
 
     renderAll();
+    checkStuckState();
     toast(`Round ${roundIdx}: ${game.blindType}`);
   }
 
@@ -1209,6 +1214,7 @@
     game.money = 10;
     game.totalScore = 0;
     game.bestThisRun = 0;
+    game.livesLeft = 2;
 
     game.perma = {
       hands:0, discards:0, handSize:0,
@@ -1251,6 +1257,62 @@
     renderHand();
   }
 
+  function canPlaySelection(cards){
+    const maxCards = Math.min(5, game.perma.maxPlayCards||5);
+    if(cards.length===0 || cards.length>maxCards) return false;
+    if((game.boss.exactFive || game.perma.forceExactlyFive) && cards.length!==5) return false;
+    if(game.boss.noFace && cards.some(c=>["J","Q","K"].includes(c.rank))) return false;
+    if(game.boss.suitDemand){
+      const suit = game.boss.demandSuit;
+      const need = game.boss.demandCount||3;
+      const have = cards.filter(c=>c.suit===suit || c.wild).length;
+      if(have < need) return false;
+    }
+    return true;
+  }
+
+  function hasAnyPlayableSelection(){
+    const cards = game.hand;
+    const maxCards = Math.min(cards.length, Math.min(5, game.perma.maxPlayCards||5));
+    for(let take=1; take<=maxCards; take++){
+      if((game.boss.exactFive || game.perma.forceExactlyFive) && take!==5) continue;
+      const pick = [];
+      const dfs = (idx)=>{
+        if(pick.length===take) return canPlaySelection(pick);
+        for(let i=idx; i<cards.length; i++){
+          pick.push(cards[i]);
+          if(dfs(i+1)) return true;
+          pick.pop();
+        }
+        return false;
+      };
+      if(dfs(0)) return true;
+    }
+    return false;
+  }
+
+  function checkStuckState(){
+    if(game.mode!=="play") return false;
+    if(game.handsLeft<=0) return false;
+    if(game.discardsLeft>0) return false;
+    if(game.blindScore>=game.target) return false;
+    if(hasAnyPlayableSelection()) return false;
+
+    game.livesLeft = Math.max(0, game.livesLeft-1);
+    const lostMsg = `No discards and no legal plays left. Life lost (${game.livesLeft} remaining).`;
+
+    if(game.livesLeft<=0){
+      endRun("Out of lives.");
+      toast("💀 No lives left. Run over.");
+      return true;
+    }
+
+    const roundNum = game.round;
+    toast(lostMsg + " Restarting round...");
+    applyRoundConfig(roundNum);
+    return true;
+  }
+
   // ---------------------------
   // Discard / Play
   // ---------------------------
@@ -1288,6 +1350,7 @@
     game.sel.clear();
     drawToHand();
     renderAll();
+    checkStuckState();
   }
 
   function playSelected(){
@@ -1393,6 +1456,7 @@
     }
 
     renderAll();
+    checkStuckState();
   }
 
   // ---------------------------
@@ -1471,6 +1535,7 @@
     $("blindName").textContent = game.blindType;
     $("money").textContent = fmt(game.money);
     $("shopMoney").textContent = fmt(game.money);
+    $("livesPill").textContent = game.livesLeft;
 
     $("target").textContent = fmt(game.target);
     $("blindScore").textContent = fmt(game.blindScore);
@@ -1548,7 +1613,7 @@
     $("phasePill").textContent = (game.mode==="end" ? "END" : (game.mode==="shop" ? "BUY" : "PLAY"));
 
     $("mobileMetaLine").textContent = `Round ${game.round} • ${game.blindType} • No Timers • ${$("phasePill").textContent}`;
-    $("mobileResourceLine").textContent = `🖐 Hands: ${game.handsLeft} • 🗑 Discards: ${game.discardsLeft}`;
+    $("mobileResourceLine").textContent = `🖐 Hands: ${game.handsLeft} • 🗑 Discards: ${game.discardsLeft} • ❤️ Lives: ${game.livesLeft}`;
 
     $("yourTotal").textContent = fmt(game.totalScore);
     $("bestRun").textContent = fmt(game.bestThisRun);
