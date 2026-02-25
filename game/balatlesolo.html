@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-  <title>🃏 Balatle — Multiplayer (Firebase Live Scores)</title>
+  <title>🃏 Balatle — Solo Endless (No Timers)</title>
   <style>
     :root{
       --bg:#0b1020;
@@ -153,6 +153,10 @@
       color:rgba(255,255,255,.92);
       font-size:12px;
     }
+    .tag.bad{ border-color: rgba(255,91,107,.35); background: rgba(255,91,107,.10); }
+    .tag.good{ border-color: rgba(49,208,127,.35); background: rgba(49,208,127,.10); }
+    .tag.info{ border-color: rgba(87,178,255,.35); background: rgba(87,178,255,.10); }
+
     .list{ display:flex; flex-direction:column; gap:8px; }
     .item{
       border:1px solid var(--line);
@@ -199,79 +203,6 @@
     .small{ font-size:12px; color:var(--muted); }
     .rightAlign{ text-align:right; }
 
-    /* Multiplayer scoreboard */
-    .mpBox{
-      border:1px solid var(--line);
-      background:rgba(0,0,0,.18);
-      border-radius:14px;
-      padding:10px;
-      margin-bottom:10px;
-    }
-    .mpHead{
-      display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;
-      margin-bottom:8px;
-    }
-    .mpTitle{ font-weight:1000; display:flex; gap:8px; align-items:center; }
-    .mpTitle .badge{
-      font-size:11px;
-      padding:4px 8px;
-      border-radius:999px;
-      border:1px solid rgba(87,178,255,.35);
-      background:rgba(87,178,255,.10);
-      color:rgba(234,242,255,.92);
-    }
-    .mpList{ display:flex; flex-direction:column; gap:8px; }
-    .mpRow{
-      display:flex;
-      justify-content:space-between;
-      gap:10px;
-      padding:9px 10px;
-      border-radius:12px;
-      border:1px solid rgba(255,255,255,.10);
-      background:rgba(255,255,255,.04);
-      align-items:center;
-    }
-    .mpLeft{ display:flex; align-items:center; gap:10px; min-width:0; }
-    .mpName{
-      font-weight:1000;
-      overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-      max-width:180px;
-    }
-    .mpSub{ font-size:11px; color:var(--muted); margin-top:2px; }
-    .mpMeta{ display:flex; flex-direction:column; min-width:0; }
-    .mpScore{ font-weight:1000; text-align:right; }
-    .mpStatus{
-      font-size:11px;
-      color:var(--muted);
-      text-align:right;
-      margin-top:2px;
-    }
-    .mpRow.me{
-      border-color: rgba(87,178,255,.35);
-      box-shadow: 0 0 0 2px rgba(87,178,255,.12);
-      background: rgba(87,178,255,.06);
-    }
-    .mpRow.elim{
-      opacity:.70;
-      border-color: rgba(255,91,107,.28);
-      background: rgba(255,91,107,.06);
-    }
-    .mpRow.winner{
-      border-color: rgba(49,208,127,.35);
-      box-shadow: 0 0 0 2px rgba(49,208,127,.10);
-      background: rgba(49,208,127,.06);
-    }
-    .mpDot{
-      width:10px; height:10px; border-radius:50%;
-      background:var(--accent);
-      box-shadow: 0 0 0 2px rgba(87,178,255,.18);
-      flex:0 0 auto;
-    }
-    .mpDot.play{ background:var(--good); box-shadow:0 0 0 2px rgba(49,208,127,.16); }
-    .mpDot.buy{ background:var(--warn); box-shadow:0 0 0 2px rgba(244,200,74,.16); }
-    .mpDot.ready{ background:var(--accent); box-shadow:0 0 0 2px rgba(87,178,255,.16); }
-    .mpDot.elim{ background:var(--bad); box-shadow:0 0 0 2px rgba(255,91,107,.16); }
-
     .mobileHudTop,.mobileActions,.mobileResource{ display:none; }
     .fullBtn{ display:none; }
     .moreRow{ display:flex; gap:8px; flex-wrap:wrap; }
@@ -280,10 +211,6 @@
     .shopModal{ max-height:min(92vh,900px); display:flex; flex-direction:column; }
     .shopModalHead{ position:sticky; top:0; z-index:2; background:rgba(8,12,28,.94); padding-top:calc(8px + env(safe-area-inset-top)); }
     .shopModalBody{ padding:12px 14px 14px; overflow:auto; }
-
-    .winnerBack{ position:fixed; inset:0; display:none; z-index:85; background:rgba(2,5,14,.9); padding:20px; }
-    .winnerBack.show{ display:flex; align-items:center; justify-content:center; }
-    .winnerCard{ width:min(640px,100%); text-align:center; border:1px solid var(--line); border-radius:20px; background:linear-gradient(180deg, rgba(87,178,255,.14), rgba(0,0,0,.4)); padding:28px 16px; }
 
     @media (max-width: 780px){
       html,body{ height:auto; min-height:100%; overflow-y:auto; }
@@ -325,13 +252,12 @@
         <div class="ph">
           <h2>Round</h2>
           <button class="btn mini fullBtn" id="btnFullscreen">⛶ Full</button>
+
           <div class="pillRow">
             <div class="pill"><span class="dot" id="blindDot"></span> <span id="blindName">—</span></div>
-            <div class="pill">Round <b id="roundNum">—</b>/5</div>
-            <div class="pill">⏳ <b id="roundTimer">—</b></div>
+            <div class="pill">Round <b id="roundNum">—</b></div>
             <div class="pill">Phase <b id="phasePill">—</b></div>
-            <div class="pill">Conn <b id="connPill">—</b></div>
-            <div class="pill">👤 <b id="youName">—</b></div>
+            <div class="pill">Solo <b id="youName">Player</b></div>
           </div>
         </div>
 
@@ -387,7 +313,8 @@
               <button class="btn" id="btnSortRank">Sort: Rank</button>
               <button class="btn" id="btnSortSuit">Sort: Suit</button>
               <button class="btn good" id="btnFinish" title="Enabled once you reach the target">Finish Round</button>
-              <button class="btn mini" id="btnHow">How this works</button>
+              <button class="btn mini" id="btnHow">How it works</button>
+              <button class="btn mini" id="btnOptions">Options</button>
             </div>
             <span class="note">Select 1–5 cards, then <span class="kbd">Play</span>. Beat the target to survive.</span>
           </div>
@@ -396,36 +323,40 @@
 
           <div class="row" style="justify-content:space-between; align-items:flex-end;">
             <div style="flex:1">
-              <div class="small">Your hand (click cards to select):</div>
+              <div class="small">Your hand (tap cards to select):</div>
               <div class="hand" id="hand"></div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- RIGHT: Multiplayer + Jokers + Shop -->
+      <!-- RIGHT: Run / Build / Shop -->
       <div class="panel" id="statsPanel">
         <div class="ph">
-          <h2>Multiplayer / Shop</h2>
+          <h2>Run / Shop</h2>
           <div class="pillRow">
-            <button class="btn mini bad" id="btnReset" title="Local reset only (does not affect match)">Reset (local)</button>
+            <button class="btn mini bad" id="btnReset" title="Restart run">Restart</button>
           </div>
         </div>
 
         <div class="content">
-          <div class="mpBox">
-            <div class="mpHead">
-              <div class="mpTitle">👥 Players <span class="badge" id="matchBadge">—</span></div>
-              <div class="pill" title="Your total score across completed rounds">
-                🧮 Total <b id="yourTotal">0</b>
+          <div class="item">
+            <div class="itemTop">
+              <div>
+                <div class="itemName">Run Summary</div>
+                <div class="itemMeta" id="runSummaryLine">—</div>
+              </div>
+              <div class="rightAlign">
+                <div class="pill">🧮 Total <b id="yourTotal">0</b></div>
+                <div class="pill" style="margin-top:8px;">🏅 Best <b id="bestRun">0</b></div>
               </div>
             </div>
-            <div class="mpList" id="mpList"></div>
-            <div class="small tight" id="mpFooter"></div>
+            <div class="small tight" id="hiScoreLine"></div>
           </div>
 
           <div class="row" style="justify-content:space-between; align-items:center;">
             <div class="pill">Jokers <b id="jokerCount">0</b>/5</div>
+            <div class="pill">Jesters <b id="jesterCount">0</b>/2</div>
             <div class="pill">Consumables <b id="consCount">0</b>/3</div>
             <div class="pill">Vouchers <b id="voucherCount">0</b></div>
             <div class="pill" style="margin-left:auto">💰 <b id="money">—</b></div>
@@ -435,51 +366,31 @@
 
           <div class="grid2">
             <div>
-              <div class="small">Active jokers (apply every hand):</div>
+              <div class="small">Active jokers & jesters (apply every hand):</div>
               <div class="list" id="jokerList"></div>
-              <div class="small tight">Tip: ×Mult jokers scale fast.</div>
+              <div class="small tight">Tip: ×Mult scales fast… but bosses fight back.</div>
             </div>
             <div>
               <div class="small">Consumables (one-time uses):</div>
               <div class="list" id="consList"></div>
-              <div class="small tight">Use only during Play phase.</div>
+              <div class="small tight">Use only during Play.</div>
             </div>
           </div>
 
           <div class="sep"></div>
 
-          
-
-          <div id="waitBlock" style="display:none;">
-            <div class="item">
-              <div class="itemName" id="waitTitle">—</div>
-              <div class="itemMeta" id="waitText">—</div>
-              <div class="small tight" id="readyCountLine">Ready: 0/0</div>
-              <div class="list" id="readyList"></div>
-            </div>
-          </div>
-
-          <div id="runEndBlock" style="display:none;">
-            <div class="item">
-              <div class="itemName" id="runEndTitle">—</div>
-              <div class="itemMeta" id="runEndText">—</div>
-            </div>
-          </div>
-
-
-          <div class="sep"></div>
           <div class="item">
             <div class="itemName">Owned Build Summary</div>
             <div class="itemMeta" id="ownedSummary">No purchases yet.</div>
           </div>
 
           <div class="item">
-            <div class="itemName">Scoring (demo)</div>
+            <div class="itemName">Scoring (simplified)</div>
             <div class="itemMeta">
               Score per play = <b>(Chips)</b> × <b>(Mult)</b><br/>
-              Chips = base hand chips + sum of selected card chip values + joker chip bonuses<br/>
-              Mult = (base hand mult + joker +mult) × joker ×mult effects
-              <div class="small tight">Inspired by Balatro, simplified for learning. Multiplayer syncs scores only.</div>
+              Chips = base hand chips + selected card chip values + bonuses<br/>
+              Mult = (base hand mult + bonuses) × multiplier effects
+              <div class="small tight">No timers: you decide when to finish and shop.</div>
             </div>
           </div>
 
@@ -488,22 +399,22 @@
     </div>
   </div>
 
-  <button class="mobileDrawerHandle" id="btnDrawer" aria-label="Toggle scores and stats" aria-expanded="false">☰ Scores</button>
+  <button class="mobileDrawerHandle" id="btnDrawer" aria-label="Toggle stats drawer" aria-expanded="false">☰ Build</button>
   <div class="drawerBack" id="drawerBack"></div>
 
+  <!-- SHOP MODAL -->
   <div class="modalBack" id="shopBack" aria-hidden="true">
     <div class="modal shopModal" role="dialog" aria-modal="true">
       <div class="ph shopModalHead">
         <h2>Shop</h2>
         <div class="row">
           <div class="pill">💰 <b id="shopMoney">—</b></div>
-          <div class="pill"><span class="dot warn"></span> Buy <b id="buyTimer">—</b></div>
           <button class="btn mini" id="btnReroll">Reroll ($2)</button>
-          <button class="btn mini good" id="btnReady">Ready</button>
+          <button class="btn mini good" id="btnNextRound">Next Round</button>
         </div>
       </div>
       <div class="shopModalBody">
-        <div class="small tight">Buys are local-only (they help your run, not others). Next round starts when all survivors are Ready.</div>
+        <div class="small tight" id="shopHelpLine">Buy upgrades for your run, then hit Next Round when you’re ready.</div>
         <div class="sep"></div>
         <div class="small">Shop Offers</div>
         <div class="list" id="shopList"></div>
@@ -514,225 +425,88 @@
     </div>
   </div>
 
-  <div class="winnerBack" id="winnerBack">
-    <div class="winnerCard">
-      <div class="itemName" id="winnerTitle">🏆 Winner</div>
-      <div class="itemMeta" id="winnerText">—</div>
-      <div style="margin-top:14px;"><button class="btn" id="btnWinnerClose">Close</button></div>
+  <!-- HOW-TO MODAL -->
+  <div class="modalBack" id="howBack" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="ph">
+        <h2>How this solo endless mode works</h2>
+        <button class="btn mini" id="btnCloseHow">Close</button>
+      </div>
+      <div class="content" id="howContent">
+        <div class="item">
+          <div class="itemName">Core loop</div>
+          <div class="itemMeta">
+            <ol style="margin:8px 0 0 18px; padding:0; line-height:1.5;">
+              <li>Each round has a <b>target score</b>. Beat it to survive.</li>
+              <li>Rounds cycle <b>Small → Big → Boss</b> (Boss is every <b>3rd</b> round).</li>
+              <li>Boss rounds add <b>limitations</b> (no discards, exact 5 cards, suit demands, etc.).</li>
+              <li>Once you reach target, you may keep scoring or hit <b>Finish Round</b> to shop.</li>
+              <li>No timers: the run ends only if you run out of hands before reaching the target (or you finish below target).</li>
+            </ol>
+          </div>
+        </div>
+        <div class="item">
+          <div class="itemName">Controls</div>
+          <div class="itemMeta">Tap cards to select. Press <span class="kbd">Esc</span> to close modals / drawer (desktop).</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OPTIONS MODAL -->
+  <div class="modalBack" id="optBack" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="ph">
+        <h2>Options</h2>
+        <button class="btn mini" id="btnCloseOpt">Close</button>
+      </div>
+      <div class="content" id="optContent">
+        <div class="item">
+          <div class="itemName">Difficulty</div>
+          <div class="itemMeta">
+            <div class="row" style="margin-top:8px;">
+              <button class="btn mini" id="optDiffEasy">Easy</button>
+              <button class="btn mini" id="optDiffNormal">Normal</button>
+              <button class="btn mini" id="optDiffHard">Hard</button>
+            </div>
+            <div class="small tight">Hard increases targets and slightly tightens rewards.</div>
+          </div>
+        </div>
+        <div class="item">
+          <div class="itemName">Gameplay</div>
+          <div class="itemMeta">
+            <div class="row" style="margin-top:8px;">
+              <button class="btn mini" id="optToggleAutoFinish">—</button>
+            </div>
+            <div class="small tight">Auto-Finish ends the round immediately once you meet the target.</div>
+          </div>
+        </div>
+        <div class="item">
+          <div class="itemName">Data</div>
+          <div class="itemMeta">
+            <div class="row" style="margin-top:8px;">
+              <button class="btn mini bad" id="optClearHi">Clear High Score</button>
+              <button class="btn mini" id="optResetOptions">Reset Options</button>
+            </div>
+          </div>
+        </div>
+        <div class="small" style="margin-top:10px;">Options + high score are saved in <b>localStorage</b> (works offline).</div>
+      </div>
     </div>
   </div>
 
   <div class="toast" id="toast"></div>
 
-  <!-- HOW-TO MODAL -->
-  <div class="modalBack" id="howBack" aria-hidden="true">
-    <div class="modal" role="dialog" aria-modal="true">
-      <div class="ph">
-        <h2>How this multiplayer demo works</h2>
-        <button class="btn mini" id="btnCloseHow">Close</button>
-      </div>
-      <div class="content" id="howContent">
-        <div class="item">
-          <div class="itemName">Match rules</div>
-          <div class="itemMeta">
-            <ol style="margin:8px 0 0 18px; padding:0; line-height:1.5;">
-              <li>There are <b>5 rounds</b>. Rounds <b>4</b> and <b>5</b> are <b>Boss</b> rounds.</li>
-              <li>Each round has a <b>2:00</b> play timer. If time expires and you’re below target, you’re <b>eliminated</b>.</li>
-              <li>Once you reach target, you can keep scoring for a bigger total, or click <b>Finish Round</b> to enter Buy.</li>
-              <li>Buy Phase lasts <b>0:30</b> (or less if the match advances early). Buys only affect <b>your</b> run.</li>
-              <li>Next round starts when all surviving players are <b>Ready</b> (or timeouts force it).</li>
-              <li>End of Round 5: highest <b>Total</b> among survivors wins. If only one player remains, they win immediately.</li>
-            </ol>
-          </div>
-        </div>
-        <div class="item">
-          <div class="itemName">Keyboard</div>
-          <div class="itemMeta">Press <span class="kbd">Esc</span> to close this window.</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-  import {
-    getFirestore,
-    doc, collection,
-    setDoc, getDoc,
-    onSnapshot,
-    runTransaction,
-    serverTimestamp,
-    arrayUnion
-  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-  import {
-    getAuth,
-    signInAnonymously,
-    onAuthStateChanged
-  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-
-  // ---------------------------
-  // Firebase config (same project as lobby + stoney)
-  // ---------------------------
-  const firebaseConfig = {
-    apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
-    authDomain: "bible-game-246c0.firebaseapp.com",
-    projectId: "bible-game-246c0",
-    storageBucket: "bible-game-246c0.appspot.com",
-    messagingSenderId: "959619818996",
-    appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
-  const auth = getAuth(app);
-
-  // ---------------------------
-  // Query params from lobby redirect: ?gameId=...&username=...
-  // ---------------------------
-  const qs = new URLSearchParams(location.search);
-  const gameId = (qs.get("gameId") || "").trim();
-  const usernameRaw = (qs.get("username") || "").trim();
-  const username = (usernameRaw.length ? usernameRaw : "Player").slice(0, 22);
-
+<script>
+(() => {
   const $ = (id)=>document.getElementById(id);
-  $("youName").textContent = username;
 
   // ---------------------------
-  // Match constants
+  // Utils
   // ---------------------------
-  const ROUND_COUNT = 5;
-  const PLAY_MS = 120000; // 2 minutes
-  const BUY_MS  = 60000;  // 1 minute
-  const ONLINE_GRACE_MS = 45000; // treat stale players as disconnected
+  const clamp = (n,a,b)=>Math.max(a,Math.min(b,n));
+  const fmt = (n)=>Math.floor(n).toLocaleString();
 
-  // Boss rules (shared & stored in match doc)
-  const BOSS_RULES = [
-    { key:"noDiscards", name:"Boss Rule: No Discards", desc:"Discards are disabled during this boss round.",
-      apply(game){ game.boss.noDiscards = true; }
-    },
-    { key:"exactFive", name:"Boss Rule: Exactly 5 Cards", desc:"You must play exactly 5 cards each hand.",
-      apply(game){ game.boss.exactFive = true; }
-    },
-    { key:"noPairs", name:"Boss Rule: No Pairs", desc:"Pairs and Two Pairs count as High Card.",
-      apply(game){ game.boss.noPairs = true; }
-    }
-  ];
-  const bossByKey = new Map(BOSS_RULES.map(x=>[x.key,x]));
-
-  // Default targets (tune here if you want)
-  const DEFAULT_ROUND_TARGETS = [300, 500, 900, 1500, 2100];
-  const DEFAULT_ROUND_TYPES   = ["Small","Big","Big","Boss","Boss"];
-
-  // ---------------------------
-  // Robust anonymous auth (pattern from your DM file)
-  // ---------------------------
-  let authUser = null;
-
-  async function ensureAuthed(){
-    if(auth.currentUser){
-      try{ await auth.currentUser.getIdToken(); }catch(e){}
-      return auth.currentUser;
-    }
-    await signInAnonymously(auth).catch(()=>{});
-    return await new Promise((resolve, reject)=>{
-      let unsub=null;
-      const timeout=setTimeout(()=>{
-        unsub?.(); reject(new Error("Anonymous auth timed out."));
-      }, 12000);
-      unsub = onAuthStateChanged(auth, async (user)=>{
-        if(!user) return;
-        clearTimeout(timeout);
-        unsub();
-        try{
-          await user.getIdToken();
-          resolve(user);
-        }catch(e){ reject(e); }
-      });
-    });
-  }
-
-  // ---------------------------
-  // Server time offset (best-effort)
-  // ---------------------------
-  let serverOffsetMs = 0;
-  function nowMs(){ return Date.now() + serverOffsetMs; }
-
-  async function syncServerTime(){
-    if(!gameId) return;
-    const clockRef = doc(db, "lobbies", gameId, "_meta", "clock");
-    // write a server timestamp, then listen for resolved value
-    await setDoc(clockRef, { ts: serverTimestamp() }, { merge:true }).catch(()=>{});
-    return await new Promise((resolve)=>{
-      const unsub = onSnapshot(clockRef, (snap)=>{
-        const d = snap.data();
-        const ts = d?.ts;
-        if(ts && typeof ts.toMillis === "function"){
-          const serverNow = ts.toMillis();
-          serverOffsetMs = serverNow - Date.now();
-          unsub();
-          resolve(serverOffsetMs);
-        }
-      }, ()=> resolve(0));
-      setTimeout(()=>{ try{unsub();}catch(e){} resolve(0); }, 4000);
-    });
-  }
-
-  // ---------------------------
-  // Firestore refs
-  // ---------------------------
-  if(!gameId){
-    $("connPill").textContent = "NO gameId";
-    $("runEndBlock").style.display = "block";
-    $("runEndTitle").textContent = "Missing gameId";
-    $("runEndText").textContent = "Launch from the lobby so the URL includes ?gameId=...&username=...";
-    throw new Error("Missing gameId");
-  }
-
-  const lobbyRef  = doc(db, "lobbies", gameId);
-  const stateRef  = doc(db, "lobbies", gameId, "balatro", "state");
-  const playersCol= collection(db, "lobbies", gameId, "balatroPlayers");
-  const meRef     = doc(db, "lobbies", gameId, "balatroPlayers", username);
-
-  // ---------------------------
-  // Match + player mirrors (live)
-  // ---------------------------
-  let match = null;
-  let allPlayers = new Map(); // name -> data
-  let matchUnsub = null;
-  let playersUnsub = null;
-
-  // ---------------------------
-  // Toast
-  // ---------------------------
-  let toastT=null;
-  function toggleShopModal(open){
-    const back = $("shopBack");
-    if(!back) return;
-    back.classList.toggle("show", !!open);
-    back.setAttribute("aria-hidden", open?"false":"true");
-  }
-
-  function setDrawer(open){
-    const next = !!open;
-    document.body.classList.toggle("drawerOpen", next);
-    const drawerBtn = $("btnDrawer");
-    if(drawerBtn){
-      drawerBtn.setAttribute("aria-expanded", next ? "true" : "false");
-      drawerBtn.textContent = next ? "✕ Close" : "☰ Scores";
-    }
-  }
-
-  function toast(msg){
-    const t=$("toast");
-    t.textContent=msg;
-    t.classList.add("show");
-    clearTimeout(toastT);
-    toastT=setTimeout(()=>t.classList.remove("show"), 1600);
-  }
-
-  // ---------------------------
-  // Deterministic RNG for match setup (boss rules)
-  // ---------------------------
   function xorshift32(seed){
     let x = (seed|0) || 123456789;
     return ()=> {
@@ -740,109 +514,6 @@
       return ((x>>>0) / 4294967296);
     };
   }
-
-  function buildRounds(seed){
-    const rnd = xorshift32(seed);
-    const rounds = [];
-    // pick 2 (possibly different) boss rules deterministically
-    const bossKeys = BOSS_RULES.map(b=>b.key);
-    const boss1 = bossKeys[Math.floor(rnd()*bossKeys.length)];
-    let boss2 = bossKeys[Math.floor(rnd()*bossKeys.length)];
-    if(boss2 === boss1 && bossKeys.length>1){
-      boss2 = bossKeys[(bossKeys.indexOf(boss1)+1) % bossKeys.length];
-    }
-
-    for(let i=1;i<=ROUND_COUNT;i++){
-      const type = DEFAULT_ROUND_TYPES[i-1];
-      const target = DEFAULT_ROUND_TARGETS[i-1];
-      let bossRuleKey = null;
-      if(i===4) bossRuleKey = boss1;
-      if(i===5) bossRuleKey = boss2;
-
-      const br = bossRuleKey ? bossByKey.get(bossRuleKey) : null;
-      rounds.push({
-        idx:i,
-        type,
-        target,
-        bossRuleKey: bossRuleKey || null,
-        bossRuleName: br?.name || null,
-        bossRuleDesc: br?.desc || null
-      });
-    }
-    return rounds;
-  }
-
-  // ---------------------------
-  // Ensure match exists + join
-  // ---------------------------
-  async function joinOrCreateMatch(){
-    await runTransaction(db, async (tx)=>{
-      const lobbySnap = await tx.get(lobbyRef);
-      const stateSnap = await tx.get(stateRef);
-
-      const now = nowMs();
-      const lobby = lobbySnap.exists() ? (lobbySnap.data() || {}) : {};
-      const lobbyPlayers = Array.isArray(lobby.players) ? lobby.players.slice(0) : [username];
-      const host = (lobby.host || lobbyPlayers[0] || username);
-
-      if(!stateSnap.exists()){
-        const seed = Math.floor(Math.random()*2_000_000_000);
-        const rounds = buildRounds(seed);
-        const r1 = rounds[0];
-
-        tx.set(stateRef, {
-          gameType: "balatle",
-          createdAt: now,
-          seed,
-          host,
-          players: lobbyPlayers,
-          state: "running", // running | ended
-          round: 1,
-          roundStartAt: now,
-          roundDeadlineAt: now + PLAY_MS,
-          playMs: PLAY_MS,
-          buyMs: BUY_MS,
-          rounds,
-          winnerName: null,
-          winnerScore: null,
-          endedAt: null
-        }, { merge:true });
-      } else {
-        const st = stateSnap.data() || {};
-        const stPlayers = Array.isArray(st.players) ? st.players : [];
-        if(!stPlayers.includes(username)){
-          tx.update(stateRef, { players: arrayUnion(username) });
-        }
-      }
-
-      // Ensure my player doc exists (do NOT wipe if rejoining)
-      tx.set(meRef, {
-        name: username,
-        joinedAt: serverTimestamp(),
-        status: "play",          // play | buy | ready | eliminated | finished | spectator
-        round: 1,
-        totalScore: 0,
-        roundScore: 0,
-        roundScoreFinal: 0,
-        passedRound: 0,
-        finishAt: 0,
-        buyStartAt: 0,
-        buyDeadlineAt: 0,
-        buyReady: false,
-        eliminatedAt: 0,
-        eliminatedRound: 0,
-        reason: "",
-        lastSeenAt: now
-      }, { merge:true });
-    });
-  }
-
-  // ---------------------------
-  // Local game logic (your original demo, adapted to 5-round match)
-  // ---------------------------
-
-  const clamp = (n,a,b)=>Math.max(a,Math.min(b,n));
-  const fmt = (n)=>Math.floor(n).toLocaleString();
 
   const rng = {
     int(min,max){ return Math.floor(Math.random()*(max-min+1))+min; },
@@ -856,7 +527,71 @@
     }
   };
 
-  // Card / deck
+  // ---------------------------
+  // LocalStorage
+  // ---------------------------
+  const LS_OPT = "balatle_solo_options_notimers_v1";
+  const LS_HI  = "balatle_solo_highscore_v1";
+
+  const defaultOptions = {
+    autoFinishOnTarget: false,
+    difficulty: "normal" // easy | normal | hard
+  };
+
+  function loadOptions(){
+    try{
+      const raw = localStorage.getItem(LS_OPT);
+      if(!raw) return { ...defaultOptions };
+      const o = JSON.parse(raw);
+      return { ...defaultOptions, ...(o||{}) };
+    }catch(e){
+      return { ...defaultOptions };
+    }
+  }
+  function saveOptions(){
+    try{ localStorage.setItem(LS_OPT, JSON.stringify(options)); }catch(e){}
+  }
+  function loadHighScore(){
+    try{ return Number(localStorage.getItem(LS_HI)||0) || 0; }catch(e){ return 0; }
+  }
+  function saveHighScore(n){
+    try{ localStorage.setItem(LS_HI, String(Math.floor(n))); }catch(e){}
+  }
+
+  // ---------------------------
+  // UI helpers
+  // ---------------------------
+  let toastT=null;
+  function toast(msg){
+    const t=$("toast");
+    t.textContent=msg;
+    t.classList.add("show");
+    clearTimeout(toastT);
+    toastT=setTimeout(()=>t.classList.remove("show"), 1600);
+  }
+
+  function toggleShopModal(open){
+    const back = $("shopBack");
+    back.classList.toggle("show", !!open);
+    back.setAttribute("aria-hidden", open?"false":"true");
+  }
+  function setDrawer(open){
+    const next = !!open;
+    document.body.classList.toggle("drawerOpen", next);
+    const drawerBtn = $("btnDrawer");
+    if(drawerBtn){
+      drawerBtn.setAttribute("aria-expanded", next ? "true" : "false");
+      drawerBtn.textContent = next ? "✕ Close" : "☰ Build";
+    }
+  }
+  function showHow(){ $("howBack").classList.add("show"); $("howBack").setAttribute("aria-hidden","false"); }
+  function hideHow(){ $("howBack").classList.remove("show"); $("howBack").setAttribute("aria-hidden","true"); }
+  function showOpt(){ $("optBack").classList.add("show"); $("optBack").setAttribute("aria-hidden","false"); renderOptionsUI(); }
+  function hideOpt(){ $("optBack").classList.remove("show"); $("optBack").setAttribute("aria-hidden","true"); }
+
+  // ---------------------------
+  // Cards / Deck
+  // ---------------------------
   const SUITS = [
     {k:"S", sym:"♠", red:false, order:1},
     {k:"H", sym:"♥", red:true,  order:2},
@@ -884,7 +619,9 @@
     return rng.shuffle(d);
   }
 
+  // ---------------------------
   // Hand evaluation
+  // ---------------------------
   function isStraight(values){
     if(values.length !== 5) return false;
     let ok=true;
@@ -900,7 +637,6 @@
   function evalHand(cards){
     const n = cards.length;
     const ranks = cards.map(c=>c.rv).sort((a,b)=>a-b);
-    const suits = cards.map(c=>c.suit);
     const countR = new Map();
     const countS = new Map();
     for(const c of cards){
@@ -946,12 +682,51 @@
     return {name:"High Card", tier:1, baseChips:1, baseMult:1, detail:"(1 card)"};
   }
 
-  // Demo-specific: base hand upgrades
+  // ---------------------------
+  // Hand upgrades
+  // ---------------------------
   const HAND_KEYS = ["High Card","Pair","Two Pair","Three of a Kind","Straight","Flush","Full House","Four of a Kind","Straight Flush"];
   const handUp = {};
   for(const k of HAND_KEYS) handUp[k] = {chips:0, mult:0};
 
-  // Jokers / Vouchers / Consumables
+  // ---------------------------
+  // Boss rules (every 3rd round)
+  // ---------------------------
+  const BOSS_RULES = [
+    { key:"noDiscards", name:"Boss: No Discards", desc:"Discards are disabled this round.", apply(g){ g.boss.noDiscards = true; } },
+    { key:"exactFive", name:"Boss: Exactly 5 Cards", desc:"You must play exactly 5 cards each hand.", apply(g){ g.boss.exactFive = true; } },
+    { key:"noPairs", name:"Boss: No Pairs", desc:"Pairs / Two Pair score as High Card.", apply(g){ g.boss.noPairs = true; } },
+    { key:"noStraights", name:"Boss: No Straights", desc:"Straights score as High Card; Straight Flush becomes Flush.", apply(g){ g.boss.noStraights = true; } },
+    { key:"noFace", name:"Boss: No Face Cards", desc:"Hands containing J/Q/K cannot be played.", apply(g){ g.boss.noFace = true; } },
+    { key:"suitDemand", name:"Boss: Suit Demand", desc:"Each play must include ≥3 cards of the demanded suit.", apply(g){ g.boss.suitDemand = true; g.boss.demandSuit = rng.pick(["S","H","D","C"]); g.boss.demandCount = 3; } },
+    { key:"handTight", name:"Boss: Tight Hands", desc:"-1 hand this round and hand size -1.", apply(g){ g.boss.handsDelta = -1; g.boss.handSizeDelta = -1; } },
+    { key:"discardTax", name:"Boss: Discard Tax", desc:"Each discard costs $1.", apply(g){ g.boss.discardTax = 1; } },
+    { key:"scorePenalty", name:"Boss: Toll Collector", desc:"Each play loses 80 score (after scoring).", apply(g){ g.boss.scorePenalty = 80; } },
+  ];
+
+  function pickBossRuleForRound(seed, round){
+    const bossIndex = Math.floor(round/3);
+    const r = xorshift32((seed ^ (bossIndex*1103515245))|0);
+    return BOSS_RULES[Math.floor(r()*BOSS_RULES.length)];
+  }
+
+  function applyBossOverrides(handEval, g){
+    if(g.blindType!=="Boss") return handEval;
+    if(g.boss.noStraights){
+      if(handEval.name==="Straight") return { ...handEval, name:"High Card", tier:1, baseChips:5, baseMult:1, detail:"(boss: straight nullified)" };
+      if(handEval.name==="Straight Flush") return { ...handEval, name:"Flush", tier:6, baseChips:35, baseMult:4, detail:"(boss: straight nullified → flush)" };
+    }
+    if(g.boss.noPairs){
+      if(handEval.name==="Pair" || handEval.name==="Two Pair"){
+        return { ...handEval, name:"High Card", tier:1, baseChips:5, baseMult:1, detail:"(boss: pairs nullified)" };
+      }
+    }
+    return handEval;
+  }
+
+  // ---------------------------
+  // Store pools (Jokers / Jesters / Vouchers / Consumables)
+  // ---------------------------
   let nextJokerId = 1;
   function mkJoker(def){
     return { ...def, jid: "J"+(nextJokerId++), state: def.initState ? def.initState() : {} };
@@ -959,35 +734,78 @@
 
   const JOKER_POOL = [
     { kind:"joker", name:"Chip Booster", cost:6, desc:"+15 Chips on every hand.", apply(ctx){ ctx.addChips += 15; } },
-    { kind:"joker", name:"Pair Enthusiast", cost:7, desc:"+2 Mult when you play Pair or Two Pair.", apply(ctx){ if(ctx.handName==="Pair" || ctx.handName==="Two Pair") ctx.addMult += 2; } },
+    { kind:"joker", name:"Clean Cuts", cost:9, desc:"+8 Chips per card played.", apply(ctx){ ctx.addChips += 8 * ctx.cards.length; } },
     { kind:"joker", name:"Arcane Lens", cost:8, desc:"×1.5 Mult if your hand includes any face card (J/Q/K).", apply(ctx){ if(ctx.cards.some(c=>["J","Q","K"].includes(c.rank))) ctx.mulMult *= 1.5; } },
-    { kind:"joker", name:"Suit Strategist", cost:9, desc:"+25 Chips when you play a Flush.", apply(ctx){ if(ctx.handName==="Flush") ctx.addChips += 25; } },
-    { kind:"joker", name:"Straight Shooter", cost:10, desc:"×2 Mult when you play a Straight.", apply(ctx){ if(ctx.handName==="Straight") ctx.mulMult *= 2; } },
-    { kind:"joker", name:"Lucky Coin", cost:6, desc:"+$1 whenever you play exactly 5 cards.", apply(ctx){ if(ctx.cards.length===5) ctx.onPayout.push(()=>{ game.money += 1; }); } },
-    { kind:"joker", name:"Growing Grin", cost:11, desc:"Starts at +0 Mult. Gains +1 Mult permanently each time you play a hand.", initState(){ return {bonus:0}; }, apply(ctx){ ctx.addMult += (this.state.bonus||0); ctx.onAfter.push(()=>{ this.state.bonus = (this.state.bonus||0) + 1; }); } },
-    { kind:"joker", name:"Clean Cuts", cost:9, desc:"+8 Chips per card played (stacks).", apply(ctx){ ctx.addChips += 8 * ctx.cards.length; } },
-    { kind:"joker", name:"Boss Breaker", cost:12, desc:"During Boss: ×1.75 Mult.", apply(ctx){ if(game.blindType==="Boss") ctx.mulMult *= 1.75; } },
-
-    { kind:"joker", name:"King’s Ransom", cost:10, desc:"+12 Chips per King played.", apply(ctx){ ctx.addChips += 12 * ctx.cards.filter(c=>c.rank==="K").length; } },
-    { kind:"joker", name:"Crown Breaker", cost:9, desc:"If hand contains a King, ×1.25 Mult.", apply(ctx){ if(ctx.cards.some(c=>c.rank==="K")) ctx.mulMult *= 1.25; } },
-    { kind:"joker", name:"Queen’s Court", cost:9, desc:"+1 Mult per Queen played.", apply(ctx){ ctx.addMult += ctx.cards.filter(c=>c.rank==="Q").length; } },
-    { kind:"joker", name:"Jackpot Jacks", cost:8, desc:"If hand contains a Jack, +$1 after scoring.", apply(ctx){ if(ctx.cards.some(c=>c.rank==="J")) ctx.onPayout.push(()=>{ game.money += 1; }); } },
     { kind:"joker", name:"Ace High", cost:11, desc:"Aces give +15 Chips each.", apply(ctx){ ctx.addChips += 15 * ctx.cards.filter(c=>c.rank==="A").length; } },
-
     { kind:"joker", name:"Heartthrob", cost:9, desc:"+2 Mult per Heart in the played hand.", apply(ctx){ ctx.addMult += 2 * ctx.cards.filter(c=>c.suit==="H").length; } },
+    { kind:"joker", name:"Club Enforcer", cost:8, desc:"+10 Chips per Club played.", apply(ctx){ ctx.addChips += 10 * ctx.cards.filter(c=>c.suit==="C").length; } },
     { kind:"joker", name:"Spade Tactician", cost:9, desc:"If hand has 3+ Spades, +30 Chips.", apply(ctx){ if(ctx.cards.filter(c=>c.suit==="S").length>=3) ctx.addChips += 30; } },
     { kind:"joker", name:"Diamond Dealer", cost:9, desc:"+$1 per Diamond played (after scoring).", apply(ctx){ const n = ctx.cards.filter(c=>c.suit==="D").length; if(n) ctx.onPayout.push(()=>{ game.money += n; }); } },
-    { kind:"joker", name:"Club Enforcer", cost:8, desc:"+10 Chips per Club played.", apply(ctx){ ctx.addChips += 10 * ctx.cards.filter(c=>c.suit==="C").length; } },
 
-    { kind:"joker", name:"Flush Engine", cost:12, desc:"Whenever you play a Flush, permanently +5 Chips to Flush base.", apply(ctx){ if(ctx.handName==="Flush") ctx.onAfter.push(()=>{ handUp["Flush"].chips += 5; }); } },
-    { kind:"joker", name:"Straight Ladder", cost:12, desc:"Whenever you play a Straight, permanently +0.25 Mult to Straight base.", apply(ctx){ if(ctx.handName==="Straight") ctx.onAfter.push(()=>{ handUp["Straight"].mult += 0.25; }); } },
     { kind:"joker", name:"Pair Machine", cost:9, desc:"Pairs and Two Pair gain +20 Chips.", apply(ctx){ if(ctx.handName==="Pair"||ctx.handName==="Two Pair") ctx.addChips += 20; } },
+    { kind:"joker", name:"Straight Shooter", cost:10, desc:"×2 Mult when you play a Straight.", apply(ctx){ if(ctx.handName==="Straight") ctx.mulMult *= 2; } },
+    { kind:"joker", name:"Suit Strategist", cost:9, desc:"+25 Chips when you play a Flush.", apply(ctx){ if(ctx.handName==="Flush") ctx.addChips += 25; } },
     { kind:"joker", name:"Full House Feast", cost:10, desc:"Full House gives +60 Chips.", apply(ctx){ if(ctx.handName==="Full House") ctx.addChips += 60; } },
     { kind:"joker", name:"Fourfold Fury", cost:12, desc:"Four of a Kind: ×1.75 Mult.", apply(ctx){ if(ctx.handName==="Four of a Kind") ctx.mulMult *= 1.75; } },
+    { kind:"joker", name:"Boss Breaker", cost:12, desc:"During Boss: ×1.75 Mult.", apply(ctx){ if(game.blindType==="Boss") ctx.mulMult *= 1.75; } },
 
-    { kind:"joker", name:"Discard Dynamo", cost:10, desc:"Gains +5 Chips permanently each time you Discard.", initState(){ return {bonus:0}; }, apply(ctx){ ctx.addChips += (this.state.bonus||0); } },
-    { kind:"joker", name:"Hand Grinder", cost:11, desc:"Gains +0.5 Mult permanently each time you Play a hand.", initState(){ return {bonus:0}; }, apply(ctx){ ctx.addMult += (this.state.bonus||0); ctx.onAfter.push(()=>{ this.state.bonus = Number((this.state.bonus||0)+0.5); }); } },
-    { kind:"joker", name:"Streak Bonus", cost:9, desc:"If your last hand type repeats, +25 Chips.", apply(ctx){ if(game.lastHandType && game.lastHandType===ctx.handName) ctx.addChips += 25; } },
+    { kind:"joker", name:"Growing Grin", cost:11, desc:"Starts at +0 Mult. Gains +1 Mult permanently each time you play a hand.",
+      initState(){ return {bonus:0}; },
+      apply(ctx){ ctx.addMult += (this.state.bonus||0); ctx.onAfter.push(()=>{ this.state.bonus = (this.state.bonus||0) + 1; }); }
+    },
+    { kind:"joker", name:"Hand Grinder", cost:11, desc:"Gains +0.5 Mult permanently each time you Play a hand.",
+      initState(){ return {bonus:0}; },
+      apply(ctx){ ctx.addMult += (this.state.bonus||0); ctx.onAfter.push(()=>{ this.state.bonus = Number((this.state.bonus||0)+0.5); }); }
+    },
+    { kind:"joker", name:"Discard Dynamo", cost:10, desc:"Gains +5 Chips permanently each time you Discard.",
+      initState(){ return {bonus:0}; },
+      apply(ctx){ ctx.addChips += (this.state.bonus||0); }
+    },
+    { kind:"joker", name:"Streak Bonus", cost:9, desc:"If your last hand type repeats, +25 Chips.",
+      apply(ctx){ if(game.lastHandType && game.lastHandType===ctx.handName) ctx.addChips += 25; }
+    },
+
+    { kind:"joker", name:"Even Steven", cost:9, desc:"+6 Chips per even-ranked card.", apply(ctx){ ctx.addChips += 6 * ctx.cards.filter(c=>c.rv%2===0).length; } },
+    { kind:"joker", name:"Odd Todd", cost:9, desc:"+1 Mult per odd-ranked card.", apply(ctx){ ctx.addMult += ctx.cards.filter(c=>c.rv%2===1).length; } },
+    { kind:"joker", name:"Pocket Calculator", cost:10, desc:"If you play exactly 3 cards, ×1.6 Mult.", apply(ctx){ if(ctx.cards.length===3) ctx.mulMult *= 1.6; } },
+    { kind:"joker", name:"Five-Finger Discount", cost:10, desc:"If you play exactly 5 cards, +30 Chips and +1 Mult.", apply(ctx){ if(ctx.cards.length===5){ ctx.addChips += 30; ctx.addMult += 1; } } },
+    { kind:"joker", name:"Mint Condition", cost:12, desc:"If you have 0 discards left, ×1.5 Mult.", apply(ctx){ if(game.discardsLeft<=0) ctx.mulMult *= 1.5; } },
+  ];
+
+  const JESTER_POOL = [
+    { kind:"jester", name:"🤡 Cackling Jester", cost:9, desc:"+60 Chips every hand, but -1 Hand each round.",
+      apply(ctx){ ctx.addChips += 60; },
+      applyBuy(){ game.perma.handsPenalty = (game.perma.handsPenalty||0) + 1; },
+      revertSell(){ game.perma.handsPenalty = Math.max(0,(game.perma.handsPenalty||0)-1); }
+    },
+    { kind:"jester", name:"🃏 Backwards Jester", cost:10, desc:"×1.8 Mult, but you may only play up to 4 cards.",
+      apply(ctx){ ctx.mulMult *= 1.8; },
+      applyBuy(){ game.perma.maxPlayCards = Math.min(game.perma.maxPlayCards||5, 4); },
+      revertSell(){ game.perma.maxPlayCards = 5; }
+    },
+    { kind:"jester", name:"🎭 Bargain Jester", cost:8, desc:"First shop purchase each round costs -$3, but interest is halved.",
+      apply(ctx){},
+      applyBuy(){ game.perma.bigCoupon = (game.perma.bigCoupon||0)+1; game.perma.halveInterest = true; },
+      revertSell(){ game.perma.bigCoupon = Math.max(0,(game.perma.bigCoupon||0)-1); if((game.perma.bigCoupon||0)===0) game.perma.halveInterest=false; }
+    },
+    { kind:"jester", name:"🎪 Chaos Jester", cost:11, desc:"After each play, a random hand type gains +8 chips (this run).",
+      apply(ctx){ ctx.onAfter.push(()=>{ const k = rng.pick(HAND_KEYS); handUp[k].chips += 8; }); }
+    },
+    { kind:"jester", name:"🧨 Glass Jester", cost:12, desc:"×2.2 Mult, but 12% chance to shatter after a play (it is destroyed).",
+      apply(ctx){
+        ctx.mulMult *= 2.2;
+        ctx.onAfter.push(()=>{
+          if(Math.random() < 0.12){
+            const idx = game.jesters.findIndex(x=>x.jid===this.jid);
+            if(idx>=0){
+              game.jesters.splice(idx,1);
+              toast("💥 Glass Jester shattered!");
+              renderAll();
+            }
+          }
+        });
+      }
+    },
   ];
 
   const VOUCHER_POOL = [
@@ -998,39 +816,51 @@
     { kind:"voucher", name:"Free Reroll", cost:8, desc:"First reroll each Buy phase is free.", applyBuy(){ game.perma.freeReroll = (game.perma.freeReroll||0)+1; }, revertSell(){ game.perma.freeReroll = Math.max(0,(game.perma.freeReroll||0)-1); } },
     { kind:"voucher", name:"Bigger Wallet", cost:11, desc:"Interest gives +1 extra per $10.", applyBuy(){ game.perma.interestBoost = (game.perma.interestBoost||0)+1; }, revertSell(){ game.perma.interestBoost = Math.max(0,(game.perma.interestBoost||0)-1); } },
     { kind:"voucher", name:"Sixth Joker Slot", cost:13, desc:"Increase joker cap from 5 to 6.", applyBuy(){ game.perma.jokerCap = Math.min(6,(game.perma.jokerCap||5)+1); }, revertSell(){ game.perma.jokerCap = Math.max(5,(game.perma.jokerCap||5)-1); } },
+    { kind:"voucher", name:"Jester Pocket", cost:12, desc:"Increase jester cap from 2 to 3.", applyBuy(){ game.perma.jesterCap = Math.min(3,(game.perma.jesterCap||2)+1); }, revertSell(){ game.perma.jesterCap = Math.max(2,(game.perma.jesterCap||2)-1); } },
   ];
 
   const CONSUME_POOL = [
-    { kind:"cons", name:"Tarot: Chip Paint", cost:5, desc:"Click a card in your hand to give it +5 chip value permanently (this run).", use(){ if(game.mode!=="play"){ toast("Use consumables during Play."); return; } game.pendingUse = { type:"chipPaint" }; toast("Click a card to apply +5 chips."); } },
-    { kind:"cons", name:"Planet: Train Hand", cost:6, desc:"Choose a hand type; it gains +0.5 base Mult (this run).", use(){ if(game.mode!=="play"){ toast("Use consumables during Play."); return; } openHandTypePicker(); } },
-    { kind:"cons", name:"Tarot: Cash Burst", cost:4, desc:"Gain +$5 immediately.", use(){ game.money += 5; renderTop(); renderRight(); } },
-    { kind:"cons", name:"Tarot: Suit Paint", cost:6, desc:"Choose a card; change its suit permanently.", use(){ if(game.mode!=="play"){ toast("Use consumables during Play."); return; } game.pendingUse = { type:"suitPaint" }; toast("Tap a card to repaint suit."); } },
-    { kind:"cons", name:"Tarot: Rank Polish", cost:6, desc:"Choose a card; +8 chips permanently.", use(){ if(game.mode!=="play"){ toast("Use consumables during Play."); return; } game.pendingUse = { type:"rankPolish" }; toast("Tap a card to polish rank."); } },
-    { kind:"cons", name:"Planet: Hand Training+", cost:7, desc:"Choose a hand type; +10 chips and +0.25 mult base.", use(){ if(game.mode!=="play"){ toast("Use consumables during Play."); return; } openHandTypePicker(true); } },
-    { kind:"cons", name:"Spectral: Duplicate", cost:8, desc:"Choose a card; duplicate it into your discard.", use(){ if(game.mode!=="play"){ toast("Use consumables during Play."); return; } game.pendingUse = { type:"duplicate" }; toast("Tap a card to duplicate."); } },
+    { kind:"cons", name:"Tarot: Chip Paint", cost:5, desc:"Tap a card in your hand to give it +5 chip value permanently (this run).", use(){ if(game.mode!=="play"){ toast("Use during Play."); return; } game.pendingUse = { type:"chipPaint" }; toast("Tap a card to apply +5 chips."); } },
+    { kind:"cons", name:"Planet: Train Hand", cost:6, desc:"Choose a hand type; it gains +0.5 base Mult (this run).", use(){ if(game.mode!=="play"){ toast("Use during Play."); return; } openHandTypePicker(false); } },
+    { kind:"cons", name:"Tarot: Cash Burst", cost:4, desc:"Gain +$5 immediately.", use(){ game.money += 5; renderAll(); } },
+    { kind:"cons", name:"Tarot: Suit Paint", cost:6, desc:"Choose a card; change its suit permanently.", use(){ if(game.mode!=="play"){ toast("Use during Play."); return; } game.pendingUse = { type:"suitPaint" }; toast("Tap a card to repaint suit."); } },
+    { kind:"cons", name:"Tarot: Rank Polish", cost:6, desc:"Choose a card; +8 chips permanently.", use(){ if(game.mode!=="play"){ toast("Use during Play."); return; } game.pendingUse = { type:"rankPolish" }; toast("Tap a card to polish rank."); } },
+    { kind:"cons", name:"Planet: Hand Training+", cost:7, desc:"Choose a hand type; +10 chips and +0.25 mult base.", use(){ if(game.mode!=="play"){ toast("Use during Play."); return; } openHandTypePicker(true); } },
+    { kind:"cons", name:"Spectral: Duplicate", cost:8, desc:"Choose a card; duplicate it into your discard.", use(){ if(game.mode!=="play"){ toast("Use during Play."); return; } game.pendingUse = { type:"duplicate" }; toast("Tap a card to duplicate."); } },
+    { kind:"cons", name:"Spectral: Refund", cost:7, desc:"Gain $7, but lose 1 discard this round.", use(){ if(game.mode!=="play"){ toast("Use during Play."); return; } game.money += 7; game.discardsLeft = Math.max(0, game.discardsLeft-1); renderAll(); } },
   ];
 
-  // Game state (local only)
+  // ---------------------------
+  // Game state
+  // ---------------------------
+  let options = loadOptions();
+  let hiScore = loadHighScore();
+
   const game = {
-    mode:"play", // play | shop | wait | end
-    deck:[],
-    discard:[],
-    hand:[],
-    sel:new Set(),
+    mode:"play", // play | shop | end
+    seed: (Math.random()*2_000_000_000)|0,
+
+    deck:[], discard:[], hand:[], sel:new Set(),
 
     round:1,
     blindType:"Small",
     target:0,
     blindScore:0,
+    totalScore:0,
 
     money:10,
-
-    perma:{ hands:0, discards:0, handSize:0, coupon:0, freeReroll:0, interestBoost:0, jokerCap:5 },
+    perma:{
+      hands:0, discards:0, handSize:0,
+      coupon:0, freeReroll:0, interestBoost:0,
+      jokerCap:5, jesterCap:2,
+      handsPenalty:0, maxPlayCards:5, bigCoupon:0, halveInterest:false,
+    },
 
     handsLeft:0,
     discardsLeft:0,
 
     jokers:[],
+    jesters:[],
     cons:[],
     vouchers:[],
 
@@ -1039,42 +869,91 @@
     lastHandType:null,
 
     boss:{},
-    bossRule:null, // local copy (from match)
+    bossRule:null,
 
     pendingUse:null,
 
-    last:{ hand:"—", math:"—" }
+    last:{ hand:"—", math:"—" },
+    bestThisRun:0,
   };
 
-  // Multiplayer-local status
-  const me = {
-    status:"play",
-    eliminated:false,
-    finished:false,
-    totalScore:0,
-    roundScoreFinal:0,
-    passedRound:0,
-    buyStartAt:0,
-    buyDeadlineAt:0,
-    lastRoundApplied:0
-  };
+  // ---------------------------
+  // Round progression (endless)
+  // ---------------------------
+  function roundTypeFor(r){
+    return (r % 3 === 0) ? "Boss" : (r % 3 === 2) ? "Big" : "Small";
+  }
 
+  function difficultyMult(){
+    if(options.difficulty==="easy") return 0.88;
+    if(options.difficulty==="hard") return 1.22;
+    return 1.0;
+  }
+
+  function targetForRound(r, type){
+    const base = (type==="Small") ? 260 : (type==="Big") ? 480 : 900;
+    const steps = (r-1);
+    const growth = 1 + (steps * 0.17);
+    const bossTier = 1 + (Math.floor((r-1)/3) * 0.10);
+    const typeBump = (type==="Boss") ? 1.05 : 1.0;
+    return Math.floor(base * growth * bossTier * typeBump * difficultyMult());
+  }
+
+  function rewardForRound(r, type){
+    let base = (type==="Small") ? 6 : (type==="Big") ? 8 : 12;
+    if(options.difficulty==="easy") base += 1;
+    if(options.difficulty==="hard") base = Math.max(4, base-1);
+    base += Math.floor(r/4);
+    return base;
+  }
+
+  function currentHandSize(){
+    const base = 8 + game.perma.handSize;
+    const bossDelta = (game.blindType==="Boss") ? (game.boss.handSizeDelta||0) : 0;
+    return Math.max(4, base + bossDelta);
+  }
+
+  function drawToHand(){
+    const size = currentHandSize();
+    while(game.hand.length < size){
+      if(game.deck.length===0){
+        if(game.discard.length===0) break;
+        game.deck = rng.shuffle(game.discard.splice(0));
+      }
+      game.hand.push(game.deck.pop());
+    }
+  }
+
+  // ---------------------------
   // Shop
+  // ---------------------------
   let shopOffers = [];
 
   function rollShopOffers(){
     shopOffers = [];
-    const pools = [JOKER_POOL, JOKER_POOL, VOUCHER_POOL, CONSUME_POOL, [rng.pick(JOKER_POOL), rng.pick(VOUCHER_POOL), rng.pick(CONSUME_POOL)]];
-    pools.forEach((pool, i)=>{
-      const pick = Array.isArray(pool) ? rng.pick(pool) : rng.pick(pool);
-      shopOffers.push({ ...pick, _id:"o"+(i+1), _kind:pick.kind, _obj: (pick.kind==="joker") ? mkJoker(pick) : { ...pick } });
+    const picks = [
+      rng.pick(JOKER_POOL),
+      rng.pick(JOKER_POOL),
+      rng.pick(JESTER_POOL),
+      rng.pick(VOUCHER_POOL),
+      rng.pick(CONSUME_POOL),
+      rng.pick([rng.pick(JOKER_POOL), rng.pick(JESTER_POOL), rng.pick(VOUCHER_POOL), rng.pick(CONSUME_POOL)])
+    ];
+
+    picks.forEach((pick, i)=>{
+      let obj;
+      if(pick.kind==="joker" || pick.kind==="jester") obj = mkJoker(pick);
+      else obj = { ...pick };
+      shopOffers.push({ ...pick, _id:"o"+(i+1), _kind:pick.kind, _obj: obj });
     });
+
     renderShop();
   }
 
   function effectiveOfferCost(o){
     let c = Number(o.cost||0);
     if(game.shopRoundPurchaseCount===0 && (game.perma.coupon||0)>0) c = Math.max(0, c-2);
+    if(game.shopRoundPurchaseCount===0 && (game.perma.bigCoupon||0)>0) c = Math.max(0, c-3);
     return c;
   }
 
@@ -1082,6 +961,7 @@
     if(game.mode!=="shop"){ toast("Not in buy phase."); return; }
     const idx = shopOffers.findIndex(o=>o._id===offerId);
     if(idx<0) return;
+
     const o = shopOffers[idx];
     const cost = effectiveOfferCost(o);
     if(game.money < cost){ toast("Not enough money."); return; }
@@ -1091,6 +971,13 @@
       if(game.jokers.length>=cap){ toast(`Joker slots full (${cap}).`); return; }
       game.money -= cost;
       game.jokers.push(o._obj);
+    } else if(o._kind==="jester"){
+      const cap = Number(game.perma.jesterCap||2);
+      if(game.jesters.length>=cap){ toast(`Jester slots full (${cap}).`); return; }
+      game.money -= cost;
+      const j = o._obj;
+      j.applyBuy?.();
+      game.jesters.push(j);
     } else if(o._kind==="voucher"){
       game.money -= cost;
       const v = { ...o._obj, vid: "V"+Math.random().toString(16).slice(2), kind:"voucher" };
@@ -1099,8 +986,9 @@
     } else if(o._kind==="cons"){
       if(game.cons.length>=3){ toast("Consumable slots full (3)."); return; }
       game.money -= cost;
-      game.cons.push({ ...o._obj, boughtCost: o.cost||0 });
+      game.cons.push({ ...o._obj });
     }
+
     game.shopRoundPurchaseCount += 1;
     toast(`Bought ${o.name}`);
     shopOffers.splice(idx,1);
@@ -1115,6 +1003,19 @@
     const val = Math.max(1, Math.floor((j.cost||6) * 0.5));
     game.money += val;
     game.jokers.splice(i,1);
+    toast(`Sold ${j.name} (+$${val})`);
+    renderAll();
+  }
+
+  function sellJester(jid){
+    if(game.mode!=="shop") return;
+    const i = game.jesters.findIndex(j=>j.jid===jid);
+    if(i<0) return;
+    const j = game.jesters[i];
+    j.revertSell?.();
+    const val = Math.max(1, Math.floor((j.cost||8) * 0.5));
+    game.money += val;
+    game.jesters.splice(i,1);
     toast(`Sold ${j.name} (+$${val})`);
     renderAll();
   }
@@ -1161,99 +1062,83 @@
     renderAll();
   }
 
-  // Boss restrictions
-  function applyBossOverrides(handEval){
-    if(game.blindType!=="Boss") return handEval;
-    if(game.boss.noPairs){
-      if(handEval.name==="Pair" || handEval.name==="Two Pair"){
-        return { ...handEval, name:"High Card", tier:1, baseChips:5, baseMult:1, detail:"(boss: pairs nullified)" };
-      }
-    }
-    return handEval;
-  }
-
+  // ---------------------------
   // Round setup
-  function drawToHand(){
-    const size = 8 + game.perma.handSize;
-    while(game.hand.length < size){
-      if(game.deck.length===0){
-        if(game.discard.length===0) break;
-        game.deck = rng.shuffle(game.discard.splice(0));
-      }
-      game.hand.push(game.deck.pop());
+  // ---------------------------
+  function applyRoundConfig(roundIdx){
+    game.round = roundIdx;
+    game.blindType = roundTypeFor(roundIdx);
+    game.target = targetForRound(roundIdx, game.blindType);
+
+    game.mode = "play";
+    game.sel.clear();
+    game.blindScore = 0;
+
+    game.boss = {};
+    game.bossRule = null;
+
+    const baseHands = 4 + game.perma.hands - (game.perma.handsPenalty||0);
+    const baseDiscards = 3 + game.perma.discards;
+
+    if(game.blindType==="Boss"){
+      const br = pickBossRuleForRound(game.seed, roundIdx);
+      game.bossRule = br;
+      br.apply(game);
+      game.handsLeft = Math.max(1, baseHands + (game.boss.handsDelta||0));
+      game.discardsLeft = game.boss.noDiscards ? 0 : Math.max(0, baseDiscards);
+    } else {
+      game.handsLeft = Math.max(1, baseHands);
+      game.discardsLeft = Math.max(0, baseDiscards);
     }
+
+    if(!game.perma.maxPlayCards) game.perma.maxPlayCards = 5;
+
+    drawToHand();
+    toggleShopModal(false);
+
+    renderAll();
+    toast(`Round ${roundIdx}: ${game.blindType}`);
   }
 
-  function startNewRunLocal(){
+  function startNewRun(){
     game.mode="play";
+    game.seed = (Math.random()*2_000_000_000)|0;
+
     game.deck = makeDeck();
     game.discard = [];
     game.hand = [];
     game.sel = new Set();
 
     game.money = 10;
-    game.perma = {hands:0, discards:0, handSize:0, coupon:0, freeReroll:0, interestBoost:0, jokerCap:5};
+    game.totalScore = 0;
+    game.bestThisRun = 0;
+
+    game.perma = {
+      hands:0, discards:0, handSize:0,
+      coupon:0, freeReroll:0, interestBoost:0,
+      jokerCap:5, jesterCap:2,
+      handsPenalty:0, maxPlayCards:5, bigCoupon:0, halveInterest:false,
+    };
+
     game.jokers = [];
+    game.jesters = [];
     game.cons = [];
     game.vouchers = [];
     game.lastHandType = null;
 
-    game.boss = {};
-    game.bossRule = null;
-    game.shopRoundPurchaseCount = 0;
-    game.shopRoundRerollCount = 0;
-
     for(const k of HAND_KEYS) handUp[k] = {chips:0, mult:0};
 
+    game.pendingUse = null;
     game.last.hand="—";
     game.last.math="—";
 
-    game.blindScore = 0;
-    game.target = 0;
-    game.handsLeft = 0;
-    game.discardsLeft = 0;
-
+    applyRoundConfig(1);
     renderAll();
   }
 
-  function applyRoundConfig(roundIdx, cfg){
-    game.round = roundIdx;
-    game.blindType = cfg.type;
-    game.target = cfg.target;
-
-    game.mode = "play";
-    game.sel.clear();
-    game.blindScore = 0;
-    game.boss = {};
-    game.bossRule = null;
-
-    // resources per round
-    game.handsLeft = 4 + game.perma.hands;
-    game.discardsLeft = 3 + game.perma.discards;
-
-    // boss rule
-    if(cfg.type==="Boss" && cfg.bossRuleKey){
-      const br = bossByKey.get(cfg.bossRuleKey);
-      if(br){
-        game.bossRule = br;
-        br.apply(game);
-        if(game.boss.noDiscards) game.discardsLeft = 0;
-      }
-    }
-
-    // draw initial hand
-    drawToHand();
-
-    // UI
-    toggleShopModal(false);
-    $("waitBlock").style.display="none";
-    $("runEndBlock").style.display="none";
-
-    renderAll();
-    toast(`Round ${roundIdx} started: ${cfg.type}`);
-  }
-
-  // Selection utils
+  // ---------------------------
+  // Selection
+  // ---------------------------
   function selectedCards(){
     const ids = [...game.sel];
     return game.hand.filter(c=>ids.includes(c.id));
@@ -1263,40 +1148,70 @@
     renderHand();
   }
 
+  // ---------------------------
+  // Discard / Play
+  // ---------------------------
   function discardSelected(){
     if(game.mode!=="play"){ toast("Not during buy."); return; }
-    if(me.eliminated || me.finished){ return; }
     if(game.discardsLeft<=0){ toast("No discards left."); return; }
     if(game.boss.noDiscards){ toast("Boss: no discards."); return; }
 
     const cards = selectedCards();
     if(cards.length===0){ toast("Select cards to discard."); return; }
 
+    if(game.blindType==="Boss" && (game.boss.discardTax||0)>0){
+      const tax = game.boss.discardTax|0;
+      if(game.money < tax){ toast(`Boss: discarding costs $${tax}. Not enough.`); return; }
+      game.money -= tax;
+    }
+
     const set = new Set(cards.map(c=>c.id));
     game.hand = game.hand.filter(c=>!set.has(c.id));
     for(const c of cards) game.discard.push(c);
     game.discardsLeft -= 1;
-    for(const j of game.jokers){ if(j.name==="Discard Dynamo"){ j.state.bonus = (j.state.bonus||0)+5; } }
+
+    for(const j of game.jokers){
+      if(j.name==="Discard Dynamo"){
+        j.state.bonus = (j.state.bonus||0)+5;
+      }
+    }
+
     game.sel.clear();
     drawToHand();
-
     renderAll();
-    scheduleScoreSync(true);
   }
 
-  // Play selected
   function playSelected(){
     if(game.mode!=="play"){ toast("Not during buy."); return; }
-    if(me.eliminated || me.finished){ return; }
     if(game.handsLeft<=0){ toast("No hands left."); return; }
 
     const cards = selectedCards();
     if(cards.length===0){ toast("Select 1–5 cards to play."); return; }
-    if(cards.length>5){ toast("Max 5 cards."); return; }
+    const maxCards = Math.min(5, game.perma.maxPlayCards||5);
+    if(cards.length>maxCards){ toast(`Max ${maxCards} selected.`); return; }
+
     if(game.boss.exactFive && cards.length!==5){ toast("Boss: play exactly 5 cards."); return; }
 
+    if(game.boss.noFace){
+      if(cards.some(c=>["J","Q","K"].includes(c.rank))){
+        toast("Boss: No face cards allowed.");
+        return;
+      }
+    }
+
+    if(game.boss.suitDemand){
+      const suit = game.boss.demandSuit;
+      const need = game.boss.demandCount||3;
+      const have = cards.filter(c=>c.suit===suit).length;
+      if(have < need){
+        const sym = SUITS.find(x=>x.k===suit)?.sym || suit;
+        toast(`Boss: Need ≥${need} of ${sym}.`);
+        return;
+      }
+    }
+
     let h = evalHand(cards);
-    h = applyBossOverrides(h);
+    h = applyBossOverrides(h, game);
 
     const up = handUp[h.name] || {chips:0,mult:0};
     const baseChips = h.baseChips + up.chips;
@@ -1304,16 +1219,20 @@
 
     const cardChips = cards.reduce((a,c)=>a + (c.baseChip + c.bonusChip), 0);
 
-    const ctx = { handName:h.name, cards, addChips:0, addMult:0, mulMult:1, log:[], onAfter:[], onPayout:[] };
+    const ctx = { handName:h.name, cards, addChips:0, addMult:0, mulMult:1, onAfter:[], onPayout:[] };
 
-    for(const j of game.jokers){
-      try{ j.apply.call(j, ctx); }catch(e){ console.warn("Joker error", j, e); }
+    for(const j of [...game.jokers, ...game.jesters]){
+      try{ j.apply?.call(j, ctx); }catch(e){ console.warn("Apply error", j, e); }
     }
 
     const chips = Math.max(0, baseChips + cardChips + ctx.addChips);
     const multAdd = Math.max(0, baseMult + ctx.addMult);
     const mult = multAdd * ctx.mulMult;
-    const gained = chips * mult;
+    let gained = chips * mult;
+
+    if(game.blindType==="Boss" && (game.boss.scorePenalty||0)>0){
+      gained = Math.max(0, gained - (game.boss.scorePenalty||0));
+    }
 
     game.blindScore += gained;
     game.handsLeft -= 1;
@@ -1329,196 +1248,124 @@
     for(const fn of ctx.onPayout) fn();
 
     game.last.hand = `${h.name} ${h.detail}`;
-    game.last.math = `(${fmt(baseChips)} base + ${fmt(cardChips)} cards + ${fmt(ctx.addChips)} jokers) = ${fmt(chips)} chips; ` +
-                     `(${baseMult.toFixed(2)} base + ${ctx.addMult.toFixed(2)} jokers) × ${ctx.mulMult.toFixed(2)} = ${mult.toFixed(2)}; ` +
-                     `Score +${fmt(gained)}`;
+    game.last.math =
+      `(${fmt(baseChips)} base + ${fmt(cardChips)} cards + ${fmt(ctx.addChips)} bonuses) = ${fmt(chips)} chips; ` +
+      `(${baseMult.toFixed(2)} base + ${ctx.addMult.toFixed(2)} bonuses) × ${ctx.mulMult.toFixed(2)} = ${mult.toFixed(2)}; ` +
+      `Score +${fmt(gained)}`;
+
     $("lastHand").textContent = game.last.hand;
     $("lastMath").textContent = game.last.math;
 
-    // If you're out of hands: resolve immediately
-    if(game.handsLeft<=0){
-      if(game.blindScore >= game.target){
-        toast("Target met and no hands left — auto-finishing.");
-        finishRound(false);
-      } else {
-        eliminate("out_of_hands");
+    game.bestThisRun = Math.max(game.bestThisRun, Math.floor(game.totalScore + game.blindScore));
+
+    if(options.autoFinishOnTarget && game.blindScore >= game.target){
+      finishRound();
+    } else {
+      if(game.handsLeft<=0){
+        if(game.blindScore >= game.target){
+          toast("Target met and no hands left — auto-finishing.");
+          finishRound();
+        } else {
+          endRun("Out of hands (below target).");
+        }
+      } else if(game.blindScore >= game.target){
+        toast("Target met! Finish Round for the shop (or keep scoring).");
       }
-    } else if(game.blindScore >= game.target){
-      // just a hint; player can keep scoring or finish
-      toast("Target met! You can Finish Round (or keep scoring).");
     }
 
     renderAll();
-    scheduleScoreSync(true);
   }
 
-  // Buy phase enter (local)
-  function enterBuyPhase(reward){
+  // ---------------------------
+  // Finish / Buy / Next round (NO TIMERS)
+  // ---------------------------
+  function enterBuyPhase(){
     game.mode="shop";
-    $("waitBlock").style.display="none";
     toggleShopModal(true);
-    $("runEndBlock").style.display="none";
 
-    // payout model (local)
+    const reward = rewardForRound(game.round, game.blindType);
+
     game.money += reward;
-    const interest = Math.floor(game.money/10) + Math.floor(game.money/10) * (game.perma.interestBoost||0);
+
+    let interest = Math.floor(game.money/10) + Math.floor(game.money/10) * (game.perma.interestBoost||0);
+    if(game.perma.halveInterest) interest = Math.floor(interest * 0.5);
     game.money += interest;
+
     game.shopRoundPurchaseCount = 0;
     game.shopRoundRerollCount = 0;
+
     rollShopOffers();
     renderAll();
   }
 
-  // Finish the round (player-triggered or forced)
-  async function finishRound(forced){
-    if(me.eliminated || me.finished) return;
-    if(me.status !== "play") return;
+  function finishRound(){
+    if(game.mode!=="play") return;
 
-    const cfg = (match?.rounds && match.rounds[game.round-1]) ? match.rounds[game.round-1] : null;
-    const target = cfg?.target ?? game.target;
-
-    const passed = (game.blindScore >= target);
-    const now = nowMs();
-
-    if(!passed && !forced){
-      return;
-    }
-
+    const passed = (game.blindScore >= game.target);
     if(!passed){
-      eliminate(forced ? "timeout" : "finish_below_target");
+      toast("You can only finish after meeting the target.");
       return;
     }
 
-    // lock score for this round
     const roundScoreFinal = Math.floor(game.blindScore);
-    me.totalScore = Math.floor(me.totalScore + roundScoreFinal);
-    me.roundScoreFinal = roundScoreFinal;
-    me.passedRound = game.round;
+    game.totalScore = Math.floor(game.totalScore + roundScoreFinal);
+    game.bestThisRun = Math.max(game.bestThisRun, game.totalScore);
 
-    $("yourTotal").textContent = fmt(me.totalScore);
+    $("yourTotal").textContent = fmt(game.totalScore);
 
-    // Persist to Firestore immediately
-    const baseUpdate = {
-      status: (game.round >= ROUND_COUNT) ? "finished" : "buy",
-      round: game.round,
-      roundScoreFinal: roundScoreFinal,
-      roundScore: roundScoreFinal, // freeze display for this round
-      totalScore: me.totalScore,
-      passedRound: me.passedRound,
-      finishAt: now,
-      lastSeenAt: now
-    };
+    enterBuyPhase();
+  }
 
-    if(game.round >= ROUND_COUNT){
-      me.status = "finished";
-      me.finished = true;
+  function nextRound(){
+    if(game.mode!=="shop"){ toast("Not in shop."); return; }
+    toggleShopModal(false);
+    game.pendingUse = null;
+    game.sel.clear();
+    applyRoundConfig(game.round + 1);
+  }
 
-      game.mode = "wait";
-      toggleShopModal(false);
-      $("waitBlock").style.display="block";
-      $("waitTitle").textContent = "✅ Finished Round 5";
-      $("waitText").textContent = "Waiting for other players…";
-      renderAll();
+  function endRun(reason){
+    game.mode="end";
+    toggleShopModal(false);
 
-      await setDoc(meRef, baseUpdate, { merge:true }).catch(()=>{});
-      scheduleAdvanceCheck();
-      return;
+    const final = Math.floor(game.totalScore);
+    if(final > hiScore){
+      hiScore = final;
+      saveHighScore(hiScore);
+      toast("🏆 New high score!");
+    } else {
+      toast("Run over. Restart to try again.");
     }
 
-    me.status = "buy";
-    me.buyStartAt = now;
-    me.buyDeadlineAt = now + BUY_MS;
+    $("bossRuleLine").innerHTML = `<span class="tag bad">❌ Run Ended</span> <span class="small">${reason}</span>`;
+    $("tagLine").textContent = "";
+    $("nextGoalLine").textContent = "Press Restart to begin a new run.";
 
-    await setDoc(meRef, {
-      ...baseUpdate,
-      buyStartAt: me.buyStartAt,
-      buyDeadlineAt: me.buyDeadlineAt,
-      buyReady: false
-    }, { merge:true }).catch(()=>{});
-
-    // Local buy
-    const reward = (game.blindType==="Small") ? 6 : (game.blindType==="Big") ? 8 : 11;
-    enterBuyPhase(reward);
-
-    scheduleAdvanceCheck();
-  }
-
-  async function markReady(){
-    if(me.eliminated || me.finished) return;
-    if(me.status !== "buy") return;
-
-    const now = nowMs();
-    me.status = "ready";
-    toggleShopModal(false);
-    $("waitBlock").style.display="block";
-    $("waitTitle").textContent = "🕒 Ready";
-    $("waitText").textContent = "Waiting for other survivors to be Ready…";
     renderAll();
-
-    await setDoc(meRef, {
-      status:"ready",
-      round: game.round,
-      buyReady:true,
-      readyAt: now,
-      lastSeenAt: now
-    }, { merge:true }).catch(()=>{});
-
-    scheduleAdvanceCheck();
   }
 
-  async function eliminate(reason){
-    if(me.eliminated || me.finished) return;
-    me.eliminated = true;
-    me.status = "eliminated";
-    const now = nowMs();
-
-    game.mode = "end";
-    toggleShopModal(false);
-    $("waitBlock").style.display="none";
-    $("runEndBlock").style.display="block";
-    $("runEndTitle").textContent = "❌ Eliminated";
-    $("runEndText").innerHTML = `You did not meet the target for <b>Round ${game.round}</b>.<br/><span class="small">You can still watch the live scoreboard.</span>`;
-    renderAll();
-    toast("Eliminated — observing.");
-
-    await setDoc(meRef, {
-      status:"eliminated",
-      round: game.round,
-      roundScore: Math.floor(game.blindScore),
-      roundScoreFinal: Math.floor(game.blindScore),
-      totalScore: Math.floor(me.totalScore),
-      eliminatedAt: now,
-      eliminatedRound: game.round,
-      reason: String(reason||""),
-      lastSeenAt: now
-    }, { merge:true }).catch(()=>{});
-
-    scheduleAdvanceCheck();
-  }
-
+  // ---------------------------
   // Rendering
+  // ---------------------------
   function renderTop(){
     $("roundNum").textContent = game.round;
     $("blindName").textContent = game.blindType;
     $("money").textContent = fmt(game.money);
-    if($("shopMoney")) $("shopMoney").textContent = fmt(game.money);
+    $("shopMoney").textContent = fmt(game.money);
 
     $("target").textContent = fmt(game.target);
     $("blindScore").textContent = fmt(game.blindScore);
-    $("lastHand").textContent = game.last.hand;
-    $("lastMath").textContent = game.last.math;
 
     const pct = clamp(game.blindScore / Math.max(1, game.target), 0, 1);
     $("targetBar").classList.toggle("good", pct>=1);
     $("targetBar").classList.toggle("bad", pct<.35);
     $("targetBar").querySelector("i").style.width = (pct*100).toFixed(1)+"%";
     $("blindProgressText").textContent = `${(pct*100).toFixed(1)}% of target`;
+
     $("mTarget").textContent = fmt(game.target);
     $("mScore").textContent = fmt(game.blindScore);
     $("mTargetBar").classList.toggle("good", pct>=1);
     $("mTargetBar").querySelector("i").style.width = (pct*100).toFixed(1)+"%";
-    $("mobileMetaLine").textContent = `Round ${game.round}/5 • ${game.blindType} • ${$("roundTimer").textContent} • ${$("phasePill").textContent}`;
-    $("mobileResourceLine").textContent = `🖐 Hands: ${game.handsLeft} • 🗑 Discards: ${game.discardsLeft}`;
 
     const dot = $("blindDot");
     dot.className = "dot";
@@ -1526,53 +1373,66 @@
     else if(game.blindType==="Big") dot.classList.add("warn");
     else dot.classList.add("good");
 
-    // boss rule line
-    if(game.bossRule){
-      $("bossRuleLine").innerHTML = `<span class="tag">⚠ ${game.bossRule.name}</span> <span class="small">${game.bossRule.desc}</span>`;
+    if(game.mode==="end"){
+      // already set by endRun
+    } else if(game.bossRule){
+      let extra = "";
+      if(game.boss.suitDemand){
+        const s = game.boss.demandSuit;
+        const sym = SUITS.find(x=>x.k===s)?.sym || s;
+        extra = ` <span class="tag info">Demand: ${sym}×${game.boss.demandCount||3}</span>`;
+      }
+      $("bossRuleLine").innerHTML = `<span class="tag">⚠ ${game.bossRule.name}</span> <span class="small">${game.bossRule.desc}</span>${extra}`;
     } else {
       $("bossRuleLine").textContent = "";
     }
 
-    $("tagLine").textContent = "";
+    const tags = [];
+    if(options.difficulty==="easy") tags.push(`<span class="tag good">Easy</span>`);
+    if(options.difficulty==="hard") tags.push(`<span class="tag bad">Hard</span>`);
+    if(game.blindType==="Boss") tags.push(`<span class="tag bad">Boss Round</span>`);
+    tags.push(`<span class="tag info">No Timers</span>`);
+    $("tagLine").innerHTML = tags.join(" ");
 
-    const nextRound = game.round + 1;
-    const nextCfg = (Array.isArray(match?.rounds) ? match.rounds[nextRound-1] : null);
-    if(nextCfg){
-      $("nextGoalLine").textContent = `Next Goal: Round ${nextRound} target ${fmt(nextCfg.target||0)} (${nextCfg.type||"Blind"})`;
-    } else {
-      $("nextGoalLine").textContent = "Next Goal: Final round in progress";
-    }
+    const nextR = game.round + 1;
+    const nextT = roundTypeFor(nextR);
+    const nextTarget = targetForRound(nextR, nextT);
+    $("nextGoalLine").textContent = `Next Goal: Round ${nextR} ${nextT} target ${fmt(nextTarget)}`;
 
-    // finish hint + button state
-    const canFinish = (game.mode==="play" && !me.eliminated && !me.finished && game.blindScore >= game.target);
+    const canFinish = (game.mode==="play" && game.blindScore >= game.target);
     $("btnFinish").disabled = !canFinish;
-    if($("btnFinishM")){
-      $("btnFinishM").disabled = !canFinish;
-      $("btnFinishM").style.display = canFinish ? "" : "none";
-      $("mobileActions").classList.toggle("hasFinish", canFinish);
-    }
-    $("finishHint").innerHTML = canFinish
-      ? `<span class="tag">✅ Target met</span> <span class="small">Finish now for Buy, or keep scoring.</span>`
-      : (game.mode==="play" ? `<span class="small">Beat target to unlock Finish.</span>` : "");
+    $("btnFinishM").disabled = !canFinish;
+    $("btnFinishM").style.display = canFinish ? "" : "none";
+    $("mobileActions").classList.toggle("hasFinish", canFinish);
 
-    // gameplay buttons
-    const playEnabled = (game.mode==="play" && !me.eliminated && !me.finished);
+    $("finishHint").innerHTML = (game.mode==="play")
+      ? (canFinish
+        ? `<span class="tag good">✅ Target met</span> <span class="small">Finish now for the shop, or keep scoring.</span>`
+        : `<span class="small">Beat target to unlock Finish.</span>`)
+      : "";
+
+    const playEnabled = (game.mode==="play");
     $("btnPlay").disabled = !playEnabled;
     $("btnDiscard").disabled = !(playEnabled && game.discardsLeft>0 && !game.boss.noDiscards);
     $("btnClear").disabled = !playEnabled;
     $("btnSortRank").disabled = !playEnabled;
     $("btnSortSuit").disabled = !playEnabled;
-    if($("btnPlayM")){ $("btnPlayM").disabled = $("btnPlay").disabled; $("btnDiscardM").disabled = $("btnDiscard").disabled; $("btnClearM").disabled = $("btnClear").disabled; }
 
-    $("phasePill").textContent =
-      me.eliminated ? "OBSERVE" :
-      me.finished ? "DONE" :
-      (me.status==="buy") ? "BUY" :
-      (me.status==="ready") ? "WAIT" :
-      (game.mode==="play") ? "PLAY" :
-      (game.mode==="shop") ? "BUY" :
-      (game.mode==="wait") ? "WAIT" : "—";
-    $("mobileMetaLine").textContent = `Round ${game.round}/5 • ${game.blindType} • ${$("roundTimer").textContent} • ${$("phasePill").textContent}`;
+    $("btnPlayM").disabled = $("btnPlay").disabled;
+    $("btnDiscardM").disabled = $("btnDiscard").disabled;
+    $("btnClearM").disabled = $("btnClear").disabled;
+
+    $("phasePill").textContent = (game.mode==="end" ? "END" : (game.mode==="shop" ? "BUY" : "PLAY"));
+
+    $("mobileMetaLine").textContent = `Round ${game.round} • ${game.blindType} • No Timers • ${$("phasePill").textContent}`;
+    $("mobileResourceLine").textContent = `🖐 Hands: ${game.handsLeft} • 🗑 Discards: ${game.discardsLeft}`;
+
+    $("yourTotal").textContent = fmt(game.totalScore);
+    $("bestRun").textContent = fmt(game.bestThisRun);
+    $("hiScoreLine").innerHTML = `High Score: <b>${fmt(hiScore)}</b>`;
+
+    $("runSummaryLine").textContent =
+      `${game.blindType} • Hands ${game.handsLeft} • Discards ${game.discardsLeft} • Difficulty ${options.difficulty}`;
   }
 
   function renderHand(){
@@ -1588,9 +1448,9 @@
           <span style="opacity:.85">${c.suit}</span>
         </div>
       `;
+
       d.addEventListener("click", ()=>{
         if(game.mode!=="play") return;
-        if(me.eliminated || me.finished) return;
 
         if(game.pendingUse?.type==="chipPaint"){
           c.bonusChip += 5;
@@ -1622,39 +1482,52 @@
           return;
         }
 
-        if(game.sel.has(c.id)){
-          game.sel.delete(c.id);
-        } else {
-          if(game.sel.size>=5){ toast("Max 5 selected."); return; }
+        const maxCards = Math.min(5, game.perma.maxPlayCards||5);
+        if(game.sel.has(c.id)) game.sel.delete(c.id);
+        else {
+          if(game.sel.size>=maxCards){ toast(`Max ${maxCards} selected.`); return; }
           game.sel.add(c.id);
         }
         renderHand();
       });
+
       el.appendChild(d);
     }
   }
 
   function renderRight(){
     $("jokerCount").textContent = game.jokers.length;
+    $("jesterCount").textContent = game.jesters.length;
     $("consCount").textContent = game.cons.length;
     $("voucherCount").textContent = game.vouchers.length;
+
     $("jokerCount").parentElement.innerHTML = `Jokers <b id="jokerCount">${game.jokers.length}</b>/${game.perma.jokerCap||5}`;
+    $("jesterCount").parentElement.innerHTML = `Jesters <b id="jesterCount">${game.jesters.length}</b>/${game.perma.jesterCap||2}`;
 
     const jl = $("jokerList");
     jl.innerHTML = "";
-    if(game.jokers.length===0){
-      jl.innerHTML = `<div class="item"><div class="itemMeta">No jokers yet. Buy them in the Buy Phase.</div></div>`;
+
+    const allActives = [
+      ...game.jokers.map(x=>({ ...x, _type:"joker" })),
+      ...game.jesters.map(x=>({ ...x, _type:"jester" })),
+    ];
+
+    if(allActives.length===0){
+      jl.innerHTML = `<div class="item"><div class="itemMeta">No jokers/jesters yet. Beat a round to enter the shop.</div></div>`;
     } else {
-      for(const j of game.jokers){
-        const stateLine = (j.name==="Growing Grin" || j.name==="Hand Grinder")
+      for(const j of allActives){
+        const isGrowth = (j.name==="Growing Grin" || j.name==="Hand Grinder");
+        const isDiscard = (j.name==="Discard Dynamo");
+        const stateLine = isGrowth
           ? `<div class="small tight">Current: +${(j.state.bonus||0)} Mult</div>`
-          : (j.name==="Discard Dynamo" ? `<div class="small tight">Current: +${(j.state.bonus||0)} Chips</div>` : "");
+          : (isDiscard ? `<div class="small tight">Current: +${(j.state.bonus||0)} Chips</div>` : "");
+
         const it = document.createElement("div");
         it.className = "item";
         it.innerHTML = `
           <div class="itemTop">
             <div>
-              <div class="itemName">${j.name}</div>
+              <div class="itemName">${j._type==="jester" ? "🃏 " : ""}${j.name}</div>
               <div class="itemMeta">${j.desc}</div>
               ${stateLine}
             </div>
@@ -1663,7 +1536,10 @@
             </div>
           </div>
         `;
-        it.querySelector("[data-sell]").addEventListener("click", ()=>sellJoker(j.jid));
+        it.querySelector("[data-sell]").addEventListener("click", ()=>{
+          if(j._type==="jester") sellJester(j.jid);
+          else sellJoker(j.jid);
+        });
         jl.appendChild(it);
       }
     }
@@ -1692,32 +1568,46 @@
       });
     }
 
-    const boosted = HAND_KEYS.filter(k=>(handUp[k].chips||0)||(handUp[k].mult||0)).map(k=>`${k} (+${handUp[k].chips||0}c, +${(handUp[k].mult||0).toFixed(2)}m)`).join("; ");
-    $("ownedSummary").innerHTML = `Jokers: <b>${game.jokers.map(j=>j.name).join(", ") || "None"}</b><br/>Vouchers: <b>${game.vouchers.map(v=>v.name).join(", ") || "None"}</b><br/>Consumables: <b>${game.cons.map(c=>c.name).join(", ") || "None"}</b><br/>Hand upgrades: <b>${boosted || "None"}</b>`;
+    const boosted = HAND_KEYS
+      .filter(k=>(handUp[k].chips||0)||(handUp[k].mult||0))
+      .map(k=>`${k} (+${handUp[k].chips||0}c, +${(handUp[k].mult||0).toFixed(2)}m)`)
+      .join("; ");
 
-    if(game.mode==="shop"){
-      toggleShopModal(true);
-      renderShop();
-    }
+    const jokerNames = game.jokers.map(j=>j.name);
+    const jesterNames= game.jesters.map(j=>j.name);
+    const voucherNames= game.vouchers.map(v=>v.name);
+    const consNames= game.cons.map(c=>c.name);
+
+    $("ownedSummary").innerHTML =
+      `Jokers: <b>${jokerNames.join(", ") || "None"}</b><br/>`+
+      `Jesters: <b>${jesterNames.join(", ") || "None"}</b><br/>`+
+      `Vouchers: <b>${voucherNames.join(", ") || "None"}</b><br/>`+
+      `Consumables: <b>${consNames.join(", ") || "None"}</b><br/>`+
+      `Hand upgrades: <b>${boosted || "None"}</b>`;
   }
 
   function renderShop(){
     if(game.mode!=="shop") return;
+
     const sl = $("shopList");
     sl.innerHTML = "";
 
     if(shopOffers.length===0){
-      sl.innerHTML = `<div class="item"><div class="itemMeta">Shop is empty. Ready up.</div></div>`;
+      sl.innerHTML = `<div class="item"><div class="itemMeta">Shop is empty. Tap “Next Round”.</div></div>`;
     }
 
     for(const o of shopOffers){
-      const typeLabel = (o._kind==="joker") ? "Joker" : (o._kind==="voucher") ? "Voucher" : "Consumable";
+      const typeLabel =
+        (o._kind==="joker") ? "Joker" :
+        (o._kind==="jester") ? "Jester" :
+        (o._kind==="voucher") ? "Voucher" : "Consumable";
+
       const it = document.createElement("div");
       it.className = "item";
       it.innerHTML = `
         <div class="itemTop">
           <div>
-            <div class="itemName">${o.name} <span class="small">(${typeLabel})</span></div>
+            <div class="itemName">${o._kind==="jester" ? "🃏 " : ""}${o.name} <span class="small">(${typeLabel})</span></div>
             <div class="itemMeta">${o.desc}</div>
           </div>
           <div class="rightAlign">
@@ -1735,35 +1625,46 @@
 
     const ol = $("ownedShopList");
     ol.innerHTML = "";
+
     const owned = [];
-    game.jokers.forEach(j=>owned.push({name:j.name, desc:j.desc, sell:Math.max(1, Math.floor((j.cost||6)*0.5)), act:()=>sellJoker(j.jid)}));
-    game.vouchers.forEach(v=>owned.push({name:v.name, desc:v.desc, sell:Math.max(1, Math.floor((v.cost||6)*0.5)), act:()=>sellVoucher(v.vid)}));
-    game.cons.forEach((c,idx)=>owned.push({name:c.name, desc:c.desc, sell:Math.max(1, Math.floor((c.cost||4)*0.5)), act:()=>sellConsumable(idx)}));
-    if(!owned.length){ ol.innerHTML = `<div class="item"><div class="itemMeta">No owned items to sell.</div></div>`; }
-    owned.forEach((x,idx)=>{
-      const it = document.createElement("div");
-      it.className = "item";
-      it.innerHTML = `<div class="itemTop"><div><div class="itemName">${x.name}</div><div class="itemMeta">${x.desc}</div></div><div class="itemBtns"><button class="btn mini bad" data-os="${idx}">Sell +$${x.sell}</button></div></div>`;
-      it.querySelector("[data-os]").addEventListener("click", x.act);
-      ol.appendChild(it);
-    });
+    game.jokers.forEach(j=>owned.push({ name:j.name, desc:j.desc, sell:Math.max(1, Math.floor((j.cost||6)*0.5)), act:()=>sellJoker(j.jid) }));
+    game.jesters.forEach(j=>owned.push({ name:"🃏 "+j.name, desc:j.desc, sell:Math.max(1, Math.floor((j.cost||8)*0.5)), act:()=>sellJester(j.jid) }));
+    game.vouchers.forEach(v=>owned.push({ name:v.name, desc:v.desc, sell:Math.max(1, Math.floor((v.cost||6)*0.5)), act:()=>sellVoucher(v.vid) }));
+    game.cons.forEach((c,idx)=>owned.push({ name:c.name, desc:c.desc, sell:Math.max(1, Math.floor((c.cost||4)*0.5)), act:()=>sellConsumable(idx) }));
+
+    if(!owned.length){
+      ol.innerHTML = `<div class="item"><div class="itemMeta">No owned items to sell.</div></div>`;
+    } else {
+      owned.forEach((x,idx)=>{
+        const it = document.createElement("div");
+        it.className = "item";
+        it.innerHTML = `<div class="itemTop">
+          <div><div class="itemName">${x.name}</div><div class="itemMeta">${x.desc}</div></div>
+          <div class="itemBtns"><button class="btn mini bad" data-os="${idx}">Sell +$${x.sell}</button></div>
+        </div>`;
+        it.querySelector("[data-os]").addEventListener("click", x.act);
+        ol.appendChild(it);
+      });
+    }
   }
 
   function renderAll(){
     renderTop();
     renderHand();
     renderRight();
+    if(game.mode==="shop") renderShop();
   }
 
+  // ---------------------------
   // Sorting
+  // ---------------------------
   function suitOrder(s){ return SUITS.find(x=>x.k===s)?.order || 9; }
   function sortHandByRank(){ game.hand.sort((a,b)=>a.rv-b.rv || suitOrder(a.suit)-suitOrder(b.suit)); renderHand(); }
   function sortHandBySuit(){ game.hand.sort((a,b)=>suitOrder(a.suit)-suitOrder(b.suit) || a.rv-b.rv); renderHand(); }
 
-  // Consumable picker (planet)
-  function showHow(){ $("howBack").classList.add("show"); $("howBack").setAttribute("aria-hidden","false"); }
-  function hideHow(){ $("howBack").classList.remove("show"); $("howBack").setAttribute("aria-hidden","true"); }
-
+  // ---------------------------
+  // Hand type picker (planet)
+  // ---------------------------
   function openHandTypePicker(plus=false){
     const back = $("howBack");
     const modal = back.querySelector(".modal");
@@ -1784,7 +1685,7 @@
     content.innerHTML = `
       <div class="item">
         <div class="itemName">Choose one</div>
-        <div class="itemMeta">This increases the base Mult for that hand type for the rest of the run.</div>
+        <div class="itemMeta">This increases base stats for that hand type for the rest of the run.</div>
         <div class="sep"></div>
         ${items}
         <div class="row">
@@ -1802,12 +1703,19 @@
     content.querySelectorAll("button[data-hand]").forEach(btn=>{
       btn.addEventListener("click", ()=>{
         const k = btn.getAttribute("data-hand");
-        if(plus){ handUp[k].chips += 10; handUp[k].mult += 0.25; toast(`Upgraded ${k}: +10 chips and +0.25 mult`); }
-        else { handUp[k].mult += 0.5; toast(`Upgraded ${k}: +0.5 base Mult`); }
+        if(plus){
+          handUp[k].chips += 10;
+          handUp[k].mult += 0.25;
+          toast(`Upgraded ${k}: +10 chips and +0.25 mult`);
+        } else {
+          handUp[k].mult += 0.5;
+          toast(`Upgraded ${k}: +0.5 base Mult`);
+        }
         renderAll();
         cleanup();
       });
     });
+
     content.querySelector("#btnCancelPick").addEventListener("click", ()=>{
       toast("Cancelled.");
       cleanup();
@@ -1817,548 +1725,22 @@
   }
 
   // ---------------------------
-  // Live multiplayer UI + syncing
+  // Options UI
   // ---------------------------
-  let scoreSyncT = null;
-  let scoreDirty = false;
-  let forceSync = false;
-
-  function scheduleScoreSync(force){
-    if(me.eliminated || me.finished) return;
-    scoreDirty = true;
-    forceSync = forceSync || !!force;
-    if(scoreSyncT) return;
-    scoreSyncT = setTimeout(async ()=>{
-      scoreSyncT = null;
-      if(!scoreDirty) return;
-      scoreDirty = false;
-
-      const now = nowMs();
-      const payload = {
-        round: game.round,
-        roundScore: Math.floor(game.blindScore),
-        totalScore: Math.floor(me.totalScore),
-        status: me.status,
-        lastSeenAt: now
-      };
-      // write less aggressively unless forced
-      await setDoc(meRef, payload, { merge:true }).catch(()=>{});
-      forceSync = false;
-    }, force ? 180 : 480);
+  function renderOptionsUI(){
+    $("optToggleAutoFinish").textContent = options.autoFinishOnTarget ? "✅ Auto-Finish: ON" : "✅ Auto-Finish: OFF";
+    const dif = options.difficulty;
+    $("optDiffEasy").classList.toggle("good", dif==="easy");
+    $("optDiffNormal").classList.toggle("good", dif==="normal");
+    $("optDiffHard").classList.toggle("bad", dif==="hard");
   }
 
-  // Heartbeat
-  async function heartbeat(){
-    const now = nowMs();
-    await setDoc(meRef, { lastSeenAt: now }, { merge:true }).catch(()=>{});
-  }
-
-  // Scoreboard render
-  function statusLabel(p){
-    const st = String(p.status||"");
-    if(st==="eliminated") return "ELIM";
-    if(st==="finished") return "DONE";
-    if(st==="buy") return "BUY";
-    if(st==="ready") return "READY";
-    if(st==="play") return "PLAY";
-    return st.toUpperCase() || "—";
-  }
-  function statusDotClass(p){
-    const st = String(p.status||"");
-    if(st==="play") return "play";
-    if(st==="buy") return "buy";
-    if(st==="ready") return "ready";
-    if(st==="finished") return "ready";
-    if(st==="eliminated") return "elim";
-    return "ready";
-  }
-  function liveScore(p){
-    const total = Number(p.totalScore||0);
-    const round = Number(p.roundScore||0);
-    // if they're still playing current round, show total + current progress
-    if(p.status==="play" && Number(p.round)===Number(match?.round||0)) return total + round;
-    // if they're in buy/ready for current round, their totalScore already includes the round score
-    return total;
-  }
-
-  function renderReadyInfo(){
-    const arr = [...allPlayers.entries()].map(([name,d])=>({name,...(d||{})}));
-    const survivors = arr.filter(p=>p.status!=="eliminated");
-    const ready = survivors.filter(p=>p.status==="ready" || p.status==="finished");
-    $("readyCountLine").textContent = `Ready: ${ready.length}/${Math.max(1,survivors.length)}`;
-    const list = $("readyList");
-    list.innerHTML = "";
-    survivors.forEach(p=>{
-      const it=document.createElement("div"); it.className="item";
-      const ok = (p.status==="ready"||p.status==="finished") ? "✅" : "⌛";
-      it.innerHTML = `<div class="itemMeta">${ok} ${p.name} — ${statusLabel(p)}</div>`;
-      list.appendChild(it);
-    });
-  }
-
-  function renderScoreboard(){
-    const box = $("mpList");
-    box.innerHTML = "";
-
-    const playersArr = [...allPlayers.entries()].map(([name, d])=>({ name, ...d }));
-    // sort: non-elim first, then score desc
-    playersArr.sort((a,b)=>{
-      const ae = (a.status==="eliminated") ? 1 : 0;
-      const be = (b.status==="eliminated") ? 1 : 0;
-      if(ae!==be) return ae-be;
-      return (liveScore(b) - liveScore(a)) || (String(a.name).localeCompare(String(b.name)));
-    });
-
-    const winnerName = match?.winnerName || null;
-
-    const now = nowMs();
-
-    for(const p of playersArr){
-      const row = document.createElement("div");
-      row.className = "mpRow" +
-        (p.name===username ? " me":"") +
-        (p.status==="eliminated" ? " elim":"") +
-        ((winnerName && p.name===winnerName) ? " winner":"");
-
-      const dot = document.createElement("div");
-      dot.className = "mpDot " + statusDotClass(p);
-
-      const left = document.createElement("div");
-      left.className = "mpLeft";
-
-      const meta = document.createElement("div");
-      meta.className = "mpMeta";
-      const nm = document.createElement("div");
-      nm.className = "mpName";
-      nm.textContent = p.name;
-      const sub = document.createElement("div");
-      sub.className = "mpSub";
-      const r = Number(p.round || 0);
-      sub.textContent = `R${r}${p.status==="eliminated" ? ` • out@R${p.eliminatedRound||"?"}` : ""}`;
-
-      meta.appendChild(nm);
-      meta.appendChild(sub);
-
-      left.appendChild(dot);
-      left.appendChild(meta);
-
-      const right = document.createElement("div");
-      const sc = document.createElement("div");
-      sc.className = "mpScore";
-      sc.textContent = fmt(liveScore(p));
-      const st = document.createElement("div");
-      st.className = "mpStatus";
-      const status = statusLabel(p);
-      let timerTxt = "";
-      if(p.status === "play"){
-        const remain = Number(match?.roundDeadlineAt || 0) - now;
-        timerTxt = `⏳${fmtClock(remain)}`;
-      } else if(p.status === "buy"){
-        const remain = Number(p.buyDeadlineAt || 0) - now;
-        timerTxt = `⏳${fmtClock(remain)}`;
-      }
-      st.textContent = timerTxt ? `${status} • ${timerTxt}` : status;
-
-      right.appendChild(sc);
-      right.appendChild(st);
-
-      row.appendChild(left);
-      row.appendChild(right);
-      box.appendChild(row);
-    }
-
-    // footer
-    if(match){
-      const r = Number(match.round||1);
-      const phase = (match.state==="ended") ? "ENDED" : `ROUND ${r}/5`;
-      $("matchBadge").textContent = phase;
-    } else {
-      $("matchBadge").textContent = "—";
-    }
-    renderReadyInfo();
-  }
-
-  // ---------------------------
-  // Match advancement coordinator (transactional, any client can run)
-  // ---------------------------
-  let advanceQueued = false;
-  function scheduleAdvanceCheck(){
-    if(advanceQueued) return;
-    advanceQueued = true;
-    setTimeout(async ()=>{
-      advanceQueued = false;
-      await tryAdvanceMatch().catch(()=>{});
-    }, 250);
-  }
-
-  async function tryAdvanceMatch(){
-    if(!match) return;
-    if(match.state==="ended") return;
-
-    await runTransaction(db, async (tx)=>{
-      const stSnap = await tx.get(stateRef);
-      if(!stSnap.exists()) return;
-      const st = stSnap.data() || {};
-      if(st.state==="ended") return;
-
-      const now = nowMs();
-      const curRound = Number(st.round||1);
-      const playMs = Number(st.playMs||PLAY_MS);
-      const buyMs  = Number(st.buyMs||BUY_MS);
-      const deadline = Number(st.roundDeadlineAt||0);
-
-      const rounds = Array.isArray(st.rounds) ? st.rounds : [];
-      const cfg = rounds[curRound-1] || { target: 999999, type:"Small" };
-
-      const names = Array.isArray(st.players) ? st.players : [];
-      const alive = [];
-      const reads = [];
-
-      // Read all player docs referenced in state.players (small lobbies -> safe)
-      for(const n of names){
-        const pref = doc(db, "lobbies", gameId, "balatroPlayers", String(n));
-        const ps = await tx.get(pref);
-        const pd = ps.exists() ? (ps.data() || {}) : null;
-
-        // If a player doc doesn't exist yet, treat as disconnected; create a minimal stub (so scoreboard can show them)
-        if(!pd){
-          tx.set(pref, {
-            name: String(n).slice(0,22),
-            status:"play",
-            round: curRound,
-            totalScore: 0,
-            roundScore: 0,
-            lastSeenAt: 0
-          }, { merge:true });
-        }
-
-        const status = String(pd?.status || "play");
-        const eliminated = (status==="eliminated");
-        const finished = (status==="finished");
-        const lastSeenAt = Number(pd?.lastSeenAt || 0);
-
-        const stale = lastSeenAt > 0 ? (now - lastSeenAt > ONLINE_GRACE_MS) : false;
-
-        reads.push({ name:String(n), ref:pref, data:pd, status, eliminated, finished, stale });
-
-        if(!eliminated) alive.push(String(n));
-      }
-
-      // Early win if only 1 survivor remains (and match not ended)
-      const aliveNow = reads.filter(x=>!x.eliminated);
-      if(aliveNow.length <= 1){
-        if(aliveNow.length === 1){
-          const w = aliveNow[0];
-          const wScore = Number(w.data?.totalScore || 0);
-          tx.update(stateRef, { state:"ended", endedAt: now, winnerName: w.name, winnerScore: wScore });
-        } else {
-          tx.update(stateRef, { state:"ended", endedAt: now, winnerName: null, winnerScore: null });
-        }
-        return;
-      }
-
-      // Time-based forced resolution for anyone still playing at/after deadline or stale
-      const timeUp = (deadline > 0 && now >= deadline);
-
-      for(const p of reads){
-        if(p.eliminated) continue;
-
-        // stale players are treated as eliminated once the play timer is over
-        // (also if they're stale during buy, they'll be forced ready)
-        if(p.status==="play" && (timeUp || p.stale)){
-          const score = Number(p.data?.roundScore || 0);
-          if(score >= Number(cfg.target||0)){
-            const newTotal = Number(p.data?.totalScore||0) + score;
-            if(curRound >= ROUND_COUNT){
-              tx.set(p.ref, {
-                status:"finished",
-                round: curRound,
-                roundScoreFinal: score,
-                totalScore: newTotal,
-                passedRound: curRound,
-                finishAt: now,
-                lastSeenAt: now
-              }, { merge:true });
-            } else {
-              tx.set(p.ref, {
-                status:"buy",
-                round: curRound,
-                roundScoreFinal: score,
-                totalScore: newTotal,
-                passedRound: curRound,
-                finishAt: now,
-                buyStartAt: now,
-                buyDeadlineAt: now + buyMs,
-                buyReady: false,
-                lastSeenAt: now
-              }, { merge:true });
-            }
-          } else {
-            tx.set(p.ref, {
-              status:"eliminated",
-              round: curRound,
-              roundScoreFinal: score,
-              eliminatedAt: now,
-              eliminatedRound: curRound,
-              reason: p.stale ? "disconnect" : "timeout",
-              lastSeenAt: now
-            }, { merge:true });
-          }
-        }
-
-        // Buy timeout => force ready
-        if(p.status==="buy"){
-          const bd = Number(p.data?.buyDeadlineAt || 0);
-          const staleBuy = p.stale;
-          if((bd > 0 && now >= bd) || staleBuy){
-            tx.set(p.ref, {
-              status:"ready",
-              round: curRound,
-              buyReady:true,
-              readyAt: now,
-              lastSeenAt: now
-            }, { merge:true });
-          }
-        }
-      }
-
-      // After forced resolutions, re-check "can advance?"
-      // We require: for current round
-      // - if curRound < 5: all non-eliminated are status READY (or eliminated)
-      // - if curRound == 5: all non-eliminated are FINISHED (or eliminated) then end + pick best totalScore
-      // NOTE: we do a conservative check based on the snapshots we read (and any forced sets above)
-      // If a player just changed status, the next transaction tick will catch it. This is fine.
-
-      // Build a conservative view using pre-transaction reads (ok for best-effort); to be safer, gate advancing
-      // only when timeUp OR there are no PLAY/BUY statuses among non-eliminated in reads.
-      const nonElim = reads.filter(x=>!x.eliminated);
-
-      // If anyone is still "play" and time isn't up, don't advance.
-      const someoneStillPlaying = nonElim.some(p=>p.status==="play");
-      if(someoneStillPlaying && !timeUp) return;
-
-      if(curRound >= ROUND_COUNT){
-        // End when all non-eliminated are finished (or timeUp forcing will convert them)
-        const allFinishedOrElim = reads.every(p => p.eliminated || p.status==="finished");
-        if(!allFinishedOrElim) return;
-
-        // Choose winner: max totalScore among non-eliminated
-        let bestName = null;
-        let bestScore = -Infinity;
-        for(const p of reads){
-          if(p.eliminated) continue;
-          const s = Number(p.data?.totalScore || 0);
-          if(s > bestScore){
-            bestScore = s;
-            bestName = p.name;
-          }
-        }
-        tx.update(stateRef, { state:"ended", endedAt: now, winnerName: bestName, winnerScore: bestScore });
-        return;
-      }
-
-      // For curRound < 5: need all non-eliminated to be READY
-      const allReadyOrElim = reads.every(p => p.eliminated || p.status==="ready");
-      if(!allReadyOrElim) return;
-
-      // Advance to next round
-      const nextRound = curRound + 1;
-      const nextCfg = (Array.isArray(st.rounds) ? st.rounds[nextRound-1] : null);
-      tx.update(stateRef, {
-        round: nextRound,
-        roundStartAt: now,
-        roundDeadlineAt: now + playMs
-      });
-    });
-  }
-
-  // ---------------------------
-  // Timers (UI + local auto actions)
-  // ---------------------------
-  let tickT = null;
-  let lastTimerRound = 0;
-  let lastForcedFinishKey = "";
-
-  function fmtClock(ms){
-    const s = Math.max(0, Math.ceil(ms/1000));
-    const mm = Math.floor(s/60);
-    const ss = s%60;
-    return `${mm}:${String(ss).padStart(2,"0")}`;
-  }
-
-  function tickTimers(){
-    if(!match){
-      $("roundTimer").textContent = "—";
-      return;
-    }
-
-    // connection pill
-    $("connPill").textContent = authUser ? "OK" : "…";
-
-    // round play timer
-    const now = nowMs();
-    const deadline = Number(match.roundDeadlineAt || 0);
-    const remain = deadline ? (deadline - now) : 0;
-    $("roundTimer").textContent = fmtClock(remain);
-
-    // local forced finish at deadline (best-effort, coordinator also enforces)
-    if(!me.eliminated && !me.finished && me.status==="play" && game.mode==="play"){
-      const key = `r${game.round}`;
-      if(remain <= 0 && lastForcedFinishKey !== key){
-        lastForcedFinishKey = key;
-        // decide pass/fail based on current score
-        finishRound(true);
-      }
-    }
-
-    // buy timer (if in buy)
-    if(me.status==="buy"){
-      const bd = Number(me.buyDeadlineAt || 0);
-      const br = bd ? (bd - now) : 0;
-      $("buyTimer").textContent = fmtClock(br);
-      if(br <= 0){
-        // auto ready locally (coordinator also enforces)
-        markReady();
-      }
-    } else {
-      $("buyTimer").textContent = "—";
-    }
-
-    renderTop();
-    renderScoreboard();
-  }
-
-  // ---------------------------
-  // Snapshots: match state + players
-  // ---------------------------
-  function attachListeners(){
-    if(matchUnsub) matchUnsub();
-    if(playersUnsub) playersUnsub();
-
-    matchUnsub = onSnapshot(stateRef, (snap)=>{
-      if(!snap.exists()) return;
-      match = snap.data() || null;
-
-      // When round changes, apply round config locally (if you're still in)
-      if(match && match.state==="running"){
-        const r = Number(match.round||1);
-        const cfg = (Array.isArray(match.rounds) ? match.rounds[r-1] : null);
-
-        if(!cfg) return;
-
-        // show boss info etc
-        // If I'm eliminated/finished, do not restart local play
-        if(!me.eliminated && !me.finished){
-          if(me.lastRoundApplied !== r){
-            me.lastRoundApplied = r;
-            // Reset local per-round fields
-            me.status = "play";
-            me.buyStartAt = 0;
-            me.buyDeadlineAt = 0;
-            toggleShopModal(false);
-            $("waitBlock").style.display="none";
-
-            applyRoundConfig(r, cfg);
-
-            // sync me doc (new round)
-            const now = nowMs();
-            setDoc(meRef, {
-              status:"play",
-              round:r,
-              roundScore:0,
-              buyReady:false,
-              buyStartAt:0,
-              buyDeadlineAt:0,
-              lastSeenAt: now
-            }, { merge:true }).catch(()=>{});
-          }
-        }
-
-        scheduleAdvanceCheck();
-      }
-
-      if(match && match.state==="ended"){
-        // show end state (winner)
-        const w = match.winnerName;
-        const ws = match.winnerScore;
-
-        toggleShopModal(false);
-        $("waitBlock").style.display="none";
-        $("runEndBlock").style.display="block";
-
-        if(w){
-          $("runEndTitle").textContent = `🏆 Winner: ${w}`;
-          $("runEndText").innerHTML = `Final winner score: <b>${fmt(ws||0)}</b><br/><span class="small">You can still view the full scoreboard.</span>`;
-          $("winnerTitle").textContent = `🏆 ${w} Wins!`;
-          $("winnerText").innerHTML = `Final score: <b>${fmt(ws||0)}</b>`;
-          $("winnerBack").classList.add("show");
-        } else {
-          $("runEndTitle").textContent = "Match ended";
-          $("runEndText").textContent = "No winner recorded.";
-        }
-        renderScoreboard();
-      }
-
-      renderScoreboard();
-    });
-
-    playersUnsub = onSnapshot(playersCol, (snap)=>{
-      allPlayers.clear();
-      snap.forEach(d=>{
-        const v = d.data() || {};
-        allPlayers.set(d.id, v);
-      });
-
-      // update local mirror from my doc if present (important if coordinator forced transitions)
-      const mine = allPlayers.get(username);
-      if(mine){
-        me.status = String(mine.status||me.status);
-        me.totalScore = Number(mine.totalScore||me.totalScore||0);
-        me.buyStartAt = Number(mine.buyStartAt||me.buyStartAt||0);
-        me.buyDeadlineAt = Number(mine.buyDeadlineAt||me.buyDeadlineAt||0);
-
-        $("yourTotal").textContent = fmt(me.totalScore);
-
-        if(me.status==="eliminated" && !me.eliminated){
-          me.eliminated = true;
-          game.mode = "end";
-          toggleShopModal(false);
-          $("waitBlock").style.display="none";
-          $("runEndBlock").style.display="block";
-          $("runEndTitle").textContent = "❌ Eliminated";
-          $("runEndText").innerHTML = `You were eliminated in <b>Round ${mine.eliminatedRound||"?"}</b>.<br/><span class="small">Observing scoreboard…</span>`;
-          renderAll();
-        }
-
-        if(me.status==="buy" && game.mode!=="shop" && !me.eliminated && !me.finished){
-          // coordinator forced you into buy
-          const reward = (game.blindType==="Small") ? 6 : (game.blindType==="Big") ? 8 : 11;
-          enterBuyPhase(reward);
-        }
-
-        if(me.status==="ready" && game.mode!=="wait" && !me.eliminated && !me.finished){
-          game.mode = "wait";
-          toggleShopModal(false);
-          $("waitBlock").style.display="block";
-          $("waitTitle").textContent = "🕒 Ready";
-          $("waitText").textContent = "Waiting for other survivors to be Ready…";
-          renderAll();
-        }
-
-        if(me.status==="finished" && !me.finished){
-          me.finished = true;
-          game.mode = "wait";
-          toggleShopModal(false);
-          $("waitBlock").style.display="block";
-          $("waitTitle").textContent = "✅ Finished";
-          $("waitText").textContent = "Waiting for match end…";
-          renderAll();
-        }
-      }
-
-      renderScoreboard();
-      scheduleAdvanceCheck();
-    });
+  function setDifficulty(d){
+    options.difficulty = d;
+    saveOptions();
+    renderOptionsUI();
+    toast(`Difficulty: ${d}`);
+    renderAll();
   }
 
   // ---------------------------
@@ -2369,77 +1751,96 @@
   $("btnClear").addEventListener("click", clearSelection);
   $("btnSortRank").addEventListener("click", sortHandByRank);
   $("btnSortSuit").addEventListener("click", sortHandBySuit);
-  $("btnFinish").addEventListener("click", ()=>finishRound(false));
-
-  $("btnReroll").addEventListener("click", rerollShop);
-
-  $("btnReady").addEventListener("click", markReady);
+  $("btnFinish").addEventListener("click", finishRound);
 
   $("btnPlayM").addEventListener("click", playSelected);
   $("btnDiscardM").addEventListener("click", discardSelected);
-  $("btnFinishM").addEventListener("click", ()=>finishRound(false));
+  $("btnFinishM").addEventListener("click", finishRound);
   $("btnClearM").addEventListener("click", clearSelection);
+
   $("btnMore").addEventListener("click", ()=> $("moreRow").classList.toggle("show"));
   $("btnDrawer").addEventListener("click", ()=>setDrawer(!document.body.classList.contains("drawerOpen")));
   $("drawerBack").addEventListener("click", ()=>setDrawer(false));
+
   $("btnFullscreen").addEventListener("click", async ()=>{
     try{
       if(!document.fullscreenElement && document.documentElement.requestFullscreen){ await document.documentElement.requestFullscreen(); }
       else if(document.fullscreenElement && document.exitFullscreen){ await document.exitFullscreen(); }
     }catch(e){ toast("Fullscreen not supported on this device."); }
   });
-  $("shopBack").addEventListener("click", (e)=>{ if(e.target===$("shopBack")) toggleShopModal(false); });
-  $("btnWinnerClose").addEventListener("click", ()=>$("winnerBack").classList.remove("show"));
 
   $("btnHow").addEventListener("click", showHow);
   $("btnCloseHow").addEventListener("click", hideHow);
   $("howBack").addEventListener("click", (e)=>{ if(e.target === $("howBack")) hideHow(); });
 
-  $("btnReset").addEventListener("click", ()=>{
-    // Local reset only; does not change multiplayer state
-    startNewRunLocal();
-    toast("Local run reset.");
+  $("btnOptions").addEventListener("click", showOpt);
+  $("btnCloseOpt").addEventListener("click", hideOpt);
+  $("optBack").addEventListener("click", (e)=>{ if(e.target === $("optBack")) hideOpt(); });
+
+  $("optToggleAutoFinish").addEventListener("click", ()=>{
+    options.autoFinishOnTarget = !options.autoFinishOnTarget;
+    saveOptions();
+    renderOptionsUI();
+    toast(options.autoFinishOnTarget ? "Auto-Finish ON" : "Auto-Finish OFF");
   });
 
-  window.addEventListener("keydown", (e)=>{ if(e.key==="Escape"){ hideHow(); toggleShopModal(false); setDrawer(false); $("winnerBack").classList.remove("show"); } });
+  $("optDiffEasy").addEventListener("click", ()=>setDifficulty("easy"));
+  $("optDiffNormal").addEventListener("click", ()=>setDifficulty("normal"));
+  $("optDiffHard").addEventListener("click", ()=>setDifficulty("hard"));
+
+  $("optClearHi").addEventListener("click", ()=>{
+    hiScore = 0;
+    saveHighScore(0);
+    toast("High score cleared.");
+    renderAll();
+  });
+
+  $("optResetOptions").addEventListener("click", ()=>{
+    options = { ...defaultOptions };
+    saveOptions();
+    toast("Options reset.");
+    renderOptionsUI();
+    renderAll();
+  });
+
+  $("btnReset").addEventListener("click", ()=>{
+    startNewRun();
+    toast("Run restarted.");
+  });
+
+  $("btnReroll").addEventListener("click", rerollShop);
+  $("btnNextRound").addEventListener("click", nextRound);
+  $("shopBack").addEventListener("click", (e)=>{ if(e.target===$("shopBack")) toggleShopModal(false); });
+
+  window.addEventListener("keydown", (e)=>{
+    if(e.key==="Escape"){
+      hideHow(); hideOpt();
+      toggleShopModal(false);
+      setDrawer(false);
+    }
+  });
 
   // ---------------------------
   // Boot
   // ---------------------------
-  async function boot(){
-    $("connPill").textContent = "…";
-    try{
-      authUser = await ensureAuthed();
-      $("connPill").textContent = "OK";
-    }catch(e){
-      $("connPill").textContent = "AUTH FAIL";
-      $("runEndBlock").style.display = "block";
-      $("runEndTitle").textContent = "Auth failed";
-      $("runEndText").textContent = "Enable anonymous sign-in in Firebase Authentication.";
-      return;
-    }
+  function boot(){
+    const n = (localStorage.getItem("balatle_solo_name") || "Player").slice(0,22);
+    $("youName").textContent = n;
+    $("youName").style.cursor="pointer";
+    $("youName").title="Tap to rename";
+    $("youName").addEventListener("click", ()=>{
+      const next = prompt("Name:", (localStorage.getItem("balatle_solo_name") || "Player")) || "Player";
+      localStorage.setItem("balatle_solo_name", next.slice(0,22));
+      $("youName").textContent = next.slice(0,22);
+    });
 
-    await syncServerTime();
-
-    // Create local baseline run immediately
-    startNewRunLocal();
-
-    // Ensure match exists, join, attach listeners
-    await joinOrCreateMatch();
-    attachListeners();
-
-    // Heartbeat + coordinator tick
-    setInterval(()=> heartbeat().catch(()=>{}), 7000);
-    setInterval(()=> tryAdvanceMatch().catch(()=>{}), 1400);
-
-    // Timer UI tick
-    if(tickT) clearInterval(tickT);
-    tickT = setInterval(tickTimers, 120);
-
-    toast("Connected. Good luck!");
+    startNewRun();
+    renderOptionsUI();
+    toast("Solo endless ready (no timers).");
   }
 
   boot();
+})();
 </script>
 </body>
 </html>
