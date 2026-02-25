@@ -309,6 +309,7 @@
             <button class="btn primary" id="btnPlay">Play Selected</button>
             <button class="btn" id="btnDiscard">Discard Selected</button>
             <button class="btn" id="btnClear">Clear Selection</button>
+            <button class="btn bad" id="btnRestartOut" style="display:none;">Restart Run</button>
             <button class="btn mini" id="btnMore">⋯ More</button>
             <div class="moreRow" id="moreRow">
               <button class="btn" id="btnSortRank">Sort: Rank</button>
@@ -980,8 +981,8 @@
   function targetForRound(r, type){
     const base = (type==="Small") ? 260 : (type==="Big") ? 480 : 900;
     const steps = (r-1);
-    const growth = 1 + (steps * 0.17);
-    const bossTier = 1 + (Math.floor((r-1)/3) * 0.10);
+    const growth = 1 + (steps * 0.12);
+    const bossTier = 1 + (Math.floor((r-1)/3) * 0.06);
     const typeBump = (type==="Boss") ? 1.05 : 1.0;
     return Math.floor(base * growth * bossTier * typeBump * difficultyMult());
   }
@@ -1613,11 +1614,13 @@
       : "";
 
     const playEnabled = (game.mode==="play");
+    const endedRun = (game.mode==="end");
     $("btnPlay").disabled = !playEnabled;
     $("btnDiscard").disabled = !(playEnabled && game.discardsLeft>0 && !game.boss.noDiscards);
     $("btnClear").disabled = !playEnabled;
     $("btnSortRank").disabled = !playEnabled;
     $("btnSortSuit").disabled = !playEnabled;
+    $("btnRestartOut").style.display = endedRun ? "" : "none";
 
     $("btnPlayM").disabled = $("btnPlay").disabled;
     $("btnDiscardM").disabled = $("btnDiscard").disabled;
@@ -2105,6 +2108,10 @@
   $("btnReset").addEventListener("click", ()=>{
     startNewRun();
     toast("Run restarted.");
+  });
+  $("btnRestartOut").addEventListener("click", ()=>{
+    startNewRun();
+    toast("New run started.");
   });
 
   $("btnReroll").addEventListener("click", rerollShop);
