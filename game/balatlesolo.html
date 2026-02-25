@@ -1313,6 +1313,19 @@
     return true;
   }
 
+  function loseLifeAndRestartRound(reason){
+    game.livesLeft = Math.max(0, game.livesLeft-1);
+    if(game.livesLeft<=0){
+      endRun("Out of lives.");
+      toast(`💀 ${reason} No lives left. Run over.`);
+      return;
+    }
+
+    const roundNum = game.round;
+    toast(`${reason} Life lost (${game.livesLeft} remaining). Restarting round...`);
+    applyRoundConfig(roundNum);
+  }
+
   // ---------------------------
   // Discard / Play
   // ---------------------------
@@ -1448,7 +1461,7 @@
           toast("Target met and no hands left — auto-finishing.");
           finishRound();
         } else {
-          endRun("Out of hands (below target).");
+          loseLifeAndRestartRound("Out of hands (below target).");
         }
       } else if(game.blindScore >= game.target){
         toast("Target met! Finish Round for the shop (or keep scoring).");
