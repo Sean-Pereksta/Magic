@@ -833,13 +833,17 @@
       nomads:['st_steppe_archer','st_veteran_mounted_archer','st_companion_guard'],
     };
     const pool = poolByFaction[factionId] || poolByFaction.knights;
+    const normalPool = ['kn_nobleman','no_raider','st_steppe_archer'].filter(k=>!pool.includes(k));
+    const normalKey = normalPool.length ? normalPool[randi(0,normalPool.length-1)] : null;
     const volunteers = {
       [pool[0]]: randi(8, 16),
       [pool[1]]: randi(1, 4),
       [pool[2]]: (Math.random()<0.35 ? 1 : 0),
       sup_banner: (Math.random()<0.12 ? 1 : 0),
     };
+    if(normalKey && Math.random()<0.48) volunteers[normalKey] = randi(1,3);
     const caps = { [pool[0]]:18, [pool[1]]:5, [pool[2]]:2, sup_banner:1 };
+    if(normalKey) caps[normalKey] = 4;
     return { volunteers, caps, regenClock: rand(0, VILLAGE_REGEN_INTERVAL) };
   }
 
@@ -3257,12 +3261,19 @@
     // Split by role for nicer formation
     const inf = armyUnits.filter(u=>UNIT_DB[unitBaseKey(u)].role==='inf');
     const arc = armyUnits.filter(u=>UNIT_DB[unitBaseKey(u)].role==='arc');
+    const cav = armyUnits.filter(u=>UNIT_DB[unitBaseKey(u)].role==='cav');
+    const sup = armyUnits.filter(u=>UNIT_DB[unitBaseKey(u)].role==='sup');
 
     const allies = [];
     // infantry behind player
     allies.push(...spawnBlock(inf, baseX, baseY, 6, 0.90, 0.86, 'ally'));
     // archers further back
     allies.push(...spawnBlock(arc, baseX - dirX*1.4, baseY - dirY*1.4, 6, 0.95, 0.90, 'ally'));
+    // cavalry to the flanks/front for charge lanes
+    const flankX = -dirY, flankY = dirX;
+    allies.push(...spawnBlock(cav, baseX + flankX*2.2 + dirX*0.9, baseY + flankY*2.2 + dirY*0.9, 4, 1.15, 1.0, 'ally'));
+    // banner/support units stay with the core line
+    allies.push(...spawnBlock(sup, baseX - dirX*0.4, baseY - dirY*0.4, 4, 0.9, 0.9, 'ally'));
     return allies;
   }
 
