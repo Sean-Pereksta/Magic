@@ -641,7 +641,11 @@
     const countS = new Map();
     for(const c of cards){
       countR.set(c.rv, (countR.get(c.rv)||0)+1);
-      countS.set(c.suit, (countS.get(c.suit)||0)+1);
+      if(c.wild){
+        for(const s of ["S","H","D","C"]) countS.set(s, (countS.get(s)||0)+1);
+      } else {
+        countS.set(c.suit, (countS.get(c.suit)||0)+1);
+      }
     }
     const groups = [...countR.entries()].map(([rv,ct])=>({rv,ct})).sort((a,b)=>b.ct-a.ct || b.rv-a.rv);
     const isFlush = (n===5) && ([...countS.values()].some(v=>v===5));
@@ -772,6 +776,32 @@
     { kind:"joker", name:"Mint Condition", cost:12, desc:"If you have 0 discards left, ×1.5 Mult.", apply(ctx){ if(game.discardsLeft<=0) ctx.mulMult *= 1.5; } },
   ];
 
+  const EXTRA_JOKERS = [
+    { kind:"joker", rarity:"common", name:"Fibonacci Friend", cost:7, desc:"+8 Chips for each Fibonacci rank in the hand (A,2,3,5,8).", apply(ctx){ const fib = new Set([14,2,3,5,8]); ctx.addChips += 8 * ctx.cards.filter(c=>fib.has(c.rv)).length; } },
+    { kind:"joker", rarity:"common", name:"Rainbow Road", cost:8, desc:"+40 Chips if your play contains 4 different suits.", apply(ctx){ const s=new Set(); ctx.cards.forEach(c=>c.wild ? ["S","H","D","C"].forEach(x=>s.add(x)) : s.add(c.suit)); if(s.size>=4) ctx.addChips += 40; } },
+    { kind:"joker", rarity:"common", name:"Greedy Glint", cost:7, desc:"+$1 after scoring if your hand contains any Diamond.", apply(ctx){ if(ctx.cards.some(c=>c.suit==="D"||c.wild)) ctx.onPayout.push(()=>{ game.money += 1; }); } },
+    { kind:"joker", rarity:"common", name:"Spare Change", cost:6, desc:"+10 Chips if you have $0–$3.", apply(ctx){ if(game.money<=3) ctx.addChips += 10; } },
+    { kind:"joker", rarity:"common", name:"Waste Not", cost:7, desc:"+18 Chips if you have 0 discards left.", apply(ctx){ if(game.discardsLeft<=0) ctx.addChips += 18; } },
+    { kind:"joker", rarity:"common", name:"Full Grip", cost:7, desc:"+25 Chips if you play the maximum allowed cards this hand.", apply(ctx){ const max = Math.min(5, game.perma.maxPlayCards||5); if(ctx.cards.length===max) ctx.addChips += 25; } },
+    { kind:"joker", rarity:"common", name:"Tiny Triumph", cost:8, desc:"If you play exactly 2 cards: ×1.7 Mult.", apply(ctx){ if(ctx.cards.length===2) ctx.mulMult *= 1.7; } },
+    { kind:"joker", rarity:"common", name:"Three’s Company", cost:8, desc:"If you play exactly 3 cards: +1.5 Mult.", apply(ctx){ if(ctx.cards.length===3) ctx.addMult += 1.5; } },
+    { kind:"joker", rarity:"common", name:"Suit Hoarder", cost:8, desc:"+20 Chips if your play contains 3+ of the same suit.", apply(ctx){ const m={S:0,H:0,D:0,C:0}; ctx.cards.forEach(c=>c.wild ? (m.S++,m.H++,m.D++,m.C++) : m[c.suit]=(m[c.suit]||0)+1); if(Object.values(m).some(v=>v>=3)) ctx.addChips += 20; } },
+    { kind:"joker", rarity:"uncommon", name:"Royal Tribute", cost:10, desc:"+22 Chips per face card (J/Q/K) played.", apply(ctx){ ctx.addChips += 22 * ctx.cards.filter(c=>["J","Q","K"].includes(c.rank)).length; } },
+    { kind:"joker", rarity:"uncommon", name:"Ace Attorney", cost:10, desc:"If hand contains any Ace: ×1.35 Mult.", apply(ctx){ if(ctx.cards.some(c=>c.rank==="A")) ctx.mulMult *= 1.35; } },
+    { kind:"joker", rarity:"uncommon", name:"Overkill", cost:11, desc:"If your current round score is already above target: ×1.4 Mult.", apply(ctx){ if(game.blindScore >= game.target) ctx.mulMult *= 1.4; } },
+    { kind:"joker", rarity:"uncommon", name:"Clutch Performer", cost:10, desc:"If you have 1 hand left: +70 Chips.", apply(ctx){ if(game.handsLeft===1) ctx.addChips += 70; } },
+    { kind:"joker", rarity:"uncommon", name:"Stair Step", cost:10, desc:"If your play is strictly increasing in rank (sorted): ×1.6 Mult.", apply(ctx){ const v = ctx.cards.map(c=>c.rv).slice().sort((a,b)=>a-b); let inc=true; for(let i=1;i<v.length;i++) if(v[i]<=v[i-1]){inc=false;break;} if(inc) ctx.mulMult *= 1.6; } },
+    { kind:"joker", rarity:"uncommon", name:"Mirror Match", cost:10, desc:"If your play contains exactly 2 pairs (Two Pair): ×1.5 Mult.", apply(ctx){ if(ctx.handName==="Two Pair") ctx.mulMult *= 1.5; } },
+    { kind:"joker", rarity:"uncommon", name:"Flush Compressor", cost:11, desc:"Flush: +45 Chips, but -0.5 Mult on High Card.", apply(ctx){ if(ctx.handName==="Flush") ctx.addChips += 45; if(ctx.handName==="High Card") ctx.addMult -= 0.5; } },
+    { kind:"joker", rarity:"rare", name:"Boss Professor", cost:13, desc:"Boss rounds: +3 Mult.", apply(ctx){ if(game.blindType==="Boss") ctx.addMult += 3; } },
+    { kind:"joker", rarity:"rare", name:"Compound Interest", cost:13, desc:"Gain +$1 after scoring for every $10 you currently have (rounded down).", apply(ctx){ ctx.onPayout.push(()=>{ game.money += Math.floor(game.money/10); }); } },
+    { kind:"joker", rarity:"rare", name:"Steel Spiral", cost:14, desc:"Each time you play a Straight, permanently +10 chips to Straight base.", apply(ctx){ if(ctx.handName==="Straight") ctx.onAfter.push(()=>{ handUp["Straight"].chips += 10; }); } },
+    { kind:"joker", rarity:"rare", name:"Suit Mastery", cost:14, desc:"If your play is all the same suit: ×2.1 Mult (works for Flush and non-Flush).", apply(ctx){ const m={S:0,H:0,D:0,C:0}; ctx.cards.forEach(c=>c.wild ? (m.S++,m.H++,m.D++,m.C++) : m[c.suit]++); if(Object.values(m).some(v=>v===ctx.cards.length)) ctx.mulMult *= 2.1; } },
+    { kind:"joker", rarity:"rare", name:"Rank Alchemist", cost:14, desc:"If your play contains both an Ace and a 2: +120 Chips.", apply(ctx){ const hasA=ctx.cards.some(c=>c.rank==="A"); const has2=ctx.cards.some(c=>c.rank==="2"); if(hasA&&has2) ctx.addChips += 120; } },
+    { kind:"joker", rarity:"legendary", name:"Golden Engine", cost:17, desc:"After each scoring, gain +$2. If Boss, gain +$4 instead.", apply(ctx){ ctx.onPayout.push(()=>{ game.money += (game.blindType==="Boss" ? 4 : 2); }); } },
+    { kind:"joker", rarity:"legendary", name:"Infinite Grin", cost:18, desc:"Permanent growth: gains +0.25 Mult every hand played (stacks forever).", initState(){ return {bonus:0}; }, apply(ctx){ ctx.addMult += (this.state.bonus||0); ctx.onAfter.push(()=>{ this.state.bonus = Number((this.state.bonus||0) + 0.25); }); } },
+  ];
+
   const JESTER_POOL = [
     { kind:"jester", name:"🤡 Cackling Jester", cost:9, desc:"+60 Chips every hand, but -1 Hand each round.",
       apply(ctx){ ctx.addChips += 60; },
@@ -796,16 +826,30 @@
         ctx.mulMult *= 2.2;
         ctx.onAfter.push(()=>{
           if(Math.random() < 0.12){
-            const idx = game.jesters.findIndex(x=>x.jid===this.jid);
-            if(idx>=0){
-              game.jesters.splice(idx,1);
-              toast("💥 Glass Jester shattered!");
-              renderAll();
+            if((game.perma.preventLossCharges||0)>0){
+              game.perma.preventLossCharges -= 1;
+              toast("🛡 Joker Insurance prevented shatter.");
+            } else {
+              const idx = game.jesters.findIndex(x=>x.jid===this.jid);
+              if(idx>=0){
+                game.jesters.splice(idx,1);
+                toast("💥 Glass Jester shattered!");
+                renderAll();
+              }
             }
           }
         });
       }
     },
+  ];
+
+  const EXTRA_JESTERS = [
+    { kind:"jester", rarity:"uncommon", name:"🎪 Jester of Plenty", cost:10, desc:"+2 Mult every hand, but shop rerolls cost +$1.", apply(ctx){ ctx.addMult += 2; }, applyBuy(){ game.perma.rerollTax = (game.perma.rerollTax||0)+1; }, revertSell(){ game.perma.rerollTax = Math.max(0,(game.perma.rerollTax||0)-1); } },
+    { kind:"jester", rarity:"uncommon", name:"🪓 Jester of Ruin", cost:10, desc:"×2.0 Mult, but every discard destroys one discarded card (removed from run).", apply(ctx){ ctx.mulMult *= 2.0; }, applyBuy(){ game.perma.ruinDiscards = true; }, revertSell(){ game.perma.ruinDiscards = false; } },
+    { kind:"jester", rarity:"rare", name:"🧿 Hex Jester", cost:12, desc:"+120 Chips on Boss rounds, but -$2 reward after every Small/Big win.", apply(ctx){ if(game.blindType==="Boss") ctx.addChips += 120; }, applyBuy(){ game.perma.smallBigRewardPenalty = (game.perma.smallBigRewardPenalty||0)+2; }, revertSell(){ game.perma.smallBigRewardPenalty = Math.max(0,(game.perma.smallBigRewardPenalty||0)-2); } },
+    { kind:"jester", rarity:"rare", name:"🪙 Miser Jester", cost:12, desc:"×2.1 Mult if you have $25+, but you can’t buy consumables (slots locked).", apply(ctx){ if(game.money>=25) ctx.mulMult *= 2.1; }, applyBuy(){ game.perma.lockConsumables = true; }, revertSell(){ game.perma.lockConsumables = false; } },
+    { kind:"jester", rarity:"rare", name:"🧪 Mad Scientist", cost:13, desc:"After each play, randomly +15 chips or -10 chips to a random hand base.", apply(ctx){ ctx.onAfter.push(()=>{ const k = rng.pick(HAND_KEYS); if(Math.random()<0.6) handUp[k].chips += 15; else handUp[k].chips = Math.max(0, handUp[k].chips - 10); }); } },
+    { kind:"jester", rarity:"legendary", name:"🃏 King of Fools", cost:18, desc:"×2.6 Mult, but you must always play exactly 5 cards (all rounds).", apply(ctx){ ctx.mulMult *= 2.6; }, applyBuy(){ game.perma.forceExactlyFive = true; }, revertSell(){ game.perma.forceExactlyFive = false; } },
   ];
 
   const VOUCHER_POOL = [
@@ -819,6 +863,18 @@
     { kind:"voucher", name:"Jester Pocket", cost:12, desc:"Increase jester cap from 2 to 3.", applyBuy(){ game.perma.jesterCap = Math.min(3,(game.perma.jesterCap||2)+1); }, revertSell(){ game.perma.jesterCap = Math.max(2,(game.perma.jesterCap||2)-1); } },
   ];
 
+  const EXTRA_VOUCHERS = [
+    { kind:"voucher", rarity:"common", name:"Shop Expansion", cost:9, desc:"+1 shop offer slot each buy phase.", applyBuy(){ game.perma.shopSlots = (game.perma.shopSlots||6)+1; }, revertSell(){ game.perma.shopSlots = Math.max(6,(game.perma.shopSlots||6)-1); } },
+    { kind:"voucher", rarity:"common", name:"Bargain Bin", cost:9, desc:"All consumables cost -$1 (min $1).", applyBuy(){ game.perma.consDiscount = (game.perma.consDiscount||0)+1; }, revertSell(){ game.perma.consDiscount = Math.max(0,(game.perma.consDiscount||0)-1); } },
+    { kind:"voucher", rarity:"uncommon", name:"Markdown Stickers", cost:10, desc:"Selling returns 65% instead of 50%.", applyBuy(){ game.perma.sellRate = 0.65; }, revertSell(){ game.perma.sellRate = 0.50; } },
+    { kind:"voucher", rarity:"uncommon", name:"Reroll Club", cost:10, desc:"Reroll base cost is $1 (instead of $2).", applyBuy(){ game.perma.rerollBase = 1; }, revertSell(){ game.perma.rerollBase = 2; } },
+    { kind:"voucher", rarity:"uncommon", name:"Boss Dividend", cost:12, desc:"Boss round reward +$4.", applyBuy(){ game.perma.bossRewardBonus = (game.perma.bossRewardBonus||0)+4; }, revertSell(){ game.perma.bossRewardBonus = Math.max(0,(game.perma.bossRewardBonus||0)-4); } },
+    { kind:"voucher", rarity:"uncommon", name:"Starting Stack", cost:11, desc:"Start each run with +$6.", applyBuy(){ game.perma.startMoneyBonus = (game.perma.startMoneyBonus||0)+6; }, revertSell(){ game.perma.startMoneyBonus = Math.max(0,(game.perma.startMoneyBonus||0)-6); } },
+    { kind:"voucher", rarity:"rare", name:"Joker Insurance", cost:13, desc:"If you would lose a joker/jester (shatter/curse), prevent it once per run.", applyBuy(){ game.perma.preventLossCharges = (game.perma.preventLossCharges||0)+1; }, revertSell(){ game.perma.preventLossCharges = Math.max(0,(game.perma.preventLossCharges||0)-1); } },
+    { kind:"voucher", rarity:"rare", name:"Hand Recycling", cost:13, desc:"At start of each round, draw +2 extra cards (hand size temporary +2).", applyBuy(){ game.perma.roundDrawBonus = (game.perma.roundDrawBonus||0)+2; }, revertSell(){ game.perma.roundDrawBonus = Math.max(0,(game.perma.roundDrawBonus||0)-2); } },
+    { kind:"voucher", rarity:"legendary", name:"Boss Preview", cost:16, desc:"Show next boss limitation before the boss round begins.", applyBuy(){ game.perma.previewBoss = true; }, revertSell(){ game.perma.previewBoss = false; } },
+  ];
+
   const CONSUME_POOL = [
     { kind:"cons", name:"Tarot: Chip Paint", cost:5, desc:"Tap a card in your hand to give it +5 chip value permanently (this run).", use(){ if(game.mode!=="play"){ toast("Use during Play."); return; } game.pendingUse = { type:"chipPaint" }; toast("Tap a card to apply +5 chips."); } },
     { kind:"cons", name:"Planet: Train Hand", cost:6, desc:"Choose a hand type; it gains +0.5 base Mult (this run).", use(){ if(game.mode!=="play"){ toast("Use during Play."); return; } openHandTypePicker(false); } },
@@ -829,6 +885,29 @@
     { kind:"cons", name:"Spectral: Duplicate", cost:8, desc:"Choose a card; duplicate it into your discard.", use(){ if(game.mode!=="play"){ toast("Use during Play."); return; } game.pendingUse = { type:"duplicate" }; toast("Tap a card to duplicate."); } },
     { kind:"cons", name:"Spectral: Refund", cost:7, desc:"Gain $7, but lose 1 discard this round.", use(){ if(game.mode!=="play"){ toast("Use during Play."); return; } game.money += 7; game.discardsLeft = Math.max(0, game.discardsLeft-1); renderAll(); } },
   ];
+
+  const EXTRA_CONSUMABLES = [
+    { kind:"cons", rarity:"common", family:"tarot", name:"Tarot: Wax Seal", cost:6, desc:"Tap a card: it gains +3 bonus chips now and +3 more each time it’s played (stacking counter).", use(){ if(game.mode!=="play") return toast("Use during Play."); game.pendingUse={type:"waxSeal"}; toast("Tap a card to Wax Seal."); } },
+    { kind:"cons", rarity:"common", family:"tarot", name:"Tarot: Swap", cost:6, desc:"Tap two cards to swap their suits permanently.", use(){ if(game.mode!=="play") return toast("Use during Play."); game.pendingUse={type:"swapSuit", step:0, a:null}; toast("Tap two cards to swap suits."); } },
+    { kind:"cons", rarity:"common", family:"tarot", name:"Tarot: Sharpen", cost:6, desc:"Tap a card: +12 bonus chips permanently.", use(){ if(game.mode!=="play") return toast("Use during Play."); game.pendingUse={type:"sharpen"}; toast("Tap a card to Sharpen (+12)."); } },
+    { kind:"cons", rarity:"uncommon", family:"tarot", name:"Tarot: Wild Suit", cost:7, desc:"Tap a card: it becomes WILD suit (counts as any suit for suit checks).", use(){ if(game.mode!=="play") return toast("Use during Play."); game.pendingUse={type:"wildSuit"}; toast("Tap a card to make it WILD."); } },
+    { kind:"cons", rarity:"uncommon", family:"tarot", name:"Tarot: Glass Coat", cost:7, desc:"Tap a card: +25 chips, but 10% chance it breaks when played (removed).", use(){ if(game.mode!=="play") return toast("Use during Play."); game.pendingUse={type:"glassCoat"}; toast("Tap a card to Glass Coat."); } },
+    { kind:"cons", rarity:"rare", family:"tarot", name:"Tarot: Crown", cost:9, desc:"Tap a card: it becomes a Crowned card (+1 Mult whenever included).", use(){ if(game.mode!=="play") return toast("Use during Play."); game.pendingUse={type:"crown"}; toast("Tap a card to Crown it."); } },
+    { kind:"cons", rarity:"rare", family:"tarot", name:"Tarot: Burn", cost:8, desc:"Tap a card in hand: destroy it permanently, gain +$6.", use(){ if(game.mode!=="play") return toast("Use during Play."); game.pendingUse={type:"burnForCash"}; toast("Tap a card to burn for $6."); } },
+    { kind:"cons", rarity:"common", family:"planet", name:"Planet: Chip Training", cost:6, desc:"Pick a hand type; +15 base chips for that hand (this run).", use(){ if(game.mode!=="play") return toast("Use during Play."); openHandTypePickerChip(15); } },
+    { kind:"cons", rarity:"uncommon", family:"planet", name:"Planet: Mult Training", cost:7, desc:"Pick a hand type; +0.35 base mult for that hand (this run).", use(){ if(game.mode!=="play") return toast("Use during Play."); openHandTypePickerMult(0.35); } },
+    { kind:"cons", rarity:"rare", family:"planet", name:"Planet: Prestige", cost:9, desc:"Pick a hand type; +30 chips and +0.5 mult base (this run).", use(){ if(game.mode!=="play") return toast("Use during Play."); openHandTypePickerBoth(30,0.5); } },
+    { kind:"cons", rarity:"uncommon", family:"spectral", name:"Spectral: Haunt", cost:8, desc:"Next hand played gets ×2.0 Mult, then this effect disappears.", use(){ if(game.mode!=="play") return toast("Use during Play."); game.perma.nextHandMult = (game.perma.nextHandMult||1) * 2.0; toast("Haunt armed: next play ×2.0"); } },
+    { kind:"cons", rarity:"uncommon", family:"spectral", name:"Spectral: Duplicate+", cost:9, desc:"Tap a card: duplicate it directly into your hand (if space), else into discard.", use(){ if(game.mode!=="play") return toast("Use during Play."); game.pendingUse={type:"dupIntoHand"}; toast("Tap a card to duplicate into hand."); } },
+    { kind:"cons", rarity:"rare", family:"spectral", name:"Spectral: Time Skip", cost:9, desc:"Gain +2 hands immediately this round.", use(){ if(game.mode!=="play") return toast("Use during Play."); game.handsLeft += 2; renderAll(); toast("+2 hands"); } },
+    { kind:"cons", rarity:"rare", family:"spectral", name:"Spectral: Cleanse", cost:9, desc:"Remove the current Boss limitation (this round only).", use(){ if(game.mode!=="play") return toast("Use during Play."); if(game.blindType!=="Boss") return toast("Only on Boss rounds."); game.boss={}; game.bossRule=null; renderAll(); toast("Boss rule cleansed."); } },
+    { kind:"cons", rarity:"legendary", family:"spectral", name:"Spectral: Ascension", cost:12, desc:"Permanently +1 joker slot and +1 jester slot.", use(){ game.perma.jokerCap = Math.min(8,(game.perma.jokerCap||5)+1); game.perma.jesterCap = Math.min(4,(game.perma.jesterCap||2)+1); renderAll(); toast("Ascension: +slots"); } },
+  ];
+
+  const FULL_JOKER_POOL = [...JOKER_POOL, ...EXTRA_JOKERS];
+  const FULL_JESTER_POOL = [...JESTER_POOL, ...EXTRA_JESTERS];
+  const FULL_VOUCHER_POOL = [...VOUCHER_POOL, ...EXTRA_VOUCHERS];
+  const FULL_CONSUME_POOL = [...CONSUME_POOL, ...EXTRA_CONSUMABLES];
 
   // ---------------------------
   // Game state
@@ -854,6 +933,10 @@
       coupon:0, freeReroll:0, interestBoost:0,
       jokerCap:5, jesterCap:2,
       handsPenalty:0, maxPlayCards:5, bigCoupon:0, halveInterest:false,
+      shopSlots:6, consDiscount:0, sellRate:0.5, rerollBase:2, rerollTax:0,
+      bossRewardBonus:0, startMoneyBonus:0, preventLossCharges:0, roundDrawBonus:0,
+      previewBoss:false, nextHandMult:1, forceExactlyFive:false, lockConsumables:false,
+      ruinDiscards:false, smallBigRewardPenalty:0,
     },
 
     handsLeft:0,
@@ -904,11 +987,13 @@
     if(options.difficulty==="easy") base += 1;
     if(options.difficulty==="hard") base = Math.max(4, base-1);
     base += Math.floor(r/4);
-    return base;
+    base += (type==="Boss") ? (game.perma.bossRewardBonus||0) : 0;
+    base -= (type!=="Boss") ? (game.perma.smallBigRewardPenalty||0) : 0;
+    return Math.max(0, base);
   }
 
   function currentHandSize(){
-    const base = 8 + game.perma.handSize;
+    const base = 8 + game.perma.handSize + (game.perma.roundDrawBonus||0);
     const bossDelta = (game.blindType==="Boss") ? (game.boss.handSizeDelta||0) : 0;
     return Math.max(4, base + bossDelta);
   }
@@ -932,13 +1017,17 @@
   function rollShopOffers(){
     shopOffers = [];
     const picks = [
-      rng.pick(JOKER_POOL),
-      rng.pick(JOKER_POOL),
-      rng.pick(JESTER_POOL),
-      rng.pick(VOUCHER_POOL),
-      rng.pick(CONSUME_POOL),
-      rng.pick([rng.pick(JOKER_POOL), rng.pick(JESTER_POOL), rng.pick(VOUCHER_POOL), rng.pick(CONSUME_POOL)])
+      rng.pick(FULL_JOKER_POOL),
+      rng.pick(FULL_JOKER_POOL),
+      rng.pick(FULL_JESTER_POOL),
+      rng.pick(FULL_VOUCHER_POOL),
+      rng.pick(FULL_CONSUME_POOL),
+      rng.pick([rng.pick(FULL_JOKER_POOL), rng.pick(FULL_JESTER_POOL), rng.pick(FULL_VOUCHER_POOL), rng.pick(FULL_CONSUME_POOL)])
     ];
+    const slots = Math.max(1, game.perma.shopSlots||6);
+    while(picks.length < slots){
+      picks.push(rng.pick([rng.pick(FULL_JOKER_POOL), rng.pick(FULL_JESTER_POOL), rng.pick(FULL_VOUCHER_POOL), rng.pick(FULL_CONSUME_POOL)]));
+    }
 
     picks.forEach((pick, i)=>{
       let obj;
@@ -954,6 +1043,7 @@
     let c = Number(o.cost||0);
     if(game.shopRoundPurchaseCount===0 && (game.perma.coupon||0)>0) c = Math.max(0, c-2);
     if(game.shopRoundPurchaseCount===0 && (game.perma.bigCoupon||0)>0) c = Math.max(0, c-3);
+    if(o._kind==="cons") c = Math.max(1, c - (game.perma.consDiscount||0));
     return c;
   }
 
@@ -984,6 +1074,7 @@
       v.applyBuy?.();
       game.vouchers.push(v);
     } else if(o._kind==="cons"){
+      if(game.perma.lockConsumables){ toast("Consumables are locked."); return; }
       if(game.cons.length>=3){ toast("Consumable slots full (3)."); return; }
       game.money -= cost;
       game.cons.push({ ...o._obj });
@@ -995,12 +1086,18 @@
     renderAll();
   }
 
+
+  function sellValue(cost, fallback){
+    const rate = Number(game.perma.sellRate||0.5);
+    return Math.max(1, Math.floor((cost||fallback) * rate));
+  }
+
   function sellJoker(jid){
     if(game.mode==="end") return;
     const i = game.jokers.findIndex(j=>j.jid===jid);
     if(i<0) return;
     const j = game.jokers[i];
-    const val = Math.max(1, Math.floor((j.cost||6) * 0.5));
+    const val = sellValue(j.cost, 6);
     game.money += val;
     game.jokers.splice(i,1);
     toast(`Sold ${j.name} (+$${val})`);
@@ -1013,7 +1110,7 @@
     if(i<0) return;
     const j = game.jesters[i];
     j.revertSell?.();
-    const val = Math.max(1, Math.floor((j.cost||8) * 0.5));
+    const val = sellValue(j.cost, 8);
     game.money += val;
     game.jesters.splice(i,1);
     toast(`Sold ${j.name} (+$${val})`);
@@ -1026,7 +1123,7 @@
     if(i<0) return;
     const v = game.vouchers[i];
     v.revertSell?.();
-    const val = Math.max(1, Math.floor((v.cost||6) * 0.5));
+    const val = sellValue(v.cost, 6);
     game.money += val;
     game.vouchers.splice(i,1);
     renderAll();
@@ -1036,7 +1133,7 @@
     if(game.mode!=="shop") return;
     const c = game.cons[index];
     if(!c) return;
-    const val = Math.max(1, Math.floor((c.cost||4) * 0.5));
+    const val = sellValue(c.cost, 4);
     game.money += val;
     game.cons.splice(index,1);
     renderAll();
@@ -1053,7 +1150,7 @@
 
   function rerollShop(){
     if(game.mode!=="shop"){ toast("Not in buy."); return; }
-    let price = 2;
+    let price = (game.perma.rerollBase ?? 2) + (game.perma.rerollTax ?? 0);
     if(game.shopRoundRerollCount===0 && (game.perma.freeReroll||0)>0) price = 0;
     if(game.money < price){ toast("Need $"+price+" to reroll."); return; }
     game.money -= price;
@@ -1118,7 +1215,13 @@
       coupon:0, freeReroll:0, interestBoost:0,
       jokerCap:5, jesterCap:2,
       handsPenalty:0, maxPlayCards:5, bigCoupon:0, halveInterest:false,
+      shopSlots:6, consDiscount:0, sellRate:0.5, rerollBase:2, rerollTax:0,
+      bossRewardBonus:0, startMoneyBonus:0, preventLossCharges:0, roundDrawBonus:0,
+      previewBoss:false, nextHandMult:1, forceExactlyFive:false, lockConsumables:false,
+      ruinDiscards:false, smallBigRewardPenalty:0,
     };
+
+    game.money = 10 + (game.perma.startMoneyBonus||0);
 
     game.jokers = [];
     game.jesters = [];
@@ -1167,7 +1270,13 @@
 
     const set = new Set(cards.map(c=>c.id));
     game.hand = game.hand.filter(c=>!set.has(c.id));
-    for(const c of cards) game.discard.push(c);
+    if(game.perma.ruinDiscards){
+      const doomed = cards[0];
+      for(const c of cards){ if(c.id!==doomed.id) game.discard.push(c); }
+      toast(`Ruin destroyed ${doomed.rank}${doomed.suitSym}`);
+    } else {
+      for(const c of cards) game.discard.push(c);
+    }
     game.discardsLeft -= 1;
 
     for(const j of game.jokers){
@@ -1190,7 +1299,7 @@
     const maxCards = Math.min(5, game.perma.maxPlayCards||5);
     if(cards.length>maxCards){ toast(`Max ${maxCards} selected.`); return; }
 
-    if(game.boss.exactFive && cards.length!==5){ toast("Boss: play exactly 5 cards."); return; }
+    if((game.boss.exactFive || game.perma.forceExactlyFive) && cards.length!==5){ toast("Must play exactly 5 cards."); return; }
 
     if(game.boss.noFace){
       if(cards.some(c=>["J","Q","K"].includes(c.rank))){
@@ -1202,7 +1311,7 @@
     if(game.boss.suitDemand){
       const suit = game.boss.demandSuit;
       const need = game.boss.demandCount||3;
-      const have = cards.filter(c=>c.suit===suit).length;
+      const have = cards.filter(c=>c.suit===suit || c.wild).length;
       if(have < need){
         const sym = SUITS.find(x=>x.k===suit)?.sym || suit;
         toast(`Boss: Need ≥${need} of ${sym}.`);
@@ -1220,6 +1329,8 @@
     const cardChips = cards.reduce((a,c)=>a + (c.baseChip + c.bonusChip), 0);
 
     const ctx = { handName:h.name, cards, addChips:0, addMult:0, mulMult:1, onAfter:[], onPayout:[] };
+    ctx.addChips += cards.reduce((a,c)=>a + ((c.wax||0)*3), 0);
+    ctx.addMult += cards.reduce((a,c)=>a + (c.crowned?1:0), 0);
 
     for(const j of [...game.jokers, ...game.jesters]){
       try{ j.apply?.call(j, ctx); }catch(e){ console.warn("Apply error", j, e); }
@@ -1227,6 +1338,7 @@
 
     const chips = Math.max(0, baseChips + cardChips + ctx.addChips);
     const multAdd = Math.max(0, baseMult + ctx.addMult);
+    ctx.mulMult *= (game.perma.nextHandMult||1);
     const mult = multAdd * ctx.mulMult;
     let gained = chips * mult;
 
@@ -1235,11 +1347,18 @@
     }
 
     game.blindScore += gained;
+    game.perma.nextHandMult = 1;
     game.handsLeft -= 1;
 
     const set = new Set(cards.map(c=>c.id));
     game.hand = game.hand.filter(c=>!set.has(c.id));
-    for(const c of cards) game.discard.push(c);
+    for(const c of cards){
+      if(c.glass && Math.random()<0.10){
+        toast(`💥 ${c.rank}${c.suitSym} shattered!`);
+      } else {
+        game.discard.push(c);
+      }
+    }
     game.sel.clear();
     drawToHand();
 
@@ -1398,6 +1517,10 @@
     const nextT = roundTypeFor(nextR);
     const nextTarget = targetForRound(nextR, nextT);
     $("nextGoalLine").textContent = `Next Goal: Round ${nextR} ${nextT} target ${fmt(nextTarget)}`;
+    if(game.perma.previewBoss && nextT==="Boss"){
+      const br = pickBossRuleForRound(game.seed, nextR);
+      $("nextGoalLine").textContent += ` • Preview: ${br.name}`;
+    }
 
     const canFinish = (game.mode==="play" && game.blindScore >= game.target);
     $("btnFinish").disabled = !canFinish;
@@ -1445,7 +1568,7 @@
         <div><span class="rank">${c.rank}</span><span class="suit">${c.suitSym}</span></div>
         <div class="chips">
           <span>🟦 ${c.baseChip + c.bonusChip}</span>
-          <span style="opacity:.85">${c.suit}</span>
+          <span style="opacity:.85">${c.wild ? "WILD" : c.suit}${c.crowned?" 👑":""}${c.glass?" 🧪":""}${(c.wax||0)?` 🕯${c.wax}`:""}</span>
         </div>
       `;
 
@@ -1479,6 +1602,79 @@
           game.discard.push({ ...c, id:`dup_${Math.random().toString(16).slice(2)}` });
           game.pendingUse = null;
           toast("Card duplicated into discard.");
+          return;
+        }
+
+        if(game.pendingUse?.type==="waxSeal"){
+          c.wax = (c.wax||0)+1;
+          c.bonusChip += 3;
+          game.pendingUse = null;
+          toast("Wax Seal applied.");
+          renderHand();
+          return;
+        }
+        if(game.pendingUse?.type==="swapSuit"){
+          if(!game.pendingUse.a){
+            game.pendingUse.a = c.id;
+            game.pendingUse.step = 1;
+            toast("Pick second card.");
+          } else if(game.pendingUse.a!==c.id){
+            const a = game.hand.find(x=>x.id===game.pendingUse.a);
+            if(a){
+              const sa={suit:a.suit,suitSym:a.suitSym,red:a.red};
+              a.suit=c.suit; a.suitSym=c.suitSym; a.red=c.red;
+              c.suit=sa.suit; c.suitSym=sa.suitSym; c.red=sa.red;
+            }
+            game.pendingUse = null;
+            toast("Suits swapped.");
+          }
+          renderHand();
+          return;
+        }
+        if(game.pendingUse?.type==="sharpen"){
+          c.bonusChip += 12;
+          game.pendingUse = null;
+          toast("Sharpen applied (+12 chips).");
+          renderHand();
+          return;
+        }
+        if(game.pendingUse?.type==="wildSuit"){
+          c.wild = true;
+          game.pendingUse = null;
+          toast("Card is now WILD suit.");
+          renderHand();
+          return;
+        }
+        if(game.pendingUse?.type==="glassCoat"){
+          c.glass = true;
+          c.bonusChip += 25;
+          game.pendingUse = null;
+          toast("Glass Coat applied.");
+          renderHand();
+          return;
+        }
+        if(game.pendingUse?.type==="crown"){
+          c.crowned = true;
+          game.pendingUse = null;
+          toast("Card crowned.");
+          renderHand();
+          return;
+        }
+        if(game.pendingUse?.type==="burnForCash"){
+          game.hand = game.hand.filter(x=>x.id!==c.id);
+          game.money += 6;
+          game.pendingUse = null;
+          toast("Card burned for $6.");
+          renderAll();
+          return;
+        }
+        if(game.pendingUse?.type==="dupIntoHand"){
+          const clone = { ...c, id:`dup_${Math.random().toString(16).slice(2)}` };
+          if(game.hand.length < currentHandSize()) game.hand.push(clone);
+          else game.discard.push(clone);
+          game.pendingUse = null;
+          toast("Card duplicated.");
+          renderAll();
           return;
         }
 
@@ -1627,10 +1823,10 @@
     ol.innerHTML = "";
 
     const owned = [];
-    game.jokers.forEach(j=>owned.push({ name:j.name, desc:j.desc, sell:Math.max(1, Math.floor((j.cost||6)*0.5)), act:()=>sellJoker(j.jid) }));
-    game.jesters.forEach(j=>owned.push({ name:"🃏 "+j.name, desc:j.desc, sell:Math.max(1, Math.floor((j.cost||8)*0.5)), act:()=>sellJester(j.jid) }));
-    game.vouchers.forEach(v=>owned.push({ name:v.name, desc:v.desc, sell:Math.max(1, Math.floor((v.cost||6)*0.5)), act:()=>sellVoucher(v.vid) }));
-    game.cons.forEach((c,idx)=>owned.push({ name:c.name, desc:c.desc, sell:Math.max(1, Math.floor((c.cost||4)*0.5)), act:()=>sellConsumable(idx) }));
+    game.jokers.forEach(j=>owned.push({ name:j.name, desc:j.desc, sell:sellValue(j.cost,6), act:()=>sellJoker(j.jid) }));
+    game.jesters.forEach(j=>owned.push({ name:"🃏 "+j.name, desc:j.desc, sell:sellValue(j.cost,8), act:()=>sellJester(j.jid) }));
+    game.vouchers.forEach(v=>owned.push({ name:v.name, desc:v.desc, sell:sellValue(v.cost,6), act:()=>sellVoucher(v.vid) }));
+    game.cons.forEach((c,idx)=>owned.push({ name:c.name, desc:c.desc, sell:sellValue(c.cost,4), act:()=>sellConsumable(idx) }));
 
     if(!owned.length){
       ol.innerHTML = `<div class="item"><div class="itemMeta">No owned items to sell.</div></div>`;
@@ -1724,6 +1920,31 @@
     showHow();
   }
 
+
+  function openHandTypePickerChip(chips){
+    openHandTypePickerCustom(`Pick a hand type (+${chips} chips)`, k=>{ handUp[k].chips += chips; toast(`Upgraded ${k}: +${chips} chips`); });
+  }
+  function openHandTypePickerMult(mult){
+    openHandTypePickerCustom(`Pick a hand type (+${mult} mult)`, k=>{ handUp[k].mult += mult; toast(`Upgraded ${k}: +${mult} mult`); });
+  }
+  function openHandTypePickerBoth(chips, mult){
+    openHandTypePickerCustom(`Pick a hand type (+${chips} chips, +${mult} mult)`, k=>{ handUp[k].chips += chips; handUp[k].mult += mult; toast(`Upgraded ${k}: +${chips} chips, +${mult} mult`); });
+  }
+  function openHandTypePickerCustom(title, onPick){
+    const back = $("howBack");
+    const modal = back.querySelector(".modal");
+    const ph = modal.querySelector(".ph h2");
+    const oldTitle = ph.textContent;
+    ph.textContent = title;
+    const content = $("howContent");
+    const original = content.innerHTML;
+    const items = HAND_KEYS.map(k => `<button class="btn mini primary" data-hand="${k}" style="width:100%; text-align:left; margin-bottom:8px;">${k}</button>`).join("");
+    content.innerHTML = `<div class="item"><div class="itemName">Choose one</div><div class="sep"></div>${items}<div class="row"><button class="btn mini" id="btnCancelPick2">Cancel</button></div></div>`;
+    function cleanup(){ content.innerHTML = original; ph.textContent = oldTitle; hideHow(); }
+    content.querySelectorAll("button[data-hand]").forEach(btn=>btn.addEventListener("click", ()=>{ onPick(btn.getAttribute("data-hand")); renderAll(); cleanup(); }));
+    content.querySelector("#btnCancelPick2").addEventListener("click", ()=>{ toast("Cancelled."); cleanup(); });
+    showHow();
+  }
   // ---------------------------
   // Options UI
   // ---------------------------
