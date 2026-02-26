@@ -1056,6 +1056,31 @@
     return 0.10 + d.tier*0.12 + (d.role==='arc'?0.03:0) + (d.role==='cav'?0.06:0) + (d.role==='sup'?0.04:0);
   }
 
+  function reinforceEnemyArmyParty(party){
+    if(!party || !party.alive || party.factionId==='player') return;
+    const playerCount = Math.max(1, armySize(state.player));
+    const enemyCount = Math.max(1, party.size || (party.comp?.length||1));
+    const ratio = playerCount / enemyCount;
+    let growthMul = 1.0;
+    if(ratio > 1.2) growthMul = 1.28 + Math.min(0.42, (ratio-1.2)*0.18);
+    else if(ratio < 0.75) growthMul = 0.72 + Math.max(0, (ratio/0.75)*0.16);
+
+    const baseGrowth = 1 + Math.floor(state.map.day*0.025 + state.map.threat*0.22);
+    const addCount = Math.max(1, Math.round(baseGrowth * growthMul));
+    const hardCap = clamp(88 + Math.floor(state.map.day*1.4) + Math.floor(state.map.threat*5), 88, 220);
+    const room = Math.max(0, hardCap - enemyCount);
+    const finalAdds = Math.min(addCount, room);
+    if(finalAdds<=0) return;
+
+    const reinforcements = makePartyComp(
+      party.kind||'army',
+      finalAdds,
+      { threat:state.map.threat, day:state.map.day, factionId:party.factionId, isElite:!!party.isKing }
+    );
+    party.comp = [...(party.comp||[]), ...reinforcements];
+    party.size = (party.comp||[]).length;
+  }
+
   function onNewDay(){
     const p = state.player;
     state.map.totalDays = state.map.day;
@@ -1100,6 +1125,12 @@
     p.morale = clamp(p.morale,0,100);
     p.influence += Math.floor((p.renown||0)/25);
     for(const f of FACTIONS){ const d=state.diplomacy[f.id]; d.hostility = Math.max(0,(d.hostility||0)-6); }
+
+    for(const party of state.map.parties){
+      if(!party.alive || party.factionId==='player') continue;
+      if(party.kind==='army' || party.kind==='patrol' || party.kind==='vassal') reinforceEnemyArmyParty(party);
+    }
+
     ensureFactionState();
     if(state.map.day % 7 === 0){
       for(const f of FACTIONS){
@@ -1478,7 +1509,7 @@
           const shieldTag = d.shield ? ' • 🛡 Shield' : '';
           const weaponFlavor = d.role==='arc' ? (d.projKind==='bolt'?' • Crossbow':' • Bow') : (d.range>=2.3?' • Pike':'');
           return `<div class="item">
-            <div class="meta"><b>${d.name}</b><div class="tag">${d.role==='inf'?'Infantry':'Archers'} • Tier ${d.tier}${shieldTag}${weaponFlavor}</div></div>
+            <div class="meta"><b>${d.name}</b><div class="tag">${d.role==='inf'?'Infantry':(d.role==='arc'?'Archers':(d.role==='cav'?'Cavalry':'Support'))} • Tier ${d.tier}${shieldTag}${weaponFlavor}</div></div>
             <div class="mono">x${qty}</div>
           </div>`;
         }).join('') : `<div class="small">No active troops.</div>`}
@@ -3837,16 +3868,29 @@
       const canMove = (u.atk.state==='idle' || u.atk.state==='cooldown' || (u.role==='cav' && UNIT_DB[u.unitKey]?.kiteCircle));
       if(canMove){
         if(u.role==='cav' && UNIT_DB[u.unitKey]?.kiteCircle && tgt){
-          const desired = 5.4 + ((u._circleBias=u._circleBias||rand(-0.8,0.8))||0);
+          const desired = 5.1 + ((u._circleBias=u._circleBias||rand(-0.8,0.8))||0);
           if(!u._circleDir) u._circleDir = Math.random()<0.5 ? -1 : 1;
-          if(Math.random()<0.004) u._circleDir *= -1;
+          if(Math.random()<0.006) u._circleDir *= -1;
+          const meleePack = targets.filter(t=>t.alive && t.kind==='troop' && (t.role==='inf' || t.role==='sup'));
+          let centerX = tgt.x, centerY = tgt.y;
+          if(meleePack.length){
+            let sx=0, sy=0;
+            for(const m of meleePack){ sx+=m.x; sy+=m.y; }
+            centerX = sx/meleePack.length;
+            centerY = sy/meleePack.length;
+          }
+          const toCenterX = centerX - u.x;
+          const toCenterY = centerY - u.y;
+          const centerDist = Math.hypot(toCenterX, toCenterY)||1;
           const radialX = (u.x - tgt.x)/(d||1), radialY=(u.y - tgt.y)/(d||1);
           const tanX = -radialY*u._circleDir, tanY = radialX*u._circleDir;
-          const radiusErr = clamp((d-desired)*0.55,-1.2,1.2);
-          const mx = tanX - radialX*radiusErr;
-          const my = tanY - radialY*radiusErr;
+          const radiusErr = clamp((d-desired)*0.62,-1.35,1.35);
+          const closePressure = clamp((7.2-centerDist)/7.2,0,1) * 0.85;
+          const mx = tanX - radialX*radiusErr + (toCenterX/centerDist)*closePressure;
+          const my = tanY - radialY*radiusErr + (toCenterY/centerDist)*closePressure;
           const ll = Math.hypot(mx,my)||1;
-          u.vx = (mx/ll)*u.spd; u.vy=(my/ll)*u.spd;
+          u.vx = (mx/ll)*u.spd;
+          u.vy = (my/ll)*u.spd;
         } else if(u.order==='hold' || u.order==='rally'){
           const hp = u.holdPos;
           if(hp){
@@ -3932,7 +3976,7 @@
 
     for(const u of b.allies){
       if(!u._isPlayerArmy) continue;
-      if(u.alive) survivors.push({ ...(b.playerArmySnapshot.find(x=>x.id===u.unitId) || makeUnitInstance(u.unitKey)), baseUnit:u.unitKey, xp:(u.xp||0), rank:clamp(u.rank||0,0,2), squadId:u.squadId||null });
+      if(u.alive) survivors.push({ ...(b.playerArmySnapshot.find(x=>x.id===u.unitId) || makeUnitInstance(u.unitKey)), baseUnit:u.unitKey, xp:(u.xp||0), rank:clamp(u.rank||0,0,2), squadId:u.squadId||null, name:(b.playerArmySnapshot.find(x=>x.id===u.unitId)?.name || null) });
       else if(u.diedThisBattle){
         if(Math.random()<WOUNDED_CHANCE) woundedAdds.push(u.unitKey);
       }
