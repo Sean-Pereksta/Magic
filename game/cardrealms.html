@@ -1,0 +1,2351 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <title>Star Realms (Unofficial) — Solo + Gauntlet Deckbuilder</title>
+  <style>
+  :root{
+    /* ===== Core palette ===== */
+    --bg0:#070a12;
+    --bg1:#0b1326;
+
+    --panel:rgba(255,255,255,.055);
+    --panel2:rgba(255,255,255,.085);
+    --line:rgba(255,255,255,.12);
+    --line2:rgba(255,255,255,.08);
+
+    --ink:#f4f7ff;
+    --muted:rgba(244,247,255,.70);
+    --muted2:rgba(244,247,255,.52);
+
+    --bad:#ff5d6c;
+    --good:#66ffb2;
+    --warn:#ffd166;
+
+    /* ===== Factions ===== */
+    --tf:#56d3ff;     /* Trade Federation */
+    --blob:#7CFF5B;   /* Blob */
+    --se:#ff6ad5;     /* Star Empire */
+    --mc:#b7a6ff;     /* Machine Cult */
+    --sd:#ffd36a;     /* Solar Dominion */
+    --vs:#7a5cff;     /* Void Syndicate */
+    --neut:#cfd6ff;
+
+    /* ===== Layout ===== */
+    --gap:10px;
+    --r12:12px;
+    --r14:14px;
+    --r16:16px;
+
+    /* ===== Shadows ===== */
+    --shadow1: 0 12px 30px rgba(0,0,0,.35);
+    --shadow2: 0 16px 40px rgba(0,0,0,.40);
+    --shadow3: 0 40px 120px rgba(0,0,0,.65);
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ height:auto; margin:0; }
+  body{
+    background:
+      radial-gradient(1200px 700px at 30% -10%, rgba(26,42,99,.90) 0%, rgba(0,0,0,0) 55%),
+      radial-gradient(1000px 700px at 90% 0%, rgba(45,18,64,.85) 0%, rgba(0,0,0,0) 55%),
+      radial-gradient(900px 600px at 15% 110%, rgba(20,120,255,.10) 0%, rgba(0,0,0,0) 55%),
+      linear-gradient(180deg,var(--bg1),var(--bg0));
+    color:var(--ink);
+    font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial;
+    overflow-y:auto;         /* ✅ page scroll */
+    overflow-x:hidden;
+  }
+
+  /* ===== App frame ===== */
+  #app{
+    min-height:100vh;
+    display:grid;
+    grid-template-rows:auto auto 1fr;
+    gap:var(--gap);
+    padding:var(--gap);
+    max-width:1500px;
+    margin:0 auto;
+  }
+
+  /* ===== Top pills ===== */
+  .topbar{
+    display:flex;
+    gap:var(--gap);
+    align-items:stretch;
+    justify-content:space-between;
+    flex-wrap:wrap;
+  }
+  .pill{
+    background:linear-gradient(180deg,var(--panel2),var(--panel));
+    border:1px solid var(--line);
+    border-radius:var(--r14);
+    padding:10px 12px;
+    box-shadow:var(--shadow2);
+    min-width:280px;
+    flex:1 1 320px;
+    position:relative;
+    overflow:hidden;
+  }
+  .pill::before{
+    content:"";
+    position:absolute;
+    inset:-80px -80px auto auto;
+    width:220px; height:220px;
+    border-radius:50%;
+    background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.12), transparent 60%);
+    opacity:.55;
+    pointer-events:none;
+  }
+  .pill h3{
+    margin:0 0 6px 0;
+    font-size:14px;
+    letter-spacing:.2px;
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  .sub{ color:var(--muted); font-size:12px; line-height:1.25; }
+  .hint{ font-size:12px; color:var(--muted); margin-top:6px; line-height:1.25; }
+
+  /* ===== Main grid ===== */
+  .row{
+    display:grid;
+    grid-template-columns: 330px 1fr 340px;
+    gap:var(--gap);
+    align-items:start;
+  }
+  .center{
+    display:grid;
+    grid-template-rows:auto auto auto;
+    gap:var(--gap);
+    min-width:0;
+  }
+
+  /* ===== Panels / sidebars ===== */
+  .panel, .side{
+    background:linear-gradient(180deg,var(--panel2),var(--panel));
+    border:1px solid var(--line);
+    border-radius:var(--r16);
+    padding:10px;
+    box-shadow:var(--shadow2);
+    position:relative;
+    overflow:hidden;
+  }
+  .panel::before, .side::before{
+    content:"";
+    position:absolute;
+    inset:0;
+    background:
+      radial-gradient(600px 280px at 10% 0%, rgba(255,255,255,.06), transparent 60%),
+      radial-gradient(520px 260px at 100% 30%, rgba(255,255,255,.04), transparent 55%);
+    pointer-events:none;
+    opacity:.9;
+  }
+  .panel > *, .side > *{ position:relative; z-index:1; }
+
+  .side{
+    overflow:auto;
+    max-height:calc(100vh - 260px); /* keeps sidebars usable on tall layouts */
+  }
+
+  /* ===== HUD ===== */
+  .hud{
+    display:flex;
+    gap:var(--gap);
+    flex-wrap:wrap;
+    align-items:center;
+    justify-content:space-between;
+  }
+  .statline{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+
+  .chip{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:8px 10px;
+    border-radius:999px;
+    border:1px solid var(--line);
+    background:rgba(0,0,0,.20);
+    font-size:12px;
+    user-select:none;
+    white-space:nowrap;
+    backdrop-filter: blur(6px);
+  }
+  .chip strong{ font-size:13px; }
+
+  /* ===== Buttons ===== */
+  .btn{
+    pointer-events:auto;
+    background:linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.06));
+    border:1px solid var(--line);
+    color:var(--ink);
+    padding:9px 12px;
+    border-radius:var(--r12);
+    cursor:pointer;
+    font-weight:650;
+    letter-spacing:.2px;
+    transition: transform .08s ease, filter .08s ease, box-shadow .12s ease;
+    user-select:none;
+    white-space:nowrap;
+    box-shadow: 0 10px 20px rgba(0,0,0,.18);
+  }
+  .btn:hover{ filter:brightness(1.08); }
+  .btn:active{ transform:translateY(1px); }
+  .btn:disabled{ opacity:.45; cursor:not-allowed; box-shadow:none; }
+
+  .btn.warn{ border-color:rgba(255,209,102,.35); }
+  .btn.bad{ border-color:rgba(255,93,108,.40); }
+  .btn.good{ border-color:rgba(102,255,178,.35); }
+
+  /* ===== Toggle ===== */
+  .toggle{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:8px 10px;
+    border-radius:999px;
+    border:1px solid var(--line);
+    background:rgba(0,0,0,.20);
+    font-size:12px;
+    user-select:none;
+    cursor:pointer;
+    backdrop-filter: blur(6px);
+  }
+  .toggle input{ transform:translateY(1px); }
+
+  /* ===== Section headers ===== */
+  .sectionTitle{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin:0 0 8px 0;
+    font-size:13px;
+    color:var(--muted);
+    letter-spacing:.25px;
+    user-select:none;
+  }
+
+  /* ===== Cards grid ===== */
+  .cards{ display:flex; gap:10px; flex-wrap:wrap; }
+
+  .card{
+    width:150px;
+    border-radius:var(--r14);
+    border:1px solid var(--line);
+    background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.05));
+    padding:10px;
+    position:relative;
+    box-shadow:var(--shadow1);
+    user-select:none;
+    cursor:pointer;
+    transition: transform .08s ease, filter .08s ease;
+    overflow:hidden;
+  }
+  .card:hover{ filter:brightness(1.06); }
+  .card:active{ transform:translateY(1px); }
+  .card.disabled{ opacity:.45; cursor:not-allowed; }
+
+  .card .cost{
+    position:absolute; top:8px; left:8px;
+    width:28px; height:28px; border-radius:999px;
+    display:grid; place-items:center;
+    background:rgba(0,0,0,.45);
+    border:1px solid rgba(255,255,255,.18);
+    font-weight:800;
+    font-size:13px;
+    backdrop-filter: blur(8px);
+  }
+
+  .card .type{
+    position:absolute; top:8px; right:8px;
+    font-size:11px;
+    color:var(--muted);
+    background:rgba(0,0,0,.25);
+    border:1px solid rgba(255,255,255,.14);
+    padding:4px 8px;
+    border-radius:999px;
+    backdrop-filter: blur(8px);
+  }
+
+  .name{ margin-top:26px; font-weight:900; letter-spacing:.2px; font-size:13px; }
+  .factionTag{
+    margin-top:4px;
+    font-size:11px;
+    color:var(--muted);
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+
+  .iconRow{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  .ico{
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:11px;
+    background:rgba(0,0,0,.25);
+    border:1px solid rgba(255,255,255,.12);
+    padding:4px 8px;
+    border-radius:999px;
+    backdrop-filter: blur(6px);
+  }
+
+  .text{
+    margin-top:8px;
+    font-size:11px;
+    color:rgba(244,247,255,.78);
+    line-height:1.25;
+    min-height:48px;
+    white-space:pre-line;
+  }
+
+  .card .scrapBtn{
+    pointer-events:auto;
+    margin-top:8px;
+    width:100%;
+    text-align:center;
+    font-size:11px;
+    padding:7px 8px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,.16);
+    background:rgba(0,0,0,.25);
+    cursor:pointer;
+  }
+  .card .scrapBtn:hover{ filter:brightness(1.06); }
+
+  /* ===== Faction glow ===== */
+  .tf{   border-color:rgba(86,211,255,.35);   box-shadow: 0 12px 30px rgba(86,211,255,.10), 0 12px 30px rgba(0,0,0,.35); }
+  .blob{ border-color:rgba(124,255,91,.35);  box-shadow: 0 12px 30px rgba(124,255,91,.10), 0 12px 30px rgba(0,0,0,.35); }
+  .se{   border-color:rgba(255,106,213,.35); box-shadow: 0 12px 30px rgba(255,106,213,.10), 0 12px 30px rgba(0,0,0,.35); }
+  .mc{   border-color:rgba(183,166,255,.35); box-shadow: 0 12px 30px rgba(183,166,255,.10), 0 12px 30px rgba(0,0,0,.35); }
+  .sd{   border-color:rgba(255,211,106,.35); box-shadow: 0 12px 30px rgba(255,211,106,.10), 0 12px 30px rgba(0,0,0,.35); }
+  .vs{   border-color:rgba(122,92,255,.35);  box-shadow: 0 12px 30px rgba(122,92,255,.10), 0 12px 30px rgba(0,0,0,.35); }
+
+  /* ===== Base badge + targeting ===== */
+  .baseBadge{
+    position:absolute; bottom:10px; right:10px;
+    font-size:11px;
+    padding:4px 8px;
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,.14);
+    background:rgba(0,0,0,.28);
+    color:var(--muted);
+    backdrop-filter: blur(8px);
+  }
+  .targetable{ outline:2px dashed rgba(255,255,255,.25); outline-offset:2px; }
+  .outpostGlow{ box-shadow:0 0 0 2px rgba(255,209,102,.35), 0 20px 40px rgba(255,209,102,.10); }
+
+  /* ===== Log ===== */
+  #log{ font-size:12px; line-height:1.25; color:rgba(244,247,255,.85); }
+  #log .entry{ padding:6px 0; border-bottom:1px solid rgba(255,255,255,.08); }
+  #log .muted{ color:var(--muted); }
+
+  /* ===== Hand scroller ===== */
+  .handWrap{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    max-height:310px;
+    overflow:auto;
+    padding:6px;
+    border-radius:var(--r14);
+    border:1px dashed rgba(255,255,255,.10);
+    background:rgba(0,0,0,.12);
+  }
+
+  /* ===== Modal / Overlay ===== */
+  #modal{
+    position:fixed;
+    inset:0;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    background:rgba(0,0,0,.62);
+    z-index:9999;
+    padding:16px;
+  }
+  #modal .box{
+    width:min(980px, 96vw);
+    max-height:84vh;
+    overflow:auto;
+    border-radius:var(--r16);
+    border:1px solid rgba(255,255,255,.14);
+    background:linear-gradient(180deg, rgba(20,26,46,.98), rgba(12,14,22,.98));
+    box-shadow:var(--shadow3);
+    padding:14px;
+  }
+  #modal h2{ margin:0 0 6px 0; font-size:16px; }
+  #modal p{ margin:0 0 12px 0; color:var(--muted); font-size:12px; }
+  #modal .actions{
+    display:flex;
+    gap:10px;
+    justify-content:flex-end;
+    margin-top:10px;
+    flex-wrap:wrap;
+  }
+
+  /* ===== Mini buttons ===== */
+  .miniBtns{ display:flex; gap:8px; flex-wrap:wrap; }
+  .miniBtn{
+    padding:7px 10px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,.14);
+    background:rgba(0,0,0,.22);
+    cursor:pointer;
+    font-weight:650;
+    font-size:12px;
+    user-select:none;
+    transition: filter .08s ease, transform .08s ease;
+  }
+  .miniBtn:hover{ filter:brightness(1.08); }
+  .miniBtn:active{ transform:translateY(1px); }
+
+  /* ===== Responsive ===== */
+  @media (max-width: 1100px){
+    .row{ grid-template-columns: 1fr; }
+    .side{ max-height:none; }
+    .card{ width:146px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div class="topbar">
+    <div class="pill">
+      <h3><span>Opponent (AI)</span> <span id="turnBadge" class="sub">—</span></h3>
+      <div class="sub" id="enemyLine">Authority: —</div>
+      <div class="sub" id="enemyPiles">Deck: — • Discard: — • Scrap: —</div>
+      <div class="sub" id="enemyOutpostHint">Outposts: —</div>
+      <div class="hint" id="aiPowerLine">AI Power: —</div>
+    </div>
+
+    <div class="pill">
+      <h3>
+        <span>Star Realms (Unofficial)</span>
+        <span class="sub" id="modeLine">Mode: —</span>
+      </h3>
+      <div class="sub">
+        Play ships & bases → generate <b>Trade</b> (💠) and <b>Combat</b> (⚔️). Spend trade to buy, spend combat to destroy bases or hit authority.
+      </div>
+      <div class="sub">
+        Rule: If opponent has any <b>Outposts</b>, you must destroy them before attacking authority.
+      </div>
+      <div class="hint" id="gauntletLine">—</div>
+    </div>
+
+    <div class="pill">
+      <h3><span>You</span> <span class="sub" id="phaseLine">—</span></h3>
+      <div class="sub" id="youLine">Authority: —</div>
+      <div class="sub" id="youPiles">Deck: — • Discard: — • Scrap: —</div>
+      <div class="miniBtns" style="margin-top:8px;">
+        <div class="miniBtn" id="viewDeckBtn">View Deck</div>
+        <div class="miniBtn" id="viewDiscardBtn">View Discard</div>
+        <div class="miniBtn" id="viewScrapBtn">View Scrap</div>
+      </div>
+      <div class="hint">Ally abilities trigger when you’ve played <b>2+</b> cards of that faction this turn (bases can trigger each of your turns).</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="hud">
+      <div class="statline">
+        <div class="chip">💠 Trade: <strong id="tradeVal">0</strong></div>
+        <div class="chip">⚔️ Combat: <strong id="combatVal">0</strong></div>
+        <div class="chip">❤️ Authority: <strong id="myAuthVal">50</strong></div>
+        <label class="toggle" title="When ON, your turn will automatically play all cards (bases first).">
+          <input type="checkbox" id="autoplayToggle">
+          Autoplay Ships
+        </label>
+      </div>
+      <div class="statline">
+        <button class="btn" id="playAllBtn">Play All</button>
+        <button class="btn warn" id="buyExplorerBtn">Buy Explorer (2)</button>
+        <button class="btn bad" id="attackAuthorityBtn">⚔️ Attack Opponent Authority</button>
+        <button class="btn good" id="endTurnBtn">End Turn</button>
+        <button class="btn bad" id="newDuelBtn">New Duel</button>
+        <button class="btn warn" id="startGauntletBtn">Start Gauntlet</button>
+      </div>
+    </div>
+    <div class="hint" id="statusLine">—</div>
+  </div>
+
+  <div class="row">
+    <div class="side">
+      <div class="sectionTitle">Opponent Bases</div>
+      <div class="cards" id="enemyBases"></div>
+      <div class="hint">Click a base/outpost to spend your combat on it (on your turn).</div>
+    </div>
+
+    <div class="center">
+      <div class="panel">
+        <div class="sectionTitle">
+          <span>Trade Row</span>
+          <span class="sub" id="tradeDeckLine">Trade Deck: —</span>
+        </div>
+        <div class="cards" id="tradeRow"></div>
+        <div class="hint">Click a card to buy it (if you can afford it). Purchased cards go to your discard pile.</div>
+      </div>
+
+      <div class="panel">
+        <div class="sectionTitle">
+          <span>Your Bases (persist)</span>
+          <span class="sub">Ally triggers can happen each of your turns</span>
+        </div>
+        <div class="cards" id="myBases"></div>
+      </div>
+
+      <div class="panel">
+        <div class="sectionTitle">
+          <span>Your Hand</span>
+          <span class="sub">Click to play • Ships discard at end</span>
+        </div>
+        <div class="handWrap" id="hand"></div>
+
+        <div class="sectionTitle" style="margin-top:10px;">
+          <span>In Play (ships this turn)</span>
+          <span class="sub">Scrap buttons are optional</span>
+        </div>
+        <div class="cards" id="inPlay"></div>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="sectionTitle">Game Log</div>
+      <div id="log"></div>
+      <div class="hint" style="margin-top:10px;">
+        Added factions:
+        <br>☀️ <b>Solar Dominion</b> — convert tempo into pressure (combat/trade/hp mix).
+        <br>🕳️ <b>Void Syndicate</b> — disrupt draws + hand pressure.
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Modal -->
+<div id="modal">
+  <div class="box">
+    <h2 id="modalTitle">—</h2>
+    <p id="modalText">—</p>
+    <div class="cards" id="modalCards"></div>
+    <div class="actions">
+      <button class="btn" id="modalCancel">Cancel</button>
+      <button class="btn good" id="modalConfirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   STAR REALMS (UnoffICIAL) — SINGLE FILE, FULLY PLAYABLE
+   ✅ Scrollable screen (no overflow lock)
+   ✅ Solo mode vs AI (default)
+   ✅ Gauntlet: escalating AI power across stages
+   ✅ Deck viewer (Deck/Discard/Scrap)
+   ✅ Autoplay ships toggle
+   ✅ Expanded card pool for all factions
+   ============================================================ */
+
+const FACTIONS = {
+  tf: { key:"tf", name:"Trade Federation", color:"var(--tf)", icon:"🟦" },
+  blob:{ key:"blob", name:"Blob",            color:"var(--blob)",icon:"🟩" },
+  se:  { key:"se",   name:"Star Empire",     color:"var(--se)",  icon:"🟥" },
+  mc:  { key:"mc",   name:"Machine Cult",    color:"var(--mc)",  icon:"🟪" },
+  sd:  { key:"sd",   name:"Solar Dominion",  color:"var(--sd)",  icon:"☀️" },
+  vs:  { key:"vs",   name:"Void Syndicate",  color:"var(--vs)",  icon:"🕳️" },
+  n:   { key:"n",    name:"Neutral",         color:"var(--neut)", icon:"⚙️" }
+};
+
+const ICON = { trade:"💠", combat:"⚔️", auth:"❤️", draw:"🃏", discard:"🗑️", scrap:"♻️" };
+
+/* ---------------------------
+   Card templates.
+----------------------------*/
+function C({
+  key, name, cost, faction="n", type="ship",
+  outpost=false, defense=0,
+  play=[], ally=[], scrap=[], text=""
+}){ return { key, name, cost, faction, type, outpost, defense, play, ally, scrap, text }; }
+
+const TEMPLATES = [
+  // ===== Neutral / Core =====
+  C({ key:"scout", name:"Scout", cost:0, faction:"n",
+      play:[{t:"trade",n:1}],
+      text:`Gain ${ICON.trade}1.` }),
+  C({ key:"viper", name:"Viper", cost:0, faction:"n",
+      play:[{t:"combat",n:1}],
+      text:`Gain ${ICON.combat}1.` }),
+  C({ key:"explorer", name:"Explorer", cost:2, faction:"n",
+      play:[{t:"trade",n:2}],
+      scrap:[{t:"combat",n:2}],
+      text:`Gain ${ICON.trade}2.\nScrap: gain ${ICON.combat}2.` }),
+  C({ key:"freighter", name:"Free Freighter", cost:3, faction:"n",
+      play:[{t:"trade",n:3}],
+      text:`Gain ${ICON.trade}3.` }),
+  C({ key:"gunship", name:"Merc Gunship", cost:3, faction:"n",
+      play:[{t:"combat",n:3}],
+      text:`Gain ${ICON.combat}3.` }),
+  C({ key:"relay", name:"Supply Relay", cost:4, faction:"n", type:"base", defense:5, outpost:false,
+      play:[{t:"trade",n:1}],
+      text:`Base (5).\nEach turn: gain ${ICON.trade}1.` }),
+
+  // ===== Trade Federation (tf) =====
+  C({ key:"tf_courier", name:"Federation Courier", cost:3, faction:"tf",
+      play:[{t:"trade",n:2}],
+      ally:[{t:"authority",n:3}],
+      text:`Gain ${ICON.trade}2.\nAlly: gain ${ICON.auth}3.` }),
+  C({ key:"tf_union_tug", name:"Union Tug", cost:2, faction:"tf",
+      play:[{t:"trade",n:1},{t:"authority",n:2}],
+      ally:[{t:"trade",n:1}],
+      text:`Gain ${ICON.trade}1 and ${ICON.auth}2.\nAlly: gain ${ICON.trade}1.` }),
+  C({ key:"tf_medical", name:"Medical Skiff", cost:4, faction:"tf",
+      play:[{t:"trade",n:1},{t:"authority",n:4}],
+      ally:[{t:"draw",n:1}],
+      text:`Gain ${ICON.trade}1 and ${ICON.auth}4.\nAlly: draw 1.` }),
+  C({ key:"tf_patrol", name:"Patrol Frigate", cost:5, faction:"tf",
+      play:[{t:"combat",n:3},{t:"trade",n:1}],
+      ally:[{t:"authority",n:3}],
+      text:`Gain ${ICON.combat}3 and ${ICON.trade}1.\nAlly: gain ${ICON.auth}3.` }),
+  C({ key:"tf_convoy", name:"Trade Convoy", cost:5, faction:"tf",
+      play:[{t:"trade",n:3}],
+      scrap:[{t:"draw",n:1}],
+      text:`Gain ${ICON.trade}3.\nScrap: draw 1.` }),
+  C({ key:"tf_sanctuary", name:"Sanctuary Platform", cost:4, faction:"tf", type:"base", defense:5, outpost:true,
+      play:[{t:"authority",n:2}],
+      ally:[{t:"trade",n:1}],
+      text:`Outpost (5).\nEach turn: gain ${ICON.auth}2.\nAlly: gain ${ICON.trade}1.` }),
+  C({ key:"tf_hospital", name:"Hospital Outpost", cost:6, faction:"tf", type:"base", defense:8, outpost:true,
+      play:[{t:"authority",n:3}],
+      ally:[{t:"draw",n:1}],
+      text:`Outpost (8).\nEach turn: gain ${ICON.auth}3.\nAlly: draw 1.` }),
+  C({ key:"tf_embassy", name:"Embassy Station", cost:6, faction:"tf", type:"base", defense:7, outpost:false,
+      play:[{t:"trade",n:2}],
+      ally:[{t:"draw",n:1}],
+      text:`Base (7).\nEach turn: gain ${ICON.trade}2.\nAlly: draw 1.` }),
+  C({ key:"tf_peacekeeper", name:"Peacekeeper Cruiser", cost:7, faction:"tf",
+      play:[{t:"combat",n:4},{t:"authority",n:4}],
+      ally:[{t:"draw",n:1}],
+      text:`Gain ${ICON.combat}4 and ${ICON.auth}4.\nAlly: draw 1.` }),
+  C({ key:"tf_diplomat", name:"Diplomat Flagship", cost:8, faction:"tf",
+      play:[{t:"trade",n:3},{t:"authority",n:6}],
+      ally:[{t:"draw",n:1}],
+      text:`Gain ${ICON.trade}3 and ${ICON.auth}6.\nAlly: draw 1.` }),
+
+  // ===== Blob (blob) =====
+  C({ key:"blob_larva", name:"Blob Larva", cost:2, faction:"blob",
+      play:[{t:"combat",n:2}],
+      ally:[{t:"trade",n:1}],
+      text:`Gain ${ICON.combat}2.\nAlly: gain ${ICON.trade}1.` }),
+  C({ key:"blob_skitter", name:"Blob Skitter", cost:3, faction:"blob",
+      play:[{t:"combat",n:3}],
+      ally:[{t:"combat",n:2}],
+      text:`Gain ${ICON.combat}3.\nAlly: gain ${ICON.combat}2.` }),
+  C({ key:"blob_glider", name:"Gelatin Glider", cost:4, faction:"blob",
+      play:[{t:"combat",n:4}],
+      scrap:[{t:"trade",n:2}],
+      text:`Gain ${ICON.combat}4.\nScrap: gain ${ICON.trade}2.` }),
+  C({ key:"blob_spawner", name:"Spore Spawner", cost:5, faction:"blob",
+      play:[{t:"combat",n:4}],
+      ally:[{t:"draw",n:1}],
+      text:`Gain ${ICON.combat}4.\nAlly: draw 1.` }),
+  C({ key:"blob_acid", name:"Acid Barge", cost:5, faction:"blob",
+      play:[{t:"combat",n:5}],
+      scrap:[{t:"opp_discard",n:1}],
+      text:`Gain ${ICON.combat}5.\nScrap: opponent discards 1.` }),
+  C({ key:"blob_lair", name:"Blob Lair", cost:5, faction:"blob", type:"base", defense:6, outpost:true,
+      play:[{t:"combat",n:2}],
+      ally:[{t:"combat",n:2}],
+      text:`Outpost (6).\nEach turn: gain ${ICON.combat}2.\nAlly: gain ${ICON.combat}2.` }),
+  C({ key:"blob_feeder", name:"Feeder Nest", cost:4, faction:"blob", type:"base", defense:5, outpost:false,
+      play:[{t:"combat",n:1}],
+      ally:[{t:"draw",n:1}],
+      text:`Base (5).\nEach turn: gain ${ICON.combat}1.\nAlly: draw 1.` }),
+  C({ key:"blob_mangler", name:"Mangler Pod", cost:6, faction:"blob",
+      play:[{t:"combat",n:6}],
+      ally:[{t:"opp_discard",n:1}],
+      text:`Gain ${ICON.combat}6.\nAlly: opponent discards 1.` }),
+  C({ key:"blob_cannonbloom", name:"Cannon Bloom", cost:7, faction:"blob",
+      play:[{t:"combat",n:6}],
+      ally:[{t:"draw",n:1}],
+      text:`Gain ${ICON.combat}6.\nAlly: draw 1.` }),
+  C({ key:"blob_titan", name:"Blob Titan", cost:9, faction:"blob",
+      play:[{t:"combat",n:9}],
+      ally:[{t:"combat",n:4}],
+      text:`Gain ${ICON.combat}9.\nAlly: gain ${ICON.combat}4.` }),
+
+  // ===== Star Empire (se) =====
+  C({ key:"se_infiltrator", name:"Empire Infiltrator", cost:2, faction:"se",
+      play:[{t:"combat",n:1},{t:"opp_discard",n:1}],
+      text:`Gain ${ICON.combat}1.\nOpponent discards 1.` }),
+  C({ key:"se_interceptor", name:"Imperial Interceptor", cost:3, faction:"se",
+      play:[{t:"combat",n:2},{t:"opp_discard",n:1}],
+      text:`Gain ${ICON.combat}2.\nOpponent discards 1.` }),
+  C({ key:"se_raid", name:"Raid Corvette", cost:4, faction:"se",
+      play:[{t:"combat",n:4}],
+      ally:[{t:"opp_discard",n:1}],
+      text:`Gain ${ICON.combat}4.\nAlly: opponent discards 1.` }),
+  C({ key:"se_blockade", name:"Blockade Frigate", cost:5, faction:"se",
+      play:[{t:"combat",n:4},{t:"trade",n:1}],
+      ally:[{t:"opp_next_draw",n:-1}],
+      text:`Gain ${ICON.combat}4 and ${ICON.trade}1.\nAlly: opponent draws 1 fewer next turn.` }),
+  C({ key:"se_censor", name:"Censor Frigate", cost:6, faction:"se",
+      play:[{t:"combat",n:5},{t:"opp_next_draw",n:-1}],
+      ally:[{t:"opp_discard",n:1}],
+      text:`Gain ${ICON.combat}5.\nOpponent draws 1 fewer next turn.\nAlly: opponent discards 1.` }),
+  C({ key:"se_station", name:"Imperial Station", cost:4, faction:"se", type:"base", defense:5, outpost:false,
+      play:[{t:"combat",n:1}],
+      ally:[{t:"opp_discard",n:1}],
+      text:`Base (5).\nEach turn: gain ${ICON.combat}1.\nAlly: opponent discards 1.` }),
+  C({ key:"se_propaganda", name:"Propaganda Hub", cost:5, faction:"se", type:"base", defense:6, outpost:false,
+      play:[{t:"trade",n:1}],
+      ally:[{t:"opp_discard",n:1}],
+      text:`Base (6).\nEach turn: gain ${ICON.trade}1.\nAlly: opponent discards 1.` }),
+  C({ key:"se_checkpoint", name:"Checkpoint Array", cost:6, faction:"se", type:"base", defense:7, outpost:true,
+      play:[{t:"combat",n:2}],
+      ally:[{t:"opp_next_draw",n:-1}],
+      text:`Outpost (7).\nEach turn: gain ${ICON.combat}2.\nAlly: opponent draws 1 fewer next turn.` }),
+  C({ key:"se_vanguard", name:"Vanguard Carrier", cost:7, faction:"se",
+      play:[{t:"combat",n:6},{t:"draw",n:1}],
+      ally:[{t:"opp_discard",n:1}],
+      text:`Gain ${ICON.combat}6 and draw 1.\nAlly: opponent discards 1.` }),
+  C({ key:"se_dread", name:"Imperial Dreadship", cost:9, faction:"se",
+      play:[{t:"combat",n:7},{t:"opp_discard",n:1}],
+      ally:[{t:"opp_discard",n:1}],
+      text:`Gain ${ICON.combat}7.\nOpponent discards 1.\nAlly: opponent discards 1.` }),
+
+  // ===== Machine Cult (mc) =====
+  C({ key:"mc_junksiphon", name:"Junk Siphon", cost:2, faction:"mc",
+      play:[{t:"trade",n:1}],
+      ally:[{t:"scrap_discard",n:1}],
+      text:`Gain ${ICON.trade}1.\nAlly: scrap 1 from discard.` }),
+  C({ key:"mc_recycler", name:"Recycler Drone", cost:3, faction:"mc",
+      play:[{t:"trade",n:1}],
+      ally:[{t:"scrap_discard",n:1}],
+      text:`Gain ${ICON.trade}1.\nAlly: scrap 1 card from your discard.` }),
+  C({ key:"mc_cutter", name:"Salvage Cutter", cost:4, faction:"mc",
+      play:[{t:"combat",n:3}],
+      scrap:[{t:"scrap_hand",n:1}],
+      text:`Gain ${ICON.combat}3.\nScrap: scrap 1 from hand.` }),
+  C({ key:"mc_forge", name:"Forge Skimmer", cost:5, faction:"mc",
+      play:[{t:"trade",n:2},{t:"combat",n:2}],
+      ally:[{t:"scrap_hand",n:1}],
+      text:`Gain ${ICON.trade}2 and ${ICON.combat}2.\nAlly: scrap 1 from hand.` }),
+  C({ key:"mc_scrapwright", name:"Scrapwright", cost:5, faction:"mc",
+      play:[{t:"trade",n:1},{t:"combat",n:2}],
+      ally:[{t:"scrap_discard",n:1}],
+      text:`Gain ${ICON.trade}1 and ${ICON.combat}2.\nAlly: scrap 1 from discard.` }),
+  C({ key:"mc_foundry", name:"Nanofoundry", cost:4, faction:"mc", type:"base", defense:5, outpost:false,
+      play:[{t:"trade",n:1}],
+      ally:[{t:"scrap_discard",n:1}],
+      text:`Base (5).\nEach turn: gain ${ICON.trade}1.\nAlly: scrap 1 from discard.` }),
+  C({ key:"mc_assimilator", name:"Assimilator Node", cost:5, faction:"mc", type:"base", defense:7, outpost:true,
+      play:[{t:"combat",n:1}],
+      ally:[{t:"scrap_discard",n:1}],
+      text:`Outpost (7).\nEach turn: gain ${ICON.combat}1.\nAlly: scrap 1 from discard.` }),
+  C({ key:"mc_bulwark", name:"Mech Bulwark", cost:6, faction:"mc", type:"base", defense:8, outpost:true,
+      play:[{t:"combat",n:1}],
+      ally:[{t:"trade",n:2}],
+      text:`Outpost (8).\nEach turn: gain ${ICON.combat}1.\nAlly: gain ${ICON.trade}2.` }),
+  C({ key:"mc_overclock", name:"Overclock Framer", cost:7, faction:"mc",
+      play:[{t:"combat",n:5},{t:"trade",n:2}],
+      ally:[{t:"draw",n:1}],
+      text:`Gain ${ICON.combat}5 and ${ICON.trade}2.\nAlly: draw 1.` }),
+  C({ key:"mc_reclaimer", name:"Reclaimer Titan", cost:9, faction:"mc",
+      play:[{t:"combat",n:6},{t:"trade",n:3}],
+      ally:[{t:"scrap_hand",n:1}],
+      text:`Gain ${ICON.combat}6 and ${ICON.trade}3.\nAlly: scrap 1 from hand.` }),
+
+  // ===== Solar Dominion (sd) =====
+  C({ key:"sd_dawn", name:"Dawn Skirmisher", cost:2, faction:"sd",
+      play:[{t:"trade",n:1},{t:"combat",n:1}],
+      ally:[{t:"authority",n:2}],
+      text:`Gain ${ICON.trade}1 and ${ICON.combat}1.\nAlly: gain ${ICON.auth}2.` }),
+  C({ key:"sd_sunlance", name:"Sunlance Sloop", cost:3, faction:"sd",
+      play:[{t:"combat",n:2},{t:"trade",n:1}],
+      ally:[{t:"combat",n:2}],
+      text:`Gain ${ICON.combat}2 and ${ICON.trade}1.\nAlly: gain ${ICON.combat}2.` }),
+  C({ key:"sd_radiant", name:"Radiant Courier", cost:4, faction:"sd",
+      play:[{t:"trade",n:2}],
+      ally:[{t:"combat",n:2}],
+      text:`Gain ${ICON.trade}2.\nAlly: gain ${ICON.combat}2.` }),
+  C({ key:"sd_flare", name:"Solar Flare Wing", cost:5, faction:"sd",
+      play:[{t:"combat",n:4}],
+      ally:[{t:"authority",n:3}],
+      text:`Gain ${ICON.combat}4.\nAlly: gain ${ICON.auth}3.` }),
+  C({ key:"sd_prism", name:"Prism Gunship", cost:6, faction:"sd",
+      play:[{t:"combat",n:5}],
+      ally:[{t:"trade",n:2}],
+      text:`Gain ${ICON.combat}5.\nAlly: gain ${ICON.trade}2.` }),
+  C({ key:"sd_yard", name:"Sunforge Yard", cost:4, faction:"sd", type:"base", defense:6, outpost:false,
+      play:[{t:"trade",n:1},{t:"authority",n:1}],
+      ally:[{t:"combat",n:2}],
+      text:`Base (6).\nEach turn: gain ${ICON.trade}1 and ${ICON.auth}1.\nAlly: gain ${ICON.combat}2.` }),
+  C({ key:"sd_bastion", name:"Helios Bastion", cost:5, faction:"sd", type:"base", defense:6, outpost:true,
+      play:[{t:"authority",n:1}],
+      ally:[{t:"combat",n:2}],
+      text:`Outpost (6).\nEach turn: gain ${ICON.auth}1.\nAlly: gain ${ICON.combat}2.` }),
+  C({ key:"sd_array", name:"Solar Array", cost:6, faction:"sd", type:"base", defense:7, outpost:false,
+      play:[{t:"trade",n:1},{t:"combat",n:1}],
+      ally:[{t:"draw",n:1}],
+      text:`Base (7).\nEach turn: gain ${ICON.trade}1 and ${ICON.combat}1.\nAlly: draw 1.` }),
+  C({ key:"sd_corona", name:"Corona Battleship", cost:8, faction:"sd",
+      play:[{t:"combat",n:7},{t:"authority",n:2}],
+      ally:[{t:"combat",n:3}],
+      text:`Gain ${ICON.combat}7 and ${ICON.auth}2.\nAlly: gain ${ICON.combat}3.` }),
+  C({ key:"sd_supernova", name:"Supernova Ark", cost:9, faction:"sd",
+      play:[{t:"combat",n:8},{t:"authority",n:3}],
+      ally:[{t:"draw",n:1}],
+      text:`Gain ${ICON.combat}8 and ${ICON.auth}3.\nAlly: draw 1.` }),
+
+  // ===== Void Syndicate (vs) =====
+  C({ key:"vs_gloom", name:"Gloom Hacker", cost:2, faction:"vs",
+      play:[{t:"trade",n:1},{t:"opp_next_draw",n:-1}],
+      text:`Gain ${ICON.trade}1.\nOpponent draws 1 fewer next turn.` }),
+  C({ key:"vs_pickpocket", name:"Void Pickpocket", cost:3, faction:"vs",
+      play:[{t:"combat",n:2}],
+      ally:[{t:"opp_discard",n:1}],
+      text:`Gain ${ICON.combat}2.\nAlly: opponent discards 1.` }),
+  C({ key:"vs_mist", name:"Mist Runner", cost:4, faction:"vs",
+      play:[{t:"combat",n:3},{t:"opp_next_draw",n:-1}],
+      text:`Gain ${ICON.combat}3.\nOpponent draws 1 fewer next turn.` }),
+  C({ key:"vs_blackmail", name:"Blackmail Cutter", cost:5, faction:"vs",
+      play:[{t:"combat",n:3},{t:"opp_discard",n:1}],
+      ally:[{t:"trade",n:1}],
+      text:`Gain ${ICON.combat}3.\nOpponent discards 1.\nAlly: gain ${ICON.trade}1.` }),
+  C({ key:"vs_siphon", name:"Siphon Frigate", cost:5, faction:"vs",
+      play:[{t:"combat",n:4}],
+      ally:[{t:"trade",n:2}],
+      text:`Gain ${ICON.combat}4.\nAlly: gain ${ICON.trade}2.` }),
+  C({ key:"vs_shroud", name:"Shroud Gate", cost:4, faction:"vs", type:"base", defense:5, outpost:false,
+      play:[{t:"opp_next_draw",n:-1}],
+      ally:[{t:"combat",n:2}],
+      text:`Base (5).\nEach turn: opponent draws 1 fewer next turn.\nAlly: gain ${ICON.combat}2.` }),
+  C({ key:"vs_wraith", name:"Wraith Outpost", cost:5, faction:"vs", type:"base", defense:7, outpost:true,
+      play:[{t:"opp_next_draw",n:-1}],
+      ally:[{t:"combat",n:2}],
+      text:`Outpost (7).\nEach turn: opponent draws 1 fewer next turn.\nAlly: gain ${ICON.combat}2.` }),
+  C({ key:"vs_barricade", name:"Void Barricade", cost:6, faction:"vs", type:"base", defense:8, outpost:true,
+      play:[{t:"combat",n:1}],
+      ally:[{t:"opp_discard",n:1}],
+      text:`Outpost (8).\nEach turn: gain ${ICON.combat}1.\nAlly: opponent discards 1.` }),
+  C({ key:"vs_reaper", name:"Eventide Reaper", cost:8, faction:"vs",
+      play:[{t:"combat",n:6},{t:"opp_discard",n:1},{t:"opp_next_draw",n:-1}],
+      ally:[{t:"combat",n:3}],
+      text:`Gain ${ICON.combat}6.\nOpponent discards 1 and draws 1 fewer next turn.\nAlly: gain ${ICON.combat}3.` }),
+  C({ key:"vs_baron", name:"Abyssal Baron", cost:9, faction:"vs",
+      play:[{t:"combat",n:7},{t:"opp_discard",n:2}],
+      ally:[{t:"opp_next_draw",n:-1}],
+      text:`Gain ${ICON.combat}7.\nOpponent discards 2.\nAlly: opponent draws 1 fewer next turn.` }),
+];
+
+/* Copies in the trade deck (bunch of ships/bases). */
+const COPIES = {
+  // Neutral market
+  freighter:2, gunship:2, relay:2,
+
+  // Trade Federation
+  tf_union_tug:3, tf_courier:3, tf_medical:2, tf_patrol:2, tf_convoy:2,
+  tf_sanctuary:2, tf_hospital:2, tf_embassy:2, tf_peacekeeper:1, tf_diplomat:1,
+
+  // Blob
+  blob_larva:3, blob_skitter:3, blob_glider:2, blob_spawner:2, blob_acid:2,
+  blob_feeder:2, blob_lair:2, blob_mangler:1, blob_cannonbloom:1, blob_titan:1,
+
+  // Star Empire
+  se_infiltrator:3, se_interceptor:3, se_raid:2, se_blockade:2, se_censor:1,
+  se_station:2, se_propaganda:2, se_checkpoint:2, se_vanguard:1, se_dread:1,
+
+  // Machine Cult
+  mc_junksiphon:3, mc_recycler:2, mc_cutter:2, mc_forge:2, mc_scrapwright:2,
+  mc_foundry:2, mc_assimilator:2, mc_bulwark:2, mc_overclock:1, mc_reclaimer:1,
+
+  // Solar Dominion
+  sd_dawn:3, sd_sunlance:2, sd_radiant:2, sd_flare:2, sd_prism:1,
+  sd_yard:2, sd_bastion:2, sd_array:2, sd_corona:1, sd_supernova:1,
+
+  // Void Syndicate
+  vs_gloom:3, vs_pickpocket:2, vs_mist:2, vs_blackmail:2, vs_siphon:2,
+  vs_shroud:2, vs_wraith:2, vs_barricade:2, vs_reaper:1, vs_baron:1,
+};
+
+function tplByKey(k){ return TEMPLATES.find(t=>t.key===k); }
+
+/* ---------------------------
+   Game state
+----------------------------*/
+const game = {
+  started:false,
+  current:0,        // 0 = human, 1 = AI
+  idCounter:1,
+  busy:false,
+  tradeRow:[],
+  tradeDeck:[],
+  log:[],
+
+  mode:"duel",      // "duel" | "gauntlet"
+  gauntlet:{ stage:1, maxStage:6, cleared:false, aiPower:1 },
+  settings:{ autoplay:false },
+
+  players:[ mkPlayer("You"), mkPlayer("AI") ]
+};
+
+function mkPlayer(name){
+  return {
+    name,
+    authority:50,
+    trade:0,
+    combat:0,
+    deck:[],
+    discard:[],
+    hand:[],
+    inPlay:[],   // ships this turn
+    bases:[],    // persistent
+    scrap:[],
+    playedFactionCounts:{},
+    oppNextDrawMod:0 // affects this player's next draw
+  };
+}
+
+function makeCardInstance(templateKey){
+  const tpl = tplByKey(templateKey);
+  return {
+    uid: "c" + (game.idCounter++),
+    ...JSON.parse(JSON.stringify(tpl)),
+    allyTriggered:false,
+    curDefense: tpl.defense || 0,
+    templateKey
+  };
+}
+
+function shuffle(a){
+  for(let i=a.length-1;i>0;i--){
+    const j = (Math.random()*(i+1))|0;
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
+}
+
+function log(msg, muted=false){
+  game.log.unshift({msg, muted, t:Date.now()});
+  if(game.log.length>80) game.log.pop();
+  renderLog();
+}
+
+/* ---------------------------
+   Setup helpers
+----------------------------*/
+function buildMarket(){
+  game.tradeDeck = [];
+  for(const [key, n] of Object.entries(COPIES)){
+    for(let i=0;i<n;i++) game.tradeDeck.push(makeCardInstance(key));
+  }
+  shuffle(game.tradeDeck);
+
+  game.tradeRow = [];
+  for(let i=0;i<5;i++) refillTradeRowSlot(i);
+}
+function refillTradeRowSlot(i){
+  if(game.tradeRow[i]) return;
+  const c = game.tradeDeck.pop();
+  game.tradeRow[i] = c || null;
+}
+
+function buildStartingDeck(){
+  const start = [];
+  for(let i=0;i<8;i++) start.push("scout");
+  for(let i=0;i<2;i++) start.push("viper");
+  return start;
+}
+
+function buildAiStartDeck(stage){
+  // stage 1: normal start
+  // stage 2+: add explorers + a couple cheap faction ships
+  const base = buildStartingDeck();
+  const extraExplorers = Math.max(0, stage-1);
+  for(let i=0;i<extraExplorers;i++) base.push("explorer");
+
+  // Add a few random cheap faction ships (cost 2-3) as stage rises
+  const cheapPool = TEMPLATES
+    .filter(t=>t.type==="ship" && t.cost>=2 && t.cost<=3 && t.faction!=="n")
+    .map(t=>t.key);
+
+  const bonusCount = Math.floor((stage-1)/2); // stage 3:1, stage 5:2, etc.
+  for(let i=0;i<bonusCount;i++){
+    const k = cheapPool[(Math.random()*cheapPool.length)|0];
+    base.push(k);
+  }
+  return base;
+}
+
+function resetPlayerPiles(pl, deckKeys){
+  pl.authority = 50;
+  pl.trade = 0; pl.combat = 0;
+  pl.deck = shuffle(deckKeys.map(k=>makeCardInstance(k)));
+  pl.discard = [];
+  pl.hand = [];
+  pl.inPlay = [];
+  pl.bases = [];
+  pl.scrap = [];
+  pl.playedFactionCounts = {};
+  pl.oppNextDrawMod = 0;
+  draw(pl, 5);
+}
+
+function resetOpponentForStage(stage){
+  const ai = game.players[1];
+  const aiDeckKeys = buildAiStartDeck(stage);
+  resetPlayerPiles(ai, aiDeckKeys);
+
+  // Scale AI authority + per-turn "power" bonuses
+  // Authority ramp: 50, 60, 70, 82, 95, 110
+  const auth = [50, 60, 70, 82, 95, 110][Math.min(stage-1,5)] || (50 + stage*12);
+  ai.authority = auth;
+
+  // set gauntlet aiPower (used for per-turn bonus)
+  game.gauntlet.aiPower = stage;
+}
+
+/* ---------------------------
+   New Duel / New Gauntlet
+----------------------------*/
+function startDuel(){
+  game.started=true;
+  game.busy=false;
+  game.idCounter=1;
+  game.log=[];
+  game.mode="duel";
+  game.gauntlet = { stage:1, maxStage:6, cleared:false, aiPower:1 };
+
+  game.players = [mkPlayer("You"), mkPlayer("AI")];
+  buildMarket();
+
+  resetPlayerPiles(game.players[0], buildStartingDeck());
+  resetOpponentForStage(1);
+
+  game.current = 0;
+  log("New duel started. You go first.");
+  renderAll();
+  setStatus("Your turn. Play ships, buy cards, attack, then end turn.");
+  startTurn(0);
+}
+
+function startGauntlet(){
+  game.started=true;
+  game.busy=false;
+  game.idCounter=1;
+  game.log=[];
+  game.mode="gauntlet";
+  game.gauntlet = { stage:1, maxStage:6, cleared:false, aiPower:1 };
+
+  game.players = [mkPlayer("You"), mkPlayer("AI")];
+  buildMarket();
+
+  resetPlayerPiles(game.players[0], buildStartingDeck());
+  resetOpponentForStage(1);
+
+  game.current = 0;
+  log("Gauntlet started! Stage 1.");
+  renderAll();
+  setStatus("Gauntlet Stage 1 — defeat the AI to advance.");
+  startTurn(0);
+}
+
+function continueGauntlet(){
+  // Between stages: keep your deck/piles, just reset your turn state and spawn a stronger AI.
+  const me = game.players[0];
+  const stage = game.gauntlet.stage + 1;
+  game.gauntlet.stage = stage;
+  game.gauntlet.cleared = false;
+
+  // Cleanup your current turn state
+  while(me.hand.length) me.discard.push(me.hand.pop());
+  while(me.inPlay.length) me.discard.push(me.inPlay.pop());
+  me.trade=0; me.combat=0; me.playedFactionCounts={};
+
+  // Heal a bit between fights (cap 50)
+  me.authority = Math.min(50, me.authority + 18);
+
+  // Draw up to 5
+  draw(me, Math.max(0, 5 - me.hand.length));
+
+  // Reset opponent for the new stage
+  resetOpponentForStage(stage);
+
+  // Refill trade row (if deck ran out it stays empty)
+  for(let i=0;i<game.tradeRow.length;i++){
+    if(!game.tradeRow[i]) refillTradeRowSlot(i);
+  }
+
+  game.current = 0;
+  log(`Stage ${stage} begins. AI grows stronger.`);
+  renderAll();
+  setStatus(`Gauntlet Stage ${stage} — AI power increased.`);
+  startTurn(0);
+}
+
+/* ---------------------------
+   Drawing / shuffling
+----------------------------*/
+function draw(pl, n){
+  for(let i=0;i<n;i++){
+    if(pl.deck.length===0){
+      if(pl.discard.length===0) break;
+      pl.deck = shuffle(pl.discard.splice(0));
+      log(`${pl.name} shuffles discard into deck.`, true);
+    }
+    const card = pl.deck.pop();
+    if(card) pl.hand.push(card);
+  }
+}
+
+/* ---------------------------
+   Turn flow
+----------------------------*/
+function addFactionCount(pl, factionKey){
+  if(!factionKey || factionKey==="n") return;
+  pl.playedFactionCounts[factionKey] = (pl.playedFactionCounts[factionKey]||0) + 1;
+}
+
+async function applyEffects(actor, opponent, card, trigger){
+  let steps = [];
+  if(trigger==="play") steps = card.play || [];
+  if(trigger==="ally") steps = card.ally || [];
+  if(trigger==="scrap") steps = card.scrap || [];
+  if(trigger==="turn") steps = card.play || [];
+
+  for(const step of steps){
+    await resolveStep(actor, opponent, step);
+    if(isTerminal()) return;
+  }
+}
+
+async function resolveStep(actor, opponent, step){
+  switch(step.t){
+    case "trade": actor.trade += step.n; log(`${actor.name} gains ${ICON.trade}${step.n}.`, true); break;
+    case "combat": actor.combat += step.n; log(`${actor.name} gains ${ICON.combat}${step.n}.`, true); break;
+    case "authority": actor.authority += step.n; log(`${actor.name} gains ${ICON.auth}${step.n}.`, true); break;
+    case "draw": draw(actor, step.n); log(`${actor.name} draws ${step.n}.`, true); break;
+
+    case "opp_discard": await forceDiscard(opponent, step.n, actor.name); break;
+    case "scrap_hand": await scrapFromHand(actor, step.n); break;
+    case "scrap_discard": await scrapFromDiscard(actor, step.n); break;
+
+    case "opp_next_draw":
+      opponent.oppNextDrawMod += step.n; // negative reduces draws
+      log(`${opponent.name} will draw ${Math.abs(step.n)} fewer next turn.`, true);
+      break;
+  }
+  renderAll();
+}
+
+async function checkAllies(pl, op){
+  const active = [...pl.inPlay, ...pl.bases];
+  for(const c of active){
+    if(c.allyTriggered) continue;
+    if(!c.faction || c.faction==="n") continue;
+    const cnt = pl.playedFactionCounts[c.faction] || 0;
+    if(cnt >= 2 && (c.ally && c.ally.length)){
+      c.allyTriggered = true;
+      log(`${pl.name} triggers Ally on ${c.name}.`);
+      await applyEffects(pl, op, c, "ally");
+    }
+  }
+}
+
+function startTurn(pIdx){
+  const pl = game.players[pIdx];
+  const op = game.players[1-pIdx];
+
+  pl.trade=0;
+  pl.combat=0;
+  pl.playedFactionCounts={};
+
+  // reset allyTriggered for bases each turn
+  pl.bases.forEach(b=>b.allyTriggered=false);
+
+  // Gauntlet/AI power bonus (AI only)
+  if(pIdx===1){
+    const power = (game.mode==="gauntlet") ? game.gauntlet.aiPower : 1;
+    const bonusTrade = Math.floor((power-1)/2);     // 0,0,1,1,2,2...
+    const bonusCombat = Math.floor((power-1)/3);    // 0,0,0,1,1,1...
+    if(bonusTrade>0){ pl.trade += bonusTrade; log(`AI power bonus: ${ICON.trade}${bonusTrade}.`, true); }
+    if(bonusCombat>0){ pl.combat += bonusCombat; log(`AI power bonus: ${ICON.combat}${bonusCombat}.`, true); }
+  }
+
+  // apply draw penalty
+  const penalty = Math.max(0, -pl.oppNextDrawMod);
+  pl.oppNextDrawMod = 0;
+
+  // draw up to 5
+  const need = Math.max(0, 5 - pl.hand.length);
+  draw(pl, need);
+
+  if(penalty>0 && pl.hand.length>0){
+    for(let i=0;i<penalty;i++){
+      if(pl.hand.length===0) break;
+      const idx = (Math.random()*pl.hand.length)|0;
+      const removed = pl.hand.splice(idx,1)[0];
+      pl.discard.push(removed);
+      log(`${pl.name} draws fewer (disrupted). A random card is discarded.`, true);
+    }
+  }
+
+  // base "play" effects each turn
+  (async ()=>{
+    game.busy=true;
+    for(const b of pl.bases){
+      await applyEffects(pl, op, b, "turn");
+    }
+    await checkAllies(pl, op);
+    game.busy=false;
+    renderAll();
+
+    // ✅ autoplay after turn setup (human only)
+    if(pIdx===0 && game.settings.autoplay){
+      await autoplayHuman();
+    }
+  })();
+}
+
+function endTurn(){
+  if(game.busy) return;
+  const pl = game.players[game.current];
+
+  // discard hand
+  while(pl.hand.length) pl.discard.push(pl.hand.pop());
+  // discard ships in play (bases stay)
+  while(pl.inPlay.length) pl.discard.push(pl.inPlay.pop());
+
+  pl.trade=0; pl.combat=0; pl.playedFactionCounts={};
+
+  // refill market
+  for(let i=0;i<game.tradeRow.length;i++){
+    if(!game.tradeRow[i]) refillTradeRowSlot(i);
+  }
+
+  // switch
+  game.current = 1 - game.current;
+  renderAll();
+
+  if(isTerminal()) return;
+
+  if(game.current===1){
+    setStatus("AI turn…");
+    aiTurn().catch(err=>{
+      console.error(err);
+      setStatus("AI errored. Start a new duel/gauntlet.");
+      game.busy=false;
+    });
+  }else{
+    setStatus("Your turn. Play ships, buy cards, attack, then end turn.");
+    startTurn(0);
+  }
+}
+
+/* ---------------------------
+   Win/Lose + Gauntlet stage logic
+----------------------------*/
+function isTerminal(){
+  const me = game.players[0].authority;
+  const ai = game.players[1].authority;
+
+  if(me<=0){
+    setStatus("Game Over — AI wins!");
+    log("Game Over — AI wins!");
+    renderAll();
+    return true;
+  }
+  if(ai<=0){
+    if(game.mode==="gauntlet"){
+      if(game.gauntlet.stage < game.gauntlet.maxStage){
+        if(!game.gauntlet.cleared){
+          game.gauntlet.cleared = true;
+          renderAll();
+          showMessageModal(
+            `Stage ${game.gauntlet.stage} Cleared!`,
+            `Nice. The next AI will be stronger.\n\nContinue to Stage ${game.gauntlet.stage+1}?`,
+            "Continue",
+            "End Run",
+            () => continueGauntlet(),
+            () => startDuel()
+          );
+        }
+        return true; // pause actions until modal resolves
+      }else{
+        setStatus("Gauntlet Complete — You win!");
+        log("Gauntlet Complete — You win!");
+        renderAll();
+        showMessageModal("Gauntlet Complete!", "You cleared the final stage. Want to run it again?", "Run Again", "Close",
+          ()=> startGauntlet(),
+          ()=> closeModal()
+        );
+        return true;
+      }
+    }else{
+      setStatus("Game Over — You win!");
+      log("Game Over — You win!");
+      renderAll();
+      return true;
+    }
+  }
+  return false;
+}
+
+/* ---------------------------
+   Modal / prompts
+----------------------------*/
+function showModal({title, text, cards, min=1, max=1, confirmLabel="Confirm", cancelLabel="Cancel", allowCancel=true, selectable=true}){
+  return new Promise((resolve)=>{
+    const modal = document.getElementById("modal");
+    const titleEl = document.getElementById("modalTitle");
+    const textEl = document.getElementById("modalText");
+    const cardsEl = document.getElementById("modalCards");
+    const btnCancel = document.getElementById("modalCancel");
+    const btnConfirm = document.getElementById("modalConfirm");
+
+    titleEl.textContent = title;
+    textEl.textContent = text;
+
+    const selected = new Set();
+
+    const drawCards = ()=>{
+      cardsEl.innerHTML = "";
+      cards.forEach((c)=>{
+        const d = renderCardDiv(c, {context:"modal"});
+        if(selectable){
+          d.classList.add("targetable");
+          d.onclick = ()=>{
+            if(selected.has(c.uid)){
+              selected.delete(c.uid);
+              d.style.outlineColor = "rgba(255,255,255,.25)";
+            }else{
+              if(selected.size >= max) return;
+              selected.add(c.uid);
+              d.style.outlineColor = "rgba(102,255,178,.65)";
+            }
+            btnConfirm.disabled = selected.size < min;
+          };
+        }else{
+          d.classList.add("disabled");
+          d.style.cursor = "default";
+        }
+        cardsEl.appendChild(d);
+      });
+
+      btnConfirm.textContent = confirmLabel;
+      btnCancel.textContent = cancelLabel;
+
+      btnConfirm.disabled = selectable ? (selected.size < min) : false;
+      btnCancel.style.display = allowCancel ? "inline-block" : "none";
+    };
+
+    btnCancel.onclick = ()=>{
+      modal.style.display = "none";
+      resolve(null);
+    };
+    btnConfirm.onclick = ()=>{
+      const picked = selectable ? cards.filter(c=>selected.has(c.uid)) : [];
+      modal.style.display = "none";
+      resolve(picked);
+    };
+
+    drawCards();
+    modal.style.display = "flex";
+  });
+}
+
+function closeModal(){
+  document.getElementById("modal").style.display = "none";
+}
+
+function showMessageModal(title, text, okLabel, cancelLabel, onOk, onCancel){
+  const modal = document.getElementById("modal");
+  const titleEl = document.getElementById("modalTitle");
+  const textEl = document.getElementById("modalText");
+  const cardsEl = document.getElementById("modalCards");
+  const btnCancel = document.getElementById("modalCancel");
+  const btnConfirm = document.getElementById("modalConfirm");
+
+  titleEl.textContent = title;
+  textEl.textContent = text;
+  cardsEl.innerHTML = "";
+
+  btnConfirm.textContent = okLabel || "OK";
+  btnCancel.textContent = cancelLabel || "Close";
+  btnCancel.style.display = "inline-block";
+  btnConfirm.disabled = false;
+
+  btnCancel.onclick = ()=>{
+    modal.style.display = "none";
+    if(onCancel) onCancel();
+  };
+  btnConfirm.onclick = ()=>{
+    modal.style.display = "none";
+    if(onOk) onOk();
+  };
+
+  modal.style.display = "flex";
+}
+
+async function forceDiscard(target, n, sourceName){
+  if(n<=0) return;
+  if(target.hand.length===0){
+    log(`${target.name} has no cards to discard.`, true);
+    return;
+  }
+
+  if(target.name==="AI"){
+    for(let i=0;i<n;i++){
+      if(target.hand.length===0) break;
+      let bestIdx = 0, bestScore = Infinity;
+      for(let j=0;j<target.hand.length;j++){
+        const s = aiCardValue(target.hand[j]);
+        if(s < bestScore){ bestScore=s; bestIdx=j; }
+      }
+      const c = target.hand.splice(bestIdx,1)[0];
+      target.discard.push(c);
+      log(`AI discards ${c.name} (forced by ${sourceName}).`);
+    }
+    return;
+  }
+
+  const take = Math.min(n, target.hand.length);
+  const picked = await showModal({
+    title:`Discard (${take})`,
+    text:`You must discard ${take} card(s).`,
+    cards: target.hand,
+    min: take,
+    max: take,
+    confirmLabel:"Discard",
+    cancelLabel:"(forced)",
+    allowCancel:false
+  });
+  for(const c of picked){
+    const idx = target.hand.findIndex(x=>x.uid===c.uid);
+    if(idx>=0){
+      const gone = target.hand.splice(idx,1)[0];
+      target.discard.push(gone);
+      log(`You discard ${gone.name}.`);
+    }
+  }
+}
+
+async function scrapFromHand(pl, n){
+  if(n<=0) return;
+  if(pl.hand.length===0){
+    log(`${pl.name} has no cards to scrap.`, true);
+    return;
+  }
+
+  if(pl.name==="AI"){
+    for(let i=0;i<n;i++){
+      if(pl.hand.length===0) break;
+      let bestIdx=0, bestScore=Infinity;
+      for(let j=0;j<pl.hand.length;j++){
+        const s = aiScrapPriority(pl.hand[j]);
+        if(s < bestScore){ bestScore=s; bestIdx=j; }
+      }
+      const c = pl.hand.splice(bestIdx,1)[0];
+      pl.scrap.push(c);
+      log(`AI scraps ${c.name}.`);
+    }
+    return;
+  }
+
+  const take = Math.min(n, pl.hand.length);
+  const picked = await showModal({
+    title:`Scrap from hand (${take})`,
+    text:`Choose ${take} card(s) to permanently scrap from your hand.`,
+    cards: pl.hand,
+    min: take,
+    max: take,
+    confirmLabel:"Scrap",
+    cancelLabel:"Skip",
+    allowCancel:true
+  });
+  if(!picked) return;
+  for(const c of picked){
+    const idx = pl.hand.findIndex(x=>x.uid===c.uid);
+    if(idx>=0){
+      const gone = pl.hand.splice(idx,1)[0];
+      pl.scrap.push(gone);
+      log(`${pl.name} scraps ${gone.name}.`);
+    }
+  }
+}
+
+async function scrapFromDiscard(pl, n){
+  if(n<=0) return;
+  if(pl.discard.length===0){
+    log(`${pl.name} has no discard to scrap.`, true);
+    return;
+  }
+
+  if(pl.name==="AI"){
+    for(let i=0;i<n;i++){
+      if(pl.discard.length===0) break;
+      let bestIdx=0, bestScore=Infinity;
+      for(let j=0;j<pl.discard.length;j++){
+        const s = aiScrapPriority(pl.discard[j]);
+        if(s < bestScore){ bestScore=s; bestIdx=j; }
+      }
+      const c = pl.discard.splice(bestIdx,1)[0];
+      pl.scrap.push(c);
+      log(`AI scraps ${c.name} from discard.`);
+    }
+    return;
+  }
+
+  const take = Math.min(n, pl.discard.length);
+  const picked = await showModal({
+    title:`Scrap from discard (${take})`,
+    text:`Choose ${take} card(s) to permanently scrap from your discard pile.`,
+    cards: pl.discard,
+    min: take,
+    max: take,
+    confirmLabel:"Scrap",
+    cancelLabel:"Skip",
+    allowCancel:true
+  });
+  if(!picked) return;
+  for(const c of picked){
+    const idx = pl.discard.findIndex(x=>x.uid===c.uid);
+    if(idx>=0){
+      const gone = pl.discard.splice(idx,1)[0];
+      pl.scrap.push(gone);
+      log(`${pl.name} scraps ${gone.name} from discard.`);
+    }
+  }
+}
+
+/* ---------------------------
+   Play / Buy / Scrap
+----------------------------*/
+async function playCardFromHand(idx){
+  if(game.busy) return;
+  if(game.current!==0) return;
+  const pl = game.players[0];
+  const op = game.players[1];
+  const c = pl.hand[idx];
+  if(!c) return;
+
+  game.busy=true;
+
+  pl.hand.splice(idx,1);
+
+  if(c.type==="base"){
+    c.curDefense = c.defense;
+    pl.bases.push(c);
+    log(`You deploy base: ${c.name}.`);
+    addFactionCount(pl, c.faction);
+    await applyEffects(pl, op, c, "play");
+  }else{
+    pl.inPlay.push(c);
+    addFactionCount(pl, c.faction);
+    log(`You play: ${c.name}.`);
+    await applyEffects(pl, op, c, "play");
+  }
+
+  await checkAllies(pl, op);
+
+  game.busy=false;
+  renderAll();
+}
+
+async function scrapInPlay(uid){
+  if(game.busy) return;
+  if(game.current!==0) return;
+  const pl = game.players[0];
+  const op = game.players[1];
+
+  const idx = pl.inPlay.findIndex(c=>c.uid===uid);
+  if(idx<0) return;
+  const c = pl.inPlay[idx];
+  if(!c.scrap || c.scrap.length===0) return;
+
+  game.busy=true;
+  pl.inPlay.splice(idx,1);
+  pl.scrap.push(c);
+  log(`You scrap ${c.name} for its scrap effect.`);
+  await applyEffects(pl, op, c, "scrap");
+  await checkAllies(pl, op);
+  game.busy=false;
+  renderAll();
+}
+
+function buyFromTradeRow(slot){
+  if(game.busy) return;
+  if(game.current!==0) return;
+  const pl = game.players[0];
+  const c = game.tradeRow[slot];
+  if(!c) return;
+  if(pl.trade < c.cost) return;
+
+  pl.trade -= c.cost;
+  pl.discard.push(c);
+  game.tradeRow[slot] = null;
+  refillTradeRowSlot(slot);
+  log(`You buy ${c.name} for ${ICON.trade}${c.cost}.`);
+  renderAll();
+}
+
+function buyExplorer(){
+  if(game.busy) return;
+  if(game.current!==0) return;
+  const pl = game.players[0];
+  if(pl.trade < 2) return;
+  pl.trade -= 2;
+  pl.discard.push(makeCardInstance("explorer"));
+  log(`You buy Explorer for ${ICON.trade}2.`);
+  renderAll();
+}
+
+/* ---------------------------
+   Combat spending
+----------------------------*/
+function enemyHasOutposts(){
+  const op = game.players[1];
+  return op.bases.some(b=>b.outpost);
+}
+
+function attackAuthority(){
+  if(game.busy) return;
+  if(game.current!==0) return;
+  const pl = game.players[0];
+  const op = game.players[1];
+  if(pl.combat<=0) return;
+
+  if(enemyHasOutposts()){
+    log("You cannot attack authority while enemy outposts remain.");
+    return;
+  }
+
+  const dmg = pl.combat;
+  pl.combat = 0;
+  op.authority -= dmg;
+  log(`You hit opponent authority for ${ICON.combat}${dmg}.`);
+  renderAll();
+  isTerminal();
+}
+
+function attackEnemyBase(baseUid){
+  if(game.busy) return;
+  if(game.current!==0) return;
+  const pl = game.players[0];
+  const op = game.players[1];
+  if(pl.combat<=0) return;
+
+  const bIdx = op.bases.findIndex(b=>b.uid===baseUid);
+  if(bIdx<0) return;
+  const base = op.bases[bIdx];
+
+  const spend = Math.min(pl.combat, base.curDefense);
+  pl.combat -= spend;
+  base.curDefense -= spend;
+
+  log(`You deal ${ICON.combat}${spend} to ${base.name}.`);
+
+  if(base.curDefense<=0){
+    op.bases.splice(bIdx,1);
+    op.discard.push(base);
+    log(`You destroy ${base.name}!`);
+  }
+  renderAll();
+  isTerminal();
+}
+
+/* ---------------------------
+   Autoplay (human)
+----------------------------*/
+async function autoplayHuman(){
+  if(game.current!==0) return;
+  if(game.busy) return;
+  // Keep playing until hand is empty (bases first each loop)
+  while(game.players[0].hand.length){
+    if(!game.settings.autoplay) break;
+    if(game.busy) break;
+    const me = game.players[0];
+    let idx = me.hand.findIndex(c=>c.type==="base");
+    if(idx<0) idx = 0;
+    await playCardFromHand(idx);
+    // playCardFromHand handles busy toggling
+    if(isTerminal()) return;
+  }
+}
+
+/* ---------------------------
+   AI
+----------------------------*/
+function aiCardValue(card){
+  let v = 0;
+  const p = (card.play||[]);
+  const a = (card.ally||[]);
+  const s = (card.scrap||[]);
+  const sum = (arr, t)=>arr.filter(x=>x.t===t).reduce((q,x)=>q+x.n,0);
+
+  v += sum(p,"combat")*2 + sum(p,"trade")*1.35 + sum(p,"authority")*1.25 + sum(p,"draw")*2.7;
+  v += sum(a,"combat")*1.6 + sum(a,"trade")*1.05 + sum(a,"authority")*1.05 + sum(a,"draw")*1.9;
+  v += sum(p,"opp_discard")*2.1 + sum(a,"opp_discard")*1.7;
+  v += Math.max(0, -sum(p,"opp_next_draw"))*1.35 + Math.max(0, -sum(a,"opp_next_draw"))*1.1;
+  v += (card.type==="base" ? (card.defense*0.35 + (card.outpost?1.2:0.6)) : 0);
+  v += (s.length? 0.9 : 0);
+
+  if(card.key==="scout") v -= 0.9;
+  if(card.key==="viper") v -= 0.8;
+
+  return v;
+}
+function aiScrapPriority(card){
+  let p = aiCardValue(card);
+  if(card.key==="scout") p -= 4.2;
+  if(card.key==="viper") p -= 3.8;
+  if(card.key==="explorer") p -= 1.6;
+  if(card.type==="base") p += 5;
+  return p;
+}
+function aiBuyScore(pl, card){
+  let s = aiCardValue(card);
+  const faction = card.faction;
+  if(faction && faction!=="n"){
+    const count = pl.deck.concat(pl.discard, pl.hand, pl.inPlay, pl.bases).filter(c=>c.faction===faction).length;
+    s += Math.min(3.5, count*0.25);
+  }
+  const hasScrap = (card.scrap && card.scrap.length)
+    || (card.play||[]).some(x=>x.t==="scrap_hand"||x.t==="scrap_discard")
+    || (card.ally||[]).some(x=>x.t==="scrap_hand"||x.t==="scrap_discard");
+  if(hasScrap) s += 1.15;
+  return s;
+}
+
+async function aiTurn(){
+  if(isTerminal()) return;
+  game.busy=true;
+  const pl = game.players[1];
+  const op = game.players[0];
+
+  startTurn(1);
+  renderAll();
+
+  // Play everything in hand (bases first)
+  const bases = pl.hand.filter(c=>c.type==="base");
+  const ships = pl.hand.filter(c=>c.type!=="base");
+  pl.hand = [];
+  const playOrder = [...bases, ...ships];
+
+  for(const c of playOrder){
+    if(c.type==="base"){
+      c.curDefense = c.defense;
+      pl.bases.push(c);
+    }else{
+      pl.inPlay.push(c);
+    }
+    addFactionCount(pl, c.faction);
+    log(`AI plays ${c.type==="base" ? "base" : "ship"}: ${c.name}.`);
+    await applyEffects(pl, op, c, "play");
+    await checkAllies(pl, op);
+    if(isTerminal()){ game.busy=false; renderAll(); return; }
+  }
+
+  // Opportunistic scrap
+  for(let i=pl.inPlay.length-1;i>=0;i--){
+    const c = pl.inPlay[i];
+    if(!c.scrap || !c.scrap.length) continue;
+    const givesCombat = c.scrap.some(x=>x.t==="combat");
+    const givesDraw = c.scrap.some(x=>x.t==="draw");
+    if((givesCombat && Math.random()<0.28) || (givesDraw && Math.random()<0.20)){
+      pl.inPlay.splice(i,1);
+      pl.scrap.push(c);
+      log(`AI scraps ${c.name} for effect.`);
+      await applyEffects(pl, op, c, "scrap");
+      await checkAllies(pl, op);
+      if(isTerminal()){ game.busy=false; renderAll(); return; }
+    }
+  }
+
+  // Buy phase: up to 2 buys
+  let buys = 0;
+  while(buys < 2){
+    const options = game.tradeRow.filter(Boolean).filter(c=>c.cost<=pl.trade);
+    if(pl.trade>=2) options.push(makeCardInstance("explorer"));
+    if(options.length===0) break;
+
+    options.sort((a,b)=>aiBuyScore(pl,b)-aiBuyScore(pl,a));
+    const pick = options[0];
+
+    if(pick.key==="explorer"){
+      pl.trade -= 2;
+      pl.discard.push(pick);
+      log(`AI buys Explorer.`);
+    }else{
+      const slot = game.tradeRow.findIndex(x=>x && x.uid===pick.uid);
+      if(slot>=0){
+        pl.trade -= pick.cost;
+        pl.discard.push(pick);
+        game.tradeRow[slot]=null;
+        refillTradeRowSlot(slot);
+        log(`AI buys ${pick.name}.`);
+      }
+    }
+    buys++;
+  }
+
+  // Attack phase
+  while(pl.combat>0){
+    const outposts = op.bases.filter(b=>b.outpost);
+    if(outposts.length){
+      outposts.sort((a,b)=>a.curDefense-b.curDefense);
+      const target = outposts[0];
+      const spend = Math.min(pl.combat, target.curDefense);
+      pl.combat -= spend;
+      target.curDefense -= spend;
+      log(`AI hits your outpost ${target.name} for ${ICON.combat}${spend}.`);
+      if(target.curDefense<=0){
+        const idx = op.bases.findIndex(b=>b.uid===target.uid);
+        if(idx>=0){
+          const gone = op.bases.splice(idx,1)[0];
+          op.discard.push(gone);
+          log(`AI destroys your outpost ${gone.name}!`);
+        }
+      }
+      continue;
+    }
+
+    // if no outposts, destroy killable base if possible
+    if(op.bases.length){
+      const killable = op.bases.filter(b=>b.curDefense<=pl.combat);
+      if(killable.length){
+        killable.sort((a,b)=>(b.defense - a.defense));
+        const target = killable[0];
+        const spend = target.curDefense;
+        pl.combat -= spend;
+        target.curDefense = 0;
+        const idx = op.bases.findIndex(b=>b.uid===target.uid);
+        const gone = op.bases.splice(idx,1)[0];
+        op.discard.push(gone);
+        log(`AI destroys your base ${gone.name}!`);
+        continue;
+      }
+    }
+
+    // hit authority
+    const dmg = pl.combat;
+    pl.combat = 0;
+    op.authority -= dmg;
+    log(`AI hits your authority for ${ICON.combat}${dmg}.`);
+    break;
+  }
+
+  renderAll();
+  if(isTerminal()){ game.busy=false; return; }
+
+  // End AI turn cleanup
+  while(pl.hand.length) pl.discard.push(pl.hand.pop());
+  while(pl.inPlay.length) pl.discard.push(pl.inPlay.pop());
+  pl.trade=0; pl.combat=0; pl.playedFactionCounts={};
+
+  for(let i=0;i<game.tradeRow.length;i++){
+    if(!game.tradeRow[i]) refillTradeRowSlot(i);
+  }
+
+  game.current=0;
+  game.busy=false;
+  renderAll();
+  setStatus("Your turn. Play ships, buy cards, attack, then end turn.");
+  startTurn(0);
+}
+
+/* ---------------------------
+   Rendering
+----------------------------*/
+const els = {
+  tradeVal: document.getElementById("tradeVal"),
+  combatVal: document.getElementById("combatVal"),
+  myAuthVal: document.getElementById("myAuthVal"),
+  hand: document.getElementById("hand"),
+  inPlay: document.getElementById("inPlay"),
+  myBases: document.getElementById("myBases"),
+  enemyBases: document.getElementById("enemyBases"),
+  tradeRow: document.getElementById("tradeRow"),
+  tradeDeckLine: document.getElementById("tradeDeckLine"),
+  enemyLine: document.getElementById("enemyLine"),
+  enemyPiles: document.getElementById("enemyPiles"),
+  enemyOutpostHint: document.getElementById("enemyOutpostHint"),
+  youLine: document.getElementById("youLine"),
+  youPiles: document.getElementById("youPiles"),
+  statusLine: document.getElementById("statusLine"),
+  turnBadge: document.getElementById("turnBadge"),
+  phaseLine: document.getElementById("phaseLine"),
+  log: document.getElementById("log"),
+  attackAuthorityBtn: document.getElementById("attackAuthorityBtn"),
+  playAllBtn: document.getElementById("playAllBtn"),
+  buyExplorerBtn: document.getElementById("buyExplorerBtn"),
+  endTurnBtn: document.getElementById("endTurnBtn"),
+  newDuelBtn: document.getElementById("newDuelBtn"),
+  startGauntletBtn: document.getElementById("startGauntletBtn"),
+  autoplayToggle: document.getElementById("autoplayToggle"),
+  viewDeckBtn: document.getElementById("viewDeckBtn"),
+  viewDiscardBtn: document.getElementById("viewDiscardBtn"),
+  viewScrapBtn: document.getElementById("viewScrapBtn"),
+  modeLine: document.getElementById("modeLine"),
+  gauntletLine: document.getElementById("gauntletLine"),
+  aiPowerLine: document.getElementById("aiPowerLine"),
+};
+
+function setStatus(s){ els.statusLine.textContent = s; }
+
+function factionClass(f){ return f && f!=="n" ? f : ""; }
+
+function statSum(steps, t){
+  return (steps||[]).filter(x=>x.t===t).reduce((q,x)=>q+x.n,0);
+}
+/* ===== Unique icon generator (SVG) ===== */
+const FACTION_COLORS = {
+  tf:"#56d3ff", blob:"#7CFF5B", se:"#ff6ad5", mc:"#b7a6ff",
+  sd:"#ffd36a", vs:"#7a5cff", n:"#cfd6ff"
+};
+const ROLE_COLORS = { trade:"#56d3ff", battle:"#ff5d6c", base:"#aab3ff", outpost:"#ffd166" };
+
+function seedFromString(str){
+  let h = 2166136261 >>> 0; // FNV-1a
+  for(let i=0;i<str.length;i++){
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h>>>0;
+}
+function mulberry32(a){
+  return function(){
+    let t = a += 0x6D2B79F5;
+    t = Math.imul(t ^ (t>>>15), t|1);
+    t ^= t + Math.imul(t ^ (t>>>7), t|61);
+    return ((t ^ (t>>>14))>>>0) / 4294967296;
+  };
+}
+
+function roleOf(card){
+  if(card.type==="base") return card.outpost ? "outpost" : "base";
+
+  const trade =
+    statSum(card.play,"trade") +
+    statSum(card.play,"authority")*0.35 +
+    statSum(card.play,"draw")*0.90;
+
+  const combat =
+    statSum(card.play,"combat") +
+    statSum(card.play,"opp_discard")*1.60 +
+    Math.max(0, -statSum(card.play,"opp_next_draw"))*1.20;
+
+  return trade >= combat ? "trade" : "battle";
+}
+
+function iconSvg(card){
+  const role = roleOf(card);
+  const fac = FACTION_COLORS[card.faction] || "#cfd6ff";
+  const accent = ROLE_COLORS[role] || fac;
+
+  const seed = seedFromString(card.key);
+  const r = mulberry32(seed);
+
+  const gidA = `gA_${card.uid}`;
+  const gidB = `gB_${card.uid}`;
+  const glow = `gl_${card.uid}`;
+
+  // Deterministic per-card variety knobs
+  const wing = (r()*5)|0;
+  const fin  = (r()*4)|0;
+  const stripe = (r()*6)|0;
+  const cockpit = (r()*4)|0;
+
+  const ship = ()=>{
+    const nose = 46 + r()*8;
+    const tail = 14 + r()*6;
+    const midY = 32;
+    const width = 10 + r()*10;
+    const wingSpan = 16 + r()*16;
+    const wingY = 22 + r()*14;
+
+    const p1 = `${nose},${midY}`;
+    const p2 = `${32},${midY-width}`;
+    const p3 = `${tail},${midY-(6+r()*6)}`;
+    const p4 = `${tail},${midY+(6+r()*6)}`;
+    const p5 = `${32},${midY+width}`;
+
+    let wings = "";
+    if(wing%2===0){
+      wings = `
+        <polygon points="${34},${wingY} ${28},${wingY} ${24},${midY-2} ${40},${midY-2}"
+                 fill="url(#${gidB})" opacity=".85"/>
+        <polygon points="${34},${64-wingY} ${28},${64-wingY} ${24},${midY+2} ${40},${midY+2}"
+                 fill="url(#${gidB})" opacity=".85"/>
+      `;
+    }else{
+      wings = `
+        <polygon points="${30},${midY-4} ${30-wingSpan/2},${midY-14} ${34},${midY-8} ${40},${midY-4}"
+                 fill="url(#${gidB})" opacity=".85"/>
+        <polygon points="${30},${midY+4} ${30-wingSpan/2},${midY+14} ${34},${midY+8} ${40},${midY+4}"
+                 fill="url(#${gidB})" opacity=".85"/>
+      `;
+    }
+
+    let fins = "";
+    if(fin===1){
+      fins = `<polygon points="${tail+6},${midY} ${tail-2},${midY-10} ${tail-2},${midY+10}"
+               fill="${accent}" opacity=".35"/>`;
+    }else if(fin===2){
+      fins = `<rect x="${tail-1}" y="${midY-12}" width="4" height="24" rx="2"
+               fill="${accent}" opacity=".25"/>`;
+    }else if(fin===3){
+      fins = `<polygon points="${tail+4},${midY-6} ${tail-4},${midY-16} ${tail-8},${midY-6}"
+               fill="${accent}" opacity=".20"/>
+              <polygon points="${tail+4},${midY+6} ${tail-4},${midY+16} ${tail-8},${midY+6}"
+               fill="${accent}" opacity=".20"/>`;
+    }
+
+    const cx = 34 + r()*8;
+    const cy = 32 + (r()*6-3);
+    let glass = "";
+    if(cockpit===0) glass = `<circle cx="${cx}" cy="${cy}" r="3.2" fill="${accent}" opacity=".55"/>`;
+    if(cockpit===1) glass = `<rect x="${cx-3}" y="${cy-2}" width="6" height="4" rx="2" fill="${accent}" opacity=".55"/>`;
+    if(cockpit===2) glass = `<path d="M ${cx-3} ${cy} Q ${cx} ${cy-4} ${cx+3} ${cy} Q ${cx} ${cy+4} ${cx-3} ${cy} Z"
+                              fill="${accent}" opacity=".55"/>`;
+    if(cockpit===3) glass = `<polygon points="${cx-3},${cy-2} ${cx+3},${cy} ${cx-3},${cy+2}"
+                              fill="${accent}" opacity=".55"/>`;
+
+    const flameLen = 8 + r()*6;
+    const flame = `
+      <path d="M ${tail-1} ${midY} Q ${tail-6} ${midY-6} ${tail-flameLen} ${midY}
+               Q ${tail-6} ${midY+6} ${tail-1} ${midY} Z"
+            fill="${accent}" opacity="${role==='battle' ? .65 : .45}"/>
+    `;
+
+    let deco = "";
+    if(stripe<=2){
+      deco = `<path d="M ${tail+4} ${midY-2} L ${nose-6} ${midY-10}" stroke="${accent}" stroke-width="2" opacity=".22" />`;
+    }else if(stripe<=4){
+      deco = `<path d="M ${tail+6} ${midY+6} L ${nose-10} ${midY+2}" stroke="${accent}" stroke-width="2" opacity=".22" />`;
+    }else{
+      deco = `<path d="M ${tail+8} ${midY} L ${nose-12} ${midY}" stroke="${accent}" stroke-width="2" opacity=".22" />`;
+    }
+
+    // tiny role badge (subtle)
+    const badge = role==="trade"
+      ? `<circle cx="54" cy="12" r="3" fill="${accent}" opacity=".7"/><path d="M52 12h4" stroke="#001018" stroke-width="1.5" opacity=".6"/>`
+      : role==="battle"
+        ? `<path d="M52 14 L56 10" stroke="${accent}" stroke-width="2" opacity=".7"/><path d="M52 10 L56 14" stroke="${accent}" stroke-width="2" opacity=".7"/>`
+        : "";
+
+    return `
+      <g filter="url(#${glow})">
+        ${wings}
+        <polygon points="${p1} ${p2} ${p3} ${p4} ${p5}" fill="url(#${gidA})"
+                 stroke="rgba(255,255,255,.22)" stroke-width="1"/>
+        ${fins}
+        ${deco}
+        ${glass}
+        ${flame}
+        ${badge}
+      </g>
+    `;
+  };
+
+  const station = ()=>{
+    const ring = 18 + r()*8;
+    const core = 6 + r()*4;
+    const arm = 10 + r()*8;
+    const panel = 8 + r()*8;
+    const out = role==="outpost";
+
+    const shield = out ? `
+      <path d="M32 6 C 50 12 56 24 56 32 C 56 46 44 56 32 58 C 20 56 8 46 8 32 C 8 24 14 12 32 6 Z"
+            fill="${accent}" opacity=".10"/>
+      <path d="M32 9 C 48 14 53 25 53 32 C 53 44 43 53 32 55 C 21 53 11 44 11 32 C 11 25 16 14 32 9 Z"
+            stroke="${accent}" stroke-width="2" opacity=".45" fill="none"/>
+    ` : "";
+
+    return `
+      <g filter="url(#${glow})">
+        ${shield}
+        <circle cx="32" cy="32" r="${ring}" fill="none" stroke="url(#${gidA})" stroke-width="5" opacity=".95"/>
+        <circle cx="32" cy="32" r="${core}" fill="url(#${gidB})" stroke="rgba(255,255,255,.18)" stroke-width="1"/>
+        <rect x="${32-arm}" y="30" width="${arm*2}" height="4" rx="2" fill="url(#${gidB})" opacity=".9"/>
+        <rect x="30" y="${32-arm}" width="4" height="${arm*2}" rx="2" fill="url(#${gidB})" opacity=".9"/>
+        <rect x="${6+r()*6}" y="${18+r()*6}" width="${panel}" height="${panel/2}" rx="2" fill="${accent}" opacity=".25"/>
+        <rect x="${48-r()*8}" y="${40-r()*6}" width="${panel}" height="${panel/2}" rx="2" fill="${accent}" opacity=".25"/>
+        ${out ? `<path d="M18 46 L32 38 L46 46" stroke="${accent}" stroke-width="2" opacity=".55" fill="none"/>` : ``}
+      </g>
+    `;
+  };
+
+  const bgGlow = role==="battle" ? 0.18 : role==="trade" ? 0.14 : 0.12;
+
+  return `
+  <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <linearGradient id="${gidA}" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="${fac}" stop-opacity="0.95"/>
+        <stop offset="1" stop-color="${accent}" stop-opacity="0.85"/>
+      </linearGradient>
+      <linearGradient id="${gidB}" x1="1" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="rgba(255,255,255,.95)" stop-opacity=".20"/>
+        <stop offset="1" stop-color="${fac}" stop-opacity=".45"/>
+      </linearGradient>
+      <filter id="${glow}" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="1.6" result="b"/>
+        <feColorMatrix in="b" type="matrix"
+          values="1 0 0 0 0
+                  0 1 0 0 0
+                  0 0 1 0 0
+                  0 0 0 0.9 0"/>
+        <feMerge>
+          <feMergeNode/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+    </defs>
+
+    <circle cx="32" cy="32" r="30" fill="${accent}" opacity="${bgGlow}"/>
+    <circle cx="32" cy="32" r="30" fill="${fac}" opacity=".06"/>
+    ${(role==="base" || role==="outpost") ? station() : ship()}
+  </svg>`;
+}
+
+function renderCardDiv(card, {context="generic"}={}){
+  const d = document.createElement("div");
+
+  const role = roleOf(card);
+  d.className = `card ${factionClass(card.faction)} role-${role}`;
+
+  const fac = FACTIONS[card.faction] || FACTIONS.n;
+
+  const cost = document.createElement("div");
+  cost.className = "cost";
+  cost.textContent = card.cost ?? 0;
+
+  const type = document.createElement("div");
+  type.className = "type";
+  type.textContent = (card.type==="base") ? (card.outpost ? "Outpost" : "Base") : (role==="trade" ? "Trade Ship" : "Battle Ship");
+
+  const art = document.createElement("div");
+  art.className = "art";
+  art.innerHTML = iconSvg(card);
+
+  const name = document.createElement("div");
+  name.className = "name";
+  name.textContent = card.name;
+
+  const ftag = document.createElement("div");
+  ftag.className = "factionTag";
+  ftag.innerHTML = `<span style="font-size:12px;">${fac.icon}</span><span>${fac.name}</span>`;
+
+  const icons = document.createElement("div");
+  icons.className = "iconRow";
+  const mk = (txt)=>{ const x=document.createElement("div"); x.className="ico"; x.textContent=txt; return x; };
+
+  const p = card.play||[];
+  const t = statSum(p,"trade"), c = statSum(p,"combat"), h=statSum(p,"authority"), dr=statSum(p,"draw");
+  if(t) icons.appendChild(mk(`${ICON.trade} +${t}`));
+  if(c) icons.appendChild(mk(`${ICON.combat} +${c}`));
+  if(h) icons.appendChild(mk(`${ICON.auth} +${h}`));
+  if(dr) icons.appendChild(mk(`${ICON.draw} +${dr}`));
+  if(card.type==="base") icons.appendChild(mk(`🛡️ ${card.curDefense ?? card.defense}`));
+
+  const text = document.createElement("div");
+  text.className = "text";
+  text.textContent = card.text || "";
+
+  d.appendChild(cost);
+  d.appendChild(type);
+  d.appendChild(art);     // ✅ new icon
+  d.appendChild(name);
+  d.appendChild(ftag);
+  d.appendChild(icons);
+  d.appendChild(text);
+
+  if(card.type==="base"){
+    const badge = document.createElement("div");
+    badge.className = "baseBadge";
+    badge.textContent = `🛡️ ${card.curDefense ?? card.defense}`;
+    d.appendChild(badge);
+    if(card.outpost) d.classList.add("outpostGlow");
+  }
+
+  if(context==="inPlay" && card.scrap && card.scrap.length){
+    const sb = document.createElement("div");
+    sb.className = "scrapBtn";
+    sb.textContent = `♻️ Scrap for effect`;
+    sb.onclick = (e)=>{ e.stopPropagation(); scrapInPlay(card.uid); };
+    d.appendChild(sb);
+  }
+
+  return d;
+}
+
+function renderAll(){
+  const me = game.players[0];
+  const op = game.players[1];
+
+  els.tradeVal.textContent = me.trade;
+  els.combatVal.textContent = me.combat;
+  els.myAuthVal.textContent = me.authority;
+
+  els.turnBadge.textContent = game.current===0 ? "Your turn" : "AI turn";
+  els.phaseLine.textContent = game.current===0 ? "Main phase" : "Waiting…";
+
+  // Mode lines
+  els.modeLine.textContent = `Mode: ${game.mode==="gauntlet" ? "Gauntlet" : "Duel (Solo AI)"}`;
+  if(game.mode==="gauntlet"){
+    els.gauntletLine.textContent = `Stage ${game.gauntlet.stage}/${game.gauntlet.maxStage} — AI ramps each stage.`;
+  }else{
+    els.gauntletLine.textContent = "Duel: single match vs AI.";
+  }
+  els.aiPowerLine.textContent = `AI Power: ${game.mode==="gauntlet" ? game.gauntlet.aiPower : 1}`;
+
+  // Enemy info
+  els.enemyLine.textContent = `Authority: ${op.authority}`;
+  els.enemyPiles.textContent = `Deck: ${op.deck.length} • Discard: ${op.discard.length} • Scrap: ${op.scrap.length}`;
+  els.enemyOutpostHint.textContent = `Outposts: ${op.bases.filter(b=>b.outpost).length}`;
+
+  // You info
+  els.youLine.textContent = `Authority: ${me.authority} • Trade: ${me.trade} • Combat: ${me.combat}`;
+  els.youPiles.textContent = `Deck: ${me.deck.length} • Discard: ${me.discard.length} • Scrap: ${me.scrap.length}`;
+
+  els.tradeDeckLine.textContent = `Trade Deck: ${game.tradeDeck.length}`;
+
+  // Buttons
+  els.playAllBtn.disabled = (game.current!==0 || game.busy || me.hand.length===0 || game.gauntlet.cleared);
+  els.buyExplorerBtn.disabled = (game.current!==0 || game.busy || me.trade<2 || game.gauntlet.cleared);
+  els.endTurnBtn.disabled = (game.current!==0 || game.busy || game.gauntlet.cleared);
+  els.attackAuthorityBtn.disabled = (game.current!==0 || game.busy || me.combat<=0 || enemyHasOutposts() || game.gauntlet.cleared);
+
+  // Hand
+  els.hand.innerHTML = "";
+  me.hand.forEach((c, idx)=>{
+    const d = renderCardDiv(c, {context:"hand"});
+    if(game.current!==0 || game.busy || game.gauntlet.cleared) d.classList.add("disabled");
+    d.onclick = ()=> playCardFromHand(idx);
+    els.hand.appendChild(d);
+  });
+
+  // In play
+  els.inPlay.innerHTML = "";
+  me.inPlay.forEach(c=>{
+    const d = renderCardDiv(c, {context:"inPlay"});
+    els.inPlay.appendChild(d);
+  });
+
+  // Bases
+  els.myBases.innerHTML = "";
+  me.bases.forEach(c=>{
+    const d = renderCardDiv(c, {context:"myBase"});
+    els.myBases.appendChild(d);
+  });
+
+  els.enemyBases.innerHTML = "";
+  op.bases.forEach(c=>{
+    const d = renderCardDiv(c, {context:"enemyBase"});
+    if(game.current===0 && !game.busy && game.players[0].combat>0 && !game.gauntlet.cleared) d.classList.add("targetable");
+    d.onclick = ()=> attackEnemyBase(c.uid);
+    els.enemyBases.appendChild(d);
+  });
+
+  // Trade row
+  els.tradeRow.innerHTML = "";
+  game.tradeRow.forEach((c, i)=>{
+    if(!c){
+      const ph = document.createElement("div");
+      ph.className = "card disabled";
+      ph.style.display="grid";
+      ph.style.placeItems="center";
+      ph.style.color="rgba(244,247,255,.35)";
+      ph.textContent = game.tradeDeck.length ? "Refilling…" : "Empty";
+      els.tradeRow.appendChild(ph);
+      return;
+    }
+    const d = renderCardDiv(c, {context:"trade"});
+    const canBuy = (game.current===0 && !game.busy && !game.gauntlet.cleared && game.players[0].trade >= c.cost);
+    if(!canBuy) d.classList.add("disabled");
+    d.onclick = ()=> buyFromTradeRow(i);
+    els.tradeRow.appendChild(d);
+  });
+
+  renderLog();
+}
+
+function renderLog(){
+  const logEl = els.log;
+  logEl.innerHTML = "";
+  game.log.slice(0,45).forEach(e=>{
+    const div = document.createElement("div");
+    div.className = "entry" + (e.muted ? " muted": "");
+    div.textContent = e.msg;
+    logEl.appendChild(div);
+  });
+}
+
+/* ---------------------------
+   Deck viewer
+----------------------------*/
+function showPile(title, cards){
+  const sorted = [...cards].sort((a,b)=>{
+    if(a.faction!==b.faction) return (a.faction||"").localeCompare(b.faction||"");
+    if(a.cost!==b.cost) return (a.cost||0)-(b.cost||0);
+    return (a.name||"").localeCompare(b.name||"");
+  });
+  showModal({
+    title,
+    text:`Count: ${sorted.length}`,
+    cards: sorted,
+    min:0,
+    max:0,
+    confirmLabel:"Close",
+    cancelLabel:"",
+    allowCancel:false,
+    selectable:false
+  }).then(()=>{});
+}
+
+/* ---------------------------
+   UI events
+----------------------------*/
+els.newDuelBtn.onclick = ()=> startDuel();
+els.startGauntletBtn.onclick = ()=> startGauntlet();
+
+els.endTurnBtn.onclick = ()=> endTurn();
+els.buyExplorerBtn.onclick = ()=> buyExplorer();
+els.attackAuthorityBtn.onclick = ()=> attackAuthority();
+els.playAllBtn.onclick = async ()=>{
+  if(game.current!==0 || game.busy || game.gauntlet.cleared) return;
+  // play until hand empty (bases first each loop)
+  while(game.players[0].hand.length){
+    let idx = game.players[0].hand.findIndex(c=>c.type==="base");
+    if(idx<0) idx = 0;
+    await playCardFromHand(idx);
+    if(isTerminal()) return;
+  }
+};
+
+els.autoplayToggle.onchange = ()=>{
+  game.settings.autoplay = !!els.autoplayToggle.checked;
+  if(game.settings.autoplay && game.current===0 && !game.busy && !game.gauntlet.cleared){
+    autoplayHuman();
+  }
+};
+
+els.viewDeckBtn.onclick = ()=> showPile("Your Deck", game.players[0].deck);
+els.viewDiscardBtn.onclick = ()=> showPile("Your Discard", game.players[0].discard);
+els.viewScrapBtn.onclick = ()=> showPile("Your Scrap", game.players[0].scrap);
+
+/* ---------------------------
+   Start
+----------------------------*/
+startDuel();
+
+// (Optional) clicking the dim background does nothing (prevents accidental close mid-choice)
+document.getElementById("modal").addEventListener("click",(e)=>{
+  if(e.target.id==="modal"){} // ignore
+});
+</script>
+</body>
+</html>
