@@ -1,0 +1,1963 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <title>Star Realms (Unofficial) — Online 1v1 Turn-Based</title>
+  <style>
+  :root{
+    --bg0:#070a12;
+    --bg1:#0b1326;
+
+    --panel:rgba(255,255,255,.055);
+    --panel2:rgba(255,255,255,.085);
+    --line:rgba(255,255,255,.12);
+    --line2:rgba(255,255,255,.08);
+
+    --ink:#f4f7ff;
+    --muted:rgba(244,247,255,.70);
+    --muted2:rgba(244,247,255,.52);
+
+    --bad:#ff5d6c;
+    --good:#66ffb2;
+    --warn:#ffd166;
+
+    --tf:#56d3ff;     /* Trade Federation */
+    --blob:#7CFF5B;   /* Blob */
+    --se:#ff6ad5;     /* Star Empire */
+    --mc:#b7a6ff;     /* Machine Cult */
+    --sd:#ffd36a;     /* Solar Dominion */
+    --vs:#7a5cff;     /* Void Syndicate */
+    --neut:#cfd6ff;
+
+    --gap:10px;
+    --r12:12px;
+    --r14:14px;
+    --r16:16px;
+
+    --shadow1: 0 12px 30px rgba(0,0,0,.35);
+    --shadow2: 0 16px 40px rgba(0,0,0,.40);
+    --shadow3: 0 40px 120px rgba(0,0,0,.65);
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ height:auto; margin:0; }
+  body{
+    background:
+      radial-gradient(1200px 700px at 30% -10%, rgba(26,42,99,.90) 0%, rgba(0,0,0,0) 55%),
+      radial-gradient(1000px 700px at 90% 0%, rgba(45,18,64,.85) 0%, rgba(0,0,0,0) 55%),
+      radial-gradient(900px 600px at 15% 110%, rgba(20,120,255,.10) 0%, rgba(0,0,0,0) 55%),
+      linear-gradient(180deg,var(--bg1),var(--bg0));
+    color:var(--ink);
+    font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial;
+    overflow-y:auto;
+    overflow-x:hidden;
+  }
+
+  #app{
+    min-height:100vh;
+    display:grid;
+    grid-template-rows:auto auto 1fr;
+    gap:var(--gap);
+    padding:var(--gap);
+    max-width:1500px;
+    margin:0 auto;
+  }
+
+  .topbar{
+    display:flex;
+    gap:var(--gap);
+    align-items:stretch;
+    justify-content:space-between;
+    flex-wrap:wrap;
+  }
+  .pill{
+    background:linear-gradient(180deg,var(--panel2),var(--panel));
+    border:1px solid var(--line);
+    border-radius:var(--r14);
+    padding:10px 12px;
+    box-shadow:var(--shadow2);
+    min-width:280px;
+    flex:1 1 320px;
+    position:relative;
+    overflow:hidden;
+  }
+  .pill::before{
+    content:"";
+    position:absolute;
+    inset:-80px -80px auto auto;
+    width:220px; height:220px;
+    border-radius:50%;
+    background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.12), transparent 60%);
+    opacity:.55;
+    pointer-events:none;
+  }
+  .pill h3{
+    margin:0 0 6px 0;
+    font-size:14px;
+    letter-spacing:.2px;
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  .sub{ color:var(--muted); font-size:12px; line-height:1.25; }
+  .hint{ font-size:12px; color:var(--muted); margin-top:6px; line-height:1.25; }
+
+  .row{
+    display:grid;
+    grid-template-columns: 330px 1fr 340px;
+    gap:var(--gap);
+    align-items:start;
+  }
+  .center{
+    display:grid;
+    grid-template-rows:auto auto auto;
+    gap:var(--gap);
+    min-width:0;
+  }
+
+  .panel, .side{
+    background:linear-gradient(180deg,var(--panel2),var(--panel));
+    border:1px solid var(--line);
+    border-radius:var(--r16);
+    padding:10px;
+    box-shadow:var(--shadow2);
+    position:relative;
+    overflow:hidden;
+  }
+  .panel::before, .side::before{
+    content:"";
+    position:absolute;
+    inset:0;
+    background:
+      radial-gradient(600px 280px at 10% 0%, rgba(255,255,255,.06), transparent 60%),
+      radial-gradient(520px 260px at 100% 30%, rgba(255,255,255,.04), transparent 55%);
+    pointer-events:none;
+    opacity:.9;
+  }
+  .panel > *, .side > *{ position:relative; z-index:1; }
+
+  .side{
+    overflow:auto;
+    max-height:calc(100vh - 260px);
+  }
+
+  .hud{
+    display:flex;
+    gap:var(--gap);
+    flex-wrap:wrap;
+    align-items:center;
+    justify-content:space-between;
+  }
+  .statline{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+
+  .chip{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:8px 10px;
+    border-radius:999px;
+    border:1px solid var(--line);
+    background:rgba(0,0,0,.20);
+    font-size:12px;
+    user-select:none;
+    white-space:nowrap;
+    backdrop-filter: blur(6px);
+  }
+  .chip strong{ font-size:13px; }
+
+  .btn{
+    pointer-events:auto;
+    background:linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.06));
+    border:1px solid var(--line);
+    color:var(--ink);
+    padding:9px 12px;
+    border-radius:var(--r12);
+    cursor:pointer;
+    font-weight:650;
+    letter-spacing:.2px;
+    transition: transform .08s ease, filter .08s ease, box-shadow .12s ease;
+    user-select:none;
+    white-space:nowrap;
+    box-shadow: 0 10px 20px rgba(0,0,0,.18);
+  }
+  .btn:hover{ filter:brightness(1.08); }
+  .btn:active{ transform:translateY(1px); }
+  .btn:disabled{ opacity:.45; cursor:not-allowed; box-shadow:none; }
+  .btn.warn{ border-color:rgba(255,209,102,.35); }
+  .btn.bad{ border-color:rgba(255,93,108,.40); }
+  .btn.good{ border-color:rgba(102,255,178,.35); }
+
+  .toggle{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:8px 10px;
+    border-radius:999px;
+    border:1px solid var(--line);
+    background:rgba(0,0,0,.20);
+    font-size:12px;
+    user-select:none;
+    cursor:pointer;
+    backdrop-filter: blur(6px);
+  }
+  .toggle input{ transform:translateY(1px); }
+
+  .sectionTitle{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin:0 0 8px 0;
+    font-size:13px;
+    color:var(--muted);
+    letter-spacing:.25px;
+    user-select:none;
+  }
+
+  .cards{ display:flex; gap:10px; flex-wrap:wrap; }
+
+  .card{
+    width:150px;
+    border-radius:var(--r14);
+    border:1px solid var(--line);
+    background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.05));
+    padding:10px;
+    position:relative;
+    box-shadow:var(--shadow1);
+    user-select:none;
+    cursor:pointer;
+    transition: transform .08s ease, filter .08s ease;
+    overflow:hidden;
+  }
+  .card:hover{ filter:brightness(1.06); }
+  .card:active{ transform:translateY(1px); }
+  .card.disabled{ opacity:.45; cursor:not-allowed; }
+
+  .card .cost{
+    position:absolute; top:8px; left:8px;
+    width:28px; height:28px; border-radius:999px;
+    display:grid; place-items:center;
+    background:rgba(0,0,0,.45);
+    border:1px solid rgba(255,255,255,.18);
+    font-weight:800;
+    font-size:13px;
+    backdrop-filter: blur(8px);
+  }
+  .card .type{
+    position:absolute; top:8px; right:8px;
+    font-size:11px;
+    color:var(--muted);
+    background:rgba(0,0,0,.25);
+    border:1px solid rgba(255,255,255,.14);
+    padding:4px 8px;
+    border-radius:999px;
+    backdrop-filter: blur(8px);
+  }
+  .art{
+    margin-top:18px;
+    width:100%;
+    height:54px;
+    display:grid;
+    place-items:center;
+    opacity:.95;
+  }
+  .art svg{ width:68px; height:68px; }
+
+  .name{ margin-top:6px; font-weight:900; letter-spacing:.2px; font-size:13px; }
+  .factionTag{
+    margin-top:4px;
+    font-size:11px;
+    color:var(--muted);
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+
+  .iconRow{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  .ico{
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:11px;
+    background:rgba(0,0,0,.25);
+    border:1px solid rgba(255,255,255,.12);
+    padding:4px 8px;
+    border-radius:999px;
+    backdrop-filter: blur(6px);
+  }
+
+  .text{
+    margin-top:8px;
+    font-size:11px;
+    color:rgba(244,247,255,.78);
+    line-height:1.25;
+    min-height:48px;
+    white-space:pre-line;
+  }
+
+  .card .scrapBtn{
+    pointer-events:auto;
+    margin-top:8px;
+    width:100%;
+    text-align:center;
+    font-size:11px;
+    padding:7px 8px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,.16);
+    background:rgba(0,0,0,.25);
+    cursor:pointer;
+  }
+  .card .scrapBtn:hover{ filter:brightness(1.06); }
+
+  .tf{   border-color:rgba(86,211,255,.35);   box-shadow: 0 12px 30px rgba(86,211,255,.10), 0 12px 30px rgba(0,0,0,.35); }
+  .blob{ border-color:rgba(124,255,91,.35);  box-shadow: 0 12px 30px rgba(124,255,91,.10), 0 12px 30px rgba(0,0,0,.35); }
+  .se{   border-color:rgba(255,106,213,.35); box-shadow: 0 12px 30px rgba(255,106,213,.10), 0 12px 30px rgba(0,0,0,.35); }
+  .mc{   border-color:rgba(183,166,255,.35); box-shadow: 0 12px 30px rgba(183,166,255,.10), 0 12px 30px rgba(0,0,0,.35); }
+  .sd{   border-color:rgba(255,211,106,.35); box-shadow: 0 12px 30px rgba(255,211,106,.10), 0 12px 30px rgba(0,0,0,.35); }
+  .vs{   border-color:rgba(122,92,255,.35);  box-shadow: 0 12px 30px rgba(122,92,255,.10), 0 12px 30px rgba(0,0,0,.35); }
+
+  .baseBadge{
+    position:absolute; bottom:10px; right:10px;
+    font-size:11px;
+    padding:4px 8px;
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,.14);
+    background:rgba(0,0,0,.28);
+    color:var(--muted);
+    backdrop-filter: blur(8px);
+  }
+  .targetable{ outline:2px dashed rgba(255,255,255,.25); outline-offset:2px; }
+  .outpostGlow{ box-shadow:0 0 0 2px rgba(255,209,102,.35), 0 20px 40px rgba(255,209,102,.10); }
+
+  #log{ font-size:12px; line-height:1.25; color:rgba(244,247,255,.85); }
+  #log .entry{ padding:6px 0; border-bottom:1px solid rgba(255,255,255,.08); }
+  #log .muted{ color:var(--muted); }
+
+  .handWrap{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    max-height:310px;
+    overflow:auto;
+    padding:6px;
+    border-radius:var(--r14);
+    border:1px dashed rgba(255,255,255,.10);
+    background:rgba(0,0,0,.12);
+  }
+
+  #modal{
+    position:fixed;
+    inset:0;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    background:rgba(0,0,0,.62);
+    z-index:9999;
+    padding:16px;
+  }
+  #modal .box{
+    width:min(980px, 96vw);
+    max-height:84vh;
+    overflow:auto;
+    border-radius:var(--r16);
+    border:1px solid rgba(255,255,255,.14);
+    background:linear-gradient(180deg, rgba(20,26,46,.98), rgba(12,14,22,.98));
+    box-shadow:var(--shadow3);
+    padding:14px;
+  }
+  #modal h2{ margin:0 0 6px 0; font-size:16px; }
+  #modal p{ margin:0 0 12px 0; color:var(--muted); font-size:12px; }
+  #modal .actions{
+    display:flex;
+    gap:10px;
+    justify-content:flex-end;
+    margin-top:10px;
+    flex-wrap:wrap;
+  }
+
+  .miniBtns{ display:flex; gap:8px; flex-wrap:wrap; }
+  .miniBtn{
+    padding:7px 10px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,.14);
+    background:rgba(0,0,0,.22);
+    cursor:pointer;
+    font-weight:650;
+    font-size:12px;
+    user-select:none;
+    transition: filter .08s ease, transform .08s ease;
+  }
+  .miniBtn:hover{ filter:brightness(1.08); }
+  .miniBtn:active{ transform:translateY(1px); }
+
+  @media (max-width: 1100px){
+    .row{ grid-template-columns: 1fr; }
+    .side{ max-height:none; }
+    .card{ width:146px; }
+  }
+
+  /* ===== Net overlay ===== */
+  #netOverlay{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.70);
+    z-index:99999;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    padding:16px;
+  }
+  #netOverlay .netBox{
+    width:min(720px, 96vw);
+    border-radius:18px;
+    border:1px solid rgba(255,255,255,.16);
+    background:linear-gradient(180deg, rgba(20,26,46,.98), rgba(12,14,22,.98));
+    box-shadow:var(--shadow3);
+    padding:14px;
+  }
+  #netOverlay h2{ margin:0 0 8px 0; font-size:16px; }
+  #netOverlay .row2{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  @media (max-width: 720px){ #netOverlay .row2{ grid-template-columns:1fr; } }
+  .field{
+    width:100%;
+    padding:10px 12px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,.16);
+    background:rgba(0,0,0,.25);
+    color:var(--ink);
+    outline:none;
+  }
+  .field::placeholder{ color:rgba(244,247,255,.45); }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <div class="topbar">
+    <div class="pill">
+      <h3><span id="oppTitle">Opponent</span> <span id="turnBadge" class="sub">—</span></h3>
+      <div class="sub" id="enemyLine">Authority: —</div>
+      <div class="sub" id="enemyPiles">Deck: — • Discard: — • Scrap: —</div>
+      <div class="sub" id="enemyOutpostHint">Outposts: —</div>
+      <div class="hint" id="netLine">Room: — • Seat: —</div>
+    </div>
+
+    <div class="pill">
+      <h3>
+        <span>Star Realms (Unofficial)</span>
+        <span class="sub" id="modeLine">Online 1v1</span>
+      </h3>
+      <div class="sub">
+        Play ships & bases → generate <b>Trade</b> (💠) and <b>Combat</b> (⚔️). Spend trade to buy, spend combat to destroy bases or hit authority.
+      </div>
+      <div class="sub">
+        Rule: If opponent has any <b>Outposts</b>, you must destroy them before attacking authority.
+      </div>
+      <div class="hint">Turn timer: <b>60s</b>. If a player doesn’t end their turn, it auto-ends.</div>
+    </div>
+
+    <div class="pill">
+      <h3><span id="youTitle">You</span> <span class="sub" id="phaseLine">—</span></h3>
+      <div class="sub" id="youLine">Authority: —</div>
+      <div class="sub" id="youPiles">Deck: — • Discard: — • Scrap: —</div>
+      <div class="miniBtns" style="margin-top:8px;">
+        <div class="miniBtn" id="viewDeckBtn">View Deck</div>
+        <div class="miniBtn" id="viewDiscardBtn">View Discard</div>
+        <div class="miniBtn" id="viewScrapBtn">View Scrap</div>
+      </div>
+      <div class="hint">Ally abilities trigger when you’ve played <b>2+</b> cards of that faction this turn (bases can trigger each of your turns).</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="hud">
+      <div class="statline">
+        <div class="chip">💠 Trade: <strong id="tradeVal">0</strong></div>
+        <div class="chip">⚔️ Combat: <strong id="combatVal">0</strong></div>
+        <div class="chip">❤️ Authority: <strong id="myAuthVal">50</strong></div>
+        <div class="chip">⏱ Turn: <strong id="turnTimer">—</strong>s</div>
+        <label class="toggle" title="When ON, Play All will be triggered automatically at your turn start.">
+          <input type="checkbox" id="autoplayToggle">
+          Auto Play All
+        </label>
+      </div>
+      <div class="statline">
+        <button class="btn" id="playAllBtn">Play All</button>
+        <button class="btn warn" id="buyExplorerBtn">Buy Explorer (2)</button>
+        <button class="btn bad" id="attackAuthorityBtn">⚔️ Attack Opponent Authority</button>
+        <button class="btn good" id="endTurnBtn">End Turn</button>
+        <button class="btn warn" id="restartBtn" title="Host only">Restart Match</button>
+      </div>
+    </div>
+    <div class="hint" id="statusLine">Connecting…</div>
+  </div>
+
+  <div class="row">
+    <div class="side">
+      <div class="sectionTitle">Opponent Bases</div>
+      <div class="cards" id="enemyBases"></div>
+      <div class="hint">Click a base/outpost to spend your combat on it (on your turn).</div>
+    </div>
+
+    <div class="center">
+      <div class="panel">
+        <div class="sectionTitle">
+          <span>Trade Row (shared)</span>
+          <span class="sub" id="tradeDeckLine">Trade Deck: —</span>
+        </div>
+        <div class="cards" id="tradeRow"></div>
+        <div class="hint">Click a card to buy it (if you can afford it). Purchased cards go to your discard pile.</div>
+      </div>
+
+      <div class="panel">
+        <div class="sectionTitle">
+          <span>Your Bases (persist)</span>
+          <span class="sub">Ally triggers can happen each of your turns</span>
+        </div>
+        <div class="cards" id="myBases"></div>
+      </div>
+
+      <div class="panel">
+        <div class="sectionTitle">
+          <span>Your Hand</span>
+          <span class="sub">Click to play • Ships discard at end</span>
+        </div>
+        <div class="handWrap" id="hand"></div>
+
+        <div class="sectionTitle" style="margin-top:10px;">
+          <span>In Play (ships this turn)</span>
+          <span class="sub">Scrap buttons are optional</span>
+        </div>
+        <div class="cards" id="inPlay"></div>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="sectionTitle">Game Log</div>
+      <div id="log"></div>
+      <div class="hint" style="margin-top:10px;">
+        Added factions:
+        <br>☀️ <b>Solar Dominion</b> — convert tempo into pressure (combat/trade/hp mix).
+        <br>🕳️ <b>Void Syndicate</b> — disrupt draws + hand pressure.
+        <br><span class="sub">Note: for simplicity, “choose” effects (scrap/discard choices) are auto-resolved by heuristics.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Net Overlay -->
+<div id="netOverlay">
+  <div class="netBox">
+    <h2>Connect to a 1v1 room</h2>
+    <div class="sub" style="margin-bottom:10px;">
+      If your lobby already passes a room, this screen won’t appear. Otherwise: create a room and share the code, or join a code.
+    </div>
+    <div class="row2">
+      <div class="panel" style="padding:12px;">
+        <div class="sectionTitle"><span>Create</span></div>
+        <input class="field" id="nameCreate" placeholder="Your name (optional)" />
+        <div style="height:10px"></div>
+        <button class="btn good" id="btnCreateRoom">Create Room</button>
+        <div class="hint" id="createHint"></div>
+      </div>
+      <div class="panel" style="padding:12px;">
+        <div class="sectionTitle"><span>Join</span></div>
+        <input class="field" id="nameJoin" placeholder="Your name (optional)" />
+        <div style="height:10px"></div>
+        <input class="field" id="codeJoin" placeholder="Room code (e.g., SR-ABCDE)" />
+        <div style="height:10px"></div>
+        <button class="btn" id="btnJoinRoom">Join Room</button>
+        <div class="hint" id="joinHint"></div>
+      </div>
+    </div>
+    <div class="hint" style="margin-top:10px;">
+      Turn timer is enforced by the host client. If the host closes, the match may pause.
+    </div>
+  </div>
+</div>
+
+<!-- Modal (deck viewer) -->
+<div id="modal">
+  <div class="box">
+    <h2 id="modalTitle">—</h2>
+    <p id="modalText">—</p>
+    <div class="cards" id="modalCards"></div>
+    <div class="actions">
+      <button class="btn" id="modalCancel">Close</button>
+      <button class="btn good" id="modalConfirm">OK</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+/* ============================================================
+   STAR REALMS (UnoffICIAL) — ONLINE 1v1 TURN-BASED
+   ✅ 2 players only
+   ✅ Shared trade row
+   ✅ One player acts at a time; End Turn or auto-end at 60s
+   ✅ Firebase Realtime Database + Anonymous Auth
+   ✅ Host-authoritative via action queue
+   ============================================================ */
+
+/* =========================
+   Firebase (PASTE YOUR CONFIG)
+   ========================= */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import {
+  getDatabase, ref, set, get, update, remove, push, onValue, onChildAdded,
+  serverTimestamp, runTransaction
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+
+/** 🔧 Replace with your Firebase Web Config (same project as your lobby). */
+const firebaseConfig = {
+  apiKey: "PASTE_ME",
+  authDomain: "PASTE_ME",
+  databaseURL: "PASTE_ME",
+  projectId: "PASTE_ME",
+  storageBucket: "PASTE_ME",
+  messagingSenderId: "PASTE_ME",
+  appId: "PASTE_ME",
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getDatabase(app);
+
+// Server time offset (for consistent timers)
+let serverOffset = 0;
+onValue(ref(db, "/.info/serverTimeOffset"), (s)=>{ serverOffset = s.val() || 0; });
+const now = ()=> Date.now() + serverOffset;
+
+/* =========================
+   Lobby/Room detection helpers
+   ========================= */
+function getRoomFromLobby(){
+  const sp = new URLSearchParams(location.search);
+  return (
+    sp.get("room") ||
+    sp.get("code") ||
+    localStorage.getItem("lobby_roomId") ||
+    localStorage.getItem("roomId") ||
+    localStorage.getItem("balatro_roomId") ||
+    null
+  );
+}
+function getNameFromLobby(){
+  return (
+    localStorage.getItem("lobby_name") ||
+    localStorage.getItem("playerName") ||
+    localStorage.getItem("balatle_solo_name") ||
+    "Player"
+  );
+}
+
+/* =========================
+   Core game data (templates only; instances are compact)
+   ========================= */
+const FACTIONS = {
+  tf: { key:"tf", name:"Trade Federation", color:"var(--tf)", icon:"🟦" },
+  blob:{ key:"blob", name:"Blob",            color:"var(--blob)",icon:"🟩" },
+  se:  { key:"se",   name:"Star Empire",     color:"var(--se)",  icon:"🟥" },
+  mc:  { key:"mc",   name:"Machine Cult",    color:"var(--mc)",  icon:"🟪" },
+  sd:  { key:"sd",   name:"Solar Dominion",  color:"var(--sd)",  icon:"☀️" },
+  vs:  { key:"vs",   name:"Void Syndicate",  color:"var(--vs)",  icon:"🕳️" },
+  n:   { key:"n",    name:"Neutral",         color:"var(--neut)", icon:"⚙️" }
+};
+const ICON = { trade:"💠", combat:"⚔️", auth:"❤️", draw:"🃏", discard:"🗑️", scrap:"♻️" };
+
+function C({ key, name, cost, faction="n", type="ship", outpost=false, defense=0, play=[], ally=[], scrap=[], text="" }){
+  return { key, name, cost, faction, type, outpost, defense, play, ally, scrap, text };
+}
+
+const TEMPLATES = [
+  // ===== Neutral / Core =====
+  C({ key:"scout", name:"Scout", cost:0, faction:"n", play:[{t:"trade",n:1}], text:`Gain ${ICON.trade}1.` }),
+  C({ key:"viper", name:"Viper", cost:0, faction:"n", play:[{t:"combat",n:1}], text:`Gain ${ICON.combat}1.` }),
+  C({ key:"explorer", name:"Explorer", cost:2, faction:"n", play:[{t:"trade",n:2}], scrap:[{t:"combat",n:2}], text:`Gain ${ICON.trade}2.\nScrap: gain ${ICON.combat}2.` }),
+  C({ key:"freighter", name:"Free Freighter", cost:3, faction:"n", play:[{t:"trade",n:3}], text:`Gain ${ICON.trade}3.` }),
+  C({ key:"gunship", name:"Merc Gunship", cost:3, faction:"n", play:[{t:"combat",n:3}], text:`Gain ${ICON.combat}3.` }),
+  C({ key:"relay", name:"Supply Relay", cost:4, faction:"n", type:"base", defense:5, outpost:false, play:[{t:"trade",n:1}], text:`Base (5).\nEach turn: gain ${ICON.trade}1.` }),
+
+  // ===== Trade Federation (tf) =====
+  C({ key:"tf_courier", name:"Federation Courier", cost:3, faction:"tf", play:[{t:"trade",n:2}], ally:[{t:"authority",n:3}], text:`Gain ${ICON.trade}2.\nAlly: gain ${ICON.auth}3.` }),
+  C({ key:"tf_union_tug", name:"Union Tug", cost:2, faction:"tf", play:[{t:"trade",n:1},{t:"authority",n:2}], ally:[{t:"trade",n:1}], text:`Gain ${ICON.trade}1 and ${ICON.auth}2.\nAlly: gain ${ICON.trade}1.` }),
+  C({ key:"tf_medical", name:"Medical Skiff", cost:4, faction:"tf", play:[{t:"trade",n:1},{t:"authority",n:4}], ally:[{t:"draw",n:1}], text:`Gain ${ICON.trade}1 and ${ICON.auth}4.\nAlly: draw 1.` }),
+  C({ key:"tf_patrol", name:"Patrol Frigate", cost:5, faction:"tf", play:[{t:"combat",n:3},{t:"trade",n:1}], ally:[{t:"authority",n:3}], text:`Gain ${ICON.combat}3 and ${ICON.trade}1.\nAlly: gain ${ICON.auth}3.` }),
+  C({ key:"tf_convoy", name:"Trade Convoy", cost:5, faction:"tf", play:[{t:"trade",n:3}], scrap:[{t:"draw",n:1}], text:`Gain ${ICON.trade}3.\nScrap: draw 1.` }),
+  C({ key:"tf_sanctuary", name:"Sanctuary Platform", cost:4, faction:"tf", type:"base", defense:5, outpost:true, play:[{t:"authority",n:2}], ally:[{t:"trade",n:1}], text:`Outpost (5).\nEach turn: gain ${ICON.auth}2.\nAlly: gain ${ICON.trade}1.` }),
+  C({ key:"tf_hospital", name:"Hospital Outpost", cost:6, faction:"tf", type:"base", defense:8, outpost:true, play:[{t:"authority",n:3}], ally:[{t:"draw",n:1}], text:`Outpost (8).\nEach turn: gain ${ICON.auth}3.\nAlly: draw 1.` }),
+  C({ key:"tf_embassy", name:"Embassy Station", cost:6, faction:"tf", type:"base", defense:7, outpost:false, play:[{t:"trade",n:2}], ally:[{t:"draw",n:1}], text:`Base (7).\nEach turn: gain ${ICON.trade}2.\nAlly: draw 1.` }),
+  C({ key:"tf_peacekeeper", name:"Peacekeeper Cruiser", cost:7, faction:"tf", play:[{t:"combat",n:4},{t:"authority",n:4}], ally:[{t:"draw",n:1}], text:`Gain ${ICON.combat}4 and ${ICON.auth}4.\nAlly: draw 1.` }),
+  C({ key:"tf_diplomat", name:"Diplomat Flagship", cost:8, faction:"tf", play:[{t:"trade",n:3},{t:"authority",n:6}], ally:[{t:"draw",n:1}], text:`Gain ${ICON.trade}3 and ${ICON.auth}6.\nAlly: draw 1.` }),
+
+  // ===== Blob (blob) =====
+  C({ key:"blob_larva", name:"Blob Larva", cost:2, faction:"blob", play:[{t:"combat",n:2}], ally:[{t:"trade",n:1}], text:`Gain ${ICON.combat}2.\nAlly: gain ${ICON.trade}1.` }),
+  C({ key:"blob_skitter", name:"Blob Skitter", cost:3, faction:"blob", play:[{t:"combat",n:3}], ally:[{t:"combat",n:2}], text:`Gain ${ICON.combat}3.\nAlly: gain ${ICON.combat}2.` }),
+  C({ key:"blob_glider", name:"Gelatin Glider", cost:4, faction:"blob", play:[{t:"combat",n:4}], scrap:[{t:"trade",n:2}], text:`Gain ${ICON.combat}4.\nScrap: gain ${ICON.trade}2.` }),
+  C({ key:"blob_spawner", name:"Spore Spawner", cost:5, faction:"blob", play:[{t:"combat",n:4}], ally:[{t:"draw",n:1}], text:`Gain ${ICON.combat}4.\nAlly: draw 1.` }),
+  C({ key:"blob_acid", name:"Acid Barge", cost:5, faction:"blob", play:[{t:"combat",n:5}], scrap:[{t:"opp_discard",n:1}], text:`Gain ${ICON.combat}5.\nScrap: opponent discards 1.` }),
+  C({ key:"blob_lair", name:"Blob Lair", cost:5, faction:"blob", type:"base", defense:6, outpost:true, play:[{t:"combat",n:2}], ally:[{t:"combat",n:2}], text:`Outpost (6).\nEach turn: gain ${ICON.combat}2.\nAlly: gain ${ICON.combat}2.` }),
+  C({ key:"blob_feeder", name:"Feeder Nest", cost:4, faction:"blob", type:"base", defense:5, outpost:false, play:[{t:"combat",n:1}], ally:[{t:"draw",n:1}], text:`Base (5).\nEach turn: gain ${ICON.combat}1.\nAlly: draw 1.` }),
+  C({ key:"blob_mangler", name:"Mangler Pod", cost:6, faction:"blob", play:[{t:"combat",n:6}], ally:[{t:"opp_discard",n:1}], text:`Gain ${ICON.combat}6.\nAlly: opponent discards 1.` }),
+  C({ key:"blob_cannonbloom", name:"Cannon Bloom", cost:7, faction:"blob", play:[{t:"combat",n:6}], ally:[{t:"draw",n:1}], text:`Gain ${ICON.combat}6.\nAlly: draw 1.` }),
+  C({ key:"blob_titan", name:"Blob Titan", cost:9, faction:"blob", play:[{t:"combat",n:9}], ally:[{t:"combat",n:4}], text:`Gain ${ICON.combat}9.\nAlly: gain ${ICON.combat}4.` }),
+
+  // ===== Star Empire (se) =====
+  C({ key:"se_infiltrator", name:"Empire Infiltrator", cost:2, faction:"se", play:[{t:"combat",n:1},{t:"opp_discard",n:1}], text:`Gain ${ICON.combat}1.\nOpponent discards 1.` }),
+  C({ key:"se_interceptor", name:"Imperial Interceptor", cost:3, faction:"se", play:[{t:"combat",n:2},{t:"opp_discard",n:1}], text:`Gain ${ICON.combat}2.\nOpponent discards 1.` }),
+  C({ key:"se_raid", name:"Raid Corvette", cost:4, faction:"se", play:[{t:"combat",n:4}], ally:[{t:"opp_discard",n:1}], text:`Gain ${ICON.combat}4.\nAlly: opponent discards 1.` }),
+  C({ key:"se_blockade", name:"Blockade Frigate", cost:5, faction:"se", play:[{t:"combat",n:4},{t:"trade",n:1}], ally:[{t:"opp_next_draw",n:-1}], text:`Gain ${ICON.combat}4 and ${ICON.trade}1.\nAlly: opponent draws 1 fewer next turn.` }),
+  C({ key:"se_censor", name:"Censor Frigate", cost:6, faction:"se", play:[{t:"combat",n:5},{t:"opp_next_draw",n:-1}], ally:[{t:"opp_discard",n:1}], text:`Gain ${ICON.combat}5.\nOpponent draws 1 fewer next turn.\nAlly: opponent discards 1.` }),
+  C({ key:"se_station", name:"Imperial Station", cost:4, faction:"se", type:"base", defense:5, outpost:false, play:[{t:"combat",n:1}], ally:[{t:"opp_discard",n:1}], text:`Base (5).\nEach turn: gain ${ICON.combat}1.\nAlly: opponent discards 1.` }),
+  C({ key:"se_propaganda", name:"Propaganda Hub", cost:5, faction:"se", type:"base", defense:6, outpost:false, play:[{t:"trade",n:1}], ally:[{t:"opp_discard",n:1}], text:`Base (6).\nEach turn: gain ${ICON.trade}1.\nAlly: opponent discards 1.` }),
+  C({ key:"se_checkpoint", name:"Checkpoint Array", cost:6, faction:"se", type:"base", defense:7, outpost:true, play:[{t:"combat",n:2}], ally:[{t:"opp_next_draw",n:-1}], text:`Outpost (7).\nEach turn: gain ${ICON.combat}2.\nAlly: opponent draws 1 fewer next turn.` }),
+  C({ key:"se_vanguard", name:"Vanguard Carrier", cost:7, faction:"se", play:[{t:"combat",n:6},{t:"draw",n:1}], ally:[{t:"opp_discard",n:1}], text:`Gain ${ICON.combat}6 and draw 1.\nAlly: opponent discards 1.` }),
+  C({ key:"se_dread", name:"Imperial Dreadship", cost:9, faction:"se", play:[{t:"combat",n:7},{t:"opp_discard",n:1}], ally:[{t:"opp_discard",n:1}], text:`Gain ${ICON.combat}7.\nOpponent discards 1.\nAlly: opponent discards 1.` }),
+
+  // ===== Machine Cult (mc) =====
+  C({ key:"mc_junksiphon", name:"Junk Siphon", cost:2, faction:"mc", play:[{t:"trade",n:1}], ally:[{t:"scrap_discard",n:1}], text:`Gain ${ICON.trade}1.\nAlly: scrap 1 from discard.` }),
+  C({ key:"mc_recycler", name:"Recycler Drone", cost:3, faction:"mc", play:[{t:"trade",n:1}], ally:[{t:"scrap_discard",n:1}], text:`Gain ${ICON.trade}1.\nAlly: scrap 1 card from your discard.` }),
+  C({ key:"mc_cutter", name:"Salvage Cutter", cost:4, faction:"mc", play:[{t:"combat",n:3}], scrap:[{t:"scrap_hand",n:1}], text:`Gain ${ICON.combat}3.\nScrap: scrap 1 from hand.` }),
+  C({ key:"mc_forge", name:"Forge Skimmer", cost:5, faction:"mc", play:[{t:"trade",n:2},{t:"combat",n:2}], ally:[{t:"scrap_hand",n:1}], text:`Gain ${ICON.trade}2 and ${ICON.combat}2.\nAlly: scrap 1 from hand.` }),
+  C({ key:"mc_scrapwright", name:"Scrapwright", cost:5, faction:"mc", play:[{t:"trade",n:1},{t:"combat",n:2}], ally:[{t:"scrap_discard",n:1}], text:`Gain ${ICON.trade}1 and ${ICON.combat}2.\nAlly: scrap 1 from discard.` }),
+  C({ key:"mc_foundry", name:"Nanofoundry", cost:4, faction:"mc", type:"base", defense:5, outpost:false, play:[{t:"trade",n:1}], ally:[{t:"scrap_discard",n:1}], text:`Base (5).\nEach turn: gain ${ICON.trade}1.\nAlly: scrap 1 from discard.` }),
+  C({ key:"mc_assimilator", name:"Assimilator Node", cost:5, faction:"mc", type:"base", defense:7, outpost:true, play:[{t:"combat",n:1}], ally:[{t:"scrap_discard",n:1}], text:`Outpost (7).\nEach turn: gain ${ICON.combat}1.\nAlly: scrap 1 from discard.` }),
+  C({ key:"mc_bulwark", name:"Mech Bulwark", cost:6, faction:"mc", type:"base", defense:8, outpost:true, play:[{t:"combat",n:1}], ally:[{t:"trade",n:2}], text:`Outpost (8).\nEach turn: gain ${ICON.combat}1.\nAlly: gain ${ICON.trade}2.` }),
+  C({ key:"mc_overclock", name:"Overclock Framer", cost:7, faction:"mc", play:[{t:"combat",n:5},{t:"trade",n:2}], ally:[{t:"draw",n:1}], text:`Gain ${ICON.combat}5 and ${ICON.trade}2.\nAlly: draw 1.` }),
+  C({ key:"mc_reclaimer", name:"Reclaimer Titan", cost:9, faction:"mc", play:[{t:"combat",n:6},{t:"trade",n:3}], ally:[{t:"scrap_hand",n:1}], text:`Gain ${ICON.combat}6 and ${ICON.trade}3.\nAlly: scrap 1 from hand.` }),
+
+  // ===== Solar Dominion (sd) =====
+  C({ key:"sd_dawn", name:"Dawn Skirmisher", cost:2, faction:"sd", play:[{t:"trade",n:1},{t:"combat",n:1}], ally:[{t:"authority",n:2}], text:`Gain ${ICON.trade}1 and ${ICON.combat}1.\nAlly: gain ${ICON.auth}2.` }),
+  C({ key:"sd_sunlance", name:"Sunlance Sloop", cost:3, faction:"sd", play:[{t:"combat",n:2},{t:"trade",n:1}], ally:[{t:"combat",n:2}], text:`Gain ${ICON.combat}2 and ${ICON.trade}1.\nAlly: gain ${ICON.combat}2.` }),
+  C({ key:"sd_radiant", name:"Radiant Courier", cost:4, faction:"sd", play:[{t:"trade",n:2}], ally:[{t:"combat",n:2}], text:`Gain ${ICON.trade}2.\nAlly: gain ${ICON.combat}2.` }),
+  C({ key:"sd_flare", name:"Solar Flare Wing", cost:5, faction:"sd", play:[{t:"combat",n:4}], ally:[{t:"authority",n:3}], text:`Gain ${ICON.combat}4.\nAlly: gain ${ICON.auth}3.` }),
+  C({ key:"sd_prism", name:"Prism Gunship", cost:6, faction:"sd", play:[{t:"combat",n:5}], ally:[{t:"trade",n:2}], text:`Gain ${ICON.combat}5.\nAlly: gain ${ICON.trade}2.` }),
+  C({ key:"sd_yard", name:"Sunforge Yard", cost:4, faction:"sd", type:"base", defense:6, outpost:false, play:[{t:"trade",n:1},{t:"authority",n:1}], ally:[{t:"combat",n:2}], text:`Base (6).\nEach turn: gain ${ICON.trade}1 and ${ICON.auth}1.\nAlly: gain ${ICON.combat}2.` }),
+  C({ key:"sd_bastion", name:"Helios Bastion", cost:5, faction:"sd", type:"base", defense:6, outpost:true, play:[{t:"authority",n:1}], ally:[{t:"combat",n:2}], text:`Outpost (6).\nEach turn: gain ${ICON.auth}1.\nAlly: gain ${ICON.combat}2.` }),
+  C({ key:"sd_array", name:"Solar Array", cost:6, faction:"sd", type:"base", defense:7, outpost:false, play:[{t:"trade",n:1},{t:"combat",n:1}], ally:[{t:"draw",n:1}], text:`Base (7).\nEach turn: gain ${ICON.trade}1 and ${ICON.combat}1.\nAlly: draw 1.` }),
+  C({ key:"sd_corona", name:"Corona Battleship", cost:8, faction:"sd", play:[{t:"combat",n:7},{t:"authority",n:2}], ally:[{t:"combat",n:3}], text:`Gain ${ICON.combat}7 and ${ICON.auth}2.\nAlly: gain ${ICON.combat}3.` }),
+  C({ key:"sd_supernova", name:"Supernova Ark", cost:9, faction:"sd", play:[{t:"combat",n:8},{t:"authority",n:3}], ally:[{t:"draw",n:1}], text:`Gain ${ICON.combat}8 and ${ICON.auth}3.\nAlly: draw 1.` }),
+
+  // ===== Void Syndicate (vs) =====
+  C({ key:"vs_gloom", name:"Gloom Hacker", cost:2, faction:"vs", play:[{t:"trade",n:1},{t:"opp_next_draw",n:-1}], text:`Gain ${ICON.trade}1.\nOpponent draws 1 fewer next turn.` }),
+  C({ key:"vs_pickpocket", name:"Void Pickpocket", cost:3, faction:"vs", play:[{t:"combat",n:2}], ally:[{t:"opp_discard",n:1}], text:`Gain ${ICON.combat}2.\nAlly: opponent discards 1.` }),
+  C({ key:"vs_mist", name:"Mist Runner", cost:4, faction:"vs", play:[{t:"combat",n:3},{t:"opp_next_draw",n:-1}], text:`Gain ${ICON.combat}3.\nOpponent draws 1 fewer next turn.` }),
+  C({ key:"vs_blackmail", name:"Blackmail Cutter", cost:5, faction:"vs", play:[{t:"combat",n:3},{t:"opp_discard",n:1}], ally:[{t:"trade",n:1}], text:`Gain ${ICON.combat}3.\nOpponent discards 1.\nAlly: gain ${ICON.trade}1.` }),
+  C({ key:"vs_siphon", name:"Siphon Frigate", cost:5, faction:"vs", play:[{t:"combat",n:4}], ally:[{t:"trade",n:2}], text:`Gain ${ICON.combat}4.\nAlly: gain ${ICON.trade}2.` }),
+  C({ key:"vs_shroud", name:"Shroud Gate", cost:4, faction:"vs", type:"base", defense:5, outpost:false, play:[{t:"opp_next_draw",n:-1}], ally:[{t:"combat",n:2}], text:`Base (5).\nEach turn: opponent draws 1 fewer next turn.\nAlly: gain ${ICON.combat}2.` }),
+  C({ key:"vs_wraith", name:"Wraith Outpost", cost:5, faction:"vs", type:"base", defense:7, outpost:true, play:[{t:"opp_next_draw",n:-1}], ally:[{t:"combat",n:2}], text:`Outpost (7).\nEach turn: opponent draws 1 fewer next turn.\nAlly: gain ${ICON.combat}2.` }),
+  C({ key:"vs_barricade", name:"Void Barricade", cost:6, faction:"vs", type:"base", defense:8, outpost:true, play:[{t:"combat",n:1}], ally:[{t:"opp_discard",n:1}], text:`Outpost (8).\nEach turn: gain ${ICON.combat}1.\nAlly: opponent discards 1.` }),
+  C({ key:"vs_reaper", name:"Eventide Reaper", cost:8, faction:"vs", play:[{t:"combat",n:6},{t:"opp_discard",n:1},{t:"opp_next_draw",n:-1}], ally:[{t:"combat",n:3}], text:`Gain ${ICON.combat}6.\nOpponent discards 1 and draws 1 fewer next turn.\nAlly: gain ${ICON.combat}3.` }),
+  C({ key:"vs_baron", name:"Abyssal Baron", cost:9, faction:"vs", play:[{t:"combat",n:7},{t:"opp_discard",n:2}], ally:[{t:"opp_next_draw",n:-1}], text:`Gain ${ICON.combat}7.\nOpponent discards 2.\nAlly: opponent draws 1 fewer next turn.` }),
+];
+
+const COPIES = {
+  freighter:2, gunship:2, relay:2,
+  tf_union_tug:3, tf_courier:3, tf_medical:2, tf_patrol:2, tf_convoy:2,
+  tf_sanctuary:2, tf_hospital:2, tf_embassy:2, tf_peacekeeper:1, tf_diplomat:1,
+  blob_larva:3, blob_skitter:3, blob_glider:2, blob_spawner:2, blob_acid:2,
+  blob_feeder:2, blob_lair:2, blob_mangler:1, blob_cannonbloom:1, blob_titan:1,
+  se_infiltrator:3, se_interceptor:3, se_raid:2, se_blockade:2, se_censor:1,
+  se_station:2, se_propaganda:2, se_checkpoint:2, se_vanguard:1, se_dread:1,
+  mc_junksiphon:3, mc_recycler:2, mc_cutter:2, mc_forge:2, mc_scrapwright:2,
+  mc_foundry:2, mc_assimilator:2, mc_bulwark:2, mc_overclock:1, mc_reclaimer:1,
+  sd_dawn:3, sd_sunlance:2, sd_radiant:2, sd_flare:2, sd_prism:1,
+  sd_yard:2, sd_bastion:2, sd_array:2, sd_corona:1, sd_supernova:1,
+  vs_gloom:3, vs_pickpocket:2, vs_mist:2, vs_blackmail:2, vs_siphon:2,
+  vs_shroud:2, vs_wraith:2, vs_barricade:2, vs_reaper:1, vs_baron:1,
+};
+
+function tplByKey(k){ return TEMPLATES.find(t=>t.key===k); }
+function shuffle(a){
+  for(let i=a.length-1;i>0;i--){
+    const j = (Math.random()*(i+1))|0;
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
+}
+function buildStartingDeckKeys(){
+  const start = [];
+  for(let i=0;i<8;i++) start.push("scout");
+  for(let i=0;i<2;i++) start.push("viper");
+  return start;
+}
+
+/* =========================
+   Compact instances + hydration
+   ========================= */
+function mkInst(st, templateKey){
+  const tpl = tplByKey(templateKey);
+  return {
+    uid: "c"+(st.idCounter++),
+    templateKey,
+    allyTriggered: false,
+    curDefense: tpl.defense || 0
+  };
+}
+function H(inst){
+  const tpl = tplByKey(inst.templateKey);
+  return {
+    ...tpl,
+    uid: inst.uid,
+    templateKey: inst.templateKey,
+    allyTriggered: !!inst.allyTriggered,
+    curDefense: (inst.curDefense ?? tpl.defense ?? 0)
+  };
+}
+
+/* =========================
+   Host-authoritative state + logic
+   ========================= */
+function mkPlayerState(uid, name){
+  return {
+    uid, name,
+    authority: 50,
+    trade: 0,
+    combat: 0,
+    deck: [],
+    discard: [],
+    hand: [],
+    inPlay: [],
+    bases: [],
+    scrap: [],
+    playedFactionCounts: {},
+    oppNextDrawMod: 0
+  };
+}
+
+function stLog(st, msg, muted=false){
+  st.log.unshift({ msg, muted, t: now() });
+  if(st.log.length > 80) st.log.pop();
+}
+
+function buildMarket(st){
+  st.tradeDeck = [];
+  for(const [key, n] of Object.entries(COPIES)){
+    for(let i=0;i<n;i++) st.tradeDeck.push(mkInst(st, key));
+  }
+  shuffle(st.tradeDeck);
+  st.tradeRow = new Array(5).fill(null);
+  for(let i=0;i<5;i++) refillTradeRowSlot(st, i);
+}
+function refillTradeRowSlot(st, i){
+  if(st.tradeRow[i]) return;
+  const c = st.tradeDeck.pop();
+  st.tradeRow[i] = c || null;
+}
+function draw(st, pl, n){
+  for(let i=0;i<n;i++){
+    if(pl.deck.length===0){
+      if(pl.discard.length===0) break;
+      pl.deck = shuffle(pl.discard.splice(0));
+      stLog(st, `${pl.name} shuffles discard into deck.`, true);
+    }
+    const card = pl.deck.pop();
+    if(card) pl.hand.push(card);
+  }
+}
+
+function addFactionCount(pl, factionKey){
+  if(!factionKey || factionKey==="n") return;
+  pl.playedFactionCounts[factionKey] = (pl.playedFactionCounts[factionKey]||0) + 1;
+}
+
+function statSum(steps, t){
+  return (steps||[]).filter(x=>x.t===t).reduce((q,x)=>q+x.n,0);
+}
+
+function aiCardValueMin(inst){
+  const card = H(inst);
+  let v = 0;
+  const p = (card.play||[]);
+  const a = (card.ally||[]);
+  const s = (card.scrap||[]);
+  const sum = (arr, t)=>arr.filter(x=>x.t===t).reduce((q,x)=>q+x.n,0);
+
+  v += sum(p,"combat")*2 + sum(p,"trade")*1.35 + sum(p,"authority")*1.25 + sum(p,"draw")*2.7;
+  v += sum(a,"combat")*1.6 + sum(a,"trade")*1.05 + sum(a,"authority")*1.05 + sum(a,"draw")*1.9;
+  v += sum(p,"opp_discard")*2.1 + sum(a,"opp_discard")*1.7;
+  v += Math.max(0, -sum(p,"opp_next_draw"))*1.35 + Math.max(0, -sum(a,"opp_next_draw"))*1.1;
+  v += (card.type==="base" ? (card.defense*0.35 + (card.outpost?1.2:0.6)) : 0);
+  v += (s.length? 0.9 : 0);
+  if(card.key==="scout") v -= 0.9;
+  if(card.key==="viper") v -= 0.8;
+  return v;
+}
+
+function autoDiscard(st, target, n, sourceName){
+  for(let i=0;i<n;i++){
+    if(target.hand.length===0) break;
+    let bestIdx = 0, bestScore = Infinity;
+    for(let j=0;j<target.hand.length;j++){
+      const sc = aiCardValueMin(target.hand[j]);
+      if(sc < bestScore){ bestScore = sc; bestIdx = j; }
+    }
+    const c = target.hand.splice(bestIdx,1)[0];
+    target.discard.push(c);
+    stLog(st, `${target.name} discards ${H(c).name} (forced by ${sourceName}).`);
+  }
+}
+function autoScrapFromHand(st, pl, n){
+  for(let i=0;i<n;i++){
+    if(pl.hand.length===0) break;
+    let bestIdx = 0, bestScore = Infinity;
+    for(let j=0;j<pl.hand.length;j++){
+      const sc = aiCardValueMin(pl.hand[j]);
+      if(sc < bestScore){ bestScore = sc; bestIdx = j; }
+    }
+    const c = pl.hand.splice(bestIdx,1)[0];
+    pl.scrap.push(c);
+    stLog(st, `${pl.name} scraps ${H(c).name} (auto).`, true);
+  }
+}
+function autoScrapFromDiscard(st, pl, n){
+  for(let i=0;i<n;i++){
+    if(pl.discard.length===0) break;
+    let bestIdx = 0, bestScore = Infinity;
+    for(let j=0;j<pl.discard.length;j++){
+      const sc = aiCardValueMin(pl.discard[j]);
+      if(sc < bestScore){ bestScore = sc; bestIdx = j; }
+    }
+    const c = pl.discard.splice(bestIdx,1)[0];
+    pl.scrap.push(c);
+    stLog(st, `${pl.name} scraps ${H(c).name} from discard (auto).`, true);
+  }
+}
+
+function resolveStep(st, actor, opponent, step){
+  switch(step.t){
+    case "trade": actor.trade += step.n; stLog(st, `${actor.name} gains ${ICON.trade}${step.n}.`, true); break;
+    case "combat": actor.combat += step.n; stLog(st, `${actor.name} gains ${ICON.combat}${step.n}.`, true); break;
+    case "authority": actor.authority += step.n; stLog(st, `${actor.name} gains ${ICON.auth}${step.n}.`, true); break;
+    case "draw": draw(st, actor, step.n); stLog(st, `${actor.name} draws ${step.n}.`, true); break;
+
+    case "opp_discard": autoDiscard(st, opponent, step.n, actor.name); break;
+    case "scrap_hand": autoScrapFromHand(st, actor, step.n); break;
+    case "scrap_discard": autoScrapFromDiscard(st, actor, step.n); break;
+
+    case "opp_next_draw":
+      opponent.oppNextDrawMod += step.n; // negative reduces draws
+      stLog(st, `${opponent.name} will draw ${Math.abs(step.n)} fewer next turn.`, true);
+      break;
+  }
+}
+
+function applyEffects(st, actor, opponent, inst, trigger){
+  const card = H(inst);
+  let steps = [];
+  if(trigger==="play") steps = card.play || [];
+  if(trigger==="ally") steps = card.ally || [];
+  if(trigger==="scrap") steps = card.scrap || [];
+  if(trigger==="turn") steps = card.play || [];
+  for(const step of steps){
+    resolveStep(st, actor, opponent, step);
+    if(isTerminal(st)) return;
+  }
+}
+
+function checkAllies(st, pl, op){
+  const active = [...pl.inPlay, ...pl.bases];
+  for(const inst of active){
+    if(inst.allyTriggered) continue;
+    const card = H(inst);
+    if(!card.faction || card.faction==="n") continue;
+    const cnt = pl.playedFactionCounts[card.faction] || 0;
+    if(cnt >= 2 && (card.ally && card.ally.length)){
+      inst.allyTriggered = true;
+      stLog(st, `${pl.name} triggers Ally on ${card.name}.`);
+      applyEffects(st, pl, op, inst, "ally");
+      if(isTerminal(st)) return;
+    }
+  }
+}
+
+function startTurn(st, seat){
+  const pl = st.players[seat];
+  const op = st.players[1-seat];
+
+  pl.trade = 0;
+  pl.combat = 0;
+  pl.playedFactionCounts = {};
+  pl.bases.forEach(b=> b.allyTriggered = false);
+
+  // apply draw penalty (stored as negative)
+  const penalty = Math.max(0, -pl.oppNextDrawMod);
+  pl.oppNextDrawMod = 0;
+
+  // draw up to 5
+  const need = Math.max(0, 5 - pl.hand.length);
+  draw(st, pl, need);
+
+  if(penalty>0 && pl.hand.length>0){
+    for(let i=0;i<penalty;i++){
+      if(pl.hand.length===0) break;
+      const idx = (Math.random()*pl.hand.length)|0;
+      const removed = pl.hand.splice(idx,1)[0];
+      pl.discard.push(removed);
+      stLog(st, `${pl.name} draws fewer (disrupted). A random card is discarded.`, true);
+    }
+  }
+
+  // base effects each turn
+  for(const b of pl.bases){
+    applyEffects(st, pl, op, b, "turn");
+    if(isTerminal(st)) return;
+  }
+  checkAllies(st, pl, op);
+}
+
+function enemyHasOutposts(st, seat){
+  return st.players[seat].bases.some(b => H(b).outpost);
+}
+
+function isTerminal(st){
+  const a0 = st.players[0].authority;
+  const a1 = st.players[1].authority;
+  if(st.ended) return true;
+
+  if(a0<=0 || a1<=0){
+    st.ended = true;
+    st.winnerSeat = (a0<=0 && a1<=0) ? -1 : (a0<=0 ? 1 : 0);
+    st.turnEndsAt = 0;
+    if(st.winnerSeat===-1) stLog(st, "Game Over — Draw!");
+    else stLog(st, `Game Over — ${st.players[st.winnerSeat].name} wins!`);
+    return true;
+  }
+  return false;
+}
+
+function endTurnInternal(st, reason="endTurn"){
+  if(st.ended) return;
+
+  const seat = st.currentSeat;
+  const pl = st.players[seat];
+
+  while(pl.hand.length) pl.discard.push(pl.hand.pop());
+  while(pl.inPlay.length) pl.discard.push(pl.inPlay.pop());
+
+  pl.trade=0; pl.combat=0; pl.playedFactionCounts={};
+
+  for(let i=0;i<st.tradeRow.length;i++){
+    if(!st.tradeRow[i]) refillTradeRowSlot(st, i);
+  }
+
+  st.currentSeat = 1 - st.currentSeat;
+  st.turnEndsAt = now() + 60_000;
+  st.turnCount = (st.turnCount||0) + 1;
+
+  stLog(st, `${st.players[seat].name} ends turn${reason==="timeout" ? " (timeout)" : ""}.`, true);
+
+  startTurn(st, st.currentSeat);
+  isTerminal(st);
+}
+
+function initMatchState(meta){
+  const st = {
+    startedAt: now(),
+    idCounter: 1,
+    log: [],
+    tradeRow: [],
+    tradeDeck: [],
+    currentSeat: 0,
+    turnEndsAt: now() + 60_000,
+    turnCount: 1,
+    ended: false,
+    winnerSeat: null,
+    players: [
+      mkPlayerState(meta.seatUid0, meta.seatName0),
+      mkPlayerState(meta.seatUid1, meta.seatName1),
+    ],
+  };
+
+  buildMarket(st);
+
+  // Starting piles
+  const startKeys = buildStartingDeckKeys();
+  for(let seat=0; seat<2; seat++){
+    const pl = st.players[seat];
+    pl.authority = 50;
+    pl.trade=0; pl.combat=0;
+    pl.deck = shuffle(startKeys.map(k=> mkInst(st, k)));
+    pl.discard = []; pl.hand=[]; pl.inPlay=[]; pl.bases=[]; pl.scrap=[];
+    pl.playedFactionCounts = {};
+    pl.oppNextDrawMod = 0;
+    draw(st, pl, 5);
+  }
+
+  stLog(st, `Match start! ${st.players[0].name} goes first.`);
+  startTurn(st, 0);
+
+  return st;
+}
+
+/* =========================
+   Action application (host only)
+   ========================= */
+function playCardByUid(st, seat, uid){
+  if(st.ended) return;
+  const pl = st.players[seat];
+  const op = st.players[1-seat];
+  const idx = pl.hand.findIndex(c=>c.uid===uid);
+  if(idx<0) return;
+
+  const inst = pl.hand.splice(idx,1)[0];
+  const card = H(inst);
+
+  if(card.type==="base"){
+    inst.curDefense = card.defense;
+    pl.bases.push(inst);
+    stLog(st, `${pl.name} deploys base: ${card.name}.`);
+    addFactionCount(pl, card.faction);
+    applyEffects(st, pl, op, inst, "play");
+  } else {
+    pl.inPlay.push(inst);
+    addFactionCount(pl, card.faction);
+    stLog(st, `${pl.name} plays: ${card.name}.`);
+    applyEffects(st, pl, op, inst, "play");
+  }
+
+  checkAllies(st, pl, op);
+  isTerminal(st);
+}
+
+function scrapInPlayByUid(st, seat, uid){
+  if(st.ended) return;
+  const pl = st.players[seat];
+  const op = st.players[1-seat];
+  const idx = pl.inPlay.findIndex(c=>c.uid===uid);
+  if(idx<0) return;
+
+  const inst = pl.inPlay[idx];
+  const card = H(inst);
+  if(!card.scrap || !card.scrap.length) return;
+
+  pl.inPlay.splice(idx,1);
+  pl.scrap.push(inst);
+  stLog(st, `${pl.name} scraps ${card.name} for effect.`);
+  applyEffects(st, pl, op, inst, "scrap");
+  checkAllies(st, pl, op);
+  isTerminal(st);
+}
+
+function buyFromRow(st, seat, slot){
+  if(st.ended) return;
+  const pl = st.players[seat];
+  const inst = st.tradeRow[slot];
+  if(!inst) return;
+  const card = H(inst);
+  if(pl.trade < card.cost) return;
+
+  pl.trade -= card.cost;
+  pl.discard.push(inst);
+  st.tradeRow[slot] = null;
+  refillTradeRowSlot(st, slot);
+  stLog(st, `${pl.name} buys ${card.name} for ${ICON.trade}${card.cost}.`);
+}
+
+function buyExplorer(st, seat){
+  if(st.ended) return;
+  const pl = st.players[seat];
+  if(pl.trade < 2) return;
+  pl.trade -= 2;
+  pl.discard.push(mkInst(st, "explorer"));
+  stLog(st, `${pl.name} buys Explorer for ${ICON.trade}2.`);
+}
+
+function attackAuthority(st, seat){
+  if(st.ended) return;
+  const pl = st.players[seat];
+  const op = st.players[1-seat];
+  if(pl.combat<=0) return;
+  if(enemyHasOutposts(st, 1-seat)){
+    stLog(st, `${pl.name} can’t attack authority while outposts remain.`);
+    return;
+  }
+  const dmg = pl.combat;
+  pl.combat = 0;
+  op.authority -= dmg;
+  stLog(st, `${pl.name} hits opponent authority for ${ICON.combat}${dmg}.`);
+  isTerminal(st);
+}
+
+function attackBase(st, seat, baseUid){
+  if(st.ended) return;
+  const pl = st.players[seat];
+  const op = st.players[1-seat];
+  if(pl.combat<=0) return;
+
+  const bIdx = op.bases.findIndex(b=>b.uid===baseUid);
+  if(bIdx<0) return;
+
+  const baseInst = op.bases[bIdx];
+  const base = H(baseInst);
+
+  const spend = Math.min(pl.combat, baseInst.curDefense);
+  pl.combat -= spend;
+  baseInst.curDefense -= spend;
+  stLog(st, `${pl.name} deals ${ICON.combat}${spend} to ${base.name}.`);
+
+  if(baseInst.curDefense<=0){
+    op.bases.splice(bIdx,1);
+    op.discard.push(baseInst);
+    stLog(st, `${pl.name} destroys ${base.name}!`);
+  }
+  isTerminal(st);
+}
+
+function playAll(st, seat){
+  if(st.ended) return;
+  const pl = st.players[seat];
+
+  // bases first, then the rest
+  while(pl.hand.length){
+    let idx = pl.hand.findIndex(x => H(x).type==="base");
+    if(idx<0) idx = 0;
+    const uid = pl.hand[idx].uid;
+    playCardByUid(st, seat, uid);
+    if(st.ended) return;
+  }
+}
+
+/* =========================
+   Rendering + UI
+   ========================= */
+const els = {
+  tradeVal: document.getElementById("tradeVal"),
+  combatVal: document.getElementById("combatVal"),
+  myAuthVal: document.getElementById("myAuthVal"),
+  turnTimer: document.getElementById("turnTimer"),
+  hand: document.getElementById("hand"),
+  inPlay: document.getElementById("inPlay"),
+  myBases: document.getElementById("myBases"),
+  enemyBases: document.getElementById("enemyBases"),
+  tradeRow: document.getElementById("tradeRow"),
+  tradeDeckLine: document.getElementById("tradeDeckLine"),
+  enemyLine: document.getElementById("enemyLine"),
+  enemyPiles: document.getElementById("enemyPiles"),
+  enemyOutpostHint: document.getElementById("enemyOutpostHint"),
+  youLine: document.getElementById("youLine"),
+  youPiles: document.getElementById("youPiles"),
+  statusLine: document.getElementById("statusLine"),
+  turnBadge: document.getElementById("turnBadge"),
+  phaseLine: document.getElementById("phaseLine"),
+  log: document.getElementById("log"),
+  attackAuthorityBtn: document.getElementById("attackAuthorityBtn"),
+  playAllBtn: document.getElementById("playAllBtn"),
+  buyExplorerBtn: document.getElementById("buyExplorerBtn"),
+  endTurnBtn: document.getElementById("endTurnBtn"),
+  autoplayToggle: document.getElementById("autoplayToggle"),
+  viewDeckBtn: document.getElementById("viewDeckBtn"),
+  viewDiscardBtn: document.getElementById("viewDiscardBtn"),
+  viewScrapBtn: document.getElementById("viewScrapBtn"),
+  modeLine: document.getElementById("modeLine"),
+  netLine: document.getElementById("netLine"),
+  youTitle: document.getElementById("youTitle"),
+  oppTitle: document.getElementById("oppTitle"),
+  restartBtn: document.getElementById("restartBtn"),
+};
+
+function setStatus(s){ els.statusLine.textContent = s; }
+function factionClass(f){ return f && f!=="n" ? f : ""; }
+
+/* ===== Unique icon generator (SVG) ===== */
+const FACTION_COLORS = {
+  tf:"#56d3ff", blob:"#7CFF5B", se:"#ff6ad5", mc:"#b7a6ff",
+  sd:"#ffd36a", vs:"#7a5cff", n:"#cfd6ff"
+};
+const ROLE_COLORS = { trade:"#56d3ff", battle:"#ff5d6c", base:"#aab3ff", outpost:"#ffd166" };
+
+function seedFromString(str){
+  let h = 2166136261 >>> 0;
+  for(let i=0;i<str.length;i++){
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h>>>0;
+}
+function mulberry32(a){
+  return function(){
+    let t = a += 0x6D2B79F5;
+    t = Math.imul(t ^ (t>>>15), t|1);
+    t ^= t + Math.imul(t ^ (t>>>7), t|61);
+    return ((t ^ (t>>>14))>>>0) / 4294967296;
+  };
+}
+function roleOf(card){
+  if(card.type==="base") return card.outpost ? "outpost" : "base";
+  const trade = statSum(card.play,"trade") + statSum(card.play,"authority")*0.35 + statSum(card.play,"draw")*0.90;
+  const combat = statSum(card.play,"combat") + statSum(card.play,"opp_discard")*1.60 + Math.max(0, -statSum(card.play,"opp_next_draw"))*1.20;
+  return trade >= combat ? "trade" : "battle";
+}
+function iconSvg(card){
+  const role = roleOf(card);
+  const fac = FACTION_COLORS[card.faction] || "#cfd6ff";
+  const accent = ROLE_COLORS[role] || fac;
+
+  const seed = seedFromString(card.key + ":" + card.uid);
+  const r = mulberry32(seed);
+
+  const gidA = `gA_${card.uid}`;
+  const gidB = `gB_${card.uid}`;
+  const glow = `gl_${card.uid}`;
+
+  const wing = (r()*5)|0;
+  const fin  = (r()*4)|0;
+  const stripe = (r()*6)|0;
+  const cockpit = (r()*4)|0;
+
+  const ship = ()=>{
+    const nose = 46 + r()*8;
+    const tail = 14 + r()*6;
+    const midY = 32;
+    const width = 10 + r()*10;
+    const wingSpan = 16 + r()*16;
+    const wingY = 22 + r()*14;
+
+    const p1 = `${nose},${midY}`;
+    const p2 = `${32},${midY-width}`;
+    const p3 = `${tail},${midY-(6+r()*6)}`;
+    const p4 = `${tail},${midY+(6+r()*6)}`;
+    const p5 = `${32},${midY+width}`;
+
+    let wings = "";
+    if(wing%2===0){
+      wings = `
+        <polygon points="${34},${wingY} ${28},${wingY} ${24},${midY-2} ${40},${midY-2}"
+                 fill="url(#${gidB})" opacity=".85"/>
+        <polygon points="${34},${64-wingY} ${28},${64-wingY} ${24},${midY+2} ${40},${midY+2}"
+                 fill="url(#${gidB})" opacity=".85"/>
+      `;
+    }else{
+      wings = `
+        <polygon points="${30},${midY-4} ${30-wingSpan/2},${midY-14} ${34},${midY-8} ${40},${midY-4}"
+                 fill="url(#${gidB})" opacity=".85"/>
+        <polygon points="${30},${midY+4} ${30-wingSpan/2},${midY+14} ${34},${midY+8} ${40},${midY+4}"
+                 fill="url(#${gidB})" opacity=".85"/>
+      `;
+    }
+
+    let fins = "";
+    if(fin===1){
+      fins = `<polygon points="${tail+6},${midY} ${tail-2},${midY-10} ${tail-2},${midY+10}"
+               fill="${accent}" opacity=".35"/>`;
+    }else if(fin===2){
+      fins = `<rect x="${tail-1}" y="${midY-12}" width="4" height="24" rx="2"
+               fill="${accent}" opacity=".25"/>`;
+    }else if(fin===3){
+      fins = `<polygon points="${tail+4},${midY-6} ${tail-4},${midY-16} ${tail-8},${midY-6}"
+               fill="${accent}" opacity=".20"/>
+              <polygon points="${tail+4},${midY+6} ${tail-4},${midY+16} ${tail-8},${midY+6}"
+               fill="${accent}" opacity=".20"/>`;
+    }
+
+    const cx = 34 + r()*8;
+    const cy = 32 + (r()*6-3);
+    let glass = "";
+    if(cockpit===0) glass = `<circle cx="${cx}" cy="${cy}" r="3.2" fill="${accent}" opacity=".55"/>`;
+    if(cockpit===1) glass = `<rect x="${cx-3}" y="${cy-2}" width="6" height="4" rx="2" fill="${accent}" opacity=".55"/>`;
+    if(cockpit===2) glass = `<path d="M ${cx-3} ${cy} Q ${cx} ${cy-4} ${cx+3} ${cy} Q ${cx} ${cy+4} ${cx-3} ${cy} Z"
+                              fill="${accent}" opacity=".55"/>`;
+    if(cockpit===3) glass = `<polygon points="${cx-3},${cy-2} ${cx+3},${cy} ${cx-3},${cy+2}"
+                              fill="${accent}" opacity=".55"/>`;
+
+    const flameLen = 8 + r()*6;
+    const flame = `
+      <path d="M ${tail-1} ${midY} Q ${tail-6} ${midY-6} ${tail-flameLen} ${midY}
+               Q ${tail-6} ${midY+6} ${tail-1} ${midY} Z"
+            fill="${accent}" opacity="${role==='battle' ? .65 : .45}"/>
+    `;
+
+    let deco = "";
+    if(stripe<=2) deco = `<path d="M ${tail+4} ${midY-2} L ${nose-6} ${midY-10}" stroke="${accent}" stroke-width="2" opacity=".22" />`;
+    else if(stripe<=4) deco = `<path d="M ${tail+6} ${midY+6} L ${nose-10} ${midY+2}" stroke="${accent}" stroke-width="2" opacity=".22" />`;
+    else deco = `<path d="M ${tail+8} ${midY} L ${nose-12} ${midY}" stroke="${accent}" stroke-width="2" opacity=".22" />`;
+
+    return `
+      <g filter="url(#${glow})">
+        ${wings}
+        <polygon points="${p1} ${p2} ${p3} ${p4} ${p5}" fill="url(#${gidA})"
+                 stroke="rgba(255,255,255,.22)" stroke-width="1"/>
+        ${fins}
+        ${deco}
+        ${glass}
+        ${flame}
+      </g>
+    `;
+  };
+
+  const station = ()=>{
+    const ring = 18 + r()*8;
+    const core = 6 + r()*4;
+    const arm = 10 + r()*8;
+    const panel = 8 + r()*8;
+    const out = role==="outpost";
+
+    const shield = out ? `
+      <path d="M32 6 C 50 12 56 24 56 32 C 56 46 44 56 32 58 C 20 56 8 46 8 32 C 8 24 14 12 32 6 Z"
+            fill="${accent}" opacity=".10"/>
+      <path d="M32 9 C 48 14 53 25 53 32 C 53 44 43 53 32 55 C 21 53 11 44 11 32 C 11 25 16 14 32 9 Z"
+            stroke="${accent}" stroke-width="2" opacity=".45" fill="none"/>
+    ` : "";
+
+    return `
+      <g filter="url(#${glow})">
+        ${shield}
+        <circle cx="32" cy="32" r="${ring}" fill="none" stroke="url(#${gidA})" stroke-width="5" opacity=".95"/>
+        <circle cx="32" cy="32" r="${core}" fill="url(#${gidB})" stroke="rgba(255,255,255,.18)" stroke-width="1"/>
+        <rect x="${32-arm}" y="30" width="${arm*2}" height="4" rx="2" fill="url(#${gidB})" opacity=".9"/>
+        <rect x="30" y="${32-arm}" width="4" height="${arm*2}" rx="2" fill="url(#${gidB})" opacity=".9"/>
+        <rect x="${6+r()*6}" y="${18+r()*6}" width="${panel}" height="${panel/2}" rx="2" fill="${accent}" opacity=".25"/>
+        <rect x="${48-r()*8}" y="${40-r()*6}" width="${panel}" height="${panel/2}" rx="2" fill="${accent}" opacity=".25"/>
+        ${out ? `<path d="M18 46 L32 38 L46 46" stroke="${accent}" stroke-width="2" opacity=".55" fill="none"/>` : ``}
+      </g>
+    `;
+  };
+
+  const bgGlow = role==="battle" ? 0.18 : role==="trade" ? 0.14 : 0.12;
+
+  return `
+  <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <linearGradient id="${gidA}" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="${fac}" stop-opacity="0.95"/>
+        <stop offset="1" stop-color="${accent}" stop-opacity="0.85"/>
+      </linearGradient>
+      <linearGradient id="${gidB}" x1="1" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="rgba(255,255,255,.95)" stop-opacity=".20"/>
+        <stop offset="1" stop-color="${fac}" stop-opacity=".45"/>
+      </linearGradient>
+      <filter id="${glow}" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="1.6" result="b"/>
+        <feColorMatrix in="b" type="matrix"
+          values="1 0 0 0 0
+                  0 1 0 0 0
+                  0 0 1 0 0
+                  0 0 0 0.9 0"/>
+        <feMerge>
+          <feMergeNode/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+    </defs>
+
+    <circle cx="32" cy="32" r="30" fill="${accent}" opacity="${bgGlow}"/>
+    <circle cx="32" cy="32" r="30" fill="${fac}" opacity=".06"/>
+    ${(role==="base" || role==="outpost") ? station() : ship()}
+  </svg>`;
+}
+
+function renderCardDiv(inst, {context="generic"}={}){
+  const card = H(inst);
+  const d = document.createElement("div");
+
+  const role = roleOf(card);
+  d.className = `card ${factionClass(card.faction)} role-${role}`;
+
+  const fac = FACTIONS[card.faction] || FACTIONS.n;
+
+  const cost = document.createElement("div");
+  cost.className = "cost";
+  cost.textContent = card.cost ?? 0;
+
+  const type = document.createElement("div");
+  type.className = "type";
+  type.textContent = (card.type==="base") ? (card.outpost ? "Outpost" : "Base") : (role==="trade" ? "Trade Ship" : "Battle Ship");
+
+  const art = document.createElement("div");
+  art.className = "art";
+  art.innerHTML = iconSvg(card);
+
+  const name = document.createElement("div");
+  name.className = "name";
+  name.textContent = card.name;
+
+  const ftag = document.createElement("div");
+  ftag.className = "factionTag";
+  ftag.innerHTML = `<span style="font-size:12px;">${fac.icon}</span><span>${fac.name}</span>`;
+
+  const icons = document.createElement("div");
+  icons.className = "iconRow";
+  const mk = (txt)=>{ const x=document.createElement("div"); x.className="ico"; x.textContent=txt; return x; };
+
+  const p = card.play||[];
+  const t = statSum(p,"trade"), c = statSum(p,"combat"), h=statSum(p,"authority"), dr=statSum(p,"draw");
+  if(t) icons.appendChild(mk(`${ICON.trade} +${t}`));
+  if(c) icons.appendChild(mk(`${ICON.combat} +${c}`));
+  if(h) icons.appendChild(mk(`${ICON.auth} +${h}`));
+  if(dr) icons.appendChild(mk(`${ICON.draw} +${dr}`));
+  if(card.type==="base") icons.appendChild(mk(`🛡️ ${inst.curDefense ?? card.defense}`));
+
+  const text = document.createElement("div");
+  text.className = "text";
+  text.textContent = card.text || "";
+
+  d.appendChild(cost);
+  d.appendChild(type);
+  d.appendChild(art);
+  d.appendChild(name);
+  d.appendChild(ftag);
+  d.appendChild(icons);
+  d.appendChild(text);
+
+  if(card.type==="base"){
+    const badge = document.createElement("div");
+    badge.className = "baseBadge";
+    badge.textContent = `🛡️ ${inst.curDefense ?? card.defense}`;
+    d.appendChild(badge);
+    if(card.outpost) d.classList.add("outpostGlow");
+  }
+
+  if(context==="inPlay" && card.scrap && card.scrap.length){
+    const sb = document.createElement("div");
+    sb.className = "scrapBtn";
+    sb.textContent = `♻️ Scrap for effect`;
+    sb.onclick = (e)=>{ e.stopPropagation(); sendAction("SCRAP_INPLAY", { uid: inst.uid }); };
+    d.appendChild(sb);
+  }
+
+  return d;
+}
+
+function showPile(title, cards){
+  const modal = document.getElementById("modal");
+  const titleEl = document.getElementById("modalTitle");
+  const textEl  = document.getElementById("modalText");
+  const cardsEl = document.getElementById("modalCards");
+  const btnCancel = document.getElementById("modalCancel");
+  const btnConfirm= document.getElementById("modalConfirm");
+
+  const sorted = [...cards].sort((a,b)=>{
+    const A = H(a), B = H(b);
+    if(A.faction!==B.faction) return (A.faction||"").localeCompare(B.faction||"");
+    if(A.cost!==B.cost) return (A.cost||0)-(B.cost||0);
+    return (A.name||"").localeCompare(B.name||"");
+  });
+
+  titleEl.textContent = title;
+  textEl.textContent = `Count: ${sorted.length}`;
+  cardsEl.innerHTML = "";
+  sorted.forEach(c=>{
+    const d = renderCardDiv(c, {context:"modal"});
+    d.classList.add("disabled");
+    d.style.cursor = "default";
+    cardsEl.appendChild(d);
+  });
+
+  btnCancel.style.display = "inline-block";
+  btnConfirm.style.display = "none";
+  btnCancel.textContent = "Close";
+  btnCancel.onclick = ()=>{ modal.style.display="none"; };
+
+  modal.style.display = "flex";
+}
+
+/* =========================
+   Multiplayer wiring
+   ========================= */
+let uid = null;
+let roomId = null;
+let mySeat = null;
+let myName = getNameFromLobby();
+let isHost = false;
+
+let roomRoot = null;
+let metaRef = null;
+let stateRef = null;
+let actionsRef = null;
+
+let meta = null;
+let state = null;
+
+let hostActionChain = Promise.resolve();
+let tickTimer = null;
+
+function seatLabel(s){ return s===0 ? "P1" : "P2"; }
+function shortUid(u){ return (u||"").slice(0,6); }
+
+function renderAll(){
+  if(!state || mySeat===null) return;
+
+  const me = state.players[mySeat];
+  const op = state.players[1-mySeat];
+
+  const myTurn = (state.currentSeat === mySeat) && !state.ended;
+  els.turnBadge.textContent = state.ended ? "Game Over" : (myTurn ? "Your turn" : "Opponent turn");
+  els.phaseLine.textContent = state.ended ? "—" : (myTurn ? "Main phase" : "Waiting…");
+
+  els.tradeVal.textContent = me.trade;
+  els.combatVal.textContent = me.combat;
+  els.myAuthVal.textContent = me.authority;
+
+  // timer
+  if(state.turnEndsAt && !state.ended){
+    const sec = Math.max(0, Math.ceil((state.turnEndsAt - now()) / 1000));
+    els.turnTimer.textContent = String(sec);
+  }else{
+    els.turnTimer.textContent = "—";
+  }
+
+  // titles + net
+  els.youTitle.textContent = `You (${seatLabel(mySeat)})`;
+  els.oppTitle.textContent = `${op.name} (${seatLabel(1-mySeat)})`;
+  els.netLine.textContent = `Room: ${roomId} • Seat: ${seatLabel(mySeat)} • ${isHost ? "Host" : "Client"} • You: ${myName}`;
+
+  // piles
+  els.enemyLine.textContent = `Authority: ${op.authority}`;
+  els.enemyPiles.textContent = `Deck: ${op.deck.length} • Discard: ${op.discard.length} • Scrap: ${op.scrap.length}`;
+  els.enemyOutpostHint.textContent = `Outposts: ${op.bases.filter(b=>H(b).outpost).length}`;
+
+  els.youLine.textContent = `Authority: ${me.authority} • Trade: ${me.trade} • Combat: ${me.combat}`;
+  els.youPiles.textContent = `Deck: ${me.deck.length} • Discard: ${me.discard.length} • Scrap: ${me.scrap.length}`;
+
+  els.tradeDeckLine.textContent = `Trade Deck: ${state.tradeDeck.length}`;
+
+  // buttons
+  els.playAllBtn.disabled = (!myTurn || me.hand.length===0);
+  els.buyExplorerBtn.disabled = (!myTurn || me.trade<2);
+  els.endTurnBtn.disabled = (!myTurn);
+  els.attackAuthorityBtn.disabled = (!myTurn || me.combat<=0 || enemyHasOutposts(state, 1-mySeat));
+  els.restartBtn.disabled = (!isHost);
+
+  // Hand
+  els.hand.innerHTML = "";
+  me.hand.forEach((inst)=>{
+    const d = renderCardDiv(inst, {context:"hand"});
+    if(!myTurn) d.classList.add("disabled");
+    d.onclick = ()=>{ if(myTurn) sendAction("PLAY_CARD", { uid: inst.uid }); };
+    els.hand.appendChild(d);
+  });
+
+  // In play
+  els.inPlay.innerHTML = "";
+  me.inPlay.forEach(inst=>{
+    const d = renderCardDiv(inst, {context:"inPlay"});
+    els.inPlay.appendChild(d);
+  });
+
+  // Bases (mine)
+  els.myBases.innerHTML = "";
+  me.bases.forEach(inst=>{
+    const d = renderCardDiv(inst, {context:"myBase"});
+    els.myBases.appendChild(d);
+  });
+
+  // Enemy bases (attackable on my turn if I have combat)
+  els.enemyBases.innerHTML = "";
+  op.bases.forEach(inst=>{
+    const d = renderCardDiv(inst, {context:"enemyBase"});
+    if(myTurn && me.combat>0) d.classList.add("targetable");
+    d.onclick = ()=>{ if(myTurn) sendAction("ATTACK_BASE", { uid: inst.uid }); };
+    els.enemyBases.appendChild(d);
+  });
+
+  // Trade row
+  els.tradeRow.innerHTML = "";
+  state.tradeRow.forEach((inst, i)=>{
+    if(!inst){
+      const ph = document.createElement("div");
+      ph.className = "card disabled";
+      ph.style.display="grid";
+      ph.style.placeItems="center";
+      ph.style.color="rgba(244,247,255,.35)";
+      ph.textContent = state.tradeDeck.length ? "Refilling…" : "Empty";
+      els.tradeRow.appendChild(ph);
+      return;
+    }
+    const card = H(inst);
+    const d = renderCardDiv(inst, {context:"trade"});
+    const canBuy = myTurn && (me.trade >= card.cost);
+    if(!canBuy) d.classList.add("disabled");
+    d.onclick = ()=>{ if(canBuy) sendAction("BUY_ROW", { slot:i }); };
+    els.tradeRow.appendChild(d);
+  });
+
+  // Log
+  const logEl = els.log;
+  logEl.innerHTML = "";
+  (state.log||[]).slice(0,45).forEach(e=>{
+    const div = document.createElement("div");
+    div.className = "entry" + (e.muted ? " muted": "");
+    div.textContent = e.msg;
+    logEl.appendChild(div);
+  });
+
+  // Status
+  if(state.ended){
+    if(state.winnerSeat===-1) setStatus("Game Over — Draw.");
+    else setStatus(`Game Over — ${state.players[state.winnerSeat].name} wins!`);
+  } else if(myTurn){
+    setStatus("Your turn. Play ships, buy cards, attack, then End Turn.");
+  } else {
+    setStatus("Waiting for opponent…");
+  }
+}
+
+function sendAction(type, payload={}){
+  if(!uid || !roomId || mySeat===null) return;
+  // client-side turn guard (host validates too)
+  if(state && !state.ended && state.currentSeat !== mySeat && type!=="RESTART_MATCH") return;
+
+  const aRef = push(actionsRef);
+  set(aRef, {
+    type,
+    payload,
+    fromUid: uid,
+    fromSeat: mySeat,
+    ts: serverTimestamp(),
+  });
+}
+
+async function hostCommit(newState){
+  // keep writes single-source
+  await set(stateRef, newState);
+  // meta mirrors some fields for quick lobby display
+  await update(metaRef, {
+    started: !newState.ended,
+    currentSeat: newState.currentSeat,
+    turnEndsAt: newState.turnEndsAt || 0,
+    ended: !!newState.ended,
+    winnerSeat: (newState.winnerSeat ?? null),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+async function hostHandleAction(act){
+  if(!state) return;
+  if(state.ended && act.type!=="RESTART_MATCH") return;
+
+  // validate seat
+  if(act.type!=="RESTART_MATCH"){
+    if(act.fromSeat !== state.currentSeat) return;
+  }
+
+  const seat = act.fromSeat;
+
+  switch(act.type){
+    case "PLAY_CARD": playCardByUid(state, seat, act.payload?.uid); break;
+    case "SCRAP_INPLAY": scrapInPlayByUid(state, seat, act.payload?.uid); break;
+    case "BUY_ROW": buyFromRow(state, seat, act.payload?.slot|0); break;
+    case "BUY_EXPLORER": buyExplorer(state, seat); break;
+    case "ATTACK_AUTH": attackAuthority(state, seat); break;
+    case "ATTACK_BASE": attackBase(state, seat, act.payload?.uid); break;
+    case "PLAY_ALL": playAll(state, seat); break;
+    case "END_TURN": endTurnInternal(state, "endTurn"); break;
+    case "RESTART_MATCH":
+      // only host should allow this
+      break;
+  }
+
+  await hostCommit(state);
+}
+
+async function hostRestartMatch(){
+  if(!meta) return;
+  if(!isHost) return;
+  if(!meta.seats || Object.keys(meta.seats).length<2) return;
+
+  const seatUid0 = Object.entries(meta.seats).find(([k,v])=>v===0)?.[0] || null;
+  const seatUid1 = Object.entries(meta.seats).find(([k,v])=>v===1)?.[0] || null;
+  const seatName0 = meta.names?.[seatUid0] || "P1";
+  const seatName1 = meta.names?.[seatUid1] || "P2";
+  const st = initMatchState({ seatUid0, seatUid1, seatName0, seatName1 });
+  state = st;
+  await hostCommit(st);
+}
+
+/* =========================
+   Connect + join room (2 players only)
+   ========================= */
+const netOverlay = document.getElementById("netOverlay");
+const btnCreateRoom = document.getElementById("btnCreateRoom");
+const btnJoinRoom = document.getElementById("btnJoinRoom");
+const nameCreate = document.getElementById("nameCreate");
+const nameJoin = document.getElementById("nameJoin");
+const codeJoin = document.getElementById("codeJoin");
+const createHint = document.getElementById("createHint");
+const joinHint = document.getElementById("joinHint");
+
+function showNetOverlay(show){
+  netOverlay.style.display = show ? "flex" : "none";
+}
+
+function makeRoomCode(){
+  const s = Math.random().toString(36).slice(2,7).toUpperCase();
+  return `SR-${s}`;
+}
+
+btnCreateRoom.onclick = ()=>{
+  const nm = (nameCreate.value||"").trim();
+  if(nm) { myName = nm.slice(0,22); localStorage.setItem("balatle_solo_name", myName); }
+  const code = makeRoomCode();
+  createHint.textContent = `Created code: ${code} (opening…)`;
+  location.search = `?room=${encodeURIComponent(code)}`;
+};
+
+btnJoinRoom.onclick = ()=>{
+  const nm = (nameJoin.value||"").trim();
+  if(nm) { myName = nm.slice(0,22); localStorage.setItem("balatle_solo_name", myName); }
+  const code = (codeJoin.value||"").trim().toUpperCase();
+  if(!code){ joinHint.textContent="Enter a room code."; return; }
+  location.search = `?room=${encodeURIComponent(code)}`;
+};
+
+async function joinRoom(room){
+  roomId = room;
+  roomRoot = `starrealms1v1/${roomId}`;
+  metaRef = ref(db, `${roomRoot}/meta`);
+  stateRef = ref(db, `${roomRoot}/state`);
+  actionsRef = ref(db, `${roomRoot}/actions`);
+
+  // Allocate seat via transaction
+  const seatRes = await runTransaction(metaRef, (m)=>{
+    if(!m){
+      const seats = {}; seats[uid] = 0;
+      const names = {}; names[uid] = myName;
+      return {
+        createdAt: serverTimestamp(),
+        hostUid: uid,
+        started: false,
+        currentSeat: 0,
+        turnEndsAt: 0,
+        seats,
+        names,
+        ended: false,
+        winnerSeat: null,
+        updatedAt: serverTimestamp(),
+      };
+    }
+    m.seats = m.seats || {};
+    m.names = m.names || {};
+    if(m.seats[uid]===0 || m.seats[uid]===1){
+      // already seated; refresh name
+      m.names[uid] = myName;
+      m.updatedAt = serverTimestamp();
+      return m;
+    }
+    const used = new Set(Object.values(m.seats));
+    if(used.has(0) && used.has(1)){
+      return; // abort = room full
+    }
+    const seat = used.has(0) ? 1 : 0;
+    m.seats[uid] = seat;
+    m.names[uid] = myName;
+    m.updatedAt = serverTimestamp();
+    return m;
+  });
+
+  const latestMetaSnap = await get(metaRef);
+  meta = latestMetaSnap.val();
+
+  if(!meta || !meta.seats || meta.seats[uid]===undefined){
+    showNetOverlay(true);
+    setStatus("Room is full (2 players). Try a different code.");
+    return;
+  }
+
+  mySeat = meta.seats[uid];
+  isHost = (meta.hostUid === uid);
+
+  // Listen meta/state
+  onValue(metaRef, async (s)=>{
+    meta = s.val();
+    if(!meta) return;
+    isHost = (meta.hostUid === uid);
+    mySeat = (meta.seats && meta.seats[uid]!==undefined) ? meta.seats[uid] : mySeat;
+
+    // Auto-start when 2 players present (host)
+    const seated = meta.seats ? Object.values(meta.seats) : [];
+    const has2 = seated.includes(0) && seated.includes(1);
+
+    if(isHost && has2){
+      const stSnap = await get(stateRef);
+      if(!stSnap.exists() || (stSnap.val() && stSnap.val().ended)){
+        // start fresh
+        const seatUid0 = Object.entries(meta.seats).find(([k,v])=>v===0)?.[0] || null;
+        const seatUid1 = Object.entries(meta.seats).find(([k,v])=>v===1)?.[0] || null;
+        const seatName0 = meta.names?.[seatUid0] || "P1";
+        const seatName1 = meta.names?.[seatUid1] || "P2";
+        const st = initMatchState({ seatUid0, seatUid1, seatName0, seatName1 });
+        state = st;
+        await hostCommit(st);
+      }
+    }
+  });
+
+  onValue(stateRef, (s)=>{
+    state = s.val();
+    if(!state){
+      setStatus("Waiting for host to start…");
+      return;
+    }
+    showNetOverlay(false);
+    renderAll();
+
+    // Auto Play All at turn start (local-only convenience)
+    const myTurn = (state.currentSeat===mySeat) && !state.ended;
+    if(myTurn && els.autoplayToggle.checked){
+      // slight delay to let UI render
+      setTimeout(()=>sendAction("PLAY_ALL", {}), 120);
+    }
+  });
+
+  // Host: process actions
+  onChildAdded(actionsRef, (snap)=>{
+    if(!isHost) return;
+    const act = snap.val();
+    hostActionChain = hostActionChain
+      .then(()=> hostHandleAction(act))
+      .then(()=> remove(snap.ref))
+      .catch((e)=> console.error("Host action error", e));
+  });
+
+  // Host: enforce 60s timer
+  if(tickTimer) clearInterval(tickTimer);
+  tickTimer = setInterval(async ()=>{
+    if(!isHost || !state || state.ended) return;
+    if(state.turnEndsAt && now() >= state.turnEndsAt){
+      endTurnInternal(state, "timeout");
+      await hostCommit(state);
+    }
+  }, 250);
+
+  setStatus("Connected. Waiting for opponent (if not already).");
+}
+
+/* =========================
+   UI events
+   ========================= */
+els.playAllBtn.onclick = ()=> sendAction("PLAY_ALL", {});
+els.buyExplorerBtn.onclick = ()=> sendAction("BUY_EXPLORER", {});
+els.attackAuthorityBtn.onclick = ()=> sendAction("ATTACK_AUTH", {});
+els.endTurnBtn.onclick = ()=> sendAction("END_TURN", {});
+els.restartBtn.onclick = ()=> hostRestartMatch();
+
+els.viewDeckBtn.onclick = ()=>{ if(state && mySeat!==null) showPile("Your Deck", state.players[mySeat].deck); };
+els.viewDiscardBtn.onclick = ()=>{ if(state && mySeat!==null) showPile("Your Discard", state.players[mySeat].discard); };
+els.viewScrapBtn.onclick = ()=>{ if(state && mySeat!==null) showPile("Your Scrap", state.players[mySeat].scrap); };
+
+/* =========================
+   Boot
+   ========================= */
+(async function boot(){
+  setStatus("Signing in…");
+
+  await signInAnonymously(auth);
+  onAuthStateChanged(auth, async (u)=>{
+    if(!u) return;
+    uid = u.uid;
+
+    // If no room is provided, show overlay.
+    const r = getRoomFromLobby();
+    if(!r){
+      showNetOverlay(true);
+      setStatus("Enter or create a room to begin.");
+      return;
+    }
+    showNetOverlay(false);
+    setStatus("Joining room…");
+    await joinRoom(r);
+  });
+})();
+</script>
+</body>
+</html>
