@@ -3164,18 +3164,75 @@
 
   function spawnProjectile(kind, team, x,y, dirx,diry, dmg, speed){
     const l = Math.hypot(dirx,diry)||1;
+    const b = state.battle;
+    const attackerTeam = (b && b.type==='siege')
+      ? (b.attackerSide==='player' ? 'ally' : 'enemy')
+      : null;
     state.battle.projectiles.push({
       kind, // 'arrow' | 'bolt'
       team,
       x, y,
+      prevX:x,
+      prevY:y,
       vx: (dirx/l)*speed,
       vy: (diry/l)*speed,
       r: (kind==='bolt') ? 0.14 : (kind==='spearArc'?0.16:0.12),
       dmg,
       ttl: 2.3,
       life:2.3,
-      arcH:(kind==='spearArc'?0.85:(kind==='rock'?0.55:0))
+      arcH:(kind==='spearArc'?0.85:(kind==='rock'?0.55:0)),
+      wallCheckDone:false,
+      startedOutsideWall: !!(b?.siege && y < (b.siege.wallY - 0.45)),
+      fromAttackerSide: (team===attackerTeam)
     });
+  }
+
+  function projectileHitsWallOnce(pr, nx, ny, b){
+    if(!b?.siege || pr.wallCheckDone) return false;
+    const s = b.siege;
+    const wasBelow = pr.y < s.wallY;
+    const nowBelow = ny < s.wallY;
+    const crossedWallBand = (wasBelow!==nowBelow) || Math.abs(ny - s.wallY) <= 0.45;
+    if(!crossedWallBand) return false;
+
+    const t = clamp((s.wallY - pr.y) / ((ny - pr.y) || 0.0001), 0, 1);
+    const hitX = pr.x + (nx - pr.x) * t;
+    if(hitX < s.wallX0 || hitX > s.wallX1) return false;
+
+    if(s.breachOpen && Math.abs(hitX-(s.breachX||-99))<=1.2){ pr.wallCheckDone=true; return false; }
+    for(const L of s.ladders){ if(Math.abs(hitX - L.x) <= 0.9){ pr.wallCheckDone=true; return false; } }
+
+    pr.wallCheckDone = true;
+    return !!(pr.fromAttackerSide && pr.startedOutsideWall && Math.random()<0.5);
+  }
+
+  function siegeMeleeObjective(u, tgt, b){
+    if(!b?.siege || (u.role!=='inf' && u.role!=='sup')) return tgt;
+    if(u.order==='hold' || u.order==='rally') return tgt;
+    const s = b.siege;
+    const attackerTeam = (b.attackerSide==='player') ? 'ally' : 'enemy';
+    const defenderTeam = b.defenderTeam;
+    const ladderTargetY = s.wallY + 0.35;
+    const guardY = s.wallY + 1.0;
+
+    if(u.team===attackerTeam && u.y < s.wallY-0.5 && tgt && tgt.y > s.wallY+0.35){
+      const L = s.ladders.reduce((best,cur)=>{
+        if(!best) return cur;
+        return Math.abs(cur.x-u.x) < Math.abs(best.x-u.x) ? cur : best;
+      }, null);
+      if(L) return { x:L.x, y:ladderTargetY };
+    }
+
+    if(u.team===defenderTeam && u.y > s.wallY+0.45 && tgt && tgt.y < s.wallY+0.35){
+      const ladderPressure = s.ladders.map(L=>({
+        L,
+        score: (u.x-L.x)*(u.x-L.x) + ((nearestAlive((attackerTeam==='ally')?b.allies:b.enemies, L.x, s.wallY-0.4)?.x||L.x)-L.x)**2
+      })).sort((a,c)=>a.score-c.score);
+      const pick = ladderPressure[0]?.L;
+      if(pick) return { x:pick.x, y:guardY };
+    }
+
+    return tgt;
   }
 
   function applyDamage(unit, dmg, source=null){
@@ -3691,10 +3748,12 @@
     // projectiles
     for(const pr of b.projectiles){
       pr.ttl -= dt;
+      pr.prevX = pr.x;
+      pr.prevY = pr.y;
       const nx2 = pr.x + pr.vx * dt;
       const ny2 = pr.y + pr.vy * dt;
       pr.progress = 1 - (pr.ttl/Math.max(0.001,pr.life||2.3));
-      if(b.siege && b.siege.isBlocked(nx2, ny2)){
+      if(projectileHitsWallOnce(pr, nx2, ny2, b)){
         pr.ttl = 0;
         continue;
       }
@@ -3844,8 +3903,9 @@
 
     if(!tgt) return;
 
+    const moveTgt = siegeMeleeObjective(u, tgt, b);
     const d = dist(u.x,u.y, tgt.x,tgt.y);
-    const vx = tgt.x - u.x, vy = tgt.y - u.y;
+    const vx = moveTgt.x - u.x, vy = moveTgt.y - u.y;
     const l = Math.hypot(vx,vy)||1;
     u.facingX = vx/l; u.facingY = vy/l;
 
@@ -3954,7 +4014,7 @@
           } else { u.vx*=0.78; u.vy*=0.78; }
         } else { u.vx*=0.78; u.vy*=0.78; }
       } else {
-        const mx = tgt.x - u.x, my = tgt.y - u.y;
+        const mx = moveTgt.x - u.x, my = moveTgt.y - u.y;
         const ll = Math.hypot(mx,my);
         if(ll>0.001){ u.vx = (mx/ll) * u.spd; u.vy = (my/ll) * u.spd; }
         else { u.vx*=0.82; u.vy*=0.82; }
