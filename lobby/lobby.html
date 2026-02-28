@@ -648,7 +648,7 @@
     const AUTO_REDIRECT_GAMES = new Set([
       "cat","grass","mountain","stockkings","dutchblitz","catmobile","splinters",
       "spelltower","thegame","zombiezone","biblegame","historyrush","crowncouncil",
-      "forgeroyale","cardrealmsmulti","castledefense","rogueduel","trumprev","warspan",
+      "forgeroyale","castledefense","rogueduel","trumprev","warspan",
       "stoneyrelic","balatle"
     ]);
 
@@ -971,6 +971,14 @@
       const name = document.getElementById("lobbyName").value.trim();
       if (!name) return showError("Please enter a lobby name.");
 
+      if (gameType === "cardrealmsmulti") {
+        const route = ROUTES.cardrealmsmulti;
+        save(SK.lastGame, "cardrealmsmulti");
+        save(SK.lastLobby, "");
+        window.location.href = `${route}?username=${encodeURIComponent(username)}`;
+        return;
+      }
+
       if (!['cat','catmobile','grass','estate','mountain','stockkings','thegame','dutchblitz','splinters','spelltower','zombiezone','biblegame','historyrush','crowncouncil','forgeroyale','cardrealmsmulti','castledefense','rogueduel','trumprev','warspan','stoneyrelic','balatle'].includes(gameType)) {
         return showError("Invalid game type.");
       }
@@ -1188,6 +1196,15 @@
       const ref = doc(db, "lobbies", currentLobbyId);
       const snap = await getDoc(ref); if (!snap.exists()) return;
       const data = snap.data();
+
+
+      if (data.gameType === "cardrealmsmulti") {
+        const route = ROUTES.cardrealmsmulti;
+        save(SK.lastGame, "cardrealmsmulti");
+        save(SK.lastLobby, "");
+        window.location.href = `${route}?username=${encodeURIComponent(username)}`;
+        return;
+      }
 
       if (data.gameType === "estate") {
         const playersFromThisLobby = data.players || [username];

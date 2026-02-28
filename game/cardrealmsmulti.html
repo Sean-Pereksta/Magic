@@ -395,6 +395,22 @@
     .card{ width:146px; }
   }
 
+  @media (max-width: 760px){
+    #app{ padding:8px; gap:8px; }
+    .panel,.side,.pill{ padding:8px; }
+    .card{ width:92px; padding:6px; border-radius:10px; }
+    .card .cost{ width:20px; height:20px; font-size:11px; top:5px; left:5px; }
+    .card .type{ font-size:9px; }
+    .card .name{ font-size:11px; margin-top:6px; }
+    .card .factionTag{ font-size:9px; padding:2px 4px; }
+    .card .text{ display:none; }
+    .card .iconRow{ gap:4px; margin-top:4px; }
+    .card .ico{ font-size:9px; padding:2px 4px; }
+    .cards, .handWrap{ flex-wrap:nowrap; overflow-x:auto; overflow-y:hidden; }
+    .handWrap{ max-height:none; }
+    .side{ overflow:visible; }
+  }
+
   /* ===== Net overlay ===== */
   #netOverlay{
     position:fixed;
@@ -485,7 +501,6 @@
         <button class="btn warn" id="buyExplorerBtn">Buy Explorer (2)</button>
         <button class="btn bad" id="attackAuthorityBtn">⚔️ Attack Opponent Authority</button>
         <button class="btn good" id="endTurnBtn">End Turn</button>
-        <button class="btn warn" id="restartBtn" title="Host only">Restart Match</button>
       </div>
     </div>
     <div class="hint" id="statusLine">Connecting…</div>
@@ -547,27 +562,21 @@
 <!-- Net Overlay -->
 <div id="netOverlay">
   <div class="netBox">
-    <h2>Connect to a 1v1 room</h2>
+    <h2>Card Realms Multiplayer Lobby</h2>
     <div class="sub" style="margin-bottom:10px;">
-      If your lobby already passes a room, this screen won’t appear. Otherwise: create a room and share the code, or join a code.
+      Create a lobby, then have another player join from the live list below. Only open lobbies (1/2 players) are shown.
     </div>
-    <div class="row2">
-      <div class="panel" style="padding:12px;">
-        <div class="sectionTitle"><span>Create</span></div>
-        <input class="field" id="nameCreate" placeholder="Your name (optional)" />
-        <div style="height:10px"></div>
-        <button class="btn good" id="btnCreateRoom">Create Room</button>
-        <div class="hint" id="createHint"></div>
-      </div>
-      <div class="panel" style="padding:12px;">
-        <div class="sectionTitle"><span>Join</span></div>
-        <input class="field" id="nameJoin" placeholder="Your name (optional)" />
-        <div style="height:10px"></div>
-        <input class="field" id="codeJoin" placeholder="Room code (e.g., SR-ABCDE)" />
-        <div style="height:10px"></div>
-        <button class="btn" id="btnJoinRoom">Join Room</button>
-        <div class="hint" id="joinHint"></div>
-      </div>
+    <div class="panel" style="padding:12px; margin-bottom:10px;">
+      <div class="sectionTitle"><span>Create Lobby</span></div>
+      <input class="field" id="nameCreate" placeholder="Your name (optional)" />
+      <div style="height:10px"></div>
+      <button class="btn good" id="btnCreateRoom">Create Lobby</button>
+      <div class="hint" id="createHint"></div>
+    </div>
+    <div class="panel" style="padding:12px;">
+      <div class="sectionTitle"><span>Active Lobbies (1/2 players)</span></div>
+      <div id="activeLobbies" class="cards"></div>
+      <div class="hint" id="joinHint"></div>
     </div>
     <div class="hint" style="margin-top:10px;">
       Turn timer is enforced by the host client. If the host closes, the match may pause.
@@ -610,13 +619,13 @@ import {
 
 /** 🔧 Replace with your Firebase Web Config (same project as your lobby). */
 const firebaseConfig = {
-  apiKey: "PASTE_ME",
-  authDomain: "PASTE_ME",
-  databaseURL: "PASTE_ME",
-  projectId: "PASTE_ME",
-  storageBucket: "PASTE_ME",
-  messagingSenderId: "PASTE_ME",
-  appId: "PASTE_ME",
+  apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+  authDomain: "bible-game-246c0.firebaseapp.com",
+  databaseURL: "https://bible-game-246c0-default-rtdb.firebaseio.com",
+  projectId: "bible-game-246c0",
+  storageBucket: "bible-game-246c0.appspot.com",
+  messagingSenderId: "959619818996",
+  appId: "1:959619818996:web:5a9fbf492e23c765e445a1",
 };
 
 const app = initializeApp(firebaseConfig);
@@ -629,19 +638,8 @@ onValue(ref(db, "/.info/serverTimeOffset"), (s)=>{ serverOffset = s.val() || 0; 
 const now = ()=> Date.now() + serverOffset;
 
 /* =========================
-   Lobby/Room detection helpers
+   Player name helper
    ========================= */
-function getRoomFromLobby(){
-  const sp = new URLSearchParams(location.search);
-  return (
-    sp.get("room") ||
-    sp.get("code") ||
-    localStorage.getItem("lobby_roomId") ||
-    localStorage.getItem("roomId") ||
-    localStorage.getItem("balatro_roomId") ||
-    null
-  );
-}
 function getNameFromLobby(){
   return (
     localStorage.getItem("lobby_name") ||
@@ -1058,7 +1056,7 @@ function initMatchState(meta){
     log: [],
     tradeRow: [],
     tradeDeck: [],
-    currentSeat: 0,
+    currentSeat: Math.random() < 0.5 ? 0 : 1,
     turnEndsAt: now() + 60_000,
     turnCount: 1,
     ended: false,
@@ -1084,8 +1082,8 @@ function initMatchState(meta){
     draw(st, pl, 5);
   }
 
-  stLog(st, `Match start! ${st.players[0].name} goes first.`);
-  startTurn(st, 0);
+  stLog(st, `Match start! ${st.players[st.currentSeat].name} goes first.`);
+  startTurn(st, st.currentSeat);
 
   return st;
 }
@@ -1253,7 +1251,6 @@ const els = {
   netLine: document.getElementById("netLine"),
   youTitle: document.getElementById("youTitle"),
   oppTitle: document.getElementById("oppTitle"),
-  restartBtn: document.getElementById("restartBtn"),
 };
 
 function setStatus(s){ els.statusLine.textContent = s; }
@@ -1616,7 +1613,6 @@ function renderAll(){
   els.buyExplorerBtn.disabled = (!myTurn || me.trade<2);
   els.endTurnBtn.disabled = (!myTurn);
   els.attackAuthorityBtn.disabled = (!myTurn || me.combat<=0 || enemyHasOutposts(state, 1-mySeat));
-  els.restartBtn.disabled = (!isHost);
 
   // Hand
   els.hand.innerHTML = "";
@@ -1695,7 +1691,7 @@ function renderAll(){
 function sendAction(type, payload={}){
   if(!uid || !roomId || mySeat===null) return;
   // client-side turn guard (host validates too)
-  if(state && !state.ended && state.currentSeat !== mySeat && type!=="RESTART_MATCH") return;
+  if(state && !state.ended && state.currentSeat !== mySeat) return;
 
   const aRef = push(actionsRef);
   set(aRef, {
@@ -1723,12 +1719,9 @@ async function hostCommit(newState){
 
 async function hostHandleAction(act){
   if(!state) return;
-  if(state.ended && act.type!=="RESTART_MATCH") return;
+  if(state.ended) return;
 
-  // validate seat
-  if(act.type!=="RESTART_MATCH"){
-    if(act.fromSeat !== state.currentSeat) return;
-  }
+  if(act.fromSeat !== state.currentSeat) return;
 
   const seat = act.fromSeat;
 
@@ -1741,39 +1734,26 @@ async function hostHandleAction(act){
     case "ATTACK_BASE": attackBase(state, seat, act.payload?.uid); break;
     case "PLAY_ALL": playAll(state, seat); break;
     case "END_TURN": endTurnInternal(state, "endTurn"); break;
-    case "RESTART_MATCH":
-      // only host should allow this
-      break;
   }
 
   await hostCommit(state);
 }
 
-async function hostRestartMatch(){
-  if(!meta) return;
-  if(!isHost) return;
-  if(!meta.seats || Object.keys(meta.seats).length<2) return;
-
-  const seatUid0 = Object.entries(meta.seats).find(([k,v])=>v===0)?.[0] || null;
-  const seatUid1 = Object.entries(meta.seats).find(([k,v])=>v===1)?.[0] || null;
-  const seatName0 = meta.names?.[seatUid0] || "P1";
-  const seatName1 = meta.names?.[seatUid1] || "P2";
-  const st = initMatchState({ seatUid0, seatUid1, seatName0, seatName1 });
-  state = st;
-  await hostCommit(st);
-}
 
 /* =========================
    Connect + join room (2 players only)
    ========================= */
 const netOverlay = document.getElementById("netOverlay");
 const btnCreateRoom = document.getElementById("btnCreateRoom");
-const btnJoinRoom = document.getElementById("btnJoinRoom");
 const nameCreate = document.getElementById("nameCreate");
-const nameJoin = document.getElementById("nameJoin");
-const codeJoin = document.getElementById("codeJoin");
 const createHint = document.getElementById("createHint");
 const joinHint = document.getElementById("joinHint");
+const activeLobbiesEl = document.getElementById("activeLobbies");
+
+let roomListUnsub = null;
+let metaUnsub = null;
+let stateUnsub = null;
+let actionsUnsub = null;
 
 function showNetOverlay(show){
   netOverlay.style.display = show ? "flex" : "none";
@@ -1784,23 +1764,54 @@ function makeRoomCode(){
   return `SR-${s}`;
 }
 
-btnCreateRoom.onclick = ()=>{
+function renderOpenLobbies(allRooms={}){
+  activeLobbiesEl.innerHTML = "";
+  const items = Object.entries(allRooms)
+    .map(([rid, room])=>({rid, meta: room?.meta || {}}))
+    .filter(({meta})=>{
+      const seats = meta?.seats ? Object.values(meta.seats) : [];
+      const seated = new Set(seats);
+      return seated.size===1 && !meta.ended && !meta.started;
+    })
+    .sort((a,b)=>(b.meta?.updatedAt||0)-(a.meta?.updatedAt||0));
+
+  if(!items.length){
+    activeLobbiesEl.innerHTML = `<div class="sub">No open lobbies yet. Create one!</div>`;
+    return;
+  }
+
+  for(const {rid, meta} of items){
+    const names = meta?.names ? Object.values(meta.names) : [];
+    const hostName = names[0] || "Host";
+    const card = document.createElement("div");
+    card.className = "card";
+    card.style.width = "220px";
+    card.innerHTML = `<div class="name">${rid}</div><div class="sub" style="margin-top:4px;">Host: ${hostName}</div><div class="sub">Players: 1/2</div>`;
+    const joinBtn = document.createElement("button");
+    joinBtn.className = "btn good";
+    joinBtn.style.marginTop = "8px";
+    joinBtn.textContent = "Join Lobby";
+    joinBtn.onclick = ()=> joinRoom(rid);
+    card.appendChild(joinBtn);
+    activeLobbiesEl.appendChild(card);
+  }
+}
+
+function startLobbyList(){
+  if(roomListUnsub) roomListUnsub();
+  roomListUnsub = onValue(ref(db, "starrealms1v1"), (snap)=> renderOpenLobbies(snap.val()||{}));
+}
+
+btnCreateRoom.onclick = async ()=>{
   const nm = (nameCreate.value||"").trim();
   if(nm) { myName = nm.slice(0,22); localStorage.setItem("balatle_solo_name", myName); }
   const code = makeRoomCode();
-  createHint.textContent = `Created code: ${code} (opening…)`;
-  location.search = `?room=${encodeURIComponent(code)}`;
-};
-
-btnJoinRoom.onclick = ()=>{
-  const nm = (nameJoin.value||"").trim();
-  if(nm) { myName = nm.slice(0,22); localStorage.setItem("balatle_solo_name", myName); }
-  const code = (codeJoin.value||"").trim().toUpperCase();
-  if(!code){ joinHint.textContent="Enter a room code."; return; }
-  location.search = `?room=${encodeURIComponent(code)}`;
+  createHint.textContent = `Creating lobby ${code}...`;
+  await joinRoom(code);
 };
 
 async function joinRoom(room){
+  if(!uid) return;
   roomId = room;
   roomRoot = `starrealms1v1/${roomId}`;
   metaRef = ref(db, `${roomRoot}/meta`);
@@ -1808,7 +1819,7 @@ async function joinRoom(room){
   actionsRef = ref(db, `${roomRoot}/actions`);
 
   // Allocate seat via transaction
-  const seatRes = await runTransaction(metaRef, (m)=>{
+  await runTransaction(metaRef, (m)=>{
     if(!m){
       const seats = {}; seats[uid] = 0;
       const names = {}; names[uid] = myName;
@@ -1828,15 +1839,12 @@ async function joinRoom(room){
     m.seats = m.seats || {};
     m.names = m.names || {};
     if(m.seats[uid]===0 || m.seats[uid]===1){
-      // already seated; refresh name
       m.names[uid] = myName;
       m.updatedAt = serverTimestamp();
       return m;
     }
     const used = new Set(Object.values(m.seats));
-    if(used.has(0) && used.has(1)){
-      return; // abort = room full
-    }
+    if(used.has(0) && used.has(1)) return;
     const seat = used.has(0) ? 1 : 0;
     m.seats[uid] = seat;
     m.names[uid] = myName;
@@ -1849,28 +1857,28 @@ async function joinRoom(room){
 
   if(!meta || !meta.seats || meta.seats[uid]===undefined){
     showNetOverlay(true);
-    setStatus("Room is full (2 players). Try a different code.");
+    joinHint.textContent = "Lobby is full (2 players). Join another lobby.";
     return;
   }
 
   mySeat = meta.seats[uid];
   isHost = (meta.hostUid === uid);
 
-  // Listen meta/state
-  onValue(metaRef, async (s)=>{
+  if(metaUnsub) metaUnsub();
+  if(stateUnsub) stateUnsub();
+
+  metaUnsub = onValue(metaRef, async (s)=>{
     meta = s.val();
     if(!meta) return;
     isHost = (meta.hostUid === uid);
     mySeat = (meta.seats && meta.seats[uid]!==undefined) ? meta.seats[uid] : mySeat;
 
-    // Auto-start when 2 players present (host)
     const seated = meta.seats ? Object.values(meta.seats) : [];
     const has2 = seated.includes(0) && seated.includes(1);
 
     if(isHost && has2){
       const stSnap = await get(stateRef);
       if(!stSnap.exists() || (stSnap.val() && stSnap.val().ended)){
-        // start fresh
         const seatUid0 = Object.entries(meta.seats).find(([k,v])=>v===0)?.[0] || null;
         const seatUid1 = Object.entries(meta.seats).find(([k,v])=>v===1)?.[0] || null;
         const seatName0 = meta.names?.[seatUid0] || "P1";
@@ -1882,25 +1890,24 @@ async function joinRoom(room){
     }
   });
 
-  onValue(stateRef, (s)=>{
+  stateUnsub = onValue(stateRef, (s)=>{
     state = s.val();
     if(!state){
-      setStatus("Waiting for host to start…");
+      setStatus("Waiting for opponent to join…");
+      showNetOverlay(true);
       return;
     }
     showNetOverlay(false);
     renderAll();
 
-    // Auto Play All at turn start (local-only convenience)
     const myTurn = (state.currentSeat===mySeat) && !state.ended;
     if(myTurn && els.autoplayToggle.checked){
-      // slight delay to let UI render
       setTimeout(()=>sendAction("PLAY_ALL", {}), 120);
     }
   });
 
-  // Host: process actions
-  onChildAdded(actionsRef, (snap)=>{
+  if(actionsUnsub) actionsUnsub();
+  actionsUnsub = onChildAdded(actionsRef, (snap)=>{
     if(!isHost) return;
     const act = snap.val();
     hostActionChain = hostActionChain
@@ -1909,7 +1916,6 @@ async function joinRoom(room){
       .catch((e)=> console.error("Host action error", e));
   });
 
-  // Host: enforce 60s timer
   if(tickTimer) clearInterval(tickTimer);
   tickTimer = setInterval(async ()=>{
     if(!isHost || !state || state.ended) return;
@@ -1919,6 +1925,8 @@ async function joinRoom(room){
     }
   }, 250);
 
+  joinHint.textContent = "";
+  createHint.textContent = "";
   setStatus("Connected. Waiting for opponent (if not already).");
 }
 
@@ -1929,7 +1937,6 @@ els.playAllBtn.onclick = ()=> sendAction("PLAY_ALL", {});
 els.buyExplorerBtn.onclick = ()=> sendAction("BUY_EXPLORER", {});
 els.attackAuthorityBtn.onclick = ()=> sendAction("ATTACK_AUTH", {});
 els.endTurnBtn.onclick = ()=> sendAction("END_TURN", {});
-els.restartBtn.onclick = ()=> hostRestartMatch();
 
 els.viewDeckBtn.onclick = ()=>{ if(state && mySeat!==null) showPile("Your Deck", state.players[mySeat].deck); };
 els.viewDiscardBtn.onclick = ()=>{ if(state && mySeat!==null) showPile("Your Discard", state.players[mySeat].discard); };
@@ -1945,17 +1952,10 @@ els.viewScrapBtn.onclick = ()=>{ if(state && mySeat!==null) showPile("Your Scrap
   onAuthStateChanged(auth, async (u)=>{
     if(!u) return;
     uid = u.uid;
-
-    // If no room is provided, show overlay.
-    const r = getRoomFromLobby();
-    if(!r){
-      showNetOverlay(true);
-      setStatus("Enter or create a room to begin.");
-      return;
-    }
-    showNetOverlay(false);
-    setStatus("Joining room…");
-    await joinRoom(r);
+    myName = getNameFromLobby();
+    showNetOverlay(true);
+    setStatus("Create or join a lobby to begin.");
+    startLobbyList();
   });
 })();
 </script>
