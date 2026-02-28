@@ -205,6 +205,7 @@
     #desktopBattleHud .row{margin-bottom:6px;}
     #desktopBattleHud .row:last-child{margin-bottom:0;}
     #desktopBattleHud .btn.active{background:rgba(96,165,250,.24);border-color:rgba(191,219,254,.55);}
+    #battleReturnBtn{position:absolute;right:14px;bottom:22px;z-index:26;pointer-events:auto;display:none;font-weight:700;}
     @media (max-width: 920px), (pointer: coarse){
       #mobileHud{display:block;}
       #desktopBattleHud{display:none !important;}
@@ -212,6 +213,7 @@
       #topStats{max-width:64%;}
       #topbar .chipRow:last-child{gap:6px;}
       #topbar .chipRow:last-child .btn{padding:7px 8px;font-size:12px;}
+      #battleReturnBtn{right:14px;bottom:68px;}
     }
   </style>
 </head>
@@ -266,6 +268,7 @@
       <button class="btn" id="mobileInteractBtn">Interact</button>
     </div>
     <div id="desktopBattleHud"></div>
+    <button class="btn" id="battleReturnBtn">Return to Map</button>
 
     <div id="startMenu">
       <div class="card">
@@ -336,6 +339,7 @@
     mobileInteractBtn: document.getElementById('mobileInteractBtn'),
     mbExpandBtn: document.getElementById('mbExpandBtn'),
     desktopBattleHud: document.getElementById('desktopBattleHud'),
+    battleReturnBtn: document.getElementById('battleReturnBtn'),
   };
 
   function resize() {
@@ -1535,6 +1539,7 @@
     state.mobileBattleCollapsed = false;
     renderMobileBattlePanel();
   };
+  ui.battleReturnBtn.onclick = returnToMapFromBattle;
 
   // =========================
   // UI: inventory
@@ -2629,8 +2634,32 @@
     renderLootPanel(loot);
   }
 
-  function renderLootPanel(loot){
+  function collectLoot(loot){
     const p = state.player;
+    if(!loot || loot.taken) return;
+    p.gold += loot.gold;
+    p.food += loot.food;
+    if(loot.xp) addXP(loot.xp);
+    for(const id of loot.items) p.inventory[id] = (p.inventory[id]||0) + 1;
+    loot.taken = true;
+  }
+
+  function returnToMapFromBattle(){
+    if(state.mode!=='battle') return;
+    if(state.battle?.lootPending) collectLoot(state.battle.lootPending);
+    closeAllPanels();
+    state.mode = 'map';
+    state.battle = null;
+    syncHUD();
+    toast('Back to map');
+  }
+
+  function updateBattleReturnButton(){
+    const show = state.mode==='battle' && !!state.battle?.lootPending;
+    ui.battleReturnBtn.style.display = show ? 'block' : 'none';
+  }
+
+  function renderLootPanel(loot){
     ui.panelLoot.innerHTML = `
       <h2>Loot</h2>
       <div class="small">${loot.reason || 'Victory!'} Collect loot, then return to the map.</div>
@@ -2661,32 +2690,14 @@
     `;
 
     ui.panelLoot.querySelector('#takeAll').onclick = () => {
-      p.gold += loot.gold;
-      p.food += loot.food;
-      if(loot.xp) addXP(loot.xp);
-      for(const id of loot.items){
-        p.inventory[id] = (p.inventory[id]||0) + 1;
-      }
-      loot.taken = true;
+      collectLoot(loot);
       toast('Loot collected!');
       syncHUD();
       ui.panelLoot.querySelector('#takeAll').disabled = true;
     };
 
     ui.panelLoot.querySelector('#continue').onclick = () => {
-      if(!loot.taken){
-        p.gold += loot.gold;
-        p.food += loot.food;
-        if(loot.xp) addXP(loot.xp);
-        for(const id of loot.items){
-          p.inventory[id] = (p.inventory[id]||0) + 1;
-        }
-      }
-      closeAllPanels();
-      state.mode = 'map';
-      state.battle = null;
-      syncHUD();
-      toast('Back to map');
+      returnToMapFromBattle();
     };
   }
 
@@ -5223,6 +5234,7 @@
     syncHUD();
     renderMobileBattlePanel();
     renderDesktopBattleHud();
+    updateBattleReturnButton();
     updateMobileInteractPrompt();
     render();
   }
