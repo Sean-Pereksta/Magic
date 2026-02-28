@@ -883,6 +883,422 @@ Ally: gain ${ICON.auth}2.` }),
       text:`Opponent draws 1 fewer next turn.
 Scrap 1 from Trade Row.
 Ally: opponent discards 1.` }),
+
+  // ============================================================
+  // MASSIVE SHIP EXPANSION PACK (v1) — SHIPS ONLY
+  // Requires step types: scrap_trade_row, copy_next_ship, gain_per_base
+  // ============================================================
+
+  /* ===== NEUTRAL (n) — utility, consistency, light combos ===== */
+  C({ key:"n_pulse_fighter", name:"Pulse Fighter", cost:2, faction:"n",
+    play:[{t:"combat",n:2}],
+    text:`Gain ${ICON.combat}2.` }),
+
+  C({ key:"n_bulk_trader", name:"Bulk Trader", cost:2, faction:"n",
+    play:[{t:"trade",n:2}],
+    text:`Gain ${ICON.trade}2.` }),
+
+  C({ key:"n_outreach_vessel", name:"Outreach Vessel", cost:3, faction:"n",
+    play:[{t:"authority",n:5}],
+    text:`Gain ${ICON.auth}5.` }),
+
+  C({ key:"n_nav_computer", name:"Nav Computer", cost:3, faction:"n",
+    play:[{t:"trade",n:1},{t:"draw",n:1}],
+    text:`Gain ${ICON.trade}1.
+Draw 1.` }),
+
+  C({ key:"n_battle_drill", name:"Battle Drill Craft", cost:4, faction:"n",
+    play:[{t:"combat",n:3},{t:"draw",n:1}],
+    text:`Gain ${ICON.combat}3.
+Draw 1.` }),
+
+  C({ key:"n_salvage_crew", name:"Salvage Crew", cost:4, faction:"n",
+    play:[{t:"trade",n:2}],
+    scrap:[{t:"scrap_discard",n:1}],
+    text:`Gain ${ICON.trade}2.
+Scrap: scrap 1 from discard.` }),
+
+  C({ key:"n_echo_module", name:"Echo Module", cost:4, faction:"n",
+    play:[{t:"trade",n:1},{t:"copy_next_ship",n:1}],
+    text:`Gain ${ICON.trade}1.
+Copy next ship you play this turn.` }),
+
+  C({ key:"n_market_sweep", name:"Market Sweep", cost:5, faction:"n",
+    play:[{t:"trade",n:2},{t:"scrap_trade_row",n:1}],
+    text:`Gain ${ICON.trade}2.
+Scrap 1 from Trade Row.` }),
+
+  /* ===== TRADE FEDERATION (tf) — trade/authority/draw + clean copying ===== */
+  C({ key:"tf_quickdeal_sloop", name:"Quickdeal Sloop", cost:2, faction:"tf",
+    play:[{t:"trade",n:1},{t:"authority",n:1}],
+    ally:[{t:"trade",n:1}],
+    text:`Gain ${ICON.trade}1 and ${ICON.auth}1.
+Ally: gain ${ICON.trade}1.` }),
+
+  C({ key:"tf_lifeboat_tender", name:"Lifeboat Tender", cost:3, faction:"tf",
+    play:[{t:"authority",n:4}],
+    ally:[{t:"draw",n:1}],
+    text:`Gain ${ICON.auth}4.
+Ally: draw 1.` }),
+
+  C({ key:"tf_harbor_master", name:"Harbor Master", cost:4, faction:"tf",
+    play:[{t:"trade",n:2},{t:"draw",n:1}],
+    ally:[{t:"authority",n:2}],
+    text:`Gain ${ICON.trade}2.
+Draw 1.
+Ally: gain ${ICON.auth}2.` }),
+
+  C({ key:"tf_credit_line", name:"Credit Line Frigate", cost:4, faction:"tf",
+    play:[{t:"trade",n:2},{t:"scrap_trade_row",n:1}],
+    ally:[{t:"trade",n:1}],
+    text:`Gain ${ICON.trade}2.
+Scrap 1 from Trade Row.
+Ally: gain ${ICON.trade}1.` }),
+
+  C({ key:"tf_consulate_runner", name:"Consulate Runner", cost:5, faction:"tf",
+    play:[{t:"trade",n:3}],
+    ally:[{t:"draw",n:1}],
+    text:`Gain ${ICON.trade}3.
+Ally: draw 1.` }),
+
+  C({ key:"tf_ledger_guard", name:"Ledger Guard", cost:5, faction:"tf",
+    play:[{t:"combat",n:2},{t:"trade",n:2}],
+    ally:[{t:"authority",n:2}],
+    text:`Gain ${ICON.combat}2 and ${ICON.trade}2.
+Ally: gain ${ICON.auth}2.` }),
+
+  C({ key:"tf_peace_accord", name:"Peace Accord Cruiser", cost:6, faction:"tf",
+    play:[{t:"authority",n:5},{t:"trade",n:1},{t:"copy_next_ship",n:1}],
+    ally:[{t:"draw",n:1}],
+    text:`Gain ${ICON.auth}5 and ${ICON.trade}1.
+Copy next ship you play this turn.
+Ally: draw 1.` }),
+
+  C({ key:"tf_embargo_breaker", name:"Embargo Breaker", cost:6, faction:"tf",
+    play:[{t:"trade",n:3},{t:"combat",n:2}],
+    scrap:[{t:"draw",n:1}],
+    text:`Gain ${ICON.trade}3 and ${ICON.combat}2.
+Scrap: draw 1.` }),
+
+  C({ key:"tf_broker_flagship", name:"Broker Flagship", cost:7, faction:"tf",
+    play:[{t:"trade",n:4},{t:"authority",n:3}],
+    ally:[{t:"trade",n:2}],
+    text:`Gain ${ICON.trade}4 and ${ICON.auth}3.
+Ally: gain ${ICON.trade}2.` }),
+
+  C({ key:"tf_guild_capital_ship", name:"Guild Capital Ship", cost:8, faction:"tf",
+    play:[{t:"trade",n:4},{t:"authority",n:6}],
+    ally:[{t:"draw",n:1}],
+    text:`Gain ${ICON.trade}4 and ${ICON.auth}6.
+Ally: draw 1.` }),
+
+  /* ===== BLOB (blob) — raw combat + devour market + explosive scraps ===== */
+  C({ key:"blob_pouncer", name:"Blob Pouncer", cost:2, faction:"blob",
+    play:[{t:"combat",n:2}],
+    ally:[{t:"combat",n:1}],
+    text:`Gain ${ICON.combat}2.
+Ally: gain ${ICON.combat}1.` }),
+
+  C({ key:"blob_spitter", name:"Caustic Spitter", cost:3, faction:"blob",
+    play:[{t:"combat",n:3}],
+    scrap:[{t:"trade",n:2}],
+    text:`Gain ${ICON.combat}3.
+Scrap: gain ${ICON.trade}2.` }),
+
+  C({ key:"blob_devourer", name:"Devourer Leech", cost:3, faction:"blob",
+    play:[{t:"combat",n:2},{t:"scrap_trade_row",n:1}],
+    ally:[{t:"combat",n:2}],
+    text:`Gain ${ICON.combat}2.
+Scrap 1 from Trade Row.
+Ally: gain ${ICON.combat}2.` }),
+
+  C({ key:"blob_brood_carrier", name:"Brood Carrier", cost:5, faction:"blob",
+    play:[{t:"combat",n:3},{t:"draw",n:1}],
+    ally:[{t:"combat",n:2}],
+    text:`Gain ${ICON.combat}3.
+Draw 1.
+Ally: gain ${ICON.combat}2.` }),
+
+  C({ key:"blob_toxic_bloom_ship", name:"Toxic Bloom", cost:4, faction:"blob",
+    play:[{t:"combat",n:3},{t:"opp_discard",n:1}],
+    scrap:[{t:"scrap_trade_row",n:1}],
+    text:`Gain ${ICON.combat}3.
+Opponent discards 1.
+Scrap: scrap 1 from Trade Row.` }),
+
+  C({ key:"blob_ooze_marauder", name:"Ooze Marauder", cost:5, faction:"blob",
+    play:[{t:"combat",n:5}],
+    ally:[{t:"draw",n:1}],
+    text:`Gain ${ICON.combat}5.
+Ally: draw 1.` }),
+
+  C({ key:"blob_voracious_gullet", name:"Voracious Gullet", cost:6, faction:"blob",
+    play:[{t:"combat",n:6}],
+    scrap:[{t:"opp_discard",n:1}],
+    text:`Gain ${ICON.combat}6.
+Scrap: opponent discards 1.` }),
+
+  C({ key:"blob_overrun", name:"Overrun Organism", cost:7, faction:"blob",
+    play:[{t:"combat",n:7}],
+    ally:[{t:"combat",n:3}],
+    text:`Gain ${ICON.combat}7.
+Ally: gain ${ICON.combat}3.` }),
+
+  C({ key:"blob_apex_predator", name:"Apex Predator", cost:9, faction:"blob",
+    play:[{t:"combat",n:9}],
+    ally:[{t:"draw",n:1}],
+    text:`Gain ${ICON.combat}9.
+Ally: draw 1.` }),
+
+  C({ key:"blob_rendstorm", name:"Rendstorm", cost:6, faction:"blob",
+    play:[{t:"combat",n:4},{t:"scrap_trade_row",n:1}],
+    ally:[{t:"combat",n:2}],
+    text:`Gain ${ICON.combat}4.
+Scrap 1 from Trade Row.
+Ally: gain ${ICON.combat}2.` }),
+
+  /* ===== STAR EMPIRE (se) — discard + draw disruption + pressure copying ===== */
+  C({ key:"se_eavesdropper", name:"Eavesdropper", cost:2, faction:"se",
+    play:[{t:"combat",n:1},{t:"opp_discard",n:1}],
+    text:`Gain ${ICON.combat}1.
+Opponent discards 1.` }),
+
+  C({ key:"se_signal_jammer", name:"Signal Jammer", cost:3, faction:"se",
+    play:[{t:"trade",n:1},{t:"opp_next_draw",n:-1}],
+    text:`Gain ${ICON.trade}1.
+Opponent draws 1 fewer next turn.` }),
+
+  C({ key:"se_coercer", name:"Coercer Frigate", cost:3, faction:"se",
+    play:[{t:"combat",n:2},{t:"opp_discard",n:1}],
+    ally:[{t:"trade",n:1}],
+    text:`Gain ${ICON.combat}2.
+Opponent discards 1.
+Ally: gain ${ICON.trade}1.` }),
+
+  C({ key:"se_shock_troops", name:"Shock Troops Transport", cost:4, faction:"se",
+    play:[{t:"combat",n:4}],
+    ally:[{t:"opp_discard",n:1}],
+    text:`Gain ${ICON.combat}4.
+Ally: opponent discards 1.` }),
+
+  C({ key:"se_mindhack_sloop", name:"Mindhack Sloop", cost:4, faction:"se",
+    play:[{t:"combat",n:2},{t:"opp_discard",n:1},{t:"opp_next_draw",n:-1}],
+    text:`Gain ${ICON.combat}2.
+Opponent discards 1 and draws 1 fewer next turn.` }),
+
+  C({ key:"se_interdiction", name:"Interdiction Cruiser", cost:5, faction:"se",
+    play:[{t:"combat",n:3},{t:"opp_next_draw",n:-1}],
+    ally:[{t:"opp_discard",n:1}],
+    text:`Gain ${ICON.combat}3.
+Opponent draws 1 fewer next turn.
+Ally: opponent discards 1.` }),
+
+  C({ key:"se_psy_ops", name:"Psy Ops Carrier", cost:5, faction:"se",
+    play:[{t:"combat",n:3},{t:"draw",n:1}],
+    ally:[{t:"opp_next_draw",n:-1}],
+    text:`Gain ${ICON.combat}3 and draw 1.
+Ally: opponent draws 1 fewer next turn.` }),
+
+  C({ key:"se_black_ops", name:"Black Ops Platform", cost:6, faction:"se",
+    play:[{t:"combat",n:4},{t:"draw",n:1}],
+    ally:[{t:"opp_discard",n:1}],
+    text:`Gain ${ICON.combat}4 and draw 1.
+Ally: opponent discards 1.` }),
+
+  C({ key:"se_reeducation", name:"Reeducation Barge", cost:6, faction:"se",
+    play:[{t:"opp_discard",n:2},{t:"trade",n:1}],
+    ally:[{t:"copy_next_ship",n:1}],
+    text:`Opponent discards 2.
+Gain ${ICON.trade}1.
+Ally: copy next ship you play this turn.` }),
+
+  C({ key:"se_emperor_flagship", name:"Emperor Flagship", cost:9, faction:"se",
+    play:[{t:"combat",n:7},{t:"opp_discard",n:1}],
+    ally:[{t:"opp_discard",n:1},{t:"opp_next_draw",n:-1}],
+    text:`Gain ${ICON.combat}7.
+Opponent discards 1.
+Ally: opponent discards 1 and draws 1 fewer next turn.` }),
+
+  /* ===== MACHINE CULT (mc) — scrap engine + market cycling + copying ===== */
+  C({ key:"mc_scrap_lifter", name:"Scrap Lifter", cost:2, faction:"mc",
+    play:[{t:"trade",n:1}],
+    ally:[{t:"scrap_discard",n:1}],
+    text:`Gain ${ICON.trade}1.
+Ally: scrap 1 from discard.` }),
+
+  C({ key:"mc_patchbot", name:"Patchbot Escort", cost:3, faction:"mc",
+    play:[{t:"trade",n:1},{t:"combat",n:1}],
+    ally:[{t:"scrap_discard",n:1}],
+    text:`Gain ${ICON.trade}1 and ${ICON.combat}1.
+Ally: scrap 1 from discard.` }),
+
+  C({ key:"mc_hard_reset", name:"Hard Reset Drone", cost:3, faction:"mc",
+    play:[{t:"draw",n:1}],
+    scrap:[{t:"scrap_hand",n:1}],
+    text:`Draw 1.
+Scrap: scrap 1 from hand.` }),
+
+  C({ key:"mc_market_reclaimer", name:"Market Reclaimer", cost:4, faction:"mc",
+    play:[{t:"trade",n:1},{t:"scrap_trade_row",n:1}],
+    ally:[{t:"scrap_discard",n:1}],
+    text:`Gain ${ICON.trade}1.
+Scrap 1 from Trade Row.
+Ally: scrap 1 from discard.` }),
+
+  C({ key:"mc_mirrordrone", name:"Mirrordrone", cost:4, faction:"mc",
+    play:[{t:"trade",n:1},{t:"copy_next_ship",n:1}],
+    ally:[{t:"scrap_hand",n:1}],
+    text:`Gain ${ICON.trade}1.
+Copy next ship you play this turn.
+Ally: scrap 1 from hand.` }),
+
+  C({ key:"mc_fusion_saw", name:"Fusion Saw", cost:5, faction:"mc",
+    play:[{t:"combat",n:4}],
+    ally:[{t:"scrap_hand",n:1}],
+    text:`Gain ${ICON.combat}4.
+Ally: scrap 1 from hand.` }),
+
+  C({ key:"mc_autoforge", name:"Autoforge Skiff", cost:5, faction:"mc",
+    play:[{t:"trade",n:3}],
+    scrap:[{t:"combat",n:3}],
+    text:`Gain ${ICON.trade}3.
+Scrap: gain ${ICON.combat}3.` }),
+
+  C({ key:"mc_overclock_matrix", name:"Overclock Matrix", cost:6, faction:"mc",
+    play:[{t:"combat",n:4},{t:"trade",n:2},{t:"copy_next_ship",n:1}],
+    text:`Gain ${ICON.combat}4 and ${ICON.trade}2.
+Copy next ship you play this turn.` }),
+
+  C({ key:"mc_rebuild_protocol", name:"Rebuild Protocol", cost:6, faction:"mc",
+    play:[{t:"trade",n:2},{t:"authority",n:3}],
+    ally:[{t:"scrap_discard",n:2}],
+    text:`Gain ${ICON.trade}2 and ${ICON.auth}3.
+Ally: scrap 2 from discard.` }),
+
+  C({ key:"mc_machine_god", name:"Machine God", cost:10, faction:"mc",
+    play:[{t:"combat",n:8},{t:"trade",n:3}],
+    ally:[{t:"scrap_hand",n:1}],
+    text:`Gain ${ICON.combat}8 and ${ICON.trade}3.
+Ally: scrap 1 from hand.` }),
+
+  /* ===== SOLAR DOMINION (sd) — mixed economy + scaling per base/outpost ===== */
+  C({ key:"sd_ray_scout", name:"Ray Scout", cost:2, faction:"sd",
+    play:[{t:"trade",n:1},{t:"combat",n:1}],
+    text:`Gain ${ICON.trade}1 and ${ICON.combat}1.` }),
+
+  C({ key:"sd_ember_patrol", name:"Ember Patrol", cost:3, faction:"sd",
+    play:[{t:"combat",n:2},{t:"authority",n:2}],
+    ally:[{t:"trade",n:1}],
+    text:`Gain ${ICON.combat}2 and ${ICON.auth}2.
+Ally: gain ${ICON.trade}1.` }),
+
+  C({ key:"sd_civic_radiance", name:"Civic Radiance", cost:4, faction:"sd",
+    play:[{t:"authority",n:5}],
+    ally:[{t:"combat",n:1}],
+    text:`Gain ${ICON.auth}5.
+Ally: gain ${ICON.combat}1.` }),
+
+  C({ key:"sd_mirror_strike", name:"Mirror Strike Wing", cost:4, faction:"sd",
+    play:[{t:"combat",n:4}],
+    ally:[{t:"draw",n:1}],
+    text:`Gain ${ICON.combat}4.
+Ally: draw 1.` }),
+
+  C({ key:"sd_solar_dividend_ship", name:"Solar Dividend Ship", cost:5, faction:"sd",
+    play:[{t:"gain_per_base", stat:"trade", n:1}],
+    ally:[{t:"combat",n:2}],
+    text:`Gain ${ICON.trade}1 per base you control.
+Ally: gain ${ICON.combat}2.` }),
+
+  C({ key:"sd_bastion_charge_ship", name:"Bastion Charge Ship", cost:6, faction:"sd",
+    play:[{t:"gain_per_base", stat:"combat", n:1, outpostsOnly:true}],
+    ally:[{t:"authority",n:2}],
+    text:`Gain ${ICON.combat}1 per outpost you control.
+Ally: gain ${ICON.auth}2.` }),
+
+  C({ key:"sd_prismatic_vanguard", name:"Prismatic Vanguard", cost:6, faction:"sd",
+    play:[{t:"combat",n:5},{t:"trade",n:1}],
+    ally:[{t:"authority",n:3}],
+    text:`Gain ${ICON.combat}5 and ${ICON.trade}1.
+Ally: gain ${ICON.auth}3.` }),
+
+  C({ key:"sd_zenith_tax", name:"Zenith Tax Cruiser", cost:7, faction:"sd",
+    play:[{t:"trade",n:3},{t:"combat",n:3},{t:"authority",n:2}],
+    text:`Gain ${ICON.trade}3, ${ICON.combat}3, and ${ICON.auth}2.` }),
+
+  C({ key:"sd_eclipse_carrier", name:"Eclipse Carrier", cost:8, faction:"sd",
+    play:[{t:"combat",n:6},{t:"authority",n:3},{t:"copy_next_ship",n:1}],
+    ally:[{t:"draw",n:1}],
+    text:`Gain ${ICON.combat}6 and ${ICON.auth}3.
+Copy next ship you play this turn.
+Ally: draw 1.` }),
+
+  C({ key:"sd_daystar_ark", name:"Daystar Ark", cost:9, faction:"sd",
+    play:[{t:"combat",n:8},{t:"trade",n:2},{t:"authority",n:2}],
+    ally:[{t:"draw",n:1}],
+    text:`Gain ${ICON.combat}8, ${ICON.trade}2, and ${ICON.auth}2.
+Ally: draw 1.` }),
+
+  /* ===== VOID SYNDICATE (vs) — denial + market control + tempo copying ===== */
+  C({ key:"vs_smuggler", name:"Void Smuggler", cost:2, faction:"vs",
+    play:[{t:"trade",n:1},{t:"opp_next_draw",n:-1}],
+    text:`Gain ${ICON.trade}1.
+Opponent draws 1 fewer next turn.` }),
+
+  C({ key:"vs_dock_thief", name:"Dock Thief", cost:3, faction:"vs",
+    play:[{t:"combat",n:2},{t:"opp_discard",n:1}],
+    text:`Gain ${ICON.combat}2.
+Opponent discards 1.` }),
+
+  C({ key:"vs_black_capsule", name:"Black Capsule", cost:3, faction:"vs",
+    play:[{t:"trade",n:1},{t:"scrap_trade_row",n:1}],
+    ally:[{t:"combat",n:2}],
+    text:`Gain ${ICON.trade}1.
+Scrap 1 from Trade Row.
+Ally: gain ${ICON.combat}2.` }),
+
+  C({ key:"vs_shade_escort", name:"Shade Escort", cost:4, faction:"vs",
+    play:[{t:"combat",n:3},{t:"opp_next_draw",n:-1}],
+    ally:[{t:"trade",n:2}],
+    text:`Gain ${ICON.combat}3.
+Opponent draws 1 fewer next turn.
+Ally: gain ${ICON.trade}2.` }),
+
+  C({ key:"vs_extortionist", name:"Extortionist Cutter", cost:4, faction:"vs",
+    play:[{t:"combat",n:2},{t:"opp_discard",n:1}],
+    ally:[{t:"trade",n:2}],
+    text:`Gain ${ICON.combat}2.
+Opponent discards 1.
+Ally: gain ${ICON.trade}2.` }),
+
+  C({ key:"vs_shadow_contract", name:"Shadow Contract", cost:5, faction:"vs",
+    play:[{t:"opp_next_draw",n:-1},{t:"copy_next_ship",n:1}],
+    text:`Opponent draws 1 fewer next turn.
+Copy next ship you play this turn.` }),
+
+  C({ key:"vs_deep_cover", name:"Deep Cover", cost:5, faction:"vs",
+    play:[{t:"combat",n:4},{t:"draw",n:1}],
+    ally:[{t:"opp_discard",n:1}],
+    text:`Gain ${ICON.combat}4 and draw 1.
+Ally: opponent discards 1.` }),
+
+  C({ key:"vs_counterfeit", name:"Counterfeit Freighter", cost:6, faction:"vs",
+    play:[{t:"trade",n:3},{t:"scrap_trade_row",n:2}],
+    text:`Gain ${ICON.trade}3.
+Scrap 2 from Trade Row.` }),
+
+  C({ key:"vs_silence_engine", name:"Silence Engine", cost:7, faction:"vs",
+    play:[{t:"combat",n:5},{t:"opp_discard",n:2},{t:"opp_next_draw",n:-1}],
+    text:`Gain ${ICON.combat}5.
+Opponent discards 2.
+Opponent draws 1 fewer next turn.` }),
+
+  C({ key:"vs_abyss_regent", name:"Abyss Regent", cost:9, faction:"vs",
+    play:[{t:"combat",n:7},{t:"opp_discard",n:2}],
+    ally:[{t:"opp_next_draw",n:-1}],
+    text:`Gain ${ICON.combat}7.
+Opponent discards 2.
+Ally: opponent draws 1 fewer next turn.` }),
 ];
 
 /* Copies in the trade deck (bunch of ships/bases). */
@@ -917,6 +1333,88 @@ const COPIES = {
   vs_gloom:3, vs_pickpocket:2, vs_mist:2, vs_blackmail:2, vs_siphon:2,
   vs_shroud:2, vs_wraith:2, vs_barricade:2, vs_reaper:1, vs_baron:1,
   vs_blackout_racket:2,
+
+  // Neutral
+  n_pulse_fighter:3,
+  n_bulk_trader:3,
+  n_outreach_vessel:2,
+  n_nav_computer:2,
+  n_battle_drill:2,
+  n_salvage_crew:2,
+  n_echo_module:2,
+  n_market_sweep:2,
+
+  // Trade Federation
+  tf_quickdeal_sloop:3,
+  tf_lifeboat_tender:2,
+  tf_harbor_master:2,
+  tf_credit_line:2,
+  tf_consulate_runner:2,
+  tf_ledger_guard:2,
+  tf_peace_accord:1,
+  tf_embargo_breaker:2,
+  tf_broker_flagship:1,
+  tf_guild_capital_ship:1,
+
+  // Blob
+  blob_pouncer:3,
+  blob_spitter:2,
+  blob_devourer:2,
+  blob_brood_carrier:2,
+  blob_toxic_bloom_ship:2,
+  blob_ooze_marauder:2,
+  blob_voracious_gullet:1,
+  blob_overrun:1,
+  blob_apex_predator:1,
+  blob_rendstorm:2,
+
+  // Star Empire
+  se_eavesdropper:3,
+  se_signal_jammer:2,
+  se_coercer:2,
+  se_shock_troops:2,
+  se_mindhack_sloop:2,
+  se_interdiction:2,
+  se_psy_ops:2,
+  se_black_ops:1,
+  se_reeducation:1,
+  se_emperor_flagship:1,
+
+  // Machine Cult
+  mc_scrap_lifter:3,
+  mc_patchbot:2,
+  mc_hard_reset:2,
+  mc_market_reclaimer:2,
+  mc_mirrordrone:2,
+  mc_fusion_saw:2,
+  mc_autoforge:2,
+  mc_overclock_matrix:1,
+  mc_rebuild_protocol:1,
+  mc_machine_god:1,
+
+  // Solar Dominion
+  sd_ray_scout:3,
+  sd_ember_patrol:2,
+  sd_civic_radiance:2,
+  sd_mirror_strike:2,
+  sd_solar_dividend_ship:2,
+  sd_bastion_charge_ship:2,
+  sd_prismatic_vanguard:1,
+  sd_zenith_tax:1,
+  sd_eclipse_carrier:1,
+  sd_daystar_ark:1,
+
+  // Void Syndicate
+  vs_smuggler:3,
+  vs_dock_thief:2,
+  vs_black_capsule:2,
+  vs_shade_escort:2,
+  vs_extortionist:2,
+  vs_shadow_contract:2,
+  vs_deep_cover:1,
+  vs_counterfeit:1,
+  vs_silence_engine:1,
+  vs_abyss_regent:1,
 };
 
 function tplByKey(k){ return TEMPLATES.find(t=>t.key===k); }
