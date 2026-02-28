@@ -767,6 +767,7 @@ const SAVE_VERSION = 2;
 const PROFILE_COLLECTION = 'pointclick_users';
 
 let currentUser = '';
+let authUid = '';
 let loadedOnce = false;
 // --- Kill-to-win state ---
 let killsThisLevel = 0;
@@ -791,13 +792,14 @@ function setKillGoalForLevel(){
 
 
 function userRef(){
-  if(!currentUser) throw new Error('No current user');
-  return db.collection(PROFILE_COLLECTION).doc(currentUser);
+  if(!authUid) throw new Error('No authenticated Firebase user');
+  return db.collection(PROFILE_COLLECTION).doc(authUid);
 }
 
 function packSave(){
   return {
     v: SAVE_VERSION,
+    username: currentUser || '',
     stage, level,
     gold: player.gold,
     hp: Math.floor(player.hp),
@@ -813,6 +815,10 @@ function packSave(){
   };
 }
 function applySave(d){
+  if(typeof d.username === 'string' && d.username.trim()){
+    currentUser = d.username.trim();
+    if(usernameInput) usernameInput.value = currentUser;
+  }
   stage = d.stage||1; level = d.level||1;
   player.gold = d.gold||0;
   player.maxhp = d.maxhp||100;
@@ -881,22 +887,20 @@ async function loadProfileList(){
   }
 
   try {
-    const snap = await db.collection(PROFILE_COLLECTION).get();
+    const snap = await userRef().get();
     list.innerHTML = '';
     selectedProfileName = '';
-    if(profileHint) profileHint.textContent = 'Select a player, then press Load Game.';
+    if(profileHint) profileHint.textContent = 'Select your profile, then press Load Game.';
 
-    if (snap.empty) {
+    if (!snap.exists) {
       list.innerHTML = '<div class="kv">No profiles yet.</div>';
       selectedProfileName = '';
-      if(profileHint) profileHint.textContent = 'No players found. Create a new one.';
+      if(profileHint) profileHint.textContent = 'No profile found yet. Create a new one.';
       return;
     }
 
-    // FIX: use a block body so the callback returns undefined (not the truthy result of push)
-    const names = [];
-    snap.forEach((doc) => { names.push(doc.id); });
-    names.sort((a,b) => a.localeCompare(b));
+    const profileName = (snap.data()?.username || currentUser || 'My Profile').trim();
+    const names = [profileName];
 
     // render
     for (const name of names) {
@@ -962,16 +966,17 @@ async function startWithUsername(){
     return;
   }
 
-  const ref = db.collection(PROFILE_COLLECTION).doc(u);
-
   try {
-    const existing = await ref.get();
     currentUser = u;
     loadedOnce = false;
+    const existing = await userRef().get();
 
     if (existing.exists) {
       applySave(existing.data());
       loadedOnce = true;
+      if(existing.data()?.username !== u){
+        await saveProgress();
+      }
       toast(`Loaded ${u} at Stage ${stage}-${level}`);
     } else {
       seedNewProfile();
@@ -990,15 +995,35 @@ async function startWithUsername(){
 }
 
 let authReady = false;
-auth.signInAnonymously()
-  .then(()=>{
+let authInitStarted = false;
+async function initAnonymousAuth(){
+  if(authInitStarted) return;
+  authInitStarted = true;
+  try{
+    if(!auth.currentUser){
+      await auth.signInAnonymously();
+    }
+    const user = auth.currentUser;
+    if(!user) throw new Error('Anonymous auth did not return a user');
+    authUid = user.uid;
+    await user.getIdToken(true);
     authReady = true;
-    if(profileHint) profileHint.textContent = 'Type your username to load/create. Refresh list only if rules allow it.';
-  })
-  .catch((err)=>{
+    if(profileHint) profileHint.textContent = 'Signed in anonymously. Type your username to load/create.';
+    loadProfileList();
+  }catch(err){
     console.error('Anonymous auth failed:', err);
     toast('Firebase auth failed. Check project auth settings.');
-  });
+  }
+}
+
+auth.onAuthStateChanged((user)=>{
+  if(user){
+    authUid = user.uid;
+    authReady = true;
+  }
+});
+
+initAnonymousAuth();
 
 /*** ========= Game Model ========= ***/
 let player = {
@@ -2616,7 +2641,6 @@ match /pointclick_users/{username} {
 -->
 </body>
 </html>
-
 
 
 
