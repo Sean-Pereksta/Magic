@@ -45,7 +45,7 @@
   }
 
   *{ box-sizing:border-box; }
-  html,body{ height:auto; margin:0; }
+  html,body{ height:100%; margin:0; }
   body{
     background:
       radial-gradient(1200px 700px at 30% -10%, rgba(26,42,99,.90) 0%, rgba(0,0,0,0) 55%),
@@ -54,19 +54,18 @@
       linear-gradient(180deg,var(--bg1),var(--bg0));
     color:var(--ink);
     font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial;
-    overflow-y:auto;         /* ✅ page scroll */
-    overflow-x:hidden;
+    overflow:hidden;
   }
 
   /* ===== App frame ===== */
   #app{
-    min-height:100vh;
+    height:100vh;
     display:grid;
     grid-template-rows:auto auto 1fr;
     gap:var(--gap);
     padding:var(--gap);
-    max-width:1500px;
-    margin:0 auto;
+    width:100vw;
+    margin:0;
   }
 
   /* ===== Top pills ===== */
@@ -113,15 +112,18 @@
   /* ===== Main grid ===== */
   .row{
     display:grid;
-    grid-template-columns: 330px 1fr 340px;
+    grid-template-columns: minmax(0,1fr) 320px;
     gap:var(--gap);
-    align-items:start;
+    align-items:stretch;
+    min-height:0;
   }
   .center{
     display:grid;
-    grid-template-rows:auto auto auto;
+    grid-template-rows:repeat(4, minmax(0, auto)) 1fr;
     gap:var(--gap);
     min-width:0;
+    overflow:auto;
+    padding-right:4px;
   }
 
   /* ===== Panels / sidebars ===== */
@@ -148,7 +150,7 @@
 
   .side{
     overflow:auto;
-    max-height:calc(100vh - 260px); /* keeps sidebars usable on tall layouts */
+    max-height:none;
   }
 
   /* ===== HUD ===== */
@@ -343,15 +345,31 @@
 
   /* ===== Hand scroller ===== */
   .handWrap{
-    display:flex;
-    gap:10px;
-    flex-wrap:wrap;
-    max-height:310px;
     overflow:auto;
     padding:6px;
     border-radius:var(--r14);
     border:1px dashed rgba(255,255,255,.10);
     background:rgba(0,0,0,.12);
+  }
+
+
+
+  #tradeRow{
+    display:grid;
+    grid-template-columns:repeat(5, minmax(0,1fr));
+    gap:10px;
+  }
+
+  #tradeRow .card,
+  #hand .card{
+    width:100%;
+    min-width:0;
+  }
+
+  #hand{
+    display:grid;
+    grid-template-columns:repeat(5, minmax(0,1fr));
+    gap:10px;
   }
 
   /* ===== Modal / Overlay ===== */
@@ -403,9 +421,12 @@
 
   /* ===== Responsive ===== */
   @media (max-width: 1100px){
+    body{ overflow-y:auto; }
+    #app{ height:auto; }
     .row{ grid-template-columns: 1fr; }
-    .side{ max-height:none; }
-    .card{ width:146px; }
+    .center{ overflow:visible; }
+    #tradeRow, #hand{ grid-template-columns:repeat(2, minmax(0,1fr)); }
+    .card{ width:100%; }
   }
 </style>
 </head>
@@ -466,18 +487,13 @@
         <button class="btn good" id="endTurnBtn">End Turn</button>
         <button class="btn bad" id="newDuelBtn">New Duel</button>
         <button class="btn warn" id="startGauntletBtn">Start Gauntlet</button>
+        <button class="btn" id="fullscreenBtn">⛶ Full Screen</button>
       </div>
     </div>
     <div class="hint" id="statusLine">—</div>
   </div>
 
   <div class="row">
-    <div class="side">
-      <div class="sectionTitle">Opponent Bases</div>
-      <div class="cards" id="enemyBases"></div>
-      <div class="hint">Click a base/outpost to spend your combat on it (on your turn).</div>
-    </div>
-
     <div class="center">
       <div class="panel">
         <div class="sectionTitle">
@@ -486,6 +502,12 @@
         </div>
         <div class="cards" id="tradeRow"></div>
         <div class="hint">Click a card to buy it (if you can afford it). Purchased cards go to your discard pile.</div>
+      </div>
+
+      <div class="panel">
+        <div class="sectionTitle">Enemy Bases</div>
+        <div class="cards" id="enemyBases"></div>
+        <div class="hint">Click a base/outpost to spend your combat on it (on your turn).</div>
       </div>
 
       <div class="panel">
@@ -502,8 +524,10 @@
           <span class="sub">Click to play • Ships discard at end</span>
         </div>
         <div class="handWrap" id="hand"></div>
+      </div>
 
-        <div class="sectionTitle" style="margin-top:10px;">
+      <div class="panel">
+        <div class="sectionTitle">
           <span>In Play (ships this turn)</span>
           <span class="sub">Scrap buttons are optional</span>
         </div>
@@ -2550,6 +2574,7 @@ const els = {
   endTurnBtn: document.getElementById("endTurnBtn"),
   newDuelBtn: document.getElementById("newDuelBtn"),
   startGauntletBtn: document.getElementById("startGauntletBtn"),
+  fullscreenBtn: document.getElementById("fullscreenBtn"),
   autoplayToggle: document.getElementById("autoplayToggle"),
   viewDeckBtn: document.getElementById("viewDeckBtn"),
   viewDiscardBtn: document.getElementById("viewDiscardBtn"),
@@ -2560,6 +2585,12 @@ const els = {
 };
 
 function setStatus(s){ els.statusLine.textContent = s; }
+
+function updateFullscreenButton(){
+  if(!els.fullscreenBtn) return;
+  els.fullscreenBtn.textContent = document.fullscreenElement ? "🗗 Exit Full Screen" : "⛶ Full Screen";
+}
+
 
 function factionClass(f){ return f && f!=="n" ? f : ""; }
 
@@ -3013,6 +3044,18 @@ els.autoplayToggle.onchange = ()=>{
 els.viewDeckBtn.onclick = ()=> showPile("Your Deck", game.players[0].deck);
 els.viewDiscardBtn.onclick = ()=> showPile("Your Discard", game.players[0].discard);
 els.viewScrapBtn.onclick = ()=> showPile("Your Scrap", game.players[0].scrap);
+
+els.fullscreenBtn.onclick = async ()=>{
+  try{
+    if(document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+  }catch(_err){
+    setStatus("Fullscreen was blocked by your browser.");
+  }
+  updateFullscreenButton();
+};
+document.addEventListener("fullscreenchange", updateFullscreenButton);
+updateFullscreenButton();
 
 /* ---------------------------
    Start
