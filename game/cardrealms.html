@@ -559,6 +559,17 @@ const FACTIONS = {
 };
 
 const ICON = { trade:"💠", combat:"⚔️", auth:"❤️", draw:"🃏", discard:"🗑️", scrap:"♻️" };
+const ALL_FACTION_KEYS = ["tf","blob","se","mc","sd","vs"];
+
+function pickRandomFactions(count=4){
+  const a = [...ALL_FACTION_KEYS];
+  shuffle(a);
+  return a.slice(0, count);
+}
+
+function isFactionActive(f){
+  return (f==="n") || (game.activeFactions && game.activeFactions.includes(f));
+}
 
 /* ---------------------------
    Card templates.
@@ -632,6 +643,12 @@ const TEMPLATES = [
       play:[{t:"trade",n:3},{t:"authority",n:6}],
       ally:[{t:"draw",n:1}],
       text:`Gain ${ICON.trade}3 and ${ICON.auth}6.\nAlly: draw 1.` }),
+  C({ key:"tf_contract_clone", name:"Contract Clone", cost:4, faction:"tf",
+      play:[{t:"authority",n:3},{t:"copy_next_ship",n:1}],
+      ally:[{t:"trade",n:1}],
+      text:`Gain ${ICON.auth}3.
+Copy next ship you play this turn.
+Ally: gain ${ICON.trade}1.` }),
 
   // ===== Blob (blob) =====
   C({ key:"blob_larva", name:"Blob Larva", cost:2, faction:"blob",
@@ -756,6 +773,18 @@ const TEMPLATES = [
       play:[{t:"combat",n:6},{t:"trade",n:3}],
       ally:[{t:"scrap_hand",n:1}],
       text:`Gain ${ICON.combat}6 and ${ICON.trade}3.\nAlly: scrap 1 from hand.` }),
+  C({ key:"mc_market_shredder", name:"Market Shredder", cost:4, faction:"mc",
+      play:[{t:"trade",n:1},{t:"scrap_trade_row",n:1}],
+      ally:[{t:"scrap_discard",n:1}],
+      text:`Gain ${ICON.trade}1.
+Scrap 1 from Trade Row.
+Ally: scrap 1 from discard.` }),
+  C({ key:"mc_blueprint_echo", name:"Blueprint Echo", cost:5, faction:"mc",
+      play:[{t:"copy_next_ship",n:1},{t:"trade",n:1}],
+      ally:[{t:"scrap_hand",n:1}],
+      text:`Gain ${ICON.trade}1.
+Copy next ship you play this turn.
+Ally: scrap 1 from hand.` }),
 
   // ===== Solar Dominion (sd) =====
   C({ key:"sd_dawn", name:"Dawn Skirmisher", cost:2, faction:"sd",
@@ -798,6 +827,16 @@ const TEMPLATES = [
       play:[{t:"combat",n:8},{t:"authority",n:3}],
       ally:[{t:"draw",n:1}],
       text:`Gain ${ICON.combat}8 and ${ICON.auth}3.\nAlly: draw 1.` }),
+  C({ key:"sd_solar_dividend", name:"Solar Dividend", cost:5, faction:"sd",
+      play:[{t:"gain_per_base", stat:"trade", n:1}],
+      ally:[{t:"combat",n:2}],
+      text:`Gain ${ICON.trade}1 per base you control.
+Ally: gain ${ICON.combat}2.` }),
+  C({ key:"sd_bastion_charge", name:"Bastion Charge", cost:6, faction:"sd",
+      play:[{t:"gain_per_base", stat:"combat", n:1, outpostsOnly:true}],
+      ally:[{t:"authority",n:2}],
+      text:`Gain ${ICON.combat}1 per outpost you control.
+Ally: gain ${ICON.auth}2.` }),
 
   // ===== Void Syndicate (vs) =====
   C({ key:"vs_gloom", name:"Gloom Hacker", cost:2, faction:"vs",
@@ -838,6 +877,12 @@ const TEMPLATES = [
       play:[{t:"combat",n:7},{t:"opp_discard",n:2}],
       ally:[{t:"opp_next_draw",n:-1}],
       text:`Gain ${ICON.combat}7.\nOpponent discards 2.\nAlly: opponent draws 1 fewer next turn.` }),
+  C({ key:"vs_blackout_racket", name:"Blackout Racket", cost:4, faction:"vs",
+      play:[{t:"opp_next_draw",n:-1},{t:"scrap_trade_row",n:1}],
+      ally:[{t:"opp_discard",n:1}],
+      text:`Opponent draws 1 fewer next turn.
+Scrap 1 from Trade Row.
+Ally: opponent discards 1.` }),
 ];
 
 /* Copies in the trade deck (bunch of ships/bases). */
@@ -848,6 +893,7 @@ const COPIES = {
   // Trade Federation
   tf_union_tug:3, tf_courier:3, tf_medical:2, tf_patrol:2, tf_convoy:2,
   tf_sanctuary:2, tf_hospital:2, tf_embassy:2, tf_peacekeeper:1, tf_diplomat:1,
+  tf_contract_clone:2,
 
   // Blob
   blob_larva:3, blob_skitter:3, blob_glider:2, blob_spawner:2, blob_acid:2,
@@ -860,14 +906,17 @@ const COPIES = {
   // Machine Cult
   mc_junksiphon:3, mc_recycler:2, mc_cutter:2, mc_forge:2, mc_scrapwright:2,
   mc_foundry:2, mc_assimilator:2, mc_bulwark:2, mc_overclock:1, mc_reclaimer:1,
+  mc_market_shredder:2, mc_blueprint_echo:2,
 
   // Solar Dominion
   sd_dawn:3, sd_sunlance:2, sd_radiant:2, sd_flare:2, sd_prism:1,
   sd_yard:2, sd_bastion:2, sd_array:2, sd_corona:1, sd_supernova:1,
+  sd_solar_dividend:2, sd_bastion_charge:2,
 
   // Void Syndicate
   vs_gloom:3, vs_pickpocket:2, vs_mist:2, vs_blackmail:2, vs_siphon:2,
   vs_shroud:2, vs_wraith:2, vs_barricade:2, vs_reaper:1, vs_baron:1,
+  vs_blackout_racket:2,
 };
 
 function tplByKey(k){ return TEMPLATES.find(t=>t.key===k); }
@@ -885,6 +934,7 @@ const game = {
   log:[],
 
   mode:"duel",      // "duel" | "gauntlet"
+  activeFactions:[],
   gauntlet:{ stage:1, maxStage:6, cleared:false, aiPower:1 },
   settings:{ autoplay:false },
 
@@ -904,6 +954,7 @@ function mkPlayer(name){
     bases:[],    // persistent
     scrap:[],
     playedFactionCounts:{},
+    copyNextShip:0,
     oppNextDrawMod:0 // affects this player's next draw
   };
 }
@@ -939,6 +990,9 @@ function log(msg, muted=false){
 function buildMarket(){
   game.tradeDeck = [];
   for(const [key, n] of Object.entries(COPIES)){
+    const tpl = tplByKey(key);
+    if(!tpl) continue;
+    if(!isFactionActive(tpl.faction)) continue;
     for(let i=0;i<n;i++) game.tradeDeck.push(makeCardInstance(key));
   }
   shuffle(game.tradeDeck);
@@ -969,6 +1023,7 @@ function buildAiStartDeck(stage){
   // Add a few random cheap faction ships (cost 2-3) as stage rises
   const cheapPool = TEMPLATES
     .filter(t=>t.type==="ship" && t.cost>=2 && t.cost<=3 && t.faction!=="n")
+    .filter(t=>isFactionActive(t.faction))
     .map(t=>t.key);
 
   const bonusCount = Math.floor((stage-1)/2); // stage 3:1, stage 5:2, etc.
@@ -989,8 +1044,22 @@ function resetPlayerPiles(pl, deckKeys){
   pl.bases = [];
   pl.scrap = [];
   pl.playedFactionCounts = {};
+  pl.copyNextShip = 0;
   pl.oppNextDrawMod = 0;
   draw(pl, 5);
+}
+
+function announceFactions(){
+  const list = game.activeFactions.map(k=>`${FACTIONS[k].icon} ${FACTIONS[k].name}`).join("\n");
+  log(`Factions in this run: ${game.activeFactions.map(k=>FACTIONS[k].name).join(", ")}.`);
+  showMessageModal(
+    "Factions in this run",
+    `${list}\n\n⚙️ Neutral cards are always included.`,
+    "Begin",
+    "Close",
+    ()=>closeModal(),
+    ()=>closeModal()
+  );
 }
 
 function resetOpponentForStage(stage){
@@ -1017,6 +1086,7 @@ function startDuel(){
   game.log=[];
   game.mode="duel";
   game.gauntlet = { stage:1, maxStage:6, cleared:false, aiPower:1 };
+  game.activeFactions = pickRandomFactions(4);
 
   game.players = [mkPlayer("You"), mkPlayer("AI")];
   buildMarket();
@@ -1027,6 +1097,7 @@ function startDuel(){
   game.current = 0;
   log("New duel started. You go first.");
   renderAll();
+  announceFactions();
   setStatus("Your turn. Play ships, buy cards, attack, then end turn.");
   startTurn(0);
 }
@@ -1038,6 +1109,7 @@ function startGauntlet(){
   game.log=[];
   game.mode="gauntlet";
   game.gauntlet = { stage:1, maxStage:6, cleared:false, aiPower:1 };
+  game.activeFactions = pickRandomFactions(4);
 
   game.players = [mkPlayer("You"), mkPlayer("AI")];
   buildMarket();
@@ -1048,6 +1120,7 @@ function startGauntlet(){
   game.current = 0;
   log("Gauntlet started! Stage 1.");
   renderAll();
+  announceFactions();
   setStatus("Gauntlet Stage 1 — defeat the AI to advance.");
   startTurn(0);
 }
@@ -1062,7 +1135,7 @@ function continueGauntlet(){
   // Cleanup your current turn state
   while(me.hand.length) me.discard.push(me.hand.pop());
   while(me.inPlay.length) me.discard.push(me.inPlay.pop());
-  me.trade=0; me.combat=0; me.playedFactionCounts={};
+  me.trade=0; me.combat=0; me.playedFactionCounts={}; me.copyNextShip=0;
 
   // Heal a bit between fights (cap 50)
   me.authority = Math.min(50, me.authority + 18);
@@ -1114,6 +1187,7 @@ async function applyEffects(actor, opponent, card, trigger){
   if(trigger==="ally") steps = card.ally || [];
   if(trigger==="scrap") steps = card.scrap || [];
   if(trigger==="turn") steps = card.play || [];
+  if(trigger==="copy") steps = (card.play || []).filter(s => s.t !== "copy_next_ship");
 
   for(const step of steps){
     await resolveStep(actor, opponent, step);
@@ -1131,6 +1205,23 @@ async function resolveStep(actor, opponent, step){
     case "opp_discard": await forceDiscard(opponent, step.n, actor.name); break;
     case "scrap_hand": await scrapFromHand(actor, step.n); break;
     case "scrap_discard": await scrapFromDiscard(actor, step.n); break;
+    case "scrap_trade_row": await scrapFromTradeRow(actor, step.n || 1); break;
+    case "copy_next_ship":
+      actor.copyNextShip = (actor.copyNextShip || 0) + (step.n || 1);
+      log(`${actor.name} will copy the next ${step.n||1} ship(s) played this turn.`, true);
+      break;
+    case "gain_per_base": {
+      const stat = step.stat || "trade";
+      const per = step.n || 1;
+      const count = step.outpostsOnly ? actor.bases.filter(b=>b.outpost).length : actor.bases.length;
+      const amt = per * count;
+      if(amt>0){
+        if(stat==="trade"){ actor.trade += amt; log(`${actor.name} gains ${ICON.trade}${amt} (per base).`, true); }
+        if(stat==="combat"){ actor.combat += amt; log(`${actor.name} gains ${ICON.combat}${amt} (per base).`, true); }
+        if(stat==="authority"){ actor.authority += amt; log(`${actor.name} gains ${ICON.auth}${amt} (per base).`, true); }
+      }
+      break;
+    }
 
     case "opp_next_draw":
       opponent.oppNextDrawMod += step.n; // negative reduces draws
@@ -1161,6 +1252,7 @@ function startTurn(pIdx){
   pl.trade=0;
   pl.combat=0;
   pl.playedFactionCounts={};
+  pl.copyNextShip = 0;
 
   // reset allyTriggered for bases each turn
   pl.bases.forEach(b=>b.allyTriggered=false);
@@ -1218,7 +1310,7 @@ function endTurn(){
   // discard ships in play (bases stay)
   while(pl.inPlay.length) pl.discard.push(pl.inPlay.pop());
 
-  pl.trade=0; pl.combat=0; pl.playedFactionCounts={};
+  pl.trade=0; pl.combat=0; pl.playedFactionCounts={}; pl.copyNextShip = 0;
 
   // refill market
   for(let i=0;i<game.tradeRow.length;i++){
@@ -1520,6 +1612,58 @@ async function scrapFromDiscard(pl, n){
   }
 }
 
+async function scrapFromTradeRow(actor, n){
+  const picks = Math.max(0, n|0);
+  if(picks<=0) return;
+
+  const rowCards = game.tradeRow.map((c,i)=>({c,i})).filter(x=>x.c);
+  if(rowCards.length===0){
+    log("Trade row is empty.", true);
+    return;
+  }
+
+  const take = Math.min(picks, rowCards.length);
+  if(actor.name==="AI"){
+    rowCards.sort((a,b)=>aiCardValue(a.c)-aiCardValue(b.c));
+    const chosen = rowCards.slice(0, take);
+    for(const {c,i} of chosen){
+      game.tradeRow[i] = null;
+      game.marketScrap = game.marketScrap || [];
+      game.marketScrap.push(c);
+      log(`AI scraps trade row card: ${c.name}.`);
+      refillTradeRowSlot(i);
+    }
+    renderAll();
+    return;
+  }
+
+  const selectable = rowCards.map(x=>x.c);
+  const picked = await showModal({
+    title:`Scrap Trade Row (${take})`,
+    text:`Choose ${take} market card(s) to scrap (remove). Scrapped cards are gone and the row refills.`,
+    cards: selectable,
+    min: take,
+    max: take,
+    confirmLabel:"Scrap Selected",
+    cancelLabel:"Skip",
+    allowCancel:true
+  });
+  if(!picked) return;
+
+  for(const pc of picked){
+    const slot = game.tradeRow.findIndex(x=>x && x.uid===pc.uid);
+    if(slot>=0){
+      const gone = game.tradeRow[slot];
+      game.tradeRow[slot]=null;
+      game.marketScrap = game.marketScrap || [];
+      game.marketScrap.push(gone);
+      log(`You scrap trade row card: ${gone.name}.`);
+      refillTradeRowSlot(slot);
+    }
+  }
+  renderAll();
+}
+
 /* ---------------------------
    Play / Buy / Scrap
 ----------------------------*/
@@ -1546,6 +1690,11 @@ async function playCardFromHand(idx){
     addFactionCount(pl, c.faction);
     log(`You play: ${c.name}.`);
     await applyEffects(pl, op, c, "play");
+    if(pl.copyNextShip>0){
+      pl.copyNextShip--;
+      log(`Copy triggers on ${c.name} — resolve play effects again.`, true);
+      await applyEffects(pl, op, c, "copy");
+    }
   }
 
   await checkAllies(pl, op);
@@ -1689,6 +1838,20 @@ function aiCardValue(card){
   v += sum(a,"combat")*1.6 + sum(a,"trade")*1.05 + sum(a,"authority")*1.05 + sum(a,"draw")*1.9;
   v += sum(p,"opp_discard")*2.1 + sum(a,"opp_discard")*1.7;
   v += Math.max(0, -sum(p,"opp_next_draw"))*1.35 + Math.max(0, -sum(a,"opp_next_draw"))*1.1;
+  v += sum(p,"scrap_trade_row")*1.45 + sum(a,"scrap_trade_row")*1.1;
+  v += sum(p,"copy_next_ship")*2.45 + sum(a,"copy_next_ship")*2.1;
+  for(const st of p){
+    if(st.t!=="gain_per_base") continue;
+    const per = st.n || 1;
+    const weight = st.stat==="combat" ? 2.0 : (st.stat==="authority" ? 1.8 : 1.5);
+    v += per * weight;
+  }
+  for(const st of a){
+    if(st.t!=="gain_per_base") continue;
+    const per = st.n || 1;
+    const weight = st.stat==="combat" ? 1.5 : (st.stat==="authority" ? 1.3 : 1.1);
+    v += per * weight;
+  }
   v += (card.type==="base" ? (card.defense*0.35 + (card.outpost?1.2:0.6)) : 0);
   v += (s.length? 0.9 : 0);
 
@@ -1744,6 +1907,11 @@ async function aiTurn(){
     addFactionCount(pl, c.faction);
     log(`AI plays ${c.type==="base" ? "base" : "ship"}: ${c.name}.`);
     await applyEffects(pl, op, c, "play");
+    if(c.type!=="base" && pl.copyNextShip>0){
+      pl.copyNextShip--;
+      log(`AI copy triggers on ${c.name}.`, true);
+      await applyEffects(pl, op, c, "copy");
+    }
     await checkAllies(pl, op);
     if(isTerminal()){ game.busy=false; renderAll(); return; }
   }
@@ -2149,6 +2317,16 @@ function renderCardDiv(card, {context="generic"}={}){
   if(c) icons.appendChild(mk(`${ICON.combat} +${c}`));
   if(h) icons.appendChild(mk(`${ICON.auth} +${h}`));
   if(dr) icons.appendChild(mk(`${ICON.draw} +${dr}`));
+  const scrapTrade = statSum(p,"scrap_trade_row");
+  const copyShip = statSum(p,"copy_next_ship");
+  const perBase = (p||[]).filter(x=>x.t==="gain_per_base");
+  if(scrapTrade) icons.appendChild(mk(`♻️ Market x${scrapTrade}`));
+  if(copyShip) icons.appendChild(mk(`🪞 Copy x${copyShip}`));
+  perBase.forEach(st=>{
+    const statIcon = st.stat==="combat" ? ICON.combat : (st.stat==="authority" ? ICON.auth : ICON.trade);
+    const target = st.outpostsOnly ? "outpost" : "base";
+    icons.appendChild(mk(`🏗️ +${st.n||1}/${target} ${statIcon}`));
+  });
   if(card.type==="base") icons.appendChild(mk(`🛡️ ${card.curDefense ?? card.defense}`));
 
   const text = document.createElement("div");
@@ -2194,7 +2372,8 @@ function renderAll(){
   els.phaseLine.textContent = game.current===0 ? "Main phase" : "Waiting…";
 
   // Mode lines
-  els.modeLine.textContent = `Mode: ${game.mode==="gauntlet" ? "Gauntlet" : "Duel (Solo AI)"}`;
+  const facIcons = (game.activeFactions||[]).map(k=>FACTIONS[k].icon).join(" ");
+  els.modeLine.textContent = `Mode: ${game.mode==="gauntlet" ? "Gauntlet" : "Duel (Solo AI)"} • Factions: ${facIcons}`;
   if(game.mode==="gauntlet"){
     els.gauntletLine.textContent = `Stage ${game.gauntlet.stage}/${game.gauntlet.maxStage} — AI ramps each stage.`;
   }else{
