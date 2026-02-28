@@ -1,0 +1,5291 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Dwarven Fortress: Deepwild — Remastered UI</title>
+  <style>
+	:root{
+	  --bg:#07090c;
+	  --panel: rgba(12,14,18,.68);
+	  --panel2: rgba(18,20,26,.62);
+	  --stroke: rgba(255,255,255,.12);
+	  --stroke2: rgba(255,255,255,.08);
+	  --txt:#e7eef7;
+	  --muted: rgba(231,238,247,.78);
+	  --muted2: rgba(231,238,247,.60);
+	  --accent: rgba(120,220,255,.92);
+	  --good: rgba(135,255,176,.92);
+	  --danger: rgba(255,90,110,.92);
+	  --shadow: rgba(0,0,0,.28);
+	  --r: 12px;
+	  --r2: 10px;
+	  --pad: 10px;
+	  --gap: 8px;
+	  --hudH: 52px;
+	  --btnH: 34px;
+	  --font: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+	}
+
+	html, body{
+	  margin:0; height:100%; background:var(--bg); overflow:hidden; font-family:var(--font);
+	  color:var(--txt);
+	}
+
+	#game{
+	  display:block; width:100vw; height:100vh;
+	  image-rendering: pixelated;
+	  cursor: crosshair;
+	  background: radial-gradient(900px 700px at 50% 40%, rgba(60,80,120,.12), rgba(0,0,0,0) 60%);
+	}
+
+	/* HUD */
+	#hud{
+	  position:fixed; left:10px; right:10px; top:10px; height: var(--hudH);
+	  z-index: 40;
+	  display:flex; align-items:center; justify-content:space-between;
+	  padding: 8px 10px;
+	  border-radius: var(--r);
+	  border: 1px solid var(--stroke);
+	  background: linear-gradient(180deg, rgba(16,18,24,.72), rgba(10,12,16,.62));
+	  backdrop-filter: blur(10px);
+	  box-shadow: 0 10px 26px var(--shadow);
+	  user-select:none;
+	  gap: 10px;
+	}
+
+	.hud-left{ display:flex; align-items:center; gap: 12px; min-width: 0; }
+	.brand{
+	  font-weight: 1000;
+	  letter-spacing: .2px;
+	  white-space: nowrap;
+	  display:flex; align-items:center; gap:8px;
+	  padding-right: 6px;
+	  border-right: 1px solid var(--stroke2);
+	  margin-right: 6px;
+	}
+	.badge{
+	  font-size: 11px;
+	  padding: 2px 8px;
+	  border-radius: 999px;
+	  border: 1px solid var(--stroke2);
+	  background: rgba(255,255,255,.06);
+	  color: var(--muted);
+	  font-weight: 900;
+	}
+	.statbar{
+	  display:flex; align-items:center; gap:10px; flex-wrap:wrap; min-width: 0;
+	}
+	.stat{
+	  display:flex; align-items:center; gap:6px;
+	  padding: 4px 8px;
+	  border-radius: 999px;
+	  border: 1px solid var(--stroke2);
+	  background: rgba(255,255,255,.05);
+	  font-size: 12px;
+	  font-weight: 900;
+	  white-space: nowrap;
+	}
+	.stat span.lbl{ opacity:.9; font-weight: 800; }
+	.stat b{ font-weight: 1000; }
+
+	.hud-right{ display:flex; align-items:center; gap: 8px; }
+
+	/* Buttons */
+	.btn, button{
+	  cursor:pointer;
+	  border: 1px solid var(--stroke);
+	  background: rgba(255,255,255,.06);
+	  color: var(--txt);
+	  border-radius: 10px;
+	  height: var(--btnH);
+	  padding: 0 10px;
+	  font-weight: 950;
+	  letter-spacing: .15px;
+	}
+	.btn:hover, button:hover{ background: rgba(255,255,255,.10); }
+	.btn:active, button:active{ transform: translateY(1px); }
+	.btn.primary{
+	  border-color: rgba(120,220,255,.35);
+	  background: rgba(120,220,255,.12);
+	}
+	.btn.primary:hover{ background: rgba(120,220,255,.18); }
+	.btn.danger{
+	  border-color: rgba(255,90,110,.35);
+	  background: rgba(255,90,110,.10);
+	}
+	.btn.icon{
+	  width: var(--btnH);
+	  padding:0;
+	  display:grid; place-items:center;
+	  font-weight:1000;
+	}
+	.btn:disabled, button:disabled{
+	  opacity:.55; cursor:not-allowed; transform:none;
+	}
+
+	/* Panels */
+	.panel{
+	  position: fixed;
+	  top: calc(10px + var(--hudH) + 10px);
+	  bottom: 10px;
+	  width: clamp(280px, 28vw, 420px);
+	  z-index: 35;
+	  border-radius: var(--r);
+	  border: 1px solid var(--stroke);
+	  background: linear-gradient(180deg, var(--panel), var(--panel2));
+	  backdrop-filter: blur(10px);
+	  box-shadow: 0 10px 26px var(--shadow);
+	  overflow: hidden;
+	  display:flex; flex-direction:column;
+	  user-select:none;
+	  transition: transform .18s ease, opacity .18s ease;
+	}
+	.panel.left{ left: 10px; }
+	.panel.right{ right: 10px; }
+
+	.panel.collapsed.left{ transform: translateX(calc(-100% + 46px)); }
+	.panel.collapsed.right{ transform: translateX(calc(100% - 46px)); }
+
+	.panel-head{
+	  display:flex; align-items:center; justify-content:space-between;
+	  padding: 10px 10px 8px 10px;
+	  border-bottom: 1px solid var(--stroke2);
+	  gap: 10px;
+	}
+
+	.tabs{
+	  display:flex; gap: 6px;
+	  background: rgba(255,255,255,.05);
+	  border: 1px solid var(--stroke2);
+	  border-radius: 999px;
+	  padding: 3px;
+	  overflow:hidden;
+	}
+	.tab{
+	  height: 28px;
+	  border-radius: 999px;
+	  border: none;
+	  background: transparent;
+	  padding: 0 10px;
+	  font-weight: 1000;
+	  color: var(--muted);
+	}
+	.tab.on{
+	  background: rgba(120,220,255,.14);
+	  color: var(--txt);
+	  outline: 1px solid rgba(120,220,255,.20);
+	}
+
+	.panel-body{
+	  padding: 10px;
+	  overflow: auto;
+	  overscroll-behavior: contain;
+	  display:flex;
+	  flex-direction:column;
+	  gap: 10px;
+	  min-height: 0;
+	}
+	.panel-foot{
+	  padding: 8px 10px;
+	  border-top: 1px solid var(--stroke2);
+	  color: var(--muted2);
+	  font-size: 11px;
+	  line-height: 1.25;
+	}
+
+	.card{
+	  border: 1px solid var(--stroke2);
+	  border-radius: var(--r2);
+	  background: rgba(255,255,255,.04);
+	  padding: 10px;
+	}
+
+	.row{ display:flex; gap: 8px; flex-wrap:wrap; align-items:center; }
+	.tiny{ font-size: 11px; color: var(--muted2); line-height:1.25; }
+	.small{ font-size: 12px; color: var(--muted); line-height:1.35; }
+	.pill{
+	  display:inline-flex; align-items:center; gap:6px;
+	  padding: 2px 8px;
+	  border-radius: 999px;
+	  border: 1px solid var(--stroke2);
+	  background: rgba(255,255,255,.06);
+	  font-size: 11px;
+	  font-weight: 1000;
+	  color: var(--muted);
+	  white-space:nowrap;
+	}
+
+	/* Dwarf list */
+#dwarfList{
+display:flex; flex-direction:column;
+border: 1px solid var(--stroke2);
+border-radius: var(--r2);
+overflow:hidden;
+background: rgba(255,255,255,.03);
+}
+
+.dwarfBtn{
+width:100%;
+text-align:left;
+border:none;
+border-bottom:1px solid rgba(255,255,255,.06);
+background:transparent;
+padding: 9px 10px;
+font-weight: 950;
+font-size: 12px;
+color: var(--txt);
+
+display:flex;
+align-items:center;
+justify-content:space-between;
+gap:10px;
+}
+
+.dwarfBtn:last-child{ border-bottom:none; }
+.dwarfBtn:hover{ background: rgba(255,255,255,.06); }
+.dwarfBtn.sel{
+background: rgba(120,220,255,.12);
+outline: 1px solid rgba(120,220,255,.22);
+}
+
+/* left side (name) must be allowed to shrink */
+.dwarfBtn .name{
+flex: 1 1 auto;
+min-width: 0;
+overflow:hidden;
+text-overflow: ellipsis;
+white-space: nowrap;
+}
+
+/* right side single-line meta (Lv + equipment text) */
+.dwarfBtn .sub{
+flex: 0 1 55%;
+min-width: 0;
+overflow:hidden;
+text-overflow: ellipsis;
+white-space: nowrap;
+text-align:right;
+
+font-size: 11px;
+color: var(--muted);
+font-weight: 900;
+}
+
+/* hide old equipment mini-box containers if they still exist */
+.dwarfBtn .equipRow,
+.dwarfBtn .equipPills,
+.dwarfBtn .equipBoxes,
+.dwarfBtn .equipBox,
+.dwarfBtn .equip{
+display:none !important;
+}
+
+
+	/* Selected */
+	.slots{
+	  display:grid;
+	  grid-template-columns: 1fr;
+	  gap: 8px;
+	}
+	@media (min-width: 900px){
+	  .slots{ grid-template-columns: 1fr 1fr; }
+	}
+	.slot{
+	  border: 1px solid var(--stroke2);
+	  border-radius: var(--r2);
+	  padding: 8px 10px;
+	  background: rgba(0,0,0,.18);
+	}
+	.slot .label{
+	  display:flex; align-items:center; justify-content:space-between; gap:8px;
+	  font-weight: 1000; font-size: 12px;
+	  margin-bottom: 4px;
+	}
+	.slot .val{ font-size: 11px; color: var(--muted); line-height:1.25; }
+
+	/* Inventory */
+	.filters{
+	  display:flex; gap: 8px; flex-wrap:wrap; align-items:center;
+	}
+	.input, select{
+	  height: 34px;
+	  border-radius: 10px;
+	  border: 1px solid var(--stroke);
+	  background: rgba(255,255,255,.06);
+	  color: var(--txt);
+	  padding: 0 10px;
+	  font-weight: 900;
+	  outline:none;
+	}
+	.input::placeholder{ color: rgba(231,238,247,.45); font-weight:800; }
+
+	#invScroll{
+	  position: relative;
+	  overflow: auto;
+	  border: 1px solid var(--stroke2);
+	  border-radius: var(--r2);
+	  background: rgba(255,255,255,.03);
+	  min-height: 0;
+	  height: 100%;
+	  overscroll-behavior: contain;
+	}
+	#invSpacer{ width:100%; }
+	#invContent{
+	  position:absolute;
+	  left:0; top:0; width:100%;
+	  pointer-events: none; /* rows enable pointer events */
+	}
+
+	.itemRow{
+	  position:absolute;
+	  left:0; right:0;
+	  height: 56px;
+	  display:flex; align-items:center; justify-content:space-between;
+	  gap: 10px;
+	  padding: 8px 10px;
+	  border-bottom: 1px solid rgba(255,255,255,.06);
+	  pointer-events: auto;
+	  contain: content;
+	}
+	.itemRow:hover{ background: rgba(255,255,255,.05); }
+
+	.itemMeta{ min-width:0; display:flex; flex-direction:column; gap:2px; }
+	.itemName{
+	  font-weight: 1000; font-size: 12px;
+	  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+	  max-width: 240px;
+	}
+	.itemSub{
+	  font-size: 11px; color: var(--muted);
+	  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+	  max-width: 280px;
+	}
+/* Equipment summary under each dwarf */
+.eqLine{
+  margin-top:4px;
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  font-size:11px;
+  color:rgba(232,240,255,.72);
+}
+.eqTag{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:1px 8px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.10);
+  background:rgba(255,255,255,.04);
+}
+.rar{ font-weight:800; letter-spacing:.03em; }
+.rar-n{ color:rgba(232,240,255,.35); }
+.rar-c{ color:rgba(232,240,255,.75); }
+.rar-u{ color:#4ade80; }  /* uncommon */
+.rar-r{ color:#60a5fa; }  /* rare */
+.rar-e{ color:#c084fc; }  /* epic */
+.rar-l{ color:#fbbf24; }  /* legendary */
+
+	.actions{ display:flex; align-items:center; gap:8px; flex-shrink:0; }
+	.rar{
+	  font-weight: 1000; font-size: 11px;
+	  padding: 2px 8px;
+	  border-radius: 999px;
+	  border: 1px solid rgba(255,255,255,.12);
+	  background: rgba(0,0,0,.18);
+	  letter-spacing: .15px;
+	}
+	.rar.common{ color:#d8e2ef; }
+	.rar.uncommon{ color:#85ffb0; }
+	.rar.rare{ color:#7fd7ff; }
+	.rar.epic{ color:#d6a6ff; }
+	.rar.legendary{ color:#ffd66f; }
+
+	/* Toast */
+	#toast{
+	  position:fixed; left:50%; top: calc(10px + var(--hudH) + 16px);
+	  transform: translateX(-50%);
+	  z-index: 60;
+	  background: rgba(12,14,18,.86);
+	  border: 1px solid rgba(255,255,255,.14);
+	  border-radius: 999px;
+	  padding: 8px 12px;
+	  color: var(--txt);
+	  font-weight: 950;
+	  opacity: 0;
+	  pointer-events:none;
+	  transition: opacity .16s ease, transform .16s ease;
+	  box-shadow: 0 12px 28px rgba(0,0,0,.35);
+	  max-width: min(720px, calc(100vw - 20px));
+	  white-space: nowrap;
+	  overflow:hidden;
+	  text-overflow: ellipsis;
+	}
+	#toast.show{ opacity: 1; transform: translateX(-50%) translateY(0); }
+	#toast.hide{ opacity: 0; transform: translateX(-50%) translateY(-6px); }
+
+	/* Mobile tweaks */
+	@media (max-width: 820px){
+	  :root{ --hudH: 60px; }
+	  .brand{ display:none; }
+	  .panel{ width: min(92vw, 420px); }
+	  .panel.left{ left: 10px; }
+	  .panel.right{ right: 10px; }
+	}
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="hud">
+	<div class="hud-left">
+	  <div class="brand">
+		<span>Deepwild</span>
+		<span class="badge">REM</span>
+	  </div>
+
+	  <div class="statbar">
+		<div class="stat"><span class="lbl">🏰</span><b id="hudFortHp">0/0</b></div>
+		<div class="stat"><span class="lbl">💰</span><b id="hudGold">0g</b></div>
+		<div class="stat"><span class="lbl">👷</span><b id="hudDw">0</b></div>
+		<div class="stat"><span class="lbl">🧟</span><b id="hudEn">0</b></div>
+		<div class="stat"><span class="lbl">🕳️</span><b id="hudSp">0</b></div>
+	  </div>
+	</div>
+
+	<div class="hud-right">
+	  <button id="btnRecruit" class="btn primary">Recruit</button>
+	  <button id="btnPause" class="btn">Pause</button>
+	  <button id="btnSave" class="btn">Save</button>
+	  <button id="btnLoad" class="btn">Load</button>
+	</div>
+  </div>
+
+  <!-- LEFT PANEL -->
+  <aside id="panelLeft" class="panel left">
+	<div class="panel-head">
+	  <div class="tabs" role="tablist" aria-label="Left panel tabs">
+		<button class="tab on" data-tab="dwarves" type="button">Dwarves</button>
+		<button class="tab" data-tab="build" type="button">Build</button>
+		<button class="tab" data-tab="forge" type="button">Forge</button>
+	  </div>
+	  <button id="leftCollapse" class="btn icon" title="Collapse" type="button">⟨</button>
+	</div>
+
+	<div class="panel-body">
+	  <!-- Dwarves -->
+	  <section id="tab-dwarves">
+		<div class="card">
+		  <div class="small" id="recruitNote">Recruit cost: —</div>
+		  <div class="tiny" style="margin-top:6px;">Click a dwarf to select. Equip from inventory.</div>
+		</div>
+
+		<div class="card">
+		  <div class="row" style="justify-content:space-between;">
+			<b style="font-weight:1000;">Dwarves</b>
+			<span class="pill" id="dwCount">0</span>
+		  </div>
+		  <div style="height:10px"></div>
+		  <div id="dwarfList"></div>
+		</div>
+
+		<div class="card">
+		  <div class="row" style="justify-content:space-between;">
+			<b style="font-weight:1000;">Selected</b>
+			<span class="pill" id="selPill">None</span>
+		  </div>
+		  <div class="tiny" id="selInfo" style="margin-top:6px;">
+			Select a dwarf to view stats + equipment.
+		  </div>
+
+		  <div style="height:10px"></div>
+		  <div class="slots">
+			<div class="slot">
+			  <div class="label">
+				<span>Armor</span>
+				<button id="unequipArmor" class="btn" type="button">Unequip</button>
+			  </div>
+			  <div class="val" id="slotArmor">—</div>
+			</div>
+			<div class="slot">
+			  <div class="label">
+				<span>Weapon</span>
+				<button id="unequipWeapon" class="btn" type="button">Unequip</button>
+			  </div>
+			  <div class="val" id="slotWeapon">—</div>
+			</div>
+			<div class="slot">
+			  <div class="label">
+				<span>Pickaxe</span>
+				<button id="unequipPick" class="btn" type="button">Unequip</button>
+			  </div>
+			  <div class="val" id="slotPick">—</div>
+			</div>
+		  </div>
+		</div>
+	  </section>
+
+	  <!-- Build -->
+	  <section id="tab-build" hidden>
+		<div class="card">
+		  <b style="font-weight:1000;">Build (expensive)</b>
+		  <div class="tiny" id="buildHint" style="margin-top:6px;">Build mode off.</div>
+		  <div style="height:10px"></div>
+		  <div class="row">
+			<button id="buildDepot" type="button">Depot</button>
+			<button id="buildArrow" type="button">Arrow</button>
+			<button id="buildCannon" type="button">Cannon</button>
+			<button id="buildFrost" type="button">Frost</button>
+			<button id="buildHaste" type="button">Haste</button>
+			<button id="buildGuard" type="button">Guard</button>
+			<button id="buildHeal" type="button">Heal</button>
+			<button id="buildCancel" class="btn danger" type="button">Cancel</button>
+		  </div>
+		</div>
+
+		<div class="card">
+		  <div class="small"><b>Tip:</b> Depots reduce travel for loot. Towers protect routes. Destroy spawners ASAP.</div>
+		</div>
+	  </section>
+
+	  <!-- Forge -->
+	  <section id="tab-forge" hidden>
+		<div class="card" id="forgeBox">
+		  <b style="font-weight:1000;">Forge</b>
+		  <div class="small" id="forgeLine" style="margin-top:6px;">—</div>
+		  <div style="height:10px"></div>
+		  <div class="row">
+			<button id="forgeCraft" class="btn primary" type="button">Craft</button>
+			<button id="forgeUpgrade" type="button">Upgrade</button>
+		  </div>
+		  <div class="tiny" style="margin-top:8px;">
+			Higher forge levels increase chances for <b style="color:#7fd7ff;">Rare</b> / <b style="color:#d6a6ff;">Epic</b> / <b style="color:#ffd66f;">Legendary</b>.
+		  </div>
+		</div>
+	  </section>
+	</div>
+
+	<div class="panel-foot">
+	  Controls: <b>WASD</b> pan • <b>Wheel</b> zoom • <b>Right-drag</b> pan • <b>Left-click</b> select/build
+	</div>
+  </aside>
+
+  <!-- RIGHT PANEL (INVENTORY) -->
+  <aside id="panelInv" class="panel right">
+	<div class="panel-head">
+	  <div style="display:flex; flex-direction:column; gap:2px; min-width:0;">
+		<div style="display:flex; align-items:center; gap:8px;">
+		  <b style="font-weight:1000;">Inventory</b>
+		  <span class="pill" id="invCount">0/1000</span>
+		</div>
+		<div class="tiny" id="invHint">Virtualized list (fast). Equip swaps old gear back into loot.</div>
+	  </div>
+	  <button id="invCollapse" class="btn icon" title="Collapse" type="button">⟩</button>
+	</div>
+
+	<div class="panel-body" style="padding-top:8px;">
+	  <div class="filters">
+		<input id="invSearch" class="input" placeholder="Search loot…" />
+		<select id="invCat">
+		  <option value="all">All</option>
+		  <option value="armor">Armor</option>
+		  <option value="weapon">Weapon</option>
+		  <option value="pickaxe">Pickaxe</option>
+		</select>
+		<select id="invRarity">
+		  <option value="all">Any rarity</option>
+		  <option value="legendary">Legendary</option>
+		  <option value="epic">Epic</option>
+		  <option value="rare">Rare</option>
+		  <option value="uncommon">Uncommon</option>
+		  <option value="common">Common</option>
+		</select>
+		<button id="sellJunkBtn" type="button">Sell Junk</button>
+		<button id="sellAllBtn" class="btn danger" type="button">Sell All</button>
+	  </div>
+
+	  <div id="invScroll" style="margin-top:10px; flex:1;">
+		<div id="invSpacer"></div>
+		<div id="invContent"></div>
+	  </div>
+	</div>
+  </aside>
+
+  <div id="toast"></div>
+
+<script>
+(() => {
+  // ============================================================
+  // Helpers
+  // ============================================================
+  const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+  const randInt = (a,b)=> (a + (Math.random()*(b-a+1)|0))|0;
+  const uuid = (() => (crypto && crypto.randomUUID) ? () => crypto.randomUUID()
+												   : () => (Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2)))();
+
+  const hash01 = (x,y)=>{ // deterministic 0..1
+	let n = (x*73856093) ^ (y*19349663);
+	n = (n ^ (n>>>13)) * 1274126177;
+	n = (n ^ (n>>>16)) >>> 0;
+	return (n & 1023) / 1023;
+  };
+
+  const RARITY = ["common","uncommon","rare","epic","legendary"];
+  const RARITY_COL = {
+	common:"#d8e2ef",
+	uncommon:"#85ffb0",
+	rare:"#7fd7ff",
+	epic:"#d6a6ff",
+	legendary:"#ffd66f",
+  };
+  const RARITY_WEIGHT_BASE = {
+	common: 1.00,
+	uncommon: 0.25,
+	rare: 0.08,
+	epic: 0.02,
+	legendary: 0.006,
+  };
+  const rarRank = (r)=>RARITY.indexOf(r);
+  
+  const DEFAULT_GUARD_PATROL_R = 60; // fairly vast (tiles) — adjust as desired
+
+
+  const ARMOR_TIERS = ["leather","copper","iron","steel","titanium"];
+  const ARMOR_DEF = { leather:0.10, copper:0.18, iron:0.28, steel:0.40, titanium:0.55 };
+  const ARMOR_HP  = { leather: 10,   copper: 20,   iron: 30,  steel: 80,  titanium: 150 };
+  const ARMOR_COL = { leather:"#a8794d", copper:"#c77f4b", iron:"#aeb4bf", steel:"#7f8ea3", titanium:"#c8e2ff" };
+
+  const WEAPON_BASE = {
+	axe: { dmg: 10, range:1.2, rate:1.1, ranged:false },
+	bow: { dmg: 8, range:7.0, rate:1.2, ranged:true  },
+  };
+  const PICK_BASE = { miningPower: 6, miningRate: 1.0 };
+
+  const rarityMult = (r)=> {
+	if (r==="common") return 1.0;
+	if (r==="uncommon") return 1.25;
+	if (r==="rare") return 1.6;
+	if (r==="epic") return 2.2;
+	return 3.0; // legendary
+  };
+
+
+  // Base64 helpers (safe for big buffers)
+  const b64 = {
+	u8ToB64(u8){
+	  let s = "";
+	  const CHUNK = 0x8000;
+	  for(let i=0;i<u8.length;i+=CHUNK){
+		s += String.fromCharCode.apply(null, u8.subarray(i, i+CHUNK));
+	  }
+	  return btoa(s);
+	},
+	b64ToU8(str){
+	  const bin = atob(str);
+	  const out = new Uint8Array(bin.length);
+	  for(let i=0;i<bin.length;i++) out[i] = bin.charCodeAt(i);
+	  return out;
+	}
+  };
+
+	// ============================================================
+// Equipment summary chips (A/W/P with rarity letter + color)
+// ============================================================
+const RAR_MAP = { common:'c', uncommon:'u', rare:'r', epic:'e', legendary:'l' };
+
+function normalizeRarity(r){
+  if (r == null) return 'n';
+
+  if (typeof r === 'number'){
+	// 0=common,1=uncommon,2=rare,3=epic,4=legendary
+	const arr = ['c','u','r','e','l'];
+	const i = Math.max(0, Math.min(4, Math.round(r)));
+	return arr[i] || 'n';
+  }
+
+  const s = String(r).trim().toLowerCase();
+  if (!s) return 'n';
+  if (['c','u','r','e','l','n'].includes(s)) return s;
+  if (RAR_MAP[s]) return RAR_MAP[s];
+
+  // handles strings like "Rare (T2)" / "legendary_item" etc
+  for (const k of Object.keys(RAR_MAP)){
+	if (s.includes(k)) return RAR_MAP[k];
+  }
+  return 'n';
+}
+
+function rarityClass(letter){ return `rar-${letter || 'n'}`; }
+function rarityText(letter){ return (letter || 'n').toUpperCase(); }
+
+// tries a bunch of common places a gear item might live
+function getEquipItem(d, slot){
+  const keys = [
+	`equip.${slot}`, `equipment.${slot}`, `gear.${slot}`, `loadout.${slot}`,
+	slot, `${slot}Item`, `${slot}Gear`, `${slot}_item`, `${slot}_gear`,
+  ];
+
+  for (const k of keys){
+	const parts = k.split('.');
+	let cur = d, ok = true;
+	for (const p of parts){
+	  if (!cur || typeof cur !== 'object' || !(p in cur)) { ok = false; break; }
+	  cur = cur[p];
+	}
+	if (ok && cur != null) return cur;
+  }
+  return null;
+}
+
+function itemRarityLetter(item){
+  if (!item) return 'n';
+  return normalizeRarity(item.rarity ?? item.rar ?? item.tier ?? item.rank ?? item.quality ?? item.q);
+}
+
+function equipSummaryHTML(d){
+  const armor  = getEquipItem(d,'armor');
+  const weapon = getEquipItem(d,'weapon');
+  const pick   = getEquipItem(d,'pickaxe') ?? getEquipItem(d,'pick') ?? getEquipItem(d,'tool');
+
+  const aL = itemRarityLetter(armor);
+  const wL = itemRarityLetter(weapon);
+  const pL = itemRarityLetter(pick);
+
+  return `
+	<div class="eqLine">
+	  <span class="eqTag">A: <b class="rar ${rarityClass(aL)}">${rarityText(aL)}</b></span>
+	  <span class="eqTag">W: <b class="rar ${rarityClass(wL)}">${rarityText(wL)}</b></span>
+	  <span class="eqTag">P: <b class="rar ${rarityClass(pL)}">${rarityText(pL)}</b></span>
+	</div>
+  `;
+}
+
+function inlineEquipIntoSub(btn){
+const sub = btn.querySelector('.sub');
+if (!sub) return;
+
+// Find the container that holds the 3 little equipment boxes (covers common class names)
+const eqWrap =
+btn.querySelector('.equipRow') ||
+btn.querySelector('.equipPills') ||
+btn.querySelector('.equipBoxes') ||
+btn.querySelector('.equip');
+
+if (!eqWrap) return;
+
+// Grab visible labels from those boxes/pills
+const parts = [...eqWrap.querySelectorAll('*')]
+.map(el => (el.textContent || '').trim())
+.filter(t => t && t.length <= 24); // ignore weird long stuff
+
+// Deduplicate while keeping order
+const seen = new Set();
+const clean = parts.filter(t => (seen.has(t) ? false : (seen.add(t), true)));
+
+if (clean.length){
+// Append equipment text right next to the level
+// Example: "Lv 3 • Axe / Helm / Boots"
+sub.textContent = sub.textContent.replace(/\s*•\s*.*$/, '');
+sub.textContent += ` • ${clean.join(' / ')}`;
+}
+
+// Remove the old mini-boxes so they can’t mess with layout
+eqWrap.remove();
+}
+
+  // ============================================================
+  // Canvas
+  // ============================================================
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d", { alpha: false });
+
+  function resize(){
+	const dpr = window.devicePixelRatio || 1;
+	canvas.width  = (window.innerWidth * dpr) | 0;
+	canvas.height = (window.innerHeight * dpr) | 0;
+	canvas.style.width = window.innerWidth + "px";
+	canvas.style.height = window.innerHeight + "px";
+	ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  // ============================================================
+  // UI refs
+  // ============================================================
+  const UI = {
+	hudFortHp: document.getElementById("hudFortHp"),
+	hudGold: document.getElementById("hudGold"),
+	hudDw: document.getElementById("hudDw"),
+	hudEn: document.getElementById("hudEn"),
+	hudSp: document.getElementById("hudSp"),
+
+	btnRecruit: document.getElementById("btnRecruit"),
+	btnPause: document.getElementById("btnPause"),
+	btnSave: document.getElementById("btnSave"),
+	btnLoad: document.getElementById("btnLoad"),
+
+	panelLeft: document.getElementById("panelLeft"),
+	leftCollapse: document.getElementById("leftCollapse"),
+	tabs: Array.from(document.querySelectorAll(".tab[data-tab]")),
+	tabDwarves: document.getElementById("tab-dwarves"),
+	tabBuild: document.getElementById("tab-build"),
+	tabForge: document.getElementById("tab-forge"),
+
+	recruitNote: document.getElementById("recruitNote"),
+	dwarfList: document.getElementById("dwarfList"),
+	dwCount: document.getElementById("dwCount"),
+
+	selPill: document.getElementById("selPill"),
+	selInfo: document.getElementById("selInfo"),
+	slotArmor: document.getElementById("slotArmor"),
+	slotWeapon: document.getElementById("slotWeapon"),
+	slotPick: document.getElementById("slotPick"),
+	unequipArmor: document.getElementById("unequipArmor"),
+	unequipWeapon: document.getElementById("unequipWeapon"),
+	unequipPick: document.getElementById("unequipPick"),
+
+	buildHeal: document.getElementById("buildHeal"),
+	buildDepot: document.getElementById("buildDepot"),
+	buildArrow: document.getElementById("buildArrow"),
+	buildCannon: document.getElementById("buildCannon"),
+	buildFrost: document.getElementById("buildFrost"),
+	buildCancel: document.getElementById("buildCancel"),
+	buildHint: document.getElementById("buildHint"),
+	buildGuard: document.getElementById("buildGuard"),
+	buildHaste: document.getElementById("buildHaste"),
+
+
+	forgeLine: document.getElementById("forgeLine"),
+	forgeCraft: document.getElementById("forgeCraft"),
+	forgeUpgrade: document.getElementById("forgeUpgrade"),
+
+	panelInv: document.getElementById("panelInv"),
+	invCollapse: document.getElementById("invCollapse"),
+	invCount: document.getElementById("invCount"),
+	invHint: document.getElementById("invHint"),
+	invSearch: document.getElementById("invSearch"),
+	invCat: document.getElementById("invCat"),
+	invRarity: document.getElementById("invRarity"),
+	sellJunkBtn: document.getElementById("sellJunkBtn"),
+	sellAllBtn: document.getElementById("sellAllBtn"),
+	invScroll: document.getElementById("invScroll"),
+	invSpacer: document.getElementById("invSpacer"),
+	invContent: document.getElementById("invContent"),
+
+	toast: document.getElementById("toast"),
+  };
+
+  // ============================================================
+  // Toast
+  // ============================================================
+  let toastTimer = 0;
+  function toast(msg){
+	UI.toast.textContent = msg;
+	UI.toast.classList.add("show");
+	UI.toast.classList.remove("hide");
+	toastTimer = 1.7;
+  }
+
+  // ============================================================
+  // World / Tiles
+  // ============================================================
+  const W = 1440;
+  const H = 1440;
+
+  const TILE_ROCK     = 0;  // diggable
+  const TILE_EMPTY    = 1;  // walkable
+  const TILE_GOLD     = 2;  // diggable ore
+  const TILE_SAPPHIRE = 3;  // diggable ore
+  const TILE_EMERALD  = 4;  // diggable ore
+  const TILE_DIAMOND  = 5;  // diggable ore
+  const TILE_SPAWNER_SEALED = 6; // diggable, reveals spawner entity
+  const TILE_FORTRESS = 7;  // walkable base tile
+
+  const idx = (x,y)=>x + y*W;
+  const inBounds = (x,y)=>x>=0 && y>=0 && x<W && y<H;
+
+  const tType = new Uint8Array(W*H);
+  const tHp   = new Uint16Array(W*H);
+
+  const fortress = {
+	x:(W/2)|0,
+	y:(H/2)|0,
+	hp: 900,
+	maxHp: 900,
+  };
+
+  let forge = null;    // ONLY ONE
+  const depots = [];
+  const towers = [];
+  const spawners = [];
+  const enemies = [];
+  const groundLoot = [];
+
+  let gold = 100;
+
+  function manhattan(ax,ay,bx,by){ return Math.abs(ax-bx)+Math.abs(ay-by); }
+  function dist2(ax,ay,bx,by){ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; }
+  function depthAt(x,y){ return manhattan(x,y, fortress.x, fortress.y); }
+
+  function isDiggable(tt){
+	return tt===TILE_ROCK || tt===TILE_GOLD || tt===TILE_SAPPHIRE || tt===TILE_EMERALD || tt===TILE_DIAMOND || tt===TILE_SPAWNER_SEALED;
+  }
+  function isWalkable(tt){
+	return tt===TILE_EMPTY || tt===TILE_FORTRESS;
+  }
+  
+
+  function strataHp(depth){
+	const base = 16 + Math.floor(depth * 0.18);
+	const layer = Math.floor(depth / 90);
+	let hp = base + layer*18 + layer*layer*4 + randInt(0,6);
+	if (depth>260 && depth<320) hp += 350 + (depth-260)*3;
+	if (depth>420) hp += 900 + (depth-420)*5;
+	hp = clamp(hp|0, 1, 65000);
+	return hp;
+  }
+
+  function carveCircle(cx,cy,r){
+	for(let dy=-r; dy<=r; dy++) for(let dx=-r; dx<=r; dx++){
+	  if(dx*dx+dy*dy>r*r) continue;
+	  const x=cx+dx, y=cy+dy;
+	  if(!inBounds(x,y)) continue;
+	  tType[idx(x,y)] = TILE_EMPTY;
+	  tHp[idx(x,y)] = 0;
+	}
+  }
+
+  function generateWorld(){
+	for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+	  const d = depthAt(x,y);
+	  tType[idx(x,y)] = TILE_ROCK;
+	  tHp[idx(x,y)] = strataHp(d);
+	}
+
+	carveCircle(fortress.x, fortress.y, 10);
+	tType[idx(fortress.x, fortress.y)] = TILE_FORTRESS;
+
+	// tunnels
+	const walkers = 1500;
+	const steps = 240;
+	for(let i=0;i<walkers;i++){
+	  let x = randInt(0,W-1), y=randInt(0,H-1);
+	  for(let s=0;s<steps;s++){
+		if(!inBounds(x,y)) break;
+		tType[idx(x,y)] = TILE_EMPTY; tHp[idx(x,y)] = 0;
+		const r=randInt(0,3);
+		if(r===0)x++; else if(r===1)x--; else if(r===2)y++; else y--;
+	  }
+	}
+
+	// rooms
+	for(let i=0;i<80;i++){
+	  const cx=randInt(20,W-21), cy=randInt(20,H-21);
+	  carveCircle(cx,cy, randInt(8,18));
+	}
+
+	// ores + sealed spawners
+	for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+	  const ii = idx(x,y);
+	  if(tType[ii]!==TILE_ROCK) continue;
+	  const d = depthAt(x,y);
+	  if(d < 18) continue;
+
+	  const p = Math.random();
+	  const deep = clamp(d/280, 0, 2.8);
+
+	  if(d>70 && Math.random() < 0.0010 + deep*0.0008){
+		tType[ii]=TILE_SPAWNER_SEALED;
+		tHp[ii]=clamp(strataHp(d) + 120 + Math.floor(d*0.25), 1, 65000);
+		continue;
+	  }
+
+	  const goldP = clamp(0.010 + deep*0.010, 0, 0.045);
+	  const sapP  = clamp(0.003 + deep*0.007, 0, 0.022);
+	  const emP   = clamp(0.0015 + deep*0.0045, 0, 0.016);
+	  const diaP  = clamp(0.0009 + deep*0.0035, 0, 0.013);
+
+	  if(p < diaP){
+		tType[ii]=TILE_DIAMOND; tHp[ii]=clamp(strataHp(d) + 120, 1, 65000);
+	  } else if(p < diaP + emP){
+		tType[ii]=TILE_EMERALD; tHp[ii]=clamp(strataHp(d) + 80, 1, 65000);
+	  } else if(p < diaP + emP + sapP){
+		tType[ii]=TILE_SAPPHIRE; tHp[ii]=clamp(strataHp(d) + 55, 1, 65000);
+	  } else if(p < diaP + emP + sapP + goldP){
+		tType[ii]=TILE_GOLD; tHp[ii]=clamp(strataHp(d) + 35, 1, 65000);
+	  }
+	}
+
+	// ONLY ONE forge near fortress
+	const fx = fortress.x + 7;
+	const fy = fortress.y;
+	if(inBounds(fx,fy)){
+	  tType[idx(fx,fy)] = TILE_EMPTY;
+	  forge = { id:uuid(), x:fx, y:fy, level:1 };
+	}else{
+	  forge = { id:uuid(), x:fortress.x+5, y:fortress.y, level:1 };
+	}
+
+	depots.length = 0;
+	towers.length = 0;
+	spawners.length = 0;
+	enemies.length = 0;
+	groundLoot.length = 0;
+  }
+
+  // ============================================================
+  // Camera / Input
+  // ============================================================
+  const cam = { x: fortress.x, y: fortress.y, zoom: 1.05 };
+  const BASE_TILE_PX = 12; // slightly larger tiles for a cleaner look
+  let keys = {};
+  window.addEventListener("keydown", e => { keys[e.key.toLowerCase()] = true; });
+  window.addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
+
+  let rightDragging=false;
+  let lastMouse={x:0,y:0};
+  let mouseWorld={x:fortress.x, y:fortress.y};
+  canvas.addEventListener("contextmenu", e => e.preventDefault());
+
+  function worldToScreen(x,y){
+	const s = BASE_TILE_PX * cam.zoom;
+	return { x:(x-cam.x)*s + window.innerWidth/2, y:(y-cam.y)*s + window.innerHeight/2, s };
+  }
+  function screenToWorld(px,py, zoomOverride=cam.zoom){
+	const s = BASE_TILE_PX * zoomOverride;
+	return { x:(px-window.innerWidth/2)/s + cam.x, y:(py-window.innerHeight/2)/s + cam.y };
+  }
+
+  canvas.addEventListener("mousedown", e => {
+	// Don’t start world interactions if clicking UI
+	if(e.target !== canvas) return;
+	if(e.button===2){ rightDragging=true; lastMouse.x=e.clientX; lastMouse.y=e.clientY; }
+  });
+  window.addEventListener("mouseup", e => { if(e.button===2) rightDragging=false; });
+
+  window.addEventListener("mousemove", e => {
+	const rect = canvas.getBoundingClientRect();
+	mouseWorld = screenToWorld(e.clientX-rect.left, e.clientY-rect.top);
+	if(!rightDragging) return;
+	const dx=e.clientX-lastMouse.x, dy=e.clientY-lastMouse.y;
+	lastMouse.x=e.clientX; lastMouse.y=e.clientY;
+	const s = BASE_TILE_PX * cam.zoom;
+	cam.x = clamp(cam.x - dx/s, 0, W-1);
+	cam.y = clamp(cam.y - dy/s, 0, H-1);
+  });
+
+  canvas.addEventListener("wheel", e => {
+	e.preventDefault();
+	const delta = Math.sign(e.deltaY);
+	const old = cam.zoom;
+	cam.zoom *= (delta>0)?0.9:1.1;
+	cam.zoom = clamp(cam.zoom, 0.30, 2.9);
+
+	const rect = canvas.getBoundingClientRect();
+	const mx = e.clientX-rect.left, my = e.clientY-rect.top;
+	const before = screenToWorld(mx,my,old);
+	const after  = screenToWorld(mx,my,cam.zoom);
+	cam.x = clamp(cam.x + (before.x-after.x), 0, W-1);
+	cam.y = clamp(cam.y + (before.y-after.y), 0, H-1);
+  }, {passive:false});
+
+  // ============================================================
+  // Pathfinding (BFS)
+  // ============================================================
+  const visited = new Int32Array(W*H);
+  const prev = new Int32Array(W*H);
+  let visitMark = 1;
+
+  function bfsPath(sx,sy, isGoal, maxNodes=220000){
+	if(!inBounds(sx,sy)) return null;
+	visitMark++;
+	if(visitMark===0x7fffffff){ visitMark=1; visited.fill(0); }
+
+	const qx = new Int16Array(maxNodes);
+	const qy = new Int16Array(maxNodes);
+	let qh=0, qt=0;
+
+	const si = idx(sx,sy);
+	visited[si]=visitMark;
+	prev[si]=-1;
+	qx[qt]=sx; qy[qt]=sy; qt++;
+
+	const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+	let nodes=0;
+
+	while(qh<qt){
+	  const x=qx[qh], y=qy[qh]; qh++;
+	  const ii = idx(x,y);
+
+	  if(isGoal(x,y,ii)){
+		let cur=ii;
+		const out=[];
+		while(cur!==-1){
+		  const cx=cur%W, cy=(cur/W)|0;
+		  out.push({x:cx,y:cy});
+		  cur=prev[cur];
+		}
+		out.reverse();
+		if(out.length>1) out.shift();
+		return out;
+	  }
+
+	  for(const [dx,dy] of dirs){
+		const nx=x+dx, ny=y+dy;
+		if(!inBounds(nx,ny)) continue;
+		const ni = idx(nx,ny);
+		if(visited[ni]===visitMark) continue;
+		if(!isWalkable(tType[ni])) continue;
+
+		visited[ni]=visitMark;
+		prev[ni]=ii;
+		if(qt>=maxNodes-1) break;
+		qx[qt]=nx; qy[qt]=ny; qt++;
+	  }
+
+	  if(++nodes>maxNodes-10) break;
+	}
+	return null;
+  }
+
+  function bfsToNearestFrontier(sx,sy, maxNodes=220000){
+	const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+	return bfsPath(sx,sy,(x,y)=>{
+	  for(const [dx,dy] of dirs){
+		const nx=x+dx, ny=y+dy;
+		if(!inBounds(nx,ny)) continue;
+		if(isDiggable(tType[idx(nx,ny)])) return true;
+	  }
+	  return false;
+	}, maxNodes);
+  }
+  // ============================================================
+// Pathable Ore Targeting (miners prefer reachable ore nearby)
+// ============================================================
+const ORE_SCAN_RANGE = 28;          // <-- adjust range here (tiles)
+const ORE_Q_MAX = 30000;            // BFS queue cap for ore scan (safe for range ~40)
+const oreQx = new Int16Array(ORE_Q_MAX);
+const oreQy = new Int16Array(ORE_Q_MAX);
+const oreDist = new Int16Array(W * H); // valid only when visited==visitMark
+
+function isOre(tt){
+  return tt===TILE_GOLD || tt===TILE_SAPPHIRE || tt===TILE_EMERALD || tt===TILE_DIAMOND;
+}
+
+/**
+ * Finds the best reachable ore within rangeTiles by BFS over walkable tiles.
+ * Returns { ore:{x,y,tt}, stand:{x,y}, path:[{x,y}...] } or null.
+ */
+function findPathableOreTargetAndPath(sx, sy, rangeTiles){
+  if(!inBounds(sx,sy) || !isWalkable(tType[idx(sx,sy)])) return null;
+
+  visitMark++;
+  if(visitMark===0x7fffffff){ visitMark=1; visited.fill(0); }
+
+  const si = idx(sx,sy);
+  let qh=0, qt=0;
+  visited[si]=visitMark;
+  prev[si]=-1;
+  oreDist[si]=0;
+  oreQx[qt]=sx; oreQy[qt]=sy; qt++;
+
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  let bestStand = -1;
+  let bestOre = null;
+  let bestScore = -1e18;
+
+  while(qh<qt){
+	const x=oreQx[qh], y=oreQy[qh]; qh++;
+	const ii = idx(x,y);
+	const d = oreDist[ii];
+
+	// Any ore adjacent to this reachable stand-tile?
+	for(const [dx,dy] of dirs){
+	  const ox=x+dx, oy=y+dy;
+	  if(!inBounds(ox,oy)) continue;
+	  const oi = idx(ox,oy);
+	  const tt = tType[oi];
+	  if(!isOre(tt)) continue;
+
+	  // value uses your existing ore valuation (depth-scaled)
+	  const val = tileCurrencyValue(tt, depthAt(ox,oy));
+
+	  // prefer value, but still favor nearer ore
+	  const score = val - d*7; // distance penalty (tune if needed)
+	  if(score > bestScore){
+		bestScore = score;
+		bestStand = ii;
+		bestOre = { x:ox, y:oy, tt };
+	  }
+	}
+
+	if(d >= rangeTiles) continue;
+
+	// BFS expand
+	for(const [dx,dy] of dirs){
+	  const nx=x+dx, ny=y+dy;
+	  if(!inBounds(nx,ny)) continue;
+	  const ni = idx(nx,ny);
+	  if(visited[ni]===visitMark) continue;
+	  if(!isWalkable(tType[ni])) continue;
+
+	  visited[ni]=visitMark;
+	  prev[ni]=ii;
+	  oreDist[ni]=(d+1)|0;
+
+	  if(qt >= ORE_Q_MAX-1) break;
+	  oreQx[qt]=nx; oreQy[qt]=ny; qt++;
+	}
+  }
+
+  if(!bestOre) return null;
+
+  // reconstruct path to best stand tile using prev[]
+  const path = [];
+  let cur = bestStand;
+  while(cur !== -1){
+	path.push({ x: cur % W, y: (cur / W) | 0 });
+	cur = prev[cur];
+  }
+  path.reverse();
+  if(path.length>1) path.shift(); else path.length=0;
+
+  return {
+	ore: bestOre,
+	stand: { x: bestStand % W, y: (bestStand / W) | 0 },
+	path
+  };
+}
+
+
+  // ============================================================
+  // Loot / Items
+  // ============================================================
+  const LOOT_LIMIT = 1000;
+  const loot = [];
+
+  function mkItemArmor(rarity){
+	const rr = rarRank(rarity);
+	const tier = ARMOR_TIERS[clamp(rr + (Math.random()<0.12?-1:0), 0, ARMOR_TIERS.length-1)];
+	return {
+	  id:uuid(),
+	  category:"armor",
+	  rarity,
+	  armorTier:tier,
+	  name:`${tier[0].toUpperCase()+tier.slice(1)} Armor`,
+	  defense: ARMOR_DEF[tier],
+	  bonusHp: ARMOR_HP[tier],
+	  sell: Math.round(10 * rarityMult(rarity) + ARMOR_HP[tier]*0.6),
+	};
+  }
+  function mkItemWeapon(rarity){
+	const type = (Math.random()<0.60) ? "axe" : "bow";
+	const base = WEAPON_BASE[type];
+	const mult = rarityMult(rarity);
+	return {
+	  id:uuid(),
+	  category:"weapon",
+	  rarity,
+	  weaponType:type,
+	  name:`${rarity[0].toUpperCase()+rarity.slice(1)} ${type.toUpperCase()}`,
+	  dmg: Math.round(base.dmg * mult),
+	  range: base.range,
+	  rate: base.rate * (1 + (rarRank(rarity)*0.06)),
+	  ranged: base.ranged,
+	  sell: Math.round(12 * mult),
+	};
+  }
+  function mkItemPickaxe(rarity){
+	const mult = rarityMult(rarity);
+	return {
+	  id:uuid(),
+	  category:"pickaxe",
+	  rarity,
+	  name:`${rarity[0].toUpperCase()+rarity.slice(1)} Pickaxe`,
+	  miningPower: Math.round(PICK_BASE.miningPower * mult),
+	  miningRate: PICK_BASE.miningRate * (1 + rarRank(rarity)*0.12),
+	  sell: Math.round(10 * mult),
+	};
+  }
+
+  function sortLoot(a,b){
+	const ra = rarRank(a.rarity), rb = rarRank(b.rarity);
+	if(ra!==rb) return rb-ra;
+	if(a.category!==b.category) return a.category.localeCompare(b.category);
+	return a.name.localeCompare(b.name);
+  }
+
+  function addLootItem(item){
+	if(loot.length >= LOOT_LIMIT){
+	  loot.sort(sortLoot);
+	  loot.pop();
+	  toast("Loot full (1000). Dropped lowest rarity item.");
+	}
+	loot.push(item);
+	loot.sort(sortLoot);
+	markUI("inv","hud");
+  }
+
+  function sellItemById(itemId){
+	const i = loot.findIndex(x=>x.id===itemId);
+	if(i<0) return;
+	const it = loot[i];
+	gold += Math.max(1, it.sell|0);
+	loot.splice(i,1);
+	toast(`Sold: ${it.name} (+${it.sell}g)`);
+	markUI("inv","hud");
+  }
+  function sellAll(){
+	let gained=0;
+	for(const it of loot) gained += Math.max(1, it.sell|0);
+	loot.length = 0;
+	gold += gained;
+	toast(`Sold everything (+${gained}g)`);
+	markUI("inv","hud");
+  }
+  function sellJunk(){
+	let gained=0;
+	for(let i=loot.length-1;i>=0;i--){
+	  if(loot[i].rarity==="common" || loot[i].rarity==="uncommon"){
+		gained += Math.max(1, loot[i].sell|0);
+		loot.splice(i,1);
+	  }
+	}
+	gold += gained;
+	toast(gained>0 ? `Sold junk (+${gained}g)` : "No junk to sell.");
+	markUI("inv","hud");
+  }
+  function initForgeUI(){
+  // Re-acquire element safely (fixes your exact crash)
+  UI.forgeBox = UI.forgeBox || document.getElementById("forgeBox");
+  if(!UI.forgeBox){
+	console.warn("Forge UI: missing #forgeBox element");
+	return;
+  }
+
+  // Prevent double-init
+  if(UI._forgeInit) return;
+  UI._forgeInit = true;
+
+  UI.forgeBox.innerHTML = `
+	<div id="forgeEmptyMsg" class="tiny" style="
+	  padding:8px 10px; margin-top:6px; border-radius:10px;
+	  background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.10);
+	  display:none;
+	">No forge.</div>
+
+	<div id="forgeWrap" class="forgeWrap" style="
+	  padding:8px 10px; margin-top:6px; border-radius:10px;
+	  background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.10);
+	">
+	  <div style="display:flex; justify-content:space-between; gap:8px; align-items:center;">
+		<div><b>Forge</b> <span class="pill" id="forgeLevelPill">Lv 1</span></div>
+		<div class="tiny">Craft cost: <b><span id="forgeCraftCost">0</span>g</b></div>
+	  </div>
+
+	  <div class="row" style="margin-top:6px;">
+		<button type="button" id="forgeCraftBtn">Craft</button>
+		<button type="button" id="forgeUpBtn">Upgrade</button>
+	  </div>
+
+	  <div class="tiny" id="forgeHint"></div>
+	</div>
+  `;
+
+  // Query inside the box (safer than document.getElementById if you ever reuse IDs)
+  const root = UI.forgeBox;
+  UI.forgeEmptyMsg  = root.querySelector("#forgeEmptyMsg");
+  UI.forgeWrap      = root.querySelector("#forgeWrap");
+  UI.forgeLevelPill = root.querySelector("#forgeLevelPill");
+  UI.forgeCraftCost = root.querySelector("#forgeCraftCost");
+  UI.forgeHint      = root.querySelector("#forgeHint");
+  UI.forgeCraftBtn  = root.querySelector("#forgeCraftBtn");
+  UI.forgeUpBtn     = root.querySelector("#forgeUpBtn");
+
+  UI.forgeCraftBtn.addEventListener("click", () => {
+	if(isGameOver) return;
+	craftAtForge();     // already toasts if not enough gold
+	markUI("hud");
+	markUI("inv");
+	markUI("forge");
+  });
+
+  UI.forgeUpBtn.addEventListener("click", () => {
+	if(isGameOver || !forge) return;
+	if(forge.level >= 7) return;
+
+	const cost = forgeUpgradeCost(forge.level + 1);
+	if(gold < cost){ toast("Not enough gold to upgrade forge."); return; }
+
+	gold -= cost;
+	forge.level++;
+	toast(`Forge upgraded to Lv ${forge.level}.`);
+	markUI("hud");
+	markUI("forge");
+  });
+}
+
+
+
+  // ============================================================
+  // Forge
+  // ============================================================
+  function forgeUpgradeCost(levelNext){
+	return Math.round(20 + levelNext*levelNext*18);
+  }
+  function forgeCraftCost(level){
+	return Math.round(14 + level*10);
+  }
+  function rollRarityFromForge(level){
+	const bump = (level-1) * 0.55;
+	const w = {
+	  common:    RARITY_WEIGHT_BASE.common * Math.max(0.10, 1.0 - bump*0.45),
+	  uncommon:  RARITY_WEIGHT_BASE.uncommon * (1.0 + bump*0.70),
+	  rare:      RARITY_WEIGHT_BASE.rare * (1.0 + bump*1.05),
+	  epic:      RARITY_WEIGHT_BASE.epic * (1.0 + bump*1.35),
+	  legendary: RARITY_WEIGHT_BASE.legendary * (1.0 + bump*1.60),
+	};
+	let sum=0; for(const k in w) sum+=w[k];
+	let r=Math.random()*sum;
+	for(const k of RARITY){
+	  r -= w[k];
+	  if(r<=0) return k;
+	}
+	return "common";
+  }
+  function craftAtForge(){
+	if(!forge) return;
+	const cost = forgeCraftCost(forge.level);
+	if(gold < cost){ toast("Not enough gold to craft."); return; }
+	gold -= cost;
+	const rarity = rollRarityFromForge(forge.level);
+	const roll = Math.random();
+	let item;
+	if(roll < 0.38) item = mkItemArmor(rarity);
+	else if(roll < 0.73) item = mkItemWeapon(rarity);
+	else item = mkItemPickaxe(rarity);
+	addLootItem(item);
+	toast(`Forged: ${item.name}`);
+	markUI("forge","hud","inv");
+  }
+
+  // ============================================================
+  // Dwarves
+  // ============================================================
+  const dwarves = [];
+  let dwarfCounter = 0;
+
+  function levelXpNeed(level){
+	return Math.round(20 + level*level*14);
+  }
+
+  function makeDwarf(){
+	dwarfCounter++;
+	return {
+	  id: uuid(),
+	  name: `Dwarf #${dwarfCounter}`,
+	  x: fortress.x + randInt(-2,2),
+	  y: fortress.y + randInt(-2,2),
+
+	  level: 1,
+	  xp: 0,
+	  nextXp: levelXpNeed(1),
+
+	  baseMaxHp: 100,
+	  hp: 100,
+	  maxHp: 100,
+
+	  baseDmg: 8,
+	  dmg: 8,
+
+	  baseMiningPower: 6,
+	  miningPower: 6,
+	  miningRate: 1.0,
+
+	  speed: 4.0,
+
+	  armor: null,
+	  weapon: null,
+	  pickaxe: null,
+
+	  path: null,
+	  think: 0,
+	  state: "idle",
+	  target: null,
+
+	  miningTimer: 0,
+	  atkTimer: 0,
+
+	  carrying: null,
+	  defense: 0,
+	};
+  }
+
+  function applyDwarfStats(d){
+	let bonusHp = 0;
+	let defense = 0;
+	if(d.armor){
+	  bonusHp += d.armor.bonusHp|0;
+	  defense += d.armor.defense|0;
+	}
+	d.maxHp = d.baseMaxHp + bonusHp + Math.round((d.level-1)*12);
+	d.hp = clamp(d.hp, 0, d.maxHp);
+
+	const lvlMult = 2 + (d.level-1)*0.12;
+	d.dmg = Math.round(d.baseDmg * lvlMult);
+	d.miningPower = Math.round(d.baseMiningPower * (1 + (d.level-1)*0.1));
+	d.miningRate = 1.0 * (1 + (d.level-1)*0.055);
+
+	if(d.weapon){
+	  d.dmg = d.weapon.dmg;
+	}
+	if(d.pickaxe){
+	  d.miningPower = d.pickaxe.miningPower;
+	  d.miningRate = d.pickaxe.miningRate;
+	}
+
+	d.defense = clamp(defense, 0, 0.75);
+  }
+
+  function grantXp(d, amount){
+	d.xp += amount;
+	while(d.xp >= d.nextXp){
+	  d.xp -= d.nextXp;
+	  d.level++;
+	  d.nextXp = levelXpNeed(d.level);
+	  d.baseMaxHp += 2;
+	  d.baseDmg += 0.15;
+	  d.baseMiningPower += 0.12;
+	  toast(`${d.name} leveled up! (Lv ${d.level})`);
+	  const savedHp = d.hp;
+	  applyDwarfStats(d);
+	  d.hp = Math.min(d.maxHp, savedHp + 8);
+	  markUI("dwarves","selected");
+	}
+  }
+
+  // ============================================================
+  // Enemies / Spawners / Drops
+  // ============================================================
+  // ============================================================
+// Enemies / Spawners / Drops
+// ============================================================
+const ENEMY_TYPES = [
+  // --- originals ---
+  { type:"goblin",  hp:26, dmg:4,  speed:3.4, size:0.9 },
+  { type:"orc",     hp:44, dmg:7,  speed:2.9, size:1.1 },
+  { type:"bat",     hp:18, dmg:3,  speed:4.2, size:0.8 },
+  { type:"troll",   hp:90, dmg:12, speed:2.1, size:1.35 },
+
+  // --- new uniques ---
+  { type:"runner",  hp:16, dmg:3,  speed:5.2, size:0.75 },                 // super fast, fragile
+  { type:"armored", hp:64, dmg:6,  speed:2.6, size:1.05, armorPct:0.35 },  // takes % less damage
+  { type:"splitter",hp:34, dmg:5,  speed:3.1, size:0.95, splitsInto:"imp", splitCount:2 },
+  { type:"imp",     hp:10, dmg:2,  speed:4.6, size:0.65, isMinion:true, noLoot:true },
+
+  { type:"bomber",  hp:28, dmg:6,  speed:3.0, size:0.95, explodeOnDeath:{ radius:2.1, dmg:22 } },
+  { type:"shaman",  hp:40, dmg:5,  speed:2.5, size:1.00, auraRegen:1.1, auraRange:3.8 }, // heals nearby enemies over time
+  { type:"phaser",  hp:30, dmg:5,  speed:3.0, size:0.95, phaseEvery:12, phaseDur:2.8 },  // periodically untargetable
+
+  // --- necromancer + minion ---
+  { type:"necromancer", hp:46, dmg:6, speed:2.2, size:1.05, summonEvery:9.5, summonType:"skeleton", summonCount:2, summonCap:7 },
+  { type:"skeleton",    hp:9,  dmg:2, speed:3.9, size:0.75, isMinion:true, noLoot:true },
+];
+
+  function makeSpawner(x,y){
+	const d = depthAt(x,y);
+	const tier = clamp(Math.floor(d/130), 0, 9);
+	const maxHp = Math.round(240 + d*1.25 + tier*120);
+	return {
+	  id:uuid(),
+	  x,y,
+	  hp:maxHp,
+	  maxHp,
+	  timer:0,
+	  interval: clamp(7.5 - tier*0.55, 1.5, 7.5),
+	  tier,
+	};
+  }
+
+ function pickEnemyTemplate(depth){
+  const tier = clamp(Math.floor(depth/170), 0, 8); // 0..8-ish
+
+  // weights per tier (higher depth = more exotic threats)
+  // format: [type, weight]
+  let bag;
+  if(tier <= 1){
+	bag = [
+	  ["goblin",  52],
+	  ["bat",     26],
+	  ["orc",     18],
+	  ["runner",   4],
+	];
+  } else if(tier <= 3){
+	bag = [
+	  ["goblin",  30],
+	  ["bat",     18],
+	  ["orc",     26],
+	  ["troll",   10],
+	  ["runner",   6],
+	  ["armored",  6],
+	  ["splitter", 4],
+	];
+  } else if(tier <= 5){
+	bag = [
+	  ["goblin",  16],
+	  ["bat",     10],
+	  ["orc",     22],
+	  ["troll",   14],
+	  ["runner",   6],
+	  ["armored", 10],
+	  ["splitter", 8],
+	  ["bomber",   6],
+	  ["shaman",   5],
+	  ["phaser",   3],
+	  ["necromancer", 2],
+	];
+  } else {
+	bag = [
+	  ["orc",     18],
+	  ["troll",   16],
+	  ["runner",   6],
+	  ["armored", 12],
+	  ["splitter", 9],
+	  ["bomber",   9],
+	  ["shaman",   8],
+	  ["phaser",   7],
+	  ["necromancer", 6],
+	  ["bat",      9],
+	  ["goblin",   6],
+	];
+  }
+
+  // weighted draw
+  let sum = 0;
+  for(const [,w] of bag) sum += w;
+  let r = Math.random() * sum;
+  let chosenType = bag[0][0];
+  for(const [tp,w] of bag){
+	r -= w;
+	if(r <= 0){ chosenType = tp; break; }
+  }
+
+  // return template object from ENEMY_TYPES list
+  for(const t of ENEMY_TYPES) if(t.type === chosenType) return t;
+  return ENEMY_TYPES[0];
+}
+
+
+  function makeEnemy(x,y, sourceDepth){
+  const tpl = pickEnemyTemplate(sourceDepth);
+
+  const scale = 1 + sourceDepth*0.0068;
+  const hp    = Math.round(tpl.hp  * scale);
+
+  // keep your dmg scaling idea, but clamp a bit for minions
+  const dmgBase = Math.max(1, Math.round(tpl.dmg * (1 + sourceDepth*0.004)));
+  const dmg = tpl.isMinion ? Math.max(1, Math.round(dmgBase*0.65)) : dmgBase;
+
+  const speed = tpl.speed * (0.95 + Math.min(0.25, sourceDepth*0.0007));
+
+  // scale a couple specials gently with depth
+  const necroEvery = tpl.type==="necromancer" ? clamp((tpl.summonEvery ?? 9.5) * (1.0 - clamp(sourceDepth/1400,0,0.35)), 5.5, 10.5) : 0;
+  const necroCap   = tpl.type==="necromancer" ? Math.round((tpl.summonCap ?? 7) + clamp(sourceDepth/250, 0, 6)) : 0;
+
+  return {
+	id:uuid(),
+	type:tpl.type,
+	x:x+0.0,
+	y:y+0.0,
+
+	hp, maxHp:hp,
+	dmg,
+	speed,
+	baseSpeed:speed,
+	size:tpl.size,
+
+	atkTimer:0,
+	think:0,
+	path:null,
+	sourceDepth,
+
+	// --- specials (safe defaults) ---
+	armorPct: tpl.armorPct ?? 0,
+
+	splitsInto: tpl.splitsInto ?? null,
+	splitCount: tpl.splitCount ?? 0,
+
+	explodeOnDeath: tpl.explodeOnDeath ?? null,
+
+	auraRegen: tpl.auraRegen ?? 0,
+	auraRange: tpl.auraRange ?? 0,
+
+	phaseEvery: tpl.phaseEvery ?? 0,
+	phaseDur: tpl.phaseDur ?? 0,
+	phaseCd: tpl.phaseEvery ?? 0,
+	phasedLeft: 0,
+
+	summonEvery: (tpl.type==="necromancer") ? necroEvery : 0,
+	summonType: (tpl.type==="necromancer") ? (tpl.summonType ?? "skeleton") : null,
+	summonCount:(tpl.type==="necromancer") ? (tpl.summonCount ?? 2) : 0,
+	summonCap:  (tpl.type==="necromancer") ? necroCap : 0,
+	summonCd:   (tpl.type==="necromancer") ? necroEvery : 0,
+
+	isMinion: !!tpl.isMinion,
+	summonerId: null,
+
+	noLoot: !!tpl.noLoot, // if you want: skip loot/currency drops in your death logic
+  };
+}
+function randInCircle(r){
+  const a = Math.random()*Math.PI*2;
+  const m = Math.sqrt(Math.random())*r;
+  return { dx: Math.cos(a)*m, dy: Math.sin(a)*m };
+}
+
+function countMinionsOwnedBy(ownerId){
+  let n=0;
+  for(const e of enemies){
+	if(e.isMinion && e.summonerId === ownerId) n++;
+  }
+  return n;
+}
+
+// If you want armor/phasing to actually matter, use this instead of "e.hp -= dmg"
+function applyEnemyDamage(e, raw){
+  if(e.phasedLeft > 0) return 0;
+  const dmg = Math.max(0, Math.round(raw * (1 - (e.armorPct||0))));
+  e.hp -= dmg;
+  return dmg;
+}
+
+// call this once per enemy per tick inside your updateEnemies(dt) loop
+function tickEnemySpecials(e, dt){
+  // PHASER: periodic untargetable window
+  if(e.phaseEvery > 0){
+	if(e.phasedLeft > 0){
+	  e.phasedLeft = Math.max(0, e.phasedLeft - dt);
+	}else{
+	  e.phaseCd -= dt;
+	  if(e.phaseCd <= 0){
+		e.phasedLeft = e.phaseDur;
+		e.phaseCd = e.phaseEvery;
+	  }
+	}
+  }
+
+  // SHAMAN: regen aura (heals nearby non-minion enemies)
+  if(e.auraRegen > 0 && e.auraRange > 0){
+	const r2 = e.auraRange*e.auraRange;
+	for(const o of enemies){
+	  if(o===e) continue;
+	  if(o.isMinion) continue;
+	  if(o.hp >= o.maxHp) continue;
+	  if(dist2(e.x,e.y,o.x,o.y) <= r2){
+		o.hp = Math.min(o.maxHp, o.hp + e.auraRegen*dt);
+	  }
+	}
+  }
+
+  // NECROMANCER: summon weak minions with a cap
+  if(e.type === "necromancer"){
+	e.summonCd -= dt;
+	if(e.summonCd <= 0){
+	  const owned = countMinionsOwnedBy(e.id);
+	  const room = Math.max(0, (e.summonCap||0) - owned);
+	  const n = Math.min(room, e.summonCount||0);
+
+	  for(let i=0;i<n;i++){
+		const off = randInCircle(0.6);
+		const m = makeEnemy(e.x + off.dx, e.y + off.dy, e.sourceDepth);
+		m.type = e.summonType || "skeleton"; // force type
+		// patch to skeleton template stats
+		const tpl = ENEMY_TYPES.find(t=>t.type===m.type) || ENEMY_TYPES[0];
+		m.hp = m.maxHp = Math.round((tpl.hp||9) * (1 + e.sourceDepth*0.004)); // tiny scale
+		m.dmg = Math.max(1, Math.round((tpl.dmg||2) * (1 + e.sourceDepth*0.002)));
+		m.speed = m.baseSpeed = (tpl.speed||3.9) * (0.95 + Math.min(0.25, e.sourceDepth*0.0007));
+		m.size = tpl.size || 0.75;
+
+		m.isMinion = true;
+		m.noLoot = true;
+		m.summonerId = e.id;
+
+		enemies.push(m);
+	  }
+
+	  e.summonCd = e.summonEvery || 9.5;
+	}
+  }
+}
+
+function onEnemyDeath(e){
+  // SPLITTER: spawn imps
+  if(e.splitsInto && e.splitCount > 0){
+	for(let i=0;i<e.splitCount;i++){
+	  const off = randInCircle(0.55);
+	  const m = makeEnemy(e.x + off.dx, e.y + off.dy, e.sourceDepth);
+	  m.type = e.splitsInto;
+	  const tpl = ENEMY_TYPES.find(t=>t.type===m.type) || ENEMY_TYPES[0];
+	  m.hp = m.maxHp = Math.round((tpl.hp||10) * (1 + e.sourceDepth*0.004));
+	  m.dmg = Math.max(1, Math.round((tpl.dmg||2) * (1 + e.sourceDepth*0.002)));
+	  m.speed = m.baseSpeed = (tpl.speed||4.6) * (0.95 + Math.min(0.25, e.sourceDepth*0.0007));
+	  m.size = tpl.size || 0.65;
+
+	  m.isMinion = true;
+	  m.noLoot = true;
+	  m.summonerId = e.summonerId || null;
+
+	  enemies.push(m);
+	}
+  }
+
+  // BOMBER: explosion on death
+  if(e.explodeOnDeath){
+	const r2 = e.explodeOnDeath.radius * e.explodeOnDeath.radius;
+	const dmg = e.explodeOnDeath.dmg;
+
+	for(const t of towers){
+	  if(dist2(e.x,e.y, t.x,t.y) <= r2) t.hp -= dmg;
+	}
+	for(const d of dwarves){
+	  if(dist2(e.x,e.y, d.x,d.y) <= r2) d.hp -= dmg;
+	}
+	markUI("hud");
+  }
+}
+
+
+  function rollLootDrop(depth){
+	const baseChance = clamp(0.08 + depth*0.0007, 0.08, 0.42);
+	if(Math.random() > baseChance) return null;
+
+	const bump = clamp(depth/240, 0, 2.6);
+	const w = {
+	  common:    1.00 * Math.max(0.10, 1.0 - bump*0.35),
+	  uncommon:  0.32 * (1.0 + bump*0.65),
+	  rare:      0.10 * (1.0 + bump*0.95),
+	  epic:      0.03 * (1.0 + bump*1.10),
+	  legendary: 0.008* (1.0 + bump*1.25),
+	};
+	let sum=0; for(const k in w) sum+=w[k];
+	let r=Math.random()*sum;
+	let rarity="common";
+	for(const k of RARITY){ r-=w[k]; if(r<=0){ rarity=k; break; } }
+
+	const rr = Math.random();
+	if(rr < 0.34) return mkItemArmor(rarity);
+	if(rr < 0.70) return mkItemWeapon(rarity);
+	return mkItemPickaxe(rarity);
+  }
+
+  function rollCurrencyDrop(depth){
+	const goldAmt = Math.max(1, Math.round(2 + depth*0.02 + randInt(0,4)));
+	const gemRoll = Math.random();
+	if(gemRoll < clamp(depth/650, 0, 0.18)){
+	  const g = Math.random();
+	  if(g < 0.55) return { kind:"currency", currency:"sapphire", value: 200 + Math.round(depth*0.10) };
+	  if(g < 0.85) return { kind:"currency", currency:"emerald",  value: 300 + Math.round(depth*0.14) };
+	  return { kind:"currency", currency:"diamond", value: 400 + Math.round(depth*0.20) };
+	}
+	return { kind:"currency", currency:"gold", value: goldAmt };
+  }
+
+  // ============================================================
+  // Structures (build)
+  // ============================================================
+  const BUILD_NONE=0, BUILD_DEPOT=1, BUILD_ARROW=2, BUILD_CANNON=3, BUILD_FROST=4, BUILD_HEAL=5, BUILD_HASTE=6, BUILD_GUARD=7;
+let buildMode=BUILD_NONE;
+
+const COST = { depot: 140, arrow: 95, cannon: 170, frost: 150, heal: 165, haste: 185, guard: 155 };
+
+
+
+
+  function canBuildAt(x,y){
+	if(!inBounds(x,y)) return false;
+	const tt = tType[idx(x,y)];
+	if(!isWalkable(tt)) return false;
+	if(x===fortress.x && y===fortress.y) return false;
+	if(forge && forge.x===x && forge.y===y) return false;
+	for(const d of depots) if(d.x===x && d.y===y) return false;
+	for(const t of towers) if(t.x===x && t.y===y) return false;
+	for(const s of spawners) if(s.x===x && s.y===y) return false;
+	return true;
+  }
+
+  function setBuildMode(m){
+	buildMode=m;
+	UI.buildDepot.classList.toggle("primary", m===BUILD_DEPOT);
+	UI.buildArrow.classList.toggle("primary", m===BUILD_ARROW);
+	UI.buildCannon.classList.toggle("primary", m===BUILD_CANNON);
+	UI.buildFrost.classList.toggle("primary", m===BUILD_FROST);
+	UI.buildHaste.classList.toggle("primary", m===BUILD_HASTE);
+	UI.buildGuard.classList.toggle("primary", m===BUILD_GUARD);
+	 UI.buildHeal.classList.toggle("primary", m===BUILD_HEAL);
+
+	UI.buildHint.textContent = (m===BUILD_NONE) ? "Build mode off." : "Left-click a walkable tile to place.";
+  }
+
+  function addDepot(x,y){ depots.push({id:uuid(), x,y, hp:240, maxHp:240}); }
+function addTower(type,x,y){
+  if(type==="arrow"){
+    towers.push({id:uuid(), type, x,y, hp:230, maxHp:230, range:9.5, dmg:10, rate:1.2, slow:0, timer:0, splash:0});
+
+  }else if(type==="cannon"){
+    towers.push({id:uuid(), type, x,y, hp:270, maxHp:270, range:8.8, dmg:16, rate:0.8, slow:0, timer:0, splash:2.2});
+
+  }else if(type==="frost"){
+    towers.push({id:uuid(), type, x,y, hp:250, maxHp:250, range:8.2, dmg:4, rate:0.9, slow:0.45, timer:0, splash:0});
+
+  }else if(type==="heal"){
+    // Healing tower (supports dwarves)
+    towers.push({
+      id:uuid(), type, x,y,
+      hp:240, maxHp:240,
+      range:7.5,          // heal radius (tiles)
+      heal: 3,            // heal per pulse
+      rate: 2.0,          // pulses per second (heal/sec = heal*rate)
+      timer:0,
+    });
+
+  }else if(type==="haste"){
+    // Haste tower (buffs nearby towers: faster fire rate for a duration)
+    towers.push({
+      id:uuid(), type, x,y,
+      hp:240, maxHp:240,
+
+      range:7.5,          // buff radius (tiles)
+      hasteMult: 0.60,    // 0.60 = towers shoot 40% faster (their cooldown * 0.60)
+      buffDur:  18.0,     // seconds the buff lasts on a tower after a pulse
+      rate:     0.18,     // pulses per second (≈ once every 5.6s)
+
+      timer:0,
+    });
+
+  }else if(type==="guard"){
+    // Guard tower (high HP + strong single-target; optional short knockback/stun hooks)
+    towers.push({
+      id:uuid(), type, x,y,
+      hp:420, maxHp:420,
+
+      range:7.0,
+      dmg:5,
+      rate:0.55,          // slower shots, heavier hits
+      slow:0,
+      splash:0,
+
+      // optional fields if you want to use them later (safe to ignore if unused)
+      knock:0.9,          // tiles of pushback
+      stun:0.15,          // seconds
+
+      timer:0,
+    });
+  }
+}
+
+
+
+
+  function nearestDropPoint(x,y){
+	let best = {x:fortress.x, y:fortress.y, kind:"fortress"};
+	let bestD = manhattan(x,y, fortress.x, fortress.y);
+	for(const d of depots){
+	  const dd = manhattan(x,y,d.x,d.y);
+	  if(dd < bestD){
+		bestD=dd;
+		best={x:d.x,y:d.y,kind:"depot"};
+	  }
+	}
+	return best;
+  }
+
+  // ============================================================
+  // Mining / Tile interaction
+  // ============================================================
+  function tileCurrencyValue(tt, depth){
+	const bump = Math.round(depth*0.08);
+	if(tt===TILE_GOLD) return 18 + bump;
+	if(tt===TILE_SAPPHIRE) return 60 + bump*2;
+	if(tt===TILE_EMERALD) return 100 + bump*3;
+	if(tt===TILE_DIAMOND) return 170 + bump*4;
+	return 0;
+  }
+
+  function mineTile(tx,ty, power){
+	if(!inBounds(tx,ty)) return { ok:false };
+	const ii = idx(tx,ty);
+	const tt = tType[ii];
+	if(!isDiggable(tt)) return { ok:false };
+
+	const hp = tHp[ii];
+	if(hp > power){
+	  tHp[ii] = (hp - power) | 0;
+	  return { ok:true, destroyed:false };
+	}
+
+	const d = depthAt(tx,ty);
+
+	gold += 1 + (tt===TILE_GOLD ? 2 : 0);
+
+	if(tt===TILE_SPAWNER_SEALED){
+	  tType[ii]=TILE_EMPTY; tHp[ii]=0;
+	  spawners.push(makeSpawner(tx,ty));
+	  toast("A spawner was uncovered!");
+	  markUI("hud");
+	  return { ok:true, destroyed:true, revealedSpawner:true };
+	}
+
+	if(tt===TILE_GOLD || tt===TILE_SAPPHIRE || tt===TILE_EMERALD || tt===TILE_DIAMOND){
+	  const val = tileCurrencyValue(tt, d);
+	  let cur="gold";
+	  if(tt===TILE_SAPPHIRE) cur="sapphire";
+	  if(tt===TILE_EMERALD) cur="emerald";
+	  if(tt===TILE_DIAMOND) cur="diamond";
+	  tType[ii]=TILE_EMPTY; tHp[ii]=0;
+	  return { ok:true, destroyed:true, currency:{ kind:"currency", currency:cur, value:val } };
+	}
+
+	tType[ii]=TILE_EMPTY; tHp[ii]=0;
+	return { ok:true, destroyed:true };
+  }
+
+
+  // ============================================================
+  // AI: movement helpers
+  // ============================================================
+  function stepAlongPath(ent, dt){
+	if(!ent.path || ent.path.length===0) return;
+	const tx = ent.path[0].x;
+	const ty = ent.path[0].y;
+	if(!inBounds(tx,ty) || !isWalkable(tType[idx(tx,ty)])){ ent.path=null; return; }
+
+	const dx = tx - ent.x;
+	const dy = ty - ent.y;
+	const dist = Math.hypot(dx,dy);
+	const step = ent.speed * dt;
+
+	if(dist <= step){
+	  ent.x = tx; ent.y = ty;
+	  ent.path.shift();
+	}else{
+	  ent.x += (dx/dist) * step;
+	  ent.y += (dy/dist) * step;
+	}
+  }
+
+const HASTE_DEFAULT_MULT = 5.0;
+
+function getHasteMultAt(x, y){
+  let m = 1.0;
+  for(const t of towers){
+	if(t.type !== "haste") continue;
+	const r = (t.range ?? 10.0);
+	if(dist2(t.x, t.y, x, y) <= r*r){
+	  m = Math.max(m, (t.mult ?? HASTE_DEFAULT_MULT));
+	}
+  }
+  return m;
+}
+
+function stepAlongPathScaled(ent, dt, mult){
+  if(!ent.path || ent.path.length===0) return;
+  const tx = ent.path[0].x;
+  const ty = ent.path[0].y;
+  if(!inBounds(tx,ty) || !isWalkable(tType[idx(tx,ty)])){ ent.path=null; return; }
+
+  const dx = tx - ent.x;
+  const dy = ty - ent.y;
+  const dist = Math.hypot(dx,dy);
+
+  const step = ent.speed * mult * dt;
+
+  if(dist <= step){
+	ent.x = tx; ent.y = ty;
+	ent.path.shift();
+  }else{
+	ent.x += (dx/dist) * step;
+	ent.y += (dy/dist) * step;
+  }
+}
+
+  function nearestVisibleEnemy(x,y, maxR=13){
+	let best=null, bestD=1e9;
+	for(const e of enemies){
+	  const d = manhattan(x,y, Math.round(e.x), Math.round(e.y));
+	  if(d<=maxR && d<bestD){ bestD=d; best=e; }
+	}
+	return best;
+  }
+  const HEAL_SAFE_ENEMY_R = 12; // must be no enemies within this many tiles to seek healing
+
+function nearestHealingTower(x,y){
+  let best=null, bestD=1e9;
+  for(const t of towers){
+	if(t.type!=="heal") continue;
+	const dd = manhattan(x,y,t.x,t.y);
+	if(dd < bestD){ bestD=dd; best=t; }
+  }
+  return best;
+}
+
+  function nearestSpawner(x,y, maxR=120){
+	let best=null, bestD=1e9;
+	for(const s of spawners){
+	  const d = manhattan(x,y, s.x, s.y);
+	  if(d<=maxR && d<bestD){ bestD=d; best=s; }
+	}
+	return best;
+  }
+  function findNearbyLoot(x,y, maxR=4){
+	let best=null, bestD=1e9;
+	for(const L of groundLoot){
+	  const d = manhattan(x,y, L.x, L.y);
+	  if(d<=maxR && d<bestD){ bestD=d; best=L; }
+	}
+	return best;
+  }
+
+  function chooseOreTarget(d){
+	const gx=Math.round(d.x), gy=Math.round(d.y);
+	const R = 16;
+	let best=null;
+	let bestScore=-1e9;
+
+	for(let yy=gy-R; yy<=gy+R; yy++){
+	  for(let xx=gx-R; xx<=gx+R; xx++){
+		if(!inBounds(xx,yy)) continue;
+		const tt = tType[idx(xx,yy)];
+		if(tt!==TILE_GOLD && tt!==TILE_SAPPHIRE && tt!==TILE_EMERALD && tt!==TILE_DIAMOND) continue;
+
+		const dd = manhattan(gx,gy,xx,yy);
+		const val = tileCurrencyValue(tt, depthAt(xx,yy));
+		const score = val - dd*6;
+		if(score > bestScore){
+		  bestScore=score;
+		  best={x:xx,y:yy,tt};
+		}
+	  }
+	}
+	return best;
+  }
+
+  function pickAdjacentDigTargetToward(d, goal){
+	const gx=Math.round(d.x), gy=Math.round(d.y);
+	const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+	let best=null;
+	let bestScore=-1e9;
+
+	for(const [dx,dy] of dirs){
+	  const nx=gx+dx, ny=gy+dy;
+	  if(!inBounds(nx,ny)) continue;
+	  const tt = tType[idx(nx,ny)];
+	  if(!isDiggable(tt)) continue;
+
+	  const distNow = manhattan(gx,gy, goal.x, goal.y);
+	  const distNext = manhattan(nx,ny, goal.x, goal.y);
+	  const improvement = distNow - distNext;
+	  const hp = tHp[idx(nx,ny)];
+	  const score = improvement*100 - hp*0.02 + (tt!==TILE_ROCK ? 40 : 0);
+	  if(score > bestScore){
+		bestScore=score;
+		best={x:nx,y:ny};
+	  }
+	}
+	return best;
+  }
+
+  function pickAdjacentDigTargetAny(d){
+	const gx=Math.round(d.x), gy=Math.round(d.y);
+	const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+	let best=null, bestHp=1e18;
+	for(const [dx,dy] of dirs){
+	  const nx=gx+dx, ny=gy+dy;
+	  if(!inBounds(nx,ny)) continue;
+	  const tt=tType[idx(nx,ny)];
+	  if(!isDiggable(tt)) continue;
+	  const hp=tHp[idx(nx,ny)];
+	  if(hp<bestHp){ bestHp=hp; best={x:nx,y:ny}; }
+	}
+	return best;
+  }
+
+  function dwarfWander(d){
+	const gx=Math.round(d.x), gy=Math.round(d.y);
+	if(manhattan(gx,gy, fortress.x, fortress.y) > 26){
+	  d.path = bfsPath(gx,gy,(x,y)=>x===fortress.x && y===fortress.y, 220000) || null;
+	  return;
+	}
+
+	const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+	const steps = randInt(2,6);
+	const path = [];
+	let x=gx, y=gy;
+
+	for(let i=0;i<steps;i++){
+	  const shuffled = dirs.slice().sort(()=>Math.random()-0.5);
+	  let moved=false;
+	  for(const [dx,dy] of shuffled){
+		const nx=x+dx, ny=y+dy;
+		if(!inBounds(nx,ny)) continue;
+		if(!isWalkable(tType[idx(nx,ny)])) continue;
+		x=nx; y=ny;
+		path.push({x,y});
+		moved=true;
+		break;
+	  }
+	  if(!moved) break;
+	}
+	d.path = path.length ? path : null;
+  }
+
+ // ===============================
+// Guard tuning (safe to paste once)
+// ===============================
+var GUARD_PATROL_R_DEFAULT  = (typeof GUARD_PATROL_R_DEFAULT  !== "undefined") ? GUARD_PATROL_R_DEFAULT  : 1000; // "fairly vast"
+var GUARD_STATION_R_DEFAULT = (typeof GUARD_STATION_R_DEFAULT !== "undefined") ? GUARD_STATION_R_DEFAULT : 750;
+
+// Guard helpers (function redeclare is OK)
+function getGuardTowerById(id){
+  if(!id) return null;
+  return towers.find(t => t.id===id && t.type==="guard") || null;
+}
+
+function nearestTargetForGuard(gx, gy, post, patrolR){
+  const r2 = patrolR*patrolR;
+
+  let best=null, bestD=1e18;
+
+  // Prefer enemies slightly, but allow spawners if closer / no enemies
+  for(const e of enemies){
+    const d2 = dist2(gx, gy, e.x, e.y);
+    if(d2 <= r2 && d2 < bestD){
+      bestD = d2;
+      best  = { kind:"enemy", id:e.id };
+    }
+  }
+  for(const s of spawners){
+    const d2 = dist2(gx, gy, s.x, s.y);
+    if(d2 <= r2){
+      if(!best || d2 < bestD * 0.85){
+        bestD = d2;
+        best  = { kind:"spawner", id:s.id };
+      }
+    }
+  }
+  return best;
+}
+
+function guardWanderNearPost(d, post){
+  const r = post.stationR ?? GUARD_STATION_R_DEFAULT;
+  for(let tries=0; tries<14; tries++){
+    const tx = post.x + (Math.random()*(2*r+1)|0) - r;
+    const ty = post.y + (Math.random()*(2*r+1)|0) - r;
+    if(!inBounds(tx,ty)) continue;
+    if(!isWalkable(tType[idx(tx,ty)])) continue;
+
+    const p = bfsPath(Math.round(d.x), Math.round(d.y), (x,y)=>x===tx && y===ty, 220000) || null;
+    if(p){ d.path = p; return; }
+  }
+  d.path = null;
+}
+
+// ===============================
+// UPDATED: updateDwarf (with guard logic fully wired)
+// ===============================
+function updateDwarf(d, dt){
+  // timers
+  d.think    -= dt;
+  d.atkTimer -= dt;
+
+  // move
+  stepAlongPathScaled(d, dt, getHasteMultAt(d.x, d.y));
+
+  const gx = Math.round(d.x), gy = Math.round(d.y);
+  if(!inBounds(gx,gy) || !isWalkable(tType[idx(gx,gy)])) return;
+
+  // ============================================================
+  // Guard Post logic (assignment validation + "hold post when quiet")
+  // ============================================================
+  const guardPost = getGuardTowerById(d.guardPostId);
+  const isGuardFighter = !!guardPost && !!d.weapon;
+
+  // If assignment became invalid (lost weapon / post destroyed), clear it
+  if(d.guardPostId && !isGuardFighter){
+    d.guardPostId = null;
+  }
+
+  // If guard fighter is in "fight" but the world is quiet, immediately return to post
+  if(isGuardFighter && d.state==="fight" && enemies.length===0 && spawners.length===0){
+    d.state  = "guard";
+    d.target = { kind:"guard", id: guardPost.id };
+    d.path   = null;
+    d.think  = 0;
+  }
+
+  // ============================================================
+  // Healing priority: if injured + no nearby enemies, go heal
+  // ============================================================
+  const injured = d.hp < d.maxHp - 0.01;
+
+  // If currently healing but an enemy shows up nearby, cancel healing immediately
+  if(d.state === "heal" && nearestVisibleEnemy(gx, gy, HEAL_SAFE_ENEMY_R)){
+    d.state = "idle";
+    d.target = null;
+    d.path = null;
+    d.think = 0;
+  }
+
+  if(injured && !d.carrying){
+    const safe = !nearestVisibleEnemy(gx, gy, HEAL_SAFE_ENEMY_R);
+    if(safe){
+      const ht = nearestHealingTower(gx, gy);
+      if(ht){
+        d.state = "heal";
+        d.target = { kind:"healTower", id: ht.id };
+
+        // Already at the tower: wait here (tower will heal)
+        if(gx === ht.x && gy === ht.y){
+          d.path = null;
+          return;
+        }
+
+        // Path to tower (if unreachable, fall back to normal AI)
+        if(!d.path || d.path.length === 0){
+          const p = bfsPath(gx, gy, (x,y)=>x===ht.x && y===ht.y, 220000) || null;
+          if(p){
+            d.path = p;
+            return;
+          }else{
+            // Can't reach the tower; don't get stuck
+            d.state = "idle";
+            d.target = null;
+            d.path = null;
+            d.think = 0;
+          }
+        }else{
+          return; // keep traveling to tower
+        }
+      }
+    }
+  }
+
+  // ============================================================
+  // 1) Pick up nearby ground loot (always)
+  // ============================================================
+  if(!d.carrying){
+    const nearLoot = findNearbyLoot(gx, gy, 2);
+    if(nearLoot){
+      d.carrying = nearLoot.payload;
+      const li = groundLoot.findIndex(x => x.id === nearLoot.id);
+      if(li >= 0) groundLoot.splice(li, 1);
+      d.state = "return";
+      d.path  = null;
+      markUI("hud");
+    }
+  }
+
+  // ============================================================
+  // 2) If carrying, return to nearest drop point
+  // ============================================================
+  if(d.carrying){
+    d.state = "return";
+    const dp = nearestDropPoint(gx, gy);
+
+    if(gx === dp.x && gy === dp.y){
+      if(d.carrying.kind === "currency"){
+        gold += Math.max(1, d.carrying.value|0);
+        markUI("hud");
+      }else if(d.carrying.kind === "item"){
+        addLootItem(d.carrying.item);
+      }
+      d.carrying = null;
+      d.state = "idle";
+      d.path  = null;
+    }else if(!d.path || d.path.length === 0){
+      d.path = bfsPath(gx, gy, (x,y)=>x===dp.x && y===dp.y, 220000) || null;
+    }
+    return;
+  }
+
+  // ============================================================
+  // 3) Decision-making (throttled)
+  // ============================================================
+  if(d.think <= 0){
+    d.think = 0.40 + Math.random()*0.20;
+
+    // Weapon dwarves: fight first (or guard behavior if assigned)
+    if(d.weapon){
+
+      if(isGuardFighter){
+        // If NO enemies AND NO spawners exist anywhere -> idle/hold post
+        if(enemies.length === 0 && spawners.length === 0){
+          d.state  = "guard";
+          d.target = { kind:"guard", id: guardPost.id };
+        }else{
+          // Enemies/spawners exist -> hunt within a big patrol radius, otherwise hold post
+          const tgt = nearestThreatGlobal(gx, gy);
+
+          if(tgt){
+            d.state  = "fight";
+            d.target = tgt; // { kind:"enemy"|"spawner", id }
+          }else{
+            d.state  = "guard";
+            d.target = { kind:"guard", id: guardPost.id };
+          }
+        }
+      }else{
+        // Normal fighter behavior (your original)
+        // Global pursuit: always hunt the closest enemy/spawner anywhere
+		const tgt = nearestThreatGlobal(gx, gy);
+		if(tgt){
+		  d.state  = "fight";
+		  d.target = tgt; // {kind:"enemy"|"spawner", id}
+		}else{
+		  d.state  = "idle";
+		  d.target = null;
+		}
+
+      }
+    }
+
+    // Pure miners: always prefer PATHABLE ore within range
+    else if(d.pickaxe){
+      const tgt = findPathableOreTargetAndPath(gx, gy, ORE_SCAN_RANGE);
+      if(tgt){
+        d.state  = "mineOre";
+        d.target = {
+          kind: "ore",
+          x: tgt.ore.x, y: tgt.ore.y,
+          standX: tgt.stand.x, standY: tgt.stand.y
+        };
+        d.path = tgt.path;
+      }else{
+        // no reachable ore nearby -> dig outward
+        d.state  = "mine";
+        d.target = null;
+      }
+    }
+
+    // No tools
+    else{
+      d.state  = "idle";
+      d.target = null;
+    }
+
+    // ============================================================
+// 4) Movement planning for decided state (UPDATED)
+// ============================================================
+if(d.state === "fight" && d.weapon){
+  const t = d.target;
+
+  // No target? Force immediate re-think so they always pursue something if it exists.
+  if(!t){
+    d.path  = null;
+    d.think = 0;
+  }else{
+    let tx = fortress.x, ty = fortress.y;
+    let ok = true;
+
+    if(t.kind === "enemy"){
+      const e = enemies.find(x=>x.id===t.id);
+      if(e && e.hp > 0){
+        tx = Math.round(e.x); ty = Math.round(e.y);
+      }else ok = false;
+
+    }else if(t.kind === "spawner"){
+      const s = spawners.find(x=>x.id===t.id);
+      const shp = (s && typeof s.hp === "number") ? s.hp : 1;
+      if(s && !s.dead && !s.destroyed && shp > 0){
+        tx = s.x; ty = s.y;
+      }else ok = false;
+
+    }else{
+      ok = false;
+    }
+
+    // Target invalid -> clear and re-decide immediately
+    if(!ok){
+      d.target = null;
+      d.path   = null;
+      d.think  = 0;
+    }else{
+      const wantRange = d.weapon.range || 1.2;
+      const reach = Math.ceil(wantRange);
+      const dd = manhattan(gx, gy, tx, ty);
+
+      if(dd > reach){
+        // Goal is ANY tile within weapon range of target (works for unwalkable spawner tiles)
+        const goal = (x,y)=> manhattan(x,y,tx,ty) <= reach;
+
+        let p = bfsPath(gx, gy, goal, 220000) || null;
+
+        // If goal is blocked/unreachable (e.g., walled off), walk to closest reachable approach tile
+        if(!p && typeof bfsPathClosestApproach === "function"){
+          p = bfsPathClosestApproach(gx, gy, tx, ty, 220000) || null;
+        }
+
+        d.path = p;
+
+        // If we still couldn't path, retry soon (keeps "pursue no matter what" behavior)
+        if(!d.path) d.think = 0.05;
+      }else{
+        // Close enough to attack (don’t jitter onto target tile)
+        d.path = null;
+      }
+    }
+  }
+}
+else if(d.state === "guard"){
+  const post = getGuardTowerById(d.guardPostId) || getGuardTowerById(d.target?.id);
+  if(!post){
+    d.state = "idle";
+    d.target = null;
+  }else{
+    const dd = manhattan(gx, gy, post.x, post.y);
+    const stationR = post.stationR ?? GUARD_STATION_R_DEFAULT;
+
+    if(dd > stationR){
+      d.path = bfsPath(gx, gy, (x,y)=>x===post.x && y===post.y, 220000) || null;
+    }else{
+      if(!d.path || d.path.length === 0){
+        guardWanderNearPost(d, post);
+      }
+    }
+  }
+}
+else if(d.state === "mine"){
+  if(!d.path || d.path.length === 0){
+    d.path = bfsToNearestFrontier(gx, gy, 220000) || null;
+  }
+}
+else if(d.state === "mineOre"){
+  // If we lost our path (blocked), we’ll rebuild when executing mineOre below.
+}
+else if(d.state === "idle"){
+  if(!d.path || d.path.length === 0){
+    dwarfWander(d);
+  }
+}
+}
+const stopped = (!d.path || d.path.length === 0);
+
+  // ============================================================
+  // 5) Combat execution
+  // ============================================================
+  // ============================================================
+// 5) Combat execution (FIXED t-scope + safer spawner HP)
+// ============================================================
+if(d.state === "fight" && d.weapon && d.atkTimer <= 0){
+  const t = d.target || null;
+  let acted = false;
+
+  const weaponRange = (typeof d.weapon.range === "number") ? d.weapon.range : 1.2;
+  const weaponRate  = (typeof d.weapon.rate  === "number" && d.weapon.rate > 0) ? d.weapon.rate : 1;
+  const dmg          = (typeof d.dmg === "number" && Number.isFinite(d.dmg)) ? d.dmg : 1;
+
+  // -------------------------------
+  // Honor explicit target first
+  // -------------------------------
+  if(t && t.kind === "enemy"){
+    const e = enemies.find(x=>x.id===t.id);
+    if(e && e.hp > 0){
+      const tx = Math.round(e.x), ty = Math.round(e.y);
+      const dd = manhattan(gx, gy, tx, ty);
+
+      if(dd <= weaponRange + 0.01){
+        d.atkTimer = 1 / weaponRate;
+        e.hp -= dmg;
+        acted = true;
+
+        if(e.hp <= 0){
+          grantXp(d, 22);
+          const cur = rollCurrencyDrop(e.sourceDepth);
+          groundLoot.push({ id:uuid(), x:tx, y:ty, payload:cur });
+
+          const item = rollLootDrop(e.sourceDepth);
+          if(item) groundLoot.push({ id:uuid(), x:tx, y:ty, payload:{ kind:"item", item } });
+
+          markUI("hud");
+        }
+      }
+    }else{
+      // target invalid -> clear so movement/decision can retarget
+      d.target = null;
+      d.think  = 0;
+      d.path   = null;
+    }
+  }
+  else if(t && t.kind === "spawner"){
+    const s = spawners.find(x=>x.id===t.id);
+
+    // Target vanished / dead -> force immediate retarget
+    if(!s || s.dead || s.destroyed || (typeof s.hp === "number" && s.hp <= 0)){
+      d.target = null;
+      d.think  = 0;
+      d.path   = null;
+    }else{
+      // Ensure HP is numeric (prevents NaN immortal spawners)
+      if(typeof s.maxHp !== "number") s.maxHp = 80;
+      if(typeof s.hp !== "number" || !Number.isFinite(s.hp)) s.hp = s.maxHp;
+
+      const dd = manhattan(gx, gy, s.x, s.y);
+      if(dd <= weaponRange + 0.01){
+        d.atkTimer = 1 / weaponRate;
+        s.hp -= dmg;
+        acted = true;
+
+        if(s.hp <= 0){
+          s.hp = 0;
+          s.dead = true;
+          s.destroyed = true;
+
+          grantXp(d, 60);
+          toast("Spawner destroyed!");
+          markUI("hud");
+
+          // Optional drops
+          if(typeof rollCurrencyDrop === "function"){
+            const cur = rollCurrencyDrop(s.sourceDepth || 0);
+            if(cur) groundLoot.push({ id:uuid(), x:s.x, y:s.y, payload:cur });
+          }
+          if(typeof rollLootDrop === "function"){
+            const item = rollLootDrop(s.sourceDepth || 0);
+            if(item) groundLoot.push({ id:uuid(), x:s.x, y:s.y, payload:{ kind:"item", item } });
+          }
+
+          // Clear target so next think immediately chooses next closest threat
+          d.target = null;
+          d.think  = 0;
+          d.path   = null;
+        }
+      }
+    }
+  }
+
+  // -------------------------------
+  // Fallback: if we didn't act, try something in range this frame
+  // (keeps combat responsive even if target is out of range)
+  // -------------------------------
+  if(!acted){
+    const targetEnemy = nearestVisibleEnemy(gx, gy, Math.floor(weaponRange));
+    if(targetEnemy){
+      const tx = Math.round(targetEnemy.x), ty = Math.round(targetEnemy.y);
+      const dd = manhattan(gx, gy, tx, ty);
+
+      if(dd <= weaponRange + 0.01){
+        d.atkTimer = 1 / weaponRate;
+        targetEnemy.hp -= dmg;
+
+        if(targetEnemy.hp <= 0){
+          grantXp(d, 22);
+          const cur = rollCurrencyDrop(targetEnemy.sourceDepth);
+          groundLoot.push({ id:uuid(), x:tx, y:ty, payload:cur });
+
+          const item = rollLootDrop(targetEnemy.sourceDepth);
+          if(item) groundLoot.push({ id:uuid(), x:tx, y:ty, payload:{ kind:"item", item } });
+
+          markUI("hud");
+        }
+      }
+    }else{
+      const s2 = nearestSpawner(gx, gy, 200);
+      if(s2){
+        if(typeof s2.maxHp !== "number") s2.maxHp = 80;
+        if(typeof s2.hp !== "number" || !Number.isFinite(s2.hp)) s2.hp = s2.maxHp;
+
+        const dd = manhattan(gx, gy, s2.x, s2.y);
+        if(dd <= weaponRange + 0.01){
+          d.atkTimer = 1 / weaponRate;
+          s2.hp -= dmg;
+
+          if(s2.hp <= 0){
+            s2.hp = 0;
+            s2.dead = true;
+            s2.destroyed = true;
+
+            grantXp(d, 60);
+            toast("Spawner destroyed!");
+            markUI("hud");
+          }
+        }
+      }
+    }
+  }
+}
+
+
+  // ============================================================
+  // 6) Ore-focused mining (pathable target) — PURE MINERS
+  // ============================================================
+  if(d.state === "mineOre" && d.pickaxe && !d.weapon){
+    const t = d.target;
+
+    // target invalid or already mined -> rethink soon
+    if(!t || !inBounds(t.x,t.y) || !isOre(tType[idx(t.x,t.y)])){
+      d.state = "mine";
+      d.target = null;
+      d.think = 0;
+      return;
+    }
+
+    // stand tile must remain walkable
+    if(!inBounds(t.standX, t.standY) || !isWalkable(tType[idx(t.standX, t.standY)])){
+      d.state = "mine";
+      d.target = null;
+      d.path = null;
+      d.think = 0;
+      return;
+    }
+
+    // get adjacent to the ore
+    if(gx !== t.standX || gy !== t.standY){
+      if(!d.path || d.path.length === 0){
+        d.path = bfsPath(gx, gy, (x,y)=>x===t.standX && y===t.standY, 220000) || null;
+        // if still null, just rethink next tick
+        if(!d.path) d.think = 0;
+      }
+      return;
+    }
+
+    // mine the ore tile itself
+    d.miningTimer += dt;
+    const hitsPerSec = 3.4 * d.miningRate;
+    const interval = 1 / hitsPerSec;
+
+    while(d.miningTimer >= interval){
+      d.miningTimer -= interval;
+
+      const res = mineTile(t.x, t.y, d.miningPower);
+      if(res.ok) grantXp(d, 1);
+
+      if(res.destroyed){
+        if(res.currency){
+          d.carrying = res.currency;
+          d.state = "return";
+          d.path = null;
+          markUI("hud");
+        }else{
+          // ore destroyed without a currency payload (rare) -> just retarget
+          d.state = "mine";
+          d.target = null;
+          d.think = 0;
+        }
+        break;
+      }
+    }
+    return; // don't also do fallback mining this frame
+  }
+
+  // ============================================================
+  // 7) Fallback mining (frontier / general digging)
+  // ============================================================
+  if(d.state === "mine" && d.pickaxe && stopped){
+    let dig = null;
+    if(d.target && d.target.kind === "ore"){
+      dig = pickAdjacentDigTargetToward(d, d.target);
+    }
+    if(!dig) dig = pickAdjacentDigTargetAny(d);
+
+    if(dig){
+      d.miningTimer += dt;
+      const hitsPerSec = 3.4 * d.miningRate;
+      const interval = 1 / hitsPerSec;
+
+      while(d.miningTimer >= interval){
+        d.miningTimer -= interval;
+
+        const res = mineTile(dig.x, dig.y, d.miningPower);
+        if(res.ok) grantXp(d, 1);
+
+        if(res.destroyed && res.currency){
+          d.carrying = res.currency;
+          d.state = "return";
+          d.path = null;
+          markUI("hud");
+          break;
+        }
+      }
+    }
+  }
+}
+
+
+
+  // ============================================================
+  // Enemy AI
+  // ============================================================
+  function nearestEnemyTarget(e){
+	let best = {kind:"fortress", x:fortress.x, y:fortress.y, ref:null};
+	let bestD = manhattan(Math.round(e.x),Math.round(e.y), fortress.x, fortress.y);
+
+	for(const d of dwarves){
+	  const dd = manhattan(Math.round(e.x),Math.round(e.y), Math.round(d.x),Math.round(d.y));
+	  if(dd < bestD){ bestD=dd; best={kind:"dwarf", x:Math.round(d.x), y:Math.round(d.y), ref:d}; }
+	}
+	for(const t of towers){
+	  const dd = manhattan(Math.round(e.x),Math.round(e.y), t.x,t.y);
+	  if(dd < bestD){ bestD=dd; best={kind:"tower", x:t.x, y:t.y, ref:t}; }
+	}
+	for(const dp of depots){
+	  const dd = manhattan(Math.round(e.x),Math.round(e.y), dp.x,dp.y);
+	  if(dd < bestD){ bestD=dd; best={kind:"depot", x:dp.x, y:dp.y, ref:dp}; }
+	}
+	return best;
+  }
+
+  function updateEnemy(e, dt){
+  if(!e || e.hp <= 0) return;
+
+  e.think    = (e.think    ?? 0) - dt;
+  e.atkTimer = (e.atkTimer ?? 0) - dt;
+
+  // --- Specials (phaser / shaman aura / necromancer summons, etc.) ---
+  if(typeof tickEnemySpecials === "function") tickEnemySpecials(e, dt);
+
+  // --- Recover from slows back toward base speed (so frost doesn't permanently cripple) ---
+  if(e.baseSpeed == null) e.baseSpeed = e.speed;
+  if(e.speed != null && e.baseSpeed != null){
+	const recoverPerSec = 0.75; // higher = faster recovery
+	const k = 1 - Math.exp(-recoverPerSec * dt);
+	e.speed += (e.baseSpeed - e.speed) * k;
+  }
+
+  // move using your existing path walker
+  stepAlongPath(e, dt);
+
+  const gx = Math.round(e.x), gy = Math.round(e.y);
+  if(!inBounds(gx,gy)) return;
+  if(!isWalkable(tType[idx(gx,gy)])) return;
+
+  // --- Re-path / target thinking ---
+  if(e.think <= 0){
+	// Slight per-type variation so they feel different
+	const thinkBase =
+	  (e.type === "runner") ? 0.40 :
+	  (e.type === "bat")    ? 0.46 :
+	  (e.type === "troll")  ? 0.72 :
+	  0.58;
+
+	e.think = thinkBase + Math.random()*0.22;
+
+	const t = nearestEnemyTarget(e);
+	if(!t){ e.path = null; return; }
+
+	const dd = manhattan(gx,gy, t.x,t.y);
+
+	// Necromancer tries to stay a few tiles away while summoning
+	const stopDist =
+	  (e.type === "necromancer") ? 3 :
+	  (e.type === "shaman")      ? 2 :
+	  1;
+
+	if(dd > stopDist){
+	  // path to "within stopDist of target" (not necessarily adjacent)
+	  e.path = bfsPath(
+		gx, gy,
+		(x,y)=>manhattan(x,y, t.x,t.y) <= stopDist,
+		220000
+	  ) || null;
+	}else{
+	  e.path = null;
+	}
+  }
+
+  // --- Attack cadence per type (still melee adjacency like your original) ---
+  const atkRate =
+	(e.type==="bat")        ? 1.35 :
+	(e.type==="runner")     ? 1.20 :
+	(e.type==="troll")      ? 0.75 :
+	(e.type==="necromancer")? 0.85 :
+	1.00;
+
+  if(e.atkTimer <= 0){
+	e.atkTimer = 1 / atkRate;
+
+	// Prefer hitting dwarves if adjacent (same as you had)
+	for(const d of dwarves){
+	  if(manhattan(gx,gy, Math.round(d.x),Math.round(d.y))<=1){
+		const dealt = Math.max(1, Math.round(e.dmg * (1 - (d.defense||0))));
+		d.hp -= dealt;
+		markUI("dwarves","selected","hud");
+		return;
+	  }
+	}
+
+	// Then towers
+	for(const t of towers){
+	  if(manhattan(gx,gy,t.x,t.y)<=1){
+		const dealt = (e.type==="bomber") ? Math.max(1, Math.round(e.dmg*1.25)) : e.dmg;
+		t.hp -= dealt;
+		markUI("hud");
+		return;
+	  }
+	}
+
+	// Then depots
+	for(const dp of depots){
+	  if(manhattan(gx,gy,dp.x,dp.y)<=1){
+		const dealt = (e.type==="bomber") ? Math.max(1, Math.round(e.dmg*1.15)) : e.dmg;
+		dp.hp -= dealt;
+		markUI("hud");
+		return;
+	  }
+	}
+
+	// Finally fortress
+	if(manhattan(gx,gy, fortress.x, fortress.y)<=1){
+	  const dealt = (e.type==="bomber") ? Math.max(1, Math.round(e.dmg*1.15)) : e.dmg;
+	  fortress.hp -= dealt;
+	  markUI("hud");
+	}
+  }
+}
+
+
+  function updateSpawners(dt){
+	for(let i=spawners.length-1;i>=0;i--){
+	  const s = spawners[i];
+	  if(s.hp<=0){
+		spawners.splice(i,1);
+		continue;
+	  }
+	  s.timer += dt;
+	  if(s.timer >= s.interval){
+		s.timer=0;
+		const depth = depthAt(s.x,s.y) + s.tier*18;
+		const burst = (Math.random() < 0.18 + s.tier*0.03) ? 2 : 1;
+		for(let k=0;k<burst;k++) enemies.push(makeEnemy(s.x, s.y, depth));
+		markUI("hud");
+	  }
+	}
+  }
+function isEnemyAlive(e){ return !!e && e.hp > 0; }
+
+function isSpawnerAlive(s){
+  if(!s) return false;
+  // If hp not initialized, treat as alive (we’ll init on hit)
+  const hp = (typeof s.hp === "number") ? s.hp : 1;
+  return hp > 0 && !s.dead && !s.destroyed;
+}
+
+function dist2(ax,ay,bx,by){
+  const dx=ax-bx, dy=ay-by;
+  return dx*dx + dy*dy;
+}
+
+function nearestLivingEnemyGlobal(gx, gy){
+  let best=null, bestD=1e18;
+  for(const e of enemies){
+    if(!isEnemyAlive(e)) continue;
+    const d = dist2(gx, gy, e.x, e.y);
+    if(d < bestD){ bestD=d; best=e; }
+  }
+  return best;
+}
+
+function nearestLivingSpawnerGlobal(gx, gy){
+  let best=null, bestD=1e18;
+  for(const s of spawners){
+    if(!isSpawnerAlive(s)) continue;
+    const d = dist2(gx, gy, s.x, s.y);
+    if(d < bestD){ bestD=d; best=s; }
+  }
+  return best;
+}
+
+function nearestThreatGlobal(gx, gy){
+  const e = nearestLivingEnemyGlobal(gx, gy);
+  const s = nearestLivingSpawnerGlobal(gx, gy);
+  if(!e && !s) return null;
+  if(e && !s) return { kind:"enemy", id:e.id };
+  if(s && !e) return { kind:"spawner", id:s.id };
+  const de = dist2(gx,gy,e.x,e.y);
+  const ds = dist2(gx,gy,s.x,s.y);
+  return (de <= ds) ? { kind:"enemy", id:e.id } : { kind:"spawner", id:s.id };
+}
+
+/**
+ * If a goal is unreachable (e.g., spawner behind walls), return a path to the
+ * reachable tile that gets us *closest* to (tx,ty).
+ */
+function bfsPathClosestApproach(sx, sy, tx, ty, limit){
+  const W_ = W, H_ = H;
+  const qx = new Int32Array(Math.min(limit, W_*H_));
+  const qy = new Int32Array(Math.min(limit, W_*H_));
+  let qh=0, qt=0;
+
+  const seen = new Uint8Array(W_*H_);
+  const prev = new Int32Array(W_*H_);
+  prev.fill(-1);
+
+  const startI = idx(sx, sy);
+  seen[startI]=1;
+  qx[qt]=sx; qy[qt]=sy; qt++;
+
+  let bestI = startI;
+  let bestScore = manhattan(sx, sy, tx, ty);
+
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+
+  let steps=0;
+  while(qh<qt && steps < limit && qt < qx.length){
+    const x=qx[qh], y=qy[qh]; qh++; steps++;
+
+    const score = manhattan(x,y,tx,ty);
+    if(score < bestScore){
+      bestScore = score;
+      bestI = idx(x,y);
+      if(bestScore === 0) break;
+    }
+
+    for(const [dx,dy] of dirs){
+      const nx=x+dx, ny=y+dy;
+      if(nx<0||ny<0||nx>=W_||ny>=H_) continue;
+      const ii = idx(nx,ny);
+      if(seen[ii]) continue;
+      if(!isWalkable(tType[ii])) continue;
+
+      seen[ii]=1;
+      prev[ii]=idx(x,y);
+      qx[qt]=nx; qy[qt]=ny; qt++;
+      if(qt>=qx.length) break;
+    }
+  }
+
+  if(bestI === startI) return null;
+
+  // rebuild path from bestI back to start
+  const path = [];
+  let cur = bestI;
+  while(cur !== startI && cur !== -1){
+    const x = cur % W_;
+    const y = (cur / W_) | 0;
+    path.push({x,y});
+    cur = prev[cur];
+  }
+  path.reverse();
+  return path.length ? path : null;
+}
+
+
+  // ============================================================
+  // Towers
+  // ============================================================
+  function updateTowers(dt){
+  // decrement active haste buffs on towers (if any)
+  for (const t of towers){
+    if ((t.hasteLeft ?? 0) > 0){
+      t.hasteLeft = Math.max(0, t.hasteLeft - dt);
+      if (t.hasteLeft === 0) {
+        // buff expired; leave hasteMult as-is (harmless) but you can clear if you want:
+        // delete t.hasteMult;
+      }
+    }
+  }
+
+  // helper: cooldown in seconds, respecting haste (hasteMult = cooldown multiplier)
+  function cd(t){
+    const mult = ((t.hasteLeft ?? 0) > 0 && t.hasteMult) ? t.hasteMult : 1;
+    return (1 / t.rate) * mult;
+  }
+
+  // optional helpers for guard effects (safe if unused elsewhere)
+  function applyKnockback(target, fromX, fromY, tiles){
+    if(!tiles || tiles<=0) return;
+    // If your enemies already use vx/vy, you can convert this to velocity instead.
+    const dx = target.x - fromX, dy = target.y - fromY;
+    const mag = Math.hypot(dx,dy) || 1;
+    const nx = dx / mag, ny = dy / mag;
+    target.x += nx * tiles;
+    target.y += ny * tiles;
+  }
+
+  for(const t of towers){
+    t.timer = (t.timer ?? 0) - dt;
+    if(t.timer > 0) continue;
+
+    // -------------------------
+    // Haste tower behavior
+    // -------------------------
+    if(t.type==="haste"){
+      t.timer = cd(t);
+      const r2 = t.range * t.range;
+
+      let buffedAny = false;
+      for(const other of towers){
+        if(other === t) continue; // don't buff self
+        if(dist2(t.x,t.y, other.x,other.y) <= r2){
+          other.hasteLeft = Math.max(other.hasteLeft ?? 0, t.buffDur);
+          other.hasteMult = t.hasteMult;
+
+          // optionally let the buff affect their *next* action sooner
+          const nextCd = cd(other);
+          other.timer = Math.min(other.timer ?? 0, nextCd);
+
+          buffedAny = true;
+        }
+      }
+      if(buffedAny) markUI("hud");
+      continue;
+    }
+
+    // -------------------------
+    // Healing tower behavior
+    // -------------------------
+    if(t.type==="heal"){
+      t.timer = cd(t);
+      const r2 = t.range*t.range;
+
+      let healedAny = false;
+      for(const d of dwarves){
+        if(d.hp >= d.maxHp) continue;
+        if(dist2(t.x,t.y, d.x, d.y) <= r2){
+          d.hp = Math.min(d.maxHp, d.hp + t.heal);
+          healedAny = true;
+        }
+      }
+      if(healedAny) markUI("dwarves","selected","hud");
+      continue;
+    }
+
+    // -------------------------
+    // Offensive towers (arrow/cannon/frost/guard)
+    // -------------------------
+    const r2 = t.range*t.range;
+    let best=null, bestD=1e18;
+
+    for(const e of enemies){
+      const d2 = dist2(t.x,t.y, e.x,e.y);
+      if(d2 <= r2 && d2 < bestD){ bestD=d2; best=e; }
+    }
+    if(!best) continue;
+
+    t.timer = cd(t);
+
+    if(t.type==="frost"){
+      best.speed *= (1 - t.slow);
+      best.hp -= t.dmg;
+
+    }else if(t.type==="cannon"){
+      best.hp -= t.dmg;
+      const splash2 = t.splash*t.splash;
+      for(const e of enemies){
+        if(e===best) continue;
+        if(dist2(best.x,best.y,e.x,e.y) <= splash2){
+          e.hp -= Math.round(t.dmg*0.65);
+        }
+      }
+
+    }else if(t.type==="guard"){
+      // heavy hit + optional knockback/stun hooks
+      best.hp -= t.dmg;
+
+      // optional: knockback (only if you want it)
+      if(t.knock) applyKnockback(best, t.x, t.y, t.knock);
+
+      // optional: brief stun. If your enemy AI checks e.stunLeft, great.
+      // If not, it's harmless to store it.
+      if(t.stun){
+        best.stunLeft = Math.max(best.stunLeft ?? 0, t.stun);
+      }
+
+    }else{
+      // default single-target (arrow)
+      best.hp -= t.dmg;
+    }
+
+    markUI("hud");
+  }
+}
+
+
+
+
+  // ============================================================
+  // Cleanup / Game Over
+  // ============================================================
+  let paused=false;
+  let isGameOver=false;
+
+  function gameOver(){
+	isGameOver=true;
+	paused=true;
+	UI.btnPause.textContent="Resume";
+	toast("Your fortress fell. Game over.");
+  }
+
+  function removeDead(){
+	for(let i=dwarves.length-1;i>=0;i--){
+	  const d=dwarves[i];
+	  if(d.hp<=0){
+		if(selected.kind==="dwarf" && selected.id===d.id) setSelected(null,null);
+		dwarves.splice(i,1);
+		markUI("dwarves","selected","hud");
+	  }
+	}
+	for(let i=enemies.length-1;i>=0;i--){
+	  if(enemies[i].hp<=0) enemies.splice(i,1);
+	}
+	for(let i=towers.length-1;i>=0;i--){
+	  if(towers[i].hp<=0) towers.splice(i,1);
+	}
+	for(let i=depots.length-1;i>=0;i--){
+	  if(depots[i].hp<=0) depots.splice(i,1);
+	}
+	if(fortress.hp<=0){
+	  fortress.hp=0;
+	  gameOver();
+	}
+  }
+
+  // ============================================================
+  // Selection / Build placement
+  // ============================================================
+  let selected = { kind:null, id:null };
+
+  function setSelected(kind,id){
+	selected.kind=kind;
+	selected.id=id;
+	markUI("selected","inv"); // inventory equip enable/disable depends on selected dwarf
+  }
+  function getSelectedDwarf(){
+	if(selected.kind!=="dwarf") return null;
+	return dwarves.find(x=>x.id===selected.id) || null;
+  }
+
+  canvas.addEventListener("mousedown", e => {
+	if(e.target !== canvas) return;
+	if(e.button!==0) return;
+	if(rightDragging) return;
+if(isGameOver) return;
+
+	const rect=canvas.getBoundingClientRect();
+	const w = screenToWorld(e.clientX-rect.left, e.clientY-rect.top);
+	const tx=Math.round(w.x), ty=Math.round(w.y);
+	if(!inBounds(tx,ty)) return;
+
+	if(buildMode!==BUILD_NONE){
+	  if(!canBuildAt(tx,ty)){ toast("Can't build there."); return; }
+	  if(buildMode===BUILD_DEPOT){
+		if(gold < COST.depot){ toast("Not enough gold."); return; }
+		gold -= COST.depot;
+		addDepot(tx,ty);
+		toast("Depot built.");
+	  }else if(buildMode===BUILD_ARROW){
+		if(gold < COST.arrow){ toast("Not enough gold."); return; }
+		gold -= COST.arrow;
+		addTower("arrow",tx,ty);
+		toast("Arrow tower built.");
+	  }else if(buildMode===BUILD_CANNON){
+		if(gold < COST.cannon){ toast("Not enough gold."); return; }
+		gold -= COST.cannon;
+		addTower("cannon",tx,ty);
+		toast("Cannon tower built.");
+	  }else if(buildMode===BUILD_FROST){
+		if(gold < COST.frost){ toast("Not enough gold."); return; }
+		gold -= COST.frost;
+		addTower("frost",tx,ty);
+		toast("Frost tower built.");
+	  }
+	  else if(buildMode===BUILD_HEAL){
+		  if(gold < COST.heal){ toast("Not enough gold."); return; }
+		  gold -= COST.heal;
+		  addTower("heal",tx,ty);
+		  toast("Healing tower built.");
+		}
+		else if(buildMode===BUILD_GUARD){
+  if(gold < COST.guard){ toast("Not enough gold."); return; }
+  gold -= COST.guard;
+  addTower("guard", tx, ty);
+
+  // immediately assign guards if possible
+  rebuildGuardLists();
+  fillGuardPosts();
+
+  const post = towers[towers.length-1];
+  const n = (post && post.type==="guard" && Array.isArray(post.guards)) ? post.guards.length : 0;
+  toast(`Guard post built. Assigned ${n}/2 fighters.`);
+}
+
+		else if(buildMode===BUILD_HASTE){
+  if(gold < COST.haste){ toast("Not enough gold."); return; }
+  gold -= COST.haste;
+  addTower("haste", tx, ty);
+  toast("Haste tower built.");
+}
+
+	  markUI("hud");
+	  return;
+	}
+
+	// select dwarf if clicked near
+	const pickR=0.75;
+	let best=null, bestD=pickR;
+	for(const d of dwarves){
+	  const dd = Math.hypot(d.x-w.x, d.y-w.y);
+	  if(dd<bestD){ bestD=dd; best=d; }
+	}
+	if(best) setSelected("dwarf", best.id);
+  });
+
+  // ============================================================
+  // Recruiting
+  // ============================================================
+  let recruitCount=0;
+  function recruitCost(){
+	return Math.round(15 + recruitCount*2 + recruitCount*recruitCount);
+  }
+
+  // ============================================================
+  // Equipping - swaps old gear back to loot
+  // ============================================================
+  function equipSelected(itemId){
+	const d = getSelectedDwarf();
+	if(!d){ toast("Select a dwarf first."); return; }
+
+	const i = loot.findIndex(x => x.id === itemId);
+	if(i < 0) return;
+
+	const it = loot.splice(i, 1)[0];
+
+	const slot = (it.category === "armor") ? "armor"
+			   : (it.category === "weapon") ? "weapon"
+			   : "pickaxe";
+
+	if(d[slot]) addLootItem(d[slot]);
+	d[slot] = it;
+	applyDwarfStats(d);
+
+	toast(`Equipped on ${d.name}: ${it.name}`);
+	markUI("selected","dwarves","inv","hud");
+  }
+
+  function unequipSlot(slot){
+	const d = getSelectedDwarf();
+	if(!d) return;
+	if(!d[slot]) return;
+	addLootItem(d[slot]);
+	d[slot]=null;
+	applyDwarfStats(d);
+	toast(`Unequipped ${slot}.`);
+	markUI("selected","dwarves","inv","hud");
+  }
+
+  UI.unequipArmor.addEventListener("click", ()=>unequipSlot("armor"));
+  UI.unequipWeapon.addEventListener("click", ()=>unequipSlot("weapon"));
+  UI.unequipPick.addEventListener("click", ()=>unequipSlot("pickaxe"));
+
+  // ============================================================
+  // Save / Load (localStorage)
+  // ============================================================
+  const SAVE_KEY = "dwarven_fortress_deepwild_remaster_v1";
+
+ // ============================================================
+// Save/Load (quota-safe): prune transient data + gzip compress
+// ============================================================
+
+const SAVE_MAGIC = "DWGZ2:"; // prefix to indicate gzipped JSON payload
+
+// Use existing b64 helper if you already have it, otherwise fallback
+const _u8ToB64 = (window.b64 && b64.u8ToB64) ? (u8)=>b64.u8ToB64(u8) : (u8)=>{
+  let s = "";
+  const CHUNK = 0x8000;
+  for(let i=0;i<u8.length;i+=CHUNK){
+    s += String.fromCharCode.apply(null, u8.subarray(i, i+CHUNK));
+  }
+  return btoa(s);
+};
+const _b64ToU8 = (window.b64 && b64.b64ToU8) ? (s)=>b64.b64ToU8(s) : (s)=>{
+  const bin = atob(s);
+  const u8 = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) u8[i] = bin.charCodeAt(i);
+  return u8;
+};
+
+async function gzipU8(u8){
+  if(!("CompressionStream" in window)) return u8;
+  const stream = new Blob([u8]).stream().pipeThrough(new CompressionStream("gzip"));
+  const ab = await new Response(stream).arrayBuffer();
+  return new Uint8Array(ab);
+}
+async function gunzipU8(u8){
+  if(!("DecompressionStream" in window)) throw new Error("DecompressionStream not available");
+  const stream = new Blob([u8]).stream().pipeThrough(new DecompressionStream("gzip"));
+  const ab = await new Response(stream).arrayBuffer();
+  return new Uint8Array(ab);
+}
+async function gzipStrToB64(str){
+  const u8 = new TextEncoder().encode(str);
+  const gz = await gzipU8(u8);
+  return _u8ToB64(gz);
+}
+async function gunzipB64ToStr(b64){
+  const gz = _b64ToU8(b64);
+  const u8 = await gunzipU8(gz);
+  return new TextDecoder().decode(u8);
+}
+
+// Remove common “save bloat” (pathfinding + oversized arrays)
+function pruneEntity(obj){
+  const o = { ...obj };
+
+  // common transient/pathfinding keys
+  delete o.path;
+  delete o._path;
+  delete o.navPath;
+  delete o.route;
+  delete o.cameFrom;
+  delete o.openSet;
+  delete o.closedSet;
+  delete o.frontier;
+  delete o.debug;
+  delete o.tmp;
+
+  // generic “big array” scrub (keeps small arrays like inventory/effects)
+  for(const k of Object.keys(o)){
+    const v = o[k];
+    if(Array.isArray(v) && v.length > 96) delete o[k];
+  }
+  return o;
+}
+
+// Keep your original function names so existing UI wiring still works
+function saveGame(){ saveGameAsync(); }
+function loadGame(){ loadGameAsync(); }
+
+async function saveGameAsync(){
+  try{
+    const save = {
+      v: 2,
+      W, H,
+      fortress: { x:fortress.x, y:fortress.y, hp:fortress.hp, maxHp:fortress.maxHp },
+      cam: { x:cam.x, y:cam.y, zoom:cam.zoom },
+      gold,
+      recruitCount,
+      dwarfCounter,
+
+      forge: forge ? { ...forge } : null,
+
+      depots: depots.map(pruneEntity),
+      towers: towers.map(pruneEntity),
+      spawners: spawners.map(pruneEntity),
+      enemies: enemies.map(pruneEntity),
+
+      groundLoot: groundLoot.map(L=>({ id:L.id, x:L.x, y:L.y, payload:L.payload })),
+
+      loot: loot.map(pruneEntity),
+      dwarves: dwarves.map(pruneEntity),
+
+      // store raw tile buffers (we'll gzip the whole save payload)
+      tTypeB64: _u8ToB64(new Uint8Array(tType.buffer)),
+      tHpB64:   _u8ToB64(new Uint8Array(tHp.buffer)),
+    };
+
+    const json = JSON.stringify(save);
+    const payloadB64 = await gzipStrToB64(json);
+    const packed = SAVE_MAGIC + payloadB64;
+
+    // IMPORTANT: remove first to avoid "old+new" temporary quota spike
+    localStorage.removeItem(SAVE_KEY);
+    localStorage.setItem(SAVE_KEY, packed);
+
+    const approxBytes = new Blob([packed]).size;
+    toast(`Saved locally. (~${Math.round(approxBytes/1024)} KB)`);
+  }catch(err){
+    console.error(err);
+    toast("Save failed (storage may be full).");
+  }
+}
+
+async function loadGameAsync(){
+  try{
+    const raw = localStorage.getItem(SAVE_KEY);
+    if(!raw){ toast("No local save found."); return; }
+
+    // Support: new gzipped format OR old plain JSON
+    let jsonStr = raw;
+    if(raw.startsWith(SAVE_MAGIC)){
+      jsonStr = await gunzipB64ToStr(raw.slice(SAVE_MAGIC.length));
+    }
+
+    const save = JSON.parse(jsonStr);
+
+    // Back-compat with your old v1 saves (if you ever have them)
+    const ver = save?.v ?? 1;
+
+    if(!save || (ver!==1 && ver!==2) || save.W!==W || save.H!==H){
+      toast("Save incompatible with this version/world size.");
+      return;
+    }
+
+    // Tiles
+    if(ver === 2){
+      const tTypeU8 = _b64ToU8(save.tTypeB64);
+      const tHpU8   = _b64ToU8(save.tHpB64);
+
+      if(tTypeU8.length !== tType.byteLength || tHpU8.length !== tHp.byteLength){
+        toast("Save corrupted (tile data size mismatch).");
+        return;
+      }
+      new Uint8Array(tType.buffer).set(tTypeU8);
+      new Uint8Array(tHp.buffer).set(tHpU8);
+    }else{
+      // original v1 fields
+      const tTypeU8 = b64.b64ToU8(save.tType);
+      const tHpU8   = b64.b64ToU8(save.tHp);
+      if(tTypeU8.length !== tType.byteLength || tHpU8.length !== tHp.byteLength){
+        toast("Save corrupted (tile data size mismatch).");
+        return;
+      }
+      new Uint8Array(tType.buffer).set(tTypeU8);
+      new Uint8Array(tHp.buffer).set(tHpU8);
+    }
+
+    fortress.hp = save.fortress.hp;
+    fortress.maxHp = save.fortress.maxHp;
+
+    cam.x = save.cam?.x ?? fortress.x;
+    cam.y = save.cam?.y ?? fortress.y;
+    cam.zoom = save.cam?.zoom ?? 1.0;
+
+    gold = save.gold|0;
+    recruitCount = save.recruitCount|0;
+    dwarfCounter = save.dwarfCounter|0;
+
+    depots.length=0; towers.length=0; spawners.length=0; enemies.length=0; groundLoot.length=0;
+    loot.length=0; dwarves.length=0;
+
+    forge = save.forge ? { ...save.forge } : null;
+
+    for(const d of (save.depots||[])) depots.push({ ...d });
+    for(const t of (save.towers||[])) towers.push({ ...t });
+    for(const s of (save.spawners||[])) spawners.push({ ...s });
+    for(const e of (save.enemies||[])) enemies.push({ ...e });
+    for(const L of (save.groundLoot||[])) groundLoot.push({ ...L });
+
+    for(const it of (save.loot||[])) loot.push({ ...it });
+    loot.sort(sortLoot);
+
+    for(const d of (save.dwarves||[])){
+      const dd = { ...d };
+      // ensure transient runtime fields are reset
+      dd.path = null;
+      dd.think = 0;
+      dd.miningTimer = dd.miningTimer || 0;
+      dd.atkTimer = dd.atkTimer || 0;
+      applyDwarfStats(dd);
+      dd.hp = clamp(d.hp ?? dd.hp, 0, dd.maxHp);
+      dwarves.push(dd);
+    }
+
+    setSelected(null,null);
+    setBuildMode(BUILD_NONE);
+
+    toast("Loaded local save.");
+    markUI("all");
+  }catch(err){
+    console.error(err);
+    toast("Load failed (save may be corrupted).");
+  }
+}
+
+  // ============================================================
+  // UI (fast/dirty-driven)
+  // ============================================================
+  const DIRTY = { hud:true, dwarves:true, selected:true, forge:true, inv:true };
+  function markUI(...keys){
+	if(keys.includes("all")){
+	  for(const k in DIRTY) DIRTY[k]=true;
+	  return;
+	}
+	for(const k of keys) if(DIRTY[k] !== undefined) DIRTY[k]=true;
+  }
+
+  function fmtGold(n){ return `${Math.max(0, Math.round(n))}g`; }
+
+  // Tabs
+  function setLeftTab(name){
+	UI.tabs.forEach(t => t.classList.toggle("on", t.dataset.tab === name));
+	UI.tabDwarves.hidden = name !== "dwarves";
+	UI.tabBuild.hidden   = name !== "build";
+	UI.tabForge.hidden   = name !== "forge";
+  }
+  UI.tabs.forEach(t => t.addEventListener("click", ()=> setLeftTab(t.dataset.tab)));
+
+  // Panel collapses
+  UI.leftCollapse.addEventListener("click", ()=>{
+	const col = UI.panelLeft.classList.toggle("collapsed");
+	UI.leftCollapse.textContent = col ? "⟩" : "⟨";
+  });
+  UI.invCollapse.addEventListener("click", ()=>{
+	const col = UI.panelInv.classList.toggle("collapsed");
+	UI.invCollapse.textContent = col ? "⟨" : "⟩";
+  });
+
+  // Buttons
+  UI.btnPause.addEventListener("click", ()=>{
+	paused=!paused;
+	UI.btnPause.textContent = paused ? "Resume" : "Pause";
+  });
+
+  UI.btnRecruit.addEventListener("click", ()=>{
+if(isGameOver) return;
+	const cost = recruitCost();
+	if(gold < cost){ toast("Not enough gold to recruit."); return; }
+	gold -= cost;
+	recruitCount++;
+	const d = makeDwarf();
+	applyDwarfStats(d);
+	dwarves.push(d);
+	toast(`${d.name} joined your fortress.`);
+	markUI("hud","dwarves","selected","inv");
+  });
+
+  UI.btnSave.addEventListener("click", ()=>{ if(isGameOver) return; saveGame(); });
+  UI.btnLoad.addEventListener("click", ()=>{ loadGame(); });
+
+  // Build buttons
+  UI.buildDepot.addEventListener("click", ()=>setBuildMode(buildMode===BUILD_DEPOT?BUILD_NONE:BUILD_DEPOT));
+  UI.buildArrow.addEventListener("click", ()=>setBuildMode(buildMode===BUILD_ARROW?BUILD_NONE:BUILD_ARROW));
+  UI.buildCannon.addEventListener("click", ()=>setBuildMode(buildMode===BUILD_CANNON?BUILD_NONE:BUILD_CANNON));
+  UI.buildFrost.addEventListener("click", ()=>setBuildMode(buildMode===BUILD_FROST?BUILD_NONE:BUILD_FROST));
+  UI.buildHaste.addEventListener("click", ()=>setBuildMode(buildMode===BUILD_HASTE?BUILD_NONE:BUILD_HASTE));
+   UI.buildHaste.addEventListener("click", ()=>setBuildMode(buildMode===BUILD_GUARD?BUILD_NONE:BUILD_GUARD));
+  UI.buildHeal.addEventListener("click", ()=>setBuildMode(buildMode===BUILD_HEAL?BUILD_NONE:BUILD_HEAL));
+  UI.buildCancel.addEventListener("click", ()=>setBuildMode(BUILD_NONE));
+
+  // Forge buttons
+  UI.forgeCraft.addEventListener("click", ()=>{
+if(isGameOver) return;
+	craftAtForge();
+  });
+  UI.forgeUpgrade.addEventListener("click", ()=>{
+if(isGameOver) return;
+	if(!forge || forge.level >= 7) return;
+	const c = forgeUpgradeCost(forge.level + 1);
+	if(gold < c){ toast("Not enough gold to upgrade forge."); return; }
+	gold -= c;
+	forge.level++;
+	toast(`Forge upgraded to Lv ${forge.level}.`);
+	markUI("forge","hud");
+  });
+
+  // Dwarf list: delegation
+  UI.dwarfList.addEventListener("click", (e)=>{
+	const btn = e.target.closest("button[data-dwarf-id]");
+	if(!btn) return;
+	setSelected("dwarf", btn.dataset.dwarfId);
+  });
+
+  // Inventory actions: delegation
+  UI.invContent.addEventListener("click", (e)=>{
+	const btn = e.target.closest("button[data-act][data-id]");
+	if(!btn) return;
+if(isGameOver) return;
+
+	const act = btn.dataset.act;
+	const id  = btn.dataset.id;
+
+	if(act === "equip") equipSelected(id);
+	if(act === "sell")  sellItemById(id);
+  });
+
+  UI.sellAllBtn.addEventListener("click", ()=> sellAll());
+  UI.sellJunkBtn.addEventListener("click", ()=> sellJunk());
+
+  // Inventory filters
+  const invFilter = { q:"", cat:"all", rar:"all" };
+  let invFilterTimer = 0;
+
+  UI.invSearch.addEventListener("input", ()=>{
+	clearTimeout(invFilterTimer);
+	invFilterTimer = setTimeout(()=>{
+	  invFilter.q = UI.invSearch.value.trim().toLowerCase();
+	  markUI("inv");
+	}, 60);
+  });
+  UI.invCat.addEventListener("change", ()=>{
+	invFilter.cat = UI.invCat.value;
+	markUI("inv");
+  });
+  UI.invRarity.addEventListener("change", ()=>{
+	invFilter.rar = UI.invRarity.value;
+	markUI("inv");
+  });
+
+  // ============================================================
+  // Inventory virtualization (FAST & RESPONSIVE)
+  // ============================================================
+  const INV_ROW_H = 56;
+  let invFiltered = [];
+  let rowPool = [];
+  let invNeedRender = true;
+  let invRAF = 0;
+
+  function recomputeInvFiltered(){
+	const q = invFilter.q;
+	const cat = invFilter.cat;
+	const rar = invFilter.rar;
+
+	invFiltered = loot.filter(it=>{
+	  if(cat !== "all" && it.category !== cat) return false;
+	  if(rar !== "all" && it.rarity !== rar) return false;
+	  if(q){
+		const hay = (it.name + " " + it.category + " " + it.rarity + " " + (it.weaponType||"") + " " + (it.armorTier||"")).toLowerCase();
+		if(!hay.includes(q)) return false;
+	  }
+	  return true;
+	});
+	UI.invCount.textContent = `${loot.length}/${LOOT_LIMIT}`;
+	UI.invSpacer.style.height = (invFiltered.length * INV_ROW_H) + "px";
+  }
+
+  function ensureRowPool(){
+	const viewH = UI.invScroll.clientHeight || 300;
+	const need = clamp(Math.ceil(viewH / INV_ROW_H) + 8, 12, 60);
+
+	if(rowPool.length === need) return;
+
+	// clear existing
+	UI.invContent.innerHTML = "";
+	rowPool = [];
+
+	for(let i=0;i<need;i++){
+	  const row = document.createElement("div");
+	  row.className = "itemRow";
+
+	  const meta = document.createElement("div");
+	  meta.className = "itemMeta";
+	  const name = document.createElement("div");
+	  name.className = "itemName";
+	  const sub = document.createElement("div");
+	  sub.className = "itemSub";
+	  meta.appendChild(name);
+	  meta.appendChild(sub);
+
+	  const actions = document.createElement("div");
+	  actions.className = "actions";
+	  const rarPill = document.createElement("span");
+	  rarPill.className = "rar common";
+	  rarPill.textContent = "COMMON";
+
+	  const equipBtn = document.createElement("button");
+	  equipBtn.className = "btn primary";
+	  equipBtn.style.height = "30px";
+	  equipBtn.style.padding = "0 10px";
+	  equipBtn.textContent = "Equip";
+	  equipBtn.dataset.act = "equip";
+
+	  const sellBtn = document.createElement("button");
+	  sellBtn.className = "btn";
+	  sellBtn.style.height = "30px";
+	  sellBtn.style.padding = "0 10px";
+	  sellBtn.textContent = "Sell";
+	  sellBtn.dataset.act = "sell";
+
+	  actions.appendChild(rarPill);
+	  actions.appendChild(equipBtn);
+	  actions.appendChild(sellBtn);
+
+	  row.appendChild(meta);
+	  row.appendChild(actions);
+
+	  row._name = name;
+	  row._sub = sub;
+	  row._rar = rarPill;
+	  row._equip = equipBtn;
+	  row._sell = sellBtn;
+
+	  UI.invContent.appendChild(row);
+	  rowPool.push(row);
+	}
+  }
+
+  function renderInv(){
+	invNeedRender = false;
+	ensureRowPool();
+
+	const scrollTop = UI.invScroll.scrollTop;
+	const start = Math.floor(scrollTop / INV_ROW_H);
+	const sel = getSelectedDwarf();
+	const canEquip = !!sel;
+
+	for(let i=0;i<rowPool.length;i++){
+	  const idx2 = start + i;
+	  const row = rowPool[i];
+	  if(idx2 < 0 || idx2 >= invFiltered.length){
+		row.style.display = "none";
+		continue;
+	  }
+	  const it = invFiltered[idx2];
+	  row.style.display = "flex";
+	  row.style.transform = `translateY(${idx2 * INV_ROW_H}px)`;
+
+	  row._name.textContent = it.name;
+
+	  let sub = "";
+	  if (it.category === "armor") {
+		sub = `Armor • ${it.armorTier} • DEF ${Math.round(it.defense * 100)}% • +HP ${it.bonusHp} • Sell ${it.sell}g`;
+	  } else if (it.category === "weapon") {
+		sub = `Weapon • ${it.weaponType} • DMG ${it.dmg} • ${it.ranged ? `RNG ${it.range}` : "melee"} • Sell ${it.sell}g`;
+	  } else {
+		sub = `Pickaxe • PWR ${it.miningPower} • SPD x${it.miningRate.toFixed(2)} • Sell ${it.sell}g`;
+	  }
+	  row._sub.textContent = sub;
+
+	  row._rar.className = `rar ${it.rarity}`;
+	  row._rar.textContent = it.rarity.toUpperCase();
+
+	  row._equip.dataset.id = it.id;
+	  row._sell.dataset.id = it.id;
+
+	  row._equip.disabled = !canEquip;
+	  row._equip.title = canEquip ? "" : "Select a dwarf to equip";
+	}
+  }
+
+  function scheduleInvRender(){
+	if(invNeedRender) return;
+	invNeedRender = true;
+	if(invRAF) return;
+	invRAF = requestAnimationFrame(()=>{
+	  invRAF = 0;
+	  renderInv();
+	});
+  }
+
+  UI.invScroll.addEventListener("scroll", ()=>{
+	// only re-render visible slice, very cheap
+	scheduleInvRender();
+  });
+
+  // Resize observer so pool matches viewport size
+  const ro = new ResizeObserver(()=> {
+	markUI("inv");
+  });
+  ro.observe(UI.invScroll);
+
+  // ============================================================
+  // UI update functions
+  // ============================================================
+  function updateHud(){
+	UI.hudFortHp.textContent = `${Math.round(fortress.hp)}/${fortress.maxHp}`;
+	UI.hudGold.textContent = fmtGold(gold);
+	UI.hudDw.textContent = String(dwarves.length);
+	UI.hudEn.textContent = String(enemies.length);
+	UI.hudSp.textContent = String(spawners.length);
+
+	UI.buildDepot.textContent  = `Depot (${COST.depot}g)`;
+	UI.buildArrow.textContent  = `Arrow (${COST.arrow}g)`;
+	UI.buildCannon.textContent = `Cannon (${COST.cannon}g)`;
+	UI.buildFrost.textContent  = `Frost (${COST.frost}g)`;
+	UI.buildHaste.textContent  = `Haste (${COST.haste}g)`;
+	UI.buildGuard.textContent  = `Guard (${COST.guard}g)`;
+	UI.buildHeal.textContent  = `Heal (${COST.heal}g)`;
+
+
+	UI.recruitNote.innerHTML = `Recruit cost: <b>${recruitCost()}g</b> (scales up)`;
+	UI.dwCount.textContent = `${dwarves.length}`;
+  }
+
+ function updateForgeUI(){
+  // Ensure init is done and UI.forgeBox exists
+  if(!UI._forgeInit) initForgeUI();
+  if(!UI.forgeBox) return; // still missing element, nothing we can do
+
+  // Show "No forge" without destroying the UI
+  if(!forge){
+	UI.forgeEmptyMsg.style.display = "block";
+	UI.forgeWrap.style.display = "none";
+	return;
+  }
+
+  UI.forgeEmptyMsg.style.display = "none";
+  UI.forgeWrap.style.display = "block";
+
+  const craftCost = forgeCraftCost(forge.level);
+  UI.forgeLevelPill.textContent = `Lv ${forge.level}`;
+  UI.forgeCraftCost.textContent = craftCost;
+
+  // IMPORTANT: keep Craft clickable always (feels responsive)
+  UI.forgeCraftBtn.disabled = isGameOver;
+
+  // Upgrade button: disable only when max or insufficient gold
+  if(forge.level >= 7){
+	UI.forgeUpBtn.textContent = "Max";
+	UI.forgeUpBtn.disabled = true;
+  }else{
+	const upCost = forgeUpgradeCost(forge.level + 1);
+	UI.forgeUpBtn.textContent = `Upgrade (${upCost}g)`;
+	UI.forgeUpBtn.disabled = isGameOver || gold < upCost;
+  }
+
+  // Hint text (optional)
+  const canCraft = gold >= craftCost;
+  UI.forgeHint.innerHTML =
+	canCraft
+	  ? `Ready to craft.`
+	  : `Need <b>${craftCost}g</b> to craft. (Craft stays clickable.)`;
+}
+
+
+function equipSummaryInlineText(d){
+// Reuse your existing HTML generator, but convert it to plain text.
+// This way you don’t have to rewrite your equipment logic.
+const tmp = document.createElement("div");
+tmp.innerHTML = equipSummaryHTML(d) || "";
+return (tmp.textContent || "").replace(/\s+/g, " ").trim();
+}
+
+function updateDwarfListUI(){
+UI.dwarfList.innerHTML = "";
+
+for(const d of dwarves){
+const btn = document.createElement("button");
+btn.className = "dwarfBtn" + ((selected.kind==="dwarf" && selected.id===d.id) ? " sel" : "");
+btn.dataset.dwarfId = d.id;
+
+const held = d.pickaxe ? "⛏" : (d.weapon ? (d.weapon.weaponType==="bow" ? "🏹" : "🪓") : "—");
+
+const left = document.createElement("div");
+left.style.display="flex";
+left.style.flexDirection="column";
+left.style.gap="2px";
+
+const top = document.createElement("div");
+top.textContent = `${held} ${d.name}`;
+top.style.fontWeight="1000";
+top.style.fontSize="12px";
+
+// Build the equipment text and append it to the same line as level
+const eqText = equipSummaryInlineText(d); // ex: "A:Rare W:Common P:Epic" (whatever your HTML contained)
+
+const sub = document.createElement("div");
+sub.className = "sub";
+sub.textContent = `Lv ${d.level} • HP ${Math.round(d.hp)}/${d.maxHp}` + (eqText ? ` • ${eqText}` : "");
+
+left.appendChild(top);
+left.appendChild(sub);
+
+const right = document.createElement("div");
+right.className = "pill";
+right.textContent = d.weapon ? "Fighter" : (d.pickaxe ? "Miner" : "Idle");
+
+btn.appendChild(left);
+btn.appendChild(right);
+UI.dwarfList.appendChild(btn);
+}
+}
+ 
+
+  function updateSelectedUI(){
+	const d = getSelectedDwarf();
+	if(!d){
+	  UI.selPill.textContent = "None";
+	  UI.selInfo.textContent = "Select a dwarf to view stats + equipment.";
+	  UI.slotArmor.textContent = "—";
+	  UI.slotWeapon.textContent = "—";
+	  UI.slotPick.textContent = "—";
+	  return;
+	}
+
+	UI.selPill.textContent = d.name;
+
+	const weaponTxt = d.weapon ? `${d.weapon.name} (DMG ${d.weapon.dmg}${d.weapon.ranged?`, RNG ${d.weapon.range}`:""})` : "—";
+	const pickTxt   = d.pickaxe ? `${d.pickaxe.name} (PWR ${d.pickaxe.miningPower}, SPD x${d.pickaxe.miningRate.toFixed(2)})` : "—";
+	const armTxt    = d.armor ? `${d.armor.name} (DEF ${Math.round(d.armor.defense*100)}%, +HP ${d.armor.bonusHp})` : "—";
+
+	UI.slotArmor.textContent = armTxt;
+	UI.slotWeapon.textContent = weaponTxt;
+	UI.slotPick.textContent = pickTxt;
+
+	const held = d.pickaxe ? "Holding: Pickaxe" : (d.weapon ? `Holding: ${d.weapon.weaponType.toUpperCase()}` : "Holding: None");
+	const carry = d.carrying ? (d.carrying.kind==="currency" ? `Carrying: ${d.carrying.currency} (+${d.carrying.value}g)` : `Carrying: ${d.carrying.item.name}`) : "Carrying: —";
+
+	UI.selInfo.innerHTML =
+	  `<span class="pill">Lv ${d.level}</span> XP <b>${d.xp}</b>/<b>${d.nextXp}</b> • ` +
+	  `HP <b>${Math.round(d.hp)}</b>/<b>${d.maxHp}</b> • DEF <b>${Math.round((d.defense||0)*100)}%</b><br>` +
+	  `DMG <b>${d.dmg}</b> • Mining <b>${d.miningPower}</b> • ${held} • ${carry}`;
+  }
+
+  function flushUI(nowMs){
+	// always keep toast timer smooth
+	if(toastTimer>0){
+	  toastTimer -= (nowMs - lastUIStamp) / 1000;
+	  if(toastTimer<=0){
+		UI.toast.classList.add("hide");
+		UI.toast.classList.remove("show");
+	  }
+	}
+
+	// update frequently changing stats cheaply
+	if(nowMs - lastHudStamp > 120 || DIRTY.hud){
+	  updateHud();
+	  DIRTY.hud=false;
+	  lastHudStamp = nowMs;
+	}
+
+	if(DIRTY.forge){
+	  updateForgeUI();
+	  DIRTY.forge=false;
+	}
+
+	// dwarf list and selected info: update on dirty OR a small cadence
+	if(DIRTY.dwarves || nowMs - lastDwStamp > 260){
+	  updateDwarfListUI();
+	  DIRTY.dwarves=false;
+	  lastDwStamp = nowMs;
+	}
+	if(DIRTY.selected || nowMs - lastSelStamp > 140){
+	  updateSelectedUI();
+	  DIRTY.selected=false;
+	  lastSelStamp = nowMs;
+	}
+
+	if(DIRTY.inv){
+	  recomputeInvFiltered();
+	  DIRTY.inv=false;
+	  invNeedRender = false;
+	  renderInv();
+	}
+  }
+
+  let lastHudStamp = 0;
+  let lastDwStamp = 0;
+  let lastSelStamp = 0;
+  let lastUIStamp = performance.now();
+
+  // ============================================================
+  // Inventory first paint
+  // ============================================================
+  function initInventoryUI(){
+	recomputeInvFiltered();
+	ensureRowPool();
+	renderInv();
+  }
+
+  // ============================================================
+  // Save selection on click from inventory?
+  // (not needed; equip uses current selected dwarf)
+  // ============================================================
+
+  // ============================================================
+  // Rendering (improved visuals)
+  // ============================================================
+  function rockBase(depth){
+	const t = clamp(depth/640, 0, 1);
+	const lerp=(a,b,x)=>a+(b-a)*x;
+
+	const c1={r:130,g:112,b:95};
+	const c2={r:85,g:92,b:112};
+	const c3={r:42,g:30,b:68};
+
+	let c;
+	if(t<0.55){
+	  const u=t/0.55;
+	  c={r:lerp(c1.r,c2.r,u), g:lerp(c1.g,c2.g,u), b:lerp(c1.b,c2.b,u)};
+	}else{
+	  const u=(t-0.55)/0.45;
+	  c={r:lerp(c2.r,c3.r,u), g:lerp(c2.g,c3.g,u), b:lerp(c2.b,c3.b,u)};
+	}
+	return c;
+  }
+
+  function rgb(r,g,b){ return `rgb(${r|0},${g|0},${b|0})`; }
+
+  function drawHealthBarWorld(x,y, widthTiles, cur, max, color){
+	if(max<=0) return;
+	const p = worldToScreen(x,y);
+	const ts=p.s;
+	const w = widthTiles*ts;
+	const h = Math.max(3, ts*0.10);
+	const sx = p.x + ts*0.5 - w*0.5;
+	const sy = p.y - h - ts*0.12;
+
+	ctx.save();
+	ctx.globalAlpha = 0.96;
+	ctx.fillStyle="rgba(0,0,0,0.45)";
+	ctx.fillRect(sx,sy,w,h);
+	ctx.fillStyle=color;
+	ctx.fillRect(sx,sy,w*clamp(cur/max,0,1),h);
+	ctx.restore();
+  }
+
+  function drawTile(px,py,ts, tt, x,y, ii){
+	// subtle tile border when zoomed in
+	const border = cam.zoom > 0.7;
+
+	if(tt===TILE_EMPTY){
+	  const n = hash01(x,y);
+	  const base = 14 + (n*8)|0;
+	  ctx.fillStyle = rgb(base, base+2, base+6);
+	  ctx.fillRect(px,py,ts,ts);
+	  if(border){
+		ctx.strokeStyle = "rgba(255,255,255,.04)";
+		ctx.strokeRect(px+0.5,py+0.5,ts-1,ts-1);
+	  }
+	  return;
+	}
+
+	if(tt===TILE_FORTRESS){
+	  const g = ctx.createLinearGradient(px,py,px,py+ts);
+	  g.addColorStop(0,"rgba(70,160,255,.95)");
+	  g.addColorStop(1,"rgba(20,90,180,.95)");
+	  ctx.fillStyle = g;
+	  ctx.fillRect(px,py,ts,ts);
+	  ctx.fillStyle="rgba(255,255,255,.18)";
+	  ctx.fillRect(px+ts*0.18, py+ts*0.18, ts*0.64, ts*0.64);
+	  ctx.shadowColor="rgba(120,220,255,.35)";
+	  ctx.shadowBlur=ts*0.25;
+	  ctx.fillStyle="rgba(120,220,255,.08)";
+	  ctx.fillRect(px+ts*0.05,py+ts*0.05,ts*0.90,ts*0.90);
+	  ctx.shadowBlur=0;
+	  return;
+	}
+
+	// Ore tiles
+	if(tt===TILE_GOLD || tt===TILE_SAPPHIRE || tt===TILE_EMERALD || tt===TILE_DIAMOND || tt===TILE_SPAWNER_SEALED){
+	  const n = hash01(x,y);
+	  const dark = (0.88 + n*0.08);
+
+	  if(tt===TILE_GOLD){
+		ctx.fillStyle = `rgb(${(210*dark)|0},${(176*dark)|0},${(54*dark)|0})`;
+		ctx.fillRect(px,py,ts,ts);
+		ctx.fillStyle="rgba(0,0,0,.20)";
+		ctx.fillRect(px+ts*0.20,py+ts*0.20,ts*0.60,ts*0.60);
+	  }else if(tt===TILE_SAPPHIRE){
+		ctx.fillStyle = `rgb(${(58*dark)|0},${(165*dark)|0},${(255*dark)|0})`;
+		ctx.fillRect(px,py,ts,ts);
+		ctx.fillStyle="rgba(0,0,0,.22)";
+		ctx.beginPath(); ctx.arc(px+ts*0.52,py+ts*0.52,ts*0.22,0,Math.PI*2); ctx.fill();
+	  }else if(tt===TILE_EMERALD){
+		ctx.fillStyle = `rgb(${(67*dark)|0},${(209*dark)|0},${(122*dark)|0})`;
+		ctx.fillRect(px,py,ts,ts);
+		ctx.fillStyle="rgba(0,0,0,.22)";
+		ctx.fillRect(px+ts*0.28,py+ts*0.28,ts*0.44,ts*0.44);
+	  }else if(tt===TILE_DIAMOND){
+		ctx.fillStyle = `rgb(${(214*dark)|0},${(241*dark)|0},${(255*dark)|0})`;
+		ctx.fillRect(px,py,ts,ts);
+		ctx.fillStyle="rgba(0,0,0,.18)";
+		ctx.beginPath();
+		ctx.moveTo(px+ts*0.5,py+ts*0.18);
+		ctx.lineTo(px+ts*0.18,py+ts*0.5);
+		ctx.lineTo(px+ts*0.5,py+ts*0.82);
+		ctx.lineTo(px+ts*0.82,py+ts*0.5);
+		ctx.closePath(); ctx.fill();
+	  }else{
+		// sealed spawner
+		ctx.fillStyle = `rgb(${(106*dark)|0},${(43*dark)|0},${(217*dark)|0})`;
+		ctx.fillRect(px,py,ts,ts);
+		ctx.fillStyle="rgba(0,0,0,.28)";
+		ctx.fillRect(px+ts*0.15,py+ts*0.15,ts*0.7,ts*0.7);
+		if(cam.zoom>0.8){
+		  ctx.strokeStyle="rgba(255,255,255,.06)";
+		  ctx.strokeRect(px+ts*0.18,py+ts*0.18,ts*0.64,ts*0.64);
+		}
+	  }
+
+	  if(border){
+		ctx.strokeStyle = "rgba(0,0,0,.18)";
+		ctx.strokeRect(px+0.5,py+0.5,ts-1,ts-1);
+	  }
+	  return;
+	}
+
+	// Rock
+	const depth = depthAt(x,y);
+	const c = rockBase(depth);
+	const n = hash01(x,y);
+	const hp = tHp[ii] || 1;
+	const crack = 0.90 + 0.10*Math.sin(hp*0.012);
+	const shade = (0.86 + n*0.12) * crack;
+
+	ctx.fillStyle = rgb(c.r*shade, c.g*shade, c.b*shade);
+	ctx.fillRect(px,py,ts,ts);
+
+	// AO-ish edges (very cheap) when zoomed a bit
+	if(cam.zoom > 0.75){
+	  const up    = (y>0) ? tType[idx(x,y-1)] : TILE_ROCK;
+	  const left  = (x>0) ? tType[idx(x-1,y)] : TILE_ROCK;
+	  const down  = (y<H-1) ? tType[idx(x,y+1)] : TILE_ROCK;
+	  const right = (x<W-1) ? tType[idx(x+1,y)] : TILE_ROCK;
+
+	  const isAir = (t)=> (t===TILE_EMPTY || t===TILE_FORTRESS);
+	  ctx.fillStyle = "rgba(0,0,0,.14)";
+	  if(isAir(up))   ctx.fillRect(px,py,ts,ts*0.08);
+	  if(isAir(left)) ctx.fillRect(px,py,ts*0.08,ts);
+	  if(isAir(down)) ctx.fillRect(px,py+ts*0.92,ts,ts*0.08);
+	  if(isAir(right))ctx.fillRect(px+ts*0.92,py,ts*0.08,ts);
+	}
+
+	if(border){
+	  ctx.strokeStyle = "rgba(0,0,0,.18)";
+	  ctx.strokeRect(px+0.5,py+0.5,ts-1,ts-1);
+	}
+  }
+
+  // ============================================================
+// Better-looking sprites (towers/fortress/dwarves)
+// Drop these helpers somewhere above draw(), then replace draw()
+// ============================================================
+
+// ============================================================
+// Enemy "sprite" drawing (procedural canvas sprites)
+// Drop above draw(), then replace the enemies loop in draw()
+// ============================================================
+
+function hashStr(s){
+  s = String(s ?? "");
+  let h = 2166136261 >>> 0;
+  for(let i=0;i<s.length;i++){
+	h ^= s.charCodeAt(i);
+	h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+function s01FromId(id){ return seed01(hashStr(id)); } // uses your seed01()
+function lerp(a,b,t){ return a + (b-a)*t; }
+
+function shade(col, k){
+  // col: [r,g,b]  k: -1..+1
+  const f = (v)=>Math.max(0, Math.min(255, v|0));
+  const t = k>=0 ? k : -k;
+  if(k>=0){
+	return `rgb(${f(lerp(col[0],255,t))},${f(lerp(col[1],255,t))},${f(lerp(col[2],255,t))})`;
+  }else{
+	return `rgb(${f(lerp(col[0],0,t))},${f(lerp(col[1],0,t))},${f(lerp(col[2],0,t))})`;
+  }
+}
+
+function drawOutlineCircle(cx,cy,r, fill, stroke, lw){
+  ctx.fillStyle = fill;
+  ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+  if(stroke){
+	ctx.strokeStyle = stroke;
+	ctx.lineWidth = lw;
+	ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke();
+  }
+}
+
+function drawEnemySprite(e, p, ts){
+  const cx = p.x + ts*0.5;
+  const baseY = p.y + ts*0.58;
+
+  const s = s01FromId(e.id || (e.type+""));
+  const now = performance.now()*0.001;
+  const bob = Math.sin(now*2.2 + s*10.0) * ts*0.03;
+  const jitter = Math.sin(now*6.0 + s*20.0) * ts*0.01;
+
+  const size = (e.size || 1);
+  const r = ts * 0.19 * size;
+  const y = baseY + bob;
+
+  // shadow
+  ctx.save();
+  ctx.globalAlpha = 0.98;
+  ctx.shadowColor = "rgba(0,0,0,.35)";
+  ctx.shadowBlur  = ts*0.18;
+  ctx.fillStyle   = "rgba(0,0,0,.25)";
+  ctx.beginPath();
+  ctx.ellipse(cx, p.y+ts*0.80, r*1.25, r*0.55, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // per-type
+  switch(e.type){
+	case "goblin":      drawGoblinSprite(cx, y, r, s, now, jitter); break;
+	case "orc":         drawOrcSprite(cx, y, r, s, now, jitter); break;
+	case "bat":         drawBatSprite(cx, y, r, s, now); break;
+	case "troll":       drawTrollSprite(cx, y, r, s, now); break;
+	case "necromancer": drawNecromancerSprite(cx, y, r, s, now); break;
+	case "skeleton":
+	case "minion":      drawSkeletonSprite(cx, y, r, s, now); break;
+	default:            drawFallbackEnemy(cx, y, r, s); break;
+  }
+
+  ctx.restore();
+}
+
+function drawEyes(cx,cy,r, glow){
+  // tiny eyes with optional glow
+  if(glow){
+	ctx.shadowColor = glow;
+	ctx.shadowBlur = r*1.2;
+  }
+  ctx.fillStyle = "rgba(0,0,0,.55)";
+  ctx.fillRect(cx-r*0.45, cy-r*0.10, r*0.18, r*0.14);
+  ctx.fillRect(cx+r*0.27, cy-r*0.10, r*0.18, r*0.14);
+  if(glow){
+	ctx.shadowBlur = 0;
+  }
+}
+
+function drawGoblinSprite(cx, cy, r, s, now, jitter){
+  const skin = [70, 200, 120];
+  const hood = [40, 70, 55];
+  const outline = "rgba(0,0,0,.35)";
+
+  // body (hood/torso)
+  const bw = r*1.7, bh = r*1.35;
+  const bx = cx-bw*0.5, by = cy-r*0.15;
+  ctx.fillStyle = shade(hood, -0.10);
+  rrPath(ctx, bx, by, bw, bh, r*0.45); ctx.fill();
+  ctx.strokeStyle = outline; ctx.lineWidth = Math.max(1, r*0.20);
+  rrPath(ctx, bx, by, bw, bh, r*0.45); ctx.stroke();
+
+  // head
+  drawOutlineCircle(cx, cy-r*0.55, r*0.68, shade(skin, 0.05), outline, Math.max(1, r*0.18));
+
+  // ears
+  ctx.fillStyle = shade(skin, -0.05);
+  ctx.beginPath();
+  ctx.moveTo(cx-r*0.70, cy-r*0.60);
+  ctx.lineTo(cx-r*1.15, cy-r*0.80);
+  ctx.lineTo(cx-r*0.92, cy-r*0.40);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(cx+r*0.70, cy-r*0.60);
+  ctx.lineTo(cx+r*1.15, cy-r*0.80);
+  ctx.lineTo(cx+r*0.92, cy-r*0.40);
+  ctx.closePath(); ctx.fill();
+
+  // eyes + grin
+  drawEyes(cx, cy-r*0.58, r*0.85);
+  ctx.strokeStyle="rgba(0,0,0,.45)";
+  ctx.lineWidth=Math.max(1,r*0.12);
+  ctx.beginPath();
+  ctx.arc(cx, cy-r*0.40, r*0.35, 0.15*Math.PI, 0.85*Math.PI);
+  ctx.stroke();
+
+  // dagger
+  ctx.save();
+  ctx.translate(cx+r*0.75, cy+r*0.15);
+  ctx.rotate(Math.sin(now*2.0 + s*6.0)*0.12 + 0.35);
+  ctx.fillStyle="rgba(240,250,255,.80)";
+  rrPath(ctx, -r*0.10, -r*0.55, r*0.20, r*0.90, r*0.10); ctx.fill();
+  ctx.fillStyle="rgba(0,0,0,.28)";
+  rrPath(ctx, -r*0.28, r*0.05, r*0.56, r*0.16, r*0.08); ctx.fill();
+  ctx.restore();
+}
+
+function drawOrcSprite(cx, cy, r, s, now, jitter){
+  const skin = [110, 155, 95];
+  const armor = [85, 85, 90];
+  const outline = "rgba(0,0,0,.35)";
+
+  // bulky torso
+  const bw = r*2.0, bh = r*1.5;
+  const bx = cx-bw*0.5, by = cy-r*0.05;
+  ctx.fillStyle = shade(armor, -0.05);
+  rrPath(ctx, bx, by, bw, bh, r*0.40); ctx.fill();
+  ctx.strokeStyle = outline; ctx.lineWidth = Math.max(1, r*0.20);
+  rrPath(ctx, bx, by, bw, bh, r*0.40); ctx.stroke();
+
+  // shoulder plates
+  ctx.fillStyle = shade(armor, 0.12);
+  rrPath(ctx, bx-r*0.10, by+r*0.10, r*0.75, r*0.55, r*0.25); ctx.fill();
+  rrPath(ctx, bx+bw-r*0.65, by+r*0.10, r*0.75, r*0.55, r*0.25); ctx.fill();
+
+  // head
+  drawOutlineCircle(cx, cy-r*0.62, r*0.75, shade(skin, 0.02), outline, Math.max(1, r*0.18));
+
+  // tusks
+  ctx.strokeStyle="rgba(245,250,255,.80)";
+  ctx.lineWidth=Math.max(1,r*0.16);
+  ctx.beginPath();
+  ctx.moveTo(cx-r*0.25, cy-r*0.35);
+  ctx.lineTo(cx-r*0.35, cy-r*0.18);
+  ctx.moveTo(cx+r*0.25, cy-r*0.35);
+  ctx.lineTo(cx+r*0.35, cy-r*0.18);
+  ctx.stroke();
+
+  // eyes
+  drawEyes(cx, cy-r*0.66, r*0.9);
+
+  // axe
+  ctx.save();
+  ctx.translate(cx-r*0.95, cy+r*0.15);
+  ctx.rotate(-0.45 + Math.sin(now*1.8 + s*8.0)*0.08);
+  ctx.fillStyle="rgba(0,0,0,.30)";
+  rrPath(ctx, -r*0.06, -r*0.55, r*0.12, r*1.05, r*0.06); ctx.fill();
+  ctx.fillStyle="rgba(245,250,255,.75)";
+  rrPath(ctx, -r*0.34, -r*0.45, r*0.44, r*0.30, r*0.10); ctx.fill();
+  ctx.restore();
+}
+
+function drawBatSprite(cx, cy, r, s, now){
+  const outline="rgba(0,0,0,.35)";
+  const wing = [60, 40, 85];
+  const body = [100, 60, 150];
+
+  const flap = 0.35 + 0.35*Math.sin(now*6.5 + s*12.0); // 0..0.7
+  const wx = r*1.55, wy = r*(0.65 + flap*0.45);
+
+  // wings
+  ctx.fillStyle = shade(wing, -0.05);
+  ctx.beginPath();
+  ctx.moveTo(cx, cy-r*0.20);
+  ctx.quadraticCurveTo(cx-wx, cy-wy, cx-wx*1.15, cy+r*0.25);
+  ctx.quadraticCurveTo(cx-wx*0.75, cy+r*0.05, cx, cy+r*0.10);
+  ctx.quadraticCurveTo(cx+wx*0.75, cy+r*0.05, cx+wx*1.15, cy+r*0.25);
+  ctx.quadraticCurveTo(cx+wx, cy-wy, cx, cy-r*0.20);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = outline; ctx.lineWidth = Math.max(1, r*0.16);
+  ctx.stroke();
+
+  // body
+  drawOutlineCircle(cx, cy-r*0.05, r*0.42, shade(body, 0.08), outline, Math.max(1,r*0.16));
+
+  // eyes (tiny glow)
+  drawEyes(cx, cy-r*0.12, r*0.55, "rgba(255,60,160,.25)");
+}
+
+function drawTrollSprite(cx, cy, r, s, now){
+  const skin=[210, 130, 75];
+  const outline="rgba(0,0,0,.35)";
+
+  // chunky body
+  const bw=r*2.2, bh=r*1.75;
+  ctx.fillStyle=shade(skin,-0.05);
+  rrPath(ctx, cx-bw*0.5, cy-r*0.10, bw, bh, r*0.45); ctx.fill();
+  ctx.strokeStyle=outline; ctx.lineWidth=Math.max(1,r*0.22);
+  rrPath(ctx, cx-bw*0.5, cy-r*0.10, bw, bh, r*0.45); ctx.stroke();
+
+  // head
+  drawOutlineCircle(cx, cy-r*0.75, r*0.72, shade(skin,0.05), outline, Math.max(1,r*0.18));
+
+  // brow ridge
+  ctx.fillStyle="rgba(0,0,0,.18)";
+  rrPath(ctx, cx-r*0.70, cy-r*0.98, r*1.40, r*0.32, r*0.20); ctx.fill();
+
+  // eyes + nose
+  drawEyes(cx, cy-r*0.80, r*0.9);
+  ctx.fillStyle="rgba(0,0,0,.22)";
+  ctx.beginPath(); ctx.arc(cx, cy-r*0.62, r*0.12, 0, Math.PI*2); ctx.fill();
+
+  // club
+  ctx.save();
+  ctx.translate(cx+r*1.00, cy+r*0.20);
+  ctx.rotate(0.40 + Math.sin(now*1.4 + s*7.0)*0.10);
+  ctx.fillStyle="rgba(0,0,0,.30)";
+  rrPath(ctx, -r*0.07, -r*0.55, r*0.14, r*0.95, r*0.07); ctx.fill();
+  ctx.fillStyle="rgba(120,70,30,.85)";
+  rrPath(ctx, -r*0.25, -r*0.60, r*0.50, r*0.35, r*0.18); ctx.fill();
+  ctx.restore();
+}
+
+function drawNecromancerSprite(cx, cy, r, s, now){
+  const robe=[45, 35, 70];
+  const outline="rgba(0,0,0,.35)";
+
+  // glow aura
+  ctx.save();
+  ctx.globalAlpha = 0.85;
+  ctx.shadowColor="rgba(190,130,255,.55)";
+  ctx.shadowBlur=r*2.2;
+  ctx.fillStyle="rgba(190,130,255,.10)";
+  ctx.beginPath(); ctx.arc(cx, cy-r*0.35, r*1.15, 0, Math.PI*2); ctx.fill();
+  ctx.shadowBlur=0;
+  ctx.restore();
+
+  // robe
+  const bw=r*2.05, bh=r*2.05;
+  ctx.fillStyle=shade(robe,-0.06);
+  rrPath(ctx, cx-bw*0.5, cy-r*0.15, bw, bh, r*0.55); ctx.fill();
+  ctx.strokeStyle=outline; ctx.lineWidth=Math.max(1,r*0.18);
+  rrPath(ctx, cx-bw*0.5, cy-r*0.15, bw, bh, r*0.55); ctx.stroke();
+
+  // hood face void
+  ctx.fillStyle="rgba(0,0,0,.35)";
+  rrPath(ctx, cx-r*0.55, cy-r*1.05, r*1.10, r*0.95, r*0.40); ctx.fill();
+
+  // glowing eyes
+  ctx.save();
+  ctx.shadowColor="rgba(200,140,255,.75)";
+  ctx.shadowBlur=r*1.0;
+  ctx.fillStyle="rgba(200,140,255,.95)";
+  ctx.fillRect(cx-r*0.28, cy-r*0.73, r*0.12, r*0.10);
+  ctx.fillRect(cx+r*0.16, cy-r*0.73, r*0.12, r*0.10);
+  ctx.shadowBlur=0;
+  ctx.restore();
+
+  // staff
+  ctx.save();
+  ctx.translate(cx+r*0.95, cy+r*0.20);
+  ctx.rotate(0.12 + Math.sin(now*1.6 + s*10.0)*0.06);
+  ctx.fillStyle="rgba(0,0,0,.30)";
+  rrPath(ctx, -r*0.07, -r*1.00, r*0.14, r*1.45, r*0.07); ctx.fill();
+  // orb
+  ctx.shadowColor="rgba(190,130,255,.80)";
+  ctx.shadowBlur=r*1.2;
+  ctx.fillStyle="rgba(190,130,255,.55)";
+  ctx.beginPath(); ctx.arc(0, -r*0.95, r*0.22, 0, Math.PI*2); ctx.fill();
+  ctx.shadowBlur=0;
+  ctx.restore();
+}
+
+function drawSkeletonSprite(cx, cy, r, s, now){
+  const bone=[235, 235, 240];
+  const outline="rgba(0,0,0,.35)";
+
+  // ribcage
+  ctx.fillStyle=shade(bone,-0.02);
+  rrPath(ctx, cx-r*0.65, cy-r*0.10, r*1.30, r*1.00, r*0.35); ctx.fill();
+  ctx.strokeStyle=outline; ctx.lineWidth=Math.max(1,r*0.16);
+  rrPath(ctx, cx-r*0.65, cy-r*0.10, r*1.30, r*1.00, r*0.35); ctx.stroke();
+
+  // ribs
+  ctx.strokeStyle="rgba(0,0,0,.18)";
+  ctx.lineWidth=Math.max(1,r*0.10);
+  for(let i=0;i<3;i++){
+	const yy = cy + r*(0.10 + i*0.22);
+	ctx.beginPath();
+	ctx.moveTo(cx-r*0.45, yy);
+	ctx.lineTo(cx+r*0.45, yy);
+	ctx.stroke();
+  }
+
+  // skull
+  drawOutlineCircle(cx, cy-r*0.72, r*0.55, shade(bone,0.04), outline, Math.max(1,r*0.16));
+
+  // eye sockets
+  ctx.fillStyle="rgba(0,0,0,.35)";
+  ctx.beginPath(); ctx.arc(cx-r*0.18, cy-r*0.75, r*0.12, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx+r*0.18, cy-r*0.75, r*0.12, 0, Math.PI*2); ctx.fill();
+
+  // jaw line
+  ctx.strokeStyle="rgba(0,0,0,.22)";
+  ctx.lineWidth=Math.max(1,r*0.10);
+  ctx.beginPath();
+  ctx.arc(cx, cy-r*0.62, r*0.28, 0.10*Math.PI, 0.90*Math.PI);
+  ctx.stroke();
+}
+
+function drawFallbackEnemy(cx, cy, r, s){
+  const col=[220, 70, 70];
+  drawOutlineCircle(cx, cy-r*0.30, r*0.75, shade(col,0.00), "rgba(0,0,0,.35)", Math.max(1,r*0.16));
+  drawEyes(cx, cy-r*0.35, r*0.9);
+}
+
+function rrPath(ctx,x,y,w,h,r){
+  r = Math.max(0, Math.min(r, w*0.5, h*0.5));
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.lineTo(x+w-r,y);
+  ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r);
+  ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h);
+  ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r);
+  ctx.quadraticCurveTo(x,y,x+r,y);
+  ctx.closePath();
+}
+
+function seed01(n){
+  // deterministic 0..1 from int-ish seed
+  n = (n|0) + 0x6D2B79F5;
+  n = Math.imul(n ^ (n >>> 15), n | 1);
+  n ^= n + Math.imul(n ^ (n >>> 7), n | 61);
+  return ((n ^ (n >>> 14)) >>> 0) / 4294967296;
+}
+function pick(seed, arr){ return arr[(seed * arr.length) | 0]; }
+
+function drawStoneBlock(ctx,x,y,w,h,ts,light){
+  const g = ctx.createLinearGradient(x,y,x,y+h);
+  g.addColorStop(0, light ? "rgba(210,230,255,.20)" : "rgba(255,255,255,.10)");
+  g.addColorStop(1, "rgba(0,0,0,.20)");
+  ctx.fillStyle = "rgba(160,190,215,.90)";
+  rrPath(ctx,x,y,w,h,ts*0.10); ctx.fill();
+  ctx.fillStyle = g;
+  rrPath(ctx,x,y,w,h,ts*0.10); ctx.fill();
+
+  // stone seams
+  ctx.strokeStyle = "rgba(0,0,0,.22)";
+  ctx.lineWidth = Math.max(1, ts*0.04);
+  rrPath(ctx,x,y,w,h,ts*0.10); ctx.stroke();
+
+  ctx.strokeStyle = "rgba(0,0,0,.12)";
+  ctx.lineWidth = Math.max(1, ts*0.025);
+  const rows = 3;
+  for(let r=1;r<rows;r++){
+	const yy = y + (h/rows)*r;
+	ctx.beginPath(); ctx.moveTo(x+ts*0.06,yy); ctx.lineTo(x+w-ts*0.06,yy); ctx.stroke();
+  }
+  // a few vertical cracks
+  for(let i=0;i<3;i++){
+	const xx = x + w*(0.22 + i*0.26);
+	ctx.beginPath();
+	ctx.moveTo(xx, y+ts*0.12);
+	ctx.lineTo(xx + ts*0.02, y+h-ts*0.10);
+	ctx.stroke();
+  }
+}
+
+function drawCrenellations(ctx,x,y,w,ts){
+  // top teeth
+  const toothW = w/5;
+  const toothH = ts*0.10;
+  ctx.fillStyle = "rgba(255,255,255,.10)";
+  for(let i=0;i<5;i++){
+	if(i%2===0){
+	  rrPath(ctx, x + i*toothW + toothW*0.10, y, toothW*0.80, toothH, ts*0.05);
+	  ctx.fill();
+	}
+  }
+  ctx.strokeStyle = "rgba(0,0,0,.18)";
+  ctx.lineWidth = Math.max(1, ts*0.03);
+  ctx.beginPath(); ctx.moveTo(x, y+toothH); ctx.lineTo(x+w, y+toothH); ctx.stroke();
+}
+
+function drawTowerSprite(t, p, ts){
+  const x0=p.x, y0=p.y;
+  const cx=x0+ts*0.5, cy=y0+ts*0.52;
+
+  // soft shadow
+  ctx.shadowColor = "rgba(0,0,0,.35)";
+  ctx.shadowBlur  = ts*0.22;
+  ctx.fillStyle   = "rgba(0,0,0,.25)";
+  ctx.beginPath();
+  ctx.ellipse(cx, y0+ts*0.78, ts*0.28, ts*0.12, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // stone base
+  const baseX = x0+ts*0.16, baseY = y0+ts*0.52, baseW = ts*0.68, baseH = ts*0.30;
+  drawStoneBlock(ctx, baseX, baseY, baseW, baseH, ts, true);
+
+  // body
+  const bodyX = x0+ts*0.26, bodyY = y0+ts*0.22, bodyW = ts*0.48, bodyH = ts*0.34;
+  drawStoneBlock(ctx, bodyX, bodyY, bodyW, bodyH, ts, false);
+
+  // crenellations
+  drawCrenellations(ctx, bodyX, bodyY-ts*0.10, bodyW, ts);
+
+  // details by type
+  if(t.type==="arrow"){
+	// archer slit + little bow sign
+	ctx.fillStyle="rgba(0,0,0,.25)";
+	rrPath(ctx, cx-ts*0.07, bodyY+ts*0.10, ts*0.14, ts*0.12, ts*0.05);
+	ctx.fill();
+	ctx.fillStyle="rgba(255,255,255,.08)";
+	rrPath(ctx, cx-ts*0.05, bodyY+ts*0.12, ts*0.10, ts*0.08, ts*0.04);
+	ctx.fill();
+
+	// top pennant
+	ctx.fillStyle="rgba(120,220,255,.55)";
+	ctx.beginPath();
+	ctx.moveTo(cx, bodyY-ts*0.18);
+	ctx.lineTo(cx+ts*0.12, bodyY-ts*0.10);
+	ctx.lineTo(cx, bodyY-ts*0.02);
+	ctx.closePath(); ctx.fill();
+
+  } else if(t.type==="cannon"){
+	// turret ring
+	ctx.fillStyle="rgba(0,0,0,.18)";
+	ctx.beginPath(); ctx.arc(cx, bodyY+ts*0.18, ts*0.13, 0, Math.PI*2); ctx.fill();
+
+	// barrel (use t.ang if you have it)
+	const ang = (typeof t.ang==="number") ? t.ang : 0;
+	ctx.save();
+	ctx.translate(cx, bodyY+ts*0.18);
+	ctx.rotate(ang);
+
+	const brW=ts*0.34, brH=ts*0.10;
+	const g = ctx.createLinearGradient(0, -brH*0.5, brW, brH*0.5);
+	g.addColorStop(0,"rgba(70,70,70,.95)");
+	g.addColorStop(1,"rgba(25,25,25,.95)");
+	ctx.fillStyle=g;
+	rrPath(ctx, ts*0.02, -brH*0.5, brW, brH, ts*0.05);
+	ctx.fill();
+	ctx.strokeStyle="rgba(255,255,255,.10)";
+	ctx.lineWidth=Math.max(1,ts*0.02);
+	ctx.beginPath(); ctx.moveTo(ts*0.08,-brH*0.26); ctx.lineTo(brW+ts*0.02,-brH*0.26); ctx.stroke();
+
+	// muzzle
+	ctx.fillStyle="rgba(0,0,0,.30)";
+	ctx.beginPath(); ctx.arc(brW+ts*0.02, 0, ts*0.06, 0, Math.PI*2); ctx.fill();
+
+	ctx.restore();
+
+  } 
+  else if(t.type==="haste"){
+  // glow rune
+  ctx.shadowColor = "rgba(120,220,255,.65)";
+  ctx.shadowBlur = ts*0.35;
+  ctx.strokeStyle = "rgba(120,220,255,.60)";
+  ctx.lineWidth = Math.max(1, ts*0.05);
+  ctx.beginPath(); ctx.arc(cx, bodyY+ts*0.18, ts*0.16, 0, Math.PI*2); ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  ctx.strokeStyle = "rgba(255,255,255,.12)";
+  ctx.lineWidth = Math.max(1, ts*0.03);
+  ctx.beginPath();
+  ctx.moveTo(cx-ts*0.10, bodyY+ts*0.18);
+  ctx.lineTo(cx+ts*0.10, bodyY+ts*0.18);
+  ctx.moveTo(cx, bodyY+ts*0.08);
+  ctx.lineTo(cx, bodyY+ts*0.28);
+  ctx.stroke();
+}
+else {
+	// "mage" / spike tower: crystal spire on top
+	ctx.shadowColor="rgba(170,210,255,.30)";
+	ctx.shadowBlur=ts*0.18;
+	ctx.fillStyle="rgba(170,210,255,.90)";
+	ctx.beginPath();
+	ctx.moveTo(cx, bodyY-ts*0.22);
+	ctx.lineTo(cx-ts*0.12, bodyY+ts*0.02);
+	ctx.lineTo(cx+ts*0.12, bodyY+ts*0.02);
+	ctx.closePath(); ctx.fill();
+	ctx.shadowBlur=0;
+  }
+}
+
+function drawFortressSprite(f, p, ts){
+  const x0=p.x, y0=p.y;
+  const cx=x0+ts*0.5;
+
+  // big shadow
+  ctx.shadowColor="rgba(0,0,0,.40)";
+  ctx.shadowBlur=ts*0.30;
+  ctx.fillStyle="rgba(0,0,0,.28)";
+  ctx.beginPath();
+  ctx.ellipse(cx, y0+ts*0.80, ts*0.40, ts*0.16, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.shadowBlur=0;
+
+  // outer wall base
+  const wallX=x0+ts*0.10, wallY=y0+ts*0.44, wallW=ts*0.80, wallH=ts*0.40;
+  drawStoneBlock(ctx, wallX, wallY, wallW, wallH, ts, true);
+
+  // gate
+  ctx.fillStyle="rgba(0,0,0,.30)";
+  rrPath(ctx, cx-ts*0.14, wallY+ts*0.12, ts*0.28, ts*0.26, ts*0.10);
+  ctx.fill();
+  ctx.fillStyle="rgba(255,255,255,.06)";
+  rrPath(ctx, cx-ts*0.11, wallY+ts*0.16, ts*0.22, ts*0.18, ts*0.08);
+  ctx.fill();
+
+  // side turrets
+  const turW=ts*0.20, turH=ts*0.42;
+  drawStoneBlock(ctx, wallX+ts*0.02, y0+ts*0.26, turW, turH, ts, false);
+  drawStoneBlock(ctx, wallX+wallW-turW-ts*0.02, y0+ts*0.26, turW, turH, ts, false);
+  drawCrenellations(ctx, wallX+ts*0.02, y0+ts*0.16, turW, ts);
+  drawCrenellations(ctx, wallX+wallW-turW-ts*0.02, y0+ts*0.16, turW, ts);
+
+  // central keep
+  const keepX=cx-ts*0.18, keepY=y0+ts*0.18, keepW=ts*0.36, keepH=ts*0.48;
+  drawStoneBlock(ctx, keepX, keepY, keepW, keepH, ts, false);
+  drawCrenellations(ctx, keepX, keepY-ts*0.10, keepW, ts);
+
+  // banner
+  ctx.strokeStyle="rgba(255,255,255,.25)";
+  ctx.lineWidth=Math.max(1,ts*0.03);
+  ctx.beginPath();
+  ctx.moveTo(cx+ts*0.05, keepY-ts*0.18);
+  ctx.lineTo(cx+ts*0.05, keepY+ts*0.02);
+  ctx.stroke();
+
+  ctx.fillStyle="rgba(127,215,255,.70)";
+  ctx.beginPath();
+  ctx.moveTo(cx+ts*0.05, keepY-ts*0.16);
+  ctx.lineTo(cx+ts*0.16, keepY-ts*0.12);
+  ctx.lineTo(cx+ts*0.05, keepY-ts*0.06);
+  ctx.closePath(); ctx.fill();
+}
+
+function drawDwarfSprite(d, p, ts){
+  const cx=p.x+ts*0.5, cy=p.y+ts*0.56;
+
+  // stable variations
+  const s = seed01((d.id||0)*9973 + ((d.x*31 + d.y*17)|0));
+  const skin = pick(s, ["rgba(255,224,189,.92)","rgba(241,200,160,.92)","rgba(224,176,140,.92)"]);
+  const beard= pick(seed01((d.id||0)*12345+7), ["#7b4a2b","#9b6a3a","#c7c7c7","#2f2f2f","#caa06a"]);
+  let armorCol="#bdb7ad";
+  if(d.armor) armorCol = ARMOR_COL[d.armor.armorTier] || armorCol;
+
+  // shadow
+  ctx.shadowColor="rgba(0,0,0,.35)";
+  ctx.shadowBlur=ts*0.16;
+  ctx.fillStyle="rgba(0,0,0,.22)";
+  ctx.beginPath();
+  ctx.ellipse(cx, p.y+ts*0.78, ts*0.18, ts*0.08, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.shadowBlur=0;
+
+  // legs
+  ctx.fillStyle="rgba(0,0,0,.22)";
+  ctx.fillRect(cx-ts*0.10, cy+ts*0.10, ts*0.08, ts*0.14);
+  ctx.fillRect(cx+ts*0.02, cy+ts*0.10, ts*0.08, ts*0.14);
+
+  // boots
+  ctx.fillStyle="rgba(0,0,0,.28)";
+  rrPath(ctx, cx-ts*0.12, cy+ts*0.22, ts*0.12, ts*0.08, ts*0.03); ctx.fill();
+  rrPath(ctx, cx+ts*0.00, cy+ts*0.22, ts*0.12, ts*0.08, ts*0.03); ctx.fill();
+
+  // torso
+  const torsoX=cx-ts*0.16, torsoY=cy-ts*0.06, torsoW=ts*0.32, torsoH=ts*0.20;
+  const tg=ctx.createLinearGradient(torsoX,torsoY,torsoX,torsoY+torsoH);
+  tg.addColorStop(0,"rgba(255,255,255,.18)");
+  tg.addColorStop(1,"rgba(0,0,0,.18)");
+  ctx.fillStyle=armorCol;
+  rrPath(ctx, torsoX, torsoY, torsoW, torsoH, ts*0.08); ctx.fill();
+  ctx.fillStyle=tg;
+  rrPath(ctx, torsoX, torsoY, torsoW, torsoH, ts*0.08); ctx.fill();
+  ctx.strokeStyle="rgba(0,0,0,.22)";
+  ctx.lineWidth=Math.max(1,ts*0.03);
+  rrPath(ctx, torsoX, torsoY, torsoW, torsoH, ts*0.08); ctx.stroke();
+
+  // arms
+  ctx.fillStyle=armorCol;
+  rrPath(ctx, torsoX-ts*0.08, torsoY+ts*0.04, ts*0.10, ts*0.12, ts*0.06); ctx.fill();
+  rrPath(ctx, torsoX+torsoW-ts*0.02, torsoY+ts*0.04, ts*0.10, ts*0.12, ts*0.06); ctx.fill();
+
+  // head
+  const hx=cx, hy=cy-ts*0.16;
+  ctx.fillStyle=skin;
+  ctx.beginPath(); ctx.arc(hx, hy, ts*0.10, 0, Math.PI*2); ctx.fill();
+
+  // helmet / hair band
+  ctx.fillStyle="rgba(0,0,0,.18)";
+  rrPath(ctx, hx-ts*0.11, hy-ts*0.12, ts*0.22, ts*0.10, ts*0.06); ctx.fill();
+  ctx.fillStyle="rgba(255,255,255,.10)";
+  rrPath(ctx, hx-ts*0.09, hy-ts*0.11, ts*0.18, ts*0.07, ts*0.05); ctx.fill();
+
+  // beard
+  ctx.fillStyle=beard;
+  ctx.beginPath();
+  ctx.moveTo(hx-ts*0.09, hy+ts*0.00);
+  ctx.quadraticCurveTo(hx, hy+ts*0.12, hx+ts*0.09, hy+ts*0.00);
+  ctx.quadraticCurveTo(hx, hy+ts*0.06, hx-ts*0.09, hy+ts*0.00);
+  ctx.closePath(); ctx.fill();
+
+  // eyes (tiny)
+  ctx.fillStyle="rgba(0,0,0,.35)";
+  ctx.fillRect(hx-ts*0.05, hy-ts*0.02, ts*0.03, ts*0.02);
+  ctx.fillRect(hx+ts*0.02, hy-ts*0.02, ts*0.03, ts*0.02);
+
+  // held tool/weapon (kept from your logic, but anchored to hands)
+  const handX = cx+ts*0.22, handY = cy+ts*0.02;
+
+  if(d.pickaxe){
+	ctx.strokeStyle="rgba(240,250,255,.80)";
+	ctx.lineWidth=Math.max(1,ts*0.05);
+	ctx.beginPath();
+	ctx.moveTo(handX-ts*0.06, handY-ts*0.18);
+	ctx.lineTo(handX+ts*0.06, handY+ts*0.18);
+	ctx.stroke();
+	ctx.beginPath();
+	ctx.moveTo(handX-ts*0.10, handY-ts*0.12);
+	ctx.lineTo(handX+ts*0.06, handY-ts*0.02);
+	ctx.stroke();
+  } else if(d.weapon){
+	if(d.weapon.weaponType==="axe"){
+	  ctx.fillStyle="rgba(245,250,255,.75)";
+	  rrPath(ctx, handX-ts*0.02, handY-ts*0.16, ts*0.06, ts*0.26, ts*0.02); ctx.fill();
+	  ctx.fillStyle="rgba(0,0,0,.22)";
+	  rrPath(ctx, handX-ts*0.10, handY-ts*0.14, ts*0.10, ts*0.10, ts*0.03); ctx.fill();
+	} else {
+	  // sword-ish
+	  ctx.strokeStyle="rgba(245,250,255,.75)";
+	  ctx.lineWidth=Math.max(1,ts*0.045);
+	  ctx.beginPath();
+	  ctx.moveTo(handX, handY-ts*0.18);
+	  ctx.lineTo(handX, handY+ts*0.18);
+	  ctx.stroke();
+	  ctx.strokeStyle="rgba(0,0,0,.20)";
+	  ctx.lineWidth=Math.max(1,ts*0.03);
+	  ctx.beginPath();
+	  ctx.moveTo(handX-ts*0.08, handY+ts*0.02);
+	  ctx.lineTo(handX+ts*0.08, handY+ts*0.02);
+	  ctx.stroke();
+	}
+  }
+}
+
+// ============================================================
+// Rebuilt draw() (drop-in replacement)
+// ============================================================
+function draw(){
+  // background
+  ctx.fillStyle="#07090c";
+  ctx.fillRect(0,0,window.innerWidth, window.innerHeight);
+
+  const s = BASE_TILE_PX * cam.zoom;
+  const halfTilesX = (window.innerWidth / s) / 2;
+  const halfTilesY = (window.innerHeight / s) / 2;
+
+  const minX = clamp(Math.floor(cam.x - halfTilesX) - 2, 0, W-1);
+  const maxX = clamp(Math.ceil (cam.x + halfTilesX) + 2, 0, W-1);
+  const minY = clamp(Math.floor(cam.y - halfTilesY) - 2, 0, H-1);
+  const maxY = clamp(Math.ceil (cam.y + halfTilesY) + 2, 0, H-1);
+
+  // tiles
+  for(let y=minY;y<=maxY;y++){
+	for(let x=minX;x<=maxX;x++){
+	  const ii = idx(x,y);
+	  const tt = tType[ii];
+	  const p = worldToScreen(x,y);
+	  drawTile(p.x,p.y,p.s, tt, x,y, ii);
+	}
+  }
+
+  // fortress (NOW actually drawn like a fortress)
+  if(fortress){
+	const p = worldToScreen(fortress.x, fortress.y), ts=p.s;
+	ctx.save();
+	ctx.shadowColor="rgba(127,215,255,.22)";
+	ctx.shadowBlur=ts*0.25;
+	drawFortressSprite(fortress, p, ts);
+	ctx.restore();
+  }
+
+  // forge (kept, slight polish)
+  if(forge){
+	const p = worldToScreen(forge.x,forge.y), ts=p.s;
+	ctx.save();
+	ctx.shadowColor="rgba(255,160,110,.28)";
+	ctx.shadowBlur=ts*0.35;
+
+	// forge base
+	drawStoneBlock(ctx, p.x+ts*0.14, p.y+ts*0.36, ts*0.72, ts*0.46, ts, true);
+
+	// furnace glow
+	ctx.shadowColor="rgba(255,140,90,.35)";
+	ctx.shadowBlur=ts*0.25;
+	const g = ctx.createRadialGradient(p.x+ts*0.50,p.y+ts*0.62, ts*0.05, p.x+ts*0.50,p.y+ts*0.62, ts*0.30);
+	g.addColorStop(0,"rgba(255,190,120,.95)");
+	g.addColorStop(1,"rgba(255,120,70,0)");
+	ctx.fillStyle=g;
+	ctx.beginPath(); ctx.arc(p.x+ts*0.50,p.y+ts*0.62,ts*0.24,0,Math.PI*2); ctx.fill();
+
+	// mouth
+	ctx.shadowBlur=0;
+	ctx.fillStyle="rgba(0,0,0,.30)";
+	rrPath(ctx, p.x+ts*0.30, p.y+ts*0.56, ts*0.40, ts*0.20, ts*0.08);
+	ctx.fill();
+
+	// level
+	ctx.fillStyle="rgba(255,255,255,.90)";
+	ctx.font=`${Math.max(10,ts*0.20)}px system-ui`;
+	ctx.textAlign="left"; ctx.textBaseline="top";
+	ctx.fillText(String(forge.level), p.x+ts*0.08, p.y+ts*0.06);
+
+	ctx.restore();
+  }
+
+  // depots (unchanged)
+  for(const d of depots){
+	const p=worldToScreen(d.x,d.y), ts=p.s;
+	ctx.save();
+	ctx.shadowColor="rgba(160,255,205,.25)";
+	ctx.shadowBlur=ts*0.25;
+	ctx.fillStyle="rgba(160,255,205,0.95)";
+	ctx.beginPath(); ctx.arc(p.x+ts*0.5,p.y+ts*0.5,ts*0.33,0,Math.PI*2); ctx.fill();
+	ctx.shadowBlur=0;
+	ctx.fillStyle="rgba(0,0,0,.22)";
+	ctx.beginPath(); ctx.arc(p.x+ts*0.5,p.y+ts*0.5,ts*0.15,0,Math.PI*2); ctx.fill();
+	ctx.restore();
+	drawHealthBarWorld(d.x,d.y,1.1,d.hp,d.maxHp,"rgba(160,255,205,.92)");
+  }
+
+  // towers (NOW look like towers)
+  for(const t of towers){
+	const p=worldToScreen(t.x,t.y), ts=p.s;
+	ctx.save();
+	ctx.shadowColor="rgba(120,220,255,.18)";
+	ctx.shadowBlur=ts*0.22;
+	drawTowerSprite(t, p, ts);
+	ctx.restore();
+	drawHealthBarWorld(t.x,t.y,1.1,t.hp,t.maxHp,"rgba(120,255,170,.75)");
+  }
+
+  // spawners (unchanged)
+  for(const s2 of spawners){
+	const p=worldToScreen(s2.x,s2.y), ts=p.s;
+	ctx.save();
+	ctx.shadowColor="rgba(190,130,255,.22)";
+	ctx.shadowBlur=ts*0.30;
+	ctx.fillStyle="rgba(123,44,255,0.95)";
+	ctx.beginPath(); ctx.arc(p.x+ts*0.5,p.y+ts*0.5,ts*0.34,0,Math.PI*2); ctx.fill();
+	ctx.shadowBlur=0;
+	ctx.fillStyle="rgba(0,0,0,.25)";
+	ctx.beginPath(); ctx.arc(p.x+ts*0.5,p.y+ts*0.5,ts*0.18,0,Math.PI*2); ctx.fill();
+	ctx.restore();
+	drawHealthBarWorld(s2.x,s2.y,1.3,s2.hp,s2.maxHp,"rgba(210,160,255,0.90)");
+  }
+
+  // ground loot markers (unchanged)
+  for(const L of groundLoot){
+	const p=worldToScreen(L.x,L.y), ts=p.s;
+	ctx.save();
+	if(L.payload.kind==="currency"){
+	  const c = L.payload.currency;
+	  let col="#ffd66f";
+	  if(c==="sapphire") col="#7fd7ff";
+	  if(c==="emerald") col="#85ffb0";
+	  if(c==="diamond") col="#d6f1ff";
+	  ctx.shadowColor=col;
+	  ctx.shadowBlur=ts*0.25;
+	  ctx.fillStyle=col;
+	  ctx.fillRect(p.x+ts*0.30,p.y+ts*0.30,ts*0.40,ts*0.40);
+	}else{
+	  const r=L.payload.item.rarity;
+	  const col = RARITY_COL[r] || "#fff";
+	  ctx.shadowColor=col;
+	  ctx.shadowBlur=ts*0.25;
+	  ctx.fillStyle=col;
+	  ctx.beginPath(); ctx.arc(p.x+ts*0.5,p.y+ts*0.5,ts*0.20,0,Math.PI*2); ctx.fill();
+	}
+	ctx.restore();
+  }
+
+  // dwarves (NOW little people)
+  for(const d of dwarves){
+	const p=worldToScreen(d.x,d.y), ts=p.s;
+
+	ctx.save();
+	drawDwarfSprite(d, p, ts);
+
+	// selection outline
+	if(selected.kind==="dwarf" && selected.id===d.id){
+	  ctx.strokeStyle="rgba(127,215,255,.95)";
+	  ctx.lineWidth=2;
+	  ctx.strokeRect(p.x+ts*0.10,p.y+ts*0.10,ts*0.80,ts*0.80);
+	}
+	ctx.restore();
+
+	drawHealthBarWorld(d.x,d.y,1.2,d.hp,d.maxHp,"rgba(120,255,170,0.85)");
+  }
+
+  // enemies (SPRITES)
+for(const e of enemies){
+  const p = worldToScreen(e.x, e.y), ts = p.s;
+
+  drawEnemySprite(e, p, ts);
+
+  // keep your HP bar
+  drawHealthBarWorld(e.x, e.y, 1.15, e.hp, e.maxHp, "rgba(255,180,180,0.85)");
+}
+
+
+  // fortress HP bar (kept)
+  if(fortress){
+	drawHealthBarWorld(fortress.x, fortress.y, 1.7, fortress.hp, fortress.maxHp, "rgba(127,215,255,0.90)");
+  }
+
+  // build ghost (unchanged)
+  if(buildMode!==BUILD_NONE){
+	const tx=Math.round(mouseWorld.x), ty=Math.round(mouseWorld.y);
+	if(inBounds(tx,ty)){
+	  const p=worldToScreen(tx,ty), ts=p.s;
+	  const ok=canBuildAt(tx,ty);
+	  ctx.save();
+	  ctx.globalAlpha=0.70;
+	  ctx.fillStyle = ok ? "rgba(120,220,255,0.35)" : "rgba(255,60,80,0.35)";
+	  ctx.fillRect(p.x,p.y,ts,ts);
+	  ctx.restore();
+	}
+  }
+
+  // vignette (unchanged)
+  ctx.save();
+  const vg = ctx.createRadialGradient(
+	window.innerWidth/2, window.innerHeight/2, 120,
+	window.innerWidth/2, window.innerHeight/2, Math.max(window.innerWidth, window.innerHeight)*0.7
+  );
+  vg.addColorStop(0, "rgba(0,0,0,0)");
+  vg.addColorStop(1, "rgba(0,0,0,.42)");
+  ctx.fillStyle = vg;
+  ctx.fillRect(0,0,window.innerWidth, window.innerHeight);
+  ctx.restore();
+
+  if(isGameOver){
+	ctx.fillStyle="rgba(0,0,0,.60)";
+	ctx.fillRect(0,0,window.innerWidth, window.innerHeight);
+	ctx.fillStyle="#f3f6fb";
+	ctx.font="bold 40px system-ui, sans-serif";
+	ctx.textAlign="center";
+	ctx.fillText("FORTRESS DESTROYED", window.innerWidth/2, window.innerHeight/2 - 10);
+	ctx.font="16px system-ui, sans-serif";
+	ctx.fillText("Load Save. Tip: equip bows, build towers + depots, destroy spawners.", window.innerWidth/2, window.innerHeight/2 + 22);
+  }
+}
+
+
+  // ============================================================
+  // Enemy/structure targeting
+  // ============================================================
+  function updateSpawnersAndCombat(dt){
+	updateSpawners(dt);
+	updateTowers(dt);
+	for(const d of dwarves) updateDwarf(d, dt);
+	for(const e of enemies) updateEnemy(e, dt);
+	removeDead();
+  }
+
+  // ============================================================
+  // Inventory + build costs labeling on boot
+  // ============================================================
+  function primeUI(){
+	setLeftTab("dwarves");
+	setBuildMode(BUILD_NONE);
+	markUI("all");
+	initInventoryUI();
+  }
+
+  // ============================================================
+  // Build + sell
+  // ============================================================
+  function setupBuildCosts(){
+	UI.buildDepot.textContent  = `Depot (${COST.depot}g)`;
+	UI.buildArrow.textContent  = `Arrow (${COST.arrow}g)`;
+	UI.buildCannon.textContent = `Cannon (${COST.cannon}g)`;
+	UI.buildFrost.textContent  = `Frost (${COST.frost}g)`;
+  }
+
+  // ============================================================
+  // Game Loop
+  // ============================================================
+  let last = performance.now();
+// ============================================================
+// Guard Post maintenance (auto-assign guards to guard towers)
+// ============================================================
+
+let _guardMaintTimer = 0;
+
+function getGuardTowerById(id){
+  return towers.find(t => t.type === "guard" && t.id === id) || null;
+}
+
+function rebuildGuardLists(){
+  // Ensure guard posts have guard arrays and defaults
+  for(const t of towers){
+    if(t.type !== "guard") continue;
+    if(!Array.isArray(t.guards)) t.guards = [];
+    t.maxGuards = t.maxGuards ?? 2;
+    t.stationR  = t.stationR  ?? 4;
+    t.patrolR   = t.patrolR   ?? 28; // ✅ "fairly vast" engage radius
+  }
+
+  // Clear invalid dwarf assignments (no weapon / post gone / dead)
+  const postIds = new Set(towers.filter(t=>t.type==="guard").map(t=>t.id));
+  for(const d of dwarves){
+    if(d.dead) { d.guardPostId = null; continue; }
+    if(d.guardPostId && !postIds.has(d.guardPostId)) d.guardPostId = null;
+    if(d.guardPostId && !d.weapon) d.guardPostId = null;
+  }
+
+  // Rebuild each post's guards list from dwarf assignments
+  const postMap = new Map();
+  for(const t of towers){
+    if(t.type==="guard"){
+      t.guards.length = 0;
+      postMap.set(t.id, t);
+    }
+  }
+  for(const d of dwarves){
+    if(d.guardPostId && d.weapon && !d.dead){
+      const p = postMap.get(d.guardPostId);
+      if(p) p.guards.push(d.id);
+    }
+  }
+}
+
+function fillGuardPosts(){
+  const posts = towers.filter(t=>t.type==="guard");
+  if(posts.length === 0) return;
+
+  // Eligible fighters
+  const fighters = dwarves.filter(d => !d.dead && !!d.weapon);
+
+  // Track currently assigned
+  const assigned = new Set();
+  for(const p of posts){
+    // prune dead/missing from post list
+    p.guards = (p.guards || []).filter(id => fighters.some(d=>d.id===id));
+    for(const id of p.guards) assigned.add(id);
+  }
+
+  // Assign up to maxGuards per post
+  for(const p of posts){
+    while(p.guards.length < (p.maxGuards ?? 2)){
+      const cand = fighters.find(d => !assigned.has(d.id) && !d.guardPostId);
+      if(!cand) break;
+      cand.guardPostId = p.id;
+      p.guards.push(cand.id);
+      assigned.add(cand.id);
+    }
+  }
+}
+
+function tickGuardMaintenance(dt){
+  // If you prefer it to run even while paused, remove these guards:
+  if(paused || isGameOver) return;
+
+  _guardMaintTimer -= dt;
+  if(_guardMaintTimer > 0) return;
+  _guardMaintTimer = 0.75; // run ~every 0.75s (cheap + stable)
+
+  rebuildGuardLists();
+  fillGuardPosts();
+}
+
+  function tick(now){
+	const dt = Math.min(0.033, (now-last)/1000);
+	last = now;
+tickGuardMaintenance(dt);
+	// camera
+	if(!paused){
+	  const camSpeed = 28/(BASE_TILE_PX*cam.zoom)*60*dt;
+	  if(keys["w"]||keys["arrowup"]) cam.y -= camSpeed;
+	  if(keys["s"]||keys["arrowdown"]) cam.y += camSpeed;
+	  if(keys["a"]||keys["arrowleft"]) cam.x -= camSpeed;
+	  if(keys["d"]||keys["arrowright"]) cam.x += camSpeed;
+	  cam.x = clamp(cam.x, 0, W-1);
+	  cam.y = clamp(cam.y, 0, H-1);
+	}
+
+	if(!paused && !isGameOver){
+	  updateSpawnersAndCombat(dt);
+	}
+
+	// UI + toast cadence
+	flushUI(now);
+	lastUIStamp = now;
+
+	// render
+	draw();
+	initForgeUI();
+updateForgeUI();
+
+	requestAnimationFrame(tick);
+  }
+
+  // ============================================================
+  // Boot
+  // ============================================================
+  generateWorld();
+
+  for(let i=0;i<4;i++){
+	const d = makeDwarf();
+	applyDwarfStats(d);
+	dwarves.push(d);
+  }
+
+  addLootItem(mkItemPickaxe("common"));
+  addLootItem(mkItemPickaxe("uncommon"));
+  addLootItem(mkItemWeapon("common"));
+  addLootItem(mkItemArmor("common"));
+
+  setupBuildCosts();
+  primeUI();
+
+  toast("Remaster loaded. Inventory is virtualized (fast) + UI is condensed.");
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
