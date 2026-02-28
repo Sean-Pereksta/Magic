@@ -254,6 +254,7 @@
       <div class="panel" id="panelDiplomacy"></div>
       <div class="panel" id="panelHelp"></div>
       <div class="panel wide left" id="panelLoot"></div>
+      <div class="panel" id="panelPerk"></div>
     </div>
 
     <div id="toast"></div>
@@ -315,6 +316,7 @@
     panelDiplomacy: document.getElementById('panelDiplomacy'),
     panelHelp: document.getElementById('panelHelp'),
     panelLoot: document.getElementById('panelLoot'),
+    panelPerk: document.getElementById('panelPerk'),
     toast: document.getElementById('toast'),
 
     btnSave: document.getElementById('btnSave'),
@@ -380,7 +382,7 @@
   // Gameplay tuning
   // =========================
   const SAVE_KEY = 'iso_mnb_save_v5';
-  const SAVE_VERSION = 11;
+  const SAVE_VERSION = 12;
   const DAY_LEN = 180;
   const DAY_TICK = 1;
   const WOUNDED_CHANCE = 0.78;        // ↑ more likely wounded than dead
@@ -398,6 +400,21 @@
     { hp:1.16, dmg:1.12, cd:0.93 },
   ];
 
+
+  const PERK_DEFS = {
+    perk_command_aura:{ id:'perk_command_aura', name:'Command Aura', desc:'Aura radius +0.6.', apply:(p)=>{ p._perkAuraBonus=(p._perkAuraBonus||0)+0.6; } },
+    perk_wage_relief:{ id:'perk_wage_relief', name:'Wage Relief', desc:'Daily wages -8%.', apply:(p)=>{ p._perkWageRelief=1; } },
+    perk_quick_rally:{ id:'perk_quick_rally', name:'Quick Rally', desc:'Tighter regroup spacing.', apply:(p)=>{ p._perkQuickRally=1; } },
+    perk_training_discount:{ id:'perk_training_discount', name:'Training Reforms', desc:'Upgrade costs reduced.', apply:(p)=>{ p._perkTrainingDiscount=1; } },
+    perk_field_medic:{ id:'perk_field_medic', name:'Field Medic', desc:'Wounded recover faster.', apply:(p)=>{ p._perkFieldMedic=1; } },
+    perk_blooded:{ id:'perk_blooded', name:'Blooded', desc:'Weapon-specialized +6% damage.', apply:(p)=>{ const w=equippedWeapon(p); if(w?.weaponKind==='melee') p._perkMeleeDmg=(p._perkMeleeDmg||1)*1.06; else p._perkRangedDmg=(p._perkRangedDmg||1)*1.06; } },
+    perk_sturdy:{ id:'perk_sturdy', name:'Sturdy', desc:'+30 base max HP.', apply:(p)=>{ p.baseMaxHp += 30; p.hp=Math.min(playerMaxHp(p), p.hp+30); } },
+    perk_caravan_guard:{ id:'perk_caravan_guard', name:'Caravan Guard', desc:'Friendly caravans often escape raids.', apply:(p)=>{ p._perkCaravanGuard=1; } },
+    perk_village_renewal:{ id:'perk_village_renewal', name:'Village Renewal', desc:'Village volunteers recover faster.', apply:(p)=>{ p._perkVillageRenewal=1; } },
+    perk_renown_gain:{ id:'perk_renown_gain', name:'Songs of Victory', desc:'+15% renown from battles.', apply:(p)=>{ p._perkRenown=1; } },
+  };
+  const PERK_POOL = Object.keys(PERK_DEFS);
+
   // =========================
   // Factions / items / units
   // =========================
@@ -405,6 +422,7 @@
     { id:'knights', name:'Lioncrown Chivalry', color:'#fbbf24' },
     { id:'nords', name:'Frostfjord Clans', color:'#93c5fd' },
     { id:'nomads', name:'Skyhoof Steppe', color:'#f59e0b' },
+    { id:'rangers', name:'Verdantbow Concord', color:'#34d399' },
   ];
 
   const FACTION_TEMPLATES = {
@@ -422,8 +440,24 @@
       { name:'Skyhoof Steppe', color:'#f59e0b', sigil:'horse' },
       { name:'Sandwind Khans', color:'#d6b98a', sigil:'crescent' },
       { name:'Starweave Riders', color:'#a855f7', sigil:'star' },
+    ],
+    rangers:[
+      { name:'Verdantbow Concord', color:'#34d399', sigil:'leaf' },
+      { name:'Everwild Sentinels', color:'#22c55e', sigil:'leaf' },
+      { name:'Thornwatch Covenant', color:'#16a34a', sigil:'leaf' },
     ]
   };
+
+  const LEADER_NAME_BANKS = {
+    knights:{ king:['King Aldric','King Edwyn','Queen Rosamund'], lord:['Lord Alric','Lady Ysolda','Lord Edrin','Lady Freya','Lord Kael','Lady Sera'], titles:['Lord','Lady','King'] },
+    nords:{ king:['High Jarl Skadi','Jarl-King Bjorn','Jarl-King Rurik'], lord:['Jarl Hakon','Jarl Signe','Jarl Torvald','Jarl Astrid'], titles:['Jarl','Shield-Jarl','King'] },
+    nomads:{ king:['Great Khan Temur','Khan Arslan','Khatan Selene'], lord:['Khan Borte','Khatan Yara','Khan Orun','Khan Batu'], titles:['Khan','Khatan','King'] },
+    rangers:{ king:['Warden-Prince Elar','Greenking Thorn','Warden-Prince Myra'], lord:['Warden Vale','Greenlord Arin','Thorn-Captain Iri','Warden Lyra'], titles:['Warden','Greenlord','Thorn-Captain','King'] },
+  };
+  const LEADER_TRAITS = ['Aggressive','Cautious','Raider','Builder','Zealot','Strategist'];
+  const TRAIT_GLYPH = { Aggressive:'Agg', Cautious:'Cau', Raider:'Raid', Builder:'Bld', Zealot:'Zea', Strategist:'Str' };
+  const VASSAL_PERSONALITIES = ['loyal','greedy','ambitious','honorable'];
+  const VASSAL_TRAITS = ['raider','marshal','quartermaster','diplomat'];
 
   function hslToHex(h,s,l){
     h = (h%360+360)%360;
@@ -507,6 +541,14 @@
     st_veteran_mounted_archer:{ key:'st_veteran_mounted_archer', name:'Veteran Mounted Archer', faction:'nomads', role:'cav', tier:1, hp:100, dmg:16, range:8.3, spd:3.6, windup:0.5, cooldown:0.69, projKind:'arrow', projSpeed:10.8, kiteCircle:true, cost:66, volunteersTier:1, upgrades:[{to:'st_companion_guard',label:'Train → Companion Guard'}] },
     st_companion_guard:{ key:'st_companion_guard', name:'Companion Guard', faction:'nomads', role:'cav', tier:2, hp:126, dmg:20, range:8.7, spd:3.75, windup:0.47, cooldown:0.65, projKind:'arrow', projSpeed:11.2, kiteCircle:true, cost:128, volunteersTier:2, upgrades:[] },
 
+
+    rg_woodsman:{ key:'rg_woodsman', name:'Woodsman', faction:'rangers', role:'arc', tier:0, hp:74, dmg:13, range:8.3, spd:2.55, windup:0.56, cooldown:0.74, projKind:'arrow', projSpeed:10.8, cost:12, volunteersTier:0, upgrades:[{to:'rg_longbowman',label:'Train → Longbowman'}], visual:{helm:'hood',chest:'leather',cape:false,trim:false,shieldShape:'none',weaponShape:'bow',accent:'green'} },
+    rg_longbowman:{ key:'rg_longbowman', name:'Longbowman', faction:'rangers', role:'arc', tier:1, hp:92, dmg:18, range:9.3, spd:2.5, windup:0.54, cooldown:0.72, projKind:'arrow', projSpeed:11.2, cost:64, volunteersTier:1, upgrades:[{to:'rg_windwarden',label:'Train → Windwarden'}], visual:{helm:'hood',chest:'leather',cape:false,trim:false,shieldShape:'none',weaponShape:'bow',accent:'green'} },
+    rg_windwarden:{ key:'rg_windwarden', name:'Windwarden', faction:'rangers', role:'arc', tier:2, hp:110, dmg:24, range:10.2, spd:2.55, windup:0.5, cooldown:0.68, projKind:'arrow', projSpeed:11.4, cost:126, volunteersTier:2, upgrades:[], visual:{helm:'hood',chest:'leather',cape:true,trim:true,shieldShape:'none',weaponShape:'bow',accent:'green'} },
+    rg_spearman:{ key:'rg_spearman', name:'Spearman', faction:'rangers', role:'inf', tier:0, hp:88, dmg:13, range:1.35, spd:2.35, windup:0.34, cooldown:0.7, shield:true, blockArrow:0.26, blockMelee:0.1, cost:14, volunteersTier:0, upgrades:[{to:'rg_thornshield',label:'Train → Thornshield'}], visual:{helm:'hood',chest:'leather',cape:false,trim:false,shieldShape:'round',weaponShape:'spear',accent:'green'} },
+    rg_thornshield:{ key:'rg_thornshield', name:'Thornshield', faction:'rangers', role:'inf', tier:1, hp:118, dmg:18, range:1.35, spd:2.25, windup:0.38, cooldown:0.78, shield:true, blockArrow:0.38, blockMelee:0.16, cost:70, volunteersTier:1, upgrades:[], visual:{helm:'hood',chest:'leather',cape:false,trim:true,shieldShape:'round',weaponShape:'spear',accent:'green'} },
+    rg_horncaller:{ key:'rg_horncaller', name:'Horncaller', faction:'rangers', role:'sup', tier:2, hp:104, dmg:10, range:1.1, spd:2.35, windup:0.34, cooldown:0.72, shield:false, auraRadius:3.6, cost:98, volunteersTier:2, upgrades:[], visual:{helm:'hood',chest:'leather',cape:true,trim:false,shieldShape:'none',weaponShape:'spear',accent:'green'} },
+
     sup_banner:{ key:'sup_banner', name:'Banner Guard', role:'sup', tier:2, hp:112, dmg:10, range:1.1, spd:2.3, windup:0.34, cooldown:0.72, shield:true, blockArrow:0.25, blockMelee:0.1, auraRadius:3.2, cost:92, volunteersTier:2, upgrades:[] },
 
     e_looter:{ key:'e_looter', name:'Looter', role:'inf', tier:0, hp:62, dmg:9, range:1.0, spd:2.45, windup:0.34, cooldown:0.62, cost:0, upgrades:[], recruitable:false },
@@ -550,8 +592,50 @@
   function biomeForFaction(fid){
     if(fid==='nords') return BIOME.NORDIC;
     if(fid==='nomads') return BIOME.STEPPE;
+    if(fid==='rangers') return BIOME.FOREST;
     return BIOME.PLAINS;
   }
+
+  function mapFactionIds(){ return FACTIONS.map(f=>f.id); }
+  function pairKey(a,b){ return a<b ? `${a}|${b}` : `${b}|${a}`; }
+  function ensureFactionDiplomacy(){
+    if(!state.map) return;
+    const ids = mapFactionIds();
+    state.map.factionDiplomacy = state.map.factionDiplomacy || {};
+    for(const a of ids){
+      state.map.factionDiplomacy[a] = state.map.factionDiplomacy[a] || {};
+      for(const b of ids){
+        if(a===b) continue;
+        const cur = state.map.factionDiplomacy[a][b] || state.map.factionDiplomacy[b]?.[a] || {};
+        state.map.factionDiplomacy[a][b] = {
+          standing: clamp(cur.standing||0, -100, 100),
+          atWar: !!cur.atWar,
+          warSinceDay: cur.warSinceDay || 0,
+          peaceCooldownUntilDay: cur.peaceCooldownUntilDay || 0,
+          lastChangeDay: cur.lastChangeDay || 1,
+        };
+      }
+    }
+    for(const a of ids) for(const b of ids){
+      if(a>=b) continue;
+      state.map.factionDiplomacy[b][a] = { ...state.map.factionDiplomacy[a][b] };
+    }
+  }
+  function setFactionPair(a,b,patch={}){
+    if(!state.map || a===b) return;
+    ensureFactionDiplomacy();
+    const base = state.map.factionDiplomacy[a][b] || { standing:0, atWar:false, warSinceDay:0, peaceCooldownUntilDay:0, lastChangeDay:state.map.day||1 };
+    const out = { ...base, ...patch };
+    out.standing = clamp(out.standing||0, -100, 100);
+    state.map.factionDiplomacy[a][b] = { ...out };
+    state.map.factionDiplomacy[b][a] = { ...out };
+  }
+  function factionPair(a,b){ ensureFactionDiplomacy(); return state.map.factionDiplomacy?.[a]?.[b] || null; }
+  function areFactionsAtWar(a,b){
+    if(!a || !b || a===b) return false;
+    return !!factionPair(a,b)?.atWar;
+  }
+
   function partyKindForBiome(b){
     if(b===BIOME.NORDIC) return 'sea_raiders';
     if(b===BIOME.STEPPE) return 'steppe_bandits';
@@ -581,7 +665,7 @@
     player: null,
     diplomacy: null,
     cam: { x: 10, y: 10 },
-    panelsOpen: { settlement:false, inventory:false, army:false, diplomacy:false, help:false, loot:false },
+    panelsOpen: { settlement:false, inventory:false, army:false, diplomacy:false, help:false, loot:false, perk:false },
     started: false,
     siegeWarnings: {},
     armyUpgradeFocus: null,
@@ -652,6 +736,31 @@
     return 'NEUTRAL';
   }
 
+
+  function randomTraits(n=1){
+    const out=[];
+    while(out.length<n){
+      const t = LEADER_TRAITS[randi(0,LEADER_TRAITS.length-1)];
+      if(!out.includes(t)) out.push(t);
+    }
+    return out;
+  }
+  function makeLeader(fid, isKing=false, fallbackName='Lord'){
+    const bank = LEADER_NAME_BANKS[fid] || LEADER_NAME_BANKS.knights;
+    const pool = isKing ? bank.king : bank.lord;
+    const nm = pool?.[randi(0,pool.length-1)] || fallbackName;
+    const title = isKing ? 'King' : (bank.titles?.[randi(0,bank.titles.length-1)] || 'Lord');
+    return { name:nm, title, traits:randomTraits(Math.random()<0.45?2:1), grudge:{vsPlayer:0,lastDefeatDay:0} };
+  }
+  function ensureLeaderForParty(party){
+    if(!party || (!party.isLord && !party.isKing)) return;
+    if(!party.leader){
+      party.leader = makeLeader(party.factionId, !!party.isKing, party.lordName||'Lord');
+      if(!party.lordName) party.lordName = `${party.leader.title} ${party.leader.name}`;
+    }
+    party.leader.grudge = party.leader.grudge || {vsPlayer:0,lastDefeatDay:0};
+    party.leader.traits = party.leader.traits || randomTraits(1);
+  }
   function joinCost(rel){
     // friendlier = cheaper
     // rel in [-100..100]
@@ -664,7 +773,7 @@
   // =========================
   function makeNewDiplomacy(){
     const mk = ()=>({ standing:0, hostility:0, treaties:{ napUntil:0, tradeUntil:0, accessUntil:0 } });
-    return { knights:mk(), nords:mk(), nomads:mk() };
+    return { knights:mk(), nords:mk(), nomads:mk(), rangers:mk() };
   }
 
   function makeNewPlayer(){
@@ -686,6 +795,8 @@
       xp: 0,
       xpToNext: 60,
       dmgMult: 1.00,
+      perks: [],
+      perkPointsSpent: 0,
 
       morale: 65,
       renown: 0,
@@ -773,6 +884,44 @@
     if(s.kind==='castle') s.storage = s.storage || { gold:0, food:0, goods:{} };
   }
 
+  function pickPerkChoices(){
+    const owned = new Set(state.player.perks||[]);
+    const pool = PERK_POOL.filter(id=>!owned.has(id));
+    const source = pool.length>=3 ? pool : PERK_POOL.slice();
+    const out=[];
+    while(out.length<Math.min(3, source.length)){
+      const cand = source[randi(0,source.length-1)];
+      if(!out.includes(cand)) out.push(cand);
+    }
+    return out;
+  }
+
+  function showPerkChoice(){
+    const p = state.player;
+    const choices = pickPerkChoices();
+    state.panelsOpen.perk = true;
+    closeAllPanels();
+    state.panelsOpen.perk = true;
+    ui.panelPerk.style.display='block';
+    ui.panelPerk.innerHTML = `
+      <h2>Level Up — Choose One Perk</h2>
+      <div class="small">Time pauses while this panel is open.</div>
+      <div class="hr"></div>
+      <div class="list">${choices.map(id=>`<div class="item"><div class="meta"><b>${PERK_DEFS[id].name}</b><div class="tag">${PERK_DEFS[id].desc}</div></div><button class="btn" data-pickperk="${id}">Pick</button></div>`).join('')}</div>
+    `;
+    for(const b of ui.panelPerk.querySelectorAll('button[data-pickperk]')) b.onclick=()=>{
+      const id=b.getAttribute('data-pickperk');
+      if(!id) return;
+      p.perks = p.perks || [];
+      if(!p.perks.includes(id)) p.perks.push(id);
+      p.perkPointsSpent = (p.perkPointsSpent||0)+1;
+      PERK_DEFS[id]?.apply?.(p);
+      state.panelsOpen.perk = false;
+      ui.panelPerk.style.display='none';
+      toast(`Perk acquired: ${PERK_DEFS[id]?.name||id}`, 1700);
+    };
+  }
+
   function addXP(amount){
     const p = state.player;
     p.xp += amount;
@@ -784,6 +933,7 @@
       p.xpToNext = Math.round(p.xpToNext * 1.22 + 15);
       toast(`LEVEL UP! → Lv ${p.level} (+HP, +DMG)`, 1700);
       p.hp = Math.min(playerMaxHp(p), p.hp + 20);
+      showPerkChoice();
     }
   }
 
@@ -797,18 +947,27 @@
   function makeCastleStock(factionId){
     const weapons = ['weapon_sword','weapon_axe','weapon_spear','weapon_pike','weapon_bow','weapon_crossbow','weapon_dagger'];
     const armors  = ['armor_leather','armor_chain','armor_scale','armor_plate'];
-    const markup = (factionId==='knights') ? 1.06 : (factionId==='nords') ? 0.98 : (factionId==='nomads'?0.94:1.0);
+    const markup = (factionId==='knights') ? 1.06 : (factionId==='nords') ? 0.98 : (factionId==='nomads'?0.94:(factionId==='rangers'?1.0:1.0));
     return { markup, items: [...weapons, ...armors] };
   }
 
   function seedGarrison(factionId='knights'){
-    const tree = factionId==='nords' ? ['no_raider','no_skirmisher','no_wildman'] : (factionId==='nomads' ? ['st_steppe_archer','st_veteran_mounted_archer','st_companion_guard'] : ['kn_nobleman','kn_pikeman','kn_hoplite']);
+    const tree = factionId==='nords' ? ['no_raider','no_skirmisher','no_wildman'] : (factionId==='nomads' ? ['st_steppe_archer','st_veteran_mounted_archer','st_companion_guard'] : (factionId==='rangers' ? ['rg_woodsman','rg_longbowman','rg_windwarden'] : ['kn_nobleman','kn_pikeman','kn_hoplite']));
     const g = {};
     const add=(k,n)=>g[k]=(g[k]||0)+n;
-    add(tree[0], randi(5,9));
-    add(tree[1], randi(3,7));
-    if(Math.random()<0.35) add(tree[2], randi(1,3));
-    if(Math.random()<0.22) add('sup_banner',1);
+    if(factionId==='rangers'){
+      add('rg_woodsman', randi(7,11));
+      add('rg_longbowman', randi(4,8));
+      if(Math.random()<0.45) add('rg_windwarden', randi(1,3));
+      if(Math.random()<0.26) add('rg_horncaller', 1);
+      if(Math.random()<0.65) add('rg_spearman', randi(2,4));
+      if(Math.random()<0.35) add('rg_thornshield', randi(1,2));
+    } else {
+      add(tree[0], randi(5,9));
+      add(tree[1], randi(3,7));
+      if(Math.random()<0.35) add(tree[2], randi(1,3));
+      if(Math.random()<0.22) add('sup_banner',1);
+    }
     return g;
   }
   function seedCapturedMilitia(){
@@ -831,6 +990,8 @@
       knights:['kn_nobleman','kn_pikeman','kn_hoplite'],
       nords:['no_raider','no_skirmisher','no_wildman'],
       nomads:['st_steppe_archer','st_veteran_mounted_archer','st_companion_guard'],
+      rangers:['rg_woodsman','rg_longbowman','rg_windwarden'],
+      rangers:['rg_woodsman','rg_longbowman','rg_windwarden','rg_horncaller'],
     };
     const pool = poolByFaction[factionId] || poolByFaction.knights;
     const normalPool = ['kn_nobleman','no_raider','st_steppe_archer'].filter(k=>!pool.includes(k));
@@ -841,8 +1002,10 @@
       [pool[2]]: (Math.random()<0.35 ? 1 : 0),
       sup_banner: (Math.random()<0.12 ? 1 : 0),
     };
+    if(factionId==='rangers' && pool[3] && Math.random()<0.12) volunteers[pool[3]] = 1;
     if(normalKey && Math.random()<0.48) volunteers[normalKey] = randi(1,3);
     const caps = { [pool[0]]:18, [pool[1]]:5, [pool[2]]:2, sup_banner:1 };
+    if(factionId==='rangers' && pool[3]) caps[pool[3]] = 1;
     if(normalKey) caps[normalKey] = 4;
     return { volunteers, caps, regenClock: rand(0, VILLAGE_REGEN_INTERVAL) };
   }
@@ -887,13 +1050,27 @@
       knights:['kn_nobleman','kn_pikeman','kn_hoplite'],
       nords:['no_raider','no_skirmisher','no_wildman'],
       nomads:['st_steppe_archer','st_veteran_mounted_archer','st_companion_guard'],
+      rangers:['rg_woodsman','rg_longbowman','rg_windwarden','rg_horncaller'],
     };
     const tree = trees[faction] || trees.knights;
     const eliteBias = opts.eliteBias||0;
-    for(let i=0;i<size;i++){
-      const r=Math.random();
-      const t = r<(0.62-eliteBias)?0:(r<(0.90-eliteBias*0.45)?1:2);
-      comp.push({unit:tree[t]});
+    if(faction==='rangers' && (kind==='army' || kind==='patrol' || kind==='vassal')){
+      for(let i=0;i<size;i++){
+        const r=Math.random();
+        if(r<0.65){
+          comp.push({unit: Math.random()<0.62?'rg_woodsman':(Math.random()<0.7?'rg_longbowman':'rg_windwarden')});
+        }else if(r<0.95){
+          comp.push({unit: Math.random()<0.72?'rg_spearman':'rg_thornshield'});
+        }else{
+          comp.push({unit: 'rg_horncaller'});
+        }
+      }
+    } else {
+      for(let i=0;i<size;i++){
+        const r=Math.random();
+        const t = r<(0.62-eliteBias)?0:(r<(0.90-eliteBias*0.45)?1:2);
+        comp.push({unit:tree[t]});
+      }
     }
     if((kind==='army'||kind==='vassal') && size>=24 && Math.random()<(0.5 + (opts.eliteBias||0)*0.9)) push('sup_banner',1 + ((opts.eliteBias||0)>0.28 && Math.random()<0.55 ? 1 : 0));
     return comp;
@@ -907,6 +1084,7 @@
       knights:{x0:10,x1:44,y0:28,y1:82},
       nords:{x0:10,x1:86,y0:5,y1:28},
       nomads:{x0:56,x1:90,y0:34,y1:90},
+      rangers:{x0:6,x1:40,y0:34,y1:92},
     };
     function pickSpotFor(fid){
       const r = region[fid] || {x0:8,x1:MAP_W-8,y0:8,y1:MAP_H-8};
@@ -979,7 +1157,9 @@
         realmFactionId: extra.realmFactionId||factionId,
         crownFx: extra.crownFx||0,
         eliteBias: extra.eliteBias||0,
+        leader: extra.leader||null,
       };
+      ensureLeaderForParty(out);
       parties.push(out);
       return out;
     }
@@ -993,26 +1173,26 @@
     for(const f of FACTIONS){
       const kp = pickSpotFor(f.id);
       const kingSize = clamp(Math.round(randi(36,54) * rand(1.8,2.3)), 62, 98);
-      const king = addParty('army', f.id, kp.x, kp.y, kingSize, false, { isLord:true, isKing:true, lordName:`King of ${factionState[f.id].name}`, realmFactionId:f.id, eliteBias:0.34 });
+      const king = addParty('army', f.id, kp.x, kp.y, kingSize, false, { isLord:true, isKing:true, lordName:`King of ${factionState[f.id].name}`, realmFactionId:f.id, eliteBias:0.34, leader:makeLeader(f.id,true) });
       factionState[f.id].kingPartyId = king.id;
       const lordN = randi(2,4);
       for(let i=0;i<lordN;i++){
         const lp = pickSpotFor(f.id);
         const lsize = clamp(Math.round(randi(12,20)*rand(1.25,1.55)), 16, 34);
-        const lord = addParty('army', f.id, lp.x, lp.y, lsize, false, { isLord:true, isKing:false, lordName:LORD_NAMES[randi(0,LORD_NAMES.length-1)], realmFactionId:f.id, eliteBias:0.2 });
+        const lord = addParty('army', f.id, lp.x, lp.y, lsize, false, { isLord:true, isKing:false, lordName:LORD_NAMES[randi(0,LORD_NAMES.length-1)], realmFactionId:f.id, eliteBias:0.2, leader:makeLeader(f.id,false) });
         factionState[f.id].lordPartyIds.push(lord.id);
       }
       factionState[f.id].nextLordSpawnDay = 7;
     }
 
-    return { w:MAP_W,h:MAP_H, settlements, parties, pois, factionState, dayFoodRate:0.02, invasion:{}, day:1,totalDays:1,time:0,dayLen:DAY_LEN,dayClock:0,threat:0,strategicClock:0,nextArmySpawn:18+Math.random()*12,caravans:[],contractsClock:0,activeContract:null };
+    return { w:MAP_W,h:MAP_H, settlements, parties, pois, factionState, factionDiplomacy:{}, dayFoodRate:0.02, invasion:{}, day:1,totalDays:1,time:0,dayLen:DAY_LEN,dayClock:0,threat:0,strategicClock:0,nextArmySpawn:18+Math.random()*12,caravans:[],contractsClock:0,activeContract:null, diplomacyTurnClock:0 };
   }
 
   // =========================
   // Panels plumbing
   // =========================
   function closeAllPanels(){
-    for(const el of [ui.panelSettlement,ui.panelInventory,ui.panelArmy,ui.panelDiplomacy,ui.panelHelp,ui.panelLoot]){
+    for(const el of [ui.panelSettlement,ui.panelInventory,ui.panelArmy,ui.panelDiplomacy,ui.panelHelp,ui.panelLoot,ui.panelPerk]){
       el.style.display = 'none';
       el.classList.remove('left','wide');
     }
@@ -1030,6 +1210,7 @@
       if(kind==='diplomacy')  ui.panelDiplomacy.style.display='block';
       if(kind==='help')       ui.panelHelp.style.display='block';
       if(kind==='loot')       ui.panelLoot.style.display='block';
+      if(kind==='perk')       ui.panelPerk.style.display='block';
     }
   }
 
@@ -1089,11 +1270,13 @@
     for(const v of (p.vassals||[])){
       const party = partyById(v.partyId); if(!party || !party.alive) continue;
       let vw = 0; for(const cu of party.comp||[]) vw += troopWage(cu.unit);
-      wages += vw * 0.8 * (v.wageMul||1);
-      if(p.gold < wages){ v.loyalty = Math.max(0,(v.loyalty||70)-8); }
+      let vm = (v.wageMul||1); if(v.personality==='greedy') vm += 0.10; if(v.trait==='quartermaster') vm *= 0.9;
+      wages += vw * 0.8 * vm;
+      if(p.gold < wages){ v.loyalty = Math.max(0,(v.loyalty||70)-(v.personality==='loyal'?5:8)); } else if(v.personality==='loyal'){ v.loyalty = Math.min(100,(v.loyalty||70)+2); }
       else v.loyalty = Math.min(95,(v.loyalty||70)+1);
       if(v.loyalty<20 && Math.random()<0.14){ party.alive=false; toast(`⚠️ ${v.name} disbanded due to poor support.`); }
     }
+    if(p._perkWageRelief) wages *= 0.92;
     if(p.gold >= wages){ p.gold -= wages; p.daysUnpaid=0; p.wageDebt=0; }
     else { const def=wages-p.gold; p.gold=0; p.wageDebt += def; p.daysUnpaid++; p.morale-=6; }
     p.morale += (p.food>0)?2:-6;
@@ -1157,7 +1340,7 @@
       s.defense = s.defense || {walls:1,towers:0,traps:0};
       s.garrison = s.garrison || {};
       const add=(k,n)=>s.garrison[k]=(s.garrison[k]||0)+n;
-      const tree = s.factionId==='nords' ? ['no_raider','no_skirmisher','no_wildman'] : (s.factionId==='nomads' ? ['st_steppe_archer','st_veteran_mounted_archer','st_companion_guard'] : ['kn_nobleman','kn_pikeman','kn_hoplite']);
+      const tree = s.factionId==='nords' ? ['no_raider','no_skirmisher','no_wildman'] : (s.factionId==='nomads' ? ['st_steppe_archer','st_veteran_mounted_archer','st_companion_guard'] : (s.factionId==='rangers' ? ['rg_woodsman','rg_longbowman','rg_windwarden'] : ['kn_nobleman','kn_pikeman','kn_hoplite']));
       add(tree[0], randi(1,3));
       if(Math.random()<clamp(0.20+state.map.day*0.01+state.map.threat*0.03,0.2,0.75)) add(tree[1],1);
       if(Math.random()<clamp(0.16+state.map.day*0.01+state.map.threat*0.02,0.1,0.65)) add(tree[2],1);
@@ -1178,6 +1361,19 @@
       const targets = state.map.settlements.filter(ss=>ss.kind==='castle' && ss.factionId!==f.id);
       if(targets.length) party.targetSettlementId = targets[randi(0,targets.length-1)].id;
       state.map.parties.push(party);
+    }
+    for(const v of (p.vassals||[])){
+      const party=partyById(v.partyId); if(!party||!party.alive) continue;
+      if(v.orders==='recruit' && (state.map.day-(v.lastRecruitDay||0))>=4){
+        const addN=randi(2,5);
+        for(let i=0;i<addN;i++) party.comp.push({unit:party.factionId==='rangers'?'rg_woodsman':'kn_nobleman'});
+        party.size=party.comp.length; v.lastRecruitDay=state.map.day;
+      }
+      if(v.orders==='tax' && (state.map.day-(v.lastLootDay||0))>=3){
+        const gain=Math.round(rand(35,85) + party.size*0.4*(v.personality==='greedy'?1.15:1));
+        p.gold += gain; v.lastLootDay=state.map.day; v.loyalty=Math.max(0,(v.loyalty||60)-2);
+      }
+      if((v.loyalty||0)<15 && (p.daysUnpaid>0||p.daysStarving>0) && Math.random()<0.028){ party.alive=false; toast(v.name+' deserted.'); }
     }
     computeThreat();
   }
@@ -1213,6 +1409,7 @@
       if(state.diplomacy.red || state.diplomacy.blue || state.diplomacy.green){
         const old=state.diplomacy;
         state.diplomacy = makeNewDiplomacy();
+    ensureFactionDiplomacy();
         state.diplomacy.knights = old.red || state.diplomacy.knights;
         state.diplomacy.nords = old.blue || state.diplomacy.nords;
         state.diplomacy.nomads = old.green || state.diplomacy.nomads;
@@ -1237,6 +1434,7 @@
       state.player.vassals = state.player.vassals || [];
       state.player.isKingOf = state.player.isKingOf || null;
       ensureFactionState();
+      ensureFactionDiplomacy();
       normalizeArmyUnits(state.player);
       const fmap={red:'knights',blue:'nords',green:'nomads'};
       if(state.player.faction && fmap[state.player.faction]) state.player.faction=fmap[state.player.faction];
@@ -1266,6 +1464,17 @@
       state.map.caravans = state.map.caravans || [];
       ensureFactionState();
       for(const pp of (state.map.parties||[])){ pp.isLord=!!pp.isLord; pp.isKing=!!pp.isKing; pp.realmFactionId=pp.realmFactionId||pp.factionId||null; pp.eliteBias=pp.eliteBias||0; }
+      state.player.perks = state.player.perks || [];
+      state.player.perkPointsSpent = state.player.perkPointsSpent || 0;
+      for(const v of (state.player.vassals||[])){
+        v.personality = v.personality || VASSAL_PERSONALITIES[randi(0,VASSAL_PERSONALITIES.length-1)];
+        v.trait = v.trait || VASSAL_TRAITS[randi(0,VASSAL_TRAITS.length-1)];
+        v.lastPayoutDay = v.lastPayoutDay || state.map.day;
+        v.lastLootDay = v.lastLootDay || state.map.day;
+        v.lastRecruitDay = v.lastRecruitDay || state.map.day;
+        if(v.personality==='greedy') v.wageMul = (v.wageMul||1)+0.10;
+      }
+      for(const pp of (state.map.parties||[])) ensureLeaderForParty(pp);
       state.map.pois = state.map.pois || [];
       state.map.activeContract = state.map.activeContract || null;
       for(const s of state.map.settlements){
@@ -1394,6 +1603,10 @@
           </div>`;
         }).join('') : `<div class="small">No items yet (buy weapons/armor in castles).</div>`}
       </div>
+
+      <div class="hr"></div>
+      <h2 style="margin-top:0">Perks</h2>
+      <div class="list">${(p.perks||[]).length ? (p.perks||[]).map(id=>`<div class="item"><div class="meta"><b>${PERK_DEFS[id]?.name||id}</b><div class="tag">${PERK_DEFS[id]?.desc||''}</div></div></div>`).join('') : '<div class="small">No perks chosen yet.</div>'}</div>
 
       <div class="hr"></div>
       <div class="row"><button class="btn" id="btnCloseInv">Close</button></div>
@@ -1550,7 +1763,7 @@
       <h2 style="margin-top:0">Vassals</h2>
       <div class="small">Unlock at 25 renown + pledge or owning a castle. Cost: 220 gold, 6 influence, 10 renown.</div>
       <div class="row" style="margin-top:8px;"><button class="btn" id="btnCreateVassal">Create Vassal</button></div>
-      <div class="list" style="margin-top:8px;">${(p.vassals||[]).map(v=>{ const pp=partyById(v.partyId); return `<div class="item"><div class="meta"><b>${v.name}</b><div class="tag">Loyalty ${Math.round(v.loyalty||0)} • ${v.orders||'auto'} • Size ${pp?.size||0}</div></div><select data-vorder="${v.id}"><option value="auto" ${v.orders==='auto'?'selected':''}>auto</option><option value="defend" ${v.orders==='defend'?'selected':''}>defend</option><option value="raid" ${v.orders==='raid'?'selected':''}>raid</option><option value="patrol" ${v.orders==='patrol'?'selected':''}>patrol</option><option value="follow" ${v.orders==='follow'?'selected':''}>follow</option></select></div>`; }).join('') || '<div class="small">No vassals yet.</div>'}</div>
+      <div class="list" style="margin-top:8px;">${(p.vassals||[]).map(v=>{ const pp=partyById(v.partyId); return `<div class="item"><div class="meta"><b>${v.name}</b><div class="tag" style="color:${(v.loyalty||0)<25?'#f87171':((v.loyalty||0)<45?'#facc15':'var(--muted)')}">Loyalty ${Math.round(v.loyalty||0)} • ${v.orders||'auto'} • Size ${pp?.size||0} • ${v.personality||'balanced'} / ${v.trait||'none'}</div></div><select data-vorder="${v.id}"><option value="auto" ${v.orders==='auto'?'selected':''}>auto</option><option value="defend" ${v.orders==='defend'?'selected':''}>defend</option><option value="raid" ${v.orders==='raid'?'selected':''}>raid</option><option value="patrol" ${v.orders==='patrol'?'selected':''}>patrol</option><option value="follow" ${v.orders==='follow'?'selected':''}>follow</option><option value="hunt" ${v.orders==='hunt'?'selected':''}>hunt</option><option value="recruit" ${v.orders==='recruit'?'selected':''}>recruit</option><option value="tax" ${v.orders==='tax'?'selected':''}>tax</option></select><button class='btn' data-vgift='${v.id}'>Gift 50💰</button><select data-vhome='${v.id}'><option value=''>Assign Home</option>${state.map.settlements.filter(s=>s.kind==='castle' && (s.factionId==='player' || (p.faction && s.factionId===p.faction))).map(c=>`<option value='${c.id}' ${v.homeCastleId===c.id?'selected':''}>${c.name}</option>`).join('')}</select></div>`; }).join('') || '<div class="small">No vassals yet.</div>'}</div>
       <div class="hr"></div>
       <div class="row"><button class="btn" id="btnCloseArmy">Close</button></div>
     `;
@@ -1591,11 +1804,15 @@
       const size = clamp(10 + Math.floor((p.renown||0)/10) + Math.floor(state.map.day/4), 10, 28);
       const party={ id, kind:'vassal', factionId:'player', x:p.x+rand(-1.5,1.5), y:p.y+rand(-1.5,1.5), roamTx:p.x, roamTy:p.y, aggro:4.4, baseSpeed:2.0, size, comp:makePartyComp('vassal', size, {threat:state.map.threat, day:state.map.day, factionId:'player'}), alive:true, targetSettlementId:null };
       state.map.parties.push(party);
-      p.vassals.push({ id:'v_'+Math.random().toString(36).slice(2,9), name:['Sir Rowan','Lady Mira','Sir Cedric','Dame Elara'][randi(0,3)], partyId:id, loyalty:70, wageMul:rand(0.6,1.2), orders:'auto', homeCastleId:null, lastActionDay:state.map.day });
+      p.vassals.push({ id:'v_'+Math.random().toString(36).slice(2,9), name:['Sir Rowan','Lady Mira','Sir Cedric','Dame Elara'][randi(0,3)], partyId:id, loyalty:70, wageMul:rand(0.6,1.2), orders:'auto', personality:VASSAL_PERSONALITIES[randi(0,VASSAL_PERSONALITIES.length-1)], trait:VASSAL_TRAITS[randi(0,VASSAL_TRAITS.length-1)], homeCastleId:null, lastPayoutDay:state.map.day, lastLootDay:state.map.day, lastRecruitDay:state.map.day, lastActionDay:state.map.day });
       renderArmyPanel(); syncHUD();
     };
 
     for(const sel of ui.panelArmy.querySelectorAll('select[data-vorder]')) sel.onchange=(e)=>{ const id=e.target.getAttribute('data-vorder'); const vv=p.vassals.find(v=>v.id===id); if(vv) vv.orders=e.target.value; };
+
+    for(const b of ui.panelArmy.querySelectorAll('button[data-vgift]')) b.onclick=(e)=>{ const id=e.target.getAttribute('data-vgift'); const vv=p.vassals.find(v=>v.id===id); if(!vv) return; if(p.gold<50){toast('Not enough gold'); return;} p.gold-=50; vv.loyalty=Math.min((vv.personality==='honorable'?98:100),(vv.loyalty||0)+8); if((vv.loyalty||0)>80 && Math.random()<0.12){ const pp=partyById(vv.partyId); if(pp){ pp.comp.push({unit:pp.factionId==='rangers'?'rg_woodsman':'kn_nobleman'}); pp.size=pp.comp.length; } } renderArmyPanel(); syncHUD(); };
+    for(const sel of ui.panelArmy.querySelectorAll('select[data-vhome]')) sel.onchange=(e)=>{ const id=e.target.getAttribute('data-vhome'); const vv=p.vassals.find(v=>v.id===id); if(vv) vv.homeCastleId=e.target.value||null; };
+
 
     for(const btn of ui.panelArmy.querySelectorAll('button[data-upfocus]')){
       btn.onclick = () => {
@@ -1606,7 +1823,7 @@
   }
 
   function mapActionsPaused(){
-    return state.mode==='map' && state.panelsOpen.settlement;
+    return state.mode==='map' && (state.panelsOpen.settlement || state.panelsOpen.perk);
   }
 
   function spawnCombatBurst(x, y, team){
@@ -1658,6 +1875,23 @@
   function renderDiplomacyPanel(){
     const d = state.diplomacy;
     const p = state.player;
+
+
+    function leaderRows(fid){
+      const leaders = state.map.parties.filter(pp=>pp.alive && pp.factionId===fid && (pp.isKing||pp.isLord));
+      if(!leaders.length) return '<div class="small">No living lords.</div>';
+      return leaders.map(pp=>`<div class="item"><div class="meta"><b>${pp.leader?.name||pp.lordName||'Unknown'}</b><div class="tag">${pp.isKing?'King':'Lord'} • ${(pp.leader?.traits||[]).map(t=>TRAIT_GLYPH[t]||t).join(', ')}</div></div></div>`).join('');
+    }
+    function worldDipRows(){
+      const ids = mapFactionIds();
+      const out=[];
+      for(let i=0;i<ids.length;i++) for(let j=i+1;j<ids.length;j++){
+        const a=ids[i], b=ids[j];
+        const rel=factionPair(a,b) || {atWar:false,warSinceDay:0};
+        out.push(`<div class="item"><div class="meta"><b>${factionName(a)} vs ${factionName(b)}</b><div class="tag">${rel.atWar?`WAR (Day ${rel.warSinceDay||state.map.day})`:'PEACE'} • standing ${rel.standing||0}</div></div><div class="row"><button class="btn" data-broker="${a}|${b}" ${(!rel.atWar||p.influence<8||p.gold<180)?'disabled':''}>Broker Peace</button></div></div>`);
+      }
+      return out.join('');
+    }
 
     function rowFor(fid){
       const relObj = d[fid];
@@ -1713,6 +1947,14 @@
       </div>
 
       <div class="hr"></div>
+      <h2 style="margin-top:0">Faction Leaders</h2>
+      <div class="list">${FACTIONS.map(f=>`<div class="item"><div class="meta"><b style="color:${factionColor(f.id)}">${factionName(f.id)}</b><div class="tag">King & Lords</div><div class="list" style="margin-top:6px">${leaderRows(f.id)}</div></div></div>`).join('')}</div>
+
+      <div class="hr"></div>
+      <h2 style="margin-top:0">World Diplomacy</h2>
+      <div class="list">${worldDipRows()}</div>
+
+      <div class="hr"></div>
       <div class="row"><button class="btn" id="btnCloseDip">Close</button></div>
     `;
 
@@ -1756,6 +1998,19 @@
     for(const b of ui.panelDiplomacy.querySelectorAll('button[data-access]')){
       b.onclick = ()=>{ const fid=b.getAttribute('data-access'); const rel=effectiveRelation(fid); if(rel<15||state.player.influence<3||state.player.gold<100) return; state.player.influence-=3; state.player.gold-=100; state.diplomacy[fid].treaties.accessUntil=state.map.day+10; renderDiplomacyPanel(); syncHUD(); };
     }
+
+    for(const b of ui.panelDiplomacy.querySelectorAll('button[data-broker]')){
+      b.onclick=()=>{
+        const [a,c]=b.getAttribute('data-broker').split('|');
+        if(state.player.influence<8||state.player.gold<180) return;
+        state.player.influence-=8; state.player.gold-=180;
+        const cur=factionPair(a,c)||{};
+        setFactionPair(a,c,{...cur,atWar:false,standing:-5,peaceCooldownUntilDay:(state.map.day||1)+10,lastChangeDay:state.map.day||1});
+        toast(`Brokered peace: ${factionName(a)} and ${factionName(c)}`);
+        renderDiplomacyPanel(); syncHUD();
+      };
+    }
+
     for(const b of ui.panelDiplomacy.querySelectorAll('button[data-join]')){
       b.onclick = () => {
         const fid = b.getAttribute('data-join');
@@ -1795,7 +2050,7 @@
     const id = 'p_'+Math.random().toString(36).slice(2,9);
     const party = { id, kind:'army', factionId:fid, x:home.x+rand(-1,1), y:home.y+rand(-1,1), roamTx:home.x, roamTy:home.y, aggro:4.2, baseSpeed:1.72, size,
       comp:makePartyComp('army', size, { factionId:fid, eliteBias:isKing?0.34:0.2 }), alive:true, targetSettlementId:null,
-      isLord:true, isKing:!!isKing, lordName:isKing?`King of ${factionName(fid)}`:['Lord Alric','Lady Ysolda','Lord Edrin','Lady Freya'][randi(0,3)], realmFactionId:fid, crownFx:0, eliteBias:isKing?0.34:0.2 };
+      isLord:true, isKing:!!isKing, lordName:isKing?`King of ${factionName(fid)}`:['Lord Alric','Lady Ysolda','Lord Edrin','Lady Freya'][randi(0,3)], realmFactionId:fid, crownFx:0, eliteBias:isKing?0.34:0.2, leader:makeLeader(fid,!!isKing) };
     state.map.parties.push(party);
     const fs = factionStateOf(fid);
     if(fs){
@@ -1900,7 +2155,8 @@
     if(['bandit','looters','bandits','sea_raiders','steppe_bandits'].includes(party.kind)) return true;
     if(!party.factionId) return false;
     if(party.factionId === settlement.factionId) return false;
-    return true;
+    if(settlement.factionId==='player') return true;
+    return areFactionsAtWar(party.factionId, settlement.factionId);
   }
 
   function generateContract(settlement){
@@ -2633,6 +2889,97 @@
     for(const bt of ui.desktopBattleHud.querySelectorAll('[data-sel]')) bt.onclick=()=>setSelection(bt.dataset.sel);
     ui.desktopBattleHud.querySelector('#dbForm').onclick=cycleFormation;
   }
+
+  function leaderHasTrait(fid, trait){
+    const fs = factionStateOf(fid); if(!fs?.kingPartyId) return false;
+    const kp = partyById(fs.kingPartyId); return !!kp?.alive && !!kp?.leader?.traits?.includes(trait);
+  }
+  function runDiplomacyTurn(){
+    ensureFactionDiplomacy();
+    const day = state.map.day||1;
+    const ids = mapFactionIds();
+    for(const a of ids) for(const b of ids){
+      if(a>=b) continue;
+      const rel = factionPair(a,b); if(!rel) continue;
+      const stDrift = rand(-7,7);
+      rel.standing = clamp((rel.standing||0) + stDrift, -100, 100);
+      if(!rel.atWar){
+        if((rel.peaceCooldownUntilDay||0) > day) { setFactionPair(a,b,rel); continue; }
+        if(rel.standing<=-35){
+          let warChance = 0.06 + Math.max(0,(-35-rel.standing))*0.0012;
+          warChance = clamp(warChance,0.01,0.18);
+          if(Math.random()<warChance){ setFactionPair(a,b,{...rel,atWar:true,warSinceDay:day,lastChangeDay:day}); }
+          else setFactionPair(a,b,rel);
+        } else setFactionPair(a,b,rel);
+      } else {
+        if(day - (rel.warSinceDay||day) < 7){ setFactionPair(a,b,rel); continue; }
+        if(rel.standing>=-10){
+          let peaceChance = 0.07;
+          if(leaderHasTrait(a,'Zealot') || leaderHasTrait(b,'Zealot')) peaceChance *= 0.6;
+          if(Math.random()<peaceChance){ setFactionPair(a,b,{...rel,atWar:false,peaceCooldownUntilDay:day+10,lastChangeDay:day,standing:Math.max(rel.standing,-5)}); }
+          else setFactionPair(a,b,rel);
+        } else setFactionPair(a,b,rel);
+      }
+    }
+  }
+  function resolveAutoSkirmish(a,b){
+    if(!a?.alive || !b?.alive) return;
+    const lossMod = (p)=> (p.leader?.traits||[]).includes('Strategist') ? 0.92 : 1;
+    const sa = (a.size||1)*(1+((a.eliteBias||0)*0.25)+(a.isKing?0.12:0)+(a.isLord?0.06:0));
+    const sb = (b.size||1)*(1+((b.eliteBias||0)*0.25)+(b.isKing?0.12:0)+(b.isLord?0.06:0));
+    const pa = sa/(sa+sb);
+    const aWins = Math.random() < pa;
+    const w = aWins?a:b, l=aWins?b:a;
+    const ratio = Math.max(0.2, Math.min(4.0, (Math.max(sa,sb)/Math.max(1,Math.min(sa,sb)))));
+    const winLoss = clamp(rand(0.20,0.38)/Math.sqrt(ratio),0.12,0.45);
+    const loseLoss = clamp(rand(0.34,0.55)*Math.sqrt(1/Math.max(0.3,1/ratio)),0.2,0.7);
+    w.size = Math.max(0, Math.floor((w.size||0) * (1 - winLoss*lossMod(w))));
+    l.size = Math.max(0, Math.floor((l.size||0) * (1 - loseLoss*lossMod(l))));
+    w.comp = (w.comp||[]).slice(0,w.size);
+    l.comp = (l.comp||[]).slice(0,l.size);
+    if(w.size<5){ w.alive=false; }
+    if(l.size<5){ l.alive=false; }
+    for(const party of [w,l]){
+      if(!party.alive){
+        const fs = factionStateOf(party.factionId);
+        if(fs){ fs.lordPartyIds=(fs.lordPartyIds||[]).filter(id=>id!==party.id); if(fs.kingPartyId===party.id) fs.kingPartyId=null; }
+        if(party.isKing) onKingDefeated(party.factionId);
+      } else {
+        const mx = party.x - (a.x+b.x)*0.5, my = party.y - (a.y+b.y)*0.5, ll=Math.hypot(mx,my)||1;
+        party.roamTx = clamp(party.x + (mx/ll)*6, 1, state.map.w-2);
+        party.roamTy = clamp(party.y + (my/ll)*6, 1, state.map.h-2);
+      }
+    }
+  }
+  function resolveFactionSkirmishes(){
+    const cell=4;
+    const grid=new Map();
+    for(const p of state.map.parties){
+      if(!p.alive || !p.factionId) continue;
+      const cx=Math.floor(p.x/cell), cy=Math.floor(p.y/cell), k=`${cx},${cy}`;
+      if(!grid.has(k)) grid.set(k,[]);
+      grid.get(k).push(p);
+    }
+    const done=new Set();
+    for(const [k,arr] of grid){
+      const [cx,cy]=k.split(',').map(Number);
+      for(const a of arr){
+        for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++){
+          const n=grid.get(`${cx+dx},${cy+dy}`); if(!n) continue;
+          for(const b of n){
+            if(a===b || !a.alive || !b.alive) continue;
+            const pk=pairKey(a.id,b.id); if(done.has(pk)) continue;
+            if(dist2(a.x,a.y,b.x,b.y) > 0.9*0.9) continue;
+            const hostile = areFactionsAtWar(a.factionId,b.factionId) || ['bandits','looters','sea_raiders','steppe_bandits'].includes(a.kind) || ['bandits','looters','sea_raiders','steppe_bandits'].includes(b.kind);
+            if(!hostile) continue;
+            done.add(pk);
+            resolveAutoSkirmish(a,b);
+          }
+        }
+      }
+    }
+  }
+
   // =========================
   // Map tick: heal + wounded recovery + village regen + invasions
   // =========================
@@ -2646,6 +2993,8 @@
       state.map.time -= DAY_LEN;
       state.map.day += 1;
       onNewDay();
+      for(const pp of (state.map.parties||[])){ if(pp.leader?.grudge) pp.leader.grudge.vsPlayer = Math.max(0,(pp.leader.grudge.vsPlayer||0)-3); }
+      if((state.map.day||1)%5===0) runDiplomacyTurn();
     }
     if(state.map.dayClock >= DAY_TICK){
       state.map.dayClock = 0;
@@ -2658,7 +3007,8 @@
 
     // wounded recovery (one returns every ~8s)
     p.woundedHealClock += dt;
-    if(p.woundedHealClock >= 8.0 && p.woundedUnits.length>0){
+    const recoverInterval = p._perkFieldMedic ? 6.8 : 8.0;
+    if(p.woundedHealClock >= recoverInterval && p.woundedUnits.length>0){
       p.woundedHealClock = 0;
       if(p.armyUnits.length<70){
         const unitKey = p.woundedUnits.shift();
@@ -2676,7 +3026,8 @@
       s.village.regenClock += dt;
       if(s.village.regenClock >= VILLAGE_REGEN_INTERVAL){
         s.village.regenClock = 0;
-        if(Math.random() < VILLAGE_REGEN_CHANCE){
+        const regenChance = VILLAGE_REGEN_CHANCE + (state.player._perkVillageRenewal?0.05:0);
+        if(Math.random() < regenChance){
           regenVillageVolunteers(s.village);
         }
       }
@@ -2690,7 +3041,7 @@
         if(Math.random()<0.7){ const c=settlementById(v.parentCastleId); if(!c) continue; state.map.caravans.push({id:'cv_'+Math.random().toString(36).slice(2,9),fromVillageId:v.id,toCastleId:c.id,x:v.x,y:v.y,progress:0,food:randi(8,20),gold:randi(8,22),factionId:v.factionId}); }
       }
     }
-    state.map.caravans = (state.map.caravans||[]).filter(cv=>{ const from=settlementById(cv.fromVillageId), to=settlementById(cv.toCastleId); if(!from||!to) return false; cv.progress = clamp(cv.progress + dt*0.05,0,1); cv.x = from.x + (to.x-from.x)*cv.progress; cv.y = from.y + (to.y-from.y)*cv.progress; for(const party of state.map.parties){ if(!party.alive || !isPartyHostileToSettlement(party,to)) continue; if(dist2(party.x,party.y,cv.x,cv.y)<1.2){ if(cv.factionId==='player'||(state.player.faction&&cv.factionId===state.player.faction)) toast('⚠️ Caravan raided'); from.village.regenClock=Math.max(0,(from.village.regenClock||0)-6); return false; } } if(cv.progress>=1){ to.storage=to.storage||{gold:0,food:0,goods:{}}; to.storage.gold += cv.gold; to.storage.food += cv.food; return false; } return true; });
+    state.map.caravans = (state.map.caravans||[]).filter(cv=>{ const from=settlementById(cv.fromVillageId), to=settlementById(cv.toCastleId); if(!from||!to) return false; cv.progress = clamp(cv.progress + dt*0.05,0,1); cv.x = from.x + (to.x-from.x)*cv.progress; cv.y = from.y + (to.y-from.y)*cv.progress; for(const party of state.map.parties){ if(!party.alive || !isPartyHostileToSettlement(party,to)) continue; if(dist2(party.x,party.y,cv.x,cv.y)<1.2){ if((cv.factionId==='player'||(state.player.faction&&cv.factionId===state.player.faction)) && state.player._perkCaravanGuard && Math.random()<0.35){ continue; } if(cv.factionId==='player'||(state.player.faction&&cv.factionId===state.player.faction)) toast('⚠️ Caravan raided'); from.village.regenClock=Math.max(0,(from.village.regenClock||0)-6); return false; } } if(cv.progress>=1){ to.storage=to.storage||{gold:0,food:0,goods:{}}; to.storage.gold += cv.gold; to.storage.food += cv.food; return false; } return true; });
 
     // active contract progress
     if(state.map.activeContract){ const c=state.map.activeContract; if(c.type==='deliver_goods'){ const dst=settlementById(c.targetId); if(dst && nearestSettlement(p.x,p.y,1.2)?.id===dst.id && p.food>=(c.needFood||20)){ p.food-=(c.needFood||20); applyContractReward(c); state.map.activeContract=null; } } if(c.type==='clear_camp'){ const camp=partyById(c.targetId); if(!camp||!camp.alive){ applyContractReward(c); state.map.activeContract=null; } } if(c.type==='escort_caravan' && c.escort){ const fr=settlementById(c.escort.fromId), to=settlementById(c.escort.toId); if(fr&&to){ c.escort.progress=clamp(c.escort.progress+dt*0.04,0,1); c.escort.x=fr.x+(to.x-fr.x)*c.escort.progress; c.escort.y=fr.y+(to.y-fr.y)*c.escort.progress; if(dist2(p.x,p.y,c.escort.x,c.escort.y)<3.2) c.progress=(c.progress||0)+dt; if(c.escort.progress>=1 && (c.progress||0)>14){ applyContractReward(c); state.map.activeContract=null; } } } if(c.type==='defend_siege'){ const target=settlementById(c.targetId); if(target&&findInvaderOnSettlement(target)){ /* tracked */ } else if((state.map.day||1)>(c.expiresDay-1)){ applyContractReward(c); state.map.activeContract=null; } } }
@@ -2734,7 +3085,7 @@
           alive:true,
           targetSettlementId: null
         };
-        const castles = state.map.settlements.filter(s=>s.kind==='castle' && s.factionId!==f.id);
+        const castles = state.map.settlements.filter(s=>s.kind==='castle' && s.factionId!==f.id && (s.factionId==='player' || areFactionsAtWar(f.id,s.factionId)));
         if(castles.length){
           const t = castles[randi(0,castles.length-1)];
           party.targetSettlementId = t.id;
@@ -2758,7 +3109,11 @@
       }
 
       const dp = dist(p.x,p.y, party.x, party.y);
-      if(isPartyHostileToPlayer(party) && dp < party.aggro){
+      let partyAggro = party.aggro || 5;
+      if(party.leader?.traits?.includes('Aggressive')) partyAggro += 1.2;
+      if(party.leader?.traits?.includes('Cautious')) partyAggro -= 0.8;
+      if(party.leader?.grudge?.vsPlayer>=50 && ((state.map.day||1)-(party.leader.grudge.lastDefeatDay||0))<=10) partyAggro += 2.0;
+      if(isPartyHostileToPlayer(party) && dp < partyAggro){
         targetX = p.x; targetY = p.y;
       } else {
         if(!party.targetSettlementId){
@@ -2783,6 +3138,7 @@
     }
 
     if(!paused) updateVassals(dt);
+    if(!paused) resolveFactionSkirmishes();
     if(!paused) updateInvasions(dt);
   }
 
@@ -2810,6 +3166,16 @@
       const party = partyById(v.partyId);
       if(!party || !party.alive) continue;
       if(v.orders==='follow'){ party.roamTx = p.x; party.roamTy = p.y; continue; }
+      if(v.orders==='hunt'){
+        let best=null, bd=1e9;
+        for(const enemy of state.map.parties){
+          if(!enemy.alive || enemy===party) continue;
+          const hostile = ['bandits','looters','sea_raiders','steppe_bandits'].includes(enemy.kind) || (enemy.factionId && party.factionId && areFactionsAtWar(enemy.factionId, party.factionId));
+          if(!hostile) continue;
+          const d=dist2(party.x,party.y,enemy.x,enemy.y); if(d<bd){bd=d; best=enemy;}
+        }
+        if(best){ party.roamTx=best.x; party.roamTy=best.y; party.targetSettlementId=null; continue; }
+      }
       if((state.map.day + (v.id.length%2))%2===0){
         let invaded=null, bd=1e9;
         for(const pid in state.map.invasion){
@@ -3729,14 +4095,28 @@
     }
     b.particles = b.particles.filter(pt => pt.ttl>0);
 
-    for(const u of [...b.allies,...b.enemies]) u._buffDmgMul = 1;
+    for(const u of [...b.allies,...b.enemies]){ u._buffDmgMul = 1; u._buffRateMul = 1; }
     const banners = [...b.allies,...b.enemies].filter(u=>u.alive && u.unitKey==='sup_banner');
     for(const bn of banners){
-      const rad = (UNIT_DB[bn.unitKey]?.auraRadius)||3.2;
+      let rad = (UNIT_DB[bn.unitKey]?.auraRadius)||3.2;
+      if(bn.team==='ally' && state.player._perkAuraBonus) rad += state.player._perkAuraBonus;
       const teamList = bn.team==='ally' ? [b.playerEnt,...b.allies] : b.enemies;
       for(const u of teamList){
         if(!u.alive) continue;
         if(dist2(u.x,u.y,bn.x,bn.y) <= rad*rad) u._buffDmgMul = Math.max(u._buffDmgMul||1, 1.08);
+      }
+    }
+    const horns = [...b.allies,...b.enemies].filter(u=>u.alive && u.unitKey==='rg_horncaller');
+    for(const hn of horns){
+      let rad = (UNIT_DB[hn.unitKey]?.auraRadius)||3.6;
+      if(hn.team==='ally' && state.player._perkAuraBonus) rad += state.player._perkAuraBonus;
+      const teamList = hn.team==='ally' ? [b.playerEnt,...b.allies] : b.enemies;
+      for(const u of teamList){
+        if(!u.alive) continue;
+        if(dist2(u.x,u.y,hn.x,hn.y) <= rad*rad){
+          u._buffDmgMul = Math.max(u._buffDmgMul||1, 1.08);
+          if(u.role==='arc') u._buffRateMul = Math.max(u._buffRateMul||1, 1.06);
+        }
       }
     }
 
@@ -3888,6 +4268,9 @@
             const d = dist(u.x,u.y, tgt.x,tgt.y);
             if(d <= rng){
               spawnProjectile(u.projKind, u.team, u.x,u.y, u.facingX,u.facingY, dmg, u.projSpeed);
+              const spawnVolley=(ang)=>{ const cs=Math.cos(ang), sn=Math.sin(ang); const dx=u.facingX*cs-u.facingY*sn, dy=u.facingX*sn+u.facingY*cs; spawnProjectile('arrow',u.team,u.x,u.y,dx,dy,dmg,u.projSpeed); };
+              if(u.unitKey==='rg_longbowman' && Math.random()<0.20){ spawnVolley(0.10); spawnVolley(-0.10); }
+              if(u.unitKey==='rg_windwarden'){ if(Math.random()<0.30){ spawnVolley(0.12); spawnVolley(-0.12); } if(Math.random()<0.10){ spawnVolley(0.24); spawnVolley(0); spawnVolley(-0.24); } }
               b.effects.push({ type:'shotFlash', x:u.x, y:u.y, ttl:0.14, team:u.team });
             }
           }
@@ -3897,7 +4280,8 @@
       if(u.atk.t<=0){
         const wb = archerWallBonus(u);
         u.atk.state='cooldown';
-        u.atk.t = (u.cooldown * wb.rateMul) + rand(-0.08,0.08);
+        const rateMul = (u._buffRateMul||1);
+        u.atk.t = (u.cooldown * wb.rateMul / rateMul) + rand(-0.08,0.08);
       }
     }
 
@@ -3922,7 +4306,8 @@
 
       if(u.atk.state==='idle' && d <= rng){
         u.atk.state='windup';
-        u.atk.t = u.windup * wb.rateMul;
+        const rateMul = (u._buffRateMul||1);
+        u.atk.t = u.windup * wb.rateMul / rateMul;
       }
 
       const canMove = (u.atk.state==='idle' || u.atk.state==='cooldown' || (u.role==='cav' && UNIT_DB[u.unitKey]?.kiteCircle));
@@ -4056,6 +4441,11 @@
       const party = state.map.parties.find(pp => pp.id===b.partyId);
       if(party) party.alive=false;
       if(party && party.factionId){
+        if((party.isLord||party.isKing) && party.leader){
+          party.leader.grudge = party.leader.grudge || {vsPlayer:0,lastDefeatDay:0};
+          party.leader.grudge.vsPlayer = Math.min(100, (party.leader.grudge.vsPlayer||0)+25);
+          party.leader.grudge.lastDefeatDay = state.map.day||1;
+        }
         const fs = factionStateOf(party.factionId);
         if(fs){
           fs.lordPartyIds = (fs.lordPartyIds||[]).filter(id=>id!==party.id);
@@ -4079,7 +4469,9 @@
       const allyCount = Math.max(1, state.player.armyUnits.length);
       const ratio = size / allyCount;
       const extra = Math.floor(clamp((ratio-1)*6,0,10));
-      p.renown += (2 + Math.floor(size/10) + extra);
+      let renownGain = (2 + Math.floor(size/10) + extra);
+      if(p._perkRenown) renownGain = Math.round(renownGain*1.15);
+      p.renown += renownGain;
       p.lastBattleResultDay = state.map.day;
       p.lastBattleResultType = 'field_win';
       const lootGold = randi(18, 55) + Math.floor(size * 1.25);
@@ -4474,6 +4866,7 @@
           const bannerFaction = (e.kind==='vassal') ? (state.player.faction||'player') : e.factionId;
           if(bannerFaction) renderMiniBannerAt(sp.x+8, sp.y-5, bannerFaction, (e.isKing||e.isLord)?0.74:0.56);
           if(e.isKing) drawCrownAt(sp.x, sp.y-36, 7.5);
+          if((e.isKing||e.isLord) && e.leader?.traits?.length){ ctx.fillStyle='rgba(255,255,255,.9)'; ctx.font='10px ui-monospace'; ctx.fillText(TRAIT_GLYPH[e.leader.traits[0]]||e.leader.traits[0].slice(0,3), sp.x, sp.y-40); }
         }
       }
 
