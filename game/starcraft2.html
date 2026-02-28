@@ -1,0 +1,3286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Starcraft-Lite RTS - Spire Survival (Simplified)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<style>
+  :root{
+    --page:#f6f8ff; --frame:#ffffff; --line:rgba(15,23,42,.14);
+    --ink:#0f172a; --muted:#475569; --good:#16a34a; --bad:#dc2626; --blue:#2563eb;
+  }
+  html,body{margin:0;height:100%;background:var(--page);color:var(--ink);font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;}
+  #frame{
+    position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:min(1280px, 96vw);
+    height:min(760px, 92vh);
+    background:var(--frame);
+    border:1px solid rgba(15,23,42,.16);
+    border-radius:18px;
+    box-shadow:0 30px 90px rgba(15,23,42,.18);
+    overflow:hidden;
+  }
+  #gameWrap{position:absolute;inset:0}
+  canvas{display:block;width:100%;height:100%}
+
+  .hudTop{
+    position:absolute;left:10px;right:10px;top:10px;z-index:10;
+    display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+    pointer-events:none;
+  }
+  .chip{
+    pointer-events:auto;
+    background:linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,255,255,.74));
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:6px 10px;
+    display:flex;gap:10px;align-items:center;
+    box-shadow:0 12px 30px rgba(15,23,42,.12);
+    font-size:12px;
+  }
+  .chip b{font-size:12px}
+  .tag{
+    display:inline-flex;gap:6px;align-items:center;
+    padding:4px 7px;border-radius:999px;border:1px solid var(--line);
+    background:rgba(255,255,255,.55);font-size:12px;color:var(--muted)
+  }
+  .btn{
+    border:1px solid var(--line);
+    background:linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,255,255,.74));
+    color:var(--ink);
+    border-radius:10px;
+    padding:6px 10px;
+    cursor:pointer;
+    font-size:12px;
+    box-shadow:0 10px 24px rgba(15,23,42,.10);
+  }
+  .btn:active{transform:translateY(1px)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+
+  #minimap{
+    position:absolute;left:10px;top:52px;z-index:11;
+    width:150px;height:118px;border-radius:14px;
+    border:1px solid var(--line);
+    background:linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,255,255,.72));
+    box-shadow:0 12px 30px rgba(15,23,42,.12);
+    overflow:hidden;
+    pointer-events:auto;
+  }
+  #mini{width:100%;height:100%;display:block}
+
+  #wavePanel{
+    position:absolute;right:10px;top:52px;z-index:11;
+    width:360px;max-width:calc(100% - 190px);
+    border-radius:14px;border:1px solid var(--line);
+    background:linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,255,255,.72));
+    box-shadow:0 12px 30px rgba(15,23,42,.12);
+    padding:10px;
+    pointer-events:auto;
+  }
+  #wavePanel h3{margin:0 0 6px;font-size:13px}
+  .muted{color:var(--muted);font-size:11px}
+  .waveRow{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+  .waveBox{
+    flex:1;border:1px solid rgba(15,23,42,.12);border-radius:12px;
+    background:rgba(255,255,255,.55);
+    padding:8px;
+  }
+  .waveBox .title{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .pill{border:1px solid rgba(15,23,42,.14);border-radius:999px;padding:2px 8px;font-size:11px;background:rgba(255,255,255,.7);color:rgba(15,23,42,.75)}
+  .comp{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .compItem{
+    display:inline-flex;gap:6px;align-items:center;
+    border:1px solid rgba(15,23,42,.12);
+    background:rgba(255,255,255,.7);
+    padding:3px 7px;border-radius:999px;font-size:11px;
+  }
+  .newTag{
+    margin-left:6px;font-weight:800;font-size:10px;
+    color:#b45309;border:1px solid rgba(180,83,9,.35);
+    background:rgba(251,191,36,.22);padding:1px 6px;border-radius:999px;
+  }
+
+  #bottom{
+    position:absolute;left:10px;right:10px;bottom:10px;z-index:10;
+    display:flex;gap:10px;align-items:flex-end;
+    pointer-events:none;
+  }
+  .panel{
+    pointer-events:auto;
+    background:linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,255,255,.72));
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:8px;
+    box-shadow:0 12px 30px rgba(15,23,42,.12);
+    min-height:86px;
+  }
+  #panelSel{width:320px}
+  #panelAct{flex:1}
+  #panelHint{width:320px}
+  .row{display:flex;justify-content:space-between;gap:8px;align-items:center}
+  .grid{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+
+  .cardBtn{
+    border:1px solid rgba(15,23,42,.14);
+    border-radius:12px;
+    background:linear-gradient(180deg, rgba(255,255,255,.94), rgba(255,255,255,.74));
+    padding:6px 8px;
+    cursor:pointer;
+    min-width:118px;
+    display:flex;flex-direction:column;gap:2px;
+    position:relative;
+    user-select:none;
+  }
+  .cardBtn:hover{outline:1px solid rgba(37,99,235,.35)}
+  .cardBtn.disabled{opacity:.45;cursor:not-allowed}
+  .cardBtn .top{display:flex;gap:8px;align-items:center}
+  .cardBtn .ico{font-size:18px}
+  .cardBtn .name{font-size:12px;font-weight:650}
+  .cardBtn .cost{font-size:11px;color:var(--muted)}
+  .cardBtn .hk{
+    position:absolute;right:8px;top:6px;
+    font-size:10px;color:rgba(15,23,42,.75);
+    border:1px solid rgba(15,23,42,.18);
+    padding:2px 6px;border-radius:999px;
+    background:rgba(255,255,255,.65);
+  }
+
+  #toast{
+    position:absolute;left:50%;transform:translateX(-50%);
+    top:10px;z-index:12;
+    background:rgba(15,23,42,.84);
+    color:#fff;border-radius:999px;
+    padding:6px 12px;font-size:12px;
+    pointer-events:none;
+    opacity:0;transition:opacity .15s ease;
+  }
+
+  #menu{
+    position:absolute;inset:0;z-index:30;
+    display:grid;place-items:center;
+    background:radial-gradient(circle at 50% 30%, rgba(37,99,235,.12), rgba(246,248,255,.92));
+  }
+  #menuCard{
+    width:min(900px,92%);
+    background:linear-gradient(180deg, rgba(255,255,255,.95), rgba(255,255,255,.80));
+    border:1px solid rgba(15,23,42,.16);
+    border-radius:18px;
+    padding:16px;
+    box-shadow:0 26px 80px rgba(15,23,42,.20);
+  }
+  #menuCard h1{margin:0 0 6px;font-size:24px}
+  #menuCard p{margin:0 0 12px;color:var(--muted);font-size:13px}
+  .menuRow{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:8px 0 0}
+  select{
+    background:rgba(255,255,255,.85);color:var(--ink);
+    border:1px solid rgba(15,23,42,.18);
+    border-radius:12px;padding:8px 10px;font-size:13px;
+    outline:none;
+  }
+  .note{
+    margin-top:10px;padding:10px 12px;border-radius:14px;
+    border:1px dashed rgba(15,23,42,.18);
+    color:rgba(15,23,42,.72);font-size:12px;background:rgba(255,255,255,.55);
+    line-height:1.45;
+  }
+</style>
+</head>
+<body>
+<div id="frame">
+  <div id="gameWrap"><canvas id="game"></canvas></div>
+  <div id="toast"></div>
+
+  <div class="hudTop">
+    <div class="chip">
+      <b id="raceName">-</b>
+      <span class="tag">M <span id="minVal">0</span></span>
+      <span class="tag">G <span id="gasVal">0</span></span>
+      <span class="tag">S <span id="supplyVal">0</span></span>
+      <span class="tag" id="powerTag" style="display:none">P <span id="powerVal">0</span></span>
+      <span class="tag">T <span id="timeVal">0:00</span></span>
+    </div>
+
+    <div class="chip"><b>Selected</b> <span id="selVal" class="muted">-</span></div>
+    <div class="chip"><b>Enemy</b> <span id="enemyVal" class="muted">-</span></div>
+    <button class="btn" id="btnMenu">Menu (R)</button>
+  </div>
+
+  <div id="minimap"><canvas id="mini"></canvas></div>
+
+  <div id="wavePanel">
+    <h3>Spire Survival</h3>
+    <div class="muted" id="waveMeta">Waves begin at 2:00, then every 1:00.</div>
+    <div style="height:8px"></div>
+    <div class="waveRow">
+      <div class="waveBox">
+        <div class="title"><b style="font-size:12px">Next Wave</b><span class="pill" id="nextWaveTime">-</span></div>
+        <div class="muted" id="nextWaveLabel" style="margin-top:2px">-</div>
+        <div class="comp" id="nextWaveComp"></div>
+      </div>
+      <div class="waveBox">
+        <div class="title"><b style="font-size:12px">Next Up</b><span class="pill" id="nextUpLabel">-</span></div>
+        <div class="muted" id="nextUpHint" style="margin-top:2px">-</div>
+        <div class="comp" id="nextUpComp"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="bottom">
+    <div class="panel" id="panelSel">
+      <div class="row"><b style="font-size:12px">Commands</b><span class="muted" id="cmdHint">-</span></div>
+      <div class="grid" id="cmdButtons"></div>
+    </div>
+
+    <div class="panel" id="panelAct">
+      <div class="row"><b style="font-size:12px">Actions</b><span class="muted" id="modeInfo">-</span></div>
+      <div class="grid" id="actionButtons"></div>
+    </div>
+
+    <div class="panel" id="panelHint">
+      <div class="row"><b style="font-size:12px">Hotkeys</b></div>
+      <div class="muted" style="margin-top:6px;line-height:1.45" id="hotkeyHelp">
+        Drag box select • Shift add select • Right-click move/attack/mine<br>
+        A = attack-move • Ctrl+1..9 set group • 1..9 recall (double tap centers)<br>
+        Worker build hotkeys: Z/X/C/V/B/N (in build list order)<br>
+        Q/W/E/R/T: abilities first, otherwise train/research for selected building<br>
+        Double-click a unit type: select all visible of that type
+      </div>
+      <div class="muted" style="margin-top:8px;line-height:1.45">
+        <b>Win:</b> Destroy all enemy Spires.<br>
+        <b>Lose:</b> Your HQ is destroyed.
+      </div>
+    </div>
+  </div>
+
+  <div id="menu">
+    <div id="menuCard">
+      <h1>Starcraft-Lite RTS - Spire Survival</h1>
+      <p>
+        Enemy Spire(s) spawn escalating waves starting at 2:00.
+        Spires periodically grow defenses. Survive, tech up, and destroy them.
+      </p>
+
+      <div class="menuRow">
+        <span class="tag">Map</span>
+        <select id="mapSel">
+          <option value="twin">Twin Pockets (1 spire)</option>
+          <option value="ring">Ring Pass (2 spires)</option>
+          <option value="maze">Iron Maze (3 spires)</option>
+        </select>
+
+        <span class="tag">Race</span>
+        <select id="raceSel">
+          <option value="frontier">Frontier</option>
+          <option value="astra">Astra</option>
+        </select>
+
+        <span class="tag">Difficulty</span>
+        <select id="diffSel">
+          <option value="easy">Easy</option>
+          <option value="normal" selected>Normal</option>
+          <option value="hard">Hard</option>
+        </select>
+
+        <button class="btn" id="startBtn">Start</button>
+      </div>
+
+      <div class="note">
+        <b>Enemy roster:</b><br>
+        Tier 1: Lings (🐜), Hydras (🐍, can hit air)<br>
+        Tier 2: Roaches (🪲), Mutas (🦇, air)<br>
+        Tier 3: Infestors (🧫, traps + slow), Ultras (🐘, splash melee)<br><br>
+        <b>Rule:</b> Melee cannot hit air. Some ranged are ground-only.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ---------------- DOM ----------------
+  const frame = document.getElementById("frame");
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const mini = document.getElementById("mini");
+  const mctx = mini.getContext("2d");
+
+  const menu = document.getElementById("menu");
+  const startBtn = document.getElementById("startBtn");
+  const btnMenu = document.getElementById("btnMenu");
+  const mapSel = document.getElementById("mapSel");
+  const raceSel = document.getElementById("raceSel");
+  const diffSel = document.getElementById("diffSel");
+
+  const toast = document.getElementById("toast");
+  const raceNameEl = document.getElementById("raceName");
+  const minValEl = document.getElementById("minVal");
+  const gasValEl = document.getElementById("gasVal");
+  const supplyValEl = document.getElementById("supplyVal");
+  const powerTag = document.getElementById("powerTag");
+  const powerValEl = document.getElementById("powerVal");
+  const timeValEl = document.getElementById("timeVal");
+  const selValEl = document.getElementById("selVal");
+  const enemyValEl = document.getElementById("enemyVal");
+  const cmdButtons = document.getElementById("cmdButtons");
+  const actionButtons = document.getElementById("actionButtons");
+  const cmdHint = document.getElementById("cmdHint");
+  const modeInfo = document.getElementById("modeInfo");
+
+  const nextWaveTimeEl = document.getElementById("nextWaveTime");
+  const nextWaveLabelEl = document.getElementById("nextWaveLabel");
+  const nextWaveCompEl = document.getElementById("nextWaveComp");
+  const nextUpLabelEl = document.getElementById("nextUpLabel");
+  const nextUpHintEl = document.getElementById("nextUpHint");
+  const nextUpCompEl = document.getElementById("nextUpComp");
+
+  // ---------------- Sizing ----------------
+  const view = {w:0,h:0,dpr:1};
+  function resize(){
+    const rect = frame.getBoundingClientRect();
+    view.dpr = Math.max(1, window.devicePixelRatio || 1);
+    view.w = Math.floor(rect.width);
+    view.h = Math.floor(rect.height);
+
+    canvas.width = Math.floor(view.w*view.dpr);
+    canvas.height = Math.floor(view.h*view.dpr);
+    canvas.style.width = view.w+"px";
+    canvas.style.height = view.h+"px";
+    ctx.setTransform(view.dpr,0,0,view.dpr,0,0);
+
+    mini.width = Math.floor(150*view.dpr);
+    mini.height = Math.floor(118*view.dpr);
+    mctx.setTransform(view.dpr,0,0,view.dpr,0,0);
+  }
+  addEventListener("resize", resize);
+  resize();
+
+  // ---------------- Utils ----------------
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const dist2=(ax,ay,bx,by)=>{const dx=ax-bx,dy=ay-by;return dx*dx+dy*dy;}
+  const dist=(ax,ay,bx,by)=>Math.hypot(ax-bx,ay-by);
+  const randi=(a,b)=>Math.floor(a+Math.random()*(b-a+1));
+  const rand=(a,b)=>a+Math.random()*(b-a);
+  const fmtTime=(sec)=>{
+    sec=Math.max(0,Math.floor(sec));
+    const m=Math.floor(sec/60), s=sec%60;
+    return m+":"+String(s).padStart(2,"0");
+  };
+  function toastMsg(s){
+    toast.textContent=s;
+    toast.style.opacity="1";
+    clearTimeout(toast._t);
+    toast._t=setTimeout(()=>toast.style.opacity="0", 950);
+  }
+
+  // ---------------- World ----------------
+  const TILE = 24;
+  const GW = 92;
+  const GH = 66;
+  const WORLD_W = GW*TILE;
+  const WORLD_H = GH*TILE;
+
+  const idx=(tx,ty)=>ty*GW+tx;
+  const inBounds=(tx,ty)=>tx>=0&&ty>=0&&tx<GW&&ty<GH;
+  const tileToWorld=(tx,ty)=>({x:tx*TILE+TILE/2, y:ty*TILE+TILE/2});
+  const worldToTile=(x,y)=>({tx:Math.floor(x/TILE), ty:Math.floor(y/TILE)});
+
+  const terrain = new Uint8Array(GW*GH); // 0 open, 1 wall
+  const isTerrainBlocked=(tx,ty)=>!inBounds(tx,ty) || terrain[idx(tx,ty)]===1;
+
+  // ---------------- Camera ----------------
+  const cam = {x:0,y:0,speed:600};
+  const worldToScreen=(x,y)=>({x:x-cam.x, y:y-cam.y});
+  const screenToWorld=(sx,sy)=>({x:sx+cam.x, y:sy+cam.y});
+
+  // ---------------- Entities ----------------
+  let nextId=1;
+  const units=[];
+  const buildings=[];
+  const projectiles=[];
+  const resNodes=[];
+  const particles=[];
+  const beams=[];
+  const hazards=[];
+
+  const OWNER_PLAYER=0, OWNER_ENEMY=1;
+
+  const state = {
+    running:false,
+    gameOver:false,
+    selection:new Set(),
+    boxSel:null,
+    attackMove:false,
+    buildGhost:null,
+    actionKeyMap:{},
+    _mouseWorld:{x:0,y:0},
+    _lastClick:{t:0,kind:"",type:"",owner:-1},
+  };
+
+  const econ = [
+    {minerals:350, gas:0, supplyUsed:0, supplyCap:10, upgrades:{}, power:0},
+    {minerals:0, gas:0, supplyUsed:0, supplyCap:0, upgrades:{}, power:0},
+  ];
+
+  const groups=new Map();
+  let lastGroupKey=null, lastGroupAt=0;
+
+  // ---------------- Tuning ----------------
+  const IDLE_AGGRO_R = 155;
+  const AMOVE_ACQUIRE_R = 420;
+  const SEP_R_COMBAT = 26;
+  const SEP_R_MOVE   = 24;
+  const SEP_PUSH     = 58;
+  const TARGET_RING_MIN = 8;
+  const TARGET_RING_MAX = 32;
+
+  // ---------------- Game config ----------------
+  let playerRace="frontier";
+  let difficulty="normal";
+  let mapId="twin";
+  let tNow=0;
+  let gameStart=0;
+
+  // ---------------- Races ----------------
+  const RACES = {
+    frontier:{
+      name:"Frontier",
+      worker:"eng",
+      hq:"hq_f",
+      powerRequired:false,
+      buildables:[
+        {id:"depot",name:"Depot",ico:"📦",cost:{m:60,g:0}, size:[2,2], hp:520, tier:0, req:[], provides:{supply:8}},
+        {id:"barr", name:"Barracks",ico:"🏭",cost:{m:120,g:0},size:[3,2], hp:720, tier:1, req:[], produces:["rif","med"]},
+        {id:"ref",  name:"Refinery",ico:"🟢",cost:{m:75,g:0}, size:[2,2], hp:520, tier:0, req:[], special:"onGeyser"},
+        {id:"fact", name:"Factory",ico:"🛠️",cost:{m:160,g:60},size:[3,2],hp:820,tier:2,req:["barr","ref"], produces:["sie"]},
+        {id:"hang", name:"Hangar",ico:"🛫",cost:{m:200,g:120},size:[3,2],hp:820,tier:3,req:["fact"], produces:["gun","plc"]},
+        {id:"tur",  name:"Turret",ico:"🗼",cost:{m:90,g:25},size:[2,2], hp:520, tier:1, req:["barr"], defense:{range:210,dmg:10,cd:0.8,canHitAir:true}},
+        {id:"lab",  name:"Lab",ico:"🧪",cost:{m:140,g:80},size:[2,2], hp:560, tier:2, req:["fact"], research:true},
+        {id:"hq_f", name:"HQ",ico:"🏛️",cost:{m:0,g:0}, size:[4,3], hp:2200, tier:0, req:[], provides:{supply:10}}
+      ],
+      units:{
+        eng:{name:"Engineer",ico:"🧑‍🔧",cost:{m:50,g:0}, supply:1,hp:70, spd:120, range:18, dmg:5, atkCd:0.9, worker:true, carry:8, canHitAir:false},
+        rif:{name:"Rifler",ico:"🔫",cost:{m:50,g:0}, supply:1,hp:78, spd:150, range:140,dmg:8, atkCd:0.62, abilities:["burst"], canHitAir:true},
+        med:{name:"Medic",ico:"💉",cost:{m:60,g:25},supply:1,hp:72, spd:140, range:150,dmg:0, atkCd:1.0, healer:true, canHitAir:false},
+        sie:{name:"SiegeBot",ico:"🛡️",cost:{m:120,g:60},supply:3,hp:165,spd:105,range:210,dmg:18,atkCd:1.25,splash:70, abilities:["shockwave"], canHitAir:true},
+        gun:{name:"Gunship",ico:"🚁",cost:{m:140,g:90},supply:3,hp:140,spd:210,range:180,dmg:14,atkCd:0.85,flying:true, canHitAir:true},
+        plc:{name:"Plasma Cruiser",ico:"🚀",cost:{m:260,g:170},supply:6,hp:360,spd:175,range:260,dmg:40,atkCd:2.10,splash:120,flying:true,plasma:true,canHitAir:true}
+      },
+      research:[
+        {id:"atk1",name:"Weapon +1",ico:"⚙️",cost:{m:120,g:90},time:28,req:["lab"], effect:(o)=>{econ[o].upgrades.atk=(econ[o].upgrades.atk||0)+1;}},
+        {id:"mine",name:"Faster Mining",ico:"⛏️",cost:{m:90,g:60},time:22,req:["lab"], effect:(o)=>{econ[o].upgrades.mine=1;}},
+      ]
+    },
+    astra:{
+      name:"Astra",
+      worker:"drn",
+      hq:"hq_a",
+      powerRequired:true,
+      buildables:[
+        {id:"pwr",  name:"Power Node",ico:"🪬",cost:{m:90,g:0},  size:[2,2], hp:480, tier:0, req:[], provides:{supply:8,power:1}, powerRadius: 7},
+        {id:"gate", name:"War Gate",ico:"🌀",cost:{m:140,g:0}, size:[3,2], hp:720, tier:1, req:["pwr"], produces:["thr","stk","wsp"]},
+        {id:"ext",  name:"Extractor",ico:"🟢",cost:{m:90,g:0},  size:[2,2], hp:520, tier:0, req:["pwr"], special:"onGeyser"},
+        {id:"vat",  name:"Bio Vat",ico:"🧫",cost:{m:150,g:50},size:[3,2], hp:820, tier:2, req:["gate","ext"], produces:["bru"]},
+        {id:"spire",name:"Star Spire",ico:"🛸",cost:{m:220,g:120},size:[3,2], hp:860, tier:3, req:["vat"], produces:["ray","bom","mth"]},
+        {id:"pris", name:"Prism Cannon",ico:"🔺",cost:{m:110,g:40},size:[2,2], hp:520, tier:1, req:["gate"], defense:{range:240,dmg:14,cd:0.9,canHitAir:true}},
+        {id:"core", name:"Conduit Core",ico:"🔮",cost:{m:160,g:90},size:[2,2], hp:580, tier:2, req:["vat"], research:true},
+        {id:"hq_a", name:"HQ",ico:"🏛️",cost:{m:0,g:0}, size:[4,3], hp:2300, tier:0, req:[], provides:{supply:10,power:1}, powerRadius: 7},
+      ],
+      units:{
+        drn:{name:"Drone",ico:"👾",cost:{m:50,g:0}, supply:1,hp:78, spd:135, range:18, dmg:6, atkCd:0.85, worker:true, carry:10, canHitAir:false},
+        thr:{name:"Thrall",ico:"👊",cost:{m:55,g:0}, supply:1,hp:95, spd:165, range:38, dmg:10, atkCd:0.72, canHitAir:false},
+        stk:{name:"Stalker",ico:"🗡️",cost:{m:90,g:25},supply:2,hp:125,spd:155,range:170,dmg:13,atkCd:0.78, abilities:["phase"], canHitAir:true},
+        wsp:{name:"Wisp",ico:"🧙",cost:{m:80,g:60},supply:2,hp:85, spd:150,range:160,dmg:7, atkCd:0.95, caster:true, energyMax:100, abilities:["zap"], canHitAir:true},
+        bru:{name:"Brute",ico:"🧟",cost:{m:120,g:30},supply:3,hp:240,spd:120,range:40, dmg:22,atkCd:0.9, abilities:["slam"], canHitAir:false},
+        ray:{name:"Ray",ico:"🛸",cost:{m:160,g:90},supply:3,hp:175,spd:235,range:220,dmg:0, atkCd:0, flying:true, rayBeam:true, abilities:["overcharge"], canHitAir:true},
+        bom:{name:"Bomber",ico:"💣",cost:{m:210,g:140},supply:4,hp:210,spd:190,range:200,dmg:24,atkCd:1.35,splash:90,flying:true, canHitAir:true},
+        mth:{name:"Mothership",ico:"🛳️",cost:{m:360,g:240},supply:8,hp:650,spd:150,range:260,dmg:0, atkCd:0,flying:true, carrier:true, fighterCap:6, abilities:["launch"], canHitAir:false},
+        ftr:{name:"Fighter",ico:"🛩️",cost:{m:0,g:0},supply:0,hp:42, spd:280,range:140,dmg:7, atkCd:0.45,flying:true, fighter:true, canHitAir:true}
+      },
+      research:[
+        {id:"psh",name:"Power Surge",ico:"⚡",cost:{m:120,g:110},time:28,req:["core"], effect:(o)=>{econ[o].upgrades.power=1;}},
+        {id:"atk1",name:"Weapon +1",ico:"⚙️",cost:{m:140,g:110},time:30,req:["core"], effect:(o)=>{econ[o].upgrades.atk=(econ[o].upgrades.atk||0)+1;}},
+      ]
+    }
+  };
+
+  // ---------------- Enemy units/buildings ----------------
+  const ENEMY = {
+    ling:  {name:"Ling",ico:"🐜",hp:40, spd:215,range:28, dmg:7, atkCd:0.55, flying:false, splash:0, canHitAir:false},
+    hydra: {name:"Hydra",ico:"🐍",hp:110,spd:150,range:175,dmg:12,atkCd:0.85,flying:false, canHitAir:true},
+    roach: {name:"Roach",ico:"🪲",hp:220,spd:120,range:165,dmg:14,atkCd:0.95,flying:false, canHitAir:false},
+    muta:  {name:"Muta",ico:"🦇",hp:135,spd:240,range:165,dmg:14,atkCd:0.95,flying:true,  canHitAir:true},
+    inf:   {name:"Infestor",ico:"🧫",hp:190,spd:120,range:175,dmg:12,atkCd:0.85,flying:false, canHitAir:true, trap:true, trapCd:7.0},
+    ultra: {name:"Ultra",ico:"🐘",hp:720,spd:90, range:42, dmg:28,atkCd:1.05,flying:false, canHitAir:false, splash:65},
+  };
+
+  const ENEMY_BUILD = {
+    spire:{name:"Spire",ico:"🗿",size:[4,4],hp:9800, solid:true},
+    spine:{name:"Spine",ico:"🦂",size:[2,2],hp:680, solid:true, defense:{range:235,dmg:16,cd:0.9,canHitAir:false}},
+    spore:{name:"Spore",ico:"🍄",size:[2,2],hp:620, solid:true, defense:{range:255,dmg:14,cd:0.85,canHitAir:true}},
+  };
+
+  // ---------------- Abilities ----------------
+  const ABILITIES = {
+    zap:       {name:"Zap",ico:"⚡",desc:"Wisp zaps enemy near cursor (35 energy)."},
+    phase:     {name:"Phase Blink",ico:"🌀",desc:"Stalker blinks toward cursor."},
+    burst:     {name:"Burst Fire",ico:"🔥",desc:"Rifler attacks faster briefly."},
+    shockwave: {name:"Shockwave",ico:"🌊",desc:"SiegeBot AoE + knockback near cursor."},
+    overcharge:{name:"Overcharge",ico:"✨",desc:"Ray beam DPS boosted briefly."},
+    slam:      {name:"Slam",ico:"💥",desc:"Brute AoE + knockback around self."},
+    launch:    {name:"Launch Fighters",ico:"🛩️",desc:"Mothership launches 2 docked fighters."},
+  };
+  const ACTION_KEYS = ["Q","W","E","R","T"];
+
+  // ---------------- Placement + collision ----------------
+  function buildingAtTile(tx,ty){
+    for(const b of buildings){
+      if(b.dead) continue;
+      if(tx>=b.tx && ty>=b.ty && tx<b.tx+b.w && ty<b.ty+b.h) return b;
+    }
+    return null;
+  }
+  function isBlockedForPath(tx,ty){
+    if(isTerrainBlocked(tx,ty)) return true;
+    const b=buildingAtTile(tx,ty);
+    return !!(b && b.solid);
+  }
+
+  function nearestGeyserTo(wx,wy){
+    let best=null, bestD=Infinity;
+    for(const n of resNodes){
+      if(n.type!=="geyser") continue;
+      const d=dist2(n.x,n.y,wx,wy);
+      if(d<bestD){bestD=d; best=n;}
+    }
+    return best;
+  }
+
+  function isInPowerField(owner,x,y){
+    if(owner!==OWNER_PLAYER) return true;
+    if(playerRace!=="astra") return true;
+    for(const b of buildings){
+      if(b.dead || b.owner!==owner || !b.complete) continue;
+      if(b.type!=="pwr" && b.type!==RACES[playerRace].hq) continue;
+      const r=(b.powerRadius||7)*TILE;
+      if(dist2(b.x,b.y,x,y)<=r*r) return true;
+    }
+    return false;
+  }
+
+  function canPlaceBuilding(owner, defId, tx, ty){
+    if(owner!==OWNER_PLAYER) return {ok:false, why:"Enemy auto-spawns buildings"};
+    const R=RACES[playerRace];
+    const def=R.buildables.find(x=>x.id===defId);
+    if(!def) return {ok:false, why:"Unknown"};
+
+    // special: refinery/extractor on geyser
+    if(def.special==="onGeyser"){
+      const w=tileToWorld(tx,ty);
+      const gey=nearestGeyserTo(w.x,w.y);
+      if(!gey) return {ok:false, why:"Must be on a geyser"};
+      if(dist(gey.x,gey.y,w.x,w.y) > TILE*2.2) return {ok:false, why:"Place on geyser"};
+      if(gey.hasExtractorOwner!==-1) return {ok:false, why:"Geyser taken"};
+      tx=gey.tx; ty=gey.ty;
+    }
+
+    for(let y=ty;y<ty+def.size[1];y++){
+      for(let x=tx;x<tx+def.size[0];x++){
+        if(!inBounds(x,y)) return {ok:false, why:"Out of bounds"};
+        if(isTerrainBlocked(x,y)) return {ok:false, why:"Wall"};
+        if(buildingAtTile(x,y)) return {ok:false, why:"Occupied"};
+      }
+    }
+
+    // power requirement (Astra)
+    if(R.powerRequired && def.id!=="pwr" && def.id!==R.hq){
+      const c=tileToWorld(tx+def.size[0]/2, ty+def.size[1]/2);
+      if(!isInPowerField(owner,c.x,c.y)) return {ok:false, why:"Needs power field"};
+    }
+
+    return {ok:true, tx, ty};
+  }
+
+  // ---------------- A* path (grid) ----------------
+  const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+  function aStarPath(sx,sy,gx,gy,max=5200){
+    sx=clamp(sx,0,GW-1); sy=clamp(sy,0,GH-1);
+    gx=clamp(gx,0,GW-1); gy=clamp(gy,0,GH-1);
+
+    // nudge goal if blocked
+    if(isBlockedForPath(gx,gy)){
+      let found=null,best=1e9;
+      for(let r=1;r<=6;r++){
+        for(let oy=-r;oy<=r;oy++){
+          for(let ox=-r;ox<=r;ox++){
+            const nx=gx+ox, ny=gy+oy;
+            if(!inBounds(nx,ny)) continue;
+            if(isBlockedForPath(nx,ny)) continue;
+            const d=Math.abs(ox)+Math.abs(oy);
+            if(d<best){best=d; found={nx,ny};}
+          }
+        }
+        if(found) break;
+      }
+      if(found){gx=found.nx; gy=found.ny;}
+      else return null;
+    }
+
+    const start=sx+","+sy, goal=gx+","+gy;
+    const open=new Set([start]);
+    const came=new Map();
+    const gScore=new Map([[start,0]]);
+    const fScore=new Map([[start, Math.abs(gx-sx)+Math.abs(gy-sy)]]);
+
+    function lowest(){
+      let best=null, bestV=1e9;
+      for(const k of open){
+        const v=fScore.get(k) ?? 1e9;
+        if(v<bestV){bestV=v; best=k;}
+      }
+      return best;
+    }
+
+    let it=0;
+    while(open.size && it++<max){
+      const cur=lowest(); if(!cur) break;
+      if(cur===goal){
+        const out=[];
+        let k=cur;
+        while(k!==start){
+          const [tx,ty]=k.split(",").map(Number);
+          out.push({tx,ty});
+          k=came.get(k);
+          if(!k) break;
+        }
+        out.reverse();
+        return out;
+      }
+      open.delete(cur);
+      const [cx,cy]=cur.split(",").map(Number);
+      for(const [dx,dy] of dirs){
+        const nx=cx+dx, ny=cy+dy;
+        if(!inBounds(nx,ny)) continue;
+        if(isBlockedForPath(nx,ny)) continue;
+        const nk=nx+","+ny;
+        const tentative=(gScore.get(cur)??1e9)+1;
+        if(tentative < (gScore.get(nk)??1e9)){
+          came.set(nk,cur);
+          gScore.set(nk,tentative);
+          const h=Math.abs(gx-nx)+Math.abs(gy-ny);
+          fScore.set(nk,tentative+h);
+          open.add(nk);
+        }
+      }
+    }
+    return null;
+  }
+
+  // ---------------- Economy helpers ----------------
+  const canAfford=(owner,cost)=>econ[owner].minerals>=(cost.m||0) && econ[owner].gas>=(cost.g||0);
+  const pay=(owner,cost)=>{econ[owner].minerals-=(cost.m||0); econ[owner].gas-=(cost.g||0);};
+  const hasBuilding=(owner,id)=>buildings.some(b=>!b.dead && b.owner===owner && b.type===id && b.complete);
+  const meetsReq=(owner,req)=> (req||[]).every(r=>hasBuilding(owner,r));
+
+  function recomputeSupply(owner){
+    if(owner!==OWNER_PLAYER) return;
+    let cap=0, power=0;
+    const R=RACES[playerRace];
+    for(const b of buildings){
+      if(b.dead || b.owner!==owner || !b.complete) continue;
+      const def=R.buildables.find(d=>d.id===b.type);
+      if(def?.provides?.supply) cap += def.provides.supply;
+      if(def?.provides?.power)  power += def.provides.power;
+    }
+    econ[owner].supplyCap = cap;
+    econ[owner].power = power;
+    if((econ[owner].supplyUsed||0)<0) econ[owner].supplyUsed=0;
+  }
+
+  // ---------------- Particles ----------------
+  function spawnParticles(x,y,kind="hit"){
+    const n = (kind==="plasma")?14:(kind==="laser")?10:(kind==="zap")?14:10;
+    for(let i=0;i<n;i++){
+      const a=Math.random()*Math.PI*2;
+      const sp=(kind==="plasma"?250:kind==="laser"?180:220)*(0.35+Math.random()*0.9);
+      particles.push({
+        x,y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp,
+        life:0.35+Math.random()*0.30, max:0.55,
+        r:1.5+Math.random()*2.5, kind
+      });
+    }
+  }
+
+  // ---------------- Create entities ----------------
+  function makeBuilding(owner,type,tx,ty){
+    if(owner===OWNER_ENEMY){
+      const def=ENEMY_BUILD[type];
+      const w=def.size[0], h=def.size[1];
+      const c=tileToWorld(tx+w/2, ty+h/2);
+      const b={
+        id:nextId++, owner,type, tx,ty,w,h, x:c.x,y:c.y,
+        hp:def.hp,maxHp:def.hp,
+        solid:true, complete:true,
+        buildTimeLeft:0, buildTimeBase:0,
+        job:null,
+        defense: def.defense ? {...def.defense, cd:rand(0,def.defense.cd), cdBase:def.defense.cd} : null,
+        provides:null, powerRadius:0, research:false, produces:null, special:null,
+        rally:null, dead:false,
+        isHQ:false,
+        isSpire:(type==="spire"),
+        nextDefenseAt:0,
+        nextDefendersAt:0,
+        defendersCap:0,
+      };
+      buildings.push(b);
+      return b;
+    }
+
+    const R=RACES[playerRace];
+    const def=R.buildables.find(b=>b.id===type);
+    const w=def.size[0], h=def.size[1];
+    const c=tileToWorld(tx+w/2, ty+h/2);
+    const isHQ = type===R.hq;
+
+    const b={
+      id:nextId++, owner,type, tx,ty,w,h, x:c.x,y:c.y,
+      hp:def.hp,maxHp:def.hp,
+      solid:true,
+      buildTimeLeft:0, buildTimeBase:0,
+      complete:false,
+      job:null,
+      defense:def.defense ? {...def.defense, cd:rand(0,def.defense.cd), cdBase:def.defense.cd} : null,
+      provides:def.provides||null,
+      powerRadius:def.powerRadius||0,
+      research:!!def.research,
+      produces:def.produces ? [...def.produces] : null,
+      special:def.special||null,
+      rally:null,
+      dead:false,
+      isHQ,
+    };
+
+    if(isHQ){
+      b.produces=[R.worker]; // HQ can train workers
+      b.research=false;
+    }
+
+    buildings.push(b);
+    return b;
+  }
+
+  function makeUnit(owner,type,x,y,opts={}){
+    // Enemy
+    if(owner===OWNER_ENEMY){
+      const U=ENEMY[type];
+      if(!U) return null;
+      const u={
+        id:nextId++, owner,type, x,y,
+        hp:U.hp,maxHp:U.hp,
+        radius: U.flying?12:11,
+        spd:U.spd, range:U.range, dmg:U.dmg, atkCd:U.atkCd,
+        cd:rand(0, Math.max(0.01,U.atkCd||0.7)),
+        splash:U.splash||0,
+        flying:!!U.flying,
+        worker:false, healer:false, caster:false,
+        energy:0, energyMax:0,
+        carryCap:0, carry:{m:0,g:0},
+        abilities:[], cds:{},
+        buffs:{},
+        rayBeam:false, plasma:false,
+        carrier:false, fighter:false,
+        fightersDocked:0, fighterCap:0, fighterCd:0, fighterWave:0,
+        task:{kind:"seek", targetId:null},
+        path:[], repath:0, stuckTime:0, lastXY:{x,y},
+        kb:{vx:0,vy:0,until:0},
+        beamTick:0,
+        parentId: opts.parentId || null,
+        orbitA: rand(0,Math.PI*2), orbitT:0,
+        lifeTime:0, _despawn:false,
+        canHitAir: !!U.canHitAir,
+        trap: !!U.trap, trapCd: U.trapCd||0, nextTrapAt:0,
+        slowUntil:0,
+        supply:0,
+        guardSpireId: opts.guardSpireId || null,
+      };
+      units.push(u);
+      return u;
+    }
+
+    // Player
+    const U=RACES[playerRace].units[type];
+    if(!U) return null;
+
+    const abilities = Array.isArray(U.abilities)?U.abilities.slice():(U.abilities?[U.abilities]:[]);
+    const u={
+      id:nextId++, owner,type, x,y,
+      hp:U.hp,maxHp:U.hp,
+      radius: U.flying?12:11,
+      spd:U.spd, range:U.range, dmg:U.dmg, atkCd:U.atkCd,
+      cd:rand(0, Math.max(0.01,U.atkCd||0.7)),
+      splash:U.splash||0,
+      flying:!!U.flying,
+      worker:!!U.worker,
+      healer:!!U.healer,
+      caster:!!U.caster,
+      energy: U.energyMax?U.energyMax:0,
+      energyMax: U.energyMax?U.energyMax:0,
+      carryCap: U.carry||0,
+      carry:{m:0,g:0},
+      abilities, cds:{}, buffs:{burstUntil:0, overchargeUntil:0},
+      rayBeam:!!U.rayBeam,
+      plasma:!!U.plasma,
+      carrier:!!U.carrier,
+      fighter:!!U.fighter,
+      fightersDocked: U.fighterCap?U.fighterCap:0,
+      fighterCap: U.fighterCap||0,
+      fighterCd:0, fighterWave:0,
+      task:null,
+      path:[], repath:0, stuckTime:0, lastXY:{x,y},
+      kb:{vx:0,vy:0,until:0},
+      beamTick:0,
+      parentId: opts.parentId||null,
+      orbitA: rand(0,Math.PI*2), orbitT:0,
+      lifeTime:0, _despawn:false,
+      canHitAir: (U.canHitAir!==undefined)?!!U.canHitAir:true,
+      slowUntil:0,
+      supply: (U.supply||0),
+    };
+    for(const ab of abilities) u.cds[ab]=0;
+
+    units.push(u);
+    econ[OWNER_PLAYER].supplyUsed += (U.supply||0);
+    return u;
+  }
+
+  function getAnyHQ(owner){
+    if(owner!==OWNER_PLAYER) return null;
+    return buildings.find(b=>!b.dead && b.owner===owner && b.type===RACES[playerRace].hq);
+  }
+
+  function findSpawnNear(x,y,radX=90,radY=80){
+    for(let tries=0;tries<140;tries++){
+      const nx=x+rand(-radX,radX), ny=y+rand(-radY,radY);
+      const {tx,ty}=worldToTile(nx,ny);
+      if(isBlockedForPath(tx,ty)) continue;
+      if(buildingAtTile(tx,ty)) continue;
+      return {x:nx,y:ny};
+    }
+    return {x:x+30,y:y+30};
+  }
+
+  function spawnProjectile(owner,x,y,tx,ty,dmg,splash=0,kind="bullet",extra={}){
+    const dx=tx-x, dy=ty-y;
+    const len=Math.hypot(dx,dy)||1;
+    const sp=extra.speed ?? (kind==="plasma"?300:560);
+    projectiles.push({
+      owner,x,y,
+      vx:(dx/len)*sp, vy:(dy/len)*sp,
+      life: extra.life ?? (kind==="plasma"?2.2:1.25),
+      dmg, splash,
+      kind,
+      size: extra.size ?? (kind==="plasma"?10:3),
+      knock: extra.knock ?? (kind==="plasma"?170:0),
+      canHitAir: extra.canHitAir ?? true
+    });
+  }
+
+  // ---------------- Resources ----------------
+  function pickResNodeAt(x,y){
+    let best=null,bestD=Infinity;
+    for(const n of resNodes){
+      if(n.type==="mineral" && n.amount<=0) continue;
+      const d=dist2(n.x,n.y,x,y);
+      if(d<(26*26) && d<bestD){best=n; bestD=d;}
+    }
+    return best;
+  }
+  function nearestResOfType(type,x,y){
+    let best=null,bestD=Infinity;
+    for(const n of resNodes){
+      if(n.type!==type) continue;
+      if(type==="mineral" && n.amount<=0) continue;
+      const d=dist2(n.x,n.y,x,y);
+      if(d<bestD){best=n; bestD=d;}
+    }
+    return best;
+  }
+  function getExtractorOn(owner, geyser){
+    if(owner!==OWNER_PLAYER) return null;
+    const exId = (playerRace==="frontier") ? "ref" : "ext";
+    return buildings.find(b=>!b.dead && b.owner===owner && b.type===exId && b.tx===geyser.tx && b.ty===geyser.ty);
+  }
+
+  // ---------------- Selection helpers ----------------
+  function findById(id){
+    for(const u of units) if(u.id===id) return {kind:"unit", ref:u};
+    for(const b of buildings) if(b.id===id) return {kind:"building", ref:b};
+    return null;
+  }
+  function getSelected(){
+    const out=[];
+    for(const id of state.selection){
+      const ent=findById(id);
+      if(!ent) continue;
+      if(ent.kind==="unit" && ent.ref.hp<=0) continue;
+      if(ent.kind==="building" && ent.ref.dead) continue;
+      out.push(ent);
+    }
+    return out;
+  }
+
+  // ---------------- Commands ----------------
+  function commandMove(u,x,y){
+    u.task={kind:"move",x,y};
+    u.path=[]; u.repath=0;
+    if(!u.flying){
+      const {tx,ty}=worldToTile(u.x,u.y);
+      const {tx:gx,ty:gy}=worldToTile(x,y);
+      u.path=aStarPath(tx,ty,gx,gy)||[];
+    }
+  }
+  function commandAttackMove(u,x,y){
+    u.task={kind:"attackMove",x,y};
+    u.path=[]; u.repath=0;
+    if(!u.flying){
+      const {tx,ty}=worldToTile(u.x,u.y);
+      const {tx:gx,ty:gy}=worldToTile(x,y);
+      u.path=aStarPath(tx,ty,gx,gy)||[];
+    }
+  }
+  function commandAttack(u,target){
+    u.task={kind:"attack", targetId: target.id};
+    u.path=[]; u.repath=0;
+  }
+  function commandMine(w,node){
+    if(node.type==="geyser" && w.carry.m>0){
+      w.carry.m=0;
+      toastMsg("Worker dumped minerals to start gas.");
+    }
+    w.task={kind:"mine", nodeId:node.id, stage:"go"};
+    w.path=[]; w.repath=0;
+  }
+  function commandBuild(w,defId,tx,ty){
+    w.task={kind:"build", defId, tx, ty, stage:"go"};
+    w.path=[]; w.repath=0;
+  }
+
+  function commandGroupTo(groupUnits, goal){
+    const alive=groupUnits.filter(u=>u.hp>0);
+    if(!alive.length) return;
+
+    alive.sort((a,b)=>a.y-b.y || a.x-b.x);
+    const spacing=28;
+    const cols=Math.ceil(Math.sqrt(alive.length));
+    const startX=goal.x-(cols-1)*spacing/2;
+    const startY=goal.y-(Math.ceil(alive.length/cols)-1)*spacing/2;
+
+    const reserved=new Set();
+    for(let i=0;i<alive.length;i++){
+      const u=alive[i];
+      const cx=startX+(i%cols)*spacing;
+      const cy=startY+Math.floor(i/cols)*spacing;
+      let {tx,ty}=worldToTile(cx,cy);
+
+      const key=tx+","+ty;
+      if(!u.flying && (isBlockedForPath(tx,ty) || reserved.has(key))){
+        let found=null,best=1e9;
+        for(let r=1;r<=4;r++){
+          for(let oy=-r;oy<=r;oy++){
+            for(let ox=-r;ox<=r;ox++){
+              const nx=tx+ox, ny=ty+oy;
+              if(!inBounds(nx,ny)) continue;
+              const k=nx+","+ny;
+              if(reserved.has(k)) continue;
+              if(isBlockedForPath(nx,ny)) continue;
+              const d=Math.abs(ox)+Math.abs(oy);
+              if(d<best){best=d; found={nx,ny};}
+            }
+          }
+          if(found) break;
+        }
+        if(found){tx=found.nx; ty=found.ny;}
+      }
+      reserved.add(tx+","+ty);
+      const w=tileToWorld(tx,ty);
+
+      if(goal.mode==="attackMove") commandAttackMove(u,w.x,w.y);
+      else commandMove(u,w.x,w.y);
+    }
+  }
+
+  // ---------------- Targeting ----------------
+  function nearestEnemyTo(owner,x,y,r,filterFn=null){
+    const other = owner===OWNER_PLAYER ? OWNER_ENEMY : OWNER_PLAYER;
+    const r2=r*r;
+    let best=null,bestD=Infinity;
+
+    for(const u of units){
+      if(u.owner!==other || u.hp<=0) continue;
+      if(filterFn && !filterFn({kind:"unit",ref:u})) continue;
+      const d=dist2(u.x,u.y,x,y);
+      if(d<=r2 && d<bestD){best={kind:"unit",ref:u}; bestD=d;}
+    }
+    for(const b of buildings){
+      if(b.owner!==other || b.dead) continue;
+      if(filterFn && !filterFn({kind:"building",ref:b})) continue;
+      const d=dist2(b.x,b.y,x,y);
+      if(d<=r2 && d<bestD){best={kind:"building",ref:b}; bestD=d;}
+    }
+    return best;
+  }
+
+  function approachPoint(u,t){
+    if(!t) return {x:u.x,y:u.y};
+    if(u.worker) return {x:t.x,y:t.y};
+    const h=(u.id*2654435761)>>>0;
+    const a=((h%1000)/1000)*Math.PI*2;
+    const ring=clamp(TARGET_RING_MIN + ((h>>3)%1000)/1000*(TARGET_RING_MAX-TARGET_RING_MIN), TARGET_RING_MIN, TARGET_RING_MAX);
+    const r = u.range<=60 ? Math.min(14,ring) : ring;
+    return {x:t.x+Math.cos(a)*r, y:t.y+Math.sin(a)*r};
+  }
+
+  // ---------------- Separation (workers mostly unaffected) ----------------
+  function applySeparation(u,owner,dt){
+    const combat = !!(u.task && (u.task.kind==="attack"||u.task.kind==="attackMove"||u.task.kind==="hold"||u.task.kind==="seek"||u.task.kind==="guard"));
+    const moving = !!(u.task && (u.task.kind==="move"||u.task.kind==="attackMove"||u.task.kind==="attack"||u.task.kind==="mine"||u.task.kind==="build"||u.task.kind==="seek"||u.task.kind==="guard"));
+    const r = combat ? SEP_R_COMBAT : SEP_R_MOVE;
+    const r2=r*r;
+    let ox=0,oy=0,c=0;
+
+    for(const v of units){
+      if(v===u || v.owner!==owner || v.hp<=0) continue;
+      const d2=dist2(u.x,u.y,v.x,v.y);
+      if(d2<=0 || d2>=r2) continue;
+
+      const d=Math.sqrt(d2);
+      const hardOverlap = d < (u.radius+v.radius-2);
+
+      // workers only separate on hard overlap (prevents mining jams)
+      if(u.worker && !hardOverlap) continue;
+
+      // non-workers only separate when moving/combat or hard overlap
+      if(!u.worker && !moving && !combat && !hardOverlap) continue;
+
+      const push=(r-d)/r;
+      ox += (u.x-v.x)/d * push;
+      oy += (u.y-v.y)/d * push;
+      c++;
+    }
+    if(c){
+      u.x += (ox/c)*SEP_PUSH*dt;
+      u.y += (oy/c)*SEP_PUSH*dt;
+    }
+  }
+
+  // ---------------- Movement ----------------
+  function moveDirect(u,dt,spd,gx,gy){
+    const arriveD2 = 7*7;
+    if(dist2(u.x,u.y,gx,gy)<=arriveD2){
+      u.x=gx; u.y=gy;
+      u.path=[];
+      return true;
+    }
+    const dx=gx-u.x, dy=gy-u.y;
+    const d=Math.hypot(dx,dy)||1;
+    const step=spd*dt;
+    u.x += (dx/d)*Math.min(step,d);
+    u.y += (dy/d)*Math.min(step,d);
+    return false;
+  }
+
+  function moveAlongPath(u,dt,spd,gx,gy){
+    if(u.flying) return moveDirect(u,dt,spd,gx,gy);
+
+    const arriveD2=7*7;
+    if(dist2(u.x,u.y,gx,gy)<=arriveD2){
+      u.x=gx; u.y=gy;
+      u.path=[];
+      return true;
+    }
+
+    // stuck check (simplified)
+    const moved = dist(u.x,u.y,u.lastXY.x,u.lastXY.y);
+    if(moved<0.35 && (u.task?.kind==="move"||u.task?.kind==="attackMove"||u.task?.kind==="seek"||u.task?.kind==="guard")) u.stuckTime += dt;
+    else u.stuckTime = Math.max(0, u.stuckTime - dt*0.6);
+    u.lastXY.x=u.x; u.lastXY.y=u.y;
+
+    if(u.stuckTime>0.7){
+      u.stuckTime=0;
+      const jitterX=gx+rand(-36,36);
+      const jitterY=gy+rand(-36,36);
+      const {tx,ty}=worldToTile(u.x,u.y);
+      const {tx:gtx,ty:gty}=worldToTile(jitterX,jitterY);
+      u.path=aStarPath(tx,ty,gtx,gty)||[];
+    }
+
+    if(!u.path || !u.path.length){
+      const {tx,ty}=worldToTile(u.x,u.y);
+      const {tx:gtx,ty:gty}=worldToTile(gx,gy);
+      u.path=aStarPath(tx,ty,gtx,gty)||[];
+    }
+    if(!u.path.length) return moveDirect(u,dt,spd,gx,gy);
+
+    const next=u.path[0];
+    const p=tileToWorld(next.tx,next.ty);
+    const dx=p.x-u.x, dy=p.y-u.y;
+    const d=Math.hypot(dx,dy);
+    if(d<3){ u.x=p.x; u.y=p.y; u.path.shift(); }
+    else{
+      const step=spd*dt;
+      u.x += (dx/d)*Math.min(step,d);
+      u.y += (dy/d)*Math.min(step,d);
+    }
+    return false;
+  }
+
+  // ---------------- Abilities ----------------
+  function getMouseWorld(){ return state._mouseWorld || {x:0,y:0}; }
+  function abilityAvailableForUnit(u,id){
+    if(u.hp<=0) return false;
+    if(!u.abilities || !u.abilities.includes(id)) return false;
+    if((u.cds[id]||0)>0) return false;
+    if(id==="zap" && (!u.caster || u.energy<35)) return false;
+    return true;
+  }
+  function applyKnockback(ent,fromX,fromY,strength){
+    if(!ent) return;
+    const dx=ent.x-fromX, dy=ent.y-fromY;
+    const d=Math.hypot(dx,dy)||1;
+    const vx=(dx/d)*strength, vy=(dy/d)*strength;
+    ent.kb.vx += vx; ent.kb.vy += vy;
+    ent.kb.until = Math.max(ent.kb.until, tNow + 0.18);
+    ent.x += vx*0.02; ent.y += vy*0.02;
+  }
+
+  function castAbility(id){
+    const sel=getSelected();
+    const selUnits=sel.filter(s=>s.kind==="unit").map(s=>s.ref).filter(u=>u.owner===OWNER_PLAYER);
+    if(!selUnits.length) return;
+
+    const mw=getMouseWorld();
+    const enemyNear=nearestEnemyTo(OWNER_PLAYER,mw.x,mw.y,280);
+
+    let did=false;
+    for(const u of selUnits){
+      if(!abilityAvailableForUnit(u,id)) continue;
+
+      if(id==="burst"){
+        u.buffs.burstUntil=tNow+4.5;
+        u.cds.burst=12; did=true;
+      } else if(id==="phase"){
+        const maxR=160;
+        const dx=mw.x-u.x, dy=mw.y-u.y;
+        const len=Math.hypot(dx,dy)||1;
+        const tx=u.x+(dx/len)*Math.min(maxR,len);
+        const ty=u.y+(dy/len)*Math.min(maxR,len);
+        const tt=worldToTile(tx,ty);
+        if(u.flying || !isBlockedForPath(tt.tx,tt.ty)){
+          spawnParticles(u.x,u.y,"zap");
+          u.x=tx; u.y=ty;
+          u.path=[]; u.task=null;
+          u.cds.phase=12; did=true;
+        }
+      } else if(id==="zap"){
+        if(!enemyNear) continue;
+        enemyNear.ref.hp -= 25;
+        u.energy -= 35;
+        u.cds.zap=4;
+        spawnParticles(enemyNear.ref.x, enemyNear.ref.y, "zap");
+        did=true;
+      } else if(id==="shockwave"){
+        const r=95, r2=r*r;
+        for(const e of units){
+          if(e.owner!==OWNER_ENEMY || e.hp<=0) continue;
+          if(dist2(e.x,e.y,mw.x,mw.y)<=r2){
+            e.hp -= 22;
+            applyKnockback(e,mw.x,mw.y,260);
+          }
+        }
+        for(const b of buildings){
+          if(b.owner!==OWNER_ENEMY || b.dead) continue;
+          if(dist2(b.x,b.y,mw.x,mw.y)<=r2) b.hp -= 18;
+        }
+        spawnParticles(mw.x,mw.y,"plasma");
+        u.cds.shockwave=14;
+        did=true;
+      } else if(id==="overcharge"){
+        u.buffs.overchargeUntil=tNow+5.0;
+        u.cds.overcharge=16;
+        spawnParticles(u.x,u.y,"laser");
+        did=true;
+      } else if(id==="slam"){
+        const r=65, r2=r*r;
+        for(const e of units){
+          if(e.owner!==OWNER_ENEMY || e.hp<=0) continue;
+          if(dist2(e.x,e.y,u.x,u.y)<=r2){
+            e.hp -= 18;
+            applyKnockback(e,u.x,u.y,240);
+          }
+        }
+        spawnParticles(u.x,u.y,"hit");
+        u.cds.slam=12;
+        did=true;
+      } else if(id==="launch"){
+        if(!u.carrier) continue;
+        const can=Math.min(2, u.fightersDocked);
+        if(can<=0) continue;
+        for(let i=0;i<can;i++) launchFighter(u,true);
+        u.cds.launch=10;
+        did=true;
+      }
+    }
+    toastMsg(did ? ("Used: "+ABILITIES[id].name) : "Ability not ready / no valid target.");
+  }
+
+  // ---------------- Worker build hotkeys ----------------
+  function getWorkerBuildHotkeysForRace(race){
+    const keys=["z","x","c","v","b","n","m","h"];
+    const R=RACES[race];
+    const keyToId={}, idToKey={};
+    for(let i=0;i<R.buildables.length && i<keys.length;i++){
+      const k=keys[i], id=R.buildables[i].id;
+      keyToId[k]=id; idToKey[id]=k;
+    }
+    return {keyToId,idToKey};
+  }
+
+  // ---------------- Build ghost ----------------
+  function enterBuildMode(defId, workerId){
+    state.buildGhost={defId,workerId};
+    modeInfo.textContent="Placing... (LMB place, Esc cancel)";
+  }
+
+  function placeBuildAt(wx,wy){
+    const g=state.buildGhost;
+    if(!g) return;
+
+    const owner=OWNER_PLAYER;
+    const R=RACES[playerRace];
+    const def=R.buildables.find(b=>b.id===g.defId);
+    if(!def) return;
+
+    if(!canAfford(owner,def.cost)){ toastMsg("Not enough resources."); return; }
+
+    const {tx,ty}=worldToTile(wx,wy);
+    const res=canPlaceBuilding(owner,def.id,tx,ty);
+    if(!res.ok){ toastMsg(res.why); return; }
+
+    const worker=units.find(u=>u.id===g.workerId && u.owner===owner && u.hp>0);
+    if(!worker){ toastMsg("Worker missing."); state.buildGhost=null; return; }
+
+    pay(owner,def.cost);
+    const b=makeBuilding(owner,def.id,res.tx,res.ty);
+    b.buildTimeBase = 14 + (def.tier*5);
+    b.buildTimeLeft = b.buildTimeBase;
+    b.complete=false;
+
+    if(def.special==="onGeyser"){
+      const gey=resNodes.find(n=>n.type==="geyser" && n.tx===res.tx && n.ty===res.ty);
+      if(gey) gey.hasExtractorOwner=owner;
+    }
+
+    commandBuild(worker,def.id,res.tx,res.ty);
+    state.buildGhost=null;
+    modeInfo.textContent="-";
+  }
+
+  // ---------------- Production ----------------
+  function startUnitJob(b,unitId){
+    if(b.owner!==OWNER_PLAYER) return false;
+    const U=RACES[playerRace].units[unitId];
+    if(!U || b.job) return false;
+    if(econ[OWNER_PLAYER].supplyUsed + (U.supply||0) > econ[OWNER_PLAYER].supplyCap) return false;
+    if(!canAfford(OWNER_PLAYER,U.cost)) return false;
+    pay(OWNER_PLAYER,U.cost);
+    const t = 9 + (U.supply||1)*2;
+    b.job={kind:"unit", id:unitId, tBase:t, tLeft:t};
+    return true;
+  }
+
+  function startResearchJob(b,resId){
+    if(b.owner!==OWNER_PLAYER) return false;
+    const R=RACES[playerRace];
+    const res=R.research.find(r=>r.id===resId);
+    if(!res || b.job) return false;
+    if(econ[OWNER_PLAYER].upgrades[resId]) return false;
+    if(!meetsReq(OWNER_PLAYER,res.req||[])) return false;
+    if(!canAfford(OWNER_PLAYER,res.cost)) return false;
+    pay(OWNER_PLAYER,res.cost);
+    b.job={kind:"research", id:resId, tBase:res.time, tLeft:res.time};
+    return true;
+  }
+
+  function applyRallyToNewUnit(producer,unit){
+    if(!producer?.rally) return;
+    const r=producer.rally;
+    if(r.mode==="mine" && unit.worker){
+      const node=resNodes.find(n=>n.id===r.nodeId);
+      if(node) commandMine(unit,node);
+      else commandMove(unit,r.x,r.y);
+      return;
+    }
+    if(r.mode==="attackMove") commandAttackMove(unit,r.x,r.y);
+    else commandMove(unit,r.x,r.y);
+  }
+
+  // ---------------- Mining ----------------
+  function updateMining(w,dt){
+    const node=resNodes.find(n=>n.id===w.task.nodeId);
+    const hq=getAnyHQ(OWNER_PLAYER);
+    if(!node || !hq){ w.task=null; return; }
+
+    const mineMul=(econ[OWNER_PLAYER].upgrades.mine?1.35:1.0);
+    const cap=w.carryCap||8;
+
+    if(node.type==="geyser"){
+      const ex=getExtractorOn(OWNER_PLAYER,node);
+      if(!ex || !ex.complete){
+        const m=nearestResOfType("mineral", w.x,w.y);
+        if(m){ w.task.nodeId=m.id; w.task.stage="go"; }
+        else w.task=null;
+        return;
+      }
+    }
+
+    if(w.task.stage==="go"){
+      if(dist2(w.x,w.y,node.x,node.y) > 26*26){
+        moveAlongPath(w,dt,w.spd,node.x,node.y);
+      } else {
+        w.task.stage="harvest";
+        w.harv=0;
+      }
+    } else if(w.task.stage==="harvest"){
+      w.harv=(w.harv||0) + dt*mineMul;
+      if(w.harv>=1){
+        const take=Math.min(cap-(w.carry.m+w.carry.g), Math.floor(w.harv));
+        w.harv-=take;
+        if(node.type==="mineral"){
+          node.amount-=take; w.carry.m+=take;
+        } else {
+          w.carry.g+=take;
+        }
+      }
+      if(w.carry.m+w.carry.g>=cap || (node.type==="mineral" && node.amount<=0)){
+        w.task.stage="return";
+        w.path=[];
+      }
+    } else if(w.task.stage==="return"){
+      if(dist2(w.x,w.y,hq.x,hq.y) > 30*30){
+        moveAlongPath(w,dt,w.spd,hq.x,hq.y);
+      } else {
+        econ[OWNER_PLAYER].minerals += w.carry.m;
+        econ[OWNER_PLAYER].gas += w.carry.g;
+        w.carry.m=0; w.carry.g=0;
+        w.task.stage="go";
+        w.path=[];
+      }
+    }
+  }
+
+  function updateBuildTask(w,dt){
+    const b=buildings.find(bb=>!bb.dead && bb.owner===OWNER_PLAYER && bb.type===w.task.defId && bb.tx===w.task.tx && bb.ty===w.task.ty);
+    if(!b){ w.task=null; return; }
+
+    if(w.task.stage==="go"){
+      if(dist2(w.x,w.y,b.x,b.y) > 46*46){
+        moveAlongPath(w,dt,w.spd,b.x,b.y);
+      } else {
+        w.task.stage="build";
+      }
+    } else {
+      b.buildTimeLeft -= dt;
+      if(b.buildTimeLeft<=0){
+        b.complete=true;
+        recomputeSupply(OWNER_PLAYER);
+        w.task=null;
+      }
+    }
+  }
+
+  // ---------------- Waves ----------------
+  function diffMul(){ return difficulty==="easy"?0.82 : difficulty==="hard"?1.25 : 1.0; }
+  function diffStatMul(){ return difficulty==="easy"?0.92 : difficulty==="hard"?1.18 : 1.0; }
+
+  const SEEN_TYPES=new Set();
+  const WAVE={ waveNum:0, firstAt:120, interval:60, nextAt:120, nextPlan:null, nextUpPlan:null };
+
+  function unlockedTypesForWave(n){
+    const types=["ling","hydra"];
+    if(n>=3) types.push("roach");
+    if(n>=5) types.push("muta");
+    if(n>=7) types.push("inf");
+    if(n>=9) types.push("ultra");
+    return types;
+  }
+  function waveCounts(n){
+    const m=diffMul();
+    const c={
+      ling: Math.floor((10 + n*2.1)*m),
+      hydra:Math.floor((n>=2?(1 + (n-1)*0.95):0)*m),
+      roach:Math.floor((n>=3?(1 + (n-3)*0.75):0)*m),
+      muta: Math.floor((n>=5?(1 + (n-5)*0.55):0)*m),
+      inf:  Math.floor((n>=7?(1 + (n-7)*0.45):0)*m),
+      ultra:Math.floor((n>=9?(1 + (n-9)*0.30):0)*m),
+    };
+    if(n===1){ c.hydra=0; }
+    return c;
+  }
+  function makeWavePlan(n){
+    const types=unlockedTypesForWave(n);
+    const c=waveCounts(n);
+    const groups=[];
+    for(const t of types){
+      const k=c[t]||0;
+      if(k>0) groups.push({type:t,count:k});
+    }
+    const newTypes=[];
+    for(const g of groups) if(!SEEN_TYPES.has(g.type)) newTypes.push(g.type);
+    return {n,groups,newTypes};
+  }
+  const aliveSpires=()=>buildings.filter(b=>!b.dead && b.owner===OWNER_ENEMY && b.isSpire);
+
+  function spawnWave(plan){
+    const spires=aliveSpires();
+    if(!spires.length) return;
+
+    for(const g of plan.groups) SEEN_TYPES.add(g.type);
+
+    const statM=diffStatMul();
+    for(const g of plan.groups){
+      const total=g.count;
+      const per=Math.floor(total/spires.length);
+      let rem=total - per*spires.length;
+
+      for(const sp of spires){
+        const take=per + (rem>0?1:0);
+        if(rem>0) rem--;
+
+        for(let i=0;i<take;i++){
+          const p=findSpawnNear(sp.x,sp.y,120,110);
+          const u=makeUnit(OWNER_ENEMY,g.type,p.x,p.y);
+          if(!u) continue;
+
+          const waveBoost=1 + (plan.n-1)*0.03;
+          u.maxHp=Math.floor(u.maxHp*waveBoost*statM);
+          u.hp=u.maxHp;
+          u.dmg=Math.floor(u.dmg*(1+(plan.n-1)*0.02)*statM);
+
+          u.task={kind:"seek", targetId:null};
+          u.cd=rand(0,Math.max(0.01,u.atkCd||0.8));
+          u.nextTrapAt = tNow + rand(2.0, 5.0);
+        }
+      }
+    }
+    toastMsg("Wave "+plan.n+" spawned!");
+  }
+
+  // spire defense growth
+  function enemyDefenseInterval(){
+    return difficulty==="easy"?rand(55,78):difficulty==="hard"?rand(32,50):rand(42,62);
+  }
+  function trySpawnEnemyDefenseAround(sp){
+    const existing=buildings.filter(b=>!b.dead && b.owner===OWNER_ENEMY && !b.isSpire && dist2(b.x,b.y,sp.x,sp.y)<(220*220));
+    const hasSpore=existing.some(b=>b.type==="spore");
+    let pick=(Math.random()<0.62)?"spine":"spore";
+    if(!hasSpore && Math.random()<0.55) pick="spore";
+
+    for(let tries=0;tries<200;tries++){
+      const wx=sp.x+rand(-170,170);
+      const wy=sp.y+rand(-150,150);
+      const t=worldToTile(wx,wy);
+      const def=ENEMY_BUILD[pick];
+      const w=def.size[0], h=def.size[1];
+      let ok=true;
+      for(let y=t.ty;y<t.ty+h;y++){
+        for(let x=t.tx;x<t.tx+w;x++){
+          if(!inBounds(x,y) || isTerrainBlocked(x,y) || buildingAtTile(x,y)){ ok=false; break; }
+        }
+        if(!ok) break;
+      }
+      if(!ok) continue;
+      const b=makeBuilding(OWNER_ENEMY,pick,t.tx,t.ty);
+      spawnParticles(b.x,b.y,"zap");
+      return true;
+    }
+    return false;
+  }
+
+  // NEW: spire "defenders" (defend when poked)
+  function spireDefenderInterval(){
+    return difficulty==="easy"?rand(18,26):difficulty==="hard"?rand(10,16):rand(13,20);
+  }
+  function spireDefenderCapForWave(w){
+    const base = (mapId==="twin")?6:(mapId==="ring")?5:4;
+    const add = Math.floor(Math.max(0,w-2)*0.25);
+    return base+add;
+  }
+  function spawnSpireDefender(sp){
+    // pick type by wave / randomness
+    const w = Math.max(1, WAVE.waveNum);
+    const pool = [];
+    pool.push("ling","hydra");
+    if(w>=4) pool.push("roach");
+    if(w>=6) pool.push("muta");
+    if(w>=8) pool.push("inf");
+    if(w>=10) pool.push("ultra");
+    const type = pool[randi(0,pool.length-1)];
+    const p=findSpawnNear(sp.x,sp.y,110,100);
+    const u=makeUnit(OWNER_ENEMY,type,p.x,p.y,{guardSpireId:sp.id});
+    if(!u) return;
+    const statM=diffStatMul();
+    const waveBoost=1 + (w-1)*0.02;
+    u.maxHp=Math.floor(u.maxHp*waveBoost*statM);
+    u.hp=u.maxHp;
+    u.dmg=Math.floor(u.dmg*(1+(w-1)*0.015)*statM);
+    u.task={kind:"guard", spireId:sp.id};
+    u.nextTrapAt = tNow + rand(2.0, 5.0);
+  }
+  function countSpireDefenders(sp){
+    let c=0;
+    for(const u of units){
+      if(u.owner!==OWNER_ENEMY || u.hp<=0) continue;
+      if(u.guardSpireId===sp.id) c++;
+    }
+    return c;
+  }
+
+  // ---------------- Combat ----------------
+  function canAttackTarget(attacker,targetEnt){
+    if(!attacker || !targetEnt) return false;
+    const isAir = (targetEnt.kind==="unit") ? !!targetEnt.ref.flying : false;
+    const melee = (attacker.range||0) <= 60;
+    if(isAir){
+      if(melee) return false;
+      if(attacker.canHitAir===false) return false;
+    }
+    return true;
+  }
+
+  function doAttack(u,target,dt,dmg){
+    if(!u || u.hp<=0) return;
+    dt = Number.isFinite(dt)?dt:0;
+    if(!target || !Number.isFinite(target.x) || !Number.isFinite(target.y)) return;
+    if((target.hp!=null && target.hp<=0) || target.dead || target._despawn) return;
+
+    const range=Number.isFinite(u.range)?u.range:0;
+    if(dist(u.x,u.y,target.x,target.y) > range*1.08) return;
+
+    if(!Number.isFinite(u.cd)) u.cd=0;
+    u.cd -= dt;
+    if(u.cd>0) return;
+
+    const atkCd=Number.isFinite(u.atkCd)?u.atkCd:0.6;
+    u.cd = Math.max(0.12, atkCd);
+
+    const splash=Number.isFinite(u.splash)?u.splash:0;
+
+    // melee
+    if(range<=60){
+      if(splash>0){
+        const enemyOwner = (u.owner===OWNER_PLAYER)?OWNER_ENEMY:OWNER_PLAYER;
+        const r2=splash*splash;
+        for(const e of units){
+          if(e.owner!==enemyOwner || e.hp<=0) continue;
+          if(e.flying && u.canHitAir===false) continue;
+          if(dist2(e.x,e.y,target.x,target.y)<=r2) e.hp -= dmg;
+        }
+        spawnParticles(target.x,target.y,"hit");
+      } else {
+        target.hp -= dmg;
+        spawnParticles(target.x,target.y,"hit");
+      }
+    } else {
+      spawnProjectile(u.owner,u.x,u.y,target.x,target.y,dmg,splash,"bullet",{canHitAir:u.canHitAir!==false});
+    }
+  }
+
+  function rayBeamAttack(u,target,dt){
+    if(!target) return;
+    const d2=dist2(u.x,u.y,target.x,target.y);
+    if(d2 > u.range*u.range) return;
+
+    const atkUp = (econ[u.owner].upgrades.atk||0);
+    const baseDps = 14 + atkUp*2.2;
+    const mult = (u.buffs.overchargeUntil>tNow)?1.65:1.0;
+    const dps = baseDps*mult;
+
+    target.hp -= dps*dt;
+    beams.push({owner:u.owner, x1:u.x,y1:u.y,x2:target.x,y2:target.y, hot:(u.buffs.overchargeUntil>tNow)});
+
+    u.beamTick=(u.beamTick||0)+dt;
+    while(u.beamTick>0.055){
+      u.beamTick-=0.055;
+      const t=Math.random();
+      spawnParticles(u.x+(target.x-u.x)*t, u.y+(target.y-u.y)*t, "laser");
+    }
+  }
+
+  function plasmaAttack(u,target,dt,dmg){
+    const d=dist(u.x,u.y,target.x,target.y);
+    if(d > u.range*1.10) return;
+    u.cd -= dt;
+    if(u.cd>0) return;
+    u.cd = u.atkCd;
+
+    const atkUp=(econ[u.owner].upgrades.atk||0);
+    const finalDmg=dmg + atkUp*2.5;
+
+    spawnProjectile(u.owner,u.x,u.y,target.x,target.y,finalDmg,u.splash||0,"plasma",{
+      speed:300, size:10, knock:190, canHitAir:true
+    });
+  }
+
+  function performAttack(u,targetEnt,dt){
+    if(!u || u.hp<=0) return;
+    dt = Number.isFinite(dt)?dt:0;
+
+    if(!targetEnt || !targetEnt.ref) return;
+    const target=targetEnt.ref;
+    if(!target || !Number.isFinite(target.x) || !Number.isFinite(target.y)) return;
+    if((target.hp!=null && target.hp<=0) || target.dead || target._despawn) return;
+
+    if(u.rayBeam) return rayBeamAttack(u,target,dt);
+    if(u.plasma)  return plasmaAttack(u,target,dt,u.dmg);
+
+    return doAttack(u,target,dt,u.dmg);
+  }
+
+  // ---------------- Fighter / carrier ----------------
+  function launchFighter(mothership,forced=false){
+    if(!mothership || mothership.hp<=0 || !mothership.carrier) return false;
+    if(mothership.fightersDocked<=0) return false;
+    if(!forced && mothership.fighterCd>0) return false;
+
+    mothership.fightersDocked--;
+    mothership.fighterCd = forced ? 0.15 : 0.35;
+
+    const spawn={x:mothership.x+rand(-14,14), y:mothership.y+rand(-14,14)};
+    const f=makeUnit(mothership.owner,"ftr",spawn.x,spawn.y,{parentId:mothership.id});
+    if(!f) return false;
+
+    const tar=nearestEnemyTo(mothership.owner,mothership.x,mothership.y,420);
+    if(tar){
+      f.task={kind:"fighterOrbit", targetId:tar.ref.id, parentId:mothership.id};
+      f.orbitA=rand(0,Math.PI*2); f.orbitT=0;
+    } else {
+      f.task={kind:"fighterReturn", parentId:mothership.id};
+    }
+    return true;
+  }
+
+  function updateCarrier(u,dt){
+    if(!u.carrier) return;
+    u.fighterCd=Math.max(0,u.fighterCd-dt);
+    const tar=nearestEnemyTo(u.owner,u.x,u.y,280);
+    if(tar){
+      u.fighterWave += dt;
+      if(u.fightersDocked>0 && u.fighterCd<=0 && u.fighterWave>0.10){
+        u.fighterWave=0;
+        launchFighter(u,false);
+      }
+    } else {
+      u.fighterWave=0;
+    }
+  }
+
+  function updateFighter(f,dt){
+    f.lifeTime += dt;
+    const parent = f.parentId ? units.find(u=>u.id===f.parentId) : null;
+    if(!parent || parent.hp<=0){ f._despawn=true; return; }
+
+    if(f.task?.kind==="fighterOrbit"){
+      const tarEnt=findById(f.task.targetId);
+      if(!tarEnt || (tarEnt.kind==="unit"&&tarEnt.ref.hp<=0) || (tarEnt.kind==="building"&&tarEnt.ref.dead)){
+        f.task={kind:"fighterReturn", parentId:parent.id};
+      } else {
+        const t=tarEnt.ref;
+        f.orbitT += dt;
+        f.orbitA += dt*2.6;
+        const R=46 + 10*Math.sin(f.orbitT*2.0 + (f.id%10));
+        const gx=t.x + Math.cos(f.orbitA)*R;
+        const gy=t.y + Math.sin(f.orbitA)*R;
+
+        moveDirect(f,dt,f.spd,gx,gy);
+
+        if(dist2(f.x,f.y,t.x,t.y) <= (f.range*f.range)){
+          f.cd -= dt;
+          if(f.cd<=0){
+            f.cd=f.atkCd;
+            t.hp -= f.dmg;
+            spawnParticles(t.x,t.y,"laser");
+          }
+        }
+
+        if(f.lifeTime>6.0 || dist2(t.x,t.y,parent.x,parent.y)>(520*520)){
+          f.task={kind:"fighterReturn", parentId:parent.id};
+        }
+      }
+    }
+
+    if(f.task?.kind==="fighterReturn"){
+      const arrived=moveDirect(f,dt,f.spd,parent.x,parent.y);
+      if(arrived || dist2(f.x,f.y,parent.x,parent.y)<22*22){
+        parent.fightersDocked=Math.min(parent.fighterCap, parent.fightersDocked+1);
+        spawnParticles(parent.x,parent.y,"zap");
+        f._despawn=true;
+      }
+    }
+  }
+
+  // ---------------- Hazards (infestor traps) ----------------
+  function spawnTrap(owner,x,y,baseDmg){
+    hazards.push({
+      id:nextId++, owner, x:x+rand(-24,24), y:y+rand(-24,24),
+      arm:tNow+1.0, boom:tNow+2.3,
+      r:88, dmg:baseDmg, slow:true, done:false, armed:false
+    });
+    spawnParticles(x,y,"zap");
+  }
+
+  function updateHazards(dt){
+    for(const h of hazards){
+      if(h.done) continue;
+      if(tNow>=h.arm && !h.armed) h.armed=true;
+      if(tNow>=h.boom){
+        const enemyOwner = (h.owner===OWNER_PLAYER)?OWNER_ENEMY:OWNER_PLAYER;
+        const r2=h.r*h.r;
+        for(const u of units){
+          if(u.owner!==enemyOwner || u.hp<=0) continue;
+          if(dist2(u.x,u.y,h.x,h.y)<=r2){
+            u.hp -= h.dmg;
+            u.slowUntil = Math.max(u.slowUntil||0, tNow+2.0);
+          }
+        }
+        for(const b of buildings){
+          if(b.owner!==enemyOwner || b.dead) continue;
+          if(dist2(b.x,b.y,h.x,h.y)<=r2) b.hp -= h.dmg*0.55;
+        }
+        spawnParticles(h.x,h.y,"plasma");
+        h.done=true;
+      }
+    }
+    for(let i=hazards.length-1;i>=0;i--) if(hazards[i].done) hazards.splice(i,1);
+  }
+
+  // ---------------- Building updates ----------------
+  function updateBuildings(dt){
+    for(const b of buildings){
+      if(b.dead) continue;
+
+      // construction
+      if(b.owner===OWNER_PLAYER && !b.complete){
+        b.buildTimeLeft -= dt;
+        if(b.buildTimeLeft<=0){
+          b.complete=true;
+          recomputeSupply(OWNER_PLAYER);
+        }
+      }
+
+      // defenses
+      if(b.complete && b.defense){
+        b.defense.cd -= dt;
+        if(b.defense.cd<=0){
+          const filterFn=(ent)=>{
+            if(ent.kind==="unit"){
+              if(ent.ref.flying && !b.defense.canHitAir) return false;
+              return true;
+            }
+            return true;
+          };
+          const tar=nearestEnemyTo(b.owner,b.x,b.y,b.defense.range,filterFn);
+          if(tar){
+            const dmg=b.defense.dmg + (b.owner===OWNER_PLAYER ? (econ[OWNER_PLAYER].upgrades.atk||0)*2 : 0);
+            spawnProjectile(b.owner,b.x,b.y,tar.ref.x,tar.ref.y,dmg,0,"bullet",{canHitAir:b.defense.canHitAir});
+            b.defense.cd = b.defense.cdBase;
+          } else {
+            b.defense.cd = 0.25;
+          }
+        }
+      }
+
+      // production/research
+      if(b.owner===OWNER_PLAYER && b.complete && b.job){
+        b.job.tLeft -= dt;
+        if(b.job.tLeft<=0){
+          if(b.job.kind==="unit"){
+            const spawn=findSpawnNear(b.x,b.y);
+            const nu=makeUnit(OWNER_PLAYER,b.job.id,spawn.x,spawn.y);
+            if(nu) applyRallyToNewUnit(b,nu);
+          } else if(b.job.kind==="research"){
+            const R=RACES[playerRace];
+            const res=R.research.find(r=>r.id===b.job.id);
+            if(res){
+              econ[OWNER_PLAYER].upgrades[b.job.id]=1;
+              res.effect(OWNER_PLAYER);
+            }
+          }
+          b.job=null;
+        }
+      }
+
+      // spire defense growth + defenders
+      if(b.owner===OWNER_ENEMY && b.isSpire){
+        if(!b.nextDefenseAt) b.nextDefenseAt = tNow + enemyDefenseInterval();
+        if(tNow>=b.nextDefenseAt){
+          trySpawnEnemyDefenseAround(b);
+          b.nextDefenseAt = tNow + enemyDefenseInterval();
+        }
+
+        // defenders
+        if(!b.nextDefendersAt) b.nextDefendersAt = tNow + spireDefenderInterval();
+        if(tNow>=b.nextDefendersAt){
+          b.defendersCap = spireDefenderCapForWave(WAVE.waveNum||0);
+          const cur=countSpireDefenders(b);
+          if(cur < b.defendersCap){
+            spawnSpireDefender(b);
+          }
+          b.nextDefendersAt = tNow + spireDefenderInterval();
+        }
+      }
+    }
+  }
+
+  // ---------------- Projectiles ----------------
+  function updateProjectiles(dt){
+    for(const p of projectiles){
+      p.life -= dt;
+      if(p.life<=0) continue;
+      p.x += p.vx*dt; p.y += p.vy*dt;
+
+      const enemyOwner = (p.owner===OWNER_PLAYER)?OWNER_ENEMY:OWNER_PLAYER;
+      let hit=null, hitDist=Infinity;
+
+      for(const u of units){
+        if(u.owner!==enemyOwner || u.hp<=0) continue;
+        if(u.flying && p.canHitAir===false) continue;
+        const d=dist2(u.x,u.y,p.x,p.y);
+        if(d<(u.radius+8)*(u.radius+8) && d<hitDist){hit=u; hitDist=d;}
+      }
+      if(!hit){
+        for(const b of buildings){
+          if(b.owner!==enemyOwner || b.dead) continue;
+          const dx=Math.abs(p.x-b.x), dy=Math.abs(p.y-b.y);
+          if(dx<b.w*TILE*0.45 && dy<b.h*TILE*0.45){hit=b; break;}
+        }
+      }
+      if(hit){
+        spawnParticles(p.x,p.y, p.kind==="plasma"?"plasma":"hit");
+
+        if(p.splash>0){
+          const r2=p.splash*p.splash;
+          for(const u of units){
+            if(u.owner!==enemyOwner || u.hp<=0) continue;
+            if(u.flying && p.canHitAir===false) continue;
+            if(dist2(u.x,u.y,p.x,p.y)<=r2){
+              u.hp -= p.dmg*0.75;
+              if(p.knock>0) applyKnockback(u,p.x,p.y,p.knock);
+            }
+          }
+          for(const b of buildings){
+            if(b.owner!==enemyOwner || b.dead) continue;
+            if(dist2(b.x,b.y,p.x,p.y)<=r2) b.hp -= p.dmg*0.6;
+          }
+        }
+
+        hit.hp -= p.dmg;
+        if(p.knock>0 && hit && hit.x!=null) applyKnockback(hit,p.x,p.y,p.knock*1.1);
+
+        p.life=0;
+      }
+    }
+    for(let i=projectiles.length-1;i>=0;i--) if(projectiles[i].life<=0) projectiles.splice(i,1);
+  }
+
+  function updateParticles(dt){
+    for(const pt of particles){
+      pt.life -= dt;
+      pt.x += pt.vx*dt; pt.y += pt.vy*dt;
+      pt.vx *= Math.pow(0.06,dt);
+      pt.vy *= Math.pow(0.06,dt);
+    }
+    for(let i=particles.length-1;i>=0;i--) if(particles[i].life<=0) particles.splice(i,1);
+  }
+
+  // ---------------- Enemy brain ----------------
+  function enemyPickTarget(u){
+    const filterFn=(ent)=>{
+      if(ent.kind==="unit" && ent.ref.flying){
+        if((u.range||0)<=60) return false;
+        if(u.canHitAir===false) return false;
+      }
+      return true;
+    };
+    return nearestEnemyTo(OWNER_ENEMY,u.x,u.y,99999,filterFn);
+  }
+
+  // ---------------- Unit updates ----------------
+  function updateUnits(dt){
+    for(const u of units){
+      if(u.hp<=0) continue;
+
+      // knockback
+      if(u.kb.until>tNow){
+        u.x += u.kb.vx*dt; u.y += u.kb.vy*dt;
+        u.kb.vx *= Math.pow(0.04,dt);
+        u.kb.vy *= Math.pow(0.04,dt);
+      } else {
+        u.kb.vx=0; u.kb.vy=0;
+      }
+
+      // cooldowns
+      if(u.cds){
+        for(const k in u.cds) u.cds[k]=Math.max(0,u.cds[k]-dt);
+      }
+
+      // energy
+      if(u.caster) u.energy = Math.min(u.energyMax, u.energy + 10*dt);
+
+      // slows
+      let spd=u.spd;
+      if(u.slowUntil && u.slowUntil>tNow) spd *= 0.62;
+
+      // healer
+      if(u.healer){
+        const r=160,r2=r*r;
+        let best=null,bestNeed=0;
+        for(const a of units){
+          if(a.owner!==u.owner || a.hp<=0 || a===u) continue;
+          const d=dist2(a.x,a.y,u.x,u.y);
+          if(d>r2) continue;
+          const need=a.maxHp-a.hp;
+          if(need>bestNeed){bestNeed=need; best=a;}
+        }
+        if(best && bestNeed>0) best.hp = Math.min(best.maxHp, best.hp + 14*dt);
+      }
+
+      // carrier/fighter logic
+      if(u.carrier) updateCarrier(u,dt);
+      if(u.fighter) updateFighter(u,dt);
+
+      // enemy trap casting
+      if(u.owner===OWNER_ENEMY && u.trap){
+        if(tNow >= (u.nextTrapAt||0)){
+          const tar=enemyPickTarget(u);
+          if(tar){
+            const baseDmg = 24 + Math.floor((WAVE.waveNum||0)*1.2);
+            // slightly toward target
+            const dx=tar.ref.x-u.x, dy=tar.ref.y-u.y;
+            const len=Math.hypot(dx,dy)||1;
+            spawnTrap(u.owner, u.x+(dx/len)*42, u.y+(dy/len)*42, baseDmg);
+          }
+          u.nextTrapAt = tNow + (u.trapCd||7.0) + rand(-0.5,1.0);
+        }
+      }
+
+      // worker tasks
+      if(u.owner===OWNER_PLAYER && u.worker && u.task?.kind==="mine")  updateMining(u,dt);
+      if(u.owner===OWNER_PLAYER && u.worker && u.task?.kind==="build") updateBuildTask(u,dt);
+
+      // enemy default behavior
+      if(u.owner===OWNER_ENEMY){
+        // defenders (guard)
+        if(u.task?.kind==="guard"){
+          const sp = u.guardSpireId ? buildings.find(b=>!b.dead && b.id===u.guardSpireId) : null;
+          const anchor = sp ? {x:sp.x,y:sp.y} : {x:WORLD_W*0.75,y:WORLD_H*0.5};
+          const aggroR = 360;
+          const tar = nearestEnemyTo(OWNER_ENEMY,u.x,u.y,aggroR, (ent)=>{
+            if(ent.kind==="unit" && ent.ref.flying){
+              if((u.range||0)<=60) return false;
+              if(u.canHitAir===false) return false;
+            }
+            return true;
+          });
+          if(tar && canAttackTarget(u,tar)){
+            u.task={kind:"attack", targetId:tar.ref.id};
+          } else {
+            // return / orbit around spire a bit
+            const d2=dist2(u.x,u.y,anchor.x,anchor.y);
+            if(d2 > 220*220){
+              u.task={kind:"move", x:anchor.x+rand(-60,60), y:anchor.y+rand(-60,60)};
+            } else {
+              // idle hold near spire
+              u.task={kind:"hold"};
+            }
+          }
+        } else if(!u.task || u.task.kind==="seek"){
+          const tar=enemyPickTarget(u);
+          if(tar) u.task={kind:"attack", targetId:tar.ref.id};
+          else u.task={kind:"move", x:WORLD_W*0.25, y:WORLD_H*0.5};
+        }
+      }
+
+      // tasks
+      if(u.task){
+        if(u.task.kind==="move"){
+          moveAlongPath(u,dt,spd,u.task.x,u.task.y);
+        }
+        else if(u.task.kind==="attackMove"){
+          const filterFn=(ent)=>{
+            if(ent.kind==="unit" && ent.ref.flying){
+              if((u.range||0)<=60) return false;
+              if(u.canHitAir===false) return false;
+            }
+            return true;
+          };
+          const tar=nearestEnemyTo(u.owner,u.x,u.y,AMOVE_ACQUIRE_R,filterFn);
+          if(tar){
+            if(!canAttackTarget(u,tar)){ moveAlongPath(u,dt,spd,u.task.x,u.task.y); }
+            else{
+              const ap=approachPoint(u,tar.ref);
+              moveAlongPath(u,dt,spd,ap.x,ap.y);
+              performAttack(u,tar,dt);
+            }
+          } else {
+            moveAlongPath(u,dt,spd,u.task.x,u.task.y);
+          }
+        }
+        else if(u.task.kind==="attack"){
+          const tarEnt=findById(u.task.targetId);
+          if(!tarEnt || (tarEnt.kind==="unit" && tarEnt.ref.hp<=0) || (tarEnt.kind==="building" && tarEnt.ref.dead)){
+            u.task = (u.owner===OWNER_ENEMY) ? {kind:"seek", targetId:null} : null;
+          } else {
+            if(!canAttackTarget(u,tarEnt)){
+              if(u.owner===OWNER_ENEMY) u.task={kind:"seek", targetId:null};
+              else{
+                const ap=approachPoint(u,tarEnt.ref);
+                moveAlongPath(u,dt,spd,ap.x,ap.y);
+              }
+            } else {
+              const ap=approachPoint(u,tarEnt.ref);
+              if(dist2(u.x,u.y,tarEnt.ref.x,tarEnt.ref.y) > (u.range*u.range*0.82)){
+                moveAlongPath(u,dt,spd,ap.x,ap.y);
+              }
+              performAttack(u,tarEnt,dt);
+            }
+          }
+        }
+        else if(u.task.kind==="hold"){
+          const filterFn=(ent)=>{
+            if(ent.kind==="unit" && ent.ref.flying){
+              if((u.range||0)<=60) return false;
+              if(u.canHitAir===false) return false;
+            }
+            return true;
+          };
+          const tar=nearestEnemyTo(u.owner,u.x,u.y,IDLE_AGGRO_R,filterFn);
+          if(tar) performAttack(u,tar,dt);
+        }
+      }
+
+      // separation
+      applySeparation(u,u.owner,dt);
+
+      // clamp world
+      u.x=clamp(u.x,6,WORLD_W-6);
+      u.y=clamp(u.y,6,WORLD_H-6);
+    }
+
+    // despawn fighters
+    for(let i=units.length-1;i>=0;i--){
+      const u=units[i];
+      if(u._despawn){
+        units.splice(i,1);
+      }
+    }
+  }
+
+  // ---------------- Wave scheduler ----------------
+  function gameTime(){ return Math.max(0, tNow - gameStart); }
+  function updateWaves(){
+    const gt=gameTime();
+    if(!WAVE.nextPlan){
+      WAVE.nextPlan=makeWavePlan(1);
+      WAVE.nextUpPlan=makeWavePlan(2);
+    }
+    if(gt>=WAVE.nextAt && !state.gameOver){
+      WAVE.waveNum += 1;
+      spawnWave(WAVE.nextPlan);
+      WAVE.nextPlan = WAVE.nextUpPlan;
+      WAVE.nextUpPlan = makeWavePlan(WAVE.waveNum+2);
+      WAVE.nextAt += WAVE.interval;
+    }
+  }
+
+  // ---------------- Maps ----------------
+  function fillBorders(thick=3){
+    for(let ty=0;ty<GH;ty++){
+      for(let tx=0;tx<GW;tx++){
+        if(tx<thick || ty<thick || tx>=GW-thick || ty>=GH-thick) terrain[idx(tx,ty)]=1;
+      }
+    }
+  }
+  function carveRect(tx0,ty0,w,h){
+    for(let ty=ty0;ty<ty0+h;ty++){
+      for(let tx=tx0;tx<tx0+w;tx++){
+        if(inBounds(tx,ty)) terrain[idx(tx,ty)]=0;
+      }
+    }
+  }
+  function wallRect(tx0,ty0,w,h){
+    for(let tx=tx0;tx<tx0+w;tx++){
+      if(inBounds(tx,ty0)) terrain[idx(tx,ty0)]=1;
+      if(inBounds(tx,ty0+h-1)) terrain[idx(tx,ty0+h-1)]=1;
+    }
+    for(let ty=ty0;ty<ty0+h;ty++){
+      if(inBounds(tx0,ty)) terrain[idx(tx0,ty)]=1;
+      if(inBounds(tx0+w-1,ty)) terrain[idx(tx0+w-1,ty)]=1;
+    }
+  }
+  function scatterWalls(count=320){
+    for(let i=0;i<count;i++){
+      const tx=randi(4,GW-5), ty=randi(4,GH-5);
+      if(terrain[idx(tx,ty)]===1) continue;
+      if(Math.random()<0.62) terrain[idx(tx,ty)]=1;
+    }
+  }
+  function carveCorridor(x1,y1,x2,y2,width=2){
+    const steps=Math.max(Math.abs(x2-x1), Math.abs(y2-y1));
+    for(let i=0;i<=steps;i++){
+      const t=i/steps;
+      const x=Math.round(x1+(x2-x1)*t);
+      const y=Math.round(y1+(y2-y1)*t);
+      for(let oy=-width;oy<=width;oy++){
+        for(let ox=-width;ox<=width;ox++){
+          if(inBounds(x+ox,y+oy)) terrain[idx(x+ox,y+oy)]=0;
+        }
+      }
+    }
+  }
+
+  function makeBasePocket(side){
+    const pocketW=18, pocketH=14;
+    const margin=3;
+    const y0=Math.floor(GH/2 - pocketH/2);
+    const x0=side==="left"?margin:(GW - margin - pocketW);
+    wallRect(x0,y0,pocketW,pocketH);
+    carveRect(x0+1,y0+1,pocketW-2,pocketH-2);
+
+    const openY=y0+Math.floor(pocketH/2);
+    const openX=side==="left"?(x0+pocketW-1):x0;
+    for(let dy=-2;dy<=2;dy++){
+      if(inBounds(openX,openY+dy)) terrain[idx(openX,openY+dy)]=0;
+      if(inBounds(openX+(side==="left"?-1:+1),openY+dy)) terrain[idx(openX+(side==="left"?-1:+1),openY+dy)]=0;
+    }
+
+    const hqTileX=side==="left"?(x0+6):(x0+pocketW-7);
+    const hqTileY=openY;
+    const hqPos=tileToWorld(hqTileX,hqTileY);
+    return {hqPos,side,pocket:{x0,y0,w:pocketW,h:pocketH,openY,openX}};
+  }
+
+  const MAPS={
+    twin:{gen(){ terrain.fill(0); fillBorders(3); scatterWalls(360); }},
+    ring:{gen(){
+      terrain.fill(0); fillBorders(3);
+      const cx=Math.floor(GW/2), cy=Math.floor(GH/2);
+      for(let ty=0;ty<GH;ty++){
+        for(let tx=0;tx<GW;tx++){
+          const r=Math.hypot(tx-cx,ty-cy);
+          if(r>20 && r<24 && Math.random()<0.86) terrain[idx(tx,ty)]=1;
+        }
+      }
+      carveCorridor(cx-24,cy,cx+24,cy,2);
+      carveCorridor(cx,cy-18,cx,cy+18,2);
+      scatterWalls(120);
+    }},
+    maze:{gen(){
+      terrain.fill(0); fillBorders(3);
+      for(let ty=6;ty<GH-6;ty+=6){
+        for(let tx=6;tx<GW-6;tx++){
+          if(Math.random()<0.9) terrain[idx(tx,ty)]=1;
+        }
+      }
+      for(let tx=8;tx<GW-8;tx+=8){
+        for(let ty=6;ty<GH-6;ty++){
+          if(Math.random()<0.7) terrain[idx(tx,ty)]=1;
+        }
+      }
+      for(let i=0;i<10;i++){
+        const y=randi(10,GH-10);
+        carveCorridor(6,y,GW-7,y,2);
+      }
+    }},
+  };
+
+  // ---------------- Resource placement ----------------
+  function findClear2x2Pad(tx,ty){
+    for(let r=0;r<=10;r++){
+      for(let oy=-r;oy<=r;oy++){
+        for(let ox=-r;ox<=r;ox++){
+          const x=tx+ox,y=ty+oy;
+          if(!inBounds(x,y)||!inBounds(x+1,y+1)) continue;
+          let ok=true;
+          for(let yy=y-1;yy<=y+2;yy++){
+            for(let xx=x-1;xx<=x+2;xx++){
+              if(!inBounds(xx,yy) || isTerrainBlocked(xx,yy)){ ok=false; break; }
+            }
+            if(!ok) break;
+          }
+          if(ok) return {tx:x,ty:y};
+        }
+      }
+    }
+    return null;
+  }
+
+  function placeResourceCluster(cx,cy,geyserDirX){
+    for(let i=0;i<7;i++){
+      const a=i*(Math.PI*2/7);
+      const x=cx+Math.cos(a)*64 + rand(-8,8);
+      const y=cy+Math.sin(a)*52 + rand(-8,8);
+      const t=worldToTile(x,y);
+      carveRect(t.tx-3,t.ty-3,7,7);
+      resNodes.push({id:nextId++, type:"mineral", x,y, amount:2200, tx:t.tx, ty:t.ty});
+    }
+
+    const rawGX=cx+(geyserDirX||1)*200 + rand(-18,18);
+    const rawGY=cy+rand(-28,28);
+    const tt=worldToTile(rawGX,rawGY);
+    carveRect(tt.tx-6,tt.ty-6,13,13);
+    const pad=findClear2x2Pad(tt.tx,tt.ty) || {tx:clamp(tt.tx,4,GW-6), ty:clamp(tt.ty,4,GH-6)};
+    carveRect(pad.tx-6,pad.ty-6,13,13);
+    const w=tileToWorld(pad.tx,pad.ty);
+    resNodes.push({id:nextId++, type:"geyser", x:w.x, y:w.y, amount:999999, hasExtractorOwner:-1, tx:pad.tx, ty:pad.ty});
+  }
+
+  function placeBaseResources(pocket){
+    const side=pocket.side;
+    const dir=side==="left"?1:-1;
+    const baseX=pocket.hqPos.x, baseY=pocket.hqPos.y;
+    const cx=baseX + dir*220;
+    const cy=baseY + (side==="left"?-110:+110);
+
+    const a=worldToTile(pocket.hqPos.x,pocket.hqPos.y);
+    const b=worldToTile(cx,cy);
+    carveCorridor(a.tx,a.ty,b.tx,b.ty,3);
+    placeResourceCluster(cx,cy,dir);
+
+    const gey=resNodes[resNodes.length-1];
+    carveCorridor(b.tx,b.ty,gey.tx,gey.ty,3);
+  }
+
+  // ---------------- Spire placement ----------------
+  function spireSpotsForMap(){
+    if(mapId==="twin") return [{tx:GW-16, ty:Math.floor(GH/2)-2}];
+    if(mapId==="ring") return [{tx:GW-16, ty:10},{tx:GW-16, ty:GH-18}];
+    if(mapId==="maze") return [{tx:GW-16, ty:12},{tx:GW-16, ty:Math.floor(GH/2)-2},{tx:GW-16, ty:GH-20}];
+    return [{tx:GW-16, ty:Math.floor(GH/2)-2}];
+  }
+
+  function canPlaceEnemyBuilding(type,tx,ty){
+    const def=ENEMY_BUILD[type];
+    const w=def.size[0], h=def.size[1];
+    for(let y=ty;y<ty+h;y++){
+      for(let x=tx;x<tx+w;x++){
+        if(!inBounds(x,y) || isTerrainBlocked(x,y) || buildingAtTile(x,y)) return false;
+      }
+    }
+    return true;
+  }
+
+  function nudgeToClear(type,tx,ty){
+    for(let r=0;r<=10;r++){
+      for(let oy=-r;oy<=r;oy++){
+        for(let ox=-r;ox<=r;ox++){
+          const nx=tx+ox, ny=ty+oy;
+          if(canPlaceEnemyBuilding(type,nx,ny)) return {tx:nx,ty:ny};
+        }
+      }
+    }
+    return {tx,ty};
+  }
+
+  // ---------------- Setup/reset ----------------
+  function clearAll(){
+    units.length=0; buildings.length=0; projectiles.length=0; resNodes.length=0;
+    particles.length=0; beams.length=0; hazards.length=0;
+    state.selection.clear(); state.boxSel=null; state.attackMove=false; state.buildGhost=null;
+    state.actionKeyMap={};
+    state.gameOver=false;
+    state._lastClick={t:0,kind:"",type:"",owner:-1};
+
+    nextId=1;
+    econ[0]={minerals:350,gas:0,supplyUsed:0,supplyCap:10,upgrades:{},power:0};
+    econ[1]={minerals:0,gas:0,supplyUsed:0,supplyCap:0,upgrades:{},power:0};
+    groups.clear();
+
+    SEEN_TYPES.clear();
+    WAVE.waveNum=0;
+    WAVE.nextAt=WAVE.firstAt;
+    WAVE.nextPlan=null;
+    WAVE.nextUpPlan=null;
+  }
+
+  function makeHQ(owner,x,y){
+    const t=worldToTile(x,y);
+    const b=makeBuilding(owner,RACES[playerRace].hq, clamp(t.tx-2,0,GW-4), clamp(t.ty-2,0,GH-3));
+    b.complete=true; b.buildTimeLeft=0; b.buildTimeBase=0; b.hp=b.maxHp;
+    return b;
+  }
+
+  function setupGame(){
+    clearAll();
+    MAPS[mapId].gen();
+
+    const pPocket=makeBasePocket("left");
+    const ePocket=makeBasePocket("right");
+    const cY=Math.floor(GH/2);
+
+    carveCorridor(pPocket.pocket.openX,pPocket.pocket.openY, Math.floor(GW/2)-8, cY, 2);
+    carveCorridor(ePocket.pocket.openX,ePocket.pocket.openY, Math.floor(GW/2)+8, cY, 2);
+
+    placeBaseResources(pPocket);
+    // extra mid resources (lighter)
+    placeResourceCluster(WORLD_W/2, WORLD_H/2 - 150, 1);
+    placeResourceCluster(WORLD_W/2, WORLD_H/2 + 140, -1);
+
+    // Player HQ
+    const phq=makeHQ(OWNER_PLAYER,pPocket.hqPos.x,pPocket.hqPos.y);
+
+    // Astra starter power node
+    if(playerRace==="astra"){
+      const tt=worldToTile(phq.x+80,phq.y-30);
+      if(!isTerrainBlocked(tt.tx,tt.ty)){
+        const p=makeBuilding(OWNER_PLAYER,"pwr",clamp(tt.tx,4,GW-6),clamp(tt.ty,4,GH-6));
+        p.complete=true;
+      }
+    }
+
+    // Enemy spires
+    for(const s of spireSpotsForMap()){
+      const spot=nudgeToClear("spire",s.tx,s.ty);
+      const sp=makeBuilding(OWNER_ENEMY,"spire",spot.tx,spot.ty);
+      sp.nextDefenseAt=0;
+      sp.nextDefendersAt=0;
+      carveRect(spot.tx-3,spot.ty-3,10,10);
+    }
+
+    // Initial workers
+    for(let i=0;i<7;i++){
+      const sp=findSpawnNear(phq.x,phq.y);
+      const u=makeUnit(OWNER_PLAYER,RACES[playerRace].worker,sp.x,sp.y);
+      const n=nearestResOfType("mineral",u.x,u.y);
+      if(n) commandMine(u,n);
+    }
+
+    recomputeSupply(OWNER_PLAYER);
+
+    cam.x=clamp(phq.x - view.w/2, 0, Math.max(0, WORLD_W - view.w));
+    cam.y=clamp(phq.y - view.h/2, 0, Math.max(0, WORLD_H - view.h));
+
+    state.running=true;
+    gameStart=performance.now()/1000;
+    toastMsg("Survive until 2:00 - waves begin soon!");
+    renderUI();
+  }
+
+  // ---------------- Input ----------------
+  const keys={};
+  const mouse={x:0,y:0,down:false,button:0};
+
+  function canvasPoint(e){
+    const r=canvas.getBoundingClientRect();
+    return {x:e.clientX-r.left, y:e.clientY-r.top};
+  }
+
+  function doHold(){
+    const s=getSelected().filter(x=>x.kind==="unit" && x.ref.owner===OWNER_PLAYER).map(x=>x.ref);
+    for(const u of s) u.task={kind:"hold"};
+    toastMsg("Hold position");
+    renderUI();
+  }
+  function doStop(){
+    const s=getSelected().filter(x=>x.kind==="unit" && x.ref.owner===OWNER_PLAYER).map(x=>x.ref);
+    for(const u of s){ u.task=null; u.path=[]; }
+    toastMsg("Stopped");
+    renderUI();
+  }
+
+  addEventListener("keydown",(e)=>{
+    const k=e.key.toLowerCase();
+    keys[k]=true;
+
+    // groups
+    if(k>="1" && k<="9"){
+      const gk=k;
+      if(e.ctrlKey){
+        const s=new Set();
+        for(const id of state.selection){
+          const ent=findById(id); if(!ent) continue;
+          if(ent.kind==="unit" && ent.ref.owner===OWNER_PLAYER) s.add(id);
+          if(ent.kind==="building" && ent.ref.owner===OWNER_PLAYER) s.add(id);
+        }
+        groups.set(gk,s);
+        toastMsg("Saved group "+gk+" ("+s.size+")");
+      } else {
+        const g=groups.get(gk);
+        if(g){
+          state.selection.clear();
+          for(const id of g){
+            const ent=findById(id); if(!ent) continue;
+            if(ent.kind==="unit" && ent.ref.hp<=0) continue;
+            if(ent.kind==="building" && ent.ref.dead) continue;
+            state.selection.add(id);
+          }
+          renderUI();
+          const now=performance.now()/1000;
+          if(lastGroupKey===gk && (now-lastGroupAt)<0.35) centerCameraOnSelection();
+          lastGroupKey=gk; lastGroupAt=now;
+        }
+      }
+      return;
+    }
+
+    // dynamic actions on QWERT
+    const upper=e.key.toUpperCase();
+    if(state.actionKeyMap[upper]){
+      state.actionKeyMap[upper].run();
+      return;
+    }
+
+    if(k==="escape"){ state.buildGhost=null; state.attackMove=false; renderUI(); }
+    if(k==="a"){ state.attackMove=true; toastMsg("Attack-move: right click a location."); renderUI(); }
+    if(k===" "){ centerCameraOnSelection(); }
+    if(k==="r"){ showMenu(); }
+    if(k==="h"){ doHold(); }
+    if(k==="s"){ doStop(); }
+
+    // worker build hotkeys
+    const hk=getWorkerBuildHotkeysForRace(playerRace).keyToId;
+    if(hk[k]){
+      const sel=getSelected();
+      const worker=sel.find(s=>s.kind==="unit" && s.ref.owner===OWNER_PLAYER && s.ref.worker)?.ref;
+      if(worker){
+        enterBuildMode(hk[k], worker.id);
+        renderUI();
+      }
+    }
+  });
+  addEventListener("keyup",(e)=>{ keys[e.key.toLowerCase()]=false; });
+
+  canvas.addEventListener("contextmenu",(e)=>e.preventDefault());
+
+  canvas.addEventListener("mousedown",(e)=>{
+    if(!state.running) return;
+    const p=canvasPoint(e);
+    mouse.down=true; mouse.button=e.button; mouse.x=p.x; mouse.y=p.y;
+    state._mouseWorld = screenToWorld(p.x,p.y);
+
+    if(isOverMinimap(p.x,p.y)) return;
+
+    const wpos=screenToWorld(p.x,p.y);
+    if(e.button===0){
+      if(state.buildGhost){
+        placeBuildAt(wpos.x,wpos.y);
+        renderUI();
+        return;
+      }
+      state.boxSel={sx:p.x, sy:p.y, ex:p.x, ey:p.y};
+    } else if(e.button===2){
+      handleRightClick(wpos.x,wpos.y);
+    }
+  });
+
+  canvas.addEventListener("mousemove",(e)=>{
+    const p=canvasPoint(e);
+    mouse.x=p.x; mouse.y=p.y;
+    state._mouseWorld = screenToWorld(p.x,p.y);
+    if(state.boxSel){ state.boxSel.ex=p.x; state.boxSel.ey=p.y; }
+  });
+
+  addEventListener("mouseup",()=>{
+    if(!state.running) return;
+    if(!state.boxSel) return;
+
+    const b=state.boxSel;
+    const dx=Math.abs(b.ex-b.sx), dy=Math.abs(b.ey-b.sy);
+    const additive=keys["shift"];
+
+    if(dx<6 && dy<6){
+      const wpos=screenToWorld(b.ex,b.ey);
+      const clicked=pickEntityAt(wpos.x,wpos.y, OWNER_PLAYER);
+      const now=performance.now()/1000;
+
+      if(clicked && clicked.type){
+        const isDouble=(state._lastClick.owner===OWNER_PLAYER &&
+                        state._lastClick.kind==="unit" &&
+                        state._lastClick.type===clicked.type &&
+                        (now - state._lastClick.t) < 0.32);
+
+        if(clicked.owner===OWNER_PLAYER){
+          state._lastClick={t:now, kind:"unit", type:clicked.type, owner:OWNER_PLAYER};
+        }
+
+        if(isDouble && clicked.owner===OWNER_PLAYER){
+          if(!additive) state.selection.clear();
+          for(const u of units){
+            if(u.owner!==OWNER_PLAYER || u.hp<=0) continue;
+            if(u.type!==clicked.type) continue;
+            const s=worldToScreen(u.x,u.y);
+            if(s.x>=0&&s.x<=view.w&&s.y>=0&&s.y<=view.h) state.selection.add(u.id);
+          }
+        } else {
+          if(!additive) state.selection.clear();
+          state.selection.add(clicked.id);
+        }
+      } else {
+        if(!additive) state.selection.clear();
+        if(clicked) state.selection.add(clicked.id);
+      }
+    } else {
+      const minx=Math.min(b.sx,b.ex), maxx=Math.max(b.sx,b.ex);
+      const miny=Math.min(b.sy,b.ey), maxy=Math.max(b.sy,b.ey);
+      if(!additive) state.selection.clear();
+      for(const u of units){
+        if(u.owner!==OWNER_PLAYER || u.hp<=0) continue;
+        const s=worldToScreen(u.x,u.y);
+        if(s.x>=minx&&s.x<=maxx&&s.y>=miny&&s.y<=maxy) state.selection.add(u.id);
+      }
+      for(const bd of buildings){
+        if(bd.owner!==OWNER_PLAYER || bd.dead) continue;
+        const s=worldToScreen(bd.x,bd.y);
+        if(s.x>=minx&&s.x<=maxx&&s.y>=miny&&s.y<=maxy) state.selection.add(bd.id);
+      }
+    }
+
+    state.boxSel=null;
+    renderUI();
+  });
+
+  function isOverMinimap(sx,sy){
+    const mm=document.getElementById("minimap").getBoundingClientRect();
+    const cv=canvas.getBoundingClientRect();
+    const mx=cv.left+sx, my=cv.top+sy;
+    return mx>=mm.left && mx<=mm.right && my>=mm.top && my<=mm.bottom;
+  }
+
+  document.getElementById("minimap").addEventListener("mousedown",(e)=>{
+    if(!state.running) return;
+    const rect=e.currentTarget.getBoundingClientRect();
+    const mx=(e.clientX-rect.left)/rect.width;
+    const my=(e.clientY-rect.top)/rect.height;
+    cam.x=clamp(mx*WORLD_W - view.w/2, 0, Math.max(0, WORLD_W-view.w));
+    cam.y=clamp(my*WORLD_H - view.h/2, 0, Math.max(0, WORLD_H-view.h));
+  });
+
+  function pickEntityAt(x,y,owner){
+    let best=null,bestD=Infinity;
+    for(const u of units){
+      if(u.owner!==owner || u.hp<=0) continue;
+      const d=dist2(u.x,u.y,x,y);
+      if(d<(u.radius+7)*(u.radius+7) && d<bestD){best=u; bestD=d;}
+    }
+    if(best) return best;
+    for(const b of buildings){
+      if(b.owner!==owner || b.dead) continue;
+      const dx=Math.abs(x-b.x), dy=Math.abs(y-b.y);
+      if(dx < (b.w*TILE*0.55) && dy < (b.h*TILE*0.55)) return b;
+    }
+    return null;
+  }
+
+  function pickEnemyAt(x,y){
+    let best=null,bestD=Infinity;
+    for(const u of units){
+      if(u.owner!==OWNER_ENEMY || u.hp<=0) continue;
+      const d=dist2(u.x,u.y,x,y);
+      if(d<(u.radius+10)*(u.radius+10) && d<bestD){best=u; bestD=d;}
+    }
+    if(best) return best;
+    for(const b of buildings){
+      if(b.owner!==OWNER_ENEMY || b.dead) continue;
+      const dx=Math.abs(x-b.x), dy=Math.abs(y-b.y);
+      if(dx < (b.w*TILE*0.55) && dy < (b.h*TILE*0.55)) return b;
+    }
+    return null;
+  }
+
+  function handleRightClick(x,y){
+    const sel=getSelected();
+    if(!sel.length) return;
+
+    const selBuildings=sel.filter(s=>s.kind==="building").map(s=>s.ref);
+    if(selBuildings.length){
+      const node=pickResNodeAt(x,y);
+      for(const b of selBuildings){
+        if(b.owner!==OWNER_PLAYER) continue;
+        if(node && b.isHQ){
+          b.rally={mode:"mine", x:node.x,y:node.y,nodeId:node.id};
+          toastMsg("HQ rally: mine");
+        } else {
+          const mode=state.attackMove?"attackMove":"move";
+          b.rally={mode,x,y};
+          toastMsg("Rally set");
+        }
+      }
+      state.attackMove=false;
+      return;
+    }
+
+    if(state.buildGhost){ state.buildGhost=null; renderUI(); return; }
+
+    const targetEnemy=pickEnemyAt(x,y);
+    const targetNode=pickResNodeAt(x,y);
+
+    const clickedB=buildings.find(b=>!b.dead && b.owner===OWNER_PLAYER &&
+      (Math.abs(b.x-x)<b.w*TILE*0.55 && Math.abs(b.y-y)<b.h*TILE*0.55)
+    );
+    let gasNode=null;
+    if(clickedB && (clickedB.type==="ref"||clickedB.type==="ext")){
+      gasNode=resNodes.find(n=>n.type==="geyser" && n.tx===clickedB.tx && n.ty===clickedB.ty) || null;
+    }
+
+    const unitsSel=sel.filter(s=>s.kind==="unit").map(s=>s.ref);
+    if(!unitsSel.length) return;
+
+    if(state.attackMove){
+      commandGroupTo(unitsSel,{mode:"attackMove",x,y});
+      state.attackMove=false;
+      return;
+    }
+
+    const workers=unitsSel.filter(u=>u.worker);
+    if(workers.length){
+      if(gasNode){ for(const w of workers) commandMine(w,gasNode); return; }
+      if(targetNode){ for(const w of workers) commandMine(w,targetNode); return; }
+    }
+
+    if(targetEnemy){
+      for(const u of unitsSel) commandAttack(u,targetEnemy);
+      return;
+    }
+
+    commandGroupTo(unitsSel,{mode:"move",x,y});
+  }
+
+  function centerCameraOnSelection(){
+    const sel=getSelected();
+    if(!sel.length) return;
+    let cx=0,cy=0,c=0;
+    for(const s of sel){
+      cx+=s.ref.x; cy+=s.ref.y; c++;
+    }
+    cx/=c; cy/=c;
+    cam.x=clamp(cx - view.w/2, 0, Math.max(0, WORLD_W-view.w));
+    cam.y=clamp(cy - view.h/2, 0, Math.max(0, WORLD_H-view.h));
+  }
+
+  // ---------------- UI rendering ----------------
+  function clearNode(el){ while(el.firstChild) el.removeChild(el.firstChild); }
+  function makeCompItem(type,count,isNew){
+    const span=document.createElement("span");
+    span.className="compItem";
+    span.textContent=(ENEMY[type]?.ico || "?")+" x"+count;
+    if(isNew){
+      const n=document.createElement("span");
+      n.className="newTag";
+      n.textContent="NEW";
+      span.appendChild(n);
+    }
+    return span;
+  }
+
+  function renderWavePanel(){
+    const gt=gameTime();
+    const nextIn = Math.max(0, WAVE.nextAt - gt);
+    nextWaveTimeEl.textContent = fmtTime(nextIn);
+
+    const plan=WAVE.nextPlan || makeWavePlan(1);
+    const up=WAVE.nextUpPlan || makeWavePlan(2);
+
+    nextWaveLabelEl.textContent = "Wave "+(WAVE.waveNum+1);
+    nextUpLabelEl.textContent = "Wave "+(WAVE.waveNum+2);
+    nextUpHintEl.textContent = "Preview";
+
+    clearNode(nextWaveCompEl);
+    clearNode(nextUpCompEl);
+
+    for(const g of plan.groups){
+      nextWaveCompEl.appendChild(makeCompItem(g.type,g.count, plan.newTypes.includes(g.type)));
+    }
+    for(const g of up.groups){
+      nextUpCompEl.appendChild(makeCompItem(g.type,g.count, up.newTypes.includes(g.type)));
+    }
+  }
+
+  function uiButton(def){
+    const b=document.createElement("div");
+    b.className="cardBtn";
+    b.innerHTML = `
+      <div class="hk">${def.hk || ""}</div>
+      <div class="top"><div class="ico">${def.ico}</div><div class="name">${def.name}</div></div>
+      <div class="cost">${def.cost || ""}</div>
+    `;
+    if(def.disabled) b.classList.add("disabled");
+    b.addEventListener("click", ()=>{
+      if(def.disabled) return;
+      def.onClick && def.onClick();
+    });
+    return b;
+  }
+
+  function renderUI(){
+    const R=RACES[playerRace];
+    raceNameEl.textContent = R.name;
+    minValEl.textContent = Math.floor(econ[OWNER_PLAYER].minerals);
+    gasValEl.textContent = Math.floor(econ[OWNER_PLAYER].gas);
+    supplyValEl.textContent = econ[OWNER_PLAYER].supplyUsed + "/" + econ[OWNER_PLAYER].supplyCap;
+
+    if(playerRace==="astra"){
+      powerTag.style.display="";
+      powerValEl.textContent = econ[OWNER_PLAYER].power;
+    } else {
+      powerTag.style.display="none";
+    }
+
+    timeValEl.textContent = fmtTime(gameTime());
+
+    const sel=getSelected();
+    if(!sel.length) selValEl.textContent="-";
+    else if(sel.length===1){
+      const s=sel[0];
+      if(s.kind==="unit"){
+        const def = (s.ref.owner===OWNER_PLAYER) ? RACES[playerRace].units[s.ref.type] : ENEMY[s.ref.type];
+        selValEl.textContent = def ? (def.name+" ("+Math.floor(s.ref.hp)+"/"+s.ref.maxHp+")") : s.ref.type;
+      } else {
+        const bd = (s.ref.owner===OWNER_PLAYER) ? RACES[playerRace].buildables.find(d=>d.id===s.ref.type) : ENEMY_BUILD[s.ref.type];
+        selValEl.textContent = bd ? (bd.name+" ("+Math.floor(s.ref.hp)+")") : s.ref.type;
+      }
+    } else {
+      selValEl.textContent = sel.length+" selected";
+    }
+
+    const sp=aliveSpires();
+    enemyValEl.textContent = sp.length ? (sp.length+" spire(s) alive") : "None";
+
+    cmdButtons.innerHTML="";
+    actionButtons.innerHTML="";
+    state.actionKeyMap={};
+    cmdHint.textContent = state.attackMove ? "Attack-move armed" : "-";
+    modeInfo.textContent = state.buildGhost ? "Placing building..." : "-";
+
+    const cmds=[
+      {name:"Hold", ico:"🛑", hk:"H", onClick:()=>doHold()},
+      {name:"Stop", ico:"✋", hk:"S", onClick:()=>doStop()},
+      {name:"Center", ico:"🎯", hk:"Space", onClick:()=>centerCameraOnSelection()},
+      {name:"Toggle A-move", ico:"⚔️", hk:"A", onClick:()=>{
+        state.attackMove=!state.attackMove;
+        toastMsg(state.attackMove?"Attack-move ON":"Attack-move OFF");
+        renderUI();
+      }},
+    ];
+    for(const c of cmds) cmdButtons.appendChild(uiButton({name:c.name, ico:c.ico, hk:c.hk, cost:"", onClick:c.onClick}));
+
+    const one = (sel.length===1)?sel[0]:null;
+
+    const singleWorker = one && one.kind==="unit" && one.ref.owner===OWNER_PLAYER && one.ref.worker;
+    if(singleWorker){
+      const {idToKey}=getWorkerBuildHotkeysForRace(playerRace);
+      const list=R.buildables.filter(b=>b.id!==R.hq);
+      for(const def of list){
+        const disabled = !meetsReq(OWNER_PLAYER,def.req) || !canAfford(OWNER_PLAYER,def.cost) ||
+          (R.powerRequired && def.id!=="pwr" && def.id!==R.hq && econ[OWNER_PLAYER].power<=0);
+
+        actionButtons.appendChild(uiButton({
+          name:def.name, ico:def.ico, hk:(idToKey[def.id]||"").toUpperCase(),
+          cost:`${def.cost.m||0}M ${def.cost.g||0}G`,
+          disabled,
+          onClick:()=>{ enterBuildMode(def.id, one.ref.id); renderUI(); }
+        }));
+      }
+    }
+
+    const singlePBld = one && one.kind==="building" && one.ref.owner===OWNER_PLAYER;
+    if(singlePBld){
+      const b=one.ref;
+      const def=R.buildables.find(d=>d.id===b.type);
+      let slots=[];
+
+      if(b.complete && b.produces && b.produces.length){
+        for(const unitId of b.produces){
+          const U=R.units[unitId];
+          if(!U) continue;
+          const disabled = !!b.job || (econ[OWNER_PLAYER].supplyUsed+(U.supply||0) > econ[OWNER_PLAYER].supplyCap) || !canAfford(OWNER_PLAYER,U.cost);
+          slots.push({
+            name:U.name, ico:U.ico, hk:"",
+            cost:`${U.cost.m||0}M ${U.cost.g||0}G`,
+            disabled,
+            onClick:()=>{ if(startUnitJob(b,unitId)) toastMsg("Training: "+U.name); else toastMsg("Cannot train"); }
+          });
+        }
+      }
+
+      if(b.complete && def?.research){
+        for(const rr of R.research){
+          if(!(rr.req||[]).includes(b.type)) continue;
+          const disabled = !!b.job || econ[OWNER_PLAYER].upgrades[rr.id] || !meetsReq(OWNER_PLAYER,rr.req||[]) || !canAfford(OWNER_PLAYER,rr.cost);
+          slots.push({
+            name:rr.name, ico:rr.ico, hk:"",
+            cost:`${rr.cost.m||0}M ${rr.cost.g||0}G`,
+            disabled,
+            onClick:()=>{ if(startResearchJob(b,rr.id)) toastMsg("Researching: "+rr.name); else toastMsg("Cannot research"); }
+          });
+        }
+      }
+
+      for(let i=0;i<slots.length;i++){
+        const hk=ACTION_KEYS[i] || "";
+        slots[i].hk = hk;
+        state.actionKeyMap[hk] = {run: slots[i].onClick};
+        actionButtons.appendChild(uiButton(slots[i]));
+      }
+    }
+
+    const selUnits=sel.filter(s=>s.kind==="unit" && s.ref.owner===OWNER_PLAYER).map(s=>s.ref);
+    if(selUnits.length && !singlePBld){
+      const abilitySet=new Set();
+      for(const u of selUnits){
+        for(const ab of (u.abilities||[])) abilitySet.add(ab);
+      }
+      const abList=[...abilitySet].slice(0,5);
+      for(let i=0;i<abList.length;i++){
+        const id=abList[i];
+        const hk=ACTION_KEYS[i];
+        state.actionKeyMap[hk]={run:()=>castAbility(id)};
+        actionButtons.appendChild(uiButton({
+          name:ABILITIES[id].name, ico:ABILITIES[id].ico, hk,
+          cost:ABILITIES[id].desc,
+          disabled:false,
+          onClick:()=>castAbility(id)
+        }));
+      }
+    }
+
+    renderWavePanel();
+  }
+
+  // ---------------- Menu ----------------
+  function showMenu(){
+    menu.style.display="grid";
+    state.running=false;
+  }
+  function hideMenu(){
+    menu.style.display="none";
+    state.running=true;
+  }
+  startBtn.addEventListener("click", ()=>{
+    mapId=mapSel.value;
+    playerRace=raceSel.value;
+    difficulty=diffSel.value;
+    hideMenu();
+    setupGame();
+  });
+  btnMenu.addEventListener("click", showMenu);
+
+  // ---------------- Win/Lose check ----------------
+  function updateGameOver(){
+    if(state.gameOver) return;
+
+    const hq=getAnyHQ(OWNER_PLAYER);
+    if(!hq || hq.hp<=0){
+      state.gameOver=true;
+      state.running=false;
+      toastMsg("Defeat! HQ destroyed.");
+      return;
+    }
+
+    if(!aliveSpires().length){
+      state.gameOver=true;
+      state.running=false;
+      toastMsg("Victory! All spires destroyed.");
+      return;
+    }
+  }
+
+  // ---------------- Drawing ----------------
+  function drawBar(x,y,w,h,p){
+    p=clamp(p,0,1);
+    ctx.fillStyle="rgba(15,23,42,.25)";
+    ctx.fillRect(x,y,w,h);
+    ctx.fillStyle="rgba(22,163,74,.9)";
+    ctx.fillRect(x,y,w*p,h);
+  }
+
+  function drawWorld(){
+    // background
+    ctx.fillStyle="#eaf0ff";
+    ctx.fillRect(0,0,view.w,view.h);
+
+    // terrain
+    const startTx=clamp(Math.floor(cam.x/TILE)-1,0,GW-1);
+    const startTy=clamp(Math.floor(cam.y/TILE)-1,0,GH-1);
+    const endTx=clamp(Math.ceil((cam.x+view.w)/TILE)+1,0,GW);
+    const endTy=clamp(Math.ceil((cam.y+view.h)/TILE)+1,0,GH);
+
+    for(let ty=startTy;ty<endTy;ty++){
+      for(let tx=startTx;tx<endTx;tx++){
+        if(terrain[idx(tx,ty)]===1){
+          const x=tx*TILE-cam.x;
+          const y=ty*TILE-cam.y;
+          ctx.fillStyle="rgba(15,23,42,.50)";
+          ctx.fillRect(x,y,TILE,TILE);
+        }
+      }
+    }
+
+    // resources
+    for(const n of resNodes){
+      const s=worldToScreen(n.x,n.y);
+      if(s.x<-40||s.y<-40||s.x>view.w+40||s.y>view.h+40) continue;
+      ctx.font="16px system-ui";
+      ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillStyle="#0f172a";
+      ctx.fillText(n.type==="mineral"?"🪨":"🟢", s.x, s.y);
+      if(n.type==="mineral"){
+        ctx.font="10px system-ui";
+        ctx.fillStyle="rgba(15,23,42,.7)";
+        ctx.fillText(Math.max(0,Math.floor(n.amount/100))*100, s.x, s.y+14);
+      }
+    }
+
+    // buildings
+    for(const b of buildings){
+      if(b.dead) continue;
+      const x=b.tx*TILE - cam.x;
+      const y=b.ty*TILE - cam.y;
+      const w=b.w*TILE;
+      const h=b.h*TILE;
+
+      ctx.fillStyle = b.owner===OWNER_PLAYER ? "rgba(37,99,235,.18)" : "rgba(220,38,38,.16)";
+      ctx.fillRect(x,y,w,h);
+      ctx.strokeStyle = b.owner===OWNER_PLAYER ? "rgba(37,99,235,.45)" : "rgba(220,38,38,.45)";
+      ctx.lineWidth=2;
+      ctx.strokeRect(x+1,y+1,w-2,h-2);
+
+      ctx.font="22px system-ui";
+      ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillStyle="#0f172a";
+      const ico = (b.owner===OWNER_PLAYER)
+        ? (RACES[playerRace].buildables.find(d=>d.id===b.type)?.ico || "🏠")
+        : (ENEMY_BUILD[b.type]?.ico || "❓");
+      ctx.fillText(ico, x+w/2, y+h/2);
+
+      const p=b.hp/b.maxHp;
+      drawBar(x+6,y-8, w-12, 5, p);
+
+      if(b.owner===OWNER_PLAYER && !b.complete){
+        const pr = 1 - (b.buildTimeLeft / (b.buildTimeBase||1));
+        ctx.fillStyle="rgba(15,23,42,.25)";
+        ctx.fillRect(x+6,y+h+4,w-12,5);
+        ctx.fillStyle="rgba(37,99,235,.9)";
+        ctx.fillRect(x+6,y+h+4,(w-12)*clamp(pr,0,1),5);
+      }
+
+      if(b.owner===OWNER_PLAYER && b.complete && b.job){
+        const pr = 1 - (b.job.tLeft / (b.job.tBase||1));
+        ctx.fillStyle="rgba(15,23,42,.25)";
+        ctx.fillRect(x+6,y+h+12,w-12,5);
+        ctx.fillStyle="rgba(22,163,74,.9)";
+        ctx.fillRect(x+6,y+h+12,(w-12)*clamp(pr,0,1),5);
+      }
+    }
+
+    // hazards
+    for(const h of hazards){
+      const s=worldToScreen(h.x,h.y);
+      if(s.x<-120||s.y<-120||s.x>view.w+120||s.y>view.h+120) continue;
+      ctx.beginPath();
+      ctx.arc(s.x,s.y,h.r,0,Math.PI*2);
+      ctx.strokeStyle = h.armed ? "rgba(220,38,38,.30)" : "rgba(234,179,8,.25)";
+      ctx.lineWidth=2;
+      ctx.stroke();
+      ctx.font="18px system-ui";
+      ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillStyle="#0f172a";
+      ctx.fillText("🧫", s.x, s.y);
+    }
+
+    // units
+    for(const u of units){
+      if(u.hp<=0) continue;
+      const s=worldToScreen(u.x,u.y);
+      if(s.x<-50||s.y<-50||s.x>view.w+50||s.y>view.h+50) continue;
+
+      // shadow for flying
+      if(u.flying){
+        ctx.beginPath();
+        ctx.ellipse(s.x, s.y+10, 12, 5, 0, 0, Math.PI*2);
+        ctx.fillStyle="rgba(15,23,42,.18)";
+        ctx.fill();
+      }
+
+      if(state.selection.has(u.id)){
+        ctx.beginPath();
+        ctx.arc(s.x,s.y, u.radius+8, 0, Math.PI*2);
+        ctx.strokeStyle="rgba(37,99,235,.65)";
+        ctx.lineWidth=2;
+        ctx.stroke();
+      }
+
+      ctx.beginPath();
+      ctx.arc(s.x,s.y, u.radius, 0, Math.PI*2);
+      ctx.fillStyle = u.owner===OWNER_PLAYER ? "rgba(37,99,235,.25)" : "rgba(220,38,38,.22)";
+      ctx.fill();
+      ctx.strokeStyle = u.owner===OWNER_PLAYER ? "rgba(37,99,235,.55)" : "rgba(220,38,38,.55)";
+      ctx.lineWidth=2;
+      ctx.stroke();
+
+      ctx.font="16px system-ui";
+      ctx.textAlign="center"; ctx.textBaseline="middle";
+      const ico = (u.owner===OWNER_PLAYER)
+        ? (RACES[playerRace].units[u.type]?.ico || "🙂")
+        : (ENEMY[u.type]?.ico || "❓");
+      ctx.fillStyle="#0f172a";
+      ctx.fillText(ico, s.x, s.y);
+
+      const p=u.hp/u.maxHp;
+      drawBar(s.x-18, s.y-u.radius-12, 36, 5, p);
+    }
+
+    // beams
+    for(const b of beams){
+      const s1=worldToScreen(b.x1,b.y1);
+      const s2=worldToScreen(b.x2,b.y2);
+      ctx.beginPath();
+      ctx.moveTo(s1.x,s1.y);
+      ctx.lineTo(s2.x,s2.y);
+      ctx.strokeStyle = b.hot ? "rgba(255,255,255,.95)" : "rgba(59,130,246,.85)";
+      ctx.lineWidth = b.hot ? 3.5 : 2.5;
+      ctx.stroke();
+    }
+    beams.length=0;
+
+    // particles (THIS IS WHERE YOUR PASTE CUT OFF)
+    for(const pt of particles){
+      const s=worldToScreen(pt.x,pt.y);
+      const a=clamp(pt.life/(pt.max||0.55),0,1);
+      ctx.beginPath();
+      ctx.arc(s.x,s.y, pt.r, 0, Math.PI*2);
+
+      let col="rgba(255,255,255,"+(0.70*a)+")";
+      if(pt.kind==="plasma") col="rgba(251,146,60,"+(0.75*a)+")";
+      else if(pt.kind==="laser") col="rgba(96,165,250,"+(0.75*a)+")";
+      else if(pt.kind==="zap") col="rgba(250,204,21,"+(0.75*a)+")";
+      else col="rgba(255,255,255,"+(0.60*a)+")";
+
+      ctx.fillStyle=col;
+      ctx.fill();
+    }
+
+    // build ghost overlay
+    if(state.buildGhost){
+      const g=state.buildGhost;
+      const R=RACES[playerRace];
+      const def=R.buildables.find(b=>b.id===g.defId);
+      if(def){
+        const mw=getMouseWorld();
+        const t=worldToTile(mw.x,mw.y);
+        const res=canPlaceBuilding(OWNER_PLAYER,def.id,t.tx,t.ty);
+        const tx=res.ok?res.tx:t.tx;
+        const ty=res.ok?res.ty:t.ty;
+
+        const x=tx*TILE - cam.x;
+        const y=ty*TILE - cam.y;
+        const w=def.size[0]*TILE;
+        const h=def.size[1]*TILE;
+
+        ctx.save();
+        ctx.globalAlpha=0.42;
+        ctx.fillStyle = res.ok ? "rgba(22,163,74,.55)" : "rgba(220,38,38,.55)";
+        ctx.fillRect(x,y,w,h);
+        ctx.globalAlpha=1.0;
+        ctx.strokeStyle = res.ok ? "rgba(22,163,74,.90)" : "rgba(220,38,38,.90)";
+        ctx.lineWidth=2;
+        ctx.strokeRect(x+1,y+1,w-2,h-2);
+
+        // power field hint
+        if(playerRace==="astra" && def.id!=="pwr" && def.id!==R.hq){
+          const c=tileToWorld(tx+def.size[0]/2, ty+def.size[1]/2);
+          const powered=isInPowerField(OWNER_PLAYER,c.x,c.y);
+          ctx.font="12px system-ui";
+          ctx.fillStyle= powered ? "rgba(22,163,74,.95)" : "rgba(220,38,38,.95)";
+          ctx.textAlign="left"; ctx.textBaseline="top";
+          ctx.fillText(powered?"Powered":"Needs Power", x+4, y-18);
+        }
+
+        ctx.restore();
+      }
+    }
+
+    // selection box
+    if(state.boxSel){
+      const b=state.boxSel;
+      const minx=Math.min(b.sx,b.ex), maxx=Math.max(b.sx,b.ex);
+      const miny=Math.min(b.sy,b.ey), maxy=Math.max(b.sy,b.ey);
+      ctx.save();
+      ctx.fillStyle="rgba(37,99,235,.08)";
+      ctx.strokeStyle="rgba(37,99,235,.65)";
+      ctx.lineWidth=2;
+      ctx.fillRect(minx,miny,maxx-minx,maxy-miny);
+      ctx.strokeRect(minx+1,miny+1,maxx-minx-2,maxy-miny-2);
+      ctx.restore();
+    }
+  }
+
+  // ---------------- Minimap ----------------
+  function drawMinimap(){
+    const w=150, h=118;
+    mctx.clearRect(0,0,w,h);
+
+    // background
+    mctx.fillStyle="rgba(255,255,255,.75)";
+    mctx.fillRect(0,0,w,h);
+
+    const sx=w/WORLD_W;
+    const sy=h/WORLD_H;
+
+    // terrain dots (downsample)
+    const step=3;
+    mctx.fillStyle="rgba(15,23,42,.32)";
+    for(let ty=0;ty<GH;ty+=step){
+      for(let tx=0;tx<GW;tx+=step){
+        if(terrain[idx(tx,ty)]===1){
+          const x=tx*TILE*sx;
+          const y=ty*TILE*sy;
+          mctx.fillRect(x,y, step*TILE*sx, step*TILE*sy);
+        }
+      }
+    }
+
+    // resources
+    for(const n of resNodes){
+      const x=n.x*sx, y=n.y*sy;
+      mctx.fillStyle = n.type==="mineral" ? "rgba(59,130,246,.85)" : "rgba(16,185,129,.85)";
+      mctx.fillRect(x-1,y-1,2,2);
+    }
+
+    // buildings
+    for(const b of buildings){
+      if(b.dead) continue;
+      const x=b.x*sx, y=b.y*sy;
+      mctx.fillStyle = b.owner===OWNER_PLAYER ? "rgba(37,99,235,.85)" : "rgba(220,38,38,.85)";
+      mctx.fillRect(x-1.5,y-1.5,3,3);
+    }
+
+    // units
+    for(const u of units){
+      if(u.hp<=0) continue;
+      const x=u.x*sx, y=u.y*sy;
+      mctx.fillStyle = u.owner===OWNER_PLAYER ? "rgba(37,99,235,.75)" : "rgba(220,38,38,.75)";
+      mctx.fillRect(x-1,y-1,2,2);
+    }
+
+    // camera viewport rect
+    mctx.strokeStyle="rgba(15,23,42,.55)";
+    mctx.lineWidth=1.5;
+    mctx.strokeRect(cam.x*sx, cam.y*sy, view.w*sx, view.h*sy);
+
+    // border
+    mctx.strokeStyle="rgba(15,23,42,.18)";
+    mctx.lineWidth=1;
+    mctx.strokeRect(0.5,0.5,w-1,h-1);
+  }
+
+  // ---------------- Cleanup (deaths + supply) ----------------
+  function cleanupDeaths(){
+    // units
+    for(const u of units){
+      if(u.hp<=0 && !u._dead){
+        u._dead=true;
+        if(u.owner===OWNER_PLAYER && u.supply){
+          econ[OWNER_PLAYER].supplyUsed = Math.max(0, econ[OWNER_PLAYER].supplyUsed - u.supply);
+        }
+      }
+    }
+    for(let i=units.length-1;i>=0;i--){
+      if(units[i]._dead) units.splice(i,1);
+    }
+
+    // buildings
+    let supplyDirty=false;
+    for(const b of buildings){
+      if(!b.dead && b.hp<=0){
+        b.dead=true;
+        // free geyser claim if extractor died
+        if(b.owner===OWNER_PLAYER && (b.type==="ref"||b.type==="ext")){
+          const g=resNodes.find(n=>n.type==="geyser" && n.tx===b.tx && n.ty===b.ty);
+          if(g) g.hasExtractorOwner=-1;
+        }
+        supplyDirty = supplyDirty || (b.owner===OWNER_PLAYER);
+        spawnParticles(b.x,b.y,"plasma");
+      }
+    }
+    if(supplyDirty) recomputeSupply(OWNER_PLAYER);
+
+    // prune selection dead ids
+    for(const id of Array.from(state.selection)){
+      const ent=findById(id);
+      if(!ent) state.selection.delete(id);
+      else if(ent.kind==="unit" && ent.ref.hp<=0) state.selection.delete(id);
+      else if(ent.kind==="building" && ent.ref.dead) state.selection.delete(id);
+    }
+  }
+
+  // ---------------- Camera controls ----------------
+  function updateCamera(dt){
+    const edge=14;
+    let vx=0,vy=0;
+
+    if(keys["arrowleft"]||keys["a"] && keys["shift"]) vx-=1;
+    if(keys["arrowright"]) vx+=1;
+    if(keys["arrowup"]) vy-=1;
+    if(keys["arrowdown"]) vy+=1;
+
+    // edge scroll
+    if(mouse.x<edge) vx-=1;
+    if(mouse.x>view.w-edge) vx+=1;
+    if(mouse.y<edge) vy-=1;
+    if(mouse.y>view.h-edge) vy+=1;
+
+    if(vx||vy){
+      const len=Math.hypot(vx,vy)||1;
+      cam.x += (vx/len)*cam.speed*dt;
+      cam.y += (vy/len)*cam.speed*dt;
+      cam.x = clamp(cam.x,0,Math.max(0,WORLD_W-view.w));
+      cam.y = clamp(cam.y,0,Math.max(0,WORLD_H-view.h));
+    }
+  }
+
+  // ---------------- Main Loop ----------------
+  let lastT=performance.now()/1000;
+  let uiTick=0;
+
+  function tick(){
+    const now=performance.now()/1000;
+    const dt=clamp(now-lastT, 0, 0.05);
+    lastT=now;
+    tNow=now;
+
+    if(state.running && !state.gameOver){
+      updateCamera(dt);
+      updateWaves();
+      updateBuildings(dt);
+      updateHazards(dt);
+      updateUnits(dt);
+      updateProjectiles(dt);
+      updateParticles(dt);
+      cleanupDeaths();
+      updateGameOver();
+
+      uiTick += dt;
+      if(uiTick>0.12){ uiTick=0; renderUI(); }
+    }
+
+    drawWorld();
+    drawMinimap();
+
+    requestAnimationFrame(tick);
+  }
+
+  // start in menu (default)
+  showMenu();
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
