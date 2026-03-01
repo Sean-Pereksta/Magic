@@ -506,7 +506,9 @@ const TOWER_PRIORITY_PRESETS = {
   // examples; tweak freely
   tesla: 'furthest',  // zap things deeper in lane
   blaze: 'lowestHp',  // pop weaklings to proc splash
-  stormcaller: 'elementWeak' // pick enemies weak to this element multiplier
+  stormcaller: 'elementWeak', // pick enemies weak to this element multiplier
+  worldtree: 'support'
+
 };
 
     const ENEMY_TYPES = [
@@ -570,6 +572,14 @@ const TOWER_PRIORITY_PRESETS = {
   { key:"ancient", el:"nature", hp:120,dmg:14,spd:0.4, range:0,  target:"core",  minLevel:22, tags:["armored","regen"], armor:3, healRate:1.5 },
 
   { key:"stormwyrm",el:"volt",  hp:82, dmg:9, spd:0.85,range:60, target:"tower", minLevel:23, tags:["aoe","chain"] },
+  { key:"bulwark_hound", el:"frost", hp:110, dmg:9, spd:0.72, range:0, target:"core", minLevel:23, tier:"mid", biomeTags:["forest","ruins","hell"], role:"support", tags:["support","bulwark"],
+    support:{
+      shieldLengthPx:140, shieldWidthPx:86, shieldOffsetPx:34,
+      rangedDamageMult:0.55, selfCoverMult:0.85,
+      sideBonus:1.10, backBonus:1.25,
+      elite:{ name:"Bulwark Alpha", sizeMult:1.2, speedMult:1.08 }
+    }
+  },
   { key:"frostqn", el:"frost",  hp:72, dmg:8, spd:0.9, range:60, target:"tower", minLevel:24, tags:["slow","aura"] },
 
   { key:"infernal",el:"fire",   hp:140,dmg:15,spd:0.5, range:0,  target:"core",  minLevel:25, tags:["explodes","armored"], armor:2, deathExplosion:{dmg:18, radius:55} },
@@ -577,6 +587,16 @@ const TOWER_PRIORITY_PRESETS = {
 
   // --- Endgame (Lv 27+) ---
   { key:"overseer",el:"volt",   hp:100,dmg:12,spd:0.8, range:70, target:"tower", minLevel:27, tags:["summoner"], summon:{key:"bat", count:3, cd:10} },
+  { key:"gloom_shepherd", el:"nature", hp:90, dmg:6, spd:0.78, range:55, target:"tower", minLevel:28, tier:"lateMid", biomeTags:["forest","ruins","hell"], role:"support", tags:["support","shepherd"],
+    support:{
+      rallyIntervalMin:6.0, rallyIntervalMax:9.0,
+      rallyRadiusPx:270, callRangePx:480, packMin:4,
+      packDuration:5.0, packDecay:1.25,
+      preferDistMinPx:260, preferDistMaxPx:360,
+      buff:{ moveSpeedMult:1.2, damageTakenMult:0.85 },
+      elite:{ name:"Highcaller Shepherd", glyphCount:2, buff:{ moveSpeedMult:1.25, damageTakenMult:0.82 } }
+    }
+  },
   { key:"glacier", el:"frost",  hp:130,dmg:13,spd:0.55,range:0,  target:"core",  minLevel:28, tags:["armored","slowAura"] },
   { key:"hellkite",el:"fire",   hp:85, dmg:10,spd:1.05,range:70, target:"tower", minLevel:29, tags:["flying","burn"] },
   { key:"titan",   el:"volt",   hp:180,dmg:20,spd:0.45,range:0,  target:"core",  minLevel:30, tags:["armored","shielded","boss"], armor:5, shield:30 }
@@ -952,7 +972,17 @@ function maybeRenderShop(){
     for (const e of (state.enemies || [])) {
       enemies.set(e.id, {
         id: e.id, x: e.x, y: e.y, el: e.el, type: e.type,
-        hp: e.hp, maxHp: e.maxHp
+        hp: e.hp, maxHp: e.maxHp,
+        covered: !!e._coveredByBulwark,
+        packBuff: (e._packBuffUntil || 0) > nowMs,
+        coverDirX: e._coverDir?.x || 0,
+        coverDirY: e._coverDir?.y || 1,
+        coverLenT: e._coverLenT || 0,
+        coverWidT: e._coverWidT || 0,
+        coverX: e._coverCx || (e.x+0.5),
+        coverY: e._coverCy || (e.y+0.5),
+        rallyGlyphs: Array.isArray(e._rallyGlyphs) ? e._rallyGlyphs : [],
+        isElite: !!e.isElite
       });
     }
     for (const p of (state.projectiles || [])) {
@@ -1367,6 +1397,7 @@ function sanitizeForFirestore(input){
 // ===== Enemy damage & death (GLOBAL, shared by sim + beam funcs) =====
 const REVEAL_ON_HIT_MS = 3000;       // was COOLDOWNS.revealSecsOnHit * 1000
 const SUMMON_SCATTER_T = 1.25;       // used for split/rebirth scatter
+const SUPPORT_MIN_DAMAGE_TAKEN_MULT = 0.35;
 
 function onEnemyDeath(g, e){
   // Death explosion (radius provided in PX in defs; convert to tiles)
@@ -1385,35 +1416,34 @@ function onEnemyDeath(g, e){
     if (baseType){
       for (let i=0;i<e.splitCount;i++){
         const lvl  = g.level || 1;
-        const mult = Math.pow(1.25, lvl - 1);           // match your spawn scaling
         const nx = Math.max(1, Math.min(COLS-2, Math.round(e.x + rnd(-SUMMON_SCATTER_T, SUMMON_SCATTER_T))));
         const ny = Math.max(0, Math.min(ROWS-2, Math.round(e.y + rnd(-SUMMON_SCATTER_T, SUMMON_SCATTER_T))));
-        const HP  = Math.round((baseType.hp || 10) * mult);
-        const DMG = Math.round((baseType.dmg|| 2) * mult);
-        g.enemies.push({
-          id:'e'+Math.random().toString(36).slice(2),
-          x:nx, y:ny, el: baseType.el, type: baseType.key,
-          hp: HP, maxHp: HP, dmg: DMG,
-          spd: baseType.spd, range: baseType.range,
-          target: baseType.target, cd: 0,
-          tags: baseType.tags||[],
-          armor: baseType.armor||0, shield: baseType.shield||0,
-          healRate: baseType.healRate, healRange: baseType.healRange,
-          summon: baseType.summon
-        });
+        g.enemies.push(buildEnemyFromBase(baseType, nx, ny, lvl));
       }
     }
   }
 }
 
-function applyEnemyDamage(g, e, rawDmg, elem){
+function applyEnemyDamage(g, e, rawDmg, elem, hitMeta={}){
   // element multiplier
   const mult = (elem && ELEM_MULT[elem] && ELEM_MULT[elem][e.el]) ? ELEM_MULT[elem][e.el] : 1.0;
   let dmg = Math.max(0, Math.round((rawDmg||0) * mult));
 
-  // armor
-  const armor = e.armor || 0;
-  if (armor > 0) dmg = Math.max(0, dmg - armor);
+  if (e.type === 'bulwark_hound'){
+    const fx = e._lastFacing?.x ?? 0;
+    const fy = e._lastFacing?.y ?? 1;
+    const hx = ((hitMeta.hitX ?? (e.x+0.5)) - (e.x+0.5));
+    const hy = ((hitMeta.hitY ?? (e.y+0.5)) - (e.y+0.5));
+    const len = Math.hypot(hx, hy) || 1;
+    const ndx = hx / len, ndy = hy / len;
+    const dot = ndx*fx + ndy*fy;
+    const angle = Math.acos(Math.max(-1, Math.min(1, dot))) * (180 / Math.PI);
+    if (angle > 110) dmg = Math.round(dmg * (e.support?.backBonus || 1.25));
+    else if (angle >= 60) dmg = Math.round(dmg * (e.support?.sideBonus || 1.10));
+  }
+
+  const supportMult = supportTakenMultiplier(e);
+  dmg = Math.max(0, Math.round(dmg * supportMult));
 
   // shield (soaks first)
   if (e.shield && e.shield > 0){
@@ -1421,6 +1451,10 @@ function applyEnemyDamage(g, e, rawDmg, elem){
     e.shield -= use;
     dmg -= use;
   }
+
+  // armor
+  const armor = e.armor || 0;
+  if (armor > 0) dmg = Math.max(0, dmg - armor);
 
   // apply
   if (dmg > 0){
@@ -1438,6 +1472,7 @@ function applyEnemyDamage(g, e, rawDmg, elem){
   }
   return false;
 }
+
 
 
     // Restart builder: keep same players + baseIncome, reset everything else
@@ -1595,6 +1630,77 @@ function findEnemyHitAlongSegment(g, x1,y1,x2,y2, radius){
   }
   return null;
 }
+
+function enemyDefByType(type){
+  return ENEMY_TYPES.find(z => z.key === type) || null;
+}
+
+function buildEnemyFromBase(base, x, y, lvl){
+  const mult = Math.pow(1.25, (lvl || 1) - 1);
+  const HP  = Math.round((base.hp  || 10) * mult);
+  const DMG = Math.round((base.dmg ||  2) * mult);
+  const supportDef = base.support ? JSON.parse(JSON.stringify(base.support)) : null;
+  const elite = !!(Math.random() < ((base.eliteChance ?? ((base.tags||[]).includes('support') ? 0.08 : 0.0))));
+
+  const e = {
+    id:'e'+Math.random().toString(36).slice(2),
+    x, y, el: base.el, type: base.key,
+    hp: HP, maxHp: HP, dmg: DMG,
+    spd: base.spd, range: base.range,
+    target: base.target, cd: 0,
+    tags: base.tags||[],
+    armor: base.armor||0,
+    shield: base.shield||0,
+    healRate: base.healRate,
+    healRange: base.healRange,
+    summon: base.summon,
+    biomeTags: base.biomeTags || [],
+    role: base.role || null,
+    support: supportDef
+  };
+
+  if (elite){
+    e.isElite = true;
+    if (e.support && e.support.elite){
+      e.eliteName = e.support.elite.name || 'Elite';
+      if (e.type === 'bulwark_hound'){
+        const sizeMult = e.support.elite.sizeMult || 1.2;
+        e.support.shieldLengthPx = Math.round((e.support.shieldLengthPx || 140) * sizeMult);
+        e.support.shieldWidthPx  = Math.round((e.support.shieldWidthPx  ||  86) * sizeMult);
+        e.spd = +(e.spd * (e.support.elite.speedMult || 1.08)).toFixed(3);
+      }
+      if (e.type === 'gloom_shepherd'){
+        e.support.glyphCount = Math.max(1, e.support.elite.glyphCount || 2);
+        e.support.buff = {
+          ...(e.support.buff || {}),
+          ...(e.support.elite.buff || {})
+        };
+      }
+    }
+  }
+
+  if (e.type === 'bulwark_hound'){
+    e._lastFacing = { x: 0, y: 1 };
+  }
+  if (e.type === 'gloom_shepherd'){
+    e._nextRallyAt = now() + rnd((e.support?.rallyIntervalMin || 6)*1000, (e.support?.rallyIntervalMax || 9)*1000);
+  }
+  return e;
+}
+
+function pointInRotatedRect(px, py, cx, cy, ux, uy, halfLen, halfWid){
+  const rx = px - cx, ry = py - cy;
+  const front = rx*ux + ry*uy;
+  const side  = rx*(-uy) + ry*(ux);
+  return front >= -halfLen && front <= halfLen && Math.abs(side) <= halfWid;
+}
+
+function supportTakenMultiplier(e){
+  let m = 1;
+  if (e._coveredByBulwark) m *= (e._coverMult || 1);
+  if ((e._packBuffUntil || 0) > now()) m *= (e._packDmgTakenMult || 1);
+  return Math.max(SUPPORT_MIN_DAMAGE_TAKEN_MULT, m);
+}
 function hardResetRun(g){
   const tNow = now();
   const cx = Math.floor(COLS/2), cy = ROWS - 3;
@@ -1653,6 +1759,7 @@ function priorityScore(prio, t, e){
     case 'lowestHp':   return e.hp;
     case 'highestHp':  return -e.hp;
     case 'elementWeak':return -elemMultFor(t.el, e.el); // higher multiplier -> more negative (sort asc)
+    case 'support':   return (Array.isArray(e.tags) && e.tags.includes('support')) ? -1 : 0;
     case 'closest':
     default:           return enemyDistance2(t,e);
   }
@@ -1885,28 +1992,131 @@ function simulate(g){
 
     for (let i = 0; i < count; i++) {
       const base = pair[i & 1];
-      const mult = Math.pow(1.25, lvl - 1);
-      const HP  = Math.round(base.hp  * mult);
-      const DMG = Math.round(base.dmg * mult);
       const x = Math.floor(rnd(2, COLS - 3)), y = 0;
-
-      g.enemies.push({
-        id:'e'+Math.random().toString(36).slice(2),
-        x, y, el: base.el, type: base.key,
-        hp: HP, maxHp: HP, dmg: DMG,
-        spd: base.spd, range: base.range,
-        target: base.target, cd: 0,
-        tags: base.tags||[],
-        armor: base.armor||0,
-        shield: base.shield||0,
-        healRate: base.healRate,
-        healRange: base.healRange,
-        summon: base.summon
-      });
+      g.enemies.push(buildEnemyFromBase(base, x, y, lvl));
     }
 
     const interval = Math.max(SPAWN.MIN_MS, SPAWN.BASE_MS - lvl * SPAWN.DECAY_MS_PER_LVL);
     g.nextSpawnAt = tNow + interval;
+  }
+
+  // -----------------------------
+  // Support controllers (Bulwark + Shepherd)
+  // -----------------------------
+  for (const e of g.enemies){
+    e._coveredByBulwark = false;
+    e._coverMult = 1;
+    e._coverDir = null;
+    e._coverCx = null;
+    e._coverCy = null;
+    e._coverLenT = 0;
+    e._coverWidT = 0;
+    if (!((e._packBuffUntil || 0) > tNow)){
+      e._packSpdMult = 1;
+      e._packDmgTakenMult = 1;
+    }
+  }
+
+  const bulwarks = g.enemies.filter(e => e.hp > 0 && e.type === 'bulwark_hound');
+  for (const b of bulwarks){
+    const vx = (b._prevX != null) ? (b.x - b._prevX) : 0;
+    const vy = (b._prevY != null) ? (b.y - b._prevY) : b.spd;
+    const m = Math.hypot(vx, vy);
+    if (m > 0.001){
+      b._lastFacing = { x: vx/m, y: vy/m };
+    }
+    b._prevX = b.x; b._prevY = b.y;
+
+    const dir = b._lastFacing || {x:0,y:1};
+    const sup = b.support || {};
+    const lenT = (sup.shieldLengthPx || 140) / TILE;
+    const widT = (sup.shieldWidthPx || 86) / TILE;
+    const offT = (sup.shieldOffsetPx || 34) / TILE;
+    const cx = (b.x+0.5) - dir.x * offT;
+    const cy = (b.y+0.5) - dir.y * offT;
+    const backDirX = -dir.x, backDirY = -dir.y;
+
+    b._coverDir = { x: backDirX, y: backDirY };
+    b._coverCx = cx; b._coverCy = cy;
+    b._coverLenT = lenT; b._coverWidT = widT;
+
+    for (const ally of g.enemies){
+      if (ally.hp <= 0) continue;
+      if (ally.id === b.id) continue; // no full self cover
+      if (pointInRotatedRect(ally.x+0.5, ally.y+0.5, cx, cy, backDirX, backDirY, lenT*0.5, widT*0.5)){
+        const m = (sup.rangedDamageMult || 0.55);
+        if (ally._coverMult == null || m < ally._coverMult) ally._coverMult = m;
+        ally._coveredByBulwark = true;
+      }
+    }
+  }
+
+  const shepherds = g.enemies.filter(e => e.hp > 0 && e.type === 'gloom_shepherd');
+  g._rallyGlyphs = [];
+  for (const s of shepherds){
+    const sup = s.support || {};
+    const glyphCount = Math.max(1, sup.glyphCount || 1);
+    if (!Array.isArray(s._rallyGlyphs)) s._rallyGlyphs = [];
+
+    if (tNow >= (s._nextRallyAt || 0)){
+      while (s._rallyGlyphs.length >= glyphCount) s._rallyGlyphs.shift();
+      const radiusT = (sup.rallyRadiusPx || 270) / TILE;
+      const ang = rnd(-Math.PI*0.45, Math.PI*0.45);
+      const step = rnd(radiusT*0.3, radiusT*0.9);
+      const gx = clamp((s.x+0.5) + Math.sin(ang)*step, 1.5, COLS-1.5);
+      const gy = clamp((s.y+0.5) + Math.cos(ang)*step, 1.5, ROWS-1.5);
+      s._rallyGlyphs.push({ x:gx, y:gy, rT:radiusT, bornAt:tNow, chargeMs:1200, triggered:false, validUntil:tNow + 3500 });
+      s._nextRallyAt = tNow + rnd((sup.rallyIntervalMin || 6)*1000, (sup.rallyIntervalMax || 9)*1000);
+      s._callPulseUntil = tNow + 320;
+    }
+
+    for (const glyph of s._rallyGlyphs){
+      if (tNow > glyph.validUntil) continue;
+      const inGlyph = [];
+      const r2 = glyph.rT * glyph.rT;
+      const callR2 = ((sup.callRangePx || 480)/TILE) ** 2;
+      for (const ally of g.enemies){
+        if (ally.hp <= 0 || ally.id === s.id) continue;
+        if ((ally._stunnedUntil||0) > tNow) continue;
+        if (dist2(s.x+0.5,s.y+0.5, ally.x+0.5,ally.y+0.5) > callR2) continue;
+        const d2 = dist2(glyph.x,glyph.y, ally.x+0.5, ally.y+0.5);
+        if (d2 <= r2){
+          inGlyph.push(ally);
+        } else {
+          ally._rallyTarget = { x:glyph.x-0.5, y:glyph.y-0.5, until: tNow + 900 };
+        }
+      }
+
+      const need = sup.packMin || 4;
+      if (inGlyph.length >= need){
+        glyph.triggered = true;
+        glyph.validUntil = tNow + 700;
+        const buff = sup.buff || { moveSpeedMult:1.2, damageTakenMult:0.85 };
+        for (const ally of inGlyph){
+          ally._packBuffUntil = tNow + (sup.packDuration || 5) * 1000;
+          ally._packDecayUntil = ally._packBuffUntil + (sup.packDecay || 1.25) * 1000;
+          ally._packSpdMult = buff.moveSpeedMult || 1.2;
+          ally._packDmgTakenMult = buff.damageTakenMult || 0.85;
+        }
+        s._surgePulseUntil = tNow + 300;
+      }
+    }
+
+    s._rallyGlyphs = s._rallyGlyphs.filter(glyph => tNow <= glyph.validUntil);
+    for (const glyph of s._rallyGlyphs){
+      g._rallyGlyphs.push({ ...glyph, owner: s.id, elite: !!s.isElite });
+    }
+  }
+
+  for (const e of g.enemies){
+    if ((e._packDecayUntil || 0) > tNow && (e._packBuffUntil || 0) <= tNow){
+      const u = 1 - ((e._packDecayUntil - tNow) / Math.max(1, (e.support?.packDecay || 1.25) * 1000));
+      e._packSpdMult = 1 + ((e._packSpdMult || 1) - 1) * Math.max(0, 1-u);
+      e._packDmgTakenMult = 1 + ((e._packDmgTakenMult || 1) - 1) * Math.max(0, 1-u);
+    } else if ((e._packDecayUntil || 0) <= tNow){
+      e._packSpdMult = 1;
+      e._packDmgTakenMult = 1;
+    }
   }
 
   // -----------------------------
@@ -1946,16 +2156,7 @@ function simulate(g){
           for (let i=0;i<e.summon.count;i++){
             const nx = Math.max(1, Math.min(COLS-2, Math.round(e.x + rnd(-SUMMON.scatterRadiusT, SUMMON.scatterRadiusT))));
             const ny = Math.max(0, Math.min(ROWS-2, Math.round(e.y + rnd(-SUMMON.scatterRadiusT, SUMMON.scatterRadiusT))));
-            const mult = Math.pow(1.25, lvl - 1);
-            const HP  = Math.round((base.hp||10) * mult);
-            const DMG = Math.round((base.dmg||2) * mult);
-            g.enemies.push({
-              id:'e'+Math.random().toString(36).slice(2),
-              x:nx, y:ny, el: base.el, type: base.key, hp: HP, maxHp: HP, dmg: DMG,
-              spd: base.spd, range: base.range, target: base.target, cd: 0,
-              tags: base.tags||[], armor: base.armor||0, shield: base.shield||0,
-              healRate: base.healRate, healRange: base.healRange, summon: base.summon
-            });
+            g.enemies.push(buildEnemyFromBase(base, nx, ny, lvl));
           }
         }
         e._sumCd = (e.summon.cd ?? 10);
@@ -2015,10 +2216,52 @@ function simulate(g){
         }
       } else {
         const chase = (typeof nearestTower === 'function' ? nearestTower(g, e) : null) || { x: cx, y: cy };
-        stepToward(e, chase.x, chase.y, dt);
+        const baseSpd = e.spd;
+        e.spd = baseSpd * (e._packSpdMult || 1);
+        if (e._rallyTarget && (e._rallyTarget.until || 0) > tNow){
+          stepToward(e, e._rallyTarget.x, e._rallyTarget.y, dt);
+        } else {
+          e._rallyTarget = null;
+          if (e.type === 'gloom_shepherd'){
+            const prefMin = ((e.support?.preferDistMinPx || 260) / TILE);
+            const prefMax = ((e.support?.preferDistMaxPx || 360) / TILE);
+            const d = Math.hypot((e.x+0.5)-(cx+0.5), (e.y+0.5)-(cy+0.5));
+            if (d < prefMin){
+              const dx = (e.x+0.5)-(cx+0.5), dy=(e.y+0.5)-(cy+0.5);
+              const m = Math.hypot(dx,dy) || 1;
+              stepToward(e, e.x + (dx/m)*2.2, e.y + (dy/m)*2.2, dt);
+            } else if (d > prefMax){
+              stepToward(e, cx, cy, dt);
+            }
+          } else {
+            stepToward(e, chase.x, chase.y, dt);
+          }
+        }
+        e.spd = baseSpd;
       }
     } else {
-      stepToward(e, cx, cy, dt);
+      const baseSpd = e.spd;
+      e.spd = baseSpd * (e._packSpdMult || 1);
+      if (e._rallyTarget && (e._rallyTarget.until || 0) > tNow){
+        stepToward(e, e._rallyTarget.x, e._rallyTarget.y, dt);
+      } else {
+        e._rallyTarget = null;
+        if (e.type === 'gloom_shepherd'){
+          const prefMin = ((e.support?.preferDistMinPx || 260) / TILE);
+          const prefMax = ((e.support?.preferDistMaxPx || 360) / TILE);
+          const d = Math.hypot((e.x+0.5)-(cx+0.5), (e.y+0.5)-(cy+0.5));
+          if (d < prefMin){
+            const dx = (e.x+0.5)-(cx+0.5), dy=(e.y+0.5)-(cy+0.5);
+            const m = Math.hypot(dx,dy) || 1;
+            stepToward(e, e.x + (dx/m)*2.2, e.y + (dy/m)*2.2, dt);
+          } else if (d > prefMax){
+            stepToward(e, cx, cy, dt);
+          }
+        } else {
+          stepToward(e, cx, cy, dt);
+        }
+      }
+      e.spd = baseSpd;
     }
 
     // Collisions after movement
@@ -2046,6 +2289,16 @@ function simulate(g){
       e.hp = 0;
       g.crystal._flashUntil = now() + 200;
       continue;
+    }
+  }
+
+  // Shepherd death cleanup for buffs/glyphs
+  const aliveShepherd = g.enemies.some(e => e.hp > 0 && e.type === 'gloom_shepherd');
+  if (!aliveShepherd){
+    g._rallyGlyphs = [];
+    for (const e of g.enemies){
+      e._packBuffUntil = Math.min(e._packBuffUntil || 0, tNow);
+      e._packDecayUntil = Math.min(e._packDecayUntil || 0, tNow + 1250);
     }
   }
 
@@ -2432,8 +2685,39 @@ function draw(){
     icebrk:"🧊", thunder:"🌩️", basilisk:"🐍", demo:"🛠️", tempest:"🌪️",
     banshee:"😱", jugger:"🧱", lich:"💀", behemoth:"🐘", phoenix:"🦅",
     warden:"🗝️", ancient:"🏺", stormwyrm:"🐉", frostqn:"👑", infernal:"🔥",
-    treant:"🌲", overseer:"👁️", glacier:"🏔️", hellkite:"🐲", titan:"🗼"
+    treant:"🌲", overseer:"👁️", glacier:"🏔️", hellkite:"🐲", titan:"🗼",
+    bulwark_hound:"🦴", gloom_shepherd:"🕯️"
   };
+
+  // Rally glyph decals (always readable above ground)
+  const glyphs = [];
+  if (b && b.enemies){
+    for (const ent of b.enemies.values()){
+      if (Array.isArray(ent.rallyGlyphs)){
+        for (const gph of ent.rallyGlyphs){
+          glyphs.push({ ...gph, elite: ent.type === 'gloom_shepherd' && (ent.isElite || false) });
+        }
+      }
+    }
+  } else if (Array.isArray(state._rallyGlyphs)) {
+    glyphs.push(...state._rallyGlyphs);
+  }
+  for (const gph of glyphs){
+    const gx = gph.x*TILE, gy = gph.y*TILE - offY;
+    const rr = (gph.rT || 2) * TILE;
+    const t = Math.max(0, Math.min(1, (nowMs - (gph.bornAt || nowMs)) / Math.max(1,(gph.chargeMs || 1200))));
+    ctx.save();
+    ctx.globalAlpha = gph.elite ? 0.26 : 0.2;
+    ctx.fillStyle = gph.elite ? '#a855f7' : '#7c3aed';
+    ctx.beginPath(); ctx.arc(gx, gy, rr, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = gph.triggered ? '#fbbf24' : '#c4b5fd';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(gx, gy, rr*(0.68+0.22*t), -Math.PI/2, -Math.PI/2 + Math.PI*2*t); ctx.stroke();
+    ctx.font = '18px Segoe UI Emoji'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle = '#f8fafc'; ctx.fillText('🜂', gx, gy);
+    ctx.restore();
+  }
 
   if (a && b){
     interpEntity(a.enemies, b.enemies, a.at, b.at, targetMs, (id, pos) => {
@@ -2445,6 +2729,33 @@ function draw(){
       ctx.fillStyle="#111"; ctx.beginPath(); ctx.arc(X,Y,10,0,Math.PI*2); ctx.fill();
       const EMO = ENOJI[ent.type] || "⚫";
       ctx.font="16px Segoe UI Emoji"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(EMO, X, Y);
+
+      if (ent.type === 'bulwark_hound' && ent.coverLenT > 0){
+        const ux = ent.coverDirX || 0, uy = ent.coverDirY || 1;
+        const cx = (ent.coverX || (pos.x+0.5)) * TILE;
+        const cy = (ent.coverY || (pos.y+0.5)) * TILE - offY;
+        const len = (ent.coverLenT || 0) * TILE;
+        const wid = (ent.coverWidT || 0) * TILE;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(Math.atan2(uy, ux));
+        ctx.globalAlpha = 0.38;
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillRect(-len/2, -wid/2, len, wid);
+        ctx.globalAlpha = 0.9;
+        ctx.strokeStyle = '#e2e8f0';
+        ctx.setLineDash([6,5]);
+        ctx.strokeRect(-len/2, -wid/2, len, wid);
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+
+      if (ent.covered){
+        ctx.font='12px Segoe UI Emoji'; ctx.fillStyle='#e2e8f0'; ctx.fillText('🛡️', X+12, Y-12);
+      }
+      if (ent.packBuff){
+        ctx.font='12px Segoe UI Emoji'; ctx.fillStyle='#86efac'; ctx.fillText('🐺', X-12, Y-12);
+      }
 
       const hpNow = (typeof ent.hp === 'number') ? ent.hp : 1;
       const hpMax = (typeof ent.maxHp === 'number') ? ent.maxHp : Math.max(1, hpNow);
@@ -2462,6 +2773,8 @@ function draw(){
       ctx.fillStyle="#111"; ctx.beginPath(); ctx.arc(X,Y,10,0,Math.PI*2); ctx.fill();
       const EMO = ENOJI[e.type] || "⚫";
       ctx.font="16px Segoe UI Emoji"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(EMO, X, Y);
+      if (e._coveredByBulwark){ ctx.font='12px Segoe UI Emoji'; ctx.fillStyle='#e2e8f0'; ctx.fillText('🛡️', X+12, Y-12); }
+      if ((e._packBuffUntil||0) > nowMs){ ctx.font='12px Segoe UI Emoji'; ctx.fillStyle='#86efac'; ctx.fillText('🐺', X-12, Y-12); }
       const w=22, h=4, p = Math.max(0, Math.min(1, (e.hp||0) / (e.maxHp||e.hp||1)));
       ctx.fillStyle="#111"; ctx.fillRect(X-w/2, Y+14, w, h);
       ctx.fillStyle=p>0.5?"#22c55e":p>0.25?"#f59e0b":"#ef4444"; ctx.fillRect(X-w/2, Y+14, w*p, h);
@@ -2671,7 +2984,6 @@ for (let i=_fxSparks.length-1; i>=0; i--){
   </script>
 </body>
 </html>
-
 
 
 
