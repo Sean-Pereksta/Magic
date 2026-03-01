@@ -455,6 +455,7 @@ display:none !important;
 	</div>
 
 	<div class="hud-right">
+	  <button id="btnFullscreen" class="btn">⛶ Fullscreen</button>
 	  <button id="btnRecruit" class="btn primary">Recruit</button>
 	  <button id="btnFocus" class="btn">Focus</button>
 	  <button id="btnPause" class="btn">Pause</button>
@@ -831,6 +832,7 @@ eqWrap.remove();
 	hudSp: document.getElementById("hudSp"),
 
 	btnRecruit: document.getElementById("btnRecruit"),
+	btnFullscreen: document.getElementById("btnFullscreen"),
 	btnFocus: document.getElementById("btnFocus"),
 	btnPause: document.getElementById("btnPause"),
 	btnSave: document.getElementById("btnSave"),
@@ -3907,6 +3909,22 @@ async function loadGameAsync(){
   });
 
   // Buttons
+  function updateFullscreenButton(){
+	UI.btnFullscreen.textContent = document.fullscreenElement ? "🗗 Exit Fullscreen" : "⛶ Fullscreen";
+  }
+
+  UI.btnFullscreen.addEventListener("click", async ()=>{
+	try{
+	  if(document.fullscreenElement) await document.exitFullscreen();
+	  else await document.documentElement.requestFullscreen?.();
+	}catch(_err){
+	  toast("Fullscreen unavailable.");
+	}
+	updateFullscreenButton();
+  });
+  document.addEventListener("fullscreenchange", updateFullscreenButton);
+  updateFullscreenButton();
+
   UI.btnPause.addEventListener("click", ()=>{
     if(UI.perkModal.style.display === "flex") return;
 	paused=!paused;
@@ -5631,4 +5649,3 @@ updateForgeUI();
 </script>
 </body>
 </html>
-
