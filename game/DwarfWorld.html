@@ -456,6 +456,7 @@ display:none !important;
 
 	<div class="hud-right">
 	  <button id="btnRecruit" class="btn primary">Recruit</button>
+	  <button id="btnFocus" class="btn">Focus</button>
 	  <button id="btnPause" class="btn">Pause</button>
 	  <button id="btnSave" class="btn">Save</button>
 	  <button id="btnLoad" class="btn">Load</button>
@@ -614,6 +615,13 @@ display:none !important;
 
   <div id="toast"></div>
 
+  <div id="perkModal" style="display:none; position:fixed; inset:0; z-index:90; background:rgba(3,6,10,.72); align-items:center; justify-content:center;">
+	<div style="width:min(560px, calc(100vw - 24px)); border-radius:12px; border:1px solid rgba(255,255,255,.18); background:linear-gradient(180deg, rgba(18,22,30,.96), rgba(10,12,16,.96)); padding:14px; box-shadow:0 12px 28px rgba(0,0,0,.45);">
+	  <div id="perkTitle" style="font-weight:1000; margin-bottom:10px;">Choose a perk</div>
+	  <div id="perkChoices" style="display:grid; grid-template-columns:1fr; gap:8px;"></div>
+	</div>
+  </div>
+
 <script>
 (() => {
   // ============================================================
@@ -647,7 +655,7 @@ display:none !important;
 	legendary: 0.006,
   };
   const rarRank = (r)=>RARITY.indexOf(r);
-  
+
   const DEFAULT_GUARD_PATROL_R = 60; // fairly vast (tiles) — adjust as desired
 
 
@@ -822,6 +830,7 @@ eqWrap.remove();
 	hudSp: document.getElementById("hudSp"),
 
 	btnRecruit: document.getElementById("btnRecruit"),
+	btnFocus: document.getElementById("btnFocus"),
 	btnPause: document.getElementById("btnPause"),
 	btnSave: document.getElementById("btnSave"),
 	btnLoad: document.getElementById("btnLoad"),
@@ -875,6 +884,9 @@ eqWrap.remove();
 	invContent: document.getElementById("invContent"),
 
 	toast: document.getElementById("toast"),
+	perkModal: document.getElementById("perkModal"),
+	perkTitle: document.getElementById("perkTitle"),
+	perkChoices: document.getElementById("perkChoices"),
   };
 
   // ============================================================
@@ -908,6 +920,12 @@ eqWrap.remove();
 
   const tType = new Uint8Array(W*H);
   const tHp   = new Uint16Array(W*H);
+  const tSeen = new Uint8Array(W*H);
+  const tVis  = new Uint16Array(W*H);
+  let visMark = 1;
+  const FORT_VIS_R = 12;
+  const DW_VIS_R = 10;
+  let visTimer = 0;
 
   const fortress = {
 	x:(W/2)|0,
@@ -929,13 +947,41 @@ eqWrap.remove();
   function dist2(ax,ay,bx,by){ const dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; }
   function depthAt(x,y){ return manhattan(x,y, fortress.x, fortress.y); }
 
+  function stampVision(cx,cy,r){
+    const r2=r*r;
+    for(let dy=-r;dy<=r;dy++) for(let dx=-r;dx<=r;dx++){
+      if(dx*dx+dy*dy>r2) continue;
+      const x=cx+dx,y=cy+dy;
+      if(!inBounds(x,y)) continue;
+      const ii=idx(x,y);
+      tVis[ii]=visMark;
+      tSeen[ii]=1;
+    }
+  }
+
+  function refreshVisibility(dt=0){
+    visTimer -= dt;
+    if(visTimer > 0) return;
+    visTimer = 0.20;
+    visMark++;
+    if(visMark===0 || visMark>65534){
+      visMark=1;
+      tVis.fill(0);
+    }
+    stampVision(fortress.x, fortress.y, FORT_VIS_R);
+    for(const d of dwarves){
+      const bonus = (d.trait?.id==="keen_eye") ? 2 : 0;
+      stampVision(Math.round(d.x), Math.round(d.y), DW_VIS_R + bonus);
+    }
+  }
+
   function isDiggable(tt){
 	return tt===TILE_ROCK || tt===TILE_GOLD || tt===TILE_SAPPHIRE || tt===TILE_EMERALD || tt===TILE_DIAMOND || tt===TILE_SPAWNER_SEALED;
   }
   function isWalkable(tt){
 	return tt===TILE_EMPTY || tt===TILE_FORTRESS;
   }
-  
+
 
   function strataHp(depth){
 	const base = 16 + Math.floor(depth * 0.18);
@@ -1033,6 +1079,10 @@ eqWrap.remove();
 	spawners.length = 0;
 	enemies.length = 0;
 	groundLoot.length = 0;
+    tSeen.fill(0);
+    tVis.fill(0);
+    visMark = 1;
+    refreshVisibility(0);
   }
 
   // ============================================================
@@ -1178,7 +1228,7 @@ function isOre(tt){
  * Finds the best reachable ore within rangeTiles by BFS over walkable tiles.
  * Returns { ore:{x,y,tt}, stand:{x,y}, path:[{x,y}...] } or null.
  */
-function findPathableOreTargetAndPath(sx, sy, rangeTiles){
+function findPathableOreTargetAndPath(sx, sy, rangeTiles, oreFilter=null){
   if(!inBounds(sx,sy) || !isWalkable(tType[idx(sx,sy)])) return null;
 
   visitMark++;
@@ -1208,6 +1258,7 @@ function findPathableOreTargetAndPath(sx, sy, rangeTiles){
 	  const oi = idx(ox,oy);
 	  const tt = tType[oi];
 	  if(!isOre(tt)) continue;
+      if(oreFilter && !oreFilter(ox,oy)) continue;
 
 	  // value uses your existing ore valuation (depth-scaled)
 	  const val = tileCurrencyValue(tt, depthAt(ox,oy));
@@ -1476,16 +1527,55 @@ function findPathableOreTargetAndPath(sx, sy, rangeTiles){
   // ============================================================
   const dwarves = [];
   let dwarfCounter = 0;
+  const DWARF_FIRST = ["Borin","Dori","Nori","Kili","Brom","Durin","Gimli","Thrain","Rurik","Thorek","Bofur","Fundin"];
+  const DWARF_LAST = ["Ironvein","Stonefist","Deepdelver","Oakenshield","Goldfinder","Runehelm","Anvilborn","Frostbeard","Emberpick","Bronzebrow","Granitehand","Darkmine"];
+  const TRAITS = [
+    { id:"stout", name:"Stout", desc:"+12% max HP" },
+    { id:"battleborn", name:"Battleborn", desc:"+10% damage" },
+    { id:"keen_eye", name:"Keen Eye", desc:"+1 bow range, +8% bow rate" },
+    { id:"stonebreaker", name:"Stonebreaker", desc:"+15% mining power" },
+    { id:"quickfoot", name:"Quickfoot", desc:"+10% move speed" },
+    { id:"greedy", name:"Greedy", desc:"+20% currency deposit value" },
+    { id:"lucky", name:"Lucky", desc:"+10% item drop chance on credited kills" },
+  ];
+  const PERK_MILESTONES = [3,6,10,15];
+  const PERKS = {
+    cleave:{ id:"cleave", role:"fighter", name:"Cleave", desc:"Melee hits deal 35% splash to adjacent enemies." },
+    bulwark:{ id:"bulwark", role:"fighter", name:"Bulwark", desc:"+0.08 defense and +10% HP." },
+    sharpshooter:{ id:"sharpshooter", role:"fighter", name:"Sharpshooter", desc:"Bow +1.5 range and +15% damage." },
+    executioner:{ id:"executioner", role:"fighter", name:"Executioner", desc:"+20% damage vs enemies below 30% HP." },
+    tunnel_runner:{ id:"tunnel_runner", role:"miner", name:"Tunnel Runner", desc:"+20% move speed while carrying." },
+    ore_sense:{ id:"ore_sense", role:"miner", name:"Ore Sense", desc:"Ore scan range +10 tiles." },
+    efficient_strikes:{ id:"efficient_strikes", role:"miner", name:"Efficient Strikes", desc:"+18% mining rate." },
+    pack_mule:{ id:"pack_mule", role:"miner", name:"Pack Mule", desc:"+25% deposit value." },
+    tough_skin:{ id:"tough_skin", role:"general", name:"Tough Skin", desc:"+8% HP." },
+    steady_hands:{ id:"steady_hands", role:"general", name:"Steady Hands", desc:"+6% damage and +6% mining power." },
+    pathfinder:{ id:"pathfinder", role:"general", name:"Pathfinder", desc:"+8% speed." },
+  };
+  const PERK_POOLS = {
+    fighter:["cleave","bulwark","sharpshooter","executioner","tough_skin","steady_hands","pathfinder"],
+    miner:["tunnel_runner","ore_sense","efficient_strikes","pack_mule","tough_skin","steady_hands","pathfinder"],
+    general:["tough_skin","steady_hands","pathfinder"],
+  };
+  let pendingPerkDwarfId = null;
 
   function levelXpNeed(level){
 	return Math.round(20 + level*level*14);
+  }
+
+  function randomDwarfName(){
+    return `${pickRand(DWARF_FIRST)} ${pickRand(DWARF_LAST)}`;
+  }
+
+  function randomTrait(){
+    return { ...pickRand(TRAITS) };
   }
 
   function makeDwarf(){
 	dwarfCounter++;
 	return {
 	  id: uuid(),
-	  name: `Dwarf #${dwarfCounter}`,
+	  name: randomDwarfName(),
 	  x: fortress.x + randInt(-2,2),
 	  y: fortress.y + randInt(-2,2),
 
@@ -1520,16 +1610,24 @@ function findPathableOreTargetAndPath(sx, sy, rangeTiles){
 
 	  carrying: null,
 	  defense: 0,
+      trait: randomTrait(),
+      perks: [],
 	};
   }
 
+  function hasPerk(d, id){ return Array.isArray(d.perks) && d.perks.includes(id); }
+
   function applyDwarfStats(d){
+    if(!Array.isArray(d.perks)) d.perks = [];
 	let bonusHp = 0;
 	let defense = 0;
 	if(d.armor){
 	  bonusHp += d.armor.bonusHp|0;
 	  defense += d.armor.defense;
 	}
+    if(d.trait?.id === "stout") bonusHp += Math.round(d.baseMaxHp*0.12);
+    if(hasPerk(d, "bulwark")) { defense += 0.08; bonusHp += Math.round(d.baseMaxHp*0.10); }
+    if(hasPerk(d, "tough_skin")) bonusHp += Math.round(d.baseMaxHp*0.08);
 	d.maxHp = d.baseMaxHp + bonusHp + Math.round((d.level-1)*12);
 	d.hp = clamp(d.hp, 0, d.maxHp);
 
@@ -1537,21 +1635,79 @@ function findPathableOreTargetAndPath(sx, sy, rangeTiles){
 	d.dmg = Math.round(d.baseDmg * lvlMult);
 	d.miningPower = Math.round(d.baseMiningPower * (1 + (d.level-1)*0.1));
 	d.miningRate = 1.0 * (1 + (d.level-1)*0.055);
+    d.speed = 4.0;
 
 	if(d.weapon){
 	  d.dmg = d.weapon.dmg;
+      d.rangeBonus = 0;
+      d.rateBonus = 1;
+      if(d.trait?.id === "keen_eye" && d.weapon.ranged){ d.rangeBonus += 1.0; d.rateBonus *= 1.08; }
+      if(hasPerk(d, "sharpshooter") && d.weapon.ranged){ d.rangeBonus += 1.5; d.dmg = Math.round(d.dmg*1.15); }
 	}
 	if(d.pickaxe){
 	  d.miningPower = d.pickaxe.miningPower;
 	  d.miningRate = d.pickaxe.miningRate;
 	}
+    if(d.trait?.id === "battleborn") d.dmg = Math.round(d.dmg*1.10);
+    if(d.trait?.id === "stonebreaker") d.miningPower = Math.round(d.miningPower*1.15);
+    if(hasPerk(d, "steady_hands")){ d.dmg = Math.round(d.dmg*1.06); d.miningPower = Math.round(d.miningPower*1.06); }
+    if(hasPerk(d, "efficient_strikes")) d.miningRate *= 1.18;
+    if(d.trait?.id === "quickfoot") d.speed *= 1.10;
+    if(hasPerk(d, "pathfinder")) d.speed *= 1.08;
 
 	d.defense = clamp(defense, 0, 0.75);
+  }
+
+  function choosePerkOptions(d){
+    const role = d.weapon ? "fighter" : (d.pickaxe ? "miner" : "general");
+    const pool = (PERK_POOLS[role] || []).filter(id => !hasPerk(d,id));
+    const ids = [];
+    let tries = 0;
+    while(ids.length < 3 && pool.length && tries < 40){
+      const id = pickRand(pool);
+      if(!ids.includes(id)) ids.push(id);
+      tries++;
+    }
+    while(ids.length < 3){
+      const fallback = pickRand(["tough_skin","steady_hands","pathfinder"]);
+      if(!ids.includes(fallback)) ids.push(fallback);
+    }
+    return ids.map(id => PERKS[id]).filter(Boolean);
+  }
+
+  function showPerkModal(d){
+    const choices = choosePerkOptions(d);
+    pendingPerkDwarfId = d.id;
+    paused = true;
+    UI.btnPause.textContent = "Resume";
+    UI.perkTitle.textContent = `Choose a perk for ${d.name}`;
+    UI.perkChoices.innerHTML = "";
+    for(const perk of choices){
+      const b = document.createElement("button");
+      b.className = "btn";
+      b.style.height = "auto";
+      b.style.padding = "10px";
+      b.style.textAlign = "left";
+      b.innerHTML = `<b>${perk.name}</b><div class="tiny" style="margin-top:4px">${perk.desc}</div>`;
+      b.addEventListener("click", ()=>{
+        const dd = dwarves.find(x=>x.id===pendingPerkDwarfId);
+        if(dd && !hasPerk(dd, perk.id)) dd.perks.push(perk.id);
+        if(dd) applyDwarfStats(dd);
+        pendingPerkDwarfId = null;
+        UI.perkModal.style.display = "none";
+        paused = false;
+        UI.btnPause.textContent = "Pause";
+        markUI("dwarves","selected","hud");
+      });
+      UI.perkChoices.appendChild(b);
+    }
+    UI.perkModal.style.display = "flex";
   }
 
   function grantXp(d, amount){
 	d.xp += amount;
 	while(d.xp >= d.nextXp){
+      const prev = d.level;
 	  d.xp -= d.nextXp;
 	  d.level++;
 	  d.nextXp = levelXpNeed(d.level);
@@ -1562,6 +1718,7 @@ function findPathableOreTargetAndPath(sx, sy, rangeTiles){
 	  const savedHp = d.hp;
 	  applyDwarfStats(d);
 	  d.hp = Math.min(d.maxHp, savedHp + 8);
+      if(PERK_MILESTONES.some(m => prev < m && d.level >= m)) showPerkModal(d);
 	  markUI("dwarves","selected");
 	}
   }
@@ -1737,6 +1894,7 @@ const ENEMY_TYPES = [
 	summonerId: null,
 
 	noLoot: !!tpl.noLoot, // if you want: skip loot/currency drops in your death logic
+    lastHit: null,
   };
 }
 function randInCircle(r){
@@ -1857,11 +2015,39 @@ function onEnemyDeath(e){
 }
 
 
-  function rollLootDrop(depth){
-	const baseChance = clamp(0.08 + depth*0.0007, 0.08, 0.42);
+
+function handleEnemyDeath(e){
+  if(!e || e.deadHandled) return;
+  e.deadHandled = true;
+  onEnemyDeath(e);
+  if(e.noLoot) return;
+  const tx = Math.round(e.x), ty = Math.round(e.y);
+  let curMul = 1;
+  let itemGate = 1;
+  let luckyBonus = 0;
+  if(e.lastHit?.kind === "tower"){
+    curMul = 0.65;
+    itemGate = 0.55;
+  }else if(e.lastHit?.kind === "dwarf"){
+    const killer = dwarves.find(d=>d.id===e.lastHit.id);
+    if(killer?.trait?.id === "lucky") luckyBonus = 0.10;
+  }
+  const cur = rollCurrencyDrop(e.sourceDepth);
+  if(cur){
+    const payload = { ...cur, value: Math.max(1, Math.round(cur.value * curMul)) };
+    groundLoot.push({ id:uuid(), x:tx, y:ty, payload });
+  }
+  if(Math.random() <= itemGate){
+    const item = rollLootDrop(e.sourceDepth, luckyBonus);
+    if(item) groundLoot.push({ id:uuid(), x:tx, y:ty, payload:{ kind:"item", item } });
+  }
+}
+
+  function rollLootDrop(depth, extraChance=0){
+	const baseChance = clamp(0.08 + depth*0.0008 + extraChance, 0.08, 0.52);
 	if(Math.random() > baseChance) return null;
 
-	const bump = clamp(depth/240, 0, 2.6);
+	const bump = clamp(Math.pow(depth/210, 1.08), 0, 3.4);
 	const w = {
 	  common:    1.00 * Math.max(0.10, 1.0 - bump*0.35),
 	  uncommon:  0.32 * (1.0 + bump*0.65),
@@ -1881,9 +2067,9 @@ function onEnemyDeath(e){
   }
 
   function rollCurrencyDrop(depth){
-	const goldAmt = Math.max(1, Math.round(2 + depth*0.02 + randInt(0,4)));
+	const goldAmt = Math.max(1, Math.round(2 + depth*0.028 + randInt(0,5)));
 	const gemRoll = Math.random();
-	if(gemRoll < clamp(depth/650, 0, 0.18)){
+	if(gemRoll < clamp(0.02 + depth/520, 0.02, 0.26)){
 	  const g = Math.random();
 	  if(g < 0.55) return { kind:"currency", currency:"sapphire", value: 200 + Math.round(depth*0.10) };
 	  if(g < 0.85) return { kind:"currency", currency:"emerald",  value: 300 + Math.round(depth*0.14) };
@@ -1897,6 +2083,9 @@ function onEnemyDeath(e){
   // ============================================================
   const BUILD_NONE=0, BUILD_DEPOT=1, BUILD_ARROW=2, BUILD_CANNON=3, BUILD_FROST=4, BUILD_HEAL=5, BUILD_HASTE=6, BUILD_GUARD=7;
 let buildMode=BUILD_NONE;
+const FOCUS = { radius:16, respondR:40, duration:22, cooldown:28 };
+let focusPlacing = false;
+const focusOrder = { active:false, x:fortress.x, y:fortress.y, until:0, cdUntil:0 };
 
 const COST = { depot: 140, arrow: 95, cannon: 170, frost: 150, heal: 165, haste: 185, guard: 155 };
 
@@ -2005,11 +2194,12 @@ function addTower(type,x,y){
   // Mining / Tile interaction
   // ============================================================
   function tileCurrencyValue(tt, depth){
-	const bump = Math.round(depth*0.08);
+    const d = Math.max(0, depth);
+	const bump = Math.round(d*0.12 + Math.pow(d,1.08)*0.014);
 	if(tt===TILE_GOLD) return 18 + bump;
-	if(tt===TILE_SAPPHIRE) return 60 + bump*2;
-	if(tt===TILE_EMERALD) return 100 + bump*3;
-	if(tt===TILE_DIAMOND) return 170 + bump*4;
+	if(tt===TILE_SAPPHIRE) return 62 + Math.round(bump*2.25);
+	if(tt===TILE_EMERALD) return 108 + Math.round(bump*3.35 + Math.pow(d,1.1)*0.018);
+	if(tt===TILE_DIAMOND) return 182 + Math.round(bump*4.7 + Math.pow(d,1.12)*0.024);
 	return 0;
   }
 
@@ -2113,7 +2303,9 @@ function stepAlongPathScaled(ent, dt, mult){
   function nearestVisibleEnemy(x,y, maxR=13){
 	let best=null, bestD=1e9;
 	for(const e of enemies){
-	  const d = manhattan(x,y, Math.round(e.x), Math.round(e.y));
+      const ex=Math.round(e.x), ey=Math.round(e.y);
+      if(!inBounds(ex,ey) || tVis[idx(ex,ey)]!==visMark) continue;
+	  const d = manhattan(x,y, ex, ey);
 	  if(d<=maxR && d<bestD){ bestD=d; best=e; }
 	}
 	return best;
@@ -2291,6 +2483,23 @@ function guardWanderNearPost(d, post){
   d.path = null;
 }
 
+
+function dealDwarfEnemyDamage(d, e, baseDmg){
+  let out = baseDmg;
+  if(hasPerk(d,"executioner") && e.hp <= e.maxHp*0.3) out = Math.round(out*1.2);
+  applyEnemyDamage(e, out);
+  e.lastHit = { kind:"dwarf", id:d.id };
+  if(hasPerk(d,"cleave") && !(d.weapon?.ranged)){
+    for(const o of enemies){
+      if(o===e) continue;
+      if(dist2(e.x,e.y,o.x,o.y) <= 2.2*2.2){
+        applyEnemyDamage(o, Math.round(out*0.35));
+        o.lastHit = { kind:"dwarf", id:d.id };
+      }
+    }
+  }
+}
+
 // ===============================
 // UPDATED: updateDwarf (with guard logic fully wired)
 // ===============================
@@ -2395,7 +2604,10 @@ function updateDwarf(d, dt){
 
     if(gx === dp.x && gy === dp.y){
       if(d.carrying.kind === "currency"){
-        gold += Math.max(1, d.carrying.value|0);
+        let depMul = 1;
+        if(d.trait?.id === "greedy") depMul *= 1.2;
+        if(hasPerk(d, "pack_mule")) depMul *= 1.25;
+        gold += Math.max(1, Math.round((d.carrying.value||0) * depMul));
         markUI("hud");
       }else if(d.carrying.kind === "item"){
         addLootItem(d.carrying.item);
@@ -2417,42 +2629,42 @@ function updateDwarf(d, dt){
 
     // Weapon dwarves: fight first (or guard behavior if assigned)
     if(d.weapon){
+      const obeyFocus = dwarfShouldObeyFocus(d);
+      const focusThreat = obeyFocus ? nearestFocusThreat(gx, gy) : null;
 
       if(isGuardFighter){
-        // If NO enemies AND NO spawners exist anywhere -> idle/hold post
-        if(enemies.length === 0 && spawners.length === 0){
+        if(focusThreat){
+          d.state = "fight";
+          d.target = focusThreat;
+        }else if(obeyFocus){
+          d.state  = "guard";
+          d.target = { kind:"guard", id: guardPost.id };
+        }else if(enemies.length === 0 && spawners.length === 0){
           d.state  = "guard";
           d.target = { kind:"guard", id: guardPost.id };
         }else{
-          // Enemies/spawners exist -> hunt within a big patrol radius, otherwise hold post
           const tgt = nearestThreatGlobal(gx, gy);
-
-          if(tgt){
-            d.state  = "fight";
-            d.target = tgt; // { kind:"enemy"|"spawner", id }
-          }else{
-            d.state  = "guard";
-            d.target = { kind:"guard", id: guardPost.id };
-          }
+          if(tgt){ d.state = "fight"; d.target = tgt; }
+          else { d.state = "guard"; d.target = { kind:"guard", id: guardPost.id }; }
         }
+      }else if(focusThreat){
+        d.state = "fight";
+        d.target = focusThreat;
+      }else if(obeyFocus){
+        d.state = "focusPatrol";
+        d.target = { kind:"focus", x:focusOrder.x, y:focusOrder.y };
       }else{
-        // Normal fighter behavior (your original)
-        // Global pursuit: always hunt the closest enemy/spawner anywhere
 		const tgt = nearestThreatGlobal(gx, gy);
-		if(tgt){
-		  d.state  = "fight";
-		  d.target = tgt; // {kind:"enemy"|"spawner", id}
-		}else{
-		  d.state  = "idle";
-		  d.target = null;
-		}
-
+		if(tgt){ d.state = "fight"; d.target = tgt; }
+		else{ d.state = "idle"; d.target = null; }
       }
     }
 
     // Pure miners: always prefer PATHABLE ore within range
     else if(d.pickaxe){
-      const tgt = findPathableOreTargetAndPath(gx, gy, ORE_SCAN_RANGE);
+      const scanR = ORE_SCAN_RANGE + (hasPerk(d,"ore_sense") ? 10 : 0);
+      const focusOnly = dwarfShouldObeyFocus(d);
+      const tgt = findPathableOreTargetAndPath(gx, gy, scanR, focusOnly ? (x,y)=>inFocusCircle(x,y) : null);
       if(tgt){
         d.state  = "mineOre";
         d.target = {
@@ -2563,6 +2775,12 @@ else if(d.state === "mine"){
 else if(d.state === "mineOre"){
   // If we lost our path (blocked), we’ll rebuild when executing mineOre below.
 }
+else if(d.state === "focusPatrol"){
+  if(!focusOrder.active){ d.state = "idle"; d.path = null; }
+  else if(!d.path || d.path.length===0){
+    d.path = bfsPath(gx, gy, (x,y)=>manhattan(x,y,focusOrder.x,focusOrder.y)<=2, 220000) || null;
+  }
+}
 else if(d.state === "idle"){
   if(!d.path || d.path.length === 0){
     dwarfWander(d);
@@ -2581,8 +2799,8 @@ if(d.state === "fight" && d.weapon && d.atkTimer <= 0){
   const t = d.target || null;
   let acted = false;
 
-  const weaponRange = (typeof d.weapon.range === "number") ? d.weapon.range : 1.2;
-  const weaponRate  = (typeof d.weapon.rate  === "number" && d.weapon.rate > 0) ? d.weapon.rate : 1;
+  const weaponRange = ((typeof d.weapon.range === "number") ? d.weapon.range : 1.2) + (d.rangeBonus||0);
+  const weaponRate  = ((typeof d.weapon.rate  === "number" && d.weapon.rate > 0) ? d.weapon.rate : 1) * (d.rateBonus||1);
   const dmg          = (typeof d.dmg === "number" && Number.isFinite(d.dmg)) ? d.dmg : 1;
 
   // -------------------------------
@@ -2596,17 +2814,12 @@ if(d.state === "fight" && d.weapon && d.atkTimer <= 0){
 
       if(dd <= weaponRange + 0.01){
         d.atkTimer = 1 / weaponRate;
-        e.hp -= dmg;
+        dealDwarfEnemyDamage(d, e, dmg);
         acted = true;
 
         if(e.hp <= 0){
           grantXp(d, 22);
-          const cur = rollCurrencyDrop(e.sourceDepth);
-          groundLoot.push({ id:uuid(), x:tx, y:ty, payload:cur });
-
-          const item = rollLootDrop(e.sourceDepth);
-          if(item) groundLoot.push({ id:uuid(), x:tx, y:ty, payload:{ kind:"item", item } });
-
+          handleEnemyDeath(e);
           markUI("hud");
         }
       }
@@ -2676,16 +2889,11 @@ if(d.state === "fight" && d.weapon && d.atkTimer <= 0){
 
       if(dd <= weaponRange + 0.01){
         d.atkTimer = 1 / weaponRate;
-        targetEnemy.hp -= dmg;
+        dealDwarfEnemyDamage(d, targetEnemy, dmg);
 
         if(targetEnemy.hp <= 0){
           grantXp(d, 22);
-          const cur = rollCurrencyDrop(targetEnemy.sourceDepth);
-          groundLoot.push({ id:uuid(), x:tx, y:ty, payload:cur });
-
-          const item = rollLootDrop(targetEnemy.sourceDepth);
-          if(item) groundLoot.push({ id:uuid(), x:tx, y:ty, payload:{ kind:"item", item } });
-
+          handleEnemyDeath(targetEnemy);
           markUI("hud");
         }
       }
@@ -2783,7 +2991,10 @@ if(d.state === "fight" && d.weapon && d.atkTimer <= 0){
   // ============================================================
   if(d.state === "mine" && d.pickaxe && stopped){
     let dig = null;
-    if(d.target && d.target.kind === "ore"){
+    if(dwarfShouldObeyFocus(d) && focusOrder.active){
+      dig = pickAdjacentDigTargetToward(d, {x:focusOrder.x, y:focusOrder.y});
+    }
+    if(!dig && d.target && d.target.kind === "ore"){
       dig = pickAdjacentDigTargetToward(d, d.target);
     }
     if(!dig) dig = pickAdjacentDigTargetAny(d);
@@ -2979,6 +3190,8 @@ function nearestLivingEnemyGlobal(gx, gy){
   let best=null, bestD=1e18;
   for(const e of enemies){
     if(!isEnemyAlive(e)) continue;
+    const ex=Math.round(e.x), ey=Math.round(e.y);
+    if(!inBounds(ex,ey) || tVis[idx(ex,ey)]!==visMark) continue;
     const d = dist2(gx, gy, e.x, e.y);
     if(d < bestD){ bestD=d; best=e; }
   }
@@ -2991,6 +3204,37 @@ function nearestLivingSpawnerGlobal(gx, gy){
     if(!isSpawnerAlive(s)) continue;
     const d = dist2(gx, gy, s.x, s.y);
     if(d < bestD){ bestD=d; best=s; }
+  }
+  return best;
+}
+
+
+function nowSec(){ return performance.now()/1000; }
+
+function distToFocus2(x,y){ return dist2(x,y,focusOrder.x,focusOrder.y); }
+
+function inFocusCircle(x,y){
+  if(!focusOrder.active) return false;
+  return distToFocus2(x,y) <= FOCUS.radius*FOCUS.radius;
+}
+
+function dwarfShouldObeyFocus(d){
+  if(!focusOrder.active) return false;
+  return distToFocus2(d.x,d.y) <= FOCUS.respondR*FOCUS.respondR;
+}
+
+function nearestFocusThreat(gx,gy){
+  if(!focusOrder.active) return null;
+  let best=null, bestD=1e18;
+  for(const e of enemies){
+    if(!inFocusCircle(e.x,e.y)) continue;
+    const d2 = dist2(gx,gy,e.x,e.y);
+    if(d2<bestD){ bestD=d2; best={kind:"enemy", id:e.id}; }
+  }
+  for(const sp of spawners){
+    if(!inFocusCircle(sp.x,sp.y)) continue;
+    const d2 = dist2(gx,gy,sp.x,sp.y);
+    if(d2<bestD){ bestD=d2; best={kind:"spawner", id:sp.id}; }
   }
   return best;
 }
@@ -3166,21 +3410,25 @@ function bfsPathClosestApproach(sx, sy, tx, ty, limit){
 
     if(t.type==="frost"){
       best.speed *= (1 - t.slow);
-      best.hp -= t.dmg;
+      applyEnemyDamage(best, t.dmg);
+      best.lastHit = { kind:"tower", id:t.id };
 
     }else if(t.type==="cannon"){
-      best.hp -= t.dmg;
+      applyEnemyDamage(best, t.dmg);
+      best.lastHit = { kind:"tower", id:t.id };
       const splash2 = t.splash*t.splash;
       for(const e of enemies){
         if(e===best) continue;
         if(dist2(best.x,best.y,e.x,e.y) <= splash2){
-          e.hp -= Math.round(t.dmg*0.65);
+          applyEnemyDamage(e, Math.round(t.dmg*0.65));
+          e.lastHit = { kind:"tower", id:t.id };
         }
       }
 
     }else if(t.type==="guard"){
       // heavy hit + optional knockback/stun hooks
-      best.hp -= t.dmg;
+      applyEnemyDamage(best, t.dmg);
+      best.lastHit = { kind:"tower", id:t.id };
 
       // optional: knockback (only if you want it)
       if(t.knock) applyKnockback(best, t.x, t.y, t.knock);
@@ -3193,7 +3441,8 @@ function bfsPathClosestApproach(sx, sy, tx, ty, limit){
 
     }else{
       // default single-target (arrow)
-      best.hp -= t.dmg;
+      applyEnemyDamage(best, t.dmg);
+      best.lastHit = { kind:"tower", id:t.id };
     }
 
     markUI("hud");
@@ -3226,7 +3475,11 @@ function bfsPathClosestApproach(sx, sy, tx, ty, limit){
 	  }
 	}
 	for(let i=enemies.length-1;i>=0;i--){
-	  if(enemies[i].hp<=0) enemies.splice(i,1);
+      const e = enemies[i];
+	  if(e.hp<=0){
+        handleEnemyDeath(e);
+        enemies.splice(i,1);
+      }
 	}
 	for(let i=towers.length-1;i>=0;i--){
 	  if(towers[i].hp<=0) towers.splice(i,1);
@@ -3260,11 +3513,24 @@ function bfsPathClosestApproach(sx, sy, tx, ty, limit){
 	if(e.button!==0) return;
 	if(rightDragging) return;
 if(isGameOver) return;
+    if(UI.perkModal.style.display === "flex") return;
 
 	const rect=canvas.getBoundingClientRect();
 	const w = screenToWorld(e.clientX-rect.left, e.clientY-rect.top);
 	const tx=Math.round(w.x), ty=Math.round(w.y);
 	if(!inBounds(tx,ty)) return;
+
+    if(focusPlacing){
+      const now = nowSec();
+      focusPlacing = false;
+      focusOrder.active = true;
+      focusOrder.x = tx;
+      focusOrder.y = ty;
+      focusOrder.until = now + FOCUS.duration;
+      focusOrder.cdUntil = now + FOCUS.cooldown;
+      toast("Focus set.");
+      return;
+    }
 
 	if(buildMode!==BUILD_NONE){
 	  if(!canBuildAt(tx,ty)){ toast("Can't build there."); return; }
@@ -3335,7 +3601,11 @@ if(isGameOver) return;
   // ============================================================
   let recruitCount=0;
   function recruitCost(){
-	return Math.round(15 + recruitCount*2 + recruitCount*recruitCount);
+    const n = recruitCount;
+    const base = 18;
+    const linear = 6*n;
+    const soft = 45*Math.log2(1 + n*0.9);
+	return Math.round(base + linear + soft);
   }
 
   // ============================================================
@@ -3481,6 +3751,7 @@ async function saveGameAsync(){
       // store raw tile buffers (we'll gzip the whole save payload)
       tTypeB64: _u8ToB64(new Uint8Array(tType.buffer)),
       tHpB64:   _u8ToB64(new Uint8Array(tHp.buffer)),
+      tSeenB64: _u8ToB64(new Uint8Array(tSeen.buffer)),
     };
 
     const json = JSON.stringify(save);
@@ -3524,6 +3795,7 @@ async function loadGameAsync(){
     if(ver === 2){
       const tTypeU8 = _b64ToU8(save.tTypeB64);
       const tHpU8   = _b64ToU8(save.tHpB64);
+      const tSeenU8 = save.tSeenB64 ? _b64ToU8(save.tSeenB64) : null;
 
       if(tTypeU8.length !== tType.byteLength || tHpU8.length !== tHp.byteLength){
         toast("Save corrupted (tile data size mismatch).");
@@ -3531,6 +3803,9 @@ async function loadGameAsync(){
       }
       new Uint8Array(tType.buffer).set(tTypeU8);
       new Uint8Array(tHp.buffer).set(tHpU8);
+      tSeen.fill(0);
+      if(tSeenU8 && tSeenU8.length===tSeen.byteLength) new Uint8Array(tSeen.buffer).set(tSeenU8);
+      else tSeen.fill(0);
     }else{
       // original v1 fields
       const tTypeU8 = b64.b64ToU8(save.tType);
@@ -3541,6 +3816,7 @@ async function loadGameAsync(){
       }
       new Uint8Array(tType.buffer).set(tTypeU8);
       new Uint8Array(tHp.buffer).set(tHpU8);
+      tSeen.fill(0);
     }
 
     fortress.hp = save.fortress.hp;
@@ -3575,6 +3851,8 @@ async function loadGameAsync(){
       dd.think = 0;
       dd.miningTimer = dd.miningTimer || 0;
       dd.atkTimer = dd.atkTimer || 0;
+      dd.trait = dd.trait || randomTrait();
+      dd.perks = Array.isArray(dd.perks) ? dd.perks : [];
       applyDwarfStats(dd);
       dd.hp = clamp(d.hp ?? dd.hp, 0, dd.maxHp);
       dwarves.push(dd);
@@ -3582,6 +3860,9 @@ async function loadGameAsync(){
 
     setSelected(null,null);
     setBuildMode(BUILD_NONE);
+    tVis.fill(0);
+    visMark = 1;
+    refreshVisibility(0);
 
     toast("Loaded local save.");
     markUI("all");
@@ -3626,8 +3907,21 @@ async function loadGameAsync(){
 
   // Buttons
   UI.btnPause.addEventListener("click", ()=>{
+    if(UI.perkModal.style.display === "flex") return;
 	paused=!paused;
 	UI.btnPause.textContent = paused ? "Resume" : "Pause";
+  });
+
+  UI.btnFocus.addEventListener("click", ()=>{
+    if(isGameOver || UI.perkModal.style.display === "flex") return;
+    const now = nowSec();
+    if(now < focusOrder.cdUntil){
+      toast(`Focus cooling down (${Math.ceil(focusOrder.cdUntil-now)}s).`);
+      return;
+    }
+    focusPlacing = true;
+    toast("Place focus region.");
+    markUI("hud");
   });
 
   UI.btnRecruit.addEventListener("click", ()=>{
@@ -3888,6 +4182,17 @@ if(isGameOver) return;
 
 	UI.recruitNote.innerHTML = `Recruit cost: <b>${recruitCost()}g</b> (scales up)`;
 	UI.dwCount.textContent = `${dwarves.length}`;
+    const now = nowSec();
+    if(focusPlacing){
+      UI.btnFocus.textContent = "Focus (placing...)";
+      UI.btnFocus.disabled = true;
+    }else if(now < focusOrder.cdUntil){
+      UI.btnFocus.textContent = `Focus (${Math.ceil(focusOrder.cdUntil-now)}s)`;
+      UI.btnFocus.disabled = true;
+    }else{
+      UI.btnFocus.textContent = "Focus";
+      UI.btnFocus.disabled = false;
+    }
   }
 
  function updateForgeUI(){
@@ -3964,7 +4269,7 @@ const eqText = equipSummaryInlineText(d); // ex: "A:Rare W:Common P:Epic" (whate
 
 const sub = document.createElement("div");
 sub.className = "sub";
-sub.textContent = `Lv ${d.level} • HP ${Math.round(d.hp)}/${d.maxHp}` + (eqText ? ` • ${eqText}` : "");
+sub.textContent = `Lv ${d.level} • HP ${Math.round(d.hp)}/${d.maxHp} • Trait: ${d.trait?.name||"—"} • Perks: ${(d.perks||[]).length}` + (eqText ? ` • ${eqText}` : "");
 
 left.appendChild(top);
 left.appendChild(sub);
@@ -3978,7 +4283,7 @@ btn.appendChild(right);
 UI.dwarfList.appendChild(btn);
 }
 }
- 
+
 
   function updateSelectedUI(){
 	const d = getSelectedDwarf();
@@ -4007,6 +4312,7 @@ UI.dwarfList.appendChild(btn);
 	UI.selInfo.innerHTML =
 	  `<span class="pill">Lv ${d.level}</span> XP <b>${d.xp}</b>/<b>${d.nextXp}</b> • ` +
 	  `HP <b>${Math.round(d.hp)}</b>/<b>${d.maxHp}</b> • DEF <b>${Math.round((d.defense||0)*100)}%</b><br>` +
+      `Trait: <b>${d.trait?.name||"—"}</b> • Perks: <b>${(d.perks||[]).map(id=>PERKS[id]?.name||id).join(", ") || "—"}</b><br>` +
 	  `DMG <b>${d.dmg}</b> • Mining <b>${d.miningPower}</b> • ${held} • ${carry}`;
   }
 
@@ -4710,7 +5016,7 @@ function drawTowerSprite(t, p, ts){
 
 	ctx.restore();
 
-  } 
+  }
   else if(t.type==="haste"){
   // glow rune
   ctx.shadowColor = "rgba(120,220,255,.65)";
@@ -4922,13 +5228,24 @@ function draw(){
   const minY = clamp(Math.floor(cam.y - halfTilesY) - 2, 0, H-1);
   const maxY = clamp(Math.ceil (cam.y + halfTilesY) + 2, 0, H-1);
 
-  // tiles
+  // tiles + fog
   for(let y=minY;y<=maxY;y++){
 	for(let x=minX;x<=maxX;x++){
 	  const ii = idx(x,y);
 	  const tt = tType[ii];
 	  const p = worldToScreen(x,y);
+      const seen = tSeen[ii]===1;
+      const vis = tVis[ii]===visMark;
+      if(!seen){
+        ctx.fillStyle = "#030507";
+        ctx.fillRect(p.x,p.y,p.s,p.s);
+        continue;
+      }
 	  drawTile(p.x,p.y,p.s, tt, x,y, ii);
+      if(!vis){
+        ctx.fillStyle = "rgba(0,0,0,0.60)";
+        ctx.fillRect(p.x,p.y,p.s,p.s);
+      }
 	}
   }
 
@@ -4980,6 +5297,8 @@ function draw(){
   for(const d of depots){
 	const p=worldToScreen(d.x,d.y), ts=p.s;
 	ctx.save();
+    const vis = tVis[idx(d.x,d.y)]===visMark;
+    if(!vis) ctx.globalAlpha = 0.45;
 	ctx.shadowColor="rgba(160,255,205,.25)";
 	ctx.shadowBlur=ts*0.25;
 	ctx.fillStyle="rgba(160,255,205,0.95)";
@@ -4988,22 +5307,25 @@ function draw(){
 	ctx.fillStyle="rgba(0,0,0,.22)";
 	ctx.beginPath(); ctx.arc(p.x+ts*0.5,p.y+ts*0.5,ts*0.15,0,Math.PI*2); ctx.fill();
 	ctx.restore();
-	drawHealthBarWorld(d.x,d.y,1.1,d.hp,d.maxHp,"rgba(160,255,205,.92)");
+	if(tVis[idx(d.x,d.y)]===visMark) drawHealthBarWorld(d.x,d.y,1.1,d.hp,d.maxHp,"rgba(160,255,205,.92)");
   }
 
   // towers (NOW look like towers)
   for(const t of towers){
 	const p=worldToScreen(t.x,t.y), ts=p.s;
 	ctx.save();
+    const vis = tVis[idx(t.x,t.y)]===visMark;
+    if(!vis) ctx.globalAlpha = 0.5;
 	ctx.shadowColor="rgba(120,220,255,.18)";
 	ctx.shadowBlur=ts*0.22;
 	drawTowerSprite(t, p, ts);
 	ctx.restore();
-	drawHealthBarWorld(t.x,t.y,1.1,t.hp,t.maxHp,"rgba(120,255,170,.75)");
+	if(tVis[idx(t.x,t.y)]===visMark) drawHealthBarWorld(t.x,t.y,1.1,t.hp,t.maxHp,"rgba(120,255,170,.75)");
   }
 
-  // spawners (unchanged)
+  // spawners
   for(const s2 of spawners){
+    if(tVis[idx(s2.x,s2.y)]!==visMark) continue;
 	const p=worldToScreen(s2.x,s2.y), ts=p.s;
 	ctx.save();
 	ctx.shadowColor="rgba(190,130,255,.22)";
@@ -5017,8 +5339,9 @@ function draw(){
 	drawHealthBarWorld(s2.x,s2.y,1.3,s2.hp,s2.maxHp,"rgba(210,160,255,0.90)");
   }
 
-  // ground loot markers (unchanged)
+  // ground loot markers
   for(const L of groundLoot){
+    if(tVis[idx(L.x,L.y)]!==visMark) continue;
 	const p=worldToScreen(L.x,L.y), ts=p.s;
 	ctx.save();
 	if(L.payload.kind==="currency"){
@@ -5062,11 +5385,11 @@ function draw(){
 
   // enemies (SPRITES)
 for(const e of enemies){
+  const ex = Math.round(e.x), ey = Math.round(e.y);
+  if(!inBounds(ex,ey) || tVis[idx(ex,ey)]!==visMark) continue;
   const p = worldToScreen(e.x, e.y), ts = p.s;
 
   drawEnemySprite(e, p, ts);
-
-  // keep your HP bar
   drawHealthBarWorld(e.x, e.y, 1.15, e.hp, e.maxHp, "rgba(255,180,180,0.85)");
 }
 
@@ -5088,6 +5411,21 @@ for(const e of enemies){
 	  ctx.fillRect(p.x,p.y,ts,ts);
 	  ctx.restore();
 	}
+  }
+
+  if(focusOrder.active){
+    const p = worldToScreen(focusOrder.x, focusOrder.y);
+    ctx.save();
+    ctx.strokeStyle = "rgba(120,220,255,0.92)";
+    ctx.lineWidth = Math.max(2, p.s*0.14);
+    ctx.beginPath();
+    ctx.arc(p.x+p.s*0.5, p.y+p.s*0.5, FOCUS.radius*p.s, 0, Math.PI*2);
+    ctx.stroke();
+    const left = Math.max(0, Math.ceil(focusOrder.until - nowSec()));
+    ctx.fillStyle = "rgba(210,240,255,.95)";
+    ctx.font = `bold ${Math.max(12,p.s)}px system-ui`;
+    ctx.fillText(`${left}s`, p.x + p.s*0.8, p.y - p.s*0.4);
+    ctx.restore();
   }
 
   // vignette (unchanged)
@@ -5249,7 +5587,10 @@ tickGuardMaintenance(dt);
 	}
 
 	if(!paused && !isGameOver){
+      const n = nowSec();
+      if(focusOrder.active && n >= focusOrder.until) focusOrder.active = false;
 	  updateSpawnersAndCombat(dt);
+      refreshVisibility(dt);
 	}
 
 	// UI + toast cadence
