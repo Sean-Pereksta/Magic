@@ -387,6 +387,7 @@
       <div class="rightPills">
         <div class="pill">🗡️ <span id="weaponText">—</span></div>
         <div class="pill">📦 <span id="matsText">—</span></div>
+        <div class="pill">🪢 <span id="debuffText">—</span></div>
       </div>
     </div>
 
@@ -590,6 +591,7 @@
     const regionText = $("regionText");
     const weaponText = $("weaponText");
     const matsText = $("matsText");
+    const debuffText = $("debuffText");
     const bossHealthWrap = $("bossHealthWrap");
     const bossHealthName = $("bossHealthName");
     const bossHealthFill = $("bossHealthFill");
@@ -1057,16 +1059,16 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
         enemiesInner:["scarab","scorpion","sandwisp"], enemiesMid:["scarab","scorpion","sandwisp","duneStalker","sunPriest"], enemiesOuter:["scarab","scorpion","sandwisp","duneStalker","sunPriest","mortar","brute"] },
       { id:"forest", name:"Forest Wilds",     fog:0x224b31, sky:0x071018, tex:"forest", ground:0xffffff,
         props:{ tree:16, rock:8 }, drops:["hide","essence"], enemies:["boar","spriggan","spitter","goblin","mirebat"],
-        enemiesInner:["boar","spriggan","spitter","goblin","mirebat"], enemiesMid:["boar","spriggan","spitter","goblin","mirebat","wasp","treant"], enemiesOuter:["boar","spriggan","spitter","goblin","mirebat","wasp","treant","mortar","brute"] },
+        enemiesInner:["boar","spriggan","spitter","goblin","mirebat"], enemiesMid:["boar","spriggan","spitter","goblin","mirebat","wasp","treant","briarBinder","thornWarden"], enemiesOuter:["boar","spriggan","spitter","goblin","mirebat","wasp","treant","mortar","brute","briarBinder","thornWarden"] },
       { id:"snow",   name:"Frost Crown",      fog:0xbcd5ff, sky:0x050812, tex:"snow", ground:0xffffff,
         props:{ pine:16, rock:12 }, drops:["iron","crystal"], enemies:["icegolem","wolf","frostling"],
-        enemiesInner:["icegolem","wolf","frostling"], enemiesMid:["icegolem","wolf","frostling","iceWraith","yeti"], enemiesOuter:["icegolem","wolf","frostling","iceWraith","yeti","drone","shardling"] },
+        enemiesInner:["icegolem","wolf","frostling"], enemiesMid:["icegolem","wolf","frostling","iceWraith","yeti","iceSkater"], enemiesOuter:["icegolem","wolf","frostling","iceWraith","yeti","drone","shardling","iceSkater"] },
       { id:"alien",  name:"Neon Bloom",       fog:0x5be3ff, sky:0x070610, tex:"alien", ground:0xffffff,
         props:{ crystal:18, shroom:12 }, drops:["crystal","essence"], enemies:["drone","floater","shardling","skitter"],
         enemiesInner:["drone","floater","shardling","skitter"], enemiesMid:["drone","floater","shardling","skitter","prismCaster","sentinel"], enemiesOuter:["drone","floater","shardling","skitter","prismCaster","sentinel","mortar","hexer"] },
       { id:"hell",   name:"Ash & Ember",      fog:0x4a0010, sky:0x050306, tex:"hell",  ground:0xffffff,
         props:{ spire:16, lava:10 }, drops:["ember","iron"], enemies:["imp","brute","mortar"],
-        enemiesInner:["imp","brute","mortar"], enemiesMid:["imp","brute","mortar","emberHound","hexer"], enemiesOuter:["imp","brute","mortar","emberHound","hexer","duneStalker","sentinel"] },
+        enemiesInner:["imp","brute","mortar"], enemiesMid:["imp","brute","mortar","emberHound","hexer","chainWarden"], enemiesOuter:["imp","brute","mortar","emberHound","hexer","duneStalker","sentinel","chainWarden"] },
       { id:"city",   name:"Skyline City",     fog:0x5b6472, sky:0x06080f, tex:"city",  ground:0xffffff,
         props:{ tower:18, road:1 }, drops:["iron","essence"], enemies:["drone","goblin","spitter"],
         enemiesInner:["drone","goblin","spitter"], enemiesMid:["drone","goblin","spitter","sentinel"], enemiesOuter:["drone","goblin","spitter","sentinel","prismCaster"] },
@@ -1590,7 +1592,7 @@ function tickChunks(){
     const citySoldiers = []; // {x,z,homeX,homeZ,homeChunkKey,mesh,hp,cd,patrolA,patrolR,followPlayer}
     const cityTurrets = [];
     let worldQuest = null;
-    const QUEST_TARGETS = ["scarab","scorpion","sandwisp","boar","spriggan","spitter","goblin","wolf","frostling","drone","shardling","imp","brute","mortar"];
+    const QUEST_TARGETS = ["scarab","scorpion","sandwisp","boar","spriggan","spitter","goblin","wolf","frostling","drone","shardling","imp","brute","mortar","briarBinder","thornWarden","iceSkater","chainWarden"];
 
     const FORGE_ACTIVE_MAX = 18;          // how many full forge meshes to keep alive
 const FORGE_ACTIVE_DIST = 320;        // only consider forges within this distance
@@ -2297,6 +2299,9 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       orbitBladesCd: 0,
       orbitBladesT: 0,
       sentryPylonCd: 0,
+      tetherT: 0,
+      tetherMul: 1.0,
+      tetherSourceId: -1,
     };
 
     function resetRun(newSeed=true){
@@ -2311,13 +2316,13 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       me.speedMul=1.0; me.damageMul=1.0; me.rangeMul=1.0; me.hpRegen=1.4;
 
       me.weapon="Arc Bolt";
-      me.slowT=0; me.slowMul=1.0; me.turnSlowT=0;
+      me.slowT=0; me.slowMul=1.0; me.turnSlowT=0; me.tetherT=0; me.tetherMul=1.0; me.tetherSourceId=-1;
       me.ownedWeapons = new Set(["Arc Bolt"]);
       me.mats = { iron:0, hide:0, essence:0, crystal:0, ember:0 };
       me.weaponMods = {}; me.modItems = []; me.modDust = 0; me.cityRep = {}; me.cityLeader = {}; me.cityUpgrades = {};
 
       me.abil = { poisonAura:false, lifeGrip:false, meteorite:false, firebolt:false, turretTotem:false, shockNova:false, riftSpear:false, overheat:false, gravitySnare:false, orbitDrones:false, decoyTotem:false, spiritHounds:false, markShatter:false, lastStandShell:false, orbitBlades:false, sentryPylon:false };
-      me.fireCd=0; me.fireboltCd=0; me.lifeGripT=0; me.meteorT=0; me.turretCd=0; me.shockNovaCd=0; me.riftSpearCd=0; me.overheatCd=0; me.overheatT=0; me.gravitySnareCd=0; me.orbitDronesCd=0; me.orbitDronesT=0; me.decoyCd=0; me.spiritHoundsCd=0; me.markCd=0; me.markTargetId=-1; me.markT=0; me.lastStandCd=0; me.shellAbsorb=0; me.orbitBladesCd=0; me.orbitBladesT=0; me.sentryPylonCd=0;
+      me.fireCd=0; me.fireboltCd=0; me.lifeGripT=0; me.meteorT=0; me.turretCd=0; me.shockNovaCd=0; me.riftSpearCd=0; me.overheatCd=0; me.overheatT=0; me.gravitySnareCd=0; me.orbitDronesCd=0; me.orbitDronesT=0; me.decoyCd=0; me.spiritHoundsCd=0; me.markCd=0; me.markTargetId=-1; me.markT=0; me.lastStandCd=0; me.shellAbsorb=0; me.orbitBladesCd=0; me.orbitBladesT=0; me.sentryPylonCd=0; me.tetherT=0; me.tetherMul=1.0; me.tetherSourceId=-1;
       me.lastHitAt = -999;
 
       alive = true;
@@ -2480,6 +2485,10 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
     const decoys = [];      // {mesh,life,x,z,radius}
     const sentryPylons = []; // {mesh,life,beam}
     const spiritHounds = []; // {mesh,life,spd,biteCd,rendStacks,targetId,trailCd}
+    const activeVines = []; // {ownerId,targetId,line,glow,life,maxLife,hp,maxHp,breakDist,pull,strafeMul}
+    const activeChainTraps = []; // {ownerId,a,b,line,glow,shadow,life,maxLife,stun,grace,armed,pulse}
+    const ENEMY_ACTIVE_CAPS = { briarBinder:3, thornWarden:2, iceSkater:5, chainWarden:2 };
+    const GLOBAL_CHAIN_CAP = 3;
 
     const ALIEN_BOSS_SPAWN_MIN = 240; // seconds in alien region
     const ALIEN_BOSS_SPAWN_MAX = 360;
@@ -3273,7 +3282,8 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
     boar:0x8b5a3a, spriggan:0x22c55e, spitter:0x84cc16,
     wolf:0x64748b, icegolem:0xdbeafe, frostling:0xbfdbfe,
     drone:0x22d3ee, floater:0xa78bfa, shardling:0xff3ad7,
-    imp:0xff2a2a, brute:0xdc2626, mortar:0xf97316, goblin:0x65a30d, mirebat:0x4ade80, skitter:0x67e8f9
+    imp:0xff2a2a, brute:0xdc2626, mortar:0xf97316, goblin:0x65a30d, mirebat:0x4ade80, skitter:0x67e8f9,
+    briarBinder:0x4d7c0f, thornWarden:0x14532d, iceSkater:0x7dd3fc, chainWarden:0xfb7185
   };
   const typeTint = TYPE_TINT[type] ?? baseCol;
   g.userData.typeTint = typeTint;
@@ -4106,6 +4116,10 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       if(type==="sentinel"){ baseHp=68; baseDmg=14; spd=1.9; range=12.5; kind="ranged"; }
       if(type==="emberHound"){ baseHp=26; baseDmg=11; spd=3.6; range=1.2; kind="melee"; }
       if(type==="hexer"){ baseHp=38; baseDmg=12; spd=2.15; range=15; kind="ranged"; }
+      if(type==="briarBinder"){ baseHp=56; baseDmg=7; spd=2.15; range=13.5; kind="binder"; }
+      if(type==="thornWarden"){ baseHp=82; baseDmg=12; spd=1.7; range=2.0; kind="warden"; }
+      if(type==="iceSkater"){ baseHp=58; baseDmg=12; spd=2.6; range=1.5; kind="skater"; }
+      if(type==="chainWarden"){ baseHp=76; baseDmg=11; spd=1.9; range=15.5; kind="chain"; }
 
       const band = dangerBandAt(x,z);
       const levelDelta = Math.max(0, level-1);
@@ -4161,6 +4175,29 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         data: { specialCd: 2.2 + Math.random()*2.5, splitDone:false, eliteBurst:0, eliteDashCd:1.9+Math.random()*2.1 },
       };
 
+      if(type==="briarBinder"){
+        e.data.tetherCd = 1.2 + Math.random()*1.6;
+        e.data.tetherState = "idle";
+      }
+      if(type==="thornWarden"){
+        e.data.shieldCycle = 3.5 + Math.random()*2.5;
+        e.data.shieldWind = 0;
+        e.data.shieldActiveT = 0;
+        e.data.shieldDir = 0;
+      }
+      if(type==="iceSkater"){
+        e.data.slideT = 0;
+        e.data.slideCommit = 0;
+        e.data.slideVX = 0;
+        e.data.slideVZ = 0;
+        e.data.plantT = 0;
+      }
+      if(type==="chainWarden"){
+        e.data.chainCd = 1.8 + Math.random()*1.5;
+        e.data.chainWind = 0;
+        e.data.chainPlan = null;
+      }
+
       if(elite){
         mesh.scale.multiplyScalar(1.08 + Math.random()*0.07);
         const ring = new THREE.Mesh(new THREE.RingGeometry(0.8,1.1,20), new THREE.MeshBasicMaterial({color:0xfde68a,transparent:true,opacity:0.5,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false}));
@@ -4199,6 +4236,12 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       const types = band.id==="outer" ? (reg.enemiesOuter||reg.enemiesMid||reg.enemies) : (band.id==="mid" ? (reg.enemiesMid||reg.enemies) : (reg.enemiesInner||reg.enemies));
       for(let i=0;i<packSize;i++){
         const t = types[(rnd()*types.length)|0];
+        const tCap = ENEMY_ACTIVE_CAPS[t] || 999;
+        if(tCap < 999){
+          let active = 0;
+          for(const ex of enemies){ if(ex.hp>0 && ex.type===t) active++; }
+          if(active >= tCap) continue;
+        }
         const a = rnd()*Math.PI*2;
         const r = 3 + rnd()*8; // spacing
         const x = cx + Math.cos(a)*r;
@@ -4520,6 +4563,45 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       return dangerBandAt(x,z);
     }
 
+    function segCircleIntersect(ax,az,bx,bz,cx,cz,cr){
+      const abx = bx-ax, abz = bz-az;
+      const acx = cx-ax, acz = cz-az;
+      const denom = abx*abx + abz*abz || 0.0001;
+      let t = (acx*abx + acz*abz)/denom;
+      t = Math.max(0, Math.min(1, t));
+      const px = ax + abx*t, pz = az + abz*t;
+      const dx = cx-px, dz = cz-pz;
+      return (dx*dx + dz*dz) <= cr*cr;
+    }
+
+    function releaseTether(v){
+      if(!v) return;
+      if(v.line) world.remove(v.line);
+      if(v.glow) world.remove(v.glow);
+      const idx = activeVines.indexOf(v);
+      if(idx>=0) activeVines.splice(idx,1);
+    }
+
+    function spawnChainTrap(owner, a, b){
+      if(activeChainTraps.length >= GLOBAL_CHAIN_CAP) return;
+      const ay = heightAt(a.x,a.z,regionAt(a.x,a.z).id)+0.72;
+      const by = heightAt(b.x,b.z,regionAt(b.x,b.z).id)+0.72;
+      const line = spawnTelegraphLine(a.x,a.z,b.x,b.z,0xfca5a5,0.28);
+      line.position.y = (ay+by)*0.5;
+      line.renderOrder = 9;
+      line.material.opacity = 0.95;
+      const glow = spawnTelegraphLine(a.x,a.z,b.x,b.z,0xfb7185,0.44);
+      glow.position.y = line.position.y + 0.02;
+      glow.renderOrder = 10;
+      glow.material.opacity = 0.45;
+      const shadow = spawnTelegraphLine(a.x,a.z,b.x,b.z,0x111827,0.52);
+      shadow.position.y = line.position.y - 0.22;
+      shadow.material.opacity = 0.24;
+      const trap = { ownerId:owner.id, a:{x:a.x,z:a.z,y:ay}, b:{x:b.x,z:b.z,y:by}, line, glow, shadow, life:2.0, maxLife:2.0, stun:0.48, grace:0.06, armed:false, pulse:0 };
+      activeChainTraps.push(trap);
+      playTelegraphSfx(130,0.2,"square");
+    }
+
     function enemyWindupFor(e){
       const b = e.dangerBand;
       if(e.type==="scorpion") return 0.72;
@@ -4528,6 +4610,10 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       if(e.type==="brute") return 0.78;
       if(e.kind==="mortar") return 0.9;
       if(e.kind==="lobber") return 0.75;
+      if(e.kind==="binder") return 0.62;
+      if(e.kind==="warden") return 0.52;
+      if(e.kind==="skater") return 0.26;
+      if(e.kind==="chain") return 0.66;
       if(e.kind==="ranged") return 0.6;
       return 0.52;
     }
@@ -4563,6 +4649,12 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
     rad = 0.35;
     slow = Math.max(slow, 0.28);
     kind = opts.kind ?? "iceShard";
+  }else if(e.type==="briarBinder"){
+    speed = opts.speed ?? 12.8;
+    color = 0x84cc16;
+    life = opts.life ?? 2.1;
+    rad = 0.32;
+    kind = opts.kind ?? "vineShot";
   }
 
   // Build a richer projectile model (group)
@@ -4619,6 +4711,16 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
     addGlow(0.65, 0.30);
     grp.userData.spin = 9.0;
   }
+  else if(kind==="vineShot"){
+    const shard = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.08,0.08,0.7,8),
+      new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.0, roughness:0.4, transparent:true, opacity:0.92 })
+    );
+    shard.rotation.z = Math.PI*0.5;
+    grp.add(shard);
+    addGlow(0.5, 0.28);
+    grp.userData.spin = 5.5;
+  }
   else if(kind==="iceShard"){
     const shard = new THREE.Mesh(
       new THREE.ConeGeometry(0.14, 0.55, 10),
@@ -4671,7 +4773,8 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
     aoe,
     puddle,
     slow,
-    spin: grp.userData.spin || 0
+    spin: grp.userData.spin || 0,
+    ownerId: e.id
   });
 }
 
@@ -4986,6 +5089,14 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
 
     function dealDamageEnemy(e, dmg, opts={}){
       if(me.abil.markShatter && me.markT>0 && me.markTargetId===e.id) dmg *= 1.5;
+      if(e.type==="briarBinder"){
+        for(const v of activeVines){
+          if(v.ownerId===e.id){
+            v.hp -= dmg*0.8;
+            if(v.hp<=0) releaseTether(v);
+          }
+        }
+      }
       e.hp -= dmg;
       if(e.hp <= 0){
         e.hp = 0;
@@ -5884,7 +5995,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         if(me.slowT<=0) me.slowMul = 1.0;
       }
       if(me.turnSlowT>0) me.turnSlowT = Math.max(0, me.turnSlowT-dt);
-      const speed = baseSpeed * me.speedMul * me.slowMul;
+      const speed = baseSpeed * me.speedMul * me.slowMul * (me.tetherMul||1.0);
 
       if(mobile.enabled){
         mx = mobile.moveX;
@@ -5969,6 +6080,64 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       const sepR2 = sepR*sepR;
       const farEnemyDespawn2 = FAR_ENEMY_DESPAWN_DIST * FAR_ENEMY_DESPAWN_DIST;
 
+      me.tetherT = Math.max(0, (me.tetherT||0) - dt);
+      me.tetherMul = me.tetherT>0 ? (me.tetherMul||0.65) : 1.0;
+
+      for(let vi=activeVines.length-1; vi>=0; vi--){
+        const v = activeVines[vi];
+        v.life -= dt;
+        const owner = enemies.find(en=>en.id===v.ownerId && en.hp>0);
+        if(!owner || v.life<=0 || v.hp<=0){ releaseTether(v); continue; }
+        const ox=owner.mesh.position.x, oz=owner.mesh.position.z;
+        const px=me.x, pz=me.z;
+        const dy = owner.mesh.position.y+0.5;
+        const d = Math.hypot(px-ox,pz-oz) || 1;
+        if(d > v.breakDist){ releaseTether(v); me.tetherT = 0; me.tetherMul = 1.0; continue; }
+        const pull = v.pull*dt;
+        me.vx += ((ox-px)/d)*pull;
+        me.vz += ((oz-pz)/d)*pull;
+        me.tetherT = Math.max(me.tetherT, v.life);
+        me.tetherMul = Math.min(me.tetherMul||1, v.strafeMul);
+        if(v.line){
+          const mx=(ox+px)*0.5, mz=(oz+pz)*0.5;
+          const seg = Math.max(0.001, Math.hypot(px-ox,pz-oz));
+          v.line.geometry.dispose();
+          v.line.geometry = new THREE.PlaneGeometry(0.22, seg);
+          v.line.rotation.x = -Math.PI/2;
+          v.line.rotation.z = Math.atan2(px-ox,pz-oz);
+          v.line.position.set(mx,dy,mz);
+          const pulse = (v.life<0.35 || v.hp<Math.max(4,v.maxHp*0.35)) ? (0.45+0.45*Math.sin(now*22)) : (0.2+0.2*Math.sin(now*10));
+          v.line.material.opacity = 0.6 + pulse*0.4;
+          if(v.glow){ v.glow.position.copy(v.line.position); v.glow.rotation.copy(v.line.rotation); v.glow.material.opacity = 0.25 + pulse*0.3; }
+        }
+      }
+
+      for(let ci=activeChainTraps.length-1; ci>=0; ci--){
+        const c = activeChainTraps[ci];
+        c.life -= dt;
+        c.grace -= dt;
+        if(c.life<=0){
+          if(c.line) world.remove(c.line);
+          if(c.glow) world.remove(c.glow);
+          if(c.shadow) world.remove(c.shadow);
+          activeChainTraps.splice(ci,1);
+          continue;
+        }
+        c.pulse += dt;
+        const pulse = 0.5 + 0.5*Math.sin(c.pulse*8.2);
+        if(c.line) c.line.material.opacity = 0.72 + pulse*0.24;
+        if(c.glow) c.glow.material.opacity = 0.22 + pulse*0.26;
+        if(c.shadow) c.shadow.material.opacity = 0.18 + pulse*0.08;
+        if(c.grace<=0) c.armed = true;
+        if(c.armed && segCircleIntersect(c.a.x,c.a.z,c.b.x,c.b.z,me.x,me.z,0.78)){
+          me.stunT = Math.max(me.stunT||0, c.stun);
+          me.slowT = Math.max(me.slowT, c.stun+0.2);
+          me.slowMul = Math.min(me.slowMul, 0.45);
+          playTelegraphSfx(220,0.12,"square");
+          c.armed = false;
+        }
+      }
+
       for(const e of enemies){
         if(e.hp<=0) continue;
 
@@ -5980,6 +6149,15 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
           if(e.tele?.marker){ world.remove(e.tele.marker); }
           if(e.tele?.ring){ world.remove(e.tele.ring); }
           if(e.data?.chargeState?.line){ world.remove(e.data.chargeState.line); }
+          for(let vi=activeVines.length-1;vi>=0;vi--){ if(activeVines[vi].ownerId===e.id) releaseTether(activeVines[vi]); }
+          for(let ci=activeChainTraps.length-1;ci>=0;ci--){
+            if(activeChainTraps[ci].ownerId===e.id){
+              if(activeChainTraps[ci].line) world.remove(activeChainTraps[ci].line);
+              if(activeChainTraps[ci].glow) world.remove(activeChainTraps[ci].glow);
+              if(activeChainTraps[ci].shadow) world.remove(activeChainTraps[ci].shadow);
+              activeChainTraps.splice(ci,1);
+            }
+          }
           e.tele = null;
           e.data.chargeState = null;
           continue;
@@ -6141,6 +6319,10 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         if(e.type==="sandwisp") want = 11.5;
         if(e.type==="goblin") want = 13.5;
         if(e.type==="mirebat") want = 9.2;
+        if(e.type==="briarBinder") want = 12.0;
+        if(e.type==="thornWarden") want = 2.4;
+        if(e.type==="chainWarden") want = 11.0;
+        if(e.type==="iceSkater") want = 1.0;
         const go = (d > want) ? 1 : 0;
 
         // attacks
@@ -6211,6 +6393,48 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
           e.data.shieldT -= dt;
           e.data.shieldDir += dt*0.7;
         }
+        if(e.type==="thornWarden"){
+          e.data.shieldCycle = (e.data.shieldCycle||0) - dt;
+          if((e.data.shieldWind||0)>0){
+            e.data.shieldWind -= dt;
+            if(e.tele?.ring){
+              e.tele.ring.position.set(e.mesh.position.x, e.yBase+0.14, e.mesh.position.z);
+              e.tele.ring.rotation.y = e.data.shieldDir||0;
+              e.tele.ring.material.opacity = 0.35 + 0.25*Math.sin(now*20);
+            }
+            if(e.data.shieldWind<=0){
+              e.data.shieldActiveT = 1.0 + Math.random()*0.5;
+              e.data.shieldDir = Math.atan2(me.x-e.mesh.position.x, me.z-e.mesh.position.z);
+              playTelegraphSfx(360,0.12,"square");
+            }
+          }else if((e.data.shieldActiveT||0)>0){
+            e.data.shieldActiveT -= dt;
+            if(!e.tele?.ring){
+              const ring = spawnTelegraphLine(e.mesh.position.x,e.mesh.position.z,e.mesh.position.x+Math.sin(e.data.shieldDir)*2.2,e.mesh.position.z+Math.cos(e.data.shieldDir)*2.2,0x86efac,1.6);
+              e.tele = Object.assign({}, e.tele, { ring });
+            }
+            if(e.tele?.ring){
+              const tx=e.mesh.position.x+Math.sin(e.data.shieldDir)*1.2;
+              const tz=e.mesh.position.z+Math.cos(e.data.shieldDir)*1.2;
+              e.tele.ring.geometry.dispose();
+              e.tele.ring.geometry = new THREE.PlaneGeometry(2.8, 1.8);
+              e.tele.ring.rotation.x = -Math.PI/2;
+              e.tele.ring.rotation.z = Math.atan2(tx-e.mesh.position.x,tz-e.mesh.position.z);
+              e.tele.ring.position.set((e.mesh.position.x+tx)*0.5,e.yBase+0.16,(e.mesh.position.z+tz)*0.5);
+              e.tele.ring.material.opacity = 0.45;
+            }
+          }else if(e.data.shieldCycle<=0){
+            e.data.shieldCycle = 5.5 + Math.random()*1.4;
+            e.data.shieldWind = 0.45 + Math.random()*0.15;
+            e.data.shieldDir = Math.atan2(me.x-e.mesh.position.x, me.z-e.mesh.position.z);
+            if(e.tele?.ring){ world.remove(e.tele.ring); e.tele=null; }
+            const ring = spawnTelegraphLine(e.mesh.position.x,e.mesh.position.z,e.mesh.position.x+Math.sin(e.data.shieldDir)*2.4,e.mesh.position.z+Math.cos(e.data.shieldDir)*2.4,0xbbf7d0,1.4);
+            ring.material.opacity = 0.35;
+            e.tele = { ring };
+            playTelegraphSfx(320,0.11,"triangle");
+          }
+          if((e.data.shieldActiveT||0)<=0 && (e.data.shieldWind||0)<=0 && e.tele?.ring){ world.remove(e.tele.ring); e.tele = null; }
+        }
 
         if(e.state==="chase"){
           if(e.elite && e.kind==="melee"){
@@ -6240,9 +6464,66 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
             e.state="recover";
             e.wind=2.0;
           }
+
+          if(e.type==="briarBinder" && e.cd<=0 && d<=e.range){
+            e.state="windup";
+            e.wind = 0.55 + Math.random()*0.15;
+            e.cd = 6.0 + Math.random()*2.0;
+            const root = makeMarker(0x65a30d);
+            root.scale.set(0.72,0.72,0.72);
+            root.position.set(ex, e.yBase+0.05, ez);
+            world.add(root);
+            const ln = spawnTelegraphLine(ex,ez,me.x,me.z,0x86efac,0.45);
+            e.tele = { marker:root, line:ln, bindShot:true };
+            playTelegraphSfx(180,0.14,"sawtooth");
+          }
+
+          if(e.type==="chainWarden" && e.cd<=0){
+            e.data.chainCd = (e.data.chainCd||0) - dt;
+            if(e.data.chainCd<=0 && activeChainTraps.length<GLOBAL_CHAIN_CAP){
+              const patterns = ["offset","gate","zone","angle", (me.level>=30?"triangle":"gate")];
+              const pat = patterns[(Math.random()*patterns.length)|0];
+              const ang = Math.atan2(me.vx||Math.sin(now*0.001), me.vz||Math.cos(now*0.001));
+              const r = 120 + Math.random()*120;
+              let a1 = ang + Math.PI*0.5 + (Math.random()-0.5)*0.8;
+              if(pat==="gate") a1 = ang + (Math.random()-0.5)*0.45;
+              if(pat==="zone") a1 = Math.random()*Math.PI*2;
+              const a2 = a1 + Math.PI + (Math.random()-0.5)*0.7;
+              const p1 = {x: me.x + Math.sin(a1)*(r*0.01*10), z: me.z + Math.cos(a1)*(r*0.01*10)};
+              const p2 = {x: me.x + Math.sin(a2)*(r*0.01*10), z: me.z + Math.cos(a2)*(r*0.01*10)};
+              const m1 = makeMarker(0xfca5a5); const m2 = makeMarker(0xfca5a5);
+              m1.scale.set(0.55,0.55,0.55); m2.scale.set(0.55,0.55,0.55);
+              m1.position.set(p1.x,heightAt(p1.x,p1.z,regionAt(p1.x,p1.z).id)+0.07,p1.z);
+              m2.position.set(p2.x,heightAt(p2.x,p2.z,regionAt(p2.x,p2.z).id)+0.07,p2.z);
+              world.add(m1); world.add(m2);
+              const dotted = spawnTelegraphLine(p1.x,p1.z,p2.x,p2.z,0xfda4af,0.22);
+              dotted.material.opacity = 0.35;
+              e.data.chainPlan = { t:0.55+Math.random()*0.2, p1, p2, m1, m2, dotted, extra: pat==="triangle" };
+              e.data.chainCd = 5.6 + Math.random()*2.0;
+              playTelegraphSfx(140,0.2,"square");
+            }
+          }
+
           // decide to attack
           if(e.cd <= 0){
-            if(e.kind==="melee" && d <= e.range+0.6){
+            if(e.kind==="skater" && d <= 3.0){
+              e.state="windup";
+              e.wind = 0.2 + Math.random()*0.15;
+              e.cd = 1.1 + Math.random()*0.6;
+              const crack = makeTeleCircle(0x93c5fd);
+              crack.position.set(ex,e.yBase+0.04,ez);
+              crack.scale.set(0.62,0.62,0.62);
+              world.add(crack);
+              e.tele = { ring: crack };
+            }else if(e.kind==="warden" && d <= e.range+0.7){
+              e.state="windup";
+              e.wind = 0.45 + Math.random()*0.15;
+              e.cd = 1.0 + Math.random()*0.7;
+              const ring = makeTeleCircle(0x22c55e);
+              ring.position.set(ex,e.yBase+0.04,ez);
+              world.add(ring);
+              e.tele = { ring };
+            }else if(e.kind==="melee" && d <= e.range+0.6){
               e.state="windup";
               e.wind = enemyWindupFor(e);
               e.cd = 0.9 + Math.random()*0.9;
@@ -6286,6 +6567,26 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
           }
         }
 
+        if(e.data.chainPlan){
+          e.data.chainPlan.t -= dt;
+          const cp = e.data.chainPlan;
+          if(cp.m1?.material) cp.m1.material.opacity = 0.45 + 0.35*Math.sin(now*18);
+          if(cp.m2?.material) cp.m2.material.opacity = 0.45 + 0.35*Math.sin(now*18+1.1);
+          if(cp.dotted?.material) cp.dotted.material.opacity = 0.25 + 0.25*Math.sin(now*14);
+          if(cp.t<=0){
+            if(cp.m1) world.remove(cp.m1);
+            if(cp.m2) world.remove(cp.m2);
+            if(cp.dotted) world.remove(cp.dotted);
+            spawnChainTrap(e, cp.p1, cp.p2);
+            if(cp.extra && activeChainTraps.length<GLOBAL_CHAIN_CAP){
+              const a = Math.random()*Math.PI*2;
+              const p3 = { x: me.x + Math.sin(a)*2.2, z: me.z + Math.cos(a)*2.2 };
+              spawnChainTrap(e, cp.p2, p3);
+            }
+            e.data.chainPlan = null;
+          }
+        }
+
         if(e.state==="windup"){
           e.wind -= dt;
           // animate telegraph
@@ -6295,6 +6596,15 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
             e.tele.ring.scale.set(p,p,p);
             e.tele.ring.material.opacity = 0.55 + 0.35*Math.sin(now*0.014);
           }
+          if(e.tele?.marker){
+            e.tele.marker.position.set(e.mesh.position.x, e.yBase+0.05, e.mesh.position.z);
+            e.tele.marker.material.opacity = 0.45 + 0.35*Math.sin(now*0.016);
+          }
+          if(e.tele?.line){
+            world.remove(e.tele.line);
+            e.tele.line = spawnTelegraphLine(e.mesh.position.x,e.mesh.position.z,me.x,me.z,0x86efac,0.48);
+            e.tele.line.material.opacity = 0.24 + 0.32*Math.sin(now*0.015);
+          }
           if(e.wind <= 0){
             e.state="attack";
           }
@@ -6302,7 +6612,31 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
 
         if(e.state==="attack"){
           // execute
-          if(e.kind==="melee"){
+          if(e.kind==="binder"){
+            spawnEnemyBolt(e, me.x, me.y+0.5, me.z, { speed:12.8, color:0x84cc16, rad:0.34, life:2.1, kind:"vineShot" });
+            if(e.tele?.marker) world.remove(e.tele.marker);
+            if(e.tele?.line) world.remove(e.tele.line);
+            e.tele = null;
+            e.state="recover";
+            e.wind = 0.3;
+          }else if(e.kind==="warden"){
+            if(d <= e.range+0.8) takeDamage(e.dmg*0.9, "Thorn Bash");
+            e.state="recover";
+            e.wind = 0.32;
+          }else if(e.kind==="skater"){
+            if(d <= e.range+1.0){ takeDamage(e.dmg, "Skate Lunge"); me.slowT = Math.max(me.slowT,0.7); me.slowMul = Math.min(me.slowMul,0.84); }
+            const a = Math.atan2(dz,dx) + (Math.random()-0.5)*1.1;
+            e.data.slideVX = Math.cos(a)*(e.spd*3.6);
+            e.data.slideVZ = Math.sin(a)*(e.spd*3.6);
+            e.data.slideCommit = 0.75;
+            e.data.slideT = 1.05;
+            e.data.plantT = 0;
+            e.state="recover";
+            e.wind = 0.12;
+          }else if(e.kind==="chain"){
+            e.state="recover";
+            e.wind = 0.26;
+          }else if(e.kind==="melee"){
             // if still close, hit
             if(d <= e.range+0.9){
               takeDamage(e.dmg, "Melee");
@@ -6445,6 +6779,7 @@ e.mesh.userData.anim?.(e, dt, now);
 
         // movement integrate (with separation)
         let dirx = dx/d, dirz = dz/d;
+        if(e.type==="briarBinder" && d<8.0){ dirx = -dirx; dirz = -dirz; }
         const enemyReg = regionAt(e.mesh.position.x, e.mesh.position.z);
         if(enemyReg.id==="city"){
           const steered = steerAroundCityTowers(e.mesh.position.x, e.mesh.position.z, me.x, me.z, 0.85);
@@ -6454,8 +6789,24 @@ e.mesh.userData.anim?.(e, dt, now);
         const moveScale = e.stunT>0 ? 0.08 : 1.0;
         if(e.type==="mirebat"){ rx += (-dirz)*0.9; rz += (dirx)*0.9; }
         if(e.type==="skitter"){ const jig = Math.sin(now*0.016 + e.id)*0.9; rx += (-dirz)*jig; rz += (dirx)*jig; }
-        const vx = (dirx*go + rx*0.9) * e.spd * moveScale + (e.kbX||0);
-        const vz = (dirz*go + rz*0.9) * e.spd * moveScale + (e.kbZ||0);
+        if(e.type==="iceSkater"){
+          e.data.slideT = Math.max(0, (e.data.slideT||0)-dt);
+          e.data.slideCommit = Math.max(0, (e.data.slideCommit||0)-dt);
+          if((e.data.slideT||0)<=0 && e.state==="chase"){
+            const a = Math.atan2(dz,dx) + (Math.random()-0.5)*1.0;
+            e.data.slideVX = Math.cos(a)*(e.spd*3.4);
+            e.data.slideVZ = Math.sin(a)*(e.spd*3.4);
+            e.data.slideT = 1.1;
+            e.data.slideCommit = 0.75;
+            const arc = spawnTelegraphLine(e.mesh.position.x,e.mesh.position.z,e.mesh.position.x+Math.cos(a)*4.2,e.mesh.position.z+Math.sin(a)*4.2,0xbfdbfe,0.35);
+            projectiles.push({mesh:arc,kind:"fxLine",life:0.32,x:e.mesh.position.x,y:e.mesh.position.y,z:e.mesh.position.z,vx:0,vy:0,vz:0,from:"fx"});
+          }
+          const trail = glowSprite(0x93c5fd,0.3,0.28,FX_TEX.softGlow);
+          trail.position.set(e.mesh.position.x,e.mesh.position.y-0.55,e.mesh.position.z); world.add(trail);
+          projectiles.push({mesh:trail,kind:"bossFx",fxType:"spark",x:trail.position.x,y:trail.position.y,z:trail.position.z,vx:0,vy:0,vz:0,life:0.22,maxLife:0.22});
+        }
+        const vx = (e.type==="iceSkater" ? (e.data.slideVX||0) : ((dirx*go + rx*0.9) * e.spd * moveScale)) + (e.kbX||0);
+        const vz = (e.type==="iceSkater" ? (e.data.slideVZ||0) : ((dirz*go + rz*0.9) * e.spd * moveScale)) + (e.kbZ||0);
 
         let nx = e.mesh.position.x + vx*dt;
         let nz = e.mesh.position.z + vz*dt;
@@ -6467,6 +6818,18 @@ e.mesh.userData.anim?.(e, dt, now);
           }else{
             nx = e.mesh.position.x; nz = e.mesh.position.z;
           }
+        }
+        if(e.type==="iceSkater"){
+          if(nx*nx+nz*nz > (WORLD_RADIUS-14)*(WORLD_RADIUS-14)){
+            const rr=Math.hypot(nx,nz)||1;
+            const nxn=nx/rr, nzn=nz/rr;
+            const dot=(e.data.slideVX||0)*nxn + (e.data.slideVZ||0)*nzn;
+            e.data.slideVX = ((e.data.slideVX||0) - 2*dot*nxn)*0.86;
+            e.data.slideVZ = ((e.data.slideVZ||0) - 2*dot*nzn)*0.86;
+            nx = e.mesh.position.x; nz = e.mesh.position.z;
+          }
+          e.data.slideVX *= 0.995;
+          e.data.slideVZ *= 0.995;
         }
         e.mesh.position.x = nx;
         e.mesh.position.z = nz;
@@ -6488,6 +6851,15 @@ e.mesh.userData.anim?.(e, dt, now);
       for(let i=enemies.length-1;i>=0;i--){
         const e = enemies[i];
         if(e.hp>0) continue;
+        for(let vi=activeVines.length-1;vi>=0;vi--){ if(activeVines[vi].ownerId===e.id) releaseTether(activeVines[vi]); }
+        for(let ci=activeChainTraps.length-1;ci>=0;ci--){
+          if(activeChainTraps[ci].ownerId===e.id){
+            if(activeChainTraps[ci].line) world.remove(activeChainTraps[ci].line);
+            if(activeChainTraps[ci].glow) world.remove(activeChainTraps[ci].glow);
+            if(activeChainTraps[ci].shadow) world.remove(activeChainTraps[ci].shadow);
+            activeChainTraps.splice(ci,1);
+          }
+        }
         world.remove(e.mesh);
         enemies.splice(i,1);
       }
@@ -6824,7 +7196,30 @@ e.mesh.userData.anim?.(e, dt, now);
         const ex=e.mesh.position.x, ez=e.mesh.position.z, ey=e.mesh.position.y+(e.flying?0.2:0.65);
         const d2 = (ex-p.x)*(ex-p.x)+(ez-p.z)*(ez-p.z)+(ey-p.y)*(ey-p.y);
         if(p.hitIds && p.hitIds.has(e.id)) continue;
-        if(d2 < (p.rad+0.55)*(p.rad+0.55)){ hit = e; break; }
+        if(d2 < (p.rad+0.55)*(p.rad+0.55)){
+          if(e.type==="thornWarden" && (e.data.shieldActiveT||0)>0){
+            const inAng = Math.atan2(-p.vz,-p.vx);
+            const diff = Math.abs(Math.atan2(Math.sin(inAng-e.data.shieldDir), Math.cos(inAng-e.data.shieldDir)));
+            if(diff < 1.4){
+              const spark = makeTeleCircle(0xfef08a);
+              spark.scale.set(0.58,0.58,0.58);
+              spark.position.set(e.mesh.position.x,e.yBase+0.1,e.mesh.position.z);
+              world.add(spark);
+              projectiles.push({mesh:spark,x:e.mesh.position.x,y:e.yBase+0.1,z:e.mesh.position.z,vx:0,vy:0,vz:0,life:0.2,from:"fx",kind:"bossFx",fxType:"ring",maxLife:0.2,maxScale:0.7});
+              playTelegraphSfx(980,0.09,"square");
+              const dir = _v1.set(me.x-e.mesh.position.x, (me.y+0.65)-(e.mesh.position.y+0.85), me.z-e.mesh.position.z).normalize();
+              const m = new THREE.Mesh(new THREE.SphereGeometry(0.14,10,8), new THREE.MeshBasicMaterial({color:0xf59e0b, transparent:true, opacity:0.92}));
+              m.position.set(e.mesh.position.x,e.mesh.position.y+0.85,e.mesh.position.z);
+              world.add(m);
+              projectiles.push({mesh:m,x:m.position.x,y:m.position.y,z:m.position.z,vx:dir.x*14,vy:dir.y*14,vz:dir.z*14,life:1.8,rad:0.34,dmg:Math.max(1,p.dmg*(0.35+Math.random()*0.2)),from:"enemy",kind:"reflected",color:0xf59e0b});
+              world.remove(p.mesh);
+              projectiles.splice(i,1);
+              hit = null;
+              break;
+            }
+          }
+          hit = e; break;
+        }
       }
       if(!hit && alienBoss && alienBoss.hp>0){
         const bx=alienBoss.mesh.position.x, bz=alienBoss.mesh.position.z, by=alienBoss.mesh.position.y;
@@ -6887,7 +7282,19 @@ e.mesh.userData.anim?.(e, dt, now);
       // hit player
       const d2 = (me.x-p.x)*(me.x-p.x) + (me.z-p.z)*(me.z-p.z) + (me.y-p.y)*(me.y-p.y);
       if(d2 < 1.05*1.05){
-        takeDamage(p.dmg, "Bolt");
+        takeDamage(p.dmg, p.kind==="vineShot"?"Vine Tether":"Bolt");
+        if(p.kind==="vineShot"){
+          me.tetherT = Math.max(me.tetherT, 1.2);
+          me.tetherMul = Math.min(me.tetherMul||1, 0.65);
+          const owner = enemies.find(en=>en.id===p.ownerId && en.hp>0);
+          if(owner){
+            const line = spawnTelegraphLine(owner.mesh.position.x,owner.mesh.position.z,me.x,me.z,0x4d7c0f,0.24);
+            line.material.opacity = 0.85;
+            const glow = spawnTelegraphLine(owner.mesh.position.x,owner.mesh.position.z,me.x,me.z,0x86efac,0.38);
+            glow.material.opacity = 0.36;
+            activeVines.push({ ownerId:owner.id, targetId:0, line, glow, life:1.2, maxLife:1.2, hp:Math.round(owner.maxHp*0.28), maxHp:Math.round(owner.maxHp*0.28), breakDist:200, pull:4.8, strafeMul:0.65 });
+          }
+        }
         if(p.slow>0){
           me.slowT = Math.max(me.slowT, 1.5 + p.slow*2.0);
           me.slowMul = Math.min(me.slowMul, 1.0-p.slow);
@@ -7547,6 +7954,16 @@ function tickHUD(dt){
   const nb = nearestCityBoard();
   const canUseForge = !!(nf && nf.d <= 3.2 && phase==="play" && uiMode==="none");
   const canUseBoard = !!(nb && nb.d <= 3.4 && phase==="play" && uiMode==="none");
+  if(me.tetherT>0){
+    debuffText.textContent = `Tether ${(me.tetherT).toFixed(1)}s`;
+  }else if(me.stunT>0){
+    debuffText.textContent = `Stun ${(me.stunT).toFixed(1)}s`;
+  }else if(me.slowT>0){
+    debuffText.textContent = `Slow ${(me.slowT).toFixed(1)}s`;
+  }else{
+    debuffText.textContent = "—";
+  }
+
   mobileInteract.style.display = (mobile.enabled && (canUseForge || canUseBoard)) ? "block" : "none";
   mobileInteract.textContent = canUseBoard ? "📜 Use Quest Board" : "⚒️ Interact";
 }
