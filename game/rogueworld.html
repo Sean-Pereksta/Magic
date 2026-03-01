@@ -344,6 +344,19 @@
       touch-action:manipulation;
     }
 
+    #minimap{
+      position:absolute;
+      right:14px;
+      bottom:14px;
+      width:170px;
+      height:170px;
+      border:1px solid rgba(255,255,255,.24);
+      border-radius:12px;
+      background:rgba(2,6,23,.5);
+      pointer-events:none;
+      box-shadow:0 8px 24px rgba(0,0,0,.35);
+    }
+
     @media (pointer: coarse){
       #mobileControls{ display:block; }
       .topBtns{ top:16px; }
@@ -392,6 +405,7 @@
     </div>
 
     <div id="crosshair"><div id="crosshairDot"></div></div>
+    <canvas id="minimap" width="170" height="170"></canvas>
 
     <div id="mobileControls">
       <div id="moveStick" class="joystick" aria-label="Movement joystick">
@@ -590,6 +604,8 @@
     const lookStick = $("lookStick");
     const lookKnob  = $("lookKnob");
     const mobileInteract = $("mobileInteract");
+    const minimap = $("minimap");
+    const minimapCtx = minimap?.getContext("2d");
 
     // ============================================================
     // Pointer lock + controls (same feel as your provided file)
@@ -1037,17 +1053,23 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
     // ============================================================
     const REGIONS = [
       { id:"desert", name:"Desert Expanse",   fog:0xcaa46f, sky:0x0a1018, tex:"desert", ground:0xffffff,
-        props:{ cactus:18, rock:12 }, drops:["iron","hide"], enemies:["scarab","scorpion","sandwisp"] },
+        props:{ cactus:18, rock:12 }, drops:["iron","hide"], enemies:["scarab","scorpion","sandwisp"],
+        enemiesInner:["scarab","scorpion","sandwisp"], enemiesMid:["scarab","scorpion","sandwisp","duneStalker","sunPriest"], enemiesOuter:["scarab","scorpion","sandwisp","duneStalker","sunPriest","mortar","brute"] },
       { id:"forest", name:"Forest Wilds",     fog:0x224b31, sky:0x071018, tex:"forest", ground:0xffffff,
-        props:{ tree:16, rock:8 }, drops:["hide","essence"], enemies:["boar","spriggan","spitter","goblin","mirebat"] },
+        props:{ tree:16, rock:8 }, drops:["hide","essence"], enemies:["boar","spriggan","spitter","goblin","mirebat"],
+        enemiesInner:["boar","spriggan","spitter","goblin","mirebat"], enemiesMid:["boar","spriggan","spitter","goblin","mirebat","wasp","treant"], enemiesOuter:["boar","spriggan","spitter","goblin","mirebat","wasp","treant","mortar","brute"] },
       { id:"snow",   name:"Frost Crown",      fog:0xbcd5ff, sky:0x050812, tex:"snow", ground:0xffffff,
-        props:{ pine:16, rock:12 }, drops:["iron","crystal"], enemies:["icegolem","wolf","frostling"] },
+        props:{ pine:16, rock:12 }, drops:["iron","crystal"], enemies:["icegolem","wolf","frostling"],
+        enemiesInner:["icegolem","wolf","frostling"], enemiesMid:["icegolem","wolf","frostling","iceWraith","yeti"], enemiesOuter:["icegolem","wolf","frostling","iceWraith","yeti","drone","shardling"] },
       { id:"alien",  name:"Neon Bloom",       fog:0x5be3ff, sky:0x070610, tex:"alien", ground:0xffffff,
-        props:{ crystal:18, shroom:12 }, drops:["crystal","essence"], enemies:["drone","floater","shardling","skitter"] },
+        props:{ crystal:18, shroom:12 }, drops:["crystal","essence"], enemies:["drone","floater","shardling","skitter"],
+        enemiesInner:["drone","floater","shardling","skitter"], enemiesMid:["drone","floater","shardling","skitter","prismCaster","sentinel"], enemiesOuter:["drone","floater","shardling","skitter","prismCaster","sentinel","mortar","hexer"] },
       { id:"hell",   name:"Ash & Ember",      fog:0x4a0010, sky:0x050306, tex:"hell",  ground:0xffffff,
-        props:{ spire:16, lava:10 }, drops:["ember","iron"], enemies:["imp","brute","mortar"] },
+        props:{ spire:16, lava:10 }, drops:["ember","iron"], enemies:["imp","brute","mortar"],
+        enemiesInner:["imp","brute","mortar"], enemiesMid:["imp","brute","mortar","emberHound","hexer"], enemiesOuter:["imp","brute","mortar","emberHound","hexer","duneStalker","sentinel"] },
       { id:"city",   name:"Skyline City",     fog:0x5b6472, sky:0x06080f, tex:"city",  ground:0xffffff,
-        props:{ tower:18, road:1 }, drops:["iron","essence"], enemies:["drone","goblin","spitter"] },
+        props:{ tower:18, road:1 }, drops:["iron","essence"], enemies:["drone","goblin","spitter"],
+        enemiesInner:["drone","goblin","spitter"], enemiesMid:["drone","goblin","spitter","sentinel"], enemiesOuter:["drone","goblin","spitter","sentinel","prismCaster"] },
     ];
 
     const REGIONS_NON_CITY = REGIONS.filter(r=>r.id!=="city");
@@ -1060,15 +1082,48 @@ function addAdditiveRing(parent, radius=0.6, tube=0.06, color=0xffffff, opacity=
       hell:{ name:"Ember Crucible", buff:"burn", value:1.2 },
       city:{ name:"Command Nexus", buff:"damage", value:1.06 }
     };
+    const MOD_RARITY_ORDER = ["common","uncommon","rare","epic","legendary","mythic"];
+    const MOD_RARITY_COLOR = { common:0x9ca3af, uncommon:0x86efac, rare:0x60a5fa, epic:0xc084fc, legendary:0xf59e0b, mythic:0xf472b6 };
+    const MOD_BASE_DUST = { common:3, uncommon:6, rare:12, epic:24, legendary:55, mythic:130 };
     const WEAPON_MOD_POOL = [
-      { id:"edge", name:"Honed Edge", rarity:"common", dmgMul:1.08 },
-      { id:"scope", name:"Long Scope", rarity:"common", rangeMul:1.1 },
-      { id:"core", name:"Overclock Core", rarity:"rare", dmgMul:1.15, fireRateMul:1.08 },
-      { id:"aoe", name:"Burst Matrix", rarity:"epic", extra:{ aoe:1.25 } },
-      { id:"lightning", name:"Lightning Coil", rarity:"epic", extra:{ chainBounces:1 } },
-      { id:"fire", name:"Incendiary Vial", rarity:"epic", extra:{ burn:true } },
-      { id:"poison", name:"Toxic Capsule", rarity:"epic", extra:{ poison:1.9 } }
+      { id:"edge", name:"Honed Edge", rarity:"common", weight:1, stats:{ dmgMul:1.06 } },
+      { id:"scope", name:"Long Scope", rarity:"common", weight:1, stats:{ rangeMul:1.08 } },
+      { id:"capacitor", name:"Pulse Capacitor", rarity:"uncommon", weight:2, stats:{ fireRateMul:1.07, dmgMul:1.04 } },
+      { id:"stabilizer", name:"Aiming Stabilizer", rarity:"uncommon", weight:2, projectile:{ critChance:0.05, critMul:1.4 } },
+      { id:"core", name:"Overclock Core", rarity:"rare", weight:3, stats:{ dmgMul:1.14, fireRateMul:1.1 } },
+      { id:"ranger", name:"Ranger Coil", rarity:"rare", weight:3, stats:{ rangeMul:1.18 }, extra:{ pierce:1 } },
+      { id:"aoe", name:"Burst Matrix", rarity:"epic", weight:4, extra:{ aoe:1.2 }, projectile:{ impactStyle:"burst" } },
+      { id:"lightning", name:"Lightning Coil", rarity:"epic", weight:4, extra:{ chainBounces:1 }, projectile:{ trailStyle:"ion" } },
+      { id:"fire", name:"Incendiary Vial", rarity:"epic", weight:4, extra:{ burn:true } },
+      { id:"poison", name:"Toxic Capsule", rarity:"epic", weight:4, extra:{ poison:1.8 } },
+      { id:"guidance", name:"Guidance Core", rarity:"legendary", weight:6, projectile:{ homing:true, homingTurn:2.5, trailStyle:"guidance" }, tags:["boltOnly"] },
+      { id:"chrono", name:"Chrono Tuner", rarity:"legendary", weight:5, projectile:{ impactStyle:"chrono" }, extra:{ timeSlowOnHit:0.12 } },
+      { id:"ricochet", name:"Ricochet Lattice", rarity:"legendary", weight:6, extra:{ chainBounces:2, pierce:1 }, tags:["noBeam"] },
+      { id:"eidolon", name:"Eidolon Guidance", rarity:"mythic", weight:8, projectile:{ homing:true, homingTurn:4.0, trailStyle:"eidolon", critChance:0.1, critMul:1.7 }, tags:["boltOnly"] },
+      { id:"voidcrown", name:"Void Crown", rarity:"mythic", weight:7, stats:{ dmgMul:1.22, fireRateMul:1.15 }, extra:{ aoe:1.5, chainBounces:2 }, projectile:{ impactStyle:"void" } }
     ];
+
+    function normalizeMod(mod){
+      if(!mod) return null;
+      const found = WEAPON_MOD_POOL.find(m=>m.id===mod.id || m.name===mod.name);
+      const rarity = mod.rarity || found?.rarity || "rare";
+      const out = {
+        id: mod.id || found?.id || (mod.name||"mod").toLowerCase().replace(/\s+/g,"-"),
+        name: mod.name || found?.name || "Unknown Mod",
+        rarity,
+        weight: Number.isFinite(mod.weight) ? mod.weight : (found?.weight ?? 2),
+        stats: Object.assign({}, found?.stats||{}, mod.stats||{}),
+        extra: Object.assign({}, found?.extra||{}, mod.extra||{}),
+        projectile: Object.assign({}, found?.projectile||{}, mod.projectile||{}),
+        tags: Array.isArray(mod.tags) ? mod.tags.slice() : (found?.tags ? found.tags.slice() : [])
+      };
+      if(mod.dmgMul) out.stats.dmgMul = mod.dmgMul;
+      if(mod.rangeMul) out.stats.rangeMul = mod.rangeMul;
+      if(mod.fireRateMul) out.stats.fireRateMul = mod.fireRateMul;
+      return out;
+    }
+
+    function rarityIndex(r){ return Math.max(0, MOD_RARITY_ORDER.indexOf(r||"common")); }
 
     let worldSeed = (Math.random()*1e9)|0;
     const REGION_PATCH_SIZE = 130;
@@ -1823,15 +1878,45 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       if(!me.cityUpgrades[key]) me.cityUpgrades[key]={ turrets:0, squads:0, taxBays:0, taxStore:{ iron:0,hide:0,essence:0,crystal:0,ember:0 }, taxTick:0 };
       return me.cityUpgrades[key];
     }
+    function weaponTierData(weaponName=me.weapon){
+      const w = WEAPONS[weaponName] || WEAPONS["Arc Bolt"];
+      const recipe = RECIPES.find(r=>r.name===weaponName);
+      const recipeCost = recipe ? Object.values(recipe.req||{}).reduce((a,b)=>a+b,0) : 0;
+      const weaponPowerScore = (w.dmg||w.dps||12) + (w.range||24)*0.6 + (w.fireRate||3)*1.2 + recipeCost*0.2;
+      let tier = 1 + Math.floor(weaponPowerScore/22);
+      tier = clamp(tier,1,7);
+      if(tier<=2) return { tier, modSlots:2, modCapacity:6 + (tier===2?2:0) };
+      if(tier<=4) return { tier, modSlots:3, modCapacity:10 + (tier===4?2:0) };
+      return { tier, modSlots:4, modCapacity:14 + Math.min(2, tier-5) };
+    }
+
+    function modWeightUsed(weaponName=me.weapon){
+      return (me.weaponMods[weaponName]||[]).reduce((a,m)=>a + (normalizeMod(m)?.weight||0), 0);
+    }
+
     function currentWeaponPower(){
-      const mods = me.weaponMods[me.weapon]||[];
+      const mods = (me.weaponMods[me.weapon]||[]).map(normalizeMod);
       let dmgMul=1, rangeMul=1, fireRateMul=1;
-      const extra = { aoe:0, chainBounces:0, poison:0, burn:false };
-      for(const m of mods){ dmgMul*=m.dmgMul||1; rangeMul*=m.rangeMul||1; fireRateMul*=m.fireRateMul||1; if(m.extra){ extra.aoe+=m.extra.aoe||0; extra.chainBounces+=m.extra.chainBounces||0; extra.poison+=m.extra.poison||0; if(m.extra.burn) extra.burn=true; } }
+      const extra = { aoe:0, chainBounces:0, poison:0, burn:false, pierce:0, timeSlowOnHit:0 };
+      const proj = { homing:false, homingTurn:0, homingAcquireRange:22, impactStyle:"default", trailStyle:"default", critChance:0, critMul:1.5 };
+      for(const m of mods){
+        const st = m.stats||{};
+        dmgMul*=st.dmgMul||1;
+        rangeMul*=st.rangeMul||1;
+        fireRateMul*=st.fireRateMul||1;
+        if(m.extra){ extra.aoe+=m.extra.aoe||0; extra.chainBounces+=m.extra.chainBounces||0; extra.poison+=m.extra.poison||0; extra.pierce += m.extra.pierce||0; extra.timeSlowOnHit += m.extra.timeSlowOnHit||0; if(m.extra.burn) extra.burn=true; }
+        if(m.projectile){
+          if(m.projectile.homing){ proj.homing = true; proj.homingTurn = Math.max(proj.homingTurn, m.projectile.homingTurn||2.5); }
+          proj.impactStyle = m.projectile.impactStyle || proj.impactStyle;
+          proj.trailStyle = m.projectile.trailStyle || proj.trailStyle;
+          proj.critChance += m.projectile.critChance||0;
+          proj.critMul = Math.max(proj.critMul, m.projectile.critMul||1.5);
+        }
+      }
       const lm = REGION_LANDMARKS[regionAt(me.x,me.z).id];
       if(lm?.buff==="damage") dmgMul*=lm.value;
       if(lm?.buff==="range") rangeMul*=lm.value;
-      return { dmgMul, rangeMul, fireRateMul, extra };
+      return { dmgMul, rangeMul, fireRateMul, extra, proj };
     }
 
     function nearestCityBoard(){
@@ -2160,6 +2245,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       mats: { iron:0, hide:0, essence:0, crystal:0, ember:0 },
       weaponMods: {},
       modItems: [],
+      modDust: 0,
       cityRep: {},
       cityLeader: {},
       cityUpgrades: {},
@@ -2228,7 +2314,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       me.slowT=0; me.slowMul=1.0; me.turnSlowT=0;
       me.ownedWeapons = new Set(["Arc Bolt"]);
       me.mats = { iron:0, hide:0, essence:0, crystal:0, ember:0 };
-      me.weaponMods = {}; me.modItems = []; me.cityRep = {}; me.cityLeader = {}; me.cityUpgrades = {};
+      me.weaponMods = {}; me.modItems = []; me.modDust = 0; me.cityRep = {}; me.cityLeader = {}; me.cityUpgrades = {};
 
       me.abil = { poisonAura:false, lifeGrip:false, meteorite:false, firebolt:false, turretTotem:false, shockNova:false, riftSpear:false, overheat:false, gravitySnare:false, orbitDrones:false, decoyTotem:false, spiritHounds:false, markShatter:false, lastStandShell:false, orbitBlades:false, sentryPylon:false };
       me.fireCd=0; me.fireboltCd=0; me.lifeGripT=0; me.meteorT=0; me.turretCd=0; me.shockNovaCd=0; me.riftSpearCd=0; me.overheatCd=0; me.overheatT=0; me.gravitySnareCd=0; me.orbitDronesCd=0; me.orbitDronesT=0; me.decoyCd=0; me.spiritHoundsCd=0; me.markCd=0; me.markTargetId=-1; me.markT=0; me.lastStandCd=0; me.shellAbsorb=0; me.orbitBladesCd=0; me.orbitBladesT=0; me.sentryPylonCd=0;
@@ -2254,7 +2340,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
     // ============================================================
     function saveGame(silent=false){
       const data = {
-        v: 1,
+        v: 2,
         seed: worldSeed,
         t: Date.now(),
         player: {
@@ -2268,6 +2354,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
           mats: me.mats,
           weaponMods: me.weaponMods,
           modItems: me.modItems,
+          modDust: me.modDust,
           cityRep: me.cityRep, cityLeader: me.cityLeader, cityUpgrades: me.cityUpgrades,
           abil: me.abil,
           cds: { fireboltCd: me.fireboltCd, lifeGripT: me.lifeGripT, meteorT: me.meteorT, turretCd: me.turretCd, shockNovaCd: me.shockNovaCd, riftSpearCd: me.riftSpearCd, overheatCd: me.overheatCd, overheatT: me.overheatT, gravitySnareCd: me.gravitySnareCd, orbitDronesCd: me.orbitDronesCd, decoyCd: me.decoyCd, spiritHoundsCd: me.spiritHoundsCd, markCd: me.markCd, lastStandCd: me.lastStandCd, shellAbsorb: me.shellAbsorb, orbitBladesCd: me.orbitBladesCd, sentryPylonCd: me.sentryPylonCd },
@@ -2313,7 +2400,11 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         if(!me.ownedWeapons.has(me.weapon)) me.ownedWeapons.add(me.weapon);
 
         me.mats = Object.assign({ iron:0, hide:0, essence:0, crystal:0, ember:0 }, p.mats||{});
-        me.weaponMods = Object.assign({}, p.weaponMods||{}); me.modItems = Array.isArray(p.modItems)? p.modItems:[]; me.cityRep = Object.assign({}, p.cityRep||{}); me.cityLeader = Object.assign({}, p.cityLeader||{}); me.cityUpgrades = Object.assign({}, p.cityUpgrades||{});
+        me.weaponMods = Object.assign({}, p.weaponMods||{});
+        for(const k of Object.keys(me.weaponMods)) me.weaponMods[k] = (me.weaponMods[k]||[]).map(normalizeMod).filter(Boolean);
+        me.modItems = Array.isArray(p.modItems)? p.modItems.map(normalizeMod).filter(Boolean):[];
+        me.modDust = +(p.modDust||0);
+        me.cityRep = Object.assign({}, p.cityRep||{}); me.cityLeader = Object.assign({}, p.cityLeader||{}); me.cityUpgrades = Object.assign({}, p.cityUpgrades||{});
         me.abil = Object.assign({ poisonAura:false, lifeGrip:false, meteorite:false, firebolt:false, turretTotem:false, shockNova:false, riftSpear:false, overheat:false, gravitySnare:false, orbitDrones:false, decoyTotem:false, spiritHounds:false, markShatter:false, lastStandShell:false, orbitBlades:false, sentryPylon:false }, p.abil||{});
 
         me.fireboltCd = +(p.cds?.fireboltCd||0);
@@ -2894,6 +2985,32 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       }
       return { desired, dirx, dirz };
     }
+
+    const BOSS_LOOT_TABLES = {
+      desert:[{id:"dune-crown", name:"Dune Crown", rarity:"legendary", weight:6, extra:{ aoe:1.35, chainBounces:1 }, projectile:{ impactStyle:"burst" }}],
+      forest:[{id:"verdant-spine", name:"Verdant Spine", rarity:"legendary", weight:6, extra:{ poison:2.6, burn:true }}],
+      snow:[{id:"aurora-lens", name:"Aurora Lens", rarity:"legendary", weight:6, projectile:{ trailStyle:"ion" }, extra:{ pierce:2 }}],
+      hell:[{id:"hellbrand", name:"Hellbrand Core", rarity:"legendary", weight:7, stats:{ dmgMul:1.18 }, extra:{ burn:true, aoe:1.2 }}],
+      alien:[{id:"neon-eidolon", name:"Neon Eidolon", rarity:"mythic", weight:8, projectile:{ homing:true, homingTurn:4.2, trailStyle:"eidolon" }, extra:{ chainBounces:3 }}],
+      titan:[{id:"infinity-heart", name:"Infinity Heart", rarity:"mythic", weight:8, stats:{ dmgMul:1.25, fireRateMul:1.12 }, extra:{ aoe:1.8, chainBounces:2, pierce:2 }, projectile:{ impactStyle:"void" }}]
+    };
+
+    function giveBossLoot(bossKey, x, z, regId){
+      const list = BOSS_LOOT_TABLES[bossKey] || [];
+      if(!list.length) return;
+      const base = normalizeMod(list[(Math.random()*list.length)|0]);
+      const dupe = me.modItems.some(m=>normalizeMod(m).id===base.id) || Object.values(me.weaponMods).some(arr=>(arr||[]).some(m=>normalizeMod(m).id===base.id));
+      if(dupe){
+        const dust = Math.round((MOD_BASE_DUST[base.rarity]||55)*2.4);
+        me.modDust += dust;
+        showToast(`♻️ Duplicate boss mod converted to ${dust} dust.`);
+        return;
+      }
+      spawnModDrop(x,z,regId,base,true);
+      showToast(`👑 Boss Loot: ${base.rarity.toUpperCase()} ${base.name}`);
+      spawnFloatingText(`👑 ${base.name}`, x, heightAt(x,z,regId)+1.8, z, "#fde68a");
+    }
+
     function spawnAlienBoss(){
       if(alienBoss) return;
       const spawn = findBossSpawnAroundPlayer("alien", 34, 54, 17.5);
@@ -2965,6 +3082,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         world.remove(alienBoss.mesh);
         alienBoss = null;
         dropBossRewards(boss);
+        giveBossLoot("alien", boss.mesh.position.x, boss.mesh.position.z, "alien");
         awardBossSigil("alien", boss.mesh.position.x, boss.mesh.position.z);
         const xpGain = Math.round((220 + me.level*34) * dangerBandAt(me.x, me.z).xpMul);
         gainXp(xpGain);
@@ -3053,6 +3171,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       clearBossFx(b);
       world.remove(b.mesh);
       dropBossRewards(b);
+      giveBossLoot(b.regionId, b.mesh.position.x, b.mesh.position.z, b.regionId);
       awardBossSigil(b.regionId, b.mesh.position.x, b.mesh.position.z);
       const xpGain = Math.round((180 + me.level*24) * dangerBandAt(me.x, me.z).xpMul);
       gainXp(xpGain);
@@ -3067,6 +3186,8 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       world.remove(b.mesh);
       titanBoss = null;
       me.mats.iron += 80; me.mats.hide += 70; me.mats.essence += 75; me.mats.crystal += 70; me.mats.ember += 90;
+      me.modDust += 260;
+      giveBossLoot("titan", b.mesh.position.x, b.mesh.position.z, regionAt(b.mesh.position.x,b.mesh.position.z).id);
       const xpGain = Math.round((800 + me.level*80) * dangerBandAt(me.x, me.z).xpMul);
       gainXp(xpGain);
       for(const k of Object.keys(bossCycle)) bossCycle[k] = false;
@@ -3121,6 +3242,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
 
     function makeEnemyMesh(type, regId){
   const g = new THREE.Group();
+  type = ({ duneStalker:"skitter", sunPriest:"goblin", wasp:"mirebat", treant:"icegolem", iceWraith:"frostling", yeti:"brute", prismCaster:"floater", sentinel:"drone", emberHound:"imp", hexer:"goblin" })[type] || type;
 
   // --- cached enemy geometries (created once) ---
   const EG = makeEnemyMesh._geo || (makeEnemyMesh._geo = {
@@ -3974,6 +4096,16 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       if(type==="goblin"){ baseHp=30; baseDmg=12; spd=2.5; range=16.5; kind="lobber"; }
       if(type==="mirebat"){ baseHp=24; baseDmg=8; spd=3.1; range=11.5; kind="ranged"; flying=true; yOff=1.1; modelLift=1.55; }
       if(type==="skitter"){ baseHp=20; baseDmg=7; spd=3.8; range=1.15; kind="melee"; modelLift=0.62; }
+      if(type==="duneStalker"){ baseHp=24; baseDmg=9; spd=3.9; range=1.2; kind="melee"; modelLift=0.65; }
+      if(type==="sunPriest"){ baseHp=34; baseDmg=12; spd=2.0; range=15; kind="ranged"; }
+      if(type==="wasp"){ baseHp=20; baseDmg=8; spd=3.6; range=12; kind="ranged"; flying=true; yOff=1.5; modelLift=1.9; }
+      if(type==="treant"){ baseHp=90; baseDmg=15; spd=1.45; range=1.9; kind="melee"; }
+      if(type==="iceWraith"){ baseHp=30; baseDmg=10; spd=2.6; range=13; kind="ranged"; flying=true; yOff=1.3; modelLift=1.8; }
+      if(type==="yeti"){ baseHp=84; baseDmg=16; spd=1.8; range=1.75; kind="melee"; }
+      if(type==="prismCaster"){ baseHp=42; baseDmg=13; spd=2.0; range=16; kind="lobber"; }
+      if(type==="sentinel"){ baseHp=68; baseDmg=14; spd=1.9; range=12.5; kind="ranged"; }
+      if(type==="emberHound"){ baseHp=26; baseDmg=11; spd=3.6; range=1.2; kind="melee"; }
+      if(type==="hexer"){ baseHp=38; baseDmg=12; spd=2.15; range=15; kind="ranged"; }
 
       const band = dangerBandAt(x,z);
       const levelDelta = Math.max(0, level-1);
@@ -3983,9 +4115,10 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       return { hp, dmg, spd: spd*speedScale, range, flying, yOff, kind, modelLift, band:band.id, bandMul:band };
     }
 
-    function spawnEnemy(type, x, z, regId){
+    function spawnEnemy(type, x, z, regId, opts={}){
       const st = enemyStats(type, me.level, x, z);
       const mesh = makeEnemyMesh(type, regId);
+      const elite = !!opts.elite;
       const yBase = heightAt(x,z, regId);
       const y = yBase + st.modelLift + (st.flying ? (1.0+st.yOff) : 0.0);
       mesh.position.set(x, y, z);
@@ -4000,10 +4133,10 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         yOff: st.flying ? (1.0+st.yOff) : 0.0,
         modelLift: st.modelLift,
         flying: st.flying,
-        hp: st.hp,
-        maxHp: st.hp,
-        spd: st.spd,
-        dmg: st.dmg,
+        hp: elite ? Math.round(st.hp*2.0) : st.hp,
+        maxHp: elite ? Math.round(st.hp*2.0) : st.hp,
+        spd: st.spd * (elite?1.1:1),
+        dmg: Math.round(st.dmg * (elite?1.35:1)),
         range: st.range,
         kind: st.kind,
         dangerBand: st.band,
@@ -4023,9 +4156,18 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         kbX: 0,
         kbZ: 0,
         burstLeft: 0,
-        data: { specialCd: 2.2 + Math.random()*2.5, splitDone:false },
+        elite,
+        xpMul: elite?1.6:1,
+        data: { specialCd: 2.2 + Math.random()*2.5, splitDone:false, eliteBurst:0, eliteDashCd:1.9+Math.random()*2.1 },
       };
 
+      if(elite){
+        mesh.scale.multiplyScalar(1.08 + Math.random()*0.07);
+        const ring = new THREE.Mesh(new THREE.RingGeometry(0.8,1.1,20), new THREE.MeshBasicMaterial({color:0xfde68a,transparent:true,opacity:0.5,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false}));
+        ring.rotation.x = -Math.PI/2; ring.position.y = 0.05;
+        mesh.add(ring);
+        mesh.userData.eliteRing = ring;
+      }
       world.add(mesh);
       enemies.push(e);
       return e;
@@ -4053,14 +4195,16 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       const rr = Math.hypot(cx,cz);
       if(rr > WORLD_RADIUS-40) return false;
 
-      const types = reg.enemies;
+      const band = dangerBandAt(cx,cz);
+      const types = band.id==="outer" ? (reg.enemiesOuter||reg.enemiesMid||reg.enemies) : (band.id==="mid" ? (reg.enemiesMid||reg.enemies) : (reg.enemiesInner||reg.enemies));
       for(let i=0;i<packSize;i++){
         const t = types[(rnd()*types.length)|0];
         const a = rnd()*Math.PI*2;
         const r = 3 + rnd()*8; // spacing
         const x = cx + Math.cos(a)*r;
         const z = cz + Math.sin(a)*r;
-        spawnEnemy(t, x, z, reg.id);
+        const eliteChance = ({inner:0.03, mid:0.06, outer:0.10})[band.id] + Math.min(0.08, me.level*0.0025);
+        spawnEnemy(t, x, z, reg.id, { elite:rnd()<eliteChance });
       }
 
       travelMeter = 0;
@@ -4157,7 +4301,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       const mesh = new THREE.Mesh(GEO.bolt, new THREE.MeshStandardMaterial({
         color: cfg.color,
         emissive: cfg.color,
-        emissiveIntensity: 1.2,
+        emissiveIntensity: 1.35,
         roughness: 0.25,
         metalness: 0.05
       }));
@@ -4185,6 +4329,14 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         chainBounces: cfg.chainBounces || 0,
         chainRange: cfg.chainRange || 7.0,
         pierceLeft: cfg.pierce || 0,
+        homing: !!cfg.homing,
+        homingTurn: cfg.homingTurn || 0,
+        homingAcquireRange: cfg.homingAcquireRange || 22,
+        impactStyle: cfg.impactStyle || "default",
+        trailStyle: cfg.trailStyle || "default",
+        critChance: cfg.critChance || 0,
+        critMul: cfg.critMul || 1.5,
+        trailCd: 0,
         hitIds: new Set(),
         irradiate: cfg.irradiate || null
       });
@@ -4390,7 +4542,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
   dir.multiplyScalar(1/len);
 
   let speed = opts.speed ?? 18;
-  let color = opts.color ?? 0xef4444;
+  let color = opts.color ?? ((e.regId==="alien"||e.type==="drone"||e.type==="sentinel") ? (Math.random()<0.5?0x22d3ee:0xff4de1) : 0xef4444);
   let rad = opts.rad ?? 0.55;
   let life = opts.life ?? 2.2;
   let kind = opts.kind ?? "bolt";
@@ -4400,13 +4552,13 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
 
   if(e.type==="sandwisp"){
     speed = opts.speed ?? 8.2;
-    color = 0xfbbf24;
+    color = 0xf59e0b;
     life = opts.life ?? 4.2;
     rad = 0.62;
     kind = opts.kind ?? "sandOrb";
-  }else if(e.type==="frostling"){
+  }else if(e.type==="frostling" || e.type==="iceWraith"){
     speed = opts.speed ?? 21;
-    color = 0x93c5fd;
+    color = 0x60a5fa;
     life = opts.life ?? 1.7;
     rad = 0.35;
     slow = Math.max(slow, 0.28);
@@ -4429,7 +4581,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       new THREE.MeshStandardMaterial({
         color,
         emissive: color,
-        emissiveIntensity: 1.2,
+        emissiveIntensity: 1.35,
         roughness:0.25,
         transparent:true,
         opacity:0.75
@@ -4617,6 +4769,60 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       modchip:0xa78bfa
     };
 
+    function weightPick(arr, getWeight=(x)=>x.weight||1){
+      let total = 0;
+      for(const a of arr) total += Math.max(0.0001, getWeight(a));
+      let r = Math.random()*total;
+      for(const a of arr){ r -= Math.max(0.0001, getWeight(a)); if(r<=0) return a; }
+      return arr[arr.length-1];
+    }
+
+    function rollModRarity(bandId="inner", elite=false, forcedMin=null){
+      const bands = {
+        inner: { common:55, uncommon:25, rare:14, epic:5.5, legendary:0.45, mythic:0.05 },
+        mid:   { common:45, uncommon:24, rare:19, epic:10.5, legendary:1.3, mythic:0.2 },
+        outer: { common:34, uncommon:23, rare:24, epic:15, legendary:3.5, mythic:0.5 },
+      };
+      const table = Object.assign({}, bands[bandId]||bands.inner);
+      if(forcedMin){
+        for(const k of MOD_RARITY_ORDER){ if(rarityIndex(k) < rarityIndex(forcedMin)) table[k]=0; }
+      }
+      const pickOnce = ()=>{
+        let r = Math.random()*100;
+        for(const k of MOD_RARITY_ORDER){ r -= (table[k]||0); if(r<=0) return k; }
+        return "common";
+      };
+      let r1 = pickOnce();
+      if(elite){
+        const r2 = pickOnce();
+        if(rarityIndex(r2) > rarityIndex(r1)) r1 = r2;
+      }
+      return r1;
+    }
+
+    function rollModForDrop({ bandId="inner", elite=false, forcedMin=null, forcedRarity=null }={}){
+      const rarity = forcedRarity || rollModRarity(bandId, elite, forcedMin);
+      const pool = WEAPON_MOD_POOL.filter(m=>m.rarity===rarity);
+      if(!pool.length) return normalizeMod(WEAPON_MOD_POOL[(Math.random()*WEAPON_MOD_POOL.length)|0]);
+      const mod = weightPick(pool, m=>1/Math.max(1,m.weight));
+      return normalizeMod(mod);
+    }
+
+    function spawnModDrop(x, z, regId, modItem, boss=false){
+      const mod = normalizeMod(modItem);
+      const rarity = mod.rarity||"rare";
+      const color = MOD_RARITY_COLOR[rarity]||0xa78bfa;
+      const geom = boss ? new THREE.IcosahedronGeometry(0.46,0) : new THREE.OctahedronGeometry(0.24,0);
+      const m = new THREE.Mesh(geom, MAT.drop.clone());
+      m.material.color.setHex(color); m.material.emissive.setHex(color); m.material.emissiveIntensity = boss ? 1.7 : 1.1;
+      const y = heightAt(x, z, regId);
+      m.position.set(x, y + (boss?0.62:0.38), z);
+      m.scale.setScalar(boss ? 1.25 : 1.0);
+      world.add(m);
+      drops.push({ x:m.position.x, y:m.position.y, z:m.position.z, mesh:m, mat:"modchip", spin:Math.random()*10, pull:0, qty:1, modItem:mod, rarity, bossLoot:boss });
+      return mod;
+    }
+
     function dropFromEnemy(e){
       const ex = e.mesh?.position.x ?? e.x;
       const ez = e.mesh?.position.z ?? e.z;
@@ -4646,22 +4852,19 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         drops.push({ x:ex+ox, y:y+0.35, z:ez+oz, mesh:m, mat:matName, spin: rnd()*10, pull:0, qty:1 });
       }
 
-      if(Math.random() < 0.006){
-        const mod = WEAPON_MOD_POOL[(Math.random()*WEAPON_MOD_POOL.length)|0];
-        const m = new THREE.Mesh(new THREE.OctahedronGeometry(0.24,0), MAT.drop.clone());
-        m.material.color.setHex(0xa78bfa); m.material.emissive.setHex(0xa78bfa); m.material.emissiveIntensity=1.0;
-        const y = heightAt(ex, ez, reg.id);
-        m.position.set(ex+(Math.random()-0.5)*0.3, y+0.38, ez+(Math.random()-0.5)*0.3);
-        world.add(m);
-        drops.push({ x:m.position.x, y:m.position.y, z:m.position.z, mesh:m, mat:"modchip", spin:rnd()*10, pull:0, qty:1, modItem:mod });
+      const baseChance = ({inner:0.008, mid:0.012, outer:0.018})[band.id] || 0.008;
+      const eliteMul = e.elite ? 2.25 : 1;
+      const typeMul = ({ sentinel:1.2, prismCaster:1.15, sunPriest:1.1, hexer:1.1 })[e.type] || 1;
+      if(Math.random() < baseChance * eliteMul * typeMul){
+        const mod = rollModForDrop({ bandId:band.id, elite:!!e.elite });
+        spawnModDrop(ex+(Math.random()-0.5)*0.3, ez+(Math.random()-0.5)*0.3, reg.id, mod, false);
       }
     }
-
     function xpFromEnemy(e){
       const band = dangerBandAt(e.mesh.position.x, e.mesh.position.z);
       const typeBonus = ({ brute:7, icegolem:6, mortar:5, floater:4, goblin:4, drone:3 })[e.type] || 0;
       const base = 5 + Math.floor(me.level*0.75) + typeBonus;
-      return Math.max(2, Math.round(base * band.xpMul));
+      return Math.max(2, Math.round(base * band.xpMul * (e.xpMul||1)));
     }
 
     function pickupDrops(dt){
@@ -4697,8 +4900,9 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
           if(d.mat === "sigil"){
             showToast(`🔱 Sigil shard secured (${sigilsCollected}/5)`);
           }else if(d.modItem){
-            me.modItems.push(d.modItem);
-            showToast(`🧩 Rare mod drop: ${d.modItem.name}`);
+            me.modItems.push(normalizeMod(d.modItem));
+            const rar = (d.modItem.rarity||"rare").toUpperCase();
+            showToast(`🧩 ${rar} Mod Drop: ${d.modItem.name} (Wt ${d.modItem.weight||2})`);
           }else{
             me.mats[d.mat] = (me.mats[d.mat]||0) + qty;
             showToast(`+${qty} ${d.mat}`);
@@ -5267,8 +5471,11 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       const owned = Array.from(me.ownedWeapons)
         .map(w=>`<span class="chip">🗡️ ${w}${w===me.weapon ? " (equipped)" : ""}</span>`)
         .join("");
-      const attached = (me.weaponMods[me.weapon]||[]).map(m=>`<span class="chip">🔩 ${m.name}</span>`).join("");
-      const modInv = me.modItems.map((m,idx)=>`<div class="card"><div class="name">🧩 ${m.name}</div><div class="desc">${m.rarity.toUpperCase()} mod</div><div class="rowBtns"><button data-attachmod="${idx}">Attach to ${me.weapon}</button></div></div>`).join("");
+      const tier = weaponTierData(me.weapon);
+      const attachedMods = (me.weaponMods[me.weapon]||[]).map(normalizeMod);
+      const attached = attachedMods.map((m,idx)=>`<div class="card"><div class="name">🔩 ${m.name}</div><div class="desc">${m.rarity.toUpperCase()} • Wt ${m.weight}</div><div class="rowBtns"><button data-detachmod="${idx}">Detach</button><button class="secondary" data-salvage-attached="${idx}">Salvage</button></div></div>`).join("");
+      const modInv = me.modItems.map((m,idx)=>`<div class="card"><div class="name">🧩 ${m.name}</div><div class="desc">${m.rarity.toUpperCase()} • Wt ${m.weight}</div><div class="rowBtns"><button data-attachmod="${idx}">Attach to ${me.weapon}</button><button class="secondary" data-salvage-mod="${idx}">Salvage</button></div></div>`).join("");
+      const usedWeight = attachedMods.reduce((a,m)=>a+(m.weight||0),0);
 
       const recipesHtml = RECIPES.map((r)=>{
         const ownedWeapon = r.type==="weapon" && me.ownedWeapons.has(r.name);
@@ -5302,7 +5509,8 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
             <div class="chipRow">${owned || `<span class="muted">None</span>`}</div>
             <div style="height:10px"></div>
             <div class="panelTitle">🔩 ${me.weapon} Mods</div>
-            <div class="chipRow">${attached || `<span class="muted">No mods attached.</span>`}</div>
+            <div class="chipRow"><span class="chip">Slots: <b>${attachedMods.length}/${tier.modSlots}</b></span><span class="chip">Weight: <b>${usedWeight}/${tier.modCapacity}</b></span><span class="chip">🧪 Dust: <b>${me.modDust|0}</b></span></div>
+            <div class="recipes">${attached || `<span class="muted">No mods attached.</span>`}</div>
             <button class="btn secondary" id="closeForgeBtn" type="button" style="pointer-events:auto; margin-top:10px">Close (E / ESC)</button>
           </div>
           <div class="panel">
@@ -5311,6 +5519,14 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
             <div style="height:12px"></div>
             <div class="panelTitle">🧩 Rare Mod Components</div>
             <div class="recipes">${modInv || `<span class="muted">No mod components yet. Rare enemy drops can grant permanent weapon enhancements.</span>`}</div>
+            <div style="height:12px"></div>
+            <div class="panelTitle">🧪 Mod Lab</div>
+            <div class="recipes">
+              <div class="card"><div class="name">Roll Random Mod</div><div class="desc">25 dust</div><div class="rowBtns"><button data-roll="random">Roll</button></div></div>
+              <div class="card"><div class="name">Roll Rare+</div><div class="desc">60 dust</div><div class="rowBtns"><button data-roll="rare">Roll</button></div></div>
+              <div class="card"><div class="name">Roll Epic+</div><div class="desc">140 dust</div><div class="rowBtns"><button data-roll="epic">Roll</button></div></div>
+              <div class="card"><div class="name">Roll Legendary+</div><div class="desc">320 dust</div><div class="rowBtns"><button data-roll="legendary">Roll</button></div></div>
+            </div>
           </div>
         </div>
       `);
@@ -5331,14 +5547,22 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
       modal.querySelectorAll("[data-equip]").forEach(btn=>btn.addEventListener("click", ()=>{ const name=btn.getAttribute("data-equip"); if(!me.ownedWeapons.has(name)) return; me.weapon=name; saveGame(true); openForgeModal(); }));
       modal.querySelectorAll("[data-attachmod]").forEach(btn=>btn.addEventListener("click", ()=>{
         const idx = +btn.getAttribute("data-attachmod");
-        const mod = me.modItems[idx]; if(!mod) return;
+        const mod = normalizeMod(me.modItems[idx]); if(!mod) return;
         if(!me.weaponMods[me.weapon]) me.weaponMods[me.weapon]=[];
+        const tier = weaponTierData(me.weapon);
+        const usedW = modWeightUsed(me.weapon);
+        if(me.weaponMods[me.weapon].length >= tier.modSlots || usedW + (mod.weight||0) > tier.modCapacity){ showToast("Not enough capacity/slots"); return; }
         me.weaponMods[me.weapon].push(mod);
         me.modItems.splice(idx,1);
         showToast(`🔩 Attached ${mod.name} to ${me.weapon}`);
         saveGame(true);
         openForgeModal();
       }));
+      modal.querySelectorAll("[data-detachmod]").forEach(btn=>btn.addEventListener("click", ()=>{ const idx=+btn.getAttribute("data-detachmod"); const arr=me.weaponMods[me.weapon]||[]; const m=arr[idx]; if(!m) return; me.modItems.push(m); arr.splice(idx,1); saveGame(true); openForgeModal(); }));
+      const salvageGain = (mod)=>Math.round((MOD_BASE_DUST[mod.rarity]||12) * (0.8 + 0.25*(mod.weight||2)));
+      modal.querySelectorAll("[data-salvage-mod]").forEach(btn=>btn.addEventListener("click", ()=>{ const idx=+btn.getAttribute("data-salvage-mod"); const m=normalizeMod(me.modItems[idx]); if(!m) return; const g=salvageGain(m); me.modDust+=g; me.modItems.splice(idx,1); showToast(`🧪 Salvaged ${m.name} (+${g} dust)`); saveGame(true); openForgeModal(); }));
+      modal.querySelectorAll("[data-salvage-attached]").forEach(btn=>btn.addEventListener("click", ()=>{ const idx=+btn.getAttribute("data-salvage-attached"); const arr=me.weaponMods[me.weapon]||[]; const m=normalizeMod(arr[idx]); if(!m) return; const g=salvageGain(m); me.modDust+=g; arr.splice(idx,1); showToast(`🧪 Salvaged ${m.name} (+${g} dust)`); saveGame(true); openForgeModal(); }));
+      modal.querySelectorAll("[data-roll]").forEach(btn=>btn.addEventListener("click", ()=>{ const key=btn.getAttribute("data-roll"); const conf={ random:{cost:25,min:null}, rare:{cost:60,min:"rare"}, epic:{cost:140,min:"epic"}, legendary:{cost:320,min:"legendary"} }[key]; if(!conf) return; if(me.modDust<conf.cost){ showToast("Not enough dust."); return; } me.modDust-=conf.cost; const mod=rollModForDrop({ bandId:dangerBandAt(me.x,me.z).id, forcedMin:conf.min }); me.modItems.push(mod); showToast(`🧩 Rolled ${mod.rarity.toUpperCase()} ${mod.name}`); saveGame(true); openForgeModal(); }));
     }
 
     function openLevelUpModal(){
@@ -5779,6 +6003,14 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
           // color shift
           const col = (t>0.55) ? 0x22c55e : (t>0.25 ? 0xeab308 : 0xef4444);
           bar.userData.fg.material.color.setHex(col);
+          if(e.elite){
+            bar.userData.bg.material.color.setHex(0x7c2d12);
+            bar.userData.bg.material.opacity = 0.75;
+            if(e.mesh.userData.eliteRing){
+              e.mesh.userData.eliteRing.material.opacity = 0.32 + 0.22*Math.sin(performance.now()*0.008 + e.id);
+            }
+            e.mesh.traverse(o=>{ if(o.material?.emissiveIntensity!=null) o.material.emissiveIntensity = Math.min(1.5, (o.material.emissiveIntensity||0.4) + 0.0025); });
+          }
         }
 
         // remove poison tint fade (if aura not affecting)
@@ -5981,6 +6213,23 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
         }
 
         if(e.state==="chase"){
+          if(e.elite && e.kind==="melee"){
+            e.data.eliteDashCd -= dt;
+            if(e.data.eliteDashCd<=0 && d<10.5 && d>2.4){
+              e.data.eliteDashCd = 4.5 + Math.random()*2.0;
+              const ln = spawnTelegraphLine(ex, ez, me.x, me.z, 0xfde68a, 0.65);
+              e.data.eliteBurst = 0.2;
+              e.data.eliteLine = ln;
+            }
+            if(e.data.eliteBurst>0){
+              e.data.eliteBurst -= dt;
+              if(e.data.eliteBurst<=0){
+                if(e.data.eliteLine){ world.remove(e.data.eliteLine); e.data.eliteLine=null; }
+                e.mesh.position.x += (dx/d)*3.4;
+                e.mesh.position.z += (dz/d)*3.4;
+              }
+            }
+          }
           if(e.type==="boar" && !e.data.chargeState && d<11.5 && e.cd<=0){
             const ln = new THREE.Mesh(new THREE.PlaneGeometry(1.2, d), new THREE.MeshBasicMaterial({ color:0xff2a2a, transparent:true, opacity:0.45, side:THREE.DoubleSide }));
             ln.rotation.x = -Math.PI/2;
@@ -6027,6 +6276,7 @@ const FORGE_ACTIVE_DIST2 = FORGE_ACTIVE_DIST * FORGE_ACTIVE_DIST;
               const tx = me.x + (Math.random()-0.5)*2.2;
               const tz = me.z + (Math.random()-0.5)*2.2;
               spawnMortar(e, tx, tz);
+              if(e.elite){ const mark=makeTeleCircle(0xfca5a5); mark.position.set(me.x,heightAt(me.x,me.z,regionAt(me.x,me.z).id)+0.06,me.z); mark.scale.set(1.1,1.1,1.1); world.add(mark); projectiles.push({mesh:mark,x:me.x,y:mark.position.y,z:me.z,vx:0,vy:0,vz:0,life:0.9,rad:1.5,dmg:e.dmg*0.45,from:"enemy",kind:"hazard"}); }
               if(e.inOuter){
                 const tx2 = me.x + (me.vx*0.45) + (Math.random()-0.5)*1.4;
                 const tz2 = me.z + (me.vz*0.45) + (Math.random()-0.5)*1.4;
@@ -6524,10 +6774,37 @@ e.mesh.userData.anim?.(e, dt, now);
     }
 
     // normal bolt
+    if(p.from==="player" && p.homing){
+      let target = null;
+      let bestD2 = (p.homingAcquireRange||22)*(p.homingAcquireRange||22);
+      for(const e of enemies){
+        if(e.hp<=0) continue;
+        const ex=e.mesh.position.x, ez=e.mesh.position.z, ey=e.mesh.position.y+(e.flying?0.2:0.65);
+        const d2=(ex-p.x)*(ex-p.x)+(ez-p.z)*(ez-p.z)+(ey-p.y)*(ey-p.y);
+        if(d2<bestD2){ bestD2=d2; target={x:ex,y:ey,z:ez}; }
+      }
+      if(target){
+        const sp = Math.hypot(p.vx,p.vy,p.vz)||0.001;
+        const cur = _v1.set(p.vx/sp,p.vy/sp,p.vz/sp);
+        const des = _v2.set(target.x-p.x,target.y-p.y,target.z-p.z).normalize();
+        const t = clamp((p.homingTurn||2.5)*dt,0,1);
+        cur.lerp(des,t).normalize();
+        p.vx = cur.x*sp; p.vy = cur.y*sp; p.vz = cur.z*sp;
+      }
+    }
     p.x += p.vx*dt;
     p.y += p.vy*dt;
     p.z += p.vz*dt;
     p.mesh.position.set(p.x,p.y,p.z);
+    if(p.from==="player"){
+      p.trailCd = (p.trailCd||0) - dt;
+      if(p.trailCd<=0){
+        p.trailCd = 0.045;
+        const tr = glowSprite(p.color||0xffffff, 0.22, 0.30, FX_TEX.softGlow);
+        tr.position.set(p.x,p.y,p.z); world.add(tr);
+        projectiles.push({mesh:tr,kind:"bossFx",fxType:"spark",x:p.x,y:p.y,z:p.z,vx:0,vy:0,vz:0,life:0.14,maxLife:0.14});
+      }
+    }
 
     // ✅ added: spin / shimmer for grouped projectiles + glow fade
     // (works with enemy projectile groups from the upgraded spawnEnemyBolt)
@@ -6572,6 +6849,7 @@ e.mesh.userData.anim?.(e, dt, now);
           dealDamageEnemy(hit, p.dmg);
         }
 
+        spawnImpactFx(p.x,p.y,p.z,p.color||0xffffff,1);
         if(p.explode){
           explodeAt(p.x,p.y,p.z, p.aoe||2.4, p.dmg*0.75, "player");
         }
@@ -6621,6 +6899,7 @@ e.mesh.userData.anim?.(e, dt, now);
       const preg = regionAt(p.x,p.z);
       const py = heightAt(p.x,p.z,preg.id);
       if(p.y <= py+0.1){
+        spawnImpactFx(p.x, py+0.08, p.z, p.color||0xffffff, 0.55);
         if(p.puddle>0){
           const puddle = new THREE.Mesh(
             new THREE.RingGeometry(0.45, 0.95, 22),
@@ -6653,6 +6932,34 @@ e.mesh.userData.anim?.(e, dt, now);
     }
   }
 }
+
+
+    const IMPACT_FX_CAP = 120;
+    function spawnImpactFx(x,y,z,colorHex,intensity=1){
+      const flash = glowSprite(colorHex, 0.24 + 0.2*intensity, 0.6, FX_TEX.spark);
+      flash.position.set(x,y,z);
+      world.add(flash);
+      projectiles.push({mesh:flash,kind:"bossFx",fxType:"spark",x,y,z,vx:0,vy:0,vz:0,life:0.16,maxLife:0.16});
+      if(y <= heightAt(x,z,regionAt(x,z).id)+0.3){
+        const ring = makeTeleCircle(colorHex); ring.position.set(x,heightAt(x,z,regionAt(x,z).id)+0.06,z); ring.scale.set(0.45,0.45,0.45); world.add(ring);
+        projectiles.push({mesh:ring,kind:"bossFx",fxType:"ring",x,y:ring.position.y,z,vx:0,vy:0,vz:0,life:0.22,maxLife:0.22,maxScale:0.8});
+      }
+      const sparks = 2 + (Math.random()*4|0);
+      for(let i=0;i<sparks;i++){
+        const sp = glowSprite(colorHex,0.12,0.45,FX_TEX.softGlow);
+        sp.position.set(x,y,z); world.add(sp);
+        const a = Math.random()*Math.PI*2;
+        projectiles.push({mesh:sp,kind:"bossFx",fxType:"spark",x,y,z,vx:Math.cos(a)*(1.8+Math.random()*2.4),vy:0.6+Math.random()*1.2,vz:Math.sin(a)*(1.8+Math.random()*2.4),drag:0.86,grav:7.2,life:0.22+Math.random()*0.18,maxLife:0.34});
+      }
+      let active = 0;
+      for(const pp of projectiles){ if(pp.kind==="bossFx") active++; }
+      if(active > IMPACT_FX_CAP){
+        for(let i=0;i<projectiles.length && active>IMPACT_FX_CAP;i++){
+          if(projectiles[i].kind!=="bossFx") continue;
+          world.remove(projectiles[i].mesh); projectiles.splice(i,1); i--; active--;
+        }
+      }
+    }
 
     // ============================================================
     // Player auto fire tick
@@ -6724,7 +7031,14 @@ e.mesh.userData.anim?.(e, dt, now);
                 knockback: w.knockback||0,
                 chainBounces: (w.chainBounces||0) + (wp.extra.chainBounces||0),
                 chainRange: w.chainRange||7.0,
-                pierce: w.pierce||0,
+                pierce: (w.pierce||0) + (wp.extra.pierce||0),
+                homing: wp.proj.homing && (w.kind==="bolt" || w.kind==="flame"),
+                homingTurn: wp.proj.homingTurn,
+                homingAcquireRange: wp.proj.homingAcquireRange,
+                impactStyle: wp.proj.impactStyle,
+                trailStyle: wp.proj.trailStyle,
+                critChance: wp.proj.critChance,
+                critMul: wp.proj.critMul,
                 irradiate: w.irradiate||null
               }, false, isFlame);
               }
@@ -7166,8 +7480,32 @@ e.mesh.userData.anim?.(e, dt, now);
     function fmtMats(){
       const m = me.mats;
       // compact quick view
-      return `Fe:${m.iron} Hi:${m.hide} Es:${m.essence} Cr:${m.crystal} Em:${m.ember} 🔱:${sigilsCollected}/5`;
+      return `Fe:${m.iron} Hi:${m.hide} Es:${m.essence} Cr:${m.crystal} Em:${m.ember} 🧪:${me.modDust|0} 🔱:${sigilsCollected}/5`;
     }
+
+
+function drawMinimap(){
+  if(!minimapCtx) return;
+  const ctx = minimapCtx;
+  const w = minimap.width, h = minimap.height;
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = "rgba(2,6,23,0.78)";
+  ctx.fillRect(0,0,w,h);
+  const cx=w*0.5, cy=h*0.5;
+  const scale = (Math.min(w,h)*0.46)/WORLD_RADIUS;
+  ctx.strokeStyle = "rgba(148,163,184,0.7)";
+  ctx.lineWidth = 1;
+  for(const rr of [520,1120,WORLD_RADIUS]){ ctx.beginPath(); ctx.arc(cx,cy,rr*scale,0,Math.PI*2); ctx.stroke(); }
+  ctx.fillStyle = "#cbd5e1";
+  ctx.font = "10px sans-serif";
+  ctx.fillText("I", cx+520*scale+2, cy-2);
+  ctx.fillText("II", cx+1120*scale+2, cy-2);
+  ctx.fillText("III", cx+WORLD_RADIUS*scale-20, cy-2);
+  ctx.fillStyle = "#22d3ee";
+  ctx.beginPath(); ctx.arc(cx + me.x*scale, cy + me.z*scale, 3.2, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = "rgba(34,197,94,0.8)";
+  for(let i=0;i<forges.length;i+=Math.max(1,Math.floor(forges.length/90))){ const f=forges[i]; ctx.fillRect(cx+f.x*scale-1, cy+f.z*scale-1, 2,2); }
+}
 
     let _hudAcc = 0;
 let _lastRegId = "";
@@ -7177,6 +7515,7 @@ function tickHUD(dt){
   _hudAcc += dt;
   if(_hudAcc < 0.10) return; // 10 Hz
   _hudAcc = 0;
+  drawMinimap();
 
   hpText.textContent = `${Math.ceil(me.hp)} / ${me.maxHp} (+${me.hpRegen.toFixed(1)}/s)`;
   lvlText.textContent = `Lv ${me.level} • XP ${Math.floor(me.xp)}/${me.nextXp}`;
@@ -7276,6 +7615,16 @@ function tickHUD(dt){
     // Autosave timer
     // ============================================================
     let saveT = 0;
+
+    // QUICK TEST CHECKLIST:
+    // - Mod drops occur on normal enemies, with ring and elite scaling (dropFromEnemy + rollModForDrop).
+    // - Bosses drop identifiable boss loot mods (giveBossLoot + spawnModDrop boss=true).
+    // - Mod slots/weight capacity enforced in forge attach flow.
+    // - Salvage grants dust; rerolls consume dust and grant mods.
+    // - Homing projectiles curve gently via turn-rate-limited steering in tickProjectiles.
+    // - Impact FX spawns on projectile hits and enemy-ground impacts with cap guard.
+    // - Minimap renders ring circles and player dot each HUD tick.
+    // - Save/load supports older saves via normalizeMod + default modDust.
 
     // ============================================================
     // Boot / phase
