@@ -401,6 +401,10 @@
   const particles=[];
   const beams=[];
   const hazards=[];
+  const rallyPings=[];
+  const commandMarkers=[];
+  const gatherBeams=[];
+  const neutrals=[];
 
   const OWNER_PLAYER=0, OWNER_ENEMY=1;
 
@@ -432,6 +436,15 @@
   const SEP_PUSH     = 58;
   const TARGET_RING_MIN = 8;
   const TARGET_RING_MAX = 32;
+  const OPT_WORKERS_MINERAL = 2;
+  const OPT_WORKERS_GAS = 3;
+
+  const econBuffs = {
+    player:{relayUntil:0},
+    enemy:{relayUntil:0},
+  };
+  const RAID={nextAt:0};
+  let nodeWorkerCount = new Map();
 
   // ---------------- Game config ----------------
   let playerRace="frontier";
@@ -461,9 +474,9 @@
         eng:{name:"Engineer",ico:"🧑‍🔧",cost:{m:50,g:0}, supply:1,hp:70, spd:120, range:18, dmg:5, atkCd:0.9, worker:true, carry:8, canHitAir:false},
         rif:{name:"Rifler",ico:"🔫",cost:{m:50,g:0}, supply:1,hp:78, spd:150, range:140,dmg:8, atkCd:0.62, abilities:["burst"], canHitAir:true},
         med:{name:"Medic",ico:"💉",cost:{m:60,g:25},supply:1,hp:72, spd:140, range:150,dmg:0, atkCd:1.0, healer:true, canHitAir:false},
-        sie:{name:"SiegeBot",ico:"🛡️",cost:{m:120,g:60},supply:3,hp:165,spd:105,range:210,dmg:18,atkCd:1.25,splash:70, abilities:["shockwave"], canHitAir:true},
+        sie:{name:"SiegeBot",ico:"🛡️",cost:{m:120,g:60},supply:3,hp:165,spd:105,range:210,dmg:18,atkCd:1.25,splash:70, abilities:["shockwave"], canHitAir:true, armored:true, bonusVsBuildings:0.25},
         gun:{name:"Gunship",ico:"🚁",cost:{m:140,g:90},supply:3,hp:140,spd:210,range:180,dmg:14,atkCd:0.85,flying:true, canHitAir:true},
-        plc:{name:"Plasma Cruiser",ico:"🚀",cost:{m:260,g:170},supply:6,hp:360,spd:175,range:260,dmg:40,atkCd:2.10,splash:120,flying:true,plasma:true,canHitAir:true}
+        plc:{name:"Plasma Cruiser",ico:"🚀",cost:{m:260,g:170},supply:6,hp:360,spd:175,range:260,dmg:40,atkCd:2.10,splash:120,flying:true,plasma:true,canHitAir:true, armored:true, bonusVsBuildings:0.3}
       },
       research:[
         {id:"atk1",name:"Weapon +1",ico:"⚙️",cost:{m:120,g:90},time:28,req:["lab"], effect:(o)=>{econ[o].upgrades.atk=(econ[o].upgrades.atk||0)+1;}},
@@ -488,12 +501,12 @@
       units:{
         drn:{name:"Drone",ico:"👾",cost:{m:50,g:0}, supply:1,hp:78, spd:135, range:18, dmg:6, atkCd:0.85, worker:true, carry:10, canHitAir:false},
         thr:{name:"Thrall",ico:"👊",cost:{m:55,g:0}, supply:1,hp:95, spd:165, range:38, dmg:10, atkCd:0.72, canHitAir:false},
-        stk:{name:"Stalker",ico:"🗡️",cost:{m:90,g:25},supply:2,hp:125,spd:155,range:170,dmg:13,atkCd:0.78, abilities:["phase"], canHitAir:true},
-        wsp:{name:"Wisp",ico:"🧙",cost:{m:80,g:60},supply:2,hp:85, spd:150,range:160,dmg:7, atkCd:0.95, caster:true, energyMax:100, abilities:["zap"], canHitAir:true},
-        bru:{name:"Brute",ico:"🧟",cost:{m:120,g:30},supply:3,hp:240,spd:120,range:40, dmg:22,atkCd:0.9, abilities:["slam"], canHitAir:false},
-        ray:{name:"Ray",ico:"🛸",cost:{m:160,g:90},supply:3,hp:175,spd:235,range:220,dmg:0, atkCd:0, flying:true, rayBeam:true, abilities:["overcharge"], canHitAir:true},
+        stk:{name:"Stalker",ico:"🗡️",cost:{m:90,g:25},supply:2,hp:125,spd:155,range:170,dmg:13,atkCd:0.78, abilities:["phase"], canHitAir:true, shieldMax:55, shieldRegen:7},
+        wsp:{name:"Wisp",ico:"🧙",cost:{m:80,g:60},supply:2,hp:85, spd:150,range:160,dmg:7, atkCd:0.95, caster:true, energyMax:100, abilities:["zap"], canHitAir:true, shieldMax:40, shieldRegen:6},
+        bru:{name:"Brute",ico:"🧟",cost:{m:120,g:30},supply:3,hp:240,spd:120,range:40, dmg:22,atkCd:0.9, abilities:["slam"], canHitAir:false, armored:true, bonusVsBuildings:0.25},
+        ray:{name:"Ray",ico:"🛸",cost:{m:160,g:90},supply:3,hp:175,spd:235,range:220,dmg:0, atkCd:0, flying:true, rayBeam:true, abilities:["overcharge"], canHitAir:true, shieldMax:75, shieldRegen:9},
         bom:{name:"Bomber",ico:"💣",cost:{m:210,g:140},supply:4,hp:210,spd:190,range:200,dmg:24,atkCd:1.35,splash:90,flying:true, canHitAir:true},
-        mth:{name:"Mothership",ico:"🛳️",cost:{m:360,g:240},supply:8,hp:650,spd:150,range:260,dmg:0, atkCd:0,flying:true, carrier:true, fighterCap:6, abilities:["launch"], canHitAir:false},
+        mth:{name:"Mothership",ico:"🛳️",cost:{m:360,g:240},supply:8,hp:650,spd:150,range:260,dmg:0, atkCd:0,flying:true, carrier:true, fighterCap:6, abilities:["launch"], canHitAir:false, shieldMax:140, shieldRegen:11},
         ftr:{name:"Fighter",ico:"🛩️",cost:{m:0,g:0},supply:0,hp:42, spd:280,range:140,dmg:7, atkCd:0.45,flying:true, fighter:true, canHitAir:true}
       },
       research:[
@@ -506,11 +519,11 @@
   // ---------------- Enemy units/buildings ----------------
   const ENEMY = {
     ling:  {name:"Ling",ico:"🐜",hp:40, spd:215,range:28, dmg:7, atkCd:0.55, flying:false, splash:0, canHitAir:false},
-    hydra: {name:"Hydra",ico:"🐍",hp:110,spd:150,range:175,dmg:12,atkCd:0.85,flying:false, canHitAir:true},
-    roach: {name:"Roach",ico:"🪲",hp:220,spd:120,range:165,dmg:14,atkCd:0.95,flying:false, canHitAir:false},
+    hydra: {name:"Hydra",ico:"🐍",hp:110,spd:150,range:175,dmg:12,atkCd:0.85,flying:false, canHitAir:true, armored:true},
+    roach: {name:"Roach",ico:"🪲",hp:220,spd:120,range:165,dmg:14,atkCd:0.95,flying:false, canHitAir:false, armored:true},
     muta:  {name:"Muta",ico:"🦇",hp:135,spd:240,range:165,dmg:14,atkCd:0.95,flying:true,  canHitAir:true},
     inf:   {name:"Infestor",ico:"🧫",hp:190,spd:120,range:175,dmg:12,atkCd:0.85,flying:false, canHitAir:true, trap:true, trapCd:7.0},
-    ultra: {name:"Ultra",ico:"🐘",hp:720,spd:90, range:42, dmg:28,atkCd:1.05,flying:false, canHitAir:false, splash:65},
+    ultra: {name:"Ultra",ico:"🐘",hp:720,spd:90, range:42, dmg:28,atkCd:1.05,flying:false, canHitAir:false, splash:65, armored:true},
   };
 
   const ENEMY_BUILD = {
@@ -691,6 +704,7 @@
       if(def?.provides?.supply) cap += def.provides.supply;
       if(def?.provides?.power)  power += def.provides.power;
     }
+    if(owner===OWNER_PLAYER && econBuffs.player.relayUntil>tNow) cap += 8;
     econ[owner].supplyCap = cap;
     econ[owner].power = power;
     if((econ[owner].supplyUsed||0)<0) econ[owner].supplyUsed=0;
@@ -801,6 +815,12 @@
         slowUntil:0,
         supply:0,
         guardSpireId: opts.guardSpireId || null,
+        armored: !!U.armored,
+        bonusVsBuildings: U.bonusVsBuildings||0,
+        shieldMax: U.shieldMax||0,
+        shieldRegen: U.shieldRegen||0,
+        shield: U.shieldMax||0,
+        lastDamagedAt:-999,
       };
       units.push(u);
       return u;
@@ -844,6 +864,12 @@
       canHitAir: (U.canHitAir!==undefined)?!!U.canHitAir:true,
       slowUntil:0,
       supply: (U.supply||0),
+      armored: !!U.armored,
+      bonusVsBuildings: U.bonusVsBuildings||0,
+      shieldMax: U.shieldMax||0,
+      shieldRegen: U.shieldRegen||0,
+      shield: U.shieldMax||0,
+      lastDamagedAt:-999,
     };
     for(const ab of abilities) u.cds[ab]=0;
 
@@ -880,7 +906,8 @@
       kind,
       size: extra.size ?? (kind==="plasma"?10:3),
       knock: extra.knock ?? (kind==="plasma"?170:0),
-      canHitAir: extra.canHitAir ?? true
+      canHitAir: extra.canHitAir ?? true,
+      bonusVsBuildings: extra.bonusVsBuildings||0
     });
   }
 
@@ -941,6 +968,7 @@
   function commandAttackMove(u,x,y){
     u.task={kind:"attackMove",x,y};
     u.path=[]; u.repath=0;
+    pushCommandMarker("attackMove",x,y,{ttl:1.05});
     if(!u.flying){
       const {tx,ty}=worldToTile(u.x,u.y);
       const {tx:gx,ty:gy}=worldToTile(x,y);
@@ -950,8 +978,10 @@
   function commandAttack(u,target){
     u.task={kind:"attack", targetId: target.id};
     u.path=[]; u.repath=0;
+    pushCommandMarker("attack",target.x,target.y,{targetId:target.id,ttl:1.1});
   }
   function commandMine(w,node){
+    pushCommandMarker("mine",node.x,node.y,{nodeId:node.id,ttl:1.0});
     if(node.type==="geyser" && w.carry.m>0){
       w.carry.m=0;
       toastMsg("Worker dumped minerals to start gas.");
@@ -959,12 +989,19 @@
     w.task={kind:"mine", nodeId:node.id, stage:"go"};
     w.path=[]; w.repath=0;
   }
+  function pushCommandMarker(mode,x,y,extra={}){
+    commandMarkers.push({mode,x,y,t0:tNow,ttl:extra.ttl||1.0,targetId:extra.targetId||null,nodeId:extra.nodeId||null});
+  }
+
   function commandBuild(w,defId,tx,ty){
     w.task={kind:"build", defId, tx, ty, stage:"go"};
     w.path=[]; w.repath=0;
+    const c=tileToWorld(tx+1,ty+1);
+    pushCommandMarker("build",c.x,c.y,{ttl:1.1});
   }
 
   function commandGroupTo(groupUnits, goal){
+    pushCommandMarker(goal.mode||"move",goal.x,goal.y,{ttl:1.05});
     const alive=groupUnits.filter(u=>u.hp>0);
     if(!alive.length) return;
 
@@ -1006,6 +1043,139 @@
       if(goal.mode==="attackMove") commandAttackMove(u,w.x,w.y);
       else commandMove(u,w.x,w.y);
     }
+  }
+
+  function countWorkersOnNode(nodeId){
+    return units.filter(u =>
+      u.owner===OWNER_PLAYER && u.hp>0 && u.worker &&
+      u.task?.kind==="mine" && u.task.nodeId===nodeId &&
+      (u.task.stage==="go" || u.task.stage==="harvest" || u.task.stage==="return")
+    ).length;
+  }
+
+  function rebuildNodeWorkerCount(){
+    nodeWorkerCount = new Map();
+    for(const u of units){
+      if(u.owner!==OWNER_PLAYER || u.hp<=0 || !u.worker || u.task?.kind!=="mine") continue;
+      const st=u.task.stage;
+      if(st!=="go" && st!=="harvest" && st!=="return") continue;
+      nodeWorkerCount.set(u.task.nodeId,(nodeWorkerCount.get(u.task.nodeId)||0)+1);
+    }
+  }
+
+  function ownerBuff(owner){
+    const key=owner===OWNER_PLAYER?"player":"enemy";
+    return {relayActive:econBuffs[key].relayUntil>tNow};
+  }
+
+  function applyDamage(target,dmg,dmgType,attacker,isBuildingTarget=false){
+    if(!target || target.hp<=0 || target.dead) return;
+    let left=dmg;
+    if(target.shieldMax>0 && target.shield>0){
+      const absorb=Math.min(target.shield,left);
+      target.shield-=absorb;
+      left-=absorb;
+    }
+    if(dmgType==="bullet" && target.armored) left*=0.8;
+    if(isBuildingTarget && attacker?.bonusVsBuildings>0) left*=(1+attacker.bonusVsBuildings);
+    if(left>0){
+      target.hp -= left;
+      target.lastDamagedAt=tNow;
+    }
+  }
+
+  function findNeutralSpotNear(x,y,minR,maxR){
+    for(let i=0;i<180;i++){
+      const a=rand(0,Math.PI*2), r=rand(minR,maxR);
+      const wx=x+Math.cos(a)*r, wy=y+Math.sin(a)*r;
+      const t=worldToTile(wx,wy);
+      if(isBlockedForPath(t.tx,t.ty) || buildingAtTile(t.tx,t.ty)) continue;
+      let ok=true;
+      for(const b of buildings){ if(!b.dead && dist2(b.x,b.y,wx,wy)<95*95){ok=false;break;} }
+      if(!ok) continue;
+      return {x:wx,y:wy};
+    }
+    return findSpawnNear(x,y,200,160);
+  }
+
+  function nearestNeutralForOwner(owner){
+    let best=null,bd=Infinity;
+    for(const n of neutrals){
+      if(n.consumed) continue;
+      if(n.owner===owner && n.capture>=1) continue;
+      const hq=getAnyHQ(OWNER_PLAYER);
+      const tx=hq?hq.x:WORLD_W*0.25, ty=hq?hq.y:WORLD_H*0.5;
+      const d=dist2(n.x,n.y,tx,ty);
+      if(d<bd){bd=d;best=n;}
+    }
+    return best;
+  }
+
+  function grantRelayBuff(owner){
+    const key=owner===OWNER_PLAYER?"player":"enemy";
+    econBuffs[key].relayUntil=tNow+45;
+  }
+
+  function updateNeutrals(dt){
+    for(const n of neutrals){
+      if(n.consumed) continue;
+      let pCount=0,eCount=0;
+      for(const u of units){
+        if(u.hp<=0) continue;
+        if(dist2(u.x,u.y,n.x,n.y)>80*80) continue;
+        if(u.owner===OWNER_PLAYER) pCount++; else if(u.owner===OWNER_ENEMY) eCount++;
+      }
+      if(pCount>0 && eCount===0){
+        n.owner=OWNER_PLAYER;
+        n.capture=clamp(n.capture + dt*(0.22+0.08*(pCount-1)),0,1);
+      } else if(eCount>0 && pCount===0){
+        n.owner=OWNER_ENEMY;
+        n.capture=clamp(n.capture + dt*(0.22+0.08*(eCount-1)),0,1);
+      } else if(pCount>0 && eCount>0){
+        n.capture=Math.max(0,n.capture-dt*0.05);
+      } else {
+        n.capture=Math.max(0,n.capture-dt*0.02);
+      }
+      if(n.capture>=1 && !n.captured){
+        n.captured=true;
+        if(n.kind==="cache"){
+          const gain=Math.floor((140+Math.random()*120)*diffMul());
+          econ[n.owner].minerals += gain;
+          n.consumed=true;
+        } else if(n.kind==="relay"){
+          grantRelayBuff(n.owner);
+          n.buffUntil=tNow+45;
+        }
+      }
+    }
+    recomputeSupply(OWNER_PLAYER);
+  }
+
+  function spawnRaidSquad(){
+    const spires=aliveSpires();
+    if(!spires.length) return;
+    const sp=spires[randi(0,spires.length-1)];
+    const wave=Math.max(1,WAVE.waveNum);
+    const comp=["ling","ling","ling","hydra"];
+    if(wave>=5) comp.push("roach");
+    if(wave>=7) comp.push("muta");
+    const tgt=nearestNeutralForOwner(OWNER_ENEMY);
+    const hq=getAnyHQ(OWNER_PLAYER);
+    for(const type of comp){
+      const p=findSpawnNear(sp.x,sp.y,110,100);
+      const u=makeUnit(OWNER_ENEMY,type,p.x,p.y);
+      if(!u) continue;
+      if(tgt) u.task={kind:"attackMove",x:tgt.x,y:tgt.y};
+      else if(hq) u.task={kind:"attack",targetId:hq.id};
+      else u.task={kind:"seek",targetId:null};
+    }
+  }
+
+  function updateRaid(){
+    if(RAID.nextAt===0) RAID.nextAt=tNow+45;
+    if(tNow<RAID.nextAt) return;
+    spawnRaidSquad();
+    RAID.nextAt=tNow+(difficulty==="easy"?55:difficulty==="hard"?35:45);
   }
 
   // ---------------- Targeting ----------------
@@ -1350,12 +1520,17 @@
         w.harv=0;
       }
     } else if(w.task.stage==="harvest"){
-      w.harv=(w.harv||0) + dt*mineMul;
+      gatherBeams.push({x1:w.x,y1:w.y,x2:node.x,y2:node.y,type:node.type,t0:tNow,ttl:0.08});
+      const satCount=nodeWorkerCount.get(node.id) || countWorkersOnNode(node.id);
+      const opt=(node.type==="geyser")?OPT_WORKERS_GAS:OPT_WORKERS_MINERAL;
+      const eff=satCount<=opt ? 1 : (1/(1+0.55*(satCount-opt)));
+      w.harv=(w.harv||0) + dt*mineMul*eff;
       if(w.harv>=1){
         const take=Math.min(cap-(w.carry.m+w.carry.g), Math.floor(w.harv));
         w.harv-=take;
         if(node.type==="mineral"){
           node.amount-=take; w.carry.m+=take;
+          for(let i=0;i<Math.min(3,take);i++) spawnParticles(node.x+rand(-4,4),node.y+rand(-4,4),"hit");
         } else {
           w.carry.g+=take;
         }
@@ -1388,7 +1563,7 @@
         w.task.stage="build";
       }
     } else {
-      b.buildTimeLeft -= dt;
+      b.buildTimeLeft -= dt * (ownerBuff(OWNER_PLAYER).relayActive?1.10:1.0);
       if(b.buildTimeLeft<=0){
         b.complete=true;
         recomputeSupply(OWNER_PLAYER);
@@ -1582,15 +1757,15 @@
         for(const e of units){
           if(e.owner!==enemyOwner || e.hp<=0) continue;
           if(e.flying && u.canHitAir===false) continue;
-          if(dist2(e.x,e.y,target.x,target.y)<=r2) e.hp -= dmg;
+          if(dist2(e.x,e.y,target.x,target.y)<=r2) applyDamage(e,dmg,"bullet",u,false);
         }
         spawnParticles(target.x,target.y,"hit");
       } else {
-        target.hp -= dmg;
+        applyDamage(target,dmg,"bullet",u,false);
         spawnParticles(target.x,target.y,"hit");
       }
     } else {
-      spawnProjectile(u.owner,u.x,u.y,target.x,target.y,dmg,splash,"bullet",{canHitAir:u.canHitAir!==false});
+      spawnProjectile(u.owner,u.x,u.y,target.x,target.y,dmg,splash,"bullet",{canHitAir:u.canHitAir!==false, bonusVsBuildings:u.bonusVsBuildings||0});
     }
   }
 
@@ -1604,7 +1779,7 @@
     const mult = (u.buffs.overchargeUntil>tNow)?1.65:1.0;
     const dps = baseDps*mult;
 
-    target.hp -= dps*dt;
+    applyDamage(target,dps*dt,"beam",u,false);
     beams.push({owner:u.owner, x1:u.x,y1:u.y,x2:target.x,y2:target.y, hot:(u.buffs.overchargeUntil>tNow)});
 
     u.beamTick=(u.beamTick||0)+dt;
@@ -1626,7 +1801,7 @@
     const finalDmg=dmg + atkUp*2.5;
 
     spawnProjectile(u.owner,u.x,u.y,target.x,target.y,finalDmg,u.splash||0,"plasma",{
-      speed:300, size:10, knock:190, canHitAir:true
+      speed:300, size:10, knock:190, canHitAir:true, bonusVsBuildings:u.bonusVsBuildings||0
     });
   }
 
@@ -1747,13 +1922,13 @@
         for(const u of units){
           if(u.owner!==enemyOwner || u.hp<=0) continue;
           if(dist2(u.x,u.y,h.x,h.y)<=r2){
-            u.hp -= h.dmg;
+            applyDamage(u,h.dmg,"explosive",h,false);
             u.slowUntil = Math.max(u.slowUntil||0, tNow+2.0);
           }
         }
         for(const b of buildings){
           if(b.owner!==enemyOwner || b.dead) continue;
-          if(dist2(b.x,b.y,h.x,h.y)<=r2) b.hp -= h.dmg*0.55;
+          if(dist2(b.x,b.y,h.x,h.y)<=r2) applyDamage(b,h.dmg*0.55,"explosive",h,true);
         }
         spawnParticles(h.x,h.y,"plasma");
         h.done=true;
@@ -1769,7 +1944,7 @@
 
       // construction
       if(b.owner===OWNER_PLAYER && !b.complete){
-        b.buildTimeLeft -= dt;
+        b.buildTimeLeft -= dt * (ownerBuff(OWNER_PLAYER).relayActive?1.10:1.0);
         if(b.buildTimeLeft<=0){
           b.complete=true;
           recomputeSupply(OWNER_PLAYER);
@@ -1800,7 +1975,7 @@
 
       // production/research
       if(b.owner===OWNER_PLAYER && b.complete && b.job){
-        b.job.tLeft -= dt;
+        b.job.tLeft -= dt * (ownerBuff(OWNER_PLAYER).relayActive?1.10:1.0);
         if(b.job.tLeft<=0){
           if(b.job.kind==="unit"){
             const spawn=findSpawnNear(b.x,b.y);
@@ -1872,17 +2047,17 @@
             if(u.owner!==enemyOwner || u.hp<=0) continue;
             if(u.flying && p.canHitAir===false) continue;
             if(dist2(u.x,u.y,p.x,p.y)<=r2){
-              u.hp -= p.dmg*0.75;
+              applyDamage(u,p.dmg*0.75,p.kind,p,false);
               if(p.knock>0) applyKnockback(u,p.x,p.y,p.knock);
             }
           }
           for(const b of buildings){
             if(b.owner!==enemyOwner || b.dead) continue;
-            if(dist2(b.x,b.y,p.x,p.y)<=r2) b.hp -= p.dmg*0.6;
+            if(dist2(b.x,b.y,p.x,p.y)<=r2) applyDamage(b,p.dmg*0.6,p.kind,p,true);
           }
         }
 
-        hit.hp -= p.dmg;
+        applyDamage(hit,p.dmg,p.kind,p,!!hit.w);
         if(p.knock>0 && hit && hit.x!=null) applyKnockback(hit,p.x,p.y,p.knock*1.1);
 
         p.life=0;
@@ -1938,6 +2113,7 @@
       // slows
       let spd=u.spd;
       if(u.slowUntil && u.slowUntil>tNow) spd *= 0.62;
+      if(ownerBuff(u.owner).relayActive) spd *= 1.10;
 
       // healer
       if(u.healer){
@@ -2230,7 +2406,7 @@
       const y=cy+Math.sin(a)*52 + rand(-8,8);
       const t=worldToTile(x,y);
       carveRect(t.tx-3,t.ty-3,7,7);
-      resNodes.push({id:nextId++, type:"mineral", x,y, amount:2200, tx:t.tx, ty:t.ty});
+      resNodes.push({id:nextId++, type:"mineral", x,y, amount:2200, maxAmount:2200, tx:t.tx, ty:t.ty});
     }
 
     const rawGX=cx+(geyserDirX||1)*200 + rand(-18,18);
@@ -2294,6 +2470,7 @@
   function clearAll(){
     units.length=0; buildings.length=0; projectiles.length=0; resNodes.length=0;
     particles.length=0; beams.length=0; hazards.length=0;
+    rallyPings.length=0; commandMarkers.length=0; gatherBeams.length=0; neutrals.length=0;
     state.selection.clear(); state.boxSel=null; state.attackMove=false; state.buildGhost=null;
     state.actionKeyMap={};
     state.gameOver=false;
@@ -2303,6 +2480,8 @@
     econ[0]={minerals:350,gas:0,supplyUsed:0,supplyCap:10,upgrades:{},power:0};
     econ[1]={minerals:0,gas:0,supplyUsed:0,supplyCap:0,upgrades:{},power:0};
     groups.clear();
+    econBuffs.player.relayUntil=0; econBuffs.enemy.relayUntil=0;
+    RAID.nextAt=0;
 
     SEEN_TYPES.clear();
     WAVE.waveNum=0;
@@ -2333,6 +2512,17 @@
     // extra mid resources (lighter)
     placeResourceCluster(WORLD_W/2, WORLD_H/2 - 150, 1);
     placeResourceCluster(WORLD_W/2, WORLD_H/2 + 140, -1);
+
+    const midX=WORLD_W*0.5, midY=WORLD_H*0.5;
+    const cacheCount=randi(2,3), relayCount=randi(1,2);
+    for(let i=0;i<cacheCount;i++){
+      const p=findNeutralSpotNear(midX,midY,120,310);
+      neutrals.push({id:nextId++,kind:"cache",x:p.x,y:p.y,owner:-1,capture:0,captured:false,consumed:false,buffUntil:0});
+    }
+    for(let i=0;i<relayCount;i++){
+      const p=findNeutralSpotNear(midX,midY,140,330);
+      neutrals.push({id:nextId++,kind:"relay",x:p.x,y:p.y,owner:-1,capture:0,captured:false,consumed:false,buffUntil:0});
+    }
 
     // Player HQ
     const phq=makeHQ(OWNER_PLAYER,pPocket.hqPos.x,pPocket.hqPos.y);
@@ -2606,10 +2796,12 @@
         if(b.owner!==OWNER_PLAYER) continue;
         if(node && b.isHQ){
           b.rally={mode:"mine", x:node.x,y:node.y,nodeId:node.id};
+          rallyPings.push({x:node.x,y:node.y,mode:"mine",t0:tNow,ttl:0.9});
           toastMsg("HQ rally: mine");
         } else {
           const mode=state.attackMove?"attackMove":"move";
           b.rally={mode,x,y};
+          rallyPings.push({x,y,mode,t0:tNow,ttl:0.9});
           toastMsg("Rally set");
         }
       }
@@ -2756,7 +2948,8 @@
     cmdButtons.innerHTML="";
     actionButtons.innerHTML="";
     state.actionKeyMap={};
-    cmdHint.textContent = state.attackMove ? "Attack-move armed" : "-";
+    const relayLeft=Math.max(0,econBuffs.player.relayUntil-tNow);
+    cmdHint.textContent = (state.attackMove ? "Attack-move armed" : "-") + (relayLeft>0?` | Relay ${relayLeft.toFixed(0)}s`:"");
     modeInfo.textContent = state.buildGhost ? "Placing building..." : "-";
 
     const cmds=[
@@ -2932,9 +3125,20 @@
       ctx.fillStyle="#0f172a";
       ctx.fillText(n.type==="mineral"?"🪨":"🟢", s.x, s.y);
       if(n.type==="mineral"){
+        const pAmt=clamp(n.amount/Math.max(1,n.maxAmount||2200),0,1);
+        ctx.fillStyle="rgba(15,23,42,.22)";
+        ctx.fillRect(s.x-18,s.y-20,36,4);
+        ctx.fillStyle="rgba(59,130,246,.88)";
+        ctx.fillRect(s.x-18,s.y-20,36*pAmt,4);
         ctx.font="10px system-ui";
-        ctx.fillStyle="rgba(15,23,42,.7)";
-        ctx.fillText(Math.max(0,Math.floor(n.amount/100))*100, s.x, s.y+14);
+        ctx.fillStyle="rgba(15,23,42,.75)";
+        const sat=nodeWorkerCount.get(n.id)||0;
+        const satTxt=sat+"/"+OPT_WORKERS_MINERAL;
+        ctx.fillText(String(Math.max(0,Math.round(n.amount/10)*10))+"  "+satTxt, s.x, s.y+14);
+        if(sat>OPT_WORKERS_MINERAL){
+          ctx.fillStyle="rgba(180,83,9,.75)";
+          ctx.fillText(satTxt,s.x,s.y+24);
+        }
       }
     }
 
@@ -2980,6 +3184,54 @@
       }
     }
 
+    // building rally markers + pings
+    const selNow=getSelected();
+    const hasAnyBuildingSel=selNow.some(s=>s.kind==="building");
+    const showAllRallies=!!keys["alt"];
+    ctx.save();
+    for(const b of buildings){
+      if(b.dead || b.owner!==OWNER_PLAYER || !b.rally) continue;
+      if(!(showAllRallies || hasAnyBuildingSel || state.selection.has(b.id))) continue;
+      let rx=b.rally.x, ry=b.rally.y;
+      if(b.rally.mode==="mine" && b.rally.nodeId){
+        const n=resNodes.find(n=>n.id===b.rally.nodeId);
+        if(n){rx=n.x;ry=n.y;}
+      }
+      const bs=worldToScreen(b.x,b.y), rs=worldToScreen(rx,ry);
+      ctx.setLineDash([5,4]);
+      ctx.strokeStyle="rgba(37,99,235,.30)";
+      ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.moveTo(bs.x,bs.y);ctx.lineTo(rs.x,rs.y);ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();ctx.arc(rs.x,rs.y,b.rally.mode==="attackMove"?14:10,0,Math.PI*2);
+      ctx.strokeStyle="rgba(37,99,235,.45)";ctx.stroke();
+      ctx.fillStyle="rgba(15,23,42,.9)";ctx.font="12px system-ui";ctx.textAlign="center";ctx.textBaseline="middle";
+      const ico=b.rally.mode==="mine"?"⛏️":(b.rally.mode==="attackMove"?"⚔️":"🚩");
+      ctx.fillText(ico,rs.x,rs.y);
+    }
+    for(let i=rallyPings.length-1;i>=0;i--){
+      const rp=rallyPings[i];
+      const age=tNow-rp.t0;
+      if(age>rp.ttl){rallyPings.splice(i,1);continue;}
+      const a=1-age/rp.ttl;
+      const s=worldToScreen(rp.x,rp.y);
+      ctx.beginPath();ctx.arc(s.x,s.y,8+age*26,0,Math.PI*2);
+      ctx.strokeStyle=`rgba(37,99,235,${0.45*a})`;
+      ctx.lineWidth=2;ctx.stroke();
+    }
+    for(let i=commandMarkers.length-1;i>=0;i--){
+      const cm=commandMarkers[i], age=tNow-cm.t0;
+      if(age>cm.ttl){commandMarkers.splice(i,1);continue;}
+      const a=1-age/cm.ttl;
+      const s=worldToScreen(cm.x,cm.y);
+      ctx.strokeStyle=`rgba(15,23,42,${0.65*a})`;ctx.fillStyle=`rgba(15,23,42,${0.65*a})`;ctx.lineWidth=1.8;
+      ctx.beginPath();ctx.arc(s.x,s.y,10,0,Math.PI*2);ctx.stroke();
+      ctx.font="12px system-ui";ctx.textAlign="center";ctx.textBaseline="middle";
+      const ico=cm.mode==="attack"?"🎯":cm.mode==="attackMove"?"⚔️":cm.mode==="mine"?"⛏️":cm.mode==="build"?"🔨":"➤";
+      ctx.fillText(ico,s.x,s.y);
+    }
+    ctx.restore();
+
     // hazards
     for(const h of hazards){
       const s=worldToScreen(h.x,h.y);
@@ -2994,6 +3246,28 @@
       ctx.fillStyle="#0f172a";
       ctx.fillText("🧫", s.x, s.y);
     }
+
+    // selected intent lines
+    ctx.save();
+    ctx.strokeStyle="rgba(37,99,235,.28)";
+    ctx.lineWidth=1;
+    for(const id of state.selection){
+      const ent=findById(id);
+      if(!ent || ent.kind!=="unit") continue;
+      const u=ent.ref;
+      if(u.hp<=0 || !u.task) continue;
+      let tx=null,ty=null;
+      if(u.task.kind==="move"||u.task.kind==="attackMove"){tx=u.task.x;ty=u.task.y;}
+      else if(u.task.kind==="mine"){
+        const n=resNodes.find(n=>n.id===u.task.nodeId);if(n){tx=n.x;ty=n.y;}
+      } else if(u.task.kind==="build"){
+        const c=tileToWorld(u.task.tx+1,u.task.ty+1);tx=c.x;ty=c.y;
+      }
+      if(tx==null) continue;
+      const a=worldToScreen(u.x,u.y), b=worldToScreen(tx,ty);
+      ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
+    }
+    ctx.restore();
 
     // units
     for(const u of units){
@@ -3035,6 +3309,51 @@
 
       const p=u.hp/u.maxHp;
       drawBar(s.x-18, s.y-u.radius-12, 36, 5, p);
+      if(u.shieldMax>0){
+        const sp=u.shield/u.shieldMax;
+        ctx.fillStyle="rgba(15,23,42,.2)";
+        ctx.fillRect(s.x-18,s.y-u.radius-18,36,4);
+        ctx.fillStyle="rgba(56,189,248,.8)";
+        ctx.fillRect(s.x-18,s.y-u.radius-18,36*sp,4);
+      }
+      const showTraits=state.selection.has(u.id) || keys["alt"] || (Math.abs(s.x-view.w*0.5)<view.w*0.28 && Math.abs(s.y-view.h*0.5)<view.h*0.28);
+      if(showTraits){
+        const traits=[];
+        if(u.armored) traits.push("🛡️");
+        if(u.shieldMax>0) traits.push("⚡");
+        if(u.bonusVsBuildings>0) traits.push("🪓");
+        if(traits.length){ ctx.font="10px system-ui"; ctx.fillStyle="rgba(15,23,42,.85)"; ctx.fillText(traits.slice(0,3).join(""),s.x,s.y-u.radius-24); }
+      }
+    }
+
+    // projectiles
+    for(const p of projectiles){
+      const s=worldToScreen(p.x,p.y);
+      const c=p.owner===OWNER_PLAYER?"rgba(59,130,246,.95)":"rgba(239,68,68,.95)";
+      if(p.kind==="plasma"){
+        ctx.beginPath();ctx.arc(s.x,s.y,p.size*0.55,0,Math.PI*2);ctx.fillStyle=c;ctx.fill();
+        ctx.beginPath();ctx.arc(s.x,s.y,p.size,0,Math.PI*2);ctx.strokeStyle=c.replace('.95','.35');ctx.stroke();
+      } else {
+        const ang=Math.atan2(p.vy,p.vx), l=8;
+        ctx.beginPath();ctx.moveTo(s.x-Math.cos(ang)*l,s.y-Math.sin(ang)*l);ctx.lineTo(s.x+Math.cos(ang)*l,s.y+Math.sin(ang)*l);
+        ctx.strokeStyle=c;ctx.lineWidth=2;ctx.stroke();
+      }
+      for(let i=1;i<=3;i++){
+        const tx=p.x-p.vx*0.01*i, ty=p.y-p.vy*0.01*i, ts=worldToScreen(tx,ty);
+        ctx.beginPath();ctx.arc(ts.x,ts.y,Math.max(1,3-i),0,Math.PI*2);ctx.fillStyle=p.owner===OWNER_PLAYER?`rgba(59,130,246,${0.22/i})`:`rgba(239,68,68,${0.22/i})`;ctx.fill();
+      }
+    }
+
+    // gather beams
+    for(let i=gatherBeams.length-1;i>=0;i--){
+      const gb=gatherBeams[i], age=tNow-gb.t0;
+      if(age>gb.ttl){gatherBeams.splice(i,1);continue;}
+      const s1=worldToScreen(gb.x1,gb.y1), s2=worldToScreen(gb.x2,gb.y2);
+      ctx.setLineDash([2,3]);
+      ctx.beginPath();ctx.moveTo(s1.x,s1.y);ctx.lineTo(s2.x,s2.y);
+      ctx.strokeStyle=gb.type==="mineral"?"rgba(59,130,246,.55)":"rgba(16,185,129,.55)";
+      ctx.lineWidth=1.5;ctx.stroke();
+      ctx.setLineDash([]);
     }
 
     // beams
@@ -3065,6 +3384,20 @@
 
       ctx.fillStyle=col;
       ctx.fill();
+    }
+
+    // neutrals
+    for(const n of neutrals){
+      if(n.consumed) continue;
+      const s=worldToScreen(n.x,n.y);
+      if(s.x<-50||s.y<-50||s.x>view.w+50||s.y>view.h+50) continue;
+      ctx.beginPath();ctx.arc(s.x,s.y,14,0,Math.PI*2);
+      const col=n.owner===OWNER_PLAYER?"rgba(37,99,235,.6)":n.owner===OWNER_ENEMY?"rgba(220,38,38,.6)":"rgba(100,116,139,.4)";
+      ctx.strokeStyle=col;ctx.lineWidth=2;ctx.stroke();
+      ctx.beginPath();ctx.arc(s.x,s.y,16,-Math.PI/2,-Math.PI/2+Math.PI*2*clamp(n.capture,0,1));
+      ctx.strokeStyle=col;ctx.lineWidth=2.5;ctx.stroke();
+      ctx.font="14px system-ui";ctx.fillStyle="rgba(15,23,42,.9)";ctx.textAlign="center";ctx.textBaseline="middle";
+      ctx.fillText(n.kind==="cache"?"📦":"🛰️",s.x,s.y);
     }
 
     // build ghost overlay
@@ -3127,14 +3460,12 @@
     const w=150, h=118;
     mctx.clearRect(0,0,w,h);
 
-    // background
     mctx.fillStyle="rgba(255,255,255,.75)";
     mctx.fillRect(0,0,w,h);
 
     const sx=w/WORLD_W;
     const sy=h/WORLD_H;
 
-    // terrain dots (downsample)
     const step=3;
     mctx.fillStyle="rgba(15,23,42,.32)";
     for(let ty=0;ty<GH;ty+=step){
@@ -3147,14 +3478,12 @@
       }
     }
 
-    // resources
     for(const n of resNodes){
       const x=n.x*sx, y=n.y*sy;
       mctx.fillStyle = n.type==="mineral" ? "rgba(59,130,246,.85)" : "rgba(16,185,129,.85)";
       mctx.fillRect(x-1,y-1,2,2);
     }
 
-    // buildings
     for(const b of buildings){
       if(b.dead) continue;
       const x=b.x*sx, y=b.y*sy;
@@ -3162,7 +3491,6 @@
       mctx.fillRect(x-1.5,y-1.5,3,3);
     }
 
-    // units
     for(const u of units){
       if(u.hp<=0) continue;
       const x=u.x*sx, y=u.y*sy;
@@ -3170,12 +3498,17 @@
       mctx.fillRect(x-1,y-1,2,2);
     }
 
-    // camera viewport rect
+    for(const n of neutrals){
+      if(n.consumed) continue;
+      const x=n.x*sx,y=n.y*sy;
+      mctx.fillStyle=n.kind==="cache"?"rgba(245,158,11,.9)":"rgba(139,92,246,.9)";
+      mctx.fillRect(x-1.5,y-1.5,3,3);
+    }
+
     mctx.strokeStyle="rgba(15,23,42,.55)";
     mctx.lineWidth=1.5;
     mctx.strokeRect(cam.x*sx, cam.y*sy, view.w*sx, view.h*sy);
 
-    // border
     mctx.strokeStyle="rgba(15,23,42,.18)";
     mctx.lineWidth=1;
     mctx.strokeRect(0.5,0.5,w-1,h-1);
@@ -3183,7 +3516,6 @@
 
   // ---------------- Cleanup (deaths + supply) ----------------
   function cleanupDeaths(){
-    // units
     for(const u of units){
       if(u.hp<=0 && !u._dead){
         u._dead=true;
@@ -3196,12 +3528,10 @@
       if(units[i]._dead) units.splice(i,1);
     }
 
-    // buildings
     let supplyDirty=false;
     for(const b of buildings){
       if(!b.dead && b.hp<=0){
         b.dead=true;
-        // free geyser claim if extractor died
         if(b.owner===OWNER_PLAYER && (b.type==="ref"||b.type==="ext")){
           const g=resNodes.find(n=>n.type==="geyser" && n.tx===b.tx && n.ty===b.ty);
           if(g) g.hasExtractorOwner=-1;
@@ -3212,7 +3542,6 @@
     }
     if(supplyDirty) recomputeSupply(OWNER_PLAYER);
 
-    // prune selection dead ids
     for(const id of Array.from(state.selection)){
       const ent=findById(id);
       if(!ent) state.selection.delete(id);
@@ -3261,7 +3590,10 @@
       updateWaves();
       updateBuildings(dt);
       updateHazards(dt);
+      rebuildNodeWorkerCount();
       updateUnits(dt);
+      updateNeutrals(dt);
+      updateRaid();
       updateProjectiles(dt);
       updateParticles(dt);
       cleanupDeaths();
