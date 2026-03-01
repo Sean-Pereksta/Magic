@@ -202,6 +202,7 @@
 
     <div class="chip"><b>Selected</b> <span id="selVal" class="muted">-</span></div>
     <div class="chip"><b>Enemy</b> <span id="enemyVal" class="muted">-</span></div>
+    <button class="btn" id="btnFullscreen">Fullscreen</button>
     <button class="btn" id="btnMenu">Menu (R)</button>
   </div>
 
@@ -306,6 +307,7 @@
 
   const menu = document.getElementById("menu");
   const startBtn = document.getElementById("startBtn");
+  const btnFullscreen = document.getElementById("btnFullscreen");
   const btnMenu = document.getElementById("btnMenu");
   const mapSel = document.getElementById("mapSel");
   const raceSel = document.getElementById("raceSel");
@@ -401,6 +403,12 @@
   const particles=[];
   const beams=[];
   const hazards=[];
+  const flareZones=[];
+  const recallZones=[];
+  const aimLines=[];
+  const pulseLinks=[];
+  const pounceLines=[];
+  const summonTelegraphs=[];
   const rallyPings=[];
   const commandMarkers=[];
   const gatherBeams=[];
@@ -415,6 +423,7 @@
     boxSel:null,
     attackMove:false,
     buildGhost:null,
+    abilityTargeting:null,
     actionKeyMap:{},
     _mouseWorld:{x:0,y:0},
     _lastClick:{t:0,kind:"",type:"",owner:-1},
@@ -465,7 +474,9 @@
         {id:"barr", name:"Barracks",ico:"🏭",cost:{m:120,g:0},size:[3,2], hp:720, tier:1, req:[], produces:["rif","med"]},
         {id:"ref",  name:"Refinery",ico:"🟢",cost:{m:75,g:0}, size:[2,2], hp:520, tier:0, req:[], special:"onGeyser"},
         {id:"fact", name:"Factory",ico:"🛠️",cost:{m:160,g:60},size:[3,2],hp:820,tier:2,req:["barr","ref"], produces:["sie"]},
+        {id:"arm", name:"Armory",ico:"🧰",cost:{m:150,g:60},size:[3,2], hp:760, tier:2, req:["barr","ref"], produces:["sen","snip"]},
         {id:"hang", name:"Hangar",ico:"🛫",cost:{m:200,g:120},size:[3,2],hp:820,tier:3,req:["fact"], produces:["gun","plc"]},
+        {id:"vb", name:"Vehicle Bay",ico:"🧱",cost:{m:200,g:120},size:[3,2], hp:860, tier:3, req:["fact"], produces:["dogt"]},
         {id:"tur",  name:"Turret",ico:"🗼",cost:{m:90,g:25},size:[2,2], hp:520, tier:1, req:["barr"], defense:{range:210,dmg:10,cd:0.8,canHitAir:true}},
         {id:"lab",  name:"Lab",ico:"🧪",cost:{m:140,g:80},size:[2,2], hp:560, tier:2, req:["fact"], research:true},
         {id:"hq_f", name:"HQ",ico:"🏛️",cost:{m:0,g:0}, size:[4,3], hp:2200, tier:0, req:[], provides:{supply:10}}
@@ -473,9 +484,12 @@
       units:{
         eng:{name:"Engineer",ico:"🧑‍🔧",cost:{m:50,g:0}, supply:1,hp:70, spd:120, range:18, dmg:5, atkCd:0.9, worker:true, carry:8, canHitAir:false},
         rif:{name:"Rifler",ico:"🔫",cost:{m:50,g:0}, supply:1,hp:78, spd:150, range:140,dmg:8, atkCd:0.62, abilities:["burst"], canHitAir:true},
-        med:{name:"Medic",ico:"💉",cost:{m:60,g:25},supply:1,hp:72, spd:140, range:150,dmg:0, atkCd:1.0, healer:true, canHitAir:false},
-        sie:{name:"SiegeBot",ico:"🛡️",cost:{m:120,g:60},supply:3,hp:165,spd:105,range:210,dmg:18,atkCd:1.25,splash:70, abilities:["shockwave"], canHitAir:true, armored:true, bonusVsBuildings:0.25},
-        gun:{name:"Gunship",ico:"🚁",cost:{m:140,g:90},supply:3,hp:140,spd:210,range:180,dmg:14,atkCd:0.85,flying:true, canHitAir:true},
+        med:{name:"Medic",ico:"💉",cost:{m:60,g:25},supply:1,hp:72, spd:140, range:150,dmg:0, atkCd:1.0, healer:true, abilities:["stimPatch"], canHitAir:false},
+        sie:{name:"SiegeBot",ico:"🛡️",cost:{m:120,g:60},supply:3,hp:165,spd:105,range:210,dmg:18,atkCd:1.25,splash:70, abilities:["shockwave","anchorMode"], canHitAir:true, armored:true, bonusVsBuildings:0.25},
+        sen:{name:"Sentinel",ico:"🛡️",cost:{m:70,g:20}, supply:2, hp:170, spd:115, range:55, dmg:14, atkCd:0.85, armored:true, canHitAir:false, abilities:[]},
+        snip:{name:"Marksman",ico:"🎯",cost:{m:90,g:45}, supply:2, hp:62, spd:135, range:270, dmg:28, atkCd:1.75, canHitAir:true, abilities:["steadyShot"]},
+        dogt:{name:"Bulldog",ico:"🐺",cost:{m:190,g:110}, supply:4, hp:310, spd:95, range:240, dmg:34, atkCd:1.75, splash:90, armored:true, bonusVsBuildings:0.35, canHitAir:false, abilities:["siegeRound"]},
+        gun:{name:"Gunship",ico:"🚁",cost:{m:140,g:90},supply:3,hp:140,spd:210,range:180,dmg:14,atkCd:0.85,flying:true, abilities:["flare"], canHitAir:true},
         plc:{name:"Plasma Cruiser",ico:"🚀",cost:{m:260,g:170},supply:6,hp:360,spd:175,range:260,dmg:40,atkCd:2.10,splash:120,flying:true,plasma:true,canHitAir:true, armored:true, bonusVsBuildings:0.3}
       },
       research:[
@@ -493,6 +507,7 @@
         {id:"gate", name:"War Gate",ico:"🌀",cost:{m:140,g:0}, size:[3,2], hp:720, tier:1, req:["pwr"], produces:["thr","stk","wsp"]},
         {id:"ext",  name:"Extractor",ico:"🟢",cost:{m:90,g:0},  size:[2,2], hp:520, tier:0, req:["pwr"], special:"onGeyser"},
         {id:"vat",  name:"Bio Vat",ico:"🧫",cost:{m:150,g:50},size:[3,2], hp:820, tier:2, req:["gate","ext"], produces:["bru"]},
+        {id:"sfor", name:"Shard Forge",ico:"💠",cost:{m:180,g:90},size:[3,2], hp:820, tier:2, req:["gate","ext"], produces:["lan","shw"]},
         {id:"spire",name:"Star Spire",ico:"🛸",cost:{m:220,g:120},size:[3,2], hp:860, tier:3, req:["vat"], produces:["ray","bom","mth"]},
         {id:"pris", name:"Prism Cannon",ico:"🔺",cost:{m:110,g:40},size:[2,2], hp:520, tier:1, req:["gate"], defense:{range:240,dmg:14,cd:0.9,canHitAir:true}},
         {id:"core", name:"Conduit Core",ico:"🔮",cost:{m:160,g:90},size:[2,2], hp:580, tier:2, req:["vat"], research:true},
@@ -500,13 +515,15 @@
       ],
       units:{
         drn:{name:"Drone",ico:"👾",cost:{m:50,g:0}, supply:1,hp:78, spd:135, range:18, dmg:6, atkCd:0.85, worker:true, carry:10, canHitAir:false},
-        thr:{name:"Thrall",ico:"👊",cost:{m:55,g:0}, supply:1,hp:95, spd:165, range:38, dmg:10, atkCd:0.72, canHitAir:false},
+        thr:{name:"Thrall",ico:"👊",cost:{m:55,g:0}, supply:1,hp:95, spd:165, range:38, dmg:10, atkCd:0.72, abilities:["pounce"], canHitAir:false},
         stk:{name:"Stalker",ico:"🗡️",cost:{m:90,g:25},supply:2,hp:125,spd:155,range:170,dmg:13,atkCd:0.78, abilities:["phase"], canHitAir:true, shieldMax:55, shieldRegen:7},
-        wsp:{name:"Wisp",ico:"🧙",cost:{m:80,g:60},supply:2,hp:85, spd:150,range:160,dmg:7, atkCd:0.95, caster:true, energyMax:100, abilities:["zap"], canHitAir:true, shieldMax:40, shieldRegen:6},
+        wsp:{name:"Wisp",ico:"🧙",cost:{m:80,g:60},supply:2,hp:85, spd:150,range:160,dmg:7, atkCd:0.95, caster:true, energyMax:100, abilities:["zap","barrier"], canHitAir:true, shieldMax:40, shieldRegen:6},
+        lan:{name:"Lancer",ico:"🗡️",cost:{m:105,g:35}, supply:2, hp:95, spd:150, range:190, dmg:12, atkCd:0.85, shieldMax:40, shieldRegen:10, canHitAir:true, abilities:["pierceShot"]},
+        shw:{name:"Shard Walker",ico:"🌀",cost:{m:120,g:75}, supply:3, hp:115, spd:170, range:175, dmg:14, atkCd:0.70, shieldMax:80, shieldRegen:12, canHitAir:true, abilities:["slip"]},
         bru:{name:"Brute",ico:"🧟",cost:{m:120,g:30},supply:3,hp:240,spd:120,range:40, dmg:22,atkCd:0.9, abilities:["slam"], canHitAir:false, armored:true, bonusVsBuildings:0.25},
-        ray:{name:"Ray",ico:"🛸",cost:{m:160,g:90},supply:3,hp:175,spd:235,range:220,dmg:0, atkCd:0, flying:true, rayBeam:true, abilities:["overcharge"], canHitAir:true, shieldMax:75, shieldRegen:9},
+        ray:{name:"Ray",ico:"🛸",cost:{m:160,g:90},supply:3,hp:175,spd:235,range:220,dmg:0, atkCd:0, flying:true, rayBeam:true, abilities:["overcharge","prismSplit"], canHitAir:true, shieldMax:75, shieldRegen:9},
         bom:{name:"Bomber",ico:"💣",cost:{m:210,g:140},supply:4,hp:210,spd:190,range:200,dmg:24,atkCd:1.35,splash:90,flying:true, canHitAir:true},
-        mth:{name:"Mothership",ico:"🛳️",cost:{m:360,g:240},supply:8,hp:650,spd:150,range:260,dmg:0, atkCd:0,flying:true, carrier:true, fighterCap:6, abilities:["launch"], canHitAir:false, shieldMax:140, shieldRegen:11},
+        mth:{name:"Mothership",ico:"🛳️",cost:{m:360,g:240},supply:8,hp:650,spd:150,range:260,dmg:0, atkCd:0,flying:true, carrier:true, fighterCap:6, abilities:["launch","recall"], canHitAir:false, shieldMax:140, shieldRegen:11},
         ftr:{name:"Fighter",ico:"🛩️",cost:{m:0,g:0},supply:0,hp:42, spd:280,range:140,dmg:7, atkCd:0.45,flying:true, fighter:true, canHitAir:true}
       },
       research:[
@@ -523,6 +540,10 @@
     roach: {name:"Roach",ico:"🪲",hp:220,spd:120,range:165,dmg:14,atkCd:0.95,flying:false, canHitAir:false, armored:true},
     muta:  {name:"Muta",ico:"🦇",hp:135,spd:240,range:165,dmg:14,atkCd:0.95,flying:true,  canHitAir:true},
     inf:   {name:"Infestor",ico:"🧫",hp:190,spd:120,range:175,dmg:12,atkCd:0.85,flying:false, canHitAir:true, trap:true, trapCd:7.0},
+    bane:  {name:"Baneling",ico:"💥",hp:55, spd:260, range:24, dmg:0, atkCd:1.0, flying:false, canHitAir:false, suicide:true, explodeR:85, explodeDmg:38, explodeWindup:0.35},
+    scre:  {name:"Screecher",ico:"📣",hp:120, spd:235, range:140, dmg:9, atkCd:0.6, flying:true, canHitAir:true, aura:true, auraR:140, auraSpdMul:1.10},
+    brq:   {name:"Brood Queen",ico:"👑",hp:520, spd:85, range:175, dmg:10, atkCd:1.0, flying:false, canHitAir:true, summon:true, summonCd:9.0},
+    broo:  {name:"Broodling",ico:"🐛",hp:22, spd:260, range:28, dmg:5, atkCd:0.55, flying:false, canHitAir:false, lifeTime:6.0},
     ultra: {name:"Ultra",ico:"🐘",hp:720,spd:90, range:42, dmg:28,atkCd:1.05,flying:false, canHitAir:false, splash:65, armored:true},
   };
 
@@ -541,6 +562,18 @@
     overcharge:{name:"Overcharge",ico:"✨",desc:"Ray beam DPS boosted briefly."},
     slam:      {name:"Slam",ico:"💥",desc:"Brute AoE + knockback around self."},
     launch:    {name:"Launch Fighters",ico:"🛩️",desc:"Mothership launches 2 docked fighters."},
+    steadyShot:{name:"Steady Shot",ico:"🎯",desc:"Marksman primes a high-impact aimed shot."},
+    siegeRound:{name:"Siege Round",ico:"🧨",desc:"Bulldog primes its next shell for larger splash."},
+    autoTurret:{name:"Auto-Turret",ico:"🗼",desc:"Engineer deploys a temporary turret at cursor."},
+    stimPatch: {name:"Stim Patch",ico:"💉",desc:"Medic boosts a nearby ally with a short stim."},
+    anchorMode:{name:"Anchor Mode",ico:"⚓",desc:"SiegeBot toggles anchored mode for range and damage."},
+    flare:     {name:"Flare",ico:"✨",desc:"Gunship deploys a flare zone that slows enemies."},
+    pounce:    {name:"Pounce",ico:"🦘",desc:"Thrall leaps to a nearby target and strikes."},
+    barrier:   {name:"Barrier",ico:"🧱",desc:"Wisp creates a temporary wall segment (35 energy)."},
+    prismSplit:{name:"Prism Split",ico:"🔺",desc:"Ray chains 40% beam damage to a nearby second target."},
+    recall:    {name:"Recall",ico:"🌀",desc:"Mothership recalls allies from target zone after windup."},
+    pierceShot:{name:"Pierce Shot",ico:"➳",desc:"Passive precision shot package."},
+    slip:      {name:"Slip",ico:"〰️",desc:"Passive phase micro-mobility."},
   };
   const ACTION_KEYS = ["Q","W","E","R","T"];
 
@@ -812,6 +845,11 @@
         lifeTime:0, _despawn:false,
         canHitAir: !!U.canHitAir,
         trap: !!U.trap, trapCd: U.trapCd||0, nextTrapAt:0,
+        suicide: !!U.suicide, explodeR: U.explodeR||0, explodeDmg: U.explodeDmg||0, explodeWindup: U.explodeWindup||0.35,
+        aura: !!U.aura, auraR: U.auraR||0, auraSpdMul: U.auraSpdMul||1,
+        summon: !!U.summon, summonCd: U.summonCd||0, nextSummonAt:0,
+        lifeTimeMax: U.lifeTime||0,
+        _armingUntil:0,
         slowUntil:0,
         supply:0,
         guardSpireId: opts.guardSpireId || null,
@@ -821,6 +859,10 @@
         shieldRegen: U.shieldRegen||0,
         shield: U.shieldMax||0,
         lastDamagedAt:-999,
+      anchored:false,
+      anchorWarmUntil:0,
+      _windupLeft:0,
+      _windupTargetId:null,
       };
       units.push(u);
       return u;
@@ -846,7 +888,7 @@
       energyMax: U.energyMax?U.energyMax:0,
       carryCap: U.carry||0,
       carry:{m:0,g:0},
-      abilities, cds:{}, buffs:{burstUntil:0, overchargeUntil:0},
+      abilities, cds:{}, buffs:{burstUntil:0, overchargeUntil:0, steadyShotUntil:0, siegeRound:false, siegeRoundUntil:0, stimUntil:0, stimFatigueUntil:0, prismSplitUntil:0},
       rayBeam:!!U.rayBeam,
       plasma:!!U.plasma,
       carrier:!!U.carrier,
@@ -870,6 +912,10 @@
       shieldRegen: U.shieldRegen||0,
       shield: U.shieldMax||0,
       lastDamagedAt:-999,
+      anchored:false,
+      anchorWarmUntil:0,
+      _windupLeft:0,
+      _windupTargetId:null,
     };
     for(const ab of abilities) u.cds[ab]=0;
 
@@ -1172,6 +1218,7 @@
   }
 
   function updateRaid(){
+    if(WAVE.waveNum<1) return;
     if(RAID.nextAt===0) RAID.nextAt=tNow+45;
     if(tNow<RAID.nextAt) return;
     spawnRaidSquad();
@@ -1310,6 +1357,7 @@
     if(!u.abilities || !u.abilities.includes(id)) return false;
     if((u.cds[id]||0)>0) return false;
     if(id==="zap" && (!u.caster || u.energy<35)) return false;
+    if(id==="barrier" && (!u.caster || u.energy<35)) return false;
     return true;
   }
   function applyKnockback(ent,fromX,fromY,strength){
@@ -1322,10 +1370,23 @@
     ent.x += vx*0.02; ent.y += vy*0.02;
   }
 
+  function startAbilityTargeting(id,casterIds){
+    state.abilityTargeting={id,casterIds:[...casterIds]};
+    modeInfo.textContent=`Target ${ABILITIES[id]?.name||id}: left-click world`;
+  }
+
   function castAbility(id){
     const sel=getSelected();
     const selUnits=sel.filter(s=>s.kind==="unit").map(s=>s.ref).filter(u=>u.owner===OWNER_PLAYER);
     if(!selUnits.length) return;
+
+    if(["autoTurret","flare","barrier","recall"].includes(id)){
+      const casters=selUnits.filter(u=>abilityAvailableForUnit(u,id)).map(u=>u.id);
+      if(!casters.length){ toastMsg("Ability not ready / no valid target."); return; }
+      startAbilityTargeting(id,casters);
+      renderUI();
+      return;
+    }
 
     const mw=getMouseWorld();
     const enemyNear=nearestEnemyTo(OWNER_PLAYER,mw.x,mw.y,280);
@@ -1397,11 +1458,51 @@
         for(let i=0;i<can;i++) launchFighter(u,true);
         u.cds.launch=10;
         did=true;
+      } else if(id==="stimPatch"){
+        const cand=units.filter(a=>a.owner===OWNER_PLAYER && a.hp>0 && a.id!==u.id && dist2(a.x,a.y,u.x,u.y)<=180*180 && ((a.buffs.stimUntil||0)<=tNow));
+        if(!cand.length) continue;
+        cand.sort((a,b)=>dist2(a.x,a.y,u.x,u.y)-dist2(b.x,b.y,u.x,u.y));
+        const t=cand[0];
+        t.buffs.stimUntil=tNow+4.0;
+        t.buffs.stimFatigueUntil=tNow+6.0;
+        pulseLinks.push({x1:u.x,y1:u.y,x2:t.x,y2:t.y,until:tNow+0.45});
+        u.cds.stimPatch=14;
+        did=true;
+      } else if(id==="anchorMode"){
+        if((u.anchorWarmUntil||0)>tNow) continue;
+        u.anchored=!u.anchored;
+        u.anchorWarmUntil=tNow+0.35;
+        u.cds.anchorMode=1.0;
+        did=true;
+      } else if(id==="steadyShot"){
+        u.buffs.steadyShotUntil=tNow+6.0;
+        u.cds.steadyShot=12;
+        did=true;
+      } else if(id==="siegeRound"){
+        u.buffs.siegeRound=true;
+        u.buffs.siegeRoundUntil=tNow+8.0;
+        u.cds.siegeRound=14;
+        did=true;
+      } else if(id==="pounce"){
+        const tar=nearestEnemyTo(OWNER_PLAYER,u.x,u.y,170,(ent)=>ent.kind==="unit"||ent.kind==="building");
+        if(!tar) continue;
+        pounceLines.push({x1:u.x,y1:u.y,x2:tar.ref.x,y2:tar.ref.y,until:tNow+0.2});
+        const dx=tar.ref.x-u.x, dy=tar.ref.y-u.y, len=Math.hypot(dx,dy)||1;
+        const leap=Math.min(120,len-18);
+        if(leap>0){ u.x += (dx/len)*leap; u.y += (dy/len)*leap; }
+        applyDamage(tar.ref,10,"bullet",u,tar.kind==="building");
+        applyKnockback(tar.ref,u.x,u.y,190);
+        u.cds.pounce=10;
+        did=true;
+      } else if(id==="prismSplit"){
+        u.buffs.prismSplitUntil=tNow+3.0;
+        u.cds.prismSplit=14;
+        did=true;
       }
     }
-    toastMsg(did ? ("Used: "+ABILITIES[id].name) : "Ability not ready / no valid target.");
+    if(id==="stimPatch" && !did) toastMsg("No valid ally for Stim Patch");
+    else toastMsg(did ? ("Used: "+ABILITIES[id].name) : "Ability not ready / no valid target.");
   }
-
   // ---------------- Worker build hotkeys ----------------
   function getWorkerBuildHotkeysForRace(race){
     const keys=["z","x","c","v","b","n","m","h"];
@@ -1582,9 +1683,12 @@
   function unlockedTypesForWave(n){
     const types=["ling","hydra"];
     if(n>=3) types.push("roach");
+    if(n>=4) types.push("bane");
     if(n>=5) types.push("muta");
+    if(n>=6) types.push("scre");
     if(n>=7) types.push("inf");
     if(n>=9) types.push("ultra");
+    if(n>=10) types.push("brq");
     return types;
   }
   function waveCounts(n){
@@ -1593,9 +1697,12 @@
       ling: Math.floor((10 + n*2.1)*m),
       hydra:Math.floor((n>=2?(1 + (n-1)*0.95):0)*m),
       roach:Math.floor((n>=3?(1 + (n-3)*0.75):0)*m),
+      bane: Math.floor((n>=4?(1 + (n-4)*0.35):0)*m),
       muta: Math.floor((n>=5?(1 + (n-5)*0.55):0)*m),
+      scre: Math.floor((n>=6?(1 + (n-6)*0.25):0)*m),
       inf:  Math.floor((n>=7?(1 + (n-7)*0.45):0)*m),
       ultra:Math.floor((n>=9?(1 + (n-9)*0.30):0)*m),
+      brq:  Math.floor((n>=10?(1 + (n-10)*0.12):0)*m),
     };
     if(n===1){ c.hydra=0; }
     return c;
@@ -1737,17 +1844,29 @@
     if(!target || !Number.isFinite(target.x) || !Number.isFinite(target.y)) return;
     if((target.hp!=null && target.hp<=0) || target.dead || target._despawn) return;
 
-    const range=Number.isFinite(u.range)?u.range:0;
+    let range=Number.isFinite(u.range)?u.range:0;
+    let baseDmg=dmg;
+    if(u.anchored){ range += 70; baseDmg *= 1.25; }
+
+    if(u._windupLeft>0) return;
     if(dist(u.x,u.y,target.x,target.y) > range*1.08) return;
 
     if(!Number.isFinite(u.cd)) u.cd=0;
     u.cd -= dt;
     if(u.cd>0) return;
 
-    const atkCd=Number.isFinite(u.atkCd)?u.atkCd:0.6;
+    let atkCd=Number.isFinite(u.atkCd)?u.atkCd:0.6;
+    if((u.buffs?.burstUntil||0)>tNow) atkCd*=0.65;
+    if((u.buffs?.stimUntil||0)>tNow) atkCd*=0.80;
     u.cd = Math.max(0.12, atkCd);
 
-    const splash=Number.isFinite(u.splash)?u.splash:0;
+    let splash=Number.isFinite(u.splash)?u.splash:0;
+
+    if(u.type==="snip" && (u.buffs.steadyShotUntil||0)>tNow){
+      u._windupTargetId=target.id;
+      u._windupLeft=0.25;
+      return;
+    }
 
     // melee
     if(range<=60){
@@ -1757,15 +1876,21 @@
         for(const e of units){
           if(e.owner!==enemyOwner || e.hp<=0) continue;
           if(e.flying && u.canHitAir===false) continue;
-          if(dist2(e.x,e.y,target.x,target.y)<=r2) applyDamage(e,dmg,"bullet",u,false);
+          if(dist2(e.x,e.y,target.x,target.y)<=r2) applyDamage(e,baseDmg,"bullet",u,false);
         }
         spawnParticles(target.x,target.y,"hit");
       } else {
-        applyDamage(target,dmg,"bullet",u,false);
+        applyDamage(target,baseDmg,"bullet",u,false);
         spawnParticles(target.x,target.y,"hit");
       }
     } else {
-      spawnProjectile(u.owner,u.x,u.y,target.x,target.y,dmg,splash,"bullet",{canHitAir:u.canHitAir!==false, bonusVsBuildings:u.bonusVsBuildings||0});
+      const extra={canHitAir:u.canHitAir!==false, bonusVsBuildings:u.bonusVsBuildings||0};
+      if(u.buffs?.siegeRound && (u.buffs.siegeRoundUntil||0)>tNow){
+        extra.speed=260;
+        splash += 55;
+        u.buffs.siegeRound=false;
+      }
+      spawnProjectile(u.owner,u.x,u.y,target.x,target.y,baseDmg,splash,"bullet",extra);
     }
   }
 
@@ -1781,6 +1906,18 @@
 
     applyDamage(target,dps*dt,"beam",u,false);
     beams.push({owner:u.owner, x1:u.x,y1:u.y,x2:target.x,y2:target.y, hot:(u.buffs.overchargeUntil>tNow)});
+    if((u.buffs.prismSplitUntil||0)>tNow){
+      let sec=null,bd=Infinity;
+      for(const e of units){
+        if(e.owner===u.owner || e.hp<=0 || e.id===target.id) continue;
+        const d=dist2(e.x,e.y,target.x,target.y);
+        if(d<=120*120 && d<bd){ bd=d; sec=e; }
+      }
+      if(sec){
+        applyDamage(sec,dps*0.4*dt,"beam",u,false);
+        beams.push({owner:u.owner, x1:u.x,y1:u.y,x2:sec.x,y2:sec.y, hot:false, thin:true});
+      }
+    }
 
     u.beamTick=(u.beamTick||0)+dt;
     while(u.beamTick>0.055){
@@ -1941,6 +2078,7 @@
   function updateBuildings(dt){
     for(const b of buildings){
       if(b.dead) continue;
+      if(b.temp && b.despawnAt && tNow>=b.despawnAt){ b.dead=true; continue; }
 
       // construction
       if(b.owner===OWNER_PLAYER && !b.complete){
@@ -2090,6 +2228,21 @@
 
   // ---------------- Unit updates ----------------
   function updateUnits(dt){
+    const screechers=units.filter(e=>e.owner===OWNER_ENEMY && e.hp>0 && e.type==="scre");
+    for(const rz of recallZones){
+      if(rz.done || tNow<rz.armAt) continue;
+      const c=findById(rz.casterId);
+      if(!c || c.kind!=="unit") { rz.done=true; continue; }
+      const moth=c.ref;
+      for(const u of units){
+        if(u.owner!==OWNER_PLAYER || u.hp<=0) continue;
+        if(dist2(u.x,u.y,rz.x,rz.y)>rz.r*rz.r) continue;
+        const p=findSpawnNear(moth.x,moth.y,42,36);
+        u.x=p.x; u.y=p.y; u.path=[];
+      }
+      rz.done=true;
+      spawnParticles(rz.x,rz.y,"zap");
+    }
     for(const u of units){
       if(u.hp<=0) continue;
 
@@ -2110,9 +2263,15 @@
       // energy
       if(u.caster) u.energy = Math.min(u.energyMax, u.energy + 10*dt);
 
-      // slows
+      // slows / buffs
       let spd=u.spd;
       if(u.slowUntil && u.slowUntil>tNow) spd *= 0.62;
+      if((u.buffs?.stimUntil||0)>tNow) spd *= 1.18;
+      else if((u.buffs?.stimFatigueUntil||0)>tNow) spd *= 0.85;
+      if(u.owner===OWNER_ENEMY){
+        for(const fz of flareZones){ if(tNow<fz.until && dist2(u.x,u.y,fz.x,fz.y)<=fz.r*fz.r){ spd*=0.88; break; } }
+        for(const sc of screechers){ if(dist2(u.x,u.y,sc.x,sc.y)<=sc.auraR*sc.auraR){ spd*=1.10; break; } }
+      }
       if(ownerBuff(u.owner).relayActive) spd *= 1.10;
 
       // healer
@@ -2148,12 +2307,44 @@
         }
       }
 
+      if(u.owner===OWNER_ENEMY && u.lifeTimeMax>0){
+        u.lifeTime += dt;
+        if(u.lifeTime>=u.lifeTimeMax) { u.hp=0; continue; }
+      }
+      if(u.owner===OWNER_ENEMY && u.summon){
+        if(!u.nextSummonAt) u.nextSummonAt=tNow+u.summonCd;
+        if(tNow>=u.nextSummonAt){
+          summonTelegraphs.push({x:u.x,y:u.y,until:tNow+0.25});
+          for(let i=0;i<3;i++){
+            const p=findSpawnNear(u.x,u.y,42,36);
+            const b=makeUnit(OWNER_ENEMY,"broo",p.x,p.y);
+            if(b) b.task={kind:"seek",targetId:null};
+          }
+          u.nextSummonAt=tNow+u.summonCd;
+        }
+      }
+
       // worker tasks
       if(u.owner===OWNER_PLAYER && u.worker && u.task?.kind==="mine")  updateMining(u,dt);
       if(u.owner===OWNER_PLAYER && u.worker && u.task?.kind==="build") updateBuildTask(u,dt);
 
       // enemy default behavior
       if(u.owner===OWNER_ENEMY){
+        if(u.suicide){
+          const tar=enemyPickTarget(u);
+          if(tar && dist2(u.x,u.y,tar.ref.x,tar.ref.y)<=32*32){
+            if(!u._armingUntil) u._armingUntil=tNow+u.explodeWindup;
+          }
+          if(u._armingUntil && tNow>=u._armingUntil){
+            const r2=u.explodeR*u.explodeR;
+            for(const a of units){ if(a.owner===OWNER_PLAYER && a.hp>0 && dist2(a.x,a.y,u.x,u.y)<=r2) applyDamage(a,u.explodeDmg,"explosive",u,false); }
+            for(const b of buildings){ if(b.owner===OWNER_PLAYER && !b.dead && dist2(b.x,b.y,u.x,u.y)<=r2) applyDamage(b,u.explodeDmg*0.8,"explosive",u,true); }
+            spawnParticles(u.x,u.y,"plasma");
+            u.hp=0;
+            continue;
+          }
+        }
+
         // defenders (guard)
         if(u.task?.kind==="guard"){
           const sp = u.guardSpireId ? buildings.find(b=>!b.dead && b.id===u.guardSpireId) : null;
@@ -2188,7 +2379,7 @@
       // tasks
       if(u.task){
         if(u.task.kind==="move"){
-          moveAlongPath(u,dt,spd,u.task.x,u.task.y);
+          if(!u.anchored) moveAlongPath(u,dt,spd,u.task.x,u.task.y);
         }
         else if(u.task.kind==="attackMove"){
           const filterFn=(ent)=>{
@@ -2219,12 +2410,12 @@
               if(u.owner===OWNER_ENEMY) u.task={kind:"seek", targetId:null};
               else{
                 const ap=approachPoint(u,tarEnt.ref);
-                moveAlongPath(u,dt,spd,ap.x,ap.y);
+                if(!u.anchored) moveAlongPath(u,dt,spd,ap.x,ap.y);
               }
             } else {
               const ap=approachPoint(u,tarEnt.ref);
               if(dist2(u.x,u.y,tarEnt.ref.x,tarEnt.ref.y) > (u.range*u.range*0.82)){
-                moveAlongPath(u,dt,spd,ap.x,ap.y);
+                if(!u.anchored) moveAlongPath(u,dt,spd,ap.x,ap.y);
               }
               performAttack(u,tarEnt,dt);
             }
@@ -2243,6 +2434,20 @@
         }
       }
 
+      if(u._windupLeft>0){
+        u._windupLeft=Math.max(0,u._windupLeft-dt);
+        const te=findById(u._windupTargetId);
+        if(te && te.ref && u._windupLeft>0) aimLines.push({x1:u.x,y1:u.y,x2:te.ref.x,y2:te.ref.y,until:tNow+0.05});
+        if(u._windupLeft<=0){
+          const te2=findById(u._windupTargetId);
+          if(te2 && te2.ref && te2.ref.hp>0){
+            spawnProjectile(u.owner,u.x,u.y,te2.ref.x,te2.ref.y,u.dmg*1.7,u.splash||0,"bullet",{canHitAir:u.canHitAir!==false, bonusVsBuildings:u.bonusVsBuildings||0});
+            u.buffs.steadyShotUntil=0;
+          }
+          u._windupTargetId=null;
+        }
+      }
+
       // separation
       applySeparation(u,u.owner,dt);
 
@@ -2250,6 +2455,13 @@
       u.x=clamp(u.x,6,WORLD_W-6);
       u.y=clamp(u.y,6,WORLD_H-6);
     }
+
+    for(let i=flareZones.length-1;i>=0;i--) if(flareZones[i].until<=tNow) flareZones.splice(i,1);
+    for(let i=recallZones.length-1;i>=0;i--) if(recallZones[i].until<=tNow || recallZones[i].done) recallZones.splice(i,1);
+    for(let i=aimLines.length-1;i>=0;i--) if(aimLines[i].until<=tNow) aimLines.splice(i,1);
+    for(let i=pulseLinks.length-1;i>=0;i--) if(pulseLinks[i].until<=tNow) pulseLinks.splice(i,1);
+    for(let i=pounceLines.length-1;i>=0;i--) if(pounceLines[i].until<=tNow) pounceLines.splice(i,1);
+    for(let i=summonTelegraphs.length-1;i>=0;i--) if(summonTelegraphs[i].until<=tNow) summonTelegraphs.splice(i,1);
 
     // despawn fighters
     for(let i=units.length-1;i>=0;i--){
@@ -2665,6 +2877,49 @@
         renderUI();
         return;
       }
+      if(state.abilityTargeting){
+        const at=state.abilityTargeting;
+        let did=false;
+        for(const id of at.casterIds||[]){
+          const ent=findById(id);
+          if(!ent || ent.kind!=="unit") continue;
+          const u=ent.ref;
+          if(!abilityAvailableForUnit(u,at.id)) continue;
+          if(at.id==="autoTurret"){
+            const t=worldToTile(wpos.x,wpos.y);
+            if(isBlockedForPath(t.tx,t.ty)) continue;
+            const b=makeBuilding(OWNER_PLAYER,"tur",t.tx-1,t.ty-1);
+            if(!b) continue;
+            b.temp=true; b.despawnAt=tNow+18; b.complete=true;
+            b.maxHp=220; b.hp=220;
+            b.defense={range:185,dmg:9,cd:0.75,cdBase:0.75,canHitAir:false};
+            u.cds.autoTurret=25;
+            spawnParticles(b.x,b.y,"zap");
+            did=true;
+          } else if(at.id==="flare"){
+            flareZones.push({x:wpos.x,y:wpos.y,r:95,until:tNow+4.0});
+            u.cds.flare=16; spawnParticles(wpos.x,wpos.y,"plasma"); did=true;
+          } else if(at.id==="barrier"){
+            if(u.energy<35) continue;
+            const t=worldToTile(wpos.x,wpos.y);
+            if(isBlockedForPath(t.tx,t.ty)) continue;
+            const b=makeBuilding(OWNER_PLAYER,"depot",t.tx,t.ty);
+            if(!b) continue;
+            b.type="barrier"; b.w=2; b.h=1; b.solid=true; b.complete=true;
+            b.maxHp=260; b.hp=260; b.temp=true; b.despawnAt=tNow+6; b.produces=null; b.research=false; b.job=null; b.defense=null;
+            b.ico="🧱";
+            u.energy-=35; u.cds.barrier=18; did=true;
+          } else if(at.id==="recall"){
+            recallZones.push({x:wpos.x,y:wpos.y,r:110,armAt:tNow+0.8,until:tNow+1.0,casterId:u.id,done:false});
+            u.cds.recall=22; did=true;
+          }
+        }
+        state.abilityTargeting=null;
+        modeInfo.textContent="-";
+        toastMsg(did?"Used: "+(ABILITIES[at.id]?.name||at.id):"Ability not ready / no valid target.");
+        renderUI();
+        return;
+      }
       state.boxSel={sx:p.x, sy:p.y, ex:p.x, ey:p.y};
     } else if(e.button===2){
       handleRightClick(wpos.x,wpos.y);
@@ -2911,6 +3166,14 @@
     return b;
   }
 
+
+  async function toggleFullscreen(){
+    try{
+      if(!document.fullscreenElement) await frame.requestFullscreen();
+      else await document.exitFullscreen();
+    }catch(_e){}
+  }
+
   function renderUI(){
     const R=RACES[playerRace];
     raceNameEl.textContent = R.name;
@@ -3063,6 +3326,7 @@
     hideMenu();
     setupGame();
   });
+  btnFullscreen.addEventListener("click", toggleFullscreen);
   btnMenu.addEventListener("click", showMenu);
 
   // ---------------- Win/Lose check ----------------
@@ -3142,6 +3406,41 @@
       }
     }
 
+
+    // ability zones
+    for(const z of flareZones){
+      const a=clamp((z.until-tNow)/4,0,1);
+      const s=worldToScreen(z.x,z.y);
+      ctx.beginPath(); ctx.arc(s.x,s.y,z.r,0,Math.PI*2);
+      ctx.strokeStyle=`rgba(250,204,21,${0.65*a})`; ctx.lineWidth=2; ctx.stroke();
+      ctx.font="18px system-ui"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillStyle=`rgba(15,23,42,${0.9*a})`; ctx.fillText("✨",s.x,s.y);
+    }
+    for(const z of recallZones){
+      const a=clamp((z.until-tNow)/1.1,0,1);
+      const s=worldToScreen(z.x,z.y);
+      ctx.beginPath(); ctx.arc(s.x,s.y,z.r,0,Math.PI*2);
+      ctx.strokeStyle=`rgba(59,130,246,${0.7*a})`; ctx.lineWidth=3; ctx.stroke();
+      ctx.font="18px system-ui"; ctx.fillStyle=`rgba(15,23,42,${0.9*a})`; ctx.fillText("🌀",s.x,s.y);
+    }
+    for(const l of pulseLinks){
+      const s1=worldToScreen(l.x1,l.y1), s2=worldToScreen(l.x2,l.y2);
+      ctx.beginPath(); ctx.moveTo(s1.x,s1.y); ctx.lineTo(s2.x,s2.y);
+      ctx.strokeStyle="rgba(16,185,129,.75)"; ctx.lineWidth=2; ctx.stroke();
+    }
+    for(const l of pounceLines){
+      const s1=worldToScreen(l.x1,l.y1), s2=worldToScreen(l.x2,l.y2);
+      ctx.beginPath(); ctx.moveTo(s1.x,s1.y); ctx.lineTo(s2.x,s2.y);
+      ctx.strokeStyle="rgba(239,68,68,.75)"; ctx.lineWidth=2; ctx.stroke();
+    }
+    for(const l of aimLines){
+      const s1=worldToScreen(l.x1,l.y1), s2=worldToScreen(l.x2,l.y2);
+      ctx.beginPath(); ctx.moveTo(s1.x,s1.y); ctx.lineTo(s2.x,s2.y);
+      ctx.strokeStyle="rgba(250,204,21,.9)"; ctx.lineWidth=1.5; ctx.stroke();
+    }
+    for(const q of summonTelegraphs){
+      const s=worldToScreen(q.x,q.y);
+      ctx.font="16px system-ui"; ctx.fillStyle="rgba(15,23,42,.9)"; ctx.fillText("🥚",s.x,s.y-16);
+    }
     // buildings
     for(const b of buildings){
       if(b.dead) continue;
@@ -3159,9 +3458,9 @@
       ctx.font="22px system-ui";
       ctx.textAlign="center"; ctx.textBaseline="middle";
       ctx.fillStyle="#0f172a";
-      const ico = (b.owner===OWNER_PLAYER)
+      const ico = b.ico || ((b.owner===OWNER_PLAYER)
         ? (RACES[playerRace].buildables.find(d=>d.id===b.type)?.ico || "🏠")
-        : (ENEMY_BUILD[b.type]?.ico || "❓");
+        : (ENEMY_BUILD[b.type]?.ico || "❓"));
       ctx.fillText(ico, x+w/2, y+h/2);
 
       const p=b.hp/b.maxHp;
@@ -3306,6 +3605,13 @@
         : (ENEMY[u.type]?.ico || "❓");
       ctx.fillStyle="#0f172a";
       ctx.fillText(ico, s.x, s.y);
+      const st=[];
+      if((u.buffs?.stimUntil||0)>tNow) st.push("💉");
+      if(u.anchored) st.push("⚓");
+      if(u.buffs?.siegeRound && (u.buffs?.siegeRoundUntil||0)>tNow) st.push("🧨");
+      if((u.buffs?.steadyShotUntil||0)>tNow) st.push("🎯");
+      if((u.buffs?.prismSplitUntil||0)>tNow) st.push("🔺");
+      if(st.length){ ctx.font="11px system-ui"; ctx.fillStyle="rgba(15,23,42,.88)"; ctx.fillText(st.join(""),s.x,s.y-u.radius-30); }
 
       const p=u.hp/u.maxHp;
       drawBar(s.x-18, s.y-u.radius-12, 36, 5, p);
@@ -3315,6 +3621,14 @@
         ctx.fillRect(s.x-18,s.y-u.radius-18,36,4);
         ctx.fillStyle="rgba(56,189,248,.8)";
         ctx.fillRect(s.x-18,s.y-u.radius-18,36*sp,4);
+      }
+      if(u.owner===OWNER_ENEMY && u.type==="scre"){
+        ctx.beginPath(); ctx.arc(s.x,s.y,u.auraR||140,0,Math.PI*2);
+        ctx.strokeStyle="rgba(239,68,68,.16)"; ctx.lineWidth=1.5; ctx.stroke();
+      }
+      if(u.owner===OWNER_ENEMY && u.suicide && u._armingUntil){
+        ctx.beginPath(); ctx.arc(s.x,s.y,u.explodeR||85,0,Math.PI*2);
+        ctx.strokeStyle="rgba(239,68,68,.45)"; ctx.lineWidth=2; ctx.stroke();
       }
       const showTraits=state.selection.has(u.id) || keys["alt"] || (Math.abs(s.x-view.w*0.5)<view.w*0.28 && Math.abs(s.y-view.h*0.5)<view.h*0.28);
       if(showTraits){
