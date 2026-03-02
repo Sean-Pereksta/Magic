@@ -2376,10 +2376,24 @@
         }
       }
 
+      if(u.owner===OWNER_PLAYER && !u.worker && !u.fighter && !u.task){
+        const filterFn=(ent)=>{
+          if(ent.kind==="unit" && ent.ref.flying){
+            if((u.range||0)<=60) return false;
+            if(u.canHitAir===false) return false;
+          }
+          return true;
+        };
+        const tar=nearestEnemyTo(OWNER_PLAYER,u.x,u.y,IDLE_AGGRO_R,filterFn);
+        if(tar && canAttackTarget(u,tar)) u.task={kind:"attack", targetId:tar.ref.id};
+      }
+
       // tasks
       if(u.task){
         if(u.task.kind==="move"){
-          if(!u.anchored) moveAlongPath(u,dt,spd,u.task.x,u.task.y);
+          let arrived=false;
+          if(!u.anchored) arrived=moveAlongPath(u,dt,spd,u.task.x,u.task.y);
+          if(arrived && u.owner===OWNER_PLAYER && !u.worker) u.task=null;
         }
         else if(u.task.kind==="attackMove"){
           const filterFn=(ent)=>{
@@ -2398,7 +2412,8 @@
               performAttack(u,tar,dt);
             }
           } else {
-            moveAlongPath(u,dt,spd,u.task.x,u.task.y);
+            const arrived=moveAlongPath(u,dt,spd,u.task.x,u.task.y);
+            if(arrived && u.owner===OWNER_PLAYER && !u.worker) u.task=null;
           }
         }
         else if(u.task.kind==="attack"){
