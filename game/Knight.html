@@ -342,6 +342,8 @@
     {name:'Stout',  stats:{hp:+10}},
     {name:'Savage', stats:{dmg:+4, hp:-6}},
   ];
+  const STAFF_ELEMENTS = ['fire','ice','water','nature'];
+
   const SUFFIX = {
     Common:   [{name:'of Dust', stats:{}}],
     Uncommon: [{name:'of Haste', stats:{ms:+0.10}}, {name:'of the Fox', stats:{ms:+0.14}}],
@@ -352,7 +354,10 @@
 
   const BASE_WEAPONS = [
     { base:'Sword', type:'sword', dmg:6, as:0.75, reach:1.25 },
+    { base:'Axe',   type:'axe',   dmg:7, as:0.66, reach:1.2 },
+    { base:'Spear', type:'spear', dmg:5.5, as:0.72, reach:1.6 },
     { base:'Bow',   type:'bow',   dmg:5, as:0.65, reach:8.5 },
+    { base:'Staff', type:'staff', dmg:4.8, as:0.62, reach:8.0 },
   ];
   const BASE_ARMOR = [
     { base:'Leather', type:'armor', hp:12, ms:0.05 },
@@ -389,14 +394,16 @@
 
     if(kind === 'weapon'){
       const base = BASE_WEAPONS[(Math.random()*BASE_WEAPONS.length)|0];
+      const element = base.type==='staff' ? STAFF_ELEMENTS[(Math.random()*STAFF_ELEMENTS.length)|0] : null;
       const stats = mergeStats(
-        { dmg: base.dmg, as: base.as, reach: base.reach, rng: (base.type==='bow'? base.reach : 0) },
+        { dmg: base.dmg, as: base.as, reach: base.reach, rng: ((base.type==='bow' || base.type==='staff')? base.reach : 0) },
         pre.stats, suf.stats
       );
       return {
         kind:'weapon',
         wtype: base.type,
-        name: `${pre.name} ${base.base} ${suf.name}`,
+        element,
+        name: `${pre.name} ${base.base}${element ? ` of ${element[0].toUpperCase()+element.slice(1)}` : ''} ${suf.name}`,
         rarity,
         stats,
         base: base.base,
@@ -485,6 +492,9 @@
     projectiles:[],
     troops:[],
     towers:[],
+    particles:[],
+    decals:[],
+    terrain:[],
     // teams present (enemy factions)
     enemyTeams:[1],
   };
@@ -556,9 +566,9 @@
     if(e.button !== 0) return;
     mouse.down = true;
     const wep = getWeapon();
-    if(wep.wtype === 'bow'){
+    if(wep.wtype === 'bow' || wep.wtype==='staff'){
       player.atk.bowCharging = true;
-      player.atk.bowCharge = 0;
+      player.atk.bowCharge = (wep.wtype==='staff'?0.18:0);
     } else {
       trySwordSwing();
     }
@@ -573,7 +583,7 @@
     if(!wasDown) return;
 
     const wep = getWeapon();
-    if(wep.wtype === 'bow' && player.atk.bowCharging){
+    if((wep.wtype === 'bow' || wep.wtype==='staff') && player.atk.bowCharging){
       fireBow();
       player.atk.bowCharging = false;
     }
@@ -586,9 +596,9 @@
     cam.y = player.y;
   }
 
-  function worldToScreen(x,y){
+  function worldToScreen(x,y,z=0){
     const [sx, sy] = ISO.worldToScreen(x - cam.x, y - cam.y);
-    return [sx + innerWidth/2, sy + innerHeight/2];
+    return [sx + innerWidth/2, sy + innerHeight/2 - z];
   }
 
   function screenToWorld(sx,sy){
@@ -623,6 +633,9 @@
       fxTags: new Set(),
       slots: [], // installed item ids
       radius: 1.15,
+      neutral: team===-1,
+      heightPx: 48,
+      zBias: 0.4,
     };
   }
 
@@ -646,18 +659,70 @@
       r: base.r,
       // for archers
       rangedCd: 0,
+      facing: 2,
+      anim: { state:'idle', t:Math.random()*10, frame:0, hurt:0, attackT:0 },
+      zBias:0.2,
     };
   }
 
-  function makeProjectile(x,y,vx,vy,team,damage,maxDist){
+  function makeProjectile(x,y,vx,vy,team,damage,maxDist,kind='arrow',extra={}){
     return {
       x,y, vx,vy,
       team,
       dmg: damage,
       traveled: 0,
       maxDist,
+      kind,
+      extra,
       alive:true,
     };
+  }
+
+  function rarityTier(r){
+    if(r==='Legendary') return 4;
+    if(r==='Epic') return 3;
+    if(r==='Rare') return 2;
+    if(r==='Uncommon') return 1;
+    return 0;
+  }
+
+  function elementColor(e){
+    if(e==='fire') return 'rgba(255,140,74,.95)';
+    if(e==='ice') return 'rgba(180,220,255,.95)';
+    if(e==='water') return 'rgba(86,211,255,.95)';
+    if(e==='nature') return 'rgba(114,235,124,.95)';
+    return 'rgba(243,246,255,.92)';
+  }
+
+  function typeAccent(type){
+    if(type==='brute') return '#ffd36a';
+    if(type==='archer') return '#8ad3ff';
+    if(type==='rogue') return '#b084ff';
+    if(type==='banner') return '#aaff9c';
+    return '#fff';
+  }
+
+  function emitParticles(x,y,count,color,kind='spark'){
+    for(let i=0;i<count;i++){
+      if(state.particles.length>520) break;
+      const ang = Math.random()*TAU;
+      const sp = (kind==='blood'?1.2:2.4) + Math.random()*2.4;
+      state.particles.push({
+        x,y,
+        vx:Math.cos(ang)*sp,
+        vy:Math.sin(ang)*sp,
+        life:(kind==='blood'?0.45:0.32)+Math.random()*0.45,
+        ttl:(kind==='blood'?0.45:0.32)+Math.random()*0.45,
+        size:(kind==='blood'?1.8:1.2)+Math.random()*2.2,
+        color,
+        kind,
+      });
+    }
+  }
+
+  function addDecal(x,y,color='rgba(130,24,24,.42)'){
+    state.decals.push({x,y,ttl:6+Math.random()*6,life:6+Math.random()*6,color,size:0.06+Math.random()*0.10});
+    if(state.decals.length>150) state.decals.shift();
   }
 
   function makeDrop(x,y,what){
@@ -687,12 +752,47 @@
     return roster;
   }
 
+  const TERRAIN_TYPES = {
+    grass:{ col:'rgba(72,110,72,0.24)', ms:1, as:1 },
+    dirt:{ col:'rgba(120,90,64,0.22)', ms:0.96, as:1 },
+    stone:{ col:'rgba(115,122,136,0.24)', ms:1, as:1 },
+    mud:{ col:'rgba(96,76,60,0.28)', ms:0.85, as:1 },
+    snow:{ col:'rgba(205,222,240,0.26)', ms:0.96, as:0.92 },
+    sand:{ col:'rgba(172,156,108,0.24)', ms:0.90, as:1 },
+  };
+  const TERRAIN_KEYS = Object.keys(TERRAIN_TYPES);
+
+  function terrainAt(x,y){
+    const gx = clamp(Math.floor(x),0,WORLD.w-1);
+    const gy = clamp(Math.floor(y),0,WORLD.h-1);
+    return state.terrain[gy*WORLD.w + gx] || 'stone';
+  }
+
+  function generateTerrain(){
+    state.terrain.length = WORLD.w*WORLD.h;
+    for(let y=0;y<WORLD.h;y++){
+      for(let x=0;x<WORLD.w;x++){
+        const n = (Math.sin(x*0.27 + WORLD.level*0.2) + Math.cos(y*0.24 - WORLD.level*0.15) + Math.sin((x+y)*0.11))*0.33;
+        let id = 'grass';
+        if(n > 0.35) id = 'stone';
+        else if(n > 0.20) id = 'dirt';
+        else if(n < -0.30) id = 'mud';
+        else if(n < -0.14) id = (WORLD.level>4?'sand':'dirt');
+        if(WORLD.level>5 && Math.random()<0.05) id = 'snow';
+        state.terrain[y*WORLD.w + x] = id;
+      }
+    }
+  }
+
   // ---------- Spawning / Level reset ----------
   function resetLevel(L){
     WORLD.level = L;
     state.troops.length = 0;
     state.projectiles.length = 0;
     state.drops.length = 0;
+    state.particles.length = 0;
+    state.decals.length = 0;
+    generateTerrain();
 
     // keep player near center
     player.x = clamp(player.x, 6, WORLD.w-6);
@@ -731,6 +831,27 @@
       if(L >= 7) tw.unlocks.add('brute');
       if(L >= 10) tw.unlocks.add('rogue');
       state.towers.push(tw);
+    }
+
+    // neutral objectives scale with rounds
+    const cap = 2 + Math.floor(L/3);
+    const neutralTowerCount = clamp((1 + (Math.random()*cap)|0), 1, cap);
+    let spawned = 0;
+    while(spawned < neutralTowerCount){
+      const x = WORLD.w*0.5 + (Math.random()*14-7);
+      const y = WORLD.h*0.5 + (Math.random()*14-7);
+      let ok = true;
+      for(const t of state.towers){
+        if(dist2(x,y,t.x,t.y) < 4.8*4.8){ ok = false; break; }
+      }
+      if(!ok) continue;
+      const nt = makeTower(x,y,-1);
+      nt.maxHp = Math.round(110 + L*4);
+      nt.hp = nt.maxHp;
+      nt.spawnBase = 5.6;
+      nt.heightPx = 56;
+      state.towers.push(nt);
+      spawned++;
     }
 
     showCenter(`LEVEL ${L}`, teams.length>1 ? `Multiple enemy factions detected (${teams.length}).` : `Conquer every tower.` , 1350);
@@ -783,6 +904,34 @@
     return Math.random() < critChance;
   }
 
+  function applyElementalHit(target, weapon, impactX, impactY){
+    const element = weapon.element || 'fire';
+    const tier = rarityTier(weapon.rarity || 'Common');
+    const strong = tier >= 2;
+    emitParticles(impactX, impactY, strong?18:10, elementColor(element), 'spark');
+    if(element==='fire'){
+      target.burn = Math.max(target.burn||0, strong?3.2:2.0);
+      target.burnDps = strong?2.8:1.3;
+      if(strong){
+        for(const tr of state.troops){
+          if(tr.team===target.team) continue;
+          if(dist2(target.x,target.y,tr.x,tr.y) < (1.45*1.45)) tr.hp -= (weapon.stats?.dmg||5)*0.45;
+        }
+      }
+    } else if(element==='ice'){
+      target.slow = Math.max(target.slow||0, strong?0.46:0.30);
+      target.slowT = Math.max(target.slowT||0, strong?3.0:2.5);
+      if(strong) target.iceSnap = 0.45;
+    } else if(element==='water'){
+      const [nx,ny] = norm(target.x-player.x,target.y-player.y);
+      const push = strong?1.35:0.75;
+      target.x += nx*push; target.y += ny*push;
+    } else if(element==='nature'){
+      target.rootT = Math.max(target.rootT||0, strong?1.45:1.0);
+      if(strong) state.decals.push({x:impactX,y:impactY,ttl:2,life:2,color:'rgba(102,190,92,.34)',size:0.16,thorn:true});
+    }
+  }
+
   function trySwordSwing(){
     if(player.atk.swingCd > 0) return;
     const wep = getWeapon();
@@ -792,52 +941,48 @@
     const dmg = baseDmg * stats.dmgMult;
     const cd = 0.35 / Math.max(0.65, stats.asMult);
     player.atk.swingCd = cd;
+    player.atk.attackState = { t:0, hitAt:0.12, end:0.28, didHit:false, reach, dmg };
+    player.atk.swingFx = 0.22;
+  }
 
-    // cone hit
-    const cone = Math.PI * 0.65; // ~117 deg
+  function resolveSwordHit(){
+    const wep = getWeapon();
+    const stats = computePlayerStats();
+    const reach = (wep.stats?.reach ?? 1.25);
+    const dmg = (wep.stats?.dmg ?? 6) * stats.dmgMult;
+    const cone = Math.PI * 0.65;
     const fx = Math.cos(player.facing), fy = Math.sin(player.facing);
 
-    let hits = 0;
     for(const tr of state.troops){
       if(tr.team === player.team) continue;
       const dx = tr.x - player.x, dy = tr.y - player.y;
       const d = Math.hypot(dx,dy);
       if(d > reach + tr.r) continue;
       const [nx,ny] = norm(dx,dy);
-      const dot = nx*fx + ny*fy;
-      const ang = Math.acos(clamp(dot,-1,1));
+      const ang = Math.acos(clamp(nx*fx + ny*fy,-1,1));
       if(ang <= cone/2){
         const crit = rollCrit(stats.crit);
-        const dealt = dmg * (crit ? 1.7 : 1.0);
-        tr.hp -= dealt;
-        hits++;
+        tr.hp -= dmg * (crit ? 1.7 : 1.0);
+        tr.anim.hurt = 0.14;
+        emitParticles(tr.x,tr.y,5,'rgba(255,220,160,.9)','spark');
+        emitParticles(tr.x,tr.y,3,'rgba(120,20,20,.7)','blood');
+        addDecal(tr.x + (Math.random()*0.3-0.15), tr.y + (Math.random()*0.3-0.15));
       }
     }
-
-    // also allow attacking enemy towers in front
     for(const tw of state.towers){
       if(tw.team === player.team) continue;
       const dx = tw.x - player.x, dy = tw.y - player.y;
       const d = Math.hypot(dx,dy);
       if(d > reach + 0.9) continue;
       const [nx,ny] = norm(dx,dy);
-      const dot = nx*fx + ny*fy;
-      const ang = Math.acos(clamp(dot,-1,1));
-      if(ang <= cone/2){
-        const crit = rollCrit(stats.crit);
-        const dealt = (dmg*0.85) * (crit ? 1.6 : 1.0);
-        tw.hp -= dealt;
-      }
+      const ang = Math.acos(clamp(nx*fx + ny*fy,-1,1));
+      if(ang <= cone/2){ tw.hp -= dmg*0.8; emitParticles(tw.x,tw.y,6,'rgba(255,240,170,.9)','spark'); }
     }
-
-    // simple swing FX timer
-    player.atk.swingFx = 0.14;
   }
 
   function fireBow(){
     if(player.atk.bowCd > 0) return;
     const wep = getWeapon();
-    const stats = computePlayerStats();
 
     const charge = clamp(player.atk.bowCharge, 0, 1);
     const minRange = 2.5;
@@ -850,10 +995,11 @@
     const speed = lerp(5.8, 10.8, charge);
     const dirx = Math.cos(player.facing), diry = Math.sin(player.facing);
 
-    const proj = makeProjectile(player.x + dirx*0.65, player.y + diry*0.65, dirx*speed, diry*speed, player.team, dmg, range);
+    const kind = wep.wtype==='staff' ? 'staffBolt' : 'arrow';
+    const proj = makeProjectile(player.x + dirx*0.65, player.y + diry*0.65, dirx*speed, diry*speed, player.team, dmg, range, kind, {element:wep.element, rarity:wep.rarity});
     state.projectiles.push(proj);
 
-    player.atk.bowCd = 0.42 / Math.max(0.65, (wep.stats?.as ?? 0.75));
+    player.atk.bowCd = (wep.wtype==='staff'?0.55:0.42) / Math.max(0.65, (wep.stats?.as ?? 0.75));
     player.atk.bowCharge = 0;
   }
 
@@ -1346,6 +1492,7 @@
 
   // ---------- Tower turret ----------
   function towerTurret(tw){
+    if(tw.team===-1) return;
     if(!tw.hasTurret) return;
     tw.turretCd -= dt;
     if(tw.turretCd > 0) return;
@@ -1370,6 +1517,12 @@
 
     for(let i=state.troops.length-1; i>=0; i--){
       const tr = state.troops[i];
+      tr.anim.t += dt;
+      tr.anim.hurt = Math.max(0,(tr.anim.hurt||0)-dt);
+      tr.anim.attackT = Math.max(0,(tr.anim.attackT||0)-dt);
+      if(tr.burn>0){ tr.hp -= (tr.burnDps||1.2)*dt; tr.burn -= dt; emitParticles(tr.x,tr.y,1,'rgba(255,142,70,.55)','spark'); }
+      if(tr.slowT>0){ tr.slowT -= dt; }
+      if(tr.rootT>0){ tr.rootT -= dt; }
 
       // death
       if(tr.hp <= 0){
@@ -1411,6 +1564,8 @@
         }
       }
 
+      const tmod = TERRAIN_TYPES[terrainAt(tr.x,tr.y)] || TERRAIN_TYPES.stone;
+
       // steering toward target
       let ax=0, ay=0;
       if(target){
@@ -1441,15 +1596,21 @@
           } else {
             tr.cd -= dt;
             if(d <= tr.range + target.ref.r && tr.cd <= 0){
-              tr.cd = 0.85;
+              tr.cd = 0.85 * tmod.as;
               target.ref.hp -= tr.dmg;
+              tr.anim.attackT = 0.22;
+              target.ref.anim.hurt = 0.10;
+              emitParticles(target.ref.x,target.ref.y,4,'rgba(255,215,145,.8)','spark');
+              addDecal(target.ref.x, target.ref.y, 'rgba(120,26,26,.35)');
             }
           }
         } else if(target.kind === 'tower'){
           tr.cd -= dt;
           if(d <= 1.25 + tr.r && tr.cd <= 0){
-            tr.cd = 0.92;
+            tr.cd = 0.92 * tmod.as;
             target.ref.hp -= tr.dmg * 0.75;
+            tr.anim.attackT = 0.2;
+            emitParticles(target.ref.x,target.ref.y,4,'rgba(255,222,160,.82)','spark');
           }
         }
       }
@@ -1460,7 +1621,9 @@
       const [sx,sy] = norm(steerX, steerY);
 
       // integrate velocity
-      const spd = tr.spd;
+      const slow = tr.slowT>0 ? (1-(tr.slow||0.25)) : 1;
+      const rooted = tr.rootT>0 ? 0 : 1;
+      const spd = tr.spd * tmod.ms * slow * rooted;
       tr.vx = lerp(tr.vx, sx*spd, 0.15);
       tr.vy = lerp(tr.vy, sy*spd, 0.15);
 
@@ -1490,35 +1653,55 @@
       p.y += p.vy * dt;
       p.traveled += step;
 
-      // if arrow goes beyond maxDist: "falls to the ground" (dies)
-      if(p.traveled >= p.maxDist){
-        p.alive = false;
-        continue;
-      }
+      if(p.kind==='staffBolt') emitParticles(p.x,p.y,1,elementColor(p.extra.element),'spark');
 
-      // hit troops
+      if(p.traveled >= p.maxDist){ p.alive = false; continue; }
+
       for(const tr of state.troops){
         if(tr.team === p.team) continue;
         if(dist2(p.x,p.y,tr.x,tr.y) < (tr.r*tr.r)){
           tr.hp -= p.dmg;
+          tr.anim.hurt = 0.13;
+          emitParticles(tr.x,tr.y,8,p.kind==='staffBolt'?elementColor(p.extra.element):'rgba(255,220,160,.9)','spark');
+          if(p.kind==='staffBolt') applyElementalHit(tr,{element:p.extra.element,rarity:p.extra.rarity,stats:{dmg:p.dmg}},tr.x,tr.y);
+          else addDecal(tr.x,tr.y);
           p.alive = false;
           break;
         }
       }
       if(!p.alive) continue;
 
-      // hit towers
       for(const tw of state.towers){
         if(tw.team === p.team) continue;
         if(dist2(p.x,p.y,tw.x,tw.y) < (1.05*1.05)){
           tw.hp -= p.dmg * 0.8;
+          emitParticles(tw.x,tw.y,8,p.kind==='staffBolt'?elementColor(p.extra.element):'rgba(255,225,180,.9)','spark');
           p.alive = false;
           break;
         }
       }
 
-      // bounds
       if(p.x<0 || p.y<0 || p.x>WORLD.w || p.y>WORLD.h) p.alive = false;
+    }
+  }
+
+  function updateEffects(){
+    for(let i=state.particles.length-1;i>=0;i--){
+      const p = state.particles[i];
+      p.ttl -= dt;
+      p.x += p.vx*dt;
+      p.y += p.vy*dt;
+      p.vx *= 0.96; p.vy *= 0.96;
+      if(p.kind==='blood') p.vy += 2.2*dt;
+      if(p.ttl<=0) state.particles.splice(i,1);
+    }
+    for(let i=state.decals.length-1;i>=0;i--){
+      const d = state.decals[i];
+      d.ttl -= dt;
+      if(d.thorn){
+        for(const tr of state.troops){ if(tr.team!==0 && dist2(tr.x,tr.y,d.x,d.y)<0.32*0.32) tr.hp -= 4*dt; }
+      }
+      if(d.ttl<=0) state.decals.splice(i,1);
     }
   }
 
@@ -1540,10 +1723,11 @@
     if(keys.has('s')) my += 1;
     if(keys.has('a')) mx -= 1;
     if(keys.has('d')) mx += 1;
+    const tmod = TERRAIN_TYPES[terrainAt(player.x,player.y)] || TERRAIN_TYPES.stone;
     if(mx || my){
       const [nx,ny] = norm(mx,my);
-      player.vx = lerp(player.vx, nx*st.ms, 0.22);
-      player.vy = lerp(player.vy, ny*st.ms, 0.22);
+      player.vx = lerp(player.vx, nx*st.ms*tmod.ms, 0.22);
+      player.vy = lerp(player.vy, ny*st.ms*tmod.ms, 0.22);
     } else {
       player.vx = lerp(player.vx, 0, 0.25);
       player.vy = lerp(player.vy, 0, 0.25);
@@ -1572,7 +1756,7 @@
     if(player.atk.swingFx) player.atk.swingFx = Math.max(0, player.atk.swingFx - dt);
 
     const wep = getWeapon();
-    if(wep.wtype === 'bow' && player.atk.bowCharging){
+    if((wep.wtype === 'bow' || wep.wtype==='staff') && player.atk.bowCharging){
       // charge to 1 over ~1.1s
       player.atk.bowCharge = clamp(player.atk.bowCharge + dt/1.1, 0, 1);
     } else {
@@ -1603,23 +1787,21 @@
 
   // ---------- Rendering ----------
   function drawGround(){
-    // subtle isometric grid around player
     const half = 24;
     const minX = Math.floor(player.x - half);
     const maxX = Math.floor(player.x + half);
     const minY = Math.floor(player.y - half);
     const maxY = Math.floor(player.y + half);
 
-    // background fog-ish gradient
     ctx.fillStyle = 'rgba(0,0,0,.35)';
     ctx.fillRect(0,0,innerWidth,innerHeight);
 
     for(let y=minY; y<=maxY; y++){
       for(let x=minX; x<=maxX; x++){
-        if(x<0||y<0||x>WORLD.w||y>WORLD.h) continue;
+        if(x<0||y<0||x>=WORLD.w||y>=WORLD.h) continue;
         const [sx,sy] = worldToScreen(x,y);
         const w = ISO.tileW, h = ISO.tileH;
-        // tile diamond
+        const tt = TERRAIN_TYPES[terrainAt(x,y)] || TERRAIN_TYPES.stone;
         ctx.beginPath();
         ctx.moveTo(sx, sy - h/2);
         ctx.lineTo(sx + w/2, sy);
@@ -1629,11 +1811,25 @@
 
         const d = Math.hypot(x-player.x, y-player.y);
         const a = clamp(1 - d/28, 0, 1);
-        ctx.fillStyle = `rgba(34,52,70,${0.08 + a*0.06})`;
+        ctx.fillStyle = tt.col.replace(/0\.[0-9]+\)/, `${(0.10 + a*0.08).toFixed(2)})`);
         ctx.fill();
-        ctx.strokeStyle = `rgba(255,255,255,${0.06 + a*0.03})`;
+        ctx.strokeStyle = `rgba(255,255,255,${0.05 + a*0.03})`;
         ctx.stroke();
+
+        if(Math.sin((x*13+y*7))>0.92){
+          ctx.fillStyle='rgba(255,255,255,.08)';
+          ctx.fillRect(sx-1,sy-1,2,2);
+        }
       }
+    }
+
+    for(const d of state.decals){
+      const [sx,sy]=worldToScreen(d.x,d.y);
+      const a = clamp(d.ttl/(d.life||8),0,1);
+      ctx.beginPath();
+      ctx.ellipse(sx,sy+2,ISO.tileW*d.size,ISO.tileH*d.size*0.8,0,0,TAU);
+      ctx.fillStyle=d.color.replace(/0\.[0-9]+\)/, `${(0.12+a*0.42).toFixed(2)})`);
+      ctx.fill();
     }
   }
 
@@ -1654,48 +1850,45 @@
 
   function drawTower(tw){
     const [sx,sy] = worldToScreen(tw.x, tw.y);
-    const col = teamColor(tw.team);
+    const col = tw.team===-1 ? '#cfd6e6' : teamColor(tw.team);
 
-    // base shadow
-    drawShadow(tw.x, tw.y, 1.18, 0.30);
+    drawShadow(tw.x, tw.y, 1.25, 0.36);
 
-    // isometric block
-    const w = 44, h = 26;
-    const height = 44;
+    const w = 46, h = 28;
+    const height = tw.heightPx || 44;
 
-    // top diamond
     ctx.beginPath();
     ctx.moveTo(sx, sy - h/2 - height);
     ctx.lineTo(sx + w/2, sy - height);
     ctx.lineTo(sx, sy + h/2 - height);
     ctx.lineTo(sx - w/2, sy - height);
     ctx.closePath();
-    ctx.fillStyle = 'rgba(255,255,255,.10)';
+    ctx.fillStyle = 'rgba(245,248,255,.18)';
     ctx.fill();
 
-    // left face
     ctx.beginPath();
     ctx.moveTo(sx - w/2, sy - height);
     ctx.lineTo(sx, sy + h/2 - height);
     ctx.lineTo(sx, sy + h/2);
     ctx.lineTo(sx - w/2, sy);
     ctx.closePath();
-    ctx.fillStyle = 'rgba(255,255,255,.06)';
+    ctx.fillStyle = 'rgba(70,78,95,.82)';
     ctx.fill();
 
-    // right face
     ctx.beginPath();
     ctx.moveTo(sx + w/2, sy - height);
     ctx.lineTo(sx, sy + h/2 - height);
     ctx.lineTo(sx, sy + h/2);
     ctx.lineTo(sx + w/2, sy);
     ctx.closePath();
-    ctx.fillStyle = 'rgba(255,255,255,.04)';
+    ctx.fillStyle = 'rgba(96,106,126,.84)';
     ctx.fill();
 
-    // outline + banner
-    ctx.strokeStyle = 'rgba(255,255,255,.14)';
-    ctx.strokeRect(sx-1, sy-height-1, 2, 2); // tiny anchor
+    for(let i=0;i<3;i++){
+      ctx.fillStyle='rgba(24,28,40,.65)';
+      ctx.fillRect(sx-18+i*12, sy-height+10, 5, 9);
+    }
+
     ctx.beginPath();
     ctx.moveTo(sx, sy-height-18);
     ctx.lineTo(sx, sy-height+10);
@@ -1707,11 +1900,10 @@
     ctx.beginPath();
     ctx.roundRect(sx+2, sy-height-16, 18, 10, 3);
     ctx.fillStyle = col;
-    ctx.globalAlpha = 0.9;
+    ctx.globalAlpha = 0.95;
     ctx.fill();
     ctx.globalAlpha = 1;
 
-    // HP bar
     const hp = clamp(tw.hp/tw.maxHp, 0, 1);
     ctx.fillStyle = 'rgba(0,0,0,.45)';
     ctx.fillRect(sx-30, sy-height-34, 60, 6);
@@ -1719,109 +1911,91 @@
     ctx.fillRect(sx-30, sy-height-34, 60*hp, 6);
     ctx.strokeStyle = 'rgba(255,255,255,.16)';
     ctx.strokeRect(sx-30, sy-height-34, 60, 6);
+  }
 
-    // spawn timer text
-    ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const tLeft = Math.max(0, tw.spawnT);
-    ctx.fillStyle = 'rgba(243,246,255,.92)';
-    ctx.fillText(`${tLeft.toFixed(1)}s`, sx, sy-height-48);
-
-    // upgrade icons (tiny dots)
-    const tags = [...tw.fxTags];
-    if(tags.length){
-      const n = Math.min(6, tags.length);
-      for(let i=0;i<n;i++){
-        ctx.beginPath();
-        ctx.arc(sx - 22 + i*8, sy-height-22, 2.6, 0, TAU);
-        ctx.fillStyle = 'rgba(255,255,255,.55)';
-        ctx.fill();
-      }
+  function drawWeaponVisual(sx,sy,wtype,facing,phase=0,col='#fff'){
+    ctx.save();
+    ctx.translate(sx,sy);
+    ctx.rotate(facing + phase);
+    ctx.strokeStyle = col;
+    ctx.fillStyle = col;
+    if(wtype==='sword'){
+      ctx.fillRect(4,-1,13,2);
+      ctx.fillRect(2,-2,3,4);
+    } else if(wtype==='axe'){
+      ctx.fillRect(2,-1,12,2);
+      ctx.beginPath(); ctx.moveTo(11,-5); ctx.lineTo(18,-1); ctx.lineTo(11,4); ctx.closePath(); ctx.fill();
+    } else if(wtype==='spear'){
+      ctx.fillRect(2,-1,18,2);
+      ctx.beginPath(); ctx.moveTo(20,0); ctx.lineTo(15,-3); ctx.lineTo(15,3); ctx.closePath(); ctx.fill();
+    } else if(wtype==='bow'){
+      ctx.beginPath(); ctx.arc(10,0,7,-1.0,1.0); ctx.stroke(); ctx.beginPath(); ctx.moveTo(14,-6); ctx.lineTo(14,6); ctx.stroke();
+    } else if(wtype==='staff'){
+      ctx.fillRect(2,-1,16,2);
+      ctx.beginPath(); ctx.arc(18,0,3.5,0,TAU); ctx.fill();
     }
+    ctx.restore();
   }
 
   function drawTroop(tr){
     const [sx,sy] = worldToScreen(tr.x,tr.y);
     const col = teamColor(tr.team);
+    const speed = Math.hypot(tr.vx,tr.vy);
+    const moving = speed > 0.18;
+    const bob = moving ? Math.sin(tr.anim.t*13)*2.4 : 0;
 
     drawShadow(tr.x,tr.y,0.80, 0.22);
 
-    // soldier (iso-ish): base diamond + body + head
-    const bodyH = 18;
-    // base diamond
     ctx.beginPath();
-    ctx.moveTo(sx, sy-10);
-    ctx.lineTo(sx+10, sy);
-    ctx.lineTo(sx, sy+10);
-    ctx.lineTo(sx-10, sy);
-    ctx.closePath();
-    ctx.fillStyle = 'rgba(255,255,255,.06)';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,.10)';
-    ctx.stroke();
-
-    // body
-    ctx.beginPath();
-    ctx.roundRect(sx-5, sy-22-bodyH/2, 10, bodyH, 4);
-    ctx.fillStyle = col;
+    ctx.roundRect(sx-6, sy-30+bob, 12, 19, 5);
+    ctx.fillStyle = tr.anim.hurt>0 ? 'rgba(255,200,200,.95)' : col;
     ctx.globalAlpha = 0.85;
     ctx.fill();
     ctx.globalAlpha = 1;
 
-    // head
     ctx.beginPath();
-    ctx.arc(sx, sy-28-bodyH/2, 5.3, 0, TAU);
-    ctx.fillStyle = 'rgba(255,255,255,.86)';
-    ctx.globalAlpha = 0.75;
+    ctx.arc(sx, sy-35+bob, 5.3, 0, TAU);
+    ctx.fillStyle = 'rgba(255,255,255,.84)';
     ctx.fill();
-    ctx.globalAlpha = 1;
 
-    // HP bar (small)
+    const badge = TROOP_TYPES[tr.type]?.role==='ranged'?'🏹':(tr.type==='brute'?'🛡':'⚔');
+    ctx.font='11px system-ui'; ctx.textAlign='center'; ctx.fillStyle='rgba(255,255,255,.85)';
+    ctx.fillText(badge,sx,sy-50+bob);
+
+    drawWeaponVisual(sx, sy-24+bob, tr.type==='archer'?'bow':(tr.type==='brute'?'axe':'sword'), Math.atan2(tr.vy||0.01,tr.vx||0.01), tr.anim.attackT>0?Math.sin(tr.anim.attackT*24)*0.5:0, typeAccent(tr.type));
+
     const hp = clamp(tr.hp/tr.maxHp, 0, 1);
     ctx.fillStyle = 'rgba(0,0,0,.45)';
-    ctx.fillRect(sx-12, sy-48, 24, 4);
+    ctx.fillRect(sx-12, sy-48+bob, 24, 4);
     ctx.fillStyle = col;
-    ctx.fillRect(sx-12, sy-48, 24*hp, 4);
+    ctx.fillRect(sx-12, sy-48+bob, 24*hp, 4);
   }
 
   function drawPlayer(){
     const [sx,sy] = worldToScreen(player.x, player.y);
     drawShadow(player.x, player.y, 0.92, 0.28);
+    const walk = Math.hypot(player.vx,player.vy)>0.1;
+    const bob = walk?Math.sin(state.time*14)*2.4:0;
 
-    // body
     ctx.beginPath();
-    ctx.roundRect(sx-6, sy-32, 12, 20, 5);
+    ctx.roundRect(sx-6, sy-32+bob, 12, 20, 5);
     ctx.fillStyle = 'rgba(255,255,255,.16)';
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,.22)';
-    ctx.stroke();
 
-    // head
     ctx.beginPath();
-    ctx.arc(sx, sy-36, 6, 0, TAU);
-    ctx.fillStyle = 'rgba(255,255,255,.85)';
-    ctx.globalAlpha = 0.9;
+    ctx.arc(sx, sy-38+bob, 5.4, 0, TAU);
+    ctx.fillStyle = 'rgba(243,246,255,.95)';
     ctx.fill();
-    ctx.globalAlpha = 1;
 
-    // facing indicator
-    const fx = Math.cos(player.facing), fy = Math.sin(player.facing);
-    const [sx2,sy2] = worldToScreen(player.x + fx*1.1, player.y + fy*1.1);
-    ctx.beginPath();
-    ctx.moveTo(sx, sy-18);
-    ctx.lineTo(sx2, sy2-18);
-    ctx.strokeStyle = 'rgba(104,255,184,.75)';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.lineWidth = 1;
+    const wep = getWeapon();
+    const phase = player.atk.attackState ? Math.sin(player.atk.attackState.t*18)*0.8 : 0;
+    drawWeaponVisual(sx, sy-24+bob, wep.wtype, player.facing, phase, wep.wtype==='staff'?elementColor(wep.element):'#ffdca8');
 
-    // swing arc FX
-    if(player.atk.swingFx && getWeapon().wtype==='sword'){
-      const t = player.atk.swingFx / 0.14;
-      const reach = (getWeapon().stats?.reach ?? 1.25);
-      const [px,py] = worldToScreen(player.x, player.y);
-      const [ex,ey] = worldToScreen(player.x + fx*reach, player.y + fy*reach);
+    if(player.atk.swingFx){
+      const t = clamp(player.atk.swingFx / 0.22, 0, 1);
+      const fx = Math.cos(player.facing), fy = Math.sin(player.facing);
+      const reach = (wep.stats?.reach ?? 1.25);
+      const [px,py] = worldToScreen(player.x + fx*reach, player.y + fy*reach);
       ctx.beginPath();
       ctx.arc(px, py-18, 32, player.facing-0.6, player.facing+0.6);
       ctx.strokeStyle = `rgba(255,211,106,${0.55*t})`;
@@ -1830,35 +2004,28 @@
       ctx.lineWidth = 1;
     }
 
-    // bow charge line
-    if(getWeapon().wtype==='bow' && player.atk.bowCharging){
+    if((wep.wtype==='bow' || wep.wtype==='staff') && player.atk.bowCharging){
       const charge = clamp(player.atk.bowCharge,0,1);
-      const minRange=2.5, maxRange=(getWeapon().stats?.reach ?? 8.5)*1.05;
+      const minRange=2.5, maxRange=(wep.stats?.reach ?? 8.5)*1.05;
       const r = lerp(minRange, maxRange, charge);
-      const [ex2,ey2] = worldToScreen(player.x + fx*r, player.y + fy*r);
+      const [ex2,ey2] = worldToScreen(player.x + Math.cos(player.facing)*r, player.y + Math.sin(player.facing)*r);
       ctx.beginPath();
-      ctx.moveTo(sx, sy-22);
+      ctx.moveTo(sx, sy-22+bob);
       ctx.lineTo(ex2, ey2-22);
-      ctx.strokeStyle = `rgba(86,211,255,${0.25 + 0.65*charge})`;
+      ctx.strokeStyle = wep.wtype==='staff' ? elementColor(wep.element) : `rgba(86,211,255,${0.25 + 0.65*charge})`;
       ctx.lineWidth = 3;
       ctx.stroke();
       ctx.lineWidth = 1;
-
-      ctx.beginPath();
-      ctx.arc(ex2, ey2-22, 4 + charge*6, 0, TAU);
-      ctx.fillStyle = `rgba(86,211,255,${0.12 + 0.30*charge})`;
-      ctx.fill();
     }
 
-    // player HP
     const st = computePlayerStats();
     const hp = clamp(player.hp/st.maxHp, 0, 1);
     ctx.fillStyle = 'rgba(0,0,0,.55)';
-    ctx.fillRect(sx-20, sy-60, 40, 6);
+    ctx.fillRect(sx-20, sy-60+bob, 40, 6);
     ctx.fillStyle = 'rgba(104,255,184,.92)';
-    ctx.fillRect(sx-20, sy-60, 40*hp, 6);
+    ctx.fillRect(sx-20, sy-60+bob, 40*hp, 6);
     ctx.strokeStyle = 'rgba(255,255,255,.18)';
-    ctx.strokeRect(sx-20, sy-60, 40, 6);
+    ctx.strokeRect(sx-20, sy-60+bob, 40, 6);
   }
 
   function drawProjectiles(){
@@ -1868,10 +2035,18 @@
       ctx.beginPath();
       ctx.moveTo(sx2, sy2-22);
       ctx.lineTo(sx, sy-22);
-      ctx.strokeStyle = `rgba(243,246,255,.85)`;
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = p.kind==='staffBolt' ? elementColor(p.extra.element) : `rgba(243,246,255,.85)`;
+      ctx.lineWidth = p.kind==='staffBolt'?3:2;
       ctx.stroke();
       ctx.lineWidth = 1;
+    }
+    for(const p of state.particles){
+      const [sx,sy] = worldToScreen(p.x,p.y);
+      const a = clamp(p.ttl/p.life,0,1);
+      ctx.beginPath();
+      ctx.arc(sx,sy-20,p.size*a,0,TAU);
+      ctx.fillStyle = p.color.replace(/0\.[0-9]+\)/, `${(0.2+a*0.8).toFixed(2)})`);
+      ctx.fill();
     }
   }
 
@@ -1879,7 +2054,6 @@
     for(const d of state.drops){
       const [sx,sy] = worldToScreen(d.x,d.y);
       const bob = Math.sin(state.time*4 + d.x*0.8 + d.y*0.6)*2;
-      // icon
       ctx.beginPath();
       ctx.arc(sx, sy-18 + bob, 6, 0, TAU);
       let col = 'rgba(255,211,106,.85)';
@@ -1895,27 +2069,22 @@
   function drawWorld(){
     drawGround();
 
-    // draw order: sort entities by iso depth (x+y)
     const drawables = [];
-
-    for(const tw of state.towers) drawables.push({k:tw.x+tw.y, type:'tower', o:tw});
-    for(const tr of state.troops) drawables.push({k:tr.x+tr.y, type:'troop', o:tr});
-    drawables.push({k:player.x+player.y, type:'player', o:player});
+    for(const tw of state.towers) drawables.push({k:tw.x+tw.y+(tw.zBias||0), type:'tower', o:tw});
+    for(const tr of state.troops) drawables.push({k:tr.x+tr.y+(tr.zBias||0), type:'troop', o:tr});
+    drawables.push({k:player.x+player.y+0.25, type:'player', o:player});
     for(const d of state.drops) drawables.push({k:d.x+d.y + 0.02, type:'drop', o:d});
-    // projectiles on top
     drawables.sort((a,b)=>a.k-b.k);
 
     for(const it of drawables){
       if(it.type==='tower') drawTower(it.o);
       if(it.type==='troop') drawTroop(it.o);
       if(it.type==='player') drawPlayer();
-      if(it.type==='drop') drawDrops(); // draws all drops, but cheap enough; handle once below instead
+      if(it.type==='drop') drawDrops();
     }
-    // correct: draw drops once, projectiles last
     drawDrops();
     drawProjectiles();
 
-    // paused overlay label
     if(state.paused){
       ctx.fillStyle = 'rgba(0,0,0,.35)';
       ctx.fillRect(0,0,innerWidth,innerHeight);
@@ -1924,9 +2093,6 @@
       ctx.textBaseline='middle';
       ctx.fillStyle = 'rgba(243,246,255,.90)';
       ctx.fillText('PAUSED', innerWidth/2, innerHeight/2 - 88);
-      ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Arial';
-      ctx.fillStyle = 'rgba(243,246,255,.70)';
-      ctx.fillText('Close the panel (E) to resume.', innerWidth/2, innerHeight/2 - 64);
     }
   }
 
@@ -1973,6 +2139,7 @@
 
       updateTroops();
       updateProjectiles();
+      updateEffects();
       handleTowerOwnership();
       pickupDrops();
       checkAllCaptured();
