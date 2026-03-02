@@ -507,6 +507,8 @@
     }
   };
 
+  const PLAYER_SWING_CONE = Math.PI * 0.42;
+
   const state = {
     paused:false,
     time:0,
@@ -1033,11 +1035,11 @@
     const stats = computePlayerStats();
     const reach = (wep.stats?.reach ?? 1.25);
     const dmg = (wep.stats?.dmg ?? 6) * stats.dmgMult;
-    const cone = Math.PI * 0.65;
+    const cone = PLAYER_SWING_CONE;
     const fx = Math.cos(player.facing), fy = Math.sin(player.facing);
 
     for(const tr of state.troops){
-      if(tr.team === player.team) continue;
+      if(!isHostileTeam(tr.team, player.team)) continue;
       const dx = tr.x - player.x, dy = tr.y - player.y;
       const d = Math.hypot(dx,dy);
       if(d > reach + tr.r) continue;
@@ -1053,7 +1055,7 @@
       }
     }
     for(const tw of state.towers){
-      if(tw.team === player.team) continue;
+      if(!isHostileTeam(tw.team, player.team)) continue;
       const dx = tw.x - player.x, dy = tw.y - player.y;
       const d = Math.hypot(dx,dy);
       if(d > reach + 0.9) continue;
@@ -1138,11 +1140,16 @@
     return { kind:'player', ref:player, x:player.x, y:player.y, r:0.55 };
   }
 
+  function isHostileTeam(teamA, teamB){
+    if(teamA < 0 || teamB < 0) return false;
+    return teamA !== teamB;
+  }
+
   function findNearestEnemyTargetForTroop(tr){
     let best = null, bestD = Infinity;
 
     for(const other of state.troops){
-      if(other.team === tr.team) continue;
+      if(!isHostileTeam(other.team, tr.team)) continue;
       const d = dist2(tr.x,tr.y,other.x,other.y);
       if(d < bestD){ bestD = d; best = {kind:'troop', ref:other, x:other.x, y:other.y, r:other.r||0.4}; }
     }
@@ -1150,12 +1157,13 @@
     if(tr.team !== player.team){
       const pt = playerTargetProxy();
       const d = dist2(tr.x,tr.y,pt.x,pt.y);
-      const bias = d < (6.8*6.8) ? 0.72 : 1.0;
-      if(d * bias < bestD){ bestD = d * bias; best = pt; }
+      const noNearbyEnemy = bestD > (3.25*3.25);
+      const playerMuchCloser = d < bestD * 0.75;
+      if(noNearbyEnemy || playerMuchCloser){ bestD = d; best = pt; }
     }
 
     for(const tw of state.towers){
-      if(tw.team === tr.team) continue;
+      if(!isHostileTeam(tw.team, tr.team)) continue;
       const d = dist2(tr.x,tr.y,tw.x,tw.y);
       if(d < bestD){ bestD = d; best = {kind:'tower', ref:tw, x:tw.x, y:tw.y, r:1.0}; }
     }
@@ -1165,7 +1173,7 @@
   function findNearestEnemyTargetForTower(tw){
     let best=null, bestD=Infinity;
     for(const tr of state.troops){
-      if(tr.team === tw.team) continue;
+      if(!isHostileTeam(tr.team, tw.team)) continue;
       const d = dist2(tw.x,tw.y,tr.x,tr.y);
       if(d < bestD){ bestD=d; best={kind:'troop', ref:tr, x:tr.x, y:tr.y, r:tr.r||0.4}; }
     }
@@ -2208,7 +2216,7 @@
     if(player.atk.attackState){
       const a = player.atk.attackState;
       const t = clamp(a.t/a.end,0,1);
-      const cone = Math.PI*0.65;
+      const cone = PLAYER_SWING_CONE;
       const sweep = lerp(-0.42,0.42,t);
       const reach = a.reach||1.25;
       const lenPx = reach*ISO.tileW*0.82;
