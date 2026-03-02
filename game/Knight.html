@@ -176,7 +176,7 @@
         <div class="panel">
           <h3>Objective</h3>
           <ul>
-            <li>The <b>ground color</b> shows who controls that land.</li>
+            <li>The <b>ground color</b> now follows <b>tower control influence</b>, not footsteps.</li>
             <li><b>Capture towers</b>: stand on a tower to fill the capture bar.</li>
             <li>Captured towers <b>spawn knights slowly</b>.</li>
             <li>Win by <b>destroying the enemy HQ</b> with sword swings (or your army).</li>
@@ -356,14 +356,6 @@
 
   function idx(x,y){ return x + y*GW; }
   function inBounds(tx,ty){ return tx>=0 && ty>=0 && tx<GW && ty<GH; }
-
-  const paintOffsets = [];
-  const paintR = 2;
-  for(let oy=-paintR; oy<=paintR; oy++){
-    for(let ox=-paintR; ox<=paintR; ox++){
-      if(ox*ox + oy*oy <= paintR*paintR) paintOffsets.push([ox,oy]);
-    }
-  }
 
   function worldToTile(x,y){
     const tx = Math.floor((x / TILE) + GW/2);
@@ -754,22 +746,42 @@
     }
   }
 
-  // ---------- Territory painting ----------
+  // ---------- Territory painting (tower influence only) ----------
   let paintTimer=0;
   function paintTerritory(dt){
     paintTimer -= dt;
     if(paintTimer>0) return;
-    paintTimer = 0.20;
+    paintTimer = 0.25;
 
-    function paintAt(team, x,y){
-      const {tx,ty} = worldToTile(x,y);
-      for(const [ox,oy] of paintOffsets) setTileOwner(tx+ox, ty+oy, team);
+    const blueSeeds = [{x:HQ.blue.x, y:HQ.blue.y, w:1.15}];
+    const redSeeds = [{x:HQ.red.x, y:HQ.red.y, w:1.15}];
+
+    for(const tw of towers){
+      if(tw.owner===TEAM.BLUE) blueSeeds.push({x:tw.x, y:tw.y, w:1.0});
+      else if(tw.owner===TEAM.RED) redSeeds.push({x:tw.x, y:tw.y, w:1.0});
     }
 
-    paintAt(player.team, player.x, player.y);
-    for(const u of units){
-      if(u.hp<=0) continue;
-      paintAt(u.team, u.x, u.y);
+    for(let ty=0; ty<GH; ty++){
+      const wy = (ty - GH/2 + 0.5) * TILE;
+      for(let tx=0; tx<GW; tx++){
+        const wx = (tx - GW/2 + 0.5) * TILE;
+
+        let blueInf = 0, redInf = 0;
+        for(const s of blueSeeds){
+          const d2 = (wx-s.x)*(wx-s.x) + (wy-s.y)*(wy-s.y);
+          blueInf += s.w / (3 + d2*0.045);
+        }
+        for(const s of redSeeds){
+          const d2 = (wx-s.x)*(wx-s.x) + (wy-s.y)*(wy-s.y);
+          redInf += s.w / (3 + d2*0.045);
+        }
+
+        const diff = blueInf - redInf;
+        let owner = TEAM.NEUT;
+        if(diff > 0.025) owner = TEAM.BLUE;
+        else if(diff < -0.025) owner = TEAM.RED;
+        territory[idx(tx,ty)] = owner;
+      }
     }
   }
 
@@ -1570,20 +1582,20 @@
     if(mode==='swing'){
       const k = easeOut(t);
       if(dir==='U'){
-        rx=lerp(-1.25, 0.65,k); ry=lerp(0.10, 0.22,k); rz=lerp(-0.50, 0.20,k);
-        px=lerp(-0.04, 0.06,k); py=lerp(-0.06, 0.24,k); pz=lerp(1.12,1.06,k);
+        rx=lerp(-1.45, 0.95,k); ry=lerp(0.12, 0.30,k); rz=lerp(-0.62, 0.38,k);
+        px=lerp(-0.10, 0.12,k); py=lerp(-0.14, 0.34,k); pz=lerp(1.10,1.00,k);
       }
       if(dir==='D'){
-        rx=lerp( 0.55,-1.15,k); ry=lerp(0.25, 0.12,k); rz=lerp(-0.05,-0.45,k);
-        px=lerp( 0.10,-0.03,k); py=lerp( 0.32, 0.06,k); pz=lerp(1.14,1.06,k);
+        rx=lerp( 0.75,-1.35,k); ry=lerp(0.30, 0.08,k); rz=lerp( 0.05,-0.62,k);
+        px=lerp( 0.14,-0.10,k); py=lerp( 0.42,-0.02,k); pz=lerp(1.12,1.00,k);
       }
       if(dir==='L'){
-        rx=lerp(-0.55,-0.40,k); ry=lerp(0.85, 0.18,k); rz=lerp(-1.25, 0.95,k);
-        px=lerp(-0.12, 0.10,k); py=lerp( 0.14, 0.18,k); pz=lerp(1.12,1.04,k);
+        rx=lerp(-0.68,-0.25,k); ry=lerp(1.12, 0.02,k); rz=lerp(-1.45, 1.18,k);
+        px=lerp(-0.20, 0.18,k); py=lerp( 0.12, 0.24,k); pz=lerp(1.10,0.98,k);
       }
       if(dir==='R'){
-        rx=lerp(-0.55,-0.40,k); ry=lerp(-0.45,0.80,k); rz=lerp( 1.25,-0.95,k);
-        px=lerp( 0.12,-0.10,k); py=lerp( 0.14, 0.18,k); pz=lerp(1.12,1.04,k);
+        rx=lerp(-0.68,-0.25,k); ry=lerp(-0.62,1.05,k); rz=lerp( 1.45,-1.18,k);
+        px=lerp( 0.20,-0.18,k); py=lerp( 0.12, 0.24,k); pz=lerp(1.10,0.98,k);
       }
     }
 
@@ -1668,15 +1680,15 @@
 
     // record trail during swing for a CLEAR arc
     if(pose.mode==='swing'){
-      swordTrail.push({R:[...pose.R], P:[...pose.P], life:0.12, dir:pose.dir});
-      if(swordTrail.length>14) swordTrail.shift();
+      swordTrail.push({R:[...pose.R], P:[...pose.P], life:0.16, dir:pose.dir});
+      if(swordTrail.length>22) swordTrail.shift();
     }
 
     // draw older trail ghosts first
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for(const tr of swordTrail){
-      const a = clamp(tr.life/0.12, 0, 1);
+      const a = clamp(tr.life/0.16, 0, 1);
       const faces = buildFacesForPose(tr.R, tr.P);
       ctx.save();
       ctx.globalAlpha = 0.22 * a;
@@ -1842,7 +1854,8 @@
   const towerMeshes3D=[];
   const unitPool3D=[];
   const hqMesh3D={blue:null, red:null};
-  let skyMesh3D=null, groundMesh3D=null;
+  let skyMesh3D=null, groundMesh3D=null, underGlowMesh3D=null;
+  const underTowers3D=[];
 
   function init3D(){
     if(renderer3D || !USE_3D || !window.THREE) return !!renderer3D;
@@ -1878,10 +1891,20 @@
       territoryTex3D.minFilter = THREE.NearestFilter;
 
       const planeGeo = new THREE.PlaneGeometry(GW*TILE, GH*TILE, 1, 1);
-      const planeMat = new THREE.MeshStandardMaterial({map:territoryTex3D, roughness:0.95, metalness:0.02});
+      const planeMat = new THREE.MeshStandardMaterial({map:territoryTex3D, roughness:0.92, metalness:0.03});
       groundMesh3D = new THREE.Mesh(planeGeo, planeMat);
-      groundMesh3D.rotation.x = -Math.PI/2;
+      groundMesh3D.rotation.x = -Math.PI/2 + 0.16;
       worldGroup3D.add(groundMesh3D);
+
+      const underGlowGeo = new THREE.PlaneGeometry(GW*TILE*1.02, GH*TILE*1.02, 1, 1);
+      const underGlowMat = new THREE.MeshStandardMaterial({
+        color:0x101a2f, emissive:0x162747, emissiveIntensity:0.7,
+        transparent:true, opacity:0.72, side:THREE.DoubleSide, roughness:1
+      });
+      underGlowMesh3D = new THREE.Mesh(underGlowGeo, underGlowMat);
+      underGlowMesh3D.rotation.x = groundMesh3D.rotation.x;
+      underGlowMesh3D.position.y = -6.0;
+      worldGroup3D.add(underGlowMesh3D);
 
       for(const tw of towers){
         const g = new THREE.Group();
@@ -1895,6 +1918,24 @@
         g.userData.banner = banner;
         worldGroup3D.add(g);
         towerMeshes3D.push(g);
+
+        const under = g.clone(true);
+        under.scale.set(0.88, 2.4, 0.88);
+        under.position.y = -3.2;
+        under.rotation.x = Math.PI;
+        const underCol = new THREE.Color(0x22395f);
+        under.traverse((node)=>{
+          if(node.isMesh){
+            node.material = node.material.clone();
+            node.material.color.lerp(underCol, 0.55);
+            node.material.emissive = new THREE.Color(0x0f1f3a);
+            node.material.emissiveIntensity = 0.45;
+            node.material.transparent = true;
+            node.material.opacity = 0.84;
+          }
+        });
+        worldGroup3D.add(under);
+        underTowers3D.push(under);
       }
 
       const hqGeo = new THREE.BoxGeometry(3.8, 2.8, 3.8);
@@ -1959,12 +2000,19 @@
     camera3D.rotation.y = -player.ang + Math.PI/2;
     camera3D.rotation.x = player.pitch;
 
+    groundMesh3D.rotation.x = -Math.PI/2 + 0.16;
+    if(underGlowMesh3D) underGlowMesh3D.rotation.x = groundMesh3D.rotation.x;
+
     skyMesh3D.position.copy(camera3D.position);
 
     for(let i=0;i<towers.length;i++){
       const tw=towers[i], m=towerMeshes3D[i];
       if(!m) continue;
       m.position.set(tw.x,0,tw.y);
+      const under = underTowers3D[i];
+      if(under){
+        under.position.set(tw.x,-3.2,tw.y);
+      }
       const col = tw.owner===TEAM.BLUE?0x4aa3ff:tw.owner===TEAM.RED?0xff5d6c:0xb6c0d6;
       m.userData.banner.material.color.setHex(col);
     }
