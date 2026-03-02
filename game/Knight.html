@@ -1154,16 +1154,10 @@
       if(d < bestD){ bestD = d; best = {kind:'troop', ref:other, x:other.x, y:other.y, r:other.r||0.4}; }
     }
 
-    if(tr.team !== player.team){
-      const pt = playerTargetProxy();
-      const d = dist2(tr.x,tr.y,pt.x,pt.y);
-      const noNearbyEnemy = bestD > (3.25*3.25);
-      const playerMuchCloser = d < bestD * 0.75;
-      if(noNearbyEnemy || playerMuchCloser){ bestD = d; best = pt; }
-    }
-
     for(const tw of state.towers){
-      if(!isHostileTeam(tw.team, tr.team)) continue;
+      const isEnemyTower = isHostileTeam(tw.team, tr.team);
+      const isNeutralTower = tw.team === -1;
+      if(!isEnemyTower && !isNeutralTower) continue;
       const d = dist2(tr.x,tr.y,tw.x,tw.y);
       if(d < bestD){ bestD = d; best = {kind:'tower', ref:tw, x:tw.x, y:tw.y, r:1.0}; }
     }
