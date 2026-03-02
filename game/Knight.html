@@ -444,6 +444,10 @@
   }
 
   // Tower items (apply to towers)
+  function unlockTroopBanner(troopId, tag){
+    return (tw)=>{ tw.unlocks.add(troopId); tw.fxTags.add(tag); };
+  }
+
   const TOWER_ITEMS = [
     {
       id:'haste_banner',
@@ -455,13 +459,55 @@
       id:'archer_charter',
       name:'Archer Charter',
       desc:'Allows this tower to spawn Archers.',
-      apply:(tw)=>{ tw.unlocks.add('archer'); tw.fxTags.add('Archer'); }
+      apply:unlockTroopBanner('archer','Archer')
     },
     {
       id:'brute_contract',
       name:'Brute Contract',
       desc:'Allows this tower to spawn Brutes (slow, heavy).',
-      apply:(tw)=>{ tw.unlocks.add('brute'); tw.fxTags.add('Brute'); }
+      apply:unlockTroopBanner('brute','Brute')
+    },
+    {
+      id:'rogue_banner',
+      name:'Rogue Banner',
+      desc:'Allows this tower to spawn Rogues (fast skirmishers).',
+      apply:unlockTroopBanner('rogue','Rogue')
+    },
+    {
+      id:'captains_standard',
+      name:'Captain\'s Standard',
+      desc:'Allows this tower to spawn Banner Captains that buff allies.',
+      apply:unlockTroopBanner('banner','Captain')
+    },
+    {
+      id:'shieldbearer_crest',
+      name:'Shieldbearer Crest',
+      desc:'Allows this tower to spawn Shieldbearers.',
+      apply:unlockTroopBanner('shieldbearer','Shield')
+    },
+    {
+      id:'pyromancer_sigil',
+      name:'Pyromancer Sigil',
+      desc:'Allows this tower to spawn Pyromancers.',
+      apply:unlockTroopBanner('pyromancer','Pyro')
+    },
+    {
+      id:'icebinder_sigil',
+      name:'Icebinder Sigil',
+      desc:'Allows this tower to spawn Icebinders.',
+      apply:unlockTroopBanner('icebinder','Ice')
+    },
+    {
+      id:'charger_pennant',
+      name:'Charger Pennant',
+      desc:'Allows this tower to spawn Chargers.',
+      apply:unlockTroopBanner('charger','Charge')
+    },
+    {
+      id:'bombardier_guild',
+      name:'Bombardier Guild Writ',
+      desc:'Allows this tower to spawn Bombardiers.',
+      apply:unlockTroopBanner('bombardier','Bombard')
     },
     {
       id:'bulwark_plates',
@@ -484,15 +530,21 @@
   ];
 
   function genTowerItem(){
-    // small pool, mild skew toward early items
-    const i = (Math.random() < 0.45) ? 0
-            : (Math.random() < 0.62) ? 1
-            : (Math.random()*TOWER_ITEMS.length)|0;
+    // keep some common utility drops, but allow broader troop banner variety
+    const roll = Math.random();
+    let i = 0;
+    if(roll < 0.24) i = 0; // haste is common
+    else if(roll < 0.40) i = 1; // early archer access stays common
+    else i = 2 + ((Math.random()*(TOWER_ITEMS.length-2))|0);
     const src = TOWER_ITEMS[i];
     return { kind:'towerItem', id:src.id, name:src.name, desc:src.desc };
   }
 
   function towerItemDef(id){ return TOWER_ITEMS.find(x=>x.id===id); }
+
+  function towerSlotLimit(tw){
+    return tw?.slotCap || 6;
+  }
 
   // ---------- World / Entities ----------
   const WORLD = {
@@ -665,6 +717,7 @@
       spawnBuff: { ms:0.0, dmg:0.0 },
       fxTags: new Set(),
       slots: [], // installed item ids
+      slotCap: 6,
       radius: 1.15,
       neutral: team===-1,
       heightPx: 48,
@@ -866,7 +919,7 @@
     // enemy towers count grows with level
     const enemyCount = 1 + Math.min(4, Math.floor((L+1)/3));
     for(let i=0;i<enemyCount;i++){
-      const team = teams[(Math.random()*teams.length)|0];
+      const team = teams[i % teams.length];
       // spawn near borders
       const edge = (Math.random()*4)|0;
       let x,y;
@@ -1449,8 +1502,9 @@
     const near = nearestTowerToPlayer(2.15);
     if(!near || near.tw !== tw){ openInventoryPanel(); return; }
 
+    const slotLimit = towerSlotLimit(tw);
     const slots = tw.slots.slice();
-    while(slots.length < 3) slots.push(null);
+    while(slots.length < slotLimit) slots.push(null);
 
     const installedHtml = slots.map((id, i)=>{
       if(!id){
@@ -1509,7 +1563,7 @@
         </div>
 
         <div class="box">
-          <h4>Installed Items (3 Slots)</h4>
+          <h4>Installed Items (${slotLimit} Slots)</h4>
           <div class="list">${installedHtml}</div>
         </div>
 
@@ -1530,7 +1584,7 @@
           const idx = +btn.getAttribute('data-idx');
           const it = player.inv.towerItems[idx];
           if(!it) return;
-          if(tw.slots.length >= 3) return;
+          if(tw.slots.length >= towerSlotLimit(tw)) return;
 
           const def = towerItemDef(it.id);
           if(def){
@@ -1726,8 +1780,32 @@
         dx += Math.cos((hashId(tr.id)*0.0009) + state.time*0.5) * orbit;
         dy += Math.sin((hashId(tr.id)*0.0011) + state.time*0.5) * orbit;
         const [nx,ny] = norm(dx,dy);
-        ax += nx;
-        ay += ny;
+
+        if(tr.role==='ranged'){
+          const attackRange = Math.max(0.8, tr.range - 0.2);
+          const keepRange = Math.max(1.4, tr.range - 1.15);
+          const panicRange = Math.max(1.0, keepRange * 0.6);
+          const strafe = Math.sin(state.time*1.7 + hashId(tr.id)*0.0003);
+          const [px,py] = norm(-dy, dx);
+
+          if(d > attackRange){
+            ax += nx;
+            ay += ny;
+          } else {
+            if(d < panicRange){
+              ax -= nx * 1.35;
+              ay -= ny * 1.35;
+            } else if(d < keepRange){
+              ax -= nx * 0.9;
+              ay -= ny * 0.9;
+            }
+            ax += px * 0.44 * strafe;
+            ay += py * 0.44 * strafe;
+          }
+        } else {
+          ax += nx;
+          ay += ny;
+        }
 
         if(!tr.atkState){
           tr.cd = Math.max(0,(tr.cd||0)-dt);
@@ -1737,7 +1815,7 @@
           if(tr.role==='ranged' && d <= tr.range && tr.rangedCd<=0){
             tr.atkState = {kind:'shot',t:0,hitAt:0.2,end:0.38,didHit:false,target};
             tr.anim.attackT = 0.35;
-            tr.rangedCd = 0.95;
+            tr.rangedCd = 1.05;
           } else if(tr.role!=='ranged' && inMelee && tr.cd<=0){
             tr.atkState = {kind:'melee',t:0,hitAt:0.13,end:0.28,didHit:false,target};
             tr.anim.attackT = 0.26;
@@ -2082,20 +2160,27 @@
       ctx.fillRect(sx-18+i*12, sy-height+10, 5, 9);
     }
 
-    ctx.beginPath();
-    ctx.moveTo(sx, sy-height-18);
-    ctx.lineTo(sx, sy-height+10);
-    ctx.strokeStyle = 'rgba(255,255,255,.22)';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.lineWidth = 1;
+    const bannerCount = Math.max(1, Math.min(5, tw.slots.length + 1));
+    for(let i=0;i<bannerCount;i++){
+      const offset = (i - (bannerCount-1)/2) * 9;
+      const poleTop = sy-height-18 - (i%2)*3;
+      ctx.beginPath();
+      ctx.moveTo(sx+offset, poleTop);
+      ctx.lineTo(sx+offset, sy-height+10);
+      ctx.strokeStyle = 'rgba(255,255,255,.22)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.lineWidth = 1;
 
-    ctx.beginPath();
-    ctx.roundRect(sx+2, sy-height-16, 18, 10, 3);
-    ctx.fillStyle = col;
-    ctx.globalAlpha = 0.95;
-    ctx.fill();
-    ctx.globalAlpha = 1;
+      const bannerW = 14 - (i%2)*2;
+      const bannerH = 8 + (i%2);
+      ctx.beginPath();
+      ctx.roundRect(sx+offset+2, poleTop+2, bannerW, bannerH, 3);
+      ctx.fillStyle = col;
+      ctx.globalAlpha = 0.92;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
 
     const hp = clamp(tw.hp/tw.maxHp, 0, 1);
     ctx.fillStyle = 'rgba(0,0,0,.45)';
