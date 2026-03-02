@@ -519,7 +519,12 @@
     terrain:[],
     // teams present (enemy factions)
     enemyTeams:[1],
+    gameOver:false,
+    gameOverTimer:0,
   };
+
+  const PLAYER_RESPAWN_TIME = 5;
+  const PLAYER_REGEN_PER_SEC = 0.45;
 
   // ---------- Player ----------
   const player = {
@@ -534,6 +539,8 @@
       crit: 0.05,
     },
     hp: 55,
+    alive:true,
+    respawnTimer:0,
     team: 0,
     facing: 0, // radians, toward mouse vector in world
     inv: {
@@ -905,6 +912,34 @@
     showCenter(`LEVEL ${L}`, teams.length>1 ? `Multiple enemy factions detected (${teams.length}).` : `Conquer every tower.` , 1350);
   }
 
+  function getHomeBase(){
+    const allied = state.towers.filter(t=>t.team===0);
+    if(allied.length===0) return null;
+    return allied.find(t=>t.fxTags.has('Home')) || allied[0];
+  }
+
+  function fullGameRestart(){
+    WORLD.level = 1;
+    player.inv.dust = 20;
+    player.inv.gear.length = 0;
+    player.inv.towerItems.length = 0;
+    player.inv.weapon = { kind:'weapon', wtype:'sword', name:'Keen Sword of Dust', rarity:'Common', stats:{ dmg:6, as:0.80, reach:1.25 } };
+    player.inv.armor  = { kind:'armor', name:'Stout Leather of Dust', rarity:'Common', stats:{ hp:10, ms:0.06 } };
+    player.alive = true;
+    player.respawnTimer = 0;
+    player.atk.bowCharging = false;
+    player.atk.bowCharge = 0;
+    player.atk.attackState = null;
+    state.gameOver = false;
+    state.gameOverTimer = 0;
+    player.x = WORLD.w*0.5;
+    player.y = WORLD.h*0.5;
+    player.vx = 0; player.vy = 0;
+    player.hp = computePlayerStats().maxHp;
+    resetLevel(1);
+    showCenter('GAME RESTARTED', 'Your side was wiped out. Back to Level 1.', 1700);
+  }
+
   // Board wipe after full capture: keep nearest allied tower only
   function advanceLevel(){
     const L = WORLD.level + 1;
@@ -1052,6 +1087,7 @@
   }
 
   function damagePlayer(amount){
+    if(!player.alive) return;
     player.hp -= amount;
     if(player.hp <= 0){
       // respawn: keep dust penalty, drop some dust
@@ -1060,10 +1096,14 @@
         player.inv.dust -= lost;
         state.drops.push(makeDrop(player.x, player.y, {kind:'dust', amt: lost}));
       }
-      player.hp = Math.round(computePlayerStats().maxHp * 0.75);
-      player.x = clamp(player.x + (Math.random()*6-3), 6, WORLD.w-6);
-      player.y = clamp(player.y + (Math.random()*6-3), 6, WORLD.h-6);
-      showCenter('DOWNED', 'You stagger back into the fight…', 1100);
+      player.hp = 0;
+      player.alive = false;
+      player.respawnTimer = PLAYER_RESPAWN_TIME;
+      player.vx = 0; player.vy = 0;
+      player.atk.bowCharging = false;
+      player.atk.bowCharge = 0;
+      player.atk.attackState = null;
+      showCenter('DOWNED', `Respawning in ${PLAYER_RESPAWN_TIME}s at home base…`, 1300);
     }
   }
 
@@ -1839,6 +1879,22 @@
     const st = computePlayerStats();
     if(player.hp > st.maxHp) player.hp = st.maxHp;
 
+    if(!player.alive){
+      player.vx = 0;
+      player.vy = 0;
+      player.respawnTimer = Math.max(0, player.respawnTimer - dt);
+
+      const home = getHomeBase();
+      if(player.respawnTimer <= 0 && home){
+        player.alive = true;
+        player.hp = Math.round(st.maxHp * 0.75);
+        player.x = clamp(home.x + (Math.random()*1.2-0.6), 4, WORLD.w-4);
+        player.y = clamp(home.y + (Math.random()*1.2-0.6), 4, WORLD.h-4);
+        showCenter('RESPAWNED', 'Back at your home base.', 1000);
+      }
+      return;
+    }
+
     const [wx,wy] = screenToWorld(mouse.x, mouse.y);
     const dx = wx - player.x;
     const dy = wy - player.y;
@@ -2296,13 +2352,17 @@
   // ---------- HUD update ----------
   function updateHud(){
     const st = computePlayerStats();
-    hpTxt.textContent = `${Math.round(player.hp)}/${Math.round(st.maxHp)}`;
+    hpTxt.textContent = player.alive
+      ? `${Math.round(player.hp)}/${Math.round(st.maxHp)}`
+      : `Down (${player.respawnTimer.toFixed(1)}s)`;
     dustTxt.textContent = `${player.inv.dust|0}`;
     lvlTxt.textContent = `${WORLD.level}`;
     wepTxt.textContent = `${getWeapon().wtype.toUpperCase()} — ${getWeapon().name}`;
 
     const near = nearestTowerToPlayer(2.15);
-    if(near){
+    if(!player.alive){
+      nearTxt.textContent = 'You are downed — waiting to respawn at home base.';
+    } else if(near){
       const owner = TEAMS.find(t=>t.id===near.tw.team);
       nearTxt.innerHTML = `Near a <b style="color:${owner?.color||'#fff'}">${escapeHtml(owner?.name||'Tower')}</b> — Press <b>E</b>`;
     } else {
@@ -2341,9 +2401,23 @@
       pickupDrops();
       checkAllCaptured();
 
+      const alliedBases = state.towers.filter(t=>t.team===0).length;
+      const alliedTroops = state.troops.filter(t=>t.team===0).length;
+      if(alliedBases===0 && alliedTroops===0 && !player.alive && !state.gameOver){
+        state.gameOver = true;
+        state.gameOverTimer = 2.4;
+        showCenter('GAME OVER', 'All bases and troops lost. Restarting…', 1900);
+      }
+      if(state.gameOver){
+        state.gameOverTimer -= dt;
+        if(state.gameOverTimer <= 0) fullGameRestart();
+      }
+
       // ensure at least some enemy presence: if enemies wiped but towers still exist, towers will respawn units soon
       // heal floor
-      if(player.hp < computePlayerStats().maxHp) player.hp = Math.min(computePlayerStats().maxHp, player.hp + 0.35*dt);
+      if(player.alive && player.hp < computePlayerStats().maxHp){
+        player.hp = Math.min(computePlayerStats().maxHp, player.hp + PLAYER_REGEN_PER_SEC*dt);
+      }
     } else {
       // keep camera stable while paused
       updateCamera();
