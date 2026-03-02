@@ -507,7 +507,8 @@
     }
   };
 
-  const PLAYER_SWING_CONE = Math.PI * 0.42;
+  const PLAYER_SWING_CONE = Math.PI * 0.20;
+  const PLAYER_SWING_TOUCH_PAD = 0.12;
 
   const state = {
     paused:false,
@@ -1042,7 +1043,7 @@
       if(!isHostileTeam(tr.team, player.team)) continue;
       const dx = tr.x - player.x, dy = tr.y - player.y;
       const d = Math.hypot(dx,dy);
-      if(d > reach + tr.r) continue;
+      if(d > reach + tr.r + PLAYER_SWING_TOUCH_PAD) continue;
       const [nx,ny] = norm(dx,dy);
       const ang = Math.acos(clamp(nx*fx + ny*fy,-1,1));
       if(ang <= cone/2){
@@ -1058,7 +1059,7 @@
       if(!isHostileTeam(tw.team, player.team)) continue;
       const dx = tw.x - player.x, dy = tw.y - player.y;
       const d = Math.hypot(dx,dy);
-      if(d > reach + 0.9) continue;
+      if(d > reach + tw.radius + PLAYER_SWING_TOUCH_PAD) continue;
       const [nx,ny] = norm(dx,dy);
       const ang = Math.acos(clamp(nx*fx + ny*fy,-1,1));
       if(ang <= cone/2){ tw.hp -= dmg*0.8; emitParticles(tw.x,tw.y,6,'rgba(255,240,170,.9)','spark'); }
@@ -1595,9 +1596,8 @@
     tw.spawnT = interval;
 
     // pick spawn type from unlocks / level
-    const roster = enemyRosterForLevel(WORLD.level);
-    let options = [...tw.unlocks].filter(t => roster.includes(t) || t==='swordsman');
-    if(options.length === 0) options = ['swordsman'];
+    let options = [...tw.unlocks];
+    if(!options.includes('swordsman')) options.push('swordsman');
 
     // bias: allies spawn more swords early, later some variety
     let type = options[(Math.random()*options.length)|0];
