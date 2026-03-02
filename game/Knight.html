@@ -203,6 +203,26 @@
     .kvs div:nth-child(odd){ color:rgba(243,246,255,.70); }
 
     .hr{ height:1px; background:rgba(255,255,255,.12); margin:10px 0; }
+
+    .invTabs{ display:flex; gap:8px; margin:8px 0 10px; }
+    .invTab{ padding:7px 10px; border-radius:10px; border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.06); cursor:pointer; font-weight:700; font-size:12px; }
+    .invTab.active{ background:rgba(86,211,255,.18); border-color:rgba(86,211,255,.42); }
+    .invGridWrap{ max-height:42vh; overflow:auto; border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:8px; background:rgba(0,0,0,.18); }
+    .invGrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(92px,1fr)); gap:8px; }
+    .invCard{ border:1px solid rgba(255,255,255,.14); border-radius:10px; padding:7px; background:rgba(255,255,255,.04); min-height:88px; position:relative; cursor:pointer; }
+    .invCard:hover{ border-color:rgba(255,255,255,.34); transform:translateY(-1px); }
+    .invCard .emoji{ font-size:17px; }
+    .invCard .initials{ font-size:12px; font-weight:900; margin-top:3px; letter-spacing:.4px; }
+    .invCard .small{ font-size:11px; color:rgba(243,246,255,.78); line-height:1.2; margin-top:3px; }
+    .rarBorder-Common{ box-shadow: inset 0 0 0 1px rgba(191,198,214,.28); }
+    .rarBorder-Uncommon{ box-shadow: inset 0 0 0 1px rgba(91,255,138,.36); }
+    .rarBorder-Rare{ box-shadow: inset 0 0 0 1px rgba(74,163,255,.40); }
+    .rarBorder-Epic{ box-shadow: inset 0 0 0 1px rgba(181,108,255,.45); }
+    .rarBorder-Legendary{ box-shadow: inset 0 0 0 1px rgba(255,179,71,.50), 0 0 10px rgba(255,179,71,.18); }
+    #invTooltip{ position:fixed; pointer-events:none; display:none; z-index:30; max-width:260px; background:rgba(10,12,20,.95); border:1px solid rgba(255,255,255,.2); border-radius:10px; padding:8px; font-size:12px; }
+    #invAction{ position:fixed; display:none; z-index:31; background:rgba(12,14,24,.97); border:1px solid rgba(255,255,255,.2); border-radius:10px; padding:8px; min-width:130px; }
+    #invAction button{ width:100%; margin:4px 0; }
+
   </style>
 </head>
 <body>
@@ -250,6 +270,8 @@
 <div id="overlay">
   <div class="panel" id="panel"></div>
 </div>
+<div id="invTooltip"></div>
+<div id="invAction"></div>
 
 <script>
 (() => {
@@ -527,6 +549,7 @@
       bowCharge: 0,
       bowCharging: false,
       lastShotAt: 0,
+      attackState:null,
     },
   };
 
@@ -661,6 +684,10 @@
       rangedCd: 0,
       facing: 2,
       anim: { state:'idle', t:Math.random()*10, frame:0, hurt:0, attackT:0 },
+      atkState:null,
+      dashState:null,
+      auraPulse:Math.random()*TAU,
+      frontFacing:0,
       zBias:0.2,
     };
   }
@@ -699,6 +726,11 @@
     if(type==='archer') return '#8ad3ff';
     if(type==='rogue') return '#b084ff';
     if(type==='banner') return '#aaff9c';
+    if(type==='shieldbearer') return '#9bd4ff';
+    if(type==='pyromancer') return '#ff9d5b';
+    if(type==='icebinder') return '#9ce8ff';
+    if(type==='charger') return '#ff7d9d';
+    if(type==='bombardier') return '#ffcf87';
     return '#fff';
   }
 
@@ -740,6 +772,11 @@
     brute:    { hp: 46, dmg: 9.0, spd: 1.45, range: 1.15, r:0.52, role:'melee' },
     rogue:    { hp: 18, dmg: 6.2, spd: 2.55, range: 1.05, r:0.40, role:'melee' },
     banner:   { hp: 30, dmg: 4.6, spd: 1.95, range: 1.10, r:0.45, role:'melee' },
+    shieldbearer:{ hp: 42, dmg: 5.4, spd: 1.70, range: 1.05, r:0.48, role:'melee' },
+    pyromancer:{ hp: 24, dmg: 5.6, spd: 1.78, range: 7.5, r:0.42, role:'ranged' },
+    icebinder: { hp: 26, dmg: 4.9, spd: 1.72, range: 7.8, r:0.44, role:'ranged' },
+    charger:   { hp: 30, dmg: 7.0, spd: 2.10, range: 1.10, r:0.46, role:'melee' },
+    bombardier:{ hp: 28, dmg: 6.8, spd: 1.62, range: 8.0, r:0.46, role:'ranged' },
   };
 
   // Level-based enemy roster
@@ -748,7 +785,12 @@
     if(L >= 3) roster.push('archer');
     if(L >= 5) roster.push('rogue');
     if(L >= 7) roster.push('brute');
-    if(L >= 10) roster.push('banner');
+    if(L >= 9) roster.push('banner');
+    if(L >= 11) roster.push('shieldbearer');
+    if(L >= 13) roster.push('pyromancer');
+    if(L >= 15) roster.push('icebinder');
+    if(L >= 17) roster.push('charger');
+    if(L >= 20) roster.push('bombardier');
     return roster;
   }
 
@@ -827,9 +869,15 @@
       tw.hp = tw.maxHp;
       // unlock roster gradually (towers can be upgraded by items too)
       tw.unlocks = new Set(['swordsman']);
-      if(L >= 4) tw.unlocks.add('archer');
+      if(L >= 3) tw.unlocks.add('archer');
+      if(L >= 5) tw.unlocks.add('rogue');
       if(L >= 7) tw.unlocks.add('brute');
-      if(L >= 10) tw.unlocks.add('rogue');
+      if(L >= 9) tw.unlocks.add('banner');
+      if(L >= 11) tw.unlocks.add('shieldbearer');
+      if(L >= 13) tw.unlocks.add('pyromancer');
+      if(L >= 15) tw.unlocks.add('icebinder');
+      if(L >= 17) tw.unlocks.add('charger');
+      if(L >= 20) tw.unlocks.add('bombardier');
       state.towers.push(tw);
     }
 
@@ -1046,19 +1094,30 @@
     }
   };
 
+  function playerTargetProxy(){
+    return { kind:'player', ref:player, x:player.x, y:player.y, r:0.55 };
+  }
+
   function findNearestEnemyTargetForTroop(tr){
-    // nearest enemy troop; if none close, go for nearest enemy tower
     let best = null, bestD = Infinity;
 
     for(const other of state.troops){
       if(other.team === tr.team) continue;
       const d = dist2(tr.x,tr.y,other.x,other.y);
-      if(d < bestD){ bestD = d; best = {kind:'troop', ref:other}; }
+      if(d < bestD){ bestD = d; best = {kind:'troop', ref:other, x:other.x, y:other.y, r:other.r||0.4}; }
     }
+
+    if(tr.team !== player.team){
+      const pt = playerTargetProxy();
+      const d = dist2(tr.x,tr.y,pt.x,pt.y);
+      const bias = d < (6.8*6.8) ? 0.72 : 1.0;
+      if(d * bias < bestD){ bestD = d * bias; best = pt; }
+    }
+
     for(const tw of state.towers){
       if(tw.team === tr.team) continue;
       const d = dist2(tr.x,tr.y,tw.x,tw.y);
-      if(d < bestD){ bestD = d; best = {kind:'tower', ref:tw}; }
+      if(d < bestD){ bestD = d; best = {kind:'tower', ref:tw, x:tw.x, y:tw.y, r:1.0}; }
     }
     return best;
   }
@@ -1068,7 +1127,12 @@
     for(const tr of state.troops){
       if(tr.team === tw.team) continue;
       const d = dist2(tw.x,tw.y,tr.x,tr.y);
-      if(d < bestD){ bestD=d; best=tr; }
+      if(d < bestD){ bestD=d; best={kind:'troop', ref:tr, x:tr.x, y:tr.y, r:tr.r||0.4}; }
+    }
+    if(tw.team !== player.team){
+      const pt = playerTargetProxy();
+      const d = dist2(tw.x,tw.y,pt.x,pt.y);
+      if(d < bestD && d <= tw.turretRange*tw.turretRange) best = pt;
     }
     return best;
   }
@@ -1187,40 +1251,38 @@
     const wep = player.inv.weapon;
     const arm = player.inv.armor;
 
-    const gearHtml = player.inv.gear.map((g,idx)=>{
-      const cls = rarityClass(g.rarity);
-      const nameCls = (g.rarity==='Legendary') ? 'rarLegendRainbow' : cls;
-      return `
-        <div class="item">
-          <div>
-            <div class="name ${nameCls}">${escapeHtml(g.name)}</div>
-            <div class="meta">${gearMeta(g)} • <span class="muted">${rarityLabel(g.rarity)}</span></div>
-          </div>
-          <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
-            <button class="btn" data-act="equip" data-idx="${idx}">Equip</button>
-            <button class="btn btnDanger" data-act="sell" data-idx="${idx}">Sell</button>
-          </div>
-        </div>
-      `;
-    }).join('');
+    const initials = (n)=> (n||'').split(/\s+/).slice(0,2).map(x=>x[0]||'').join('').toUpperCase();
+    const emojiFor = (g)=> g.kind==='armor'?'🛡️':(g.wtype==='bow'?'🏹':g.wtype==='staff'?'🪄':'⚔️');
+    const shortBoosts = (g)=>{
+      const s=g.stats||{}; const out=[];
+      if(s.dmg) out.push(`+${Math.round(s.dmg)} dmg`);
+      if(s.hp) out.push(`+${Math.round(s.hp)} hp`);
+      if(s.ms) out.push(`${Math.round(s.ms*100)}% ms`);
+      if(s.as) out.push(`${Math.round(s.as*100)}% aspd`);
+      return out.slice(0,3);
+    };
 
-    const towerItemsHtml = player.inv.towerItems.map((it,idx)=>{
-      return `
-        <div class="item">
-          <div>
-            <div class="name">${escapeHtml(it.name)}</div>
-            <div class="meta">${escapeHtml(it.desc)}</div>
-          </div>
-          <div class="muted">Use near a tower (E)</div>
-        </div>
-      `;
-    }).join('');
+    const gearHtml = player.inv.gear.map((g,idx)=>`
+      <div class="invCard rarBorder-${g.rarity||'Common'}" data-card="gear" data-idx="${idx}">
+        <div class="emoji">${emojiFor(g)}</div>
+        <div class="initials">${initials(g.name)}</div>
+        <div class="small">${shortBoosts(g).join('<br>')}</div>
+      </div>
+    `).join('');
+
+    const towerHtml = player.inv.towerItems.map((it,idx)=>`
+      <div class="invCard" data-card="tower" data-idx="${idx}">
+        <div class="emoji">🏰</div>
+        <div class="initials">${initials(it.name)}</div>
+        <div class="small">${escapeHtml((it.desc||'').slice(0,42))}</div>
+      </div>
+    `).join('');
 
     openPanel(`
       <div class="panelHeader">
         <div>
           <div class="title">Inventory & Forge (Paused)</div>
-          <div class="sub">Equip loot, sell for dust, or forge a random item.</div>
+          <div class="sub">Compact gear management with swap-equip and castle item tracking.</div>
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
           <button class="btn btnGold" data-act="forge1">Forge (25 dust)</button>
@@ -1233,65 +1295,83 @@
         <div class="box">
           <h4>Equipped</h4>
           <div class="list">
-            <div class="item">
-              <div>
-                <div class="name ${(wep?.rarity==='Legendary')?'rarLegendRainbow':rarityClass(wep?.rarity)}">${wep?escapeHtml(wep.name):'—'}</div>
-                <div class="meta">${wep?gearMeta(wep):'No weapon equipped'}</div>
-              </div>
-            </div>
-            <div class="item">
-              <div>
-                <div class="name ${(arm?.rarity==='Legendary')?'rarLegendRainbow':rarityClass(arm?.rarity)}">${arm?escapeHtml(arm.name):'—'}</div>
-                <div class="meta">${arm?gearMeta(arm):'No armor equipped'}</div>
-              </div>
-            </div>
-            <div class="item">
-              <div><div class="name">Dust</div><div class="meta">Used to forge new loot.</div></div>
-              <div style="font-weight:900; color:var(--gold); font-size:14px">${dust}</div>
-            </div>
+            <div class="item"><div><div class="name ${(wep?.rarity==='Legendary')?'rarLegendRainbow':rarityClass(wep?.rarity)}">${wep?escapeHtml(wep.name):'—'}</div><div class="meta">${wep?gearMeta(wep):'No weapon equipped'}</div></div></div>
+            <div class="item"><div><div class="name ${(arm?.rarity==='Legendary')?'rarLegendRainbow':rarityClass(arm?.rarity)}">${arm?escapeHtml(arm.name):'—'}</div><div class="meta">${arm?gearMeta(arm):'No armor equipped'}</div></div></div>
+            <div class="item"><div><div class="name">Dust</div><div class="meta">Forge resource.</div></div><div style="font-weight:900; color:var(--gold); font-size:14px">${dust}</div></div>
           </div>
         </div>
 
         <div class="box">
-          <h4>Tower Items (Carry)</h4>
-          <div class="list">${towerItemsHtml || `<div class="muted">No tower items yet. Enemies sometimes drop them.</div>`}</div>
+          <div class="invTabs">
+            <button class="invTab active" data-tab="gear">Gear</button>
+            <button class="invTab" data-tab="castle">Castle Items</button>
+          </div>
+          <div class="invGridWrap" data-grid="gear"><div class="invGrid">${gearHtml || `<div class="muted">No spare gear.</div>`}</div></div>
+          <div class="invGridWrap" data-grid="castle" style="display:none"><div class="invGrid">${towerHtml || `<div class="muted">No castle/tower items yet.</div>`}</div></div>
         </div>
       </div>
-
-      <div class="hr"></div>
-
-      <div class="box">
-        <h4>Gear Bag</h4>
-        <div class="list">${gearHtml || `<div class="muted">No spare gear. Kill troops to find loot.</div>`}</div>
-      </div>
     `);
+
+    const tooltip = document.getElementById('invTooltip');
+    const action = document.getElementById('invAction');
+    tooltip.style.display='none'; action.style.display='none';
+
+    panel.querySelectorAll('.invTab').forEach(btn=>btn.addEventListener('click',()=>{
+      panel.querySelectorAll('.invTab').forEach(b=>b.classList.toggle('active', b===btn));
+      const tab=btn.getAttribute('data-tab');
+      panel.querySelector('[data-grid="gear"]').style.display = tab==='gear'?'block':'none';
+      panel.querySelector('[data-grid="castle"]').style.display = tab==='castle'?'block':'none';
+    }));
+
+    panel.querySelectorAll('.invCard').forEach(card=>{
+      card.addEventListener('mousemove',(e)=>{
+        const idx=+card.dataset.idx;
+        const kind=card.dataset.card;
+        const item = kind==='gear'?player.inv.gear[idx]:player.inv.towerItems[idx];
+        if(!item) return;
+        tooltip.style.display='block';
+        tooltip.style.left = (e.clientX+14)+'px'; tooltip.style.top=(e.clientY+14)+'px';
+        tooltip.innerHTML = kind==='gear'
+          ? `<b>${escapeHtml(item.name)}</b><div class='muted'>${item.rarity||'Common'} • ${(item.kind==='weapon'?item.wtype:'armor').toUpperCase()}</div><div style='margin-top:6px'>${Object.entries(item.stats||{}).map(([k,v])=>`<div>${escapeHtml(fmtStatDelta(k,v))}</div>`).join('')}</div>${item.element?`<div style='margin-top:6px'>Element: ${escapeHtml(item.element)} (${item.element==='ice'?'slow':'damage'} effects)</div>`:''}`
+          : `<b>${escapeHtml(item.name)}</b><div style='margin-top:6px'>${escapeHtml(item.desc||'')}</div><div class='muted' style='margin-top:4px'>Use near tower interaction panel.</div>`;
+      });
+      card.addEventListener('mouseleave',()=>{ tooltip.style.display='none'; });
+      card.addEventListener('click',(e)=>{
+        const idx=+card.dataset.idx; const kind=card.dataset.card;
+        if(kind!=='gear') return;
+        const g=player.inv.gear[idx]; if(!g) return;
+        const r = g.rarity || 'Common';
+        const val = (r==='Common')? 8 : (r==='Uncommon')? 14 : (r==='Rare')? 24 : (r==='Epic')? 40 : 75;
+        action.style.display='block'; action.style.left=(e.clientX+8)+'px'; action.style.top=(e.clientY+8)+'px';
+        action.innerHTML = `<button class='btn' data-aa='equip'>Equip</button><button class='btn btnDanger' data-aa='sell'>Sell (+${val})</button><button class='btn' data-aa='cancel'>Cancel</button>`;
+        action.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{
+          const aa=b.dataset.aa;
+          if(aa==='equip'){
+            if(g.kind==='weapon'){
+              if(player.inv.weapon) player.inv.gear.push(player.inv.weapon);
+              player.inv.weapon = g;
+            } else {
+              if(player.inv.armor) player.inv.gear.push(player.inv.armor);
+              player.inv.armor = g;
+            }
+            player.inv.gear.splice(idx,1);
+            const st = computePlayerStats(); player.hp = Math.min(player.hp, st.maxHp);
+            openInventoryPanel();
+          }
+          if(aa==='sell'){ player.inv.dust += val; player.inv.gear.splice(idx,1); openInventoryPanel(); }
+          if(aa==='cancel'){ action.style.display='none'; }
+        }));
+      });
+    });
+
+    document.addEventListener('click',(e)=>{
+      if(!panel.contains(e.target) && !action.contains(e.target)) action.style.display='none';
+    },{once:true});
 
     panel.querySelectorAll('button[data-act]').forEach(btn=>{
       btn.addEventListener('click', ()=>{
         const act = btn.getAttribute('data-act');
         if(act==='close'){ closePanel(); return; }
-        if(act==='equip'){
-          const idx = +btn.getAttribute('data-idx');
-          const g = player.inv.gear[idx];
-          if(!g) return;
-          if(g.kind==='weapon') player.inv.weapon = g;
-          else player.inv.armor = g;
-          player.inv.gear.splice(idx,1);
-          // heal a bit after equip change
-          const st = computePlayerStats();
-          player.hp = Math.min(player.hp, st.maxHp);
-          openInventoryPanel();
-        }
-        if(act==='sell'){
-          const idx = +btn.getAttribute('data-idx');
-          const g = player.inv.gear[idx];
-          if(!g) return;
-          const r = g.rarity || 'Common';
-          const val = (r==='Common')? 8 : (r==='Uncommon')? 14 : (r==='Rare')? 24 : (r==='Epic')? 40 : 75;
-          player.inv.dust += val;
-          player.inv.gear.splice(idx,1);
-          openInventoryPanel();
-        }
         if(act==='forge1'){
           if(player.inv.dust < 25) return;
           player.inv.dust -= 25;
@@ -1302,12 +1382,8 @@
         if(act==='forge2'){
           if(player.inv.dust < 60) return;
           player.inv.dust -= 60;
-          // skew toward higher rarity by rolling twice and taking better
           const kind = Math.random()<0.62 ? 'weapon' : 'armor';
-          const a = genGear(kind);
-          const b = genGear(kind);
-          const rank = (x)=> ({Common:0,Uncommon:1,Rare:2,Epic:3,Legendary:4}[x.rarity||'Common']||0);
-          player.inv.gear.push(rank(b) > rank(a) ? b : a);
+          player.inv.gear.push(genGear(kind, true));
           openInventoryPanel();
         }
       });
@@ -1507,7 +1583,7 @@
     const [dx,dy] = norm(tgt.x - tw.x, tgt.y - tw.y);
     const speed = 9.2;
     const dmg = 7.5 * (tw.team===0 ? 1.0 : WORLD.enemyMult()*0.9);
-    state.projectiles.push(makeProjectile(tw.x + dx*0.7, tw.y + dy*0.7, dx*speed, dy*speed, tw.team, dmg, tw.turretRange));
+    state.projectiles.push(makeProjectile(tw.x + dx*0.7, tw.y + dy*0.7, dx*speed, dy*speed, tw.team, dmg, tw.turretRange, 'arrow', {fromTower:true}));
   }
 
   // ---------- Troop AI update ----------
@@ -1523,36 +1599,26 @@
       if(tr.burn>0){ tr.hp -= (tr.burnDps||1.2)*dt; tr.burn -= dt; emitParticles(tr.x,tr.y,1,'rgba(255,142,70,.55)','spark'); }
       if(tr.slowT>0){ tr.slowT -= dt; }
       if(tr.rootT>0){ tr.rootT -= dt; }
+      if(tr.bannerBuffT>0) tr.bannerBuffT -= dt;
+      tr.auraPulse += dt*2;
 
-      // death
-      if(tr.hp <= 0){
-        onTroopDeath(tr);
-        state.troops.splice(i,1);
-        continue;
-      }
+      if(tr.hp <= 0){ onTroopDeath(tr); state.troops.splice(i,1); continue; }
 
-      // target selection
       const target = findNearestEnemyTargetForTroop(tr);
       tr._target = target;
 
-      // separation (anti-clump)
-      const neigh = HASH.neighbors(tr.x,tr.y);
       let sepX=0, sepY=0;
-      for(const o of neigh){
-        if(o === tr) continue;
-        // separate stronger from same team (crowd control)
-        if(o.team !== tr.team) continue;
+      for(const o of HASH.neighbors(tr.x,tr.y)){
+        if(o===tr || o.team!==tr.team) continue;
         const dx = tr.x - o.x, dy = tr.y - o.y;
         const d = Math.hypot(dx,dy);
         const desired = tr.r + o.r + 0.08;
         if(d > 0 && d < desired*2.25){
           const push = (desired*2.25 - d) / (desired*2.25);
-          sepX += (dx/d) * push;
-          sepY += (dy/d) * push;
+          sepX += (dx/d) * push; sepY += (dy/d) * push;
         }
       }
 
-      // avoid towers (everyone)
       for(const tw of state.towers){
         const dx = tr.x - tw.x, dy = tr.y - tw.y;
         const d = Math.hypot(dx,dy);
@@ -1565,72 +1631,127 @@
       }
 
       const tmod = TERRAIN_TYPES[terrainAt(tr.x,tr.y)] || TERRAIN_TYPES.stone;
-
-      // steering toward target
       let ax=0, ay=0;
+
+      if(tr.type==='banner'){
+        for(const ally of state.troops){
+          if(ally===tr || ally.team!==tr.team) continue;
+          if(dist2(tr.x,tr.y,ally.x,ally.y) < 4.0*4.0){ ally.bannerBuffT = Math.max(ally.bannerBuffT||0, 0.35); }
+        }
+      }
+
       if(target){
-        const tx = target.ref.x, ty = target.ref.y;
-        let dx = tx - tr.x, dy = ty - tr.y;
+        let dx = target.x - tr.x, dy = target.y - tr.y;
         const d = Math.hypot(dx,dy) || 1;
+        tr.frontFacing = Math.atan2(dy,dx);
 
-        // to prevent hard clumping on the exact same point, add a tiny orbit offset per troop
-        const orbit = 0.25;
-        const ox = Math.cos((hashId(tr.id)*0.0009) + state.time*0.5) * orbit;
-        const oy = Math.sin((hashId(tr.id)*0.0011) + state.time*0.5) * orbit;
-        dx += ox; dy += oy;
-
-        const [nx,ny] = norm(dx,dy);
-        ax += nx * 1.0;
-        ay += ny * 1.0;
-
-        // attack if in range
-        if(target.kind === 'troop'){
-          if(tr.role==='ranged'){
-            tr.rangedCd -= dt;
-            if(d <= tr.range && tr.rangedCd <= 0){
-              tr.rangedCd = 0.95;
-              const speed = 9.4;
-              const dmg = tr.dmg * 0.9;
-              state.projectiles.push(makeProjectile(tr.x + nx*0.55, tr.y + ny*0.55, nx*speed, ny*speed, tr.team, dmg, tr.range));
-            }
-          } else {
-            tr.cd -= dt;
-            if(d <= tr.range + target.ref.r && tr.cd <= 0){
-              tr.cd = 0.85 * tmod.as;
-              target.ref.hp -= tr.dmg;
-              tr.anim.attackT = 0.22;
-              target.ref.anim.hurt = 0.10;
-              emitParticles(target.ref.x,target.ref.y,4,'rgba(255,215,145,.8)','spark');
-              addDecal(target.ref.x, target.ref.y, 'rgba(120,26,26,.35)');
-            }
+        if(tr.type==='charger'){
+          tr.dashState ??= {phase:'idle',t:0,dir:0,cool:1.8};
+          tr.dashState.cool -= dt;
+          if(tr.dashState.phase==='idle' && tr.dashState.cool<=0 && d<4.2){
+            tr.dashState.phase='windup'; tr.dashState.t=0.35; tr.dashState.dir=Math.atan2(dy,dx);
           }
-        } else if(target.kind === 'tower'){
-          tr.cd -= dt;
-          if(d <= 1.25 + tr.r && tr.cd <= 0){
-            tr.cd = 0.92 * tmod.as;
-            target.ref.hp -= tr.dmg * 0.75;
-            tr.anim.attackT = 0.2;
-            emitParticles(target.ref.x,target.ref.y,4,'rgba(255,222,160,.82)','spark');
+          if(tr.dashState.phase==='windup'){
+            tr.dashState.t -= dt;
+            if(tr.dashState.t<=0){ tr.dashState.phase='dash'; tr.dashState.t=0.16; }
+          } else if(tr.dashState.phase==='dash'){
+            tr.dashState.t -= dt;
+            tr.vx = Math.cos(tr.dashState.dir)*8.8;
+            tr.vy = Math.sin(tr.dashState.dir)*8.8;
+            if(d<1.25 && target.kind==='player'){ damagePlayer(tr.dmg*1.2); emitParticles(player.x,player.y,9,'rgba(255,120,140,.95)','spark'); tr.dashState.phase='recover'; tr.dashState.t=0.35; }
+            if(tr.dashState.t<=0){ tr.dashState.phase='recover'; tr.dashState.t=0.35; }
+          } else if(tr.dashState.phase==='recover'){
+            tr.dashState.t -= dt;
+            if(tr.dashState.t<=0){ tr.dashState.phase='idle'; tr.dashState.cool=2.4; }
+          }
+        }
+
+        const orbit = 0.25;
+        dx += Math.cos((hashId(tr.id)*0.0009) + state.time*0.5) * orbit;
+        dy += Math.sin((hashId(tr.id)*0.0011) + state.time*0.5) * orbit;
+        const [nx,ny] = norm(dx,dy);
+        ax += nx;
+        ay += ny;
+
+        if(!tr.atkState){
+          tr.cd = Math.max(0,(tr.cd||0)-dt);
+          tr.rangedCd = Math.max(0,(tr.rangedCd||0)-dt);
+          const inMelee = d <= tr.range + (target.r||0.5);
+
+          if(tr.role==='ranged' && d <= tr.range && tr.rangedCd<=0){
+            tr.atkState = {kind:'shot',t:0,hitAt:0.2,end:0.38,didHit:false,target};
+            tr.anim.attackT = 0.35;
+            tr.rangedCd = 0.95;
+          } else if(tr.role!=='ranged' && inMelee && tr.cd<=0){
+            tr.atkState = {kind:'melee',t:0,hitAt:0.13,end:0.28,didHit:false,target};
+            tr.anim.attackT = 0.26;
+            tr.cd = 0.86 * tmod.as;
           }
         }
       }
 
-      // combine seek + separation
+      if(tr.atkState){
+        tr.atkState.t += dt;
+        const a = tr.atkState;
+        if(a.t >= a.hitAt && !a.didHit){
+          const tgt = a.target;
+          if(tgt){
+            const dd = Math.hypot((tgt.x||tgt.ref.x)-tr.x,(tgt.y||tgt.ref.y)-tr.y);
+            if(a.kind==='melee' && dd <= tr.range + (tgt.r||0.5) + 0.35){
+              const hitDmg = tr.bannerBuffT>0 ? tr.dmg*1.15 : tr.dmg;
+              if(tgt.kind==='player'){
+                damagePlayer(hitDmg);
+                emitParticles(player.x,player.y,6,'rgba(255,210,170,.9)','spark');
+              } else if(tgt.kind==='tower'){
+                tgt.ref.hp -= hitDmg*0.75;
+                emitParticles(tgt.ref.x,tgt.ref.y,4,'rgba(255,222,160,.82)','spark');
+              } else {
+                let fmul = 1;
+                if(tgt.ref.type==='shieldbearer'){
+                  const hitAng = Math.atan2(tr.y-tgt.ref.y, tr.x-tgt.ref.x);
+                  const delta = Math.abs(Math.atan2(Math.sin(hitAng-(tgt.ref.frontFacing||0)), Math.cos(hitAng-(tgt.ref.frontFacing||0))));
+                  if(delta < Math.PI*0.42){ fmul = 0.45; emitParticles(tgt.ref.x,tgt.ref.y,5,'rgba(150,220,255,.9)','spark'); }
+                }
+                tgt.ref.hp -= hitDmg*fmul;
+                tgt.ref.anim.hurt = 0.12;
+                emitParticles(tgt.ref.x,tgt.ref.y,4,'rgba(255,215,145,.8)','spark');
+                addDecal(tgt.ref.x,tgt.ref.y,'rgba(120,26,26,.35)');
+              }
+            }
+            if(a.kind==='shot'){
+              const [nx,ny] = norm((tgt.x||tgt.ref.x)-tr.x,(tgt.y||tgt.ref.y)-tr.y);
+              if(tr.type==='bombardier'){
+                state.decals.push({x:(tgt.x||tgt.ref.x), y:(tgt.y||tgt.ref.y), ttl:0.6, life:0.6, color:'rgba(255,148,88,.34)', size:0.32, warn:true, source:tr.team});
+                const tx=tgt.x||tgt.ref.x, ty=tgt.y||tgt.ref.y;
+                setTimeout(()=>{
+                  emitParticles(tx,ty,20,'rgba(255,132,70,.95)','spark');
+                  for(const en of state.troops){ if(en.team!==tr.team && dist2(en.x,en.y,tx,ty)<1.6*1.6) en.hp -= tr.dmg*1.2; }
+                  if(player.team!==tr.team && dist2(player.x,player.y,tx,ty)<1.6*1.6) damagePlayer(tr.dmg*1.1);
+                  for(const tw of state.towers){ if(tw.team!==tr.team && dist2(tw.x,tw.y,tx,ty)<1.7*1.7) tw.hp -= tr.dmg*0.9; }
+                },600);
+              } else {
+                const kind = (tr.type==='pyromancer'||tr.type==='icebinder') ? 'staffBolt' : 'arrow';
+                const extra = tr.type==='pyromancer' ? {element:'fire',rarity:'Rare'} : tr.type==='icebinder' ? {element:'ice',rarity:'Rare'} : {};
+                state.projectiles.push(makeProjectile(tr.x + nx*0.55, tr.y + ny*0.55, nx*9.4, ny*9.4, tr.team, tr.dmg * 0.9, tr.range, kind, extra));
+              }
+            }
+          }
+          a.didHit = true;
+        }
+        if(a.t >= a.end) tr.atkState = null;
+      }
+
       const steerX = ax + sepX*1.55;
       const steerY = ay + sepY*1.55;
       const [sx,sy] = norm(steerX, steerY);
-
-      // integrate velocity
       const slow = tr.slowT>0 ? (1-(tr.slow||0.25)) : 1;
       const rooted = tr.rootT>0 ? 0 : 1;
-      const spd = tr.spd * tmod.ms * slow * rooted;
+      const aura = tr.bannerBuffT>0 ? 1.14 : 1;
+      const spd = tr.spd * tmod.ms * slow * rooted * aura;
       tr.vx = lerp(tr.vx, sx*spd, 0.15);
       tr.vy = lerp(tr.vy, sy*spd, 0.15);
-
       tr.x += tr.vx * dt;
       tr.y += tr.vy * dt;
-
-      // bounds
       tr.x = clamp(tr.x, 2, WORLD.w-2);
       tr.y = clamp(tr.y, 2, WORLD.h-2);
     }
@@ -1654,7 +1775,6 @@
       p.traveled += step;
 
       if(p.kind==='staffBolt') emitParticles(p.x,p.y,1,elementColor(p.extra.element),'spark');
-
       if(p.traveled >= p.maxDist){ p.alive = false; continue; }
 
       for(const tr of state.troops){
@@ -1671,11 +1791,20 @@
       }
       if(!p.alive) continue;
 
+      if(p.team !== player.team && dist2(p.x,p.y,player.x,player.y) < (0.55*0.55)){
+        damagePlayer(p.dmg);
+        emitParticles(player.x,player.y,9,p.kind==='staffBolt'?elementColor(p.extra.element):'rgba(255,220,170,.92)','spark');
+        if(p.kind==='staffBolt') state.decals.push({x:player.x,y:player.y,ttl:0.35,life:0.35,color:'rgba(180,220,255,.32)',size:0.2});
+        p.alive = false;
+      }
+      if(!p.alive) continue;
+
       for(const tw of state.towers){
         if(tw.team === p.team) continue;
         if(dist2(p.x,p.y,tw.x,tw.y) < (1.05*1.05)){
           tw.hp -= p.dmg * 0.8;
           emitParticles(tw.x,tw.y,8,p.kind==='staffBolt'?elementColor(p.extra.element):'rgba(255,225,180,.9)','spark');
+          if(p.kind==='staffBolt') state.decals.push({x:tw.x,y:tw.y,ttl:0.28,life:0.28,color:'rgba(255,255,255,.25)',size:0.18});
           p.alive = false;
           break;
         }
@@ -1708,16 +1837,13 @@
   // ---------- Player update ----------
   function updatePlayer(){
     const st = computePlayerStats();
-    // maxHp update
     if(player.hp > st.maxHp) player.hp = st.maxHp;
 
-    // aim
     const [wx,wy] = screenToWorld(mouse.x, mouse.y);
     const dx = wx - player.x;
     const dy = wy - player.y;
     player.facing = Math.atan2(dy, dx);
 
-    // movement
     let mx = 0, my = 0;
     if(keys.has('w')) my -= 1;
     if(keys.has('s')) my += 1;
@@ -1733,7 +1859,6 @@
       player.vy = lerp(player.vy, 0, 0.25);
     }
 
-    // avoid towers (don’t let player sit inside)
     for(const tw of state.towers){
       const dx = player.x - tw.x, dy = player.y - tw.y;
       const d = Math.hypot(dx,dy);
@@ -1750,30 +1875,25 @@
     player.x = clamp(player.x, 2, WORLD.w-2);
     player.y = clamp(player.y, 2, WORLD.h-2);
 
-    // cooldowns / charge
     player.atk.swingCd = Math.max(0, player.atk.swingCd - dt);
     player.atk.bowCd = Math.max(0, player.atk.bowCd - dt);
     if(player.atk.swingFx) player.atk.swingFx = Math.max(0, player.atk.swingFx - dt);
 
     const wep = getWeapon();
     if((wep.wtype === 'bow' || wep.wtype==='staff') && player.atk.bowCharging){
-      // charge to 1 over ~1.1s
       player.atk.bowCharge = clamp(player.atk.bowCharge + dt/1.1, 0, 1);
     } else {
       player.atk.bowCharge = lerp(player.atk.bowCharge, 0, 0.20);
     }
 
-    // player can take damage if surrounded (light contact damage)
-    let contactDmg = 0;
-    for(const tr of state.troops){
-      if(tr.team === 0) continue;
-      const d = Math.hypot(tr.x-player.x, tr.y-player.y);
-      if(d < tr.r + 0.45){
-        contactDmg += 0.55 * WORLD.enemyMult();
+    if(player.atk.attackState){
+      const a = player.atk.attackState;
+      a.t += dt;
+      if(a.t >= a.hitAt && !a.didHit){
+        resolveSwordHit();
+        a.didHit = true;
       }
-    }
-    if(contactDmg > 0){
-      damagePlayer(contactDmg * dt);
+      if(a.t >= a.end) player.atk.attackState = null;
     }
   }
 
@@ -1940,82 +2060,148 @@
   function drawTroop(tr){
     const [sx,sy] = worldToScreen(tr.x,tr.y);
     const col = teamColor(tr.team);
+    const accent = typeAccent(tr.type);
     const speed = Math.hypot(tr.vx,tr.vy);
     const moving = speed > 0.18;
     const bob = moving ? Math.sin(tr.anim.t*13)*2.4 : 0;
 
-    drawShadow(tr.x,tr.y,0.80, 0.22);
+    drawShadow(tr.x,tr.y,0.80 + (tr.type==='brute'?0.14:0), 0.22);
 
+    if(tr.type==='banner'){
+      ctx.beginPath(); ctx.arc(sx,sy-18+bob, ISO.tileW*0.22,0,TAU); ctx.strokeStyle='rgba(170,255,156,.35)'; ctx.stroke();
+    }
+    if(tr.type==='charger' && tr.dashState?.phase==='windup'){
+      const len=32; const ang=tr.dashState.dir||0;
+      ctx.beginPath(); ctx.moveTo(sx,sy-22+bob); ctx.lineTo(sx+Math.cos(ang)*len, sy-22+bob+Math.sin(ang)*len*0.45); ctx.strokeStyle='rgba(255,125,157,.75)'; ctx.lineWidth=2; ctx.stroke(); ctx.lineWidth=1;
+    }
+
+    const w = tr.type==='brute'?16:(tr.type==='rogue'?10:12);
+    const h = tr.type==='brute'?22:19;
     ctx.beginPath();
-    ctx.roundRect(sx-6, sy-30+bob, 12, 19, 5);
+    ctx.roundRect(sx-w/2, sy-30+bob, w, h, 5);
     ctx.fillStyle = tr.anim.hurt>0 ? 'rgba(255,200,200,.95)' : col;
-    ctx.globalAlpha = 0.85;
-    ctx.fill();
-    ctx.globalAlpha = 1;
-
-    ctx.beginPath();
-    ctx.arc(sx, sy-35+bob, 5.3, 0, TAU);
-    ctx.fillStyle = 'rgba(255,255,255,.84)';
     ctx.fill();
 
-    const badge = TROOP_TYPES[tr.type]?.role==='ranged'?'🏹':(tr.type==='brute'?'🛡':'⚔');
-    ctx.font='11px system-ui'; ctx.textAlign='center'; ctx.fillStyle='rgba(255,255,255,.85)';
-    ctx.fillText(badge,sx,sy-50+bob);
+    ctx.fillStyle = accent;
+    ctx.fillRect(sx-w/2, sy-26+bob, w, 3);
 
-    drawWeaponVisual(sx, sy-24+bob, tr.type==='archer'?'bow':(tr.type==='brute'?'axe':'sword'), Math.atan2(tr.vy||0.01,tr.vx||0.01), tr.anim.attackT>0?Math.sin(tr.anim.attackT*24)*0.5:0, typeAccent(tr.type));
+    ctx.beginPath(); ctx.arc(sx, sy-36+bob, 5.5, 0, TAU); ctx.fillStyle='rgba(241,224,196,.95)'; ctx.fill();
 
-    const hp = clamp(tr.hp/tr.maxHp, 0, 1);
-    ctx.fillStyle = 'rgba(0,0,0,.45)';
-    ctx.fillRect(sx-12, sy-48+bob, 24, 4);
-    ctx.fillStyle = col;
-    ctx.fillRect(sx-12, sy-48+bob, 24*hp, 4);
+    if(tr.type==='swordsman'){
+      ctx.fillStyle='rgba(220,230,245,.95)'; ctx.fillRect(sx-3,sy-42+bob,6,2); drawWeaponVisual(sx,sy-22+bob,'sword',tr.frontFacing||0, tr.anim.attackT>0?0.35:0, '#eef4ff');
+    } else if(tr.type==='archer'){
+      ctx.fillStyle='rgba(24,30,44,.55)'; ctx.fillRect(sx-7,sy-31+bob,14,5); drawWeaponVisual(sx,sy-22+bob,'bow',tr.frontFacing||0,0,'#aeddff');
+    } else if(tr.type==='brute'){
+      ctx.fillStyle='rgba(70,76,92,.9)'; ctx.fillRect(sx-10,sy-28+bob,20,5); drawWeaponVisual(sx,sy-20+bob,'axe',tr.frontFacing||0, tr.anim.attackT>0?0.45:0,'#ffd36a');
+    } else if(tr.type==='rogue'){
+      ctx.fillStyle='rgba(30,18,48,.75)'; ctx.fillRect(sx-8,sy-27+bob,16,6); drawWeaponVisual(sx-2,sy-22+bob,'sword',tr.frontFacing||0,0.2,'#ceb0ff'); drawWeaponVisual(sx+2,sy-22+bob,'sword',tr.frontFacing||0,-0.2,'#ceb0ff');
+    } else if(tr.type==='banner'){
+      ctx.fillStyle='rgba(230,245,210,.95)'; ctx.fillRect(sx+8,sy-40+bob,2,24); ctx.fillStyle='rgba(170,255,156,.9)'; ctx.fillRect(sx+10,sy-38+bob,11,8);
+    } else if(tr.type==='shieldbearer'){
+      drawWeaponVisual(sx,sy-22+bob,'sword',tr.frontFacing||0,0,'#d8e8ff'); ctx.fillStyle='rgba(150,210,255,.95)'; ctx.fillRect(sx+7,sy-30+bob,11,16);
+    } else if(tr.type==='pyromancer' || tr.type==='icebinder'){
+      drawWeaponVisual(sx,sy-22+bob,'staff',tr.frontFacing||0,0, tr.type==='pyromancer'?'#ffb278':'#b8eeff');
+      ctx.beginPath(); ctx.arc(sx+10,sy-24+bob,2.5,0,TAU); ctx.fillStyle=tr.type==='pyromancer'?'rgba(255,130,70,.9)':'rgba(170,230,255,.92)'; ctx.fill();
+    } else if(tr.type==='charger'){
+      drawWeaponVisual(sx,sy-21+bob,'spear',tr.frontFacing||0, tr.anim.attackT>0?0.25:0,'#ff9ab5');
+    } else if(tr.type==='bombardier'){
+      ctx.fillStyle='rgba(255,206,128,.9)'; ctx.fillRect(sx-10,sy-30+bob,20,5); ctx.beginPath(); ctx.arc(sx+10,sy-22+bob,4,0,TAU); ctx.fillStyle='rgba(255,120,80,.95)'; ctx.fill();
+      if(tr.atkState?.kind==='shot'){ ctx.beginPath(); ctx.arc(sx,sy-24+bob,12,0,Math.PI); ctx.strokeStyle='rgba(255,200,120,.8)'; ctx.stroke(); }
+    }
+
+    if(tr.anim.attackT > 0.02 && tr.role!=='ranged'){
+      ctx.beginPath();
+      ctx.arc(sx, sy-22+bob, 15, (tr.frontFacing||0)-0.55, (tr.frontFacing||0)+0.55);
+      ctx.strokeStyle = `rgba(255,218,150,${Math.min(0.85,tr.anim.attackT*3.5)})`;
+      ctx.lineWidth=2.5; ctx.stroke(); ctx.lineWidth=1;
+    }
+
+    const hp = clamp(tr.hp/tr.maxHp,0,1);
+    ctx.fillStyle='rgba(0,0,0,.5)'; ctx.fillRect(sx-14, sy-46+bob, 28, 4);
+    ctx.fillStyle=accent; ctx.fillRect(sx-14, sy-46+bob, 28*hp, 4);
+
+    if(tr.type==='bombardier' && tr.atkState?.kind==='shot' && tr.atkState.target){
+      const tx = tr.atkState.target.x||tr.atkState.target.ref.x;
+      const ty = tr.atkState.target.y||tr.atkState.target.ref.y;
+      const [txs,tys]=worldToScreen(tx,ty);
+      ctx.beginPath(); ctx.arc(txs,tys-18,14,0,TAU); ctx.strokeStyle='rgba(255,150,90,.65)'; ctx.stroke();
+    }
   }
 
   function drawPlayer(){
-    const [sx,sy] = worldToScreen(player.x, player.y);
-    drawShadow(player.x, player.y, 0.92, 0.28);
-    const walk = Math.hypot(player.vx,player.vy)>0.1;
-    const bob = walk?Math.sin(state.time*14)*2.4:0;
+    const [sx,sy] = worldToScreen(player.x,player.y);
+    const speed = Math.hypot(player.vx,player.vy);
+    const moving = speed > 0.12;
+    const bob = moving ? Math.sin(state.time*13)*2.2 : 0;
+
+    drawShadow(player.x,player.y,0.86,0.24);
 
     ctx.beginPath();
-    ctx.roundRect(sx-6, sy-32+bob, 12, 20, 5);
-    ctx.fillStyle = 'rgba(255,255,255,.16)';
+    ctx.roundRect(sx-7, sy-32+bob, 14, 21, 5);
+    ctx.fillStyle = 'rgba(104,255,184,.92)';
     ctx.fill();
 
     ctx.beginPath();
-    ctx.arc(sx, sy-38+bob, 5.4, 0, TAU);
-    ctx.fillStyle = 'rgba(243,246,255,.95)';
+    ctx.arc(sx, sy-38+bob, 6, 0, TAU);
+    ctx.fillStyle = 'rgba(241,224,196,.95)';
     ctx.fill();
 
     const wep = getWeapon();
-    const phase = player.atk.attackState ? Math.sin(player.atk.attackState.t*18)*0.8 : 0;
-    drawWeaponVisual(sx, sy-24+bob, wep.wtype, player.facing, phase, wep.wtype==='staff'?elementColor(wep.element):'#ffdca8');
+    drawWeaponVisual(sx, sy-22+bob, wep.wtype, player.facing, 0.0, '#fff');
 
-    if(player.atk.swingFx){
-      const t = clamp(player.atk.swingFx / 0.22, 0, 1);
-      const fx = Math.cos(player.facing), fy = Math.sin(player.facing);
-      const reach = (wep.stats?.reach ?? 1.25);
-      const [px,py] = worldToScreen(player.x + fx*reach, player.y + fy*reach);
+    if(player.atk.attackState){
+      const a = player.atk.attackState;
+      const t = clamp(a.t/a.end,0,1);
+      const cone = Math.PI*0.65;
+      const sweep = lerp(-0.42,0.42,t);
+      const reach = a.reach||1.25;
+      const lenPx = reach*ISO.tileW*0.82;
+      const baseY = sy-22+bob;
+      ctx.save();
+      ctx.translate(sx,baseY);
+      ctx.rotate(player.facing + sweep);
       ctx.beginPath();
-      ctx.arc(px, py-18, 32, player.facing-0.6, player.facing+0.6);
-      ctx.strokeStyle = `rgba(255,211,106,${0.55*t})`;
-      ctx.lineWidth = 4;
+      ctx.moveTo(0,0);
+      ctx.arc(0,0,lenPx,-cone*0.5,cone*0.5);
+      ctx.closePath();
+      ctx.fillStyle = `rgba(255,208,108,${0.18 + (a.didHit?0.16:0.08)})`;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,236,170,.82)';
+      ctx.lineWidth = 2;
       ctx.stroke();
-      ctx.lineWidth = 1;
+      for(let i=0;i<6;i++){
+        const ang = -cone*0.5 + (cone*(i/5));
+        const px = Math.cos(ang)*lenPx;
+        const py = Math.sin(ang)*lenPx;
+        ctx.fillStyle='rgba(255,235,180,.6)';
+        ctx.fillRect(px-1.2,py-1.2,2.4,2.4);
+      }
+      ctx.restore();
     }
 
     if((wep.wtype==='bow' || wep.wtype==='staff') && player.atk.bowCharging){
       const charge = clamp(player.atk.bowCharge,0,1);
-      const minRange=2.5, maxRange=(wep.stats?.reach ?? 8.5)*1.05;
-      const r = lerp(minRange, maxRange, charge);
-      const [ex2,ey2] = worldToScreen(player.x + Math.cos(player.facing)*r, player.y + Math.sin(player.facing)*r);
-      ctx.beginPath();
-      ctx.moveTo(sx, sy-22+bob);
-      ctx.lineTo(ex2, ey2-22);
-      ctx.strokeStyle = wep.wtype==='staff' ? elementColor(wep.element) : `rgba(86,211,255,${0.25 + 0.65*charge})`;
-      ctx.lineWidth = 3;
-      ctx.stroke();
-      ctx.lineWidth = 1;
+      const pull = 5 + charge*10;
+      ctx.save();
+      ctx.translate(sx,sy-24+bob);
+      ctx.rotate(player.facing);
+      if(wep.wtype==='bow'){
+        ctx.strokeStyle='rgba(192,225,255,.95)'; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.arc(10,0,8,-1.1,1.1); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(14,-7); ctx.lineTo(14-pull,0); ctx.lineTo(14,7); ctx.strokeStyle='rgba(235,245,255,.9)'; ctx.stroke();
+        ctx.strokeStyle='rgba(240,248,255,.95)';
+        ctx.beginPath(); ctx.moveTo(4,0); ctx.lineTo(17,0); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(17,0); ctx.lineTo(13,-3); ctx.lineTo(13,3); ctx.closePath(); ctx.fillStyle=`rgba(120,220,255,${0.4+charge*0.5})`; ctx.fill();
+      } else {
+        ctx.fillStyle='rgba(235,238,255,.95)'; ctx.fillRect(0,-1,17,2);
+        ctx.beginPath(); ctx.arc(18,0,4.5,0,TAU); ctx.fillStyle=elementColor(wep.element); ctx.fill();
+        for(let i=0;i<4;i++){
+          const a = state.time*5 + i*TAU/4;
+          ctx.fillStyle='rgba(255,255,255,.65)';
+          ctx.fillRect(18+Math.cos(a)*(6+charge*2), Math.sin(a)*(6+charge*2)-1,2,2);
+        }
+      }
+      ctx.restore();
     }
 
     const st = computePlayerStats();
@@ -2031,14 +2217,25 @@
   function drawProjectiles(){
     for(const p of state.projectiles){
       const [sx,sy] = worldToScreen(p.x,p.y);
-      const [sx2,sy2] = worldToScreen(p.x - p.vx*0.06, p.y - p.vy*0.06);
-      ctx.beginPath();
-      ctx.moveTo(sx2, sy2-22);
-      ctx.lineTo(sx, sy-22);
-      ctx.strokeStyle = p.kind==='staffBolt' ? elementColor(p.extra.element) : `rgba(243,246,255,.85)`;
-      ctx.lineWidth = p.kind==='staffBolt'?3:2;
-      ctx.stroke();
-      ctx.lineWidth = 1;
+      const ang = Math.atan2(p.vy,p.vx);
+      const by = sy-22;
+      ctx.save();
+      ctx.translate(sx,by);
+      ctx.rotate(ang*0.52);
+      if(p.kind==='staffBolt'){
+        const col = elementColor(p.extra.element||'fire');
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(-8,0); ctx.lineTo(8,0); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0,0,4.2,0,TAU); ctx.fillStyle = col; ctx.globalAlpha=0.55; ctx.fill(); ctx.globalAlpha=1;
+      } else {
+        ctx.strokeStyle = 'rgba(242,246,255,.95)';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(-9,0); ctx.lineTo(8,0); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(8,0); ctx.lineTo(3,-3.2); ctx.lineTo(3,3.2); ctx.closePath(); ctx.fillStyle='rgba(235,244,255,.95)'; ctx.fill();
+        ctx.beginPath(); ctx.moveTo(-9,0); ctx.lineTo(-12,-2.2); ctx.moveTo(-9,0); ctx.lineTo(-12,2.2); ctx.strokeStyle='rgba(170,220,255,.95)'; ctx.stroke();
+      }
+      ctx.restore();
     }
     for(const p of state.particles){
       const [sx,sy] = worldToScreen(p.x,p.y);
