@@ -1140,6 +1140,12 @@
     return { kind:'player', ref:player, x:player.x, y:player.y, r:0.55 };
   }
 
+  function targetPos(t){
+    if(!t) return {x:0,y:0};
+    if(t.ref) return {x:t.ref.x, y:t.ref.y};
+    return {x:t.x, y:t.y};
+  }
+
   function isHostileTeam(teamA, teamB){
     if(teamA < 0 || teamB < 0) return false;
     return teamA !== teamB;
@@ -1161,6 +1167,12 @@
       const d = dist2(tr.x,tr.y,tw.x,tw.y);
       if(d < bestD){ bestD = d; best = {kind:'tower', ref:tw, x:tw.x, y:tw.y, r:1.0}; }
     }
+
+    if(isHostileTeam(player.team, tr.team) && player.alive){
+      const d = dist2(tr.x,tr.y,player.x,player.y);
+      if(d < bestD) best = playerTargetProxy();
+    }
+
     return best;
   }
 
@@ -1618,11 +1630,12 @@
     const tgt = findNearestEnemyTargetForTower(tw);
     if(!tgt) return;
 
-    const d = Math.hypot(tgt.x - tw.x, tgt.y - tw.y);
+    const tp = targetPos(tgt);
+    const d = Math.hypot(tp.x - tw.x, tp.y - tw.y);
     if(d > tw.turretRange) return;
 
     tw.turretCd = 1.1;
-    const [dx,dy] = norm(tgt.x - tw.x, tgt.y - tw.y);
+    const [dx,dy] = norm(tp.x - tw.x, tp.y - tw.y);
     const speed = 9.2;
     const dmg = 7.5 * (tw.team===0 ? 1.0 : WORLD.enemyMult()*0.9);
     state.projectiles.push(makeProjectile(tw.x + dx*0.7, tw.y + dy*0.7, dx*speed, dy*speed, tw.team, dmg, tw.turretRange, 'arrow', {fromTower:true}));
@@ -1683,7 +1696,8 @@
       }
 
       if(target){
-        let dx = target.x - tr.x, dy = target.y - tr.y;
+        const tp = targetPos(target);
+        let dx = tp.x - tr.x, dy = tp.y - tr.y;
         const d = Math.hypot(dx,dy) || 1;
         tr.frontFacing = Math.atan2(dy,dx);
 
@@ -1738,7 +1752,8 @@
         if(a.t >= a.hitAt && !a.didHit){
           const tgt = a.target;
           if(tgt){
-            const dd = Math.hypot((tgt.x||tgt.ref.x)-tr.x,(tgt.y||tgt.ref.y)-tr.y);
+            const tp = targetPos(tgt);
+            const dd = Math.hypot(tp.x-tr.x,tp.y-tr.y);
             if(a.kind==='melee' && dd <= tr.range + (tgt.r||0.5) + 0.35){
               const hitDmg = tr.bannerBuffT>0 ? tr.dmg*1.15 : tr.dmg;
               if(tgt.kind==='player'){
@@ -1761,10 +1776,10 @@
               }
             }
             if(a.kind==='shot'){
-              const [nx,ny] = norm((tgt.x||tgt.ref.x)-tr.x,(tgt.y||tgt.ref.y)-tr.y);
+              const [nx,ny] = norm(tp.x-tr.x,tp.y-tr.y);
               if(tr.type==='bombardier'){
-                state.decals.push({x:(tgt.x||tgt.ref.x), y:(tgt.y||tgt.ref.y), ttl:0.6, life:0.6, color:'rgba(255,148,88,.34)', size:0.32, warn:true, source:tr.team});
-                const tx=tgt.x||tgt.ref.x, ty=tgt.y||tgt.ref.y;
+                state.decals.push({x:tp.x, y:tp.y, ttl:0.6, life:0.6, color:'rgba(255,148,88,.34)', size:0.32, warn:true, source:tr.team});
+                const tx=tp.x, ty=tp.y;
                 setTimeout(()=>{
                   emitParticles(tx,ty,20,'rgba(255,132,70,.95)','spark');
                   for(const en of state.troops){ if(en.team!==tr.team && dist2(en.x,en.y,tx,ty)<1.6*1.6) en.hp -= tr.dmg*1.2; }
