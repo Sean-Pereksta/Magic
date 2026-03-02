@@ -143,7 +143,7 @@
             <div class="small">Block Charges</div>
             <div class="pips" id="blockPips"></div>
           </div>
-          <div class="small" id="blockNote">RMB + mouse = guard</div>
+          <div class="small" id="blockNote">RMB hold = guard</div>
         </div>
         <div style="height:10px"></div>
         <div class="row">
@@ -154,8 +154,8 @@
 
       <div class="pill" style="text-align:right; min-width:360px">
         <div class="small">Mount & Blade-style melee</div>
-        <div class="small"><b>LMB hold</b> = wind up • move mouse to choose dir • <b>release</b> = swing</div>
-        <div class="small"><b>RMB hold</b> = block • move mouse to set guard dir</div>
+        <div class="small"><b>LMB</b> = swing (click)</div>
+        <div class="small"><b>RMB hold</b> = guard (tracks virtual cursor direction)</div>
         <div class="small">WASD move (W always forward) • Esc = menu</div>
         <div class="small">Effects: <b>blood</b> on hit • <b>sparks</b> on block/clash</div>
       </div>
@@ -187,7 +187,7 @@
             <button id="resetBtn">Reset Match</button>
           </div>
           <div class="mini" style="margin-top:10px;">
-            Tip: Start a windup, then flick to another direction before release to bait blocks.
+            Tip: Swing decisively from edge to edge and read enemy guard direction.
           </div>
         </div>
 
@@ -217,6 +217,7 @@
     </div>
   </div>
 
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 <script>
 (() => {
   // ---------- Canvas / low-res render ----------
@@ -306,6 +307,8 @@
   // ---------- Input ----------
   const keys = new Set();
   let mouseDX=0, mouseDY=0;
+  let aimX=0, aimY=0;
+  let lmbClickQueued=false;
   let running=false;
 
   addEventListener('keydown', (e)=>{
@@ -322,6 +325,8 @@
     if(document.pointerLockElement===canvas){
       mouseDX += e.movementX || 0;
       mouseDY += e.movementY || 0;
+      aimX = clamp(aimX + (e.movementX || 0) * 0.0055 * parseFloat(sensEl.value), -1, 1);
+      aimY = clamp(aimY + (e.movementY || 0) * 0.0055 * parseFloat(sensEl.value), -1, 1);
     }
   });
 
@@ -329,7 +334,7 @@
   canvas.addEventListener('mousedown', (e)=>{
     if(!running) return;
     if(document.pointerLockElement!==canvas) canvas.requestPointerLock?.();
-    if(e.button===0) lmb=true;
+    if(e.button===0){ lmb=true; lmbClickQueued=true; }
     if(e.button===2) rmb=true;
   });
   addEventListener('mouseup', (e)=>{
@@ -506,6 +511,8 @@
   };
 
   // ---------- Config ----------
+  const USE_3D = true;
+
   const CFG = {
     moveSpeed: 8.6,
     accel: 22.0,
@@ -514,9 +521,10 @@
     fovDeg: 92,
     camH: 1.7,
 
-    minWindup: 0.06,
-    maxWindupHold: 2.5,
-    swingT: 0.20,     // slightly longer so swing reads better
+    minWindup: 0.00,
+    maxWindupHold: 0.08,
+    windupT: 0.08,
+    swingT: 0.22,
     recoverT: 0.18,
 
     range: 2.35,
@@ -551,6 +559,10 @@
     }else{
       return y<0 ? 'U' : 'D';
     }
+  }
+
+  function dirFromAim(ax, ay, invert=false){
+    return dirFromGesture(ax, ay, invert);
   }
 
   function attackArc(dir){
@@ -1023,52 +1035,39 @@
       }
     }
 
+    aimX *= Math.pow(0.88, dt*60);
+    aimY *= Math.pow(0.88, dt*60);
+
     // BLOCK
     if(rmb && player.blockCD<=0){
-      if(!player._bAcc){ player._bAcc={x:0,y:0}; }
-      // stronger block tracking so direction changes are readable
-      player._bAcc.x = lerp(player._bAcc.x, player._bAcc.x + frameDX, 0.75);
-      player._bAcc.y = lerp(player._bAcc.y, player._bAcc.y + frameDY, 0.75);
-      const d = dirFromGesture(player._bAcc.x, player._bAcc.y, invertBlockEl.checked);
-      player.blockDir = d;
+      player.blockDir = dirFromAim(aimX, aimY, invertBlockEl.checked);
       player.blocking = true;
     }else{
       player.blocking = false;
-      if(player._bAcc){ player._bAcc.x*=0.85; player._bAcc.y*=0.85; }
     }
 
     // ATTACK
     const s = player.sword;
 
     if(s.mode==='idle'){
-      if(lmb && !player.blocking){
+      if(lmbClickQueued && !player.blocking && !rmb){
+        lmbClickQueued=false;
         s.mode='windup';
         s.t=0;
         s.hitDone=false;
-        s.accX=0; s.accY=0;
-        s.dir='U';
-        s.showDir='U';
+        const d = dirFromAim(aimX, aimY, invertAttackEl.checked);
+        s.accX=aimX; s.accY=aimY;
+        s.dir=d;
+        s.showDir=d;
         beep(180,0.03,'triangle',0.03);
       }
     }else if(s.mode==='windup'){
-      if(lmb){
-        s.t = Math.min(CFG.maxWindupHold, s.t + dt);
-        s.accX += frameDX;
-        s.accY += frameDY;
-        const d = dirFromGesture(s.accX, s.accY, invertAttackEl.checked);
-        s.dir = d;
-        s.showDir = d;
-      }else{
-        if(s.t >= CFG.minWindup){
-          s.mode='swing';
-          s.t=0;
-          s.hitDone=false;
-          beep(210,0.03,'square',0.03);
-        }else{
-          s.mode='recover';
-          s.t=0;
-          s.hitDone=true;
-        }
+      s.t += dt;
+      if(s.t >= CFG.windupT){
+        s.mode='swing';
+        s.t=0;
+        s.hitDone=false;
+        beep(210,0.03,'square',0.03);
       }
     }else if(s.mode==='swing'){
       s.t += dt;
@@ -1108,6 +1107,8 @@
         s.t=0;
       }
     }
+
+    if(s.mode!=='idle') lmbClickQueued=false;
 
     dirTxt.textContent = (s.mode==='windup' || s.mode==='swing') ? dirName(s.showDir) : '—';
 
@@ -1791,7 +1792,8 @@
   }
 
   // ---------- Rendering main world ----------
-  function renderWorld(){
+  // (legacy 2D renderer kept as fallback)
+  function renderWorld2D(){
     const horizon = renderFloor();
 
     const drawList = [];
@@ -1835,6 +1837,165 @@
     ctx.restore();
   }
 
+  let renderer3D=null, scene3D=null, camera3D=null, worldGroup3D=null;
+  let territoryCanvas3D=null, territoryCtx3D=null, territoryTex3D=null;
+  const towerMeshes3D=[];
+  const unitPool3D=[];
+  const hqMesh3D={blue:null, red:null};
+  let skyMesh3D=null, groundMesh3D=null;
+
+  function init3D(){
+    if(renderer3D || !USE_3D || !window.THREE) return !!renderer3D;
+    try{
+      renderer3D = new THREE.WebGLRenderer({canvas, antialias:true});
+      renderer3D.setPixelRatio(Math.min(2, window.devicePixelRatio||1));
+      renderer3D.setSize(innerWidth, innerHeight, false);
+      renderer3D.outputColorSpace = THREE.SRGBColorSpace;
+      renderer3D.setClearColor(0x070b14, 1);
+
+      scene3D = new THREE.Scene();
+      scene3D.fog = new THREE.Fog(0x0a1020, 22, 120);
+      camera3D = new THREE.PerspectiveCamera(CFG.fovDeg, innerWidth/innerHeight, 0.1, 260);
+      worldGroup3D = new THREE.Group();
+      scene3D.add(worldGroup3D);
+
+      const hemi = new THREE.HemisphereLight(0x9dc5ff, 0x1f1b18, 1.0);
+      scene3D.add(hemi);
+      const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+      sun.position.set(32, 70, 15);
+      scene3D.add(sun);
+
+      const skyGeo = new THREE.SphereGeometry(180, 24, 12);
+      const skyMat = new THREE.MeshBasicMaterial({color:0x1a2c48, side:THREE.BackSide, fog:false});
+      skyMesh3D = new THREE.Mesh(skyGeo, skyMat);
+      scene3D.add(skyMesh3D);
+
+      territoryCanvas3D = document.createElement('canvas');
+      territoryCanvas3D.width = GW; territoryCanvas3D.height = GH;
+      territoryCtx3D = territoryCanvas3D.getContext('2d');
+      territoryTex3D = new THREE.CanvasTexture(territoryCanvas3D);
+      territoryTex3D.magFilter = THREE.NearestFilter;
+      territoryTex3D.minFilter = THREE.NearestFilter;
+
+      const planeGeo = new THREE.PlaneGeometry(GW*TILE, GH*TILE, 1, 1);
+      const planeMat = new THREE.MeshStandardMaterial({map:territoryTex3D, roughness:0.95, metalness:0.02});
+      groundMesh3D = new THREE.Mesh(planeGeo, planeMat);
+      groundMesh3D.rotation.x = -Math.PI/2;
+      worldGroup3D.add(groundMesh3D);
+
+      for(const tw of towers){
+        const g = new THREE.Group();
+        const b1 = new THREE.Mesh(new THREE.CylinderGeometry(0.9,1.1,1.3,12), new THREE.MeshStandardMaterial({color:0x666f85}));
+        b1.position.y = 0.65;
+        const b2 = new THREE.Mesh(new THREE.CylinderGeometry(0.62,0.72,1.0,10), new THREE.MeshStandardMaterial({color:0x858fa7}));
+        b2.position.y = 1.8;
+        const banner = new THREE.Mesh(new THREE.BoxGeometry(0.1,0.6,0.7), new THREE.MeshStandardMaterial({color:0xb0bad0, emissive:0x101828}));
+        banner.position.set(0.75,1.95,0);
+        g.add(b1,b2,banner);
+        g.userData.banner = banner;
+        worldGroup3D.add(g);
+        towerMeshes3D.push(g);
+      }
+
+      const hqGeo = new THREE.BoxGeometry(3.8, 2.8, 3.8);
+      hqMesh3D.blue = new THREE.Mesh(hqGeo, new THREE.MeshStandardMaterial({color:0x3f6fa2, emissive:0x10253e}));
+      hqMesh3D.red  = new THREE.Mesh(hqGeo, new THREE.MeshStandardMaterial({color:0xa24752, emissive:0x3a1219}));
+      hqMesh3D.blue.position.y = 1.4;
+      hqMesh3D.red.position.y = 1.4;
+      worldGroup3D.add(hqMesh3D.blue, hqMesh3D.red);
+
+      updateTerritoryTexture3D();
+      return true;
+    }catch(e){
+      renderer3D=null;
+      return false;
+    }
+  }
+
+  function unitMeshAt(i){
+    if(unitPool3D[i]) return unitPool3D[i];
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.28,0.65,4,8), new THREE.MeshStandardMaterial({color:0x8a94aa, roughness:0.7}));
+    body.position.y = 0.75;
+    const helm = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), new THREE.MeshStandardMaterial({color:0xd0d8e8, metalness:0.25, roughness:0.45}));
+    helm.position.y = 1.42;
+    const plume = new THREE.Mesh(new THREE.BoxGeometry(0.08,0.22,0.08), new THREE.MeshStandardMaterial({color:0x4aa3ff, emissive:0x11253e}));
+    plume.position.y = 1.65;
+    g.add(body, helm, plume);
+    g.userData = {plume};
+    worldGroup3D.add(g);
+    unitPool3D[i]=g;
+    return g;
+  }
+
+  function updateTerritoryTexture3D(){
+    if(!territoryCtx3D || !territoryTex3D) return;
+    const img = territoryCtx3D.createImageData(GW, GH);
+    const d = img.data;
+    for(let ty=0; ty<GH; ty++){
+      for(let tx=0; tx<GW; tx++){
+        const o = territory[idx(tx,ty)];
+        const c = COLORS[o];
+        const i = (tx + (GH-1-ty)*GW)*4;
+        d[i]=c[0]; d[i+1]=c[1]; d[i+2]=c[2]; d[i+3]=255;
+      }
+    }
+    territoryCtx3D.putImageData(img,0,0);
+    territoryTex3D.needsUpdate = true;
+  }
+
+  function renderWorld3D(){
+    if(!renderer3D && !init3D()) return false;
+
+    if(renderer3D.domElement.width!==Math.floor(innerWidth*(Math.min(2,window.devicePixelRatio||1)))){
+      renderer3D.setSize(innerWidth, innerHeight, false);
+    }
+
+    camera3D.fov = CFG.fovDeg;
+    camera3D.aspect = innerWidth/innerHeight;
+    camera3D.updateProjectionMatrix();
+    camera3D.position.set(player.x, CFG.camH, player.y);
+    camera3D.rotation.order='YXZ';
+    camera3D.rotation.y = -player.ang + Math.PI/2;
+    camera3D.rotation.x = player.pitch;
+
+    skyMesh3D.position.copy(camera3D.position);
+
+    for(let i=0;i<towers.length;i++){
+      const tw=towers[i], m=towerMeshes3D[i];
+      if(!m) continue;
+      m.position.set(tw.x,0,tw.y);
+      const col = tw.owner===TEAM.BLUE?0x4aa3ff:tw.owner===TEAM.RED?0xff5d6c:0xb6c0d6;
+      m.userData.banner.material.color.setHex(col);
+    }
+
+    hqMesh3D.blue.position.set(HQ.blue.x,1.4,HQ.blue.y);
+    hqMesh3D.red.position.set(HQ.red.x,1.4,HQ.red.y);
+
+    let alive=0;
+    for(const u of units){
+      if(u.hp<=0) continue;
+      const m=unitMeshAt(alive++);
+      m.visible=true;
+      m.position.set(u.x,0,u.y);
+      m.rotation.y = -u.ang + Math.PI/2;
+      m.userData.plume.material.color.setHex(u.team===TEAM.BLUE?0x4aa3ff:0xff5d6c);
+    }
+    for(let i=alive;i<unitPool3D.length;i++) unitPool3D[i].visible=false;
+
+    updateTerritoryTexture3D();
+    renderer3D.render(scene3D, camera3D);
+    return true;
+  }
+
+  function renderWorld(){
+    if(USE_3D && window.THREE){
+      const ok = renderWorld3D();
+      if(ok) return;
+    }
+    renderWorld2D();
+  }
+
   // ---------- HUD / capture overlay ----------
   function updateHUD(){
     hpTxt.textContent = Math.round(player.hp);
@@ -1858,7 +2019,7 @@
       blockNote.textContent = `Guard cooldown ${player.blockCD.toFixed(1)}s`;
       blockNote.style.color='var(--warn)';
     }else{
-      blockNote.textContent = `RMB + mouse = guard (${dirName(player.blockDir)})`;
+      blockNote.textContent = `RMB hold = guard (${dirName(player.blockDir)})`;
       blockNote.style.color='var(--muted)';
     }
   }
