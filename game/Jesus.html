@@ -444,6 +444,24 @@ let GAME_OVER = false;
   let perfT = 0;
   let camX = 0;
   let bannerT = 0;
+  let shakeT = 0;
+  let shakePow = 0;
+
+  const BOSS_INTERVAL = 3;
+  const BOSS_BACKLASH = 2;
+  const BOSS_SELF_HIT = 4;
+  const BOSS_HIT_WALL = 7;
+  const BOSS_REWARD_POOL = ["shield","sandals","holyLight","fireRain","bread"];
+
+  const bossEventActive = {
+    active:false,
+    boss:null,
+    arena:null,
+    pending:false,
+    nextSectionIndex:BOSS_INTERVAL,
+    hpDisplay:0,
+    resultT:0,
+  };
 
   const isGround = (s)=>s.kind === 'ground';
   const isOneWay = (s)=>s.kind === 'platform' || s.kind === 'crumble' || s.kind === 'cloud' || s.kind==='slippery' || s.kind==='blessed';
@@ -732,8 +750,23 @@ if(!ignoreOneWay && ent.vy >= 0){
   // =========================
   // FX / Damage
   // =========================
-  function popFX(text,x,y,color){
-    fx.push({kind:"text", text, x, y, vy:-40, t:0.9, color});
+  function popFX(text,x,y,color,scale=1){
+    fx.push({kind:"text", text, x, y, vy:-40, t:0.9, color, scale});
+  }
+  function shakeScreen(pow=8, dur=0.16){
+    shakePow = Math.max(shakePow, pow);
+    shakeT = Math.max(shakeT, dur);
+  }
+  function spawnHitBurst(x,y,theme="spark",n=10,pow=1){
+    for(let i=0;i<n;i++){
+      fx.push({kind:"hitBurst", x:x+rand(-8,8), y:y+rand(-8,8), vx:rand(-180,180)*pow, vy:rand(-320,-120)*pow, t:0.42+rand(0,0.12), theme});
+    }
+  }
+  function spawnShockRing(x,y,r=16,theme="spark"){
+    fx.push({kind:"shockRing", x, y, r, grow:220, t:0.34, life:0.34, theme});
+  }
+  function spawnCorpseMark(x,y,w,theme="Rome"){
+    fx.push({kind:"corpseMark", x:x-w*0.5, y:y+2, w, h:8, t:1.6, life:1.6, theme});
   }
   function spawnDust(x,y){
     for(let i=0;i<5;i++){
@@ -744,6 +777,322 @@ if(!ignoreOneWay && ent.vy >= 0){
     for(let i=0;i<10;i++){
       fx.push({kind:"chip", x:x+rand(-6,6), y:y+rand(-8,8), vx:rand(-160,160), vy:rand(-320,-160), t:0.45, theme:"spark"});
     }
+  }
+
+
+  function shouldStartBossEvent(nextSectionIndex){
+    if(realm !== "earth") return false;
+    if(bossEventActive.active || bossEventActive.pending) return false;
+    return nextSectionIndex >= bossEventActive.nextSectionIndex;
+  }
+
+  function getRegionTheme(region){
+    return region==="Hell" ? "Hell" : region==="Jerusalem" ? "Jerusalem" : "Rome";
+  }
+
+  function createBoss(kind, arena, region, diff){
+    const cx = arena.x + arena.w*0.5;
+    const base = {
+      kind,
+      region,
+      x:cx,
+      y:FLOOR_Y-130,
+      w:120,
+      h:120,
+      vx:0,
+      vy:0,
+      hp:50,
+      maxHp:50,
+      phase:"intro",
+      stateT:0,
+      cd:0,
+      attackIndex:0,
+      telegraphs:[],
+      arena,
+      hurtT:0,
+      deathT:0,
+      dead:false,
+      alive:true,
+      enraged:false,
+      face:-1,
+      dmgTextT:0,
+      selectedPattern:null
+    };
+
+    if(kind==="WAR_BEAST"){
+      base.name = "THE WAR BEAST";
+      base.w = 164; base.h = 112;
+      base.y = FLOOR_Y - base.h;
+      base.hp = base.maxHp = Math.round(64 + diff*6);
+      base.chargeDir = -1;
+      base.stunT = 0;
+      base.selfHit = BOSS_SELF_HIT;
+      base.theme = "Hell";
+    } else if(kind==="TEMPLE_JUDGE"){
+      base.name = "THE TEMPLE JUDGE";
+      base.w = 132; base.h = 130;
+      base.y = FLOOR_Y - 260;
+      base.hp = base.maxHp = Math.round(52 + diff*5);
+      base.hoverBaseY = base.y;
+      base.selfHit = BOSS_BACKLASH;
+      base.theme = "Jerusalem";
+    } else {
+      base.name = "THE PIT LORD";
+      base.w = 148; base.h = 126;
+      base.y = FLOOR_Y - base.h;
+      base.hp = base.maxHp = Math.round(68 + diff*7);
+      base.selfHit = BOSS_SELF_HIT;
+      base.theme = "Hell";
+    }
+    return base;
+  }
+
+  function buildBossArena(startX, region){
+    const arenaW = 1680;
+    const baseY = FLOOR_Y;
+    const wallW = 30;
+    const arena = {x:startX, y:0, w:arenaW, h:H, left:startX+60, right:startX+arenaW-60, region};
+
+    placeSolid({x:startX-120, y:baseY, w:arenaW+240, h:84, kind:"ground", theme:region, arena:true});
+    placeSolid({x:startX-80, y:baseY-18, w:80, h:220, kind:"ground", theme:region, arenaGate:true});
+    placeSolid({x:startX+arenaW, y:baseY-18, w:wallW, h:220, kind:"ground", theme:region, arenaGate:true});
+
+    const platY = region==="Hell" ? 312 : region==="Jerusalem" ? 292 : 300;
+    placeSolid({x:startX+280, y:platY, w:250, h:20, kind:"platform", theme:region, style:(region==="Rome"?"marble":region==="Jerusalem"?"stone":"obsidian"), arena:true});
+    placeSolid({x:startX+arenaW-530, y:platY-8, w:250, h:20, kind:"platform", theme:region, style:(region==="Rome"?"marble":region==="Jerusalem"?"stone":"obsidian"), arena:true});
+
+    if(region==="Hell"){
+      placeHazard({x:startX+arenaW*0.43, y:FLOOR_Y+20, w:220, h:56, kind:"lava", theme:region});
+    }
+
+    return arena;
+  }
+
+  function startBossEvent(startX, world, stage, region){
+    const arena = buildBossArena(startX, region);
+    const kinds = ["WAR_BEAST","TEMPLE_JUDGE","PIT_LORD"];
+    const kind = kinds[rndi(0, kinds.length-1)];
+    const boss = createBoss(kind, arena, region, difficultyScalar(world, stage));
+
+    bossEventActive.active = true;
+    bossEventActive.pending = false;
+    bossEventActive.arena = arena;
+    bossEventActive.boss = boss;
+    bossEventActive.hpDisplay = boss.hp;
+    bossEventActive.resultT = 0;
+
+    enemies.length = 0;
+    hazards.length = hazards.filter(h => h.kind==="lava");
+
+    showBanner("BOSS APPROACHES", `${boss.name} · ${region.toUpperCase()}`, 2.2);
+    earthWorld.generatedUntilX = startX + arena.w;
+    earthWorld.sectionIndex += 1;
+  }
+
+  function damageBoss(boss, amount, reason="hit"){
+    if(!boss || boss.dead) return;
+    boss.hp = Math.max(0, boss.hp - amount);
+    boss.hurtT = 0.25;
+    spawnHitBurst(boss.x + boss.w*0.5, boss.y + boss.h*0.45, boss.theme, 14, 1.2);
+    spawnShockRing(boss.x + boss.w*0.5, boss.y + boss.h*0.45, 20, boss.theme);
+    popFX(`-${amount}`, boss.x + boss.w*0.5, boss.y-8, boss.theme==="Hell"?"#ff7448":"#f7d77f", 1.2);
+    if(reason==="backlash") popFX("BACKLASH!", boss.x + boss.w*0.5, boss.y-22, "#ffef8a", 1.3);
+    if(boss.hp <= 0){
+      boss.hp = 0;
+      boss.dead = true;
+      boss.phase = "dead";
+      boss.deathT = 1.25;
+      shakeScreen(16, 0.48);
+      for(let i=0;i<28;i++) spawnHitBurst(boss.x+boss.w*0.5, boss.y+boss.h*0.4, boss.theme, 1, 2.2);
+      fx.push({kind:"bossDeath", x:boss.x+boss.w*0.5, y:boss.y+boss.h*0.5, t:1.25, life:1.25, theme:boss.theme});
+      showBanner("BOSS DEFEATED", boss.name, 2.0);
+    }
+  }
+
+  function bossBacklashOnPlayerHit(kind){
+    const boss = bossEventActive.boss;
+    if(!boss || boss.dead) return;
+    takeHit({source:"boss", major:true});
+    if(player.invT > 0){
+      damageBoss(boss, BOSS_BACKLASH + (kind==="heavy"?1:0), "backlash");
+      spawnShockRing(player.x+player.w*0.5, player.y+player.h*0.5, 18, "Hell");
+      shakeScreen(kind==="heavy"?12:8, 0.2);
+      popFX("REFLECT!", player.x+player.w*0.5, player.y-12, "#ffef8a", 1.15);
+    }
+  }
+
+  function endBossEvent(){
+    const boss = bossEventActive.boss;
+    const arena = bossEventActive.arena;
+    if(!boss || !arena) return;
+    bossEventActive.active = false;
+    bossEventActive.resultT = 0;
+
+    const dropKind = BOSS_REWARD_POOL[rndi(0, BOSS_REWARD_POOL.length-1)];
+    placePickup({x:arena.x + arena.w*0.5, y:FLOOR_Y-90, w:26, h:26, kind:dropKind, theme:arena.region, bobT:rand(0,10)});
+    popFX("Guaranteed blessing!", arena.x + arena.w*0.5, FLOOR_Y-120, "#d4b43d");
+
+    const gateRight = solids.find(s => s.arenaGate && s.x > arena.x + arena.w*0.7);
+    if(gateRight) gateRight.dead = true;
+
+    bossEventActive.boss = null;
+    bossEventActive.arena = null;
+  }
+
+  function updateBoss(dt){
+    const boss = bossEventActive.boss;
+    const arena = bossEventActive.arena;
+    if(!boss || !arena) return;
+
+    boss.stateT += dt;
+    boss.hurtT = Math.max(0, boss.hurtT - dt);
+    if(!boss.enraged && boss.hp <= boss.maxHp*0.4){ boss.enraged = true; popFX("ENRAGED!", boss.x+boss.w*0.5, boss.y-14, "#ff7448", 1.2); }
+
+    if(player.x < arena.left){ player.x = arena.left; if(player.vx<0) player.vx = 0; }
+    if(!boss.dead && player.x + player.w > arena.right){ player.x = arena.right - player.w; if(player.vx>0) player.vx = 0; }
+
+    if(boss.dead){
+      boss.deathT -= dt;
+      if(boss.deathT > 0 && Math.random()<0.45) spawnHitBurst(boss.x+boss.w*0.5, boss.y+boss.h*0.4, boss.theme, 3, 2.0);
+      if(boss.deathT <= 0) endBossEvent();
+      return;
+    }
+
+    if(boss.kind==="WAR_BEAST"){
+      if(boss.phase==="intro" && boss.stateT>1.0){ boss.phase="idle"; boss.stateT=0; }
+      else if(boss.phase==="idle" && boss.stateT>0.8){
+        boss.phase="telegraph"; boss.stateT=0;
+        boss.chargeDir = sign((player.x+player.w*0.5) - (boss.x+boss.w*0.5));
+        boss.telegraphs = [{kind:"line",x1:boss.x+boss.w*0.5,y1:FLOOR_Y-8,x2:(boss.chargeDir>0?arena.right:arena.left),y2:FLOOR_Y-8,t:0.62,life:0.62,theme:"danger"}];
+      } else if(boss.phase==="telegraph"){
+        if(Math.random()<0.20) spawnDust(boss.x + (boss.chargeDir>0?boss.w:0), FLOOR_Y-2);
+        if(boss.stateT > 0.62){ boss.phase="execute"; boss.stateT=0; boss.vx = boss.chargeDir * (boss.enraged?980:860); shakeScreen(7,0.16); }
+      } else if(boss.phase==="execute"){
+        boss.x += boss.vx * dt;
+        const hit = {x:boss.x+14,y:boss.y+20,w:boss.w-28,h:boss.h-24};
+        if(aabb(player, hit) && player.invT<=0) bossBacklashOnPlayerHit("heavy");
+        if((boss.vx>0 && boss.x+boss.w >= arena.right) || (boss.vx<0 && boss.x <= arena.left)){
+          boss.x = clamp(boss.x, arena.left, arena.right-boss.w);
+          boss.vx = 0;
+          damageBoss(boss, BOSS_HIT_WALL, "wall");
+          spawnShockRing(boss.x+boss.w*0.5, FLOOR_Y-10, 36, "Hell");
+          shakeScreen(14,0.22);
+          boss.phase="recover"; boss.stateT=0;
+        }
+      } else if(boss.phase==="recover" && boss.stateT > (boss.enraged?0.42:0.62)){
+        boss.phase="idle"; boss.stateT=0;
+      }
+    } else if(boss.kind==="TEMPLE_JUDGE"){
+      boss.y = boss.hoverBaseY + Math.sin(perfT*2.8)*18;
+      if(boss.phase==="intro" && boss.stateT>1.0){ boss.phase="idle"; boss.stateT=0; }
+      else if(boss.phase==="idle" && boss.stateT>0.7){
+        boss.phase="telegraph"; boss.stateT=0;
+        boss.selectedPattern = Math.random()<0.5 ? "triple" : (Math.random()<0.5 ? "lane" : "spear");
+        boss.telegraphs.length = 0;
+        if(boss.selectedPattern==="triple"){
+          for(let i=0;i<3;i++){
+            const tx = arena.left + 140 + i*((arena.right-arena.left-280)/2);
+            boss.telegraphs.push({kind:"circle",x:tx,y:FLOOR_Y-10,r:56,t:0.72,life:0.72,theme:"holy"});
+          }
+        } else if(boss.selectedPattern==="lane"){
+          for(let i=0;i<3;i++){
+            const lx = arena.left + 120 + i*220;
+            boss.telegraphs.push({kind:"lane",x:lx,y:84,w:80,h:FLOOR_Y-84,t:0.8,life:0.8,theme:"holy"});
+          }
+        } else {
+          const tx = clamp(player.x+player.w*0.5, arena.left+90, arena.right-90);
+          boss.telegraphs.push({kind:"spear",x:tx,y:FLOOR_Y-4,r:34,t:0.86,life:0.86,theme:"holy"});
+        }
+      } else if(boss.phase==="telegraph" && boss.stateT > 0.82){
+        boss.phase="execute"; boss.stateT=0;
+      } else if(boss.phase==="execute"){
+        for(const t of boss.telegraphs){
+          if(t.hit) continue;
+          if(t.kind==="circle"){
+            const hit = {x:t.x-t.r*0.58,y:FLOOR_Y-130,w:t.r*1.16,h:130};
+            if(aabb(player, hit) && player.invT<=0){ t.hit=true; bossBacklashOnPlayerHit("major"); }
+            spawnHitBurst(t.x, FLOOR_Y-120, "Jerusalem", 2, 0.8);
+          } else if(t.kind==="lane"){
+            const hit = {x:t.x,y:t.y,w:t.w,h:t.h};
+            if(aabb(player, hit) && player.invT<=0){ t.hit=true; bossBacklashOnPlayerHit("major"); }
+          } else {
+            const hit = {x:t.x-18,y:FLOOR_Y-140,w:36,h:140};
+            if(aabb(player, hit) && player.invT<=0){ t.hit=true; bossBacklashOnPlayerHit("major"); }
+            spawnShockRing(t.x, FLOOR_Y-24, 14, "Jerusalem");
+          }
+        }
+        if(boss.stateT > 0.2){ boss.phase="recover"; boss.stateT=0; boss.telegraphs.length = 0; }
+      } else if(boss.phase==="recover" && boss.stateT > (boss.enraged?0.35:0.55)){
+        boss.phase="idle"; boss.stateT=0;
+      }
+      boss.x = clamp(lerp(boss.x, player.x + player.w*0.5 - boss.w*0.5, dt*0.7), arena.left+40, arena.right-boss.w-40);
+    } else {
+      if(boss.phase==="intro" && boss.stateT>1.0){ boss.phase="idle"; boss.stateT=0; }
+      else if(boss.phase==="idle" && boss.stateT>0.74){
+        boss.phase="telegraph"; boss.stateT=0;
+        boss.selectedPattern = Math.random()<0.4 ? "lob" : (Math.random()<0.5 ? "rupture" : "slam");
+        boss.telegraphs.length = 0;
+        if(boss.selectedPattern==="lob"){
+          for(let i=0;i<3;i++){
+            const tx = clamp(player.x+player.w*0.5 + rand(-120,120), arena.left+80, arena.right-80);
+            boss.telegraphs.push({kind:"fireMark",x:tx,y:FLOOR_Y-8,r:28,t:0.74,life:0.74,theme:"Hell"});
+          }
+        } else if(boss.selectedPattern==="rupture"){
+          const sx = clamp(player.x-50, arena.left+20, arena.right-260);
+          boss.telegraphs.push({kind:"rupture",x:sx,y:FLOOR_Y-4,w:250,h:18,t:0.78,life:0.78,theme:"Hell"});
+        } else {
+          const tx = clamp(player.x+player.w*0.5, arena.left+70, arena.right-70);
+          boss.telegraphs.push({kind:"slam",x:tx,y:FLOOR_Y-6,r:60,t:0.82,life:0.82,theme:"Hell"});
+        }
+      } else if(boss.phase==="telegraph" && boss.stateT>0.8){
+        boss.phase="execute"; boss.stateT=0;
+        if(boss.selectedPattern==="slam"){
+          boss.vy = -980;
+          boss.vx = sign((boss.telegraphs[0]?.x||boss.x) - (boss.x+boss.w*0.5))*240;
+        }
+      } else if(boss.phase==="execute"){
+        if(boss.selectedPattern==="lob"){
+          for(const t of boss.telegraphs){
+            if(t.hit) continue;
+            const hit = {x:t.x-26,y:FLOOR_Y-72,w:52,h:72};
+            if(aabb(player, hit) && player.invT<=0){ t.hit=true; bossBacklashOnPlayerHit("major"); }
+            spawnHitBurst(t.x, FLOOR_Y-12, "Hell", 2, 1.1);
+          }
+        } else if(boss.selectedPattern==="rupture"){
+          const t = boss.telegraphs[0];
+          if(t){
+            const hit = {x:t.x,y:FLOOR_Y-52,w:t.w,h:52};
+            if(aabb(player, hit) && player.invT<=0){ bossBacklashOnPlayerHit("heavy"); }
+            spawnHitBurst(t.x+t.w*0.5, FLOOR_Y-6, "Hell", 4, 1.3);
+          }
+        } else {
+          boss.vy += GRAV*dt*0.78;
+          boss.x += boss.vx*dt;
+          boss.y += boss.vy*dt;
+          const tx = boss.telegraphs[0]?.x || (boss.x+boss.w*0.5);
+          if(boss.y + boss.h >= FLOOR_Y){
+            boss.y = FLOOR_Y-boss.h;
+            boss.vx = 0; boss.vy = 0;
+            const hit = {x:tx-64,y:FLOOR_Y-64,w:128,h:64};
+            if(aabb(player, hit) && player.invT<=0) bossBacklashOnPlayerHit("heavy");
+            shakeScreen(12, 0.18);
+          }
+        }
+        if(boss.stateT > 0.24){ boss.phase="recover"; boss.stateT=0; boss.telegraphs.length = 0; }
+      } else if(boss.phase==="recover" && boss.stateT > (boss.enraged?0.34:0.58)){
+        boss.phase="idle"; boss.stateT=0;
+      }
+
+      if(boss.selectedPattern!=="slam"){
+        const tpx = player.x + player.w*0.5;
+        boss.face = sign(tpx - (boss.x+boss.w*0.5));
+        boss.x += boss.face * (boss.enraged?120:90) * dt;
+        boss.x = clamp(boss.x, arena.left+10, arena.right-boss.w-10);
+      }
+    }
+
+    for(const t of boss.telegraphs){ t.t -= dt; }
+    boss.telegraphs = boss.telegraphs.filter(t => t.t > 0);
   }
 
   function triggerHolyPlatformBlast(platform){
@@ -761,7 +1110,7 @@ if(!ignoreOneWay && ent.vy >= 0){
       const ex = e.x + e.w*0.5;
       const ey = e.y + e.h*0.5;
       if(Math.hypot(ex-cx, ey-cy) <= blastR){
-        e.hp = 0;
+        damageEnemy(e, 999, "holy");
         vaporized++;
         spawnSparkle(ex, ey);
       }
@@ -788,6 +1137,10 @@ if(!ignoreOneWay && ent.vy >= 0){
     heavenWorld.enemies.length = 0;
     heavenWorld.pickups.length = 0;
     heavenWorld.generatedUntilX = 0;
+
+    bossEventActive.active = false;
+    bossEventActive.boss = null;
+    bossEventActive.arena = null;
 
     if(success){
       const targetSI = heavenEntrySI + HEAVEN_REWARD;
@@ -852,7 +1205,7 @@ if(!ignoreOneWay && ent.vy >= 0){
     showBanner("HEAVEN TRIAL", `Clear to skip +${HEAVEN_REWARD} levels (scales with depth)`, 2.1);
   }
 
-  function takeHit(){
+  function takeHit(opts={}){
     if(player.invT > 0) return;
 
     if(player.hasShield){
@@ -882,7 +1235,8 @@ if(!ignoreOneWay && ent.vy >= 0){
 
     player.hearts -= 1;
     player.invT = 1.05;
-    popFX("Ouch!", player.x+player.w/2, player.y-10, "#d33636");
+    popFX("Ouch!", player.x+player.w/2, player.y-10, "#d33636", opts.major ? 1.25 : 1);
+    spawnHitBurst(player.x+player.w/2, player.y+player.h*0.45, "Hell", opts.major?14:8, opts.major?1.4:1);
 
     if(player.hearts <= 0){
       if(realm === "heaven"){
@@ -1037,6 +1391,21 @@ if(!ignoreOneWay && ent.vy >= 0){
     return base;
   }
 
+  function damageEnemy(e, amount, source="hit"){
+    if(!e || e.hp<=0) return;
+    e.hp -= amount;
+    e.hurtT = 0.24;
+    e.vx += (source==="stomp"?-1:1) * 80;
+    spawnHitBurst(e.x+e.w*0.5, e.y+e.h*0.35, e.region||"Rome", 7, 0.9);
+    if(e.hp<=0){
+      e.hp = 0;
+      spawnHitBurst(e.x+e.w*0.5, e.y+e.h*0.35, e.region||"Rome", e.heavy?18:12, e.heavy?1.6:1.15);
+      spawnShockRing(e.x+e.w*0.5, e.y+e.h*0.6, e.heavy?20:14, e.region||"Rome");
+      spawnCorpseMark(e.x+e.w*0.5, e.y+e.h-6, Math.max(28,e.w*0.65), e.region||"Rome");
+      if(e.heavy) shakeScreen(6, 0.12);
+    }
+  }
+
   function updateEnemies(dt){
     // Earth + Heaven enemies share array, but heaven angels have their own motion.
     for(const e of enemies){
@@ -1178,8 +1547,7 @@ if(!ignoreOneWay && ent.vy >= 0){
         const pFeet  = { x:player.x+7, y:player.y+player.h-7, w:player.w-14, h:12 };
 
         if(aabb(pFeet, topHit) && player.vy > 120){
-          e.hp -= 1;
-          e.hurtT = 0.25;
+          damageEnemy(e, 1, "stomp");
           player.vy = -Math.max(560, JUMP_V*0.55);
           spawnSparkle(e.x+e.w/2, e.y+12);
           popFX("Stomp!", e.x+e.w/2, e.y-10, "#0f172a");
@@ -1266,6 +1634,13 @@ if(!ignoreOneWay && ent.vy >= 0){
     const si = earthWorld.sectionIndex;
     const {world, stage, region} = getWorldStage(si);
     const diff = difficultyScalar(world, stage);
+
+    if(shouldStartBossEvent(si)){
+      startBossEvent(startX, world, stage, region);
+      bossEventActive.nextSectionIndex += BOSS_INTERVAL;
+      return;
+    }
+
     const endX = startX + SECTION_W;
 
     // --- ground with pits + “chasms with moving platforms” past level 3
@@ -1842,6 +2217,7 @@ if(!ignoreOneWay && ent.vy >= 0){
 
     // enemies
     updateEnemies(dt);
+    if(bossEventActive.active) updateBoss(dt);
 
     if(player.holyLightT > 0) player.holyLightT = Math.max(0, player.holyLightT - dt);
     if(player.fireRainShots > 0){
@@ -1851,7 +2227,7 @@ if(!ignoreOneWay && ent.vy >= 0){
           .filter(e=>e.hp>0)
           .sort((a,b)=>Math.abs((a.x+a.w*0.5)-(player.x+player.w*0.5)) - Math.abs((b.x+b.w*0.5)-(player.x+player.w*0.5)))[0];
         if(target){
-          target.hp = 0;
+          damageEnemy(target, 999, "fire");
           spawnSparkle(target.x+target.w/2, target.y+target.h/2);
           popFX("Holy fire!", target.x+target.w/2, target.y-8, "#d33636");
           player.fireRainShots -= 1;
@@ -1899,17 +2275,23 @@ if(!ignoreOneWay && ent.vy >= 0){
       if(f.kind==="text"){
         f.y += f.vy * dt;
         f.vy += 80*dt;
-      } else if(f.kind==="chip"){
+      } else if(f.kind==="chip" || f.kind==="hitBurst"){
         f.x += f.vx*dt;
         f.y += f.vy*dt;
-        f.vy += 1400*dt;
+        f.vy += (f.kind==="hitBurst"?980:1400)*dt;
       } else if(f.kind==="dust"){
         f.x += f.vx*dt;
         f.y += f.vy*dt;
         f.vy += 420*dt;
+      } else if(f.kind==="shockRing"){
+        f.r += f.grow*dt;
+      } else if(f.kind==="corpseMark" || f.kind==="bossDeath"){
+        // fade only
       }
       if(f.t <= 0) fx.splice(i,1);
     }
+
+    shakeT = Math.max(0, shakeT - dt);
 
     // banner fade
     if(bannerT > 0){
@@ -1934,7 +2316,9 @@ if(!ignoreOneWay && ent.vy >= 0){
     }
 
     ctx.save();
-    ctx.translate(-camX, 0);
+    const sx = shakeT>0 ? rand(-shakePow, shakePow) : 0;
+    const sy = shakeT>0 ? rand(-shakePow*0.45, shakePow*0.45) : 0;
+    ctx.translate(-camX + sx, sy);
 
     drawHazards();
 
@@ -1949,32 +2333,65 @@ if(!ignoreOneWay && ent.vy >= 0){
       drawEnemy(e);
     }
 
+    if(bossEventActive.active && bossEventActive.boss){
+      drawBoss(bossEventActive.boss);
+      drawBossTelegraphs(bossEventActive.boss);
+    }
+
     drawJesus(player);
 
     for(const f of fx){
       if(f.kind==="text"){
         ctx.globalAlpha = clamp(f.t/0.9,0,1);
-        ctx.font = "900 14px ui-sans-serif, system-ui";
+        const sc = f.scale || 1;
+        ctx.font = `${Math.floor(14*sc)}px ui-sans-serif, system-ui`;
+        ctx.font = `900 ${Math.floor(14*sc)}px ui-sans-serif, system-ui`;
         ctx.fillStyle = f.color || "#0f172a";
         ctx.textAlign = "center";
         ctx.fillText(f.text, f.x, f.y);
         ctx.globalAlpha = 1;
-      } else if(f.kind==="chip"){
-        ctx.globalAlpha = clamp(f.t/0.65,0,1);
+      } else if(f.kind==="chip" || f.kind==="hitBurst"){
+        ctx.globalAlpha = clamp(f.t/(f.kind==="hitBurst"?0.5:0.65),0,1);
         ctx.fillStyle = f.theme==="spark" ? "rgba(255,215,120,.95)" :
                         f.theme==="Hell" ? "rgba(255,120,80,.9)" :
+                        f.theme==="Jerusalem" ? "rgba(255,245,180,.9)" :
                         f.theme===HEAVEN ? "rgba(255,255,255,.92)" :
                         "rgba(120,85,55,.9)";
-        ctx.fillRect(f.x, f.y, 4, 4);
+        const sz = f.kind==="hitBurst" ? 5 : 4;
+        ctx.fillRect(f.x, f.y, sz, sz);
         ctx.globalAlpha = 1;
       } else if(f.kind==="dust"){
         ctx.globalAlpha = clamp(f.t/0.4,0,1);
         ctx.fillStyle = "rgba(120,120,120,.35)";
         ctx.beginPath(); ctx.arc(f.x,f.y,3,0,Math.PI*2); ctx.fill();
         ctx.globalAlpha = 1;
+      } else if(f.kind==="shockRing"){
+        ctx.globalAlpha = clamp(f.t/f.life,0,1);
+        ctx.strokeStyle = f.theme==="Hell" ? "rgba(255,120,80,.75)" : f.theme==="Jerusalem" ? "rgba(255,240,160,.75)" : "rgba(255,255,255,.75)";
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI*2); ctx.stroke();
+        ctx.globalAlpha = 1;
+      } else if(f.kind==="corpseMark"){
+        ctx.globalAlpha = clamp(f.t/f.life,0,1)*0.8;
+        ctx.fillStyle = f.theme==="Hell" ? "rgba(90,30,20,.6)" : f.theme==="Jerusalem" ? "rgba(130,110,80,.45)" : "rgba(90,90,90,.4)";
+        roundRect(ctx, f.x, f.y, f.w, f.h, 6); ctx.fill();
+        ctx.globalAlpha = 1;
+      } else if(f.kind==="bossDeath"){
+        ctx.globalAlpha = clamp(f.t/f.life,0,1);
+        const rr = 40 + (1-clamp(f.t/f.life,0,1))*120;
+        const gg = ctx.createRadialGradient(f.x,f.y,16,f.x,f.y,rr);
+        gg.addColorStop(0, f.theme==="Hell" ? "rgba(255,120,80,.55)" : "rgba(255,240,170,.55)");
+        gg.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = gg;
+        ctx.beginPath(); ctx.arc(f.x,f.y,rr,0,Math.PI*2); ctx.fill();
+        ctx.globalAlpha = 1;
       }
     }
     ctx.restore();
+
+    if(bossEventActive.active && bossEventActive.boss){
+      drawBossUI(bossEventActive.boss);
+    }
   }
 
   // =========================
@@ -2357,6 +2774,103 @@ if(!ignoreOneWay && ent.vy >= 0){
       roundRect(ctx, e.x, e.y, e.w, e.h, 10); ctx.fill();
     }
     ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  function drawBossTelegraphs(b){
+    for(const t of b.telegraphs){
+      if(t.kind==="line"){
+        ctx.save();
+        ctx.globalAlpha = clamp(t.t/t.life,0,1)*0.8;
+        ctx.strokeStyle = "rgba(255,60,60,.9)";
+        ctx.lineWidth = 8;
+        ctx.beginPath(); ctx.moveTo(t.x1,t.y1); ctx.lineTo(t.x2,t.y2); ctx.stroke();
+        ctx.restore();
+      } else if(t.kind==="circle" || t.kind==="fireMark" || t.kind==="slam"){
+        ctx.save();
+        ctx.globalAlpha = clamp(t.t/t.life,0,1)*0.8;
+        ctx.strokeStyle = t.kind==="circle" ? "rgba(255,240,170,.95)" : "rgba(255,110,70,.95)";
+        ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(t.x,t.y,t.r,0,Math.PI*2); ctx.stroke();
+        ctx.restore();
+      } else if(t.kind==="lane"){
+        ctx.save();
+        ctx.globalAlpha = clamp(t.t/t.life,0,1)*0.45;
+        ctx.fillStyle = "rgba(255,245,170,.45)";
+        ctx.fillRect(t.x,t.y,t.w,t.h);
+        ctx.restore();
+      } else if(t.kind==="rupture"){
+        ctx.save();
+        ctx.globalAlpha = clamp(t.t/t.life,0,1)*0.65;
+        ctx.fillStyle = "rgba(255,90,50,.5)";
+        ctx.fillRect(t.x,t.y,t.w,t.h);
+        ctx.restore();
+      } else if(t.kind==="spear"){
+        ctx.save();
+        ctx.globalAlpha = clamp(t.t/t.life,0,1)*0.85;
+        ctx.strokeStyle = "rgba(255,255,220,.92)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(t.x,84); ctx.lineTo(t.x,t.y);
+        ctx.stroke();
+        ctx.beginPath(); ctx.arc(t.x,t.y,t.r,0,Math.PI*2); ctx.stroke();
+        ctx.restore();
+      }
+    }
+  }
+
+  function drawBoss(b){
+    ctx.save();
+    if(b.hurtT>0) ctx.globalAlpha = 0.72;
+
+    if(b.kind==="WAR_BEAST"){
+      ctx.fillStyle = "rgba(135,55,35,.98)";
+      roundRect(ctx,b.x,b.y+22,b.w,b.h-22,20); ctx.fill();
+      ctx.fillStyle = "rgba(92,38,26,.98)";
+      roundRect(ctx,b.x+b.w*0.08,b.y+8,b.w*0.44,30,14); ctx.fill();
+      ctx.fillStyle = "rgba(220,205,180,.95)";
+      ctx.beginPath(); ctx.moveTo(b.x+b.w*0.82,b.y+30); ctx.lineTo(b.x+b.w*0.98,b.y+42); ctx.lineTo(b.x+b.w*0.82,b.y+52); ctx.fill();
+      for(let i=0;i<4;i++) roundRect(ctx,b.x+20+i*32,b.y+b.h-14,18,14,4), ctx.fill();
+    } else if(b.kind==="TEMPLE_JUDGE"){
+      ctx.fillStyle = "rgba(252,249,236,.98)";
+      roundRect(ctx,b.x+20,b.y+26,b.w-40,b.h-26,22); ctx.fill();
+      ctx.strokeStyle = "rgba(210,170,80,.9)"; ctx.lineWidth=3;
+      roundRect(ctx,b.x+20,b.y+26,b.w-40,b.h-26,22); ctx.stroke();
+      ctx.beginPath(); ctx.arc(b.x+b.w*0.5,b.y+18,13,0,Math.PI*2); ctx.fillStyle="rgba(255,240,185,.98)"; ctx.fill();
+      ctx.strokeStyle = "rgba(250,220,120,.95)";
+      ctx.beginPath(); ctx.ellipse(b.x+b.w*0.5,b.y+8,24,8,0,0,Math.PI*2); ctx.stroke();
+    } else {
+      ctx.fillStyle = "rgba(78,32,24,.98)";
+      roundRect(ctx,b.x,b.y+14,b.w,b.h-14,16); ctx.fill();
+      ctx.fillStyle = "rgba(155,55,32,.95)";
+      for(let i=0;i<5;i++) roundRect(ctx,b.x+14+i*26,b.y+b.h-20,20,16,4), ctx.fill();
+      ctx.fillStyle = "rgba(255,130,70,.9)";
+      ctx.beginPath(); ctx.arc(b.x+b.w*0.5,b.y+18,11,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawBossUI(boss){
+    const bw = 470, bh = 18;
+    const x = W*0.5 - bw*0.5;
+    const y = 52;
+    bossEventActive.hpDisplay = lerp(bossEventActive.hpDisplay, boss.hp, 0.16);
+
+    ctx.save();
+    ctx.fillStyle = "rgba(10,14,30,.35)";
+    roundRect(ctx,x-8,y-30,bw+16,56,12); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,.92)";
+    roundRect(ctx,x,y,bw,bh,10); ctx.fill();
+    const ratio = clamp((bossEventActive.hpDisplay||0)/Math.max(1,boss.maxHp),0,1);
+    const g = ctx.createLinearGradient(x,y,x+bw,y);
+    g.addColorStop(0,boss.theme==="Hell"?"#ff743f":"#f6df8e");
+    g.addColorStop(1,boss.theme==="Hell"?"#b62020":"#d0a734");
+    ctx.fillStyle = g;
+    roundRect(ctx,x+2,y+2,(bw-4)*ratio,bh-4,8); ctx.fill();
+    ctx.fillStyle = "#0f172a";
+    ctx.font = "900 16px ui-sans-serif,system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText(`${boss.name}  ${Math.ceil(boss.hp)}/${boss.maxHp}`, W*0.5, y-10);
     ctx.restore();
   }
 
@@ -3347,6 +3861,14 @@ function drawJesus(p){
     player.fireRainShots = 0;
     player.fireRainCd = 0;
     player.invT = 0; player.dropT = 0;
+
+    bossEventActive.active = false;
+    bossEventActive.boss = null;
+    bossEventActive.arena = null;
+    bossEventActive.pending = false;
+    bossEventActive.nextSectionIndex = BOSS_INTERVAL;
+    bossEventActive.hpDisplay = 0;
+    shakeT = 0; shakePow = 0;
 
     showBannerForSection(0);
     ensureGeneratedEarth(player.x + SECTION_W*2);
