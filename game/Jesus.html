@@ -429,6 +429,7 @@ let GAME_OVER = false;
     measurementId: "G-8PR6LVKSH3"
   };
   let db = null;
+  let dbEnabled = true;
   try{
     if(window.firebase){
       firebase.initializeApp(firebaseConfig);
@@ -569,12 +570,13 @@ function mergeTopScores(rows){
 
 async function fetchHighScores(){
   const local = loadLocalScores();
-  if(!db) return mergeTopScores(local);
+  if(!db || !dbEnabled) return mergeTopScores(local);
   try{
     const snap = await db.collection('highscores').orderBy('score','desc').limit(10).get();
     const remote = snap.docs.map(d=>d.data());
     return mergeTopScores([...local, ...remote]);
-  }catch(_e){
+  }catch(e){
+    if(e && (e.code === 'permission-denied' || e.code === 'failed-precondition')) dbEnabled = false;
     return mergeTopScores(local);
   }
 }
@@ -584,11 +586,12 @@ async function saveHighScore(name, score){
   const combined = mergeTopScores([row, ...loadLocalScores()]);
   const localOk = writeLocalScores(combined);
 
-  if(!db) return {ok: localOk, source: localOk ? 'local' : 'none'};
+  if(!db || !dbEnabled) return {ok: localOk, source: localOk ? 'local' : 'none'};
   try{
     await db.collection('highscores').add(row);
     return {ok: true, source: 'cloud'};
-  }catch(_e){
+  }catch(e){
+    if(e && (e.code === 'permission-denied' || e.code === 'failed-precondition')) dbEnabled = false;
     return {ok: localOk, source: localOk ? 'local' : 'none'};
   }
 }
@@ -882,7 +885,8 @@ if(!ignoreOneWay && ent.vy >= 0){
     bossEventActive.resultT = 0;
 
     enemies.length = 0;
-    hazards.length = hazards.filter(h => h.kind==="lava");
+    hazards = hazards.filter(h => h.kind==="lava");
+    worldObj.hazards = hazards;
 
     showBanner("BOSS APPROACHES", `${boss.name} · ${region.toUpperCase()}`, 2.2);
     earthWorld.generatedUntilX = startX + arena.w;
