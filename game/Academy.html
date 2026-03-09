@@ -1,0 +1,3177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Academy Standards — Tactical House War</title>
+<style>
+  :root{
+    --bg:#0e1117; --panel:#171c25; --panel2:#10141c; --line:#2b3444;
+    --ink:#eaf1ff; --muted:#9fb0d4; --accent:#7fb2ff; --good:#56cf88;
+    --warn:#dfad5a; --bad:#e06a6a; --gold:#d8bd66;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);font-family:Inter,Segoe UI,Arial,sans-serif}
+  .app{
+    height:100vh; display:grid; gap:8px; padding:8px;
+    grid-template-columns:320px 1fr 360px;
+    grid-template-rows:60px 1fr 146px;
+  }
+  .panel,.top,.center,.bottom{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.28);overflow:hidden}
+  .top{grid-column:1 / span 3; display:flex; align-items:center; justify-content:space-between; padding:10px 14px}
+  .center{position:relative}
+  .left,.right{padding:12px; overflow:auto}
+  .bottom{grid-column:1 / span 3; display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:10px 14px}
+  .title{font-weight:900; font-size:18px}
+  .sub{font-size:12px; color:var(--muted)}
+  .statrow{display:flex; gap:8px; flex-wrap:wrap}
+  .pill{border:1px solid var(--line); border-radius:999px; background:rgba(255,255,255,.03); padding:7px 10px; font-size:12px}
+  .section{border:1px solid var(--line); border-radius:14px; padding:10px; background:rgba(255,255,255,.02); margin-bottom:10px}
+  .section h3{margin:0 0 8px; font-size:13px; text-transform:uppercase; letter-spacing:.4px}
+  .small{font-size:12px; color:var(--muted)}
+  .tiny{font-size:11px; color:var(--muted)}
+  .grid3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px}
+  .btn{background:#20283a; color:#eef4ff; border:1px solid #39445b; border-radius:10px; padding:8px 10px; font-weight:700; font-size:12px; cursor:pointer}
+  .btn:hover{filter:brightness(1.06)}
+  .btn.good{background:#183123; border-color:#2b5e40}
+  .btn.warn{background:#3a2818; border-color:#6c4820}
+  .btn.bad{background:#3a1919; border-color:#693333}
+  .btn.gold{background:#342a18; border-color:#6a542a}
+  .btn.active{outline:2px solid var(--accent)}
+  .hidden{display:none !important}
+  canvas{width:100%; height:100%; display:block; background:#1c251f}
+  .overlay{position:absolute; inset:10px auto auto 10px; display:flex; gap:8px; flex-wrap:wrap; pointer-events:none}
+  .legend{display:flex; align-items:center; gap:6px}
+  .dot{width:10px; height:10px; border-radius:50%}
+  .log{max-height:250px; overflow:auto; border:1px solid var(--line); border-radius:12px; padding:8px; background:rgba(255,255,255,.02); font-size:12px}
+  .log div{padding:4px 0; border-bottom:1px dashed rgba(255,255,255,.06)}
+  .log div:last-child{border-bottom:none}
+  .card{border:1px solid var(--line); border-radius:12px; background:rgba(255,255,255,.03); padding:8px; margin-bottom:8px; cursor:pointer}
+  .card.sel{outline:2px solid var(--accent)}
+  .row{display:flex; justify-content:space-between; align-items:center; gap:8px}
+  .tags{display:flex; gap:6px; flex-wrap:wrap; margin-top:6px}
+  .tag{border:1px solid var(--line); background:rgba(255,255,255,.03); padding:4px 7px; border-radius:999px; font-size:11px}
+  .bar{height:8px; background:#273144; border-radius:999px; overflow:hidden; margin-top:6px}
+  .fill{height:100%; background:linear-gradient(90deg,#7eb3ff,#d8bd66)}
+  .help span{display:inline-block; margin-right:12px}
+  .rankRow{border:1px solid var(--line);border-radius:12px;padding:8px;margin-bottom:8px;background:rgba(255,255,255,.03)}
+  .vassal{margin-top:6px;padding-left:10px;border-left:2px solid rgba(255,255,255,.08)}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top panel">
+    <div>
+      <div class="title">Academy Standards — Tactical House War</div>
+      <div class="sub">Spread battles, faster movement, shield blocks, command telegraphs, and sticky target attacks.</div>
+    </div>
+    <div class="statrow" id="topStats"></div>
+  </div>
+
+  <aside class="left panel">
+    <div class="section">
+      <h3>Selected Student</h3>
+      <div id="selectedInfo" class="small">Select one of your students or click a blue student on the field.</div>
+      <div id="equipSection" class="hidden">
+        <div style="height:10px"></div>
+        <div class="small" style="margin-bottom:8px">Right click enemies for direct target chase. Press <b>A</b> for attack-move and right click a point.</div>
+        <div class="grid3">
+          <button class="btn" id="eqSword">Sword</button>
+          <button class="btn" id="eqSpear">Spear</button>
+          <button class="btn" id="eqBow">Bow</button>
+          <button class="btn" id="eqLongbow">Longbow</button>
+          <button class="btn" id="eqLight">Light</button>
+          <button class="btn" id="eqHeavy">Heavy</button>
+          <button class="btn" id="eqShield">Shield</button>
+          <button class="btn" id="eqBoots">Boots</button>
+          <button class="btn" id="eqMedkit">Medic</button>
+          <button class="btn" id="eqHorse">Horse</button>
+          <button class="btn" id="eqEngineer">Engineer</button>
+          <button class="btn" id="eqTrapKit">Trap Kit</button>
+          <button class="btn gold" id="eqWarHorn">War Horn</button>
+          <button class="btn warn" id="eqFireOil">Fire Oil</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Inventory Summary</h3>
+      <div id="stockSummary" class="small"></div>
+    </div>
+
+    <div class="section">
+      <h3>Current Selection</h3>
+      <div id="selectionPanel" class="small">No units selected.</div>
+    </div>
+  </aside>
+
+  <main class="center panel">
+    <canvas id="game"></canvas>
+    <div class="overlay" id="legend"></div>
+  </main>
+
+  <aside class="right panel">
+    <div class="section">
+      <h3>House Power Rankings</h3>
+      <div id="houses"></div>
+    </div>
+    <div class="section">
+      <h3>Event Log</h3>
+      <div class="log" id="log"></div>
+    </div>
+  </aside>
+
+  <div class="bottom panel">
+    <button class="btn good" id="modeMove">Mode: Move / Job</button>
+    <button class="btn warn" id="modeDefend">Mode: Defend</button>
+    <button class="btn gold" id="modeEscort">Mode: Escort Carrier</button>
+    <button class="btn bad" id="modeAttackMove">Attack Move [A]</button>
+    <button class="btn" id="placeBarricade">Place Barricade [B]</button>
+    <button class="btn" id="placeTrap">Place Trap [T]</button>
+    <button class="btn bad" id="cancelPlace">Cancel Place [Esc]</button>
+    <button class="btn" id="selectAll">Select All</button>
+    <button class="btn" id="recall">Recall</button>
+    <button class="btn" id="focusFlag">Focus Standard</button>
+    <button class="btn bad" id="restart">Restart</button>
+    <div class="small help">
+      <span><b>Left Click</b> select</span>
+      <span><b>Drag</b> box select</span>
+      <span><b>Right Click</b> move / attack / capture / build</span>
+      <span><b>A + Right Click</b> attack-move</span>
+      <span><b>Arrow Keys</b> pan map</span>
+      <span><b>B</b> barricade</span>
+      <span><b>T</b> trap</span>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const DPR = Math.max(1, Math.min(2, devicePixelRatio || 1));
+
+  const ui = {
+    topStats: document.getElementById('topStats'),
+    selectedInfo: document.getElementById('selectedInfo'),
+    stockSummary: document.getElementById('stockSummary'),
+    houses: document.getElementById('houses'),
+    log: document.getElementById('log'),
+    legend: document.getElementById('legend'),
+    selectionPanel: document.getElementById('selectionPanel'),
+    equipSection: document.getElementById('equipSection'),
+    modeMove: document.getElementById('modeMove'),
+    modeDefend: document.getElementById('modeDefend'),
+    modeEscort: document.getElementById('modeEscort'),
+    modeAttackMove: document.getElementById('modeAttackMove'),
+    placeBarricade: document.getElementById('placeBarricade'),
+    placeTrap: document.getElementById('placeTrap'),
+    cancelPlace: document.getElementById('cancelPlace')
+  };
+
+  const TILE = 40;
+  const COLS = 124;
+  const ROWS = 132;
+  const WORLD_W = COLS * TILE;
+  const WORLD_H = ROWS * TILE;
+  const STUDENTS_PER_HOUSE = 10;
+  const MAX_PARTICLES = 300;
+
+  const HOUSE_DEFS = [
+    { id:'player',   name:'House Augustus', color:'#5ca8ff', castle:{x:520,y:3250} },
+    { id:'mars',     name:'House Mars', color:'#d65d5d', castle:{x:1220,y:760} },
+    { id:'minerva',  name:'House Minerva', color:'#d0a44d', castle:{x:2280,y:520} },
+    { id:'diana',    name:'House Diana', color:'#67c98d', castle:{x:3550,y:640} },
+    { id:'apollo',   name:'House Apollo', color:'#f29c52', castle:{x:4440,y:1180} },
+    { id:'juno',     name:'House Juno', color:'#b87ced', castle:{x:4620,y:2360} },
+    { id:'neptune',  name:'House Neptune', color:'#52c4d8', castle:{x:4280,y:3620} },
+    { id:'vulcan',   name:'House Vulcan', color:'#e06855', castle:{x:3360,y:4620} },
+    { id:'venus',    name:'House Venus', color:'#eb77b8', castle:{x:2120,y:4920} },
+    { id:'saturn',   name:'House Saturn', color:'#b3bc63', castle:{x:960,y:4480} }
+  ];
+
+  const NAMES = ['Cassius','Lorn','Tactus','Sevro','Adrius','Roque','Victra','Mustang','Holiday','Thorne','Pax','Nero','Ragnar','Karnus','Daxo','Rhonna','Pebble','Clown','Ajax','Aja','Lysander','Atlas','Orion','Tiber','Quinn','Evey','Julian','Nyla','Toren','Sera','Aurex','Bran','Cato','Varro','Silas','Nyx','Drusus','Mira','Joren','Vela','Maro','Sulla','Aurel','Tima','Dorian','Petra','Ione','Vale'];
+
+  const LOOT_KEYS = ['Sword','Spear','Bow','Longbow','Light','Heavy','Shield','Boots','Medkit','Horse','EngineerKit','TrapKit','WarHorn','FireOil'];
+  const WEAPON_SET = new Set(['Sword','Spear','Bow','Longbow']);
+  const ARMOR_SET = new Set(['Light','Heavy']);
+  const ITEM_SET = new Set(['Shield','Boots','Medkit','EngineerKit','TrapKit','WarHorn','FireOil']);
+
+  let controlMode = 'move';
+  let placementMode = null;
+  let mouseWorld = {x:0,y:0};
+  const keysDown = new Set();
+
+  const game = {
+    time:0,
+    last:0,
+    cam:{x:0,y:0},
+    selected:new Set(),
+    selectedOne:null,
+    drag:null,
+    logs:[],
+    houses:[],
+    students:[],
+    standards:[],
+    lootBoxes:[],
+    groundLoot:[],
+    particles:[],
+    projectiles:[],
+    barricades:[],
+    traps:[],
+    blacksmiths:[],
+    objectives:[],
+    terrain:{ dirt:[], waters:[], rivers:[], forestRects:[], hills:[], stones:[] },
+    walkable:[],
+    gameOver:false,
+    nextLootSpawnAt:5,
+    nextBigMidLootAt:26,
+    earlyBaseLootRemaining:20,
+    followMode:true,
+    followTargetIds:[]
+  };
+
+  function resize(){
+    const r = canvas.getBoundingClientRect();
+    canvas.width = Math.floor(r.width * DPR);
+    canvas.height = Math.floor(r.height * DPR);
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  addEventListener('resize', resize);
+  resize();
+
+  const rand=(a,b)=>Math.random()*(b-a)+a;
+  const randi=(a,b)=>Math.floor(rand(a,b+1));
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const dist=(ax,ay,bx,by)=>Math.hypot(bx-ax, by-ay);
+  const lerp=(a,b,t)=>a+(b-a)*t;
+  const keyXY=(x,y)=>`${x},${y}`;
+
+  function hashId(str){
+    let h = 2166136261;
+    for(let i=0;i<str.length;i++){
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return Math.abs(h >>> 0);
+  }
+
+  function facingVector(dir){
+    if(dir === 'right') return {x:1,y:0};
+    if(dir === 'left') return {x:-1,y:0};
+    return {x:0,y:-1};
+  }
+
+  function visibleRect(pad=120){
+    const r = canvas.getBoundingClientRect();
+    return {
+      x: game.cam.x - pad,
+      y: game.cam.y - pad,
+      w: r.width + pad*2,
+      h: r.height + pad*2
+    };
+  }
+  function inView(x,y,pad=0){
+    const vr = visibleRect(pad);
+    return x >= vr.x && y >= vr.y && x <= vr.x + vr.w && y <= vr.y + vr.h;
+  }
+
+  function addParticle(p){
+    if(game.particles.length >= MAX_PARTICLES) game.particles.shift();
+    game.particles.push(p);
+  }
+
+  function sparkBurst(x, y, color='#ffe7a8'){
+    for(let i=0;i<9;i++){
+      addParticle({
+        x, y,
+        c: color,
+        vx: rand(-120,120),
+        vy: rand(-120,120),
+        t: rand(0.12,0.22),
+        r: rand(1.4,2.8)
+      });
+    }
+  }
+
+  function distToSegment(px, py, ax, ay, bx, by){
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lenSq = dx*dx + dy*dy || 1;
+    let t = ((px-ax)*dx + (py-ay)*dy) / lenSq;
+    t = clamp(t, 0, 1);
+    const cx = ax + dx*t;
+    const cy = ay + dy*t;
+    return Math.hypot(px-cx, py-cy);
+  }
+
+  function riverSlowFactor(x, y){
+    let factor = 1;
+    for(const river of game.terrain.rivers){
+      for(let i=0;i<river.points.length-1;i++){
+        const a = river.points[i];
+        const b = river.points[i+1];
+        const d = distToSegment(x, y, a.x, a.y, b.x, b.y);
+        if(d < river.width * 0.5) factor = Math.min(factor, 0.80);
+      }
+    }
+    return factor;
+  }
+
+  function log(msg){
+    game.logs.unshift(msg);
+    if(game.logs.length>110) game.logs.length=110;
+    ui.log.innerHTML = game.logs.map(m=>`<div>${m}</div>`).join('');
+  }
+
+  function makeHouse(def){
+    const stock = {};
+    for(const k of LOOT_KEYS) stock[k]=0;
+    return {
+      ...def,
+      controller:def.id,
+      stockpile:stock,
+      ai:{ thinkAt:0, aggression:0.25, raid:null, regroupUntil:0 }
+    };
+  }
+
+  function makeStudent(house,i){
+    const s = {
+      id:`${house.id}_${i}`,
+      name:NAMES[(house.name.length*11 + i*5) % NAMES.length] + ' ' + (i+1),
+      origHouse:house.id,
+      controller:house.id,
+      x:house.castle.x + rand(-70,70),
+      y:house.castle.y + rand(-70,70),
+      tx:house.castle.x,
+      ty:house.castle.y,
+      path:[],
+      pathIndex:0,
+      hp:100,
+      maxHp:100,
+      state:'idle',
+      koUntil:0,
+      order:{type:'idle', x:house.castle.x, y:house.castle.y, targetId:null, targetType:null, manual:false},
+      engageId:null,
+      facingDir:'up',
+      attackCd:0,
+      radius:10,
+      swing:0,
+      swingSide:1,
+      draw:0,
+      mount:false,
+      carryingStandard:null,
+      weapon:'None',
+      weaponLevel:0,
+      armor:'None',
+      item:'None',
+      atkDmg:3,
+      atkRange:14,
+      moveSpeed:84,
+      defense:0.00,
+      aggro:135,
+      slaveDebuff:false,
+      trappedUntil:0,
+      buildProgress:0,
+      healTargetId:null,
+      justRespawned:false,
+      engineerCdUntil:0,
+      smithTimer:0,
+      smithingAt:null,
+      lastPathAt:0,
+      lastPosX:0,
+      lastPosY:0,
+      burnUntil:0
+    };
+    applyLoadout(s);
+    s.lastPosX = s.x;
+    s.lastPosY = s.y;
+    return s;
+  }
+
+  function getHouse(id){ return game.houses.find(h=>h.id===id); }
+  function getStandard(houseId){ return game.standards.find(s=>s.houseId===houseId); }
+  function enemies(a,b){ return a.controller!==b.controller; }
+  function isEquipped(s){ return s.weapon!=='None' || s.armor!=='None' || s.item!=='None' || s.mount; }
+  function isEngineer(s){ return s.item==='EngineerKit' || s.item==='TrapKit'; }
+
+  function getWeaponColor(lvl){
+    if(lvl >= 3) return '#ff4c4c';
+    if(lvl >= 2) return '#5ca8ff';
+    return '#f4f7ff';
+  }
+
+  function objectiveBuffsFor(houseId){
+    const buffs = { speed:0, dmg:0, range:0, heal:0, forge:0 };
+    for(const o of game.objectives){
+      if(o.controller !== houseId) continue;
+      if(o.type==='rally') buffs.speed += 10;
+      if(o.type==='arsenal'){ buffs.dmg += 3; buffs.range += 10; }
+      if(o.type==='sanctum') buffs.heal += 1.2;
+      if(o.type==='forge') buffs.forge += 1;
+    }
+    return buffs;
+  }
+
+  function applyLoadout(s){
+    let speed=84, dmg=3, range=14, def=0.00, hp=100, atkCd=0.72;
+    if(s.weapon==='Sword'){ dmg=22; range=26; atkCd=0.58; if(s.weaponLevel===0) s.weaponLevel=1; }
+    if(s.weapon==='Spear'){ dmg=16; range=50; atkCd=0.70; if(s.weaponLevel===0) s.weaponLevel=1; }
+    if(s.weapon==='Bow'){ dmg=14; range=190; atkCd=0.88; if(s.weaponLevel===0) s.weaponLevel=1; }
+    if(s.weapon==='Longbow'){ dmg=13; range=240; atkCd=0.98; if(s.weaponLevel===0) s.weaponLevel=1; }
+    if(s.weapon==='None') s.weaponLevel = 0;
+
+    if(s.weapon!=='None'){
+      const lvl = Math.max(1, s.weaponLevel || 1);
+      if(s.weapon==='Sword'){ dmg += (lvl-1)*4; range += (lvl-1)*4; }
+      if(s.weapon==='Spear'){ dmg += (lvl-1)*3; range += (lvl-1)*9; }
+      if(s.weapon==='Bow'){ dmg += (lvl-1)*2.8; range += (lvl-1)*13; }
+      if(s.weapon==='Longbow'){ dmg += (lvl-1)*2.2; range += (lvl-1)*18; }
+    }
+
+    if(s.armor==='Light') speed+=14;
+    if(s.armor==='Heavy'){ speed-=8; def+=0.22; hp+=28; }
+    if(s.item==='Shield'){ def+=0.16; speed-=3; }
+    if(s.item==='Boots') speed+=20;
+    if(s.item==='Medkit') speed-=1;
+    if(s.item==='EngineerKit') speed-=3;
+    if(s.item==='TrapKit') speed-=2;
+    if(s.item==='WarHorn'){ speed+=14; dmg+=2; }
+    if(s.item==='FireOil') dmg+=5;
+    if(s.mount){ speed*=1.60; hp += 26; }
+    if(s.origHouse==='mars') dmg*=1.08;
+    if(s.origHouse==='diana') speed*=1.06;
+    if((s.origHouse==='minerva' || s.origHouse==='apollo') && (s.weapon==='Bow' || s.weapon==='Longbow')) range += 14;
+    if(s.slaveDebuff){ speed*=0.77; dmg*=0.77; }
+    if(s.carryingStandard) speed *= 0.66;
+
+    const buffs = objectiveBuffsFor(s.controller);
+    speed += buffs.speed;
+    dmg += buffs.dmg;
+    range += buffs.range;
+
+    s.maxHp = hp;
+    s.hp = Math.min(s.hp || hp, hp);
+    s.moveSpeed = speed;
+    s.atkDmg = dmg;
+    s.atkRange = range;
+    s.defense = def;
+    s.baseAttackCd = atkCd;
+    s.aggro = (s.weapon==='Bow' || s.weapon==='Longbow') ? 250 : 185;
+  }
+
+  function getRoleSegments(s){
+    const segs = [];
+    if(s.weapon==='None' && s.armor==='None' && s.item==='None' && !s.mount){
+      segs.push('#ffffff');
+      return segs;
+    }
+    if(s.weapon==='Sword' || s.weapon==='Spear') segs.push('#ff5757');
+    if(s.weapon==='Bow' || s.weapon==='Longbow') segs.push('#58d97b');
+    if(s.item==='Medkit') segs.push('#64b5ff');
+    if(s.armor==='Heavy' || s.item==='Shield' || s.item==='EngineerKit' || s.item==='TrapKit') segs.push('#f2d25a');
+    if(s.item==='WarHorn') segs.push('#d8bd66');
+    if(s.item==='FireOil') segs.push('#ff8c3a');
+    if(segs.length===0) segs.push('#ffffff');
+    return segs.slice(0,2);
+  }
+
+  function isCommandLocked(s){
+    if(s.state==='knocked') return false;
+    return s.order.manual && s.order.type!=='idle' && s.order.type!=='attackMove';
+  }
+
+  function buildTerrain(){
+    game.terrain.dirt = [
+      {x:700,y:900,r:220},{x:1280,y:1460,r:260},{x:2100,y:980,r:280},{x:3040,y:1680,r:280},{x:3940,y:2860,r:300},
+      {x:1680,y:3600,r:340},{x:900,y:4300,r:260},{x:2860,y:4600,r:250}
+    ];
+    game.terrain.waters = [
+      {x:980,y:1100,rx:220,ry:130},{x:1880,y:760,rx:180,ry:110},{x:3340,y:980,rx:260,ry:140},
+      {x:4050,y:3150,rx:220,ry:160},{x:2200,y:4100,rx:180,ry:110},{x:840,y:3340,rx:210,ry:130}
+    ];
+    game.terrain.rivers = [
+      { width: 52, points: [{x:180,y:1360},{x:520,y:1460},{x:980,y:1650},{x:1420,y:1920},{x:1880,y:2180},{x:2440,y:2400},{x:3020,y:2600},{x:3660,y:2860},{x:4320,y:3240},{x:4760,y:3640}] },
+      { width: 42, points: [{x:3520,y:260},{x:3380,y:740},{x:3240,y:1220},{x:3060,y:1720},{x:2860,y:2240},{x:2600,y:2820},{x:2280,y:3540},{x:1880,y:4360},{x:1520,y:5180}] }
+    ];
+    game.terrain.forestRects = [
+      {x:520,y:420,w:420,h:280},{x:1420,y:520,w:340,h:350},{x:2500,y:520,w:340,h:260},{x:3500,y:700,w:420,h:320},
+      {x:3780,y:1900,w:380,h:330},{x:2780,y:3360,w:380,h:340},{x:1180,y:3640,w:450,h:320},{x:420,y:2460,w:380,h:300}
+    ];
+    game.terrain.hills = [
+      {x:1550,y:2200,r:220},{x:2450,y:2550,r:170},{x:3280,y:3920,r:220},{x:820,y:1850,r:160},{x:4220,y:1640,r:190}
+    ];
+    game.terrain.stones = [];
+    for(let i=0;i<130;i++) game.terrain.stones.push({x:rand(80,WORLD_W-80), y:rand(80,WORLD_H-80), r:rand(3,8)});
+
+    game.blacksmiths = [
+      {id:'forge1', x:1150, y:2320, w:118, h:118},
+      {id:'forge2', x:2460, y:2320, w:118, h:118},
+      {id:'forge3', x:3720, y:2680, w:118, h:118}
+    ];
+
+    game.objectives = [
+      { id:'obj_forge', type:'forge', x:2460, y:2460, r:110, controller:null, progress:{} },
+      { id:'obj_rally', type:'rally', x:3180, y:2140, r:110, controller:null, progress:{} },
+      { id:'obj_arsenal', type:'arsenal', x:2860, y:3140, r:110, controller:null, progress:{} },
+      { id:'obj_sanctum', type:'sanctum', x:2060, y:3040, r:110, controller:null, progress:{} }
+    ];
+
+    rebuildWalkableGrid();
+  }
+
+  function rebuildWalkableGrid(){
+    game.walkable = Array.from({length:ROWS},()=>Array(COLS).fill(true));
+    for(let gy=0; gy<ROWS; gy++){
+      for(let gx=0; gx<COLS; gx++){
+        const cx = gx*TILE + TILE/2;
+        const cy = gy*TILE + TILE/2;
+        let blocked = false;
+
+        for(const w of game.terrain.waters){
+          const nx=(cx-w.x)/w.rx, ny=(cy-w.y)/w.ry;
+          if(nx*nx + ny*ny < 1) blocked = true;
+        }
+        for(const f of game.terrain.forestRects){
+          if(cx>f.x && cx<f.x+f.w && cy>f.y && cy<f.y+f.h) blocked = true;
+        }
+        for(const b of game.barricades){
+          if(!b.alive) continue;
+          if(cx > b.x - b.w/2 - 2 && cx < b.x + b.w/2 + 2 && cy > b.y - b.h/2 - 2 && cy < b.y + b.h/2 + 2) blocked = true;
+        }
+        for(const h of HOUSE_DEFS){
+          if(dist(cx,cy,h.castle.x,h.castle.y) < 64) blocked = false;
+        }
+        for(const smith of game.blacksmiths){
+          if(cx>smith.x-smith.w/2 && cx<smith.x+smith.w/2 && cy>smith.y-smith.h/2 && cy<smith.y+smith.h/2) blocked = false;
+        }
+        game.walkable[gy][gx] = !blocked;
+      }
+    }
+  }
+
+  function nearestWalkable(wx,wy){
+    let gx = clamp(Math.floor(wx/TILE),0,COLS-1);
+    let gy = clamp(Math.floor(wy/TILE),0,ROWS-1);
+    if(game.walkable[gy][gx]) return {gx,gy};
+    for(let r=1;r<12;r++){
+      for(let y=gy-r;y<=gy+r;y++){
+        for(let x=gx-r;x<=gx+r;x++){
+          if(x<0||y<0||x>=COLS||y>=ROWS) continue;
+          if(game.walkable[y][x]) return {gx:x,gy:y};
+        }
+      }
+    }
+    return {gx,gy};
+  }
+
+  function isAreaReachable(x,y,radius=44){
+    const p = nearestWalkable(x,y);
+    const cx = p.gx*TILE + TILE/2;
+    const cy = p.gy*TILE + TILE/2;
+    if(dist(x,y,cx,cy) > 45) return false;
+
+    const checks = [
+      [x+radius,y],[x-radius,y],[x,y+radius],[x,y-radius],
+      [x+radius*0.7,y+radius*0.7],[x-radius*0.7,y-radius*0.7]
+    ];
+    let walkCount = 0;
+    for(const [px,py] of checks){
+      const np = nearestWalkable(px,py);
+      const wx = np.gx*TILE+TILE/2, wy = np.gy*TILE+TILE/2;
+      if(dist(px,py,wx,wy) < 35) walkCount++;
+    }
+    return walkCount >= 4;
+  }
+
+  function pathfind(sx,sy,tx,ty){
+    const start = nearestWalkable(sx,sy);
+    const goal = nearestWalkable(tx,ty);
+    const open = [start];
+    const came = new Map();
+    const gScore = new Map([[keyXY(start.gx,start.gy), 0]]);
+    const fScore = new Map([[keyXY(start.gx,start.gy), Math.abs(goal.gx-start.gx)+Math.abs(goal.gy-start.gy)]]);
+    const closed = new Set();
+    const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+    let loops = 0;
+
+    while(open.length && loops < 1800){
+      loops++;
+      let bestIdx=0, bestF=Infinity;
+      for(let i=0;i<open.length;i++){
+        const k=keyXY(open[i].gx,open[i].gy), f=fScore.get(k) ?? Infinity;
+        if(f<bestF){ bestF=f; bestIdx=i; }
+      }
+      const current = open.splice(bestIdx,1)[0];
+      const ck = keyXY(current.gx,current.gy);
+
+      if(current.gx===goal.gx && current.gy===goal.gy){
+        const path = [];
+        let cur = ck;
+        while(cur){
+          const [x,y]=cur.split(',').map(Number);
+          path.push({x:x*TILE+TILE/2,y:y*TILE+TILE/2});
+          cur = came.get(cur);
+        }
+        path.reverse();
+        return path;
+      }
+
+      closed.add(ck);
+      for(const [dx,dy] of dirs){
+        const nx=current.gx+dx, ny=current.gy+dy;
+        if(nx<0||ny<0||nx>=COLS||ny>=ROWS) continue;
+        if(!game.walkable[ny][nx]) continue;
+        const nk=keyXY(nx,ny);
+        if(closed.has(nk)) continue;
+        const tentative=(gScore.get(ck)??Infinity)+1;
+        if(tentative < (gScore.get(nk)??Infinity)){
+          came.set(nk,ck);
+          gScore.set(nk,tentative);
+          fScore.set(nk,tentative + Math.abs(goal.gx-nx)+Math.abs(goal.gy-ny));
+          if(!open.some(o=>o.gx===nx&&o.gy===ny)) open.push({gx:nx,gy:ny});
+        }
+      }
+    }
+    return [{x:goal.gx*TILE+TILE/2,y:goal.gy*TILE+TILE/2}];
+  }
+
+  function setFacingFromDx(s, dx){
+    if(dx > 5) s.facingDir = 'right';
+    else if(dx < -5) s.facingDir = 'left';
+    else s.facingDir = 'up';
+  }
+
+  function setFacingTowardPoint(s, tx, ty){
+    const dx = tx - s.x;
+    const dy = ty - s.y;
+    if(Math.abs(dx) > Math.abs(dy)) setFacingFromDx(s, dx);
+    else s.facingDir = dy < 0 ? 'up' : (dx >= 0 ? 'right' : 'left');
+  }
+
+  function setOrder(student, order){
+    student.order = {
+      type:order.type ?? 'move',
+      x:order.x ?? student.x,
+      y:order.y ?? student.y,
+      targetId:order.targetId ?? null,
+      targetType:order.targetType ?? null,
+      manual:order.manual !== false
+    };
+    student.engageId = null;
+    student.healTargetId = order.type === 'heal' ? order.targetId : null;
+    student.buildProgress = 0;
+    student.tx = student.order.x;
+    student.ty = student.order.y;
+    student.path = pathfind(student.x, student.y, student.tx, student.ty);
+    student.pathIndex = 0;
+    student.lastPathAt = game.time;
+    student.state = 'move';
+  }
+
+  function randomLootSpawnPoint(centerBias=false){
+    for(let tries=0; tries<200; tries++){
+      const x = centerBias ? rand(WORLD_W*0.34, WORLD_W*0.68) : rand(180, WORLD_W-180);
+      const y = centerBias ? rand(WORLD_H*0.26, WORLD_H*0.72) : rand(160, WORLD_H-160);
+      const nw = nearestWalkable(x,y);
+      const px = nw.gx*TILE + TILE/2;
+      const py = nw.gy*TILE + TILE/2;
+      const closeToBox = game.lootBoxes.some(b=>b.alive && dist(b.x,b.y,px,py) < 130);
+      const closeToCastle = HOUSE_DEFS.some(h=>dist(h.castle.x,h.castle.y,px,py) < 155);
+      const closeToWater = game.terrain.waters.some(w=>{
+        const nx=(px-w.x)/(w.rx+32), ny=(py-w.y)/(w.ry+32);
+        return nx*nx + ny*ny < 1;
+      });
+      const inForge = game.blacksmiths.some(f=>px>f.x-f.w/2-28 && px<f.x+f.w/2+28 && py>f.y-f.h/2-28 && py<f.y+f.h/2+28);
+      if(!closeToBox && !closeToCastle && !closeToWater && !inForge && isAreaReachable(px,py,50)) return {x:px,y:py};
+    }
+    return null;
+  }
+
+  function randomLootSpawnNearHouse(house, minR=95, maxR=220){
+    for(let tries=0; tries<100; tries++){
+      const ang = rand(0, Math.PI*2);
+      const rr = rand(minR, maxR);
+      const x = house.castle.x + Math.cos(ang) * rr;
+      const y = house.castle.y + Math.sin(ang) * rr;
+      if(x < 120 || y < 120 || x > WORLD_W-120 || y > WORLD_H-120) continue;
+
+      const nw = nearestWalkable(x,y);
+      const px = nw.gx*TILE + TILE/2;
+      const py = nw.gy*TILE + TILE/2;
+
+      const closeToBox = game.lootBoxes.some(b=>b.alive && dist(b.x,b.y,px,py) < 100);
+      const closeToWater = game.terrain.waters.some(w=>{
+        const nx=(px-w.x)/(w.rx+26), ny=(py-w.y)/(w.ry+26);
+        return nx*nx + ny*ny < 1;
+      });
+      if(!closeToBox && !closeToWater && isAreaReachable(px,py,44)) return {x:px,y:py};
+    }
+    return null;
+  }
+
+  function spawnLootBoxAt(x,y,rare=false,big=false){
+    const pool = ['Sword','Spear','Bow','Longbow','Light','Heavy','Shield','Boots','Medkit','EngineerKit','WarHorn','FireOil'];
+    const loot = [];
+    if(rare) loot.push(['Horse','TrapKit','EngineerKit','WarHorn','FireOil'][randi(0,4)]);
+    loot.push(pool[randi(0,pool.length-1)]);
+    if(Math.random()<0.45 || big) loot.push(pool[randi(0,pool.length-1)]);
+    if(Math.random()<0.25 || big) loot.push(pool[randi(0,pool.length-1)]);
+    if(big){
+      if(Math.random()<0.7) loot.push(['Horse','TrapKit','EngineerKit','Heavy','WarHorn'][randi(0,4)]);
+      if(Math.random()<0.6) loot.push(['Sword','Spear','Bow','Longbow','Shield','FireOil'][randi(0,5)]);
+    }
+    game.lootBoxes.push({
+      id:'box_'+Math.random().toString(36).slice(2),
+      x,y,
+      hp:big?210:(rare?150:100),
+      maxHp:big?210:(rare?150:100),
+      loot,
+      alive:true,
+      rare,big
+    });
+  }
+
+  function spawnInitialLootBoxes(){
+    game.lootBoxes = [];
+    for(const h of game.houses){
+      const a = randomLootSpawnNearHouse(h, 95, 180);
+      const b = randomLootSpawnNearHouse(h, 130, 235);
+      if(a) spawnLootBoxAt(a.x, a.y, false, false);
+      if(b) spawnLootBoxAt(b.x, b.y, Math.random()<0.20, false);
+    }
+    for(let i=0;i<8;i++){
+      const p = randomLootSpawnPoint(false);
+      if(p) spawnLootBoxAt(p.x,p.y, i%4===0, false);
+    }
+  }
+
+  function spawnGroundLoot(x,y,item){
+    if(!item || item==='None') return;
+    const nw = nearestWalkable(x,y);
+    const px = nw.gx*TILE+TILE/2, py = nw.gy*TILE+TILE/2;
+    game.groundLoot.push({ id:'ground_'+Math.random().toString(36).slice(2), x:px, y:py, item, alive:true });
+  }
+
+  function init(){
+    game.time=0; game.last=0; game.gameOver=false;
+    game.logs=[]; game.selected.clear(); game.selectedOne=null; game.drag=null;
+    placementMode = null;
+    controlMode = 'move';
+    game.nextLootSpawnAt = 5;
+    game.nextBigMidLootAt = 26;
+    game.earlyBaseLootRemaining = 20;
+    game.followMode = true;
+    game.followTargetIds = [];
+    game.groundLoot = [];
+
+    game.houses = HOUSE_DEFS.map(makeHouse);
+    game.barricades = [];
+    game.traps = [];
+    buildTerrain();
+
+    game.students = [];
+    for(const h of game.houses){
+      for(let i=0;i<STUDENTS_PER_HOUSE;i++) game.students.push(makeStudent(h,i));
+    }
+
+    game.standards = game.houses.map(h=>({
+      houseId:h.id,
+      controller:h.id,
+      x:h.castle.x,
+      y:h.castle.y-34,
+      carriedBy:null,
+      homeOwner:h.id,
+      dropped:false,
+      returning:false
+    }));
+
+    spawnInitialLootBoxes();
+    game.particles=[];
+    game.projectiles=[];
+
+    const rect = canvas.getBoundingClientRect();
+    const vw = rect.width || 1200;
+    const vh = rect.height || 700;
+    const pCastle = getHouse('player').castle;
+    game.cam.x = clamp(pCastle.x - vw/2, 0, WORLD_W - vw);
+    game.cam.y = clamp(pCastle.y - vh/2, 0, WORLD_H - vh);
+
+    log(`The trial begins. Troops move faster, fight wider, can attack-move, and telegraph their current orders.`);
+    refreshUI();
+    syncModeButtons();
+  }
+
+  function getPlayerHouse(){ return getHouse('player'); }
+
+  function refreshEquipButtons(){
+    const p = getPlayerHouse();
+    const m = k => `${k}(${p.stockpile[k]||0})`;
+    document.getElementById('eqSword').textContent = m('Sword');
+    document.getElementById('eqSpear').textContent = m('Spear');
+    document.getElementById('eqBow').textContent = m('Bow');
+    document.getElementById('eqLongbow').textContent = m('Longbow');
+    document.getElementById('eqLight').textContent = m('Light');
+    document.getElementById('eqHeavy').textContent = m('Heavy');
+    document.getElementById('eqShield').textContent = m('Shield');
+    document.getElementById('eqBoots').textContent = m('Boots');
+    document.getElementById('eqMedkit').textContent = m('Medkit');
+    document.getElementById('eqHorse').textContent = m('Horse');
+    document.getElementById('eqEngineer').textContent = `Engineer(${p.stockpile.EngineerKit||0})`;
+    document.getElementById('eqTrapKit').textContent = `Trap Kit(${p.stockpile.TrapKit||0})`;
+    document.getElementById('eqWarHorn').textContent = `War Horn(${p.stockpile.WarHorn||0})`;
+    document.getElementById('eqFireOil').textContent = `Fire Oil(${p.stockpile.FireOil||0})`;
+  }
+
+  function refreshUI(){
+    renderTop();
+    renderSelected();
+    renderStockSummary();
+    renderSelectionPanel();
+    renderHouses();
+    renderLegend();
+    refreshEquipButtons();
+  }
+
+  function renderTop(){
+    const p = getPlayerHouse();
+    const active = game.students.filter(s=>s.controller==='player' && s.state!=='knocked').length;
+    const knocked = game.students.filter(s=>s.controller==='player' && s.state==='knocked').length;
+    const standardsHeld = game.standards.filter(st=>st.controller==='player').length;
+    const mids = game.objectives.filter(o=>o.controller==='player').length;
+    const modeText =
+      controlMode==='attackmove' ? 'Attack Move' :
+      controlMode==='defend' ? 'Defend' :
+      controlMode==='escort' ? 'Escort' : 'Move';
+    ui.topStats.innerHTML = `
+      <div class="pill">House: <b style="color:${p.color}">${p.name}</b></div>
+      <div class="pill">Active: <b>${active}</b></div>
+      <div class="pill">Knocked Out: <b>${knocked}</b></div>
+      <div class="pill">Standards Ruled: <b>${standardsHeld}/${game.houses.length}</b></div>
+      <div class="pill">Mid Sites: <b>${mids}/${game.objectives.length}</b></div>
+      <div class="pill">Mode: <b>${modeText}</b></div>
+      <div class="pill">Camera: <b>${game.followMode ? 'Auto-follow' : 'Manual'}</b></div>
+    `;
+  }
+
+  function renderSelected(){
+    const s = game.selectedOne;
+    if(!s){
+      ui.selectedInfo.innerHTML = `<div class="small">Select one of your students or click a blue student on the field.</div>`;
+      ui.equipSection.classList.add('hidden');
+      return;
+    }
+    ui.equipSection.classList.remove('hidden');
+    const engCd = Math.max(0, s.engineerCdUntil - game.time);
+    ui.selectedInfo.innerHTML = `
+      <div><b>${s.name}</b></div>
+      <div class="small">Controller: <b>${getHouse(s.controller).name}</b> • Origin: <b>${getHouse(s.origHouse).name}</b></div>
+      <div class="small">Weapon: <b>${s.weapon}</b>${s.weapon!=='None' ? ` Lv.${s.weaponLevel}` : ''} • Armor: <b>${s.armor}</b> • Item: <b>${s.item}</b> • Mount: <b>${s.mount?'Horse':'None'}</b></div>
+      <div class="small">HP: <b>${Math.round(s.hp)}/${Math.round(s.maxHp)}</b> • Speed: <b>${Math.round(s.moveSpeed)}</b> • Damage: <b>${Math.round(s.atkDmg)}</b> • Range: <b>${Math.round(s.atkRange)}</b></div>
+      <div class="small">State: <b>${s.state}</b>${s.carryingStandard ? ' • carrying banner' : ''}${s.trappedUntil>game.time ? ` • trapped ${Math.ceil(s.trappedUntil-game.time)}s` : ''}</div>
+      <div class="small">Order: <b>${s.order.type}</b>${s.order.targetId ? ` • target ${s.order.targetId}` : ''}</div>
+      <div class="small">Engineer CD: <b>${engCd>0 ? engCd.toFixed(1)+'s' : 'Ready'}</b> • Burn: <b>${Math.max(0, s.burnUntil-game.time).toFixed(1)}s</b></div>
+    `;
+  }
+
+  function renderStockSummary(){
+    const p = getPlayerHouse();
+    const total = LOOT_KEYS.reduce((n,k)=>n+(p.stockpile[k]||0),0);
+    ui.stockSummary.innerHTML = `
+      <div>Total stored items: <b>${total}</b></div>
+      <div class="tiny" style="margin-top:6px">
+        Sword ${p.stockpile.Sword||0} • Spear ${p.stockpile.Spear||0} • Bow ${p.stockpile.Bow||0} • Longbow ${p.stockpile.Longbow||0}<br>
+        Heavy ${p.stockpile.Heavy||0} • Shield ${p.stockpile.Shield||0} • Boots ${p.stockpile.Boots||0} • Medkit ${p.stockpile.Medkit||0}<br>
+        Horse ${p.stockpile.Horse||0} • Engineer ${p.stockpile.EngineerKit||0} • Trap ${p.stockpile.TrapKit||0} • Horn ${p.stockpile.WarHorn||0} • Fire Oil ${p.stockpile.FireOil||0}
+      </div>
+    `;
+  }
+
+  function renderSelectionPanel(){
+    const sel = [...game.selected].map(id=>game.students.find(s=>s.id===id)).filter(Boolean);
+    if(!sel.length){
+      ui.selectionPanel.innerHTML = `No units selected.`;
+      return;
+    }
+    ui.selectionPanel.innerHTML = sel.map(s=>{
+      const pct = (s.hp/s.maxHp)*100;
+      return `
+        <div class="card ${game.selectedOne?.id===s.id?'sel':''}" data-id="${s.id}">
+          <div class="row">
+            <div>
+              <div><b>${s.name}</b></div>
+              <div class="tiny">${s.state}${s.carryingStandard?' • banner':''}</div>
+            </div>
+            <div class="tiny">${getHouse(s.controller).name}</div>
+          </div>
+          <div class="bar"><div class="fill" style="width:${pct}%"></div></div>
+          <div class="tags">
+            <span class="tag">${s.weapon}${s.weapon!=='None'?' L'+s.weaponLevel:''}</span>
+            <span class="tag">${s.armor}</span>
+            <span class="tag">${s.item}</span>
+            <span class="tag">${s.order.type}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+    [...ui.selectionPanel.querySelectorAll('.card')].forEach(el=>{
+      el.onclick=()=>{
+        const s = game.students.find(x=>x.id===el.dataset.id);
+        if(s){ game.selectedOne=s; renderSelected(); renderSelectionPanel(); }
+      };
+    });
+  }
+
+  function housePower(h){
+    const active = game.students.filter(s=>s.controller===h.id && s.state!=='knocked');
+    const ruled = game.houses.filter(x=>x.controller===h.id).length;
+    const armed = active.filter(isEquipped).length;
+    const mids = game.objectives.filter(o=>o.controller===h.id).length;
+    const score = active.length*8 + armed*8 + ruled*26 + mids*18 +
+      (h.stockpile.Sword+h.stockpile.Spear+h.stockpile.Bow+h.stockpile.Longbow)*3 +
+      (h.stockpile.Heavy+h.stockpile.Shield+h.stockpile.Medkit+h.stockpile.WarHorn+h.stockpile.FireOil)*2;
+    return { active, ruled, armed, mids, score };
+  }
+
+  function renderHouses(){
+    const lords = game.houses.filter(h=>h.controller===h.id);
+    const ranked = lords.map(h=>({h,...housePower(h)})).sort((a,b)=>b.score-a.score);
+    ui.houses.innerHTML = ranked.map((entry, idx)=>{
+      const h = entry.h;
+      const vassals = game.houses.filter(x=>x.controller===h.id && x.id!==h.id);
+      return `
+        <div class="rankRow">
+          <div class="row">
+            <div><b>#${idx+1} <span style="color:${h.color}">${h.name}</span></b></div>
+            <div class="tiny">Power ${entry.score}</div>
+          </div>
+          <div class="small">Ruled: <b>${entry.ruled}</b> • Active: <b>${entry.active.length}</b> • Equipped: <b>${entry.armed}</b> • Mid Sites: <b>${entry.mids}</b></div>
+          ${vassals.length ? `<div class="vassal">${vassals.map(v=>`<div class="small">• <span style="color:${v.color}">${v.name}</span></div>`).join('')}</div>` : ``}
+        </div>
+      `;
+    }).join('');
+  }
+
+  function renderLegend(){
+    ui.legend.innerHTML = `
+      <div class="pill legend"><span class="dot" style="background:#ffffff"></span>Basic</div>
+      <div class="pill legend"><span class="dot" style="background:#ff5757"></span>Melee</div>
+      <div class="pill legend"><span class="dot" style="background:#58d97b"></span>Archer</div>
+      <div class="pill legend"><span class="dot" style="background:#7fb2ff"></span>Move order</div>
+      <div class="pill legend"><span class="dot" style="background:#ff7a7a"></span>Direct target</div>
+      <div class="pill legend"><span class="dot" style="background:#ffb347"></span>Attack-move</div>
+      <div class="pill legend"><span class="dot" style="background:#ffef9a"></span>Shield Block</div>
+      <div class="pill legend"><span class="dot" style="background:#5ca8ff"></span>Forge II</div>
+      <div class="pill legend"><span class="dot" style="background:#ff4c4c"></span>Forge III</div>
+    `;
+  }
+
+  function spendLootOnSelected(key){
+  const selectedUnits = getSelectedUnits().filter(s=>s.controller==='player' && s.state!=='knocked');
+  if(!selectedUnits.length) return;
+
+  const p = getPlayerHouse();
+  if((p.stockpile[key]||0)<=0){
+    log(`<span style="color:#ffd5d5">You do not have ${key}.</span>`);
+    return;
+  }
+
+  function gearScore(s){
+    let score = 0;
+    if(s.weapon !== 'None') score += 3;
+    if(s.armor !== 'None') score += 2;
+    if(s.item !== 'None') score += 2;
+    if(s.mount) score += 1;
+    return score;
+  }
+
+  function canUseItem(s, key){
+    if(key === 'Horse') return !s.mount;
+    if(WEAPON_SET.has(key)) return s.weapon === 'None';
+    if(ARMOR_SET.has(key)) return s.armor === 'None';
+    if(ITEM_SET.has(key)) return s.item === 'None';
+    return true;
+  }
+
+  let target = null;
+
+  if(selectedUnits.length > 1){
+    const prioritized = [...selectedUnits]
+      .filter(s=>canUseItem(s, key))
+      .sort((a,b)=>gearScore(a)-gearScore(b));
+
+    if(prioritized.length) target = prioritized[0];
+  }
+
+  if(!target){
+    target = game.selectedOne && selectedUnits.includes(game.selectedOne)
+      ? game.selectedOne
+      : selectedUnits[0];
+  }
+
+  if(!target) return;
+
+  p.stockpile[key]--;
+
+  if(key==='Horse'){
+    if(target.mount) p.stockpile['Horse']++;
+    target.mount = true;
+  }else if(WEAPON_SET.has(key)){
+    if(target.weapon!=='None') p.stockpile[target.weapon] = (p.stockpile[target.weapon]||0)+1;
+    target.weapon = key;
+    target.weaponLevel = 1;
+  }else if(ARMOR_SET.has(key)){
+    if(target.armor!=='None') p.stockpile[target.armor] = (p.stockpile[target.armor]||0)+1;
+    target.armor = key;
+  }else if(ITEM_SET.has(key)){
+    if(target.item!=='None') p.stockpile[target.item] = (p.stockpile[target.item]||0)+1;
+    target.item = key;
+  }
+
+  applyLoadout(target);
+  game.selectedOne = target;
+  refreshUI();
+}
+
+  document.getElementById('eqSword').onclick=()=>spendLootOnSelected('Sword');
+  document.getElementById('eqSpear').onclick=()=>spendLootOnSelected('Spear');
+  document.getElementById('eqBow').onclick=()=>spendLootOnSelected('Bow');
+  document.getElementById('eqLongbow').onclick=()=>spendLootOnSelected('Longbow');
+  document.getElementById('eqLight').onclick=()=>spendLootOnSelected('Light');
+  document.getElementById('eqHeavy').onclick=()=>spendLootOnSelected('Heavy');
+  document.getElementById('eqShield').onclick=()=>spendLootOnSelected('Shield');
+  document.getElementById('eqBoots').onclick=()=>spendLootOnSelected('Boots');
+  document.getElementById('eqMedkit').onclick=()=>spendLootOnSelected('Medkit');
+  document.getElementById('eqHorse').onclick=()=>spendLootOnSelected('Horse');
+  document.getElementById('eqEngineer').onclick=()=>spendLootOnSelected('EngineerKit');
+  document.getElementById('eqTrapKit').onclick=()=>spendLootOnSelected('TrapKit');
+  document.getElementById('eqWarHorn').onclick=()=>spendLootOnSelected('WarHorn');
+  document.getElementById('eqFireOil').onclick=()=>spendLootOnSelected('FireOil');
+
+  function syncModeButtons(){
+    [ui.modeMove,ui.modeDefend,ui.modeEscort,ui.modeAttackMove,ui.placeBarricade,ui.placeTrap].forEach(b=>b.classList.remove('active'));
+    if(controlMode==='move') ui.modeMove.classList.add('active');
+    if(controlMode==='defend') ui.modeDefend.classList.add('active');
+    if(controlMode==='escort') ui.modeEscort.classList.add('active');
+    if(controlMode==='attackmove') ui.modeAttackMove.classList.add('active');
+    if(placementMode==='barricade') ui.placeBarricade.classList.add('active');
+    if(placementMode==='trap') ui.placeTrap.classList.add('active');
+  }
+
+  ui.modeMove.onclick=()=>{ controlMode='move'; placementMode=null; syncModeButtons(); };
+  ui.modeDefend.onclick=()=>{ controlMode='defend'; placementMode=null; syncModeButtons(); };
+  ui.modeEscort.onclick=()=>{ controlMode='escort'; placementMode=null; syncModeButtons(); };
+  ui.modeAttackMove.onclick=()=>{ controlMode='attackmove'; placementMode=null; syncModeButtons(); };
+  ui.placeBarricade.onclick=()=>{ placementMode='barricade'; syncModeButtons(); };
+  ui.placeTrap.onclick=()=>{ placementMode='trap'; syncModeButtons(); };
+  ui.cancelPlace.onclick=()=>{ placementMode=null; syncModeButtons(); };
+
+  document.getElementById('selectAll').onclick=()=>{
+    game.selected.clear();
+    for(const s of game.students) if(s.controller==='player' && s.state!=='knocked') game.selected.add(s.id);
+    const first = game.students.find(s=>game.selected.has(s.id));
+    if(first) game.selectedOne = first;
+    renderSelectionPanel();
+    renderSelected();
+  };
+
+  document.getElementById('recall').onclick=()=>{
+    const p = getPlayerHouse();
+    issueFormationOrder(getSelectedUnits(), p.castle.x, p.castle.y, 'move', null, null, true);
+  };
+
+  document.getElementById('focusFlag').onclick=()=>{
+    const targets = game.standards.filter(st=>st.controller!=='player' || st.dropped || st.carriedBy);
+    if(!targets.length) return;
+    targets.sort((a,b)=>dist(a.x,a.y,getPlayerHouse().castle.x,getPlayerHouse().castle.y)-dist(b.x,b.y,getPlayerHouse().castle.x,getPlayerHouse().castle.y));
+    const st = targets[0];
+    issueFormationOrder(getSelectedUnits(), st.x, st.y, 'capture', st.houseId, 'standard', true);
+  };
+
+  document.getElementById('restart').onclick=()=>init();
+
+  addEventListener('keydown',e=>{
+    keysDown.add(e.key);
+    if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) game.followMode = false;
+    if(e.key==='1') document.getElementById('selectAll').click();
+    if(e.key.toLowerCase()==='r') document.getElementById('recall').click();
+    if(e.key.toLowerCase()==='f') document.getElementById('focusFlag').click();
+    if(e.key.toLowerCase()==='a'){ controlMode='attackmove'; placementMode=null; syncModeButtons(); }
+    if(e.key.toLowerCase()==='b'){ placementMode='barricade'; syncModeButtons(); }
+    if(e.key.toLowerCase()==='t'){ placementMode='trap'; syncModeButtons(); }
+    if(e.key==='Escape'){ placementMode=null; controlMode='move'; syncModeButtons(); }
+  });
+  addEventListener('keyup',e=>keysDown.delete(e.key));
+
+  function getSelectedUnits(){
+    return [...game.selected].map(id=>game.students.find(s=>s.id===id)).filter(Boolean);
+  }
+
+  function setFollowTargets(units){
+    game.followTargetIds = units.map(u=>u.id);
+    game.followMode = true;
+  }
+
+  function issueFormationOrder(units, x, y, type='move', targetId=null, targetType=null, manual=true){
+    units = units.filter(Boolean).filter(s=>s.controller==='player' && s.state!=='knocked');
+    if(!units.length) return;
+    const cols = Math.ceil(Math.sqrt(units.length));
+    const spacing = (type === 'attack' || type === 'capture' || type === 'attackMove') ? 42 : 38;
+    for(let i=0;i<units.length;i++){
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const ox = (col - (cols-1)/2) * spacing;
+      const oy = (row - (cols-1)/2) * spacing;
+      setOrder(units[i], {type, x:x+ox, y:y+oy, targetId, targetType, manual});
+    }
+    setFollowTargets(units);
+  }
+
+  function nearestAvailableEngineer(x,y){
+    const units = getSelectedUnits().filter(s=>isEngineer(s) && s.controller==='player' && s.state!=='knocked' && s.engineerCdUntil<=game.time);
+    if(!units.length) return null;
+    units.sort((a,b)=>dist(a.x,a.y,x,y)-dist(b.x,b.y,x,y));
+    return units[0];
+  }
+
+  function issueBuildOrder(x, y, type){
+    const builder = nearestAvailableEngineer(x,y);
+    if(!builder){
+      log(`<span style="color:#ffd5d5">No available engineer is ready.</span>`);
+      return;
+    }
+    setOrder(builder, { type, x, y, manual:true });
+    setFollowTargets([builder]);
+    log(`<span style="color:${getPlayerHouse().color}">${builder.name}</span> moves to place a ${type==='buildBarricade'?'barricade':'trap'}.`);
+  }
+
+  canvas.addEventListener('contextmenu', e=>e.preventDefault());
+  canvas.addEventListener('mousemove', e=>{
+    const r=canvas.getBoundingClientRect();
+    mouseWorld = screenToWorld(e.clientX-r.left,e.clientY-r.top);
+    if(game.drag?.active){
+      game.drag.x1=mouseWorld.x;
+      game.drag.y1=mouseWorld.y;
+    }
+  });
+
+  canvas.addEventListener('mousedown', e=>{
+    const r=canvas.getBoundingClientRect();
+    const p=screenToWorld(e.clientX-r.left,e.clientY-r.top);
+
+    if(e.button===0){
+      game.drag={x0:p.x,y0:p.y,x1:p.x,y1:p.y,active:true};
+      const hit = hitStudent(p.x,p.y, s=>s.controller==='player' && s.state!=='knocked');
+      if(hit){
+        if(!e.shiftKey) game.selected.clear();
+        game.selected.add(hit.id);
+        game.selectedOne=hit;
+        renderSelected(); renderSelectionPanel();
+      }else if(!e.shiftKey){
+        game.selected.clear();
+        game.selectedOne = null;
+        renderSelected(); renderSelectionPanel();
+      }
+    } else if(e.button===2){
+      const sel = getSelectedUnits();
+      if(!sel.length && !placementMode) return;
+
+      if(placementMode==='barricade'){
+        issueBuildOrder(p.x, p.y, 'buildBarricade');
+        placementMode=null; syncModeButtons(); return;
+      }
+      if(placementMode==='trap'){
+        issueBuildOrder(p.x, p.y, 'buildTrap');
+        placementMode=null; syncModeButtons(); return;
+      }
+
+      const enemy = hitStudent(p.x,p.y, s=>s.controller!=='player' && s.state!=='knocked');
+      const allyInjured = hitStudent(p.x,p.y, s=>s.controller==='player' && s.state!=='knocked' && s.hp < s.maxHp);
+      const box = hitBox(p.x,p.y);
+      const std = hitStandard(p.x,p.y);
+      const barricade = hitBarricade(p.x,p.y);
+      const ground = hitGroundLoot(p.x,p.y);
+
+      const medics = sel.filter(s=>s.item==='Medkit');
+      if(allyInjured && medics.length){
+        for(const m of medics){
+          setOrder(m, {type:'heal', x:allyInjured.x, y:allyInjured.y, targetId:allyInjured.id, targetType:'student', manual:true});
+        }
+        const others = sel.filter(s=>s.item!=='Medkit');
+        if(others.length) issueFormationOrder(others, p.x, p.y, 'move', null, null, true);
+        setFollowTargets(sel);
+        return;
+      }
+
+      if(ground){
+        issueFormationOrder(sel, ground.x, ground.y, 'groundLoot', ground.id, 'ground', true);
+      }else if(box){
+        issueFormationOrder(sel, box.x, box.y, 'box', box.id, 'box', true);
+      }else if(barricade && barricade.controller!=='player'){
+        issueFormationOrder(sel, barricade.x, barricade.y, 'attackBarricade', barricade.id, 'barricade', true);
+      }else if(enemy){
+        issueFormationOrder(sel, enemy.x, enemy.y, 'attack', enemy.id, 'student', true);
+      }else if(std){
+        issueFormationOrder(sel, std.x, std.y, 'capture', std.houseId, 'standard', true);
+      }else if(controlMode==='defend'){
+        issueFormationOrder(sel, p.x, p.y, 'defend', null, null, true);
+      }else if(controlMode==='escort'){
+        const carrier = sel.find(s=>s.carryingStandard);
+        if(carrier) issueFormationOrder(sel.filter(s=>s!==carrier), carrier.x, carrier.y, 'escort', carrier.id, 'student', true);
+        else issueFormationOrder(sel, p.x, p.y, 'move', null, null, true);
+      }else if(controlMode==='attackmove'){
+        issueFormationOrder(sel, p.x, p.y, 'attackMove', null, null, true);
+      }else{
+        issueFormationOrder(sel, p.x, p.y, 'move', null, null, true);
+      }
+    }
+  });
+
+  addEventListener('mouseup', ()=>{
+    if(!game.drag?.active) return;
+    const d=game.drag; d.active=false;
+    const minx=Math.min(d.x0,d.x1), maxx=Math.max(d.x0,d.x1);
+    const miny=Math.min(d.y0,d.y1), maxy=Math.max(d.y0,d.y1);
+    if(Math.abs(maxx-minx)>8 || Math.abs(maxy-miny)>8){
+      game.selected.clear();
+      for(const s of game.students){
+        if(s.controller==='player' && s.state!=='knocked' && s.x>=minx && s.x<=maxx && s.y>=miny && s.y<=maxy) game.selected.add(s.id);
+      }
+      const first = game.students.find(s=>game.selected.has(s.id));
+      game.selectedOne = first || null;
+      renderSelected(); renderSelectionPanel();
+    }
+  });
+
+  function screenToWorld(mx,my){ return {x:mx+game.cam.x, y:my+game.cam.y}; }
+
+  function hitStudent(x,y,pred){
+    for(let i=game.students.length-1;i>=0;i--){
+      const s=game.students[i];
+      if(s.state==='knocked') continue;
+      if(pred && !pred(s)) continue;
+      if(dist(x,y,s.x,s.y) <= s.radius+8) return s;
+    }
+    return null;
+  }
+  function hitBox(x,y){ for(const b of game.lootBoxes){ if(b.alive && Math.abs(x-b.x)<18 && Math.abs(y-b.y)<18) return b; } return null; }
+  function hitGroundLoot(x,y){ for(const g of game.groundLoot){ if(g.alive && dist(x,y,g.x,g.y) < 14) return g; } return null; }
+  function hitStandard(x,y){ for(const st of game.standards){ if(dist(x,y,st.x,st.y) < 18) return st; } return null; }
+  function hitBarricade(x,y){ for(const b of game.barricades){ if(b.alive && x > b.x - b.w/2 && x < b.x + b.w/2 && y > b.y - b.h/2 && y < b.y + b.h/2) return b; } return null; }
+
+  function nearestEnemyInAggro(s){
+    let best=null, bd=1e9;
+    for(const e of game.students){
+      if(e.state==='knocked' || !enemies(s,e)) continue;
+      const d=dist(s.x,s.y,e.x,e.y);
+      if(d < bd && d <= s.aggro){ bd=d; best=e; }
+    }
+    return best;
+  }
+
+  function nearestEnemyWithin(s, range){
+    let best=null, bd=1e9;
+    for(const e of game.students){
+      if(e.state==='knocked' || !enemies(s,e)) continue;
+      const d=dist(s.x,s.y,e.x,e.y);
+      if(d < bd && d <= range){ bd=d; best=e; }
+    }
+    return best;
+  }
+
+  function nearestLootTaskTarget(houseId){
+    const house = getHouse(houseId);
+    const boxes = game.lootBoxes.filter(b=>b.alive);
+    const ground = game.groundLoot.filter(g=>g.alive);
+    const all = [
+      ...boxes.map(x=>({kind:'box', obj:x, d:dist(house.castle.x,house.castle.y,x.x,x.y)})),
+      ...ground.map(x=>({kind:'ground', obj:x, d:dist(house.castle.x,house.castle.y,x.x,x.y)}))
+    ].sort((a,b)=>a.d-b.d);
+    return all[0] || null;
+  }
+
+  function weakHouseTargetFor(house){
+    const others = game.houses.filter(h=>h.id!==house.id && h.controller!==house.id);
+    if(!others.length) return null;
+    return others.map(t=>{
+      const d = dist(house.castle.x,house.castle.y,t.castle.x,t.castle.y);
+      const defenders = game.students.filter(s=>s.controller===t.id && s.state!=='knocked' && dist(s.x,s.y,t.castle.x,t.castle.y) < 300).length;
+      const active = game.students.filter(s=>s.controller===t.id && s.state!=='knocked').length;
+      const mids = game.objectives.filter(o=>o.controller===t.id).length;
+      const score = d*0.55 + defenders*65 + active*8 + mids*28;
+      return {house:t, score};
+    }).sort((a,b)=>a.score-b.score)[0]?.house || null;
+  }
+
+  function controlledHouseCount(controllerId){
+    return game.houses.filter(h=>h.controller===controllerId).length;
+  }
+
+  function activeForceFor(controllerId){
+    return game.students.filter(s=>s.controller===controllerId && s.state!=='knocked');
+  }
+
+  function frontlineForceFor(controllerId){
+    return game.students.filter(s=>s.controller===controllerId && s.state!=='knocked' && s.weapon!=='None');
+  }
+
+  function houseMilitaryScore(controllerId){
+    const active = activeForceFor(controllerId);
+    const fighters = frontlineForceFor(controllerId);
+    const equipped = active.filter(isEquipped).length;
+    const mids = game.objectives.filter(o=>o.controller===controllerId).length;
+    const ruled = controlledHouseCount(controllerId);
+    return fighters.length * 2 + equipped + mids * 2 + ruled * 3;
+  }
+
+  function chooseRaidPlan(house, targetHouse){
+    const myFighters = frontlineForceFor(house.id);
+    const targetFighters = frontlineForceFor(targetHouse.id);
+    const ruled = controlledHouseCount(house.id);
+    const myScore = houseMilitaryScore(house.id);
+    const theirScore = houseMilitaryScore(targetHouse.id);
+
+    const strongAdvantage = myScore >= theirScore * 1.45 || myFighters.length >= targetFighters.length + 4 || ruled >= 2;
+    const overwhelming = myScore >= theirScore * 1.9 || myFighters.length >= Math.max(2, targetFighters.length * 1.8) || ruled >= 3;
+
+    let sizeType = 'small';
+    if(overwhelming){
+      sizeType = Math.random() < 0.70 ? 'major' : 'medium';
+    }else if(strongAdvantage){
+      const roll = Math.random();
+      if(roll < 0.48) sizeType = 'major';
+      else if(roll < 0.82) sizeType = 'medium';
+      else sizeType = 'small';
+    }else{
+      const roll = Math.random();
+      if(roll < 0.18) sizeType = 'major';
+      else if(roll < 0.54) sizeType = 'medium';
+      else sizeType = 'small';
+    }
+
+    let pct = 0.34;
+    if(sizeType === 'medium') pct = 0.56;
+    if(sizeType === 'major') pct = 0.80;
+
+    if(ruled >= 2) pct += 0.05;
+    if(ruled >= 3) pct += 0.05;
+    pct = clamp(pct, 0.28, 0.90);
+
+    const styleRoll = Math.random();
+    let style = 'battle';
+    if(sizeType === 'small'){
+      style = styleRoll < 0.60 ? 'snatch' : 'battle';
+    }else if(sizeType === 'medium'){
+      style = styleRoll < 0.45 ? 'snatch' : 'battle';
+    }else{
+      style = styleRoll < 0.30 ? 'snatch' : 'battle';
+    }
+
+    return { sizeType, pct, style, strongAdvantage, overwhelming };
+  }
+
+  function updateObjectives(dt){
+    for(const o of game.objectives){
+      const nearby = {};
+      for(const h of game.houses) nearby[h.id] = 0;
+      for(const s of game.students){
+        if(s.state==='knocked') continue;
+        if(dist(s.x,s.y,o.x,o.y) <= o.r) nearby[s.controller]++;
+      }
+      for(const h of game.houses){
+        const count = nearby[h.id];
+        if(count > 0) o.progress[h.id] = (o.progress[h.id] || 0) + dt * count * 0.5;
+        else o.progress[h.id] = Math.max(0, (o.progress[h.id] || 0) - dt*0.5);
+      }
+      const sorted = Object.entries(o.progress).sort((a,b)=>b[1]-a[1]);
+      if(sorted.length && sorted[0][1] > 8) {
+        const winner = sorted[0][0];
+        if(o.controller !== winner){
+          o.controller = winner;
+          log(`<span style="color:${getHouse(winner).color}">${getHouse(winner).name}</span> secures the ${o.type}.`);
+          for(const s of game.students) if(s.controller===winner) applyLoadout(s);
+        }
+      }
+    }
+  }
+
+  function tryShieldBlock(target, attacker){
+    if(target.item !== 'Shield') return false;
+    if(attacker.weapon !== 'Bow' && attacker.weapon !== 'Longbow') return false;
+
+    const incX = attacker.x - target.x;
+    const incY = attacker.y - target.y;
+    const len = Math.hypot(incX, incY) || 1;
+    const incoming = {x:incX/len, y:incY/len};
+    const fv = facingVector(target.facingDir);
+    const facingDot = incoming.x * fv.x + incoming.y * fv.y;
+
+    let chance = 0.12;
+    if(facingDot > 0.55) chance = 0.48;
+    else if(facingDot > 0.20) chance = 0.34;
+    else if(facingDot > -0.15) chance = 0.22;
+
+    if(target.armor === 'Heavy') chance += 0.06;
+    if(target.carryingStandard) chance += 0.04;
+    chance = clamp(chance, 0.12, 0.62);
+
+    if(Math.random() < chance){
+      sparkBurst(target.x, target.y-4, '#ffe79e');
+      game.projectiles.push({
+        x1:attacker.x, y1:attacker.y-3,
+        x2:target.x + rand(-2,2), y2:target.y-4 + rand(-2,2),
+        ttl:0.04, beam:true, controller:attacker.controller, blocked:true
+      });
+      return true;
+    }
+    return false;
+  }
+
+  function performBowShot(att, target){
+    setFacingTowardPoint(att, target.x, target.y);
+    att.draw = 0.18;
+    att.attackCd = att.baseAttackCd;
+
+    if(tryShieldBlock(target, att)) return;
+
+    const dealt = Math.max(5, att.atkDmg * (1 - target.defense));
+    target.hp -= dealt;
+    if(att.item==='FireOil') target.burnUntil = Math.max(target.burnUntil, game.time + 3.2);
+    game.projectiles.push({x1:att.x, y1:att.y-3, x2:target.x, y2:target.y-4, ttl:0.08, beam:true, controller:att.controller});
+    for(let i=0;i<4;i++) addParticle({x:target.x,y:target.y,c:getHouse(att.controller).color,vx:rand(-40,40),vy:rand(-40,40),t:.20,r:2.2});
+    if(target.hp<=0) knockOut(target, att);
+  }
+
+  function attackTarget(att, target){
+    if(att.attackCd > 0) return;
+    const d = dist(att.x,att.y,target.x,target.y);
+    if(d > att.atkRange + 8) return;
+
+    if(att.weapon==='Bow' || att.weapon==='Longbow'){
+      performBowShot(att, target);
+    }else{
+      setFacingTowardPoint(att, target.x, target.y);
+      att.swing = 0.28;
+      att.swingSide = Math.random()<0.5 ? -1 : 1;
+      let raw = att.atkDmg * rand(0.92,1.12);
+      let dealt = Math.max(4, raw * (1 - target.defense));
+      target.hp -= dealt;
+      if(att.item==='FireOil') target.burnUntil = Math.max(target.burnUntil, game.time + 2.7);
+      for(let i=0;i<5;i++) addParticle({x:target.x,y:target.y,c:getHouse(att.controller).color,vx:rand(-50,50),vy:rand(-50,50),t:.22,r:2.2});
+      att.attackCd = att.baseAttackCd;
+      if(target.hp <= 0) knockOut(target, att);
+    }
+  }
+
+  function partAround(x,y,controllerId){
+    for(const s of game.students){
+      if(s.state==='knocked') continue;
+      const d = dist(s.x,s.y,x,y);
+      if(d < 42){
+        const dx = s.x-x, dy = s.y-y;
+        const dd = Math.max(1, Math.hypot(dx,dy));
+        s.x += (dx/dd) * 10;
+        s.y += (dy/dd) * 10;
+      }
+    }
+    for(let i=0;i<6;i++) addParticle({x,y,c:getHouse(controllerId).color,vx:rand(-90,90),vy:rand(-90,90),t:.22,r:2.3});
+  }
+
+  function attackBox(att, box){
+    if(att.attackCd>0 || !box?.alive) return;
+    const d=dist(att.x,att.y,box.x,box.y);
+    if(d > att.atkRange + 8) return;
+    const mult = att.item==='FireOil' ? 1.7 : 1;
+    setFacingTowardPoint(att, box.x, box.y);
+    if(att.weapon==='Bow' || att.weapon==='Longbow'){
+      att.draw = 0.18;
+      att.attackCd=att.baseAttackCd;
+      box.hp -= att.atkDmg * mult;
+      game.projectiles.push({x1:att.x,y1:att.y-3,x2:box.x,y2:box.y,ttl:0.06,beam:true,controller:att.controller});
+      for(let i=0;i<3;i++) addParticle({x:box.x,y:box.y,c:'#d3b86b',vx:rand(-35,35),vy:rand(-35,35),t:.18,r:2.1});
+      if(box.hp<=0) destroyBox(box, att.controller);
+    }else{
+      att.swing=0.28;
+      att.swingSide = Math.random()<0.5 ? -1 : 1;
+      box.hp -= att.atkDmg * mult * rand(0.95,1.1);
+      for(let i=0;i<3;i++) addParticle({x:box.x,y:box.y,c:'#d3b86b',vx:rand(-45,45),vy:rand(-45,45),t:.20,r:2.1});
+      att.attackCd=att.baseAttackCd;
+      if(box.hp<=0) destroyBox(box, att.controller);
+    }
+  }
+
+  function attackBarricade(att, barricade){
+    if(att.attackCd>0 || !barricade?.alive) return;
+    const d=dist(att.x,att.y,barricade.x,barricade.y);
+    if(d > att.atkRange + 12) return;
+    const mult = att.item==='FireOil' ? 1.8 : 1;
+    setFacingTowardPoint(att, barricade.x, barricade.y);
+
+    if(att.weapon==='Bow' || att.weapon==='Longbow'){
+      att.draw=0.18; att.attackCd=att.baseAttackCd;
+      barricade.hp -= att.atkDmg * mult;
+      game.projectiles.push({x1:att.x,y1:att.y-3,x2:barricade.x,y2:barricade.y,ttl:0.06,beam:true,controller:att.controller});
+      if(barricade.hp<=0){ barricade.alive=false; rebuildWalkableGrid(); }
+    }else{
+      att.swing=0.28; att.swingSide = Math.random()<0.5 ? -1 : 1;
+      barricade.hp -= att.atkDmg * mult * rand(0.95,1.1);
+      for(let i=0;i<3;i++) addParticle({x:barricade.x,y:barricade.y,c:'#b99662',vx:rand(-40,40),vy:rand(-40,40),t:.18,r:2.1});
+      att.attackCd=att.baseAttackCd;
+      if(barricade.hp<=0){ barricade.alive=false; rebuildWalkableGrid(); }
+    }
+  }
+
+  function destroyBox(box, controllerId){
+    box.alive=false;
+    const house=getHouse(controllerId);
+    for(const item of box.loot) house.stockpile[item] = (house.stockpile[item]||0) + 1;
+    log(`<span style="color:${house.color}">${house.name}</span> breaks a loot box and finds <b>${box.loot.join(', ')}</b>.`);
+    if(controllerId==='player') renderStockSummary();
+    refreshEquipButtons();
+    partAround(box.x, box.y, controllerId);
+    for(let i=0;i<10;i++) addParticle({x:box.x,y:box.y,c:'#d3b86b',vx:rand(-80,80),vy:rand(-80,80),t:.30,r:2.4});
+  }
+
+  function maybeDropKnockoutItem(target){
+    const dropPool = [];
+    if(target.weapon!=='None') dropPool.push(target.weapon);
+    if(target.item!=='None') dropPool.push(target.item);
+    if(target.armor!=='None' && Math.random()<0.35) dropPool.push(target.armor);
+    if(target.mount && Math.random()<0.2) dropPool.push('Horse');
+    if(!dropPool.length) return;
+    if(Math.random() < 0.48){
+      const item = dropPool[randi(0,dropPool.length-1)];
+      spawnGroundLoot(target.x + rand(-6,6), target.y + rand(-6,6), item);
+      log(`<span style="color:#d8bd66">Dropped gear:</span> ${item} falls to the ground.`);
+    }
+  }
+
+  function knockOut(target, by){
+    target.hp=0;
+    target.state='knocked';
+    target.koUntil=game.time + rand(12,18);
+    target.engageId=null;
+    target.order = {type:'idle', x:target.x, y:target.y, targetId:null, targetType:null, manual:false};
+    target.path=[]; target.pathIndex=0;
+    target.healTargetId = null;
+    target.smithTimer = 0;
+    target.smithingAt = null;
+    target.burnUntil = 0;
+
+    maybeDropKnockoutItem(target);
+
+    if(target.carryingStandard){
+      const st = getStandard(target.carryingStandard);
+      if(st){
+        st.carriedBy=null;
+        st.x=target.x; st.y=target.y;
+        st.dropped=true; st.returning=false;
+      }
+      target.carryingStandard=null;
+      applyLoadout(target);
+      log(`<span style="color:${getHouse(target.controller).color}">${target.name}</span> is knocked out and drops the banner.`);
+    }
+
+    if(game.selected.has(target.id)) game.selected.delete(target.id);
+    if(game.selectedOne && game.selectedOne.id===target.id) game.selectedOne=null;
+
+    for(let i=0;i<6;i++) addParticle({x:target.x,y:target.y,c:getHouse(by.controller).color,vx:rand(-65,65),vy:rand(-65,65),t:.30,r:2.5});
+    refreshUI();
+  }
+
+  function captureBanner(carrier, standard){
+    standard.carriedBy = carrier.id;
+    standard.dropped = false;
+    standard.returning = true;
+    carrier.carryingStandard = standard.houseId;
+    applyLoadout(carrier);
+    setOrder(carrier, {type:'returnBanner', x:getHouse(carrier.controller).castle.x, y:getHouse(carrier.controller).castle.y, manual:true});
+    log(`<span style="color:${getHouse(carrier.controller).color}">${carrier.name}</span> takes the banner of <span style="color:${getHouse(standard.houseId).color}">${getHouse(standard.houseId).name}</span>.`);
+  }
+
+  function secureReturnedBanner(carrier, standard){
+    const houseId = standard.houseId;
+    carrier.carryingStandard = null;
+    applyLoadout(carrier);
+    standard.carriedBy = null;
+    standard.dropped = false;
+    standard.returning = false;
+    standard.controller = carrier.controller;
+    standard.x = getHouse(carrier.controller).castle.x;
+    standard.y = getHouse(carrier.controller).castle.y - 34;
+    transferHouse(houseId, carrier.controller);
+  }
+
+  function transferHouse(houseId, newControllerId){
+    const house = getHouse(houseId);
+    house.controller = newControllerId;
+    for(const s of game.students){
+      if(s.origHouse===houseId){
+        s.controller = newControllerId;
+        s.slaveDebuff = (newControllerId !== s.origHouse);
+        applyLoadout(s);
+      }
+    }
+    log(`<b style="color:${getHouse(newControllerId).color}">${getHouse(newControllerId).name}</b> takes command of <b style="color:${house.color}">${house.name}</b>.`);
+    checkVictory();
+    refreshUI();
+  }
+
+  function checkVictory(){
+    const allPlayer = game.houses.every(h=>h.controller==='player');
+    if(allPlayer){
+      game.gameOver=true;
+      log(`<b style="color:#aaf0b8">Victory:</b> all houses now answer to your standard.`);
+    }
+    if(getPlayerHouse().controller !== 'player'){
+      game.gameOver=true;
+      log(`<b style="color:#ffb4b4">Defeat:</b> House Augustus has fallen.`);
+    }
+  }
+
+  function respawnStudent(s){
+    const ctrl = getHouse(s.controller);
+    s.x = ctrl.castle.x + rand(-42,42);
+    s.y = ctrl.castle.y + rand(-42,42);
+    s.hp = s.maxHp;
+    s.state='idle';
+    s.path=[]; s.pathIndex=0;
+    s.engageId=null;
+    s.swing=0; s.draw=0;
+    s.trappedUntil = 0;
+    s.order = {type:'idle', x:s.x, y:s.y, targetId:null, targetType:null, manual:false};
+    s.tx = s.x; s.ty = s.y;
+    s.justRespawned = true;
+    s.smithTimer = 0;
+    s.smithingAt = null;
+    s.burnUntil = 0;
+  }
+
+  function autoEquipAI(house){
+    const active = game.students.filter(s=>s.controller===house.id && s.state!=='knocked');
+    const armed = active.filter(isEquipped).length;
+    const desired = Math.ceil(active.length * 0.85);
+    if(armed >= desired) return;
+    const stock = house.stockpile;
+    const candidates = active.filter(s=>!isEquipped(s) || s.weapon==='None');
+    for(const s of candidates){
+      if(s.weapon==='None'){
+        if(stock.Sword>0){ stock.Sword--; s.weapon='Sword'; s.weaponLevel=1; }
+        else if(stock.Spear>0){ stock.Spear--; s.weapon='Spear'; s.weaponLevel=1; }
+        else if(stock.Longbow>0){ stock.Longbow--; s.weapon='Longbow'; s.weaponLevel=1; }
+        else if(stock.Bow>0){ stock.Bow--; s.weapon='Bow'; s.weaponLevel=1; }
+      }
+      if(s.armor==='None'){
+        if(stock.Heavy>0 && Math.random()<0.42){ stock.Heavy--; s.armor='Heavy'; }
+        else if(stock.Light>0){ stock.Light--; s.armor='Light'; }
+      }
+      if(s.item==='None'){
+        if(stock.WarHorn>0 && Math.random()<0.16){ stock.WarHorn--; s.item='WarHorn'; }
+        else if(stock.FireOil>0 && Math.random()<0.20){ stock.FireOil--; s.item='FireOil'; }
+        else if(stock.Medkit>0 && Math.random()<0.11){ stock.Medkit--; s.item='Medkit'; }
+        else if(stock.EngineerKit>0 && Math.random()<0.10){ stock.EngineerKit--; s.item='EngineerKit'; }
+        else if(stock.TrapKit>0 && Math.random()<0.10){ stock.TrapKit--; s.item='TrapKit'; }
+        else if(stock.Shield>0 && Math.random()<0.28){ stock.Shield--; s.item='Shield'; }
+        else if(stock.Boots>0 && Math.random()<0.20){ stock.Boots--; s.item='Boots'; }
+      }
+      if(!s.mount && stock.Horse>0 && Math.random()<0.11){ stock.Horse--; s.mount=true; }
+      applyLoadout(s);
+      if(active.filter(isEquipped).length >= desired) break;
+    }
+  }
+
+  function bannerThreatForHouse(house){
+    const ownBanner = getStandard(house.id);
+    if(ownBanner.carriedBy){
+      const carrier = game.students.find(s=>s.id===ownBanner.carriedBy && s.state!=='knocked');
+      if(carrier) return {type:'chaseCarrier', target:carrier};
+    }
+    if(ownBanner.dropped) return {type:'recoverDropped', target:ownBanner};
+    return null;
+  }
+
+  function assignParty(units, orderType, target){
+    if(!units.length || !target) return;
+    const cols = Math.ceil(Math.sqrt(units.length));
+    for(let i=0;i<units.length;i++){
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const ox = (col - (cols-1)/2) * 34;
+      const oy = (row - (cols-1)/2) * 34;
+      setOrder(units[i], {
+        type: orderType,
+        x: target.x + ox,
+        y: target.y + oy,
+        targetId: target.id ?? target.houseId ?? null,
+        targetType: target.kind === 'ground' ? 'ground' : target.kind === 'box' ? 'box' : target.houseId ? 'standard' : 'student',
+        manual: true
+      });
+    }
+  }
+
+  function endRaid(house, success){
+    if(!house.ai.raid) return;
+    const survivors = house.ai.raid.ids.map(id=>game.students.find(s=>s.id===id)).filter(s=>s && s.controller===house.id && s.state!=='knocked');
+    if(!success){
+      for(const s of survivors){
+        setOrder(s,{ type:'defend', x:house.castle.x + rand(-95,95), y:house.castle.y + rand(-95,95), manual:true });
+      }
+      house.ai.regroupUntil = game.time + rand(4.5, 7.5);
+    }else{
+      house.ai.regroupUntil = game.time + rand(1.2, 2.5);
+    }
+    house.ai.raid = null;
+  }
+
+  function beginRaid(house, targetHouse){
+    const active = activeForceFor(house.id);
+    const fighters = frontlineForceFor(house.id);
+    if(fighters.length < 5) return false;
+
+    const plan = chooseRaidPlan(house, targetHouse);
+
+    let raidSize = Math.floor(fighters.length * plan.pct);
+    if(plan.sizeType === 'small') raidSize = Math.max(4, raidSize);
+    if(plan.sizeType === 'medium') raidSize = Math.max(6, raidSize);
+    if(plan.sizeType === 'major') raidSize = Math.max(8, raidSize);
+    raidSize = Math.min(fighters.length, raidSize);
+
+    const raiders = [...fighters]
+      .sort((a,b)=>{
+        const da = dist(a.x,a.y,targetHouse.castle.x,targetHouse.castle.y) + (a.item==='WarHorn' ? -25 : 0) + (a.mount ? -18 : 0);
+        const db = dist(b.x,b.y,targetHouse.castle.x,targetHouse.castle.y) + (b.item==='WarHorn' ? -25 : 0) + (b.mount ? -18 : 0);
+        return da - db;
+      })
+      .slice(0, raidSize);
+
+    const reserve = active.filter(s=>!raiders.includes(s));
+
+    const archers = raiders.filter(s=>s.weapon==='Bow' || s.weapon==='Longbow');
+    const melee = raiders.filter(s=>s.weapon!=='Bow' && s.weapon!=='Longbow');
+    const escortsPreferred = [...melee.filter(s=>s.mount), ...melee.filter(s=>s.item==='Shield'), ...melee].slice(0, Math.max(2, Math.floor(raidSize * 0.24)));
+    const vanguardPreferred = [...melee.filter(s=>!escortsPreferred.includes(s)), ...archers].slice(0, Math.max(2, Math.floor(raidSize * 0.38)));
+
+    house.ai.raid = {
+      targetHouseId: targetHouse.id,
+      ids: raiders.map(s=>s.id),
+      startedAt: game.time,
+      lastPressureAt: game.time,
+      style: plan.style,
+      sizeType: plan.sizeType,
+      reserveIds: reserve.map(s=>s.id),
+      escortIds: escortsPreferred.map(s=>s.id),
+      vanguardIds: vanguardPreferred.map(s=>s.id),
+      stage: plan.style === 'battle' ? 'clear' : 'approach'
+    };
+
+    const raidText =
+      plan.sizeType === 'major' ? 'a massive raid' :
+      plan.sizeType === 'medium' ? 'a strong raid' :
+      'a small raid';
+
+    const styleText = plan.style === 'battle' ? 'to break resistance before seizing the flag' : 'to grab the flag and run';
+    log(`<span style="color:${house.color}">${house.name}</span> launches ${raidText} on <span style="color:${targetHouse.color}">${targetHouse.name}</span> ${styleText}.`);
+
+    return true;
+  }
+
+  function sustainRaid(house){
+    const raid = house.ai.raid;
+    if(!raid) return false;
+
+    const targetHouse = getHouse(raid.targetHouseId);
+    if(!targetHouse){ house.ai.raid = null; return false; }
+
+    const targetStandard = getStandard(targetHouse.id);
+    const committed = raid.ids.map(id=>game.students.find(s=>s.id===id)).filter(s=>s && s.controller===house.id && s.state!=='knocked');
+
+    if(targetHouse.controller===house.id || (targetStandard && targetStandard.controller===house.id)){
+      endRaid(house, true);
+      return false;
+    }
+
+    if(!committed.length){
+      endRaid(house, false);
+      return false;
+    }
+
+    const carrier = committed.find(s=>s.carryingStandard === targetHouse.id);
+    const escorts = committed.filter(s=>raid.escortIds.includes(s.id) && s!==carrier);
+    const vanguard = committed.filter(s=>raid.vanguardIds.includes(s.id) && s!==carrier);
+    const others = committed.filter(s=>!escorts.includes(s) && !vanguard.includes(s) && s!==carrier);
+
+    const defenders = game.students
+      .filter(e=>e.state!=='knocked' && e.controller!==house.id && dist(e.x,e.y,targetHouse.castle.x,targetHouse.castle.y) < 360)
+      .sort((a,b)=>{
+        const aw = dist(a.x,a.y,targetHouse.castle.x,targetHouse.castle.y) + a.hp*0.25;
+        const bw = dist(b.x,b.y,targetHouse.castle.x,targetHouse.castle.y) + b.hp*0.25;
+        return aw - bw;
+      });
+
+    if(carrier){
+      raid.stage = 'escape';
+      const home = getHouse(house.id).castle;
+
+      setOrder(carrier,{ type:'returnBanner', x:home.x, y:home.y, manual:true });
+
+      const bodyguards = escorts.length ? escorts : committed.filter(s=>s!==carrier).slice(0, Math.max(2, Math.floor(committed.length*0.45)));
+      for(const s of bodyguards){
+        setOrder(s,{ type:'escort', x:carrier.x, y:carrier.y, targetId:carrier.id, targetType:'student', manual:true });
+      }
+
+      const pursuers = defenders.slice(0, Math.max(1, Math.floor(defenders.length*0.6)));
+      const blockers = committed.filter(s=>s!==carrier && !bodyguards.includes(s));
+      for(let i=0;i<blockers.length;i++){
+        const enemy = pursuers[i % Math.max(1, pursuers.length)];
+        if(enemy){
+          setOrder(blockers[i],{ type:'attack', x:enemy.x, y:enemy.y, targetId:enemy.id, targetType:'student', manual:true });
+        }else{
+          setOrder(blockers[i],{ type:'escort', x:carrier.x, y:carrier.y, targetId:carrier.id, targetType:'student', manual:true });
+        }
+      }
+      return true;
+    }
+
+    if(raid.style === 'battle'){
+      if(defenders.length){
+        raid.stage = 'clear';
+        raid.lastPressureAt = game.time;
+
+        const nearStandard = defenders.filter(d=>targetStandard && dist(d.x,d.y,targetStandard.x,targetStandard.y) < 160);
+        const priority = nearStandard.length ? nearStandard : defenders;
+
+        const clearForceCount = Math.max(3, Math.ceil(committed.length * 0.72));
+        const clearForce = [...vanguard, ...others, ...escorts].slice(0, clearForceCount);
+        const flagForce = committed.filter(s=>!clearForce.includes(s));
+
+        for(let i=0;i<clearForce.length;i++){
+          const enemy = priority[i % priority.length];
+          setOrder(clearForce[i],{
+            type:'attack',
+            x:enemy.x,
+            y:enemy.y,
+            targetId:enemy.id,
+            targetType:'student',
+            manual:true
+          });
+        }
+
+        if(targetStandard){
+          for(const s of flagForce){
+            setOrder(s,{
+              type:'capture',
+              x:targetStandard.x + rand(-14,14),
+              y:targetStandard.y + rand(-14,14),
+              targetId:targetStandard.houseId,
+              targetType:'standard',
+              manual:true
+            });
+          }
+        }
+        return true;
+      }
+
+      raid.stage = 'takeFlag';
+      if(targetStandard){
+        for(const s of committed){
+          setOrder(s,{
+            type:'capture',
+            x:targetStandard.x + rand(-16,16),
+            y:targetStandard.y + rand(-16,16),
+            targetId:targetStandard.houseId,
+            targetType:'standard',
+            manual:true
+          });
+        }
+      }
+    } else {
+      raid.stage = 'snatch';
+
+      const interceptors = defenders.slice(0, Math.max(1, Math.floor(defenders.length * 0.55)));
+      const fastGroup = [...committed].sort((a,b)=>{
+        const av = (a.mount ? 20 : 0) + a.moveSpeed;
+        const bv = (b.mount ? 20 : 0) + b.moveSpeed;
+        return bv - av;
+      });
+
+      const flagRunnersCount = Math.max(2, Math.ceil(committed.length * 0.30));
+      const flagRunners = fastGroup.slice(0, flagRunnersCount);
+      const support = committed.filter(s=>!flagRunners.includes(s));
+
+      if(targetStandard){
+        for(const s of flagRunners){
+          setOrder(s,{
+            type:'capture',
+            x:targetStandard.x + rand(-12,12),
+            y:targetStandard.y + rand(-12,12),
+            targetId:targetStandard.houseId,
+            targetType:'standard',
+            manual:true
+          });
+        }
+      }
+
+      for(let i=0;i<support.length;i++){
+        const enemy = interceptors[i % Math.max(1, interceptors.length)];
+        if(enemy){
+          setOrder(support[i],{
+            type:'attack',
+            x:enemy.x,
+            y:enemy.y,
+            targetId:enemy.id,
+            targetType:'student',
+            manual:true
+          });
+        }else if(targetStandard){
+          setOrder(support[i],{
+            type:'capture',
+            x:targetStandard.x + rand(-18,18),
+            y:targetStandard.y + rand(-18,18),
+            targetId:targetStandard.houseId,
+            targetType:'standard',
+            manual:true
+          });
+        }
+      }
+    }
+
+    const minContinue =
+      raid.sizeType === 'major' ? 4 :
+      raid.sizeType === 'medium' ? 3 : 2;
+
+    if(game.time - raid.startedAt > 75){
+      const enoughLeft = committed.length >= minContinue;
+      const recentlyPressured = (game.time - raid.lastPressureAt) < 18;
+      if(!enoughLeft || (!recentlyPressured && committed.length < Math.max(2, Math.floor(raid.ids.length * 0.35)))){
+        endRaid(house, false);
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  function aiThink(house){
+    const active = activeForceFor(house.id);
+    if(!active.length) return;
+
+    autoEquipAI(house);
+
+    if(house.ai.raid && sustainRaid(house)) return;
+    if(house.ai.regroupUntil > game.time) return;
+
+    const fighters = frontlineForceFor(house.id);
+    const bannerThreat = bannerThreatForHouse(house);
+    const ownBuffs = game.objectives.filter(o=>o.controller===house.id).length;
+    const ruled = controlledHouseCount(house.id);
+
+    house.ai.aggression = clamp(
+      0.28 + ownBuffs*0.08 + fighters.length*0.012 + (ruled-1)*0.10,
+      0.28,
+      0.98
+    );
+
+    if(bannerThreat){
+      const chasers = (fighters.length ? fighters : active).slice(0, Math.max(4, Math.floor(active.length*0.58)));
+      if(bannerThreat.type==='chaseCarrier'){
+        for(const s of chasers) setOrder(s,{type:'attack',x:bannerThreat.target.x,y:bannerThreat.target.y,targetId:bannerThreat.target.id,targetType:'student',manual:true});
+      } else {
+        for(const s of chasers) setOrder(s,{type:'capture',x:bannerThreat.target.x,y:bannerThreat.target.y,targetId:bannerThreat.target.houseId,targetType:'standard',manual:true});
+      }
+      for(const s of active.filter(x=>!chasers.includes(x))){
+        setOrder(s,{type:'defend',x:house.castle.x+rand(-90,90),y:house.castle.y+rand(-90,90),manual:true});
+      }
+      return;
+    }
+
+    const nearEnemies = game.students.filter(
+      s=>s.controller!==house.id && s.state!=='knocked' && dist(s.x,s.y,house.castle.x,house.castle.y)<340
+    );
+
+    if(nearEnemies.length){
+      const defenders = active.slice(0, Math.ceil(active.length*0.70));
+      const weak = [...nearEnemies].sort((a,b)=>a.hp-b.hp);
+      for(let i=0;i<defenders.length;i++){
+        const t = weak[i % weak.length];
+        setOrder(defenders[i],{type:'attack',x:t.x,y:t.y,targetId:t.id,targetType:'student',manual:true});
+      }
+      for(const s of active.filter(x=>!defenders.includes(x))){
+        setOrder(s,{type:'defend',x:house.castle.x+rand(-80,80),y:house.castle.y+rand(-80,80),manual:true});
+      }
+      return;
+    }
+
+    const weakTarget = weakHouseTargetFor(house);
+    const lootTarget = nearestLootTaskTarget(house.id);
+    const uncappedObjective = game.objectives
+      .filter(o=>o.controller !== house.id)
+      .sort((a,b)=>dist(a.x,a.y,house.castle.x,house.castle.y)-dist(b.x,b.y,house.castle.x,house.castle.y))[0];
+
+    const shouldContestMid =
+      uncappedObjective &&
+      fighters.length >= 4 &&
+      Math.random() < (0.32 + ownBuffs*0.05);
+
+    const shouldRaid =
+      weakTarget &&
+      fighters.length >= 5 &&
+      Math.random() < (house.ai.aggression + (ruled >= 2 ? 0.12 : 0));
+
+    if(shouldRaid){
+      if(beginRaid(house, weakTarget)){
+        sustainRaid(house);
+        return;
+      }
+    }
+
+    if(shouldContestMid){
+      const partySize = ruled >= 2 ? Math.max(5, Math.floor(active.length*0.52)) : Math.max(4, Math.floor(active.length*0.42));
+      const party = [...active]
+        .sort((a,b)=>dist(a.x,a.y,uncappedObjective.x,uncappedObjective.y)-dist(b.x,b.y,uncappedObjective.x,uncappedObjective.y))
+        .slice(0, partySize);
+
+      assignParty(party, 'move', uncappedObjective);
+
+      for(const s of active.filter(x=>!party.includes(x))){
+        setOrder(s,{type:'defend',x:house.castle.x+rand(-70,70),y:house.castle.y+rand(-70,70),manual:true});
+      }
+      return;
+    }
+
+    if(lootTarget){
+      const partySize = ruled >= 2 ? Math.max(3, Math.floor(active.length*0.24)) : Math.max(3, Math.floor(active.length*0.20));
+      const party = [...active]
+        .sort((a,b)=>dist(a.x,a.y,lootTarget.obj.x,lootTarget.obj.y)-dist(b.x,b.y,lootTarget.obj.x,lootTarget.obj.y))
+        .slice(0, partySize);
+
+      assignParty(party, lootTarget.kind==='ground' ? 'groundLoot' : 'box', { ...lootTarget.obj, kind:lootTarget.kind });
+
+      for(const s of active.filter(x=>!party.includes(x))){
+        setOrder(s,{type:'defend',x:house.castle.x+rand(-80,80),y:house.castle.y+rand(-80,80),manual:true});
+      }
+      return;
+    }
+
+    for(const s of active){
+      setOrder(s,{type:'defend',x:house.castle.x+rand(-75,75),y:house.castle.y+rand(-75,75),manual:true});
+    }
+  }
+
+  function tryTriggerTrap(s){
+    for(const t of game.traps){
+      if(!t.alive || t.controller===s.controller) continue;
+      if(dist(s.x,s.y,t.x,t.y) < 12){
+        t.alive = false;
+        s.trappedUntil = game.time + 18;
+        log(`<span style="color:${getHouse(s.controller).color}">${s.name}</span> is trapped.`);
+        for(let i=0;i<7;i++) addParticle({x:s.x,y:s.y,c:'#f2d25a',vx:rand(-38,38),vy:rand(-38,38),t:.4,r:2.2});
+      }
+    }
+  }
+
+  function handleGroundLootPickup(s){
+    for(const g of game.groundLoot){
+      if(!g.alive) continue;
+      if(dist(s.x,s.y,g.x,g.y) < 14){
+        g.alive = false;
+        const house = getHouse(s.controller);
+        house.stockpile[g.item] = (house.stockpile[g.item]||0) + 1;
+        if(s.controller==='player') renderStockSummary();
+        refreshEquipButtons();
+        log(`<span style="color:${house.color}">${house.name}</span> recovers <b>${g.item}</b>.`);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function handleBannerPickup(s){
+    for(const st of game.standards){
+      if(st.carriedBy) continue;
+      if(dist(s.x,s.y,st.x,st.y) > 16) continue;
+      if(st.houseId !== s.controller || st.dropped){
+        captureBanner(s, st);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function completeManualOrderIfReached(s){
+    const near = dist(s.x,s.y,s.tx,s.ty) < 16;
+    if(!near) return;
+    if(['move','escort','attackMove'].includes(s.order.type)){
+      s.order = {type:'idle', x:s.x, y:s.y, targetId:null, targetType:null, manual:false};
+      s.state = 'idle';
+      if(controlMode==='attackmove') controlMode='move';
+    }
+    if(s.order.type==='defend'){
+      s.order = {type:'defend', x:s.x, y:s.y, targetId:null, targetType:null, manual:false};
+      s.state = 'idle';
+    }
+  }
+
+  function updateBlacksmith(s, dt){
+    if(s.weapon==='None' || s.state==='knocked' || s.weaponLevel>=3){
+      s.smithTimer = 0; s.smithingAt = null; return;
+    }
+    let inside = null;
+    for(const f of game.blacksmiths){
+      if(s.x>f.x-f.w/2 && s.x<f.x+f.w/2 && s.y>f.y-f.h/2 && s.y<f.y+f.h/2){ inside = f; break; }
+    }
+    const moved = dist(s.x,s.y,s.lastPosX,s.lastPosY) > 5;
+    const bonusForge = objectiveBuffsFor(s.controller).forge;
+    const needed = bonusForge ? 12 : 18;
+
+    if(inside && !moved && s.attackCd<=0.1){
+      if(s.smithingAt !== inside.id){ s.smithTimer = 0; s.smithingAt = inside.id; }
+      s.smithTimer += dt;
+      if(s.smithTimer >= needed){
+        s.weaponLevel++;
+        s.smithTimer = 0;
+        applyLoadout(s);
+        log(`<span style="color:${getHouse(s.controller).color}">${s.name}</span> upgrades ${s.weapon} to level <b>${s.weaponLevel}</b>.`);
+      }
+    } else {
+      s.smithTimer = 0; s.smithingAt = null;
+    }
+  }
+
+  function maybeRepath(s, targetPoint){
+    if(game.time - s.lastPathAt < 0.42 && s.path.length && s.pathIndex < s.path.length) return;
+    s.tx = targetPoint.x;
+    s.ty = targetPoint.y;
+    s.path = pathfind(s.x,s.y,s.tx,s.ty);
+    s.pathIndex = 0;
+    s.lastPathAt = game.time;
+  }
+
+  function getEngagementMeleePoint(s, target){
+    const attackers = game.students
+      .filter(a =>
+        a.state !== 'knocked' &&
+        a.controller === s.controller &&
+        a.weapon !== 'Bow' &&
+        a.weapon !== 'Longbow' &&
+        (
+          a.engageId === target.id ||
+          ((a.order.type === 'attack' || a.order.type === 'capture' || a.order.type === 'attackMove') && a.order.targetId === target.id)
+        )
+      )
+      .sort((a,b)=>a.id.localeCompare(b.id));
+
+    const idx = Math.max(0, attackers.findIndex(a=>a.id === s.id));
+    let ring = 0;
+    let remaining = idx;
+    let ringCap = 6;
+    while(remaining >= ringCap){
+      remaining -= ringCap;
+      ring++;
+      ringCap += 6;
+    }
+
+    const ringRadius = target.radius + 22 + ring * 13 + ((hashId(s.id) % 3) * 2);
+    const angleOffset = (hashId(target.id + '|' + s.controller) % 628) / 100;
+    const angle = angleOffset + (remaining / ringCap) * Math.PI * 2;
+
+    return {
+      x: target.x + Math.cos(angle) * ringRadius,
+      y: target.y + Math.sin(angle) * ringRadius
+    };
+  }
+
+  function getRangedCombatPoint(s, target){
+    const dx = s.x - target.x;
+    const dy = s.y - target.y;
+    const baseAngle = Math.atan2(dy, dx);
+    const side = (hashId(s.id) % 2 === 0) ? 1 : -1;
+    const tangent = baseAngle + side * Math.PI / 2;
+    const desired = s.weapon === 'Longbow' ? 180 : 138;
+    const lateral = 22 + (hashId(s.id) % 3) * 8;
+
+    return {
+      x: target.x + Math.cos(baseAngle) * desired + Math.cos(tangent) * lateral,
+      y: target.y + Math.sin(baseAngle) * desired + Math.sin(tangent) * lateral
+    };
+  }
+
+  function computeSeparation(s, fightTarget){
+    let sepX=0, sepY=0;
+    const inCombat = !!fightTarget || !!s.engageId || s.order.type === 'attack' || s.order.type === 'capture' || s.order.type === 'attackMove';
+
+    for(const a of game.students){
+      if(a===s || a.state==='knocked') continue;
+      const dx = s.x - a.x;
+      const dy = s.y - a.y;
+      const d = Math.hypot(dx,dy);
+      if(d <= 0.0001) continue;
+
+      const ally = a.controller===s.controller;
+      let desired = ally ? (inCombat ? 28 : 22) : (inCombat ? 14 : 11);
+      if((s.weapon==='Bow' || s.weapon==='Longbow') && ally) desired += 4;
+      if((a.weapon==='Bow' || a.weapon==='Longbow') && ally) desired += 2;
+
+      if(d < desired){
+        const strength = ally ? (inCombat ? 2.8 : 1.55) : 0.75;
+        const push = (desired - d) * strength;
+        sepX += (dx/d) * push;
+        sepY += (dy/d) * push;
+      }
+    }
+
+    return {x:sepX, y:sepY};
+  }
+
+  function update(dt){
+    if(game.gameOver) return;
+    game.time += dt;
+
+    updateObjectives(dt);
+
+    if(game.time >= game.nextLootSpawnAt){
+      let spot = null;
+      if(game.earlyBaseLootRemaining > 0){
+        const shuffled = [...game.houses].sort(()=>Math.random()-0.5);
+        for(const h of shuffled){ spot = randomLootSpawnNearHouse(h, 100, 225); if(spot) break; }
+        if(spot){
+          spawnLootBoxAt(spot.x, spot.y, Math.random()<0.12, false);
+          game.earlyBaseLootRemaining--;
+          log(`A nearby supply box appears beside a house base.`);
+        }
+        game.nextLootSpawnAt = game.time + rand(4.6, 6.8);
+      }else{
+        spot = randomLootSpawnPoint(false);
+        if(spot){
+          spawnLootBoxAt(spot.x, spot.y, Math.random()<0.25, false);
+          log(`A new loot box appears on the field.`);
+        }
+        game.nextLootSpawnAt = game.time + rand(7, 11);
+      }
+    }
+
+    if(game.time >= game.nextBigMidLootAt){
+      const spot = randomLootSpawnPoint(true);
+      if(spot){
+        spawnLootBoxAt(spot.x, spot.y, true, true);
+        log(`<b style="color:#d8bd66">A great loot crate appears near the center!</b>`);
+      }
+      game.nextBigMidLootAt = game.time + rand(20, 30);
+    }
+
+    for(const h of game.houses){
+      if(h.id==='player') continue;
+      if(game.time >= h.ai.thinkAt){
+        const ruled = controlledHouseCount(h.id);
+        const thinkMin = ruled >= 2 ? 0.75 : 1.0;
+        const thinkMax = ruled >= 2 ? 1.25 : 1.6;
+        h.ai.thinkAt = game.time + rand(thinkMin, thinkMax);
+        aiThink(h);
+      }
+    }
+
+    for(const s of game.students){
+      if(s.state==='knocked' && game.time >= s.koUntil) respawnStudent(s);
+    }
+
+    for(const s of game.students){
+      if(s.state==='knocked' || s.item!=='Medkit' || s.order.manual) continue;
+      let hurt = null, best = 99999;
+      for(const a of game.students){
+        if(a===s || a.state==='knocked' || a.controller!==s.controller || a.hp >= a.maxHp-1) continue;
+        const d = dist(s.x,s.y,a.x,a.y);
+        if(d < best){ best=d; hurt=a; }
+      }
+      if(hurt && game.time - s.lastPathAt > 0.7){
+        maybeRepath(s, {x:hurt.x, y:hurt.y});
+      }
+    }
+
+    const houseHealBuffs = {};
+    for(const h of game.houses) houseHealBuffs[h.id] = objectiveBuffsFor(h.id).heal;
+
+    for(const s of game.students){
+      if(s.state==='knocked') continue;
+      if(s.item==='Medkit'){
+        for(const a of game.students){
+          if(a.state==='knocked' || a.controller!==s.controller || a===s) continue;
+          if(dist(s.x,s.y,a.x,a.y) < 46) a.hp = Math.min(a.maxHp, a.hp + (5 + houseHealBuffs[s.controller])*dt);
+        }
+      }
+      if(s.burnUntil > game.time){
+        s.hp -= 4*dt;
+        if(Math.random()<0.22) addParticle({x:s.x+rand(-4,4),y:s.y-4,c:'#ff8c3a',vx:rand(-10,10),vy:rand(-16,-6),t:.18,r:2.0});
+        if(s.hp <= 0){
+          const foe = game.students.find(e=>e.controller!==s.controller && e.state!=='knocked' && dist(e.x,e.y,s.x,s.y)<120) || {controller:s.controller};
+          knockOut(s, foe);
+          continue;
+        }
+      }
+    }
+
+    for(let i=game.projectiles.length-1;i>=0;i--){
+      const p = game.projectiles[i];
+      p.ttl -= dt;
+      if(p.ttl<=0) game.projectiles.splice(i,1);
+    }
+
+    for(const s of game.students){ s.lastPosX = s.x; s.lastPosY = s.y; }
+
+    for(const s of game.students){
+      if(s.state==='knocked') continue;
+      if(s.attackCd>0) s.attackCd-=dt;
+      if(s.swing>0) s.swing-=dt;
+      if(s.draw>0) s.draw-=dt;
+      tryTriggerTrap(s);
+
+      if(!s.carryingStandard){
+        handleGroundLootPickup(s);
+        handleBannerPickup(s);
+      }
+
+      if(s.carryingStandard){
+        const st = getStandard(s.carryingStandard);
+        if(st) { st.x = s.x; st.y = s.y - 20; }
+        const home = getHouse(s.controller).castle;
+        if(dist(s.x,s.y,home.x,home.y) < 56){
+          if(st) secureReturnedBanner(s, st);
+        }
+      }
+
+      if(!isCommandLocked(s) && !s.carryingStandard && s.order.type!=='heal' && s.order.type!=='buildBarricade' && s.order.type!=='buildTrap'){
+        const aggro = nearestEnemyInAggro(s);
+        if(aggro) s.engageId = aggro.id;
+        else if(s.engageId){
+          const t = game.students.find(x=>x.id===s.engageId);
+          if(!t || t.state==='knocked' || !enemies(s,t) || dist(s.x,s.y,t.x,t.y) > s.aggro*1.6) s.engageId = null;
+        }
+      } else if(s.order.type!=='attackMove') {
+        s.engageId = null;
+      }
+
+      let targetPoint = null;
+      let fightTarget = null;
+      let boxTarget = null;
+      let barricadeTarget = null;
+      let groundTarget = null;
+
+      if(s.order.type==='attackMove'){
+        if(s.engageId){
+          const engaged = game.students.find(x=>x.id===s.engageId && x.state!=='knocked' && enemies(s,x));
+          if(engaged && dist(s.x,s.y,engaged.x,engaged.y) <= s.aggro*1.7){
+            fightTarget = engaged;
+          }else{
+            s.engageId = null;
+          }
+        }
+        if(!fightTarget){
+          const seek = nearestEnemyWithin(s, s.aggro + 45);
+          if(seek){
+            s.engageId = seek.id;
+            fightTarget = seek;
+          }
+        }
+      } else if(s.engageId){
+        fightTarget = game.students.find(x=>x.id===s.engageId);
+      } else if(s.order.targetType==='student' && (s.order.type==='attack' || s.order.type==='heal' || s.order.type==='escort')){
+        fightTarget = game.students.find(x=>x.id===s.order.targetId);
+      } else if(s.order.targetType==='box'){
+        boxTarget = game.lootBoxes.find(x=>x.id===s.order.targetId && x.alive);
+      } else if(s.order.targetType==='barricade'){
+        barricadeTarget = game.barricades.find(x=>x.id===s.order.targetId && x.alive);
+      } else if(s.order.targetType==='ground'){
+        groundTarget = game.groundLoot.find(x=>x.id===s.order.targetId && x.alive);
+      }
+
+      if(s.order.type==='heal'){
+        const ally = game.students.find(x=>x.id===s.order.targetId && x.state!=='knocked');
+        if(!ally || ally.hp >= ally.maxHp){
+          s.order = {type:'idle', x:s.x, y:s.y, targetId:null, targetType:null, manual:false};
+        } else {
+          targetPoint = {x:ally.x, y:ally.y};
+          if(dist(s.x,s.y,ally.x,ally.y) < 42){
+            ally.hp = Math.min(ally.maxHp, ally.hp + 12*dt);
+          }
+        }
+      } else if(fightTarget && fightTarget.state!=='knocked' && enemies(s, fightTarget)){
+        const d = dist(s.x,s.y,fightTarget.x,fightTarget.y);
+
+        if(s.weapon==='Bow' || s.weapon==='Longbow'){
+          targetPoint = getRangedCombatPoint(s, fightTarget);
+          if(d <= s.atkRange+8) attackTarget(s, fightTarget);
+        } else {
+          targetPoint = getEngagementMeleePoint(s, fightTarget);
+          if(d <= s.atkRange+8) attackTarget(s, fightTarget);
+        }
+
+        if(s.order.type==='attackMove' && fightTarget.state==='knocked'){
+          s.engageId = null;
+          targetPoint = {x:s.tx, y:s.ty};
+        }
+      } else if(groundTarget){
+        targetPoint = {x:groundTarget.x, y:groundTarget.y};
+        if(!groundTarget.alive || dist(s.x,s.y,groundTarget.x,groundTarget.y) < 14){
+          handleGroundLootPickup(s);
+          s.order = {type:'idle', x:s.x, y:s.y, targetId:null, targetType:null, manual:false};
+        }
+      } else if(boxTarget){
+        targetPoint = {x:boxTarget.x, y:boxTarget.y};
+        if(dist(s.x,s.y,boxTarget.x,boxTarget.y) <= s.atkRange+6) attackBox(s, boxTarget);
+        if(!boxTarget.alive) s.order = {type:'idle', x:s.x, y:s.y, targetId:null, targetType:null, manual:false};
+      } else if(barricadeTarget){
+        targetPoint = {x:barricadeTarget.x, y:barricadeTarget.y};
+        if(dist(s.x,s.y,barricadeTarget.x,barricadeTarget.y) <= s.atkRange+8) attackBarricade(s, barricadeTarget);
+        if(!barricadeTarget.alive) s.order = {type:'idle', x:s.x, y:s.y, targetId:null, targetType:null, manual:false};
+      } else {
+        targetPoint = {x:s.tx,y:s.ty};
+      }
+
+      if(s.order.type==='attack'){
+        const tgt = game.students.find(x=>x.id===s.order.targetId && x.state!=='knocked' && enemies(s,x));
+        if(tgt){
+          fightTarget = tgt;
+          if(s.weapon==='Bow' || s.weapon==='Longbow') targetPoint = getRangedCombatPoint(s, tgt);
+          else targetPoint = getEngagementMeleePoint(s, tgt);
+        } else {
+          s.order = {type:'idle', x:s.x, y:s.y, targetId:null, targetType:null, manual:false};
+          s.state='idle';
+          targetPoint = {x:s.x, y:s.y};
+        }
+      }
+
+      if(s.carryingStandard){
+        const home=getHouse(s.controller).castle;
+        targetPoint = {x:home.x,y:home.y};
+      }
+
+      if(s.order.type==='escort' && s.order.targetType==='student'){
+        const car = game.students.find(x=>x.id===s.order.targetId && x.state!=='knocked');
+        if(car) targetPoint = {x:car.x + rand(-20,20), y:car.y + rand(-20,20)};
+      }
+
+      if(s.order.type==='buildBarricade'){
+        targetPoint = {x:s.order.x, y:s.order.y};
+        if(dist(s.x,s.y,s.order.x,s.order.y) < 18){
+          s.buildProgress += dt;
+          if(s.buildProgress >= 2.0){
+            if(s.engineerCdUntil <= game.time){
+              game.barricades.push({
+                id:'bar_'+Math.random().toString(36).slice(2),
+                x:s.order.x, y:s.order.y, w:44, h:18,
+                hp:140, maxHp:140, alive:true, controller:s.controller
+              });
+              rebuildWalkableGrid();
+              s.buildProgress = 0;
+              s.engineerCdUntil = game.time + 12;
+              s.order = {type:'idle', x:s.x, y:s.y, targetId:null, targetType:null, manual:false};
+              log(`<span style="color:${getHouse(s.controller).color}">${s.name}</span> builds a barricade.`);
+            }
+          }
+        }
+      }
+
+      if(s.order.type==='buildTrap'){
+        targetPoint = {x:s.order.x, y:s.order.y};
+        if(dist(s.x,s.y,s.order.x,s.order.y) < 18){
+          s.buildProgress += dt;
+          if(s.buildProgress >= 1.5){
+            if(s.engineerCdUntil <= game.time){
+              game.traps.push({ id:'trap_'+Math.random().toString(36).slice(2), x:s.order.x, y:s.order.y, alive:true, controller:s.controller });
+              s.buildProgress = 0;
+              s.engineerCdUntil = game.time + 12;
+              s.order = {type:'idle', x:s.x, y:s.y, targetId:null, targetType:null, manual:false};
+              log(`<span style="color:${getHouse(s.controller).color}">${s.name}</span> places a trap.`);
+            }
+          }
+        }
+      }
+
+      if(targetPoint && (dist(targetPoint.x,targetPoint.y,s.tx,s.ty) > 18 || s.pathIndex >= s.path.length)){
+        maybeRepath(s, targetPoint);
+      }
+
+      let px = s.tx, py = s.ty;
+      if(s.path.length && s.pathIndex < s.path.length){
+        const p = s.path[s.pathIndex];
+        px = p.x; py = p.y;
+        if(dist(s.x,s.y,p.x,p.y) < 10) s.pathIndex++;
+      }
+
+      let hornBonus = 0;
+      for(const a of game.students){
+        if(a===s || a.state==='knocked' || a.controller!==s.controller || a.item!=='WarHorn') continue;
+        if(dist(s.x,s.y,a.x,a.y) < 78){ hornBonus = 8; break; }
+      }
+
+      const sep = computeSeparation(s, fightTarget);
+
+      if(s.trappedUntil <= game.time){
+        let dx = px - s.x;
+        let dy = py - s.y;
+        const dd = Math.hypot(dx,dy);
+        const slow = riverSlowFactor(s.x, s.y);
+        const moveSpeedNow = (s.moveSpeed + hornBonus) * slow;
+
+        if(dd > 1.5){
+          setFacingTowardPoint(s, px, py);
+          s.x += (dx/dd)*moveSpeedNow*dt + sep.x*dt;
+          s.y += (dy/dd)*moveSpeedNow*dt + sep.y*dt;
+          s.state = fightTarget ? 'fight' : 'move';
+        } else {
+          s.state = fightTarget ? 'fight' : 'idle';
+          s.x += sep.x*dt;
+          s.y += sep.y*dt;
+        }
+      }
+
+      s.x = clamp(s.x, 20, WORLD_W-20);
+      s.y = clamp(s.y, 20, WORLD_H-20);
+      completeManualOrderIfReached(s);
+      updateBlacksmith(s, dt);
+      s.justRespawned = false;
+    }
+
+    for(let i=game.particles.length-1;i>=0;i--){
+      const p=game.particles[i];
+      p.t -= dt;
+      p.x += p.vx*dt;
+      p.y += p.vy*dt;
+      if(p.t<=0) game.particles.splice(i,1);
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const vw = rect.width, vh = rect.height;
+    const panSpeed = 520 * dt;
+    if(keysDown.has('ArrowLeft')) game.cam.x -= panSpeed;
+    if(keysDown.has('ArrowRight')) game.cam.x += panSpeed;
+    if(keysDown.has('ArrowUp')) game.cam.y -= panSpeed;
+    if(keysDown.has('ArrowDown')) game.cam.y += panSpeed;
+
+    if(game.followMode && game.followTargetIds.length){
+      const targets = game.followTargetIds.map(id=>game.students.find(s=>s.id===id && s.state!=='knocked')).filter(Boolean);
+      if(targets.length){
+        const cx = targets.reduce((n,s)=>n+s.x,0)/targets.length;
+        const cy = targets.reduce((n,s)=>n+s.y,0)/targets.length;
+        game.cam.x = lerp(game.cam.x, clamp(cx-vw/2,0,WORLD_W-vw), 0.12);
+        game.cam.y = lerp(game.cam.y, clamp(cy-vh/2,0,WORLD_H-vh), 0.12);
+      }
+    }
+
+    game.cam.x = clamp(game.cam.x,0,WORLD_W-vw);
+    game.cam.y = clamp(game.cam.y,0,WORLD_H-vh);
+
+    renderTop();
+    renderSelectionPanel();
+    renderSelected();
+    renderHouses();
+    renderStockSummary();
+    refreshEquipButtons();
+    syncModeButtons();
+  }
+
+  function drawGround(){
+    ctx.fillStyle='#25402f';
+    ctx.fillRect(0,0,WORLD_W,WORLD_H);
+
+    const vr = visibleRect(80);
+    const startX = Math.max(0, Math.floor(vr.x / TILE));
+    const endX = Math.min(COLS-1, Math.ceil((vr.x+vr.w)/TILE));
+    const startY = Math.max(0, Math.floor(vr.y / TILE));
+    const endY = Math.min(ROWS-1, Math.ceil((vr.y+vr.h)/TILE));
+
+    for(let y=startY;y<=endY;y++){
+      for(let x=startX;x<=endX;x++){
+        const noise = ((x*13 + y*7) % 11) / 11;
+        ctx.fillStyle = noise > .65 ? 'rgba(255,255,255,.02)' : noise > .35 ? 'rgba(0,0,0,.012)' : 'rgba(0,0,0,.025)';
+        ctx.fillRect(x*TILE,y*TILE,TILE,TILE);
+      }
+    }
+
+    for(const h of game.terrain.hills){
+      if(!inView(h.x,h.y,h.r+40)) continue;
+      const g = ctx.createRadialGradient(h.x,h.y,h.r*0.18,h.x,h.y,h.r);
+      g.addColorStop(0,'rgba(180,160,120,.13)');
+      g.addColorStop(1,'rgba(180,160,120,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(h.x,h.y,h.r,0,Math.PI*2); ctx.fill();
+    }
+
+    for(const d of game.terrain.dirt){
+      if(!inView(d.x,d.y,d.r+40)) continue;
+      const g = ctx.createRadialGradient(d.x,d.y,d.r*0.18,d.x,d.y,d.r);
+      g.addColorStop(0,'rgba(138,111,71,.34)');
+      g.addColorStop(1,'rgba(138,111,71,0)');
+      ctx.fillStyle=g;
+      ctx.beginPath(); ctx.arc(d.x,d.y,d.r,0,Math.PI*2); ctx.fill();
+    }
+
+    for(const w of game.terrain.waters){
+      if(!inView(w.x,w.y,Math.max(w.rx,w.ry)+40)) continue;
+      const g = ctx.createRadialGradient(w.x,w.y,15,w.x,w.y,Math.max(w.rx,w.ry));
+      g.addColorStop(0,'rgba(100,170,220,.85)');
+      g.addColorStop(1,'rgba(58,121,176,.96)');
+      ctx.fillStyle=g;
+      ctx.beginPath();
+      ctx.ellipse(w.x,w.y,w.rx,w.ry,0,0,Math.PI*2);
+      ctx.fill();
+      ctx.strokeStyle='rgba(220,245,255,.22)';
+      ctx.lineWidth=3;
+      ctx.stroke();
+    }
+
+    for(const river of game.terrain.rivers){
+      ctx.save();
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(66,140,196,.88)';
+      ctx.lineWidth = river.width;
+      ctx.beginPath(); ctx.moveTo(river.points[0].x, river.points[0].y);
+      for(let i=1;i<river.points.length;i++) ctx.lineTo(river.points[i].x, river.points[i].y);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(210,240,255,.20)';
+      ctx.lineWidth = Math.max(8, river.width * 0.22);
+      ctx.beginPath(); ctx.moveTo(river.points[0].x, river.points[0].y);
+      for(let i=1;i<river.points.length;i++) ctx.lineTo(river.points[i].x, river.points[i].y);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    for(const f of game.terrain.forestRects){
+      if(f.x > vr.x + vr.w || f.y > vr.y + vr.h || f.x+f.w < vr.x || f.y+f.h < vr.y) continue;
+      ctx.fillStyle='rgba(24,68,35,.22)';
+      ctx.fillRect(f.x,f.y,f.w,f.h);
+      for(let yy=f.y+12; yy<f.y+f.h; yy+=26){
+        for(let xx=f.x+12; xx<f.x+f.w; xx+=26){
+          if(!inView(xx,yy,12)) continue;
+          ctx.fillStyle='rgba(19,78,40,.9)';
+          ctx.beginPath(); ctx.arc(xx+((yy+xx)%9),yy+((xx)%7),10,0,Math.PI*2); ctx.fill();
+          ctx.fillStyle='rgba(11,48,23,.9)';
+          ctx.fillRect(xx-2,yy+6,4,8);
+        }
+      }
+    }
+
+    for(const s of game.terrain.stones){
+      if(!inView(s.x,s.y,12)) continue;
+      ctx.fillStyle='rgba(125,132,135,.35)';
+      ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fill();
+    }
+
+    for(const smith of game.blacksmiths){
+      if(!inView(smith.x,smith.y,100)) continue;
+      ctx.save();
+      ctx.translate(smith.x,smith.y);
+      ctx.fillStyle='rgba(92,168,255,.08)';
+      ctx.fillRect(-smith.w/2,-smith.h/2,smith.w,smith.h);
+      ctx.strokeStyle='rgba(216,189,102,.65)';
+      ctx.lineWidth=2;
+      ctx.strokeRect(-smith.w/2,-smith.h/2,smith.w,smith.h);
+      ctx.fillStyle='#d8bd66'; ctx.fillRect(-22,-16,44,28);
+      ctx.fillStyle='#2a2a2a'; ctx.fillRect(-12,6,24,6);
+      ctx.fillStyle='#ff8c3a'; ctx.fillRect(-8,-2,16,8);
+      ctx.restore();
+    }
+
+    for(const o of game.objectives){
+      if(!inView(o.x,o.y,150)) continue;
+      ctx.save();
+      ctx.translate(o.x,o.y);
+      ctx.strokeStyle = o.controller ? getHouse(o.controller).color : 'rgba(255,255,255,.32)';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0,0,o.r,0,Math.PI*2); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,.04)';
+      ctx.beginPath(); ctx.arc(0,0,o.r,0,Math.PI*2); ctx.fill();
+      const col = o.type==='forge' ? '#5ca8ff' : o.type==='rally' ? '#d8bd66' : o.type==='arsenal' ? '#ff8c3a' : '#56cf88';
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(0,0,14,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 10px Inter,sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(o.type[0].toUpperCase(), 0, 3);
+      ctx.restore();
+    }
+  }
+
+  function drawCastles(){
+    for(const h of game.houses){
+      if(!inView(h.castle.x,h.castle.y,120)) continue;
+      ctx.save();
+      ctx.translate(h.castle.x,h.castle.y);
+      ctx.fillStyle='rgba(255,255,255,.10)';
+      ctx.fillRect(-52,-44,104,88);
+      ctx.fillStyle=h.color;
+      ctx.fillRect(-38,-30,76,60);
+      ctx.strokeStyle='#12161e'; ctx.lineWidth=2; ctx.strokeRect(-38,-30,76,60);
+      ctx.fillStyle=h.color; ctx.fillRect(-16,-52,32,16);
+      ctx.fillStyle='#fff'; ctx.font='bold 12px Inter,sans-serif'; ctx.textAlign='center';
+      ctx.fillText(h.name.split(' ')[1],0,66);
+      ctx.restore();
+    }
+
+    const playerCastle = getPlayerHouse().castle;
+    const knocked = game.students.filter(s=>s.controller==='player' && s.state==='knocked').sort((a,b)=>a.koUntil-b.koUntil);
+    if(knocked.length && inView(playerCastle.x,playerCastle.y,120)){
+      const next = knocked[0];
+      const remain = Math.max(0, next.koUntil - game.time);
+      const fill = clamp(1 - remain/16, 0, 1);
+      ctx.fillStyle='rgba(10,14,20,.9)';
+      ctx.fillRect(playerCastle.x-44, playerCastle.y-72, 88, 9);
+      ctx.fillStyle='#7eb3ff';
+      ctx.fillRect(playerCastle.x-44, playerCastle.y-72, 88*fill, 9);
+      ctx.strokeStyle='rgba(255,255,255,.3)';
+      ctx.strokeRect(playerCastle.x-44, playerCastle.y-72, 88, 9);
+    }
+  }
+
+  function drawStandards(){
+    for(const st of game.standards){
+      if(!inView(st.x,st.y,40)) continue;
+      ctx.save();
+      ctx.translate(st.x,st.y);
+      ctx.strokeStyle='#ecf2ff';
+      ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(0,13); ctx.lineTo(0,-12); ctx.stroke();
+      ctx.fillStyle=getHouse(st.homeOwner).color;
+      ctx.beginPath(); ctx.moveTo(0,-12); ctx.lineTo(18,-6); ctx.lineTo(0,0); ctx.closePath(); ctx.fill();
+      if(st.dropped){
+        ctx.strokeStyle='#ffd08a';
+        ctx.beginPath(); ctx.arc(0,0,16,0,Math.PI*2); ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  function drawBoxes(){
+    for(const b of game.lootBoxes){
+      if(!b.alive || !inView(b.x,b.y,40)) continue;
+      ctx.save();
+      ctx.translate(b.x,b.y);
+      ctx.fillStyle=b.big ? '#c59a2a' : (b.rare ? '#9c7b2e' : '#8f6f3d');
+      const sz = b.big ? 34 : 28;
+      ctx.fillRect(-16,-16,sz,sz);
+      ctx.strokeStyle='#2b2010'; ctx.lineWidth=2; ctx.strokeRect(-16,-16,sz,sz);
+      ctx.fillStyle='#111'; ctx.font='bold 10px Inter,sans-serif'; ctx.textAlign='center';
+      ctx.fillText(b.big ? 'BIG' : (b.rare ? 'R' : 'L'), 0, 4);
+      ctx.fillStyle='rgba(10,14,20,.85)';
+      ctx.fillRect(-16,22,32,4);
+      ctx.fillStyle='#d3b86b';
+      ctx.fillRect(-16,22,32*(b.hp/b.maxHp),4);
+      ctx.restore();
+    }
+  }
+
+  function drawGroundLoot(){
+    for(const g of game.groundLoot){
+      if(!g.alive || !inView(g.x,g.y,20)) continue;
+      ctx.save();
+      ctx.translate(g.x,g.y);
+      ctx.fillStyle='#d8bd66';
+      ctx.beginPath(); ctx.arc(0,0,8,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#111'; ctx.font='bold 9px Inter,sans-serif'; ctx.textAlign='center';
+      ctx.fillText(g.item[0],0,3);
+      ctx.restore();
+    }
+  }
+
+  function drawBarricadesAndTraps(){
+    for(const b of game.barricades){
+      if(!b.alive || !inView(b.x,b.y,40)) continue;
+      ctx.save();
+      ctx.translate(b.x,b.y);
+      ctx.fillStyle='#7a5936';
+      ctx.fillRect(-b.w/2,-b.h/2,b.w,b.h);
+      ctx.strokeStyle='#2e2317'; ctx.lineWidth=2;
+      ctx.strokeRect(-b.w/2,-b.h/2,b.w,b.h);
+      ctx.restore();
+    }
+
+    for(const t of game.traps){
+      if(!t.alive || t.controller!=='player' || !inView(t.x,t.y,18)) continue;
+      ctx.save();
+      ctx.translate(t.x,t.y);
+      ctx.strokeStyle='rgba(242,210,90,.6)';
+      ctx.beginPath(); ctx.arc(0,0,8,0,Math.PI*2); ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function getOrderVisual(s){
+    if(!s || s.state==='knocked') return null;
+
+    let tx = s.tx, ty = s.ty;
+    let color = '#7fb2ff';
+    let pulse = false;
+    let targetEntity = null;
+
+    if(s.order.type==='attack'){
+      targetEntity = game.students.find(e=>e.id===s.order.targetId && e.state!=='knocked');
+      if(targetEntity){ tx = targetEntity.x; ty = targetEntity.y; }
+      color = '#ff6e6e';
+      pulse = true;
+    }else if(s.order.type==='attackMove'){
+      if(s.engageId){
+        targetEntity = game.students.find(e=>e.id===s.engageId && e.state!=='knocked');
+        if(targetEntity){ tx = targetEntity.x; ty = targetEntity.y; }
+      }
+      color = '#ffb347';
+    }else if(s.order.type==='capture'){
+      const st = getStandard(s.order.targetId || s.order.targetType==='standard' ? s.order.targetId : null);
+      if(st){ tx = st.x; ty = st.y; }
+      color = '#f3f0ff';
+    }else if(s.order.type==='defend'){
+      color = '#d8bd66';
+    }else if(s.order.type==='escort'){
+      const car = game.students.find(e=>e.id===s.order.targetId && e.state!=='knocked');
+      if(car){ tx = car.x; ty = car.y; targetEntity = car; }
+      color = '#56cf88';
+    }else if(s.order.type==='box'){
+      const b = game.lootBoxes.find(x=>x.id===s.order.targetId && x.alive);
+      if(b){ tx = b.x; ty = b.y; }
+      color = '#d8bd66';
+    }else if(s.order.type==='groundLoot'){
+      const g = game.groundLoot.find(x=>x.id===s.order.targetId && x.alive);
+      if(g){ tx = g.x; ty = g.y; }
+      color = '#d8bd66';
+    }else if(s.order.type==='attackBarricade'){
+      const b = game.barricades.find(x=>x.id===s.order.targetId && x.alive);
+      if(b){ tx = b.x; ty = b.y; }
+      color = '#ff7f7f';
+    }else if(s.order.type==='buildBarricade' || s.order.type==='buildTrap'){
+      color = '#f2d25a';
+    }
+
+    return {tx,ty,color,pulse,targetEntity};
+  }
+
+  function drawCommandMarker(x,y,color,pulse=false){
+    const t = pulse ? (0.75 + Math.sin(game.time * 10) * 0.25) : 1;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.95;
+    ctx.beginPath();
+    ctx.arc(x,y,10*t,0,Math.PI*2);
+    ctx.stroke();
+    ctx.globalAlpha = 0.45;
+    ctx.beginPath();
+    ctx.arc(x,y,17*t,0,Math.PI*2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.moveTo(x-7,y); ctx.lineTo(x+7,y);
+    ctx.moveTo(x,y-7); ctx.lineTo(x,y+7);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawCommandTelegraphs(){
+    const selectedUnits = getSelectedUnits().filter(s=>s.state!=='knocked');
+    if(!selectedUnits.length) return;
+
+    const highlightedEnemyIds = new Set();
+
+    for(const s of selectedUnits){
+      const vis = getOrderVisual(s);
+      if(!vis) continue;
+
+      const shouldShow =
+        s.order.type!=='idle' ||
+        s.engageId ||
+        dist(s.x,s.y,s.tx,s.ty) > 22;
+
+      if(!shouldShow) continue;
+
+      ctx.save();
+      ctx.strokeStyle = vis.color;
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.75;
+      ctx.setLineDash(s.order.type==='attackMove' ? [10,8] : [8,6]);
+      ctx.beginPath();
+      ctx.moveTo(s.x, s.y);
+      ctx.lineTo(vis.tx, vis.ty);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      drawCommandMarker(vis.tx, vis.ty, vis.color, vis.pulse);
+
+      if(s.order.type==='attack' && s.order.targetId){
+        highlightedEnemyIds.add(s.order.targetId);
+      }
+    }
+
+    for(const enemyId of highlightedEnemyIds){
+      const e = game.students.find(s=>s.id===enemyId && s.state!=='knocked');
+      if(!e) continue;
+      const pulse = 1 + Math.sin(game.time * 10) * 0.12;
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,80,80,.12)';
+      ctx.beginPath();
+      ctx.arc(e.x,e.y,e.radius+12*pulse,0,Math.PI*2);
+      ctx.fill();
+      ctx.strokeStyle = '#ff5858';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(e.x,e.y,e.radius+10*pulse,0,Math.PI*2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawRoleCircle(x,y,segs){
+    ctx.save();
+    ctx.translate(x,y);
+    if(segs.length===1){
+      ctx.fillStyle=segs[0];
+      ctx.beginPath(); ctx.arc(0,0,5,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle='#0f1117'; ctx.lineWidth=1; ctx.stroke();
+    }else{
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0,0,5,-Math.PI/2,Math.PI/2); ctx.closePath(); ctx.fillStyle=segs[0]; ctx.fill();
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0,0,5,Math.PI/2,3*Math.PI/2); ctx.closePath(); ctx.fillStyle=segs[1]; ctx.fill();
+      ctx.strokeStyle='#0f1117'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(0,0,5,0,Math.PI*2); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawWeaponAttack(s){
+    if(s.swing<=0 || s.weapon==='Bow' || s.weapon==='Longbow') return;
+    const progress = 1 - (s.swing / 0.28);
+    const arcBase = s.facingDir==='right' ? 0 : s.facingDir==='left' ? Math.PI : -Math.PI/2;
+    const start = arcBase + s.swingSide * -0.9;
+    const end = arcBase + s.swingSide * (progress*1.8 - 0.9);
+    ctx.strokeStyle=getWeaponColor(s.weaponLevel);
+    ctx.lineWidth=s.weapon==='Spear' ? 2 : 3;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y-2, s.weapon==='Spear'?24:16, start, end, s.swingSide<0);
+    ctx.stroke();
+  }
+
+  function drawStudents(){
+    for(const s of game.students){
+      if(s.state==='knocked' || !inView(s.x,s.y,44)) continue;
+      const h = getHouse(s.controller);
+
+      if(game.selected.has(s.id)){
+        ctx.strokeStyle='#d6e6ff';
+        ctx.lineWidth=2;
+        ctx.beginPath(); ctx.arc(s.x,s.y,s.radius+7,0,Math.PI*2); ctx.stroke();
+      }
+
+      ctx.fillStyle='rgba(0,0,0,.22)';
+      ctx.beginPath(); ctx.ellipse(s.x,s.y+12,8,4,0,0,Math.PI*2); ctx.fill();
+
+      drawRoleCircle(s.x, s.y-32, getRoleSegments(s));
+      drawWeaponAttack(s);
+
+      ctx.fillStyle = h.color;
+      ctx.fillRect(s.x-5, s.y-5, 10, 14);
+      ctx.fillStyle = '#f1d2b4';
+      ctx.beginPath(); ctx.arc(s.x, s.y-9, 5, 0, Math.PI*2); ctx.fill();
+
+      if(s.weapon==='Bow' || s.weapon==='Longbow'){
+        ctx.strokeStyle=getWeaponColor(s.weaponLevel);
+        ctx.lineWidth=2;
+        ctx.beginPath();
+        ctx.arc(s.x+8,s.y-1, s.weapon==='Longbow' ? 6 : 5, -1.2,1.2);
+        ctx.stroke();
+      }else if(s.weapon==='Sword' || s.weapon==='Spear'){
+        ctx.strokeStyle=getWeaponColor(s.weaponLevel);
+        ctx.lineWidth=s.weapon==='Spear'?2:3;
+        const len = s.weapon==='Spear' ? 20 : 13;
+        let ex=s.x, ey=s.y;
+        if(s.facingDir==='right'){ ex += len; ey -= 2; }
+        else if(s.facingDir==='left'){ ex -= len; ey -= 2; }
+        else { ey -= len; }
+        ctx.beginPath(); ctx.moveTo(s.x, s.y-1); ctx.lineTo(ex, ey); ctx.stroke();
+      }
+
+      if(s.item==='Shield'){
+        ctx.fillStyle='rgba(235,220,170,.9)';
+        if(s.facingDir === 'left') ctx.fillRect(s.x-10, s.y-2, 5, 8);
+        else ctx.fillRect(s.x+5, s.y-2, 5, 8);
+      }
+      if(s.item==='WarHorn'){
+        ctx.fillStyle='#d8bd66';
+        ctx.fillRect(s.x-8, s.y-2, 4, 8);
+      }
+      if(s.item==='FireOil'){
+        ctx.fillStyle='#ff8c3a';
+        ctx.beginPath(); ctx.arc(s.x-7,s.y+1,3,0,Math.PI*2); ctx.fill();
+      }
+      if(s.mount){
+        ctx.strokeStyle='rgba(180,140,90,.7)';
+        ctx.beginPath(); ctx.ellipse(s.x,s.y+5,11,6,0,0,Math.PI*2); ctx.stroke();
+      }
+
+      ctx.fillStyle='#1a2230';
+      ctx.fillRect(s.x-12,s.y-22,24,4);
+      ctx.fillStyle=s.hp>55?'#58d37f':s.hp>25?'#e0ae50':'#e26666';
+      ctx.fillRect(s.x-12,s.y-22,24*(s.hp/s.maxHp),4);
+
+      if(isEngineer(s)){
+        const remain = Math.max(0, s.engineerCdUntil - game.time);
+        ctx.fillStyle='rgba(10,14,20,.8)';
+        ctx.fillRect(s.x-12, s.y-28, 24, 3);
+        ctx.fillStyle=remain>0 ? '#dfad5a' : '#56cf88';
+        ctx.fillRect(s.x-12, s.y-28, 24*(remain>0 ? (1 - remain/12) : 1), 3);
+      }
+
+      if(s.smithTimer > 0 && s.weapon!=='None' && s.weaponLevel < 3){
+        ctx.fillStyle='rgba(10,14,20,.8)';
+        ctx.fillRect(s.x-12, s.y-34, 24, 3);
+        ctx.fillStyle='#5ca8ff';
+        const bonusForge = objectiveBuffsFor(s.controller).forge;
+        const needed = bonusForge ? 12 : 18;
+        ctx.fillRect(s.x-12, s.y-34, 24*(s.smithTimer/needed), 3);
+      }
+
+      if(s.burnUntil > game.time){
+        ctx.strokeStyle='#ff8c3a';
+        ctx.beginPath(); ctx.arc(s.x,s.y-9,9,0,Math.PI*2); ctx.stroke();
+      }
+
+      if(s.carryingStandard){
+        ctx.fillStyle='#fff';
+        ctx.font='10px Inter,sans-serif';
+        ctx.fillText('⚑',s.x+10,s.y-12);
+      }
+    }
+  }
+
+  function drawProjectilesAndParticles(){
+    for(const p of game.projectiles){
+      if(!inView((p.x1+p.x2)/2,(p.y1+p.y2)/2,100)) continue;
+      ctx.strokeStyle = p.blocked ? '#ffe79e' : getHouse(p.controller).color;
+      ctx.lineWidth = p.blocked ? 3 : 2;
+      ctx.beginPath();
+      ctx.moveTo(p.x1,p.y1);
+      ctx.lineTo(p.x2,p.y2);
+      ctx.stroke();
+    }
+    for(const p of game.particles){
+      if(!inView(p.x,p.y,20)) continue;
+      ctx.globalAlpha = Math.max(0,p.t/0.5);
+      ctx.fillStyle = p.c;
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.r || 2.2,0,Math.PI*2); ctx.fill();
+      ctx.globalAlpha=1;
+    }
+  }
+
+  function drawDrag(){
+    if(!game.drag?.active) return;
+    const d=game.drag;
+    ctx.strokeStyle='#8ab7ff';
+    ctx.lineWidth=1.4;
+    ctx.setLineDash([6,4]);
+    ctx.strokeRect(d.x0,d.y0,d.x1-d.x0,d.y1-d.y0);
+    ctx.setLineDash([]);
+  }
+
+  function drawPlacementGhost(){
+    if(!placementMode) return;
+    const x = mouseWorld.x, y = mouseWorld.y;
+    ctx.save();
+    ctx.globalAlpha = 0.7;
+    if(placementMode==='barricade'){
+      ctx.strokeStyle='#f2d25a'; ctx.lineWidth = 2;
+      ctx.strokeRect(x-22,y-9,44,18);
+      ctx.fillStyle='rgba(242,210,90,.15)';
+      ctx.fillRect(x-22,y-9,44,18);
+    } else if(placementMode==='trap'){
+      ctx.strokeStyle='#f2d25a';
+      ctx.beginPath(); ctx.arc(x,y,8,0,Math.PI*2); ctx.stroke();
+      ctx.fillStyle='rgba(242,210,90,.15)';
+      ctx.beginPath(); ctx.arc(x,y,8,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawLootIndicators(){
+    const rect = canvas.getBoundingClientRect();
+    const vw = rect.width;
+    const vh = rect.height;
+    const cx = game.cam.x + vw/2;
+    const cy = game.cam.y + vh/2;
+    const margin = 34;
+
+    const nearby = game.lootBoxes
+      .filter(b=>b.alive)
+      .map(b=>({box:b, d:dist(b.x,b.y,cx,cy)}))
+      .filter(entry=>{
+        const b = entry.box;
+        const offscreen = b.x < game.cam.x+20 || b.x > game.cam.x+vw-20 || b.y < game.cam.y+20 || b.y > game.cam.y+vh-20;
+        return offscreen && entry.d < 950;
+      })
+      .sort((a,b)=>a.d-b.d)
+      .slice(0, 6);
+
+    for(const entry of nearby){
+      const b = entry.box;
+      const ang = Math.atan2(b.y - cy, b.x - cx);
+      const ex = vw/2 + Math.cos(ang) * (vw/2 - margin);
+      const ey = vh/2 + Math.sin(ang) * (vh/2 - margin);
+
+      ctx.save();
+      ctx.translate(ex, ey);
+      ctx.fillStyle = 'rgba(12,18,28,.88)';
+      ctx.beginPath(); ctx.arc(0,0,18,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle = b.big ? '#d8bd66' : (b.rare ? '#c79c3f' : '#cfd7ea');
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0,0,18,0,Math.PI*2); ctx.stroke();
+      ctx.fillStyle = b.big ? '#c59a2a' : (b.rare ? '#9c7b2e' : '#8f6f3d');
+      ctx.fillRect(-7,-7,14,14);
+      ctx.strokeStyle = '#20170d'; ctx.lineWidth = 1.5; ctx.strokeRect(-7,-7,14,14);
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 9px Inter,sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(b.big ? 'B' : 'L', 0, 3);
+      ctx.restore();
+    }
+  }
+
+  function render(){
+    const rect = canvas.getBoundingClientRect();
+    const vw = rect.width, vh = rect.height;
+    ctx.clearRect(0,0,vw,vh);
+    ctx.save();
+    ctx.translate(-game.cam.x, -game.cam.y);
+
+    drawGround();
+    drawBoxes();
+    drawGroundLoot();
+    drawBarricadesAndTraps();
+    drawCastles();
+    drawStandards();
+    drawCommandTelegraphs();
+    drawStudents();
+    drawProjectilesAndParticles();
+    drawPlacementGhost();
+    drawDrag();
+
+    if(game.gameOver){
+      ctx.fillStyle='rgba(0,0,0,.42)';
+      ctx.fillRect(game.cam.x, game.cam.y, vw, vh);
+      ctx.fillStyle='#fff';
+      ctx.textAlign='center';
+      ctx.font='900 42px Inter,sans-serif';
+      ctx.fillText(getPlayerHouse().controller==='player' ? 'VICTORY' : 'DEFEAT', game.cam.x+vw/2, game.cam.y+vh/2-10);
+      ctx.font='500 16px Inter,sans-serif';
+      ctx.fillText('Press Restart to begin another trial.', game.cam.x+vw/2, game.cam.y+vh/2+20);
+      ctx.textAlign='left';
+    }
+
+    ctx.restore();
+    drawLootIndicators();
+  }
+
+  function frame(ts){
+    if(!game.last) game.last = ts;
+    const dt = Math.min(0.033, (ts - game.last)/1000);
+    game.last = ts;
+    update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  init();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
