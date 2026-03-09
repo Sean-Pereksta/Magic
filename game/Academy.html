@@ -74,7 +74,7 @@
       <div id="selectedInfo" class="small">Select one of your students or click a blue student on the field.</div>
       <div id="equipSection" class="hidden">
         <div style="height:10px"></div>
-        <div class="small" style="margin-bottom:8px">Right click enemies for direct target chase. Press <b>A</b> for attack-move and right click a point.</div>
+        <div class="small" style="margin-bottom:8px">Right click enemies for direct target chase. Press <b>A</b> for immediate attack-nearest override.</div>
         <div class="grid3">
           <button class="btn" id="eqSword">Sword</button>
           <button class="btn" id="eqSpear">Spear</button>
@@ -125,7 +125,7 @@
     <button class="btn good" id="modeMove">Mode: Move / Job</button>
     <button class="btn warn" id="modeDefend">Mode: Defend</button>
     <button class="btn gold" id="modeEscort">Mode: Escort Carrier</button>
-    <button class="btn bad" id="modeAttackMove">Attack Move [A]</button>
+    <button class="btn bad" id="modeAttackMove">Attack Nearest [A]</button>
     <button class="btn" id="placeBarricade">Place Barricade [B]</button>
     <button class="btn" id="placeTrap">Place Trap [T]</button>
     <button class="btn bad" id="cancelPlace">Cancel Place [Esc]</button>
@@ -137,7 +137,7 @@
       <span><b>Left Click</b> select</span>
       <span><b>Drag</b> box select</span>
       <span><b>Right Click</b> move / attack / capture / build</span>
-      <span><b>A + Right Click</b> attack-move</span>
+      <span><b>A</b> attack nearest now</span>
       <span><b>Arrow Keys</b> pan map</span>
       <span><b>B</b> barricade</span>
       <span><b>T</b> trap</span>
@@ -381,7 +381,11 @@
       lastPathAt:0,
       lastPosX:0,
       lastPosY:0,
-      burnUntil:0
+      burnUntil:0,
+      stillSince:0,
+      aggroFlashUntil:0,
+      aiAnchorX:house.castle.x,
+      aiAnchorY:house.castle.y
     };
     applyLoadout(s);
     s.lastPosX = s.x;
@@ -415,10 +419,10 @@
 
   function applyLoadout(s){
     let speed=84, dmg=3, range=14, def=0.00, hp=100, atkCd=0.72;
-    if(s.weapon==='Sword'){ dmg=22; range=26; atkCd=0.58; if(s.weaponLevel===0) s.weaponLevel=1; }
-    if(s.weapon==='Spear'){ dmg=16; range=50; atkCd=0.70; if(s.weaponLevel===0) s.weaponLevel=1; }
-    if(s.weapon==='Bow'){ dmg=14; range=190; atkCd=0.88; if(s.weaponLevel===0) s.weaponLevel=1; }
-    if(s.weapon==='Longbow'){ dmg=13; range=240; atkCd=0.98; if(s.weaponLevel===0) s.weaponLevel=1; }
+    if(s.weapon==='Sword'){ dmg=21; range=28; atkCd=0.52; if(s.weaponLevel===0) s.weaponLevel=1; }
+    if(s.weapon==='Spear'){ dmg=17; range=54; atkCd=0.72; if(s.weaponLevel===0) s.weaponLevel=1; }
+    if(s.weapon==='Bow'){ dmg=12; range=176; atkCd=0.74; if(s.weaponLevel===0) s.weaponLevel=1; }
+    if(s.weapon==='Longbow'){ dmg=16; range=246; atkCd=1.08; if(s.weaponLevel===0) s.weaponLevel=1; }
     if(s.weapon==='None') s.weaponLevel = 0;
 
     if(s.weapon!=='None'){
@@ -430,7 +434,7 @@
     }
 
     if(s.armor==='Light') speed+=14;
-    if(s.armor==='Heavy'){ speed-=8; def+=0.22; hp+=28; }
+    if(s.armor==='Heavy'){ speed-=10; def+=0.24; hp+=30; }
     if(s.item==='Shield'){ def+=0.16; speed-=3; }
     if(s.item==='Boots') speed+=20;
     if(s.item==='Medkit') speed-=1;
@@ -457,7 +461,7 @@
     s.atkRange = range;
     s.defense = def;
     s.baseAttackCd = atkCd;
-    s.aggro = (s.weapon==='Bow' || s.weapon==='Longbow') ? 250 : 185;
+    s.aggro = (s.weapon==='Bow' || s.weapon==='Longbow') ? 280 : 205;
   }
 
   function getRoleSegments(s){
@@ -797,7 +801,7 @@
     game.cam.x = clamp(pCastle.x - vw/2, 0, WORLD_W - vw);
     game.cam.y = clamp(pCastle.y - vh/2, 0, WORLD_H - vh);
 
-    log(`The trial begins. Troops move faster, fight wider, can attack-move, and telegraph their current orders.`);
+    log(`The trial begins. Troops move faster, fight wider, can attack-nearest on command, and telegraph their current orders.`);
     refreshUI();
     syncModeButtons();
   }
@@ -840,7 +844,6 @@
     const standardsHeld = game.standards.filter(st=>st.controller==='player').length;
     const mids = game.objectives.filter(o=>o.controller==='player').length;
     const modeText =
-      controlMode==='attackmove' ? 'Attack Move' :
       controlMode==='defend' ? 'Defend' :
       controlMode==='escort' ? 'Escort' : 'Move';
     ui.topStats.innerHTML = `
@@ -1053,7 +1056,6 @@
     if(controlMode==='move') ui.modeMove.classList.add('active');
     if(controlMode==='defend') ui.modeDefend.classList.add('active');
     if(controlMode==='escort') ui.modeEscort.classList.add('active');
-    if(controlMode==='attackmove') ui.modeAttackMove.classList.add('active');
     if(placementMode==='barricade') ui.placeBarricade.classList.add('active');
     if(placementMode==='trap') ui.placeTrap.classList.add('active');
   }
@@ -1061,7 +1063,7 @@
   ui.modeMove.onclick=()=>{ controlMode='move'; placementMode=null; syncModeButtons(); };
   ui.modeDefend.onclick=()=>{ controlMode='defend'; placementMode=null; syncModeButtons(); };
   ui.modeEscort.onclick=()=>{ controlMode='escort'; placementMode=null; syncModeButtons(); };
-  ui.modeAttackMove.onclick=()=>{ controlMode='attackmove'; placementMode=null; syncModeButtons(); };
+  ui.modeAttackMove.onclick=()=>{ placementMode=null; issueAttackNearestOrder(getSelectedUnits()); syncModeButtons(); };
   ui.placeBarricade.onclick=()=>{ placementMode='barricade'; syncModeButtons(); };
   ui.placeTrap.onclick=()=>{ placementMode='trap'; syncModeButtons(); };
   ui.cancelPlace.onclick=()=>{ placementMode=null; syncModeButtons(); };
@@ -1096,7 +1098,7 @@
     if(e.key==='1') document.getElementById('selectAll').click();
     if(e.key.toLowerCase()==='r') document.getElementById('recall').click();
     if(e.key.toLowerCase()==='f') document.getElementById('focusFlag').click();
-    if(e.key.toLowerCase()==='a'){ controlMode='attackmove'; placementMode=null; syncModeButtons(); }
+    if(e.key.toLowerCase()==='a'){ placementMode=null; issueAttackNearestOrder(getSelectedUnits()); syncModeButtons(); }
     if(e.key.toLowerCase()==='b'){ placementMode='barricade'; syncModeButtons(); }
     if(e.key.toLowerCase()==='t'){ placementMode='trap'; syncModeButtons(); }
     if(e.key==='Escape'){ placementMode=null; controlMode='move'; syncModeButtons(); }
@@ -1124,6 +1126,41 @@
       const oy = (row - (cols-1)/2) * spacing;
       setOrder(units[i], {type, x:x+ox, y:y+oy, targetId, targetType, manual});
     }
+    setFollowTargets(units);
+  }
+
+
+  function issueAttackNearestOrder(units){
+    units = units.filter(Boolean).filter(s=>s.controller==='player' && s.state!=='knocked');
+    if(!units.length) return;
+
+    const enemiesAlive = game.students.filter(e=>e.controller!=='player' && e.state!=='knocked');
+    if(!enemiesAlive.length){
+      log(`<span style="color:#ffd5d5">No enemy nearby.</span>`);
+      return;
+    }
+
+    const assignCount = new Map();
+    const radius = 320;
+    let assigned = 0;
+    for(const s of units){
+      const options = enemiesAlive
+        .map(e=>({ e, d:dist(s.x,s.y,e.x,e.y), load:assignCount.get(e.id)||0 }))
+        .filter(o=>o.d <= radius)
+        .sort((a,b)=>(a.d + a.load*58) - (b.d + b.load*58));
+      const pick = options[0];
+      if(!pick) continue;
+      assignCount.set(pick.e.id, (assignCount.get(pick.e.id)||0)+1);
+      setOrder(s, {type:'attack', x:pick.e.x, y:pick.e.y, targetId:pick.e.id, targetType:'student', manual:true});
+      s.engageId = pick.e.id;
+      assigned++;
+    }
+
+    if(assigned===0){
+      log(`<span style="color:#ffd5d5">No enemy nearby.</span>`);
+      return;
+    }
+
     setFollowTargets(units);
   }
 
@@ -1219,8 +1256,6 @@
         const carrier = sel.find(s=>s.carryingStandard);
         if(carrier) issueFormationOrder(sel.filter(s=>s!==carrier), carrier.x, carrier.y, 'escort', carrier.id, 'student', true);
         else issueFormationOrder(sel, p.x, p.y, 'move', null, null, true);
-      }else if(controlMode==='attackmove'){
-        issueFormationOrder(sel, p.x, p.y, 'attackMove', null, null, true);
       }else{
         issueFormationOrder(sel, p.x, p.y, 'move', null, null, true);
       }
@@ -1275,6 +1310,28 @@
       if(e.state==='knocked' || !enemies(s,e)) continue;
       const d=dist(s.x,s.y,e.x,e.y);
       if(d < bd && d <= range){ bd=d; best=e; }
+    }
+    return best;
+  }
+
+
+  function getOrderRadii(s){
+    if(s.order.type==='defend') return { threat:280, commit:220, leash:180, anchorX:s.order.x, anchorY:s.order.y };
+    if(s.order.type==='move') return { threat:120, commit:80, leash:60, anchorX:s.tx, anchorY:s.ty };
+    if(s.order.type==='attack') return { threat:9999, commit:9999, leash:9999, anchorX:s.x, anchorY:s.y };
+    if(s.order.type==='escort') return { threat:180, commit:140, leash:120, anchorX:s.order.x, anchorY:s.order.y };
+    if(s.order.type==='capture') return { threat:120, commit:180, leash:90, anchorX:s.order.x, anchorY:s.order.y };
+    if(s.order.type==='attackMove') return { threat:320, commit:260, leash:260, anchorX:s.tx, anchorY:s.ty };
+    return { threat:240, commit:180, leash:220, anchorX:s.x, anchorY:s.y };
+  }
+
+  function nearestEnemyWithinAnchor(s, range, anchorX, anchorY){
+    let best=null, bd=1e9;
+    for(const e of game.students){
+      if(e.state==='knocked' || !enemies(s,e)) continue;
+      if(dist(anchorX,anchorY,e.x,e.y) > range) continue;
+      const d=dist(s.x,s.y,e.x,e.y);
+      if(d < bd){ bd=d; best=e; }
     }
     return best;
   }
@@ -1427,6 +1484,16 @@
     return false;
   }
 
+
+  function defenseHoldBonus(target){
+    if(target.armor!=='Heavy') return 0;
+    const anchorX = target.order?.x ?? target.tx ?? target.x;
+    const anchorY = target.order?.y ?? target.ty ?? target.y;
+    const nearAnchor = dist(target.x,target.y,anchorX,anchorY) < 110;
+    const braced = target.order.type==='defend' || target.state==='idle';
+    return nearAnchor && braced ? 0.10 : 0;
+  }
+
   function performBowShot(att, target){
     setFacingTowardPoint(att, target.x, target.y);
     att.draw = 0.18;
@@ -1434,7 +1501,8 @@
 
     if(tryShieldBlock(target, att)) return;
 
-    const dealt = Math.max(5, att.atkDmg * (1 - target.defense));
+    let dealt = Math.max(5, att.atkDmg * (1 - target.defense - defenseHoldBonus(target)));
+    if(att.weapon==='Longbow' && game.time - (att.stillSince || 0) > 0.55) dealt *= 1.22;
     target.hp -= dealt;
     if(att.item==='FireOil') target.burnUntil = Math.max(target.burnUntil, game.time + 3.2);
     game.projectiles.push({x1:att.x, y1:att.y-3, x2:target.x, y2:target.y-4, ttl:0.08, beam:true, controller:att.controller});
@@ -1454,8 +1522,21 @@
       att.swing = 0.28;
       att.swingSide = Math.random()<0.5 ? -1 : 1;
       let raw = att.atkDmg * rand(0.92,1.12);
-      let dealt = Math.max(4, raw * (1 - target.defense));
+      const targetMove = Math.hypot(target.x - (target.lastPosX||target.x), target.y - (target.lastPosY||target.y));
+      const movingToward = ((target.x-att.x)*(target.x-(target.lastPosX||target.x)) + (target.y-att.y)*(target.y-(target.lastPosY||target.y))) < 0;
+      const fleeing = dist(att.x,att.y,target.x,target.y) > dist(att.lastPosX||att.x, att.lastPosY||att.y, target.lastPosX||target.x, target.lastPosY||target.y) + 0.4;
+      if(att.weapon==='Sword' && (fleeing || targetMove > 1.2)) raw *= 1.18;
+      if(att.weapon==='Sword' && target.weapon==='Spear' && (target.order.type==='defend' || target.state==='idle')) raw *= 0.86;
+      if(att.weapon==='Spear' && target.mount) raw *= 1.26;
+      if(att.weapon==='Spear' && movingToward) raw *= 1.14;
+      let dealt = Math.max(4, raw * (1 - target.defense - defenseHoldBonus(target)));
       target.hp -= dealt;
+      if(att.weapon==='Spear' && Math.random() < 0.34){
+        const kx = target.x - att.x; const ky = target.y - att.y;
+        const kl = Math.hypot(kx,ky) || 1;
+        target.x += (kx/kl) * 11;
+        target.y += (ky/kl) * 11;
+      }
       if(att.item==='FireOil') target.burnUntil = Math.max(target.burnUntil, game.time + 2.7);
       for(let i=0;i<5;i++) addParticle({x:target.x,y:target.y,c:getHouse(att.controller).color,vx:rand(-50,50),vy:rand(-50,50),t:.22,r:2.2});
       att.attackCd = att.baseAttackCd;
@@ -1645,6 +1726,7 @@
     s.smithTimer = 0;
     s.smithingAt = null;
     s.burnUntil = 0;
+    s.stillSince = game.time;
   }
 
   function autoEquipAI(house){
@@ -1761,7 +1843,12 @@
       reserveIds: reserve.map(s=>s.id),
       escortIds: escortsPreferred.map(s=>s.id),
       vanguardIds: vanguardPreferred.map(s=>s.id),
-      stage: plan.style === 'battle' ? 'clear' : 'approach'
+      stage:'rally',
+      rallyX: lerp(house.castle.x, targetHouse.castle.x, 0.36) + rand(-40,40),
+      rallyY: lerp(house.castle.y, targetHouse.castle.y, 0.36) + rand(-40,40),
+      rallyNeedPct: plan.sizeType === 'major' ? 0.75 : 0.65,
+      chargeStartedAt:0,
+      nextReinforceAt:0
     };
 
     const raidText =
@@ -1770,7 +1857,7 @@
       'a small raid';
 
     const styleText = plan.style === 'battle' ? 'to break resistance before seizing the flag' : 'to grab the flag and run';
-    log(`<span style="color:${house.color}">${house.name}</span> launches ${raidText} on <span style="color:${targetHouse.color}">${targetHouse.name}</span> ${styleText}.`);
+    log(`<span style="color:${house.color}">${house.name}</span> rallies for ${raidText} on <span style="color:${targetHouse.color}">${targetHouse.name}</span> ${styleText}.`);
 
     return true;
   }
@@ -1793,6 +1880,41 @@
     if(!committed.length){
       endRaid(house, false);
       return false;
+    }
+    if(raid.stage==='rally'){
+      for(const s of committed){
+        s.aiAnchorX = raid.rallyX;
+        s.aiAnchorY = raid.rallyY;
+        setOrder(s,{ type:'move', x:raid.rallyX + rand(-30,30), y:raid.rallyY + rand(-30,30), manual:true });
+      }
+      const arrived = committed.filter(s=>dist(s.x,s.y,raid.rallyX,raid.rallyY)<90).length;
+      const need = Math.max(3, Math.ceil(raid.ids.length * raid.rallyNeedPct));
+      if(arrived < need){
+        return true;
+      }
+      raid.stage = 'charge';
+      raid.chargeStartedAt = game.time;
+      raid.nextReinforceAt = game.time + 5;
+    }
+
+    if(raid.stage!=='rally' && game.time >= raid.nextReinforceAt){
+      const desired = Math.max(3, Math.floor(raid.ids.length * 0.7));
+      if(committed.length < desired){
+        const reserve = raid.reserveIds
+          .map(id=>game.students.find(s=>s.id===id))
+          .filter(s=>s && s.controller===house.id && s.state!=='knocked')
+          .sort((a,b)=>((b.mount?1:0)+(b.weapon==='Bow'||b.weapon==='Longbow'?1:0)) - ((a.mount?1:0)+(a.weapon==='Bow'||a.weapon==='Longbow'?1:0)));
+        const wave = reserve.slice(0, randi(1,3));
+        for(const r of wave){
+          raid.ids.push(r.id);
+          if(targetStandard){
+            setOrder(r,{type:'capture',x:targetStandard.x+rand(-20,20),y:targetStandard.y+rand(-20,20),targetId:targetStandard.houseId,targetType:'standard',manual:true});
+          }else{
+            setOrder(r,{type:'move',x:targetHouse.castle.x+rand(-50,50),y:targetHouse.castle.y+rand(-50,50),manual:true});
+          }
+        }
+      }
+      raid.nextReinforceAt = game.time + rand(4.5, 6.8);
     }
 
     const carrier = committed.find(s=>s.carryingStandard === targetHouse.id);
@@ -2103,7 +2225,6 @@
     if(['move','escort','attackMove'].includes(s.order.type)){
       s.order = {type:'idle', x:s.x, y:s.y, targetId:null, targetType:null, manual:false};
       s.state = 'idle';
-      if(controlMode==='attackmove') controlMode='move';
     }
     if(s.order.type==='defend'){
       s.order = {type:'defend', x:s.x, y:s.y, targetId:null, targetType:null, manual:false};
@@ -2338,13 +2459,17 @@
       }
 
       if(!isCommandLocked(s) && !s.carryingStandard && s.order.type!=='heal' && s.order.type!=='buildBarricade' && s.order.type!=='buildTrap'){
-        const aggro = nearestEnemyInAggro(s);
-        if(aggro) s.engageId = aggro.id;
-        else if(s.engageId){
+        const radii = getOrderRadii(s);
+        const threat = nearestEnemyWithinAnchor(s, radii.threat, radii.anchorX, radii.anchorY);
+        if(threat && dist(s.x,s.y,threat.x,threat.y) <= radii.commit){
+          s.engageId = threat.id;
+          s.aggroFlashUntil = game.time + 0.35;
+        } else if(s.engageId){
           const t = game.students.find(x=>x.id===s.engageId);
-          if(!t || t.state==='knocked' || !enemies(s,t) || dist(s.x,s.y,t.x,t.y) > s.aggro*1.6) s.engageId = null;
+          const overLeash = t ? dist(radii.anchorX, radii.anchorY, t.x, t.y) > radii.leash * 1.45 : true;
+          if(!t || t.state==='knocked' || !enemies(s,t) || overLeash) s.engageId = null;
         }
-      } else if(s.order.type!=='attackMove') {
+      } else if(s.order.type!=='attackMove' && s.order.type!=='attack') {
         s.engageId = null;
       }
 
@@ -2397,6 +2522,12 @@
 
         if(s.weapon==='Bow' || s.weapon==='Longbow'){
           targetPoint = getRangedCombatPoint(s, fightTarget);
+          const retreatBand = s.weapon==='Bow' ? 88 : 74;
+          if(d < retreatBand){
+            const rx = s.x - fightTarget.x; const ry = s.y - fightTarget.y;
+            const rl = Math.hypot(rx,ry) || 1;
+            targetPoint = { x:s.x + (rx/rl)*58, y:s.y + (ry/rl)*58 };
+          }
           if(d <= s.atkRange+8) attackTarget(s, fightTarget);
         } else {
           targetPoint = getEngagementMeleePoint(s, fightTarget);
@@ -2516,8 +2647,10 @@
           s.x += (dx/dd)*moveSpeedNow*dt + sep.x*dt;
           s.y += (dy/dd)*moveSpeedNow*dt + sep.y*dt;
           s.state = fightTarget ? 'fight' : 'move';
+          s.stillSince = game.time;
         } else {
           s.state = fightTarget ? 'fight' : 'idle';
+          if(!s.stillSince) s.stillSince = game.time;
           s.x += sep.x*dt;
           s.y += sep.y*dt;
         }
@@ -2883,7 +3016,13 @@
       ctx.strokeStyle = vis.color;
       ctx.lineWidth = 2;
       ctx.globalAlpha = 0.75;
-      ctx.setLineDash(s.order.type==='attackMove' ? [10,8] : [8,6]);
+      if(s.order.type==='move') ctx.setLineDash([]);
+      else if(s.order.type==='defend') ctx.setLineDash([4,6]);
+      else if(s.order.type==='attack') ctx.setLineDash([]);
+      else if(s.order.type==='attackMove') ctx.setLineDash([10,8]);
+      else if(s.order.type==='escort') ctx.setLineDash([2,6]);
+      else if(s.order.type==='capture') ctx.setLineDash([12,5]);
+      else ctx.setLineDash([8,6]);
       ctx.beginPath();
       ctx.moveTo(s.x, s.y);
       ctx.lineTo(vis.tx, vis.ty);
@@ -2892,6 +3031,35 @@
       ctx.restore();
 
       drawCommandMarker(vis.tx, vis.ty, vis.color, vis.pulse);
+
+      const map = {move:'M',defend:'D',attack:'A',attackMove:'X',escort:'E',capture:'C',heal:'H'};
+      const label = map[s.order.type] || '?';
+      ctx.save();
+      ctx.fillStyle='rgba(10,13,19,.75)';
+      ctx.beginPath(); ctx.arc(s.x, s.y-16, 8, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle='#eaf1ff';
+      ctx.font='bold 9px Inter,sans-serif';
+      ctx.textAlign='center';
+      ctx.fillText(label, s.x, s.y-13);
+      ctx.restore();
+
+      if(s.order.type==='defend'){
+        ctx.save();
+        ctx.strokeStyle='rgba(216,189,102,.35)';
+        ctx.setLineDash([5,5]);
+        ctx.beginPath(); ctx.arc(s.order.x, s.order.y, 180, 0, Math.PI*2); ctx.stroke();
+        ctx.restore();
+      }
+
+      if(s.order.type==='capture' && s.order.targetId){
+        const st = getStandard(s.order.targetId);
+        if(st){
+          ctx.save();
+          ctx.strokeStyle='rgba(243,240,255,.35)';
+          ctx.beginPath(); ctx.arc(st.x, st.y, 70, 0, Math.PI*2); ctx.stroke();
+          ctx.restore();
+        }
+      }
 
       if(s.order.type==='attack' && s.order.targetId){
         highlightedEnemyIds.add(s.order.targetId);
@@ -3005,6 +3173,16 @@
       ctx.fillRect(s.x-12,s.y-22,24,4);
       ctx.fillStyle=s.hp>55?'#58d37f':s.hp>25?'#e0ae50':'#e26666';
       ctx.fillRect(s.x-12,s.y-22,24*(s.hp/s.maxHp),4);
+
+      if(s.aggroFlashUntil > game.time){
+        const t = 1 - (s.aggroFlashUntil - game.time)/0.35;
+        ctx.save();
+        ctx.strokeStyle='rgba(255,210,110,'+(0.55*(1-t)).toFixed(3)+')';
+        ctx.beginPath();
+        ctx.arc(s.x,s.y,s.radius+6+t*16,0,Math.PI*2);
+        ctx.stroke();
+        ctx.restore();
+      }
 
       if(isEngineer(s)){
         const remain = Math.max(0, s.engineerCdUntil - game.time);
