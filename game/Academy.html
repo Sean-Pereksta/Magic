@@ -59,6 +59,9 @@
   .modal{position:fixed;inset:0;background:rgba(8,11,18,.82);display:flex;align-items:center;justify-content:center;z-index:30}
   .modalCard{width:min(560px,92vw);background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:0 18px 42px rgba(0,0,0,.45)}
   .modeBtns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:12px}
+  .allianceGrid{display:grid;gap:8px;max-height:58vh;overflow:auto;margin-top:8px}
+  .allianceRow{border:1px solid var(--line);border-radius:12px;padding:8px;background:rgba(255,255,255,.03);display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .badge{display:inline-flex;min-width:18px;height:18px;padding:0 6px;border-radius:999px;align-items:center;justify-content:center;background:#d65d5d;color:#fff;font-size:11px;margin-left:6px}
 </style>
 </head>
 <body>
@@ -68,7 +71,10 @@
       <div class="title">Academy Standards — Tactical House War</div>
       <div class="sub">Spread battles, faster movement, shield blocks, command telegraphs, and sticky target attacks.</div>
     </div>
-    <div class="statrow" id="topStats"></div>
+    <div class="statrow">
+      <div class="statrow" id="topStats"></div>
+      <button class="btn" id="openAlliances">Alliances <span id="allianceBadge" class="badge hidden">0</span></button>
+    </div>
   </div>
 
   <aside class="left panel">
@@ -161,6 +167,13 @@
   </div>
 </div>
 
+<div class="modal hidden" id="allianceModal">
+  <div class="modalCard" style="width:min(760px,94vw)">
+    <div class="row"><div class="title">Alliance Council</div><button class="btn" id="closeAlliances">Close</button></div>
+    <div class="allianceGrid" id="allianceBody"></div>
+  </div>
+</div>
+
 <script>
 (() => {
   const canvas = document.getElementById('game');
@@ -182,7 +195,11 @@
     modeAttackMove: document.getElementById('modeAttackMove'),
     placeBarricade: document.getElementById('placeBarricade'),
     placeTrap: document.getElementById('placeTrap'),
-    cancelPlace: document.getElementById('cancelPlace')
+    cancelPlace: document.getElementById('cancelPlace'),
+    openAlliances: document.getElementById('openAlliances'),
+    allianceBadge: document.getElementById('allianceBadge'),
+    allianceModal: document.getElementById('allianceModal'),
+    allianceBody: document.getElementById('allianceBody')
   };
 
   const TILE = 40;
@@ -254,7 +271,11 @@
     followMode:true,
     followTargetIds:[],
     started:false,
-    difficulty:DIFFICULTY_PRESETS.normal
+    difficulty:DIFFICULTY_PRESETS.normal,
+    alliances:[],
+    pendingAllianceRequests:[],
+    allianceNoticeCount:0,
+    lastAllianceEvalAt:0
   };
 
   function resize(){
@@ -357,7 +378,10 @@
       ...def,
       controller:def.id,
       stockpile:stock,
-      ai:{ thinkAt:0, aggression:0.25, raid:null, regroupUntil:0 }
+      ai:{ thinkAt:0, aggression:0.25, raid:null, regroupUntil:0 },
+      relations:{},
+      allianceCooldownUntil:0,
+      pendingAllianceRequestCooldownUntil:0
     };
   }
 
@@ -397,6 +421,13 @@
       defense:0.00,
       aggro:135,
       slaveDebuff:false,
+      morale:70,
+      moraleTarget:70,
+      moraleState:'steady',
+      lastMoraleShockAt:-99,
+      recentFriendDeaths:0,
+      recentEnemyKills:0,
+      cannotBreakUntil:0,
       trappedUntil:0,
       buildProgress:0,
       healTargetId:null,
@@ -418,6 +449,11 @@
       aiForging:false
     };
     applyLoadout(s);
+    const homeBoost = dist(s.x,s.y,house.castle.x,house.castle.y) < 120 ? 4 : 0;
+    const eliteStart = s.level >= 3 ? 78 : 70;
+    s.morale = clamp(eliteStart + homeBoost - (s.slaveDebuff ? 10 : 0) + rand(-4,4), 0, 100);
+    s.moraleTarget = s.morale;
+    s.moraleState = getMoraleState(s);
     s.lastPosX = s.x;
     s.lastPosY = s.y;
     return s;
@@ -425,7 +461,12 @@
 
   function getHouse(id){ return game.houses.find(h=>h.id===id); }
   function getStandard(houseId){ return game.standards.find(s=>s.houseId===houseId); }
-  function enemies(a,b){ return a.controller!==b.controller; }
+  function areAllied(a,b){
+    if(!a || !b) return false;
+    if(a.id===b.id) return true;
+    return game.alliances.some(al=>al.active && game.time < al.until && ((al.a===a.id && al.b===b.id) || (al.a===b.id && al.b===a.id)));
+  }
+  function enemies(a,b){ return a.controller!==b.controller && !areAllied(getHouse(a.controller), getHouse(b.controller)); }
   function isEquipped(s){ return s.weapon!=='None' || s.armor!=='None' || s.item!=='None' || s.mount; }
   function isEngineer(s){ return s.item==='BarricadeKit' || s.item==='TrapKit'; }
 
@@ -433,6 +474,172 @@
     if(lvl >= 3) return '#ff4c4c';
     if(lvl >= 2) return '#5ca8ff';
     return '#f4f7ff';
+  }
+
+  function getMoraleState(student){
+    if(student.morale >= 76) return 'confident';
+    if(student.morale >= 51) return 'steady';
+    if(student.morale >= 26) return 'shaken';
+    return 'broken';
+  }
+
+  function computeLocalForceBalance(student){
+    let allies=0, foes=0;
+    for(const o of game.students){
+      if(o===student || o.state==='knocked') continue;
+      const d = dist(student.x,student.y,o.x,o.y);
+      if(d > 220) continue;
+      if(o.controller===student.controller || areAllied(getHouse(o.controller), getHouse(student.controller))) allies++;
+      else foes++;
+    }
+    return allies - foes;
+  }
+
+  function applyMoraleEvent(student, delta, reason){
+    const gap = Math.abs(delta)>=14 ? 0.7 : 0.3;
+    if(game.time - student.lastMoraleShockAt < gap) return;
+    student.lastMoraleShockAt = game.time;
+    student.morale = clamp(student.morale + delta, 0, 100);
+    student.moraleState = getMoraleState(student);
+    if(reason && Math.abs(delta)>=12) log(reason);
+  }
+
+  function computeMoraleTarget(student){
+    const ownHouse = getHouse(student.controller);
+    const ownStandard = getStandard(student.controller);
+    let target = 62;
+    if(student.level>=3) target += 4;
+    if(student.level>=5) target += 4;
+    if(student.slaveDebuff) target -= 10;
+    if(student.hp < student.maxHp*0.4) target -= 10;
+    if(student.burnUntil > game.time) target -= 10;
+    if(student.trappedUntil > game.time) target -= 7;
+
+    const forceBal = computeLocalForceBalance(student);
+    target += clamp(forceBal*5, -18, 16);
+
+    if(dist(student.x,student.y,ownHouse.castle.x,ownHouse.castle.y) < 200) target += 10;
+    if(ownStandard && dist(student.x,student.y,ownStandard.x,ownStandard.y) < 140) target += 10;
+
+    for(const a of game.students){
+      if(a.state==='knocked' || a===student) continue;
+      const d = dist(student.x,student.y,a.x,a.y);
+      if(d > 170) continue;
+      if(a.controller===student.controller){
+        if(a.level>=5) target += 5;
+        else if(a.level>=3) target += 2;
+        if(a.item==='WarHorn') target += 6;
+      } else if(areAllied(getHouse(a.controller), ownHouse)){
+        target += 2;
+      }
+    }
+
+    target -= student.recentFriendDeaths * 7;
+    target += student.recentEnemyKills * 5;
+    return clamp(target, 4, 96);
+  }
+
+  function getMoraleAggroModifier(student){
+    if(student.moraleState==='confident') return 1.12;
+    if(student.moraleState==='shaken') return 0.84;
+    if(student.moraleState==='broken') return 0.58;
+    return 1;
+  }
+
+  function getMoraleRetreatDecision(student){
+    if(student.moraleState!=='broken' && !(student.moraleState==='shaken' && student.hp < student.maxHp*0.35)) return null;
+    const own = getHouse(student.controller);
+    const std = getStandard(student.controller);
+    let best = {x:own.castle.x, y:own.castle.y};
+    if(std && dist(student.x,student.y,std.x,std.y) < dist(student.x,student.y,best.x,best.y)) best = {x:std.x,y:std.y};
+    return best;
+  }
+
+  function syncMorale(student, dt){
+    student.recentFriendDeaths = Math.max(0, student.recentFriendDeaths - dt*0.2);
+    student.recentEnemyKills = Math.max(0, student.recentEnemyKills - dt*0.16);
+    student.moraleTarget = computeMoraleTarget(student);
+    student.morale = lerp(student.morale, student.moraleTarget, clamp(dt*0.72,0,1));
+    if(student.cannotBreakUntil > game.time && student.morale < 26) student.morale = 26;
+    student.morale = clamp(student.morale,0,100);
+    student.moraleState = getMoraleState(student);
+  }
+
+  function makeAlliance(a, b, duration=80, trust=0.58, targetHouseId=null){
+    if(a===b || areAllied(getHouse(a), getHouse(b))) return false;
+    game.alliances.push({ a, b, until:game.time+duration, trust, targetHouseId, active:true });
+    getHouse(a).allianceCooldownUntil = game.time + 20;
+    getHouse(b).allianceCooldownUntil = game.time + 20;
+    log(`${getHouse(a).name} and ${getHouse(b).name} agree to terms.`);
+    return true;
+  }
+
+  function breakAlliance(a,b,reason='Treaty broken'){
+    let broke=false;
+    for(const al of game.alliances){
+      if(al.active && ((al.a===a && al.b===b) || (al.a===b && al.b===a))){ al.active=false; broke=true; }
+    }
+    if(!broke) return;
+    log(`${getHouse(a).name} breaks alliance with ${getHouse(b).name}.`);
+    if(reason) log(reason);
+    for(const s of game.students){
+      if(s.state==='knocked') continue;
+      if((s.controller===a || s.controller===b) && dist(s.x,s.y,getHouse(a).castle.x,getHouse(a).castle.y)<520){
+        applyMoraleEvent(s,-13,'Nearby betrayal shakes allied morale.');
+      }
+    }
+  }
+
+  function evaluateAllianceOffer(fromHouseId,toHouseId){
+    const from = getHouse(fromHouseId), to = getHouse(toHouseId);
+    if(!from || !to || from.id===to.id) return {ok:false, reason:'invalid'};
+    if(game.time < from.allianceCooldownUntil || game.time < to.allianceCooldownUntil) return {ok:false, reason:'cooldown'};
+    if(areAllied(from,to)) return {ok:false, reason:'already allied'};
+
+    const majorBattle = game.students.some(s=>s.controller===from.id && s.state!=='knocked' &&
+      game.students.some(e=>e.controller===to.id && e.state!=='knocked' && dist(s.x,s.y,e.x,e.y)<130));
+    if(majorBattle) return {ok:false, reason:'major battle'};
+
+    const strongest = game.houses.map(h=>({id:h.id,score:houseMilitaryScore(h.id)})).sort((a,b)=>b.score-a.score)[0];
+    const sharedThreat = strongest && strongest.id!==from.id && strongest.id!==to.id;
+    const geoClose = dist(from.castle.x,from.castle.y,to.castle.x,to.castle.y) < 3000;
+    const ok = (sharedThreat || geoClose) && Math.random() < 0.66;
+    return {ok, reason: ok ? 'shared threat' : 'not convinced'};
+  }
+
+  function updateAllianceLogic(){
+    if(game.time - game.lastAllianceEvalAt < 3.4) return;
+    game.lastAllianceEvalAt = game.time;
+    game.alliances = game.alliances.filter(al=>al.active && game.time < al.until);
+
+    const aiHouses = game.houses.filter(h=>h.id!=='player');
+    if(Math.random()<0.34){
+      const from = aiHouses[randi(0, aiHouses.length-1)];
+      const to = game.houses[randi(0, game.houses.length-1)];
+      if(from && to && from.id!==to.id){
+        const ev = evaluateAllianceOffer(from.id, to.id);
+        if(ev.ok) makeAlliance(from.id, to.id, rand(60,110), 0.55, null);
+      }
+    }
+
+    if(game.pendingAllianceRequests.length < 1 && Math.random()<0.24){
+      const from = aiHouses[randi(0, aiHouses.length-1)];
+      if(from && game.time > from.pendingAllianceRequestCooldownUntil){
+        const ev = evaluateAllianceOffer(from.id, 'player');
+        if(ev.ok){
+          from.pendingAllianceRequestCooldownUntil = game.time + 90;
+          game.pendingAllianceRequests.push({fromHouseId:from.id, reason:'We face a common threat.', createdAt:game.time});
+          game.allianceNoticeCount++;
+          log(`${from.name} proposes alliance.`);
+        }
+      }
+    }
+
+    for(const al of game.alliances){
+      if(!al.active) continue;
+      if(Math.random()<0.08) al.trust = clamp((al.trust||0.58) - 0.02, 0, 1);
+      if((al.trust||0.58) < 0.16 && Math.random()<0.2) breakAlliance(al.a, al.b, 'Trust collapses.');
+    }
   }
 
   function objectiveBuffsFor(houseId){
@@ -804,8 +1011,13 @@
     game.followMode = true;
     game.followTargetIds = [];
     game.groundLoot = [];
+    game.alliances = [];
+    game.pendingAllianceRequests = [];
+    game.allianceNoticeCount = 0;
+    game.lastAllianceEvalAt = 0;
 
     game.houses = HOUSE_DEFS.map(makeHouse);
+    for(const h of game.houses){ for(const o of game.houses){ if(h.id!==o.id) h.relations[o.id]=0; } }
     game.barricades = [];
     game.traps = [];
     buildTerrain();
@@ -863,6 +1075,66 @@
     document.getElementById('eqFireOil').textContent = `Fire Oil(${p.stockpile.FireOil||0})`;
   }
 
+  function renderAllianceModal(){
+    if(game.allianceNoticeCount>0){
+      ui.allianceBadge.textContent = game.allianceNoticeCount;
+      ui.allianceBadge.classList.remove('hidden');
+    }else ui.allianceBadge.classList.add('hidden');
+
+    const active = game.alliances.filter(a=>a.active && game.time<a.until && (a.a==='player' || a.b==='player'));
+    const houses = game.houses.filter(h=>h.id!=='player');
+    const pending = game.pendingAllianceRequests;
+
+    ui.allianceBody.innerHTML = `
+      <div class="section"><h3>Active alliances</h3>
+        ${active.length ? active.map(a=>{
+          const other = a.a==='player' ? getHouse(a.b) : getHouse(a.a);
+          return `<div class="allianceRow"><div><b>${other.name}</b><div class="tiny">Remaining: ${Math.max(0,Math.ceil(a.until-game.time))}s • Trust ${Math.round((a.trust||0.58)*100)}%</div></div><button class="btn bad" data-break="${other.id}">Break Alliance</button></div>`;
+        }).join('') : '<div class="tiny">No active alliances.</div>'}
+      </div>
+      <div class="section"><h3>Available houses</h3>
+        ${houses.map(h=>{
+          const allied = areAllied(getHouse('player'), h);
+          const cooling = game.time < h.allianceCooldownUntil;
+          const status = allied ? 'allied' : cooling ? 'cooling down' : 'neutral';
+          return `<div class="allianceRow"><div><b>${h.name}</b><div class="tiny">${status}</div></div><button class="btn good" data-request="${h.id}" ${allied||cooling?'disabled':''}>Request Alliance</button></div>`;
+        }).join('')}
+      </div>
+      <div class="section"><h3>Pending incoming requests</h3>
+        ${pending.length ? pending.map((r,idx)=>`<div class="allianceRow"><div><b>${getHouse(r.fromHouseId).name}</b><div class="tiny">${r.reason}</div></div><div><button class="btn good" data-accept="${idx}">Accept</button> <button class="btn" data-decline="${idx}">Decline</button></div></div>`).join('') : '<div class="tiny">No pending requests.</div>'}
+      </div>
+    `;
+
+    ui.allianceBody.querySelectorAll('[data-request]').forEach(el=>el.onclick=()=>{
+      const houseId = el.dataset.request;
+      const ev = evaluateAllianceOffer('player', houseId);
+      if(ev.ok) makeAlliance('player', houseId, rand(60,110), 0.62, null);
+      else log(`${getHouse(houseId).name} refuses your proposal.`);
+      refreshUI();
+    });
+    ui.allianceBody.querySelectorAll('[data-break]').forEach(el=>el.onclick=()=>{ breakAlliance('player', el.dataset.break, 'Terms are shattered.'); refreshUI(); });
+    ui.allianceBody.querySelectorAll('[data-accept]').forEach(el=>el.onclick=()=>{
+      const idx = Number(el.dataset.accept);
+      const req = game.pendingAllianceRequests[idx];
+      if(req){
+        makeAlliance('player', req.fromHouseId, rand(60,105), 0.64, null);
+        game.pendingAllianceRequests.splice(idx,1);
+        game.allianceNoticeCount = Math.max(0, game.allianceNoticeCount-1);
+      }
+      refreshUI();
+    });
+    ui.allianceBody.querySelectorAll('[data-decline]').forEach(el=>el.onclick=()=>{
+      const idx = Number(el.dataset.decline);
+      const req = game.pendingAllianceRequests[idx];
+      if(req){
+        log(`${getHouse(req.fromHouseId).name} receives your refusal.`);
+        game.pendingAllianceRequests.splice(idx,1);
+        game.allianceNoticeCount = Math.max(0, game.allianceNoticeCount-1);
+      }
+      refreshUI();
+    });
+  }
+
   function refreshUI(){
     renderTop();
     renderSelected();
@@ -870,6 +1142,7 @@
     renderSelectionPanel();
     renderHouses();
     renderLegend();
+    renderAllianceModal();
     refreshEquipButtons();
   }
 
@@ -891,6 +1164,7 @@
       <div class="pill">Mode: <b>${modeText}</b></div>
       <div class="pill">Camera: <b>${game.followMode ? 'Auto-follow' : 'Manual'}</b></div>
       <div class="pill">Difficulty: <b>${game.difficulty.label}</b></div>
+      <div class="pill">Pending Terms: <b>${game.pendingAllianceRequests.length}</b></div>
     `;
   }
 
@@ -910,6 +1184,7 @@
       <div class="small">HP: <b>${Math.round(s.hp)}/${Math.round(s.maxHp)}</b> • Speed: <b>${Math.round(s.moveSpeed)}</b> • Damage: <b>${Math.round(s.atkDmg)}</b> • Range: <b>${Math.round(s.atkRange)}</b></div>
       <div class="small">State: <b>${s.state}</b>${s.carryingStandard ? ' • carrying banner' : ''}${s.trappedUntil>game.time ? ` • trapped ${Math.ceil(s.trappedUntil-game.time)}s` : ''}</div>
       <div class="small">Order: <b>${s.order.type}</b>${s.order.targetId ? ` • target ${s.order.targetId}` : ''}</div>
+      <div class="small">Morale: <b>${Math.round(s.morale)}</b> (${s.moraleState[0].toUpperCase()+s.moraleState.slice(1)})</div>
       <div class="small">Build CD: <b>${engCd>0 ? engCd.toFixed(1)+'s' : 'Ready'}</b> • Burn: <b>${Math.max(0, s.burnUntil-game.time).toFixed(1)}s</b></div>
     `;
   }
@@ -950,6 +1225,7 @@
             <span class="tag">${s.armor}</span>
             <span class="tag">${s.item}</span>
             <span class="tag">${s.order.type}</span>
+            <span class="tag">Morale ${Math.round(s.morale)} (${s.moraleState[0].toUpperCase()})</span>
           </div>
         </div>
       `;
@@ -1128,6 +1404,8 @@
   };
 
   document.getElementById('restart').onclick=()=>init();
+  ui.openAlliances.onclick=()=>{ game.allianceNoticeCount=0; renderAllianceModal(); ui.allianceModal.classList.remove('hidden'); };
+  document.getElementById('closeAlliances').onclick=()=>ui.allianceModal.classList.add('hidden');
 
   addEventListener('keydown',e=>{
     keysDown.add(e.key);
@@ -1386,7 +1664,7 @@
   }
 
   function weakHouseTargetFor(house){
-    const others = game.houses.filter(h=>h.id!==house.id && h.controller!==house.id);
+    const others = game.houses.filter(h=>h.id!==house.id && h.controller!==house.id && !areAllied(h, house));
     if(!others.length) return null;
     return others.map(t=>{
       const d = dist(house.castle.x,house.castle.y,t.castle.x,t.castle.y);
@@ -1535,7 +1813,8 @@
   function performBowShot(att, target){
     setFacingTowardPoint(att, target.x, target.y);
     att.draw = 0.18;
-    att.attackCd = att.baseAttackCd;
+    const cadenceMul = att.moraleState==='confident' ? 0.94 : att.moraleState==='shaken' ? 1.12 : att.moraleState==='broken' ? 1.24 : 1;
+    att.attackCd = att.baseAttackCd * cadenceMul;
 
     if(tryShieldBlock(target, att)) return;
 
@@ -1568,7 +1847,8 @@
       if(att.weapon==='Spear' && target.mount) raw *= 1.26;
       if(att.weapon==='Spear' && movingToward) raw *= 1.14;
       let dealt = Math.max(4, raw * (1 - target.defense - defenseHoldBonus(target)));
-      target.hp -= dealt;
+      const moraleMul = att.moraleState==='confident' ? 1.06 : att.moraleState==='shaken' ? 0.9 : att.moraleState==='broken' ? 0.78 : 1;
+      target.hp -= dealt * moraleMul;
       if(att.weapon==='Spear' && Math.random() < 0.34){
         const kx = target.x - att.x; const ky = target.y - att.y;
         const kl = Math.hypot(kx,ky) || 1;
@@ -1577,7 +1857,8 @@
       }
       if(att.item==='FireOil') target.burnUntil = Math.max(target.burnUntil, game.time + 2.7);
       for(let i=0;i<5;i++) addParticle({x:target.x,y:target.y,c:getHouse(att.controller).color,vx:rand(-50,50),vy:rand(-50,50),t:.22,r:2.2});
-      att.attackCd = att.baseAttackCd;
+      const cadenceMul = att.moraleState==='confident' ? 0.94 : att.moraleState==='shaken' ? 1.12 : att.moraleState==='broken' ? 1.24 : 1;
+    att.attackCd = att.baseAttackCd * cadenceMul;
       if(target.hp <= 0){ knockOut(target, att); grantExperience(att, 2); }
     }
   }
@@ -1690,6 +1971,22 @@
     target.burnUntil = 0;
 
     maybeDropKnockoutItem(target);
+    if(by && by.state!=='knocked'){
+      by.recentEnemyKills += 1;
+      applyMoraleEvent(by, 7, null);
+    }
+    for(const a of game.students){
+      if(a.state==='knocked' || a.id===target.id) continue;
+      const d = dist(a.x,a.y,target.x,target.y);
+      if(d>220) continue;
+      if(a.controller===target.controller){
+        a.recentFriendDeaths += 1;
+        applyMoraleEvent(a, -11, null);
+        if(target.level>=3) applyMoraleEvent(a, -5, null);
+      } else if(by && a.controller===by.controller){
+        applyMoraleEvent(a, 4, null);
+      }
+    }
 
     if(target.carryingStandard){
       const st = getStandard(target.carryingStandard);
@@ -1718,6 +2015,11 @@
     applyLoadout(carrier);
     setOrder(carrier, {type:'returnBanner', x:getHouse(carrier.controller).castle.x, y:getHouse(carrier.controller).castle.y, manual:true});
     log(`<span style="color:${getHouse(carrier.controller).color}">${carrier.name}</span> takes the banner of <span style="color:${getHouse(standard.houseId).color}">${getHouse(standard.houseId).name}</span>.`);
+    for(const s of game.students){
+      if(s.state==='knocked') continue;
+      if(s.controller===standard.houseId) applyMoraleEvent(s,-16,'Our banner is taken!');
+      if(s.controller===carrier.controller) applyMoraleEvent(s,7,null);
+    }
   }
 
   function secureReturnedBanner(carrier, standard){
@@ -1730,6 +2032,11 @@
     standard.controller = carrier.controller;
     standard.x = getHouse(carrier.controller).castle.x;
     standard.y = getHouse(carrier.controller).castle.y - 34;
+    for(const s of game.students){
+      if(s.state==='knocked') continue;
+      if(s.controller===carrier.controller) applyMoraleEvent(s,8,'Our standard is secured!');
+      if(s.controller===houseId) applyMoraleEvent(s,6,'Our banner returns to friendly hands.');
+    }
     transferHouse(houseId, carrier.controller);
   }
 
@@ -2169,8 +2476,17 @@
     }
 
     const nearEnemies = game.students.filter(
-      s=>s.controller!==house.id && s.state!=='knocked' && dist(s.x,s.y,house.castle.x,house.castle.y)<game.difficulty.defenseRadius
+      s=>s.controller!==house.id && s.state!=='knocked' && !areAllied(getHouse(s.controller), house) && dist(s.x,s.y,house.castle.x,house.castle.y)<game.difficulty.defenseRadius
     );
+
+    const alliedBattle = game.students.find(s=>s.state!=='knocked' && s.controller!==house.id && areAllied(getHouse(s.controller), house) &&
+      game.students.some(e=>e.state!=='knocked' && enemies(s,e) && dist(s.x,s.y,e.x,e.y)<180));
+    if(alliedBattle && dist(alliedBattle.x,alliedBattle.y,house.castle.x,house.castle.y) < 1450 && Math.random()<0.6){
+      const support = active.slice(0, Math.max(3, Math.floor(active.length*0.45)));
+      for(const s of support) setOrder(s,{type:'attackMove',x:alliedBattle.x+rand(-70,70),y:alliedBattle.y+rand(-70,70),manual:true});
+      log(`Allied reinforcements from ${house.name} arrive.`);
+      return;
+    }
 
     if(tryAssignAIForging(house, active, nearEnemies)) return;
 
@@ -2412,6 +2728,7 @@
     game.time += dt;
 
     updateObjectives(dt);
+    updateAllianceLogic();
 
     if(game.time >= game.nextLootSpawnAt){
       let spot = null;
@@ -2504,6 +2821,16 @@
 
     for(const s of game.students){
       if(s.state==='knocked') continue;
+      syncMorale(s, dt);
+      if(s.item==='WarHorn'){
+        for(const a of game.students){
+          if(a.state==='knocked' || a.controller!==s.controller) continue;
+          if(dist(s.x,s.y,a.x,a.y) < 165){
+            a.morale = clamp(a.morale + dt*3, 0, 100);
+            a.cannotBreakUntil = Math.max(a.cannotBreakUntil, game.time + 1.3);
+          }
+        }
+      }
       if(s.attackCd>0) s.attackCd-=dt;
       if(s.swing>0) s.swing-=dt;
       if(s.draw>0) s.draw-=dt;
@@ -2540,6 +2867,7 @@
 
       let targetPoint = null;
       let fightTarget = null;
+      const retreatPoint = getMoraleRetreatDecision(s);
       let boxTarget = null;
       let barricadeTarget = null;
       let groundTarget = null;
@@ -2554,7 +2882,7 @@
           }
         }
         if(!fightTarget){
-          const seek = nearestEnemyWithin(s, s.aggro + 45);
+          const seek = nearestEnemyWithin(s, s.aggro * getMoraleAggroModifier(s) + 45);
           if(seek){
             s.engageId = seek.id;
             fightTarget = seek;
@@ -2572,7 +2900,10 @@
         groundTarget = game.groundLoot.find(x=>x.id===s.order.targetId && x.alive);
       }
 
-      if(s.order.type==='heal'){
+      if(retreatPoint){
+        targetPoint = retreatPoint;
+        if(Math.random()<0.07) s.engageId = null;
+      } else if(s.order.type==='heal'){
         const ally = game.students.find(x=>x.id===s.order.targetId && x.state!=='knocked');
         if(!ally || ally.hp >= ally.maxHp){
           s.order = {type:'idle', x:s.x, y:s.y, targetId:null, targetType:null, manual:false};
@@ -2587,7 +2918,7 @@
 
         if(s.weapon==='Bow' || s.weapon==='Longbow'){
           targetPoint = getRangedCombatPoint(s, fightTarget);
-          const retreatBand = s.weapon==='Bow' ? 88 : 74;
+          const retreatBand = (s.weapon==='Bow' ? 88 : 74) + (s.moraleState==='shaken' ? 16 : 0) + (s.moraleState==='broken' ? 30 : 0);
           if(d < retreatBand){
             const rx = s.x - fightTarget.x; const ry = s.y - fightTarget.y;
             const rl = Math.hypot(rx,ry) || 1;
@@ -3181,6 +3512,14 @@
     for(const s of game.students){
       if(s.state==='knocked' || !inView(s.x,s.y,44)) continue;
       const h = getHouse(s.controller);
+
+      if(s.moraleState==='broken'){
+        ctx.strokeStyle='rgba(224,106,106,.68)'; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.arc(s.x,s.y,s.radius+5,0,Math.PI*2); ctx.stroke();
+      } else if(s.moraleState==='confident'){
+        ctx.strokeStyle='rgba(86,207,136,.45)'; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.arc(s.x,s.y,s.radius+4,0,Math.PI*2); ctx.stroke();
+      }
 
       if(game.selected.has(s.id)){
         ctx.strokeStyle='#d6e6ff';
