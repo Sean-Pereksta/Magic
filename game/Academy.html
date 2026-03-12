@@ -171,7 +171,7 @@
       <div class="stat"><span>Fleet Command</span><span id="commandText"></span></div>
       <div class="stat"><span>Wave Progress</span><span id="waveText"></span></div>
       <div class="bar"><div class="fill wave" id="waveBar"></div></div>
-      <div class="tiny muted" style="margin-top:6px">Commands: <span class="kbd">Q</span> Escort <span class="kbd">E</span> Spread <span class="kbd">R</span> Rally <span class="kbd">F</span> Focus Fire <span class="kbd">T</span> Defensive Screen</div>
+      <div class="tiny muted" style="margin-top:6px">Commands: <span class="kbd">Q</span> Free Flight <span class="kbd">E</span> Spread Array <span class="kbd">R</span> Rally <span class="kbd">F</span> Assault Strongest <span class="kbd">T</span> Front Line</div>
     </div>
 
     <div class="card" id="bossCard">
@@ -272,20 +272,22 @@ const ASTEROID_CAP = 6;
 const MAX_ALLIED_TURRETS = 7;
 const MAX_WALLS = 24;
 const DROP_MERGE_RANGE = 28;
+const DROP_RATE_MULT = 0.75;
+const RESOURCE_DROP_VALUE_MULT = 0.75;
 
 const COMMAND_MODES = {
-  escort:'escort',
+  freeflight:'freeflight',
   spread:'spread',
   rally:'rally',
   focus:'focus',
   screen:'screen'
 };
 const COMMAND_LABELS = {
-  escort:'Escort Formation',
-  spread:'Spread Formation',
+  freeflight:'Free Flight',
+  spread:'Spread Array',
   rally:'Rally on Player',
-  focus:'Focus Fire',
-  screen:'Defensive Screen'
+  focus:'Assault Strongest',
+  screen:'Front Line'
 };
 const SUPPORT_ALLY_KINDS = new Set(['relay','engineer','dock','medic','amplifier','command','godprism','repair','barrier']);
 const FRONT_SCREEN_KINDS = new Set(['guardian','shield','barrier','turretbase']);
@@ -346,10 +348,8 @@ addEventListener('keydown', e=>{
     logMsg(`Upgrade selected: ${u.name}.`);
   }
   if(['q','e','r','f','t'].includes(k)){
-    const modeMap = {q:COMMAND_MODES.escort,e:COMMAND_MODES.spread,r:COMMAND_MODES.rally,f:COMMAND_MODES.focus,t:COMMAND_MODES.screen};
+    const modeMap = {q:COMMAND_MODES.freeflight,e:COMMAND_MODES.spread,r:COMMAND_MODES.rally,f:COMMAND_MODES.focus,t:COMMAND_MODES.screen};
     state.commandMode = modeMap[k];
-    if(state.commandMode === COMMAND_MODES.rally) state.commandRallyTimer = 4.5;
-    else state.commandRallyTimer = Math.max(0,state.commandRallyTimer-0.5);
     logMsg(`Fleet command: ${COMMAND_LABELS[state.commandMode]}.`);
   }
   if(k === 'arrowdown'){
@@ -475,8 +475,7 @@ const state = {
   gameOver:false,
   bossActive:false,
   bossId:0,
-  commandMode:COMMAND_MODES.escort,
-  commandRallyTimer:0,
+  commandMode:COMMAND_MODES.freeflight,
   supportDisruptTimer:0,
   supportDisruptMult:1,
   allyFireRateSlowTimer:0,
@@ -593,7 +592,7 @@ function applyAllySeparation(unit, dt){
       pushY += (dy / dd) * force * 0.7;
     }
   }
-  const sepMult = state.commandMode === COMMAND_MODES.spread ? 1.95 : state.commandMode === COMMAND_MODES.escort ? 0.82 : 1;
+  const sepMult = state.commandMode === COMMAND_MODES.spread ? 1.95 : state.commandMode === COMMAND_MODES.freeflight ? 0.82 : 1;
   unit.vx += pushX * 220 * sepMult * dt;
   unit.vy += pushY * 220 * sepMult * dt;
 }
@@ -636,6 +635,7 @@ function getPickupLabel(type,val,data){
   return '';
 }
 function dropPickup(x,y,type,val,data){
+  if(type==='energy' || type==='metal') val = Math.max(1, Math.floor(val * RESOURCE_DROP_VALUE_MULT));
   state.pickups.push({
     x,y,vy: type==='metal' ? rand(18,32) : type==='unlock' ? rand(22,34) : rand(24,40),
     type,val,data,label:getPickupLabel(type,val,data),
@@ -820,28 +820,28 @@ function killEnemy(e){
 
   if(def.boss){
     state.bossActive = state.enemies.some(o=>o!==e && ENEMY_DEFS[o.kind].boss);
-    for(let i=0;i<3;i++) dropPickup(e.x + rand(-40,40), e.y + rand(-20,20), 'metal', randi(6,10));
+    for(let i=0;i<Math.max(1,Math.floor(3*DROP_RATE_MULT));i++) dropPickup(e.x + rand(-40,40), e.y + rand(-20,20), 'metal', randi(6,10));
     dropPickup(e.x + rand(-22,22), e.y + rand(-8,8), 'energycap', 1);
     dropPickup(e.x + rand(-22,22), e.y + rand(-8,8), 'metalcap', 1);
     dropPickup(e.x + rand(-22,22), e.y + rand(-8,8), 'hullcap', 1);
-    if(state.unlocked.length < 9 && state.unlockPool.length && Math.random() < 0.28){
+    if(state.unlocked.length < 9 && state.unlockPool.length && Math.random() < 0.28 * DROP_RATE_MULT){
       const k = pick(state.unlockPool);
       dropPickup(e.x, e.y, 'unlock', 1, k);
     }
     logMsg(`${def.name} destroyed.`);
   }
 
-  if(Math.random() < 0.14 || def.boss) dropPickup(e.x + rand(-8,8), e.y, 'energy', randi(14,28));
-  if(Math.random() < def.metal * 0.5 || def.boss) dropPickup(e.x + rand(-10,10), e.y, 'metal', randi(4, Math.max(8, Math.ceil(state.level/2)+5)));
-  if((Math.random() < def.metal * 0.11 && !def.boss) || def.elite) dropPickup(e.x + rand(-12,12), e.y, 'metal', randi(3, Math.max(5, Math.ceil(state.level/3)+4)));
+  if(Math.random() < 0.14 * DROP_RATE_MULT || def.boss) dropPickup(e.x + rand(-8,8), e.y, 'energy', randi(14,28));
+  if(Math.random() < def.metal * 0.5 * DROP_RATE_MULT || def.boss) dropPickup(e.x + rand(-10,10), e.y, 'metal', randi(4, Math.max(8, Math.ceil(state.level/2)+5)));
+  if((Math.random() < def.metal * 0.11 * DROP_RATE_MULT && !def.boss) || def.elite) dropPickup(e.x + rand(-12,12), e.y, 'metal', randi(3, Math.max(5, Math.ceil(state.level/3)+4)));
 
-  const capChance = def.elite ? 0.24 : def.boss ? 1 : 0.08;
+  const capChance = (def.elite ? 0.24 : def.boss ? 1 : 0.08) * DROP_RATE_MULT;
   if(Math.random() < capChance){
     const upgradeType = pick(['energycap','metalcap','hullcap']);
     dropPickup(e.x + rand(-14,14), e.y + rand(-6,6), upgradeType, 1);
   }
 
-  if(state.unlocked.length < 9 && state.unlockPool.length && (Math.random() < 0.012 || (def.elite && Math.random() < 0.06))){
+  if(state.unlocked.length < 9 && state.unlockPool.length && (Math.random() < 0.012 * DROP_RATE_MULT || (def.elite && Math.random() < 0.06 * DROP_RATE_MULT))){
     const k = pick(state.unlockPool);
     dropPickup(e.x, e.y, 'unlock', 1, k);
   }
@@ -861,16 +861,21 @@ function supportDebuffMult(){
   return state.supportDisruptTimer > 0 ? state.supportDisruptMult : 1;
 }
 
+function strongestEnemy(obj, range=99999){
+  let best=null, score=-1e9;
+  for(const e of state.enemies){
+    const d = dist(obj,e);
+    if(d > range) continue;
+    const power = (e.maxHp || e.hp || 0) * 3 + enemyPriorityValue(e.kind);
+    const s = power - d * 0.15;
+    if(s > score){ score = s; best = e; }
+  }
+  return best;
+}
+
 function pickCommandTarget(obj, range=99999){
   if(state.commandMode !== COMMAND_MODES.focus) return nearestEnemy(obj, range);
-  let best=null,score=-1e9;
-  for(const e of state.enemies){
-    const d=dist(obj,e);
-    if(d>range) continue;
-    const s = enemyPriorityValue(e.kind) - d * 0.22;
-    if(s>score){ score=s; best=e; }
-  }
-  return best || nearestEnemy(obj, range);
+  return strongestEnemy(obj, range) || nearestEnemy(obj, range);
 }
 
 function nearestEnemy(obj, range=99999){
@@ -1253,32 +1258,76 @@ function allyFire(a, target, origin){
   }
 }
 
+function allyFormationIndex(unit){
+  let idx = -1, total = 0;
+  for(const ally of state.allies){
+    if(ally.dockedBy || ally.garrisonedIn) continue;
+    if(ally === unit) idx = total;
+    total++;
+  }
+  return {idx:Math.max(0,idx), total:Math.max(1,total)};
+}
+
 function moveAllyByPattern(a, d, target, dt){
   const cmd = state.commandMode;
+
+  if(cmd !== COMMAND_MODES.freeflight){
+    const {idx,total} = allyFormationIndex(a);
+
+    if(cmd === COMMAND_MODES.rally){
+      const ring = 34 + (idx % 7) * 8;
+      const row = Math.floor(idx / 7);
+      const theta = (idx / total) * Math.PI * 2 + performance.now()*0.0008;
+      const tx = state.player.x + Math.cos(theta) * ring;
+      const ty = state.player.y - 52 - row * 16 + Math.sin(theta) * 10;
+      const ra = Math.atan2(ty-a.y, tx-a.x);
+      a.vx += Math.cos(ra) * d.speed * 1.45 * dt;
+      a.vy += Math.sin(ra) * d.speed * 1.45 * dt;
+      return;
+    }
+
+    if(cmd === COMMAND_MODES.spread){
+      const cols = Math.max(1, Math.ceil(Math.sqrt(total)));
+      const rows = Math.max(1, Math.ceil(total / cols));
+      const col = idx % cols;
+      const row = Math.floor(idx / cols);
+      const marginX = 70;
+      const topY = 70;
+      const bottomY = Math.max(topY + 40, H - 200);
+      const tx = cols === 1 ? W * 0.5 : marginX + (W - marginX * 2) * (col / (cols - 1));
+      const ty = rows === 1 ? (topY + bottomY) * 0.5 : topY + (bottomY - topY) * (row / (rows - 1));
+      const sa = Math.atan2(ty-a.y, tx-a.x);
+      a.vx += Math.cos(sa) * d.speed * 1.15 * dt;
+      a.vy += Math.sin(sa) * d.speed * 1.15 * dt;
+      return;
+    }
+
+    if(cmd === COMMAND_MODES.screen){
+      const spacing = clamp((W - 160) / Math.max(1,total), 26, 62);
+      const tx = state.player.x + (idx - (total - 1)/2) * spacing;
+      const ty = state.player.y - 120;
+      const la = Math.atan2(ty-a.y, tx-a.x);
+      a.vx += Math.cos(la) * d.speed * 1.05 * dt;
+      a.vy += Math.sin(la) * d.speed * 1.05 * dt;
+      return;
+    }
+
+    if(cmd === COMMAND_MODES.focus){
+      const assaultTarget = strongestEnemy(a, ALLY_AGGRO_RANGE) || target;
+      if(assaultTarget){
+        const aa = angleTo(a, assaultTarget);
+        const ad = dist(a, assaultTarget);
+        const desired = Math.max(40, d.attackRange * 0.68);
+        const pull = clamp((ad - desired) / desired, -1.2, 1.2);
+        a.vx += Math.cos(aa) * pull * d.speed * 1.22 * dt;
+        a.vy += Math.sin(aa) * pull * d.speed * 1.22 * dt;
+      }
+      return;
+    }
+  }
+
   const ang = angleTo(a,target), dd = dist(a,target);
   const t = performance.now()*0.001 + a.orbitSeed;
-
-  if(cmd === COMMAND_MODES.rally && state.commandRallyTimer > 0){
-    const rallyX = state.player.x + Math.sin(a.orbitSeed*2.1) * (45 + (SHIP_ORDER.indexOf(a.kind)%4)*20);
-    const rallyY = state.player.y - 78 - Math.cos(a.orbitSeed*1.7)*24;
-    const ra = Math.atan2(rallyY-a.y, rallyX-a.x);
-    a.vx += Math.cos(ra)*d.speed*1.12*dt; a.vy += Math.sin(ra)*d.speed*1.12*dt;
-    return;
-  }
-
-  if(cmd === COMMAND_MODES.screen){
-    const flank = Math.sin(a.orbitSeed*3.1);
-    const frontX = state.player.x + flank * 95;
-    const frontY = state.player.y - 112 + Math.cos(a.orbitSeed*2.3)*16;
-    const rearX = state.player.x + flank * 130;
-    const rearY = state.player.y - 42 + Math.cos(a.orbitSeed*2.0)*18;
-    const interceptX = state.player.x + flank * 165;
-    const interceptY = state.player.y - 156;
-    const anchor = (FRONT_SCREEN_KINDS.has(a.kind) || a.kind === 'guardian') ? {x:frontX,y:frontY} : INTERCEPTOR_KINDS.has(a.kind) ? {x:interceptX,y:interceptY} : {x:rearX,y:rearY};
-    const aa = Math.atan2(anchor.y-a.y, anchor.x-a.x);
-    a.vx += Math.cos(aa)*d.speed*0.92*dt;
-    a.vy += Math.sin(aa)*d.speed*0.92*dt;
-  }
 
   if(d.move === 'repair'){
     const wounded = mostWoundedAlly(a, REPAIR_AGGRO_RANGE, a);
@@ -1304,7 +1353,6 @@ function moveAllyByPattern(a, d, target, dt){
 
   if(d.move === 'supportRear'){
     let desired = d.circle || 135;
-    if(cmd === COMMAND_MODES.escort) desired *= LONG_RANGE_KINDS.has(a.kind) ? 0.9 : 0.78;
     if(cmd === COMMAND_MODES.spread) desired *= 1.45;
     if(cmd === COMMAND_MODES.screen) desired *= SUPPORT_ALLY_KINDS.has(a.kind) ? 1.22 : 0.9;
     const pull = clamp((dd - desired)/desired,-1.45,1.45), tangent = ang + Math.PI/2;
@@ -1318,7 +1366,6 @@ function moveAllyByPattern(a, d, target, dt){
     a.vx += Math.cos(ang)*d.speed*1.35*dt; a.vy += Math.sin(ang)*d.speed*1.35*dt;
   } else if(d.move === 'frontline'){
     let desired = 110;
-    if(cmd === COMMAND_MODES.escort) desired = 92;
     if(cmd === COMMAND_MODES.spread) desired = 165;
     if(cmd === COMMAND_MODES.screen) desired = 76;
     const pull = clamp((dd - desired)/desired,-1.2,1.2);
@@ -1539,7 +1586,6 @@ function update(dt){
 
   state.energy = Math.min(state.maxEnergy, state.energy + dt*(9 + state.level*0.95));
   state.player.summonCd -= dt;
-  state.commandRallyTimer = Math.max(0, state.commandRallyTimer - dt);
   state.supportDisruptTimer = Math.max(0, state.supportDisruptTimer - dt);
   if(state.supportDisruptTimer <= 0) state.supportDisruptMult = 1;
   state.allyFireRateSlowTimer = Math.max(0, state.allyFireRateSlowTimer - dt);
