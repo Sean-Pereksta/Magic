@@ -168,8 +168,10 @@
       <div class="stat"><span>Score</span><span id="scoreText"></span></div>
       <div class="stat"><span>Allied Ships</span><span id="allyText"></span></div>
       <div class="stat"><span>Enemies Left</span><span id="enemyText"></span></div>
+      <div class="stat"><span>Fleet Command</span><span id="commandText"></span></div>
       <div class="stat"><span>Wave Progress</span><span id="waveText"></span></div>
       <div class="bar"><div class="fill wave" id="waveBar"></div></div>
+      <div class="tiny muted" style="margin-top:6px">Commands: <span class="kbd">Q</span> Escort <span class="kbd">E</span> Spread <span class="kbd">R</span> Rally <span class="kbd">F</span> Focus Fire <span class="kbd">T</span> Defensive Screen</div>
     </div>
 
     <div class="card" id="bossCard">
@@ -229,6 +231,7 @@ const ui = {
   scoreText: document.getElementById('scoreText'),
   allyText: document.getElementById('allyText'),
   enemyText: document.getElementById('enemyText'),
+  commandText: document.getElementById('commandText'),
   waveText: document.getElementById('waveText'),
   waveBar: document.getElementById('waveBar'),
   slots: document.getElementById('slots'),
@@ -269,6 +272,26 @@ const ASTEROID_CAP = 6;
 const MAX_ALLIED_TURRETS = 7;
 const MAX_WALLS = 24;
 const DROP_MERGE_RANGE = 28;
+
+const COMMAND_MODES = {
+  escort:'escort',
+  spread:'spread',
+  rally:'rally',
+  focus:'focus',
+  screen:'screen'
+};
+const COMMAND_LABELS = {
+  escort:'Escort Formation',
+  spread:'Spread Formation',
+  rally:'Rally on Player',
+  focus:'Focus Fire',
+  screen:'Defensive Screen'
+};
+const SUPPORT_ALLY_KINDS = new Set(['relay','engineer','dock','medic','amplifier','command','godprism','repair','barrier']);
+const FRONT_SCREEN_KINDS = new Set(['guardian','shield','barrier','turretbase']);
+const LONG_RANGE_KINDS = new Set(['artillery','rail','godprism','missile']);
+const INTERCEPTOR_KINDS = new Set(['interceptor','fighter','elite','scout']);
+const HIGH_VALUE_ENEMIES = new Set(['titan','overmind','executioner','gravemind','forgecore','starcarrier','battlecruiser','leviathan','colossus','carrier','dread']);
 
 const UPGRADE_DEFS = [
   { key:'health',   name:'Ship Health',     desc:'+10% ship health',       baseCost:60,  growth:1.38, color:'#7dffb8' },
@@ -321,6 +344,13 @@ addEventListener('keydown', e=>{
     state.selectedUpgrade = (state.selectedUpgrade + 1) % UPGRADE_DEFS.length;
     const u = UPGRADE_DEFS[state.selectedUpgrade];
     logMsg(`Upgrade selected: ${u.name}.`);
+  }
+  if(['q','e','r','f','t'].includes(k)){
+    const modeMap = {q:COMMAND_MODES.escort,e:COMMAND_MODES.spread,r:COMMAND_MODES.rally,f:COMMAND_MODES.focus,t:COMMAND_MODES.screen};
+    state.commandMode = modeMap[k];
+    if(state.commandMode === COMMAND_MODES.rally) state.commandRallyTimer = 4.5;
+    else state.commandRallyTimer = Math.max(0,state.commandRallyTimer-0.5);
+    logMsg(`Fleet command: ${COMMAND_LABELS[state.commandMode]}.`);
   }
   if(k === 'arrowdown'){
     purchaseSelectedUpgrade();
@@ -386,6 +416,14 @@ const ENEMY_DEFS = {
   splitter:    {name:'Splitter', hp:66,speedX:80,speedY:17,radius:11, hitBonus:8,type:'armored',weapon:'split',fireRate:1.22,dmg:13,color:'#c2ff84',score:64,metal:0.28, move:'lane'},
   shielder:    {name:'Bulwark', hp:150,speedX:46,speedY:12,radius:16, hitBonus:12,type:'armored',weapon:'shieldPulse',fireRate:1.28,dmg:16,color:'#79dbff',score:94,metal:0.42, move:'wall', elite:true},
   dread:       {name:'Dreadnought', hp:280,speedX:34,speedY:9,radius:22, hitBonus:17,type:'armored',weapon:'barrage',fireRate:0.96,dmg:18,color:'#ff78c6',score:185,metal:0.56, move:'wall', elite:true},
+  disruptor:   {name:'Disruptor', hp:118,speedX:72,speedY:14,radius:13, hitBonus:10,type:'armored',weapon:'disruptPulse',fireRate:1.75,dmg:0,color:'#8cf2ff',score:102,metal:0.4, move:'rear', elite:true},
+  saboteur:    {name:'Saboteur', hp:72,speedX:164,speedY:24,radius:9, hitBonus:7,type:'light',weapon:'stab',fireRate:0.74,dmg:16,color:'#ff9bf2',score:88,metal:0.32, move:'saboteur', elite:true},
+  siegedrill:  {name:'Siege Drill', hp:360,speedX:38,speedY:10,radius:21, hitBonus:16,type:'armored',weapon:'drill',fireRate:0.9,dmg:28,color:'#ffc58a',score:220,metal:0.62, move:'siege', elite:true},
+  empfrigate:  {name:'EMP Frigate', hp:164,speedX:58,speedY:12,radius:16, hitBonus:12,type:'armored',weapon:'empPulse',fireRate:1.9,dmg:12,color:'#7cb2ff',score:132,metal:0.46, move:'rear', elite:true},
+  starcarrier: {name:'Star Carrier', hp:430,speedX:30,speedY:8,radius:24, hitBonus:18,type:'armored',weapon:'spawnCarrierWing',fireRate:1.52,dmg:0,color:'#ff9fdf',score:280,metal:0.68, move:'rear', elite:true},
+  battlecruiser:{name:'Battlecruiser', hp:520,speedX:28,speedY:8,radius:27, hitBonus:20,type:'armored',weapon:'heavyBroadside',fireRate:1.35,dmg:24,color:'#ff8ab8',score:320,metal:0.72, move:'wall', elite:true},
+  leviathan:   {name:'Leviathan', hp:880,speedX:20,speedY:6,radius:36, hitBonus:24,type:'armored',weapon:'heavyBroadside',fireRate:1.9,dmg:36,color:'#ff6bcf',score:520,metal:0.9, move:'boss', elite:true, boss:true},
+  colossus:    {name:'Colossus Flagship', hp:1200,speedX:16,speedY:5,radius:42, hitBonus:30,type:'armored',weapon:'telegraphStorm',fireRate:1.85,dmg:58,color:'#ff66a8',score:700,metal:1.1, move:'boss', elite:true, boss:true},
 
   titan:       {name:'Titan Siege Ship', hp:560,speedX:24,speedY:7,radius:30, hitBonus:22,type:'armored',weapon:'telegraphBlast',fireRate:2.3,dmg:44,color:'#ff5fb5',score:360,metal:0.75, move:'boss', elite:true, boss:true},
   overmind:    {name:'Overmind Carrier', hp:700,speedX:20,speedY:6,radius:34, hitBonus:25,type:'armored',weapon:'telegraphRain',fireRate:2.55,dmg:22,color:'#93a7ff',score:430,metal:0.8, move:'boss', elite:true, boss:true},
@@ -437,6 +475,12 @@ const state = {
   gameOver:false,
   bossActive:false,
   bossId:0,
+  commandMode:COMMAND_MODES.escort,
+  commandRallyTimer:0,
+  supportDisruptTimer:0,
+  supportDisruptMult:1,
+  allyFireRateSlowTimer:0,
+  allyFireRateSlowMult:1,
   msg:[]
 };
 
@@ -549,8 +593,9 @@ function applyAllySeparation(unit, dt){
       pushY += (dy / dd) * force * 0.7;
     }
   }
-  unit.vx += pushX * 220 * dt;
-  unit.vy += pushY * 220 * dt;
+  const sepMult = state.commandMode === COMMAND_MODES.spread ? 1.95 : state.commandMode === COMMAND_MODES.escort ? 0.82 : 1;
+  unit.vx += pushX * 220 * sepMult * dt;
+  unit.vy += pushY * 220 * sepMult * dt;
 }
 
 function applyTurretSeparation(turret, dt){
@@ -737,6 +782,12 @@ function spawnLevel(){
     const eliteCount = Math.min(3, randi(1, 1 + Math.floor((state.level - 2)/5)));
     for(let i=0;i<eliteCount;i++) spawnEnemy(pick(elites), rand(60,W-60), -rand(60,160)-i*30);
   }
+
+  if(state.level >= 9 && Math.random() < 0.45){
+    const capitals = ['starcarrier','battlecruiser','dread','siegedrill','empfrigate'];
+    const capCount = Math.min(3, 1 + Math.floor((state.level-8)/5));
+    for(let i=0;i<capCount;i++) spawnEnemy(pick(capitals), rand(70,W-70), -rand(90,180)-i*34);
+  }
   logMsg(`Level ${state.level} begins. Incoming hostiles.`);
 }
 spawnLevel();
@@ -780,9 +831,9 @@ function killEnemy(e){
     logMsg(`${def.name} destroyed.`);
   }
 
-  if(Math.random() < 0.28 || def.boss) dropPickup(e.x + rand(-8,8), e.y, 'energy', randi(12,24));
-  if(Math.random() < def.metal || def.boss) dropPickup(e.x + rand(-10,10), e.y, 'metal', randi(3, Math.max(6, Math.ceil(state.level/2)+4)));
-  if((Math.random() < def.metal * 0.22 && !def.boss) || def.elite) dropPickup(e.x + rand(-12,12), e.y, 'metal', randi(2, Math.max(4, Math.ceil(state.level/3)+3)));
+  if(Math.random() < 0.14 || def.boss) dropPickup(e.x + rand(-8,8), e.y, 'energy', randi(14,28));
+  if(Math.random() < def.metal * 0.5 || def.boss) dropPickup(e.x + rand(-10,10), e.y, 'metal', randi(4, Math.max(8, Math.ceil(state.level/2)+5)));
+  if((Math.random() < def.metal * 0.11 && !def.boss) || def.elite) dropPickup(e.x + rand(-12,12), e.y, 'metal', randi(3, Math.max(5, Math.ceil(state.level/3)+4)));
 
   const capChance = def.elite ? 0.24 : def.boss ? 1 : 0.08;
   if(Math.random() < capChance){
@@ -794,6 +845,32 @@ function killEnemy(e){
     const k = pick(state.unlockPool);
     dropPickup(e.x, e.y, 'unlock', 1, k);
   }
+}
+
+function enemyPriorityValue(kind){
+  const d = ENEMY_DEFS[kind];
+  if(!d) return 0;
+  let v = d.radius + (d.hp * 0.03);
+  if(d.boss) v += 420;
+  if(d.elite) v += 120;
+  if(HIGH_VALUE_ENEMIES.has(kind)) v += 180;
+  return v;
+}
+
+function supportDebuffMult(){
+  return state.supportDisruptTimer > 0 ? state.supportDisruptMult : 1;
+}
+
+function pickCommandTarget(obj, range=99999){
+  if(state.commandMode !== COMMAND_MODES.focus) return nearestEnemy(obj, range);
+  let best=null,score=-1e9;
+  for(const e of state.enemies){
+    const d=dist(obj,e);
+    if(d>range) continue;
+    const s = enemyPriorityValue(e.kind) - d * 0.22;
+    if(s>score){ score=s; best=e; }
+  }
+  return best || nearestEnemy(obj, range);
 }
 
 function nearestEnemy(obj, range=99999){
@@ -939,6 +1016,37 @@ function enemyFire(e, target){
     for(let i=-2;i<=2;i++){
       const a=ang+i*0.12;
       state.enemyBullets.push({x:e.x,y:e.y,px:e.x,py:e.y,vx:Math.cos(a)*185,vy:Math.sin(a)*185,r:4,dmg:d.dmg,kind:'straight',life:5});
+    }
+  } else if(d.weapon === 'disruptPulse'){
+    const r = 180;
+    state.supportDisruptTimer = Math.max(state.supportDisruptTimer, 3.8);
+    state.supportDisruptMult = 0.52;
+    for(const a of state.allies){
+      if(!SUPPORT_ALLY_KINDS.has(a.kind)) continue;
+      if(dist(e,a) < r) addTextFx(a.x,a.y,'#8cf2ff','DISRUPTED');
+    }
+    burst(e.x,e.y,'#8cf2ff',26,120,2.2,0.24);
+  } else if(d.weapon === 'empPulse'){
+    const r = 200;
+    state.allyFireRateSlowTimer = Math.max(state.allyFireRateSlowTimer, 3.2);
+    state.allyFireRateSlowMult = 1.7;
+    state.telegraphs.push({ owner:e, kind:'empField', t:0.45, max:0.45, x:e.x,y:e.y,r, text:'EMP' });
+    for(const a of state.allies){
+      if(dist(e,a) < r) addTextFx(a.x,a.y,'#8fbaff','EMP');
+    }
+    burst(e.x,e.y,'#7cb2ff',24,125,2.5,0.26);
+  } else if(d.weapon === 'drill'){
+    state.enemyBullets.push({x:e.x,y:e.y,px:e.x,py:e.y,vx:Math.cos(ang)*140,vy:Math.sin(ang)*140,r:6,dmg:d.dmg,kind:'drill',life:4});
+  } else if(d.weapon === 'stab'){
+    state.enemyBullets.push({x:e.x,y:e.y,px:e.x,py:e.y,vx:Math.cos(ang)*300,vy:Math.sin(ang)*300,r:4,dmg:d.dmg,kind:'lance',life:2.8});
+  } else if(d.weapon === 'spawnCarrierWing'){
+    spawnEnemy('interceptor', e.x + rand(-34,34), e.y+12);
+    spawnEnemy('raider', e.x + rand(-26,26), e.y+14);
+    if(Math.random()<0.55) spawnEnemy('saboteur', e.x + rand(-20,20), e.y+10);
+  } else if(d.weapon === 'heavyBroadside'){
+    for(let i=-2;i<=2;i++){
+      const a=ang+i*0.16;
+      state.enemyBullets.push({x:e.x,y:e.y,px:e.x,py:e.y,vx:Math.cos(a)*170,vy:Math.sin(a)*170,r:5,dmg:d.dmg,kind:'straight',life:5.4});
     }
   } else if(d.weapon === 'telegraphBlast'){
     startTelegraph(e,'circle',0.9,'Blast Charge',{x:target.x,y:target.y,r:70,dmg:d.dmg});
@@ -1146,8 +1254,31 @@ function allyFire(a, target, origin){
 }
 
 function moveAllyByPattern(a, d, target, dt){
+  const cmd = state.commandMode;
   const ang = angleTo(a,target), dd = dist(a,target);
   const t = performance.now()*0.001 + a.orbitSeed;
+
+  if(cmd === COMMAND_MODES.rally && state.commandRallyTimer > 0){
+    const rallyX = state.player.x + Math.sin(a.orbitSeed*2.1) * (45 + (SHIP_ORDER.indexOf(a.kind)%4)*20);
+    const rallyY = state.player.y - 78 - Math.cos(a.orbitSeed*1.7)*24;
+    const ra = Math.atan2(rallyY-a.y, rallyX-a.x);
+    a.vx += Math.cos(ra)*d.speed*1.12*dt; a.vy += Math.sin(ra)*d.speed*1.12*dt;
+    return;
+  }
+
+  if(cmd === COMMAND_MODES.screen){
+    const flank = Math.sin(a.orbitSeed*3.1);
+    const frontX = state.player.x + flank * 95;
+    const frontY = state.player.y - 112 + Math.cos(a.orbitSeed*2.3)*16;
+    const rearX = state.player.x + flank * 130;
+    const rearY = state.player.y - 42 + Math.cos(a.orbitSeed*2.0)*18;
+    const interceptX = state.player.x + flank * 165;
+    const interceptY = state.player.y - 156;
+    const anchor = (FRONT_SCREEN_KINDS.has(a.kind) || a.kind === 'guardian') ? {x:frontX,y:frontY} : INTERCEPTOR_KINDS.has(a.kind) ? {x:interceptX,y:interceptY} : {x:rearX,y:rearY};
+    const aa = Math.atan2(anchor.y-a.y, anchor.x-a.x);
+    a.vx += Math.cos(aa)*d.speed*0.92*dt;
+    a.vy += Math.sin(aa)*d.speed*0.92*dt;
+  }
 
   if(d.move === 'repair'){
     const wounded = mostWoundedAlly(a, REPAIR_AGGRO_RANGE, a);
@@ -1172,7 +1303,11 @@ function moveAllyByPattern(a, d, target, dt){
   }
 
   if(d.move === 'supportRear'){
-    const desired = d.circle || 135, pull = clamp((dd - desired)/desired,-1.45,1.45), tangent = ang + Math.PI/2;
+    let desired = d.circle || 135;
+    if(cmd === COMMAND_MODES.escort) desired *= LONG_RANGE_KINDS.has(a.kind) ? 0.9 : 0.78;
+    if(cmd === COMMAND_MODES.spread) desired *= 1.45;
+    if(cmd === COMMAND_MODES.screen) desired *= SUPPORT_ALLY_KINDS.has(a.kind) ? 1.22 : 0.9;
+    const pull = clamp((dd - desired)/desired,-1.45,1.45), tangent = ang + Math.PI/2;
     a.vx += (Math.cos(ang)*pull - Math.cos(ang)*0.26 + Math.cos(tangent)*0.28) * d.speed * dt;
     a.vy += (Math.sin(ang)*pull - Math.sin(ang)*0.26 + Math.sin(tangent)*0.28) * d.speed * dt;
   } else if(d.move === 'supportBase'){
@@ -1182,7 +1317,11 @@ function moveAllyByPattern(a, d, target, dt){
   } else if(d.move === 'charge'){
     a.vx += Math.cos(ang)*d.speed*1.35*dt; a.vy += Math.sin(ang)*d.speed*1.35*dt;
   } else if(d.move === 'frontline'){
-    const desired = 110, pull = clamp((dd - desired)/desired,-1.2,1.2);
+    let desired = 110;
+    if(cmd === COMMAND_MODES.escort) desired = 92;
+    if(cmd === COMMAND_MODES.spread) desired = 165;
+    if(cmd === COMMAND_MODES.screen) desired = 76;
+    const pull = clamp((dd - desired)/desired,-1.2,1.2);
     a.vx += Math.cos(ang)*pull*d.speed*dt; a.vy += Math.sin(ang)*pull*d.speed*dt;
   } else if(d.move === 'rear'){
     const desired = d.circle || 120, pull = clamp((dd - desired)/desired,-1.4,1.4);
@@ -1293,13 +1432,13 @@ function handleRelayShip(a, d, dt){
   a.relayPulse -= dt;
   if(a.relayPulse <= 0){
     a.relayPulse = d.fireRate;
-    state.energy = Math.min(state.maxEnergy, state.energy + d.energyGain);
+    state.energy = Math.min(state.maxEnergy, state.energy + d.energyGain * supportDebuffMult());
     addTextFx(a.x,a.y,'#8ee5ff',`+${d.energyGain}E`);
     burst(a.x,a.y,'#8ee5ff',10,85,1.8,0.2);
     for(const other of state.allies){
       if(other===a || other.dockedBy || other.garrisonedIn) continue;
       if(dist(a,other) < SUPPORT_RANGE){
-        other.cd = Math.max(-0.25, other.cd - 0.16);
+        other.cd = Math.max(-0.25, other.cd - 0.16 * supportDebuffMult());
         state.fx.push({x:other.x,y:other.y,x2:a.x,y2:a.y,color:'#8ee5ff',beam:true,t:.10,max:.10});
       }
     }
@@ -1313,8 +1452,8 @@ function handleAmplifier(a, d, dt){
     for(const other of state.allies){
       if(other===a || other.dockedBy || other.garrisonedIn) continue;
       if(dist(a,other) < 190){
-        other.cd = Math.max(-0.14, other.cd - 0.10);
-        if(other.kind !== 'repair' && other.kind !== 'medic') other.hp = Math.min(other.maxHp, other.hp + 2);
+        other.cd = Math.max(-0.14, other.cd - 0.10 * supportDebuffMult());
+        if(other.kind !== 'repair' && other.kind !== 'medic') other.hp = Math.min(other.maxHp, other.hp + 2 * supportDebuffMult());
         state.fx.push({x:other.x,y:other.y,x2:a.x,y2:a.y,color:'#9cc7ff',beam:true,t:.08,max:.08});
       }
     }
@@ -1330,8 +1469,8 @@ function handleCommandShip(a, d, dt){
     for(const other of state.allies){
       if(other===a || other.dockedBy || other.garrisonedIn) continue;
       if(dist(a,other) < 180){
-        other.hp = Math.min(other.maxHp, other.hp + 4);
-        other.cd = Math.max(-0.22, other.cd - 0.14);
+        other.hp = Math.min(other.maxHp, other.hp + 4 * supportDebuffMult());
+        other.cd = Math.max(-0.22, other.cd - 0.14 * supportDebuffMult());
         addTextFx(other.x,other.y,'#ffe38f','BUFF');
       }
     }
@@ -1380,7 +1519,7 @@ function handleGodPrism(a, d, dt){
     explosion(muzzleX,muzzleY,'#fff2ad',42);
     for(const e of state.enemies) if(beamHitsCircle(a.x,a.y,x2,y2,e.x,e.y,enemyHitRadius(e)+d.beamW)) dealDamage(e,d.beamDmg,'godprism','ally');
     addTextFx(a.x,a.y,'#fff5a8','PRISM BEAM');
-    a.prismCharge = 0; a.prismCharging = false; a.cd = d.fireRate;
+    a.prismCharge = 0; a.prismCharging = false; a.cd = d.fireRate * state.allyFireRateSlowMult;
   }
 }
 
@@ -1400,6 +1539,11 @@ function update(dt){
 
   state.energy = Math.min(state.maxEnergy, state.energy + dt*(9 + state.level*0.95));
   state.player.summonCd -= dt;
+  state.commandRallyTimer = Math.max(0, state.commandRallyTimer - dt);
+  state.supportDisruptTimer = Math.max(0, state.supportDisruptTimer - dt);
+  if(state.supportDisruptTimer <= 0) state.supportDisruptMult = 1;
+  state.allyFireRateSlowTimer = Math.max(0, state.allyFireRateSlowTimer - dt);
+  if(state.allyFireRateSlowTimer <= 0) state.allyFireRateSlowMult = 1;
   state.player.invul = Math.max(0, state.player.invul-dt);
   state.player.hullRegenDelay = Math.max(0, state.player.hullRegenDelay - dt);
   if(state.player.hullRegenDelay <= 0 && state.player.hp < state.player.maxHp) state.player.hp = Math.min(state.player.maxHp, state.player.hp + state.player.hullRegen * dt);
@@ -1446,11 +1590,11 @@ function update(dt){
       }
 
       let kind = pick(choices);
-      if(state.level >= 4 && Math.random() < 0.18){
-        const heavies = choices.filter(k => ['bruiser','missile','fortress','carrier','artillery','lancer','shielder','dread','dronehost'].includes(k));
+      if(state.level >= 4 && Math.random() < 0.24){
+        const heavies = choices.filter(k => ['bruiser','missile','fortress','carrier','artillery','lancer','shielder','dread','dronehost','disruptor','empfrigate','siegedrill','starcarrier','battlecruiser'].includes(k));
         if(heavies.length) kind = pick(heavies);
       }
-      if(state.level >= 8 && Math.random() < 0.1){
+      if(state.level >= 8 && Math.random() < 0.16){
         const elites = choices.filter(k => ENEMY_DEFS[k].elite);
         if(elites.length) kind = pick(elites);
       }
@@ -1512,18 +1656,18 @@ function update(dt){
       handleTurretBase(a, d, dt);
     } else if(d.behavior === 'relay'){
       handleRelayShip(a, d, dt);
-      const target = nearestEnemy(a, ALLY_AGGRO_RANGE);
+      const target = pickCommandTarget(a, ALLY_AGGRO_RANGE);
       if(target) moveAllyByPattern(a, d, target, dt);
     } else if(d.behavior === 'amplifier'){
       handleAmplifier(a,d,dt);
-      const target = nearestEnemy(a, ALLY_AGGRO_RANGE);
+      const target = pickCommandTarget(a, ALLY_AGGRO_RANGE);
       if(target) moveAllyByPattern(a, d, target, dt);
     } else if(d.behavior === 'barrier'){
       handleBarrier(a,d,dt);
-      const target = nearestEnemy(a, ALLY_AGGRO_RANGE);
+      const target = pickCommandTarget(a, ALLY_AGGRO_RANGE);
       if(target) moveAllyByPattern(a, d, target, dt);
     } else {
-      const target = nearestEnemy(a, d.behavior === 'repair' || d.behavior==='medic' ? REPAIR_AGGRO_RANGE : ALLY_AGGRO_RANGE);
+      const target = pickCommandTarget(a, d.behavior === 'repair' || d.behavior==='medic' ? REPAIR_AGGRO_RANGE : ALLY_AGGRO_RANGE);
       if(target){
         const dd = dist(a,target);
         moveAllyByPattern(a, d, target, dt);
@@ -1535,14 +1679,14 @@ function update(dt){
           }
         } else if(d.behavior === 'flame'){
           if(dd < d.attackRange && a.cd <= 0){
-            a.cd = d.fireRate;
+            a.cd = d.fireRate * state.allyFireRateSlowMult;
             for(const e of state.enemies) if(dist(a,e) < d.attackRange) dealDamage(e,d.dmg,a.kind,'ally');
             coneBurst(a.x,a.y,angleTo(a,target),'#ff9d57',15,95,0.45,2,0.18);
             addTextFx(a.x,a.y,'#ffb36b','FLAME');
           }
         } else if(d.behavior === 'shield'){
           if(dd < d.attackRange && a.cd <= 0){
-            a.cd = d.fireRate;
+            a.cd = d.fireRate * state.allyFireRateSlowMult;
             for(const e of state.enemies){
               const ee = dist(a,e);
               if(ee < d.pulseR){
@@ -1558,11 +1702,11 @@ function update(dt){
           handleGodPrism(a, d, dt);
         } else if((d.behavior === 'repair' || d.behavior === 'medic')){
           if(a.cd <= 0){
-            a.cd = d.fireRate;
+            a.cd = d.fireRate * state.allyFireRateSlowMult;
             allyFire(a,target);
           }
         } else if(dd < d.attackRange && a.cd <= 0){
-          a.cd = d.fireRate;
+          a.cd = d.fireRate * state.allyFireRateSlowMult;
           allyFire(a,target);
         }
       } else {
@@ -1577,8 +1721,8 @@ function update(dt){
 
     if(d.behavior === 'command'){
       handleCommandShip(a, d, dt);
-      const target = nearestEnemy(a, ALLY_AGGRO_RANGE);
-      if(target && dist(a,target) < d.attackRange && a.cd <= 0){ a.cd = d.fireRate; allyFire(a,target); }
+      const target = pickCommandTarget(a, ALLY_AGGRO_RANGE);
+      if(target && dist(a,target) < d.attackRange && a.cd <= 0){ a.cd = d.fireRate * state.allyFireRateSlowMult; allyFire(a,target); }
     }
     if(d.behavior === 'engineer') handleEngineer(a, d, dt);
 
@@ -1627,7 +1771,26 @@ function update(dt){
   for(const e of state.enemies){
     const def = ENEMY_DEFS[e.kind];
     e.cd -= dt; e.shieldBoost = Math.max(0, e.shieldBoost - dt*1.7);
-    const chosen = nearestAlly(e, 360) || state.player;
+    let chosen = nearestAlly(e, 360) || state.player;
+    if(def.move === 'saboteur'){
+      let bestSupport = null, bestD = 99999;
+      for(const a of state.allies){
+        if(a.dockedBy || a.garrisonedIn) continue;
+        if(!SUPPORT_ALLY_KINDS.has(a.kind)) continue;
+        const dd = dist(e,a);
+        if(dd < bestD){ bestD = dd; bestSupport = a; }
+      }
+      chosen = bestSupport || chosen;
+    }
+    if(def.move === 'siege'){
+      const wallTarget = state.walls[0];
+      if(wallTarget) chosen = wallTarget;
+      else if(state.turrets.length) chosen = state.turrets[0];
+      else {
+        const dock = state.allies.find(a=>a.kind==='dock' && !a.dockedBy && !a.garrisonedIn);
+        if(dock) chosen = dock;
+      }
+    }
     const tt = performance.now()*0.001 + e.bob;
 
     if(def.move === 'charge'){
@@ -1641,6 +1804,11 @@ function update(dt){
     } else if(def.move === 'wall'){
       const tx = chosen.x + Math.sin(tt*0.5)*18, ty = clamp(chosen.y - 110, 70, H*0.52);
       e.vx += clamp(tx-e.x,-1,1) * 34 * dt; e.vy += clamp(ty-e.y,-1,1) * 22 * dt;
+    } else if(def.move === 'siege'){
+      e.vx += clamp(chosen.x-e.x,-1,1) * 30 * dt; e.vy += clamp(chosen.y-e.y,-1,1) * 20 * dt;
+    } else if(def.move === 'saboteur'){
+      e.vx += clamp(chosen.x-e.x,-1,1) * 78 * dt + Math.sin(tt*2.4) * 44 * dt;
+      e.vy += clamp(chosen.y-e.y,-1,1) * 62 * dt;
     } else if(def.move === 'swoop'){
       e.vx += Math.sin(tt*2.4) * 65 * dt + clamp(chosen.x-e.x,-1,1)*20*dt;
       e.vy += clamp(chosen.y - 120 - e.y,-1,1) * 42 * dt;
@@ -1688,12 +1856,12 @@ function update(dt){
 
     for(const t of state.turrets){
       const dd = dist(e,t);
-      if(dd < enemyHitRadius(e) + t.radius + 2){ t.hp -= 18; e.vx *= -0.58; }
+      if(dd < enemyHitRadius(e) + t.radius + 2){ t.hp -= def.move === 'siege' ? 42 : 18; e.vx *= -0.58; }
     }
 
     for(const w of state.walls){
       if(Math.abs(e.x-w.x) < w.w*0.5 + enemyHitRadius(e) && Math.abs(e.y-w.y) < w.h*0.5 + enemyHitRadius(e)){
-        w.hp -= 18;
+        w.hp -= def.move === 'siege' ? 56 : 18;
         e.vx *= -0.55;
       }
     }
@@ -2197,7 +2365,7 @@ function drawTelegraph(tg){
   ctx.fillStyle = 'rgba(255,120,220,.12)';
   ctx.lineWidth = 2;
 
-  if(tg.kind === 'circle' || tg.kind === 'vortex' || tg.kind === 'storm'){
+  if(tg.kind === 'circle' || tg.kind === 'vortex' || tg.kind === 'storm' || tg.kind === 'empField'){
     ctx.beginPath(); ctx.arc(tg.x, tg.y, tg.r, 0, Math.PI*2); ctx.fill(); ctx.stroke();
   } else if(tg.kind === 'rain' || tg.kind === 'forge'){
     for(const p of tg.points){ ctx.beginPath(); ctx.arc(p.x, p.y, tg.r, 0, Math.PI*2); ctx.fill(); ctx.stroke(); }
@@ -2288,7 +2456,7 @@ function draw(){
   }
 
   for(const b of state.enemyBullets){
-    ctx.fillStyle = (b.kind==='mine' || b.kind==='arc' || b.kind==='lance') ? '#ffb36b' : '#ff7f8e';
+    ctx.fillStyle = (b.kind==='mine' || b.kind==='arc' || b.kind==='lance' || b.kind==='drill') ? '#ffb36b' : '#ff7f8e';
     ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill();
   }
 
@@ -2307,9 +2475,9 @@ function draw(){
   }
 
   ctx.fillStyle='rgba(10,15,31,.70)';
-  ctx.fillRect(12,12,390,102);
+  ctx.fillRect(12,12,390,122);
   ctx.strokeStyle='rgba(100,130,210,.35)';
-  ctx.strokeRect(12,12,390,102);
+  ctx.strokeRect(12,12,390,122);
   ctx.fillStyle='#eef4ff';
   ctx.font='bold 16px Arial';
   const sk = state.unlocked[state.selectedSlot];
@@ -2322,6 +2490,7 @@ function draw(){
   ctx.fillText(`Ship Cost: ${sd ? sd.costE : 0}E / ${sd ? sd.costM : 0}M`, 22, 54);
   ctx.fillText(`Upgrade: ${ud.name} Lv ${state.upgrades[ud.key]}  •  ${upgradeCost}E`, 22, 74);
   ctx.fillText(`Effect: ${ud.desc}`, 22, 94);
+  ctx.fillText(`Command: ${COMMAND_LABELS[state.commandMode]}`, 22, 112);
 
   if(state.gameOver){
     ctx.fillStyle='rgba(0,0,0,.55)';
@@ -2352,6 +2521,7 @@ function syncUI(){
   ui.scoreText.textContent = `${state.score}`;
   ui.allyText.textContent = `${state.allies.filter(a=>!a.dockedBy && !a.garrisonedIn).length + state.turrets.length + state.walls.length}`;
   ui.enemyText.textContent = `${state.enemies.length + state.spawnBudget}`;
+  ui.commandText.textContent = `${COMMAND_LABELS[state.commandMode]}`;
   ui.waveText.textContent = `${state.levelKills} / ${state.levelTarget}`;
   ui.waveBar.style.width = `${(state.levelKills/state.levelTarget)*100}%`;
 
@@ -2439,6 +2609,7 @@ logMsg('Loose energy and metal drops now merge when close.');
 logMsg('Barrier Bots build walls over you and damaged allies.');
 logMsg('Carriers now hold 6 wings and slowly rebuild them.');
 logMsg('Laser ships and turrets now maintain continuous beam pressure.');
+logMsg('Fleet commands online: Q/E/R/F/T.');
 requestAnimationFrame(loop);
 })();
 </script>
