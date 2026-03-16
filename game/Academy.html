@@ -296,11 +296,15 @@ const INTERCEPTOR_KINDS = new Set(['interceptor','fighter','elite','scout']);
 const HIGH_VALUE_ENEMIES = new Set(['titan','overmind','executioner','gravemind','forgecore','starcarrier','battlecruiser','leviathan','colossus','carrier','dread']);
 
 const UPGRADE_DEFS = [
-  { key:'health',   name:'Ship Health',     desc:'+10% ship health',       baseCost:60,  growth:1.38, color:'#7dffb8' },
-  { key:'damage',   name:'Ship Damage',     desc:'+10% ship damage',       baseCost:70,  growth:1.42, color:'#ff9da8' },
-  { key:'firerate', name:'Ship Fire Rate',  desc:'+10% faster firing',     baseCost:82,  growth:1.44, color:'#9fd3ff' },
-  { key:'healing',  name:'Healing Ability', desc:'+15% healing power',     baseCost:78,  growth:1.46, color:'#b2ffb6' },
-  { key:'cost',     name:'Ship Cost',       desc:'-10% summon cost',       baseCost:95,  growth:1.55, color:'#ffe08a' }
+  { key:'health',        name:'Ship Health',         desc:'+18% ship health',                   baseCost:60,  growth:1.38, color:'#7dffb8' },
+  { key:'damage',        name:'Ship Damage',         desc:'+18% ship damage',                   baseCost:70,  growth:1.42, color:'#ff9da8' },
+  { key:'firerate',      name:'Ship Fire Rate',      desc:'+16% faster firing',                 baseCost:82,  growth:1.44, color:'#9fd3ff' },
+  { key:'healing',       name:'Healing Ability',     desc:'+24% healing power',                 baseCost:78,  growth:1.46, color:'#b2ffb6' },
+  { key:'cost',          name:'Ship Cost',           desc:'-14% summon cost',                   baseCost:95,  growth:1.55, color:'#ffe08a' },
+  { key:'energyAccrual', name:'Energy Accrual',      desc:'+22% passive energy gain',           baseCost:88,  growth:1.5,  color:'#7be1ff' },
+  { key:'metalAccrual',  name:'Rare Metal Accrual',  desc:'+28% rare metal gains',              baseCost:94,  growth:1.52, color:'#ffd166' },
+  { key:'splash',        name:'Splash Damage',       desc:'+20% AoE damage, +14% explosion size', baseCost:102, growth:1.56, color:'#ffa8d8' },
+  { key:'laser',         name:'Laser Systems',       desc:'+24% beam/laser damage',             baseCost:110, growth:1.58, color:'#ff8df3' }
 ];
 
 function approachAngle(a,b,t){
@@ -452,7 +456,7 @@ const state = {
   score:0,
   selectedSlot:0,
   selectedUpgrade:0,
-  upgrades:{ health:0, damage:0, firerate:0, healing:0, cost:0 },
+  upgrades:{ health:0, damage:0, firerate:0, healing:0, cost:0, energyAccrual:0, metalAccrual:0, splash:0, laser:0 },
   unlocked:['fighter','repair'],
   unlockPool:SHIP_ORDER.filter(k=>!['fighter','repair'].includes(k)),
   allies:[],
@@ -484,6 +488,11 @@ const state = {
 };
 
 function getUpgradeLevel(key){ return state.upgrades[key] || 0; }
+function getEnergyAccrualMult(){ return 1 + getUpgradeLevel('energyAccrual') * 0.22; }
+function getMetalAccrualMult(){ return 1 + getUpgradeLevel('metalAccrual') * 0.28; }
+function getSplashDamageMult(){ return 1 + getUpgradeLevel('splash') * 0.20; }
+function getSplashRadiusMult(){ return 1 + getUpgradeLevel('splash') * 0.14; }
+function getLaserDamageMult(){ return 1 + getUpgradeLevel('laser') * 0.24; }
 function getUpgradeCost(index){
   const def = UPGRADE_DEFS[index];
   const lvl = getUpgradeLevel(def.key);
@@ -492,20 +501,30 @@ function getUpgradeCost(index){
 function getShipStats(kind){
   const base = SHIP_DEFS[kind];
   if(!base) return null;
-  const healthMult = 1 + getUpgradeLevel('health') * 0.1;
-  const damageMult = 1 + getUpgradeLevel('damage') * 0.1;
-  const healMult = 1 + getUpgradeLevel('healing') * 0.15;
-  const fireRateMult = 1 / (1 + getUpgradeLevel('firerate') * 0.1);
-  const costMult = Math.max(0.35, Math.pow(0.90, getUpgradeLevel('cost')));
+  const healthMult = 1 + getUpgradeLevel('health') * 0.18;
+  const damageMult = 1 + getUpgradeLevel('damage') * 0.18;
+  const healMult = 1 + getUpgradeLevel('healing') * 0.24;
+  const fireRateMult = 1 / (1 + getUpgradeLevel('firerate') * 0.16);
+  const costMult = Math.max(0.25, Math.pow(0.86, getUpgradeLevel('cost')));
+  const splashDamageMult = getSplashDamageMult();
+  const splashRadiusMult = getSplashRadiusMult();
+  const laserDamageMult = getLaserDamageMult();
+  const beamBehavior = ['beam','rail','prism','godprism'].includes(base.behavior);
+  const splashBehavior = ['bomb','shell','pulse','vortex'].includes(base.behavior);
+  const baseDmg = base.dmg != null ? base.dmg * damageMult : base.dmg;
+  const amplifiedDmg = baseDmg != null ? baseDmg * (beamBehavior ? laserDamageMult : 1) * (splashBehavior ? splashDamageMult : 1) : baseDmg;
   return {
     ...base,
     hp: Math.round(base.hp * healthMult),
-    dmg: base.dmg != null ? base.dmg * damageMult : base.dmg,
+    dmg: amplifiedDmg,
     heal: base.heal != null ? base.heal * healMult : base.heal,
     splashHeal: base.splashHeal != null ? base.splashHeal * healMult : base.splashHeal,
     healRate: base.healRate != null ? base.healRate * healMult : base.healRate,
-    beamDmg: base.beamDmg != null ? base.beamDmg * damageMult : base.beamDmg,
-    pulseDmg: base.pulseDmg != null ? base.pulseDmg * damageMult : base.pulseDmg,
+    beamDmg: base.beamDmg != null ? base.beamDmg * damageMult * laserDamageMult : base.beamDmg,
+    pulseDmg: base.pulseDmg != null ? base.pulseDmg * damageMult * splashDamageMult : base.pulseDmg,
+    pulseR: base.pulseR != null ? base.pulseR * splashRadiusMult : base.pulseR,
+    blast: base.blast != null ? base.blast * splashRadiusMult : base.blast,
+    beamW: base.beamW != null ? base.beamW + getUpgradeLevel('laser') * 1.8 : base.beamW,
     fireRate: base.fireRate ? Math.max(0.04, base.fireRate * fireRateMult) : base.fireRate,
     costE: Math.max(1, Math.ceil(base.costE * costMult)),
     costM: Math.max(0, Math.ceil(base.costM * costMult))
@@ -1479,8 +1498,9 @@ function handleRelayShip(a, d, dt){
   a.relayPulse -= dt;
   if(a.relayPulse <= 0){
     a.relayPulse = d.fireRate;
-    state.energy = Math.min(state.maxEnergy, state.energy + d.energyGain * supportDebuffMult());
-    addTextFx(a.x,a.y,'#8ee5ff',`+${d.energyGain}E`);
+    state.energy = Math.min(state.maxEnergy, state.energy + d.energyGain * supportDebuffMult() * getEnergyAccrualMult());
+    const relayGain = Math.max(1, Math.round(d.energyGain * getEnergyAccrualMult()));
+    addTextFx(a.x,a.y,'#8ee5ff',`+${relayGain}E`);
     burst(a.x,a.y,'#8ee5ff',10,85,1.8,0.2);
     for(const other of state.allies){
       if(other===a || other.dockedBy || other.garrisonedIn) continue;
@@ -1584,7 +1604,7 @@ function cleanupSpecialContainers(){
 function update(dt){
   if(state.gameOver){ if(keys['r']) location.reload(); return; }
 
-  state.energy = Math.min(state.maxEnergy, state.energy + dt*(9 + state.level*0.95));
+  state.energy = Math.min(state.maxEnergy, state.energy + dt*(9 + state.level*0.95) * getEnergyAccrualMult());
   state.player.summonCd -= dt;
   state.supportDisruptTimer = Math.max(0, state.supportDisruptTimer - dt);
   if(state.supportDisruptTimer <= 0) state.supportDisruptMult = 1;
@@ -1654,7 +1674,8 @@ function update(dt){
 
   if(state.spawnBudget <= 0 && state.enemies.length === 0 && state.telegraphs.length === 0){
     state.level++;
-    state.metals = Math.min(state.maxMetals, state.metals + 2 + Math.floor(state.level/3));
+    const metalWindfall = Math.max(1, Math.round((2 + Math.floor(state.level/3)) * getMetalAccrualMult()));
+    state.metals = Math.min(state.maxMetals, state.metals + metalWindfall);
     spawnLevel();
   }
 
@@ -1791,7 +1812,7 @@ function update(dt){
 
     const target = nearestEnemy(t, 290);
     if(target){
-      dealDamage(target, 4.2, 'turretBeam', 'ally');
+      dealDamage(target, 4.2 * getLaserDamageMult(), 'turretBeam', 'ally');
       state.fx.push({x:target.x,y:target.y,x2:t.x,y2:t.y,color:'#ff5b8b',beam:true,t:.08,max:.08});
       burst(t.x,t.y,'#ff8fb7',1,28,1.0,0.06);
     }
@@ -2060,12 +2081,14 @@ function update(dt){
 
     if(Math.hypot(p.x-state.player.x,p.y-state.player.y) < p.r + 14){
       if(p.type==='energy'){
-        state.energy = Math.min(state.maxEnergy, state.energy + p.val);
-        addTextFx(p.x,p.y,'#7be1ff','+'+p.val+'E');
+        const gain = Math.max(1, Math.round(p.val * getEnergyAccrualMult()));
+        state.energy = Math.min(state.maxEnergy, state.energy + gain);
+        addTextFx(p.x,p.y,'#7be1ff','+'+gain+'E');
         burst(p.x,p.y,'#7be1ff',12,90,2,0.22);
       } else if(p.type==='metal'){
-        state.metals = Math.min(state.maxMetals, state.metals + p.val);
-        addTextFx(p.x,p.y,'#ffd166','+'+p.val+'M');
+        const gain = Math.max(1, Math.round(p.val * getMetalAccrualMult()));
+        state.metals = Math.min(state.maxMetals, state.metals + gain);
+        addTextFx(p.x,p.y,'#ffd166','+'+gain+'M');
         explosion(p.x,p.y,'#ffd166',20);
       } else if(p.type==='unlock'){
         const k=p.data;
