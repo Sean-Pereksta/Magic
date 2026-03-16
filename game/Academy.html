@@ -169,6 +169,7 @@
       <div class="stat"><span>Allied Ships</span><span id="allyText"></span></div>
       <div class="stat"><span>Enemies Left</span><span id="enemyText"></span></div>
       <div class="stat"><span>Fleet Command</span><span id="commandText"></span></div>
+      <div class="stat"><span>Veterans</span><span id="veteranText"></span></div>
       <div class="stat"><span>Wave Progress</span><span id="waveText"></span></div>
       <div class="bar"><div class="fill wave" id="waveBar"></div></div>
       <div class="tiny muted" style="margin-top:6px">Commands: <span class="kbd">Q</span> Free Flight <span class="kbd">E</span> Spread Array <span class="kbd">R</span> Rally <span class="kbd">F</span> Assault Strongest <span class="kbd">T</span> Front Line</div>
@@ -232,6 +233,7 @@ const ui = {
   allyText: document.getElementById('allyText'),
   enemyText: document.getElementById('enemyText'),
   commandText: document.getElementById('commandText'),
+  veteranText: document.getElementById('veteranText'),
   waveText: document.getElementById('waveText'),
   waveBar: document.getElementById('waveBar'),
   slots: document.getElementById('slots'),
@@ -268,6 +270,15 @@ const ALLY_AGGRO_RANGE = 760;
 const SUPPORT_RANGE = 820;
 const REPAIR_AGGRO_RANGE = 980;
 const ENEMY_HITBOX_BONUS = 7;
+const VETERAN_TIERS = [
+  {name:'Green', min:0, hp:1, shield:1, dmg:1, guard:1, color:'#9fb0b8', ring:'rgba(170,190,200,.45)', marker:'•'},
+  {name:'Veteran', min:5, hp:1.10, shield:1.08, dmg:1.08, guard:0.96, color:'#b7ffbf', ring:'rgba(183,255,191,.78)', marker:'V'},
+  {name:'Elite', min:12, hp:1.22, shield:1.18, dmg:1.18, guard:0.92, color:'#c7ecff', ring:'rgba(190,225,255,.85)', marker:'E'},
+  {name:'Ace', min:25, hp:1.38, shield:1.32, dmg:1.30, guard:0.87, color:'#ffe08a', ring:'rgba(255,224,138,.88)', marker:'A'},
+  {name:'Legendary', min:45, hp:1.60, shield:1.50, dmg:1.45, guard:0.82, color:'#ff9dff', ring:'rgba(255,140,220,.92)', marker:'L'}
+];
+const HEAVY_TARGET_KINDS = new Set(['titan','overmind','executioner','gravemind','forge','storm','leviathan','colossus','battlecruiser','starcarrier','carrier','dread','fortress','ruinbarge']);
+const SUPPORT_PRIORITY_KINDS = new Set(['repair','medic','dock','shield','aegis','blessing']);
 const ASTEROID_CAP = 6;
 const MAX_ALLIED_TURRETS = 7;
 const MAX_WALLS = 24;
@@ -289,7 +300,7 @@ const COMMAND_LABELS = {
   focus:'Assault Strongest',
   screen:'Front Line'
 };
-const SUPPORT_ALLY_KINDS = new Set(['relay','engineer','dock','medic','amplifier','command','godprism','repair','barrier']);
+const SUPPORT_ALLY_KINDS = new Set(['relay','engineer','dock','medic','amplifier','command','godprism','repair','barrier','aegis','blessing','dronehive']);
 const FRONT_SCREEN_KINDS = new Set(['guardian','shield','barrier','turretbase']);
 const LONG_RANGE_KINDS = new Set(['artillery','rail','godprism','missile']);
 const INTERCEPTOR_KINDS = new Set(['interceptor','fighter','elite','scout']);
@@ -398,6 +409,12 @@ const SHIP_DEFS = {
   relay:        {name:'Relay Ship',    costE:66,costM:18, hp:380,speed:220,radius:11,attackRange:0,  circle:120, fireRate:0.48,color:'#8ee5ff', role:'energy support',  behavior:'relay',       energyGain:5, move:'supportRear', support:true},
   command:      {name:'Command Ship',  costE:96,costM:26, hp:600,speed:190,radius:16,attackRange:210,circle:140, fireRate:0.72,color:'#ffe38f', role:'fleet aura',       behavior:'command',     dmg:12, projSpeed:470, move:'supportRear', support:true},
   engineer:     {name:'Engineer',      costE:82,costM:22, hp:440,speed:205,radius:13,attackRange:0,  circle:150, fireRate:2.4, color:'#ffdf9d', role:'builder',         behavior:'engineer',    move:'supportRear', support:true, turretBuildCd:5.6},
+  aegis:        {name:'Aegis Cruiser', costE:108,costM:30, hp:880,speed:128,radius:24,attackRange:240,circle:92,  fireRate:1.1, color:'#8edbff', role:'escort capital',  behavior:'aegis',       dmg:18, projSpeed:430, pulseR:210, move:'frontline', support:true},
+  tempest:      {name:'Tempest Gunship',costE:76,costM:20, hp:420,speed:205,radius:16,attackRange:245,circle:120, fireRate:0.75,color:'#9fb8ff', role:'anti-swarm',      behavior:'tempest',     dmg:13, projSpeed:450, move:'standOff'},
+  lancerfrig:   {name:'Lancer Frigate',costE:86,costM:24, hp:300,speed:182,radius:13,attackRange:395,circle:235, fireRate:1.75,color:'#bfe9ff', role:'anti-capital',    behavior:'lancerfrig',  dmg:68, move:'sniperFar'},
+  dronehive:    {name:'Drone Hive',    costE:102,costM:32, hp:920,speed:118,radius:25,attackRange:190,circle:220, fireRate:2.4, color:'#9effc4', role:'attrition carrier',behavior:'dronehive',    move:'rearFar', support:true},
+  siegebeamer:  {name:'Siege Beamer',  costE:94,costM:28, hp:360,speed:150,radius:17,attackRange:440,circle:260, fireRate:2.7, color:'#ffb7f8', role:'beam artillery',   behavior:'siegebeamer', beamDmg:82, beamW:14, move:'sniperFar'},
+  blessing:     {name:'Blessing Ship', costE:118,costM:36, hp:860,speed:165,radius:22,attackRange:0,circle:195,  fireRate:2.2, color:'#ffe8ff', role:'premium support', behavior:'blessing',    heal:16, boost:0.1, move:'supportRear', support:true},
   godprism:     {name:'God Prism',     costE:140,costM:42,hp:1400,speed:135,radius:28,attackRange:430,circle:230, fireRate:5.6, color:'#fff0a8', role:'super-beam',       behavior:'godprism',    beamDmg:240, beamW:22, move:'sniperFar', support:true}
 };
 
@@ -434,7 +451,11 @@ const ENEMY_DEFS = {
   executioner: {name:'Executioner Beamship', hp:620,speedX:26,speedY:6,radius:32, hitBonus:24,type:'armored',weapon:'telegraphBeam',fireRate:2.2,dmg:52,color:'#ffcf6b',score:410,metal:0.78, move:'boss', elite:true, boss:true},
   gravemind:   {name:'Gravemind Vortex', hp:720,speedX:20,speedY:7,radius:34, hitBonus:25,type:'armored',weapon:'telegraphVortex',fireRate:2.35,dmg:24,color:'#84d1ff',score:440,metal:0.82, move:'boss', elite:true, boss:true},
   forge:       {name:'Forge Colossus', hp:820,speedX:18,speedY:6,radius:36, hitBonus:26,type:'armored',weapon:'telegraphForge',fireRate:2.4,dmg:30,color:'#ff9f66',score:470,metal:0.86, move:'boss', elite:true, boss:true},
-  storm:       {name:'Storm Queen', hp:660,speedX:28,speedY:8,radius:31, hitBonus:24,type:'armored',weapon:'telegraphStorm',fireRate:2.05,dmg:22,color:'#8bffdd',score:450,metal:0.84, move:'boss', elite:true, boss:true}
+  storm:       {name:'Storm Queen', hp:660,speedX:28,speedY:8,radius:31, hitBonus:24,type:'armored',weapon:'telegraphStorm',fireRate:2.05,dmg:22,color:'#8bffdd',score:450,metal:0.84, move:'boss', elite:true, boss:true},
+  hunterkiller:{name:'Hunter-Killer Corvette', hp:116,speedX:150,speedY:24,radius:12, hitBonus:9,type:'light',weapon:'burst',fireRate:0.92,dmg:12,color:'#ff8ec6',score:118,metal:0.38, move:'supportDive', elite:true},
+  flakdestroyer:{name:'Flak Destroyer', hp:210,speedX:62,speedY:14,radius:18, hitBonus:12,type:'armored',weapon:'flakBurst',fireRate:1.35,dmg:13,color:'#ffc996',score:168,metal:0.48, move:'rear', elite:true},
+  nullfield:   {name:'Null Field Ship', hp:180,speedX:58,speedY:12,radius:17, hitBonus:11,type:'armored',weapon:'nullField',fireRate:1.9,dmg:8,color:'#98e5ff',score:160,metal:0.46, move:'rear', elite:true},
+  ruinbarge:   {name:'Ruin Barge', hp:520,speedX:26,speedY:8,radius:28, hitBonus:20,type:'armored',weapon:'heavyBroadside',fireRate:1.55,dmg:27,color:'#ff9d8a',score:330,metal:0.76, move:'siege', elite:true}
 };
 
 const SHIP_ORDER = Object.keys(SHIP_DEFS);
@@ -529,6 +550,101 @@ function getShipStats(kind){
     costE: Math.max(1, Math.ceil(base.costE * costMult)),
     costM: Math.max(0, Math.ceil(base.costM * costMult))
   };
+}
+
+
+function getVeteranTierFromKills(kills){
+  if(kills >= 45) return 4;
+  if(kills >= 25) return 3;
+  if(kills >= 12) return 2;
+  if(kills >= 5) return 1;
+  return 0;
+}
+function getVeteranBonuses(tier, kind){
+  const t = VETERAN_TIERS[clamp(tier|0,0,4)];
+  let dmg = t.dmg;
+  if(kind === 'godprism') dmg = Math.min(dmg, 1.18);
+  return {hp:t.hp, shield:t.shield, dmg, guard:t.guard, name:t.name, color:t.color, ring:t.ring, marker:t.marker};
+}
+function applyVeteranPromotion(ally){
+  const nextTier = getVeteranTierFromKills(ally.kills || 0);
+  if(nextTier === ally.veteranTier) return;
+  const oldMax = ally.maxHp || 1;
+  const hpRatio = oldMax > 0 ? (ally.hp || oldMax) / oldMax : 1;
+  ally.veteranTier = nextTier;
+  const b = getVeteranBonuses(nextTier, ally.kind);
+  ally.veteranName = b.name;
+  ally.veteranHpMult = b.hp;
+  ally.veteranShieldMult = b.shield;
+  ally.veteranDmgMult = b.dmg;
+  ally.veteranGuardMult = b.guard;
+  ally.maxHp = (ally.baseMaxHp || ally.maxHp || 1) * ally.veteranHpMult;
+  ally.hp = Math.min(ally.maxHp, Math.max(ally.hp || ally.maxHp, ally.maxHp * hpRatio));
+  if(nextTier > 0){
+    logMsg(`${SHIP_DEFS[ally.kind]?.name || 'Ship'} promoted to ${ally.veteranName}.`);
+    burst(ally.x,ally.y,b.color,16 + nextTier*4,120,2.2,0.25);
+  }
+}
+function getAllyPowerValue(ally){
+  const d = SHIP_DEFS[ally.kind] || {costE:10,costM:0};
+  return d.costE + d.costM * 2 + (d.base ? 35 : 0) + (d.support ? 18 : 0) + (ally.veteranTier||0)*24;
+}
+function getVeteranPriorityBonus(ally){
+  return (ally.veteranTier || 0) * 26 + ((ally.veteranName === 'Legendary') ? 40 : 0);
+}
+function chooseSupportPriorityTarget(source, range){
+  let best = null, bestScore = -1e9;
+  for(const a of state.allies){
+    if(a===source || a.dockedBy || a.garrisonedIn) continue;
+    const dd = dist(source,a);
+    if(dd > range) continue;
+    const missing = Math.max(0, (a.maxHp - a.hp));
+    if(missing <= 0) continue;
+    const score = missing * 1.15 + getVeteranPriorityBonus(a) + getAllyPowerValue(a) * 0.2 - dd * 0.03;
+    if(score > bestScore){ bestScore = score; best = a; }
+  }
+  return best;
+}
+function chooseHeavyTarget(source, range=99999){
+  let best = null, bestScore = -1e9;
+  for(const e of state.enemies){
+    const dd = dist(source,e);
+    if(dd > range) continue;
+    const d = ENEMY_DEFS[e.kind];
+    const heavyBonus = (d.boss ? 450 : 0) + (d.elite ? 130 : 0) + (HEAVY_TARGET_KINDS.has(e.kind) ? 240 : 0);
+    const score = heavyBonus + (e.maxHp || e.hp) * 1.2 - dd * 0.3;
+    if(score > bestScore){ bestScore = score; best = e; }
+  }
+  return best || nearestEnemy(source, range);
+}
+function registerEnemyDamage(enemy, ally, amount){
+  if(!enemy || !ally || !state.allies.includes(ally)) return;
+  if(!enemy.recentDamageBy) enemy.recentDamageBy = [];
+  enemy.lastHitBy = ally;
+  enemy.recentDamageBy = enemy.recentDamageBy.filter(x=>x.ally && x.ally.hp > 0 && x.t > 0);
+  const existing = enemy.recentDamageBy.find(x=>x.ally === ally);
+  if(existing){ existing.dmg += amount; existing.t = 2.2; }
+  else enemy.recentDamageBy.push({ally, dmg:amount, t:2.2});
+}
+function awardKillCredit(ally, enemy){
+  if(!ally || !state.allies.includes(ally)) return;
+  ally.kills = (ally.kills || 0) + 1;
+  applyVeteranPromotion(ally);
+}
+function awardEnemyKill(enemy){
+  if(!enemy) return;
+  const credited = new Set();
+  const recent = (enemy.recentDamageBy || []).filter(x=>x.ally && state.allies.includes(x.ally) && x.t > 0 && x.dmg > 3);
+  if(enemy.lastHitBy && state.allies.includes(enemy.lastHitBy)){
+    awardKillCredit(enemy.lastHitBy, enemy);
+    credited.add(enemy.lastHitBy);
+  }
+  for(const entry of recent){
+    if(credited.has(entry.ally)) continue;
+    if(entry.dmg < Math.max(4, (enemy.maxHp||enemy.hp||20) * 0.06)) continue;
+    awardKillCredit(entry.ally, enemy);
+    credited.add(entry.ally);
+  }
 }
 
 function purchaseSelectedUpgrade(){
@@ -696,9 +812,11 @@ function damageMultiplier(sourceKind, targetType){
   }
   return 1;
 }
-function dealDamage(target, amount, sourceKind, side){
-  const dmg = amount * damageMultiplier(sourceKind, target.type || 'light');
+function dealDamage(target, amount, sourceKind, side, sourceRef=null){
+  let dmg = amount * damageMultiplier(sourceKind, target.type || 'light');
+  if(side==='enemy' && target && target.veteranGuardMult){ dmg *= target.veteranGuardMult; }
   target.hp -= dmg;
+  if(side==='ally' && sourceRef) registerEnemyDamage(target, sourceRef, dmg);
   addTextFx(target.x,target.y,side==='ally' ? '#a9d6ff' : '#ff9ca7', Math.round(dmg));
   burst(target.x,target.y,side==='ally' ? '#a9d6ff' : '#ff9ca7', 7, 70, 1.8, 0.2);
 }
@@ -733,7 +851,8 @@ function spawnPlayerShip(kind){
     dockedBy:null,garrisonedIn:null,garrisonSlots:[],dockedAlly:null,dockTimer:0,
     relayPulse:0,commandPulse:0,buildCd: rand(1, def.turretBuildCd || 2),prismCharge:0,
     prismCharging:false,ampPulse:0,wallTimer:rand(0,1.5),carrierWings:0,carrierWingMax:0,
-    carrierRebuild:0,beamLatch:null
+    carrierRebuild:0,beamLatch:null,aegisPulse:0,blessingPulse:0,siegeCharge:0,hiveBuild:0,hiveDrones:0,tempestSide:0,
+    kills:0,veteranTier:0,veteranName:'Green',veteranHpMult:1,veteranShieldMult:1,veteranDmgMult:1,veteranGuardMult:1,baseMaxHp:def.hp
   };
 
   if(kind === 'carrier'){
@@ -803,7 +922,7 @@ function spawnLevel(){
   }
 
   if(state.level >= 9 && Math.random() < 0.45){
-    const capitals = ['starcarrier','battlecruiser','dread','siegedrill','empfrigate'];
+    const capitals = ['starcarrier','battlecruiser','dread','siegedrill','empfrigate','ruinbarge','nullfield'];
     const capCount = Math.min(3, 1 + Math.floor((state.level-8)/5));
     for(let i=0;i<capCount;i++) spawnEnemy(pick(capitals), rand(70,W-70), -rand(90,180)-i*34);
   }
@@ -832,6 +951,7 @@ function applyCapacityUpgrade(kind){
 }
 
 function killEnemy(e){
+  awardEnemyKill(e);
   const def=ENEMY_DEFS[e.kind];
   state.score += def.score;
   state.levelKills++;
@@ -893,6 +1013,9 @@ function strongestEnemy(obj, range=99999){
 }
 
 function pickCommandTarget(obj, range=99999){
+  const d = SHIP_DEFS[obj.kind] || {};
+  if(['lancerfrig','siegebeamer'].includes(obj.kind) || ['lancerfrig','siegebeamer'].includes(d.behavior)) return chooseHeavyTarget(obj, range);
+  if(d.behavior === 'tempest') return nearestEnemy(obj, range) || strongestEnemy(obj, range);
   if(state.commandMode !== COMMAND_MODES.focus) return nearestEnemy(obj, range);
   return strongestEnemy(obj, range) || nearestEnemy(obj, range);
 }
@@ -921,7 +1044,7 @@ function mostWoundedAlly(obj, range, exclude){
     const d = dist(obj,a);
     if(d > range) continue;
     const missing = (a.maxHp - a.hp);
-    const score = missing - d * 0.03;
+    const score = missing - d * 0.03 + getVeteranPriorityBonus(a) + getAllyPowerValue(a) * 0.06;
     if(score > bestScore){ bestScore = score; best = a; }
   }
   return best;
@@ -935,7 +1058,7 @@ function lowHealthAlly(obj, range, threshold=0.55, exclude){
     if(ratio > threshold) continue;
     const d = dist(obj,a);
     if(d > range) continue;
-    const score = (1-ratio) * 100 - d * 0.02;
+    const score = (1-ratio) * 100 - d * 0.02 + getVeteranPriorityBonus(a) + getAllyPowerValue(a) * 0.05;
     if(score > bestScore){ bestScore = score; best = a; }
   }
   return best;
@@ -1041,6 +1164,19 @@ function enemyFire(e, target){
       const a=ang+i*0.12;
       state.enemyBullets.push({x:e.x,y:e.y,px:e.x,py:e.y,vx:Math.cos(a)*185,vy:Math.sin(a)*185,r:4,dmg:d.dmg,kind:'straight',life:5});
     }
+  } else if(d.weapon === 'flakBurst'){
+    for(let i=-3;i<=3;i++) state.enemyBullets.push({x:e.x,y:e.y,px:e.x,py:e.y,vx:Math.cos(ang+i*0.15)*200,vy:Math.sin(ang+i*0.15)*200,r:3,dmg:d.dmg,kind:'straight',life:3.6});
+    addTextFx(e.x,e.y,'#ffc996','FLAK');
+  } else if(d.weapon === 'nullField'){
+    const r = 190;
+    for(const a of state.allies){
+      if(dist(e,a) < r){
+        a.veteranGuardBoost = Math.max(a.veteranGuardBoost||0, 2.8);
+        a.blessedTimer = Math.max(0, (a.blessedTimer||0)-2.2);
+        addTextFx(a.x,a.y,'#98e5ff','NULL');
+      }
+    }
+    state.fx.push({x:e.x,y:e.y,color:'#98e5ff',ring:true,r,t:.35,max:.35});
   } else if(d.weapon === 'disruptPulse'){
     const r = 180;
     state.supportDisruptTimer = Math.max(state.supportDisruptTimer, 3.8);
@@ -1175,7 +1311,9 @@ function spawnAlliedBullet(a, ang, speed, size, dmg, kind, extras={}){
 
 function allyFire(a, target, origin){
   const src = origin || a;
-  const d = getShipStats(a.kind);
+  const dRaw = getShipStats(a.kind);
+  const dmgScale = a.veteranDmgMult || 1;
+  const d = {...dRaw, dmg:dRaw.dmg!=null ? dRaw.dmg*dmgScale : dRaw.dmg, beamDmg:dRaw.beamDmg!=null ? dRaw.beamDmg*dmgScale : dRaw.beamDmg, pulseDmg:dRaw.pulseDmg!=null ? dRaw.pulseDmg*dmgScale : dRaw.pulseDmg};
   const ang = target ? angleTo(src,target) : -Math.PI/2;
 
   if(d.behavior === 'gun' || d.behavior === 'command'){
@@ -1193,7 +1331,7 @@ function allyFire(a, target, origin){
 
   } else if(d.behavior === 'beam'){
     if(target){
-      dealDamage(target,d.dmg,a.kind,'ally');
+      dealDamage(target,d.dmg,a.kind,'ally',a);
       state.fx.push({x:target.x,y:target.y,x2:src.x,y2:src.y,color:'#ff95fb',beam:true,t:.09,max:.09});
     }
     burst(src.x,src.y,'#ff95fb',4,48,1.4,0.10);
@@ -1226,7 +1364,8 @@ function allyFire(a, target, origin){
       state.allies.push({
         kind:'interceptor', x:src.x+rand(-26,26), y:src.y+rand(-18,18), vx:rand(-40,40), vy:-160,
         angle:-Math.PI/2, hp:spawnStats.hp, maxHp:spawnStats.hp, cd:0.2, orbitSeed:Math.random()*Math.PI*2,
-        life:24, launchBurst:0.35, type:'light', dockedBy:null, garrisonedIn:null, garrisonSlots:[], beamLatch:null
+        life:24, launchBurst:0.35, type:'light', dockedBy:null, garrisonedIn:null, garrisonSlots:[], beamLatch:null,
+        kills:0,veteranTier:0,veteranName:'Green',veteranHpMult:1,veteranShieldMult:1,veteranDmgMult:1,veteranGuardMult:1,veteranScale:0.65
       });
       a.carrierWings--;
       burst(src.x,src.y,'#c4a1ff',14,90,2,0.25);
@@ -1238,7 +1377,7 @@ function allyFire(a, target, origin){
 
   } else if(d.behavior === 'rail'){
     if(target){
-      dealDamage(target,d.dmg,a.kind,'ally');
+      dealDamage(target,d.dmg,a.kind,'ally',a);
       state.fx.push({x:target.x,y:target.y,x2:src.x,y2:src.y,color:'#9fe3ff',beam:true,t:.10,max:.10});
       burst(target.x,target.y,'#9fe3ff',16,100,2,0.25);
     }
@@ -1250,7 +1389,7 @@ function allyFire(a, target, origin){
     burst(src.x,src.y,'#ffb4ff',9,80,1.8,0.16);
 
   } else if(d.behavior === 'pulse'){
-    for(const e of state.enemies) if(dist(src,e) < d.blast) dealDamage(e,d.dmg,a.kind,'ally');
+    for(const e of state.enemies) if(dist(src,e) < d.blast) dealDamage(e,d.dmg,a.kind,'ally',a);
     explosion(src.x,src.y,'#72fff0',28);
     addTextFx(src.x,src.y,'#72fff0','PULSE');
 
@@ -1259,9 +1398,99 @@ function allyFire(a, target, origin){
     state.allies.push({
       kind:'scout', x:src.x+rand(-16,16), y:src.y+rand(-12,12), vx:rand(-40,40), vy:-180,
       angle:-Math.PI/2, hp:spawnStats.hp, maxHp:spawnStats.hp, cd:0.15, orbitSeed:Math.random()*Math.PI*2,
-      life:18, launchBurst:0.3, type:'light', dockedBy:null, garrisonedIn:null, garrisonSlots:[], beamLatch:null
+      life:18, launchBurst:0.3, type:'light', dockedBy:null, garrisonedIn:null, garrisonSlots:[], beamLatch:null,
+      kills:0,veteranTier:0,veteranName:'Green',veteranHpMult:1,veteranShieldMult:1,veteranDmgMult:1,veteranGuardMult:1,veteranScale:0.5
     });
     burst(src.x,src.y,'#b4ffc1',14,88,2,0.22);
+
+  } else if(d.behavior === 'aegis'){
+    if(target){
+      spawnAlliedBullet(a, ang, d.projSpeed || 420, 5, d.dmg, a.kind, {targetRef:target, x:src.x, y:src.y});
+      if(a.aegisPulse <= 0){
+        a.aegisPulse = 4.6;
+        for(const ally of state.allies){
+          if(ally===a || ally.dockedBy || ally.garrisonedIn) continue;
+          const dd = dist(a,ally);
+          if(dd < d.pulseR){
+            ally.veteranGuardBoost = Math.max(ally.veteranGuardBoost||0, 2.5);
+            healTarget(ally, 8 * (a.veteranShieldMult||1), '#9fe9ff');
+          }
+        }
+        state.fx.push({x:a.x,y:a.y,color:'#9fe9ff',ring:true,r:d.pulseR,t:.32,max:.32});
+        addTextFx(a.x,a.y,'#9fe9ff','AEGIS');
+      }
+    }
+
+  } else if(d.behavior === 'tempest'){
+    const side = a.tempestSide || 0;
+    a.tempestSide = 1 - side;
+    const off = side ? -1 : 1;
+    for(let i=-1;i<=1;i++){
+      const spread = off*0.55 + i*0.08;
+      spawnAlliedBullet(a, ang+spread, d.projSpeed || 450, 4, d.dmg, a.kind, {targetRef:target, x:src.x, y:src.y, turnRate:0.03});
+    }
+    coneBurst(src.x,src.y,ang+off*0.6,'#a9c6ff',10,90,0.34,1.8,0.16);
+
+  } else if(d.behavior === 'lancerfrig'){
+    if(target){
+      const a0 = angleTo(src,target);
+      const range = d.attackRange + 60;
+      const x2 = src.x + Math.cos(a0)*range;
+      const y2 = src.y + Math.sin(a0)*range;
+      let pierce = 0;
+      for(const e of state.enemies){
+        if(pierce >= 4) break;
+        if(beamHitsCircle(src.x,src.y,x2,y2,e.x,e.y,enemyHitRadius(e)+4)){
+          dealDamage(e,d.dmg,a.kind,'ally',a);
+          pierce++;
+        }
+      }
+      state.fx.push({x:target.x,y:target.y,x2:src.x,y2:src.y,color:'#c6f0ff',beam:true,t:.14,max:.14});
+      addTextFx(src.x,src.y,'#c6f0ff','LANCE');
+    }
+
+  } else if(d.behavior === 'dronehive'){
+    if(a.hiveDrones < 8){
+      const spawnStats = getShipStats('scout');
+      const drone = {
+        kind:'scout', x:src.x+rand(-18,18), y:src.y+rand(-12,12), vx:rand(-35,35), vy:-170,
+        angle:-Math.PI/2, hp:spawnStats.hp*0.85, maxHp:spawnStats.hp*0.85, baseMaxHp:spawnStats.hp*0.85, cd:0.15, orbitSeed:Math.random()*Math.PI*2,
+        life:15, launchBurst:0.3, type:'light', dockedBy:null, garrisonedIn:null, garrisonSlots:[], beamLatch:null,
+        kills:0,veteranTier:0,veteranName:'Green',veteranHpMult:1,veteranShieldMult:1,veteranDmgMult:1,veteranGuardMult:1,veteranScale:0.5, hiveOwner:a
+      };
+      state.allies.push(drone);
+      a.hiveDrones++;
+      burst(src.x,src.y,'#9effc4',10,85,1.8,0.2);
+    }
+
+  } else if(d.behavior === 'siegebeamer'){
+    if(target){
+      const beamLen = d.attackRange + 30;
+      const x2 = src.x + Math.cos(ang)*beamLen, y2 = src.y + Math.sin(ang)*beamLen;
+      for(const e of state.enemies){
+        if(beamHitsCircle(src.x,src.y,x2,y2,e.x,e.y,enemyHitRadius(e)+d.beamW)){
+          const bonus = HEAVY_TARGET_KINDS.has(e.kind) || ENEMY_DEFS[e.kind]?.boss ? 1.28 : 1;
+          dealDamage(e,d.beamDmg*bonus,a.kind,'ally',a);
+        }
+      }
+      state.fx.push({x:src.x,y:src.y,x2,y2,color:'#ffb7f8',beam:true,t:.2,max:.2});
+      addTextFx(src.x,src.y,'#ffd8ff','SIEGE');
+    }
+
+  } else if(d.behavior === 'blessing'){
+    const targetAlly = chooseSupportPriorityTarget(a, SUPPORT_RANGE) || mostWoundedAlly(src, SUPPORT_RANGE, a);
+    if(targetAlly){
+      healTarget(targetAlly, d.heal * (a.veteranShieldMult||1), '#ffe8ff');
+      targetAlly.blessedTimer = Math.max(targetAlly.blessedTimer||0, 3.5);
+      state.fx.push({x:targetAlly.x,y:targetAlly.y,x2:src.x,y2:src.y,color:'#ffe8ff',beam:true,t:.16,max:.16});
+    }
+    for(const ally of state.allies){
+      if(ally===a || ally.dockedBy || ally.garrisonedIn) continue;
+      if(dist(ally,a) < 170){
+        ally.blessedTimer = Math.max(ally.blessedTimer||0, 3.5);
+      }
+    }
+    state.fx.push({x:a.x,y:a.y,color:'#ffe8ff',ring:true,r:170,t:.28,max:.28});
 
   } else if(d.behavior === 'vortex'){
     for(const e of state.enemies){
@@ -1269,7 +1498,7 @@ function allyFire(a, target, origin){
       if(dd < d.blast){
         const an = angleTo(e,src);
         e.vx += Math.cos(an)*130; e.vy += Math.sin(an)*75;
-        dealDamage(e,d.dmg,a.kind,'ally');
+        dealDamage(e,d.dmg,a.kind,'ally',a);
       }
     }
     explosion(src.x,src.y,'#8cc3ff',26);
@@ -1358,6 +1587,17 @@ function moveAllyByPattern(a, d, target, dt){
     }
   }
 
+  if(d.behavior === 'aegis'){
+    const guarded = chooseSupportPriorityTarget(a, SUPPORT_RANGE) || lowHealthAlly(a, SUPPORT_RANGE, 0.9, a) || target;
+    const an = angleTo(a, guarded);
+    const desired = 70;
+    const pd = dist(a, guarded);
+    const pull = clamp((pd - desired)/desired,-1.2,1.2);
+    a.vx += Math.cos(an)*pull*d.speed*dt;
+    a.vy += Math.sin(an)*pull*d.speed*dt;
+    return;
+  }
+
   if(d.move === 'guardianShield'){
     const protectedAlly = lowHealthAlly(a, SUPPORT_RANGE, 0.86, a);
     const anchor = protectedAlly || target;
@@ -1367,6 +1607,16 @@ function moveAllyByPattern(a, d, target, dt){
     const pull = clamp((pd - desired)/desired,-1.1,1.1);
     a.vx += Math.cos(an)*pull*d.speed*dt;
     a.vy += Math.sin(an)*pull*d.speed*dt;
+    return;
+  }
+
+  if(d.behavior === 'blessing'){
+    const anchor = chooseSupportPriorityTarget(a, SUPPORT_RANGE) || state.player;
+    const ba = angleTo(a,anchor), bd = dist(a,anchor);
+    const desired = 135;
+    const pull = clamp((bd - desired)/desired,-1.2,1.2);
+    a.vx += Math.cos(ba)*pull*d.speed*dt + Math.sin(t)*22*dt;
+    a.vy += Math.sin(ba)*pull*d.speed*dt - 20*dt;
     return;
   }
 
@@ -1584,7 +1834,7 @@ function handleGodPrism(a, d, dt){
     state.fx.push({x:x2,y:y2,x2:a.x,y2:a.y,color:'#fff5a8',beam:true,t:.34,max:.34,thick:7});
     state.fx.push({x:x2,y:y2,x2:a.x,y2:a.y,color:'#ffffff',beam:true,t:.24,max:.24,thick:3});
     explosion(muzzleX,muzzleY,'#fff2ad',42);
-    for(const e of state.enemies) if(beamHitsCircle(a.x,a.y,x2,y2,e.x,e.y,enemyHitRadius(e)+d.beamW)) dealDamage(e,d.beamDmg,'godprism','ally');
+    for(const e of state.enemies) if(beamHitsCircle(a.x,a.y,x2,y2,e.x,e.y,enemyHitRadius(e)+d.beamW)) dealDamage(e,d.beamDmg,'godprism','ally',a);
     addTextFx(a.x,a.y,'#fff5a8','PRISM BEAM');
     a.prismCharge = 0; a.prismCharging = false; a.cd = d.fireRate * state.allyFireRateSlowMult;
   }
@@ -1688,8 +1938,13 @@ function update(dt){
 
   for(const a of state.allies){
     const d = getShipStats(a.kind);
-    a.maxHp = d.hp;
+    a.baseMaxHp = d.hp;
+    a.maxHp = d.hp * (a.veteranHpMult || 1);
     a.hp = Math.min(a.hp, a.maxHp);
+    if(a.veteranGuardBoost > 0) a.veteranGuardBoost = Math.max(0, a.veteranGuardBoost - dt);
+    if(a.blessedTimer > 0) a.blessedTimer = Math.max(0, a.blessedTimer - dt);
+    if(a.veteranGuardBoost > 0) a.veteranGuardMult = Math.min(1, (a.veteranGuardMult || 1) + 0.08);
+    else applyVeteranPromotion(a);
     a.cd -= dt;
     a.life -= dt;
     a.launchBurst = Math.max(0, (a.launchBurst||0)-dt);
@@ -1741,13 +1996,13 @@ function update(dt){
 
         if(d.behavior === 'suicide'){
           if(dd < d.attackRange){
-            for(const e of state.enemies) if(dist(a,e) < d.blast) dealDamage(e,d.dmg,a.kind,'ally');
+            for(const e of state.enemies) if(dist(a,e) < d.blast) dealDamage(e,d.dmg,a.kind,'ally',a);
             explosion(a.x,a.y,'#ff8a8a',32); a.hp = -999;
           }
         } else if(d.behavior === 'flame'){
           if(dd < d.attackRange && a.cd <= 0){
             a.cd = d.fireRate * state.allyFireRateSlowMult;
-            for(const e of state.enemies) if(dist(a,e) < d.attackRange) dealDamage(e,d.dmg,a.kind,'ally');
+            for(const e of state.enemies) if(dist(a,e) < d.attackRange) dealDamage(e,d.dmg,a.kind,'ally',a);
             coneBurst(a.x,a.y,angleTo(a,target),'#ff9d57',15,95,0.45,2,0.18);
             addTextFx(a.x,a.y,'#ffb36b','FLAME');
           }
@@ -1759,7 +2014,7 @@ function update(dt){
               if(ee < d.pulseR){
                 const an = angleTo(a,e);
                 e.vx += Math.cos(an)*220; e.vy += Math.sin(an)*120;
-                dealDamage(e,d.pulseDmg,a.kind,'ally');
+                dealDamage(e,d.pulseDmg,a.kind,'ally',a);
               }
             }
             explosion(a.x,a.y,'#8df0ff',30);
@@ -1836,9 +2091,20 @@ function update(dt){
   state.walls = state.walls.filter(w=>w.hp>0 && w.life>0);
 
   for(const e of state.enemies){
+    if(e.recentDamageBy) for(const rec of e.recentDamageBy) rec.t -= dt;
     const def = ENEMY_DEFS[e.kind];
     e.cd -= dt; e.shieldBoost = Math.max(0, e.shieldBoost - dt*1.7);
     let chosen = nearestAlly(e, 360) || state.player;
+    if(def.move === 'supportDive'){
+      let bestSupport = null, bestScore = -1e9;
+      for(const a of state.allies){
+        if(a.dockedBy || a.garrisonedIn) continue;
+        const dd = dist(e,a);
+        const score = (SUPPORT_ALLY_KINDS.has(a.kind)?220:0) + getVeteranPriorityBonus(a) + (a.maxHp-a.hp)*0.4 - dd*0.35;
+        if(score > bestScore){ bestScore = score; bestSupport = a; }
+      }
+      if(bestSupport) chosen = bestSupport;
+    }
     if(def.move === 'saboteur'){
       let bestSupport = null, bestD = 99999;
       for(const a of state.allies){
@@ -1982,13 +2248,13 @@ function update(dt){
       b.x = hitX; b.y = hitY;
 
       if (b.blast) {
-        for (const e2 of state.enemies) if (Math.hypot(hitX - e2.x, hitY - e2.y) < b.blast) dealDamage(e2, b.dmg, b.kind, 'ally');
+        for (const e2 of state.enemies) if (Math.hypot(hitX - e2.x, hitY - e2.y) < b.blast) dealDamage(e2, b.dmg, b.kind, 'ally', state.allies.find(a=>a.kind===b.kind));
         explosion(hitX, hitY, b.kind === 'missile' ? '#ffb37d' : '#ffd166', b.kind === 'missile' ? 38 : 26);
       } else if (b.missile) {
-        dealDamage(hitEnemy, b.dmg, b.kind, 'ally');
+        dealDamage(hitEnemy, b.dmg, b.kind, 'ally', state.allies.find(a=>a.kind===b.kind));
         explosion(hitX, hitY, '#ffb37d', 34);
       } else {
-        dealDamage(hitEnemy, b.dmg, b.kind, 'ally');
+        dealDamage(hitEnemy, b.dmg, b.kind, 'ally', state.allies.find(a=>a.kind===b.kind));
         explosion(hitX, hitY, b.kind === 'laser' ? '#ff8df3' : b.kind === 'prism' ? '#ffb4ff' : '#9fd3ff', 12);
       }
 
@@ -2065,7 +2331,14 @@ function update(dt){
   cleanupSpecialContainers();
 
   state.enemies = state.enemies.filter(e=>{ if(e.hp<=0){ killEnemy(e); return false; } return true; });
-  state.allies = state.allies.filter(a=>a.hp>0 && a.life>0);
+  state.allies = state.allies.filter(a=>{
+    const dead = !(a.hp>0 && a.life>0);
+    if(dead){
+      if(a.hiveOwner && a.hiveOwner.hiveDrones) a.hiveOwner.hiveDrones = Math.max(0, a.hiveOwner.hiveDrones - 1);
+      if((a.veteranTier||0) >= 4) logMsg(`Legendary ${SHIP_DEFS[a.kind]?.name || 'ship'} lost.`);
+    }
+    return !dead;
+  });
   state.turrets = state.turrets.filter(t=>t.hp>0 && t.life>0);
 
   for(const p of state.pickups){
@@ -2276,6 +2549,25 @@ function drawShip(obj){
     case 'pulse':
       ctx.beginPath(); ctx.arc(0,0,r+1,0,Math.PI*2); ctx.fill(); ctx.stroke();
       ctx.fillStyle='rgba(255,255,255,.45)'; ctx.beginPath(); ctx.arc(0,0,r*0.45,0,Math.PI*2); ctx.fill(); break;
+    case 'aegis':
+      ctx.beginPath(); ctx.moveTo(0,-r-10); ctx.lineTo(r+11,-2); ctx.lineTo(r+6,r+10); ctx.lineTo(-r-6,r+10); ctx.lineTo(-r-11,-2); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle='rgba(159,233,255,.9)'; ctx.beginPath(); ctx.arc(0,-r*0.35,r*0.9,Math.PI*0.1,Math.PI*0.9); ctx.stroke(); break;
+    case 'tempest':
+      ctx.beginPath(); ctx.moveTo(0,-r-6); ctx.lineTo(r+8,-1); ctx.lineTo(r+5,r+8); ctx.lineTo(-r-5,r+8); ctx.lineTo(-r-8,-1); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillRect(-r-6,-2,5,6); ctx.fillRect(r+1,-2,5,6); break;
+    case 'lancerfrig':
+      ctx.beginPath(); ctx.moveTo(0,-r-10); ctx.lineTo(r+3,r+8); ctx.lineTo(0,r+3); ctx.lineTo(-r-3,r+8); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle='rgba(220,250,255,.95)'; ctx.beginPath(); ctx.moveTo(0,-r-9); ctx.lineTo(0,r+7); ctx.stroke(); break;
+    case 'dronehive':
+      ctx.beginPath(); ctx.moveTo(0,-r-8); ctx.lineTo(r+12,-2); ctx.lineTo(r+8,r+10); ctx.lineTo(-r-8,r+10); ctx.lineTo(-r-12,-2); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle='rgba(255,255,255,.22)'; ctx.fillRect(-r*0.6,-2,r*1.2,5); ctx.fillRect(-r*0.5,5,r*0.3,4); ctx.fillRect(r*0.2,5,r*0.3,4); break;
+    case 'siegebeamer':
+      ctx.beginPath(); ctx.moveTo(0,-r-7); ctx.lineTo(r+6,0); ctx.lineTo(r+2,r+8); ctx.lineTo(-r-2,r+8); ctx.lineTo(-r-6,0); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle='#ffd7ff'; ctx.fillRect(-2,-r-10,4,18); break;
+    case 'blessing':
+      ctx.beginPath(); ctx.moveTo(0,-r-8); ctx.lineTo(r+9,-2); ctx.lineTo(r+5,r+9); ctx.lineTo(-r-5,r+9); ctx.lineTo(-r-9,-2); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle='rgba(255,235,255,.9)'; ctx.beginPath(); ctx.arc(0,-2,r*0.75,0,Math.PI*2); ctx.stroke();
+      ctx.fillStyle='rgba(255,245,255,.85)'; ctx.beginPath(); ctx.arc(0,-2,4,0,Math.PI*2); ctx.fill(); break;
     case 'drone':
       ctx.beginPath(); ctx.moveTo(0,-r-4); ctx.lineTo(r+7,-1); ctx.lineTo(r+2,r+5); ctx.lineTo(-r-2,r+5); ctx.lineTo(-r-7,-1); ctx.closePath(); ctx.fill(); ctx.stroke();
       ctx.fillRect(-r-2,0,4,6); ctx.fillRect(r-2,0,4,6); ctx.fillRect(-3,-r+2,6,4); break;
@@ -2336,6 +2628,24 @@ function drawShip(obj){
     ctx.strokeStyle = '#8fe7ff';
     ctx.beginPath(); ctx.arc(0,0,r+9,0,Math.PI*2); ctx.stroke();
     ctx.globalAlpha = 1;
+  }
+  if(!enemy && obj.veteranTier > 0){
+    const vb = getVeteranBonuses(obj.veteranTier, obj.kind);
+    ctx.strokeStyle = vb.ring;
+    ctx.lineWidth = obj.veteranTier >= 3 ? 2.2 : 1.5;
+    ctx.beginPath();
+    ctx.arc(0,0,r+7 + (obj.veteranTier>=4 ? Math.sin(performance.now()*0.008)*1.4 : 0),0,Math.PI*2);
+    ctx.stroke();
+    ctx.fillStyle = vb.color;
+    ctx.font = 'bold 11px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(vb.marker,0,-r-11);
+    if(obj.veteranTier >= 4){
+      const lg = ctx.createRadialGradient(0,0,0,0,0,r+20);
+      lg.addColorStop(0,'rgba(255,160,255,.08)');
+      lg.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle = lg; ctx.beginPath(); ctx.arc(0,0,r+20,0,Math.PI*2); ctx.fill();
+    }
   }
   ctx.restore();
 }
@@ -2591,6 +2901,9 @@ function syncUI(){
   ui.allyText.textContent = `${state.allies.filter(a=>!a.dockedBy && !a.garrisonedIn).length + state.turrets.length + state.walls.length}`;
   ui.enemyText.textContent = `${state.enemies.length + state.spawnBudget}`;
   ui.commandText.textContent = `${COMMAND_LABELS[state.commandMode]}`;
+  const vetCounts = [0,0,0,0,0];
+  for(const a of state.allies){ if(a.dockedBy || a.garrisonedIn) continue; vetCounts[a.veteranTier||0]++; }
+  ui.veteranText.textContent = `V:${vetCounts[1]} E:${vetCounts[2]} A:${vetCounts[3]} L:${vetCounts[4]}`;
   ui.waveText.textContent = `${state.levelKills} / ${state.levelTarget}`;
   ui.waveBar.style.width = `${(state.levelKills/state.levelTarget)*100}%`;
 
