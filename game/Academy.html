@@ -884,18 +884,109 @@ function spawnBarrierWall(x,y){
   burst(x,y,'#99f8ff',14,90,2.2,0.22);
 }
 
+function getEnemyHpScale(def, level){
+  const tier = Math.max(0, level - 1);
+  if(def.boss) return 1;
+  if(def.elite) return 1 + tier * 0.045;
+  return 1 + tier * 0.035;
+}
+
+function getBossHpScale(def, level){
+  const tier = Math.max(0, level - 1);
+  if(tier <= 0) return 1;
+  const earlyTier = Math.min(tier, 8);
+  const lateTier = Math.max(0, tier - 8);
+  let scale = 1 + earlyTier * 0.065 + lateTier * 0.1;
+  if(!def.boss && ['battlecruiser','starcarrier','leviathan','ruinbarge'].includes(def.kind||'')){
+    scale = 1 + earlyTier * 0.055 + lateTier * 0.075;
+  }
+  return scale;
+}
+
+function getBossCountForLevel(level){
+  if(level < 10) return 1;
+  const roll = Math.random();
+  if(level <= 14){
+    if(roll < 0.22) return 2;
+    return 1;
+  }
+  if(level <= 21){
+    if(roll < 0.14) return 3;
+    if(roll < 0.72) return 2;
+    return 1;
+  }
+  if(level <= 29){
+    if(roll < 0.18) return 3;
+    if(roll < 0.78) return 2;
+    return 1;
+  }
+  if(roll < 0.08) return 4;
+  if(roll < 0.34) return 3;
+  if(roll < 0.84) return 2;
+  return 1;
+}
+
+function pickBossKind(existingKinds=[]){
+  const heavyTelegraph = new Set(['colossus','executioner','forge']);
+  const controlBosses = ['gravemind','overmind','storm'];
+  const bruisers = ['titan','leviathan','executioner'];
+
+  const pool = BOSS_POOL.slice();
+  if(existingKinds.length && state.level < 24){
+    const telegraphCount = existingKinds.filter(k=>heavyTelegraph.has(k)).length;
+    if(telegraphCount >= 1){
+      const filtered = pool.filter(k=>!heavyTelegraph.has(k));
+      if(filtered.length) return pick(filtered);
+    }
+    if(existingKinds.every(k=>controlBosses.includes(k))){
+      return pick(bruisers.filter(k=>pool.includes(k)));
+    }
+  }
+  return pick(pool);
+}
+
+function spawnBossWave(level){
+  const count = getBossCountForLevel(level);
+  const spread = Math.min(220, 70 + count * 42);
+  const center = W / 2 + rand(-50, 50);
+  const spacing = count > 1 ? (spread * 2) / (count - 1) : 0;
+  const pickedKinds = [];
+  for(let i=0;i<count;i++){
+    const kind = pickBossKind(pickedKinds);
+    pickedKinds.push(kind);
+    const x = count === 1 ? center + rand(-80,80) : center - spread + spacing * i + rand(-18,18);
+    const y = -120 - i * 22;
+    spawnEnemy(kind, clamp(x, 70, W - 70), y);
+  }
+  if(count > 1) logMsg(`Multiple boss signatures detected (${count}). Brace for impact.`);
+}
+
+function getDisplayedBoss(activeBosses){
+  if(!activeBosses.length) return null;
+  return activeBosses.reduce((lowest, boss)=> boss.hp < lowest.hp ? boss : lowest, activeBosses[0]);
+}
+
+function updateBossState(){
+  state.bossActive = state.enemies.some(e=>ENEMY_DEFS[e.kind].boss);
+}
+
 function spawnEnemy(kind, x=rand(40,W-40), y=-30){
   const def=ENEMY_DEFS[kind];
   const dir = Math.random()<0.5 ? -1 : 1;
+  let hpScale = getEnemyHpScale(def, state.level);
+  if(def.boss || ['battlecruiser','starcarrier','leviathan','ruinbarge'].includes(kind)){
+    hpScale = Math.max(hpScale, getBossHpScale({...def, kind}, state.level));
+  }
+  const scaledHp = Math.max(1, Math.round(def.hp * hpScale));
   state.enemies.push({
-    kind,x,y,vx:def.speedX*dir,vy:def.speedY,hp:def.hp,maxHp:def.hp,cd:rand(0,def.fireRate||1),
+    kind,x,y,vx:def.speedX*dir,vy:def.speedY,hp:scaledHp,maxHp:scaledHp,cd:rand(0,def.fireRate||1),
     type:def.type,zig:Math.random()*Math.PI*2,bob:Math.random()*Math.PI*2,angle:Math.PI/2,
     shieldBoost:0,telegraphing:false,telegraphText:'',bossId:def.boss ? ++state.bossId : 0
   });
   const e = state.enemies[state.enemies.length - 1];
   const speedScale = state.level <= 2 ? 0.78 : state.level <= 4 ? 0.9 : Math.min(1.65, 0.98 + state.level * 0.055);
   e.vx *= speedScale; e.vy *= speedScale;
-  if(def.boss){ state.bossActive = true; logMsg(`${def.name} has entered the battlefield.`); }
+  if(def.boss){ updateBossState(); logMsg(`${def.name} has entered the battlefield.`); }
 }
 
 function spawnAsteroid(){
@@ -914,7 +1005,7 @@ function spawnLevel(){
   state.levelTarget = state.spawnBudget;
   state.levelKills = 0;
   if(state.level % 5 === 0){
-    spawnEnemy(pick(BOSS_POOL), W/2 + rand(-80,80), -120);
+    spawnBossWave(state.level);
   } else if(state.level >= 4 && Math.random() < Math.min(0.95, 0.38 + state.level * 0.07)){
     const elites = ENEMY_POOL.filter(k=>ENEMY_DEFS[k].elite);
     const eliteCount = Math.min(3, randi(1, 1 + Math.floor((state.level - 2)/5)));
@@ -2908,13 +2999,17 @@ function syncUI(){
   ui.waveBar.style.width = `${(state.levelKills/state.levelTarget)*100}%`;
 
   const bosses = state.enemies.filter(e=>ENEMY_DEFS[e.kind].boss);
-  if(bosses.length){
-    const boss = bosses[0], d = ENEMY_DEFS[boss.kind];
+  updateBossState();
+  if(state.bossActive && bosses.length){
+    const boss = getDisplayedBoss(bosses);
+    const d = ENEMY_DEFS[boss.kind];
     ui.bossCard.style.display = 'block';
     ui.bossName.textContent = d.name;
     ui.bossHpText.textContent = `${Math.max(0,Math.ceil(boss.hp))} / ${boss.maxHp}`;
     ui.bossHpBar.style.width = `${Math.max(0,boss.hp/boss.maxHp*100)}%`;
-    ui.bossTell.textContent = boss.telegraphing ? `Telegraph: ${boss.telegraphText}` : 'Heavy enemy firing pattern active.';
+    const additional = bosses.length - 1;
+    const statusLine = bosses.length > 1 ? ` Bosses Active: ${bosses.length}. Additional Bosses: ${additional}.` : '';
+    ui.bossTell.textContent = (boss.telegraphing ? `Telegraph: ${boss.telegraphText}.` : 'Heavy enemy firing pattern active.') + statusLine;
   } else {
     ui.bossCard.style.display = 'none';
   }
