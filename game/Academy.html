@@ -117,37 +117,161 @@
 
   .gridHead{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:10px; flex-wrap:wrap }
 
-  .priorityWrap{
+  .heatmapWrap{
     border:1px solid var(--line);
     border-radius:14px;
     background:#fff;
-    padding:10px 12px;
+    padding:12px;
     margin-bottom:10px;
+    display:grid;
+    gap:10px;
   }
-  .priorityHead{
-    display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
-    margin-bottom:8px;
+  .heatmapHead{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:12px;
+    flex-wrap:wrap;
   }
-  .priorityTitle{ font-weight:900; }
-  .priorityHint{ font-size:12px; color:#475569; font-weight:800; }
-  .prioList{ display:grid; gap:8px; }
-  .prioRow{
-    display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
+  .heatmapTitle{ font-weight:900; }
+  .heatmapHint{ font-size:12px; color:#475569; font-weight:800; max-width:82ch; line-height:1.4; }
+  .heatmapStats{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    align-items:center;
+  }
+  .heatmapLegend{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    align-items:center;
+    font-size:12px;
+    color:#475569;
+    font-weight:800;
+  }
+  .legendSwatch{
+    width:12px;
+    height:12px;
+    border-radius:4px;
+    border:1px solid rgba(148,163,184,.6);
+    display:inline-block;
+  }
+  .legendSwatch.strong{ background:#16a34a; border-color:#15803d; }
+  .legendSwatch.partial{ background:#f59e0b; border-color:#d97706; }
+  .legendSwatch.weak{ background:#dc2626; border-color:#b91c1c; }
+  .legendSwatch.na{ background:#cbd5e1; border-color:#94a3b8; }
+  .heatmapMeta{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(180px,1fr));
+    gap:8px;
+  }
+  .heatmapMetaCard{
     border:1px solid var(--line);
     border-radius:12px;
-    padding:8px 10px;
+    padding:10px;
     background:#fbfdff;
   }
-  .prioRow:hover{ box-shadow:0 12px 26px rgba(2,6,23,.08); transform:translateY(-1px); }
-  .prioLeft{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-  .prioRank{
-    width:26px; height:26px; border-radius:999px;
-    display:inline-flex; align-items:center; justify-content:center;
-    font-weight:900; font-size:12px;
-    background:#eef2ff; border:1px solid #c7d2fe; color:#3730a3;
+  .heatmapMetaLabel{ font-size:11px; color:#64748b; font-weight:900; text-transform:uppercase; letter-spacing:.04em; }
+  .heatmapMetaValue{ font-size:18px; font-weight:900; margin-top:4px; }
+  .heatmapMetaSub{ font-size:12px; color:#475569; font-weight:800; margin-top:4px; line-height:1.35; }
+  .heatmapScroller{
+    overflow:auto;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:#fff;
   }
-  .prioName{ font-weight:900; }
-  .prioMeta{ font-size:12px; color:#475569; display:flex; gap:8px; flex-wrap:wrap; align-items:center; font-weight:800; }
+  .heatmapTable{
+    width:100%;
+    border-collapse:separate;
+    border-spacing:0;
+    min-width:760px;
+  }
+  .heatmapTable th,
+  .heatmapTable td{
+    border-bottom:1px solid var(--line);
+    border-right:1px solid var(--line);
+    padding:0;
+    vertical-align:middle;
+    background:#fff;
+  }
+  .heatmapTable tr:last-child td,
+  .heatmapTable tr:last-child th{ border-bottom:none; }
+  .heatmapTable th:last-child,
+  .heatmapTable td:last-child{ border-right:none; }
+  .heatmapTable thead th{
+    position:sticky;
+    top:0;
+    z-index:3;
+    background:#f8fafc;
+  }
+  .heatmapStub{
+    position:sticky;
+    left:0;
+    z-index:2;
+    min-width:210px;
+    padding:10px 12px;
+    background:#fff;
+  }
+  .heatmapTable thead .heatmapStub{ z-index:4; background:#f8fafc; }
+  .heatmapStub.summary{ background:#fff7ed; }
+  .heatmapRepBtn,
+  .heatmapWeekBtn,
+  .heatmapCellBtn{
+    appearance:none;
+    border:none;
+    background:none;
+    color:inherit;
+    font:inherit;
+    margin:0;
+    cursor:pointer;
+  }
+  .heatmapRepBtn{
+    display:flex;
+    flex-direction:column;
+    align-items:flex-start;
+    gap:4px;
+    width:100%;
+    text-align:left;
+    padding:0;
+  }
+  .heatmapRepBtn:hover .heatmapRepName{ text-decoration:underline; }
+  .heatmapRepName{ font-weight:900; line-height:1.15; }
+  .heatmapRepMeta{ font-size:11px; color:#64748b; font-weight:800; }
+  .heatmapWeekBtn{
+    width:100%;
+    min-width:118px;
+    padding:10px 8px;
+    text-align:center;
+  }
+  .heatmapWeekBtn:hover{ background:rgba(225,29,72,.06); }
+  .heatmapWeekLabel{ font-weight:900; }
+  .heatmapWeekSub{ font-size:11px; color:#64748b; font-weight:800; margin-top:4px; }
+  .heatmapCellBtn{
+    width:100%;
+    min-height:70px;
+    padding:8px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:4px;
+    transition:transform .06s ease, box-shadow .12s ease;
+  }
+  .heatmapCellBtn:hover{ transform:translateY(-1px); box-shadow:inset 0 0 0 2px rgba(15,23,42,.12); }
+  .heatCell{
+    color:#0f172a;
+    font-weight:900;
+  }
+  .heatCell.strong{ background:rgba(22,163,74,.16); }
+  .heatCell.partial{ background:rgba(245,158,11,.18); }
+  .heatCell.weak{ background:rgba(220,38,38,.18); }
+  .heatCell.na{ background:rgba(203,213,225,.32); color:#475569; }
+  .heatCellSummary{ font-size:14px; }
+  .heatCellSummary small,
+  .heatCellRep small{ font-size:11px; font-weight:800; color:#334155; }
+  .heatCellRep{ font-size:13px; }
+  .heatCellRep .tiny{ font-size:10px; font-weight:800; color:#475569; }
   .tag{
     display:inline-flex; align-items:center; gap:6px;
     padding:4px 8px; border-radius:999px;
@@ -159,6 +283,62 @@
   }
   .tag.warn{ background:var(--warnBg); border-color:rgba(245,158,11,.55); color:var(--warnInk) }
   .tag.urgent{ background:var(--urgentBg); border-color:rgba(239,68,68,.55); color:var(--urgentInk) }
+  .heatmapEmpty{
+    border:1px dashed var(--line);
+    border-radius:12px;
+    padding:16px;
+    background:#f8fafc;
+    color:#475569;
+    font-weight:800;
+  }
+  .heatDetailGrid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(200px,1fr));
+    gap:8px;
+    margin-bottom:12px;
+  }
+  .heatDetailCard{
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:10px;
+    background:#fbfdff;
+  }
+  .heatDetailLabel{ font-size:11px; color:#64748b; font-weight:900; text-transform:uppercase; letter-spacing:.04em; }
+  .heatDetailValue{ font-size:18px; font-weight:900; margin-top:4px; }
+  .heatDetailSection{ margin-top:14px; }
+  .heatDetailSection h4{ margin:0 0 8px; font-size:13px; }
+  .heatDetailList{ display:grid; gap:8px; }
+  .heatDetailItem{
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:10px;
+    background:#fff;
+    display:grid;
+    gap:6px;
+  }
+  .heatDetailTop{
+    display:flex;
+    gap:8px;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+  }
+  .heatDetailRepBtn{
+    appearance:none;
+    border:none;
+    background:none;
+    padding:0;
+    margin:0;
+    color:#0f172a;
+    font-weight:900;
+    cursor:pointer;
+    text-align:left;
+  }
+  .heatDetailRepBtn:hover{ text-decoration:underline; }
+  .heatDetailBadges{ display:flex; gap:6px; flex-wrap:wrap; }
+  .heatDetailMetrics{ display:flex; gap:6px; flex-wrap:wrap; }
+  .heatDetailMetrics .tag{ font-size:11px; }
+  .heatDetailNote{ font-size:12px; color:#475569; font-weight:800; line-height:1.35; }
 
   /* UPDATED GRID */
   .impactGrid{
@@ -703,14 +883,27 @@
       </div>
     </div>
 
-    <div class="priorityWrap" id="priorityWrap">
-      <div class="priorityHead">
-        <div class="priorityTitle">Needs Coaching (Priority)</div>
-        <div class="priorityHint">
-          Sorted by <b>oldest coaching</b> → then <b>lowest rate</b>. (Auto-loads if coaching dock exists.)
+    <div class="heatmapWrap" id="heatmapWrap">
+      <div class="heatmapHead">
+        <div>
+          <div class="heatmapTitle">Coaching Coverage Heatmap</div>
+          <div class="heatmapHint">
+            Weekly coverage for the reps who most needed coaching in the selected KPI window. Click any week or cell for coached vs missed detail.
+          </div>
         </div>
+        <div class="heatmapStats" id="heatmapStats"></div>
       </div>
-      <div class="prioList" id="priorityList"></div>
+
+      <div class="heatmapLegend">
+        <span>Legend:</span>
+        <span><span class="legendSwatch strong"></span> Strong coverage</span>
+        <span><span class="legendSwatch partial"></span> Partial / coached but not priority</span>
+        <span><span class="legendSwatch weak"></span> Needed coaching missed</span>
+        <span><span class="legendSwatch na"></span> N/A / not enough data</span>
+      </div>
+
+      <div class="heatmapMeta" id="heatmapMeta"></div>
+      <div class="heatmapScroller" id="heatmapScroller"></div>
     </div>
 
     <div class="impactGrid" id="impactGrid"></div>
@@ -733,6 +926,23 @@
       </div>
     </div>
     <div class="modalBody" id="repCoachModalBody"></div>
+  </div>
+</div>
+
+
+<!-- ===== Heatmap Detail Modal ===== -->
+<div id="heatmapModalOverlay" class="modalOverlay" aria-hidden="true">
+  <div class="modalPanel" role="dialog" aria-modal="true" aria-labelledby="heatmapModalTitle">
+    <div class="modalHeadRow">
+      <div>
+        <div id="heatmapModalTitle" class="modalTitle">Heatmap detail</div>
+        <div id="heatmapModalMeta" class="modalSub">—</div>
+      </div>
+      <div class="modalActions">
+        <button class="btn dark" id="heatmapModalClose">Close ✕</button>
+      </div>
+    </div>
+    <div class="modalBody" id="heatmapModalBody"></div>
   </div>
 </div>
 
@@ -1619,95 +1829,529 @@ function coachingRecencyInfo(repName){
 }
 
 /* =========================
-   Priority list
+   Heatmap helpers
    ========================= */
-function paintPriorityList(names, repRateMap){
-  const list = document.getElementById('priorityList');
-  list.innerHTML = '';
-
-  if(!coachings.length){
-    list.innerHTML = `<div class="muted" style="font-weight:900">No coaching dock loaded/found yet.</div>`;
-    return;
+function weekStartFromKey(key){
+  const m = String(key || '').match(/^(\d{4})-W(\d{2})$/);
+  if(!m) return null;
+  const year = Number(m[1]);
+  const week = Number(m[2]);
+  if(!Number.isFinite(year) || !Number.isFinite(week)) return null;
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const jan4Day = jan4.getUTCDay() || 7;
+  const monday = new Date(jan4);
+  monday.setUTCDate(jan4.getUTCDate() - jan4Day + 1 + ((week - 1) * 7));
+  return new Date(monday.getUTCFullYear(), monday.getUTCMonth(), monday.getUTCDate());
+}
+function endOfWeekFromKey(key){
+  const start = weekStartFromKey(key);
+  if(!start) return null;
+  const end = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  end.setDate(end.getDate() + 6);
+  end.setHours(23,59,59,999);
+  return end;
+}
+function fmtWeekLabel(key){
+  const start = weekStartFromKey(key);
+  if(!start) return key || '—';
+  const end = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  end.setDate(end.getDate() + 6);
+  return `${mmddyy(start)}–${mmddyy(end)}`;
+}
+function filteredCoachingsForRep(repName){
+  const k = personKey(repName);
+  const arr = coachingByRepKey.get(k) || [];
+  if(!coachingTypes.size) return arr.slice();
+  if(enabledTypes.size===0) return [];
+  return arr.filter(c => (c.types || []).some(t => enabledTypes.has(t)));
+}
+function latestCoachingBefore(repName, endDate){
+  const arr = filteredCoachingsForRep(repName);
+  for(const c of arr){
+    if(c.date <= endDate) return c;
   }
-  if(coachingTypes.size && enabledTypes.size===0){
-    list.innerHTML = `<div class="muted" style="font-weight:900">No coaching types selected — turn types back on to generate the priority list.</div>`;
-    return;
+  return null;
+}
+function coachingCountForRepUntil(repName, endDate, startDate=null){
+  const arr = filteredCoachingsForRep(repName);
+  let n = 0;
+  for(const c of arr){
+    if(c.date > endDate) continue;
+    if(startDate && c.date < startDate) continue;
+    n++;
   }
+  return n;
+}
+function coachingsForRepWeek(repName, weekKey){
+  const arr = filteredCoachingsForRep(repName);
+  return arr.filter(c => c.wk === weekKey);
+}
+function buildWeeklyHeatmapModel(set, includedNames, bottomHalfSetGlobal){
+  const rows = rowsInScope();
+  const weekKeys = Array.from(new Set(rows.map(r=>isoWeekKey(r._d)))).sort();
+  const coachingLoaded = coachings.length > 0;
+  const typeFilterBlocked = coachingTypes.size > 0 && enabledTypes.size === 0;
+  const scopeStart = weekKeys.length ? weekStartFromKey(weekKeys[0]) : null;
 
-  const items = names.map(rep=>{
-    const rec = coachingRecencyInfo(rep);
-    let age = rec.ageDays;
-    let has = rec.has;
-    let rate = repRateMap.get(rep);
-    if(!Number.isFinite(rate)) rate = NaN;
-
-    const ageForSort = (age===null || age===undefined) ? 99999 : age;
-    const urgent = (age!==null && age>42) || (!has);
-    const stale  = (age!==null && age>21 && age<=42);
-
-    return { rep, rec, age, ageForSort, rate, urgent, stale, has };
-  }).filter(x => x.urgent || x.stale);
-
-  if(!items.length){
-    list.innerHTML = `<div class="muted" style="font-weight:900">Nobody is currently stale (&gt; 3 weeks) based on the selected coaching type filter.</div>`;
-    return;
-  }
-
-  items.sort((a,b)=>{
-    if(b.ageForSort !== a.ageForSort) return b.ageForSort - a.ageForSort;
-    const ra = Number.isFinite(a.rate) ? a.rate : Infinity;
-    const rb = Number.isFinite(b.rate) ? b.rate : Infinity;
-    return ra - rb;
+  const grouped = new Map();
+  rows.forEach(r=>{
+    const wk = isoWeekKey(r._d);
+    const rep = String(r.Name || '').trim();
+    if(!wk || !rep || !includedNames.includes(rep)) return;
+    const repMap = grouped.get(wk) || new Map();
+    const cur = repMap.get(rep) || { rep, apps:0, opps:0, rows:0, sourceRows:[] };
+    const a = toNum(r[set?.A]);
+    const b = toNum(r[set?.B]);
+    if(Number.isFinite(a)) cur.apps += a;
+    if(Number.isFinite(b)) cur.opps += b;
+    cur.rows += 1;
+    cur.sourceRows.push(r);
+    repMap.set(rep, cur);
+    grouped.set(wk, repMap);
   });
 
-  const top = items.slice(0, 15);
-  top.forEach((it, idx)=>{
-    const row = document.createElement('div');
-    row.className = 'prioRow';
-    row.style.cursor = 'pointer';
-    row.title = 'Click to view coaching history';
-    row.addEventListener('click', ()=> openRepCoachings(it.rep));
+  const repNames = [...includedNames].sort((a,b)=>a.localeCompare(b));
+  const byRep = new Map(repNames.map(rep => [rep, []]));
+  const weekly = [];
 
-    const left = document.createElement('div');
-    left.className = 'prioLeft';
+  for(const wk of weekKeys){
+    const repMap = grouped.get(wk) || new Map();
+    const repEntries = repNames.map(rep=>{
+      const base = repMap.get(rep) || { rep, apps:0, opps:0, rows:0, sourceRows:[] };
+      const repRate = base.opps > 0 ? (base.apps / base.opps) : NaN;
+      return { ...base, repRate };
+    });
 
-    const rank = document.createElement('div');
-    rank.className = 'prioRank';
-    rank.textContent = String(idx+1);
+    const teamApps = repEntries.reduce((sum, r)=> sum + (Number.isFinite(r.apps) ? r.apps : 0), 0);
+    const teamOpps = repEntries.reduce((sum, r)=> sum + (Number.isFinite(r.opps) ? r.opps : 0), 0);
+    const teamRate = teamOpps > 0 ? (teamApps / teamOpps) : NaN;
 
-    const name = document.createElement('div');
-    name.className = 'prioName';
-    name.textContent = it.rep;
-
-    const meta = document.createElement('div');
-    meta.className = 'prioMeta';
-
-    const rateTag = document.createElement('span');
-    rateTag.className = 'tag';
-    rateTag.textContent = `Rate: ${Number.isFinite(it.rate) ? fmtPct1(it.rate) : '—'}`;
-
-    const nWin = coachingCountForRep(it.rep);
-    const ageTag = document.createElement('span');
-    ageTag.className = 'tag ' + (it.urgent ? 'urgent' : 'warn');
-    if(!it.has){
-      ageTag.textContent = `No coaching (${nWin})`;
-      ageTag.title = `No matching coaching record found for this rep (given your type filter). In-window count: ${nWin}.`;
-    }else{
-      const d = it.rec.date;
-      const days = Math.floor(it.age ?? 0);
-      ageTag.textContent = `${mmddyy(d)} • ${days}d • (${nWin})`;
-      ageTag.title = `${it.rec.text} • ${nWin} coaching(s) in last ${currentWeeks()}w`;
+    const validRates = repEntries.filter(r=>Number.isFinite(r.repRate)).map(r=>r.repRate).sort((a,b)=>a-b);
+    let weeklyBottomThreshold = NaN;
+    if(validRates.length >= 2){
+      const bottomCount = Math.max(1, Math.floor(validRates.length / 2));
+      weeklyBottomThreshold = validRates[bottomCount - 1];
     }
 
-    meta.appendChild(rateTag);
-    meta.appendChild(ageTag);
+    const prelim = repEntries.map(entry=>{
+      const oppsWithout = teamOpps - (Number.isFinite(entry.opps) ? entry.opps : 0);
+      const appsWithout = teamApps - (Number.isFinite(entry.apps) ? entry.apps : 0);
+      const rateWithout = oppsWithout > 0 ? (appsWithout / oppsWithout) : NaN;
+      const impact = Number.isFinite(rateWithout) && Number.isFinite(teamRate) ? (rateWithout - teamRate) : NaN;
+      const weekStart = weekStartFromKey(wk);
+      const weekEnd = endOfWeekFromKey(wk);
+      const latest = weekEnd ? latestCoachingBefore(entry.rep, weekEnd) : null;
+      const touchesWindow = weekEnd ? coachingCountForRepUntil(entry.rep, weekEnd, scopeStart || coachingWindowStart()) : 0;
+      const coachedThisWeek = coachingsForRepWeek(entry.rep, wk);
+      const recencyDays = (latest && weekEnd) ? Math.floor(daysBetween(weekEnd, latest.date)) : null;
+      const belowTeam = Number.isFinite(entry.repRate) && Number.isFinite(teamRate) ? Math.max(teamRate - entry.repRate, 0) : 0;
+      const inWeeklyBottomHalf = Number.isFinite(entry.repRate) && Number.isFinite(weeklyBottomThreshold) ? entry.repRate <= weeklyBottomThreshold : false;
+      const inGlobalBottomHalf = bottomHalfSetGlobal.has(entry.rep);
+      return {
+        ...entry,
+        weekKey: wk,
+        weekStart,
+        weekEnd,
+        teamRate,
+        impact,
+        rateWithout,
+        latestCoaching: latest,
+        touchesWindow,
+        coachedThisWeek,
+        coached: coachedThisWeek.length > 0,
+        recencyDays,
+        belowTeam,
+        inWeeklyBottomHalf,
+        inGlobalBottomHalf
+      };
+    });
 
-    left.appendChild(rank);
-    left.appendChild(name);
-    left.appendChild(meta);
+    const maxImpact = Math.max(...prelim.map(r => Number.isFinite(r.impact) ? Math.max(r.impact, 0) : 0), 0);
+    const maxBelow = Math.max(...prelim.map(r => Number.isFinite(r.belowTeam) ? r.belowTeam : 0), 0);
 
-    row.appendChild(left);
-    list.appendChild(row);
+    const scored = prelim.map(entry=>{
+      const impactNorm = maxImpact > 0 ? (Math.max(entry.impact || 0, 0) / maxImpact) : 0;
+      const rateNorm = maxBelow > 0 ? ((entry.belowTeam || 0) / maxBelow) : 0;
+      let recencyNorm = 0;
+      if(entry.recencyDays === null) recencyNorm = coachingLoaded && !typeFilterBlocked ? 1 : 0;
+      else if(entry.recencyDays > 42) recencyNorm = 1;
+      else if(entry.recencyDays > 21) recencyNorm = 0.65;
+      else recencyNorm = 0.15;
+      let touchNorm = 0;
+      if(!coachingLoaded || typeFilterBlocked) touchNorm = 0;
+      else touchNorm = 1 - Math.min(1, (entry.touchesWindow || 0) / 3);
+      const bottomNorm = (entry.inWeeklyBottomHalf || entry.inGlobalBottomHalf) ? 1 : 0;
+      const score = (impactNorm * 0.45) + (rateNorm * 0.22) + (recencyNorm * 0.18) + (touchNorm * 0.1) + (bottomNorm * 0.05);
+      return {
+        ...entry,
+        needScore: score,
+        needScorePct: score * 100
+      };
+    });
+
+    const ranked = [...scored].sort((a,b)=>{
+      if((b.needScore || 0) !== (a.needScore || 0)) return (b.needScore || 0) - (a.needScore || 0);
+      if((b.impact || 0) !== (a.impact || 0)) return (b.impact || 0) - (a.impact || 0);
+      return String(a.rep).localeCompare(String(b.rep));
+    });
+    const positiveNeed = ranked.filter(r => (r.needScore || 0) > 0.01 && (Number.isFinite(r.repRate) || r.rows > 0));
+    const targetCount = positiveNeed.length ? Math.min(positiveNeed.length, Math.max(2, Math.ceil(positiveNeed.length * 0.35))) : 0;
+    const thresholdScore = positiveNeed[Math.max(0, targetCount - 1)]?.needScore ?? 0;
+    const targetSet = new Set();
+    ranked.forEach((entry, idx)=>{
+      const needed = !!entry.rows && positiveNeed.length > 0 && ((idx < targetCount && entry.needScore > 0) || entry.needScore >= Math.max(0.45, thresholdScore));
+      entry.needed = needed;
+      if(needed) targetSet.add(entry.rep);
+    });
+
+    const neededRows = ranked.filter(r => r.needed);
+    const coveredCount = neededRows.filter(r => r.coached).length;
+    const missedCount = neededRows.filter(r => !r.coached).length;
+    const coachedNonPriority = ranked.filter(r => !r.needed && r.coached).length;
+    const coverageRate = neededRows.length ? (coveredCount / neededRows.length) : NaN;
+    let coverageState = 'na';
+    if(!coachingLoaded || typeFilterBlocked) coverageState = 'na';
+    else if(!neededRows.length) coverageState = 'na';
+    else if(coverageRate >= 0.75) coverageState = 'strong';
+    else if(coverageRate >= 0.4) coverageState = 'partial';
+    else coverageState = 'weak';
+
+    const weekSummary = {
+      weekKey: wk,
+      label: fmtWeekLabel(wk),
+      teamRate,
+      teamApps,
+      teamOpps,
+      repCount: repEntries.filter(r => r.rows).length,
+      neededCount: neededRows.length,
+      coveredCount,
+      missedCount,
+      coachedNonPriority,
+      coverageRate,
+      coverageState,
+      rows: ranked,
+      targetSet,
+      coachingLoaded,
+      typeFilterBlocked
+    };
+    weekly.push(weekSummary);
+    ranked.forEach(entry=>{
+      byRep.get(entry.rep).push(entry);
+    });
+  }
+
+  const repSummaries = repNames.map(rep=>{
+    const entries = byRep.get(rep) || [];
+    const neededCount = entries.filter(e => e.needed).length;
+    const coachedWhenNeeded = entries.filter(e => e.needed && e.coached).length;
+    const totalNeed = entries.reduce((sum, e)=> sum + (e.needScore || 0), 0);
+    return { rep, entries, neededCount, coachedWhenNeeded, totalNeed };
+  }).sort((a,b)=>{
+    if((b.totalNeed || 0) !== (a.totalNeed || 0)) return (b.totalNeed || 0) - (a.totalNeed || 0);
+    if((b.neededCount || 0) !== (a.neededCount || 0)) return (b.neededCount || 0) - (a.neededCount || 0);
+    return String(a.rep).localeCompare(String(b.rep));
+  });
+
+  const totalNeeded = weekly.reduce((sum, w)=> sum + w.neededCount, 0);
+  const totalCovered = weekly.reduce((sum, w)=> sum + w.coveredCount, 0);
+  const overallCoverage = totalNeeded ? (totalCovered / totalNeeded) : NaN;
+  const weakestWeek = weekly.filter(w => Number.isFinite(w.coverageRate)).sort((a,b)=> (a.coverageRate - b.coverageRate) || (b.missedCount - a.missedCount))[0] || null;
+
+  return { weekKeys, weekly, repSummaries, overallCoverage, totalNeeded, totalCovered, weakestWeek, coachingLoaded, typeFilterBlocked };
+}
+function weekSummaryTags(week){
+  const tags = [];
+  tags.push(`<span class="tag">Needed: ${week.neededCount}</span>`);
+  tags.push(`<span class="tag">Coached: ${week.coveredCount}</span>`);
+  tags.push(`<span class="tag">Missed: ${week.missedCount}</span>`);
+  if(week.coachedNonPriority) tags.push(`<span class="tag warn">Off-priority coached: ${week.coachedNonPriority}</span>`);
+  return tags.join(' ');
+}
+function paintHeatmap(model){
+  lastHeatmapModel = model;
+  const scroller = document.getElementById('heatmapScroller');
+  const meta = document.getElementById('heatmapMeta');
+  const stats = document.getElementById('heatmapStats');
+  scroller.innerHTML = '';
+  meta.innerHTML = '';
+  stats.innerHTML = '';
+
+  if(!selectedSheet){
+    scroller.innerHTML = `<div class="heatmapEmpty">Choose a coach/team to generate the weekly coaching coverage heatmap.</div>`;
+    return;
+  }
+  if(!effectiveSet()){
+    scroller.innerHTML = `<div class="heatmapEmpty">Select KPI fields to compute weekly coaching need coverage.</div>`;
+    return;
+  }
+  if(!model.weekly.length){
+    scroller.innerHTML = `<div class="heatmapEmpty">No in-scope rows were found for the selected team and timeframe.</div>`;
+    return;
+  }
+
+  const statBits = [
+    `<span class="chip">${selectedSheet || '—'}</span>`,
+    `<span class="chip">${currentWeeks()} week window</span>`
+  ];
+  if(model.coachingLoaded){
+    statBits.push(`<span class="chip">Filtered coachings: ${coachings.length}</span>`);
+  }else{
+    statBits.push(`<span class="chip">Coachings not loaded</span>`);
+  }
+  stats.innerHTML = statBits.join('');
+
+  const cards = [
+    {
+      label:'Overall coverage',
+      value:Number.isFinite(model.overallCoverage) ? fmtPct1(model.overallCoverage) : 'N/A',
+      sub:`${model.totalCovered} of ${model.totalNeeded || 0} priority coaching opportunities covered in the selected window.`
+    },
+    {
+      label:'Weakest week',
+      value:model.weakestWeek ? model.weakestWeek.weekKey : '—',
+      sub:model.weakestWeek ? `${fmtWeekLabel(model.weakestWeek.weekKey)} • ${model.weakestWeek.missedCount} missed priority rep(s).` : 'No week currently has enough data for a weakest-week callout.'
+    },
+    {
+      label:'Top need reps',
+      value:String(model.repSummaries.filter(r => r.neededCount > 0).length),
+      sub:'Distinct reps who entered the weekly priority pool at least once in the current timeframe.'
+    }
+  ];
+  cards.forEach(card=>{
+    const el = document.createElement('div');
+    el.className = 'heatmapMetaCard';
+    el.innerHTML = `<div class="heatmapMetaLabel">${card.label}</div><div class="heatmapMetaValue">${card.value}</div><div class="heatmapMetaSub">${card.sub}</div>`;
+    meta.appendChild(el);
+  });
+
+  const table = document.createElement('table');
+  table.className = 'heatmapTable';
+  const thead = document.createElement('thead');
+  const hr = document.createElement('tr');
+  const stub = document.createElement('th');
+  stub.className = 'heatmapStub';
+  stub.textContent = 'Rep / coverage';
+  hr.appendChild(stub);
+  model.weekly.forEach(week=>{
+    const th = document.createElement('th');
+    const btn = document.createElement('button');
+    btn.className = 'heatmapWeekBtn';
+    btn.title = 'Click for weekly coverage detail';
+    btn.innerHTML = `<div class="heatmapWeekLabel">${week.weekKey}</div><div class="heatmapWeekSub">${week.label}</div>`;
+    btn.addEventListener('click', ()=> openHeatmapWeekDetail(week.weekKey));
+    th.appendChild(btn);
+    hr.appendChild(th);
+  });
+  thead.appendChild(hr);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  const summaryRow = document.createElement('tr');
+  const summaryStub = document.createElement('th');
+  summaryStub.className = 'heatmapStub summary';
+  summaryStub.innerHTML = `<div class="heatmapRepName">Weekly summary</div><div class="heatmapRepMeta">Click any week for coached vs missed priority detail.</div>`;
+  summaryRow.appendChild(summaryStub);
+  model.weekly.forEach(week=>{
+    const td = document.createElement('td');
+    td.className = `heatCell ${week.coverageState}`;
+    const btn = document.createElement('button');
+    btn.className = 'heatmapCellBtn heatCellSummary';
+    btn.title = 'Open weekly summary';
+    btn.innerHTML = `<div>${Number.isFinite(week.coverageRate) ? fmtPct1(week.coverageRate) : 'N/A'}</div><small>${week.coveredCount}/${week.neededCount || 0} priority</small>`;
+    btn.addEventListener('click', ()=> openHeatmapWeekDetail(week.weekKey));
+    td.appendChild(btn);
+    summaryRow.appendChild(td);
+  });
+  tbody.appendChild(summaryRow);
+
+  model.repSummaries.forEach(repSummary=>{
+    const tr = document.createElement('tr');
+    const th = document.createElement('th');
+    th.className = 'heatmapStub';
+    const repBtn = document.createElement('button');
+    repBtn.className = 'heatmapRepBtn';
+    repBtn.title = 'Open rep coaching history';
+    repBtn.innerHTML = `<span class="heatmapRepName">${repSummary.rep}</span><span class="heatmapRepMeta">Need weeks: ${repSummary.neededCount} • Covered: ${repSummary.coachedWhenNeeded}</span>`;
+    repBtn.addEventListener('click', ()=> openRepCoachings(repSummary.rep));
+    th.appendChild(repBtn);
+    tr.appendChild(th);
+
+    repSummary.entries.forEach(entry=>{
+      const td = document.createElement('td');
+      let state = 'na';
+      if(entry.rows){
+        if(entry.needed && entry.coached) state = 'strong';
+        else if(entry.needed && !entry.coached) state = 'weak';
+        else if(!entry.needed && entry.coached) state = 'partial';
+        else state = 'na';
+      }
+      td.className = `heatCell ${state}`;
+      const btn = document.createElement('button');
+      btn.className = 'heatmapCellBtn heatCellRep';
+      btn.title = 'Open weekly rep detail';
+      const topLabel = entry.needed ? (entry.coached ? 'Covered' : 'Missed') : (entry.coached ? 'Coached' : '—');
+      btn.innerHTML = `<div>${topLabel}</div><small>${Number.isFinite(entry.needScorePct) ? entry.needScorePct.toFixed(0) : '0'} need</small><div class="tiny">${Number.isFinite(entry.repRate) ? fmtPct1(entry.repRate) : 'No KPI'}</div>`;
+      btn.addEventListener('click', ()=> openHeatmapCellDetail(entry.rep, entry.weekKey));
+      td.appendChild(btn);
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(tbody);
+  scroller.appendChild(table);
+}
+let lastHeatmapModel = null;
+const heatmapModalState = { type:null, weekKey:null, rep:null, model:null };
+function findHeatmapWeek(model, weekKey){
+  return (model?.weekly || []).find(w => w.weekKey === weekKey) || null;
+}
+function findHeatmapEntry(model, rep, weekKey){
+  const week = findHeatmapWeek(model, weekKey);
+  return week?.rows?.find(r => r.rep === rep) || null;
+}
+function openHeatmapWeekDetail(weekKey){
+  const model = lastHeatmapModel || buildWeeklyHeatmapModel(effectiveSet(), getRepNamesInScope().filter(n => !excluded.has(n)), new Set());
+  heatmapModalState.type = 'week';
+  heatmapModalState.weekKey = weekKey;
+  heatmapModalState.rep = null;
+  heatmapModalState.model = model;
+  paintHeatmapModal();
+  const ov = document.getElementById('heatmapModalOverlay');
+  ov.classList.add('show');
+  ov.setAttribute('aria-hidden','false');
+}
+function openHeatmapCellDetail(rep, weekKey){
+  const model = lastHeatmapModel || buildWeeklyHeatmapModel(effectiveSet(), getRepNamesInScope().filter(n => !excluded.has(n)), new Set());
+  heatmapModalState.type = 'cell';
+  heatmapModalState.weekKey = weekKey;
+  heatmapModalState.rep = rep;
+  heatmapModalState.model = model;
+  paintHeatmapModal();
+  const ov = document.getElementById('heatmapModalOverlay');
+  ov.classList.add('show');
+  ov.setAttribute('aria-hidden','false');
+}
+function closeHeatmapModal(){
+  const ov = document.getElementById('heatmapModalOverlay');
+  ov.classList.remove('show');
+  ov.setAttribute('aria-hidden','true');
+  heatmapModalState.type = null;
+  heatmapModalState.weekKey = null;
+  heatmapModalState.rep = null;
+}
+function detailItemMarkup(entry){
+  const latestTxt = entry.latestCoaching ? `${mmddyy(entry.latestCoaching.date)} • ${(entry.latestCoaching.types || []).join(', ')}` : 'No prior filtered coaching';
+  const weekCoachings = entry.coachedThisWeek || [];
+  const weekCoachTxt = weekCoachings.length
+    ? weekCoachings.map(c => `${mmddyy(c.date)} • ${(c.types || []).join(', ')}`).join(' | ')
+    : 'No coaching logged in this week';
+  const wrap = document.createElement('div');
+  wrap.className = 'heatDetailItem';
+  const badges = [
+    entry.needed ? `<span class="tag urgent">Priority target</span>` : `<span class="tag">Not priority</span>`,
+    entry.coached ? `<span class="tag">Coached this week</span>` : `<span class="tag warn">Missed this week</span>`
+  ].join('');
+  wrap.innerHTML = `
+    <div class="heatDetailTop">
+      <button class="heatDetailRepBtn" type="button">${entry.rep}</button>
+      <div class="heatDetailBadges">${badges}</div>
+    </div>
+    <div class="heatDetailMetrics">
+      <span class="tag">Rate: ${Number.isFinite(entry.repRate) ? fmtPct1(entry.repRate) : '—'}</span>
+      <span class="tag">Impact: ${Number.isFinite(entry.impact) ? fmtPct2(entry.impact) : '—'}</span>
+      <span class="tag">Need: ${Number.isFinite(entry.needScorePct) ? entry.needScorePct.toFixed(0) : '0'}</span>
+      <span class="tag">Touches: ${entry.touchesWindow || 0}</span>
+    </div>
+    <div class="heatDetailNote">Latest filtered coaching before week end: ${latestTxt}.</div>
+    <div class="heatDetailNote">Coaching events in ${entry.weekKey}: ${weekCoachTxt}.</div>
+  `;
+  wrap.querySelector('.heatDetailRepBtn').addEventListener('click', ()=> openRepCoachings(entry.rep));
+  return wrap;
+}
+function paintHeatmapModal(){
+  const title = document.getElementById('heatmapModalTitle');
+  const meta = document.getElementById('heatmapModalMeta');
+  const body = document.getElementById('heatmapModalBody');
+  body.innerHTML = '';
+  const model = heatmapModalState.model;
+  if(!model){
+    title.textContent = 'Heatmap detail';
+    meta.textContent = '—';
+    body.innerHTML = `<div class="muted" style="font-weight:900">No heatmap detail is available.</div>`;
+    return;
+  }
+
+  const week = findHeatmapWeek(model, heatmapModalState.weekKey);
+  if(!week){
+    title.textContent = 'Heatmap detail';
+    meta.textContent = 'Week not found';
+    body.innerHTML = `<div class="muted" style="font-weight:900">The selected week is no longer in scope.</div>`;
+    return;
+  }
+
+  if(heatmapModalState.type === 'cell'){
+    const entry = findHeatmapEntry(model, heatmapModalState.rep, heatmapModalState.weekKey);
+    title.textContent = `${heatmapModalState.rep} — ${week.weekKey}`;
+    meta.textContent = `${week.label} • ${selectedSheet || '—'} • ${selectedSet?.A || 'A'} ÷ ${selectedSet?.B || 'B'}`;
+    if(!entry){
+      body.innerHTML = `<div class="muted" style="font-weight:900">No detail is available for that rep/week cell.</div>`;
+      return;
+    }
+    const grid = document.createElement('div');
+    grid.className = 'heatDetailGrid';
+    const cards = [
+      ['Weekly rate', Number.isFinite(entry.repRate) ? fmtPct1(entry.repRate) : '—', `Team ${fmtPct1(entry.teamRate)} • removal impact ${Number.isFinite(entry.impact) ? fmtPct2(entry.impact) : '—'}.`],
+      ['Need score', Number.isFinite(entry.needScorePct) ? entry.needScorePct.toFixed(0) : '0', entry.needed ? 'This rep was in the weekly target pool.' : 'This rep did not clear the target threshold that week.'],
+      ['Coaching', entry.coached ? 'Covered' : 'Missed', entry.coached ? `${entry.coachedThisWeek.length} coaching event(s) matched in this ISO week.` : 'No coaching event matched this ISO week.']
+    ];
+    cards.forEach(([label, value, sub])=>{
+      const card = document.createElement('div');
+      card.className = 'heatDetailCard';
+      card.innerHTML = `<div class="heatDetailLabel">${label}</div><div class="heatDetailValue">${value}</div><div class="heatDetailNote">${sub}</div>`;
+      grid.appendChild(card);
+    });
+    body.appendChild(grid);
+    body.appendChild(detailItemMarkup(entry));
+    return;
+  }
+
+  title.textContent = `${week.weekKey} — Coverage detail`;
+  meta.textContent = `${week.label} • ${selectedSheet || '—'} • ${selectedSet?.A || 'A'} ÷ ${selectedSet?.B || 'B'} • ${weekSummaryTags(week).replace(/<[^>]+>/g,' ')}`;
+
+  const grid = document.createElement('div');
+  grid.className = 'heatDetailGrid';
+  const cards = [
+    ['Coverage', Number.isFinite(week.coverageRate) ? fmtPct1(week.coverageRate) : 'N/A', `${week.coveredCount} of ${week.neededCount || 0} priority reps coached in this week.`],
+    ['Missed priority', String(week.missedCount), week.missedCount ? 'These reps met weekly need criteria but had no matching coaching event this week.' : 'No priority reps were missed this week.'],
+    ['Team KPI', Number.isFinite(week.teamRate) ? fmtPct1(week.teamRate) : '—', `${week.teamApps.toFixed(0)} ${selectedSet?.A || 'A'} vs ${week.teamOpps.toFixed(0)} ${selectedSet?.B || 'B'} across ${week.repCount} rep(s).`]
+  ];
+  cards.forEach(([label, value, sub])=>{
+    const card = document.createElement('div');
+    card.className = 'heatDetailCard';
+    card.innerHTML = `<div class="heatDetailLabel">${label}</div><div class="heatDetailValue">${value}</div><div class="heatDetailNote">${sub}</div>`;
+    grid.appendChild(card);
+  });
+  body.appendChild(grid);
+
+  const sections = [
+    ['Priority reps coached', week.rows.filter(r => r.needed && r.coached)],
+    ['Priority reps missed', week.rows.filter(r => r.needed && !r.coached)],
+    ['Coached but not priority', week.rows.filter(r => !r.needed && r.coached)]
+  ];
+  sections.forEach(([label, rows])=>{
+    const sec = document.createElement('div');
+    sec.className = 'heatDetailSection';
+    sec.innerHTML = `<h4>${label} (${rows.length})</h4>`;
+    if(!rows.length){
+      sec.innerHTML += `<div class="muted" style="font-weight:900">None.</div>`;
+    }else{
+      const list = document.createElement('div');
+      list.className = 'heatDetailList';
+      rows.forEach(r => list.appendChild(detailItemMarkup(r)));
+      sec.appendChild(list);
+    }
+    body.appendChild(sec);
   });
 }
 
@@ -1963,8 +2607,9 @@ function renderAll(){
     rowsSorted.sort((a,b)=> Math.abs(b.impact) - Math.abs(a.impact));
   }
 
-  const repRateMap = new Map(originalAll.byRep.map(r=>[r.rep, r.repRate]));
-  paintPriorityList(names, repRateMap);
+  const includedNames = names.filter(n => !excluded.has(n));
+  const heatmapModel = buildWeeklyHeatmapModel(set, includedNames, bottomHalfSet);
+  paintHeatmap(heatmapModel);
 
   paintRepGrid(rowsSorted, base.rate, names, maxVal, bottomHalfSet);
 }
@@ -2219,8 +2864,17 @@ document.getElementById('repCoachModalAll').addEventListener('click', ()=> setRe
 document.getElementById('repCoachModalOverlay').addEventListener('click', (e)=>{
   if(e.target.id === 'repCoachModalOverlay') closeRepCoachings();
 });
+document.getElementById('heatmapModalClose').addEventListener('click', closeHeatmapModal);
+document.getElementById('heatmapModalOverlay').addEventListener('click', (e)=>{
+  if(e.target.id === 'heatmapModalOverlay') closeHeatmapModal();
+});
 document.addEventListener('keydown', (e)=>{
   if(e.key === 'Escape'){
+    const heatOv = document.getElementById('heatmapModalOverlay');
+    if(heatOv.classList.contains('show')){
+      closeHeatmapModal();
+      return;
+    }
     const ov = document.getElementById('repCoachModalOverlay');
     if(ov.classList.contains('show')) closeRepCoachings();
   }
