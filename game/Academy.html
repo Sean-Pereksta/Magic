@@ -158,8 +158,8 @@
     display:inline-block;
   }
   .legendSwatch.strong{ background:#16a34a; border-color:#15803d; }
-  .legendSwatch.info{ background:#2563eb; border-color:#1d4ed8; }
-  .legendSwatch.partial{ background:#f59e0b; border-color:#d97706; }
+  .legendSwatch.info{ background:#facc15; border-color:#ca8a04; }
+  .legendSwatch.partial{ background:#fb7185; border-color:#e11d48; }
   .legendSwatch.weak{ background:#dc2626; border-color:#b91c1c; }
   .legendSwatch.na{ background:#cbd5e1; border-color:#94a3b8; }
   .heatmapMeta{
@@ -264,10 +264,10 @@
     color:#0f172a;
     font-weight:900;
   }
-  .heatCell.strong{ background:rgba(22,163,74,.16); }
-  .heatCell.info{ background:rgba(37,99,235,.16); }
-  .heatCell.partial{ background:rgba(245,158,11,.18); }
-  .heatCell.weak{ background:rgba(220,38,38,.18); }
+  .heatCell.strong{ background:rgba(22,163,74,.18); }
+  .heatCell.info{ background:rgba(250,204,21,.22); }
+  .heatCell.partial{ background:rgba(251,113,133,.18); }
+  .heatCell.weak{ background:rgba(220,38,38,.2); }
   .heatCell.na{ background:rgba(203,213,225,.32); color:#475569; }
   .heatCellSummary{ font-size:14px; }
   .heatCellSummary small,
@@ -276,7 +276,12 @@
   .heatCellRep .tiny{ font-size:10px; font-weight:800; color:#475569; }
   .heatCellRep .tiny.percentile{ font-size:11px; color:#0f172a; }
   .heatCellRep .tiny.percentile.low{ color:#b91c1c; }
-  .heatCellRep .tiny.percentile.high{ color:#2563eb; }
+  .heatCellRep .tiny.percentile.high{ color:#166534; }
+  .heatCellRep .statusLine{ display:flex; align-items:center; justify-content:center; gap:6px; font-size:11px; font-weight:900; color:#334155; }
+  .heatCellRep .statusIcon{ font-size:16px; line-height:1; }
+  .heatCellRep .statusIcon.good{ color:#16a34a; }
+  .heatCellRep .statusIcon.bad{ color:#dc2626; }
+  .heatCellRep .statusIcon.muted{ color:#94a3b8; }
   .heatmapStub.attention{
     background:linear-gradient(135deg, rgba(254,242,242,.98), rgba(255,255,255,.98));
     box-shadow:inset 4px 0 0 #dc2626;
@@ -931,7 +936,7 @@
         <div>
           <div class="heatmapTitle">Coaching Coverage Heatmap</div>
           <div class="heatmapHint">
-            Weekly coverage for the reps who most needed coaching in the selected KPI window. Lower percentile = higher need. Click any week or cell for coached vs missed detail with percentile, trends, and rate highlights.
+            Weekly percentile view for the selected KPI window. Cell color reflects percentile, a green check means coached that week, and a red X means the rep was below the 40th percentile without coaching.
           </div>
         </div>
         <div class="heatmapStats" id="heatmapStats"></div>
@@ -939,10 +944,12 @@
 
       <div class="heatmapLegend">
         <span>Legend:</span>
-        <span><span class="legendSwatch strong"></span> Priority coached</span>
-        <span><span class="legendSwatch info"></span> Non-priority coached</span>
-        <span><span class="legendSwatch weak"></span> Needed coaching missed</span>
-        <span><span class="legendSwatch na"></span> Not coached / not enough data</span>
+        <span><span class="legendSwatch weak"></span> Priority (&lt; 40th percentile)</span>
+        <span><span class="legendSwatch info"></span> Middle percentile</span>
+        <span><span class="legendSwatch strong"></span> Strong performer</span>
+        <span>✅ coached this week</span>
+        <span>❌ priority missed</span>
+        <span><span class="legendSwatch na"></span> No percentile</span>
       </div>
 
       <div class="heatmapMeta" id="heatmapMeta"></div>
@@ -1949,20 +1956,17 @@ function fmtPercentile(percentile){
   return Number.isFinite(percentile) ? `${Math.round(percentile)}th pct` : 'No percentile';
 }
 function coachingStatusForEntry(entry){
-  if(!entry?.rows) return { label:'—', state:'na' };
-  if(entry.needed && entry.coached) return { label:'Priority Coached', state:'strong' };
-  if(entry.needed && !entry.coached) return { label:'Missed', state:'weak' };
-  if(!entry.needed && entry.coached) return { label:'Non-Priority Coached', state:'info' };
-  return { label:'Not coached', state:'na' };
+  if(!entry?.rows) return { label:'—', state:'na', icon:'', iconTone:'muted' };
+  const label = entry.isPriority ? 'Priority' : (entry.isStrongPerformer ? 'Strong Performer' : 'Middle');
+  if(entry.isPriorityMiss) return { label, state:'weak', icon:'❌', iconTone:'bad' };
+  if(entry.coached) return { label, state:'strong', icon:'✅', iconTone:'good' };
+  return { label, state: entry.isPriority ? 'partial' : (entry.isStrongPerformer ? 'strong' : 'info'), icon:'', iconTone:'muted' };
 }
-function findCoachingOpportunityCount(entries){
-  let count = 0;
-  for(let i = 0; i < entries.length; i++){
-    const current = entries[i];
-    const next = entries[i + 1];
-    if(current?.needed && !current.coached && next && !next.coached) count++;
-  }
-  return count;
+function percentileState(entry){
+  if(!Number.isFinite(entry?.percentile)) return 'na';
+  if(entry.percentile < 40) return 'weak';
+  if(entry.percentile >= 70) return 'strong';
+  return 'info';
 }
 function detailToneClass(kind, value){
   if(kind === 'percentile'){
@@ -2047,6 +2051,9 @@ function buildWeeklyHeatmapModel(set, includedNames, bottomHalfSetGlobal){
       const percentile = calcPercentile(entry.repRate, validRates);
       const inWeeklyBottomHalf = Number.isFinite(entry.repRate) && Number.isFinite(weeklyBottomThreshold) ? entry.repRate <= weeklyBottomThreshold : false;
       const inGlobalBottomHalf = bottomHalfSetGlobal.has(entry.rep);
+      const isPriority = Number.isFinite(percentile) ? percentile < 40 : false;
+      const isStrongPerformer = Number.isFinite(percentile) ? percentile >= 70 : false;
+      const coached = coachedThisWeek.length > 0;
       return {
         ...entry,
         weekKey: wk,
@@ -2058,13 +2065,16 @@ function buildWeeklyHeatmapModel(set, includedNames, bottomHalfSetGlobal){
         latestCoaching: latest,
         touchesWindow,
         coachedThisWeek,
-        coached: coachedThisWeek.length > 0,
+        coached,
         recencyDays,
         belowTeam,
         percentile,
         percentileBand: percentileBand(percentile),
         inWeeklyBottomHalf,
-        inGlobalBottomHalf
+        inGlobalBottomHalf,
+        isPriority,
+        isStrongPerformer,
+        isPriorityMiss: isPriority && !coached
       };
     });
 
@@ -2106,11 +2116,12 @@ function buildWeeklyHeatmapModel(set, includedNames, bottomHalfSetGlobal){
       if(needed) targetSet.add(entry.rep);
     });
 
-    const neededRows = ranked.filter(r => r.needed);
-    const coveredCount = neededRows.filter(r => r.coached).length;
-    const missedCount = neededRows.filter(r => !r.coached).length;
-    const coachedNonPriority = ranked.filter(r => !r.needed && r.coached).length;
-    const coverageRate = neededRows.length ? (coveredCount / neededRows.length) : NaN;
+    const priorityRows = ranked.filter(r => r.isPriority);
+    const neededRows = priorityRows;
+    const coveredCount = priorityRows.filter(r => r.coached).length;
+    const missedCount = priorityRows.filter(r => !r.coached).length;
+    const coachedNonPriority = ranked.filter(r => !r.isPriority && r.coached).length;
+    const coverageRate = priorityRows.length ? (coveredCount / priorityRows.length) : NaN;
     let coverageState = 'na';
     if(!coachingLoaded || typeFilterBlocked) coverageState = 'na';
     else if(!neededRows.length) coverageState = 'na';
@@ -2129,6 +2140,7 @@ function buildWeeklyHeatmapModel(set, includedNames, bottomHalfSetGlobal){
       coveredCount,
       missedCount,
       coachedNonPriority,
+      priorityCount: priorityRows.length,
       coverageRate,
       coverageState,
       rows: ranked,
@@ -2144,13 +2156,13 @@ function buildWeeklyHeatmapModel(set, includedNames, bottomHalfSetGlobal){
 
   const repSummaries = repNames.map(rep=>{
     const entries = byRep.get(rep) || [];
-    const neededCount = entries.filter(e => e.needed).length;
-    const coachedWhenNeeded = entries.filter(e => e.needed && e.coached).length;
+    const neededCount = entries.filter(e => e.isPriority).length;
+    const coachedWhenNeeded = entries.filter(e => e.isPriority && e.coached).length;
     const totalNeed = entries.reduce((sum, e)=> sum + (e.needScore || 0), 0);
-    const missedWeeks = entries.filter(e => e.needed && !e.coached).length;
-    const coachingOpportunityCount = findCoachingOpportunityCount(entries);
-    const hasCoachingOpportunity = coachingOpportunityCount >= 2;
-    return { rep, entries, neededCount, coachedWhenNeeded, totalNeed, missedWeeks, coachingOpportunityCount, hasCoachingOpportunity };
+    const missedWeeks = entries.filter(e => e.isPriorityMiss).length;
+    const redXCount = missedWeeks;
+    const hasCoachingOpportunity = redXCount > 1;
+    return { rep, entries, neededCount, coachedWhenNeeded, totalNeed, missedWeeks, redXCount, hasCoachingOpportunity };
   }).sort((a,b)=>{
     if((b.totalNeed || 0) !== (a.totalNeed || 0)) return (b.totalNeed || 0) - (a.totalNeed || 0);
     if((b.neededCount || 0) !== (a.neededCount || 0)) return (b.neededCount || 0) - (a.neededCount || 0);
@@ -2207,24 +2219,24 @@ function paintHeatmap(model){
 
   const cards = [
     {
-      label:'Overall coverage',
+      label:'Priority coverage',
       value:Number.isFinite(model.overallCoverage) ? fmtPct1(model.overallCoverage) : 'N/A',
-      sub:`${model.totalCovered} of ${model.totalNeeded || 0} priority coaching opportunities covered in the selected window.`
+      sub:`${model.totalCovered} of ${model.totalNeeded || 0} priority weeks were coached while below the 40th percentile.`
     },
     {
-      label:'Weakest week',
+      label:'Most missed week',
       value:model.weakestWeek ? model.weakestWeek.weekKey : '—',
-      sub:model.weakestWeek ? `${fmtWeekLabel(model.weakestWeek.weekKey)} • ${model.weakestWeek.missedCount} missed priority rep(s).` : 'No week currently has enough data for a weakest-week callout.'
+      sub:model.weakestWeek ? `${fmtWeekLabel(model.weakestWeek.weekKey)} • ${model.weakestWeek.missedCount} red X(s).` : 'No week currently has enough data for a missed-priority callout.'
     },
     {
-      label:'Top need reps',
+      label:'Priority reps',
       value:String(model.repSummaries.filter(r => r.neededCount > 0).length),
-      sub:'Distinct reps who entered the weekly priority pool at least once in the current timeframe.'
+      sub:'Distinct reps who fell below the 40th percentile at least once in the selected timeframe.'
     },
     {
-      label:'Coaching opportunities',
+      label:'Concern reps',
       value:String(model.repSummaries.filter(r => r.hasCoachingOpportunity).length),
-      sub:'Reps with repeated missed priority weeks and no coaching showing up in the following week either.'
+      sub:'Reps with more than one red X. Those names are highlighted in the left column.'
     }
   ];
   cards.forEach(card=>{
@@ -2259,7 +2271,7 @@ function paintHeatmap(model){
   const summaryRow = document.createElement('tr');
   const summaryStub = document.createElement('th');
   summaryStub.className = 'heatmapStub summary';
-  summaryStub.innerHTML = `<div class="heatmapRepName">Weekly summary</div><div class="heatmapRepMeta">Click any week for coached vs missed priority detail.</div>`;
+  summaryStub.innerHTML = `<div class="heatmapRepName">Weekly summary</div><div class="heatmapRepMeta">Click any week for priority misses, coaching checks, and percentile detail.</div>`;
   summaryRow.appendChild(summaryStub);
   model.weekly.forEach(week=>{
     const td = document.createElement('td');
@@ -2283,8 +2295,9 @@ function paintHeatmap(model){
     repBtn.title = 'Open rep coaching history';
     repBtn.innerHTML = `
       <span class="heatmapRepName">${repSummary.rep}</span>
-      <span class="heatmapRepMeta">Need weeks: ${repSummary.neededCount} • Covered: ${repSummary.coachedWhenNeeded} • Missed: ${repSummary.missedWeeks}</span>
-      ${repSummary.hasCoachingOpportunity ? `<span class="heatmapOpportunity">Coaching Opportunity</span>` : ''}
+      <span class="heatmapRepMeta">Priority weeks: ${repSummary.neededCount} • ✅ ${repSummary.coachedWhenNeeded} • ❌ ${repSummary.redXCount}</span>
+      <span class="heatmapOpportunity">Red Xs: ${repSummary.redXCount}</span>
+      ${repSummary.hasCoachingOpportunity ? `<span class="heatmapOpportunity">Concern</span>` : ''}
     `;
     repBtn.addEventListener('click', ()=> openRepCoachings(repSummary.rep));
     th.appendChild(repBtn);
@@ -2293,7 +2306,7 @@ function paintHeatmap(model){
     repSummary.entries.forEach(entry=>{
       const td = document.createElement('td');
       const status = coachingStatusForEntry(entry);
-      const state = status.state;
+      const state = percentileState(entry);
       td.className = `heatCell ${state}`;
       const btn = document.createElement('button');
       btn.className = 'heatmapCellBtn heatCellRep';
@@ -2301,7 +2314,7 @@ function paintHeatmap(model){
       const pctClass = entry.percentileBand === 'low' ? 'low' : (entry.percentileBand === 'high' ? 'high' : '');
       btn.innerHTML = `
         <div>${status.label}</div>
-        <small>${Number.isFinite(entry.needScorePct) ? entry.needScorePct.toFixed(0) : '0'} need</small>
+        <div class="statusLine">${status.icon ? `<span class="statusIcon ${status.iconTone}">${status.icon}</span>` : `<span class="statusIcon muted">•</span>`}<span>${entry.coached ? 'Coached' : entry.isPriorityMiss ? 'Priority Miss' : 'No coaching'}</span></div>
         <div class="tiny percentile ${pctClass}">${fmtPercentile(entry.percentile)}</div>
         <div class="tiny">${Number.isFinite(entry.repRate) ? fmtPct1(entry.repRate) : 'No KPI'}</div>
       `;
@@ -2368,8 +2381,8 @@ function detailItemMarkup(entry){
   const impactTone = detailToneClass('impact', entry.impact);
   const rateTone = detailToneClass('delta', rateDelta);
   const badges = [
-    entry.needed ? `<span class="tag urgent">Priority target</span>` : `<span class="tag">Not priority</span>`,
-    entry.coached ? `<span class="tag ${entry.needed ? 'good' : 'info'}">${status.label}</span>` : `<span class="tag ${entry.needed ? 'bad' : 'warn'}">${status.label}</span>`,
+    entry.isPriority ? `<span class="tag urgent">Priority</span>` : entry.isStrongPerformer ? `<span class="tag good">Strong Performer</span>` : `<span class="tag">Middle</span>`,
+    entry.coached ? `<span class="tag good">${status.icon} Coached</span>` : entry.isPriorityMiss ? `<span class="tag bad">${status.icon} Priority Miss</span>` : `<span class="tag warn">No coaching</span>`,
     Number.isFinite(entry.percentile) ? `<span class="tag ${percentileTone || ''}">${fmtPercentile(entry.percentile)}</span>` : `<span class="tag">No percentile</span>`
   ].join('');
   wrap.innerHTML = `
@@ -2387,7 +2400,7 @@ function detailItemMarkup(entry){
     <div class="heatDetailTrend">
       <div class="heatDetailNote ${rateTone || ''}">Rate trend: ${Number.isFinite(rateDelta) ? `${rateDelta >= 0 ? 'above' : 'below'} team by ${fmtPct2(Math.abs(rateDelta))}` : 'No rate comparison available'}.</div>
       <div class="heatDetailNote ${impactTone || ''}">Growth signal: ${Number.isFinite(entry.impact) ? (entry.impact > 0 ? `coaching this rep could lift team rate by ${fmtPct2(entry.impact)}` : entry.impact < 0 ? `this rep is already helping team rate by ${fmtPct2(Math.abs(entry.impact))}` : 'neutral impact in this week') : 'No impact signal available'}.</div>
-      <div class="heatDetailNote ${percentileTone || ''}">Percentile signal: ${Number.isFinite(entry.percentile) ? `${fmtPercentile(entry.percentile)} on the team, so ${entry.percentileBand === 'low' ? 'higher coaching need' : entry.percentileBand === 'high' ? 'lower coaching need' : 'middle-of-pack need'}` : 'Percentile unavailable for this week'}.</div>
+      <div class="heatDetailNote ${percentileTone || ''}">Percentile signal: ${Number.isFinite(entry.percentile) ? `${fmtPercentile(entry.percentile)} on the team, so ${entry.isPriority ? 'this week counts as Priority' : entry.isStrongPerformer ? 'this rep showed up as a Strong Performer' : 'this rep landed in the middle tier'}` : 'Percentile unavailable for this week'}.</div>
       <div class="heatDetailNote">Latest filtered coaching before week end: ${latestTxt}.</div>
       <div class="heatDetailNote">Coaching events in ${entry.weekKey}: ${weekCoachTxt}.</div>
     </div>
@@ -2430,9 +2443,9 @@ function paintHeatmapModal(){
     const rateDelta = Number.isFinite(entry.repRate) && Number.isFinite(entry.teamRate) ? (entry.repRate - entry.teamRate) : NaN;
     const cards = [
       ['Weekly rate', Number.isFinite(entry.repRate) ? fmtPct1(entry.repRate) : '—', `Team ${fmtPct1(entry.teamRate)} • ${Number.isFinite(rateDelta) ? `${rateDelta >= 0 ? 'above' : 'below'} team by ${fmtPct2(Math.abs(rateDelta))}` : 'no team comparison'}.`, detailToneClass('delta', rateDelta)],
-      ['Team percentile', fmtPercentile(entry.percentile), entry.percentileBand === 'low' ? 'Low percentile means higher coaching need in this view.' : entry.percentileBand === 'high' ? 'High percentile means this rep was not a priority need this week.' : 'This rep landed in the middle of the team this week.', detailToneClass('percentile', entry.percentile)],
-      ['Coaching status', status.label, entry.coached ? `${entry.coachedThisWeek.length} coaching event(s) matched in this ISO week.` : 'No coaching event matched this ISO week.', status.state === 'strong' ? 'good' : status.state === 'weak' ? 'bad' : status.state === 'info' ? 'info' : 'warn'],
-      ['Need score', Number.isFinite(entry.needScorePct) ? entry.needScorePct.toFixed(0) : '0', entry.needed ? 'This rep was in the weekly target pool.' : 'This rep did not clear the target threshold that week.', entry.needed ? 'bad' : 'info'],
+      ['Team percentile', fmtPercentile(entry.percentile), entry.isPriority ? 'Below the 40th percentile, so this week is marked Priority.' : entry.isStrongPerformer ? 'High percentile, so this rep is labeled Strong Performer.' : 'This rep landed in the middle of the team this week.', detailToneClass('percentile', entry.percentile)],
+      ['Coaching status', status.label, entry.coached ? `${entry.coachedThisWeek.length} coaching event(s) matched in this ISO week.` : entry.isPriorityMiss ? 'No coaching event matched this ISO week, so this week receives a red X.' : 'No coaching event matched this ISO week.', status.state === 'strong' ? 'good' : status.state === 'weak' ? 'bad' : status.state === 'info' ? 'info' : 'warn'],
+      ['Red X count', String((model.repSummaries.find(r => r.rep === entry.rep)?.redXCount) || 0), 'More than one red X is treated as a concern and highlights the rep name in the heatmap.', ((model.repSummaries.find(r => r.rep === entry.rep)?.redXCount) || 0) > 1 ? 'bad' : 'info'],
       ['Trend impact', Number.isFinite(entry.impact) ? fmtPct2(entry.impact) : '—', Number.isFinite(entry.impact) ? (entry.impact > 0 ? 'Positive value means coaching this rep could improve team rate.' : entry.impact < 0 ? 'Negative value means removing this rep would lower team rate.' : 'Neutral impact this week.') : 'No impact signal available.', detailToneClass('impact', entry.impact)]
     ];
     cards.forEach(([label, value, sub, tone])=>{
@@ -2453,7 +2466,7 @@ function paintHeatmapModal(){
   grid.className = 'heatDetailGrid';
   const cards = [
     ['Coverage', Number.isFinite(week.coverageRate) ? fmtPct1(week.coverageRate) : 'N/A', `${week.coveredCount} of ${week.neededCount || 0} priority reps coached in this week.`, detailToneClass('coverage', week.coverageRate)],
-    ['Missed priority', String(week.missedCount), week.missedCount ? 'These reps met weekly need criteria but had no matching coaching event this week.' : 'No priority reps were missed this week.', week.missedCount ? 'bad' : 'good'],
+    ['Missed priority', String(week.missedCount), week.missedCount ? 'These reps were below the 40th percentile and had no coaching event this week.' : 'No priority reps were missed this week.', week.missedCount ? 'bad' : 'good'],
     ['Team KPI', Number.isFinite(week.teamRate) ? fmtPct1(week.teamRate) : '—', `${week.teamApps.toFixed(0)} ${selectedSet?.A || 'A'} vs ${week.teamOpps.toFixed(0)} ${selectedSet?.B || 'B'} across ${week.repCount} rep(s).`, Number.isFinite(week.teamRate) ? 'info' : 'warn']
   ];
   cards.forEach(([label, value, sub, tone])=>{
@@ -2465,9 +2478,9 @@ function paintHeatmapModal(){
   body.appendChild(grid);
 
   const sections = [
-    ['Priority reps coached', week.rows.filter(r => r.needed && r.coached)],
-    ['Priority reps missed', week.rows.filter(r => r.needed && !r.coached)],
-    ['Coached but not priority', week.rows.filter(r => !r.needed && r.coached)]
+    ['Priority reps coached', week.rows.filter(r => r.isPriority && r.coached)],
+    ['Priority reps missed', week.rows.filter(r => r.isPriorityMiss)],
+    ['Strong performers', week.rows.filter(r => r.isStrongPerformer)]
   ];
   sections.forEach(([label, rows])=>{
     const sec = document.createElement('div');
