@@ -636,6 +636,43 @@
     padding:10px 12px; border-radius:12px; border:1px solid var(--line);
     background:#f8fafc; color:#334155; font-weight:800;
   }
+  .checklistBuilder{ display:grid; gap:8px; }
+  .checklistItem{
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:10px;
+    background:#fbfdff;
+    display:grid;
+    gap:8px;
+  }
+  .checklistItemHead{ display:flex; align-items:center; gap:8px; }
+  .checklistItemHead input[type="text"]{ flex:1; min-width:0; }
+  .checklistDelete{
+    width:24px; height:24px; border-radius:999px;
+    border:1px solid #fecaca; background:#fff1f2; color:#9f1239;
+    font-weight:900; cursor:pointer;
+  }
+  .checklistItemGrid{
+    display:grid;
+    grid-template-columns:130px 1fr;
+    gap:8px;
+    align-items:start;
+  }
+  .checklistItemGrid label{ font-size:12px; color:#475569; font-weight:900; margin-top:6px; }
+  .checklistItemGrid textarea{ width:100%; min-height:70px; resize:vertical; }
+  .checklistItemGrid input[type="color"]{
+    width:56px; height:32px; border:1px solid var(--line); border-radius:8px; background:#fff; padding:2px;
+  }
+  .checklistHint{ font-size:12px; color:#64748b; font-weight:800; line-height:1.35; }
+  .incidentWrap{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .incidentTag{
+    border-radius:999px;
+    padding:4px 9px;
+    font-size:11px;
+    font-weight:900;
+    border:1px solid transparent;
+    white-space:nowrap;
+  }
 
   .metricBar{
     display:flex;
@@ -916,6 +953,17 @@
           <button class="btn" id="clearAll">Clear all</button>
         </div>
         <div class="muted" style="margin-top:6px; font-weight:900" id="repCount">—</div>
+      </div>
+    </div>
+
+    <div class="card box">
+      <div class="head">Checklist Incident Criteria</div>
+      <div class="body">
+        <div class="checklistHint" style="margin-bottom:8px">
+          Create checklist items with a color, incidents, and keyword/phrase triggers. Matching incidents will show on each rep card using the assigned color.
+        </div>
+        <div id="checklistBuilder" class="checklistBuilder"></div>
+        <button class="btn" id="addChecklistItemBtn" style="margin-top:8px">+ New checklist item</button>
       </div>
     </div>
   </aside>
@@ -1403,6 +1451,130 @@ let coachingTypes = new Set();
 let enabledTypes = new Set();
 let coachingByRepKey = new Map();
 let lastCoachingLoadedKey = null;
+let checklistItems = [];
+
+function defaultChecklistItem(index){
+  return {
+    id: `chk_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
+    name: `Checklist item ${index}`,
+    color: '#f59e0b',
+    incidents: '',
+    keywords: ''
+  };
+}
+function ensureChecklistSeeded(){
+  if(checklistItems.length) return;
+  checklistItems = [defaultChecklistItem(1)];
+}
+function parseChecklistTokens(text){
+  return String(text || '')
+    .split(/[\n,]+/)
+    .map(s=>s.trim())
+    .filter(Boolean);
+}
+function normalizeHex(hex){
+  const val = String(hex || '').trim();
+  if(/^#[0-9a-f]{6}$/i.test(val)) return val;
+  if(/^#[0-9a-f]{3}$/i.test(val)){
+    return '#' + val.slice(1).split('').map(ch=>ch+ch).join('');
+  }
+  return '#f59e0b';
+}
+function hexToRgba(hex, alpha){
+  const h = normalizeHex(hex).slice(1);
+  const r = parseInt(h.slice(0,2), 16);
+  const g = parseInt(h.slice(2,4), 16);
+  const b = parseInt(h.slice(4,6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+function checklistMatchesForRep(rep){
+  if(!checklistItems.length || !coachings.length) return [];
+  const logs = filteredCoachingsForRep(rep);
+  if(!logs.length) return [];
+  const combined = logs.map(c => `${(c.types || []).join(' ')} ${c.desc || ''}`.toLowerCase()).join('\n');
+  const matches = [];
+  checklistItems.forEach(item=>{
+    const keys = parseChecklistTokens(item.keywords).map(k=>k.toLowerCase());
+    if(!keys.length) return;
+    const hit = keys.some(k => combined.includes(k));
+    if(!hit) return;
+    const incidents = parseChecklistTokens(item.incidents);
+    incidents.forEach(incident=>{
+      matches.push({
+        itemName: item.name || 'Checklist item',
+        incident,
+        color: normalizeHex(item.color)
+      });
+    });
+  });
+  return matches;
+}
+function renderChecklistBuilder(){
+  ensureChecklistSeeded();
+  const wrap = document.getElementById('checklistBuilder');
+  wrap.innerHTML = '';
+
+  checklistItems.forEach((item, idx)=>{
+    const block = document.createElement('div');
+    block.className = 'checklistItem';
+
+    const head = document.createElement('div');
+    head.className = 'checklistItemHead';
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.value = item.name;
+    nameInput.placeholder = `Checklist item ${idx+1}`;
+    nameInput.addEventListener('input', ()=>{
+      item.name = nameInput.value;
+      renderAll();
+    });
+    head.appendChild(nameInput);
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'checklistDelete';
+    delBtn.type = 'button';
+    delBtn.title = 'Delete checklist item';
+    delBtn.textContent = '×';
+    delBtn.addEventListener('click', ()=>{
+      checklistItems = checklistItems.filter(x=>x.id !== item.id);
+      if(!checklistItems.length) checklistItems = [defaultChecklistItem(1)];
+      renderChecklistBuilder();
+      renderAll();
+    });
+    head.appendChild(delBtn);
+    block.appendChild(head);
+
+    const grid = document.createElement('div');
+    grid.className = 'checklistItemGrid';
+    grid.innerHTML = `
+      <label>Color</label>
+      <input type="color" value="${normalizeHex(item.color)}" />
+      <label>Checklist incidents</label>
+      <textarea placeholder="One incident per line">${item.incidents || ''}</textarea>
+      <label>Keywords / phrases</label>
+      <textarea placeholder="Comma or line-separated triggers">${item.keywords || ''}</textarea>
+    `;
+    const colorInput = grid.querySelector('input[type="color"]');
+    const incidentsInput = grid.querySelectorAll('textarea')[0];
+    const keywordsInput = grid.querySelectorAll('textarea')[1];
+
+    colorInput.addEventListener('input', ()=>{
+      item.color = colorInput.value;
+      renderAll();
+    });
+    incidentsInput.addEventListener('input', ()=>{
+      item.incidents = incidentsInput.value;
+      renderAll();
+    });
+    keywordsInput.addEventListener('input', ()=>{
+      item.keywords = keywordsInput.value;
+      renderAll();
+    });
+
+    block.appendChild(grid);
+    wrap.appendChild(block);
+  });
+}
 
 function personKey(name){
   let s = String(name||"").trim().toLowerCase();
@@ -2722,11 +2894,25 @@ function paintRepGrid(rows, teamRate, allNames, maxVal, bottomHalfSet){
     }
     bottom.appendChild(b50);
 
+    const checklistHits = checklistMatchesForRep(r.rep);
+    const incidentWrap = document.createElement('div');
+    incidentWrap.className = 'incidentWrap';
+    checklistHits.forEach(hit=>{
+      const t = document.createElement('span');
+      t.className = 'incidentTag';
+      t.textContent = `${hit.itemName}: ${hit.incident}`;
+      t.style.background = hexToRgba(hit.color, 0.15);
+      t.style.borderColor = hexToRgba(hit.color, 0.45);
+      t.style.color = hit.color;
+      incidentWrap.appendChild(t);
+    });
+
     card.appendChild(top);
     card.appendChild(bar);
     if (showCompare) card.appendChild(compareWrap);
     card.appendChild(mid);
     card.appendChild(bottom);
+    if(checklistHits.length) card.appendChild(incidentWrap);
 
     grid.appendChild(card);
   });
@@ -3023,6 +3209,10 @@ document.getElementById('clearAll').onclick = ()=>{
 
 document.getElementById('incRetail').addEventListener('change', refreshFromCache);
 document.getElementById('incReferral').addEventListener('change', refreshFromCache);
+document.getElementById('addChecklistItemBtn').addEventListener('click', ()=>{
+  checklistItems.push(defaultChecklistItem(checklistItems.length + 1));
+  renderChecklistBuilder();
+});
 
 document.getElementById('loadCoachingsBtn').onclick = ()=> loadCoachings({silent:false});
 document.getElementById('typesAllBtn').onclick = ()=>{
@@ -3128,6 +3318,7 @@ document.getElementById('exportPdf').addEventListener('click', async ()=>{
    Boot
    ========================= */
 (function boot(){
+  renderChecklistBuilder();
   setHeaderH();
   refreshFromCache(); // refresh also populates coaching keys and auto-loads coachings if possible
 })();
