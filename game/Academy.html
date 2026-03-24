@@ -221,6 +221,13 @@
   }
   .chip.kw .dot{ background: var(--warn); }
   .chip.kw .x{ font-weight:1000; opacity:.85; margin-left:2px; }
+  .chip.criteria{
+    opacity:1;
+    border-color: rgba(15,23,42,.14);
+    background:#fff;
+  }
+  .chip.criteria .dot{ background: var(--criteria-color, var(--warn)); }
+  .chip.criteria .meta{ color:var(--muted); font-size:11px; font-weight:900; }
 
   .repList{ display:grid; gap:10px; }
   .repRow{
@@ -367,13 +374,13 @@
 
   /* ✅ checklist highlight overlay (orange hatch) */
   .cbseg.incident{
-    box-shadow: inset 0 0 0 2px rgba(245,158,11,.95);
+    box-shadow: inset 0 0 0 2px var(--incident-color, rgba(245,158,11,.95));
   }
   .cbseg.incident::before{
     content:"";
     position:absolute;
     inset:0;
-    background: repeating-linear-gradient(45deg, rgba(245,158,11,.45) 0 6px, rgba(245,158,11,.10) 6px 12px);
+    background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--incident-color, #f59e0b) 55%, transparent) 0 6px, color-mix(in srgb, var(--incident-color, #f59e0b) 14%, transparent) 6px 12px);
     opacity:.9;
     pointer-events:none;
   }
@@ -412,13 +419,13 @@
 
   /* ✅ checklist highlight overlay (orange hatch) */
   .seg.incident{
-    box-shadow: inset 0 0 0 3px rgba(245,158,11,.95);
+    box-shadow: inset 0 0 0 3px var(--incident-color, rgba(245,158,11,.95));
   }
   .seg.incident::before{
     content:"";
     position:absolute;
     inset:0;
-    background: repeating-linear-gradient(135deg, rgba(245,158,11,.55) 0 6px, rgba(245,158,11,.12) 6px 12px);
+    background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--incident-color, #f59e0b) 60%, transparent) 0 6px, color-mix(in srgb, var(--incident-color, #f59e0b) 15%, transparent) 6px 12px);
     opacity:.95;
     pointer-events:none;
   }
@@ -798,8 +805,22 @@
 
   <!-- Checklist filters -->
   <div class="row" style="margin-top:10px; align-items:flex-start">
+    <label>Checklist item
+      <select id="criteriaSel" style="min-width:220px"></select>
+    </label>
+    <button class="btn" id="criteriaAddBtn">+ New item</button>
+    <button class="btn" id="criteriaDeleteBtn">Delete item ✕</button>
+
+    <label>Item name
+      <input id="criteriaNameInput" placeholder="Checklist item 1" style="min-width:170px" />
+    </label>
+
+    <label>Color
+      <input id="criteriaColorInput" type="color" value="#f59e0b" />
+    </label>
+
     <label>Checklist Incident
-      <select id="incidentSel" style="min-width:260px"></select>
+      <select id="incidentSel" style="min-width:240px"></select>
     </label>
 
     <label>Keyword phrase (matches Checklist Description)
@@ -1506,6 +1527,11 @@ const els = {
   typesNoneBtn: document.getElementById('typesNoneBtn'),
   typeChips: document.getElementById('typeChips'),
 
+  criteriaSel: document.getElementById('criteriaSel'),
+  criteriaAddBtn: document.getElementById('criteriaAddBtn'),
+  criteriaDeleteBtn: document.getElementById('criteriaDeleteBtn'),
+  criteriaNameInput: document.getElementById('criteriaNameInput'),
+  criteriaColorInput: document.getElementById('criteriaColorInput'),
   incidentSel: document.getElementById('incidentSel'),
   kwInput: document.getElementById('kwInput'),
   kwAddBtn: document.getElementById('kwAddBtn'),
@@ -1580,7 +1606,8 @@ let teamIndex = new Map();            // repName -> Map(weekKey -> rows[])
 let checklistRows = [];
 let checklistIncidents = [];
 let checklistByRepWeek = new Map();   // repKey -> Map(weekKey -> checklist[])
-let keywordPhrases = [];              // lowercased phrases
+let checklistCriteria = [];           // [{id,name,color,incident,keywords[]}]
+let selectedCriteriaId = null;
 
 const KPI_DEFS = {
   retail: [
@@ -1658,31 +1685,92 @@ function loadPrefs(){
       if(Number.isFinite(+p.minCov)) els.minCovInp.value = String(+p.minCov);
       if(typeof p.sort==="string") els.sortSel.value = p.sort;
       if(typeof p.gapSort==="string" && els.gapSortSel) els.gapSortSel.value = p.gapSort;
-
-      if(typeof p.incident==="string") els.incidentSel.value = p.incident;
-      if(Array.isArray(p.kw)){
-        keywordPhrases = p.kw.map(x=>String(x||"").trim().toLowerCase()).filter(Boolean);
+      if(Array.isArray(p.criteria) && p.criteria.length){
+        checklistCriteria = p.criteria.map((c, idx)=>({
+          id: String(c.id || `c${Date.now()}_${idx}`),
+          name: String(c.name || `Checklist item ${idx+1}`).trim() || `Checklist item ${idx+1}`,
+          color: normalizeColor(c.color || '#f59e0b'),
+          incident: String(c.incident || '__ANY__'),
+          keywords: Array.isArray(c.keywords)
+            ? c.keywords.map(x=>String(x||'').trim().toLowerCase()).filter(Boolean)
+            : []
+        }));
       }
+      if(typeof p.selectedCriteriaId==="string") selectedCriteriaId = p.selectedCriteriaId;
     }
   }catch(e){}
+  ensureChecklistCriteriaDefaults();
 }
 function savePrefs(){
   try{
     const minCov = parseFloat(els.minCovInp.value);
     const sort = els.sortSel.value || 'az';
     const gapSort = (els.gapSortSel && els.gapSortSel.value) ? els.gapSortSel.value : 'count';
-    const incident = els.incidentSel.value || '__ANY__';
     localStorage.setItem(PREF_KEY, JSON.stringify({
       minCov: Number.isFinite(minCov) ? minCov : 0,
       sort,
       gapSort,
-      incident,
-      kw: keywordPhrases.slice()
+      selectedCriteriaId: selectedCriteriaId || '',
+      criteria: checklistCriteria.map(c=>({
+        id:c.id,
+        name:c.name,
+        color:normalizeColor(c.color),
+        incident:c.incident || '__ANY__',
+        keywords:(c.keywords||[]).slice()
+      }))
     }));
   }catch(e){}
 }
 
 /* =================== checklist helpers =================== */
+function normalizeColor(v){
+  const s = String(v || '').trim();
+  if(/^#[0-9a-f]{6}$/i.test(s)) return s.toLowerCase();
+  if(/^#[0-9a-f]{3}$/i.test(s)){
+    const r = s[1], g = s[2], b = s[3];
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+  return '#f59e0b';
+}
+function newChecklistCriteria(seedIdx){
+  const idx = Number.isFinite(seedIdx) ? seedIdx : (checklistCriteria.length + 1);
+  return {
+    id: `crit_${Date.now()}_${Math.floor(Math.random()*1e6)}`,
+    name: `Checklist item ${idx}`,
+    color: '#f59e0b',
+    incident: '__ANY__',
+    keywords: []
+  };
+}
+function ensureChecklistCriteriaDefaults(){
+  if(!Array.isArray(checklistCriteria) || !checklistCriteria.length){
+    checklistCriteria = [newChecklistCriteria(1)];
+  }
+  if(!selectedCriteriaId || !checklistCriteria.some(c=>c.id===selectedCriteriaId)){
+    selectedCriteriaId = checklistCriteria[0].id;
+  }
+}
+function getSelectedCriteria(){
+  ensureChecklistCriteriaDefaults();
+  return checklistCriteria.find(c=>c.id===selectedCriteriaId) || checklistCriteria[0];
+}
+function allCriteriaKeywords(){
+  const out = new Set();
+  for(const c of checklistCriteria){
+    for(const k of (c.keywords||[])) out.add(String(k));
+  }
+  return Array.from(out);
+}
+function checklistCriteriaForItem(it){
+  if(!it) return [];
+  const desc = String(it.desc || '').toLowerCase();
+  return checklistCriteria.filter(c=>{
+    const incOk = !c.incident || c.incident==='__ANY__' || c.incident===it.incident;
+    if(!incOk) return false;
+    if(!(c.keywords||[]).length) return true;
+    return c.keywords.some(p=>desc.includes(p));
+  });
+}
 function rebuildChecklistIndex(){
   checklistByRepWeek = new Map();
   for(const it of checklistRows){
@@ -1707,19 +1795,7 @@ function checklistForRepWeek(repName, wk){
   const repMap = checklistByRepWeek.get(rk);
   let arr = repMap ? (repMap.get(wk) || []) : [];
 
-  const sel = els.incidentSel.value || '__ANY__';
-  if(sel && sel !== '__ANY__'){
-    arr = arr.filter(x => String(x.incident||"").trim() === sel);
-  }
-
-  if(keywordPhrases.length){
-    arr = arr.filter(x=>{
-      const d = String(x.desc||"").toLowerCase();
-      return keywordPhrases.some(p => d.includes(p));
-    });
-  }
-
-  return arr;
+  return arr.filter(it => checklistCriteriaForItem(it).length > 0);
 }
 function gatherChecklistInWindow(repName, weeks){
   const out=[];
@@ -1738,17 +1814,46 @@ function gatherChecklistInWindow(repName, weeks){
 }
 function paintKeywordChips(){
   if(!els.kwChips) return;
-  if(!keywordPhrases.length){
-    els.kwChips.innerHTML = `<div class="mono" style="color:var(--muted);font-weight:900">No keyword phrases. (Optional)</div>`;
+  ensureChecklistCriteriaDefaults();
+  const selected = getSelectedCriteria();
+  const keywordPhrases = selected.keywords || [];
+
+  const criteriaChipsHtml = checklistCriteria.map(c=>{
+    const inc = c.incident && c.incident !== '__ANY__' ? c.incident : 'Any incident';
+    const kwTxt = (c.keywords && c.keywords.length) ? c.keywords.join(', ') : 'No keywords';
+    return `<div class="chip criteria ${c.id===selectedCriteriaId?'on':''}" data-criteria-id="${escAttr(c.id)}" style="--criteria-color:${escAttr(normalizeColor(c.color))}">
+      <span class="dot"></span>${escAttr(c.name)}
+      <span class="meta">• ${escAttr(inc)} • ${escAttr(kwTxt)}</span>
+    </div>`;
+  }).join('');
+
+  if(!keywordPhrases.length && !checklistCriteria.length){
+    els.kwChips.innerHTML = `<div class="mono" style="color:var(--muted);font-weight:900">No checklist items configured.</div>`;
     return;
   }
-  els.kwChips.innerHTML = keywordPhrases.map(p => `
+  const phraseChipsHtml = keywordPhrases.map(p => `
     <div class="chip kw" data-phrase="${escAttr(p)}"><span class="dot"></span>${escAttr(p)} <span class="x">✕</span></div>
   `).join('');
+  els.kwChips.innerHTML = `
+    ${criteriaChipsHtml}
+    ${phraseChipsHtml || `<div class="mono" style="color:var(--muted);font-weight:900">No keyword phrases for this item. (Optional)</div>`}
+  `;
+  els.kwChips.querySelectorAll('.chip.criteria').forEach(ch=>{
+    ch.addEventListener('click', ()=>{
+      const id = ch.getAttribute('data-criteria-id') || '';
+      if(!id) return;
+      selectedCriteriaId = id;
+      paintChecklistCriteriaEditor();
+      paintKeywordChips();
+      savePrefs();
+      render();
+    });
+  });
   els.kwChips.querySelectorAll('.chip.kw').forEach(ch=>{
     ch.addEventListener('click', ()=>{
       const ph = ch.getAttribute('data-phrase') || '';
-      keywordPhrases = keywordPhrases.filter(x => x !== ph);
+      const sel = getSelectedCriteria();
+      sel.keywords = (sel.keywords||[]).filter(x => x !== ph);
       paintKeywordChips();
       savePrefs();
       render();
@@ -1759,7 +1864,8 @@ function paintIncidentOptions(){
   const sel = els.incidentSel;
   if(!sel) return;
 
-  const wanted = sel.value || '__ANY__';
+  const criteria = getSelectedCriteria();
+  const wanted = (criteria && criteria.incident) ? criteria.incident : '__ANY__';
 
   sel.innerHTML = '';
   const any = document.createElement('option');
@@ -1772,7 +1878,7 @@ function paintIncidentOptions(){
     none.value = '__NONE__';
     none.textContent = 'No checklist dock loaded';
     sel.appendChild(none);
-    sel.value = '__NONE__';
+    sel.value = '__ANY__';
     sel.disabled = true;
     return;
   }
@@ -1787,6 +1893,19 @@ function paintIncidentOptions(){
 
   if(wanted && Array.from(sel.options).some(o=>o.value===wanted)) sel.value = wanted;
   else sel.value = '__ANY__';
+}
+function paintChecklistCriteriaEditor(){
+  ensureChecklistCriteriaDefaults();
+  const selected = getSelectedCriteria();
+
+  els.criteriaSel.innerHTML = checklistCriteria.map(c=>
+    `<option value="${escAttr(c.id)}">${escAttr(c.name)}</option>`
+  ).join('');
+  els.criteriaSel.value = selected.id;
+
+  els.criteriaNameInput.value = selected.name || '';
+  els.criteriaColorInput.value = normalizeColor(selected.color);
+  paintIncidentOptions();
 }
 
 /* =================== docks load =================== */
@@ -1911,7 +2030,7 @@ function loadChecklist(){
   checklistIncidents = Array.from(set).filter(Boolean).sort((a,b)=>a.localeCompare(b));
 
   rebuildChecklistIndex();
-  paintIncidentOptions();
+  paintChecklistCriteriaEditor();
 
   els.checkHint.textContent = checklistRows.length
     ? `Checklist: ${checklistRows.length.toLocaleString()} row(s) loaded`
@@ -2169,8 +2288,15 @@ function computeRepSummary(repName, weeks, goalFrac, oppGateKey, oppMin){
 
     const incArr = checklistForRepWeek(repName, wk);
     const incCount = incArr.length;
+    const hitCriteria = [];
+    for(const it of incArr){
+      for(const c of checklistCriteriaForItem(it)){
+        if(!hitCriteria.some(x=>x.id===c.id)) hitCriteria.push(c);
+      }
+    }
+    const incidentColor = hitCriteria[0]?.color ? normalizeColor(hitCriteria[0].color) : '';
 
-    return { wk, v, hasData, isAbove, isBelow, coachCount, oppCount, passOpp, incCount };
+    return { wk, v, hasData, isAbove, isBelow, coachCount, oppCount, passOpp, incCount, incidentColor };
   });
 
   const withData = cells.filter(c=>c.hasData);
@@ -2534,9 +2660,10 @@ function paintTeamSummary(allSummaries, sd, ed, weeks){
 
   const coachAvg = mean(coachTotals.map(n=>+n));
 
-  const selInc = els.incidentSel.value || '__ANY__';
+  const selItem = getSelectedCriteria();
+  const selInc = selItem?.incident || '__ANY__';
   const incTxt = (selInc && selInc !== '__ANY__' && selInc !== '__NONE__') ? selInc : 'Any';
-  const kwTxt = keywordPhrases.length ? keywordPhrases.join(', ') : '—';
+  const kwTxt = (selItem?.keywords||[]).length ? selItem.keywords.join(', ') : '—';
 
   els.teamSummaryPills.innerHTML = `
     <span class="pill">Low coaching ≤ <strong>${coachLowThresh}</strong> (bottom quartile)</span>
@@ -2644,21 +2771,23 @@ function paintRepModal(){
   const coachBarHtml = sum.cells.map(c=>{
     const cls = c.coachCount>0 ? 'coach' : '';
     const incCls = c.incCount>0 ? 'incident' : '';
+    const incStyle = c.incidentColor ? ` style="--incident-color:${escAttr(c.incidentColor)}"` : '';
     const vStr = c.hasData ? (c.v*100).toFixed(1) : '';
     const status = c.hasData ? (c.isAbove ? 'Above' : 'Below') : 'No data';
-    return `<div class="cbseg ${cls} ${incCls}" data-rep="${escAttr(rep)}" data-wk="${escAttr(c.wk)}" data-v="${escAttr(vStr)}" data-status="${escAttr(status)}" data-coachcount="${escAttr(String(c.coachCount||0))}"></div>`;
+    return `<div class="cbseg ${cls} ${incCls}"${incStyle} data-rep="${escAttr(rep)}" data-wk="${escAttr(c.wk)}" data-v="${escAttr(vStr)}" data-status="${escAttr(status)}" data-coachcount="${escAttr(String(c.coachCount||0))}"></div>`;
   }).join('');
 
   const timelineHtml = sum.cells.map(c=>{
     const cls = c.hasData ? (c.isAbove ? 'good' : 'bad') : 'na';
     const coachedCls = c.coachCount>0 ? 'coached' : '';
     const incCls = c.incCount>0 ? 'incident' : '';
+    const incStyle = c.incidentColor ? ` style="--incident-color:${escAttr(c.incidentColor)}"` : '';
     const vStr = c.hasData ? (c.v*100).toFixed(1) : '';
     const status = c.hasData ? (c.isAbove ? 'Above' : 'Below') : 'No data';
     const mk = c.coachCount>0
       ? (c.coachCount===1 ? `<span class="mkr"></span>` : `<span class="mkr num">${c.coachCount}</span>`)
       : '';
-    return `<div class="seg ${cls} ${coachedCls} ${incCls}" data-rep="${escAttr(rep)}" data-wk="${escAttr(c.wk)}" data-v="${escAttr(vStr)}" data-status="${escAttr(status)}" data-coachcount="${escAttr(String(c.coachCount||0))}">${mk}</div>`;
+    return `<div class="seg ${cls} ${coachedCls} ${incCls}"${incStyle} data-rep="${escAttr(rep)}" data-wk="${escAttr(c.wk)}" data-v="${escAttr(vStr)}" data-status="${escAttr(status)}" data-coachcount="${escAttr(String(c.coachCount||0))}">${mk}</div>`;
   }).join('');
 
   const scoreLineHtml = sum.cells.map(c=>{
@@ -2690,15 +2819,21 @@ function paintRepModal(){
 
   const repChecklist = gatherChecklistInWindow(rep, weeks);
   const checklistHtml = repChecklist.map(it=>`
+    ${(()=>{
+      const matches = checklistCriteriaForItem(it);
+      const colorTags = matches.map(c=>`<span class="pill" style="border-color:${escAttr(normalizeColor(c.color))}; box-shadow:inset 0 0 0 1px ${escAttr(normalizeColor(c.color))};">${escAttr(c.name)}</span>`).join('');
+      return `
     <div class="coachItem">
       <div class="coachItemTop">
         <div class="coachItemDate">${mmddyy(it.date)}</div>
         <div class="coachItemBadge">${escAttr(it.incident)}</div>
         <div class="mono" style="margin-left:auto;color:var(--muted);font-weight:900">${escAttr(it.wk)}</div>
       </div>
+      ${colorTags ? `<div class="mini" style="margin-top:6px">${colorTags}</div>` : ''}
       <div class="coachItemDesc">${escAttr(it.desc || '—')}</div>
     </div>
-  `).join('') || `<div class="mono" style="color:var(--muted);font-weight:900">No checklist items match the current Incident + keyword filters in this window.</div>`;
+  `;})()}
+  `).join('') || `<div class="mono" style="color:var(--muted);font-weight:900">No checklist items match your checklist item criteria in this window.</div>`;
 
   const oppCol = oppGateKey ? `<th>${escAttr(oppGateKey)}</th>` : '';
   const rowsHtml = sum.cells.map(c=>{
@@ -2796,8 +2931,9 @@ function render(){
 
   const kpiDef = getKpiDef();
   const { sd, ed, weeks } = getSelectedWindow();
-  const inc = (els.incidentSel.value && els.incidentSel.value !== '__ANY__' && els.incidentSel.value !== '__NONE__') ? els.incidentSel.value : 'Any';
-  const kw = keywordPhrases.length ? keywordPhrases.join(', ') : '—';
+  const selectedCriteria = getSelectedCriteria();
+  const inc = (selectedCriteria.incident && selectedCriteria.incident !== '__ANY__' && selectedCriteria.incident !== '__NONE__') ? selectedCriteria.incident : 'Any';
+  const kw = (selectedCriteria.keywords||[]).length ? selectedCriteria.keywords.join(', ') : '—';
   const winTxt = (sd && ed) ? `${mmddyy(sd)}→${mmddyy(ed)}` : 'Pick dates';
   els.barMeta.textContent = `${selectedTeam||'—'} • ${(kpiDef&&kpiDef.label)||'KPI'} • ${winTxt} • Incident: ${inc} • kw: ${kw}`;
 
@@ -2920,15 +3056,17 @@ function render(){
     const coachBarHtml = s.cells.map(c=>{
       const cls = c.coachCount>0 ? 'coach' : '';
       const incCls = c.incCount>0 ? 'incident' : '';
+      const incStyle = c.incidentColor ? ` style="--incident-color:${escAttr(c.incidentColor)}"` : '';
       const vStr = c.hasData ? (c.v*100).toFixed(1) : '';
       const status = c.hasData ? (c.isAbove ? 'Above' : 'Below') : 'No data';
-      return `<div class="cbseg ${cls} ${incCls}" data-rep="${escAttr(s.repName)}" data-wk="${escAttr(c.wk)}" data-v="${escAttr(vStr)}" data-status="${escAttr(status)}" data-coachcount="${escAttr(String(c.coachCount||0))}"></div>`;
+      return `<div class="cbseg ${cls} ${incCls}"${incStyle} data-rep="${escAttr(s.repName)}" data-wk="${escAttr(c.wk)}" data-v="${escAttr(vStr)}" data-status="${escAttr(status)}" data-coachcount="${escAttr(String(c.coachCount||0))}"></div>`;
     }).join('');
 
     const timelineHtml = s.cells.map(c=>{
       const cls = c.hasData ? (c.isAbove ? 'good' : 'bad') : 'na';
       const coachedCls = c.coachCount>0 ? 'coached' : '';
       const incCls = c.incCount>0 ? 'incident' : '';
+      const incStyle = c.incidentColor ? ` style="--incident-color:${escAttr(c.incidentColor)}"` : '';
       const vStr = c.hasData ? (c.v*100).toFixed(1) : '';
       const status = c.hasData ? (c.isAbove ? 'Above' : 'Below') : 'No data';
 
@@ -2936,7 +3074,7 @@ function render(){
         ? (c.coachCount===1 ? `<span class="mkr"></span>` : `<span class="mkr num">${c.coachCount}</span>`)
         : '';
 
-      return `<div class="seg ${cls} ${coachedCls} ${incCls}" data-rep="${escAttr(s.repName)}" data-wk="${escAttr(c.wk)}" data-v="${escAttr(vStr)}" data-status="${escAttr(status)}" data-coachcount="${escAttr(String(c.coachCount||0))}">${mk}</div>`;
+      return `<div class="seg ${cls} ${coachedCls} ${incCls}"${incStyle} data-rep="${escAttr(s.repName)}" data-wk="${escAttr(c.wk)}" data-v="${escAttr(vStr)}" data-status="${escAttr(status)}" data-coachcount="${escAttr(String(c.coachCount||0))}">${mk}</div>`;
     }).join('');
 
     const scoreLineHtml = s.cells.map(c=>{
@@ -3005,6 +3143,7 @@ els.modeSel.addEventListener('change', ()=>{
   loadChecklist();
   buildKpiUI();
   rebuildTeamIndex();
+  paintChecklistCriteriaEditor();
   paintKeywordChips();
   savePrefs();
   render();
@@ -3053,15 +3192,63 @@ els.typesNoneBtn.addEventListener('click', ()=>{
 });
 
 els.incidentSel.addEventListener('change', ()=>{
+  const sel = getSelectedCriteria();
+  sel.incident = els.incidentSel.value || '__ANY__';
+  savePrefs();
+  paintKeywordChips();
+  render();
+});
+
+els.criteriaSel.addEventListener('change', ()=>{
+  selectedCriteriaId = els.criteriaSel.value || selectedCriteriaId;
+  paintChecklistCriteriaEditor();
+  paintKeywordChips();
+  savePrefs();
+  render();
+});
+els.criteriaAddBtn.addEventListener('click', ()=>{
+  const next = newChecklistCriteria(checklistCriteria.length + 1);
+  checklistCriteria.push(next);
+  selectedCriteriaId = next.id;
+  paintChecklistCriteriaEditor();
+  paintKeywordChips();
+  savePrefs();
+  render();
+});
+els.criteriaDeleteBtn.addEventListener('click', ()=>{
+  if(checklistCriteria.length <= 1) return;
+  checklistCriteria = checklistCriteria.filter(c=>c.id!==selectedCriteriaId);
+  ensureChecklistCriteriaDefaults();
+  paintChecklistCriteriaEditor();
+  paintKeywordChips();
+  savePrefs();
+  render();
+});
+els.criteriaNameInput.addEventListener('input', ()=>{
+  const sel = getSelectedCriteria();
+  sel.name = String(els.criteriaNameInput.value || '').trim() || 'Checklist item';
+  paintChecklistCriteriaEditor();
+  paintKeywordChips();
+  savePrefs();
+  render();
+});
+els.criteriaColorInput.addEventListener('input', ()=>{
+  const sel = getSelectedCriteria();
+  sel.color = normalizeColor(els.criteriaColorInput.value);
+  paintChecklistCriteriaEditor();
+  paintKeywordChips();
   savePrefs();
   render();
 });
 
 els.kwAddBtn.addEventListener('click', ()=>{
+  const sel = getSelectedCriteria();
   const v = String(els.kwInput.value||'').trim();
   if(!v) return;
   const low = v.toLowerCase();
-  if(!keywordPhrases.includes(low)) keywordPhrases.push(low);
+  if(!(sel.keywords||[]).includes(low)){
+    sel.keywords = [...(sel.keywords||[]), low];
+  }
   els.kwInput.value = '';
   paintKeywordChips();
   savePrefs();
@@ -3074,7 +3261,8 @@ els.kwInput.addEventListener('keydown', (e)=>{
   }
 });
 els.kwClearBtn.addEventListener('click', ()=>{
-  keywordPhrases = [];
+  const sel = getSelectedCriteria();
+  sel.keywords = [];
   paintKeywordChips();
   savePrefs();
   render();
@@ -3090,6 +3278,7 @@ els.loadDocksBtn.addEventListener('click', ()=>{
   loadChecklist();
   buildKpiUI();
   rebuildTeamIndex();
+  paintChecklistCriteriaEditor();
   paintKeywordChips();
 
   els.dockHint.textContent = `Loaded • Stats: ${allRows.length.toLocaleString()} rows • Coachings: ${coachings.length.toLocaleString()} • Checklist: ${checklistRows.length.toLocaleString()} • APP_NS: ${APP_NS}`;
@@ -3119,6 +3308,7 @@ els.repSearch.addEventListener('input', ()=> render());
   buildKpiUI();
   toggleOppGateUI();
 
+  paintChecklistCriteriaEditor();
   paintKeywordChips();
 
   els.dockHint.textContent = `Loaded • Stats: ${allRows.length.toLocaleString()} rows • Coachings: ${coachings.length.toLocaleString()} • Checklist: ${checklistRows.length.toLocaleString()} • APP_NS: ${APP_NS}`;
@@ -3129,4 +3319,3 @@ els.repSearch.addEventListener('input', ()=> render());
 
 </body>
 </html>
-
