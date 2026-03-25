@@ -340,6 +340,28 @@
     padding:14px 10px 10px;
     background:var(--soft);
   }
+  .disclaimerBanner{
+    border:1px solid rgba(245,158,11,.45);
+    border-radius:12px;
+    padding:8px 10px;
+    margin-bottom:10px;
+    background:rgba(245,158,11,.14);
+    color:#78350f;
+    font-size:12px;
+    font-weight:900;
+    line-height:1.3;
+  }
+  .disclaimerBanner.critical{
+    border-color: rgba(220,38,38,.45);
+    background: rgba(220,38,38,.14);
+    color:#7f1d1d;
+  }
+  .disclaimerMeta{
+    margin-top:4px;
+    font-weight:800;
+    color:inherit;
+    opacity:.9;
+  }
   .timelineWrap.hasOrbs{ padding-top:74px; }
   .weekOrbs{
     position:absolute;
@@ -763,6 +785,30 @@
   .sumTable tr.warn:hover td{ background: rgba(245,158,11,.12) !important; }
   .sumTable tr.good td{ background: rgba(22,163,74,.07) !important; }
   .sumTable tr.good:hover td{ background: rgba(22,163,74,.10) !important; }
+
+  .settingsGrid{
+    display:grid;
+    gap:8px;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+  .ruleRow{
+    display:grid;
+    gap:8px;
+    grid-template-columns: minmax(180px, 2fr) repeat(5, minmax(95px, 1fr));
+    align-items:end;
+    margin-top:8px;
+  }
+  .ruleHead{
+    font-size:12px;
+    color:var(--muted);
+    font-weight:900;
+  }
+  .phraseRow{
+    display:flex;
+    gap:8px;
+    align-items:center;
+    flex-wrap:wrap;
+  }
 </style>
 </head>
 
@@ -835,6 +881,11 @@
 
     <button class="btn" id="typesAllBtn">Types: all</button>
     <button class="btn" id="typesNoneBtn">Types: none</button>
+    <label>
+      <input id="disclaimerEnableTop" type="checkbox" />
+      Enable Disclaimer Logic
+    </label>
+    <button class="btn" id="disclaimerSettingsBtn">Disclaimer Settings</button>
   </div>
 
   <div class="row" style="margin-top:10px">
@@ -1044,6 +1095,113 @@
       </div>
     </div>
     <div class="modalBody" id="itemModalBody"></div>
+  </div>
+</div>
+
+<div id="disclaimerModalOverlay" class="modalOverlay" aria-hidden="true">
+  <div class="modalPanel" role="dialog" aria-modal="true" aria-labelledby="disclaimerModalTitle" style="width:min(980px, 96vw)">
+    <div class="modalHead">
+      <div>
+        <div id="disclaimerModalTitle" class="modalTitle">Disclaimer Settings</div>
+        <div class="modalSub">Configure corrective and follow-up disclaimer logic with optional auto-assigned values.</div>
+      </div>
+      <div class="modalActions">
+        <button class="btn" id="disclaimerModalClose">Close</button>
+      </div>
+    </div>
+    <div class="modalBody">
+      <div class="mCard">
+        <div class="mHead">1. Master toggle / summary</div>
+        <div class="settingsGrid">
+          <label><input id="disclaimerMasterEnabled" type="checkbox" /> Enable disclaimer logic</label>
+          <div class="mono" id="disclaimerSummaryHint" style="color:var(--muted);font-weight:900">Disabled</div>
+        </div>
+      </div>
+
+      <div class="mCard">
+        <div class="mHead">2. Auto-Assign Defaults</div>
+        <div class="settingsGrid">
+          <label>Default count value <input id="disclaimerDefaultCount" type="number" min="1" step="1" placeholder="2" /></label>
+          <label>Default weeks value <input id="disclaimerDefaultWeeks" type="number" min="1" step="1" placeholder="4" /></label>
+        </div>
+      </div>
+
+      <div class="mCard">
+        <div class="mHead">3. Initial Corrective Trigger</div>
+        <label>Trigger mode
+          <select id="disclaimerInitialMode">
+            <option value="any">Any enabled rule</option>
+            <option value="all">All enabled rules</option>
+          </select>
+        </label>
+        <div class="ruleHead ruleRow">
+          <span>Rule</span><span>Enable</span><span>Count (X)</span><span>Count mode</span><span>Weeks (Y)</span><span>Weeks mode</span>
+        </div>
+        <div class="ruleRow">
+          <div>Coachings in window</div><select id="dRuleInitialCoachEnabled"><option value="off">Off</option><option value="on">On</option></select><input id="dRuleInitialCoachCount" type="number" min="1" step="1" /><select id="dRuleInitialCoachCountMode"><option value="manual">Manual</option><option value="auto">Auto</option></select><input id="dRuleInitialCoachWeeks" type="number" min="1" step="1" /><select id="dRuleInitialCoachWeeksMode"><option value="manual">Manual</option><option value="auto">Auto</option></select>
+        </div>
+        <div class="ruleRow">
+          <div>Red KPI weeks in window</div><select id="dRuleInitialRedEnabled"><option value="off">Off</option><option value="on">On</option></select><input id="dRuleInitialRedCount" type="number" min="1" step="1" /><select id="dRuleInitialRedCountMode"><option value="manual">Manual</option><option value="auto">Auto</option></select><input id="dRuleInitialRedWeeks" type="number" min="1" step="1" /><select id="dRuleInitialRedWeeksMode"><option value="manual">Manual</option><option value="auto">Auto</option></select>
+        </div>
+        <div class="ruleRow">
+          <div>Phrase-hit coachings in window</div><select id="dRuleInitialPhraseEnabled"><option value="off">Off</option><option value="on">On</option></select><input id="dRuleInitialPhraseCount" type="number" min="1" step="1" /><select id="dRuleInitialPhraseCountMode"><option value="manual">Manual</option><option value="auto">Auto</option></select><input id="dRuleInitialPhraseWeeks" type="number" min="1" step="1" /><select id="dRuleInitialPhraseWeeksMode"><option value="manual">Manual</option><option value="auto">Auto</option></select>
+        </div>
+      </div>
+
+      <div class="mCard">
+        <div class="mHead">4. Follow-Up Trigger</div>
+        <label>Follow-up mode
+          <select id="disclaimerFollowupMode">
+            <option value="any">Any enabled rule</option>
+            <option value="all">All enabled rules</option>
+          </select>
+        </label>
+        <div class="ruleHead ruleRow">
+          <span>Rule</span><span>Enable</span><span>Count (X)</span><span>Count mode</span><span>Weeks (Y)</span><span>Weeks mode</span>
+        </div>
+        <div class="ruleRow">
+          <div>After corrective: more coachings</div><select id="dRuleFollowCoachEnabled"><option value="off">Off</option><option value="on">On</option></select><input id="dRuleFollowCoachCount" type="number" min="1" step="1" /><select id="dRuleFollowCoachCountMode"><option value="manual">Manual</option><option value="auto">Auto</option></select><input id="dRuleFollowCoachWeeks" type="number" min="1" step="1" /><select id="dRuleFollowCoachWeeksMode"><option value="manual">Manual</option><option value="auto">Auto</option></select>
+        </div>
+        <div class="ruleRow">
+          <div>After corrective: more red KPI weeks</div><select id="dRuleFollowRedEnabled"><option value="off">Off</option><option value="on">On</option></select><input id="dRuleFollowRedCount" type="number" min="1" step="1" /><select id="dRuleFollowRedCountMode"><option value="manual">Manual</option><option value="auto">Auto</option></select><input id="dRuleFollowRedWeeks" type="number" min="1" step="1" /><select id="dRuleFollowRedWeeksMode"><option value="manual">Manual</option><option value="auto">Auto</option></select>
+        </div>
+        <div class="ruleRow">
+          <div>After corrective: more phrase-hit coachings</div><select id="dRuleFollowPhraseEnabled"><option value="off">Off</option><option value="on">On</option></select><input id="dRuleFollowPhraseCount" type="number" min="1" step="1" /><select id="dRuleFollowPhraseCountMode"><option value="manual">Manual</option><option value="auto">Auto</option></select><input id="dRuleFollowPhraseWeeks" type="number" min="1" step="1" /><select id="dRuleFollowPhraseWeeksMode"><option value="manual">Manual</option><option value="auto">Auto</option></select>
+        </div>
+      </div>
+
+      <div class="mCard">
+        <div class="mHead">5. Phrase Settings</div>
+        <label><input id="disclaimerUsePhraseMatching" type="checkbox" /> Use phrase matching rules</label>
+        <div class="phraseRow" style="margin-top:8px">
+          <input id="disclaimerPhraseInput" placeholder="Add phrase for coaching descriptions" style="min-width:320px" />
+          <button class="btn" id="disclaimerPhraseAdd">Add phrase</button>
+          <button class="btn" id="disclaimerPhraseClear">Clear phrases</button>
+        </div>
+        <div class="chips" id="disclaimerPhraseChips" style="margin-top:8px"></div>
+      </div>
+
+      <div class="mCard">
+        <div class="mHead">6. Display Settings</div>
+        <div class="settingsGrid">
+          <label>Show banner above timeline
+            <select id="disclaimerShowBanner"><option value="yes">Yes</option><option value="no">No</option></select>
+          </label>
+          <label>Show trigger reason text
+            <select id="disclaimerShowReason"><option value="yes">Yes</option><option value="no">No</option></select>
+          </label>
+          <label>Show trigger counts
+            <select id="disclaimerShowCounts"><option value="yes">Yes</option><option value="no">No</option></select>
+          </label>
+          <label>Initial label text
+            <input id="disclaimerInitialLabelText" />
+          </label>
+          <label>Follow-up label text
+            <input id="disclaimerFollowupLabelText" />
+          </label>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1584,6 +1742,8 @@ const els = {
   minCovInp: document.getElementById('minCovInp'),
   sortSel: document.getElementById('sortSel'),
   refreshBtn: document.getElementById('refreshBtn'),
+  disclaimerEnableTop: document.getElementById('disclaimerEnableTop'),
+  disclaimerSettingsBtn: document.getElementById('disclaimerSettingsBtn'),
 
   oppLabel: document.getElementById('oppLabel'),
   oppSel: document.getElementById('oppSel'),
@@ -1643,6 +1803,54 @@ const els = {
   itemModalMeta: document.getElementById('itemModalMeta'),
   itemModalBody: document.getElementById('itemModalBody'),
   itemModalClose: document.getElementById('itemModalClose'),
+  disclaimerModalOverlay: document.getElementById('disclaimerModalOverlay'),
+  disclaimerModalClose: document.getElementById('disclaimerModalClose'),
+  disclaimerMasterEnabled: document.getElementById('disclaimerMasterEnabled'),
+  disclaimerSummaryHint: document.getElementById('disclaimerSummaryHint'),
+  disclaimerDefaultCount: document.getElementById('disclaimerDefaultCount'),
+  disclaimerDefaultWeeks: document.getElementById('disclaimerDefaultWeeks'),
+  disclaimerInitialMode: document.getElementById('disclaimerInitialMode'),
+  disclaimerFollowupMode: document.getElementById('disclaimerFollowupMode'),
+  disclaimerUsePhraseMatching: document.getElementById('disclaimerUsePhraseMatching'),
+  disclaimerPhraseInput: document.getElementById('disclaimerPhraseInput'),
+  disclaimerPhraseAdd: document.getElementById('disclaimerPhraseAdd'),
+  disclaimerPhraseClear: document.getElementById('disclaimerPhraseClear'),
+  disclaimerPhraseChips: document.getElementById('disclaimerPhraseChips'),
+  disclaimerShowBanner: document.getElementById('disclaimerShowBanner'),
+  disclaimerShowReason: document.getElementById('disclaimerShowReason'),
+  disclaimerShowCounts: document.getElementById('disclaimerShowCounts'),
+  disclaimerInitialLabelText: document.getElementById('disclaimerInitialLabelText'),
+  disclaimerFollowupLabelText: document.getElementById('disclaimerFollowupLabelText'),
+  dRuleInitialCoachEnabled: document.getElementById('dRuleInitialCoachEnabled'),
+  dRuleInitialCoachCount: document.getElementById('dRuleInitialCoachCount'),
+  dRuleInitialCoachCountMode: document.getElementById('dRuleInitialCoachCountMode'),
+  dRuleInitialCoachWeeks: document.getElementById('dRuleInitialCoachWeeks'),
+  dRuleInitialCoachWeeksMode: document.getElementById('dRuleInitialCoachWeeksMode'),
+  dRuleInitialRedEnabled: document.getElementById('dRuleInitialRedEnabled'),
+  dRuleInitialRedCount: document.getElementById('dRuleInitialRedCount'),
+  dRuleInitialRedCountMode: document.getElementById('dRuleInitialRedCountMode'),
+  dRuleInitialRedWeeks: document.getElementById('dRuleInitialRedWeeks'),
+  dRuleInitialRedWeeksMode: document.getElementById('dRuleInitialRedWeeksMode'),
+  dRuleInitialPhraseEnabled: document.getElementById('dRuleInitialPhraseEnabled'),
+  dRuleInitialPhraseCount: document.getElementById('dRuleInitialPhraseCount'),
+  dRuleInitialPhraseCountMode: document.getElementById('dRuleInitialPhraseCountMode'),
+  dRuleInitialPhraseWeeks: document.getElementById('dRuleInitialPhraseWeeks'),
+  dRuleInitialPhraseWeeksMode: document.getElementById('dRuleInitialPhraseWeeksMode'),
+  dRuleFollowCoachEnabled: document.getElementById('dRuleFollowCoachEnabled'),
+  dRuleFollowCoachCount: document.getElementById('dRuleFollowCoachCount'),
+  dRuleFollowCoachCountMode: document.getElementById('dRuleFollowCoachCountMode'),
+  dRuleFollowCoachWeeks: document.getElementById('dRuleFollowCoachWeeks'),
+  dRuleFollowCoachWeeksMode: document.getElementById('dRuleFollowCoachWeeksMode'),
+  dRuleFollowRedEnabled: document.getElementById('dRuleFollowRedEnabled'),
+  dRuleFollowRedCount: document.getElementById('dRuleFollowRedCount'),
+  dRuleFollowRedCountMode: document.getElementById('dRuleFollowRedCountMode'),
+  dRuleFollowRedWeeks: document.getElementById('dRuleFollowRedWeeks'),
+  dRuleFollowRedWeeksMode: document.getElementById('dRuleFollowRedWeeksMode'),
+  dRuleFollowPhraseEnabled: document.getElementById('dRuleFollowPhraseEnabled'),
+  dRuleFollowPhraseCount: document.getElementById('dRuleFollowPhraseCount'),
+  dRuleFollowPhraseCountMode: document.getElementById('dRuleFollowPhraseCountMode'),
+  dRuleFollowPhraseWeeks: document.getElementById('dRuleFollowPhraseWeeks'),
+  dRuleFollowPhraseWeeksMode: document.getElementById('dRuleFollowPhraseWeeksMode'),
 
   tt: document.getElementById('tt'),
 
@@ -1681,6 +1889,34 @@ let checklistByRepWeek = new Map();   // repKey -> Map(weekKey -> checklist[])
 let checklistCriteria = [];           // [{id,name,color,incident,keywords[]}]
 let selectedCriteriaId = null;
 let slaAgingEnabled = false;
+const DISCLAIMER_MODAL = { open:false };
+function makeRuleDefaults(){
+  return { enabled:'off', count:'', countMode:'manual', weeks:'', weeksMode:'manual' };
+}
+function makeDisclaimerDefaults(){
+  return {
+    enabled:false,
+    autoDefaults:{ count:2, weeks:4 },
+    initial:{
+      mode:'any',
+      rules:{ coaching:makeRuleDefaults(), redWeeks:makeRuleDefaults(), phraseCoachings:makeRuleDefaults() }
+    },
+    followup:{
+      mode:'any',
+      rules:{ coaching:makeRuleDefaults(), redWeeks:makeRuleDefaults(), phraseCoachings:makeRuleDefaults() }
+    },
+    phrases:[],
+    usePhraseMatching:false,
+    display:{
+      showBanner:true,
+      showReason:true,
+      showCounts:true,
+      initialLabel:'Corrective in consideration',
+      followupLabel:'Follow up to Corrective needed'
+    }
+  };
+}
+let disclaimerSettings = makeDisclaimerDefaults();
 
 const KPI_DEFS = {
   retail: [
@@ -1735,6 +1971,128 @@ function quantile(arr, q){
   if(a[base+1]===undefined) return a[base];
   return a[base] + rest * (a[base+1] - a[base]);
 }
+function sanitizeRule(raw){
+  const d = makeRuleDefaults();
+  if(!raw || typeof raw!=='object') return d;
+  d.enabled = raw.enabled === 'on' ? 'on' : 'off';
+  d.count = raw.count === '' || raw.count === null || raw.count === undefined ? '' : String(raw.count);
+  d.countMode = raw.countMode === 'auto' ? 'auto' : 'manual';
+  d.weeks = raw.weeks === '' || raw.weeks === null || raw.weeks === undefined ? '' : String(raw.weeks);
+  d.weeksMode = raw.weeksMode === 'auto' ? 'auto' : 'manual';
+  return d;
+}
+function mergeDisclaimerSettings(raw){
+  const out = makeDisclaimerDefaults();
+  if(!raw || typeof raw!=='object') return out;
+  out.enabled = !!raw.enabled;
+  out.autoDefaults.count = Number.isFinite(+raw?.autoDefaults?.count) ? +raw.autoDefaults.count : out.autoDefaults.count;
+  out.autoDefaults.weeks = Number.isFinite(+raw?.autoDefaults?.weeks) ? +raw.autoDefaults.weeks : out.autoDefaults.weeks;
+  out.initial.mode = raw?.initial?.mode === 'all' ? 'all' : 'any';
+  out.followup.mode = raw?.followup?.mode === 'all' ? 'all' : 'any';
+  out.initial.rules.coaching = sanitizeRule(raw?.initial?.rules?.coaching);
+  out.initial.rules.redWeeks = sanitizeRule(raw?.initial?.rules?.redWeeks);
+  out.initial.rules.phraseCoachings = sanitizeRule(raw?.initial?.rules?.phraseCoachings);
+  out.followup.rules.coaching = sanitizeRule(raw?.followup?.rules?.coaching);
+  out.followup.rules.redWeeks = sanitizeRule(raw?.followup?.rules?.redWeeks);
+  out.followup.rules.phraseCoachings = sanitizeRule(raw?.followup?.rules?.phraseCoachings);
+  out.phrases = Array.isArray(raw.phrases) ? raw.phrases.map(p=>String(p||'').trim().toLowerCase()).filter(Boolean) : [];
+  out.usePhraseMatching = !!raw.usePhraseMatching;
+  out.display.showBanner = raw?.display?.showBanner !== false;
+  out.display.showReason = raw?.display?.showReason !== false;
+  out.display.showCounts = raw?.display?.showCounts !== false;
+  out.display.initialLabel = String(raw?.display?.initialLabel || out.display.initialLabel);
+  out.display.followupLabel = String(raw?.display?.followupLabel || out.display.followupLabel);
+  return out;
+}
+function syncDisclaimerUiFromState(){
+  if(!els.disclaimerMasterEnabled) return;
+  const s = disclaimerSettings;
+  els.disclaimerEnableTop.checked = !!s.enabled;
+  els.disclaimerMasterEnabled.checked = !!s.enabled;
+  els.disclaimerSummaryHint.textContent = s.enabled ? 'Enabled: logic runs on each rep timeline.' : 'Disabled: no banners or trigger checks.';
+  els.disclaimerDefaultCount.value = String(s.autoDefaults.count ?? 2);
+  els.disclaimerDefaultWeeks.value = String(s.autoDefaults.weeks ?? 4);
+  els.disclaimerInitialMode.value = s.initial.mode || 'any';
+  els.disclaimerFollowupMode.value = s.followup.mode || 'any';
+  els.disclaimerUsePhraseMatching.checked = !!s.usePhraseMatching;
+  els.disclaimerShowBanner.value = s.display.showBanner ? 'yes' : 'no';
+  els.disclaimerShowReason.value = s.display.showReason ? 'yes' : 'no';
+  els.disclaimerShowCounts.value = s.display.showCounts ? 'yes' : 'no';
+  els.disclaimerInitialLabelText.value = s.display.initialLabel || 'Corrective in consideration';
+  els.disclaimerFollowupLabelText.value = s.display.followupLabel || 'Follow up to Corrective needed';
+  applyRuleToUi('InitialCoach', s.initial.rules.coaching);
+  applyRuleToUi('InitialRed', s.initial.rules.redWeeks);
+  applyRuleToUi('InitialPhrase', s.initial.rules.phraseCoachings);
+  applyRuleToUi('FollowCoach', s.followup.rules.coaching);
+  applyRuleToUi('FollowRed', s.followup.rules.redWeeks);
+  applyRuleToUi('FollowPhrase', s.followup.rules.phraseCoachings);
+  paintDisclaimerPhraseChips();
+}
+function applyRuleToUi(prefix, rule){
+  if(!rule) return;
+  els[`dRule${prefix}Enabled`].value = rule.enabled || 'off';
+  els[`dRule${prefix}Count`].value = rule.count ?? '';
+  els[`dRule${prefix}CountMode`].value = rule.countMode || 'manual';
+  els[`dRule${prefix}Weeks`].value = rule.weeks ?? '';
+  els[`dRule${prefix}WeeksMode`].value = rule.weeksMode || 'manual';
+}
+function readRuleFromUi(prefix){
+  return sanitizeRule({
+    enabled: els[`dRule${prefix}Enabled`].value,
+    count: els[`dRule${prefix}Count`].value,
+    countMode: els[`dRule${prefix}CountMode`].value,
+    weeks: els[`dRule${prefix}Weeks`].value,
+    weeksMode: els[`dRule${prefix}WeeksMode`].value
+  });
+}
+function readDisclaimerStateFromUi(){
+  disclaimerSettings.enabled = !!els.disclaimerMasterEnabled.checked;
+  disclaimerSettings.autoDefaults.count = Number.isFinite(+els.disclaimerDefaultCount.value) ? +els.disclaimerDefaultCount.value : 2;
+  disclaimerSettings.autoDefaults.weeks = Number.isFinite(+els.disclaimerDefaultWeeks.value) ? +els.disclaimerDefaultWeeks.value : 4;
+  disclaimerSettings.initial.mode = els.disclaimerInitialMode.value === 'all' ? 'all' : 'any';
+  disclaimerSettings.followup.mode = els.disclaimerFollowupMode.value === 'all' ? 'all' : 'any';
+  disclaimerSettings.usePhraseMatching = !!els.disclaimerUsePhraseMatching.checked;
+  disclaimerSettings.display.showBanner = els.disclaimerShowBanner.value !== 'no';
+  disclaimerSettings.display.showReason = els.disclaimerShowReason.value !== 'no';
+  disclaimerSettings.display.showCounts = els.disclaimerShowCounts.value !== 'no';
+  disclaimerSettings.display.initialLabel = String(els.disclaimerInitialLabelText.value || 'Corrective in consideration').trim();
+  disclaimerSettings.display.followupLabel = String(els.disclaimerFollowupLabelText.value || 'Follow up to Corrective needed').trim();
+  disclaimerSettings.initial.rules.coaching = readRuleFromUi('InitialCoach');
+  disclaimerSettings.initial.rules.redWeeks = readRuleFromUi('InitialRed');
+  disclaimerSettings.initial.rules.phraseCoachings = readRuleFromUi('InitialPhrase');
+  disclaimerSettings.followup.rules.coaching = readRuleFromUi('FollowCoach');
+  disclaimerSettings.followup.rules.redWeeks = readRuleFromUi('FollowRed');
+  disclaimerSettings.followup.rules.phraseCoachings = readRuleFromUi('FollowPhrase');
+  els.disclaimerEnableTop.checked = !!disclaimerSettings.enabled;
+}
+function paintDisclaimerPhraseChips(){
+  const arr = disclaimerSettings.phrases || [];
+  if(!arr.length){
+    els.disclaimerPhraseChips.innerHTML = `<div class="mono" style="color:var(--muted);font-weight:900">No phrases configured. Phrase matching will be ignored.</div>`;
+    return;
+  }
+  els.disclaimerPhraseChips.innerHTML = arr.map(p=>`<div class="chip kw" data-dphrase="${escAttr(p)}"><span class="dot"></span>${escAttr(p)} <span class="x">✕</span></div>`).join('');
+  els.disclaimerPhraseChips.querySelectorAll('.chip.kw').forEach(ch=>{
+    ch.addEventListener('click', ()=>{
+      const ph = ch.getAttribute('data-dphrase') || '';
+      disclaimerSettings.phrases = disclaimerSettings.phrases.filter(x=>x!==ph);
+      savePrefs();
+      syncDisclaimerUiFromState();
+      render();
+    });
+  });
+}
+function openDisclaimerModal(){
+  DISCLAIMER_MODAL.open = true;
+  syncDisclaimerUiFromState();
+  els.disclaimerModalOverlay.classList.add('show');
+  els.disclaimerModalOverlay.setAttribute('aria-hidden','false');
+}
+function closeDisclaimerModal(){
+  DISCLAIMER_MODAL.open = false;
+  els.disclaimerModalOverlay.classList.remove('show');
+  els.disclaimerModalOverlay.setAttribute('aria-hidden','true');
+}
 
 /* =================== top panel collapse =================== */
 function setPanelCollapsed(collapsed){
@@ -1774,9 +2132,13 @@ function loadPrefs(){
         }));
       }
       if(typeof p.selectedCriteriaId==="string") selectedCriteriaId = p.selectedCriteriaId;
+      if(p.disclaimer && typeof p.disclaimer==='object'){
+        disclaimerSettings = mergeDisclaimerSettings(p.disclaimer);
+      }
     }
   }catch(e){}
   ensureChecklistCriteriaDefaults();
+  syncDisclaimerUiFromState();
 }
 function savePrefs(){
   try{
@@ -1795,7 +2157,8 @@ function savePrefs(){
         color:normalizeColor(c.color),
         incident:c.incident || '__ANY__',
         keywords:(c.keywords||[]).slice()
-      }))
+      })),
+      disclaimer: disclaimerSettings
     }));
   }catch(e){}
 }
@@ -2394,6 +2757,108 @@ function linearTrendTotal(cells){
   const slope = (n*sumXY - sumX*sumY) / den;
   return slope * (nAll-1);
 }
+function getEffectiveNumber(value, mode, autoDefault){
+  const n = Number(value);
+  if(mode === 'auto'){
+    if(Number.isFinite(n) && n > 0) return Math.floor(n);
+    return Number.isFinite(+autoDefault) && +autoDefault > 0 ? Math.floor(+autoDefault) : null;
+  }
+  if(Number.isFinite(n) && n > 0) return Math.floor(n);
+  return null;
+}
+function coachingMatchesPhrases(coaching, phrases){
+  const txt = String(coaching?.desc || '').toLowerCase();
+  if(!txt || !Array.isArray(phrases) || !phrases.length) return false;
+  return phrases.some(ph => txt.includes(String(ph||'').toLowerCase()));
+}
+function evaluateRuleWindows(cells, rule, modeName){
+  if(!rule || rule.enabled !== 'on') return null;
+  const countNeed = getEffectiveNumber(rule.count, rule.countMode, disclaimerSettings.autoDefaults.count);
+  const weeksNeed = getEffectiveNumber(rule.weeks, rule.weeksMode, disclaimerSettings.autoDefaults.weeks);
+  if(!countNeed || !weeksNeed) return null;
+  let triggerIdx = -1;
+  let bestCount = 0;
+  for(let i=0;i<cells.length;i++){
+    const start = Math.max(0, i - weeksNeed + 1);
+    let total = 0;
+    for(let j=start;j<=i;j++) total += Number(cells[j][modeName] || 0);
+    if(total > bestCount) bestCount = total;
+    if(total >= countNeed){ triggerIdx = i; break; }
+  }
+  return { met: triggerIdx >= 0, triggerIdx, countNeed, weeksNeed, bestCount };
+}
+function evaluateRuleSet(cells, ruleSet, mode){
+  const evals = [
+    { key:'coachings', label:'coachings', res:evaluateRuleWindows(cells, ruleSet.coaching, 'coachCount') },
+    { key:'redWeeks', label:'red weeks', res:evaluateRuleWindows(cells, ruleSet.redWeeks, 'redFlag') },
+    { key:'phraseCoachings', label:'phrase-hit coachings', res:evaluateRuleWindows(cells, ruleSet.phraseCoachings, 'phraseCoachCount') }
+  ].filter(x=>x.res);
+  if(!evals.length) return { triggered:false, triggerIdx:-1, reason:'No complete enabled rules', counts:{} };
+  const triggered = mode==='all' ? evals.every(x=>x.res.met) : evals.some(x=>x.res.met);
+  if(!triggered) return { triggered:false, triggerIdx:-1, reason:'Thresholds not met', counts:Object.fromEntries(evals.map(e=>[e.key, e.res.bestCount])) };
+  const triggerIdx = mode==='all'
+    ? Math.max(...evals.map(x=>x.res.triggerIdx))
+    : Math.min(...evals.filter(x=>x.res.met).map(x=>x.res.triggerIdx));
+  const hitLabels = evals.filter(x=>x.res.met).map(x=>`${x.label} (${x.res.countNeed}/${x.res.weeksNeed}w)`);
+  return {
+    triggered:true,
+    triggerIdx,
+    reason: hitLabels.join(mode==='all' ? ' + ' : ' | '),
+    counts: Object.fromEntries(evals.map(e=>[e.key, e.res.bestCount]))
+  };
+}
+function buildDisclaimerSummary(cells, settings){
+  const fallback = {
+    enabled: !!settings.enabled,
+    correctiveTriggered:false,
+    correctiveTriggerWeek:'',
+    correctiveTriggerDate:'',
+    correctiveReason:'',
+    correctiveCounts:{},
+    followupTriggered:false,
+    followupTriggerWeek:'',
+    followupTriggerDate:'',
+    followupReason:'',
+    followupCounts:{}
+  };
+  if(!settings.enabled) return fallback;
+
+  const initial = evaluateRuleSet(cells, settings.initial.rules, settings.initial.mode);
+  fallback.correctiveTriggered = !!initial.triggered;
+  fallback.correctiveReason = initial.reason;
+  fallback.correctiveCounts = initial.counts;
+  if(initial.triggered && cells[initial.triggerIdx]){
+    fallback.correctiveTriggerWeek = cells[initial.triggerIdx].wk;
+    fallback.correctiveTriggerDate = cells[initial.triggerIdx].wk;
+  }
+  if(!initial.triggered) return fallback;
+
+  const postCells = cells.slice(initial.triggerIdx + 1);
+  const follow = evaluateRuleSet(postCells, settings.followup.rules, settings.followup.mode);
+  fallback.followupTriggered = !!follow.triggered;
+  fallback.followupReason = follow.reason;
+  fallback.followupCounts = follow.counts;
+  if(follow.triggered && postCells[follow.triggerIdx]){
+    fallback.followupTriggerWeek = postCells[follow.triggerIdx].wk;
+    fallback.followupTriggerDate = postCells[follow.triggerIdx].wk;
+  }
+  return fallback;
+}
+function disclaimerBannerHtml(disclaimer){
+  if(!disclaimerSettings.enabled || !disclaimerSettings.display.showBanner || !disclaimer?.enabled) return '';
+  const d = disclaimerSettings.display;
+  if(disclaimer.followupTriggered){
+    const reason = d.showReason ? `<div class="disclaimerMeta">${escAttr(disclaimer.followupReason || '')}</div>` : '';
+    const counts = d.showCounts ? `<div class="disclaimerMeta">Counts: ${escAttr(JSON.stringify(disclaimer.followupCounts || {}))}</div>` : '';
+    return `<div class="disclaimerBanner critical"><strong>${escAttr(d.followupLabel || 'Follow up to Corrective needed')}</strong>${reason}${counts}</div>`;
+  }
+  if(disclaimer.correctiveTriggered){
+    const reason = d.showReason ? `<div class="disclaimerMeta">${escAttr(disclaimer.correctiveReason || '')}</div>` : '';
+    const counts = d.showCounts ? `<div class="disclaimerMeta">Counts: ${escAttr(JSON.stringify(disclaimer.correctiveCounts || {}))}</div>` : '';
+    return `<div class="disclaimerBanner"><strong>${escAttr(d.initialLabel || 'Corrective in consideration')}</strong>${reason}${counts}</div>`;
+  }
+  return '';
+}
 
 function computeRepSummary(repName, weeks, goalFrac, oppGateKey, oppMin){
   const rk = personKey(repName);
@@ -2408,6 +2873,9 @@ function computeRepSummary(repName, weeks, goalFrac, oppGateKey, oppMin){
 
     const coachArr = coachingByRepWeek.get(rk)?.get(wk) || [];
     const coachCount = coachArr.length;
+    const phraseCoachCount = (disclaimerSettings.usePhraseMatching && (disclaimerSettings.phrases||[]).length)
+      ? coachArr.filter(c=>coachingMatchesPhrases(c, disclaimerSettings.phrases)).length
+      : 0;
 
     const oppCount = oppGateKey ? (s?.[oppGateKey] ?? 0) : 0;
     const passOpp = oppGateKey ? (Number.isFinite(oppCount) && oppCount > oppMin) : false;
@@ -2428,7 +2896,16 @@ function computeRepSummary(repName, weeks, goalFrac, oppGateKey, oppMin){
       incidentColor = hitCriteria[0]?.color ? normalizeColor(hitCriteria[0].color) : '';
     }
 
-    return { wk, v, hasData, isAbove, isBelow, coachCount, oppCount, passOpp, incCount, incidentColor };
+    return {
+      wk, v, hasData, isAbove, isBelow,
+      redFlag: (hasData && isBelow) ? 1 : 0,
+      coachCount,
+      phraseCoachCount,
+      oppCount,
+      passOpp,
+      incCount,
+      incidentColor
+    };
   });
 
   const withData = cells.filter(c=>c.hasData);
@@ -2522,6 +2999,7 @@ function computeRepSummary(repName, weeks, goalFrac, oppGateKey, oppMin){
 
   const avgKpi = mean(withData.map(c=>c.v));
   const trendTotal = linearTrendTotal(cells);
+  const disclaimer = buildDisclaimerSummary(cells, disclaimerSettings);
 
   return {
     repName,
@@ -2558,7 +3036,8 @@ function computeRepSummary(repName, weeks, goalFrac, oppGateKey, oppMin){
     avgKpi,
     trendTotal,
     weightedBelowPct,
-    weightedMissingPct
+    weightedMissingPct,
+    disclaimer
   };
 }
 
@@ -2933,6 +3412,7 @@ function paintRepModal(){
     return `<div class="scoreSeg ${cls}">${(c.v*100).toFixed(1)}%</div>`;
   }).join('');
   const modalOrb = timelineOrbHtml(rep, weeks);
+  const modalDisclaimerHtml = disclaimerBannerHtml(sum.disclaimer);
 
   // Coaching items in window (filtered by enabledTypes)
   const rk = personKey(rep);
@@ -3009,6 +3489,7 @@ function paintRepModal(){
       </div>
 
       <div class="timelineWrap ${modalOrb.wrapClass}" style="margin-top:10px">
+        ${modalDisclaimerHtml}
         ${modalOrb.html}
         <div class="timelineStack">
           <div class="coachbar">${coachBarHtml}</div>
@@ -3311,6 +3792,7 @@ function render(){
       return `<div class="scoreSeg ${cls}">${(c.v*100).toFixed(1)}%</div>`;
     }).join('');
     const repOrb = timelineOrbHtml(s.repName, weeks);
+    const disclaimerHtml = disclaimerBannerHtml(s.disclaimer);
 
     const trendTxt = fmtPp(s.trendTotal);
 
@@ -3339,6 +3821,7 @@ function render(){
         </div>
 
         <div class="timelineWrap ${repOrb.wrapClass}">
+          ${disclaimerHtml}
           ${repOrb.html}
           <div class="timelineStack">
             <div class="coachbar">${coachBarHtml}</div>
@@ -3363,6 +3846,61 @@ function render(){
 }
 
 /* =================== Events =================== */
+els.disclaimerSettingsBtn.addEventListener('click', ()=> openDisclaimerModal());
+els.disclaimerModalClose.addEventListener('click', ()=> closeDisclaimerModal());
+els.disclaimerModalOverlay.addEventListener('click', (e)=>{ if(e.target===els.disclaimerModalOverlay) closeDisclaimerModal(); });
+document.addEventListener('keydown', (e)=>{ if(e.key==='Escape' && DISCLAIMER_MODAL.open) closeDisclaimerModal(); });
+els.disclaimerEnableTop.addEventListener('change', ()=>{
+  disclaimerSettings.enabled = !!els.disclaimerEnableTop.checked;
+  els.disclaimerMasterEnabled.checked = disclaimerSettings.enabled;
+  savePrefs();
+  syncDisclaimerUiFromState();
+  render();
+});
+const disclaimerInputs = [
+  'disclaimerMasterEnabled','disclaimerDefaultCount','disclaimerDefaultWeeks','disclaimerInitialMode','disclaimerFollowupMode',
+  'disclaimerUsePhraseMatching','disclaimerShowBanner','disclaimerShowReason','disclaimerShowCounts',
+  'disclaimerInitialLabelText','disclaimerFollowupLabelText',
+  'dRuleInitialCoachEnabled','dRuleInitialCoachCount','dRuleInitialCoachCountMode','dRuleInitialCoachWeeks','dRuleInitialCoachWeeksMode',
+  'dRuleInitialRedEnabled','dRuleInitialRedCount','dRuleInitialRedCountMode','dRuleInitialRedWeeks','dRuleInitialRedWeeksMode',
+  'dRuleInitialPhraseEnabled','dRuleInitialPhraseCount','dRuleInitialPhraseCountMode','dRuleInitialPhraseWeeks','dRuleInitialPhraseWeeksMode',
+  'dRuleFollowCoachEnabled','dRuleFollowCoachCount','dRuleFollowCoachCountMode','dRuleFollowCoachWeeks','dRuleFollowCoachWeeksMode',
+  'dRuleFollowRedEnabled','dRuleFollowRedCount','dRuleFollowRedCountMode','dRuleFollowRedWeeks','dRuleFollowRedWeeksMode',
+  'dRuleFollowPhraseEnabled','dRuleFollowPhraseCount','dRuleFollowPhraseCountMode','dRuleFollowPhraseWeeks','dRuleFollowPhraseWeeksMode'
+];
+for(const key of disclaimerInputs){
+  const el = els[key];
+  if(!el) continue;
+  const evt = (el.tagName==='INPUT' && el.type==='text') ? 'input' : 'change';
+  el.addEventListener(evt, ()=>{
+    readDisclaimerStateFromUi();
+    savePrefs();
+    syncDisclaimerUiFromState();
+    render();
+  });
+}
+els.disclaimerPhraseAdd.addEventListener('click', ()=>{
+  const v = String(els.disclaimerPhraseInput.value || '').trim().toLowerCase();
+  if(!v) return;
+  if(!disclaimerSettings.phrases.includes(v)) disclaimerSettings.phrases.push(v);
+  els.disclaimerPhraseInput.value = '';
+  savePrefs();
+  syncDisclaimerUiFromState();
+  render();
+});
+els.disclaimerPhraseInput.addEventListener('keydown', (e)=>{
+  if(e.key==='Enter'){
+    e.preventDefault();
+    els.disclaimerPhraseAdd.click();
+  }
+});
+els.disclaimerPhraseClear.addEventListener('click', ()=>{
+  disclaimerSettings.phrases = [];
+  savePrefs();
+  syncDisclaimerUiFromState();
+  render();
+});
+
 els.modeSel.addEventListener('change', ()=>{
   mode = els.modeSel.value;
   els.startDate.value = '';
