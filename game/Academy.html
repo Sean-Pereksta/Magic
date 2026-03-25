@@ -360,10 +360,12 @@
     align-content:start;
     gap:6px;
     min-height:56px;
+    transform:scaleY(-1);
   }
   .weekOrb{
     width:14px;
     height:14px;
+    transform:scaleY(-1);
     border-radius:999px;
     border:2px solid #fff;
     box-shadow:0 6px 15px rgba(2,6,23,.24);
@@ -372,7 +374,7 @@
     transition:transform .14s ease, box-shadow .14s ease, filter .14s ease;
   }
   .weekOrb:hover{
-    transform:scale(1.18);
+    transform:scale(1.18) scaleY(-1);
     box-shadow:0 9px 18px rgba(2,6,23,.28);
     filter:brightness(1.04);
   }
@@ -1892,7 +1894,6 @@ function weekEventOrbs(repName, weeks){
 
   for(const [wk, arr] of out.entries()){
     arr.sort((a,b)=>(b.date?.getTime?.()||0) - (a.date?.getTime?.()||0));
-    if(arr.length <= 1) out.delete(wk);
   }
   return out;
 }
