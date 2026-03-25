@@ -337,9 +337,47 @@
     position:relative;
     border:1px solid var(--line);
     border-radius:14px;
-    padding:10px;
+    padding:14px 10px 10px;
     background:var(--soft);
   }
+  .timelineWrap.hasOrbs{ padding-top:74px; }
+  .weekOrbs{
+    position:absolute;
+    left:10px;
+    right:10px;
+    top:8px;
+    display:flex;
+    gap:0;
+    pointer-events:none;
+  }
+  .weekOrbCol{
+    flex:1 1 0;
+    min-width:2px;
+    display:grid;
+    grid-template-columns:repeat(3, minmax(0, 14px));
+    justify-content:center;
+    justify-items:center;
+    align-content:start;
+    gap:6px;
+    min-height:56px;
+  }
+  .weekOrb{
+    width:14px;
+    height:14px;
+    border-radius:999px;
+    border:2px solid #fff;
+    box-shadow:0 6px 15px rgba(2,6,23,.24);
+    cursor:pointer;
+    pointer-events:auto;
+    transition:transform .14s ease, box-shadow .14s ease, filter .14s ease;
+  }
+  .weekOrb:hover{
+    transform:scale(1.18);
+    box-shadow:0 9px 18px rgba(2,6,23,.28);
+    filter:brightness(1.04);
+  }
+  .weekOrb.coaching{ background:#2563eb; }
+  .weekOrb.incident{ background:var(--orb-color, #f59e0b); }
 
   /* coaching bar */
   .coachbar{
@@ -829,6 +867,10 @@
 
     <button class="btn" id="kwAddBtn">Add</button>
     <button class="btn" id="kwClearBtn">Clear phrases</button>
+    <label style="margin-left:4px">
+      <input id="slaAgingToggle" type="checkbox" />
+      SLA color checklist by Created On → Date Served (or today)
+    </label>
 
     <span class="mono" id="checkHint" style="color:var(--muted);font-weight:900">Checklist: —</span>
   </div>
@@ -984,6 +1026,22 @@
       </div>
     </div>
     <div class="modalBody" id="repModalBody"></div>
+  </div>
+</div>
+
+<!-- Incident / Coaching Item Modal -->
+<div id="itemModalOverlay" class="modalOverlay" aria-hidden="true">
+  <div class="modalPanel" role="dialog" aria-modal="true" aria-labelledby="itemModalTitle" style="width:min(760px, 96vw)">
+    <div class="modalHead">
+      <div>
+        <div id="itemModalTitle" class="modalTitle">Timeline Item</div>
+        <div id="itemModalMeta" class="modalSub">—</div>
+      </div>
+      <div class="modalActions">
+        <button class="btn dark" id="itemModalClose">Close ✕</button>
+      </div>
+    </div>
+    <div class="modalBody" id="itemModalBody"></div>
   </div>
 </div>
 
@@ -1448,10 +1506,14 @@ function canonicalizeChecklistRows(dockObj){
       const incRaw = pickFieldFromRow(r, ["incident","incidenttype","incidentcategory","type"]);
       const descRaw= pickFieldFromRow(r, ["description","desc","details","notes","note","summary"]);
       const dateRaw= pickFieldFromRow(r, ["incidentdate","date","dt","day"]);
+      const createdRaw = pickFieldFromRow(r, ["createdon","createddate","datecreated","created"]);
+      const servedRaw = pickFieldFromRow(r, ["dateserved","serveddate","servicecompleted","completeddate","resolveddate"]);
 
       const rep = String(repRaw ?? "").trim();
       const incident = String(incRaw ?? "").trim();
       const d = parseDate(dateRaw);
+      const createdOn = parseDate(createdRaw);
+      const dateServed = parseDate(servedRaw);
 
       if(!rep || !incident || !d) continue;
 
@@ -1461,7 +1523,9 @@ function canonicalizeChecklistRows(dockObj){
         date: d,
         wk: isoWeekKey(d),
         incident,
-        desc: String(descRaw ?? "").trim()
+        desc: String(descRaw ?? "").trim(),
+        createdOn,
+        dateServed
       });
     }
   }
@@ -1536,6 +1600,7 @@ const els = {
   kwInput: document.getElementById('kwInput'),
   kwAddBtn: document.getElementById('kwAddBtn'),
   kwClearBtn: document.getElementById('kwClearBtn'),
+  slaAgingToggle: document.getElementById('slaAgingToggle'),
   kwChips: document.getElementById('kwChips'),
   checkHint: document.getElementById('checkHint'),
 
@@ -1571,6 +1636,11 @@ const els = {
   repModalMeta: document.getElementById('repModalMeta'),
   repModalBody: document.getElementById('repModalBody'),
   repModalClose: document.getElementById('repModalClose'),
+  itemModalOverlay: document.getElementById('itemModalOverlay'),
+  itemModalTitle: document.getElementById('itemModalTitle'),
+  itemModalMeta: document.getElementById('itemModalMeta'),
+  itemModalBody: document.getElementById('itemModalBody'),
+  itemModalClose: document.getElementById('itemModalClose'),
 
   tt: document.getElementById('tt'),
 
@@ -1608,6 +1678,7 @@ let checklistIncidents = [];
 let checklistByRepWeek = new Map();   // repKey -> Map(weekKey -> checklist[])
 let checklistCriteria = [];           // [{id,name,color,incident,keywords[]}]
 let selectedCriteriaId = null;
+let slaAgingEnabled = false;
 
 const KPI_DEFS = {
   retail: [
@@ -1685,6 +1756,10 @@ function loadPrefs(){
       if(Number.isFinite(+p.minCov)) els.minCovInp.value = String(+p.minCov);
       if(typeof p.sort==="string") els.sortSel.value = p.sort;
       if(typeof p.gapSort==="string" && els.gapSortSel) els.gapSortSel.value = p.gapSort;
+      if(typeof p.slaAgingEnabled==="boolean"){
+        slaAgingEnabled = p.slaAgingEnabled;
+        if(els.slaAgingToggle) els.slaAgingToggle.checked = slaAgingEnabled;
+      }
       if(Array.isArray(p.criteria) && p.criteria.length){
         checklistCriteria = p.criteria.map((c, idx)=>({
           id: String(c.id || `c${Date.now()}_${idx}`),
@@ -1710,6 +1785,7 @@ function savePrefs(){
       minCov: Number.isFinite(minCov) ? minCov : 0,
       sort,
       gapSort,
+      slaAgingEnabled: !!slaAgingEnabled,
       selectedCriteriaId: selectedCriteriaId || '',
       criteria: checklistCriteria.map(c=>({
         id:c.id,
@@ -1770,6 +1846,55 @@ function checklistCriteriaForItem(it){
     if(!(c.keywords||[]).length) return true;
     return c.keywords.some(p=>desc.includes(p));
   });
+}
+function checklistTurnaroundDays(it){
+  const created = parseDate(it?.createdOn);
+  if(!created) return null;
+  const served = parseDate(it?.dateServed) || new Date();
+  const diff = Math.ceil((served - created) / MS_PER_DAY);
+  return Number.isFinite(diff) ? Math.max(0, diff) : null;
+}
+function checklistIncidentColor(it){
+  if(!slaAgingEnabled) return null;
+  const days = checklistTurnaroundDays(it);
+  if(days===null) return null;
+  return days <= 7 ? '#16a34a' : '#dc2626';
+}
+function weekEventOrbs(repName, weeks){
+  const out = new Map();
+  const rk = personKey(repName);
+  const weekSet = new Set(weeks);
+  const coachRows = coachingByRepKey.get(rk) || [];
+
+  for(const c of coachRows){
+    if(!weekSet.has(c.wk)) continue;
+    if(!(c.types||[]).some(t=>enabledTypes.has(t))) continue;
+    const arr = out.get(c.wk) || [];
+    arr.push({ kind:'coaching', color:'#2563eb', date:c.date, row:c });
+    out.set(c.wk, arr);
+  }
+
+  for(const wk of weeks){
+    const incRows = checklistForRepWeek(repName, wk);
+    for(const it of incRows){
+      const crit = checklistCriteriaForItem(it)[0];
+      const arr = out.get(wk) || [];
+      arr.push({
+        kind:'incident',
+        color: checklistIncidentColor(it) || normalizeColor(crit?.color || '#f59e0b'),
+        date: it.date,
+        row: it,
+        criteriaName: crit?.name || ''
+      });
+      out.set(wk, arr);
+    }
+  }
+
+  for(const [wk, arr] of out.entries()){
+    arr.sort((a,b)=>(b.date?.getTime?.()||0) - (a.date?.getTime?.()||0));
+    if(arr.length <= 1) out.delete(wk);
+  }
+  return out;
 }
 function rebuildChecklistIndex(){
   checklistByRepWeek = new Map();
@@ -2289,12 +2414,18 @@ function computeRepSummary(repName, weeks, goalFrac, oppGateKey, oppMin){
     const incArr = checklistForRepWeek(repName, wk);
     const incCount = incArr.length;
     const hitCriteria = [];
+    let incidentColor = '';
     for(const it of incArr){
+      if(!incidentColor){
+        incidentColor = checklistIncidentColor(it) || '';
+      }
       for(const c of checklistCriteriaForItem(it)){
         if(!hitCriteria.some(x=>x.id===c.id)) hitCriteria.push(c);
       }
     }
-    const incidentColor = hitCriteria[0]?.color ? normalizeColor(hitCriteria[0].color) : '';
+    if(!incidentColor){
+      incidentColor = hitCriteria[0]?.color ? normalizeColor(hitCriteria[0].color) : '';
+    }
 
     return { wk, v, hasData, isAbove, isBelow, coachCount, oppCount, passOpp, incCount, incidentColor };
   });
@@ -2578,6 +2709,11 @@ document.addEventListener('pointerout', (e)=>{
   if(to) return;
   hideTT();
 });
+document.addEventListener('click', (e)=>{
+  const orb = e.target.closest('.weekOrb');
+  if(!orb) return;
+  openItemModalFromOrb(orb);
+});
 
 /* =================== Top gaps list =================== */
 function paintGapList(repSummaries){
@@ -2795,6 +2931,7 @@ function paintRepModal(){
     const cls = c.isAbove ? 'good' : 'bad';
     return `<div class="scoreSeg ${cls}">${(c.v*100).toFixed(1)}%</div>`;
   }).join('');
+  const modalOrb = timelineOrbHtml(rep, weeks);
 
   // Coaching items in window (filtered by enabledTypes)
   const rk = personKey(rep);
@@ -2870,7 +3007,8 @@ function paintRepModal(){
         <span class="pill">Data coverage: <strong>${fmtPct0(covFrac)}</strong></span>
       </div>
 
-      <div class="timelineWrap" style="margin-top:10px">
+      <div class="timelineWrap ${modalOrb.wrapClass}" style="margin-top:10px">
+        ${modalOrb.html}
         <div class="timelineStack">
           <div class="coachbar">${coachBarHtml}</div>
           <div class="timeline">${timelineHtml}</div>
@@ -2921,6 +3059,95 @@ function paintRepModal(){
       </div>
     </div>
   `;
+}
+
+/* =================== Timeline item modal + orbs =================== */
+const ITEM_MODAL = { open:false };
+
+function openItemModalFromOrb(btn){
+  if(!btn) return;
+  const kind = btn.dataset.kind || '';
+  const rep = btn.dataset.rep || '';
+  const wk = btn.dataset.wk || '';
+  const idx = parseInt(btn.dataset.idx || '', 10);
+  if(!kind || !rep || !wk || !Number.isFinite(idx)) return;
+
+  const items = weekEventOrbs(rep, [wk]).get(wk) || [];
+  const it = items[idx];
+  if(!it) return;
+
+  ITEM_MODAL.open = true;
+  els.itemModalOverlay.classList.add('show');
+  els.itemModalOverlay.setAttribute('aria-hidden','false');
+
+  if(kind === 'coaching'){
+    const row = it.row || {};
+    els.itemModalTitle.textContent = `Documented Coaching • ${rep}`;
+    els.itemModalMeta.textContent = `${wk} • ${mmddyy(row.date)} • ${(row.types||[]).join(', ') || 'Type not set'}`;
+    els.itemModalBody.innerHTML = `
+      <div class="mCard">
+        <div class="mini">
+          <span class="pill">Week: <strong>${escAttr(wk)}</strong></span>
+          <span class="pill">Date: <strong>${escAttr(mmddyy(row.date))}</strong></span>
+          <span class="pill">Types: <strong>${escAttr((row.types||[]).join(', ') || '—')}</strong></span>
+          <span class="pill">Coach: <strong>${escAttr(row.coach || '—')}</strong></span>
+        </div>
+        <div class="coachItemDesc" style="margin-top:10px">${escAttr(row.desc || '—')}</div>
+      </div>
+    `;
+    return;
+  }
+
+  const row = it.row || {};
+  const days = checklistTurnaroundDays(row);
+  const servedDate = row.dateServed ? mmddyy(row.dateServed) : '—';
+  const createdDate = row.createdOn ? mmddyy(row.createdOn) : '—';
+  const agingTxt = days===null ? '—' : `${days} day${days===1?'':'s'}`;
+  els.itemModalTitle.textContent = `Checklist Incident • ${rep}`;
+  els.itemModalMeta.textContent = `${wk} • ${mmddyy(row.date)} • ${row.incident || 'Incident'}`;
+  els.itemModalBody.innerHTML = `
+    <div class="mCard">
+      <div class="mini">
+        <span class="pill">Incident date: <strong>${escAttr(mmddyy(row.date))}</strong></span>
+        <span class="pill">Incident: <strong>${escAttr(row.incident || '—')}</strong></span>
+        <span class="pill">Created On: <strong>${escAttr(createdDate)}</strong></span>
+        <span class="pill">Date Served: <strong>${escAttr(servedDate)}</strong></span>
+        <span class="pill">Turnaround: <strong>${escAttr(agingTxt)}</strong></span>
+      </div>
+      <div class="coachItemDesc" style="margin-top:10px">${escAttr(row.desc || '—')}</div>
+    </div>
+  `;
+}
+function closeItemModal(){
+  ITEM_MODAL.open = false;
+  els.itemModalOverlay.classList.remove('show');
+  els.itemModalOverlay.setAttribute('aria-hidden','true');
+  els.itemModalBody.innerHTML = '';
+}
+els.itemModalClose.addEventListener('click', closeItemModal);
+els.itemModalOverlay.addEventListener('click', (e)=>{ if(e.target===els.itemModalOverlay) closeItemModal(); });
+document.addEventListener('keydown', (e)=>{ if(e.key==='Escape' && ITEM_MODAL.open) closeItemModal(); });
+
+function timelineOrbHtml(repName, weeks){
+  const orbMap = weekEventOrbs(repName, weeks);
+  const hasAny = Array.from(orbMap.values()).some(arr=>arr.length>0);
+  if(!hasAny) return { wrapClass:'', html:'' };
+  const cols = weeks.map(wk=>{
+    const items = orbMap.get(wk) || [];
+    const inner = items.map((it, idx)=>{
+      const style = it.kind==='incident' ? ` style="--orb-color:${escAttr(it.color || '#f59e0b')}"` : '';
+      const title = it.kind==='coaching'
+        ? `Coaching • ${mmddyy(it.row?.date)}`
+        : `Checklist • ${mmddyy(it.row?.date)} • ${it.row?.incident || ''}`;
+      return `<button class="weekOrb ${escAttr(it.kind)}" data-kind="${escAttr(it.kind)}" data-rep="${escAttr(repName)}" data-wk="${escAttr(wk)}" data-idx="${idx}" title="${escAttr(title)}"${style}></button>`;
+    }).join('');
+    return `<div class="weekOrbCol">${inner}</div>`;
+  }).join('');
+
+  return {
+    wrapClass:'hasOrbs',
+    html:`<div class="weekOrbs">${cols}</div>`
+  };
 }
 
 /* =================== Render =================== */
@@ -3082,6 +3309,7 @@ function render(){
       const cls = c.isAbove ? 'good' : 'bad';
       return `<div class="scoreSeg ${cls}">${(c.v*100).toFixed(1)}%</div>`;
     }).join('');
+    const repOrb = timelineOrbHtml(s.repName, weeks);
 
     const trendTxt = fmtPp(s.trendTotal);
 
@@ -3109,7 +3337,8 @@ function render(){
           </div>
         </div>
 
-        <div class="timelineWrap">
+        <div class="timelineWrap ${repOrb.wrapClass}">
+          ${repOrb.html}
           <div class="timelineStack">
             <div class="coachbar">${coachBarHtml}</div>
             <div class="timeline">${timelineHtml}</div>
@@ -3267,6 +3496,14 @@ els.kwClearBtn.addEventListener('click', ()=>{
   savePrefs();
   render();
 });
+if(els.slaAgingToggle){
+  els.slaAgingToggle.addEventListener('change', ()=>{
+    slaAgingEnabled = !!els.slaAgingToggle.checked;
+    savePrefs();
+    render();
+    if(REP_MODAL.open) paintRepModal();
+  });
+}
 
 els.loadDocksBtn.addEventListener('click', ()=>{
   statsDockKey = els.statsDockSel.value || statsDockKey;
