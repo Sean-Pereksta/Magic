@@ -1124,10 +1124,17 @@
           <label>Default count value <input id="disclaimerDefaultCount" type="number" min="1" step="1" placeholder="2" /></label>
           <label>Default weeks value <input id="disclaimerDefaultWeeks" type="number" min="1" step="1" placeholder="4" /></label>
         </div>
+        <div class="phraseRow" style="margin-top:8px">
+          <button class="btn" id="disclaimerApplyAutoAssign">Apply auto assign to all rules</button>
+          <button class="btn" id="disclaimerRemoveAutoAssign">Remove auto assign (manual)</button>
+        </div>
       </div>
 
       <div class="mCard">
         <div class="mHead">3. Initial Corrective Trigger</div>
+        <label>This occurred in last X weeks
+          <input id="disclaimerInitialLookbackWeeks" type="number" min="1" step="1" placeholder="All weeks" />
+        </label>
         <label>Trigger mode
           <select id="disclaimerInitialMode">
             <option value="any">Any enabled rule</option>
@@ -1150,6 +1157,17 @@
 
       <div class="mCard">
         <div class="mHead">4. Follow-Up Trigger</div>
+        <label>Follow-up starts after
+          <select id="disclaimerFollowupAnchorType">
+            <option value="corrective">Initial corrective trigger</option>
+            <option value="checklist">Specific checklist item</option>
+          </select>
+        </label>
+        <label>Checklist item anchor
+          <select id="disclaimerFollowupChecklistItem">
+            <option value="">(Select checklist item)</option>
+          </select>
+        </label>
         <label>Follow-up mode
           <select id="disclaimerFollowupMode">
             <option value="any">Any enabled rule</option>
@@ -1809,7 +1827,12 @@ const els = {
   disclaimerSummaryHint: document.getElementById('disclaimerSummaryHint'),
   disclaimerDefaultCount: document.getElementById('disclaimerDefaultCount'),
   disclaimerDefaultWeeks: document.getElementById('disclaimerDefaultWeeks'),
+  disclaimerApplyAutoAssign: document.getElementById('disclaimerApplyAutoAssign'),
+  disclaimerRemoveAutoAssign: document.getElementById('disclaimerRemoveAutoAssign'),
+  disclaimerInitialLookbackWeeks: document.getElementById('disclaimerInitialLookbackWeeks'),
   disclaimerInitialMode: document.getElementById('disclaimerInitialMode'),
+  disclaimerFollowupAnchorType: document.getElementById('disclaimerFollowupAnchorType'),
+  disclaimerFollowupChecklistItem: document.getElementById('disclaimerFollowupChecklistItem'),
   disclaimerFollowupMode: document.getElementById('disclaimerFollowupMode'),
   disclaimerUsePhraseMatching: document.getElementById('disclaimerUsePhraseMatching'),
   disclaimerPhraseInput: document.getElementById('disclaimerPhraseInput'),
@@ -1898,10 +1921,13 @@ function makeDisclaimerDefaults(){
     enabled:false,
     autoDefaults:{ count:2, weeks:4 },
     initial:{
+      lookbackWeeks:'',
       mode:'any',
       rules:{ coaching:makeRuleDefaults(), redWeeks:makeRuleDefaults(), phraseCoachings:makeRuleDefaults() }
     },
     followup:{
+      anchorType:'corrective',
+      checklistCriteriaId:'',
       mode:'any',
       rules:{ coaching:makeRuleDefaults(), redWeeks:makeRuleDefaults(), phraseCoachings:makeRuleDefaults() }
     },
@@ -1987,7 +2013,12 @@ function mergeDisclaimerSettings(raw){
   out.enabled = !!raw.enabled;
   out.autoDefaults.count = Number.isFinite(+raw?.autoDefaults?.count) ? +raw.autoDefaults.count : out.autoDefaults.count;
   out.autoDefaults.weeks = Number.isFinite(+raw?.autoDefaults?.weeks) ? +raw.autoDefaults.weeks : out.autoDefaults.weeks;
+  out.initial.lookbackWeeks = raw?.initial?.lookbackWeeks === '' || raw?.initial?.lookbackWeeks === null || raw?.initial?.lookbackWeeks === undefined
+    ? ''
+    : String(raw.initial.lookbackWeeks);
   out.initial.mode = raw?.initial?.mode === 'all' ? 'all' : 'any';
+  out.followup.anchorType = raw?.followup?.anchorType === 'checklist' ? 'checklist' : 'corrective';
+  out.followup.checklistCriteriaId = String(raw?.followup?.checklistCriteriaId || '');
   out.followup.mode = raw?.followup?.mode === 'all' ? 'all' : 'any';
   out.initial.rules.coaching = sanitizeRule(raw?.initial?.rules?.coaching);
   out.initial.rules.redWeeks = sanitizeRule(raw?.initial?.rules?.redWeeks);
@@ -2012,7 +2043,11 @@ function syncDisclaimerUiFromState(){
   els.disclaimerSummaryHint.textContent = s.enabled ? 'Enabled: logic runs on each rep timeline.' : 'Disabled: no banners or trigger checks.';
   els.disclaimerDefaultCount.value = String(s.autoDefaults.count ?? 2);
   els.disclaimerDefaultWeeks.value = String(s.autoDefaults.weeks ?? 4);
+  els.disclaimerInitialLookbackWeeks.value = s.initial.lookbackWeeks ?? '';
   els.disclaimerInitialMode.value = s.initial.mode || 'any';
+  els.disclaimerFollowupAnchorType.value = s.followup.anchorType || 'corrective';
+  paintDisclaimerChecklistOptions();
+  els.disclaimerFollowupChecklistItem.value = s.followup.checklistCriteriaId || '';
   els.disclaimerFollowupMode.value = s.followup.mode || 'any';
   els.disclaimerUsePhraseMatching.checked = !!s.usePhraseMatching;
   els.disclaimerShowBanner.value = s.display.showBanner ? 'yes' : 'no';
@@ -2027,6 +2062,14 @@ function syncDisclaimerUiFromState(){
   applyRuleToUi('FollowRed', s.followup.rules.redWeeks);
   applyRuleToUi('FollowPhrase', s.followup.rules.phraseCoachings);
   paintDisclaimerPhraseChips();
+}
+function paintDisclaimerChecklistOptions(){
+  if(!els.disclaimerFollowupChecklistItem) return;
+  ensureChecklistCriteriaDefaults();
+  const opts = [`<option value="">(Select checklist item)</option>`].concat(
+    checklistCriteria.map(c=>`<option value="${escAttr(c.id)}">${escAttr(c.name)}</option>`)
+  );
+  els.disclaimerFollowupChecklistItem.innerHTML = opts.join('');
 }
 function applyRuleToUi(prefix, rule){
   if(!rule) return;
@@ -2049,7 +2092,12 @@ function readDisclaimerStateFromUi(){
   disclaimerSettings.enabled = !!els.disclaimerMasterEnabled.checked;
   disclaimerSettings.autoDefaults.count = Number.isFinite(+els.disclaimerDefaultCount.value) ? +els.disclaimerDefaultCount.value : 2;
   disclaimerSettings.autoDefaults.weeks = Number.isFinite(+els.disclaimerDefaultWeeks.value) ? +els.disclaimerDefaultWeeks.value : 4;
+  disclaimerSettings.initial.lookbackWeeks = Number.isFinite(+els.disclaimerInitialLookbackWeeks.value) && +els.disclaimerInitialLookbackWeeks.value > 0
+    ? String(Math.floor(+els.disclaimerInitialLookbackWeeks.value))
+    : '';
   disclaimerSettings.initial.mode = els.disclaimerInitialMode.value === 'all' ? 'all' : 'any';
+  disclaimerSettings.followup.anchorType = els.disclaimerFollowupAnchorType.value === 'checklist' ? 'checklist' : 'corrective';
+  disclaimerSettings.followup.checklistCriteriaId = String(els.disclaimerFollowupChecklistItem.value || '');
   disclaimerSettings.followup.mode = els.disclaimerFollowupMode.value === 'all' ? 'all' : 'any';
   disclaimerSettings.usePhraseMatching = !!els.disclaimerUsePhraseMatching.checked;
   disclaimerSettings.display.showBanner = els.disclaimerShowBanner.value !== 'no';
@@ -2064,6 +2112,23 @@ function readDisclaimerStateFromUi(){
   disclaimerSettings.followup.rules.redWeeks = readRuleFromUi('FollowRed');
   disclaimerSettings.followup.rules.phraseCoachings = readRuleFromUi('FollowPhrase');
   els.disclaimerEnableTop.checked = !!disclaimerSettings.enabled;
+}
+const ALL_RULE_PREFIXES = ['InitialCoach','InitialRed','InitialPhrase','FollowCoach','FollowRed','FollowPhrase'];
+function applyAutoAssignToAllRules(){
+  for(const prefix of ALL_RULE_PREFIXES){
+    if(els[`dRule${prefix}CountMode`]) els[`dRule${prefix}CountMode`].value = 'auto';
+    if(els[`dRule${prefix}WeeksMode`]) els[`dRule${prefix}WeeksMode`].value = 'auto';
+    if(els[`dRule${prefix}Count`]) els[`dRule${prefix}Count`].value = '';
+    if(els[`dRule${prefix}Weeks`]) els[`dRule${prefix}Weeks`].value = '';
+  }
+}
+function removeAutoAssignFromAllRules(){
+  for(const prefix of ALL_RULE_PREFIXES){
+    if(els[`dRule${prefix}CountMode`]) els[`dRule${prefix}CountMode`].value = 'manual';
+    if(els[`dRule${prefix}WeeksMode`]) els[`dRule${prefix}WeeksMode`].value = 'manual';
+    if(els[`dRule${prefix}Count`]) els[`dRule${prefix}Count`].value = '';
+    if(els[`dRule${prefix}Weeks`]) els[`dRule${prefix}Weeks`].value = '';
+  }
 }
 function paintDisclaimerPhraseChips(){
   const arr = disclaimerSettings.phrases || [];
@@ -2395,6 +2460,10 @@ function paintChecklistCriteriaEditor(){
   els.criteriaNameInput.value = selected.name || '';
   els.criteriaColorInput.value = normalizeColor(selected.color);
   paintIncidentOptions();
+  paintDisclaimerChecklistOptions();
+  if(disclaimerSettings.followup.checklistCriteriaId && !checklistCriteria.some(c=>c.id===disclaimerSettings.followup.checklistCriteriaId)){
+    disclaimerSettings.followup.checklistCriteriaId = '';
+  }
 }
 
 /* =================== docks load =================== */
@@ -2823,20 +2892,50 @@ function buildDisclaimerSummary(cells, settings){
   };
   if(!settings.enabled) return fallback;
 
-  const initial = evaluateRuleSet(cells, settings.initial.rules, settings.initial.mode);
+  const lookbackWeeks = Number(settings?.initial?.lookbackWeeks);
+  const hasLookback = Number.isFinite(lookbackWeeks) && lookbackWeeks > 0;
+  const initialCells = hasLookback ? cells.slice(Math.max(0, cells.length - Math.floor(lookbackWeeks))) : cells.slice();
+  const initialOffset = hasLookback ? Math.max(0, cells.length - initialCells.length) : 0;
+  const initial = evaluateRuleSet(initialCells, settings.initial.rules, settings.initial.mode);
   fallback.correctiveTriggered = !!initial.triggered;
   fallback.correctiveReason = initial.reason;
   fallback.correctiveCounts = initial.counts;
-  if(initial.triggered && cells[initial.triggerIdx]){
-    fallback.correctiveTriggerWeek = cells[initial.triggerIdx].wk;
-    fallback.correctiveTriggerDate = cells[initial.triggerIdx].wk;
+  const absoluteInitialIdx = initial.triggered ? (initialOffset + initial.triggerIdx) : -1;
+  if(initial.triggered && cells[absoluteInitialIdx]){
+    fallback.correctiveTriggerWeek = cells[absoluteInitialIdx].wk;
+    fallback.correctiveTriggerDate = cells[absoluteInitialIdx].wk;
   }
-  if(!initial.triggered) return fallback;
-
-  const postCells = cells.slice(initial.triggerIdx + 1);
-  const follow = evaluateRuleSet(postCells, settings.followup.rules, settings.followup.mode);
+  const anchorType = settings?.followup?.anchorType === 'checklist' ? 'checklist' : 'corrective';
+  let anchorIdx = absoluteInitialIdx;
+  let follow = null;
+  if(anchorType === 'checklist'){
+    const wantedCriteriaId = String(settings?.followup?.checklistCriteriaId || '');
+    if(!wantedCriteriaId) return fallback;
+    const candidateAnchors = [];
+    for(let i=0;i<cells.length;i++){
+      if(Array.isArray(cells[i].hitCriteriaIds) && cells[i].hitCriteriaIds.includes(wantedCriteriaId)){
+        candidateAnchors.push(i);
+      }
+    }
+    if(!candidateAnchors.length) return fallback;
+    for(const idx of candidateAnchors){
+      const candidatePost = cells.slice(idx + 1);
+      const candidateFollow = evaluateRuleSet(candidatePost, settings.followup.rules, settings.followup.mode);
+      if(candidateFollow.triggered){
+        anchorIdx = idx;
+        follow = candidateFollow;
+        break;
+      }
+      if(!follow) follow = candidateFollow;
+    }
+  }else if(!initial.triggered){
+    return fallback;
+  }
+  const postCells = cells.slice(anchorIdx + 1);
+  follow = follow || evaluateRuleSet(postCells, settings.followup.rules, settings.followup.mode);
   fallback.followupTriggered = !!follow.triggered;
-  fallback.followupReason = follow.reason;
+  const anchorPrefix = anchorType === 'checklist' ? 'After checklist item' : 'After corrective';
+  fallback.followupReason = `${anchorPrefix}: ${follow.reason}`;
   fallback.followupCounts = follow.counts;
   if(follow.triggered && postCells[follow.triggerIdx]){
     fallback.followupTriggerWeek = postCells[follow.triggerIdx].wk;
@@ -2883,13 +2982,17 @@ function computeRepSummary(repName, weeks, goalFrac, oppGateKey, oppMin){
     const incArr = checklistForRepWeek(repName, wk);
     const incCount = incArr.length;
     const hitCriteria = [];
+    const hitCriteriaIds = [];
     let incidentColor = '';
     for(const it of incArr){
       if(!incidentColor){
         incidentColor = checklistIncidentColor(it) || '';
       }
       for(const c of checklistCriteriaForItem(it)){
-        if(!hitCriteria.some(x=>x.id===c.id)) hitCriteria.push(c);
+        if(!hitCriteria.some(x=>x.id===c.id)){
+          hitCriteria.push(c);
+          hitCriteriaIds.push(c.id);
+        }
       }
     }
     if(!incidentColor){
@@ -2904,6 +3007,7 @@ function computeRepSummary(repName, weeks, goalFrac, oppGateKey, oppMin){
       oppCount,
       passOpp,
       incCount,
+      hitCriteriaIds,
       incidentColor
     };
   });
@@ -3858,7 +3962,7 @@ els.disclaimerEnableTop.addEventListener('change', ()=>{
   render();
 });
 const disclaimerInputs = [
-  'disclaimerMasterEnabled','disclaimerDefaultCount','disclaimerDefaultWeeks','disclaimerInitialMode','disclaimerFollowupMode',
+  'disclaimerMasterEnabled','disclaimerDefaultCount','disclaimerDefaultWeeks','disclaimerInitialLookbackWeeks','disclaimerInitialMode','disclaimerFollowupAnchorType','disclaimerFollowupChecklistItem','disclaimerFollowupMode',
   'disclaimerUsePhraseMatching','disclaimerShowBanner','disclaimerShowReason','disclaimerShowCounts',
   'disclaimerInitialLabelText','disclaimerFollowupLabelText',
   'dRuleInitialCoachEnabled','dRuleInitialCoachCount','dRuleInitialCoachCountMode','dRuleInitialCoachWeeks','dRuleInitialCoachWeeksMode',
@@ -3879,6 +3983,20 @@ for(const key of disclaimerInputs){
     render();
   });
 }
+els.disclaimerApplyAutoAssign.addEventListener('click', ()=>{
+  applyAutoAssignToAllRules();
+  readDisclaimerStateFromUi();
+  savePrefs();
+  syncDisclaimerUiFromState();
+  render();
+});
+els.disclaimerRemoveAutoAssign.addEventListener('click', ()=>{
+  removeAutoAssignFromAllRules();
+  readDisclaimerStateFromUi();
+  savePrefs();
+  syncDisclaimerUiFromState();
+  render();
+});
 els.disclaimerPhraseAdd.addEventListener('click', ()=>{
   const v = String(els.disclaimerPhraseInput.value || '').trim().toLowerCase();
   if(!v) return;
