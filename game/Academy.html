@@ -755,6 +755,70 @@
     white-space:pre-wrap;
     line-height:1.35;
   }
+  .repTrendWrap{
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:10px;
+    margin-bottom:12px;
+    background:#f8fafc;
+    display:grid;
+    gap:10px;
+  }
+  .repTrendHead{
+    display:flex;
+    gap:8px;
+    align-items:flex-start;
+    justify-content:space-between;
+    flex-wrap:wrap;
+  }
+  .repTrendTitle{ font-size:13px; font-weight:900; }
+  .repTrendSub{ font-size:12px; color:#475569; font-weight:800; }
+  .repTrendCanvas{
+    width:100%;
+    min-height:220px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:#fff;
+    padding:8px;
+  }
+  .repTrendSvg{ width:100%; height:220px; display:block; }
+  .repImpactBars{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(94px,1fr));
+    gap:6px;
+  }
+  .repImpactBar{
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:6px;
+    background:#fff;
+    display:grid;
+    gap:4px;
+    justify-items:center;
+  }
+  .repImpactBar .wk{ font-size:10px; color:#64748b; font-weight:900; }
+  .repImpactBar .arrow{ font-size:16px; line-height:1; font-weight:900; }
+  .repImpactBar .val{ font-size:12px; font-weight:900; }
+  .repImpactBar.good{ background:rgba(22,163,74,.1); border-color:rgba(22,163,74,.3); color:#166534; }
+  .repImpactBar.bad{ background:rgba(220,38,38,.1); border-color:rgba(220,38,38,.24); color:#991b1b; }
+  .repImpactBar.na{ background:rgba(148,163,184,.1); color:#64748b; }
+  .repTrendInsights{
+    display:grid;
+    gap:8px;
+    grid-template-columns:repeat(auto-fit, minmax(220px,1fr));
+  }
+  .repTrendInsight{
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:8px;
+    background:#fff;
+  }
+  .repTrendInsight.good{ background:rgba(22,163,74,.08); border-color:rgba(22,163,74,.28); }
+  .repTrendInsight.bad{ background:rgba(220,38,38,.08); border-color:rgba(220,38,38,.24); }
+  .repTrendInsight.info{ background:rgba(37,99,235,.08); border-color:rgba(37,99,235,.2); }
+  .repTrendInsight .k{ font-size:11px; color:#64748b; font-weight:900; text-transform:uppercase; }
+  .repTrendInsight .v{ margin-top:2px; font-size:16px; font-weight:900; }
+  .repTrendInsight .d{ margin-top:4px; font-size:12px; color:#334155; font-weight:800; line-height:1.35; }
 
   @media (max-width: 1100px){
     .content{ grid-template-columns: 1fr; }
@@ -1507,6 +1571,170 @@ function needCoachingScore(repName, impact){
    ========================= */
 const repCoachingModal = { rep: null, mode: 'filtered' };
 
+function linearTrend(points){
+  const valid = points
+    .map((y, idx)=> ({ x:idx, y }))
+    .filter(p => Number.isFinite(p.y));
+  if(valid.length < 2) return { slope: NaN, intercept: NaN };
+  const n = valid.length;
+  const sumX = valid.reduce((s,p)=>s+p.x,0);
+  const sumY = valid.reduce((s,p)=>s+p.y,0);
+  const sumXY = valid.reduce((s,p)=>s+(p.x*p.y),0);
+  const sumXX = valid.reduce((s,p)=>s+(p.x*p.x),0);
+  const denom = (n * sumXX) - (sumX * sumX);
+  if(!denom) return { slope: NaN, intercept: NaN };
+  const slope = ((n * sumXY) - (sumX * sumY)) / denom;
+  const intercept = (sumY - (slope * sumX)) / n;
+  return { slope, intercept };
+}
+function buildRepTrendSummary(rep){
+  const model = lastHeatmapModel || buildWeeklyHeatmapModel(effectiveSet(), getRepNamesInScope().filter(n => !excluded.has(n)), new Set());
+  const entries = (model?.weekly || []).map(w => (w.rows || []).find(r => r.rep === rep) || null);
+  const filled = entries.map((entry, idx)=>{
+    const week = model.weekly[idx];
+    return {
+      weekKey: week.weekKey,
+      weekLabel: week.label,
+      repRate: Number.isFinite(entry?.repRate) ? entry.repRate : NaN,
+      impact: Number.isFinite(entry?.impact) ? entry.impact : NaN,
+      coached: !!entry?.coached,
+      needsCoaching: !!entry?.needsCoaching,
+      performanceLabel: entry?.performanceLabel || 'No KPI'
+    };
+  });
+  const impacts = filled.map(f => f.impact);
+  const rates = filled.map(f => f.repRate);
+  const impactTrend = linearTrend(impacts);
+  const avgImpact = impacts.filter(Number.isFinite).reduce((s,v)=>s+v,0) / Math.max(1, impacts.filter(Number.isFinite).length);
+  const harmingWeeks = filled.filter(f => Number.isFinite(f.impact) && f.impact > 0);
+  const coachedHarming = harmingWeeks.filter(f => f.coached).length;
+  const coachingConsistency = harmingWeeks.length ? (coachedHarming / harmingWeeks.length) : NaN;
+
+  const coachedIndices = filled.map((f, i)=> (f.coached ? i : -1)).filter(i => i >= 0);
+  const followRateDeltas = coachedIndices.map(i=>{
+    const now = rates[i];
+    const next = rates[i+1];
+    return (Number.isFinite(now) && Number.isFinite(next)) ? (next - now) : NaN;
+  }).filter(Number.isFinite);
+  const followImpactDeltas = coachedIndices.map(i=>{
+    const now = impacts[i];
+    const next = impacts[i+1];
+    return (Number.isFinite(now) && Number.isFinite(next)) ? (next - now) : NaN;
+  }).filter(Number.isFinite);
+  const avgRateMovementAfterCoaching = followRateDeltas.reduce((s,v)=>s+v,0) / Math.max(1, followRateDeltas.length);
+  const avgImpactMovementAfterCoaching = followImpactDeltas.reduce((s,v)=>s+v,0) / Math.max(1, followImpactDeltas.length);
+
+  return {
+    model,
+    points: filled,
+    impactTrend,
+    avgImpact,
+    harmingWeeks,
+    coachingConsistency,
+    avgRateMovementAfterCoaching,
+    avgImpactMovementAfterCoaching,
+    followSampleSize: followRateDeltas.length
+  };
+}
+function repTrendMarkup(rep){
+  const summary = buildRepTrendSummary(rep);
+  const points = summary.points;
+  if(!points.length){
+    return `<div class="repTrendWrap"><div class="muted" style="font-weight:900">No weekly timeline available in this timeframe.</div></div>`;
+  }
+
+  const validImpacts = points.map(p=>p.impact).filter(Number.isFinite);
+  const minY = validImpacts.length ? Math.min(...validImpacts, 0) : -0.01;
+  const maxY = validImpacts.length ? Math.max(...validImpacts, 0) : 0.01;
+  const span = Math.max(0.0001, maxY - minY);
+  const W = 860;
+  const H = 220;
+  const padL = 42;
+  const padR = 18;
+  const padT = 18;
+  const padB = 36;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+  const xFor = i => padL + ((points.length <= 1 ? 0 : (i/(points.length-1))) * innerW);
+  const yFor = y => padT + ((maxY - y) / span) * innerH;
+  const zeroY = yFor(0);
+  const pointPath = points.map((p,i)=> `${i===0?'M':'L'} ${xFor(i).toFixed(2)} ${yFor(Number.isFinite(p.impact) ? p.impact : 0).toFixed(2)}`).join(' ');
+  const trendLine = Number.isFinite(summary.impactTrend.slope) ? (()=> {
+    const y0 = summary.impactTrend.intercept;
+    const y1 = summary.impactTrend.intercept + (summary.impactTrend.slope * (points.length - 1));
+    return `M ${xFor(0).toFixed(2)} ${yFor(y0).toFixed(2)} L ${xFor(points.length - 1).toFixed(2)} ${yFor(y1).toFixed(2)}`;
+  })() : '';
+  const trendTxt = Number.isFinite(summary.impactTrend.slope)
+    ? (summary.impactTrend.slope < 0 ? 'Improving trend (impact drifting down)' : summary.impactTrend.slope > 0 ? 'Worsening trend (impact drifting up)' : 'Flat trend')
+    : 'Trend unavailable';
+
+  const consistencyTone = Number.isFinite(summary.coachingConsistency) ? (summary.coachingConsistency >= 0.7 ? 'good' : 'bad') : 'info';
+  const consistencyText = Number.isFinite(summary.coachingConsistency)
+    ? `${(summary.coachingConsistency*100).toFixed(0)}% of harmful weeks were coached`
+    : 'No harmful weeks in this timeframe';
+  const consistencyDesc = Number.isFinite(summary.coachingConsistency)
+    ? (summary.coachingConsistency >= 0.7 ? 'Coaching appears consistent with need in harmful weeks.' : 'Coaching is not consistent with need in harmful weeks.')
+    : 'This rep did not post harmful impact weeks (red condition) in the selected window.';
+
+  const movementTone = Number.isFinite(summary.avgRateMovementAfterCoaching) ? (summary.avgRateMovementAfterCoaching >= 0 ? 'good' : 'bad') : 'info';
+
+  const bars = points.map(p=>{
+    let tone = 'na';
+    let arrow = '•';
+    let desc = 'No impact';
+    if(Number.isFinite(p.impact)){
+      const helpsTeam = p.impact < 0;
+      tone = helpsTeam ? 'good' : (p.impact > 0 ? 'bad' : 'na');
+      arrow = helpsTeam ? '↗' : (p.impact > 0 ? '↘' : '→');
+      desc = helpsTeam ? `+team ${fmtPct2(Math.abs(p.impact))}` : (p.impact > 0 ? `-team ${fmtPct2(Math.abs(p.impact))}` : 'neutral');
+    }
+    return `<div class="repImpactBar ${tone}" title="${p.weekKey}: ${desc}">
+      <div class="wk">${p.weekKey}</div>
+      <div class="arrow">${arrow}</div>
+      <div class="val">${desc}</div>
+    </div>`;
+  }).join('');
+
+  const circles = points.map((p,i)=>{
+    const x = xFor(i).toFixed(2);
+    const y = yFor(Number.isFinite(p.impact) ? p.impact : 0).toFixed(2);
+    const clr = Number.isFinite(p.impact) ? (p.impact < 0 ? '#16a34a' : p.impact > 0 ? '#dc2626' : '#64748b') : '#94a3b8';
+    return `<circle cx="${x}" cy="${y}" r="4" fill="${clr}"><title>${p.weekKey}: ${Number.isFinite(p.impact) ? fmtPct2(p.impact) : 'N/A'}</title></circle>`;
+  }).join('');
+
+  return `<div class="repTrendWrap">
+    <div class="repTrendHead">
+      <div>
+        <div class="repTrendTitle">Weekly impact timeline</div>
+        <div class="repTrendSub">Line = weekly impact (team rate change if removed). Dashed line = overall trend across selected weeks.</div>
+      </div>
+      <span class="tag ${Number.isFinite(summary.avgImpact) ? (summary.avgImpact < 0 ? 'good' : summary.avgImpact > 0 ? 'bad' : 'info') : 'info'}">Avg impact: ${Number.isFinite(summary.avgImpact) ? fmtPct2(summary.avgImpact) : '—'}</span>
+    </div>
+    <div class="repTrendCanvas">
+      <svg class="repTrendSvg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-label="Rep weekly impact trend">
+        <line x1="${padL}" y1="${zeroY.toFixed(2)}" x2="${W-padR}" y2="${zeroY.toFixed(2)}" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4 4"></line>
+        <path d="${pointPath}" fill="none" stroke="#0f172a" stroke-width="2.2"></path>
+        ${trendLine ? `<path d="${trendLine}" fill="none" stroke="#2563eb" stroke-width="2" stroke-dasharray="6 4"></path>` : ''}
+        ${circles}
+      </svg>
+      <div class="repTrendSub" style="margin-top:6px">${trendTxt}</div>
+    </div>
+    <div class="repImpactBars">${bars}</div>
+    <div class="repTrendInsights">
+      <div class="repTrendInsight ${consistencyTone}">
+        <div class="k">Coaching vs need</div>
+        <div class="v">${consistencyText}</div>
+        <div class="d">${consistencyDesc}</div>
+      </div>
+      <div class="repTrendInsight ${movementTone}">
+        <div class="k">Average movement after coaching</div>
+        <div class="v">${summary.followSampleSize ? `${fmtPct2(summary.avgRateMovementAfterCoaching)} rate • ${fmtPct2(summary.avgImpactMovementAfterCoaching)} impact` : 'No week-after samples'}</div>
+        <div class="d">Computed as average week-to-next-week change after coached weeks in this timeframe.</div>
+      </div>
+    </div>
+  </div>`;
+}
+
 function openRepCoachings(rep){
   repCoachingModal.rep = rep;
   repCoachingModal.mode = 'filtered';
@@ -1546,7 +1774,7 @@ function paintRepCoachingsModal(){
 
   if(!coachings.length){
     meta.textContent = 'Coachings not loaded';
-    body.innerHTML = `<div class="muted" style="font-weight:900">No coaching dock found/loaded yet.</div>`;
+    body.innerHTML = `${repTrendMarkup(rep)}<div class="muted" style="font-weight:900">No coaching dock found/loaded yet.</div>`;
     return;
   }
 
@@ -1576,13 +1804,15 @@ function paintRepCoachingsModal(){
   meta.textContent = `${note}  Showing ${shown.length} of ${total} coaching(s).`;
 
   if(!total){
-    body.innerHTML = `<div class="muted" style="font-weight:900">No coaching records found for this rep in the loaded coaching dock.</div>`;
+    body.innerHTML = `${repTrendMarkup(rep)}<div class="muted" style="font-weight:900">No coaching records found for this rep in the loaded coaching dock.</div>`;
     return;
   }
   if(!shown.length){
-    body.innerHTML = `<div class="muted" style="font-weight:900">No coachings match the current filter for this rep.</div>`;
+    body.innerHTML = `${repTrendMarkup(rep)}<div class="muted" style="font-weight:900">No coachings match the current filter for this rep.</div>`;
     return;
   }
+
+  body.insertAdjacentHTML('beforeend', repTrendMarkup(rep));
 
   const list = document.createElement('div');
   list.className = 'coachList';
@@ -3134,4 +3364,3 @@ document.getElementById('exportPdf').addEventListener('click', async ()=>{
 </script>
 </body>
 </html>
-
