@@ -889,6 +889,30 @@
   </div>
 
   <div class="row" style="margin-top:10px">
+    <label>Documented Coaching filter
+      <select id="coachingTypeFilterSel" style="min-width:180px">
+        <option value="scorecard">Scorecard</option>
+        <option value="team meeting">Team Meeting</option>
+      </select>
+    </label>
+    <button class="btn" id="coachingTypeFilterAddBtn">Exclude selected</button>
+    <label>Exclude words
+      <input id="coachingExcludeInput" placeholder="description/type words, comma separated" style="min-width:280px" />
+    </label>
+    <button class="btn" id="coachingExcludeAddBtn">Add exclude</button>
+    <label>Show words
+      <input id="coachingIncludeInput" placeholder="description words to keep, comma separated" style="min-width:260px" />
+    </label>
+    <button class="btn" id="coachingIncludeAddBtn">Add show</button>
+  </div>
+
+  <div class="row" style="margin-top:8px">
+    <div style="flex:1; min-width:280px">
+      <div class="chips" id="coachingWordChips"></div>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:10px">
     <div style="flex:1; min-width:280px">
       <div class="chips" id="typeChips"></div>
     </div>
@@ -1770,6 +1794,13 @@ const els = {
   typesAllBtn: document.getElementById('typesAllBtn'),
   typesNoneBtn: document.getElementById('typesNoneBtn'),
   typeChips: document.getElementById('typeChips'),
+  coachingTypeFilterSel: document.getElementById('coachingTypeFilterSel'),
+  coachingTypeFilterAddBtn: document.getElementById('coachingTypeFilterAddBtn'),
+  coachingExcludeInput: document.getElementById('coachingExcludeInput'),
+  coachingExcludeAddBtn: document.getElementById('coachingExcludeAddBtn'),
+  coachingIncludeInput: document.getElementById('coachingIncludeInput'),
+  coachingIncludeAddBtn: document.getElementById('coachingIncludeAddBtn'),
+  coachingWordChips: document.getElementById('coachingWordChips'),
 
   criteriaSel: document.getElementById('criteriaSel'),
   criteriaAddBtn: document.getElementById('criteriaAddBtn'),
@@ -1899,6 +1930,8 @@ let selectedTeam = null;
 let coachings = [];
 let coachingTypes = [];
 let enabledTypes = new Set();
+let excludedCoachingTerms = new Set();
+let includedCoachingTerms = new Set();
 
 let coachingByRepKey = new Map();     // repKey -> coaching[]
 let coachingByRepWeek = new Map();    // repKey -> Map(weekKey -> coaching[])
@@ -2197,6 +2230,16 @@ function loadPrefs(){
         }));
       }
       if(typeof p.selectedCriteriaId==="string") selectedCriteriaId = p.selectedCriteriaId;
+      if(Array.isArray(p.coachingExcludeTerms)){
+        excludedCoachingTerms = new Set(
+          p.coachingExcludeTerms.map(x=>String(x||'').trim().toLowerCase()).filter(Boolean)
+        );
+      }
+      if(Array.isArray(p.coachingIncludeTerms)){
+        includedCoachingTerms = new Set(
+          p.coachingIncludeTerms.map(x=>String(x||'').trim().toLowerCase()).filter(Boolean)
+        );
+      }
       if(p.disclaimer && typeof p.disclaimer==='object'){
         disclaimerSettings = mergeDisclaimerSettings(p.disclaimer);
       }
@@ -2223,6 +2266,8 @@ function savePrefs(){
         incident:c.incident || '__ANY__',
         keywords:(c.keywords||[]).slice()
       })),
+      coachingExcludeTerms: Array.from(excludedCoachingTerms),
+      coachingIncludeTerms: Array.from(includedCoachingTerms),
       disclaimer: disclaimerSettings
     }));
   }catch(e){}
@@ -2298,7 +2343,7 @@ function weekEventOrbs(repName, weeks){
 
   for(const c of coachRows){
     if(!weekSet.has(c.wk)) continue;
-    if(!(c.types||[]).some(t=>enabledTypes.has(t))) continue;
+    if(!coachingPassesFilters(c)) continue;
     const arr = out.get(c.wk) || [];
     arr.push({ kind:'coaching', color:'#2563eb', date:c.date, row:c });
     out.set(c.wk, arr);
@@ -2623,8 +2668,7 @@ function rebuildCoachingWeekIndex(){
   if(!coachings.length) return;
 
   for(const c of coachings){
-    const ok = (c.types||[]).some(t=> enabledTypes.has(t));
-    if(!ok) continue;
+    if(!coachingPassesFilters(c)) continue;
 
     const rk = c.repKey;
     const wk = c.wk;
@@ -2641,6 +2685,57 @@ function rebuildCoachingWeekIndex(){
       repMap.set(wk, arr);
     }
   }
+}
+function parseFilterTerms(raw){
+  return String(raw || '')
+    .split(/[,\n;]+/)
+    .map(x=>x.trim().toLowerCase())
+    .filter(Boolean);
+}
+function addTermsToSet(setObj, raw){
+  const terms = parseFilterTerms(raw);
+  for(const term of terms) setObj.add(term);
+  return terms.length;
+}
+function coachingPassesFilters(c){
+  const typeOk = (c.types||[]).some(t=> enabledTypes.has(t));
+  if(!typeOk) return false;
+  const descLower = String(c.desc || '').toLowerCase();
+  const typeLower = (c.types||[]).map(t=>String(t||'').toLowerCase()).join(' ');
+  for(const term of excludedCoachingTerms){
+    if(descLower.includes(term) || typeLower.includes(term)) return false;
+  }
+  if(includedCoachingTerms.size > 0){
+    let hit = false;
+    for(const term of includedCoachingTerms){
+      if(descLower.includes(term)){ hit = true; break; }
+    }
+    if(!hit) return false;
+  }
+  return true;
+}
+function paintCoachingWordChips(){
+  const chips = [];
+  for(const term of excludedCoachingTerms){
+    chips.push(`<div class="chip kw" data-term-kind="exclude" data-term="${escAttr(term)}"><span class="dot"></span>Exclude: ${escAttr(term)} <span class="x">✕</span></div>`);
+  }
+  for(const term of includedCoachingTerms){
+    chips.push(`<div class="chip criteria" data-term-kind="include" data-term="${escAttr(term)}"><span class="dot"></span>Show: ${escAttr(term)} <span class="x">✕</span></div>`);
+  }
+  els.coachingWordChips.innerHTML = chips.join('') || `<div class="mono" style="color:var(--muted);font-weight:900">No description/type word filters added.</div>`;
+  els.coachingWordChips.querySelectorAll('.chip').forEach(ch=>{
+    ch.addEventListener('click', ()=>{
+      const term = String(ch.getAttribute('data-term') || '').trim().toLowerCase();
+      const kind = ch.getAttribute('data-term-kind');
+      if(!term) return;
+      if(kind === 'include') includedCoachingTerms.delete(term);
+      else excludedCoachingTerms.delete(term);
+      rebuildCoachingWeekIndex();
+      paintCoachingWordChips();
+      savePrefs();
+      render();
+    });
+  });
 }
 
 /* =================== KPI UI =================== */
@@ -3518,13 +3613,13 @@ function paintRepModal(){
   const modalOrb = timelineOrbHtml(rep, weeks);
   const modalDisclaimerHtml = disclaimerBannerHtml(sum.disclaimer);
 
-  // Coaching items in window (filtered by enabledTypes)
+  // Coaching items in window (filtered by type + coaching word filters)
   const rk = personKey(rep);
   const repCoachsAll = coachingByRepKey.get(rk) || [];
   const weekSet = new Set(weeks);
   const repCoachsFiltered = repCoachsAll
     .filter(c => weekSet.has(c.wk))
-    .filter(c => (c.types||[]).some(t=>enabledTypes.has(t)))
+    .filter(c => coachingPassesFilters(c))
     .slice()
     .sort((a,b)=> b.date - a.date);
 
@@ -3537,7 +3632,7 @@ function paintRepModal(){
       </div>
       <div class="coachItemDesc">${escAttr(c.desc || '—')}</div>
     </div>
-  `).join('') || `<div class="mono" style="color:var(--muted);font-weight:900">No coaching entries in this window (with current type filter).</div>`;
+  `).join('') || `<div class="mono" style="color:var(--muted);font-weight:900">No coaching entries in this window with current coaching filters.</div>`;
 
   const repChecklist = gatherChecklistInWindow(rep, weeks);
   const checklistHtml = repChecklist.map(it=>`
@@ -4031,6 +4126,7 @@ els.modeSel.addEventListener('change', ()=>{
   rebuildTeamIndex();
   paintChecklistCriteriaEditor();
   paintKeywordChips();
+  paintCoachingWordChips();
   savePrefs();
   render();
 });
@@ -4075,6 +4171,45 @@ els.typesNoneBtn.addEventListener('click', ()=>{
   rebuildCoachingWeekIndex();
   paintTypeChips();
   render();
+});
+els.coachingTypeFilterAddBtn.addEventListener('click', ()=>{
+  const v = String(els.coachingTypeFilterSel.value || '').trim().toLowerCase();
+  if(!v) return;
+  excludedCoachingTerms.add(v);
+  rebuildCoachingWeekIndex();
+  paintCoachingWordChips();
+  savePrefs();
+  render();
+});
+els.coachingExcludeAddBtn.addEventListener('click', ()=>{
+  const n = addTermsToSet(excludedCoachingTerms, els.coachingExcludeInput.value);
+  if(!n) return;
+  els.coachingExcludeInput.value = '';
+  rebuildCoachingWeekIndex();
+  paintCoachingWordChips();
+  savePrefs();
+  render();
+});
+els.coachingIncludeAddBtn.addEventListener('click', ()=>{
+  const n = addTermsToSet(includedCoachingTerms, els.coachingIncludeInput.value);
+  if(!n) return;
+  els.coachingIncludeInput.value = '';
+  rebuildCoachingWeekIndex();
+  paintCoachingWordChips();
+  savePrefs();
+  render();
+});
+els.coachingExcludeInput.addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter'){
+    e.preventDefault();
+    els.coachingExcludeAddBtn.click();
+  }
+});
+els.coachingIncludeInput.addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter'){
+    e.preventDefault();
+    els.coachingIncludeAddBtn.click();
+  }
 });
 
 els.incidentSel.addEventListener('change', ()=>{
@@ -4174,6 +4309,7 @@ els.loadDocksBtn.addEventListener('click', ()=>{
   rebuildTeamIndex();
   paintChecklistCriteriaEditor();
   paintKeywordChips();
+  paintCoachingWordChips();
 
   els.dockHint.textContent = `Loaded • Stats: ${allRows.length.toLocaleString()} rows • Coachings: ${coachings.length.toLocaleString()} • Checklist: ${checklistRows.length.toLocaleString()} • APP_NS: ${APP_NS}`;
   render();
@@ -4204,6 +4340,7 @@ els.repSearch.addEventListener('input', ()=> render());
 
   paintChecklistCriteriaEditor();
   paintKeywordChips();
+  paintCoachingWordChips();
 
   els.dockHint.textContent = `Loaded • Stats: ${allRows.length.toLocaleString()} rows • Coachings: ${coachings.length.toLocaleString()} • Checklist: ${checklistRows.length.toLocaleString()} • APP_NS: ${APP_NS}`;
 
