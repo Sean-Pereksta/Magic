@@ -766,7 +766,7 @@
   .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
 
   /* Summary table (light header) */
-  .sumTable{ min-width: 1080px; }
+  .sumTable{ min-width: 1360px; }
   .sumTable th{
     position:sticky; top:0;
     background:var(--soft);
@@ -785,6 +785,15 @@
   .sumTable tr.warn:hover td{ background: rgba(245,158,11,.12) !important; }
   .sumTable tr.good td{ background: rgba(22,163,74,.07) !important; }
   .sumTable tr.good:hover td{ background: rgba(22,163,74,.10) !important; }
+  .sumTable tr.advisoryHigh td{ box-shadow: inset 3px 0 0 rgba(220,38,38,.9); }
+  .sumTable tr.advisoryMedium td{ box-shadow: inset 3px 0 0 rgba(245,158,11,.95); }
+  .sumTable tr.advisoryLow td{ box-shadow: inset 3px 0 0 rgba(22,163,74,.75); }
+  .sumTable tr.advisoryOk td{ box-shadow: inset 3px 0 0 rgba(148,163,184,.75); }
+
+  .advisoryHighTxt{ color:#991b1b; font-weight:1000; }
+  .advisoryMediumTxt{ color:#92400e; font-weight:1000; }
+  .advisoryLowTxt{ color:#166534; font-weight:1000; }
+  .advisoryOkTxt{ color:var(--muted); font-weight:900; }
 
   .settingsGrid{
     display:grid;
@@ -1028,7 +1037,7 @@
     <!-- Team Summary -->
     <div class="card" id="teamSummaryCard">
       <details open>
-        <summary>Team Summary — Ranked by Coachings (rep → coachings → correctives → ratio → avg % → trend)</summary>
+        <summary>Team Summary — Advisory-ranked (rep → coachings → correctives → ratio → avg % → trend)</summary>
 
         <div class="row" style="margin-top:8px">
           <div class="mono" id="teamSummaryHint" style="color:var(--muted);font-weight:900">—</div>
@@ -1052,6 +1061,8 @@
                 <th style="width:140px">Avg KPI %</th>
                 <th style="width:160px">Trend</th>
                 <th style="width:160px">Flag</th>
+                <th style="width:260px">Next Step</th>
+                <th style="width:260px">Concern</th>
               </tr>
             </thead>
             <tbody id="teamSummaryBody"></tbody>
@@ -3067,6 +3078,20 @@ function computeRepSummary(repName, weeks, goalFrac, oppGateKey, oppMin){
 
     const coachArr = coachingByRepWeek.get(rk)?.get(wk) || [];
     const coachCount = coachArr.length;
+    let meaningfulCoachCount = 0;
+    let weakCoachCount = 0;
+    let scorecardCoachCount = 0;
+    let teamMeetingCoachCount = 0;
+    for(const c of coachArr){
+      const types = c.types || [];
+      const hasScorecard = types.some(t => String(t || '').trim().toLowerCase() === 'scorecard');
+      const hasTeamMeeting = types.some(t => String(t || '').trim().toLowerCase() === 'team meeting');
+      const isWeak = types.some(isWeakCoachingType);
+      if(hasScorecard) scorecardCoachCount++;
+      if(hasTeamMeeting) teamMeetingCoachCount++;
+      if(isWeak) weakCoachCount++;
+      else meaningfulCoachCount++;
+    }
     const phraseCoachCount = (disclaimerSettings.usePhraseMatching && (disclaimerSettings.phrases||[]).length)
       ? coachArr.filter(c=>coachingMatchesPhrases(c, disclaimerSettings.phrases)).length
       : 0;
@@ -3098,6 +3123,10 @@ function computeRepSummary(repName, weeks, goalFrac, oppGateKey, oppMin){
       wk, v, hasData, isAbove, isBelow,
       redFlag: (hasData && isBelow) ? 1 : 0,
       coachCount,
+      meaningfulCoachCount,
+      weakCoachCount,
+      scorecardCoachCount,
+      teamMeetingCoachCount,
       phraseCoachCount,
       oppCount,
       passOpp,
@@ -3445,6 +3474,222 @@ function paintGapList(repSummaries){
 }
 
 /* =================== Team Summary =================== */
+function isWeakCoachingType(typeName){
+  const t = String(typeName || '').trim().toLowerCase();
+  return t === 'scorecard' || t === 'team meeting';
+}
+function getRecentWindowSize(weeks){
+  const n = Array.isArray(weeks) ? weeks.length : 0;
+  if(!n) return 0;
+  return Math.max(4, Math.min(6, n));
+}
+function countNearbyMeaningfulCoachings(repSummary, weekIdx){
+  if(!repSummary || !Array.isArray(repSummary.cells)) return 0;
+  const lo = Math.max(0, weekIdx - 1);
+  const hi = Math.min(repSummary.cells.length - 1, weekIdx + 1);
+  let n = 0;
+  for(let i=lo; i<=hi; i++){
+    n += Number(repSummary.cells[i].meaningfulCoachCount || 0);
+  }
+  return n;
+}
+function computeCoachingLossMetrics(totalCoachingsVisible, meaningfulCoachingsVisible){
+  const total = Number(totalCoachingsVisible || 0);
+  const meaningful = Number(meaningfulCoachingsVisible || 0);
+  const lossCount = Math.max(0, total - meaningful);
+  const lossPct = total > 0 ? (lossCount / total) : 0;
+  return { lossCount, lossPct };
+}
+function severityRank(level){
+  if(level === 'high') return 3;
+  if(level === 'medium') return 2;
+  if(level === 'low') return 1;
+  return 0;
+}
+function advisoryClass(level){
+  if(level === 'high') return 'advisoryHigh';
+  if(level === 'medium') return 'advisoryMedium';
+  if(level === 'low') return 'advisoryLow';
+  return 'advisoryOk';
+}
+function advisoryTextClass(level){
+  if(level === 'high') return 'advisoryHighTxt';
+  if(level === 'medium') return 'advisoryMediumTxt';
+  if(level === 'low') return 'advisoryLowTxt';
+  return 'advisoryOkTxt';
+}
+function buildAdvisoryReasonLines(adv){
+  if(!adv) return [];
+  return [
+    `${adv.belowGoalWeeks} red week(s), recency-weighted ${adv.recentWeightedBelowGoal.toFixed(2)}`,
+    `${adv.totalCoachingsVisible} coachings visible, ${adv.meaningfulCoachingsVisible} meaningful, ${adv.weakCoachingsVisible} weak`,
+    `${adv.recentMeaningfulCoachings} recent meaningful vs ${adv.recentWeakCoachings} recent weak`,
+    `${adv.checklistHitsVisible} checklist hit(s), ${adv.checklistHitsWithoutNearbyMeaningfulCoaching} without nearby meaningful coaching`,
+    `Coaching loss removing weak types: ${adv.coachingLossCount} (${fmtPct0(adv.coachingLossPct)})`
+  ];
+}
+function deriveConcernText(adv){
+  const reasons = [];
+  if(adv.onlyScorecardRecent) reasons.push('Only scorecard coaching recently');
+  if(adv.onlyTeamMeetingRecent) reasons.push('Only team meeting coaching recently');
+  if(!adv.onlyScorecardRecent && !adv.onlyTeamMeetingRecent && adv.onlyWeakRecent) reasons.push('Only weak coaching types recently');
+  if(adv.zeroMeaningfulRecent) reasons.push('No meaningful coaching in recent window');
+  if(adv.manyRedWithWeak) reasons.push('Many red weeks with little meaningful coaching');
+  if(adv.checklistHitsWithoutNearbyMeaningfulCoaching > 0) reasons.push('Selected checklist incidents lack nearby coaching');
+  if(adv.lowKpiWeakRecentMix) reasons.push('Low KPI with weak recent coaching mix');
+  if(adv.negativeTrendWeakRecent) reasons.push('Trend down with weak recent coaching');
+  if(adv.coachingLossPct >= 0.8) reasons.push('Coaching drops sharply when scorecard/team meeting are excluded');
+  return reasons[0] || 'No major concern';
+}
+function deriveNextStep(adv){
+  if(adv.severity === 'high'){
+    if(adv.checklistHitsWithoutNearbyMeaningfulCoaching > 0) return 'Checklist issue needs follow-up coaching';
+    if(adv.onlyScorecardRecent || adv.onlyTeamMeetingRecent || adv.onlyWeakRecent) return 'Needs recent non-scorecard coaching';
+    if(adv.zeroMeaningfulRecent) return 'Needs recent 1:1 coaching';
+    if(adv.manyRedWithWeak) return 'Recent red weeks need non-scorecard coaching';
+    return 'Meaningful coaching too low';
+  }
+  if(adv.severity === 'medium'){
+    if(adv.lowKpiWeakRecentMix) return 'Coaching mix too shallow';
+    if(adv.negativeTrendWeakRecent) return 'Review repeated red weeks';
+    if(adv.checklistHitsWithoutNearbyMeaningfulCoaching > 0) return 'Needs 1:1 coaching tied to checklist issue';
+    return 'Escalate beyond team meeting coaching';
+  }
+  if(adv.severity === 'low'){
+    if(adv.checklistHitsVisible > 0) return 'Recent support looks adequate';
+    return 'Monitor only';
+  }
+  return 'No major concern';
+}
+function buildCoachingAdvisory(repSummary, repWeeks, repCoachings, repChecklist, opts){
+  const cells = repSummary?.cells || [];
+  const coachRows = Array.isArray(repCoachings) ? repCoachings : [];
+  const checklistRowsVisible = Array.isArray(repChecklist) ? repChecklist : [];
+  const recentWindow = Number(opts?.recentWindow || getRecentWindowSize(repWeeks));
+  const recentStartIdx = Math.max(0, cells.length - recentWindow);
+
+  let totalCoachingsVisible = coachRows.length;
+  let meaningfulCoachingsVisible = 0;
+  let weakCoachingsVisible = 0;
+  let scorecardCount = 0;
+  let teamMeetingCount = 0;
+  for(const c of coachRows){
+    const weak = (c.types || []).some(isWeakCoachingType);
+    if((c.types || []).some(t => String(t || '').trim().toLowerCase() === 'scorecard')) scorecardCount++;
+    if((c.types || []).some(t => String(t || '').trim().toLowerCase() === 'team meeting')) teamMeetingCount++;
+    if(weak) weakCoachingsVisible++;
+    else meaningfulCoachingsVisible++;
+  }
+  const weakCoachingShare = totalCoachingsVisible ? (weakCoachingsVisible / totalCoachingsVisible) : 0;
+  const scorecardShare = totalCoachingsVisible ? (scorecardCount / totalCoachingsVisible) : 0;
+  const teamMeetingShare = totalCoachingsVisible ? (teamMeetingCount / totalCoachingsVisible) : 0;
+  const loss = computeCoachingLossMetrics(totalCoachingsVisible, meaningfulCoachingsVisible);
+
+  let belowGoalWeeks = 0;
+  let recentWeightedBelowGoal = 0;
+  let redWeeksRecentWindow = 0;
+  let recentCoachingGapScore = 0;
+  let recentMeaningfulCoachings = 0;
+  let recentWeakCoachings = 0;
+  for(let i=0; i<cells.length; i++){
+    const c = cells[i];
+    if(c.hasData && c.isBelow){
+      belowGoalWeeks++;
+      const age = (cells.length - 1 - i);
+      recentWeightedBelowGoal += recencyW(age);
+      if(i >= recentStartIdx) redWeeksRecentWindow++;
+      if(i >= recentStartIdx && !c.meaningfulCoachCount) recentCoachingGapScore += 1.25;
+    }
+    if(i >= recentStartIdx){
+      recentMeaningfulCoachings += Number(c.meaningfulCoachCount || 0);
+      recentWeakCoachings += Number(c.weakCoachCount || 0);
+    }
+  }
+
+  let checklistHitsWithoutNearbyMeaningfulCoaching = 0;
+  let checklistHitsWithNearbyMeaningfulCoaching = 0;
+  for(const it of checklistRowsVisible){
+    const idx = Number(it._weekIdx);
+    if(!Number.isFinite(idx)) continue;
+    if(countNearbyMeaningfulCoachings(repSummary, idx) > 0) checklistHitsWithNearbyMeaningfulCoaching++;
+    else checklistHitsWithoutNearbyMeaningfulCoaching++;
+  }
+  const checklistHitsVisible = checklistRowsVisible.length;
+
+  const onlyScorecardRecent = recentWeakCoachings > 0 && recentMeaningfulCoachings === 0 && scorecardShare >= 0.95;
+  const onlyTeamMeetingRecent = recentWeakCoachings > 0 && recentMeaningfulCoachings === 0 && teamMeetingShare >= 0.95;
+  const onlyWeakRecent = recentWeakCoachings > 0 && recentMeaningfulCoachings === 0;
+  const zeroMeaningfulRecent = recentMeaningfulCoachings === 0;
+  const manyRedWithWeak = redWeeksRecentWindow >= 2 && recentMeaningfulCoachings <= 1 && recentWeakCoachings >= recentMeaningfulCoachings;
+  const lowKpiWeakRecentMix = Number.isFinite(repSummary.avgKpi) && Number.isFinite(opts.goalFrac) && repSummary.avgKpi < opts.goalFrac && (zeroMeaningfulRecent || weakCoachingShare >= 0.7);
+  const negativeTrendWeakRecent = Number.isFinite(repSummary.trendTotal) && repSummary.trendTotal < 0 && recentMeaningfulCoachings <= 1;
+
+  const riskScore =
+    (recentWeightedBelowGoal * 1.8) +
+    (redWeeksRecentWindow * 1.4) +
+    (checklistHitsWithoutNearbyMeaningfulCoaching * 2.2) +
+    (recentCoachingGapScore * 1.6) +
+    (loss.lossPct * 2.4) +
+    ((zeroMeaningfulRecent && (redWeeksRecentWindow > 0 || checklistHitsVisible > 0)) ? 2.5 : 0) +
+    ((manyRedWithWeak) ? 2.2 : 0) +
+    ((negativeTrendWeakRecent) ? 1.4 : 0);
+
+  let severity = 'ok';
+  if(
+    (lowKpiWeakRecentMix && (manyRedWithWeak || checklistHitsWithoutNearbyMeaningfulCoaching > 0)) ||
+    checklistHitsWithoutNearbyMeaningfulCoaching >= 2 ||
+    (loss.lossPct >= 0.8 && redWeeksRecentWindow >= 2) ||
+    riskScore >= 9.5
+  ) severity = 'high';
+  else if(
+    weakCoachingShare >= 0.65 ||
+    checklistHitsWithoutNearbyMeaningfulCoaching > 0 ||
+    negativeTrendWeakRecent ||
+    riskScore >= 5.5
+  ) severity = 'medium';
+  else if(
+    belowGoalWeeks > 0 || checklistHitsVisible > 0 || totalCoachingsVisible > 0
+  ) severity = 'low';
+
+  const advisory = {
+    severity,
+    nextStep: '',
+    concernText: '',
+    totalCoachingsVisible,
+    meaningfulCoachingsVisible,
+    weakCoachingsVisible,
+    recentMeaningfulCoachings,
+    recentWeakCoachings,
+    weakCoachingShare,
+    scorecardShare,
+    teamMeetingShare,
+    belowGoalWeeks,
+    recentWeightedBelowGoal,
+    redWeeksRecentWindow,
+    checklistHitsVisible,
+    checklistHitsWithNearbyMeaningfulCoaching,
+    checklistHitsWithoutNearbyMeaningfulCoaching,
+    coachingLossIfWeakTypesRemoved: loss.lossCount,
+    coachingLossPctIfWeakTypesRemoved: loss.lossPct,
+    coachingLossCount: loss.lossCount,
+    coachingLossPct: loss.lossPct,
+    recentCoachingGapScore,
+    advisorySeverity: severity,
+    riskScore,
+    onlyScorecardRecent,
+    onlyTeamMeetingRecent,
+    onlyWeakRecent,
+    zeroMeaningfulRecent,
+    manyRedWithWeak,
+    lowKpiWeakRecentMix,
+    negativeTrendWeakRecent
+  };
+  advisory.concernText = deriveConcernText(advisory);
+  advisory.nextStep = deriveNextStep(advisory);
+  advisory.reasonLines = buildAdvisoryReasonLines(advisory);
+  return advisory;
+}
+
 function classifyRep(summary, lowCoachThresh, lowKpiThreshFrac, goalFrac){
   const lowCoach = Number.isFinite(summary.coachTotal) && summary.coachTotal <= lowCoachThresh;
   const lowKpi = Number.isFinite(summary.avgKpi) && summary.avgKpi < lowKpiThreshFrac;
@@ -3463,7 +3708,7 @@ function classifyRep(summary, lowCoachThresh, lowKpiThreshFrac, goalFrac){
 function paintTeamSummary(allSummaries, sd, ed, weeks){
   const kpiDef = getKpiDef();
   els.teamSummaryHint.textContent =
-    `${selectedTeam} • ${kpiDef ? kpiDef.label : 'KPI'} • ${mmddyy(sd)} → ${mmddyy(ed)} • ${weeks.length}w • Sorted by coachings ↓`;
+    `${selectedTeam} • ${kpiDef ? kpiDef.label : 'KPI'} • ${mmddyy(sd)} → ${mmddyy(ed)} • ${weeks.length}w • Sorted by advisory severity / recent risk`;
 
   const coachTotals = allSummaries.map(s=>s.coachTotal||0);
   const avgKpis = allSummaries.map(s=>s.avgKpi).filter(Number.isFinite);
@@ -3474,11 +3719,29 @@ function paintTeamSummary(allSummaries, sd, ed, weeks){
   const kpiLowThresh = Number.isFinite(goalFrac) ? goalFrac : quantile(avgKpis, 0.25);
 
   const coachAvg = mean(coachTotals.map(n=>+n));
+  const recentWindow = getRecentWindowSize(weeks);
 
   const selItem = getSelectedCriteria();
   const selInc = selItem?.incident || '__ANY__';
   const incTxt = (selInc && selInc !== '__ANY__' && selInc !== '__NONE__') ? selInc : 'Any';
   const kwTxt = (selItem?.keywords||[]).length ? selItem.keywords.join(', ') : '—';
+
+  const weekIdx = new Map(weeks.map((wk, idx)=>[wk, idx]));
+  for(const s of allSummaries){
+    const repCoachings = (coachingByRepKey.get(s.repKey) || []).filter(c => weekIdx.has(c.wk) && coachingPassesFilters(c));
+    const repChecklist = gatherChecklistInWindow(s.repName, weeks).map(it=>({
+      ...it,
+      _weekIdx: weekIdx.get(it.wk)
+    }));
+    s.advisory = buildCoachingAdvisory(s, weeks, repCoachings, repChecklist, { goalFrac, recentWindow });
+    s.advisorySortRisk = Number(s.advisory.riskScore || 0);
+  }
+
+  const highConcernN = allSummaries.filter(s=>s.advisory?.severity === 'high').length;
+  const mediumConcernN = allSummaries.filter(s=>s.advisory?.severity === 'medium').length;
+  const checklistNoFollowN = allSummaries.filter(s=>(s.advisory?.checklistHitsWithoutNearbyMeaningfulCoaching || 0) > 0).length;
+  const weakLoss80N = allSummaries.filter(s=>(s.advisory?.coachingLossPct || 0) >= 0.8).length;
+  const weakOnlyRecentN = allSummaries.filter(s=>s.advisory?.onlyWeakRecent).length;
 
   els.teamSummaryPills.innerHTML = `
     <span class="pill">Low coaching ≤ <strong>${coachLowThresh}</strong> (bottom quartile)</span>
@@ -3487,20 +3750,45 @@ function paintTeamSummary(allSummaries, sd, ed, weeks){
     <span class="pill">Goal: <strong>${Number.isFinite(goalFrac)? (goalFrac*100).toFixed(1)+'%' : '—'}</strong></span>
     <span class="pill">Correctives filter: <strong>${escAttr(incTxt)}</strong></span>
     <span class="pill">Keywords: <strong>${escAttr(kwTxt)}</strong></span>
+    <span class="pill ratioBad">High concern reps: <strong>${highConcernN}</strong></span>
+    <span class="pill ratioWarn">Medium concern reps: <strong>${mediumConcernN}</strong></span>
+    <span class="pill">Checklist hits lacking nearby meaningful coaching: <strong>${checklistNoFollowN}</strong></span>
+    <span class="pill">Coaching loss ≥80% after weak-type removal: <strong>${weakLoss80N}</strong></span>
+    <span class="pill">Recent coaching weak-only: <strong>${weakOnlyRecentN}</strong></span>
   `;
 
   const sorted = allSummaries.slice().sort((a,b)=>{
+    const aAdv = a.advisory || {};
+    const bAdv = b.advisory || {};
+    const asev = severityRank(aAdv.severity);
+    const bsev = severityRank(bAdv.severity);
+    if(bsev !== asev) return bsev - asev;
+    const arisk = Number(aAdv.riskScore || 0);
+    const brisk = Number(bAdv.riskScore || 0);
+    if(brisk !== arisk) return brisk - arisk;
+    const aChecklistGap = Number(aAdv.checklistHitsWithoutNearbyMeaningfulCoaching || 0);
+    const bChecklistGap = Number(bAdv.checklistHitsWithoutNearbyMeaningfulCoaching || 0);
+    if(bChecklistGap !== aChecklistGap) return bChecklistGap - aChecklistGap;
+    const aLoss = Number(aAdv.coachingLossPct || 0);
+    const bLoss = Number(bAdv.coachingLossPct || 0);
+    if(bLoss !== aLoss) return bLoss - aLoss;
+    const aRecentMeaningful = Number(aAdv.recentMeaningfulCoachings || 0);
+    const bRecentMeaningful = Number(bAdv.recentMeaningfulCoachings || 0);
+    if(aRecentMeaningful !== bRecentMeaningful) return aRecentMeaningful - bRecentMeaningful;
+    const ak = Number.isFinite(a.avgKpi) ? a.avgKpi : -1;
+    const bk = Number.isFinite(b.avgKpi) ? b.avgKpi : -1;
+    if(ak!==bk) return ak-bk;
     const av = a.coachTotal || 0;
     const bv = b.coachTotal || 0;
     if(bv!==av) return bv-av;
-    const ak = Number.isFinite(a.avgKpi) ? a.avgKpi : -1;
-    const bk = Number.isFinite(b.avgKpi) ? b.avgKpi : -1;
-    if(bk!==ak) return bk-ak;
     return a.repName.localeCompare(b.repName);
   });
 
   els.teamSummaryBody.innerHTML = sorted.map((s, i)=>{
     const flag = classifyRep(s, coachLowThresh, kpiLowThresh, goalFrac);
+    const adv = s.advisory || {};
+    const advCls = advisoryClass(adv.severity);
+    const advTxtCls = advisoryTextClass(adv.severity);
     const trendTxt = fmtPp(s.trendTotal);
     const trendCls = trendClass(s.trendTotal);
 
@@ -3516,9 +3804,12 @@ function paintTeamSummary(allSummaries, sd, ed, weeks){
     const flagHtml = (flag.label==='—')
       ? `<span class="mono" style="color:var(--muted);font-weight:900">—</span>`
       : `<span class="badgePill ${flag.pill}">${escAttr(flag.label)}</span>`;
+    const nextStep = adv.nextStep || 'No major concern';
+    const concern = adv.concernText || 'No major concern';
+    const reasonTitle = escAttr((adv.reasonLines || []).join(' • '));
 
     return `
-      <tr class="${flag.cls}">
+      <tr class="${flag.cls} ${advCls}">
         <td class="mono">${i+1}</td>
         <td><button class="repNameBtn" data-rep="${escAttr(s.repName)}">${escAttr(s.repName)}</button></td>
         <td class="mono">${String(s.coachTotal||0)}</td>
@@ -3527,9 +3818,11 @@ function paintTeamSummary(allSummaries, sd, ed, weeks){
         <td class="mono">${fmtPct1(s.avgKpi)}</td>
         <td class="mono"><span class="${trendCls}">${escAttr(trendTxt)}</span></td>
         <td>${flagHtml}</td>
+        <td class="${advTxtCls}" title="${reasonTitle}">${escAttr(nextStep)}</td>
+        <td class="${advTxtCls}" title="${reasonTitle}">${escAttr(concern)}</td>
       </tr>
     `;
-  }).join('') || `<tr><td colspan="8" class="mono" style="color:var(--muted);font-weight:900">No reps found for this team.</td></tr>`;
+  }).join('') || `<tr><td colspan="10" class="mono" style="color:var(--muted);font-weight:900">No reps found for this team.</td></tr>`;
 
   els.teamSummaryBody.querySelectorAll('.repNameBtn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
@@ -3834,7 +4127,7 @@ function timelineOrbHtml(repName, weeks){
 /* =================== Render =================== */
 function render(){
   if(els.gapList) els.gapList.innerHTML = `<div class="gapMuted">—</div>`;
-  if(els.teamSummaryBody) els.teamSummaryBody.innerHTML = `<tr><td colspan="8" class="mono" style="color:var(--muted);font-weight:900">—</td></tr>`;
+  if(els.teamSummaryBody) els.teamSummaryBody.innerHTML = `<tr><td colspan="10" class="mono" style="color:var(--muted);font-weight:900">—</td></tr>`;
   if(els.teamSummaryPills) els.teamSummaryPills.innerHTML = '';
 
   const kpiDef = getKpiDef();
