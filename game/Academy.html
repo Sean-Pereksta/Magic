@@ -84,6 +84,15 @@
     height:10px;background:var(--bar);border-radius:999px;overflow:hidden
   }
   .fill{height:100%;border-radius:999px}
+
+  .shield{background:linear-gradient(90deg,#9fd2ff,#4a8fff)}
+  .enemy-card.shielded{box-shadow:0 0 0 1px rgba(123,185,255,.5), 0 0 24px rgba(100,160,255,.24), 0 10px 28px rgba(0,0,0,.2)}
+  .enemy-card.wavering{animation:waver 1.1s ease-in-out infinite}
+  .enemy-card.conversion-window{box-shadow:0 0 0 1px rgba(255,150,196,.5), 0 0 24px rgba(255,120,170,.22), 0 10px 28px rgba(0,0,0,.2)}
+  .state-label{font-size:10px;padding:2px 6px;border-radius:999px;border:1px solid var(--line);display:inline-flex;gap:4px;align-items:center}
+  .state-label.blocked{background:rgba(100,160,255,.2);border-color:rgba(123,185,255,.6)}
+  .state-label.window{background:rgba(255,120,170,.18);border-color:rgba(255,160,205,.7)}
+  .state-label.low{background:rgba(255,200,120,.18);border-color:rgba(255,210,120,.65)}
   .hp{background:linear-gradient(90deg,#ff8d8d,#d74747)}
   .friend{background:linear-gradient(90deg,#77ebff,#36c6b6)}
   .xp{background:linear-gradient(90deg,#90c8ff,#4d90ff)}
@@ -293,6 +302,11 @@
     0%{filter:brightness(1)}
     40%{filter:brightness(1.7)}
     100%{filter:brightness(1)}
+  }
+  @keyframes waver{
+    0%,100%{transform:translateX(0)}
+    25%{transform:translateX(-1px)}
+    75%{transform:translateX(1px)}
   }
 
   @media (max-width:880px){
@@ -664,7 +678,35 @@ const SPELL_DEFS = {
   relayDoctrine:{name:'Relay Doctrine', type:'support', faction:'Alliance', rarity:'legendary', baseCasts:1, scaling:{boost:.06}, data:{boost:0.3}, desc:'Chance to repeat ally actions.', color:'#91cbff', use(g,s){ g.flags.doubleAllies=true; g.flags.allyBoost += scaledStat(s,'boost'); }},
   battleDoctrine:{name:'Battle Doctrine', type:'hybrid', faction:'Neutral', rarity:'legendary', baseCasts:2, scaling:{power:4}, data:{power:14}, desc:'Changes with devotion tier.', color:'#d0daf0', use(g,s,e){ const t=getDevotion(g).tier; dealDamage(g,e,scaledStat(s,'power')+t*4,'Battle Doctrine','Neutral'); addBefriend(g,e,scaledStat(s,'power')+t*3,'Battle Doctrine','Neutral'); }},
   wildAxiom:{name:'Wild Axiom', type:'hybrid', faction:'Neutral', rarity:'legendary', baseCasts:2, scaling:{power:5}, data:{power:20}, desc:'Wild-slot signature.', color:'#ced8f1', use(g,s,e){ addEffect(e,'hushed',2,0.18); addEffect(e,'exposed',2,0.18); dealDamage(g,e,scaledStat(s,'power'),'Wild Axiom','Neutral'); }},
-  twinCataclysm:{name:'Twin Cataclysm', type:'hybrid', faction:'Chaos', rarity:'legendary', baseCasts:1, scaling:{power:6}, data:{power:24}, desc:'Interacts with poison and burn.', color:'#ff8f67', use(g,s,e){ if(getEffect(e,'poison')||getEffect(e,'burn')) dealDamage(g,e,scaledStat(s,'power')+20,'Twin Cataclysm','Chaos'); else dealDamage(g,e,scaledStat(s,'power'),'Twin Cataclysm','Chaos'); addEffect(e,'burn',3,10); }}
+  twinCataclysm:{name:'Twin Cataclysm', type:'hybrid', faction:'Chaos', rarity:'legendary', baseCasts:1, scaling:{power:6}, data:{power:24}, desc:'Interacts with poison and burn.', color:'#ff8f67', use(g,s,e){ if(getEffect(e,'poison')||getEffect(e,'burn')) dealDamage(g,e,scaledStat(s,'power')+20,'Twin Cataclysm','Chaos'); else dealDamage(g,e,scaledStat(s,'power'),'Twin Cataclysm','Chaos'); addEffect(e,'burn',3,10); }},
+
+  // expansion: 25 shield + conversion spells
+  mercyPact:{name:'Mercy Pact', type:'befriend', faction:'Light', rarity:'uncommon', baseCasts:2, scaling:{power:4,low:4}, data:{power:16,low:18}, desc:'Huge bonus below 50% HP.', color:'#fff0b3', use(g,s,e){ const b=(e.hp/e.maxHp)<=0.5?scaledStat(s,'low'):0; addBefriend(g,e,scaledStat(s,'power')+b,'Mercy Pact','Light'); }},
+  lastChanceVow:{name:'Last Chance Vow', type:'befriend', faction:'Alliance', rarity:'uncommon', baseCasts:2, scaling:{power:4,low:5}, data:{power:14,low:20}, desc:'Massive recruit push below 25% HP.', color:'#9fd5ff', use(g,s,e){ const b=(e.hp/e.maxHp)<=0.25?scaledStat(s,'low'):0; addBefriend(g,e,scaledStat(s,'power')+b,'Last Chance Vow','Alliance'); }},
+  turncoatWhisper:{name:'Turncoat Whisper', type:'befriend', faction:'Renegades', rarity:'uncommon', baseCasts:2, scaling:{power:4}, data:{power:17}, desc:'Stronger if target just shattered.', color:'#9effbe', use(g,s,e){ const b=getEffect(e,'shatteredResolve')?12:0; addBefriend(g,e,scaledStat(s,'power')+b,'Turncoat Whisper','Renegades'); }},
+  shatterLitany:{name:'Shatter Litany', type:'damage', faction:'Light', rarity:'uncommon', baseCasts:2, scaling:{power:4,shield:4}, data:{power:10,shield:20}, desc:'Specialized anti-shield beam.', color:'#ffe08d', use(g,s,e){ dealDamage(g,e,scaledStat(s,'power')+((e.shield||0)>0?scaledStat(s,'shield'):0),'Shatter Litany','Light'); }},
+  breachCommand:{name:'Breach Command', type:'damage', faction:'Alliance', rarity:'uncommon', baseCasts:2, scaling:{power:3,shield:4}, data:{power:12,shield:18}, desc:'Orders formation breakers on shields.', color:'#9dcfff', use(g,s,e){ dealDamage(g,e,scaledStat(s,'power')+((e.shield||0)>0?scaledStat(s,'shield'):0),'Breach Command','Alliance'); addEffect(e,'exposed',2,0.15); }},
+  cursedChisel:{name:'Cursed Chisel', type:'damage', faction:'Dark', rarity:'uncommon', baseCasts:2, scaling:{power:3,shield:4}, data:{power:12,shield:16}, desc:'Cracks ward and opens conversion.', color:'#c79cff', use(g,s,e){ dealDamage(g,e,scaledStat(s,'power')+((e.shield||0)>0?scaledStat(s,'shield'):0),'Cursed Chisel','Dark'); if((e.shield||0)<=0) addEffect(e,'softened',2,0.18); }},
+  pyroclastBreach:{name:'Pyroclast Breach', type:'damage', faction:'Chaos', rarity:'uncommon', baseCasts:2, scaling:{power:3,shield:5}, data:{power:13,shield:22}, desc:'Unstable shield breaker.', color:'#ff9468', use(g,s,e){ dealDamage(g,e,scaledStat(s,'power')+((e.shield||0)>0?scaledStat(s,'shield'):0),'Pyroclast Breach','Chaos'); }},
+  scrapMagnet:{name:'Scrap Magnet', type:'setup', faction:'Renegades', rarity:'common', baseCasts:2, scaling:{power:3}, data:{power:14}, desc:'Rips plating and reduces shield.', color:'#95ffbe', use(g,s,e){ e.shield=Math.max(0,(e.shield||0)-scaledStat(s,'power')); impactEnemyFlash('#95ffbe'); log('Scrap plating is torn away.', 'good'); }},
+  reflectiveUnweave:{name:'Reflective Unweave', type:'setup', faction:'Neutral', rarity:'uncommon', baseCasts:2, scaling:{power:3}, data:{power:12}, desc:'Halves current shield and hushes target.', color:'#d9e3f6', use(g,s,e){ e.shield=Math.max(0,Math.round((e.shield||0)*0.5)-scaledStat(s,'power')); addEffect(e,'hushed',2,0.18); }},
+  mercyNeedle:{name:'Mercy Needle', type:'damage', faction:'Light', rarity:'common', baseCasts:3, scaling:{power:2}, data:{power:10}, desc:'Cannot kill shieldless targets.', color:'#fff2ba', use(g,s,e){ if((e.shield||0)>0){ dealDamage(g,e,scaledStat(s,'power'),'Mercy Needle','Light'); return;} const before=e.hp; dealDamage(g,e,scaledStat(s,'power'),'Mercy Needle','Light'); if(e.hp<=0){ e.hp=1; log('Mercy Needle leaves the target at 1 HP.', 'gold'); } if(before===e.hp) impactEnemyFlash('#fff2ba'); }},
+  measuredStrike:{name:'Measured Strike', type:'damage', faction:'Neutral', rarity:'common', baseCasts:3, scaling:{power:2}, data:{power:11}, desc:'Precision hit that avoids accidental kills.', color:'#d7e2f8', use(g,s,e){ if((e.shield||0)<=0 && e.hp<=scaledStat(s,'power')){ e.hp=1; projectilePlayerToEnemy('#d7e2f8'); log('Measured Strike carefully leaves 1 HP.', 'gold'); return; } dealDamage(g,e,scaledStat(s,'power'),'Measured Strike','Neutral'); }},
+  clemencyArc:{name:'Clemency Arc', type:'hybrid', faction:'Light', rarity:'uncommon', baseCasts:2, scaling:{power:3}, data:{power:14}, desc:'Damage plus befriend pulse.', color:'#ffeab0', use(g,s,e){ dealDamage(g,e,scaledStat(s,'power'),'Clemency Arc','Light'); addBefriend(g,e,Math.round(scaledStat(s,'power')*0.8),'Clemency Arc','Light'); }},
+  intimidationChain:{name:'Intimidation Chain', type:'befriend', faction:'Dark', rarity:'uncommon', baseCasts:2, scaling:{power:4,bonus:3}, data:{power:14,bonus:12}, desc:'Befriend spikes on weakened enemies.', color:'#cba1ff', use(g,s,e){ const b=getEffect(e,'weaken')?scaledStat(s,'bonus'):0; addBefriend(g,e,scaledStat(s,'power')+b,'Intimidation Chain','Dark'); }},
+  unstableParley:{name:'Unstable Parley', type:'befriend', faction:'Chaos', rarity:'uncommon', baseCasts:2, scaling:{power:4}, data:{power:16}, desc:'Wild befriend that surges at low HP.', color:'#ff9b70', use(g,s,e){ const hr=e.hp/e.maxHp; const bonus=hr<=0.25?16:hr<=0.5?8:0; addBefriend(g,e,scaledStat(s,'power')+bonus,'Unstable Parley','Chaos'); }},
+  legalStandDown:{name:'Legal Stand-down', type:'befriend', faction:'Alliance', rarity:'uncommon', baseCasts:2, scaling:{power:4}, data:{power:15}, desc:'Lawful surrender command.', color:'#9ccfff', use(g,s,e){ addEffect(e,'hushed',2,0.15); addBefriend(g,e,scaledStat(s,'power'),'Legal Stand-down','Alliance'); }},
+  opportunistDeal:{name:'Opportunist Deal', type:'befriend', faction:'Neutral', rarity:'uncommon', baseCasts:2, scaling:{power:3,bonus:3}, data:{power:13,bonus:10}, desc:'Bonus after shield breaks.', color:'#dce4f6', use(g,s,e){ const b=getEffect(e,'shatteredResolve')?scaledStat(s,'bonus'):0; addBefriend(g,e,scaledStat(s,'power')+b,'Opportunist Deal','Neutral'); }},
+  wardBypassSigil:{name:'Ward Bypass Sigil', type:'befriend', faction:'Neutral', rarity:'legendary', baseCasts:1, scaling:{power:6,shieldBypass:2}, data:{power:24,shieldBypass:8}, desc:'Partially bypasses shielded recruit block.', color:'#ebf1ff', use(g,s,e){ addBefriend(g,e,scaledStat(s,'power'),'Ward Bypass Sigil','Neutral'); }},
+  exposedVerdict:{name:'Exposed Verdict', type:'damage', faction:'Alliance', rarity:'uncommon', baseCasts:2, scaling:{power:4}, data:{power:16,bonus:12}, desc:'Massive if target is exposed.', color:'#94d1ff', use(g,s,e){ const b=getEffect(e,'exposed')?scaledStat(s,'bonus'):0; dealDamage(g,e,scaledStat(s,'power')+b,'Exposed Verdict','Alliance'); }},
+  doubtSeeder:{name:'Doubt Seeder', type:'setup', faction:'Renegades', rarity:'common', baseCasts:3, scaling:{power:.03}, data:{power:0.18,turns:3}, desc:'Applies doubt for recruit setups.', color:'#9af8b8', use(g,s,e){ addEffect(e,'doubt',scaledStat(s,'turns'),scaledStat(s,'power')); log(`${e.name} starts doubting its side.`, 'good'); }},
+  tremblingHex:{name:'Trembling Hex', type:'setup', faction:'Dark', rarity:'uncommon', baseCasts:2, scaling:{power:.03}, data:{power:0.2,turns:2}, desc:'Creates conversion window quickly.', color:'#cb99ff', use(g,s,e){ addEffect(e,'hushed',2,0.18); addEffect(e,'softened',2,scaledStat(s,'power')); }},
+  surrenderFlare:{name:'Surrender Flare', type:'hybrid', faction:'Chaos', rarity:'uncommon', baseCasts:2, scaling:{power:3}, data:{power:12}, desc:'Damages shield hard and pressures morale.', color:'#ff8f63', use(g,s,e){ if((e.shield||0)>0) e.shield=Math.max(0,e.shield-10); dealDamage(g,e,scaledStat(s,'power'),'Surrender Flare','Chaos'); addEffect(e,'softened',2,0.12); }},
+  braceAndParley:{name:'Brace and Parley', type:'defense', faction:'Light', rarity:'uncommon', baseCasts:2, scaling:{shield:4,befriend:3}, data:{shield:14,befriend:10}, desc:'Gain shield and setup a befriend burst.', color:'#fff3b0', use(g,s,e){ g.player.shield+=scaledStat(s,'shield'); if(e) addBefriend(g,e,scaledStat(s,'befriend'),'Brace and Parley','Light'); }},
+  saboteurBlueprint:{name:'Saboteur Blueprint', type:'setup', faction:'Renegades', rarity:'uncommon', baseCasts:2, scaling:{power:3}, data:{power:10}, desc:'Prevents one shield regeneration.', color:'#8ff6b2', use(g,s,e){ e.shieldRegenUsed=true; e.shield=Math.max(0,(e.shield||0)-scaledStat(s,'power')); log('Shield regeneration sabotaged!', 'good'); }},
+  paleBeam:{name:'Pale Beam', type:'damage', faction:'Dark', rarity:'common', baseCasts:3, scaling:{power:3}, data:{power:12}, desc:'Beam with dramatic impact flash.', color:'#c89dff', use(g,s,e){ dealDamage(g,e,scaledStat(s,'power'),'Pale Beam','Dark'); impactEnemyFlash('#c89dff'); }},
+  rallyBanner:{name:'Rally Banner', type:'support', faction:'Alliance', rarity:'uncommon', baseCasts:2, scaling:{allyBoost:.05,shield:3}, data:{allyBoost:0.26,shield:10}, desc:'Boosts allies and reinforces you.', color:'#90ccff', use(g,s){ g.flags.allyBoost += scaledStat(s,'allyBoost'); g.player.shield += scaledStat(s,'shield'); healBurstOnPlayer('#90ccff'); }},
+  adaptiveWindow:{name:'Adaptive Window', type:'setup', faction:'Neutral', rarity:'uncommon', baseCasts:2, scaling:{power:.04}, data:{power:0.22,turns:2}, desc:'Forces a short conversion window.', color:'#d6e1f7', use(g,s,e){ addEffect(e,'softened',scaledStat(s,'turns'),scaledStat(s,'power')); addEffect(e,'shatteredResolve',1,0.15); }}
 };
 
 function makeSpell(id){
@@ -696,7 +738,9 @@ const TRAIT_DEFS = {
   adaptiveMind:{name:'Adaptive Mind', desc:'Repeated befriending weakens.', reactive:'adaptiveMind'},
   heatSurge:{name:'Heat Surge', desc:'Burned gains next attack power.', reactive:'heatSurge'},
   spiteFuel:{name:'Spite Fuel', desc:'Near recruit gains damage.', reactive:'spiteFuel'},
-  lastStand:{name:'Last Stand', desc:'Low HP gains temporary resist.', reactive:'lastStand'}
+  lastStand:{name:'Last Stand', desc:'Low HP gains temporary resist.', reactive:'lastStand'},
+  defiant:{name:'Defiant', desc:'Low-HP recruitment surges are reduced.', befriendLowHpResist:0.55},
+  crackedFaith:{name:'Cracked Faith', desc:'Once bloodied, recruitment surges spike.', befriendLowHpBonus:0.28}
 };
 
 function traitTags(enemy){
@@ -848,6 +892,38 @@ const BASE_ENEMIES = [
   {name:'Faction Observer', faction:'Neutral', rarity:'elite', hp:116, dmg:22, friend:110, emoji:'👁️‍🗨️', desc:'Shifts with player faction.', traits:['lastStand'], allyAbility:{type:'randomDebuff'}},
   {name:'Ashen Templar', faction:'Light', rarity:'elite', hp:126, dmg:24, friend:116, emoji:'⚔️', desc:'Cross-faction zealot.', traits:['chaosHardened','faithLocked'], allyAbility:{type:'damageVs', power:16, vs:'Dark', bonus:10}},
   {name:'Eclipse Arbiter', faction:'Dark', rarity:'legendary', hp:178, dmg:34, friend:156, emoji:'🌗', desc:'Cross-faction tyrant.', traits:['arcWard','ironWill','lastStand'], allyAbility:{type:'drain', power:21, heal:12}},
+
+  {name:'Radiant Sentinel', faction:'Light', rarity:'uncommon', hp:68, dmg:14, friend:86, shield:24, maxShield:24, shieldStyle:'holy', shieldBlocksBefriend:true, desc:'Holy barrier specialist.', traits:['defiant'], befriendScalingMode:'reduced', allyAbility:{type:'shield', power:13}},
+  {name:'Mercy Breaker', faction:'Light', rarity:'uncommon', hp:54, dmg:13, friend:74, desc:'Highly recruitable when bloodied.', traits:['crackedFaith'], befriendScalingMode:'stronger', allyAbility:{type:'befriend', power:12}},
+  {name:'Choir Sentinel Prime', faction:'Light', rarity:'elite', hp:122, dmg:22, friend:112, shield:30, maxShield:30, shieldStyle:'holy', shieldBlocksBefriend:true, shieldRegenOnce:true, shieldRegenAmount:16, desc:'Barrier choir captain.', traits:['defiant'], befriendScalingMode:'reduced', allyAbility:{type:'allyBoost', power:0.26}},
+  {name:'Penitent Fanatic', faction:'Light', rarity:'common', hp:45, dmg:11, friend:54, desc:'Hard to sway until wounded.', traits:['crackedFaith'], befriendScalingMode:'stronger', allyAbility:{type:'heal', power:8}},
+
+  {name:'Crypt Guard', faction:'Dark', rarity:'uncommon', hp:66, dmg:16, friend:82, shield:20, maxShield:20, shieldStyle:'cursed', shieldBlocksBefriend:true, desc:'Cursed ward blocks persuasion.', traits:['defiant'], befriendScalingMode:'reduced', allyAbility:{type:'weaken', power:0.16, turns:2}},
+  {name:'Bloodied Berserker', faction:'Dark', rarity:'uncommon', hp:59, dmg:19, friend:75, desc:'More dangerous and more recruitable when low.', traits:['spiteFuel','crackedFaith'], befriendScalingMode:'stronger', allyAbility:{type:'damage', power:15}},
+  {name:'Wraith Bastion', faction:'Dark', rarity:'elite', hp:124, dmg:24, friend:118, shield:34, maxShield:34, shieldStyle:'cursed', shieldBlocksBefriend:true, shieldRegenOnLowHp:0.35, shieldRegenAmount:18, desc:'Reforms cursed ward at low health.', traits:['defiant','lastStand'], befriendScalingMode:'reduced', allyAbility:{type:'paralyze', chance:0.23}},
+  {name:'Faltering Exorcist', faction:'Dark', rarity:'common', hp:43, dmg:12, friend:55, desc:'Resolve cracks after heavy hits.', traits:['crackedFaith'], befriendScalingMode:'stronger', allyAbility:{type:'befriendVuln', power:0.16, turns:2}},
+
+  {name:'Pyroshell Beast', faction:'Chaos', rarity:'uncommon', hp:70, dmg:18, friend:84, shield:22, maxShield:22, shieldStyle:'ember', shieldBlocksBefriend:true, desc:'Ember shell blocks conversion.', traits:['heatSurge'], allyAbility:{type:'burn', power:9, turns:3}},
+  {name:'Ruin Berserker', faction:'Chaos', rarity:'uncommon', hp:63, dmg:21, friend:76, desc:'Cornered fury opens recruit windows.', traits:['spiteFuel','crackedFaith'], befriendScalingMode:'stronger', allyAbility:{type:'damage', power:16}},
+  {name:'Stormglass Idol', faction:'Chaos', rarity:'elite', hp:126, dmg:25, friend:116, shield:28, maxShield:28, shieldStyle:'storm', shieldBlocksBefriend:true, shieldRegenOnce:true, shieldRegenAmount:14, desc:'Crystalline shield reforms once.', traits:['defiant'], befriendScalingMode:'reduced', allyAbility:{type:'randomDebuff'}},
+  {name:'Cinder Turncloak', faction:'Chaos', rarity:'common', hp:44, dmg:12, friend:58, desc:'Volatile but persuadable when hurt.', traits:['crackedFaith'], befriendScalingMode:'stronger', allyAbility:{type:'randomEffect'}},
+
+  {name:'Formation Defender', faction:'Alliance', rarity:'uncommon', hp:72, dmg:15, friend:88, shield:24, maxShield:24, shieldStyle:'formation', shieldBlocksBefriend:true, desc:'Disciplined shield wall.', traits:['defiant'], befriendScalingMode:'reduced', allyAbility:{type:'shield', power:14}},
+  {name:'Lawbreaker Hunter', faction:'Alliance', rarity:'uncommon', hp:63, dmg:17, friend:78, desc:'Hard to sway early, easier while bloodied.', traits:['defiant','crackedFaith'], allyAbility:{type:'damageVs', power:14, vs:'Renegades', bonus:9}},
+  {name:'Banner Fortress', faction:'Alliance', rarity:'elite', hp:128, dmg:23, friend:118, shield:32, maxShield:32, shieldStyle:'formation', shieldBlocksBefriend:true, shieldRegenOnLowHp:0.3, shieldRegenAmount:16, desc:'Fortress unit that braces at low HP.', traits:['defiant','retaliatory'], befriendScalingMode:'reduced', allyAbility:{type:'allyBoost', power:0.28}},
+  {name:'Compassionate Defector', faction:'Alliance', rarity:'common', hp:48, dmg:10, friend:57, desc:'Break their morale then recruit.', traits:['crackedFaith'], befriendScalingMode:'stronger', allyAbility:{type:'befriend', power:10}},
+
+  {name:'Scrap Plated Raider', faction:'Renegades', rarity:'uncommon', hp:65, dmg:17, friend:80, shield:20, maxShield:20, shieldStyle:'scrap', shieldBlocksBefriend:true, desc:'Stolen plating blocks befriend.', traits:['defectorHunter'], allyAbility:{type:'damage', power:14}},
+  {name:'Mutiny Instigator', faction:'Renegades', rarity:'uncommon', hp:57, dmg:15, friend:72, desc:'Easier to sway once pressured.', traits:['crackedFaith'], befriendScalingMode:'stronger', allyAbility:{type:'befriendVuln', power:0.2, turns:2}},
+  {name:'Sabotage Colossus', faction:'Renegades', rarity:'elite', hp:122, dmg:24, friend:114, shield:30, maxShield:30, shieldStyle:'scrap', shieldBlocksBefriend:true, shieldRegenOnce:true, shieldRegenAmount:12, desc:'Heavy plating with one emergency rebuild.', traits:['defiant'], befriendScalingMode:'reduced', allyAbility:{type:'weaken', power:0.22, turns:2}},
+  {name:'Cornered Smuggler Lord', faction:'Renegades', rarity:'elite', hp:96, dmg:22, friend:96, desc:'Deadly when cornered and more recruitable.', traits:['spiteFuel','crackedFaith'], befriendScalingMode:'stronger', allyAbility:{type:'randomHit', min:10, max:20}},
+
+  {name:'Reflective Mystic', faction:'Neutral', rarity:'uncommon', hp:64, dmg:14, friend:80, shield:18, maxShield:18, shieldStyle:'reflective', shieldBlocksBefriend:true, desc:'Reflective veil blocks conversion.', traits:['adaptiveMind'], allyAbility:{type:'shield', power:12}},
+  {name:'Stonebound Arbiter', faction:'Neutral', rarity:'uncommon', hp:76, dmg:15, friend:88, shield:22, maxShield:22, shieldStyle:'warded', shieldBlocksBefriend:true, desc:'Ancient wards crack under pressure.', traits:['defiant'], befriendScalingMode:'reduced', allyAbility:{type:'regen', power:4, turns:3}},
+  {name:'Wandering Mediator', faction:'Neutral', rarity:'common', hp:46, dmg:9, friend:60, desc:'Often flips sides once hurt.', traits:['crackedFaith'], befriendScalingMode:'stronger', allyAbility:{type:'befriend', power:9}},
+
+  {name:'Paradox Adjudicator', faction:'Neutral', rarity:'legendary', hp:182, dmg:31, friend:162, shield:36, maxShield:36, shieldStyle:'paradox', shieldBlocksBefriend:true, shieldRegenOnLowHp:0.25, shieldRegenAmount:20, desc:'Mixed-faction judge with shifting resolve.', traits:['defiant','adaptiveMind'], befriendScalingMode:'reduced', allyAbility:{type:'randomEffect'}},
+  {name:'Fallen Concord', faction:'Alliance', rarity:'legendary', hp:176, dmg:33, friend:158, shield:34, maxShield:34, shieldStyle:'concord', shieldBlocksBefriend:true, desc:'Broken treaty avatar that can still turn.', traits:['defiant','crackedFaith'], befriendScalingMode:'stronger', allyAbility:{type:'allyBoost', power:0.34}},
 
 ];
 
@@ -1067,6 +1143,45 @@ function befriendMultiplierOnEnemy(enemy){
   return Math.max(0.2,mult);
 }
 
+function getBefriendHealthModifier(enemy){
+  if(!enemy || !enemy.maxHp) return 1;
+  const hpRatio = enemy.hp / enemy.maxHp;
+  let mult = 1;
+  if(hpRatio > 0.75) mult = 0.92;
+  else if(hpRatio > 0.5) mult = 1.14;
+  else if(hpRatio > 0.25) mult = 1.36;
+  else mult = 1.72;
+  if(enemy.befriendScalingMode==='reduced') mult = 1 + (mult-1)*0.55;
+  if(enemy.befriendScalingMode==='stronger') mult = 1 + (mult-1)*1.35;
+  if(enemy.rarity==='elite') mult = 1 + (mult-1)*0.8;
+  if(enemy.rarity==='legendary') mult = 1 + (mult-1)*0.55;
+  if(traitHas(enemy,'defiant')) mult = 1 + (mult-1)*0.45;
+  if(traitHas(enemy,'crackedFaith') && hpRatio<=0.5) mult += 0.28;
+  if(getEffect(enemy,'shatteredResolve')) mult += getEffect(enemy,'shatteredResolve').power;
+  return Math.max(0.6,mult);
+}
+function getBefriendScaling(enemy){
+  const m = getBefriendHealthModifier(enemy);
+  if(m>=1.62) return 'major';
+  if(m>=1.28) return 'strong';
+  if(m>=1.08) return 'modest';
+  return 'normal';
+}
+function calculateBefriendAmount(base, enemy, g){
+  const m = getBefriendHealthModifier(enemy);
+  const out = Math.round(base * m);
+  if(m>1.05) log(`Low HP boosts recruitment (+${Math.round((m-1)*100)}%).`, 'gold');
+  return out;
+}
+function isBefriendBlocked(enemy, bypass=0){
+  return !!(enemy && enemy.shieldBlocksBefriend && (enemy.shield||0) > bypass);
+}
+function ensureEnemyShieldRules(enemy){
+  if(!enemy) return;
+  if(enemy.maxShield===undefined) enemy.maxShield = enemy.shield||0;
+  if(enemy.shieldBlocksBefriend===undefined) enemy.shieldBlocksBefriend = (enemy.maxShield||0) > 0;
+}
+
 // ---------- Core combat ----------
 function dealDamage(g, enemy, amount, source='Damage', faction='Neutral', showVfx=true){
   if(!enemy || enemy.hp<=0) return 0;
@@ -1083,10 +1198,17 @@ function dealDamage(g, enemy, amount, source='Damage', faction='Neutral', showVf
   if(combo.tags?.length) log(`Combo: ${combo.tags.join(', ')} boosts ${source}.`, 'gold');
   if(getEffect(enemy,'guarded')) dmg = Math.round(dmg*(1-getEffect(enemy,'guarded').power));
   if(enemy.shield && enemy.shield > 0){
+    const beforeShield = enemy.shield;
     const absorbed = Math.min(enemy.shield, dmg);
     enemy.shield -= absorbed;
     dmg -= absorbed;
     if(absorbed>0) log(`${enemy.name}'s shield absorbs ${absorbed}.`, 'bad');
+    if(beforeShield>0 && enemy.shield<=0){
+      addEffect(enemy,'shatteredResolve',2,0.22);
+      log('Shield broken! Shattered Resolve: Befriend increased!', 'gold');
+      impactEnemyFlash('#9dc8ff');
+      flashEl('enemyCard');
+    }
   }
   enemy.hp = Math.max(0, enemy.hp - dmg);
   g.flags.lastResisted = dmg <= Math.max(1, Math.round(amount*0.7));
@@ -1102,9 +1224,17 @@ function dealDamage(g, enemy, amount, source='Damage', faction='Neutral', showVf
 }
 function addBefriend(g, enemy, amount, source='Befriend', faction='Light', showVfx=true){
   if(!enemy || enemy.hp<=0) return 0;
+  ensureEnemyShieldRules(enemy);
   const currentSpell = g.flags.currentSpellId ? SPELL_DEFS[g.flags.currentSpellId] : null;
+  const bypass = currentSpell?.data?.shieldBypass || 0;
+  if(isBefriendBlocked(enemy, bypass)){
+    if(showVfx) impactEnemyFlash('#8dbfff');
+    log('Shield blocks befriending!', 'bad');
+    return 0;
+  }
   const combo = currentSpell ? getComboBonuses(currentSpell, enemy, g) : {befriend:1,tags:[]};
   let val = Math.round(amount * befriendMultiplierOnEnemy(enemy) * combo.befriend * devotionBonus('befriend', faction, g));
+  val = calculateBefriendAmount(val, enemy, g);
   val = Math.round(val * factionAdvantageMult(faction, enemy.faction));
   if(faction===enemy.faction) val = Math.round(val*1.28);
   if(traitHas(enemy,'ironWill')) val = Math.round(val*0.74);
@@ -1114,9 +1244,11 @@ function addBefriend(g, enemy, amount, source='Befriend', faction='Light', showV
   if(traitHas(enemy,'adaptiveMind') && g.flags.lastSpellType==='befriend') val = Math.round(val*0.72);
   if(combo.tags?.length) log(`Combo: ${combo.tags.join(', ')} empowers ${source}.`, 'gold');
   if(enemy.resistBefriendBonus) val = Math.round(val*(1-enemy.resistBefriendBonus));
-  enemy.befriend = Math.min(enemy.maxBefriend, enemy.befriend + val);
+  enemy.befriend = Math.min(enemy.maxBefriend, enemy.befriend + Math.max(1,val));
   if(showVfx) projectilePlayerToEnemy(factionColors[faction] || '#fff');
-  log(`${source} adds ${val} befriending progress to ${enemy.name}.`, 'good');
+  const scale = getBefriendScaling(enemy);
+  if(scale==='strong' || scale==='major') log(`${enemy.name} is wavering! Conversion window opening.`, 'gold');
+  log(`${source} adds ${Math.max(1,val)} befriending progress to ${enemy.name}.`, 'good');
   consumeComboStateIfNeeded(currentSpell||{type:'befriend'}, enemy);
   return val;
 }
@@ -1234,6 +1366,7 @@ function resolveSpell(spellId){
   if(game.currentEnemy.hp<=0){ endEnemy('kill_dot'); return; }
 
   SPELL_DEFS[spellId].use(game, s, game.currentEnemy);
+  processEnemyShieldTriggers(game.currentEnemy);
   const devotion = getDevotion(game);
   if(devotion.tier>=3 && devotion.faction===SPELL_DEFS[spellId].faction){
     log(`${devotion.faction} devotion tier ${devotion.tier} empowers ${SPELL_DEFS[spellId].name}.`, 'gold');
@@ -1303,9 +1436,31 @@ function resolveEnemyMove(move,e){
     }
   }
 }
+
+function processEnemyShieldTriggers(e){
+  if(!e) return;
+  ensureEnemyShieldRules(e);
+  const hpRatio = e.hp / e.maxHp;
+  if(e.shieldRegenOnLowHp && !e.shieldRegenUsed && hpRatio<=e.shieldRegenOnLowHp){
+    const amt = e.shieldRegenAmount || Math.round((e.maxShield||12)*0.7);
+    e.shield += amt;
+    e.maxShield = Math.max(e.maxShield||0, e.shield);
+    e.shieldRegenUsed = true;
+    log(`${e.name} rebuilds a ${e.shieldStyle||'shield'} barrier!`, 'bad');
+  }
+  if(e.shieldRegenOnce && !e.shieldRegenUsed && (e.shield||0)<=0){
+    const amt = e.shieldRegenAmount || Math.round((e.maxShield||10)*0.6);
+    e.shield = amt;
+    e.maxShield = Math.max(e.maxShield||0, amt);
+    e.shieldRegenUsed = true;
+    log(`${e.name} regains shield once!`, 'bad');
+  }
+}
+
 function enemyTurn(){
   const e = game.currentEnemy;
   if(!e || e.hp<=0) return;
+  processEnemyShieldTriggers(e);
 
   if(getEffect(e,'stun')){
     log(`${e.name} is stunned and loses its turn.`, 'good');
@@ -1544,7 +1699,11 @@ function spawnEnemy(){
   chosen.damage = Math.round(chosen.dmg * (1 + (game.player.level-1)*0.055 + game.enemiesSeen*0.014 + allyPressure + (rarity==='legendary'?0.14:0)));
   chosen.maxBefriend = Math.round(chosen.friend * (1 + (game.player.level-1)*0.05 + game.enemiesSeen*0.016 + allyPressure*0.65 + (rarity==='legendary'?0.1:0)));
   chosen.befriend = 0;
-  chosen.shield = 0;
+  chosen.shield = chosen.shield || 0;
+  chosen.maxShield = chosen.maxShield ?? chosen.shield;
+  chosen.shieldStyle = chosen.shieldStyle || 'standard';
+  chosen.shieldBlocksBefriend = chosen.shieldBlocksBefriend ?? (chosen.maxShield>0);
+  chosen.shieldRegenUsed = false;
   chosen.effects = {};
   chosen.resistBefriendBonus = 0;
   const traitPool = Object.keys(TRAIT_DEFS);
@@ -1847,7 +2006,11 @@ function renderEnemy(){
     el.innerHTML = `<div class="name">No current enemy</div><div class="sub">Proceed to the next enemy.</div>`;
     return;
   }
-  el.className = 'enemy-card' + (e.rarity==='legendary' ? ' legendary' : '');
+  ensureEnemyShieldRules(e);
+  const healthScale = getBefriendScaling(e);
+  const inWindow = healthScale==='strong' || healthScale==='major';
+  const blocked = isBefriendBlocked(e);
+  el.className = 'enemy-card' + (e.rarity==='legendary' ? ' legendary' : '') + ((e.shield||0)>0 ? ' shielded' : '') + (inWindow ? ' wavering conversion-window' : '');
   el.style.borderColor = factionColors[e.faction];
   el.innerHTML = `
     <div class="name-row">
@@ -1858,10 +2021,14 @@ function renderEnemy(){
       <div class="tags">
         <span class="tag" style="border-color:${factionColors[e.faction]}">${e.desc}</span>
         ${(e.traits||[]).map(t=>`<span class="tag" title="${TRAIT_DEFS[t]?.desc||''}">${TRAIT_DEFS[t]?.name||t}</span>`).join('')}
+        ${blocked?'<span class="state-label blocked">🛡️ Befriend Blocked</span>':''}
+        ${inWindow?'<span class="state-label window">💘 Conversion Window</span>':''}
+        ${(healthScale==='modest' && !inWindow)?'<span class="state-label low">Wavering</span>':''}
         ${getComboReadyTags(e).map(t=>`<span class="tag" style="border-color:#ffd36b">${t}</span>`).join('')}
       </div>
     </div>
     <div class="bars">
+      ${(e.maxShield||0)>0 ? `<div class="bar-wrap"><div class="bar-label"><span>Shield</span><span>${e.shield||0}/${e.maxShield||0}</span></div><div class="bar"><div class="fill shield" style="width:${pct(e.shield||0,e.maxShield||1)}%"></div></div></div>`:''}
       <div class="bar-wrap">
         <div class="bar-label"><span>Health</span><span>${e.hp}/${e.maxHp}</span></div>
         <div class="bar"><div class="fill hp" style="width:${pct(e.hp,e.maxHp)}%"></div></div>
