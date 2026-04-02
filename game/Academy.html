@@ -380,7 +380,7 @@
         <div class="pool-list" id="poolGrid"></div>
       </div>
       <div>
-        <h3>Active Spells (max 6)</h3>
+        <h3>Active Spell Slots (6 specialized)</h3>
         <div class="pool-list" id="activeGrid"></div>
       </div>
     </div>
@@ -429,6 +429,15 @@ const FACTION_COUNTERS = {
 const FACTION_SYNERGY_BOOST = 0.18;
 const MAX_ACTIVE_ALLIES = 10;
 const MAX_ACTIVE_SPELLS = 6;
+const SPELL_ROLE_SLOTS = [
+  {id:'damage1', label:'Damage 1', role:'damage'},
+  {id:'damage2', label:'Damage 2', role:'damage'},
+  {id:'befriend', label:'Befriend', role:'befriend'},
+  {id:'setup', label:'Setup / Control', role:'setup'},
+  {id:'defense', label:'Defense / Heal', role:'defense'},
+  {id:'wild', label:'Wild', role:'wild'}
+];
+const DEVOTION_TIERS = [0,2,3,4,5,6];
 
 function deepClone(v){ return JSON.parse(JSON.stringify(v)); }
 function rand(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
@@ -479,6 +488,81 @@ function factionAdvantageMult(attackerFaction, defenderFaction){
 function getFactionSynergyForAlly(ally, g=game){
   const pf = getPlayerFaction(g);
   return pf !== 'Neutral' && ally.faction===pf ? FACTION_SYNERGY_BOOST : 0;
+}
+
+function roleFromType(type){
+  if(['damage','burn','poison'].includes(type)) return ['damage'];
+  if(['befriend'].includes(type)) return ['befriend'];
+  if(['setup','control'].includes(type)) return ['setup'];
+  if(['heal','defense','shield'].includes(type)) return ['defense'];
+  if(['stance','support','hybrid'].includes(type)) return ['setup','defense'];
+  return ['wild'];
+}
+function spellSlotTypes(id){
+  const d = SPELL_DEFS[id];
+  if(!d) return ['wild'];
+  if(d.slotTypes) return d.slotTypes;
+  const inferred = roleFromType(d.type);
+  if(d.type==='hybrid') return ['damage','befriend','wild'];
+  if(d.type==='support') return ['setup','defense','wild'];
+  return [...new Set([...inferred,'wild'])];
+}
+function getActiveFactionCounts(g=game){
+  const counts = {};
+  g.activeSpellIds.forEach(id=>{
+    const f = SPELL_DEFS[id]?.faction || 'Neutral';
+    counts[f] = (counts[f]||0) + 1;
+  });
+  return counts;
+}
+function getDevotion(g=game){
+  const counts = getActiveFactionCounts(g);
+  let faction='Neutral', count=0;
+  for(const [f,c] of Object.entries(counts)){
+    if(c>count){ faction=f; count=c; }
+  }
+  const tier = count>=6?6:count>=5?5:count>=4?4:count>=3?3:count>=2?2:0;
+  return {faction, count, tier};
+}
+function devotionBonus(kind,faction,g=game){
+  const d = getDevotion(g);
+  if(d.faction!==faction || d.tier<2) return 1;
+  const table = {
+    damage:{2:1.06,3:1.14,4:1.22,5:1.32,6:1.42},
+    befriend:{2:1.08,3:1.16,4:1.26,5:1.38,6:1.52},
+    heal:{2:1.08,3:1.15,4:1.24,5:1.34,6:1.45},
+    control:{2:1.05,3:1.12,4:1.2,5:1.28,6:1.38},
+    shield:{2:1.08,3:1.15,4:1.25,5:1.35,6:1.48}
+  };
+  return (table[kind]&&table[kind][d.tier]) || 1;
+}
+function getComboBonuses(spell, enemy, g=game){
+  const eff = enemy.effects||{};
+  const tags=[]; let damage=1, befriend=1, status=1, burn=1;
+  if(eff.softened && spell.type==='befriend'){ befriend*=1.45; tags.push('Softened Conversion'); }
+  if(eff.scorched && ['damage','burn','poison','hybrid'].includes(spell.type)){ damage*=1.35; tags.push('Scorched Burst'); }
+  if(eff.exposed && ['damage','hybrid'].includes(spell.type)){ damage*=1.28; tags.push('Exposed Crit'); }
+  if(eff.hushed && ['control','setup'].includes(spell.type)){ status*=1.65; tags.push('Hushed Control'); }
+  if(eff.hushed && spell.type==='befriend'){ befriend*=1.2; tags.push('Hushed Appeal'); }
+  if(eff.shaken && ['damage','burn'].includes(spell.type) && (eff.weaken||eff.hushed)){ damage*=1.22; tags.push('Shaken Break'); }
+  if(eff.poison && eff.burn && ['Chaos','Dark','Renegades'].includes(spell.faction)){ damage*=1.3; tags.push('Volatile Suffering'); }
+  if(eff.softened && eff.hushed && spell.type==='befriend'){ befriend*=1.35; tags.push('Conversion Window'); }
+  return {damage,befriend,status,burn,tags};
+}
+function consumeComboStateIfNeeded(spell, enemy){
+  const eff = enemy.effects||{};
+  if(spell.type==='befriend' && eff.softened){ eff.softened.turns = Math.max(0, eff.softened.turns-1); }
+  if(['damage','burn','hybrid'].includes(spell.type) && eff.exposed){ delete eff.exposed; }
+}
+function getComboReadyTags(enemy){
+  const e=enemy.effects||{}; const out=[];
+  if(e.softened) out.push('Befriend Combo Ready');
+  if(e.scorched) out.push('Damage Combo Ready');
+  if(e.exposed) out.push('Crit Combo Ready');
+  if(e.hushed) out.push('Control Combo Ready');
+  if(e.poison&&e.burn) out.push('Volatile Suffering');
+  if(e.softened&&e.hushed) out.push('Conversion Window');
+  return out;
 }
 
 const SPELL_DEFS = {
@@ -555,7 +639,32 @@ const SPELL_DEFS = {
   saintsPlea:{name:'Saint\'s Plea', type:'befriend', faction:'Light', rarity:'uncommon', baseCasts:2, scaling:{power:4,bonus:3}, data:{power:20,bonus:12}, desc:'Stronger vs Light, Neutral, Alliance.', color:'#fff2bb', use(g,s,e){ const bonus=(['Light','Neutral','Alliance'].includes(e.faction))?scaledStat(s,'bonus'):0; addBefriend(g,e,scaledStat(s,'power')+bonus,'Saint\'s Plea','Light'); }},
   ashWake:{name:'Ash Wake', type:'burn', faction:'Chaos', rarity:'uncommon', baseCasts:2, scaling:{power:3,dot:2}, data:{power:12,dot:10,turns:3}, desc:'Burn-heavy chaos blast.', color:'#ff9f6b', use(g,s,e){ dealDamage(g,e,scaledStat(s,'power'),'Ash Wake','Chaos'); addEffect(e,'burn',scaledStat(s,'turns'),scaledStat(s,'dot')); }},
   peaceBond:{name:'Peace Bond', type:'support', faction:'Light', rarity:'uncommon', baseCasts:2, scaling:{heal:4,befriend:3}, data:{heal:14,befriend:10}, desc:'Heal yourself and push befriending.', color:'#fff0af', use(g,s,e){ healPlayer(g,scaledStat(s,'heal'),'Peace Bond','Light'); addBefriend(g,e,scaledStat(s,'befriend'),'Peace Bond','Light'); }},
-  bloodMoonDebt:{name:'Blood Moon Debt', type:'damage', faction:'Dark', rarity:'legendary', baseCasts:2, scaling:{power:6}, data:{power:34,selfCost:8}, desc:'Large damage at a smaller health cost.', color:'#d291ff', use(g,s,e){ dealDamage(g,e,scaledStat(s,'power'),'Blood Moon Debt','Dark'); hurtPlayer(g,scaledStat(s,'selfCost'),'Blood Moon Debt backlash','#d291ff'); }}
+  bloodMoonDebt:{name:'Blood Moon Debt', type:'damage', faction:'Dark', rarity:'legendary', baseCasts:2, scaling:{power:6}, data:{power:34,selfCost:8}, desc:'Large damage at a smaller health cost.', color:'#d291ff', use(g,s,e){ dealDamage(g,e,scaledStat(s,'power'),'Blood Moon Debt','Dark'); hurtPlayer(g,scaledStat(s,'selfCost'),'Blood Moon Debt backlash','#d291ff'); }},
+  cinderRupture:{name:'Cinder Rupture', type:'damage', faction:'Chaos', rarity:'uncommon', baseCasts:2, slotTypes:['damage','wild'], scaling:{power:5}, data:{power:22}, desc:'Consumes scorch for burst.', color:'#ff8b5f', use(g,s,e){ const bonus=getEffect(e,'scorched')?16:0; dealDamage(g,e,scaledStat(s,'power')+bonus,'Cinder Rupture','Chaos'); if(getEffect(e,'scorched')) delete e.effects.scorched; }},
+  verdictBreaker:{name:'Verdict Breaker', type:'damage', faction:'Renegades', rarity:'uncommon', baseCasts:2, scaling:{power:4}, data:{power:18}, desc:'Stronger if last action was resisted.', color:'#8ef5b4', use(g,s,e){ const b=game.flags.lastResisted?12:0; dealDamage(g,e,scaledStat(s,'power')+b,'Verdict Breaker','Renegades'); }},
+  fractureShot:{name:'Fracture Shot', type:'damage', faction:'Alliance', rarity:'uncommon', baseCasts:2, scaling:{power:4}, data:{power:16,shield:10}, desc:'Bonus vs shielded targets.', color:'#9fd3ff', use(g,s,e){ const b=(e.shield||0)>0?scaledStat(s,'shield'):0; dealDamage(g,e,scaledStat(s,'power')+b,'Fracture Shot','Alliance'); }},
+  duskExecution:{name:'Dusk Execution', type:'damage', faction:'Dark', rarity:'uncommon', baseCasts:2, scaling:{power:4}, data:{power:18,bonus:10}, desc:'Bonus vs weakened targets.', color:'#c59bff', use(g,s,e){ const b=getEffect(e,'weaken')?scaledStat(s,'bonus'):0; dealDamage(g,e,scaledStat(s,'power')+b,'Dusk Execution','Dark'); }},
+  rivalPierce:{name:'Rival Pierce', type:'damage', faction:'Neutral', rarity:'uncommon', baseCasts:2, scaling:{power:4}, data:{power:17}, desc:'Ignores faction resist penalties.', color:'#dae3f6', use(g,s,e){ dealDamage(g,e,scaledStat(s,'power'),'Rival Pierce','Neutral'); }},
+  radiantAmnesty:{name:'Radiant Amnesty', type:'befriend', faction:'Light', rarity:'uncommon', baseCasts:2, scaling:{power:5}, data:{power:20}, desc:'Huge vs softened.', color:'#fff3a3', use(g,s,e){ addBefriend(g,e,scaledStat(s,'power'),'Radiant Amnesty','Light'); }},
+  dreadParley:{name:'Dread Parley', type:'befriend', faction:'Dark', rarity:'uncommon', baseCasts:2, scaling:{power:4}, data:{power:18,bonus:12}, desc:'Convert through fear.', color:'#cf9fff', use(g,s,e){ const b=getEffect(e,'hushed')?scaledStat(s,'bonus'):0; addBefriend(g,e,scaledStat(s,'power')+b,'Dread Parley','Dark'); }},
+  revoltChant:{name:'Revolt Chant', type:'befriend', faction:'Renegades', rarity:'uncommon', baseCasts:2, scaling:{power:4}, data:{power:16,bonus:4}, desc:'Scales with enemy debuffs.', color:'#95ffb8', use(g,s,e){ const c=Object.keys(e.effects||{}).length; addBefriend(g,e,scaledStat(s,'power')+c*scaledStat(s,'bonus'),'Revolt Chant','Renegades'); }},
+  civicPardon:{name:'Civic Pardon', type:'befriend', faction:'Alliance', rarity:'uncommon', baseCasts:2, scaling:{power:4}, data:{power:17,bonus:10}, desc:'Stronger on hushed.', color:'#9fd5ff', use(g,s,e){ const b=getEffect(e,'hushed')?scaledStat(s,'bonus'):0; addBefriend(g,e,scaledStat(s,'power')+b,'Civic Pardon','Alliance'); }},
+  adaptiveAppeal:{name:'Adaptive Appeal', type:'befriend', faction:'Neutral', rarity:'uncommon', baseCasts:2, scaling:{power:4,bonus:3}, data:{power:15,bonus:8}, desc:'Adapts to faction matchup.', color:'#dce4f7', use(g,s,e){ const mult=factionAdvantageMult('Neutral',e.faction)>1?scaledStat(s,'bonus'):0; addBefriend(g,e,scaledStat(s,'power')+mult,'Adaptive Appeal','Neutral'); }},
+  hushExpose:{name:'Hush + Expose', type:'setup', faction:'Alliance', rarity:'uncommon', baseCasts:2, scaling:{power:.03}, data:{power:0.16,turns:2}, desc:'Applies hushed and exposed.', color:'#9fcfff', use(g,s,e){ addEffect(e,'hushed',scaledStat(s,'turns'),scaledStat(s,'power')); addEffect(e,'exposed',scaledStat(s,'turns'),scaledStat(s,'power')); }},
+  traitLens:{name:'Trait Lens', type:'setup', faction:'Neutral', rarity:'common', baseCasts:2, scaling:{power:.02}, data:{power:0.1,turns:2}, desc:'Reveal and crack resist profile.', color:'#d0ddf8', use(g,s,e){ addEffect(e,'exposed',2,scaledStat(s,'power')); log(`${e.name} traits revealed: ${traitTags(e).join(', ')||'None'}.`,'gold'); }},
+  immunityCrack:{name:'Immunity Crack', type:'control', faction:'Dark', rarity:'uncommon', baseCasts:2, scaling:{power:.02}, data:{power:0.1,turns:2}, desc:'Reduces trait resistance briefly.', color:'#c095ff', use(g,s,e){ addEffect(e,'hushed',2,scaledStat(s,'power')); e.traitBreach=2; log(`${e.name}'s immunities are pressured.`, 'gold'); }},
+  formationBreach:{name:'Formation Breach', type:'setup', faction:'Renegades', rarity:'uncommon', baseCasts:2, scaling:{power:.03}, data:{power:0.18,turns:2}, desc:'Anti-guard setup.', color:'#95ffba', use(g,s,e){ addEffect(e,'exposed',2,scaledStat(s,'power')); addEffect(e,'softened',2,0.18); e.shield=Math.max(0,(e.shield||0)-8); }},
+  devotionBind:{name:'Devotion Bind', type:'control', faction:'Light', rarity:'legendary', baseCasts:2, scaling:{chance:.03}, data:{chance:0.18}, desc:'Control rises with devotion tier.', color:'#ffef9a', use(g,s,e){ const chance=scaledStat(s,'chance') + getDevotion(game).tier*0.08; tryStatus(g,e,'stun',chance,'Devotion Bind'); }},
+  reflectiveWard:{name:'Reflective Ward', type:'defense', faction:'Alliance', rarity:'uncommon', baseCasts:2, scaling:{shield:4}, data:{shield:16}, desc:'Shield scales with devotion.', color:'#9aceff', use(g,s,e){ const sh=Math.round(scaledStat(s,'shield')*devotionBonus('shield','Alliance',g)); g.player.shield+=sh; if(e) dealDamage(g,e,Math.round(sh*0.3),'Reflective Ward','Alliance'); }},
+  chorusRemedy:{name:'Chorus Remedy', type:'heal', faction:'Light', rarity:'uncommon', baseCasts:2, scaling:{power:4}, data:{power:16}, desc:'Heal scales with active Light allies.', color:'#fff2ac', use(g,s){ const c=g.activeAllies.filter(a=>a.faction==='Light').length; healPlayer(g,scaledStat(s,'power')+c*4,'Chorus Remedy','Light'); }},
+  antiAdaptiveStance:{name:'Anti-Adaptive Stance', type:'defense', faction:'Neutral', rarity:'uncommon', baseCasts:2, scaling:{shield:3}, data:{shield:12,turns:2}, desc:'Helps against adaptive enemies.', color:'#d9e2f6', use(g,s){ g.player.shield+=scaledStat(s,'shield'); addEffect(g.player,'regen',scaledStat(s,'turns'),3); }},
+  absolutionCleanse:{name:'Absolution Cleanse', type:'heal', faction:'Light', rarity:'uncommon', baseCasts:2, scaling:{power:3}, data:{power:12}, desc:'Cleanse and setup conversion.', color:'#fff4b8', use(g,s,e){ healPlayer(g,scaledStat(s,'power'),'Absolution Cleanse','Light'); cleansePlayer(g,2); if(e) addEffect(e,'softened',2,0.2); }},
+  bulwarkDoctrine:{name:'Bulwark Doctrine', type:'defense', faction:'Alliance', rarity:'uncommon', baseCasts:2, scaling:{shield:4}, data:{shield:15}, desc:'Formation ward.', color:'#95ceff', use(g,s){ g.player.shield+=scaledStat(s,'shield'); g.flags.allyBoost += 0.12; }},
+  lineupSignal:{name:'Lineup Signal', type:'support', faction:'Neutral', rarity:'uncommon', baseCasts:2, scaling:{boost:.04}, data:{boost:0.2}, desc:'Amplifies lineup synergies this turn.', color:'#dce5fa', use(g,s){ g.flags.lineupBoost=(g.flags.lineupBoost||0)+scaledStat(s,'boost'); }},
+  relayDoctrine:{name:'Relay Doctrine', type:'support', faction:'Alliance', rarity:'legendary', baseCasts:1, scaling:{boost:.06}, data:{boost:0.3}, desc:'Chance to repeat ally actions.', color:'#91cbff', use(g,s){ g.flags.doubleAllies=true; g.flags.allyBoost += scaledStat(s,'boost'); }},
+  battleDoctrine:{name:'Battle Doctrine', type:'hybrid', faction:'Neutral', rarity:'legendary', baseCasts:2, scaling:{power:4}, data:{power:14}, desc:'Changes with devotion tier.', color:'#d0daf0', use(g,s,e){ const t=getDevotion(g).tier; dealDamage(g,e,scaledStat(s,'power')+t*4,'Battle Doctrine','Neutral'); addBefriend(g,e,scaledStat(s,'power')+t*3,'Battle Doctrine','Neutral'); }},
+  wildAxiom:{name:'Wild Axiom', type:'hybrid', faction:'Neutral', rarity:'legendary', baseCasts:2, scaling:{power:5}, data:{power:20}, desc:'Wild-slot signature.', color:'#ced8f1', use(g,s,e){ addEffect(e,'hushed',2,0.18); addEffect(e,'exposed',2,0.18); dealDamage(g,e,scaledStat(s,'power'),'Wild Axiom','Neutral'); }},
+  twinCataclysm:{name:'Twin Cataclysm', type:'hybrid', faction:'Chaos', rarity:'legendary', baseCasts:1, scaling:{power:6}, data:{power:24}, desc:'Interacts with poison and burn.', color:'#ff8f67', use(g,s,e){ if(getEffect(e,'poison')||getEffect(e,'burn')) dealDamage(g,e,scaledStat(s,'power')+20,'Twin Cataclysm','Chaos'); else dealDamage(g,e,scaledStat(s,'power'),'Twin Cataclysm','Chaos'); addEffect(e,'burn',3,10); }}
 };
 
 function makeSpell(id){
@@ -567,6 +676,38 @@ function scaledStat(spell,key){
   const base = def.data[key];
   const per = (def.scaling && def.scaling[key]) || 0;
   return typeof base === 'number' ? +(base + per*(spell.level-1)).toFixed(4) : base;
+}
+
+const TRAIT_DEFS = {
+  thickHide:{name:'Thick Hide', desc:'Reduced direct damage.', damageMult:0.82},
+  ironWill:{name:'Iron Will', desc:'Reduced befriend progress.', befriendMult:0.74},
+  arcWard:{name:'Arc Ward', desc:'Reduced control reliability.', controlMult:0.75},
+  emberproof:{name:'Emberproof', desc:'Burn/scorch effects resist.', immune:['burn','scorched']},
+  venomproof:{name:'Venomproof', desc:'Poison immune.', immune:['poison']},
+  steadfast:{name:'Steadfast', desc:'Stun/paralyze resistant.', immune:['stun','paralyze']},
+  faithLocked:{name:'Faith Locked', desc:'Light befriending reduced.', factionBefriendResist:{Light:0.55}},
+  chaosHardened:{name:'Chaos Hardened', desc:'Chaos damage reduced.', factionDamageResist:{Chaos:0.75}},
+  defectorHunter:{name:'Defector-Hunter', desc:'Renegade befriending reduced.', factionBefriendResist:{Renegades:0.58}},
+  brittleShell:{name:'Brittle Shell', desc:'Extra damage while exposed.', needs:'exposed', damageMultWhenExposed:1.25},
+  suggestible:{name:'Suggestible', desc:'More befriend while hushed.', needs:'hushed', befriendMultWhenHushed:1.3},
+  dryKindling:{name:'Dry Kindling', desc:'Takes stronger burn.', burnTaken:1.45},
+  panicSpiral:{name:'Panic Spiral', desc:'Weakened takes more follow-up.', needs:'weaken', damageMultWhenWeaken:1.2},
+  retaliatory:{name:'Retaliatory', desc:'Repeated type grants shield.', reactive:'retaliatory'},
+  adaptiveMind:{name:'Adaptive Mind', desc:'Repeated befriending weakens.', reactive:'adaptiveMind'},
+  heatSurge:{name:'Heat Surge', desc:'Burned gains next attack power.', reactive:'heatSurge'},
+  spiteFuel:{name:'Spite Fuel', desc:'Near recruit gains damage.', reactive:'spiteFuel'},
+  lastStand:{name:'Last Stand', desc:'Low HP gains temporary resist.', reactive:'lastStand'}
+};
+
+function traitTags(enemy){
+  return (enemy.traits||[]).map(t=>TRAIT_DEFS[t]?.name||t);
+}
+function traitHas(enemy,key){ return (enemy.traits||[]).includes(key); }
+function statusImmuneByTraits(enemy,status){
+  for(const t of enemy.traits||[]){
+    if((TRAIT_DEFS[t]?.immune||[]).includes(status)) return TRAIT_DEFS[t].name;
+  }
+  return '';
 }
 
 const BASE_ENEMIES = [
@@ -681,7 +822,33 @@ const BASE_ENEMIES = [
   {name:'Silver Doe Spirit', faction:'Neutral', rarity:'common', hp:32, dmg:8, friend:41, emoji:'🦌', desc:'A fleeting woodland grace.', allyAbility:{type:'befriend', power:8, text:'calms the enemy'}},
   {name:'Waystone Keeper', faction:'Neutral', rarity:'uncommon', hp:63, dmg:13, friend:72, emoji:'🪨', desc:'Guardian of old paths.', allyAbility:{type:'shield', power:12, text:'protects you'}},
   {name:'Clockmaker Ghost', faction:'Neutral', rarity:'uncommon', hp:58, dmg:14, friend:74, emoji:'🕰️', desc:'Still winding after death.', allyAbility:{type:'damage', power:13, text:'fires a ticking blast'}},
-  {name:'Moon Elk Ancient', faction:'Neutral', rarity:'elite', hp:122, dmg:22, friend:108, emoji:'🦌', desc:'A wandering ancient spirit.', allyAbility:{type:'regen', power:5, turns:3, text:'wraps you in restoration'}}
+  {name:'Moon Elk Ancient', faction:'Neutral', rarity:'elite', hp:122, dmg:22, friend:108, emoji:'🦌', desc:'A wandering ancient spirit.', allyAbility:{type:'regen', power:5, turns:3, text:'wraps you in restoration'}},
+  {name:'Lumen Inquisitor', faction:'Light', rarity:'uncommon', hp:62, dmg:14, friend:80, emoji:'🕯️', desc:'Anti-curse sentinel.', traits:['arcWard'], allyAbility:{type:'shield', power:12}},
+  {name:'Choir Bastion', faction:'Light', rarity:'elite', hp:118, dmg:20, friend:104, emoji:'🎚️', desc:'Shielded choir unit.', traits:['defectorHunter'], allyAbility:{type:'befriend', power:14}},
+  {name:'Mercy Rector', faction:'Light', rarity:'uncommon', hp:56, dmg:12, friend:78, emoji:'📿', desc:'Grows unless hushed.', traits:['suggestible'], allyAbility:{type:'heal', power:12}},
+  {name:'Sun Trial Judge', faction:'Light', rarity:'legendary', hp:166, dmg:30, friend:145, emoji:'⚖️', desc:'Lawful radiant judge.', traits:['ironWill','faithLocked'], allyAbility:{type:'allyBoost', power:0.36}},
+  {name:'Mute Horror', faction:'Dark', rarity:'uncommon', hp:64, dmg:16, friend:82, emoji:'👁️', desc:'Stun immune, weak to scorch.', traits:['steadfast','dryKindling'], allyAbility:{type:'damage', power:15}},
+  {name:'Plague Lord', faction:'Dark', rarity:'elite', hp:122, dmg:22, friend:110, emoji:'☣️', desc:'Punishes long fights.', traits:['venomproof','spiteFuel'], allyAbility:{type:'poison', power:11, turns:4}},
+  {name:'Night Executioner', faction:'Dark', rarity:'uncommon', hp:52, dmg:19, friend:76, emoji:'🪓', desc:'High wounded-target pressure.', traits:['panicSpiral'], allyAbility:{type:'damage', power:16}},
+  {name:'Void Bell Tyrant', faction:'Dark', rarity:'legendary', hp:170, dmg:32, friend:148, emoji:'🔔', desc:'Immune hush tyrant.', traits:['arcWard','lastStand'], allyAbility:{type:'paralyze', chance:0.28}},
+  {name:'Emberproof Maw', faction:'Chaos', rarity:'uncommon', hp:60, dmg:16, friend:70, emoji:'🐲', desc:'Scorch immune beast.', traits:['emberproof'], allyAbility:{type:'damage', power:14}},
+  {name:'Unstable Arcanist', faction:'Chaos', rarity:'elite', hp:110, dmg:24, friend:100, emoji:'🧨', desc:'Explodes on status stacks.', traits:['retaliatory'], allyAbility:{type:'randomEffect'}},
+  {name:'Burn Zealot', faction:'Chaos', rarity:'uncommon', hp:58, dmg:15, friend:74, emoji:'🔥', desc:'Amplifies burn lines.', traits:['heatSurge','dryKindling'], allyAbility:{type:'burn', power:10, turns:3}},
+  {name:'Rift Colossus', faction:'Chaos', rarity:'legendary', hp:176, dmg:34, friend:152, emoji:'🪐', desc:'Heavy anti-control titan.', traits:['arcWard','thickHide'], allyAbility:{type:'damage', power:20}},
+  {name:'Guard Captain', faction:'Alliance', rarity:'uncommon', hp:70, dmg:15, friend:78, emoji:'🛡️', desc:'Gains shield on repetition.', traits:['retaliatory'], allyAbility:{type:'shield', power:13}},
+  {name:'Order Marshal', faction:'Alliance', rarity:'elite', hp:124, dmg:23, friend:108, emoji:'📯', desc:'Boosts formation logic.', traits:['adaptiveMind'], allyAbility:{type:'allyBoost', power:0.27}},
+  {name:'Lawful Pursuer', faction:'Alliance', rarity:'uncommon', hp:68, dmg:17, friend:82, emoji:'🧷', desc:'Punishes befriend spam.', traits:['adaptiveMind','ironWill'], allyAbility:{type:'damageVs', power:13, vs:'Renegades', bonus:11}},
+  {name:'Iron Compact', faction:'Alliance', rarity:'legendary', hp:172, dmg:31, friend:150, emoji:'🏛️', desc:'Unbreakable pact engine.', traits:['thickHide','steadfast'], allyAbility:{type:'shield', power:18}},
+  {name:'Shieldbreaker Saboteur', faction:'Renegades', rarity:'uncommon', hp:57, dmg:16, friend:72, emoji:'🪓', desc:'Reduces shield value.', traits:['defectorHunter'], allyAbility:{type:'weaken', power:0.2, turns:2}},
+  {name:'Street Agitator', faction:'Renegades', rarity:'common', hp:40, dmg:10, friend:48, emoji:'📣', desc:'Very recruitable after soften.', traits:['suggestible'], allyAbility:{type:'befriendVuln', power:0.22, turns:2}},
+  {name:'Anarch Duelist', faction:'Renegades', rarity:'elite', hp:108, dmg:25, friend:102, emoji:'🗡️', desc:'Punishes repeated damage type.', traits:['retaliatory','panicSpiral'], allyAbility:{type:'damage', power:17}},
+  {name:'Revolt Broker', faction:'Renegades', rarity:'legendary', hp:160, dmg:30, friend:146, emoji:'🃏', desc:'Master of turncoats.', traits:['adaptiveMind','spiteFuel'], allyAbility:{type:'befriend', power:20}},
+  {name:'Mirror Duelist', faction:'Neutral', rarity:'uncommon', hp:62, dmg:14, friend:74, emoji:'🪞', desc:'Adaptive resist specialist.', traits:['adaptiveMind','thickHide'], allyAbility:{type:'damage', power:13}},
+  {name:'Hybrid Mystic', faction:'Neutral', rarity:'uncommon', hp:58, dmg:13, friend:72, emoji:'🔷', desc:'Balanced pressure unit.', traits:['brittleShell'], allyAbility:{type:'healHit', power:9, heal:8}},
+  {name:'Faction Observer', faction:'Neutral', rarity:'elite', hp:116, dmg:22, friend:110, emoji:'👁️‍🗨️', desc:'Shifts with player faction.', traits:['lastStand'], allyAbility:{type:'randomDebuff'}},
+  {name:'Ashen Templar', faction:'Light', rarity:'elite', hp:126, dmg:24, friend:116, emoji:'⚔️', desc:'Cross-faction zealot.', traits:['chaosHardened','faithLocked'], allyAbility:{type:'damageVs', power:16, vs:'Dark', bonus:10}},
+  {name:'Eclipse Arbiter', faction:'Dark', rarity:'legendary', hp:178, dmg:34, friend:156, emoji:'🌗', desc:'Cross-faction tyrant.', traits:['arcWard','ironWill','lastStand'], allyAbility:{type:'drain', power:21, heal:12}},
+
 ];
 
 const ENEMY_MOVES_BY_FACTION = {
@@ -729,6 +896,8 @@ const ENEMY_MOVES_BY_FACTION = {
 };
 
 function defaultState(){
+  const slotSpells = {damage1:'sparkBolt',damage2:'venomTouch',befriend:'kindWhisper',setup:'bindingFlash',defense:'fieldMend',wild:null};
+  const activeSpellIds = Object.values(slotSpells).filter(Boolean);
   return {
     player:{ hp:120,maxHp:120,shield:0,level:1,xp:0,nextXp:24, regenBetween:0, portrait:'🧙', effects:{} },
     kills:0,
@@ -736,7 +905,8 @@ function defaultState(){
     enemiesSeen:0,
     enemiesSinceCheckpoint:0,
     spellPool:['sparkBolt','kindWhisper','bindingFlash','fieldMend','softeningHex','venomTouch'],
-    activeSpellIds:['sparkBolt','kindWhisper','bindingFlash','fieldMend'],
+    activeSpellIds,
+    activeSpellSlots:slotSpells,
     spells:{
       sparkBolt:makeSpell('sparkBolt'),
       kindWhisper:makeSpell('kindWhisper'),
@@ -748,7 +918,7 @@ function defaultState(){
     activeAllies:[],
     reserveAllies:[],
     currentEnemy:null,
-    flags:{doubleAllies:false, allyBoost:0},
+    flags:{doubleAllies:false, allyBoost:0, lastSpellType:'', lastResisted:false, lineupBoost:0},
     mode:'battle',
     log:['A new run begins.'],
     dead:false
@@ -840,6 +1010,11 @@ function loadGame(){
     game = JSON.parse(raw);
     game.activeAllies ||= [];
     game.reserveAllies ||= [];
+    game.flags ||= {doubleAllies:false, allyBoost:0, lastSpellType:'', lastResisted:false, lineupBoost:0};
+    game.activeSpellSlots ||= {damage1:null,damage2:null,befriend:null,setup:null,defense:null,wild:null};
+    if(!game.activeSpellIds || !game.activeSpellIds.length){
+      game.activeSpellIds = Object.values(game.activeSpellSlots).filter(Boolean);
+    }
     render();
     log('Save loaded.', 'gold');
   }catch(e){
@@ -895,9 +1070,17 @@ function befriendMultiplierOnEnemy(enemy){
 // ---------- Core combat ----------
 function dealDamage(g, enemy, amount, source='Damage', faction='Neutral', showVfx=true){
   if(!enemy || enemy.hp<=0) return 0;
-  let dmg = Math.round(amount * damageMultiplierOnEnemy(enemy));
+  const currentSpell = g.flags.currentSpellId ? SPELL_DEFS[g.flags.currentSpellId] : null;
+  const combo = currentSpell ? getComboBonuses(currentSpell, enemy, g) : {damage:1,tags:[]};
+  let dmg = Math.round(amount * damageMultiplierOnEnemy(enemy) * combo.damage * devotionBonus('damage', faction, g));
   dmg = Math.round(dmg * factionAdvantageMult(faction, enemy.faction));
   if(faction===enemy.faction) dmg = Math.round(dmg*0.72);
+  if(traitHas(enemy,'thickHide')) dmg = Math.round(dmg*0.82);
+  if(traitHas(enemy,'chaosHardened') && faction==='Chaos') dmg = Math.round(dmg*0.75);
+  if(traitHas(enemy,'brittleShell') && getEffect(enemy,'exposed')) dmg = Math.round(dmg*1.25);
+  if(traitHas(enemy,'panicSpiral') && getEffect(enemy,'weaken')) dmg = Math.round(dmg*1.2);
+  if(traitHas(enemy,'lastStand') && enemy.hp <= Math.round(enemy.maxHp*0.25)) dmg = Math.round(dmg*0.7);
+  if(combo.tags?.length) log(`Combo: ${combo.tags.join(', ')} boosts ${source}.`, 'gold');
   if(getEffect(enemy,'guarded')) dmg = Math.round(dmg*(1-getEffect(enemy,'guarded').power));
   if(enemy.shield && enemy.shield > 0){
     const absorbed = Math.min(enemy.shield, dmg);
@@ -906,24 +1089,40 @@ function dealDamage(g, enemy, amount, source='Damage', faction='Neutral', showVf
     if(absorbed>0) log(`${enemy.name}'s shield absorbs ${absorbed}.`, 'bad');
   }
   enemy.hp = Math.max(0, enemy.hp - dmg);
+  g.flags.lastResisted = dmg <= Math.max(1, Math.round(amount*0.7));
+  if(g.flags.lastResisted) log(`${enemy.name} resists part of the hit.`, 'bad');
   if(showVfx) projectilePlayerToEnemy(factionColors[faction] || '#fff');
   log(`${source} deals ${dmg} damage to ${enemy.name}.`, 'good');
+  if(traitHas(enemy,'retaliatory') && g.flags.lastSpellType===currentSpell?.type){
+    enemy.shield = (enemy.shield||0) + 8;
+    log(`${enemy.name}'s Retaliatory trait raises a shield.`, 'bad');
+  }
+  consumeComboStateIfNeeded(currentSpell||{type:'damage'}, enemy);
   return dmg;
 }
 function addBefriend(g, enemy, amount, source='Befriend', faction='Light', showVfx=true){
   if(!enemy || enemy.hp<=0) return 0;
-  let val = Math.round(amount * befriendMultiplierOnEnemy(enemy));
+  const currentSpell = g.flags.currentSpellId ? SPELL_DEFS[g.flags.currentSpellId] : null;
+  const combo = currentSpell ? getComboBonuses(currentSpell, enemy, g) : {befriend:1,tags:[]};
+  let val = Math.round(amount * befriendMultiplierOnEnemy(enemy) * combo.befriend * devotionBonus('befriend', faction, g));
   val = Math.round(val * factionAdvantageMult(faction, enemy.faction));
   if(faction===enemy.faction) val = Math.round(val*1.28);
+  if(traitHas(enemy,'ironWill')) val = Math.round(val*0.74);
+  if(traitHas(enemy,'faithLocked') && faction==='Light') val = Math.round(val*0.55);
+  if(traitHas(enemy,'defectorHunter') && faction==='Renegades') val = Math.round(val*0.58);
+  if(traitHas(enemy,'suggestible') && getEffect(enemy,'hushed')) val = Math.round(val*1.3);
+  if(traitHas(enemy,'adaptiveMind') && g.flags.lastSpellType==='befriend') val = Math.round(val*0.72);
+  if(combo.tags?.length) log(`Combo: ${combo.tags.join(', ')} empowers ${source}.`, 'gold');
   if(enemy.resistBefriendBonus) val = Math.round(val*(1-enemy.resistBefriendBonus));
   enemy.befriend = Math.min(enemy.maxBefriend, enemy.befriend + val);
   if(showVfx) projectilePlayerToEnemy(factionColors[faction] || '#fff');
   log(`${source} adds ${val} befriending progress to ${enemy.name}.`, 'good');
+  consumeComboStateIfNeeded(currentSpell||{type:'befriend'}, enemy);
   return val;
 }
 function healPlayer(g, amt, source='Heal', faction='Light'){
   const reduced = getEffect(g.player,'cursed') ? (1-getEffect(g.player,'cursed').power) : 1;
-  const v = Math.max(1, Math.round(amt*reduced));
+  const v = Math.max(1, Math.round(amt*reduced*devotionBonus('heal', faction, g)));
   g.player.hp = Math.min(g.player.maxHp, g.player.hp + v);
   healBurstOnPlayer(factionColors[faction] || '#9cffc7');
   log(`${source} restores ${v} health.`, 'good');
@@ -954,7 +1153,15 @@ function refundRandomSpell(g){
   log(`${SPELL_DEFS[s.id].name} regains 1 cast.`, 'gold');
 }
 function tryStatus(g, enemy, status, chance, source){
-  const mult = getEffect(enemy,'hushed') ? 1 + getEffect(enemy,'hushed').power : 1;
+  const spell = g.flags.currentSpellId ? SPELL_DEFS[g.flags.currentSpellId] : {type:'control', faction:'Neutral'};
+  const combo = getComboBonuses(spell, enemy, g);
+  const immuneTrait = statusImmuneByTraits(enemy,status);
+  if(immuneTrait && !enemy.traitBreach){
+    log(`${source} fails: ${enemy.name} is immune to ${status} (${immuneTrait}).`, 'bad');
+    return false;
+  }
+  let mult = (getEffect(enemy,'hushed') ? 1 + getEffect(enemy,'hushed').power : 1) * combo.status * devotionBonus('control', spell.faction, g);
+  if(traitHas(enemy,'arcWard')) mult *= 0.75;
   if(Math.random() < chance*mult){
     addEffect(enemy,status,1,1);
     log(`${source} inflicts ${status} on ${enemy.name}.`, 'good');
@@ -1016,6 +1223,9 @@ function resolveSpell(spellId){
 
   game.flags.doubleAllies = false;
   game.flags.allyBoost = 0;
+  game.flags.lineupBoost = game.flags.lineupBoost||0;
+  game.flags.currentSpellId = spellId;
+  game.flags.lastSpellType = SPELL_DEFS[spellId].type;
 
   s.castsLeft -= 1;
   tickStartOfTurn(game.currentEnemy,false);
@@ -1024,6 +1234,10 @@ function resolveSpell(spellId){
   if(game.currentEnemy.hp<=0){ endEnemy('kill_dot'); return; }
 
   SPELL_DEFS[spellId].use(game, s, game.currentEnemy);
+  const devotion = getDevotion(game);
+  if(devotion.tier>=3 && devotion.faction===SPELL_DEFS[spellId].faction){
+    log(`${devotion.faction} devotion tier ${devotion.tier} empowers ${SPELL_DEFS[spellId].name}.`, 'gold');
+  }
   render();
   if(checkEnemyOutcome()) return;
 
@@ -1113,6 +1327,7 @@ function enemyTurn(){
   }
   decrementEffects(e);
   decrementEffects(game.player);
+  if(e.traitBreach) e.traitBreach -= 1;
 }
 
 // ---------- Allies ----------
@@ -1163,19 +1378,49 @@ function resolveAllyAbility(g, ally, mult=1, allyIndex=0){
     }
   }
 }
+function allyRole(ally){
+  const t = ally.allyAbility?.type;
+  if(['damage','damageVs','randomHit','drain','healHit'].includes(t)) return 'Striker';
+  if(['shield'].includes(t)) return 'Guardian';
+  if(['heal','regen'].includes(t)) return 'Healer';
+  if(['stun','paralyze','weaken','randomDebuff'].includes(t)) return 'Controller';
+  if(['befriend','befriendVuln'].includes(t)) return 'Befriender';
+  if(['allyBoost','randomEffect'].includes(t)) return 'Support';
+  return 'Hybrid';
+}
+function getLineupBonuses(g=game){
+  const res = {mult:1, tags:[]};
+  const factionCounts = {};
+  const roleCounts = {};
+  g.activeAllies.forEach(a=>{ factionCounts[a.faction]=(factionCounts[a.faction]||0)+1; roleCounts[allyRole(a)] = (roleCounts[allyRole(a)]||0)+1; });
+  for(const [f,c] of Object.entries(factionCounts)){
+    if(c>=3){ res.mult += 0.08; res.tags.push(`${f} Trio`); }
+    if(c>=5){ res.mult += 0.12; res.tags.push(`${f} Devoted Line`); }
+  }
+  if((roleCounts.Healer||0)>=2 && (roleCounts.Guardian||0)>=1){ res.mult += 0.1; res.tags.push('Sanctuary Line'); }
+  if((roleCounts.Controller||0)>=2 && (roleCounts.Befriender||0)>=1){ res.mult += 0.1; res.tags.push('Conversion Net'); }
+  if((roleCounts.Striker||0)>=2 && (roleCounts.Support||0)>=1){ res.mult += 0.1; res.tags.push('Pressure Chain'); }
+  if(g.activeAllies.some(a=>a.allyAbility?.type==='poison') && g.activeAllies.some(a=>a.allyAbility?.type==='burn')){ res.mult += 0.12; res.tags.push('Blightfire'); }
+  const dev = getDevotion(g);
+  if(dev.tier>=4 && factionCounts[dev.faction]>=3){ res.mult += 0.14; res.tags.push(`${dev.faction} Archetype`); }
+  return res;
+}
 function resolveAllies(){
   if(!game.activeAllies.length || !game.currentEnemy || game.currentEnemy.hp<=0) return;
+  const lineup = getLineupBonuses(game);
+  if(lineup.tags.length) log(`Lineup synergy: ${lineup.tags.join(', ')}.`, 'gold');
   const repeats = game.flags.doubleAllies ? 2 : 1;
   for(let r=0;r<repeats;r++){
     for(let i=0;i<game.activeAllies.length;i++){
       if(game.currentEnemy.hp<=0) break;
       const ally = game.activeAllies[i];
       const synergy = getFactionSynergyForAlly(ally, game);
-      resolveAllyAbility(game, ally, 1 + game.flags.allyBoost + synergy, i);
+      resolveAllyAbility(game, ally, (1 + game.flags.allyBoost + synergy + (game.flags.lineupBoost||0)) * lineup.mult, i);
     }
   }
   game.flags.doubleAllies = false;
   game.flags.allyBoost = 0;
+  game.flags.lineupBoost = 0;
 }
 function addNewAlly(ally){
   if(game.activeAllies.length < MAX_ACTIVE_ALLIES){
@@ -1302,6 +1547,13 @@ function spawnEnemy(){
   chosen.shield = 0;
   chosen.effects = {};
   chosen.resistBefriendBonus = 0;
+  const traitPool = Object.keys(TRAIT_DEFS);
+  const targetTraits = chosen.traits ? chosen.traits.length : (game.player.level<3 ? (Math.random()<0.7?0:1) : game.player.level<8 ? 1 : (Math.random()<0.65?2:1));
+  chosen.traits = chosen.traits || [];
+  while(chosen.traits.length < targetTraits){
+    const t = rand(traitPool);
+    if(!chosen.traits.includes(t)) chosen.traits.push(t);
+  }
   chosen.xp = Math.round(({common:12, uncommon:22, elite:40, legendary:70}[rarity]) * (1 + (game.player.level-1)*0.08));
 
   game.currentEnemy = chosen;
@@ -1352,7 +1604,7 @@ function generateLevelChoices(){
     const id = rand(locked);
     options.push({
       title:`New Spell: ${SPELL_DEFS[id].name}`,
-      desc:`${SPELL_DEFS[id].desc} (${SPELL_DEFS[id].faction}${SPELL_DEFS[id].rarity==='legendary' ? ', Legendary' : ''})`,
+      desc:`${SPELL_DEFS[id].desc} (${SPELL_DEFS[id].faction}${SPELL_DEFS[id].rarity==='legendary' ? ', Legendary' : ''}; slots: ${spellSlotTypes(id).join('/')})`,
       apply:()=>{ unlockSpell(id); openAbilitiesModal(); }
     });
   }
@@ -1462,20 +1714,26 @@ function renderAbilityManager(){
   pool.innerHTML = '';
   active.innerHTML = '';
 
+  const slotMap = game.activeSpellSlots || {damage1:null,damage2:null,befriend:null,setup:null,defense:null,wild:null};
   game.spellPool.forEach(id=>{
     const d = SPELL_DEFS[id], s = game.spells[id];
+    const legal = spellSlotTypes(id).join(', ');
     const row = document.createElement('div');
     row.className = 'pool-item';
-    row.innerHTML = `<div><strong>${d.name}</strong><div class="sub">${d.faction} • ${d.type} • Lvl ${s.level} • <span class="rarity-${d.rarity}">${cap(d.rarity)}</span></div></div>`;
+    row.innerHTML = `<div><strong>${d.name}</strong><div class="sub">${d.faction} • ${d.type} • Slots: ${legal} • Lvl ${s.level} • <span class="rarity-${d.rarity}">${cap(d.rarity)}</span></div></div>`;
     const badge = document.createElement('div');
     badge.textContent = game.activeSpellIds.includes(id) ? 'Active' : 'Pool';
     badge.className = 'tag';
     badge.style.borderColor = factionColors[d.faction];
     const btn = document.createElement('button');
-    btn.textContent = 'Use';
-    btn.disabled = game.activeSpellIds.includes(id) || game.activeSpellIds.length>=MAX_ACTIVE_SPELLS;
+    btn.textContent = 'Assign';
+    btn.disabled = game.activeSpellIds.includes(id);
     btn.onclick = ()=>{
-      game.activeSpellIds.push(id);
+      const slot = SPELL_ROLE_SLOTS.find(sl=>spellSlotTypes(id).includes(sl.role) && !slotMap[sl.id]);
+      if(!slot){ log(`No compatible open slot for ${d.name}.`, 'bad'); return; }
+      slotMap[slot.id] = id;
+      game.activeSpellSlots = slotMap;
+      game.activeSpellIds = Object.values(slotMap).filter(Boolean);
       refreshSpellCasts();
       renderAbilityManager();
       render();
@@ -1485,20 +1743,26 @@ function renderAbilityManager(){
     pool.appendChild(row);
   });
 
-  game.activeSpellIds.forEach(id=>{
-    const d = SPELL_DEFS[id], s = game.spells[id];
+  SPELL_ROLE_SLOTS.forEach(slot=>{
+    const id = slotMap[slot.id];
+    const d = id ? SPELL_DEFS[id] : null;
+    const s = id ? game.spells[id] : null;
     const row = document.createElement('div');
     row.className = 'pool-item';
-    row.innerHTML = `<div><strong>${d.name}</strong><div class="sub">${d.faction} • ${d.type} • Lvl ${s.level} • <span class="rarity-${d.rarity}">${cap(d.rarity)}</span></div></div>`;
+    row.innerHTML = id
+      ? `<div><strong>${slot.label}: ${d.name}</strong><div class="sub">${d.faction} • ${d.type} • Lvl ${s.level} • <span class="rarity-${d.rarity}">${cap(d.rarity)}</span></div></div>`
+      : `<div><strong>${slot.label}</strong><div class="sub">Empty slot (${slot.role})</div></div>`;
     const badge = document.createElement('div');
-    badge.textContent = `Casts ${s.castsMax}`;
+    badge.textContent = id ? `Casts ${s.castsMax}` : slot.role;
     badge.className = 'tag';
-    badge.style.borderColor = factionColors[d.faction];
+    badge.style.borderColor = id ? factionColors[d.faction] : '#777';
     const btn = document.createElement('button');
     btn.textContent = 'Remove';
-    btn.disabled = game.activeSpellIds.length<=1;
+    btn.disabled = !id || game.activeSpellIds.length<=1;
     btn.onclick = ()=>{
-      game.activeSpellIds = game.activeSpellIds.filter(x=>x!==id);
+      slotMap[slot.id] = null;
+      game.activeSpellSlots = slotMap;
+      game.activeSpellIds = Object.values(slotMap).filter(Boolean);
       renderAbilityManager();
       render();
     };
@@ -1555,6 +1819,8 @@ function renderAlliesManager(){
 function renderTop(){
   const s = game.player;
   const playerFaction = getPlayerFaction(game);
+  const devotion = getDevotion(game);
+  const lineup = getLineupBonuses(game);
   document.getElementById('topStats').innerHTML = `
     <div class="pill">Level ${s.level}</div>
     <div class="pill">XP ${s.xp}/${s.nextXp}</div>
@@ -1565,6 +1831,8 @@ function renderTop(){
     <div class="pill">Enemies ${game.enemiesSeen}</div>
     <div class="pill">Allies ${game.activeAllies.length}/${MAX_ACTIVE_ALLIES}</div>
     <div class="pill">Faction ${playerFaction}</div>
+    <div class="pill">Devotion ${devotion.faction} T${devotion.tier} (${devotion.count}/6)</div>
+    <div class="pill">Lineup x${lineup.mult.toFixed(2)}</div>
   `;
 }
 function statusTags(effects){
@@ -1589,6 +1857,8 @@ function renderEnemy(){
       </div>
       <div class="tags">
         <span class="tag" style="border-color:${factionColors[e.faction]}">${e.desc}</span>
+        ${(e.traits||[]).map(t=>`<span class="tag" title="${TRAIT_DEFS[t]?.desc||''}">${TRAIT_DEFS[t]?.name||t}</span>`).join('')}
+        ${getComboReadyTags(e).map(t=>`<span class="tag" style="border-color:#ffd36b">${t}</span>`).join('')}
       </div>
     </div>
     <div class="bars">
@@ -1607,6 +1877,7 @@ function renderEnemy(){
 function renderPlayer(){
   const p = game.player;
   const playerFaction = getPlayerFaction(game);
+  const devotion = getDevotion(game);
   document.getElementById('playerCard').innerHTML = `
     <div class="name">Summoner</div>
     <div class="portrait">${p.portrait}</div>
@@ -1627,6 +1898,7 @@ function renderPlayer(){
       <span class="tag">Active Allies ${game.activeAllies.length}/${MAX_ACTIVE_ALLIES}</span>
       <span class="tag">Reserve ${game.reserveAllies.length}</span>
       <span class="tag" style="border-color:${factionColors[playerFaction]}">Faction ${playerFaction}</span>
+      <span class="tag">Devotion Tier ${devotion.tier}</span>
       <span class="tag">${factionMatchupText(playerFaction)}</span>
     </div>
     <div class="statuses">${statusTags(p.effects)}</div>
@@ -1638,6 +1910,7 @@ function renderSpells(){
   game.activeSpellIds.forEach(id=>{
     const s = game.spells[id];
     const d = SPELL_DEFS[id];
+    const slotName = Object.entries(game.activeSpellSlots||{}).find(([,sid])=>sid===id)?.[0] || 'slot';
     const card = document.createElement('div');
     card.className = `spell-card spell-${d.faction} ${d.rarity==='legendary' ? 'spell-Legendary' : ''}`;
     card.innerHTML = `
@@ -1648,7 +1921,7 @@ function renderSpells(){
       <div class="sub">${d.desc}</div>
       <div class="sub">${factionMatchupText(d.faction)}</div>
       <div class="small-row"><span>${d.type}</span><span>Lvl ${s.level}</span></div>
-      <div class="small-row"><span><span class="rarity-${d.rarity}">${cap(d.rarity)}</span></span><span>${s.castsLeft}/${s.castsMax} casts</span></div>
+      <div class="small-row"><span><span class="rarity-${d.rarity}">${cap(d.rarity)}</span> • ${slotName}</span><span>${s.castsLeft}/${s.castsMax} casts</span></div>
     `;
     const btn = document.createElement('button');
     btn.textContent = 'Cast';
@@ -1661,6 +1934,13 @@ function renderSpells(){
 function renderFriends(){
   const grid = document.getElementById('friendGrid');
   grid.innerHTML = '';
+  const lineup = getLineupBonuses(game);
+  if(lineup.tags.length){
+    const tag = document.createElement('div');
+    tag.className = 'friend-box';
+    tag.innerHTML = `<div><strong>Lineup Synergy</strong></div><div class="tiny">${lineup.tags.join(' • ')}</div><div class="tiny">Total bonus x${lineup.mult.toFixed(2)}</div>`;
+    grid.appendChild(tag);
+  }
   game.activeAllies.forEach((a,i)=>{
     const box = document.createElement('div');
     box.className = 'friend-box active';
