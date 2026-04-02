@@ -3486,17 +3486,15 @@ function getRecentWindowSize(weeks){
 }
 const RECENT_COACHING_WEEKS = 4;
 const TREND_DOWN_SIGNIFICANT = 0.02; // 2pp decline (fraction units, e.g. -0.02)
-const DEPENDENCE_MIN_COUNT = 2;
-const DEPENDENCE_MIN_SHARE = 0.60;
 const ONE_TO_ONE_NEED_RANK = { None:0, Low:1, Medium:2, High:3 };
 const CONCERN_PRIORITY_RANK = {
   'No concern': 0,
   'Trend down': 1,
-  'Team Meeting dependent': 2,
-  'Scorecard dependent': 3,
-  'Scorecard + Team Meeting dependent': 4,
+  'Checklist follow-up lacking': 2,
+  'Team Meeting dependent': 3,
+  'Scorecard dependent': 4,
   'No recent 1:1': 5,
-  'Checklist follow-up lacking': 6
+  'Scorecard + Team Meeting only': 6
 };
 function countNearbyMeaningfulCoachings(repSummary, weekIdx){
   if(!repSummary || !Array.isArray(repSummary.cells)) return 0;
@@ -3539,6 +3537,12 @@ function oneToOneNeedClass(need){
   if(need === 'Low') return 'advisoryLowTxt';
   return 'advisoryOkTxt';
 }
+function raiseOneToOneNeedTier(need){
+  const order = ['None','Low','Medium','High'];
+  const idx = order.indexOf(String(need || 'None'));
+  if(idx < 0) return 'Low';
+  return order[Math.min(order.length - 1, idx + 1)];
+}
 function buildAdvisoryReasonLines(adv){
   if(!adv) return [];
   return [
@@ -3552,11 +3556,15 @@ function buildAdvisoryReasonLines(adv){
   ];
 }
 function deriveConcernText(adv){
-  if(adv.checklistConcern) return 'Checklist follow-up lacking';
-  if(adv.noRecentOneToOne && adv.coachingConcernEligible) return 'No recent 1:1';
-  if(adv.scorecardAndTeamMeetingDependent && adv.coachingConcernEligible) return 'Scorecard + Team Meeting dependent';
-  if(adv.scorecardDependentRecent && adv.coachingConcernEligible) return 'Scorecard dependent';
-  if(adv.teamMeetingDependentRecent && adv.coachingConcernEligible) return 'Team Meeting dependent';
+  if(adv.coachingConcernEligible){
+    if(adv.scorecardAndTeamMeetingOnlyRecent) return 'Scorecard + Team Meeting only';
+    if(adv.noRecentOneToOne) return 'No recent 1:1';
+    if(adv.scorecardDependentRecent) return 'Scorecard dependent';
+    if(adv.teamMeetingDependentRecent) return 'Team Meeting dependent';
+    if(adv.checklistConcern) return 'Checklist follow-up lacking';
+    if(adv.trendDownTwoPctOrMore) return 'Trend down';
+    return 'No concern';
+  }
   if(adv.trendDownTwoPctOrMore) return 'Trend down';
   return 'No concern';
 }
@@ -3566,10 +3574,10 @@ function deriveNextStep(adv){
   if(!adv.belowGoal && adv.trendDownTwoPctOrMore) return 'Monitor trend';
   if(adv.belowGoal){
     if(adv.scorecardAndTeamMeetingOnlyRecent) return 'Add direct 1:1 coaching beyond Scorecard and Team Meeting';
-    if(adv.noRecentOneToOne) return 'Add direct 1:1 coaching';
     if(adv.scorecardDependentRecent && !adv.teamMeetingDependentRecent) return 'Add direct 1:1 coaching beyond Scorecard';
     if(adv.teamMeetingDependentRecent && !adv.scorecardDependentRecent) return 'Add direct 1:1 coaching beyond Team Meeting';
     if(adv.scorecardDependentRecent && adv.teamMeetingDependentRecent) return 'Add direct 1:1 coaching beyond Scorecard and Team Meeting';
+    if(adv.noRecentOneToOne) return 'Add direct 1:1 coaching';
     return 'Add direct 1:1 coaching';
   }
   return 'Monitor trend';
@@ -3625,6 +3633,7 @@ function buildCoachingAdvisory(repSummary, repWeeks, repCoachingsVisible, repCoa
   let recentCoachingGapScore = 0;
   let recentMeaningfulCoachings = 0;
   let recentWeakCoachings = 0;
+  let recentCoachingRows = 0;
   let recentScorecardCoachings = 0;
   let recentTeamMeetingCoachings = 0;
   const advisoryMeaningfulWeekMap = new Map();
@@ -3634,6 +3643,7 @@ function buildCoachingAdvisory(repSummary, repWeeks, repCoachingsVisible, repCoa
     const hasScorecard = (c.types || []).some(t => String(t || '').trim().toLowerCase() === 'scorecard');
     const hasTeamMeeting = (c.types || []).some(t => String(t || '').trim().toLowerCase() === 'team meeting');
     if(idx >= recentStartIdx){
+      recentCoachingRows += 1;
       if(hasScorecard) recentScorecardCoachings += 1;
       if(hasTeamMeeting) recentTeamMeetingCoachings += 1;
     }
@@ -3669,7 +3679,7 @@ function buildCoachingAdvisory(repSummary, repWeeks, repCoachingsVisible, repCoa
   }
   const checklistHitsVisible = checklistRowsVisible.length;
 
-  const recentTotalCoachings = recentMeaningfulCoachings + recentScorecardCoachings + recentTeamMeetingCoachings;
+  const recentTotalCoachings = recentCoachingRows;
   const scorecardShareRecent = recentTotalCoachings > 0 ? (recentScorecardCoachings / recentTotalCoachings) : 0;
   const teamMeetingShareRecent = recentTotalCoachings > 0 ? (recentTeamMeetingCoachings / recentTotalCoachings) : 0;
   const weakShareRecent = recentTotalCoachings > 0 ? (recentWeakCoachings / recentTotalCoachings) : 0;
@@ -3678,13 +3688,17 @@ function buildCoachingAdvisory(repSummary, repWeeks, repCoachingsVisible, repCoa
   const mostlyWeakOverall = advisoryMix.totalCoachings > 0 && advisoryMix.weakShare >= 0.7;
   const zeroMeaningfulRecent = recentMeaningfulCoachings === 0;
   const noRecentOneToOne = recentTotalCoachings > 0 && recentMeaningfulCoachings === 0;
-  const scorecardDependentRecent = recentTotalCoachings > 0 &&
-    recentScorecardCoachings >= DEPENDENCE_MIN_COUNT &&
-    scorecardShareRecent >= DEPENDENCE_MIN_SHARE;
-  const teamMeetingDependentRecent = recentTotalCoachings > 0 &&
-    recentTeamMeetingCoachings >= DEPENDENCE_MIN_COUNT &&
-    teamMeetingShareRecent >= DEPENDENCE_MIN_SHARE;
-  const scorecardAndTeamMeetingOnlyRecent = recentMeaningfulCoachings === 0 && recentScorecardCoachings > 0 && recentTeamMeetingCoachings > 0;
+  const scorecardDependentRecent =
+    (recentScorecardCoachings >= 2 && scorecardShareRecent >= 0.50) ||
+    (recentScorecardCoachings >= 3 && recentMeaningfulCoachings <= 1);
+  const teamMeetingDependentRecent =
+    (recentTeamMeetingCoachings >= 2 && teamMeetingShareRecent >= 0.50) ||
+    (recentTeamMeetingCoachings >= 3 && recentMeaningfulCoachings <= 1);
+  const scorecardAndTeamMeetingOnlyRecent =
+    recentMeaningfulCoachings === 0 &&
+    (recentScorecardCoachings + recentTeamMeetingCoachings) >= 2 &&
+    recentScorecardCoachings > 0 &&
+    recentTeamMeetingCoachings > 0;
   const scorecardAndTeamMeetingDependent = scorecardDependentRecent && teamMeetingDependentRecent;
   const trendDownTwoPctOrMore = Number.isFinite(repSummary.trendTotal) && repSummary.trendTotal <= (-TREND_DOWN_SIGNIFICANT);
   const belowGoal = Number.isFinite(repSummary.avgKpi) && Number.isFinite(opts.goalFrac) ? repSummary.avgKpi < opts.goalFrac : false;
@@ -3700,12 +3714,13 @@ function buildCoachingAdvisory(repSummary, repWeeks, repCoachingsVisible, repCoa
   const trendDownMostlyWeakRecent = Number.isFinite(repSummary.trendTotal) && repSummary.trendTotal < 0 && weakTypeDependentRecent;
   const checklistHitsWithoutRecentOneToOne = checklistHitsWithoutNearbyMeaningfulCoaching > 0 && noRecentOneToOne;
   const redWeeksWithMostlyWeakCoaching = redWeeksRecentWindow >= 2 && mostlyWeakRecent;
-  const checklistConcern = coachingConcernEligible && checklistHitsWithoutNearbyMeaningfulCoaching > 0;
   const needsDirectOneToOne =
     ((lowKpiWeakRecentMix || redWeeksRecentWindow >= 2 || trendDownMostlyWeakRecent) && (weakTypeDependentRecent || weakTypeDominantOverall)) ||
     checklistNeedsOneToOne ||
     zeroMeaningfulRecent;
 
+  const checklistConcern = checklistHitsWithoutNearbyMeaningfulCoaching > 0;
+  const saturationConcernOverride = coachingConcernEligible && recentMeaningfulCoachings === 0 && recentWeakCoachings > 0;
   let oneToOneNeed = 'None';
   if(!belowGoal){
     oneToOneNeed = trendDownTwoPctOrMore ? 'Low' : 'None';
@@ -3718,7 +3733,8 @@ function buildCoachingAdvisory(repSummary, repWeeks, repCoachingsVisible, repCoa
   } else {
     oneToOneNeed = 'Low';
   }
-  if(checklistConcern && noRecentOneToOne) oneToOneNeed = 'High';
+  if(saturationConcernOverride && oneToOneNeed === 'Low') oneToOneNeed = 'Medium';
+  if(checklistConcern) oneToOneNeed = raiseOneToOneNeedTier(oneToOneNeed);
 
   const riskScore =
     (recentWeightedBelowGoal * 1.8) +
@@ -3789,6 +3805,7 @@ function buildCoachingAdvisory(repSummary, repWeeks, repCoachingsVisible, repCoa
     redWeeksWithMostlyWeakCoaching,
     needsDirectOneToOne,
     checklistConcern,
+    saturationConcernOverride,
     zeroMeaningfulRecent,
     manyRedWithWeak,
     lowKpiWeakRecentMix,
