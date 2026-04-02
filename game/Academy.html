@@ -418,6 +418,15 @@ const factionColors = {
   Renegades:'#94e69f',
   Neutral:'#cbd3e5'
 };
+const FACTION_COUNTERS = {
+  Light:{strong:['Dark'], weak:['Chaos']},
+  Dark:{strong:['Alliance'], weak:['Light']},
+  Chaos:{strong:['Light'], weak:['Alliance']},
+  Alliance:{strong:['Chaos'], weak:['Dark']},
+  Renegades:{strong:['Neutral'], weak:['Light']},
+  Neutral:{strong:['Renegades'], weak:['Chaos']}
+};
+const FACTION_SYNERGY_BOOST = 0.18;
 const MAX_ACTIVE_ALLIES = 10;
 const MAX_ACTIVE_SPELLS = 6;
 
@@ -445,6 +454,32 @@ function weightedPick(map){
   }
   return entries[0][0];
 }
+function getPlayerFaction(g=game){
+  const counts = {};
+  g.activeSpellIds.forEach(id=>{
+    const f = SPELL_DEFS[id]?.faction || 'Neutral';
+    counts[f] = (counts[f]||0) + 1;
+  });
+  let topFaction = 'Neutral';
+  let topCount = 0;
+  let tie = false;
+  Object.entries(counts).forEach(([f,c])=>{
+    if(c>topCount){ topCount = c; topFaction = f; tie = false; }
+    else if(c===topCount){ tie = true; }
+  });
+  return (topCount>0 && !tie) ? topFaction : 'Neutral';
+}
+function factionAdvantageMult(attackerFaction, defenderFaction){
+  const chart = FACTION_COUNTERS[attackerFaction];
+  if(!chart || !defenderFaction) return 1;
+  if(chart.strong.includes(defenderFaction)) return 1.25;
+  if(chart.weak.includes(defenderFaction)) return 0.78;
+  return 1;
+}
+function getFactionSynergyForAlly(ally, g=game){
+  const pf = getPlayerFaction(g);
+  return pf !== 'Neutral' && ally.faction===pf ? FACTION_SYNERGY_BOOST : 0;
+}
 
 const SPELL_DEFS = {
   sparkBolt:{name:'Spark Bolt', type:'damage', faction:'Neutral', rarity:'common', baseCasts:4, scaling:{power:3}, data:{power:13}, desc:'Reliable neutral damage.', color:'#d9e1f2', use(g,s,e){ dealDamage(g,e,scaledStat(s,"power"),"Spark Bolt",'Neutral'); }},
@@ -465,6 +500,8 @@ const SPELL_DEFS = {
   freedomWhisper:{name:'Freedom Whisper', type:'befriend', faction:'Renegades', rarity:'uncommon', baseCasts:3, scaling:{power:4,bonus:4}, data:{power:22,bonus:14}, desc:'Very strong vs Renegades.', color:'#9cffb3', use(g,s,e){ const bonus = e.faction==='Renegades' ? scaledStat(s,'bonus') : 0; addBefriend(g,e,scaledStat(s,'power')+bonus,'Freedom Whisper','Renegades'); }},
   temptationPact:{name:'Temptation Pact', type:'befriend', faction:'Dark', rarity:'uncommon', baseCasts:3, scaling:{power:4,bonus:4}, data:{power:20,bonus:16}, desc:'Very strong vs Dark, but lightly curses you.', color:'#d7a4ff', use(g,s,e){ const bonus = e.faction==='Dark' ? scaledStat(s,'bonus') : 0; addBefriend(g,e,scaledStat(s,'power')+bonus,'Temptation Pact','Dark'); addEffect(g.player,'cursed',2,0.16); log('You are lightly cursed by the pact.', 'bad'); }},
   ironWill:{name:'Iron Will', type:'defense', faction:'Alliance', rarity:'common', baseCasts:2, scaling:{shield:4}, data:{shield:18}, desc:'Gain shield.', color:'#83c5ff', use(g,s){ const sh = scaledStat(s,'shield'); g.player.shield += sh; healBurstOnPlayer('#83c5ff'); log(`You gain ${sh} shield.`, 'good'); }},
+  wardOfDawn:{name:'Ward of Dawn', type:'shield', faction:'Light', rarity:'common', baseCasts:2, scaling:{shield:4,vsBonus:3}, data:{shield:14,vsBonus:9}, desc:'Shield that is stronger against Dark.', color:'#ffe890', use(g,s,e){ let sh = scaledStat(s,'shield'); if(e && e.faction==='Dark') sh += scaledStat(s,'vsBonus'); g.player.shield += sh; healBurstOnPlayer('#ffe890'); log(`Ward of Dawn grants ${sh} shield.`, 'good'); }},
+  voidBulwark:{name:'Void Bulwark', type:'shield', faction:'Dark', rarity:'uncommon', baseCasts:2, scaling:{shield:4,thorns:2}, data:{shield:16,thorns:8}, desc:'Strong shield; reflects pain to Light foes.', color:'#cb99ff', use(g,s,e){ const sh = scaledStat(s,'shield'); g.player.shield += sh; healBurstOnPlayer('#cb99ff'); log(`Void Bulwark grants ${sh} shield.`, 'good'); if(e && e.faction==='Light'){ dealDamage(g,e,scaledStat(s,'thorns'),'Void Bulwark','Dark'); } }},
   renewingBreath:{name:'Renewing Breath', type:'heal', faction:'Light', rarity:'common', baseCasts:2, scaling:{power:3,regen:1}, data:{power:14,regen:4,turns:3}, desc:'Heal and gain regen.', color:'#90ffbe', use(g,s){ healPlayer(g,scaledStat(s,'power'),'Renewing Breath','Light'); addEffect(g.player,'regen',scaledStat(s,'turns'),scaledStat(s,'regen')); log('Regeneration begins.', 'good'); }},
   noQuarter:{name:'No Quarter', type:'stance', faction:'Alliance', rarity:'uncommon', baseCasts:1, scaling:{power:.04}, data:{power:0.45,turns:2}, desc:'Damage rises, befriending drops for a short time.', color:'#8ac8ff', use(g,s){ addEffect(g.player,'noQuarter',scaledStat(s,'turns'),scaledStat(s,'power')); healBurstOnPlayer('#8ac8ff'); log('You enter a ruthless stance.', 'gold'); }},
   lastMercy:{name:'Last Mercy', type:'stance', faction:'Light', rarity:'uncommon', baseCasts:1, scaling:{power:.04}, data:{power:0.45,turns:2}, desc:'Befriending rises, damage drops for a short time.', color:'#fbe68a', use(g,s){ addEffect(g.player,'lastMercy',scaledStat(s,'turns'),scaledStat(s,'power')); healBurstOnPlayer('#fbe68a'); log('You enter a merciful stance.', 'gold'); }},
@@ -856,9 +893,11 @@ function befriendMultiplierOnEnemy(enemy){
 }
 
 // ---------- Core combat ----------
-function dealDamage(g, enemy, amount, source='Damage', faction='Neutral'){
+function dealDamage(g, enemy, amount, source='Damage', faction='Neutral', showVfx=true){
   if(!enemy || enemy.hp<=0) return 0;
   let dmg = Math.round(amount * damageMultiplierOnEnemy(enemy));
+  dmg = Math.round(dmg * factionAdvantageMult(faction, enemy.faction));
+  if(faction===enemy.faction) dmg = Math.round(dmg*0.72);
   if(getEffect(enemy,'guarded')) dmg = Math.round(dmg*(1-getEffect(enemy,'guarded').power));
   if(enemy.shield && enemy.shield > 0){
     const absorbed = Math.min(enemy.shield, dmg);
@@ -867,16 +906,18 @@ function dealDamage(g, enemy, amount, source='Damage', faction='Neutral'){
     if(absorbed>0) log(`${enemy.name}'s shield absorbs ${absorbed}.`, 'bad');
   }
   enemy.hp = Math.max(0, enemy.hp - dmg);
-  projectilePlayerToEnemy(factionColors[faction] || '#fff');
+  if(showVfx) projectilePlayerToEnemy(factionColors[faction] || '#fff');
   log(`${source} deals ${dmg} damage to ${enemy.name}.`, 'good');
   return dmg;
 }
-function addBefriend(g, enemy, amount, source='Befriend', faction='Light'){
+function addBefriend(g, enemy, amount, source='Befriend', faction='Light', showVfx=true){
   if(!enemy || enemy.hp<=0) return 0;
   let val = Math.round(amount * befriendMultiplierOnEnemy(enemy));
+  val = Math.round(val * factionAdvantageMult(faction, enemy.faction));
+  if(faction===enemy.faction) val = Math.round(val*1.28);
   if(enemy.resistBefriendBonus) val = Math.round(val*(1-enemy.resistBefriendBonus));
   enemy.befriend = Math.min(enemy.maxBefriend, enemy.befriend + val);
-  projectilePlayerToEnemy(factionColors[faction] || '#fff');
+  if(showVfx) projectilePlayerToEnemy(factionColors[faction] || '#fff');
   log(`${source} adds ${val} befriending progress to ${enemy.name}.`, 'good');
   return val;
 }
@@ -938,11 +979,18 @@ function tickStartOfTurn(target,isPlayer){
   }
 }
 function scaleEnemyPower(e,power){
-  let mult = 1 + (game.player.level-1)*0.045 + (game.enemiesSeen*0.005);
+  const allyPressure = Math.max(0, game.activeAllies.length-3) * 0.04;
+  let mult = 1 + (game.player.level-1)*0.05 + (game.enemiesSeen*0.008) + allyPressure;
   if(e.rarity==='legendary') mult += 0.25;
   if(getEffect(e,'weaken')) mult *= (1-getEffect(e,'weaken').power);
   if(getEffect(e,'shaken')) mult *= (1-getEffect(e,'shaken').power);
   return Math.round(power*mult);
+}
+function getEnemyActionsPerTurn(){
+  const pressure = game.enemiesSeen + game.player.level*2 + game.activeAllies.length*3;
+  if(pressure>=85) return 3;
+  if(pressure>=42) return 2;
+  return 1;
 }
 
 // ---------- Player turn ----------
@@ -1055,9 +1103,14 @@ function enemyTurn(){
     decrementEffects(e); decrementEffects(game.player); return;
   }
 
-  const move = chooseEnemyMove(e);
-  log(`${e.name} ${move.text}.`, 'bad');
-  resolveEnemyMove(move,e);
+  const turns = getEnemyActionsPerTurn();
+  for(let i=0;i<turns;i++){
+    if(!game.currentEnemy || game.currentEnemy.hp<=0 || game.dead) break;
+    const move = chooseEnemyMove(e);
+    if(turns>1) log(`${e.name} [${i+1}/${turns}] ${move.text}.`, 'bad');
+    else log(`${e.name} ${move.text}.`, 'bad');
+    resolveEnemyMove(move,e);
+  }
   decrementEffects(e);
   decrementEffects(game.player);
 }
@@ -1071,21 +1124,21 @@ function resolveAllyAbility(g, ally, mult=1, allyIndex=0){
   const c = factionColors[ally.faction] || '#fff';
   switch(a.type){
     case 'heal': makeBolt(getAllyPoint(allyIndex), getPlayerPoint(), c); healPlayer(g,p,ally.name,ally.faction); break;
-    case 'damage': projectileAllyToEnemy(allyIndex,c); e.hp = Math.max(0, e.hp - p); log(`${ally.name} deals ${p} damage.`, 'good'); break;
-    case 'damageVs': projectileAllyToEnemy(allyIndex,c); e.hp = Math.max(0, e.hp - (p + (e.faction===a.vs ? a.bonus : 0))); log(`${ally.name} strikes with factional force.`, 'good'); break;
+    case 'damage': projectileAllyToEnemy(allyIndex,c); dealDamage(g,e,p,ally.name,ally.faction,false); break;
+    case 'damageVs': projectileAllyToEnemy(allyIndex,c); dealDamage(g,e,p + (e.faction===a.vs ? a.bonus : 0),ally.name,ally.faction,false); break;
     case 'shield': makeBolt(getAllyPoint(allyIndex), getPlayerPoint(), c); g.player.shield += p; healBurstOnPlayer(c); log(`${ally.name} grants ${p} shield.`, 'good'); break;
-    case 'befriend': projectileAllyToEnemy(allyIndex,c); e.befriend = Math.min(e.maxBefriend, e.befriend + p); log(`${ally.name} adds ${p} befriending.`, 'good'); break;
+    case 'befriend': projectileAllyToEnemy(allyIndex,c); addBefriend(g,e,p,ally.name,ally.faction,false); break;
     case 'befriendVuln': addEffect(e,'softened',a.turns||2,a.power); projectileAllyToEnemy(allyIndex,c); log(`${ally.name} makes ${e.name} easier to befriend.`, 'good'); break;
     case 'weaken': addEffect(e,'weaken',a.turns||2,a.power); projectileAllyToEnemy(allyIndex,c); log(`${ally.name} weakens ${e.name}.`, 'good'); break;
     case 'poison': addEffect(e,'poison',a.turns||3,a.power); projectileAllyToEnemy(allyIndex,c); log(`${ally.name} poisons ${e.name}.`, 'good'); break;
     case 'burn': addEffect(e,'burn',a.turns||3,a.power); projectileAllyToEnemy(allyIndex,c); log(`${ally.name} burns ${e.name}.`, 'good'); break;
     case 'stun': if(Math.random() < (a.chance||0.18)){ projectileAllyToEnemy(allyIndex,c); addEffect(e,'stun',1,1); log(`${ally.name} stuns ${e.name}.`, 'good'); } break;
     case 'paralyze': if(Math.random() < (a.chance||0.18)){ projectileAllyToEnemy(allyIndex,c); addEffect(e,'paralyze',1,1); log(`${ally.name} paralyzes ${e.name}.`, 'good'); } break;
-    case 'drain': projectileAllyToEnemy(allyIndex,c); e.hp = Math.max(0,e.hp-p); makeBurst(getPlayerPoint(), c); healPlayer(g,a.heal||5,ally.name,ally.faction); break;
-    case 'healHit': projectileAllyToEnemy(allyIndex,c); e.hp = Math.max(0,e.hp-p); healPlayer(g,a.heal||5,ally.name,ally.faction); break;
+    case 'drain': projectileAllyToEnemy(allyIndex,c); dealDamage(g,e,p,ally.name,ally.faction,false); makeBurst(getPlayerPoint(), c); healPlayer(g,a.heal||5,ally.name,ally.faction); break;
+    case 'healHit': projectileAllyToEnemy(allyIndex,c); dealDamage(g,e,p,ally.name,ally.faction,false); healPlayer(g,a.heal||5,ally.name,ally.faction); break;
     case 'allyBoost': g.flags.allyBoost += a.power; makeBurst(getAllyPoint(allyIndex), c); log(`${ally.name} empowers allied triggers.`, 'gold'); break;
     case 'regen': makeBolt(getAllyPoint(allyIndex), getPlayerPoint(), c); addEffect(g.player,'regen',a.turns||3,a.power); log(`${ally.name} grants regeneration.`, 'good'); break;
-    case 'randomHit': projectileAllyToEnemy(allyIndex,c); e.hp = Math.max(0,e.hp-randInt(a.min,a.max)); log(`${ally.name} lashes out unpredictably.`, 'good'); break;
+    case 'randomHit': projectileAllyToEnemy(allyIndex,c); dealDamage(g,e,randInt(a.min,a.max),ally.name,ally.faction,false); break;
     case 'randomDebuff':{
       const options = [
         ()=>addEffect(e,'weaken',2,0.14),
@@ -1100,7 +1153,7 @@ function resolveAllyAbility(g, ally, mult=1, allyIndex=0){
     }
     case 'randomEffect':{
       const options = [
-        ()=>{ projectileAllyToEnemy(allyIndex,c); e.hp=Math.max(0,e.hp-10); },
+        ()=>{ projectileAllyToEnemy(allyIndex,c); dealDamage(g,e,10,ally.name,ally.faction,false); },
         ()=>{ projectileAllyToEnemy(allyIndex,c); e.befriend=Math.min(e.maxBefriend,e.befriend+9); },
         ()=>addEffect(e,'weaken',2,0.12),
         ()=>addEffect(e,'burn',2,5)
@@ -1116,7 +1169,9 @@ function resolveAllies(){
   for(let r=0;r<repeats;r++){
     for(let i=0;i<game.activeAllies.length;i++){
       if(game.currentEnemy.hp<=0) break;
-      resolveAllyAbility(game, game.activeAllies[i], 1 + game.flags.allyBoost, i);
+      const ally = game.activeAllies[i];
+      const synergy = getFactionSynergyForAlly(ally, game);
+      resolveAllyAbility(game, ally, 1 + game.flags.allyBoost + synergy, i);
     }
   }
   game.flags.doubleAllies = false;
@@ -1197,6 +1252,7 @@ function endEnemy(mode){
       id:uid(),
       name:e.name,
       faction:e.faction,
+      rarity:e.rarity || 'common',
       emoji:e.emoji,
       desc:e.desc,
       allyAbility:e.allyAbility
@@ -1236,11 +1292,12 @@ function spawnEnemy(){
   const chosen = deepClone(rand(pool));
 
   const rarityBonus = {common:0, uncommon:0.06, elite:0.14, legendary:0.30}[rarity];
-  const scale = 1 + (game.player.level-1)*0.075 + game.enemiesSeen*0.018 + rarityBonus;
+  const allyPressure = Math.max(0, game.activeAllies.length-2) * 0.05;
+  const scale = 1 + (game.player.level-1)*0.085 + game.enemiesSeen*0.022 + rarityBonus + allyPressure;
   chosen.maxHp = Math.round(chosen.hp * scale);
   chosen.hp = chosen.maxHp;
-  chosen.damage = Math.round(chosen.dmg * (1 + (game.player.level-1)*0.045 + game.enemiesSeen*0.01 + (rarity==='legendary'?0.12:0)));
-  chosen.maxBefriend = Math.round(chosen.friend * (1 + (game.player.level-1)*0.045 + game.enemiesSeen*0.012 + (rarity==='legendary'?0.08:0)));
+  chosen.damage = Math.round(chosen.dmg * (1 + (game.player.level-1)*0.055 + game.enemiesSeen*0.014 + allyPressure + (rarity==='legendary'?0.14:0)));
+  chosen.maxBefriend = Math.round(chosen.friend * (1 + (game.player.level-1)*0.05 + game.enemiesSeen*0.016 + allyPressure*0.65 + (rarity==='legendary'?0.1:0)));
   chosen.befriend = 0;
   chosen.shield = 0;
   chosen.effects = {};
@@ -1370,6 +1427,35 @@ function openAbilitiesModal(){
   renderAbilityManager();
   document.getElementById('abilitiesModal').classList.add('show');
 }
+function describeAllyAbility(ability){
+  if(!ability) return 'No ability.';
+  switch(ability.type){
+    case 'damage': return `Deals ${ability.power} damage.`;
+    case 'damageVs': return `Deals ${ability.power} damage (+${ability.bonus} vs ${ability.vs}).`;
+    case 'heal': return `Heals you for ${ability.power}.`;
+    case 'shield': return `Grants ${ability.power} shield.`;
+    case 'befriend': return `Adds ${ability.power} befriending.`;
+    case 'befriendVuln': return `Applies softened +${Math.round((ability.power||0)*100)}% for ${ability.turns||2} turns.`;
+    case 'weaken': return `Weakens enemy by ${Math.round((ability.power||0)*100)}% for ${ability.turns||2} turns.`;
+    case 'poison': return `Poisons for ${ability.power} over ${ability.turns||3} turns.`;
+    case 'burn': return `Burns for ${ability.power} over ${ability.turns||3} turns.`;
+    case 'stun': return `${Math.round((ability.chance||0)*100)}% chance to stun.`;
+    case 'paralyze': return `${Math.round((ability.chance||0)*100)}% chance to paralyze.`;
+    case 'drain': return `Deals ${ability.power} damage and heals ${ability.heal||0}.`;
+    case 'healHit': return `Deals ${ability.power} damage and heals ${ability.heal||0}.`;
+    case 'allyBoost': return `Boosts allied effects by ${Math.round((ability.power||0)*100)}%.`;
+    case 'regen': return `Grants regen ${ability.power} for ${ability.turns||3} turns.`;
+    case 'randomHit': return `Deals random ${ability.min}-${ability.max} damage.`;
+    case 'randomDebuff': return 'Applies one random debuff.';
+    case 'randomEffect': return 'Triggers one random effect.';
+    default: return ability.text || cap(ability.type);
+  }
+}
+function factionMatchupText(faction){
+  const m = FACTION_COUNTERS[faction];
+  if(!m) return '';
+  return `Strong vs ${m.strong.join('/')}, weak vs ${m.weak.join('/')}`;
+}
 function renderAbilityManager(){
   const pool = document.getElementById('poolGrid');
   const active = document.getElementById('activeGrid');
@@ -1434,7 +1520,7 @@ function renderAlliesManager(){
   game.reserveAllies.forEach(a=>{
     const row = document.createElement('div');
     row.className = 'ally-card';
-    row.innerHTML = `<div><strong>${a.emoji} ${a.name}</strong><div class="sub">${a.faction} • ${a.allyAbility.text||''}</div></div>`;
+    row.innerHTML = `<div><strong>${a.emoji} ${a.name}</strong><div class="sub">${a.faction} • <span class="rarity-${a.rarity||'common'}">${cap(a.rarity||'common')}</span></div><div class="sub">${describeAllyAbility(a.allyAbility)}</div></div>`;
     const badge = document.createElement('div');
     badge.className = 'tag';
     badge.style.borderColor = factionColors[a.faction];
@@ -1451,7 +1537,7 @@ function renderAlliesManager(){
   game.activeAllies.forEach(a=>{
     const row = document.createElement('div');
     row.className = 'ally-card';
-    row.innerHTML = `<div><strong>${a.emoji} ${a.name}</strong><div class="sub">${a.faction} • ${a.allyAbility.text||''}</div></div>`;
+    row.innerHTML = `<div><strong>${a.emoji} ${a.name}</strong><div class="sub">${a.faction} • <span class="rarity-${a.rarity||'common'}">${cap(a.rarity||'common')}</span></div><div class="sub">${describeAllyAbility(a.allyAbility)}</div></div>`;
     const badge = document.createElement('div');
     badge.className = 'tag';
     badge.style.borderColor = factionColors[a.faction];
@@ -1468,6 +1554,7 @@ function renderAlliesManager(){
 // ---------- Render ----------
 function renderTop(){
   const s = game.player;
+  const playerFaction = getPlayerFaction(game);
   document.getElementById('topStats').innerHTML = `
     <div class="pill">Level ${s.level}</div>
     <div class="pill">XP ${s.xp}/${s.nextXp}</div>
@@ -1477,6 +1564,7 @@ function renderTop(){
     <div class="pill">Befriends ${game.befriends}</div>
     <div class="pill">Enemies ${game.enemiesSeen}</div>
     <div class="pill">Allies ${game.activeAllies.length}/${MAX_ACTIVE_ALLIES}</div>
+    <div class="pill">Faction ${playerFaction}</div>
   `;
 }
 function statusTags(effects){
@@ -1518,6 +1606,7 @@ function renderEnemy(){
 }
 function renderPlayer(){
   const p = game.player;
+  const playerFaction = getPlayerFaction(game);
   document.getElementById('playerCard').innerHTML = `
     <div class="name">Summoner</div>
     <div class="portrait">${p.portrait}</div>
@@ -1537,6 +1626,8 @@ function renderPlayer(){
       <span class="tag">Active Spells ${game.activeSpellIds.length}/${MAX_ACTIVE_SPELLS}</span>
       <span class="tag">Active Allies ${game.activeAllies.length}/${MAX_ACTIVE_ALLIES}</span>
       <span class="tag">Reserve ${game.reserveAllies.length}</span>
+      <span class="tag" style="border-color:${factionColors[playerFaction]}">Faction ${playerFaction}</span>
+      <span class="tag">${factionMatchupText(playerFaction)}</span>
     </div>
     <div class="statuses">${statusTags(p.effects)}</div>
   `;
@@ -1555,6 +1646,7 @@ function renderSpells(){
         <span class="tag" style="border-color:${factionColors[d.faction]}">${d.faction}</span>
       </div>
       <div class="sub">${d.desc}</div>
+      <div class="sub">${factionMatchupText(d.faction)}</div>
       <div class="small-row"><span>${d.type}</span><span>Lvl ${s.level}</span></div>
       <div class="small-row"><span><span class="rarity-${d.rarity}">${cap(d.rarity)}</span></span><span>${s.castsLeft}/${s.castsMax} casts</span></div>
     `;
@@ -1574,7 +1666,8 @@ function renderFriends(){
     box.className = 'friend-box active';
     box.dataset.allyIndex = i;
     box.style.borderColor = factionColors[a.faction];
-    box.innerHTML = `<div><strong>${a.emoji} ${a.name}</strong></div><div class="tiny">${a.faction}</div><div class="tiny">${a.allyAbility.text || ''}</div>`;
+    const synergy = getFactionSynergyForAlly(a, game);
+    box.innerHTML = `<div><strong>${a.emoji} ${a.name}</strong></div><div class="tiny">${a.faction} • <span class="rarity-${a.rarity||'common'}">${cap(a.rarity||'common')}</span>${synergy?` • Synergy +${Math.round(synergy*100)}%`:''}</div><div class="tiny">${describeAllyAbility(a.allyAbility)}</div>`;
     grid.appendChild(box);
   });
 }
