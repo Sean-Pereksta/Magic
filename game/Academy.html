@@ -794,6 +794,12 @@
   .advisoryMediumTxt{ color:#92400e; font-weight:1000; }
   .advisoryLowTxt{ color:#166534; font-weight:1000; }
   .advisoryOkTxt{ color:var(--muted); font-weight:900; }
+  .needMix{ white-space:nowrap; }
+  .needMixType{ font-weight:1000; }
+  .needMixType.coaching{ color:var(--good); }
+  .needMixType.scorecard{ color:var(--bad); }
+  .needMixType.teamMeeting{ color:var(--accent); }
+  .needMixType.top{ text-decoration:underline; text-underline-offset:2px; }
 
   .settingsGrid{
     display:grid;
@@ -3613,6 +3619,47 @@ function computeWeakTypeDependency(repCoachings){
     teamMeetingShare
   };
 }
+function computeOneToOneNeedMix(repCoachings){
+  const coachRows = Array.isArray(repCoachings) ? repCoachings : [];
+  let coachingCount = 0;
+  let scorecardCount = 0;
+  let teamMeetingCount = 0;
+  for(const c of coachRows){
+    const types = c.types || [];
+    const hasScorecard = types.some(t => String(t || '').trim().toLowerCase() === 'scorecard');
+    const hasTeamMeeting = types.some(t => String(t || '').trim().toLowerCase() === 'team meeting');
+    if(hasTeamMeeting) teamMeetingCount++;
+    else if(hasScorecard) scorecardCount++;
+    else coachingCount++;
+  }
+  const total = coachingCount + scorecardCount + teamMeetingCount;
+  return {
+    total,
+    coachingCount,
+    scorecardCount,
+    teamMeetingCount,
+    coachingPct: total ? (coachingCount / total) : 0,
+    scorecardPct: total ? (scorecardCount / total) : 0,
+    teamMeetingPct: total ? (teamMeetingCount / total) : 0
+  };
+}
+function buildOneToOneNeedLabel(need, mix){
+  const safeNeed = escAttr(need || 'None');
+  const coachingPct = Number.isFinite(mix?.coachingPct) ? mix.coachingPct : 0;
+  const scorecardPct = Number.isFinite(mix?.scorecardPct) ? mix.scorecardPct : 0;
+  const teamMeetingPct = Number.isFinite(mix?.teamMeetingPct) ? mix.teamMeetingPct : 0;
+  const top = Math.max(coachingPct, scorecardPct, teamMeetingPct);
+  const coachingTop = coachingPct === top;
+  const scorecardTop = scorecardPct === top;
+  const teamMeetingTop = teamMeetingPct === top;
+  const seg = (label, cls, pct, isTop)=>`<span class="needMixType ${cls}${isTop ? ' top' : ''}" title="${escAttr(label)}">${fmtPct0(pct)}</span>`;
+  const mixHtml = [
+    seg('Coaching', 'coaching', coachingPct, coachingTop),
+    seg('Scorecard', 'scorecard', scorecardPct, scorecardTop),
+    seg('Team Meeting', 'teamMeeting', teamMeetingPct, teamMeetingTop)
+  ].join(', ');
+  return `${safeNeed} <span class="needMix">(${mixHtml})</span>`;
+}
 function buildCoachingAdvisory(repSummary, repWeeks, repCoachingsVisible, repCoachingsAdvisoryAll, repChecklist, opts){
   const cells = repSummary?.cells || [];
   const visibleCoachRows = Array.isArray(repCoachingsVisible) ? repCoachingsVisible : [];
@@ -3625,6 +3672,7 @@ function buildCoachingAdvisory(repSummary, repWeeks, repCoachingsVisible, repCoa
 
   const visibleMix = computeWeakTypeDependency(visibleCoachRows);
   const advisoryMix = computeWeakTypeDependency(advisoryCoachRows);
+  const oneToOneMix = computeOneToOneNeedMix(advisoryCoachRows);
   const loss = computeCoachingLossMetrics(advisoryMix.totalCoachings, advisoryMix.meaningfulCoachings);
 
   let belowGoalWeeks = 0;
@@ -3771,6 +3819,7 @@ function buildCoachingAdvisory(repSummary, repWeeks, repCoachingsVisible, repCoa
     weakCoachingShare: advisoryMix.weakShare,
     scorecardShare: advisoryMix.scorecardShare,
     teamMeetingShare: advisoryMix.teamMeetingShare,
+    oneToOneMix,
     belowGoal,
     trendDownTwoPctOrMore,
     coachingConcernEligible,
@@ -3948,6 +3997,7 @@ function paintTeamSummary(allSummaries, sd, ed, weeks){
     const concern = adv.concernText || 'No concern';
     const oneToOneNeed = adv.oneToOneNeed || 'None';
     const oneToOneNeedCls = oneToOneNeedClass(oneToOneNeed);
+    const oneToOneNeedHtml = buildOneToOneNeedLabel(oneToOneNeed, adv.oneToOneMix);
     const reasonTitle = escAttr((adv.reasonLines || []).join(' • '));
 
     return `
@@ -3960,7 +4010,7 @@ function paintTeamSummary(allSummaries, sd, ed, weeks){
         <td class="mono">${fmtPct1(s.avgKpi)}</td>
         <td class="mono"><span class="${trendCls}">${escAttr(trendTxt)}</span></td>
         <td>${flagHtml}</td>
-        <td class="${oneToOneNeedCls}" title="${reasonTitle}">${escAttr(oneToOneNeed)}</td>
+        <td class="${oneToOneNeedCls}" title="${reasonTitle}">${oneToOneNeedHtml}</td>
         <td class="${advTxtCls}" title="${reasonTitle}">${escAttr(nextStep)}</td>
         <td class="${advTxtCls}" title="${reasonTitle}">${escAttr(concern)}</td>
       </tr>
