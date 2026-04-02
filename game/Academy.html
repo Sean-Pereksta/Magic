@@ -1061,6 +1061,7 @@
                 <th style="width:140px">Avg KPI %</th>
                 <th style="width:160px">Trend</th>
                 <th style="width:160px">Flag</th>
+                <th style="width:130px">1:1 Need</th>
                 <th style="width:260px">Next Step</th>
                 <th style="width:260px">Concern</th>
               </tr>
@@ -3483,6 +3484,20 @@ function getRecentWindowSize(weeks){
   if(!n) return 0;
   return Math.max(4, Math.min(6, n));
 }
+const RECENT_COACHING_WEEKS = 4;
+const TREND_DOWN_SIGNIFICANT = 0.02; // 2pp decline (fraction units, e.g. -0.02)
+const DEPENDENCE_MIN_COUNT = 2;
+const DEPENDENCE_MIN_SHARE = 0.60;
+const ONE_TO_ONE_NEED_RANK = { None:0, Low:1, Medium:2, High:3 };
+const CONCERN_PRIORITY_RANK = {
+  'No concern': 0,
+  'Trend down': 1,
+  'Team Meeting dependent': 2,
+  'Scorecard dependent': 3,
+  'Scorecard + Team Meeting dependent': 4,
+  'No recent 1:1': 5,
+  'Checklist follow-up lacking': 6
+};
 function countNearbyMeaningfulCoachings(repSummary, weekIdx){
   if(!repSummary || !Array.isArray(repSummary.cells)) return 0;
   const lo = Math.max(0, weekIdx - 1);
@@ -3518,68 +3533,46 @@ function advisoryTextClass(level){
   if(level === 'low') return 'advisoryLowTxt';
   return 'advisoryOkTxt';
 }
+function oneToOneNeedClass(need){
+  if(need === 'High') return 'advisoryHighTxt';
+  if(need === 'Medium') return 'advisoryMediumTxt';
+  if(need === 'Low') return 'advisoryLowTxt';
+  return 'advisoryOkTxt';
+}
 function buildAdvisoryReasonLines(adv){
   if(!adv) return [];
   return [
     `${adv.belowGoalWeeks} red week(s), recency-weighted ${adv.recentWeightedBelowGoal.toFixed(2)}`,
     `${adv.visibleCoachings} coachings visible (filtered), ${adv.advisoryAllCoachings} advisory scoped`,
     `${adv.advisoryMeaningfulCoachings} targeted 1:1 vs ${adv.advisoryWeakCoachings} scorecard/team meeting (all scoped)`,
-    `${adv.recentMeaningfulCoachings} recent targeted 1:1 vs ${adv.recentWeakCoachings} recent scorecard/team meeting`,
+    `${adv.recentMeaningfulCoachings} recent targeted 1:1 vs ${adv.recentWeakCoachings} recent scorecard/team meeting (last ${RECENT_COACHING_WEEKS} weeks)`,
+    `Recent scorecard/team meeting counts: ${adv.recentScorecardCoachings}/${adv.recentTeamMeetingCoachings} of ${adv.recentTotalCoachings}`,
     `${adv.checklistHitsVisible} checklist hit(s), ${adv.checklistHitsWithoutNearbyMeaningfulCoaching} without nearby meaningful 1:1`,
     `Coaching loss excluding scorecard/team meeting: ${adv.coachingLossCount} (${fmtPct0(adv.coachingLossPct)})`
   ];
 }
 function deriveConcernText(adv){
-  const recentTotal = Number(adv.recentMeaningfulCoachings || 0) + Number(adv.recentWeakCoachings || 0);
-  if(recentTotal === 0) return 'No recent coaching documented';
-  if(adv.checklistHitsWithoutNearbyMeaningfulCoaching > 0) return 'Checklist incidents are not getting enough 1:1 follow-up';
-  if(adv.redWeeksWithMostlyWeakCoaching) return 'Many red weeks and recent coaching is concentrated in scorecard/team meeting formats';
-  if(adv.onlyScorecardRecent || adv.mostlyScorecardRecent) return 'Recent coaching is too dependent on Scorecard';
-  if(adv.onlyTeamMeetingRecent || adv.mostlyTeamMeetingRecent) return 'Recent coaching is too dependent on Team Meeting';
-  if(adv.onlyWeakRecent || adv.mostlyWeakRecent || adv.mostlyWeakOverall) return 'Coaching is concentrated in scorecard/team meeting formats';
-  if(adv.trendDownMostlyWeakRecent) return 'Trend is down and coaching is concentrated in scorecard/team meeting formats';
-  if(adv.lowKpiWeakRecentMix) return 'Low KPI with shallow coaching mix';
-  if(adv.zeroMeaningfulRecent) return 'No meaningful recent 1:1 coaching';
-  if(adv.coachingLossPct >= 0.8) return 'Coaching quality drops sharply when scorecard/team meeting entries are removed';
-  return 'No major concern';
+  if(adv.checklistConcern) return 'Checklist follow-up lacking';
+  if(adv.noRecentOneToOne && adv.coachingConcernEligible) return 'No recent 1:1';
+  if(adv.scorecardAndTeamMeetingDependent && adv.coachingConcernEligible) return 'Scorecard + Team Meeting dependent';
+  if(adv.scorecardDependentRecent && adv.coachingConcernEligible) return 'Scorecard dependent';
+  if(adv.teamMeetingDependentRecent && adv.coachingConcernEligible) return 'Team Meeting dependent';
+  if(adv.trendDownTwoPctOrMore) return 'Trend down';
+  return 'No concern';
 }
 function deriveNextStep(adv){
-  const recentTotal = Number(adv.recentMeaningfulCoachings || 0) + Number(adv.recentWeakCoachings || 0);
-  const needsBeyondBoth = !!(adv.scorecardHeavyRecent && adv.teamMeetingHeavyRecent);
-  const needsBeyondScorecard = !!(adv.scorecardHeavyRecent && !adv.teamMeetingHeavyRecent);
-  const needsBeyondTeamMeeting = !!(adv.teamMeetingHeavyRecent && !adv.scorecardHeavyRecent);
-  if(adv.severity === 'high'){
-    if(recentTotal === 0) return 'No recent coaching — start targeted 1:1 coaching';
-    if(adv.checklistNeedsOneToOne) return 'Needs recent 1:1 follow-up for checklist issue';
-    if(adv.needsDirectOneToOne && needsBeyondBoth) return 'Needs targeted 1:1 coaching beyond scorecard and team meeting';
-    if(adv.needsDirectOneToOne && needsBeyondScorecard) return 'Needs targeted 1:1 coaching beyond scorecard';
-    if(adv.needsDirectOneToOne && needsBeyondTeamMeeting) return 'Needs targeted 1:1 coaching beyond team meeting';
-    if(adv.needsDirectOneToOne && adv.mostlyWeakRecent) return 'Needs targeted 1:1 coaching beyond scorecard/team meeting formats';
-    if(adv.redWeeksNeedOneToOne) return 'Red weeks need direct 1:1 coaching';
-    if(adv.weakTypeDominantOverall) return 'Shift toward targeted 1:1 coaching beyond scorecard/team meeting formats';
-    if(adv.zeroMeaningfulRecent) return 'Needs recent 1:1 coaching';
-    return 'Needs more 1:1 coaching';
+  if(adv.checklistConcern) return 'Provide checklist follow-up through direct 1:1';
+  if(!adv.belowGoal && !adv.trendDownTwoPctOrMore) return 'No action needed';
+  if(!adv.belowGoal && adv.trendDownTwoPctOrMore) return 'Monitor trend';
+  if(adv.belowGoal){
+    if(adv.scorecardAndTeamMeetingOnlyRecent) return 'Add direct 1:1 coaching beyond Scorecard and Team Meeting';
+    if(adv.noRecentOneToOne) return 'Add direct 1:1 coaching';
+    if(adv.scorecardDependentRecent && !adv.teamMeetingDependentRecent) return 'Add direct 1:1 coaching beyond Scorecard';
+    if(adv.teamMeetingDependentRecent && !adv.scorecardDependentRecent) return 'Add direct 1:1 coaching beyond Team Meeting';
+    if(adv.scorecardDependentRecent && adv.teamMeetingDependentRecent) return 'Add direct 1:1 coaching beyond Scorecard and Team Meeting';
+    return 'Add direct 1:1 coaching';
   }
-  if(adv.severity === 'medium'){
-    if(recentTotal === 0) return 'No recent coaching — add targeted coaching';
-    if(adv.lowKpiWeakRecentMix && needsBeyondBoth) return 'Needs targeted 1:1 coaching beyond scorecard and team meeting';
-    if(adv.lowKpiWeakRecentMix && needsBeyondScorecard) return 'Needs targeted 1:1 coaching beyond scorecard';
-    if(adv.lowKpiWeakRecentMix && needsBeyondTeamMeeting) return 'Needs targeted 1:1 coaching beyond team meeting';
-    if(adv.lowKpiWeakRecentMix && adv.weakTypeDependentRecent) return 'Needs targeted 1:1 coaching beyond scorecard/team meeting formats';
-    if(adv.trendDownMostlyWeakRecent && needsBeyondTeamMeeting) return 'Use direct 1:1 instead of team meeting-only coaching';
-    if(adv.trendDownMostlyWeakRecent) return 'Use more targeted 1:1 coaching';
-    if(adv.checklistHitsVisible > 0) return 'Needs targeted 1:1 follow-up';
-    if(adv.scorecardHeavyRecent && adv.teamMeetingHeavyRecent) return 'Needs targeted coaching beyond scorecard and team meeting';
-    if(adv.scorecardHeavyRecent) return 'Needs targeted coaching beyond scorecard';
-    if(adv.teamMeetingHeavyRecent) return 'Needs targeted coaching beyond team meeting';
-    return 'Needs more targeted 1:1 coaching';
-  }
-  if(adv.severity === 'low'){
-    if(recentTotal === 0) return 'No recent coaching';
-    if(adv.recentMeaningfulCoachings > 0) return 'Recent support looks adequate';
-    return 'Monitor only';
-  }
-  return 'No major concern';
+  return 'Monitor trend';
 }
 function computeWeakTypeDependency(repCoachings){
   const coachRows = Array.isArray(repCoachings) ? repCoachings : [];
@@ -3617,7 +3610,8 @@ function buildCoachingAdvisory(repSummary, repWeeks, repCoachingsVisible, repCoa
   const visibleCoachRows = Array.isArray(repCoachingsVisible) ? repCoachingsVisible : [];
   const advisoryCoachRows = Array.isArray(repCoachingsAdvisoryAll) ? repCoachingsAdvisoryAll : visibleCoachRows;
   const checklistRowsVisible = Array.isArray(repChecklist) ? repChecklist : [];
-  const recentWindow = Number(opts?.recentWindow || getRecentWindowSize(repWeeks));
+  // Dependence and 1:1 need logic is explicitly based on recent 4-week coaching mix.
+  const recentWindow = Number(opts?.recentWindow || RECENT_COACHING_WEEKS);
   const recentStartIdx = Math.max(0, cells.length - recentWindow);
   const weekIdx = opts?.weekIdx instanceof Map ? opts.weekIdx : new Map();
 
@@ -3675,33 +3669,56 @@ function buildCoachingAdvisory(repSummary, repWeeks, repCoachingsVisible, repCoa
   }
   const checklistHitsVisible = checklistRowsVisible.length;
 
-  const recentTotalCoachings = recentMeaningfulCoachings + recentWeakCoachings;
+  const recentTotalCoachings = recentMeaningfulCoachings + recentScorecardCoachings + recentTeamMeetingCoachings;
   const scorecardShareRecent = recentTotalCoachings > 0 ? (recentScorecardCoachings / recentTotalCoachings) : 0;
   const teamMeetingShareRecent = recentTotalCoachings > 0 ? (recentTeamMeetingCoachings / recentTotalCoachings) : 0;
-  const onlyScorecardRecent = recentWeakCoachings > 0 && recentMeaningfulCoachings === 0 && scorecardShareRecent >= 0.95;
-  const onlyTeamMeetingRecent = recentWeakCoachings > 0 && recentMeaningfulCoachings === 0 && teamMeetingShareRecent >= 0.95;
+  const weakShareRecent = recentTotalCoachings > 0 ? (recentWeakCoachings / recentTotalCoachings) : 0;
   const onlyWeakRecent = recentWeakCoachings > 0 && recentMeaningfulCoachings === 0;
-  const mostlyScorecardRecent = recentTotalCoachings > 0 && scorecardShareRecent >= 0.7;
-  const mostlyTeamMeetingRecent = recentTotalCoachings > 0 && teamMeetingShareRecent >= 0.7;
-  const mostlyWeakRecent = recentTotalCoachings > 0 && (recentWeakCoachings / recentTotalCoachings) >= 0.7;
+  const mostlyWeakRecent = recentTotalCoachings > 0 && weakShareRecent >= 0.7;
   const mostlyWeakOverall = advisoryMix.totalCoachings > 0 && advisoryMix.weakShare >= 0.7;
   const zeroMeaningfulRecent = recentMeaningfulCoachings === 0;
+  const noRecentOneToOne = recentTotalCoachings > 0 && recentMeaningfulCoachings === 0;
+  const scorecardDependentRecent = recentTotalCoachings > 0 &&
+    recentScorecardCoachings >= DEPENDENCE_MIN_COUNT &&
+    scorecardShareRecent >= DEPENDENCE_MIN_SHARE;
+  const teamMeetingDependentRecent = recentTotalCoachings > 0 &&
+    recentTeamMeetingCoachings >= DEPENDENCE_MIN_COUNT &&
+    teamMeetingShareRecent >= DEPENDENCE_MIN_SHARE;
+  const scorecardAndTeamMeetingOnlyRecent = recentMeaningfulCoachings === 0 && recentScorecardCoachings > 0 && recentTeamMeetingCoachings > 0;
+  const scorecardAndTeamMeetingDependent = scorecardDependentRecent && teamMeetingDependentRecent;
+  const trendDownTwoPctOrMore = Number.isFinite(repSummary.trendTotal) && repSummary.trendTotal <= (-TREND_DOWN_SIGNIFICANT);
+  const belowGoal = Number.isFinite(repSummary.avgKpi) && Number.isFinite(opts.goalFrac) ? repSummary.avgKpi < opts.goalFrac : false;
+  const coachingConcernEligible = belowGoal || trendDownTwoPctOrMore;
+
   const manyRedWithWeak = redWeeksRecentWindow >= 2 && recentMeaningfulCoachings <= 1 && recentWeakCoachings >= recentMeaningfulCoachings;
   const lowKpiWeakRecentMix = Number.isFinite(repSummary.avgKpi) && Number.isFinite(opts.goalFrac) && repSummary.avgKpi < opts.goalFrac && (zeroMeaningfulRecent || mostlyWeakRecent || mostlyWeakOverall);
   const negativeTrendWeakRecent = Number.isFinite(repSummary.trendTotal) && repSummary.trendTotal < 0 && (mostlyWeakRecent || recentMeaningfulCoachings <= 1);
-  const weakTypeDependentRecent = onlyWeakRecent || mostlyWeakRecent;
+  const weakTypeDependentRecent = scorecardDependentRecent || teamMeetingDependentRecent || onlyWeakRecent || mostlyWeakRecent;
   const weakTypeDominantOverall = mostlyWeakOverall || advisoryMix.weakShare >= 0.8;
-  const scorecardHeavyRecent = onlyScorecardRecent || mostlyScorecardRecent;
-  const teamMeetingHeavyRecent = onlyTeamMeetingRecent || mostlyTeamMeetingRecent;
   const checklistNeedsOneToOne = checklistHitsWithoutNearbyMeaningfulCoaching > 0 && recentMeaningfulCoachings <= 1;
   const redWeeksNeedOneToOne = redWeeksRecentWindow >= 2 && recentMeaningfulCoachings <= 1;
   const trendDownMostlyWeakRecent = Number.isFinite(repSummary.trendTotal) && repSummary.trendTotal < 0 && weakTypeDependentRecent;
-  const checklistHitsWithoutRecentOneToOne = checklistHitsWithoutNearbyMeaningfulCoaching > 0 && recentMeaningfulCoachings === 0;
+  const checklistHitsWithoutRecentOneToOne = checklistHitsWithoutNearbyMeaningfulCoaching > 0 && noRecentOneToOne;
   const redWeeksWithMostlyWeakCoaching = redWeeksRecentWindow >= 2 && mostlyWeakRecent;
+  const checklistConcern = coachingConcernEligible && checklistHitsWithoutNearbyMeaningfulCoaching > 0;
   const needsDirectOneToOne =
     ((lowKpiWeakRecentMix || redWeeksRecentWindow >= 2 || trendDownMostlyWeakRecent) && (weakTypeDependentRecent || weakTypeDominantOverall)) ||
     checklistNeedsOneToOne ||
     zeroMeaningfulRecent;
+
+  let oneToOneNeed = 'None';
+  if(!belowGoal){
+    oneToOneNeed = trendDownTwoPctOrMore ? 'Low' : 'None';
+  } else if(noRecentOneToOne || scorecardAndTeamMeetingOnlyRecent){
+    oneToOneNeed = 'High';
+  } else if(scorecardDependentRecent || teamMeetingDependentRecent){
+    oneToOneNeed = 'Medium';
+  } else if(checklistConcern){
+    oneToOneNeed = 'Medium';
+  } else {
+    oneToOneNeed = 'Low';
+  }
+  if(checklistConcern && noRecentOneToOne) oneToOneNeed = 'High';
 
   const riskScore =
     (recentWeightedBelowGoal * 1.8) +
@@ -3715,21 +3732,9 @@ function buildCoachingAdvisory(repSummary, repWeeks, repCoachingsVisible, repCoa
     ((needsDirectOneToOne) ? 1.6 : 0);
 
   let severity = 'ok';
-  if(
-    (needsDirectOneToOne && (manyRedWithWeak || checklistHitsWithoutNearbyMeaningfulCoaching > 0 || trendDownMostlyWeakRecent)) ||
-    checklistHitsWithoutNearbyMeaningfulCoaching >= 2 ||
-    (loss.lossPct >= 0.8 && redWeeksRecentWindow >= 2) ||
-    riskScore >= 9.5
-  ) severity = 'high';
-  else if(
-    advisoryMix.weakShare >= 0.65 ||
-    checklistHitsWithoutNearbyMeaningfulCoaching > 0 ||
-    negativeTrendWeakRecent ||
-    riskScore >= 5.5
-  ) severity = 'medium';
-  else if(
-    belowGoalWeeks > 0 || checklistHitsVisible > 0 || advisoryMix.totalCoachings > 0
-  ) severity = 'low';
+  if(oneToOneNeed === 'High') severity = 'high';
+  else if(oneToOneNeed === 'Medium') severity = 'medium';
+  else if(oneToOneNeed === 'Low') severity = 'low';
 
   const advisory = {
     severity,
@@ -3743,10 +3748,17 @@ function buildCoachingAdvisory(repSummary, repWeeks, repCoachingsVisible, repCoa
     advisoryMeaningfulCoachings: advisoryMix.meaningfulCoachings,
     advisoryWeakCoachings: advisoryMix.weakCoachings,
     recentMeaningfulCoachings,
+    recentScorecardCoachings,
+    recentTeamMeetingCoachings,
     recentWeakCoachings,
+    recentTotalCoachings,
     weakCoachingShare: advisoryMix.weakShare,
     scorecardShare: advisoryMix.scorecardShare,
     teamMeetingShare: advisoryMix.teamMeetingShare,
+    belowGoal,
+    trendDownTwoPctOrMore,
+    coachingConcernEligible,
+    oneToOneNeed,
     belowGoalWeeks,
     recentWeightedBelowGoal,
     redWeeksRecentWindow,
@@ -3760,29 +3772,30 @@ function buildCoachingAdvisory(repSummary, repWeeks, repCoachingsVisible, repCoa
     recentCoachingGapScore,
     advisorySeverity: severity,
     riskScore,
-    onlyScorecardRecent,
-    onlyTeamMeetingRecent,
     onlyWeakRecent,
-    mostlyScorecardRecent,
-    mostlyTeamMeetingRecent,
     mostlyWeakRecent,
     mostlyWeakOverall,
     weakTypeDependentRecent,
     weakTypeDominantOverall,
-    scorecardHeavyRecent,
-    teamMeetingHeavyRecent,
+    noRecentOneToOne,
+    scorecardDependentRecent,
+    teamMeetingDependentRecent,
+    scorecardAndTeamMeetingDependent,
+    scorecardAndTeamMeetingOnlyRecent,
     checklistNeedsOneToOne,
     redWeeksNeedOneToOne,
     trendDownMostlyWeakRecent,
     checklistHitsWithoutRecentOneToOne,
     redWeeksWithMostlyWeakCoaching,
     needsDirectOneToOne,
+    checklistConcern,
     zeroMeaningfulRecent,
     manyRedWithWeak,
     lowKpiWeakRecentMix,
     negativeTrendWeakRecent
   };
   advisory.concernText = deriveConcernText(advisory);
+  advisory.concernRank = CONCERN_PRIORITY_RANK[advisory.concernText] || 0;
   advisory.nextStep = deriveNextStep(advisory);
   advisory.reasonLines = buildAdvisoryReasonLines(advisory);
   return advisory;
@@ -3807,7 +3820,7 @@ function paintTeamSummary(allSummaries, sd, ed, weeks){
   const summariesWithStats = (allSummaries || []).filter(s => Number(s?.withDataN || 0) > 0);
   const kpiDef = getKpiDef();
   els.teamSummaryHint.textContent =
-    `${selectedTeam} • ${kpiDef ? kpiDef.label : 'KPI'} • ${mmddyy(sd)} → ${mmddyy(ed)} • ${weeks.length}w • Sorted by advisory severity / recent risk`;
+    `${selectedTeam} • ${kpiDef ? kpiDef.label : 'KPI'} • ${mmddyy(sd)} → ${mmddyy(ed)} • ${weeks.length}w • Sorted by 1:1 need / concern / urgency`;
 
   const coachTotals = summariesWithStats.map(s=>s.coachTotal||0);
   const avgKpis = summariesWithStats.map(s=>s.avgKpi).filter(Number.isFinite);
@@ -3818,7 +3831,7 @@ function paintTeamSummary(allSummaries, sd, ed, weeks){
   const kpiLowThresh = Number.isFinite(goalFrac) ? goalFrac : quantile(avgKpis, 0.25);
 
   const coachAvg = mean(coachTotals.map(n=>+n));
-  const recentWindow = getRecentWindowSize(weeks);
+  const recentWindow = RECENT_COACHING_WEEKS;
 
   const selItem = getSelectedCriteria();
   const selInc = selItem?.incident || '__ANY__';
@@ -3864,15 +3877,21 @@ function paintTeamSummary(allSummaries, sd, ed, weeks){
   const sorted = summariesWithStats.slice().sort((a,b)=>{
     const aAdv = a.advisory || {};
     const bAdv = b.advisory || {};
-    const asev = severityRank(aAdv.severity);
-    const bsev = severityRank(bAdv.severity);
-    if(bsev !== asev) return bsev - asev;
-    const arisk = Number(aAdv.riskScore || 0);
-    const brisk = Number(bAdv.riskScore || 0);
-    if(brisk !== arisk) return brisk - arisk;
+    const aNeedRank = ONE_TO_ONE_NEED_RANK[aAdv.oneToOneNeed] || 0;
+    const bNeedRank = ONE_TO_ONE_NEED_RANK[bAdv.oneToOneNeed] || 0;
+    if(bNeedRank !== aNeedRank) return bNeedRank - aNeedRank;
+    const aConcernRank = Number(aAdv.concernRank || 0);
+    const bConcernRank = Number(bAdv.concernRank || 0);
+    if(bConcernRank !== aConcernRank) return bConcernRank - aConcernRank;
     const aChecklistGap = Number(aAdv.checklistHitsWithoutNearbyMeaningfulCoaching || 0);
     const bChecklistGap = Number(bAdv.checklistHitsWithoutNearbyMeaningfulCoaching || 0);
     if(bChecklistGap !== aChecklistGap) return bChecklistGap - aChecklistGap;
+    const aUrgency = (aAdv.belowGoal ? 2 : 0) + (aAdv.trendDownTwoPctOrMore ? 1 : 0);
+    const bUrgency = (bAdv.belowGoal ? 2 : 0) + (bAdv.trendDownTwoPctOrMore ? 1 : 0);
+    if(bUrgency !== aUrgency) return bUrgency - aUrgency;
+    const asev = severityRank(aAdv.severity);
+    const bsev = severityRank(bAdv.severity);
+    if(bsev !== asev) return bsev - asev;
     const aLoss = Number(aAdv.coachingLossPct || 0);
     const bLoss = Number(bAdv.coachingLossPct || 0);
     if(bLoss !== aLoss) return bLoss - aLoss;
@@ -3908,8 +3927,10 @@ function paintTeamSummary(allSummaries, sd, ed, weeks){
     const flagHtml = (flag.label==='—')
       ? `<span class="mono" style="color:var(--muted);font-weight:900">—</span>`
       : `<span class="badgePill ${flag.pill}">${escAttr(flag.label)}</span>`;
-    const nextStep = adv.nextStep || 'No major concern';
-    const concern = adv.concernText || 'No major concern';
+    const nextStep = adv.nextStep || 'No action needed';
+    const concern = adv.concernText || 'No concern';
+    const oneToOneNeed = adv.oneToOneNeed || 'None';
+    const oneToOneNeedCls = oneToOneNeedClass(oneToOneNeed);
     const reasonTitle = escAttr((adv.reasonLines || []).join(' • '));
 
     return `
@@ -3922,11 +3943,12 @@ function paintTeamSummary(allSummaries, sd, ed, weeks){
         <td class="mono">${fmtPct1(s.avgKpi)}</td>
         <td class="mono"><span class="${trendCls}">${escAttr(trendTxt)}</span></td>
         <td>${flagHtml}</td>
+        <td class="${oneToOneNeedCls}" title="${reasonTitle}">${escAttr(oneToOneNeed)}</td>
         <td class="${advTxtCls}" title="${reasonTitle}">${escAttr(nextStep)}</td>
         <td class="${advTxtCls}" title="${reasonTitle}">${escAttr(concern)}</td>
       </tr>
     `;
-  }).join('') || `<tr><td colspan="10" class="mono" style="color:var(--muted);font-weight:900">No reps with stats in this date range.</td></tr>`;
+  }).join('') || `<tr><td colspan="11" class="mono" style="color:var(--muted);font-weight:900">No reps with stats in this date range.</td></tr>`;
 
   els.teamSummaryBody.querySelectorAll('.repNameBtn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
@@ -4231,7 +4253,7 @@ function timelineOrbHtml(repName, weeks){
 /* =================== Render =================== */
 function render(){
   if(els.gapList) els.gapList.innerHTML = `<div class="gapMuted">—</div>`;
-  if(els.teamSummaryBody) els.teamSummaryBody.innerHTML = `<tr><td colspan="10" class="mono" style="color:var(--muted);font-weight:900">—</td></tr>`;
+  if(els.teamSummaryBody) els.teamSummaryBody.innerHTML = `<tr><td colspan="11" class="mono" style="color:var(--muted);font-weight:900">—</td></tr>`;
   if(els.teamSummaryPills) els.teamSummaryPills.innerHTML = '';
 
   const kpiDef = getKpiDef();
@@ -4747,6 +4769,3 @@ els.repSearch.addEventListener('input', ()=> render());
 
 </body>
 </html>
-
-
-
