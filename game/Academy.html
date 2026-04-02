@@ -3090,10 +3090,9 @@ function computeRepSummary(repName, weeks, goalFrac, oppGateKey, oppMin){
     let scorecardCoachCount = 0;
     let teamMeetingCoachCount = 0;
     for(const c of coachArr){
-      const types = c.types || [];
-      const hasScorecard = types.some(t => String(t || '').trim().toLowerCase() === 'scorecard');
-      const hasTeamMeeting = types.some(t => String(t || '').trim().toLowerCase() === 'team meeting');
-      const isWeak = types.some(isWeakCoachingType);
+      const hasTeamMeeting = isTeamMeetingCoaching(c);
+      const hasScorecard = !hasTeamMeeting && isScorecardCoaching(c);
+      const isWeak = isWeakCoachingRow(c);
       if(hasScorecard) scorecardCoachCount++;
       if(hasTeamMeeting) teamMeetingCoachCount++;
       if(isWeak) weakCoachCount++;
@@ -3481,9 +3480,45 @@ function paintGapList(repSummaries){
 }
 
 /* =================== Team Summary =================== */
+// Team meetings may appear either in coaching type/category fields or only in the description,
+// so classification must not rely on exact type equality.
+function normalizeCoachText(value){
+  return String(value || '').toLowerCase().replace(/[\s_-]+/g, ' ').trim();
+}
+function coachingHasTypeMatch(coaching, phrases){
+  const phraseList = Array.isArray(phrases) ? phrases.map(normalizeCoachText).filter(Boolean) : [];
+  if(!phraseList.length) return false;
+  const typeTokens = [];
+  const addToken = (v)=>{
+    const n = normalizeCoachText(v);
+    if(n) typeTokens.push(n);
+  };
+  const c = coaching || {};
+  if(Array.isArray(c.types)) for(const t of c.types) addToken(t);
+  if(Array.isArray(c.categories)) for(const t of c.categories) addToken(t);
+  addToken(c.type);
+  addToken(c.category);
+  return typeTokens.some(token => phraseList.some(phrase => token.includes(phrase)));
+}
+function isTeamMeetingCoaching(coaching){
+  const c = coaching || {};
+  const typeMatch = coachingHasTypeMatch(c, ['team meeting', 'team mtg', 'tm']);
+  if(typeMatch) return true;
+  const desc = normalizeCoachText(c.desc || c.description || '');
+  if(!desc) return false;
+  return /\bteam meeting\b/.test(desc) || /\bteam mtg\b/.test(desc) || /\bteam meetings\b/.test(desc);
+}
+function isScorecardCoaching(coaching){
+  const c = coaching || {};
+  if(coachingHasTypeMatch(c, ['scorecard'])) return true;
+  const desc = normalizeCoachText(c.desc || c.description || '');
+  return /\bscorecard\b/.test(desc);
+}
 function isWeakCoachingType(typeName){
-  const t = String(typeName || '').trim().toLowerCase();
-  return t === 'scorecard' || t === 'team meeting';
+  return isWeakCoachingRow({ types:[typeName] });
+}
+function isWeakCoachingRow(coaching){
+  return isTeamMeetingCoaching(coaching) || isScorecardCoaching(coaching);
 }
 function getRecentWindowSize(weeks){
   const n = Array.isArray(weeks) ? weeks.length : 0;
@@ -3596,10 +3631,9 @@ function computeWeakTypeDependency(repCoachings){
   let scorecardCount = 0;
   let teamMeetingCount = 0;
   for(const c of coachRows){
-    const types = c.types || [];
-    const hasScorecard = types.some(t => String(t || '').trim().toLowerCase() === 'scorecard');
-    const hasTeamMeeting = types.some(t => String(t || '').trim().toLowerCase() === 'team meeting');
-    const weak = types.some(isWeakCoachingType);
+    const hasTeamMeeting = isTeamMeetingCoaching(c);
+    const hasScorecard = !hasTeamMeeting && isScorecardCoaching(c);
+    const weak = isWeakCoachingRow(c);
     if(hasScorecard) scorecardCount++;
     if(hasTeamMeeting) teamMeetingCount++;
     if(weak) weakCoachings++;
@@ -3625,9 +3659,8 @@ function computeOneToOneNeedMix(repCoachings){
   let scorecardCount = 0;
   let teamMeetingCount = 0;
   for(const c of coachRows){
-    const types = c.types || [];
-    const hasScorecard = types.some(t => String(t || '').trim().toLowerCase() === 'scorecard');
-    const hasTeamMeeting = types.some(t => String(t || '').trim().toLowerCase() === 'team meeting');
+    const hasTeamMeeting = isTeamMeetingCoaching(c);
+    const hasScorecard = !hasTeamMeeting && isScorecardCoaching(c);
     if(hasTeamMeeting) teamMeetingCount++;
     else if(hasScorecard) scorecardCount++;
     else coachingCount++;
@@ -3688,14 +3721,14 @@ function buildCoachingAdvisory(repSummary, repWeeks, repCoachingsVisible, repCoa
   for(const c of advisoryCoachRows){
     const idx = weekIdx.get(c.wk);
     if(!Number.isFinite(idx)) continue;
-    const hasScorecard = (c.types || []).some(t => String(t || '').trim().toLowerCase() === 'scorecard');
-    const hasTeamMeeting = (c.types || []).some(t => String(t || '').trim().toLowerCase() === 'team meeting');
+    const hasTeamMeeting = isTeamMeetingCoaching(c);
+    const hasScorecard = !hasTeamMeeting && isScorecardCoaching(c);
     if(idx >= recentStartIdx){
       recentCoachingRows += 1;
       if(hasScorecard) recentScorecardCoachings += 1;
       if(hasTeamMeeting) recentTeamMeetingCoachings += 1;
     }
-    if((c.types || []).some(isWeakCoachingType)){
+    if(isWeakCoachingRow(c)){
       if(idx >= recentStartIdx) recentWeakCoachings += 1;
     } else {
       advisoryMeaningfulWeekMap.set(idx, (advisoryMeaningfulWeekMap.get(idx) || 0) + 1);
