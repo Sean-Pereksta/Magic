@@ -334,6 +334,7 @@
   .rarity-uncommon{color:#8dffba}
   .rarity-elite{color:#ff93d8}
   .rarity-legendary{color:var(--legendary)}
+  .rarity-apex{color:#ff5dcb;text-shadow:0 0 10px rgba(255,93,203,.35)}
 
   #vfxLayer{
     position:absolute;
@@ -1097,6 +1098,262 @@ const BASE_ENEMIES = [
 
 ];
 
+
+const EXPANSION_ENEMIES_100 = [
+  // Neutral (16)
+  {name:'Dust Pilgrim', faction:'Neutral', rarity:'common', hp:42, dmg:9, friend:46, emoji:'🥾', desc:'Adaptive drifter that reads your rhythm.', traits:['adaptiveMind'], allyAbility:{type:'heal', power:9, text:'steadies your breath'}},
+  {name:'Marble Oracle', faction:'Neutral', rarity:'uncommon', hp:62, dmg:14, friend:76, emoji:'🗿', desc:'Predictive seer that punishes repeats.', traits:['retaliatory'], allyAbility:{type:'hushed', text:'hushes enemy focus'}},
+  {name:'Vale Watcher', faction:'Neutral', rarity:'common', hp:48, dmg:11, friend:52, emoji:'🦉', desc:'Observes factions and strikes opportunistically.', traits:['defectorHunter'], allyAbility:{type:'damageVs', power:11, vs:'Chaos', bonus:8, text:'picks faction weaknesses'}},
+  {name:'Echo Stag', faction:'Neutral', rarity:'uncommon', hp:58, dmg:13, friend:70, emoji:'🦌', desc:'Mirror-horn spirit that grows if ignored.', traits:['lastStand'], allyAbility:{type:'regen', power:4, turns:3, text:'grants calm renewal'}},
+  {name:'Lantern Nomad', faction:'Neutral', rarity:'common', hp:44, dmg:10, friend:48, emoji:'🏮', desc:'Wayfarer wrapped in guiding embers.', traits:['crackedFaith'], befriendScalingMode:'stronger', allyAbility:{type:'befriend', power:9, text:'guides foes toward your side'}},
+  {name:'Hollow Cartographer', faction:'Neutral', rarity:'uncommon', hp:64, dmg:15, friend:84, emoji:'🗺️', desc:'Maps escape routes and bars easy conversion.', shield:18, maxShield:18, shieldBlocksBefriend:true, traits:['defiant'], befriendScalingMode:'reduced', allyAbility:{type:'shield', power:12, text:'charts a protective line'}},
+  {name:'Moss Titan', faction:'Neutral', rarity:'elite', hp:132, dmg:24, friend:120, emoji:'🪵', desc:'Slow giant that turns fights into marathons.', shield:22, maxShield:22, traits:['thickHide','lastStand'], allyAbility:{type:'regen', power:6, turns:3, text:'grows living bark around you'}},
+  {name:'Mirror Archivist', faction:'Neutral', rarity:'uncommon', hp:68, dmg:16, friend:82, emoji:'🪞', desc:'Copies your last tempo and resists spam.', traits:['adaptiveMind','arcWard'], allyAbility:{type:'randomEffect', text:'mirrors a useful pulse'}},
+  {name:'Pale Huntsman', faction:'Neutral', rarity:'elite', hp:116, dmg:27, friend:108, emoji:'🏹', desc:'Executes wounded prey with cold precision.', traits:['panicSpiral'], allyAbility:{type:'damage', power:18, text:'fires an execution shot'}},
+  {name:'Drift Scribe', faction:'Neutral', rarity:'common', hp:46, dmg:10, friend:50, emoji:'✒️', desc:'Records your habits and adapts quickly.', traits:['adaptiveMind'], allyAbility:{type:'weaken', power:0.14, turns:2, text:'annotates weak points'}},
+  {name:'Stone Choir Beast', faction:'Neutral', rarity:'elite', hp:138, dmg:25, friend:124, emoji:'🪨', desc:'Resonant bulk that shrugs off control.', shield:26, maxShield:26, shieldBlocksBefriend:true, traits:['steadfast','defiant'], befriendScalingMode:'reduced', allyAbility:{type:'stun', chance:0.22, text:'roars a concussive hymn'}},
+  {name:'Frozen Vagrant', faction:'Neutral', rarity:'common', hp:50, dmg:12, friend:55, emoji:'🧊', desc:'Numbing wanderer that slows tempo.', traits:['arcWard'], allyAbility:{type:'paralyze', chance:0.14, text:'chills enemy movement'}},
+  {name:'Twilight Heron', faction:'Neutral', rarity:'uncommon', hp:60, dmg:15, friend:72, emoji:'🪽', desc:'Dusk hunter with mixed offense.', traits:['brittleShell'], allyAbility:{type:'damage', power:14, text:'dives through the target'}},
+  {name:'Ancient Bellwalker', faction:'Neutral', rarity:'legendary', hp:198, dmg:34, friend:166, emoji:'🔔', desc:'Rings phase shifts into the battlefield.', shield:34, maxShield:34, shieldRegenOnLowHp:0.4, shieldRegenAmount:20, shieldBlocksBefriend:true, traits:['defiant','lastStand','retaliatory'], befriendScalingMode:'reduced', allyAbility:{type:'allyBoost', power:0.33, text:'sets a relentless cadence'}},
+  {name:'Rune Shelter Guardian', faction:'Neutral', rarity:'legendary', hp:206, dmg:32, friend:170, emoji:'🪬', desc:'Ward-heavy sentinel with anti-status runes.', shield:42, maxShield:42, shieldRegenOnce:true, shieldRegenAmount:24, shieldBlocksBefriend:true, traits:['arcWard','steadfast','defiant'], befriendScalingMode:'reduced', allyAbility:{type:'shield', power:20, text:'raises a runic refuge'}},
+  {name:'Worldroot Colossus', faction:'Neutral', rarity:'apex', hp:270, dmg:45, friend:230, emoji:'🌳', desc:'A root-ancient apex that mutates through phases.', shield:60, maxShield:60, shieldRegenOnLowHp:0.7, shieldRegenAmount:34, shieldBlocksBefriend:true, traits:['thickHide','lastStand','defiant','adaptiveMind'], befriendScalingMode:'reduced', allyAbility:{type:'regen', power:10, turns:4, text:'floods your side with ancient vitality'}},
+
+  // Light (16)
+  {name:'Dawn Lancer', faction:'Light', rarity:'common', hp:46, dmg:11, friend:54, emoji:'🌅', desc:'Opens with disciplined holy thrusts.', allyAbility:{type:'damageVs', power:11, vs:'Dark', bonus:8, text:'pierces dark foes'}},
+  {name:'Halo Penitent', faction:'Light', rarity:'common', hp:44, dmg:9, friend:50, emoji:'😇', desc:'Repentant zealot with brittle resolve.', traits:['crackedFaith'], befriendScalingMode:'stronger', allyAbility:{type:'heal', power:8, text:'shares contrition'}},
+  {name:'Ivory Confessor', faction:'Light', rarity:'uncommon', hp:64, dmg:14, friend:82, emoji:'📖', desc:'Confessional ward that resists conversion.', shield:20, maxShield:20, shieldBlocksBefriend:true, traits:['ironWill','defiant'], befriendScalingMode:'reduced', allyAbility:{type:'befriendVuln', power:0.18, turns:2, text:'extracts vulnerabilities'}},
+  {name:'Beacon Warden', faction:'Light', rarity:'uncommon', hp:76, dmg:15, friend:90, emoji:'🕯️', desc:'Shield specialist with first-turn ward.', shield:24, maxShield:24, shieldBlocksBefriend:true, traits:['defiant'], befriendScalingMode:'reduced', allyAbility:{type:'shield', power:15, text:'casts a beacon barrier'}},
+  {name:'Sunblade Cantor', faction:'Light', rarity:'common', hp:48, dmg:12, friend:56, emoji:'🎵', desc:'Sings and cleaves in equal measure.', allyAbility:{type:'damage', power:12, text:'chants a cutting hymn'}},
+  {name:'Chapel Bastion', faction:'Light', rarity:'elite', hp:138, dmg:24, friend:128, emoji:'⛪', desc:'Break-shield-first conversion puzzle.', shield:34, maxShield:34, shieldBlocksBefriend:true, shieldRegenOnce:true, shieldRegenAmount:18, traits:['defiant','faithLocked'], befriendScalingMode:'reduced', allyAbility:{type:'shield', power:18, text:'fortifies your frontline'}},
+  {name:'Grace Siphoner', faction:'Light', rarity:'uncommon', hp:66, dmg:17, friend:84, emoji:'🕊️', desc:'Steals setup tempo and denies statuses.', traits:['arcWard'], allyAbility:{type:'healHit', power:10, heal:8, text:'strikes and restores'}},
+  {name:'Radiant Executor', faction:'Light', rarity:'elite', hp:122, dmg:30, friend:122, emoji:'⚔️', desc:'Execution specialist versus wounded players.', traits:['panicSpiral','ironWill'], allyAbility:{type:'damageVs', power:18, vs:'Dark', bonus:10, text:'delivers radiant judgment'}},
+  {name:'Mercy Standard', faction:'Light', rarity:'elite', hp:50, dmg:9, friend:58, emoji:'🏳️', desc:'Banner unit that hardens allies.', allyAbility:{type:'allyBoost', power:0.16, text:'raises team morale'}},
+  {name:'Throne Witness', faction:'Light', rarity:'uncommon', hp:72, dmg:16, friend:88, emoji:'👁️', desc:'Punishes repeated cast patterns.', traits:['retaliatory','adaptiveMind'], allyAbility:{type:'weaken', power:0.16, turns:2, text:'records your errors'}},
+  {name:'Goldglass Angel', faction:'Light', rarity:'elite', hp:132, dmg:26, friend:130, emoji:'👼', desc:'Reflective armor angel with anti-dark edge.', shield:28, maxShield:28, shieldBlocksBefriend:true, traits:['chaosHardened','defiant'], befriendScalingMode:'reduced', allyAbility:{type:'damageVs', power:17, vs:'Dark', bonus:12, text:'smashes darkness'}},
+  {name:'Oath Censer', faction:'Light', rarity:'legendary', hp:47, dmg:10, friend:55, emoji:'🕯️', desc:'Incense bearer that cleanses pressure.', allyAbility:{type:'heal', power:9, text:'burns away pain'}},
+  {name:'Judgment Chanter', faction:'Light', rarity:'uncommon', hp:70, dmg:18, friend:90, emoji:'📣', desc:'Anti-status judge that escalates over time.', traits:['arcWard','lastStand'], allyAbility:{type:'stun', chance:0.2, text:'chants a binding verdict'}},
+  {name:'Pilgrim of the Dawn Gate', faction:'Light', rarity:'elite', hp:140, dmg:25, friend:132, emoji:'🚪', desc:'Gatekeeper who refreshes shield when bloodied.', shield:30, maxShield:30, shieldRegenOnLowHp:0.45, shieldRegenAmount:16, shieldBlocksBefriend:true, traits:['defiant','faithLocked'], befriendScalingMode:'reduced', allyAbility:{type:'befriend', power:16, text:'opens a narrow conversion gate'}},
+  {name:'Basilica Spearbearer', faction:'Light', rarity:'legendary', hp:212, dmg:36, friend:178, emoji:'🛡️', desc:'Oppressive lawful spearwall anchor.', shield:44, maxShield:44, shieldBlocksBefriend:true, traits:['defiant','ironWill','retaliatory'], befriendScalingMode:'reduced', allyAbility:{type:'damageVs', power:22, vs:'Dark', bonus:14, text:'impales condemned foes'}},
+  {name:'Solar Tribunal Engine', faction:'Light', rarity:'apex', hp:288, dmg:47, friend:238, emoji:'☀️', desc:'Apex tribunal construct that enforces radiant law.', shield:66, maxShield:66, shieldRegenOnLowHp:0.7, shieldRegenAmount:36, shieldBlocksBefriend:true, traits:['faithLocked','defiant','arcWard','retaliatory'], befriendScalingMode:'reduced', allyAbility:{type:'allyBoost', power:0.5, text:'issues a crushing tribunal edict'}},
+
+  // Dark (16)
+  {name:'Tomb Duelist', faction:'Dark', rarity:'common', hp:45, dmg:12, friend:48, emoji:'⚰️', desc:'Quick duelist that spikes on wounded targets.', traits:['panicSpiral'], allyAbility:{type:'damage', power:12, text:'cuts deep from the crypt'}},
+  {name:'Gloom Rector', faction:'Dark', rarity:'uncommon', hp:66, dmg:16, friend:82, emoji:'🕯️', desc:'Rector of attrition and curse pressure.', traits:['spiteFuel'], allyAbility:{type:'weaken', power:0.18, turns:2, text:'invokes oppressive gloom'}},
+  {name:'Veil Stalker', faction:'Dark', rarity:'common', hp:46, dmg:13, friend:50, emoji:'🕶️', desc:'Stalker that punishes long rounds.', allyAbility:{type:'poison', power:7, turns:3, text:'laces the target with rot'}},
+  {name:'Black Reliquary', faction:'Dark', rarity:'uncommon', hp:72, dmg:15, friend:88, emoji:'🗝️', desc:'Cursed reliquary shielding anti-befriend core.', shield:22, maxShield:22, shieldBlocksBefriend:true, traits:['defiant'], befriendScalingMode:'reduced', allyAbility:{type:'shield', power:12, text:'grants a cursed ward'}},
+  {name:'Grave Harvester', faction:'Dark', rarity:'common', hp:50, dmg:12, friend:54, emoji:'🪦', desc:'Feeds on fallen momentum.', traits:['lastStand'], allyAbility:{type:'drain', power:11, heal:6, text:'harvests life essence'}},
+  {name:'Mourning Captain', faction:'Dark', rarity:'elite', hp:126, dmg:27, friend:122, emoji:'🧥', desc:'Snowballs when allies fall.', traits:['spiteFuel','lastStand'], allyAbility:{type:'allyBoost', power:0.26, text:'commands a sorrow charge'}},
+  {name:'Night Catechist', faction:'Dark', rarity:'uncommon', hp:64, dmg:17, friend:80, emoji:'📜', desc:'Applies anti-long-fight doctrine.', traits:['adaptiveMind'], allyAbility:{type:'poison', power:9, turns:4, text:'teaches lethal doctrine'}},
+  {name:'Coffin Herald', faction:'Dark', rarity:'elite', hp:48, dmg:11, friend:53, emoji:'📯', desc:'Broadcasts panic and executions.', traits:['panicSpiral'], allyAbility:{type:'weaken', power:0.14, turns:2, text:'heralds dread'}},
+  {name:'Rotblade Zealot', faction:'Dark', rarity:'uncommon', hp:68, dmg:18, friend:82, emoji:'🗡️', desc:'Rots armor and healing lines.', traits:['venomproof'], allyAbility:{type:'poison', power:10, turns:3, text:'carves septic wounds'}},
+  {name:'Sorrow Brute', faction:'Dark', rarity:'common', hp:56, dmg:14, friend:58, emoji:'🪓', desc:'Heavy hitter that pressures low HP.', traits:['crackedFaith'], befriendScalingMode:'stronger', allyAbility:{type:'damage', power:14, text:'smashes in grief-fueled fury'}},
+  {name:'Carrion Psalmist', faction:'Dark', rarity:'elite', hp:136, dmg:26, friend:126, emoji:'🎼', desc:'Status-heavy singer with anti-light edge.', traits:['faithLocked','spiteFuel'], allyAbility:{type:'paralyze', chance:0.24, text:'chants a carrion psalm'}},
+  {name:'Dread Procession Knight', faction:'Dark', rarity:'elite', hp:142, dmg:28, friend:130, emoji:'🐴', desc:'Relentless knight that grows each turn alive.', shield:26, maxShield:26, traits:['defiant','lastStand'], befriendScalingMode:'reduced', allyAbility:{type:'damage', power:20, text:'tramples with funeral steel'}},
+  {name:'Bell of Ruin', faction:'Dark', rarity:'uncommon', hp:74, dmg:17, friend:90, emoji:'🔔', desc:'Bell that cracks player defenses.', traits:['retaliatory'], allyAbility:{type:'weaken', power:0.2, turns:2, text:'rings ruin into armor gaps'}},
+  {name:'Hollow Magistrate', faction:'Dark', rarity:'elite', hp:146, dmg:29, friend:132, emoji:'⚖️', desc:'Anti-Light magistrate with ruthless verdicts.', traits:['faithLocked','ironWill','defiant'], befriendScalingMode:'reduced', allyAbility:{type:'damageVs', power:20, vs:'Light', bonus:14, text:'issues terminal sentence'}},
+  {name:'Ash Sepulcher Saint', faction:'Dark', rarity:'legendary', hp:216, dmg:37, friend:182, emoji:'🩸', desc:'A saint of ash that drains as you weaken.', shield:40, maxShield:40, shieldBlocksBefriend:true, traits:['arcWard','lastStand','spiteFuel'], befriendScalingMode:'reduced', allyAbility:{type:'drain', power:24, heal:14, text:'consecrates with devouring ash'}},
+  {name:'Eclipse Cathedral Tyrant', faction:'Dark', rarity:'apex', hp:294, dmg:49, friend:242, emoji:'🌘', desc:'Apex tyrant that snowballs brutally through phases.', shield:64, maxShield:64, shieldRegenOnLowHp:0.68, shieldRegenAmount:34, shieldBlocksBefriend:true, traits:['arcWard','ironWill','defiant','lastStand'], befriendScalingMode:'reduced', allyAbility:{type:'allyBoost', power:0.52, text:'ushers a cathedral eclipse'}},
+
+  // Chaos (16)
+  {name:'Spark Gnawer', faction:'Chaos', rarity:'legendary', hp:44, dmg:12, friend:46, emoji:'⚡', desc:'Chews shields and charges quickly.', traits:['heatSurge'], allyAbility:{type:'randomHit', min:6, max:14, text:'gnaws with crackling bites'}},
+  {name:'Ember Wolf', faction:'Chaos', rarity:'common', hp:48, dmg:13, friend:50, emoji:'🐺', desc:'Burn-focused pack hunter.', traits:['dryKindling'], allyAbility:{type:'burn', power:8, turns:3, text:'sears the target'}},
+  {name:'Riot Channeler', faction:'Chaos', rarity:'uncommon', hp:66, dmg:17, friend:78, emoji:'📡', desc:'Channels unstable area surges.', traits:['retaliatory'], allyAbility:{type:'randomEffect', text:'channels riot static'}},
+  {name:'Flame Hexer', faction:'Chaos', rarity:'uncommon', hp:64, dmg:16, friend:80, emoji:'🔥', desc:'Hexes that punish control loops.', traits:['adaptiveMind'], allyAbility:{type:'burn', power:10, turns:3, text:'brands a flame hex'}},
+  {name:'Rift Spewer', faction:'Chaos', rarity:'common', hp:50, dmg:14, friend:52, emoji:'🌀', desc:'Rift vomiter with anti-shield splash.', allyAbility:{type:'damage', power:13, text:'spews riftfire shards'}},
+  {name:'Ash Cyclone', faction:'Chaos', rarity:'elite', hp:128, dmg:28, friend:116, emoji:'🌪️', desc:'Cyclonic bruiser that scales when ignored.', traits:['spiteFuel','heatSurge'], allyAbility:{type:'burn', power:13, turns:4, text:'forms a raging ash cyclone'}},
+  {name:'Wild Current Fiend', faction:'Chaos', rarity:'uncommon', hp:68, dmg:18, friend:82, emoji:'🦈', desc:'Paralyze-heavy fiend of unstable current.', traits:['arcWard'], allyAbility:{type:'paralyze', chance:0.23, text:'unleashes wild current'}},
+  {name:'Furnace Knight', faction:'Chaos', rarity:'elite', hp:136, dmg:30, friend:122, emoji:'🛡️', desc:'Anti-shield knight with pressure spikes.', shield:24, maxShield:24, traits:['defiant','retaliatory'], befriendScalingMode:'reduced', allyAbility:{type:'damage', power:21, text:'crushes through defenses'}},
+  {name:'Cinder Oracle', faction:'Chaos', rarity:'common', hp:46, dmg:12, friend:49, emoji:'🔮', desc:'Predicts and punishes repeated cast types.', traits:['adaptiveMind'], allyAbility:{type:'randomDebuff', text:'foretells collapse'}},
+  {name:'Thunder Lash Brute', faction:'Chaos', rarity:'uncommon', hp:74, dmg:20, friend:84, emoji:'⚡', desc:'Execution damage against wounded players.', traits:['panicSpiral'], allyAbility:{type:'damage', power:16, text:'lashes thunder through armor'}},
+  {name:'Warp Pyromaniac', faction:'Chaos', rarity:'elite', hp:132, dmg:29, friend:118, emoji:'🧨', desc:'Warpfire maniac that escalates per turn.', traits:['heatSurge','lastStand'], allyAbility:{type:'burn', power:14, turns:4, text:'warps fire through reality'}},
+  {name:'Static Widow', faction:'Chaos', rarity:'common', hp:49, dmg:13, friend:54, emoji:'🕷️', desc:'Webbed static punisher.', traits:['crackedFaith'], befriendScalingMode:'stronger', allyAbility:{type:'paralyze', chance:0.17, text:'ensnares with static threads'}},
+  {name:'Cataclysm Herald', faction:'Chaos', rarity:'elite', hp:148, dmg:31, friend:126, emoji:'📯', desc:'Herald of huge spikes and ally empowerment.', traits:['spiteFuel','retaliatory'], allyAbility:{type:'allyBoost', power:0.32, text:'announces cataclysm'}},
+  {name:'Volcanic Idol', faction:'Chaos', rarity:'uncommon', hp:78, dmg:19, friend:90, emoji:'🌋', desc:'Molten idol with thick shield shell.', shield:26, maxShield:26, shieldBlocksBefriend:true, traits:['defiant'], befriendScalingMode:'reduced', allyAbility:{type:'shield', power:14, text:'raises volcanic plating'}},
+  {name:'Storm Furnace Beast', faction:'Chaos', rarity:'legendary', hp:220, dmg:38, friend:184, emoji:'🐉', desc:'Volatile apex-adjacent furnace predator.', shield:38, maxShield:38, shieldRegenOnce:true, shieldRegenAmount:22, shieldBlocksBefriend:true, traits:['heatSurge','arcWard','lastStand'], befriendScalingMode:'reduced', allyAbility:{type:'damage', power:25, text:'erupts with stormfire'}},
+  {name:'Riftbreak Titan', faction:'Chaos', rarity:'apex', hp:300, dmg:50, friend:244, emoji:'🪐', desc:'Apex chaos titan that cracks control and shields.', shield:62, maxShield:62, shieldRegenOnLowHp:0.66, shieldRegenAmount:34, shieldBlocksBefriend:true, traits:['arcWard','defiant','retaliatory','heatSurge'], befriendScalingMode:'reduced', allyAbility:{type:'randomEffect', text:'tears a riftbreak anomaly'}},
+
+  // Alliance (16)
+  {name:'Order Recruit', faction:'Alliance', rarity:'common', hp:50, dmg:10, friend:52, emoji:'🪖', desc:'Disciplined trainee with guard posture.', allyAbility:{type:'shield', power:10, text:'sets formation guard'}},
+  {name:'Pike Marshal', faction:'Alliance', rarity:'uncommon', hp:72, dmg:16, friend:84, emoji:'📏', desc:'Formation lead with anti-renegade focus.', allyAbility:{type:'damageVs', power:14, vs:'Renegades', bonus:10, text:'drives a pike line'}},
+  {name:'Formation Priest', faction:'Alliance', rarity:'legendary', hp:48, dmg:9, friend:50, emoji:'⛪', desc:'Support priest that stabilizes squads.', allyAbility:{type:'heal', power:9, text:'blesses the frontline'}},
+  {name:'Iron Notary', faction:'Alliance', rarity:'uncommon', hp:68, dmg:15, friend:82, emoji:'🖋️', desc:'Records repeat casts and counters them.', traits:['adaptiveMind'], allyAbility:{type:'weaken', power:0.16, turns:2, text:'files crippling injunctions'}},
+  {name:'Banner Chaplain', faction:'Alliance', rarity:'common', hp:52, dmg:10, friend:56, emoji:'🚩', desc:'Standard-bearing morale enforcer.', allyAbility:{type:'allyBoost', power:0.18, text:'chants war discipline'}},
+  {name:'Peacekeeper Blade', faction:'Alliance', rarity:'uncommon', hp:70, dmg:17, friend:86, emoji:'🗡️', desc:'Precision keeper that punishes chaos units.', allyAbility:{type:'damageVs', power:15, vs:'Chaos', bonus:9, text:'applies peace by force'}},
+  {name:'Code Enforcer', faction:'Alliance', rarity:'elite', hp:134, dmg:27, friend:122, emoji:'📜', desc:'Hard anti-befriend law officer.', traits:['ironWill','defiant'], befriendScalingMode:'reduced', allyAbility:{type:'stun', chance:0.22, text:'executes legal restraint'}},
+  {name:'Wall Castellan', faction:'Alliance', rarity:'uncommon', hp:82, dmg:15, friend:92, emoji:'🏰', desc:'Shield wall specialist with regen pulse.', shield:28, maxShield:28, shieldBlocksBefriend:true, traits:['defiant'], befriendScalingMode:'reduced', allyAbility:{type:'shield', power:16, text:'raises a stonewall bulwark'}},
+  {name:'Compact Herald', faction:'Alliance', rarity:'legendary', hp:50, dmg:11, friend:54, emoji:'📣', desc:'Compact-order herald boosting allied pressure.', allyAbility:{type:'allyBoost', power:0.16, text:'signals synchronized assault'}},
+  {name:'Oath Spear Captain', faction:'Alliance', rarity:'elite', hp:138, dmg:29, friend:126, emoji:'🛡️', desc:'Disciplined captain with shield-break counters.', shield:24, maxShield:24, traits:['retaliatory','defectorHunter'], allyAbility:{type:'damage', power:20, text:'pierces with oathbound steel'}},
+  {name:'Tribunal Hound', faction:'Alliance', rarity:'common', hp:54, dmg:12, friend:58, emoji:'🐕', desc:'Tracks wounded targets for finishers.', traits:['panicSpiral'], allyAbility:{type:'damage', power:13, text:'mauls exposed enemies'}},
+  {name:'Justice Sentinel', faction:'Alliance', rarity:'elite', hp:146, dmg:28, friend:130, emoji:'⚖️', desc:'Sentinel that punishes repeat-cast abuse.', traits:['adaptiveMind','retaliatory'], allyAbility:{type:'damage', power:21, text:'strikes with legal force'}},
+  {name:'Command Bulwark', faction:'Alliance', rarity:'uncommon', hp:80, dmg:16, friend:94, emoji:'🧱', desc:'Bulwark commander enabling grouped waves.', shield:30, maxShield:30, shieldBlocksBefriend:true, traits:['defiant'], befriendScalingMode:'reduced', allyAbility:{type:'shield', power:18, text:'extends command barrier'}},
+  {name:'High Standard Marshal', faction:'Alliance', rarity:'elite', hp:150, dmg:30, friend:132, emoji:'🎖️', desc:'Marches with anti-Renegade execution pressure.', traits:['defectorHunter','panicSpiral'], allyAbility:{type:'allyBoost', power:0.34, text:'elevates the whole line'}},
+  {name:'Iron Verdict Engine', faction:'Alliance', rarity:'legendary', hp:224, dmg:39, friend:188, emoji:'⚙️', desc:'Mechanized verdict engine with layered shields.', shield:46, maxShield:46, shieldRegenOnLowHp:0.4, shieldRegenAmount:24, shieldBlocksBefriend:true, traits:['arcWard','defiant','retaliatory'], befriendScalingMode:'reduced', allyAbility:{type:'damage', power:26, text:'delivers iron judgment'}},
+  {name:'Grand Formation Sovereign', faction:'Alliance', rarity:'apex', hp:304, dmg:48, friend:246, emoji:'👑', desc:'Apex sovereign that empowers all escorts.', shield:68, maxShield:68, shieldRegenOnLowHp:0.68, shieldRegenAmount:38, shieldBlocksBefriend:true, traits:['defiant','ironWill','retaliatory','adaptiveMind'], befriendScalingMode:'reduced', allyAbility:{type:'allyBoost', power:0.56, text:'commands perfect formation'}},
+
+  // Renegades (16)
+  {name:'Alley Knifer', faction:'Renegades', rarity:'common', hp:46, dmg:13, friend:44, emoji:'🔪', desc:'Cheap steel and lethal intent.', allyAbility:{type:'damage', power:12, text:'slashes with alley speed'}},
+  {name:'Scrap Bomber', faction:'Renegades', rarity:'common', hp:44, dmg:14, friend:46, emoji:'💣', desc:'Bombardier who strips shields quickly.', allyAbility:{type:'damage', power:13, text:'hurls scrap bombs'}},
+  {name:'Black Market Seer', faction:'Renegades', rarity:'legendary', hp:64, dmg:15, friend:78, emoji:'🔮', desc:'Seer that manipulates recruit windows.', traits:['suggestible'], allyAbility:{type:'befriendVuln', power:0.22, turns:2, text:'exposes market leverage'}},
+  {name:'Smog Striker', faction:'Renegades', rarity:'common', hp:48, dmg:12, friend:50, emoji:'🌫️', desc:'Smog fighter applying dirty weaken.', allyAbility:{type:'weaken', power:0.16, turns:2, text:'chokes enemy stance'}},
+  {name:'Riot Pike', faction:'Renegades', rarity:'uncommon', hp:66, dmg:17, friend:80, emoji:'🪓', desc:'Aggressive anti-guard pike brawler.', allyAbility:{type:'damageVs', power:14, vs:'Alliance', bonus:10, text:'breaks formation lines'}},
+  {name:'Wiretrap Hunter', faction:'Renegades', rarity:'uncommon', hp:62, dmg:16, friend:76, emoji:'🪤', desc:'Trap specialist punishing repeats.', traits:['retaliatory'], allyAbility:{type:'stun', chance:0.2, text:'snags targets in wire'}},
+  {name:'Hex Grafter', faction:'Renegades', rarity:'common', hp:47, dmg:11, friend:52, emoji:'🧪', desc:'Grafts unstable curses for tempo swings.', allyAbility:{type:'poison', power:8, turns:3, text:'injects grafted toxin'}},
+  {name:'Chainbreaker Veteran', faction:'Renegades', rarity:'elite', hp:126, dmg:27, friend:116, emoji:'⛓️', desc:'Breaker that shreds shields and control.', traits:['defectorHunter','panicSpiral'], allyAbility:{type:'damage', power:19, text:'smashes chains and armor'}},
+  {name:'Rustclad Captain', faction:'Renegades', rarity:'uncommon', hp:74, dmg:18, friend:84, emoji:'🛠️', desc:'Shielded captain with dirty sustain.', shield:20, maxShield:20, shieldBlocksBefriend:true, traits:['defiant'], befriendScalingMode:'reduced', allyAbility:{type:'weaken', power:0.18, turns:2, text:'corrodes enemy guards'}},
+  {name:'Smoke Duelist', faction:'Renegades', rarity:'common', hp:50, dmg:13, friend:54, emoji:'💨', desc:'Evasive duelist punishing hesitation.', traits:['crackedFaith'], befriendScalingMode:'stronger', allyAbility:{type:'damage', power:13, text:'duels from smoke cover'}},
+  {name:'Siege Fencebreaker', faction:'Renegades', rarity:'elite', hp:138, dmg:29, friend:124, emoji:'🚧', desc:'Specialist built to crack walls and shields.', traits:['defectorHunter','retaliatory'], allyAbility:{type:'damageVs', power:20, vs:'Alliance', bonus:12, text:'breaks barricades'}},
+  {name:'Dirty Chem Alchemist', faction:'Renegades', rarity:'uncommon', hp:68, dmg:17, friend:82, emoji:'⚗️', desc:'Stacks poison and burn pressure together.', traits:['heatSurge'], allyAbility:{type:'poison', power:11, turns:4, text:'mixes unstable compounds'}},
+  {name:'Turncoat Commander', faction:'Renegades', rarity:'elite', hp:144, dmg:28, friend:128, emoji:'🎖️', desc:'Anti-befriend bait that flips when bloodied.', traits:['defiant','crackedFaith'], befriendScalingMode:'stronger', allyAbility:{type:'befriend', power:17, text:'forces defections'}},
+  {name:'Undercity Reaper', faction:'Renegades', rarity:'uncommon', hp:72, dmg:20, friend:86, emoji:'☠️', desc:'Mean finisher versus wounded targets.', traits:['panicSpiral'], allyAbility:{type:'damage', power:16, text:'reaps weakened foes'}},
+  {name:'Breakline Colossus', faction:'Renegades', rarity:'legendary', hp:218, dmg:40, friend:186, emoji:'🧱', desc:'Brutal linebreaker with anti-defense kit.', shield:36, maxShield:36, shieldBlocksBefriend:true, shieldRegenOnce:true, shieldRegenAmount:20, traits:['defiant','retaliatory','spiteFuel'], befriendScalingMode:'reduced', allyAbility:{type:'damage', power:26, text:'collapses enemy fronts'}},
+  {name:'Crownless Warlord', faction:'Renegades', rarity:'legendary', hp:222, dmg:41, friend:190, emoji:'👹', desc:'Unfairly efficient warlord of dirty victories.', traits:['adaptiveMind','spiteFuel','lastStand'], allyAbility:{type:'allyBoost', power:0.38, text:'drives a ruthless uprising'}},
+
+  // Hybrid / crossover / rare (4)
+  {name:'Blasphemous Arbiter', faction:'Neutral', rarity:'legendary', hp:214, dmg:38, friend:184, emoji:'⚖️', desc:'Cross-faith judge that bends faction rules.', shield:34, maxShield:34, shieldBlocksBefriend:true, traits:['faithLocked','defectorHunter','adaptiveMind'], befriendScalingMode:'reduced', allyAbility:{type:'randomDebuff', text:'issues forbidden judgment'}},
+  {name:'Rift Bishop of Ash', faction:'Chaos', rarity:'legendary', hp:226, dmg:40, friend:192, emoji:'🔥', desc:'Hybrid bishop applying burn-paralyze lockouts.', shield:32, maxShield:32, shieldBlocksBefriend:true, traits:['heatSurge','arcWard','retaliatory'], befriendScalingMode:'reduced', allyAbility:{type:'burn', power:16, turns:4, text:'ordains a rift-fire sacrament'}},
+  {name:'Oathless Seraph', faction:'Renegades', rarity:'legendary', hp:220, dmg:39, friend:188, emoji:'🪽', desc:'Fallen angel that rejects normal conversion logic.', traits:['ironWill','adaptiveMind','spiteFuel'], befriendScalingMode:'reduced', allyAbility:{type:'befriendVuln', power:0.3, turns:3, text:'tempts enemies into betrayal'}},
+  {name:'Null Crown Leviathan', faction:'Neutral', rarity:'apex', hp:320, dmg:53, friend:252, emoji:'🐉', desc:'Mythic null-sovereign that warps shields and recruitment.', shield:72, maxShield:72, shieldRegenOnLowHp:0.72, shieldRegenAmount:40, shieldBlocksBefriend:true, traits:['arcWard','defiant','lastStand','adaptiveMind'], befriendScalingMode:'reduced', allyAbility:{type:'randomEffect', text:'unleashes a null-crown calamity'}},
+];
+
+BASE_ENEMIES.push(...EXPANSION_ENEMIES_100);
+
+const RARITY_ORDER = ['common','uncommon','elite','legendary','apex'];
+const RARITY_XP = {common:12, uncommon:22, elite:44, legendary:78, apex:128};
+
+const ROLE_MODIFIERS = [
+  {key:'Vanguard', minTier:3, hpMul:1.2, shieldMul:1.4, friendMul:1.12, traits:['thickHide']},
+  {key:'Executioner', minTier:4, dmgMul:1.28, friendMul:1.1, traits:['panicSpiral']},
+  {key:'Fanatic', minTier:4, dmgMul:1.2, friendMul:1.22, traits:['defiant']},
+  {key:'Breaker', minTier:4, dmgMul:1.15, shieldMul:1.15, friendMul:1.08, traits:['retaliatory']},
+  {key:'Defector', minTier:3, hpMul:0.85, friendMul:0.78, forceStrongerBefriend:true, traits:['crackedFaith']},
+  {key:'Tyrant', minTier:5, hpMul:1.12, dmgMul:1.18, friendMul:1.2, traits:['spiteFuel']},
+  {key:'Hexbound', minTier:4, dmgMul:1.12, friendMul:1.08, traits:['arcWard']},
+  {key:'Ironclad', minTier:5, hpMul:1.18, shieldMul:1.45, friendMul:1.16, traits:['defiant','thickHide']},
+  {key:'Ravager', minTier:5, dmgMul:1.22, friendMul:1.14, traits:['spiteFuel']},
+  {key:'Last Witness', minTier:6, hpMul:1.08, dmgMul:1.22, friendMul:1.18, traits:['lastStand']}
+];
+
+const ENCOUNTER_ARCHETYPES = [
+  {key:'duel', minTier:1, weights:[70,24,6], tags:['single']},
+  {key:'tank_dual_dps', minTier:4, weights:[10,52,38], roles:['Vanguard','Executioner','Breaker']},
+  {key:'shield_lock', minTier:4, weights:[8,48,44], roles:['Ironclad','Executioner','Fanatic']},
+  {key:'anchor_wave', minTier:5, weights:[6,40,54], anchor:['elite','legendary','apex'], escorts:['common','uncommon']},
+  {key:'anti_befriend_web', minTier:5, weights:[5,42,53], roles:['Hexbound','Fanatic','Executioner']},
+  {key:'turncloak_bunker', minTier:6, weights:[4,40,56], roles:['Ironclad','Ironclad','Defector']}
+];
+
+function getThreatTier(g=game){
+  const score = g.encountersCompleted*1.8 + g.enemiesSeen*0.6 + g.player.level*2.2 + Math.max(0,g.activeAllies.length-2)*1.7;
+  if(score<18) return 1;
+  if(score<38) return 2;
+  if(score<62) return 3;
+  if(score<92) return 4;
+  if(score<128) return 5;
+  if(score<170) return 6;
+  return 7;
+}
+function getTierProfile(tier){
+  return {
+    hp:[1,1.08,1.19,1.34,1.55,1.84,2.22][tier-1],
+    dmg:[1,1.1,1.24,1.44,1.72,2.07,2.52][tier-1],
+    shield:[1,1.12,1.28,1.5,1.8,2.15,2.56][tier-1],
+    friend:[1,1.08,1.18,1.32,1.49,1.68,1.92][tier-1],
+    traitBonus:[0,0.1,0.2,0.34,0.48,0.62,0.8][tier-1],
+    roleChance:[0,0.08,0.18,0.32,0.46,0.62,0.78][tier-1],
+    archetypeChance:[0.05,0.08,0.14,0.28,0.44,0.58,0.72][tier-1]
+  };
+}
+function rarityScaleMult(rarity,tier){
+  const t=Math.max(0,tier-1);
+  const table={
+    common:{hp:1+0.08*t,dmg:1+0.1*t,friend:1+0.08*t,shield:1+0.09*t},
+    uncommon:{hp:1+0.11*t,dmg:1+0.13*t,friend:1+0.1*t,shield:1+0.13*t},
+    elite:{hp:1+0.16*t,dmg:1+0.22*t,friend:1+0.14*t,shield:1+0.22*t},
+    legendary:{hp:1+0.19*t,dmg:1+0.28*t,friend:1+0.18*t,shield:1+0.3*t},
+    apex:{hp:1+0.24*t,dmg:1+0.36*t,friend:1+0.22*t,shield:1+0.38*t}
+  };
+  return table[rarity] || table.common;
+}
+function buildRarityWeightsByTier(tier){
+  if(tier===1) return {common:90, uncommon:10, elite:0, legendary:0, apex:0};
+  if(tier===2) return {common:74, uncommon:24, elite:2, legendary:0, apex:0};
+  if(tier===3) return {common:56, uncommon:34, elite:10, legendary:0, apex:0};
+  if(tier===4) return {common:40, uncommon:36, elite:20, legendary:4, apex:0};
+  if(tier===5) return {common:28, uncommon:34, elite:28, legendary:9, apex:1};
+  if(tier===6) return {common:18, uncommon:28, elite:33, legendary:17, apex:4};
+  return {common:10, uncommon:20, elite:34, legendary:24, apex:12};
+}
+function desiredEncounterCount(tier){
+  const r=Math.random();
+  if(tier<=2) return r<0.82?1:2;
+  if(tier<=4) return r<0.32?1:(r<0.82?2:3);
+  if(tier<=6) return r<0.18?1:(r<0.62?2:3);
+  return r<0.1?1:(r<0.44?2:3);
+}
+function getTraitTargetCount(enemy,tier){
+  const base = (enemy.traits||[]).length;
+  const rarity=enemy.rarity||'common';
+  const bonusRand=Math.random();
+  let target=base;
+  if(rarity==='common') target=Math.max(base, bonusRand<(0.12+tier*0.04)?1:0);
+  if(rarity==='uncommon') target=Math.max(base, bonusRand<(0.35+tier*0.05)?2:1);
+  if(rarity==='elite') target=Math.max(base, bonusRand<(0.45+tier*0.06)?3:2);
+  if(rarity==='legendary') target=Math.max(base, bonusRand<(0.55+tier*0.05)?4:3);
+  if(rarity==='apex') target=Math.max(base,4);
+  return target;
+}
+function applyRoleModifier(enemy,tier){
+  const options=ROLE_MODIFIERS.filter(r=>tier>=r.minTier);
+  if(!options.length) return;
+  const mod=rand(options);
+  enemy.name = `${mod.key} ${enemy.name}`;
+  enemy.roleTag = mod.key;
+  if(mod.hpMul) enemy.maxHp = Math.round(enemy.maxHp*mod.hpMul);
+  if(mod.dmgMul) enemy.damage = Math.round(enemy.damage*mod.dmgMul);
+  if(mod.friendMul) enemy.maxBefriend = Math.round(enemy.maxBefriend*mod.friendMul);
+  if(mod.shieldMul && enemy.maxShield){
+    enemy.maxShield = Math.round(enemy.maxShield*mod.shieldMul);
+    enemy.shield = Math.round(enemy.shield*mod.shieldMul);
+    enemy.shieldBlocksBefriend = true;
+  }
+  if(mod.forceStrongerBefriend) enemy.befriendScalingMode = 'stronger';
+  enemy.traits ||= [];
+  for(const t of (mod.traits||[])) if(!enemy.traits.includes(t)) enemy.traits.push(t);
+}
+function applyPhaseProfile(enemy){
+  if(!['legendary','apex'].includes(enemy.rarity)) return;
+  enemy.phaseProfile = {
+    p70:{shield:Math.round((enemy.maxShield||0)*0.35)+8, dmg:0.1},
+    p40:{shield:Math.round((enemy.maxShield||0)*0.45)+10, dmg:0.16},
+    p20:{shield:Math.round((enemy.maxShield||0)*0.6)+12, dmg:0.24}
+  };
+  enemy.phaseState = {p70:false,p40:false,p20:false};
+}
+function applyThreatScaling(chosen,tier,count){
+  const profile=getTierProfile(tier);
+  const rarityMult=rarityScaleMult(chosen.rarity,tier);
+  const allyPressure = 1 + Math.max(0, game.activeAllies.length-2) * 0.05;
+  const groupTax = count===1 ? 1.12 : count===2 ? 0.94 : 0.83;
+  const encounterScale = 1 + (game.player.level-1)*0.07 + game.enemiesSeen*0.015;
+  chosen.maxHp = Math.round(chosen.hp * encounterScale * profile.hp * rarityMult.hp * allyPressure * groupTax);
+  chosen.hp = chosen.maxHp;
+  chosen.damage = Math.round(chosen.dmg * (1 + (game.player.level-1)*0.045 + game.enemiesSeen*0.012) * profile.dmg * rarityMult.dmg * allyPressure * (count>1?0.92:1));
+  chosen.maxBefriend = Math.round(chosen.friend * (1 + (game.player.level-1)*0.04 + game.enemiesSeen*0.012) * profile.friend * rarityMult.friend * (count>1?0.9:1));
+  chosen.befriend = 0;
+  chosen.shield = chosen.shield || 0;
+  chosen.maxShield = chosen.maxShield ?? chosen.shield;
+  if(chosen.maxShield>0){
+    chosen.maxShield = Math.round(chosen.maxShield * profile.shield * rarityMult.shield);
+    chosen.shield = chosen.maxShield;
+    if(tier>=5 && Math.random()<0.58) chosen.shieldBlocksBefriend = true;
+    if(tier>=4 && Math.random()<0.35){
+      chosen.shieldRegenAmount = Math.max(chosen.shieldRegenAmount||0, Math.round(chosen.maxShield*(tier>=7?0.45:0.3)));
+      chosen.shieldRegenOnLowHp = chosen.shieldRegenOnLowHp || (tier>=6?0.55:0.4);
+    }
+  }
+}
+
+
 const ENEMY_MOVES_BY_FACTION = {
   Light:[
     {type:'damage', power:10, text:'casts a radiant strike'},
@@ -1612,7 +1869,8 @@ function tickStartOfTurn(target,isPlayer){
 function scaleEnemyPower(e,power){
   const allyPressure = Math.max(0, game.activeAllies.length-3) * 0.04;
   let mult = 1 + (game.player.level-1)*0.05 + (game.enemiesSeen*0.008) + allyPressure;
-  if(e.rarity==='legendary') mult += 0.25;
+  if(e.rarity==='legendary') mult += 0.28;
+  if(e.rarity==='apex') mult += 0.5;
   if(getEffect(e,'weaken')) mult *= (1-getEffect(e,'weaken').power);
   if(getEffect(e,'shaken')) mult *= (1-getEffect(e,'shaken').power);
   return Math.round(power*mult);
@@ -1701,15 +1959,40 @@ function resolveSpell(spellId){
   if(checkEnemyOutcome()) return;
 }
 
+
+function triggerEnemyPhaseTransitions(e){
+  if(!e?.phaseProfile || !e?.phaseState || e.hp<=0 || !e.maxHp) return;
+  const ratio=e.hp/e.maxHp;
+  const apply=(key,label)=>{
+    if(e.phaseState[key]) return;
+    e.phaseState[key]=true;
+    const phase=e.phaseProfile[key];
+    if(phase.shield){
+      e.maxShield=Math.max(e.maxShield||0, phase.shield);
+      e.shield=Math.min(e.maxShield, (e.shield||0)+phase.shield);
+      e.shieldBlocksBefriend=true;
+    }
+    if(phase.dmg){
+      e.damage=Math.round(e.damage*(1+phase.dmg));
+    }
+    log(`${e.name} enters ${label} phase!`, 'bad');
+  };
+  if(ratio<=0.7) apply('p70','awakening');
+  if(ratio<=0.4) apply('p40','judgment');
+  if(ratio<=0.2) apply('p20','desperation');
+}
+
 // ---------- Enemy turn ----------
 function chooseEnemyMove(e){
-  if(e.rarity==='legendary' && Math.random()<0.55) return deepClone(rand(ENEMY_MOVES_BY_FACTION.legendary));
+  if(e.rarity==='apex' && Math.random()<0.8) return deepClone(rand(ENEMY_MOVES_BY_FACTION.legendary));
+  if(e.rarity==='legendary' && Math.random()<0.62) return deepClone(rand(ENEMY_MOVES_BY_FACTION.legendary));
   const pool = ENEMY_MOVES_BY_FACTION[e.faction] || ENEMY_MOVES_BY_FACTION.Neutral;
-  if(e.rarity==='elite' && Math.random()<0.28) return {type:'damage', power:e.damage+5, text:'uses an elite finishing blow'};
+  if(e.rarity==='elite' && Math.random()<0.34) return {type:'damage', power:e.damage+6, text:'uses an elite finishing blow'};
   if(e.rarity==='uncommon' && Math.random()<0.16) return {type:'damage', power:e.damage+3, text:'presses a stronger attack'};
   return deepClone(rand(pool));
 }
 function resolveEnemyMove(move,e){
+  triggerEnemyPhaseTransitions(e);
   const p = game.player;
   const col = factionColors[e.faction] || '#ff7d7d';
   const sym = {Light:'✨',Dark:'🌑',Chaos:'🔥',Alliance:'⚔️',Renegades:'🗡️',Neutral:'✶'}[e.faction] || '✶';
@@ -2130,15 +2413,13 @@ function advanceEncounter(){
   render();
 }
 function buildRarityWeights(){
-  // safer pacing so strong enemies don't happen too early
-  const tier = game.player.level + Math.floor(game.enemiesSeen/5);
-  let weights = {common:88, uncommon:12, elite:0, legendary:0};
-  if(tier>=4) weights = {common:74, uncommon:24, elite:2, legendary:0};
-  if(tier>=7) weights = {common:58, uncommon:34, elite:8, legendary:0};
-  if(tier>=10) weights = {common:42, uncommon:40, elite:17, legendary:1};
-  if(tier>=13) weights = {common:28, uncommon:44, elite:24, legendary:4};
-  if(tier>=16) weights = {common:18, uncommon:40, elite:30, legendary:12};
-  return weights;
+  return buildRarityWeightsByTier(getThreatTier(game));
+}
+function pickEncounterArchetype(tier){
+  const profile=getTierProfile(tier);
+  if(Math.random()>profile.archetypeChance) return null;
+  const options=ENCOUNTER_ARCHETYPES.filter(a=>tier>=a.minTier);
+  return options.length ? rand(options) : null;
 }
 function spawnEncounter(){
   game.mode='battle';
@@ -2146,47 +2427,51 @@ function spawnEncounter(){
   game.flags.encounterKills = 0;
   game.flags.encounterRecruits = 0;
   game.flags.encounterXp = 0;
-  const pressure = game.player.level + Math.floor(game.enemiesSeen/7);
-  const roll = Math.random();
-  const count = pressure<4 ? 1 : pressure<9 ? (roll<0.75?1:2) : (roll<0.48?1:(roll<0.9?2:3));
+  const tier=getThreatTier(game);
+  const profile=getTierProfile(tier);
+  const archetype=pickEncounterArchetype(tier);
+  const count = desiredEncounterCount(tier);
   const enemies = [];
+  const rarityWeights = buildRarityWeightsByTier(tier);
+
   for(let n=0;n<count;n++){
-    const weights = buildRarityWeights();
-    const rarity = weightedPick(weights);
+    let rarity = weightedPick(rarityWeights);
+    if(archetype?.anchor && n===0 && Math.random()<0.78) rarity = weightedPick(Object.fromEntries(archetype.anchor.map(r=>[r,1])));
+    if(archetype?.escorts && n>0 && Math.random()<0.7) rarity = weightedPick(Object.fromEntries(archetype.escorts.map(r=>[r,1])));
     const pool = BASE_ENEMIES.filter(e=>e.rarity===rarity);
-    const chosen = deepClone(rand(pool));
-    const rarityBonus = {common:0, uncommon:0.06, elite:0.14, legendary:0.30}[rarity];
-    const allyPressure = Math.max(0, game.activeAllies.length-2) * 0.05;
-    const groupTax = count===1 ? 1 : count===2 ? 0.78 : 0.64;
-    const scale = (1 + (game.player.level-1)*0.085 + game.enemiesSeen*0.022 + rarityBonus + allyPressure) * groupTax;
+    const chosen = deepClone(rand(pool.length?pool:BASE_ENEMIES));
     chosen.id = uid();
-    chosen.maxHp = Math.round(chosen.hp * scale);
-    chosen.hp = chosen.maxHp;
-    chosen.damage = Math.round(chosen.dmg * (1 + (game.player.level-1)*0.055 + game.enemiesSeen*0.014 + allyPressure + (rarity==='legendary'?0.14:0)) * (count>1?0.85:1));
-    chosen.maxBefriend = Math.round(chosen.friend * (1 + (game.player.level-1)*0.05 + game.enemiesSeen*0.016 + allyPressure*0.65 + (rarity==='legendary'?0.1:0)) * (count>1?0.92:1));
-    chosen.befriend = 0;
-    chosen.shield = chosen.shield || 0;
-    chosen.maxShield = chosen.maxShield ?? chosen.shield;
+
+    applyThreatScaling(chosen,tier,count);
     chosen.shieldStyle = chosen.shieldStyle || 'standard';
     chosen.shieldBlocksBefriend = chosen.shieldBlocksBefriend ?? (chosen.maxShield>0);
     chosen.shieldRegenUsed = false;
     chosen.effects = {};
     chosen.resistBefriendBonus = 0;
+
     const traitPool = Object.keys(TRAIT_DEFS);
-    const targetTraits = chosen.traits ? chosen.traits.length : (game.player.level<3 ? (Math.random()<0.7?0:1) : game.player.level<8 ? 1 : (Math.random()<0.65?2:1));
     chosen.traits = chosen.traits || [];
-    while(chosen.traits.length < targetTraits){
+    const traitTarget = getTraitTargetCount(chosen,tier);
+    while(chosen.traits.length < traitTarget){
       const t = rand(traitPool);
       if(!chosen.traits.includes(t)) chosen.traits.push(t);
     }
-    chosen.xp = Math.round(({common:12, uncommon:22, elite:40, legendary:70}[rarity]) * (1 + (game.player.level-1)*0.08) * groupTax);
+
+    if(Math.random()<profile.roleChance && (tier>=3 || chosen.rarity==='elite' || chosen.rarity==='legendary' || chosen.rarity==='apex')){
+      applyRoleModifier(chosen,tier);
+    }
+
+    applyPhaseProfile(chosen);
+    chosen.xp = Math.round((RARITY_XP[chosen.rarity]||12) * (1 + (game.player.level-1)*0.09) * (count===1?1.1:count===2?0.93:0.84));
     enemies.push(chosen);
   }
+
   game.currentEnemies = enemies;
   game.flags.encounterXp = enemies.reduce((a,e)=>a+(e.xp||0),0);
   game.selectedTargetId = enemies[0]?.id || null;
   syncCurrentEnemy(game);
-  log(`Encounter: ${enemies.map(e=>`${e.name} (${e.faction})`).join(' • ')}`, enemies.some(e=>e.rarity==='legendary') ? 'gold' : '');
+  const severe = enemies.some(e=>['legendary','apex'].includes(e.rarity));
+  log(`Threat Tier ${tier} Encounter: ${enemies.map(e=>`${e.name} (${e.faction})`).join(' • ')}`, severe ? 'gold' : '');
   render();
 }
 function spawnEnemy(){ spawnEncounter(); }
@@ -2555,11 +2840,11 @@ function renderEnemy(){
     const inWindow = healthScale==='strong' || healthScale==='major';
     const blocked = isBefriendBlocked(e);
     const card = document.createElement('div');
-    card.className = 'enemy-mini ' + (living.length>1?'compact ':'') + ((e.shield||0)>0?'shielded ':'') + (inWindow?'wavering conversion-window ':'') + (game.selectedTargetId===e.id?'selected ':'') + (game.pendingSpellId?'targeting ':'');
+    card.className = 'enemy-mini ' + (living.length>1?'compact ':'') + ((e.rarity==='apex'?'legendary ':'') || (e.rarity==='legendary'?'legendary ':'')) + ((e.shield||0)>0?'shielded ':'') + (inWindow?'wavering conversion-window ':'') + (game.selectedTargetId===e.id?'selected ':'') + (game.pendingSpellId?'targeting ':'');
     card.dataset.enemyId = e.id;
     card.style.borderColor = factionColors[e.faction];
     card.innerHTML = `
-      <div class="name-row"><div><div class="name">${e.emoji} ${e.name}</div><div class="sub">${e.faction} • ${cap(e.rarity)} • XP ${e.xp}</div></div></div>
+      <div class="name-row"><div><div class="name">${e.emoji} ${e.name}</div><div class="sub">${e.faction} • <span class="rarity-${e.rarity}">${cap(e.rarity)}</span>${e.roleTag?` • ${e.roleTag}`:''} • XP ${e.xp}</div></div></div>
       <div class="bars">
         ${(e.maxShield||0)>0 ? `<div class="bar-wrap"><div class="bar-label"><span>Shield</span><span>${e.shield||0}</span></div><div class="bar"><div class="fill shield" style="width:${pct(e.shield||0,e.maxShield||1)}%"></div></div></div>`:''}
         <div class="bar-wrap"><div class="bar-label"><span>HP</span><span>${e.hp}/${e.maxHp}</span></div><div class="bar"><div class="fill hp" style="width:${pct(e.hp,e.maxHp)}%"></div></div></div>
