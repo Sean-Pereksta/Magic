@@ -593,6 +593,16 @@ function randInt(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
 function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
 function pct(v,m){ return m<=0 ? 0 : clamp((v/m)*100, 0, 100); }
 function cap(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
+function rarityLabel(rarity){
+  const labelMap = {
+    common:'Common: Basic',
+    uncommon:'Uncommon: Improved',
+    elite:'Elite: High Impact',
+    legendary:'Legendary: Exceptional',
+    apex:'Apex: Mythic'
+  };
+  return labelMap[rarity] || cap(rarity||'common');
+}
 function uid(){ return Math.random().toString(36).slice(2,10); }
 function shuffle(arr){
   for(let i=arr.length-1;i>0;i--){
@@ -684,8 +694,18 @@ function devotionBonus(kind,faction,g=game){
   };
   return (table[kind]&&table[kind][d.tier]) || 1;
 }
+function getSpellRarityProfile(rarity){
+  return {
+    common:{base:0.88, growth:0.9, combo:1, status:0.92, sustain:0.9},
+    uncommon:{base:1.02, growth:1.08, combo:1.06, status:1.05, sustain:1.04},
+    elite:{base:1.2, growth:1.28, combo:1.2, status:1.18, sustain:1.18},
+    legendary:{base:1.42, growth:1.54, combo:1.38, status:1.34, sustain:1.34},
+    apex:{base:1.58, growth:1.7, combo:1.52, status:1.46, sustain:1.45}
+  }[rarity] || {base:1,growth:1,combo:1,status:1,sustain:1};
+}
 function getComboBonuses(spell, enemy, g=game){
   const eff = enemy.effects||{};
+  const rarityProfile = getSpellRarityProfile(spell?.rarity || 'common');
   const tags=[]; let damage=1, befriend=1, status=1, burn=1;
   if(eff.softened && spell.type==='befriend'){ befriend*=1.45; tags.push('Softened Conversion'); }
   if(eff.scorched && ['damage','burn','poison','hybrid'].includes(spell.type)){ damage*=1.35; tags.push('Scorched Burst'); }
@@ -695,12 +715,25 @@ function getComboBonuses(spell, enemy, g=game){
   if(eff.shaken && ['damage','burn'].includes(spell.type) && (eff.weaken||eff.hushed)){ damage*=1.22; tags.push('Shaken Break'); }
   if(eff.poison && eff.burn && ['Chaos','Dark','Renegades'].includes(spell.faction)){ damage*=1.3; tags.push('Volatile Suffering'); }
   if(eff.softened && eff.hushed && spell.type==='befriend'){ befriend*=1.35; tags.push('Conversion Window'); }
+  if(spell?.rarity && spell.rarity!=='common'){
+    damage *= rarityProfile.combo;
+    befriend *= (1 + (rarityProfile.combo-1)*0.9);
+    status *= (1 + (rarityProfile.combo-1)*0.85);
+    burn *= (1 + (rarityProfile.combo-1)*0.75);
+  }
   return {damage,befriend,status,burn,tags};
 }
 function consumeComboStateIfNeeded(spell, enemy){
   const eff = enemy.effects||{};
-  if(spell.type==='befriend' && eff.softened){ eff.softened.turns = Math.max(0, eff.softened.turns-1); }
-  if(['damage','burn','hybrid'].includes(spell.type) && eff.exposed){ delete eff.exposed; }
+  const rarityProfile = getSpellRarityProfile(spell?.rarity || 'common');
+  const conserveChance = spell?.rarity==='common' ? 0 : spell?.rarity==='uncommon' ? 0.12 : spell?.rarity==='elite' ? 0.2 : spell?.rarity==='legendary' ? 0.3 : 0.35;
+  if(spell.type==='befriend' && eff.softened){
+    const reduction = spell?.rarity==='common' ? 1 : (rarityProfile.combo>=1.35 ? 0 : 1);
+    if(reduction>0 && Math.random()>=conserveChance) eff.softened.turns = Math.max(0, eff.softened.turns-reduction);
+  }
+  if(['damage','burn','hybrid'].includes(spell.type) && eff.exposed && Math.random()>=conserveChance){
+    delete eff.exposed;
+  }
 }
 function getComboReadyTags(enemy){
   const e=enemy.effects||{}; const out=[];
@@ -851,13 +884,20 @@ const SPELL_DEFS = {
 
 function makeSpell(id){
   const def = SPELL_DEFS[id];
-  return { id, level:1, castsMax:def.baseCasts, castsLeft:def.baseCasts };
+  const castTax = def.rarity==='common' && ['damage','befriend','control','setup'].includes(def.type) ? 1 : 0;
+  const castsMax = Math.max(1, def.baseCasts - castTax);
+  return { id, level:1, castsMax, castsLeft:castsMax };
 }
 function scaledStat(spell,key){
   const def = SPELL_DEFS[spell.id];
   const base = def.data[key];
   const per = (def.scaling && def.scaling[key]) || 0;
-  return typeof base === 'number' ? +(base + per*(spell.level-1)).toFixed(4) : base;
+  if(typeof base !== 'number') return base;
+  const rp = getSpellRarityProfile(def.rarity||'common');
+  const commonSupport = (def.rarity==='common' && ['heal','defense','shield','support'].includes(def.type)) ? 1.03 : 1;
+  const scaledBase = base * rp.base * commonSupport;
+  const scaledGrowth = per * (spell.level-1) * rp.growth;
+  return +(scaledBase + scaledGrowth).toFixed(4);
 }
 const SPELL_TARGETING_OVERRIDES = {
   wildfireOrb:'splash',
@@ -1254,10 +1294,10 @@ function getThreatTier(g=game){
 }
 function getTierProfile(tier){
   return {
-    hp:[1,1.08,1.19,1.34,1.55,1.84,2.22][tier-1],
-    dmg:[1,1.1,1.24,1.44,1.72,2.07,2.52][tier-1],
-    shield:[1,1.12,1.28,1.5,1.8,2.15,2.56][tier-1],
-    friend:[1,1.08,1.18,1.32,1.49,1.68,1.92][tier-1],
+    hp:[1,1.12,1.3,1.6,2.02,2.58,3.28][tier-1],
+    dmg:[1,1.14,1.38,1.78,2.36,3.12,4.08][tier-1],
+    shield:[1,1.16,1.38,1.72,2.24,2.9,3.72][tier-1],
+    friend:[1,1.1,1.24,1.44,1.72,2.06,2.48][tier-1],
     traitBonus:[0,0.1,0.2,0.34,0.48,0.62,0.8][tier-1],
     roleChance:[0,0.08,0.18,0.32,0.46,0.62,0.78][tier-1],
     archetypeChance:[0.05,0.08,0.14,0.28,0.44,0.58,0.72][tier-1]
@@ -1266,11 +1306,11 @@ function getTierProfile(tier){
 function rarityScaleMult(rarity,tier){
   const t=Math.max(0,tier-1);
   const table={
-    common:{hp:1+0.08*t,dmg:1+0.1*t,friend:1+0.08*t,shield:1+0.09*t},
-    uncommon:{hp:1+0.11*t,dmg:1+0.13*t,friend:1+0.1*t,shield:1+0.13*t},
-    elite:{hp:1+0.16*t,dmg:1+0.22*t,friend:1+0.14*t,shield:1+0.22*t},
-    legendary:{hp:1+0.19*t,dmg:1+0.28*t,friend:1+0.18*t,shield:1+0.3*t},
-    apex:{hp:1+0.24*t,dmg:1+0.36*t,friend:1+0.22*t,shield:1+0.38*t}
+    common:{hp:1+0.1*t,dmg:1+0.14*t,friend:1+0.09*t,shield:1+0.1*t},
+    uncommon:{hp:1+0.16*t,dmg:1+0.22*t,friend:1+0.13*t,shield:1+0.18*t},
+    elite:{hp:1+0.26*t,dmg:1+0.38*t,friend:1+0.19*t,shield:1+0.34*t},
+    legendary:{hp:1+0.34*t,dmg:1+0.54*t,friend:1+0.26*t,shield:1+0.48*t},
+    apex:{hp:1+0.44*t,dmg:1+0.72*t,friend:1+0.34*t,shield:1+0.62*t}
   };
   return table[rarity] || table.common;
 }
@@ -1332,13 +1372,16 @@ function applyPhaseProfile(enemy){
 function applyThreatScaling(chosen,tier,count){
   const profile=getTierProfile(tier);
   const rarityMult=rarityScaleMult(chosen.rarity,tier);
-  const allyPressure = 1 + Math.max(0, game.activeAllies.length-2) * 0.05;
-  const groupTax = count===1 ? 1.12 : count===2 ? 0.94 : 0.83;
-  const encounterScale = 1 + (game.player.level-1)*0.07 + game.enemiesSeen*0.015;
-  chosen.maxHp = Math.round(chosen.hp * encounterScale * profile.hp * rarityMult.hp * allyPressure * groupTax);
+  const allyPressure = 1 + Math.max(0, game.activeAllies.length-2) * 0.065;
+  const groupTax = count===1 ? 1.16 : count===2 ? 0.96 : 0.86;
+  const seen = game.enemiesSeen;
+  const encounterScale = 1 + (game.player.level-1)*0.08 + seen*0.018 + Math.pow(Math.max(0,seen-10),1.22)*0.0038;
+  const lateThreat = tier>=5 ? 1 + (tier-4)*0.18 : 1;
+  chosen.maxHp = Math.round(chosen.hp * encounterScale * profile.hp * rarityMult.hp * allyPressure * groupTax * lateThreat);
   chosen.hp = chosen.maxHp;
-  chosen.damage = Math.round(chosen.dmg * (1 + (game.player.level-1)*0.045 + game.enemiesSeen*0.012) * profile.dmg * rarityMult.dmg * allyPressure * (count>1?0.92:1));
-  chosen.maxBefriend = Math.round(chosen.friend * (1 + (game.player.level-1)*0.04 + game.enemiesSeen*0.012) * profile.friend * rarityMult.friend * (count>1?0.9:1));
+  const damageScale = (1 + (game.player.level-1)*0.055 + seen*0.018 + Math.pow(Math.max(0,seen-12),1.2)*0.0045) * (tier>=4 ? 1 + (tier-3)*0.16 : 1);
+  chosen.damage = Math.round(chosen.dmg * damageScale * profile.dmg * rarityMult.dmg * allyPressure * (count>1?0.95:1.05));
+  chosen.maxBefriend = Math.round(chosen.friend * (1 + (game.player.level-1)*0.045 + seen*0.013) * profile.friend * rarityMult.friend * (count>1?0.92:1));
   chosen.befriend = 0;
   chosen.shield = chosen.shield || 0;
   chosen.maxShield = chosen.maxShield ?? chosen.shield;
@@ -1347,9 +1390,15 @@ function applyThreatScaling(chosen,tier,count){
     chosen.shield = chosen.maxShield;
     if(tier>=5 && Math.random()<0.58) chosen.shieldBlocksBefriend = true;
     if(tier>=4 && Math.random()<0.35){
-      chosen.shieldRegenAmount = Math.max(chosen.shieldRegenAmount||0, Math.round(chosen.maxShield*(tier>=7?0.45:0.3)));
+      chosen.shieldRegenAmount = Math.max(chosen.shieldRegenAmount||0, Math.round(chosen.maxShield*(tier>=7?0.62:tier>=5?0.44:0.34)));
       chosen.shieldRegenOnLowHp = chosen.shieldRegenOnLowHp || (tier>=6?0.55:0.4);
     }
+  }
+  if(chosen.shieldRegenAmount){
+    chosen.shieldRegenAmount = Math.round(chosen.shieldRegenAmount * (1 + tier*0.06 + (chosen.rarity==='legendary'?0.18:0) + (chosen.rarity==='apex'?0.32:0)));
+  }
+  if(chosen.specialPower){
+    chosen.specialPower = Math.round(chosen.specialPower * (1 + tier*0.09));
   }
 }
 
@@ -1724,7 +1773,8 @@ function dealDamage(g, enemy, amount, source='Damage', faction='Neutral', showVf
   if(!enemy || enemy.hp<=0) return 0;
   const currentSpell = g.flags.currentSpellId ? SPELL_DEFS[g.flags.currentSpellId] : null;
   const combo = currentSpell ? getComboBonuses(currentSpell, enemy, g) : {damage:1,tags:[]};
-  let dmg = Math.round(amount * damageMultiplierOnEnemy(enemy) * combo.damage * devotionBonus('damage', faction, g));
+  const rarityPower = getSpellRarityProfile(currentSpell?.rarity || 'common').base;
+  let dmg = Math.round(amount * rarityPower * damageMultiplierOnEnemy(enemy) * combo.damage * devotionBonus('damage', faction, g));
   dmg = Math.round(dmg * factionAdvantageMult(faction, enemy.faction));
   if(faction===enemy.faction) dmg = Math.round(dmg*0.72);
   if(traitHas(enemy,'thickHide')) dmg = Math.round(dmg*0.82);
@@ -1771,7 +1821,8 @@ function addBefriend(g, enemy, amount, source='Befriend', faction='Light', showV
     return 0;
   }
   const combo = currentSpell ? getComboBonuses(currentSpell, enemy, g) : {befriend:1,tags:[]};
-  let val = Math.round(amount * befriendMultiplierOnEnemy(enemy) * combo.befriend * devotionBonus('befriend', faction, g));
+  const rarityPower = getSpellRarityProfile(currentSpell?.rarity || 'common').base;
+  let val = Math.round(amount * rarityPower * befriendMultiplierOnEnemy(enemy) * combo.befriend * devotionBonus('befriend', faction, g));
   val = calculateBefriendAmount(val, enemy, g);
   val = Math.round(val * factionAdvantageMult(faction, enemy.faction));
   if(faction===enemy.faction) val = Math.round(val*1.28);
@@ -1792,8 +1843,10 @@ function addBefriend(g, enemy, amount, source='Befriend', faction='Light', showV
   return val;
 }
 function healPlayer(g, amt, source='Heal', faction='Light'){
+  const currentSpell = g.flags.currentSpellId ? SPELL_DEFS[g.flags.currentSpellId] : null;
+  const raritySustain = getSpellRarityProfile(currentSpell?.rarity || 'common').sustain;
   const reduced = getEffect(g.player,'cursed') ? (1-getEffect(g.player,'cursed').power) : 1;
-  const v = Math.max(1, Math.round(amt*reduced*devotionBonus('heal', faction, g)));
+  const v = Math.max(1, Math.round(amt*raritySustain*reduced*devotionBonus('heal', faction, g)));
   g.player.hp = Math.min(g.player.maxHp, g.player.hp + v);
   healBurstOnPlayer(factionColors[faction] || '#9cffc7');
   showFloatingText(getPlayerPoint(), `+${v}`, '#7ff2a3');
@@ -1841,7 +1894,8 @@ function tryStatus(g, enemy, status, chance, source){
     log(`${source} fails: ${enemy.name} is immune to ${status} (${immuneTrait}).`, 'bad');
     return false;
   }
-  let mult = (getEffect(enemy,'hushed') ? 1 + getEffect(enemy,'hushed').power : 1) * combo.status * devotionBonus('control', spell.faction, g);
+  const rarityStatus = getSpellRarityProfile(spell.rarity || 'common').status;
+  let mult = (getEffect(enemy,'hushed') ? 1 + getEffect(enemy,'hushed').power : 1) * combo.status * rarityStatus * devotionBonus('control', spell.faction, g);
   if(traitHas(enemy,'arcWard')) mult *= 0.75;
   if(Math.random() < chance*mult){
     addEffect(enemy,status,1,1);
@@ -1868,9 +1922,11 @@ function tickStartOfTurn(target,isPlayer){
 }
 function scaleEnemyPower(e,power){
   const allyPressure = Math.max(0, game.activeAllies.length-3) * 0.04;
-  let mult = 1 + (game.player.level-1)*0.05 + (game.enemiesSeen*0.008) + allyPressure;
-  if(e.rarity==='legendary') mult += 0.28;
-  if(e.rarity==='apex') mult += 0.5;
+  const seen = game.enemiesSeen;
+  let mult = 1 + (game.player.level-1)*0.06 + (seen*0.011) + Math.pow(Math.max(0,seen-12),1.18)*0.0028 + allyPressure;
+  if(e.rarity==='elite') mult += 0.14;
+  if(e.rarity==='legendary') mult += 0.34;
+  if(e.rarity==='apex') mult += 0.62;
   if(getEffect(e,'weaken')) mult *= (1-getEffect(e,'weaken').power);
   if(getEffect(e,'shaken')) mult *= (1-getEffect(e,'shaken').power);
   return Math.round(power*mult);
@@ -2694,7 +2750,7 @@ function renderAbilityManager(){
     const legal = spellSlotTypes(id).join(', ');
     const row = document.createElement('div');
     row.className = 'pool-item';
-    row.innerHTML = `<div><strong>${d.name}</strong><div class="sub">${d.faction} • ${d.type} • Slots: ${legal} • Lvl ${s.level} • <span class="rarity-${d.rarity}">${cap(d.rarity)}</span></div></div>`;
+    row.innerHTML = `<div><strong>${d.name}</strong><div class="sub">${d.faction} • ${d.type} • Slots: ${legal} • Lvl ${s.level} • <span class="rarity-${d.rarity}">${rarityLabel(d.rarity)}</span></div></div>`;
     const badge = document.createElement('div');
     badge.textContent = game.activeSpellIds.includes(id) ? 'Active' : 'Pool';
     badge.className = 'tag';
@@ -2724,7 +2780,7 @@ function renderAbilityManager(){
     const row = document.createElement('div');
     row.className = 'pool-item';
     row.innerHTML = id
-      ? `<div><strong>${slot.label}: ${d.name}</strong><div class="sub">${d.faction} • ${d.type} • Lvl ${s.level} • <span class="rarity-${d.rarity}">${cap(d.rarity)}</span></div></div>`
+      ? `<div><strong>${slot.label}: ${d.name}</strong><div class="sub">${d.faction} • ${d.type} • Lvl ${s.level} • <span class="rarity-${d.rarity}">${rarityLabel(d.rarity)}</span></div></div>`
       : `<div><strong>${slot.label}</strong><div class="sub">Empty slot (${slot.role})</div></div>`;
     const badge = document.createElement('div');
     badge.textContent = id ? `Casts ${s.castsMax}` : slot.role;
@@ -2758,7 +2814,7 @@ function renderAlliesManager(){
   game.reserveAllies.forEach(a=>{
     const row = document.createElement('div');
     row.className = 'ally-card';
-    row.innerHTML = `<div><strong>${a.emoji} ${a.name}</strong><div class="sub">${a.faction} • <span class="rarity-${a.rarity||'common'}">${cap(a.rarity||'common')}</span></div><div class="sub">${describeAllyAbility(a.allyAbility)}</div></div>`;
+    row.innerHTML = `<div><strong>${a.emoji} ${a.name}</strong><div class="sub">${a.faction} • <span class="rarity-${a.rarity||'common'}">${rarityLabel(a.rarity||'common')}</span></div><div class="sub">${describeAllyAbility(a.allyAbility)}</div></div>`;
     const badge = document.createElement('div');
     badge.className = 'tag';
     badge.style.borderColor = factionColors[a.faction];
@@ -2775,7 +2831,7 @@ function renderAlliesManager(){
   game.activeAllies.forEach(a=>{
     const row = document.createElement('div');
     row.className = 'ally-card';
-    row.innerHTML = `<div><strong>${a.emoji} ${a.name}</strong><div class="sub">${a.faction} • <span class="rarity-${a.rarity||'common'}">${cap(a.rarity||'common')}</span></div><div class="sub">${describeAllyAbility(a.allyAbility)}</div></div>`;
+    row.innerHTML = `<div><strong>${a.emoji} ${a.name}</strong><div class="sub">${a.faction} • <span class="rarity-${a.rarity||'common'}">${rarityLabel(a.rarity||'common')}</span></div><div class="sub">${describeAllyAbility(a.allyAbility)}</div></div>`;
     const badge = document.createElement('div');
     badge.className = 'tag';
     badge.style.borderColor = factionColors[a.faction];
@@ -2844,7 +2900,7 @@ function renderEnemy(){
     card.dataset.enemyId = e.id;
     card.style.borderColor = factionColors[e.faction];
     card.innerHTML = `
-      <div class="name-row"><div><div class="name">${e.emoji} ${e.name}</div><div class="sub">${e.faction} • <span class="rarity-${e.rarity}">${cap(e.rarity)}</span>${e.roleTag?` • ${e.roleTag}`:''} • XP ${e.xp}</div></div></div>
+      <div class="name-row"><div><div class="name">${e.emoji} ${e.name}</div><div class="sub">${e.faction} • <span class="rarity-${e.rarity}">${rarityLabel(e.rarity)}</span>${e.roleTag?` • ${e.roleTag}`:''} • XP ${e.xp}</div></div></div>
       <div class="bars">
         ${(e.maxShield||0)>0 ? `<div class="bar-wrap"><div class="bar-label"><span>Shield</span><span>${e.shield||0}</span></div><div class="bar"><div class="fill shield" style="width:${pct(e.shield||0,e.maxShield||1)}%"></div></div></div>`:''}
         <div class="bar-wrap"><div class="bar-label"><span>HP</span><span>${e.hp}/${e.maxHp}</span></div><div class="bar"><div class="fill hp" style="width:${pct(e.hp,e.maxHp)}%"></div></div></div>
@@ -2916,7 +2972,7 @@ function renderSpells(){
       <div class="sub">${factionMatchupText(d.faction)}</div>
       <div class="small-row"><span>${d.type}</span><span>Lvl ${s.level}</span></div>
       <div class="small-row"><span>${targetingLabel(targetMode,d)}</span><span>${targetMode==='single' || targetMode==='splash' || targetMode==='chain' ? 'Pick Target' : 'Auto Target'}</span></div>
-      <div class="small-row"><span><span class="rarity-${d.rarity}">${cap(d.rarity)}</span> • ${slotName}</span><span>${s.castsLeft}/${s.castsMax} casts</span></div>
+      <div class="small-row"><span><span class="rarity-${d.rarity}">${rarityLabel(d.rarity)}</span> • ${slotName}</span><span>${s.castsLeft}/${s.castsMax} casts</span></div>
     `;
     const btn = document.createElement('button');
     btn.textContent = 'Cast';
@@ -2951,7 +3007,7 @@ function renderFriends(){
     box.dataset.allyIndex = i;
     box.style.borderColor = factionColors[a.faction];
     const synergy = getFactionSynergyForAlly(a, game);
-    box.innerHTML = `<div><strong>${a.emoji} ${a.name}</strong></div><div class="tiny">${a.faction} • <span class="rarity-${a.rarity||'common'}">${cap(a.rarity||'common')}</span>${synergy?` • Synergy +${Math.round(synergy*100)}%`:''}</div><div class="tiny">${describeAllyAbility(a.allyAbility)}</div>`;
+    box.innerHTML = `<div><strong>${a.emoji} ${a.name}</strong></div><div class="tiny">${a.faction} • <span class="rarity-${a.rarity||'common'}">${rarityLabel(a.rarity||'common')}</span>${synergy?` • Synergy +${Math.round(synergy*100)}%`:''}</div><div class="tiny">${describeAllyAbility(a.allyAbility)}</div>`;
     grid.appendChild(box);
   });
 }
