@@ -48,6 +48,15 @@
     font-size:11px;
     line-height:1.15;
   }
+  .transition-status{
+    font-size:11px;
+    border-radius:999px;
+    padding:4px 8px;
+    border:1px solid rgba(255,224,151,.35);
+    background:rgba(255,224,151,.12);
+    color:#ffe9b6;
+    font-weight:700;
+  }
   button{
     background:linear-gradient(180deg,var(--btn2),var(--btn));
     color:var(--text);
@@ -440,6 +449,7 @@
 <div class="wrap">
   <div class="topbar">
     <div class="stats" id="topStats"></div>
+    <div class="transition-status" id="transitionStatus" style="display:none"></div>
     <div class="controls">
       <button id="saveBtn">Save</button>
       <button id="loadBtn">Load</button>
@@ -1164,7 +1174,13 @@ function defaultState(){
     log:['A new run begins.'],
     dead:false,
     autoResolvingNoCasts:false,
-    autoResolveTimeoutId:null
+    autoResolveTimeoutId:null,
+    transitioningEncounter:false,
+    pendingEncounterResult:null,
+    pendingEncounterAdvanceTimeout:null,
+    encounterRewardsApplied:false,
+    openAlliesAfterTransition:false,
+    pendingLevelUpCount:0
   };
 }
 let game = defaultState();
@@ -1331,6 +1347,12 @@ function loadGame(){
     game.encountersCompleted ||= 0;
     game.autoResolvingNoCasts ||= false;
     game.autoResolveTimeoutId ||= null;
+    game.transitioningEncounter ||= false;
+    game.pendingEncounterResult ||= null;
+    game.pendingEncounterAdvanceTimeout = null;
+    game.encounterRewardsApplied ||= false;
+    game.openAlliesAfterTransition ||= false;
+    game.pendingLevelUpCount ||= 0;
     game.activeSpellSlots ||= {damage1:null,damage2:null,befriend:null,setup:null,defense:null,wild:null};
     if(!game.activeSpellIds || !game.activeSpellIds.length){
       game.activeSpellIds = Object.values(game.activeSpellSlots).filter(Boolean);
@@ -1612,6 +1634,7 @@ function resolveSpell(spellId){
     delete game.player.effects.stun;
     enemyTurn();
     render();
+    if(checkEnemyOutcome()) return;
     return;
   }
   if(getEffect(game.player,'paralyze') && Math.random()<0.45){
@@ -1619,6 +1642,7 @@ function resolveSpell(spellId){
     tickStartOfTurn(game.player,true);
     enemyTurn();
     render();
+    if(checkEnemyOutcome()) return;
     return;
   }
 
@@ -1632,7 +1656,7 @@ function resolveSpell(spellId){
   getLivingEnemies(game).forEach(e=>tickStartOfTurn(e,false));
   tickStartOfTurn(game.player,true);
   removeDeadEnemies(game);
-  if(encounterWon(game)){ endEnemy('kill_dot'); return; }
+  if(encounterWon(game)){ queueEncounterEnd('kill'); return; }
 
   const targetEnemy = syncCurrentEnemy(game);
   if(targeting==='all'){
@@ -1665,6 +1689,7 @@ function resolveSpell(spellId){
 
   enemyTurn();
   render();
+  if(checkEnemyOutcome()) return;
 }
 
 // ---------- Enemy turn ----------
@@ -1883,7 +1908,8 @@ function addNewAlly(ally){
   } else {
     game.reserveAllies.push(ally);
     log(`${ally.name} joins your reserve because active allies are full.`, 'gold');
-    openAlliesModal();
+    if(game.transitioningEncounter) game.openAlliesAfterTransition = true;
+    else openAlliesModal();
   }
 }
 function moveAllyToActive(id){
@@ -1905,16 +1931,25 @@ function moveAllyToReserve(id){
 }
 function checkEnemyOutcome(){
   const living = getLivingEnemies(game);
-  if(!living.length){ endEnemy('kill'); return true; }
+  if(!living.length){
+    queueEncounterEnd((game.flags.encounterRecruits||0)>0 ? 'befriend' : 'kill');
+    return true;
+  }
   for(const e of living){
     if(e.befriend >= e.maxBefriend){
       recruitEnemy(e);
       removeDeadEnemies(game);
-      if(!getLivingEnemies(game).length){ endEnemy('befriend'); return true; }
+      if(!getLivingEnemies(game).length){
+        queueEncounterEnd((game.flags.encounterRecruits||0)>0 ? 'befriend' : 'kill');
+        return true;
+      }
     }
   }
   syncCurrentEnemy(game);
-  if(!getLivingEnemies(game).length){ endEnemy('kill'); return true; }
+  if(!getLivingEnemies(game).length){
+    queueEncounterEnd((game.flags.encounterRecruits||0)>0 ? 'befriend' : 'kill');
+    return true;
+  }
   return false;
 }
 function recruitEnemy(e){
@@ -2000,7 +2035,8 @@ function gainXp(amount){
     game.player.xp -= game.player.nextXp;
     game.player.level += 1;
     game.player.nextXp = Math.round(game.player.nextXp * 1.18 + 4);
-    openLevelUp();
+    if(game.transitioningEncounter) game.pendingLevelUpCount = (game.pendingLevelUpCount||0) + 1;
+    else openLevelUp();
   }
 }
 function addChargesToRandomSpell(count=1){
@@ -2013,10 +2049,24 @@ function addChargesToRandomSpell(count=1){
     log(`${SPELL_DEFS[s.id].name} gains +1 max cast.`, 'gold');
   }
 }
-function endEnemy(mode){
-  if(!(game.currentEnemies||[]).length) return;
+function queueEncounterEnd(result){
+  if(game.transitioningEncounter) return;
+  game.transitioningEncounter = true;
+  game.pendingEncounterResult = result;
+  if(game.pendingEncounterAdvanceTimeout){
+    clearTimeout(game.pendingEncounterAdvanceTimeout);
+    game.pendingEncounterAdvanceTimeout = null;
+  }
   if(game.autoResolveTimeoutId){ clearTimeout(game.autoResolveTimeoutId); game.autoResolveTimeoutId = null; }
   game.autoResolvingNoCasts = false;
+  finalizeEncounterRewards(result);
+  game.pendingEncounterAdvanceTimeout = setTimeout(advanceEncounter, 500);
+  render();
+}
+function finalizeEncounterRewards(result){
+  if(game.encounterRewardsApplied) return;
+  if(!(game.currentEnemies||[]).length) return;
+  game.encounterRewardsApplied = true;
   const defeated = countDefeatedInEncounter();
   const recruited = countRecruitedInEncounter();
   if(defeated>0){
@@ -2038,8 +2088,32 @@ function endEnemy(mode){
   }
 
   refreshSpellCasts();
+  game.flags.encounterKills = 0;
+  game.flags.encounterRecruits = 0;
+  game.flags.encounterXp = 0;
+}
+function advanceEncounter(){
+  if(!game.transitioningEncounter && !game.pendingEncounterResult) return;
+  if(game.pendingEncounterAdvanceTimeout){
+    clearTimeout(game.pendingEncounterAdvanceTimeout);
+    game.pendingEncounterAdvanceTimeout = null;
+  }
+  game.transitioningEncounter = false;
+  game.pendingEncounterResult = null;
+  game.encounterRewardsApplied = false;
+  if(game.dead){ render(); return; }
   if(game.encountersCompleted % 3 === 0) game.mode='checkpoint';
-  else spawnEncounter();
+  else{
+    game.mode='battle';
+    spawnEncounter();
+  }
+  if(game.pendingLevelUpCount>0){
+    game.pendingLevelUpCount -= 1;
+    openLevelUp();
+  }else if(game.openAlliesAfterTransition){
+    openAlliesModal();
+    game.openAlliesAfterTransition = false;
+  }
   render();
 }
 function buildRarityWeights(){
@@ -2435,6 +2509,15 @@ function renderTop(){
     <div class="pill">Devotion ${devotion.faction} T${devotion.tier} (${devotion.count}/6)</div>
     <div class="pill">Lineup x${lineup.mult.toFixed(2)}</div>
   `;
+  const transition = document.getElementById('transitionStatus');
+  const pending = game.pendingEncounterResult;
+  if(game.transitioningEncounter){
+    transition.style.display = 'inline-flex';
+    transition.textContent = pending==='befriend' ? 'Enemy Recruited • Preparing Next Wave…' : 'Wave Cleared • Preparing Next Wave…';
+  }else{
+    transition.style.display = 'none';
+    transition.textContent = '';
+  }
 }
 function statusTags(effects){
   if(!effects) return '';
@@ -2585,10 +2668,6 @@ function renderTurnOrder(activeToken='player'){
   el.innerHTML = tokens.map(t=>`<span class="turn-token ${t.id===activeToken?'active':''}">${t.label}</span>`).join('');
 }
 function render(){
-  if(game.mode==='battle' && (game.currentEnemies||[]).length && !getLivingEnemies(game).length){
-    endEnemy('kill');
-    return;
-  }
   syncCurrentEnemy(game);
   renderTop();
   renderTurnOrder('player');
@@ -2612,11 +2691,18 @@ document.getElementById('manageAlliesBtn').onclick = openAlliesModal;
 document.getElementById('closeAbilitiesBtn').onclick = ()=>document.getElementById('abilitiesModal').classList.remove('show');
 document.getElementById('closeAlliesBtn').onclick = ()=>document.getElementById('alliesModal').classList.remove('show');
 document.getElementById('nextEnemyBtn').onclick = ()=>{
+  if(game.pendingEncounterAdvanceTimeout){
+    clearTimeout(game.pendingEncounterAdvanceTimeout);
+    game.pendingEncounterAdvanceTimeout = null;
+  }
+  game.transitioningEncounter = false;
+  game.pendingEncounterResult = null;
+  game.encounterRewardsApplied = false;
   game.mode='battle';
   game.pendingSpellId = null;
   if(game.autoResolveTimeoutId){ clearTimeout(game.autoResolveTimeoutId); game.autoResolveTimeoutId = null; }
   game.autoResolvingNoCasts = false;
-  spawnEnemy();
+  spawnEncounter();
   render();
 };
 
