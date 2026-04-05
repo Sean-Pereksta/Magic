@@ -1034,6 +1034,8 @@ class Unit {
 
     let plannedX = tx;
     let plannedY = ty;
+    const lavaSafetyBuffer = strategy === "snail" ? 180 : 130;
+    const lavaDangerLine = world.lavaY - lavaSafetyBuffer;
 
     if (danger.topTrap && diffSet.trapSense > 0.45) {
       plannedX += this.x < tx ? -120 : 120;
@@ -1066,6 +1068,8 @@ class Unit {
       }
     }
 
+    plannedY = Math.min(plannedY, lavaDangerLine);
+
     const planDx = plannedX - this.x;
     const planDy = plannedY - this.y;
 
@@ -1084,6 +1088,14 @@ class Unit {
       this.flap();
     } else if (!suppressUpward && this.y > plannedY + 18 && Math.random() < 0.03 + diffSet.awareness * 0.03) {
       this.flap();
+    }
+
+    if (this.y > lavaDangerLine) {
+      this.vy = Math.min(this.vy, strategy === "snail" ? 0.6 : 1.2);
+      this.flap(this.flapPower() + (strategy === "snail" ? 0.30 : 0.12));
+      if (strategy === "snail" && this.target?.intent?.includes("snail")) {
+        this.vx += this.team === "blue" ? 0.06 : -0.06;
+      }
     }
 
     if (this.target.intent === "escort-carrier" || this.target.intent === "escort-snail") {
