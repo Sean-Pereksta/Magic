@@ -1,0 +1,2265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<title>Killer Queen Style</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #08101a;
+    overflow: hidden;
+    font-family: "Courier New", monospace;
+    color: white;
+  }
+  canvas {
+    display: block;
+    margin: 0 auto;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    border: 4px solid #97a3b7;
+    background: #111;
+  }
+</style>
+</head>
+<body>
+<canvas id="game" width="1200" height="700"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const VIEW_W = canvas.width;
+const VIEW_H = canvas.height;
+
+const keys = {};
+const TEAM_STRATEGIES = ["military", "economy", "snail", "balanced"];
+document.addEventListener("keydown", e => {
+  const k = e.key.toLowerCase();
+  keys[k] = true;
+  if ([" ", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(k) || e.key === " ") {
+    e.preventDefault();
+  }
+});
+document.addEventListener("keyup", e => {
+  keys[e.key.toLowerCase()] = false;
+});
+
+function rand(min, max) { return Math.random() * (max - min) + min; }
+function randi(min, max) { return Math.floor(rand(min, max + 1)); }
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
+function rectsOverlap(a, b) {
+  return a.x < b.x + b.w &&
+         a.x + a.w > b.x &&
+         a.y < b.y + b.h &&
+         a.y + a.h > b.y;
+}
+function shade(hex, amt) {
+  const col = hex.replace("#", "");
+  let r = parseInt(col.substring(0, 2), 16);
+  let g = parseInt(col.substring(2, 4), 16);
+  let b = parseInt(col.substring(4, 6), 16);
+  r = clamp(r + amt, 0, 255);
+  g = clamp(g + amt, 0, 255);
+  b = clamp(b + amt, 0, 255);
+  return "#" +
+    r.toString(16).padStart(2, "0") +
+    g.toString(16).padStart(2, "0") +
+    b.toString(16).padStart(2, "0");
+}
+
+/* ---------------- AUDIO ---------------- */
+
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let audioUnlocked = false;
+function unlockAudio() {
+  if (!audioUnlocked) {
+    audioUnlocked = true;
+    if (audioCtx.state === "suspended") audioCtx.resume();
+  }
+}
+document.addEventListener("keydown", unlockAudio, { once: true });
+document.addEventListener("mousedown", unlockAudio, { once: true });
+
+function beep(freq = 440, duration = 0.07, type = "square", volume = 0.03, slideTo = null) {
+  if (!audioUnlocked) return;
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  if (slideTo != null) {
+    osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t + duration);
+  }
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(volume, t + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + duration + 0.02);
+}
+function soundFlap() { beep(560, 0.04, "square", 0.018, 430); }
+function soundKill() { beep(930, 0.06, "square", 0.04, 490); setTimeout(() => beep(640, 0.07, "square", 0.03, 260), 30); }
+function soundBerry() { beep(920, 0.05, "triangle", 0.03, 1220); }
+function soundMount() { beep(310, 0.06, "sawtooth", 0.03, 500); }
+function soundDismount() { beep(440, 0.05, "square", 0.03, 250); }
+function soundGate() { beep(520, 0.05, "triangle", 0.03, 730); setTimeout(() => beep(730, 0.05, "triangle", 0.03, 990), 40); }
+function soundUpgrade() { beep(480, 0.06, "triangle", 0.035, 880); setTimeout(() => beep(880, 0.08, "triangle", 0.04, 1200), 55); }
+function soundWin() {
+  beep(660, 0.09, "triangle", 0.04, 880);
+  setTimeout(() => beep(880, 0.1, "triangle", 0.04, 1100), 80);
+  setTimeout(() => beep(990, 0.14, "triangle", 0.05, 1320), 170);
+}
+function soundDeath() { beep(240, 0.09, "sawtooth", 0.04, 120); }
+
+/* ---------------- DIFFICULTY ---------------- */
+
+const DIFFICULTIES = [
+  { level:1,  name:"Honey Sleepwalk", reaction:34, awareness:0.45, aggression:0.30, antiBerry:0.25, escort:false, squad:false, spikeSense:0.55, queenPressure:0.22, discipline:0.28, trapSense:0.24, retreat:0.20, memory:0.18 },
+  { level:2,  name:"Garden Drifter",  reaction:28, awareness:0.52, aggression:0.36, antiBerry:0.32, escort:false, squad:false, spikeSense:0.62, queenPressure:0.28, discipline:0.36, trapSense:0.34, retreat:0.28, memory:0.24 },
+  { level:3,  name:"Wax Worker",      reaction:23, awareness:0.60, aggression:0.42, antiBerry:0.38, escort:false, squad:false, spikeSense:0.70, queenPressure:0.34, discipline:0.45, trapSense:0.45, retreat:0.38, memory:0.34 },
+  { level:4,  name:"Hive Regular",    reaction:18, awareness:0.68, aggression:0.50, antiBerry:0.48, escort:false, squad:false, spikeSense:0.78, queenPressure:0.46, discipline:0.55, trapSense:0.58, retreat:0.48, memory:0.46 },
+  { level:5,  name:"Pollen Raider",   reaction:15, awareness:0.76, aggression:0.58, antiBerry:0.58, escort:true,  squad:false, spikeSense:0.84, queenPressure:0.58, discipline:0.66, trapSense:0.70, retreat:0.58, memory:0.58 },
+  { level:6,  name:"Royal Guard",     reaction:13, awareness:0.83, aggression:0.66, antiBerry:0.66, escort:true,  squad:true,  spikeSense:0.88, queenPressure:0.66, discipline:0.74, trapSense:0.78, retreat:0.66, memory:0.68 },
+  { level:7,  name:"Stinger Captain", reaction:11, awareness:0.89, aggression:0.74, antiBerry:0.74, escort:true,  squad:true,  spikeSense:0.91, queenPressure:0.74, discipline:0.82, trapSense:0.84, retreat:0.74, memory:0.76 },
+  { level:8,  name:"Swarm Tactician", reaction:10, awareness:0.94, aggression:0.82, antiBerry:0.84, escort:true,  squad:true,  spikeSense:0.94, queenPressure:0.84, discipline:0.90, trapSense:0.90, retreat:0.82, memory:0.84 },
+  { level:9,  name:"War Hive Oracle", reaction:8,  awareness:0.98, aggression:0.90, antiBerry:0.92, escort:true,  squad:true,  spikeSense:0.97, queenPressure:0.93, discipline:0.96, trapSense:0.95, retreat:0.90, memory:0.92 },
+  { level:10, name:"The Last Queen",  reaction:6,  awareness:1.00, aggression:1.00, antiBerry:1.00, escort:true,  squad:true,  spikeSense:1.00, queenPressure:1.00, discipline:1.00, trapSense:1.00, retreat:1.00, memory:1.00 }
+];
+
+/* ---------------- MAPS ---------------- */
+
+const MAPS = [
+  {
+    name: "SUNSET HIVE",
+    width: 2600,
+    height: 900,
+    lavaY: 818,
+    spikeY: 48,
+    snailTrackY: 748,
+    blueGateX: 112,
+    goldGateX: 2450,
+    hiveBlueX: 240,
+    hiveGoldX: 2360,
+
+    skyTop: "#2f386d",
+    skyMid: "#59305c",
+    skyLow: "#421824",
+    mountain1: "#39254c",
+    mountain2: "#51305d",
+    platformTop: "#b2a28b",
+    platformSide: "#6c4e33",
+    spikeColor: "#d0d0d0",
+    lava1: "#ff4a1c",
+    lava2: "#ffb02e",
+    bushLeaf1: "#2ea144",
+    bushLeaf2: "#48c75c",
+    bushBerry1: "#55ff5e",
+    bushBerry2: "#b127cf",
+
+    platforms: [
+      {x: 40, y: 700, w: 340, h: 12},
+      {x: 470, y: 610, w: 320, h: 12},
+      {x: 930, y: 480, w: 340, h: 12},
+      {x: 1330, y: 480, w: 340, h: 12},
+      {x: 1810, y: 610, w: 320, h: 12},
+      {x: 2220, y: 700, w: 340, h: 12},
+      {x: 240, y: 410, w: 230, h: 12},
+      {x: 1060, y: 300, w: 230, h: 12},
+      {x: 1310, y: 300, w: 230, h: 12},
+      {x: 2120, y: 410, w: 230, h: 12},
+      {x: 690, y: 210, w: 190, h: 12},
+      {x: 1720, y: 210, w: 190, h: 12}
+    ],
+
+    bushes: [
+      {platformIndex:1, offset:135},
+      {platformIndex:7, offset:105},
+      {platformIndex:8, offset:105},
+      {platformIndex:4, offset:135}
+    ]
+  },
+
+  {
+    name: "MOON CAVERN",
+    width: 3000,
+    height: 900,
+    lavaY: 830,
+    spikeY: 52,
+    snailTrackY: 760,
+    blueGateX: 100,
+    goldGateX: 2855,
+    hiveBlueX: 245,
+    hiveGoldX: 2755,
+
+    skyTop: "#12264f",
+    skyMid: "#1a1f4e",
+    skyLow: "#281c3d",
+    mountain1: "#1d2142",
+    mountain2: "#2a3159",
+    platformTop: "#8b96ad",
+    platformSide: "#49536b",
+    spikeColor: "#b9c3da",
+    lava1: "#7c1fff",
+    lava2: "#c95cff",
+    bushLeaf1: "#316883",
+    bushLeaf2: "#4ba3a6",
+    bushBerry1: "#9dffea",
+    bushBerry2: "#c65dff",
+
+    platforms: [
+      {x: 50, y: 715, w: 330, h: 12},
+      {x: 520, y: 650, w: 200, h: 12},
+      {x: 860, y: 545, w: 220, h: 12},
+      {x: 1260, y: 430, w: 280, h: 12},
+      {x: 1680, y: 545, w: 220, h: 12},
+      {x: 2060, y: 650, w: 200, h: 12},
+      {x: 2620, y: 715, w: 300, h: 12},
+      {x: 350, y: 455, w: 170, h: 12},
+      {x: 2440, y: 455, w: 170, h: 12},
+      {x: 720, y: 265, w: 150, h: 12},
+      {x: 2120, y: 265, w: 150, h: 12},
+      {x: 1410, y: 175, w: 180, h: 12}
+    ],
+
+    bushes: [
+      {platformIndex:1, offset:95},
+      {platformIndex:11, offset:90},
+      {platformIndex:9, offset:75},
+      {platformIndex:5, offset:105}
+    ]
+  },
+
+  {
+    name: "EMERALD TOWER",
+    width: 2800,
+    height: 900,
+    lavaY: 820,
+    spikeY: 50,
+    snailTrackY: 750,
+    blueGateX: 105,
+    goldGateX: 2675,
+    hiveBlueX: 240,
+    hiveGoldX: 2560,
+
+    skyTop: "#1d4a45",
+    skyMid: "#244e3d",
+    skyLow: "#2a253f",
+    mountain1: "#203934",
+    mountain2: "#355548",
+    platformTop: "#b8bf7d",
+    platformSide: "#5b6330",
+    spikeColor: "#dde2be",
+    lava1: "#ff7d1d",
+    lava2: "#ffe45b",
+    bushLeaf1: "#2f9f47",
+    bushLeaf2: "#5bd16a",
+    bushBerry1: "#ff6a94",
+    bushBerry2: "#ffdef0",
+
+    platforms: [
+      {x: 50, y: 710, w: 300, h: 12},
+      {x: 2450, y: 710, w: 300, h: 12},
+      {x: 500, y: 610, w: 160, h: 12},
+      {x: 820, y: 520, w: 160, h: 12},
+      {x: 1140, y: 430, w: 160, h: 12},
+      {x: 1460, y: 520, w: 160, h: 12},
+      {x: 1780, y: 610, w: 160, h: 12},
+      {x: 300, y: 350, w: 160, h: 12},
+      {x: 2360, y: 350, w: 160, h: 12},
+      {x: 720, y: 240, w: 140, h: 12},
+      {x: 1910, y: 240, w: 140, h: 12},
+      {x: 1320, y: 165, w: 160, h: 12}
+    ],
+
+    bushes: [
+      {platformIndex:2, offset:80},
+      {platformIndex:9, offset:70},
+      {platformIndex:10, offset:70},
+      {platformIndex:6, offset:80}
+    ]
+  }
+];
+
+/* ---------------- GAME STATE ---------------- */
+
+const game = {
+  state: "title",
+  winner: null,
+  winType: "",
+  playerStrategy: "economy",
+  goldStrategy: "military",
+  enemyStrategy: "military",
+  splitScreen: false,
+  difficultyIndex: 3,
+  currentMapIndex: 0,
+  cameraX: 0,
+  cameraY: 0,
+  cameraBlueX: 0,
+  cameraBlueY: 0,
+  cameraGoldX: 0,
+  cameraGoldY: 0,
+  time: 0,
+  strategyFlashTimer: 0,
+  goldStrategyFlashTimer: 0,
+  strategySwitchCooldown: 0,
+  goldStrategySwitchCooldown: 0,
+  debugAI: false,
+  _prevKeys: {}
+};
+
+const world = {
+  width: 2600,
+  height: 900,
+  lavaY: 818,
+  spikeY: 48,
+  snailTrackY: 748,
+  snailLeftGoal: 130,
+  snailRightGoal: 2470,
+  platforms: [],
+  theme: MAPS[0]
+};
+
+const stars = Array.from({ length: 240 }, () => ({
+  x: rand(0, 3400),
+  y: rand(0, 900),
+  s: Math.random() < 0.15 ? 3 : (Math.random() < 0.45 ? 2 : 1)
+}));
+
+const gates = { blue: null, gold: null };
+const hive = { blue: null, gold: null };
+const particles = [];
+
+function addParticles(x, y, color, count = 10, speed = 3) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x,
+      y,
+      vx: rand(-speed, speed),
+      vy: rand(-speed - 1, speed * 0.35),
+      life: rand(18, 44),
+      maxLife: 44,
+      color
+    });
+  }
+}
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.11;
+    p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+const snail = {
+  x: 0,
+  y: 0,
+  rider: null,
+  dir: 0,
+  speed: 0.7
+};
+
+let bushes = [];
+let units = [];
+let playerQueen = null;
+let goldPlayerQueen = null;
+const teamTactics = {
+  blue: { primarySnailRunner: null, runnerLockUntil: 0 },
+  gold: { primarySnailRunner: null, runnerLockUntil: 0 }
+};
+
+function currentDifficulty() {
+  return DIFFICULTIES[game.difficultyIndex];
+}
+
+function getSnailDangerForTeam(team) {
+  const totalSpan = world.snailRightGoal - world.snailLeftGoal;
+  let progressAgainstTeam = 0;
+
+  if (team === "blue") {
+    progressAgainstTeam = (snail.x - world.snailLeftGoal) / totalSpan;
+  } else {
+    progressAgainstTeam = (world.snailRightGoal - snail.x) / totalSpan;
+  }
+
+  progressAgainstTeam = clamp(progressAgainstTeam, 0, 1);
+
+  let severity = "none";
+  if (progressAgainstTeam >= 0.82) severity = "critical";
+  else if (progressAgainstTeam >= 0.63) severity = "high";
+  else if (progressAgainstTeam >= 0.45) severity = "medium";
+  else if (progressAgainstTeam >= 0.28) severity = "low";
+
+  return {
+    progress: progressAgainstTeam,
+    severity
+  };
+}
+
+function isValidSnailRunnerCandidate(unit) {
+  return !!unit && !unit.dead && unit.role !== "queen" && unit.form !== "warrior" && !unit.onSnail;
+}
+
+function nearestEnemyDistanceToUnit(unit, range = 180) {
+  let best = range;
+  for (const u of units) {
+    if (u.dead || u.team === unit.team) continue;
+    const d = dist(unit.x, unit.y, u.x, u.y);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+function pickPrimarySnailRunner(team) {
+  let best = null;
+  let bestScore = 1e9;
+  for (const u of units) {
+    if (u.team !== team || !isValidSnailRunnerCandidate(u)) continue;
+    const toSnail = dist(u.x, u.y, snail.x, snail.y);
+    const enemyDist = nearestEnemyDistanceToUnit(u, 220);
+    const enemyPenalty = enemyDist < 220 ? (220 - enemyDist) * 1.25 : 0;
+    const berryPenalty = u.carryingBerry ? 180 : 0;
+    const fightPenalty = u.enemiesNearby(150) > u.alliesNearby(170) + 1 ? 140 : 0;
+    const rolePenalty = u.form === "speed" ? -26 : 0;
+    const score = toSnail + enemyPenalty + berryPenalty + fightPenalty + rolePenalty;
+    if (score < bestScore) {
+      bestScore = score;
+      best = u;
+    }
+  }
+  return best;
+}
+
+function ensurePrimarySnailRunner(team, strategy) {
+  const state = teamTactics[team];
+  if (strategy !== "snail" || (snail.rider && snail.rider.team === team)) {
+    state.primarySnailRunner = null;
+    state.runnerLockUntil = 0;
+    return null;
+  }
+  const current = state.primarySnailRunner;
+  if (isValidSnailRunnerCandidate(current) && game.time <= state.runnerLockUntil) return current;
+  const next = pickPrimarySnailRunner(team);
+  state.primarySnailRunner = next;
+  state.runnerLockUntil = game.time + 130;
+  return next;
+}
+
+function cyclePlayerStrategy() {
+  if (game.strategySwitchCooldown > 0) return;
+  const idx = TEAM_STRATEGIES.indexOf(game.playerStrategy);
+  const nextIdx = (idx + 1 + TEAM_STRATEGIES.length) % TEAM_STRATEGIES.length;
+  game.playerStrategy = TEAM_STRATEGIES[nextIdx];
+  game.strategySwitchCooldown = 22;
+  game.strategyFlashTimer = 90;
+}
+
+function cycleGoldStrategy() {
+  if (game.goldStrategySwitchCooldown > 0) return;
+  const idx = TEAM_STRATEGIES.indexOf(game.goldStrategy);
+  const nextIdx = (idx + 1 + TEAM_STRATEGIES.length) % TEAM_STRATEGIES.length;
+  game.goldStrategy = TEAM_STRATEGIES[nextIdx];
+  game.goldStrategySwitchCooldown = 22;
+  game.goldStrategyFlashTimer = 90;
+}
+
+function keyTap(key) {
+  return !!keys[key] && !game._prevKeys[key];
+}
+
+function applyMap(index) {
+  const map = MAPS[index];
+  world.theme = map;
+  world.width = map.width;
+  world.height = map.height;
+  world.lavaY = map.lavaY;
+  world.spikeY = map.spikeY;
+  world.snailTrackY = map.snailTrackY;
+  world.platforms = map.platforms.map(p => ({ ...p }));
+  world.snailLeftGoal = 130;
+  world.snailRightGoal = world.width - 130;
+
+  gates.blue = {
+    x: map.blueGateX, y: 130, w: 40, h: 172, team: "blue",
+    berries: 0,
+    upgrades: { speed: false, warrior: false },
+    maidens: [
+      { x: map.blueGateX + 68, y: 195, type: "speed" },
+      { x: map.blueGateX + 68, y: 260, type: "warrior" }
+    ]
+  };
+  gates.gold = {
+    x: map.goldGateX, y: 130, w: 40, h: 172, team: "gold",
+    berries: 0,
+    upgrades: { speed: false, warrior: false },
+    maidens: [
+      { x: map.goldGateX - 28, y: 195, type: "speed" },
+      { x: map.goldGateX - 28, y: 260, type: "warrior" }
+    ]
+  };
+
+  hive.blue = { x: map.hiveBlueX, y: world.snailTrackY - 22, team: "blue" };
+  hive.gold = { x: map.hiveGoldX, y: world.snailTrackY - 22, team: "gold" };
+
+  snail.x = world.width / 2;
+  snail.y = world.snailTrackY - 18;
+  snail.rider = null;
+  snail.dir = 0;
+
+  bushes = map.bushes.map((b, idx) => {
+    const plat = map.platforms[b.platformIndex];
+    const x = plat.x + b.offset;
+    const y = plat.y - 2;
+    return {
+      id: idx,
+      x,
+      y,
+      timer: 0,
+      platformY: plat.y,
+      berry: { x, y: y - 20, alive: true, carriedBy: null, bushId: idx }
+    };
+  });
+}
+
+/* ---------------- UNITS ---------------- */
+
+class Unit {
+  constructor({ team, role, x, y, isPlayer = false }) {
+    this.team = team;
+    this.role = role; // queen, worker
+    this.x = x;
+    this.y = y;
+    this.w = role === "queen" ? 46 : 34;
+    this.h = role === "queen" ? 30 : 24;
+    this.vx = 0;
+    this.vy = 0;
+    this.dir = team === "blue" ? 1 : -1;
+    this.onGround = false;
+    this.flapCooldown = 0;
+    this.flutter = 0;
+    this.invuln = 0;
+    this.dead = false;
+    this.respawnTimer = 0;
+    this.isPlayer = isPlayer;
+
+    this.form = role === "queen" ? "queen" : "worker"; // worker, speed, warrior
+    this.carryingBerry = null;
+    this.onSnail = false;
+    this.snailMountCooldown = 0;
+    this.aiTick = 0;
+    this.target = null;
+    this.intent = "";
+    this.objectiveCommit = 0;
+    this.approachType = "direct-intercept";
+    this.approachCommit = 0;
+    this.queenState = "stabilize";
+    this.queenStateCommit = 0;
+    this.lastSupportCount = 0;
+    this.lastDangerFlag = false;
+    this.lastAmbushFlag = false;
+    this.failedApproaches = {};
+    this.deathMemory = [];
+    this.lastObjectiveChange = -9999;
+    this.lastUnsupportedDive = -9999;
+    this.queenLives = role === "queen" ? 3 : 0;
+  }
+
+  diff() {
+    return currentDifficulty();
+  }
+
+  enemyUrgencyBoost() {
+    const blueBerries = gates.blue.berries;
+    if (this.team === "gold") {
+      if (blueBerries >= 8) return 1.0;
+      if (blueBerries >= 6) return 0.72;
+      if (blueBerries >= 4) return 0.42;
+    }
+    return 0;
+  }
+
+  color() {
+    if (this.role === "queen") return this.team === "blue" ? "#5ed6ff" : "#ffd457";
+    if (this.form === "speed") return this.team === "blue" ? "#72ffe3" : "#faff99";
+    if (this.form === "warrior") return this.team === "blue" ? "#48b9ff" : "#ffbf56";
+    return this.team === "blue" ? "#2f9cff" : "#d6a040";
+  }
+
+  flapPower() {
+    if (this.role === "queen") return 5.6;
+    if (this.form === "speed") return 5.95;
+    if (this.form === "warrior") return 5.2;
+    return 5.1;
+  }
+
+  maxSpeed() {
+    if (this.role === "queen") return 4.56;
+    if (this.form === "speed") return 5.0;
+    if (this.form === "warrior") return 3.63;
+    return 3.96;
+  }
+
+  flap(power = this.flapPower()) {
+    if (this.flapCooldown <= 0) {
+      this.vy = Math.min(this.vy, 0) - power;
+      this.flapCooldown = 10;
+      this.flutter = 7;
+      if (this.isPlayer) soundFlap();
+      addParticles(this.x + this.w / 2, this.y + this.h - 2, "#ffffff", 3, 2.0);
+    }
+  }
+
+  getHitbox() {
+    return { x: this.x + 4, y: this.y + 4, w: this.w - 8, h: this.h - 7 };
+  }
+
+  rememberDeath() {
+    this.deathMemory.push({ x: this.x, y: this.y, t: game.time });
+    while (this.deathMemory.length > 8) this.deathMemory.shift();
+  }
+
+  recentDeathsNear(x, y, radius = 140, window = 900) {
+    return this.deathMemory.filter(d => game.time - d.t <= window && dist(d.x, d.y, x, y) < radius).length;
+  }
+
+  die() {
+    if (this.dead) return;
+    this.rememberDeath();
+
+    if (this.role === "queen") {
+      this.queenLives--;
+      addParticles(this.x + this.w / 2, this.y + this.h / 2, this.team === "blue" ? "#79dcff" : "#ffe67a", 20, 3.8);
+      soundDeath();
+
+      if (this.carryingBerry) this.dropBerry();
+
+      if (snail.rider === this) {
+        snail.rider = null;
+        this.onSnail = false;
+        soundDismount();
+      }
+
+      if (this.queenLives <= 0) {
+        this.dead = true;
+        this.respawnTimer = 999999;
+      } else {
+        this.invuln = 120;
+        this.respawnAtBase();
+      }
+      return;
+    }
+
+    this.dead = true;
+    this.respawnTimer = 170;
+    addParticles(this.x + this.w / 2, this.y + this.h / 2, this.team === "blue" ? "#79dcff" : "#ffe67a", 16, 3.4);
+    soundDeath();
+
+    if (this.carryingBerry) this.dropBerry();
+    if (snail.rider === this) {
+      snail.rider = null;
+      this.onSnail = false;
+      soundDismount();
+    }
+  }
+
+  dropBerry() {
+    if (!this.carryingBerry) return;
+    this.carryingBerry.carriedBy = null;
+    this.carryingBerry.x = this.x + 10;
+    this.carryingBerry.y = this.y + 10;
+    this.carryingBerry.alive = true;
+    this.carryingBerry = null;
+  }
+
+  respawnAtBase() {
+    if (this.team === "blue") {
+      this.x = this.role === "queen" ? 165 : rand(125, 280);
+      this.y = this.role === "queen" ? 650 : rand(635, 700);
+      this.dir = 1;
+    } else {
+      this.x = this.role === "queen" ? world.width - 205 : rand(world.width - 280, world.width - 125);
+      this.y = this.role === "queen" ? 650 : rand(635, 700);
+      this.dir = -1;
+    }
+    this.vx = 0;
+    this.vy = 0;
+    this.onSnail = false;
+    this.snailMountCooldown = 50;
+  }
+
+  respawn() {
+    this.dead = false;
+    this.invuln = 75;
+    this.form = "worker";
+    this.carryingBerry = null;
+    this.respawnAtBase();
+  }
+
+  physics() {
+    this.flapCooldown--;
+    this.flutter = Math.max(0, this.flutter - 1);
+    this.invuln = Math.max(0, this.invuln - 1);
+    this.snailMountCooldown = Math.max(0, this.snailMountCooldown - 1);
+
+    this.vy += 0.27;
+    this.vy = clamp(this.vy, -8.6, 8);
+    this.x += this.vx;
+    this.y += this.vy;
+
+    if (this.x + this.w < 0) this.x = world.width;
+    if (this.x > world.width) this.x = -this.w;
+
+    this.onGround = false;
+
+    for (const p of world.platforms) {
+      const feetPrev = this.y + this.h - this.vy;
+      const feetNow = this.y + this.h;
+      if (
+        this.x + this.w - 5 > p.x &&
+        this.x + 5 < p.x + p.w &&
+        feetPrev <= p.y &&
+        feetNow >= p.y &&
+        this.vy >= 0
+      ) {
+        this.y = p.y - this.h;
+        this.vy = 0;
+        this.onGround = true;
+      }
+    }
+
+    if (this.onSnail && snail.rider === this) {
+      this.y = snail.y - this.h + 4;
+      this.vy = 0;
+      this.onGround = true;
+      this.x = snail.x - this.w / 2;
+    }
+
+    if (this.y <= world.spikeY) {
+      this.die();
+      return;
+    }
+    if (this.y + this.h >= world.lavaY) {
+      this.die();
+      return;
+    }
+
+    this.vx *= this.onGround ? 0.9 : 0.988;
+    this.vx = clamp(this.vx, -this.maxSpeed(), this.maxSpeed());
+  }
+
+  nearestEnemy(range = 99999) {
+    let best = null, bestD = range;
+    for (const u of units) {
+      if (u.dead || u.team === this.team) continue;
+      const d = dist(this.x, this.y, u.x, u.y);
+      if (d < bestD) { bestD = d; best = u; }
+    }
+    return best;
+  }
+
+  enemyQueen() {
+    return units.find(u => !u.dead && u.team !== this.team && u.role === "queen");
+  }
+
+  enemyCarrier() {
+    return units.find(u => !u.dead && u.team !== this.team && u.carryingBerry);
+  }
+
+  alliedCarrier() {
+    return units.find(u => !u.dead && u.team === this.team && u.carryingBerry);
+  }
+
+  squadRole() {
+    if (!this.diff().squad || this.role === "queen") return "solo";
+    const allies = units.filter(u => !u.dead && u.team === this.team && u.role !== "queen").sort((a, b) => a.x - b.x);
+    const idx = allies.indexOf(this);
+    if (idx === -1) return "solo";
+    if (idx === 0) return "harvest";
+    if (idx === 1) return "escort";
+    if (idx === 2) return "contest";
+    return "flex";
+  }
+
+  bushBerryTarget() {
+    let best = null, bestScore = 1e9;
+    for (const bush of bushes) {
+      const b = bush.berry;
+      if (!b.alive || b.carriedBy) continue;
+      const d = dist(this.x, this.y, b.x, b.y);
+      const ownGate = gates[this.team];
+      const score = d + Math.abs(ownGate.x - b.x) * 0.15;
+      if (score < bestScore) {
+        bestScore = score;
+        best = b;
+      }
+    }
+    return best;
+  }
+
+  pressureInfo() {
+    const ownGate = gates[this.team];
+    const ownHive = hive[this.team];
+    const enemyGate = gates[this.team === "blue" ? "gold" : "blue"];
+    const enemyNearGate = nearestEnemyToPoint(this.team, ownGate.x, ownGate.y + 80, 260 + 70 * this.diff().awareness);
+    const enemyNearHive = nearestEnemyToPoint(this.team, ownHive.x, ownHive.y, 240 + 60 * this.diff().awareness);
+    const enemyNearSnail = nearestEnemyToPoint(this.team, snail.x, snail.y, 260 + 80 * this.diff().awareness);
+    const snailEnemy = snail.rider && snail.rider.team !== this.team ? snail.rider : null;
+    const snailFriendly = snail.rider && snail.rider.team === this.team ? snail.rider : null;
+    return { ownGate, ownHive, enemyGate, enemyNearGate, enemyNearHive, enemyNearSnail, snailEnemy, snailFriendly };
+  }
+
+  alliesNearby(range = 220) {
+    return units.filter(u => !u.dead && u.team === this.team && u !== this && dist(this.x, this.y, u.x, u.y) < range).length;
+  }
+
+  enemiesNearby(range = 220) {
+    return units.filter(u => !u.dead && u.team !== this.team && dist(this.x, this.y, u.x, u.y) < range).length;
+  }
+
+  isPrimarySnailRunner(strategy) {
+    if (strategy !== "snail" || this.role === "queen" || this.form === "warrior") return false;
+    const runner = ensurePrimarySnailRunner(this.team, strategy);
+    return runner === this;
+  }
+
+  directSnailThreatDistance(maxRange = 130) {
+    let best = maxRange;
+    for (const u of units) {
+      if (u.dead || u.team === this.team) continue;
+      const dSnail = dist(u.x, u.y, snail.x, snail.y);
+      const dSelf = dist(u.x, u.y, this.x, this.y);
+      if (dSnail < best || dSelf < best) best = Math.min(best, dSnail, dSelf);
+    }
+    return best;
+  }
+
+  intentCommitBoost(intent, strategy, isPrimaryRunner = false) {
+    const lvl = this.diff().level;
+    let boost = 0;
+    if (lvl >= 6 && ["ride-snail", "escort-snail", "contest-snail", "stop-carrier", "queen-hunt", "defend-gate"].some(t => intent.includes(t))) boost += 24;
+    if (lvl >= 7 && ["ride-snail", "escort-snail", "contest-snail-hard", "stop-carrier", "queen-hunt", "defend-gate"].some(t => intent.includes(t))) boost += 18;
+    if (lvl >= 8 && ["ride-snail", "stop-carrier", "queen-hunt", "defend-gate", "contest-snail"].some(t => intent.includes(t))) boost += 14;
+    if (lvl >= 9 && ["ride-snail", "contest-snail", "defend-gate", "stop-carrier"].some(t => intent.includes(t))) boost += 12;
+    if (lvl >= 10 && ["ride-snail", "contest-snail-hard", "stop-carrier", "queen-hunt", "defend-gate"].some(t => intent.includes(t))) boost += 14;
+    if (isPrimaryRunner && strategy === "snail" && intent === "ride-snail") boost += 55;
+    if (this.role === "queen" && lvl >= 9 && intent.includes("queen")) boost += 16;
+    return boost;
+  }
+
+  bravery(strategy) {
+    if (this.role === "queen") return 0.58;
+    if (this.form === "warrior") return 0.82;
+    if (strategy === "snail") return 0.64;
+    if (this.form === "speed") return 0.48;
+    return 0.40;
+  }
+
+  dangerZoneAgainst(target) {
+    if (!target) return { score: 0, ambush: false, topTrap: false };
+    const enemyAbove = target.y + target.h < this.y + 8;
+    const tightCeiling = this.y < world.spikeY + 140;
+    const narrowPlatform = world.platforms.find(p =>
+      target.x + ((target.w || 30) / 2) > p.x &&
+      target.x + ((target.w || 30) / 2) < p.x + p.w &&
+      Math.abs(target.y + (target.h || 24) - p.y) < 45
+    );
+    const isNarrow = !!narrowPlatform && narrowPlatform.w <= 220;
+    const topZone = target.y < world.spikeY + 240;
+    const recentDeaths = this.recentDeathsNear(target.x, target.y, 150, 1000);
+    const support = this.alliesNearby(190);
+    let score = 0;
+    if (enemyAbove) score += 0.30;
+    if (tightCeiling) score += 0.24;
+    if (isNarrow) score += 0.24;
+    if (topZone) score += 0.15;
+    if (recentDeaths > 1) score += 0.20;
+    if (support === 0) score += 0.16;
+    return {
+      score: clamp(score, 0, 1.4),
+      ambush: enemyAbove && (tightCeiling || (isNarrow && topZone)),
+      topTrap: enemyAbove && topZone && isNarrow && tightCeiling
+    };
+  }
+
+  shouldForceReevaluate(targetObj, targetIntent, danger) {
+    const ownQueen = units.find(u => !u.dead && u.team === this.team && u.role === "queen");
+    const enemyQueen = this.enemyQueen();
+    const snailDanger = getSnailDangerForTeam(this.team);
+    const diffSet = this.diff();
+    const berriesLeft = 10 - gates[this.team].berries;
+    const berryThreat = 10 - gates[this.team === "blue" ? "gold" : "blue"].berries;
+    const support = this.alliesNearby(200);
+    const failed = this.failedApproaches[this.approachType] || 0;
+    if (diffSet.level >= 8 && targetIntent === "ride-snail" && snail.rider !== this && this.directSnailThreatDistance(128) >= 128 && snailDanger.progress < 0.88) return false;
+    if (snailDanger.progress > 0.70) return true;
+    if ((ownQueen && ownQueen.queenLives <= 1) || (enemyQueen && enemyQueen.queenLives <= 1)) return true;
+    if (berriesLeft <= 2 || berryThreat <= 2) return true;
+    if (targetObj && targetObj.dead) return true;
+    if (diffSet.level >= 9 && danger.topTrap && targetIntent.includes("snail")) return true;
+    if (danger.score > 0.78) return true;
+    if (this.lastSupportCount > 0 && support === 0) return true;
+    if (failed >= 2) return true;
+    if (this.role !== "queen" && enemyQueen && !enemyQueen.dead && enemyQueen.y > world.spikeY + 120 && this.enemiesNearby(260) <= 1 && dist(this.x, this.y, enemyQueen.x, enemyQueen.y) < 250) return true;
+    return false;
+  }
+
+  pickApproach(intent, targetObj, danger, strategy) {
+    const diffSet = this.diff();
+    const options = ["direct-intercept"];
+    if (diffSet.level >= 3) options.push("low-rise");
+    if (diffSet.level >= 4) options.push("side-hover-bait");
+    if (diffSet.level >= 5) options.push("perch-wait");
+    if (diffSet.level >= 6) options.push("regroup-push");
+    if (diffSet.level >= 7) options.push("fake-retreat");
+
+    let preferred = "direct-intercept";
+    if (danger.topTrap || danger.score > 0.85) preferred = diffSet.level >= 6 ? "regroup-push" : "side-hover-bait";
+    else if (intent.includes("escort")) preferred = "perch-wait";
+    else if (intent.includes("snail")) preferred = strategy === "snail" ? "low-rise" : "side-hover-bait";
+    else if (this.form === "warrior" && diffSet.level >= 6) preferred = "fake-retreat";
+
+    if (targetObj && this.recentDeathsNear(targetObj.x, targetObj.y, 160, 1200) > 1 && preferred === "direct-intercept") {
+      preferred = "low-rise";
+    }
+
+    return options.includes(preferred) ? preferred : options[0];
+  }
+
+  chooseTarget(strategy) {
+    const diffSet = this.diff();
+    const pressure = this.pressureInfo();
+    const enemyQueen = this.enemyQueen();
+    const enemyCarrier = this.enemyCarrier();
+    const alliedCarrier = this.alliedCarrier();
+    const berry = this.bushBerryTarget();
+    const urgency = this.enemyUrgencyBoost();
+    const squad = this.squadRole();
+    const snailDanger = getSnailDangerForTeam(this.team);
+    const enemyBerries = gates[this.team === "blue" ? "gold" : "blue"].berries;
+    const ownBerries = gates[this.team].berries;
+    const support = this.alliesNearby(220);
+    const isPrimaryRunner = this.isPrimarySnailRunner(strategy);
+    const directSnailThreat = this.directSnailThreatDistance(diffSet.level >= 8 ? 130 : 115);
+    const ownQueen = units.find(u => !u.dead && u.team === this.team && u.role === "queen");
+
+    if (this.role === "queen") {
+      const lowLife = this.queenLives <= 1;
+      const losingSnail = snailDanger.progress > 0.68;
+      const berryEmergency = enemyBerries >= 8;
+      const queenUnderThreat = this.enemiesNearby(diffSet.level >= 9 ? 165 : 130) > (support + (diffSet.level >= 8 ? 0 : 1));
+      if (this.queenStateCommit <= 0) {
+        if ((lowLife && (support < 1 || losingSnail || berryEmergency)) || (diffSet.level >= 9 && queenUnderThreat)) this.queenState = "avoid-death";
+        else if (losingSnail || berryEmergency) this.queenState = "desperation-contest";
+        else if (ownBerries >= 8 && this.queenLives > 1) this.queenState = "defend-lead";
+        else if (strategy === "economy" || support <= 1) this.queenState = "escort-objective";
+        else if (strategy === "military" && this.queenLives > 1 && (diffSet.level < 10 || support >= 2 || urgency > 0.7)) this.queenState = "pressure";
+        else this.queenState = "stabilize";
+        this.queenStateCommit = 75 + Math.floor(100 * diffSet.discipline) + (diffSet.level >= 9 ? 22 : 0);
+      } else {
+        this.queenStateCommit--;
+      }
+
+      if (this.team === "gold") {
+        if (this.queenState === "avoid-death") return { obj: { x: pressure.ownGate.x - 80, y: 430 }, intent: "queen-avoid-death" };
+        if (this.queenState === "desperation-contest" && pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "queen-desperation" };
+        if (pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "defend-snail" };
+        if (pressure.enemyNearGate) return { obj: pressure.enemyNearGate, intent: "defend-gate" };
+        if (enemyCarrier && Math.random() < 0.8 + urgency * 0.2) return { obj: enemyCarrier, intent: "stop-carrier" };
+        if (urgency > 0.6 && enemyQueen && (diffSet.level < 9 || support >= 1 || !lowLife)) return { obj: enemyQueen, intent: "queen-hunt" };
+        if (pressure.enemyNearHive) return { obj: pressure.enemyNearHive, intent: "defend-hive" };
+        if (strategy === "military" && enemyQueen && dist(this.x, this.y, enemyQueen.x, enemyQueen.y) < 420 && (diffSet.level < 10 || support >= 1 || urgency > 0.75)) {
+          return { obj: enemyQueen, intent: "queen-hunt" };
+        }
+        return { obj: { x: pressure.ownGate.x - 70, y: 410 }, intent: "guard-zone" };
+      } else {
+        if (this.queenState === "avoid-death") return { obj: { x: pressure.ownGate.x + 74, y: 430 }, intent: "queen-avoid-death" };
+        if (this.queenState === "desperation-contest" && pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "queen-desperation" };
+        if (strategy === "military" && enemyQueen && (diffSet.level < 10 || support >= 2 || urgency > 0.72)) return { obj: enemyQueen, intent: "queen-hunt" };
+        if (enemyCarrier) return { obj: enemyCarrier, intent: "stop-carrier" };
+        if (pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "contest-snail" };
+        if (pressure.enemyNearGate) return { obj: pressure.enemyNearGate, intent: "defend-gate" };
+        return { obj: enemyQueen || this.nearestEnemy() || { x: pressure.enemyGate.x, y: 360 }, intent: "pressure" };
+      }
+    }
+
+    if (this.form === "warrior") {
+      if (pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "contest-snail" };
+      if (enemyCarrier) return { obj: enemyCarrier, intent: "stop-carrier" };
+      if (pressure.enemyNearGate) return { obj: pressure.enemyNearGate, intent: "defend-gate" };
+      if ((strategy === "military" || urgency > 0.55) && enemyQueen) return { obj: enemyQueen, intent: "queen-hunt" };
+      if (diffSet.escort && alliedCarrier) return { obj: alliedCarrier, intent: "escort-carrier" };
+      return { obj: this.nearestEnemy() || pressure.enemyGate, intent: "roam-attack" };
+    }
+
+    if (this.carryingBerry) {
+      const ownGate = gates[this.team];
+      if (ownGate.upgrades.speed && this.form === "worker" && Math.random() < 0.28) return { obj: ownGate.maidens[0], intent: "take-speed" };
+      if (ownGate.upgrades.warrior && this.form === "worker" && Math.random() < 0.18) return { obj: ownGate.maidens[1], intent: "take-warrior" };
+      return { obj: ownGate, intent: "score-berry" };
+    }
+
+    if (pressure.snailEnemy) {
+      if (snailDanger.severity === "critical") {
+        return { obj: pressure.snailEnemy, intent: "contest-snail-hard" };
+      }
+      if (snailDanger.severity === "high") {
+        if (this.form === "warrior" || this.form === "speed" || Math.random() < 0.7) {
+          return { obj: pressure.snailEnemy, intent: "contest-snail" };
+        }
+      }
+      if (snailDanger.severity === "medium") {
+        if (this.form === "warrior" || Math.random() < 0.45) {
+          return { obj: pressure.snailEnemy, intent: "contest-snail" };
+        }
+      }
+      if (snailDanger.severity === "low") {
+        if (this.form === "warrior" && Math.random() < 0.45) {
+          return { obj: pressure.snailEnemy, intent: "contest-snail" };
+        }
+      }
+    }
+
+    if (pressure.enemyNearGate && (diffSet.awareness > 0.55 || urgency > 0.4)) {
+      return { obj: pressure.enemyNearGate, intent: "defend-gate" };
+    }
+    if (enemyCarrier && (diffSet.antiBerry > 0.35 || urgency > 0.3)) {
+      return { obj: enemyCarrier, intent: "stop-carrier" };
+    }
+
+    if (strategy === "snail") {
+      if (isPrimaryRunner && !pressure.snailFriendly) {
+        const emergency = snailDanger.severity === "critical" || (ownQueen && ownQueen.queenLives <= 1 && this.enemiesNearby(170) >= 2);
+        if (directSnailThreat >= (diffSet.level >= 8 ? 124 : 110) && !emergency) return { obj: snail, intent: "ride-snail" };
+      }
+      if (!pressure.snailFriendly) return { obj: snail, intent: "ride-snail" };
+      if (diffSet.escort && snail.rider && snail.rider.team === this.team && (!isPrimaryRunner || directSnailThreat < 118)) return { obj: snail.rider, intent: "escort-snail" };
+      if (berry && squad !== "contest") return { obj: berry, intent: "collect-berry" };
+      return { obj: pressure.enemyNearSnail || pressure.ownHive, intent: "patrol-snail" };
+    }
+
+    if (strategy === "economy") {
+      if (diffSet.escort && alliedCarrier && squad === "escort") return { obj: alliedCarrier, intent: "escort-carrier" };
+      if (berry) return { obj: berry, intent: "collect-berry" };
+      if (pressure.enemyNearHive) return { obj: pressure.enemyNearHive, intent: "defend-hive" };
+      return { obj: pressure.ownGate, intent: "reposition" };
+    }
+
+    if (strategy === "balanced") {
+      if (snailDanger.severity === "high" || snailDanger.severity === "critical") {
+        if (pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "contest-snail" };
+      }
+      if (enemyCarrier && Math.random() < 0.62) return { obj: enemyCarrier, intent: "stop-carrier" };
+      if (diffSet.escort && alliedCarrier && Math.random() < 0.55) return { obj: alliedCarrier, intent: "escort-carrier" };
+      if (berry && ownBerries < 9 && Math.random() < 0.58) return { obj: berry, intent: "collect-berry" };
+      if (pressure.enemyNearGate) return { obj: pressure.enemyNearGate, intent: "defend-gate" };
+      return { obj: enemyQueen || this.nearestEnemy() || pressure.enemyGate, intent: "pressure" };
+    }
+
+    if (gates[this.team].upgrades.warrior && this.form === "worker" && (Math.random() < 0.24 + diffSet.aggression * 0.15)) {
+      return { obj: gates[this.team].maidens[1], intent: "seek-warrior" };
+    }
+
+    if (urgency > 0.65 && enemyQueen) return { obj: enemyQueen, intent: "queen-hunt" };
+    return { obj: enemyQueen || this.nearestEnemy() || pressure.enemyGate, intent: "pressure" };
+  }
+
+  ai(strategy) {
+    if (this.dead) return;
+    const diffSet = this.diff();
+    this.aiTick--;
+    this.objectiveCommit = Math.max(0, this.objectiveCommit - 1);
+    this.approachCommit = Math.max(0, this.approachCommit - 1);
+
+    const currentObj = this.target?.obj || null;
+    const currentIntent = this.target?.intent || "";
+    const currentDanger = this.dangerZoneAgainst(currentObj);
+    const forceReevaluate = this.shouldForceReevaluate(currentObj, currentIntent, currentDanger);
+    const isPrimaryRunner = this.isPrimarySnailRunner(strategy);
+    if (this.aiTick <= 0 || !this.target || !this.target.obj || (forceReevaluate && this.objectiveCommit < 22)) {
+      const nextTarget = this.chooseTarget(strategy);
+      const level = diffSet.level;
+      const preservingStrongIntent = this.target && this.target.obj && !forceReevaluate && level >= 6 && this.objectiveCommit > (level >= 9 ? 34 : 26);
+      const sameIntent = this.target && this.target.intent === nextTarget.intent;
+      const distantShift = dist((this.target?.obj?.x ?? this.x), (this.target?.obj?.y ?? this.y), (nextTarget.obj?.x ?? this.x), (nextTarget.obj?.y ?? this.y)) > (level >= 8 ? 165 : 120);
+      const allowedSwap =
+        !preservingStrongIntent ||
+        sameIntent ||
+        forceReevaluate ||
+        (level >= 9 && (nextTarget.intent === "stop-carrier" || nextTarget.intent === "contest-snail-hard")) ||
+        distantShift;
+      const shouldSwitch = !this.target || forceReevaluate ||
+        this.target.intent !== nextTarget.intent ||
+        dist((this.target.obj?.x ?? this.x), (this.target.obj?.y ?? this.y), (nextTarget.obj?.x ?? this.x), (nextTarget.obj?.y ?? this.y)) > 120;
+      if ((shouldSwitch && allowedSwap) || this.objectiveCommit <= 0) {
+        this.target = nextTarget;
+        this.objectiveCommit = 45 + Math.floor(50 * diffSet.discipline) + this.intentCommitBoost(this.target.intent, strategy, isPrimaryRunner);
+        this.lastObjectiveChange = game.time;
+        const danger = this.dangerZoneAgainst(this.target.obj);
+        this.approachType = this.pickApproach(this.target.intent, this.target.obj, danger, strategy);
+        this.approachCommit = 35 + Math.floor(65 * diffSet.discipline) + (diffSet.level >= 7 ? 12 : 0);
+      }
+      const urgentRefresh = diffSet.level >= 8 && (forceReevaluate || this.target?.intent === "stop-carrier" || this.target?.intent === "contest-snail-hard");
+      this.aiTick = Math.max(5, diffSet.reaction - (urgentRefresh ? 6 : (forceReevaluate ? 3 : 0)));
+    }
+
+    const nearestEnemy = this.nearestEnemy(150);
+
+    const spikeBuffer = 95;
+    const hardSpikeLine = world.spikeY + spikeBuffer;
+    const risingFast = this.vy < -1.5;
+    const nearSpike = this.y < hardSpikeLine;
+    const veryNearSpike = this.y < hardSpikeLine + 18;
+
+    if (nearSpike) {
+      if (this.vy < 0) this.vy *= 0.55;
+      this.vy += 0.22 + diffSet.spikeSense * 0.12;
+      if (Math.random() < 0.12 + diffSet.spikeSense * 0.10) {
+        this.vx += (this.team === "blue" ? 0.10 : -0.10);
+      }
+    }
+    if (veryNearSpike && risingFast) {
+      this.vy += 0.35;
+    }
+
+    if (nearestEnemy && nearestEnemy.y < this.y - 8 && Math.random() < 0.12 + diffSet.awareness * 0.12) {
+      this.flap();
+    }
+
+    if (this.onSnail && snail.rider === this) {
+      const nearbyThreat = this.nearestEnemy(165 + diffSet.awareness * 40);
+      const closeToGoal = (this.team === "blue" && snail.x > world.snailRightGoal - 70) ||
+                          (this.team === "gold" && snail.x < world.snailLeftGoal + 70);
+      if (nearbyThreat && Math.random() < 0.04 + diffSet.awareness * 0.05) {
+        this.dismountSnail();
+      } else if (closeToGoal && Math.random() < 0.015) {
+        this.dismountSnail();
+      }
+      return;
+    }
+
+    const obj = this.target.obj;
+    const tx = obj.x ?? this.x;
+    const ty = obj.y ?? this.y;
+    const dx = tx - this.x;
+    const dy = ty - this.y;
+    const localEnemies = this.enemiesNearby(230);
+    const localAllies = this.alliesNearby(230);
+    const danger = this.dangerZoneAgainst(obj);
+    this.lastSupportCount = localAllies;
+    this.lastDangerFlag = danger.score > 0.66;
+    this.lastAmbushFlag = danger.ambush;
+
+    let accel = this.role === "queen" ? 0.235 : (this.form === "speed" ? 0.212 : 0.19);
+    accel += (diffSet.aggression - 0.5) * 0.05;
+    const losingFight = localEnemies > localAllies + 1;
+    const altitudeDisadvantage = nearestEnemy && nearestEnemy.y + 10 < this.y;
+    const directSnailThreat = isPrimaryRunner ? this.directSnailThreatDistance(130) : 999;
+    const ignoreRetreatForMount = isPrimaryRunner && this.target?.intent === "ride-snail" && directSnailThreat >= 120;
+    const disciplinedRetreat = diffSet.level >= 8 ? (danger.score > 0.70 || (losingFight && localEnemies >= 2)) : (losingFight || (altitudeDisadvantage && danger.score > 0.6));
+    const shouldDisengage = !ignoreRetreatForMount && disciplinedRetreat &&
+      Math.random() < (0.12 + diffSet.retreat * 0.36 - this.bravery(strategy) * 0.18 + (diffSet.level >= 9 ? 0.04 : 0));
+
+    let plannedX = tx;
+    let plannedY = ty;
+    if (isPrimaryRunner && this.target?.intent === "ride-snail" && !this.onSnail) {
+      this.approachType = "low-rise";
+      this.approachCommit = Math.max(this.approachCommit, 42);
+    }
+
+    if (danger.topTrap && diffSet.trapSense > 0.45) {
+      plannedX += this.x < tx ? -120 : 120;
+      plannedY += 30;
+    }
+    if (shouldDisengage) {
+      plannedX = this.x + (this.team === "blue" ? -140 : 140);
+      plannedY = clamp(this.y + 30, world.spikeY + 120, world.lavaY - 120);
+      if (this.role === "queen" && this.queenLives <= 1) plannedX = gates[this.team].x + (this.team === "blue" ? 80 : -80);
+    }
+
+    if (this.approachType === "low-rise") {
+      plannedY = Math.max(plannedY + 48, this.y + 18);
+    } else if (this.approachType === "side-hover-bait") {
+      plannedX += this.x < tx ? -90 : 90;
+      plannedY = Math.min(plannedY + 20, world.lavaY - 140);
+    } else if (this.approachType === "fake-retreat" && this.approachCommit > 22) {
+      plannedX = this.x + (this.x < tx ? -90 : 90);
+    } else if (this.approachType === "perch-wait" && !(isPrimaryRunner && this.target?.intent === "ride-snail")) {
+      const perch = world.platforms.find(p => Math.abs((p.x + p.w / 2) - tx) < 190 && p.y > world.spikeY + 90 && p.y < world.lavaY - 120);
+      if (perch) {
+        plannedX = perch.x + perch.w / 2;
+        plannedY = perch.y - 10;
+      }
+    } else if (this.approachType === "regroup-push" && !(isPrimaryRunner && this.target?.intent === "ride-snail")) {
+      const ally = units.find(u => !u.dead && u.team === this.team && u !== this && dist(this.x, this.y, u.x, u.y) < 260);
+      if (ally && localAllies < 2) {
+        plannedX = ally.x;
+        plannedY = ally.y - 10;
+      }
+    }
+
+    const snailIntent = (this.target.intent || "").includes("snail");
+    if (snailIntent && !this.onSnail) {
+      const snailCenterX = snail.x;
+      const horizontalToSnail = Math.abs(snailCenterX - this.x);
+      const descentThreshold = isPrimaryRunner ? 118 : 96;
+      const safeLavaBandY = world.lavaY - 64;
+      const snailEngageY = clamp(snail.y - this.h + 8, world.spikeY + 110, world.lavaY - 84);
+      const mountCommitY = clamp(snail.y - this.h + 5, world.spikeY + 108, world.lavaY - 82);
+
+      if (horizontalToSnail > descentThreshold) {
+        plannedY = Math.min(plannedY, safeLavaBandY);
+      } else {
+        plannedY = Math.min(plannedY, isPrimaryRunner ? mountCommitY : snailEngageY);
+      }
+
+      if (isPrimaryRunner && horizontalToSnail < 132 && directSnailThreat >= 120) {
+        plannedY = Math.max(plannedY, mountCommitY);
+        if (Math.abs(snailCenterX - this.x) < 56) {
+          plannedY = mountCommitY;
+        }
+      }
+    }
+
+    const planDx = plannedX - this.x;
+    const planDy = plannedY - this.y;
+
+    if (Math.abs(planDx) > 8) {
+      this.vx += Math.sign(planDx) * accel;
+      this.dir = planDx > 0 ? 1 : -1;
+    }
+
+    const desiredHeightCeiling = world.spikeY + (diffSet.level >= 9 ? 106 : 95);
+    if (this.y < desiredHeightCeiling) {
+      this.vy += 0.20;
+    }
+
+    const suppressUpward = danger.topTrap && diffSet.trapSense > 0.5 && this.y > (obj.y || this.y) + 10;
+    const runnerFinalMount = isPrimaryRunner && this.target?.intent === "ride-snail" && Math.abs(snail.x - this.x) < 76 && directSnailThreat >= 120;
+    if (!runnerFinalMount && !suppressUpward && planDy < -16 && this.y > desiredHeightCeiling && this.y > world.spikeY + 105) {
+      this.flap();
+    } else if (!runnerFinalMount && !suppressUpward && this.y > plannedY + 18 && Math.random() < 0.03 + diffSet.awareness * 0.03) {
+      this.flap();
+    }
+
+    if (this.target.intent === "escort-carrier" || this.target.intent === "escort-snail") {
+      if (Math.abs(dx) > 30) {
+        this.vx += Math.sign(dx) * 0.06;
+      }
+      if (nearestEnemy && dist(this.x, this.y, nearestEnemy.x, nearestEnemy.y) < 120 && Math.random() < 0.12 + diffSet.aggression * 0.08) {
+        this.flap();
+      }
+    }
+
+    if (this.role === "queen" && this.team === "gold") {
+      const urgency = this.enemyUrgencyBoost();
+      const queenCareful = this.queenLives <= 1 && diffSet.level >= 6;
+      const queenDisciplined = diffSet.level >= 10;
+      const queenMayDive = !queenCareful && (!queenDisciplined || this.alliesNearby(190) >= 2 || urgency > 0.78);
+      if (queenMayDive && nearestEnemy && dist(this.x, this.y, nearestEnemy.x, nearestEnemy.y) < 135 && nearestEnemy.y < this.y + 8 && Math.random() < 0.14 + urgency * 0.08) {
+        this.flap(this.flapPower() + 0.18);
+      }
+      if (this.y < (queenDisciplined ? 195 : 180) && Math.random() < (queenDisciplined ? 0.22 : 0.13)) this.vy += 0.20;
+    }
+
+    if (this.form === "speed" && Math.random() < 0.018 + diffSet.aggression * 0.01) this.flap(this.flapPower() + 0.1);
+    if (this.form === "warrior" && nearestEnemy && nearestEnemy.y < this.y + 8 && Math.random() < 0.05 + diffSet.aggression * 0.06) this.flap();
+
+    if ((danger.score > 0.85 || shouldDisengage) && this.target) {
+      this.failedApproaches[this.approachType] = (this.failedApproaches[this.approachType] || 0) + 1;
+    } else if (this.failedApproaches[this.approachType] > 0 && Math.random() < 0.03) {
+      this.failedApproaches[this.approachType]--;
+    }
+  }
+
+  playerControl(control) {
+    if (this.onSnail && keys[control.down]) {
+      this.dismountSnail();
+      return;
+    }
+    if (keys[control.left]) { this.vx -= 0.38; this.dir = -1; }
+    if (keys[control.right]) { this.vx += 0.38; this.dir = 1; }
+    if (keyTap(control.up) && this.y > world.spikeY + 90) this.flap();
+    if (keys[control.down]) this.vy += 0.16;
+    if (this.y < world.spikeY + 80) this.vy += 0.22;
+  }
+
+  tryMountSnail() {
+    if (this.role === "queen" || this.form === "warrior") return;
+    if (this.snailMountCooldown > 0) return;
+    if (snail.rider) return;
+    if (dist(this.x + this.w / 2, this.y + this.h / 2, snail.x, snail.y) < 28) {
+      snail.rider = this;
+      this.onSnail = true;
+      this.vx = 0;
+      this.vy = 0;
+      soundMount();
+    }
+  }
+
+  dismountSnail() {
+    if (!this.onSnail || snail.rider !== this) return;
+    snail.rider = null;
+    this.onSnail = false;
+    this.snailMountCooldown = 50;
+    this.vy = -3.4;
+    this.vx += this.team === "blue" ? 1.5 : -1.5;
+    soundDismount();
+  }
+
+  update(strategy) {
+    if (this.dead) {
+      if (this.role !== "queen") {
+        this.respawnTimer--;
+        if (this.respawnTimer <= 0) this.respawn();
+      }
+      return;
+    }
+
+    if (this.isPlayer) {
+      const control = this.team === "blue"
+        ? { left: "a", right: "d", up: "w", down: "s" }
+        : { left: "arrowleft", right: "arrowright", up: "arrowup", down: "arrowdown" };
+      this.playerControl(control);
+    }
+    else this.ai(strategy);
+
+    if (!this.onSnail) this.tryMountSnail();
+    this.physics();
+  }
+
+  drawBeeBody(x, y, color, dir) {
+    ctx.fillStyle = color;
+    ctx.fillRect(x + 10, y + 11, this.w - 18, 10);
+
+    ctx.fillStyle = "#202020";
+    ctx.fillRect(x + 16, y + 11, 3, 10);
+    ctx.fillRect(x + 24, y + 11, 3, 10);
+    ctx.fillRect(x + 32, y + 11, 3, 10);
+
+    ctx.fillStyle = shade(color, 15);
+    ctx.fillRect(x + 8, y + 9, 9, 12);
+
+    ctx.fillStyle = shade(color, 28);
+    if (dir === 1) {
+      ctx.fillRect(x + this.w - 13, y + 8, 8, 8);
+      ctx.fillRect(x + this.w - 5, y + 10, 3, 4);
+    } else {
+      ctx.fillRect(x + 5, y + 8, 8, 8);
+      ctx.fillRect(x + 2, y + 10, 3, 4);
+    }
+
+    ctx.fillStyle = "#111";
+    if (dir === 1) ctx.fillRect(x + 5, y + 13, 4, 2);
+    else ctx.fillRect(x + this.w - 9, y + 13, 4, 2);
+
+    ctx.fillStyle = shade(color, -18);
+    ctx.fillRect(x + 15, y + 20, 2, 5);
+    ctx.fillRect(x + 22, y + 20, 2, 5);
+    ctx.fillRect(x + 30, y + 20, 2, 5);
+  }
+
+  drawWings(x, y, flapFrame, dir) {
+    const wingRise = flapFrame ? -11 : -3;
+    ctx.fillStyle = "rgba(220,255,255,0.55)";
+    if (dir === 1) {
+      ctx.fillRect(x + 11, y + wingRise + 1, 8, 15);
+      ctx.fillRect(x + 19, y + wingRise - 1, 9, 18);
+    } else {
+      ctx.fillRect(x + this.w - 19, y + wingRise + 1, 8, 15);
+      ctx.fillRect(x + this.w - 28, y + wingRise - 1, 9, 18);
+    }
+  }
+
+  drawAntennae(x, y, dir) {
+    ctx.fillStyle = "#111";
+    if (dir === 1) {
+      ctx.fillRect(x + this.w - 10, y + 4, 1, 4);
+      ctx.fillRect(x + this.w - 7, y + 3, 1, 5);
+      ctx.fillRect(x + this.w - 11, y + 3, 2, 1);
+      ctx.fillRect(x + this.w - 8, y + 2, 2, 1);
+    } else {
+      ctx.fillRect(x + 8, y + 4, 1, 4);
+      ctx.fillRect(x + 11, y + 3, 1, 5);
+      ctx.fillRect(x + 8, y + 3, 2, 1);
+      ctx.fillRect(x + 11, y + 2, 2, 1);
+    }
+  }
+
+  drawRider(x, y, dir) {
+    let riderColor = "#dcdcdc";
+    if (this.role === "queen") riderColor = "#ff69cf";
+    else if (this.form === "speed") riderColor = "#9fffe9";
+    else if (this.form === "warrior") riderColor = "#ffe48e";
+
+    ctx.fillStyle = riderColor;
+    ctx.fillRect(x + 16, y + 1, 8, 8);
+    ctx.fillStyle = "#f4c59e";
+    ctx.fillRect(x + 17, y - 5, 6, 6);
+
+    ctx.fillStyle = this.role === "queen" ? "#ff7ce5" : (this.form === "warrior" ? "#f0f0f0" : "#d7d7d7");
+    if (dir === 1) {
+      ctx.fillRect(x + 23, y + 4, this.role === "queen" ? 16 : 12, 2);
+      ctx.fillRect(x + 37, y + 3, 4, 4);
+    } else {
+      ctx.fillRect(x - 4, y + 4, this.role === "queen" ? 16 : 12, 2);
+      ctx.fillRect(x - 8, y + 3, 4, 4);
+    }
+
+    if (this.role === "queen") {
+      ctx.fillStyle = "#fff08d";
+      ctx.fillRect(x + 17, y - 8, 2, 2);
+      ctx.fillRect(x + 20, y - 10, 2, 4);
+      ctx.fillRect(x + 23, y - 8, 2, 2);
+    }
+
+    if (this.carryingBerry) {
+      ctx.fillStyle = "#46ff5c";
+      ctx.fillRect(x + this.w - 9, y - 2, 6, 6);
+      ctx.fillStyle = "#a51fc5";
+      ctx.fillRect(x + this.w - 8, y - 1, 4, 4);
+    }
+  }
+
+  drawStatusIcons() {
+    if (this.dead) return;
+    if (this.form === "speed") {
+      ctx.fillStyle = "#84fff2";
+      ctx.fillRect(this.x + this.w / 2 - 5, this.y - 12, 10, 3);
+    }
+    if (this.form === "warrior") {
+      ctx.fillStyle = "#ffe57d";
+      ctx.fillRect(this.x + this.w / 2 - 5, this.y - 12, 10, 4);
+    }
+    if (this.onSnail && snail.rider === this) {
+      ctx.fillStyle = "#ffb347";
+      ctx.fillRect(this.x + this.w / 2 - 5, this.y - 16, 10, 4);
+    }
+  }
+
+  draw() {
+    if (this.dead) return;
+    if (this.invuln > 0 && Math.floor(this.invuln / 4) % 2 === 0) return;
+
+    const flapFrame = this.flutter > 0 || !this.onGround;
+    this.drawWings(this.x, this.y, flapFrame, this.dir);
+    this.drawBeeBody(this.x, this.y, this.color(), this.dir);
+    this.drawAntennae(this.x, this.y, this.dir);
+    this.drawRider(this.x, this.y, this.dir);
+    this.drawStatusIcons();
+  }
+}
+
+/* ---------------- WORLD LOGIC ---------------- */
+
+function spawnMatch() {
+  applyMap(game.currentMapIndex);
+  units = [];
+  teamTactics.blue.primarySnailRunner = null;
+  teamTactics.blue.runnerLockUntil = 0;
+  teamTactics.gold.primarySnailRunner = null;
+  teamTactics.gold.runnerLockUntil = 0;
+
+  const bq = new Unit({ team: "blue", role: "queen", x: 165, y: 650, isPlayer: true });
+  const gq = new Unit({ team: "gold", role: "queen", x: world.width - 205, y: 650, isPlayer: game.splitScreen });
+
+  playerQueen = bq;
+  goldPlayerQueen = gq;
+  units.push(bq, gq);
+
+  for (let i = 0; i < 4; i++) {
+    units.push(new Unit({ team: "blue", role: "worker", x: 120 + i * 38, y: 690 }));
+    units.push(new Unit({ team: "gold", role: "worker", x: world.width - 270 + i * 38, y: 690 }));
+  }
+
+  game.enemyStrategy = TEAM_STRATEGIES[randi(0, TEAM_STRATEGIES.length - 1)];
+  if (game.splitScreen) game.enemyStrategy = game.goldStrategy;
+  game.winner = null;
+  game.winType = "";
+  game.state = "playing";
+  game.time = 0;
+  game.cameraX = 0;
+  game.cameraY = 0;
+  game.cameraBlueX = 0;
+  game.cameraBlueY = 0;
+  game.cameraGoldX = Math.max(0, world.width - VIEW_W);
+  game.cameraGoldY = 0;
+}
+
+function nearestEnemyToPoint(team, x, y, range = 99999) {
+  let best = null, bestD = range;
+  for (const u of units) {
+    if (u.dead || u.team === team) continue;
+    const d = dist(x, y, u.x, u.y);
+    if (d < bestD) {
+      bestD = d;
+      best = u;
+    }
+  }
+  return best;
+}
+
+function updateBushes() {
+  for (const bush of bushes) {
+    if (!bush.berry.alive && !bush.berry.carriedBy) {
+      bush.timer--;
+      if (bush.timer <= 0) {
+        bush.berry = {
+          x: bush.x,
+          y: bush.y - 20,
+          alive: true,
+          carriedBy: null,
+          bushId: bush.id
+        };
+        addParticles(bush.x, bush.y - 18, world.theme.bushBerry1, 10, 1.6);
+      }
+    }
+  }
+}
+
+function handleBerries() {
+  for (const bush of bushes) {
+    const berry = bush.berry;
+    if (!berry.alive) continue;
+
+    if (berry.carriedBy) {
+      berry.x = berry.carriedBy.x + berry.carriedBy.w - 6;
+      berry.y = berry.carriedBy.y - 2;
+      continue;
+    }
+
+    for (const u of units) {
+      if (u.dead || u.role === "queen" || u.form === "warrior" || u.carryingBerry) continue;
+      if (dist(u.x + u.w / 2, u.y + u.h / 2, berry.x, berry.y) < 18) {
+        berry.carriedBy = u;
+        u.carryingBerry = berry;
+        soundBerry();
+        break;
+      }
+    }
+  }
+
+  for (const u of units) {
+    if (u.dead || !u.carryingBerry) continue;
+    const ownGate = gates[u.team];
+    const gateRect = { x: ownGate.x, y: ownGate.y, w: ownGate.w, h: ownGate.h };
+
+    if (rectsOverlap(u.getHitbox(), gateRect)) {
+      ownGate.berries++;
+      const bush = bushes.find(b => b.id === u.carryingBerry.bushId);
+      if (bush) {
+        bush.berry.alive = false;
+        bush.berry.carriedBy = null;
+        bush.timer = 280 + randi(0, 120);
+      }
+      u.carryingBerry = null;
+      soundGate();
+      addParticles(ownGate.x + ownGate.w / 2, ownGate.y + ownGate.h - 25 - (ownGate.berries * 6), world.theme.bushBerry1, 12, 2.2);
+
+      if (ownGate.berries >= 2 && !ownGate.upgrades.speed) {
+        ownGate.upgrades.speed = true;
+        soundUpgrade();
+      }
+      if (ownGate.berries >= 5 && !ownGate.upgrades.warrior) {
+        ownGate.upgrades.warrior = true;
+        soundUpgrade();
+      }
+      if (ownGate.berries >= 10) {
+        game.winner = u.team;
+        game.winType = "ECONOMY";
+        game.state = "gameOver";
+        soundWin();
+      }
+    }
+
+    if (u.form === "worker") {
+      for (const maiden of ownGate.maidens) {
+        const unlocked = ownGate.upgrades[maiden.type];
+        if (!unlocked) continue;
+        const maidenRect = { x: maiden.x - 12, y: maiden.y - 12, w: 24, h: 24 };
+        if (rectsOverlap(u.getHitbox(), maidenRect)) {
+          u.form = maiden.type;
+          addParticles(maiden.x, maiden.y, maiden.type === "speed" ? "#8dfff0" : "#ffe57d", 16, 2.8);
+          soundUpgrade();
+        }
+      }
+    }
+  }
+}
+
+function handleSnail() {
+  if (snail.rider && snail.rider.dead) {
+    snail.rider.onSnail = false;
+    snail.rider = null;
+  }
+
+  if (snail.rider) {
+    snail.dir = snail.rider.team === "blue" ? 1 : -1;
+    const speedBonus = snail.rider.form === "speed" ? 0.28 : 0;
+    snail.x += snail.dir * (snail.speed + speedBonus);
+    snail.x = clamp(snail.x, world.snailLeftGoal, world.snailRightGoal);
+
+    if (snail.rider.team === "blue" && snail.x >= world.snailRightGoal) {
+      game.winner = "blue";
+      game.winType = "SNAIL";
+      game.state = "gameOver";
+      soundWin();
+    }
+    if (snail.rider.team === "gold" && snail.x <= world.snailLeftGoal) {
+      game.winner = "gold";
+      game.winType = "SNAIL";
+      game.state = "gameOver";
+      soundWin();
+    }
+  }
+}
+
+function handleCombat() {
+  for (let i = 0; i < units.length; i++) {
+    const a = units[i];
+    if (a.dead) continue;
+
+    for (let j = i + 1; j < units.length; j++) {
+      const b = units[j];
+      if (b.dead || a.team === b.team) continue;
+      if (!rectsOverlap(a.getHitbox(), b.getHitbox())) continue;
+
+      const aBottom = a.y + a.h;
+      const bBottom = b.y + b.h;
+      const aPower = (a.role === "queen" ? 2 : (a.form === "warrior" ? 1 : 0));
+      const bPower = (b.role === "queen" ? 2 : (b.form === "warrior" ? 1 : 0));
+
+      if (aBottom < bBottom - 5 || (Math.abs(aBottom - bBottom) <= 5 && aPower > bPower)) {
+        b.die();
+        a.vy = -4.0;
+        if (a.isPlayer || b.isPlayer) soundKill();
+      } else if (bBottom < aBottom - 5 || (Math.abs(aBottom - bBottom) <= 5 && bPower > aPower)) {
+        a.die();
+        b.vy = -4.0;
+        if (a.isPlayer || b.isPlayer) soundKill();
+      } else {
+        const push = a.x < b.x ? -2.2 : 2.2;
+        a.vx = -push;
+        b.vx = push;
+        a.vy -= 0.4;
+        b.vy -= 0.4;
+      }
+    }
+  }
+
+  const blueQueen = units.find(u => u.team === "blue" && u.role === "queen");
+  const goldQueen = units.find(u => u.team === "gold" && u.role === "queen");
+
+  if (blueQueen && blueQueen.dead && blueQueen.queenLives <= 0) {
+    game.winner = "gold";
+    game.winType = "MILITARY";
+    game.state = "gameOver";
+    soundWin();
+  }
+  if (goldQueen && goldQueen.dead && goldQueen.queenLives <= 0) {
+    game.winner = "blue";
+    game.winType = "MILITARY";
+    game.state = "gameOver";
+    soundWin();
+  }
+}
+
+function updateCamera() {
+  if (!playerQueen) return;
+  const targetX = playerQueen.x + playerQueen.w / 2 - VIEW_W / 2;
+  const targetY = playerQueen.y + playerQueen.h / 2 - VIEW_H / 2;
+  game.cameraX += (clamp(targetX, 0, world.width - VIEW_W) - game.cameraX) * 0.12;
+  game.cameraY += (clamp(targetY, 0, world.height - VIEW_H) - game.cameraY) * 0.10;
+
+  const halfW = VIEW_W / 2;
+  const updateHalf = (queen, xKey, yKey) => {
+    if (!queen) return;
+    const tx = queen.x + queen.w / 2 - halfW / 2;
+    const ty = queen.y + queen.h / 2 - VIEW_H / 2;
+    game[xKey] += (clamp(tx, 0, world.width - halfW) - game[xKey]) * 0.12;
+    game[yKey] += (clamp(ty, 0, world.height - VIEW_H) - game[yKey]) * 0.10;
+  };
+  updateHalf(playerQueen, "cameraBlueX", "cameraBlueY");
+  updateHalf(goldPlayerQueen, "cameraGoldX", "cameraGoldY");
+}
+
+/* ---------------- UPDATE LOOP ---------------- */
+
+let titleInputLock = false;
+let gameplayInputLock = false;
+
+function update() {
+  game.strategyFlashTimer = Math.max(0, game.strategyFlashTimer - 1);
+  game.goldStrategyFlashTimer = Math.max(0, game.goldStrategyFlashTimer - 1);
+  game.strategySwitchCooldown = Math.max(0, game.strategySwitchCooldown - 1);
+  game.goldStrategySwitchCooldown = Math.max(0, game.goldStrategySwitchCooldown - 1);
+
+  if (game.state === "title") {
+    if (!titleInputLock) {
+      if (keys["1"]) { game.playerStrategy = "economy"; titleInputLock = true; }
+      else if (keys["2"]) { game.playerStrategy = "snail"; titleInputLock = true; }
+      else if (keys["3"]) { game.playerStrategy = "military"; titleInputLock = true; }
+      else if (keys["4"]) { game.playerStrategy = "balanced"; titleInputLock = true; }
+      else if (keys["7"]) { game.goldStrategy = "economy"; titleInputLock = true; }
+      else if (keys["8"]) { game.goldStrategy = "snail"; titleInputLock = true; }
+      else if (keys["9"]) { game.goldStrategy = "military"; titleInputLock = true; }
+      else if (keys["0"]) { game.goldStrategy = "balanced"; titleInputLock = true; }
+      else if (keys["v"]) { cyclePlayerStrategy(); titleInputLock = true; }
+      else if (keys["/"]) { cycleGoldStrategy(); titleInputLock = true; }
+      else if (keys["b"]) { game.debugAI = !game.debugAI; titleInputLock = true; }
+      else if (keys["m"]) { game.currentMapIndex = (game.currentMapIndex + 1) % MAPS.length; titleInputLock = true; }
+      else if (keys["q"]) { game.difficultyIndex = (game.difficultyIndex + 9) % 10; titleInputLock = true; }
+      else if (keys["e"]) { game.difficultyIndex = (game.difficultyIndex + 1) % 10; titleInputLock = true; }
+      else if (keys["x"]) { game.splitScreen = !game.splitScreen; titleInputLock = true; }
+      else if (keys[" "]) { spawnMatch(); titleInputLock = true; }
+    }
+    if (!keys["1"] && !keys["2"] && !keys["3"] && !keys["4"] && !keys["7"] && !keys["8"] && !keys["9"] && !keys["0"] &&
+        !keys["v"] && !keys["/"] && !keys["b"] && !keys["m"] && !keys["q"] && !keys["e"] && !keys["x"] && !keys[" "]) {
+      titleInputLock = false;
+    }
+    return;
+  }
+
+  if (game.state === "gameOver") {
+    updateParticles();
+    if (keys["r"]) {
+      game.state = "title";
+      game.winner = null;
+    }
+    return;
+  }
+
+  game.time++;
+  if (keys["v"]) cyclePlayerStrategy();
+  if (game.splitScreen && keys["/"]) cycleGoldStrategy();
+  if (keys["b"] && !gameplayInputLock) {
+    game.debugAI = !game.debugAI;
+    gameplayInputLock = true;
+  } else if (!keys["b"] && game.state === "playing") {
+    gameplayInputLock = false;
+  }
+
+  for (const u of units) {
+    const strat = u.team === "blue"
+      ? game.playerStrategy
+      : (game.splitScreen ? game.goldStrategy : game.enemyStrategy);
+    u.update(strat);
+  }
+
+  updateBushes();
+  handleBerries();
+  handleSnail();
+  handleCombat();
+  updateParticles();
+  updateCamera();
+}
+
+/* ---------------- DRAWING ---------------- */
+
+function drawStars(camX = game.cameraX, camY = game.cameraY) {
+  for (const s of stars) {
+    ctx.fillStyle = s.s === 1 ? "#bcc7ff" : s.s === 2 ? "#ffffff" : "#ffe9a8";
+    const x = s.x - camX * 0.25;
+    const y = s.y - camY * 0.15;
+    if (x > -5 && x < VIEW_W + 5) ctx.fillRect(x, y, s.s, s.s);
+  }
+}
+
+function drawBackdrop(camX = game.cameraX) {
+  const t = world.theme;
+  const grad = ctx.createLinearGradient(0, 0, 0, VIEW_H);
+  grad.addColorStop(0, t.skyTop);
+  grad.addColorStop(0.48, t.skyMid);
+  grad.addColorStop(1, t.skyLow);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+
+  const camSlow = camX * 0.18;
+  const camMed = camX * 0.30;
+
+  if (t.name === "SUNSET HIVE") {
+    ctx.save();
+    ctx.translate(-camSlow, 0);
+    ctx.fillStyle = "rgba(255,180,90,0.35)";
+    ctx.beginPath();
+    ctx.arc(900, 190, 90, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = t.mountain1;
+    ctx.beginPath();
+    ctx.moveTo(-100, 590);
+    for (let x = 0; x <= world.width + 200; x += 180) {
+      const peak = 360 + Math.sin(x * 0.0048) * 75 + (x % 360 === 0 ? -35 : 50);
+      ctx.lineTo(x, peak);
+    }
+    ctx.lineTo(world.width + 200, world.height);
+    ctx.lineTo(-100, world.height);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(-camMed, 0);
+    ctx.fillStyle = t.mountain2;
+    for (let x = 120; x < world.width; x += 380) {
+      ctx.fillRect(x, 420, 18, 210);
+      ctx.beginPath();
+      ctx.arc(x + 9, 410, 34, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  else if (t.name === "MOON CAVERN") {
+    ctx.save();
+    ctx.translate(-camSlow, 0);
+    ctx.fillStyle = "rgba(230,240,255,0.25)";
+    ctx.beginPath();
+    ctx.arc(2150, 130, 70, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = t.mountain1;
+    ctx.beginPath();
+    ctx.moveTo(-100, 620);
+    for (let x = 0; x <= world.width + 200; x += 140) {
+      const peak = 410 + Math.cos(x * 0.006) * 55 + (x % 280 === 0 ? -50 : 20);
+      ctx.lineTo(x, peak);
+    }
+    ctx.lineTo(world.width + 200, world.height);
+    ctx.lineTo(-100, world.height);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(-camMed, 0);
+    ctx.fillStyle = t.mountain2;
+    for (let x = 90; x < world.width; x += 240) {
+      ctx.beginPath();
+      ctx.moveTo(x, 510);
+      ctx.lineTo(x + 45, 420);
+      ctx.lineTo(x + 90, 510);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  else if (t.name === "EMERALD TOWER") {
+    ctx.save();
+    ctx.translate(-camSlow, 0);
+    ctx.fillStyle = t.mountain1;
+    ctx.beginPath();
+    ctx.moveTo(-100, 630);
+    for (let x = 0; x <= world.width + 200; x += 170) {
+      const peak = 430 + Math.sin(x * 0.0035) * 50 + (x % 340 === 0 ? -65 : 15);
+      ctx.lineTo(x, peak);
+    }
+    ctx.lineTo(world.width + 200, world.height);
+    ctx.lineTo(-100, world.height);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(-camMed, 0);
+    ctx.fillStyle = t.mountain2;
+    for (let x = 170; x < world.width; x += 420) {
+      ctx.fillRect(x, 320, 24, 300);
+      ctx.fillRect(x - 18, 350, 18, 260);
+      ctx.fillRect(x + 24, 350, 18, 260);
+      ctx.fillStyle = shade(t.mountain2, 25);
+      ctx.fillRect(x - 10, 300, 44, 24);
+      ctx.fillStyle = t.mountain2;
+    }
+    ctx.restore();
+  }
+}
+
+function drawPlatforms() {
+  const t = world.theme;
+  for (const p of world.platforms) {
+    ctx.fillStyle = t.platformSide;
+    ctx.fillRect(p.x, p.y + 10, p.w, 6);
+    ctx.fillStyle = t.platformTop;
+    ctx.fillRect(p.x, p.y, p.w, 10);
+    ctx.fillStyle = shade(t.platformTop, 35);
+    ctx.fillRect(p.x, p.y, p.w, 2);
+    ctx.fillStyle = shade(t.platformSide, 20);
+    for (let i = 0; i < p.w; i += 24) {
+      ctx.fillRect(p.x + i + 4, p.y + 4, 8, 3);
+    }
+  }
+}
+
+function drawCeilingSpikes() {
+  const c = world.theme.spikeColor;
+  for (let x = 0; x < world.width; x += 24) {
+    ctx.fillStyle = c;
+    ctx.beginPath();
+    ctx.moveTo(x, world.spikeY);
+    ctx.lineTo(x + 12, world.spikeY + 18);
+    ctx.lineTo(x + 24, world.spikeY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = shade(c, -30);
+    ctx.fillRect(x + 10, world.spikeY + 1, 4, 6);
+  }
+}
+
+function drawLava() {
+  const t = world.theme;
+  ctx.fillStyle = "#370505";
+  ctx.fillRect(0, world.lavaY, world.width, world.height - world.lavaY);
+  const tm = Date.now() * 0.01;
+  for (let x = 0; x < world.width; x += 24) {
+    const h = 8 + Math.sin((x * 0.05) + tm) * 3.5;
+    ctx.fillStyle = t.lava1;
+    ctx.fillRect(x, world.lavaY + 2, 24, h);
+    ctx.fillStyle = t.lava2;
+    ctx.fillRect(x + 5, world.lavaY + 4, 12, 3);
+  }
+}
+
+function drawGate(g) {
+  const c = g.team === "blue" ? "#4dc9ff" : "#ffd24a";
+  ctx.fillStyle = shade(c, -40);
+  ctx.fillRect(g.x, g.y, g.w, g.h);
+  ctx.fillStyle = c;
+  ctx.fillRect(g.x + 4, g.y + 4, g.w - 8, g.h - 8);
+
+  for (let i = 0; i < g.berries; i++) {
+    const row = i % 5;
+    const col = Math.floor(i / 5);
+    ctx.fillStyle = world.theme.bushBerry1;
+    ctx.fillRect(g.x + 8 + col * 10, g.y + g.h - 16 - row * 12, 6, 6);
+    ctx.fillStyle = world.theme.bushBerry2;
+    ctx.fillRect(g.x + 9 + col * 10, g.y + g.h - 15 - row * 12, 4, 4);
+  }
+
+  for (const maiden of g.maidens) {
+    const unlocked = g.upgrades[maiden.type];
+    ctx.fillStyle = unlocked ? (maiden.type === "speed" ? "#8dfff0" : "#ffe57d") : "#666";
+    ctx.fillRect(maiden.x - 8, maiden.y - 8, 16, 16);
+    ctx.fillStyle = "#222";
+    if (maiden.type === "speed") ctx.fillRect(maiden.x - 4, maiden.y - 2, 8, 3);
+    else ctx.fillRect(maiden.x - 3, maiden.y - 4, 6, 8);
+  }
+
+  ctx.fillStyle = "#fff";
+  ctx.font = "12px Courier New";
+  ctx.fillText(g.berries + "/10", g.x - 2, g.y - 8);
+}
+
+function drawHives() {
+  for (const key of ["blue", "gold"]) {
+    const h = hive[key];
+    const c = key === "blue" ? "#50cfff" : "#ffd75a";
+    ctx.fillStyle = shade(c, -35);
+    ctx.fillRect(h.x - 28, h.y, 56, 22);
+    ctx.fillStyle = c;
+    ctx.fillRect(h.x - 20, h.y + 4, 40, 14);
+    ctx.fillStyle = "#2c1d12";
+    ctx.fillRect(h.x - 7, h.y + 8, 14, 8);
+  }
+}
+
+function drawBushes() {
+  const t = world.theme;
+  for (const bush of bushes) {
+    ctx.fillStyle = t.bushLeaf1;
+    ctx.fillRect(bush.x - 18, bush.y - 6, 36, 12);
+    ctx.fillRect(bush.x - 26, bush.y - 14, 16, 12);
+    ctx.fillRect(bush.x - 8, bush.y - 20, 16, 14);
+    ctx.fillRect(bush.x + 10, bush.y - 14, 16, 12);
+
+    ctx.fillStyle = t.bushLeaf2;
+    ctx.fillRect(bush.x - 22, bush.y - 12, 14, 10);
+    ctx.fillRect(bush.x - 2, bush.y - 22, 14, 12);
+    ctx.fillRect(bush.x + 12, bush.y - 12, 14, 10);
+
+    ctx.fillStyle = "#6d4322";
+    ctx.fillRect(bush.x - 2, bush.y - 2, 4, 8);
+
+    if (bush.berry.alive && !bush.berry.carriedBy) {
+      const b = bush.berry;
+      ctx.fillStyle = t.bushBerry1;
+      ctx.fillRect(b.x - 4, b.y - 4, 8, 8);
+      ctx.fillStyle = t.bushBerry2;
+      ctx.fillRect(b.x - 3, b.y - 3, 6, 6);
+    }
+  }
+}
+
+function drawSnail() {
+  ctx.fillStyle = "#60391f";
+  ctx.fillRect(world.snailLeftGoal - 30, world.snailTrackY + 18, world.snailRightGoal - world.snailLeftGoal + 60, 8);
+  ctx.fillStyle = "#8a5a35";
+  ctx.fillRect(world.snailLeftGoal - 30, world.snailTrackY + 20, world.snailRightGoal - world.snailLeftGoal + 60, 4);
+
+  ctx.fillStyle = "#4dc9ff";
+  ctx.fillRect(world.snailLeftGoal - 8, world.snailTrackY - 10, 6, 34);
+  ctx.fillStyle = "#ffd24a";
+  ctx.fillRect(world.snailRightGoal + 2, world.snailTrackY - 10, 6, 34);
+
+  ctx.fillStyle = "#d7a05a";
+  ctx.fillRect(snail.x - 14, snail.y + 10, 30, 10);
+  ctx.fillStyle = "#b77038";
+  ctx.fillRect(snail.x - 6, snail.y, 20, 18);
+  ctx.fillStyle = "#f1d7a0";
+  ctx.fillRect(snail.x - 18, snail.y + 16, 12, 5);
+  ctx.fillRect(snail.x + 12, snail.y + 16, 8, 5);
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(snail.x - 16, snail.y + 9, 2, 5);
+  ctx.fillRect(snail.x - 12, snail.y + 9, 2, 5);
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = p.life / p.maxLife;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, p.y, 3, 3);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawWorld(camX = game.cameraX, camY = game.cameraY) {
+  drawBackdrop(camX);
+  ctx.save();
+  ctx.translate(-camX, -camY);
+  drawCeilingSpikes();
+  drawPlatforms();
+  drawHives();
+  drawGate(gates.blue);
+  drawGate(gates.gold);
+  drawBushes();
+  drawSnail();
+  for (const u of units) u.draw();
+  drawParticles();
+  drawLava();
+  ctx.restore();
+}
+
+function drawQueenLivesBox(x, y, queen, label, color) {
+  ctx.fillStyle = "#000";
+  ctx.fillRect(x, y, 170, 56);
+  ctx.strokeStyle = color;
+  ctx.strokeRect(x, y, 170, 56);
+  ctx.fillStyle = color;
+  ctx.fillRect(x + 8, y + 9, 18, 18);
+  ctx.fillStyle = "#fff";
+  ctx.font = "15px Courier New";
+  ctx.fillText(label, x + 35, y + 20);
+  ctx.fillText("LIVES:", x + 35, y + 42);
+  for (let i = 0; i < 3; i++) {
+    ctx.fillStyle = i < queen.queenLives ? color : "#444";
+    ctx.fillRect(x + 90 + i * 18, y + 33, 12, 12);
+  }
+}
+
+function drawHUD() {
+  const blueQueen = units.find(u => u.team === "blue" && u.role === "queen");
+  const goldQueen = units.find(u => u.team === "gold" && u.role === "queen");
+
+  ctx.fillStyle = "#000";
+  ctx.fillRect(12, 12, 470, 92);
+  ctx.strokeStyle = "#d5d5d5";
+  ctx.strokeRect(12, 12, 470, 92);
+
+  ctx.fillStyle = "#fff";
+  ctx.font = "18px Courier New";
+  ctx.fillText("MAP: " + MAPS[game.currentMapIndex].name, 24, 34);
+  ctx.fillStyle = game.strategyFlashTimer > 0 ? "#6dff89" : "#fff";
+  ctx.fillText("BLUE: " + game.playerStrategy.toUpperCase(), 24, 58);
+  ctx.fillStyle = game.splitScreen && game.goldStrategyFlashTimer > 0 ? "#ffe37a" : "#fff";
+  const goldLabel = game.splitScreen ? game.goldStrategy : game.enemyStrategy;
+  ctx.fillText("GOLD: " + goldLabel.toUpperCase(), 24, 82);
+
+  drawQueenLivesBox(500, 12, blueQueen, "BLUE QUEEN", "#61d5ff");
+  drawQueenLivesBox(686, 12, goldQueen, "GOLD QUEEN", "#ffd45a");
+
+  ctx.fillStyle = "#000";
+  ctx.fillRect(876, 12, 312, 104);
+  ctx.strokeStyle = "#d5d5d5";
+  ctx.strokeRect(876, 12, 312, 104);
+  ctx.fillStyle = "#fff";
+  ctx.font = "15px Courier New";
+  ctx.fillText("DIFF: " + currentDifficulty().name, 888, 32);
+  ctx.fillText("AI LVL: " + currentDifficulty().level + "/10", 888, 52);
+  if (game.splitScreen) {
+    ctx.fillText("P1 A/D/W/S + V STRAT", 888, 70);
+    ctx.fillText("P2 ARROWS + / STRAT", 888, 88);
+    ctx.fillText("SPLIT SCREEN: ON", 888, 104);
+  } else {
+    ctx.fillText("A/D MOVE  W TAP FLAP", 888, 70);
+    ctx.fillText("S DIVE  V CYCLE STRAT", 888, 88);
+    ctx.fillText("B AI DEBUG", 888, 104);
+  }
+}
+
+function drawAIDebug() {
+  if (!game.debugAI || game.state !== "playing") return;
+  const sample = units.find(u => !u.dead && !u.isPlayer && u.team === "blue");
+  const enemyQueen = units.find(u => !u.dead && u.team === "gold" && u.role === "queen");
+  if (!sample || !enemyQueen) return;
+  ctx.fillStyle = "rgba(0,0,0,0.7)";
+  ctx.fillRect(12, VIEW_H - 108, 560, 96);
+  ctx.strokeStyle = "#66ffcc";
+  ctx.strokeRect(12, VIEW_H - 108, 560, 96);
+  ctx.fillStyle = "#9fffe6";
+  ctx.font = "14px Courier New";
+  ctx.fillText("TEAM STRAT: " + game.playerStrategy.toUpperCase(), 24, VIEW_H - 84);
+  ctx.fillText("ALLY OBJ: " + (sample.target?.intent || "none") + " | APPROACH: " + (sample.approachType || "none"), 24, VIEW_H - 64);
+  ctx.fillText("ALLY FLAGS: danger=" + (sample.lastDangerFlag ? "Y" : "N") + " ambush=" + (sample.lastAmbushFlag ? "Y" : "N"), 24, VIEW_H - 44);
+  ctx.fillText("ENEMY QUEEN STATE: " + (enemyQueen.queenState || "stabilize"), 24, VIEW_H - 24);
+}
+
+function drawTitle() {
+  applyMap(game.currentMapIndex);
+  drawBackdrop(0);
+
+  ctx.fillStyle = "rgba(0,0,0,0.55)";
+  ctx.fillRect(160, 60, 880, 650);
+  ctx.strokeStyle = "#ddd";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(160, 60, 880, 650);
+
+  ctx.fillStyle = "#fff08d";
+  ctx.font = "bold 44px Courier New";
+  ctx.fillText("KILLER QUEEN STYLE", 315, 150);
+
+  ctx.fillStyle = "#fff";
+  ctx.font = "20px Courier New";
+  ctx.fillText("P1 1/2/3/4 = STRATEGY  (V = CYCLE)", 245, 205);
+  ctx.fillText("P2 7/8/9/0 = STRATEGY  (/ = CYCLE)", 215, 235);
+  ctx.fillText("M = CHANGE MAP", 475, 265);
+  ctx.fillText("Q / E = CHANGE DIFFICULTY", 385, 295);
+  ctx.fillText("X = SPLIT SCREEN TOGGLE", 375, 325);
+  ctx.fillText("SPACE = START", 485, 355);
+
+  const opts = [
+    { n:"1", label:"ECONOMY", x: 180, on: game.playerStrategy === "economy" },
+    { n:"2", label:"SNAIL", x: 380, on: game.playerStrategy === "snail" },
+    { n:"3", label:"MILITARY", x: 580, on: game.playerStrategy === "military" },
+    { n:"4", label:"BALANCED", x: 780, on: game.playerStrategy === "balanced" }
+  ];
+
+  for (const o of opts) {
+    ctx.fillStyle = "#111";
+    ctx.fillRect(o.x, 360, 170, 78);
+    ctx.strokeStyle = o.on ? "#61ff7c" : "#bbb";
+    ctx.strokeRect(o.x, 360, 170, 78);
+    ctx.fillStyle = o.on ? "#61ff7c" : "#fff";
+    ctx.font = "bold 28px Courier New";
+    ctx.fillText(o.n, o.x + 73, 390);
+    ctx.font = "18px Courier New";
+    ctx.fillText(o.label, o.x + 16, 422);
+  }
+
+  const p2Opts = [
+    { n:"7", label:"ECONOMY", x: 180, on: game.goldStrategy === "economy" },
+    { n:"8", label:"SNAIL", x: 380, on: game.goldStrategy === "snail" },
+    { n:"9", label:"MILITARY", x: 580, on: game.goldStrategy === "military" },
+    { n:"0", label:"BALANCED", x: 780, on: game.goldStrategy === "balanced" }
+  ];
+  for (const o of p2Opts) {
+    ctx.fillStyle = "#111";
+    ctx.fillRect(o.x, 442, 170, 78);
+    ctx.strokeStyle = o.on ? "#ffe37a" : "#bbb";
+    ctx.strokeRect(o.x, 442, 170, 78);
+    ctx.fillStyle = o.on ? "#ffe37a" : "#fff";
+    ctx.font = "bold 28px Courier New";
+    ctx.fillText(o.n, o.x + 73, 472);
+    ctx.font = "18px Courier New";
+    ctx.fillText(o.label, o.x + 16, 504);
+  }
+
+  ctx.fillStyle = "#9fdfff";
+  ctx.font = "22px Courier New";
+  ctx.fillText("MAP: " + MAPS[game.currentMapIndex].name, 415, 550);
+  ctx.fillText("DIFFICULTY: " + currentDifficulty().name + " (" + currentDifficulty().level + "/10)", 285, 580);
+  ctx.fillText("SPLIT SCREEN: " + (game.splitScreen ? "ON" : "OFF"), 400, 610);
+
+  ctx.fillStyle = "#fff";
+  ctx.font = "15px Courier New";
+  ctx.fillText("Single player: gold strategy random each match.", 335, 640);
+  ctx.fillText("Split screen: both queens are human-controlled (tap jump only, no hold).", 230, 662);
+
+  ctx.fillStyle = "#9fdfff";
+  ctx.font = "21px Courier New";
+  ctx.fillText("PRESS SPACE TO START", 430, 695);
+}
+
+function drawGameOver() {
+  ctx.fillStyle = "rgba(0,0,0,0.55)";
+  ctx.fillRect(360, 210, 480, 180);
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(360, 210, 480, 180);
+
+  const blueWin = game.winner === "blue";
+  ctx.fillStyle = blueWin ? "#61d5ff" : "#ffd45a";
+  ctx.font = "bold 42px Courier New";
+  ctx.fillText((blueWin ? "BLUE" : "GOLD") + " WINS", 470, 268);
+
+  ctx.fillStyle = "#fff";
+  ctx.font = "24px Courier New";
+  ctx.fillText("VICTORY TYPE: " + game.winType, 424, 318);
+  ctx.fillStyle = "#9fdfff";
+  ctx.font = "22px Courier New";
+  ctx.fillText("PRESS R TO RETURN TO TITLE", 400, 358);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, VIEW_W, VIEW_H);
+
+  if (game.state === "title") {
+    drawStars(0, 0);
+    drawTitle();
+  } else {
+    if (game.splitScreen && game.state === "playing") {
+      const halfW = VIEW_W / 2;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, halfW, VIEW_H);
+      ctx.clip();
+      drawStars(game.cameraBlueX, game.cameraBlueY);
+      drawWorld(game.cameraBlueX, game.cameraBlueY);
+      ctx.restore();
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(halfW, 0, halfW, VIEW_H);
+      ctx.clip();
+      ctx.translate(halfW, 0);
+      drawStars(game.cameraGoldX, game.cameraGoldY);
+      drawWorld(game.cameraGoldX, game.cameraGoldY);
+      ctx.restore();
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(halfW - 2, 0, 4, VIEW_H);
+    } else {
+      drawStars();
+      drawWorld();
+    }
+    drawHUD();
+    if (!game.splitScreen) drawAIDebug();
+    if (game.state === "gameOver") drawGameOver();
+  }
+}
+
+function loop() {
+  update();
+  draw();
+  game._prevKeys = { ...keys };
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
