@@ -1211,8 +1211,21 @@ function encounterWon(g=game){
   return getLivingEnemies(g).length===0;
 }
 function removeDeadEnemies(g=game){
+  (g.currentEnemies||[]).forEach(enemy=>{
+    if(enemy && enemy.hp<=0) awardEnemyDefeatRewards(g, enemy);
+  });
   g.currentEnemies = (g.currentEnemies||[]).filter(e=>e && e.hp>0);
   syncCurrentEnemy(g);
+}
+function awardEnemyDefeatRewards(g, enemy){
+  if(!enemy || enemy._defeatRewardsGranted || enemy._recruited) return;
+  enemy._defeatRewardsGranted = true;
+  if(!enemy._countedDefeat){
+    enemy._countedDefeat = true;
+    g.flags.encounterKills = (g.flags.encounterKills||0) + 1;
+  }
+  const xpAward = Math.max(0, Math.round(enemy.xp||0));
+  if(xpAward>0) gainXp(xpAward);
 }
 
 // ---------- VFX ----------
@@ -1478,10 +1491,6 @@ function dealDamage(g, enemy, amount, source='Damage', faction='Neutral', showVf
     }
   }
   enemy.hp = Math.max(0, enemy.hp - dmg);
-  if(enemy.hp<=0 && !enemy._countedDefeat){
-    enemy._countedDefeat = true;
-    game.flags.encounterKills = (game.flags.encounterKills||0) + 1;
-  }
   g.flags.lastResisted = dmg <= Math.max(1, Math.round(amount*0.7));
   if(g.flags.lastResisted) log(`${enemy.name} resists part of the hit.`, 'bad');
   if(showVfx) projectileSourceToEnemy(getPlayerPoint(), enemy.id, factionColors[faction] || '#fff', '✦');
@@ -1954,6 +1963,7 @@ function checkEnemyOutcome(){
 }
 function recruitEnemy(e){
   if(!e) return;
+  e._recruited = true;
   game.flags.encounterRecruits = (game.flags.encounterRecruits||0) + 1;
   game.befriends += 1;
   gainXp(Math.round(e.xp*0.95));
@@ -1971,9 +1981,6 @@ function recruitEnemy(e){
   log(`${e.name} joins your side!`, 'gold');
   e.hp = 0;
   e.befriend = e.maxBefriend;
-}
-function totalEncounterXp(){
-  return game.flags.encounterXp || 0;
 }
 function countDefeatedInEncounter(){
   return game.flags.encounterKills||0;
@@ -2078,7 +2085,6 @@ function finalizeEncounterRewards(result){
   const recruited = countRecruitedInEncounter();
   if(defeated>0){
     game.kills += defeated;
-    gainXp(Math.round(totalEncounterXp()*0.8));
     log(`Encounter cleared: ${defeated} defeated.`, 'gold');
   }
   if(recruited>0) log(`Encounter cleared: ${recruited} recruited.`, 'gold');
