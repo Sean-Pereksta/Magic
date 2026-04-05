@@ -294,9 +294,12 @@
     background:linear-gradient(180deg,#182241,#11192e);
     padding:10px;
   }
+  #levelModal .modal-card{
+    width:min(1080px,96vw);
+  }
   .choice-grid{
     display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+    grid-template-columns:repeat(3,minmax(0,1fr));
     gap:8px;margin-top:8px;
   }
   .choice-card{
@@ -426,6 +429,10 @@
     .friend-panel{max-height:220px;min-height:0}
     .friend-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
     .manage-grid{grid-template-columns:1fr}
+    .choice-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  }
+  @media (max-width:560px){
+    .choice-grid{grid-template-columns:1fr}
   }
 </style>
 </head>
@@ -477,7 +484,7 @@
         <button id="manageAbilitiesBtn">Manage Abilities</button>
         <button id="manageAlliesBtn">Manage Allies</button>
       </div>
-      <div class="note">Every 4 enemies you can pause and manage your active setup.</div>
+      <div class="note">Every 3 encounters you can pause and manage your active setup.</div>
     </div>
 
     <div class="log">
@@ -1133,6 +1140,7 @@ function defaultState(){
     befriends:0,
     enemiesSeen:0,
     enemiesSinceCheckpoint:0,
+    encountersCompleted:0,
     spellPool:['sparkBolt','kindWhisper','bindingFlash','fieldMend','softeningHex','venomTouch'],
     activeSpellIds,
     activeSpellSlots:slotSpells,
@@ -1154,7 +1162,9 @@ function defaultState(){
     flags:{doubleAllies:false, allyBoost:0, lastSpellType:'', lastResisted:false, lineupBoost:0, encounterKills:0, encounterRecruits:0, encounterXp:0},
     mode:'battle',
     log:['A new run begins.'],
-    dead:false
+    dead:false,
+    autoResolvingNoCasts:false,
+    autoResolveTimeoutId:null
   };
 }
 let game = defaultState();
@@ -1318,6 +1328,9 @@ function loadGame(){
     game.flags.encounterKills ||= 0;
     game.flags.encounterRecruits ||= 0;
     game.flags.encounterXp ||= 0;
+    game.encountersCompleted ||= 0;
+    game.autoResolvingNoCasts ||= false;
+    game.autoResolveTimeoutId ||= null;
     game.activeSpellSlots ||= {damage1:null,damage2:null,befriend:null,setup:null,defense:null,wild:null};
     if(!game.activeSpellIds || !game.activeSpellIds.length){
       game.activeSpellIds = Object.values(game.activeSpellSlots).filter(Boolean);
@@ -1949,6 +1962,35 @@ function checkDirectTargetOutcome(enemy){
 function refreshSpellCasts(){
   game.activeSpellIds.forEach(id=> game.spells[id].castsLeft = game.spells[id].castsMax);
 }
+function hasUsableCasts(g=game){
+  return (g.activeSpellIds||[]).some(id=>g.spells[id] && g.spells[id].castsLeft > 0);
+}
+function canAutoResolveNoCasts(g=game){
+  return g.mode==='battle' && !g.dead && !!getLivingEnemies(g).length && !hasUsableCasts(g);
+}
+function queueAutoResolveNoCasts(delay=550){
+  if(!canAutoResolveNoCasts(game) || game.autoResolvingNoCasts) return;
+  game.autoResolvingNoCasts = true;
+  game.pendingSpellId = null;
+  log('No spell casts remain. Allies and enemies will continue the battle automatically.', 'gold');
+  game.autoResolveTimeoutId = setTimeout(runAutoResolveNoCastsStep, delay);
+}
+function runAutoResolveNoCastsStep(){
+  if(!canAutoResolveNoCasts(game)){ game.autoResolvingNoCasts = false; game.autoResolveTimeoutId = null; return; }
+  getLivingEnemies(game).forEach(e=>tickStartOfTurn(e,false));
+  tickStartOfTurn(game.player,true);
+  removeDeadEnemies(game);
+  render();
+  if(checkEnemyOutcome()){ game.autoResolvingNoCasts = false; game.autoResolveTimeoutId = null; return; }
+  resolveAllies();
+  render();
+  if(checkEnemyOutcome()){ game.autoResolvingNoCasts = false; game.autoResolveTimeoutId = null; return; }
+  enemyTurn();
+  render();
+  if(checkEnemyOutcome()){ game.autoResolvingNoCasts = false; game.autoResolveTimeoutId = null; return; }
+  if(game.dead){ game.autoResolvingNoCasts = false; game.autoResolveTimeoutId = null; return; }
+  game.autoResolveTimeoutId = setTimeout(runAutoResolveNoCastsStep, 520);
+}
 
 // ---------- XP / rewards ----------
 function gainXp(amount){
@@ -1973,6 +2015,8 @@ function addChargesToRandomSpell(count=1){
 }
 function endEnemy(mode){
   if(!(game.currentEnemies||[]).length) return;
+  if(game.autoResolveTimeoutId){ clearTimeout(game.autoResolveTimeoutId); game.autoResolveTimeoutId = null; }
+  game.autoResolvingNoCasts = false;
   const defeated = countDefeatedInEncounter();
   const recruited = countRecruitedInEncounter();
   if(defeated>0){
@@ -1985,6 +2029,7 @@ function endEnemy(mode){
   game.currentEnemies = [];
   game.selectedTargetId = null;
   game.enemiesSinceCheckpoint += 1;
+  game.encountersCompleted += 1;
   game.enemiesSeen += Math.max(1, defeated+recruited);
 
   if(game.player.regenBetween > 0){
@@ -1993,7 +2038,7 @@ function endEnemy(mode){
   }
 
   refreshSpellCasts();
-  if(game.enemiesSinceCheckpoint >= 4) game.mode='checkpoint';
+  if(game.encountersCompleted % 3 === 0) game.mode='checkpoint';
   else spawnEncounter();
   render();
 }
@@ -2098,59 +2143,118 @@ function generateLevelChoices(){
   const upgradeable = game.spellPool.filter(id=>game.spells[id]);
 
   if(locked.length){
-    const id = rand(locked);
     options.push({
+      key:'new-spell',
+      weight:28,
+      build:()=>{
+        const id = rand(locked);
+        return {
       title:`New Spell: ${SPELL_DEFS[id].name}`,
       desc:`${SPELL_DEFS[id].desc} (${SPELL_DEFS[id].faction}${SPELL_DEFS[id].rarity==='legendary' ? ', Legendary' : ''}; slots: ${spellSlotTypes(id).join('/')})`,
       apply:()=>{ unlockSpell(id); openAbilitiesModal(); }
+        };
+      }
     });
   }
-  if(upgradeable.length && Math.random() < 0.72){
-    const upId = rand(upgradeable);
+  if(upgradeable.length){
     options.push({
-      title:`Upgrade ${SPELL_DEFS[upId].name}`,
-      desc:'Increase spell level and usually gain an extra cast.',
-      apply:()=>upgradeSpell(upId)
+      key:'upgrade-spell',
+      weight:54,
+      build:(usedTitles)=>{
+        const available = shuffle([...upgradeable]).find(id=>!usedTitles.has(`Upgrade ${SPELL_DEFS[id].name}`));
+        const upId = available || rand(upgradeable);
+        return {
+          title:`Upgrade ${SPELL_DEFS[upId].name}`,
+          desc:'Increase spell level and usually gain an extra cast.',
+          apply:()=>upgradeSpell(upId)
+        };
+      }
     });
   }
   options.push({
+    key:'reserves',
+    weight:16,
+    build:()=>({
     title:'Empowered Reserves',
     desc:'Two random spells gain +1 max cast.',
     apply:()=>addChargesToRandomSpell(2)
+    })
   });
   options.push({
+    key:'max-health',
+    weight:13,
+    build:()=>({
     title:'Increase Max Health',
     desc:'+16 max health and heal 16.',
     apply:()=>{ game.player.maxHp += 16; game.player.hp = Math.min(game.player.maxHp, game.player.hp + 16); log('Your vitality grows.', 'gold'); }
+    })
   });
   options.push({
+    key:'regen-between',
+    weight:10,
+    build:()=>({
     title:'Regeneration Between Battles',
     desc:'+3 healing after each enemy.',
     apply:()=>{ game.player.regenBetween += 3; log('You now regenerate more between battles.', 'gold'); }
+    })
   });
   options.push({
+    key:'great-heal',
+    weight:10,
+    build:()=>({
     title:'Great Heal',
     desc:'Restore 38 health immediately.',
     apply:()=>healPlayer(game,38,'Great Heal','Light')
+    })
   });
   options.push({
+    key:'ally-harmony',
+    weight:9,
+    build:()=>({
     title:'Ally Harmony',
     desc:'All current allies become a bit stronger.',
     apply:()=>{ [...game.activeAllies,...game.reserveAllies].forEach(a=>{ if(a.allyAbility.power) a.allyAbility.power = Math.round(a.allyAbility.power*1.10 + 1); }); log('Your allies resonate more strongly.', 'gold'); }
+    })
   });
   options.push({
+    key:'charge-surge',
+    weight:12,
+    build:()=>({
     title:'Charge Surge',
     desc:'Your active spells all gain +1 cast capacity.',
     apply:()=>{ game.activeSpellIds.forEach(id=>{ game.spells[id].castsMax += 1; game.spells[id].castsLeft = game.spells[id].castsMax; }); log('Your active spells surge with energy.', 'gold'); }
+    })
   });
 
-  shuffle(options);
-  return options.slice(0,3);
+  const picks = [];
+  const usedTitles = new Set();
+  const pool = options.slice();
+  while(picks.length < 6 && pool.length){
+    const totalWeight = pool.reduce((sum,opt)=>sum + (opt.weight||1),0);
+    let roll = Math.random() * totalWeight;
+    let chosenIndex = 0;
+    for(let i=0;i<pool.length;i++){
+      roll -= (pool[i].weight||1);
+      if(roll<=0){ chosenIndex = i; break; }
+    }
+    const picked = pool.splice(chosenIndex,1)[0];
+    const built = picked.build(usedTitles);
+    if(!built || usedTitles.has(built.title)) continue;
+    usedTitles.add(built.title);
+    picks.push(built);
+    if(picked.key==='upgrade-spell' && upgradeable.length>1){
+      pool.push({...picked, weight:Math.max(24, Math.round((picked.weight||1)*0.6))});
+    }
+    if(picked.key==='new-spell' && locked.length>1){
+      pool.push({...picked, weight:Math.max(14, Math.round((picked.weight||1)*0.55))});
+    }
+  }
+  return picks;
 }
 function openLevelUp(){
   const modal = document.getElementById('levelModal');
   document.getElementById('levelHeader').textContent = `Level ${game.player.level}`;
-  document.getElementById('levelSub').textContent = 'Choose 1 of 3 rewards.';
+  document.getElementById('levelSub').textContent = 'Choose 1 of 6 rewards.';
   const choices = document.getElementById('levelChoices');
   choices.innerHTML = '';
   generateLevelChoices().forEach(opt=>{
@@ -2490,6 +2594,7 @@ function render(){
   renderFriends();
   renderLog();
   document.getElementById('checkpointCard').className = game.mode==='checkpoint' ? 'panel checkpoint show' : 'panel checkpoint';
+  if(canAutoResolveNoCasts()) queueAutoResolveNoCasts();
 }
 
 // ---------- Events ----------
@@ -2504,7 +2609,9 @@ document.getElementById('closeAbilitiesBtn').onclick = ()=>document.getElementBy
 document.getElementById('closeAlliesBtn').onclick = ()=>document.getElementById('alliesModal').classList.remove('show');
 document.getElementById('nextEnemyBtn').onclick = ()=>{
   game.mode='battle';
-  game.enemiesSinceCheckpoint=0;
+  game.pendingSpellId = null;
+  if(game.autoResolveTimeoutId){ clearTimeout(game.autoResolveTimeoutId); game.autoResolveTimeoutId = null; }
+  game.autoResolvingNoCasts = false;
   spawnEnemy();
   render();
 };
