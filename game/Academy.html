@@ -69,6 +69,65 @@
     background:linear-gradient(180deg,#39232f,#241824);
     padding:8px 10px;
   }
+  .enemy-encounter{
+    display:grid;
+    gap:6px;
+  }
+  .enemy-grid{
+    display:grid;
+    gap:6px;
+    grid-template-columns:repeat(1,minmax(0,1fr));
+  }
+  .enemy-grid.count-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .enemy-grid.count-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .enemy-mini{
+    background:linear-gradient(180deg,#39232f,#241824);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:6px;
+    font-size:11px;
+    cursor:pointer;
+    min-height:128px;
+    transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+  }
+  .enemy-mini:hover{transform:translateY(-1px)}
+  .enemy-mini.selected{
+    box-shadow:0 0 0 1px rgba(120,235,255,.75), 0 0 20px rgba(120,235,255,.24);
+    border-color:rgba(120,235,255,.85);
+  }
+  .enemy-mini.targeting{
+    animation:targetPulse .85s ease-in-out infinite;
+  }
+  .enemy-mini.dead{opacity:.42;filter:grayscale(.35)}
+  .enemy-mini .name{font-size:15px}
+  .enemy-mini.compact .name{font-size:13px}
+  .enemy-mini .bars{margin-top:4px;gap:4px}
+  .enemy-mini .bar{height:8px}
+  .enemy-mini .tags{gap:4px}
+  .enemy-mini .tag{font-size:9px;padding:2px 5px}
+  .turn-order{
+    display:flex;
+    gap:4px;
+    flex-wrap:wrap;
+    margin-bottom:6px;
+  }
+  .turn-token{
+    font-size:10px;
+    border-radius:999px;
+    border:1px solid var(--line);
+    background:rgba(255,255,255,.06);
+    padding:3px 7px;
+    opacity:.72;
+  }
+  .turn-token.active{
+    opacity:1;
+    border-color:#9ad8ff;
+    box-shadow:0 0 0 1px rgba(120,210,255,.35) inset;
+  }
+  .turn-token.skipped{
+    text-decoration:line-through;
+    opacity:.4;
+  }
   .enemy-card.legendary{
     box-shadow:0 0 0 1px rgba(255,179,71,.65), 0 0 28px rgba(255,179,71,.18), 0 10px 28px rgba(0,0,0,.28);
   }
@@ -141,6 +200,13 @@
     text-align:center;
     min-height:270px;
   }
+  .player-box.shielded{
+    box-shadow:0 0 0 1px rgba(123,205,255,.55), 0 0 28px rgba(80,170,255,.28), 0 10px 28px rgba(0,0,0,.18);
+    animation:shieldPulse 1.6s ease-in-out infinite;
+  }
+  .player-box.shield-break{
+    animation:shieldBreak .48s ease-out;
+  }
   .portrait{
     height:68px;
     display:flex;align-items:center;justify-content:center;
@@ -148,6 +214,12 @@
     border-radius:12px;
     margin-bottom:6px;
     background:radial-gradient(circle at top,rgba(255,255,255,.11),rgba(255,255,255,.03));
+  }
+  .shield-bar{
+    margin-top:4px;
+  }
+  .shield-fill{
+    background:linear-gradient(90deg,#a5e6ff,#5bb4ff,#7be6ff);
   }
 
   .panel{
@@ -267,6 +339,23 @@
     box-shadow:0 0 8px currentColor;
     animation:boltLife 380ms linear forwards;
   }
+  .vfx-symbol{
+    position:absolute;
+    font-size:20px;
+    transform:translate(-50%,-50%);
+    animation:symbolFly var(--dur,420ms) ease-out forwards;
+    text-shadow:0 0 10px rgba(255,255,255,.45);
+    pointer-events:none;
+  }
+  .floating-text{
+    position:absolute;
+    transform:translate(-50%,-50%);
+    font-size:13px;
+    font-weight:800;
+    text-shadow:0 1px 4px rgba(0,0,0,.5);
+    animation:floatRise 800ms ease-out forwards;
+    pointer-events:none;
+  }
   .vfx-splash,.vfx-burst{
     position:absolute;
     width:16px;height:16px;
@@ -308,6 +397,29 @@
     25%{transform:translateX(-1px)}
     75%{transform:translateX(1px)}
   }
+  @keyframes symbolFly{
+    0%{opacity:0; transform:translate(var(--sx),var(--sy)) scale(.6)}
+    20%{opacity:1}
+    100%{opacity:0; transform:translate(var(--tx),var(--ty)) scale(1.18)}
+  }
+  @keyframes floatRise{
+    0%{opacity:0; transform:translate(-50%,0)}
+    20%{opacity:1}
+    100%{opacity:0; transform:translate(-50%,-32px)}
+  }
+  @keyframes shieldPulse{
+    0%,100%{box-shadow:0 0 0 1px rgba(123,205,255,.55), 0 0 18px rgba(80,170,255,.18), 0 10px 28px rgba(0,0,0,.18)}
+    50%{box-shadow:0 0 0 1px rgba(145,225,255,.75), 0 0 28px rgba(80,170,255,.32), 0 10px 28px rgba(0,0,0,.18)}
+  }
+  @keyframes shieldBreak{
+    0%{filter:brightness(1.6)}
+    55%{filter:brightness(.8)}
+    100%{filter:brightness(1)}
+  }
+  @keyframes targetPulse{
+    0%,100%{box-shadow:0 0 0 1px rgba(255,212,146,.72), 0 0 10px rgba(255,208,126,.22)}
+    50%{box-shadow:0 0 0 2px rgba(255,212,146,.95), 0 0 22px rgba(255,208,126,.36)}
+  }
 
   @media (max-width:880px){
     .battle-row{grid-template-columns:1fr}
@@ -331,6 +443,10 @@
   </div>
 
   <div class="battle-grid">
+    <div class="panel" style="padding:6px 8px">
+      <h3 style="margin:0 0 4px">Action Order</h3>
+      <div class="turn-order" id="turnOrder"></div>
+    </div>
     <div class="enemy-card" id="enemyCard"></div>
 
     <div class="battle-row">
@@ -706,7 +822,13 @@ const SPELL_DEFS = {
   saboteurBlueprint:{name:'Saboteur Blueprint', type:'setup', faction:'Renegades', rarity:'uncommon', baseCasts:2, scaling:{power:3}, data:{power:10}, desc:'Prevents one shield regeneration.', color:'#8ff6b2', use(g,s,e){ e.shieldRegenUsed=true; e.shield=Math.max(0,(e.shield||0)-scaledStat(s,'power')); log('Shield regeneration sabotaged!', 'good'); }},
   paleBeam:{name:'Pale Beam', type:'damage', faction:'Dark', rarity:'common', baseCasts:3, scaling:{power:3}, data:{power:12}, desc:'Beam with dramatic impact flash.', color:'#c89dff', use(g,s,e){ dealDamage(g,e,scaledStat(s,'power'),'Pale Beam','Dark'); impactEnemyFlash('#c89dff'); }},
   rallyBanner:{name:'Rally Banner', type:'support', faction:'Alliance', rarity:'uncommon', baseCasts:2, scaling:{allyBoost:.05,shield:3}, data:{allyBoost:0.26,shield:10}, desc:'Boosts allies and reinforces you.', color:'#90ccff', use(g,s){ g.flags.allyBoost += scaledStat(s,'allyBoost'); g.player.shield += scaledStat(s,'shield'); healBurstOnPlayer('#90ccff'); }},
-  adaptiveWindow:{name:'Adaptive Window', type:'setup', faction:'Neutral', rarity:'uncommon', baseCasts:2, scaling:{power:.04}, data:{power:0.22,turns:2}, desc:'Forces a short conversion window.', color:'#d6e1f7', use(g,s,e){ addEffect(e,'softened',scaledStat(s,'turns'),scaledStat(s,'power')); addEffect(e,'shatteredResolve',1,0.15); }}
+  adaptiveWindow:{name:'Adaptive Window', type:'setup', faction:'Neutral', rarity:'uncommon', baseCasts:2, scaling:{power:.04}, data:{power:0.22,turns:2}, desc:'Forces a short conversion window.', color:'#d6e1f7', use(g,s,e){ addEffect(e,'softened',scaledStat(s,'turns'),scaledStat(s,'power')); addEffect(e,'shatteredResolve',1,0.15); }},
+  executionRay:{name:'Execution Ray', type:'damage', faction:'Light', rarity:'elite', baseCasts:2, scaling:{power:5,bonus:4}, data:{power:20,bonus:20}, desc:'Precision finisher vs low HP targets.', color:'#ffeaa6', use(g,s,e){ const bonus=(e.hp/e.maxHp)<=0.35?scaledStat(s,'bonus'):0; dealDamage(g,e,scaledStat(s,'power')+bonus,'Execution Ray','Light'); }},
+  chainVerdict:{name:'Chain Verdict', type:'damage', faction:'Alliance', rarity:'elite', baseCasts:2, scaling:{power:4,chain:3}, data:{power:16,chain:9}, desc:'Primary target then chains to others.', color:'#9bcfff', use(g,s,e){ dealDamage(g,e,scaledStat(s,'power'),'Chain Verdict','Alliance'); }},
+  wardShatterRain:{name:'Ward Shatter Rain', type:'damage', faction:'Chaos', rarity:'elite', baseCasts:2, scaling:{power:3}, data:{power:10}, desc:'All enemies take damage, extra if shielded.', color:'#ff9767', use(g,s,e){ dealDamage(g,e,scaledStat(s,'power')+((e.shield||0)>0?8:0),'Ward Shatter Rain','Chaos'); }},
+  brightMosaic:{name:'Bright Mosaic', type:'setup', faction:'Light', rarity:'uncommon', baseCasts:2, scaling:{power:.03}, data:{power:0.14,turns:2}, desc:'Expose and soften every enemy lightly.', color:'#ffedb7', use(g,s,e){ addEffect(e,'exposed',scaledStat(s,'turns'),scaledStat(s,'power')); addEffect(e,'softened',scaledStat(s,'turns'),0.12); }},
+  emberFront:{name:'Ember Front', type:'burn', faction:'Chaos', rarity:'uncommon', baseCasts:2, scaling:{power:2,dot:2}, data:{power:7,dot:6,turns:2}, desc:'Scorches all enemies.', color:'#ff9b71', use(g,s,e){ dealDamage(g,e,scaledStat(s,'power'),'Ember Front','Chaos'); addEffect(e,'burn',scaledStat(s,'turns'),scaledStat(s,'dot')); }},
+  fractureLine:{name:'Fracture Line', type:'damage', faction:'Renegades', rarity:'uncommon', baseCasts:2, scaling:{power:4,splash:2}, data:{power:15,splash:7}, desc:'Hard hit primary, splash chip others.', color:'#8ff2b1', use(g,s,e){ dealDamage(g,e,scaledStat(s,'power'),'Fracture Line','Renegades'); }}
 };
 
 function makeSpell(id){
@@ -718,6 +840,37 @@ function scaledStat(spell,key){
   const base = def.data[key];
   const per = (def.scaling && def.scaling[key]) || 0;
   return typeof base === 'number' ? +(base + per*(spell.level-1)).toFixed(4) : base;
+}
+const SPELL_TARGETING_OVERRIDES = {
+  wildfireOrb:'splash',
+  ashVeil:'splash',
+  clemencyArc:'splash',
+  surrenderFlare:'splash',
+  twinCataclysm:'splash',
+  apocalypseFlare:'all',
+  kingsCommand:'chain',
+  riotPowder:'all',
+  hushExpose:'all',
+  formationBreach:'splash',
+  stormSeal:'splash',
+  doubtSeeder:'all',
+  adaptiveWindow:'single',
+  brightMosaic:'all',
+  chainVerdict:'chain',
+  emberFront:'all',
+  fractureLine:'splash',
+  wardShatterRain:'all',
+  executionRay:'single'
+};
+function spellTargeting(def,id){
+  if(def.targeting) return def.targeting;
+  if(SPELL_TARGETING_OVERRIDES[id]) return SPELL_TARGETING_OVERRIDES[id];
+  if(['heal','defense','shield','stance','support'].includes(def.type)) return 'self';
+  return 'single';
+}
+function targetingLabel(mode, def){
+  if(def.type==='befriend') return 'Befriend';
+  return ({single:'Single Target', all:'All Enemies', splash:'Splash', chain:'Chain', self:'Support'}[mode]) || 'Single Target';
 }
 
 const TRAIT_DEFS = {
@@ -994,13 +1147,47 @@ function defaultState(){
     activeAllies:[],
     reserveAllies:[],
     currentEnemy:null,
-    flags:{doubleAllies:false, allyBoost:0, lastSpellType:'', lastResisted:false, lineupBoost:0},
+    currentEnemies:[],
+    selectedTargetId:null,
+    pendingSpellId:null,
+    actionCursor:0,
+    flags:{doubleAllies:false, allyBoost:0, lastSpellType:'', lastResisted:false, lineupBoost:0, encounterKills:0, encounterRecruits:0, encounterXp:0},
     mode:'battle',
     log:['A new run begins.'],
     dead:false
   };
 }
 let game = defaultState();
+
+function getLivingEnemies(g=game){
+  return (g.currentEnemies||[]).filter(e=>e && e.hp>0);
+}
+function syncCurrentEnemy(g=game){
+  const living = getLivingEnemies(g);
+  if(!living.length){
+    g.currentEnemy = null;
+    g.selectedTargetId = null;
+    return null;
+  }
+  const selected = living.find(e=>e.id===g.selectedTargetId);
+  g.currentEnemy = selected || living[0];
+  g.selectedTargetId = g.currentEnemy.id;
+  return g.currentEnemy;
+}
+function selectEnemyTarget(id){
+  const target = getLivingEnemies(game).find(e=>e.id===id);
+  if(!target) return;
+  game.selectedTargetId = target.id;
+  syncCurrentEnemy(game);
+  renderEnemy();
+}
+function encounterWon(g=game){
+  return getLivingEnemies(g).length===0;
+}
+function removeDeadEnemies(g=game){
+  g.currentEnemies = (g.currentEnemies||[]).filter(e=>e && e.hp>0);
+  syncCurrentEnemy(g);
+}
 
 // ---------- VFX ----------
 function getCenter(el){
@@ -1012,6 +1199,10 @@ function getCenter(el){
 }
 function getEnemyTargetPoint(){
   return getCenter(document.getElementById('enemyCard'));
+}
+function getEnemyPointById(id){
+  const el = document.querySelector(`.enemy-mini[data-enemy-id="${id}"]`);
+  return el ? getCenter(el) : getEnemyTargetPoint();
 }
 function getPlayerPoint(){
   return getCenter(document.getElementById('playerCard'));
@@ -1060,6 +1251,33 @@ function makeBurst(point,color='#fff'){
   layer.appendChild(d);
   setTimeout(()=>d.remove(), 620);
 }
+function showFloatingText(point,text,color='#fff',delay=0){
+  const layer = vfxLayer();
+  if(!layer) return;
+  const d = document.createElement('div');
+  d.className = 'floating-text';
+  d.style.left = (point.x + randInt(-10,10)) + 'px';
+  d.style.top = (point.y + randInt(-8,8) + delay*0.02) + 'px';
+  d.style.color = color;
+  d.textContent = text;
+  layer.appendChild(d);
+  setTimeout(()=>d.remove(), 900);
+}
+function animateSymbol(from,to,symbol='✦',color='#fff',dur=420){
+  const layer = vfxLayer();
+  if(!layer) return;
+  const d = document.createElement('div');
+  d.className = 'vfx-symbol';
+  d.style.left = '0px';
+  d.style.top = '0px';
+  d.style.color = color;
+  d.style.setProperty('--sx', `${from.x}px, ${from.y}px`);
+  d.style.setProperty('--tx', `${to.x}px, ${to.y}px`);
+  d.style.setProperty('--dur', `${dur}ms`);
+  d.textContent = symbol;
+  layer.appendChild(d);
+  setTimeout(()=>d.remove(), dur+120);
+}
 function flashEl(id){
   const el = document.getElementById(id);
   if(!el) return;
@@ -1070,6 +1288,12 @@ function flashEl(id){
 function projectilePlayerToEnemy(color){ makeBolt(getPlayerPoint(), getEnemyTargetPoint(), color); makeSplash(getEnemyTargetPoint(), color); flashEl('enemyCard'); }
 function projectileEnemyToPlayer(color){ makeBolt(getEnemyTargetPoint(), getPlayerPoint(), color); makeSplash(getPlayerPoint(), color); flashEl('playerCard'); }
 function projectileAllyToEnemy(allyIndex,color){ makeBolt(getAllyPoint(allyIndex), getEnemyTargetPoint(), color); makeSplash(getEnemyTargetPoint(), color); flashEl('enemyCard'); }
+function projectileSourceToEnemy(sourcePoint, enemyId, color, symbol='✦'){
+  const to = getEnemyPointById(enemyId);
+  makeBolt(sourcePoint, to, color);
+  animateSymbol(sourcePoint, to, symbol, color, 320);
+  makeSplash(to, color);
+}
 function healBurstOnPlayer(color){ makeBurst(getPlayerPoint(), color); flashEl('playerCard'); }
 function impactEnemyFlash(color){ makeBurst(getEnemyTargetPoint(), color); flashEl('enemyCard'); }
 function enemyHealBurst(color){ makeBurst(getEnemyTargetPoint(), color); flashEl('enemyCard'); }
@@ -1086,11 +1310,19 @@ function loadGame(){
     game = JSON.parse(raw);
     game.activeAllies ||= [];
     game.reserveAllies ||= [];
-    game.flags ||= {doubleAllies:false, allyBoost:0, lastSpellType:'', lastResisted:false, lineupBoost:0};
+    game.currentEnemies ||= (game.currentEnemy ? [game.currentEnemy] : []);
+    game.selectedTargetId ||= game.currentEnemy?.id || null;
+    game.pendingSpellId ||= null;
+    game.actionCursor ||= 0;
+    game.flags ||= {doubleAllies:false, allyBoost:0, lastSpellType:'', lastResisted:false, lineupBoost:0, encounterKills:0, encounterRecruits:0, encounterXp:0};
+    game.flags.encounterKills ||= 0;
+    game.flags.encounterRecruits ||= 0;
+    game.flags.encounterXp ||= 0;
     game.activeSpellSlots ||= {damage1:null,damage2:null,befriend:null,setup:null,defense:null,wild:null};
     if(!game.activeSpellIds || !game.activeSpellIds.length){
       game.activeSpellIds = Object.values(game.activeSpellSlots).filter(Boolean);
     }
+    syncCurrentEnemy(game);
     render();
     log('Save loaded.', 'gold');
   }catch(e){
@@ -1202,7 +1434,7 @@ function dealDamage(g, enemy, amount, source='Damage', faction='Neutral', showVf
     const absorbed = Math.min(enemy.shield, dmg);
     enemy.shield -= absorbed;
     dmg -= absorbed;
-    if(absorbed>0) log(`${enemy.name}'s shield absorbs ${absorbed}.`, 'bad');
+    if(absorbed>0){ log(`${enemy.name}'s shield absorbs ${absorbed}.`, 'bad'); showFloatingText(getEnemyPointById(enemy.id), `🛡️-${absorbed}`, '#8fc7ff'); }
     if(beforeShield>0 && enemy.shield<=0){
       addEffect(enemy,'shatteredResolve',2,0.22);
       log('Shield broken! Shattered Resolve: Befriend increased!', 'gold');
@@ -1211,9 +1443,14 @@ function dealDamage(g, enemy, amount, source='Damage', faction='Neutral', showVf
     }
   }
   enemy.hp = Math.max(0, enemy.hp - dmg);
+  if(enemy.hp<=0 && !enemy._countedDefeat){
+    enemy._countedDefeat = true;
+    game.flags.encounterKills = (game.flags.encounterKills||0) + 1;
+  }
   g.flags.lastResisted = dmg <= Math.max(1, Math.round(amount*0.7));
   if(g.flags.lastResisted) log(`${enemy.name} resists part of the hit.`, 'bad');
-  if(showVfx) projectilePlayerToEnemy(factionColors[faction] || '#fff');
+  if(showVfx) projectileSourceToEnemy(getPlayerPoint(), enemy.id, factionColors[faction] || '#fff', '✦');
+  showFloatingText(getEnemyPointById(enemy.id), `-${dmg}`, '#ff8f8f');
   log(`${source} deals ${dmg} damage to ${enemy.name}.`, 'good');
   if(traitHas(enemy,'retaliatory') && g.flags.lastSpellType===currentSpell?.type){
     enemy.shield = (enemy.shield||0) + 8;
@@ -1245,7 +1482,8 @@ function addBefriend(g, enemy, amount, source='Befriend', faction='Light', showV
   if(combo.tags?.length) log(`Combo: ${combo.tags.join(', ')} empowers ${source}.`, 'gold');
   if(enemy.resistBefriendBonus) val = Math.round(val*(1-enemy.resistBefriendBonus));
   enemy.befriend = Math.min(enemy.maxBefriend, enemy.befriend + Math.max(1,val));
-  if(showVfx) projectilePlayerToEnemy(factionColors[faction] || '#fff');
+  if(showVfx) projectileSourceToEnemy(getPlayerPoint(), enemy.id, factionColors[faction] || '#fff', '💘');
+  showFloatingText(getEnemyPointById(enemy.id), `💗+${Math.max(1,val)}`, '#ff9fd5');
   const scale = getBefriendScaling(enemy);
   if(scale==='strong' || scale==='major') log(`${enemy.name} is wavering! Conversion window opening.`, 'gold');
   log(`${source} adds ${Math.max(1,val)} befriending progress to ${enemy.name}.`, 'good');
@@ -1257,18 +1495,28 @@ function healPlayer(g, amt, source='Heal', faction='Light'){
   const v = Math.max(1, Math.round(amt*reduced*devotionBonus('heal', faction, g)));
   g.player.hp = Math.min(g.player.maxHp, g.player.hp + v);
   healBurstOnPlayer(factionColors[faction] || '#9cffc7');
+  showFloatingText(getPlayerPoint(), `+${v}`, '#7ff2a3');
   log(`${source} restores ${v} health.`, 'good');
 }
 function hurtPlayer(g, amt, source='Pain', color='#ff7d7d'){
+  const beforeShield = g.player.shield;
   const shieldAbsorb = Math.min(g.player.shield, amt);
   if(shieldAbsorb>0){
     g.player.shield -= shieldAbsorb;
     amt -= shieldAbsorb;
     log(`Shield absorbs ${shieldAbsorb} damage.`, 'good');
+    showFloatingText(getPlayerPoint(), `🛡️-${shieldAbsorb}`, '#8dc9ff');
+    if(beforeShield>0 && g.player.shield<=0){
+      const pc = document.getElementById('playerCard');
+      if(pc){ pc.classList.remove('shield-break'); void pc.offsetWidth; pc.classList.add('shield-break'); }
+      makeBurst(getPlayerPoint(), '#9cd0ff');
+      log('Your barrier shatters!', 'bad');
+    }
   }
   if(amt<=0) return;
   g.player.hp = Math.max(0, g.player.hp - amt);
   projectileEnemyToPlayer(color);
+  showFloatingText(getPlayerPoint(), `-${amt}`, '#ff8f8f');
   log(`${source} deals ${amt} damage to you.`, 'bad');
   if(g.player.hp<=0) handleDeath();
 }
@@ -1334,9 +1582,17 @@ function getEnemyActionsPerTurn(){
 
 // ---------- Player turn ----------
 function resolveSpell(spellId){
-  if(game.mode !== 'battle' || !game.currentEnemy || game.dead) return;
+  if(game.mode !== 'battle' || !getLivingEnemies(game).length || game.dead) return;
   const s = game.spells[spellId];
   if(!s || s.castsLeft <= 0) return;
+  const def = SPELL_DEFS[spellId];
+  const targeting = spellTargeting(def, spellId);
+  const living = getLivingEnemies(game);
+  const selected = syncCurrentEnemy(game);
+  if(['single','splash','chain'].includes(targeting) && living.length>1 && !selected){
+    log('Select a target first.', 'bad');
+    return;
+  }
 
   if(getEffect(game.player,'stun')){
     log('You are stunned and lose your action!', 'bad');
@@ -1357,20 +1613,36 @@ function resolveSpell(spellId){
   game.flags.allyBoost = 0;
   game.flags.lineupBoost = game.flags.lineupBoost||0;
   game.flags.currentSpellId = spellId;
-  game.flags.lastSpellType = SPELL_DEFS[spellId].type;
+  game.flags.lastSpellType = def.type;
 
   s.castsLeft -= 1;
-  tickStartOfTurn(game.currentEnemy,false);
+  getLivingEnemies(game).forEach(e=>tickStartOfTurn(e,false));
   tickStartOfTurn(game.player,true);
+  removeDeadEnemies(game);
+  if(encounterWon(game)){ endEnemy('kill_dot'); return; }
 
-  if(game.currentEnemy.hp<=0){ endEnemy('kill_dot'); return; }
-
-  SPELL_DEFS[spellId].use(game, s, game.currentEnemy);
-  processEnemyShieldTriggers(game.currentEnemy);
-  const devotion = getDevotion(game);
-  if(devotion.tier>=3 && devotion.faction===SPELL_DEFS[spellId].faction){
-    log(`${devotion.faction} devotion tier ${devotion.tier} empowers ${SPELL_DEFS[spellId].name}.`, 'gold');
+  const targetEnemy = syncCurrentEnemy(game);
+  if(targeting==='all'){
+    getLivingEnemies(game).forEach(e=>{ def.use(game, s, e); processEnemyShieldTriggers(e); });
+  } else if(targeting==='splash' || targeting==='chain'){
+    const primary = targetEnemy || getLivingEnemies(game)[0];
+    def.use(game, s, primary);
+    processEnemyShieldTriggers(primary);
+    const others = getLivingEnemies(game).filter(e=>e.id!==primary.id);
+    others.forEach((e,i)=>{
+      const ratio = targeting==='chain' ? (0.55 - i*0.12) : 0.45;
+      const dmg = Math.max(1, Math.round((scaledStat(s,'power')||10) * ratio));
+      dealDamage(game,e,dmg,`${def.name} ${targeting==='chain'?'Chain':'Splash'}`,def.faction,true);
+    });
+  } else {
+    def.use(game, s, targetEnemy || getLivingEnemies(game)[0]);
+    processEnemyShieldTriggers(targetEnemy || getLivingEnemies(game)[0]);
   }
+  const devotion = getDevotion(game);
+  if(devotion.tier>=3 && devotion.faction===def.faction){
+    log(`${devotion.faction} devotion tier ${devotion.tier} empowers ${def.name}.`, 'gold');
+  }
+  removeDeadEnemies(game);
   render();
   if(checkEnemyOutcome()) return;
 
@@ -1393,15 +1665,19 @@ function chooseEnemyMove(e){
 function resolveEnemyMove(move,e){
   const p = game.player;
   const col = factionColors[e.faction] || '#ff7d7d';
+  const sym = {Light:'✨',Dark:'🌑',Chaos:'🔥',Alliance:'⚔️',Renegades:'🗡️',Neutral:'✶'}[e.faction] || '✶';
+  const enemyPoint = getEnemyPointById(e.id);
   switch(move.type){
     case 'damage':{
       let dmg = scaleEnemyPower(e, move.power || e.damage);
       if(getEffect(p,'weaken')) dmg = Math.round(dmg*(1-getEffect(p,'weaken').power));
+      animateSymbol(enemyPoint, getPlayerPoint(), sym, col, 360);
       hurtPlayer(game,dmg,e.name,col);
       break;
     }
     case 'damageHeal':{
       const dmg = scaleEnemyPower(e, move.power || e.damage);
+      animateSymbol(enemyPoint, getPlayerPoint(), sym, col, 360);
       hurtPlayer(game,dmg,e.name,col);
       e.hp = Math.min(e.maxHp, e.hp + move.heal);
       enemyHealBurst(col);
@@ -1410,17 +1686,18 @@ function resolveEnemyMove(move,e){
     }
     case 'drain':{
       const dmg = scaleEnemyPower(e, move.power || e.damage);
+      animateSymbol(enemyPoint, getPlayerPoint(), '🩸', col, 360);
       hurtPlayer(game,dmg,e.name,col);
       e.hp = Math.min(e.maxHp, e.hp + move.heal);
       enemyHealBurst(col);
       log(`${e.name} drains and heals ${move.heal}.`, 'bad');
       break;
     }
-    case 'weaken': addEffect(p,'weaken',move.turns||2,move.power||0.15); projectileEnemyToPlayer(col); log('You are weakened.', 'bad'); break;
-    case 'poison': addEffect(p,'poison',move.turns||3,move.power||6); projectileEnemyToPlayer(col); log('You are poisoned.', 'bad'); break;
-    case 'burn': addEffect(p,'burn',move.turns||3,move.power||7); projectileEnemyToPlayer(col); log('You are burning.', 'bad'); break;
-    case 'stun': if(Math.random() < (move.chance||0.15)){ projectileEnemyToPlayer(col); addEffect(p,'stun',1,1); log('You are stunned!', 'bad'); } break;
-    case 'paralyze': if(Math.random() < (move.chance||0.18)){ projectileEnemyToPlayer(col); addEffect(p,'paralyze',1,1); log('You are paralyzed!', 'bad'); } break;
+    case 'weaken': addEffect(p,'weaken',move.turns||2,move.power||0.15); animateSymbol(enemyPoint, getPlayerPoint(), '⛓️', col, 360); projectileEnemyToPlayer(col); log('You are weakened.', 'bad'); break;
+    case 'poison': addEffect(p,'poison',move.turns||3,move.power||6); animateSymbol(enemyPoint, getPlayerPoint(), '☠️', col, 360); projectileEnemyToPlayer(col); log('You are poisoned.', 'bad'); break;
+    case 'burn': addEffect(p,'burn',move.turns||3,move.power||7); animateSymbol(enemyPoint, getPlayerPoint(), '🔥', col, 360); projectileEnemyToPlayer(col); log('You are burning.', 'bad'); break;
+    case 'stun': if(Math.random() < (move.chance||0.15)){ animateSymbol(enemyPoint, getPlayerPoint(), '💥', col, 360); projectileEnemyToPlayer(col); addEffect(p,'stun',1,1); log('You are stunned!', 'bad'); } break;
+    case 'paralyze': if(Math.random() < (move.chance||0.18)){ animateSymbol(enemyPoint, getPlayerPoint(), '⚡', col, 360); projectileEnemyToPlayer(col); addEffect(p,'paralyze',1,1); log('You are paralyzed!', 'bad'); } break;
     case 'shield': e.shield = (e.shield||0) + move.power; addEffect(e,'guarded',2,0.14); enemyHealBurst(col); log(`${e.name} fortifies itself.`, 'bad'); break;
     case 'heal': e.hp = Math.min(e.maxHp, e.hp + move.power); enemyHealBurst(col); log(`${e.name} heals ${move.power}.`, 'bad'); break;
     case 'befriendVulnDown': e.resistBefriendBonus = Math.min(0.45, (e.resistBefriendBonus||0)+move.power); impactEnemyFlash(col); log(`${e.name} hardens its will.`, 'bad'); break;
@@ -1458,57 +1735,64 @@ function processEnemyShieldTriggers(e){
 }
 
 function enemyTurn(){
-  const e = game.currentEnemy;
-  if(!e || e.hp<=0) return;
-  processEnemyShieldTriggers(e);
-
-  if(getEffect(e,'stun')){
-    log(`${e.name} is stunned and loses its turn.`, 'good');
-    delete e.effects.stun;
-    decrementEffects(e); decrementEffects(game.player); return;
+  const living = getLivingEnemies(game);
+  if(!living.length) return;
+  for(const e of living){
+    if(game.dead || e.hp<=0) continue;
+    processEnemyShieldTriggers(e);
+    game.selectedTargetId = e.id;
+    renderTurnOrder(`enemy-${e.id}`);
+    if(getEffect(e,'stun')){
+      log(`${e.name} is stunned and loses its turn.`, 'good');
+      delete e.effects.stun;
+      decrementEffects(e);
+      continue;
+    }
+    if(getEffect(e,'paralyze') && Math.random()<0.45){
+      log(`${e.name} is paralyzed and fails to act.`, 'good');
+      decrementEffects(e);
+      continue;
+    }
+    const baseTurns = getEnemyActionsPerTurn();
+    const turns = Math.max(1, Math.round(baseTurns / Math.max(1, living.length*0.8)));
+    for(let i=0;i<turns;i++){
+      if(e.hp<=0 || game.dead) break;
+      const move = chooseEnemyMove(e);
+      if(turns>1) log(`${e.name} [${i+1}/${turns}] ${move.text}.`, 'bad');
+      else log(`${e.name} ${move.text}.`, 'bad');
+      resolveEnemyMove(move,e);
+    }
+    decrementEffects(e);
   }
-  if(getEffect(e,'paralyze') && Math.random()<0.45){
-    log(`${e.name} is paralyzed and fails to act.`, 'good');
-    decrementEffects(e); decrementEffects(game.player); return;
-  }
-
-  const turns = getEnemyActionsPerTurn();
-  for(let i=0;i<turns;i++){
-    if(!game.currentEnemy || game.currentEnemy.hp<=0 || game.dead) break;
-    const move = chooseEnemyMove(e);
-    if(turns>1) log(`${e.name} [${i+1}/${turns}] ${move.text}.`, 'bad');
-    else log(`${e.name} ${move.text}.`, 'bad');
-    resolveEnemyMove(move,e);
-  }
-  decrementEffects(e);
   decrementEffects(game.player);
-  if(e.traitBreach) e.traitBreach -= 1;
+  getLivingEnemies(game).forEach(e=>{ if(e.traitBreach) e.traitBreach -= 1; });
+  syncCurrentEnemy(game);
 }
 
 // ---------- Allies ----------
 function resolveAllyAbility(g, ally, mult=1, allyIndex=0){
   const a = ally.allyAbility;
-  if(!a || !g.currentEnemy) return;
-  const e = g.currentEnemy;
+  if(!a || !getLivingEnemies(g).length) return;
+  const e = getLivingEnemies(g).sort((x,y)=>x.hp-y.hp)[0];
   const p = Math.max(1, Math.round((a.power||0)*mult));
   const c = factionColors[ally.faction] || '#fff';
   switch(a.type){
     case 'heal': makeBolt(getAllyPoint(allyIndex), getPlayerPoint(), c); healPlayer(g,p,ally.name,ally.faction); break;
-    case 'damage': projectileAllyToEnemy(allyIndex,c); dealDamage(g,e,p,ally.name,ally.faction,false); break;
-    case 'damageVs': projectileAllyToEnemy(allyIndex,c); dealDamage(g,e,p + (e.faction===a.vs ? a.bonus : 0),ally.name,ally.faction,false); break;
+    case 'damage': projectileSourceToEnemy(getAllyPoint(allyIndex), e.id, c, '⚔️'); dealDamage(g,e,p,ally.name,ally.faction,false); break;
+    case 'damageVs': projectileSourceToEnemy(getAllyPoint(allyIndex), e.id, c, '🗡️'); dealDamage(g,e,p + (e.faction===a.vs ? a.bonus : 0),ally.name,ally.faction,false); break;
     case 'shield': makeBolt(getAllyPoint(allyIndex), getPlayerPoint(), c); g.player.shield += p; healBurstOnPlayer(c); log(`${ally.name} grants ${p} shield.`, 'good'); break;
-    case 'befriend': projectileAllyToEnemy(allyIndex,c); addBefriend(g,e,p,ally.name,ally.faction,false); break;
-    case 'befriendVuln': addEffect(e,'softened',a.turns||2,a.power); projectileAllyToEnemy(allyIndex,c); log(`${ally.name} makes ${e.name} easier to befriend.`, 'good'); break;
-    case 'weaken': addEffect(e,'weaken',a.turns||2,a.power); projectileAllyToEnemy(allyIndex,c); log(`${ally.name} weakens ${e.name}.`, 'good'); break;
-    case 'poison': addEffect(e,'poison',a.turns||3,a.power); projectileAllyToEnemy(allyIndex,c); log(`${ally.name} poisons ${e.name}.`, 'good'); break;
-    case 'burn': addEffect(e,'burn',a.turns||3,a.power); projectileAllyToEnemy(allyIndex,c); log(`${ally.name} burns ${e.name}.`, 'good'); break;
-    case 'stun': if(Math.random() < (a.chance||0.18)){ projectileAllyToEnemy(allyIndex,c); addEffect(e,'stun',1,1); log(`${ally.name} stuns ${e.name}.`, 'good'); } break;
-    case 'paralyze': if(Math.random() < (a.chance||0.18)){ projectileAllyToEnemy(allyIndex,c); addEffect(e,'paralyze',1,1); log(`${ally.name} paralyzes ${e.name}.`, 'good'); } break;
-    case 'drain': projectileAllyToEnemy(allyIndex,c); dealDamage(g,e,p,ally.name,ally.faction,false); makeBurst(getPlayerPoint(), c); healPlayer(g,a.heal||5,ally.name,ally.faction); break;
-    case 'healHit': projectileAllyToEnemy(allyIndex,c); dealDamage(g,e,p,ally.name,ally.faction,false); healPlayer(g,a.heal||5,ally.name,ally.faction); break;
+    case 'befriend': projectileSourceToEnemy(getAllyPoint(allyIndex), e.id, c, '💞'); addBefriend(g,e,p,ally.name,ally.faction,false); break;
+    case 'befriendVuln': addEffect(e,'softened',a.turns||2,a.power); projectileSourceToEnemy(getAllyPoint(allyIndex), e.id, c, '✨'); log(`${ally.name} makes ${e.name} easier to befriend.`, 'good'); break;
+    case 'weaken': addEffect(e,'weaken',a.turns||2,a.power); projectileSourceToEnemy(getAllyPoint(allyIndex), e.id, c, '⛓️'); log(`${ally.name} weakens ${e.name}.`, 'good'); break;
+    case 'poison': addEffect(e,'poison',a.turns||3,a.power); projectileSourceToEnemy(getAllyPoint(allyIndex), e.id, c, '☠️'); log(`${ally.name} poisons ${e.name}.`, 'good'); break;
+    case 'burn': addEffect(e,'burn',a.turns||3,a.power); projectileSourceToEnemy(getAllyPoint(allyIndex), e.id, c, '🔥'); log(`${ally.name} burns ${e.name}.`, 'good'); break;
+    case 'stun': if(Math.random() < (a.chance||0.18)){ projectileSourceToEnemy(getAllyPoint(allyIndex), e.id, c, '💥'); addEffect(e,'stun',1,1); log(`${ally.name} stuns ${e.name}.`, 'good'); } break;
+    case 'paralyze': if(Math.random() < (a.chance||0.18)){ projectileSourceToEnemy(getAllyPoint(allyIndex), e.id, c, '⚡'); addEffect(e,'paralyze',1,1); log(`${ally.name} paralyzes ${e.name}.`, 'good'); } break;
+    case 'drain': projectileSourceToEnemy(getAllyPoint(allyIndex), e.id, c, '🩸'); dealDamage(g,e,p,ally.name,ally.faction,false); makeBurst(getPlayerPoint(), c); healPlayer(g,a.heal||5,ally.name,ally.faction); break;
+    case 'healHit': projectileSourceToEnemy(getAllyPoint(allyIndex), e.id, c, '➕'); dealDamage(g,e,p,ally.name,ally.faction,false); healPlayer(g,a.heal||5,ally.name,ally.faction); break;
     case 'allyBoost': g.flags.allyBoost += a.power; makeBurst(getAllyPoint(allyIndex), c); log(`${ally.name} empowers allied triggers.`, 'gold'); break;
     case 'regen': makeBolt(getAllyPoint(allyIndex), getPlayerPoint(), c); addEffect(g.player,'regen',a.turns||3,a.power); log(`${ally.name} grants regeneration.`, 'good'); break;
-    case 'randomHit': projectileAllyToEnemy(allyIndex,c); dealDamage(g,e,randInt(a.min,a.max),ally.name,ally.faction,false); break;
+    case 'randomHit': projectileSourceToEnemy(getAllyPoint(allyIndex), e.id, c, '🎯'); dealDamage(g,e,randInt(a.min,a.max),ally.name,ally.faction,false); break;
     case 'randomDebuff':{
       const options = [
         ()=>addEffect(e,'weaken',2,0.14),
@@ -1516,15 +1800,15 @@ function resolveAllyAbility(g, ally, mult=1, allyIndex=0){
         ()=>addEffect(e,'exposed',2,0.18),
         ()=>addEffect(e,'paralyze',1,1)
       ];
-      projectileAllyToEnemy(allyIndex,c);
+      projectileSourceToEnemy(getAllyPoint(allyIndex), e.id, c, '🌀');
       rand(options)();
       log(`${ally.name} twists fate around ${e.name}.`, 'gold');
       break;
     }
     case 'randomEffect':{
       const options = [
-        ()=>{ projectileAllyToEnemy(allyIndex,c); dealDamage(g,e,10,ally.name,ally.faction,false); },
-        ()=>{ projectileAllyToEnemy(allyIndex,c); e.befriend=Math.min(e.maxBefriend,e.befriend+9); },
+        ()=>{ projectileSourceToEnemy(getAllyPoint(allyIndex), e.id, c, '✴️'); dealDamage(g,e,10,ally.name,ally.faction,false); },
+        ()=>{ projectileSourceToEnemy(getAllyPoint(allyIndex), e.id, c, '💘'); e.befriend=Math.min(e.maxBefriend,e.befriend+9); },
         ()=>addEffect(e,'weaken',2,0.12),
         ()=>addEffect(e,'burn',2,5)
       ];
@@ -1561,16 +1845,18 @@ function getLineupBonuses(g=game){
   return res;
 }
 function resolveAllies(){
-  if(!game.activeAllies.length || !game.currentEnemy || game.currentEnemy.hp<=0) return;
+  if(!game.activeAllies.length || !getLivingEnemies(game).length) return;
   const lineup = getLineupBonuses(game);
   if(lineup.tags.length) log(`Lineup synergy: ${lineup.tags.join(', ')}.`, 'gold');
   const repeats = game.flags.doubleAllies ? 2 : 1;
   for(let r=0;r<repeats;r++){
     for(let i=0;i<game.activeAllies.length;i++){
-      if(game.currentEnemy.hp<=0) break;
+      if(!getLivingEnemies(game).length) break;
       const ally = game.activeAllies[i];
       const synergy = getFactionSynergyForAlly(ally, game);
+      renderTurnOrder(`ally-${i}`);
       resolveAllyAbility(game, ally, (1 + game.flags.allyBoost + synergy + (game.flags.lineupBoost||0)) * lineup.mult, i);
+      removeDeadEnemies(game);
     }
   }
   game.flags.doubleAllies = false;
@@ -1605,10 +1891,59 @@ function moveAllyToReserve(id){
   render();
 }
 function checkEnemyOutcome(){
-  const e = game.currentEnemy;
-  if(!e) return false;
-  if(e.hp <= 0){ endEnemy('kill'); return true; }
-  if(e.befriend >= e.maxBefriend){ endEnemy('befriend'); return true; }
+  const living = getLivingEnemies(game);
+  if(!living.length){ endEnemy('kill'); return true; }
+  for(const e of living){
+    if(e.befriend >= e.maxBefriend){
+      recruitEnemy(e);
+      removeDeadEnemies(game);
+      if(!getLivingEnemies(game).length){ endEnemy('befriend'); return true; }
+    }
+  }
+  syncCurrentEnemy(game);
+  if(!getLivingEnemies(game).length){ endEnemy('kill'); return true; }
+  return false;
+}
+function recruitEnemy(e){
+  if(!e) return;
+  game.flags.encounterRecruits = (game.flags.encounterRecruits||0) + 1;
+  game.befriends += 1;
+  gainXp(Math.round(e.xp*0.95));
+  addNewAlly({
+    id:uid(),
+    name:e.name,
+    faction:e.faction,
+    rarity:e.rarity || 'common',
+    emoji:e.emoji,
+    desc:e.desc,
+    allyAbility:e.allyAbility
+  });
+  showFloatingText(getEnemyPointById(e.id), 'Recruited!', '#ffb0dc');
+  makeBurst(getEnemyPointById(e.id), '#ff95d8');
+  log(`${e.name} joins your side!`, 'gold');
+  e.hp = 0;
+  e.befriend = e.maxBefriend;
+}
+function totalEncounterXp(){
+  return game.flags.encounterXp || 0;
+}
+function countDefeatedInEncounter(){
+  return game.flags.encounterKills||0;
+}
+function countRecruitedInEncounter(){
+  return game.flags.encounterRecruits||0;
+}
+function checkDirectTargetOutcome(enemy){
+  if(!enemy) return false;
+  if(enemy.hp<=0){
+    removeDeadEnemies(game);
+    return encounterWon(game);
+  }
+  if(enemy.befriend>=enemy.maxBefriend){
+    recruitEnemy(enemy);
+    removeDeadEnemies(game);
+    return encounterWon(game);
+  }
   return false;
 }
 function refreshSpellCasts(){
@@ -1637,31 +1972,20 @@ function addChargesToRandomSpell(count=1){
   }
 }
 function endEnemy(mode){
-  const e = game.currentEnemy;
-  if(!e) return;
-  const xpBase = e.xp;
-
-  if(mode.startsWith('kill')){
-    game.kills += 1;
-    gainXp(xpBase);
-    log(`${e.name} is defeated.`, 'gold');
-  } else {
-    game.befriends += 1;
-    gainXp(Math.round(xpBase*0.95));
-    addNewAlly({
-      id:uid(),
-      name:e.name,
-      faction:e.faction,
-      rarity:e.rarity || 'common',
-      emoji:e.emoji,
-      desc:e.desc,
-      allyAbility:e.allyAbility
-    });
+  if(!(game.currentEnemies||[]).length) return;
+  const defeated = countDefeatedInEncounter();
+  const recruited = countRecruitedInEncounter();
+  if(defeated>0){
+    game.kills += defeated;
+    gainXp(Math.round(totalEncounterXp()*0.8));
+    log(`Encounter cleared: ${defeated} defeated.`, 'gold');
   }
-
+  if(recruited>0) log(`Encounter cleared: ${recruited} recruited.`, 'gold');
   game.currentEnemy = null;
+  game.currentEnemies = [];
+  game.selectedTargetId = null;
   game.enemiesSinceCheckpoint += 1;
-  game.enemiesSeen += 1;
+  game.enemiesSeen += Math.max(1, defeated+recruited);
 
   if(game.player.regenBetween > 0){
     game.player.hp = Math.min(game.player.maxHp, game.player.hp + game.player.regenBetween);
@@ -1670,7 +1994,7 @@ function endEnemy(mode){
 
   refreshSpellCasts();
   if(game.enemiesSinceCheckpoint >= 4) game.mode='checkpoint';
-  else spawnEnemy();
+  else spawnEncounter();
   render();
 }
 function buildRarityWeights(){
@@ -1684,41 +2008,55 @@ function buildRarityWeights(){
   if(tier>=16) weights = {common:18, uncommon:40, elite:30, legendary:12};
   return weights;
 }
-function spawnEnemy(){
+function spawnEncounter(){
   game.mode='battle';
-  const weights = buildRarityWeights();
-  const rarity = weightedPick(weights);
-  const pool = BASE_ENEMIES.filter(e=>e.rarity===rarity);
-  const chosen = deepClone(rand(pool));
-
-  const rarityBonus = {common:0, uncommon:0.06, elite:0.14, legendary:0.30}[rarity];
-  const allyPressure = Math.max(0, game.activeAllies.length-2) * 0.05;
-  const scale = 1 + (game.player.level-1)*0.085 + game.enemiesSeen*0.022 + rarityBonus + allyPressure;
-  chosen.maxHp = Math.round(chosen.hp * scale);
-  chosen.hp = chosen.maxHp;
-  chosen.damage = Math.round(chosen.dmg * (1 + (game.player.level-1)*0.055 + game.enemiesSeen*0.014 + allyPressure + (rarity==='legendary'?0.14:0)));
-  chosen.maxBefriend = Math.round(chosen.friend * (1 + (game.player.level-1)*0.05 + game.enemiesSeen*0.016 + allyPressure*0.65 + (rarity==='legendary'?0.1:0)));
-  chosen.befriend = 0;
-  chosen.shield = chosen.shield || 0;
-  chosen.maxShield = chosen.maxShield ?? chosen.shield;
-  chosen.shieldStyle = chosen.shieldStyle || 'standard';
-  chosen.shieldBlocksBefriend = chosen.shieldBlocksBefriend ?? (chosen.maxShield>0);
-  chosen.shieldRegenUsed = false;
-  chosen.effects = {};
-  chosen.resistBefriendBonus = 0;
-  const traitPool = Object.keys(TRAIT_DEFS);
-  const targetTraits = chosen.traits ? chosen.traits.length : (game.player.level<3 ? (Math.random()<0.7?0:1) : game.player.level<8 ? 1 : (Math.random()<0.65?2:1));
-  chosen.traits = chosen.traits || [];
-  while(chosen.traits.length < targetTraits){
-    const t = rand(traitPool);
-    if(!chosen.traits.includes(t)) chosen.traits.push(t);
+  game.flags.encounterKills = 0;
+  game.flags.encounterRecruits = 0;
+  game.flags.encounterXp = 0;
+  const pressure = game.player.level + Math.floor(game.enemiesSeen/7);
+  const roll = Math.random();
+  const count = pressure<4 ? 1 : pressure<9 ? (roll<0.75?1:2) : (roll<0.48?1:(roll<0.9?2:3));
+  const enemies = [];
+  for(let n=0;n<count;n++){
+    const weights = buildRarityWeights();
+    const rarity = weightedPick(weights);
+    const pool = BASE_ENEMIES.filter(e=>e.rarity===rarity);
+    const chosen = deepClone(rand(pool));
+    const rarityBonus = {common:0, uncommon:0.06, elite:0.14, legendary:0.30}[rarity];
+    const allyPressure = Math.max(0, game.activeAllies.length-2) * 0.05;
+    const groupTax = count===1 ? 1 : count===2 ? 0.78 : 0.64;
+    const scale = (1 + (game.player.level-1)*0.085 + game.enemiesSeen*0.022 + rarityBonus + allyPressure) * groupTax;
+    chosen.id = uid();
+    chosen.maxHp = Math.round(chosen.hp * scale);
+    chosen.hp = chosen.maxHp;
+    chosen.damage = Math.round(chosen.dmg * (1 + (game.player.level-1)*0.055 + game.enemiesSeen*0.014 + allyPressure + (rarity==='legendary'?0.14:0)) * (count>1?0.85:1));
+    chosen.maxBefriend = Math.round(chosen.friend * (1 + (game.player.level-1)*0.05 + game.enemiesSeen*0.016 + allyPressure*0.65 + (rarity==='legendary'?0.1:0)) * (count>1?0.92:1));
+    chosen.befriend = 0;
+    chosen.shield = chosen.shield || 0;
+    chosen.maxShield = chosen.maxShield ?? chosen.shield;
+    chosen.shieldStyle = chosen.shieldStyle || 'standard';
+    chosen.shieldBlocksBefriend = chosen.shieldBlocksBefriend ?? (chosen.maxShield>0);
+    chosen.shieldRegenUsed = false;
+    chosen.effects = {};
+    chosen.resistBefriendBonus = 0;
+    const traitPool = Object.keys(TRAIT_DEFS);
+    const targetTraits = chosen.traits ? chosen.traits.length : (game.player.level<3 ? (Math.random()<0.7?0:1) : game.player.level<8 ? 1 : (Math.random()<0.65?2:1));
+    chosen.traits = chosen.traits || [];
+    while(chosen.traits.length < targetTraits){
+      const t = rand(traitPool);
+      if(!chosen.traits.includes(t)) chosen.traits.push(t);
+    }
+    chosen.xp = Math.round(({common:12, uncommon:22, elite:40, legendary:70}[rarity]) * (1 + (game.player.level-1)*0.08) * groupTax);
+    enemies.push(chosen);
   }
-  chosen.xp = Math.round(({common:12, uncommon:22, elite:40, legendary:70}[rarity]) * (1 + (game.player.level-1)*0.08));
-
-  game.currentEnemy = chosen;
-  log(`${chosen.name} appears (${chosen.faction}, ${chosen.rarity}).`, chosen.rarity==='legendary' ? 'gold' : '');
+  game.currentEnemies = enemies;
+  game.flags.encounterXp = enemies.reduce((a,e)=>a+(e.xp||0),0);
+  game.selectedTargetId = enemies[0]?.id || null;
+  syncCurrentEnemy(game);
+  log(`Encounter: ${enemies.map(e=>`${e.name} (${e.faction})`).join(' • ')}`, enemies.some(e=>e.rarity==='legendary') ? 'gold' : '');
   render();
 }
+function spawnEnemy(){ spawnEncounter(); }
 function handleDeath(){
   if(game.dead) return;
   game.dead = true;
@@ -2000,52 +2338,53 @@ function statusTags(effects){
 }
 function renderEnemy(){
   const el = document.getElementById('enemyCard');
-  const e = game.currentEnemy;
-  if(!e){
+  const living = getLivingEnemies(game);
+  if(!living.length){
     el.className = 'enemy-card';
     el.innerHTML = `<div class="name">No current enemy</div><div class="sub">Proceed to the next enemy.</div>`;
     return;
   }
-  ensureEnemyShieldRules(e);
-  const healthScale = getBefriendScaling(e);
-  const inWindow = healthScale==='strong' || healthScale==='major';
-  const blocked = isBefriendBlocked(e);
-  el.className = 'enemy-card' + (e.rarity==='legendary' ? ' legendary' : '') + ((e.shield||0)>0 ? ' shielded' : '') + (inWindow ? ' wavering conversion-window' : '');
-  el.style.borderColor = factionColors[e.faction];
-  el.innerHTML = `
-    <div class="name-row">
-      <div>
-        <div class="name">${e.emoji} ${e.name}</div>
-        <div class="sub">${e.faction} • <span class="rarity-${e.rarity}">${cap(e.rarity)}</span> • XP ${e.xp}</div>
+  const countClass = `count-${Math.min(3,living.length)}`;
+  el.className = 'enemy-card';
+  el.innerHTML = `<div class="enemy-encounter"><div class="enemy-grid ${countClass}" id="enemyGridBattle"></div></div>`;
+  const grid = document.getElementById('enemyGridBattle');
+  living.forEach(e=>{
+    ensureEnemyShieldRules(e);
+    const healthScale = getBefriendScaling(e);
+    const inWindow = healthScale==='strong' || healthScale==='major';
+    const blocked = isBefriendBlocked(e);
+    const card = document.createElement('div');
+    card.className = 'enemy-mini ' + (living.length>1?'compact ':'') + ((e.shield||0)>0?'shielded ':'') + (inWindow?'wavering conversion-window ':'') + (game.selectedTargetId===e.id?'selected ':'') + (game.pendingSpellId?'targeting ':'');
+    card.dataset.enemyId = e.id;
+    card.style.borderColor = factionColors[e.faction];
+    card.innerHTML = `
+      <div class="name-row"><div><div class="name">${e.emoji} ${e.name}</div><div class="sub">${e.faction} • ${cap(e.rarity)} • XP ${e.xp}</div></div></div>
+      <div class="bars">
+        ${(e.maxShield||0)>0 ? `<div class="bar-wrap"><div class="bar-label"><span>Shield</span><span>${e.shield||0}</span></div><div class="bar"><div class="fill shield" style="width:${pct(e.shield||0,e.maxShield||1)}%"></div></div></div>`:''}
+        <div class="bar-wrap"><div class="bar-label"><span>HP</span><span>${e.hp}/${e.maxHp}</span></div><div class="bar"><div class="fill hp" style="width:${pct(e.hp,e.maxHp)}%"></div></div></div>
+        <div class="bar-wrap"><div class="bar-label"><span>Befriend</span><span>${e.befriend}/${e.maxBefriend}</span></div><div class="bar"><div class="fill friend" style="width:${pct(e.befriend,e.maxBefriend)}%"></div></div></div>
       </div>
-      <div class="tags">
-        <span class="tag" style="border-color:${factionColors[e.faction]}">${e.desc}</span>
-        ${(e.traits||[]).map(t=>`<span class="tag" title="${TRAIT_DEFS[t]?.desc||''}">${TRAIT_DEFS[t]?.name||t}</span>`).join('')}
-        ${blocked?'<span class="state-label blocked">🛡️ Befriend Blocked</span>':''}
-        ${inWindow?'<span class="state-label window">💘 Conversion Window</span>':''}
-        ${(healthScale==='modest' && !inWindow)?'<span class="state-label low">Wavering</span>':''}
-        ${getComboReadyTags(e).map(t=>`<span class="tag" style="border-color:#ffd36b">${t}</span>`).join('')}
-      </div>
-    </div>
-    <div class="bars">
-      ${(e.maxShield||0)>0 ? `<div class="bar-wrap"><div class="bar-label"><span>Shield</span><span>${e.shield||0}/${e.maxShield||0}</span></div><div class="bar"><div class="fill shield" style="width:${pct(e.shield||0,e.maxShield||1)}%"></div></div></div>`:''}
-      <div class="bar-wrap">
-        <div class="bar-label"><span>Health</span><span>${e.hp}/${e.maxHp}</span></div>
-        <div class="bar"><div class="fill hp" style="width:${pct(e.hp,e.maxHp)}%"></div></div>
-      </div>
-      <div class="bar-wrap">
-        <div class="bar-label"><span>Befriending</span><span>${e.befriend}/${e.maxBefriend}</span></div>
-        <div class="bar"><div class="fill friend" style="width:${pct(e.befriend,e.maxBefriend)}%"></div></div>
-      </div>
-    </div>
-    <div class="statuses">${statusTags(e.effects)}</div>
-  `;
+      <div class="tags">${blocked?'<span class="state-label blocked">🛡️</span>':''}${inWindow?'<span class="state-label window">💘</span>':''}${statusTags(e.effects)}</div>
+    `;
+    card.onclick = ()=>{
+      selectEnemyTarget(e.id);
+      if(game.pendingSpellId){
+        const id = game.pendingSpellId;
+        game.pendingSpellId = null;
+        resolveSpell(id);
+      }
+    };
+    grid.appendChild(card);
+  });
 }
 function renderPlayer(){
   const p = game.player;
   const playerFaction = getPlayerFaction(game);
   const devotion = getDevotion(game);
-  document.getElementById('playerCard').innerHTML = `
+  const shieldBlock = (p.shield||0)>0 ? `<div class="bar-wrap shield-bar"><div class="bar-label"><span>Shield</span><span>${p.shield}</span></div><div class="bar"><div class="fill shield-fill" style="width:${pct(p.shield,Math.max(1,p.maxHp*0.8))}%"></div></div></div>` : '';
+  const pc = document.getElementById('playerCard');
+  pc.classList.toggle('shielded', (p.shield||0)>0);
+  pc.innerHTML = `
     <div class="name">Summoner</div>
     <div class="portrait">${p.portrait}</div>
     <div class="bars">
@@ -2053,6 +2392,7 @@ function renderPlayer(){
         <div class="bar-label"><span>Health</span><span>${p.hp}/${p.maxHp}</span></div>
         <div class="bar"><div class="fill hp" style="width:${pct(p.hp,p.maxHp)}%"></div></div>
       </div>
+      ${shieldBlock}
       <div class="bar-wrap">
         <div class="bar-label"><span>XP</span><span>${p.xp}/${p.nextXp}</span></div>
         <div class="bar"><div class="fill xp" style="width:${pct(p.xp,p.nextXp)}%"></div></div>
@@ -2078,6 +2418,7 @@ function renderSpells(){
     const s = game.spells[id];
     const d = SPELL_DEFS[id];
     const slotName = Object.entries(game.activeSpellSlots||{}).find(([,sid])=>sid===id)?.[0] || 'slot';
+    const targetMode = spellTargeting(d,id);
     const card = document.createElement('div');
     card.className = `spell-card spell-${d.faction} ${d.rarity==='legendary' ? 'spell-Legendary' : ''}`;
     card.innerHTML = `
@@ -2088,12 +2429,22 @@ function renderSpells(){
       <div class="sub">${d.desc}</div>
       <div class="sub">${factionMatchupText(d.faction)}</div>
       <div class="small-row"><span>${d.type}</span><span>Lvl ${s.level}</span></div>
+      <div class="small-row"><span>${targetingLabel(targetMode,d)}</span><span>${targetMode==='single' || targetMode==='splash' || targetMode==='chain' ? 'Pick Target' : 'Auto Target'}</span></div>
       <div class="small-row"><span><span class="rarity-${d.rarity}">${cap(d.rarity)}</span> • ${slotName}</span><span>${s.castsLeft}/${s.castsMax} casts</span></div>
     `;
     const btn = document.createElement('button');
     btn.textContent = 'Cast';
-    btn.disabled = game.mode!=='battle' || !game.currentEnemy || s.castsLeft<=0 || game.dead;
-    btn.onclick = ()=>resolveSpell(id);
+    btn.disabled = game.mode!=='battle' || !getLivingEnemies(game).length || s.castsLeft<=0 || game.dead;
+    btn.onclick = ()=>{
+      if((targetMode==='single' || targetMode==='splash' || targetMode==='chain') && getLivingEnemies(game).length>1){
+        game.pendingSpellId = id;
+        log(`Choose a target for ${d.name}, then click that enemy.`, 'gold');
+        renderEnemy();
+        return;
+      }
+      game.pendingSpellId = null;
+      resolveSpell(id);
+    };
     card.appendChild(btn);
     el.appendChild(card);
   });
@@ -2121,8 +2472,18 @@ function renderFriends(){
 function renderLog(){
   document.getElementById('logBox').innerHTML = game.log.map(x=>`<div class="entry">${x}</div>`).join('');
 }
+function renderTurnOrder(activeToken='player'){
+  const el = document.getElementById('turnOrder');
+  if(!el) return;
+  const tokens = [{id:'player',label:'🧙 Player'}];
+  game.activeAllies.forEach((a,i)=>tokens.push({id:`ally-${i}`,label:`${a.emoji} ${a.name}`}));
+  getLivingEnemies(game).forEach(e=>tokens.push({id:`enemy-${e.id}`,label:`${e.emoji} ${e.name}`}));
+  el.innerHTML = tokens.map(t=>`<span class="turn-token ${t.id===activeToken?'active':''}">${t.label}</span>`).join('');
+}
 function render(){
+  syncCurrentEnemy(game);
   renderTop();
+  renderTurnOrder('player');
   renderEnemy();
   renderPlayer();
   renderSpells();
