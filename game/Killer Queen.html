@@ -234,15 +234,15 @@ const MAPS = [
 
   {
     name: "EMERALD TOWER",
-    width: 2800,
-    height: 900,
-    lavaY: 820,
-    spikeY: 50,
-    snailTrackY: 750,
+    width: 2900,
+    height: 1100,
+    lavaY: 1015,
+    spikeY: 45,
+    snailTrackY: 930,
     blueGateX: 105,
-    goldGateX: 2675,
+    goldGateX: 2770,
     hiveBlueX: 240,
-    hiveGoldX: 2560,
+    hiveGoldX: 2655,
 
     skyTop: "#1d4a45",
     skyMid: "#244e3d",
@@ -260,18 +260,20 @@ const MAPS = [
     bushBerry2: "#ffdef0",
 
     platforms: [
-      {x: 50, y: 710, w: 300, h: 12},
-      {x: 2450, y: 710, w: 300, h: 12},
-      {x: 500, y: 610, w: 160, h: 12},
-      {x: 820, y: 520, w: 160, h: 12},
-      {x: 1140, y: 430, w: 160, h: 12},
-      {x: 1460, y: 520, w: 160, h: 12},
-      {x: 1780, y: 610, w: 160, h: 12},
-      {x: 300, y: 350, w: 160, h: 12},
-      {x: 2360, y: 350, w: 160, h: 12},
-      {x: 720, y: 240, w: 140, h: 12},
-      {x: 1910, y: 240, w: 140, h: 12},
-      {x: 1320, y: 165, w: 160, h: 12}
+      {x: 50, y: 890, w: 320, h: 12},
+      {x: 2520, y: 890, w: 320, h: 12},
+      {x: 480, y: 790, w: 180, h: 12},
+      {x: 820, y: 690, w: 180, h: 12},
+      {x: 1160, y: 590, w: 180, h: 12},
+      {x: 1500, y: 690, w: 180, h: 12},
+      {x: 1840, y: 790, w: 180, h: 12},
+      {x: 290, y: 530, w: 170, h: 12},
+      {x: 2430, y: 530, w: 170, h: 12},
+      {x: 710, y: 390, w: 150, h: 12},
+      {x: 1980, y: 390, w: 150, h: 12},
+      {x: 1320, y: 300, w: 190, h: 12},
+      {x: 1320, y: 215, w: 190, h: 12},
+      {x: 1320, y: 135, w: 190, h: 12}
     ],
 
     bushes: [
@@ -279,6 +281,61 @@ const MAPS = [
       {platformIndex:9, offset:70},
       {platformIndex:10, offset:70},
       {platformIndex:6, offset:80}
+    ]
+  },
+
+  {
+    name: "SUNBURST PLAZA",
+    width: 3000,
+    height: 900,
+    lavaY: 822,
+    spikeY: 58,
+    snailTrackY: 752,
+    blueGateX: 95,
+    goldGateX: 2865,
+    hiveBlueX: 240,
+    hiveGoldX: 2750,
+
+    skyTop: "#69d8ff",
+    skyMid: "#95ebff",
+    skyLow: "#d8f9ff",
+    mountain1: "#8cc8aa",
+    mountain2: "#a2ddb7",
+    platformTop: "#f4e289",
+    platformSide: "#b4893f",
+    spikeColor: "#fff6da",
+    lava1: "#ff8c2d",
+    lava2: "#ffd460",
+    bushLeaf1: "#6cc952",
+    bushLeaf2: "#9be86a",
+    bushBerry1: "#ff5ca7",
+    bushBerry2: "#ffe4f4",
+
+    platforms: [
+      {x: 30, y: 710, w: 320, h: 12},
+      {x: 2650, y: 710, w: 320, h: 12},
+      {x: 720, y: 640, w: 180, h: 12},
+      {x: 930, y: 565, w: 180, h: 12},
+      {x: 1140, y: 490, w: 180, h: 12},
+      {x: 1350, y: 455, w: 300, h: 12},
+      {x: 1700, y: 490, w: 180, h: 12},
+      {x: 1910, y: 565, w: 180, h: 12},
+      {x: 2120, y: 640, w: 180, h: 12},
+      {x: 1260, y: 310, w: 120, h: 12},
+      {x: 1620, y: 310, w: 120, h: 12},
+      {x: 1440, y: 240, w: 120, h: 12}
+    ],
+
+    bushes: [
+      {platformIndex:2, offset:90},
+      {platformIndex:3, offset:90},
+      {platformIndex:4, offset:90},
+      {platformIndex:5, offset:70},
+      {platformIndex:5, offset:150},
+      {platformIndex:5, offset:230},
+      {platformIndex:6, offset:90},
+      {platformIndex:7, offset:90},
+      {platformIndex:8, offset:90}
     ]
   }
 ];
@@ -293,6 +350,7 @@ const game = {
   goldStrategy: "military",
   enemyStrategy: "military",
   splitScreen: false,
+  sameTeams: false,
   difficultyIndex: 3,
   currentMapIndex: 0,
   cameraX: 0,
@@ -309,6 +367,11 @@ const game = {
   debugAI: false,
   _prevKeys: {}
 };
+
+function enemyQueenLivesByDifficulty(level) {
+  const overrides = { 6: 4, 7: 5, 8: 6, 9: 8, 10: 10 };
+  return overrides[level] || 3;
+}
 
 const world = {
   width: 2600,
@@ -466,6 +529,12 @@ function cycleGoldStrategy() {
   game.goldStrategy = TEAM_STRATEGIES[nextIdx];
   game.goldStrategySwitchCooldown = 22;
   game.goldStrategyFlashTimer = 90;
+}
+
+function strategyForTeam(team) {
+  if (team === "blue") return game.playerStrategy;
+  if (game.splitScreen && !game.sameTeams) return game.goldStrategy;
+  return game.enemyStrategy;
 }
 
 function keyTap(key) {
@@ -648,7 +717,7 @@ class Unit {
         this.dead = true;
         this.respawnTimer = 999999;
       } else {
-        this.invuln = 120;
+        this.invuln = 220;
         this.respawnAtBase();
       }
       return;
@@ -694,7 +763,7 @@ class Unit {
 
   respawn() {
     this.dead = false;
-    this.invuln = 75;
+    this.invuln = this.role === "queen" ? 220 : 90;
     this.form = "worker";
     this.carryingBerry = null;
     this.respawnAtBase();
@@ -1286,6 +1355,11 @@ class Unit {
     if (keyTap(control.up) && this.y > world.spikeY + 90) this.flap();
     if (keys[control.down]) this.vy += 0.16;
     if (this.y < world.spikeY + 80) this.vy += 0.22;
+
+    if (keyTap(control.pickup)) {
+      if (this.carryingBerry) this.dropBerry();
+      else attemptPlayerBerryPickup(this);
+    }
   }
 
   tryMountSnail() {
@@ -1321,9 +1395,10 @@ class Unit {
     }
 
     if (this.isPlayer) {
-      const control = this.team === "blue"
-        ? { left: "a", right: "d", up: "w", down: "s" }
-        : { left: "arrowleft", right: "arrowright", up: "arrowup", down: "arrowdown" };
+      const isPrimaryPlayer = this === playerQueen;
+      const control = isPrimaryPlayer
+        ? { left: "a", right: "d", up: "w", down: "s", pickup: "f" }
+        : { left: "arrowleft", right: "arrowright", up: "arrowup", down: "arrowdown", pickup: "." };
       this.playerControl(control);
     }
     else this.ai(strategy);
@@ -1465,10 +1540,10 @@ function spawnMatch() {
   teamTactics.gold.runnerLockUntil = 0;
 
   const bq = new Unit({ team: "blue", role: "queen", x: 165, y: 650, isPlayer: true });
-  const gq = new Unit({ team: "gold", role: "queen", x: world.width - 205, y: 650, isPlayer: game.splitScreen });
+  const gq = new Unit({ team: "gold", role: "queen", x: world.width - 205, y: 650, isPlayer: game.splitScreen && !game.sameTeams });
+  gq.queenLives = enemyQueenLivesByDifficulty(currentDifficulty().level);
 
   playerQueen = bq;
-  goldPlayerQueen = gq;
   units.push(bq, gq);
 
   for (let i = 0; i < 4; i++) {
@@ -1476,8 +1551,17 @@ function spawnMatch() {
     units.push(new Unit({ team: "gold", role: "worker", x: world.width - 270 + i * 38, y: 690 }));
   }
 
+  if (game.splitScreen && game.sameTeams) {
+    const p2Worker = new Unit({ team: "blue", role: "worker", x: 205, y: 684, isPlayer: true });
+    p2Worker.form = "worker";
+    units.push(p2Worker);
+    goldPlayerQueen = p2Worker;
+  } else {
+    goldPlayerQueen = gq;
+  }
+
   game.enemyStrategy = TEAM_STRATEGIES[randi(0, TEAM_STRATEGIES.length - 1)];
-  if (game.splitScreen) game.enemyStrategy = game.goldStrategy;
+  if (game.splitScreen && !game.sameTeams) game.enemyStrategy = game.goldStrategy;
   game.winner = null;
   game.winType = "";
   game.state = "playing";
@@ -1521,6 +1605,25 @@ function updateBushes() {
   }
 }
 
+function berryInPickupRange(unit) {
+  for (const bush of bushes) {
+    const berry = bush.berry;
+    if (!berry.alive || berry.carriedBy) continue;
+    if (dist(unit.x + unit.w / 2, unit.y + unit.h / 2, berry.x, berry.y) < 20) return berry;
+  }
+  return null;
+}
+
+function attemptPlayerBerryPickup(unit) {
+  if (unit.dead || unit.role === "queen" || unit.form === "warrior" || unit.carryingBerry) return false;
+  const berry = berryInPickupRange(unit);
+  if (!berry) return false;
+  berry.carriedBy = unit;
+  unit.carryingBerry = berry;
+  soundBerry();
+  return true;
+}
+
 function handleBerries() {
   for (const bush of bushes) {
     const berry = bush.berry;
@@ -1533,7 +1636,7 @@ function handleBerries() {
     }
 
     for (const u of units) {
-      if (u.dead || u.role === "queen" || u.form === "warrior" || u.carryingBerry) continue;
+      if (u.dead || u.isPlayer || u.role === "queen" || u.form === "warrior" || u.carryingBerry) continue;
       if (dist(u.x + u.w / 2, u.y + u.h / 2, berry.x, berry.y) < 18) {
         berry.carriedBy = u;
         u.carryingBerry = berry;
@@ -1630,14 +1733,18 @@ function handleCombat() {
 
       const aBottom = a.y + a.h;
       const bBottom = b.y + b.h;
-      const aPower = (a.role === "queen" ? 2 : (a.form === "warrior" ? 1 : 0));
-      const bPower = (b.role === "queen" ? 2 : (b.form === "warrior" ? 1 : 0));
+      const aPower = a.invuln > 0 ? -1 : (a.role === "queen" ? 2 : (a.form === "warrior" ? 1 : 0));
+      const bPower = b.invuln > 0 ? -1 : (b.role === "queen" ? 2 : (b.form === "warrior" ? 1 : 0));
+      const aCanKill = a.invuln <= 0;
+      const bCanKill = b.invuln <= 0;
+      const aCanDie = a.invuln <= 0;
+      const bCanDie = b.invuln <= 0;
 
-      if (aBottom < bBottom - 5 || (Math.abs(aBottom - bBottom) <= 5 && aPower > bPower)) {
+      if (aCanKill && bCanDie && (aBottom < bBottom - 5 || (Math.abs(aBottom - bBottom) <= 5 && aPower > bPower))) {
         b.die();
         a.vy = -4.0;
         if (a.isPlayer || b.isPlayer) soundKill();
-      } else if (bBottom < aBottom - 5 || (Math.abs(aBottom - bBottom) <= 5 && bPower > aPower)) {
+      } else if (bCanKill && aCanDie && (bBottom < aBottom - 5 || (Math.abs(aBottom - bBottom) <= 5 && bPower > aPower))) {
         a.die();
         b.vy = -4.0;
         if (a.isPlayer || b.isPlayer) soundKill();
@@ -1704,21 +1811,22 @@ function update() {
       else if (keys["2"]) { game.playerStrategy = "snail"; titleInputLock = true; }
       else if (keys["3"]) { game.playerStrategy = "military"; titleInputLock = true; }
       else if (keys["4"]) { game.playerStrategy = "balanced"; titleInputLock = true; }
-      else if (keys["7"]) { game.goldStrategy = "economy"; titleInputLock = true; }
-      else if (keys["8"]) { game.goldStrategy = "snail"; titleInputLock = true; }
-      else if (keys["9"]) { game.goldStrategy = "military"; titleInputLock = true; }
-      else if (keys["0"]) { game.goldStrategy = "balanced"; titleInputLock = true; }
+      else if (game.splitScreen && !game.sameTeams && keys["7"]) { game.goldStrategy = "economy"; titleInputLock = true; }
+      else if (game.splitScreen && !game.sameTeams && keys["8"]) { game.goldStrategy = "snail"; titleInputLock = true; }
+      else if (game.splitScreen && !game.sameTeams && keys["9"]) { game.goldStrategy = "military"; titleInputLock = true; }
+      else if (game.splitScreen && !game.sameTeams && keys["0"]) { game.goldStrategy = "balanced"; titleInputLock = true; }
       else if (keys["v"]) { cyclePlayerStrategy(); titleInputLock = true; }
-      else if (keys["/"]) { cycleGoldStrategy(); titleInputLock = true; }
+      else if (game.splitScreen && !game.sameTeams && keys["/"]) { cycleGoldStrategy(); titleInputLock = true; }
       else if (keys["b"]) { game.debugAI = !game.debugAI; titleInputLock = true; }
       else if (keys["m"]) { game.currentMapIndex = (game.currentMapIndex + 1) % MAPS.length; titleInputLock = true; }
       else if (keys["q"]) { game.difficultyIndex = (game.difficultyIndex + 9) % 10; titleInputLock = true; }
       else if (keys["e"]) { game.difficultyIndex = (game.difficultyIndex + 1) % 10; titleInputLock = true; }
       else if (keys["x"]) { game.splitScreen = !game.splitScreen; titleInputLock = true; }
+      else if (keys["c"]) { game.sameTeams = !game.sameTeams; titleInputLock = true; }
       else if (keys[" "]) { spawnMatch(); titleInputLock = true; }
     }
     if (!keys["1"] && !keys["2"] && !keys["3"] && !keys["4"] && !keys["7"] && !keys["8"] && !keys["9"] && !keys["0"] &&
-        !keys["v"] && !keys["/"] && !keys["b"] && !keys["m"] && !keys["q"] && !keys["e"] && !keys["x"] && !keys[" "]) {
+        !keys["v"] && !keys["/"] && !keys["b"] && !keys["m"] && !keys["q"] && !keys["e"] && !keys["x"] && !keys["c"] && !keys[" "]) {
       titleInputLock = false;
     }
     return;
@@ -1735,7 +1843,7 @@ function update() {
 
   game.time++;
   if (keys["v"]) cyclePlayerStrategy();
-  if (game.splitScreen && keys["/"]) cycleGoldStrategy();
+  if (game.splitScreen && !game.sameTeams && keys["/"]) cycleGoldStrategy();
   if (keys["b"] && !gameplayInputLock) {
     game.debugAI = !game.debugAI;
     gameplayInputLock = true;
@@ -1744,9 +1852,7 @@ function update() {
   }
 
   for (const u of units) {
-    const strat = u.team === "blue"
-      ? game.playerStrategy
-      : (game.splitScreen ? game.goldStrategy : game.enemyStrategy);
+    const strat = strategyForTeam(u.team);
     u.update(strat);
   }
 
@@ -1875,6 +1981,39 @@ function drawBackdrop(camX = game.cameraX) {
       ctx.fillStyle = shade(t.mountain2, 25);
       ctx.fillRect(x - 10, 300, 44, 24);
       ctx.fillStyle = t.mountain2;
+    }
+    ctx.restore();
+  }
+
+  else if (t.name === "SUNBURST PLAZA") {
+    ctx.save();
+    ctx.translate(-camSlow, 0);
+    ctx.fillStyle = "rgba(255,245,150,0.65)";
+    ctx.beginPath();
+    ctx.arc(2280, 120, 88, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = t.mountain1;
+    ctx.beginPath();
+    ctx.moveTo(-100, 630);
+    for (let x = 0; x <= world.width + 200; x += 170) {
+      const peak = 445 + Math.cos(x * 0.004) * 45 + (x % 340 === 0 ? -25 : 22);
+      ctx.lineTo(x, peak);
+    }
+    ctx.lineTo(world.width + 200, world.height);
+    ctx.lineTo(-100, world.height);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(-camMed, 0);
+    ctx.fillStyle = t.mountain2;
+    for (let x = 120; x < world.width; x += 360) {
+      ctx.fillRect(x, 470, 20, 150);
+      ctx.beginPath();
+      ctx.arc(x + 10, 452, 34, 0, Math.PI * 2);
+      ctx.fill();
     }
     ctx.restore();
   }
@@ -2045,6 +2184,7 @@ function drawWorld(camX = game.cameraX, camY = game.cameraY) {
 }
 
 function drawQueenLivesBox(x, y, queen, label, color) {
+  if (!queen) return;
   ctx.fillStyle = "#000";
   ctx.fillRect(x, y, 170, 56);
   ctx.strokeStyle = color;
@@ -2055,15 +2195,33 @@ function drawQueenLivesBox(x, y, queen, label, color) {
   ctx.font = "15px Courier New";
   ctx.fillText(label, x + 35, y + 20);
   ctx.fillText("LIVES:", x + 35, y + 42);
-  for (let i = 0; i < 3; i++) {
+  const maxPips = Math.max(3, Math.min(10, queen?.queenLives || 3));
+  for (let i = 0; i < maxPips; i++) {
     ctx.fillStyle = i < queen.queenLives ? color : "#444";
-    ctx.fillRect(x + 90 + i * 18, y + 33, 12, 12);
+    ctx.fillRect(x + 90 + i * 7, y + 33, 5, 12);
   }
+  ctx.fillStyle = "#fff";
+  ctx.fillText(String(queen.queenLives), x + 146, y + 42);
+}
+
+function drawKeyHint(x, y, label, active = false) {
+  ctx.fillStyle = active ? "#ffe37a" : "#333";
+  ctx.fillRect(x, y, 18, 18);
+  ctx.fillStyle = active ? "#1b1200" : "#fff";
+  ctx.font = "13px Courier New";
+  ctx.fillText(label, x + 5, y + 13);
+}
+
+function playerNearBerry(unit) {
+  if (!unit || unit.dead || unit.carryingBerry || unit.role === "queen" || unit.form === "warrior") return false;
+  return !!berryInPickupRange(unit);
 }
 
 function drawHUD() {
   const blueQueen = units.find(u => u.team === "blue" && u.role === "queen");
   const goldQueen = units.find(u => u.team === "gold" && u.role === "queen");
+  const p1BerryReady = playerNearBerry(playerQueen);
+  const p2BerryReady = playerNearBerry(goldPlayerQueen);
 
   ctx.fillStyle = "#000";
   ctx.fillRect(12, 12, 470, 92);
@@ -2075,8 +2233,8 @@ function drawHUD() {
   ctx.fillText("MAP: " + MAPS[game.currentMapIndex].name, 24, 34);
   ctx.fillStyle = game.strategyFlashTimer > 0 ? "#6dff89" : "#fff";
   ctx.fillText("BLUE: " + game.playerStrategy.toUpperCase(), 24, 58);
-  ctx.fillStyle = game.splitScreen && game.goldStrategyFlashTimer > 0 ? "#ffe37a" : "#fff";
-  const goldLabel = game.splitScreen ? game.goldStrategy : game.enemyStrategy;
+  ctx.fillStyle = game.splitScreen && !game.sameTeams && game.goldStrategyFlashTimer > 0 ? "#ffe37a" : "#fff";
+  const goldLabel = game.splitScreen && !game.sameTeams ? game.goldStrategy : game.enemyStrategy;
   ctx.fillText("GOLD: " + goldLabel.toUpperCase(), 24, 82);
 
   drawQueenLivesBox(500, 12, blueQueen, "BLUE QUEEN", "#61d5ff");
@@ -2091,12 +2249,19 @@ function drawHUD() {
   ctx.fillText("DIFF: " + currentDifficulty().name, 888, 32);
   ctx.fillText("AI LVL: " + currentDifficulty().level + "/10", 888, 52);
   if (game.splitScreen) {
-    ctx.fillText("P1 A/D/W/S + V STRAT", 888, 70);
-    ctx.fillText("P2 ARROWS + / STRAT", 888, 88);
+    ctx.fillText("P1 A/D/W/S  STRAT: V", 888, 70);
+    ctx.fillText("P1 BERRY PICKUP:", 888, 88);
+    drawKeyHint(1032, 75, "F", p1BerryReady);
+    if (game.sameTeams) {
+      ctx.fillText("P2 ARROWS  BERRY:", 1062, 88);
+      drawKeyHint(1170, 75, ".", p2BerryReady);
+    } else {
+      ctx.fillText("P2 ARROWS + / STRAT", 1062, 88);
+    }
     ctx.fillText("SPLIT SCREEN: ON", 888, 104);
   } else {
     ctx.fillText("A/D MOVE  W TAP FLAP", 888, 70);
-    ctx.fillText("S DIVE  V CYCLE STRAT", 888, 88);
+    ctx.fillText("S DIVE  V CYCLE STRAT  F PICK", 888, 88);
     ctx.fillText("B AI DEBUG", 888, 104);
   }
 }
@@ -2134,64 +2299,51 @@ function drawTitle() {
 
   ctx.fillStyle = "#fff";
   ctx.font = "20px Courier New";
-  ctx.fillText("P1 1/2/3/4 = STRATEGY  (V = CYCLE)", 245, 205);
-  ctx.fillText("P2 7/8/9/0 = STRATEGY  (/ = CYCLE)", 215, 235);
+  ctx.fillText("P1 1/2/3/4 = STRATEGY  (V = TOGGLE)", 235, 205);
+  if (game.splitScreen && !game.sameTeams) ctx.fillText("P2 7/8/9/0 = STRATEGY  (/ = TOGGLE)", 205, 235);
   ctx.fillText("M = CHANGE MAP", 475, 265);
   ctx.fillText("Q / E = CHANGE DIFFICULTY", 385, 295);
-  ctx.fillText("X = SPLIT SCREEN TOGGLE", 375, 325);
-  ctx.fillText("SPACE = START", 485, 355);
+  ctx.fillText("X = PLAYER 2 TOGGLE", 405, 325);
+  ctx.fillText("C = SAME TEAMS / DIFFERENT", 345, 355);
+  ctx.fillText("SPACE = START", 485, 385);
 
-  const opts = [
-    { n:"1", label:"ECONOMY", x: 180, on: game.playerStrategy === "economy" },
-    { n:"2", label:"SNAIL", x: 380, on: game.playerStrategy === "snail" },
-    { n:"3", label:"MILITARY", x: 580, on: game.playerStrategy === "military" },
-    { n:"4", label:"BALANCED", x: 780, on: game.playerStrategy === "balanced" }
-  ];
-
-  for (const o of opts) {
-    ctx.fillStyle = "#111";
-    ctx.fillRect(o.x, 360, 170, 78);
-    ctx.strokeStyle = o.on ? "#61ff7c" : "#bbb";
-    ctx.strokeRect(o.x, 360, 170, 78);
-    ctx.fillStyle = o.on ? "#61ff7c" : "#fff";
-    ctx.font = "bold 28px Courier New";
-    ctx.fillText(o.n, o.x + 73, 390);
-    ctx.font = "18px Courier New";
-    ctx.fillText(o.label, o.x + 16, 422);
+  const playerBoxes = [{ label: "PLAYER 1", strategy: game.playerStrategy, color: "#61ff7c", x: 280 }];
+  if (game.splitScreen) {
+    playerBoxes.push({
+      label: "PLAYER 2",
+      strategy: game.sameTeams ? "worker bee" : game.goldStrategy,
+      color: game.sameTeams ? "#8ee6ff" : "#ffe37a",
+      x: 620
+    });
   }
-
-  const p2Opts = [
-    { n:"7", label:"ECONOMY", x: 180, on: game.goldStrategy === "economy" },
-    { n:"8", label:"SNAIL", x: 380, on: game.goldStrategy === "snail" },
-    { n:"9", label:"MILITARY", x: 580, on: game.goldStrategy === "military" },
-    { n:"0", label:"BALANCED", x: 780, on: game.goldStrategy === "balanced" }
-  ];
-  for (const o of p2Opts) {
+  for (const box of playerBoxes) {
     ctx.fillStyle = "#111";
-    ctx.fillRect(o.x, 442, 170, 78);
-    ctx.strokeStyle = o.on ? "#ffe37a" : "#bbb";
-    ctx.strokeRect(o.x, 442, 170, 78);
-    ctx.fillStyle = o.on ? "#ffe37a" : "#fff";
-    ctx.font = "bold 28px Courier New";
-    ctx.fillText(o.n, o.x + 73, 472);
-    ctx.font = "18px Courier New";
-    ctx.fillText(o.label, o.x + 16, 504);
+    ctx.fillRect(box.x, 430, 300, 94);
+    ctx.strokeStyle = box.color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(box.x, 430, 300, 94);
+    ctx.fillStyle = box.color;
+    ctx.font = "bold 26px Courier New";
+    ctx.fillText(box.label, box.x + 68, 466);
+    ctx.font = "22px Courier New";
+    ctx.fillText(box.strategy.toUpperCase(), box.x + 24, 500);
   }
 
   ctx.fillStyle = "#9fdfff";
   ctx.font = "22px Courier New";
-  ctx.fillText("MAP: " + MAPS[game.currentMapIndex].name, 415, 550);
-  ctx.fillText("DIFFICULTY: " + currentDifficulty().name + " (" + currentDifficulty().level + "/10)", 285, 580);
-  ctx.fillText("SPLIT SCREEN: " + (game.splitScreen ? "ON" : "OFF"), 400, 610);
+  ctx.fillText("MAP: " + MAPS[game.currentMapIndex].name, 415, 560);
+  ctx.fillText("DIFFICULTY: " + currentDifficulty().name + " (" + currentDifficulty().level + "/10)", 285, 590);
+  ctx.fillText("PLAYER 2: " + (game.splitScreen ? "ON" : "OFF"), 430, 620);
+  ctx.fillText("TEAM MODE: " + (game.sameTeams ? "SAME TEAMS" : "DIFFERENT TEAMS"), 360, 650);
 
   ctx.fillStyle = "#fff";
   ctx.font = "15px Courier New";
-  ctx.fillText("Single player: gold strategy random each match.", 335, 640);
-  ctx.fillText("Split screen: both queens are human-controlled (tap jump only, no hold).", 230, 662);
+  ctx.fillText("PICKUP KEYS: P1=F, P2=. (key highlights near berries)", 250, 678);
+  ctx.fillText("Same Teams mode: P2 is a blue worker bee.", 335, 698);
 
   ctx.fillStyle = "#9fdfff";
   ctx.font = "21px Courier New";
-  ctx.fillText("PRESS SPACE TO START", 430, 695);
+  ctx.fillText("PRESS SPACE TO START", 430, 706);
 }
 
 function drawGameOver() {
