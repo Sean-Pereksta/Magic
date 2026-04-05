@@ -1596,7 +1596,7 @@ function makeBurst(point,color='#fff'){
   layer.appendChild(d);
   setTimeout(()=>d.remove(), 620);
 }
-function showFloatingText(point,text,color='#fff',delay=0){
+function showFloatingText(point,text,color='#fff',delay=0,duration=800){
   const layer = vfxLayer();
   if(!layer) return;
   const d = document.createElement('div');
@@ -1604,9 +1604,19 @@ function showFloatingText(point,text,color='#fff',delay=0){
   d.style.left = (point.x + randInt(-10,10)) + 'px';
   d.style.top = (point.y + randInt(-8,8) + delay*0.02) + 'px';
   d.style.color = color;
+  d.style.animationDuration = `${duration}ms`;
   d.textContent = text;
   layer.appendChild(d);
-  setTimeout(()=>d.remove(), 900);
+  setTimeout(()=>d.remove(), duration + 120);
+}
+function showFactionEffectiveness(enemy, faction, showVfx=true){
+  if(!showVfx || !enemy || !faction || faction==='Neutral') return;
+  const mult = factionAdvantageMult(faction, enemy.faction);
+  if(mult > 1){
+    showFloatingText(getEnemyPointById(enemy.id), 'Effective!', '#69dc96', -10, 520);
+  }else if(mult < 1){
+    showFloatingText(getEnemyPointById(enemy.id), 'Not Effective', '#ff7d7d', -10, 520);
+  }
 }
 function animateSymbol(from,to,symbol='✦',color='#fff',dur=420){
   const layer = vfxLayer();
@@ -1774,8 +1784,9 @@ function dealDamage(g, enemy, amount, source='Damage', faction='Neutral', showVf
   const currentSpell = g.flags.currentSpellId ? SPELL_DEFS[g.flags.currentSpellId] : null;
   const combo = currentSpell ? getComboBonuses(currentSpell, enemy, g) : {damage:1,tags:[]};
   const rarityPower = getSpellRarityProfile(currentSpell?.rarity || 'common').base;
+  const factionAdvantage = factionAdvantageMult(faction, enemy.faction);
   let dmg = Math.round(amount * rarityPower * damageMultiplierOnEnemy(enemy) * combo.damage * devotionBonus('damage', faction, g));
-  dmg = Math.round(dmg * factionAdvantageMult(faction, enemy.faction));
+  dmg = Math.round(dmg * factionAdvantage);
   if(faction===enemy.faction) dmg = Math.round(dmg*0.72);
   if(traitHas(enemy,'thickHide')) dmg = Math.round(dmg*0.82);
   if(traitHas(enemy,'chaosHardened') && faction==='Chaos') dmg = Math.round(dmg*0.75);
@@ -1801,6 +1812,7 @@ function dealDamage(g, enemy, amount, source='Damage', faction='Neutral', showVf
   g.flags.lastResisted = dmg <= Math.max(1, Math.round(amount*0.7));
   if(g.flags.lastResisted) log(`${enemy.name} resists part of the hit.`, 'bad');
   if(showVfx) projectileSourceToEnemy(getPlayerPoint(), enemy.id, factionColors[faction] || '#fff', '✦');
+  showFactionEffectiveness(enemy, faction, showVfx);
   showFloatingText(getEnemyPointById(enemy.id), `-${dmg}`, '#ff8f8f');
   log(`${source} deals ${dmg} damage to ${enemy.name}.`, 'good');
   if(traitHas(enemy,'retaliatory') && g.flags.lastSpellType===currentSpell?.type){
@@ -1822,9 +1834,10 @@ function addBefriend(g, enemy, amount, source='Befriend', faction='Light', showV
   }
   const combo = currentSpell ? getComboBonuses(currentSpell, enemy, g) : {befriend:1,tags:[]};
   const rarityPower = getSpellRarityProfile(currentSpell?.rarity || 'common').base;
+  const factionAdvantage = factionAdvantageMult(faction, enemy.faction);
   let val = Math.round(amount * rarityPower * befriendMultiplierOnEnemy(enemy) * combo.befriend * devotionBonus('befriend', faction, g));
   val = calculateBefriendAmount(val, enemy, g);
-  val = Math.round(val * factionAdvantageMult(faction, enemy.faction));
+  val = Math.round(val * factionAdvantage);
   if(faction===enemy.faction) val = Math.round(val*1.28);
   if(traitHas(enemy,'ironWill')) val = Math.round(val*0.74);
   if(traitHas(enemy,'faithLocked') && faction==='Light') val = Math.round(val*0.55);
@@ -1835,6 +1848,7 @@ function addBefriend(g, enemy, amount, source='Befriend', faction='Light', showV
   if(enemy.resistBefriendBonus) val = Math.round(val*(1-enemy.resistBefriendBonus));
   enemy.befriend = Math.min(enemy.maxBefriend, enemy.befriend + Math.max(1,val));
   if(showVfx) projectileSourceToEnemy(getPlayerPoint(), enemy.id, factionColors[faction] || '#fff', '💘');
+  showFactionEffectiveness(enemy, faction, showVfx);
   showFloatingText(getEnemyPointById(enemy.id), `💗+${Math.max(1,val)}`, '#ff9fd5');
   const scale = getBefriendScaling(enemy);
   if(scale==='strong' || scale==='major') log(`${enemy.name} is wavering! Conversion window opening.`, 'gold');
