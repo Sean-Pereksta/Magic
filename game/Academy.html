@@ -358,6 +358,10 @@ const snail = {
 let bushes = [];
 let units = [];
 let playerQueen = null;
+const teamTactics = {
+  blue: { primarySnailRunner: null, runnerLockUntil: 0 },
+  gold: { primarySnailRunner: null, runnerLockUntil: 0 }
+};
 
 function currentDifficulty() {
   return DIFFICULTIES[game.difficultyIndex];
@@ -385,6 +389,55 @@ function getSnailDangerForTeam(team) {
     progress: progressAgainstTeam,
     severity
   };
+}
+
+function isValidSnailRunnerCandidate(unit) {
+  return !!unit && !unit.dead && unit.role !== "queen" && unit.form !== "warrior" && !unit.onSnail;
+}
+
+function nearestEnemyDistanceToUnit(unit, range = 180) {
+  let best = range;
+  for (const u of units) {
+    if (u.dead || u.team === unit.team) continue;
+    const d = dist(unit.x, unit.y, u.x, u.y);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+function pickPrimarySnailRunner(team) {
+  let best = null;
+  let bestScore = 1e9;
+  for (const u of units) {
+    if (u.team !== team || !isValidSnailRunnerCandidate(u)) continue;
+    const toSnail = dist(u.x, u.y, snail.x, snail.y);
+    const enemyDist = nearestEnemyDistanceToUnit(u, 220);
+    const enemyPenalty = enemyDist < 220 ? (220 - enemyDist) * 1.25 : 0;
+    const berryPenalty = u.carryingBerry ? 180 : 0;
+    const fightPenalty = u.enemiesNearby(150) > u.alliesNearby(170) + 1 ? 140 : 0;
+    const rolePenalty = u.form === "speed" ? -26 : 0;
+    const score = toSnail + enemyPenalty + berryPenalty + fightPenalty + rolePenalty;
+    if (score < bestScore) {
+      bestScore = score;
+      best = u;
+    }
+  }
+  return best;
+}
+
+function ensurePrimarySnailRunner(team, strategy) {
+  const state = teamTactics[team];
+  if (strategy !== "snail" || (snail.rider && snail.rider.team === team)) {
+    state.primarySnailRunner = null;
+    state.runnerLockUntil = 0;
+    return null;
+  }
+  const current = state.primarySnailRunner;
+  if (isValidSnailRunnerCandidate(current) && game.time <= state.runnerLockUntil) return current;
+  const next = pickPrimarySnailRunner(team);
+  state.primarySnailRunner = next;
+  state.runnerLockUntil = game.time + 130;
+  return next;
 }
 
 function cyclePlayerStrategy() {
@@ -745,6 +798,36 @@ class Unit {
     return units.filter(u => !u.dead && u.team !== this.team && dist(this.x, this.y, u.x, u.y) < range).length;
   }
 
+  isPrimarySnailRunner(strategy) {
+    if (strategy !== "snail" || this.role === "queen" || this.form === "warrior") return false;
+    const runner = ensurePrimarySnailRunner(this.team, strategy);
+    return runner === this;
+  }
+
+  directSnailThreatDistance(maxRange = 130) {
+    let best = maxRange;
+    for (const u of units) {
+      if (u.dead || u.team === this.team) continue;
+      const dSnail = dist(u.x, u.y, snail.x, snail.y);
+      const dSelf = dist(u.x, u.y, this.x, this.y);
+      if (dSnail < best || dSelf < best) best = Math.min(best, dSnail, dSelf);
+    }
+    return best;
+  }
+
+  intentCommitBoost(intent, strategy, isPrimaryRunner = false) {
+    const lvl = this.diff().level;
+    let boost = 0;
+    if (lvl >= 6 && ["ride-snail", "escort-snail", "contest-snail", "stop-carrier", "queen-hunt", "defend-gate"].some(t => intent.includes(t))) boost += 24;
+    if (lvl >= 7 && ["ride-snail", "escort-snail", "contest-snail-hard", "stop-carrier", "queen-hunt", "defend-gate"].some(t => intent.includes(t))) boost += 18;
+    if (lvl >= 8 && ["ride-snail", "stop-carrier", "queen-hunt", "defend-gate", "contest-snail"].some(t => intent.includes(t))) boost += 14;
+    if (lvl >= 9 && ["ride-snail", "contest-snail", "defend-gate", "stop-carrier"].some(t => intent.includes(t))) boost += 12;
+    if (lvl >= 10 && ["ride-snail", "contest-snail-hard", "stop-carrier", "queen-hunt", "defend-gate"].some(t => intent.includes(t))) boost += 14;
+    if (isPrimaryRunner && strategy === "snail" && intent === "ride-snail") boost += 55;
+    if (this.role === "queen" && lvl >= 9 && intent.includes("queen")) boost += 16;
+    return boost;
+  }
+
   bravery(strategy) {
     if (this.role === "queen") return 0.58;
     if (this.form === "warrior") return 0.82;
@@ -784,14 +867,17 @@ class Unit {
     const ownQueen = units.find(u => !u.dead && u.team === this.team && u.role === "queen");
     const enemyQueen = this.enemyQueen();
     const snailDanger = getSnailDangerForTeam(this.team);
+    const diffSet = this.diff();
     const berriesLeft = 10 - gates[this.team].berries;
     const berryThreat = 10 - gates[this.team === "blue" ? "gold" : "blue"].berries;
     const support = this.alliesNearby(200);
     const failed = this.failedApproaches[this.approachType] || 0;
+    if (diffSet.level >= 8 && targetIntent === "ride-snail" && snail.rider !== this && this.directSnailThreatDistance(128) >= 128 && snailDanger.progress < 0.88) return false;
     if (snailDanger.progress > 0.70) return true;
     if ((ownQueen && ownQueen.queenLives <= 1) || (enemyQueen && enemyQueen.queenLives <= 1)) return true;
     if (berriesLeft <= 2 || berryThreat <= 2) return true;
     if (targetObj && targetObj.dead) return true;
+    if (diffSet.level >= 9 && danger.topTrap && targetIntent.includes("snail")) return true;
     if (danger.score > 0.78) return true;
     if (this.lastSupportCount > 0 && support === 0) return true;
     if (failed >= 2) return true;
@@ -834,19 +920,23 @@ class Unit {
     const enemyBerries = gates[this.team === "blue" ? "gold" : "blue"].berries;
     const ownBerries = gates[this.team].berries;
     const support = this.alliesNearby(220);
+    const isPrimaryRunner = this.isPrimarySnailRunner(strategy);
+    const directSnailThreat = this.directSnailThreatDistance(diffSet.level >= 8 ? 130 : 115);
+    const ownQueen = units.find(u => !u.dead && u.team === this.team && u.role === "queen");
 
     if (this.role === "queen") {
       const lowLife = this.queenLives <= 1;
       const losingSnail = snailDanger.progress > 0.68;
       const berryEmergency = enemyBerries >= 8;
+      const queenUnderThreat = this.enemiesNearby(diffSet.level >= 9 ? 165 : 130) > (support + (diffSet.level >= 8 ? 0 : 1));
       if (this.queenStateCommit <= 0) {
-        if (lowLife && (support < 1 || losingSnail || berryEmergency)) this.queenState = "avoid-death";
+        if ((lowLife && (support < 1 || losingSnail || berryEmergency)) || (diffSet.level >= 9 && queenUnderThreat)) this.queenState = "avoid-death";
         else if (losingSnail || berryEmergency) this.queenState = "desperation-contest";
         else if (ownBerries >= 8 && this.queenLives > 1) this.queenState = "defend-lead";
         else if (strategy === "economy" || support <= 1) this.queenState = "escort-objective";
-        else if (strategy === "military" && this.queenLives > 1) this.queenState = "pressure";
+        else if (strategy === "military" && this.queenLives > 1 && (diffSet.level < 10 || support >= 2 || urgency > 0.7)) this.queenState = "pressure";
         else this.queenState = "stabilize";
-        this.queenStateCommit = 75 + Math.floor(100 * diffSet.discipline);
+        this.queenStateCommit = 75 + Math.floor(100 * diffSet.discipline) + (diffSet.level >= 9 ? 22 : 0);
       } else {
         this.queenStateCommit--;
       }
@@ -857,16 +947,16 @@ class Unit {
         if (pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "defend-snail" };
         if (pressure.enemyNearGate) return { obj: pressure.enemyNearGate, intent: "defend-gate" };
         if (enemyCarrier && Math.random() < 0.8 + urgency * 0.2) return { obj: enemyCarrier, intent: "stop-carrier" };
-        if (urgency > 0.6 && enemyQueen) return { obj: enemyQueen, intent: "queen-hunt" };
+        if (urgency > 0.6 && enemyQueen && (diffSet.level < 9 || support >= 1 || !lowLife)) return { obj: enemyQueen, intent: "queen-hunt" };
         if (pressure.enemyNearHive) return { obj: pressure.enemyNearHive, intent: "defend-hive" };
-        if (strategy === "military" && enemyQueen && dist(this.x, this.y, enemyQueen.x, enemyQueen.y) < 420) {
+        if (strategy === "military" && enemyQueen && dist(this.x, this.y, enemyQueen.x, enemyQueen.y) < 420 && (diffSet.level < 10 || support >= 1 || urgency > 0.75)) {
           return { obj: enemyQueen, intent: "queen-hunt" };
         }
         return { obj: { x: pressure.ownGate.x - 70, y: 410 }, intent: "guard-zone" };
       } else {
         if (this.queenState === "avoid-death") return { obj: { x: pressure.ownGate.x + 74, y: 430 }, intent: "queen-avoid-death" };
         if (this.queenState === "desperation-contest" && pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "queen-desperation" };
-        if (strategy === "military" && enemyQueen) return { obj: enemyQueen, intent: "queen-hunt" };
+        if (strategy === "military" && enemyQueen && (diffSet.level < 10 || support >= 2 || urgency > 0.72)) return { obj: enemyQueen, intent: "queen-hunt" };
         if (enemyCarrier) return { obj: enemyCarrier, intent: "stop-carrier" };
         if (pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "contest-snail" };
         if (pressure.enemyNearGate) return { obj: pressure.enemyNearGate, intent: "defend-gate" };
@@ -919,8 +1009,12 @@ class Unit {
     }
 
     if (strategy === "snail") {
+      if (isPrimaryRunner && !pressure.snailFriendly) {
+        const emergency = snailDanger.severity === "critical" || (ownQueen && ownQueen.queenLives <= 1 && this.enemiesNearby(170) >= 2);
+        if (directSnailThreat >= (diffSet.level >= 8 ? 124 : 110) && !emergency) return { obj: snail, intent: "ride-snail" };
+      }
       if (!pressure.snailFriendly) return { obj: snail, intent: "ride-snail" };
-      if (diffSet.escort && snail.rider && snail.rider.team === this.team) return { obj: snail.rider, intent: "escort-snail" };
+      if (diffSet.escort && snail.rider && snail.rider.team === this.team && (!isPrimaryRunner || directSnailThreat < 118)) return { obj: snail.rider, intent: "escort-snail" };
       if (berry && squad !== "contest") return { obj: berry, intent: "collect-berry" };
       return { obj: pressure.enemyNearSnail || pressure.ownHive, intent: "patrol-snail" };
     }
@@ -962,20 +1056,32 @@ class Unit {
     const currentIntent = this.target?.intent || "";
     const currentDanger = this.dangerZoneAgainst(currentObj);
     const forceReevaluate = this.shouldForceReevaluate(currentObj, currentIntent, currentDanger);
+    const isPrimaryRunner = this.isPrimarySnailRunner(strategy);
     if (this.aiTick <= 0 || !this.target || !this.target.obj || (forceReevaluate && this.objectiveCommit < 22)) {
       const nextTarget = this.chooseTarget(strategy);
+      const level = diffSet.level;
+      const preservingStrongIntent = this.target && this.target.obj && !forceReevaluate && level >= 6 && this.objectiveCommit > (level >= 9 ? 34 : 26);
+      const sameIntent = this.target && this.target.intent === nextTarget.intent;
+      const distantShift = dist((this.target?.obj?.x ?? this.x), (this.target?.obj?.y ?? this.y), (nextTarget.obj?.x ?? this.x), (nextTarget.obj?.y ?? this.y)) > (level >= 8 ? 165 : 120);
+      const allowedSwap =
+        !preservingStrongIntent ||
+        sameIntent ||
+        forceReevaluate ||
+        (level >= 9 && (nextTarget.intent === "stop-carrier" || nextTarget.intent === "contest-snail-hard")) ||
+        distantShift;
       const shouldSwitch = !this.target || forceReevaluate ||
         this.target.intent !== nextTarget.intent ||
         dist((this.target.obj?.x ?? this.x), (this.target.obj?.y ?? this.y), (nextTarget.obj?.x ?? this.x), (nextTarget.obj?.y ?? this.y)) > 120;
-      if (shouldSwitch || this.objectiveCommit <= 0) {
+      if ((shouldSwitch && allowedSwap) || this.objectiveCommit <= 0) {
         this.target = nextTarget;
-        this.objectiveCommit = 45 + Math.floor(50 * diffSet.discipline);
+        this.objectiveCommit = 45 + Math.floor(50 * diffSet.discipline) + this.intentCommitBoost(this.target.intent, strategy, isPrimaryRunner);
         this.lastObjectiveChange = game.time;
         const danger = this.dangerZoneAgainst(this.target.obj);
         this.approachType = this.pickApproach(this.target.intent, this.target.obj, danger, strategy);
-        this.approachCommit = 35 + Math.floor(65 * diffSet.discipline);
+        this.approachCommit = 35 + Math.floor(65 * diffSet.discipline) + (diffSet.level >= 7 ? 12 : 0);
       }
-      this.aiTick = Math.max(6, diffSet.reaction - (forceReevaluate ? 5 : 0));
+      const urgentRefresh = diffSet.level >= 8 && (forceReevaluate || this.target?.intent === "stop-carrier" || this.target?.intent === "contest-snail-hard");
+      this.aiTick = Math.max(5, diffSet.reaction - (urgentRefresh ? 6 : (forceReevaluate ? 3 : 0)));
     }
 
     const nearestEnemy = this.nearestEnemy(150);
@@ -1029,11 +1135,18 @@ class Unit {
     accel += (diffSet.aggression - 0.5) * 0.05;
     const losingFight = localEnemies > localAllies + 1;
     const altitudeDisadvantage = nearestEnemy && nearestEnemy.y + 10 < this.y;
-    const shouldDisengage = (losingFight || (altitudeDisadvantage && danger.score > 0.6)) &&
-      Math.random() < (0.16 + diffSet.retreat * 0.40 - this.bravery(strategy) * 0.2);
+    const directSnailThreat = isPrimaryRunner ? this.directSnailThreatDistance(130) : 999;
+    const ignoreRetreatForMount = isPrimaryRunner && this.target?.intent === "ride-snail" && directSnailThreat >= 120;
+    const disciplinedRetreat = diffSet.level >= 8 ? (danger.score > 0.70 || (losingFight && localEnemies >= 2)) : (losingFight || (altitudeDisadvantage && danger.score > 0.6));
+    const shouldDisengage = !ignoreRetreatForMount && disciplinedRetreat &&
+      Math.random() < (0.12 + diffSet.retreat * 0.36 - this.bravery(strategy) * 0.18 + (diffSet.level >= 9 ? 0.04 : 0));
 
     let plannedX = tx;
     let plannedY = ty;
+    if (isPrimaryRunner && this.target?.intent === "ride-snail" && !this.onSnail) {
+      this.approachType = "low-rise";
+      this.approachCommit = Math.max(this.approachCommit, 42);
+    }
 
     if (danger.topTrap && diffSet.trapSense > 0.45) {
       plannedX += this.x < tx ? -120 : 120;
@@ -1052,13 +1165,13 @@ class Unit {
       plannedY = Math.min(plannedY + 20, world.lavaY - 140);
     } else if (this.approachType === "fake-retreat" && this.approachCommit > 22) {
       plannedX = this.x + (this.x < tx ? -90 : 90);
-    } else if (this.approachType === "perch-wait") {
+    } else if (this.approachType === "perch-wait" && !(isPrimaryRunner && this.target?.intent === "ride-snail")) {
       const perch = world.platforms.find(p => Math.abs((p.x + p.w / 2) - tx) < 190 && p.y > world.spikeY + 90 && p.y < world.lavaY - 120);
       if (perch) {
         plannedX = perch.x + perch.w / 2;
         plannedY = perch.y - 10;
       }
-    } else if (this.approachType === "regroup-push") {
+    } else if (this.approachType === "regroup-push" && !(isPrimaryRunner && this.target?.intent === "ride-snail")) {
       const ally = units.find(u => !u.dead && u.team === this.team && u !== this && dist(this.x, this.y, u.x, u.y) < 260);
       if (ally && localAllies < 2) {
         plannedX = ally.x;
@@ -1070,14 +1183,22 @@ class Unit {
     if (snailIntent && !this.onSnail) {
       const snailCenterX = snail.x;
       const horizontalToSnail = Math.abs(snailCenterX - this.x);
-      const descentThreshold = 96;
+      const descentThreshold = isPrimaryRunner ? 118 : 96;
       const safeLavaBandY = world.lavaY - 64;
       const snailEngageY = clamp(snail.y - this.h + 8, world.spikeY + 110, world.lavaY - 84);
+      const mountCommitY = clamp(snail.y - this.h + 5, world.spikeY + 108, world.lavaY - 82);
 
       if (horizontalToSnail > descentThreshold) {
         plannedY = Math.min(plannedY, safeLavaBandY);
       } else {
-        plannedY = Math.min(plannedY, snailEngageY);
+        plannedY = Math.min(plannedY, isPrimaryRunner ? mountCommitY : snailEngageY);
+      }
+
+      if (isPrimaryRunner && horizontalToSnail < 132 && directSnailThreat >= 120) {
+        plannedY = Math.max(plannedY, mountCommitY);
+        if (Math.abs(snailCenterX - this.x) < 56) {
+          plannedY = mountCommitY;
+        }
       }
     }
 
@@ -1089,15 +1210,16 @@ class Unit {
       this.dir = planDx > 0 ? 1 : -1;
     }
 
-    const desiredHeightCeiling = world.spikeY + 95;
+    const desiredHeightCeiling = world.spikeY + (diffSet.level >= 9 ? 106 : 95);
     if (this.y < desiredHeightCeiling) {
       this.vy += 0.20;
     }
 
     const suppressUpward = danger.topTrap && diffSet.trapSense > 0.5 && this.y > (obj.y || this.y) + 10;
-    if (!suppressUpward && planDy < -16 && this.y > desiredHeightCeiling && this.y > world.spikeY + 105) {
+    const runnerFinalMount = isPrimaryRunner && this.target?.intent === "ride-snail" && Math.abs(snail.x - this.x) < 76 && directSnailThreat >= 120;
+    if (!runnerFinalMount && !suppressUpward && planDy < -16 && this.y > desiredHeightCeiling && this.y > world.spikeY + 105) {
       this.flap();
-    } else if (!suppressUpward && this.y > plannedY + 18 && Math.random() < 0.03 + diffSet.awareness * 0.03) {
+    } else if (!runnerFinalMount && !suppressUpward && this.y > plannedY + 18 && Math.random() < 0.03 + diffSet.awareness * 0.03) {
       this.flap();
     }
 
@@ -1113,10 +1235,12 @@ class Unit {
     if (this.role === "queen" && this.team === "gold") {
       const urgency = this.enemyUrgencyBoost();
       const queenCareful = this.queenLives <= 1 && diffSet.level >= 6;
-      if (!queenCareful && nearestEnemy && dist(this.x, this.y, nearestEnemy.x, nearestEnemy.y) < 135 && nearestEnemy.y < this.y + 8 && Math.random() < 0.14 + urgency * 0.08) {
+      const queenDisciplined = diffSet.level >= 10;
+      const queenMayDive = !queenCareful && (!queenDisciplined || this.alliesNearby(190) >= 2 || urgency > 0.78);
+      if (queenMayDive && nearestEnemy && dist(this.x, this.y, nearestEnemy.x, nearestEnemy.y) < 135 && nearestEnemy.y < this.y + 8 && Math.random() < 0.14 + urgency * 0.08) {
         this.flap(this.flapPower() + 0.18);
       }
-      if (this.y < 180 && Math.random() < 0.13) this.vy += 0.20;
+      if (this.y < (queenDisciplined ? 195 : 180) && Math.random() < (queenDisciplined ? 0.22 : 0.13)) this.vy += 0.20;
     }
 
     if (this.form === "speed" && Math.random() < 0.018 + diffSet.aggression * 0.01) this.flap(this.flapPower() + 0.1);
@@ -1307,6 +1431,10 @@ class Unit {
 function spawnMatch() {
   applyMap(game.currentMapIndex);
   units = [];
+  teamTactics.blue.primarySnailRunner = null;
+  teamTactics.blue.runnerLockUntil = 0;
+  teamTactics.gold.primarySnailRunner = null;
+  teamTactics.gold.runnerLockUntil = 0;
 
   const bq = new Unit({ team: "blue", role: "queen", x: 165, y: 650, isPlayer: true });
   const gq = new Unit({ team: "gold", role: "queen", x: world.width - 205, y: 650 });
