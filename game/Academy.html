@@ -480,7 +480,7 @@ for(let i=0;i<120;i++){
   createTree(x,z);
 }
 
-function circleBlocked(x,z,r, ignoreStructure=null){
+function circleBlocked(x,z,r, ignoreStructure=null, structureSpacingScale=1){
   if(x < -HALF_MAP+2 || x > HALF_MAP-2 || z < -HALF_MAP+2 || z > HALF_MAP-2) return true;
   for(const o of obstacles){
     if(Math.hypot(x-o.x, z-o.z) < r + o.r) return true;
@@ -488,7 +488,7 @@ function circleBlocked(x,z,r, ignoreStructure=null){
   for(const s of structures){
     if(s.dead || s===ignoreStructure) continue;
     if(!structureBlocksMovement(s)) continue;
-    if(Math.hypot(x-s.pos.x, z-s.pos.z) < r + s.radius) return true;
+    if(Math.hypot(x-s.pos.x, z-s.pos.z) < (r + s.radius) * structureSpacingScale) return true;
   }
   return false;
 }
@@ -1797,8 +1797,8 @@ function spawnRobot(x,z){
   scene.add(model);
   robots.push({
     group:model, pos:model.position,
-    hp:26, damage:10, radius:0.7, speed:7.6,
-    fireCd:0, dead:false, dying:false, anim:Math.random()*10, deathT:0
+    hp:8, damage:10, radius:0.7, speed:7.6,
+    fireCd:0, dead:false, dying:false, anim:Math.random()*10, deathT:0, isLiving:true
   });
 }
 
@@ -2170,6 +2170,12 @@ function chooseEnemyTarget(e){
     const d = dist2(e.pos, m.pos);
     if(d < nearestServantD){ nearestServantD = d; nearestServant = m; }
   }
+  let nearestRobot = null, nearestRobotD = 9999;
+  for(const r of robots){
+    if(r.dead || r.dying) continue;
+    const d = dist2(e.pos, r.pos);
+    if(d < nearestRobotD){ nearestRobotD = d; nearestRobot = r; }
+  }
 
   if(e.kind==="mole"){
     const bestWall = nearestAttackableStructure(e, 999, s => (s.type==="wall" || s.type==="diamondWall")) || null;
@@ -2179,6 +2185,7 @@ function chooseEnemyTarget(e){
     return player;
   }
   if(nearestServant && nearestServantD < 22) return nearestServant;
+  if(nearestRobot && nearestRobotD < 22) return nearestRobot;
 
   const priorityByKind = {
     rat: { wall: 2.15, diamondWall: 1.95, factory: 1.25, supplyNest: 1.2, scoutPost: 1.05, fountain: 1.0, beacon: 0.95, robo: 1.0 },
@@ -2199,6 +2206,7 @@ function chooseEnemyTarget(e){
     }
   }
   if(bestStructure) return bestStructure;
+  if(nearestRobot) return nearestRobot;
   if(nearestServant) return nearestServant;
   if(!player.dead) return player;
   return null;
@@ -2356,11 +2364,26 @@ function catChooseTarget(){
       const d = dist2(cat.pos, m.pos);
       if(d < nearestServantD){ nearestServant = m; nearestServantD = d; }
     }
+    let nearestRobot = null, nearestRobotD = 9999;
+    for(const r of robots){
+      if(r.dead || r.dying) continue;
+      const d = dist2(cat.pos, r.pos);
+      if(d < nearestRobotD){ nearestRobot = r; nearestRobotD = d; }
+    }
     if(nearestServant && nearestServantD < 18) return nearestServant;
+    if(nearestRobot && nearestRobotD < 18) return nearestRobot;
     const antiBase = nearestAttackableStructure(cat, 999, s => ["wall","diamondWall","turret","cannon","shardLauncher","sawBlaster","zapCoil","mortarBloom","barrierTotem","fortPlate"].includes(s.type));
     if(antiBase && dist2(cat.pos, antiBase.pos) < 56) return antiBase;
     return { pos:cat.lastSeenPlayerPos, radius:1.0, isMemoryTarget:true };
   }
+
+  let nearestRobot = null, nearestRobotD = 9999;
+  for(const r of robots){
+    if(r.dead || r.dying) continue;
+    const d = dist2(cat.pos, r.pos);
+    if(d < nearestRobotD){ nearestRobot = r; nearestRobotD = d; }
+  }
+  if(nearestRobot && nearestRobotD < 26) return nearestRobot;
 
   const bestStructure = nearestAttackableStructure(cat, 45);
   if(bestStructure) return bestStructure;
@@ -2971,7 +2994,7 @@ function updatePlayer(dt){
     buildTelegraph.visible = true;
     buildTelegraph.position.set(p.x, p.y+0.06, p.z);
     buildTelegraph.scale.setScalar(selected.radius * 0.75);
-    buildTelegraph.material.color.set(circleBlocked(p.x,p.z,selected.radius) ? 0xff4444 : 0x7aff9a);
+    buildTelegraph.material.color.set(circleBlocked(p.x,p.z,selected.radius, null, 0.75) ? 0xff4444 : 0x7aff9a);
     buildTelegraph.rotation.set(-Math.PI/2, 0, 0); // always flat circle
   }
 }
@@ -2981,7 +3004,7 @@ function tryPlaceStructure(){
   if(cheese < selected.cost){ showCenter("Not enough cheese", 1); return; }
 
   const p = getBuildPlace();
-  if(circleBlocked(p.x,p.z,selected.radius)){ showCenter("Cannot build there", 1); return; }
+  if(circleBlocked(p.x,p.z,selected.radius, null, 0.75)){ showCenter("Cannot build there", 1); return; }
 
   cheese -= selected.cost;
   createStructure(selected.type, p.x, p.z, player.heading, selected);
