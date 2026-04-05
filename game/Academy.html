@@ -231,6 +231,22 @@ const repairBeams = [];
 
 let cat = null;
 let catSpawnTriggered = false;
+const DIFFICULTY_LEVELS = {
+  easy: { wave:0.85, cap:0.85, catIQ:0.72, flank:0.08, antiCamp:0.65, specials:0.4, elites:0.75 },
+  normal: { wave:1.0, cap:1.0, catIQ:1.0, flank:0.18, antiCamp:1.0, specials:1.0, elites:1.0 },
+  hard: { wave:1.2, cap:1.25, catIQ:1.35, flank:0.33, antiCamp:1.35, specials:1.35, elites:1.28 },
+  brutal: { wave:1.45, cap:1.55, catIQ:1.75, flank:0.52, antiCamp:1.8, specials:1.8, elites:1.65 }
+};
+const difficultyKey = (new URLSearchParams(location.search).get("difficulty") || "hard").toLowerCase();
+const difficulty = DIFFICULTY_LEVELS[difficultyKey] || DIFFICULTY_LEVELS.hard;
+const combatDirector = {
+  heat:0,
+  lastPlayerPos:new THREE.Vector3(),
+  hideScore:0,
+  flankBias:1,
+  lastPocket:[],
+  surgeCd:20
+};
 
 // -------------------------------------------------
 // BUILD CATEGORIES
@@ -1142,6 +1158,46 @@ function getSeparationVector(entity, list, desiredMinDist=1.8){
   }
   return out;
 }
+function collisionPushOut(x,z,radius, collideWithStructures=true, ignoreStructure=null){
+  let px = x, pz = z;
+  let hitCount = 0;
+  for(let iter=0; iter<4; iter++){
+    let adjusted = false;
+    for(const o of obstacles){
+      const dx = px - o.x;
+      const dz = pz - o.z;
+      const d = Math.hypot(dx, dz) || 0.0001;
+      const minD = radius + o.r + 0.03;
+      if(d < minD){
+        const push = (minD - d);
+        px += (dx / d) * push;
+        pz += (dz / d) * push;
+        hitCount++;
+        adjusted = true;
+      }
+    }
+    if(collideWithStructures){
+      for(const s of structures){
+        if(s.dead || s===ignoreStructure || !structureBlocksMovement(s)) continue;
+        const dx = px - s.pos.x;
+        const dz = pz - s.pos.z;
+        const d = Math.hypot(dx, dz) || 0.0001;
+        const minD = radius + s.radius + 0.04;
+        if(d < minD){
+          const push = (minD - d);
+          px += (dx / d) * push;
+          pz += (dz / d) * push;
+          hitCount++;
+          adjusted = true;
+        }
+      }
+    }
+    px = clamp(px, -HALF_MAP+2.25, HALF_MAP-2.25);
+    pz = clamp(pz, -HALF_MAP+2.25, HALF_MAP-2.25);
+    if(!adjusted) break;
+  }
+  return { x:px, z:pz, hitCount };
+}
 function steerMove(entity, desired, dt, collideWithStructures=true, ignoreStructure=null, neighborList=null){
   const start = entity.pos;
   let best = null;
@@ -1165,6 +1221,25 @@ function steerMove(entity, desired, dt, collideWithStructures=true, ignoreStruct
     }
     return false;
   }
+  function penetrationPenalty(x, z){
+    let p = 0;
+    for(const o of obstacles){
+      const d = Math.hypot(x-o.x, z-o.z);
+      const minD = radius + o.r;
+      if(d < minD) p += (minD - d) * 8;
+      if(d < minD + 0.6) p += (minD + 0.6 - d) * 2.2;
+    }
+    if(collideWithStructures){
+      for(const s of structures){
+        if(s.dead || s===ignoreStructure || !structureBlocksMovement(s)) continue;
+        const d = Math.hypot(x-s.pos.x, z-s.pos.z);
+        const minD = radius + s.radius;
+        if(d < minD) p += (minD - d) * 10;
+        if(d < minD + 0.7) p += (minD + 0.7 - d) * 2.7;
+      }
+    }
+    return p;
+  }
 
   function neighborPenaltyAt(x, z){
     if(!neighborList) return 0;
@@ -1185,10 +1260,11 @@ function steerMove(entity, desired, dt, collideWithStructures=true, ignoreStruct
     const dz = Math.cos(heading);
     const nx = start.x + dx * fullStep;
     const nz = start.z + dz * fullStep;
-    if(blockedAt(nx, nz)) continue;
-
+    if(nx < -HALF_MAP+2 || nx > HALF_MAP-2 || nz < -HALF_MAP+2 || nz > HALF_MAP-2) continue;
     let score = Math.abs(off)*0.18;
     score += neighborPenaltyAt(nx, nz);
+    score += penetrationPenalty(nx, nz);
+    if(blockedAt(nx, nz)) score += 2.1;
     if(score < bestScore){
       bestScore = score;
       best = { x:nx, z:nz, heading };
@@ -1202,7 +1278,7 @@ function steerMove(entity, desired, dt, collideWithStructures=true, ignoreStruct
   for(const scale of fallbackScales){
     const nx = start.x + fx * fullStep * scale;
     const nz = start.z + fz * fullStep * scale;
-    if(!blockedAt(nx, nz)){
+    if(nx >= -HALF_MAP+2 && nx <= HALF_MAP-2 && nz >= -HALF_MAP+2 && nz <= HALF_MAP-2){
       return { x:nx, z:nz, heading:baseHeading };
     }
   }
@@ -1213,7 +1289,7 @@ function steerMove(entity, desired, dt, collideWithStructures=true, ignoreStruct
     const h = baseHeading + off;
     const nx = start.x + Math.sin(h) * fullStep * 0.24;
     const nz = start.z + Math.cos(h) * fullStep * 0.24;
-    if(!blockedAt(nx, nz)){
+    if(nx >= -HALF_MAP+2 && nx <= HALF_MAP-2 && nz >= -HALF_MAP+2 && nz <= HALF_MAP-2){
       return { x:nx, z:nz, heading:h };
     }
   }
@@ -1233,7 +1309,13 @@ function directSteerToward(entity, targetPos, dt, collideWithStructures=true, ig
     desired.x /= l2;
     desired.z /= l2;
   }
-  return steerMove(entity, desired, dt, collideWithStructures, ignoreStructure, neighborList);
+  const raw = steerMove(entity, desired, dt, collideWithStructures, ignoreStructure, neighborList);
+  if(!raw) return raw;
+  const pushed = collisionPushOut(raw.x, raw.z, entity.radius || 0.8, collideWithStructures, ignoreStructure);
+  raw.x = pushed.x;
+  raw.z = pushed.z;
+  raw.bumped = pushed.hitCount > 0;
+  return raw;
 }
 function smoothAimYaw(pivot, holder, key, desiredYaw, dt, speed=8.5){
   if(!pivot) return;
@@ -1244,7 +1326,7 @@ function smoothAimYaw(pivot, holder, key, desiredYaw, dt, speed=8.5){
 function updateAgentStuck(entity, dt, hasTarget, onStuck){
   // AI tuning helper: general stuck detector with brief cooldown.
   if(!entity._stuck){
-    entity._stuck = { x:entity.pos.x, z:entity.pos.z, still:0, cooldown:0 };
+    entity._stuck = { x:entity.pos.x, z:entity.pos.z, still:0, cooldown:0, phase:0, antiOsc:0 };
   }
   const s = entity._stuck;
   const moved = Math.hypot(entity.pos.x - s.x, entity.pos.z - s.z);
@@ -1252,13 +1334,33 @@ function updateAgentStuck(entity, dt, hasTarget, onStuck){
   if(hasTarget && moved < 0.06) s.still += dt;
   else s.still = Math.max(0, s.still - dt * 0.85);
   s.x = entity.pos.x; s.z = entity.pos.z;
-  if(hasTarget && s.still > 0.4 && s.cooldown <= 0){
+  if(hasTarget && s.still > 0.35 && s.cooldown <= 0){
     s.still = 0;
-    s.cooldown = 0.55;
-    onStuck?.();
+    s.cooldown = 0.48;
+    s.phase = (s.phase + 1) % 5;
+    s.antiOsc = 0.9;
+    onStuck?.(s.phase);
     return true;
   }
+  s.antiOsc = Math.max(0, s.antiOsc - dt);
   return false;
+}
+function meleeStopDistance(attacker, target, extra=0.16){
+  return (attacker.radius || 0.7) + (target?.radius || 0.7) + (attacker.attackRange || 1.2) - 0.48 + extra;
+}
+function pickAttackSlot(attacker, targetPos, targetRadius=1.0, prefDir=1){
+  const desired = meleeStopDistance(attacker, { radius:targetRadius }, 0.22);
+  const toA = Math.atan2(attacker.pos.x - targetPos.x, attacker.pos.z - targetPos.z);
+  const offsets = [0, 0.44*prefDir, -0.44*prefDir, 0.88*prefDir, -0.88*prefDir, 1.2, -1.2, Math.PI];
+  for(const off of offsets){
+    const a = toA + off;
+    const px = targetPos.x + Math.sin(a) * desired;
+    const pz = targetPos.z + Math.cos(a) * desired;
+    if(!circleBlocked(px, pz, attacker.radius || 0.8, null, 0.86)){
+      return new THREE.Vector3(px, groundHeight(px,pz), pz);
+    }
+  }
+  return new THREE.Vector3(targetPos.x, groundHeight(targetPos.x,targetPos.z), targetPos.z);
 }
 function setRepathPoint(entity, centerPos, radius=4.5){
   let repath = null;
@@ -2205,21 +2307,31 @@ function makeEnemy(kind,x,z){
   if(kind==="rat"){ model = makeRatModel(); hp = 22; speed = 7.0; damage = 10; radius = 0.8; }
   if(kind==="mole"){ model = makeMoleModel(); hp = 40; speed = 5.5; damage = 55; radius = 0.9; }
   if(kind==="weasel"){ model = makeWeaselModel(); hp = 115; speed = 10.1; damage = 24; radius = 1.1; turnRate = 1.6; }
+  if(kind==="assassin"){ model = makeWeaselModel(); hp = 54; speed = 11.8; damage = 38; radius = 0.78; attackRange = 1.15; turnRate = 6.2; }
+  if(kind==="ram"){ model = makeMoleModel(); hp = 380; speed = 4.9; damage = 30; radius = 1.25; attackRange = 1.45; turnRate = 1.0; }
 
   const phaseTime = Math.max(0, time - 60);
   const powerScale = 1 + phaseTime * 0.0016;
+  const eliteChance = clamp((time - 260) / 380, 0, 0.35) * difficulty.elites;
+  const elite = Math.random() < eliteChance && kind !== "ram";
   hp *= powerScale;
   damage *= powerScale;
   speed *= 1 + phaseTime * 0.00045;
+  if(elite){
+    hp *= 1.55;
+    damage *= 1.28;
+    speed *= 1.08;
+  }
 
   model.position.set(x, groundHeight(x,z), z);
   scene.add(model);
-  const bar = createHealthBar(kind==="weasel"?1.9:1.4, 0xff6666);
-  bar.position.y = kind==="weasel" ? 2.35 : 1.8;
+  const wide = kind==="weasel" || kind==="ram" ? 1.9 : 1.4;
+  const bar = createHealthBar(wide, elite ? 0xffb347 : 0xff6666);
+  bar.position.y = kind==="weasel" || kind==="ram" ? 2.35 : 1.8;
   model.add(bar);
   const dazeIcon = createDazeSprite();
   if (dazeIcon) {
-    dazeIcon.position.set(0, kind==="weasel" ? 3.1 : 2.45, 0);
+    dazeIcon.position.set(0, kind==="weasel" || kind==="ram" ? 3.1 : 2.45, 0);
     model.add(dazeIcon);
   }
 
@@ -2227,8 +2339,25 @@ function makeEnemy(kind,x,z){
     kind, group:model, pos:model.position, hp, maxHp:hp, speed, damage, radius,
     attackRange, target:null, dead:false, dying:false, anim:Math.random()*10, attackAnim:0,
     attackCd:0, heading:Math.random()*Math.PI*2, turnRate, healthBar:bar, deathT:0, isLiving:true,
-    stunCd:0, dazeIcon
+    stunCd:0, dazeIcon, elite,
+    role:["pursuer","flanker","breaker","supportHunter","zone"][Math.floor(Math.random()*5)],
+    avoidCrowdBias:0,
+    dashCd:rand(2.2,4.4),
+    ramState:"idle",
+    ramChargeDir:new THREE.Vector3(),
+    ramWindup:0,
+    ramDaze:0
   };
+  if(kind==="ram"){
+    e.role = "breaker";
+    e.speed *= 0.85;
+  }
+  if(kind==="assassin"){
+    e.role = "supportHunter";
+  }
+  if(elite){
+    e.group.traverse(c=>{ if(c.isMesh && c.material && c.material.color) c.material.color.offsetHSL(0.02, 0.08, 0.1); });
+  }
   enemies.push(e);
   return e;
 }
@@ -2240,9 +2369,32 @@ function chooseEnemyTarget(e){
     structurePressure.set(other.target, (structurePressure.get(other.target) || 0) + 1);
   }
 
+  const hotZonePressure = 1 + combatDirector.heat * 0.55 * difficulty.antiCamp;
   if(e.kind==="rat"){
     const bestWall = nearestAttackableStructure(e, 999, s => (s.type==="wall" || s.type==="diamondWall")) || null;
     if(bestWall && dist2(e.pos, bestWall.pos) < 60) return bestWall;
+  }
+  if(e.kind==="ram"){
+    const wall = nearestAttackableStructure(e, 999, s => isWallStructure(s) || s.type==="fortPlate" || s.type==="barrierTotem");
+    if(wall) return wall;
+  }
+  if(e.kind==="assassin"){
+    let bestSupport = null, bestScore = 9999;
+    for(const m of servantMice){
+      if(m.dead || m.dying) continue;
+      let nearbyGuards = 0;
+      for(const ally of servantMice){
+        if(ally===m || ally.dead || ally.dying) continue;
+        if(dist2(ally.pos, m.pos) < 3.5) nearbyGuards++;
+      }
+      const d = dist2(e.pos, m.pos);
+      const score = d + nearbyGuards * 4.4;
+      if(score < bestScore){ bestScore = score; bestSupport = m; }
+    }
+    if(bestSupport && bestScore < 48) return bestSupport;
+    const supportStructure = nearestAttackableStructure(e, 999, s => ["fountain","factory","supplyNest","repairAnchor","robo"].includes(s.type));
+    if(supportStructure && dist2(e.pos, supportStructure.pos) < 52) return supportStructure;
+    if(!player.dead && dist2(e.pos, player.pos) < 18 && !lineBlocked(e.pos, player.pos)) return player;
   }
 
   const nearPlayer = !player.dead && dist2(e.pos, player.pos) < 16;
@@ -2265,7 +2417,7 @@ function chooseEnemyTarget(e){
     const bestWall = nearestAttackableStructure(e, 999, s => (s.type==="wall" || s.type==="diamondWall")) || null;
     if(bestWall) return bestWall;
   }
-  if(!player.dead && !lineBlocked(e.pos, player.pos) && dist2(e.pos, player.pos) < 26){
+  if(!player.dead && !lineBlocked(e.pos, player.pos) && dist2(e.pos, player.pos) < 26 + combatDirector.heat * 7){
     return player;
   }
   if(nearestServant && nearestServantD < 22) return nearestServant;
@@ -2283,7 +2435,8 @@ function chooseEnemyTarget(e){
     const d = dist2(e.pos,s.pos);
     const typePriority = priorityByKind[e.kind]?.[s.type] || 1;
     const pressure = structurePressure.get(s) || 0;
-    const score = d / typePriority + pressure * 3.0;
+    const heatBias = Math.max(0, 1 - dist2(s.pos, player.pos) / 28) * combatDirector.heat * hotZonePressure;
+    const score = d / typePriority + pressure * 3.0 - heatBias * 4.1;
     if(score < bestScore){
       bestScore = score;
       bestStructure = s;
@@ -2338,35 +2491,102 @@ function updateEnemies(dt){
     e.repathTimer = Math.max(0, (e.repathTimer || 0) - dt);
     const moveTarget = (e.repathTimer > 0 && e.repathTarget) ? e.repathTarget : e.target;
     if(!moveTarget) continue;
-    const d = dist2(e.pos, moveTarget.pos || moveTarget);
+    let targetPos = moveTarget.pos || moveTarget;
+    const d = dist2(e.pos, targetPos);
     const isStunned = e.stunCd > 0;
+    if(e.kind==="ram"){
+      e.ramDaze = Math.max(0, e.ramDaze - dt);
+      if(e.ramDaze > 0){
+        e.stunCd = Math.max(e.stunCd, e.ramDaze);
+      }
+    }
 
-    if(!isStunned && d > e.attackRange + (moveTarget.radius || 0.5)){
-      const step = directSteerToward({ pos:e.pos, speed:e.speed, radius:e.radius }, moveTarget.pos || moveTarget, dt, true, e.target, enemies);
+    if(e.target && !e.repathTimer && !isStunned && e.kind !== "ram"){
+      if(!e.attackSlot || dist2(e.attackSlot, targetPos) > 4.5 || Math.random() < 0.02){
+        e.attackSlot = pickAttackSlot(e, targetPos, e.target.radius || 0.9, e._stuck?.phase % 2 ? -1 : 1);
+      }
+      targetPos = e.attackSlot || targetPos;
+    }
+
+    if(e.kind==="ram" && !isStunned){
+      if(e.ramState === "idle"){
+        const wallTarget = nearestAttackableStructure(e, 999, s => isWallStructure(s) || s.type==="fortPlate");
+        if(wallTarget && dist2(e.pos, wallTarget.pos) < 36){
+          e.ramState = "windup";
+          e.ramWindup = 0.7;
+          e.ramTarget = wallTarget;
+          e.ramChargeDir.set(wallTarget.pos.x - e.pos.x, 0, wallTarget.pos.z - e.pos.z).normalize();
+          addBurst(e.pos.x, e.pos.y+1.1, e.pos.z, 0xff9d3d, 8, 2.5, 0.35, 0.07);
+        }
+      } else if(e.ramState === "windup"){
+        e.ramWindup -= dt;
+        if(e.ramWindup <= 0){
+          e.ramState = "charge";
+        }
+      } else if(e.ramState === "charge"){
+        const charge = { x:e.pos.x + e.ramChargeDir.x * (e.speed*2.45) * dt, z:e.pos.z + e.ramChargeDir.z * (e.speed*2.45) * dt };
+        const pushed = collisionPushOut(charge.x, charge.z, e.radius, true, null);
+        e.pos.x = pushed.x; e.pos.z = pushed.z;
+        e.heading = Math.atan2(e.ramChargeDir.x, e.ramChargeDir.z);
+        let hitStructure = null;
+        for(const s of structures){
+          if(s.dead || !structureBlocksMovement(s)) continue;
+          if(dist2(e.pos, s.pos) < e.radius + s.radius + 0.12){ hitStructure = s; break; }
+        }
+        if(hitStructure){
+          damageStructure(hitStructure, e.damage * 4.2);
+          e.ramState = "idle";
+          e.ramDaze = 3.0;
+          addBurst(e.pos.x, e.pos.y+1.0, e.pos.z, 0xff8c4a, 18, 5.6, 0.8, 0.11);
+        } else if(Math.random() < 0.015){
+          e.ramState = "idle";
+        }
+      }
+    } else if(!isStunned && d > meleeStopDistance(e, e.target || moveTarget, 0.1)){
+      const step = directSteerToward({ pos:e.pos, speed:e.speed*(1+e.avoidCrowdBias*0.2), radius:e.radius }, targetPos, dt, true, e.target, enemies);
       if(step){
         e.heading += clamp(angleDiff(e.heading, step.heading), -e.turnRate*dt, e.turnRate*dt);
         e.pos.x = step.x;
         e.pos.z = step.z;
       }
-    } else if(!isStunned && e.attackCd <= 0 && e.target && !e.repathTimer){
+    } else if(!isStunned && e.attackCd <= 0 && e.target && !e.repathTimer && (e.kind!=="ram" || e.ramDaze > 0 || e.ramState==="idle")){
       e.attackCd = e.kind==="weasel" ? 0.56 : e.kind==="mole" ? 0.98 : 0.72;
+      if(e.kind==="assassin") e.attackCd = 0.5;
       e.attackAnim = 1;
       addBurst(e.pos.x,e.pos.y+0.9,e.pos.z, e.kind==="mole"?0x884333:0xff6666, 10, 4, 0.45, 0.08);
 
       if(e.target === player){
         applyDamageToLiving(player, 999, e.pos);
       } else if(isLivingTarget(e.target)){
-        applyDamageToLiving(e.target, e.damage, e.target.pos);
+        const bonus = (e.kind==="assassin" && (e.target.state==="servant" || e.target.kind==="robot")) ? 1.45 : 1;
+        applyDamageToLiving(e.target, e.damage * bonus, e.target.pos);
       } else {
-        damageStructure(e.target, e.damage);
+        damageStructure(e.target, e.kind==="ram" ? e.damage*1.6 : e.damage);
         if(e.kind==="mole"){
           killEnemy(e);
         }
       }
+      if(e.kind==="assassin"){
+        e.dashCd = rand(1.3,2.1);
+      }
     }
-    updateAgentStuck(e, dt, !!e.target, ()=>{
+    e.dashCd = Math.max(0, (e.dashCd || 0) - dt);
+    if(e.kind==="assassin" && e.dashCd <= 0 && e.target && d > 2.2 && d < 10 && !lineBlocked(e.pos, targetPos)){
+      e.dashCd = rand(2.5,4.1);
+      const dir = new THREE.Vector3(targetPos.x - e.pos.x, 0, targetPos.z - e.pos.z).normalize();
+      const nx = e.pos.x + dir.x * 3.6;
+      const nz = e.pos.z + dir.z * 3.6;
+      const pushed = collisionPushOut(nx, nz, e.radius, true, e.target);
+      e.pos.x = pushed.x; e.pos.z = pushed.z;
+      addBurst(e.pos.x, e.pos.y+0.8, e.pos.z, 0xb75fff, 7, 3.6, 0.34, 0.06);
+    }
+    updateAgentStuck(e, dt, !!e.target, (phase)=>{
       e.target = chooseEnemyTarget(e);
-      setRepathPoint(e, e.target?.pos || e.pos, 4.8);
+      e.avoidCrowdBias = phase >= 3 ? 1.0 : 0.25;
+      if(phase === 0) setRepathPoint(e, e.target?.pos || e.pos, 3.8);
+      else if(phase === 1) setRepathPoint(e, e.target?.pos || e.pos, 5.2);
+      else if(phase === 2) e._stuck.side = (e._stuck.side || 1) * -1;
+      else setRepathPoint(e, e.target?.pos || player.pos, 7.5);
     });
 
     e.pos.y = groundHeight(e.pos.x,e.pos.z);
@@ -2433,6 +2653,15 @@ function spawnCat(){
       attackAnim:0,
       deathT:0,
       healthBar:bar
+      ,abilityCd:0
+      ,lungeCd:0
+      ,burstT:0
+      ,roarCd:8
+      ,mode:"hunt"
+      ,failedRoute:0
+      ,routePersist:0
+      ,smartChain:[]
+      ,heatTrack:0
     };
 
     ui.bossWrap.style.display = "block";
@@ -2443,12 +2672,18 @@ function spawnCat(){
 function catChooseTarget(){
   if(!cat || cat.dead || cat.dying) return null;
   const playerDist = dist2(cat.pos, player.pos);
-  const playerVisible = !player.dead && !lineBlocked(cat.pos, player.pos) && playerDist < 40;
+  const playerVisible = !player.dead && !lineBlocked(cat.pos, player.pos) && playerDist < 44;
+  const pursuitMemory = (6.2 + difficulty.catIQ * 2.2 + combatDirector.heat * 2.1);
   if(playerVisible){
-    // Aggro memory keeps pressure up when LOS briefly breaks.
-    cat.aggroMemory = 6.2;
+    cat.aggroMemory = pursuitMemory;
     cat.lastSeenPlayerPos.copy(player.pos);
+    cat.failedRoute = Math.max(0, cat.failedRoute - 1);
     return player;
+  }
+
+  if(!player.dead && (cat.aggroMemory > 0 || playerDist < 26 + combatDirector.heat*8)){
+    if(cat.aggroMemory <= 0) cat.aggroMemory = pursuitMemory * 0.45;
+    if(playerDist < 52) return { pos:cat.lastSeenPlayerPos.clone().lerp(player.pos, 0.35), radius:1.0, isMemoryTarget:true, isPlayerMemory:true };
   }
 
   if(cat.aggroMemory > 0){
@@ -2464,10 +2699,12 @@ function catChooseTarget(){
       const d = dist2(cat.pos, r.pos);
       if(d < nearestRobotD){ nearestRobot = r; nearestRobotD = d; }
     }
-    if(nearestServant && nearestServantD < 18) return nearestServant;
-    if(nearestRobot && nearestRobotD < 18) return nearestRobot;
-    const antiBase = nearestAttackableStructure(cat, 999, s => ["wall","diamondWall","turret","cannon","shardLauncher","sawBlaster","zapCoil","mortarBloom","barrierTotem","fortPlate"].includes(s.type));
-    if(antiBase && dist2(cat.pos, antiBase.pos) < 56) return antiBase;
+    if(cat.failedRoute >= 3 && cat.aggroMemory < 2.7){
+      const antiBase = nearestAttackableStructure(cat, 999, s => ["wall","diamondWall","turret","cannon","shardLauncher","sawBlaster","zapCoil","mortarBloom","barrierTotem","fortPlate"].includes(s.type));
+      if(antiBase && dist2(cat.pos, antiBase.pos) < 56) return antiBase;
+    }
+    if(nearestServant && nearestServantD < 14 && Math.random() < 0.3) return nearestServant;
+    if(nearestRobot && nearestRobotD < 14 && Math.random() < 0.22) return nearestRobot;
     return { pos:cat.lastSeenPlayerPos, radius:1.0, isMemoryTarget:true };
   }
 
@@ -2492,7 +2729,8 @@ function pickDetourWaypoint(entity, targetPos, ignoreStructure=null){
 
   const candidates = [];
   const segment = Math.min(13, Math.max(5, dist * 0.45));
-  for(const side of [-1, 1]){
+  const sideOrder = entity.detourSide ? [entity.detourSide, -entity.detourSide] : (Math.random()<0.5 ? [-1,1] : [1,-1]);
+  for(const side of sideOrder){
     for(const offset of [2.8, 4.6, 6.2, 8.0]){
       const wp = new THREE.Vector3(
         entity.pos.x + toTarget.x * segment + normal.x * offset * side,
@@ -2505,12 +2743,23 @@ function pickDetourWaypoint(entity, targetPos, ignoreStructure=null){
       const radius = entity.radius || 1.1;
       if(circleBlocked(wp.x, wp.z, radius, ignoreStructure)) continue;
       if(lineBlocked(entity.pos, wp)) continue;
-      if(lineBlocked(wp, targetPos)) continue;
-      const routeCost = dist2(entity.pos, wp) + dist2(wp, targetPos);
-      candidates.push({ wp, routeCost });
+      const routeCost = dist2(entity.pos, wp) + dist2(wp, targetPos) + (entity.detourSide === side ? -0.6 : 0.3);
+      candidates.push({ wp, routeCost, side });
+      for(const cornerOffset of [2.2, -2.2]){
+        const wp2 = wp.clone().add(new THREE.Vector3(normal.x*cornerOffset,0,normal.z*cornerOffset));
+        wp2.x = clamp(wp2.x, -HALF_MAP+3.2, HALF_MAP-3.2);
+        wp2.z = clamp(wp2.z, -HALF_MAP+3.2, HALF_MAP-3.2);
+        if(circleBlocked(wp2.x, wp2.z, radius, ignoreStructure)) continue;
+        if(lineBlocked(wp, wp2) || lineBlocked(wp2, targetPos)) continue;
+        candidates.push({ wp, wp2, routeCost:routeCost + dist2(wp,wp2)*0.6, side });
+      }
     }
   }
   candidates.sort((a,b)=>a.routeCost - b.routeCost);
+  if(candidates[0]){
+    entity.detourSide = candidates[0].side;
+    entity.smartChain = candidates[0].wp2 ? [candidates[0].wp, candidates[0].wp2] : [candidates[0].wp];
+  }
   return candidates[0]?.wp || null;
 }
 function updateCat(dt){
@@ -2528,17 +2777,22 @@ function updateCat(dt){
   cat.anim += dt;
   cat.attackAnim = Math.max(0, cat.attackAnim - dt*3);
   cat.attackCd -= dt;
+  cat.abilityCd = Math.max(0, (cat.abilityCd || 0) - dt);
+  cat.lungeCd = Math.max(0, (cat.lungeCd || 0) - dt);
+  cat.roarCd = Math.max(0, (cat.roarCd || 0) - dt);
+  cat.burstT = Math.max(0, (cat.burstT || 0) - dt);
   cat.aggroMemory = Math.max(0, cat.aggroMemory - dt);
   cat.repathTimer = Math.max(0, (cat.repathTimer || 0) - dt);
+  cat.routePersist = Math.max(0, (cat.routePersist || 0) - dt);
 
   const target = catChooseTarget();
   let moveTarget = null;
-  let moveSpeed = cat.speed;
+  let moveSpeed = cat.speed * (cat.burstT > 0 ? 1.65 : 1);
 
   if(target){
     moveTarget = target.pos || target;
     cat.visibleAggro = true;
-    if(target === player) moveSpeed = cat.sprint;
+    if(target === player) moveSpeed = cat.sprint * (1 + combatDirector.heat * 0.08);
     else if(target.isMemoryTarget) moveSpeed = cat.sprint * 0.9;
   } else {
     cat.visibleAggro = false;
@@ -2547,17 +2801,48 @@ function updateCat(dt){
     }
     moveTarget = cat.prowlTarget;
   }
+  if(target === player || target?.isPlayerMemory){
+    const pv = new THREE.Vector3(Math.sin(player.heading), 0, Math.cos(player.heading)).multiplyScalar(clamp(dist2(cat.pos, player.pos)/9, 0.5, 2.4));
+    const intercept = player.pos.clone().addScaledVector(pv, difficulty.catIQ * 0.58);
+    if(Math.random() < difficulty.flank + combatDirector.heat * 0.2){
+      const side = cat.detourSide || (Math.random() < 0.5 ? -1 : 1);
+      const normal = new THREE.Vector3(-pv.z,0,pv.x).normalize().multiplyScalar(2.4 + combatDirector.heat*3.2);
+      intercept.addScaledVector(normal, side);
+    }
+    moveTarget = intercept;
+  }
   const canPathDirect = !lineBlocked(cat.pos, moveTarget);
   if(canPathDirect){
     cat.smartWaypoint = null;
+    cat.smartChain = [];
+    cat.failedRoute = Math.max(0, cat.failedRoute - dt*0.8);
   } else if(!cat.smartWaypoint || dist2(cat.pos, cat.smartWaypoint) < 1.7 || Math.random() < 0.03){
     cat.smartWaypoint = pickDetourWaypoint(cat, moveTarget, target && target.type ? target : null);
+    if(!cat.smartWaypoint) cat.failedRoute += dt * 0.8;
+    cat.routePersist = 1.2 + difficulty.catIQ * 0.8;
+  }
+  if(cat.smartChain?.length){
+    if(dist2(cat.pos, cat.smartChain[0]) < 1.8) cat.smartChain.shift();
+    if(cat.smartChain[0]) cat.smartWaypoint = cat.smartChain[0];
   }
   if(cat.smartWaypoint) moveTarget = cat.smartWaypoint;
   if(cat.repathTimer > 0 && cat.repathTarget) moveTarget = cat.repathTarget;
 
   const d = dist2(cat.pos, moveTarget);
-  if(d > cat.attackRange + (target?.radius || 0.4)){
+  if(!target?.isMemoryTarget && target && d < 9.5 && target===player && cat.burstT<=0 && cat.abilityCd<=0 && Math.random()<0.016*difficulty.specials){
+    cat.burstT = 0.85;
+    cat.abilityCd = 4.6 / difficulty.specials;
+    addBurst(cat.pos.x,cat.pos.y+2.3,cat.pos.z,0xff8b52,16,5.6,0.62,0.1);
+  }
+  if(!target?.isMemoryTarget && target===player && cat.lungeCd<=0 && d < meleeStopDistance(cat, player, 1.45) && d > meleeStopDistance(cat, player, 0.2) && Math.random() < 0.018 * difficulty.specials){
+    const dir = new THREE.Vector3(moveTarget.x-cat.pos.x,0,moveTarget.z-cat.pos.z).normalize();
+    const lunge = collisionPushOut(cat.pos.x + dir.x*3.2, cat.pos.z + dir.z*3.2, cat.radius, true, null);
+    cat.pos.x = lunge.x; cat.pos.z = lunge.z;
+    cat.lungeCd = 7.5 / difficulty.specials;
+    addBurst(cat.pos.x,cat.pos.y+2.0,cat.pos.z,0xffb067,14,4.2,0.52,0.09);
+  }
+
+  if(d > meleeStopDistance(cat, target || {radius:0.5}, 0.22)){
     const step = directSteerToward({ pos:cat.pos, speed:moveSpeed, radius:cat.radius }, moveTarget, dt, true, target);
     if(step){
       cat.heading += clamp(angleDiff(cat.heading, step.heading), -cat.turnRate*dt, cat.turnRate*dt);
@@ -2571,11 +2856,24 @@ function updateCat(dt){
     addBurst(cat.pos.x + dx*1.5, cat.pos.y+2.0, cat.pos.z + dz*1.5, 0xff7f50, 20, 6, 0.7, 0.09);
     if(target === player) applyDamageToLiving(player, 999, cat.pos);
     else if(isLivingTarget(target)) applyDamageToLiving(target, 38, target.pos);
-    else damageStructure(target, 35);
+    else damageStructure(target, 35 * (cat.failedRoute > 2 ? 1.8 : 1));
   }
-  updateAgentStuck(cat, dt, !!target, ()=>{
-    setRepathPoint(cat, target?.pos || player.pos, 7.5);
-    if(target && target === player) cat.aggroMemory = Math.max(cat.aggroMemory, 4.5);
+  if(cat.roarCd <= 0 && difficulty.specials > 1 && target===player && dist2(cat.pos, player.pos) < 14 && servantMice.length > 1){
+    cat.roarCd = 14 / difficulty.specials;
+    addBurst(cat.pos.x, cat.pos.y+2.3, cat.pos.z, 0xff6d43, 20, 6.5, 0.8, 0.1);
+    for(const m of servantMice){
+      if(m.dead || m.dying) continue;
+      if(dist2(m.pos, cat.pos) < 15){
+        m.repathTimer = Math.max(m.repathTimer || 0, 0.9);
+        setRepathPoint(m, player.pos, 8.5);
+      }
+    }
+  }
+  updateAgentStuck(cat, dt, !!target, (phase)=>{
+    cat.failedRoute += 0.8;
+    cat.detourSide = phase % 2 ? -1 : 1;
+    setRepathPoint(cat, target?.pos || player.pos, phase >= 2 ? 12.5 : 7.5);
+    if(target && (target === player || target?.isPlayerMemory)) cat.aggroMemory = Math.max(cat.aggroMemory, 4.5 + difficulty.catIQ * 1.8);
   });
 
   cat.pos.y = groundHeight(cat.pos.x,cat.pos.z);
@@ -3139,6 +3437,22 @@ function updateCamera(dt){
   camera.position.lerp(safe, 1 - Math.pow(0.00008, dt));
   camera.lookAt(focus);
 }
+function updateCombatDirector(dt){
+  if(!combatDirector.lastPlayerPos.lengthSq?.()) combatDirector.lastPlayerPos.copy(player.pos);
+  const moved = dist2(player.pos, combatDirector.lastPlayerPos);
+  const hasDenseWalls = structures.filter(s => !s.dead && isWallStructure(s) && dist2(s.pos, player.pos) < 12).length;
+  if(moved < 1.25){
+    combatDirector.heat += dt * (0.22 + hasDenseWalls * 0.03) * difficulty.antiCamp;
+    combatDirector.hideScore += dt * 0.5;
+  } else {
+    combatDirector.heat -= dt * 0.18;
+    combatDirector.hideScore = Math.max(0, combatDirector.hideScore - dt * 0.35);
+  }
+  combatDirector.lastPlayerPos.lerp(player.pos, clamp(dt*1.8,0,1));
+  combatDirector.heat = clamp(combatDirector.heat, 0, 3.2);
+  combatDirector.flankBias = 1 + combatDirector.heat * 0.7;
+  combatDirector.surgeCd -= dt;
+}
 
 // -------------------------------------------------
 // SPAWNERS
@@ -3147,6 +3461,8 @@ let cheeseSpawnTimer = 0;
 let lastRatSpawn = 60;
 let lastMoleSpawn = 240;
 let lastWeaselSpawn = 420;
+let lastAssassinSpawn = 300;
+let lastRamSpawn = 340;
 
 function updateCheeses(dt){
   for(const c of cheeses){
@@ -3156,6 +3472,7 @@ function updateCheeses(dt){
   }
 }
 function updateSpawners(dt){
+  updateCombatDirector(dt);
   cheeseSpawnTimer += dt;
   if(cheeseSpawnTimer >= 5.6){
     cheeseSpawnTimer = 0;
@@ -3173,23 +3490,50 @@ function updateSpawners(dt){
   if(time >= 60 && !cat && !catSpawnTriggered) spawnCat();
 
   if(time >= 60 && cat && !cat.dead && !cat.dying){
-    if(time - lastRatSpawn >= 30){
+    const phase = Math.max(0, time - 60);
+    const activeCap = Math.floor(clamp((12 + phase/28) * difficulty.cap, 10, 66));
+    if(enemies.length > activeCap) return;
+    const ratCadence = clamp(30 / difficulty.wave - phase * 0.01, 11, 34);
+    const moleCadence = clamp(45 / difficulty.wave - phase * 0.008, 18, 58);
+    const weaselCadence = clamp(55 / difficulty.wave - phase * 0.007, 24, 66);
+    if(time - lastRatSpawn >= ratCadence){
       lastRatSpawn = time;
-      const count = clamp(2 + Math.floor((time-60)/75), 2, 10);
+      const count = clamp(Math.floor((2 + phase/64 + combatDirector.heat*1.2) * difficulty.wave), 2, 16);
       spawnEnemyWave("rat", count);
       showCenter("Rat Wave x" + count, 0.8);
     }
-    if(time >= 240 && time - lastMoleSpawn >= 45){
+    if(time >= 210 && time - lastMoleSpawn >= moleCadence){
       lastMoleSpawn = time;
-      const count = clamp(1 + Math.floor((time-240)/120), 1, 10);
+      const count = clamp(Math.floor((1 + (time-240)/110 + combatDirector.heat*0.8) * difficulty.wave), 1, 12);
       spawnEnemyWave("mole", count);
       showCenter("Moles x" + count, 0.8);
     }
-    if(time >= 420 && time - lastWeaselSpawn >= 55){
+    if(time >= 360 && time - lastWeaselSpawn >= weaselCadence){
       lastWeaselSpawn = time;
-      const count = clamp(1 + Math.floor((time-420)/120), 1, 10);
+      const count = clamp(Math.floor((1 + (time-360)/145 + combatDirector.heat*0.6) * difficulty.wave), 1, 11);
       spawnEnemyWave("weasel", count);
       showCenter("Weasels x" + count, 0.8);
+    }
+    const supportCount = servantMice.filter(m=>!m.dead && !m.dying).length + robots.filter(r=>!r.dead && !r.dying).length;
+    if(time >= 300 && time - lastAssassinSpawn >= clamp(62 / difficulty.wave - phase*0.005, 20, 60)){
+      lastAssassinSpawn = time;
+      const pairBonus = difficulty.catIQ > 1.2 && supportCount >= 4 ? 1 : 0;
+      const count = clamp(Math.floor((1 + phase/250) * (0.65 + difficulty.wave*0.5)) + pairBonus, 1, 5);
+      spawnEnemyWave("assassin", count);
+      showCenter("Assassins x" + count, 0.7);
+    }
+    const wallLocal = structures.filter(s=>!s.dead && isWallStructure(s) && dist2(s.pos,player.pos)<18).length;
+    if(time >= 340 && time - lastRamSpawn >= clamp(95 / difficulty.wave - phase*0.006 - wallLocal*0.7, 24, 88)){
+      lastRamSpawn = time;
+      const count = clamp(Math.floor((wallLocal/5 + phase/320) * difficulty.wave), 1, 4);
+      spawnEnemyWave("ram", count);
+      showCenter("RAM BREACH x" + count, 0.85);
+    }
+    if(combatDirector.surgeCd <= 0 && phase > 260 && Math.random() < 0.18 * difficulty.wave){
+      combatDirector.surgeCd = rand(24, 46);
+      const surge = clamp(Math.floor((2 + phase/220 + combatDirector.heat) * difficulty.wave), 2, 12);
+      spawnEnemyWave(Math.random() < 0.5 ? "rat" : "assassin", surge);
+      showCenter("Surge Wave x" + surge, 0.85);
     }
   }
 }
@@ -3198,18 +3542,31 @@ function spawnEnemyWave(kind,count){
   const center = useCatCenter ? cat.pos : null;
   for(let i=0;i<count;i++){
     let x=0,z=0;
-    if(useCatCenter){
+    const flankSpawn = difficulty.flank > 0.2 && Math.random() < (0.22 + combatDirector.heat*0.1);
+    if(useCatCenter && !flankSpawn){
       const a = Math.random() * Math.PI * 2;
-      const r = rand(2.0, 5.5);
+      const r = rand(2.0, kind==="ram" ? 7.5 : 5.5);
       x = clamp(center.x + Math.sin(a)*r, -HALF_MAP+6, HALF_MAP-6);
       z = clamp(center.z + Math.cos(a)*r, -HALF_MAP+6, HALF_MAP-6);
     } else {
-      const edge = Math.floor(Math.random()*4);
-      if(edge===0){ x = -HALF_MAP+5; z = rand(-HALF_MAP+8, HALF_MAP-8); }
-      if(edge===1){ x = HALF_MAP-5; z = rand(-HALF_MAP+8, HALF_MAP-8); }
-      if(edge===2){ z = -HALF_MAP+5; x = rand(-HALF_MAP+8, HALF_MAP-8); }
-      if(edge===3){ z = HALF_MAP-5; x = rand(-HALF_MAP+8, HALF_MAP-8); }
+      const toPlayer = Math.atan2(player.pos.x, player.pos.z);
+      const sideA = toPlayer + (Math.random()<0.5 ? 1 : -1) * (Math.PI * rand(0.35, 0.7));
+      if(flankSpawn){
+        x = clamp(Math.sin(sideA) * (HALF_MAP - rand(7,12)), -HALF_MAP+6, HALF_MAP-6);
+        z = clamp(Math.cos(sideA) * (HALF_MAP - rand(7,12)), -HALF_MAP+6, HALF_MAP-6);
+      } else {
+        const edge = Math.floor(Math.random()*4);
+        if(edge===0){ x = -HALF_MAP+5; z = rand(-HALF_MAP+8, HALF_MAP-8); }
+        if(edge===1){ x = HALF_MAP-5; z = rand(-HALF_MAP+8, HALF_MAP-8); }
+        if(edge===2){ z = -HALF_MAP+5; x = rand(-HALF_MAP+8, HALF_MAP-8); }
+        if(edge===3){ z = HALF_MAP-5; x = rand(-HALF_MAP+8, HALF_MAP-8); }
+      }
       x += rand(-2,2); z += rand(-2,2);
+    }
+    if(dist2({x,z}, player.pos) < 11){
+      const away = new THREE.Vector3(x-player.pos.x,0,z-player.pos.z).normalize();
+      x = clamp(player.pos.x + away.x * rand(11,16), -HALF_MAP+6, HALF_MAP-6);
+      z = clamp(player.pos.z + away.z * rand(11,16), -HALF_MAP+6, HALF_MAP-6);
     }
     const e = makeEnemy(kind, x, z);
     if(useCatCenter) setRepathPoint(e, center, 5.5);
