@@ -264,8 +264,8 @@ const CATEGORY_BUILDS = {
     { slot:0, name:"Scout Post", cost:7, type:"scoutPost", hp:82, radius:2.0 }
   ],
   3: [
-    { slot:5, name:"Cheese Wall", cost:3, type:"wall", hp:105, radius:2.1 },
-    { slot:6, name:"Diamond Wall", cost:8, type:"diamondWall", hp:245, radius:2.5 },
+    { slot:5, name:"Cheese Wall", cost:3, type:"wall", hp:72, radius:2.1 },
+    { slot:6, name:"Diamond Wall", cost:8, type:"diamondWall", hp:165, radius:2.5 },
     { slot:7, name:"Barrier Totem", cost:10, type:"barrierTotem", hp:88, radius:2.0 },
     { slot:8, name:"Brace Tower", cost:11, type:"braceTower", hp:125, radius:2.0 },
     { slot:9, name:"Repair Anchor", cost:9, type:"repairAnchor", hp:92, radius:2.0 },
@@ -651,11 +651,11 @@ function updateParticles(dt){
 // -------------------------------------------------
 // HEALTH BAR
 // -------------------------------------------------
-function createHealthBar(width=1.6, color=0xff5454){
+function createHealthBar(width=1.6, color=0x3aeb58){
   const g = new THREE.Group();
   const bg = new THREE.Mesh(
     new THREE.PlaneGeometry(width,0.16),
-    new THREE.MeshBasicMaterial({ color:0x111111, transparent:true, opacity:0.88, side:THREE.DoubleSide, depthTest:false, depthWrite:false })
+    new THREE.MeshBasicMaterial({ color:0xc22a2a, transparent:true, opacity:0.92, side:THREE.DoubleSide, depthTest:false, depthWrite:false })
   );
   const fg = new THREE.Mesh(
     new THREE.PlaneGeometry(width*0.98,0.11),
@@ -668,17 +668,12 @@ function createHealthBar(width=1.6, color=0xff5454){
   return g;
 }
 function setHealthBar(bar, frac){
+  if(!bar?.userData?.fg) return;
   frac = clamp(frac,0,1);
   bar.userData.fg.scale.x = frac;
   bar.userData.fg.position.x = -(bar.userData.width*0.98)*(1-frac)/2;
   if(bar.userData.fg?.material){
-    const c = new THREE.Color();
-    if(frac > 0.5){
-      c.setRGB(0.35 + 0.45*(frac-0.5)*2, 0.76 + 0.24*(frac-0.5)*2, 0.32);
-    } else {
-      c.setRGB(1.0, 0.3 + 0.9*frac, 0.28);
-    }
-    bar.userData.fg.material.color.copy(c);
+    bar.userData.fg.material.color.setRGB(0.2, 0.92, 0.34);
   }
 }
 function popWorldText(text, x, y, z, color="#ffe66f"){
@@ -858,19 +853,25 @@ function animateMouseRig(group, speedFactor, t, attackAmount=0, dying=0){
   const rig = group.userData;
   if(!rig) return;
   const walk = t * (5 + speedFactor*8);
-  rig.pelvis.position.y = Math.sin(walk*2)*0.02;
-  rig.spine.rotation.x = Math.sin(walk*2)*0.05 + attackAmount*0.18 - dying*1.2;
-  rig.neck.rotation.x = Math.sin(walk*2+0.5)*0.04 - attackAmount*0.3 + dying*0.35;
+  if(rig.pelvis?.position) rig.pelvis.position.y = Math.sin(walk*2)*0.02;
+  if(rig.spine?.rotation) rig.spine.rotation.x = Math.sin(walk*2)*0.05 + attackAmount*0.18 - dying*1.2;
+  if(rig.neck?.rotation) rig.neck.rotation.x = Math.sin(walk*2+0.5)*0.04 - attackAmount*0.3 + dying*0.35;
 
-  rig.tailBase.rotation.x = 0.18 + Math.sin(walk*2.5)*0.16;
-  rig.tailBase.rotation.y = Math.sin(walk*1.8)*0.22;
-  rig.tailMid.rotation.x = 0.12 + Math.sin(walk*2.6+0.6)*0.14;
-  rig.tailMid.rotation.y = Math.sin(walk*1.9+0.5)*0.18;
-  rig.tailTip.rotation.x = 0.1 + Math.sin(walk*2.8+1.1)*0.15;
-  rig.tailTip.rotation.y = Math.sin(walk*2.0+1.0)*0.22;
+  if(rig.tailBase?.rotation){
+    rig.tailBase.rotation.x = 0.18 + Math.sin(walk*2.5)*0.16;
+    rig.tailBase.rotation.y = Math.sin(walk*1.8)*0.22;
+  }
+  if(rig.tailMid?.rotation){
+    rig.tailMid.rotation.x = 0.12 + Math.sin(walk*2.6+0.6)*0.14;
+    rig.tailMid.rotation.y = Math.sin(walk*1.9+0.5)*0.18;
+  }
+  if(rig.tailTip?.rotation){
+    rig.tailTip.rotation.x = 0.1 + Math.sin(walk*2.8+1.1)*0.15;
+    rig.tailTip.rotation.y = Math.sin(walk*2.0+1.0)*0.22;
+  }
 
   const phases = [0,Math.PI,Math.PI,0];
-  rig.legs.forEach((leg,i)=>{
+  (rig.legs || []).forEach((leg,i)=>{
     leg.rotation.x = Math.sin(walk + phases[i]) * (0.65*speedFactor + 0.1) - attackAmount*0.4 + dying*0.7;
   });
 }
@@ -2326,9 +2327,10 @@ function makeEnemy(kind,x,z){
   model.position.set(x, groundHeight(x,z), z);
   scene.add(model);
   const wide = kind==="weasel" || kind==="ram" ? 1.9 : 1.4;
-  const bar = createHealthBar(wide, elite ? 0xffb347 : 0xff6666);
+  const bar = createHealthBar(wide, 0x3aeb58);
   bar.position.y = kind==="weasel" || kind==="ram" ? 2.35 : 1.8;
   model.add(bar);
+  setHealthBar(bar, 1);
   const dazeIcon = createDazeSprite();
   if (dazeIcon) {
     dazeIcon.position.set(0, kind==="weasel" || kind==="ram" ? 3.1 : 2.45, 0);
