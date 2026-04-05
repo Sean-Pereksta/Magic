@@ -2585,6 +2585,10 @@ function renderTurnOrder(activeToken='player'){
   el.innerHTML = tokens.map(t=>`<span class="turn-token ${t.id===activeToken?'active':''}">${t.label}</span>`).join('');
 }
 function render(){
+  if(game.mode==='battle' && (game.currentEnemies||[]).length && !getLivingEnemies(game).length){
+    endEnemy('kill');
+    return;
+  }
   syncCurrentEnemy(game);
   renderTop();
   renderTurnOrder('player');
