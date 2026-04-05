@@ -352,7 +352,7 @@ const snail = {
   y: 0,
   rider: null,
   dir: 0,
-  speed: 0.62
+  speed: 0.7
 };
 
 let bushes = [];
@@ -522,10 +522,10 @@ class Unit {
   }
 
   maxSpeed() {
-    if (this.role === "queen") return 4.15;
-    if (this.form === "speed") return 4.55;
-    if (this.form === "warrior") return 3.3;
-    return 3.6;
+    if (this.role === "queen") return 4.56;
+    if (this.form === "speed") return 5.0;
+    if (this.form === "warrior") return 3.63;
+    return 3.96;
   }
 
   flap(power = this.flapPower()) {
@@ -672,7 +672,7 @@ class Unit {
       return;
     }
 
-    this.vx *= this.onGround ? 0.88 : 0.985;
+    this.vx *= this.onGround ? 0.9 : 0.988;
     this.vx = clamp(this.vx, -this.maxSpeed(), this.maxSpeed());
   }
 
@@ -1025,7 +1025,7 @@ class Unit {
     this.lastDangerFlag = danger.score > 0.66;
     this.lastAmbushFlag = danger.ambush;
 
-    let accel = this.role === "queen" ? 0.21 : (this.form === "speed" ? 0.19 : 0.17);
+    let accel = this.role === "queen" ? 0.235 : (this.form === "speed" ? 0.212 : 0.19);
     accel += (diffSet.aggression - 0.5) * 0.05;
     const losingFight = localEnemies > localAllies + 1;
     const altitudeDisadvantage = nearestEnemy && nearestEnemy.y + 10 < this.y;
@@ -1063,6 +1063,21 @@ class Unit {
       if (ally && localAllies < 2) {
         plannedX = ally.x;
         plannedY = ally.y - 10;
+      }
+    }
+
+    const snailIntent = (this.target.intent || "").includes("snail");
+    if (snailIntent && !this.onSnail) {
+      const snailCenterX = snail.x;
+      const horizontalToSnail = Math.abs(snailCenterX - this.x);
+      const descentThreshold = 96;
+      const safeLavaBandY = world.lavaY - 64;
+      const snailEngageY = clamp(snail.y - this.h + 8, world.spikeY + 110, world.lavaY - 84);
+
+      if (horizontalToSnail > descentThreshold) {
+        plannedY = Math.min(plannedY, safeLavaBandY);
+      } else {
+        plannedY = Math.min(plannedY, snailEngageY);
       }
     }
 
@@ -1119,8 +1134,8 @@ class Unit {
       this.dismountSnail();
       return;
     }
-    if (keys["a"]) { this.vx -= 0.34; this.dir = -1; }
-    if (keys["d"]) { this.vx += 0.34; this.dir = 1; }
+    if (keys["a"]) { this.vx -= 0.38; this.dir = -1; }
+    if (keys["d"]) { this.vx += 0.38; this.dir = 1; }
     if ((keys["w"] || keys[" "]) && this.y > world.spikeY + 90) this.flap();
     if (keys["s"]) this.vy += 0.16;
     if (this.y < world.spikeY + 80) this.vy += 0.22;
