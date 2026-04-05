@@ -34,6 +34,7 @@ const VIEW_W = canvas.width;
 const VIEW_H = canvas.height;
 
 const keys = {};
+const TEAM_STRATEGIES = ["military", "economy", "snail", "balanced"];
 document.addEventListener("keydown", e => {
   const k = e.key.toLowerCase();
   keys[k] = true;
@@ -116,16 +117,16 @@ function soundDeath() { beep(240, 0.09, "sawtooth", 0.04, 120); }
 /* ---------------- DIFFICULTY ---------------- */
 
 const DIFFICULTIES = [
-  { level:1,  name:"Honey Sleepwalk", reaction:34, awareness:0.45, aggression:0.30, antiBerry:0.25, escort:false, squad:false, spikeSense:0.55, queenPressure:0.22 },
-  { level:2,  name:"Garden Drifter",  reaction:28, awareness:0.52, aggression:0.36, antiBerry:0.32, escort:false, squad:false, spikeSense:0.62, queenPressure:0.28 },
-  { level:3,  name:"Wax Worker",      reaction:23, awareness:0.60, aggression:0.42, antiBerry:0.38, escort:false, squad:false, spikeSense:0.70, queenPressure:0.34 },
-  { level:4,  name:"Hive Regular",    reaction:18, awareness:0.68, aggression:0.50, antiBerry:0.48, escort:false, squad:false, spikeSense:0.78, queenPressure:0.46 },
-  { level:5,  name:"Pollen Raider",   reaction:15, awareness:0.76, aggression:0.58, antiBerry:0.58, escort:true,  squad:false, spikeSense:0.84, queenPressure:0.58 },
-  { level:6,  name:"Royal Guard",     reaction:13, awareness:0.83, aggression:0.66, antiBerry:0.66, escort:true,  squad:true,  spikeSense:0.88, queenPressure:0.66 },
-  { level:7,  name:"Stinger Captain", reaction:11, awareness:0.89, aggression:0.74, antiBerry:0.74, escort:true,  squad:true,  spikeSense:0.91, queenPressure:0.74 },
-  { level:8,  name:"Swarm Tactician", reaction:10, awareness:0.94, aggression:0.82, antiBerry:0.84, escort:true,  squad:true,  spikeSense:0.94, queenPressure:0.84 },
-  { level:9,  name:"War Hive Oracle", reaction:8,  awareness:0.98, aggression:0.90, antiBerry:0.92, escort:true,  squad:true,  spikeSense:0.97, queenPressure:0.93 },
-  { level:10, name:"The Last Queen",  reaction:6,  awareness:1.00, aggression:1.00, antiBerry:1.00, escort:true,  squad:true,  spikeSense:1.00, queenPressure:1.00 }
+  { level:1,  name:"Honey Sleepwalk", reaction:34, awareness:0.45, aggression:0.30, antiBerry:0.25, escort:false, squad:false, spikeSense:0.55, queenPressure:0.22, discipline:0.28, trapSense:0.24, retreat:0.20, memory:0.18 },
+  { level:2,  name:"Garden Drifter",  reaction:28, awareness:0.52, aggression:0.36, antiBerry:0.32, escort:false, squad:false, spikeSense:0.62, queenPressure:0.28, discipline:0.36, trapSense:0.34, retreat:0.28, memory:0.24 },
+  { level:3,  name:"Wax Worker",      reaction:23, awareness:0.60, aggression:0.42, antiBerry:0.38, escort:false, squad:false, spikeSense:0.70, queenPressure:0.34, discipline:0.45, trapSense:0.45, retreat:0.38, memory:0.34 },
+  { level:4,  name:"Hive Regular",    reaction:18, awareness:0.68, aggression:0.50, antiBerry:0.48, escort:false, squad:false, spikeSense:0.78, queenPressure:0.46, discipline:0.55, trapSense:0.58, retreat:0.48, memory:0.46 },
+  { level:5,  name:"Pollen Raider",   reaction:15, awareness:0.76, aggression:0.58, antiBerry:0.58, escort:true,  squad:false, spikeSense:0.84, queenPressure:0.58, discipline:0.66, trapSense:0.70, retreat:0.58, memory:0.58 },
+  { level:6,  name:"Royal Guard",     reaction:13, awareness:0.83, aggression:0.66, antiBerry:0.66, escort:true,  squad:true,  spikeSense:0.88, queenPressure:0.66, discipline:0.74, trapSense:0.78, retreat:0.66, memory:0.68 },
+  { level:7,  name:"Stinger Captain", reaction:11, awareness:0.89, aggression:0.74, antiBerry:0.74, escort:true,  squad:true,  spikeSense:0.91, queenPressure:0.74, discipline:0.82, trapSense:0.84, retreat:0.74, memory:0.76 },
+  { level:8,  name:"Swarm Tactician", reaction:10, awareness:0.94, aggression:0.82, antiBerry:0.84, escort:true,  squad:true,  spikeSense:0.94, queenPressure:0.84, discipline:0.90, trapSense:0.90, retreat:0.82, memory:0.84 },
+  { level:9,  name:"War Hive Oracle", reaction:8,  awareness:0.98, aggression:0.90, antiBerry:0.92, escort:true,  squad:true,  spikeSense:0.97, queenPressure:0.93, discipline:0.96, trapSense:0.95, retreat:0.90, memory:0.92 },
+  { level:10, name:"The Last Queen",  reaction:6,  awareness:1.00, aggression:1.00, antiBerry:1.00, escort:true,  squad:true,  spikeSense:1.00, queenPressure:1.00, discipline:1.00, trapSense:1.00, retreat:1.00, memory:1.00 }
 ];
 
 /* ---------------- MAPS ---------------- */
@@ -294,7 +295,10 @@ const game = {
   currentMapIndex: 0,
   cameraX: 0,
   cameraY: 0,
-  time: 0
+  time: 0,
+  strategyFlashTimer: 0,
+  strategySwitchCooldown: 0,
+  debugAI: false
 };
 
 const world = {
@@ -383,6 +387,15 @@ function getSnailDangerForTeam(team) {
   };
 }
 
+function cyclePlayerStrategy() {
+  if (game.strategySwitchCooldown > 0) return;
+  const idx = TEAM_STRATEGIES.indexOf(game.playerStrategy);
+  const nextIdx = (idx + 1 + TEAM_STRATEGIES.length) % TEAM_STRATEGIES.length;
+  game.playerStrategy = TEAM_STRATEGIES[nextIdx];
+  game.strategySwitchCooldown = 22;
+  game.strategyFlashTimer = 90;
+}
+
 function applyMap(index) {
   const map = MAPS[index];
   world.theme = map;
@@ -465,6 +478,18 @@ class Unit {
     this.aiTick = 0;
     this.target = null;
     this.intent = "";
+    this.objectiveCommit = 0;
+    this.approachType = "direct-intercept";
+    this.approachCommit = 0;
+    this.queenState = "stabilize";
+    this.queenStateCommit = 0;
+    this.lastSupportCount = 0;
+    this.lastDangerFlag = false;
+    this.lastAmbushFlag = false;
+    this.failedApproaches = {};
+    this.deathMemory = [];
+    this.lastObjectiveChange = -9999;
+    this.lastUnsupportedDive = -9999;
     this.queenLives = role === "queen" ? 3 : 0;
   }
 
@@ -517,8 +542,18 @@ class Unit {
     return { x: this.x + 4, y: this.y + 4, w: this.w - 8, h: this.h - 7 };
   }
 
+  rememberDeath() {
+    this.deathMemory.push({ x: this.x, y: this.y, t: game.time });
+    while (this.deathMemory.length > 8) this.deathMemory.shift();
+  }
+
+  recentDeathsNear(x, y, radius = 140, window = 900) {
+    return this.deathMemory.filter(d => game.time - d.t <= window && dist(d.x, d.y, x, y) < radius).length;
+  }
+
   die() {
     if (this.dead) return;
+    this.rememberDeath();
 
     if (this.role === "queen") {
       this.queenLives--;
@@ -702,6 +737,90 @@ class Unit {
     return { ownGate, ownHive, enemyGate, enemyNearGate, enemyNearHive, enemyNearSnail, snailEnemy, snailFriendly };
   }
 
+  alliesNearby(range = 220) {
+    return units.filter(u => !u.dead && u.team === this.team && u !== this && dist(this.x, this.y, u.x, u.y) < range).length;
+  }
+
+  enemiesNearby(range = 220) {
+    return units.filter(u => !u.dead && u.team !== this.team && dist(this.x, this.y, u.x, u.y) < range).length;
+  }
+
+  bravery(strategy) {
+    if (this.role === "queen") return 0.58;
+    if (this.form === "warrior") return 0.82;
+    if (strategy === "snail") return 0.64;
+    if (this.form === "speed") return 0.48;
+    return 0.40;
+  }
+
+  dangerZoneAgainst(target) {
+    if (!target) return { score: 0, ambush: false, topTrap: false };
+    const enemyAbove = target.y + target.h < this.y + 8;
+    const tightCeiling = this.y < world.spikeY + 140;
+    const narrowPlatform = world.platforms.find(p =>
+      target.x + ((target.w || 30) / 2) > p.x &&
+      target.x + ((target.w || 30) / 2) < p.x + p.w &&
+      Math.abs(target.y + (target.h || 24) - p.y) < 45
+    );
+    const isNarrow = !!narrowPlatform && narrowPlatform.w <= 220;
+    const topZone = target.y < world.spikeY + 240;
+    const recentDeaths = this.recentDeathsNear(target.x, target.y, 150, 1000);
+    const support = this.alliesNearby(190);
+    let score = 0;
+    if (enemyAbove) score += 0.30;
+    if (tightCeiling) score += 0.24;
+    if (isNarrow) score += 0.24;
+    if (topZone) score += 0.15;
+    if (recentDeaths > 1) score += 0.20;
+    if (support === 0) score += 0.16;
+    return {
+      score: clamp(score, 0, 1.4),
+      ambush: enemyAbove && (tightCeiling || (isNarrow && topZone)),
+      topTrap: enemyAbove && topZone && isNarrow && tightCeiling
+    };
+  }
+
+  shouldForceReevaluate(targetObj, targetIntent, danger) {
+    const ownQueen = units.find(u => !u.dead && u.team === this.team && u.role === "queen");
+    const enemyQueen = this.enemyQueen();
+    const snailDanger = getSnailDangerForTeam(this.team);
+    const berriesLeft = 10 - gates[this.team].berries;
+    const berryThreat = 10 - gates[this.team === "blue" ? "gold" : "blue"].berries;
+    const support = this.alliesNearby(200);
+    const failed = this.failedApproaches[this.approachType] || 0;
+    if (snailDanger.progress > 0.70) return true;
+    if ((ownQueen && ownQueen.queenLives <= 1) || (enemyQueen && enemyQueen.queenLives <= 1)) return true;
+    if (berriesLeft <= 2 || berryThreat <= 2) return true;
+    if (targetObj && targetObj.dead) return true;
+    if (danger.score > 0.78) return true;
+    if (this.lastSupportCount > 0 && support === 0) return true;
+    if (failed >= 2) return true;
+    if (this.role !== "queen" && enemyQueen && !enemyQueen.dead && enemyQueen.y > world.spikeY + 120 && this.enemiesNearby(260) <= 1 && dist(this.x, this.y, enemyQueen.x, enemyQueen.y) < 250) return true;
+    return false;
+  }
+
+  pickApproach(intent, targetObj, danger, strategy) {
+    const diffSet = this.diff();
+    const options = ["direct-intercept"];
+    if (diffSet.level >= 3) options.push("low-rise");
+    if (diffSet.level >= 4) options.push("side-hover-bait");
+    if (diffSet.level >= 5) options.push("perch-wait");
+    if (diffSet.level >= 6) options.push("regroup-push");
+    if (diffSet.level >= 7) options.push("fake-retreat");
+
+    let preferred = "direct-intercept";
+    if (danger.topTrap || danger.score > 0.85) preferred = diffSet.level >= 6 ? "regroup-push" : "side-hover-bait";
+    else if (intent.includes("escort")) preferred = "perch-wait";
+    else if (intent.includes("snail")) preferred = strategy === "snail" ? "low-rise" : "side-hover-bait";
+    else if (this.form === "warrior" && diffSet.level >= 6) preferred = "fake-retreat";
+
+    if (targetObj && this.recentDeathsNear(targetObj.x, targetObj.y, 160, 1200) > 1 && preferred === "direct-intercept") {
+      preferred = "low-rise";
+    }
+
+    return options.includes(preferred) ? preferred : options[0];
+  }
+
   chooseTarget(strategy) {
     const diffSet = this.diff();
     const pressure = this.pressureInfo();
@@ -712,9 +831,29 @@ class Unit {
     const urgency = this.enemyUrgencyBoost();
     const squad = this.squadRole();
     const snailDanger = getSnailDangerForTeam(this.team);
+    const enemyBerries = gates[this.team === "blue" ? "gold" : "blue"].berries;
+    const ownBerries = gates[this.team].berries;
+    const support = this.alliesNearby(220);
 
     if (this.role === "queen") {
+      const lowLife = this.queenLives <= 1;
+      const losingSnail = snailDanger.progress > 0.68;
+      const berryEmergency = enemyBerries >= 8;
+      if (this.queenStateCommit <= 0) {
+        if (lowLife && (support < 1 || losingSnail || berryEmergency)) this.queenState = "avoid-death";
+        else if (losingSnail || berryEmergency) this.queenState = "desperation-contest";
+        else if (ownBerries >= 8 && this.queenLives > 1) this.queenState = "defend-lead";
+        else if (strategy === "economy" || support <= 1) this.queenState = "escort-objective";
+        else if (strategy === "military" && this.queenLives > 1) this.queenState = "pressure";
+        else this.queenState = "stabilize";
+        this.queenStateCommit = 75 + Math.floor(100 * diffSet.discipline);
+      } else {
+        this.queenStateCommit--;
+      }
+
       if (this.team === "gold") {
+        if (this.queenState === "avoid-death") return { obj: { x: pressure.ownGate.x - 80, y: 430 }, intent: "queen-avoid-death" };
+        if (this.queenState === "desperation-contest" && pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "queen-desperation" };
         if (pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "defend-snail" };
         if (pressure.enemyNearGate) return { obj: pressure.enemyNearGate, intent: "defend-gate" };
         if (enemyCarrier && Math.random() < 0.8 + urgency * 0.2) return { obj: enemyCarrier, intent: "stop-carrier" };
@@ -725,6 +864,8 @@ class Unit {
         }
         return { obj: { x: pressure.ownGate.x - 70, y: 410 }, intent: "guard-zone" };
       } else {
+        if (this.queenState === "avoid-death") return { obj: { x: pressure.ownGate.x + 74, y: 430 }, intent: "queen-avoid-death" };
+        if (this.queenState === "desperation-contest" && pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "queen-desperation" };
         if (strategy === "military" && enemyQueen) return { obj: enemyQueen, intent: "queen-hunt" };
         if (enemyCarrier) return { obj: enemyCarrier, intent: "stop-carrier" };
         if (pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "contest-snail" };
@@ -791,6 +932,17 @@ class Unit {
       return { obj: pressure.ownGate, intent: "reposition" };
     }
 
+    if (strategy === "balanced") {
+      if (snailDanger.severity === "high" || snailDanger.severity === "critical") {
+        if (pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "contest-snail" };
+      }
+      if (enemyCarrier && Math.random() < 0.62) return { obj: enemyCarrier, intent: "stop-carrier" };
+      if (diffSet.escort && alliedCarrier && Math.random() < 0.55) return { obj: alliedCarrier, intent: "escort-carrier" };
+      if (berry && ownBerries < 9 && Math.random() < 0.58) return { obj: berry, intent: "collect-berry" };
+      if (pressure.enemyNearGate) return { obj: pressure.enemyNearGate, intent: "defend-gate" };
+      return { obj: enemyQueen || this.nearestEnemy() || pressure.enemyGate, intent: "pressure" };
+    }
+
     if (gates[this.team].upgrades.warrior && this.form === "worker" && (Math.random() < 0.24 + diffSet.aggression * 0.15)) {
       return { obj: gates[this.team].maidens[1], intent: "seek-warrior" };
     }
@@ -803,10 +955,27 @@ class Unit {
     if (this.dead) return;
     const diffSet = this.diff();
     this.aiTick--;
+    this.objectiveCommit = Math.max(0, this.objectiveCommit - 1);
+    this.approachCommit = Math.max(0, this.approachCommit - 1);
 
-    if (this.aiTick <= 0 || !this.target || !this.target.obj) {
-      this.target = this.chooseTarget(strategy);
-      this.aiTick = diffSet.reaction;
+    const currentObj = this.target?.obj || null;
+    const currentIntent = this.target?.intent || "";
+    const currentDanger = this.dangerZoneAgainst(currentObj);
+    const forceReevaluate = this.shouldForceReevaluate(currentObj, currentIntent, currentDanger);
+    if (this.aiTick <= 0 || !this.target || !this.target.obj || (forceReevaluate && this.objectiveCommit < 22)) {
+      const nextTarget = this.chooseTarget(strategy);
+      const shouldSwitch = !this.target || forceReevaluate ||
+        this.target.intent !== nextTarget.intent ||
+        dist((this.target.obj?.x ?? this.x), (this.target.obj?.y ?? this.y), (nextTarget.obj?.x ?? this.x), (nextTarget.obj?.y ?? this.y)) > 120;
+      if (shouldSwitch || this.objectiveCommit <= 0) {
+        this.target = nextTarget;
+        this.objectiveCommit = 45 + Math.floor(50 * diffSet.discipline);
+        this.lastObjectiveChange = game.time;
+        const danger = this.dangerZoneAgainst(this.target.obj);
+        this.approachType = this.pickApproach(this.target.intent, this.target.obj, danger, strategy);
+        this.approachCommit = 35 + Math.floor(65 * diffSet.discipline);
+      }
+      this.aiTick = Math.max(6, diffSet.reaction - (forceReevaluate ? 5 : 0));
     }
 
     const nearestEnemy = this.nearestEnemy(150);
@@ -849,13 +1018,60 @@ class Unit {
     const ty = obj.y ?? this.y;
     const dx = tx - this.x;
     const dy = ty - this.y;
+    const localEnemies = this.enemiesNearby(230);
+    const localAllies = this.alliesNearby(230);
+    const danger = this.dangerZoneAgainst(obj);
+    this.lastSupportCount = localAllies;
+    this.lastDangerFlag = danger.score > 0.66;
+    this.lastAmbushFlag = danger.ambush;
 
     let accel = this.role === "queen" ? 0.21 : (this.form === "speed" ? 0.19 : 0.17);
     accel += (diffSet.aggression - 0.5) * 0.05;
+    const losingFight = localEnemies > localAllies + 1;
+    const altitudeDisadvantage = nearestEnemy && nearestEnemy.y + 10 < this.y;
+    const shouldDisengage = (losingFight || (altitudeDisadvantage && danger.score > 0.6)) &&
+      Math.random() < (0.16 + diffSet.retreat * 0.40 - this.bravery(strategy) * 0.2);
 
-    if (Math.abs(dx) > 8) {
-      this.vx += Math.sign(dx) * accel;
-      this.dir = dx > 0 ? 1 : -1;
+    let plannedX = tx;
+    let plannedY = ty;
+
+    if (danger.topTrap && diffSet.trapSense > 0.45) {
+      plannedX += this.x < tx ? -120 : 120;
+      plannedY += 30;
+    }
+    if (shouldDisengage) {
+      plannedX = this.x + (this.team === "blue" ? -140 : 140);
+      plannedY = clamp(this.y + 30, world.spikeY + 120, world.lavaY - 120);
+      if (this.role === "queen" && this.queenLives <= 1) plannedX = gates[this.team].x + (this.team === "blue" ? 80 : -80);
+    }
+
+    if (this.approachType === "low-rise") {
+      plannedY = Math.max(plannedY + 48, this.y + 18);
+    } else if (this.approachType === "side-hover-bait") {
+      plannedX += this.x < tx ? -90 : 90;
+      plannedY = Math.min(plannedY + 20, world.lavaY - 140);
+    } else if (this.approachType === "fake-retreat" && this.approachCommit > 22) {
+      plannedX = this.x + (this.x < tx ? -90 : 90);
+    } else if (this.approachType === "perch-wait") {
+      const perch = world.platforms.find(p => Math.abs((p.x + p.w / 2) - tx) < 190 && p.y > world.spikeY + 90 && p.y < world.lavaY - 120);
+      if (perch) {
+        plannedX = perch.x + perch.w / 2;
+        plannedY = perch.y - 10;
+      }
+    } else if (this.approachType === "regroup-push") {
+      const ally = units.find(u => !u.dead && u.team === this.team && u !== this && dist(this.x, this.y, u.x, u.y) < 260);
+      if (ally && localAllies < 2) {
+        plannedX = ally.x;
+        plannedY = ally.y - 10;
+      }
+    }
+
+    const planDx = plannedX - this.x;
+    const planDy = plannedY - this.y;
+
+    if (Math.abs(planDx) > 8) {
+      this.vx += Math.sign(planDx) * accel;
+      this.dir = planDx > 0 ? 1 : -1;
     }
 
     const desiredHeightCeiling = world.spikeY + 95;
@@ -863,9 +1079,10 @@ class Unit {
       this.vy += 0.20;
     }
 
-    if (dy < -16 && this.y > desiredHeightCeiling && this.y > world.spikeY + 105) {
+    const suppressUpward = danger.topTrap && diffSet.trapSense > 0.5 && this.y > (obj.y || this.y) + 10;
+    if (!suppressUpward && planDy < -16 && this.y > desiredHeightCeiling && this.y > world.spikeY + 105) {
       this.flap();
-    } else if (this.y > ty + 18 && Math.random() < 0.03 + diffSet.awareness * 0.03) {
+    } else if (!suppressUpward && this.y > plannedY + 18 && Math.random() < 0.03 + diffSet.awareness * 0.03) {
       this.flap();
     }
 
@@ -880,7 +1097,8 @@ class Unit {
 
     if (this.role === "queen" && this.team === "gold") {
       const urgency = this.enemyUrgencyBoost();
-      if (nearestEnemy && dist(this.x, this.y, nearestEnemy.x, nearestEnemy.y) < 135 && nearestEnemy.y < this.y + 8 && Math.random() < 0.14 + urgency * 0.08) {
+      const queenCareful = this.queenLives <= 1 && diffSet.level >= 6;
+      if (!queenCareful && nearestEnemy && dist(this.x, this.y, nearestEnemy.x, nearestEnemy.y) < 135 && nearestEnemy.y < this.y + 8 && Math.random() < 0.14 + urgency * 0.08) {
         this.flap(this.flapPower() + 0.18);
       }
       if (this.y < 180 && Math.random() < 0.13) this.vy += 0.20;
@@ -888,6 +1106,12 @@ class Unit {
 
     if (this.form === "speed" && Math.random() < 0.018 + diffSet.aggression * 0.01) this.flap(this.flapPower() + 0.1);
     if (this.form === "warrior" && nearestEnemy && nearestEnemy.y < this.y + 8 && Math.random() < 0.05 + diffSet.aggression * 0.06) this.flap();
+
+    if ((danger.score > 0.85 || shouldDisengage) && this.target) {
+      this.failedApproaches[this.approachType] = (this.failedApproaches[this.approachType] || 0) + 1;
+    } else if (this.failedApproaches[this.approachType] > 0 && Math.random() < 0.03) {
+      this.failedApproaches[this.approachType]--;
+    }
   }
 
   playerControl() {
@@ -1080,7 +1304,7 @@ function spawnMatch() {
     units.push(new Unit({ team: "gold", role: "worker", x: world.width - 270 + i * 38, y: 690 }));
   }
 
-  game.enemyStrategy = ["economy", "snail", "military"][randi(0, 2)];
+  game.enemyStrategy = TEAM_STRATEGIES[randi(0, TEAM_STRATEGIES.length - 1)];
   game.winner = null;
   game.winType = "";
   game.state = "playing";
@@ -1278,19 +1502,26 @@ function updateCamera() {
 /* ---------------- UPDATE LOOP ---------------- */
 
 let titleInputLock = false;
+let gameplayInputLock = false;
 
 function update() {
+  game.strategyFlashTimer = Math.max(0, game.strategyFlashTimer - 1);
+  game.strategySwitchCooldown = Math.max(0, game.strategySwitchCooldown - 1);
+
   if (game.state === "title") {
     if (!titleInputLock) {
       if (keys["1"]) { game.playerStrategy = "economy"; titleInputLock = true; }
       else if (keys["2"]) { game.playerStrategy = "snail"; titleInputLock = true; }
       else if (keys["3"]) { game.playerStrategy = "military"; titleInputLock = true; }
+      else if (keys["4"]) { game.playerStrategy = "balanced"; titleInputLock = true; }
+      else if (keys["v"]) { cyclePlayerStrategy(); titleInputLock = true; }
+      else if (keys["b"]) { game.debugAI = !game.debugAI; titleInputLock = true; }
       else if (keys["m"]) { game.currentMapIndex = (game.currentMapIndex + 1) % MAPS.length; titleInputLock = true; }
       else if (keys["q"]) { game.difficultyIndex = (game.difficultyIndex + 9) % 10; titleInputLock = true; }
       else if (keys["e"]) { game.difficultyIndex = (game.difficultyIndex + 1) % 10; titleInputLock = true; }
       else if (keys[" "]) { spawnMatch(); titleInputLock = true; }
     }
-    if (!keys["1"] && !keys["2"] && !keys["3"] && !keys["m"] && !keys["q"] && !keys["e"] && !keys[" "]) {
+    if (!keys["1"] && !keys["2"] && !keys["3"] && !keys["4"] && !keys["v"] && !keys["b"] && !keys["m"] && !keys["q"] && !keys["e"] && !keys[" "]) {
       titleInputLock = false;
     }
     return;
@@ -1306,6 +1537,13 @@ function update() {
   }
 
   game.time++;
+  if (keys["v"]) cyclePlayerStrategy();
+  if (keys["b"] && !gameplayInputLock) {
+    game.debugAI = !game.debugAI;
+    gameplayInputLock = true;
+  } else if (!keys["b"] && game.state === "playing") {
+    gameplayInputLock = false;
+  }
 
   for (const u of units) {
     const strat = u.team === "blue" ? game.playerStrategy : game.enemyStrategy;
@@ -1635,22 +1873,42 @@ function drawHUD() {
   ctx.fillStyle = "#fff";
   ctx.font = "18px Courier New";
   ctx.fillText("MAP: " + MAPS[game.currentMapIndex].name, 24, 34);
+  ctx.fillStyle = game.strategyFlashTimer > 0 ? "#6dff89" : "#fff";
   ctx.fillText("BLUE: " + game.playerStrategy.toUpperCase(), 24, 58);
+  ctx.fillStyle = "#fff";
   ctx.fillText("GOLD: " + game.enemyStrategy.toUpperCase(), 24, 82);
 
   drawQueenLivesBox(500, 12, blueQueen, "BLUE QUEEN", "#61d5ff");
   drawQueenLivesBox(686, 12, goldQueen, "GOLD QUEEN", "#ffd45a");
 
   ctx.fillStyle = "#000";
-  ctx.fillRect(876, 12, 312, 92);
+  ctx.fillRect(876, 12, 312, 104);
   ctx.strokeStyle = "#d5d5d5";
-  ctx.strokeRect(876, 12, 312, 92);
+  ctx.strokeRect(876, 12, 312, 104);
   ctx.fillStyle = "#fff";
   ctx.font = "15px Courier New";
   ctx.fillText("DIFF: " + currentDifficulty().name, 888, 32);
   ctx.fillText("AI LVL: " + currentDifficulty().level + "/10", 888, 52);
-  ctx.fillText("A/D MOVE  W/SPACE FLAP", 888, 72);
-  ctx.fillText("S DIVE / DISMOUNT", 888, 92);
+  ctx.fillText("A/D MOVE  W/SPACE FLAP", 888, 70);
+  ctx.fillText("S DIVE  V CYCLE STRAT", 888, 88);
+  ctx.fillText("B AI DEBUG", 888, 104);
+}
+
+function drawAIDebug() {
+  if (!game.debugAI || game.state !== "playing") return;
+  const sample = units.find(u => !u.dead && !u.isPlayer && u.team === "blue");
+  const enemyQueen = units.find(u => !u.dead && u.team === "gold" && u.role === "queen");
+  if (!sample || !enemyQueen) return;
+  ctx.fillStyle = "rgba(0,0,0,0.7)";
+  ctx.fillRect(12, VIEW_H - 108, 560, 96);
+  ctx.strokeStyle = "#66ffcc";
+  ctx.strokeRect(12, VIEW_H - 108, 560, 96);
+  ctx.fillStyle = "#9fffe6";
+  ctx.font = "14px Courier New";
+  ctx.fillText("TEAM STRAT: " + game.playerStrategy.toUpperCase(), 24, VIEW_H - 84);
+  ctx.fillText("ALLY OBJ: " + (sample.target?.intent || "none") + " | APPROACH: " + (sample.approachType || "none"), 24, VIEW_H - 64);
+  ctx.fillText("ALLY FLAGS: danger=" + (sample.lastDangerFlag ? "Y" : "N") + " ambush=" + (sample.lastAmbushFlag ? "Y" : "N"), 24, VIEW_H - 44);
+  ctx.fillText("ENEMY QUEEN STATE: " + (enemyQueen.queenState || "stabilize"), 24, VIEW_H - 24);
 }
 
 function drawTitle() {
@@ -1669,27 +1927,29 @@ function drawTitle() {
 
   ctx.fillStyle = "#fff";
   ctx.font = "20px Courier New";
-  ctx.fillText("1 / 2 / 3 = STRATEGY", 425, 205);
+  ctx.fillText("1/2/3/4 = STRATEGY  (V = CYCLE)", 325, 205);
   ctx.fillText("M = CHANGE MAP", 475, 235);
   ctx.fillText("Q / E = CHANGE DIFFICULTY", 385, 265);
-  ctx.fillText("SPACE = START", 485, 295);
+  ctx.fillText("B = TOGGLE AI DEBUG", 420, 295);
+  ctx.fillText("SPACE = START", 485, 325);
 
   const opts = [
-    { n:"1", label:"ECONOMY", x: 245, on: game.playerStrategy === "economy" },
-    { n:"2", label:"SNAIL", x: 455, on: game.playerStrategy === "snail" },
-    { n:"3", label:"MILITARY", x: 665, on: game.playerStrategy === "military" }
+    { n:"1", label:"ECONOMY", x: 180, on: game.playerStrategy === "economy" },
+    { n:"2", label:"SNAIL", x: 380, on: game.playerStrategy === "snail" },
+    { n:"3", label:"MILITARY", x: 580, on: game.playerStrategy === "military" },
+    { n:"4", label:"BALANCED", x: 780, on: game.playerStrategy === "balanced" }
   ];
 
   for (const o of opts) {
     ctx.fillStyle = "#111";
-    ctx.fillRect(o.x, 335, 150, 78);
+    ctx.fillRect(o.x, 335, 170, 78);
     ctx.strokeStyle = o.on ? "#61ff7c" : "#bbb";
-    ctx.strokeRect(o.x, 335, 150, 78);
+    ctx.strokeRect(o.x, 335, 170, 78);
     ctx.fillStyle = o.on ? "#61ff7c" : "#fff";
     ctx.font = "bold 28px Courier New";
-    ctx.fillText(o.n, o.x + 63, 365);
+    ctx.fillText(o.n, o.x + 73, 365);
     ctx.font = "18px Courier New";
-    ctx.fillText(o.label, o.x + 18, 397);
+    ctx.fillText(o.label, o.x + 16, 397);
   }
 
   ctx.fillStyle = "#9fdfff";
@@ -1700,8 +1960,8 @@ function drawTitle() {
   ctx.fillStyle = "#fff";
   ctx.font = "17px Courier New";
   ctx.fillText("Enemy strategy is random each match.", 375, 548);
-  ctx.fillText("Higher difficulties get escorts, squads, stronger reactions,", 240, 575);
-  ctx.fillText("better anti-berry logic, better spike avoidance, and queen pressure.", 188, 600);
+  ctx.fillText("Higher difficulties gain discipline, trap awareness, retreat timing,", 225, 575);
+  ctx.fillText("better coordination, and stronger queen survival logic.", 255, 600);
 
   ctx.fillStyle = "#9fdfff";
   ctx.font = "24px Courier New";
@@ -1737,6 +1997,7 @@ function draw() {
   } else {
     drawWorld();
     drawHUD();
+    drawAIDebug();
     if (game.state === "gameOver") drawGameOver();
   }
 }
