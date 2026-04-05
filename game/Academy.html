@@ -2,3276 +2,2012 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Cat vs Mouse Survival 3D</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<title>Killer Queen Style</title>
 <style>
   html, body {
     margin: 0;
     padding: 0;
+    background: #08101a;
     overflow: hidden;
-    background: #0d1117;
-    font-family: Arial, Helvetica, sans-serif;
-  }
-  canvas { display: block; }
-
-  #ui {
-    position: absolute;
-    left: 8px;
-    top: 8px;
-    z-index: 20;
-    background: rgba(0,0,0,0.58);
-    color: #fff;
-    padding: 8px 9px;
-    border-radius: 12px;
-    border: 1px solid rgba(255,255,255,0.12);
-    font-size: 11px;
-    line-height: 1.2;
-    width: 340px;
-    backdrop-filter: blur(4px);
-  }
-  #ui .topline {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-    margin-bottom: 5px;
-  }
-  .pill {
-    background: rgba(255,255,255,0.08);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 999px;
-    padding: 3px 7px;
-    font-weight: bold;
-  }
-  #ui .title {
-    color: #ffe978;
-    font-weight: bold;
-    font-size: 13px;
-    margin-bottom: 5px;
-  }
-  #controls {
-    opacity: 0.92;
-    margin-bottom: 5px;
-  }
-  #catRow {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 4px;
-    margin-bottom: 5px;
-  }
-  .catBtn {
-    padding: 4px 5px;
-    border-radius: 10px;
-    border: 1px solid rgba(255,255,255,0.12);
-    background: rgba(255,255,255,0.05);
-    color: #d6d6d6;
-    font-size: 10px;
-    font-weight: bold;
-    text-align: center;
-  }
-  .catBtn.active {
-    color: #101319;
-    background: #88ff9d;
-    border-color: #88ff9d;
-  }
-  #buildGrid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 4px 6px;
-  }
-  .buildItem {
-    padding: 4px 5px;
-    border-radius: 8px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.06);
-    min-height: 29px;
-  }
-  .buildItem.active {
-    color: #0e1218;
-    background: #8effa1;
-    border-color: #8effa1;
-    font-weight: bold;
-  }
-  .buildKey {
-    color: #ffe978;
-    font-weight: bold;
-    margin-right: 4px;
-  }
-  .buildIcon {
-    margin-right: 5px;
-    font-size: 13px;
-    display: inline-block;
-    width: 14px;
-    text-align: center;
-    filter: drop-shadow(0 0 4px rgba(0,0,0,0.45));
-  }
-
-  #centerMsg {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%,-50%);
-    z-index: 25;
+    font-family: "Courier New", monospace;
     color: white;
-    font-size: 34px;
-    font-weight: bold;
-    text-align: center;
-    pointer-events: none;
-    text-shadow: 0 0 10px #000, 0 0 22px #000;
   }
-
-  #bossBarWrap {
-    position: absolute;
-    left: 50%;
-    top: 12px;
-    transform: translateX(-50%);
-    width: 420px;
-    height: 20px;
-    border-radius: 999px;
-    overflow: hidden;
-    background: rgba(0,0,0,0.58);
-    border: 1px solid rgba(255,255,255,0.15);
-    z-index: 21;
-    display: none;
-  }
-  #bossBar {
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg,#ff5858,#ff9b52);
-  }
-  #bossLabel {
-    position: absolute;
-    left: 50%;
-    top: 13px;
-    transform: translateX(-50%);
-    z-index: 22;
-    color: white;
-    font-size: 12px;
-    font-weight: bold;
-    display: none;
-    text-shadow: 0 0 8px #000;
+  canvas {
+    display: block;
+    margin: 0 auto;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    border: 4px solid #97a3b7;
+    background: #111;
   }
 </style>
 </head>
 <body>
-<div id="ui">
-  <div class="title">Cat vs Mouse Survival 3D</div>
-  <div class="topline">
-    <div class="pill">Cheese: <span id="cheeseCount">0</span></div>
-    <div class="pill">Servants: <span id="servantCount">0</span></div>
-    <div class="pill">Time: <span id="timeCount">0.0</span>s</div>
-  </div>
-  <div id="controls">W forward · S backpedal · A/D turn · Space place</div>
-  <div id="catRow">
-    <div id="catExplore" class="catBtn active">1 Explore</div>
-    <div id="catEco" class="catBtn">2 Economic</div>
-    <div id="catDef" class="catBtn">3 Defensive</div>
-    <div id="catAtk" class="catBtn">4 Attack</div>
-  </div>
-  <div id="buildGrid"></div>
-</div>
+<canvas id="game" width="1200" height="700"></canvas>
 
-<div id="bossBarWrap"><div id="bossBar"></div></div>
-<div id="bossLabel">CAT BOSS • HP 0 / 0</div>
-<div id="centerMsg"></div>
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
 
-<script type="module">
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js";
+const VIEW_W = canvas.width;
+const VIEW_H = canvas.height;
 
-// -------------------------------------------------
-// CORE
-// -------------------------------------------------
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x95c7eb);
-scene.fog = new THREE.Fog(0x95c7eb, 110, 300);
-
-const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.1, 1200);
-const renderer = new THREE.WebGLRenderer({ antialias:true });
-renderer.setSize(innerWidth, innerHeight);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-document.body.appendChild(renderer.domElement);
-
-const clock = new THREE.Clock();
 const keys = {};
+const TEAM_STRATEGIES = ["military", "economy", "snail", "balanced"];
+document.addEventListener("keydown", e => {
+  const k = e.key.toLowerCase();
+  keys[k] = true;
+  if ([" ", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(k) || e.key === " ") {
+    e.preventDefault();
+  }
+});
+document.addEventListener("keyup", e => {
+  keys[e.key.toLowerCase()] = false;
+});
 
-let time = 0;
-let gameOver = false;
-let gameWon = false;
-let cheese = 24;
+function rand(min, max) { return Math.random() * (max - min) + min; }
+function randi(min, max) { return Math.floor(rand(min, max + 1)); }
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
+function rectsOverlap(a, b) {
+  return a.x < b.x + b.w &&
+         a.x + a.w > b.x &&
+         a.y < b.y + b.h &&
+         a.y + a.h > b.y;
+}
+function shade(hex, amt) {
+  const col = hex.replace("#", "");
+  let r = parseInt(col.substring(0, 2), 16);
+  let g = parseInt(col.substring(2, 4), 16);
+  let b = parseInt(col.substring(4, 6), 16);
+  r = clamp(r + amt, 0, 255);
+  g = clamp(g + amt, 0, 255);
+  b = clamp(b + amt, 0, 255);
+  return "#" +
+    r.toString(16).padStart(2, "0") +
+    g.toString(16).padStart(2, "0") +
+    b.toString(16).padStart(2, "0");
+}
 
-const MAP_SIZE = 190;
-const HALF_MAP = MAP_SIZE / 2;
+/* ---------------- AUDIO ---------------- */
 
-const ui = {
-  cheese: document.getElementById("cheeseCount"),
-  servants: document.getElementById("servantCount"),
-  time: document.getElementById("timeCount"),
-  msg: document.getElementById("centerMsg"),
-  bossWrap: document.getElementById("bossBarWrap"),
-  bossBar: document.getElementById("bossBar"),
-  bossLabel: document.getElementById("bossLabel"),
-  buildGrid: document.getElementById("buildGrid"),
-  catExplore: document.getElementById("catExplore"),
-  catEco: document.getElementById("catEco"),
-  catDef: document.getElementById("catDef"),
-  catAtk: document.getElementById("catAtk"),
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let audioUnlocked = false;
+function unlockAudio() {
+  if (!audioUnlocked) {
+    audioUnlocked = true;
+    if (audioCtx.state === "suspended") audioCtx.resume();
+  }
+}
+document.addEventListener("keydown", unlockAudio, { once: true });
+document.addEventListener("mousedown", unlockAudio, { once: true });
+
+function beep(freq = 440, duration = 0.07, type = "square", volume = 0.03, slideTo = null) {
+  if (!audioUnlocked) return;
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  if (slideTo != null) {
+    osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t + duration);
+  }
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(volume, t + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + duration + 0.02);
+}
+function soundFlap() { beep(560, 0.04, "square", 0.018, 430); }
+function soundKill() { beep(930, 0.06, "square", 0.04, 490); setTimeout(() => beep(640, 0.07, "square", 0.03, 260), 30); }
+function soundBerry() { beep(920, 0.05, "triangle", 0.03, 1220); }
+function soundMount() { beep(310, 0.06, "sawtooth", 0.03, 500); }
+function soundDismount() { beep(440, 0.05, "square", 0.03, 250); }
+function soundGate() { beep(520, 0.05, "triangle", 0.03, 730); setTimeout(() => beep(730, 0.05, "triangle", 0.03, 990), 40); }
+function soundUpgrade() { beep(480, 0.06, "triangle", 0.035, 880); setTimeout(() => beep(880, 0.08, "triangle", 0.04, 1200), 55); }
+function soundWin() {
+  beep(660, 0.09, "triangle", 0.04, 880);
+  setTimeout(() => beep(880, 0.1, "triangle", 0.04, 1100), 80);
+  setTimeout(() => beep(990, 0.14, "triangle", 0.05, 1320), 170);
+}
+function soundDeath() { beep(240, 0.09, "sawtooth", 0.04, 120); }
+
+/* ---------------- DIFFICULTY ---------------- */
+
+const DIFFICULTIES = [
+  { level:1,  name:"Honey Sleepwalk", reaction:34, awareness:0.45, aggression:0.30, antiBerry:0.25, escort:false, squad:false, spikeSense:0.55, queenPressure:0.22, discipline:0.28, trapSense:0.24, retreat:0.20, memory:0.18 },
+  { level:2,  name:"Garden Drifter",  reaction:28, awareness:0.52, aggression:0.36, antiBerry:0.32, escort:false, squad:false, spikeSense:0.62, queenPressure:0.28, discipline:0.36, trapSense:0.34, retreat:0.28, memory:0.24 },
+  { level:3,  name:"Wax Worker",      reaction:23, awareness:0.60, aggression:0.42, antiBerry:0.38, escort:false, squad:false, spikeSense:0.70, queenPressure:0.34, discipline:0.45, trapSense:0.45, retreat:0.38, memory:0.34 },
+  { level:4,  name:"Hive Regular",    reaction:18, awareness:0.68, aggression:0.50, antiBerry:0.48, escort:false, squad:false, spikeSense:0.78, queenPressure:0.46, discipline:0.55, trapSense:0.58, retreat:0.48, memory:0.46 },
+  { level:5,  name:"Pollen Raider",   reaction:15, awareness:0.76, aggression:0.58, antiBerry:0.58, escort:true,  squad:false, spikeSense:0.84, queenPressure:0.58, discipline:0.66, trapSense:0.70, retreat:0.58, memory:0.58 },
+  { level:6,  name:"Royal Guard",     reaction:13, awareness:0.83, aggression:0.66, antiBerry:0.66, escort:true,  squad:true,  spikeSense:0.88, queenPressure:0.66, discipline:0.74, trapSense:0.78, retreat:0.66, memory:0.68 },
+  { level:7,  name:"Stinger Captain", reaction:11, awareness:0.89, aggression:0.74, antiBerry:0.74, escort:true,  squad:true,  spikeSense:0.91, queenPressure:0.74, discipline:0.82, trapSense:0.84, retreat:0.74, memory:0.76 },
+  { level:8,  name:"Swarm Tactician", reaction:10, awareness:0.94, aggression:0.82, antiBerry:0.84, escort:true,  squad:true,  spikeSense:0.94, queenPressure:0.84, discipline:0.90, trapSense:0.90, retreat:0.82, memory:0.84 },
+  { level:9,  name:"War Hive Oracle", reaction:8,  awareness:0.98, aggression:0.90, antiBerry:0.92, escort:true,  squad:true,  spikeSense:0.97, queenPressure:0.93, discipline:0.96, trapSense:0.95, retreat:0.90, memory:0.92 },
+  { level:10, name:"The Last Queen",  reaction:6,  awareness:1.00, aggression:1.00, antiBerry:1.00, escort:true,  squad:true,  spikeSense:1.00, queenPressure:1.00, discipline:1.00, trapSense:1.00, retreat:1.00, memory:1.00 }
+];
+
+/* ---------------- MAPS ---------------- */
+
+const MAPS = [
+  {
+    name: "SUNSET HIVE",
+    width: 2600,
+    height: 900,
+    lavaY: 818,
+    spikeY: 48,
+    snailTrackY: 748,
+    blueGateX: 112,
+    goldGateX: 2450,
+    hiveBlueX: 240,
+    hiveGoldX: 2360,
+
+    skyTop: "#2f386d",
+    skyMid: "#59305c",
+    skyLow: "#421824",
+    mountain1: "#39254c",
+    mountain2: "#51305d",
+    platformTop: "#b2a28b",
+    platformSide: "#6c4e33",
+    spikeColor: "#d0d0d0",
+    lava1: "#ff4a1c",
+    lava2: "#ffb02e",
+    bushLeaf1: "#2ea144",
+    bushLeaf2: "#48c75c",
+    bushBerry1: "#55ff5e",
+    bushBerry2: "#b127cf",
+
+    platforms: [
+      {x: 40, y: 700, w: 340, h: 12},
+      {x: 470, y: 610, w: 320, h: 12},
+      {x: 930, y: 480, w: 340, h: 12},
+      {x: 1330, y: 480, w: 340, h: 12},
+      {x: 1810, y: 610, w: 320, h: 12},
+      {x: 2220, y: 700, w: 340, h: 12},
+      {x: 240, y: 410, w: 230, h: 12},
+      {x: 1060, y: 300, w: 230, h: 12},
+      {x: 1310, y: 300, w: 230, h: 12},
+      {x: 2120, y: 410, w: 230, h: 12},
+      {x: 690, y: 210, w: 190, h: 12},
+      {x: 1720, y: 210, w: 190, h: 12}
+    ],
+
+    bushes: [
+      {platformIndex:1, offset:135},
+      {platformIndex:7, offset:105},
+      {platformIndex:8, offset:105},
+      {platformIndex:4, offset:135}
+    ]
+  },
+
+  {
+    name: "MOON CAVERN",
+    width: 3000,
+    height: 900,
+    lavaY: 830,
+    spikeY: 52,
+    snailTrackY: 760,
+    blueGateX: 100,
+    goldGateX: 2855,
+    hiveBlueX: 245,
+    hiveGoldX: 2755,
+
+    skyTop: "#12264f",
+    skyMid: "#1a1f4e",
+    skyLow: "#281c3d",
+    mountain1: "#1d2142",
+    mountain2: "#2a3159",
+    platformTop: "#8b96ad",
+    platformSide: "#49536b",
+    spikeColor: "#b9c3da",
+    lava1: "#7c1fff",
+    lava2: "#c95cff",
+    bushLeaf1: "#316883",
+    bushLeaf2: "#4ba3a6",
+    bushBerry1: "#9dffea",
+    bushBerry2: "#c65dff",
+
+    platforms: [
+      {x: 50, y: 715, w: 330, h: 12},
+      {x: 520, y: 650, w: 200, h: 12},
+      {x: 860, y: 545, w: 220, h: 12},
+      {x: 1260, y: 430, w: 280, h: 12},
+      {x: 1680, y: 545, w: 220, h: 12},
+      {x: 2060, y: 650, w: 200, h: 12},
+      {x: 2620, y: 715, w: 300, h: 12},
+      {x: 350, y: 455, w: 170, h: 12},
+      {x: 2440, y: 455, w: 170, h: 12},
+      {x: 720, y: 265, w: 150, h: 12},
+      {x: 2120, y: 265, w: 150, h: 12},
+      {x: 1410, y: 175, w: 180, h: 12}
+    ],
+
+    bushes: [
+      {platformIndex:1, offset:95},
+      {platformIndex:11, offset:90},
+      {platformIndex:9, offset:75},
+      {platformIndex:5, offset:105}
+    ]
+  },
+
+  {
+    name: "EMERALD TOWER",
+    width: 2800,
+    height: 900,
+    lavaY: 820,
+    spikeY: 50,
+    snailTrackY: 750,
+    blueGateX: 105,
+    goldGateX: 2675,
+    hiveBlueX: 240,
+    hiveGoldX: 2560,
+
+    skyTop: "#1d4a45",
+    skyMid: "#244e3d",
+    skyLow: "#2a253f",
+    mountain1: "#203934",
+    mountain2: "#355548",
+    platformTop: "#b8bf7d",
+    platformSide: "#5b6330",
+    spikeColor: "#dde2be",
+    lava1: "#ff7d1d",
+    lava2: "#ffe45b",
+    bushLeaf1: "#2f9f47",
+    bushLeaf2: "#5bd16a",
+    bushBerry1: "#ff6a94",
+    bushBerry2: "#ffdef0",
+
+    platforms: [
+      {x: 50, y: 710, w: 300, h: 12},
+      {x: 2450, y: 710, w: 300, h: 12},
+      {x: 500, y: 610, w: 160, h: 12},
+      {x: 820, y: 520, w: 160, h: 12},
+      {x: 1140, y: 430, w: 160, h: 12},
+      {x: 1460, y: 520, w: 160, h: 12},
+      {x: 1780, y: 610, w: 160, h: 12},
+      {x: 300, y: 350, w: 160, h: 12},
+      {x: 2360, y: 350, w: 160, h: 12},
+      {x: 720, y: 240, w: 140, h: 12},
+      {x: 1910, y: 240, w: 140, h: 12},
+      {x: 1320, y: 165, w: 160, h: 12}
+    ],
+
+    bushes: [
+      {platformIndex:2, offset:80},
+      {platformIndex:9, offset:70},
+      {platformIndex:10, offset:70},
+      {platformIndex:6, offset:80}
+    ]
+  }
+];
+
+/* ---------------- GAME STATE ---------------- */
+
+const game = {
+  state: "title",
+  winner: null,
+  winType: "",
+  playerStrategy: "economy",
+  enemyStrategy: "military",
+  difficultyIndex: 3,
+  currentMapIndex: 0,
+  cameraX: 0,
+  cameraY: 0,
+  time: 0,
+  strategyFlashTimer: 0,
+  strategySwitchCooldown: 0,
+  debugAI: false
 };
 
-const obstacles = [];
-const structures = [];
-const cheeses = [];
+const world = {
+  width: 2600,
+  height: 900,
+  lavaY: 818,
+  spikeY: 48,
+  snailTrackY: 748,
+  snailLeftGoal: 130,
+  snailRightGoal: 2470,
+  platforms: [],
+  theme: MAPS[0]
+};
+
+const stars = Array.from({ length: 240 }, () => ({
+  x: rand(0, 3400),
+  y: rand(0, 900),
+  s: Math.random() < 0.15 ? 3 : (Math.random() < 0.45 ? 2 : 1)
+}));
+
+const gates = { blue: null, gold: null };
+const hive = { blue: null, gold: null };
 const particles = [];
-const projectiles = [];
-const floatingTexts = [];
-const enemies = [];
-const wildMice = [];
-const servantMice = [];
-const robots = [];
-const repairBeams = [];
 
-let cat = null;
-let catSpawnTriggered = false;
-
-// -------------------------------------------------
-// BUILD CATEGORIES
-// -------------------------------------------------
-let currentCategory = 1;
-let currentSelectionSlot = null;
-
-const CATEGORY_BUILDS = {
-  2: [
-    { slot:5, name:"Cheese Factory", cost:5, type:"factory", hp:95, radius:2.5 },
-    { slot:6, name:"Repair Fountain", cost:9, type:"fountain", hp:90, radius:2.0 },
-    { slot:7, name:"Supply Nest", cost:6, type:"supplyNest", hp:78, radius:2.0 },
-    { slot:8, name:"Beacon", cost:20, type:"beacon", hp:100, radius:2.1 },
-    { slot:9, name:"Robo Facility", cost:12, type:"robo", hp:145, radius:2.6 },
-    { slot:0, name:"Scout Post", cost:7, type:"scoutPost", hp:82, radius:2.0 }
-  ],
-  3: [
-    { slot:5, name:"Cheese Wall", cost:3, type:"wall", hp:105, radius:2.1 },
-    { slot:6, name:"Diamond Wall", cost:8, type:"diamondWall", hp:245, radius:2.5 },
-    { slot:7, name:"Barrier Totem", cost:10, type:"barrierTotem", hp:88, radius:2.0 },
-    { slot:8, name:"Brace Tower", cost:11, type:"braceTower", hp:125, radius:2.0 },
-    { slot:9, name:"Repair Anchor", cost:9, type:"repairAnchor", hp:92, radius:2.0 },
-    { slot:0, name:"Fort Plate", cost:8, type:"fortPlate", hp:115, radius:2.2 }
-  ],
-  4: [
-    { slot:5, name:"Cheese Turret", cost:5, type:"turret", hp:90, radius:2.0 },
-    { slot:6, name:"Cheese Cannon", cost:10, type:"cannon", hp:110, radius:2.2 },
-    { slot:7, name:"Shard Launcher", cost:8, type:"shardLauncher", hp:84, radius:2.0 },
-    { slot:8, name:"Zap Coil", cost:9, type:"zapCoil", hp:76, radius:1.9 },
-    { slot:9, name:"Mortar Bloom", cost:12, type:"mortarBloom", hp:94, radius:2.1 },
-    { slot:0, name:"Saw Blaster", cost:11, type:"sawBlaster", hp:96, radius:2.0 }
-  ]
-};
-const BUILD_ICONS = {
-  factory:"🧀", fountain:"💧", supplyNest:"📦", beacon:"📡", robo:"⚙️", scoutPost:"👁️",
-  wall:"🧱", diamondWall:"💎", barrierTotem:"🛡️", braceTower:"🏛️", repairAnchor:"🔧", fortPlate:"🪙",
-  turret:"🎯", cannon:"💥", shardLauncher:"🔱", zapCoil:"⚡", mortarBloom:"🌸", sawBlaster:"🪚"
-};
-
-function getSelectedBuildData() {
-  if (currentCategory === 1 || currentSelectionSlot == null) return null;
-  return CATEGORY_BUILDS[currentCategory].find(b => b.slot === currentSelectionSlot) || null;
-}
-
-function updateBuildUI() {
-  ui.catExplore.classList.toggle("active", currentCategory === 1);
-  ui.catEco.classList.toggle("active", currentCategory === 2);
-  ui.catDef.classList.toggle("active", currentCategory === 3);
-  ui.catAtk.classList.toggle("active", currentCategory === 4);
-
-  ui.buildGrid.innerHTML = "";
-  if (currentCategory === 1) {
-    const items = [
-      "Explore mode",
-      "2 Economic",
-      "3 Defensive",
-      "4 Attack",
-      "Then use 5 6 7 8 9 0",
-      "Space places selected build"
-    ];
-    items.forEach((txt, i) => {
-      const div = document.createElement("div");
-      div.className = "buildItem" + (i === 0 ? " active" : "");
-      div.textContent = txt;
-      ui.buildGrid.appendChild(div);
-    });
-    return;
-  }
-
-  for (const b of CATEGORY_BUILDS[currentCategory]) {
-    const div = document.createElement("div");
-    div.className = "buildItem" + (currentSelectionSlot === b.slot ? " active" : "");
-    const icon = BUILD_ICONS[b.type] || "•";
-    div.innerHTML = `<span class="buildKey">${b.slot}</span><span class="buildIcon">${icon}</span>${b.name} (${b.cost})`;
-    ui.buildGrid.appendChild(div);
-  }
-}
-updateBuildUI();
-
-// -------------------------------------------------
-// HELPERS
-// -------------------------------------------------
-function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
-function rand(a,b){ return a + Math.random()*(b-a); }
-function dist2(a,b){ return Math.hypot(a.x-b.x, a.z-b.z); }
-function isWallStructure(s){ return !!s && (s.type === "wall" || s.type === "diamondWall"); }
-function structureBlocksMovement(s){ return isWallStructure(s); }
-function angleDiff(a,b){
-  let d = b-a;
-  while(d > Math.PI) d -= Math.PI*2;
-  while(d < -Math.PI) d += Math.PI*2;
-  return d;
-}
-function showCenter(text, dur=1.5){
-  ui.msg.textContent = text;
-  ui.msg.style.opacity = "1";
-  setTimeout(() => {
-    if (ui.msg.textContent === text) ui.msg.style.opacity = "0";
-  }, dur * 1000);
-}
-function groundHeight(x,z){
-  const a = Math.sin(x*0.041)*1.7;
-  const b = Math.cos(z*0.036)*1.25;
-  const c = Math.sin((x+z)*0.023)*1.8;
-  const d = Math.cos((x-z)*0.016)*1.1;
-  return a+b+c+d;
-}
-
-// -------------------------------------------------
-// LIGHTING
-// -------------------------------------------------
-const hemi = new THREE.HemisphereLight(0xeaf8ff, 0x526942, 1.08);
-scene.add(hemi);
-
-const sun = new THREE.DirectionalLight(0xffffff, 1.35);
-sun.position.set(65,95,35);
-sun.castShadow = true;
-sun.shadow.mapSize.set(2048,2048);
-sun.shadow.camera.left = -180;
-sun.shadow.camera.right = 180;
-sun.shadow.camera.top = 180;
-sun.shadow.camera.bottom = -180;
-sun.shadow.camera.near = 1;
-sun.shadow.camera.far = 400;
-scene.add(sun);
-
-// -------------------------------------------------
-// WORLD
-// -------------------------------------------------
-function createGround(){
-  const geo = new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE, 180, 180);
-  geo.rotateX(-Math.PI/2);
-  const pos = geo.attributes.position;
-  const colors = [];
-  for(let i=0;i<pos.count;i++){
-    const x = pos.getX(i), z = pos.getZ(i);
-    const y = groundHeight(x,z);
-    pos.setY(i, y);
-    const shade = 0.25 + ((y + 6) / 14);
-    colors.push(0.23 + shade*0.14, 0.40 + shade*0.24, 0.17 + shade*0.10);
-  }
-  geo.setAttribute("color", new THREE.Float32BufferAttribute(colors,3));
-  geo.computeVertexNormals();
-  const mat = new THREE.MeshStandardMaterial({ vertexColors:true, roughness:1 });
-  const ground = new THREE.Mesh(geo, mat);
-  ground.receiveShadow = true;
-  scene.add(ground);
-}
-createGround();
-
-function createRock(x,z,sx,sy,sz,color=0x6d7379){
-  const geo = new THREE.DodecahedronGeometry(1,0);
-  const mat = new THREE.MeshStandardMaterial({ color, roughness:1 });
-  const m = new THREE.Mesh(geo, mat);
-  m.scale.set(sx,sy,sz);
-  m.position.set(x, groundHeight(x,z) + sy*0.7, z);
-  m.castShadow = m.receiveShadow = true;
-  scene.add(m);
-  obstacles.push({ x,z,r:Math.max(sx,sz)*0.95, mesh:m });
-}
-function createCliff(x,z,sx,sy,sz){
-  const geo = new THREE.BoxGeometry(sx,sy,sz);
-  const mat = new THREE.MeshStandardMaterial({ color:0x726a56, roughness:1 });
-  const m = new THREE.Mesh(geo, mat);
-  m.position.set(x, groundHeight(x,z) + sy/2, z);
-  m.castShadow = m.receiveShadow = true;
-  scene.add(m);
-  obstacles.push({ x,z,r:Math.max(sx,sz)*0.56, mesh:m });
-}
-function createBush(x,z){
-  const g = new THREE.Group();
-  const mat = new THREE.MeshStandardMaterial({ color:0x4d8f39, roughness:1 });
-  for(let i=0;i<4;i++){
-    const b = new THREE.Mesh(new THREE.SphereGeometry(rand(0.5,0.9),10,8), mat);
-    b.position.set(rand(-0.5,0.5), rand(0.35,0.8), rand(-0.5,0.5));
-    g.add(b);
-  }
-  g.position.set(x, groundHeight(x,z), z);
-  g.traverse(c=>{ if(c.isMesh){ c.castShadow = true; c.receiveShadow = true; } });
-  scene.add(g);
-}
-function createFlower(x,z){
-  const g = new THREE.Group();
-  const stem = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.02,0.03,0.5,6),
-    new THREE.MeshStandardMaterial({ color:0x3d8d35 })
-  );
-  stem.position.y = 0.25;
-  g.add(stem);
-
-  const petalMat = new THREE.MeshStandardMaterial({ color:Math.random()<0.5?0xffb0d0:0xffef8e });
-  for(let i=0;i<5;i++){
-    const p = new THREE.Mesh(new THREE.SphereGeometry(0.06,6,6), petalMat);
-    const a = i/5 * Math.PI*2;
-    p.position.set(Math.sin(a)*0.08, 0.52, Math.cos(a)*0.08);
-    g.add(p);
-  }
-  const center = new THREE.Mesh(new THREE.SphereGeometry(0.05,6,6), new THREE.MeshStandardMaterial({ color:0xffa92d }));
-  center.position.y = 0.52;
-  g.add(center);
-
-  g.position.set(x, groundHeight(x,z), z);
-  scene.add(g);
-}
-function createTree(x,z){
-  const trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.35,0.48,3.2,8),
-    new THREE.MeshStandardMaterial({ color:0x6c4426 })
-  );
-  const leaf = new THREE.Mesh(
-    new THREE.ConeGeometry(2.2,5.0,10),
-    new THREE.MeshStandardMaterial({ color:0x3d7d35 })
-  );
-  const y = groundHeight(x,z);
-  trunk.position.set(x,y+1.6,z);
-  leaf.position.set(x,y+5.4,z);
-  trunk.castShadow = leaf.castShadow = true;
-  trunk.receiveShadow = leaf.receiveShadow = true;
-  scene.add(trunk,leaf);
-}
-for(let i=0;i<30;i++){
-  const x = rand(-HALF_MAP+12, HALF_MAP-12);
-  const z = rand(-HALF_MAP+12, HALF_MAP-12);
-  if(Math.hypot(x,z)<20) continue;
-  if(Math.random()<0.55) createRock(x,z, rand(2.4,5.7), rand(2.4,5.8), rand(2.4,5.7));
-  else createCliff(x,z, rand(6,12), rand(4.5,10), rand(5,12));
-}
-for(let i=0;i<90;i++){
-  const x = rand(-HALF_MAP+8, HALF_MAP-8);
-  const z = rand(-HALF_MAP+8, HALF_MAP-8);
-  if(Math.hypot(x,z)<12) continue;
-  if(Math.random()<0.55) createBush(x,z);
-}
-for(let i=0;i<160;i++){
-  const x = rand(-HALF_MAP+6, HALF_MAP-6);
-  const z = rand(-HALF_MAP+6, HALF_MAP-6);
-  if(Math.hypot(x,z)<10) continue;
-  if(Math.random()<0.35) createFlower(x,z);
-}
-for(let i=0;i<120;i++){
-  const side = i % 4;
-  let x=0,z=0;
-  if(side===0){ x = -HALF_MAP+4+Math.random()*3; z = rand(-HALF_MAP, HALF_MAP); }
-  if(side===1){ x = HALF_MAP-4-Math.random()*3; z = rand(-HALF_MAP, HALF_MAP); }
-  if(side===2){ z = -HALF_MAP+4+Math.random()*3; x = rand(-HALF_MAP, HALF_MAP); }
-  if(side===3){ z = HALF_MAP-4-Math.random()*3; x = rand(-HALF_MAP, HALF_MAP); }
-  createTree(x,z);
-}
-
-function circleBlocked(x,z,r, ignoreStructure=null, structureSpacingScale=1){
-  if(x < -HALF_MAP+2 || x > HALF_MAP-2 || z < -HALF_MAP+2 || z > HALF_MAP-2) return true;
-  for(const o of obstacles){
-    if(Math.hypot(x-o.x, z-o.z) < r + o.r) return true;
-  }
-  for(const s of structures){
-    if(s.dead || s===ignoreStructure) continue;
-    if(!structureBlocksMovement(s)) continue;
-    if(Math.hypot(x-s.pos.x, z-s.pos.z) < (r + s.radius) * structureSpacingScale) return true;
-  }
-  return false;
-}
-function lineBlocked(a,b){
-  const dx = b.x-a.x, dz = b.z-a.z;
-  const len = Math.hypot(dx,dz);
-  const steps = Math.ceil(len/1.5);
-  for(let i=1;i<steps;i++){
-    const t = i/steps;
-    const x = a.x + dx*t;
-    const z = a.z + dz*t;
-    for(const o of obstacles){
-      if(Math.hypot(x-o.x, z-o.z) < o.r + 0.65) return true;
-    }
-    for(const s of structures){
-      if(s.dead) continue;
-      if(!structureBlocksMovement(s)) continue;
-      if(Math.hypot(x-s.pos.x, z-s.pos.z) < s.radius + 0.55) return true;
-    }
-  }
-  return false;
-}
-function randomFreePosition(radius=1){
-  for(let i=0;i<80;i++){
-    const x = rand(-HALF_MAP+10, HALF_MAP-10);
-    const z = rand(-HALF_MAP+10, HALF_MAP-10);
-    if(!circleBlocked(x,z,radius)) return new THREE.Vector3(x, groundHeight(x,z), z);
-  }
-  return new THREE.Vector3(0, groundHeight(0,0), 0);
-}
-
-// -------------------------------------------------
-// PARTICLES / FX
-// -------------------------------------------------
-function addBurst(x,y,z,color=0xffdd66,count=10,speed=4,life=0.6,size=0.1){
-  const geo = new THREE.SphereGeometry(size,6,6);
-  for(let i=0;i<count;i++){
-    const m = new THREE.Mesh(
-      geo,
-      new THREE.MeshStandardMaterial({ color, emissive:color, emissiveIntensity:0.55 })
-    );
-    m.position.set(x,y,z);
-    scene.add(m);
+function addParticles(x, y, color, count = 10, speed = 3) {
+  for (let i = 0; i < count; i++) {
     particles.push({
-      mesh:m,
-      vel:new THREE.Vector3(rand(-1,1), rand(0.2,1.5), rand(-1,1)).normalize().multiplyScalar(speed*(0.55+Math.random()*0.7)),
-      life, maxLife:life,
-      kind:"burst"
+      x,
+      y,
+      vx: rand(-speed, speed),
+      vy: rand(-speed - 1, speed * 0.35),
+      life: rand(18, 44),
+      maxLife: 44,
+      color
     });
   }
 }
-function addCogParticle(x,y,z){
-  const g = new THREE.Group();
-  const mat = new THREE.MeshBasicMaterial({ color:0xcfefff, transparent:true, opacity:0.95 });
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.12,0.03,6,10), mat);
-  g.add(ring);
-  for(let i=0;i<6;i++){
-    const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.03,0.07,0.03), mat);
-    const a = i/6 * Math.PI*2;
-    tooth.position.set(Math.sin(a)*0.17, Math.cos(a)*0.17, 0);
-    tooth.rotation.z = a;
-    g.add(tooth);
-  }
-  g.position.set(x,y,z);
-  scene.add(g);
-  particles.push({
-    mesh:g,
-    vel:new THREE.Vector3(rand(-0.1,0.1), rand(0.5,1.0), rand(-0.1,0.1)),
-    life:0.9,
-    maxLife:0.9,
-    spin:rand(-4,4),
-    kind:"cog"
-  });
-}
-function addBloodHit(x,y,z,intensity=1){
-  const count = Math.floor(7 + intensity * 6);
-  const geo = new THREE.SphereGeometry(0.08,6,6);
-  for(let i=0;i<count;i++){
-    const color = Math.random() < 0.55 ? 0x8a1d1d : 0xb83826;
-    const m = new THREE.Mesh(
-      geo,
-      new THREE.MeshStandardMaterial({ color, emissive:color, emissiveIntensity:0.35, transparent:true, opacity:0.95 })
-    );
-    m.position.set(x,y,z);
-    scene.add(m);
-    particles.push({
-      mesh:m,
-      vel:new THREE.Vector3(rand(-1,1), rand(0.25,1.2), rand(-1,1)).normalize().multiplyScalar(rand(2.4,4.8) * (0.65 + intensity * 0.35)),
-      life:rand(0.24,0.42),
-      maxLife:0.42,
-      kind:"blood"
-    });
-  }
-}
-function addLightningArc(from, to, life=0.12, color=0xbec4ff){
-  const segs = 6;
-  const pts = [from.clone()];
-  const dir = to.clone().sub(from);
-  const side = new THREE.Vector3(-dir.z, 0, dir.x).normalize();
-  for(let i=1;i<segs;i++){
-    const t = i/segs;
-    const p = from.clone().lerp(to, t);
-    const wobble = (Math.random()*2 - 1) * 0.32 * (1 - Math.abs(t - 0.5));
-    p.addScaledVector(side, wobble);
-    p.y += (Math.random()*2 - 1) * 0.18;
-    pts.push(p);
-  }
-  pts.push(to.clone());
-  const curve = new THREE.CatmullRomCurve3(pts);
-  const geo = new THREE.TubeGeometry(curve, 16, 0.04, 6, false);
-  const mat = new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.96, depthWrite:false });
-  const mesh = new THREE.Mesh(geo, mat);
-  scene.add(mesh);
-  particles.push({ mesh, vel:new THREE.Vector3(), life, maxLife:life, kind:"lightning" });
-}
-function updateParticles(dt){
-  for(let i=particles.length-1;i>=0;i--){
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
-    p.life -= dt;
-    p.mesh.position.addScaledVector(p.vel, dt);
-    if (p.kind === "burst") {
-      p.vel.y -= 7.5*dt;
-      const s = Math.max(0.04, p.life / p.maxLife);
-      p.mesh.scale.setScalar(s);
-    } else if (p.kind === "blood") {
-      p.vel.y -= 10.5 * dt;
-      const s = Math.max(0.02, p.life / p.maxLife);
-      p.mesh.scale.setScalar(s);
-      if (p.mesh.material) p.mesh.material.opacity = clamp(p.life / p.maxLife, 0, 1);
-    } else if (p.kind === "cog") {
-      p.mesh.rotation.z += (p.spin || 2) * dt;
-      p.mesh.scale.setScalar(0.6 + 0.5 * (p.life / p.maxLife));
-      p.mesh.traverse(c => { if(c.material) c.material.opacity = p.life / p.maxLife; });
-    } else if (p.kind === "lightning") {
-      if (p.mesh.material) p.mesh.material.opacity = clamp((p.life / p.maxLife) * 1.2, 0, 1);
-    }
-    if(p.life <= 0){
-      p.mesh.parent?.remove(p.mesh);
-      particles.splice(i,1);
-    }
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.11;
+    p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
   }
 }
 
-// -------------------------------------------------
-// HEALTH BAR
-// -------------------------------------------------
-function createHealthBar(width=1.6, color=0xff5454){
-  const g = new THREE.Group();
-  const bg = new THREE.Mesh(
-    new THREE.PlaneGeometry(width,0.16),
-    new THREE.MeshBasicMaterial({ color:0x111111, transparent:true, opacity:0.88, side:THREE.DoubleSide, depthTest:false, depthWrite:false })
-  );
-  const fg = new THREE.Mesh(
-    new THREE.PlaneGeometry(width*0.98,0.11),
-    new THREE.MeshBasicMaterial({ color, side:THREE.DoubleSide, depthTest:false, depthWrite:false })
-  );
-  fg.position.z = 0.01;
-  g.add(bg,fg);
-  g.renderOrder = 150;
-  g.userData = { fg, width, bg };
-  return g;
-}
-function setHealthBar(bar, frac){
-  frac = clamp(frac,0,1);
-  bar.userData.fg.scale.x = frac;
-  bar.userData.fg.position.x = -(bar.userData.width*0.98)*(1-frac)/2;
-  if(bar.userData.fg?.material){
-    const c = new THREE.Color();
-    if(frac > 0.5){
-      c.setRGB(0.35 + 0.45*(frac-0.5)*2, 0.76 + 0.24*(frac-0.5)*2, 0.32);
-    } else {
-      c.setRGB(1.0, 0.3 + 0.9*frac, 0.28);
-    }
-    bar.userData.fg.material.color.copy(c);
-  }
-}
-function popWorldText(text, x, y, z, color="#ffe66f"){
-  const canvas = document.createElement("canvas");
-  canvas.width = 256;
-  canvas.height = 128;
-  const ctx = canvas.getContext("2d");
-  if(!ctx) return;
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.font = "bold 54px Arial";
-  ctx.textAlign = "center";
-  ctx.lineWidth = 11;
-  ctx.strokeStyle = "rgba(0,0,0,0.78)";
-  ctx.strokeText(text, canvas.width/2, 82);
-  ctx.fillStyle = color;
-  ctx.fillText(text, canvas.width/2, 82);
-
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.needsUpdate = true;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, transparent:true, depthTest:false, depthWrite:false }));
-  sprite.position.set(x,y,z);
-  sprite.scale.set(1.7,0.85,1);
-  sprite.renderOrder = 220;
-  scene.add(sprite);
-  floatingTexts.push({ sprite, life:0.9, rise:1.4 });
-}
-function makeSymbolTexture(symbol, fill="#9bffb2"){
-  const canvas = document.createElement("canvas");
-  canvas.width = 128;
-  canvas.height = 128;
-  const ctx = canvas.getContext("2d");
-  if(!ctx) return null;
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.font = "bold 92px Arial";
-  ctx.textAlign = "center";
-  ctx.lineWidth = 12;
-  ctx.strokeStyle = "rgba(0,0,0,0.75)";
-  ctx.strokeText(symbol, 64, 93);
-  ctx.fillStyle = fill;
-  ctx.fillText(symbol, 64, 93);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.needsUpdate = true;
-  return tex;
-}
-const DAZE_TEXTURE = makeSymbolTexture("💫", "#bfe7ff");
-
-function createDazeSprite(){
-  if(!DAZE_TEXTURE) return null;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: DAZE_TEXTURE,
-    transparent: true,
-    depthTest: false,
-    depthWrite: false,
-    opacity: 0
-  }));
-  sprite.scale.set(1.15, 1.15, 1);
-  sprite.visible = false;
-  sprite.renderOrder = 225;
-  return sprite;
-}
-
-function setEnemyStunned(enemy, duration=0.5){
-  if(!enemy || enemy.dead || enemy.dying || enemy.kind === "catBoss") return;
-  enemy.stunCd = Math.max(enemy.stunCd || 0, duration);
-}
-function updateFloatingTexts(dt){
-  for(let i=floatingTexts.length-1;i>=0;i--){
-    const ft = floatingTexts[i];
-    ft.life -= dt;
-    ft.sprite.position.y += ft.rise * dt;
-    ft.sprite.material.opacity = clamp(ft.life / 0.9, 0, 1);
-    ft.sprite.quaternion.copy(camera.quaternion);
-    if(ft.life <= 0){
-      ft.sprite.material.map?.dispose?.();
-      ft.sprite.material.dispose?.();
-      ft.sprite.parent?.remove(ft.sprite);
-      floatingTexts.splice(i,1);
-    }
-  }
-}
-function updateStructureHealthBarVisibility(){
-  for(const s of structures){
-    if(s.dead || !s.mesh?.userData?.healthBar) continue;
-    const bar = s.mesh.userData.healthBar;
-    const d = dist2(player.pos, s.pos);
-    bar.visible = d < 36;
-    if(bar.visible) bar.quaternion.copy(camera.quaternion);
-  }
-}
-
-// -------------------------------------------------
-// MODELS
-// -------------------------------------------------
-function makeMouseModel(bodyColor=0xc9c1b8, earColor=0xffb6c5, tailColor=0xca8c96){
-  const g = new THREE.Group();
-  const bodyMat = new THREE.MeshStandardMaterial({ color:bodyColor, roughness:0.82 });
-  const earMat = new THREE.MeshStandardMaterial({ color:earColor });
-  const tailMat = new THREE.MeshStandardMaterial({ color:tailColor });
-  const eyeMat = new THREE.MeshStandardMaterial({ color:0x111111 });
-
-  const pelvis = new THREE.Group(); g.add(pelvis);
-  const spine = new THREE.Group(); pelvis.add(spine);
-  const neck = new THREE.Group(); spine.add(neck);
-
-  const tailBase = new THREE.Group();
-  tailBase.position.set(0,0.83,-1.14);
-  pelvis.add(tailBase);
-  const tailMid = new THREE.Group();
-  tailMid.position.set(0,-0.10,-0.72);
-  tailBase.add(tailMid);
-  const tailTip = new THREE.Group();
-  tailTip.position.set(0,-0.06,-0.58);
-  tailMid.add(tailTip);
-
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.72,14,12), bodyMat);
-  body.scale.set(1.18,0.85,1.7);
-  body.position.set(0,0.96,0);
-  spine.add(body);
-
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.47,12,10), bodyMat);
-  head.position.set(0,1.02,1.14);
-  neck.add(head);
-
-  const snout = new THREE.Mesh(new THREE.SphereGeometry(0.18,10,8), new THREE.MeshStandardMaterial({ color:0xe9d6ce }));
-  snout.scale.set(1,0.8,1.25);
-  snout.position.set(0,0.94,1.54);
-  neck.add(snout);
-
-  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.08,8,8), new THREE.MeshStandardMaterial({ color:0xff8190 }));
-  nose.position.set(0,0.95,1.69);
-  neck.add(nose);
-
-  const earL = new THREE.Mesh(new THREE.CircleGeometry(0.22,16), earMat);
-  earL.position.set(-0.25,1.42,1.05); earL.rotation.y = Math.PI*0.15;
-  neck.add(earL);
-  const earR = earL.clone(); earR.position.x = 0.25; earR.rotation.y = -Math.PI*0.15; neck.add(earR);
-
-  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.05,6,6), eyeMat);
-  eyeL.position.set(-0.14,1.08,1.46); neck.add(eyeL);
-  const eyeR = eyeL.clone(); eyeR.position.x = 0.14; neck.add(eyeR);
-
-  const tail1 = new THREE.Mesh(new THREE.CylinderGeometry(0.045,0.08,0.9,8), tailMat);
-  tail1.position.set(0,-0.02,-0.42);
-  tail1.rotation.x = Math.PI/2.15;
-  tailBase.add(tail1);
-
-  const tail2 = new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.05,0.72,8), tailMat);
-  tail2.position.set(0,-0.02,-0.34);
-  tail2.rotation.x = Math.PI/2.25;
-  tailMid.add(tail2);
-
-  const tail3 = new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.035,0.58,8), tailMat);
-  tail3.position.set(0,-0.02,-0.26);
-  tail3.rotation.x = Math.PI/2.35;
-  tailTip.add(tail3);
-
-  const legGeo = new THREE.CylinderGeometry(0.06,0.08,0.45,6);
-  const legPositions = [
-    [-0.33,0.6,0.58],[0.33,0.6,0.58],[-0.33,0.6,-0.34],[0.33,0.6,-0.34]
-  ];
-  const legs = [];
-  legPositions.forEach((p)=>{
-    const pivot = new THREE.Group();
-    pivot.position.set(p[0],p[1],p[2]);
-    g.add(pivot);
-    const leg = new THREE.Mesh(legGeo, bodyMat);
-    leg.position.set(0,-0.2,0);
-    pivot.add(leg);
-    legs.push(pivot);
-  });
-
-  g.userData = { pelvis, spine, neck, tailBase, tailMid, tailTip, legs };
-  g.traverse(c=>{ if(c.isMesh){ c.castShadow = true; c.receiveShadow = true; } });
-  return g;
-}
-function animateMouseRig(group, speedFactor, t, attackAmount=0, dying=0){
-  const rig = group.userData;
-  if(!rig) return;
-  const walk = t * (5 + speedFactor*8);
-  rig.pelvis.position.y = Math.sin(walk*2)*0.02;
-  rig.spine.rotation.x = Math.sin(walk*2)*0.05 + attackAmount*0.18 - dying*1.2;
-  rig.neck.rotation.x = Math.sin(walk*2+0.5)*0.04 - attackAmount*0.3 + dying*0.35;
-
-  rig.tailBase.rotation.x = 0.18 + Math.sin(walk*2.5)*0.16;
-  rig.tailBase.rotation.y = Math.sin(walk*1.8)*0.22;
-  rig.tailMid.rotation.x = 0.12 + Math.sin(walk*2.6+0.6)*0.14;
-  rig.tailMid.rotation.y = Math.sin(walk*1.9+0.5)*0.18;
-  rig.tailTip.rotation.x = 0.1 + Math.sin(walk*2.8+1.1)*0.15;
-  rig.tailTip.rotation.y = Math.sin(walk*2.0+1.0)*0.22;
-
-  const phases = [0,Math.PI,Math.PI,0];
-  rig.legs.forEach((leg,i)=>{
-    leg.rotation.x = Math.sin(walk + phases[i]) * (0.65*speedFactor + 0.1) - attackAmount*0.4 + dying*0.7;
-  });
-}
-function makeRatModel(){ const g = makeMouseModel(0x756f68, 0xd39eaa, 0xba7e8b); g.scale.set(1.1,1.1,1.15); return g; }
-function makeMoleModel(){
-  const g = makeMouseModel(0x5a493f, 0xbe8d93, 0x8a6970);
-  g.scale.set(1.22,0.96,1.42);
-  const rig = g.userData;
-  if(rig?.neck){
-    const nose = new THREE.Mesh(
-      new THREE.SphereGeometry(0.2,10,8),
-      new THREE.MeshStandardMaterial({ color:0xc9a4aa })
-    );
-    nose.scale.set(1.35,0.55,0.72);
-    nose.position.set(0,0.72,1.48);
-    rig.neck.add(nose);
-  }
-  const claws = new THREE.Mesh(
-    new THREE.BoxGeometry(0.44,0.08,0.2),
-    new THREE.MeshStandardMaterial({ color:0xd7d1c7 })
-  );
-  const c1 = claws.clone(); c1.position.set(-0.38,0.33,0.68); g.add(c1);
-  const c2 = claws.clone(); c2.position.set(0.38,0.33,0.68); g.add(c2);
-  return g;
-}
-function makeWeaselModel(){
-  const g = new THREE.Group();
-  const bodyMat = new THREE.MeshStandardMaterial({ color:0x6e5437, roughness:0.82 });
-  const bellyMat = new THREE.MeshStandardMaterial({ color:0xe6d7bb, roughness:0.78 });
-  const tailMat = new THREE.MeshStandardMaterial({ color:0x5e452e });
-
-  const spine = new THREE.Group(); g.add(spine);
-  const neck = new THREE.Group(); g.add(neck);
-
-  const tailBase = new THREE.Group();
-  tailBase.position.set(0,0.82,-1.08);
-  g.add(tailBase);
-
-  const tailMid = new THREE.Group();
-  tailMid.position.set(0,-0.08,-0.66);
-  tailBase.add(tailMid);
-
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.36,2.5,6,12), bodyMat);
-  body.rotation.z = Math.PI/2;
-  body.position.set(0,1.04,0);
-  spine.add(body);
-
-  const belly = new THREE.Mesh(new THREE.CapsuleGeometry(0.17,1.96,4,10), bellyMat);
-  belly.rotation.z = Math.PI/2;
-  belly.position.set(0,0.84,0.14);
-  spine.add(belly);
-
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.33,12,10), bodyMat);
-  head.position.set(0,1.12,1.62);
-  neck.add(head);
-  const snout = new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.12,0.58,8), bodyMat);
-  snout.rotation.x = Math.PI/2;
-  snout.position.set(0,1.08,1.95);
-  neck.add(snout);
-
-  const tail1 = new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.13,0.9,8), tailMat);
-  tail1.position.set(0,-0.02,-0.35); tail1.rotation.x = Math.PI/2.4; tailBase.add(tail1);
-  const tail2 = new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.09,0.75,8), tailMat);
-  tail2.position.set(0,-0.02,-0.28); tail2.rotation.x = Math.PI/2.55; tailMid.add(tail2);
-
-  const legGeo = new THREE.CylinderGeometry(0.06,0.08,0.55,6);
-  const legs = [];
-  [[-0.23,0.48,0.8],[0.23,0.48,0.8],[-0.22,0.48,-0.75],[0.22,0.48,-0.75]].forEach((p)=>{
-    const pivot = new THREE.Group();
-    pivot.position.set(...p);
-    g.add(pivot);
-    const leg = new THREE.Mesh(legGeo, bodyMat);
-    leg.position.y = -0.15;
-    pivot.add(leg);
-    legs.push(pivot);
-  });
-
-  g.userData = { spine, neck, tailBase, tailMid, legs };
-  g.traverse(c=>{ if(c.isMesh){ c.castShadow = true; c.receiveShadow = true; } });
-  return g;
-}
-function animateWeaselRig(group, speedFactor, t, attackAmount=0, dying=0){
-  const rig = group.userData;
-  const walk = t*(7+speedFactor*10);
-  rig.spine.rotation.x = Math.sin(walk*2)*0.04 + attackAmount*0.22 - dying*1.0;
-  rig.neck.rotation.x = Math.sin(walk*2+0.3)*0.04 - attackAmount*0.35 + dying*0.3;
-  rig.tailBase.rotation.x = 0.22 + Math.sin(walk*2.6)*0.18;
-  rig.tailBase.rotation.y = Math.sin(walk*1.9)*0.25;
-  rig.tailMid.rotation.x = 0.18 + Math.sin(walk*2.9+0.6)*0.16;
-  rig.tailMid.rotation.y = Math.sin(walk*2.1+0.7)*0.16;
-  const phases = [0,Math.PI,Math.PI,0];
-  rig.legs.forEach((l,i)=> l.rotation.x = Math.sin(walk+phases[i])*(0.7*speedFactor + 0.12) - attackAmount*0.42 + dying*0.7 );
-}
-function makeCatModel(){
-  const g = new THREE.Group();
-  const bodyMat = new THREE.MeshStandardMaterial({ color:0xd57b37, roughness:0.72 });
-  const stripeMat = new THREE.MeshStandardMaterial({ color:0x6d3d1f, roughness:0.8 });
-  const bellyMat = new THREE.MeshStandardMaterial({ color:0xf0d4af, roughness:0.8 });
-  const eyeMat = new THREE.MeshStandardMaterial({ color:0x7fff79, emissive:0x1c6f1e, emissiveIntensity:0.45 });
-  const whiskMat = new THREE.MeshStandardMaterial({ color:0xeaeaea });
-
-  const spine = new THREE.Group(); g.add(spine);
-  const chest = new THREE.Group(); g.add(chest);
-  const neck = new THREE.Group(); g.add(neck);
-  const headPivot = new THREE.Group(); neck.add(headPivot);
-
-  const tailBase = new THREE.Group();
-  tailBase.position.set(0,2.06,-1.96);
-  g.add(tailBase);
-  const tailMid = new THREE.Group();
-  tailMid.position.set(0,-0.16,-0.96);
-  tailBase.add(tailMid);
-  const tailTip = new THREE.Group();
-  tailTip.position.set(0,-0.12,-0.86);
-  tailMid.add(tailTip);
-
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(1.15,3.25,8,16), bodyMat);
-  body.rotation.z = Math.PI/2;
-  body.position.set(0,2.05,0);
-  body.scale.set(0.88,1.0,1.0);
-  spine.add(body);
-
-  const belly = new THREE.Mesh(new THREE.CapsuleGeometry(0.68,2.35,6,12), bellyMat);
-  belly.rotation.z = Math.PI/2;
-  belly.position.set(0,1.73,0.3);
-  belly.scale.set(0.82,1,1);
-  chest.add(belly);
-
-  const head = new THREE.Mesh(new THREE.SphereGeometry(1.0,16,14), bodyMat);
-  head.position.set(0,2.24,2.42);
-  headPivot.add(head);
-
-  const snout = new THREE.Mesh(new THREE.SphereGeometry(0.38,10,8), bellyMat);
-  snout.scale.set(1.04,0.68,1.12);
-  snout.position.set(0,2.02,3.19);
-  headPivot.add(snout);
-
-  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.11,8,8), new THREE.MeshStandardMaterial({ color:0xff8a95 }));
-  nose.position.set(0,2.06,3.47);
-  headPivot.add(nose);
-
-  for(const s of [-1,1]){
-    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.31,0.54,4), bodyMat);
-    ear.position.set(0.58*s,3.05,2.25);
-    ear.rotation.z = s*0.18;
-    headPivot.add(ear);
-
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.08,8,8), eyeMat);
-    eye.position.set(0.29*s,2.35,3.04);
-    headPivot.add(eye);
-
-    for(let i=0;i<3;i++){
-      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.01,0.01,0.92,4), whiskMat);
-      w.position.set(0.18*s,1.99+i*0.08,3.28);
-      w.rotation.z = Math.PI/2;
-      w.rotation.y = s>0 ? -0.35 + i*0.12 : 0.35 - i*0.12;
-      headPivot.add(w);
-    }
-  }
-
-  for(let i=-1;i<=1;i++){
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.55,0.1,0.3), stripeMat);
-    stripe.position.set(0,2.55,-0.35 + i*1.0);
-    stripe.rotation.x = Math.PI/2.7;
-    spine.add(stripe);
-  }
-
-  const tail1 = new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.16,1.05,10), bodyMat);
-  tail1.position.set(0,-0.02,-0.42); tail1.rotation.x = Math.PI/2.35; tailBase.add(tail1);
-  const tail2 = new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.1,0.92,10), bodyMat);
-  tail2.position.set(0,-0.02,-0.34); tail2.rotation.x = Math.PI/2.45; tailMid.add(tail2);
-  const tail3 = new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.08,0.82,10), bodyMat);
-  tail3.position.set(0,-0.02,-0.28); tail3.rotation.x = Math.PI/2.55; tailTip.add(tail3);
-
-  const legGeo = new THREE.CylinderGeometry(0.16,0.2,1.8,8);
-  const legs = [];
-  [[-0.75,1.0,1.2],[0.75,1.0,1.2],[-0.78,1.0,-0.96],[0.78,1.0,-0.96]].forEach((p)=>{
-    const pivot = new THREE.Group();
-    pivot.position.set(...p);
-    g.add(pivot);
-    const leg = new THREE.Mesh(legGeo, bodyMat);
-    leg.position.y = -0.55;
-    pivot.add(leg);
-    legs.push(pivot);
-  });
-
-  g.userData = { spine, chest, neck, headPivot, tailBase, tailMid, tailTip, legs };
-  g.traverse(c=>{ if(c.isMesh){ c.castShadow = true; c.receiveShadow = true; } });
-  return g;
-}
-function animateCatRig(group, moveFactor, t, attackSwing=0, dying=0){
-  const rig = group.userData;
-  const walk = t*(3 + moveFactor*6);
-  rig.spine.rotation.x = Math.sin(walk*2)*0.03 - dying*1.0;
-  rig.chest.rotation.x = Math.sin(walk*2+0.4)*0.03;
-  rig.neck.rotation.x = Math.sin(walk*2+0.2)*0.02 - attackSwing*0.25 + dying*0.25;
-  rig.headPivot.rotation.x = Math.sin(walk*2+0.3)*0.025 - attackSwing*0.42 + dying*0.4;
-  rig.tailBase.rotation.x = 0.16 + Math.sin(walk*2.4)*0.14;
-  rig.tailBase.rotation.y = Math.sin(walk*1.6)*0.18;
-  rig.tailMid.rotation.x = 0.12 + Math.sin(walk*2.6+0.6)*0.12;
-  rig.tailMid.rotation.y = Math.sin(walk*1.9+0.5)*0.14;
-  rig.tailTip.rotation.x = 0.1 + Math.sin(walk*2.8+1.1)*0.13;
-  rig.tailTip.rotation.y = Math.sin(walk*2.1+0.8)*0.16;
-  const phases = [0,Math.PI,Math.PI,0];
-  rig.legs.forEach((leg,i)=> leg.rotation.x = Math.sin(walk + phases[i])*(0.55*moveFactor + 0.04) - attackSwing*0.6 + dying*0.7 );
-}
-
-// -------------------------------------------------
-// CHEESE PICKUP
-// -------------------------------------------------
-function spawnCheeseAt(x,z,amount=3){
-  const g = new THREE.Group();
-  const cheeseMat = new THREE.MeshStandardMaterial({ color:0xffdf61, emissive:0x5a3d00, emissiveIntensity:0.22 });
-  const wedge = new THREE.Mesh(new THREE.CylinderGeometry(0.0,0.75,0.65,6,1,false), cheeseMat);
-  wedge.rotation.z = Math.PI/2;
-  wedge.rotation.y = Math.PI/6;
-  wedge.position.y = 0.45;
-  g.add(wedge);
-
-  for(let i=0;i<5;i++){
-    const hole = new THREE.Mesh(
-      new THREE.SphereGeometry(rand(0.05,0.1),6,6),
-      new THREE.MeshStandardMaterial({ color:0xd2aa39 })
-    );
-    hole.position.set(rand(-0.16,0.2), rand(0.28,0.55), rand(-0.16,0.14));
-    g.add(hole);
-  }
-
-  g.position.set(x, groundHeight(x,z), z);
-  g.traverse(c=>{ if(c.isMesh) c.castShadow = true; });
-  scene.add(g);
-  cheeses.push({ group:g, pos:g.position, amount, spin:Math.random()*Math.PI*2 });
-}
-for(let i=0;i<18;i++){
-  const p = randomFreePosition(1);
-  spawnCheeseAt(p.x,p.z,3);
-}
-
-// -------------------------------------------------
-// PLAYER
-// -------------------------------------------------
-const player = {
-  group: makeMouseModel(0xd8d1c8,0xffbcc8,0xc98792),
-  pos: new THREE.Vector3(0,groundHeight(0,0),0),
-  radius:0.9,
-  heading:0,
-  moveSpeed:8.6,
-  sprintSpeed:12.2,
-  turnSpeed:2.6,
-  dead:false,
-  isLiving:true,
-  animTime:0,
-  attackAnim:0,
-  deathT:0
+const snail = {
+  x: 0,
+  y: 0,
+  rider: null,
+  dir: 0,
+  speed: 0.62
 };
-player.group.position.copy(player.pos);
-scene.add(player.group);
 
-// -------------------------------------------------
-// BUILD TELEGRAPH
-// -------------------------------------------------
-const buildTelegraph = new THREE.Mesh(
-  new THREE.RingGeometry(1.25,1.52,28),
-  new THREE.MeshBasicMaterial({ color:0x7aff9a, transparent:true, opacity:0.74, side:THREE.DoubleSide })
-);
-buildTelegraph.rotation.x = -Math.PI/2;
-buildTelegraph.visible = false;
-scene.add(buildTelegraph);
+let bushes = [];
+let units = [];
+let playerQueen = null;
 
-// -------------------------------------------------
-// PATHING / ANTI-CLUMP
-// -------------------------------------------------
-function getSeparationVector(entity, list, desiredMinDist=1.8){
-  const out = new THREE.Vector3();
-  for (const other of list) {
-    if (other === entity || other.dead) continue;
-    const dx = entity.pos.x - other.pos.x;
-    const dz = entity.pos.z - other.pos.z;
-    const d = Math.hypot(dx, dz);
-    if (d > 0.001 && d < desiredMinDist) {
-      const push = (desiredMinDist - d) / desiredMinDist;
-      out.x += (dx / d) * push;
-      out.z += (dz / d) * push;
+function currentDifficulty() {
+  return DIFFICULTIES[game.difficultyIndex];
+}
+
+function getSnailDangerForTeam(team) {
+  const totalSpan = world.snailRightGoal - world.snailLeftGoal;
+  let progressAgainstTeam = 0;
+
+  if (team === "blue") {
+    progressAgainstTeam = (snail.x - world.snailLeftGoal) / totalSpan;
+  } else {
+    progressAgainstTeam = (world.snailRightGoal - snail.x) / totalSpan;
+  }
+
+  progressAgainstTeam = clamp(progressAgainstTeam, 0, 1);
+
+  let severity = "none";
+  if (progressAgainstTeam >= 0.82) severity = "critical";
+  else if (progressAgainstTeam >= 0.63) severity = "high";
+  else if (progressAgainstTeam >= 0.45) severity = "medium";
+  else if (progressAgainstTeam >= 0.28) severity = "low";
+
+  return {
+    progress: progressAgainstTeam,
+    severity
+  };
+}
+
+function cyclePlayerStrategy() {
+  if (game.strategySwitchCooldown > 0) return;
+  const idx = TEAM_STRATEGIES.indexOf(game.playerStrategy);
+  const nextIdx = (idx + 1 + TEAM_STRATEGIES.length) % TEAM_STRATEGIES.length;
+  game.playerStrategy = TEAM_STRATEGIES[nextIdx];
+  game.strategySwitchCooldown = 22;
+  game.strategyFlashTimer = 90;
+}
+
+function applyMap(index) {
+  const map = MAPS[index];
+  world.theme = map;
+  world.width = map.width;
+  world.height = map.height;
+  world.lavaY = map.lavaY;
+  world.spikeY = map.spikeY;
+  world.snailTrackY = map.snailTrackY;
+  world.platforms = map.platforms.map(p => ({ ...p }));
+  world.snailLeftGoal = 130;
+  world.snailRightGoal = world.width - 130;
+
+  gates.blue = {
+    x: map.blueGateX, y: 130, w: 40, h: 172, team: "blue",
+    berries: 0,
+    upgrades: { speed: false, warrior: false },
+    maidens: [
+      { x: map.blueGateX + 68, y: 195, type: "speed" },
+      { x: map.blueGateX + 68, y: 260, type: "warrior" }
+    ]
+  };
+  gates.gold = {
+    x: map.goldGateX, y: 130, w: 40, h: 172, team: "gold",
+    berries: 0,
+    upgrades: { speed: false, warrior: false },
+    maidens: [
+      { x: map.goldGateX - 28, y: 195, type: "speed" },
+      { x: map.goldGateX - 28, y: 260, type: "warrior" }
+    ]
+  };
+
+  hive.blue = { x: map.hiveBlueX, y: world.snailTrackY - 22, team: "blue" };
+  hive.gold = { x: map.hiveGoldX, y: world.snailTrackY - 22, team: "gold" };
+
+  snail.x = world.width / 2;
+  snail.y = world.snailTrackY - 18;
+  snail.rider = null;
+  snail.dir = 0;
+
+  bushes = map.bushes.map((b, idx) => {
+    const plat = map.platforms[b.platformIndex];
+    const x = plat.x + b.offset;
+    const y = plat.y - 2;
+    return {
+      id: idx,
+      x,
+      y,
+      timer: 0,
+      platformY: plat.y,
+      berry: { x, y: y - 20, alive: true, carriedBy: null, bushId: idx }
+    };
+  });
+}
+
+/* ---------------- UNITS ---------------- */
+
+class Unit {
+  constructor({ team, role, x, y, isPlayer = false }) {
+    this.team = team;
+    this.role = role; // queen, worker
+    this.x = x;
+    this.y = y;
+    this.w = role === "queen" ? 46 : 34;
+    this.h = role === "queen" ? 30 : 24;
+    this.vx = 0;
+    this.vy = 0;
+    this.dir = team === "blue" ? 1 : -1;
+    this.onGround = false;
+    this.flapCooldown = 0;
+    this.flutter = 0;
+    this.invuln = 0;
+    this.dead = false;
+    this.respawnTimer = 0;
+    this.isPlayer = isPlayer;
+
+    this.form = role === "queen" ? "queen" : "worker"; // worker, speed, warrior
+    this.carryingBerry = null;
+    this.onSnail = false;
+    this.snailMountCooldown = 0;
+    this.aiTick = 0;
+    this.target = null;
+    this.intent = "";
+    this.objectiveCommit = 0;
+    this.approachType = "direct-intercept";
+    this.approachCommit = 0;
+    this.queenState = "stabilize";
+    this.queenStateCommit = 0;
+    this.lastSupportCount = 0;
+    this.lastDangerFlag = false;
+    this.lastAmbushFlag = false;
+    this.failedApproaches = {};
+    this.deathMemory = [];
+    this.lastObjectiveChange = -9999;
+    this.lastUnsupportedDive = -9999;
+    this.queenLives = role === "queen" ? 3 : 0;
+  }
+
+  diff() {
+    return currentDifficulty();
+  }
+
+  enemyUrgencyBoost() {
+    const blueBerries = gates.blue.berries;
+    if (this.team === "gold") {
+      if (blueBerries >= 8) return 1.0;
+      if (blueBerries >= 6) return 0.72;
+      if (blueBerries >= 4) return 0.42;
+    }
+    return 0;
+  }
+
+  color() {
+    if (this.role === "queen") return this.team === "blue" ? "#5ed6ff" : "#ffd457";
+    if (this.form === "speed") return this.team === "blue" ? "#72ffe3" : "#faff99";
+    if (this.form === "warrior") return this.team === "blue" ? "#48b9ff" : "#ffbf56";
+    return this.team === "blue" ? "#2f9cff" : "#d6a040";
+  }
+
+  flapPower() {
+    if (this.role === "queen") return 5.6;
+    if (this.form === "speed") return 5.95;
+    if (this.form === "warrior") return 5.2;
+    return 5.1;
+  }
+
+  maxSpeed() {
+    if (this.role === "queen") return 4.15;
+    if (this.form === "speed") return 4.55;
+    if (this.form === "warrior") return 3.3;
+    return 3.6;
+  }
+
+  flap(power = this.flapPower()) {
+    if (this.flapCooldown <= 0) {
+      this.vy = Math.min(this.vy, 0) - power;
+      this.flapCooldown = 10;
+      this.flutter = 7;
+      if (this.isPlayer) soundFlap();
+      addParticles(this.x + this.w / 2, this.y + this.h - 2, "#ffffff", 3, 2.0);
     }
   }
-  return out;
-}
-function steerMove(entity, desired, dt, collideWithStructures=true, ignoreStructure=null, neighborList=null){
-  const start = entity.pos;
-  let best = null;
-  let bestScore = Infinity;
-  const baseHeading = Math.atan2(desired.x, desired.z);
-  const speed = entity.speed;
-  const radius = entity.radius;
-  const offsets = [0, 0.22, -0.22, 0.45, -0.45, 0.75, -0.75, 1.05, -1.05, 1.35, -1.35, Math.PI*0.5, -Math.PI*0.5, Math.PI];
-  const fullStep = speed * dt;
 
-  function blockedAt(x, z){
-    if(x < -HALF_MAP+2 || x > HALF_MAP-2 || z < -HALF_MAP+2 || z > HALF_MAP-2) return true;
-    for(const o of obstacles){
-      if(Math.hypot(x-o.x, z-o.z) < radius + o.r) return true;
+  getHitbox() {
+    return { x: this.x + 4, y: this.y + 4, w: this.w - 8, h: this.h - 7 };
+  }
+
+  rememberDeath() {
+    this.deathMemory.push({ x: this.x, y: this.y, t: game.time });
+    while (this.deathMemory.length > 8) this.deathMemory.shift();
+  }
+
+  recentDeathsNear(x, y, radius = 140, window = 900) {
+    return this.deathMemory.filter(d => game.time - d.t <= window && dist(d.x, d.y, x, y) < radius).length;
+  }
+
+  die() {
+    if (this.dead) return;
+    this.rememberDeath();
+
+    if (this.role === "queen") {
+      this.queenLives--;
+      addParticles(this.x + this.w / 2, this.y + this.h / 2, this.team === "blue" ? "#79dcff" : "#ffe67a", 20, 3.8);
+      soundDeath();
+
+      if (this.carryingBerry) this.dropBerry();
+
+      if (snail.rider === this) {
+        snail.rider = null;
+        this.onSnail = false;
+        soundDismount();
+      }
+
+      if (this.queenLives <= 0) {
+        this.dead = true;
+        this.respawnTimer = 999999;
+      } else {
+        this.invuln = 120;
+        this.respawnAtBase();
+      }
+      return;
     }
-    if(collideWithStructures){
-      for(const s of structures){
-        if(s.dead || s===ignoreStructure) continue;
-        if(Math.hypot(x-s.pos.x, z-s.pos.z) < radius + s.radius) return true;
+
+    this.dead = true;
+    this.respawnTimer = 170;
+    addParticles(this.x + this.w / 2, this.y + this.h / 2, this.team === "blue" ? "#79dcff" : "#ffe67a", 16, 3.4);
+    soundDeath();
+
+    if (this.carryingBerry) this.dropBerry();
+    if (snail.rider === this) {
+      snail.rider = null;
+      this.onSnail = false;
+      soundDismount();
+    }
+  }
+
+  dropBerry() {
+    if (!this.carryingBerry) return;
+    this.carryingBerry.carriedBy = null;
+    this.carryingBerry.x = this.x + 10;
+    this.carryingBerry.y = this.y + 10;
+    this.carryingBerry.alive = true;
+    this.carryingBerry = null;
+  }
+
+  respawnAtBase() {
+    if (this.team === "blue") {
+      this.x = this.role === "queen" ? 165 : rand(125, 280);
+      this.y = this.role === "queen" ? 650 : rand(635, 700);
+      this.dir = 1;
+    } else {
+      this.x = this.role === "queen" ? world.width - 205 : rand(world.width - 280, world.width - 125);
+      this.y = this.role === "queen" ? 650 : rand(635, 700);
+      this.dir = -1;
+    }
+    this.vx = 0;
+    this.vy = 0;
+    this.onSnail = false;
+    this.snailMountCooldown = 50;
+  }
+
+  respawn() {
+    this.dead = false;
+    this.invuln = 75;
+    this.form = "worker";
+    this.carryingBerry = null;
+    this.respawnAtBase();
+  }
+
+  physics() {
+    this.flapCooldown--;
+    this.flutter = Math.max(0, this.flutter - 1);
+    this.invuln = Math.max(0, this.invuln - 1);
+    this.snailMountCooldown = Math.max(0, this.snailMountCooldown - 1);
+
+    this.vy += 0.27;
+    this.vy = clamp(this.vy, -8.6, 8);
+    this.x += this.vx;
+    this.y += this.vy;
+
+    if (this.x + this.w < 0) this.x = world.width;
+    if (this.x > world.width) this.x = -this.w;
+
+    this.onGround = false;
+
+    for (const p of world.platforms) {
+      const feetPrev = this.y + this.h - this.vy;
+      const feetNow = this.y + this.h;
+      if (
+        this.x + this.w - 5 > p.x &&
+        this.x + 5 < p.x + p.w &&
+        feetPrev <= p.y &&
+        feetNow >= p.y &&
+        this.vy >= 0
+      ) {
+        this.y = p.y - this.h;
+        this.vy = 0;
+        this.onGround = true;
       }
     }
+
+    if (this.onSnail && snail.rider === this) {
+      this.y = snail.y - this.h + 4;
+      this.vy = 0;
+      this.onGround = true;
+      this.x = snail.x - this.w / 2;
+    }
+
+    if (this.y <= world.spikeY) {
+      this.die();
+      return;
+    }
+    if (this.y + this.h >= world.lavaY) {
+      this.die();
+      return;
+    }
+
+    this.vx *= this.onGround ? 0.88 : 0.985;
+    this.vx = clamp(this.vx, -this.maxSpeed(), this.maxSpeed());
+  }
+
+  nearestEnemy(range = 99999) {
+    let best = null, bestD = range;
+    for (const u of units) {
+      if (u.dead || u.team === this.team) continue;
+      const d = dist(this.x, this.y, u.x, u.y);
+      if (d < bestD) { bestD = d; best = u; }
+    }
+    return best;
+  }
+
+  enemyQueen() {
+    return units.find(u => !u.dead && u.team !== this.team && u.role === "queen");
+  }
+
+  enemyCarrier() {
+    return units.find(u => !u.dead && u.team !== this.team && u.carryingBerry);
+  }
+
+  alliedCarrier() {
+    return units.find(u => !u.dead && u.team === this.team && u.carryingBerry);
+  }
+
+  squadRole() {
+    if (!this.diff().squad || this.role === "queen") return "solo";
+    const allies = units.filter(u => !u.dead && u.team === this.team && u.role !== "queen").sort((a, b) => a.x - b.x);
+    const idx = allies.indexOf(this);
+    if (idx === -1) return "solo";
+    if (idx === 0) return "harvest";
+    if (idx === 1) return "escort";
+    if (idx === 2) return "contest";
+    return "flex";
+  }
+
+  bushBerryTarget() {
+    let best = null, bestScore = 1e9;
+    for (const bush of bushes) {
+      const b = bush.berry;
+      if (!b.alive || b.carriedBy) continue;
+      const d = dist(this.x, this.y, b.x, b.y);
+      const ownGate = gates[this.team];
+      const score = d + Math.abs(ownGate.x - b.x) * 0.15;
+      if (score < bestScore) {
+        bestScore = score;
+        best = b;
+      }
+    }
+    return best;
+  }
+
+  pressureInfo() {
+    const ownGate = gates[this.team];
+    const ownHive = hive[this.team];
+    const enemyGate = gates[this.team === "blue" ? "gold" : "blue"];
+    const enemyNearGate = nearestEnemyToPoint(this.team, ownGate.x, ownGate.y + 80, 260 + 70 * this.diff().awareness);
+    const enemyNearHive = nearestEnemyToPoint(this.team, ownHive.x, ownHive.y, 240 + 60 * this.diff().awareness);
+    const enemyNearSnail = nearestEnemyToPoint(this.team, snail.x, snail.y, 260 + 80 * this.diff().awareness);
+    const snailEnemy = snail.rider && snail.rider.team !== this.team ? snail.rider : null;
+    const snailFriendly = snail.rider && snail.rider.team === this.team ? snail.rider : null;
+    return { ownGate, ownHive, enemyGate, enemyNearGate, enemyNearHive, enemyNearSnail, snailEnemy, snailFriendly };
+  }
+
+  alliesNearby(range = 220) {
+    return units.filter(u => !u.dead && u.team === this.team && u !== this && dist(this.x, this.y, u.x, u.y) < range).length;
+  }
+
+  enemiesNearby(range = 220) {
+    return units.filter(u => !u.dead && u.team !== this.team && dist(this.x, this.y, u.x, u.y) < range).length;
+  }
+
+  bravery(strategy) {
+    if (this.role === "queen") return 0.58;
+    if (this.form === "warrior") return 0.82;
+    if (strategy === "snail") return 0.64;
+    if (this.form === "speed") return 0.48;
+    return 0.40;
+  }
+
+  dangerZoneAgainst(target) {
+    if (!target) return { score: 0, ambush: false, topTrap: false };
+    const enemyAbove = target.y + target.h < this.y + 8;
+    const tightCeiling = this.y < world.spikeY + 140;
+    const narrowPlatform = world.platforms.find(p =>
+      target.x + ((target.w || 30) / 2) > p.x &&
+      target.x + ((target.w || 30) / 2) < p.x + p.w &&
+      Math.abs(target.y + (target.h || 24) - p.y) < 45
+    );
+    const isNarrow = !!narrowPlatform && narrowPlatform.w <= 220;
+    const topZone = target.y < world.spikeY + 240;
+    const recentDeaths = this.recentDeathsNear(target.x, target.y, 150, 1000);
+    const support = this.alliesNearby(190);
+    let score = 0;
+    if (enemyAbove) score += 0.30;
+    if (tightCeiling) score += 0.24;
+    if (isNarrow) score += 0.24;
+    if (topZone) score += 0.15;
+    if (recentDeaths > 1) score += 0.20;
+    if (support === 0) score += 0.16;
+    return {
+      score: clamp(score, 0, 1.4),
+      ambush: enemyAbove && (tightCeiling || (isNarrow && topZone)),
+      topTrap: enemyAbove && topZone && isNarrow && tightCeiling
+    };
+  }
+
+  shouldForceReevaluate(targetObj, targetIntent, danger) {
+    const ownQueen = units.find(u => !u.dead && u.team === this.team && u.role === "queen");
+    const enemyQueen = this.enemyQueen();
+    const snailDanger = getSnailDangerForTeam(this.team);
+    const berriesLeft = 10 - gates[this.team].berries;
+    const berryThreat = 10 - gates[this.team === "blue" ? "gold" : "blue"].berries;
+    const support = this.alliesNearby(200);
+    const failed = this.failedApproaches[this.approachType] || 0;
+    if (snailDanger.progress > 0.70) return true;
+    if ((ownQueen && ownQueen.queenLives <= 1) || (enemyQueen && enemyQueen.queenLives <= 1)) return true;
+    if (berriesLeft <= 2 || berryThreat <= 2) return true;
+    if (targetObj && targetObj.dead) return true;
+    if (danger.score > 0.78) return true;
+    if (this.lastSupportCount > 0 && support === 0) return true;
+    if (failed >= 2) return true;
+    if (this.role !== "queen" && enemyQueen && !enemyQueen.dead && enemyQueen.y > world.spikeY + 120 && this.enemiesNearby(260) <= 1 && dist(this.x, this.y, enemyQueen.x, enemyQueen.y) < 250) return true;
     return false;
   }
 
-  function neighborPenaltyAt(x, z){
-    if(!neighborList) return 0;
-    let p = 0;
-    for (const other of neighborList) {
-      if (other === entity || other.dead) continue;
-      const d = Math.hypot(x-other.pos.x, z-other.pos.z);
-      const softR = radius + other.radius * 0.9;
-      if (d < softR) p += (softR - d) * 2.2;
-      if (d < 2.4) p += (2.4 - d) * 1.3;
+  pickApproach(intent, targetObj, danger, strategy) {
+    const diffSet = this.diff();
+    const options = ["direct-intercept"];
+    if (diffSet.level >= 3) options.push("low-rise");
+    if (diffSet.level >= 4) options.push("side-hover-bait");
+    if (diffSet.level >= 5) options.push("perch-wait");
+    if (diffSet.level >= 6) options.push("regroup-push");
+    if (diffSet.level >= 7) options.push("fake-retreat");
+
+    let preferred = "direct-intercept";
+    if (danger.topTrap || danger.score > 0.85) preferred = diffSet.level >= 6 ? "regroup-push" : "side-hover-bait";
+    else if (intent.includes("escort")) preferred = "perch-wait";
+    else if (intent.includes("snail")) preferred = strategy === "snail" ? "low-rise" : "side-hover-bait";
+    else if (this.form === "warrior" && diffSet.level >= 6) preferred = "fake-retreat";
+
+    if (targetObj && this.recentDeathsNear(targetObj.x, targetObj.y, 160, 1200) > 1 && preferred === "direct-intercept") {
+      preferred = "low-rise";
     }
-    return p;
+
+    return options.includes(preferred) ? preferred : options[0];
   }
 
-  for(const off of offsets){
-    const heading = baseHeading + off;
-    const dx = Math.sin(heading);
-    const dz = Math.cos(heading);
-    const nx = start.x + dx * fullStep;
-    const nz = start.z + dz * fullStep;
-    if(blockedAt(nx, nz)) continue;
+  chooseTarget(strategy) {
+    const diffSet = this.diff();
+    const pressure = this.pressureInfo();
+    const enemyQueen = this.enemyQueen();
+    const enemyCarrier = this.enemyCarrier();
+    const alliedCarrier = this.alliedCarrier();
+    const berry = this.bushBerryTarget();
+    const urgency = this.enemyUrgencyBoost();
+    const squad = this.squadRole();
+    const snailDanger = getSnailDangerForTeam(this.team);
+    const enemyBerries = gates[this.team === "blue" ? "gold" : "blue"].berries;
+    const ownBerries = gates[this.team].berries;
+    const support = this.alliesNearby(220);
 
-    let score = Math.abs(off)*0.18;
-    score += neighborPenaltyAt(nx, nz);
-    if(score < bestScore){
-      bestScore = score;
-      best = { x:nx, z:nz, heading };
+    if (this.role === "queen") {
+      const lowLife = this.queenLives <= 1;
+      const losingSnail = snailDanger.progress > 0.68;
+      const berryEmergency = enemyBerries >= 8;
+      if (this.queenStateCommit <= 0) {
+        if (lowLife && (support < 1 || losingSnail || berryEmergency)) this.queenState = "avoid-death";
+        else if (losingSnail || berryEmergency) this.queenState = "desperation-contest";
+        else if (ownBerries >= 8 && this.queenLives > 1) this.queenState = "defend-lead";
+        else if (strategy === "economy" || support <= 1) this.queenState = "escort-objective";
+        else if (strategy === "military" && this.queenLives > 1) this.queenState = "pressure";
+        else this.queenState = "stabilize";
+        this.queenStateCommit = 75 + Math.floor(100 * diffSet.discipline);
+      } else {
+        this.queenStateCommit--;
+      }
+
+      if (this.team === "gold") {
+        if (this.queenState === "avoid-death") return { obj: { x: pressure.ownGate.x - 80, y: 430 }, intent: "queen-avoid-death" };
+        if (this.queenState === "desperation-contest" && pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "queen-desperation" };
+        if (pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "defend-snail" };
+        if (pressure.enemyNearGate) return { obj: pressure.enemyNearGate, intent: "defend-gate" };
+        if (enemyCarrier && Math.random() < 0.8 + urgency * 0.2) return { obj: enemyCarrier, intent: "stop-carrier" };
+        if (urgency > 0.6 && enemyQueen) return { obj: enemyQueen, intent: "queen-hunt" };
+        if (pressure.enemyNearHive) return { obj: pressure.enemyNearHive, intent: "defend-hive" };
+        if (strategy === "military" && enemyQueen && dist(this.x, this.y, enemyQueen.x, enemyQueen.y) < 420) {
+          return { obj: enemyQueen, intent: "queen-hunt" };
+        }
+        return { obj: { x: pressure.ownGate.x - 70, y: 410 }, intent: "guard-zone" };
+      } else {
+        if (this.queenState === "avoid-death") return { obj: { x: pressure.ownGate.x + 74, y: 430 }, intent: "queen-avoid-death" };
+        if (this.queenState === "desperation-contest" && pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "queen-desperation" };
+        if (strategy === "military" && enemyQueen) return { obj: enemyQueen, intent: "queen-hunt" };
+        if (enemyCarrier) return { obj: enemyCarrier, intent: "stop-carrier" };
+        if (pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "contest-snail" };
+        if (pressure.enemyNearGate) return { obj: pressure.enemyNearGate, intent: "defend-gate" };
+        return { obj: enemyQueen || this.nearestEnemy() || { x: pressure.enemyGate.x, y: 360 }, intent: "pressure" };
+      }
     }
-  }
-  if(best) return best;
 
-  // Fallback A: reduced-distance push toward desired heading.
-  const fx = Math.sin(baseHeading), fz = Math.cos(baseHeading);
-  const fallbackScales = [0.66, 0.42, 0.26];
-  for(const scale of fallbackScales){
-    const nx = start.x + fx * fullStep * scale;
-    const nz = start.z + fz * fullStep * scale;
-    if(!blockedAt(nx, nz)){
-      return { x:nx, z:nz, heading:baseHeading };
+    if (this.form === "warrior") {
+      if (pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "contest-snail" };
+      if (enemyCarrier) return { obj: enemyCarrier, intent: "stop-carrier" };
+      if (pressure.enemyNearGate) return { obj: pressure.enemyNearGate, intent: "defend-gate" };
+      if ((strategy === "military" || urgency > 0.55) && enemyQueen) return { obj: enemyQueen, intent: "queen-hunt" };
+      if (diffSet.escort && alliedCarrier) return { obj: alliedCarrier, intent: "escort-carrier" };
+      return { obj: this.nearestEnemy() || pressure.enemyGate, intent: "roam-attack" };
     }
-  }
 
-  // Fallback B: tiny side shuffles to break body jams.
-  const sideOffsets = [Math.PI * 0.5, -Math.PI * 0.5, 0.35, -0.35];
-  for(const off of sideOffsets){
-    const h = baseHeading + off;
-    const nx = start.x + Math.sin(h) * fullStep * 0.24;
-    const nz = start.z + Math.cos(h) * fullStep * 0.24;
-    if(!blockedAt(nx, nz)){
-      return { x:nx, z:nz, heading:h };
+    if (this.carryingBerry) {
+      const ownGate = gates[this.team];
+      if (ownGate.upgrades.speed && this.form === "worker" && Math.random() < 0.28) return { obj: ownGate.maidens[0], intent: "take-speed" };
+      if (ownGate.upgrades.warrior && this.form === "worker" && Math.random() < 0.18) return { obj: ownGate.maidens[1], intent: "take-warrior" };
+      return { obj: ownGate, intent: "score-berry" };
     }
-  }
 
-  return best;
-}
-function directSteerToward(entity, targetPos, dt, collideWithStructures=true, ignoreStructure=null, neighborList=null){
-  const dx = targetPos.x - entity.pos.x;
-  const dz = targetPos.z - entity.pos.z;
-  const len = Math.hypot(dx,dz) || 1;
-  const desired = { x:dx/len, z:dz/len };
-  if (neighborList) {
-    const sep = getSeparationVector(entity, neighborList, 1.75);
-    desired.x += sep.x * 0.7;
-    desired.z += sep.z * 0.7;
-    const l2 = Math.hypot(desired.x, desired.z) || 1;
-    desired.x /= l2;
-    desired.z /= l2;
-  }
-  return steerMove(entity, desired, dt, collideWithStructures, ignoreStructure, neighborList);
-}
-function smoothAimYaw(pivot, holder, key, desiredYaw, dt, speed=8.5){
-  if(!pivot) return;
-  if(holder[key] == null) holder[key] = pivot.rotation.y;
-  holder[key] += clamp(angleDiff(holder[key], desiredYaw), -speed * dt, speed * dt);
-  pivot.rotation.y = holder[key];
-}
-function updateAgentStuck(entity, dt, hasTarget, onStuck){
-  // AI tuning helper: general stuck detector with brief cooldown.
-  if(!entity._stuck){
-    entity._stuck = { x:entity.pos.x, z:entity.pos.z, still:0, cooldown:0 };
-  }
-  const s = entity._stuck;
-  const moved = Math.hypot(entity.pos.x - s.x, entity.pos.z - s.z);
-  s.cooldown = Math.max(0, s.cooldown - dt);
-  if(hasTarget && moved < 0.06) s.still += dt;
-  else s.still = Math.max(0, s.still - dt * 0.85);
-  s.x = entity.pos.x; s.z = entity.pos.z;
-  if(hasTarget && s.still > 0.4 && s.cooldown <= 0){
-    s.still = 0;
-    s.cooldown = 0.55;
-    onStuck?.();
-    return true;
-  }
-  return false;
-}
-function setRepathPoint(entity, centerPos, radius=4.5){
-  let repath = null;
-  for(let i=0;i<20;i++){
-    const a = Math.random() * Math.PI * 2;
-    const r = rand(radius*0.25, radius);
-    const x = clamp(centerPos.x + Math.sin(a)*r, -HALF_MAP+3.2, HALF_MAP-3.2);
-    const z = clamp(centerPos.z + Math.cos(a)*r, -HALF_MAP+3.2, HALF_MAP-3.2);
-    if(!circleBlocked(x, z, entity.radius || 0.85, entity.target && entity.target.type ? entity.target : null)){
-      repath = new THREE.Vector3(x, 0, z);
-      break;
+    if (pressure.snailEnemy) {
+      if (snailDanger.severity === "critical") {
+        return { obj: pressure.snailEnemy, intent: "contest-snail-hard" };
+      }
+      if (snailDanger.severity === "high") {
+        if (this.form === "warrior" || this.form === "speed" || Math.random() < 0.7) {
+          return { obj: pressure.snailEnemy, intent: "contest-snail" };
+        }
+      }
+      if (snailDanger.severity === "medium") {
+        if (this.form === "warrior" || Math.random() < 0.45) {
+          return { obj: pressure.snailEnemy, intent: "contest-snail" };
+        }
+      }
+      if (snailDanger.severity === "low") {
+        if (this.form === "warrior" && Math.random() < 0.45) {
+          return { obj: pressure.snailEnemy, intent: "contest-snail" };
+        }
+      }
     }
-  }
-  if(!repath){
-    const x = clamp(entity.pos.x, -HALF_MAP+3.2, HALF_MAP-3.2);
-    const z = clamp(entity.pos.z, -HALF_MAP+3.2, HALF_MAP-3.2);
-    if(!circleBlocked(x, z, entity.radius || 0.85)) repath = new THREE.Vector3(x, 0, z);
-  }
-  entity.repathTarget = repath;
-  if(entity.repathTarget){
-    entity.repathTarget.y = groundHeight(entity.repathTarget.x, entity.repathTarget.z);
-    entity.repathTimer = rand(0.45, 0.95);
-  } else {
-    entity.repathTimer = 0;
-  }
-}
-function isLivingTarget(target){
-  return !!target && !!target.isLiving && !target.dead && !target.dying;
-}
-function nearestAttackableStructure(origin, maxRange=999, filterFn=null){
-  let best = null, bestD = maxRange;
-  for(const s of structures){
-    if(s.dead) continue;
-    if(filterFn && !filterFn(s)) continue;
-    const d = dist2(origin.pos || origin, s.pos);
-    if(d < bestD){ bestD = d; best = s; }
-  }
-  return best;
-}
-function applyDamageToLiving(target, damage, hitPos=null){
-  if(!isLivingTarget(target)) return;
-  const src = hitPos || target.pos;
-  addBloodHit(src.x, src.y + 0.8, src.z, clamp(damage/28, 0.5, 1.45));
-  if(target === player){
-    diePlayer();
-    return;
-  }
-  target.hp -= damage;
-  if(target.healthBar) setHealthBar(target.healthBar, target.hp / target.maxHp);
-  if(target === cat){
-    if(target.hp <= 0) killCat();
-  } else if(target.kind){
-    if(target.hp <= 0) killEnemy(target);
-  } else if(target.state === "wild" || target.state === "servant"){
-    if(target.hp <= 0) beginDeath(target, "mouse");
-  }
-}
 
-// -------------------------------------------------
-// STRUCTURES
-// -------------------------------------------------
-function structureColor(type){
-  const colors = {
-    wall:0xffde62, diamondWall:0x98ebff, cannon:0xffb85d, turret:0xf7d45b, beacon:0x7aff95,
-    factory:0xfff09d, robo:0xc0c7d5, fountain:0x8ef7ff, shardLauncher:0xffd3a5, zapCoil:0xb6a6ff,
-    mortarBloom:0xff98b5, sawBlaster:0xffb38f, barrierTotem:0x9ce6ff, braceTower:0xbef0c0,
-    repairAnchor:0x93fff5, fortPlate:0xa7ceff, supplyNest:0xfff3b5, scoutPost:0xcff4ff
-  };
-  return colors[type] || 0xffffff;
-}
-function makeCheeseWallMesh(){
-  const g = new THREE.Group();
-  const mat = new THREE.MeshStandardMaterial({ color:0xffdb60, roughness:0.88 });
-  const block = new THREE.Mesh(new THREE.BoxGeometry(3.7,2.05,1.28), mat);
-  block.position.y = 1.02;
-  g.add(block);
-
-  const holeMat = new THREE.MeshStandardMaterial({ color:0xe0b847, roughness:0.95 });
-  const holes = [
-    [-0.95,1.35,0.46,0.22], [-0.15,1.0,0.46,0.18], [0.8,1.45,0.46,0.24],
-    [0.35,0.72,0.46,0.15], [-1.2,0.7,0.46,0.14], [1.25,1.0,0.46,0.16]
-  ];
-  holes.forEach(h=>{
-    const s = new THREE.Mesh(new THREE.SphereGeometry(h[3],8,8), holeMat);
-    s.position.set(h[0],h[1],h[2]);
-    g.add(s);
-    const s2 = s.clone();
-    s2.position.z = -0.46;
-    g.add(s2);
-  });
-
-  const crumbsMat = new THREE.MeshStandardMaterial({ color:0xffef99, emissive:0x664d00, emissiveIntensity:0.08 });
-  for(let i=0;i<6;i++){
-    const c = new THREE.Mesh(new THREE.SphereGeometry(rand(0.04,0.08),6,6), crumbsMat);
-    c.position.set(rand(-1.4,1.4), rand(2.0,2.35), rand(-0.45,0.45));
-    g.add(c);
-  }
-  return g;
-}
-function attachWallCracks(group, tint=0x2a1908){
-  const crackMat = new THREE.MeshBasicMaterial({ color:tint, transparent:true, opacity:0, depthWrite:false, side:THREE.DoubleSide });
-  const planes = [
-    { x:-0.85, y:1.5, z:0.68, w:0.9, h:1.05, r:0.22 },
-    { x:0.62, y:1.15, z:0.68, w:1.1, h:1.2, r:-0.14 },
-    { x:0.08, y:0.86, z:-0.68, w:1.15, h:0.9, r:0.19 }
-  ];
-  const cracks = [];
-  planes.forEach(p=>{
-    const crack = new THREE.Mesh(new THREE.PlaneGeometry(p.w, p.h), crackMat.clone());
-    crack.position.set(p.x,p.y,p.z);
-    crack.rotation.y = p.z > 0 ? 0 : Math.PI;
-    crack.rotation.z = p.r;
-    group.add(crack);
-    cracks.push(crack);
-  });
-  group.userData.wallCracks = cracks;
-}
-function updateWallDamageVisual(structure){
-  if(!isWallStructure(structure) || !structure.mesh?.userData?.wallCracks) return;
-  const frac = clamp(structure.hp / Math.max(1, structure.maxHp), 0, 1);
-  const visibility = frac < 0.65 ? clamp((0.65 - frac) / 0.65, 0, 1) : 0;
-  structure.mesh.userData.wallCracks.forEach((crack, i)=>{
-    crack.material.opacity = visibility * (0.38 + i*0.18);
-  });
-}
-function createStructureMesh(type){
-  const g = new THREE.Group();
-
-  if(type==="wall"){
-    g.add(makeCheeseWallMesh());
-    attachWallCracks(g, 0x2e1b09);
-  }
-
-  if(type==="diamondWall"){
-    const main = new THREE.Mesh(
-      new THREE.BoxGeometry(4.2,3.0,1.8),
-      new THREE.MeshStandardMaterial({ color:0x8fe8ff, metalness:0.15, roughness:0.38 })
-    );
-    main.position.y = 1.5;
-    const crystal = new THREE.Mesh(
-      new THREE.OctahedronGeometry(0.84),
-      new THREE.MeshStandardMaterial({ color:0xe4ffff, emissive:0x2e6c88, emissiveIntensity:0.42 })
-    );
-    crystal.position.y = 3.35;
-    g.add(main,crystal);
-    attachWallCracks(g, 0x1b4f64);
-  }
-
-  if(type==="factory"){
-    const base = new THREE.Mesh(
-      new THREE.BoxGeometry(2.9,1.8,2.2),
-      new THREE.MeshStandardMaterial({ color:0xe6d78b })
-    );
-    base.position.y = 0.9;
-    const chimney = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.22,0.3,1.4,8),
-      new THREE.MeshStandardMaterial({ color:0xc8aa46 })
-    );
-    chimney.position.set(0.85,2.2,0.2);
-    const silo = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.48,0.58,2.2,8),
-      new THREE.MeshStandardMaterial({ color:0xffef9e })
-    );
-    silo.position.set(-0.9,1.1,0);
-    const workIcon = new THREE.Sprite(
-      new THREE.SpriteMaterial({ map:makeSymbolTexture("⚙", "#8eff9d"), transparent:true, opacity:0.96, depthTest:false, depthWrite:false })
-    );
-    workIcon.scale.set(0.72,0.72,1);
-    workIcon.position.set(0,3.25,0);
-    workIcon.visible = false;
-    g.add(base, chimney, silo, workIcon);
-    g.userData.workIcon = workIcon;
-  }
-
-  if(type==="fountain"){
-    const basin = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.15,1.35,0.65,16),
-      new THREE.MeshStandardMaterial({ color:0x9befff, metalness:0.1, roughness:0.3 })
-    );
-    basin.position.y = 0.35;
-    const center = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.22,0.35,1.4,10),
-      new THREE.MeshStandardMaterial({ color:0xcffaff })
-    );
-    center.position.y = 1.0;
-    const orb = new THREE.Mesh(
-      new THREE.SphereGeometry(0.32,12,12),
-      new THREE.MeshStandardMaterial({ color:0x9ff8ff, emissive:0x39dfff, emissiveIntensity:0.8 })
-    );
-    orb.position.y = 1.95;
-    g.add(basin, center, orb);
-    g.userData.orb = orb;
-  }
-
-  if(type==="supplyNest"){
-    const base = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.0,1.2,0.7,12),
-      new THREE.MeshStandardMaterial({ color:0xf1d988, roughness:0.9 })
-    );
-    base.position.y = 0.35;
-    const nest = new THREE.Mesh(
-      new THREE.TorusGeometry(0.7,0.18,8,14),
-      new THREE.MeshStandardMaterial({ color:0xc29555, roughness:1 })
-    );
-    nest.position.y = 0.85;
-    nest.rotation.x = Math.PI/2;
-    g.add(base, nest);
-    for(let i=0;i<3;i++){
-      const chunk = new THREE.Mesh(
-        new THREE.SphereGeometry(0.18,8,8),
-        new THREE.MeshStandardMaterial({ color:0xffe275, emissive:0x4e3d00, emissiveIntensity:0.2 })
-      );
-      chunk.position.set(rand(-0.32,0.32), 0.9, rand(-0.28,0.28));
-      g.add(chunk);
+    if (pressure.enemyNearGate && (diffSet.awareness > 0.55 || urgency > 0.4)) {
+      return { obj: pressure.enemyNearGate, intent: "defend-gate" };
     }
-  }
-
-  if(type==="beacon"){
-    const tower = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.4,0.7,3.7,8),
-      new THREE.MeshStandardMaterial({ color:0x6fff98, emissive:0x1a5522, emissiveIntensity:0.3 })
-    );
-    tower.position.y = 1.85;
-    const top = new THREE.Mesh(
-      new THREE.OctahedronGeometry(0.56),
-      new THREE.MeshStandardMaterial({ color:0xb4ffd2, emissive:0x31ff7a, emissiveIntensity:0.86 })
-    );
-    top.position.y = 4.2;
-    g.add(tower, top);
-    g.userData.top = top;
-  }
-
-  if(type==="robo"){
-    const base = new THREE.Mesh(
-      new THREE.BoxGeometry(3.1,1.9,2.6),
-      new THREE.MeshStandardMaterial({ color:0xaab1be, metalness:0.2, roughness:0.65 })
-    );
-    base.position.y = 0.95;
-    const dome = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.82,0.82,0.85,12),
-      new THREE.MeshStandardMaterial({ color:0x74cfff, emissive:0x1e4a77, emissiveIntensity:0.38 })
-    );
-    dome.position.y = 2.25;
-    g.add(base, dome);
-  }
-
-  if(type==="scoutPost"){
-    const post = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.22,0.28,2.8,8),
-      new THREE.MeshStandardMaterial({ color:0xc2e8f5 })
-    );
-    post.position.y = 1.4;
-    const eye = new THREE.Mesh(
-      new THREE.SphereGeometry(0.28,10,10),
-      new THREE.MeshStandardMaterial({ color:0xa8f4ff, emissive:0x4cdfff, emissiveIntensity:0.7 })
-    );
-    eye.position.y = 2.95;
-    g.add(post, eye);
-    g.userData.eye = eye;
-  }
-
-  if(type==="barrierTotem"){
-    const stem = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.25,0.35,2.8,8),
-      new THREE.MeshStandardMaterial({ color:0x8fd6ff })
-    );
-    stem.position.y = 1.4;
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(0.65,0.08,8,18),
-      new THREE.MeshStandardMaterial({ color:0xb3f5ff, emissive:0x48dfff, emissiveIntensity:0.55 })
-    );
-    ring.position.y = 2.2;
-    ring.rotation.x = Math.PI/2;
-    g.add(stem, ring);
-    g.userData.ring = ring;
-  }
-
-  if(type==="braceTower"){
-    const base = new THREE.Mesh(
-      new THREE.BoxGeometry(1.6,2.6,1.6),
-      new THREE.MeshStandardMaterial({ color:0x98c48a })
-    );
-    base.position.y = 1.3;
-    const top = new THREE.Mesh(
-      new THREE.ConeGeometry(0.8,0.9,6),
-      new THREE.MeshStandardMaterial({ color:0xd7f6c8 })
-    );
-    top.position.y = 3.05;
-    g.add(base, top);
-  }
-
-  if(type==="repairAnchor"){
-    const base = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.9,1.1,0.7,12),
-      new THREE.MeshStandardMaterial({ color:0x8ef6f1 })
-    );
-    base.position.y = 0.35;
-    const anchor = new THREE.Mesh(
-      new THREE.TorusKnotGeometry(0.35,0.09,48,8),
-      new THREE.MeshStandardMaterial({ color:0xd9ffff, emissive:0x63f6ff, emissiveIntensity:0.45 })
-    );
-    anchor.position.y = 1.35;
-    anchor.scale.set(1,1.2,1);
-    g.add(base, anchor);
-    g.userData.anchor = anchor;
-  }
-
-  if(type==="fortPlate"){
-    const plate = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.6,1.8,0.35,16),
-      new THREE.MeshStandardMaterial({ color:0xa7ceff })
-    );
-    plate.position.y = 0.18;
-    const studsMat = new THREE.MeshStandardMaterial({ color:0xe5f2ff });
-    for(let i=0;i<6;i++){
-      const stud = new THREE.Mesh(new THREE.SphereGeometry(0.12,8,8), studsMat);
-      const a = i/6 * Math.PI*2;
-      stud.position.set(Math.sin(a)*0.82, 0.42, Math.cos(a)*0.82);
-      g.add(stud);
+    if (enemyCarrier && (diffSet.antiBerry > 0.35 || urgency > 0.3)) {
+      return { obj: enemyCarrier, intent: "stop-carrier" };
     }
-    g.add(plate);
-  }
 
-  if(type==="turret"){
-    const base = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.92,1.08,1.2,10),
-      new THREE.MeshStandardMaterial({ color:0xf1d56b })
-    );
-    base.position.y = 0.6;
-    const headPivot = new THREE.Group();
-    headPivot.position.y = 1.6;
-    const head = new THREE.Mesh(
-      new THREE.SphereGeometry(0.66,12,10),
-      new THREE.MeshStandardMaterial({ color:0xffe981 })
-    );
-    const barrel = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.14,0.18,1.6,8),
-      new THREE.MeshStandardMaterial({ color:0xc79833 })
-    );
-    barrel.rotation.z = Math.PI/2;
-    barrel.position.z = 0.82;
-    headPivot.add(head, barrel);
-    g.add(base, headPivot);
-    g.userData.headPivot = headPivot;
-  }
-
-  if(type==="cannon"){
-    const base = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.1,1.35,1.2,10),
-      new THREE.MeshStandardMaterial({ color:0xc58c36 })
-    );
-    base.position.y = 0.6;
-    const barrelPivot = new THREE.Group();
-    barrelPivot.position.set(0,1.5,0.15);
-    const barrel = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.35,0.42,2.5,10),
-      new THREE.MeshStandardMaterial({ color:0xf3c05f })
-    );
-    barrel.rotation.z = Math.PI/2;
-    barrel.position.z = 0.6;
-    barrelPivot.add(barrel);
-    g.add(base, barrelPivot);
-    g.userData.barrelPivot = barrelPivot;
-  }
-
-  if(type==="shardLauncher"){
-    const base = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.75,0.9,1.0,10),
-      new THREE.MeshStandardMaterial({ color:0xffd4ab })
-    );
-    base.position.y = 0.5;
-    const prongs = new THREE.Group();
-    prongs.position.y = 1.4;
-    for (const s of [-1,1]) {
-      const arm = new THREE.Mesh(
-        new THREE.BoxGeometry(0.14,0.7,0.14),
-        new THREE.MeshStandardMaterial({ color:0xfff1d8 })
-      );
-      arm.position.set(0.22*s,0.1,0.2);
-      arm.rotation.z = s * -0.38;
-      prongs.add(arm);
+    if (strategy === "snail") {
+      if (!pressure.snailFriendly) return { obj: snail, intent: "ride-snail" };
+      if (diffSet.escort && snail.rider && snail.rider.team === this.team) return { obj: snail.rider, intent: "escort-snail" };
+      if (berry && squad !== "contest") return { obj: berry, intent: "collect-berry" };
+      return { obj: pressure.enemyNearSnail || pressure.ownHive, intent: "patrol-snail" };
     }
-    g.add(base, prongs);
-    g.userData.prongs = prongs;
-  }
 
-  if(type==="zapCoil"){
-    const base = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.75,0.95,0.7,12),
-      new THREE.MeshStandardMaterial({ color:0xae9cff })
-    );
-    base.position.y = 0.35;
-    const coil = new THREE.Mesh(
-      new THREE.TorusGeometry(0.45,0.08,8,16),
-      new THREE.MeshStandardMaterial({ color:0xe2ddff, emissive:0x7b66ff, emissiveIntensity:0.6 })
-    );
-    coil.rotation.x = Math.PI/2;
-    coil.position.y = 1.05;
-    const rod = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.08,0.12,1.2,10),
-      new THREE.MeshStandardMaterial({ color:0xd8d0ff, emissive:0x6a5fff, emissiveIntensity:0.35 })
-    );
-    rod.position.y = 0.9;
-    const cap = new THREE.Mesh(
-      new THREE.OctahedronGeometry(0.18,0),
-      new THREE.MeshStandardMaterial({ color:0xf1ecff, emissive:0xa695ff, emissiveIntensity:0.65 })
-    );
-    cap.position.y = 1.55;
-    g.add(base, rod, coil, cap);
-    g.userData.coil = coil;
-    g.userData.coilCap = cap;
-  }
-
-  if(type==="mortarBloom"){
-    const base = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.9,1.1,0.85,12),
-      new THREE.MeshStandardMaterial({ color:0xffa2bd })
-    );
-    base.position.y = 0.42;
-    const flower = new THREE.Group();
-    flower.position.y = 1.45;
-    for (let i=0;i<5;i++){
-      const petal = new THREE.Mesh(
-        new THREE.SphereGeometry(0.22,8,8),
-        new THREE.MeshStandardMaterial({ color:0xffd6e3 })
-      );
-      const a = i/5 * Math.PI*2;
-      petal.position.set(Math.sin(a)*0.28, 0, Math.cos(a)*0.28);
-      flower.add(petal);
+    if (strategy === "economy") {
+      if (diffSet.escort && alliedCarrier && squad === "escort") return { obj: alliedCarrier, intent: "escort-carrier" };
+      if (berry) return { obj: berry, intent: "collect-berry" };
+      if (pressure.enemyNearHive) return { obj: pressure.enemyNearHive, intent: "defend-hive" };
+      return { obj: pressure.ownGate, intent: "reposition" };
     }
-    const center = new THREE.Mesh(
-      new THREE.SphereGeometry(0.18,8,8),
-      new THREE.MeshStandardMaterial({ color:0xfff4a8, emissive:0xaa6f00, emissiveIntensity:0.25 })
-    );
-    flower.add(center);
-    g.add(base, flower);
-    g.userData.flower = flower;
-  }
 
-  if(type==="sawBlaster"){
-    const base = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.82,0.98,1.05,12),
-      new THREE.MeshStandardMaterial({ color:0xffb78e })
-    );
-    base.position.y = 0.52;
-    const headPivot = new THREE.Group();
-    headPivot.position.y = 1.35;
-    const wheel = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.38,0.38,0.18,14),
-      new THREE.MeshStandardMaterial({ color:0xe7e0d6, metalness:0.25, roughness:0.6 })
-    );
-    wheel.rotation.z = Math.PI/2;
-    headPivot.add(wheel);
-    const guard = new THREE.Mesh(
-      new THREE.TorusGeometry(0.52,0.05,8,20,Math.PI*1.35),
-      new THREE.MeshStandardMaterial({ color:0xffd5bd, metalness:0.1, roughness:0.45 })
-    );
-    guard.rotation.set(0, Math.PI/2, Math.PI*0.13);
-    guard.position.set(0.08, 0, 0);
-    headPivot.add(guard);
-    const axle = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.06,0.06,0.44,10),
-      new THREE.MeshStandardMaterial({ color:0xffefe3 })
-    );
-    axle.rotation.z = Math.PI/2;
-    headPivot.add(axle);
-    for(let i=0;i<8;i++){
-      const tooth = new THREE.Mesh(
-        new THREE.BoxGeometry(0.08,0.18,0.05),
-        new THREE.MeshStandardMaterial({ color:0xf5f0ea })
-      );
-      const a = i/8 * Math.PI*2;
-      tooth.position.set(0, Math.sin(a)*0.48, Math.cos(a)*0.48);
-      tooth.rotation.x = a;
-      headPivot.add(tooth);
+    if (strategy === "balanced") {
+      if (snailDanger.severity === "high" || snailDanger.severity === "critical") {
+        if (pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "contest-snail" };
+      }
+      if (enemyCarrier && Math.random() < 0.62) return { obj: enemyCarrier, intent: "stop-carrier" };
+      if (diffSet.escort && alliedCarrier && Math.random() < 0.55) return { obj: alliedCarrier, intent: "escort-carrier" };
+      if (berry && ownBerries < 9 && Math.random() < 0.58) return { obj: berry, intent: "collect-berry" };
+      if (pressure.enemyNearGate) return { obj: pressure.enemyNearGate, intent: "defend-gate" };
+      return { obj: enemyQueen || this.nearestEnemy() || pressure.enemyGate, intent: "pressure" };
     }
-    g.add(base, headPivot);
-    g.userData.headPivot = headPivot;
+
+    if (gates[this.team].upgrades.warrior && this.form === "worker" && (Math.random() < 0.24 + diffSet.aggression * 0.15)) {
+      return { obj: gates[this.team].maidens[1], intent: "seek-warrior" };
+    }
+
+    if (urgency > 0.65 && enemyQueen) return { obj: enemyQueen, intent: "queen-hunt" };
+    return { obj: enemyQueen || this.nearestEnemy() || pressure.enemyGate, intent: "pressure" };
   }
 
-  const hpBar = createHealthBar(2.1,0x77ff77);
-  hpBar.position.y = 5;
-  g.add(hpBar);
-  g.userData.healthBar = hpBar;
+  ai(strategy) {
+    if (this.dead) return;
+    const diffSet = this.diff();
+    this.aiTick--;
+    this.objectiveCommit = Math.max(0, this.objectiveCommit - 1);
+    this.approachCommit = Math.max(0, this.approachCommit - 1);
 
-  const glow = new THREE.Mesh(
-    new THREE.CylinderGeometry(1.25,1.25,0.06,20),
-    new THREE.MeshBasicMaterial({ color:0x86ffb2, transparent:true, opacity:0.0 })
-  );
-  glow.position.y = 0.05;
-  glow.visible = false;
-  g.add(glow);
-  g.userData.beaconGlow = glow;
+    const currentObj = this.target?.obj || null;
+    const currentIntent = this.target?.intent || "";
+    const currentDanger = this.dangerZoneAgainst(currentObj);
+    const forceReevaluate = this.shouldForceReevaluate(currentObj, currentIntent, currentDanger);
+    if (this.aiTick <= 0 || !this.target || !this.target.obj || (forceReevaluate && this.objectiveCommit < 22)) {
+      const nextTarget = this.chooseTarget(strategy);
+      const shouldSwitch = !this.target || forceReevaluate ||
+        this.target.intent !== nextTarget.intent ||
+        dist((this.target.obj?.x ?? this.x), (this.target.obj?.y ?? this.y), (nextTarget.obj?.x ?? this.x), (nextTarget.obj?.y ?? this.y)) > 120;
+      if (shouldSwitch || this.objectiveCommit <= 0) {
+        this.target = nextTarget;
+        this.objectiveCommit = 45 + Math.floor(50 * diffSet.discipline);
+        this.lastObjectiveChange = game.time;
+        const danger = this.dangerZoneAgainst(this.target.obj);
+        this.approachType = this.pickApproach(this.target.intent, this.target.obj, danger, strategy);
+        this.approachCommit = 35 + Math.floor(65 * diffSet.discipline);
+      }
+      this.aiTick = Math.max(6, diffSet.reaction - (forceReevaluate ? 5 : 0));
+    }
 
-  g.traverse(c=>{ if(c.isMesh){ c.castShadow = true; c.receiveShadow = true; } });
-  return g;
-}
-function createStructure(type,x,z,rotationY=0, dataOverride=null){
-  const data = dataOverride || Object.values(CATEGORY_BUILDS).flat().find(v=>v.type===type);
-  const mesh = createStructureMesh(type);
-  mesh.position.set(x, groundHeight(x,z), z);
-  mesh.rotation.y = rotationY;
-  scene.add(mesh);
+    const nearestEnemy = this.nearestEnemy(150);
 
-  const s = {
-    type,
-    mesh,
-    pos:mesh.position,
-    radius:data.radius,
-    hp:data.hp,
-    maxHp:data.hp,
-    dead:false,
-    fireCd:0,
-    produceCd:0,
-    robotCd:0,
-    healCd:0,
-    trapCd:0,
-    assignedServant:null,
-    rotationY,
-    isBeaconBuffed:false,
-    target:null
-  };
-  structures.push(s);
-  setHealthBar(mesh.userData.healthBar, 1);
-  updateWallDamageVisual(s);
+    const spikeBuffer = 95;
+    const hardSpikeLine = world.spikeY + spikeBuffer;
+    const risingFast = this.vy < -1.5;
+    const nearSpike = this.y < hardSpikeLine;
+    const veryNearSpike = this.y < hardSpikeLine + 18;
 
-  const color = structureColor(type);
-  addBurst(x, mesh.position.y+1.0, z, color, 26, 5.8, 0.8, 0.09);
-  for(let i=0;i<12;i++){
-    addBurst(x + rand(-1.2,1.2), mesh.position.y+rand(0.3,2.1), z + rand(-0.6,0.6), 0xfff4a4, 1, 1.2, 0.4, 0.06);
-  }
-  return s;
-}
-function damageStructure(s,dmg){
-  if(!s || s.dead) return;
-  s.hp -= dmg;
-  setHealthBar(s.mesh.userData.healthBar, Math.max(0, s.hp/s.maxHp));
-  updateWallDamageVisual(s);
-  addBurst(s.pos.x, s.pos.y+1.1, s.pos.z, 0xffca77, 5, 3, 0.28, 0.07);
-  if(s.hp <= 0){
-    s.hp = 0;
-    s.dead = true;
-    addBurst(s.pos.x, s.pos.y+1.2, s.pos.z, 0xff6655, 42, 8.2, 1.15, 0.14);
-    addBurst(s.pos.x, s.pos.y+1.2, s.pos.z, 0xffcc66, 28, 6.8, 0.95, 0.11);
-    if(s.beam){ scene.remove(s.beam); s.beam = null; }
-    scene.remove(s.mesh);
-    s.mesh.visible = false;
-  }
-}
-function getBuildPlace(){
-  const forward = new THREE.Vector3(Math.sin(player.heading),0,Math.cos(player.heading));
-  const p = player.pos.clone().addScaledVector(forward, 4.2);
-  p.y = groundHeight(p.x,p.z);
-  return p;
-}
-function beaconBuffAt(x,z){
-  let buff = { damage:1, speed:1, active:false };
-  for(const s of structures){
-    if(s.dead || s.type!=="beacon") continue;
-    const d = Math.hypot(x-s.pos.x, z-s.pos.z);
-    if(d < 13){
-      buff.damage += 0.25;
-      buff.speed += 0.2;
-      buff.active = true;
+    if (nearSpike) {
+      if (this.vy < 0) this.vy *= 0.55;
+      this.vy += 0.22 + diffSet.spikeSense * 0.12;
+      if (Math.random() < 0.12 + diffSet.spikeSense * 0.10) {
+        this.vx += (this.team === "blue" ? 0.10 : -0.10);
+      }
+    }
+    if (veryNearSpike && risingFast) {
+      this.vy += 0.35;
+    }
+
+    if (nearestEnemy && nearestEnemy.y < this.y - 8 && Math.random() < 0.12 + diffSet.awareness * 0.12) {
+      this.flap();
+    }
+
+    if (this.onSnail && snail.rider === this) {
+      const nearbyThreat = this.nearestEnemy(165 + diffSet.awareness * 40);
+      const closeToGoal = (this.team === "blue" && snail.x > world.snailRightGoal - 70) ||
+                          (this.team === "gold" && snail.x < world.snailLeftGoal + 70);
+      if (nearbyThreat && Math.random() < 0.04 + diffSet.awareness * 0.05) {
+        this.dismountSnail();
+      } else if (closeToGoal && Math.random() < 0.015) {
+        this.dismountSnail();
+      }
+      return;
+    }
+
+    const obj = this.target.obj;
+    const tx = obj.x ?? this.x;
+    const ty = obj.y ?? this.y;
+    const dx = tx - this.x;
+    const dy = ty - this.y;
+    const localEnemies = this.enemiesNearby(230);
+    const localAllies = this.alliesNearby(230);
+    const danger = this.dangerZoneAgainst(obj);
+    this.lastSupportCount = localAllies;
+    this.lastDangerFlag = danger.score > 0.66;
+    this.lastAmbushFlag = danger.ambush;
+
+    let accel = this.role === "queen" ? 0.21 : (this.form === "speed" ? 0.19 : 0.17);
+    accel += (diffSet.aggression - 0.5) * 0.05;
+    const losingFight = localEnemies > localAllies + 1;
+    const altitudeDisadvantage = nearestEnemy && nearestEnemy.y + 10 < this.y;
+    const shouldDisengage = (losingFight || (altitudeDisadvantage && danger.score > 0.6)) &&
+      Math.random() < (0.16 + diffSet.retreat * 0.40 - this.bravery(strategy) * 0.2);
+
+    let plannedX = tx;
+    let plannedY = ty;
+
+    if (danger.topTrap && diffSet.trapSense > 0.45) {
+      plannedX += this.x < tx ? -120 : 120;
+      plannedY += 30;
+    }
+    if (shouldDisengage) {
+      plannedX = this.x + (this.team === "blue" ? -140 : 140);
+      plannedY = clamp(this.y + 30, world.spikeY + 120, world.lavaY - 120);
+      if (this.role === "queen" && this.queenLives <= 1) plannedX = gates[this.team].x + (this.team === "blue" ? 80 : -80);
+    }
+
+    if (this.approachType === "low-rise") {
+      plannedY = Math.max(plannedY + 48, this.y + 18);
+    } else if (this.approachType === "side-hover-bait") {
+      plannedX += this.x < tx ? -90 : 90;
+      plannedY = Math.min(plannedY + 20, world.lavaY - 140);
+    } else if (this.approachType === "fake-retreat" && this.approachCommit > 22) {
+      plannedX = this.x + (this.x < tx ? -90 : 90);
+    } else if (this.approachType === "perch-wait") {
+      const perch = world.platforms.find(p => Math.abs((p.x + p.w / 2) - tx) < 190 && p.y > world.spikeY + 90 && p.y < world.lavaY - 120);
+      if (perch) {
+        plannedX = perch.x + perch.w / 2;
+        plannedY = perch.y - 10;
+      }
+    } else if (this.approachType === "regroup-push") {
+      const ally = units.find(u => !u.dead && u.team === this.team && u !== this && dist(this.x, this.y, u.x, u.y) < 260);
+      if (ally && localAllies < 2) {
+        plannedX = ally.x;
+        plannedY = ally.y - 10;
+      }
+    }
+
+    const planDx = plannedX - this.x;
+    const planDy = plannedY - this.y;
+
+    if (Math.abs(planDx) > 8) {
+      this.vx += Math.sign(planDx) * accel;
+      this.dir = planDx > 0 ? 1 : -1;
+    }
+
+    const desiredHeightCeiling = world.spikeY + 95;
+    if (this.y < desiredHeightCeiling) {
+      this.vy += 0.20;
+    }
+
+    const suppressUpward = danger.topTrap && diffSet.trapSense > 0.5 && this.y > (obj.y || this.y) + 10;
+    if (!suppressUpward && planDy < -16 && this.y > desiredHeightCeiling && this.y > world.spikeY + 105) {
+      this.flap();
+    } else if (!suppressUpward && this.y > plannedY + 18 && Math.random() < 0.03 + diffSet.awareness * 0.03) {
+      this.flap();
+    }
+
+    if (this.target.intent === "escort-carrier" || this.target.intent === "escort-snail") {
+      if (Math.abs(dx) > 30) {
+        this.vx += Math.sign(dx) * 0.06;
+      }
+      if (nearestEnemy && dist(this.x, this.y, nearestEnemy.x, nearestEnemy.y) < 120 && Math.random() < 0.12 + diffSet.aggression * 0.08) {
+        this.flap();
+      }
+    }
+
+    if (this.role === "queen" && this.team === "gold") {
+      const urgency = this.enemyUrgencyBoost();
+      const queenCareful = this.queenLives <= 1 && diffSet.level >= 6;
+      if (!queenCareful && nearestEnemy && dist(this.x, this.y, nearestEnemy.x, nearestEnemy.y) < 135 && nearestEnemy.y < this.y + 8 && Math.random() < 0.14 + urgency * 0.08) {
+        this.flap(this.flapPower() + 0.18);
+      }
+      if (this.y < 180 && Math.random() < 0.13) this.vy += 0.20;
+    }
+
+    if (this.form === "speed" && Math.random() < 0.018 + diffSet.aggression * 0.01) this.flap(this.flapPower() + 0.1);
+    if (this.form === "warrior" && nearestEnemy && nearestEnemy.y < this.y + 8 && Math.random() < 0.05 + diffSet.aggression * 0.06) this.flap();
+
+    if ((danger.score > 0.85 || shouldDisengage) && this.target) {
+      this.failedApproaches[this.approachType] = (this.failedApproaches[this.approachType] || 0) + 1;
+    } else if (this.failedApproaches[this.approachType] > 0 && Math.random() < 0.03) {
+      this.failedApproaches[this.approachType]--;
     }
   }
-  return buff;
-}
-function updateBeaconGlow(){
-  for(const s of structures){
-    if(s.dead || s.type === "beacon") continue;
-    const buff = beaconBuffAt(s.pos.x, s.pos.z);
-    s.isBeaconBuffed = buff.active;
-    const glow = s.mesh.userData.beaconGlow;
-    if(!glow) continue;
-    if(buff.active){
-      glow.visible = true;
-      glow.material.opacity = 0.18 + Math.sin(time*4)*0.08;
-      glow.scale.set(1.4 + Math.sin(time*3)*0.05, 1, 1.4 + Math.sin(time*3)*0.05);
-      glow.material.color.set(0x86ffb2);
+
+  playerControl() {
+    if (this.onSnail && keys["s"]) {
+      this.dismountSnail();
+      return;
+    }
+    if (keys["a"]) { this.vx -= 0.34; this.dir = -1; }
+    if (keys["d"]) { this.vx += 0.34; this.dir = 1; }
+    if ((keys["w"] || keys[" "]) && this.y > world.spikeY + 90) this.flap();
+    if (keys["s"]) this.vy += 0.16;
+    if (this.y < world.spikeY + 80) this.vy += 0.22;
+  }
+
+  tryMountSnail() {
+    if (this.role === "queen" || this.form === "warrior") return;
+    if (this.snailMountCooldown > 0) return;
+    if (snail.rider) return;
+    if (dist(this.x + this.w / 2, this.y + this.h / 2, snail.x, snail.y) < 28) {
+      snail.rider = this;
+      this.onSnail = true;
+      this.vx = 0;
+      this.vy = 0;
+      soundMount();
+    }
+  }
+
+  dismountSnail() {
+    if (!this.onSnail || snail.rider !== this) return;
+    snail.rider = null;
+    this.onSnail = false;
+    this.snailMountCooldown = 50;
+    this.vy = -3.4;
+    this.vx += this.team === "blue" ? 1.5 : -1.5;
+    soundDismount();
+  }
+
+  update(strategy) {
+    if (this.dead) {
+      if (this.role !== "queen") {
+        this.respawnTimer--;
+        if (this.respawnTimer <= 0) this.respawn();
+      }
+      return;
+    }
+
+    if (this.isPlayer) this.playerControl();
+    else this.ai(strategy);
+
+    if (!this.onSnail) this.tryMountSnail();
+    this.physics();
+  }
+
+  drawBeeBody(x, y, color, dir) {
+    ctx.fillStyle = color;
+    ctx.fillRect(x + 10, y + 11, this.w - 18, 10);
+
+    ctx.fillStyle = "#202020";
+    ctx.fillRect(x + 16, y + 11, 3, 10);
+    ctx.fillRect(x + 24, y + 11, 3, 10);
+    ctx.fillRect(x + 32, y + 11, 3, 10);
+
+    ctx.fillStyle = shade(color, 15);
+    ctx.fillRect(x + 8, y + 9, 9, 12);
+
+    ctx.fillStyle = shade(color, 28);
+    if (dir === 1) {
+      ctx.fillRect(x + this.w - 13, y + 8, 8, 8);
+      ctx.fillRect(x + this.w - 5, y + 10, 3, 4);
     } else {
-      glow.visible = false;
+      ctx.fillRect(x + 5, y + 8, 8, 8);
+      ctx.fillRect(x + 2, y + 10, 3, 4);
+    }
+
+    ctx.fillStyle = "#111";
+    if (dir === 1) ctx.fillRect(x + 5, y + 13, 4, 2);
+    else ctx.fillRect(x + this.w - 9, y + 13, 4, 2);
+
+    ctx.fillStyle = shade(color, -18);
+    ctx.fillRect(x + 15, y + 20, 2, 5);
+    ctx.fillRect(x + 22, y + 20, 2, 5);
+    ctx.fillRect(x + 30, y + 20, 2, 5);
+  }
+
+  drawWings(x, y, flapFrame, dir) {
+    const wingRise = flapFrame ? -11 : -3;
+    ctx.fillStyle = "rgba(220,255,255,0.55)";
+    if (dir === 1) {
+      ctx.fillRect(x + 11, y + wingRise + 1, 8, 15);
+      ctx.fillRect(x + 19, y + wingRise - 1, 9, 18);
+    } else {
+      ctx.fillRect(x + this.w - 19, y + wingRise + 1, 8, 15);
+      ctx.fillRect(x + this.w - 28, y + wingRise - 1, 9, 18);
+    }
+  }
+
+  drawAntennae(x, y, dir) {
+    ctx.fillStyle = "#111";
+    if (dir === 1) {
+      ctx.fillRect(x + this.w - 10, y + 4, 1, 4);
+      ctx.fillRect(x + this.w - 7, y + 3, 1, 5);
+      ctx.fillRect(x + this.w - 11, y + 3, 2, 1);
+      ctx.fillRect(x + this.w - 8, y + 2, 2, 1);
+    } else {
+      ctx.fillRect(x + 8, y + 4, 1, 4);
+      ctx.fillRect(x + 11, y + 3, 1, 5);
+      ctx.fillRect(x + 8, y + 3, 2, 1);
+      ctx.fillRect(x + 11, y + 2, 2, 1);
+    }
+  }
+
+  drawRider(x, y, dir) {
+    let riderColor = "#dcdcdc";
+    if (this.role === "queen") riderColor = "#ff69cf";
+    else if (this.form === "speed") riderColor = "#9fffe9";
+    else if (this.form === "warrior") riderColor = "#ffe48e";
+
+    ctx.fillStyle = riderColor;
+    ctx.fillRect(x + 16, y + 1, 8, 8);
+    ctx.fillStyle = "#f4c59e";
+    ctx.fillRect(x + 17, y - 5, 6, 6);
+
+    ctx.fillStyle = this.role === "queen" ? "#ff7ce5" : (this.form === "warrior" ? "#f0f0f0" : "#d7d7d7");
+    if (dir === 1) {
+      ctx.fillRect(x + 23, y + 4, this.role === "queen" ? 16 : 12, 2);
+      ctx.fillRect(x + 37, y + 3, 4, 4);
+    } else {
+      ctx.fillRect(x - 4, y + 4, this.role === "queen" ? 16 : 12, 2);
+      ctx.fillRect(x - 8, y + 3, 4, 4);
+    }
+
+    if (this.role === "queen") {
+      ctx.fillStyle = "#fff08d";
+      ctx.fillRect(x + 17, y - 8, 2, 2);
+      ctx.fillRect(x + 20, y - 10, 2, 4);
+      ctx.fillRect(x + 23, y - 8, 2, 2);
+    }
+
+    if (this.carryingBerry) {
+      ctx.fillStyle = "#46ff5c";
+      ctx.fillRect(x + this.w - 9, y - 2, 6, 6);
+      ctx.fillStyle = "#a51fc5";
+      ctx.fillRect(x + this.w - 8, y - 1, 4, 4);
+    }
+  }
+
+  drawStatusIcons() {
+    if (this.dead) return;
+    if (this.form === "speed") {
+      ctx.fillStyle = "#84fff2";
+      ctx.fillRect(this.x + this.w / 2 - 5, this.y - 12, 10, 3);
+    }
+    if (this.form === "warrior") {
+      ctx.fillStyle = "#ffe57d";
+      ctx.fillRect(this.x + this.w / 2 - 5, this.y - 12, 10, 4);
+    }
+    if (this.onSnail && snail.rider === this) {
+      ctx.fillStyle = "#ffb347";
+      ctx.fillRect(this.x + this.w / 2 - 5, this.y - 16, 10, 4);
+    }
+  }
+
+  draw() {
+    if (this.dead) return;
+    if (this.invuln > 0 && Math.floor(this.invuln / 4) % 2 === 0) return;
+
+    const flapFrame = this.flutter > 0 || !this.onGround;
+    this.drawWings(this.x, this.y, flapFrame, this.dir);
+    this.drawBeeBody(this.x, this.y, this.color(), this.dir);
+    this.drawAntennae(this.x, this.y, this.dir);
+    this.drawRider(this.x, this.y, this.dir);
+    this.drawStatusIcons();
+  }
+}
+
+/* ---------------- WORLD LOGIC ---------------- */
+
+function spawnMatch() {
+  applyMap(game.currentMapIndex);
+  units = [];
+
+  const bq = new Unit({ team: "blue", role: "queen", x: 165, y: 650, isPlayer: true });
+  const gq = new Unit({ team: "gold", role: "queen", x: world.width - 205, y: 650 });
+
+  playerQueen = bq;
+  units.push(bq, gq);
+
+  for (let i = 0; i < 4; i++) {
+    units.push(new Unit({ team: "blue", role: "worker", x: 120 + i * 38, y: 690 }));
+    units.push(new Unit({ team: "gold", role: "worker", x: world.width - 270 + i * 38, y: 690 }));
+  }
+
+  game.enemyStrategy = TEAM_STRATEGIES[randi(0, TEAM_STRATEGIES.length - 1)];
+  game.winner = null;
+  game.winType = "";
+  game.state = "playing";
+  game.time = 0;
+  game.cameraX = 0;
+  game.cameraY = 0;
+}
+
+function nearestEnemyToPoint(team, x, y, range = 99999) {
+  let best = null, bestD = range;
+  for (const u of units) {
+    if (u.dead || u.team === team) continue;
+    const d = dist(x, y, u.x, u.y);
+    if (d < bestD) {
+      bestD = d;
+      best = u;
+    }
+  }
+  return best;
+}
+
+function updateBushes() {
+  for (const bush of bushes) {
+    if (!bush.berry.alive && !bush.berry.carriedBy) {
+      bush.timer--;
+      if (bush.timer <= 0) {
+        bush.berry = {
+          x: bush.x,
+          y: bush.y - 20,
+          alive: true,
+          carriedBy: null,
+          bushId: bush.id
+        };
+        addParticles(bush.x, bush.y - 18, world.theme.bushBerry1, 10, 1.6);
+      }
     }
   }
 }
 
-// -------------------------------------------------
-// ROBOTS
-// -------------------------------------------------
-function makeRobotModel(){
-  const g = new THREE.Group();
-  const mat = new THREE.MeshStandardMaterial({ color:0x9db4cf, metalness:0.3, roughness:0.55 });
-  const eye = new THREE.MeshStandardMaterial({ color:0x8cf3ff, emissive:0x1c98c1, emissiveIntensity:0.65 });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.8,0.9,0.65), mat);
-  body.position.y = 0.9;
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.55,0.45,0.5), mat);
-  head.position.set(0,1.55,0);
-  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.42,0.1,0.52), eye);
-  visor.position.set(0,1.55,0.01);
-  g.add(body,head,visor);
+function handleBerries() {
+  for (const bush of bushes) {
+    const berry = bush.berry;
+    if (!berry.alive) continue;
 
-  const legGeo = new THREE.CylinderGeometry(0.07,0.08,0.7,6);
-  [[-0.18,0.35,0],[0.18,0.35,0]].forEach(p=>{
-    const l = new THREE.Mesh(legGeo, mat);
-    l.position.set(...p);
-    g.add(l);
-  });
-  g.traverse(c=>{ if(c.isMesh) c.castShadow = true; });
-  return g;
-}
-function spawnRobot(x,z){
-  const model = makeRobotModel();
-  model.position.set(x, groundHeight(x,z), z);
-  scene.add(model);
-  robots.push({
-    group:model, pos:model.position,
-    hp:8, damage:10, radius:0.7, speed:7.6,
-    fireCd:0, dead:false, dying:false, anim:Math.random()*10, deathT:0, isLiving:true
-  });
-}
-
-// -------------------------------------------------
-// PROJECTILES / BEAMS
-// -------------------------------------------------
-function spawnProjectile(opts){
-  const mesh = new THREE.Mesh(
-    new THREE.SphereGeometry(opts.size ?? 0.18, 10, 10),
-    new THREE.MeshStandardMaterial({ color:opts.color ?? 0xffdd66, emissive:opts.color ?? 0xffdd66, emissiveIntensity:0.45 })
-  );
-  mesh.position.copy(opts.pos);
-  mesh.castShadow = true;
-  scene.add(mesh);
-
-  projectiles.push({
-    mesh,
-    pos:mesh.position,
-    vel:opts.vel.clone(),
-    life:opts.life ?? 4,
-    damage:opts.damage ?? 8,
-    splash:opts.splash ?? 0,
-    from:opts.from ?? "ally",
-    kind:opts.kind ?? "pellet",
-    returnHits:opts.returnHits || false
-  });
-}
-function explodeProjectile(p){
-  addBurst(p.pos.x,p.pos.y,p.pos.z, p.from==="enemy"?0xff5555:0xffdd66, p.kind==="cannon"||p.kind==="mortar"?18:8, 4.5, 0.6, 0.09);
-
-  if(p.from === "ally"){
-    for(const e of enemies){
-      if(e.dead || e.dying) continue;
-      const d = dist2({x:p.pos.x,z:p.pos.z}, e.pos);
-      if(d < 1 + p.splash){
-        applyDamageToLiving(e, p.damage * (d < 0.5 ? 1 : Math.max(0.35, 1 - d/(p.splash+1))), p.pos);
-      }
-    }
-    if(cat && !cat.dead && !cat.dying){
-      const d = dist2({x:p.pos.x,z:p.pos.z}, cat.pos);
-      if(d < 1.7 + p.splash){
-        applyDamageToLiving(cat, p.damage * (d < 0.8 ? 1 : Math.max(0.35, 1 - d/(p.splash+1.7))), p.pos);
-      }
-    }
-  }else{
-    if(!player.dead && dist2({x:p.pos.x,z:p.pos.z}, player.pos) < 1.2 + p.splash) applyDamageToLiving(player, 999, p.pos);
-    for(const m of servantMice){
-      if(m.dead || m.dying) continue;
-      if(dist2({x:p.pos.x,z:p.pos.z}, m.pos) < 1.0 + p.splash){
-        applyDamageToLiving(m, p.damage, p.pos);
-      }
-    }
-    for(const s of structures){
-      if(s.dead) continue;
-      const d = dist2({x:p.pos.x,z:p.pos.z}, s.pos);
-      if(d < s.radius + p.splash) damageStructure(s, p.damage * Math.max(0.4, 1 - d/(s.radius+p.splash+0.01)));
-    }
-  }
-}
-function updateProjectiles(dt){
-  for(let i=projectiles.length-1;i>=0;i--){
-    const p = projectiles[i];
-    p.life -= dt;
-    p.vel.y -= 18*dt;
-    p.pos.addScaledVector(p.vel, dt);
-
-    const gy = groundHeight(p.pos.x,p.pos.z);
-    if(p.pos.y <= gy+0.12){
-      p.pos.y = gy+0.12;
-      explodeProjectile(p);
-      p.mesh.parent?.remove(p.mesh);
-      projectiles.splice(i,1);
+    if (berry.carriedBy) {
+      berry.x = berry.carriedBy.x + berry.carriedBy.w - 6;
+      berry.y = berry.carriedBy.y - 2;
       continue;
     }
 
-    if(p.from==="ally"){
-      let hit = false;
-      for(const e of enemies){
-        if(e.dead || e.dying) continue;
-        if(dist2(p.pos, e.pos) < e.radius + 0.35 && Math.abs(p.pos.y - (e.pos.y+0.8)) < 1.5){
-          hit = true; break;
-        }
-      }
-      if(cat && !cat.dead && !cat.dying && dist2(p.pos, cat.pos) < cat.radius + 0.5 && Math.abs(p.pos.y - (cat.pos.y+2)) < 2.6) hit = true;
-      if(hit){
-        explodeProjectile(p);
-        p.mesh.parent?.remove(p.mesh);
-        projectiles.splice(i,1);
-        continue;
-      }
-    }else{
-      if(!player.dead && dist2(p.pos, player.pos) < 0.9 && Math.abs(p.pos.y - (player.pos.y+0.7)) < 1.4){
-        explodeProjectile(p);
-        p.mesh.parent?.remove(p.mesh);
-        projectiles.splice(i,1);
-        continue;
-      }
-    }
-
-    if(p.life <= 0){
-      explodeProjectile(p);
-      p.mesh.parent?.remove(p.mesh);
-      projectiles.splice(i,1);
-    }
-  }
-}
-
-// -------------------------------------------------
-// REPAIR BEAMS
-// -------------------------------------------------
-function ensureRepairBeam(structure) {
-  if (structure.beam) return structure.beam;
-  const mat = new THREE.MeshBasicMaterial({ color:0x3da3ff, transparent:true, opacity:0.95, depthTest:false, depthWrite:false });
-  const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.11,0.11,1,10), mat);
-  cyl.renderOrder = 180;
-  cyl.visible = false;
-  scene.add(cyl);
-  structure.beam = cyl;
-  return cyl;
-}
-function hideRepairBeam(structure) {
-  if (structure.beam) structure.beam.visible = false;
-}
-
-// -------------------------------------------------
-// ENEMIES / MICE DEATH
-// -------------------------------------------------
-function beginDeath(entity, type="mouse"){
-  if (entity.dying || entity.dead) return;
-  if(entity.assignedFactory && entity.assignedFactory.assignedServant === entity){
-    entity.assignedFactory.assignedServant = null;
-  }
-  entity.dying = true;
-  entity.deathT = 0;
-  entity.deathType = type;
-  addBurst(entity.pos.x, entity.pos.y+0.8, entity.pos.z, type==="cat"?0xff7d44:0xff7777, 16, 4.5, 0.6, 0.08);
-}
-function finalizeDeath(entity) {
-  entity.dead = true;
-  entity.group.parent?.remove(entity.group);
-}
-function killEnemy(e){
-  if(e.dead || e.dying) return;
-  beginDeath(e, e.kind === "weasel" ? "weasel" : "mouse");
-  if(Math.random() < 0.7) spawnCheeseAt(e.pos.x+rand(-0.8,0.8), e.pos.z+rand(-0.8,0.8), 3);
-}
-function killCat(){
-  if(!cat || cat.dead || cat.dying) return;
-  beginDeath(cat, "cat");
-  ui.bossWrap.style.display = "none";
-  ui.bossLabel.style.display = "none";
-  setTimeout(() => {
-    gameWon = true;
-    ui.msg.textContent = "YOU WIN";
-    ui.msg.style.opacity = "1";
-  }, 500);
-}
-
-// -------------------------------------------------
-// WILD / SERVANTS
-// -------------------------------------------------
-function spawnWildMouse(x,z){
-  const g = makeMouseModel(0xbeb6ab,0xffbcc8,0xc78594);
-  g.position.set(x, groundHeight(x,z), z);
-  scene.add(g);
-  wildMice.push({
-    state:"wild",
-    group:g,
-    pos:g.position,
-    radius:0.8,
-    hp:26,
-    maxHp:26,
-    isLiving:true,
-    heading:Math.random()*Math.PI*2,
-    speed:4.0,
-    target:null,
-    dead:false,
-    dying:false,
-    anim:Math.random()*20,
-    attackAnim:0,
-    repairCd:0,
-    assignedFactory:null,
-    orbitAngle:Math.random()*Math.PI*2,
-    deathT:0
-  });
-}
-for(let i=0;i<4;i++){
-  const p = randomFreePosition(1);
-  spawnWildMouse(p.x,p.z);
-}
-let wildSpawnTimer = 0;
-
-function recruitMouse(m){
-  const i = wildMice.indexOf(m);
-  if(i >= 0) wildMice.splice(i,1);
-  servantMice.push(m);
-  m.state = "servant";
-  addBurst(m.pos.x, m.pos.y+0.9, m.pos.z, 0x8effa0, 16, 5, 0.75, 0.09);
-  showCenter("A Mouse Joined You!", 1.1);
-}
-function updateMouseEntity(m,dt){
-  if (m.dead) return;
-  if (m.dying) {
-    m.deathT += dt;
-    m.group.rotation.z = clamp(m.deathT * 4, 0, Math.PI/2.2);
-    m.group.position.y = groundHeight(m.pos.x,m.pos.z) - Math.min(0.4, m.deathT * 0.6);
-    animateMouseRig(m.group, 0, m.anim, 0, clamp(m.deathT * 2, 0, 1));
-    if (m.deathT > 0.45) finalizeDeath(m);
-    return;
-  }
-
-  m.anim += dt;
-  m.attackAnim = Math.max(0, m.attackAnim - dt*4);
-  m.repathTimer = Math.max(0, (m.repathTimer || 0) - dt);
-
-  if(m.state === "wild"){
-    if(dist2(m.pos, player.pos) < 1.35){ recruitMouse(m); return; }
-    if(!m.target || dist2(m.pos,m.target) < 1.3 || Math.random() < 0.018){
-      const a = Math.random() * Math.PI * 2;
-      const r = rand(3, 10);
-      m.target = new THREE.Vector3(
-        clamp(m.pos.x + Math.sin(a)*r, -HALF_MAP+6, HALF_MAP-6),
-        0,
-        clamp(m.pos.z + Math.cos(a)*r, -HALF_MAP+6, HALF_MAP-6)
-      );
-      m.target.y = groundHeight(m.target.x, m.target.z);
-    }
-  } else {
-    let repairTarget = null;
-    let bestRepair = 9999;
-    for(const s of structures){
-      if(s.dead || s.hp >= s.maxHp) continue;
-      const d = dist2(m.pos,s.pos);
-      if(d < bestRepair && d < 24){ bestRepair = d; repairTarget = s; }
-    }
-
-    if(repairTarget){
-      m.target = repairTarget.pos;
-      if(bestRepair < repairTarget.radius + 1.2){
-        m.repairCd -= dt;
-        m.attackAnim = 0.9;
-        if(m.repairCd <= 0){
-          m.repairCd = 0.5;
-          repairTarget.hp = Math.min(repairTarget.maxHp, repairTarget.hp + 3.2);
-          setHealthBar(repairTarget.mesh.userData.healthBar, repairTarget.hp/repairTarget.maxHp);
-          updateWallDamageVisual(repairTarget);
-          addBurst(repairTarget.pos.x, repairTarget.pos.y+1.0, repairTarget.pos.z, 0x95ffb6, 4, 2.3, 0.3, 0.05);
-        }
-      }
-    } else {
-      let assignedFactory = null;
-      for(const f of structures){
-        if(f.dead || f.type!=="factory") continue;
-        if(!f.assignedServant || f.assignedServant===m){ assignedFactory = f; break; }
-      }
-
-      if(assignedFactory){
-        if(m.assignedFactory && m.assignedFactory !== assignedFactory && m.assignedFactory.assignedServant===m) m.assignedFactory.assignedServant = null;
-        m.assignedFactory = assignedFactory;
-        assignedFactory.assignedServant = m;
-        m.target = assignedFactory.pos;
-      } else {
-        if(m.assignedFactory && m.assignedFactory.assignedServant===m) m.assignedFactory.assignedServant = null;
-        m.assignedFactory = null;
-
-        let nearestCheese = null, best = 9999;
-        for(const c of cheeses){
-          const d = dist2(m.pos,c.pos);
-          if(d < best){ best = d; nearestCheese = c; }
-        }
-
-        if(nearestCheese && best < 28){
-          m.target = nearestCheese.pos;
-        } else {
-          m.orbitAngle += dt * 1.2;
-          const orbitR = 3.4 + (Math.sin(m.anim*0.7 + m.orbitAngle) * 1.2);
-          m.target = new THREE.Vector3(
-            player.pos.x + Math.sin(m.orbitAngle + m.heading*0.25) * orbitR,
-            0,
-            player.pos.z + Math.cos(m.orbitAngle + m.heading*0.25) * orbitR
-          );
-          m.target.y = groundHeight(m.target.x, m.target.z);
-        }
-      }
-    }
-
-    for(let i=cheeses.length-1;i>=0;i--){
-      const c = cheeses[i];
-      if(dist2(m.pos,c.pos) < 1.15){
-        cheese += c.amount;
-        popWorldText("+" + c.amount + "🧀", m.pos.x, m.pos.y + 1.45, m.pos.z, "#ffe66f");
-        addBurst(c.pos.x,c.pos.y+0.3,c.pos.z,0xffec71,8,4,0.4,0.08);
-        c.group.parent?.remove(c.group);
-        cheeses.splice(i,1);
+    for (const u of units) {
+      if (u.dead || u.role === "queen" || u.form === "warrior" || u.carryingBerry) continue;
+      if (dist(u.x + u.w / 2, u.y + u.h / 2, berry.x, berry.y) < 18) {
+        berry.carriedBy = u;
+        u.carryingBerry = berry;
+        soundBerry();
         break;
       }
     }
   }
 
-  const moveTarget = (m.repathTimer > 0 && m.repathTarget) ? m.repathTarget : m.target;
-  if(moveTarget){
-    const mouseNeighbors = m.state === "servant" ? servantMice : wildMice;
-    const step = directSteerToward({ pos:m.pos, speed:m.speed, radius:m.radius }, moveTarget, dt, false, null, mouseNeighbors);
-    if(step){
-      m.heading += clamp(angleDiff(m.heading, step.heading), -4.4*dt, 4.4*dt);
-      m.pos.x = step.x;
-      m.pos.z = step.z;
-    }
-  }
-  updateAgentStuck(m, dt, !!moveTarget, ()=>{
-    setRepathPoint(m, m.state === "servant" ? player.pos : m.pos, m.state === "servant" ? 5.2 : 6.5);
-    if(m.state === "wild") m.target = m.repathTarget.clone();
-  });
+  for (const u of units) {
+    if (u.dead || !u.carryingBerry) continue;
+    const ownGate = gates[u.team];
+    const gateRect = { x: ownGate.x, y: ownGate.y, w: ownGate.w, h: ownGate.h };
 
-  m.pos.y = groundHeight(m.pos.x,m.pos.z);
-  m.group.rotation.y = m.heading;
-  m.group.position.y += Math.sin(m.anim*6)*0.01;
-  animateMouseRig(m.group, 0.75, m.anim, m.attackAnim, 0);
-}
+    if (rectsOverlap(u.getHitbox(), gateRect)) {
+      ownGate.berries++;
+      const bush = bushes.find(b => b.id === u.carryingBerry.bushId);
+      if (bush) {
+        bush.berry.alive = false;
+        bush.berry.carriedBy = null;
+        bush.timer = 280 + randi(0, 120);
+      }
+      u.carryingBerry = null;
+      soundGate();
+      addParticles(ownGate.x + ownGate.w / 2, ownGate.y + ownGate.h - 25 - (ownGate.berries * 6), world.theme.bushBerry1, 12, 2.2);
 
-// -------------------------------------------------
-// ENEMIES
-// -------------------------------------------------
-function makeEnemy(kind,x,z){
-  let model,hp,speed,damage,radius,attackRange=1.3,turnRate=4.8;
-  if(kind==="rat"){ model = makeRatModel(); hp = 22; speed = 7.0; damage = 10; radius = 0.8; }
-  if(kind==="mole"){ model = makeMoleModel(); hp = 40; speed = 5.5; damage = 55; radius = 0.9; }
-  if(kind==="weasel"){ model = makeWeaselModel(); hp = 115; speed = 10.1; damage = 24; radius = 1.1; turnRate = 1.6; }
-
-  const phaseTime = Math.max(0, time - 60);
-  const powerScale = 1 + phaseTime * 0.0016;
-  hp *= powerScale;
-  damage *= powerScale;
-  speed *= 1 + phaseTime * 0.00045;
-
-  model.position.set(x, groundHeight(x,z), z);
-  scene.add(model);
-  const bar = createHealthBar(kind==="weasel"?1.9:1.4, 0xff6666);
-  bar.position.y = kind==="weasel" ? 2.35 : 1.8;
-  model.add(bar);
-  const dazeIcon = createDazeSprite();
-  if (dazeIcon) {
-    dazeIcon.position.set(0, kind==="weasel" ? 3.1 : 2.45, 0);
-    model.add(dazeIcon);
-  }
-
-  const e = {
-    kind, group:model, pos:model.position, hp, maxHp:hp, speed, damage, radius,
-    attackRange, target:null, dead:false, dying:false, anim:Math.random()*10, attackAnim:0,
-    attackCd:0, heading:Math.random()*Math.PI*2, turnRate, healthBar:bar, deathT:0, isLiving:true,
-    stunCd:0, dazeIcon
-  };
-  enemies.push(e);
-  return e;
-}
-function chooseEnemyTarget(e){
-  // AI tuning helper: structure pressure map keeps enemies from dog-piling one wall.
-  const structurePressure = new Map();
-  for (const other of enemies) {
-    if (other === e || other.dead || other.dying || !other.target || other.target === player) continue;
-    structurePressure.set(other.target, (structurePressure.get(other.target) || 0) + 1);
-  }
-
-  if(e.kind==="rat"){
-    const bestWall = nearestAttackableStructure(e, 999, s => (s.type==="wall" || s.type==="diamondWall")) || null;
-    if(bestWall && dist2(e.pos, bestWall.pos) < 60) return bestWall;
-  }
-
-  const nearPlayer = !player.dead && dist2(e.pos, player.pos) < 16;
-  if(!player.dead && nearPlayer && !lineBlocked(e.pos, player.pos)) return player;
-
-  let nearestServant = null, nearestServantD = 9999;
-  for(const m of servantMice){
-    if(m.dead || m.dying) continue;
-    const d = dist2(e.pos, m.pos);
-    if(d < nearestServantD){ nearestServantD = d; nearestServant = m; }
-  }
-  let nearestRobot = null, nearestRobotD = 9999;
-  for(const r of robots){
-    if(r.dead || r.dying) continue;
-    const d = dist2(e.pos, r.pos);
-    if(d < nearestRobotD){ nearestRobotD = d; nearestRobot = r; }
-  }
-
-  if(e.kind==="mole"){
-    const bestWall = nearestAttackableStructure(e, 999, s => (s.type==="wall" || s.type==="diamondWall")) || null;
-    if(bestWall) return bestWall;
-  }
-  if(!player.dead && !lineBlocked(e.pos, player.pos) && dist2(e.pos, player.pos) < 26){
-    return player;
-  }
-  if(nearestServant && nearestServantD < 22) return nearestServant;
-  if(nearestRobot && nearestRobotD < 22) return nearestRobot;
-
-  const priorityByKind = {
-    rat: { wall: 2.15, diamondWall: 1.95, factory: 1.25, supplyNest: 1.2, scoutPost: 1.05, fountain: 1.0, beacon: 0.95, robo: 1.0 },
-    mole: { wall: 2.2, diamondWall: 2.0, fortPlate: 1.6, barrierTotem: 1.4, braceTower: 1.2, turret: 0.85, cannon: 0.8 },
-    weasel: { turret: 2.1, cannon: 2.0, mortarBloom: 1.85, zapCoil: 1.7, sawBlaster: 1.75, robo: 1.35, beacon: 1.25, wall: 0.7, diamondWall: 0.6 }
-  };
-
-  let bestStructure = null, bestScore = 9999;
-  for(const s of structures){
-    if(s.dead) continue;
-    const d = dist2(e.pos,s.pos);
-    const typePriority = priorityByKind[e.kind]?.[s.type] || 1;
-    const pressure = structurePressure.get(s) || 0;
-    const score = d / typePriority + pressure * 3.0;
-    if(score < bestScore){
-      bestScore = score;
-      bestStructure = s;
-    }
-  }
-  if(bestStructure) return bestStructure;
-  if(nearestRobot) return nearestRobot;
-  if(nearestServant) return nearestServant;
-  if(!player.dead) return player;
-  return null;
-}
-function updateEnemies(dt){
-  for(let i=enemies.length-1;i>=0;i--){
-    const e = enemies[i];
-    if(e.dead){ enemies.splice(i,1); continue; }
-
-    if(e.dying){
-      e.deathT += dt;
-      e.group.rotation.z = clamp(e.deathT * 4.6, 0, Math.PI/2.15);
-      e.group.position.y = groundHeight(e.pos.x,e.pos.z) - Math.min(0.5, e.deathT * 0.75);
-      if(e.kind==="weasel") animateWeaselRig(e.group, 0, e.anim, 0, clamp(e.deathT * 2, 0, 1));
-      else animateMouseRig(e.group, 0, e.anim, 0, clamp(e.deathT * 2, 0, 1));
-      if(e.deathT > 0.45) finalizeDeath(e);
-      continue;
-    }
-
-    e.anim += dt;
-    e.attackAnim = Math.max(0, e.attackAnim - dt*4);
-    e.attackCd -= dt;
-    e.stunCd = Math.max(0, (e.stunCd || 0) - dt);
-    if(e.dazeIcon){
-      e.dazeIcon.visible = e.stunCd > 0;
-      if(e.dazeIcon.visible){
-        e.dazeIcon.material.opacity = 0.75 + Math.sin(time*14) * 0.2;
-        e.dazeIcon.position.y = (e.kind==="weasel" ? 3.1 : 2.45) + Math.sin(time*10)*0.07;
-        e.dazeIcon.quaternion.copy(camera.quaternion);
+      if (ownGate.berries >= 2 && !ownGate.upgrades.speed) {
+        ownGate.upgrades.speed = true;
+        soundUpgrade();
+      }
+      if (ownGate.berries >= 5 && !ownGate.upgrades.warrior) {
+        ownGate.upgrades.warrior = true;
+        soundUpgrade();
+      }
+      if (ownGate.berries >= 10) {
+        game.winner = u.team;
+        game.winType = "ECONOMY";
+        game.state = "gameOver";
+        soundWin();
       }
     }
 
-    // retarget more often if crowded around current target
-    if (!e.target || e.target.dead || Math.random() < 0.02) {
-      e.target = chooseEnemyTarget(e);
-    } else if (e.target !== player) {
-      let crowd = 0;
-      for (const other of enemies) {
-        if (other === e || other.dead || other.dying) continue;
-        if (other.target === e.target && dist2(other.pos, e.pos) < 2.0) crowd++;
+    if (u.form === "worker") {
+      for (const maiden of ownGate.maidens) {
+        const unlocked = ownGate.upgrades[maiden.type];
+        if (!unlocked) continue;
+        const maidenRect = { x: maiden.x - 12, y: maiden.y - 12, w: 24, h: 24 };
+        if (rectsOverlap(u.getHitbox(), maidenRect)) {
+          u.form = maiden.type;
+          addParticles(maiden.x, maiden.y, maiden.type === "speed" ? "#8dfff0" : "#ffe57d", 16, 2.8);
+          soundUpgrade();
+        }
       }
-      if (crowd >= 3) e.target = chooseEnemyTarget(e);
     }
+  }
+}
 
-    e.repathTimer = Math.max(0, (e.repathTimer || 0) - dt);
-    const moveTarget = (e.repathTimer > 0 && e.repathTarget) ? e.repathTarget : e.target;
-    if(!moveTarget) continue;
-    const d = dist2(e.pos, moveTarget.pos || moveTarget);
-    const isStunned = e.stunCd > 0;
+function handleSnail() {
+  if (snail.rider && snail.rider.dead) {
+    snail.rider.onSnail = false;
+    snail.rider = null;
+  }
 
-    if(!isStunned && d > e.attackRange + (moveTarget.radius || 0.5)){
-      const step = directSteerToward({ pos:e.pos, speed:e.speed, radius:e.radius }, moveTarget.pos || moveTarget, dt, true, e.target, enemies);
-      if(step){
-        e.heading += clamp(angleDiff(e.heading, step.heading), -e.turnRate*dt, e.turnRate*dt);
-        e.pos.x = step.x;
-        e.pos.z = step.z;
-      }
-    } else if(!isStunned && e.attackCd <= 0 && e.target && !e.repathTimer){
-      e.attackCd = e.kind==="weasel" ? 0.56 : e.kind==="mole" ? 0.98 : 0.72;
-      e.attackAnim = 1;
-      addBurst(e.pos.x,e.pos.y+0.9,e.pos.z, e.kind==="mole"?0x884333:0xff6666, 10, 4, 0.45, 0.08);
+  if (snail.rider) {
+    snail.dir = snail.rider.team === "blue" ? 1 : -1;
+    const speedBonus = snail.rider.form === "speed" ? 0.28 : 0;
+    snail.x += snail.dir * (snail.speed + speedBonus);
+    snail.x = clamp(snail.x, world.snailLeftGoal, world.snailRightGoal);
 
-      if(e.target === player){
-        applyDamageToLiving(player, 999, e.pos);
-      } else if(isLivingTarget(e.target)){
-        applyDamageToLiving(e.target, e.damage, e.target.pos);
+    if (snail.rider.team === "blue" && snail.x >= world.snailRightGoal) {
+      game.winner = "blue";
+      game.winType = "SNAIL";
+      game.state = "gameOver";
+      soundWin();
+    }
+    if (snail.rider.team === "gold" && snail.x <= world.snailLeftGoal) {
+      game.winner = "gold";
+      game.winType = "SNAIL";
+      game.state = "gameOver";
+      soundWin();
+    }
+  }
+}
+
+function handleCombat() {
+  for (let i = 0; i < units.length; i++) {
+    const a = units[i];
+    if (a.dead) continue;
+
+    for (let j = i + 1; j < units.length; j++) {
+      const b = units[j];
+      if (b.dead || a.team === b.team) continue;
+      if (!rectsOverlap(a.getHitbox(), b.getHitbox())) continue;
+
+      const aBottom = a.y + a.h;
+      const bBottom = b.y + b.h;
+      const aPower = (a.role === "queen" ? 2 : (a.form === "warrior" ? 1 : 0));
+      const bPower = (b.role === "queen" ? 2 : (b.form === "warrior" ? 1 : 0));
+
+      if (aBottom < bBottom - 5 || (Math.abs(aBottom - bBottom) <= 5 && aPower > bPower)) {
+        b.die();
+        a.vy = -4.0;
+        if (a.isPlayer || b.isPlayer) soundKill();
+      } else if (bBottom < aBottom - 5 || (Math.abs(aBottom - bBottom) <= 5 && bPower > aPower)) {
+        a.die();
+        b.vy = -4.0;
+        if (a.isPlayer || b.isPlayer) soundKill();
       } else {
-        damageStructure(e.target, e.damage);
-        if(e.kind==="mole"){
-          killEnemy(e);
-        }
+        const push = a.x < b.x ? -2.2 : 2.2;
+        a.vx = -push;
+        b.vx = push;
+        a.vy -= 0.4;
+        b.vy -= 0.4;
       }
     }
-    updateAgentStuck(e, dt, !!e.target, ()=>{
-      e.target = chooseEnemyTarget(e);
-      setRepathPoint(e, e.target?.pos || e.pos, 4.8);
-    });
+  }
 
-    e.pos.y = groundHeight(e.pos.x,e.pos.z);
-    e.group.rotation.y = e.heading;
-    if(e.kind==="weasel") animateWeaselRig(e.group, 1, e.anim, e.attackAnim, 0);
-    else animateMouseRig(e.group, 0.95, e.anim, e.attackAnim, 0);
+  const blueQueen = units.find(u => u.team === "blue" && u.role === "queen");
+  const goldQueen = units.find(u => u.team === "gold" && u.role === "queen");
+
+  if (blueQueen && blueQueen.dead && blueQueen.queenLives <= 0) {
+    game.winner = "gold";
+    game.winType = "MILITARY";
+    game.state = "gameOver";
+    soundWin();
+  }
+  if (goldQueen && goldQueen.dead && goldQueen.queenLives <= 0) {
+    game.winner = "blue";
+    game.winType = "MILITARY";
+    game.state = "gameOver";
+    soundWin();
   }
 }
 
-// -------------------------------------------------
-// CAT
-// -------------------------------------------------
-function spawnCat(){
-  if(cat || catSpawnTriggered) return;
-  catSpawnTriggered = true;
-
-  const tele = new THREE.Mesh(
-    new THREE.CylinderGeometry(3.5,3.5,0.08,24),
-    new THREE.MeshBasicMaterial({ color:0xff3333, transparent:true, opacity:0.65 })
-  );
-  tele.position.set(0, groundHeight(0,0)+0.05, 0);
-  scene.add(tele);
-
-  let pulse = 0;
-  const pulseId = setInterval(()=>{
-    if(gameOver || gameWon){ clearInterval(pulseId); tele.parent?.remove(tele); return; }
-    pulse += 0.08;
-    tele.scale.setScalar(1 + Math.sin(pulse*10)*0.12);
-    tele.material.opacity = 0.38 + Math.sin(pulse*12)*0.2 + 0.22;
-  }, 50);
-
-  setTimeout(()=>{
-    clearInterval(pulseId);
-    tele.parent?.remove(tele);
-
-    const model = makeCatModel();
-    model.position.set(0, groundHeight(0,0), 0);
-    scene.add(model);
-
-    const bar = createHealthBar(6.8,0xff4444);
-    bar.position.y = 6.8;
-    model.add(bar);
-
-    cat = {
-      group:model,
-      pos:model.position,
-      hp:10000,
-      maxHp:10000,
-      speed:4.9,
-      sprint:7.0,
-      radius:2.2,
-      attackRange:2.35,
-      attackCd:0,
-      heading:0,
-      turnRate:1.45,
-      dead:false,
-      dying:false,
-      isLiving:true,
-      visibleAggro:false,
-      prowlTarget:new THREE.Vector3(rand(-40,40),0,rand(-40,40)),
-      aggroMemory:0,
-      lastSeenPlayerPos:player.pos.clone(),
-      anim:0,
-      attackAnim:0,
-      deathT:0,
-      healthBar:bar
-    };
-
-    ui.bossWrap.style.display = "block";
-    ui.bossLabel.style.display = "block";
-    showCenter("The Cat Has Spawned!", 2.2);
-  }, 3000);
+function updateCamera() {
+  if (!playerQueen) return;
+  const targetX = playerQueen.x + playerQueen.w / 2 - VIEW_W / 2;
+  const targetY = playerQueen.y + playerQueen.h / 2 - VIEW_H / 2;
+  game.cameraX += (clamp(targetX, 0, world.width - VIEW_W) - game.cameraX) * 0.12;
+  game.cameraY += (clamp(targetY, 0, world.height - VIEW_H) - game.cameraY) * 0.10;
 }
-function catChooseTarget(){
-  if(!cat || cat.dead || cat.dying) return null;
-  const playerDist = dist2(cat.pos, player.pos);
-  const playerVisible = !player.dead && !lineBlocked(cat.pos, player.pos) && playerDist < 40;
-  if(playerVisible){
-    // Aggro memory keeps pressure up when LOS briefly breaks.
-    cat.aggroMemory = 6.2;
-    cat.lastSeenPlayerPos.copy(player.pos);
-    return player;
-  }
 
-  if(cat.aggroMemory > 0){
-    let nearestServant = null, nearestServantD = 9999;
-    for(const m of servantMice){
-      if(m.dead || m.dying) continue;
-      const d = dist2(cat.pos, m.pos);
-      if(d < nearestServantD){ nearestServant = m; nearestServantD = d; }
+/* ---------------- UPDATE LOOP ---------------- */
+
+let titleInputLock = false;
+let gameplayInputLock = false;
+
+function update() {
+  game.strategyFlashTimer = Math.max(0, game.strategyFlashTimer - 1);
+  game.strategySwitchCooldown = Math.max(0, game.strategySwitchCooldown - 1);
+
+  if (game.state === "title") {
+    if (!titleInputLock) {
+      if (keys["1"]) { game.playerStrategy = "economy"; titleInputLock = true; }
+      else if (keys["2"]) { game.playerStrategy = "snail"; titleInputLock = true; }
+      else if (keys["3"]) { game.playerStrategy = "military"; titleInputLock = true; }
+      else if (keys["4"]) { game.playerStrategy = "balanced"; titleInputLock = true; }
+      else if (keys["v"]) { cyclePlayerStrategy(); titleInputLock = true; }
+      else if (keys["b"]) { game.debugAI = !game.debugAI; titleInputLock = true; }
+      else if (keys["m"]) { game.currentMapIndex = (game.currentMapIndex + 1) % MAPS.length; titleInputLock = true; }
+      else if (keys["q"]) { game.difficultyIndex = (game.difficultyIndex + 9) % 10; titleInputLock = true; }
+      else if (keys["e"]) { game.difficultyIndex = (game.difficultyIndex + 1) % 10; titleInputLock = true; }
+      else if (keys[" "]) { spawnMatch(); titleInputLock = true; }
     }
-    let nearestRobot = null, nearestRobotD = 9999;
-    for(const r of robots){
-      if(r.dead || r.dying) continue;
-      const d = dist2(cat.pos, r.pos);
-      if(d < nearestRobotD){ nearestRobot = r; nearestRobotD = d; }
+    if (!keys["1"] && !keys["2"] && !keys["3"] && !keys["4"] && !keys["v"] && !keys["b"] && !keys["m"] && !keys["q"] && !keys["e"] && !keys[" "]) {
+      titleInputLock = false;
     }
-    if(nearestServant && nearestServantD < 18) return nearestServant;
-    if(nearestRobot && nearestRobotD < 18) return nearestRobot;
-    const antiBase = nearestAttackableStructure(cat, 999, s => ["wall","diamondWall","turret","cannon","shardLauncher","sawBlaster","zapCoil","mortarBloom","barrierTotem","fortPlate"].includes(s.type));
-    if(antiBase && dist2(cat.pos, antiBase.pos) < 56) return antiBase;
-    return { pos:cat.lastSeenPlayerPos, radius:1.0, isMemoryTarget:true };
-  }
-
-  let nearestRobot = null, nearestRobotD = 9999;
-  for(const r of robots){
-    if(r.dead || r.dying) continue;
-    const d = dist2(cat.pos, r.pos);
-    if(d < nearestRobotD){ nearestRobot = r; nearestRobotD = d; }
-  }
-  if(nearestRobot && nearestRobotD < 26) return nearestRobot;
-
-  const bestStructure = nearestAttackableStructure(cat, 45);
-  if(bestStructure) return bestStructure;
-  return null;
-}
-function pickDetourWaypoint(entity, targetPos, ignoreStructure=null){
-  const toTarget = new THREE.Vector3(targetPos.x - entity.pos.x, 0, targetPos.z - entity.pos.z);
-  const dist = toTarget.length();
-  if(dist < 4.5) return null;
-  toTarget.normalize();
-  const normal = new THREE.Vector3(-toTarget.z, 0, toTarget.x);
-
-  const candidates = [];
-  const segment = Math.min(13, Math.max(5, dist * 0.45));
-  for(const side of [-1, 1]){
-    for(const offset of [2.8, 4.6, 6.2, 8.0]){
-      const wp = new THREE.Vector3(
-        entity.pos.x + toTarget.x * segment + normal.x * offset * side,
-        0,
-        entity.pos.z + toTarget.z * segment + normal.z * offset * side
-      );
-      wp.x = clamp(wp.x, -HALF_MAP+3.2, HALF_MAP-3.2);
-      wp.z = clamp(wp.z, -HALF_MAP+3.2, HALF_MAP-3.2);
-      wp.y = groundHeight(wp.x, wp.z);
-      const radius = entity.radius || 1.1;
-      if(circleBlocked(wp.x, wp.z, radius, ignoreStructure)) continue;
-      if(lineBlocked(entity.pos, wp)) continue;
-      if(lineBlocked(wp, targetPos)) continue;
-      const routeCost = dist2(entity.pos, wp) + dist2(wp, targetPos);
-      candidates.push({ wp, routeCost });
-    }
-  }
-  candidates.sort((a,b)=>a.routeCost - b.routeCost);
-  return candidates[0]?.wp || null;
-}
-function updateCat(dt){
-  if(!cat || cat.dead) return;
-
-  if (cat.dying) {
-    cat.deathT += dt;
-    cat.group.rotation.z = clamp(cat.deathT * 3.6, 0, Math.PI/2.4);
-    cat.group.position.y = groundHeight(cat.pos.x,cat.pos.z) - Math.min(0.9, cat.deathT * 1.0);
-    animateCatRig(cat.group, 0, cat.anim, 0, clamp(cat.deathT * 2, 0, 1));
-    if (cat.deathT > 0.6) finalizeDeath(cat);
     return;
   }
 
-  cat.anim += dt;
-  cat.attackAnim = Math.max(0, cat.attackAnim - dt*3);
-  cat.attackCd -= dt;
-  cat.aggroMemory = Math.max(0, cat.aggroMemory - dt);
-  cat.repathTimer = Math.max(0, (cat.repathTimer || 0) - dt);
-
-  const target = catChooseTarget();
-  let moveTarget = null;
-  let moveSpeed = cat.speed;
-
-  if(target){
-    moveTarget = target.pos || target;
-    cat.visibleAggro = true;
-    if(target === player) moveSpeed = cat.sprint;
-    else if(target.isMemoryTarget) moveSpeed = cat.sprint * 0.9;
-  } else {
-    cat.visibleAggro = false;
-    if(dist2(cat.pos, cat.prowlTarget) < 4){
-      cat.prowlTarget.set(rand(-HALF_MAP+18, HALF_MAP-18), 0, rand(-HALF_MAP+18, HALF_MAP-18));
+  if (game.state === "gameOver") {
+    updateParticles();
+    if (keys["r"]) {
+      game.state = "title";
+      game.winner = null;
     }
-    moveTarget = cat.prowlTarget;
-  }
-  const canPathDirect = !lineBlocked(cat.pos, moveTarget);
-  if(canPathDirect){
-    cat.smartWaypoint = null;
-  } else if(!cat.smartWaypoint || dist2(cat.pos, cat.smartWaypoint) < 1.7 || Math.random() < 0.03){
-    cat.smartWaypoint = pickDetourWaypoint(cat, moveTarget, target && target.type ? target : null);
-  }
-  if(cat.smartWaypoint) moveTarget = cat.smartWaypoint;
-  if(cat.repathTimer > 0 && cat.repathTarget) moveTarget = cat.repathTarget;
-
-  const d = dist2(cat.pos, moveTarget);
-  if(d > cat.attackRange + (target?.radius || 0.4)){
-    const step = directSteerToward({ pos:cat.pos, speed:moveSpeed, radius:cat.radius }, moveTarget, dt, true, target);
-    if(step){
-      cat.heading += clamp(angleDiff(cat.heading, step.heading), -cat.turnRate*dt, cat.turnRate*dt);
-      cat.pos.x = step.x;
-      cat.pos.z = step.z;
-    }
-  } else if(target && !target.isMemoryTarget && cat.attackCd <= 0 && cat.repathTimer <= 0){
-    cat.attackCd = 1.0;
-    cat.attackAnim = 1;
-    const dx = Math.sin(cat.heading), dz = Math.cos(cat.heading);
-    addBurst(cat.pos.x + dx*1.5, cat.pos.y+2.0, cat.pos.z + dz*1.5, 0xff7f50, 20, 6, 0.7, 0.09);
-    if(target === player) applyDamageToLiving(player, 999, cat.pos);
-    else if(isLivingTarget(target)) applyDamageToLiving(target, 38, target.pos);
-    else damageStructure(target, 35);
-  }
-  updateAgentStuck(cat, dt, !!target, ()=>{
-    setRepathPoint(cat, target?.pos || player.pos, 7.5);
-    if(target && target === player) cat.aggroMemory = Math.max(cat.aggroMemory, 4.5);
-  });
-
-  cat.pos.y = groundHeight(cat.pos.x,cat.pos.z);
-  cat.group.rotation.y = cat.heading;
-  animateCatRig(cat.group, cat.visibleAggro ? 1 : 0.5, cat.anim, cat.attackAnim, 0);
-  ui.bossBar.style.width = (100 * Math.max(0, cat.hp/cat.maxHp)) + "%";
-  ui.bossLabel.textContent = "CAT BOSS • HP " + Math.ceil(Math.max(0, cat.hp)) + " / " + Math.ceil(cat.maxHp);
-}
-
-// -------------------------------------------------
-// TARGET FINDERS
-// -------------------------------------------------
-function nearestEnemyInRange(origin, range){
-  let best = null, bestD = range;
-  for (const e of enemies) {
-    if (e.dead || e.dying) continue;
-    const d = dist2(origin.pos || origin, e.pos);
-    if (d < bestD) { bestD = d; best = e; }
-  }
-  if (cat && !cat.dead && !cat.dying) {
-    const d = dist2(origin.pos || origin, cat.pos);
-    if (d < bestD) { bestD = d; best = cat; }
-  }
-  return best;
-}
-
-// -------------------------------------------------
-// STRUCTURE UPDATE / COMBAT
-// -------------------------------------------------
-function robotTarget(r){
-  let best = null;
-  let bestD = 9999;
-
-  for (const e of enemies) {
-    if (e.dead || e.dying) continue;
-    const d = dist2(r.pos, e.pos);
-    if (d < bestD) {
-      bestD = d;
-      best = e;
-    }
-  }
-
-  if (cat && !cat.dead && !cat.dying) {
-    const d = dist2(r.pos, cat.pos);
-    if (d < bestD) {
-      bestD = d;
-      best = cat;
-    }
-  }
-
-  return best;
-}
-
-function updateRobots(dt){
-  for (let i = robots.length - 1; i >= 0; i--) {
-    const r = robots[i];
-
-    if (r.dead) {
-      robots.splice(i, 1);
-      continue;
-    }
-
-    if (r.hp <= 0 && !r.dying) {
-      r.dying = true;
-      r.deathT = 0;
-      addBurst(r.pos.x, r.pos.y + 0.8, r.pos.z, 0x9fd5ff, 12, 4.5, 0.6, 0.09);
-    }
-
-    if (r.dying) {
-      r.deathT += dt;
-      r.group.rotation.z = clamp(r.deathT * 4.2, 0, Math.PI / 2.2);
-      r.group.position.y = groundHeight(r.pos.x, r.pos.z) - Math.min(0.35, r.deathT * 0.5);
-      if (r.deathT > 0.4) {
-        r.group.parent?.remove(r.group);
-        r.dead = true;
-        robots.splice(i, 1);
-      }
-      continue;
-    }
-
-    r.anim += dt * 9;
-    r.fireCd -= dt;
-    r.repathTimer = Math.max(0, (r.repathTimer || 0) - dt);
-
-    const t = robotTarget(r);
-
-    if (t) {
-      const d = dist2(r.pos, t.pos);
-
-      const robotMoveTarget = (r.repathTimer > 0 && r.repathTarget) ? r.repathTarget : t.pos;
-      if (d > 2.2) {
-        const step = directSteerToward(
-          { pos: r.pos, speed: r.speed, radius: r.radius },
-          robotMoveTarget,
-          dt,
-          false,
-          null,
-          robots
-        );
-
-        if (step) {
-          r.group.rotation.y = step.heading;
-          r.pos.x = step.x;
-          r.pos.z = step.z;
-        }
-      } else if (r.fireCd <= 0) {
-        r.fireCd = 0.55;
-        addBurst(r.pos.x, r.pos.y + 1.1, r.pos.z, 0x9fecff, 5, 2.5, 0.24, 0.05);
-        applyDamageToLiving(t, r.damage, t.pos);
-      }
-      updateAgentStuck(r, dt, true, ()=> setRepathPoint(r, t.pos, 3.6));
-    } else {
-      if (dist2(r.pos, player.pos) > 6) {
-        const step = directSteerToward(
-          { pos: r.pos, speed: r.speed * 0.7, radius: r.radius },
-          player.pos,
-          dt,
-          false,
-          null,
-          robots
-        );
-
-        if (step) {
-          r.group.rotation.y = step.heading;
-          r.pos.x = step.x;
-          r.pos.z = step.z;
-        }
-      }
-    }
-
-    r.pos.y = groundHeight(r.pos.x, r.pos.z);
-    r.group.position.y += Math.sin(r.anim * 3) * 0.02;
-  }
-}
-function updateRepairBeams(dt) {
-  for (const s of structures) {
-    if (s.dead || s.type !== "fountain") {
-      if (s && s.beam) s.beam.visible = false;
-      continue;
-    }
-
-    const orb = s.mesh.userData.orb;
-    if (orb) {
-      orb.position.y = 1.95 + Math.sin(time*5)*0.08;
-      orb.rotation.y += dt*2;
-    }
-
-    let best = null, bestScore = 9999;
-    for (const t of structures) {
-      if (t === s || t.dead) continue;
-      if (t.hp >= t.maxHp) continue;
-      const d = dist2(s.pos, t.pos);
-      if (d > 12) continue;
-      const score = d + (1 - t.hp / t.maxHp) * -6;
-      if (score < bestScore) {
-        bestScore = score;
-        best = t;
-      }
-    }
-
-    const beam = ensureRepairBeam(s);
-    if (!best) {
-      beam.visible = false;
-      continue;
-    }
-
-    const from = new THREE.Vector3(s.pos.x, s.pos.y + 1.95, s.pos.z);
-    const to = new THREE.Vector3(best.pos.x, best.pos.y + 1.2, best.pos.z);
-    const mid = from.clone().add(to).multiplyScalar(0.5);
-    const dir = to.clone().sub(from);
-    const len = dir.length();
-
-    beam.visible = true;
-    beam.position.copy(mid);
-    beam.scale.set(1, len, 1);
-    beam.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir.clone().normalize());
-    beam.material.opacity = 0.78 + Math.sin(time*16)*0.18;
-
-    best.hp = Math.min(best.maxHp, best.hp + 6.5 * dt);
-    setHealthBar(best.mesh.userData.healthBar, best.hp / best.maxHp);
-    updateWallDamageVisual(best);
-
-    if (Math.random() < 0.18) {
-      addCogParticle(best.pos.x + rand(-0.45,0.45), best.pos.y + rand(0.9,2.0), best.pos.z + rand(-0.45,0.45));
-    }
-  }
-}
-function updateStructures(dt){
-  updateBeaconGlow();
-  updateRepairBeams(dt);
-
-  for(const s of structures){
-    if(s.dead) continue;
-
-    if(s.type==="beacon"){
-      const top = s.mesh.userData.top;
-      if(top){
-        top.rotation.y += dt*2.7;
-        top.position.y = 4.2 + Math.sin(time*4)*0.12;
-      }
-      if(Math.random() < 0.03) addBurst(s.pos.x,s.pos.y+4.2,s.pos.z,0x76ff9c,2,1.1,0.32,0.04);
-    }
-
-    if(s.type==="supplyNest"){
-      if (Math.random() < 0.002) {
-        spawnCheeseAt(s.pos.x + rand(-1.2,1.2), s.pos.z + rand(-1.2,1.2), 3);
-      }
-    }
-
-    if(s.type==="scoutPost"){
-      const eye = s.mesh.userData.eye;
-      if (eye) {
-        eye.scale.setScalar(1 + Math.sin(time*6) * 0.08);
-        eye.rotation.y += dt * 2.2;
-      }
-    }
-
-    if(s.type==="factory"){
-      s.produceCd -= dt;
-      const worker = s.assignedServant;
-      const workerActive = !!worker && !worker.dead && !worker.dying;
-      const workerNear = workerActive && dist2(worker.pos, s.pos) < 2.55;
-      const workIcon = s.mesh.userData.workIcon;
-      if(workIcon){
-        workIcon.visible = workerNear;
-        if(workerNear){
-          workIcon.position.y = 3.3 + Math.sin(time*8)*0.18;
-          workIcon.material.opacity = 0.75 + Math.sin(time*10)*0.2;
-          workIcon.quaternion.copy(camera.quaternion);
-        }
-      }
-      if(workerNear && s.produceCd <= 0){
-        s.produceCd = 7.5;
-        cheese += 3;
-        popWorldText("+3🧀", worker.pos.x, worker.pos.y + 1.55, worker.pos.z, "#ffe66f");
-        addBurst(s.pos.x,s.pos.y+1.4,s.pos.z,0xffe066,8,3,0.45,0.07);
-      }
-    }
-
-    if(s.type==="robo"){
-      s.robotCd -= dt;
-      if(s.robotCd <= 0){
-        s.robotCd = 8;
-        spawnRobot(s.pos.x+rand(-1.7,1.7), s.pos.z+rand(-1.7,1.7));
-        addBurst(s.pos.x,s.pos.y+1.8,s.pos.z,0x8fe8ff,10,3,0.5,0.07);
-      }
-    }
-
-    if(s.type==="barrierTotem"){
-      const ring = s.mesh.userData.ring;
-      if (ring) ring.rotation.z += dt * 1.7;
-    }
-
-    if(s.type==="repairAnchor"){
-      const anchor = s.mesh.userData.anchor;
-      if (anchor) anchor.rotation.y += dt * 1.6;
-      for (const t of structures) {
-        if (t.dead || t === s) continue;
-        if (dist2(s.pos, t.pos) < 8 && t.hp < t.maxHp) {
-          t.hp = Math.min(t.maxHp, t.hp + 2 * dt);
-          setHealthBar(t.mesh.userData.healthBar, t.hp / t.maxHp);
-          updateWallDamageVisual(t);
-        }
-      }
-    }
-
-    // Defensive passive buffs
-    if (s.type === "fortPlate") {
-      // just a tanky block
-    }
-    if (s.type === "braceTower") {
-      for (const t of structures) {
-        if (t.dead || t === s) continue;
-        if (dist2(s.pos, t.pos) < 7) {
-          t.hp = Math.min(t.maxHp, t.hp + 0.45 * dt);
-          setHealthBar(t.mesh.userData.healthBar, t.hp / t.maxHp);
-          updateWallDamageVisual(t);
-        }
-      }
-    }
-
-    // ATTACK STRUCTURES
-    const buff = beaconBuffAt(s.pos.x,s.pos.z);
-
-    if(s.type==="turret"){
-      s.fireCd -= dt;
-      const headPivot = s.mesh.userData.headPivot;
-      const t = nearestEnemyInRange(s, 22);
-      if (t && headPivot) {
-        smoothAimYaw(headPivot, s, "aimYaw", Math.atan2(t.pos.x - s.pos.x, t.pos.z - s.pos.z), dt, 8.8);
-      }
-      if (t && s.fireCd <= 0) {
-        s.fireCd = 0.42 / buff.speed;
-        const dir = new THREE.Vector3(t.pos.x-s.pos.x,0,t.pos.z-s.pos.z).normalize();
-        spawnProjectile({
-          pos:new THREE.Vector3(s.pos.x,s.pos.y+1.7,s.pos.z).add(dir.clone().multiplyScalar(1.2)),
-          vel:new THREE.Vector3(dir.x*20,1.8,dir.z*20),
-          damage:7*buff.damage,
-          splash:0,
-          color:0xffe16c,
-          size:0.12,
-          from:"ally",
-          kind:"pellet"
-        });
-        addBurst(s.pos.x+dir.x*1.2,s.pos.y+1.6,s.pos.z+dir.z*1.2,0xffe16c,4,2,0.18,0.04);
-      }
-    }
-
-    if(s.type==="cannon"){
-      s.fireCd -= dt;
-      const barrelPivot = s.mesh.userData.barrelPivot;
-      const t = nearestEnemyInRange(s, 28);
-      if (t && barrelPivot) {
-        smoothAimYaw(barrelPivot, s, "aimYaw", Math.atan2(t.pos.x - s.pos.x, t.pos.z - s.pos.z), dt, 6.8);
-        const horiz = Math.hypot(t.pos.x-s.pos.x, t.pos.z-s.pos.z);
-        const pitch = -clamp(horiz/40, 0.25, 0.55);
-        s.aimPitch = THREE.MathUtils.lerp(s.aimPitch ?? barrelPivot.rotation.x, pitch, clamp(dt*6.5, 0, 1));
-        barrelPivot.rotation.x = s.aimPitch;
-      }
-      if (t && s.fireCd <= 0) {
-        s.fireCd = 1.8 / buff.speed;
-        const dx = t.pos.x - s.pos.x;
-        const dz = t.pos.z - s.pos.z;
-        const d = Math.hypot(dx,dz);
-        const dir = new THREE.Vector3(dx/d,0,dz/d);
-        spawnProjectile({
-          pos:new THREE.Vector3(s.pos.x,s.pos.y+2.1,s.pos.z),
-          vel:new THREE.Vector3(dir.x*10.5,8.5,dir.z*10.5),
-          damage:28*buff.damage,
-          splash:2.5,
-          color:0xffb34d,
-          size:0.28,
-          from:"ally",
-          kind:"cannon"
-        });
-        addBurst(s.pos.x,s.pos.y+2.1,s.pos.z,0xffc766,8,3,0.35,0.05);
-      }
-    }
-
-    if(s.type==="shardLauncher"){
-      s.fireCd -= dt;
-      const prongs = s.mesh.userData.prongs;
-      const t = nearestEnemyInRange(s, 19);
-      if (t && prongs) {
-        smoothAimYaw(prongs, s, "aimYaw", Math.atan2(t.pos.x - s.pos.x, t.pos.z - s.pos.z), dt, 9.1);
-      }
-      if (t && s.fireCd <= 0) {
-        s.fireCd = 0.82 / buff.speed;
-        const baseDir = new THREE.Vector3(t.pos.x-s.pos.x,0,t.pos.z-s.pos.z).normalize();
-        for (const spread of [-0.16, 0, 0.16]) {
-          const a = Math.atan2(baseDir.x, baseDir.z) + spread;
-          const dir = new THREE.Vector3(Math.sin(a),0,Math.cos(a));
-          spawnProjectile({
-            pos:new THREE.Vector3(s.pos.x,s.pos.y+1.5,s.pos.z).add(dir.clone().multiplyScalar(0.7)),
-            vel:new THREE.Vector3(dir.x*17,2.0,dir.z*17),
-            damage:5.5*buff.damage,
-            splash:0,
-            color:0xffd9b3,
-            size:0.10,
-            from:"ally",
-            kind:"shard"
-          });
-        }
-        addBurst(s.pos.x,s.pos.y+1.4,s.pos.z,0xffe2c1,5,2.1,0.22,0.04);
-      }
-    }
-
-    if(s.type==="zapCoil"){
-      s.fireCd -= dt;
-      const coil = s.mesh.userData.coil;
-      const cap = s.mesh.userData.coilCap;
-      if (coil) coil.rotation.z += dt * 3.9;
-      if (cap) {
-        cap.rotation.y += dt * 4.4;
-        cap.position.y = 1.55 + Math.sin(time*6)*0.05;
-      }
-      const t = nearestEnemyInRange(s, 8);
-      if (t && s.fireCd <= 0) {
-        s.fireCd = 2.05 / buff.speed;
-        const stunned = new Set();
-        let previousPoint = new THREE.Vector3(s.pos.x, s.pos.y + 1.45, s.pos.z);
-        let current = t;
-        let remainingBounces = 3;
-        while(current && remainingBounces >= 0){
-          applyDamageToLiving(current, 4.2 * buff.damage, current.pos);
-          setEnemyStunned(current, 0.5);
-          stunned.add(current);
-          const hitPoint = new THREE.Vector3(current.pos.x, current.pos.y + 1.0, current.pos.z);
-          addLightningArc(previousPoint, hitPoint, 0.12, remainingBounces === 3 ? 0xd7dcff : 0xbec4ff);
-          addBurst(hitPoint.x, hitPoint.y, hitPoint.z, 0xbec4ff, 4, 1.8, 0.16, 0.035);
-          let next = null;
-          let bestD = 999;
-          for(const e of enemies){
-            if(e.dead || e.dying || stunned.has(e)) continue;
-            const ed = dist2(current.pos, e.pos);
-            if(ed < 6.2 && ed < bestD){
-              bestD = ed;
-              next = e;
-            }
-          }
-          previousPoint = hitPoint;
-          current = next;
-          remainingBounces--;
-        }
-      }
-    }
-
-    if(s.type==="mortarBloom"){
-      s.fireCd -= dt;
-      const flower = s.mesh.userData.flower;
-      if (flower) flower.rotation.y += dt * 1.2;
-      const t = nearestEnemyInRange(s, 26);
-      if (t && s.fireCd <= 0) {
-        s.fireCd = 2.15 / buff.speed;
-        const dx = t.pos.x - s.pos.x;
-        const dz = t.pos.z - s.pos.z;
-        const d = Math.hypot(dx,dz);
-        const dir = new THREE.Vector3(dx/d,0,dz/d);
-        spawnProjectile({
-          pos:new THREE.Vector3(s.pos.x,s.pos.y+1.9,s.pos.z),
-          vel:new THREE.Vector3(dir.x*9.2,9.4,dir.z*9.2),
-          damage:22*buff.damage,
-          splash:3.0,
-          color:0xff9dbc,
-          size:0.24,
-          from:"ally",
-          kind:"mortar"
-        });
-        addBurst(s.pos.x,s.pos.y+1.7,s.pos.z,0xffbfd0,8,2.6,0.28,0.05);
-      }
-    }
-
-    if(s.type==="sawBlaster"){
-      s.fireCd -= dt;
-      const headPivot = s.mesh.userData.headPivot;
-      const t = nearestEnemyInRange(s, 15);
-      if (headPivot) headPivot.rotation.z += dt * 10;
-      if (t && headPivot) {
-        smoothAimYaw(headPivot, s, "aimYaw", Math.atan2(t.pos.x - s.pos.x, t.pos.z - s.pos.z), dt, 11.5);
-      }
-      if (t && s.fireCd <= 0) {
-        s.fireCd = 0.95 / buff.speed;
-        applyDamageToLiving(t, 14 * buff.damage, t.pos);
-        addBurst(t.pos.x, t.pos.y+0.9, t.pos.z, 0xffc1a8, 8, 3, 0.35, 0.05);
-      }
-    }
-  }
-}
-
-// -------------------------------------------------
-// PLAYER INPUT / CAMERA
-// -------------------------------------------------
-document.addEventListener("keydown", e=>{
-  keys[e.key.toLowerCase()] = true;
-
-  if (e.key === "1") { currentCategory = 1; currentSelectionSlot = null; updateBuildUI(); }
-  if (e.key === "2") { currentCategory = 2; if (currentSelectionSlot == null) currentSelectionSlot = 5; updateBuildUI(); }
-  if (e.key === "3") { currentCategory = 3; if (currentSelectionSlot == null) currentSelectionSlot = 5; updateBuildUI(); }
-  if (e.key === "4") { currentCategory = 4; if (currentSelectionSlot == null) currentSelectionSlot = 5; updateBuildUI(); }
-
-  if (["5","6","7","8","9","0"].includes(e.key) && currentCategory !== 1) {
-    currentSelectionSlot = e.key === "0" ? 0 : parseInt(e.key);
-    updateBuildUI();
-  }
-
-  if(e.code === "Space"){
-    e.preventDefault();
-    tryPlaceStructure();
-  }
-});
-document.addEventListener("keyup", e=> keys[e.key.toLowerCase()] = false);
-
-function updatePlayer(dt){
-  if(player.dead) {
-    player.deathT += dt;
-    player.group.rotation.z = clamp(player.deathT * 4.2, 0, Math.PI/2.2);
-    player.group.position.y = groundHeight(player.pos.x, player.pos.z) - Math.min(0.45, player.deathT * 0.65);
-    animateMouseRig(player.group, 0, player.animTime, 0, clamp(player.deathT * 2, 0, 1));
     return;
   }
-  if(gameWon) return;
 
-  const turnDir = (keys["a"] ? 1 : 0) + (keys["d"] ? -1 : 0);
-  player.heading += turnDir * player.turnSpeed * dt;
-
-  let moveInput = 0;
-  if(keys["w"]) moveInput += 1;
-  if(keys["s"]) moveInput -= 0.55;
-
-  const sprinting = keys["shift"] && moveInput > 0;
-  const speed = sprinting ? player.sprintSpeed : player.moveSpeed;
-  const vel = moveInput * speed;
-  const forward = { x:Math.sin(player.heading), z:Math.cos(player.heading) };
-
-  if(Math.abs(vel) > 0.01){
-    const desired = { x:forward.x * Math.sign(vel), z:forward.z * Math.sign(vel) };
-    const step = steerMove({ pos:player.pos, speed:Math.abs(vel), radius:player.radius }, desired, dt, false);
-    if(step){
-      player.pos.x = step.x;
-      player.pos.z = step.z;
-    }
-    player.animTime += dt * (sprinting ? 1.5 : 1.0) * Math.abs(moveInput);
+  game.time++;
+  if (keys["v"]) cyclePlayerStrategy();
+  if (keys["b"] && !gameplayInputLock) {
+    game.debugAI = !game.debugAI;
+    gameplayInputLock = true;
+  } else if (!keys["b"] && game.state === "playing") {
+    gameplayInputLock = false;
   }
 
-  player.pos.y = groundHeight(player.pos.x,player.pos.z);
-  player.group.position.copy(player.pos);
-  player.group.rotation.y = player.heading;
-  animateMouseRig(player.group, Math.abs(moveInput), player.animTime, player.attackAnim, 0);
-
-  for(let i=cheeses.length-1;i>=0;i--){
-    const c = cheeses[i];
-    if(dist2(player.pos,c.pos) < 1.25){
-      cheese += c.amount;
-      addBurst(c.pos.x,c.pos.y+0.3,c.pos.z,0xffec71,8,4,0.4,0.08);
-      c.group.parent?.remove(c.group);
-      cheeses.splice(i,1);
-    }
+  for (const u of units) {
+    const strat = u.team === "blue" ? game.playerStrategy : game.enemyStrategy;
+    u.update(strat);
   }
 
-  const selected = getSelectedBuildData();
-  if(!selected){
-    buildTelegraph.visible = false;
+  updateBushes();
+  handleBerries();
+  handleSnail();
+  handleCombat();
+  updateParticles();
+  updateCamera();
+}
+
+/* ---------------- DRAWING ---------------- */
+
+function drawStars() {
+  for (const s of stars) {
+    ctx.fillStyle = s.s === 1 ? "#bcc7ff" : s.s === 2 ? "#ffffff" : "#ffe9a8";
+    const x = s.x - game.cameraX * 0.25;
+    const y = s.y - game.cameraY * 0.15;
+    if (x > -5 && x < VIEW_W + 5) ctx.fillRect(x, y, s.s, s.s);
+  }
+}
+
+function drawBackdrop() {
+  const t = world.theme;
+  const grad = ctx.createLinearGradient(0, 0, 0, VIEW_H);
+  grad.addColorStop(0, t.skyTop);
+  grad.addColorStop(0.48, t.skyMid);
+  grad.addColorStop(1, t.skyLow);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+
+  const camSlow = game.cameraX * 0.18;
+  const camMed = game.cameraX * 0.30;
+
+  if (t.name === "SUNSET HIVE") {
+    ctx.save();
+    ctx.translate(-camSlow, 0);
+    ctx.fillStyle = "rgba(255,180,90,0.35)";
+    ctx.beginPath();
+    ctx.arc(900, 190, 90, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = t.mountain1;
+    ctx.beginPath();
+    ctx.moveTo(-100, 590);
+    for (let x = 0; x <= world.width + 200; x += 180) {
+      const peak = 360 + Math.sin(x * 0.0048) * 75 + (x % 360 === 0 ? -35 : 50);
+      ctx.lineTo(x, peak);
+    }
+    ctx.lineTo(world.width + 200, world.height);
+    ctx.lineTo(-100, world.height);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(-camMed, 0);
+    ctx.fillStyle = t.mountain2;
+    for (let x = 120; x < world.width; x += 380) {
+      ctx.fillRect(x, 420, 18, 210);
+      ctx.beginPath();
+      ctx.arc(x + 9, 410, 34, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  else if (t.name === "MOON CAVERN") {
+    ctx.save();
+    ctx.translate(-camSlow, 0);
+    ctx.fillStyle = "rgba(230,240,255,0.25)";
+    ctx.beginPath();
+    ctx.arc(2150, 130, 70, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = t.mountain1;
+    ctx.beginPath();
+    ctx.moveTo(-100, 620);
+    for (let x = 0; x <= world.width + 200; x += 140) {
+      const peak = 410 + Math.cos(x * 0.006) * 55 + (x % 280 === 0 ? -50 : 20);
+      ctx.lineTo(x, peak);
+    }
+    ctx.lineTo(world.width + 200, world.height);
+    ctx.lineTo(-100, world.height);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(-camMed, 0);
+    ctx.fillStyle = t.mountain2;
+    for (let x = 90; x < world.width; x += 240) {
+      ctx.beginPath();
+      ctx.moveTo(x, 510);
+      ctx.lineTo(x + 45, 420);
+      ctx.lineTo(x + 90, 510);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  else if (t.name === "EMERALD TOWER") {
+    ctx.save();
+    ctx.translate(-camSlow, 0);
+    ctx.fillStyle = t.mountain1;
+    ctx.beginPath();
+    ctx.moveTo(-100, 630);
+    for (let x = 0; x <= world.width + 200; x += 170) {
+      const peak = 430 + Math.sin(x * 0.0035) * 50 + (x % 340 === 0 ? -65 : 15);
+      ctx.lineTo(x, peak);
+    }
+    ctx.lineTo(world.width + 200, world.height);
+    ctx.lineTo(-100, world.height);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(-camMed, 0);
+    ctx.fillStyle = t.mountain2;
+    for (let x = 170; x < world.width; x += 420) {
+      ctx.fillRect(x, 320, 24, 300);
+      ctx.fillRect(x - 18, 350, 18, 260);
+      ctx.fillRect(x + 24, 350, 18, 260);
+      ctx.fillStyle = shade(t.mountain2, 25);
+      ctx.fillRect(x - 10, 300, 44, 24);
+      ctx.fillStyle = t.mountain2;
+    }
+    ctx.restore();
+  }
+}
+
+function drawPlatforms() {
+  const t = world.theme;
+  for (const p of world.platforms) {
+    ctx.fillStyle = t.platformSide;
+    ctx.fillRect(p.x, p.y + 10, p.w, 6);
+    ctx.fillStyle = t.platformTop;
+    ctx.fillRect(p.x, p.y, p.w, 10);
+    ctx.fillStyle = shade(t.platformTop, 35);
+    ctx.fillRect(p.x, p.y, p.w, 2);
+    ctx.fillStyle = shade(t.platformSide, 20);
+    for (let i = 0; i < p.w; i += 24) {
+      ctx.fillRect(p.x + i + 4, p.y + 4, 8, 3);
+    }
+  }
+}
+
+function drawCeilingSpikes() {
+  const c = world.theme.spikeColor;
+  for (let x = 0; x < world.width; x += 24) {
+    ctx.fillStyle = c;
+    ctx.beginPath();
+    ctx.moveTo(x, world.spikeY);
+    ctx.lineTo(x + 12, world.spikeY + 18);
+    ctx.lineTo(x + 24, world.spikeY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = shade(c, -30);
+    ctx.fillRect(x + 10, world.spikeY + 1, 4, 6);
+  }
+}
+
+function drawLava() {
+  const t = world.theme;
+  ctx.fillStyle = "#370505";
+  ctx.fillRect(0, world.lavaY, world.width, world.height - world.lavaY);
+  const tm = Date.now() * 0.01;
+  for (let x = 0; x < world.width; x += 24) {
+    const h = 8 + Math.sin((x * 0.05) + tm) * 3.5;
+    ctx.fillStyle = t.lava1;
+    ctx.fillRect(x, world.lavaY + 2, 24, h);
+    ctx.fillStyle = t.lava2;
+    ctx.fillRect(x + 5, world.lavaY + 4, 12, 3);
+  }
+}
+
+function drawGate(g) {
+  const c = g.team === "blue" ? "#4dc9ff" : "#ffd24a";
+  ctx.fillStyle = shade(c, -40);
+  ctx.fillRect(g.x, g.y, g.w, g.h);
+  ctx.fillStyle = c;
+  ctx.fillRect(g.x + 4, g.y + 4, g.w - 8, g.h - 8);
+
+  for (let i = 0; i < g.berries; i++) {
+    const row = i % 5;
+    const col = Math.floor(i / 5);
+    ctx.fillStyle = world.theme.bushBerry1;
+    ctx.fillRect(g.x + 8 + col * 10, g.y + g.h - 16 - row * 12, 6, 6);
+    ctx.fillStyle = world.theme.bushBerry2;
+    ctx.fillRect(g.x + 9 + col * 10, g.y + g.h - 15 - row * 12, 4, 4);
+  }
+
+  for (const maiden of g.maidens) {
+    const unlocked = g.upgrades[maiden.type];
+    ctx.fillStyle = unlocked ? (maiden.type === "speed" ? "#8dfff0" : "#ffe57d") : "#666";
+    ctx.fillRect(maiden.x - 8, maiden.y - 8, 16, 16);
+    ctx.fillStyle = "#222";
+    if (maiden.type === "speed") ctx.fillRect(maiden.x - 4, maiden.y - 2, 8, 3);
+    else ctx.fillRect(maiden.x - 3, maiden.y - 4, 6, 8);
+  }
+
+  ctx.fillStyle = "#fff";
+  ctx.font = "12px Courier New";
+  ctx.fillText(g.berries + "/10", g.x - 2, g.y - 8);
+}
+
+function drawHives() {
+  for (const key of ["blue", "gold"]) {
+    const h = hive[key];
+    const c = key === "blue" ? "#50cfff" : "#ffd75a";
+    ctx.fillStyle = shade(c, -35);
+    ctx.fillRect(h.x - 28, h.y, 56, 22);
+    ctx.fillStyle = c;
+    ctx.fillRect(h.x - 20, h.y + 4, 40, 14);
+    ctx.fillStyle = "#2c1d12";
+    ctx.fillRect(h.x - 7, h.y + 8, 14, 8);
+  }
+}
+
+function drawBushes() {
+  const t = world.theme;
+  for (const bush of bushes) {
+    ctx.fillStyle = t.bushLeaf1;
+    ctx.fillRect(bush.x - 18, bush.y - 6, 36, 12);
+    ctx.fillRect(bush.x - 26, bush.y - 14, 16, 12);
+    ctx.fillRect(bush.x - 8, bush.y - 20, 16, 14);
+    ctx.fillRect(bush.x + 10, bush.y - 14, 16, 12);
+
+    ctx.fillStyle = t.bushLeaf2;
+    ctx.fillRect(bush.x - 22, bush.y - 12, 14, 10);
+    ctx.fillRect(bush.x - 2, bush.y - 22, 14, 12);
+    ctx.fillRect(bush.x + 12, bush.y - 12, 14, 10);
+
+    ctx.fillStyle = "#6d4322";
+    ctx.fillRect(bush.x - 2, bush.y - 2, 4, 8);
+
+    if (bush.berry.alive && !bush.berry.carriedBy) {
+      const b = bush.berry;
+      ctx.fillStyle = t.bushBerry1;
+      ctx.fillRect(b.x - 4, b.y - 4, 8, 8);
+      ctx.fillStyle = t.bushBerry2;
+      ctx.fillRect(b.x - 3, b.y - 3, 6, 6);
+    }
+  }
+}
+
+function drawSnail() {
+  ctx.fillStyle = "#60391f";
+  ctx.fillRect(world.snailLeftGoal - 30, world.snailTrackY + 18, world.snailRightGoal - world.snailLeftGoal + 60, 8);
+  ctx.fillStyle = "#8a5a35";
+  ctx.fillRect(world.snailLeftGoal - 30, world.snailTrackY + 20, world.snailRightGoal - world.snailLeftGoal + 60, 4);
+
+  ctx.fillStyle = "#4dc9ff";
+  ctx.fillRect(world.snailLeftGoal - 8, world.snailTrackY - 10, 6, 34);
+  ctx.fillStyle = "#ffd24a";
+  ctx.fillRect(world.snailRightGoal + 2, world.snailTrackY - 10, 6, 34);
+
+  ctx.fillStyle = "#d7a05a";
+  ctx.fillRect(snail.x - 14, snail.y + 10, 30, 10);
+  ctx.fillStyle = "#b77038";
+  ctx.fillRect(snail.x - 6, snail.y, 20, 18);
+  ctx.fillStyle = "#f1d7a0";
+  ctx.fillRect(snail.x - 18, snail.y + 16, 12, 5);
+  ctx.fillRect(snail.x + 12, snail.y + 16, 8, 5);
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(snail.x - 16, snail.y + 9, 2, 5);
+  ctx.fillRect(snail.x - 12, snail.y + 9, 2, 5);
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = p.life / p.maxLife;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, p.y, 3, 3);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawWorld() {
+  drawBackdrop();
+  ctx.save();
+  ctx.translate(-game.cameraX, -game.cameraY);
+  drawCeilingSpikes();
+  drawPlatforms();
+  drawHives();
+  drawGate(gates.blue);
+  drawGate(gates.gold);
+  drawBushes();
+  drawSnail();
+  for (const u of units) u.draw();
+  drawParticles();
+  drawLava();
+  ctx.restore();
+}
+
+function drawQueenLivesBox(x, y, queen, label, color) {
+  ctx.fillStyle = "#000";
+  ctx.fillRect(x, y, 170, 56);
+  ctx.strokeStyle = color;
+  ctx.strokeRect(x, y, 170, 56);
+  ctx.fillStyle = color;
+  ctx.fillRect(x + 8, y + 9, 18, 18);
+  ctx.fillStyle = "#fff";
+  ctx.font = "15px Courier New";
+  ctx.fillText(label, x + 35, y + 20);
+  ctx.fillText("LIVES:", x + 35, y + 42);
+  for (let i = 0; i < 3; i++) {
+    ctx.fillStyle = i < queen.queenLives ? color : "#444";
+    ctx.fillRect(x + 90 + i * 18, y + 33, 12, 12);
+  }
+}
+
+function drawHUD() {
+  const blueQueen = units.find(u => u.team === "blue" && u.role === "queen");
+  const goldQueen = units.find(u => u.team === "gold" && u.role === "queen");
+
+  ctx.fillStyle = "#000";
+  ctx.fillRect(12, 12, 470, 92);
+  ctx.strokeStyle = "#d5d5d5";
+  ctx.strokeRect(12, 12, 470, 92);
+
+  ctx.fillStyle = "#fff";
+  ctx.font = "18px Courier New";
+  ctx.fillText("MAP: " + MAPS[game.currentMapIndex].name, 24, 34);
+  ctx.fillStyle = game.strategyFlashTimer > 0 ? "#6dff89" : "#fff";
+  ctx.fillText("BLUE: " + game.playerStrategy.toUpperCase(), 24, 58);
+  ctx.fillStyle = "#fff";
+  ctx.fillText("GOLD: " + game.enemyStrategy.toUpperCase(), 24, 82);
+
+  drawQueenLivesBox(500, 12, blueQueen, "BLUE QUEEN", "#61d5ff");
+  drawQueenLivesBox(686, 12, goldQueen, "GOLD QUEEN", "#ffd45a");
+
+  ctx.fillStyle = "#000";
+  ctx.fillRect(876, 12, 312, 104);
+  ctx.strokeStyle = "#d5d5d5";
+  ctx.strokeRect(876, 12, 312, 104);
+  ctx.fillStyle = "#fff";
+  ctx.font = "15px Courier New";
+  ctx.fillText("DIFF: " + currentDifficulty().name, 888, 32);
+  ctx.fillText("AI LVL: " + currentDifficulty().level + "/10", 888, 52);
+  ctx.fillText("A/D MOVE  W/SPACE FLAP", 888, 70);
+  ctx.fillText("S DIVE  V CYCLE STRAT", 888, 88);
+  ctx.fillText("B AI DEBUG", 888, 104);
+}
+
+function drawAIDebug() {
+  if (!game.debugAI || game.state !== "playing") return;
+  const sample = units.find(u => !u.dead && !u.isPlayer && u.team === "blue");
+  const enemyQueen = units.find(u => !u.dead && u.team === "gold" && u.role === "queen");
+  if (!sample || !enemyQueen) return;
+  ctx.fillStyle = "rgba(0,0,0,0.7)";
+  ctx.fillRect(12, VIEW_H - 108, 560, 96);
+  ctx.strokeStyle = "#66ffcc";
+  ctx.strokeRect(12, VIEW_H - 108, 560, 96);
+  ctx.fillStyle = "#9fffe6";
+  ctx.font = "14px Courier New";
+  ctx.fillText("TEAM STRAT: " + game.playerStrategy.toUpperCase(), 24, VIEW_H - 84);
+  ctx.fillText("ALLY OBJ: " + (sample.target?.intent || "none") + " | APPROACH: " + (sample.approachType || "none"), 24, VIEW_H - 64);
+  ctx.fillText("ALLY FLAGS: danger=" + (sample.lastDangerFlag ? "Y" : "N") + " ambush=" + (sample.lastAmbushFlag ? "Y" : "N"), 24, VIEW_H - 44);
+  ctx.fillText("ENEMY QUEEN STATE: " + (enemyQueen.queenState || "stabilize"), 24, VIEW_H - 24);
+}
+
+function drawTitle() {
+  applyMap(game.currentMapIndex);
+  drawBackdrop();
+
+  ctx.fillStyle = "rgba(0,0,0,0.55)";
+  ctx.fillRect(160, 85, 880, 500);
+  ctx.strokeStyle = "#ddd";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(160, 85, 880, 500);
+
+  ctx.fillStyle = "#fff08d";
+  ctx.font = "bold 44px Courier New";
+  ctx.fillText("KILLER QUEEN STYLE", 315, 150);
+
+  ctx.fillStyle = "#fff";
+  ctx.font = "20px Courier New";
+  ctx.fillText("1/2/3/4 = STRATEGY  (V = CYCLE)", 325, 205);
+  ctx.fillText("M = CHANGE MAP", 475, 235);
+  ctx.fillText("Q / E = CHANGE DIFFICULTY", 385, 265);
+  ctx.fillText("B = TOGGLE AI DEBUG", 420, 295);
+  ctx.fillText("SPACE = START", 485, 325);
+
+  const opts = [
+    { n:"1", label:"ECONOMY", x: 180, on: game.playerStrategy === "economy" },
+    { n:"2", label:"SNAIL", x: 380, on: game.playerStrategy === "snail" },
+    { n:"3", label:"MILITARY", x: 580, on: game.playerStrategy === "military" },
+    { n:"4", label:"BALANCED", x: 780, on: game.playerStrategy === "balanced" }
+  ];
+
+  for (const o of opts) {
+    ctx.fillStyle = "#111";
+    ctx.fillRect(o.x, 335, 170, 78);
+    ctx.strokeStyle = o.on ? "#61ff7c" : "#bbb";
+    ctx.strokeRect(o.x, 335, 170, 78);
+    ctx.fillStyle = o.on ? "#61ff7c" : "#fff";
+    ctx.font = "bold 28px Courier New";
+    ctx.fillText(o.n, o.x + 73, 365);
+    ctx.font = "18px Courier New";
+    ctx.fillText(o.label, o.x + 16, 397);
+  }
+
+  ctx.fillStyle = "#9fdfff";
+  ctx.font = "22px Courier New";
+  ctx.fillText("MAP: " + MAPS[game.currentMapIndex].name, 415, 470);
+  ctx.fillText("DIFFICULTY: " + currentDifficulty().name + " (" + currentDifficulty().level + "/10)", 285, 505);
+
+  ctx.fillStyle = "#fff";
+  ctx.font = "17px Courier New";
+  ctx.fillText("Enemy strategy is random each match.", 375, 548);
+  ctx.fillText("Higher difficulties gain discipline, trap awareness, retreat timing,", 225, 575);
+  ctx.fillText("better coordination, and stronger queen survival logic.", 255, 600);
+
+  ctx.fillStyle = "#9fdfff";
+  ctx.font = "24px Courier New";
+  ctx.fillText("PRESS SPACE TO START", 420, 645);
+}
+
+function drawGameOver() {
+  ctx.fillStyle = "rgba(0,0,0,0.55)";
+  ctx.fillRect(360, 210, 480, 180);
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(360, 210, 480, 180);
+
+  const blueWin = game.winner === "blue";
+  ctx.fillStyle = blueWin ? "#61d5ff" : "#ffd45a";
+  ctx.font = "bold 42px Courier New";
+  ctx.fillText((blueWin ? "BLUE" : "GOLD") + " WINS", 470, 268);
+
+  ctx.fillStyle = "#fff";
+  ctx.font = "24px Courier New";
+  ctx.fillText("VICTORY TYPE: " + game.winType, 424, 318);
+  ctx.fillStyle = "#9fdfff";
+  ctx.font = "22px Courier New";
+  ctx.fillText("PRESS R TO RETURN TO TITLE", 400, 358);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, VIEW_W, VIEW_H);
+  drawStars();
+
+  if (game.state === "title") {
+    drawTitle();
   } else {
-    const p = getBuildPlace();
-    buildTelegraph.visible = true;
-    buildTelegraph.position.set(p.x, p.y+0.06, p.z);
-    buildTelegraph.scale.setScalar(selected.radius * 0.75);
-    buildTelegraph.material.color.set(circleBlocked(p.x,p.z,selected.radius, null, 0.75) ? 0xff4444 : 0x7aff9a);
-    buildTelegraph.rotation.set(-Math.PI/2, 0, 0); // always flat circle
-  }
-}
-function tryPlaceStructure(){
-  const selected = getSelectedBuildData();
-  if(gameOver || gameWon || !selected) return;
-  if(cheese < selected.cost){ showCenter("Not enough cheese", 1); return; }
-
-  const p = getBuildPlace();
-  if(circleBlocked(p.x,p.z,selected.radius, null, 0.75)){ showCenter("Cannot build there", 1); return; }
-
-  cheese -= selected.cost;
-  createStructure(selected.type, p.x, p.z, player.heading, selected);
-}
-function updateCamera(dt){
-  const focus = player.pos.clone().add(new THREE.Vector3(0,1.7,0));
-  const backward = new THREE.Vector3(-Math.sin(player.heading), 0, -Math.cos(player.heading)).normalize();
-  const desired = focus.clone()
-    .add(backward.multiplyScalar(7.2))
-    .add(new THREE.Vector3(0,4.6,0));
-
-  let safe = desired.clone();
-  for(const o of obstacles){
-    const dx = safe.x-o.x, dz = safe.z-o.z;
-    const d = Math.hypot(dx,dz);
-    if(d < o.r + 1.2){
-      const push = (o.r + 1.2 - d);
-      safe.x += (dx / (d||1)) * push;
-      safe.z += (dz / (d||1)) * push;
-    }
-  }
-
-  camera.position.lerp(safe, 1 - Math.pow(0.00008, dt));
-  camera.lookAt(focus);
-}
-
-// -------------------------------------------------
-// SPAWNERS
-// -------------------------------------------------
-let cheeseSpawnTimer = 0;
-let lastRatSpawn = 60;
-let lastMoleSpawn = 240;
-let lastWeaselSpawn = 420;
-
-function updateCheeses(dt){
-  for(const c of cheeses){
-    c.spin += dt * 2.4;
-    c.group.rotation.y = c.spin;
-    c.group.position.y = groundHeight(c.pos.x,c.pos.z) + 0.22 + Math.sin(time*3 + c.spin) * 0.12;
-  }
-}
-function updateSpawners(dt){
-  cheeseSpawnTimer += dt;
-  if(cheeseSpawnTimer >= 5.6){
-    cheeseSpawnTimer = 0;
-    const p = randomFreePosition(1);
-    spawnCheeseAt(p.x,p.z,3);
-  }
-
-  wildSpawnTimer += dt;
-  if(wildSpawnTimer >= 24 && wildMice.length + servantMice.length < 8){
-    wildSpawnTimer = 0;
-    const p = randomFreePosition(1);
-    spawnWildMouse(p.x,p.z);
-  }
-
-  if(time >= 60 && !cat && !catSpawnTriggered) spawnCat();
-
-  if(time >= 60 && cat && !cat.dead && !cat.dying){
-    if(time - lastRatSpawn >= 30){
-      lastRatSpawn = time;
-      const count = clamp(2 + Math.floor((time-60)/75), 2, 10);
-      spawnEnemyWave("rat", count);
-      showCenter("Rat Wave x" + count, 0.8);
-    }
-    if(time >= 240 && time - lastMoleSpawn >= 45){
-      lastMoleSpawn = time;
-      const count = clamp(1 + Math.floor((time-240)/120), 1, 10);
-      spawnEnemyWave("mole", count);
-      showCenter("Moles x" + count, 0.8);
-    }
-    if(time >= 420 && time - lastWeaselSpawn >= 55){
-      lastWeaselSpawn = time;
-      const count = clamp(1 + Math.floor((time-420)/120), 1, 10);
-      spawnEnemyWave("weasel", count);
-      showCenter("Weasels x" + count, 0.8);
-    }
-  }
-}
-function spawnEnemyWave(kind,count){
-  const useCatCenter = cat && !cat.dead && !cat.dying;
-  const center = useCatCenter ? cat.pos : null;
-  for(let i=0;i<count;i++){
-    let x=0,z=0;
-    if(useCatCenter){
-      const a = Math.random() * Math.PI * 2;
-      const r = rand(2.0, 5.5);
-      x = clamp(center.x + Math.sin(a)*r, -HALF_MAP+6, HALF_MAP-6);
-      z = clamp(center.z + Math.cos(a)*r, -HALF_MAP+6, HALF_MAP-6);
-    } else {
-      const edge = Math.floor(Math.random()*4);
-      if(edge===0){ x = -HALF_MAP+5; z = rand(-HALF_MAP+8, HALF_MAP-8); }
-      if(edge===1){ x = HALF_MAP-5; z = rand(-HALF_MAP+8, HALF_MAP-8); }
-      if(edge===2){ z = -HALF_MAP+5; x = rand(-HALF_MAP+8, HALF_MAP-8); }
-      if(edge===3){ z = HALF_MAP-5; x = rand(-HALF_MAP+8, HALF_MAP-8); }
-      x += rand(-2,2); z += rand(-2,2);
-    }
-    const e = makeEnemy(kind, x, z);
-    if(useCatCenter) setRepathPoint(e, center, 5.5);
+    drawWorld();
+    drawHUD();
+    drawAIDebug();
+    if (game.state === "gameOver") drawGameOver();
   }
 }
 
-// -------------------------------------------------
-// DEATH / GAME OVER
-// -------------------------------------------------
-function diePlayer(){
-  if(player.dead || gameWon) return;
-  player.dead = true;
-  gameOver = true;
-  addBloodHit(player.pos.x, player.pos.y+0.9, player.pos.z, 1.35);
-  addBurst(player.pos.x,player.pos.y+1.0,player.pos.z,0xff5555,24,6,0.95,0.11);
-  ui.msg.textContent = "GAME OVER";
-  ui.msg.style.opacity = "1";
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
 }
-
-// -------------------------------------------------
-// UI
-// -------------------------------------------------
-function updateUI(){
-  ui.cheese.textContent = Math.floor(cheese);
-  ui.servants.textContent = servantMice.filter(m => !m.dead).length;
-  ui.time.textContent = time.toFixed(1);
-}
-
-// -------------------------------------------------
-// MAIN LOOP
-// -------------------------------------------------
-function animate(){
-  requestAnimationFrame(animate);
-  const dt = Math.min(0.033, clock.getDelta());
-
-  if(!gameOver && !gameWon) time += dt;
-
-  updateSpawners(dt);
-  updateCheeses(dt);
-  updatePlayer(dt);
-  updateStructures(dt);
-
-  for(const m of [...wildMice, ...servantMice]) updateMouseEntity(m,dt);
-  updateEnemies(dt);
-  updateRobots(dt);
-  updateCat(dt);
-  updateProjectiles(dt);
-  updateParticles(dt);
-  updateFloatingTexts(dt);
-  updateStructureHealthBarVisibility();
-  updateCamera(dt);
-  updateUI();
-
-  renderer.render(scene,camera);
-}
-animate();
-
-window.addEventListener("resize", ()=>{
-  camera.aspect = innerWidth/innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-});
+loop();
 </script>
 </body>
 </html>
