@@ -583,6 +583,27 @@ function addBloodHit(x,y,z,intensity=1){
     });
   }
 }
+function addLightningArc(from, to, life=0.12, color=0xbec4ff){
+  const segs = 6;
+  const pts = [from.clone()];
+  const dir = to.clone().sub(from);
+  const side = new THREE.Vector3(-dir.z, 0, dir.x).normalize();
+  for(let i=1;i<segs;i++){
+    const t = i/segs;
+    const p = from.clone().lerp(to, t);
+    const wobble = (Math.random()*2 - 1) * 0.32 * (1 - Math.abs(t - 0.5));
+    p.addScaledVector(side, wobble);
+    p.y += (Math.random()*2 - 1) * 0.18;
+    pts.push(p);
+  }
+  pts.push(to.clone());
+  const curve = new THREE.CatmullRomCurve3(pts);
+  const geo = new THREE.TubeGeometry(curve, 16, 0.04, 6, false);
+  const mat = new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.96, depthWrite:false });
+  const mesh = new THREE.Mesh(geo, mat);
+  scene.add(mesh);
+  particles.push({ mesh, vel:new THREE.Vector3(), life, maxLife:life, kind:"lightning" });
+}
 function updateParticles(dt){
   for(let i=particles.length-1;i>=0;i--){
     const p = particles[i];
@@ -601,6 +622,8 @@ function updateParticles(dt){
       p.mesh.rotation.z += (p.spin || 2) * dt;
       p.mesh.scale.setScalar(0.6 + 0.5 * (p.life / p.maxLife));
       p.mesh.traverse(c => { if(c.material) c.material.opacity = p.life / p.maxLife; });
+    } else if (p.kind === "lightning") {
+      if (p.mesh.material) p.mesh.material.opacity = clamp((p.life / p.maxLife) * 1.2, 0, 1);
     }
     if(p.life <= 0){
       p.mesh.parent?.remove(p.mesh);
@@ -632,6 +655,15 @@ function setHealthBar(bar, frac){
   frac = clamp(frac,0,1);
   bar.userData.fg.scale.x = frac;
   bar.userData.fg.position.x = -(bar.userData.width*0.98)*(1-frac)/2;
+  if(bar.userData.fg?.material){
+    const c = new THREE.Color();
+    if(frac > 0.5){
+      c.setRGB(0.35 + 0.45*(frac-0.5)*2, 0.76 + 0.24*(frac-0.5)*2, 0.32);
+    } else {
+      c.setRGB(1.0, 0.3 + 0.9*frac, 0.28);
+    }
+    bar.userData.fg.material.color.copy(c);
+  }
 }
 function popWorldText(text, x, y, z, color="#ffe66f"){
   const canvas = document.createElement("canvas");
@@ -674,6 +706,27 @@ function makeSymbolTexture(symbol, fill="#9bffb2"){
   const tex = new THREE.CanvasTexture(canvas);
   tex.needsUpdate = true;
   return tex;
+}
+const DAZE_TEXTURE = makeSymbolTexture("💫", "#bfe7ff");
+
+function createDazeSprite(){
+  if(!DAZE_TEXTURE) return null;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: DAZE_TEXTURE,
+    transparent: true,
+    depthTest: false,
+    depthWrite: false,
+    opacity: 0
+  }));
+  sprite.scale.set(1.15, 1.15, 1);
+  sprite.visible = false;
+  sprite.renderOrder = 225;
+  return sprite;
+}
+
+function setEnemyStunned(enemy, duration=0.5){
+  if(!enemy || enemy.dead || enemy.dying || enemy.kind === "catBoss") return;
+  enemy.stunCd = Math.max(enemy.stunCd || 0, duration);
 }
 function updateFloatingTexts(dt){
   for(let i=floatingTexts.length-1;i>=0;i--){
@@ -1604,8 +1657,19 @@ function createStructureMesh(type){
     );
     coil.rotation.x = Math.PI/2;
     coil.position.y = 1.05;
-    g.add(base, coil);
+    const rod = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.08,0.12,1.2,10),
+      new THREE.MeshStandardMaterial({ color:0xd8d0ff, emissive:0x6a5fff, emissiveIntensity:0.35 })
+    );
+    rod.position.y = 0.9;
+    const cap = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.18,0),
+      new THREE.MeshStandardMaterial({ color:0xf1ecff, emissive:0xa695ff, emissiveIntensity:0.65 })
+    );
+    cap.position.y = 1.55;
+    g.add(base, rod, coil, cap);
     g.userData.coil = coil;
+    g.userData.coilCap = cap;
   }
 
   if(type==="mortarBloom"){
@@ -1648,6 +1712,19 @@ function createStructureMesh(type){
     );
     wheel.rotation.z = Math.PI/2;
     headPivot.add(wheel);
+    const guard = new THREE.Mesh(
+      new THREE.TorusGeometry(0.52,0.05,8,20,Math.PI*1.35),
+      new THREE.MeshStandardMaterial({ color:0xffd5bd, metalness:0.1, roughness:0.45 })
+    );
+    guard.rotation.set(0, Math.PI/2, Math.PI*0.13);
+    guard.position.set(0.08, 0, 0);
+    headPivot.add(guard);
+    const axle = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.06,0.06,0.44,10),
+      new THREE.MeshStandardMaterial({ color:0xffefe3 })
+    );
+    axle.rotation.z = Math.PI/2;
+    headPivot.add(axle);
     for(let i=0;i<8;i++){
       const tooth = new THREE.Mesh(
         new THREE.BoxGeometry(0.08,0.18,0.05),
@@ -1705,6 +1782,7 @@ function createStructure(type,x,z,rotationY=0, dataOverride=null){
     target:null
   };
   structures.push(s);
+  setHealthBar(mesh.userData.healthBar, 1);
   updateWallDamageVisual(s);
 
   const color = structureColor(type);
@@ -2139,11 +2217,17 @@ function makeEnemy(kind,x,z){
   const bar = createHealthBar(kind==="weasel"?1.9:1.4, 0xff6666);
   bar.position.y = kind==="weasel" ? 2.35 : 1.8;
   model.add(bar);
+  const dazeIcon = createDazeSprite();
+  if (dazeIcon) {
+    dazeIcon.position.set(0, kind==="weasel" ? 3.1 : 2.45, 0);
+    model.add(dazeIcon);
+  }
 
   const e = {
     kind, group:model, pos:model.position, hp, maxHp:hp, speed, damage, radius,
     attackRange, target:null, dead:false, dying:false, anim:Math.random()*10, attackAnim:0,
-    attackCd:0, heading:Math.random()*Math.PI*2, turnRate, healthBar:bar, deathT:0, isLiving:true
+    attackCd:0, heading:Math.random()*Math.PI*2, turnRate, healthBar:bar, deathT:0, isLiving:true,
+    stunCd:0, dazeIcon
   };
   enemies.push(e);
   return e;
@@ -2229,6 +2313,15 @@ function updateEnemies(dt){
     e.anim += dt;
     e.attackAnim = Math.max(0, e.attackAnim - dt*4);
     e.attackCd -= dt;
+    e.stunCd = Math.max(0, (e.stunCd || 0) - dt);
+    if(e.dazeIcon){
+      e.dazeIcon.visible = e.stunCd > 0;
+      if(e.dazeIcon.visible){
+        e.dazeIcon.material.opacity = 0.75 + Math.sin(time*14) * 0.2;
+        e.dazeIcon.position.y = (e.kind==="weasel" ? 3.1 : 2.45) + Math.sin(time*10)*0.07;
+        e.dazeIcon.quaternion.copy(camera.quaternion);
+      }
+    }
 
     // retarget more often if crowded around current target
     if (!e.target || e.target.dead || Math.random() < 0.02) {
@@ -2246,16 +2339,17 @@ function updateEnemies(dt){
     const moveTarget = (e.repathTimer > 0 && e.repathTarget) ? e.repathTarget : e.target;
     if(!moveTarget) continue;
     const d = dist2(e.pos, moveTarget.pos || moveTarget);
+    const isStunned = e.stunCd > 0;
 
-    if(d > e.attackRange + (moveTarget.radius || 0.5)){
+    if(!isStunned && d > e.attackRange + (moveTarget.radius || 0.5)){
       const step = directSteerToward({ pos:e.pos, speed:e.speed, radius:e.radius }, moveTarget.pos || moveTarget, dt, true, e.target, enemies);
       if(step){
         e.heading += clamp(angleDiff(e.heading, step.heading), -e.turnRate*dt, e.turnRate*dt);
         e.pos.x = step.x;
         e.pos.z = step.z;
       }
-    } else if(e.attackCd <= 0 && e.target && !e.repathTimer){
-      e.attackCd = e.kind==="weasel" ? 0.82 : e.kind==="mole" ? 1.35 : 1.04;
+    } else if(!isStunned && e.attackCd <= 0 && e.target && !e.repathTimer){
+      e.attackCd = e.kind==="weasel" ? 0.56 : e.kind==="mole" ? 0.98 : 0.72;
       e.attackAnim = 1;
       addBurst(e.pos.x,e.pos.y+0.9,e.pos.z, e.kind==="mole"?0x884333:0xff6666, 10, 4, 0.45, 0.08);
 
@@ -2852,25 +2946,40 @@ function updateStructures(dt){
     if(s.type==="zapCoil"){
       s.fireCd -= dt;
       const coil = s.mesh.userData.coil;
-      if (coil) coil.rotation.z += dt * 3.5;
+      const cap = s.mesh.userData.coilCap;
+      if (coil) coil.rotation.z += dt * 3.9;
+      if (cap) {
+        cap.rotation.y += dt * 4.4;
+        cap.position.y = 1.55 + Math.sin(time*6)*0.05;
+      }
       const t = nearestEnemyInRange(s, 8);
       if (t && s.fireCd <= 0) {
-        s.fireCd = 0.55 / buff.speed;
-        applyDamageToLiving(t, 10 * buff.damage, t.pos);
-        // lightning beam look
-        const from = new THREE.Vector3(s.pos.x, s.pos.y + 1.1, s.pos.z);
-        const to = new THREE.Vector3(t.pos.x, t.pos.y + 0.9, t.pos.z);
-        const dir = to.clone().sub(from);
-        const len = dir.length();
-        const mesh = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.04,0.04,1,6),
-          new THREE.MeshBasicMaterial({ color:0xb8b1ff, transparent:true, opacity:0.95 })
-        );
-        mesh.position.copy(from.clone().add(to).multiplyScalar(0.5));
-        mesh.scale.set(1,len,1);
-        mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir.normalize());
-        scene.add(mesh);
-        particles.push({ mesh, vel:new THREE.Vector3(), life:0.10, maxLife:0.10, kind:"cog" });
+        s.fireCd = 2.05 / buff.speed;
+        const stunned = new Set();
+        let previousPoint = new THREE.Vector3(s.pos.x, s.pos.y + 1.45, s.pos.z);
+        let current = t;
+        let remainingBounces = 3;
+        while(current && remainingBounces >= 0){
+          applyDamageToLiving(current, 4.2 * buff.damage, current.pos);
+          setEnemyStunned(current, 0.5);
+          stunned.add(current);
+          const hitPoint = new THREE.Vector3(current.pos.x, current.pos.y + 1.0, current.pos.z);
+          addLightningArc(previousPoint, hitPoint, 0.12, remainingBounces === 3 ? 0xd7dcff : 0xbec4ff);
+          addBurst(hitPoint.x, hitPoint.y, hitPoint.z, 0xbec4ff, 4, 1.8, 0.16, 0.035);
+          let next = null;
+          let bestD = 999;
+          for(const e of enemies){
+            if(e.dead || e.dying || stunned.has(e)) continue;
+            const ed = dist2(current.pos, e.pos);
+            if(ed < 6.2 && ed < bestD){
+              bestD = ed;
+              next = e;
+            }
+          }
+          previousPoint = hitPoint;
+          current = next;
+          remainingBounces--;
+        }
       }
     }
 
