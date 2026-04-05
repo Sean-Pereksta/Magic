@@ -1994,8 +1994,15 @@ function checkDirectTargetOutcome(enemy){
   }
   return false;
 }
-function refreshSpellCasts(){
-  game.activeSpellIds.forEach(id=> game.spells[id].castsLeft = game.spells[id].castsMax);
+function refreshSpellCasts(showLog=false){
+  (game.activeSpellIds||[]).forEach(id=>{
+    const spell = game.spells[id];
+    if(!spell) return;
+    spell.castsLeft = spell.castsMax;
+  });
+  if(showLog && (game.activeSpellIds||[]).length){
+    log('Enemy wave cleared — all active spell casts refilled.', 'good');
+  }
 }
 function hasUsableCasts(g=game){
   return (g.activeSpellIds||[]).some(id=>g.spells[id] && g.spells[id].castsLeft > 0);
@@ -2087,7 +2094,7 @@ function finalizeEncounterRewards(result){
     log(`You regenerate ${game.player.regenBetween} between battles.`, 'good');
   }
 
-  refreshSpellCasts();
+  refreshSpellCasts(true);
   game.flags.encounterKills = 0;
   game.flags.encounterRecruits = 0;
   game.flags.encounterXp = 0;
@@ -2129,6 +2136,7 @@ function buildRarityWeights(){
 }
 function spawnEncounter(){
   game.mode='battle';
+  refreshSpellCasts();
   game.flags.encounterKills = 0;
   game.flags.encounterRecruits = 0;
   game.flags.encounterXp = 0;
