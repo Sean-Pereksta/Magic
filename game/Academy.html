@@ -290,15 +290,24 @@ const game = {
   winner: null,
   winType: "",
   playerStrategy: "economy",
+  goldStrategy: "military",
   enemyStrategy: "military",
+  splitScreen: false,
   difficultyIndex: 3,
   currentMapIndex: 0,
   cameraX: 0,
   cameraY: 0,
+  cameraBlueX: 0,
+  cameraBlueY: 0,
+  cameraGoldX: 0,
+  cameraGoldY: 0,
   time: 0,
   strategyFlashTimer: 0,
+  goldStrategyFlashTimer: 0,
   strategySwitchCooldown: 0,
-  debugAI: false
+  goldStrategySwitchCooldown: 0,
+  debugAI: false,
+  _prevKeys: {}
 };
 
 const world = {
@@ -358,6 +367,7 @@ const snail = {
 let bushes = [];
 let units = [];
 let playerQueen = null;
+let goldPlayerQueen = null;
 const teamTactics = {
   blue: { primarySnailRunner: null, runnerLockUntil: 0 },
   gold: { primarySnailRunner: null, runnerLockUntil: 0 }
@@ -447,6 +457,19 @@ function cyclePlayerStrategy() {
   game.playerStrategy = TEAM_STRATEGIES[nextIdx];
   game.strategySwitchCooldown = 22;
   game.strategyFlashTimer = 90;
+}
+
+function cycleGoldStrategy() {
+  if (game.goldStrategySwitchCooldown > 0) return;
+  const idx = TEAM_STRATEGIES.indexOf(game.goldStrategy);
+  const nextIdx = (idx + 1 + TEAM_STRATEGIES.length) % TEAM_STRATEGIES.length;
+  game.goldStrategy = TEAM_STRATEGIES[nextIdx];
+  game.goldStrategySwitchCooldown = 22;
+  game.goldStrategyFlashTimer = 90;
+}
+
+function keyTap(key) {
+  return !!keys[key] && !game._prevKeys[key];
 }
 
 function applyMap(index) {
@@ -1253,15 +1276,15 @@ class Unit {
     }
   }
 
-  playerControl() {
-    if (this.onSnail && keys["s"]) {
+  playerControl(control) {
+    if (this.onSnail && keys[control.down]) {
       this.dismountSnail();
       return;
     }
-    if (keys["a"]) { this.vx -= 0.38; this.dir = -1; }
-    if (keys["d"]) { this.vx += 0.38; this.dir = 1; }
-    if ((keys["w"] || keys[" "]) && this.y > world.spikeY + 90) this.flap();
-    if (keys["s"]) this.vy += 0.16;
+    if (keys[control.left]) { this.vx -= 0.38; this.dir = -1; }
+    if (keys[control.right]) { this.vx += 0.38; this.dir = 1; }
+    if (keyTap(control.up) && this.y > world.spikeY + 90) this.flap();
+    if (keys[control.down]) this.vy += 0.16;
     if (this.y < world.spikeY + 80) this.vy += 0.22;
   }
 
@@ -1297,7 +1320,12 @@ class Unit {
       return;
     }
 
-    if (this.isPlayer) this.playerControl();
+    if (this.isPlayer) {
+      const control = this.team === "blue"
+        ? { left: "a", right: "d", up: "w", down: "s" }
+        : { left: "arrowleft", right: "arrowright", up: "arrowup", down: "arrowdown" };
+      this.playerControl(control);
+    }
     else this.ai(strategy);
 
     if (!this.onSnail) this.tryMountSnail();
@@ -1437,9 +1465,10 @@ function spawnMatch() {
   teamTactics.gold.runnerLockUntil = 0;
 
   const bq = new Unit({ team: "blue", role: "queen", x: 165, y: 650, isPlayer: true });
-  const gq = new Unit({ team: "gold", role: "queen", x: world.width - 205, y: 650 });
+  const gq = new Unit({ team: "gold", role: "queen", x: world.width - 205, y: 650, isPlayer: game.splitScreen });
 
   playerQueen = bq;
+  goldPlayerQueen = gq;
   units.push(bq, gq);
 
   for (let i = 0; i < 4; i++) {
@@ -1448,12 +1477,17 @@ function spawnMatch() {
   }
 
   game.enemyStrategy = TEAM_STRATEGIES[randi(0, TEAM_STRATEGIES.length - 1)];
+  if (game.splitScreen) game.enemyStrategy = game.goldStrategy;
   game.winner = null;
   game.winType = "";
   game.state = "playing";
   game.time = 0;
   game.cameraX = 0;
   game.cameraY = 0;
+  game.cameraBlueX = 0;
+  game.cameraBlueY = 0;
+  game.cameraGoldX = Math.max(0, world.width - VIEW_W);
+  game.cameraGoldY = 0;
 }
 
 function nearestEnemyToPoint(team, x, y, range = 99999) {
@@ -1640,6 +1674,17 @@ function updateCamera() {
   const targetY = playerQueen.y + playerQueen.h / 2 - VIEW_H / 2;
   game.cameraX += (clamp(targetX, 0, world.width - VIEW_W) - game.cameraX) * 0.12;
   game.cameraY += (clamp(targetY, 0, world.height - VIEW_H) - game.cameraY) * 0.10;
+
+  const halfW = VIEW_W / 2;
+  const updateHalf = (queen, xKey, yKey) => {
+    if (!queen) return;
+    const tx = queen.x + queen.w / 2 - halfW / 2;
+    const ty = queen.y + queen.h / 2 - VIEW_H / 2;
+    game[xKey] += (clamp(tx, 0, world.width - halfW) - game[xKey]) * 0.12;
+    game[yKey] += (clamp(ty, 0, world.height - VIEW_H) - game[yKey]) * 0.10;
+  };
+  updateHalf(playerQueen, "cameraBlueX", "cameraBlueY");
+  updateHalf(goldPlayerQueen, "cameraGoldX", "cameraGoldY");
 }
 
 /* ---------------- UPDATE LOOP ---------------- */
@@ -1649,7 +1694,9 @@ let gameplayInputLock = false;
 
 function update() {
   game.strategyFlashTimer = Math.max(0, game.strategyFlashTimer - 1);
+  game.goldStrategyFlashTimer = Math.max(0, game.goldStrategyFlashTimer - 1);
   game.strategySwitchCooldown = Math.max(0, game.strategySwitchCooldown - 1);
+  game.goldStrategySwitchCooldown = Math.max(0, game.goldStrategySwitchCooldown - 1);
 
   if (game.state === "title") {
     if (!titleInputLock) {
@@ -1657,14 +1704,21 @@ function update() {
       else if (keys["2"]) { game.playerStrategy = "snail"; titleInputLock = true; }
       else if (keys["3"]) { game.playerStrategy = "military"; titleInputLock = true; }
       else if (keys["4"]) { game.playerStrategy = "balanced"; titleInputLock = true; }
+      else if (keys["7"]) { game.goldStrategy = "economy"; titleInputLock = true; }
+      else if (keys["8"]) { game.goldStrategy = "snail"; titleInputLock = true; }
+      else if (keys["9"]) { game.goldStrategy = "military"; titleInputLock = true; }
+      else if (keys["0"]) { game.goldStrategy = "balanced"; titleInputLock = true; }
       else if (keys["v"]) { cyclePlayerStrategy(); titleInputLock = true; }
+      else if (keys["/"]) { cycleGoldStrategy(); titleInputLock = true; }
       else if (keys["b"]) { game.debugAI = !game.debugAI; titleInputLock = true; }
       else if (keys["m"]) { game.currentMapIndex = (game.currentMapIndex + 1) % MAPS.length; titleInputLock = true; }
       else if (keys["q"]) { game.difficultyIndex = (game.difficultyIndex + 9) % 10; titleInputLock = true; }
       else if (keys["e"]) { game.difficultyIndex = (game.difficultyIndex + 1) % 10; titleInputLock = true; }
+      else if (keys["x"]) { game.splitScreen = !game.splitScreen; titleInputLock = true; }
       else if (keys[" "]) { spawnMatch(); titleInputLock = true; }
     }
-    if (!keys["1"] && !keys["2"] && !keys["3"] && !keys["4"] && !keys["v"] && !keys["b"] && !keys["m"] && !keys["q"] && !keys["e"] && !keys[" "]) {
+    if (!keys["1"] && !keys["2"] && !keys["3"] && !keys["4"] && !keys["7"] && !keys["8"] && !keys["9"] && !keys["0"] &&
+        !keys["v"] && !keys["/"] && !keys["b"] && !keys["m"] && !keys["q"] && !keys["e"] && !keys["x"] && !keys[" "]) {
       titleInputLock = false;
     }
     return;
@@ -1681,6 +1735,7 @@ function update() {
 
   game.time++;
   if (keys["v"]) cyclePlayerStrategy();
+  if (game.splitScreen && keys["/"]) cycleGoldStrategy();
   if (keys["b"] && !gameplayInputLock) {
     game.debugAI = !game.debugAI;
     gameplayInputLock = true;
@@ -1689,7 +1744,9 @@ function update() {
   }
 
   for (const u of units) {
-    const strat = u.team === "blue" ? game.playerStrategy : game.enemyStrategy;
+    const strat = u.team === "blue"
+      ? game.playerStrategy
+      : (game.splitScreen ? game.goldStrategy : game.enemyStrategy);
     u.update(strat);
   }
 
@@ -1703,16 +1760,16 @@ function update() {
 
 /* ---------------- DRAWING ---------------- */
 
-function drawStars() {
+function drawStars(camX = game.cameraX, camY = game.cameraY) {
   for (const s of stars) {
     ctx.fillStyle = s.s === 1 ? "#bcc7ff" : s.s === 2 ? "#ffffff" : "#ffe9a8";
-    const x = s.x - game.cameraX * 0.25;
-    const y = s.y - game.cameraY * 0.15;
+    const x = s.x - camX * 0.25;
+    const y = s.y - camY * 0.15;
     if (x > -5 && x < VIEW_W + 5) ctx.fillRect(x, y, s.s, s.s);
   }
 }
 
-function drawBackdrop() {
+function drawBackdrop(camX = game.cameraX) {
   const t = world.theme;
   const grad = ctx.createLinearGradient(0, 0, 0, VIEW_H);
   grad.addColorStop(0, t.skyTop);
@@ -1721,8 +1778,8 @@ function drawBackdrop() {
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, VIEW_W, VIEW_H);
 
-  const camSlow = game.cameraX * 0.18;
-  const camMed = game.cameraX * 0.30;
+  const camSlow = camX * 0.18;
+  const camMed = camX * 0.30;
 
   if (t.name === "SUNSET HIVE") {
     ctx.save();
@@ -1970,10 +2027,10 @@ function drawParticles() {
   ctx.globalAlpha = 1;
 }
 
-function drawWorld() {
-  drawBackdrop();
+function drawWorld(camX = game.cameraX, camY = game.cameraY) {
+  drawBackdrop(camX);
   ctx.save();
-  ctx.translate(-game.cameraX, -game.cameraY);
+  ctx.translate(-camX, -camY);
   drawCeilingSpikes();
   drawPlatforms();
   drawHives();
@@ -2018,8 +2075,9 @@ function drawHUD() {
   ctx.fillText("MAP: " + MAPS[game.currentMapIndex].name, 24, 34);
   ctx.fillStyle = game.strategyFlashTimer > 0 ? "#6dff89" : "#fff";
   ctx.fillText("BLUE: " + game.playerStrategy.toUpperCase(), 24, 58);
-  ctx.fillStyle = "#fff";
-  ctx.fillText("GOLD: " + game.enemyStrategy.toUpperCase(), 24, 82);
+  ctx.fillStyle = game.splitScreen && game.goldStrategyFlashTimer > 0 ? "#ffe37a" : "#fff";
+  const goldLabel = game.splitScreen ? game.goldStrategy : game.enemyStrategy;
+  ctx.fillText("GOLD: " + goldLabel.toUpperCase(), 24, 82);
 
   drawQueenLivesBox(500, 12, blueQueen, "BLUE QUEEN", "#61d5ff");
   drawQueenLivesBox(686, 12, goldQueen, "GOLD QUEEN", "#ffd45a");
@@ -2032,9 +2090,15 @@ function drawHUD() {
   ctx.font = "15px Courier New";
   ctx.fillText("DIFF: " + currentDifficulty().name, 888, 32);
   ctx.fillText("AI LVL: " + currentDifficulty().level + "/10", 888, 52);
-  ctx.fillText("A/D MOVE  W/SPACE FLAP", 888, 70);
-  ctx.fillText("S DIVE  V CYCLE STRAT", 888, 88);
-  ctx.fillText("B AI DEBUG", 888, 104);
+  if (game.splitScreen) {
+    ctx.fillText("P1 A/D/W/S + V STRAT", 888, 70);
+    ctx.fillText("P2 ARROWS + / STRAT", 888, 88);
+    ctx.fillText("SPLIT SCREEN: ON", 888, 104);
+  } else {
+    ctx.fillText("A/D MOVE  W TAP FLAP", 888, 70);
+    ctx.fillText("S DIVE  V CYCLE STRAT", 888, 88);
+    ctx.fillText("B AI DEBUG", 888, 104);
+  }
 }
 
 function drawAIDebug() {
@@ -2056,13 +2120,13 @@ function drawAIDebug() {
 
 function drawTitle() {
   applyMap(game.currentMapIndex);
-  drawBackdrop();
+  drawBackdrop(0);
 
   ctx.fillStyle = "rgba(0,0,0,0.55)";
-  ctx.fillRect(160, 85, 880, 500);
+  ctx.fillRect(160, 60, 880, 650);
   ctx.strokeStyle = "#ddd";
   ctx.lineWidth = 3;
-  ctx.strokeRect(160, 85, 880, 500);
+  ctx.strokeRect(160, 60, 880, 650);
 
   ctx.fillStyle = "#fff08d";
   ctx.font = "bold 44px Courier New";
@@ -2070,11 +2134,12 @@ function drawTitle() {
 
   ctx.fillStyle = "#fff";
   ctx.font = "20px Courier New";
-  ctx.fillText("1/2/3/4 = STRATEGY  (V = CYCLE)", 325, 205);
-  ctx.fillText("M = CHANGE MAP", 475, 235);
-  ctx.fillText("Q / E = CHANGE DIFFICULTY", 385, 265);
-  ctx.fillText("B = TOGGLE AI DEBUG", 420, 295);
-  ctx.fillText("SPACE = START", 485, 325);
+  ctx.fillText("P1 1/2/3/4 = STRATEGY  (V = CYCLE)", 245, 205);
+  ctx.fillText("P2 7/8/9/0 = STRATEGY  (/ = CYCLE)", 215, 235);
+  ctx.fillText("M = CHANGE MAP", 475, 265);
+  ctx.fillText("Q / E = CHANGE DIFFICULTY", 385, 295);
+  ctx.fillText("X = SPLIT SCREEN TOGGLE", 375, 325);
+  ctx.fillText("SPACE = START", 485, 355);
 
   const opts = [
     { n:"1", label:"ECONOMY", x: 180, on: game.playerStrategy === "economy" },
@@ -2085,30 +2150,48 @@ function drawTitle() {
 
   for (const o of opts) {
     ctx.fillStyle = "#111";
-    ctx.fillRect(o.x, 335, 170, 78);
+    ctx.fillRect(o.x, 360, 170, 78);
     ctx.strokeStyle = o.on ? "#61ff7c" : "#bbb";
-    ctx.strokeRect(o.x, 335, 170, 78);
+    ctx.strokeRect(o.x, 360, 170, 78);
     ctx.fillStyle = o.on ? "#61ff7c" : "#fff";
     ctx.font = "bold 28px Courier New";
-    ctx.fillText(o.n, o.x + 73, 365);
+    ctx.fillText(o.n, o.x + 73, 390);
     ctx.font = "18px Courier New";
-    ctx.fillText(o.label, o.x + 16, 397);
+    ctx.fillText(o.label, o.x + 16, 422);
+  }
+
+  const p2Opts = [
+    { n:"7", label:"ECONOMY", x: 180, on: game.goldStrategy === "economy" },
+    { n:"8", label:"SNAIL", x: 380, on: game.goldStrategy === "snail" },
+    { n:"9", label:"MILITARY", x: 580, on: game.goldStrategy === "military" },
+    { n:"0", label:"BALANCED", x: 780, on: game.goldStrategy === "balanced" }
+  ];
+  for (const o of p2Opts) {
+    ctx.fillStyle = "#111";
+    ctx.fillRect(o.x, 442, 170, 78);
+    ctx.strokeStyle = o.on ? "#ffe37a" : "#bbb";
+    ctx.strokeRect(o.x, 442, 170, 78);
+    ctx.fillStyle = o.on ? "#ffe37a" : "#fff";
+    ctx.font = "bold 28px Courier New";
+    ctx.fillText(o.n, o.x + 73, 472);
+    ctx.font = "18px Courier New";
+    ctx.fillText(o.label, o.x + 16, 504);
   }
 
   ctx.fillStyle = "#9fdfff";
   ctx.font = "22px Courier New";
-  ctx.fillText("MAP: " + MAPS[game.currentMapIndex].name, 415, 470);
-  ctx.fillText("DIFFICULTY: " + currentDifficulty().name + " (" + currentDifficulty().level + "/10)", 285, 505);
+  ctx.fillText("MAP: " + MAPS[game.currentMapIndex].name, 415, 550);
+  ctx.fillText("DIFFICULTY: " + currentDifficulty().name + " (" + currentDifficulty().level + "/10)", 285, 580);
+  ctx.fillText("SPLIT SCREEN: " + (game.splitScreen ? "ON" : "OFF"), 400, 610);
 
   ctx.fillStyle = "#fff";
-  ctx.font = "17px Courier New";
-  ctx.fillText("Enemy strategy is random each match.", 375, 548);
-  ctx.fillText("Higher difficulties gain discipline, trap awareness, retreat timing,", 225, 575);
-  ctx.fillText("better coordination, and stronger queen survival logic.", 255, 600);
+  ctx.font = "15px Courier New";
+  ctx.fillText("Single player: gold strategy random each match.", 335, 640);
+  ctx.fillText("Split screen: both queens are human-controlled (tap jump only, no hold).", 230, 662);
 
   ctx.fillStyle = "#9fdfff";
-  ctx.font = "24px Courier New";
-  ctx.fillText("PRESS SPACE TO START", 420, 645);
+  ctx.font = "21px Courier New";
+  ctx.fillText("PRESS SPACE TO START", 430, 695);
 }
 
 function drawGameOver() {
@@ -2133,14 +2216,39 @@ function drawGameOver() {
 
 function draw() {
   ctx.clearRect(0, 0, VIEW_W, VIEW_H);
-  drawStars();
 
   if (game.state === "title") {
+    drawStars(0, 0);
     drawTitle();
   } else {
-    drawWorld();
+    if (game.splitScreen && game.state === "playing") {
+      const halfW = VIEW_W / 2;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, halfW, VIEW_H);
+      ctx.clip();
+      drawStars(game.cameraBlueX, game.cameraBlueY);
+      drawWorld(game.cameraBlueX, game.cameraBlueY);
+      ctx.restore();
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(halfW, 0, halfW, VIEW_H);
+      ctx.clip();
+      ctx.translate(halfW, 0);
+      drawStars(game.cameraGoldX, game.cameraGoldY);
+      drawWorld(game.cameraGoldX, game.cameraGoldY);
+      ctx.restore();
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(halfW - 2, 0, 4, VIEW_H);
+    } else {
+      drawStars();
+      drawWorld();
+    }
     drawHUD();
-    drawAIDebug();
+    if (!game.splitScreen) drawAIDebug();
     if (game.state === "gameOver") drawGameOver();
   }
 }
@@ -2148,6 +2256,7 @@ function draw() {
 function loop() {
   update();
   draw();
+  game._prevKeys = { ...keys };
   requestAnimationFrame(loop);
 }
 loop();
