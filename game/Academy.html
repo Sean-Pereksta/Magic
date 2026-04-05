@@ -222,6 +222,7 @@ const structures = [];
 const cheeses = [];
 const particles = [];
 const projectiles = [];
+const floatingTexts = [];
 const enemies = [];
 const wildMice = [];
 const servantMice = [];
@@ -315,6 +316,8 @@ updateBuildUI();
 function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
 function rand(a,b){ return a + Math.random()*(b-a); }
 function dist2(a,b){ return Math.hypot(a.x-b.x, a.z-b.z); }
+function isWallStructure(s){ return !!s && (s.type === "wall" || s.type === "diamondWall"); }
+function structureBlocksMovement(s){ return isWallStructure(s); }
 function angleDiff(a,b){
   let d = b-a;
   while(d > Math.PI) d -= Math.PI*2;
@@ -484,6 +487,7 @@ function circleBlocked(x,z,r, ignoreStructure=null){
   }
   for(const s of structures){
     if(s.dead || s===ignoreStructure) continue;
+    if(!structureBlocksMovement(s)) continue;
     if(Math.hypot(x-s.pos.x, z-s.pos.z) < r + s.radius) return true;
   }
   return false;
@@ -501,6 +505,7 @@ function lineBlocked(a,b){
     }
     for(const s of structures){
       if(s.dead) continue;
+      if(!structureBlocksMovement(s)) continue;
       if(Math.hypot(x-s.pos.x, z-s.pos.z) < s.radius + 0.55) return true;
     }
   }
@@ -611,21 +616,88 @@ function createHealthBar(width=1.6, color=0xff5454){
   const g = new THREE.Group();
   const bg = new THREE.Mesh(
     new THREE.PlaneGeometry(width,0.16),
-    new THREE.MeshBasicMaterial({ color:0x111111, transparent:true, opacity:0.88 })
+    new THREE.MeshBasicMaterial({ color:0x111111, transparent:true, opacity:0.88, side:THREE.DoubleSide, depthTest:false, depthWrite:false })
   );
   const fg = new THREE.Mesh(
     new THREE.PlaneGeometry(width*0.98,0.11),
-    new THREE.MeshBasicMaterial({ color })
+    new THREE.MeshBasicMaterial({ color, side:THREE.DoubleSide, depthTest:false, depthWrite:false })
   );
   fg.position.z = 0.01;
   g.add(bg,fg);
-  g.userData = { fg, width };
+  g.renderOrder = 150;
+  g.userData = { fg, width, bg };
   return g;
 }
 function setHealthBar(bar, frac){
   frac = clamp(frac,0,1);
   bar.userData.fg.scale.x = frac;
   bar.userData.fg.position.x = -(bar.userData.width*0.98)*(1-frac)/2;
+}
+function popWorldText(text, x, y, z, color="#ffe66f"){
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+  if(!ctx) return;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.font = "bold 54px Arial";
+  ctx.textAlign = "center";
+  ctx.lineWidth = 11;
+  ctx.strokeStyle = "rgba(0,0,0,0.78)";
+  ctx.strokeText(text, canvas.width/2, 82);
+  ctx.fillStyle = color;
+  ctx.fillText(text, canvas.width/2, 82);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.needsUpdate = true;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, transparent:true, depthTest:false, depthWrite:false }));
+  sprite.position.set(x,y,z);
+  sprite.scale.set(1.7,0.85,1);
+  sprite.renderOrder = 220;
+  scene.add(sprite);
+  floatingTexts.push({ sprite, life:0.9, rise:1.4 });
+}
+function makeSymbolTexture(symbol, fill="#9bffb2"){
+  const canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+  if(!ctx) return null;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.font = "bold 92px Arial";
+  ctx.textAlign = "center";
+  ctx.lineWidth = 12;
+  ctx.strokeStyle = "rgba(0,0,0,0.75)";
+  ctx.strokeText(symbol, 64, 93);
+  ctx.fillStyle = fill;
+  ctx.fillText(symbol, 64, 93);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.needsUpdate = true;
+  return tex;
+}
+function updateFloatingTexts(dt){
+  for(let i=floatingTexts.length-1;i>=0;i--){
+    const ft = floatingTexts[i];
+    ft.life -= dt;
+    ft.sprite.position.y += ft.rise * dt;
+    ft.sprite.material.opacity = clamp(ft.life / 0.9, 0, 1);
+    ft.sprite.quaternion.copy(camera.quaternion);
+    if(ft.life <= 0){
+      ft.sprite.material.map?.dispose?.();
+      ft.sprite.material.dispose?.();
+      ft.sprite.parent?.remove(ft.sprite);
+      floatingTexts.splice(i,1);
+    }
+  }
+}
+function updateStructureHealthBarVisibility(){
+  for(const s of structures){
+    if(s.dead || !s.mesh?.userData?.healthBar) continue;
+    const bar = s.mesh.userData.healthBar;
+    const d = dist2(player.pos, s.pos);
+    bar.visible = d < 36;
+    if(bar.visible) bar.quaternion.copy(camera.quaternion);
+  }
 }
 
 // -------------------------------------------------
@@ -735,8 +807,18 @@ function animateMouseRig(group, speedFactor, t, attackAmount=0, dying=0){
 }
 function makeRatModel(){ const g = makeMouseModel(0x756f68, 0xd39eaa, 0xba7e8b); g.scale.set(1.1,1.1,1.15); return g; }
 function makeMoleModel(){
-  const g = makeMouseModel(0x4c3b33, 0xc7969f, 0x8e6c73);
-  g.scale.set(1.08,1.0,1.18);
+  const g = makeMouseModel(0x5a493f, 0xbe8d93, 0x8a6970);
+  g.scale.set(1.22,0.96,1.42);
+  const rig = g.userData;
+  if(rig?.neck){
+    const nose = new THREE.Mesh(
+      new THREE.SphereGeometry(0.2,10,8),
+      new THREE.MeshStandardMaterial({ color:0xc9a4aa })
+    );
+    nose.scale.set(1.35,0.55,0.72);
+    nose.position.set(0,0.72,1.48);
+    rig.neck.add(nose);
+  }
   const claws = new THREE.Mesh(
     new THREE.BoxGeometry(0.44,0.08,0.2),
     new THREE.MeshStandardMaterial({ color:0xd7d1c7 })
@@ -747,9 +829,9 @@ function makeMoleModel(){
 }
 function makeWeaselModel(){
   const g = new THREE.Group();
-  const bodyMat = new THREE.MeshStandardMaterial({ color:0x96643a, roughness:0.82 });
-  const bellyMat = new THREE.MeshStandardMaterial({ color:0xf0dcc0, roughness:0.78 });
-  const tailMat = new THREE.MeshStandardMaterial({ color:0x8d6035 });
+  const bodyMat = new THREE.MeshStandardMaterial({ color:0x6e5437, roughness:0.82 });
+  const bellyMat = new THREE.MeshStandardMaterial({ color:0xe6d7bb, roughness:0.78 });
+  const tailMat = new THREE.MeshStandardMaterial({ color:0x5e452e });
 
   const spine = new THREE.Group(); g.add(spine);
   const neck = new THREE.Group(); g.add(neck);
@@ -762,19 +844,23 @@ function makeWeaselModel(){
   tailMid.position.set(0,-0.08,-0.66);
   tailBase.add(tailMid);
 
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.46,1.95,6,12), bodyMat);
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.36,2.5,6,12), bodyMat);
   body.rotation.z = Math.PI/2;
-  body.position.set(0,0.84,0);
+  body.position.set(0,1.04,0);
   spine.add(body);
 
-  const belly = new THREE.Mesh(new THREE.CapsuleGeometry(0.24,1.42,4,10), bellyMat);
+  const belly = new THREE.Mesh(new THREE.CapsuleGeometry(0.17,1.96,4,10), bellyMat);
   belly.rotation.z = Math.PI/2;
-  belly.position.set(0,0.65,0.18);
+  belly.position.set(0,0.84,0.14);
   spine.add(belly);
 
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.35,12,10), bodyMat);
-  head.position.set(0,0.92,1.35);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.33,12,10), bodyMat);
+  head.position.set(0,1.12,1.62);
   neck.add(head);
+  const snout = new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.12,0.58,8), bodyMat);
+  snout.rotation.x = Math.PI/2;
+  snout.position.set(0,1.08,1.95);
+  neck.add(snout);
 
   const tail1 = new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.13,0.9,8), tailMat);
   tail1.position.set(0,-0.02,-0.35); tail1.rotation.x = Math.PI/2.4; tailBase.add(tail1);
@@ -783,7 +869,7 @@ function makeWeaselModel(){
 
   const legGeo = new THREE.CylinderGeometry(0.06,0.08,0.55,6);
   const legs = [];
-  [[-0.26,0.38,0.7],[0.26,0.38,0.7],[-0.25,0.38,-0.55],[0.25,0.38,-0.55]].forEach((p)=>{
+  [[-0.23,0.48,0.8],[0.23,0.48,0.8],[-0.22,0.48,-0.75],[0.22,0.48,-0.75]].forEach((p)=>{
     const pivot = new THREE.Group();
     pivot.position.set(...p);
     g.add(pivot);
@@ -1219,10 +1305,39 @@ function makeCheeseWallMesh(){
   }
   return g;
 }
+function attachWallCracks(group, tint=0x2a1908){
+  const crackMat = new THREE.MeshBasicMaterial({ color:tint, transparent:true, opacity:0, depthWrite:false, side:THREE.DoubleSide });
+  const planes = [
+    { x:-0.85, y:1.5, z:0.68, w:0.9, h:1.05, r:0.22 },
+    { x:0.62, y:1.15, z:0.68, w:1.1, h:1.2, r:-0.14 },
+    { x:0.08, y:0.86, z:-0.68, w:1.15, h:0.9, r:0.19 }
+  ];
+  const cracks = [];
+  planes.forEach(p=>{
+    const crack = new THREE.Mesh(new THREE.PlaneGeometry(p.w, p.h), crackMat.clone());
+    crack.position.set(p.x,p.y,p.z);
+    crack.rotation.y = p.z > 0 ? 0 : Math.PI;
+    crack.rotation.z = p.r;
+    group.add(crack);
+    cracks.push(crack);
+  });
+  group.userData.wallCracks = cracks;
+}
+function updateWallDamageVisual(structure){
+  if(!isWallStructure(structure) || !structure.mesh?.userData?.wallCracks) return;
+  const frac = clamp(structure.hp / Math.max(1, structure.maxHp), 0, 1);
+  const visibility = frac < 0.65 ? clamp((0.65 - frac) / 0.65, 0, 1) : 0;
+  structure.mesh.userData.wallCracks.forEach((crack, i)=>{
+    crack.material.opacity = visibility * (0.38 + i*0.18);
+  });
+}
 function createStructureMesh(type){
   const g = new THREE.Group();
 
-  if(type==="wall"){ g.add(makeCheeseWallMesh()); }
+  if(type==="wall"){
+    g.add(makeCheeseWallMesh());
+    attachWallCracks(g, 0x2e1b09);
+  }
 
   if(type==="diamondWall"){
     const main = new THREE.Mesh(
@@ -1236,6 +1351,7 @@ function createStructureMesh(type){
     );
     crystal.position.y = 3.35;
     g.add(main,crystal);
+    attachWallCracks(g, 0x1b4f64);
   }
 
   if(type==="factory"){
@@ -1254,7 +1370,14 @@ function createStructureMesh(type){
       new THREE.MeshStandardMaterial({ color:0xffef9e })
     );
     silo.position.set(-0.9,1.1,0);
-    g.add(base, chimney, silo);
+    const workIcon = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map:makeSymbolTexture("⚙", "#8eff9d"), transparent:true, opacity:0.96, depthTest:false, depthWrite:false })
+    );
+    workIcon.scale.set(0.72,0.72,1);
+    workIcon.position.set(0,3.25,0);
+    workIcon.visible = false;
+    g.add(base, chimney, silo, workIcon);
+    g.userData.workIcon = workIcon;
   }
 
   if(type==="fountain"){
@@ -1582,6 +1705,7 @@ function createStructure(type,x,z,rotationY=0, dataOverride=null){
     target:null
   };
   structures.push(s);
+  updateWallDamageVisual(s);
 
   const color = structureColor(type);
   addBurst(x, mesh.position.y+1.0, z, color, 26, 5.8, 0.8, 0.09);
@@ -1594,6 +1718,7 @@ function damageStructure(s,dmg){
   if(!s || s.dead) return;
   s.hp -= dmg;
   setHealthBar(s.mesh.userData.healthBar, Math.max(0, s.hp/s.maxHp));
+  updateWallDamageVisual(s);
   addBurst(s.pos.x, s.pos.y+1.1, s.pos.z, 0xffca77, 5, 3, 0.28, 0.07);
   if(s.hp <= 0){
     s.hp = 0;
@@ -1786,8 +1911,9 @@ function updateProjectiles(dt){
 // -------------------------------------------------
 function ensureRepairBeam(structure) {
   if (structure.beam) return structure.beam;
-  const mat = new THREE.MeshBasicMaterial({ color:0x8fe9ff, transparent:true, opacity:0.9 });
-  const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.07,1,8), mat);
+  const mat = new THREE.MeshBasicMaterial({ color:0x3da3ff, transparent:true, opacity:0.95, depthTest:false, depthWrite:false });
+  const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.11,0.11,1,10), mat);
+  cyl.renderOrder = 180;
   cyl.visible = false;
   scene.add(cyl);
   structure.beam = cyl;
@@ -1918,6 +2044,7 @@ function updateMouseEntity(m,dt){
           m.repairCd = 0.5;
           repairTarget.hp = Math.min(repairTarget.maxHp, repairTarget.hp + 3.2);
           setHealthBar(repairTarget.mesh.userData.healthBar, repairTarget.hp/repairTarget.maxHp);
+          updateWallDamageVisual(repairTarget);
           addBurst(repairTarget.pos.x, repairTarget.pos.y+1.0, repairTarget.pos.z, 0x95ffb6, 4, 2.3, 0.3, 0.05);
         }
       }
@@ -1933,7 +2060,6 @@ function updateMouseEntity(m,dt){
         m.assignedFactory = assignedFactory;
         assignedFactory.assignedServant = m;
         m.target = assignedFactory.pos;
-        if(dist2(m.pos,assignedFactory.pos) < 2.2) assignedFactory.produceCd -= dt*0.75;
       } else {
         if(m.assignedFactory && m.assignedFactory.assignedServant===m) m.assignedFactory.assignedServant = null;
         m.assignedFactory = null;
@@ -1963,6 +2089,7 @@ function updateMouseEntity(m,dt){
       const c = cheeses[i];
       if(dist2(m.pos,c.pos) < 1.15){
         cheese += c.amount;
+        popWorldText("+" + c.amount + "🧀", m.pos.x, m.pos.y + 1.45, m.pos.z, "#ffe66f");
         addBurst(c.pos.x,c.pos.y+0.3,c.pos.z,0xffec71,8,4,0.4,0.08);
         c.group.parent?.remove(c.group);
         cheeses.splice(i,1);
@@ -2029,6 +2156,11 @@ function chooseEnemyTarget(e){
     structurePressure.set(other.target, (structurePressure.get(other.target) || 0) + 1);
   }
 
+  if(e.kind==="rat"){
+    const bestWall = nearestAttackableStructure(e, 999, s => (s.type==="wall" || s.type==="diamondWall")) || null;
+    if(bestWall && dist2(e.pos, bestWall.pos) < 60) return bestWall;
+  }
+
   const nearPlayer = !player.dead && dist2(e.pos, player.pos) < 16;
   if(!player.dead && nearPlayer && !lineBlocked(e.pos, player.pos)) return player;
 
@@ -2043,14 +2175,13 @@ function chooseEnemyTarget(e){
     const bestWall = nearestAttackableStructure(e, 999, s => (s.type==="wall" || s.type==="diamondWall")) || null;
     if(bestWall) return bestWall;
   }
-
   if(!player.dead && !lineBlocked(e.pos, player.pos) && dist2(e.pos, player.pos) < 26){
     return player;
   }
   if(nearestServant && nearestServantD < 22) return nearestServant;
 
   const priorityByKind = {
-    rat: { factory: 1.9, supplyNest: 1.8, scoutPost: 1.55, fountain: 1.35, beacon: 1.2, robo: 1.3, wall: 0.65, diamondWall: 0.5 },
+    rat: { wall: 2.15, diamondWall: 1.95, factory: 1.25, supplyNest: 1.2, scoutPost: 1.05, fountain: 1.0, beacon: 0.95, robo: 1.0 },
     mole: { wall: 2.2, diamondWall: 2.0, fortPlate: 1.6, barrierTotem: 1.4, braceTower: 1.2, turret: 0.85, cannon: 0.8 },
     weasel: { turret: 2.1, cannon: 2.0, mortarBloom: 1.85, zapCoil: 1.7, sawBlaster: 1.75, robo: 1.35, beacon: 1.25, wall: 0.7, diamondWall: 0.6 }
   };
@@ -2504,9 +2635,11 @@ function updateRepairBeams(dt) {
     beam.position.copy(mid);
     beam.scale.set(1, len, 1);
     beam.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir.clone().normalize());
+    beam.material.opacity = 0.78 + Math.sin(time*16)*0.18;
 
     best.hp = Math.min(best.maxHp, best.hp + 6.5 * dt);
     setHealthBar(best.mesh.userData.healthBar, best.hp / best.maxHp);
+    updateWallDamageVisual(best);
 
     if (Math.random() < 0.18) {
       addCogParticle(best.pos.x + rand(-0.45,0.45), best.pos.y + rand(0.9,2.0), best.pos.z + rand(-0.45,0.45));
@@ -2544,12 +2677,23 @@ function updateStructures(dt){
     }
 
     if(s.type==="factory"){
-      const near = dist2(player.pos,s.pos) < 11;
       s.produceCd -= dt;
-      const rateMul = s.assignedServant ? 1.6 : 1;
-      if(near && s.produceCd <= 0){
-        s.produceCd = 4.0 / rateMul;
-        spawnCheeseAt(s.pos.x+rand(-1.4,1.4), s.pos.z+rand(-1.4,1.4), 3);
+      const worker = s.assignedServant;
+      const workerActive = !!worker && !worker.dead && !worker.dying;
+      const workerNear = workerActive && dist2(worker.pos, s.pos) < 2.55;
+      const workIcon = s.mesh.userData.workIcon;
+      if(workIcon){
+        workIcon.visible = workerNear;
+        if(workerNear){
+          workIcon.position.y = 3.3 + Math.sin(time*8)*0.18;
+          workIcon.material.opacity = 0.75 + Math.sin(time*10)*0.2;
+          workIcon.quaternion.copy(camera.quaternion);
+        }
+      }
+      if(workerNear && s.produceCd <= 0){
+        s.produceCd = 7.5;
+        cheese += 3;
+        popWorldText("+3🧀", worker.pos.x, worker.pos.y + 1.55, worker.pos.z, "#ffe66f");
         addBurst(s.pos.x,s.pos.y+1.4,s.pos.z,0xffe066,8,3,0.45,0.07);
       }
     }
@@ -2576,6 +2720,7 @@ function updateStructures(dt){
         if (dist2(s.pos, t.pos) < 8 && t.hp < t.maxHp) {
           t.hp = Math.min(t.maxHp, t.hp + 2 * dt);
           setHealthBar(t.mesh.userData.healthBar, t.hp / t.maxHp);
+          updateWallDamageVisual(t);
         }
       }
     }
@@ -2590,6 +2735,7 @@ function updateStructures(dt){
         if (dist2(s.pos, t.pos) < 7) {
           t.hp = Math.min(t.maxHp, t.hp + 0.45 * dt);
           setHealthBar(t.mesh.userData.healthBar, t.hp / t.maxHp);
+          updateWallDamageVisual(t);
         }
       }
     }
@@ -2980,6 +3126,8 @@ function animate(){
   updateCat(dt);
   updateProjectiles(dt);
   updateParticles(dt);
+  updateFloatingTexts(dt);
+  updateStructureHealthBarVisibility();
   updateCamera(dt);
   updateUI();
 
