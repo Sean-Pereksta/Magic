@@ -1,4 +1,4 @@
-<!doctype html>
+<!doctype html><!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -847,7 +847,7 @@
   .hiddenForTeam{ display:none !important; }
   .hiddenForIndividual{ display:none !important; }
   .teamReportTableWrap{ overflow:auto; border:1px solid var(--line); border-radius:14px; }
-  .teamReportTable{ width:max(1200px,100%); border-collapse:separate; border-spacing:0; }
+  .teamReportTable{ width:max(1700px,100%); border-collapse:separate; border-spacing:0; }
   .teamReportTable th,.teamReportTable td{ border-bottom:1px solid var(--line); padding:8px 10px; text-align:left; font-size:12px; vertical-align:top; }
   .teamReportTable th{ background:var(--soft); position:sticky; top:0; z-index:1; font-weight:1000; }
   .teamRowHead{ cursor:pointer; }
@@ -858,13 +858,6 @@
   .metricMuted{ background:#f1f5f9; color:#64748b; font-weight:900; border-radius:10px; padding:4px 8px; display:inline-block; }
   .miniTbl{ width:100%; border-collapse:collapse; margin-top:8px; }
   .miniTbl th,.miniTbl td{ border:1px solid var(--line); padding:6px 8px; font-size:12px; text-align:left; }
-  .coachSearchGroup{ border:1px solid var(--line); border-radius:12px; margin-top:8px; }
-  .coachSearchHead{
-    padding:8px 10px; background:var(--soft); border-bottom:1px solid var(--line);
-    font-size:12px; font-weight:1000; cursor:pointer;
-  }
-  .coachSearchRows{ padding:8px 10px; display:grid; gap:8px; }
-  mark.hl{ background:rgba(250,204,21,.45); color:inherit; padding:0 1px; border-radius:2px; }
 </style>
 </head>
 
@@ -1018,7 +1011,7 @@
     </div>
     <label id="teamHighRedToggleWrap" class="hiddenForIndividual">
       <input id="teamShowHighRedNoCorrective" type="checkbox" />
-      Show “No Corrective Concern” Flag
+      Show “High Coaching / High Red / No Corrective” column
     </label>
   </div>
 
@@ -1041,7 +1034,7 @@
 
   <!-- Top cards -->
   <div class="wrap" style="padding:12px 0 0 0;">
-    <div class="card" id="coachReportCardWrap">
+    <div class="card">
       <div class="row" style="gap:12px; align-items:stretch; flex-wrap:wrap">
         <div class="grade" style="flex:1; min-width:260px">
           <div class="left">
@@ -1087,17 +1080,6 @@
           </div>
         </div>
       </div>
-    </div>
-    <div class="card hiddenForIndividual" id="teamCoachingSearchCard">
-      <div style="font-weight:1000">Documented Coaching Phrase Search</div>
-      <div class="row" style="margin-top:8px">
-        <input id="teamCoachingSearchInput" placeholder="Search coaching phrase…" style="min-width:320px;flex:1" />
-        <button class="btn" id="teamCoachingSearchBtn" type="button">Search</button>
-        <button class="btn" id="teamCoachingShowAllBtn" type="button">Show All</button>
-        <button class="btn" id="teamCoachingClearBtn" type="button">Clear</button>
-      </div>
-      <div class="mono" id="teamCoachingSearchHint" style="margin-top:8px;color:var(--muted);font-weight:900">Search documented coaching text in current Team Report scope.</div>
-      <div id="teamCoachingSearchResults" style="margin-top:8px"></div>
     </div>
 
     <!-- Team Summary -->
@@ -1168,8 +1150,9 @@
       <table class="teamReportTable">
         <thead>
           <tr>
-            <th>Team</th><th>Grade</th><th>Score</th><th>Adjusted Grade</th><th>Adjusted Score</th><th>Drop</th>
-            <th>False Comfort</th><th>Corrective Log</th><th>Coaching Conversion</th>
+            <th>Team</th><th>KPI</th><th>Grade</th><th>Score</th><th>Adjusted Grade</th><th>Adjusted Score</th><th>Drop</th>
+            <th>False Comfort</th><th>Corrective Lag</th><th>Coaching Conversion</th><th>Reps</th><th>Below Goal</th><th>High 1:1 Need</th>
+            <th>Missing Coaching</th><th>Correctives</th><th>Coachings</th><th>Weak Dependency</th><th>Expand</th>
           </tr>
         </thead>
         <tbody id="teamReportBody"></tbody>
@@ -1927,14 +1910,6 @@ const els = {
   coachScore: document.getElementById('coachScore'),
   coachGrade: document.getElementById('coachGrade'),
   coachSub: document.getElementById('coachSub'),
-  coachReportCardWrap: document.getElementById('coachReportCardWrap'),
-  teamCoachingSearchCard: document.getElementById('teamCoachingSearchCard'),
-  teamCoachingSearchInput: document.getElementById('teamCoachingSearchInput'),
-  teamCoachingSearchBtn: document.getElementById('teamCoachingSearchBtn'),
-  teamCoachingShowAllBtn: document.getElementById('teamCoachingShowAllBtn'),
-  teamCoachingClearBtn: document.getElementById('teamCoachingClearBtn'),
-  teamCoachingSearchHint: document.getElementById('teamCoachingSearchHint'),
-  teamCoachingSearchResults: document.getElementById('teamCoachingSearchResults'),
 
   statBelowPct: document.getElementById('statBelowPct'),
   statBelowNote: document.getElementById('statBelowNote'),
@@ -2056,9 +2031,6 @@ let coachingByRepWeek = new Map();    // repKey -> Map(weekKey -> coaching[])
 let teamIndex = new Map();            // repName -> Map(weekKey -> rows[])
 let teamReportExpanded = new Set();
 let teamReportShowHighRedNoCorrective = false;
-let teamReportShowNoCorrectiveFlag = false;
-let coachingSearchTerm = '';
-let coachingSearchShowAll = false;
 
 /* Checklist state */
 let checklistRows = [];
@@ -2345,15 +2317,6 @@ function loadPrefs(){
         teamReportShowHighRedNoCorrective = p.teamReportShowHighRedNoCorrective;
         if(els.teamShowHighRedNoCorrective) els.teamShowHighRedNoCorrective.checked = teamReportShowHighRedNoCorrective;
       }
-      if(typeof p.teamReportShowNoCorrectiveFlag === 'boolean'){
-        teamReportShowNoCorrectiveFlag = p.teamReportShowNoCorrectiveFlag;
-      }
-      if(typeof p.coachingSearchTerm === 'string') coachingSearchTerm = p.coachingSearchTerm;
-      if(typeof p.coachingSearchShowAll === 'boolean') coachingSearchShowAll = p.coachingSearchShowAll;
-      if(!teamReportShowNoCorrectiveFlag){
-        teamReportShowNoCorrectiveFlag = !!teamReportShowHighRedNoCorrective;
-      }
-      if(els.teamShowHighRedNoCorrective) els.teamShowHighRedNoCorrective.checked = !!teamReportShowNoCorrectiveFlag;
       if(Array.isArray(p.criteria) && p.criteria.length){
         checklistCriteria = p.criteria.map((c, idx)=>({
           id: String(c.id || `c${Date.now()}_${idx}`),
@@ -2395,9 +2358,6 @@ function savePrefs(){
       gapSort,
       reportView,
       teamReportShowHighRedNoCorrective: !!teamReportShowHighRedNoCorrective,
-      teamReportShowNoCorrectiveFlag: !!teamReportShowNoCorrectiveFlag,
-      coachingSearchTerm: coachingSearchTerm || '',
-      coachingSearchShowAll: !!coachingSearchShowAll,
       slaAgingEnabled: !!slaAgingEnabled,
       selectedCriteriaId: selectedCriteriaId || '',
       criteria: checklistCriteria.map(c=>({
@@ -4481,11 +4441,6 @@ function setReportView(next){
 function getTeamsForCurrentMode(){
   return Array.from(new Set((allRows || []).map(r=>String(r.Sheet || '').trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
 }
-function computeAdjustedTeamScoreWithoutIndirectCoaching(repSummaries, originalScore){
-  const lossPct = mean((repSummaries || []).map(r=>r.advisory?.coachingLossPct || 0) || [0]);
-  const adjustedScore = Math.max(0, Math.min(100, Number(originalScore || 0) * (1 - (Number.isFinite(lossPct) ? lossPct : 0))));
-  return adjustedScore;
-}
 function buildTeamIndexForTeam(teamName){
   const idx = new Map();
   const teamRows = allRows.filter(r => String(r.Sheet||'').trim() === teamName);
@@ -4519,47 +4474,44 @@ function getTeamRepSummary(teamName, weeks, goalFrac, oppGateKey, oppMinN){
 function computeFalseComfortMetric(repSummaries){
   const reps = repSummaries || [];
   const totalCoachings = reps.reduce((s,r)=>s + Number(r.advisory?.advisoryAllCoachings || 0), 0);
-  const indirectCoachings = reps.reduce((s,r)=>s + Number(r.advisory?.advisoryWeakCoachings || 0), 0);
+  const weakCoachings = reps.reduce((s,r)=>s + Number(r.advisory?.advisoryWeakCoachings || 0), 0);
   const directCoachings = reps.reduce((s,r)=>s + Number(r.advisory?.advisoryMeaningfulCoachings || 0), 0);
   const belowGoalReps = reps.filter(r=>r.advisory?.belowGoal).length;
   const belowNoRecentDirect = reps.filter(r=>r.advisory?.belowGoal && r.advisory?.noRecentOneToOne).length;
-  const indirectPct = totalCoachings ? indirectCoachings / totalCoachings : 0;
+  const weakPct = totalCoachings ? weakCoachings / totalCoachings : 0;
   const directPct = totalCoachings ? directCoachings / totalCoachings : 0;
   const belowNoDirectPct = belowGoalReps ? belowNoRecentDirect / belowGoalReps : 0;
-  const score = clamp01((indirectPct * 0.45) + ((1-directPct) * 0.25) + (belowNoDirectPct * 0.30));
+  const score = clamp01((weakPct * 0.45) + ((1-directPct) * 0.25) + (belowNoDirectPct * 0.30));
   const level = score >= 0.65 ? 'bad' : score >= 0.42 ? 'warn' : 'good';
   const label = level === 'bad' ? 'False Comfort Risk' : level === 'warn' ? 'Watch' : 'Healthy';
-  return { score, level, label, totalCoachings, indirectPct, directPct, belowNoDirectPct };
+  return { score, level, label, totalCoachings, weakPct, directPct, belowNoDirectPct };
 }
-function computeCorrectiveConcernMetric(repSummaries, goalFrac){
-  let concernCount = 0;
-  let repeatedNoCorrective = 0;
-  let highCoachNoCorrective = 0;
-  const details = [];
+function computeCorrectiveLag(repSummaries){
+  const lagDays = [];
+  let repeated = 0, noCorrective = 0, late = 0;
   for(const r of (repSummaries||[])){
-    const avgKpi = Number.isFinite(r.avgKpi) ? r.avgKpi : NaN;
-    const redWeeks = Number(r.belowN || 0);
-    const coachings = Number(r.coachTotal || 0);
-    const correctives = Number(r.correctiveTotal || 0);
-    const repeatedRed = redWeeks >= 2;
-    const lowAvg = Number.isFinite(avgKpi) ? avgKpi < (Number.isFinite(goalFrac) ? goalFrac : 0.5) : false;
-    const manyCoachings = coachings >= 3;
-    const noneCorrective = correctives === 0;
-    const signalCount = [repeatedRed, lowAvg, manyCoachings, noneCorrective].filter(Boolean).length;
-    const concern = signalCount >= 3 && noneCorrective;
-    if(concern) concernCount++;
-    if(repeatedRed && noneCorrective) repeatedNoCorrective++;
-    if(manyCoachings && noneCorrective) highCoachNoCorrective++;
-    const status = concern ? (signalCount >= 4 ? 'Major Corrective Concern' : 'Needs Review') : 'No Corrective Concern';
-    details.push({ repName:r.repName, avgKpi, redWeeks, coachings, correctives, status, concern });
+    const redCells = (r.cells||[]).filter(c=>c.hasData && c.isBelow);
+    if(redCells.length < 2) continue;
+    repeated++;
+    const firstRepeated = redCells[1];
+    const repeatedDate = parseDate(firstRepeated.wk);
+    const corrective = (r.cells||[]).find(c=>parseDate(c.wk) >= repeatedDate && Number(c.incCount||0) > 0);
+    if(!corrective){
+      noCorrective++;
+      continue;
+    }
+    const lag = Math.max(0, Math.round((parseDate(corrective.wk) - repeatedDate) / MS_PER_DAY));
+    lagDays.push(lag);
+    if(lag > 21) late++;
   }
-  const pct = repSummaries?.length ? concernCount / repSummaries.length : 0;
-  const level = pct >= 0.35 || concernCount >= 3 ? 'bad' : pct >= 0.15 || concernCount >= 1 ? 'warn' : 'good';
-  const label = level === 'bad' ? 'Major Corrective Gap' : level === 'warn' ? 'Some Missing Correctives' : 'Clear';
-  return { level, label, concernCount, repeatedNoCorrective, highCoachNoCorrective, details };
+  const avgLag = lagDays.length ? (lagDays.reduce((a,b)=>a+b,0) / lagDays.length) : 0;
+  const missingPct = repeated ? (noCorrective / repeated) : 0;
+  const level = (missingPct >= 0.4 || avgLag > 21) ? 'bad' : (missingPct >= 0.2 || avgLag > 10) ? 'warn' : 'good';
+  const label = level === 'bad' ? 'Late / Missing' : level === 'warn' ? 'Some Lag' : 'On Time';
+  return { avgLag, repeated, noCorrective, late, missingPct, level, label };
 }
 function computeCoachingConversion(repSummaries){
-  let directN=0,directImp=0,indirectN=0,indirectImp=0;
+  let directN=0,directImp=0,weakN=0,weakImp=0;
   for(const r of (repSummaries||[])){
     if(!Array.isArray(r.cells) || r.cells.length < 3) continue;
     for(let i=0;i<r.cells.length;i++){
@@ -4569,19 +4521,19 @@ function computeCoachingConversion(repSummaries){
       if(!next.length) continue;
       const improved = mean(next.map(n=>n.v)) > c.v ? 1 : 0;
       if(Number(c.meaningfulCoachCount||0) > 0){ directN++; directImp += improved; }
-      if(Number(c.weakCoachCount||0) > 0){ indirectN++; indirectImp += improved; }
+      if(Number(c.weakCoachCount||0) > 0){ weakN++; weakImp += improved; }
     }
   }
   const directPct = directN ? directImp/directN : 0;
-  const indirectPct = indirectN ? indirectImp/indirectN : 0;
-  const gap = directPct - indirectPct;
-  const lowSample = directN < 5 || indirectN < 5;
+  const weakPct = weakN ? weakImp/weakN : 0;
+  const gap = directPct - weakPct;
+  const lowSample = directN < 5 || weakN < 5;
   let label = 'Mixed Impact', level = 'warn';
   if(lowSample){ label='Low Sample'; level='muted'; }
   else if(gap >= 0.12){ label='Strong Direct Impact'; level='good'; }
-  else if(gap <= -0.06){ label='Indirect Outperforming Direct'; level='bad'; }
-  else if(gap < 0.04){ label='Low Impact'; level='warn'; }
-  return { directPct, indirectPct, gap, directN, indirectN, lowSample, label, level };
+  else if(gap <= -0.06){ label='Weak Coaching Outperforming Direct'; level='bad'; }
+  else if(gap < 0.04){ label='Weak Conversion'; level='warn'; }
+  return { directPct, weakPct, gap, directN, weakN, lowSample, label, level };
 }
 function computeTeamReportRow(teamName, weeks, goalFrac, oppGateKey, oppMinN){
   const repSummaries = getTeamRepSummary(teamName, weeks, goalFrac, oppGateKey, oppMinN);
@@ -4589,15 +4541,21 @@ function computeTeamReportRow(teamName, weeks, goalFrac, oppGateKey, oppMinN){
   const coach = computeCoachCard(withData);
   const originalScore = Number.isFinite(coach.score) ? coach.score : 0;
   const grade = gradeFromScore(originalScore);
-  const adjustedScore = computeAdjustedTeamScoreWithoutIndirectCoaching(withData, originalScore);
+  const adjustedScore = Math.max(0, Math.min(100, originalScore * (1 - mean(withData.map(r=>r.advisory?.coachingLossPct || 0) || [0]))));
   const adjustedGrade = gradeFromScore(adjustedScore);
   const dropPct = originalScore > 0 ? ((originalScore - adjustedScore) / Math.max(originalScore, 0.0001)) * 100 : 0;
-  const dropLabel = dropPct >= 35 ? 'Major Drop' : dropPct >= 20 ? 'Moderate Drop' : 'Stable';
+  const dropLabel = dropPct >= 35 ? 'Major drop' : dropPct >= 20 ? 'Moderate drop' : 'Stable';
   const dropLevel = dropPct >= 35 ? 'bad' : dropPct >= 20 ? 'warn' : 'good';
   const falseComfort = computeFalseComfortMetric(withData);
-  const correctiveLog = computeCorrectiveConcernMetric(withData, goalFrac);
+  const correctiveLag = computeCorrectiveLag(withData);
   const conversion = computeCoachingConversion(withData);
-  return { teamName, repSummaries: withData, grade, originalScore, adjustedScore, adjustedGrade, dropPct, dropLabel, dropLevel, falseComfort, correctiveLog, conversion, teamSize: withData.length };
+  const repsBelowGoal = withData.filter(r=>Number.isFinite(r.avgKpi) && r.avgKpi < goalFrac).length;
+  const highNeed = withData.filter(r=>['High','Medium'].includes(r.advisory?.oneToOneNeed)).length;
+  const missingCoaching = withData.filter(r=>r.belowUncoachedWeeks>0 || r.advisory?.noRecentOneToOne).length;
+  const coachings = withData.reduce((s,r)=>s+Number(r.coachTotal||0),0);
+  const correctives = withData.reduce((s,r)=>s+Number(r.correctiveTotal||0),0);
+  const weakDep = coachings ? withData.reduce((s,r)=>s+Number(r.advisory?.advisoryWeakCoachings||0),0)/coachings : 0;
+  return { teamName, repSummaries: withData, grade, originalScore, adjustedScore, adjustedGrade, dropPct, dropLabel, dropLevel, falseComfort, correctiveLag, conversion, teamSize: withData.length, repsBelowGoal, highNeed, missingCoaching, coachings, correctives, weakDep };
 }
 function metricClass(level){
   if(level === 'bad') return 'metricBad';
@@ -4605,77 +4563,14 @@ function metricClass(level){
   if(level === 'good') return 'metricGood';
   return 'metricMuted';
 }
-function findLatestTeamForRep(repName){
-  const key = personKey(repName);
-  const rows = (allRows || []).filter(r=>personKey(r.Name)===key).sort((a,b)=>parseDate(b._d || b.WeekEnding) - parseDate(a._d || a.WeekEnding));
-  return rows.length ? String(rows[0].Sheet || '').trim() : '';
-}
-function highlightPhrase(text, phrase){
-  const src = String(text || '');
-  const term = String(phrase || '').trim();
-  if(!term) return escAttr(src);
-  const safe = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(`(${safe})`, 'ig');
-  return escAttr(src).replace(re, '<mark class="hl">$1</mark>');
-}
-function searchDocumentedCoachingsByPhrase(weeks, teamsForMode){
-  const term = String(coachingSearchTerm || '').trim().toLowerCase();
-  const teamSet = new Set((teamsForMode || []).map(t=>String(t || '').trim()).filter(Boolean));
-  const weekSet = new Set(weeks || []);
-  const scoped = (coachings || []).filter(c=>{
-    const wk = String(c.wk || '');
-    if(!weekSet.has(wk)) return false;
-    if(!coachingPassesFilters(c)) return false;
-    const repTeam = findLatestTeamForRep(c.rep);
-    return teamSet.has(repTeam);
-  });
-  const byCoach = new Map();
-  for(const c of scoped){
-    const coachName = String(c.coach || '(Unassigned Coach)').trim() || '(Unassigned Coach)';
-    const key = `${coachName}||${findLatestTeamForRep(c.rep) || '—'}`;
-    const desc = String(c.desc || '');
-    const hay = desc.toLowerCase();
-    if(term && !hay.includes(term)) continue;
-    const matchCount = term ? ((hay.match(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length) : 1;
-    const row = byCoach.get(key) || { coach:coachName, team:findLatestTeamForRep(c.rep) || '—', matchCount:0, rowCount:0, rows:[] };
-    row.matchCount += Math.max(1, matchCount);
-    row.rowCount += 1;
-    row.rows.push(c);
-    byCoach.set(key, row);
-  }
-  return Array.from(byCoach.values()).sort((a,b)=>(b.matchCount-a.matchCount) || a.coach.localeCompare(b.coach));
-}
-function renderTeamCoachingSearch(weeks, teamsForMode){
-  if(!els.teamCoachingSearchResults) return;
-  const term = String(coachingSearchTerm || '').trim();
-  const groups = searchDocumentedCoachingsByPhrase(weeks, teamsForMode);
-  const totalRows = groups.reduce((s,g)=>s+g.rowCount,0);
-  const totalMatches = groups.reduce((s,g)=>s+g.matchCount,0);
-  els.teamCoachingSearchHint.textContent = term
-    ? `${groups.length} coach group(s) • ${totalRows} documented coachings • ${totalMatches} phrase matches`
-    : `${groups.length} coach group(s) in scope`;
-  if(!groups.length){
-    els.teamCoachingSearchResults.innerHTML = `<div class="mono" style="color:var(--muted);font-weight:900">No documented coaching matches found for current filters.</div>`;
-    return;
-  }
-  const showAll = !!coachingSearchShowAll;
-  els.teamCoachingSearchResults.innerHTML = groups.map((g, idx)=>{
-    const open = showAll || idx < 2;
-    return `<div class="coachSearchGroup">
-      <div class="coachSearchHead">${escAttr(g.coach)} • ${escAttr(g.team)} — Match count: <strong>${g.matchCount}</strong> • Rows: <strong>${g.rowCount}</strong></div>
-      ${open ? `<div class="coachSearchRows">${g.rows.map(r=>`<div><div class="mono" style="color:var(--muted);font-weight:900">${escAttr(r.rep || '—')} • ${escAttr(mmddyy(r.date))}</div><div>${highlightPhrase(r.desc || '—', term)}</div></div>`).join('')}</div>` : ''}
-    </div>`;
-  }).join('');
-}
 function renderTeamReportView(ctx){
   const { weeks, goalFrac, oppGateKey, oppMinN, minCovFrac, sd, ed } = ctx;
   const teamsForMode = getTeamsForCurrentMode();
   const rows = teamsForMode.map(t=>computeTeamReportRow(t, weeks, goalFrac, oppGateKey, oppMinN)).map(r=>({ ...r, repSummaries:r.repSummaries.filter(s=>(weeks.length ? s.withDataN/weeks.length : 1) >= minCovFrac) }));
   els.teamReportHint.textContent = `${teamsForMode.length} teams • ${mmddyy(sd)} → ${mmddyy(ed)} • ${weeks.length}w`;
-  els.teamReportPills.innerHTML = `<span class="pill">Drop color: green &lt;20%, yellow 20–34.9%, red 35%+</span><span class="pill">Indirect = scorecard + team meeting</span>`;
-  renderTeamCoachingSearch(weeks, teamsForMode);
+  els.teamReportPills.innerHTML = `<span class="pill">Drop color: green &lt;20%, yellow 20–34.9%, red 35%+</span><span class="pill">Filters match current KPI / date / coaching / checklist settings</span>`;
   if(!rows.length){
-    els.teamReportBody.innerHTML = `<tr><td colspan="9" class="mono" style="color:var(--muted);font-weight:900">No team rows for current mode.</td></tr>`;
+    els.teamReportBody.innerHTML = `<tr><td colspan="18" class="mono" style="color:var(--muted);font-weight:900">No team rows for current mode.</td></tr>`;
     return;
   }
   rows.sort((a,b)=>b.originalScore-a.originalScore);
@@ -4683,21 +4578,17 @@ function renderTeamReportView(ctx){
     const expanded = teamReportExpanded.has(r.teamName);
     const highCoachThreshold = quantile(r.repSummaries.map(s=>s.coachTotal||0), 0.75);
     const expandedRows = r.repSummaries.filter(s=>
-      s.belowUncoachedWeeks>0 || ['High','Medium'].includes(s.advisory?.oneToOneNeed) || (s.advisory?.checklistHitsWithoutNearbyMeaningfulCoaching||0)>0 || Number(s.belowN||0)>=2
+      s.belowUncoachedWeeks>0 || ['High','Medium'].includes(s.advisory?.oneToOneNeed) || (s.advisory?.checklistHitsWithoutNearbyMeaningfulCoaching||0)>0
     ).sort((a,b)=>(ONE_TO_ONE_NEED_RANK[b.advisory?.oneToOneNeed]||0)-(ONE_TO_ONE_NEED_RANK[a.advisory?.oneToOneNeed]||0));
     const expandedHtml = expanded ? `
-      <tr class="teamExpandRow"><td colspan="9">
-        <table class="miniTbl"><thead><tr><th>Rep</th><th>Avg KPI %</th><th>Trend</th><th>1:1 Need</th><th>Next Step</th><th>Concern</th><th>Coachings</th><th>Correctives</th>${teamReportShowNoCorrectiveFlag?'<th>No Corrective Concern</th>':''}</tr></thead>
+      <tr class="teamExpandRow"><td colspan="18">
+        <table class="miniTbl"><thead><tr><th>Rep</th><th>Avg KPI</th><th>Trend</th><th>1:1 Need</th><th>Next Step</th><th>Concern</th><th>Coachings</th><th>Correctives</th><th>Weak Dependent</th><th>Recent Direct 1:1</th>${teamReportShowHighRedNoCorrective?'<th>High Coaching / High Red / No Corrective</th>':''}</tr></thead>
         <tbody>${expandedRows.map(s=>{
           const highRedNoCorrective = (s.coachTotal||0) >= (Number.isFinite(highCoachThreshold)?highCoachThreshold:3) && (s.belowN||0) >= 2 && (s.correctiveTotal||0) === 0;
-          const direct = Number(s.advisory?.advisoryMeaningfulCoachings || 0);
-          const indirect = Number(s.advisory?.advisoryWeakCoachings || 0);
-          const statusLabel = highRedNoCorrective ? (((s.belowN||0) >= 3 || (s.coachTotal||0) >= ((Number.isFinite(highCoachThreshold)?highCoachThreshold:3)+1)) ? 'Major Corrective Concern' : 'Needs Review') : 'No Corrective Concern';
-          const concern = highRedNoCorrective ? ((s.belowN||0) >= 3 ? 'Concern' : 'Review') : '—';
-          return `<tr><td><button class="repNameBtn" data-rep="${escAttr(s.repName)}">${escAttr(s.repName)}</button></td><td>${fmtPct1(s.avgKpi)}</td><td class="${trendClass(s.trendTotal)}">${escAttr(fmtPp(s.trendTotal))}</td><td>${escAttr(s.advisory?.oneToOneNeed || 'None')}</td><td>${escAttr(s.advisory?.nextStep || 'Monitor trend')}</td><td>${escAttr(statusLabel)}</td><td>Direct: ${direct}, Indirect: ${indirect}</td><td>${s.correctiveTotal||0}</td>${teamReportShowNoCorrectiveFlag?`<td>${concern}</td>`:''}</tr>`;
-        }).join('') || `<tr><td colspan="${teamReportShowNoCorrectiveFlag?9:8}" class="mono" style="color:var(--muted);font-weight:900">No reps currently meet expansion criteria.</td></tr>`}</tbody></table>
+          return `<tr><td><button class="repNameBtn" data-rep="${escAttr(s.repName)}">${escAttr(s.repName)}</button></td><td>${fmtPct1(s.avgKpi)}</td><td class="${trendClass(s.trendTotal)}">${escAttr(fmtPp(s.trendTotal))}</td><td>${escAttr(s.advisory?.oneToOneNeed || 'None')}</td><td>${escAttr(s.advisory?.nextStep || 'Monitor trend')}</td><td>${escAttr(s.advisory?.concernText || 'No concern')}</td><td>${s.coachTotal||0}</td><td>${s.correctiveTotal||0}</td><td>${fmtPct0(s.advisory?.advisoryWeakCoachings && s.advisory?.advisoryAllCoachings ? s.advisory.advisoryWeakCoachings / Math.max(1,s.advisory.advisoryAllCoachings) : 0)}</td><td>${s.advisory?.noRecentOneToOne ? 'No' : 'Yes'}</td>${teamReportShowHighRedNoCorrective?`<td>${highRedNoCorrective ? '<span class="metricWarn">Flag</span>' : '—'}</td>`:''}</tr>`;
+        }).join('') || `<tr><td colspan="${teamReportShowHighRedNoCorrective?11:10}" class="mono" style="color:var(--muted);font-weight:900">No reps currently meet expansion criteria.</td></tr>`}</tbody></table>
       </td></tr>` : '';
-    return `<tr class="teamRowHead" data-team-row="${escAttr(r.teamName)}"><td>${escAttr(r.teamName)} ${expanded?'▾':'▸'}</td><td>${r.grade}</td><td>${r.originalScore.toFixed(1)}</td><td>${r.adjustedGrade}</td><td>${r.adjustedScore.toFixed(1)}</td><td><span class="${metricClass(r.dropLevel)}">${r.dropPct.toFixed(1)}% • ${escAttr(r.dropLabel)}</span></td><td><span class="${metricClass(r.falseComfort.level)}">${escAttr(r.falseComfort.label)}</span><div class="mono">Indirect ${fmtPct0(r.falseComfort.indirectPct)} • Direct ${fmtPct0(r.falseComfort.directPct)}</div></td><td><span class="${metricClass(r.correctiveLog.level)}">${escAttr(r.correctiveLog.label)}</span><div class="mono">Concern reps ${r.correctiveLog.concernCount} • Red/no corrective ${r.correctiveLog.repeatedNoCorrective} • Coached/no corrective ${r.correctiveLog.highCoachNoCorrective}</div></td><td><span class="${metricClass(r.conversion.level)}">${escAttr(r.conversion.label)}</span><div class="mono">Avg trend up after conversations — Direct ${fmtPct0(r.conversion.directPct)} (${r.conversion.directN}) • Indirect ${fmtPct0(r.conversion.indirectPct)} (${r.conversion.indirectN})</div></td></tr>${expandedHtml}`;
+    return `<tr class="teamRowHead" data-team-row="${escAttr(r.teamName)}"><td>${escAttr(r.teamName)}</td><td>${escAttr((getKpiDef()?.label)||'KPI')}</td><td>${r.grade}</td><td>${r.originalScore.toFixed(1)}</td><td>${r.adjustedGrade}</td><td>${r.adjustedScore.toFixed(1)}</td><td><span class="${metricClass(r.dropLevel)}">${r.dropPct.toFixed(1)}% • ${escAttr(r.dropLabel)}</span></td><td><span class="${metricClass(r.falseComfort.level)}">${escAttr(r.falseComfort.label)}</span><div class="mono">%weak ${fmtPct0(r.falseComfort.weakPct)} • %direct ${fmtPct0(r.falseComfort.directPct)}</div></td><td><span class="${metricClass(r.correctiveLag.level)}">${escAttr(r.correctiveLag.label)}</span><div class="mono">Avg ${r.correctiveLag.avgLag.toFixed(1)}d • none ${r.correctiveLag.noCorrective}/${r.correctiveLag.repeated}</div></td><td><span class="${metricClass(r.conversion.level)}">${escAttr(r.conversion.label)}</span><div class="mono">Direct ${fmtPct0(r.conversion.directPct)} (${r.conversion.directN}) • Weak ${fmtPct0(r.conversion.weakPct)} (${r.conversion.weakN})</div></td><td>${r.teamSize}</td><td>${r.repsBelowGoal}</td><td>${r.highNeed}</td><td>${r.missingCoaching}</td><td>${r.correctives}</td><td>${r.coachings}</td><td>${fmtPct0(r.weakDep)}</td><td>${expanded?'▾':'▸'}</td></tr>${expandedHtml}`;
   }).join('');
   els.teamReportBody.querySelectorAll('[data-team-row]').forEach(row=>{
     row.addEventListener('click', ()=>{
@@ -4717,14 +4608,11 @@ function renderTeamReportView(ctx){
 }
 function syncReportViewUI(){
   const isTeam = reportView === 'team';
-  if(els.teamCoachingSearchInput) els.teamCoachingSearchInput.value = coachingSearchTerm || '';
   els.reportTabIndividual.classList.toggle('active', !isTeam);
   els.reportTabTeam.classList.toggle('active', isTeam);
   els.teamSelLabel.classList.toggle('hiddenForTeam', isTeam);
   els.sortSelLabel.classList.toggle('hiddenForTeam', isTeam);
   els.teamReportCard.classList.toggle('hiddenForIndividual', !isTeam);
-  els.coachReportCardWrap.classList.toggle('hiddenForTeam', isTeam);
-  els.teamCoachingSearchCard.classList.toggle('hiddenForIndividual', !isTeam);
   document.getElementById('teamSummaryCard').classList.toggle('hiddenForTeam', isTeam);
   document.getElementById('gapCard').classList.toggle('hiddenForTeam', isTeam);
   els.repTimelineHead.classList.toggle('hiddenForTeam', isTeam);
@@ -4957,43 +4845,9 @@ els.reportTabIndividual.addEventListener('click', ()=> setReportView('individual
 els.reportTabTeam.addEventListener('click', ()=> setReportView('team'));
 if(els.teamShowHighRedNoCorrective){
   els.teamShowHighRedNoCorrective.addEventListener('change', ()=>{
-    teamReportShowNoCorrectiveFlag = !!els.teamShowHighRedNoCorrective.checked;
-    teamReportShowHighRedNoCorrective = teamReportShowNoCorrectiveFlag;
+    teamReportShowHighRedNoCorrective = !!els.teamShowHighRedNoCorrective.checked;
     savePrefs();
     render();
-  });
-}
-if(els.teamCoachingSearchBtn){
-  els.teamCoachingSearchBtn.addEventListener('click', ()=>{
-    coachingSearchTerm = String(els.teamCoachingSearchInput.value || '').trim();
-    coachingSearchShowAll = false;
-    savePrefs();
-    render();
-  });
-}
-if(els.teamCoachingShowAllBtn){
-  els.teamCoachingShowAllBtn.addEventListener('click', ()=>{
-    coachingSearchTerm = String(els.teamCoachingSearchInput.value || '').trim();
-    coachingSearchShowAll = true;
-    savePrefs();
-    render();
-  });
-}
-if(els.teamCoachingClearBtn){
-  els.teamCoachingClearBtn.addEventListener('click', ()=>{
-    coachingSearchTerm = '';
-    coachingSearchShowAll = false;
-    if(els.teamCoachingSearchInput) els.teamCoachingSearchInput.value = '';
-    savePrefs();
-    render();
-  });
-}
-if(els.teamCoachingSearchInput){
-  els.teamCoachingSearchInput.addEventListener('keydown', (e)=>{
-    if(e.key === 'Enter'){
-      e.preventDefault();
-      if(els.teamCoachingSearchBtn) els.teamCoachingSearchBtn.click();
-    }
   });
 }
 els.disclaimerModalClose.addEventListener('click', ()=> closeDisclaimerModal());
@@ -5301,3 +5155,9 @@ els.repSearch.addEventListener('input', ()=> render());
 
 </body>
 </html>
+
+
+
+
+
+
