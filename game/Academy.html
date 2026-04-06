@@ -442,7 +442,12 @@
       routeResist: 1.0,
       allySupportBonus: 1.0,
       flankPower: 1.0,
-      frontalPushBonus: 1.0
+      frontalPushBonus: 1.0,
+      groupMoraleAuraRadius: 0,
+      groupMoraleAuraRegen: 0,
+      groupMoraleAuraType: null,
+      retreatedLastBattle: false,
+      escaped: false
     };
 
     if (type === "Banner Phalanx") {
@@ -460,7 +465,8 @@
         radius:24,
         killValue:65,
         soldierRows:4,
-        soldierCols:5
+        soldierCols:5,
+        rotationSpeed:1.75
       });
     } else if (type === "Phalanx") {
       Object.assign(u, {
@@ -472,12 +478,13 @@
         push:27,
         damageMin:7,
         damageMax:12,
-        speed:47,
-        chaseSpeed:58,
+        speed:49,
+        chaseSpeed:59,
         radius:22,
         killValue:50,
         soldierRows:4,
-        soldierCols:5
+        soldierCols:5,
+        rotationSpeed:1.75
       });
     } else if (type === "Skirmishers") {
       Object.assign(u, {
@@ -580,6 +587,23 @@
             u.push += 2;
           }
         },
+
+        {
+          id:"shieldoath",
+          name:"Shield Oath",
+          cost:95,
+          group:"veteran",
+          desc:"Oathbound discipline. Bigger morale pool and a morale pulse for nearby Phalanx groups.",
+          apply(u){
+            u.upgrades.push(this.id);
+            u.veteranGroup = this.id;
+            u.maxMorale += 20; u.morale += 20;
+            u.routeResist *= 1.12;
+            u.groupMoraleAuraRadius = Math.max(u.groupMoraleAuraRadius, 105);
+            u.groupMoraleAuraRegen += 0.45;
+            u.groupMoraleAuraType = "Phalanx";
+          }
+        },
         {
           id:"drilled",
           name:"Drilled",
@@ -642,6 +666,22 @@
             u.maxMorale += 16; u.morale += 16;
           }
         },
+
+        {
+          id:"camppsalm",
+          name:"Camp Psalm",
+          cost:130,
+          group:"doctrine",
+          desc:"Focused rally rite. Strong morale refill for nearby friendly Phalanx blocks.",
+          apply(u){
+            u.upgrades.push(this.id);
+            u.doctrineGroup = this.id;
+            u.maxMorale += 12; u.morale += 12;
+            u.groupMoraleAuraRadius = Math.max(u.groupMoraleAuraRadius, 132);
+            u.groupMoraleAuraRegen += 0.65;
+            u.groupMoraleAuraType = "Phalanx";
+          }
+        },
         {
           id:"silvershields",
           name:"Silver Shields",
@@ -687,6 +727,23 @@
             u.speed += 12;
             u.chaseSpeed += 10;
             u.rotationSpeed += 0.9;
+          }
+        },
+
+        {
+          id:"firesignal",
+          name:"Fire Signal",
+          cost:105,
+          group:"doctrine",
+          desc:"Signal discipline for skirmisher groups. Higher morale and better rout resistance.",
+          apply(u){
+            u.upgrades.push(this.id);
+            u.doctrineGroup = this.id;
+            u.maxMorale += 18; u.morale += 18;
+            u.routeResist *= 1.2;
+            u.groupMoraleAuraRadius = Math.max(u.groupMoraleAuraRadius, 110);
+            u.groupMoraleAuraRegen += 0.4;
+            u.groupMoraleAuraType = "Skirmishers";
           }
         },
         {
@@ -816,6 +873,7 @@
         u.ang = 0;
         u.desiredAng = 0;
         u.routed = false;
+        u.escaped = false;
         u.cooldown = 0;
       }
     }
@@ -927,8 +985,14 @@
       if (u.dead) continue;
       u.resting = !u.placed;
       u.routed = false;
+      u.escaped = false;
       u.engaged = false;
       u.cooldown = 0;
+
+      if (u.retreatedLastBattle) {
+        u.morale = Math.min(u.morale, u.maxMorale * 0.5);
+        u.retreatedLastBattle = false;
+      }
 
       if (u.placed) {
         const p = tileCenter(u.tx, u.ty);
@@ -1068,15 +1132,35 @@
     return best || nearestEnemy(unit, enemies);
   }
 
-  function rotateToward(unit, tx, ty, dt) {
-    const targetAngle = Math.atan2(ty - unit.y, tx - unit.x);
-    let diff = targetAngle - unit.ang;
+  function angleDiff(a, b) {
+    let diff = a - b;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
+    return diff;
+  }
 
-    const maxTurn = unit.rotationSpeed * dt;
+  function normalizeUnitFacing(unit) {
+    if (unit.ang > Math.PI) unit.ang -= Math.PI * 2;
+    if (unit.ang < -Math.PI) unit.ang += Math.PI * 2;
+  }
+
+  function rotateToward(unit, tx, ty, dt) {
+    const targetAngle = Math.atan2(ty - unit.y, tx - unit.x);
+    const diff = angleDiff(targetAngle, unit.ang);
+
+    let turnRate = unit.rotationSpeed;
+    if (unit.type.includes("Phalanx")) {
+      const ad = Math.abs(diff);
+      if (ad > 2.35) turnRate *= 0.14;
+      else if (ad > 1.45) turnRate *= 0.3;
+      else if (ad > 0.7) turnRate *= 0.55;
+    }
+
+    const maxTurn = turnRate * dt;
     if (Math.abs(diff) < maxTurn) unit.ang = targetAngle;
     else unit.ang += Math.sign(diff) * maxTurn;
+
+    normalizeUnitFacing(unit);
   }
 
   function canCrossTerrain(unit, x, y) {
@@ -1104,8 +1188,18 @@
   }
 
   function moveToward(unit, tx, ty, speed, dt) {
+    const desired = Math.atan2(ty - unit.y, tx - unit.x);
+    const headingDelta = Math.abs(angleDiff(desired, unit.ang));
     rotateToward(unit, tx, ty, dt);
-    const s = speed * terrainSpeedMod(unit, unit.x, unit.y);
+
+    let speedMod = 1;
+    if (unit.type.includes("Phalanx")) {
+      if (headingDelta < 0.38) speedMod = 1;
+      else if (headingDelta < 0.95) speedMod = 0.74;
+      else speedMod = 0.44;
+    }
+
+    const s = speed * speedMod * terrainSpeedMod(unit, unit.x, unit.y);
     const step = s * dt;
     const nx = unit.x + Math.cos(unit.ang) * step;
     const ny = unit.y + Math.sin(unit.ang) * step;
@@ -1119,13 +1213,16 @@
 
   function moveAway(unit, from, dt) {
     const angle = Math.atan2(unit.y - from.y, unit.x - from.x);
-    let diff = angle - unit.ang;
-    while (diff > Math.PI) diff -= Math.PI * 2;
-    while (diff < -Math.PI) diff += Math.PI * 2;
+    const diff = angleDiff(angle, unit.ang);
 
-    const maxTurn = unit.rotationSpeed * 1.2 * dt;
+    let turnRate = unit.rotationSpeed * 1.2;
+    if (unit.type.includes("Phalanx")) turnRate *= Math.abs(diff) > 1.45 ? 0.45 : 0.68;
+
+    const maxTurn = turnRate * dt;
     if (Math.abs(diff) < maxTurn) unit.ang = angle;
     else unit.ang += Math.sign(diff) * maxTurn;
+
+    normalizeUnitFacing(unit);
 
     const s = unit.routeSpeed * terrainSpeedMod(unit, unit.x, unit.y);
     unit.x += Math.cos(unit.ang) * s * dt;
@@ -1241,14 +1338,57 @@
     return 1.0;
   }
 
+  function moraleAuraGain(unit, allies) {
+    let gain = 0;
+    for (const ally of allies) {
+      if (ally.id === unit.id || ally.dead || !ally.placed) continue;
+      if (ally.groupMoraleAuraRegen <= 0 || ally.groupMoraleAuraRadius <= 0) continue;
+      if (ally.groupMoraleAuraType && ally.groupMoraleAuraType !== unit.type) continue;
+      if (dist(unit.x, unit.y, ally.x, ally.y) <= ally.groupMoraleAuraRadius) {
+        gain += ally.groupMoraleAuraRegen;
+      }
+    }
+    return gain;
+  }
+
+  function atRetreatEdge(unit) {
+    const edge = 12;
+    return unit.x <= FIELD_X + edge || unit.x >= FIELD_X + FIELD_W - edge ||
+      unit.y <= FIELD_Y + edge || unit.y >= FIELD_Y + FIELD_H - edge;
+  }
+
+  function retreatFromBattle(unit) {
+    if (unit.dead || unit.escaped || !unit.placed) return;
+    const fx = unit.x;
+    const fy = unit.y;
+
+    unit.escaped = true;
+    unit.routed = false;
+    unit.engaged = false;
+    unit.placed = false;
+    unit.tx = -1;
+    unit.ty = -1;
+    unit.x = -1000;
+    unit.y = -1000;
+
+    if (unit.friendly) {
+      unit.retreatedLastBattle = true;
+      unit.morale = Math.min(unit.morale, unit.maxMorale * 0.5);
+    }
+
+    addFloat(clamp(fx, FIELD_X + 20, FIELD_X + FIELD_W - 20), clamp(fy - 12, FIELD_Y + 22, FIELD_Y + FIELD_H - 22), "RETREATED", "#ffe08a");
+  }
+
   function maybeRoute(unit, nearbyEnemies) {
     if (unit.dead || unit.routed) return;
     const moraleRatio = unit.morale / unit.maxMorale;
     const healthRatio = unit.health / unit.maxHealth;
-    let chance = 0;
+    if (moraleRatio >= 0.25) return;
 
-    if (moraleRatio < 0.24) chance += 0.008;
-    if (moraleRatio < 0.16) chance += 0.02;
+    let chance = 0.003;
+
+    if (moraleRatio < 0.25) chance += 0.005;
+    if (moraleRatio < 0.16) chance += 0.012;
     if (healthRatio < 0.35) chance += 0.006;
     if (nearbyEnemies >= 2) chance += 0.004;
 
@@ -1372,7 +1512,7 @@
     }
   }
 
-  function updateUnit(unit, enemies, dt) {
+  function updateUnit(unit, allies, enemies, dt) {
     if (unit.dead || !unit.placed) return;
 
     if (unit.cooldown > 0) unit.cooldown -= dt;
@@ -1384,6 +1524,8 @@
       const b = getBanner();
       unit.morale += (0.75 * (b ? b.auraMoraleBonus : 1)) * dt;
     }
+
+    unit.morale += moraleAuraGain(unit, allies) * dt;
     unit.morale = clamp(unit.morale, 0, unit.maxMorale);
 
     const target = unitTarget(unit, enemies);
@@ -1398,6 +1540,7 @@
     if (unit.routed) {
       const pursuer = nearestEnemy(unit, enemies) || target;
       moveAway(unit, pursuer, dt);
+      if (atRetreatEdge(unit)) retreatFromBattle(unit);
       return;
     }
 
@@ -1471,8 +1614,8 @@
 
   function update(dt) {
     if (game.state === STATE.BATTLE) {
-      for (const u of game.units) updateUnit(u, game.enemyUnits, dt);
-      for (const u of game.enemyUnits) updateUnit(u, game.units, dt);
+      for (const u of game.units) updateUnit(u, game.units, game.enemyUnits, dt);
+      for (const u of game.enemyUnits) updateUnit(u, game.enemyUnits, game.units, dt);
 
       freeCollisionSeparation([...game.units.filter(u=>!u.dead&&u.placed), ...game.enemyUnits.filter(u=>!u.dead&&u.placed)], dt);
       battleFinished();
@@ -1701,7 +1844,10 @@
 
     ctx.save();
     ctx.translate(unit.x, unit.y);
-    ctx.rotate(unit.ang);
+    let renderAng = unit.ang;
+    if (renderAng > Math.PI / 2) renderAng -= Math.PI;
+    if (renderAng < -Math.PI / 2) renderAng += Math.PI;
+    ctx.rotate(renderAng);
 
     const w = unit.radius * 2.4;
     const h = unit.radius * 2.0;
