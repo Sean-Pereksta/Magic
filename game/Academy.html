@@ -152,6 +152,7 @@
   .resultPane{display:none}
   .resultPane.on{display:block}
   .stackGap{display:grid; gap:12px}
+  .coach-extra-col{display:none}
 </style>
 </head>
 <body>
@@ -364,7 +365,10 @@
 
         <div class="stackGap">
           <div>
-            <div style="font-weight:900">Coach summary (Checklist + Documented)</div>
+            <div class="row" style="justify-content:space-between; gap:8px">
+              <div style="font-weight:900">Coach summary (Checklist + Documented)</div>
+              <button class="btn secondary" id="btnCoachSummaryExpand" type="button">Expand breakdown</button>
+            </div>
             <div class="mini" id="coachSummHint">—</div>
             <div class="tblWrap" style="margin-top:8px">
               <table id="coachTable">
@@ -380,6 +384,10 @@
                     <th>&gt; 7d Cnt</th>
                     <th>&gt; 7d %</th>
                     <th>Avg &gt; 7d</th>
+                    <th class="coach-extra-col">Items &lt; 3d</th>
+                    <th class="coach-extra-col">% &lt; 3d</th>
+                    <th class="coach-extra-col">Items 3-5d</th>
+                    <th class="coach-extra-col">% 3-5d</th>
                     <th>Cutoff</th>
                     <th>Doc Cnt</th>
                     <th>Doc/Wk</th>
@@ -576,7 +584,8 @@
     modalCoach:null,
     modalTab:"checklist",
     modalDocFilterQuick:"__ALL__",
-    modalDocTypesOn:new Set()
+    modalDocTypesOn:new Set(),
+    coachSummaryExpanded:false
   };
 
   function toast(title, msg){
@@ -646,11 +655,13 @@
     return {count:values.length, avg:mean(values), median:quantile(s,.5), min:s[0], max:s[s.length-1]};
   }
   function bucketDist(items){
-    let le7=0, gt7=0;
+    let le7=0, gt7=0, lt3=0, b3to5=0;
     const gt7Vals=[];
     for(const it of items){
       const v = it?.days;
       if(!isFinite(v) || v < 0) continue;
+      if(v < 3) lt3++;
+      if(v >= 3 && v <= 5) b3to5++;
       if(v <= 7) le7++;
       else { gt7++; gt7Vals.push(v); }
     }
@@ -659,8 +670,12 @@
       total,
       le7,
       gt7,
+      lt3,
+      b3to5,
       pctLe7: total ? (le7/total*100) : NaN,
       pctGt7: total ? (gt7/total*100) : NaN,
+      pctLt3: total ? (lt3/total*100) : NaN,
+      pct3to5: total ? (b3to5/total*100) : NaN,
       avgGt7: gt7Vals.length ? mean(gt7Vals) : NaN
     };
   }
@@ -1358,7 +1373,11 @@
         gt7: dist.gt7,
         pctLe7: dist.pctLe7,
         pctGt7: dist.pctGt7,
-        avgGt7: dist.avgGt7
+        avgGt7: dist.avgGt7,
+        lt3: dist.lt3,
+        pctLt3: dist.pctLt3,
+        b3to5: dist.b3to5,
+        pct3to5: dist.pct3to5
       });
     }
     S.lastCoachSumm = coachSumm;
@@ -1498,6 +1517,15 @@
     return -r.avg;
   }
 
+  function setCoachSummaryExpanded(expanded){
+    S.coachSummaryExpanded = !!expanded;
+    document.querySelectorAll("#coachTable .coach-extra-col").forEach(el=>{
+      el.style.display = S.coachSummaryExpanded ? "" : "none";
+    });
+    const btn = $("btnCoachSummaryExpand");
+    if(btn) btn.textContent = S.coachSummaryExpanded ? "Hide breakdown" : "Expand breakdown";
+  }
+
   function renderCoachTable(rows, mode, tf){
     const tb = $("coachTable").querySelector("tbody");
     tb.innerHTML = "";
@@ -1536,6 +1564,10 @@
         <td class="mono">${r.gt7}</td>
         <td class="mono" style="${pctHeatBad(r.pctGt7)}">${fmtPct(r.pctGt7,0)}</td>
         <td class="mono">${fmtNum(r.avgGt7,1)}</td>
+        <td class="mono coach-extra-col">${r.lt3}</td>
+        <td class="mono coach-extra-col" style="${pctHeatGood(r.pctLt3)}">${fmtPct(r.pctLt3,0)}</td>
+        <td class="mono coach-extra-col">${r.b3to5}</td>
+        <td class="mono coach-extra-col" style="${pctHeatGood(r.pct3to5)}">${fmtPct(r.pct3to5,0)}</td>
         <td>
           <div class="mini">${r.suggested ? `Suggest: exclude from #${r.suggested}` : "—"}</div>
           <div class="row" style="gap:8px; flex-wrap:nowrap; margin-top:6px">
@@ -1562,7 +1594,7 @@
 
     if(S.docLoaded && extraDocKeys.length){
       const sep = document.createElement("tr");
-      sep.innerHTML = `<td colspan="16" class="mini" style="padding:12px 8px; color:var(--muted)">Documented coaching found for coaches not present in the checklist timeframe:</td>`;
+      sep.innerHTML = `<td colspan="20" class="mini" style="padding:12px 8px; color:var(--muted)">Documented coaching found for coaches not present in the checklist timeframe:</td>`;
       tb.appendChild(sep);
 
       extraDocKeys.forEach(k=>{
@@ -1583,6 +1615,10 @@
           <td class="mono">—</td>
           <td class="mono">—</td>
           <td class="mono">—</td>
+          <td class="mono coach-extra-col">—</td>
+          <td class="mono coach-extra-col">—</td>
+          <td class="mono coach-extra-col">—</td>
+          <td class="mono coach-extra-col">—</td>
           <td class="mini">—</td>
           <td class="mono">${doc.count.toLocaleString()}</td>
 <td class="mono" style="${docCountHeat(doc.perWk)}">${doc.perWk.toFixed(2)}</td>
@@ -2139,6 +2175,7 @@
     $("tfStart").value = "";
     $("tfEnd").value = "";
     paintTFHint();
+    setCoachSummaryExpanded(false);
 
     if(auto){
       autoLoadAll(true);
@@ -2191,6 +2228,7 @@
   $("btnRecompute").addEventListener("click", ()=>recompute(true));
   $("btnExportCoach").addEventListener("click", exportCoach);
   $("btnExportRep").addEventListener("click", exportRep);
+  $("btnCoachSummaryExpand").addEventListener("click", ()=> setCoachSummaryExpanded(!S.coachSummaryExpanded));
 
   $("btnApplyAllCut").addEventListener("click", ()=>{
     let applied=0;
@@ -2237,10 +2275,9 @@
     recompute(true);
   });
 
+  setCoachSummaryExpanded(false);
   autoLoadAll(true);
 })();
 </script>
 </body>
 </html>
-
-
