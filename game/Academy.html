@@ -367,6 +367,7 @@
     particles: [],
     bloodPools: [],
     floats: [],
+    projectiles: [],
     deployCells: [],
     bannerDead: false,
     battleEndedAwarded: false
@@ -377,6 +378,10 @@
   function irand(min,max){ return Math.floor(rand(min,max+1)); }
   function dist(x1,y1,x2,y2){ return Math.hypot(x2-x1,y2-y1); }
   function tileCenter(tx,ty){ return {x:FIELD_X+tx*TILE+TILE/2, y:FIELD_Y+ty*TILE+TILE/2}; }
+  function cardinalDir(dx, dy) {
+    if (Math.abs(dx) >= Math.abs(dy)) return {x:Math.sign(dx) || 1, y:0};
+    return {x:0, y:Math.sign(dy) || 1};
+  }
 
   function currentBattle() {
     if (game.battleIndex < battleDefs.length) return battleDefs[game.battleIndex];
@@ -966,6 +971,7 @@
     game.particles = [];
     game.bloodPools = [];
     game.floats = [];
+    game.projectiles = [];
     resetDeployment();
     createEnemyArmy();
     updateUI();
@@ -1188,9 +1194,14 @@
   }
 
   function moveToward(unit, tx, ty, speed, dt) {
-    const desired = Math.atan2(ty - unit.y, tx - unit.x);
+    const dx = tx - unit.x;
+    const dy = ty - unit.y;
+    const dir = cardinalDir(dx, dy);
+    const desiredX = unit.x + dir.x * TILE;
+    const desiredY = unit.y + dir.y * TILE;
+    const desired = Math.atan2(desiredY - unit.y, desiredX - unit.x);
     const headingDelta = Math.abs(angleDiff(desired, unit.ang));
-    rotateToward(unit, tx, ty, dt);
+    rotateToward(unit, desiredX, desiredY, dt);
 
     let speedMod = 1;
     if (unit.type.includes("Phalanx")) {
@@ -1201,8 +1212,8 @@
 
     const s = speed * speedMod * terrainSpeedMod(unit, unit.x, unit.y);
     const step = s * dt;
-    const nx = unit.x + Math.cos(unit.ang) * step;
-    const ny = unit.y + Math.sin(unit.ang) * step;
+    const nx = unit.x + dir.x * step;
+    const ny = unit.y + dir.y * step;
     if (canCrossTerrain(unit, nx, ny)) {
       unit.x = nx;
       unit.y = ny;
@@ -1212,7 +1223,10 @@
   }
 
   function moveAway(unit, from, dt) {
-    const angle = Math.atan2(unit.y - from.y, unit.x - from.x);
+    const dx = unit.x - from.x;
+    const dy = unit.y - from.y;
+    const dir = cardinalDir(dx, dy);
+    const angle = Math.atan2(dir.y, dir.x);
     const diff = angleDiff(angle, unit.ang);
 
     let turnRate = unit.rotationSpeed * 1.2;
@@ -1225,8 +1239,8 @@
     normalizeUnitFacing(unit);
 
     const s = unit.routeSpeed * terrainSpeedMod(unit, unit.x, unit.y);
-    unit.x += Math.cos(unit.ang) * s * dt;
-    unit.y += Math.sin(unit.ang) * s * dt;
+    unit.x += dir.x * s * dt;
+    unit.y += dir.y * s * dt;
     unit.x = clamp(unit.x, FIELD_X + 10, FIELD_X + FIELD_W - 10);
     unit.y = clamp(unit.y, FIELD_Y + 10, FIELD_Y + FIELD_H - 10);
   }
@@ -1271,8 +1285,13 @@
     }
   }
 
-  function addFloat(x,y,text,color) {
-    game.floats.push({x,y,text,color,life:1.0});
+  function addFloat(x,y,text,color,opts={}) {
+    game.floats.push({
+      x,y,text,color,
+      life:opts.life ?? 1.0,
+      decay:opts.decay ?? 0.9,
+      vy:opts.vy ?? -30
+    });
   }
 
   function createCorpsesForDamage(unit) {
@@ -1408,9 +1427,9 @@
   function resolvePush(unit, target, dt) {
     const dx = target.x - unit.x;
     const dy = target.y - unit.y;
-    const d = Math.hypot(dx,dy) || 1;
-    const nx = dx / d;
-    const ny = dy / d;
+    const cardinal = cardinalDir(dx, dy);
+    const nx = cardinal.x;
+    const ny = cardinal.y;
 
     const unitMorale = clamp(unit.morale / unit.maxMorale, 0.2, 1.25);
     const targetMorale = clamp(target.morale / target.maxMorale, 0.2, 1.25);
@@ -1435,15 +1454,37 @@
     const delta = atkPush - defPush;
     if (Math.abs(delta) < 0.5) return;
 
+    const pushPower = clamp(Math.abs(delta) / 30, 0.1, 1.6);
     const pushAmt = clamp(delta * 0.05, -8, 8) * dt * 20;
     target.x += nx * pushAmt;
     target.y += ny * pushAmt;
+
+    if (Math.abs(pushAmt) > 3.3) {
+      target.y -= Math.min(7, Math.abs(pushAmt) * 0.22);
+    }
+
     target.x = clamp(target.x, FIELD_X + 8, FIELD_X + FIELD_W - 8);
     target.y = clamp(target.y, FIELD_Y + 8, FIELD_Y + FIELD_H - 8);
 
-    target.morale -= Math.abs(pushAmt) * 0.16;
-    if (Math.abs(pushAmt) > 2.4 && Math.random() < 0.18) {
-      addFloat(target.x, target.y - 12, "PUSHED", "#9fd0ff");
+    const moraleLoss = Math.abs(pushAmt) * (0.12 + pushPower * 0.2);
+    const pushDamage = Math.abs(pushAmt) * (0.05 + pushPower * 0.14);
+    target.morale -= moraleLoss;
+    target.health -= pushDamage;
+
+    if (pushDamage > 0.9) {
+      addFloat(target.x + rand(-6,6), target.y - 12, `-${Math.round(pushDamage)}`, "#ff6767", {life:0.9, decay:1.15, vy:-38});
+      createCorpsesForDamage(target);
+      if (target.health <= 0) {
+        killUnit(target, unit);
+        return;
+      }
+    }
+
+    if (delta > 0.5) {
+      addFloat(unit.x, unit.y - 24, "↑", "#6dff9b", {life:0.42, decay:2.6, vy:-56});
+    }
+    if (moraleLoss > 2.8) {
+      addFloat(target.x, target.y - 24, "↓", "#ff5555", {life:0.42, decay:2.6, vy:-22});
     }
   }
 
@@ -1477,15 +1518,49 @@
     target.morale -= moraleHit;
     unit.cooldown = unit.attackRange > 80 ? rand(0.65,0.95) : rand(0.85,1.15);
 
-    spawnImpact(target.x, target.y, unit.attackRange > 80 ? "#d9d9d9" : "#f5cfb3", unit.attackRange > 80 ? 4 : 7, unit.attackRange > 80 ? 45 : 85);
-    if (unit.attackRange <= 80 || Math.random() < 0.5) spawnBlood(target.x, target.y, unit.attackRange <= 80 ? 6 : 3);
-    createCorpsesForDamage(target);
+    addFloat(target.x + rand(-8,8), target.y - 10, `-${Math.round(dmg)}`, "#ff5353", {life:0.95, decay:1.05, vy:-40});
+    if (moraleHit > 6.5) addFloat(target.x + rand(-8,8), target.y - 24, `-${Math.round(moraleHit)} morale`, "#ff9b59", {life:0.75, decay:1.25, vy:-28});
 
-    if (unit.attackRange <= 80) resolvePush(unit, target, dt);
+    if (unit.attackRange > 80) {
+      spawnProjectile(unit, target, dmg);
+    } else {
+      spawnImpact(target.x, target.y, "#f5cfb3", 7, 85);
+      if (Math.random() < 0.8) spawnBlood(target.x, target.y, 6);
+      resolvePush(unit, target, dt);
+    }
+
+    createCorpsesForDamage(target);
 
     if (target.health <= 0) {
       killUnit(target, unit);
     }
+  }
+
+  function spawnProjectile(unit, target, damage) {
+    game.projectiles.push({
+      x0: unit.x,
+      y0: unit.y - 10,
+      x1: target.x,
+      y1: target.y - 8,
+      t: 0,
+      life: rand(0.42, 0.58),
+      damage,
+      targetId: target.id
+    });
+  }
+
+  function updateProjectiles(dt) {
+    for (const p of game.projectiles) {
+      p.t += dt / p.life;
+      if (p.t >= 1) {
+        const tx = p.x1;
+        const ty = p.y1;
+        spawnImpact(tx, ty, "#d9d9d9", 5, 50);
+        if (Math.random() < 0.55) spawnBlood(tx, ty, 2);
+        addFloat(tx + rand(-6,6), ty - 8, `-${Math.round(p.damage)}`, "#ff5353", {life:0.88, decay:1.2, vy:-42});
+      }
+    }
+    game.projectiles = game.projectiles.filter(p => p.t < 1);
   }
 
   function freeCollisionSeparation(units, dt) {
@@ -1606,8 +1681,8 @@
 
   function updateFloats(dt) {
     for (const f of game.floats) {
-      f.y -= 30 * dt;
-      f.life -= dt * 0.9;
+      f.y += f.vy * dt;
+      f.life -= dt * f.decay;
     }
     game.floats = game.floats.filter(f => f.life > 0);
   }
@@ -1622,6 +1697,7 @@
     }
 
     updateParticles(dt);
+    updateProjectiles(dt);
     updateFloats(dt);
   }
 
@@ -1771,51 +1847,67 @@
     ctx.fillRect(x,y,w*clamp(pct,0,1),h);
   }
 
-  function drawSoldier(px, py, unit) {
-    let robe = "#d7d0bf";
-    let plume = "#b83a31";
+  function unitVisualStyle(unit) {
+    const style = {
+      robe: unit.type === "Cavalry" ? "#785533" : (unit.type === "Skirmishers" ? "#587c48" : (unit.type === "Banner Phalanx" ? "#6f46a8" : "#ded5c7")),
+      plume: unit.type === "Cavalry" ? "#d0b27c" : (unit.type === "Skirmishers" ? "#9ed18f" : (unit.type === "Banner Phalanx" ? "#d7b8ff" : "#b83a31")),
+      armor: "#69645d",
+      shield: unit.friendly ? "#c8a867" : "#9b6b48",
+      spear: "#cdb68f",
+      spearLen: 6,
+      shieldR: 3
+    };
 
-    if (unit.type === "Banner Phalanx") {
-      robe = "#6f46a8";
-      plume = "#d7b8ff";
-    } else if (unit.type === "Phalanx") {
-      robe = "#ded5c7";
-      plume = "#b83a31";
-    } else if (unit.type === "Skirmishers") {
-      robe = "#587c48";
-      plume = "#9ed18f";
-    } else if (unit.type === "Cavalry") {
-      robe = "#785533";
-      plume = "#d0b27c";
-    }
+    const up = new Set(unit.upgrades || []);
+    if (up.has("pikewall")) { style.spearLen += 6; style.armor = "#5c5f63"; style.shieldR += 0.7; }
+    if (up.has("shockline")) { style.plume = "#de4a3b"; style.spear = "#e7cf9b"; }
+    if (up.has("ironresolve")) { style.armor = "#7b7f89"; style.shield = "#8b9ab5"; }
+    if (up.has("shieldoath")) { style.shieldR += 1.2; style.shield = "#9ab2cf"; }
+    if (up.has("drilled")) { style.plume = "#f4c867"; }
+    if (up.has("hardened")) { style.armor = "#4f5256"; }
+    if (up.has("royalguard")) { style.armor = "#c4a25f"; style.shield = "#d8c07d"; }
+    if (up.has("inspiringstandard")) { style.plume = "#f7e69c"; }
+    if (up.has("camppsalm")) { style.shield = "#8ec7a2"; }
+    if (up.has("silvershields")) { style.shield = "#c8d3df"; style.armor = "#aeb9c5"; }
+    if (up.has("javelineers")) { style.spearLen += 4; style.spear = "#dddddd"; }
+    if (up.has("agilescreen")) { style.robe = "#6ca45c"; }
+    if (up.has("firesignal")) { style.plume = "#ffb35a"; }
+    if (up.has("harriers")) { style.spear = "#f0e3b1"; }
+    if (up.has("companionwedge")) { style.spearLen += 3; style.plume = "#ffe08a"; }
+    if (up.has("pursuitriders")) { style.robe = "#8a6237"; }
+    if (up.has("noblehorse")) { style.armor = "#9fa5ad"; style.shieldR += 0.8; }
 
-    ctx.fillStyle = robe;
+    return style;
+  }
+
+  function drawSoldier(px, py, unit, style) {
+    ctx.fillStyle = style.robe;
     ctx.fillRect(px-3, py-1, 6, 8);
     ctx.fillStyle = "#ebc59f";
     ctx.beginPath();
     ctx.arc(px, py-5, 3.2, 0, Math.PI*2);
     ctx.fill();
 
-    ctx.fillStyle = "#69645d";
+    ctx.fillStyle = style.armor;
     ctx.fillRect(px-3.5, py-8, 7, 2.7);
 
-    ctx.strokeStyle = plume;
+    ctx.strokeStyle = style.plume;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(px, py-9);
     ctx.lineTo(px, py-13);
     ctx.stroke();
 
-    ctx.fillStyle = unit.friendly ? "#c8a867" : "#9b6b48";
+    ctx.fillStyle = style.shield;
     ctx.beginPath();
-    ctx.arc(px-5, py+1, 3, 0, Math.PI*2);
+    ctx.arc(px-5, py+1, style.shieldR, 0, Math.PI*2);
     ctx.fill();
 
-    ctx.strokeStyle = "#cdb68f";
+    ctx.strokeStyle = style.spear;
     ctx.lineWidth = 1.1;
     ctx.beginPath();
     ctx.moveTo(px+3, py-2);
-    ctx.lineTo(px+9, py-2);
+    ctx.lineTo(px+3+style.spearLen, py-2);
     ctx.stroke();
   }
 
@@ -1855,6 +1947,7 @@
     ctx.fillStyle = unit.friendly ? "rgba(255,255,255,.04)" : "rgba(100,0,0,.06)";
     ctx.fillRect(-w/2, -h/2, w, h);
 
+    const style = unitVisualStyle(unit);
     const total = unit.soldierRows * unit.soldierCols;
     const live = Math.max(0, total - unit.deathVisuals);
     let idx = 0;
@@ -1864,18 +1957,19 @@
         if (idx >= live) { idx++; continue; }
         const px = -w/2 + 8 + c * ((w-16)/Math.max(1,unit.soldierCols-1));
         const py = -h/2 + 8 + r * ((h-16)/Math.max(1,unit.soldierRows-1));
-        drawSoldier(px, py, unit);
+        drawSoldier(px, py, unit, style);
         idx++;
       }
     }
 
     if (unit.type.includes("Phalanx")) {
-      ctx.strokeStyle = "#d1bc94";
+      ctx.strokeStyle = style.spear;
       ctx.lineWidth = 1.5;
+      const pikeLen = 17 + style.spearLen * 1.6;
       for (let i=-2;i<=2;i++) {
         ctx.beginPath();
         ctx.moveTo(w/2 - 7, i*7);
-        ctx.lineTo(w/2 + 17, i*7);
+        ctx.lineTo(w/2 + pikeLen, i*7);
         ctx.stroke();
       }
     }
@@ -1920,6 +2014,28 @@
     if (u.type === "Skirmishers") return "SKIRM";
     if (u.type === "Cavalry") return "CAV";
     return u.type.toUpperCase();
+  }
+
+  function drawProjectiles() {
+    for (const p of game.projectiles) {
+      const t = clamp(p.t, 0, 1);
+      const x = p.x0 + (p.x1 - p.x0) * t;
+      const yLinear = p.y0 + (p.y1 - p.y0) * t;
+      const arc = Math.sin(Math.PI * t) * 34;
+      const y = yLinear - arc;
+
+      ctx.strokeStyle = "#e8dfc6";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x - 4, y + 1);
+      ctx.lineTo(x + 5, y - 1);
+      ctx.stroke();
+
+      ctx.fillStyle = "#9e8c69";
+      ctx.beginPath();
+      ctx.arc(x + 5, y - 1, 1.7, 0, Math.PI*2);
+      ctx.fill();
+    }
   }
 
   function drawFloats() {
@@ -1987,6 +2103,7 @@
     for (const u of game.enemyUnits) drawUnit(u);
     for (const u of game.units) drawUnit(u);
 
+    drawProjectiles();
     drawParticles();
     drawFloats();
     drawOverlay();
