@@ -1039,6 +1039,9 @@
       <label>Checklist dock key
         <select id="checkDockSel" style="min-width:360px"></select>
       </label>
+      <label>QA dock key
+        <select id="qaDockSel" style="min-width:360px"></select>
+      </label>
       <button class="btn" id="loadDocksBtn">Load docks</button>
       <span class="mono" id="dockHint" style="color:var(--muted);font-weight:900">—</span>
     </div>
@@ -1367,6 +1370,7 @@ const DOCKS = {
   coaching:  { label:"Documented Coaching", key:`${APP_NS}.dock.coaching` },
   retail:    { label:"Retail Stats",        key:`${APP_NS}.dock.retail` },
   referral:  { label:"Referral Stats",      key:`${APP_NS}.dock.referral` },
+  qa:        { label:"QA",                  key:`${APP_NS}.dock.qa` },
   checklist: { label:"Checklist",           key:`${APP_NS}.dock.checklist` }
 };
 
@@ -1523,6 +1527,48 @@ function personKey(name){
   const toks = s.split(/\s+/).filter(Boolean);
   if(toks.length>=2) return `${toks[0]} ${toks[toks.length-1]}`;
   return toks[0] || "";
+}
+function displayNameFromRaw(name){
+  let s = String(name||"").trim().replace(/\s+/g," ");
+  if(!s) return "";
+  if(s.includes(",")){
+    const parts = s.split(",");
+    const last = (parts[0]||"").trim();
+    const rest = (parts[1]||"").trim();
+    const first = (rest.split(/\s+/)[0]||"").trim();
+    if(first && last) s = `${first} ${last}`;
+    else s = s.replace(/,/g," ");
+  }
+  s = s.replace(/[^\w\s'-]/g, " ").replace(/\s+/g, " ").trim();
+  const toks = s.split(/\s+/).filter(Boolean);
+  if(!toks.length) return "";
+  if(toks.length===1) return toks[0];
+  const first = toks[0];
+  const last = toks[toks.length-1];
+  return `${first} ${last}`.trim();
+}
+function parseAnyDate(v){ return parseDate(v); }
+function normPct(v){
+  if(v===null || v===undefined || v==='') return NaN;
+  if(typeof v === 'number' && Number.isFinite(v)){
+    if(v <= 1) return clamp01(v);
+    return clamp01(v/100);
+  }
+  const s = String(v).trim();
+  if(!s) return NaN;
+  const hasPct = s.includes('%');
+  const n = toNumRaw(s);
+  if(!Number.isFinite(n)) return NaN;
+  if(hasPct) return clamp01(n/100);
+  if(n <= 1) return clamp01(n);
+  return clamp01(n/100);
+}
+function normalizeReadFlag(v){
+  const s = String(v ?? '').trim().toLowerCase();
+  if(!s) return '';
+  if(['1','y','yes','true','read','done','completed'].includes(s)) return 'yes';
+  if(['0','n','no','false','unread','pending'].includes(s)) return 'no';
+  return s;
 }
 
 function loadDockObjByKey(key){
@@ -1833,6 +1879,52 @@ function canonicalizeChecklistRows(dockObj){
   return out;
 }
 
+/* =================== QA parsing =================== */
+function looksLikeQARow(obj){
+  if(!obj || typeof obj!=="object") return false;
+  const nk = Object.keys(obj).map(normHdr);
+  const hasRep = nk.some(k => /^(agentname|agent|csr|associate|rep|name)$/.test(k));
+  const hasScore = nk.some(k => /^(score%|scorepct|score|qascore|qa%)$/.test(k));
+  const hasDate = nk.some(k => /^(interactionstarttime|interactionstart|starttime|interactiontime|date|scoreddate)$/.test(k));
+  return hasRep && hasScore && hasDate;
+}
+function canonicalizeQA(dockObj){
+  if(!dockObj) return [];
+  const arrays = extractRowArrays(dockObj, "");
+  const out = [];
+  for(const pack of arrays){
+    for(const r of pack.rows){
+      if(!looksLikeQARow(r)) continue;
+      const repRaw = pickFieldFromRow(r, ["agentname","agent","csr","associate","rep","name"]);
+      const scoreRaw = pickFieldFromRow(r, ["score%","scorepct","score","qascore","qa%"]);
+      const dateRaw = pickFieldFromRow(r, ["interactionstarttime","interactionstart","starttime","interactiontime","scoreddate","date"]);
+      const evalRaw = pickFieldFromRow(r, ["evaluator","evaluatorname","monitor","reviewer","qaevaluator"]);
+      const teamRaw = pickFieldFromRow(r, ["team","sheet","dock","group"]);
+      const readRaw = pickFieldFromRow(r, ["read","readflag","readstatus"]);
+
+      const repDisplay = displayNameFromRaw(repRaw);
+      const repKey = personKey(repDisplay || repRaw);
+      const score = normPct(scoreRaw);
+      const startDate = parseAnyDate(dateRaw);
+      if(!repDisplay || !repKey || !Number.isFinite(score) || !startDate) continue;
+
+      out.push({
+        ...r,
+        rep: repDisplay,
+        repKey,
+        score,
+        startDate,
+        wk: isoWeekKey(startDate),
+        evaluator: String(evalRaw ?? "").trim(),
+        team: String(teamRaw ?? pack.sheetName ?? "").trim(),
+        readFlag: normalizeReadFlag(readRaw)
+      });
+    }
+  }
+  out.sort((a,b)=> b.startDate - a.startDate);
+  return out;
+}
+
 /* =================== dock key helpers =================== */
 function findDockCandidates(kind){
   const out=[];
@@ -1862,6 +1954,19 @@ function findCoachingCandidates(){
     if(lk.endsWith(".dock.coaching")) keys.push(k);
   }
   return Array.from(new Set(keys)).sort((a,b)=>a.localeCompare(b));
+}
+function findQADockCandidates(){
+  const preferred = [];
+  const fallback = [];
+  for(let i=0;i<localStorage.length;i++){
+    const k = localStorage.key(i);
+    if(!k) continue;
+    const lk = k.toLowerCase();
+    if(!lk.includes('.dock.')) continue;
+    if(lk.includes('.dock.qa')) preferred.push(k);
+    else if(lk.includes('qa') && (lk.includes('quality') || lk.includes('monitor') || lk.includes('score'))) fallback.push(k);
+  }
+  return Array.from(new Set([...preferred, ...fallback])).sort((a,b)=>a.localeCompare(b));
 }
 
 /* =========================================================
@@ -1922,6 +2027,7 @@ const els = {
   statsDockSel: document.getElementById('statsDockSel'),
   coachDockSel: document.getElementById('coachDockSel'),
   checkDockSel: document.getElementById('checkDockSel'),
+  qaDockSel: document.getElementById('qaDockSel'),
   loadDocksBtn: document.getElementById('loadDocksBtn'),
   dockHint: document.getElementById('dockHint'),
 
@@ -2030,6 +2136,7 @@ let reportView = 'individual';
 let statsDockKey = '';
 let coachDockKey = '';
 let checkDockKey = '';
+let qaDockKey = '';
 
 let allRows = [];
 let fieldMap = null;
@@ -2055,8 +2162,12 @@ let checklistRows = [];
 let checklistIncidents = [];
 let checklistByRepWeek = new Map();   // repKey -> Map(weekKey -> checklist[])
 let checklistCriteria = [];           // [{id,name,color,incident,keywords[]}]
+let qaRows = [];
+let qaByRepKey = new Map();           // repKey -> qa[]
+let qaByRepWeek = new Map();          // repKey -> Map(weekKey -> qa[])
 let selectedCriteriaId = null;
 let slaAgingEnabled = false;
+const kpiGoalOverrides = new Map();
 const DISCLAIMER_MODAL = { open:false };
 function makeRuleDefaults(){
   return { enabled:'off', count:'', countMode:'manual', weeks:'', weeksMode:'manual' };
@@ -2094,10 +2205,12 @@ const KPI_DEFS = {
     { key:'consumerRate',  label:'Consumer Appointment Rate', defaultGoal:47.0, oppLabel:'Consumer Opps', oppKey:'consumerOpps' },
     { key:'commercialRate',label:'Commercial Appointment Rate',defaultGoal:85.0, oppLabel:'Commercial Opps', oppKey:'commercialOpps' },
     { key:'insuranceRate', label:'Insurance Appointment Rate', defaultGoal:92.0, oppLabel:'Insurance Opps', oppKey:'insuranceOpps' },
-    { key:'wiperRate',     label:'Wiper Rate',                defaultGoal:23.0, oppLabel:'Wiper Jobs', oppKey:'wiperJobs' }
+    { key:'wiperRate',     label:'Wiper Rate',                defaultGoal:23.0, oppLabel:'Wiper Jobs', oppKey:'wiperJobs' },
+    { key:'callQuality',   label:'Call Quality',              defaultGoal:85.0 }
   ],
   referral: [
-    { key:'wiperRate', label:'Wiper Rate', defaultGoal:23.0, oppLabel:'Wipers Asked', oppKey:'wipersAsked' }
+    { key:'wiperRate', label:'Wiper Rate', defaultGoal:23.0, oppLabel:'Wipers Asked', oppKey:'wipersAsked' },
+    { key:'callQuality', label:'Call Quality', defaultGoal:85.0 }
   ]
 };
 
@@ -2322,7 +2435,18 @@ function loadPrefs(){
     const raw = localStorage.getItem(PREF_KEY);
     if(!raw) return;
     const p = JSON.parse(raw);
-    if(p && typeof p==="object"){
+      if(p && typeof p==="object"){
+      if(p.docks && typeof p.docks === 'object'){
+        if(typeof p.docks.stats === 'string') statsDockKey = p.docks.stats;
+        if(typeof p.docks.coaching === 'string') coachDockKey = p.docks.coaching;
+        if(typeof p.docks.checklist === 'string') checkDockKey = p.docks.checklist;
+        if(typeof p.docks.qa === 'string') qaDockKey = p.docks.qa;
+      }
+      if(p.kpiGoalOverrides && typeof p.kpiGoalOverrides === 'object'){
+        for(const [k, v] of Object.entries(p.kpiGoalOverrides)){
+          if(Number.isFinite(+v)) kpiGoalOverrides.set(String(k), +v);
+        }
+      }
       if(Number.isFinite(+p.minCov)) els.minCovInp.value = String(+p.minCov);
       if(typeof p.sort==="string") els.sortSel.value = p.sort;
       if(typeof p.gapSort==="string" && els.gapSortSel) els.gapSortSel.value = p.gapSort;
@@ -2390,7 +2514,14 @@ function savePrefs(){
       })),
       coachingExcludeTerms: Array.from(excludedCoachingTerms),
       coachingIncludeTerms: Array.from(includedCoachingTerms),
-      disclaimer: disclaimerSettings
+      disclaimer: disclaimerSettings,
+      docks:{
+        stats: statsDockKey || '',
+        coaching: coachDockKey || '',
+        checklist: checkDockKey || '',
+        qa: qaDockKey || ''
+      },
+      kpiGoalOverrides: Object.fromEntries(kpiGoalOverrides.entries())
     }));
   }catch(e){}
 }
@@ -2517,6 +2648,40 @@ function checklistForRepWeek(repName, wk){
   let arr = repMap ? (repMap.get(wk) || []) : [];
 
   return arr.filter(it => checklistCriteriaForItem(it).length > 0);
+}
+function rebuildQAWeekIndex(){
+  qaByRepKey = new Map();
+  qaByRepWeek = new Map();
+  for(const r of qaRows){
+    const rk = r.repKey;
+    const wk = r.wk;
+    const repRows = qaByRepKey.get(rk) || [];
+    repRows.push(r);
+    qaByRepKey.set(rk, repRows);
+    let repMap = qaByRepWeek.get(rk);
+    if(!repMap){ repMap = new Map(); qaByRepWeek.set(rk, repMap); }
+    const arr = repMap.get(wk) || [];
+    arr.push(r);
+    repMap.set(wk, arr);
+  }
+  for(const repRows of qaByRepKey.values()){
+    repRows.sort((a,b)=> b.startDate - a.startDate);
+  }
+  for(const repMap of qaByRepWeek.values()){
+    for(const [wk, arr] of repMap.entries()){
+      arr.sort((a,b)=> b.startDate - a.startDate);
+      repMap.set(wk, arr);
+    }
+  }
+}
+function qaWeeklyAverage(repName, wk, sd=null, ed=null){
+  const rk = personKey(repName);
+  let rows = qaByRepWeek.get(rk)?.get(wk) || [];
+  if(sd instanceof Date && !isNaN(sd) && ed instanceof Date && !isNaN(ed)){
+    rows = rows.filter(r=> r.startDate >= sd && r.startDate <= ed);
+  }
+  if(!rows.length) return NaN;
+  return mean(rows.map(r => r.score));
 }
 function gatherChecklistInWindow(repName, weeks){
   const out=[];
@@ -2687,6 +2852,23 @@ function populateDockSelects(){
   if(checkDockKey && checkCands.includes(checkDockKey)) els.checkDockSel.value = checkDockKey;
   else if(checkCands.length){ checkDockKey = checkCands[0]; els.checkDockSel.value = checkDockKey; }
 
+  const qaCands = Array.from(new Set([
+    DOCKS.qa.key,
+    pickBestKey('qa'),
+    ...findQADockCandidates(),
+    ...findDockCandidates('qa')
+  ].filter(Boolean)));
+  els.qaDockSel.innerHTML = '';
+  for(const k of qaCands){
+    const o = document.createElement('option');
+    o.value = k;
+    o.textContent = k;
+    els.qaDockSel.appendChild(o);
+  }
+  qaDockKey = qaDockKey || pickBestKey('qa') || findQADockCandidates()[0] || DOCKS.qa.key;
+  if(qaDockKey && qaCands.includes(qaDockKey)) els.qaDockSel.value = qaDockKey;
+  else if(qaCands.length){ qaDockKey = qaCands[0]; els.qaDockSel.value = qaDockKey; }
+
   els.dockHint.textContent = `APP_NS: ${APP_NS}`;
 }
 
@@ -2760,6 +2942,13 @@ function loadChecklist(){
   els.checkHint.textContent = checklistRows.length
     ? `Checklist: ${checklistRows.length.toLocaleString()} row(s) loaded`
     : `Checklist: not loaded`;
+}
+function loadQA(){
+  const key = qaDockKey || pickBestKey('qa') || findQADockCandidates()[0] || DOCKS.qa.key;
+  qaDockKey = key;
+  const obj = loadDockObjByKey(key);
+  qaRows = canonicalizeQA(obj);
+  rebuildQAWeekIndex();
 }
 
 /* =================== coaching type chips =================== */
@@ -2867,6 +3056,7 @@ function getKpiDef(){
   return defs.find(d=>d.key===key) || defs[0] || null;
 }
 function buildKpiUI(){
+  const prevKey = els.kpiSel.value;
   els.kpiSel.innerHTML = '';
   const defs = KPI_DEFS[mode] || [];
   for(const d of defs){
@@ -2876,9 +3066,11 @@ function buildKpiUI(){
     els.kpiSel.appendChild(o);
   }
   if(defs.length){
+    if(prevKey && defs.some(d=>d.key===prevKey)) els.kpiSel.value = prevKey;
     if(!els.kpiSel.value) els.kpiSel.value = defs[0].key;
     const def = defs.find(x=>x.key===els.kpiSel.value) || defs[0];
-    els.goalInp.value = String(def.defaultGoal);
+    const savedGoal = kpiGoalOverrides.get(def.key);
+    els.goalInp.value = String(Number.isFinite(savedGoal) ? savedGoal : def.defaultGoal);
   }
 
   els.oppSel.innerHTML = '';
@@ -2903,6 +3095,13 @@ function buildKpiUI(){
 
   els.oppMin.value = '0';
   toggleOppGateUI();
+}
+function applyGoalForCurrentKpi(forceDefault=false){
+  const def = getKpiDef();
+  if(!def) return;
+  const saved = kpiGoalOverrides.get(def.key);
+  const next = (forceDefault || !Number.isFinite(saved)) ? def.defaultGoal : saved;
+  if(Number.isFinite(next)) els.goalInp.value = String(next);
 }
 function toggleOppGateUI(){
   const show = !!els.oppSel.value;
@@ -2975,7 +3174,11 @@ function getSelectedWindow(){
   const weeks = listIsoWeeksBetween(sd2, ed2);
   return { sd: sd2, ed: ed2, weeks };
 }
-function weekStatsForRep(repName, weekKey){
+function weekStatsForRep(repName, weekKey, sd=null, ed=null){
+  const kpiKey = (els.kpiSel.value || 'consumerRate');
+  if(kpiKey === 'callQuality'){
+    return { callQuality: qaWeeklyAverage(repName, weekKey, sd, ed) };
+  }
   const repMap = teamIndex.get(repName);
   const rows = repMap ? (repMap.get(weekKey) || []) : [];
   return computeTeamForRows(rows, mode, fieldMap);
@@ -3176,12 +3379,12 @@ function disclaimerBannerHtml(disclaimer){
   return '';
 }
 
-function computeRepSummary(repName, weeks, goalFrac, oppGateKey, oppMin){
+function computeRepSummary(repName, weeks, goalFrac, oppGateKey, oppMin, sd=null, ed=null){
   const rk = personKey(repName);
   const kpiKey = (els.kpiSel.value || 'consumerRate');
 
   const cells = weeks.map((wk, idx)=>{
-    const s = weekStatsForRep(repName, wk);
+    const s = weekStatsForRep(repName, wk, sd, ed);
     const v = s ? s[kpiKey] : NaN;
     const hasData = Number.isFinite(v);
     const isAbove = hasData ? (v >= goalFrac) : false;
@@ -4196,7 +4399,7 @@ function paintRepModal(){
   const oppMinN = Number.isFinite(oppMin) ? oppMin : 0;
 
   const kpiDef = getKpiDef();
-  const sum = computeRepSummary(rep, weeks, goalFrac, oppGateKey, oppMinN);
+  const sum = computeRepSummary(rep, weeks, goalFrac, oppGateKey, oppMinN, sd, ed);
 
   els.repModalTitle.textContent = `${rep} — Details`;
   els.repModalMeta.textContent = `${selectedTeam} • ${kpiDef ? kpiDef.label : 'KPI'} • ${mmddyy(sd)} → ${mmddyy(ed)} • ${weeks.length}w`;
@@ -4477,11 +4680,11 @@ function buildTeamIndexForTeam(teamName){
   }
   return idx;
 }
-function getTeamRepSummary(teamName, weeks, goalFrac, oppGateKey, oppMinN){
+function getTeamRepSummary(teamName, weeks, goalFrac, oppGateKey, oppMinN, sd=null, ed=null){
   const originalIdx = teamIndex;
   teamIndex = buildTeamIndexForTeam(teamName);
   const repNames = Array.from(teamIndex.keys());
-  const summaries = repNames.map(rep => computeRepSummary(rep, weeks, goalFrac, oppGateKey, oppMinN));
+  const summaries = repNames.map(rep => computeRepSummary(rep, weeks, goalFrac, oppGateKey, oppMinN, sd, ed));
   const weekIdx = new Map(weeks.map((wk, idx)=>[wk, idx]));
   for(const s of summaries){
     const repCoachingsVisible = (coachingByRepKey.get(s.repKey) || []).filter(c => weekIdx.has(c.wk) && coachingPassesFilters(c));
@@ -4652,8 +4855,8 @@ function computeAdjustedTeamScoreWithoutIndirectCoaching(repSummaries){
   const adjustedCoachCard = computeCoachCard(adjustedRepSummaries);
   return Number.isFinite(adjustedCoachCard.score) ? adjustedCoachCard.score : 0;
 }
-function computeTeamReportRow(teamName, weeks, goalFrac, oppGateKey, oppMinN, minCovFrac){
-  const repSummaries = getTeamRepSummary(teamName, weeks, goalFrac, oppGateKey, oppMinN)
+function computeTeamReportRow(teamName, weeks, goalFrac, oppGateKey, oppMinN, minCovFrac, sd=null, ed=null){
+  const repSummaries = getTeamRepSummary(teamName, weeks, goalFrac, oppGateKey, oppMinN, sd, ed)
     .filter(r=>r.withDataN>0)
     .filter(s=>(weeks.length ? s.withDataN/weeks.length : 1) >= minCovFrac);
   const coach = computeCoachCard(repSummaries);
@@ -4702,7 +4905,7 @@ function renderTeamReportView(ctx){
   const { weeks, goalFrac, oppGateKey, oppMinN, minCovFrac, sd, ed } = ctx;
   const teamsForMode = getTeamsForCurrentMode();
   const rows = teamsForMode
-    .map(t=>computeTeamReportRow(t, weeks, goalFrac, oppGateKey, oppMinN, minCovFrac));
+    .map(t=>computeTeamReportRow(t, weeks, goalFrac, oppGateKey, oppMinN, minCovFrac, sd, ed));
   els.teamReportHint.textContent = `${teamsForMode.length} teams • ${mmddyy(sd)} → ${mmddyy(ed)} • ${weeks.length}w`;
   els.teamReportPills.innerHTML = `<span class="pill">Drop color: green &lt;20%, yellow 20–34.9%, red 35%+</span><span class="pill">Filters match current KPI / date / coaching / checklist settings</span>`;
   if(!rows.length){
@@ -4817,7 +5020,7 @@ function render(){
     return;
   }
 
-  const allSummaries = allRepNames.map(rep => computeRepSummary(rep, weeks, goalFrac, oppGateKey, oppMinN));
+  const allSummaries = allRepNames.map(rep => computeRepSummary(rep, weeks, goalFrac, oppGateKey, oppMinN, sd, ed));
   paintTeamSummary(allSummaries, sd, ed, weeks);
 
   const summariesMinCov = allSummaries.filter(s=>{
@@ -5076,11 +5279,14 @@ els.modeSel.addEventListener('change', ()=>{
   loadStats();
   loadCoachings();
   loadChecklist();
+  loadQA();
   buildKpiUI();
   rebuildTeamIndex();
   paintChecklistCriteriaEditor();
   paintKeywordChips();
   paintCoachingWordChips();
+  const qaHint = qaRows.length ? `${qaRows.length.toLocaleString()} rows` : `not loaded (needed for Call Quality)`;
+  els.dockHint.textContent = `Loaded • Stats: ${allRows.length.toLocaleString()} rows • Coachings: ${coachings.length.toLocaleString()} • Checklist: ${checklistRows.length.toLocaleString()} • QA: ${qaHint} • APP_NS: ${APP_NS}`;
   savePrefs();
   render();
 });
@@ -5094,12 +5300,17 @@ els.teamSel.addEventListener('change', ()=>{
 });
 
 els.kpiSel.addEventListener('change', ()=>{
-  const def = getKpiDef();
-  if(def) els.goalInp.value = String(def.defaultGoal);
+  applyGoalForCurrentKpi();
   render();
 });
 
-els.goalInp.addEventListener('input', ()=> render());
+els.goalInp.addEventListener('input', ()=>{
+  const def = getKpiDef();
+  const n = parseFloat(els.goalInp.value);
+  if(def && Number.isFinite(n)) kpiGoalOverrides.set(def.key, n);
+  savePrefs();
+  render();
+});
 els.startDate.addEventListener('change', ()=> render());
 els.endDate.addEventListener('change', ()=> render());
 els.refreshBtn.addEventListener('click', ()=> render());
@@ -5255,17 +5466,21 @@ els.loadDocksBtn.addEventListener('click', ()=>{
   statsDockKey = els.statsDockSel.value || statsDockKey;
   coachDockKey = els.coachDockSel.value || coachDockKey;
   checkDockKey = els.checkDockSel.value || checkDockKey;
+  qaDockKey = els.qaDockSel.value || qaDockKey;
 
   loadStats();
   loadCoachings();
   loadChecklist();
+  loadQA();
   buildKpiUI();
   rebuildTeamIndex();
   paintChecklistCriteriaEditor();
   paintKeywordChips();
   paintCoachingWordChips();
 
-  els.dockHint.textContent = `Loaded • Stats: ${allRows.length.toLocaleString()} rows • Coachings: ${coachings.length.toLocaleString()} • Checklist: ${checklistRows.length.toLocaleString()} • APP_NS: ${APP_NS}`;
+  const qaHint = qaRows.length ? `${qaRows.length.toLocaleString()} rows` : `not loaded (needed for Call Quality)`;
+  els.dockHint.textContent = `Loaded • Stats: ${allRows.length.toLocaleString()} rows • Coachings: ${coachings.length.toLocaleString()} • Checklist: ${checklistRows.length.toLocaleString()} • QA: ${qaHint} • APP_NS: ${APP_NS}`;
+  savePrefs();
   render();
 });
 
@@ -5284,10 +5499,12 @@ els.repSearch.addEventListener('input', ()=> render());
   if(!els.sortSel.value) els.sortSel.value = 'az';
 
   loadPrefs();
+  populateDockSelects();
 
   loadCoachings();
   loadStats();
   loadChecklist();
+  loadQA();
 
   buildKpiUI();
   toggleOppGateUI();
@@ -5296,7 +5513,8 @@ els.repSearch.addEventListener('input', ()=> render());
   paintKeywordChips();
   paintCoachingWordChips();
 
-  els.dockHint.textContent = `Loaded • Stats: ${allRows.length.toLocaleString()} rows • Coachings: ${coachings.length.toLocaleString()} • Checklist: ${checklistRows.length.toLocaleString()} • APP_NS: ${APP_NS}`;
+  const qaHint = qaRows.length ? `${qaRows.length.toLocaleString()} rows` : `not loaded (needed for Call Quality)`;
+  els.dockHint.textContent = `Loaded • Stats: ${allRows.length.toLocaleString()} rows • Coachings: ${coachings.length.toLocaleString()} • Checklist: ${checklistRows.length.toLocaleString()} • QA: ${qaHint} • APP_NS: ${APP_NS}`;
 
   render();
 })();
