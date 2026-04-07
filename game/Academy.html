@@ -553,6 +553,23 @@
   }
 
   .timelineStack{ display:grid; gap:6px; }
+  .timelineRow{
+    display:grid;
+    grid-template-columns: 1fr;
+    gap:6px;
+    align-items:center;
+  }
+  .timelineRow.multi{
+    grid-template-columns: minmax(88px, auto) 1fr;
+  }
+  .timelineRowLabel{
+    font-size:11px;
+    font-weight:1000;
+    color:var(--muted);
+    letter-spacing:.15px;
+    text-transform:uppercase;
+    white-space:nowrap;
+  }
   .scoreline{
     display:flex;
     background:transparent;
@@ -906,6 +923,9 @@
 
     <label>KPI
       <select id="kpiSel" style="min-width:240px"></select>
+    </label>
+    <label>Multi View KPI
+      <select id="kpiSelSecondary" style="min-width:240px"></select>
     </label>
 
     <label>Goal %
@@ -1984,6 +2004,7 @@ const els = {
   teamSelLabel: document.getElementById('teamSelLabel'),
   teamSel: document.getElementById('teamSel'),
   kpiSel: document.getElementById('kpiSel'),
+  kpiSelSecondary: document.getElementById('kpiSelSecondary'),
   goalInp: document.getElementById('goalInp'),
   startDate: document.getElementById('startDate'),
   endDate: document.getElementById('endDate'),
@@ -2167,6 +2188,7 @@ let qaByRepKey = new Map();           // repKey -> qa[]
 let qaByRepWeek = new Map();          // repKey -> Map(weekKey -> qa[])
 let selectedCriteriaId = null;
 let slaAgingEnabled = false;
+let secondaryKpiSelection = '';
 const kpiGoalOverrides = new Map();
 const DISCLAIMER_MODAL = { open:false };
 function makeRuleDefaults(){
@@ -2447,6 +2469,7 @@ function loadPrefs(){
           if(Number.isFinite(+v)) kpiGoalOverrides.set(String(k), +v);
         }
       }
+      if(typeof p.secondaryKpiSelection === 'string') secondaryKpiSelection = p.secondaryKpiSelection;
       if(Number.isFinite(+p.minCov)) els.minCovInp.value = String(+p.minCov);
       if(typeof p.sort==="string") els.sortSel.value = p.sort;
       if(typeof p.gapSort==="string" && els.gapSortSel) els.gapSortSel.value = p.gapSort;
@@ -2521,6 +2544,7 @@ function savePrefs(){
         checklist: checkDockKey || '',
         qa: qaDockKey || ''
       },
+      secondaryKpiSelection: String(els.kpiSelSecondary?.value || ''),
       kpiGoalOverrides: Object.fromEntries(kpiGoalOverrides.entries())
     }));
   }catch(e){}
@@ -3055,23 +3079,56 @@ function getKpiDef(){
   const key = els.kpiSel.value || (defs[0]?.key);
   return defs.find(d=>d.key===key) || defs[0] || null;
 }
+function getKpiDefByKey(kpiKey){
+  const defs = KPI_DEFS[mode] || [];
+  return defs.find(d=>d.key===kpiKey) || null;
+}
+function getGoalFracForKpi(kpiKey){
+  const def = getKpiDefByKey(kpiKey);
+  if(!def) return NaN;
+  const goalPct = Number.isFinite(kpiGoalOverrides.get(kpiKey)) ? kpiGoalOverrides.get(kpiKey) : def.defaultGoal;
+  return Number.isFinite(goalPct) ? (goalPct/100) : NaN;
+}
+function getSecondaryKpiKey(){
+  const k = String(els.kpiSelSecondary?.value || '').trim();
+  const primary = String(els.kpiSel?.value || '').trim();
+  if(!k || k === '__NONE__' || k === primary) return '';
+  return k;
+}
 function buildKpiUI(){
   const prevKey = els.kpiSel.value;
+  const prevSecondary = secondaryKpiSelection || els.kpiSelSecondary.value;
   els.kpiSel.innerHTML = '';
+  els.kpiSelSecondary.innerHTML = '';
   const defs = KPI_DEFS[mode] || [];
   for(const d of defs){
     const o = document.createElement('option');
     o.value = d.key;
     o.textContent = d.label;
     els.kpiSel.appendChild(o);
+
+    const o2 = document.createElement('option');
+    o2.value = d.key;
+    o2.textContent = d.label;
+    els.kpiSelSecondary.appendChild(o2);
   }
+  const noneSecondary = document.createElement('option');
+  noneSecondary.value = '__NONE__';
+  noneSecondary.textContent = '(single view)';
+  els.kpiSelSecondary.insertBefore(noneSecondary, els.kpiSelSecondary.firstChild);
   if(defs.length){
     if(prevKey && defs.some(d=>d.key===prevKey)) els.kpiSel.value = prevKey;
     if(!els.kpiSel.value) els.kpiSel.value = defs[0].key;
+    if(prevSecondary && defs.some(d=>d.key===prevSecondary) && prevSecondary !== els.kpiSel.value){
+      els.kpiSelSecondary.value = prevSecondary;
+    }else{
+      els.kpiSelSecondary.value = '__NONE__';
+    }
     const def = defs.find(x=>x.key===els.kpiSel.value) || defs[0];
     const savedGoal = kpiGoalOverrides.get(def.key);
     els.goalInp.value = String(Number.isFinite(savedGoal) ? savedGoal : def.defaultGoal);
   }
+  secondaryKpiSelection = String(els.kpiSelSecondary.value || '');
 
   els.oppSel.innerHTML = '';
   const none = document.createElement('option');
@@ -3174,9 +3231,9 @@ function getSelectedWindow(){
   const weeks = listIsoWeeksBetween(sd2, ed2);
   return { sd: sd2, ed: ed2, weeks };
 }
-function weekStatsForRep(repName, weekKey, sd=null, ed=null){
-  const kpiKey = (els.kpiSel.value || 'consumerRate');
-  if(kpiKey === 'callQuality'){
+function weekStatsForRep(repName, weekKey, sd=null, ed=null, kpiKey=''){
+  const resolvedKpi = kpiKey || (els.kpiSel.value || 'consumerRate');
+  if(resolvedKpi === 'callQuality'){
     return { callQuality: qaWeeklyAverage(repName, weekKey, sd, ed) };
   }
   const repMap = teamIndex.get(repName);
@@ -3379,12 +3436,12 @@ function disclaimerBannerHtml(disclaimer){
   return '';
 }
 
-function computeRepSummary(repName, weeks, goalFrac, oppGateKey, oppMin, sd=null, ed=null){
+function computeRepSummary(repName, weeks, goalFrac, oppGateKey, oppMin, sd=null, ed=null, forcedKpiKey=''){
   const rk = personKey(repName);
-  const kpiKey = (els.kpiSel.value || 'consumerRate');
+  const kpiKey = forcedKpiKey || (els.kpiSel.value || 'consumerRate');
 
   const cells = weeks.map((wk, idx)=>{
-    const s = weekStatsForRep(repName, wk, sd, ed);
+    const s = weekStatsForRep(repName, wk, sd, ed, kpiKey);
     const v = s ? s[kpiKey] : NaN;
     const hasData = Number.isFinite(v);
     const isAbove = hasData ? (v >= goalFrac) : false;
@@ -4980,13 +5037,18 @@ function render(){
   if(els.teamSummaryPills) els.teamSummaryPills.innerHTML = '';
 
   const kpiDef = getKpiDef();
+  const secondaryKpiKey = getSecondaryKpiKey();
+  const secondaryKpiDef = secondaryKpiKey ? getKpiDefByKey(secondaryKpiKey) : null;
   const { sd, ed, weeks } = getSelectedWindow();
   const selectedCriteria = getSelectedCriteria();
   const inc = (selectedCriteria.incident && selectedCriteria.incident !== '__ANY__' && selectedCriteria.incident !== '__NONE__') ? selectedCriteria.incident : 'Any';
   const kw = (selectedCriteria.keywords||[]).length ? selectedCriteria.keywords.join(', ') : '—';
   const winTxt = (sd && ed) ? `${mmddyy(sd)}→${mmddyy(ed)}` : 'Pick dates';
   const barScope = reportView === 'team' ? `${mode.toUpperCase()} teams` : (selectedTeam || '—');
-  els.barMeta.textContent = `${barScope} • ${(kpiDef&&kpiDef.label)||'KPI'} • ${winTxt} • Incident: ${inc} • kw: ${kw}`;
+  const kpiScopeLabel = secondaryKpiDef
+    ? `${(kpiDef&&kpiDef.label)||'KPI'} + ${secondaryKpiDef.label}`
+    : ((kpiDef&&kpiDef.label)||'KPI');
+  els.barMeta.textContent = `${barScope} • ${kpiScopeLabel} • ${winTxt} • Incident: ${inc} • kw: ${kw}`;
 
   if(!allRows.length || (reportView!=='team' && !selectedTeam)){
     els.scopeHint.textContent = 'Stats dock missing / not loaded.';
@@ -5021,6 +5083,12 @@ function render(){
   }
 
   const allSummaries = allRepNames.map(rep => computeRepSummary(rep, weeks, goalFrac, oppGateKey, oppMinN, sd, ed));
+  const secondarySummariesByRep = secondaryKpiDef
+    ? new Map(allRepNames.map(rep=>{
+        const secGoalFrac = getGoalFracForKpi(secondaryKpiKey);
+        return [rep, computeRepSummary(rep, weeks, secGoalFrac, oppGateKey, oppMinN, sd, ed, secondaryKpiKey)];
+      }))
+    : new Map();
   paintTeamSummary(allSummaries, sd, ed, weeks);
 
   const summariesMinCov = allSummaries.filter(s=>{
@@ -5108,35 +5176,39 @@ function render(){
     const ratioTxt = (cor > 0) ? ratioVal.toFixed(2) : String(s.coachTotal||0);
     const ratioClass = (ratioVal > 7) ? 'ratioBad' : (ratioVal > 5) ? 'ratioWarn' : '';
 
-    const coachBarHtml = s.cells.map(c=>{
-      const cls = c.coachCount>0 ? 'coach' : '';
-      const incCls = c.incCount>0 ? 'incident' : '';
-      const incStyle = c.incidentColor ? ` style="--incident-color:${escAttr(c.incidentColor)}"` : '';
-      const vStr = c.hasData ? (c.v*100).toFixed(1) : '';
-      const status = c.hasData ? (c.isAbove ? 'Above' : 'Below') : 'No data';
-      return `<div class="cbseg ${cls} ${incCls}"${incStyle} data-rep="${escAttr(s.repName)}" data-wk="${escAttr(c.wk)}" data-v="${escAttr(vStr)}" data-status="${escAttr(status)}" data-coachcount="${escAttr(String(c.coachCount||0))}"></div>`;
-    }).join('');
-
-    const timelineHtml = s.cells.map(c=>{
-      const cls = c.hasData ? (c.isAbove ? 'good' : 'bad') : 'na';
-      const coachedCls = c.coachCount>0 ? 'coached' : '';
-      const incCls = c.incCount>0 ? 'incident' : '';
-      const incStyle = c.incidentColor ? ` style="--incident-color:${escAttr(c.incidentColor)}"` : '';
-      const vStr = c.hasData ? (c.v*100).toFixed(1) : '';
-      const status = c.hasData ? (c.isAbove ? 'Above' : 'Below') : 'No data';
-
-      const mk = c.coachCount>0
-        ? (c.coachCount===1 ? `<span class="mkr"></span>` : `<span class="mkr num">${c.coachCount}</span>`)
-        : '';
-
-      return `<div class="seg ${cls} ${coachedCls} ${incCls}"${incStyle} data-rep="${escAttr(s.repName)}" data-wk="${escAttr(c.wk)}" data-v="${escAttr(vStr)}" data-status="${escAttr(status)}" data-coachcount="${escAttr(String(c.coachCount||0))}">${mk}</div>`;
-    }).join('');
-
-    const scoreLineHtml = s.cells.map(c=>{
-      if(!c.hasData) return `<div class="scoreSeg na">—</div>`;
-      const cls = c.isAbove ? 'good' : 'bad';
-      return `<div class="scoreSeg ${cls}">${(c.v*100).toFixed(1)}%</div>`;
-    }).join('');
+    const buildStackForSummary = (summary, rowLabel='')=>{
+      const coachBarHtml = summary.cells.map(c=>{
+        const cls = c.coachCount>0 ? 'coach' : '';
+        const incCls = c.incCount>0 ? 'incident' : '';
+        const incStyle = c.incidentColor ? ` style="--incident-color:${escAttr(c.incidentColor)}"` : '';
+        const vStr = c.hasData ? (c.v*100).toFixed(1) : '';
+        const status = c.hasData ? (c.isAbove ? 'Above' : 'Below') : 'No data';
+        return `<div class="cbseg ${cls} ${incCls}"${incStyle} data-rep="${escAttr(summary.repName)}" data-wk="${escAttr(c.wk)}" data-v="${escAttr(vStr)}" data-status="${escAttr(status)}" data-coachcount="${escAttr(String(c.coachCount||0))}"></div>`;
+      }).join('');
+      const timelineHtml = summary.cells.map(c=>{
+        const cls = c.hasData ? (c.isAbove ? 'good' : 'bad') : 'na';
+        const coachedCls = c.coachCount>0 ? 'coached' : '';
+        const incCls = c.incCount>0 ? 'incident' : '';
+        const incStyle = c.incidentColor ? ` style="--incident-color:${escAttr(c.incidentColor)}"` : '';
+        const vStr = c.hasData ? (c.v*100).toFixed(1) : '';
+        const status = c.hasData ? (c.isAbove ? 'Above' : 'Below') : 'No data';
+        const mk = c.coachCount>0
+          ? (c.coachCount===1 ? `<span class="mkr"></span>` : `<span class="mkr num">${c.coachCount}</span>`)
+          : '';
+        return `<div class="seg ${cls} ${coachedCls} ${incCls}"${incStyle} data-rep="${escAttr(summary.repName)}" data-wk="${escAttr(c.wk)}" data-v="${escAttr(vStr)}" data-status="${escAttr(status)}" data-coachcount="${escAttr(String(c.coachCount||0))}">${mk}</div>`;
+      }).join('');
+      const scoreLineHtml = summary.cells.map(c=>{
+        if(!c.hasData) return `<div class="scoreSeg na">—</div>`;
+        const cls = c.isAbove ? 'good' : 'bad';
+        return `<div class="scoreSeg ${cls}">${(c.v*100).toFixed(1)}%</div>`;
+      }).join('');
+      const rowCls = rowLabel ? 'timelineRow multi' : 'timelineRow';
+      const labelHtml = rowLabel ? `<div class="timelineRowLabel">${escAttr(rowLabel)}</div>` : '';
+      return `<div class="${rowCls}">${labelHtml}<div><div class="coachbar">${coachBarHtml}</div><div class="timeline">${timelineHtml}</div><div class="scoreline">${scoreLineHtml}</div></div></div>`;
+    };
+    const secondarySummary = secondarySummariesByRep.get(s.repName);
+    const stackRowsHtml = [buildStackForSummary(s, secondaryKpiDef ? (kpiDef?.label || 'Primary KPI') : '')];
+    if(secondarySummary && secondaryKpiDef) stackRowsHtml.push(buildStackForSummary(secondarySummary, secondaryKpiDef.label));
     const repOrb = timelineOrbHtml(s.repName, weeks);
     const disclaimerHtml = disclaimerBannerHtml(s.disclaimer);
 
@@ -5170,13 +5242,11 @@ function render(){
           ${disclaimerHtml}
           ${repOrb.html}
           <div class="timelineStack">
-            <div class="coachbar">${coachBarHtml}</div>
-            <div class="timeline">${timelineHtml}</div>
-            <div class="scoreline">${scoreLineHtml}</div>
+            ${stackRowsHtml.join('')}
           </div>
           <div class="timelineMeta">
             <div class="mono">${weeks[0]} → ${weeks[weeks.length-1]} • <span class="mono" style="color:var(--muted);font-weight:900">Blue hatch=coaching • Orange hatch=corrective (hover/click name)</span></div>
-            <div class="mono">Goal: ${(goalFrac*100).toFixed(1)}%</div>
+            <div class="mono">${secondaryKpiDef ? `Goals: ${(goalFrac*100).toFixed(1)}% / ${(getGoalFracForKpi(secondaryKpiKey)*100).toFixed(1)}%` : `Goal: ${(goalFrac*100).toFixed(1)}%`}</div>
           </div>
         </div>
       </div>
@@ -5301,6 +5371,13 @@ els.teamSel.addEventListener('change', ()=>{
 
 els.kpiSel.addEventListener('change', ()=>{
   applyGoalForCurrentKpi();
+  secondaryKpiSelection = String(els.kpiSelSecondary.value || '');
+  savePrefs();
+  render();
+});
+els.kpiSelSecondary.addEventListener('change', ()=>{
+  secondaryKpiSelection = String(els.kpiSelSecondary.value || '');
+  savePrefs();
   render();
 });
 
