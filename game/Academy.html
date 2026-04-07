@@ -227,6 +227,32 @@
     padding:2px 6px;
     margin:2px;
   }
+  .modalOverlay{
+    position:fixed;
+    inset:0;
+    background:rgba(20,12,6,.56);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:30;
+  }
+  .modalOverlay.open{display:flex;}
+  .modal{
+    width:min(760px,92vw);
+    max-height:86vh;
+    overflow:auto;
+    background:linear-gradient(var(--panel),var(--panel2));
+    border:3px solid var(--line);
+    border-radius:12px;
+    padding:12px;
+    box-shadow:0 10px 28px rgba(0,0,0,.35);
+  }
+  .modalHead{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+  }
 </style>
 </head>
 <body>
@@ -264,11 +290,12 @@
 
     <div class="section">
       <h2>Between Battles</h2>
-      <div class="small">Spend points on reinforcements and healing. Upgrade paths are on the right panel.</div>
+      <div class="small">Spend points on reinforcements and healing. Select a unit to open its upgrade path popup.</div>
       <div>
         <button id="buyPhalanxBtn">Buy Phalanx (160)</button>
         <button id="buySkirmBtn">Buy Skirmishers (120)</button>
         <button id="buyCavBtn">Buy Cavalry (180)</button>
+        <button id="buyEleBtn">Buy War Elephants (260)</button>
       </div>
       <div>
         <button id="healBtn">Heal Selected (40)</button>
@@ -296,9 +323,18 @@
 
     <div class="section">
       <h2>Upgrade Paths</h2>
-      <div id="selectedSummary" class="small muted">Select a unit to see specialization options.</div>
-      <div id="upgradePanel"></div>
+      <div id="selectedSummary" class="small muted">Select a unit to open its upgrade path popup.</div>
+      <button id="openUpgradeBtn">Open Upgrade Paths</button>
     </div>
+  </div>
+</div>
+<div id="upgradeModal" class="modalOverlay">
+  <div class="modal">
+    <div class="modalHead">
+      <h2 style="margin:0;">Unit Upgrade Paths</h2>
+      <button id="closeUpgradeBtn">Close</button>
+    </div>
+    <div id="upgradePanel"></div>
   </div>
 </div>
 
@@ -341,8 +377,12 @@
     buyPhalanxBtn: document.getElementById("buyPhalanxBtn"),
     buySkirmBtn: document.getElementById("buySkirmBtn"),
     buyCavBtn: document.getElementById("buyCavBtn"),
+    buyEleBtn: document.getElementById("buyEleBtn"),
     healBtn: document.getElementById("healBtn"),
     nextBattleBtn: document.getElementById("nextBattleBtn"),
+    openUpgradeBtn: document.getElementById("openUpgradeBtn"),
+    closeUpgradeBtn: document.getElementById("closeUpgradeBtn"),
+    upgradeModal: document.getElementById("upgradeModal"),
     upgradePanel: document.getElementById("upgradePanel"),
     selectedSummary: document.getElementById("selectedSummary")
   };
@@ -442,8 +482,7 @@
       cavalryChargePower:1,
 
       upgrades: [],
-      doctrineGroup: null,
-      veteranGroup: null,
+      doctrinePath: null,
 
       auraRadius: 90,
       auraPowerBonus: 1.0,
@@ -477,6 +516,7 @@
       ,congestion:0
       ,multiAngle:0
       ,wasRouted:false
+      ,engagementXpTicker:0
     };
 
     if (type === "Banner Phalanx") {
@@ -557,12 +597,36 @@
         cavalryChargeReady:true,
         cavalryChargePower:1
       });
+    } else if (type === "War Elephants") {
+      Object.assign(u, {
+        name:"War Elephants",
+        maxHealth:205,
+        health:205,
+        maxMorale:140,
+        morale:140,
+        push:42,
+        damageMin:10,
+        damageMax:18,
+        speed:40,
+        chaseSpeed:48,
+        routeSpeed:66,
+        engageRange:56,
+        radius:28,
+        killValue:92,
+        soldierRows:2,
+        soldierCols:3,
+        rotationSpeed:1.25,
+        routeResist:1.25,
+        moraleDamageBonus:1.45,
+        frontalPushBonus:1.35
+      });
     }
 
     if (type === "Banner Phalanx") u.role = "anchor";
     else if (type === "Phalanx") u.role = "line";
     else if (type === "Skirmishers") u.role = "rear";
     else if (type === "Cavalry") u.role = "flank";
+    else if (type === "War Elephants") u.role = "shock";
 
     Object.assign(u, extra);
     u.ang = dirAngles[u.dir];
@@ -580,10 +644,10 @@
           name:"Pike Wall",
           cost:110,
           group:"doctrine",
+          tier:1,
           desc:"Anchor line doctrine. More frontal shove and sturdiness, but slower movement and turning.",
           apply(u){
             u.upgrades.push(this.id);
-            u.doctrineGroup = this.id;
             u.push += 8;
             u.maxHealth += 14; u.health += 14;
             u.speed -= 6;
@@ -598,10 +662,10 @@
           name:"Shock Line",
           cost:110,
           group:"doctrine",
+          tier:1,
           desc:"Breakthrough doctrine. Heavier damage and morale shock, ideal for forcing cracks.",
           apply(u){
             u.upgrades.push(this.id);
-            u.doctrineGroup = this.id;
             u.damageMin += 3;
             u.damageMax += 4;
             u.push += 3;
@@ -611,19 +675,38 @@
           }
         },
         {
-          id:"ironresolve",
-          name:"Iron Resolve",
-          cost:110,
+          id:"phalanxfortress",
+          name:"Fortress Spears",
+          cost:120,
           group:"doctrine",
-          desc:"Steady center doctrine. Better morale, more rout resistance, strong long fight staying power.",
+          tier:2,
+          path:"pikewall",
+          requires:"pikewall",
+          desc:"Second-tier pike wall branch. Massive hold power and harder morale collapse.",
           apply(u){
             u.upgrades.push(this.id);
-            u.doctrineGroup = this.id;
-            u.maxMorale += 26; u.morale += 26;
+            u.maxMorale += 20; u.morale += 20;
             u.maxHealth += 10; u.health += 10;
-            u.routeResist *= 1.35;
-            u.push += 2;
-            u.moraleDamageBonus *= 0.9;
+            u.routeResist *= 1.25;
+            u.push += 6;
+            u.frontalPushBonus *= 1.16;
+          }
+        },
+        {
+          id:"phalanxbreaker",
+          name:"Breaker Cadre",
+          cost:120,
+          group:"doctrine",
+          tier:2,
+          path:"shockline",
+          requires:"shockline",
+          desc:"Second-tier shock line branch. Elite assault group with fierce morale shock.",
+          apply(u){
+            u.upgrades.push(this.id);
+            u.damageMin += 3; u.damageMax += 4;
+            u.push += 4;
+            u.moraleDamageBonus *= 1.22;
+            u.flankPower *= 1.1;
           }
         },
 
@@ -632,10 +715,10 @@
           name:"Shield Oath",
           cost:95,
           group:"veteran",
+          minLevel:3,
           desc:"Oathbound discipline. Bigger morale pool and a morale pulse for nearby Phalanx groups.",
           apply(u){
             u.upgrades.push(this.id);
-            u.veteranGroup = this.id;
             u.maxMorale += 20; u.morale += 20;
             u.routeResist *= 1.12;
             u.groupMoraleAuraRadius = Math.max(u.groupMoraleAuraRadius, 105);
@@ -648,10 +731,10 @@
           name:"Drilled",
           cost:95,
           group:"veteran",
+          minLevel:4,
           desc:"Veteran training. Faster turning and cleaner repositioning.",
           apply(u){
             u.upgrades.push(this.id);
-            u.veteranGroup = this.id;
             u.rotationSpeed += 0.9;
             u.speed += 5;
             u.allySupportBonus *= 1.12;
@@ -662,10 +745,10 @@
           name:"Hardened",
           cost:95,
           group:"veteran",
+          minLevel:5,
           desc:"Scarred veterans. More health and better resistance under pressure.",
           apply(u){
             u.upgrades.push(this.id);
-            u.veteranGroup = this.id;
             u.maxHealth += 26; u.health += 26;
             u.routeResist *= 1.18;
             u.push += 2;
@@ -849,6 +932,74 @@
         }
       ];
     }
+    if (unit.type === "War Elephants") {
+      return [
+        {
+          id:"towerbeasts",
+          name:"Tower Beasts",
+          cost:140,
+          group:"doctrine",
+          tier:1,
+          desc:"Heavier tower crews with massive frontal shove and morale terror.",
+          apply(u){
+            u.upgrades.push(this.id);
+            u.push += 10;
+            u.maxHealth += 18; u.health += 18;
+            u.moraleDamageBonus *= 1.18;
+            u.soldierRows = 3; u.soldierCols = 3;
+          }
+        },
+        {
+          id:"razortusks",
+          name:"Razor Tusks",
+          cost:140,
+          group:"doctrine",
+          tier:1,
+          desc:"Aggressive tusk blades for high damage impact charges.",
+          apply(u){
+            u.upgrades.push(this.id);
+            u.damageMin += 3; u.damageMax += 5;
+            u.push += 6;
+            u.flankPower *= 1.12;
+            u.soldierRows = 2; u.soldierCols = 4;
+          }
+        },
+        {
+          id:"dreaddrums",
+          name:"Dread Drums",
+          cost:150,
+          group:"doctrine",
+          tier:2,
+          path:"towerbeasts",
+          requires:"towerbeasts",
+          desc:"Tower branch follow-up: drums amplify enemy morale collapse, especially cavalry.",
+          apply(u){
+            u.upgrades.push(this.id);
+            u.moraleDamageBonus *= 1.28;
+            u.groupMoraleAuraRadius = Math.max(u.groupMoraleAuraRadius, 100);
+          }
+        },
+        {
+          id:"tramplerline",
+          name:"Trampler Line",
+          cost:150,
+          group:"doctrine",
+          tier:2,
+          path:"razortusks",
+          requires:"razortusks",
+          desc:"Razor path follow-up: stronger push and impact trail for devastating breakthroughs.",
+          apply(u){
+            u.upgrades.push(this.id);
+            u.push += 8;
+            u.frontalPushBonus *= 1.15;
+            u.impactTrail += 0.45;
+          }
+        },
+        { id:"mahoutveterans", name:"Mahout Veterans", cost:100, group:"veteran", minLevel:3, desc:"Veteran control lowers rout chance and improves turning.", apply(u){ u.upgrades.push(this.id); u.routeResist*=1.18; u.rotationSpeed+=0.25; } },
+        { id:"battlehowdah", name:"Battle Howdah", cost:110, group:"veteran", minLevel:4, desc:"Veteran crew with extra health and morale.", apply(u){ u.upgrades.push(this.id); u.maxHealth+=20; u.health+=20; u.maxMorale+=12; u.morale+=12; } },
+        { id:"ironanklets", name:"Iron Anklets", cost:120, group:"veteran", minLevel:5, desc:"Veteran stabilization for superior push pressure.", apply(u){ u.upgrades.push(this.id); u.push+=6; u.routeResist*=1.1; } }
+      ];
+    }
 
     return [];
   }
@@ -857,8 +1008,14 @@
     if (!unit || unit.dead || game.state !== STATE.BETWEEN) return false;
     if (unit.upgrades.includes(upg.id)) return false;
     if (game.points < upg.cost) return false;
-    if (upg.group === "doctrine" && unit.doctrineGroup) return false;
-    if (upg.group === "veteran" && unit.veteranGroup) return false;
+    if (upg.requires && !unit.upgrades.includes(upg.requires)) return false;
+    if (upg.group === "doctrine" && upg.tier === 1 && unit.doctrinePath && unit.doctrinePath !== upg.id) return false;
+    if (upg.group === "doctrine" && upg.tier > 1 && upg.path && unit.doctrinePath !== upg.path) return false;
+    if (upg.group === "veteran") {
+      if (unit.level < (upg.minLevel || 3)) return false;
+      const ownedVeterans = getUpgradeOptions(unit).filter(o => o.group === "veteran" && unit.upgrades.includes(o.id)).length;
+      if (ownedVeterans >= 3) return false;
+    }
     return true;
   }
 
@@ -871,6 +1028,7 @@
 
     game.points -= option.cost;
     option.apply(unit);
+    if (option.group === "doctrine" && option.tier === 1) unit.doctrinePath = option.id;
     updateUI();
   }
 
@@ -940,6 +1098,7 @@
       const choices = [{type:"Phalanx", cost:120}];
       if (battle.enemyPoints >= 360) choices.push({type:"Skirmishers", cost:100});
       if (battle.enemyPoints >= 430) choices.push({type:"Cavalry", cost:140});
+      if (battle.enemyPoints >= 680) choices.push({type:"War Elephants", cost:220});
       if (battle.enemyPoints >= 760) choices.push({type:"Phalanx", cost:120});
 
       const pick = choices[irand(0, choices.length-1)];
@@ -1516,10 +1675,27 @@
 
     if (killer && killer.friendly) {
       game.points += unit.killValue;
-      killer.xp += 1;
+      grantXp(killer, 1.2);
       killer.morale = clamp(killer.morale + 10, 0, killer.maxMorale);
       killer.impactTrail = clamp(killer.impactTrail + 0.35, 0, 2.6);
     }
+  }
+
+  function grantXp(unit, amount) {
+    if (!unit || unit.dead || amount <= 0) return;
+    unit.xp += amount;
+    const xpNeeded = unit.level * 3;
+    if (unit.xp < xpNeeded) return;
+    unit.xp -= xpNeeded;
+    unit.level += 1;
+    unit.maxHealth += 6;
+    unit.health = Math.min(unit.maxHealth, unit.health + 10);
+    unit.maxMorale += 5;
+    unit.morale = Math.min(unit.maxMorale, unit.morale + 10);
+    unit.push += 1;
+    unit.damageMin += 0.4;
+    unit.damageMax += 0.6;
+    addFloat(unit.x, unit.y - 24, `LEVEL ${unit.level}`, "#aee2ff", {life:1.1, decay:1.05, vy:-28});
   }
 
   function getFacingVector(unit) {
@@ -1700,6 +1876,9 @@
     } else if (unit.type === "Cavalry") {
       atkPush *= unit.cavalryChargePower;
     }
+    if (unit.type === "War Elephants") atkPush *= 1.32;
+    if (target.type === "War Elephants") defPush *= 1.22;
+    if (unit.type === "Skirmishers" && target.type === "War Elephants") atkPush *= 1.35;
 
     const frontal = flankFactor(unit, target) === 1.0;
     if (frontal) atkPush *= unit.frontalPushBonus;
@@ -1740,8 +1919,11 @@
     unit.x = clamp(unit.x, FIELD_X + 8, FIELD_X + FIELD_W - 8);
     unit.y = clamp(unit.y, FIELD_Y + 8, FIELD_Y + FIELD_H - 8);
 
-    const moraleLoss = Math.abs(pushAmt) * (0.12 + pushPower * 0.2);
+    let moraleLoss = Math.abs(pushAmt) * (0.12 + pushPower * 0.2);
     const pushDamage = Math.abs(pushAmt) * (0.05 + pushPower * 0.14);
+    if (unit.type === "War Elephants") moraleLoss *= 1.45;
+    if (unit.type === "War Elephants" && target.type === "Cavalry") moraleLoss *= 1.8;
+    if (unit.type === "Skirmishers" && target.type === "War Elephants") moraleLoss *= 1.55;
     target.morale -= moraleLoss / terrDef.morale;
     target.health -= pushDamage;
     unit.impactTrail = clamp(unit.impactTrail + dt * 0.9, 0, 2.6);
@@ -1786,6 +1968,15 @@
       dmg *= flank;
       moraleHit *= flank * 1.18;
       if (Math.random() < 0.25) addFloat(target.x, target.y - 14, "FLANK!", "#ffe46d");
+    }
+    if (unit.type === "War Elephants") {
+      dmg *= 1.24;
+      moraleHit *= 1.6;
+    }
+    if (unit.type === "War Elephants" && target.type === "Cavalry") moraleHit *= 1.9;
+    if (unit.type === "Skirmishers" && target.type === "War Elephants") {
+      dmg *= 1.45;
+      moraleHit *= 1.35;
     }
 
     if (unit.friendly && bannerAura(unit)) {
@@ -1966,6 +2157,15 @@
 
     unit.fatigue = clamp(unit.fatigue + dt * (moved > 6 ? 0.011 : 0.004) + (unit.engaged ? dt * 0.009 : -dt * 0.006), 0, 0.55);
     if (unit.type === "Cavalry" && unit.chargeRecovery > 0) unit.fatigue = clamp(unit.fatigue + dt * 0.016, 0, 0.6);
+    if (unit.engaged) {
+      unit.engagementXpTicker += dt;
+      if (unit.engagementXpTicker >= 4.2) {
+        grantXp(unit, 0.45);
+        unit.engagementXpTicker = 0;
+      }
+    } else {
+      unit.engagementXpTicker = Math.max(0, unit.engagementXpTicker - dt * 0.4);
+    }
 
     const target = unitTarget(unit, enemies);
     if (!target) return;
@@ -2239,8 +2439,8 @@
 
   function unitVisualStyle(unit) {
     const style = {
-      robe: unit.type === "Cavalry" ? "#785533" : (unit.type === "Skirmishers" ? "#587c48" : (unit.type === "Banner Phalanx" ? "#6f46a8" : "#ded5c7")),
-      plume: unit.type === "Cavalry" ? "#d0b27c" : (unit.type === "Skirmishers" ? "#9ed18f" : (unit.type === "Banner Phalanx" ? "#d7b8ff" : "#b83a31")),
+      robe: unit.type === "Cavalry" ? "#785533" : (unit.type === "Skirmishers" ? "#587c48" : (unit.type === "Banner Phalanx" ? "#6f46a8" : (unit.type === "War Elephants" ? "#5a4a34" : "#ded5c7"))),
+      plume: unit.type === "Cavalry" ? "#d0b27c" : (unit.type === "Skirmishers" ? "#9ed18f" : (unit.type === "Banner Phalanx" ? "#d7b8ff" : (unit.type === "War Elephants" ? "#e8c270" : "#b83a31"))),
       armor: "#69645d",
       shield: unit.friendly ? "#c8a867" : "#9b6b48",
       spear: "#cdb68f",
@@ -2266,6 +2466,10 @@
     if (up.has("companionwedge")) { style.spearLen += 3; style.plume = "#ffe08a"; }
     if (up.has("pursuitriders")) { style.robe = "#8a6237"; }
     if (up.has("noblehorse")) { style.armor = "#9fa5ad"; style.shieldR += 0.8; }
+    if (up.has("towerbeasts")) { style.armor = "#8e6f42"; style.shieldR += 1.1; }
+    if (up.has("razortusks")) { style.spear = "#f2eee6"; style.spearLen += 5; }
+    if (up.has("dreaddrums")) { style.plume = "#d95a42"; }
+    if (up.has("tramplerline")) { style.robe = "#705335"; }
 
     return style;
   }
@@ -2435,6 +2639,7 @@
     if (u.type === "Phalanx") return "PHALANX";
     if (u.type === "Skirmishers") return "SKIRM";
     if (u.type === "Cavalry") return "CAV";
+    if (u.type === "War Elephants") return "ELE";
     return u.type.toUpperCase();
   }
 
@@ -2539,6 +2744,7 @@
       div.className = "unitCard" + (u.id === game.selectedUnitId ? " selected" : "");
       div.onclick = () => {
         game.selectedUnitId = u.id;
+        if (game.state === STATE.BETWEEN) openUpgradeModal();
         updateUI();
       };
 
@@ -2546,6 +2752,7 @@
       if (u.type === "Banner Phalanx") typeTag = "bannerTag";
       if (u.type === "Skirmishers") typeTag = "skirmTag";
       if (u.type === "Cavalry") typeTag = "cavTag";
+      if (u.type === "War Elephants") typeTag = "placedTag";
 
       const placedClass = u.placed ? "placedTag" : "reserveTag";
       const placedText = u.placed ? "Placed" : "Reserve";
@@ -2569,7 +2776,8 @@
           u.type === "Banner Phalanx" ? "Purple robes, elite morale anchor" :
           u.type === "Phalanx" ? "Red-plumed line battalion" :
           u.type === "Skirmishers" ? "Ranged support block" :
-          "Fast flank cavalry block"
+          u.type === "Cavalry" ? "Fast flank cavalry block" :
+          "Heavy shock beasts with morale terror"
         }</div>
         <div class="upgradeList">
           ${u.upgrades.length ? u.upgrades.map(x => `<span class="miniUp">${x}</span>`).join("") : `<span class="small muted">No upgrades yet</span>`}
@@ -2593,7 +2801,8 @@
       ${unit.type === "Phalanx" ? "Phalanxes can take one doctrine and one veteran training." :
         unit.type === "Banner Phalanx" ? "Choose how the banner shapes the line." :
         unit.type === "Skirmishers" ? "Choose their ranged battlefield role." :
-        "Choose how your cavalry dominates the field."}
+        unit.type === "Cavalry" ? "Choose how your cavalry dominates the field." :
+        "Elephants choose one core doctrine branch, then tier-2 followups and veteran training."}
     `;
 
     const options = getUpgradeOptions(unit);
@@ -2605,8 +2814,9 @@
     options.forEach(opt => {
       const owned = unit.upgrades.includes(opt.id);
       const blocked =
-        (opt.group === "doctrine" && unit.doctrineGroup && unit.doctrineGroup !== opt.id) ||
-        (opt.group === "veteran" && unit.veteranGroup && unit.veteranGroup !== opt.id);
+        (opt.requires && !unit.upgrades.includes(opt.requires)) ||
+        (opt.group === "doctrine" && opt.tier === 1 && unit.doctrinePath && unit.doctrinePath !== opt.id) ||
+        (opt.group === "doctrine" && opt.tier > 1 && opt.path && unit.doctrinePath !== opt.path);
 
       const div = document.createElement("div");
       div.className = "upgradeCard" + (owned ? " owned" : (blocked ? " locked" : ""));
@@ -2616,6 +2826,8 @@
           <span class="pill ${opt.group === "doctrine" ? "pillDoctrine" : "pillVeteran"}">${opt.group}</span>
         </div>
         <div class="small">${opt.desc}</div>
+        ${opt.requires ? `<div class="small muted">Requires: ${opt.requires}</div>` : ""}
+        ${opt.minLevel ? `<div class="small muted">Requires level ${opt.minLevel}</div>` : ""}
         <div class="small" style="margin-top:6px;"><strong>Cost:</strong> ${opt.cost}</div>
       `;
 
@@ -2673,7 +2885,16 @@
     ui.buyPhalanxBtn.disabled = game.state !== STATE.BETWEEN || game.points < 160;
     ui.buySkirmBtn.disabled = game.state !== STATE.BETWEEN || game.points < 120;
     ui.buyCavBtn.disabled = game.state !== STATE.BETWEEN || game.points < 180;
+    ui.buyEleBtn.disabled = game.state !== STATE.BETWEEN || game.points < 260;
+    ui.openUpgradeBtn.disabled = !sel || game.state !== STATE.BETWEEN;
     ui.nextBattleBtn.disabled = game.state !== STATE.BETWEEN;
+  }
+
+  function openUpgradeModal() {
+    ui.upgradeModal.classList.add("open");
+  }
+  function closeUpgradeModal() {
+    ui.upgradeModal.classList.remove("open");
   }
 
   canvas.addEventListener("click", onCanvasClick);
@@ -2683,6 +2904,10 @@
   ui.buyPhalanxBtn.onclick = () => buyUnit("Phalanx",160);
   ui.buySkirmBtn.onclick = () => buyUnit("Skirmishers",120);
   ui.buyCavBtn.onclick = () => buyUnit("Cavalry",180);
+  ui.buyEleBtn.onclick = () => buyUnit("War Elephants",260);
+  ui.openUpgradeBtn.onclick = openUpgradeModal;
+  ui.closeUpgradeBtn.onclick = closeUpgradeModal;
+  ui.upgradeModal.onclick = (e) => { if (e.target === ui.upgradeModal) closeUpgradeModal(); };
   ui.nextBattleBtn.onclick = nextBattle;
 
   window.addEventListener("keydown", (e) => {
