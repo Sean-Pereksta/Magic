@@ -435,6 +435,11 @@
       soldierCols:5,
       deathVisuals:0,
       rotationSpeed:2.3,
+      turnDelay:0,
+      turnRetargetThreshold:0.2,
+      desiredTurnAngle:0,
+      cavalryChargeReady:false,
+      cavalryChargePower:1,
 
       upgrades: [],
       doctrineGroup: null,
@@ -529,7 +534,9 @@
         killValue:54,
         soldierRows:3,
         soldierCols:4,
-        rotationSpeed:4.2
+        rotationSpeed:4.2,
+        cavalryChargeReady:true,
+        cavalryChargePower:1
       });
     }
 
@@ -880,6 +887,10 @@
         u.routed = false;
         u.escaped = false;
         u.cooldown = 0;
+        u.turnDelay = 0;
+        u.desiredTurnAngle = dirAngles[u.dir];
+        u.cavalryChargeReady = u.type === "Cavalry";
+        u.cavalryChargePower = 1;
       }
     }
     computeDeployCells();
@@ -994,6 +1005,10 @@
       u.escaped = false;
       u.engaged = false;
       u.cooldown = 0;
+      u.turnDelay = 0;
+      u.desiredTurnAngle = u.ang;
+      u.cavalryChargeReady = u.type === "Cavalry";
+      u.cavalryChargePower = 1;
 
       if (u.retreatedLastBattle) {
         u.morale = Math.min(u.morale, u.maxMorale * 0.5);
@@ -1013,6 +1028,10 @@
       u.routed = false;
       u.engaged = false;
       u.cooldown = 0;
+      u.turnDelay = 0;
+      u.desiredTurnAngle = u.ang;
+      u.cavalryChargeReady = u.type === "Cavalry";
+      u.cavalryChargePower = 1;
     }
 
     game.state = STATE.BATTLE;
@@ -1152,6 +1171,15 @@
 
   function rotateToward(unit, tx, ty, dt) {
     const targetAngle = Math.atan2(ty - unit.y, tx - unit.x);
+    const retargetDelta = Math.abs(angleDiff(targetAngle, unit.desiredTurnAngle));
+    if (retargetDelta > unit.turnRetargetThreshold && unit.turnDelay <= 0) {
+      unit.turnDelay = unit.type.includes("Phalanx") ? 0.17 : (unit.type === "Cavalry" ? 0.08 : 0.12);
+      unit.desiredTurnAngle = targetAngle;
+    } else if (retargetDelta <= unit.turnRetargetThreshold) {
+      unit.desiredTurnAngle = targetAngle;
+    }
+
+    if (unit.turnDelay > 0) return;
     const diff = angleDiff(targetAngle, unit.ang);
 
     let turnRate = unit.rotationSpeed;
@@ -1439,6 +1467,16 @@
     let atkPush = unit.push * unitMorale * unitHealth * rand(0.85,1.15);
     let defPush = target.push * targetMorale * targetHealth * rand(0.85,1.15);
 
+    if (unit.type === "Cavalry" && unit.cavalryChargeReady) {
+      const chargeAmp = 1.65 + unitMorale * 0.45 + (unit.push / 40) * 0.35;
+      atkPush *= chargeAmp;
+      unit.cavalryChargeReady = false;
+      unit.cavalryChargePower = 0.42;
+      addFloat(unit.x, unit.y - 24, "CHARGE IMPACT!", "#ffd27a", {life:0.85, decay:1.3, vy:-34});
+    } else if (unit.type === "Cavalry") {
+      atkPush *= unit.cavalryChargePower;
+    }
+
     const frontal = flankFactor(unit, target) === 1.0;
     if (frontal) atkPush *= unit.frontalPushBonus;
 
@@ -1514,6 +1552,15 @@
       moraleHit *= b ? b.auraMoraleBonus : 1.14;
     }
 
+    if (unit.attackRange > 80) {
+      const blockChance = rangedBlockChance(target);
+      if (Math.random() < blockChance) {
+        dmg *= 0.35;
+        moraleHit *= 0.45;
+        addFloat(target.x + rand(-8,8), target.y - 26, "BLOCK!", "#9dd3ff", {life:0.7, decay:1.35, vy:-24});
+      }
+    }
+
     target.health -= dmg;
     target.morale -= moraleHit;
     unit.cooldown = unit.attackRange > 80 ? rand(0.65,0.95) : rand(0.85,1.15);
@@ -1522,7 +1569,8 @@
     if (moraleHit > 6.5) addFloat(target.x + rand(-8,8), target.y - 24, `-${Math.round(moraleHit)} morale`, "#ff9b59", {life:0.75, decay:1.25, vy:-28});
 
     if (unit.attackRange > 80) {
-      spawnProjectile(unit, target, dmg);
+      const volleyCount = unit.type === "Skirmishers" ? 4 : 1;
+      spawnProjectile(unit, target, dmg, volleyCount);
     } else {
       spawnImpact(target.x, target.y, "#f5cfb3", 7, 85);
       if (Math.random() < 0.8) spawnBlood(target.x, target.y, 6);
@@ -1536,17 +1584,33 @@
     }
   }
 
-  function spawnProjectile(unit, target, damage) {
-    game.projectiles.push({
-      x0: unit.x,
-      y0: unit.y - 10,
-      x1: target.x,
-      y1: target.y - 8,
-      t: 0,
-      life: rand(0.42, 0.58),
-      damage,
-      targetId: target.id
-    });
+  function rangedBlockChance(unit) {
+    if (!unit || unit.dead) return 0;
+    let chance = 0.02;
+    if (unit.type.includes("Phalanx")) chance += 0.08;
+    if (unit.type === "Banner Phalanx") chance += 0.04;
+    const up = new Set(unit.upgrades || []);
+    if (up.has("shieldoath")) chance += 0.18;
+    if (up.has("silvershields")) chance += 0.2;
+    if (up.has("royalguard")) chance += 0.08;
+    if (up.has("hardened")) chance += 0.06;
+    return clamp(chance, 0, 0.62);
+  }
+
+  function spawnProjectile(unit, target, damage, count=1) {
+    const perArrowDamage = damage / count;
+    for (let i=0; i<count; i++) {
+      game.projectiles.push({
+        x0: unit.x + rand(-8,8),
+        y0: unit.y - 10 + rand(-4,4),
+        x1: target.x + rand(-12,12),
+        y1: target.y - 8 + rand(-6,6),
+        t: 0,
+        life: rand(0.42, 0.62),
+        damage: perArrowDamage,
+        targetId: target.id
+      });
+    }
   }
 
   function updateProjectiles(dt) {
@@ -1592,6 +1656,10 @@
 
     if (unit.cooldown > 0) unit.cooldown -= dt;
     unit.cooldown = Math.max(0, unit.cooldown);
+    if (unit.turnDelay > 0) unit.turnDelay = Math.max(0, unit.turnDelay - dt);
+    if (unit.type === "Cavalry") {
+      unit.cavalryChargePower = clamp(unit.cavalryChargePower + dt * 0.12, 0.42, 1);
+    }
 
     const healthFrac = unit.health / unit.maxHealth;
     unit.morale -= (0.6 + (1 - healthFrac) * 1.2) * dt;
@@ -1880,16 +1948,21 @@
     return style;
   }
 
-  function drawSoldier(px, py, unit, style) {
+  function drawSoldier(px, py, unit, style, facing) {
     ctx.fillStyle = style.robe;
     ctx.fillRect(px-3, py-1, 6, 8);
-    ctx.fillStyle = "#ebc59f";
+    const isBackView = facing === "N" || facing === "S";
+    ctx.fillStyle = isBackView ? "#dcb08b" : "#ebc59f";
     ctx.beginPath();
     ctx.arc(px, py-5, 3.2, 0, Math.PI*2);
     ctx.fill();
 
     ctx.fillStyle = style.armor;
     ctx.fillRect(px-3.5, py-8, 7, 2.7);
+    if (isBackView) {
+      ctx.fillStyle = "rgba(40,30,20,.25)";
+      ctx.fillRect(px-1, py-1, 2, 7);
+    }
 
     ctx.strokeStyle = style.plume;
     ctx.lineWidth = 2;
@@ -1899,15 +1972,17 @@
     ctx.stroke();
 
     ctx.fillStyle = style.shield;
+    const shieldSide = facing === "W" ? 5 : -5;
     ctx.beginPath();
-    ctx.arc(px-5, py+1, style.shieldR, 0, Math.PI*2);
+    ctx.arc(px + shieldSide, py+1, style.shieldR, 0, Math.PI*2);
     ctx.fill();
 
     ctx.strokeStyle = style.spear;
     ctx.lineWidth = 1.1;
+    const spearDir = facing === "W" ? -1 : 1;
     ctx.beginPath();
-    ctx.moveTo(px+3, py-2);
-    ctx.lineTo(px+3+style.spearLen, py-2);
+    ctx.moveTo(px + 3 * spearDir, py-2);
+    ctx.lineTo(px + (3 + style.spearLen) * spearDir, py-2);
     ctx.stroke();
   }
 
@@ -1936,10 +2011,7 @@
 
     ctx.save();
     ctx.translate(unit.x, unit.y);
-    let renderAng = unit.ang;
-    if (renderAng > Math.PI / 2) renderAng -= Math.PI;
-    if (renderAng < -Math.PI / 2) renderAng += Math.PI;
-    ctx.rotate(renderAng);
+    ctx.rotate(unit.ang);
 
     const w = unit.radius * 2.4;
     const h = unit.radius * 2.0;
@@ -1951,13 +2023,16 @@
     const total = unit.soldierRows * unit.soldierCols;
     const live = Math.max(0, total - unit.deathVisuals);
     let idx = 0;
+    const facing = Math.abs(Math.cos(unit.ang)) >= Math.abs(Math.sin(unit.ang))
+      ? (Math.cos(unit.ang) >= 0 ? "E" : "W")
+      : (Math.sin(unit.ang) >= 0 ? "S" : "N");
 
     for (let r=0;r<unit.soldierRows;r++) {
       for (let c=0;c<unit.soldierCols;c++) {
         if (idx >= live) { idx++; continue; }
         const px = -w/2 + 8 + c * ((w-16)/Math.max(1,unit.soldierCols-1));
         const py = -h/2 + 8 + r * ((h-16)/Math.max(1,unit.soldierRows-1));
-        drawSoldier(px, py, unit, style);
+        drawSoldier(px, py, unit, style, facing);
         idx++;
       }
     }
@@ -1966,10 +2041,12 @@
       ctx.strokeStyle = style.spear;
       ctx.lineWidth = 1.5;
       const pikeLen = 17 + style.spearLen * 1.6;
+      const pikeDir = facing === "W" ? -1 : 1;
       for (let i=-2;i<=2;i++) {
         ctx.beginPath();
-        ctx.moveTo(w/2 - 7, i*7);
-        ctx.lineTo(w/2 + pikeLen, i*7);
+        const frontEdge = (w/2 - 7) * pikeDir;
+        ctx.moveTo(frontEdge, i*7);
+        ctx.lineTo(frontEdge + pikeLen * pikeDir, i*7);
         ctx.stroke();
       }
     }
