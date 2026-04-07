@@ -153,6 +153,11 @@
   .resultPane.on{display:block}
   .stackGap{display:grid; gap:12px}
   .coach-extra-col{display:none}
+  #coachTable.expanded-breakdown .coach-extra-col{display:table-cell}
+  .coach-summary-controls{margin-top:8px; margin-bottom:4px}
+  .coach-summary-controls .btn{margin-left:360px}
+  @media (max-width:1200px){ .coach-summary-controls .btn{margin-left:220px} }
+  @media (max-width:900px){ .coach-summary-controls .btn{margin-left:0} }
 </style>
 </head>
 <body>
@@ -365,11 +370,13 @@
 
         <div class="stackGap">
           <div>
-            <div class="row" style="justify-content:space-between; gap:8px">
+            <div class="row" style="gap:8px">
               <div style="font-weight:900">Coach summary (Checklist + Documented)</div>
-              <button class="btn secondary" id="btnCoachSummaryExpand" type="button">Expand breakdown</button>
             </div>
             <div class="mini" id="coachSummHint">—</div>
+            <div class="coach-summary-controls">
+              <button class="btn secondary" id="btnCoachSummaryExpand" type="button">Expand breakdown</button>
+            </div>
             <div class="tblWrap" style="margin-top:8px">
               <table id="coachTable">
                 <thead>
@@ -1519,8 +1526,11 @@
 
   function setCoachSummaryExpanded(expanded){
     S.coachSummaryExpanded = !!expanded;
-    document.querySelectorAll("#coachTable .coach-extra-col").forEach(el=>{
-      el.style.display = S.coachSummaryExpanded ? "" : "none";
+    const coachTable = $("coachTable");
+    if(coachTable) coachTable.classList.toggle("expanded-breakdown", S.coachSummaryExpanded);
+    const sepColspan = S.coachSummaryExpanded ? 20 : 16;
+    document.querySelectorAll("#coachTable [data-coach-sep-colspan]").forEach(el=>{
+      el.colSpan = sepColspan;
     });
     const btn = $("btnCoachSummaryExpand");
     if(btn) btn.textContent = S.coachSummaryExpanded ? "Hide breakdown" : "Expand breakdown";
@@ -1594,7 +1604,7 @@
 
     if(S.docLoaded && extraDocKeys.length){
       const sep = document.createElement("tr");
-      sep.innerHTML = `<td colspan="20" class="mini" style="padding:12px 8px; color:var(--muted)">Documented coaching found for coaches not present in the checklist timeframe:</td>`;
+      sep.innerHTML = `<td data-coach-sep-colspan colspan="16" class="mini" style="padding:12px 8px; color:var(--muted)">Documented coaching found for coaches not present in the checklist timeframe:</td>`;
       tb.appendChild(sep);
 
       extraDocKeys.forEach(k=>{
@@ -1678,6 +1688,8 @@
         openCoachModalFromDocKey(k);
       });
     });
+
+    setCoachSummaryExpanded(S.coachSummaryExpanded);
   }
 
   function repSortKey(r, mode){
