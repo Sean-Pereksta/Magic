@@ -458,6 +458,25 @@
       groupMoraleAuraType: null,
       retreatedLastBattle: false,
       escaped: false
+      ,role:"line"
+      ,fatigue:0
+      ,cohesion:1
+      ,brace:0
+      ,lastPosX:-1000
+      ,lastPosY:-1000
+      ,lastAng:0
+      ,stabilityTimer:0
+      ,recentFlankPressure:0
+      ,routeRecovery:0
+      ,targetLockId:null
+      ,targetLockTimer:0
+      ,chargeCommitTimer:0
+      ,chargeRecovery:0
+      ,lastTerrainTag:"plain"
+      ,impactTrail:0
+      ,congestion:0
+      ,multiAngle:0
+      ,wasRouted:false
     };
 
     if (type === "Banner Phalanx") {
@@ -540,6 +559,11 @@
       });
     }
 
+    if (type === "Banner Phalanx") u.role = "anchor";
+    else if (type === "Phalanx") u.role = "line";
+    else if (type === "Skirmishers") u.role = "rear";
+    else if (type === "Cavalry") u.role = "flank";
+
     Object.assign(u, extra);
     u.ang = dirAngles[u.dir];
     u.desiredAng = u.ang;
@@ -566,6 +590,7 @@
             u.rotationSpeed -= 0.35;
             u.frontalPushBonus *= 1.28;
             u.routeResist *= 1.12;
+            u.turnRetargetThreshold += 0.08;
           }
         },
         {
@@ -582,6 +607,7 @@
             u.push += 3;
             u.moraleDamageBonus *= 1.35;
             u.flankPower *= 1.12;
+            u.routeResist *= 0.92;
           }
         },
         {
@@ -597,6 +623,7 @@
             u.maxHealth += 10; u.health += 10;
             u.routeResist *= 1.35;
             u.push += 2;
+            u.moraleDamageBonus *= 0.9;
           }
         },
 
@@ -787,6 +814,7 @@
             u.doctrineGroup = this.id;
             u.flankPower *= 1.35;
             u.damageMin += 2; u.damageMax += 3;
+            u.turnRetargetThreshold += 0.05;
           }
         },
         {
@@ -801,6 +829,7 @@
             u.speed += 10;
             u.chaseSpeed += 18;
             u.routeSpeed += 18;
+            u.cavalryChargePower = clamp(u.cavalryChargePower + 0.08, 0.42, 1);
           }
         },
         {
@@ -815,6 +844,7 @@
             u.maxHealth += 20; u.health += 20;
             u.maxMorale += 14; u.morale += 14;
             u.routeResist *= 1.14;
+            u.turnRetargetThreshold -= 0.03;
           }
         }
       ];
@@ -891,6 +921,11 @@
         u.desiredTurnAngle = dirAngles[u.dir];
         u.cavalryChargeReady = u.type === "Cavalry";
         u.cavalryChargePower = 1;
+        u.lastPosX = u.x;
+        u.lastPosY = u.y;
+        u.lastAng = u.ang;
+        u.fatigue = 0;
+        u.brace = 0;
       }
     }
     computeDeployCells();
@@ -1009,6 +1044,11 @@
       u.desiredTurnAngle = u.ang;
       u.cavalryChargeReady = u.type === "Cavalry";
       u.cavalryChargePower = 1;
+      u.lastPosX = u.x;
+      u.lastPosY = u.y;
+      u.lastAng = u.ang;
+      u.fatigue = clamp(u.fatigue * 0.45, 0, 0.35);
+      u.brace = 0;
 
       if (u.retreatedLastBattle) {
         u.morale = Math.min(u.morale, u.maxMorale * 0.5);
@@ -1032,6 +1072,18 @@
       u.desiredTurnAngle = u.ang;
       u.cavalryChargeReady = u.type === "Cavalry";
       u.cavalryChargePower = 1;
+      u.lastPosX = u.x;
+      u.lastPosY = u.y;
+      u.lastAng = u.ang;
+      u.brace = 0;
+    }
+
+    for (const u of game.units.filter(x => !x.dead && x.placed)) {
+      const adjacent = game.units.filter(o => !o.dead && o.placed && o.id !== u.id && Math.abs(o.tx - u.tx) + Math.abs(o.ty - u.ty) === 1).length;
+      if (adjacent > 0) {
+        u.morale = clamp(u.morale + adjacent * 3, 0, u.maxMorale);
+        u.cohesion = clamp(1 + adjacent * 0.04, 1, 1.18);
+      }
     }
 
     game.state = STATE.BATTLE;
@@ -1157,6 +1209,46 @@
     return best || nearestEnemy(unit, enemies);
   }
 
+  function roleScore(unit, enemy) {
+    let score = dist(unit.x, unit.y, enemy.x, enemy.y);
+    const flank = flankFactor(unit, enemy);
+    const enemyHealthy = enemy.health / enemy.maxHealth;
+
+    if (unit.type.includes("Phalanx")) {
+      if (enemy.type.includes("Phalanx")) score -= 35;
+      if (enemy.type === "Skirmishers" && enemyHealthy > 0.45) score += 30;
+      if (enemy.routed) score += 45;
+    } else if (unit.type === "Skirmishers") {
+      if (enemy.type === "Cavalry") score += 35;
+      if (enemy.type === "Skirmishers") score -= 12;
+      if (enemy.type.includes("Phalanx") && enemyHealthy > 0.55) score += 18;
+      if (dist(unit.x, unit.y, enemy.x, enemy.y) < 86 && enemy.type !== "Skirmishers") score += 32;
+    } else if (unit.type === "Cavalry") {
+      if (enemy.routed) score -= 75;
+      if (enemy.type === "Skirmishers") score -= 42;
+      if (enemy.type.includes("Phalanx") && flank <= 1.02 && enemyHealthy > 0.5) score += 75;
+      if (flank > 1.2) score -= 36;
+    }
+
+    if (unit.targetLockId === enemy.id) score -= 14;
+    return score;
+  }
+
+  function chooseTargetByRole(unit, enemies) {
+    const live = enemies.filter(e => !e.dead && e.placed);
+    if (!live.length) return null;
+    let best = null;
+    let bestScore = Infinity;
+    for (const e of live) {
+      const s = roleScore(unit, e);
+      if (s < bestScore) {
+        bestScore = s;
+        best = e;
+      }
+    }
+    return best;
+  }
+
   function angleDiff(a, b) {
     let diff = a - b;
     while (diff > Math.PI) diff -= Math.PI * 2;
@@ -1173,7 +1265,8 @@
     const targetAngle = Math.atan2(ty - unit.y, tx - unit.x);
     const retargetDelta = Math.abs(angleDiff(targetAngle, unit.desiredTurnAngle));
     if (retargetDelta > unit.turnRetargetThreshold && unit.turnDelay <= 0) {
-      unit.turnDelay = unit.type.includes("Phalanx") ? 0.17 : (unit.type === "Cavalry" ? 0.08 : 0.12);
+      const fatigueDelay = 1 + unit.fatigue * 0.8;
+      unit.turnDelay = (unit.type.includes("Phalanx") ? 0.24 : (unit.type === "Cavalry" ? 0.12 : 0.08)) * fatigueDelay;
       unit.desiredTurnAngle = targetAngle;
     } else if (retargetDelta <= unit.turnRetargetThreshold) {
       unit.desiredTurnAngle = targetAngle;
@@ -1183,11 +1276,13 @@
     const diff = angleDiff(targetAngle, unit.ang);
 
     let turnRate = unit.rotationSpeed;
+    turnRate *= (1 - unit.fatigue * 0.25);
     if (unit.type.includes("Phalanx")) {
       const ad = Math.abs(diff);
       if (ad > 2.35) turnRate *= 0.14;
       else if (ad > 1.45) turnRate *= 0.3;
       else if (ad > 0.7) turnRate *= 0.55;
+      if (unit.engaged) turnRate *= 0.8;
     }
 
     const maxTurn = turnRate * dt;
@@ -1219,6 +1314,49 @@
     }
 
     return 1;
+  }
+
+  function terrainTagAt(x, y) {
+    const battle = currentBattle();
+    if (battle.terrain === "river" || battle.terrain === "river2") {
+      const rx = FIELD_X + 8.2 * TILE;
+      const rw = 2.2 * TILE;
+      if (x > rx && x < rx + rw) return "river";
+    }
+    if (battle.terrain === "ridge") {
+      const cx = FIELD_X + 10 * TILE;
+      const cy = FIELD_Y + 5.5 * TILE;
+      if (dist(x, y, cx, cy) < 120) return "ridge";
+    }
+    return battle.terrain === "narrow" ? "narrow" : (battle.terrain === "broad" ? "broad" : "plain");
+  }
+
+  function terrainCombatMod(unit, target) {
+    const battle = currentBattle();
+    const tag = terrainTagAt(unit.x, unit.y);
+    const targetTag = terrainTagAt(target.x, target.y);
+    let atk = 1;
+    let morale = 1;
+    let charge = 1;
+
+    if (tag === "river") {
+      if (unit.type.includes("Phalanx")) atk *= 0.85;
+      if (unit.type === "Cavalry") { atk *= 0.82; charge *= 0.72; }
+      morale *= 0.9;
+    }
+    if (tag === "ridge" && unit.type === "Skirmishers") atk *= 1.12;
+    if (battle.terrain === "narrow" && unit.type.includes("Phalanx")) atk *= 1.08;
+    if (battle.terrain === "narrow" && unit.type === "Cavalry") charge *= 0.88;
+    if (battle.terrain === "broad" && unit.type === "Cavalry") charge *= 1.08;
+
+    const elevation = unit.y - target.y;
+    if (battle.terrain === "ridge") {
+      if (elevation > 34) atk *= 0.92;
+      if (elevation < -34) atk *= 1.08;
+    }
+    if (targetTag === "river" && unit.type === "Cavalry") charge *= 0.8;
+
+    return { atk, morale, charge };
   }
 
   function moveToward(unit, tx, ty, speed, dt) {
@@ -1357,6 +1495,8 @@
     }
     spawnBlood(unit.x, unit.y, 12);
     addFloat(unit.x, unit.y - 18, "DESTROYED", "#ff7070");
+    applyMoraleWave(unit, 130, -8, true);
+    if (killer) applyMoraleWave(unit, 120, 6, false);
 
     if (unit.type === "Banner Phalanx" && unit.friendly) {
       game.bannerDead = true;
@@ -1366,6 +1506,7 @@
       game.points += unit.killValue;
       killer.xp += 1;
       killer.morale = clamp(killer.morale + 10, 0, killer.maxMorale);
+      killer.impactTrail = clamp(killer.impactTrail + 0.35, 0, 2.6);
     }
   }
 
@@ -1383,6 +1524,45 @@
     if (dot < -0.25) return 1.6 * attacker.flankPower;
     if (dot < 0.2) return 1.3 * attacker.flankPower;
     return 1.0;
+  }
+
+  function engagementPressure(defender, attackers) {
+    const nearby = [];
+    for (const a of attackers) {
+      if (a.dead || !a.placed) continue;
+      const d = dist(a.x, a.y, defender.x, defender.y);
+      if (d <= a.attackRange + defender.radius + 24) nearby.push(a);
+    }
+    if (!nearby.length) return { congestion:1, multi:1 };
+
+    const bins = new Set();
+    let sameSide = 0;
+    for (const a of nearby) {
+      const ang = Math.atan2(a.y - defender.y, a.x - defender.x);
+      const rel = angleDiff(ang, defender.ang);
+      const bucket = Math.round((rel + Math.PI) / (Math.PI / 2));
+      bins.add(bucket);
+      if (Math.abs(rel) < 0.9) sameSide++;
+    }
+    const congestion = clamp(1 - Math.max(0, sameSide - 2) * 0.14, 0.58, 1);
+    const multi = 1 + (bins.size - 1) * 0.1;
+    return { congestion, multi: clamp(multi, 1, 1.42) };
+  }
+
+  function applyMoraleWave(centerUnit, radius, amount, alliesOnly=true) {
+    const all = [...game.units, ...game.enemyUnits];
+    for (const u of all) {
+      if (u.dead || !u.placed || u.id === centerUnit.id) continue;
+      if (alliesOnly && u.friendly !== centerUnit.friendly) continue;
+      if (!alliesOnly && u.friendly === centerUnit.friendly) continue;
+      const d = dist(u.x, u.y, centerUnit.x, centerUnit.y);
+      if (d > radius) continue;
+      const scaled = amount * (1 - d / radius);
+      u.morale = clamp(u.morale + scaled, 0, u.maxMorale);
+      if (Math.abs(scaled) > 2.2) {
+        addFloat(u.x, u.y - 16, scaled > 0 ? "STEADY" : "SHAKEN", scaled > 0 ? "#8fffa7" : "#ffb07a", {life:0.55, decay:1.7, vy:-24});
+      }
+    }
   }
 
   function moraleAuraGain(unit, allies) {
@@ -1443,13 +1623,27 @@
 
     if (Math.random() < chance) {
       unit.routed = true;
+      unit.routeRecovery = 2.6;
       addFloat(unit.x, unit.y - 18, "ROUT!", "#fff06a");
+      applyMoraleWave(unit, 140, -10, true);
+      applyMoraleWave(unit, 120, 5, false);
     }
   }
 
   function unitTarget(unit, enemies) {
-    if (unit.friendly) return enemiesNearBannerPriority(unit, enemies);
-    return nearestEnemy(unit, enemies);
+    if (unit.targetLockTimer > 0) {
+      const locked = enemies.find(e => e.id === unit.targetLockId && !e.dead && e.placed);
+      if (locked) return locked;
+    }
+
+    let chosen = chooseTargetByRole(unit, enemies);
+    if (!chosen) chosen = unit.friendly ? enemiesNearBannerPriority(unit, enemies) : nearestEnemy(unit, enemies);
+    if (!chosen) return null;
+
+    unit.targetLockId = chosen.id;
+    const baseLock = unit.type.includes("Phalanx") ? 0.68 : (unit.type === "Cavalry" ? 0.58 : 0.34);
+    unit.targetLockTimer = Math.max(unit.targetLockTimer, baseLock);
+    return chosen;
   }
 
   function resolvePush(unit, target, dt) {
@@ -1466,12 +1660,26 @@
 
     let atkPush = unit.push * unitMorale * unitHealth * rand(0.85,1.15);
     let defPush = target.push * targetMorale * targetHealth * rand(0.85,1.15);
+    const terrAtk = terrainCombatMod(unit, target);
+    const terrDef = terrainCombatMod(target, unit);
+    atkPush *= terrAtk.atk;
+    defPush *= terrDef.atk;
+
+    const pressureOnTarget = engagementPressure(target, unit.friendly ? game.units : game.enemyUnits);
+    const pressureOnUnit = engagementPressure(unit, unit.friendly ? game.enemyUnits : game.units);
+    atkPush *= pressureOnTarget.congestion * pressureOnTarget.multi;
+    defPush *= pressureOnUnit.congestion * pressureOnUnit.multi;
+    unit.congestion = pressureOnTarget.congestion;
+    unit.multiAngle = pressureOnTarget.multi;
 
     if (unit.type === "Cavalry" && unit.cavalryChargeReady) {
       const chargeAmp = 1.65 + unitMorale * 0.45 + (unit.push / 40) * 0.35;
-      atkPush *= chargeAmp;
+      const badFront = target.type.includes("Phalanx") && target.brace > 0.45 && flankFactor(unit, target) <= 1.02;
+      atkPush *= chargeAmp * terrAtk.charge * (badFront ? 0.48 : 1);
       unit.cavalryChargeReady = false;
       unit.cavalryChargePower = 0.42;
+      unit.chargeRecovery = 2.2;
+      unit.chargeCommitTimer = 0.55;
       addFloat(unit.x, unit.y - 24, "CHARGE IMPACT!", "#ffd27a", {life:0.85, decay:1.3, vy:-34});
     } else if (unit.type === "Cavalry") {
       atkPush *= unit.cavalryChargePower;
@@ -1479,6 +1687,13 @@
 
     const frontal = flankFactor(unit, target) === 1.0;
     if (frontal) atkPush *= unit.frontalPushBonus;
+    if (unit.type.includes("Phalanx") && unit.brace > 0) atkPush *= (1 + unit.brace * 0.18);
+    if (target.type.includes("Phalanx") && target.brace > 0) defPush *= (1 + target.brace * 0.26);
+
+    const fatigueAtk = 1 - unit.fatigue * 0.26;
+    const fatigueDef = 1 - target.fatigue * 0.24;
+    atkPush *= fatigueAtk;
+    defPush *= fatigueDef;
 
     if (unit.friendly && bannerAura(unit)) {
       const b = getBanner();
@@ -1506,8 +1721,10 @@
 
     const moraleLoss = Math.abs(pushAmt) * (0.12 + pushPower * 0.2);
     const pushDamage = Math.abs(pushAmt) * (0.05 + pushPower * 0.14);
-    target.morale -= moraleLoss;
+    target.morale -= moraleLoss / terrDef.morale;
     target.health -= pushDamage;
+    unit.impactTrail = clamp(unit.impactTrail + dt * 0.9, 0, 2.6);
+    target.recentFlankPressure = clamp(target.recentFlankPressure + (flankFactor(unit, target) > 1 ? 0.35 : 0.08), 0, 3.6);
 
     if (pushDamage > 0.9) {
       addFloat(target.x + rand(-6,6), target.y - 12, `-${Math.round(pushDamage)}`, "#ff6767", {life:0.9, decay:1.15, vy:-38});
@@ -1538,6 +1755,10 @@
 
     let dmg = rand(unit.damageMin, unit.damageMax) * moraleFactor * healthFactor * targetHealthPenalty * randomness;
     let moraleHit = rand(3.4, 7.5) * moraleFactor * rand(0.8, 1.2) * unit.moraleDamageBonus;
+    const terrAtk = terrainCombatMod(unit, target);
+    const terrDef = terrainCombatMod(target, unit);
+    dmg *= terrAtk.atk * (1 - unit.fatigue * 0.2);
+    moraleHit *= terrAtk.atk * terrAtk.morale * (1 - unit.fatigue * 0.24);
 
     const flank = flankFactor(unit, target);
     if (flank > 1) {
@@ -1552,6 +1773,10 @@
       moraleHit *= b ? b.auraMoraleBonus : 1.14;
     }
 
+    const targetUnderPressure = engagementPressure(target, unit.friendly ? game.units : game.enemyUnits);
+    dmg *= targetUnderPressure.congestion * targetUnderPressure.multi;
+    moraleHit *= targetUnderPressure.multi / clamp(targetUnderPressure.congestion, 0.65, 1);
+
     if (unit.attackRange > 80) {
       const blockChance = rangedBlockChance(target);
       if (Math.random() < blockChance) {
@@ -1562,7 +1787,7 @@
     }
 
     target.health -= dmg;
-    target.morale -= moraleHit;
+    target.morale -= moraleHit / terrDef.morale;
     unit.cooldown = unit.attackRange > 80 ? rand(0.65,0.95) : rand(0.85,1.15);
 
     addFloat(target.x + rand(-8,8), target.y - 10, `-${Math.round(dmg)}`, "#ff5353", {life:0.95, decay:1.05, vy:-40});
@@ -1575,6 +1800,11 @@
       spawnImpact(target.x, target.y, "#f5cfb3", 7, 85);
       if (Math.random() < 0.8) spawnBlood(target.x, target.y, 6);
       resolvePush(unit, target, dt);
+    }
+
+    if (flank > 1.25) {
+      target.recentFlankPressure = clamp(target.recentFlankPressure + 0.4, 0, 3.5);
+      if (unit.type === "Cavalry") unit.impactTrail = clamp(unit.impactTrail + 0.25, 0, 2.6);
     }
 
     createCorpsesForDamage(target);
@@ -1657,19 +1887,50 @@
     if (unit.cooldown > 0) unit.cooldown -= dt;
     unit.cooldown = Math.max(0, unit.cooldown);
     if (unit.turnDelay > 0) unit.turnDelay = Math.max(0, unit.turnDelay - dt);
+    if (unit.targetLockTimer > 0) unit.targetLockTimer = Math.max(0, unit.targetLockTimer - dt);
+    if (unit.chargeCommitTimer > 0) unit.chargeCommitTimer = Math.max(0, unit.chargeCommitTimer - dt);
+    if (unit.chargeRecovery > 0) unit.chargeRecovery = Math.max(0, unit.chargeRecovery - dt);
+    if (unit.routeRecovery > 0) unit.routeRecovery = Math.max(0, unit.routeRecovery - dt);
+    unit.impactTrail = Math.max(0, unit.impactTrail - dt * 0.45);
     if (unit.type === "Cavalry") {
-      unit.cavalryChargePower = clamp(unit.cavalryChargePower + dt * 0.12, 0.42, 1);
+      unit.cavalryChargePower = clamp(unit.cavalryChargePower + dt * (unit.engaged ? 0.04 : 0.18), 0.42, 1);
+      if (unit.chargeRecovery <= 0 && !unit.engaged && unit.cavalryChargePower > 0.93) unit.cavalryChargeReady = true;
     }
 
     const healthFrac = unit.health / unit.maxHealth;
-    unit.morale -= (0.6 + (1 - healthFrac) * 1.2) * dt;
+    unit.morale -= (0.6 + (1 - healthFrac) * 1.2) * dt * (1 + unit.fatigue * 0.42);
     if (unit.friendly && bannerAura(unit)) {
       const b = getBanner();
       unit.morale += (0.75 * (b ? b.auraMoraleBonus : 1)) * dt;
     }
 
     unit.morale += moraleAuraGain(unit, allies) * dt;
+    unit.morale -= unit.recentFlankPressure * 0.44 * dt;
+    unit.recentFlankPressure = Math.max(0, unit.recentFlankPressure - dt * 0.8);
     unit.morale = clamp(unit.morale, 0, unit.maxMorale);
+
+    const moved = dist(unit.x, unit.y, unit.lastPosX, unit.lastPosY);
+    const turning = Math.abs(angleDiff(unit.ang, unit.lastAng));
+    const nearEnemy = enemies.some(e => !e.dead && e.placed && dist(unit.x, unit.y, e.x, e.y) < 95);
+    if (moved < 5 && turning < 0.09 && nearEnemy) unit.stabilityTimer = clamp(unit.stabilityTimer + dt, 0, 2);
+    else unit.stabilityTimer = Math.max(0, unit.stabilityTimer - dt * 1.3);
+    unit.brace = unit.type.includes("Phalanx") ? clamp((unit.stabilityTimer - 0.45) / 1.2, 0, 1) : 0;
+
+    const lineMates = allies.filter(a => !a.dead && a.placed && a.id !== unit.id && a.type.includes("Phalanx"));
+    if (unit.type.includes("Phalanx")) {
+      const close = lineMates.filter(a => dist(unit.x, unit.y, a.x, a.y) < 88).length;
+      unit.cohesion = clamp(0.84 + close * 0.09, 0.7, 1.22);
+      if (unit.upgrades.includes("pikewall")) unit.cohesion *= 1.06;
+    } else if (unit.type === "Skirmishers") {
+      const screen = lineMates.some(a => a.x > unit.x - 8 && dist(unit.x, unit.y, a.x, a.y) < 130);
+      unit.cohesion = screen ? 1.08 : 0.92;
+    } else {
+      const wingBias = (unit.y < FIELD_Y + FIELD_H * 0.3 || unit.y > FIELD_Y + FIELD_H * 0.7) ? 1.08 : 0.94;
+      unit.cohesion = wingBias;
+    }
+
+    unit.fatigue = clamp(unit.fatigue + dt * (moved > 6 ? 0.011 : 0.004) + (unit.engaged ? dt * 0.009 : -dt * 0.006), 0, 0.55);
+    if (unit.type === "Cavalry" && unit.chargeRecovery > 0) unit.fatigue = clamp(unit.fatigue + dt * 0.016, 0, 0.6);
 
     const target = unitTarget(unit, enemies);
     if (!target) return;
@@ -1683,22 +1944,45 @@
     if (unit.routed) {
       const pursuer = nearestEnemy(unit, enemies) || target;
       moveAway(unit, pursuer, dt);
+      if (allies.some(a => !a.dead && a.placed && a.id !== unit.id && dist(unit.x, unit.y, a.x, a.y) < 62)) {
+        applyMoraleWave(unit, 85, -1.2, true);
+      }
       if (atRetreatEdge(unit)) retreatFromBattle(unit);
+      unit.wasRouted = true;
       return;
     }
+    if (unit.wasRouted && unit.routeRecovery > 0) return;
+    unit.wasRouted = false;
 
     if (unit.stationaryUntilEngaged && !unit.engaged) {
       if (d < 150) unit.engaged = true;
       else return;
     }
 
+    if (unit.type === "Skirmishers") {
+      const meleeThreat = enemies.find(e => !e.dead && e.placed && e.attackRange < 90 && dist(unit.x, unit.y, e.x, e.y) < 88);
+      if (meleeThreat && d > unit.attackRange * 0.75) {
+        moveAway(unit, meleeThreat, dt);
+        unit.lastPosX = unit.x; unit.lastPosY = unit.y; unit.lastAng = unit.ang;
+        return;
+      }
+    }
+
     if (d <= unit.attackRange + target.radius) {
       rotateToward(unit, target.x, target.y, dt);
       attack(unit, target, dt);
     } else {
-      const speed = target.routed ? unit.chaseSpeed : unit.speed;
+      let speed = target.routed ? unit.chaseSpeed : unit.speed;
+      if (unit.type.includes("Phalanx") && !unit.engaged) speed *= clamp(unit.cohesion, 0.85, 1.06);
+      if (unit.type === "Cavalry" && unit.chargeCommitTimer > 0) speed *= 1.08;
+      speed *= (1 - unit.fatigue * 0.18);
       moveToward(unit, target.x, target.y, speed, dt);
     }
+
+    unit.lastPosX = unit.x;
+    unit.lastPosY = unit.y;
+    unit.lastAng = unit.ang;
+    unit.lastTerrainTag = terrainTagAt(unit.x, unit.y);
   }
 
   function battleFinished() {
@@ -2069,12 +2353,35 @@
       ctx.fillStyle = "#ffd47c";
       ctx.font = "bold 12px Arial";
       ctx.fillText("HOLD", -14, -h/2 - 8);
+    } else if (unit.type.includes("Phalanx") && unit.brace > 0.55) {
+      ctx.fillStyle = "#a9dcff";
+      ctx.font = "bold 11px Arial";
+      ctx.fillText("BRACED", -20, -h/2 - 8);
+    } else if (unit.type === "Cavalry" && unit.cavalryChargePower > 0.9 && unit.chargeRecovery <= 0) {
+      ctx.fillStyle = "#ffe08b";
+      ctx.font = "bold 11px Arial";
+      ctx.fillText("CHARGE", -20, -h/2 - 8);
     }
 
     ctx.restore();
 
     drawBar(unit.x - 22, unit.y - 36, 44, 5, unit.health / unit.maxHealth, "#b63c3c");
     drawBar(unit.x - 22, unit.y - 28, 44, 5, unit.morale / unit.maxMorale, "#4d9944");
+    if (unit.type === "Cavalry") drawBar(unit.x - 22, unit.y - 20, 44, 4, unit.cavalryChargePower, "#dcb25a");
+    if (unit.congestion < 0.82) {
+      ctx.fillStyle = "rgba(255,170,100,.65)";
+      ctx.fillRect(unit.x - 22, unit.y - 15, 44 * (1 - unit.congestion), 3);
+    }
+    const ttag = terrainTagAt(unit.x, unit.y);
+    if (ttag !== "plain" && ttag !== "broad" && ttag !== "narrow") {
+      ctx.fillStyle = "rgba(24,22,20,.62)";
+      ctx.fillRect(unit.x - 20, unit.y + 38, 40, 10);
+      ctx.fillStyle = "#e9e3d1";
+      ctx.font = "9px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText(ttag.toUpperCase(), unit.x, unit.y + 46);
+      ctx.textAlign = "left";
+    }
 
     ctx.fillStyle = "rgba(18,12,5,.72)";
     ctx.fillRect(unit.x - 28, unit.y + 24, 56, 14);
