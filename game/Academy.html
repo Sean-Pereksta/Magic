@@ -402,6 +402,7 @@
   }
   .weekOrb.coaching{ background:#2563eb; }
   .weekOrb.incident{ background:var(--orb-color, #f59e0b); }
+  .weekOrb.monitor{ background:#111827; }
 
   /* coaching bar */
   .coachbar{
@@ -2627,6 +2628,18 @@ function weekEventOrbs(repName, weeks){
   }
 
   for(const wk of weeks){
+    const qaRowsForWeek = qaMonitorRowsForRepWeek(repName, wk);
+    for(const qa of qaRowsForWeek){
+      const arr = out.get(wk) || [];
+      arr.push({
+        kind:'monitor',
+        color:'#111827',
+        date: qa.startDate,
+        row: qa
+      });
+      out.set(wk, arr);
+    }
+
     const incRows = checklistForRepWeek(repName, wk);
     for(const it of incRows){
       const crit = checklistCriteriaForItem(it)[0];
@@ -2706,6 +2719,23 @@ function qaWeeklyAverage(repName, wk, sd=null, ed=null){
   }
   if(!rows.length) return NaN;
   return mean(rows.map(r => r.score));
+}
+function isCallQualityKpiSelected(){
+  return String(els.kpiSel?.value || '').trim() === 'callQuality';
+}
+function qaMonitorRowsForRepWeek(repName, wk){
+  if(!isCallQualityKpiSelected()) return [];
+  const rk = personKey(repName);
+  return qaByRepWeek.get(rk)?.get(wk) || [];
+}
+function qaConversationId(row){
+  return String(
+    pickFieldFromRow(row || {}, ["conversationid","conversation", "interactionid", "contactid", "callid", "id"]) ?? ''
+  ).trim();
+}
+function qaInteractionStartLabel(row){
+  const dt = row?.startDate || parseAnyDate(pickFieldFromRow(row || {}, ["interactionstarttime","interactionstart","starttime","interactiontime","scoreddate","date"]));
+  return dt ? mmddyy(dt) : '—';
 }
 function gatherChecklistInWindow(repName, weeks){
   const out=[];
@@ -4662,6 +4692,23 @@ function openItemModalFromOrb(btn){
     return;
   }
 
+  if(kind === 'monitor'){
+    const row = it.row || {};
+    const convoId = qaConversationId(row) || '—';
+    els.itemModalTitle.textContent = `Call Quality Monitor • ${rep}`;
+    els.itemModalMeta.textContent = `${wk} • ${qaInteractionStartLabel(row)} • Score ${fmtPct1(row.score)}`;
+    els.itemModalBody.innerHTML = `
+      <div class="mCard">
+        <div class="mini">
+          <span class="pill">Conversation ID: <strong>${escAttr(convoId)}</strong></span>
+          <span class="pill">Interaction Start Time: <strong>${escAttr(qaInteractionStartLabel(row))}</strong></span>
+          <span class="pill">Evaluator: <strong>${escAttr(row.evaluator || '—')}</strong></span>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
   const row = it.row || {};
   const days = checklistTurnaroundDays(row);
   const servedDate = row.dateServed ? mmddyy(row.dateServed) : '—';
@@ -4702,7 +4749,9 @@ function timelineOrbHtml(repName, weeks){
       const style = it.kind==='incident' ? ` style="--orb-color:${escAttr(it.color || '#f59e0b')}"` : '';
       const title = it.kind==='coaching'
         ? `Coaching • ${mmddyy(it.row?.date)}`
-        : `Checklist • ${mmddyy(it.row?.date)} • ${it.row?.incident || ''}`;
+        : (it.kind==='monitor'
+          ? `Conversation ID: ${qaConversationId(it.row) || '—'} • Interaction Start Time: ${qaInteractionStartLabel(it.row)} • Evaluator: ${it.row?.evaluator || '—'}`
+          : `Checklist • ${mmddyy(it.row?.date)} • ${it.row?.incident || ''}`);
       return `<button class="weekOrb ${escAttr(it.kind)}" data-kind="${escAttr(it.kind)}" data-rep="${escAttr(repName)}" data-wk="${escAttr(wk)}" data-idx="${idx}" title="${escAttr(title)}"${style}></button>`;
     }).join('');
     return `<div class="weekOrbCol">${inner}</div>`;
