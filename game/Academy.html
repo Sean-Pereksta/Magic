@@ -1,2283 +1,2281 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Coach Address Speed Analyzer — Local Docks</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>QA Dashboard — Local (QA Only)</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
 
 <style>
   :root{
-    --bg:#ffffff;
-    --card:#ffffff;
-    --card2:#f8fafc;
+    --bg:#f6f7fb;
+    --card:#fff;
     --ink:#0f172a;
     --muted:#64748b;
-    --line:#dbe4ee;
-    --accent:#0ea5e9;
+    --line:rgba(15,23,42,.12);
+    --accent:#2563eb;
     --good:#16a34a;
+    --bad:#dc2626;
     --warn:#f59e0b;
-    --bad:#ef4444;
-    --shadow:0 12px 28px rgba(15,23,42,.08);
-    --r:16px;
-    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-    --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    --shadow: 0 14px 30px rgba(2,6,23,.10);
   }
   *{box-sizing:border-box}
   html,body{height:100%}
-  body{margin:0;font-family:var(--sans);color:var(--ink);background:var(--bg)}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif
+  }
+
   header{
-    position:sticky; top:0; z-index:10;
-    background:#fff; border-bottom:1px solid var(--line);
-    padding:14px 16px;
-    display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:space-between;
+    position:sticky;top:0;z-index:50;
+    background:#fff;border-bottom:1px solid var(--line);
+    padding:10px 12px;
   }
-  .title{font-weight:900; letter-spacing:.2px; display:flex; gap:10px; align-items:center; flex-wrap:wrap}
-  .pill{
-    border:1px solid var(--line); background:#f8fafc; color:var(--muted);
-    border-radius:999px; padding:6px 10px; font-size:12px
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .row.tight{gap:8px}
+  .headerMain{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    gap:12px;
+    align-items:start;
   }
-  .wrap{padding:14px; display:grid; grid-template-columns:430px 1fr; gap:12px; align-items:start}
-  @media (max-width: 1100px){ .wrap{grid-template-columns:1fr} }
-  .card{background:var(--card); border:1px solid var(--line); border-radius:var(--r); box-shadow:var(--shadow); overflow:hidden}
-  .hd{
-    padding:10px 12px; border-bottom:1px solid var(--line); background:var(--card2);
-    display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap
+  .headerLeft{min-width:0}
+  .headerRight{
+    min-width:260px;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    align-items:flex-end;
   }
-  .hd b{font-size:14px}
-  .bd{padding:12px}
-  .grid{display:grid; gap:10px}
-  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:10px}
-  .grid3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px}
-  @media (max-width:700px){ .grid2,.grid3{grid-template-columns:1fr} }
-  label{display:block; font-size:12px; color:var(--muted); margin-bottom:4px}
-  input[type="text"], input[type="number"], input[type="date"], select{
-    width:100%; padding:10px 10px; border-radius:12px; border:1px solid var(--line);
-    background:#fff; color:var(--ink); outline:none;
+  @media (max-width:980px){
+    .headerMain{grid-template-columns:1fr}
+    .headerRight{align-items:flex-start;min-width:0}
   }
-  input[type="checkbox"]{transform: translateY(1px)}
-  .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
-  .btn{
-    border:none; cursor:pointer; padding:10px 12px; border-radius:12px;
-    background:linear-gradient(180deg, #38bdf8, #0ea5e9);
-    color:#001018; font-weight:900;
-  }
-  .btn:hover{filter:brightness(1.03)}
-  .btn.secondary{background:#f8fafc; color:var(--ink); border:1px solid var(--line)}
-  .btn.ghost{background:#fff; color:var(--ink); border:1px dashed #cbd5e1}
-  .btn.danger{background:#fff5f5; color:#b91c1c; border:1px solid #fecaca}
-  .mini{font-size:12px; color:var(--muted)}
-  .mono{font-family:var(--mono)}
-  .tag{
-    display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px;
-    border:1px solid var(--line); background:#f8fafc; color:var(--muted); font-size:12px
-  }
-  .dot{width:9px; height:9px; border-radius:999px; background:var(--muted)}
-  .dot.good{background:var(--good)} .dot.warn{background:var(--warn)} .dot.bad{background:var(--bad)}
-  .kpis{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px}
-  .kpi{border:1px solid var(--line); background:#fff; border-radius:14px; padding:10px}
-  .kpi .v{font-weight:950; font-size:18px} .kpi .t{font-size:12px; color:var(--muted)}
 
-  .tblWrap{border:1px solid var(--line); border-radius:14px; overflow:auto; max-height:calc(100vh - 220px); background:#fff}
-  table{width:100%; border-collapse:collapse; border-spacing:0}
-  thead th{
-    position:sticky; top:0; z-index:1;
-    background:#f8fafc; color:var(--muted);
+  h1{font-size:16px;margin:0;font-weight:950;letter-spacing:.2px}
+  label{font-size:12px;color:var(--muted);display:flex;gap:8px;align-items:center}
+  select,input,button{font-size:14px}
+  select,input{
     border:1px solid var(--line);
-    text-align:left; font-size:12px; padding:10px 8px;
-    user-select:none; white-space:nowrap;
+    border-radius:10px;
+    padding:7px 10px;
+    background:#fff;
+    outline:none;
   }
-  tbody td{
-    padding:10px 8px; border:1px solid #e5edf5; font-size:13px; vertical-align:top; background:#fff;
-  }
-  tbody tr:hover td{background:#f8fbff}
+  input[type="text"]{min-width:220px}
 
-  .chips{display:flex; gap:8px; flex-wrap:wrap}
-  .chip{
-    display:inline-flex; gap:8px; align-items:center; border:1px solid var(--line);
-    background:#fff; border-radius:999px; padding:6px 10px
-  }
-  .chip button{border:none; cursor:pointer; padding:4px 8px; border-radius:999px; font-weight:900}
-  .chip .readd{background:#ecfdf5; color:#166534; border:1px solid #bbf7d0}
-
-  .modalBack{position:fixed; inset:0; z-index:50; background:rgba(15,23,42,.45); display:none; align-items:center; justify-content:center; padding:14px}
-  .modal{
-    width:min(1120px, 98vw); max-height:92vh; overflow:hidden;
-    background:#fff; border:1px solid var(--line);
-    border-radius:18px; box-shadow:0 24px 70px rgba(15,23,42,.18); display:flex; flex-direction:column
-  }
-  .mh{padding:10px 12px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; gap:10px; align-items:center}
-  .closeBtn{
-    border:none; cursor:pointer; padding:9px 10px; border-radius:12px; font-weight:900;
-    background:#f8fafc; color:var(--ink); border:1px solid var(--line)
-  }
-  .tabs{
-    display:flex; gap:8px; padding:10px 12px; border-bottom:1px solid var(--line);
-    background:#fff; flex-wrap:wrap
-  }
-  .tabBtn{
-    border:1px solid var(--line); background:#fff; color:var(--ink);
-    padding:8px 10px; border-radius:999px; cursor:pointer; font-weight:900
-  }
-  .tabBtn.on{box-shadow:0 0 0 3px rgba(14,165,233,.12); border-color:#7dd3fc; background:#f0f9ff}
-  .mb{padding:12px; overflow:auto; min-height:0}
-  canvas{width:100%; height:70px; border:1px solid var(--line); border-radius:14px; background:#fff}
-  .canvasTall{height:220px}
-  .toast{
-    position:fixed; right:14px; bottom:14px; z-index:80; display:none;
-    background:#fff; border:1px solid var(--line); border-radius:12px;
-    box-shadow:0 16px 40px rgba(15,23,42,.14); padding:10px 12px; max-width:min(560px, 92vw)
-  }
-  .toast b{display:block} .toast .s{font-size:12px; color:var(--muted)}
-  .mutedBox{border:1px dashed #cbd5e1; border-radius:14px; padding:10px; color:var(--muted); background:#fcfdff}
-  .inlinePill{display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:#f8fafc; color:var(--muted); font-size:12px}
-  .typeChips,.filterChips{display:flex; gap:8px; flex-wrap:wrap}
-  .typeChip,.filterChip{
-    display:inline-flex; align-items:center; gap:8px;
-    padding:6px 10px; border-radius:999px;
+  .btn{
     border:1px solid var(--line);
     background:#fff;
-    color:var(--muted);
+    padding:7px 10px;
+    border-radius:999px;
     cursor:pointer;
-    user-select:none;
+    font-weight:950;
+  }
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.tiny{padding:6px 10px;font-size:12px}
+  .btn.active{
+    border-color: rgba(37,99,235,.55);
+    box-shadow: 0 0 0 3px rgba(37,99,235,.12);
+  }
+  .spacer{flex:1}
+  .wrap{padding:12px;max-width:1400px;margin:0 auto}
+
+  .card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:14px;
+    box-shadow:var(--shadow);
+  }
+  .notice{
+    border:1px dashed var(--line);
+    border-radius:12px;
+    padding:10px;
+    background:#fff;
+    color:#334155;
+    font-size:12px;
+  }
+
+  .summaryBox{padding:12px}
+  .summaryHead{
+    display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;
+    margin-bottom:10px
+  }
+  .summaryHead .sub{font-size:12px;color:var(--muted);font-weight:800}
+  .summaryTblWrap{overflow:auto;border:1px solid var(--line);border-radius:12px}
+  .summaryTbl{border-collapse:separate;border-spacing:0;width:100%;min-width:860px;background:#fff}
+  .summaryTbl thead th{
+    background:#0f172a;color:#e5e7eb;
+    text-align:left;padding:10px;font-size:12px;white-space:nowrap;
+    position:sticky;top:0;z-index:1;
+  }
+  .summaryTbl tbody td{
+    border-bottom:1px solid var(--line);
+    padding:10px;font-size:13px;white-space:nowrap;
+    vertical-align:top;
+  }
+  .summaryTbl tbody tr:hover td{background:#f8fafc}
+
+  .pill{
+    display:inline-flex;align-items:center;gap:8px;
+    padding:6px 10px;border-radius:999px;border:1px solid var(--line);
+    background:#fff;font-size:12px;font-weight:900;color:#0f172a;
+  }
+  .pill.bad{border-color:rgba(220,38,38,.35);background:rgba(220,38,38,.08);color:#7f1d1d}
+  .pill.good{border-color:rgba(22,163,74,.35);background:rgba(22,163,74,.08);color:#065f46}
+  .pill.warn{border-color:rgba(245,158,11,.45);background:rgba(245,158,11,.10);color:#7c2d12}
+  .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
+
+  .stack{display:grid;gap:12px}
+
+  .compCategory{font-weight:950}
+  .diffGood{color:var(--good);font-weight:950}
+  .diffBad{color:var(--bad);font-weight:950}
+  .diffNeutral{color:#0f172a;font-weight:950}
+
+  .grid{
+    display:grid;
+    grid-template-columns: repeat(4, minmax(260px, 1fr));
+    gap:12px;
+    margin-top:12px;
+  }
+  @media (max-width:1200px){ .grid{grid-template-columns: repeat(3, minmax(260px, 1fr));} }
+  @media (max-width:950px){ .grid{grid-template-columns: repeat(2, minmax(260px, 1fr));} }
+  @media (max-width:620px){ .grid{grid-template-columns: 1fr;} }
+
+  .repCard{padding:12px;cursor:pointer;transition:transform .06s ease, box-shadow .12s ease}
+  .repCard:hover{transform:translateY(-1px);box-shadow:0 18px 40px rgba(2,6,23,.14)}
+  .repTop{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+  .repName{font-weight:950;font-size:14px;line-height:1.15}
+  .repMeta{font-size:12px;color:var(--muted);margin-top:4px}
+  .sparkWrap{margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:8px;background:#fbfdff}
+  canvas.spark{width:100%;height:52px;display:block}
+  .repStats{margin-top:10px;display:grid;gap:6px}
+  .statLine{display:flex;justify-content:space-between;gap:10px;font-size:12px}
+  .statLine b{font-weight:950}
+  .trendUp{color:var(--good);font-weight:950}
+  .trendDn{color:var(--bad);font-weight:950}
+  .trendFlat{color:#0f172a;font-weight:950}
+  .miniRow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .mini{font-size:12px;font-weight:900;border:1px solid var(--line);border-radius:999px;padding:4px 8px;background:#fff}
+  .mini.bad{border-color:rgba(220,38,38,.35);background:rgba(220,38,38,.08);color:#7f1d1d}
+  .mini.good{border-color:rgba(22,163,74,.35);background:rgba(22,163,74,.08);color:#065f46}
+  .mini.warn{border-color:rgba(245,158,11,.45);background:rgba(245,158,11,.10);color:#7c2d12}
+
+  .coachFlag{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    font-size:12px;
+    font-weight:950;
+    padding:4px 8px;
+    border-radius:999px;
+    border:1px solid var(--line);
+    background:#fff;
+  }
+  .coachFlag.good{
+    background:rgba(22,163,74,.08);
+    color:#166534;
+    border-color:rgba(22,163,74,.25);
+  }
+  .coachFlag.bad{
+    background:rgba(220,38,38,.08);
+    color:#991b1b;
+    border-color:rgba(220,38,38,.25);
+  }
+  .coachMark{font-size:14px;line-height:1}
+
+  .overlay{
+    position:fixed;inset:0;background:rgba(15,23,42,.55);
+    display:none;align-items:center;justify-content:center;padding:14px;z-index:9999
+  }
+  .overlay.show{display:flex}
+  .panel{
+    width:min(1100px, 96vw);
+    max-height:92vh;
+    background:#fff;border:1px solid rgba(226,232,240,.95);
+    border-radius:16px;
+    box-shadow:0 22px 60px rgba(2,6,23,.35);
+    overflow:hidden;
+    display:flex;flex-direction:column;
+  }
+  .panel.small{width:min(860px,96vw)}
+  .panel.medium{width:min(980px,96vw)}
+  .pHead{
+    padding:12px 14px;border-bottom:1px solid var(--line);
+    display:flex;gap:10px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;
+    background:linear-gradient(180deg, rgba(37,99,235,.08), rgba(37,99,235,0));
+  }
+  .pTitle{font-weight:950;margin:0;font-size:16px}
+  .pSub{margin-top:6px;color:#475569;font-weight:800;font-size:12px}
+  .pActions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:flex-end}
+  .pBody{padding:12px 14px;overflow:auto;min-height:0;display:grid;gap:12px}
+
+  .box{border:1px solid var(--line);border-radius:14px;background:#fff;padding:12px}
+  .boxHead{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;font-weight:950;margin-bottom:10px}
+  .chartWrap{height:260px;border:1px solid var(--line);border-radius:12px;padding:10px;background:#fbfdff}
+  .tblWrap{overflow:auto;border:1px solid var(--line);border-radius:14px}
+  table{border-collapse:separate;border-spacing:0;width:100%;min-width:980px;background:#fff}
+  thead th{
+    position:sticky;top:0;z-index:2;
+    background:#0f172a;color:#e5e7eb;
+    text-align:left;padding:10px;font-size:12px;white-space:nowrap
+  }
+  tbody td{border-bottom:1px solid var(--line);padding:8px 10px;font-size:13px;white-space:nowrap}
+  tbody tr:hover td{background:#f8fafc}
+
+  .coList{display:grid;gap:8px}
+  .coItem{
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:#fbfdff;
+    padding:10px 12px;
+  }
+  .coHeadRow{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
+  .coHeadRow b{font-size:12px}
+  .coMeta{color:var(--muted);font-size:12px;font-weight:800;margin-top:2px}
+  .coDesc{
+    margin-top:8px;
+    white-space:pre-wrap;
+    font-size:12.5px;
+    line-height:1.35;
+    color:#0f172a;
+    border-top:1px dashed var(--line);
+    padding-top:8px;
+  }
+
+  .reviewerList{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  .reviewerChip{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:6px 10px;
+    border-radius:999px;
+    border:1px solid var(--line);
+    background:#fff;
+    font-size:12px;
     font-weight:900;
-    opacity:.65;
   }
-  .typeChip.on,.filterChip.on{
-    opacity:1; color:var(--ink); border-color:#7dd3fc; box-shadow:0 0 0 3px rgba(14,165,233,.10); background:#f0f9ff
+  .reviewerChip button{
+    border:none;
+    background:transparent;
+    color:var(--bad);
+    font-weight:950;
+    cursor:pointer;
+    padding:0 2px;
   }
-  .sectionTitle{font-weight:900; margin-bottom:6px}
-  .splitActions{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px}
-  .resultTabs{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px}
-  .resultPane{display:none}
-  .resultPane.on{display:block}
-  .stackGap{display:grid; gap:12px}
-  .coach-extra-col{display:none}
+
+  .optionsGrid{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(260px,1fr));
+    gap:12px;
+  }
+  @media (max-width:760px){ .optionsGrid{grid-template-columns:1fr} }
+
+  .unreadBadge{
+    border-color:rgba(220,38,38,.35)!important;
+    background:rgba(220,38,38,.08)!important;
+    color:#7f1d1d!important;
+  }
 </style>
 </head>
 <body>
 
 <header>
-  <div class="title">
-    ⏱️ Coach Address Speed Analyzer
-    <span class="pill">Checklist: Created On → Date Served</span>
-    <span class="pill">Docs: Date → Created On</span>
-    <span class="pill">Auto-load enabled</span>
+  <div class="headerMain">
+    <div class="headerLeft">
+      <div class="row">
+        <h1>QA Dashboard (Local)</h1>
+
+        <label>Team / Coach
+          <select id="teamSel" style="min-width:220px"></select>
+        </label>
+
+        <label>Timeframe
+          <select id="tfSel" style="min-width:170px">
+            <option value="all" selected>All</option>
+            <option value="last7">Last 7 days</option>
+            <option value="last30">Last 30 days</option>
+            <option value="last90">Last 90 days</option>
+            <option value="custom">Custom…</option>
+          </select>
+        </label>
+
+        <label class="pill" title="Exclude evaluations with Score % = 0 from averages/charts">
+          <input id="excludeZero" type="checkbox"/>
+          Exclude zeros
+        </label>
+
+        <label>Representative search
+          <input id="searchInp" type="text" placeholder="rep name…"/>
+        </label>
+
+        <button class="btn" id="reviewersBtn">Reviewers (<span id="reviewersBtnCount">0</span>)</button>
+        <button class="btn" id="optionsBtn">Additional Options</button>
+      </div>
+
+      <div class="row tight" style="margin-top:8px">
+        <span class="pill mono" id="scopePill">—</span>
+        <span class="pill mono" id="qaReviewCountPill">QA reviewers: —</span>
+      </div>
+    </div>
+
+    <div class="headerRight">
+      <span class="pill mono" id="sortPill">Sort: Most evals</span>
+      <div class="row tight" id="sortWrap">
+        <button class="btn tiny sortBtn active" data-sort="count" title="Most evaluations first">Most evals</button>
+        <button class="btn tiny sortBtn" data-sort="avg" title="Highest to lowest average score">Avg score</button>
+        <button class="btn tiny sortBtn" data-sort="zeros" title="Most 0s first">Most 0s</button>
+        <button class="btn tiny sortBtn" data-sort="trend" title="Most negative to most positive trend">Trend</button>
+        <button class="btn tiny sortBtn" data-sort="coachings" title="Least to most Call Quality coachings (in timeframe)">Coachings</button>
+        <button class="btn tiny sortBtn" data-sort="coachingsWeighted" title="Least to most coachings, weighted down when score is lower">Weighted coachings</button>
+        <button class="btn tiny sortBtn" data-sort="unreviewed" title="Most unreviewed monitors first">Unreviewed</button>
+      </div>
+    </div>
   </div>
-  <span id="badge" class="tag"><span class="dot"></span><span class="mono" id="badgeTxt">Checklist not loaded</span></span>
 </header>
 
 <div class="wrap">
-  <div class="card">
-    <div class="hd">
-      <b>Filters + Cutoffs</b>
-      <div class="row">
-        <button class="btn secondary" id="btnReset">Reset</button>
+  <div class="stack">
+    <div class="card summaryBox">
+      <div class="summaryHead">
+        <div>
+          <div style="font-weight:950">Overall Scores</div>
+          <div class="sub" id="summarySub">—</div>
+        </div>
+        <div class="row">
+          <span class="pill mono" id="teamTrendPill">Trend: —</span>
+        </div>
+      </div>
+
+      <div class="summaryTblWrap">
+        <table class="summaryTbl">
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>Value</th>
+              <th>Count</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody id="summaryTbody"></tbody>
+        </table>
       </div>
     </div>
-    <div class="bd grid">
 
-      <div class="card" style="box-shadow:none; border-radius:14px">
-        <div class="hd">
-          <b>Checklist (LocalStorage)</b>
-          <div class="row">
-            <button class="btn ghost" id="btnRefreshChecklistKeys">Refresh keys</button>
-          </div>
-        </div>
-        <div class="bd grid">
-          <div class="grid2">
-            <div>
-              <label>Detected checklist dock key</label>
-              <select id="checkKeySel"></select>
-              <div class="mini" style="margin-top:6px">Auto-loads the first detected checklist dock on startup.</div>
-            </div>
-            <div>
-              <label>Action Taken match (contains)</label>
-              <input id="actionMatch" type="text" value="Addressed" />
-              <div class="mini" style="margin-top:6px">Matches the checklist row action field after dock parsing.</div>
-            </div>
-          </div>
-          <div class="row">
-            <span class="tag" id="checkBadge"><span class="dot"></span><span class="mono" id="checkBadgeTxt">Not loaded</span></span>
-          </div>
+    <div class="card summaryBox">
+      <div class="summaryHead">
+        <div>
+          <div style="font-weight:950">Comparisons</div>
+          <div class="sub">Coach monitors on the left, difference/category in the middle, QA reviewer monitors on the right.</div>
         </div>
       </div>
 
-      <div class="card" style="box-shadow:none; border-radius:14px">
-        <div class="hd"><b>Time frame (applies to checklist + documented coaching)</b></div>
-        <div class="bd grid">
-          <div class="grid2">
-            <div>
-              <label>Window</label>
-              <select id="tfMode">
-                <option value="all" selected>All time</option>
-                <option value="w4">Last 4 weeks</option>
-                <option value="w8">Last 8 weeks</option>
-                <option value="w13">Last 13 weeks</option>
-                <option value="w26">Last 26 weeks</option>
-                <option value="w52">Last 52 weeks</option>
-                <option value="custom">Custom range…</option>
-              </select>
-            </div>
-            <div>
-              <label>Basis</label>
-              <select id="tfBasis">
-                <option value="created" selected>Checklist: Created On • Docs: Coaching Date</option>
-                <option value="served">Checklist: Date Served • Docs: Coaching Date</option>
-              </select>
-            </div>
-          </div>
-          <div class="grid2" id="tfCustomRow" style="display:none">
-            <div><label>Start (inclusive)</label><input type="date" id="tfStart"></div>
-            <div><label>End (inclusive)</label><input type="date" id="tfEnd"></div>
-          </div>
-          <div class="mini" id="tfHint">—</div>
-        </div>
-      </div>
-
-      <div class="card" style="box-shadow:none; border-radius:14px">
-        <div class="hd">
-          <b>Documented Coaching (LocalStorage)</b>
-          <div class="row">
-            <button class="btn ghost" id="btnRefreshDocKeys">Refresh keys</button>
-          </div>
-        </div>
-        <div class="bd grid">
-          <div class="grid2">
-            <div>
-              <label>Detected coaching dock key</label>
-              <select id="docKeySel"></select>
-              <div class="mini" style="margin-top:6px">Auto-loads the first detected coaching dock on startup.</div>
-            </div>
-            <div>
-              <label>Doc coaching type selector</label>
-              <div class="splitActions">
-                <button class="btn secondary" id="btnDocSelectAll" type="button">Select all</button>
-                <button class="btn secondary" id="btnDocSelectNone" type="button">Select none</button>
-              </div>
-              <div id="docTypeChipsMain" class="filterChips"></div>
-            </div>
-          </div>
-          <div class="row">
-            <span class="tag" id="docBadge"><span class="dot"></span><span class="mono" id="docBadgeTxt">Not loaded</span></span>
-          </div>
-        </div>
-      </div>
-
-      <div class="card" style="box-shadow:none; border-radius:14px">
-        <div class="hd"><b>Checklist incident filter</b></div>
-        <div class="bd grid">
-          <div class="splitActions">
-            <button class="btn secondary" id="btnIncidentSelectAll" type="button">Select all</button>
-            <button class="btn secondary" id="btnIncidentSelectNone" type="button">Select none</button>
-          </div>
-          <div id="incidentChipsMain" class="filterChips"></div>
-        </div>
-      </div>
-
-      <div class="card" style="box-shadow:none; border-radius:14px">
-        <div class="hd"><b>Outlier filters</b></div>
-        <div class="bd grid">
-          <div class="grid3">
-            <div>
-              <label><input type="checkbox" id="cbNeg" checked /> Exclude negative durations</label>
-            </div>
-            <div>
-              <label><input type="checkbox" id="cbMax" checked /> Exclude durations above (days)</label>
-              <input type="number" id="maxDays" value="365" min="0" step="1" />
-            </div>
-            <div>
-              <label><input type="checkbox" id="cbPct" /> Trim top percentile (global)</label>
-              <input type="number" id="pctKeep" value="99" min="50" max="100" step="0.1" />
-            </div>
-          </div>
-
-          <div>
-            <label>Excluded reps (Associate Name)</label>
-            <div class="chips" id="excludedChips"></div>
-          </div>
-
-          <div class="grid2">
-            <div>
-              <label>Sort coaches by</label>
-              <select id="sortCoach">
-                <option value="avg">Checklist Avg days (desc)</option>
-                <option value="name">Coach name (A→Z)</option>
-                <option value="count">Checklist Count (desc)</option>
-                <option value="median">Checklist Median (desc)</option>
-                <option value="docw">Doc / week (desc)</option>
-                <option value="docc">Doc count (desc)</option>
-                <option value="doclag">Doc avg lag (desc)</option>
-              </select>
-            </div>
-            <div>
-              <label>Sort reps by</label>
-              <select id="sortRep">
-                <option value="max">Max days (desc)</option>
-                <option value="avg">Avg days (desc)</option>
-                <option value="count">Count (desc)</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card" style="box-shadow:none; border-radius:14px">
-        <div class="hd"><b>Cutoff detection</b></div>
-        <div class="bd grid">
-          <div class="grid3">
-            <div><label>Window size</label><input id="cutWin" type="number" value="10" min="3" step="1" /></div>
-            <div><label>Before: avg ≤ (days)</label><input id="cutPre" type="number" value="10" min="0" step="1" /></div>
-            <div><label>After: avg ≥ (days)</label><input id="cutPost" type="number" value="50" min="0" step="1" /></div>
-          </div>
-          <div class="row">
-            <button class="btn secondary" id="btnApplyAllCut">Apply all suggested cutoffs</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="row">
-        <button class="btn" id="btnRecompute">Recompute</button>
-        <button class="btn secondary" id="btnExportCoach">Export Coach CSV</button>
-        <button class="btn secondary" id="btnExportRep">Export Rep CSV</button>
+      <div class="summaryTblWrap">
+        <table class="summaryTbl">
+          <thead>
+            <tr>
+              <th>Coach</th>
+              <th>Difference / Category</th>
+              <th>QA</th>
+            </tr>
+          </thead>
+          <tbody id="compareTbody"></tbody>
+        </table>
       </div>
     </div>
   </div>
 
-  <div class="card">
-    <div class="hd">
-      <b>Results</b>
-      <span class="tag" id="statusTag"><span class="dot"></span><span class="mono" id="statusTxt">Waiting…</span></span>
-    </div>
-    <div class="bd">
-      <div class="resultTabs">
-        <button class="tabBtn on" id="tabMainResults">Coach / Rep results</button>
-        <button class="tabBtn" id="tabCoordinatorResults">Coordinators</button>
-      </div>
-
-      <div class="resultPane on" id="paneMainResults">
-        <div class="kpis">
-          <div class="kpi"><div class="v" id="kRows">—</div><div class="t">Checklist “Addressed” rows included</div></div>
-          <div class="kpi"><div class="v" id="kCoaches">—</div><div class="t">Unique coaches (checklist)</div></div>
-          <div class="kpi"><div class="v" id="kDocRows">—</div><div class="t">Documented coachings in timeframe</div></div>
-          <div class="kpi"><div class="v" id="kDocPerWk">—</div><div class="t">Avg documented coachings / week</div></div>
-        </div>
-
-        <div class="stackGap">
-          <div>
-            <div class="row" style="justify-content:space-between; gap:8px">
-              <div style="font-weight:900">Coach summary (Checklist + Documented)</div>
-              <button class="btn secondary" id="btnCoachSummaryExpand" type="button">Expand breakdown</button>
-            </div>
-            <div class="mini" id="coachSummHint">—</div>
-            <div class="tblWrap" style="margin-top:8px">
-              <table id="coachTable">
-                <thead>
-                  <tr>
-                    <th>Coach</th>
-                    <th>Chk Cnt</th>
-                    <th>Chk Avg</th>
-                    <th>Chk Max</th>
-                    <th>Chk Med</th>
-                    <th>&lt;= 7d Cnt</th>
-                    <th>&lt;= 7d %</th>
-                    <th>&gt; 7d Cnt</th>
-                    <th>&gt; 7d %</th>
-                    <th>Avg &gt; 7d</th>
-                    <th class="coach-extra-col">Items &lt; 3d</th>
-                    <th class="coach-extra-col">% &lt; 3d</th>
-                    <th class="coach-extra-col">Items 3-5d</th>
-                    <th class="coach-extra-col">% 3-5d</th>
-                    <th>Cutoff</th>
-                    <th>Doc Cnt</th>
-                    <th>Doc/Wk</th>
-                    <th>Doc Avg Lag</th>
-                    <th>Top 3 Types</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </div>
-
-          <div>
-            <div style="font-weight:900">Reps with highest serve times</div>
-            <div class="tblWrap" style="margin-top:8px; max-height:360px">
-              <table id="repTable">
-                <thead><tr><th>Associate</th><th>Count</th><th>Avg</th><th>Max</th><th></th></tr></thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="resultPane" id="paneCoordinatorResults">
-        <div class="grid2" style="align-items:start">
-          <div>
-            <div class="sectionTitle">Checklist coordinators</div>
-            <div class="tblWrap" style="margin-top:8px">
-              <table id="coordChecklistTable">
-                <thead>
-                  <tr>
-                    <th>Coordinator</th>
-                    <th>Count</th>
-                    <th>Avg Gap</th>
-                    <th>Median</th>
-                    <th>Max</th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </div>
-
-          <div>
-            <div class="sectionTitle">Documentation coordinators</div>
-            <div class="tblWrap" style="margin-top:8px">
-              <table id="coordDocTable">
-                <thead>
-                  <tr>
-                    <th>Coordinator</th>
-                    <th>Count</th>
-                    <th>Avg Gap</th>
-                    <th>Median</th>
-                    <th>Max</th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
+  <div id="cards" class="grid"></div>
+  <div id="empty" class="notice" style="display:none;margin-top:12px"></div>
 </div>
 
-<div class="modalBack" id="modalBack">
-  <div class="modal">
-    <div class="mh">
+<div id="overlay" class="overlay" aria-hidden="true">
+  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <div class="pHead">
       <div>
-        <div style="font-weight:950" id="modalTitle">Coach</div>
-        <div class="mini" id="modalSub">—</div>
+        <div id="mTitle" class="pTitle">Rep — QA</div>
+        <div id="mSub" class="pSub">—</div>
       </div>
-      <button class="closeBtn" id="btnClose">Close</button>
-    </div>
-
-    <div class="tabs">
-      <button class="tabBtn on" id="tabChecklist">Checklist</button>
-      <button class="tabBtn" id="tabDocs">Documented coaching</button>
-      <span class="inlinePill" id="modalTFPill">—</span>
-    </div>
-
-    <div class="mb">
-      <div id="paneChecklist">
-        <canvas id="spark"></canvas>
-        <div class="tblWrap" style="margin-top:12px; max-height:55vh">
-          <table id="detailTable">
-            <thead><tr><th>Idx</th><th>Days</th><th>Created On</th><th>Date Served</th><th>Associate</th><th>Action</th><th>Incident</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
+      <div class="pActions">
+        <button class="btn" id="mClose">Close ✕</button>
       </div>
+    </div>
+    <div id="mBody" class="pBody"></div>
+  </div>
+</div>
 
-      <div id="paneDocs" style="display:none">
-        <div class="grid2" style="align-items:start">
-          <div class="mutedBox">
-            <div style="font-weight:950; color:var(--ink)">Doc coaching stats (this coach)</div>
-            <div class="mini" id="docCoachStatsLine" style="margin-top:6px">—</div>
-            <div class="grid2" style="margin-top:10px">
-              <div>
-                <label>Sort documented rows by</label>
-                <select id="docSort">
-                  <option value="dateDesc" selected>Date (newest → oldest)</option>
-                  <option value="dateAsc">Date (oldest → newest)</option>
-                  <option value="lagDesc">Lag (high → low)</option>
-                  <option value="lagAsc">Lag (low → high)</option>
-                  <option value="repAZ">Rep (A→Z)</option>
-                  <option value="typeAZ">Type (A→Z)</option>
-                </select>
-              </div>
-              <div>
-                <label>Quick filter (type)</label>
-                <select id="docTypeQuick">
-                  <option value="__ALL__" selected>All types</option>
-                </select>
-              </div>
-            </div>
-            <div style="margin-top:10px">
-              <label>Type chips (multi-select)</label>
-              <div class="typeChips" id="docTypeChips"></div>
-            </div>
-          </div>
-
-          <div>
-            <div style="font-weight:950">Coaching type breakdown</div>
-            <canvas id="pie" class="canvasTall"></canvas>
-          </div>
+<div id="reviewerOverlay" class="overlay" aria-hidden="true">
+  <div class="panel small" role="dialog" aria-modal="true" aria-labelledby="rTitle">
+    <div class="pHead">
+      <div>
+        <div id="rTitle" class="pTitle">QA Reviewers Included</div>
+        <div id="rSub" class="pSub">—</div>
+      </div>
+      <div class="pActions">
+        <button class="btn tiny" id="resetReviewersBtn">Reset reviewers</button>
+        <button class="btn" id="reviewerClose">Close ✕</button>
+      </div>
+    </div>
+    <div class="pBody">
+      <div class="box">
+        <div class="boxHead">
+          <span>Included reviewers</span>
+          <span class="pill mono" id="reviewerPopupCount">—</span>
         </div>
-
-        <div class="tblWrap" style="margin-top:12px; max-height:55vh">
-          <table id="docTable">
-            <thead>
-              <tr>
-                <th>Idx</th><th>Date</th><th>Created On</th><th>Lag (days)</th>
-                <th>Rep</th><th>Types</th><th>Description</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
+        <div id="reviewerList" class="reviewerList"></div>
       </div>
     </div>
   </div>
 </div>
 
-<div class="toast" id="toast"><b id="toastT">—</b><div class="s" id="toastS">—</div></div>
+<div id="optionsOverlay" class="overlay" aria-hidden="true">
+  <div class="panel medium" role="dialog" aria-modal="true" aria-labelledby="oTitle">
+    <div class="pHead">
+      <div>
+        <div id="oTitle" class="pTitle">Additional Options</div>
+        <div class="pSub">Load docks, custom date range, and refresh tools.</div>
+      </div>
+      <div class="pActions">
+        <button class="btn" id="optionsClose">Close ✕</button>
+      </div>
+    </div>
+    <div class="pBody">
+      <div class="optionsGrid">
+        <div class="box">
+          <div class="boxHead">
+            <span>QA Dock</span>
+          </div>
+          <div class="row">
+            <label style="width:100%">QA dock key
+              <select id="qaKeySel" style="min-width:100%;width:100%"></select>
+            </label>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <button class="btn primary" id="loadBtn">Load QA</button>
+          </div>
+        </div>
+
+        <div class="box">
+          <div class="boxHead">
+            <span>Documented Coachings</span>
+          </div>
+          <div class="row">
+            <label style="width:100%">Doc coaching key
+              <select id="coKeySel" style="min-width:100%;width:100%"></select>
+            </label>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <button class="btn" id="reloadCoBtn">Reload coachings</button>
+          </div>
+        </div>
+
+        <div class="box">
+          <div class="boxHead">
+            <span>Custom Timeframe</span>
+          </div>
+          <div id="customRange" class="row">
+            <label>
+              <span class="mono">From</span>
+              <input id="fromInp" type="date"/>
+            </label>
+            <label>
+              <span class="mono">To</span>
+              <input id="toInp" type="date"/>
+            </label>
+          </div>
+          <div class="notice" style="margin-top:10px">
+            These dates are only used when Timeframe is set to Custom.
+          </div>
+        </div>
+
+        <div class="box">
+          <div class="boxHead">
+            <span>Status / Actions</span>
+          </div>
+          <div class="row tight">
+            <span class="pill mono" id="statusPill">—</span>
+            <span class="pill mono" id="coStatusPill" title="Only Call Quality coachings are used in counts & details.">Coachings: —</span>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <button class="btn" id="refreshBtn">Refresh</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
-(function(){
-  const $ = id => document.getElementById(id);
+const SETTINGS_KEY = 'qaOnlyDash.settings.v6';
 
-  let APP_NS = "myone2";
-  (function autodetectNs(){
-    const counts = new Map();
-    try{
-      for(let i=0;i<localStorage.length;i++){
-        const k = localStorage.key(i);
-        if(!k) continue;
-        const m = k.match(/^(.*)\.dock\.(retail|referral|qa|coaching|checklist)$/i);
-        if(!m) continue;
-        const ns = m[1];
-        counts.set(ns, (counts.get(ns)||0)+1);
-      }
-      let best=null, bestN=0;
-      for(const [ns,n] of counts.entries()){
-        if(n>bestN){ bestN=n; best=ns; }
-      }
-      if(best) APP_NS = best;
-    }catch(e){}
-  })();
+function loadSettings(){
+  try{ return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {}; }catch{ return {}; }
+}
+function saveSettings(partial){
+  const cur = loadSettings();
+  const next = {...cur, ...partial};
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+}
 
-  const S = {
-    rawItems:[],
-    excludedReps:new Set(),
-    coachCut:new Map(),
-    checkKey:null,
-    checkLoaded:false,
-    docKey:null,
-    docLoaded:false,
-    docCoachingsAll:[],
-    docTypesAll:[],
-    incidentTypesAll:[],
-    docTypeSelected:new Set(),
-    incidentSelected:new Set(),
-    lastCoachSumm:[],
-    lastRepSumm:[],
-    lastByCoachAfterCut:new Map(),
-    lastDocScope:[],
-    lastDocByCoachKey:new Map(),
-    lastChecklistCoordSumm:[],
-    lastDocCoordSumm:[],
-    modalCoach:null,
-    modalTab:"checklist",
-    modalDocFilterQuick:"__ALL__",
-    modalDocTypesOn:new Set(),
-    coachSummaryExpanded:false
+function normHdr(s){
+  return String(s ?? "")
+    .trim().toLowerCase()
+    .replace(/\s+/g," ")
+    .replace(/[^a-z0-9% \-_]/g,"")
+    .replace(/[-_]/g,"")
+    .replace(/\s/g,"");
+}
+
+function loadDockObjByKey(key){
+  if(!key) return null;
+  const raw = localStorage.getItem(key);
+  if(!raw) return null;
+
+  try{
+    const json = LZString.decompressFromUTF16(raw);
+    if(json) return JSON.parse(json);
+  }catch{}
+
+  try{ return JSON.parse(raw); }catch{}
+  return null;
+}
+
+function aoaToRows(aoa){
+  if(!Array.isArray(aoa) || aoa.length<2) return [];
+  const header = (aoa[0]||[]).map(h=>String(h??"").trim());
+  const out=[];
+  for(let r=1;r<aoa.length;r++){
+    const row=aoa[r];
+    if(!row) continue;
+    const obj={};
+    let any=false;
+    for(let c=0;c<header.length;c++){
+      const k = header[c];
+      if(!k) continue;
+      const v = row[c];
+      if(v!==null && v!==undefined && String(v).trim()!=="") any=true;
+      obj[k]=v;
+    }
+    if(any) out.push(obj);
+  }
+  return out;
+}
+
+function extractRowArrays(root, sheetNameFallback){
+  const found=[];
+  const seen = new Set();
+
+  function pushArray(arr, sheetName){
+    if(!Array.isArray(arr) || !arr.length) return;
+    const id = sheetName + "|" + arr.length + "|" + (typeof arr[0]);
+    if(seen.has(id)) return;
+    seen.add(id);
+
+    if(arr[0] && typeof arr[0]==="object" && !Array.isArray(arr[0])){
+      found.push({ rows: arr, sheetName });
+      return;
+    }
+    if(Array.isArray(arr[0])){
+      const rows = aoaToRows(arr);
+      if(rows.length) found.push({ rows, sheetName });
+    }
+  }
+
+  function walk(node, sheetName){
+    if(node===null || node===undefined) return;
+    if(Array.isArray(node)){
+      pushArray(node, sheetName ?? sheetNameFallback ?? "");
+      return;
+    }
+    if(typeof node!=="object") return;
+
+    if(Array.isArray(node.rows)) pushArray(node.rows, sheetName ?? sheetNameFallback ?? "");
+    if(Array.isArray(node.data)) pushArray(node.data, sheetName ?? sheetNameFallback ?? "");
+    if(Array.isArray(node.table)) pushArray(node.table, sheetName ?? sheetNameFallback ?? "");
+
+    if(node.sheets && typeof node.sheets==="object" && !Array.isArray(node.sheets)){
+      for(const [sn, sv] of Object.entries(node.sheets)){
+        walk(sv, sn);
+      }
+    }
+    for(const [k,v] of Object.entries(node)){
+      if(k==="meta" || k==="sheets") continue;
+      walk(v, sheetName);
+    }
+  }
+  walk(root, sheetNameFallback);
+  return found;
+}
+
+function pickFieldFromRow(row, candidates){
+  const map = {};
+  for(const k of Object.keys(row||{})){
+    map[normHdr(k)] = k;
+  }
+  for(const cand of candidates){
+    const real = map[cand];
+    if(real!==undefined) return row[real];
+  }
+  return undefined;
+}
+
+function excelSerialToDate(serial){
+  const n = Number(serial);
+  if(!Number.isFinite(n)) return null;
+  const base = Date.UTC(1899,11,30);
+  const ms = Math.round(n * 86400000);
+  const d = new Date(base + ms);
+  return isNaN(d) ? null : d;
+}
+function parseAnyDate(v){
+  if(v instanceof Date && !isNaN(v)) return v;
+  if(v===null || v===undefined || v==="") return null;
+
+  const tryNum = (x)=>{
+    const n = (typeof x==="number") ? x : parseFloat(String(x).trim());
+    if(!Number.isFinite(n)) return null;
+    if(n > 20000 && n < 90000) return excelSerialToDate(n);
+    if(n > 1e12) { const d = new Date(n); return isNaN(d)?null:d; }
+    if(n > 1e9 && n < 1e12) { const d = new Date(n*1000); return isNaN(d)?null:d; }
+    return null;
   };
 
-  function toast(title, msg){
-    $("toastT").textContent = title;
-    $("toastS").textContent = msg || "";
-    $("toast").style.display = "block";
-    clearTimeout($("toast")._t);
-    $("toast")._t = setTimeout(()=> $("toast").style.display="none", 2600);
+  const nDate = tryNum(v);
+  if(nDate) return nDate;
+
+  const s = String(v).trim();
+  if(!s) return null;
+
+  const nDate2 = tryNum(s);
+  if(nDate2) return nDate2;
+
+  const d1 = new Date(s);
+  if(!isNaN(d1)) return d1;
+
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?$/i);
+  if(m){
+    let mm = parseInt(m[1],10), dd = parseInt(m[2],10), yy = parseInt(m[3],10);
+    if(yy < 100) yy += 2000;
+    let hh = m[4] ? parseInt(m[4],10) : 0;
+    const mi = m[5] ? parseInt(m[5],10) : 0;
+    const ss = m[6] ? parseInt(m[6],10) : 0;
+    const ap = (m[7]||"").toUpperCase();
+    if(ap==="PM" && hh<12) hh += 12;
+    if(ap==="AM" && hh===12) hh = 0;
+    const d = new Date(yy, mm-1, dd, hh, mi, ss);
+    if(!isNaN(d)) return d;
   }
-  function setBadge(ok, text){
-    $("badgeTxt").textContent = text;
-    $("badge").querySelector(".dot").className = "dot " + (ok ? "good" : "");
+  return null;
+}
+
+function toNumRaw(v){
+  if(v===undefined||v===null||v==='') return NaN;
+  const n = parseFloat(String(v).replace(/,/g,'').replace(/%/g,'').trim());
+  return Number.isFinite(n) ? n : NaN;
+}
+function normPct(v){
+  const n = toNumRaw(v);
+  if(!Number.isFinite(n)) return NaN;
+  if(Math.abs(n) > 1.5) return n/100;
+  return n;
+}
+function fmtPct1(frac){ return Number.isFinite(frac) ? (frac*100).toFixed(1)+'%' : '—'; }
+function fmtPct2(frac){ return Number.isFinite(frac) ? (frac*100).toFixed(2)+'%' : '—'; }
+function fmtInt(n){ return Number.isFinite(n) ? Math.round(n).toLocaleString() : '—'; }
+function pad2(n){ return String(n).padStart(2,'0'); }
+
+function fmtDateTime(d){
+  if(!(d instanceof Date) || isNaN(d)) return '—';
+  const y = d.getFullYear();
+  const m = pad2(d.getMonth()+1);
+  const da= pad2(d.getDate());
+  let hh = d.getHours();
+  const am = hh>=12 ? 'PM' : 'AM';
+  hh = hh%12; if(hh===0) hh=12;
+  const mi = pad2(d.getMinutes());
+  return `${m}/${da}/${y} ${hh}:${mi} ${am}`;
+}
+function fmtDateOnly(d){
+  if(!(d instanceof Date) || isNaN(d)) return '—';
+  const y = d.getFullYear();
+  const m = pad2(d.getMonth()+1);
+  const da= pad2(d.getDate());
+  return `${m}/${da}/${y}`;
+}
+function isoWeekKey(d){
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(),0,1));
+  const weekNo = Math.ceil((((date - yearStart) / 86400000) + 1)/7);
+  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2,'0')}`;
+}
+
+function personKey(name){
+  let s = String(name||"").trim().toLowerCase();
+  s = s.replace(/\./g,"").replace(/\s+/g," ");
+  if(!s) return "";
+
+  if(s.includes(",")){
+    const parts = s.split(",");
+    const last = (parts[0]||"").trim();
+    const rest = (parts[1]||"").trim();
+    const first = (rest.split(/\s+/)[0]||"").trim();
+    if(first && last) s = `${first} ${last}`;
+    else s = s.replace(/,/g," ");
   }
-  function setCheckBadge(level, text){
-    $("checkBadgeTxt").textContent = text;
-    $("checkBadge").querySelector(".dot").className = "dot " + (level || "");
+  const toks = s.split(/\s+/).filter(Boolean);
+  if(toks.length>=2) return `${toks[0]} ${toks[toks.length-1]}`;
+  return toks[0] || "";
+}
+
+function displayNameFromRaw(raw){
+  const s = String(raw||"").trim();
+  if(!s) return "";
+  if(s.includes(",")){
+    const parts = s.split(",");
+    const last = (parts[0]||"").trim();
+    const rest = (parts[1]||"").trim();
+    const first = (rest.split(/\s+/)[0]||"").trim();
+    if(first && last) return `${first} ${last}`;
   }
-  function setDocBadge(level, text){
-    $("docBadgeTxt").textContent = text;
-    $("docBadge").querySelector(".dot").className = "dot " + (level || "");
-  }
-  function setStatus(level, text){
-    $("statusTxt").textContent = text;
-    $("statusTag").querySelector(".dot").className = "dot " + (level || "");
+  return s;
+}
+function lastNameOf(full){
+  const s = String(full||"").trim();
+  if(!s) return "";
+  if(s.includes(",")) return s.split(",")[0].trim().toLowerCase();
+  const toks = s.replace(/\./g,'').split(/\s+/).filter(Boolean);
+  return (toks[toks.length-1]||"").trim().toLowerCase();
+}
+
+function parseDurationToSeconds(v){
+  if(v===null || v===undefined || v==="") return NaN;
+
+  if(typeof v === "number" && Number.isFinite(v)){
+    if(v >= 0 && v < 2) return Math.max(0, Math.round(v * 86400));
+    if(v >= 2 && v < 86400*5) return Math.round(v);
   }
 
-  function normHdr(s){
-    return String(s ?? "").trim().toLowerCase()
-      .replace(/\s+/g," ")
-      .replace(/[^a-z0-9% \-_]/g,"")
-      .replace(/[-_]/g,"")
-      .replace(/\s/g,"");
+  const s = String(v).trim();
+  if(!s) return NaN;
+
+  const n = parseFloat(s);
+  if(Number.isFinite(n) && String(n) === String(parseFloat(s)) && !s.includes(":")){
+    if(n >= 0 && n < 2) return Math.max(0, Math.round(n * 86400));
+    if(n >= 2 && n < 86400*5) return Math.round(n);
   }
-  function normName(s){ return String(s ?? "").trim().replace(/\s+/g," "); }
-  function normCoachKey(s){
-    return String(s ?? "").trim().toLowerCase().replace(/[.]/g,"").replace(/\s+/g," ");
-  }
-  function fmtNum(n,d=1){
-    return isFinite(n) ? Number(n).toLocaleString(undefined,{minimumFractionDigits:d, maximumFractionDigits:d}) : "—";
-  }
-  function fmtPct(p,d=0){
-    return isFinite(p) ? `${Number(p).toFixed(d)}%` : "—";
-  }
-  function fmtDate(d){
-    if(!(d instanceof Date) || isNaN(d)) return "—";
-    const p = x => String(x).padStart(2,"0");
-    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-  }
-  function fmtDateShort(d){
-    if(!(d instanceof Date) || isNaN(d)) return "—";
-    const p = x => String(x).padStart(2,"0");
-    return `${p(d.getMonth()+1)}/${p(d.getDate())}/${String(d.getFullYear()).slice(-2)}`;
-  }
-  function mean(arr){
-    let s=0;
-    for(const x of arr) s += x;
-    return arr.length ? s/arr.length : NaN;
-  }
-  function quantile(sorted,q){
-    if(!sorted.length) return NaN;
-    const pos=(sorted.length-1)*q, b=Math.floor(pos), r=pos-b;
-    return sorted[b+1] === undefined ? sorted[b] : sorted[b] + r*(sorted[b+1]-sorted[b]);
-  }
-  function stats(values){
-    if(!values.length) return {count:0, avg:NaN, median:NaN, min:NaN, max:NaN};
-    const s=[...values].sort((a,b)=>a-b);
-    return {count:values.length, avg:mean(values), median:quantile(s,.5), min:s[0], max:s[s.length-1]};
-  }
-  function bucketDist(items){
-    let le7=0, gt7=0, lt3=0, b3to5=0;
-    const gt7Vals=[];
-    for(const it of items){
-      const v = it?.days;
-      if(!isFinite(v) || v < 0) continue;
-      if(v < 3) lt3++;
-      if(v >= 3 && v <= 5) b3to5++;
-      if(v <= 7) le7++;
-      else { gt7++; gt7Vals.push(v); }
+
+  const parts = s.split(":").map(x=>x.trim()).filter(Boolean);
+  if(parts.length >= 2 && parts.length <= 3 && parts.every(p=>/^\d+$/.test(p))){
+    let hh=0, mm=0, ss=0;
+    if(parts.length===2){
+      mm = parseInt(parts[0],10);
+      ss = parseInt(parts[1],10);
+    }else{
+      hh = parseInt(parts[0],10);
+      mm = parseInt(parts[1],10);
+      ss = parseInt(parts[2],10);
     }
-    const total = le7 + gt7;
-    return {
-      total,
-      le7,
-      gt7,
-      lt3,
-      b3to5,
-      pctLe7: total ? (le7/total*100) : NaN,
-      pctGt7: total ? (gt7/total*100) : NaN,
-      pctLt3: total ? (lt3/total*100) : NaN,
-      pct3to5: total ? (b3to5/total*100) : NaN,
-      avgGt7: gt7Vals.length ? mean(gt7Vals) : NaN
+    return hh*3600 + mm*60 + ss;
+  }
+
+  const n2 = parseFloat(s);
+  if(Number.isFinite(n2)) return Math.round(n2);
+  return NaN;
+}
+
+function fmtHMS(seconds){
+  if(!Number.isFinite(seconds)) return '—';
+  const sec = Math.max(0, Math.round(seconds));
+  const h = Math.floor(sec/3600);
+  const m = Math.floor((sec%3600)/60);
+  const s = sec%60;
+  return `${h}:${pad2(m)}:${pad2(s)}`;
+}
+
+function findDockKeysBySuffix(suffix){
+  const hits=[];
+  const suf = String(suffix||"").toLowerCase();
+  for(let i=0;i<localStorage.length;i++){
+    const k = localStorage.key(i);
+    if(!k) continue;
+    const lk = k.toLowerCase();
+    if(lk.endsWith(suf) || lk.includes(suf)) hits.push(k);
+  }
+  hits.sort((a,b)=>{
+    const score = (s)=>{
+      let x=0;
+      const ls = s.toLowerCase();
+      if(ls.endsWith(suf)) x+=100;
+      if(ls.includes(".dock.qa")) x+=50;
+      if(ls.includes("myone")) x+=10;
+      x -= Math.min(20, ls.length/20);
+      return x;
     };
+    return score(b)-score(a);
+  });
+  return hits;
+}
+
+function looksLikeQARow(obj){
+  if(!obj || typeof obj!=="object") return false;
+  const nk = Object.keys(obj).map(normHdr);
+  const hasAgent = nk.includes("agentname") || nk.includes("agent") || nk.includes("csr") || nk.includes("associate") || nk.includes("rep") || nk.includes("name");
+  const hasScore = nk.includes("score%") || nk.includes("scorepct") || nk.includes("score") || nk.includes("qa%") || nk.includes("qascore");
+  const hasStart = nk.includes("interactionstarttime") || nk.includes("interactionstart") || nk.includes("starttime") || nk.includes("interactiontime");
+  return hasAgent && hasScore && hasStart;
+}
+
+function normalizeReadFlag(v){
+  if(v===null || v===undefined || v==="") return null;
+  const s = String(v).trim().toLowerCase();
+  if(s==="1" || s==="true" || s==="yes" || s==="y") return 1;
+  if(s==="0" || s==="false" || s==="no" || s==="n") return 0;
+  const n = Number(s);
+  if(Number.isFinite(n)) return n > 0 ? 1 : 0;
+  return null;
+}
+
+function canonicalizeQA(dockObj){
+  if(!dockObj) return [];
+  const packs = extractRowArrays(dockObj,"");
+  const out=[];
+
+  for(const p of packs){
+    for(const r of p.rows){
+      if(!looksLikeQARow(r)) continue;
+
+      const agentRaw = pickFieldFromRow(r, ["agentname","agent","csr","associate","rep","name"]);
+      const scoreRaw = pickFieldFromRow(r, ["score%","scorepct","score","qascore","qa%"]);
+      const startRaw = pickFieldFromRow(r, ["interactionstarttime","interactionstart","starttime","interactiontime"]);
+
+      const evalIdRaw = pickFieldFromRow(r, ["genesysevaluationid","evaluationid","evalid","monitorid","qaid","id"]);
+      const evaluatorRaw = pickFieldFromRow(r, ["evaluator","evaluatorname","reviewer","qaevaluator","coach"]);
+      const teamRaw = pickFieldFromRow(r, ["team","sheet","department","group","supervisor","manager","site","location"]);
+
+      const convIdRaw = pickFieldFromRow(r, ["conversationid","conversationid","interactionid","interactionid","contactid","contactid"]);
+      const durRaw = pickFieldFromRow(r, ["interactionduration","interactionduration","duration","calllength","calllength","interactionlength","interactionlength"]);
+      const agentHasReadRaw = pickFieldFromRow(r, ["agenthasread","agent has read","agentreviewed","agent reviewed","hasread","read"]);
+
+      const start = parseAnyDate(startRaw);
+      const score = normPct(scoreRaw);
+
+      const agentDisplay = displayNameFromRaw(agentRaw);
+      const agentK = personKey(agentDisplay);
+      if(!agentK || !(start instanceof Date) || isNaN(start) || !Number.isFinite(score)) continue;
+
+      const durSec = parseDurationToSeconds(durRaw);
+      const agentHasRead = normalizeReadFlag(agentHasReadRaw);
+
+      out.push({
+        agentKey: agentK,
+        agent: agentDisplay,
+        start,
+        week: isoWeekKey(start),
+        score,
+        evaluator: String(evaluatorRaw ?? "").trim(),
+        evalId: String(evalIdRaw ?? "").trim(),
+        conversationId: String(convIdRaw ?? "").trim(),
+        durationSec: durSec,
+        durationText: fmtHMS(durSec),
+        team: String(teamRaw ?? "").trim(),
+        agentHasRead,
+        unreviewed: agentHasRead === 0 ? 1 : 0,
+        _sheetHint: p.sheetName || ""
+      });
+    }
   }
+  return out;
+}
 
-  function parseDate(val){
-    if(val === null || val === undefined || val === "") return null;
-    if(val instanceof Date) return isNaN(val) ? null : val;
-
-    const MS_PER_DAY = 86400000;
-    const asLocalDateOnly = d => {
-      if(!(d instanceof Date) || isNaN(d)) return null;
-      return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+function findCoachingKeys(){
+  const keys=[];
+  for(let i=0;i<localStorage.length;i++){
+    const k = localStorage.key(i);
+    if(!k) continue;
+    const lk = k.toLowerCase();
+    if(!lk.includes(".dock.")) continue;
+    const looks = lk.includes("coach") || lk.includes("coaching") || lk.includes("document") || lk.includes("myone2");
+    if(looks) keys.push(k);
+  }
+  keys.sort((a,b)=>{
+    const score = (s)=>{
+      const lk = s.toLowerCase();
+      let x=0;
+      if(lk.includes("documented")) x+=80;
+      if(lk.includes("document")) x+=40;
+      if(lk.includes("coaching")) x+=35;
+      if(lk.includes("coachings")) x+=35;
+      if(lk.includes("coach")) x+=20;
+      if(lk.includes("myone2")) x+=10;
+      if(lk.endsWith(".dock.coaching")) x+=15;
+      if(lk.endsWith(".dock.coachings")) x+=15;
+      x -= Math.min(20, lk.length/20);
+      return x;
     };
-
-    if(typeof val === "number" && Number.isFinite(val)){
-      if(val > 1e11){
-        const d = new Date(val);
-        return isNaN(d) ? null : d;
-      }
-      if(val > 0 && val < 100000){
-        const base = Date.UTC(1899,11,30);
-        const tmp = new Date(base + (val * MS_PER_DAY));
-        return asLocalDateOnly(tmp);
-      }
-      return null;
-    }
-
-    const s = String(val).trim();
-    if(!s) return null;
-
-    if(/^[+-]?\d+(\.\d+)?$/.test(s)){
-      return parseDate(parseFloat(s));
-    }
-
-    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if(iso){
-      const y = parseInt(iso[1],10);
-      const m = parseInt(iso[2],10);
-      const d = parseInt(iso[3],10);
-      const out = new Date(y,m-1,d);
-      return isNaN(out) ? null : out;
-    }
-
-    const us = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:[,\s]+(\d{1,2})(?::(\d{2}))(?::(\d{2}))?\s*(AM|PM|am|pm)?)?$/);
-    if(us){
-      const mo = parseInt(us[1],10), da = parseInt(us[2],10);
-      let yr = parseInt(us[3],10);
-      if(us[3].length===2) yr = yr <= 69 ? 2000+yr : 1900+yr;
-      let hh = us[4] ? parseInt(us[4],10) : 0;
-      const mi = us[5] ? parseInt(us[5],10) : 0;
-      const ss = us[6] ? parseInt(us[6],10) : 0;
-      const ap = us[7] ? us[7].toUpperCase() : "";
-      if(ap === "PM" && hh < 12) hh += 12;
-      if(ap === "AM" && hh === 12) hh = 0;
-      const out = new Date(yr, mo-1, da, hh, mi, ss);
-      return isNaN(out) ? null : out;
-    }
-
-    if(/^\d{4}-\d{2}-\d{2}[T\s]/.test(s) && /([zZ]|[+\-]\d{2}:?\d{2})$/.test(s)){
-      const tmp = new Date(s);
-      const fixed = asLocalDateOnly(tmp);
-      return fixed || (isNaN(tmp) ? null : tmp);
-    }
-
-    const out = new Date(s);
-    return isNaN(out) ? null : out;
-  }
-
-  function toCSV(rows){
-    const esc = v => {
-      const s = String(v ?? "");
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
-    };
-    return rows.map(r=>r.map(esc).join(",")).join("\n");
-  }
-  function download(name, text){
-    const blob = new Blob([text], {type:"text/csv;charset=utf-8"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url), 1200);
-  }
-
-  function startOfDay(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0,0,0,0); }
-  function endOfDay(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23,59,59,999); }
-  function addDays(d, n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
-
-  function getTimeframe(){
-    const mode = $("tfMode").value;
-    const basis = $("tfBasis").value;
-    if(mode === "all") return {mode, basis, start:null, end:null, weeks:null, label:"All time"};
-
-    const today = new Date();
-    const end = endOfDay(today);
-    let start = null;
-    const weekMap = { w4:4, w8:8, w13:13, w26:26, w52:52 };
-
-    if(mode in weekMap){
-      const weeks = weekMap[mode];
-      start = startOfDay(addDays(today, -(weeks*7 - 1)));
-      const spanDays = (end.getTime()-start.getTime())/86400000;
-      const spanWeeks = Math.max(1, spanDays/7);
-      return {mode, basis, start, end, weeks:spanWeeks, label:`Last ${weeks} weeks`};
-    }
-
-    const s = $("tfStart").value ? new Date($("tfStart").value + "T00:00:00") : null;
-    const e = $("tfEnd").value ? new Date($("tfEnd").value + "T00:00:00") : null;
-    if(!s || !e || isNaN(s) || isNaN(e)){
-      return {mode, basis, start:null, end:null, weeks:null, label:"Custom (invalid dates)"};
-    }
-    const startC = startOfDay(s);
-    const endC = endOfDay(e);
-    const spanDays = Math.max(1, (endC.getTime()-startC.getTime())/86400000 + 1);
-    const spanWeeks = Math.max(1, spanDays/7);
-    return {mode, basis, start:startC, end:endC, weeks:spanWeeks, label:`Custom: ${$("tfStart").value} → ${$("tfEnd").value}`};
-  }
-  function inRange(d, tf){
-    if(!tf.start || !tf.end) return true;
-    if(!(d instanceof Date) || isNaN(d)) return false;
-    return d.getTime() >= tf.start.getTime() && d.getTime() <= tf.end.getTime();
-  }
-  function paintTFHint(){
-    const tf = getTimeframe();
-    $("tfCustomRow").style.display = tf.mode === "custom" ? "" : "none";
-    const basisTxt = tf.basis === "served" ? "Checklist is filtered by Date Served." : "Checklist is filtered by Created On.";
-    const docTxt = "Documented coaching is filtered by the coaching Date.";
-    const span = tf.weeks ? `Window ≈ ${tf.weeks.toFixed(2)} week(s).` : "";
-    $("tfHint").textContent = `${tf.label}. ${basisTxt} ${docTxt} ${span}`;
-    $("coachSummHint").textContent = `Coach metrics are scoped to the selected time frame and selected checklist/doc types.`;
-  }
-
-  function suggestCutoff(deltas, win, preMax, postMin){
-    if(deltas.length < win*2 + 2) return null;
-    for(let i=win; i<=deltas.length-win; i++){
-      const prev = deltas.slice(i-win, i);
-      const next = deltas.slice(i, i+win);
-      const prevAvg = mean(prev);
-      const nextAvg = mean(next);
-      const nextMed = quantile([...next].sort((a,b)=>a-b), .5);
-      if(prevAvg <= preMax && nextAvg >= postMin && nextMed >= postMin) return i+1;
-    }
-    return null;
-  }
-
-  function loadDockObjByKey(key){
-    if(!key) return null;
-    let raw = null;
-    try{ raw = localStorage.getItem(key); }catch(e){ return null; }
-    if(!raw) return null;
-
-    try{
-      const json = LZString.decompressFromUTF16(raw);
-      if(json) return JSON.parse(json);
-    }catch(e){}
-    try{ return JSON.parse(raw); }catch(e){}
-    return null;
-  }
-
-  function aoaToRows(aoa){
-    if(!Array.isArray(aoa) || aoa.length < 2) return [];
-    const header = aoa[0].map(h=>String(h ?? "").trim());
-    const out = [];
-    for(let r=1;r<aoa.length;r++){
-      const row = aoa[r];
-      if(!row) continue;
-      const obj = {};
-      let any = false;
-      for(let c=0;c<header.length;c++){
-        const k = header[c];
-        if(!k) continue;
-        const v = row[c];
-        if(v !== null && v !== undefined && String(v).trim() !== "") any = true;
-        obj[k] = v;
-      }
-      if(any) out.push(obj);
-    }
-    return out;
-  }
-
-  function extractRowArrays(root){
-    const found = [];
-    const seen = new Set();
-
-    function pushArray(arr, sheetName){
-      if(!Array.isArray(arr) || !arr.length) return;
-      const id = (sheetName||"") + "|" + arr.length + "|" + (typeof arr[0]);
-      if(seen.has(id)) return;
-      seen.add(id);
-
-      if(arr[0] && typeof arr[0] === "object" && !Array.isArray(arr[0])){
-        found.push({rows:arr, sheetName:sheetName||""});
-        return;
-      }
-      if(Array.isArray(arr[0])){
-        const rows = aoaToRows(arr);
-        if(rows.length) found.push({rows, sheetName:sheetName||""});
-      }
-    }
-
-    function walk(node, sheetName){
-      if(node === null || node === undefined) return;
-      if(Array.isArray(node)){ pushArray(node, sheetName); return; }
-      if(typeof node !== "object") return;
-
-      if(Array.isArray(node.rows)) pushArray(node.rows, sheetName);
-      if(Array.isArray(node.data)) pushArray(node.data, sheetName);
-      if(Array.isArray(node.table)) pushArray(node.table, sheetName);
-
-      if(node.sheets && typeof node.sheets === "object" && !Array.isArray(node.sheets)){
-        for(const [sn, sv] of Object.entries(node.sheets)) walk(sv, sn);
-      }
-      for(const [k,v] of Object.entries(node)){
-        if(k === "meta" || k === "sheets") continue;
-        walk(v, sheetName);
-      }
-    }
-
-    walk(root, "");
-    return found;
-  }
-
-  function pickField(row, candidates){
-    const map = {};
-    for(const k of Object.keys(row)) map[normHdr(k)] = k;
-    for(const cand of candidates){
-      const real = map[cand];
-      if(real !== undefined) return row[real];
-    }
-    return undefined;
-  }
-
-  function splitTypes(val){
-    const s = String(val ?? "").trim();
-    if(!s) return [];
-    return s.split(/[,;|]+/).map(x=>x.trim()).filter(Boolean);
-  }
-
-  function findDockCandidates(kind){
-    const out = [];
-    const needle = `.dock.${String(kind).toLowerCase()}`;
-    try{
-      for(let i=0;i<localStorage.length;i++){
-        const k = localStorage.key(i);
-        if(!k) continue;
-        if(k.toLowerCase().includes(needle)) out.push(k);
-      }
-    }catch(e){}
-    out.sort((a,b)=>a.localeCompare(b));
-    return out;
-  }
-
-  function pickBestKey(kind){
-    const preferred = `${APP_NS}.dock.${kind}`;
-    try{
-      if(preferred && localStorage.getItem(preferred)) return preferred;
-    }catch(e){}
-    const cands = findDockCandidates(kind);
-    return cands[0] || preferred || "";
-  }
-
-  function findChecklistCandidates(){
-    const keys = [];
-    try{
-      for(let i=0;i<localStorage.length;i++){
-        const k = localStorage.key(i);
-        if(!k) continue;
-        const lk = k.toLowerCase();
-        if(!lk.includes(".dock.")) continue;
-        let sc = 0;
-        if(lk.includes("checklist")) sc += 80;
-        if(lk.endsWith(".dock.checklist")) sc += 20;
-        if(lk.includes(APP_NS.toLowerCase())) sc += 10;
-        if(sc > 0) keys.push({k, sc});
-      }
-    }catch(e){}
-    keys.sort((a,b)=> b.sc - a.sc || a.k.localeCompare(b.k));
-    return keys.map(x=>x.k);
-  }
-
-  function findDocCoachingCandidates(){
-    const keys = [];
-    try{
-      for(let i=0;i<localStorage.length;i++){
-        const k = localStorage.key(i);
-        if(!k) continue;
-        const lk = k.toLowerCase();
-        if(!lk.includes(".dock.")) continue;
-        let sc = 0;
-        if(lk.includes("documented")) sc += 60;
-        if(lk.includes("document")) sc += 50;
-        if(lk.includes("coaching")) sc += 45;
-        if(lk.includes("coachings")) sc += 35;
-        if(lk.includes("coach")) sc += 20;
-        if(lk.endsWith(".dock.coaching")) sc += 20;
-        if(lk.includes(APP_NS.toLowerCase())) sc += 10;
-        if(sc > 0) keys.push({k, sc});
-      }
-    }catch(e){}
-    keys.sort((a,b)=> b.sc - a.sc || a.k.localeCompare(b.k));
-    return keys.map(x=>x.k);
-  }
-
-  function looksLikeChecklistSpeedRow(obj){
-    if(!obj || typeof obj !== "object") return false;
-    const nk = Object.keys(obj).map(normHdr);
-    const hasCoach = nk.includes("coachassigned") || nk.includes("jobcoach") || nk.includes("coach") || nk.includes("sheet") || nk.includes("team");
-    const hasAction = nk.includes("actiontaken") || nk.includes("action") || nk.includes("status");
-    const hasServed = nk.includes("dateserved") || nk.includes("serveddate") || nk.includes("datecompleted") || nk.includes("completedon");
-    const hasCreated = nk.includes("createdon") || nk.includes("created") || nk.includes("createdat") || nk.includes("createddate") || nk.includes("createddatetime");
-    const hasAssoc = nk.includes("associatename") || nk.includes("associate") || nk.includes("name") || nk.includes("rep") || nk.includes("csrname") || nk.includes("ssrname");
-    return hasCoach && hasAction && hasServed && hasCreated && hasAssoc;
-  }
-
-  function canonicalizeChecklistSpeedRows(dockObj){
-    if(!dockObj) return [];
-    const arrays = extractRowArrays(dockObj);
-    const out = [];
-
-    for(const pack of arrays){
-      for(const r of pack.rows){
-        if(!looksLikeChecklistSpeedRow(r)) continue;
-
-        const coachRaw = pickField(r, ["coachassigned","jobcoach","coach","sheet","team"]);
-        const actionRaw = pickField(r, ["actiontaken","action","status"]);
-        const servedRaw = pickField(r, ["dateserved","serveddate","datecompleted","completedon","dateserviced"]);
-        const createdRaw = pickField(r, ["createdon","created","createdat","createddate","createddatetime"]);
-        const assocRaw = pickField(r, ["associatename","associate","name","rep","csrname","ssrname"]);
-        const incidentRaw = pickField(r, ["incident","incidenttype","incidentcategory","type"]);
-        const descRaw = pickField(r, ["description","desc","details","notes","note","summary"]);
-        const coordNameRaw = pickField(r, ["coordenteredonadmin","coordenteredonadminname","coordentered","enteredbyadmincoord","admincoord"]);
-        const coordDateRaw = pickField(r, ["enteredonadmindate","dateenteredonadmin","adminentereddate","enteredadmindate"]);
-
-        const coach = normName(coachRaw) || "(blank)";
-        const action = String(actionRaw ?? "").trim();
-        const served = parseDate(servedRaw);
-        const created = parseDate(createdRaw);
-        const associate = normName(assocRaw) || "(blank)";
-        const incident = normName(incidentRaw);
-
-        if(!coach || !action || !served || !created || !associate) continue;
-        if(isNaN(served) || isNaN(created)) continue;
-
-        const days = (served.getTime() - created.getTime()) / 86400000;
-        const coordAdminDate = parseDate(coordDateRaw);
-
-        let coordAdminGapDays = NaN;
-        if(coordAdminDate && served && !isNaN(coordAdminDate) && !isNaN(served)){
-          coordAdminGapDays = (coordAdminDate.getTime() - served.getTime()) / 86400000;
-        }
-
-        out.push({
-          coach,
-          coachKey:normCoachKey(coach),
-          action,
-          associate,
-          created,
-          served,
-          days,
-          incident: incident || "(blank)",
-          desc: normName(descRaw),
-          coordEnteredOnAdmin: normName(coordNameRaw) || "",
-          enteredOnAdminDate: coordAdminDate && !isNaN(coordAdminDate) ? coordAdminDate : null,
-          coordAdminGapDays,
-          sourceSheet: pack.sheetName || ""
-        });
-      }
-    }
-    return out;
-  }
-
-  function looksLikeDocCoachingRow(obj){
-    if(!obj || typeof obj !== "object") return false;
-    const nk = Object.keys(obj).map(normHdr);
-    const hasCoach = nk.includes("jobcoach") || nk.includes("coachassigned") || nk.includes("coach") || nk.includes("sheet") || nk.includes("team");
-    const hasDate = nk.includes("date") || nk.includes("dt") || nk.includes("day");
-    const hasType = nk.includes("coachingtypemulti") || nk.includes("coachingtype") || nk.includes("type");
-    return hasCoach && hasDate && hasType;
-  }
-
-  function canonicalizeDocumentedCoachings(dockObj){
-    if(!dockObj) return [];
-    const arrays = extractRowArrays(dockObj);
-    const out = [];
-
-    for(const pack of arrays){
-      for(const r of pack.rows){
-        if(!looksLikeDocCoachingRow(r)) continue;
-
-        const coachRaw = pickField(r, ["jobcoach","coachassigned","coach","sheet","team"]);
-        const dateRaw = pickField(r, ["date","dt","day"]);
-        const createdRaw = pickField(r, ["createdon","created","createdat","createddate","createddatetime"]);
-        const typeMulti = pickField(r, ["coachingtypemulti"]);
-        const typeSingle = pickField(r, ["coachingtype","type"]);
-        const repRaw = pickField(r, ["associatename","associate","name","rep","employee"]);
-        const descRaw = pickField(r, ["description","desc","notes","note","details","summary","coachingnotes"]);
-        const coordInitialsRaw = pickField(r, ["coordinitials","coordinatorinitials","coordinit"]);
-        const dateAddedAdminRaw = pickField(r, ["dateaddedtoadmin","addedtoadmindate","admindateadded","dateaddedadmin"]);
-
-        const coach = normName(coachRaw) || "(blank)";
-        const d = parseDate(dateRaw);
-        const created = parseDate(createdRaw);
-        const rep = normName(repRaw) || "";
-        const types = Array.from(new Set([
-          ...splitTypes(typeMulti),
-          ...splitTypes(typeSingle)
-        ]));
-
-        if(!coach || !d || isNaN(d) || !types.length) continue;
-
-        let lagDays = NaN;
-        if(created && !isNaN(created)) lagDays = (created.getTime() - d.getTime()) / 86400000;
-
-        const adminDate = parseDate(dateAddedAdminRaw);
-        let coordAdminGapDays = NaN;
-        if(created && adminDate && !isNaN(created) && !isNaN(adminDate)){
-          coordAdminGapDays = (adminDate.getTime() - created.getTime()) / 86400000;
-        }
-
-        out.push({
-          coach,
-          coachKey:normCoachKey(coach),
-          rep,
-          date:d,
-          created:(created && !isNaN(created)) ? created : null,
-          lagDays,
-          types,
-          desc:normName(descRaw),
-          coordInitials:normName(coordInitialsRaw) || "",
-          dateAddedToAdmin: adminDate && !isNaN(adminDate) ? adminDate : null,
-          coordAdminGapDays
-        });
-      }
-    }
-    return out;
-  }
-
-  function refreshChecklistKeySelect(){
-    const sel = $("checkKeySel");
-    sel.innerHTML = "";
-    const keys = Array.from(new Set([pickBestKey("checklist"), ...findChecklistCandidates(), ...findDockCandidates("checklist")].filter(Boolean)));
-    if(!keys.length){
-      const o = document.createElement("option");
-      o.value = "";
-      o.textContent = "(No checklist dock keys detected)";
-      sel.appendChild(o);
-      return;
-    }
-    keys.forEach(k=>{
-      const o = document.createElement("option");
-      o.value = k;
-      o.textContent = k;
-      sel.appendChild(o);
-    });
-    sel.value = keys[0];
-  }
-
-  function refreshDocKeySelect(){
-    const sel = $("docKeySel");
-    sel.innerHTML = "";
-    const keys = Array.from(new Set([pickBestKey("coaching"), ...findDocCoachingCandidates(), ...findDockCandidates("coaching")].filter(Boolean)));
-    if(!keys.length){
-      const o = document.createElement("option");
-      o.value = "";
-      o.textContent = "(No coaching dock keys detected)";
-      sel.appendChild(o);
-      return;
-    }
-    keys.forEach(k=>{
-      const o = document.createElement("option");
-      o.value = k;
-      o.textContent = k;
-      sel.appendChild(o);
-    });
-    sel.value = keys[0];
-  }
-
-  function escapeHtml(s){
-    return String(s ?? "").replace(/[&<>"']/g, c => ({
-      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
-    }[c]));
-  }
-
-  function paintMainDocTypeChips(){
-    const wrap = $("docTypeChipsMain");
-    wrap.innerHTML = "";
-    S.docTypesAll.forEach(t=>{
-      const el = document.createElement("div");
-      el.className = "filterChip" + (S.docTypeSelected.has(t) ? " on" : "");
-      el.textContent = t;
-      el.addEventListener("click", ()=>{
-        if(S.docTypeSelected.has(t)) S.docTypeSelected.delete(t);
-        else S.docTypeSelected.add(t);
-        paintMainDocTypeChips();
-        recompute(true);
-      });
-      wrap.appendChild(el);
-    });
-    if(!S.docTypesAll.length) wrap.innerHTML = `<div class="mini">No doc types detected.</div>`;
-  }
-
-  function paintIncidentChips(){
-    const wrap = $("incidentChipsMain");
-    wrap.innerHTML = "";
-    S.incidentTypesAll.forEach(t=>{
-      const el = document.createElement("div");
-      el.className = "filterChip" + (S.incidentSelected.has(t) ? " on" : "");
-      el.textContent = t;
-      el.addEventListener("click", ()=>{
-        if(S.incidentSelected.has(t)) S.incidentSelected.delete(t);
-        else S.incidentSelected.add(t);
-        paintIncidentChips();
-        recompute(true);
-      });
-      wrap.appendChild(el);
-    });
-    if(!S.incidentTypesAll.length) wrap.innerHTML = `<div class="mini">No incidents detected.</div>`;
-  }
-
-  function getSettings(){
-    return {
-      match: String($("actionMatch").value || "").trim().toLowerCase(),
-      neg: $("cbNeg").checked,
-      maxOn: $("cbMax").checked,
-      maxDays: Number($("maxDays").value || 0),
-      pctOn: $("cbPct").checked,
-      pctKeep: Math.max(50, Math.min(100, Number($("pctKeep").value || 99))),
-      sortCoach: $("sortCoach").value,
-      sortRep: $("sortRep").value,
-      win: Math.max(3, Math.min(50, Number($("cutWin").value || 10))),
-      pre: Math.max(0, Number($("cutPre").value || 10)),
-      post: Math.max(0, Number($("cutPost").value || 50))
-    };
-  }
-
-  function loadChecklistDock(opts={}){
-    const key = $("checkKeySel").value;
-    if(!key){ setCheckBadge("bad","No key selected"); return; }
-    const obj = loadDockObjByKey(key);
-    if(!obj){ setCheckBadge("bad","Key not readable"); return; }
-
-    const items = canonicalizeChecklistSpeedRows(obj);
-    S.checkKey = key;
-    S.checkLoaded = true;
-    S.rawItems = items;
-
-    const coachSet = new Set(items.map(x=>x.coach));
-    for(const c of [...S.coachCut.keys()]) if(!coachSet.has(c)) S.coachCut.delete(c);
-
-    S.incidentTypesAll = Array.from(new Set(items.map(x=>x.incident || "(blank)"))).sort((a,b)=>a.localeCompare(b));
-    S.incidentSelected = new Set(S.incidentTypesAll);
-    paintIncidentChips();
-
-    setCheckBadge("good", `${items.length.toLocaleString()} rows loaded`);
-    setBadge(true, "Checklist loaded from dock");
-    if(!opts.silent) toast("Loaded", `Checklist: ${items.length.toLocaleString()} rows parsed.`);
-  }
-
-  function loadDocumentedCoachings(opts={}){
-    const key = $("docKeySel").value;
-    if(!key){ setDocBadge("bad","No key selected"); return; }
-    const obj = loadDockObjByKey(key);
-    if(!obj){ setDocBadge("bad","Key not readable"); return; }
-
-    const coachings = canonicalizeDocumentedCoachings(obj);
-    S.docKey = key;
-    S.docLoaded = true;
-    S.docCoachingsAll = coachings;
-
-    const types = new Set();
-    for(const c of coachings) (c.types || []).forEach(t=>types.add(t));
-    S.docTypesAll = Array.from(types).sort((a,b)=>a.localeCompare(b));
-    S.docTypeSelected = new Set(S.docTypesAll);
-    paintMainDocTypeChips();
-
-    setDocBadge("good", `${coachings.length.toLocaleString()} rows loaded`);
-    if(!opts.silent) toast("Loaded", `Documented coaching: ${coachings.length.toLocaleString()} rows parsed.`);
-  }
-
-  function dayHeat(v){
-    if(!isFinite(v)) return "";
-    if(v < 3) return "background:#dcfce7;color:#166534;font-weight:900;";
-    if(v < 5) return "background:#ecfccb;color:#3f6212;font-weight:900;";
-    if(v < 7) return "background:#fef9c3;color:#854d0e;font-weight:900;";
-    if(v < 9) return "background:#fed7aa;color:#9a3412;font-weight:900;";
-    return "background:#fecaca;color:#991b1b;font-weight:900;";
-  }
-
-  function pctHeatGood(v){
-    if(!isFinite(v)) return "";
-    const hue = Math.max(0, Math.min(120, (v/100)*120));
-    return `background:hsl(${hue} 75% 85%); color:#111827; font-weight:900;`;
-  }
-
-  function pctHeatBad(v){
-    if(!isFinite(v)) return "";
-    const hue = Math.max(0, Math.min(120, (1 - v/100)*120));
-    return `background:hsl(${hue} 75% 85%); color:#111827; font-weight:900;`;
-  }
-
-  function docCountHeat(v){
-    if(!isFinite(v)) return "";
-    if(v >= 30) return "background:#dcfce7;color:#166534;font-weight:900;";
-    if(v >= 25) return "background:#ecfccb;color:#3f6212;font-weight:900;";
-    if(v >= 20) return "background:#fef9c3;color:#854d0e;font-weight:900;";
-    if(v >= 15) return "background:#fed7aa;color:#9a3412;font-weight:900;";
-    return "background:#fecaca;color:#991b1b;font-weight:900;";
-  }
-
-  function recompute(withToast){
-    paintTFHint();
-
-    const tf = getTimeframe();
-    const st = getSettings();
-
-    if(!S.rawItems.length){
-      setStatus("", "Waiting…");
-      $("kRows").textContent="—";
-      $("kCoaches").textContent="—";
-      $("kDocRows").textContent = S.docLoaded ? "0" : "—";
-      $("kDocPerWk").textContent = S.docLoaded ? "0.00" : "—";
-      $("coachTable").querySelector("tbody").innerHTML="";
-      $("repTable").querySelector("tbody").innerHTML="";
-      $("coordChecklistTable").querySelector("tbody").innerHTML="";
-      $("coordDocTable").querySelector("tbody").innerHTML="";
-      return;
-    }
-
-    const basis = tf.basis || "created";
-    const dateBasis = it => basis === "served" ? it.served : it.created;
-
-    let items = S.rawItems.filter(it=>{
-      if(st.match && !String(it.action || "").toLowerCase().includes(st.match)) return false;
-      if(!inRange(dateBasis(it), tf)) return false;
-      if(S.excludedReps.has(it.associate)) return false;
-      if(S.incidentTypesAll.length && !S.incidentSelected.has(it.incident || "(blank)")) return false;
-      if(st.neg && it.days < 0) return false;
-      if(st.maxOn && it.days > st.maxDays) return false;
-      return true;
-    });
-
-    if(st.pctOn && items.length >= 8){
-      const vals = items.map(x=>x.days).filter(v=>isFinite(v)).sort((a,b)=>a-b);
-      const cap = quantile(vals, st.pctKeep/100);
-      items = items.filter(x=>x.days <= cap);
-    }
-
-    const byCoach = new Map();
-    for(const it of items){
-      if(!byCoach.has(it.coach)) byCoach.set(it.coach, []);
-      byCoach.get(it.coach).push(it);
-    }
-
-    for(const [coach, arr] of byCoach.entries()){
-      arr.sort((a,b)=>a.created - b.created);
-      const deltas = arr.map(x=>x.days);
-      const sug = suggestCutoff(deltas, st.win, st.pre, st.post);
-      const meta = S.coachCut.get(coach) || {enabled:false, startIndex:null, suggested:null};
-      meta.suggested = sug;
-      S.coachCut.set(coach, meta);
-    }
-
-    const afterCut = new Map();
-    let totalIncluded = 0;
-    for(const [coach, arr] of byCoach.entries()){
-      const meta = S.coachCut.get(coach);
-      let keep = arr;
-      if(meta && meta.enabled && meta.startIndex && meta.startIndex >= 1){
-        keep = arr.slice(0, Math.max(0, meta.startIndex - 1));
-      }
-      afterCut.set(coach, keep);
-      totalIncluded += keep.length;
-    }
-    S.lastByCoachAfterCut = afterCut;
-
-    const coachSumm = [];
-    for(const [coach, arr] of afterCut.entries()){
-      const baseCount = (byCoach.get(coach) || []).length;
-      const vals = arr.map(x=>x.days);
-      const s = stats(vals);
-      const meta = S.coachCut.get(coach);
-      const dist = bucketDist(arr);
-
-      coachSumm.push({
-        coach, coachKey:normCoachKey(coach),
-        ...s,
-        baseCount,
-        cutoffEnabled: !!(meta && meta.enabled),
-        cutoffStart: meta ? meta.startIndex || null : null,
-        suggested: meta ? meta.suggested || null : null,
-        le7: dist.le7,
-        gt7: dist.gt7,
-        pctLe7: dist.pctLe7,
-        pctGt7: dist.pctGt7,
-        avgGt7: dist.avgGt7,
-        lt3: dist.lt3,
-        pctLt3: dist.pctLt3,
-        b3to5: dist.b3to5,
-        pct3to5: dist.pct3to5
-      });
-    }
-    S.lastCoachSumm = coachSumm;
-
-    const repMap = new Map();
-    for(const arr of afterCut.values()){
-      for(const it of arr){
-        if(!repMap.has(it.associate)) repMap.set(it.associate, []);
-        repMap.get(it.associate).push(it.days);
-      }
-    }
-    const repSumm = [];
-    for(const [rep, vals] of repMap.entries()) repSumm.push({rep, ...stats(vals)});
-    S.lastRepSumm = repSumm;
-
-    let docScope = [];
-    if(S.docLoaded && S.docCoachingsAll.length){
-      docScope = S.docCoachingsAll.filter(dc=>{
-        if(!inRange(dc.date, tf)) return false;
-        if(S.docTypesAll.length) return (dc.types || []).some(t => S.docTypeSelected.has(t));
-        return true;
-      });
-    }
-    S.lastDocScope = docScope;
-
-    const docByCoachKey = new Map();
-    for(const dc of docScope){
-      const k = dc.coachKey || normCoachKey(dc.coach);
-      const arr = docByCoachKey.get(k) || [];
-      arr.push(dc);
-      docByCoachKey.set(k, arr);
-    }
-    for(const [k, arr] of docByCoachKey.entries()) arr.sort((a,b)=>b.date-a.date);
-    S.lastDocByCoachKey = docByCoachKey;
-
-    const docCount = docScope.length;
-    const weeks = tf.weeks || (docCount ? 1 : null);
-    const docPerWk = (weeks && weeks > 0) ? (docCount / weeks) : 0;
-
-    const coordChecklistMap = new Map();
-    for(const arr of afterCut.values()){
-      for(const it of arr){
-        const key = normName(it.coordEnteredOnAdmin);
-        if(!key || !isFinite(it.coordAdminGapDays)) continue;
-        const bucket = coordChecklistMap.get(key) || [];
-        bucket.push(it.coordAdminGapDays);
-        coordChecklistMap.set(key, bucket);
-      }
-    }
-    const coordChecklistSumm = [...coordChecklistMap.entries()].map(([name, vals])=>({name, ...stats(vals)}));
-    coordChecklistSumm.sort((a,b)=>(b.avg||-Infinity)-(a.avg||-Infinity) || a.name.localeCompare(b.name));
-    S.lastChecklistCoordSumm = coordChecklistSumm;
-
-    const coordDocMap = new Map();
-    for(const dc of docScope){
-      const key = normName(dc.coordInitials);
-      if(!key || !isFinite(dc.coordAdminGapDays)) continue;
-      const bucket = coordDocMap.get(key) || [];
-      bucket.push(dc.coordAdminGapDays);
-      coordDocMap.set(key, bucket);
-    }
-    const coordDocSumm = [...coordDocMap.entries()].map(([name, vals])=>({name, ...stats(vals)}));
-    coordDocSumm.sort((a,b)=>(b.avg||-Infinity)-(a.avg||-Infinity) || a.name.localeCompare(b.name));
-    S.lastDocCoordSumm = coordDocSumm;
-
-    $("kRows").textContent = totalIncluded.toLocaleString();
-    $("kCoaches").textContent = coachSumm.length.toLocaleString();
-    $("kDocRows").textContent = S.docLoaded ? docCount.toLocaleString() : "—";
-    $("kDocPerWk").textContent = S.docLoaded ? docPerWk.toFixed(2) : "—";
-
-    renderExcluded();
-    renderCoachTable(coachSumm, st.sortCoach, tf);
-    renderRepTable(repSumm, st.sortRep);
-    renderCoordinatorTables();
-
-    setStatus("good", "Computed ✓");
-    if(withToast){
-      const tfLabel = getTimeframe().label;
-      const docMsg = S.docLoaded ? ` • ${docCount} doc rows` : "";
-      toast("Computed", `${coachSumm.length} coaches • ${totalIncluded} checklist rows • ${tfLabel}${docMsg}`);
-    }
-  }
-
-  function renderExcluded(){
-    const w = $("excludedChips");
-    w.innerHTML = "";
-    if(S.excludedReps.size === 0){
-      const d = document.createElement("div");
-      d.className = "mini";
-      d.textContent = "None removed.";
-      w.appendChild(d);
-      return;
-    }
-    [...S.excludedReps].sort((a,b)=>a.localeCompare(b)).forEach(name=>{
-      const c = document.createElement("div");
-      c.className = "chip";
-      c.innerHTML = `<span class="mono">${escapeHtml(name)}</span>`;
-      const b = document.createElement("button");
-      b.className = "readd";
-      b.textContent = "Re-add";
-      b.onclick = ()=>{ S.excludedReps.delete(name); recompute(true); };
-      c.appendChild(b);
-      w.appendChild(c);
-    });
-  }
-
-  function summarizeDocForCoachKey(coachKey, tf){
-    if(!S.docLoaded) return {count:0, perWk:0, avgLag:NaN, top3:"—"};
-    const arr = S.lastDocByCoachKey.get(coachKey) || [];
-    const weeks = tf.weeks || 1;
-    const count = arr.length;
-    const perWk = weeks > 0 ? (count/weeks) : 0;
-    const lags = arr.map(x=>x.lagDays).filter(v=>isFinite(v));
-    const lagStats = stats(lags);
-
-    const typeCounts = new Map();
-    for(const dc of arr){
-      for(const t of (dc.types || [])){
-        typeCounts.set(t, (typeCounts.get(t)||0)+1);
-      }
-    }
-    const top3 = [...typeCounts.entries()].sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0])).slice(0,3);
-    const top3Txt = top3.length ? top3.map(([t,n])=>`${t} (${n})`).join(" • ") : "—";
-    return {count, perWk, avgLag:lagStats.avg, top3:top3Txt};
-  }
-
-  function coachSortKey(r, mode, tf){
-    if(mode === "name") return r.coach.toLowerCase();
-    if(mode === "count") return -r.count;
-    if(mode === "median") return -r.median;
-    if(mode === "docw" || mode === "docc" || mode === "doclag"){
-      const doc = summarizeDocForCoachKey(r.coachKey, tf);
-      if(mode === "docw") return -(doc.perWk || 0);
-      if(mode === "docc") return -(doc.count || 0);
-      if(mode === "doclag") return -(doc.avgLag || 0);
-    }
-    return -r.avg;
-  }
-
-  function setCoachSummaryExpanded(expanded){
-    S.coachSummaryExpanded = !!expanded;
-    document.querySelectorAll("#coachTable .coach-extra-col").forEach(el=>{
-      el.style.display = S.coachSummaryExpanded ? "" : "none";
-    });
-    const btn = $("btnCoachSummaryExpand");
-    if(btn) btn.textContent = S.coachSummaryExpanded ? "Hide breakdown" : "Expand breakdown";
-  }
-
-  function renderCoachTable(rows, mode, tf){
-    const tb = $("coachTable").querySelector("tbody");
-    tb.innerHTML = "";
-
-    const checklistKeys = new Set(rows.map(r=>r.coachKey));
-    let extraDocKeys = [];
-    if(S.docLoaded){
-      for(const k of S.lastDocByCoachKey.keys()){
-        if(!checklistKeys.has(k)) extraDocKeys.push(k);
-      }
-      extraDocKeys.sort((a,b)=>a.localeCompare(b));
-    }
-
-    const arr = [...rows].sort((a,b)=>{
-      const ka = coachSortKey(a, mode, tf), kb = coachSortKey(b, mode, tf);
-      if(typeof ka === "string" || typeof kb === "string") return String(ka).localeCompare(String(kb));
-      if(ka !== kb) return ka-kb;
-      return a.coach.localeCompare(b.coach);
-    });
-
-    arr.forEach(r=>{
-      const doc = summarizeDocForCoachKey(r.coachKey, tf);
-      let lvl = "good";
-      if(isFinite(r.avg) && r.avg > 10) lvl = "warn";
-      if(isFinite(r.avg) && r.avg > 30) lvl = "bad";
-
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td><span class="tag"><span class="dot ${lvl}"></span><span>${escapeHtml(r.coach)}</span></span></td>
-        <td class="mono">${r.count}${(r.cutoffEnabled && r.baseCount !== r.count) ? `<span style="color:var(--muted)"> / ${r.baseCount}</span>` : ""}</td>
-        <td class="mono" style="${dayHeat(r.avg)}">${fmtNum(r.avg,1)}</td>
-        <td class="mono">${fmtNum(r.max,1)}</td>
-        <td class="mono" style="${dayHeat(r.median)}">${fmtNum(r.median,1)}</td>
-        <td class="mono">${r.le7}</td>
-        <td class="mono" style="${pctHeatGood(r.pctLe7)}">${fmtPct(r.pctLe7,0)}</td>
-        <td class="mono">${r.gt7}</td>
-        <td class="mono" style="${pctHeatBad(r.pctGt7)}">${fmtPct(r.pctGt7,0)}</td>
-        <td class="mono">${fmtNum(r.avgGt7,1)}</td>
-        <td class="mono coach-extra-col">${r.lt3}</td>
-        <td class="mono coach-extra-col" style="${pctHeatGood(r.pctLt3)}">${fmtPct(r.pctLt3,0)}</td>
-        <td class="mono coach-extra-col">${r.b3to5}</td>
-        <td class="mono coach-extra-col" style="${pctHeatGood(r.pct3to5)}">${fmtPct(r.pct3to5,0)}</td>
-        <td>
-          <div class="mini">${r.suggested ? `Suggest: exclude from #${r.suggested}` : "—"}</div>
-          <div class="row" style="gap:8px; flex-wrap:nowrap; margin-top:6px">
-            <label class="mini" style="margin:0; display:flex; gap:8px; align-items:center; white-space:nowrap">
-              <input type="checkbox" data-kind="cutOn" data-coach="${encodeURIComponent(r.coach)}" ${r.cutoffEnabled ? "checked" : ""}/> Use
-            </label>
-            <input class="mono" style="width:120px" type="number" min="1" step="1"
-              placeholder="${r.suggested || ""}"
-              value="${r.cutoffStart || ""}"
-              data-kind="cutVal" data-coach="${encodeURIComponent(r.coach)}" />
-          </div>
-        </td>
-        <td class="mono">${S.docLoaded ? doc.count.toLocaleString() : "—"}</td>
-<td class="mono" style="${docCountHeat(doc.perWk)}">${S.docLoaded ? doc.perWk.toFixed(2) : "—"}</td>
-        <td class="mono">${S.docLoaded ? fmtNum(doc.avgLag,2) : "—"}</td>
-        <td>${S.docLoaded ? escapeHtml(doc.top3) : "—"}</td>
-        <td style="text-align:right; white-space:nowrap">
-          <button class="btn secondary" data-kind="view" data-coach="${encodeURIComponent(r.coach)}">View</button>
-          ${r.suggested ? `<button class="btn ghost" style="margin-left:6px" data-kind="useSug" data-coach="${encodeURIComponent(r.coach)}">Use suggestion</button>` : ""}
-        </td>
-      `;
-      tb.appendChild(tr);
-    });
-
-    if(S.docLoaded && extraDocKeys.length){
-      const sep = document.createElement("tr");
-      sep.innerHTML = `<td colspan="20" class="mini" style="padding:12px 8px; color:var(--muted)">Documented coaching found for coaches not present in the checklist timeframe:</td>`;
-      tb.appendChild(sep);
-
-      extraDocKeys.forEach(k=>{
-        const arr = S.lastDocByCoachKey.get(k) || [];
-        if(!arr.length) return;
-        const coachName = arr[0].coach || k;
-        const doc = summarizeDocForCoachKey(k, tf);
-
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td><span class="tag"><span class="dot warn"></span><span>${escapeHtml(coachName)}</span></span></td>
-          <td class="mono">—</td>
-          <td class="mono">—</td>
-          <td class="mono">—</td>
-          <td class="mono">—</td>
-          <td class="mono">—</td>
-          <td class="mono">—</td>
-          <td class="mono">—</td>
-          <td class="mono">—</td>
-          <td class="mono">—</td>
-          <td class="mono coach-extra-col">—</td>
-          <td class="mono coach-extra-col">—</td>
-          <td class="mono coach-extra-col">—</td>
-          <td class="mono coach-extra-col">—</td>
-          <td class="mini">—</td>
-          <td class="mono">${doc.count.toLocaleString()}</td>
-<td class="mono" style="${docCountHeat(doc.perWk)}">${doc.perWk.toFixed(2)}</td>
-          <td class="mono">${fmtNum(doc.avgLag,2)}</td>
-          <td>${escapeHtml(doc.top3)}</td>
-          <td style="text-align:right"><button class="btn secondary" data-kind="viewDocOnly" data-coachkey="${encodeURIComponent(k)}">View</button></td>
-        `;
-        tb.appendChild(tr);
-      });
-    }
-
-    tb.querySelectorAll('input[data-kind="cutOn"]').forEach(el=>{
-      el.addEventListener("change", e=>{
-        const coach = decodeURIComponent(e.target.dataset.coach);
-        const meta = S.coachCut.get(coach) || {enabled:false,startIndex:null,suggested:null};
-        meta.enabled = e.target.checked;
-        S.coachCut.set(coach, meta);
-        recompute(false);
-      });
-    });
-
-    tb.querySelectorAll('input[data-kind="cutVal"]').forEach(el=>{
-      el.addEventListener("change", e=>{
-        const coach = decodeURIComponent(e.target.dataset.coach);
-        const v = Number(e.target.value || 0);
-        const meta = S.coachCut.get(coach) || {enabled:false,startIndex:null,suggested:null};
-        meta.startIndex = (v && v >= 1) ? Math.floor(v) : null;
-        if(meta.startIndex) meta.enabled = true;
-        S.coachCut.set(coach, meta);
-        recompute(false);
-      });
-    });
-
-    tb.querySelectorAll('button[data-kind="useSug"]').forEach(btn=>{
-      btn.addEventListener("click", ()=>{
-        const coach = decodeURIComponent(btn.dataset.coach);
-        const meta = S.coachCut.get(coach);
-        if(meta && meta.suggested){
-          meta.startIndex = meta.suggested;
-          meta.enabled = true;
-          S.coachCut.set(coach, meta);
-          recompute(true);
-        }
-      });
-    });
-
-    tb.querySelectorAll('button[data-kind="view"]').forEach(btn=>{
-      btn.addEventListener("click", ()=>{
-        const coach = decodeURIComponent(btn.dataset.coach);
-        openCoachModal(coach);
-      });
-    });
-
-    tb.querySelectorAll('button[data-kind="viewDocOnly"]').forEach(btn=>{
-      btn.addEventListener("click", ()=>{
-        const k = decodeURIComponent(btn.dataset.coachkey);
-        openCoachModalFromDocKey(k);
-      });
-    });
-  }
-
-  function repSortKey(r, mode){
-    if(mode === "count") return -r.count;
-    if(mode === "avg") return -r.avg;
-    return -r.max;
-  }
-
-  function renderRepTable(rows, mode){
-    const tb = $("repTable").querySelector("tbody");
-    tb.innerHTML = "";
-    const arr = [...rows].sort((a,b)=>{
-      const ka = repSortKey(a,mode), kb = repSortKey(b,mode);
-      if(ka !== kb) return ka-kb;
-      return a.rep.localeCompare(b.rep);
-    }).slice(0,60);
-
-    arr.forEach(r=>{
-      const excluded = S.excludedReps.has(r.rep);
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${escapeHtml(r.rep)}</td>
-        <td class="mono">${r.count}</td>
-        <td class="mono">${fmtNum(r.avg,1)}</td>
-        <td class="mono">${fmtNum(r.max,1)}</td>
-        <td style="text-align:right">
-          ${excluded ? `<span class="tag"><span class="dot warn"></span>Excluded</span>` :
-            `<button class="btn danger" data-rep="${encodeURIComponent(r.rep)}">Remove</button>`}
-        </td>
-      `;
-      tb.appendChild(tr);
-    });
-
-    tb.querySelectorAll("button[data-rep]").forEach(btn=>{
-      btn.addEventListener("click", ()=>{
-        const rep = decodeURIComponent(btn.dataset.rep);
-        S.excludedReps.add(rep);
-        recompute(true);
-      });
-    });
-  }
-
-  function renderCoordinatorTables(){
-    const tb1 = $("coordChecklistTable").querySelector("tbody");
-    tb1.innerHTML = "";
-    if(!S.lastChecklistCoordSumm.length){
-      tb1.innerHTML = `<tr><td colspan="5" class="mini" style="padding:12px 8px; color:var(--muted)">No checklist coordinator rows matched the current filters.</td></tr>`;
-    } else {
-      S.lastChecklistCoordSumm.forEach(r=>{
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td>${escapeHtml(r.name)}</td>
-          <td class="mono">${r.count}</td>
-          <td class="mono">${fmtNum(r.avg,2)}</td>
-          <td class="mono">${fmtNum(r.median,2)}</td>
-          <td class="mono">${fmtNum(r.max,2)}</td>
-        `;
-        tb1.appendChild(tr);
-      });
-    }
-
-    const tb2 = $("coordDocTable").querySelector("tbody");
-    tb2.innerHTML = "";
-    if(!S.lastDocCoordSumm.length){
-      tb2.innerHTML = `<tr><td colspan="5" class="mini" style="padding:12px 8px; color:var(--muted)">No documentation coordinator rows matched the current filters.</td></tr>`;
-    } else {
-      S.lastDocCoordSumm.forEach(r=>{
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td>${escapeHtml(r.name)}</td>
-          <td class="mono">${r.count}</td>
-          <td class="mono">${fmtNum(r.avg,2)}</td>
-          <td class="mono">${fmtNum(r.median,2)}</td>
-          <td class="mono">${fmtNum(r.max,2)}</td>
-        `;
-        tb2.appendChild(tr);
+    return score(b)-score(a);
+  });
+  return keys;
+}
+
+function splitTypes(val){
+  const s = String(val ?? "").trim();
+  if(!s) return [];
+  return s.split(/[,;|]+/).map(x=>String(x).trim()).filter(Boolean);
+}
+
+function looksLikeCoachingRow(obj){
+  if(!obj || typeof obj!=="object") return false;
+  const nk = Object.keys(obj).map(normHdr);
+  const hasRep = nk.includes("associatename") || nk.includes("associate") || nk.includes("name") || nk.includes("rep");
+  const hasDate = nk.includes("date") || nk.includes("dt") || nk.includes("day");
+  const hasType = nk.includes("coachingtypemulti") || nk.includes("coachingtype") || nk.includes("type");
+  return hasRep && hasDate && hasType;
+}
+
+function isCallQualityType(t){
+  const s = String(t||"").trim();
+  if(!s) return false;
+  const low = s.toLowerCase();
+  if(low.includes("call quality")) return true;
+  if(s === "5") return true;
+  if(/^\s*5\s*[:\-]/.test(s)) return true;
+  return false;
+}
+
+function canonicalizeCoachings(dockObj){
+  if(!dockObj) return [];
+  const packs = extractRowArrays(dockObj,"");
+  const out=[];
+
+  for(const p of packs){
+    for(const r of p.rows){
+      if(!looksLikeCoachingRow(r)) continue;
+
+      const repRaw   = pickFieldFromRow(r, ["associatename","associate","name","rep"]);
+      const dateRaw  = pickFieldFromRow(r, ["date","dt","day"]);
+      const typeMulti  = pickFieldFromRow(r, ["coachingtypemulti"]);
+      const typeSingle = pickFieldFromRow(r, ["coachingtype","type"]);
+      const coachRaw = pickFieldFromRow(r, ["jobcoach","coach","sheet","team"]);
+      const descRaw  = pickFieldFromRow(r, ["description","desc","notes","note","details","summary","coachingnotes"]);
+
+      const repDisp = displayNameFromRaw(repRaw);
+      const repK = personKey(repDisp);
+      const d = parseAnyDate(dateRaw);
+      if(!repK || !d) continue;
+
+      const typesAll = Array.from(new Set([
+        ...splitTypes(typeMulti),
+        ...splitTypes(typeSingle)
+      ]));
+
+      const cqTypes = typesAll.filter(isCallQualityType);
+      if(!cqTypes.length) continue;
+
+      out.push({
+        repKey: repK,
+        rep: repDisp || repK,
+        date: d,
+        week: isoWeekKey(d),
+        coach: String(coachRaw ?? "").trim(),
+        types: cqTypes,
+        desc: String(descRaw ?? "").trim(),
+        _sheetHint: p.sheetName || ""
       });
     }
   }
+  return out;
+}
 
-  function setModalTab(which){
-    S.modalTab = which;
-    $("tabChecklist").classList.toggle("on", which === "checklist");
-    $("tabDocs").classList.toggle("on", which === "docs");
-    $("paneChecklist").style.display = which === "checklist" ? "" : "none";
-    $("paneDocs").style.display = which === "docs" ? "" : "none";
+function groupBy(arr, keyFn){
+  const m = new Map();
+  for(const x of arr){
+    const k = keyFn(x);
+    const a = m.get(k) || [];
+    a.push(x);
+    m.set(k,a);
   }
+  return m;
+}
 
-  function openCoachModal(coach){
-    S.modalCoach = coach;
-
-    const tf = getTimeframe();
-    $("modalTFPill").textContent = `Timeframe: ${tf.label}`;
-    $("modalTitle").textContent = `Coach: ${coach}`;
-
-    const items = S.lastByCoachAfterCut.get(coach) || [];
-    const meta = S.coachCut.get(coach);
-    $("modalSub").textContent =
-      `${items.length} checklist items • ` +
-      ((meta && meta.enabled && meta.startIndex) ? `Cutoff: excluding from #${meta.startIndex}` :
-       (meta && meta.suggested ? `Suggestion: exclude from #${meta.suggested}` : "No cutoff"));
-
-    drawSpark(items.map(x=>x.days));
-
-    const tb = $("detailTable").querySelector("tbody");
-    tb.innerHTML = "";
-    items.forEach((it,i)=>{
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td class="mono">${i+1}</td>
-        <td class="mono">${fmtNum(it.days,2)}</td>
-        <td class="mono">${fmtDate(it.created)}</td>
-        <td class="mono">${fmtDate(it.served)}</td>
-        <td>${escapeHtml(it.associate)}</td>
-        <td>${escapeHtml(it.action)}</td>
-        <td>${escapeHtml(it.incident || "")}</td>
-      `;
-      tb.appendChild(tr);
-    });
-
-    buildDocsPaneForCoach(normCoachKey(coach));
-    setModalTab("checklist");
-    $("modalBack").style.display = "flex";
+function avgScore(rows, excludeZero){
+  let sum=0, n=0;
+  for(const r of rows){
+    const s = r.score;
+    if(!Number.isFinite(s)) continue;
+    if(excludeZero && s===0) continue;
+    sum += s; n++;
   }
+  return { avg: n? (sum/n) : NaN, n };
+}
 
-  function openCoachModalFromDocKey(coachKey){
-    const arr = S.lastDocByCoachKey.get(coachKey) || [];
-    const coachName = arr[0] ? arr[0].coach : (coachKey || "(coach)");
-    S.modalCoach = coachName;
-
-    const tf = getTimeframe();
-    $("modalTFPill").textContent = `Timeframe: ${tf.label}`;
-    $("modalTitle").textContent = `Coach: ${coachName}`;
-    $("modalSub").textContent = `0 checklist items (not in checklist timeframe) • docs available`;
-
-    drawSpark([]);
-    $("detailTable").querySelector("tbody").innerHTML = "";
-    buildDocsPaneForCoach(coachKey);
-
-    setModalTab("docs");
-    $("modalBack").style.display = "flex";
+function avgDuration(rows, excludeZero){
+  let sum=0, n=0;
+  for(const r of rows){
+    if(excludeZero && r.score===0) continue;
+    const s = r.durationSec;
+    if(!Number.isFinite(s)) continue;
+    sum += s; n++;
   }
+  return { avgSec: n ? (sum/n) : NaN, n };
+}
 
-  function buildDocsPaneForCoach(coachKey){
-    const tf = getTimeframe();
-    const all = (S.docLoaded ? S.docCoachingsAll : []).filter(dc => dc.coachKey === coachKey && inRange(dc.date, tf)).sort((a,b)=>b.date-a.date);
-
-    const allTypes = new Set();
-    all.forEach(dc => (dc.types || []).forEach(t => allTypes.add(t)));
-    const typeList = Array.from(allTypes).sort((a,b)=>a.localeCompare(b));
-
-    const quick = $("docTypeQuick");
-    quick.innerHTML = `<option value="__ALL__">All types</option>` + typeList.map(t=>`<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join("");
-    quick.value = "__ALL__";
-    S.modalDocFilterQuick = quick.value;
-
-    const chipWrap = $("docTypeChips");
-    chipWrap.innerHTML = "";
-    S.modalDocTypesOn = new Set();
-
-    typeList.forEach(t=>{
-      const b = document.createElement("div");
-      b.className = "typeChip";
-      b.textContent = t;
-      b.addEventListener("click", ()=>{
-        if(S.modalDocTypesOn.has(t)) S.modalDocTypesOn.delete(t);
-        else S.modalDocTypesOn.add(t);
-        paintDocChips(chipWrap);
-        paintDocTableAndPie(all);
-      });
-      chipWrap.appendChild(b);
-    });
-    paintDocChips(chipWrap);
-
-    const weeks = tf.weeks || 1;
-    const lags = all.map(x=>x.lagDays).filter(v=>isFinite(v));
-    const lagSt = stats(lags);
-    const perWk = weeks > 0 ? (all.length/weeks) : 0;
-    $("docCoachStatsLine").textContent =
-      S.docLoaded
-        ? `${all.length} coaching(s) • ${perWk.toFixed(2)}/wk • Avg lag ${fmtNum(lagSt.avg,2)}d • Median ${fmtNum(lagSt.median,2)}d`
-        : "Documented coaching not loaded.";
-
-    $("docSort").onchange = ()=> paintDocTableAndPie(all);
-    quick.onchange = ()=>{
-      S.modalDocFilterQuick = quick.value;
-      paintDocTableAndPie(all);
-    };
-
-    paintDocTableAndPie(all);
+function countUnreviewed(rows){
+  let n = 0;
+  for(const r of rows){
+    if(r.agentHasRead === 0) n++;
   }
+  return n;
+}
 
-  function paintDocChips(chipWrap){
-    [...chipWrap.children].forEach(el=>{
-      const t = el.textContent;
-      el.classList.toggle("on", S.modalDocTypesOn.has(t));
-    });
-  }
+function splitHalfTrend(rows, excludeZero){
+  const sorted=[...rows].sort((a,b)=> a.start - b.start);
+  const clean = excludeZero ? sorted.filter(r=>r.score!==0) : sorted;
+  if(clean.length < 2) return { d: NaN, a1: NaN, a2: NaN };
+  const mid = Math.floor(clean.length/2);
+  const first = clean.slice(0, mid);
+  const second = clean.slice(mid);
+  const a1 = avgScore(first, false).avg;
+  const a2 = avgScore(second, false).avg;
+  return { d: (Number.isFinite(a1)&&Number.isFinite(a2)) ? (a2-a1) : NaN, a1, a2 };
+}
 
-  function paintDocTableAndPie(allRows){
-    const quick = S.modalDocFilterQuick || "__ALL__";
-    const onSet = S.modalDocTypesOn;
+function sparkSeriesWeekly(rows, excludeZero){
+  const byWk = groupBy(rows, r=>r.week);
+  const weeks = Array.from(byWk.keys()).sort();
+  const vals = weeks.map(wk=>{
+    const a = avgScore(byWk.get(wk)||[], excludeZero).avg;
+    return Number.isFinite(a) ? a : null;
+  });
+  return { weeks, vals };
+}
 
-    let rows = [...allRows];
-    if(quick !== "__ALL__") rows = rows.filter(r => (r.types || []).some(t => t === quick));
-    if(onSet && onSet.size) rows = rows.filter(r => (r.types || []).some(t => onSet.has(t)));
+function drawSpark(canvas, values){
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h);
 
-    const mode = $("docSort").value;
-    rows.sort((a,b)=>{
-      if(mode === "dateAsc") return a.date - b.date;
-      if(mode === "lagDesc") return (b.lagDays || -Infinity) - (a.lagDays || -Infinity);
-      if(mode === "lagAsc") return (a.lagDays || Infinity) - (b.lagDays || Infinity);
-      if(mode === "repAZ") return String(a.rep || "").localeCompare(String(b.rep || ""));
-      if(mode === "typeAZ"){
-        const ta=(a.types || [])[0] || "", tb=(b.types || [])[0] || "";
-        const c = ta.localeCompare(tb);
-        if(c !== 0) return c;
-        return b.date - a.date;
-      }
-      return b.date - a.date;
-    });
-
-    const tb = $("docTable").querySelector("tbody");
-    tb.innerHTML = "";
-    if(!S.docLoaded){
-      tb.innerHTML = `<tr><td colspan="7" class="mini" style="padding:12px 8px; color:var(--muted)">Load documented coaching first.</td></tr>`;
-    } else if(!rows.length){
-      tb.innerHTML = `<tr><td colspan="7" class="mini" style="padding:12px 8px; color:var(--muted)">No documented coachings match the current filters.</td></tr>`;
-    } else {
-      rows.forEach((r,i)=>{
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td class="mono">${i+1}</td>
-          <td class="mono">${fmtDateShort(r.date)}</td>
-          <td class="mono">${r.created ? fmtDate(r.created) : "—"}</td>
-          <td class="mono">${isFinite(r.lagDays) ? fmtNum(r.lagDays,2) : "—"}</td>
-          <td>${escapeHtml(r.rep || "")}</td>
-          <td>${escapeHtml((r.types || []).join(", "))}</td>
-          <td>${escapeHtml(r.desc || "")}</td>
-        `;
-        tb.appendChild(tr);
-      });
-    }
-
-    const counts = new Map();
-    for(const r of rows){
-      for(const t of (r.types || [])){
-        counts.set(t, (counts.get(t) || 0) + 1);
-      }
-    }
-    const pieData = [...counts.entries()].sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0])).slice(0,12);
-    drawPie("pie", pieData);
-  }
-
-  function drawSpark(vals){
-    const c = $("spark");
-    const ctx = c.getContext("2d");
-    const dpr = devicePixelRatio || 1;
-    c.width = Math.max(300, c.clientWidth) * dpr;
-    c.height = Math.max(60, c.clientHeight) * dpr;
-
-    ctx.clearRect(0,0,c.width,c.height);
-    ctx.strokeStyle = "#dbe4ee";
-    ctx.lineWidth = 1*dpr;
-    ctx.strokeRect(.5*dpr,.5*dpr,c.width-1*dpr,c.height-1*dpr);
-
-    if(!vals || vals.length < 2){
-      ctx.fillStyle="#64748b";
-      ctx.font = `${12*dpr}px ${getComputedStyle(document.body).fontFamily}`;
-      ctx.fillText("Not enough points", 10*dpr, 22*dpr);
-      return;
-    }
-
-    const clean = vals.filter(v=>isFinite(v));
-    const min = Math.min(...clean), max = Math.max(...clean);
-    const padX=10*dpr, padY=10*dpr;
-    const W=c.width-padX*2, H=c.height-padY*2;
-    const sx=i=>padX + (i/(vals.length-1))*W;
-    const sy=v=> max===min ? padY + H/2 : padY + (1-(v-min)/(max-min))*H;
-
-    ctx.strokeStyle="#0ea5e9";
-    ctx.lineWidth=2*dpr;
+  const vals = values.filter(v=>v!==null && Number.isFinite(v));
+  if(vals.length < 2){
+    ctx.globalAlpha = 0.6;
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    vals.forEach((v,i)=>{
-      const x=sx(i), y=sy(v);
-      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-    });
+    ctx.moveTo(6, h/2);
+    ctx.lineTo(w-6, h/2);
     ctx.stroke();
-
-    ctx.fillStyle="#8b5cf6";
-    vals.forEach((v,i)=>{
-      const x=sx(i), y=sy(v);
-      ctx.beginPath();
-      ctx.arc(x,y,2.2*dpr,0,Math.PI*2);
-      ctx.fill();
-    });
-
-    ctx.fillStyle="#334155";
-    ctx.font=`${11*dpr}px ${getComputedStyle(document.body).fontFamily}`;
-    ctx.fillText(`min ${min.toFixed(1)}d`, padX, c.height - 4*dpr);
-    const txt=`max ${max.toFixed(1)}d`;
-    ctx.fillText(txt, c.width - padX - ctx.measureText(txt).width, c.height - 4*dpr);
+    ctx.globalAlpha = 1;
+    return;
   }
 
-  function drawPie(canvasId, entries){
-    const c = $(canvasId);
-    const ctx = c.getContext("2d");
-    const dpr = devicePixelRatio || 1;
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const pad = 6;
+  const range = Math.max(0.00001, max-min);
 
-    const cssH = c.classList.contains("canvasTall") ? 220 : 160;
-    const cssW = c.clientWidth || 520;
-    c.width = Math.max(320, cssW) * dpr;
-    c.height = Math.max(180, cssH) * dpr;
+  ctx.globalAlpha = 0.35;
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, h-1);
+  ctx.lineTo(w, h-1);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
 
-    ctx.clearRect(0,0,c.width,c.height);
-    ctx.strokeStyle="#dbe4ee";
-    ctx.lineWidth=1*dpr;
-    ctx.strokeRect(.5*dpr,.5*dpr,c.width-1*dpr,c.height-1*dpr);
+  ctx.strokeStyle = '#2563eb';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
 
-    if(!entries || !entries.length){
-      ctx.fillStyle="#64748b";
-      ctx.font = `${12*dpr}px ${getComputedStyle(document.body).fontFamily}`;
-      ctx.fillText("No type data", 10*dpr, 22*dpr);
-      return;
+  const n = values.length;
+  let started=false;
+  for(let i=0;i<n;i++){
+    const v = values[i];
+    if(v===null || !Number.isFinite(v)){ started=false; continue; }
+    const x = pad + (i/(Math.max(1,n-1))) * (w - pad*2);
+    const y = pad + (1 - ((v-min)/range)) * (h - pad*2);
+    if(!started){ ctx.moveTo(x,y); started=true; }
+    else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = '#0f172a';
+  for(let i=0;i<n;i++){
+    const v=values[i];
+    if(v===null || !Number.isFinite(v)) continue;
+    const x = pad + (i/(Math.max(1,n-1))) * (w - pad*2);
+    const y = pad + (1 - ((v-min)/range)) * (h - pad*2);
+    ctx.beginPath();
+    ctx.arc(x,y,2.4,0,Math.PI*2);
+    ctx.fill();
+  }
+}
+
+function isCoachEval(row){
+  const coachName = String(row.team||"").trim();
+  const evalName  = String(row.evaluator||"").trim();
+  if(!coachName || !evalName) return false;
+
+  const pkCoach = personKey(coachName);
+  const pkEval  = personKey(evalName);
+  if(pkCoach && pkEval && pkCoach === pkEval) return true;
+
+  const lnCoach = lastNameOf(coachName);
+  const lnEval  = lastNameOf(evalName);
+  return !!lnCoach && lnCoach === lnEval;
+}
+
+function uniqueSorted(arr){
+  return Array.from(new Set(arr.filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+}
+
+function diffClass(num, type){
+  if(!Number.isFinite(num)) return 'diffNeutral';
+  if(type === 'count') return 'diffNeutral';
+  const abs = Math.abs(num);
+  return abs >= 5 ? 'diffBad' : 'diffGood';
+}
+
+function extractTeamScopedReviewerCandidates(rows){
+  const team = el.teamSel.value;
+  const tf = el.tfSel.value;
+  const range = timeframeRange(tf);
+
+  const base = rows.filter(r=>{
+    if(team && team !== '__ALL__'){
+      if(String(r.team||'').trim() !== team) return false;
+    }
+    if(tf !== 'all' && !inRange(r.start, range)) return false;
+    return true;
+  });
+
+  const teamRepKeys = new Set(base.map(r=>r.agentKey));
+  const coachName = team && team !== '__ALL__' ? String(team).trim() : '';
+
+  return uniqueSorted(
+    rows
+      .filter(r=>{
+        if(!teamRepKeys.has(r.agentKey)) return false;
+        if(tf !== 'all' && !inRange(r.start, range)) return false;
+        if(isCoachEval(r)) return false;
+        const ev = String(r.evaluator||'').trim();
+        if(!ev) return false;
+        if(coachName && personKey(ev) === personKey(coachName)) return false;
+        return true;
+      })
+      .map(r=>String(r.evaluator||'').trim())
+  );
+}
+
+function loadReviewerState(){
+  const saved = loadSettings();
+  const candidates = canonicalQaReviewers;
+  const savedByTeam = saved.activeQaReviewersByTeam || {};
+  const teamKey = getReviewerScopeKey();
+  const prior = Array.isArray(savedByTeam[teamKey]) ? savedByTeam[teamKey] : [];
+  activeQaReviewers = prior.length
+    ? prior.filter(n => candidates.includes(n))
+    : [...candidates];
+
+  if(!activeQaReviewers.length && candidates.length){
+    activeQaReviewers = [...candidates];
+  }
+  persistReviewerState();
+}
+
+function persistReviewerState(){
+  const saved = loadSettings();
+  const map = saved.activeQaReviewersByTeam || {};
+  map[getReviewerScopeKey()] = [...activeQaReviewers];
+  saveSettings({ activeQaReviewersByTeam: map });
+}
+
+function getReviewerScopeKey(){
+  const team = el.teamSel?.value || '__ALL__';
+  const tf = el.tfSel?.value || 'all';
+  const from = el.fromInp?.value || '';
+  const to = el.toInp?.value || '';
+  return `${team}|${tf}|${from}|${to}`;
+}
+
+function isQaReviewer(row){
+  const ev = String(row.evaluator || '').trim();
+  return !isCoachEval(row) && !!ev && activeQaReviewers.includes(ev);
+}
+
+function splitRoleRows(rows){
+  const coachRows = [];
+  const qaRows = [];
+  for(const r of rows){
+    if(isCoachEval(r)) coachRows.push(r);
+    else if(isQaReviewer(r)) qaRows.push(r);
+  }
+  return { coachRows, qaRows };
+}
+
+const el = {
+  qaKeySel: document.getElementById('qaKeySel'),
+  loadBtn: document.getElementById('loadBtn'),
+
+  coKeySel: document.getElementById('coKeySel'),
+  reloadCoBtn: document.getElementById('reloadCoBtn'),
+
+  teamSel: document.getElementById('teamSel'),
+  tfSel: document.getElementById('tfSel'),
+  customRange: document.getElementById('customRange'),
+  fromInp: document.getElementById('fromInp'),
+  toInp: document.getElementById('toInp'),
+  excludeZero: document.getElementById('excludeZero'),
+  searchInp: document.getElementById('searchInp'),
+  refreshBtn: document.getElementById('refreshBtn'),
+  reviewersBtn: document.getElementById('reviewersBtn'),
+  reviewersBtnCount: document.getElementById('reviewersBtnCount'),
+  optionsBtn: document.getElementById('optionsBtn'),
+  optionsOverlay: document.getElementById('optionsOverlay'),
+  optionsClose: document.getElementById('optionsClose'),
+
+  statusPill: document.getElementById('statusPill'),
+  coStatusPill: document.getElementById('coStatusPill'),
+  scopePill: document.getElementById('scopePill'),
+  qaReviewCountPill: document.getElementById('qaReviewCountPill'),
+
+  summarySub: document.getElementById('summarySub'),
+  summaryTbody: document.getElementById('summaryTbody'),
+  compareTbody: document.getElementById('compareTbody'),
+  teamTrendPill: document.getElementById('teamTrendPill'),
+
+  sortPill: document.getElementById('sortPill'),
+
+  cards: document.getElementById('cards'),
+  empty: document.getElementById('empty'),
+
+  overlay: document.getElementById('overlay'),
+  mClose: document.getElementById('mClose'),
+  mTitle: document.getElementById('mTitle'),
+  mSub: document.getElementById('mSub'),
+  mBody: document.getElementById('mBody'),
+
+  reviewerOverlay: document.getElementById('reviewerOverlay'),
+  reviewerClose: document.getElementById('reviewerClose'),
+  reviewerList: document.getElementById('reviewerList'),
+  reviewerPopupCount: document.getElementById('reviewerPopupCount'),
+  resetReviewersBtn: document.getElementById('resetReviewersBtn'),
+  rSub: document.getElementById('rSub')
+};
+
+let QA_KEY = null;
+let CO_KEY = null;
+
+let qaLoaded = false;
+let qaRowsAll = [];
+
+let coLoaded = false;
+let coRowsAll = [];
+
+let chartMain = null;
+
+let activeQaReviewers = [];
+let canonicalQaReviewers = [];
+
+const DIFF_ALERT_PCTPTS = 10;
+const DIFF_ALERT_SECS = 120;
+
+let sortMode = "count";
+
+function nowLocal(){ return new Date(); }
+
+function timeframeRange(tf){
+  const now = nowLocal();
+  if(tf === 'last7')  return { from: new Date(now.getTime() - 7*86400000),  to: now };
+  if(tf === 'last30') return { from: new Date(now.getTime() - 30*86400000), to: now };
+  if(tf === 'last90') return { from: new Date(now.getTime() - 90*86400000), to: now };
+  if(tf === 'custom'){
+    const f = el.fromInp.value ? new Date(el.fromInp.value + "T00:00:00") : null;
+    const t = el.toInp.value ? new Date(el.toInp.value + "T23:59:59") : null;
+    return { from: f, to: t };
+  }
+  return { from:null, to:null };
+}
+function inRange(d, range){
+  if(!(d instanceof Date) || isNaN(d)) return false;
+  if(range.from && d < range.from) return false;
+  if(range.to && d > range.to) return false;
+  return true;
+}
+
+function buildTeamOptions(rows){
+  const teams = Array.from(new Set(rows.map(r=>String(r.team||"").trim()).filter(Boolean)))
+    .sort((a,b)=>a.localeCompare(b));
+
+  el.teamSel.innerHTML = '';
+  const optAll = document.createElement('option');
+  optAll.value = '__ALL__';
+  optAll.textContent = 'All';
+  el.teamSel.appendChild(optAll);
+
+  for(const t of teams){
+    const o = document.createElement('option');
+    o.value = t;
+    o.textContent = t;
+    el.teamSel.appendChild(o);
+  }
+}
+
+function recomputeReviewerScope(){
+  canonicalQaReviewers = extractTeamScopedReviewerCandidates(qaRowsAll);
+  loadReviewerState();
+}
+
+function filterRows(){
+  const team = el.teamSel.value;
+  const tf = el.tfSel.value;
+  const range = timeframeRange(tf);
+  const search = (el.searchInp.value||'').trim().toLowerCase();
+
+  return qaRowsAll.filter(r=>{
+    if(team && team!=='__ALL__'){
+      if(String(r.team||'').trim() !== team) return false;
+    }
+    if(tf!=='all'){
+      if(!inRange(r.start, range)) return false;
+    }
+    if(search){
+      const dn = String(r.agent||'').toLowerCase();
+      const pk = String(r.agentKey||'').toLowerCase();
+      if(!dn.includes(search) && !pk.includes(search)) return false;
+    }
+    return isCoachEval(r) || isQaReviewer(r);
+  });
+}
+
+function coachingForRep(repKey, range){
+  if(!coLoaded) return [];
+  const pk = String(repKey||"").toLowerCase();
+  let rows = coRowsAll.filter(c=>{
+    if(String(c.repKey||"").toLowerCase() !== pk) return false;
+    if(range && (range.from || range.to)){
+      if(!inRange(c.date, range)) return false;
+    }
+    return true;
+  });
+  rows.sort((a,b)=> b.date - a.date);
+  return rows;
+}
+
+function computeGlobalSummary(rows, excludeZero){
+  const { coachRows, qaRows } = splitRoleRows(rows);
+
+  const all = avgScore(rows, excludeZero);
+  const allNoZero = avgScore(rows, true);
+
+  const coach = avgScore(coachRows, excludeZero);
+  const qa = avgScore(qaRows, excludeZero);
+
+  const coachNoZero = avgScore(coachRows, true);
+  const qaNoZero = avgScore(qaRows, true);
+
+  const durAll = avgDuration(rows, excludeZero);
+  const durCoach = avgDuration(coachRows, excludeZero);
+  const durQa = avgDuration(qaRows, excludeZero);
+
+  const unreviewedAll = countUnreviewed(rows);
+  const unreviewedCoach = countUnreviewed(coachRows);
+  const unreviewedQa = countUnreviewed(qaRows);
+
+  return {
+    all, allNoZero,
+    coach, qa,
+    coachNoZero, qaNoZero,
+    durAll, durCoach, durQa,
+    unreviewedAll, unreviewedCoach, unreviewedQa,
+    coachRows, qaRows
+  };
+}
+
+function teamHalfTrend(rows, excludeZero){
+  const tr = splitHalfTrend(rows, excludeZero);
+  if(!Number.isFinite(tr.d)) return { pp: NaN, a1: NaN, a2: NaN };
+  return { pp: tr.d*100, a1: tr.a1, a2: tr.a2 };
+}
+
+function paintReviewerControls(){
+  const counts = new Map();
+
+  const team = el.teamSel.value;
+  const tf = el.tfSel.value;
+  const range = timeframeRange(tf);
+
+  for(const r of qaRowsAll){
+    if(team && team !== '__ALL__' && String(r.team||'').trim() !== team) continue;
+    if(tf !== 'all' && !inRange(r.start, range)) continue;
+    if(!isCoachEval(r)){
+      const ev = String(r.evaluator || '').trim();
+      if(ev && canonicalQaReviewers.includes(ev)) counts.set(ev, (counts.get(ev)||0)+1);
+    }
+  }
+
+  el.qaReviewCountPill.textContent = `QA reviewers: ${activeQaReviewers.length}/${canonicalQaReviewers.length}`;
+  el.reviewersBtnCount.textContent = String(canonicalQaReviewers.length);
+  el.reviewerPopupCount.textContent = `${activeQaReviewers.length}/${canonicalQaReviewers.length} included`;
+
+  const teamLabel = team === '__ALL__' ? 'All teams' : team;
+  const tfLabel = el.tfSel.options[el.tfSel.selectedIndex]?.textContent || 'All';
+  el.rSub.textContent = `${teamLabel} • ${tfLabel} • Coach removed from reviewer list automatically`;
+
+  el.reviewerList.innerHTML = activeQaReviewers.length
+    ? activeQaReviewers.map(name => `
+        <span class="reviewerChip">
+          ${name}
+          <span class="mono">(${counts.get(name)||0})</span>
+          <button type="button" data-remove-reviewer="${name.replace(/"/g,'&quot;')}">✕</button>
+        </span>
+      `).join('')
+    : `<span class="notice">No QA reviewers currently included for this team scope.</span>`;
+}
+
+function paintSummary(rows){
+  const excludeZero = el.excludeZero.checked;
+
+  const teamLabel = (el.teamSel.value==='__ALL__') ? 'All teams' : el.teamSel.value;
+  const tfLabel = el.tfSel.options[el.tfSel.selectedIndex]?.textContent || 'All';
+  el.scopePill.textContent = `${teamLabel} • ${tfLabel} • Rows: ${rows.length}`;
+
+  const sum = computeGlobalSummary(rows, excludeZero);
+
+  const scoreGap = (Number.isFinite(sum.coach.avg) && Number.isFinite(sum.qa.avg))
+    ? (sum.coach.avg - sum.qa.avg)
+    : NaN;
+  const scoreGapPP = Number.isFinite(scoreGap) ? scoreGap*100 : NaN;
+
+  const durGapSec = (Number.isFinite(sum.durCoach.avgSec) && Number.isFinite(sum.durQa.avgSec))
+    ? (sum.durCoach.avgSec - sum.durQa.avgSec)
+    : NaN;
+  const durGapMin = Number.isFinite(durGapSec) ? (durGapSec / 60) : NaN;
+
+  const coachMonitoredRepSet = new Set(sum.coachRows.map(r=>r.agentKey));
+  const qaMonitoredRepSet = new Set(sum.qaRows.map(r=>r.agentKey));
+  const repsShown = new Set(rows.map(r=>r.agentKey));
+
+  let noCoachMonitor = 0;
+  let noQaMonitor = 0;
+  for(const rep of repsShown){
+    if(!coachMonitoredRepSet.has(rep)) noCoachMonitor++;
+    if(!qaMonitoredRepSet.has(rep)) noQaMonitor++;
+  }
+
+  const ttr = teamHalfTrend(rows, excludeZero);
+  const ttrTxt = Number.isFinite(ttr.pp) ? `${ttr.pp>=0?'+':''}${ttr.pp.toFixed(1)} pp` : '—';
+  el.teamTrendPill.className = `pill mono ${Number.isFinite(ttr.pp) ? (ttr.pp>0.1?'good':(ttr.pp<-0.1?'bad':'')) : ''}`;
+  el.teamTrendPill.textContent = `Trend (1st half → 2nd): ${ttrTxt}`;
+
+  el.summarySub.textContent = 'Overall reflects the selected team/timeframe, coach monitors, and only the QA reviewers currently included in the popup. Unreviewed monitors come from Agent Has Read = 0.';
+
+  const overallRows = [
+    {
+      metric:'Overall average',
+      value:fmtPct1(sum.all.avg),
+      count:fmtInt(sum.all.n),
+      notes:excludeZero ? 'Zeros excluded' : 'Zeros included'
+    },
+    {
+      metric:'Overall average (no 0s)',
+      value:fmtPct1(sum.allNoZero.avg),
+      count:fmtInt(sum.allNoZero.n),
+      notes:'Always excludes zeros'
+    },
+    {
+      metric:'Total unreviewed monitors',
+      value:fmtInt(sum.unreviewedAll),
+      count:fmtInt(rows.length),
+      notes:'Count of all rows where Agent Has Read = 0'
+    },
+    {
+      metric:'Avg call duration',
+      value:fmtHMS(sum.durAll.avgSec),
+      count:fmtInt(sum.durAll.n),
+      notes:'Interaction duration when available'
+    }
+  ];
+
+  el.summaryTbody.innerHTML = overallRows.map(r=>`
+    <tr>
+      <td><b>${r.metric}</b></td>
+      <td class="mono">
+        <span class="pill mono ${r.metric==='Total unreviewed monitors' && Number(r.value.replace(/,/g,''))>0 ? 'bad' : ''}">
+          ${r.value}
+        </span>
+      </td>
+      <td class="mono">${r.count}</td>
+      <td>${r.notes}</td>
+    </tr>
+  `).join('');
+
+  const compRows = [
+    {
+      coach: fmtPct1(sum.coach.avg),
+      category:'Average score',
+      diff: Number.isFinite(scoreGapPP) ? `${scoreGapPP>=0?'+':''}${scoreGapPP.toFixed(1)} pp` : '—',
+      diffNum: scoreGapPP,
+      diffType: 'pct',
+      qa: fmtPct1(sum.qa.avg),
+      note:'Coach - QA'
+    },
+    {
+      coach: fmtInt(sum.coach.n),
+      category:'Monitor count',
+      diff: (Number.isFinite(sum.coach.n) && Number.isFinite(sum.qa.n))
+        ? `${sum.coach.n-sum.qa.n>=0?'+':''}${sum.coach.n-sum.qa.n}`
+        : '—',
+      diffNum: (sum.coach.n - sum.qa.n),
+      diffType: 'count',
+      qa: fmtInt(sum.qa.n),
+      note:'Coach - QA'
+    },
+    {
+      coach: fmtHMS(sum.durCoach.avgSec),
+      category:'Avg call duration',
+      diff: Number.isFinite(durGapSec)
+        ? `${durGapSec>=0?'+':''}${fmtHMS(Math.abs(durGapSec))}`
+        : '—',
+      diffNum: Number.isFinite(durGapMin) ? Math.abs(durGapMin * 100) : NaN,
+      diffType: 'pct',
+      qa: fmtHMS(sum.durQa.avgSec),
+      note:'Coach - QA'
+    },
+    {
+      coach: fmtPct1(sum.coachNoZero.avg),
+      category:'Average score (no 0s)',
+      diff: (Number.isFinite(sum.coachNoZero.avg) && Number.isFinite(sum.qaNoZero.avg))
+        ? `${((sum.coachNoZero.avg-sum.qaNoZero.avg)*100)>=0?'+':''}${((sum.coachNoZero.avg-sum.qaNoZero.avg)*100).toFixed(1)} pp`
+        : '—',
+      diffNum: (sum.coachNoZero.avg-sum.qaNoZero.avg)*100,
+      diffType: 'pct',
+      qa: fmtPct1(sum.qaNoZero.avg),
+      note:'Coach - QA'
+    },
+    {
+      coach: fmtInt(sum.unreviewedCoach),
+      category:'Unreviewed monitors',
+      diff: `${sum.unreviewedCoach-sum.unreviewedQa>=0?'+':''}${sum.unreviewedCoach-sum.unreviewedQa}`,
+      diffNum: (sum.unreviewedCoach-sum.unreviewedQa),
+      diffType: 'count',
+      qa: fmtInt(sum.unreviewedQa),
+      note:'Coach unread - QA unread'
+    },
+    {
+      coach: fmtInt(noCoachMonitor),
+      category:'Representatives without monitor',
+      diff: `${noCoachMonitor-noQaMonitor>=0?'+':''}${noCoachMonitor-noQaMonitor}`,
+      diffNum: (noCoachMonitor-noQaMonitor),
+      diffType: 'count',
+      qa: fmtInt(noQaMonitor),
+      note:'Coach none - QA none'
+    }
+  ];
+
+  el.compareTbody.innerHTML = compRows.map(r=>`
+    <tr>
+      <td class="mono"><b>${r.coach}</b></td>
+      <td>
+        <div class="compCategory">${r.category}</div>
+        <div class="${diffClass(r.diffNum, r.diffType)}">${r.diff}</div>
+        <div style="font-size:12px;color:var(--muted)">${r.note}</div>
+      </td>
+      <td class="mono"><b>${r.qa}</b></td>
+    </tr>
+  `).join('');
+}
+
+function coachingWeightFactor(avgFrac){
+  if(!Number.isFinite(avgFrac)) return 1;
+  const w = Math.max(0.15, Math.min(1, avgFrac));
+  return w;
+}
+
+function paintCards(rows){
+  el.cards.innerHTML = '';
+  el.empty.style.display = 'none';
+
+  if(!qaLoaded){
+    el.empty.style.display = '';
+    el.empty.textContent = 'QA: Upload needed. (No QA data detected in localStorage dock.)';
+    return;
+  }
+  if(!rows.length){
+    el.empty.style.display = '';
+    el.empty.textContent = 'No evaluations match the current Team / Timeframe / Search filters.';
+    return;
+  }
+
+  const excludeZero = el.excludeZero.checked;
+  const tf = el.tfSel.value;
+  const range = (tf==='all') ? {from:null,to:null} : timeframeRange(tf);
+
+  const byRep = groupBy(rows, r=>r.agentKey);
+  const reps = Array.from(byRep.keys()).sort((a,b)=>a.localeCompare(b));
+
+  const cards = reps.map(pk=>{
+    const arr = byRep.get(pk) || [];
+    const name = (arr[0]?.agent) || pk;
+
+    const total = avgScore(arr, excludeZero);
+    const totalIncl0 = avgScore(arr, false);
+    const wkSeries = sparkSeriesWeekly(arr, excludeZero);
+    const tr = splitHalfTrend(arr, excludeZero);
+    const trPP = Number.isFinite(tr.d) ? (tr.d*100) : NaN;
+
+    const zeros = arr.filter(r=>r.score===0).length;
+    const noZero = avgScore(arr, true);
+    const unreadCount = countUnreviewed(arr);
+
+    const { coachRows, qaRows } = splitRoleRows(arr);
+
+    const coachAvg = avgScore(coachRows, excludeZero).avg;
+    const qaAvg = avgScore(qaRows, excludeZero).avg;
+    const gap = (Number.isFinite(coachAvg)&&Number.isFinite(qaAvg)) ? (coachAvg-qaAvg) : NaN;
+    const gapBad = Number.isFinite(gap) && Math.abs(gap*100) >= DIFF_ALERT_PCTPTS;
+
+    const durAll = avgDuration(arr, excludeZero);
+    const durCoach = avgDuration(coachRows, excludeZero);
+    const durQa = avgDuration(qaRows, excludeZero);
+    const durGapSec = (Number.isFinite(durCoach.avgSec) && Number.isFinite(durQa.avgSec)) ? (durCoach.avgSec - durQa.avgSec) : NaN;
+    const durGapBad = Number.isFinite(durGapSec) && Math.abs(durGapSec) >= DIFF_ALERT_SECS;
+
+    const monitoredByCoach = coachRows.length > 0;
+
+    const coRows = coachingForRep(pk, range);
+    const coCount = coRows.length;
+    const coRecent = coRows[0]?.date || null;
+
+    const weightedCoachings = coCount * coachingWeightFactor(total.avg);
+
+    return {
+      pk, name, arr, total, totalIncl0, wkSeries,
+      trPP, zeros, noZero, unreadCount,
+      coachAvg, qaAvg, gapBad,
+      durAll, durCoach, durQa, durGapBad,
+      coCount, coRecent,
+      weightedCoachings,
+      monitoredByCoach,
+      coachCount: coachRows.length,
+      qaCount: qaRows.length
+    };
+  });
+
+  cards.sort((a,b)=>{
+    const aAvg = a.total.avg, bAvg = b.total.avg;
+    const aTrend = a.trPP, bTrend = b.trPP;
+    const fin = (x)=>Number.isFinite(x);
+
+    if(sortMode==="avg"){
+      if(fin(bAvg) && fin(aAvg) && bAvg!==aAvg) return bAvg - aAvg;
+      if(b.total.n !== a.total.n) return b.total.n - a.total.n;
+      return a.name.localeCompare(b.name);
+    }
+    if(sortMode==="zeros"){
+      if(b.zeros !== a.zeros) return b.zeros - a.zeros;
+      if(fin(aAvg) && fin(bAvg) && aAvg!==bAvg) return aAvg - bAvg;
+      return a.name.localeCompare(b.name);
+    }
+    if(sortMode==="trend"){
+      const aBad = !fin(aTrend), bBad = !fin(bTrend);
+      if(aBad && bBad) return 0;
+      if(aBad) return 1;
+      if(bBad) return -1;
+      if(aTrend !== bTrend) return aTrend - bTrend;
+      return a.name.localeCompare(b.name);
+    }
+    if(sortMode==="coachings"){
+      if(a.coCount !== b.coCount) return a.coCount - b.coCount;
+      if(fin(aAvg) && fin(bAvg) && aAvg!==bAvg) return aAvg - bAvg;
+      return a.name.localeCompare(b.name);
+    }
+    if(sortMode==="coachingsWeighted"){
+      if(a.weightedCoachings !== b.weightedCoachings) return a.weightedCoachings - b.weightedCoachings;
+      if(a.coCount !== b.coCount) return a.coCount - b.coCount;
+      if(fin(aAvg) && fin(bAvg) && aAvg!==bAvg) return aAvg - bAvg;
+      return a.name.localeCompare(b.name);
+    }
+    if(sortMode==="unreviewed"){
+      if(b.unreadCount !== a.unreadCount) return b.unreadCount - a.unreadCount;
+      if(b.total.n !== a.total.n) return b.total.n - a.total.n;
+      return a.name.localeCompare(b.name);
     }
 
-    const total = entries.reduce((s, [,v])=>s+v, 0) || 1;
-    const cx = Math.floor(c.width*0.34);
-    const cy = Math.floor(c.height*0.52);
-    const r = Math.min(c.width, c.height) * 0.28;
+    if(b.total.n !== a.total.n) return b.total.n - a.total.n;
+    return a.name.localeCompare(b.name);
+  });
 
-    let start = -Math.PI/2;
-    entries.forEach(([label, val], i)=>{
-      const frac = val / total;
-      const ang = frac * Math.PI*2;
-      const hue = (i*47) % 360;
+  for(const c of cards){
+    const trendCls = !Number.isFinite(c.trPP) ? 'trendFlat'
+      : (c.trPP > 0.1 ? 'trendUp' : (c.trPP < -0.1 ? 'trendDn' : 'trendFlat'));
 
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.arc(cx, cy, r, start, start+ang);
-      ctx.closePath();
-      ctx.fillStyle = `hsla(${hue}, 78%, 62%, .92)`;
-      ctx.fill();
+    const trendTxt = !Number.isFinite(c.trPP) ? '—'
+      : `${c.trPP>=0?'+':''}${c.trPP.toFixed(1)} pp`;
 
-      ctx.strokeStyle="#fff";
-      ctx.lineWidth=1*dpr;
-      ctx.stroke();
-      start += ang;
-    });
+    const splitTxt = (Number.isFinite(c.coachAvg) && Number.isFinite(c.qaAvg))
+      ? `Coach ${fmtPct1(c.coachAvg)} vs QA ${fmtPct1(c.qaAvg)}`
+      : 'Coach vs QA: —';
 
-    const lx = Math.floor(c.width*0.60);
-    let ly = Math.floor(c.height*0.18);
-    ctx.font = `${12*dpr}px ${getComputedStyle(document.body).fontFamily}`;
-    ctx.fillStyle="#0f172a";
+    const durSplitTxt = (Number.isFinite(c.durCoach.avgSec) && Number.isFinite(c.durQa.avgSec))
+      ? `Dur Coach ${fmtHMS(c.durCoach.avgSec)} vs QA ${fmtHMS(c.durQa.avgSec)}`
+      : 'Dur split: —';
 
-    entries.slice(0,10).forEach(([label,val], i)=>{
-      const hue = (i*47) % 360;
-      ctx.fillStyle = `hsla(${hue}, 78%, 62%, .92)`;
-      ctx.fillRect(lx, ly-10*dpr, 14*dpr, 14*dpr);
+    const coTxt = coLoaded
+      ? `CQ Coachings: <b>${fmtInt(c.coCount)}</b> • Recent: <b>${c.coRecent ? fmtDateOnly(c.coRecent) : '—'}</b>`
+      : `CQ Coachings: —`;
 
-      ctx.fillStyle="#0f172a";
-      const pct = ((val/total)*100).toFixed(0);
-      const text = `${label} (${val}) ${pct}%`;
-      ctx.fillText(text, lx + 20*dpr, ly+2*dpr);
-      ly += 18*dpr;
-    });
+    const unreadCls = c.unreadCount > 0 ? 'mini bad' : 'mini good';
 
-    ctx.fillStyle="#64748b";
-    ctx.fillText(`Total type-tags: ${total}`, lx, c.height - 10*dpr);
+    const card = document.createElement('div');
+    card.className = 'card repCard';
+    card.dataset.rep = c.pk;
+
+    card.innerHTML = `
+      <div class="repTop">
+        <div>
+          <div class="repName">${c.name}</div>
+          <div class="repMeta">${c.wkSeries.weeks.length ? `${c.wkSeries.weeks[0]} → ${c.wkSeries.weeks[c.wkSeries.weeks.length-1]}` : '—'}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+          <span class="coachFlag ${c.monitoredByCoach ? 'good' : 'bad'}">
+            <span class="coachMark">${c.monitoredByCoach ? '✔' : '✖'}</span>
+            Monitored by Coach
+          </span>
+          <div class="mini ${c.gapBad?'warn':''}" title="Coach vs QA score averages">${splitTxt}</div>
+          <div class="mini ${c.durGapBad?'warn':''}" title="Coach vs QA average call duration">${durSplitTxt}</div>
+        </div>
+      </div>
+
+      <div class="sparkWrap">
+        <canvas class="spark" width="520" height="110"></canvas>
+      </div>
+
+      <div class="repStats">
+        <div class="statLine">
+          <span>Unreviewed Monitor Count</span>
+          <span><span class="pill mono ${c.unreadCount>0?'bad':'good'}"><b>${fmtInt(c.unreadCount)}</b></span></span>
+        </div>
+        <div class="statLine"><span>Total</span><span><b>${fmtPct1(c.total.avg)}</b> • n <b>${fmtInt(c.total.n)}</b></span></div>
+        <div class="statLine"><span>Coach monitors</span><span><b>${fmtInt(c.coachCount)}</b></span></div>
+        <div class="statLine"><span>QA monitors</span><span><b>${fmtInt(c.qaCount)}</b></span></div>
+        <div class="statLine"><span>Avg call duration</span><span><b>${fmtHMS(c.durAll.avgSec)}</b> • n <b>${fmtInt(c.durAll.n)}</b></span></div>
+        <div class="statLine"><span>Trend (1st half → 2nd)</span><span class="${trendCls}">${trendTxt}</span></div>
+        <div class="statLine"><span>Zeros</span><span><b>${fmtInt(c.zeros)}</b> • Avg w/o 0s <b>${fmtPct1(c.noZero.avg)}</b></span></div>
+      </div>
+
+      <div class="miniRow">
+        <span class="${unreadCls}">Unread: ${fmtInt(c.unreadCount)}</span>
+        <span class="mini mono">Exclude 0s: ${excludeZero ? 'ON' : 'OFF'}</span>
+        <span class="mini mono">n(incl0): ${fmtInt(c.totalIncl0.n)}</span>
+        <span class="mini mono" title="Documented coachings filtered to Call Quality only">${coTxt}</span>
+      </div>
+    `;
+
+    el.cards.appendChild(card);
+    drawSpark(card.querySelector('canvas.spark'), c.wkSeries.vals);
+  }
+}
+
+function destroyModalChart(){
+  if(chartMain){
+    try{ chartMain.destroy(); }catch{}
+    chartMain = null;
+  }
+}
+
+function linearTrend(values){
+  const n = values.length;
+  if(n < 2) return null;
+  let sumX=0,sumY=0,sumXY=0,sumXX=0;
+  for(const p of values){
+    sumX += p.x; sumY += p.y; sumXY += p.x*p.y; sumXX += p.x*p.x;
+  }
+  const denom = (n*sumXX - sumX*sumX);
+  if(Math.abs(denom) < 1e-9) return null;
+  const m = (n*sumXY - sumX*sumY) / denom;
+  const b = (sumY - m*sumX) / n;
+  return { m, b };
+}
+
+function openModal(repKey){
+  const rowsScoped = filterRows();
+  const byRep = groupBy(rowsScoped, r=>r.agentKey);
+  const arr = byRep.get(repKey) || [];
+  if(!arr.length) return;
+
+  const excludeZero = el.excludeZero.checked;
+  const name = arr[0].agent || repKey;
+  const coachName = String(arr[0].team||"").trim() || '(blank Team/Coach)';
+  const sortedDesc = [...arr].sort((a,b)=> b.start - a.start);
+
+  const total = avgScore(arr, excludeZero);
+  const incl0 = avgScore(arr, false);
+  const zeros = arr.filter(r=>r.score===0).length;
+  const noZero = avgScore(arr, true);
+  const unreadCount = countUnreviewed(arr);
+
+  const { coachRows, qaRows } = splitRoleRows(arr);
+
+  const coachAvg = avgScore(coachRows, excludeZero);
+  const qaAvg = avgScore(qaRows, excludeZero);
+  const gap = (Number.isFinite(coachAvg.avg)&&Number.isFinite(qaAvg.avg)) ? (coachAvg.avg-qaAvg.avg) : NaN;
+  const gapBad = Number.isFinite(gap) && Math.abs(gap*100) >= DIFF_ALERT_PCTPTS;
+
+  const durAll = avgDuration(arr, excludeZero);
+  const durCoach = avgDuration(coachRows, excludeZero);
+  const durQa = avgDuration(qaRows, excludeZero);
+  const durGapSec = (Number.isFinite(durCoach.avgSec)&&Number.isFinite(durQa.avgSec)) ? (durCoach.avgSec-durQa.avgSec) : NaN;
+  const durGapBad = Number.isFinite(durGapSec) && Math.abs(durGapSec) >= DIFF_ALERT_SECS;
+
+  const monitoredByCoach = coachRows.length > 0;
+
+  const evalCounts = new Map();
+  for(const r of arr){
+    const ev = (r.evaluator||'(blank)').trim() || '(blank)';
+    evalCounts.set(ev, (evalCounts.get(ev)||0)+1);
+  }
+  const evalTop = Array.from(evalCounts.entries()).sort((a,b)=>b[1]-a[1]).slice(0,10);
+
+  const teamLabel = (el.teamSel.value==='__ALL__') ? 'All teams' : el.teamSel.value;
+  const tfLabel = el.tfSel.options[el.tfSel.selectedIndex]?.textContent || 'All';
+  const tf = el.tfSel.value;
+  const range = (tf==='all') ? {from:null,to:null} : timeframeRange(tf);
+
+  const coRows = coachingForRep(repKey, range);
+  const coCount = coRows.length;
+  const coRecent = coRows[0]?.date || null;
+
+  el.mTitle.textContent = `${name} — QA Details`;
+  el.mSub.textContent = `${teamLabel} • ${tfLabel} • Rows: ${arr.length} • Team/Coach: ${coachName}`;
+
+  destroyModalChart();
+  el.mBody.innerHTML = '';
+
+  const stats = document.createElement('div');
+  stats.className = 'box';
+  stats.innerHTML = `
+    <div class="boxHead">
+      <span>Summary</span>
+      <span class="pill mono ${gapBad?'warn':''}">Coach vs QA gap: ${Number.isFinite(gap)? ((gap>=0?'+':'')+(gap*100).toFixed(1)+' pp') : '—'}</span>
+    </div>
+
+    <div class="row" style="gap:10px">
+      <span class="coachFlag ${monitoredByCoach ? 'good' : 'bad'}">
+        <span class="coachMark">${monitoredByCoach ? '✔' : '✖'}</span>
+        Monitored by Coach
+      </span>
+
+      <span class="pill mono ${unreadCount>0 ? 'bad' : 'good'}"><b>Unreviewed</b> ${fmtInt(unreadCount)}</span>
+      <span class="pill mono"><b>Total</b> ${fmtPct1(total.avg)} • n ${fmtInt(total.n)}</span>
+      <span class="pill mono"><b>Total (incl 0s)</b> ${fmtPct1(incl0.avg)} • n ${fmtInt(incl0.n)}</span>
+      <span class="pill mono"><b>Zeros</b> ${fmtInt(zeros)} • <b>Avg w/o 0s</b> ${fmtPct1(noZero.avg)}</span>
+
+      <span class="pill mono ${gapBad?'warn':''}"><b>Coach</b> ${fmtPct1(coachAvg.avg)} • n ${fmtInt(coachAvg.n)}</span>
+      <span class="pill mono ${gapBad?'warn':''}"><b>QA</b> ${fmtPct1(qaAvg.avg)} • n ${fmtInt(qaAvg.n)}</span>
+
+      <span class="pill mono"><b>Avg call</b> ${fmtHMS(durAll.avgSec)} • n ${fmtInt(durAll.n)}</span>
+      <span class="pill mono ${durGapBad?'warn':''}"><b>Dur coach</b> ${fmtHMS(durCoach.avgSec)} • n ${fmtInt(durCoach.n)}</span>
+      <span class="pill mono ${durGapBad?'warn':''}"><b>Dur QA</b> ${fmtHMS(durQa.avgSec)} • n ${fmtInt(durQa.n)}</span>
+      <span class="pill mono ${durGapBad?'warn':''}"><b>Dur gap</b> ${
+        Number.isFinite(durGapSec) ? `${durGapSec>=0?'+':''}${fmtHMS(Math.abs(durGapSec))}` : '—'
+      }</span>
+
+      <span class="pill mono" title="Documented Coachings filtered to Call Quality only (in selected timeframe)">
+        <b>CQ Coachings</b> ${fmtInt(coCount)} • <b>Most recent</b> ${coRecent ? fmtDateOnly(coRecent) : '—'}
+      </span>
+    </div>
+
+    <div style="margin-top:10px" class="notice">
+      <b>Top evaluators</b> (count): ${evalTop.map(([e,c])=>`${e} (${c})`).join(' • ') || '—'}
+    </div>
+  `;
+  el.mBody.appendChild(stats);
+
+  const coBox = document.createElement('div');
+  coBox.className = 'box';
+  coBox.innerHTML = `
+    <div class="boxHead">
+      <span>Documented Coachings — Call Quality</span>
+      <span class="pill mono">In timeframe: ${tfLabel}</span>
+    </div>
+    ${
+      !coLoaded
+        ? `<div class="notice">No documented coaching data loaded. Pick a Doc coaching key in Additional Options.</div>`
+        : (coRows.length
+          ? `<div class="coList">
+              ${coRows.slice(0, 50).map(c=>`
+                <div class="coItem">
+                  <div class="coHeadRow">
+                    <b>${fmtDateOnly(c.date)}</b>
+                    <span class="pill mono">${(c.coach||'—') ? String(c.coach||'—') : '—'}</span>
+                  </div>
+                  <div class="coMeta">Type: ${c.types.join(", ") || "Call Quality"} • Week: ${c.week || "—"}</div>
+                  ${c.desc ? `<div class="coDesc">${String(c.desc)}</div>` : `<div class="coDesc" style="color:#64748b">No description/notes found.</div>`}
+                </div>
+              `).join("")}
+            </div>
+            ${coRows.length>50 ? `<div class="notice" style="margin-top:10px">Showing newest 50. (${coRows.length} total in timeframe.)</div>` : ``}`
+          : `<div class="notice">No Call Quality coachings found for this rep in the selected timeframe.</div>`
+        )
+    }
+  `;
+  el.mBody.appendChild(coBox);
+
+  const chartBox = document.createElement('div');
+  chartBox.className = 'box';
+  chartBox.innerHTML = `
+    <div class="boxHead">
+      <span>Call Quality Over Time</span>
+      <span class="pill mono">Trendline included</span>
+    </div>
+    <div class="chartWrap"><canvas id="mainChart"></canvas></div>
+    <div class="notice" style="margin-top:10px">
+      Chart respects Exclude zeros.
+    </div>
+  `;
+  el.mBody.appendChild(chartBox);
+
+  const asc = [...arr].sort((a,b)=> a.start - b.start);
+  const points = [];
+  const labels = [];
+  for(const r of asc){
+    if(excludeZero && r.score===0) continue;
+    labels.push(fmtDateTime(r.start));
+    points.push(r.score);
   }
 
-  function exportCoach(){
-    if(!S.lastCoachSumm.length){ toast("Nothing to export","Compute first."); return; }
-    const tf = getTimeframe();
-    const rows=[[
-      "Coach","Checklist_Count_Included","Checklist_Count_BeforeCutoff","Checklist_Avg_Days","Checklist_Max_Days","Checklist_Median_Days",
-      "Checklist_Le7_Count","Checklist_Le7_Pct","Checklist_Gt7_Count","Checklist_Gt7_Pct","Checklist_Avg_Gt7_Days",
-      "Cutoff_Enabled","Cutoff_Exclude_From_Index","Suggested_Exclude_From_Index",
-      "Checklist_Dock_Key","Checklist_Selected_Incidents","Doc_Key","Doc_Selected_Types","Doc_Count_In_Timeframe","Doc_Per_Week","Doc_Avg_Lag_Days","Doc_Median_Lag_Days","Doc_Top_Types"
-    ]];
+  const trendPts = points.map((y,i)=>({x:i,y})).filter(p=>Number.isFinite(p.y));
+  const fit = linearTrend(trendPts);
+  const trendLine = fit ? points.map((_,i)=> (fit.m*i + fit.b)) : points.map(_=>null);
 
-    [...S.lastCoachSumm].sort((a,b)=>a.coach.localeCompare(b.coach)).forEach(r=>{
-      const docArr = S.docLoaded ? (S.lastDocByCoachKey.get(r.coachKey) || []) : [];
-      const weeks = tf.weeks || 1;
-      const perWk = weeks > 0 ? (docArr.length/weeks) : 0;
-      const lags = docArr.map(x=>x.lagDays).filter(v=>isFinite(v));
-      const lagSt = stats(lags);
-
-      const typeCounts = new Map();
-      for(const dc of docArr){
-        for(const t of (dc.types || [])){
-          typeCounts.set(t, (typeCounts.get(t)||0)+1);
+  const ctx = chartBox.querySelector('#mainChart').getContext('2d');
+  chartMain = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels,
+      datasets:[
+        { label:'Score %', data: points, tension:.25, pointRadius:3, pointHoverRadius:5, borderWidth:2 },
+        { label:'Trend', data: trendLine, tension:0, pointRadius:0, borderWidth:2, borderDash:[6,6] }
+      ]
+    },
+    options:{
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{display:true},
+        tooltip:{
+          callbacks:{ label:(tt)=> Number.isFinite(tt.parsed.y) ? ` ${fmtPct2(tt.parsed.y)}` : ' —' }
         }
-      }
-      const top3 = [...typeCounts.entries()].sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0])).slice(0,3);
-      const top3Txt = top3.length ? top3.map(([t,n])=>`${t} (${n})`).join(" • ") : "";
-
-      rows.push([
-        r.coach,
-        r.count, r.baseCount,
-        isFinite(r.avg)?r.avg.toFixed(3):"",
-        isFinite(r.max)?r.max.toFixed(3):"",
-        isFinite(r.median)?r.median.toFixed(3):"",
-        r.le7,
-        isFinite(r.pctLe7)?r.pctLe7.toFixed(4):"",
-        r.gt7,
-        isFinite(r.pctGt7)?r.pctGt7.toFixed(4):"",
-        isFinite(r.avgGt7)?r.avgGt7.toFixed(4):"",
-        r.cutoffEnabled?"TRUE":"FALSE",
-        r.cutoffStart||"",
-        r.suggested||"",
-        S.checkLoaded ? (S.checkKey||"") : "",
-        [...S.incidentSelected].join(" | "),
-        S.docLoaded ? (S.docKey||"") : "",
-        [...S.docTypeSelected].join(" | "),
-        S.docLoaded ? docArr.length : "",
-        S.docLoaded ? perWk.toFixed(4) : "",
-        S.docLoaded && isFinite(lagSt.avg) ? lagSt.avg.toFixed(4) : "",
-        S.docLoaded && isFinite(lagSt.median) ? lagSt.median.toFixed(4) : "",
-        S.docLoaded ? top3Txt : ""
-      ]);
-    });
-
-    download(`coach_address_speed_plus_docs_${new Date().toISOString().slice(0,10)}.csv`, toCSV(rows));
-    toast("Exported","Coach CSV downloaded.");
-  }
-
-  function exportRep(){
-    if(!S.lastRepSumm.length){ toast("Nothing to export","Compute first."); return; }
-    const rows=[["Associate","Count","Avg_Days","Median_Days","Min_Days","Max_Days","Excluded"]];
-    [...S.lastRepSumm].sort((a,b)=>a.rep.localeCompare(b.rep)).forEach(r=>{
-      rows.push([
-        r.rep, r.count,
-        isFinite(r.avg)?r.avg.toFixed(3):"",
-        isFinite(r.median)?r.median.toFixed(3):"",
-        isFinite(r.min)?r.min.toFixed(3):"",
-        isFinite(r.max)?r.max.toFixed(3):"",
-        S.excludedReps.has(r.rep)?"TRUE":"FALSE"
-      ]);
-    });
-    download(`rep_address_speed_${new Date().toISOString().slice(0,10)}.csv`, toCSV(rows));
-    toast("Exported","Rep CSV downloaded.");
-  }
-
-  function autoLoadAll(silent=true){
-    refreshChecklistKeySelect();
-    refreshDocKeySelect();
-    if($("checkKeySel").value) loadChecklistDock({silent});
-    if($("docKeySel").value) loadDocumentedCoachings({silent});
-    recompute(!silent);
-  }
-
-  function resetAll(auto=true){
-    S.rawItems=[];
-    S.excludedReps=new Set();
-    S.coachCut=new Map();
-    S.checkKey=null;
-    S.checkLoaded=false;
-    S.docKey=null;
-    S.docLoaded=false;
-    S.docCoachingsAll=[];
-    S.docTypesAll=[];
-    S.incidentTypesAll=[];
-    S.docTypeSelected=new Set();
-    S.incidentSelected=new Set();
-    S.lastCoachSumm=[];
-    S.lastRepSumm=[];
-    S.lastByCoachAfterCut=new Map();
-    S.lastDocScope=[];
-    S.lastDocByCoachKey=new Map();
-    S.lastChecklistCoordSumm=[];
-    S.lastDocCoordSumm=[];
-
-    setCheckBadge("", "Not loaded");
-    setDocBadge("", "Not loaded");
-    $("actionMatch").value="Addressed";
-    $("coachTable").querySelector("tbody").innerHTML="";
-    $("repTable").querySelector("tbody").innerHTML="";
-    $("coordChecklistTable").querySelector("tbody").innerHTML="";
-    $("coordDocTable").querySelector("tbody").innerHTML="";
-    $("excludedChips").innerHTML="";
-    $("kRows").textContent="—";
-    $("kCoaches").textContent="—";
-    $("kDocRows").textContent="—";
-    $("kDocPerWk").textContent="—";
-    setBadge(false,"Checklist not loaded");
-    setStatus("", "Waiting…");
-
-    $("docTypeChipsMain").innerHTML = `<div class="mini">No doc types detected.</div>`;
-    $("incidentChipsMain").innerHTML = `<div class="mini">No incidents detected.</div>`;
-
-    $("tfMode").value = "all";
-    $("tfBasis").value = "created";
-    $("tfCustomRow").style.display = "none";
-    $("tfStart").value = "";
-    $("tfEnd").value = "";
-    paintTFHint();
-    setCoachSummaryExpanded(false);
-
-    if(auto){
-      autoLoadAll(true);
-      toast("Reset","Filters reset and docks auto-loaded.");
-    }
-  }
-
-  $("btnReset").addEventListener("click", ()=>resetAll(true));
-  $("btnRefreshChecklistKeys").addEventListener("click", ()=>{
-    refreshChecklistKeySelect();
-    if($("checkKeySel").value) loadChecklistDock({silent:false});
-    recompute(true);
-  });
-  $("btnRefreshDocKeys").addEventListener("click", ()=>{
-    refreshDocKeySelect();
-    if($("docKeySel").value) loadDocumentedCoachings({silent:false});
-    recompute(true);
-  });
-
-  $("checkKeySel").addEventListener("change", ()=>{
-    loadChecklistDock({silent:false});
-    recompute(true);
-  });
-  $("docKeySel").addEventListener("change", ()=>{
-    loadDocumentedCoachings({silent:false});
-    recompute(true);
-  });
-
-  $("btnDocSelectAll").addEventListener("click", ()=>{
-    S.docTypeSelected = new Set(S.docTypesAll);
-    paintMainDocTypeChips();
-    recompute(true);
-  });
-  $("btnDocSelectNone").addEventListener("click", ()=>{
-    S.docTypeSelected = new Set();
-    paintMainDocTypeChips();
-    recompute(true);
-  });
-  $("btnIncidentSelectAll").addEventListener("click", ()=>{
-    S.incidentSelected = new Set(S.incidentTypesAll);
-    paintIncidentChips();
-    recompute(true);
-  });
-  $("btnIncidentSelectNone").addEventListener("click", ()=>{
-    S.incidentSelected = new Set();
-    paintIncidentChips();
-    recompute(true);
-  });
-
-  $("btnRecompute").addEventListener("click", ()=>recompute(true));
-  $("btnExportCoach").addEventListener("click", exportCoach);
-  $("btnExportRep").addEventListener("click", exportRep);
-  $("btnCoachSummaryExpand").addEventListener("click", ()=> setCoachSummaryExpanded(!S.coachSummaryExpanded));
-
-  $("btnApplyAllCut").addEventListener("click", ()=>{
-    let applied=0;
-    for(const [coach, meta] of S.coachCut.entries()){
-      if(meta && meta.suggested){
-        meta.startIndex = meta.suggested;
-        meta.enabled = true;
-        S.coachCut.set(coach, meta);
-        applied++;
+      },
+      scales:{
+        y:{
+          suggestedMin:0, suggestedMax:1,
+          ticks:{ callback:(v)=> Number.isFinite(v) ? (v*100).toFixed(0)+'%' : v }
+        },
+        x:{ ticks:{ maxRotation:0, autoSkip:true, maxTicksLimit:10 } }
       }
     }
-    recompute(true);
-    toast("Cutoffs applied", `Applied suggested cutoffs for ${applied} coaches.`);
   });
 
-  $("btnClose").addEventListener("click", ()=> $("modalBack").style.display="none");
-  $("modalBack").addEventListener("click", e=>{ if(e.target === $("modalBack")) $("modalBack").style.display="none"; });
+  const tbl = document.createElement('div');
+  tbl.className = 'box';
+  tbl.innerHTML = `
+    <div class="boxHead">
+      <span>All Monitors (Most recent → oldest)</span>
+      <span class="pill mono">Includes Agent Has Read</span>
+    </div>
+    <div class="tblWrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Conversation ID</th>
+            <th>Genesys Evaluation ID</th>
+            <th>Interaction Start Time</th>
+            <th>Interaction Duration (H:MM:SS)</th>
+            <th>Evaluator</th>
+            <th>Monitor Type</th>
+            <th>Agent Has Read</th>
+            <th>Score %</th>
+            <th>Week</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${sortedDesc.map(r=>`
+            <tr>
+              <td class="mono">${r.conversationId ? String(r.conversationId) : '—'}</td>
+              <td class="mono">${(r.evalId||'—') ? String(r.evalId||'—') : '—'}</td>
+              <td class="mono">${fmtDateTime(r.start)}</td>
+              <td class="mono">${r.durationText || '—'}</td>
+              <td>${r.evaluator ? r.evaluator : '—'}</td>
+              <td>${isCoachEval(r) ? 'Coach' : 'QA'}</td>
+              <td class="mono">${r.agentHasRead===null ? '—' : r.agentHasRead}</td>
+              <td class="mono">${fmtPct2(r.score)}</td>
+              <td class="mono">${r.week||'—'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+  el.mBody.appendChild(tbl);
 
-  $("tabChecklist").addEventListener("click", ()=> setModalTab("checklist"));
-  $("tabDocs").addEventListener("click", ()=> setModalTab("docs"));
+  el.overlay.classList.add('show');
+  el.overlay.setAttribute('aria-hidden','false');
+}
 
-  $("tabMainResults").addEventListener("click", ()=>{
-    $("tabMainResults").classList.add("on");
-    $("tabCoordinatorResults").classList.remove("on");
-    $("paneMainResults").classList.add("on");
-    $("paneCoordinatorResults").classList.remove("on");
+function closeModal(){
+  destroyModalChart();
+  el.overlay.classList.remove('show');
+  el.overlay.setAttribute('aria-hidden','true');
+  el.mBody.innerHTML = '';
+}
+
+function openReviewerPopup(){
+  paintReviewerControls();
+  el.reviewerOverlay.classList.add('show');
+  el.reviewerOverlay.setAttribute('aria-hidden','false');
+}
+function closeReviewerPopup(){
+  el.reviewerOverlay.classList.remove('show');
+  el.reviewerOverlay.setAttribute('aria-hidden','true');
+}
+
+function openOptionsPopup(){
+  el.optionsOverlay.classList.add('show');
+  el.optionsOverlay.setAttribute('aria-hidden','false');
+}
+function closeOptionsPopup(){
+  el.optionsOverlay.classList.remove('show');
+  el.optionsOverlay.setAttribute('aria-hidden','true');
+}
+
+function buildDockKeyOptions(){
+  const keys = findDockKeysBySuffix(".dock.qa");
+  el.qaKeySel.innerHTML = '';
+  if(!keys.length){
+    const o = document.createElement('option');
+    o.value = '';
+    o.textContent = '(no .dock.qa found in localStorage)';
+    el.qaKeySel.appendChild(o);
+    return;
+  }
+  for(const k of keys){
+    const o = document.createElement('option');
+    o.value = k;
+    o.textContent = k;
+    el.qaKeySel.appendChild(o);
+  }
+
+  const saved = loadSettings();
+  if(saved.qaKey && keys.includes(saved.qaKey)) el.qaKeySel.value = saved.qaKey;
+  else el.qaKeySel.value = keys[0];
+}
+
+function buildCoKeyOptions(){
+  const keys = findCoachingKeys();
+  el.coKeySel.innerHTML = '';
+  if(!keys.length){
+    const o = document.createElement('option');
+    o.value = '';
+    o.textContent = '(no coaching dock key found)';
+    el.coKeySel.appendChild(o);
+    return;
+  }
+  for(const k of keys){
+    const o = document.createElement('option');
+    o.value = k;
+    o.textContent = k;
+    el.coKeySel.appendChild(o);
+  }
+  const saved = loadSettings();
+  if(saved.coKey && keys.includes(saved.coKey)) el.coKeySel.value = saved.coKey;
+  else el.coKeySel.value = keys[0];
+}
+
+function loadCoachings(){
+  CO_KEY = el.coKeySel.value || null;
+  saveSettings({ coKey: CO_KEY });
+
+  if(!CO_KEY){
+    coLoaded = false;
+    coRowsAll = [];
+    el.coStatusPill.textContent = 'Coachings: (none found)';
+    return;
+  }
+  const obj = loadDockObjByKey(CO_KEY);
+  const rows = canonicalizeCoachings(obj);
+  coRowsAll = rows;
+
+  coLoaded = rows.length>0;
+  el.coStatusPill.textContent = coLoaded
+    ? `Coachings: ${rows.length} Call Quality coaching(s)`
+    : `Coachings: 0 (key loaded, but no Call Quality rows detected)`;
+}
+
+function loadQA(){
+  QA_KEY = el.qaKeySel.value || null;
+  saveSettings({ qaKey: QA_KEY });
+
+  if(!QA_KEY){
+    qaLoaded = false;
+    qaRowsAll = [];
+    el.statusPill.textContent = 'QA: Upload needed (no dock key found)';
+    return;
+  }
+  const obj = loadDockObjByKey(QA_KEY);
+  const rows = canonicalizeQA(obj);
+  qaRowsAll = rows;
+
+  qaLoaded = rows.length>0;
+  el.statusPill.textContent = qaLoaded
+    ? `Loaded QA: ${rows.length} evaluation(s)`
+    : `QA: Upload needed (dock found but no QA rows detected)`;
+
+  buildTeamOptions(qaRowsAll);
+
+  const saved = loadSettings();
+  if(saved.team && [...el.teamSel.options].some(o=>o.value===saved.team)) el.teamSel.value = saved.team;
+  if(saved.tf && [...el.tfSel.options].some(o=>o.value===saved.tf)) el.tfSel.value = saved.tf;
+  if(saved.excludeZero !== undefined) el.excludeZero.checked = !!saved.excludeZero;
+  if(saved.search !== undefined) el.searchInp.value = saved.search;
+
+  if(el.tfSel.value === 'custom'){
+    if(saved.from) el.fromInp.value = saved.from;
+    if(saved.to) el.toInp.value = saved.to;
+  }
+
+  recomputeReviewerScope();
+}
+
+function render(){
+  if(qaLoaded){
+    recomputeReviewerScope();
+  }
+
+  const rows = filterRows();
+  paintSummary(rows);
+  paintReviewerControls();
+  paintCards(rows);
+
+  if(!qaLoaded){
+    el.empty.style.display = '';
+    el.empty.textContent = 'QA: Upload needed. (No QA data detected in localStorage dock.)';
+  } else if(!rows.length){
+    el.empty.style.display = '';
+    el.empty.textContent = 'No evaluations match the current filters or active QA reviewer list.';
+  } else {
+    el.empty.style.display = 'none';
+  }
+}
+
+function setSortMode(mode){
+  sortMode = mode;
+  saveSettings({ sortMode: mode });
+
+  document.querySelectorAll(".sortBtn").forEach(b=>{
+    b.classList.toggle("active", b.dataset.sort === mode);
   });
-  $("tabCoordinatorResults").addEventListener("click", ()=>{
-    $("tabCoordinatorResults").classList.add("on");
-    $("tabMainResults").classList.remove("on");
-    $("paneCoordinatorResults").classList.add("on");
-    $("paneMainResults").classList.remove("on");
-  });
 
-  [
-    "actionMatch","cbNeg","cbMax","maxDays","cbPct","pctKeep","sortCoach","sortRep","cutWin","cutPre","cutPost",
-    "tfMode","tfBasis","tfStart","tfEnd"
-  ].forEach(id=>{
-    $(id).addEventListener("change", ()=>recompute(false));
-  });
+  const labelMap = {
+    count: "Most evals",
+    avg: "Avg score (high→low)",
+    zeros: "Most 0s",
+    trend: "Trend (neg→pos)",
+    coachings: "Coachings (low→high)",
+    coachingsWeighted: "Weighted coachings (low→high)",
+    unreviewed: "Most unreviewed"
+  };
+  el.sortPill.textContent = `Sort: ${labelMap[mode] || mode}`;
+  render();
+}
 
-  $("tfMode").addEventListener("change", ()=>{
-    $("tfCustomRow").style.display = $("tfMode").value === "custom" ? "" : "none";
-    recompute(true);
-  });
+el.loadBtn.addEventListener('click', ()=>{ loadQA(); render(); });
+el.reloadCoBtn.addEventListener('click', ()=>{ loadCoachings(); render(); });
+el.coKeySel.addEventListener('change', ()=>{ loadCoachings(); render(); });
 
-  setCoachSummaryExpanded(false);
-  autoLoadAll(true);
+el.tfSel.addEventListener('change', ()=>{
+  saveSettings({ tf: el.tfSel.value });
+  render();
+});
+el.teamSel.addEventListener('change', ()=>{ saveSettings({ team: el.teamSel.value }); render(); });
+el.excludeZero.addEventListener('change', ()=>{ saveSettings({ excludeZero: el.excludeZero.checked }); render(); });
+el.searchInp.addEventListener('input', ()=>{ saveSettings({ search: el.searchInp.value }); render(); });
+el.fromInp.addEventListener('change', ()=>{ saveSettings({ from: el.fromInp.value }); render(); });
+el.toInp.addEventListener('change', ()=>{ saveSettings({ to: el.toInp.value }); render(); });
+el.refreshBtn.addEventListener('click', render);
+
+document.querySelectorAll(".sortBtn").forEach(b=>{
+  b.addEventListener("click", ()=> setSortMode(b.dataset.sort));
+});
+
+el.reviewersBtn.addEventListener('click', openReviewerPopup);
+el.reviewerClose.addEventListener('click', closeReviewerPopup);
+el.reviewerOverlay.addEventListener('click', (e)=>{ if(e.target === el.reviewerOverlay) closeReviewerPopup(); });
+
+el.optionsBtn.addEventListener('click', openOptionsPopup);
+el.optionsClose.addEventListener('click', closeOptionsPopup);
+el.optionsOverlay.addEventListener('click', (e)=>{ if(e.target === el.optionsOverlay) closeOptionsPopup(); });
+
+el.reviewerList.addEventListener('click', (e)=>{
+  const btn = e.target.closest('[data-remove-reviewer]');
+  if(!btn) return;
+  const name = btn.getAttribute('data-remove-reviewer');
+  activeQaReviewers = activeQaReviewers.filter(x => x !== name);
+  persistReviewerState();
+  render();
+});
+
+el.resetReviewersBtn.addEventListener('click', ()=>{
+  activeQaReviewers = [...canonicalQaReviewers];
+  persistReviewerState();
+  render();
+});
+
+el.cards.addEventListener('click', (e)=>{
+  const card = e.target.closest('.repCard');
+  if(!card) return;
+  const pk = card.dataset.rep;
+  if(pk) openModal(pk);
+});
+
+el.mClose.addEventListener('click', closeModal);
+el.overlay.addEventListener('click', (e)=>{ if(e.target === el.overlay) closeModal(); });
+
+document.addEventListener('keydown', (e)=>{
+  if(e.key==='Escape' && el.overlay.classList.contains('show')) closeModal();
+  if(e.key==='Escape' && el.reviewerOverlay.classList.contains('show')) closeReviewerPopup();
+  if(e.key==='Escape' && el.optionsOverlay.classList.contains('show')) closeOptionsPopup();
+});
+
+(function boot(){
+  buildDockKeyOptions();
+  buildCoKeyOptions();
+
+  const s = loadSettings();
+  if(s.tf && [...el.tfSel.options].some(o=>o.value===s.tf)) el.tfSel.value = s.tf;
+  if(s.from) el.fromInp.value = s.from;
+  if(s.to) el.toInp.value = s.to;
+  if(s.excludeZero !== undefined) el.excludeZero.checked = !!s.excludeZero;
+  if(s.search !== undefined) el.searchInp.value = s.search;
+  if(s.sortMode) sortMode = s.sortMode;
+
+  loadQA();
+  loadCoachings();
+  setSortMode(sortMode || "count");
 })();
 </script>
+
 </body>
 </html>
+
+
+
