@@ -1076,6 +1076,15 @@
       u.lastPosY = u.y;
       u.lastAng = u.ang;
       u.brace = 0;
+      const liveFriendlies = game.units.filter(f => !f.dead && f.placed);
+      if (u.type.includes("Phalanx") && liveFriendlies.length) {
+        const target = nearestEnemy(u, liveFriendlies);
+        if (target) {
+          const dir = cardinalDir(target.x - u.x, target.y - u.y);
+          u.ang = Math.atan2(dir.y, dir.x);
+          u.desiredTurnAngle = u.ang;
+        }
+      }
     }
 
     for (const u of game.units.filter(x => !x.dead && x.placed)) {
@@ -1368,6 +1377,7 @@
     const desired = Math.atan2(desiredY - unit.y, desiredX - unit.x);
     const headingDelta = Math.abs(angleDiff(desired, unit.ang));
     rotateToward(unit, desiredX, desiredY, dt);
+    const postTurnDelta = Math.abs(angleDiff(desired, unit.ang));
 
     let speedMod = 1;
     if (unit.type.includes("Phalanx")) {
@@ -1377,6 +1387,8 @@
     }
 
     const s = speed * speedMod * terrainSpeedMod(unit, unit.x, unit.y);
+    const mustStopToTurn = postTurnDelta > 0.18 || unit.turnDelay > 0;
+    if (mustStopToTurn) return;
     const step = s * dt;
     const nx = unit.x + dir.x * step;
     const ny = unit.y + dir.y * step;
@@ -1658,8 +1670,12 @@
     const unitHealth = clamp(unit.health / unit.maxHealth, 0.28, 1.15);
     const targetHealth = clamp(target.health / target.maxHealth, 0.28, 1.15);
 
+    const lastAttackPower = unit.lastAttackPower || 0;
     let atkPush = unit.push * unitMorale * unitHealth * rand(0.85,1.15);
     let defPush = target.push * targetMorale * targetHealth * rand(0.85,1.15);
+    const attackPowerScale = clamp(1 + lastAttackPower / 42, 0.85, 2.1);
+    atkPush *= attackPowerScale;
+    defPush *= clamp(1 + lastAttackPower / 130, 0.95, 1.25);
     const terrAtk = terrainCombatMod(unit, target);
     const terrDef = terrainCombatMod(target, unit);
     atkPush *= terrAtk.atk;
@@ -1673,7 +1689,7 @@
     unit.multiAngle = pressureOnTarget.multi;
 
     if (unit.type === "Cavalry" && unit.cavalryChargeReady) {
-      const chargeAmp = 1.65 + unitMorale * 0.45 + (unit.push / 40) * 0.35;
+      const chargeAmp = 2.05 + unitMorale * 0.55 + (unit.push / 40) * 0.45;
       const badFront = target.type.includes("Phalanx") && target.brace > 0.45 && flankFactor(unit, target) <= 1.02;
       atkPush *= chargeAmp * terrAtk.charge * (badFront ? 0.48 : 1);
       unit.cavalryChargeReady = false;
@@ -1709,8 +1725,11 @@
 
     const pushPower = clamp(Math.abs(delta) / 30, 0.1, 1.6);
     const pushAmt = clamp(delta * 0.05, -8, 8) * dt * 20;
+    const recoil = clamp(pushAmt * (0.16 + clamp(defPush / (atkPush + 0.01), 0.2, 1.25) * 0.12), -4.8, 4.8);
     target.x += nx * pushAmt;
     target.y += ny * pushAmt;
+    unit.x -= nx * recoil;
+    unit.y -= ny * recoil;
 
     if (Math.abs(pushAmt) > 3.3) {
       target.y -= Math.min(7, Math.abs(pushAmt) * 0.22);
@@ -1718,6 +1737,8 @@
 
     target.x = clamp(target.x, FIELD_X + 8, FIELD_X + FIELD_W - 8);
     target.y = clamp(target.y, FIELD_Y + 8, FIELD_Y + FIELD_H - 8);
+    unit.x = clamp(unit.x, FIELD_X + 8, FIELD_X + FIELD_W - 8);
+    unit.y = clamp(unit.y, FIELD_Y + 8, FIELD_Y + FIELD_H - 8);
 
     const moraleLoss = Math.abs(pushAmt) * (0.12 + pushPower * 0.2);
     const pushDamage = Math.abs(pushAmt) * (0.05 + pushPower * 0.14);
@@ -1786,6 +1807,7 @@
       }
     }
 
+    unit.lastAttackPower = dmg * (1 + moraleHit / 16);
     target.health -= dmg;
     target.morale -= moraleHit / terrDef.morale;
     unit.cooldown = unit.attackRange > 80 ? rand(0.65,0.95) : rand(0.85,1.15);
@@ -1870,15 +1892,28 @@
         const minD = a.radius + b.radius + 4;
         if (d < minD) {
           const overlap = (minD - d) * 0.5;
-          const nx = dx / d;
-          const ny = dy / d;
-          a.x -= nx * overlap;
-          a.y -= ny * overlap;
-          b.x += nx * overlap;
-          b.y += ny * overlap;
+          const axis = Math.abs(dx) >= Math.abs(dy) ? {x:Math.sign(dx)||1,y:0} : {x:0,y:Math.sign(dy)||1};
+          a.x -= axis.x * overlap;
+          a.y -= axis.y * overlap;
+          b.x += axis.x * overlap;
+          b.y += axis.y * overlap;
         }
       }
     }
+  }
+
+  function flankApproachPoint(unit, target) {
+    if (!target) return null;
+    const toTargetX = target.x - unit.x;
+    const toTargetY = target.y - unit.y;
+    const card = cardinalDir(toTargetX, toTargetY);
+    const sideAxis = card.x !== 0 ? {x:0,y:1} : {x:1,y:0};
+    const sideSign = (unit.id % 2 === 0 ? 1 : -1);
+    const lateral = (target.radius + unit.radius + 26) * sideSign;
+    return {
+      x: target.x + sideAxis.x * lateral,
+      y: target.y + sideAxis.y * lateral
+    };
   }
 
   function updateUnit(unit, allies, enemies, dt) {
@@ -1976,7 +2011,10 @@
       if (unit.type.includes("Phalanx") && !unit.engaged) speed *= clamp(unit.cohesion, 0.85, 1.06);
       if (unit.type === "Cavalry" && unit.chargeCommitTimer > 0) speed *= 1.08;
       speed *= (1 - unit.fatigue * 0.18);
-      moveToward(unit, target.x, target.y, speed, dt);
+      const flank = flankFactor(unit, target);
+      const shouldFlank = flank > 1.02 || (unit.type === "Cavalry" && d > unit.attackRange + target.radius + 22);
+      const approach = shouldFlank ? flankApproachPoint(unit, target) : null;
+      moveToward(unit, approach ? approach.x : target.x, approach ? approach.y : target.y, speed, dt);
     }
 
     unit.lastPosX = unit.x;
