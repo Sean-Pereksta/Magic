@@ -856,6 +856,18 @@
   .metricWarn{ background:rgba(245,158,11,.16); color:#92400e; font-weight:1000; border-radius:10px; padding:4px 8px; display:inline-block; }
   .metricBad{ background:rgba(220,38,38,.14); color:#991b1b; font-weight:1000; border-radius:10px; padding:4px 8px; display:inline-block; }
   .metricMuted{ background:#f1f5f9; color:#64748b; font-weight:900; border-radius:10px; padding:4px 8px; display:inline-block; }
+  .gradePill{ display:inline-block; border-radius:999px; padding:4px 10px; font-weight:1000; border:1px solid transparent; }
+  .gradeA{ background:rgba(22,163,74,.14); color:#166534; border-color:rgba(22,163,74,.35); }
+  .gradeB{ background:rgba(20,184,166,.14); color:#0f766e; border-color:rgba(20,184,166,.35); }
+  .gradeC{ background:rgba(245,158,11,.16); color:#92400e; border-color:rgba(245,158,11,.35); }
+  .gradeD{ background:rgba(249,115,22,.16); color:#9a3412; border-color:rgba(249,115,22,.35); }
+  .gradeF{ background:rgba(220,38,38,.14); color:#991b1b; border-color:rgba(220,38,38,.35); }
+  .scoreTint{ display:inline-block; padding:3px 8px; border-radius:8px; font-weight:950; }
+  .scoreA{ background:rgba(22,163,74,.10); color:#166534; }
+  .scoreB{ background:rgba(20,184,166,.10); color:#0f766e; }
+  .scoreC{ background:rgba(245,158,11,.12); color:#92400e; }
+  .scoreD{ background:rgba(249,115,22,.12); color:#9a3412; }
+  .scoreF{ background:rgba(220,38,38,.10); color:#991b1b; }
   .miniTbl{ width:100%; border-collapse:collapse; margin-top:8px; }
   .miniTbl th,.miniTbl td{ border:1px solid var(--line); padding:6px 8px; font-size:12px; text-align:left; }
 </style>
@@ -1151,7 +1163,7 @@
         <thead>
           <tr>
             <th>Team</th><th>Grade</th><th>Score</th><th>Adjusted Grade</th><th>Adjusted Score</th><th>Drop</th>
-            <th>False Comfort</th><th>Corrective Log</th><th>Coaching Conversion (Average trend from these coachings)</th>
+            <th>False Comfort</th><th>Corrective Log</th><th>Coaching Conversion (Average trend from these coachings)</th><th>Overall Standing</th>
           </tr>
         </thead>
         <tbody id="teamReportBody"></tbody>
@@ -4489,31 +4501,114 @@ function computeFalseComfortMetric(repSummaries){
   const label = level === 'bad' ? 'False Comfort Risk' : level === 'warn' ? 'Watch' : 'Healthy';
   return { score, level, label, totalCoachings, indirectPct, directPct, belowNoDirectPct };
 }
-function computeCorrectiveConcernMetric(repSummaries, goalFrac){
-  const reps = repSummaries || [];
-  const concerns = [];
-  for(const r of reps){
-    const redWeeks = Number(r.belowN || 0);
-    const avg = Number(r.avgKpi || 0);
-    const coachings = Number(r.coachTotal || 0);
-    const correctives = Number(r.correctiveTotal || 0);
-    const lowAverage = Number.isFinite(goalFrac) && Number.isFinite(avg) ? avg < goalFrac : false;
-    const repeatedRed = redWeeks >= 2;
-    const highCoaching = coachings >= 3;
-    const noCorrective = correctives === 0;
-    const hitCount = [repeatedRed, lowAverage, highCoaching, noCorrective].filter(Boolean).length;
-    const status = (repeatedRed && lowAverage && highCoaching && noCorrective) ? 'Major Corrective Concern'
-      : (hitCount >= 3 && noCorrective) ? 'Needs Review'
-      : 'No Corrective Concern';
-    concerns.push({ repName:r.repName, avgKpi:avg, redWeeks, coachings, correctives, status, repeatedRed, highCoaching, noCorrective });
+function getRedLinkedCoachingMoments(repSummary, repCoachings, weeks, goalFrac){
+  const weekIdx = new Map((weeks || []).map((wk, idx)=>[wk, idx]));
+  const redWeekSet = new Set();
+  for(let i=0;i<((repSummary?.cells||[]).length);i++){
+    const c = repSummary.cells[i];
+    const wk = (weeks || [])[i];
+    if(!wk || !c?.hasData || !Number.isFinite(c?.v)) continue;
+    if(Number.isFinite(goalFrac) && c.v < goalFrac) redWeekSet.add(wk);
   }
-  const concernCount = concerns.filter(x=>x.status !== 'No Corrective Concern').length;
-  const repeatedNoCorrective = concerns.filter(x=>x.repeatedRed && x.noCorrective).length;
-  const highCoachingNoCorrective = concerns.filter(x=>x.highCoaching && x.noCorrective).length;
-  const concernPct = reps.length ? (concernCount / reps.length) : 0;
-  const level = concernPct >= 0.35 ? 'bad' : concernPct >= 0.16 ? 'warn' : 'good';
-  const label = level === 'bad' ? 'Major Corrective Gap' : level === 'warn' ? 'Some Missing Correctives' : 'Clear';
-  return { level, label, concernCount, repeatedNoCorrective, highCoachingNoCorrective, concerns };
+  const sortedCoachings = (repCoachings || [])
+    .filter(c=>weekIdx.has(c.wk))
+    .sort((a,b)=>(weekIdx.get(a.wk)-weekIdx.get(b.wk)) || ((a.date?.getTime?.()||0)-(b.date?.getTime?.()||0)));
+  const linked = [];
+  const seen = new Set();
+  let inRedState = false;
+  for(const c of sortedCoachings){
+    const wk = c.wk;
+    if(redWeekSet.has(wk)) inRedState = true;
+    const isRedLinked = redWeekSet.has(wk) || inRedState;
+    if(!isRedLinked) continue;
+    const dateKey = c.date instanceof Date ? ymd(c.date) : String(c.date || '');
+    const momentKey = `${wk}|${dateKey}`;
+    if(seen.has(momentKey)) continue;
+    seen.add(momentKey);
+    linked.push({ wk, date:c.date, coaching:c });
+  }
+  return { linkedMoments: linked, redWeekSet, weekIdx };
+}
+function repNeedsCorrective(repSummary, repCoachings, weeks, goalFrac){
+  const { linkedMoments, redWeekSet, weekIdx } = getRedLinkedCoachingMoments(repSummary, repCoachings, weeks, goalFrac);
+  const redIdxList = Array.from(redWeekSet).map(wk=>weekIdx.get(wk)).filter(Number.isFinite).sort((a,b)=>a-b);
+  const third = linkedMoments[2];
+  const thirdIdx = third ? weekIdx.get(third.wk) : -1;
+  const laterRedWeek = redIdxList.some(idx=>idx > thirdIdx);
+  return {
+    needsCorrective: linkedMoments.length >= 3 && laterRedWeek,
+    redLinkedCoachingMoments: linkedMoments.length,
+    laterRedWeek,
+    redWeeks: redWeekSet.size
+  };
+}
+function computeTeamCorrectiveCoverage(repSummaries, weeks, goalFrac){
+  const weekIdx = new Map((weeks || []).map((wk, idx)=>[wk, idx]));
+  const flagged = [];
+  for(const s of (repSummaries || [])){
+    const repCoachingsAll = (coachingByRepKey.get(s.repKey) || []).filter(c => weekIdx.has(c.wk) && !isWeakCoachingRow(c));
+    const correctiveEval = repNeedsCorrective(s, repCoachingsAll, weeks, goalFrac);
+    const isOnCorrective = Number(s.correctiveTotal || 0) > 0;
+    if(correctiveEval.needsCorrective){
+      flagged.push({
+        repName: s.repName,
+        redLinkedCoachingMoments: correctiveEval.redLinkedCoachingMoments,
+        laterRedWeek: correctiveEval.laterRedWeek,
+        isOnCorrective,
+        avgKpi: Number(s.avgKpi || 0),
+        trend: Number(s.trendTotal || 0),
+        directCoachings: Number(s.advisory?.advisoryMeaningfulCoachings || 0),
+        indirectCoachings: Number(s.advisory?.advisoryWeakCoachings || 0)
+      });
+    }
+  }
+  const needsCorrectiveCount = flagged.length;
+  const neededAndAlreadyCorrectiveCount = flagged.filter(x=>x.isOnCorrective).length;
+  const correctiveCoveragePct = needsCorrectiveCount ? (neededAndAlreadyCorrectiveCount / needsCorrectiveCount) : null;
+  const missingCount = Math.max(0, needsCorrectiveCount - neededAndAlreadyCorrectiveCount);
+  const level = needsCorrectiveCount === 0 ? 'good'
+    : correctiveCoveragePct >= 0.75 ? 'good'
+    : correctiveCoveragePct >= 0.5 ? 'warn'
+    : 'bad';
+  const label = needsCorrectiveCount === 0 ? 'Clear'
+    : correctiveCoveragePct >= 0.75 ? 'Well Covered'
+    : correctiveCoveragePct >= 0.5 ? 'Partial Coverage'
+    : 'Coverage Gap';
+  return { flagged, needsCorrectiveCount, neededAndAlreadyCorrectiveCount, correctiveCoveragePct, missingCount, level, label };
+}
+function computeDirectIndirectHealth(repSummaries, correctiveCoverage){
+  const reps = repSummaries || [];
+  const directCoachingCount = reps.reduce((s,r)=>s + Number(r.advisory?.advisoryMeaningfulCoachings || 0), 0);
+  const indirectCoachingCount = reps.reduce((s,r)=>s + Number(r.advisory?.advisoryWeakCoachings || 0), 0);
+  const total = directCoachingCount + indirectCoachingCount;
+  const directPct = total ? directCoachingCount / total : 0;
+  const indirectPct = total ? indirectCoachingCount / total : 0;
+  const flagged = correctiveCoverage?.flagged || [];
+  const flaggedDirect = flagged.reduce((s,r)=>s + Number(r.directCoachings || 0), 0);
+  const flaggedIndirect = flagged.reduce((s,r)=>s + Number(r.indirectCoachings || 0), 0);
+  const flaggedTotal = flaggedDirect + flaggedIndirect;
+  const flaggedDirectPct = flaggedTotal ? flaggedDirect / flaggedTotal : 0.5;
+  const score = clamp01((directPct * 0.75) + (flaggedDirectPct * 0.25));
+  const level = score >= 0.62 ? 'good' : score >= 0.45 ? 'warn' : 'bad';
+  const label = level === 'good' ? 'Direct-led' : level === 'warn' ? 'Mixed' : 'Indirect-heavy';
+  return { directCoachingCount, indirectCoachingCount, directPct, indirectPct, flaggedDirectPct, score, level, label };
+}
+function computeOverallStanding(teamMetrics){
+  const adjusted = clamp01(Number(teamMetrics.adjustedScore || 0) / 100);
+  const correctiveCoveragePct = teamMetrics.correctiveCoveragePct;
+  const correctiveScore = correctiveCoveragePct == null ? 0.7 : clamp01(correctiveCoveragePct);
+  const directScore = clamp01(Number(teamMetrics.directIndirectHealth?.score || 0));
+  const overallStandingScore = clamp01((adjusted * 0.5) + (correctiveScore * 0.28) + (directScore * 0.22));
+  let overallStandingLabel = 'Mixed';
+  let overallStandingClass = 'warn';
+  if(overallStandingScore >= 0.82){ overallStandingLabel = 'Excellent'; overallStandingClass = 'good'; }
+  else if(overallStandingScore >= 0.68){ overallStandingLabel = 'Healthy'; overallStandingClass = 'good'; }
+  else if(overallStandingScore >= 0.5){ overallStandingLabel = 'Mixed'; overallStandingClass = 'warn'; }
+  else if(overallStandingScore >= 0.34){ overallStandingLabel = 'Concern'; overallStandingClass = 'warn'; }
+  else { overallStandingLabel = 'High Concern'; overallStandingClass = 'bad'; }
+  const coverageTxt = correctiveCoveragePct == null ? 'Corr —' : `Corr ${fmtPct0(correctiveCoveragePct)}`;
+  const summary = `Adj ${teamMetrics.adjustedGrade} | ${coverageTxt} | ${teamMetrics.directIndirectHealth?.label || 'Mixed'}`;
+  return { overallStandingScore, overallStandingLabel, overallStandingClass, summary };
 }
 function computeCoachingConversion(repSummaries){
   let directN=0,directDelta=0,indirectN=0,indirectDelta=0;
@@ -4563,15 +4658,38 @@ function computeTeamReportRow(teamName, weeks, goalFrac, oppGateKey, oppMinN, mi
   const dropLabel = dropPct >= 35 ? 'Major Drop' : dropPct >= 20 ? 'Moderate Drop' : 'Stable';
   const dropLevel = dropPct >= 35 ? 'bad' : dropPct >= 20 ? 'warn' : 'good';
   const falseComfort = computeFalseComfortMetric(repSummaries);
-  const correctiveLog = computeCorrectiveConcernMetric(repSummaries, goalFrac);
+  const correctiveLog = computeTeamCorrectiveCoverage(repSummaries, weeks, goalFrac);
+  const directIndirectHealth = computeDirectIndirectHealth(repSummaries, correctiveLog);
   const conversion = computeCoachingConversion(repSummaries);
-  return { teamName, repSummaries, grade, originalScore, adjustedScore, adjustedGrade, dropPct, dropLabel, dropLevel, falseComfort, correctiveLog, conversion };
+  const overallStanding = computeOverallStanding({ adjustedScore, adjustedGrade, correctiveCoveragePct:correctiveLog.correctiveCoveragePct, directIndirectHealth });
+  return {
+    teamName, repSummaries, grade, originalScore, adjustedScore, adjustedGrade, dropPct, dropLabel, dropLevel,
+    falseComfort, correctiveLog, conversion, directIndirectHealth,
+    needsCorrectiveCount: correctiveLog.needsCorrectiveCount,
+    neededAndAlreadyCorrectiveCount: correctiveLog.neededAndAlreadyCorrectiveCount,
+    correctiveCoveragePct: correctiveLog.correctiveCoveragePct,
+    directCoachingCount: directIndirectHealth.directCoachingCount,
+    indirectCoachingCount: directIndirectHealth.indirectCoachingCount,
+    directPct: directIndirectHealth.directPct,
+    indirectPct: directIndirectHealth.indirectPct,
+    overallStandingLabel: overallStanding.overallStandingLabel,
+    overallStandingScore: overallStanding.overallStandingScore,
+    overallStandingClass: overallStanding.overallStandingClass,
+    overallStandingSummary: overallStanding.summary
+  };
 }
 function metricClass(level){
   if(level === 'bad') return 'metricBad';
   if(level === 'warn') return 'metricWarn';
   if(level === 'good') return 'metricGood';
   return 'metricMuted';
+}
+function gradeStyleClass(grade){
+  if(grade === 'A') return 'gradeA';
+  if(grade === 'B') return 'gradeB';
+  if(grade === 'C') return 'gradeC';
+  if(grade === 'D') return 'gradeD';
+  return 'gradeF';
 }
 function renderTeamReportView(ctx){
   const { weeks, goalFrac, oppGateKey, oppMinN, minCovFrac, sd, ed } = ctx;
@@ -4581,7 +4699,7 @@ function renderTeamReportView(ctx){
   els.teamReportHint.textContent = `${teamsForMode.length} teams • ${mmddyy(sd)} → ${mmddyy(ed)} • ${weeks.length}w`;
   els.teamReportPills.innerHTML = `<span class="pill">Drop color: green &lt;20%, yellow 20–34.9%, red 35%+</span><span class="pill">Filters match current KPI / date / coaching / checklist settings</span>`;
   if(!rows.length){
-    els.teamReportBody.innerHTML = `<tr><td colspan="9" class="mono" style="color:var(--muted);font-weight:900">No team rows for current mode.</td></tr>`;
+    els.teamReportBody.innerHTML = `<tr><td colspan="10" class="mono" style="color:var(--muted);font-weight:900">No team rows for current mode.</td></tr>`;
     return;
   }
   rows.sort((a,b)=>b.originalScore-a.originalScore);
@@ -4590,23 +4708,28 @@ function renderTeamReportView(ctx){
     const expandedRows = r.repSummaries.filter(s=>
       s.belowUncoachedWeeks>0 || ['High','Medium'].includes(s.advisory?.oneToOneNeed) || (s.advisory?.checklistHitsWithoutNearbyMeaningfulCoaching||0)>0
     ).sort((a,b)=>(ONE_TO_ONE_NEED_RANK[b.advisory?.oneToOneNeed]||0)-(ONE_TO_ONE_NEED_RANK[a.advisory?.oneToOneNeed]||0));
-    const concernByRep = new Map((r.correctiveLog.concerns || []).map(x=>[x.repName, x]));
+    const correctiveFlagged = r.correctiveLog.flagged || [];
     const expandedHtml = expanded ? `
-      <tr class="teamExpandRow"><td colspan="9">
+      <tr class="teamExpandRow"><td colspan="10">
         <div class="mono" style="margin-bottom:6px;color:var(--muted);font-weight:900">
-          Corrective concerns: ${r.correctiveLog.concernCount} • repeated red + no corrective: ${r.correctiveLog.repeatedNoCorrective} • high coaching + no corrective: ${r.correctiveLog.highCoachingNoCorrective}
+          Corrective review: ${r.needsCorrectiveCount} should • ${r.neededAndAlreadyCorrectiveCount} on corrective • ${r.correctiveCoveragePct==null?'—':fmtPct0(r.correctiveCoveragePct)} covered
         </div>
         <table class="miniTbl"><thead><tr><th>Rep</th><th>Avg KPI %</th><th>Trend</th><th>1:1 Need</th><th>Next Step</th><th>Concern</th><th>Coachings</th><th>Correctives</th>${teamReportShowNoCorrectiveFlag?'<th>No Corrective Concern Flag</th>':''}</tr></thead>
         <tbody>${expandedRows.map(s=>{
-          const concern = concernByRep.get(s.repName) || { status:'No Corrective Concern', redWeeks:(s.belowN||0), coachings:(s.coachTotal||0), correctives:(s.correctiveTotal||0) };
-          const statusPill = concern.status === 'Major Corrective Concern' ? '<span class="metricBad">Major Corrective Concern</span>'
-            : concern.status === 'Needs Review' ? '<span class="metricWarn">Needs Review</span>'
+          const concern = correctiveFlagged.find(x=>x.repName===s.repName);
+          const statusPill = concern ? '<span class="metricBad">Corrective Needed</span>'
             : '<span class="metricGood">No Corrective Concern</span>';
-          const noCorrectiveFlag = concern.status === 'Major Corrective Concern' ? 'Concern' : concern.status === 'Needs Review' ? 'Review' : '—';
-          return `<tr><td><button class="repNameBtn" data-rep="${escAttr(s.repName)}">${escAttr(s.repName)}</button></td><td>${fmtPct1(s.avgKpi)}</td><td class="${trendClass(s.trendTotal)}">${escAttr(fmtPp(s.trendTotal))}</td><td>${escAttr(s.advisory?.oneToOneNeed || 'None')}</td><td>${escAttr(s.advisory?.nextStep || 'Monitor trend')}</td><td>${statusPill}<div class="mono">Red weeks: ${concern.redWeeks} • Coachings: ${concern.coachings} • Correctives: ${concern.correctives}</div></td><td>Direct: ${Number(s.advisory?.advisoryMeaningfulCoachings||0)}, Indirect: ${Number(s.advisory?.advisoryWeakCoachings||0)}</td><td>${concern.correctives}</td>${teamReportShowNoCorrectiveFlag?`<td>${escAttr(noCorrectiveFlag)}</td>`:''}</tr>`;
+          const noCorrectiveFlag = concern ? (concern.isOnCorrective ? 'Covered' : 'Concern') : '—';
+          return `<tr><td><button class="repNameBtn" data-rep="${escAttr(s.repName)}">${escAttr(s.repName)}</button></td><td>${fmtPct1(s.avgKpi)}</td><td class="${trendClass(s.trendTotal)}">${escAttr(fmtPp(s.trendTotal))}</td><td>${escAttr(s.advisory?.oneToOneNeed || 'None')}</td><td>${escAttr(s.advisory?.nextStep || 'Monitor trend')}</td><td>${statusPill}<div class="mono">Red weeks: ${Number(s.belowN||0)} • Red-linked coachings: ${Number(concern?.redLinkedCoachingMoments || 0)} • Later red: ${concern?.laterRedWeek?'Yes':'No'}</div></td><td>Direct: ${Number(s.advisory?.advisoryMeaningfulCoachings||0)}, Indirect: ${Number(s.advisory?.advisoryWeakCoachings||0)}</td><td>${Number(s.correctiveTotal||0)}</td>${teamReportShowNoCorrectiveFlag?`<td>${escAttr(noCorrectiveFlag)}</td>`:''}</tr>`;
         }).join('') || `<tr><td colspan="${teamReportShowNoCorrectiveFlag?9:8}" class="mono" style="color:var(--muted);font-weight:900">No reps currently meet expansion criteria.</td></tr>`}</tbody></table>
+        <div class="mono" style="margin-top:10px;color:var(--muted);font-weight:900">Flagged reps for corrective review</div>
+        <table class="miniTbl"><thead><tr><th>Rep</th><th>Red-linked Coachings</th><th>Later Red Week</th><th>On Corrective</th><th>Avg KPI</th><th>Trend</th></tr></thead>
+        <tbody>${correctiveFlagged.map(f=>`<tr><td><button class="repNameBtn" data-rep="${escAttr(f.repName)}">${escAttr(f.repName)}</button></td><td>${f.redLinkedCoachingMoments}</td><td>${f.laterRedWeek?'Yes':'No'}</td><td>${f.isOnCorrective?'Yes':'No'}</td><td>${fmtPct1(f.avgKpi)}</td><td class="${trendClass(f.trend)}">${escAttr(fmtPp(f.trend))}</td></tr>`).join('') || '<tr><td colspan="6" class="mono" style="color:var(--muted);font-weight:900">No reps flagged by corrective-needed logic in this window.</td></tr>'}</tbody></table>
       </td></tr>` : '';
-    return `<tr class="teamRowHead" data-team-row="${escAttr(r.teamName)}"><td>${escAttr(r.teamName)} ${expanded?'▾':'▸'}</td><td>${r.grade}</td><td>${r.originalScore.toFixed(1)}</td><td>${r.adjustedGrade}</td><td>${r.adjustedScore.toFixed(1)}</td><td><span class="${metricClass(r.dropLevel)}">${r.dropPct.toFixed(1)}% • ${escAttr(r.dropLabel)}</span></td><td><span class="${metricClass(r.falseComfort.level)}">${escAttr(r.falseComfort.label)}</span><div class="mono">Indirect ${fmtPct0(r.falseComfort.indirectPct)} • Direct ${fmtPct0(r.falseComfort.directPct)}</div></td><td><span class="${metricClass(r.correctiveLog.level)}" title="Concern reps: ${r.correctiveLog.concernCount}">${escAttr(r.correctiveLog.label)}</span><div class="mono">Concern ${r.correctiveLog.concernCount} • Red/no corr ${r.correctiveLog.repeatedNoCorrective}</div></td><td><span class="${metricClass(r.conversion.level)}">${escAttr(r.conversion.label)}</span><div class="mono">Direct ${fmtPp(r.conversion.directTrend)} (${r.conversion.directN}) • Indirect ${fmtPp(r.conversion.indirectTrend)} (${r.conversion.indirectN})</div></td></tr>${expandedHtml}`;
+    const gradeCls = gradeStyleClass(r.grade);
+    const adjGradeCls = gradeStyleClass(r.adjustedGrade);
+    const correctivePctTxt = r.correctiveCoveragePct == null ? '—' : `${fmtPct0(r.correctiveCoveragePct)} covered`;
+    return `<tr class="teamRowHead" data-team-row="${escAttr(r.teamName)}"><td>${escAttr(r.teamName)} ${expanded?'▾':'▸'}</td><td><span class="gradePill ${gradeCls}">${r.grade}</span></td><td><span class="scoreTint ${gradeCls.replace('grade','score')}">${r.originalScore.toFixed(1)}</span></td><td><span class="gradePill ${adjGradeCls}">${r.adjustedGrade}</span></td><td><span class="scoreTint ${adjGradeCls.replace('grade','score')}">${r.adjustedScore.toFixed(1)}</span></td><td><span class="${metricClass(r.dropLevel)}">${r.dropPct.toFixed(1)}% • ${escAttr(r.dropLabel)}</span></td><td><span class="${metricClass(r.falseComfort.level)}">${escAttr(r.falseComfort.label)}</span><div class="mono">Indirect ${fmtPct0(r.falseComfort.indirectPct)} • Direct ${fmtPct0(r.falseComfort.directPct)}</div></td><td><span class="${metricClass(r.correctiveLog.level)}">${escAttr(r.correctiveLog.label)}</span><div class="mono">${r.needsCorrectiveCount} should • ${r.neededAndAlreadyCorrectiveCount} on corrective • ${correctivePctTxt}</div></td><td><span class="${metricClass(r.conversion.level)}">${escAttr(r.conversion.label)}</span><div class="mono">Direct ${fmtPp(r.conversion.directTrend)} (${r.conversion.directN}) • Indirect ${fmtPp(r.conversion.indirectTrend)} (${r.conversion.indirectN})</div></td><td><span class="${metricClass(r.overallStandingClass)}">${escAttr(r.overallStandingLabel)}</span><div class="mono">${escAttr(r.overallStandingSummary)}</div></td></tr>${expandedHtml}`;
   }).join('');
   els.teamReportBody.querySelectorAll('[data-team-row]').forEach(row=>{
     row.addEventListener('click', ()=>{
