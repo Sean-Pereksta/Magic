@@ -376,13 +376,22 @@ const MAPS = [
       {x: 3400, y: 830, w: 260, h: 12},
       {x: 840, y: 560, w: 180, h: 12}, {x: 1580, y: 500, w: 180, h: 12},
       {x: 2440, y: 500, w: 180, h: 12}, {x: 3180, y: 560, w: 180, h: 12},
-      {x: 1970, y: 420, w: 260, h: 12}
+      {x: 1970, y: 420, w: 260, h: 12},
+      {x: 1180, y: 640, w: 170, h: 12},
+      {x: 1600, y: 590, w: 170, h: 12},
+      {x: 2380, y: 590, w: 170, h: 12},
+      {x: 2790, y: 640, w: 170, h: 12},
+      {x: 1970, y: 520, w: 220, h: 12}
     ],
     bushes: [],
     flags: [
-      { x: 1260, y: 728 },
-      { x: 2100, y: 590 },
-      { x: 2940, y: 728 }
+      { x: 1120, y: 760 },
+      { x: 1495, y: 690 },
+      { x: 1885, y: 620 },
+      { x: 2100, y: 420 },
+      { x: 2315, y: 620 },
+      { x: 2705, y: 690 },
+      { x: 3080, y: 760 }
     ]
   },
   {
@@ -712,7 +721,8 @@ function applyMap(index) {
       y: rand(-900, 260),
       vy: rand(3.3, 5.8),
       size: rand(7, 15),
-      glow: rand(0.35, 0.7)
+      glow: rand(0.35, 0.7),
+      trail: []
     }));
   }
 }
@@ -1830,6 +1840,8 @@ function updateBushes() {
 function updateFireballs() {
   if (world.mode !== "assault") return;
   for (const f of fireballs) {
+    f.trail.push({ x: f.x, y: f.y, size: f.size * rand(0.32, 0.58), alpha: rand(0.18, 0.38) });
+    if (f.trail.length > 8) f.trail.shift();
     f.y += f.vy;
     f.x += Math.sin((game.time + f.size) * 0.02) * 0.25;
     if (f.y > world.lavaY - 20) {
@@ -1837,6 +1849,7 @@ function updateFireballs() {
       f.y = rand(-700, -80);
       f.x = rand(0, world.width);
       f.vy = rand(3.3, 5.8);
+      f.trail.length = 0;
     }
   }
 }
@@ -2287,14 +2300,44 @@ function drawBackdrop(camX = game.cameraX) {
       ctx.fill();
     }
     for (const f of fireballs) {
-      ctx.globalAlpha = f.glow;
-      ctx.fillStyle = "#ff9e52";
+      for (let i = 0; i < f.trail.length; i++) {
+        const tr = f.trail[i];
+        const ratio = (i + 1) / f.trail.length;
+        ctx.globalAlpha = tr.alpha * ratio;
+        const tgrad = ctx.createRadialGradient(tr.x, tr.y, 0, tr.x, tr.y, tr.size * 2.1);
+        tgrad.addColorStop(0, "rgba(255,212,130,0.95)");
+        tgrad.addColorStop(0.45, "rgba(255,116,45,0.7)");
+        tgrad.addColorStop(1, "rgba(255,64,0,0)");
+        ctx.fillStyle = tgrad;
+        ctx.beginPath();
+        ctx.arc(tr.x, tr.y, tr.size * 2.1, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.globalAlpha = clamp(f.glow + 0.2, 0.4, 0.95);
+      const glowGrad = ctx.createRadialGradient(f.x, f.y, f.size * 0.2, f.x, f.y, f.size * 2.8);
+      glowGrad.addColorStop(0, "rgba(255,245,194,0.95)");
+      glowGrad.addColorStop(0.25, "rgba(255,166,72,0.85)");
+      glowGrad.addColorStop(0.65, "rgba(255,84,28,0.5)");
+      glowGrad.addColorStop(1, "rgba(255,38,0,0)");
+      ctx.fillStyle = glowGrad;
       ctx.beginPath();
-      ctx.arc(f.x, f.y, f.size, 0, Math.PI * 2);
+      ctx.arc(f.x, f.y, f.size * 2.8, 0, Math.PI * 2);
       ctx.fill();
+
       ctx.globalAlpha = 1;
-      ctx.fillStyle = "#ffda8e";
-      ctx.fillRect(f.x - 2, f.y - f.size - 8, 4, 8);
+      ctx.fillStyle = "#ffd99a";
+      ctx.beginPath();
+      ctx.ellipse(f.x, f.y - f.size * 0.34, f.size * 0.22, f.size * 0.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#ff7f33";
+      ctx.beginPath();
+      ctx.ellipse(f.x, f.y, f.size * 0.6, f.size * 1.05, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#ff4f18";
+      ctx.beginPath();
+      ctx.ellipse(f.x, f.y + f.size * 0.3, f.size * 0.42, f.size * 0.6, 0, 0, Math.PI * 2);
+      ctx.fill();
     }
     ctx.restore();
   }
