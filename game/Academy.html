@@ -459,19 +459,31 @@
     PURSUE_ROUT:"PURSUE_ROUT",
     WITHDRAW:"WITHDRAW"
   };
-  const UNIT_COMMAND = {
-    MARCH_FORTH:"MARCH_FORTH",
-    FLANK:"FLANK",
-    ATTACK_CAVALRY:"ATTACK_CAVALRY",
-    ATTACK_PHALANX:"ATTACK_PHALANX",
-    ATTACK_SKIRMISHERS:"ATTACK_SKIRMISHERS"
+  const TARGET_RULE = {
+    NEAREST:"NEAREST",
+    NEAREST_CAVALRY:"NEAREST_CAVALRY",
+    NEAREST_PHALANX:"NEAREST_PHALANX",
+    NEAREST_SKIRMISHERS:"NEAREST_SKIRMISHERS"
   };
-  const COMMAND_LABELS = {
-    [UNIT_COMMAND.MARCH_FORTH]:"March Forth",
-    [UNIT_COMMAND.FLANK]:"Flank",
-    [UNIT_COMMAND.ATTACK_CAVALRY]:"Attack Nearest Cavalry",
-    [UNIT_COMMAND.ATTACK_PHALANX]:"Attack Nearest Phalanx",
-    [UNIT_COMMAND.ATTACK_SKIRMISHERS]:"Attack Nearest Skirmishers"
+  const APPROACH_RULE = {
+    DIRECT:"DIRECT",
+    FLANK_LEFT:"FLANK_LEFT",
+    FLANK_RIGHT:"FLANK_RIGHT",
+    HOLD_BRACE:"HOLD_BRACE",
+    PURSUE_ROUTED:"PURSUE_ROUTED"
+  };
+  const TARGET_RULE_LABELS = {
+    [TARGET_RULE.NEAREST]:"Target: Nearest Enemy",
+    [TARGET_RULE.NEAREST_CAVALRY]:"Target: Nearest Cavalry",
+    [TARGET_RULE.NEAREST_PHALANX]:"Target: Nearest Phalanx",
+    [TARGET_RULE.NEAREST_SKIRMISHERS]:"Target: Nearest Skirmishers"
+  };
+  const APPROACH_RULE_LABELS = {
+    [APPROACH_RULE.DIRECT]:"Approach: Direct Engage",
+    [APPROACH_RULE.FLANK_LEFT]:"Approach: Flank Left",
+    [APPROACH_RULE.FLANK_RIGHT]:"Approach: Flank Right",
+    [APPROACH_RULE.HOLD_BRACE]:"Approach: Hold Line / Brace",
+    [APPROACH_RULE.PURSUE_ROUTED]:"Approach: Pursue Routed"
   };
 
   function vecNorm(x, y) {
@@ -582,7 +594,19 @@
       ,approachTargetId:null
       ,flankCommitSide:0
       ,lastApproachScore:0
-      ,command:UNIT_COMMAND.MARCH_FORTH
+      ,command:"MARCH_FORTH"
+      ,targetRule:TARGET_RULE.NEAREST
+      ,approachRule:APPROACH_RULE.DIRECT
+      ,formationFacing:(friendly ? "E" : "W")
+      ,desiredFormationFacing:(friendly ? "E" : "W")
+      ,engagementSlot:null
+      ,engagementTargetId:null
+      ,engagementCommitTimer:0
+      ,attackAnim:0
+      ,attackAnimType:"none"
+      ,attackAnimPhase:0
+      ,visualTroopCount:0
+      ,bannerColor:friendly ? "#6f46a8" : "#9d2f2b"
       ,pathLegs:[]
       ,pathIndex:0
       ,pathTargetTile:null
@@ -702,6 +726,12 @@
     Object.assign(u, extra);
     u.ang = dirAngles[u.dir];
     u.desiredAng = u.ang;
+    u.visualTroopCount = u.soldierRows * u.soldierCols;
+    if (u.type === "Banner Phalanx" && friendly) u.bannerColor = "#b88a2b";
+    else if (friendly && u.type === "Cavalry") u.bannerColor = "#5078bb";
+    else if (friendly) u.bannerColor = "#7c53b5";
+    else if (u.type === "Banner Phalanx") u.bannerColor = "#7a3f24";
+    else u.bannerColor = "#b83a31";
     return u;
   }
 
@@ -1216,6 +1246,8 @@
       u.dir = "W";
       u.ang = Math.PI;
       u.desiredAng = Math.PI;
+      u.formationFacing = "W";
+      u.desiredFormationFacing = "W";
       u.placed = true;
     });
 
@@ -1297,6 +1329,7 @@
       u.pathTargetTile = null;
       u.pathTargetId = null;
       u.headingState = u.dir;
+      syncVisualTroopsToHealth(u);
 
       if (u.retreatedLastBattle) {
         u.morale = Math.min(u.morale, u.maxMorale * 0.5);
@@ -1337,6 +1370,7 @@
       u.pathTargetTile = null;
       u.pathTargetId = null;
       u.headingState = u.dir;
+      syncVisualTroopsToHealth(u);
       const liveFriendlies = game.units.filter(f => !f.dead && f.placed);
       if (u.type.includes("Phalanx") && liveFriendlies.length) {
         const target = nearestEnemy(u, liveFriendlies);
@@ -1373,6 +1407,7 @@
     game.points -= 40;
     u.health = clamp(u.health + Math.round(u.maxHealth * 0.28), 0, u.maxHealth);
     u.morale = clamp(u.morale + Math.round(u.maxMorale * 0.22), 0, u.maxMorale);
+    syncVisualTroopsToHealth(u);
     updateUI();
   }
 
@@ -1403,9 +1438,36 @@
     };
   }
 
+  function syncVisualTroopsToHealth(unit) {
+    const total = unit.soldierRows * unit.soldierCols;
+    const fracLost = clamp((unit.maxHealth - unit.health) / unit.maxHealth, 0, 1);
+    unit.deathVisuals = Math.floor(fracLost * total * 0.92);
+    unit.visualTroopCount = Math.max(0, total - unit.deathVisuals);
+  }
+
   function setUnitCommand(unit, command) {
     if (!unit) return;
     unit.command = command;
+    if (command === "MARCH_FORTH") {
+      unit.targetRule = TARGET_RULE.NEAREST;
+      unit.approachRule = APPROACH_RULE.DIRECT;
+    } else if (command === "ATTACK_CAVALRY") {
+      unit.targetRule = TARGET_RULE.NEAREST_CAVALRY;
+    } else if (command === "ATTACK_PHALANX") {
+      unit.targetRule = TARGET_RULE.NEAREST_PHALANX;
+    } else if (command === "ATTACK_SKIRMISHERS") {
+      unit.targetRule = TARGET_RULE.NEAREST_SKIRMISHERS;
+    } else if (command === "DIRECT_ENGAGE") {
+      unit.approachRule = APPROACH_RULE.DIRECT;
+    } else if (command === "FLANK_LEFT") {
+      unit.approachRule = APPROACH_RULE.FLANK_LEFT;
+    } else if (command === "FLANK_RIGHT") {
+      unit.approachRule = APPROACH_RULE.FLANK_RIGHT;
+    } else if (command === "HOLD_BRACE") {
+      unit.approachRule = APPROACH_RULE.HOLD_BRACE;
+    } else if (command === "PURSUE_ROUTED") {
+      unit.approachRule = APPROACH_RULE.PURSUE_ROUTED;
+    }
     unit.pathLegs = [];
     unit.pathIndex = 0;
     unit.pathTargetTile = null;
@@ -1424,10 +1486,10 @@
     }
     game.commandMenuUnitId = unit.id;
     ui.commandMenu.innerHTML = `<h4>${unit.name} Orders</h4>`;
-    Object.entries(COMMAND_LABELS).forEach(([key, label]) => {
+    const addButton = (key, label, active) => {
       const btn = document.createElement("button");
       btn.textContent = label;
-      if (unit.command === key) btn.classList.add("active");
+      if (active) btn.classList.add("active");
       btn.onclick = (evt) => {
         evt.stopPropagation();
         setUnitCommand(unit, key);
@@ -1435,7 +1497,22 @@
         updateUI();
       };
       ui.commandMenu.appendChild(btn);
-    });
+    };
+    const tHdr = document.createElement("h4");
+    tHdr.textContent = "Target Rule";
+    ui.commandMenu.appendChild(tHdr);
+    addButton("MARCH_FORTH", TARGET_RULE_LABELS[TARGET_RULE.NEAREST], unit.targetRule === TARGET_RULE.NEAREST);
+    addButton("ATTACK_CAVALRY", TARGET_RULE_LABELS[TARGET_RULE.NEAREST_CAVALRY], unit.targetRule === TARGET_RULE.NEAREST_CAVALRY);
+    addButton("ATTACK_PHALANX", TARGET_RULE_LABELS[TARGET_RULE.NEAREST_PHALANX], unit.targetRule === TARGET_RULE.NEAREST_PHALANX);
+    addButton("ATTACK_SKIRMISHERS", TARGET_RULE_LABELS[TARGET_RULE.NEAREST_SKIRMISHERS], unit.targetRule === TARGET_RULE.NEAREST_SKIRMISHERS);
+    const aHdr = document.createElement("h4");
+    aHdr.textContent = "Approach Rule";
+    ui.commandMenu.appendChild(aHdr);
+    addButton("DIRECT_ENGAGE", APPROACH_RULE_LABELS[APPROACH_RULE.DIRECT], unit.approachRule === APPROACH_RULE.DIRECT);
+    addButton("FLANK_LEFT", APPROACH_RULE_LABELS[APPROACH_RULE.FLANK_LEFT], unit.approachRule === APPROACH_RULE.FLANK_LEFT);
+    addButton("FLANK_RIGHT", APPROACH_RULE_LABELS[APPROACH_RULE.FLANK_RIGHT], unit.approachRule === APPROACH_RULE.FLANK_RIGHT);
+    addButton("HOLD_BRACE", APPROACH_RULE_LABELS[APPROACH_RULE.HOLD_BRACE], unit.approachRule === APPROACH_RULE.HOLD_BRACE);
+    addButton("PURSUE_ROUTED", APPROACH_RULE_LABELS[APPROACH_RULE.PURSUE_ROUTED], unit.approachRule === APPROACH_RULE.PURSUE_ROUTED);
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const left = clamp(px + 16, 8, vw - 230);
@@ -1753,10 +1830,10 @@
     if (unit.type === "Cavalry") return 6.2;
     return 5.4;
   }
-  function commandTargetMatches(command, enemy) {
-    if (command === UNIT_COMMAND.ATTACK_CAVALRY) return enemy.type === "Cavalry" || enemy.type === "War Elephants";
-    if (command === UNIT_COMMAND.ATTACK_PHALANX) return enemy.type.includes("Phalanx");
-    if (command === UNIT_COMMAND.ATTACK_SKIRMISHERS) return enemy.type === "Skirmishers";
+  function commandTargetMatches(targetRule, enemy) {
+    if (targetRule === TARGET_RULE.NEAREST_CAVALRY) return enemy.type === "Cavalry" || enemy.type === "War Elephants";
+    if (targetRule === TARGET_RULE.NEAREST_PHALANX) return enemy.type.includes("Phalanx");
+    if (targetRule === TARGET_RULE.NEAREST_SKIRMISHERS) return enemy.type === "Skirmishers";
     return true;
   }
   function targetFacingCardinal(target) {
@@ -1766,21 +1843,25 @@
   }
   function cardinalGoalTiles(unit, target) {
     const t = tileFromWorld(target.x, target.y);
-    const defaultGoals = [
-      {tx:t.tx + 1, ty:t.ty}, {tx:t.tx - 1, ty:t.ty}, {tx:t.tx, ty:t.ty + 1}, {tx:t.tx, ty:t.ty - 1}
+    const goals = [
+      {tx:t.tx + 1, ty:t.ty, bias:0}, {tx:t.tx - 1, ty:t.ty, bias:0}, {tx:t.tx, ty:t.ty + 1, bias:0}, {tx:t.tx, ty:t.ty - 1, bias:0}
     ];
-    if (unit.command !== UNIT_COMMAND.FLANK) {
-      return defaultGoals.map(g => ({tx:clamp(g.tx,0,GRID_W-1), ty:clamp(g.ty,0,GRID_H-1), bias:0}));
-    }
     const facing = targetFacingCardinal(target);
-    const wide = unit.type === "Cavalry" ? 4 : (unit.type.includes("Phalanx") ? 2 : 3);
-    const goals = [];
-    if (facing === "E" || facing === "W") {
-      goals.push({tx:t.tx + (facing === "E" ? -1 : 1), ty:t.ty + wide, bias:-6});
-      goals.push({tx:t.tx + (facing === "E" ? -1 : 1), ty:t.ty - wide, bias:-6});
-    } else {
-      goals.push({tx:t.tx + wide, ty:t.ty + (facing === "S" ? -1 : 1), bias:-6});
-      goals.push({tx:t.tx - wide, ty:t.ty + (facing === "S" ? -1 : 1), bias:-6});
+    const sideBias = unit.type === "Cavalry" ? -8 : (unit.type.includes("Phalanx") ? -3.2 : -5);
+    const rearBias = unit.type === "Cavalry" ? -6 : -2.4;
+    if (unit.approachRule === APPROACH_RULE.FLANK_LEFT || unit.approachRule === APPROACH_RULE.FLANK_RIGHT) {
+      if (facing === "E" || facing === "W") {
+        const left = {tx:t.tx, ty:t.ty - 2, bias:sideBias};
+        const right = {tx:t.tx, ty:t.ty + 2, bias:sideBias};
+        goals.push(unit.approachRule === APPROACH_RULE.FLANK_LEFT ? left : right);
+        goals.push(unit.approachRule === APPROACH_RULE.FLANK_LEFT ? right : left);
+      } else {
+        const left = {tx:t.tx - 2, ty:t.ty, bias:sideBias};
+        const right = {tx:t.tx + 2, ty:t.ty, bias:sideBias};
+        goals.push(unit.approachRule === APPROACH_RULE.FLANK_LEFT ? left : right);
+        goals.push(unit.approachRule === APPROACH_RULE.FLANK_LEFT ? right : left);
+      }
+      goals.push({tx:t.tx + (facing === "E" ? -2 : facing === "W" ? 2 : 0), ty:t.ty + (facing === "S" ? -2 : facing === "N" ? 2 : 0), bias:rearBias});
     }
     return goals.map(g => ({tx:clamp(g.tx,0,GRID_W-1), ty:clamp(g.ty,0,GRID_H-1), bias:g.bias}));
   }
@@ -2137,13 +2218,16 @@
   function unitTarget(unit, enemies) {
     if (unit.targetLockTimer > 0) {
       const locked = enemies.find(e => e.id === unit.targetLockId && !e.dead && e.placed);
-      if (locked) return locked;
+      if (locked) {
+        const ld = dist(unit.x, unit.y, locked.x, locked.y);
+        if (!locked.routed || ld < 180) return locked;
+      }
     }
 
     const live = enemies.filter(e => !e.dead && e.placed);
     let chosen = null;
-    if (unit.command !== UNIT_COMMAND.MARCH_FORTH && unit.command !== UNIT_COMMAND.FLANK) {
-      const preferred = live.filter(e => commandTargetMatches(unit.command, e));
+    if (unit.targetRule !== TARGET_RULE.NEAREST) {
+      const preferred = live.filter(e => commandTargetMatches(unit.targetRule, e));
       chosen = preferred.length ? nearestEnemy(unit, preferred) : nearestEnemy(unit, live);
     }
     if (!chosen) chosen = chooseTargetByRole(unit, enemies);
@@ -2151,7 +2235,9 @@
     if (!chosen) return null;
 
     unit.targetLockId = chosen.id;
-    const baseLock = unit.type.includes("Phalanx") ? 0.68 : (unit.type === "Cavalry" ? 0.58 : 0.34);
+    const baseLock = unit.type.includes("Phalanx") ? 1.45 : (unit.type === "Cavalry" ? 0.85 : 0.52);
+    const dangerSwap = live.find(e => dist(unit.x, unit.y, e.x, e.y) < 52);
+    if (dangerSwap && dangerSwap.id !== chosen.id && unit.type.includes("Phalanx")) unit.targetLockTimer = 0.25;
     unit.targetLockTimer = Math.max(unit.targetLockTimer, baseLock);
     return chosen;
   }
@@ -2289,7 +2375,7 @@
     if (flank > 1) {
       dmg *= flank;
       moraleHit *= flank * 1.18;
-      if (Math.random() < 0.25) addFloat(target.x, target.y - 14, "FLANK!", "#ffe46d");
+      if (Math.random() < 0.25 && dmg > unit.damageMin * 0.7) addFloat(target.x, target.y - 14, "FLANK!", "#ffe46d");
     }
     if (unit.type === "War Elephants") {
       dmg *= 1.24;
@@ -2321,6 +2407,9 @@
     }
 
     unit.lastAttackPower = dmg * (1 + moraleHit / 16);
+    unit.attackAnim = 1;
+    unit.attackAnimPhase = 0;
+    unit.attackAnimType = unit.type.includes("Phalanx") ? "spear" : (unit.type === "Cavalry" ? "charge" : (unit.type === "War Elephants" ? "shove" : (unit.attackRange > 80 ? "throw" : "melee")));
     target.health -= dmg;
     target.morale -= moraleHit / terrDef.morale;
     unit.cooldown = unit.attackRange > 80 ? rand(0.65,0.95) : rand(0.85,1.15);
@@ -2422,10 +2511,10 @@
       unit.pathIndex = 0;
       unit.pathTargetId = target.id;
       unit.pathTargetTile = tileFromWorld(target.x, target.y);
-      const baseCommit = unit.type.includes("Phalanx") ? 1.4 : (unit.type === "Cavalry" ? 1.1 : 0.75);
+      const baseCommit = unit.type.includes("Phalanx") ? 2.2 : (unit.type === "Cavalry" ? 1.2 : 0.8);
       unit.pathCommitTimer = baseCommit;
       unit.pathReplanTimer = baseCommit * 0.65;
-      unit.approachState = unit.command === UNIT_COMMAND.FLANK ? APPROACH_STATE.SWING_WIDE : APPROACH_STATE.DIRECT_ENGAGE;
+      unit.approachState = (unit.approachRule === APPROACH_RULE.FLANK_LEFT || unit.approachRule === APPROACH_RULE.FLANK_RIGHT) ? APPROACH_STATE.SWING_WIDE : APPROACH_STATE.DIRECT_ENGAGE;
     }
     return unit.pathLegs && unit.pathIndex < unit.pathLegs.length;
   }
@@ -2442,6 +2531,11 @@
     if (unit.chargeCommitTimer > 0) unit.chargeCommitTimer = Math.max(0, unit.chargeCommitTimer - dt);
     if (unit.chargeRecovery > 0) unit.chargeRecovery = Math.max(0, unit.chargeRecovery - dt);
     if (unit.routeRecovery > 0) unit.routeRecovery = Math.max(0, unit.routeRecovery - dt);
+    if (unit.engagementCommitTimer > 0) unit.engagementCommitTimer = Math.max(0, unit.engagementCommitTimer - dt);
+    if (unit.attackAnim > 0) {
+      unit.attackAnim = Math.max(0, unit.attackAnim - dt * 2.6);
+      unit.attackAnimPhase += dt * 8;
+    }
     unit.impactTrail = Math.max(0, unit.impactTrail - dt * 0.45);
     if (unit.type === "Cavalry") {
       unit.cavalryChargePower = clamp(unit.cavalryChargePower + dt * (unit.engaged ? 0.04 : 0.18), 0.42, 1);
@@ -2529,6 +2623,12 @@
       }
     }
 
+    if (unit.type.includes("Phalanx")) {
+      const vx = target.x - unit.x;
+      if (Math.abs(vx) > 8) unit.desiredFormationFacing = vx >= 0 ? "E" : "W";
+      if (Math.abs(vx) > 12 || unit.engaged) unit.formationFacing = unit.desiredFormationFacing;
+    }
+
     if (d <= unit.attackRange + target.radius) {
       const clashPoint = predictContactPoint(unit, target);
       rotateToward(unit, clashPoint.x, clashPoint.y, dt);
@@ -2537,8 +2637,9 @@
       unit.approachState = target.routed ? APPROACH_STATE.PURSUE_ROUT : unit.approachState;
       attack(unit, target, dt);
     } else {
-      let speed = target.routed ? unit.chaseSpeed : unit.speed;
+      let speed = target.routed || unit.approachRule === APPROACH_RULE.PURSUE_ROUTED ? unit.chaseSpeed : unit.speed;
       if (unit.type.includes("Phalanx") && !unit.engaged) speed *= clamp(unit.cohesion, 0.85, 1.06);
+      if (unit.approachRule === APPROACH_RULE.HOLD_BRACE && d < 180) speed *= 0.45;
       if (unit.type === "Cavalry" && unit.chargeCommitTimer > 0) speed *= 1.08;
       speed *= (1 - unit.fatigue * 0.18);
       const hasPlan = applyApproachPlan(unit, target, allies, enemies);
@@ -2585,6 +2686,7 @@
             u.health = clamp(u.health + Math.round(u.maxHealth * 0.12), 1, u.maxHealth);
             u.morale = clamp(u.morale + Math.round(u.maxMorale * 0.28), 1, u.maxMorale);
           }
+          syncVisualTroopsToHealth(u);
         }
       }
       game.state = STATE.BETWEEN;
@@ -2883,16 +2985,18 @@
 
     const style = unitVisualStyle(unit);
     const total = unit.soldierRows * unit.soldierCols;
-    const live = Math.max(0, total - unit.deathVisuals);
+    unit.visualTroopCount = Math.max(0, total - unit.deathVisuals);
+    const live = unit.visualTroopCount;
     let idx = 0;
-    const facing = Math.abs(Math.cos(unit.ang)) >= Math.abs(Math.sin(unit.ang))
+    const animPulse = unit.attackAnim > 0 ? Math.sin(unit.attackAnimPhase) * unit.attackAnim * 4 : 0;
+    const facing = unit.type.includes("Phalanx") ? unit.formationFacing : (Math.abs(Math.cos(unit.ang)) >= Math.abs(Math.sin(unit.ang))
       ? (Math.cos(unit.ang) >= 0 ? "E" : "W")
-      : (Math.sin(unit.ang) >= 0 ? "S" : "N");
+      : (Math.sin(unit.ang) >= 0 ? "S" : "N"));
 
     for (let r=0;r<unit.soldierRows;r++) {
       for (let c=0;c<unit.soldierCols;c++) {
         if (idx >= live) { idx++; continue; }
-        const px = -w/2 + 8 + c * ((w-16)/Math.max(1,unit.soldierCols-1));
+        const px = -w/2 + 8 + c * ((w-16)/Math.max(1,unit.soldierCols-1)) + (unit.attackAnimType === "spear" && r < 2 ? animPulse * 0.6 : 0);
         const py = -h/2 + 8 + r * ((h-16)/Math.max(1,unit.soldierRows-1));
         drawSoldier(px, py, unit, style, facing);
         idx++;
@@ -2907,11 +3011,28 @@
       for (let i=-2;i<=2;i++) {
         ctx.beginPath();
         const frontEdge = (w/2 - 7) * pikeDir;
-        ctx.moveTo(frontEdge, i*7);
-        ctx.lineTo(frontEdge + pikeLen * pikeDir, i*7);
+        ctx.moveTo(frontEdge, i*7 + Math.sin(unit.attackAnimPhase + i) * unit.attackAnim * 0.8);
+        ctx.lineTo(frontEdge + pikeLen * pikeDir + animPulse * 1.5, i*7);
         ctx.stroke();
       }
     }
+    const bannerPole = -2;
+    const bannerHeight = unit.type === "Banner Phalanx" ? 20 : 16;
+    ctx.strokeStyle = "#4d3118";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(bannerPole, 6);
+    ctx.lineTo(bannerPole, -bannerHeight);
+    ctx.stroke();
+    const flutter = Math.sin(performance.now() * 0.01 + unit.id) * 2 + (unit.attackAnim > 0 ? animPulse * 0.2 : 0);
+    ctx.fillStyle = unit.bannerColor;
+    ctx.beginPath();
+    ctx.moveTo(bannerPole, -bannerHeight);
+    ctx.lineTo(bannerPole + 10 + flutter, -bannerHeight + 2);
+    ctx.lineTo(bannerPole + 8 + flutter * 0.8, -bannerHeight + 10);
+    ctx.lineTo(bannerPole, -bannerHeight + 8);
+    ctx.closePath();
+    ctx.fill();
 
     if (unit.type === "Cavalry") {
       ctx.strokeStyle = "#4e3116";
@@ -2967,6 +3088,14 @@
     ctx.font = "10px Arial";
     ctx.textAlign = "center";
     ctx.fillText(shortName(unit), unit.x, unit.y + 34);
+    if (game.state === STATE.DEPLOY && unit.friendly) {
+      const app = unit.approachRule === APPROACH_RULE.FLANK_LEFT ? "↖" : unit.approachRule === APPROACH_RULE.FLANK_RIGHT ? "↗" : unit.approachRule === APPROACH_RULE.HOLD_BRACE ? "⛨" : "→";
+      const tgt = unit.targetRule === TARGET_RULE.NEAREST_CAVALRY ? "CAV" : unit.targetRule === TARGET_RULE.NEAREST_PHALANX ? "PHX" : unit.targetRule === TARGET_RULE.NEAREST_SKIRMISHERS ? "SKM" : "ANY";
+      ctx.fillStyle = "rgba(0,0,0,.72)";
+      ctx.fillRect(unit.x - 20, unit.y - 52, 40, 12);
+      ctx.fillStyle = "#fff0cf";
+      ctx.fillText(`${app} ${tgt}`, unit.x, unit.y - 43);
+    }
     ctx.textAlign = "left";
   }
 
@@ -3102,7 +3231,8 @@
           <span class="tag ${placedClass}">${u.dead ? "Dead" : placedText}</span>
         </div>
         <div class="small">${u.dead ? "Destroyed" : (u.placed ? `Placed at ${u.tx},${u.ty}` : "Not on the field")}</div>
-        <div class="small"><strong>Command:</strong> ${COMMAND_LABELS[u.command] || "March Forth"}</div>
+        <div class="small"><strong>Target:</strong> ${TARGET_RULE_LABELS[u.targetRule] || TARGET_RULE_LABELS[TARGET_RULE.NEAREST]}</div>
+        <div class="small"><strong>Approach:</strong> ${APPROACH_RULE_LABELS[u.approachRule] || APPROACH_RULE_LABELS[APPROACH_RULE.DIRECT]}</div>
         <div class="small">Health ${Math.round(u.health)}/${u.maxHealth}</div>
         <div class="meter"><div class="fill hp" style="width:${(u.health/u.maxHealth)*100}%"></div></div>
         <div class="small">Morale ${Math.round(u.morale)}/${u.maxMorale}</div>
