@@ -1,2805 +1,2281 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1.0" />
-<title>Killer Queen Style</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>QA Dashboard — Local (QA Only)</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
+
 <style>
-  html, body {
-    margin: 0;
-    padding: 0;
-    background: #08101a;
-    overflow: hidden;
-    font-family: "Courier New", monospace;
-    color: white;
+  :root{
+    --bg:#f6f7fb;
+    --card:#fff;
+    --ink:#0f172a;
+    --muted:#64748b;
+    --line:rgba(15,23,42,.12);
+    --accent:#2563eb;
+    --good:#16a34a;
+    --bad:#dc2626;
+    --warn:#f59e0b;
+    --shadow: 0 14px 30px rgba(2,6,23,.10);
   }
-  canvas {
-    display: block;
-    margin: 0 auto;
-    image-rendering: pixelated;
-    image-rendering: crisp-edges;
-    border: 4px solid #97a3b7;
-    background: #111;
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif
+  }
+
+  header{
+    position:sticky;top:0;z-index:50;
+    background:#fff;border-bottom:1px solid var(--line);
+    padding:10px 12px;
+  }
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .row.tight{gap:8px}
+  .headerMain{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    gap:12px;
+    align-items:start;
+  }
+  .headerLeft{min-width:0}
+  .headerRight{
+    min-width:260px;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    align-items:flex-end;
+  }
+  @media (max-width:980px){
+    .headerMain{grid-template-columns:1fr}
+    .headerRight{align-items:flex-start;min-width:0}
+  }
+
+  h1{font-size:16px;margin:0;font-weight:950;letter-spacing:.2px}
+  label{font-size:12px;color:var(--muted);display:flex;gap:8px;align-items:center}
+  select,input,button{font-size:14px}
+  select,input{
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:7px 10px;
+    background:#fff;
+    outline:none;
+  }
+  input[type="text"]{min-width:220px}
+
+  .btn{
+    border:1px solid var(--line);
+    background:#fff;
+    padding:7px 10px;
+    border-radius:999px;
+    cursor:pointer;
+    font-weight:950;
+  }
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.tiny{padding:6px 10px;font-size:12px}
+  .btn.active{
+    border-color: rgba(37,99,235,.55);
+    box-shadow: 0 0 0 3px rgba(37,99,235,.12);
+  }
+  .spacer{flex:1}
+  .wrap{padding:12px;max-width:1400px;margin:0 auto}
+
+  .card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:14px;
+    box-shadow:var(--shadow);
+  }
+  .notice{
+    border:1px dashed var(--line);
+    border-radius:12px;
+    padding:10px;
+    background:#fff;
+    color:#334155;
+    font-size:12px;
+  }
+
+  .summaryBox{padding:12px}
+  .summaryHead{
+    display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;
+    margin-bottom:10px
+  }
+  .summaryHead .sub{font-size:12px;color:var(--muted);font-weight:800}
+  .summaryTblWrap{overflow:auto;border:1px solid var(--line);border-radius:12px}
+  .summaryTbl{border-collapse:separate;border-spacing:0;width:100%;min-width:860px;background:#fff}
+  .summaryTbl thead th{
+    background:#0f172a;color:#e5e7eb;
+    text-align:left;padding:10px;font-size:12px;white-space:nowrap;
+    position:sticky;top:0;z-index:1;
+  }
+  .summaryTbl tbody td{
+    border-bottom:1px solid var(--line);
+    padding:10px;font-size:13px;white-space:nowrap;
+    vertical-align:top;
+  }
+  .summaryTbl tbody tr:hover td{background:#f8fafc}
+
+  .pill{
+    display:inline-flex;align-items:center;gap:8px;
+    padding:6px 10px;border-radius:999px;border:1px solid var(--line);
+    background:#fff;font-size:12px;font-weight:900;color:#0f172a;
+  }
+  .pill.bad{border-color:rgba(220,38,38,.35);background:rgba(220,38,38,.08);color:#7f1d1d}
+  .pill.good{border-color:rgba(22,163,74,.35);background:rgba(22,163,74,.08);color:#065f46}
+  .pill.warn{border-color:rgba(245,158,11,.45);background:rgba(245,158,11,.10);color:#7c2d12}
+  .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
+
+  .stack{display:grid;gap:12px}
+
+  .compCategory{font-weight:950}
+  .diffGood{color:var(--good);font-weight:950}
+  .diffBad{color:var(--bad);font-weight:950}
+  .diffNeutral{color:#0f172a;font-weight:950}
+
+  .grid{
+    display:grid;
+    grid-template-columns: repeat(4, minmax(260px, 1fr));
+    gap:12px;
+    margin-top:12px;
+  }
+  @media (max-width:1200px){ .grid{grid-template-columns: repeat(3, minmax(260px, 1fr));} }
+  @media (max-width:950px){ .grid{grid-template-columns: repeat(2, minmax(260px, 1fr));} }
+  @media (max-width:620px){ .grid{grid-template-columns: 1fr;} }
+
+  .repCard{padding:12px;cursor:pointer;transition:transform .06s ease, box-shadow .12s ease}
+  .repCard:hover{transform:translateY(-1px);box-shadow:0 18px 40px rgba(2,6,23,.14)}
+  .repTop{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+  .repName{font-weight:950;font-size:14px;line-height:1.15}
+  .repMeta{font-size:12px;color:var(--muted);margin-top:4px}
+  .sparkWrap{margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:8px;background:#fbfdff}
+  canvas.spark{width:100%;height:52px;display:block}
+  .repStats{margin-top:10px;display:grid;gap:6px}
+  .statLine{display:flex;justify-content:space-between;gap:10px;font-size:12px}
+  .statLine b{font-weight:950}
+  .trendUp{color:var(--good);font-weight:950}
+  .trendDn{color:var(--bad);font-weight:950}
+  .trendFlat{color:#0f172a;font-weight:950}
+  .miniRow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .mini{font-size:12px;font-weight:900;border:1px solid var(--line);border-radius:999px;padding:4px 8px;background:#fff}
+  .mini.bad{border-color:rgba(220,38,38,.35);background:rgba(220,38,38,.08);color:#7f1d1d}
+  .mini.good{border-color:rgba(22,163,74,.35);background:rgba(22,163,74,.08);color:#065f46}
+  .mini.warn{border-color:rgba(245,158,11,.45);background:rgba(245,158,11,.10);color:#7c2d12}
+
+  .coachFlag{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    font-size:12px;
+    font-weight:950;
+    padding:4px 8px;
+    border-radius:999px;
+    border:1px solid var(--line);
+    background:#fff;
+  }
+  .coachFlag.good{
+    background:rgba(22,163,74,.08);
+    color:#166534;
+    border-color:rgba(22,163,74,.25);
+  }
+  .coachFlag.bad{
+    background:rgba(220,38,38,.08);
+    color:#991b1b;
+    border-color:rgba(220,38,38,.25);
+  }
+  .coachMark{font-size:14px;line-height:1}
+
+  .overlay{
+    position:fixed;inset:0;background:rgba(15,23,42,.55);
+    display:none;align-items:center;justify-content:center;padding:14px;z-index:9999
+  }
+  .overlay.show{display:flex}
+  .panel{
+    width:min(1100px, 96vw);
+    max-height:92vh;
+    background:#fff;border:1px solid rgba(226,232,240,.95);
+    border-radius:16px;
+    box-shadow:0 22px 60px rgba(2,6,23,.35);
+    overflow:hidden;
+    display:flex;flex-direction:column;
+  }
+  .panel.small{width:min(860px,96vw)}
+  .panel.medium{width:min(980px,96vw)}
+  .pHead{
+    padding:12px 14px;border-bottom:1px solid var(--line);
+    display:flex;gap:10px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;
+    background:linear-gradient(180deg, rgba(37,99,235,.08), rgba(37,99,235,0));
+  }
+  .pTitle{font-weight:950;margin:0;font-size:16px}
+  .pSub{margin-top:6px;color:#475569;font-weight:800;font-size:12px}
+  .pActions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:flex-end}
+  .pBody{padding:12px 14px;overflow:auto;min-height:0;display:grid;gap:12px}
+
+  .box{border:1px solid var(--line);border-radius:14px;background:#fff;padding:12px}
+  .boxHead{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;font-weight:950;margin-bottom:10px}
+  .chartWrap{height:260px;border:1px solid var(--line);border-radius:12px;padding:10px;background:#fbfdff}
+  .tblWrap{overflow:auto;border:1px solid var(--line);border-radius:14px}
+  table{border-collapse:separate;border-spacing:0;width:100%;min-width:980px;background:#fff}
+  thead th{
+    position:sticky;top:0;z-index:2;
+    background:#0f172a;color:#e5e7eb;
+    text-align:left;padding:10px;font-size:12px;white-space:nowrap
+  }
+  tbody td{border-bottom:1px solid var(--line);padding:8px 10px;font-size:13px;white-space:nowrap}
+  tbody tr:hover td{background:#f8fafc}
+
+  .coList{display:grid;gap:8px}
+  .coItem{
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:#fbfdff;
+    padding:10px 12px;
+  }
+  .coHeadRow{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
+  .coHeadRow b{font-size:12px}
+  .coMeta{color:var(--muted);font-size:12px;font-weight:800;margin-top:2px}
+  .coDesc{
+    margin-top:8px;
+    white-space:pre-wrap;
+    font-size:12.5px;
+    line-height:1.35;
+    color:#0f172a;
+    border-top:1px dashed var(--line);
+    padding-top:8px;
+  }
+
+  .reviewerList{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  .reviewerChip{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:6px 10px;
+    border-radius:999px;
+    border:1px solid var(--line);
+    background:#fff;
+    font-size:12px;
+    font-weight:900;
+  }
+  .reviewerChip button{
+    border:none;
+    background:transparent;
+    color:var(--bad);
+    font-weight:950;
+    cursor:pointer;
+    padding:0 2px;
+  }
+
+  .optionsGrid{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(260px,1fr));
+    gap:12px;
+  }
+  @media (max-width:760px){ .optionsGrid{grid-template-columns:1fr} }
+
+  .unreadBadge{
+    border-color:rgba(220,38,38,.35)!important;
+    background:rgba(220,38,38,.08)!important;
+    color:#7f1d1d!important;
   }
 </style>
 </head>
 <body>
-<canvas id="game" width="1200" height="700"></canvas>
+
+<header>
+  <div class="headerMain">
+    <div class="headerLeft">
+      <div class="row">
+        <h1>QA Dashboard (Local)</h1>
+
+        <label>Team / Coach
+          <select id="teamSel" style="min-width:220px"></select>
+        </label>
+
+        <label>Timeframe
+          <select id="tfSel" style="min-width:170px">
+            <option value="all" selected>All</option>
+            <option value="last7">Last 7 days</option>
+            <option value="last30">Last 30 days</option>
+            <option value="last90">Last 90 days</option>
+            <option value="custom">Custom…</option>
+          </select>
+        </label>
+
+        <label class="pill" title="Exclude evaluations with Score % = 0 from averages/charts">
+          <input id="excludeZero" type="checkbox"/>
+          Exclude zeros
+        </label>
+
+        <label>Representative search
+          <input id="searchInp" type="text" placeholder="rep name…"/>
+        </label>
+
+        <button class="btn" id="reviewersBtn">Reviewers (<span id="reviewersBtnCount">0</span>)</button>
+        <button class="btn" id="optionsBtn">Additional Options</button>
+      </div>
+
+      <div class="row tight" style="margin-top:8px">
+        <span class="pill mono" id="scopePill">—</span>
+        <span class="pill mono" id="qaReviewCountPill">QA reviewers: —</span>
+      </div>
+    </div>
+
+    <div class="headerRight">
+      <span class="pill mono" id="sortPill">Sort: Most evals</span>
+      <div class="row tight" id="sortWrap">
+        <button class="btn tiny sortBtn active" data-sort="count" title="Most evaluations first">Most evals</button>
+        <button class="btn tiny sortBtn" data-sort="avg" title="Highest to lowest average score">Avg score</button>
+        <button class="btn tiny sortBtn" data-sort="zeros" title="Most 0s first">Most 0s</button>
+        <button class="btn tiny sortBtn" data-sort="trend" title="Most negative to most positive trend">Trend</button>
+        <button class="btn tiny sortBtn" data-sort="coachings" title="Least to most Call Quality coachings (in timeframe)">Coachings</button>
+        <button class="btn tiny sortBtn" data-sort="coachingsWeighted" title="Least to most coachings, weighted down when score is lower">Weighted coachings</button>
+        <button class="btn tiny sortBtn" data-sort="unreviewed" title="Most unreviewed monitors first">Unreviewed</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="stack">
+    <div class="card summaryBox">
+      <div class="summaryHead">
+        <div>
+          <div style="font-weight:950">Overall Scores</div>
+          <div class="sub" id="summarySub">—</div>
+        </div>
+        <div class="row">
+          <span class="pill mono" id="teamTrendPill">Trend: —</span>
+        </div>
+      </div>
+
+      <div class="summaryTblWrap">
+        <table class="summaryTbl">
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>Value</th>
+              <th>Count</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody id="summaryTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card summaryBox">
+      <div class="summaryHead">
+        <div>
+          <div style="font-weight:950">Comparisons</div>
+          <div class="sub">Coach monitors on the left, difference/category in the middle, QA reviewer monitors on the right.</div>
+        </div>
+      </div>
+
+      <div class="summaryTblWrap">
+        <table class="summaryTbl">
+          <thead>
+            <tr>
+              <th>Coach</th>
+              <th>Difference / Category</th>
+              <th>QA</th>
+            </tr>
+          </thead>
+          <tbody id="compareTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="cards" class="grid"></div>
+  <div id="empty" class="notice" style="display:none;margin-top:12px"></div>
+</div>
+
+<div id="overlay" class="overlay" aria-hidden="true">
+  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <div class="pHead">
+      <div>
+        <div id="mTitle" class="pTitle">Rep — QA</div>
+        <div id="mSub" class="pSub">—</div>
+      </div>
+      <div class="pActions">
+        <button class="btn" id="mClose">Close ✕</button>
+      </div>
+    </div>
+    <div id="mBody" class="pBody"></div>
+  </div>
+</div>
+
+<div id="reviewerOverlay" class="overlay" aria-hidden="true">
+  <div class="panel small" role="dialog" aria-modal="true" aria-labelledby="rTitle">
+    <div class="pHead">
+      <div>
+        <div id="rTitle" class="pTitle">QA Reviewers Included</div>
+        <div id="rSub" class="pSub">—</div>
+      </div>
+      <div class="pActions">
+        <button class="btn tiny" id="resetReviewersBtn">Reset reviewers</button>
+        <button class="btn" id="reviewerClose">Close ✕</button>
+      </div>
+    </div>
+    <div class="pBody">
+      <div class="box">
+        <div class="boxHead">
+          <span>Included reviewers</span>
+          <span class="pill mono" id="reviewerPopupCount">—</span>
+        </div>
+        <div id="reviewerList" class="reviewerList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="optionsOverlay" class="overlay" aria-hidden="true">
+  <div class="panel medium" role="dialog" aria-modal="true" aria-labelledby="oTitle">
+    <div class="pHead">
+      <div>
+        <div id="oTitle" class="pTitle">Additional Options</div>
+        <div class="pSub">Load docks, custom date range, and refresh tools.</div>
+      </div>
+      <div class="pActions">
+        <button class="btn" id="optionsClose">Close ✕</button>
+      </div>
+    </div>
+    <div class="pBody">
+      <div class="optionsGrid">
+        <div class="box">
+          <div class="boxHead">
+            <span>QA Dock</span>
+          </div>
+          <div class="row">
+            <label style="width:100%">QA dock key
+              <select id="qaKeySel" style="min-width:100%;width:100%"></select>
+            </label>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <button class="btn primary" id="loadBtn">Load QA</button>
+          </div>
+        </div>
+
+        <div class="box">
+          <div class="boxHead">
+            <span>Documented Coachings</span>
+          </div>
+          <div class="row">
+            <label style="width:100%">Doc coaching key
+              <select id="coKeySel" style="min-width:100%;width:100%"></select>
+            </label>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <button class="btn" id="reloadCoBtn">Reload coachings</button>
+          </div>
+        </div>
+
+        <div class="box">
+          <div class="boxHead">
+            <span>Custom Timeframe</span>
+          </div>
+          <div id="customRange" class="row">
+            <label>
+              <span class="mono">From</span>
+              <input id="fromInp" type="date"/>
+            </label>
+            <label>
+              <span class="mono">To</span>
+              <input id="toInp" type="date"/>
+            </label>
+          </div>
+          <div class="notice" style="margin-top:10px">
+            These dates are only used when Timeframe is set to Custom.
+          </div>
+        </div>
+
+        <div class="box">
+          <div class="boxHead">
+            <span>Status / Actions</span>
+          </div>
+          <div class="row tight">
+            <span class="pill mono" id="statusPill">—</span>
+            <span class="pill mono" id="coStatusPill" title="Only Call Quality coachings are used in counts & details.">Coachings: —</span>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <button class="btn" id="refreshBtn">Refresh</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
+const SETTINGS_KEY = 'qaOnlyDash.settings.v6';
 
-const VIEW_W = canvas.width;
-const VIEW_H = canvas.height;
+function loadSettings(){
+  try{ return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {}; }catch{ return {}; }
+}
+function saveSettings(partial){
+  const cur = loadSettings();
+  const next = {...cur, ...partial};
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+}
 
-const keys = {};
-const TEAM_STRATEGIES = ["military", "economy", "snail", "balanced"];
-document.addEventListener("keydown", e => {
-  const k = e.key.toLowerCase();
-  keys[k] = true;
-  if ([" ", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(k) || e.key === " ") {
-    e.preventDefault();
+function normHdr(s){
+  return String(s ?? "")
+    .trim().toLowerCase()
+    .replace(/\s+/g," ")
+    .replace(/[^a-z0-9% \-_]/g,"")
+    .replace(/[-_]/g,"")
+    .replace(/\s/g,"");
+}
+
+function loadDockObjByKey(key){
+  if(!key) return null;
+  const raw = localStorage.getItem(key);
+  if(!raw) return null;
+
+  try{
+    const json = LZString.decompressFromUTF16(raw);
+    if(json) return JSON.parse(json);
+  }catch{}
+
+  try{ return JSON.parse(raw); }catch{}
+  return null;
+}
+
+function aoaToRows(aoa){
+  if(!Array.isArray(aoa) || aoa.length<2) return [];
+  const header = (aoa[0]||[]).map(h=>String(h??"").trim());
+  const out=[];
+  for(let r=1;r<aoa.length;r++){
+    const row=aoa[r];
+    if(!row) continue;
+    const obj={};
+    let any=false;
+    for(let c=0;c<header.length;c++){
+      const k = header[c];
+      if(!k) continue;
+      const v = row[c];
+      if(v!==null && v!==undefined && String(v).trim()!=="") any=true;
+      obj[k]=v;
+    }
+    if(any) out.push(obj);
   }
-});
-document.addEventListener("keyup", e => {
-  keys[e.key.toLowerCase()] = false;
-});
-
-function rand(min, max) { return Math.random() * (max - min) + min; }
-function randi(min, max) { return Math.floor(rand(min, max + 1)); }
-function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
-function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
-function rectsOverlap(a, b) {
-  return a.x < b.x + b.w &&
-         a.x + a.w > b.x &&
-         a.y < b.y + b.h &&
-         a.y + a.h > b.y;
-}
-function shade(hex, amt) {
-  const col = hex.replace("#", "");
-  let r = parseInt(col.substring(0, 2), 16);
-  let g = parseInt(col.substring(2, 4), 16);
-  let b = parseInt(col.substring(4, 6), 16);
-  r = clamp(r + amt, 0, 255);
-  g = clamp(g + amt, 0, 255);
-  b = clamp(b + amt, 0, 255);
-  return "#" +
-    r.toString(16).padStart(2, "0") +
-    g.toString(16).padStart(2, "0") +
-    b.toString(16).padStart(2, "0");
+  return out;
 }
 
-/* ---------------- AUDIO ---------------- */
+function extractRowArrays(root, sheetNameFallback){
+  const found=[];
+  const seen = new Set();
 
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-let audioUnlocked = false;
-function unlockAudio() {
-  if (!audioUnlocked) {
-    audioUnlocked = true;
-    if (audioCtx.state === "suspended") audioCtx.resume();
-  }
-}
-document.addEventListener("keydown", unlockAudio, { once: true });
-document.addEventListener("mousedown", unlockAudio, { once: true });
+  function pushArray(arr, sheetName){
+    if(!Array.isArray(arr) || !arr.length) return;
+    const id = sheetName + "|" + arr.length + "|" + (typeof arr[0]);
+    if(seen.has(id)) return;
+    seen.add(id);
 
-function beep(freq = 440, duration = 0.07, type = "square", volume = 0.03, slideTo = null) {
-  if (!audioUnlocked) return;
-  const t = audioCtx.currentTime;
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  osc.type = type;
-  osc.frequency.setValueAtTime(freq, t);
-  if (slideTo != null) {
-    osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t + duration);
-  }
-  gain.gain.setValueAtTime(0.0001, t);
-  gain.gain.exponentialRampToValueAtTime(volume, t + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
-  osc.connect(gain).connect(audioCtx.destination);
-  osc.start(t);
-  osc.stop(t + duration + 0.02);
-}
-function soundFlap() { beep(560, 0.04, "square", 0.018, 430); }
-function soundKill() { beep(930, 0.06, "square", 0.04, 490); setTimeout(() => beep(640, 0.07, "square", 0.03, 260), 30); }
-function soundBerry() { beep(920, 0.05, "triangle", 0.03, 1220); }
-function soundMount() { beep(310, 0.06, "sawtooth", 0.03, 500); }
-function soundDismount() { beep(440, 0.05, "square", 0.03, 250); }
-function soundGate() { beep(520, 0.05, "triangle", 0.03, 730); setTimeout(() => beep(730, 0.05, "triangle", 0.03, 990), 40); }
-function soundUpgrade() { beep(480, 0.06, "triangle", 0.035, 880); setTimeout(() => beep(880, 0.08, "triangle", 0.04, 1200), 55); }
-function soundWin() {
-  beep(660, 0.09, "triangle", 0.04, 880);
-  setTimeout(() => beep(880, 0.1, "triangle", 0.04, 1100), 80);
-  setTimeout(() => beep(990, 0.14, "triangle", 0.05, 1320), 170);
-}
-function soundDeath() { beep(240, 0.09, "sawtooth", 0.04, 120); }
-
-/* ---------------- DIFFICULTY ---------------- */
-
-const DIFFICULTIES = [
-  { level:1,  name:"Honey Sleepwalk", reaction:34, awareness:0.45, aggression:0.30, antiBerry:0.25, escort:false, squad:false, spikeSense:0.55, queenPressure:0.22, discipline:0.28, trapSense:0.24, retreat:0.20, memory:0.18 },
-  { level:2,  name:"Garden Drifter",  reaction:28, awareness:0.52, aggression:0.36, antiBerry:0.32, escort:false, squad:false, spikeSense:0.62, queenPressure:0.28, discipline:0.36, trapSense:0.34, retreat:0.28, memory:0.24 },
-  { level:3,  name:"Wax Worker",      reaction:23, awareness:0.60, aggression:0.42, antiBerry:0.38, escort:false, squad:false, spikeSense:0.70, queenPressure:0.34, discipline:0.45, trapSense:0.45, retreat:0.38, memory:0.34 },
-  { level:4,  name:"Hive Regular",    reaction:18, awareness:0.68, aggression:0.50, antiBerry:0.48, escort:false, squad:false, spikeSense:0.78, queenPressure:0.46, discipline:0.55, trapSense:0.58, retreat:0.48, memory:0.46 },
-  { level:5,  name:"Pollen Raider",   reaction:15, awareness:0.76, aggression:0.58, antiBerry:0.58, escort:true,  squad:false, spikeSense:0.84, queenPressure:0.58, discipline:0.66, trapSense:0.70, retreat:0.58, memory:0.58 },
-  { level:6,  name:"Royal Guard",     reaction:13, awareness:0.83, aggression:0.66, antiBerry:0.66, escort:true,  squad:true,  spikeSense:0.88, queenPressure:0.66, discipline:0.74, trapSense:0.78, retreat:0.66, memory:0.68 },
-  { level:7,  name:"Stinger Captain", reaction:11, awareness:0.89, aggression:0.74, antiBerry:0.74, escort:true,  squad:true,  spikeSense:0.91, queenPressure:0.74, discipline:0.82, trapSense:0.84, retreat:0.74, memory:0.76 },
-  { level:8,  name:"Swarm Tactician", reaction:10, awareness:0.94, aggression:0.82, antiBerry:0.84, escort:true,  squad:true,  spikeSense:0.94, queenPressure:0.84, discipline:0.90, trapSense:0.90, retreat:0.82, memory:0.84 },
-  { level:9,  name:"War Hive Oracle", reaction:8,  awareness:0.98, aggression:0.90, antiBerry:0.92, escort:true,  squad:true,  spikeSense:0.97, queenPressure:0.93, discipline:0.96, trapSense:0.95, retreat:0.90, memory:0.92 },
-  { level:10, name:"The Last Queen",  reaction:6,  awareness:1.00, aggression:1.00, antiBerry:1.00, escort:true,  squad:true,  spikeSense:1.00, queenPressure:1.00, discipline:1.00, trapSense:1.00, retreat:1.00, memory:1.00 }
-];
-
-/* ---------------- MAPS ---------------- */
-
-const MAPS = [
-  {
-    name: "SUNSET HIVE",
-    width: 2600,
-    height: 900,
-    lavaY: 818,
-    spikeY: 48,
-    snailTrackY: 748,
-    blueGateX: 112,
-    goldGateX: 2450,
-    hiveBlueX: 240,
-    hiveGoldX: 2360,
-
-    skyTop: "#2f386d",
-    skyMid: "#59305c",
-    skyLow: "#421824",
-    mountain1: "#39254c",
-    mountain2: "#51305d",
-    platformTop: "#b2a28b",
-    platformSide: "#6c4e33",
-    spikeColor: "#d0d0d0",
-    lava1: "#ff4a1c",
-    lava2: "#ffb02e",
-    bushLeaf1: "#2ea144",
-    bushLeaf2: "#48c75c",
-    bushBerry1: "#55ff5e",
-    bushBerry2: "#b127cf",
-
-    platforms: [
-      {x: 40, y: 700, w: 340, h: 12},
-      {x: 470, y: 610, w: 320, h: 12},
-      {x: 930, y: 480, w: 340, h: 12},
-      {x: 1330, y: 480, w: 340, h: 12},
-      {x: 1810, y: 610, w: 320, h: 12},
-      {x: 2220, y: 700, w: 340, h: 12},
-      {x: 240, y: 410, w: 230, h: 12},
-      {x: 1060, y: 300, w: 230, h: 12},
-      {x: 1310, y: 300, w: 230, h: 12},
-      {x: 2120, y: 410, w: 230, h: 12},
-      {x: 690, y: 210, w: 190, h: 12},
-      {x: 1720, y: 210, w: 190, h: 12}
-    ],
-
-    bushes: [
-      {platformIndex:1, offset:135},
-      {platformIndex:7, offset:105},
-      {platformIndex:8, offset:105},
-      {platformIndex:4, offset:135}
-    ]
-  },
-
-  {
-    name: "MOON CAVERN",
-    width: 3000,
-    height: 900,
-    lavaY: 830,
-    spikeY: 52,
-    snailTrackY: 760,
-    blueGateX: 100,
-    goldGateX: 2855,
-    hiveBlueX: 245,
-    hiveGoldX: 2755,
-
-    skyTop: "#12264f",
-    skyMid: "#1a1f4e",
-    skyLow: "#281c3d",
-    mountain1: "#1d2142",
-    mountain2: "#2a3159",
-    platformTop: "#8b96ad",
-    platformSide: "#49536b",
-    spikeColor: "#b9c3da",
-    lava1: "#7c1fff",
-    lava2: "#c95cff",
-    bushLeaf1: "#316883",
-    bushLeaf2: "#4ba3a6",
-    bushBerry1: "#9dffea",
-    bushBerry2: "#c65dff",
-
-    platforms: [
-      {x: 50, y: 715, w: 330, h: 12},
-      {x: 520, y: 650, w: 200, h: 12},
-      {x: 860, y: 545, w: 220, h: 12},
-      {x: 1260, y: 430, w: 280, h: 12},
-      {x: 1680, y: 545, w: 220, h: 12},
-      {x: 2060, y: 650, w: 200, h: 12},
-      {x: 2620, y: 715, w: 300, h: 12},
-      {x: 350, y: 455, w: 170, h: 12},
-      {x: 2440, y: 455, w: 170, h: 12},
-      {x: 720, y: 265, w: 150, h: 12},
-      {x: 2120, y: 265, w: 150, h: 12},
-      {x: 1410, y: 175, w: 180, h: 12}
-    ],
-
-    bushes: [
-      {platformIndex:1, offset:95},
-      {platformIndex:11, offset:90},
-      {platformIndex:9, offset:75},
-      {platformIndex:5, offset:105}
-    ]
-  },
-
-  {
-    name: "EMERALD TOWER",
-    width: 2900,
-    height: 1100,
-    lavaY: 1015,
-    spikeY: 45,
-    snailTrackY: 930,
-    blueGateX: 105,
-    goldGateX: 2770,
-    hiveBlueX: 240,
-    hiveGoldX: 2655,
-
-    skyTop: "#1d4a45",
-    skyMid: "#244e3d",
-    skyLow: "#2a253f",
-    mountain1: "#203934",
-    mountain2: "#355548",
-    platformTop: "#b8bf7d",
-    platformSide: "#5b6330",
-    spikeColor: "#dde2be",
-    lava1: "#ff7d1d",
-    lava2: "#ffe45b",
-    bushLeaf1: "#2f9f47",
-    bushLeaf2: "#5bd16a",
-    bushBerry1: "#ff6a94",
-    bushBerry2: "#ffdef0",
-
-    platforms: [
-      {x: 50, y: 890, w: 320, h: 12},
-      {x: 2520, y: 890, w: 320, h: 12},
-      {x: 480, y: 790, w: 180, h: 12},
-      {x: 820, y: 690, w: 180, h: 12},
-      {x: 1160, y: 590, w: 180, h: 12},
-      {x: 1500, y: 690, w: 180, h: 12},
-      {x: 1840, y: 790, w: 180, h: 12},
-      {x: 290, y: 530, w: 170, h: 12},
-      {x: 2430, y: 530, w: 170, h: 12},
-      {x: 710, y: 390, w: 150, h: 12},
-      {x: 1980, y: 390, w: 150, h: 12},
-      {x: 1320, y: 300, w: 190, h: 12},
-      {x: 1320, y: 215, w: 190, h: 12},
-      {x: 1320, y: 135, w: 190, h: 12}
-    ],
-
-    bushes: [
-      {platformIndex:2, offset:80},
-      {platformIndex:9, offset:70},
-      {platformIndex:10, offset:70},
-      {platformIndex:6, offset:80}
-    ]
-  },
-
-  {
-    name: "SUNBURST PLAZA",
-    width: 3000,
-    height: 900,
-    lavaY: 822,
-    spikeY: 58,
-    snailTrackY: 752,
-    blueGateX: 95,
-    goldGateX: 2865,
-    hiveBlueX: 240,
-    hiveGoldX: 2750,
-
-    skyTop: "#69d8ff",
-    skyMid: "#95ebff",
-    skyLow: "#d8f9ff",
-    mountain1: "#8cc8aa",
-    mountain2: "#a2ddb7",
-    platformTop: "#f4e289",
-    platformSide: "#b4893f",
-    spikeColor: "#fff6da",
-    lava1: "#ff8c2d",
-    lava2: "#ffd460",
-    bushLeaf1: "#6cc952",
-    bushLeaf2: "#9be86a",
-    bushBerry1: "#ff5ca7",
-    bushBerry2: "#ffe4f4",
-
-    platforms: [
-      {x: 30, y: 710, w: 320, h: 12},
-      {x: 2650, y: 710, w: 320, h: 12},
-      {x: 720, y: 640, w: 180, h: 12},
-      {x: 930, y: 565, w: 180, h: 12},
-      {x: 1140, y: 490, w: 180, h: 12},
-      {x: 1350, y: 455, w: 300, h: 12},
-      {x: 1700, y: 490, w: 180, h: 12},
-      {x: 1910, y: 565, w: 180, h: 12},
-      {x: 2120, y: 640, w: 180, h: 12},
-      {x: 1260, y: 310, w: 120, h: 12},
-      {x: 1620, y: 310, w: 120, h: 12},
-      {x: 1440, y: 240, w: 120, h: 12}
-    ],
-
-    bushes: [
-      {platformIndex:2, offset:90},
-      {platformIndex:3, offset:90},
-      {platformIndex:4, offset:90},
-      {platformIndex:5, offset:70},
-      {platformIndex:5, offset:150},
-      {platformIndex:5, offset:230},
-      {platformIndex:6, offset:90},
-      {platformIndex:7, offset:90},
-      {platformIndex:8, offset:90}
-    ]
-  },
-  {
-    name: "THE GREAT ASSAULT",
-    width: 4200,
-    height: 1100,
-    lavaY: 1000,
-    spikeY: 48,
-    snailTrackY: 930,
-    blueGateX: 120,
-    goldGateX: 4050,
-    hiveBlueX: 280,
-    hiveGoldX: 3920,
-    mode: "assault",
-    lockStrategies: true,
-    forcedStrategy: "military",
-
-    skyTop: "#14080a",
-    skyMid: "#2f0c0f",
-    skyLow: "#4b1418",
-    mountain1: "#351014",
-    mountain2: "#5f1a1f",
-    platformTop: "#d59a5a",
-    platformSide: "#7d3f23",
-    spikeColor: "#dfd2c5",
-    lava1: "#ff6a1d",
-    lava2: "#ffd064",
-    bushLeaf1: "#4e4e4e",
-    bushLeaf2: "#666",
-    bushBerry1: "#777",
-    bushBerry2: "#999",
-
-    platforms: [
-      {x: 40, y: 900, w: 420, h: 12}, {x: 3735, y: 900, w: 420, h: 12},
-      {x: 550, y: 830, w: 260, h: 12}, {x: 980, y: 760, w: 260, h: 12},
-      {x: 1410, y: 690, w: 260, h: 12}, {x: 1840, y: 620, w: 520, h: 12},
-      {x: 2540, y: 690, w: 260, h: 12}, {x: 2970, y: 760, w: 260, h: 12},
-      {x: 3400, y: 830, w: 260, h: 12},
-      {x: 840, y: 560, w: 180, h: 12}, {x: 1580, y: 500, w: 180, h: 12},
-      {x: 2440, y: 500, w: 180, h: 12}, {x: 3180, y: 560, w: 180, h: 12},
-      {x: 1970, y: 420, w: 260, h: 12},
-      {x: 1180, y: 640, w: 170, h: 12},
-      {x: 1600, y: 590, w: 170, h: 12},
-      {x: 2380, y: 590, w: 170, h: 12},
-      {x: 2790, y: 640, w: 170, h: 12},
-      {x: 1970, y: 520, w: 220, h: 12}
-    ],
-    bushes: [],
-    flags: [
-      { x: 1120, y: 760 },
-      { x: 1495, y: 690 },
-      { x: 1885, y: 620 },
-      { x: 2100, y: 420 },
-      { x: 2315, y: 620 },
-      { x: 2705, y: 690 },
-      { x: 3080, y: 760 }
-    ]
-  },
-  {
-    name: "SNAIL WAR",
-    width: 3000,
-    height: 900,
-    lavaY: 860,
-    spikeY: 48,
-    snailTrackY: 760,
-    blueGateX: 105,
-    goldGateX: 2860,
-    hiveBlueX: 240,
-    hiveGoldX: 2755,
-    mode: "snail-war",
-    lockStrategies: true,
-    forcedStrategy: "snail",
-
-    skyTop: "#203a35",
-    skyMid: "#2f584f",
-    skyLow: "#486e61",
-    mountain1: "#31594f",
-    mountain2: "#48786e",
-    platformTop: "#95b483",
-    platformSide: "#5d6f4f",
-    spikeColor: "#cbdecf",
-    lava1: "#4f7c47",
-    lava2: "#89b85c",
-    bushLeaf1: "#5b8a57",
-    bushLeaf2: "#7fb371",
-    bushBerry1: "#a5ca7b",
-    bushBerry2: "#cfe39d",
-
-    platforms: [
-      {x: 30, y: 705, w: 320, h: 12}, {x: 2660, y: 705, w: 320, h: 12},
-      {x: 760, y: 655, w: 220, h: 12}, {x: 1030, y: 590, w: 220, h: 12},
-      {x: 1300, y: 525, w: 400, h: 12}, {x: 1760, y: 590, w: 220, h: 12},
-      {x: 2030, y: 655, w: 220, h: 12},
-      {x: 1400, y: 430, w: 200, h: 12}
-    ],
-    bushes: []
-  }
-];
-
-/* ---------------- GAME STATE ---------------- */
-
-const game = {
-  state: "title",
-  winner: null,
-  winType: "",
-  playerStrategy: "economy",
-  goldStrategy: "military",
-  enemyStrategy: "military",
-  splitScreen: false,
-  sameTeams: false,
-  difficultyIndex: 3,
-  currentMapIndex: 0,
-  cameraX: 0,
-  cameraY: 0,
-  cameraBlueX: 0,
-  cameraBlueY: 0,
-  cameraGoldX: 0,
-  cameraGoldY: 0,
-  time: 0,
-  strategyFlashTimer: 0,
-  goldStrategyFlashTimer: 0,
-  strategySwitchCooldown: 0,
-  goldStrategySwitchCooldown: 0,
-  debugAI: false,
-  _prevKeys: {}
-};
-
-function enemyQueenLivesByDifficulty(level) {
-  const overrides = { 6: 4, 7: 5, 8: 6, 9: 8, 10: 10 };
-  return overrides[level] || 3;
-}
-
-const world = {
-  width: 2600,
-  height: 900,
-  lavaY: 818,
-  spikeY: 48,
-  snailTrackY: 748,
-  snailLeftGoal: 130,
-  snailRightGoal: 2470,
-  platforms: [],
-  theme: MAPS[0],
-  mode: "standard"
-};
-
-const stars = Array.from({ length: 240 }, () => ({
-  x: rand(0, 3400),
-  y: rand(0, 900),
-  s: Math.random() < 0.15 ? 3 : (Math.random() < 0.45 ? 2 : 1)
-}));
-
-const gates = { blue: null, gold: null };
-const hive = { blue: null, gold: null };
-const particles = [];
-let fireballs = [];
-let flags = [];
-const teamState = {
-  blue: { bonusSlots: 0, summonCooldown: 0 },
-  gold: { bonusSlots: 0, summonCooldown: 0 }
-};
-
-function addParticles(x, y, color, count = 10, speed = 3) {
-  for (let i = 0; i < count; i++) {
-    particles.push({
-      x,
-      y,
-      vx: rand(-speed, speed),
-      vy: rand(-speed - 1, speed * 0.35),
-      life: rand(18, 44),
-      maxLife: 44,
-      color
-    });
-  }
-}
-function updateParticles() {
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const p = particles[i];
-    p.x += p.vx;
-    p.y += p.vy;
-    p.vy += 0.11;
-    p.life--;
-    if (p.life <= 0) particles.splice(i, 1);
-  }
-}
-
-const snail = {
-  x: 0,
-  y: 0,
-  rider: null,
-  dir: 0,
-  speed: 0.7
-};
-
-let bushes = [];
-let units = [];
-let playerQueen = null;
-let goldPlayerQueen = null;
-const teamTactics = {
-  blue: { primarySnailRunner: null, runnerLockUntil: 0 },
-  gold: { primarySnailRunner: null, runnerLockUntil: 0 }
-};
-
-function currentDifficulty() {
-  return DIFFICULTIES[game.difficultyIndex];
-}
-
-function getSnailDangerForTeam(team) {
-  const totalSpan = world.snailRightGoal - world.snailLeftGoal;
-  let progressAgainstTeam = 0;
-
-  if (team === "blue") {
-    progressAgainstTeam = (snail.x - world.snailLeftGoal) / totalSpan;
-  } else {
-    progressAgainstTeam = (world.snailRightGoal - snail.x) / totalSpan;
-  }
-
-  progressAgainstTeam = clamp(progressAgainstTeam, 0, 1);
-
-  let severity = "none";
-  if (progressAgainstTeam >= 0.82) severity = "critical";
-  else if (progressAgainstTeam >= 0.63) severity = "high";
-  else if (progressAgainstTeam >= 0.45) severity = "medium";
-  else if (progressAgainstTeam >= 0.28) severity = "low";
-
-  return {
-    progress: progressAgainstTeam,
-    severity
-  };
-}
-
-function isValidSnailRunnerCandidate(unit) {
-  return !!unit && !unit.dead && unit.role !== "queen" && unit.form !== "warrior" && !unit.onSnail;
-}
-
-function nearestEnemyDistanceToUnit(unit, range = 180) {
-  let best = range;
-  for (const u of units) {
-    if (u.dead || u.team === unit.team) continue;
-    const d = dist(unit.x, unit.y, u.x, u.y);
-    if (d < best) best = d;
-  }
-  return best;
-}
-
-function pickPrimarySnailRunner(team) {
-  let best = null;
-  let bestScore = 1e9;
-  for (const u of units) {
-    if (u.team !== team || !isValidSnailRunnerCandidate(u)) continue;
-    const toSnail = dist(u.x, u.y, snail.x, snail.y);
-    const enemyDist = nearestEnemyDistanceToUnit(u, 220);
-    const enemyPenalty = enemyDist < 220 ? (220 - enemyDist) * 1.25 : 0;
-    const berryPenalty = u.carryingBerry ? 180 : 0;
-    const fightPenalty = u.enemiesNearby(150) > u.alliesNearby(170) + 1 ? 140 : 0;
-    const rolePenalty = u.form === "speed" ? -26 : 0;
-    const score = toSnail + enemyPenalty + berryPenalty + fightPenalty + rolePenalty;
-    if (score < bestScore) {
-      bestScore = score;
-      best = u;
+    if(arr[0] && typeof arr[0]==="object" && !Array.isArray(arr[0])){
+      found.push({ rows: arr, sheetName });
+      return;
+    }
+    if(Array.isArray(arr[0])){
+      const rows = aoaToRows(arr);
+      if(rows.length) found.push({ rows, sheetName });
     }
   }
-  return best;
+
+  function walk(node, sheetName){
+    if(node===null || node===undefined) return;
+    if(Array.isArray(node)){
+      pushArray(node, sheetName ?? sheetNameFallback ?? "");
+      return;
+    }
+    if(typeof node!=="object") return;
+
+    if(Array.isArray(node.rows)) pushArray(node.rows, sheetName ?? sheetNameFallback ?? "");
+    if(Array.isArray(node.data)) pushArray(node.data, sheetName ?? sheetNameFallback ?? "");
+    if(Array.isArray(node.table)) pushArray(node.table, sheetName ?? sheetNameFallback ?? "");
+
+    if(node.sheets && typeof node.sheets==="object" && !Array.isArray(node.sheets)){
+      for(const [sn, sv] of Object.entries(node.sheets)){
+        walk(sv, sn);
+      }
+    }
+    for(const [k,v] of Object.entries(node)){
+      if(k==="meta" || k==="sheets") continue;
+      walk(v, sheetName);
+    }
+  }
+  walk(root, sheetNameFallback);
+  return found;
 }
 
-function ensurePrimarySnailRunner(team, strategy) {
-  const state = teamTactics[team];
-  if (strategy !== "snail" || (snail.rider && snail.rider.team === team)) {
-    state.primarySnailRunner = null;
-    state.runnerLockUntil = 0;
+function pickFieldFromRow(row, candidates){
+  const map = {};
+  for(const k of Object.keys(row||{})){
+    map[normHdr(k)] = k;
+  }
+  for(const cand of candidates){
+    const real = map[cand];
+    if(real!==undefined) return row[real];
+  }
+  return undefined;
+}
+
+function excelSerialToDate(serial){
+  const n = Number(serial);
+  if(!Number.isFinite(n)) return null;
+  const base = Date.UTC(1899,11,30);
+  const ms = Math.round(n * 86400000);
+  const d = new Date(base + ms);
+  return isNaN(d) ? null : d;
+}
+function parseAnyDate(v){
+  if(v instanceof Date && !isNaN(v)) return v;
+  if(v===null || v===undefined || v==="") return null;
+
+  const tryNum = (x)=>{
+    const n = (typeof x==="number") ? x : parseFloat(String(x).trim());
+    if(!Number.isFinite(n)) return null;
+    if(n > 20000 && n < 90000) return excelSerialToDate(n);
+    if(n > 1e12) { const d = new Date(n); return isNaN(d)?null:d; }
+    if(n > 1e9 && n < 1e12) { const d = new Date(n*1000); return isNaN(d)?null:d; }
     return null;
-  }
-  const current = state.primarySnailRunner;
-  if (isValidSnailRunnerCandidate(current) && game.time <= state.runnerLockUntil) return current;
-  const next = pickPrimarySnailRunner(team);
-  state.primarySnailRunner = next;
-  state.runnerLockUntil = game.time + 130;
-  return next;
-}
-
-function cyclePlayerStrategy() {
-  if (game.strategySwitchCooldown > 0) return;
-  const idx = TEAM_STRATEGIES.indexOf(game.playerStrategy);
-  const nextIdx = (idx + 1 + TEAM_STRATEGIES.length) % TEAM_STRATEGIES.length;
-  game.playerStrategy = TEAM_STRATEGIES[nextIdx];
-  game.strategySwitchCooldown = 22;
-  game.strategyFlashTimer = 90;
-}
-
-function cycleGoldStrategy() {
-  if (game.goldStrategySwitchCooldown > 0) return;
-  const idx = TEAM_STRATEGIES.indexOf(game.goldStrategy);
-  const nextIdx = (idx + 1 + TEAM_STRATEGIES.length) % TEAM_STRATEGIES.length;
-  game.goldStrategy = TEAM_STRATEGIES[nextIdx];
-  game.goldStrategySwitchCooldown = 22;
-  game.goldStrategyFlashTimer = 90;
-}
-
-function strategyForTeam(team) {
-  if (world.theme.lockStrategies && world.theme.forcedStrategy) return world.theme.forcedStrategy;
-  if (team === "blue") return game.playerStrategy;
-  if (game.splitScreen && !game.sameTeams) return game.goldStrategy;
-  return game.enemyStrategy;
-}
-
-function keyTap(key) {
-  return !!keys[key] && !game._prevKeys[key];
-}
-
-function applyMap(index) {
-  const map = MAPS[index];
-  world.theme = map;
-  world.mode = map.mode || "standard";
-  world.width = map.width;
-  world.height = map.height;
-  world.lavaY = map.lavaY;
-  world.spikeY = map.spikeY;
-  world.snailTrackY = map.snailTrackY;
-  world.platforms = map.platforms.map(p => ({ ...p }));
-  world.snailLeftGoal = 130;
-  world.snailRightGoal = world.width - 130;
-
-  gates.blue = {
-    x: map.blueGateX, y: 130, w: 40, h: 172, team: "blue",
-    berries: 0,
-    upgrades: { speed: false, warrior: false },
-    maidens: [
-      { x: map.blueGateX + 68, y: 195, type: "speed" },
-      { x: map.blueGateX + 68, y: 260, type: "warrior" }
-    ]
-  };
-  gates.gold = {
-    x: map.goldGateX, y: 130, w: 40, h: 172, team: "gold",
-    berries: 0,
-    upgrades: { speed: false, warrior: false },
-    maidens: [
-      { x: map.goldGateX - 28, y: 195, type: "speed" },
-      { x: map.goldGateX - 28, y: 260, type: "warrior" }
-    ]
   };
 
-  hive.blue = { x: map.hiveBlueX, y: world.snailTrackY - 22, team: "blue" };
-  hive.gold = { x: map.hiveGoldX, y: world.snailTrackY - 22, team: "gold" };
-
-  snail.x = world.width / 2;
-  snail.y = world.snailTrackY - 18;
-  snail.rider = null;
-  snail.dir = 0;
-
-  bushes = map.bushes.map((b, idx) => {
-    const plat = map.platforms[b.platformIndex];
-    const x = plat.x + b.offset;
-    const y = plat.y - 2;
-    return {
-      id: idx,
-      x,
-      y,
-      timer: 0,
-      platformY: plat.y,
-      berry: { x, y: y - 20, alive: true, carriedBy: null, bushId: idx }
-    };
-  });
-
-  flags = (map.flags || []).map((f, idx) => ({
-    id: idx,
-    x: f.x,
-    y: f.y,
-    w: 30,
-    h: 44,
-    owner: null,
-    capturingTeam: null,
-    captureTimer: 0
-  }));
-
-  teamState.blue.bonusSlots = 0;
-  teamState.gold.bonusSlots = 0;
-  teamState.blue.summonCooldown = 0;
-  teamState.gold.summonCooldown = 0;
-
-  fireballs = [];
-  if (world.mode === "assault") {
-    fireballs = Array.from({ length: 12 }, () => ({
-      x: rand(0, world.width),
-      y: rand(-900, 260),
-      vy: rand(3.3, 5.8),
-      size: rand(7, 15),
-      glow: rand(0.35, 0.7),
-      trail: []
-    }));
-  }
-}
-
-/* ---------------- UNITS ---------------- */
-
-class Unit {
-  constructor({ team, role, x, y, isPlayer = false }) {
-    this.team = team;
-    this.role = role; // queen, worker
-    this.x = x;
-    this.y = y;
-    this.w = role === "queen" ? 46 : 34;
-    this.h = role === "queen" ? 30 : 24;
-    this.vx = 0;
-    this.vy = 0;
-    this.dir = team === "blue" ? 1 : -1;
-    this.onGround = false;
-    this.flapCooldown = 0;
-    this.flutter = 0;
-    this.invuln = 0;
-    this.dead = false;
-    this.respawnTimer = 0;
-    this.isPlayer = isPlayer;
-
-    this.form = role === "queen" ? "queen" : "worker"; // worker, speed, warrior
-    this.carryingBerry = null;
-    this.onSnail = false;
-    this.snailMountCooldown = 0;
-    this.aiTick = 0;
-    this.target = null;
-    this.intent = "";
-    this.objectiveCommit = 0;
-    this.approachType = "direct-intercept";
-    this.approachCommit = 0;
-    this.queenState = "stabilize";
-    this.queenStateCommit = 0;
-    this.lastSupportCount = 0;
-    this.lastDangerFlag = false;
-    this.lastAmbushFlag = false;
-    this.failedApproaches = {};
-    this.deathMemory = [];
-    this.lastObjectiveChange = -9999;
-    this.lastUnsupportedDive = -9999;
-    this.queenLives = role === "queen" ? 3 : 0;
-  }
-
-  diff() {
-    return currentDifficulty();
-  }
-
-  enemyUrgencyBoost() {
-    const blueBerries = gates.blue.berries;
-    if (this.team === "gold") {
-      if (blueBerries >= 8) return 1.0;
-      if (blueBerries >= 6) return 0.72;
-      if (blueBerries >= 4) return 0.42;
-    }
-    return 0;
-  }
-
-  color() {
-    if (this.role === "queen") return this.team === "blue" ? "#5ed6ff" : "#ffd457";
-    if (this.form === "speed") return this.team === "blue" ? "#72ffe3" : "#faff99";
-    if (this.form === "warrior") return this.team === "blue" ? "#48b9ff" : "#ffbf56";
-    return this.team === "blue" ? "#2f9cff" : "#d6a040";
-  }
-
-  flapPower() {
-    if (this.role === "queen") return 5.6;
-    if (this.form === "speed") return 5.95;
-    if (this.form === "warrior") return 5.2;
-    return 5.1;
-  }
-
-  maxSpeed() {
-    if (this.role === "queen") return 4.56;
-    if (this.form === "speed") return 5.0;
-    if (this.form === "warrior") return 3.63;
-    return 3.96;
-  }
-
-  flap(power = this.flapPower()) {
-    if (this.flapCooldown <= 0) {
-      this.vy = Math.min(this.vy, 0) - power;
-      this.flapCooldown = 10;
-      this.flutter = 7;
-      if (this.isPlayer) soundFlap();
-      addParticles(this.x + this.w / 2, this.y + this.h - 2, "#ffffff", 3, 2.0);
-    }
-  }
-
-  getHitbox() {
-    return { x: this.x + 4, y: this.y + 4, w: this.w - 8, h: this.h - 7 };
-  }
-
-  rememberDeath() {
-    this.deathMemory.push({ x: this.x, y: this.y, t: game.time });
-    while (this.deathMemory.length > 8) this.deathMemory.shift();
-  }
-
-  recentDeathsNear(x, y, radius = 140, window = 900) {
-    return this.deathMemory.filter(d => game.time - d.t <= window && dist(d.x, d.y, x, y) < radius).length;
-  }
-
-  die() {
-    if (this.dead) return;
-    this.rememberDeath();
-
-    if (this.role === "queen") {
-      this.queenLives--;
-      addParticles(this.x + this.w / 2, this.y + this.h / 2, this.team === "blue" ? "#79dcff" : "#ffe67a", 20, 3.8);
-      soundDeath();
-
-      if (this.carryingBerry) this.dropBerry();
-
-      if (snail.rider === this) {
-        snail.rider = null;
-        this.onSnail = false;
-        soundDismount();
-      }
-
-      if (this.queenLives <= 0) {
-        this.dead = true;
-        this.respawnTimer = 999999;
-      } else {
-        this.invuln = 220;
-        this.respawnAtBase();
-      }
-      return;
-    }
-
-    this.dead = true;
-    this.respawnTimer = 170;
-    addParticles(this.x + this.w / 2, this.y + this.h / 2, this.team === "blue" ? "#79dcff" : "#ffe67a", 16, 3.4);
-    soundDeath();
-
-    if (this.carryingBerry) this.dropBerry();
-    if (snail.rider === this) {
-      snail.rider = null;
-      this.onSnail = false;
-      soundDismount();
-    }
-  }
-
-  dropBerry() {
-    if (!this.carryingBerry) return;
-    this.carryingBerry.carriedBy = null;
-    this.carryingBerry.x = this.x + 10;
-    this.carryingBerry.y = this.y + 10;
-    this.carryingBerry.alive = true;
-    this.carryingBerry = null;
-  }
-
-  respawnAtBase() {
-    if (this.team === "blue") {
-      this.x = this.role === "queen" ? 165 : rand(125, 280);
-      this.y = this.role === "queen" ? 650 : rand(635, 700);
-      this.dir = 1;
-    } else {
-      this.x = this.role === "queen" ? world.width - 205 : rand(world.width - 280, world.width - 125);
-      this.y = this.role === "queen" ? 650 : rand(635, 700);
-      this.dir = -1;
-    }
-    this.vx = 0;
-    this.vy = 0;
-    this.onSnail = false;
-    this.snailMountCooldown = 50;
-  }
-
-  respawn() {
-    this.dead = false;
-    this.invuln = this.role === "queen" ? 220 : 90;
-    this.form = "worker";
-    this.carryingBerry = null;
-    this.respawnAtBase();
-  }
-
-  physics() {
-    this.flapCooldown--;
-    this.flutter = Math.max(0, this.flutter - 1);
-    this.invuln = Math.max(0, this.invuln - 1);
-    this.snailMountCooldown = Math.max(0, this.snailMountCooldown - 1);
-
-    this.vy += 0.27;
-    this.vy = clamp(this.vy, -8.6, 8);
-    this.x += this.vx;
-    this.y += this.vy;
-
-    if (this.x + this.w < 0) this.x = world.width;
-    if (this.x > world.width) this.x = -this.w;
-
-    this.onGround = false;
-
-    for (const p of world.platforms) {
-      const feetPrev = this.y + this.h - this.vy;
-      const feetNow = this.y + this.h;
-      if (
-        this.x + this.w - 5 > p.x &&
-        this.x + 5 < p.x + p.w &&
-        feetPrev <= p.y &&
-        feetNow >= p.y &&
-        this.vy >= 0
-      ) {
-        this.y = p.y - this.h;
-        this.vy = 0;
-        this.onGround = true;
-      }
-    }
-
-    if (this.onSnail && snail.rider === this) {
-      this.y = snail.y - this.h + 4;
-      this.vy = 0;
-      this.onGround = true;
-      this.x = snail.x - this.w / 2;
-    }
-
-    if (this.y <= world.spikeY) {
-      this.die();
-      return;
-    }
-    if (this.y + this.h >= world.lavaY) {
-      this.die();
-      return;
-    }
-
-    this.vx *= this.onGround ? 0.9 : 0.988;
-    this.vx = clamp(this.vx, -this.maxSpeed(), this.maxSpeed());
-  }
-
-  nearestEnemy(range = 99999) {
-    let best = null, bestD = range;
-    for (const u of units) {
-      if (u.dead || u.team === this.team) continue;
-      const d = dist(this.x, this.y, u.x, u.y);
-      if (d < bestD) { bestD = d; best = u; }
-    }
-    return best;
-  }
-
-  enemyQueen() {
-    return units.find(u => !u.dead && u.team !== this.team && u.role === "queen");
-  }
-
-  enemyCarrier() {
-    return units.find(u => !u.dead && u.team !== this.team && u.carryingBerry);
-  }
-
-  alliedCarrier() {
-    return units.find(u => !u.dead && u.team === this.team && u.carryingBerry);
-  }
-
-  squadRole() {
-    if (!this.diff().squad || this.role === "queen") return "solo";
-    const allies = units.filter(u => !u.dead && u.team === this.team && u.role !== "queen").sort((a, b) => a.x - b.x);
-    const idx = allies.indexOf(this);
-    if (idx === -1) return "solo";
-    if (idx === 0) return "harvest";
-    if (idx === 1) return "escort";
-    if (idx === 2) return "contest";
-    return "flex";
-  }
-
-  bushBerryTarget() {
-    let best = null, bestScore = 1e9;
-    for (const bush of bushes) {
-      const b = bush.berry;
-      if (!b.alive || b.carriedBy) continue;
-      const d = dist(this.x, this.y, b.x, b.y);
-      const ownGate = gates[this.team];
-      const score = d + Math.abs(ownGate.x - b.x) * 0.15;
-      if (score < bestScore) {
-        bestScore = score;
-        best = b;
-      }
-    }
-    return best;
-  }
-
-  pressureInfo() {
-    const ownGate = gates[this.team];
-    const ownHive = hive[this.team];
-    const enemyGate = gates[this.team === "blue" ? "gold" : "blue"];
-    const enemyNearGate = nearestEnemyToPoint(this.team, ownGate.x, ownGate.y + 80, 260 + 70 * this.diff().awareness);
-    const enemyNearHive = nearestEnemyToPoint(this.team, ownHive.x, ownHive.y, 240 + 60 * this.diff().awareness);
-    const enemyNearSnail = nearestEnemyToPoint(this.team, snail.x, snail.y, 260 + 80 * this.diff().awareness);
-    const snailEnemy = snail.rider && snail.rider.team !== this.team ? snail.rider : null;
-    const snailFriendly = snail.rider && snail.rider.team === this.team ? snail.rider : null;
-    return { ownGate, ownHive, enemyGate, enemyNearGate, enemyNearHive, enemyNearSnail, snailEnemy, snailFriendly };
-  }
-
-  alliesNearby(range = 220) {
-    return units.filter(u => !u.dead && u.team === this.team && u !== this && dist(this.x, this.y, u.x, u.y) < range).length;
-  }
-
-  enemiesNearby(range = 220) {
-    return units.filter(u => !u.dead && u.team !== this.team && dist(this.x, this.y, u.x, u.y) < range).length;
-  }
-
-  isPrimarySnailRunner(strategy) {
-    if (strategy !== "snail" || this.role === "queen" || this.form === "warrior") return false;
-    const runner = ensurePrimarySnailRunner(this.team, strategy);
-    return runner === this;
-  }
-
-  directSnailThreatDistance(maxRange = 130) {
-    let best = maxRange;
-    for (const u of units) {
-      if (u.dead || u.team === this.team) continue;
-      const dSnail = dist(u.x, u.y, snail.x, snail.y);
-      const dSelf = dist(u.x, u.y, this.x, this.y);
-      if (dSnail < best || dSelf < best) best = Math.min(best, dSnail, dSelf);
-    }
-    return best;
-  }
-
-  intentCommitBoost(intent, strategy, isPrimaryRunner = false) {
-    const lvl = this.diff().level;
-    let boost = 0;
-    if (lvl >= 6 && ["ride-snail", "escort-snail", "contest-snail", "stop-carrier", "queen-hunt", "defend-gate"].some(t => intent.includes(t))) boost += 24;
-    if (lvl >= 7 && ["ride-snail", "escort-snail", "contest-snail-hard", "stop-carrier", "queen-hunt", "defend-gate"].some(t => intent.includes(t))) boost += 18;
-    if (lvl >= 8 && ["ride-snail", "stop-carrier", "queen-hunt", "defend-gate", "contest-snail"].some(t => intent.includes(t))) boost += 14;
-    if (lvl >= 9 && ["ride-snail", "contest-snail", "defend-gate", "stop-carrier"].some(t => intent.includes(t))) boost += 12;
-    if (lvl >= 10 && ["ride-snail", "contest-snail-hard", "stop-carrier", "queen-hunt", "defend-gate"].some(t => intent.includes(t))) boost += 14;
-    if (isPrimaryRunner && strategy === "snail" && intent === "ride-snail") boost += 55;
-    if (this.role === "queen" && lvl >= 9 && intent.includes("queen")) boost += 16;
-    return boost;
-  }
-
-  bravery(strategy) {
-    if (this.role === "queen") return 0.58;
-    if (this.form === "warrior") return 0.82;
-    if (strategy === "snail") return 0.64;
-    if (this.form === "speed") return 0.48;
-    return 0.40;
-  }
-
-  dangerZoneAgainst(target) {
-    if (!target) return { score: 0, ambush: false, topTrap: false };
-    const enemyAbove = target.y + target.h < this.y + 8;
-    const tightCeiling = this.y < world.spikeY + 140;
-    const narrowPlatform = world.platforms.find(p =>
-      target.x + ((target.w || 30) / 2) > p.x &&
-      target.x + ((target.w || 30) / 2) < p.x + p.w &&
-      Math.abs(target.y + (target.h || 24) - p.y) < 45
-    );
-    const isNarrow = !!narrowPlatform && narrowPlatform.w <= 220;
-    const topZone = target.y < world.spikeY + 240;
-    const recentDeaths = this.recentDeathsNear(target.x, target.y, 150, 1000);
-    const support = this.alliesNearby(190);
-    let score = 0;
-    if (enemyAbove) score += 0.30;
-    if (tightCeiling) score += 0.24;
-    if (isNarrow) score += 0.24;
-    if (topZone) score += 0.15;
-    if (recentDeaths > 1) score += 0.20;
-    if (support === 0) score += 0.16;
-    return {
-      score: clamp(score, 0, 1.4),
-      ambush: enemyAbove && (tightCeiling || (isNarrow && topZone)),
-      topTrap: enemyAbove && topZone && isNarrow && tightCeiling
-    };
-  }
-
-  shouldForceReevaluate(targetObj, targetIntent, danger) {
-    const ownQueen = units.find(u => !u.dead && u.team === this.team && u.role === "queen");
-    const enemyQueen = this.enemyQueen();
-    const snailDanger = getSnailDangerForTeam(this.team);
-    const diffSet = this.diff();
-    const berriesLeft = 10 - gates[this.team].berries;
-    const berryThreat = 10 - gates[this.team === "blue" ? "gold" : "blue"].berries;
-    const support = this.alliesNearby(200);
-    const failed = this.failedApproaches[this.approachType] || 0;
-    if (diffSet.level >= 8 && targetIntent === "ride-snail" && snail.rider !== this && this.directSnailThreatDistance(128) >= 128 && snailDanger.progress < 0.88) return false;
-    if (snailDanger.progress > 0.70) return true;
-    if ((ownQueen && ownQueen.queenLives <= 1) || (enemyQueen && enemyQueen.queenLives <= 1)) return true;
-    if (berriesLeft <= 2 || berryThreat <= 2) return true;
-    if (targetObj && targetObj.dead) return true;
-    if (diffSet.level >= 9 && danger.topTrap && targetIntent.includes("snail")) return true;
-    if (danger.score > 0.78) return true;
-    if (this.lastSupportCount > 0 && support === 0) return true;
-    if (failed >= 2) return true;
-    if (this.role !== "queen" && enemyQueen && !enemyQueen.dead && enemyQueen.y > world.spikeY + 120 && this.enemiesNearby(260) <= 1 && dist(this.x, this.y, enemyQueen.x, enemyQueen.y) < 250) return true;
-    return false;
-  }
-
-  pickApproach(intent, targetObj, danger, strategy) {
-    const diffSet = this.diff();
-    const options = ["direct-intercept"];
-    if (diffSet.level >= 3) options.push("low-rise");
-    if (diffSet.level >= 4) options.push("side-hover-bait");
-    if (diffSet.level >= 5) options.push("perch-wait");
-    if (diffSet.level >= 6) options.push("regroup-push");
-    if (diffSet.level >= 7) options.push("fake-retreat");
-
-    let preferred = "direct-intercept";
-    if (danger.topTrap || danger.score > 0.85) preferred = diffSet.level >= 6 ? "regroup-push" : "side-hover-bait";
-    else if (intent.includes("escort")) preferred = "perch-wait";
-    else if (intent.includes("snail")) preferred = strategy === "snail" ? "low-rise" : "side-hover-bait";
-    else if (this.form === "warrior" && diffSet.level >= 6) preferred = "fake-retreat";
-
-    if (targetObj && this.recentDeathsNear(targetObj.x, targetObj.y, 160, 1200) > 1 && preferred === "direct-intercept") {
-      preferred = "low-rise";
-    }
-
-    return options.includes(preferred) ? preferred : options[0];
-  }
-
-  chooseTarget(strategy) {
-    const diffSet = this.diff();
-    const pressure = this.pressureInfo();
-    const enemyQueen = this.enemyQueen();
-    const enemyCarrier = this.enemyCarrier();
-    const alliedCarrier = this.alliedCarrier();
-    const berry = this.bushBerryTarget();
-    const urgency = this.enemyUrgencyBoost();
-    const squad = this.squadRole();
-    const snailDanger = getSnailDangerForTeam(this.team);
-    const enemyBerries = gates[this.team === "blue" ? "gold" : "blue"].berries;
-    const ownBerries = gates[this.team].berries;
-    const support = this.alliesNearby(220);
-    const isPrimaryRunner = this.isPrimarySnailRunner(strategy);
-    const directSnailThreat = this.directSnailThreatDistance(diffSet.level >= 8 ? 130 : 115);
-    const ownQueen = units.find(u => !u.dead && u.team === this.team && u.role === "queen");
-    const assaultMode = world.mode === "assault" && flags.length > 0;
-
-    if (assaultMode) {
-      const closestFlag = flags.slice().sort((a, b) => dist(this.x, this.y, a.x, a.y) - dist(this.x, this.y, b.x, b.y))[0];
-      const enemyGate = gates[this.team === "blue" ? "gold" : "blue"];
-      const frontlineFlag = flags.slice().sort((a, b) => dist(a.x, a.y, enemyGate.x, enemyGate.y) - dist(b.x, b.y, enemyGate.x, enemyGate.y))[0] || null;
-      const untakenFlags = flags.filter(f => f.owner !== this.team);
-      const nearestUntakenFlag = untakenFlags.slice().sort((a, b) => dist(this.x, this.y, a.x, a.y) - dist(this.x, this.y, b.x, b.y))[0] || null;
-      const objectiveFlag = nearestUntakenFlag || frontlineFlag || closestFlag || null;
-      const nearbyEnemy = this.nearestEnemy(210);
-      const noImmediateEnemy = !nearbyEnemy;
-
-      if (this.role === "queen") {
-        if (nearbyEnemy) return { obj: nearbyEnemy, intent: "queen-defend-proximity" };
-        if (noImmediateEnemy && objectiveFlag) {
-          return { obj: objectiveFlag, intent: nearestUntakenFlag ? "queen-capture-flag" : "queen-assault-frontline" };
-        }
-        if (enemyQueen) return { obj: enemyQueen, intent: "queen-hunt" };
-        return { obj: pressure.ownGate, intent: "queen-safe-hold" };
-      }
-
-      if (nearbyEnemy) return { obj: nearbyEnemy, intent: "fight-proximity-enemy" };
-      if (nearestUntakenFlag) return { obj: nearestUntakenFlag, intent: "capture-flag" };
-      if (noImmediateEnemy && frontlineFlag) return { obj: frontlineFlag, intent: "assault-frontline-flag" };
-      if (enemyQueen) return { obj: enemyQueen, intent: "queen-hunt" };
-    }
-
-    if (this.role === "queen") {
-      const lowLife = this.queenLives <= 1;
-      const losingSnail = snailDanger.progress > 0.68;
-      const berryEmergency = enemyBerries >= 8;
-      const queenUnderThreat = this.enemiesNearby(diffSet.level >= 9 ? 165 : 130) > (support + (diffSet.level >= 8 ? 0 : 1));
-      if (this.queenStateCommit <= 0) {
-        if ((lowLife && (support < 1 || losingSnail || berryEmergency)) || (diffSet.level >= 9 && queenUnderThreat)) this.queenState = "avoid-death";
-        else if (losingSnail || berryEmergency) this.queenState = "desperation-contest";
-        else if (ownBerries >= 8 && this.queenLives > 1) this.queenState = "defend-lead";
-        else if (strategy === "economy" || support <= 1) this.queenState = "escort-objective";
-        else if (strategy === "military" && this.queenLives > 1 && (diffSet.level < 10 || support >= 2 || urgency > 0.7)) this.queenState = "pressure";
-        else this.queenState = "stabilize";
-        this.queenStateCommit = 75 + Math.floor(100 * diffSet.discipline) + (diffSet.level >= 9 ? 22 : 0);
-      } else {
-        this.queenStateCommit--;
-      }
-
-      if (this.team === "gold") {
-        if (this.queenState === "avoid-death") return { obj: { x: pressure.ownGate.x - 80, y: 430 }, intent: "queen-avoid-death" };
-        if (this.queenState === "desperation-contest" && pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "queen-desperation" };
-        if (pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "defend-snail" };
-        if (pressure.enemyNearGate) return { obj: pressure.enemyNearGate, intent: "defend-gate" };
-        if (enemyCarrier && Math.random() < 0.8 + urgency * 0.2) return { obj: enemyCarrier, intent: "stop-carrier" };
-        if (urgency > 0.6 && enemyQueen && (diffSet.level < 9 || support >= 1 || !lowLife)) return { obj: enemyQueen, intent: "queen-hunt" };
-        if (pressure.enemyNearHive) return { obj: pressure.enemyNearHive, intent: "defend-hive" };
-        if (strategy === "military" && enemyQueen && dist(this.x, this.y, enemyQueen.x, enemyQueen.y) < 420 && (diffSet.level < 10 || support >= 1 || urgency > 0.75)) {
-          return { obj: enemyQueen, intent: "queen-hunt" };
-        }
-        return { obj: { x: pressure.ownGate.x - 70, y: 410 }, intent: "guard-zone" };
-      } else {
-        if (this.queenState === "avoid-death") return { obj: { x: pressure.ownGate.x + 74, y: 430 }, intent: "queen-avoid-death" };
-        if (this.queenState === "desperation-contest" && pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "queen-desperation" };
-        if (strategy === "military" && enemyQueen && (diffSet.level < 10 || support >= 2 || urgency > 0.72)) return { obj: enemyQueen, intent: "queen-hunt" };
-        if (enemyCarrier) return { obj: enemyCarrier, intent: "stop-carrier" };
-        if (pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "contest-snail" };
-        if (pressure.enemyNearGate) return { obj: pressure.enemyNearGate, intent: "defend-gate" };
-        return { obj: enemyQueen || this.nearestEnemy() || { x: pressure.enemyGate.x, y: 360 }, intent: "pressure" };
-      }
-    }
-
-    if (this.form === "warrior") {
-      if (pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "contest-snail" };
-      if (enemyCarrier) return { obj: enemyCarrier, intent: "stop-carrier" };
-      if (pressure.enemyNearGate) return { obj: pressure.enemyNearGate, intent: "defend-gate" };
-      if ((strategy === "military" || urgency > 0.55) && enemyQueen) return { obj: enemyQueen, intent: "queen-hunt" };
-      if (diffSet.escort && alliedCarrier) return { obj: alliedCarrier, intent: "escort-carrier" };
-      return { obj: this.nearestEnemy() || pressure.enemyGate, intent: "roam-attack" };
-    }
-
-    if (this.carryingBerry) {
-      const ownGate = gates[this.team];
-      if (ownGate.upgrades.speed && this.form === "worker" && Math.random() < 0.28) return { obj: ownGate.maidens[0], intent: "take-speed" };
-      if (ownGate.upgrades.warrior && this.form === "worker" && Math.random() < 0.18) return { obj: ownGate.maidens[1], intent: "take-warrior" };
-      return { obj: ownGate, intent: "score-berry" };
-    }
-
-    if (pressure.snailEnemy) {
-      if (snailDanger.severity === "critical") {
-        return { obj: pressure.snailEnemy, intent: "contest-snail-hard" };
-      }
-      if (snailDanger.severity === "high") {
-        if (this.form === "warrior" || this.form === "speed" || Math.random() < 0.7) {
-          return { obj: pressure.snailEnemy, intent: "contest-snail" };
-        }
-      }
-      if (snailDanger.severity === "medium") {
-        if (this.form === "warrior" || Math.random() < 0.45) {
-          return { obj: pressure.snailEnemy, intent: "contest-snail" };
-        }
-      }
-      if (snailDanger.severity === "low") {
-        if (this.form === "warrior" && Math.random() < 0.45) {
-          return { obj: pressure.snailEnemy, intent: "contest-snail" };
-        }
-      }
-    }
-
-    if (pressure.enemyNearGate && (diffSet.awareness > 0.55 || urgency > 0.4)) {
-      return { obj: pressure.enemyNearGate, intent: "defend-gate" };
-    }
-    if (enemyCarrier && (diffSet.antiBerry > 0.35 || urgency > 0.3)) {
-      return { obj: enemyCarrier, intent: "stop-carrier" };
-    }
-
-    if (strategy === "snail") {
-      if (isPrimaryRunner && !pressure.snailFriendly) {
-        const emergency = snailDanger.severity === "critical" || (ownQueen && ownQueen.queenLives <= 1 && this.enemiesNearby(170) >= 2);
-        if (directSnailThreat >= (diffSet.level >= 8 ? 124 : 110) && !emergency) return { obj: snail, intent: "ride-snail" };
-      }
-      if (!pressure.snailFriendly) return { obj: snail, intent: "ride-snail" };
-      if (diffSet.escort && snail.rider && snail.rider.team === this.team && (!isPrimaryRunner || directSnailThreat < 118)) return { obj: snail.rider, intent: "escort-snail" };
-      if (berry && squad !== "contest") return { obj: berry, intent: "collect-berry" };
-      return { obj: pressure.enemyNearSnail || pressure.ownHive, intent: "patrol-snail" };
-    }
-
-    if (strategy === "economy") {
-      if (diffSet.escort && alliedCarrier && squad === "escort") return { obj: alliedCarrier, intent: "escort-carrier" };
-      if (berry) return { obj: berry, intent: "collect-berry" };
-      if (pressure.enemyNearHive) return { obj: pressure.enemyNearHive, intent: "defend-hive" };
-      return { obj: pressure.ownGate, intent: "reposition" };
-    }
-
-    if (strategy === "balanced") {
-      if (snailDanger.severity === "high" || snailDanger.severity === "critical") {
-        if (pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "contest-snail" };
-      }
-      if (enemyCarrier && Math.random() < 0.62) return { obj: enemyCarrier, intent: "stop-carrier" };
-      if (diffSet.escort && alliedCarrier && Math.random() < 0.55) return { obj: alliedCarrier, intent: "escort-carrier" };
-      if (berry && ownBerries < 9 && Math.random() < 0.58) return { obj: berry, intent: "collect-berry" };
-      if (pressure.enemyNearGate) return { obj: pressure.enemyNearGate, intent: "defend-gate" };
-      return { obj: enemyQueen || this.nearestEnemy() || pressure.enemyGate, intent: "pressure" };
-    }
-
-    if (gates[this.team].upgrades.warrior && this.form === "worker" && (Math.random() < 0.24 + diffSet.aggression * 0.15)) {
-      return { obj: gates[this.team].maidens[1], intent: "seek-warrior" };
-    }
-
-    if (urgency > 0.65 && enemyQueen) return { obj: enemyQueen, intent: "queen-hunt" };
-    return { obj: enemyQueen || this.nearestEnemy() || pressure.enemyGate, intent: "pressure" };
-  }
-
-  ai(strategy) {
-    if (this.dead) return;
-    const diffSet = this.diff();
-    this.aiTick--;
-    this.objectiveCommit = Math.max(0, this.objectiveCommit - 1);
-    this.approachCommit = Math.max(0, this.approachCommit - 1);
-
-    const currentObj = this.target?.obj || null;
-    const currentIntent = this.target?.intent || "";
-    const currentDanger = this.dangerZoneAgainst(currentObj);
-    const forceReevaluate = this.shouldForceReevaluate(currentObj, currentIntent, currentDanger);
-    const isPrimaryRunner = this.isPrimarySnailRunner(strategy);
-    if (this.aiTick <= 0 || !this.target || !this.target.obj || (forceReevaluate && this.objectiveCommit < 22)) {
-      const nextTarget = this.chooseTarget(strategy);
-      const level = diffSet.level;
-      const preservingStrongIntent = this.target && this.target.obj && !forceReevaluate && level >= 6 && this.objectiveCommit > (level >= 9 ? 34 : 26);
-      const sameIntent = this.target && this.target.intent === nextTarget.intent;
-      const distantShift = dist((this.target?.obj?.x ?? this.x), (this.target?.obj?.y ?? this.y), (nextTarget.obj?.x ?? this.x), (nextTarget.obj?.y ?? this.y)) > (level >= 8 ? 165 : 120);
-      const allowedSwap =
-        !preservingStrongIntent ||
-        sameIntent ||
-        forceReevaluate ||
-        (level >= 9 && (nextTarget.intent === "stop-carrier" || nextTarget.intent === "contest-snail-hard")) ||
-        distantShift;
-      const shouldSwitch = !this.target || forceReevaluate ||
-        this.target.intent !== nextTarget.intent ||
-        dist((this.target.obj?.x ?? this.x), (this.target.obj?.y ?? this.y), (nextTarget.obj?.x ?? this.x), (nextTarget.obj?.y ?? this.y)) > 120;
-      if ((shouldSwitch && allowedSwap) || this.objectiveCommit <= 0) {
-        this.target = nextTarget;
-        this.objectiveCommit = 45 + Math.floor(50 * diffSet.discipline) + this.intentCommitBoost(this.target.intent, strategy, isPrimaryRunner);
-        this.lastObjectiveChange = game.time;
-        const danger = this.dangerZoneAgainst(this.target.obj);
-        this.approachType = this.pickApproach(this.target.intent, this.target.obj, danger, strategy);
-        this.approachCommit = 35 + Math.floor(65 * diffSet.discipline) + (diffSet.level >= 7 ? 12 : 0);
-      }
-      const urgentRefresh = diffSet.level >= 8 && (forceReevaluate || this.target?.intent === "stop-carrier" || this.target?.intent === "contest-snail-hard");
-      this.aiTick = Math.max(5, diffSet.reaction - (urgentRefresh ? 6 : (forceReevaluate ? 3 : 0)));
-    }
-
-    const nearestEnemy = this.nearestEnemy(150);
-
-    const spikeBuffer = 95;
-    const hardSpikeLine = world.spikeY + spikeBuffer;
-    const risingFast = this.vy < -1.5;
-    const nearSpike = this.y < hardSpikeLine;
-    const veryNearSpike = this.y < hardSpikeLine + 18;
-
-    if (nearSpike) {
-      if (this.vy < 0) this.vy *= 0.55;
-      this.vy += 0.22 + diffSet.spikeSense * 0.12;
-      if (Math.random() < 0.12 + diffSet.spikeSense * 0.10) {
-        this.vx += (this.team === "blue" ? 0.10 : -0.10);
-      }
-    }
-    if (veryNearSpike && risingFast) {
-      this.vy += 0.35;
-    }
-
-    if (nearestEnemy && nearestEnemy.y < this.y - 8 && Math.random() < 0.12 + diffSet.awareness * 0.12) {
-      this.flap();
-    }
-
-    if (this.onSnail && snail.rider === this) {
-      const nearbyThreat = this.nearestEnemy(165 + diffSet.awareness * 40);
-      const closeToGoal = (this.team === "blue" && snail.x > world.snailRightGoal - 70) ||
-                          (this.team === "gold" && snail.x < world.snailLeftGoal + 70);
-      if (nearbyThreat && Math.random() < 0.04 + diffSet.awareness * 0.05) {
-        this.dismountSnail();
-      } else if (closeToGoal && Math.random() < 0.015) {
-        this.dismountSnail();
-      }
-      return;
-    }
-
-    const obj = this.target.obj;
-    const tx = obj.x ?? this.x;
-    const ty = obj.y ?? this.y;
-    const dx = tx - this.x;
-    const dy = ty - this.y;
-    const localEnemies = this.enemiesNearby(230);
-    const localAllies = this.alliesNearby(230);
-    const danger = this.dangerZoneAgainst(obj);
-    this.lastSupportCount = localAllies;
-    this.lastDangerFlag = danger.score > 0.66;
-    this.lastAmbushFlag = danger.ambush;
-
-    let accel = this.role === "queen" ? 0.235 : (this.form === "speed" ? 0.212 : 0.19);
-    accel += (diffSet.aggression - 0.5) * 0.05;
-    const losingFight = localEnemies > localAllies + 1;
-    const altitudeDisadvantage = nearestEnemy && nearestEnemy.y + 10 < this.y;
-    const directSnailThreat = isPrimaryRunner ? this.directSnailThreatDistance(130) : 999;
-    const ignoreRetreatForMount = isPrimaryRunner && this.target?.intent === "ride-snail" && directSnailThreat >= 120;
-    const disciplinedRetreat = diffSet.level >= 8 ? (danger.score > 0.70 || (losingFight && localEnemies >= 2)) : (losingFight || (altitudeDisadvantage && danger.score > 0.6));
-    const shouldDisengage = !ignoreRetreatForMount && disciplinedRetreat &&
-      Math.random() < (0.12 + diffSet.retreat * 0.36 - this.bravery(strategy) * 0.18 + (diffSet.level >= 9 ? 0.04 : 0));
-
-    let plannedX = tx;
-    let plannedY = ty;
-    if (isPrimaryRunner && this.target?.intent === "ride-snail" && !this.onSnail) {
-      this.approachType = "low-rise";
-      this.approachCommit = Math.max(this.approachCommit, 42);
-    }
-
-    if (danger.topTrap && diffSet.trapSense > 0.45) {
-      plannedX += this.x < tx ? -120 : 120;
-      plannedY += 30;
-    }
-    if (shouldDisengage) {
-      plannedX = this.x + (this.team === "blue" ? -140 : 140);
-      plannedY = clamp(this.y + 30, world.spikeY + 120, world.lavaY - 120);
-      if (this.role === "queen" && this.queenLives <= 1) plannedX = gates[this.team].x + (this.team === "blue" ? 80 : -80);
-    }
-
-    if (this.approachType === "low-rise") {
-      plannedY = Math.max(plannedY + 48, this.y + 18);
-    } else if (this.approachType === "side-hover-bait") {
-      plannedX += this.x < tx ? -90 : 90;
-      plannedY = Math.min(plannedY + 20, world.lavaY - 140);
-    } else if (this.approachType === "fake-retreat" && this.approachCommit > 22) {
-      plannedX = this.x + (this.x < tx ? -90 : 90);
-    } else if (this.approachType === "perch-wait" && !(isPrimaryRunner && this.target?.intent === "ride-snail")) {
-      const perch = world.platforms.find(p => Math.abs((p.x + p.w / 2) - tx) < 190 && p.y > world.spikeY + 90 && p.y < world.lavaY - 120);
-      if (perch) {
-        plannedX = perch.x + perch.w / 2;
-        plannedY = perch.y - 10;
-      }
-    } else if (this.approachType === "regroup-push" && !(isPrimaryRunner && this.target?.intent === "ride-snail")) {
-      const ally = units.find(u => !u.dead && u.team === this.team && u !== this && dist(this.x, this.y, u.x, u.y) < 260);
-      if (ally && localAllies < 2) {
-        plannedX = ally.x;
-        plannedY = ally.y - 10;
-      }
-    }
-
-    const snailIntent = (this.target.intent || "").includes("snail");
-    if (snailIntent && !this.onSnail) {
-      const snailCenterX = snail.x;
-      const horizontalToSnail = Math.abs(snailCenterX - this.x);
-      const descentThreshold = isPrimaryRunner ? 118 : 96;
-      const safeLavaBandY = world.lavaY - 64;
-      const snailEngageY = clamp(snail.y - this.h + 8, world.spikeY + 110, world.lavaY - 84);
-      const mountCommitY = clamp(snail.y - this.h + 5, world.spikeY + 108, world.lavaY - 82);
-
-      if (horizontalToSnail > descentThreshold) {
-        plannedY = Math.min(plannedY, safeLavaBandY);
-      } else {
-        plannedY = Math.min(plannedY, isPrimaryRunner ? mountCommitY : snailEngageY);
-      }
-
-      if (isPrimaryRunner && horizontalToSnail < 132 && directSnailThreat >= 120) {
-        plannedY = Math.max(plannedY, mountCommitY);
-        if (Math.abs(snailCenterX - this.x) < 56) {
-          plannedY = mountCommitY;
-        }
-      }
-
-      const standingPlatform = this.onGround ? world.platforms.find(p =>
-        this.x + this.w - 5 > p.x &&
-        this.x + 5 < p.x + p.w &&
-        Math.abs((this.y + this.h) - p.y) <= 3.5
-      ) : null;
-      const targetClearlyBelow = plannedY > this.y + 22;
-      if (standingPlatform && targetClearlyBelow) {
-        const rightEdge = standingPlatform.x + standingPlatform.w - 10;
-        const leftEdge = standingPlatform.x + 10;
-        const preferRight = plannedX >= this.x;
-        plannedX = preferRight ? rightEdge : leftEdge;
-        plannedY = Math.max(plannedY, this.y + 30);
-      }
-    }
-
-    const planDx = plannedX - this.x;
-    const planDy = plannedY - this.y;
-
-    if (Math.abs(planDx) > 8) {
-      this.vx += Math.sign(planDx) * accel;
-      this.dir = planDx > 0 ? 1 : -1;
-    }
-
-    const desiredHeightCeiling = world.spikeY + (diffSet.level >= 9 ? 106 : 95);
-    if (this.y < desiredHeightCeiling) {
-      this.vy += 0.20;
-    }
-
-    const suppressUpward = danger.topTrap && diffSet.trapSense > 0.5 && this.y > (obj.y || this.y) + 10;
-    const runnerFinalMount = isPrimaryRunner && this.target?.intent === "ride-snail" && Math.abs(snail.x - this.x) < 76 && directSnailThreat >= 120;
-    if (!runnerFinalMount && !suppressUpward && planDy < -16 && this.y > desiredHeightCeiling && this.y > world.spikeY + 105) {
-      this.flap();
-    } else if (!runnerFinalMount && !suppressUpward && this.y > plannedY + 18 && Math.random() < 0.03 + diffSet.awareness * 0.03) {
-      this.flap();
-    }
-
-    if (this.target.intent === "escort-carrier" || this.target.intent === "escort-snail") {
-      if (Math.abs(dx) > 30) {
-        this.vx += Math.sign(dx) * 0.06;
-      }
-      if (nearestEnemy && dist(this.x, this.y, nearestEnemy.x, nearestEnemy.y) < 120 && Math.random() < 0.12 + diffSet.aggression * 0.08) {
-        this.flap();
-      }
-    }
-
-    if (this.role === "queen" && this.team === "gold") {
-      const urgency = this.enemyUrgencyBoost();
-      const queenCareful = this.queenLives <= 1 && diffSet.level >= 6;
-      const queenDisciplined = diffSet.level >= 10;
-      const queenMayDive = !queenCareful && (!queenDisciplined || this.alliesNearby(190) >= 2 || urgency > 0.78);
-      if (queenMayDive && nearestEnemy && dist(this.x, this.y, nearestEnemy.x, nearestEnemy.y) < 135 && nearestEnemy.y < this.y + 8 && Math.random() < 0.14 + urgency * 0.08) {
-        this.flap(this.flapPower() + 0.18);
-      }
-      if (this.y < (queenDisciplined ? 195 : 180) && Math.random() < (queenDisciplined ? 0.22 : 0.13)) this.vy += 0.20;
-    }
-
-    if (this.form === "speed" && Math.random() < 0.018 + diffSet.aggression * 0.01) this.flap(this.flapPower() + 0.1);
-    if (this.form === "warrior" && nearestEnemy && nearestEnemy.y < this.y + 8 && Math.random() < 0.05 + diffSet.aggression * 0.06) this.flap();
-
-    if ((danger.score > 0.85 || shouldDisengage) && this.target) {
-      this.failedApproaches[this.approachType] = (this.failedApproaches[this.approachType] || 0) + 1;
-    } else if (this.failedApproaches[this.approachType] > 0 && Math.random() < 0.03) {
-      this.failedApproaches[this.approachType]--;
-    }
-  }
-
-  playerControl(control) {
-    if (this.onSnail && keys[control.down]) {
-      this.dismountSnail();
-      return;
-    }
-    if (keys[control.left]) { this.vx -= 0.38; this.dir = -1; }
-    if (keys[control.right]) { this.vx += 0.38; this.dir = 1; }
-    if (keyTap(control.up) && this.y > world.spikeY + 90) this.flap();
-    if (keys[control.down]) this.vy += 0.16;
-    if (this.y < world.spikeY + 80) this.vy += 0.22;
-
-    if (keyTap(control.pickup)) {
-      if (this.carryingBerry) this.dropBerry();
-      else attemptPlayerBerryPickup(this);
-    }
-  }
-
-  tryMountSnail() {
-    if (world.mode === "assault") return;
-    if (this.role === "queen" || this.form === "warrior") return;
-    if (this.snailMountCooldown > 0) return;
-    if (snail.rider) return;
-    if (dist(this.x + this.w / 2, this.y + this.h / 2, snail.x, snail.y) < 28) {
-      snail.rider = this;
-      this.onSnail = true;
-      this.vx = 0;
-      this.vy = 0;
-      soundMount();
-    }
-  }
-
-  dismountSnail() {
-    if (!this.onSnail || snail.rider !== this) return;
-    snail.rider = null;
-    this.onSnail = false;
-    this.snailMountCooldown = 50;
-    this.vy = -3.4;
-    this.vx += this.team === "blue" ? 1.5 : -1.5;
-    soundDismount();
-  }
-
-  update(strategy) {
-    if (this.dead) {
-      if (this.role !== "queen") {
-        this.respawnTimer--;
-        if (this.respawnTimer <= 0) this.respawn();
-      }
-      return;
-    }
-
-    if (this.isPlayer) {
-      const isPrimaryPlayer = this === playerQueen;
-      const control = isPrimaryPlayer
-        ? { left: "a", right: "d", up: "w", down: "s", pickup: "f" }
-        : { left: "arrowleft", right: "arrowright", up: "arrowup", down: "arrowdown", pickup: "." };
-      this.playerControl(control);
-    }
-    else this.ai(strategy);
-
-    if (!this.onSnail) this.tryMountSnail();
-    this.physics();
-  }
-
-  drawBeeBody(x, y, color, dir) {
-    ctx.fillStyle = color;
-    ctx.fillRect(x + 10, y + 11, this.w - 18, 10);
-
-    ctx.fillStyle = "#202020";
-    ctx.fillRect(x + 16, y + 11, 3, 10);
-    ctx.fillRect(x + 24, y + 11, 3, 10);
-    ctx.fillRect(x + 32, y + 11, 3, 10);
-
-    ctx.fillStyle = shade(color, 15);
-    ctx.fillRect(x + 8, y + 9, 9, 12);
-
-    ctx.fillStyle = shade(color, 28);
-    if (dir === 1) {
-      ctx.fillRect(x + this.w - 13, y + 8, 8, 8);
-      ctx.fillRect(x + this.w - 5, y + 10, 3, 4);
-    } else {
-      ctx.fillRect(x + 5, y + 8, 8, 8);
-      ctx.fillRect(x + 2, y + 10, 3, 4);
-    }
-
-    ctx.fillStyle = "#111";
-    if (dir === 1) ctx.fillRect(x + 5, y + 13, 4, 2);
-    else ctx.fillRect(x + this.w - 9, y + 13, 4, 2);
-
-    ctx.fillStyle = shade(color, -18);
-    ctx.fillRect(x + 15, y + 20, 2, 5);
-    ctx.fillRect(x + 22, y + 20, 2, 5);
-    ctx.fillRect(x + 30, y + 20, 2, 5);
-  }
-
-  drawWings(x, y, flapFrame, dir) {
-    const wingRise = flapFrame ? -11 : -3;
-    ctx.fillStyle = "rgba(220,255,255,0.55)";
-    if (dir === 1) {
-      ctx.fillRect(x + 11, y + wingRise + 1, 8, 15);
-      ctx.fillRect(x + 19, y + wingRise - 1, 9, 18);
-    } else {
-      ctx.fillRect(x + this.w - 19, y + wingRise + 1, 8, 15);
-      ctx.fillRect(x + this.w - 28, y + wingRise - 1, 9, 18);
-    }
-  }
-
-  drawAntennae(x, y, dir) {
-    ctx.fillStyle = "#111";
-    if (dir === 1) {
-      ctx.fillRect(x + this.w - 10, y + 4, 1, 4);
-      ctx.fillRect(x + this.w - 7, y + 3, 1, 5);
-      ctx.fillRect(x + this.w - 11, y + 3, 2, 1);
-      ctx.fillRect(x + this.w - 8, y + 2, 2, 1);
-    } else {
-      ctx.fillRect(x + 8, y + 4, 1, 4);
-      ctx.fillRect(x + 11, y + 3, 1, 5);
-      ctx.fillRect(x + 8, y + 3, 2, 1);
-      ctx.fillRect(x + 11, y + 2, 2, 1);
-    }
-  }
-
-  drawRider(x, y, dir) {
-    let riderColor = "#dcdcdc";
-    if (this.role === "queen") riderColor = "#ff69cf";
-    else if (this.form === "speed") riderColor = "#9fffe9";
-    else if (this.form === "warrior") riderColor = "#ffe48e";
-
-    ctx.fillStyle = riderColor;
-    ctx.fillRect(x + 16, y + 1, 8, 8);
-    ctx.fillStyle = "#f4c59e";
-    ctx.fillRect(x + 17, y - 5, 6, 6);
-
-    ctx.fillStyle = this.role === "queen" ? "#ff7ce5" : (this.form === "warrior" ? "#f0f0f0" : "#d7d7d7");
-    if (dir === 1) {
-      ctx.fillRect(x + 23, y + 4, this.role === "queen" ? 16 : 12, 2);
-      ctx.fillRect(x + 37, y + 3, 4, 4);
-    } else {
-      ctx.fillRect(x - 4, y + 4, this.role === "queen" ? 16 : 12, 2);
-      ctx.fillRect(x - 8, y + 3, 4, 4);
-    }
-
-    if (this.role === "queen") {
-      ctx.fillStyle = "#fff08d";
-      ctx.fillRect(x + 17, y - 8, 2, 2);
-      ctx.fillRect(x + 20, y - 10, 2, 4);
-      ctx.fillRect(x + 23, y - 8, 2, 2);
-    }
-
-    if (this.carryingBerry) {
-      ctx.fillStyle = "#46ff5c";
-      ctx.fillRect(x + this.w - 9, y - 2, 6, 6);
-      ctx.fillStyle = "#a51fc5";
-      ctx.fillRect(x + this.w - 8, y - 1, 4, 4);
-    }
-  }
-
-  drawStatusIcons() {
-    if (this.dead) return;
-    if (this.form === "speed") {
-      ctx.fillStyle = "#84fff2";
-      ctx.fillRect(this.x + this.w / 2 - 5, this.y - 12, 10, 3);
-    }
-    if (this.form === "warrior") {
-      ctx.fillStyle = "#ffe57d";
-      ctx.fillRect(this.x + this.w / 2 - 5, this.y - 12, 10, 4);
-    }
-    if (this.onSnail && snail.rider === this) {
-      ctx.fillStyle = "#ffb347";
-      ctx.fillRect(this.x + this.w / 2 - 5, this.y - 16, 10, 4);
-    }
-  }
-
-  draw() {
-    if (this.dead) return;
-    if (this.invuln > 0 && Math.floor(this.invuln / 4) % 2 === 0) return;
-
-    const flapFrame = this.flutter > 0 || !this.onGround;
-    this.drawWings(this.x, this.y, flapFrame, this.dir);
-    this.drawBeeBody(this.x, this.y, this.color(), this.dir);
-    this.drawAntennae(this.x, this.y, this.dir);
-    this.drawRider(this.x, this.y, this.dir);
-    this.drawStatusIcons();
-  }
-}
-
-/* ---------------- WORLD LOGIC ---------------- */
-
-function spawnMatch() {
-  applyMap(game.currentMapIndex);
-  units = [];
-  teamTactics.blue.primarySnailRunner = null;
-  teamTactics.blue.runnerLockUntil = 0;
-  teamTactics.gold.primarySnailRunner = null;
-  teamTactics.gold.runnerLockUntil = 0;
-
-  const bq = new Unit({ team: "blue", role: "queen", x: 165, y: 650, isPlayer: true });
-  const gq = new Unit({ team: "gold", role: "queen", x: world.width - 205, y: 650, isPlayer: game.splitScreen && !game.sameTeams });
-  const baseEnemyLives = enemyQueenLivesByDifficulty(currentDifficulty().level);
-  gq.queenLives = (!game.splitScreen && world.mode === "assault") ? baseEnemyLives * 2 : baseEnemyLives;
-  if (world.mode === "snail-war") {
-    bq.queenLives = 999;
-    gq.queenLives = 999;
-  }
-
-  playerQueen = bq;
-  units.push(bq, gq);
-
-  for (let i = 0; i < 4; i++) {
-    units.push(new Unit({ team: "blue", role: "worker", x: 120 + i * 38, y: 690 }));
-    units.push(new Unit({ team: "gold", role: "worker", x: world.width - 270 + i * 38, y: 690 }));
-  }
-
-  if (game.splitScreen && game.sameTeams) {
-    const p2Worker = new Unit({ team: "blue", role: "worker", x: 205, y: 684, isPlayer: true });
-    p2Worker.form = "worker";
-    units.push(p2Worker);
-    goldPlayerQueen = p2Worker;
-  } else {
-    goldPlayerQueen = gq;
-  }
-
-  game.enemyStrategy = TEAM_STRATEGIES[randi(0, TEAM_STRATEGIES.length - 1)];
-  if (world.theme.lockStrategies && world.theme.forcedStrategy) {
-    game.playerStrategy = world.theme.forcedStrategy;
-    game.goldStrategy = world.theme.forcedStrategy;
-    game.enemyStrategy = world.theme.forcedStrategy;
-  } else if (game.splitScreen && !game.sameTeams) {
-    game.enemyStrategy = game.goldStrategy;
-  }
-  game.winner = null;
-  game.winType = "";
-  game.state = "playing";
-  game.time = 0;
-  game.cameraX = 0;
-  game.cameraY = 0;
-  game.cameraBlueX = 0;
-  game.cameraBlueY = 0;
-  game.cameraGoldX = Math.max(0, world.width - VIEW_W);
-  game.cameraGoldY = 0;
-}
-
-function nearestEnemyToPoint(team, x, y, range = 99999) {
-  let best = null, bestD = range;
-  for (const u of units) {
-    if (u.dead || u.team === team) continue;
-    const d = dist(x, y, u.x, u.y);
-    if (d < bestD) {
-      bestD = d;
-      best = u;
-    }
-  }
-  return best;
-}
-
-function flagEnemiesNear(flag, team, range = 150) {
-  return units.some(u => !u.dead && u.team !== team && dist(u.x + u.w / 2, u.y + u.h / 2, flag.x, flag.y) < range);
-}
-
-function livingSoldierCount(team) {
-  return units.filter(u => !u.dead && u.team === team && u.role !== "queen" && u.form === "warrior").length;
-}
-
-function summonSoldierIfPossible(team) {
-  if (world.mode !== "assault") return;
-  const st = teamState[team];
-  if (st.summonCooldown > 0) {
-    st.summonCooldown--;
-    return;
-  }
-  const maxSoldiers = 1 + st.bonusSlots;
-  if (livingSoldierCount(team) >= maxSoldiers) return;
-  const hx = hive[team].x + rand(-20, 20);
-  const hy = hive[team].y - 24;
-  const newbie = new Unit({ team, role: "worker", x: hx, y: hy });
-  newbie.form = "warrior";
-  newbie.invuln = 65;
-  units.push(newbie);
-  st.summonCooldown = 340;
-  addParticles(hive[team].x, hive[team].y - 4, team === "blue" ? "#73d7ff" : "#ffe46f", 14, 2.5);
-}
-
-function updateFlags() {
-  if (!flags.length) return;
-  const capFrames = 120;
-  for (const flag of flags) {
-    let capBlue = false;
-    let capGold = false;
-    for (const u of units) {
-      if (u.dead) continue;
-      const inZone = dist(u.x + u.w / 2, u.y + u.h / 2, flag.x, flag.y) < 38;
-      if (!inZone) continue;
-      if (u.team === "blue") capBlue = true;
-      else capGold = true;
-    }
-    if (capBlue && capGold) {
-      flag.captureTimer = Math.max(0, flag.captureTimer - 1);
-      continue;
-    }
-    const team = capBlue ? "blue" : (capGold ? "gold" : null);
-    if (!team) {
-      flag.captureTimer = Math.max(0, flag.captureTimer - 1);
-      continue;
-    }
-    if (flag.owner === team) {
-      flag.capturingTeam = null;
-      flag.captureTimer = capFrames;
-      continue;
-    }
-    if (flag.capturingTeam !== team) {
-      flag.capturingTeam = team;
-      flag.captureTimer = 0;
-    }
-    flag.captureTimer++;
-    if (flag.captureTimer >= capFrames) {
-      const prev = flag.owner;
-      flag.owner = team;
-      flag.capturingTeam = null;
-      flag.captureTimer = capFrames;
-      teamState[team].bonusSlots += 1;
-      if (prev) teamState[prev].bonusSlots = Math.max(0, teamState[prev].bonusSlots - 1);
-      addParticles(flag.x, flag.y - 20, team === "blue" ? "#61d7ff" : "#ffd86a", 18, 2.8);
-    }
-  }
-}
-
-function updateBushes() {
-  for (const bush of bushes) {
-    if (!bush.berry.alive && !bush.berry.carriedBy) {
-      bush.timer--;
-      if (bush.timer <= 0) {
-        bush.berry = {
-          x: bush.x,
-          y: bush.y - 20,
-          alive: true,
-          carriedBy: null,
-          bushId: bush.id
-        };
-        addParticles(bush.x, bush.y - 18, world.theme.bushBerry1, 10, 1.6);
-      }
-    }
-  }
-}
-
-function updateFireballs() {
-  if (world.mode !== "assault") return;
-  for (const f of fireballs) {
-    f.trail.push({ x: f.x, y: f.y, size: f.size * rand(0.32, 0.58), alpha: rand(0.18, 0.38) });
-    if (f.trail.length > 8) f.trail.shift();
-    f.y += f.vy;
-    f.x += Math.sin((game.time + f.size) * 0.02) * 0.25;
-    if (f.y > world.lavaY - 20) {
-      addParticles(f.x, world.lavaY - 10, "#ff8b2f", 6, 1.6);
-      f.y = rand(-700, -80);
-      f.x = rand(0, world.width);
-      f.vy = rand(3.3, 5.8);
-      f.trail.length = 0;
-    }
-  }
-}
-
-function berryInPickupRange(unit) {
-  for (const bush of bushes) {
-    const berry = bush.berry;
-    if (!berry.alive || berry.carriedBy) continue;
-    if (dist(unit.x + unit.w / 2, unit.y + unit.h / 2, berry.x, berry.y) < 20) return berry;
+  const nDate = tryNum(v);
+  if(nDate) return nDate;
+
+  const s = String(v).trim();
+  if(!s) return null;
+
+  const nDate2 = tryNum(s);
+  if(nDate2) return nDate2;
+
+  const d1 = new Date(s);
+  if(!isNaN(d1)) return d1;
+
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?$/i);
+  if(m){
+    let mm = parseInt(m[1],10), dd = parseInt(m[2],10), yy = parseInt(m[3],10);
+    if(yy < 100) yy += 2000;
+    let hh = m[4] ? parseInt(m[4],10) : 0;
+    const mi = m[5] ? parseInt(m[5],10) : 0;
+    const ss = m[6] ? parseInt(m[6],10) : 0;
+    const ap = (m[7]||"").toUpperCase();
+    if(ap==="PM" && hh<12) hh += 12;
+    if(ap==="AM" && hh===12) hh = 0;
+    const d = new Date(yy, mm-1, dd, hh, mi, ss);
+    if(!isNaN(d)) return d;
   }
   return null;
 }
 
-function attemptPlayerBerryPickup(unit) {
-  if (unit.dead || unit.role === "queen" || unit.form === "warrior" || unit.carryingBerry) return false;
-  const berry = berryInPickupRange(unit);
-  if (!berry) return false;
-  berry.carriedBy = unit;
-  unit.carryingBerry = berry;
-  soundBerry();
+function toNumRaw(v){
+  if(v===undefined||v===null||v==='') return NaN;
+  const n = parseFloat(String(v).replace(/,/g,'').replace(/%/g,'').trim());
+  return Number.isFinite(n) ? n : NaN;
+}
+function normPct(v){
+  const n = toNumRaw(v);
+  if(!Number.isFinite(n)) return NaN;
+  if(Math.abs(n) > 1.5) return n/100;
+  return n;
+}
+function fmtPct1(frac){ return Number.isFinite(frac) ? (frac*100).toFixed(1)+'%' : '—'; }
+function fmtPct2(frac){ return Number.isFinite(frac) ? (frac*100).toFixed(2)+'%' : '—'; }
+function fmtInt(n){ return Number.isFinite(n) ? Math.round(n).toLocaleString() : '—'; }
+function pad2(n){ return String(n).padStart(2,'0'); }
+
+function fmtDateTime(d){
+  if(!(d instanceof Date) || isNaN(d)) return '—';
+  const y = d.getFullYear();
+  const m = pad2(d.getMonth()+1);
+  const da= pad2(d.getDate());
+  let hh = d.getHours();
+  const am = hh>=12 ? 'PM' : 'AM';
+  hh = hh%12; if(hh===0) hh=12;
+  const mi = pad2(d.getMinutes());
+  return `${m}/${da}/${y} ${hh}:${mi} ${am}`;
+}
+function fmtDateOnly(d){
+  if(!(d instanceof Date) || isNaN(d)) return '—';
+  const y = d.getFullYear();
+  const m = pad2(d.getMonth()+1);
+  const da= pad2(d.getDate());
+  return `${m}/${da}/${y}`;
+}
+function isoWeekKey(d){
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(),0,1));
+  const weekNo = Math.ceil((((date - yearStart) / 86400000) + 1)/7);
+  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2,'0')}`;
+}
+
+function personKey(name){
+  let s = String(name||"").trim().toLowerCase();
+  s = s.replace(/\./g,"").replace(/\s+/g," ");
+  if(!s) return "";
+
+  if(s.includes(",")){
+    const parts = s.split(",");
+    const last = (parts[0]||"").trim();
+    const rest = (parts[1]||"").trim();
+    const first = (rest.split(/\s+/)[0]||"").trim();
+    if(first && last) s = `${first} ${last}`;
+    else s = s.replace(/,/g," ");
+  }
+  const toks = s.split(/\s+/).filter(Boolean);
+  if(toks.length>=2) return `${toks[0]} ${toks[toks.length-1]}`;
+  return toks[0] || "";
+}
+
+function displayNameFromRaw(raw){
+  const s = String(raw||"").trim();
+  if(!s) return "";
+  if(s.includes(",")){
+    const parts = s.split(",");
+    const last = (parts[0]||"").trim();
+    const rest = (parts[1]||"").trim();
+    const first = (rest.split(/\s+/)[0]||"").trim();
+    if(first && last) return `${first} ${last}`;
+  }
+  return s;
+}
+function lastNameOf(full){
+  const s = String(full||"").trim();
+  if(!s) return "";
+  if(s.includes(",")) return s.split(",")[0].trim().toLowerCase();
+  const toks = s.replace(/\./g,'').split(/\s+/).filter(Boolean);
+  return (toks[toks.length-1]||"").trim().toLowerCase();
+}
+
+function parseDurationToSeconds(v){
+  if(v===null || v===undefined || v==="") return NaN;
+
+  if(typeof v === "number" && Number.isFinite(v)){
+    if(v >= 0 && v < 2) return Math.max(0, Math.round(v * 86400));
+    if(v >= 2 && v < 86400*5) return Math.round(v);
+  }
+
+  const s = String(v).trim();
+  if(!s) return NaN;
+
+  const n = parseFloat(s);
+  if(Number.isFinite(n) && String(n) === String(parseFloat(s)) && !s.includes(":")){
+    if(n >= 0 && n < 2) return Math.max(0, Math.round(n * 86400));
+    if(n >= 2 && n < 86400*5) return Math.round(n);
+  }
+
+  const parts = s.split(":").map(x=>x.trim()).filter(Boolean);
+  if(parts.length >= 2 && parts.length <= 3 && parts.every(p=>/^\d+$/.test(p))){
+    let hh=0, mm=0, ss=0;
+    if(parts.length===2){
+      mm = parseInt(parts[0],10);
+      ss = parseInt(parts[1],10);
+    }else{
+      hh = parseInt(parts[0],10);
+      mm = parseInt(parts[1],10);
+      ss = parseInt(parts[2],10);
+    }
+    return hh*3600 + mm*60 + ss;
+  }
+
+  const n2 = parseFloat(s);
+  if(Number.isFinite(n2)) return Math.round(n2);
+  return NaN;
+}
+
+function fmtHMS(seconds){
+  if(!Number.isFinite(seconds)) return '—';
+  const sec = Math.max(0, Math.round(seconds));
+  const h = Math.floor(sec/3600);
+  const m = Math.floor((sec%3600)/60);
+  const s = sec%60;
+  return `${h}:${pad2(m)}:${pad2(s)}`;
+}
+
+function findDockKeysBySuffix(suffix){
+  const hits=[];
+  const suf = String(suffix||"").toLowerCase();
+  for(let i=0;i<localStorage.length;i++){
+    const k = localStorage.key(i);
+    if(!k) continue;
+    const lk = k.toLowerCase();
+    if(lk.endsWith(suf) || lk.includes(suf)) hits.push(k);
+  }
+  hits.sort((a,b)=>{
+    const score = (s)=>{
+      let x=0;
+      const ls = s.toLowerCase();
+      if(ls.endsWith(suf)) x+=100;
+      if(ls.includes(".dock.qa")) x+=50;
+      if(ls.includes("myone")) x+=10;
+      x -= Math.min(20, ls.length/20);
+      return x;
+    };
+    return score(b)-score(a);
+  });
+  return hits;
+}
+
+function looksLikeQARow(obj){
+  if(!obj || typeof obj!=="object") return false;
+  const nk = Object.keys(obj).map(normHdr);
+  const hasAgent = nk.includes("agentname") || nk.includes("agent") || nk.includes("csr") || nk.includes("associate") || nk.includes("rep") || nk.includes("name");
+  const hasScore = nk.includes("score%") || nk.includes("scorepct") || nk.includes("score") || nk.includes("qa%") || nk.includes("qascore");
+  const hasStart = nk.includes("interactionstarttime") || nk.includes("interactionstart") || nk.includes("starttime") || nk.includes("interactiontime");
+  return hasAgent && hasScore && hasStart;
+}
+
+function normalizeReadFlag(v){
+  if(v===null || v===undefined || v==="") return null;
+  const s = String(v).trim().toLowerCase();
+  if(s==="1" || s==="true" || s==="yes" || s==="y") return 1;
+  if(s==="0" || s==="false" || s==="no" || s==="n") return 0;
+  const n = Number(s);
+  if(Number.isFinite(n)) return n > 0 ? 1 : 0;
+  return null;
+}
+
+function canonicalizeQA(dockObj){
+  if(!dockObj) return [];
+  const packs = extractRowArrays(dockObj,"");
+  const out=[];
+
+  for(const p of packs){
+    for(const r of p.rows){
+      if(!looksLikeQARow(r)) continue;
+
+      const agentRaw = pickFieldFromRow(r, ["agentname","agent","csr","associate","rep","name"]);
+      const scoreRaw = pickFieldFromRow(r, ["score%","scorepct","score","qascore","qa%"]);
+      const startRaw = pickFieldFromRow(r, ["interactionstarttime","interactionstart","starttime","interactiontime"]);
+
+      const evalIdRaw = pickFieldFromRow(r, ["genesysevaluationid","evaluationid","evalid","monitorid","qaid","id"]);
+      const evaluatorRaw = pickFieldFromRow(r, ["evaluator","evaluatorname","reviewer","qaevaluator","coach"]);
+      const teamRaw = pickFieldFromRow(r, ["team","sheet","department","group","supervisor","manager","site","location"]);
+
+      const convIdRaw = pickFieldFromRow(r, ["conversationid","conversationid","interactionid","interactionid","contactid","contactid"]);
+      const durRaw = pickFieldFromRow(r, ["interactionduration","interactionduration","duration","calllength","calllength","interactionlength","interactionlength"]);
+      const agentHasReadRaw = pickFieldFromRow(r, ["agenthasread","agent has read","agentreviewed","agent reviewed","hasread","read"]);
+
+      const start = parseAnyDate(startRaw);
+      const score = normPct(scoreRaw);
+
+      const agentDisplay = displayNameFromRaw(agentRaw);
+      const agentK = personKey(agentDisplay);
+      if(!agentK || !(start instanceof Date) || isNaN(start) || !Number.isFinite(score)) continue;
+
+      const durSec = parseDurationToSeconds(durRaw);
+      const agentHasRead = normalizeReadFlag(agentHasReadRaw);
+
+      out.push({
+        agentKey: agentK,
+        agent: agentDisplay,
+        start,
+        week: isoWeekKey(start),
+        score,
+        evaluator: String(evaluatorRaw ?? "").trim(),
+        evalId: String(evalIdRaw ?? "").trim(),
+        conversationId: String(convIdRaw ?? "").trim(),
+        durationSec: durSec,
+        durationText: fmtHMS(durSec),
+        team: String(teamRaw ?? "").trim(),
+        agentHasRead,
+        unreviewed: agentHasRead === 0 ? 1 : 0,
+        _sheetHint: p.sheetName || ""
+      });
+    }
+  }
+  return out;
+}
+
+function findCoachingKeys(){
+  const keys=[];
+  for(let i=0;i<localStorage.length;i++){
+    const k = localStorage.key(i);
+    if(!k) continue;
+    const lk = k.toLowerCase();
+    if(!lk.includes(".dock.")) continue;
+    const looks = lk.includes("coach") || lk.includes("coaching") || lk.includes("document") || lk.includes("myone2");
+    if(looks) keys.push(k);
+  }
+  keys.sort((a,b)=>{
+    const score = (s)=>{
+      const lk = s.toLowerCase();
+      let x=0;
+      if(lk.includes("documented")) x+=80;
+      if(lk.includes("document")) x+=40;
+      if(lk.includes("coaching")) x+=35;
+      if(lk.includes("coachings")) x+=35;
+      if(lk.includes("coach")) x+=20;
+      if(lk.includes("myone2")) x+=10;
+      if(lk.endsWith(".dock.coaching")) x+=15;
+      if(lk.endsWith(".dock.coachings")) x+=15;
+      x -= Math.min(20, lk.length/20);
+      return x;
+    };
+    return score(b)-score(a);
+  });
+  return keys;
+}
+
+function splitTypes(val){
+  const s = String(val ?? "").trim();
+  if(!s) return [];
+  return s.split(/[,;|]+/).map(x=>String(x).trim()).filter(Boolean);
+}
+
+function looksLikeCoachingRow(obj){
+  if(!obj || typeof obj!=="object") return false;
+  const nk = Object.keys(obj).map(normHdr);
+  const hasRep = nk.includes("associatename") || nk.includes("associate") || nk.includes("name") || nk.includes("rep");
+  const hasDate = nk.includes("date") || nk.includes("dt") || nk.includes("day");
+  const hasType = nk.includes("coachingtypemulti") || nk.includes("coachingtype") || nk.includes("type");
+  return hasRep && hasDate && hasType;
+}
+
+function isCallQualityType(t){
+  const s = String(t||"").trim();
+  if(!s) return false;
+  const low = s.toLowerCase();
+  if(low.includes("call quality")) return true;
+  if(s === "5") return true;
+  if(/^\s*5\s*[:\-]/.test(s)) return true;
+  return false;
+}
+
+function canonicalizeCoachings(dockObj){
+  if(!dockObj) return [];
+  const packs = extractRowArrays(dockObj,"");
+  const out=[];
+
+  for(const p of packs){
+    for(const r of p.rows){
+      if(!looksLikeCoachingRow(r)) continue;
+
+      const repRaw   = pickFieldFromRow(r, ["associatename","associate","name","rep"]);
+      const dateRaw  = pickFieldFromRow(r, ["date","dt","day"]);
+      const typeMulti  = pickFieldFromRow(r, ["coachingtypemulti"]);
+      const typeSingle = pickFieldFromRow(r, ["coachingtype","type"]);
+      const coachRaw = pickFieldFromRow(r, ["jobcoach","coach","sheet","team"]);
+      const descRaw  = pickFieldFromRow(r, ["description","desc","notes","note","details","summary","coachingnotes"]);
+
+      const repDisp = displayNameFromRaw(repRaw);
+      const repK = personKey(repDisp);
+      const d = parseAnyDate(dateRaw);
+      if(!repK || !d) continue;
+
+      const typesAll = Array.from(new Set([
+        ...splitTypes(typeMulti),
+        ...splitTypes(typeSingle)
+      ]));
+
+      const cqTypes = typesAll.filter(isCallQualityType);
+      if(!cqTypes.length) continue;
+
+      out.push({
+        repKey: repK,
+        rep: repDisp || repK,
+        date: d,
+        week: isoWeekKey(d),
+        coach: String(coachRaw ?? "").trim(),
+        types: cqTypes,
+        desc: String(descRaw ?? "").trim(),
+        _sheetHint: p.sheetName || ""
+      });
+    }
+  }
+  return out;
+}
+
+function groupBy(arr, keyFn){
+  const m = new Map();
+  for(const x of arr){
+    const k = keyFn(x);
+    const a = m.get(k) || [];
+    a.push(x);
+    m.set(k,a);
+  }
+  return m;
+}
+
+function avgScore(rows, excludeZero){
+  let sum=0, n=0;
+  for(const r of rows){
+    const s = r.score;
+    if(!Number.isFinite(s)) continue;
+    if(excludeZero && s===0) continue;
+    sum += s; n++;
+  }
+  return { avg: n? (sum/n) : NaN, n };
+}
+
+function avgDuration(rows, excludeZero){
+  let sum=0, n=0;
+  for(const r of rows){
+    if(excludeZero && r.score===0) continue;
+    const s = r.durationSec;
+    if(!Number.isFinite(s)) continue;
+    sum += s; n++;
+  }
+  return { avgSec: n ? (sum/n) : NaN, n };
+}
+
+function countUnreviewed(rows){
+  let n = 0;
+  for(const r of rows){
+    if(r.agentHasRead === 0) n++;
+  }
+  return n;
+}
+
+function splitHalfTrend(rows, excludeZero){
+  const sorted=[...rows].sort((a,b)=> a.start - b.start);
+  const clean = excludeZero ? sorted.filter(r=>r.score!==0) : sorted;
+  if(clean.length < 2) return { d: NaN, a1: NaN, a2: NaN };
+  const mid = Math.floor(clean.length/2);
+  const first = clean.slice(0, mid);
+  const second = clean.slice(mid);
+  const a1 = avgScore(first, false).avg;
+  const a2 = avgScore(second, false).avg;
+  return { d: (Number.isFinite(a1)&&Number.isFinite(a2)) ? (a2-a1) : NaN, a1, a2 };
+}
+
+function sparkSeriesWeekly(rows, excludeZero){
+  const byWk = groupBy(rows, r=>r.week);
+  const weeks = Array.from(byWk.keys()).sort();
+  const vals = weeks.map(wk=>{
+    const a = avgScore(byWk.get(wk)||[], excludeZero).avg;
+    return Number.isFinite(a) ? a : null;
+  });
+  return { weeks, vals };
+}
+
+function drawSpark(canvas, values){
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h);
+
+  const vals = values.filter(v=>v!==null && Number.isFinite(v));
+  if(vals.length < 2){
+    ctx.globalAlpha = 0.6;
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(6, h/2);
+    ctx.lineTo(w-6, h/2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    return;
+  }
+
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const pad = 6;
+  const range = Math.max(0.00001, max-min);
+
+  ctx.globalAlpha = 0.35;
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, h-1);
+  ctx.lineTo(w, h-1);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  ctx.strokeStyle = '#2563eb';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+
+  const n = values.length;
+  let started=false;
+  for(let i=0;i<n;i++){
+    const v = values[i];
+    if(v===null || !Number.isFinite(v)){ started=false; continue; }
+    const x = pad + (i/(Math.max(1,n-1))) * (w - pad*2);
+    const y = pad + (1 - ((v-min)/range)) * (h - pad*2);
+    if(!started){ ctx.moveTo(x,y); started=true; }
+    else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = '#0f172a';
+  for(let i=0;i<n;i++){
+    const v=values[i];
+    if(v===null || !Number.isFinite(v)) continue;
+    const x = pad + (i/(Math.max(1,n-1))) * (w - pad*2);
+    const y = pad + (1 - ((v-min)/range)) * (h - pad*2);
+    ctx.beginPath();
+    ctx.arc(x,y,2.4,0,Math.PI*2);
+    ctx.fill();
+  }
+}
+
+function isCoachEval(row){
+  const coachName = String(row.team||"").trim();
+  const evalName  = String(row.evaluator||"").trim();
+  if(!coachName || !evalName) return false;
+
+  const pkCoach = personKey(coachName);
+  const pkEval  = personKey(evalName);
+  if(pkCoach && pkEval && pkCoach === pkEval) return true;
+
+  const lnCoach = lastNameOf(coachName);
+  const lnEval  = lastNameOf(evalName);
+  return !!lnCoach && lnCoach === lnEval;
+}
+
+function uniqueSorted(arr){
+  return Array.from(new Set(arr.filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+}
+
+function diffClass(num, type){
+  if(!Number.isFinite(num)) return 'diffNeutral';
+  if(type === 'count') return 'diffNeutral';
+  const abs = Math.abs(num);
+  return abs >= 5 ? 'diffBad' : 'diffGood';
+}
+
+function extractTeamScopedReviewerCandidates(rows){
+  const team = el.teamSel.value;
+  const tf = el.tfSel.value;
+  const range = timeframeRange(tf);
+
+  const base = rows.filter(r=>{
+    if(team && team !== '__ALL__'){
+      if(String(r.team||'').trim() !== team) return false;
+    }
+    if(tf !== 'all' && !inRange(r.start, range)) return false;
+    return true;
+  });
+
+  const teamRepKeys = new Set(base.map(r=>r.agentKey));
+  const coachName = team && team !== '__ALL__' ? String(team).trim() : '';
+
+  return uniqueSorted(
+    rows
+      .filter(r=>{
+        if(!teamRepKeys.has(r.agentKey)) return false;
+        if(tf !== 'all' && !inRange(r.start, range)) return false;
+        if(isCoachEval(r)) return false;
+        const ev = String(r.evaluator||'').trim();
+        if(!ev) return false;
+        if(coachName && personKey(ev) === personKey(coachName)) return false;
+        return true;
+      })
+      .map(r=>String(r.evaluator||'').trim())
+  );
+}
+
+function loadReviewerState(){
+  const saved = loadSettings();
+  const candidates = canonicalQaReviewers;
+  const savedByTeam = saved.activeQaReviewersByTeam || {};
+  const teamKey = getReviewerScopeKey();
+  const prior = Array.isArray(savedByTeam[teamKey]) ? savedByTeam[teamKey] : [];
+  activeQaReviewers = prior.length
+    ? prior.filter(n => candidates.includes(n))
+    : [...candidates];
+
+  if(!activeQaReviewers.length && candidates.length){
+    activeQaReviewers = [...candidates];
+  }
+  persistReviewerState();
+}
+
+function persistReviewerState(){
+  const saved = loadSettings();
+  const map = saved.activeQaReviewersByTeam || {};
+  map[getReviewerScopeKey()] = [...activeQaReviewers];
+  saveSettings({ activeQaReviewersByTeam: map });
+}
+
+function getReviewerScopeKey(){
+  const team = el.teamSel?.value || '__ALL__';
+  const tf = el.tfSel?.value || 'all';
+  const from = el.fromInp?.value || '';
+  const to = el.toInp?.value || '';
+  return `${team}|${tf}|${from}|${to}`;
+}
+
+function isQaReviewer(row){
+  const ev = String(row.evaluator || '').trim();
+  return !isCoachEval(row) && !!ev && activeQaReviewers.includes(ev);
+}
+
+function splitRoleRows(rows){
+  const coachRows = [];
+  const qaRows = [];
+  for(const r of rows){
+    if(isCoachEval(r)) coachRows.push(r);
+    else if(isQaReviewer(r)) qaRows.push(r);
+  }
+  return { coachRows, qaRows };
+}
+
+const el = {
+  qaKeySel: document.getElementById('qaKeySel'),
+  loadBtn: document.getElementById('loadBtn'),
+
+  coKeySel: document.getElementById('coKeySel'),
+  reloadCoBtn: document.getElementById('reloadCoBtn'),
+
+  teamSel: document.getElementById('teamSel'),
+  tfSel: document.getElementById('tfSel'),
+  customRange: document.getElementById('customRange'),
+  fromInp: document.getElementById('fromInp'),
+  toInp: document.getElementById('toInp'),
+  excludeZero: document.getElementById('excludeZero'),
+  searchInp: document.getElementById('searchInp'),
+  refreshBtn: document.getElementById('refreshBtn'),
+  reviewersBtn: document.getElementById('reviewersBtn'),
+  reviewersBtnCount: document.getElementById('reviewersBtnCount'),
+  optionsBtn: document.getElementById('optionsBtn'),
+  optionsOverlay: document.getElementById('optionsOverlay'),
+  optionsClose: document.getElementById('optionsClose'),
+
+  statusPill: document.getElementById('statusPill'),
+  coStatusPill: document.getElementById('coStatusPill'),
+  scopePill: document.getElementById('scopePill'),
+  qaReviewCountPill: document.getElementById('qaReviewCountPill'),
+
+  summarySub: document.getElementById('summarySub'),
+  summaryTbody: document.getElementById('summaryTbody'),
+  compareTbody: document.getElementById('compareTbody'),
+  teamTrendPill: document.getElementById('teamTrendPill'),
+
+  sortPill: document.getElementById('sortPill'),
+
+  cards: document.getElementById('cards'),
+  empty: document.getElementById('empty'),
+
+  overlay: document.getElementById('overlay'),
+  mClose: document.getElementById('mClose'),
+  mTitle: document.getElementById('mTitle'),
+  mSub: document.getElementById('mSub'),
+  mBody: document.getElementById('mBody'),
+
+  reviewerOverlay: document.getElementById('reviewerOverlay'),
+  reviewerClose: document.getElementById('reviewerClose'),
+  reviewerList: document.getElementById('reviewerList'),
+  reviewerPopupCount: document.getElementById('reviewerPopupCount'),
+  resetReviewersBtn: document.getElementById('resetReviewersBtn'),
+  rSub: document.getElementById('rSub')
+};
+
+let QA_KEY = null;
+let CO_KEY = null;
+
+let qaLoaded = false;
+let qaRowsAll = [];
+
+let coLoaded = false;
+let coRowsAll = [];
+
+let chartMain = null;
+
+let activeQaReviewers = [];
+let canonicalQaReviewers = [];
+
+const DIFF_ALERT_PCTPTS = 10;
+const DIFF_ALERT_SECS = 120;
+
+let sortMode = "count";
+
+function nowLocal(){ return new Date(); }
+
+function timeframeRange(tf){
+  const now = nowLocal();
+  if(tf === 'last7')  return { from: new Date(now.getTime() - 7*86400000),  to: now };
+  if(tf === 'last30') return { from: new Date(now.getTime() - 30*86400000), to: now };
+  if(tf === 'last90') return { from: new Date(now.getTime() - 90*86400000), to: now };
+  if(tf === 'custom'){
+    const f = el.fromInp.value ? new Date(el.fromInp.value + "T00:00:00") : null;
+    const t = el.toInp.value ? new Date(el.toInp.value + "T23:59:59") : null;
+    return { from: f, to: t };
+  }
+  return { from:null, to:null };
+}
+function inRange(d, range){
+  if(!(d instanceof Date) || isNaN(d)) return false;
+  if(range.from && d < range.from) return false;
+  if(range.to && d > range.to) return false;
   return true;
 }
 
-function handleBerries() {
-  for (const bush of bushes) {
-    const berry = bush.berry;
-    if (!berry.alive) continue;
+function buildTeamOptions(rows){
+  const teams = Array.from(new Set(rows.map(r=>String(r.team||"").trim()).filter(Boolean)))
+    .sort((a,b)=>a.localeCompare(b));
 
-    if (berry.carriedBy) {
-      berry.x = berry.carriedBy.x + berry.carriedBy.w - 6;
-      berry.y = berry.carriedBy.y - 2;
-      continue;
-    }
+  el.teamSel.innerHTML = '';
+  const optAll = document.createElement('option');
+  optAll.value = '__ALL__';
+  optAll.textContent = 'All';
+  el.teamSel.appendChild(optAll);
 
-    for (const u of units) {
-      if (u.dead || u.isPlayer || u.role === "queen" || u.form === "warrior" || u.carryingBerry) continue;
-      if (dist(u.x + u.w / 2, u.y + u.h / 2, berry.x, berry.y) < 18) {
-        berry.carriedBy = u;
-        u.carryingBerry = berry;
-        soundBerry();
-        break;
-      }
-    }
-  }
-
-  for (const u of units) {
-    if (u.dead || !u.carryingBerry) continue;
-    const ownGate = gates[u.team];
-    const gateRect = { x: ownGate.x, y: ownGate.y, w: ownGate.w, h: ownGate.h };
-
-    if (rectsOverlap(u.getHitbox(), gateRect)) {
-      ownGate.berries++;
-      const bush = bushes.find(b => b.id === u.carryingBerry.bushId);
-      if (bush) {
-        bush.berry.alive = false;
-        bush.berry.carriedBy = null;
-        bush.timer = 280 + randi(0, 120);
-      }
-      u.carryingBerry = null;
-      soundGate();
-      addParticles(ownGate.x + ownGate.w / 2, ownGate.y + ownGate.h - 25 - (ownGate.berries * 6), world.theme.bushBerry1, 12, 2.2);
-
-      if (ownGate.berries >= 2 && !ownGate.upgrades.speed) {
-        ownGate.upgrades.speed = true;
-        soundUpgrade();
-      }
-      if (ownGate.berries >= 5 && !ownGate.upgrades.warrior) {
-        ownGate.upgrades.warrior = true;
-        soundUpgrade();
-      }
-      if (ownGate.berries >= 10) {
-        game.winner = u.team;
-        game.winType = "ECONOMY";
-        game.state = "gameOver";
-        soundWin();
-      }
-    }
-
-    if (u.form === "worker") {
-      for (const maiden of ownGate.maidens) {
-        const unlocked = ownGate.upgrades[maiden.type];
-        if (!unlocked) continue;
-        const maidenRect = { x: maiden.x - 12, y: maiden.y - 12, w: 24, h: 24 };
-        if (rectsOverlap(u.getHitbox(), maidenRect)) {
-          u.form = maiden.type;
-          addParticles(maiden.x, maiden.y, maiden.type === "speed" ? "#8dfff0" : "#ffe57d", 16, 2.8);
-          soundUpgrade();
-        }
-      }
-    }
+  for(const t of teams){
+    const o = document.createElement('option');
+    o.value = t;
+    o.textContent = t;
+    el.teamSel.appendChild(o);
   }
 }
 
-function handleSnail() {
-  if (world.mode === "assault") return;
-  if (snail.rider && snail.rider.dead) {
-    snail.rider.onSnail = false;
-    snail.rider = null;
-  }
-
-  if (snail.rider) {
-    snail.dir = snail.rider.team === "blue" ? 1 : -1;
-    const speedBonus = snail.rider.form === "speed" ? 0.28 : 0;
-    snail.x += snail.dir * (snail.speed + speedBonus);
-    snail.x = clamp(snail.x, world.snailLeftGoal, world.snailRightGoal);
-
-    if (snail.rider.team === "blue" && snail.x >= world.snailRightGoal) {
-      game.winner = "blue";
-      game.winType = "SNAIL";
-      game.state = "gameOver";
-      soundWin();
-    }
-    if (snail.rider.team === "gold" && snail.x <= world.snailLeftGoal) {
-      game.winner = "gold";
-      game.winType = "SNAIL";
-      game.state = "gameOver";
-      soundWin();
-    }
-  }
+function recomputeReviewerScope(){
+  canonicalQaReviewers = extractTeamScopedReviewerCandidates(qaRowsAll);
+  loadReviewerState();
 }
 
-function handleCombat() {
-  for (let i = 0; i < units.length; i++) {
-    const a = units[i];
-    if (a.dead) continue;
+function filterRows(){
+  const team = el.teamSel.value;
+  const tf = el.tfSel.value;
+  const range = timeframeRange(tf);
+  const search = (el.searchInp.value||'').trim().toLowerCase();
 
-    for (let j = i + 1; j < units.length; j++) {
-      const b = units[j];
-      if (b.dead || a.team === b.team) continue;
-      if (!rectsOverlap(a.getHitbox(), b.getHitbox())) continue;
-
-      const aBottom = a.y + a.h;
-      const bBottom = b.y + b.h;
-      const aPower = a.invuln > 0 ? -1 : (a.role === "queen" ? 2 : (a.form === "warrior" ? 1 : 0));
-      const bPower = b.invuln > 0 ? -1 : (b.role === "queen" ? 2 : (b.form === "warrior" ? 1 : 0));
-      const aCanKill = a.invuln <= 0;
-      const bCanKill = b.invuln <= 0;
-      const aCanDie = a.invuln <= 0;
-      const bCanDie = b.invuln <= 0;
-
-      if (aCanKill && bCanDie && (aBottom < bBottom - 5 || (Math.abs(aBottom - bBottom) <= 5 && aPower > bPower))) {
-        b.die();
-        a.vy = -4.0;
-        if (a.isPlayer || b.isPlayer) soundKill();
-      } else if (bCanKill && aCanDie && (bBottom < aBottom - 5 || (Math.abs(aBottom - bBottom) <= 5 && bPower > aPower))) {
-        a.die();
-        b.vy = -4.0;
-        if (a.isPlayer || b.isPlayer) soundKill();
-      } else {
-        const push = a.x < b.x ? -2.2 : 2.2;
-        a.vx = -push;
-        b.vx = push;
-        a.vy -= 0.4;
-        b.vy -= 0.4;
-      }
+  return qaRowsAll.filter(r=>{
+    if(team && team!=='__ALL__'){
+      if(String(r.team||'').trim() !== team) return false;
     }
-  }
-
-  const blueQueen = units.find(u => u.team === "blue" && u.role === "queen");
-  const goldQueen = units.find(u => u.team === "gold" && u.role === "queen");
-
-  if (world.mode !== "snail-war" && blueQueen && blueQueen.dead && blueQueen.queenLives <= 0) {
-    game.winner = "gold";
-    game.winType = "MILITARY";
-    game.state = "gameOver";
-    soundWin();
-  }
-  if (world.mode !== "snail-war" && goldQueen && goldQueen.dead && goldQueen.queenLives <= 0) {
-    game.winner = "blue";
-    game.winType = "MILITARY";
-    game.state = "gameOver";
-    soundWin();
-  }
+    if(tf!=='all'){
+      if(!inRange(r.start, range)) return false;
+    }
+    if(search){
+      const dn = String(r.agent||'').toLowerCase();
+      const pk = String(r.agentKey||'').toLowerCase();
+      if(!dn.includes(search) && !pk.includes(search)) return false;
+    }
+    return isCoachEval(r) || isQaReviewer(r);
+  });
 }
 
-function updateCamera() {
-  if (!playerQueen) return;
-  const targetX = playerQueen.x + playerQueen.w / 2 - VIEW_W / 2;
-  const targetY = playerQueen.y + playerQueen.h / 2 - VIEW_H / 2;
-  game.cameraX += (clamp(targetX, 0, world.width - VIEW_W) - game.cameraX) * 0.12;
-  game.cameraY += (clamp(targetY, 0, world.height - VIEW_H) - game.cameraY) * 0.10;
+function coachingForRep(repKey, range){
+  if(!coLoaded) return [];
+  const pk = String(repKey||"").toLowerCase();
+  let rows = coRowsAll.filter(c=>{
+    if(String(c.repKey||"").toLowerCase() !== pk) return false;
+    if(range && (range.from || range.to)){
+      if(!inRange(c.date, range)) return false;
+    }
+    return true;
+  });
+  rows.sort((a,b)=> b.date - a.date);
+  return rows;
+}
 
-  const halfW = VIEW_W / 2;
-  const updateHalf = (queen, xKey, yKey) => {
-    if (!queen) return;
-    const tx = queen.x + queen.w / 2 - halfW / 2;
-    const ty = queen.y + queen.h / 2 - VIEW_H / 2;
-    game[xKey] += (clamp(tx, 0, world.width - halfW) - game[xKey]) * 0.12;
-    game[yKey] += (clamp(ty, 0, world.height - VIEW_H) - game[yKey]) * 0.10;
+function computeGlobalSummary(rows, excludeZero){
+  const { coachRows, qaRows } = splitRoleRows(rows);
+
+  const all = avgScore(rows, excludeZero);
+  const allNoZero = avgScore(rows, true);
+
+  const coach = avgScore(coachRows, excludeZero);
+  const qa = avgScore(qaRows, excludeZero);
+
+  const coachNoZero = avgScore(coachRows, true);
+  const qaNoZero = avgScore(qaRows, true);
+
+  const durAll = avgDuration(rows, excludeZero);
+  const durCoach = avgDuration(coachRows, excludeZero);
+  const durQa = avgDuration(qaRows, excludeZero);
+
+  const unreviewedAll = countUnreviewed(rows);
+  const unreviewedCoach = countUnreviewed(coachRows);
+  const unreviewedQa = countUnreviewed(qaRows);
+
+  return {
+    all, allNoZero,
+    coach, qa,
+    coachNoZero, qaNoZero,
+    durAll, durCoach, durQa,
+    unreviewedAll, unreviewedCoach, unreviewedQa,
+    coachRows, qaRows
   };
-  updateHalf(playerQueen, "cameraBlueX", "cameraBlueY");
-  updateHalf(goldPlayerQueen, "cameraGoldX", "cameraGoldY");
 }
 
-/* ---------------- UPDATE LOOP ---------------- */
+function teamHalfTrend(rows, excludeZero){
+  const tr = splitHalfTrend(rows, excludeZero);
+  if(!Number.isFinite(tr.d)) return { pp: NaN, a1: NaN, a2: NaN };
+  return { pp: tr.d*100, a1: tr.a1, a2: tr.a2 };
+}
 
-let titleInputLock = false;
-let gameplayInputLock = false;
+function paintReviewerControls(){
+  const counts = new Map();
 
-function update() {
-  game.strategyFlashTimer = Math.max(0, game.strategyFlashTimer - 1);
-  game.goldStrategyFlashTimer = Math.max(0, game.goldStrategyFlashTimer - 1);
-  game.strategySwitchCooldown = Math.max(0, game.strategySwitchCooldown - 1);
-  game.goldStrategySwitchCooldown = Math.max(0, game.goldStrategySwitchCooldown - 1);
+  const team = el.teamSel.value;
+  const tf = el.tfSel.value;
+  const range = timeframeRange(tf);
 
-  if (game.state === "title") {
-    const strategyLocked = !!MAPS[game.currentMapIndex].lockStrategies;
-    if (!titleInputLock) {
-      if (!strategyLocked && keys["1"]) { game.playerStrategy = "economy"; titleInputLock = true; }
-      else if (!strategyLocked && keys["2"]) { game.playerStrategy = "snail"; titleInputLock = true; }
-      else if (!strategyLocked && keys["3"]) { game.playerStrategy = "military"; titleInputLock = true; }
-      else if (!strategyLocked && keys["4"]) { game.playerStrategy = "balanced"; titleInputLock = true; }
-      else if (!strategyLocked && game.splitScreen && !game.sameTeams && keys["7"]) { game.goldStrategy = "economy"; titleInputLock = true; }
-      else if (!strategyLocked && game.splitScreen && !game.sameTeams && keys["8"]) { game.goldStrategy = "snail"; titleInputLock = true; }
-      else if (!strategyLocked && game.splitScreen && !game.sameTeams && keys["9"]) { game.goldStrategy = "military"; titleInputLock = true; }
-      else if (!strategyLocked && game.splitScreen && !game.sameTeams && keys["0"]) { game.goldStrategy = "balanced"; titleInputLock = true; }
-      else if (!strategyLocked && keys["v"]) { cyclePlayerStrategy(); titleInputLock = true; }
-      else if (!strategyLocked && game.splitScreen && !game.sameTeams && keys["/"]) { cycleGoldStrategy(); titleInputLock = true; }
-      else if (keys["b"]) { game.debugAI = !game.debugAI; titleInputLock = true; }
-      else if (keys["m"]) { game.currentMapIndex = (game.currentMapIndex + 1) % MAPS.length; titleInputLock = true; }
-      else if (keys["q"]) { game.difficultyIndex = (game.difficultyIndex + 9) % 10; titleInputLock = true; }
-      else if (keys["e"]) { game.difficultyIndex = (game.difficultyIndex + 1) % 10; titleInputLock = true; }
-      else if (keys["x"]) { game.splitScreen = !game.splitScreen; titleInputLock = true; }
-      else if (keys["c"]) { game.sameTeams = !game.sameTeams; titleInputLock = true; }
-      else if (keys[" "]) { spawnMatch(); titleInputLock = true; }
+  for(const r of qaRowsAll){
+    if(team && team !== '__ALL__' && String(r.team||'').trim() !== team) continue;
+    if(tf !== 'all' && !inRange(r.start, range)) continue;
+    if(!isCoachEval(r)){
+      const ev = String(r.evaluator || '').trim();
+      if(ev && canonicalQaReviewers.includes(ev)) counts.set(ev, (counts.get(ev)||0)+1);
     }
-    if (!keys["1"] && !keys["2"] && !keys["3"] && !keys["4"] && !keys["7"] && !keys["8"] && !keys["9"] && !keys["0"] &&
-        !keys["v"] && !keys["/"] && !keys["b"] && !keys["m"] && !keys["q"] && !keys["e"] && !keys["x"] && !keys["c"] && !keys[" "]) {
-      titleInputLock = false;
+  }
+
+  el.qaReviewCountPill.textContent = `QA reviewers: ${activeQaReviewers.length}/${canonicalQaReviewers.length}`;
+  el.reviewersBtnCount.textContent = String(canonicalQaReviewers.length);
+  el.reviewerPopupCount.textContent = `${activeQaReviewers.length}/${canonicalQaReviewers.length} included`;
+
+  const teamLabel = team === '__ALL__' ? 'All teams' : team;
+  const tfLabel = el.tfSel.options[el.tfSel.selectedIndex]?.textContent || 'All';
+  el.rSub.textContent = `${teamLabel} • ${tfLabel} • Coach removed from reviewer list automatically`;
+
+  el.reviewerList.innerHTML = activeQaReviewers.length
+    ? activeQaReviewers.map(name => `
+        <span class="reviewerChip">
+          ${name}
+          <span class="mono">(${counts.get(name)||0})</span>
+          <button type="button" data-remove-reviewer="${name.replace(/"/g,'&quot;')}">✕</button>
+        </span>
+      `).join('')
+    : `<span class="notice">No QA reviewers currently included for this team scope.</span>`;
+}
+
+function paintSummary(rows){
+  const excludeZero = el.excludeZero.checked;
+
+  const teamLabel = (el.teamSel.value==='__ALL__') ? 'All teams' : el.teamSel.value;
+  const tfLabel = el.tfSel.options[el.tfSel.selectedIndex]?.textContent || 'All';
+  el.scopePill.textContent = `${teamLabel} • ${tfLabel} • Rows: ${rows.length}`;
+
+  const sum = computeGlobalSummary(rows, excludeZero);
+
+  const scoreGap = (Number.isFinite(sum.coach.avg) && Number.isFinite(sum.qa.avg))
+    ? (sum.coach.avg - sum.qa.avg)
+    : NaN;
+  const scoreGapPP = Number.isFinite(scoreGap) ? scoreGap*100 : NaN;
+
+  const durGapSec = (Number.isFinite(sum.durCoach.avgSec) && Number.isFinite(sum.durQa.avgSec))
+    ? (sum.durCoach.avgSec - sum.durQa.avgSec)
+    : NaN;
+  const durGapMin = Number.isFinite(durGapSec) ? (durGapSec / 60) : NaN;
+
+  const coachMonitoredRepSet = new Set(sum.coachRows.map(r=>r.agentKey));
+  const qaMonitoredRepSet = new Set(sum.qaRows.map(r=>r.agentKey));
+  const repsShown = new Set(rows.map(r=>r.agentKey));
+
+  let noCoachMonitor = 0;
+  let noQaMonitor = 0;
+  for(const rep of repsShown){
+    if(!coachMonitoredRepSet.has(rep)) noCoachMonitor++;
+    if(!qaMonitoredRepSet.has(rep)) noQaMonitor++;
+  }
+
+  const ttr = teamHalfTrend(rows, excludeZero);
+  const ttrTxt = Number.isFinite(ttr.pp) ? `${ttr.pp>=0?'+':''}${ttr.pp.toFixed(1)} pp` : '—';
+  el.teamTrendPill.className = `pill mono ${Number.isFinite(ttr.pp) ? (ttr.pp>0.1?'good':(ttr.pp<-0.1?'bad':'')) : ''}`;
+  el.teamTrendPill.textContent = `Trend (1st half → 2nd): ${ttrTxt}`;
+
+  el.summarySub.textContent = 'Overall reflects the selected team/timeframe, coach monitors, and only the QA reviewers currently included in the popup. Unreviewed monitors come from Agent Has Read = 0.';
+
+  const overallRows = [
+    {
+      metric:'Overall average',
+      value:fmtPct1(sum.all.avg),
+      count:fmtInt(sum.all.n),
+      notes:excludeZero ? 'Zeros excluded' : 'Zeros included'
+    },
+    {
+      metric:'Overall average (no 0s)',
+      value:fmtPct1(sum.allNoZero.avg),
+      count:fmtInt(sum.allNoZero.n),
+      notes:'Always excludes zeros'
+    },
+    {
+      metric:'Total unreviewed monitors',
+      value:fmtInt(sum.unreviewedAll),
+      count:fmtInt(rows.length),
+      notes:'Count of all rows where Agent Has Read = 0'
+    },
+    {
+      metric:'Avg call duration',
+      value:fmtHMS(sum.durAll.avgSec),
+      count:fmtInt(sum.durAll.n),
+      notes:'Interaction duration when available'
     }
+  ];
+
+  el.summaryTbody.innerHTML = overallRows.map(r=>`
+    <tr>
+      <td><b>${r.metric}</b></td>
+      <td class="mono">
+        <span class="pill mono ${r.metric==='Total unreviewed monitors' && Number(r.value.replace(/,/g,''))>0 ? 'bad' : ''}">
+          ${r.value}
+        </span>
+      </td>
+      <td class="mono">${r.count}</td>
+      <td>${r.notes}</td>
+    </tr>
+  `).join('');
+
+  const compRows = [
+    {
+      coach: fmtPct1(sum.coach.avg),
+      category:'Average score',
+      diff: Number.isFinite(scoreGapPP) ? `${scoreGapPP>=0?'+':''}${scoreGapPP.toFixed(1)} pp` : '—',
+      diffNum: scoreGapPP,
+      diffType: 'pct',
+      qa: fmtPct1(sum.qa.avg),
+      note:'Coach - QA'
+    },
+    {
+      coach: fmtInt(sum.coach.n),
+      category:'Monitor count',
+      diff: (Number.isFinite(sum.coach.n) && Number.isFinite(sum.qa.n))
+        ? `${sum.coach.n-sum.qa.n>=0?'+':''}${sum.coach.n-sum.qa.n}`
+        : '—',
+      diffNum: (sum.coach.n - sum.qa.n),
+      diffType: 'count',
+      qa: fmtInt(sum.qa.n),
+      note:'Coach - QA'
+    },
+    {
+      coach: fmtHMS(sum.durCoach.avgSec),
+      category:'Avg call duration',
+      diff: Number.isFinite(durGapSec)
+        ? `${durGapSec>=0?'+':''}${fmtHMS(Math.abs(durGapSec))}`
+        : '—',
+      diffNum: Number.isFinite(durGapMin) ? Math.abs(durGapMin * 100) : NaN,
+      diffType: 'pct',
+      qa: fmtHMS(sum.durQa.avgSec),
+      note:'Coach - QA'
+    },
+    {
+      coach: fmtPct1(sum.coachNoZero.avg),
+      category:'Average score (no 0s)',
+      diff: (Number.isFinite(sum.coachNoZero.avg) && Number.isFinite(sum.qaNoZero.avg))
+        ? `${((sum.coachNoZero.avg-sum.qaNoZero.avg)*100)>=0?'+':''}${((sum.coachNoZero.avg-sum.qaNoZero.avg)*100).toFixed(1)} pp`
+        : '—',
+      diffNum: (sum.coachNoZero.avg-sum.qaNoZero.avg)*100,
+      diffType: 'pct',
+      qa: fmtPct1(sum.qaNoZero.avg),
+      note:'Coach - QA'
+    },
+    {
+      coach: fmtInt(sum.unreviewedCoach),
+      category:'Unreviewed monitors',
+      diff: `${sum.unreviewedCoach-sum.unreviewedQa>=0?'+':''}${sum.unreviewedCoach-sum.unreviewedQa}`,
+      diffNum: (sum.unreviewedCoach-sum.unreviewedQa),
+      diffType: 'count',
+      qa: fmtInt(sum.unreviewedQa),
+      note:'Coach unread - QA unread'
+    },
+    {
+      coach: fmtInt(noCoachMonitor),
+      category:'Representatives without monitor',
+      diff: `${noCoachMonitor-noQaMonitor>=0?'+':''}${noCoachMonitor-noQaMonitor}`,
+      diffNum: (noCoachMonitor-noQaMonitor),
+      diffType: 'count',
+      qa: fmtInt(noQaMonitor),
+      note:'Coach none - QA none'
+    }
+  ];
+
+  el.compareTbody.innerHTML = compRows.map(r=>`
+    <tr>
+      <td class="mono"><b>${r.coach}</b></td>
+      <td>
+        <div class="compCategory">${r.category}</div>
+        <div class="${diffClass(r.diffNum, r.diffType)}">${r.diff}</div>
+        <div style="font-size:12px;color:var(--muted)">${r.note}</div>
+      </td>
+      <td class="mono"><b>${r.qa}</b></td>
+    </tr>
+  `).join('');
+}
+
+function coachingWeightFactor(avgFrac){
+  if(!Number.isFinite(avgFrac)) return 1;
+  const w = Math.max(0.15, Math.min(1, avgFrac));
+  return w;
+}
+
+function paintCards(rows){
+  el.cards.innerHTML = '';
+  el.empty.style.display = 'none';
+
+  if(!qaLoaded){
+    el.empty.style.display = '';
+    el.empty.textContent = 'QA: Upload needed. (No QA data detected in localStorage dock.)';
+    return;
+  }
+  if(!rows.length){
+    el.empty.style.display = '';
+    el.empty.textContent = 'No evaluations match the current Team / Timeframe / Search filters.';
     return;
   }
 
-  if (game.state === "gameOver") {
-    updateParticles();
-    if (keys["r"]) {
-      game.state = "title";
-      game.winner = null;
+  const excludeZero = el.excludeZero.checked;
+  const tf = el.tfSel.value;
+  const range = (tf==='all') ? {from:null,to:null} : timeframeRange(tf);
+
+  const byRep = groupBy(rows, r=>r.agentKey);
+  const reps = Array.from(byRep.keys()).sort((a,b)=>a.localeCompare(b));
+
+  const cards = reps.map(pk=>{
+    const arr = byRep.get(pk) || [];
+    const name = (arr[0]?.agent) || pk;
+
+    const total = avgScore(arr, excludeZero);
+    const totalIncl0 = avgScore(arr, false);
+    const wkSeries = sparkSeriesWeekly(arr, excludeZero);
+    const tr = splitHalfTrend(arr, excludeZero);
+    const trPP = Number.isFinite(tr.d) ? (tr.d*100) : NaN;
+
+    const zeros = arr.filter(r=>r.score===0).length;
+    const noZero = avgScore(arr, true);
+    const unreadCount = countUnreviewed(arr);
+
+    const { coachRows, qaRows } = splitRoleRows(arr);
+
+    const coachAvg = avgScore(coachRows, excludeZero).avg;
+    const qaAvg = avgScore(qaRows, excludeZero).avg;
+    const gap = (Number.isFinite(coachAvg)&&Number.isFinite(qaAvg)) ? (coachAvg-qaAvg) : NaN;
+    const gapBad = Number.isFinite(gap) && Math.abs(gap*100) >= DIFF_ALERT_PCTPTS;
+
+    const durAll = avgDuration(arr, excludeZero);
+    const durCoach = avgDuration(coachRows, excludeZero);
+    const durQa = avgDuration(qaRows, excludeZero);
+    const durGapSec = (Number.isFinite(durCoach.avgSec) && Number.isFinite(durQa.avgSec)) ? (durCoach.avgSec - durQa.avgSec) : NaN;
+    const durGapBad = Number.isFinite(durGapSec) && Math.abs(durGapSec) >= DIFF_ALERT_SECS;
+
+    const monitoredByCoach = coachRows.length > 0;
+
+    const coRows = coachingForRep(pk, range);
+    const coCount = coRows.length;
+    const coRecent = coRows[0]?.date || null;
+
+    const weightedCoachings = coCount * coachingWeightFactor(total.avg);
+
+    return {
+      pk, name, arr, total, totalIncl0, wkSeries,
+      trPP, zeros, noZero, unreadCount,
+      coachAvg, qaAvg, gapBad,
+      durAll, durCoach, durQa, durGapBad,
+      coCount, coRecent,
+      weightedCoachings,
+      monitoredByCoach,
+      coachCount: coachRows.length,
+      qaCount: qaRows.length
+    };
+  });
+
+  cards.sort((a,b)=>{
+    const aAvg = a.total.avg, bAvg = b.total.avg;
+    const aTrend = a.trPP, bTrend = b.trPP;
+    const fin = (x)=>Number.isFinite(x);
+
+    if(sortMode==="avg"){
+      if(fin(bAvg) && fin(aAvg) && bAvg!==aAvg) return bAvg - aAvg;
+      if(b.total.n !== a.total.n) return b.total.n - a.total.n;
+      return a.name.localeCompare(b.name);
     }
-    return;
-  }
+    if(sortMode==="zeros"){
+      if(b.zeros !== a.zeros) return b.zeros - a.zeros;
+      if(fin(aAvg) && fin(bAvg) && aAvg!==bAvg) return aAvg - bAvg;
+      return a.name.localeCompare(b.name);
+    }
+    if(sortMode==="trend"){
+      const aBad = !fin(aTrend), bBad = !fin(bTrend);
+      if(aBad && bBad) return 0;
+      if(aBad) return 1;
+      if(bBad) return -1;
+      if(aTrend !== bTrend) return aTrend - bTrend;
+      return a.name.localeCompare(b.name);
+    }
+    if(sortMode==="coachings"){
+      if(a.coCount !== b.coCount) return a.coCount - b.coCount;
+      if(fin(aAvg) && fin(bAvg) && aAvg!==bAvg) return aAvg - bAvg;
+      return a.name.localeCompare(b.name);
+    }
+    if(sortMode==="coachingsWeighted"){
+      if(a.weightedCoachings !== b.weightedCoachings) return a.weightedCoachings - b.weightedCoachings;
+      if(a.coCount !== b.coCount) return a.coCount - b.coCount;
+      if(fin(aAvg) && fin(bAvg) && aAvg!==bAvg) return aAvg - bAvg;
+      return a.name.localeCompare(b.name);
+    }
+    if(sortMode==="unreviewed"){
+      if(b.unreadCount !== a.unreadCount) return b.unreadCount - a.unreadCount;
+      if(b.total.n !== a.total.n) return b.total.n - a.total.n;
+      return a.name.localeCompare(b.name);
+    }
 
-  game.time++;
-  if (!world.theme.lockStrategies && keys["v"]) cyclePlayerStrategy();
-  if (!world.theme.lockStrategies && game.splitScreen && !game.sameTeams && keys["/"]) cycleGoldStrategy();
-  if (keys["b"] && !gameplayInputLock) {
-    game.debugAI = !game.debugAI;
-    gameplayInputLock = true;
-  } else if (!keys["b"] && game.state === "playing") {
-    gameplayInputLock = false;
-  }
+    if(b.total.n !== a.total.n) return b.total.n - a.total.n;
+    return a.name.localeCompare(b.name);
+  });
 
-  for (const u of units) {
-    const strat = strategyForTeam(u.team);
-    u.update(strat);
-  }
+  for(const c of cards){
+    const trendCls = !Number.isFinite(c.trPP) ? 'trendFlat'
+      : (c.trPP > 0.1 ? 'trendUp' : (c.trPP < -0.1 ? 'trendDn' : 'trendFlat'));
 
-  updateBushes();
-  handleBerries();
-  handleSnail();
-  updateFlags();
-  summonSoldierIfPossible("blue");
-  summonSoldierIfPossible("gold");
-  handleCombat();
-  updateFireballs();
-  updateParticles();
-  updateCamera();
+    const trendTxt = !Number.isFinite(c.trPP) ? '—'
+      : `${c.trPP>=0?'+':''}${c.trPP.toFixed(1)} pp`;
+
+    const splitTxt = (Number.isFinite(c.coachAvg) && Number.isFinite(c.qaAvg))
+      ? `Coach ${fmtPct1(c.coachAvg)} vs QA ${fmtPct1(c.qaAvg)}`
+      : 'Coach vs QA: —';
+
+    const durSplitTxt = (Number.isFinite(c.durCoach.avgSec) && Number.isFinite(c.durQa.avgSec))
+      ? `Dur Coach ${fmtHMS(c.durCoach.avgSec)} vs QA ${fmtHMS(c.durQa.avgSec)}`
+      : 'Dur split: —';
+
+    const coTxt = coLoaded
+      ? `CQ Coachings: <b>${fmtInt(c.coCount)}</b> • Recent: <b>${c.coRecent ? fmtDateOnly(c.coRecent) : '—'}</b>`
+      : `CQ Coachings: —`;
+
+    const unreadCls = c.unreadCount > 0 ? 'mini bad' : 'mini good';
+
+    const card = document.createElement('div');
+    card.className = 'card repCard';
+    card.dataset.rep = c.pk;
+
+    card.innerHTML = `
+      <div class="repTop">
+        <div>
+          <div class="repName">${c.name}</div>
+          <div class="repMeta">${c.wkSeries.weeks.length ? `${c.wkSeries.weeks[0]} → ${c.wkSeries.weeks[c.wkSeries.weeks.length-1]}` : '—'}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+          <span class="coachFlag ${c.monitoredByCoach ? 'good' : 'bad'}">
+            <span class="coachMark">${c.monitoredByCoach ? '✔' : '✖'}</span>
+            Monitored by Coach
+          </span>
+          <div class="mini ${c.gapBad?'warn':''}" title="Coach vs QA score averages">${splitTxt}</div>
+          <div class="mini ${c.durGapBad?'warn':''}" title="Coach vs QA average call duration">${durSplitTxt}</div>
+        </div>
+      </div>
+
+      <div class="sparkWrap">
+        <canvas class="spark" width="520" height="110"></canvas>
+      </div>
+
+      <div class="repStats">
+        <div class="statLine">
+          <span>Unreviewed Monitor Count</span>
+          <span><span class="pill mono ${c.unreadCount>0?'bad':'good'}"><b>${fmtInt(c.unreadCount)}</b></span></span>
+        </div>
+        <div class="statLine"><span>Total</span><span><b>${fmtPct1(c.total.avg)}</b> • n <b>${fmtInt(c.total.n)}</b></span></div>
+        <div class="statLine"><span>Coach monitors</span><span><b>${fmtInt(c.coachCount)}</b></span></div>
+        <div class="statLine"><span>QA monitors</span><span><b>${fmtInt(c.qaCount)}</b></span></div>
+        <div class="statLine"><span>Avg call duration</span><span><b>${fmtHMS(c.durAll.avgSec)}</b> • n <b>${fmtInt(c.durAll.n)}</b></span></div>
+        <div class="statLine"><span>Trend (1st half → 2nd)</span><span class="${trendCls}">${trendTxt}</span></div>
+        <div class="statLine"><span>Zeros</span><span><b>${fmtInt(c.zeros)}</b> • Avg w/o 0s <b>${fmtPct1(c.noZero.avg)}</b></span></div>
+      </div>
+
+      <div class="miniRow">
+        <span class="${unreadCls}">Unread: ${fmtInt(c.unreadCount)}</span>
+        <span class="mini mono">Exclude 0s: ${excludeZero ? 'ON' : 'OFF'}</span>
+        <span class="mini mono">n(incl0): ${fmtInt(c.totalIncl0.n)}</span>
+        <span class="mini mono" title="Documented coachings filtered to Call Quality only">${coTxt}</span>
+      </div>
+    `;
+
+    el.cards.appendChild(card);
+    drawSpark(card.querySelector('canvas.spark'), c.wkSeries.vals);
+  }
 }
 
-/* ---------------- DRAWING ---------------- */
-
-function drawStars(camX = game.cameraX, camY = game.cameraY) {
-  for (const s of stars) {
-    ctx.fillStyle = s.s === 1 ? "#bcc7ff" : s.s === 2 ? "#ffffff" : "#ffe9a8";
-    const x = s.x - camX * 0.25;
-    const y = s.y - camY * 0.15;
-    if (x > -5 && x < VIEW_W + 5) ctx.fillRect(x, y, s.s, s.s);
+function destroyModalChart(){
+  if(chartMain){
+    try{ chartMain.destroy(); }catch{}
+    chartMain = null;
   }
 }
 
-function drawBackdrop(camX = game.cameraX) {
-  const t = world.theme;
-  const grad = ctx.createLinearGradient(0, 0, 0, VIEW_H);
-  grad.addColorStop(0, t.skyTop);
-  grad.addColorStop(0.48, t.skyMid);
-  grad.addColorStop(1, t.skyLow);
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+function linearTrend(values){
+  const n = values.length;
+  if(n < 2) return null;
+  let sumX=0,sumY=0,sumXY=0,sumXX=0;
+  for(const p of values){
+    sumX += p.x; sumY += p.y; sumXY += p.x*p.y; sumXX += p.x*p.x;
+  }
+  const denom = (n*sumXX - sumX*sumX);
+  if(Math.abs(denom) < 1e-9) return null;
+  const m = (n*sumXY - sumX*sumY) / denom;
+  const b = (sumY - m*sumX) / n;
+  return { m, b };
+}
 
-  const camSlow = camX * 0.18;
-  const camMed = camX * 0.30;
+function openModal(repKey){
+  const rowsScoped = filterRows();
+  const byRep = groupBy(rowsScoped, r=>r.agentKey);
+  const arr = byRep.get(repKey) || [];
+  if(!arr.length) return;
 
-  if (t.name === "SUNSET HIVE") {
-    ctx.save();
-    ctx.translate(-camSlow, 0);
-    ctx.fillStyle = "rgba(255,180,90,0.35)";
-    ctx.beginPath();
-    ctx.arc(900, 190, 90, 0, Math.PI * 2);
-    ctx.fill();
+  const excludeZero = el.excludeZero.checked;
+  const name = arr[0].agent || repKey;
+  const coachName = String(arr[0].team||"").trim() || '(blank Team/Coach)';
+  const sortedDesc = [...arr].sort((a,b)=> b.start - a.start);
 
-    ctx.fillStyle = t.mountain1;
-    ctx.beginPath();
-    ctx.moveTo(-100, 590);
-    for (let x = 0; x <= world.width + 200; x += 180) {
-      const peak = 360 + Math.sin(x * 0.0048) * 75 + (x % 360 === 0 ? -35 : 50);
-      ctx.lineTo(x, peak);
+  const total = avgScore(arr, excludeZero);
+  const incl0 = avgScore(arr, false);
+  const zeros = arr.filter(r=>r.score===0).length;
+  const noZero = avgScore(arr, true);
+  const unreadCount = countUnreviewed(arr);
+
+  const { coachRows, qaRows } = splitRoleRows(arr);
+
+  const coachAvg = avgScore(coachRows, excludeZero);
+  const qaAvg = avgScore(qaRows, excludeZero);
+  const gap = (Number.isFinite(coachAvg.avg)&&Number.isFinite(qaAvg.avg)) ? (coachAvg.avg-qaAvg.avg) : NaN;
+  const gapBad = Number.isFinite(gap) && Math.abs(gap*100) >= DIFF_ALERT_PCTPTS;
+
+  const durAll = avgDuration(arr, excludeZero);
+  const durCoach = avgDuration(coachRows, excludeZero);
+  const durQa = avgDuration(qaRows, excludeZero);
+  const durGapSec = (Number.isFinite(durCoach.avgSec)&&Number.isFinite(durQa.avgSec)) ? (durCoach.avgSec-durQa.avgSec) : NaN;
+  const durGapBad = Number.isFinite(durGapSec) && Math.abs(durGapSec) >= DIFF_ALERT_SECS;
+
+  const monitoredByCoach = coachRows.length > 0;
+
+  const evalCounts = new Map();
+  for(const r of arr){
+    const ev = (r.evaluator||'(blank)').trim() || '(blank)';
+    evalCounts.set(ev, (evalCounts.get(ev)||0)+1);
+  }
+  const evalTop = Array.from(evalCounts.entries()).sort((a,b)=>b[1]-a[1]).slice(0,10);
+
+  const teamLabel = (el.teamSel.value==='__ALL__') ? 'All teams' : el.teamSel.value;
+  const tfLabel = el.tfSel.options[el.tfSel.selectedIndex]?.textContent || 'All';
+  const tf = el.tfSel.value;
+  const range = (tf==='all') ? {from:null,to:null} : timeframeRange(tf);
+
+  const coRows = coachingForRep(repKey, range);
+  const coCount = coRows.length;
+  const coRecent = coRows[0]?.date || null;
+
+  el.mTitle.textContent = `${name} — QA Details`;
+  el.mSub.textContent = `${teamLabel} • ${tfLabel} • Rows: ${arr.length} • Team/Coach: ${coachName}`;
+
+  destroyModalChart();
+  el.mBody.innerHTML = '';
+
+  const stats = document.createElement('div');
+  stats.className = 'box';
+  stats.innerHTML = `
+    <div class="boxHead">
+      <span>Summary</span>
+      <span class="pill mono ${gapBad?'warn':''}">Coach vs QA gap: ${Number.isFinite(gap)? ((gap>=0?'+':'')+(gap*100).toFixed(1)+' pp') : '—'}</span>
+    </div>
+
+    <div class="row" style="gap:10px">
+      <span class="coachFlag ${monitoredByCoach ? 'good' : 'bad'}">
+        <span class="coachMark">${monitoredByCoach ? '✔' : '✖'}</span>
+        Monitored by Coach
+      </span>
+
+      <span class="pill mono ${unreadCount>0 ? 'bad' : 'good'}"><b>Unreviewed</b> ${fmtInt(unreadCount)}</span>
+      <span class="pill mono"><b>Total</b> ${fmtPct1(total.avg)} • n ${fmtInt(total.n)}</span>
+      <span class="pill mono"><b>Total (incl 0s)</b> ${fmtPct1(incl0.avg)} • n ${fmtInt(incl0.n)}</span>
+      <span class="pill mono"><b>Zeros</b> ${fmtInt(zeros)} • <b>Avg w/o 0s</b> ${fmtPct1(noZero.avg)}</span>
+
+      <span class="pill mono ${gapBad?'warn':''}"><b>Coach</b> ${fmtPct1(coachAvg.avg)} • n ${fmtInt(coachAvg.n)}</span>
+      <span class="pill mono ${gapBad?'warn':''}"><b>QA</b> ${fmtPct1(qaAvg.avg)} • n ${fmtInt(qaAvg.n)}</span>
+
+      <span class="pill mono"><b>Avg call</b> ${fmtHMS(durAll.avgSec)} • n ${fmtInt(durAll.n)}</span>
+      <span class="pill mono ${durGapBad?'warn':''}"><b>Dur coach</b> ${fmtHMS(durCoach.avgSec)} • n ${fmtInt(durCoach.n)}</span>
+      <span class="pill mono ${durGapBad?'warn':''}"><b>Dur QA</b> ${fmtHMS(durQa.avgSec)} • n ${fmtInt(durQa.n)}</span>
+      <span class="pill mono ${durGapBad?'warn':''}"><b>Dur gap</b> ${
+        Number.isFinite(durGapSec) ? `${durGapSec>=0?'+':''}${fmtHMS(Math.abs(durGapSec))}` : '—'
+      }</span>
+
+      <span class="pill mono" title="Documented Coachings filtered to Call Quality only (in selected timeframe)">
+        <b>CQ Coachings</b> ${fmtInt(coCount)} • <b>Most recent</b> ${coRecent ? fmtDateOnly(coRecent) : '—'}
+      </span>
+    </div>
+
+    <div style="margin-top:10px" class="notice">
+      <b>Top evaluators</b> (count): ${evalTop.map(([e,c])=>`${e} (${c})`).join(' • ') || '—'}
+    </div>
+  `;
+  el.mBody.appendChild(stats);
+
+  const coBox = document.createElement('div');
+  coBox.className = 'box';
+  coBox.innerHTML = `
+    <div class="boxHead">
+      <span>Documented Coachings — Call Quality</span>
+      <span class="pill mono">In timeframe: ${tfLabel}</span>
+    </div>
+    ${
+      !coLoaded
+        ? `<div class="notice">No documented coaching data loaded. Pick a Doc coaching key in Additional Options.</div>`
+        : (coRows.length
+          ? `<div class="coList">
+              ${coRows.slice(0, 50).map(c=>`
+                <div class="coItem">
+                  <div class="coHeadRow">
+                    <b>${fmtDateOnly(c.date)}</b>
+                    <span class="pill mono">${(c.coach||'—') ? String(c.coach||'—') : '—'}</span>
+                  </div>
+                  <div class="coMeta">Type: ${c.types.join(", ") || "Call Quality"} • Week: ${c.week || "—"}</div>
+                  ${c.desc ? `<div class="coDesc">${String(c.desc)}</div>` : `<div class="coDesc" style="color:#64748b">No description/notes found.</div>`}
+                </div>
+              `).join("")}
+            </div>
+            ${coRows.length>50 ? `<div class="notice" style="margin-top:10px">Showing newest 50. (${coRows.length} total in timeframe.)</div>` : ``}`
+          : `<div class="notice">No Call Quality coachings found for this rep in the selected timeframe.</div>`
+        )
     }
-    ctx.lineTo(world.width + 200, world.height);
-    ctx.lineTo(-100, world.height);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
+  `;
+  el.mBody.appendChild(coBox);
 
-    ctx.save();
-    ctx.translate(-camMed, 0);
-    ctx.fillStyle = t.mountain2;
-    for (let x = 120; x < world.width; x += 380) {
-      ctx.fillRect(x, 420, 18, 210);
-      ctx.beginPath();
-      ctx.arc(x + 9, 410, 34, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.restore();
+  const chartBox = document.createElement('div');
+  chartBox.className = 'box';
+  chartBox.innerHTML = `
+    <div class="boxHead">
+      <span>Call Quality Over Time</span>
+      <span class="pill mono">Trendline included</span>
+    </div>
+    <div class="chartWrap"><canvas id="mainChart"></canvas></div>
+    <div class="notice" style="margin-top:10px">
+      Chart respects Exclude zeros.
+    </div>
+  `;
+  el.mBody.appendChild(chartBox);
+
+  const asc = [...arr].sort((a,b)=> a.start - b.start);
+  const points = [];
+  const labels = [];
+  for(const r of asc){
+    if(excludeZero && r.score===0) continue;
+    labels.push(fmtDateTime(r.start));
+    points.push(r.score);
   }
 
-  else if (t.name === "MOON CAVERN") {
-    ctx.save();
-    ctx.translate(-camSlow, 0);
-    ctx.fillStyle = "rgba(230,240,255,0.25)";
-    ctx.beginPath();
-    ctx.arc(2150, 130, 70, 0, Math.PI * 2);
-    ctx.fill();
+  const trendPts = points.map((y,i)=>({x:i,y})).filter(p=>Number.isFinite(p.y));
+  const fit = linearTrend(trendPts);
+  const trendLine = fit ? points.map((_,i)=> (fit.m*i + fit.b)) : points.map(_=>null);
 
-    ctx.fillStyle = t.mountain1;
-    ctx.beginPath();
-    ctx.moveTo(-100, 620);
-    for (let x = 0; x <= world.width + 200; x += 140) {
-      const peak = 410 + Math.cos(x * 0.006) * 55 + (x % 280 === 0 ? -50 : 20);
-      ctx.lineTo(x, peak);
-    }
-    ctx.lineTo(world.width + 200, world.height);
-    ctx.lineTo(-100, world.height);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-
-    ctx.save();
-    ctx.translate(-camMed, 0);
-    ctx.fillStyle = t.mountain2;
-    for (let x = 90; x < world.width; x += 240) {
-      ctx.beginPath();
-      ctx.moveTo(x, 510);
-      ctx.lineTo(x + 45, 420);
-      ctx.lineTo(x + 90, 510);
-      ctx.closePath();
-      ctx.fill();
-    }
-    ctx.restore();
-  }
-
-  else if (t.name === "EMERALD TOWER") {
-    ctx.save();
-    ctx.translate(-camSlow, 0);
-    ctx.fillStyle = t.mountain1;
-    ctx.beginPath();
-    ctx.moveTo(-100, 630);
-    for (let x = 0; x <= world.width + 200; x += 170) {
-      const peak = 430 + Math.sin(x * 0.0035) * 50 + (x % 340 === 0 ? -65 : 15);
-      ctx.lineTo(x, peak);
-    }
-    ctx.lineTo(world.width + 200, world.height);
-    ctx.lineTo(-100, world.height);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-
-    ctx.save();
-    ctx.translate(-camMed, 0);
-    ctx.fillStyle = t.mountain2;
-    for (let x = 170; x < world.width; x += 420) {
-      ctx.fillRect(x, 320, 24, 300);
-      ctx.fillRect(x - 18, 350, 18, 260);
-      ctx.fillRect(x + 24, 350, 18, 260);
-      ctx.fillStyle = shade(t.mountain2, 25);
-      ctx.fillRect(x - 10, 300, 44, 24);
-      ctx.fillStyle = t.mountain2;
-    }
-    ctx.restore();
-  }
-
-  else if (t.name === "SUNBURST PLAZA") {
-    ctx.save();
-    ctx.translate(-camSlow, 0);
-    ctx.fillStyle = "rgba(255,245,150,0.65)";
-    ctx.beginPath();
-    ctx.arc(2280, 120, 88, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = t.mountain1;
-    ctx.beginPath();
-    ctx.moveTo(-100, 630);
-    for (let x = 0; x <= world.width + 200; x += 170) {
-      const peak = 445 + Math.cos(x * 0.004) * 45 + (x % 340 === 0 ? -25 : 22);
-      ctx.lineTo(x, peak);
-    }
-    ctx.lineTo(world.width + 200, world.height);
-    ctx.lineTo(-100, world.height);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-
-    ctx.save();
-    ctx.translate(-camMed, 0);
-    ctx.fillStyle = t.mountain2;
-    for (let x = 120; x < world.width; x += 360) {
-      ctx.fillRect(x, 470, 20, 150);
-      ctx.beginPath();
-      ctx.arc(x + 10, 452, 34, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.restore();
-  }
-  else if (t.name === "THE GREAT ASSAULT") {
-    ctx.save();
-    ctx.translate(-camSlow, 0);
-    ctx.fillStyle = t.mountain1;
-    ctx.beginPath();
-    ctx.moveTo(-120, 720);
-    for (let x = 0; x <= world.width + 200; x += 180) {
-      const peak = 510 + Math.sin(x * 0.005) * 70 + (x % 360 === 0 ? -80 : 28);
-      ctx.lineTo(x, peak);
-    }
-    ctx.lineTo(world.width + 200, world.height);
-    ctx.lineTo(-120, world.height);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-
-    ctx.save();
-    ctx.translate(-camMed, 0);
-    ctx.fillStyle = t.mountain2;
-    for (let x = 120; x < world.width; x += 270) {
-      ctx.beginPath();
-      ctx.moveTo(x, 620);
-      ctx.lineTo(x + 60, 490);
-      ctx.lineTo(x + 120, 620);
-      ctx.closePath();
-      ctx.fill();
-    }
-    for (const f of fireballs) {
-      for (let i = 0; i < f.trail.length; i++) {
-        const tr = f.trail[i];
-        const ratio = (i + 1) / f.trail.length;
-        ctx.globalAlpha = tr.alpha * ratio;
-        const tgrad = ctx.createRadialGradient(tr.x, tr.y, 0, tr.x, tr.y, tr.size * 2.1);
-        tgrad.addColorStop(0, "rgba(255,212,130,0.95)");
-        tgrad.addColorStop(0.45, "rgba(255,116,45,0.7)");
-        tgrad.addColorStop(1, "rgba(255,64,0,0)");
-        ctx.fillStyle = tgrad;
-        ctx.beginPath();
-        ctx.arc(tr.x, tr.y, tr.size * 2.1, 0, Math.PI * 2);
-        ctx.fill();
+  const ctx = chartBox.querySelector('#mainChart').getContext('2d');
+  chartMain = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels,
+      datasets:[
+        { label:'Score %', data: points, tension:.25, pointRadius:3, pointHoverRadius:5, borderWidth:2 },
+        { label:'Trend', data: trendLine, tension:0, pointRadius:0, borderWidth:2, borderDash:[6,6] }
+      ]
+    },
+    options:{
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{display:true},
+        tooltip:{
+          callbacks:{ label:(tt)=> Number.isFinite(tt.parsed.y) ? ` ${fmtPct2(tt.parsed.y)}` : ' —' }
+        }
+      },
+      scales:{
+        y:{
+          suggestedMin:0, suggestedMax:1,
+          ticks:{ callback:(v)=> Number.isFinite(v) ? (v*100).toFixed(0)+'%' : v }
+        },
+        x:{ ticks:{ maxRotation:0, autoSkip:true, maxTicksLimit:10 } }
       }
-
-      ctx.globalAlpha = clamp(f.glow + 0.2, 0.4, 0.95);
-      const glowGrad = ctx.createRadialGradient(f.x, f.y, f.size * 0.2, f.x, f.y, f.size * 2.8);
-      glowGrad.addColorStop(0, "rgba(255,245,194,0.95)");
-      glowGrad.addColorStop(0.25, "rgba(255,166,72,0.85)");
-      glowGrad.addColorStop(0.65, "rgba(255,84,28,0.5)");
-      glowGrad.addColorStop(1, "rgba(255,38,0,0)");
-      ctx.fillStyle = glowGrad;
-      ctx.beginPath();
-      ctx.arc(f.x, f.y, f.size * 2.8, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = "#ffd99a";
-      ctx.beginPath();
-      ctx.ellipse(f.x, f.y - f.size * 0.34, f.size * 0.22, f.size * 0.4, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#ff7f33";
-      ctx.beginPath();
-      ctx.ellipse(f.x, f.y, f.size * 0.6, f.size * 1.05, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#ff4f18";
-      ctx.beginPath();
-      ctx.ellipse(f.x, f.y + f.size * 0.3, f.size * 0.42, f.size * 0.6, 0, 0, Math.PI * 2);
-      ctx.fill();
     }
-    ctx.restore();
-  }
-  else if (t.name === "SNAIL WAR") {
-    ctx.save();
-    ctx.translate(-camSlow, 0);
-    ctx.fillStyle = t.mountain1;
-    ctx.beginPath();
-    ctx.moveTo(-100, 680);
-    for (let x = 0; x <= world.width + 200; x += 150) {
-      const peak = 520 + Math.cos(x * 0.006) * 45 + (x % 300 === 0 ? -25 : 18);
-      ctx.lineTo(x, peak);
-    }
-    ctx.lineTo(world.width + 200, world.height);
-    ctx.lineTo(-100, world.height);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
+  });
 
-    ctx.save();
-    ctx.translate(-camMed, 0);
-    ctx.fillStyle = "rgba(174,219,152,0.26)";
-    for (let x = 120; x < world.width; x += 240) {
-      ctx.beginPath();
-      ctx.arc(x, 600 + Math.sin(x * 0.01) * 20, 42, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.restore();
-  }
+  const tbl = document.createElement('div');
+  tbl.className = 'box';
+  tbl.innerHTML = `
+    <div class="boxHead">
+      <span>All Monitors (Most recent → oldest)</span>
+      <span class="pill mono">Includes Agent Has Read</span>
+    </div>
+    <div class="tblWrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Conversation ID</th>
+            <th>Genesys Evaluation ID</th>
+            <th>Interaction Start Time</th>
+            <th>Interaction Duration (H:MM:SS)</th>
+            <th>Evaluator</th>
+            <th>Monitor Type</th>
+            <th>Agent Has Read</th>
+            <th>Score %</th>
+            <th>Week</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${sortedDesc.map(r=>`
+            <tr>
+              <td class="mono">${r.conversationId ? String(r.conversationId) : '—'}</td>
+              <td class="mono">${(r.evalId||'—') ? String(r.evalId||'—') : '—'}</td>
+              <td class="mono">${fmtDateTime(r.start)}</td>
+              <td class="mono">${r.durationText || '—'}</td>
+              <td>${r.evaluator ? r.evaluator : '—'}</td>
+              <td>${isCoachEval(r) ? 'Coach' : 'QA'}</td>
+              <td class="mono">${r.agentHasRead===null ? '—' : r.agentHasRead}</td>
+              <td class="mono">${fmtPct2(r.score)}</td>
+              <td class="mono">${r.week||'—'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+  el.mBody.appendChild(tbl);
+
+  el.overlay.classList.add('show');
+  el.overlay.setAttribute('aria-hidden','false');
 }
 
-function drawPlatforms() {
-  const t = world.theme;
-  for (const p of world.platforms) {
-    ctx.fillStyle = t.platformSide;
-    ctx.fillRect(p.x, p.y + 10, p.w, 6);
-    ctx.fillStyle = t.platformTop;
-    ctx.fillRect(p.x, p.y, p.w, 10);
-    ctx.fillStyle = shade(t.platformTop, 35);
-    ctx.fillRect(p.x, p.y, p.w, 2);
-    ctx.fillStyle = shade(t.platformSide, 20);
-    for (let i = 0; i < p.w; i += 24) {
-      ctx.fillRect(p.x + i + 4, p.y + 4, 8, 3);
-    }
-  }
+function closeModal(){
+  destroyModalChart();
+  el.overlay.classList.remove('show');
+  el.overlay.setAttribute('aria-hidden','true');
+  el.mBody.innerHTML = '';
 }
 
-function drawCeilingSpikes() {
-  const c = world.theme.spikeColor;
-  for (let x = 0; x < world.width; x += 24) {
-    ctx.fillStyle = c;
-    ctx.beginPath();
-    ctx.moveTo(x, world.spikeY);
-    ctx.lineTo(x + 12, world.spikeY + 18);
-    ctx.lineTo(x + 24, world.spikeY);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = shade(c, -30);
-    ctx.fillRect(x + 10, world.spikeY + 1, 4, 6);
-  }
+function openReviewerPopup(){
+  paintReviewerControls();
+  el.reviewerOverlay.classList.add('show');
+  el.reviewerOverlay.setAttribute('aria-hidden','false');
+}
+function closeReviewerPopup(){
+  el.reviewerOverlay.classList.remove('show');
+  el.reviewerOverlay.setAttribute('aria-hidden','true');
 }
 
-function drawLava() {
-  const t = world.theme;
-  ctx.fillStyle = world.mode === "assault" ? "#5a1208" : "#370505";
-  ctx.fillRect(0, world.lavaY, world.width, world.height - world.lavaY);
-  const tm = Date.now() * 0.01;
-  for (let x = 0; x < world.width; x += 24) {
-    const h = (world.mode === "assault" ? 13 : 8) + Math.sin((x * 0.05) + tm) * (world.mode === "assault" ? 5.2 : 3.5);
-    ctx.fillStyle = t.lava1;
-    ctx.fillRect(x, world.lavaY + 2, 24, h);
-    ctx.fillStyle = t.lava2;
-    ctx.fillRect(x + 4, world.lavaY + 4, 14, world.mode === "assault" ? 5 : 3);
-  }
+function openOptionsPopup(){
+  el.optionsOverlay.classList.add('show');
+  el.optionsOverlay.setAttribute('aria-hidden','false');
+}
+function closeOptionsPopup(){
+  el.optionsOverlay.classList.remove('show');
+  el.optionsOverlay.setAttribute('aria-hidden','true');
 }
 
-function drawGate(g) {
-  const c = g.team === "blue" ? "#4dc9ff" : "#ffd24a";
-  ctx.fillStyle = shade(c, -40);
-  ctx.fillRect(g.x, g.y, g.w, g.h);
-  ctx.fillStyle = c;
-  ctx.fillRect(g.x + 4, g.y + 4, g.w - 8, g.h - 8);
-
-  for (let i = 0; i < g.berries; i++) {
-    const row = i % 5;
-    const col = Math.floor(i / 5);
-    ctx.fillStyle = world.theme.bushBerry1;
-    ctx.fillRect(g.x + 8 + col * 10, g.y + g.h - 16 - row * 12, 6, 6);
-    ctx.fillStyle = world.theme.bushBerry2;
-    ctx.fillRect(g.x + 9 + col * 10, g.y + g.h - 15 - row * 12, 4, 4);
+function buildDockKeyOptions(){
+  const keys = findDockKeysBySuffix(".dock.qa");
+  el.qaKeySel.innerHTML = '';
+  if(!keys.length){
+    const o = document.createElement('option');
+    o.value = '';
+    o.textContent = '(no .dock.qa found in localStorage)';
+    el.qaKeySel.appendChild(o);
+    return;
   }
-
-  for (const maiden of g.maidens) {
-    const unlocked = g.upgrades[maiden.type];
-    ctx.fillStyle = unlocked ? (maiden.type === "speed" ? "#8dfff0" : "#ffe57d") : "#666";
-    ctx.fillRect(maiden.x - 8, maiden.y - 8, 16, 16);
-    ctx.fillStyle = "#222";
-    if (maiden.type === "speed") ctx.fillRect(maiden.x - 4, maiden.y - 2, 8, 3);
-    else ctx.fillRect(maiden.x - 3, maiden.y - 4, 6, 8);
+  for(const k of keys){
+    const o = document.createElement('option');
+    o.value = k;
+    o.textContent = k;
+    el.qaKeySel.appendChild(o);
   }
 
-  ctx.fillStyle = "#fff";
-  ctx.font = "12px Courier New";
-  ctx.fillText(g.berries + "/10", g.x - 2, g.y - 8);
+  const saved = loadSettings();
+  if(saved.qaKey && keys.includes(saved.qaKey)) el.qaKeySel.value = saved.qaKey;
+  else el.qaKeySel.value = keys[0];
 }
 
-function drawHives() {
-  for (const key of ["blue", "gold"]) {
-    const h = hive[key];
-    const c = key === "blue" ? "#50cfff" : "#ffd75a";
-    ctx.fillStyle = shade(c, -35);
-    ctx.fillRect(h.x - 28, h.y, 56, 22);
-    ctx.fillStyle = c;
-    ctx.fillRect(h.x - 20, h.y + 4, 40, 14);
-    ctx.fillStyle = "#2c1d12";
-    ctx.fillRect(h.x - 7, h.y + 8, 14, 8);
+function buildCoKeyOptions(){
+  const keys = findCoachingKeys();
+  el.coKeySel.innerHTML = '';
+  if(!keys.length){
+    const o = document.createElement('option');
+    o.value = '';
+    o.textContent = '(no coaching dock key found)';
+    el.coKeySel.appendChild(o);
+    return;
   }
-}
-
-function drawBushes() {
-  const t = world.theme;
-  for (const bush of bushes) {
-    ctx.fillStyle = t.bushLeaf1;
-    ctx.fillRect(bush.x - 18, bush.y - 6, 36, 12);
-    ctx.fillRect(bush.x - 26, bush.y - 14, 16, 12);
-    ctx.fillRect(bush.x - 8, bush.y - 20, 16, 14);
-    ctx.fillRect(bush.x + 10, bush.y - 14, 16, 12);
-
-    ctx.fillStyle = t.bushLeaf2;
-    ctx.fillRect(bush.x - 22, bush.y - 12, 14, 10);
-    ctx.fillRect(bush.x - 2, bush.y - 22, 14, 12);
-    ctx.fillRect(bush.x + 12, bush.y - 12, 14, 10);
-
-    ctx.fillStyle = "#6d4322";
-    ctx.fillRect(bush.x - 2, bush.y - 2, 4, 8);
-
-    if (bush.berry.alive && !bush.berry.carriedBy) {
-      const b = bush.berry;
-      ctx.fillStyle = t.bushBerry1;
-      ctx.fillRect(b.x - 4, b.y - 4, 8, 8);
-      ctx.fillStyle = t.bushBerry2;
-      ctx.fillRect(b.x - 3, b.y - 3, 6, 6);
-    }
+  for(const k of keys){
+    const o = document.createElement('option');
+    o.value = k;
+    o.textContent = k;
+    el.coKeySel.appendChild(o);
   }
+  const saved = loadSettings();
+  if(saved.coKey && keys.includes(saved.coKey)) el.coKeySel.value = saved.coKey;
+  else el.coKeySel.value = keys[0];
 }
 
-function drawSnail() {
-  ctx.fillStyle = "#60391f";
-  ctx.fillRect(world.snailLeftGoal - 30, world.snailTrackY + 18, world.snailRightGoal - world.snailLeftGoal + 60, 8);
-  ctx.fillStyle = "#8a5a35";
-  ctx.fillRect(world.snailLeftGoal - 30, world.snailTrackY + 20, world.snailRightGoal - world.snailLeftGoal + 60, 4);
+function loadCoachings(){
+  CO_KEY = el.coKeySel.value || null;
+  saveSettings({ coKey: CO_KEY });
 
-  ctx.fillStyle = "#4dc9ff";
-  ctx.fillRect(world.snailLeftGoal - 8, world.snailTrackY - 10, 6, 34);
-  ctx.fillStyle = "#ffd24a";
-  ctx.fillRect(world.snailRightGoal + 2, world.snailTrackY - 10, 6, 34);
-
-  ctx.fillStyle = "#d7a05a";
-  ctx.fillRect(snail.x - 14, snail.y + 10, 30, 10);
-  ctx.fillStyle = "#b77038";
-  ctx.fillRect(snail.x - 6, snail.y, 20, 18);
-  ctx.fillStyle = "#f1d7a0";
-  ctx.fillRect(snail.x - 18, snail.y + 16, 12, 5);
-  ctx.fillRect(snail.x + 12, snail.y + 16, 8, 5);
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(snail.x - 16, snail.y + 9, 2, 5);
-  ctx.fillRect(snail.x - 12, snail.y + 9, 2, 5);
-}
-
-function drawFlags() {
-  for (const f of flags) {
-    const ownerColor = f.owner === "blue" ? "#61d8ff" : (f.owner === "gold" ? "#ffd86a" : "#d8d8d8");
-    ctx.fillStyle = "#5d4b31";
-    ctx.fillRect(f.x - 2, f.y - 34, 4, 40);
-    ctx.fillStyle = ownerColor;
-    ctx.fillRect(f.x + 2, f.y - 30, 20, 14);
-    if (f.capturingTeam) {
-      const ratio = clamp(f.captureTimer / 120, 0, 1);
-      ctx.fillStyle = "#111";
-      ctx.fillRect(f.x - 16, f.y + 10, 32, 5);
-      ctx.fillStyle = f.capturingTeam === "blue" ? "#69d8ff" : "#ffdf72";
-      ctx.fillRect(f.x - 16, f.y + 10, 32 * ratio, 5);
-    }
+  if(!CO_KEY){
+    coLoaded = false;
+    coRowsAll = [];
+    el.coStatusPill.textContent = 'Coachings: (none found)';
+    return;
   }
+  const obj = loadDockObjByKey(CO_KEY);
+  const rows = canonicalizeCoachings(obj);
+  coRowsAll = rows;
+
+  coLoaded = rows.length>0;
+  el.coStatusPill.textContent = coLoaded
+    ? `Coachings: ${rows.length} Call Quality coaching(s)`
+    : `Coachings: 0 (key loaded, but no Call Quality rows detected)`;
 }
 
-function drawParticles() {
-  for (const p of particles) {
-    ctx.globalAlpha = p.life / p.maxLife;
-    ctx.fillStyle = p.color;
-    ctx.fillRect(p.x, p.y, 3, 3);
+function loadQA(){
+  QA_KEY = el.qaKeySel.value || null;
+  saveSettings({ qaKey: QA_KEY });
+
+  if(!QA_KEY){
+    qaLoaded = false;
+    qaRowsAll = [];
+    el.statusPill.textContent = 'QA: Upload needed (no dock key found)';
+    return;
   }
-  ctx.globalAlpha = 1;
-}
+  const obj = loadDockObjByKey(QA_KEY);
+  const rows = canonicalizeQA(obj);
+  qaRowsAll = rows;
 
-function drawWorld(camX = game.cameraX, camY = game.cameraY) {
-  drawBackdrop(camX);
-  ctx.save();
-  ctx.translate(-camX, -camY);
-  drawCeilingSpikes();
-  drawPlatforms();
-  drawHives();
-  drawGate(gates.blue);
-  drawGate(gates.gold);
-  if (bushes.length) drawBushes();
-  if (world.mode !== "assault") drawSnail();
-  drawFlags();
-  for (const u of units) u.draw();
-  drawParticles();
-  drawLava();
-  ctx.restore();
-}
+  qaLoaded = rows.length>0;
+  el.statusPill.textContent = qaLoaded
+    ? `Loaded QA: ${rows.length} evaluation(s)`
+    : `QA: Upload needed (dock found but no QA rows detected)`;
 
-function drawQueenLivesBox(x, y, queen, label, color) {
-  if (!queen) return;
-  ctx.fillStyle = "#000";
-  ctx.fillRect(x, y, 170, 56);
-  ctx.strokeStyle = color;
-  ctx.strokeRect(x, y, 170, 56);
-  ctx.fillStyle = color;
-  ctx.fillRect(x + 8, y + 9, 18, 18);
-  ctx.fillStyle = "#fff";
-  ctx.font = "15px Courier New";
-  ctx.fillText(label, x + 35, y + 20);
-  ctx.fillText("LIVES:", x + 35, y + 42);
-  const maxPips = Math.max(3, Math.min(10, queen?.queenLives || 3));
-  for (let i = 0; i < maxPips; i++) {
-    ctx.fillStyle = i < queen.queenLives ? color : "#444";
-    ctx.fillRect(x + 90 + i * 7, y + 33, 5, 12);
+  buildTeamOptions(qaRowsAll);
+
+  const saved = loadSettings();
+  if(saved.team && [...el.teamSel.options].some(o=>o.value===saved.team)) el.teamSel.value = saved.team;
+  if(saved.tf && [...el.tfSel.options].some(o=>o.value===saved.tf)) el.tfSel.value = saved.tf;
+  if(saved.excludeZero !== undefined) el.excludeZero.checked = !!saved.excludeZero;
+  if(saved.search !== undefined) el.searchInp.value = saved.search;
+
+  if(el.tfSel.value === 'custom'){
+    if(saved.from) el.fromInp.value = saved.from;
+    if(saved.to) el.toInp.value = saved.to;
   }
-  ctx.fillStyle = "#fff";
-  ctx.fillText(String(queen.queenLives), x + 146, y + 42);
+
+  recomputeReviewerScope();
 }
 
-function drawKeyHint(x, y, label, active = false) {
-  ctx.fillStyle = active ? "#ffe37a" : "#333";
-  ctx.fillRect(x, y, 18, 18);
-  ctx.fillStyle = active ? "#1b1200" : "#fff";
-  ctx.font = "13px Courier New";
-  ctx.fillText(label, x + 5, y + 13);
-}
+function render(){
+  if(qaLoaded){
+    recomputeReviewerScope();
+  }
 
-function playerNearBerry(unit) {
-  if (!unit || unit.dead || unit.carryingBerry || unit.role === "queen" || unit.form === "warrior") return false;
-  return !!berryInPickupRange(unit);
-}
+  const rows = filterRows();
+  paintSummary(rows);
+  paintReviewerControls();
+  paintCards(rows);
 
-function drawHUD() {
-  const blueQueen = units.find(u => u.team === "blue" && u.role === "queen");
-  const goldQueen = units.find(u => u.team === "gold" && u.role === "queen");
-  const p1BerryReady = playerNearBerry(playerQueen);
-  const p2BerryReady = playerNearBerry(goldPlayerQueen);
-
-  ctx.fillStyle = "#000";
-  ctx.fillRect(12, 12, 470, 92);
-  ctx.strokeStyle = "#d5d5d5";
-  ctx.strokeRect(12, 12, 470, 92);
-
-  ctx.fillStyle = "#fff";
-  ctx.font = "18px Courier New";
-  ctx.fillText("MAP: " + MAPS[game.currentMapIndex].name, 24, 34);
-  ctx.fillStyle = game.strategyFlashTimer > 0 ? "#6dff89" : "#fff";
-  ctx.fillText("BLUE: " + game.playerStrategy.toUpperCase(), 24, 58);
-  ctx.fillStyle = game.splitScreen && !game.sameTeams && game.goldStrategyFlashTimer > 0 ? "#ffe37a" : "#fff";
-  const goldLabel = game.splitScreen && !game.sameTeams ? game.goldStrategy : game.enemyStrategy;
-  ctx.fillText("GOLD: " + goldLabel.toUpperCase(), 24, 82);
-
-  drawQueenLivesBox(500, 12, blueQueen, "BLUE QUEEN", "#61d5ff");
-  drawQueenLivesBox(686, 12, goldQueen, "GOLD QUEEN", "#ffd45a");
-
-  ctx.fillStyle = "#000";
-  ctx.fillRect(876, 12, 312, 104);
-  ctx.strokeStyle = "#d5d5d5";
-  ctx.strokeRect(876, 12, 312, 104);
-  ctx.fillStyle = "#fff";
-  ctx.font = "15px Courier New";
-  ctx.fillText("DIFF: " + currentDifficulty().name, 888, 32);
-  ctx.fillText("AI LVL: " + currentDifficulty().level + "/10", 888, 52);
-  if (game.splitScreen) {
-    ctx.fillText("P1 A/D/W/S  STRAT: V", 888, 70);
-    ctx.fillText("P1 BERRY PICKUP:", 888, 88);
-    drawKeyHint(1032, 75, "F", p1BerryReady);
-    if (game.sameTeams) {
-      ctx.fillText("P2 ARROWS  BERRY:", 1062, 88);
-      drawKeyHint(1170, 75, ".", p2BerryReady);
-    } else {
-      ctx.fillText("P2 ARROWS + / STRAT", 1062, 88);
-    }
-    ctx.fillText("SPLIT SCREEN: ON", 888, 104);
+  if(!qaLoaded){
+    el.empty.style.display = '';
+    el.empty.textContent = 'QA: Upload needed. (No QA data detected in localStorage dock.)';
+  } else if(!rows.length){
+    el.empty.style.display = '';
+    el.empty.textContent = 'No evaluations match the current filters or active QA reviewer list.';
   } else {
-    ctx.fillText("A/D MOVE  W TAP FLAP", 888, 70);
-    ctx.fillText("S DIVE  V CYCLE STRAT  F PICK", 888, 88);
-    ctx.fillText("B AI DEBUG", 888, 104);
+    el.empty.style.display = 'none';
   }
 }
 
-function drawAIDebug() {
-  if (!game.debugAI || game.state !== "playing") return;
-  const sample = units.find(u => !u.dead && !u.isPlayer && u.team === "blue");
-  const enemyQueen = units.find(u => !u.dead && u.team === "gold" && u.role === "queen");
-  if (!sample || !enemyQueen) return;
-  ctx.fillStyle = "rgba(0,0,0,0.7)";
-  ctx.fillRect(12, VIEW_H - 108, 560, 96);
-  ctx.strokeStyle = "#66ffcc";
-  ctx.strokeRect(12, VIEW_H - 108, 560, 96);
-  ctx.fillStyle = "#9fffe6";
-  ctx.font = "14px Courier New";
-  ctx.fillText("TEAM STRAT: " + game.playerStrategy.toUpperCase(), 24, VIEW_H - 84);
-  ctx.fillText("ALLY OBJ: " + (sample.target?.intent || "none") + " | APPROACH: " + (sample.approachType || "none"), 24, VIEW_H - 64);
-  ctx.fillText("ALLY FLAGS: danger=" + (sample.lastDangerFlag ? "Y" : "N") + " ambush=" + (sample.lastAmbushFlag ? "Y" : "N"), 24, VIEW_H - 44);
-  ctx.fillText("ENEMY QUEEN STATE: " + (enemyQueen.queenState || "stabilize"), 24, VIEW_H - 24);
+function setSortMode(mode){
+  sortMode = mode;
+  saveSettings({ sortMode: mode });
+
+  document.querySelectorAll(".sortBtn").forEach(b=>{
+    b.classList.toggle("active", b.dataset.sort === mode);
+  });
+
+  const labelMap = {
+    count: "Most evals",
+    avg: "Avg score (high→low)",
+    zeros: "Most 0s",
+    trend: "Trend (neg→pos)",
+    coachings: "Coachings (low→high)",
+    coachingsWeighted: "Weighted coachings (low→high)",
+    unreviewed: "Most unreviewed"
+  };
+  el.sortPill.textContent = `Sort: ${labelMap[mode] || mode}`;
+  render();
 }
 
-function drawTitle() {
-  applyMap(game.currentMapIndex);
-  drawBackdrop(0);
+el.loadBtn.addEventListener('click', ()=>{ loadQA(); render(); });
+el.reloadCoBtn.addEventListener('click', ()=>{ loadCoachings(); render(); });
+el.coKeySel.addEventListener('change', ()=>{ loadCoachings(); render(); });
 
-  ctx.fillStyle = "rgba(0,0,0,0.55)";
-  ctx.fillRect(160, 60, 880, 650);
-  ctx.strokeStyle = "#ddd";
-  ctx.lineWidth = 3;
-  ctx.strokeRect(160, 60, 880, 650);
+el.tfSel.addEventListener('change', ()=>{
+  saveSettings({ tf: el.tfSel.value });
+  render();
+});
+el.teamSel.addEventListener('change', ()=>{ saveSettings({ team: el.teamSel.value }); render(); });
+el.excludeZero.addEventListener('change', ()=>{ saveSettings({ excludeZero: el.excludeZero.checked }); render(); });
+el.searchInp.addEventListener('input', ()=>{ saveSettings({ search: el.searchInp.value }); render(); });
+el.fromInp.addEventListener('change', ()=>{ saveSettings({ from: el.fromInp.value }); render(); });
+el.toInp.addEventListener('change', ()=>{ saveSettings({ to: el.toInp.value }); render(); });
+el.refreshBtn.addEventListener('click', render);
 
-  ctx.fillStyle = "#fff08d";
-  ctx.font = "bold 44px Courier New";
-  ctx.fillText("KILLER QUEEN STYLE", 315, 150);
+document.querySelectorAll(".sortBtn").forEach(b=>{
+  b.addEventListener("click", ()=> setSortMode(b.dataset.sort));
+});
 
-  ctx.fillStyle = "#fff";
-  ctx.font = "17px Courier New";
-  const stratLockedText = world.theme.lockStrategies ? ` (LOCKED: ${world.theme.forcedStrategy.toUpperCase()})` : "";
-  ctx.fillText(`P1 1/2/3/4 STRATEGY${stratLockedText} | P2 7/8/9/0 STRATEGY`, 178, 206);
-  ctx.fillText("M MAP | Q/E DIFFICULTY | X P2 TOGGLE | C TEAM MODE | SPACE START", 190, 234);
+el.reviewersBtn.addEventListener('click', openReviewerPopup);
+el.reviewerClose.addEventListener('click', closeReviewerPopup);
+el.reviewerOverlay.addEventListener('click', (e)=>{ if(e.target === el.reviewerOverlay) closeReviewerPopup(); });
 
-  const forcedStrat = world.theme.lockStrategies ? world.theme.forcedStrategy : null;
-  const playerBoxes = [{ label: "PLAYER 1", strategy: forcedStrat || game.playerStrategy, color: "#61ff7c", x: 280 }];
-  if (game.splitScreen) {
-    playerBoxes.push({
-      label: "PLAYER 2",
-      strategy: game.sameTeams ? "worker bee" : (forcedStrat || game.goldStrategy),
-      color: game.sameTeams ? "#8ee6ff" : "#ffe37a",
-      x: 620
-    });
-  }
-  for (const box of playerBoxes) {
-    ctx.fillStyle = "#111";
-    ctx.fillRect(box.x, 430, 300, 94);
-    ctx.strokeStyle = box.color;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(box.x, 430, 300, 94);
-    ctx.fillStyle = box.color;
-    ctx.font = "bold 26px Courier New";
-    ctx.fillText(box.label, box.x + 68, 466);
-    ctx.font = "22px Courier New";
-    ctx.fillText(box.strategy.toUpperCase(), box.x + 24, 500);
-  }
+el.optionsBtn.addEventListener('click', openOptionsPopup);
+el.optionsClose.addEventListener('click', closeOptionsPopup);
+el.optionsOverlay.addEventListener('click', (e)=>{ if(e.target === el.optionsOverlay) closeOptionsPopup(); });
 
-  ctx.fillStyle = "#9fdfff";
-  ctx.font = "22px Courier New";
-  ctx.fillText("MAP: " + MAPS[game.currentMapIndex].name, 415, 560);
-  ctx.fillText("DIFFICULTY: " + currentDifficulty().name + " (" + currentDifficulty().level + "/10)", 285, 590);
-  ctx.fillText("PLAYER 2: " + (game.splitScreen ? "ON" : "OFF"), 430, 620);
-  ctx.fillText("TEAM MODE: " + (game.sameTeams ? "SAME TEAMS" : "DIFFERENT TEAMS"), 360, 650);
+el.reviewerList.addEventListener('click', (e)=>{
+  const btn = e.target.closest('[data-remove-reviewer]');
+  if(!btn) return;
+  const name = btn.getAttribute('data-remove-reviewer');
+  activeQaReviewers = activeQaReviewers.filter(x => x !== name);
+  persistReviewerState();
+  render();
+});
 
-  ctx.fillStyle = "#fff";
-  ctx.font = "15px Courier New";
-  ctx.fillText("PICKUP KEYS: P1=F, P2=. (key highlights near berries)", 250, 678);
-  ctx.fillText("Same Teams mode: P2 is a blue worker bee.", 335, 698);
+el.resetReviewersBtn.addEventListener('click', ()=>{
+  activeQaReviewers = [...canonicalQaReviewers];
+  persistReviewerState();
+  render();
+});
 
-  ctx.fillStyle = "#9fdfff";
-  ctx.font = "21px Courier New";
-  ctx.fillText("PRESS SPACE TO START", 430, 706);
-}
+el.cards.addEventListener('click', (e)=>{
+  const card = e.target.closest('.repCard');
+  if(!card) return;
+  const pk = card.dataset.rep;
+  if(pk) openModal(pk);
+});
 
-function drawGameOver() {
-  ctx.fillStyle = "rgba(0,0,0,0.55)";
-  ctx.fillRect(360, 210, 480, 180);
-  ctx.strokeStyle = "#fff";
-  ctx.lineWidth = 3;
-  ctx.strokeRect(360, 210, 480, 180);
+el.mClose.addEventListener('click', closeModal);
+el.overlay.addEventListener('click', (e)=>{ if(e.target === el.overlay) closeModal(); });
 
-  const blueWin = game.winner === "blue";
-  ctx.fillStyle = blueWin ? "#61d5ff" : "#ffd45a";
-  ctx.font = "bold 42px Courier New";
-  ctx.fillText((blueWin ? "BLUE" : "GOLD") + " WINS", 470, 268);
+document.addEventListener('keydown', (e)=>{
+  if(e.key==='Escape' && el.overlay.classList.contains('show')) closeModal();
+  if(e.key==='Escape' && el.reviewerOverlay.classList.contains('show')) closeReviewerPopup();
+  if(e.key==='Escape' && el.optionsOverlay.classList.contains('show')) closeOptionsPopup();
+});
 
-  ctx.fillStyle = "#fff";
-  ctx.font = "24px Courier New";
-  ctx.fillText("VICTORY TYPE: " + game.winType, 424, 318);
-  ctx.fillStyle = "#9fdfff";
-  ctx.font = "22px Courier New";
-  ctx.fillText("PRESS R TO RETURN TO TITLE", 400, 358);
-}
+(function boot(){
+  buildDockKeyOptions();
+  buildCoKeyOptions();
 
-function draw() {
-  ctx.clearRect(0, 0, VIEW_W, VIEW_H);
+  const s = loadSettings();
+  if(s.tf && [...el.tfSel.options].some(o=>o.value===s.tf)) el.tfSel.value = s.tf;
+  if(s.from) el.fromInp.value = s.from;
+  if(s.to) el.toInp.value = s.to;
+  if(s.excludeZero !== undefined) el.excludeZero.checked = !!s.excludeZero;
+  if(s.search !== undefined) el.searchInp.value = s.search;
+  if(s.sortMode) sortMode = s.sortMode;
 
-  if (game.state === "title") {
-    drawStars(0, 0);
-    drawTitle();
-  } else {
-    if (game.splitScreen && game.state === "playing") {
-      const halfW = VIEW_W / 2;
-
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(0, 0, halfW, VIEW_H);
-      ctx.clip();
-      drawStars(game.cameraBlueX, game.cameraBlueY);
-      drawWorld(game.cameraBlueX, game.cameraBlueY);
-      ctx.restore();
-
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(halfW, 0, halfW, VIEW_H);
-      ctx.clip();
-      ctx.translate(halfW, 0);
-      drawStars(game.cameraGoldX, game.cameraGoldY);
-      drawWorld(game.cameraGoldX, game.cameraGoldY);
-      ctx.restore();
-
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(halfW - 2, 0, 4, VIEW_H);
-    } else {
-      drawStars();
-      drawWorld();
-    }
-    drawHUD();
-    if (!game.splitScreen) drawAIDebug();
-    if (game.state === "gameOver") drawGameOver();
-  }
-}
-
-function loop() {
-  update();
-  draw();
-  game._prevKeys = { ...keys };
-  requestAnimationFrame(loop);
-}
-loop();
+  loadQA();
+  loadCoachings();
+  setSortMode(sortMode || "count");
+})();
 </script>
+
 </body>
 </html>
+
+
+
