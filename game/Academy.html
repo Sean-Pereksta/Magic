@@ -308,6 +308,12 @@
             <option value="custom">Custom…</option>
           </select>
         </label>
+        <label>Date basis
+          <select id="dateModeSel" style="min-width:180px">
+            <option value="interaction" selected>Interaction Date</option>
+            <option value="assigned">Assigned Date</option>
+          </select>
+        </label>
 
         <label class="pill" title="Exclude evaluations with Score % = 0 from averages/charts">
           <input id="excludeZero" type="checkbox"/>
@@ -858,6 +864,7 @@ function canonicalizeQA(dockObj){
       const agentRaw = pickFieldFromRow(r, ["agentname","agent","csr","associate","rep","name"]);
       const scoreRaw = pickFieldFromRow(r, ["score%","scorepct","score","qascore","qa%"]);
       const startRaw = pickFieldFromRow(r, ["interactionstarttime","interactionstart","starttime","interactiontime"]);
+      const assignedRaw = pickFieldFromRow(r, ["assigneddate","assigned date","assigneddatetime","assignedtime","assigned"]);
 
       const evalIdRaw = pickFieldFromRow(r, ["genesysevaluationid","evaluationid","evalid","monitorid","qaid","id"]);
       const evaluatorRaw = pickFieldFromRow(r, ["evaluator","evaluatorname","reviewer","qaevaluator","coach"]);
@@ -868,6 +875,7 @@ function canonicalizeQA(dockObj){
       const agentHasReadRaw = pickFieldFromRow(r, ["agenthasread","agent has read","agentreviewed","agent reviewed","hasread","read"]);
 
       const start = parseAnyDate(startRaw);
+      const assignedDate = parseAnyDate(assignedRaw);
       const score = normPct(scoreRaw);
 
       const agentDisplay = displayNameFromRaw(agentRaw);
@@ -881,6 +889,7 @@ function canonicalizeQA(dockObj){
         agentKey: agentK,
         agent: agentDisplay,
         start,
+        assignedDate,
         week: isoWeekKey(start),
         score,
         evaluator: String(evaluatorRaw ?? "").trim(),
@@ -1039,7 +1048,11 @@ function countUnreviewed(rows){
 }
 
 function splitHalfTrend(rows, excludeZero){
-  const sorted=[...rows].sort((a,b)=> a.start - b.start);
+  const sorted=[...rows]
+    .map(r=>({ row:r, d: rowDate(r) }))
+    .filter(x=>x.d)
+    .sort((a,b)=> a.d - b.d)
+    .map(x=>x.row);
   const clean = excludeZero ? sorted.filter(r=>r.score!==0) : sorted;
   if(clean.length < 2) return { d: NaN, a1: NaN, a2: NaN };
   const mid = Math.floor(clean.length/2);
@@ -1051,8 +1064,8 @@ function splitHalfTrend(rows, excludeZero){
 }
 
 function sparkSeriesWeekly(rows, excludeZero){
-  const byWk = groupBy(rows, r=>r.week);
-  const weeks = Array.from(byWk.keys()).sort();
+  const byWk = groupBy(rows, r=>rowWeek(r));
+  const weeks = Array.from(byWk.keys()).filter(Boolean).sort();
   const vals = weeks.map(wk=>{
     const a = avgScore(byWk.get(wk)||[], excludeZero).avg;
     return Number.isFinite(a) ? a : null;
@@ -1154,7 +1167,7 @@ function extractTeamScopedReviewerCandidates(rows){
     if(team && team !== '__ALL__'){
       if(String(r.team||'').trim() !== team) return false;
     }
-    if(tf !== 'all' && !inRange(r.start, range)) return false;
+    if(tf !== 'all' && !inRange(rowDate(r), range)) return false;
     return true;
   });
 
@@ -1165,7 +1178,7 @@ function extractTeamScopedReviewerCandidates(rows){
     rows
       .filter(r=>{
         if(!teamRepKeys.has(r.agentKey)) return false;
-        if(tf !== 'all' && !inRange(r.start, range)) return false;
+        if(tf !== 'all' && !inRange(rowDate(r), range)) return false;
         if(isCoachEval(r)) return false;
         const ev = String(r.evaluator||'').trim();
         if(!ev) return false;
@@ -1202,9 +1215,10 @@ function persistReviewerState(){
 function getReviewerScopeKey(){
   const team = el.teamSel?.value || '__ALL__';
   const tf = el.tfSel?.value || 'all';
+  const dateMode = el.dateModeSel?.value || 'interaction';
   const from = el.fromInp?.value || '';
   const to = el.toInp?.value || '';
-  return `${team}|${tf}|${from}|${to}`;
+  return `${team}|${tf}|${dateMode}|${from}|${to}`;
 }
 
 function isQaReviewer(row){
@@ -1231,6 +1245,7 @@ const el = {
 
   teamSel: document.getElementById('teamSel'),
   tfSel: document.getElementById('tfSel'),
+  dateModeSel: document.getElementById('dateModeSel'),
   customRange: document.getElementById('customRange'),
   fromInp: document.getElementById('fromInp'),
   toInp: document.getElementById('toInp'),
@@ -1292,6 +1307,17 @@ const DIFF_ALERT_SECS = 120;
 let sortMode = "count";
 
 function nowLocal(){ return new Date(); }
+function currentDateMode(){
+  return el.dateModeSel?.value === 'assigned' ? 'assigned' : 'interaction';
+}
+function rowDate(row){
+  const d = currentDateMode() === 'assigned' ? row?.assignedDate : row?.start;
+  return (d instanceof Date && !isNaN(d)) ? d : null;
+}
+function rowWeek(row){
+  const d = rowDate(row);
+  return d ? isoWeekKey(d) : '';
+}
 
 function timeframeRange(tf){
   const now = nowLocal();
@@ -1346,7 +1372,7 @@ function filterRows(){
       if(String(r.team||'').trim() !== team) return false;
     }
     if(tf!=='all'){
-      if(!inRange(r.start, range)) return false;
+      if(!inRange(rowDate(r), range)) return false;
     }
     if(search){
       const dn = String(r.agent||'').toLowerCase();
@@ -1416,7 +1442,7 @@ function paintReviewerControls(){
 
   for(const r of qaRowsAll){
     if(team && team !== '__ALL__' && String(r.team||'').trim() !== team) continue;
-    if(tf !== 'all' && !inRange(r.start, range)) continue;
+    if(tf !== 'all' && !inRange(rowDate(r), range)) continue;
     if(!isCoachEval(r)){
       const ev = String(r.evaluator || '').trim();
       if(ev && canonicalQaReviewers.includes(ev)) counts.set(ev, (counts.get(ev)||0)+1);
@@ -1429,7 +1455,8 @@ function paintReviewerControls(){
 
   const teamLabel = team === '__ALL__' ? 'All teams' : team;
   const tfLabel = el.tfSel.options[el.tfSel.selectedIndex]?.textContent || 'All';
-  el.rSub.textContent = `${teamLabel} • ${tfLabel} • Coach removed from reviewer list automatically`;
+  const dateBasisLabel = currentDateMode() === 'assigned' ? 'Assigned Date' : 'Interaction Date';
+  el.rSub.textContent = `${teamLabel} • ${tfLabel} • ${dateBasisLabel} • Coach removed from reviewer list automatically`;
 
   el.reviewerList.innerHTML = activeQaReviewers.length
     ? activeQaReviewers.map(name => `
@@ -1447,7 +1474,8 @@ function paintSummary(rows){
 
   const teamLabel = (el.teamSel.value==='__ALL__') ? 'All teams' : el.teamSel.value;
   const tfLabel = el.tfSel.options[el.tfSel.selectedIndex]?.textContent || 'All';
-  el.scopePill.textContent = `${teamLabel} • ${tfLabel} • Rows: ${rows.length}`;
+  const dateBasisLabel = currentDateMode() === 'assigned' ? 'Assigned Date' : 'Interaction Date';
+  el.scopePill.textContent = `${teamLabel} • ${tfLabel} • ${dateBasisLabel} • Rows: ${rows.length}`;
 
   const sum = computeGlobalSummary(rows, excludeZero);
 
@@ -1477,7 +1505,7 @@ function paintSummary(rows){
   el.teamTrendPill.className = `pill mono ${Number.isFinite(ttr.pp) ? (ttr.pp>0.1?'good':(ttr.pp<-0.1?'bad':'')) : ''}`;
   el.teamTrendPill.textContent = `Trend (1st half → 2nd): ${ttrTxt}`;
 
-  el.summarySub.textContent = 'Overall reflects the selected team/timeframe, coach monitors, and only the QA reviewers currently included in the popup. Unreviewed monitors come from Agent Has Read = 0.';
+  el.summarySub.textContent = `Overall reflects the selected team/timeframe (${dateBasisLabel}), coach monitors, and only the QA reviewers currently included in the popup. Unreviewed monitors come from Agent Has Read = 0.`;
 
   const overallRows = [
     {
@@ -1816,7 +1844,7 @@ function openModal(repKey){
   const excludeZero = el.excludeZero.checked;
   const name = arr[0].agent || repKey;
   const coachName = String(arr[0].team||"").trim() || '(blank Team/Coach)';
-  const sortedDesc = [...arr].sort((a,b)=> b.start - a.start);
+  const sortedDesc = [...arr].sort((a,b)=> (rowDate(b)?.getTime()||0) - (rowDate(a)?.getTime()||0));
 
   const total = avgScore(arr, excludeZero);
   const incl0 = avgScore(arr, false);
@@ -1854,6 +1882,7 @@ function openModal(repKey){
   const coRows = coachingForRep(repKey, range);
   const coCount = coRows.length;
   const coRecent = coRows[0]?.date || null;
+  const dateBasisLabel = currentDateMode() === 'assigned' ? 'Assigned Date' : 'Interaction Start Time';
 
   el.mTitle.textContent = `${name} — QA Details`;
   el.mSub.textContent = `${teamLabel} • ${tfLabel} • Rows: ${arr.length} • Team/Coach: ${coachName}`;
@@ -1945,12 +1974,12 @@ function openModal(repKey){
   `;
   el.mBody.appendChild(chartBox);
 
-  const asc = [...arr].sort((a,b)=> a.start - b.start);
+  const asc = [...arr].sort((a,b)=> (rowDate(a)?.getTime()||0) - (rowDate(b)?.getTime()||0));
   const points = [];
   const labels = [];
   for(const r of asc){
     if(excludeZero && r.score===0) continue;
-    labels.push(fmtDateTime(r.start));
+    labels.push(fmtDateTime(rowDate(r)));
     points.push(r.score);
   }
 
@@ -1999,7 +2028,7 @@ function openModal(repKey){
           <tr>
             <th>Conversation ID</th>
             <th>Genesys Evaluation ID</th>
-            <th>Interaction Start Time</th>
+            <th>${dateBasisLabel}</th>
             <th>Interaction Duration (H:MM:SS)</th>
             <th>Evaluator</th>
             <th>Monitor Type</th>
@@ -2013,13 +2042,13 @@ function openModal(repKey){
             <tr>
               <td class="mono">${r.conversationId ? String(r.conversationId) : '—'}</td>
               <td class="mono">${(r.evalId||'—') ? String(r.evalId||'—') : '—'}</td>
-              <td class="mono">${fmtDateTime(r.start)}</td>
+              <td class="mono">${fmtDateTime(rowDate(r))}</td>
               <td class="mono">${r.durationText || '—'}</td>
               <td>${r.evaluator ? r.evaluator : '—'}</td>
               <td>${isCoachEval(r) ? 'Coach' : 'QA'}</td>
               <td class="mono">${r.agentHasRead===null ? '—' : r.agentHasRead}</td>
               <td class="mono">${fmtPct2(r.score)}</td>
-              <td class="mono">${r.week||'—'}</td>
+              <td class="mono">${rowWeek(r)}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -2145,6 +2174,7 @@ function loadQA(){
   const saved = loadSettings();
   if(saved.team && [...el.teamSel.options].some(o=>o.value===saved.team)) el.teamSel.value = saved.team;
   if(saved.tf && [...el.tfSel.options].some(o=>o.value===saved.tf)) el.tfSel.value = saved.tf;
+  if(saved.dateMode && [...el.dateModeSel.options].some(o=>o.value===saved.dateMode)) el.dateModeSel.value = saved.dateMode;
   if(saved.excludeZero !== undefined) el.excludeZero.checked = !!saved.excludeZero;
   if(saved.search !== undefined) el.searchInp.value = saved.search;
 
@@ -2206,6 +2236,10 @@ el.tfSel.addEventListener('change', ()=>{
   saveSettings({ tf: el.tfSel.value });
   render();
 });
+el.dateModeSel.addEventListener('change', ()=>{
+  saveSettings({ dateMode: el.dateModeSel.value });
+  render();
+});
 el.teamSel.addEventListener('change', ()=>{ saveSettings({ team: el.teamSel.value }); render(); });
 el.excludeZero.addEventListener('change', ()=>{ saveSettings({ excludeZero: el.excludeZero.checked }); render(); });
 el.searchInp.addEventListener('input', ()=>{ saveSettings({ search: el.searchInp.value }); render(); });
@@ -2262,6 +2296,7 @@ document.addEventListener('keydown', (e)=>{
 
   const s = loadSettings();
   if(s.tf && [...el.tfSel.options].some(o=>o.value===s.tf)) el.tfSel.value = s.tf;
+  if(s.dateMode && [...el.dateModeSel.options].some(o=>o.value===s.dateMode)) el.dateModeSel.value = s.dateMode;
   if(s.from) el.fromInp.value = s.from;
   if(s.to) el.toInp.value = s.to;
   if(s.excludeZero !== undefined) el.excludeZero.checked = !!s.excludeZero;
@@ -2276,6 +2311,3 @@ document.addEventListener('keydown', (e)=>{
 
 </body>
 </html>
-
-
-
