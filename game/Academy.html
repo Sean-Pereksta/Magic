@@ -337,6 +337,92 @@ const MAPS = [
       {platformIndex:7, offset:90},
       {platformIndex:8, offset:90}
     ]
+  },
+  {
+    name: "THE GREAT ASSAULT",
+    width: 4200,
+    height: 1100,
+    lavaY: 1000,
+    spikeY: 48,
+    snailTrackY: 930,
+    blueGateX: 120,
+    goldGateX: 4050,
+    hiveBlueX: 280,
+    hiveGoldX: 3920,
+    mode: "assault",
+    lockStrategies: true,
+    forcedStrategy: "military",
+
+    skyTop: "#14080a",
+    skyMid: "#2f0c0f",
+    skyLow: "#4b1418",
+    mountain1: "#351014",
+    mountain2: "#5f1a1f",
+    platformTop: "#d59a5a",
+    platformSide: "#7d3f23",
+    spikeColor: "#dfd2c5",
+    lava1: "#ff6a1d",
+    lava2: "#ffd064",
+    bushLeaf1: "#4e4e4e",
+    bushLeaf2: "#666",
+    bushBerry1: "#777",
+    bushBerry2: "#999",
+
+    platforms: [
+      {x: 40, y: 900, w: 420, h: 12}, {x: 3735, y: 900, w: 420, h: 12},
+      {x: 550, y: 830, w: 260, h: 12}, {x: 980, y: 760, w: 260, h: 12},
+      {x: 1410, y: 690, w: 260, h: 12}, {x: 1840, y: 620, w: 520, h: 12},
+      {x: 2540, y: 690, w: 260, h: 12}, {x: 2970, y: 760, w: 260, h: 12},
+      {x: 3400, y: 830, w: 260, h: 12},
+      {x: 840, y: 560, w: 180, h: 12}, {x: 1580, y: 500, w: 180, h: 12},
+      {x: 2440, y: 500, w: 180, h: 12}, {x: 3180, y: 560, w: 180, h: 12},
+      {x: 1970, y: 420, w: 260, h: 12}
+    ],
+    bushes: [],
+    flags: [
+      { x: 1260, y: 728 },
+      { x: 2100, y: 590 },
+      { x: 2940, y: 728 }
+    ]
+  },
+  {
+    name: "SNAIL WAR",
+    width: 3000,
+    height: 900,
+    lavaY: 860,
+    spikeY: 48,
+    snailTrackY: 760,
+    blueGateX: 105,
+    goldGateX: 2860,
+    hiveBlueX: 240,
+    hiveGoldX: 2755,
+    mode: "snail-war",
+    lockStrategies: true,
+    forcedStrategy: "snail",
+
+    skyTop: "#203a35",
+    skyMid: "#2f584f",
+    skyLow: "#486e61",
+    mountain1: "#31594f",
+    mountain2: "#48786e",
+    platformTop: "#95b483",
+    platformSide: "#5d6f4f",
+    spikeColor: "#cbdecf",
+    lava1: "#4f7c47",
+    lava2: "#89b85c",
+    bushLeaf1: "#5b8a57",
+    bushLeaf2: "#7fb371",
+    bushBerry1: "#a5ca7b",
+    bushBerry2: "#cfe39d",
+
+    platforms: [
+      {x: 30, y: 705, w: 320, h: 12}, {x: 2660, y: 705, w: 320, h: 12},
+      {x: 760, y: 655, w: 220, h: 12}, {x: 1030, y: 590, w: 220, h: 12},
+      {x: 1300, y: 525, w: 400, h: 12}, {x: 1760, y: 590, w: 220, h: 12},
+      {x: 2030, y: 655, w: 220, h: 12},
+      {x: 1400, y: 430, w: 200, h: 12}
+    ],
+    bushes: []
   }
 ];
 
@@ -382,7 +468,8 @@ const world = {
   snailLeftGoal: 130,
   snailRightGoal: 2470,
   platforms: [],
-  theme: MAPS[0]
+  theme: MAPS[0],
+  mode: "standard"
 };
 
 const stars = Array.from({ length: 240 }, () => ({
@@ -394,6 +481,12 @@ const stars = Array.from({ length: 240 }, () => ({
 const gates = { blue: null, gold: null };
 const hive = { blue: null, gold: null };
 const particles = [];
+let fireballs = [];
+let flags = [];
+const teamState = {
+  blue: { bonusSlots: 0, summonCooldown: 0 },
+  gold: { bonusSlots: 0, summonCooldown: 0 }
+};
 
 function addParticles(x, y, color, count = 10, speed = 3) {
   for (let i = 0; i < count; i++) {
@@ -532,6 +625,7 @@ function cycleGoldStrategy() {
 }
 
 function strategyForTeam(team) {
+  if (world.theme.lockStrategies && world.theme.forcedStrategy) return world.theme.forcedStrategy;
   if (team === "blue") return game.playerStrategy;
   if (game.splitScreen && !game.sameTeams) return game.goldStrategy;
   return game.enemyStrategy;
@@ -544,6 +638,7 @@ function keyTap(key) {
 function applyMap(index) {
   const map = MAPS[index];
   world.theme = map;
+  world.mode = map.mode || "standard";
   world.width = map.width;
   world.height = map.height;
   world.lavaY = map.lavaY;
@@ -593,6 +688,33 @@ function applyMap(index) {
       berry: { x, y: y - 20, alive: true, carriedBy: null, bushId: idx }
     };
   });
+
+  flags = (map.flags || []).map((f, idx) => ({
+    id: idx,
+    x: f.x,
+    y: f.y,
+    w: 30,
+    h: 44,
+    owner: null,
+    capturingTeam: null,
+    captureTimer: 0
+  }));
+
+  teamState.blue.bonusSlots = 0;
+  teamState.gold.bonusSlots = 0;
+  teamState.blue.summonCooldown = 0;
+  teamState.gold.summonCooldown = 0;
+
+  fireballs = [];
+  if (world.mode === "assault") {
+    fireballs = Array.from({ length: 12 }, () => ({
+      x: rand(0, world.width),
+      y: rand(-900, 260),
+      vy: rand(3.3, 5.8),
+      size: rand(7, 15),
+      glow: rand(0.35, 0.7)
+    }));
+  }
 }
 
 /* ---------------- UNITS ---------------- */
@@ -1015,6 +1137,23 @@ class Unit {
     const isPrimaryRunner = this.isPrimarySnailRunner(strategy);
     const directSnailThreat = this.directSnailThreatDistance(diffSet.level >= 8 ? 130 : 115);
     const ownQueen = units.find(u => !u.dead && u.team === this.team && u.role === "queen");
+    const assaultMode = world.mode === "assault" && flags.length > 0;
+
+    if (assaultMode) {
+      const closestFlag = flags.slice().sort((a, b) => dist(this.x, this.y, a.x, a.y) - dist(this.x, this.y, b.x, b.y))[0];
+      const hotFlag = flags.find(f => f.owner !== this.team && flagEnemiesNear(f, this.team, 165));
+      const nearestFlagEnemy = hotFlag ? nearestEnemyToPoint(this.team, hotFlag.x, hotFlag.y, 190) : null;
+
+      if (this.role === "queen") {
+        if (enemyQueen && this.enemiesNearby(220) < 1) return { obj: enemyQueen, intent: "queen-hunt" };
+        if (hotFlag && !flagEnemiesNear(hotFlag, this.team, 180)) return { obj: hotFlag, intent: "queen-capture-flag" };
+        return { obj: pressure.ownGate, intent: "queen-safe-hold" };
+      }
+
+      if (nearestFlagEnemy) return { obj: nearestFlagEnemy, intent: "fight-for-flag" };
+      if (closestFlag && closestFlag.owner !== this.team) return { obj: closestFlag, intent: "capture-flag" };
+      if (enemyQueen) return { obj: enemyQueen, intent: "queen-hunt" };
+    }
 
     if (this.role === "queen") {
       const lowLife = this.queenLives <= 1;
@@ -1363,6 +1502,7 @@ class Unit {
   }
 
   tryMountSnail() {
+    if (world.mode === "assault") return;
     if (this.role === "queen" || this.form === "warrior") return;
     if (this.snailMountCooldown > 0) return;
     if (snail.rider) return;
@@ -1541,7 +1681,12 @@ function spawnMatch() {
 
   const bq = new Unit({ team: "blue", role: "queen", x: 165, y: 650, isPlayer: true });
   const gq = new Unit({ team: "gold", role: "queen", x: world.width - 205, y: 650, isPlayer: game.splitScreen && !game.sameTeams });
-  gq.queenLives = enemyQueenLivesByDifficulty(currentDifficulty().level);
+  const baseEnemyLives = enemyQueenLivesByDifficulty(currentDifficulty().level);
+  gq.queenLives = (!game.splitScreen && world.mode === "assault") ? baseEnemyLives * 2 : baseEnemyLives;
+  if (world.mode === "snail-war") {
+    bq.queenLives = 999;
+    gq.queenLives = 999;
+  }
 
   playerQueen = bq;
   units.push(bq, gq);
@@ -1561,7 +1706,13 @@ function spawnMatch() {
   }
 
   game.enemyStrategy = TEAM_STRATEGIES[randi(0, TEAM_STRATEGIES.length - 1)];
-  if (game.splitScreen && !game.sameTeams) game.enemyStrategy = game.goldStrategy;
+  if (world.theme.lockStrategies && world.theme.forcedStrategy) {
+    game.playerStrategy = world.theme.forcedStrategy;
+    game.goldStrategy = world.theme.forcedStrategy;
+    game.enemyStrategy = world.theme.forcedStrategy;
+  } else if (game.splitScreen && !game.sameTeams) {
+    game.enemyStrategy = game.goldStrategy;
+  }
   game.winner = null;
   game.winType = "";
   game.state = "playing";
@@ -1587,6 +1738,77 @@ function nearestEnemyToPoint(team, x, y, range = 99999) {
   return best;
 }
 
+function flagEnemiesNear(flag, team, range = 150) {
+  return units.some(u => !u.dead && u.team !== team && dist(u.x + u.w / 2, u.y + u.h / 2, flag.x, flag.y) < range);
+}
+
+function livingSoldierCount(team) {
+  return units.filter(u => !u.dead && u.team === team && u.role !== "queen" && u.form === "warrior").length;
+}
+
+function summonSoldierIfPossible(team) {
+  if (world.mode !== "assault") return;
+  const st = teamState[team];
+  if (st.summonCooldown > 0) {
+    st.summonCooldown--;
+    return;
+  }
+  const maxSoldiers = 1 + st.bonusSlots;
+  if (livingSoldierCount(team) >= maxSoldiers) return;
+  const hx = hive[team].x + rand(-20, 20);
+  const hy = hive[team].y - 24;
+  const newbie = new Unit({ team, role: "worker", x: hx, y: hy });
+  newbie.form = "warrior";
+  newbie.invuln = 65;
+  units.push(newbie);
+  st.summonCooldown = 340;
+  addParticles(hive[team].x, hive[team].y - 4, team === "blue" ? "#73d7ff" : "#ffe46f", 14, 2.5);
+}
+
+function updateFlags() {
+  if (!flags.length) return;
+  const capFrames = 120;
+  for (const flag of flags) {
+    let capBlue = false;
+    let capGold = false;
+    for (const u of units) {
+      if (u.dead) continue;
+      const inZone = dist(u.x + u.w / 2, u.y + u.h / 2, flag.x, flag.y) < 38;
+      if (!inZone) continue;
+      if (u.team === "blue") capBlue = true;
+      else capGold = true;
+    }
+    if (capBlue && capGold) {
+      flag.captureTimer = Math.max(0, flag.captureTimer - 1);
+      continue;
+    }
+    const team = capBlue ? "blue" : (capGold ? "gold" : null);
+    if (!team) {
+      flag.captureTimer = Math.max(0, flag.captureTimer - 1);
+      continue;
+    }
+    if (flag.owner === team) {
+      flag.capturingTeam = null;
+      flag.captureTimer = capFrames;
+      continue;
+    }
+    if (flag.capturingTeam !== team) {
+      flag.capturingTeam = team;
+      flag.captureTimer = 0;
+    }
+    flag.captureTimer++;
+    if (flag.captureTimer >= capFrames) {
+      const prev = flag.owner;
+      flag.owner = team;
+      flag.capturingTeam = null;
+      flag.captureTimer = capFrames;
+      teamState[team].bonusSlots += 1;
+      if (prev) teamState[prev].bonusSlots = Math.max(0, teamState[prev].bonusSlots - 1);
+      addParticles(flag.x, flag.y - 20, team === "blue" ? "#61d7ff" : "#ffd86a", 18, 2.8);
+    }
+  }
+}
+
 function updateBushes() {
   for (const bush of bushes) {
     if (!bush.berry.alive && !bush.berry.carriedBy) {
@@ -1601,6 +1823,20 @@ function updateBushes() {
         };
         addParticles(bush.x, bush.y - 18, world.theme.bushBerry1, 10, 1.6);
       }
+    }
+  }
+}
+
+function updateFireballs() {
+  if (world.mode !== "assault") return;
+  for (const f of fireballs) {
+    f.y += f.vy;
+    f.x += Math.sin((game.time + f.size) * 0.02) * 0.25;
+    if (f.y > world.lavaY - 20) {
+      addParticles(f.x, world.lavaY - 10, "#ff8b2f", 6, 1.6);
+      f.y = rand(-700, -80);
+      f.x = rand(0, world.width);
+      f.vy = rand(3.3, 5.8);
     }
   }
 }
@@ -1695,6 +1931,7 @@ function handleBerries() {
 }
 
 function handleSnail() {
+  if (world.mode === "assault") return;
   if (snail.rider && snail.rider.dead) {
     snail.rider.onSnail = false;
     snail.rider = null;
@@ -1761,13 +1998,13 @@ function handleCombat() {
   const blueQueen = units.find(u => u.team === "blue" && u.role === "queen");
   const goldQueen = units.find(u => u.team === "gold" && u.role === "queen");
 
-  if (blueQueen && blueQueen.dead && blueQueen.queenLives <= 0) {
+  if (world.mode !== "snail-war" && blueQueen && blueQueen.dead && blueQueen.queenLives <= 0) {
     game.winner = "gold";
     game.winType = "MILITARY";
     game.state = "gameOver";
     soundWin();
   }
-  if (goldQueen && goldQueen.dead && goldQueen.queenLives <= 0) {
+  if (world.mode !== "snail-war" && goldQueen && goldQueen.dead && goldQueen.queenLives <= 0) {
     game.winner = "blue";
     game.winType = "MILITARY";
     game.state = "gameOver";
@@ -1806,17 +2043,18 @@ function update() {
   game.goldStrategySwitchCooldown = Math.max(0, game.goldStrategySwitchCooldown - 1);
 
   if (game.state === "title") {
+    const strategyLocked = !!MAPS[game.currentMapIndex].lockStrategies;
     if (!titleInputLock) {
-      if (keys["1"]) { game.playerStrategy = "economy"; titleInputLock = true; }
-      else if (keys["2"]) { game.playerStrategy = "snail"; titleInputLock = true; }
-      else if (keys["3"]) { game.playerStrategy = "military"; titleInputLock = true; }
-      else if (keys["4"]) { game.playerStrategy = "balanced"; titleInputLock = true; }
-      else if (game.splitScreen && !game.sameTeams && keys["7"]) { game.goldStrategy = "economy"; titleInputLock = true; }
-      else if (game.splitScreen && !game.sameTeams && keys["8"]) { game.goldStrategy = "snail"; titleInputLock = true; }
-      else if (game.splitScreen && !game.sameTeams && keys["9"]) { game.goldStrategy = "military"; titleInputLock = true; }
-      else if (game.splitScreen && !game.sameTeams && keys["0"]) { game.goldStrategy = "balanced"; titleInputLock = true; }
-      else if (keys["v"]) { cyclePlayerStrategy(); titleInputLock = true; }
-      else if (game.splitScreen && !game.sameTeams && keys["/"]) { cycleGoldStrategy(); titleInputLock = true; }
+      if (!strategyLocked && keys["1"]) { game.playerStrategy = "economy"; titleInputLock = true; }
+      else if (!strategyLocked && keys["2"]) { game.playerStrategy = "snail"; titleInputLock = true; }
+      else if (!strategyLocked && keys["3"]) { game.playerStrategy = "military"; titleInputLock = true; }
+      else if (!strategyLocked && keys["4"]) { game.playerStrategy = "balanced"; titleInputLock = true; }
+      else if (!strategyLocked && game.splitScreen && !game.sameTeams && keys["7"]) { game.goldStrategy = "economy"; titleInputLock = true; }
+      else if (!strategyLocked && game.splitScreen && !game.sameTeams && keys["8"]) { game.goldStrategy = "snail"; titleInputLock = true; }
+      else if (!strategyLocked && game.splitScreen && !game.sameTeams && keys["9"]) { game.goldStrategy = "military"; titleInputLock = true; }
+      else if (!strategyLocked && game.splitScreen && !game.sameTeams && keys["0"]) { game.goldStrategy = "balanced"; titleInputLock = true; }
+      else if (!strategyLocked && keys["v"]) { cyclePlayerStrategy(); titleInputLock = true; }
+      else if (!strategyLocked && game.splitScreen && !game.sameTeams && keys["/"]) { cycleGoldStrategy(); titleInputLock = true; }
       else if (keys["b"]) { game.debugAI = !game.debugAI; titleInputLock = true; }
       else if (keys["m"]) { game.currentMapIndex = (game.currentMapIndex + 1) % MAPS.length; titleInputLock = true; }
       else if (keys["q"]) { game.difficultyIndex = (game.difficultyIndex + 9) % 10; titleInputLock = true; }
@@ -1842,8 +2080,8 @@ function update() {
   }
 
   game.time++;
-  if (keys["v"]) cyclePlayerStrategy();
-  if (game.splitScreen && !game.sameTeams && keys["/"]) cycleGoldStrategy();
+  if (!world.theme.lockStrategies && keys["v"]) cyclePlayerStrategy();
+  if (!world.theme.lockStrategies && game.splitScreen && !game.sameTeams && keys["/"]) cycleGoldStrategy();
   if (keys["b"] && !gameplayInputLock) {
     game.debugAI = !game.debugAI;
     gameplayInputLock = true;
@@ -1859,7 +2097,11 @@ function update() {
   updateBushes();
   handleBerries();
   handleSnail();
+  updateFlags();
+  summonSoldierIfPossible("blue");
+  summonSoldierIfPossible("gold");
   handleCombat();
+  updateFireballs();
   updateParticles();
   updateCamera();
 }
@@ -2017,6 +2259,71 @@ function drawBackdrop(camX = game.cameraX) {
     }
     ctx.restore();
   }
+  else if (t.name === "THE GREAT ASSAULT") {
+    ctx.save();
+    ctx.translate(-camSlow, 0);
+    ctx.fillStyle = t.mountain1;
+    ctx.beginPath();
+    ctx.moveTo(-120, 720);
+    for (let x = 0; x <= world.width + 200; x += 180) {
+      const peak = 510 + Math.sin(x * 0.005) * 70 + (x % 360 === 0 ? -80 : 28);
+      ctx.lineTo(x, peak);
+    }
+    ctx.lineTo(world.width + 200, world.height);
+    ctx.lineTo(-120, world.height);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(-camMed, 0);
+    ctx.fillStyle = t.mountain2;
+    for (let x = 120; x < world.width; x += 270) {
+      ctx.beginPath();
+      ctx.moveTo(x, 620);
+      ctx.lineTo(x + 60, 490);
+      ctx.lineTo(x + 120, 620);
+      ctx.closePath();
+      ctx.fill();
+    }
+    for (const f of fireballs) {
+      ctx.globalAlpha = f.glow;
+      ctx.fillStyle = "#ff9e52";
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, f.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#ffda8e";
+      ctx.fillRect(f.x - 2, f.y - f.size - 8, 4, 8);
+    }
+    ctx.restore();
+  }
+  else if (t.name === "SNAIL WAR") {
+    ctx.save();
+    ctx.translate(-camSlow, 0);
+    ctx.fillStyle = t.mountain1;
+    ctx.beginPath();
+    ctx.moveTo(-100, 680);
+    for (let x = 0; x <= world.width + 200; x += 150) {
+      const peak = 520 + Math.cos(x * 0.006) * 45 + (x % 300 === 0 ? -25 : 18);
+      ctx.lineTo(x, peak);
+    }
+    ctx.lineTo(world.width + 200, world.height);
+    ctx.lineTo(-100, world.height);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(-camMed, 0);
+    ctx.fillStyle = "rgba(174,219,152,0.26)";
+    for (let x = 120; x < world.width; x += 240) {
+      ctx.beginPath();
+      ctx.arc(x, 600 + Math.sin(x * 0.01) * 20, 42, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
 }
 
 function drawPlatforms() {
@@ -2052,15 +2359,15 @@ function drawCeilingSpikes() {
 
 function drawLava() {
   const t = world.theme;
-  ctx.fillStyle = "#370505";
+  ctx.fillStyle = world.mode === "assault" ? "#5a1208" : "#370505";
   ctx.fillRect(0, world.lavaY, world.width, world.height - world.lavaY);
   const tm = Date.now() * 0.01;
   for (let x = 0; x < world.width; x += 24) {
-    const h = 8 + Math.sin((x * 0.05) + tm) * 3.5;
+    const h = (world.mode === "assault" ? 13 : 8) + Math.sin((x * 0.05) + tm) * (world.mode === "assault" ? 5.2 : 3.5);
     ctx.fillStyle = t.lava1;
     ctx.fillRect(x, world.lavaY + 2, 24, h);
     ctx.fillStyle = t.lava2;
-    ctx.fillRect(x + 5, world.lavaY + 4, 12, 3);
+    ctx.fillRect(x + 4, world.lavaY + 4, 14, world.mode === "assault" ? 5 : 3);
   }
 }
 
@@ -2157,6 +2464,23 @@ function drawSnail() {
   ctx.fillRect(snail.x - 12, snail.y + 9, 2, 5);
 }
 
+function drawFlags() {
+  for (const f of flags) {
+    const ownerColor = f.owner === "blue" ? "#61d8ff" : (f.owner === "gold" ? "#ffd86a" : "#d8d8d8");
+    ctx.fillStyle = "#5d4b31";
+    ctx.fillRect(f.x - 2, f.y - 34, 4, 40);
+    ctx.fillStyle = ownerColor;
+    ctx.fillRect(f.x + 2, f.y - 30, 20, 14);
+    if (f.capturingTeam) {
+      const ratio = clamp(f.captureTimer / 120, 0, 1);
+      ctx.fillStyle = "#111";
+      ctx.fillRect(f.x - 16, f.y + 10, 32, 5);
+      ctx.fillStyle = f.capturingTeam === "blue" ? "#69d8ff" : "#ffdf72";
+      ctx.fillRect(f.x - 16, f.y + 10, 32 * ratio, 5);
+    }
+  }
+}
+
 function drawParticles() {
   for (const p of particles) {
     ctx.globalAlpha = p.life / p.maxLife;
@@ -2175,8 +2499,9 @@ function drawWorld(camX = game.cameraX, camY = game.cameraY) {
   drawHives();
   drawGate(gates.blue);
   drawGate(gates.gold);
-  drawBushes();
-  drawSnail();
+  if (bushes.length) drawBushes();
+  if (world.mode !== "assault") drawSnail();
+  drawFlags();
   for (const u of units) u.draw();
   drawParticles();
   drawLava();
@@ -2298,20 +2623,17 @@ function drawTitle() {
   ctx.fillText("KILLER QUEEN STYLE", 315, 150);
 
   ctx.fillStyle = "#fff";
-  ctx.font = "20px Courier New";
-  ctx.fillText("P1 1/2/3/4 = STRATEGY  (V = TOGGLE)", 235, 205);
-  if (game.splitScreen && !game.sameTeams) ctx.fillText("P2 7/8/9/0 = STRATEGY  (/ = TOGGLE)", 205, 235);
-  ctx.fillText("M = CHANGE MAP", 475, 265);
-  ctx.fillText("Q / E = CHANGE DIFFICULTY", 385, 295);
-  ctx.fillText("X = PLAYER 2 TOGGLE", 405, 325);
-  ctx.fillText("C = SAME TEAMS / DIFFERENT", 345, 355);
-  ctx.fillText("SPACE = START", 485, 385);
+  ctx.font = "17px Courier New";
+  const stratLockedText = world.theme.lockStrategies ? ` (LOCKED: ${world.theme.forcedStrategy.toUpperCase()})` : "";
+  ctx.fillText(`P1 1/2/3/4 STRATEGY${stratLockedText} | P2 7/8/9/0 STRATEGY`, 178, 206);
+  ctx.fillText("M MAP | Q/E DIFFICULTY | X P2 TOGGLE | C TEAM MODE | SPACE START", 190, 234);
 
-  const playerBoxes = [{ label: "PLAYER 1", strategy: game.playerStrategy, color: "#61ff7c", x: 280 }];
+  const forcedStrat = world.theme.lockStrategies ? world.theme.forcedStrategy : null;
+  const playerBoxes = [{ label: "PLAYER 1", strategy: forcedStrat || game.playerStrategy, color: "#61ff7c", x: 280 }];
   if (game.splitScreen) {
     playerBoxes.push({
       label: "PLAYER 2",
-      strategy: game.sameTeams ? "worker bee" : game.goldStrategy,
+      strategy: game.sameTeams ? "worker bee" : (forcedStrat || game.goldStrategy),
       color: game.sameTeams ? "#8ee6ff" : "#ffe37a",
       x: 620
     });
