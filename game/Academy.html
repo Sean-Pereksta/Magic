@@ -227,6 +227,30 @@
     padding:2px 6px;
     margin:2px;
   }
+  .commandMenu{
+    position:fixed;
+    min-width:200px;
+    background:linear-gradient(#fbf1da,#e2c794);
+    border:2px solid #6c5125;
+    border-radius:10px;
+    box-shadow:0 8px 18px rgba(0,0,0,.35);
+    padding:8px;
+    z-index:25;
+    display:none;
+  }
+  .commandMenu.open{display:block;}
+  .commandMenu h4{margin:2px 0 6px 0;font-size:13px;}
+  .commandMenu button{
+    width:100%;
+    margin:3px 0;
+    text-align:left;
+    font-size:12px;
+    padding:6px 8px;
+  }
+  .commandMenu button.active{
+    outline:2px solid #2f79d4;
+    background:linear-gradient(#e9f3ff,#cfe3ff);
+  }
   .modalOverlay{
     position:fixed;
     inset:0;
@@ -328,6 +352,7 @@
     </div>
   </div>
 </div>
+<div id="commandMenu" class="commandMenu"></div>
 <div id="upgradeModal" class="modalOverlay">
   <div class="modal">
     <div class="modalHead">
@@ -384,7 +409,8 @@
     closeUpgradeBtn: document.getElementById("closeUpgradeBtn"),
     upgradeModal: document.getElementById("upgradeModal"),
     upgradePanel: document.getElementById("upgradePanel"),
-    selectedSummary: document.getElementById("selectedSummary")
+    selectedSummary: document.getElementById("selectedSummary"),
+    commandMenu: document.getElementById("commandMenu")
   };
 
   const battleDefs = [
@@ -410,7 +436,8 @@
     projectiles: [],
     deployCells: [],
     bannerDead: false,
-    battleEndedAwarded: false
+    battleEndedAwarded: false,
+    commandMenuUnitId: null
   };
 
   function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
@@ -431,6 +458,20 @@
     INTERCEPT:"INTERCEPT",
     PURSUE_ROUT:"PURSUE_ROUT",
     WITHDRAW:"WITHDRAW"
+  };
+  const UNIT_COMMAND = {
+    MARCH_FORTH:"MARCH_FORTH",
+    FLANK:"FLANK",
+    ATTACK_CAVALRY:"ATTACK_CAVALRY",
+    ATTACK_PHALANX:"ATTACK_PHALANX",
+    ATTACK_SKIRMISHERS:"ATTACK_SKIRMISHERS"
+  };
+  const COMMAND_LABELS = {
+    [UNIT_COMMAND.MARCH_FORTH]:"March Forth",
+    [UNIT_COMMAND.FLANK]:"Flank",
+    [UNIT_COMMAND.ATTACK_CAVALRY]:"Attack Nearest Cavalry",
+    [UNIT_COMMAND.ATTACK_PHALANX]:"Attack Nearest Phalanx",
+    [UNIT_COMMAND.ATTACK_SKIRMISHERS]:"Attack Nearest Skirmishers"
   };
 
   function vecNorm(x, y) {
@@ -541,6 +582,12 @@
       ,approachTargetId:null
       ,flankCommitSide:0
       ,lastApproachScore:0
+      ,command:UNIT_COMMAND.MARCH_FORTH
+      ,pathLegs:[]
+      ,pathIndex:0
+      ,pathTargetTile:null
+      ,pathTargetId:null
+      ,headingState:u.dir
     };
 
     if (type === "Banner Phalanx") {
@@ -1108,6 +1155,11 @@
         u.lastAng = u.ang;
         u.fatigue = 0;
         u.brace = 0;
+        u.pathLegs = [];
+        u.pathIndex = 0;
+        u.pathTargetTile = null;
+        u.pathTargetId = null;
+        u.headingState = u.dir;
       }
     }
     computeDeployCells();
@@ -1240,6 +1292,11 @@
       u.pathReplanTimer = 0;
       u.approachTargetId = null;
       u.flankCommitSide = 0;
+      u.pathLegs = [];
+      u.pathIndex = 0;
+      u.pathTargetTile = null;
+      u.pathTargetId = null;
+      u.headingState = u.dir;
 
       if (u.retreatedLastBattle) {
         u.morale = Math.min(u.morale, u.maxMorale * 0.5);
@@ -1275,12 +1332,19 @@
       u.pathReplanTimer = 0;
       u.approachTargetId = null;
       u.flankCommitSide = 0;
+      u.pathLegs = [];
+      u.pathIndex = 0;
+      u.pathTargetTile = null;
+      u.pathTargetId = null;
+      u.headingState = u.dir;
       const liveFriendlies = game.units.filter(f => !f.dead && f.placed);
       if (u.type.includes("Phalanx") && liveFriendlies.length) {
         const target = nearestEnemy(u, liveFriendlies);
         if (target) {
-          const intercept = predictContactPoint(u, target);
-          u.ang = Math.atan2(intercept.y - u.y, intercept.x - u.x);
+          const fd = cardinalDir(target.x - u.x, target.y - u.y);
+          u.ang = Math.atan2(fd.y, fd.x);
+          u.dir = Math.abs(fd.x) > 0 ? (fd.x > 0 ? "E" : "W") : (fd.y > 0 ? "S" : "N");
+          u.headingState = u.dir;
           u.desiredTurnAngle = u.ang;
         }
       }
@@ -1339,6 +1403,48 @@
     };
   }
 
+  function setUnitCommand(unit, command) {
+    if (!unit) return;
+    unit.command = command;
+    unit.pathLegs = [];
+    unit.pathIndex = 0;
+    unit.pathTargetTile = null;
+    unit.pathTargetId = null;
+  }
+
+  function hideCommandMenu() {
+    game.commandMenuUnitId = null;
+    ui.commandMenu.classList.remove("open");
+  }
+
+  function showCommandMenu(unit, px, py) {
+    if (game.state !== STATE.DEPLOY || !unit || !unit.friendly || !unit.placed || unit.dead) {
+      hideCommandMenu();
+      return;
+    }
+    game.commandMenuUnitId = unit.id;
+    ui.commandMenu.innerHTML = `<h4>${unit.name} Orders</h4>`;
+    Object.entries(COMMAND_LABELS).forEach(([key, label]) => {
+      const btn = document.createElement("button");
+      btn.textContent = label;
+      if (unit.command === key) btn.classList.add("active");
+      btn.onclick = (evt) => {
+        evt.stopPropagation();
+        setUnitCommand(unit, key);
+        showCommandMenu(unit, px, py);
+        updateUI();
+      };
+      ui.commandMenu.appendChild(btn);
+    });
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const left = clamp(px + 16, 8, vw - 230);
+    const top = clamp(py - 16, 8, vh - 270);
+    ui.commandMenu.style.left = `${left}px`;
+    ui.commandMenu.style.top = `${top}px`;
+    ui.commandMenu.classList.add("open");
+  }
+
   function onCanvasClick(evt) {
     const m = canvasPos(evt);
 
@@ -1348,23 +1454,38 @@
       if (dist(m.x,m.y,u.x,u.y) <= u.radius + 8) {
         if (u.friendly) {
           game.selectedUnitId = u.id;
+          if (game.state === STATE.DEPLOY && u.placed) {
+            showCommandMenu(u, evt.clientX, evt.clientY);
+          } else {
+            hideCommandMenu();
+          }
           updateUI();
           return;
         }
       }
     }
 
-    if (game.state !== STATE.DEPLOY) return;
+    if (game.state !== STATE.DEPLOY) {
+      hideCommandMenu();
+      return;
+    }
 
     const tx = Math.floor((m.x - FIELD_X) / TILE);
     const ty = Math.floor((m.y - FIELD_Y) / TILE);
-    if (tx < 0 || ty < 0 || tx >= GRID_W || ty >= GRID_H) return;
+    if (tx < 0 || ty < 0 || tx >= GRID_W || ty >= GRID_H) {
+      hideCommandMenu();
+      return;
+    }
 
     const sel = getSelectedUnit();
-    if (!sel || sel.dead) return;
+    if (!sel || sel.dead) {
+      hideCommandMenu();
+      return;
+    }
 
     if (sel.placed && sel.tx === tx && sel.ty === ty) {
       rotatePlacedUnit(sel);
+      hideCommandMenu();
       updateUI();
       return;
     }
@@ -1381,8 +1502,12 @@
       sel.dir = "E";
       sel.ang = 0;
       sel.desiredAng = 0;
+      sel.headingState = "E";
+      hideCommandMenu();
       updateUI();
+      return;
     }
+    hideCommandMenu();
   }
 
   function nearestEnemy(unit, list) {
@@ -1469,8 +1594,7 @@
     if (unit.ang < -Math.PI) unit.ang += Math.PI * 2;
   }
 
-  function rotateToward(unit, tx, ty, dt) {
-    const targetAngle = Math.atan2(ty - unit.y, tx - unit.x);
+  function rotateTowardAngle(unit, targetAngle, dt) {
     const retargetDelta = Math.abs(angleDiff(targetAngle, unit.desiredTurnAngle));
     if (retargetDelta > unit.turnRetargetThreshold && unit.turnDelay <= 0) {
       const fatigueDelay = 1 + unit.fatigue * 0.8;
@@ -1498,6 +1622,9 @@
     else unit.ang += Math.sign(diff) * maxTurn;
 
     normalizeUnitFacing(unit);
+  }
+  function rotateToward(unit, tx, ty, dt) {
+    rotateTowardAngle(unit, Math.atan2(ty - unit.y, tx - unit.x), dt);
   }
 
   function canCrossTerrain(unit, x, y) {
@@ -1607,134 +1734,166 @@
     };
   }
 
-  function buildEngagementPoint(unit, target, state) {
-    const intercept = predictContactPoint(unit, target);
-    const front = {x:Math.cos(target.ang), y:Math.sin(target.ang)};
-    const side = {x:-front.y, y:front.x};
-    const reach = target.radius + unit.radius + 14;
-    if (state === APPROACH_STATE.FLANK_LEFT) return {x:intercept.x + side.x * reach * 1.3 - front.x * reach * 0.4, y:intercept.y + side.y * reach * 1.3 - front.y * reach * 0.4};
-    if (state === APPROACH_STATE.FLANK_RIGHT) return {x:intercept.x - side.x * reach * 1.3 + -front.x * reach * 0.4, y:intercept.y - side.y * reach * 1.3 + -front.y * reach * 0.4};
-    if (state === APPROACH_STATE.INTERCEPT) return {x:intercept.x - front.x * reach * 0.35, y:intercept.y - front.y * reach * 0.35};
-    return {x:intercept.x - front.x * reach * 0.9, y:intercept.y - front.y * reach * 0.9};
-  }
-
-  function buildFlankPoint(unit, target, sideSign, wide=false) {
-    const intercept = predictContactPoint(unit, target);
-    const front = {x:Math.cos(target.ang), y:Math.sin(target.ang)};
-    const side = {x:-front.y, y:front.x};
-    const lateral = (target.radius + unit.radius + (wide ? 70 : 48)) * sideSign;
-    const rear = target.radius + unit.radius + (wide ? 32 : 18);
+  function tileFromWorld(x, y) {
     return {
-      x: intercept.x + side.x * lateral - front.x * rear,
-      y: intercept.y + side.y * lateral - front.y * rear
+      tx: clamp(Math.floor((x - FIELD_X) / TILE), 0, GRID_W - 1),
+      ty: clamp(Math.floor((y - FIELD_Y) / TILE), 0, GRID_H - 1)
     };
   }
-
-  function scoreApproachOption(unit, target, option, allies, enemies) {
-    const headingToWp = Math.atan2(option.waypoint.y - unit.y, option.waypoint.x - unit.x);
-    const headingToEnd = Math.atan2(option.engagement.y - option.waypoint.y, option.engagement.x - option.waypoint.x);
-    const turn1 = Math.abs(angleDiff(headingToWp, unit.ang));
-    const turn2 = Math.abs(angleDiff(headingToEnd, headingToWp));
-    const leg1 = dist(unit.x, unit.y, option.waypoint.x, option.waypoint.y);
-    const leg2 = dist(option.waypoint.x, option.waypoint.y, option.engagement.x, option.engagement.y);
-    const terrain = terrainPathCost(unit, unit.x, unit.y, option.waypoint.x, option.waypoint.y) +
-      terrainPathCost(unit, option.waypoint.x, option.waypoint.y, option.engagement.x, option.engagement.y);
-    const lane = formationLaneCost(unit, option.waypoint.x, option.waypoint.y, allies, enemies) +
-      formationLaneCost(unit, option.engagement.x, option.engagement.y, allies, enemies) * 0.8;
-    const repeatedCorrections = turn2 > 0.7 ? 22 : 0;
-    const roleBias = (
-      unit.role === "line" || unit.role === "anchor" ? (option.state === APPROACH_STATE.FORM_LINE_APPROACH ? -18 : 6) :
-      unit.role === "flank" ? ((option.state === APPROACH_STATE.FLANK_LEFT || option.state === APPROACH_STATE.FLANK_RIGHT || option.state === APPROACH_STATE.SWING_WIDE) ? -16 : 8) :
-      unit.role === "shock" ? (option.state === APPROACH_STATE.DIRECT_ENGAGE || option.state === APPROACH_STATE.INTERCEPT ? -14 : 6) :
-      0
-    );
-    const pursuitBias = target.routed && option.state === APPROACH_STATE.PURSUE_ROUT ? -24 : 0;
-    return leg1 + leg2 + terrain * 44 + lane * 0.9 + turn1 * 72 + turn2 * 38 + repeatedCorrections + roleBias + pursuitBias;
+  function tileKey(tx, ty) { return `${tx},${ty}`; }
+  function dirFromDelta(dx, dy) {
+    if (dx > 0) return "E";
+    if (dx < 0) return "W";
+    if (dy > 0) return "S";
+    return "N";
   }
-
-  function chooseApproachPlan(unit, target, allies, enemies) {
-    const direct = buildEngagementPoint(unit, target, unit.type.includes("Phalanx") ? APPROACH_STATE.FORM_LINE_APPROACH : APPROACH_STATE.DIRECT_ENGAGE);
-    const toDirect = vecNorm(direct.x - unit.x, direct.y - unit.y);
-    const side = {x:-toDirect.y, y:toDirect.x};
-    const arc = clamp(dist(unit.x, unit.y, target.x, target.y) * 0.26, 28, unit.type === "Cavalry" ? 118 : 74);
-    const options = [
-      {state: unit.type.includes("Phalanx") ? APPROACH_STATE.FORM_LINE_APPROACH : APPROACH_STATE.DIRECT_ENGAGE, waypoint:{x:unit.x + toDirect.x * arc, y:unit.y + toDirect.y * arc}, engagement:direct},
-      {state: APPROACH_STATE.INTERCEPT, waypoint:{x:unit.x + toDirect.x * arc + side.x * 20, y:unit.y + toDirect.y * arc + side.y * 20}, engagement:buildEngagementPoint(unit, target, APPROACH_STATE.INTERCEPT)}
+  function turnPenaltyFor(unit) {
+    if (unit.type.includes("Phalanx")) return 10.5;
+    if (unit.type === "War Elephants") return 11.2;
+    if (unit.type === "Cavalry") return 6.2;
+    return 5.4;
+  }
+  function commandTargetMatches(command, enemy) {
+    if (command === UNIT_COMMAND.ATTACK_CAVALRY) return enemy.type === "Cavalry" || enemy.type === "War Elephants";
+    if (command === UNIT_COMMAND.ATTACK_PHALANX) return enemy.type.includes("Phalanx");
+    if (command === UNIT_COMMAND.ATTACK_SKIRMISHERS) return enemy.type === "Skirmishers";
+    return true;
+  }
+  function targetFacingCardinal(target) {
+    const front = {x:Math.cos(target.ang), y:Math.sin(target.ang)};
+    if (Math.abs(front.x) >= Math.abs(front.y)) return front.x >= 0 ? "E" : "W";
+    return front.y >= 0 ? "S" : "N";
+  }
+  function cardinalGoalTiles(unit, target) {
+    const t = tileFromWorld(target.x, target.y);
+    const defaultGoals = [
+      {tx:t.tx + 1, ty:t.ty}, {tx:t.tx - 1, ty:t.ty}, {tx:t.tx, ty:t.ty + 1}, {tx:t.tx, ty:t.ty - 1}
     ];
-    if (unit.role === "flank" || unit.type === "Cavalry") {
-      options.push({state:APPROACH_STATE.FLANK_LEFT, waypoint:buildFlankPoint(unit, target, 1, false), engagement:buildFlankPoint(unit, target, 1, true)});
-      options.push({state:APPROACH_STATE.FLANK_RIGHT, waypoint:buildFlankPoint(unit, target, -1, false), engagement:buildFlankPoint(unit, target, -1, true)});
-      options.push({state:APPROACH_STATE.SWING_WIDE, waypoint:buildFlankPoint(unit, target, unit.flankCommitSide || (unit.id % 2 ? 1 : -1), true), engagement:buildEngagementPoint(unit, target, APPROACH_STATE.INTERCEPT)});
+    if (unit.command !== UNIT_COMMAND.FLANK) {
+      return defaultGoals.map(g => ({tx:clamp(g.tx,0,GRID_W-1), ty:clamp(g.ty,0,GRID_H-1), bias:0}));
     }
-    if (target.routed) {
-      options.push({state:APPROACH_STATE.PURSUE_ROUT, waypoint:{x:target.x, y:target.y}, engagement:predictContactPoint(unit, target)});
+    const facing = targetFacingCardinal(target);
+    const wide = unit.type === "Cavalry" ? 4 : (unit.type.includes("Phalanx") ? 2 : 3);
+    const goals = [];
+    if (facing === "E" || facing === "W") {
+      goals.push({tx:t.tx + (facing === "E" ? -1 : 1), ty:t.ty + wide, bias:-6});
+      goals.push({tx:t.tx + (facing === "E" ? -1 : 1), ty:t.ty - wide, bias:-6});
+    } else {
+      goals.push({tx:t.tx + wide, ty:t.ty + (facing === "S" ? -1 : 1), bias:-6});
+      goals.push({tx:t.tx - wide, ty:t.ty + (facing === "S" ? -1 : 1), bias:-6});
     }
-
-    let best = null;
-    let bestScore = Infinity;
-    for (const option of options) {
-      const score = scoreApproachOption(unit, target, option, allies, enemies);
-      if (score < bestScore) {
-        bestScore = score;
-        best = {...option, score};
+    return goals.map(g => ({tx:clamp(g.tx,0,GRID_W-1), ty:clamp(g.ty,0,GRID_H-1), bias:g.bias}));
+  }
+  function planCardinalPath(unit, target, allies, enemies) {
+    const start = tileFromWorld(unit.x, unit.y);
+    const goalTiles = cardinalGoalTiles(unit, target);
+    const goalMap = new Map(goalTiles.map(g => [tileKey(g.tx, g.ty), g.bias || 0]));
+    const startDir = unit.headingState || unit.dir || "E";
+    const open = [{tx:start.tx, ty:start.ty, dir:startDir, g:0, f:0}];
+    const seen = new Map();
+    const parent = new Map();
+    const bestEnd = {node:null, score:Infinity};
+    const occEnemies = enemies.filter(e => !e.dead && e.placed && e.id !== target.id).map(e => tileFromWorld(e.x, e.y));
+    const dirs = [{dx:1,dy:0,dir:"E"},{dx:-1,dy:0,dir:"W"},{dx:0,dy:1,dir:"S"},{dx:0,dy:-1,dir:"N"}];
+    let guard = 0;
+    while (open.length && guard < 1400) {
+      guard++;
+      open.sort((a,b)=>a.f-b.f);
+      const cur = open.shift();
+      const ckey = `${cur.tx},${cur.ty},${cur.dir}`;
+      if (seen.has(ckey) && seen.get(ckey) <= cur.g) continue;
+      seen.set(ckey, cur.g);
+      const goalBias = goalMap.get(tileKey(cur.tx, cur.ty));
+      if (goalBias !== undefined) {
+        const endScore = cur.g - goalBias;
+        if (endScore < bestEnd.score) bestEnd.node = cur, bestEnd.score = endScore;
+      }
+      for (const d of dirs) {
+        const nx = cur.tx + d.dx;
+        const ny = cur.ty + d.dy;
+        if (nx < 0 || ny < 0 || nx >= GRID_W || ny >= GRID_H) continue;
+        const wp = tileCenter(nx, ny);
+        let moveCost = 1;
+        moveCost += (1 / clamp(terrainSpeedMod(unit, wp.x, wp.y), 0.4, 1.3)) * 2.8;
+        moveCost += formationLaneCost(unit, wp.x, wp.y, allies, enemies) * 0.06;
+        const congest = occEnemies.reduce((sum, txy) => sum + (Math.abs(txy.tx - nx) + Math.abs(txy.ty - ny) <= 1 ? 1 : 0), 0);
+        moveCost += congest * 1.8;
+        if (cur.dir !== d.dir) moveCost += turnPenaltyFor(unit);
+        if ((unit.role === "line" || unit.role === "anchor") && (d.dir === "N" || d.dir === "S")) moveCost += 0.8;
+        const ng = cur.g + moveCost;
+        const estGoal = goalTiles.reduce((best, g) => Math.min(best, Math.abs(g.tx - nx) + Math.abs(g.ty - ny)), Infinity);
+        const node = {tx:nx, ty:ny, dir:d.dir, g:ng, f:ng + estGoal * 1.5};
+        const nkey = `${nx},${ny},${d.dir}`;
+        if (seen.has(nkey) && seen.get(nkey) <= ng) continue;
+        parent.set(nkey, ckey);
+        open.push(node);
       }
     }
-    if (!best) return null;
-    return best;
-  }
-
-  function shouldReplanPath(unit, target, allies, enemies) {
-    if (!unit.steeringGoal || !unit.engagementPoint || unit.approachTargetId !== target.id) return true;
-    if (unit.pathReplanTimer <= 0 || unit.pathCommitTimer <= 0) return true;
-    if (target.dead || !target.placed) return true;
-    if (target.routed && dist(unit.x, unit.y, target.x, target.y) > 240) return true;
-    if (formationLaneCost(unit, unit.steeringGoal.x, unit.steeringGoal.y, allies, enemies) > 65) return true;
-    if ((unit.approachState === APPROACH_STATE.FLANK_LEFT || unit.approachState === APPROACH_STATE.FLANK_RIGHT) && unit.role === "flank") {
-      const opposite = buildFlankPoint(unit, target, unit.approachState === APPROACH_STATE.FLANK_LEFT ? -1 : 1, true);
-      const cur = dist(unit.x, unit.y, unit.engagementPoint.x, unit.engagementPoint.y);
-      const alt = dist(unit.x, unit.y, opposite.x, opposite.y);
-      if (alt + 40 < cur) return true;
+    if (!bestEnd.node) return [];
+    const out = [];
+    let curKey = `${bestEnd.node.tx},${bestEnd.node.ty},${bestEnd.node.dir}`;
+    while (curKey) {
+      const [tx, ty, dir] = curKey.split(",");
+      out.push({tx:Number(tx), ty:Number(ty), dir});
+      curKey = parent.get(curKey);
     }
-    return false;
+    out.reverse();
+    if (out.length && out[0].tx === start.tx && out[0].ty === start.ty) out.shift();
+    return out;
   }
-
-  function moveToward(unit, tx, ty, speed, dt) {
-    const desired = Math.atan2(ty - unit.y, tx - unit.x);
-    const headingDelta = Math.abs(angleDiff(desired, unit.ang));
-    rotateToward(unit, tx, ty, dt);
-    const postTurnDelta = Math.abs(angleDiff(desired, unit.ang));
-
-    let speedMod = 1;
-    if (unit.type.includes("Phalanx")) speedMod = headingDelta < 0.36 ? 1 : (headingDelta < 0.92 ? 0.72 : 0.4);
-    else if (unit.type === "War Elephants") speedMod = headingDelta < 0.32 ? 1 : (headingDelta < 1.02 ? 0.68 : 0.42);
-    else if (unit.type === "Cavalry") speedMod = headingDelta < 0.48 ? 1.04 : (headingDelta < 1.18 ? 0.8 : 0.5);
-
-    const s = speed * speedMod * terrainSpeedMod(unit, unit.x, unit.y);
-    const mustStopToTurn = postTurnDelta > 0.26 || unit.turnDelay > 0;
-    if (mustStopToTurn) return;
-    const step = Math.min(s * dt, dist(unit.x, unit.y, tx, ty));
-    const fwd = getFacingVector(unit);
-    const nx = unit.x + fwd.x * step;
-    const ny = unit.y + fwd.y * step;
-    if (canCrossTerrain(unit, nx, ny)) {
-      unit.x = nx;
-      unit.y = ny;
+  function shouldReplanCardinal(unit, target) {
+    if (!unit.pathLegs || !unit.pathLegs.length) return true;
+    if (!unit.pathTargetTile) return true;
+    if (!target || target.dead || !target.placed) return true;
+    const tt = tileFromWorld(target.x, target.y);
+    if (Math.abs(tt.tx - unit.pathTargetTile.tx) + Math.abs(tt.ty - unit.pathTargetTile.ty) > 1) return true;
+    if (unit.pathTargetId !== target.id) return true;
+    if (unit.pathReplanTimer <= 0 || unit.pathCommitTimer <= 0) return true;
+    return unit.pathIndex >= unit.pathLegs.length;
+  }
+  function followCardinalPath(unit, speed, dt) {
+    if (!unit.pathLegs || unit.pathIndex >= unit.pathLegs.length) return;
+    const leg = unit.pathLegs[unit.pathIndex];
+    const waypoint = tileCenter(leg.tx, leg.ty);
+    const desiredDir = leg.dir;
+    unit.headingState = desiredDir;
+    unit.dir = desiredDir;
+    rotateTowardAngle(unit, dirAngles[desiredDir], dt);
+    const turnRemaining = Math.abs(angleDiff(dirAngles[desiredDir], unit.ang));
+    if (turnRemaining > 0.16 || unit.turnDelay > 0) return;
+    const speedMod = unit.type.includes("Phalanx") ? 0.94 : (unit.type === "War Elephants" ? 0.88 : 1);
+    const step = Math.min(speed * speedMod * terrainSpeedMod(unit, unit.x, unit.y) * dt, TILE * 0.5);
+    if (desiredDir === "E" || desiredDir === "W") {
+      const deltaX = waypoint.x - unit.x;
+      const move = clamp(deltaX, -step, step);
+      unit.x += move;
+    } else {
+      const deltaY = waypoint.y - unit.y;
+      const move = clamp(deltaY, -step, step);
+      unit.y += move;
+    }
+    if (Math.abs(unit.x - waypoint.x) < 6 && Math.abs(unit.y - waypoint.y) < 6) {
+      unit.x = waypoint.x;
+      unit.y = waypoint.y;
+      unit.pathIndex++;
     }
     unit.x = clamp(unit.x, FIELD_X + 10, FIELD_X + FIELD_W - 10);
     unit.y = clamp(unit.y, FIELD_Y + 10, FIELD_Y + FIELD_H - 10);
   }
-
   function moveAway(unit, from, dt) {
     const dx = unit.x - from.x;
     const dy = unit.y - from.y;
-    const escape = {x:unit.x + dx, y:unit.y + dy};
-    rotateToward(unit, escape.x, escape.y, dt);
-    const delta = Math.abs(angleDiff(Math.atan2(dy, dx), unit.ang));
-    if (delta > 0.42 || unit.turnDelay > 0) return;
-    const s = unit.routeSpeed * terrainSpeedMod(unit, unit.x, unit.y);
-    const fwd = getFacingVector(unit);
-    unit.x += fwd.x * s * dt;
-    unit.y += fwd.y * s * dt;
+    const cd = cardinalDir(dx, dy);
+    const dir = Math.abs(cd.x) > 0 ? (cd.x > 0 ? "E" : "W") : (cd.y > 0 ? "S" : "N");
+    unit.headingState = dir;
+    unit.dir = dir;
+    rotateTowardAngle(unit, dirAngles[dir], dt);
+    if (Math.abs(angleDiff(dirAngles[dir], unit.ang)) > 0.2 || unit.turnDelay > 0) return;
+    const s = unit.routeSpeed * terrainSpeedMod(unit, unit.x, unit.y) * dt;
+    if (dir === "E") unit.x += s;
+    else if (dir === "W") unit.x -= s;
+    else if (dir === "S") unit.y += s;
+    else unit.y -= s;
     unit.x = clamp(unit.x, FIELD_X + 10, FIELD_X + FIELD_W - 10);
     unit.y = clamp(unit.y, FIELD_Y + 10, FIELD_Y + FIELD_H - 10);
   }
@@ -1981,7 +2140,13 @@
       if (locked) return locked;
     }
 
-    let chosen = chooseTargetByRole(unit, enemies);
+    const live = enemies.filter(e => !e.dead && e.placed);
+    let chosen = null;
+    if (unit.command !== UNIT_COMMAND.MARCH_FORTH && unit.command !== UNIT_COMMAND.FLANK) {
+      const preferred = live.filter(e => commandTargetMatches(unit.command, e));
+      chosen = preferred.length ? nearestEnemy(unit, preferred) : nearestEnemy(unit, live);
+    }
+    if (!chosen) chosen = chooseTargetByRole(unit, enemies);
     if (!chosen) chosen = unit.friendly ? enemiesNearBannerPriority(unit, enemies) : nearestEnemy(unit, enemies);
     if (!chosen) return null;
 
@@ -2251,34 +2416,18 @@
   }
 
   function applyApproachPlan(unit, target, allies, enemies) {
-    const needsPlan = shouldReplanPath(unit, target, allies, enemies);
-    if (needsPlan) {
-      const plan = chooseApproachPlan(unit, target, allies, enemies);
-      if (plan) {
-        unit.approachState = plan.state;
-        unit.approachWaypoint = {x:plan.waypoint.x, y:plan.waypoint.y};
-        unit.engagementPoint = {x:plan.engagement.x, y:plan.engagement.y};
-        unit.steeringGoal = {x:plan.waypoint.x, y:plan.waypoint.y};
-        unit.approachTargetId = target.id;
-        const baseCommit = unit.type.includes("Phalanx") ? 1.35 : (unit.type === "Cavalry" ? 1.15 : 0.65);
-        unit.pathCommitTimer = baseCommit;
-        unit.pathReplanTimer = baseCommit * 0.7;
-        if (plan.state === APPROACH_STATE.FLANK_LEFT) unit.flankCommitSide = 1;
-        else if (plan.state === APPROACH_STATE.FLANK_RIGHT) unit.flankCommitSide = -1;
-        unit.lastApproachScore = plan.score;
-      }
+    if (shouldReplanCardinal(unit, target)) {
+      const legs = planCardinalPath(unit, target, allies, enemies);
+      unit.pathLegs = legs;
+      unit.pathIndex = 0;
+      unit.pathTargetId = target.id;
+      unit.pathTargetTile = tileFromWorld(target.x, target.y);
+      const baseCommit = unit.type.includes("Phalanx") ? 1.4 : (unit.type === "Cavalry" ? 1.1 : 0.75);
+      unit.pathCommitTimer = baseCommit;
+      unit.pathReplanTimer = baseCommit * 0.65;
+      unit.approachState = unit.command === UNIT_COMMAND.FLANK ? APPROACH_STATE.SWING_WIDE : APPROACH_STATE.DIRECT_ENGAGE;
     }
-
-    if (!unit.steeringGoal) {
-      unit.steeringGoal = predictContactPoint(unit, target);
-      unit.engagementPoint = buildEngagementPoint(unit, target, APPROACH_STATE.DIRECT_ENGAGE);
-    }
-
-    const goal = unit.steeringGoal;
-    if (dist(unit.x, unit.y, goal.x, goal.y) < Math.max(22, unit.radius + 8)) {
-      unit.steeringGoal = unit.engagementPoint || predictContactPoint(unit, target);
-    }
-    return unit.steeringGoal;
+    return unit.pathLegs && unit.pathIndex < unit.pathLegs.length;
   }
 
   function updateUnit(unit, allies, enemies, dt) {
@@ -2383,6 +2532,8 @@
     if (d <= unit.attackRange + target.radius) {
       const clashPoint = predictContactPoint(unit, target);
       rotateToward(unit, clashPoint.x, clashPoint.y, dt);
+      unit.pathLegs = [];
+      unit.pathIndex = 0;
       unit.approachState = target.routed ? APPROACH_STATE.PURSUE_ROUT : unit.approachState;
       attack(unit, target, dt);
     } else {
@@ -2390,9 +2541,16 @@
       if (unit.type.includes("Phalanx") && !unit.engaged) speed *= clamp(unit.cohesion, 0.85, 1.06);
       if (unit.type === "Cavalry" && unit.chargeCommitTimer > 0) speed *= 1.08;
       speed *= (1 - unit.fatigue * 0.18);
-      const steer = applyApproachPlan(unit, target, allies, enemies);
-      const moveGoal = steer || predictContactPoint(unit, target);
-      moveToward(unit, moveGoal.x, moveGoal.y, speed, dt);
+      const hasPlan = applyApproachPlan(unit, target, allies, enemies);
+      if (hasPlan) {
+        followCardinalPath(unit, speed, dt);
+      } else {
+        const fd = cardinalDir(target.x - unit.x, target.y - unit.y);
+        const dir = Math.abs(fd.x) > 0 ? (fd.x > 0 ? "E" : "W") : (fd.y > 0 ? "S" : "N");
+        unit.headingState = dir;
+        unit.dir = dir;
+        rotateTowardAngle(unit, dirAngles[dir], dt);
+      }
     }
 
     unit.lastPosX = unit.x;
@@ -2944,6 +3102,7 @@
           <span class="tag ${placedClass}">${u.dead ? "Dead" : placedText}</span>
         </div>
         <div class="small">${u.dead ? "Destroyed" : (u.placed ? `Placed at ${u.tx},${u.ty}` : "Not on the field")}</div>
+        <div class="small"><strong>Command:</strong> ${COMMAND_LABELS[u.command] || "March Forth"}</div>
         <div class="small">Health ${Math.round(u.health)}/${u.maxHealth}</div>
         <div class="meter"><div class="fill hp" style="width:${(u.health/u.maxHealth)*100}%"></div></div>
         <div class="small">Morale ${Math.round(u.morale)}/${u.maxMorale}</div>
@@ -3066,6 +3225,7 @@
     ui.buyEleBtn.disabled = game.state !== STATE.BETWEEN || game.points < 260;
     ui.openUpgradeBtn.disabled = !sel || game.state !== STATE.BETWEEN;
     ui.nextBattleBtn.disabled = game.state !== STATE.BETWEEN;
+    if (game.state !== STATE.DEPLOY) hideCommandMenu();
   }
 
   function openUpgradeModal() {
@@ -3087,6 +3247,11 @@
   ui.closeUpgradeBtn.onclick = closeUpgradeModal;
   ui.upgradeModal.onclick = (e) => { if (e.target === ui.upgradeModal) closeUpgradeModal(); };
   ui.nextBattleBtn.onclick = nextBattle;
+  document.addEventListener("click", (e) => {
+    if (game.state !== STATE.DEPLOY) return;
+    if (e.target === canvas || ui.commandMenu.contains(e.target)) return;
+    hideCommandMenu();
+  });
 
   window.addEventListener("keydown", (e) => {
     if (e.key.toLowerCase() === "n" && game.state === STATE.BETWEEN) nextBattle();
