@@ -1151,17 +1151,28 @@ class Unit {
 
     if (assaultMode) {
       const closestFlag = flags.slice().sort((a, b) => dist(this.x, this.y, a.x, a.y) - dist(this.x, this.y, b.x, b.y))[0];
+      const enemyGate = gates[this.team === "blue" ? "gold" : "blue"];
+      const frontlineFlag = flags.slice().sort((a, b) => dist(a.x, a.y, enemyGate.x, enemyGate.y) - dist(b.x, b.y, enemyGate.x, enemyGate.y))[0] || null;
+      const untakenFlags = flags.filter(f => f.owner !== this.team);
+      const nearestUntakenFlag = untakenFlags.slice().sort((a, b) => dist(this.x, this.y, a.x, a.y) - dist(this.x, this.y, b.x, b.y))[0] || null;
+      const objectiveFlag = nearestUntakenFlag || frontlineFlag || closestFlag || null;
       const hotFlag = flags.find(f => f.owner !== this.team && flagEnemiesNear(f, this.team, 165));
       const nearestFlagEnemy = hotFlag ? nearestEnemyToPoint(this.team, hotFlag.x, hotFlag.y, 190) : null;
+      const nearbyEnemy = this.nearestEnemy(205);
+      const noImmediateEnemy = !nearbyEnemy;
 
       if (this.role === "queen") {
         if (enemyQueen && this.enemiesNearby(220) < 1) return { obj: enemyQueen, intent: "queen-hunt" };
         if (hotFlag && !flagEnemiesNear(hotFlag, this.team, 180)) return { obj: hotFlag, intent: "queen-capture-flag" };
+        if (noImmediateEnemy && objectiveFlag) {
+          return { obj: objectiveFlag, intent: nearestUntakenFlag ? "queen-capture-flag" : "queen-assault-frontline" };
+        }
         return { obj: pressure.ownGate, intent: "queen-safe-hold" };
       }
 
       if (nearestFlagEnemy) return { obj: nearestFlagEnemy, intent: "fight-for-flag" };
-      if (closestFlag && closestFlag.owner !== this.team) return { obj: closestFlag, intent: "capture-flag" };
+      if (nearestUntakenFlag) return { obj: nearestUntakenFlag, intent: "capture-flag" };
+      if (noImmediateEnemy && frontlineFlag) return { obj: frontlineFlag, intent: "assault-frontline-flag" };
       if (enemyQueen) return { obj: enemyQueen, intent: "queen-hunt" };
     }
 
@@ -1440,6 +1451,20 @@ class Unit {
         if (Math.abs(snailCenterX - this.x) < 56) {
           plannedY = mountCommitY;
         }
+      }
+
+      const standingPlatform = this.onGround ? world.platforms.find(p =>
+        this.x + this.w - 5 > p.x &&
+        this.x + 5 < p.x + p.w &&
+        Math.abs((this.y + this.h) - p.y) <= 3.5
+      ) : null;
+      const targetClearlyBelow = plannedY > this.y + 22;
+      if (standingPlatform && targetClearlyBelow) {
+        const rightEdge = standingPlatform.x + standingPlatform.w - 10;
+        const leftEdge = standingPlatform.x + 10;
+        const preferRight = plannedX >= this.x;
+        plannedX = preferRight ? rightEdge : leftEdge;
+        plannedY = Math.max(plannedY, this.y + 30);
       }
     }
 
