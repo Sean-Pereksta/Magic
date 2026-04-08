@@ -1156,21 +1156,19 @@ class Unit {
       const untakenFlags = flags.filter(f => f.owner !== this.team);
       const nearestUntakenFlag = untakenFlags.slice().sort((a, b) => dist(this.x, this.y, a.x, a.y) - dist(this.x, this.y, b.x, b.y))[0] || null;
       const objectiveFlag = nearestUntakenFlag || frontlineFlag || closestFlag || null;
-      const hotFlag = flags.find(f => f.owner !== this.team && flagEnemiesNear(f, this.team, 165));
-      const nearestFlagEnemy = hotFlag ? nearestEnemyToPoint(this.team, hotFlag.x, hotFlag.y, 190) : null;
-      const nearbyEnemy = this.nearestEnemy(205);
+      const nearbyEnemy = this.nearestEnemy(210);
       const noImmediateEnemy = !nearbyEnemy;
 
       if (this.role === "queen") {
-        if (enemyQueen && this.enemiesNearby(220) < 1) return { obj: enemyQueen, intent: "queen-hunt" };
-        if (hotFlag && !flagEnemiesNear(hotFlag, this.team, 180)) return { obj: hotFlag, intent: "queen-capture-flag" };
+        if (nearbyEnemy) return { obj: nearbyEnemy, intent: "queen-defend-proximity" };
         if (noImmediateEnemy && objectiveFlag) {
           return { obj: objectiveFlag, intent: nearestUntakenFlag ? "queen-capture-flag" : "queen-assault-frontline" };
         }
+        if (enemyQueen) return { obj: enemyQueen, intent: "queen-hunt" };
         return { obj: pressure.ownGate, intent: "queen-safe-hold" };
       }
 
-      if (nearestFlagEnemy) return { obj: nearestFlagEnemy, intent: "fight-for-flag" };
+      if (nearbyEnemy) return { obj: nearbyEnemy, intent: "fight-proximity-enemy" };
       if (nearestUntakenFlag) return { obj: nearestUntakenFlag, intent: "capture-flag" };
       if (noImmediateEnemy && frontlineFlag) return { obj: frontlineFlag, intent: "assault-frontline-flag" };
       if (enemyQueen) return { obj: enemyQueen, intent: "queen-hunt" };
