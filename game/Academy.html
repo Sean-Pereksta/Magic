@@ -550,6 +550,7 @@ const game = {
   goldStrategySwitchCooldown: 0,
   debugAI: false,
   cameraPunch: 0,
+  hitStop: 0,
   _prevKeys: {}
 };
 
@@ -601,6 +602,25 @@ const teamState = {
   blue: { bonusSlots: 0, summonCooldown: 0 },
   gold: { bonusSlots: 0, summonCooldown: 0 }
 };
+const localCommands = {
+  blue: { type: null, x: 0, y: 0, timer: 0, cooldown: 0, label: "" },
+  gold: { type: null, x: 0, y: 0, timer: 0, cooldown: 0, label: "" }
+};
+const neutralObjective = {
+  active: null,
+  x: 0,
+  y: 0,
+  radius: 30,
+  spawnTimer: 580,
+  duration: 0
+};
+const ambientBits = Array.from({ length: 32 }, (_, i) => ({
+  x: rand(0, world.width),
+  y: rand(130, world.lavaY - 80),
+  spd: rand(0.2, 0.9),
+  amp: rand(4, 14),
+  seed: i * 17 + rand(0, 40)
+}));
 
 function addParticles(x, y, color, count = 10, speed = 3) {
   for (let i = 0; i < count; i++) {
@@ -631,7 +651,9 @@ const snail = {
   y: 0,
   rider: null,
   dir: 0,
-  speed: 0.7
+  speed: 0.7,
+  momentum: 0,
+  skid: 0
 };
 
 let bushes = [];
@@ -749,6 +771,34 @@ function keyTap(key) {
   return !!keys[key] && !game._prevKeys[key];
 }
 
+function enemyTeam(team) {
+  return team === "blue" ? "gold" : "blue";
+}
+
+function teamVisuals(team) {
+  if (team === "blue") {
+    return {
+      main: "#5ed6ff",
+      accent: "#9bf0ff",
+      wing: "rgba(168,245,255,0.58)",
+      burst: "#79dcff",
+      crest: "#d9ffff"
+    };
+  }
+  return {
+    main: "#ffd457",
+    accent: "#ffec98",
+    wing: "rgba(255,242,166,0.55)",
+    burst: "#ffe67a",
+    crest: "#fff2bc"
+  };
+}
+
+function activeLocalCommand(team) {
+  const cmd = localCommands[team];
+  return cmd && cmd.timer > 0 ? cmd : null;
+}
+
 function applyMap(index) {
   const map = MAPS[index];
   world.theme = map;
@@ -788,6 +838,8 @@ function applyMap(index) {
   snail.y = world.snailTrackY - 18;
   snail.rider = null;
   snail.dir = 0;
+  snail.momentum = 0;
+  snail.skid = 0;
 
   bushes = map.bushes.map((b, idx) => {
     const plat = map.platforms[b.platformIndex];
@@ -876,6 +928,8 @@ class Unit {
     this.landSquashTimer = 0;
     this.impactFlash = 0;
     this.justLanded = 0;
+    this.speedBloomTimer = 0;
+    this.shieldTimer = 0;
   }
 
   diff() {
@@ -908,10 +962,11 @@ class Unit {
 
   maxSpeed() {
     const modeSpeed = modeRules().speedMultiplier || 1;
-    if (this.role === "queen") return 4.56 * modeSpeed;
-    if (this.form === "speed") return 5.0 * modeSpeed;
-    if (this.form === "warrior") return 3.63 * modeSpeed;
-    return 3.96 * modeSpeed;
+    const bloom = this.speedBloomTimer > 0 ? 1.12 : 1;
+    if (this.role === "queen") return 4.56 * modeSpeed * bloom;
+    if (this.form === "speed") return 5.0 * modeSpeed * bloom;
+    if (this.form === "warrior") return 3.63 * modeSpeed * bloom;
+    return 3.96 * modeSpeed * bloom;
   }
 
   landingBounceMultiplier() {
@@ -957,17 +1012,27 @@ class Unit {
 
   die() {
     if (this.dead) return;
+    if (this.shieldTimer > 0) {
+      this.shieldTimer = 0;
+      this.invuln = Math.max(this.invuln, 25);
+      addParticles(this.x + this.w / 2, this.y + this.h / 2, "#9ff7ff", 10, 2.6);
+      return;
+    }
     this.rememberDeath();
 
     if (this.role === "queen") {
       this.queenLives--;
-      addParticles(this.x + this.w / 2, this.y + this.h / 2, this.team === "blue" ? "#79dcff" : "#ffe67a", 20, 3.8);
+      const vis = teamVisuals(this.team);
+      addParticles(this.x + this.w / 2, this.y + this.h / 2, vis.burst, 20, 3.8);
+      addParticles(this.x + this.w / 2, this.y + this.h / 2, vis.accent, 8, 2.2);
       soundDeath();
 
       if (this.carryingBerry) this.dropBerry();
 
       if (snail.rider === this) {
         snail.rider = null;
+        snail.skid = 12;
+        snail.momentum = 0;
         this.onSnail = false;
         soundDismount();
       }
@@ -984,12 +1049,15 @@ class Unit {
 
     this.dead = true;
     this.respawnTimer = Math.max(70, Math.floor(170 * modeRules().workerRespawnScale));
-    addParticles(this.x + this.w / 2, this.y + this.h / 2, this.team === "blue" ? "#79dcff" : "#ffe67a", 16, 3.4);
+    const vis = teamVisuals(this.team);
+    addParticles(this.x + this.w / 2, this.y + this.h / 2, vis.burst, 16, 3.4);
     soundDeath();
 
     if (this.carryingBerry) this.dropBerry();
     if (snail.rider === this) {
       snail.rider = null;
+      snail.skid = 12;
+      snail.momentum = 0;
       this.onSnail = false;
       soundDismount();
     }
@@ -1001,9 +1069,10 @@ class Unit {
     this.carryingBerry.x = this.x + 10;
     this.carryingBerry.y = this.y + 10;
     const blitz = world.mode === "black-berry-blitz";
-    this.carryingBerry.vx = (this.dir * rand(1.2, 2.1) + rand(-1.2, 1.2)) * (blitz ? 1.4 : 1);
-    this.carryingBerry.vy = rand(-3.9, -2.2) * (blitz ? 1.2 : 1);
-    this.carryingBerry.bounce = blitz ? 3 : 2;
+    const panic = gates.blue.berries >= modeRules().berryTarget - 1 || gates.gold.berries >= modeRules().berryTarget - 1;
+    this.carryingBerry.vx = (this.dir * rand(1.2, 2.4) + rand(-1.5, 1.5)) * (blitz ? 1.4 : (panic ? 1.24 : 1));
+    this.carryingBerry.vy = rand(-4.3, -2.2) * (blitz ? 1.2 : (panic ? 1.1 : 1));
+    this.carryingBerry.bounce = blitz ? 3 : (panic ? 3 : 2);
     this.carryingBerry.twinkle = rand(0, Math.PI * 2);
     addParticles(this.carryingBerry.x, this.carryingBerry.y, world.theme.bushBerry1, blitz ? 12 : 8, blitz ? 3 : 2.3);
     this.carryingBerry.alive = true;
@@ -1042,6 +1111,8 @@ class Unit {
     this.landSquashTimer = Math.max(0, this.landSquashTimer - 1);
     this.impactFlash = Math.max(0, this.impactFlash - 1);
     this.justLanded = Math.max(0, this.justLanded - 1);
+    this.speedBloomTimer = Math.max(0, this.speedBloomTimer - 1);
+    this.shieldTimer = Math.max(0, this.shieldTimer - 1);
 
     this.vy += 0.27;
     this.vy = clamp(this.vy, -8.6, 8);
@@ -1133,7 +1204,10 @@ class Unit {
       if (!b.alive || b.carriedBy) continue;
       const d = dist(this.x, this.y, b.x, b.y);
       const ownGate = gates[this.team];
-      const score = d + Math.abs(ownGate.x - b.x) * 0.15;
+      const laneWeight = Math.abs(ownGate.x - b.x) * 0.15;
+      const nearbyEnemy = nearestEnemyToPoint(this.team, b.x, b.y, 130);
+      const contestBias = nearbyEnemy ? (this.form === "warrior" ? -70 : (this.form === "speed" ? -36 : -18)) : 0;
+      const score = d + laneWeight + contestBias;
       if (score < bestScore) {
         bestScore = score;
         best = b;
@@ -1283,6 +1357,8 @@ class Unit {
     const snailDanger = getSnailDangerForTeam(this.team);
     const enemyBerries = gates[this.team === "blue" ? "gold" : "blue"].berries;
     const ownBerries = gates[this.team].berries;
+    const teamCommand = activeLocalCommand(this.team);
+    const inCommandZone = teamCommand && dist(this.x, this.y, teamCommand.x, teamCommand.y) < 330;
     const support = this.alliesNearby(220);
     const isPrimaryRunner = this.isPrimarySnailRunner(strategy);
     const directSnailThreat = this.directSnailThreatDistance(diffSet.level >= 8 ? 130 : 115);
@@ -1372,6 +1448,23 @@ class Unit {
       if (queenIsolated && !this.carryingBerry) return { obj: ownQueen, intent: "queen-escort-tight" };
     }
 
+    if (teamCommand && inCommandZone && this.role !== "queen") {
+      if (teamCommand.type === "harvest") {
+        if (this.carryingBerry) return { obj: gates[this.team], intent: "score-berry" };
+        if (this.form === "warrior" && alliedCarrier) return { obj: alliedCarrier, intent: "escort-carrier" };
+        if (berry) return { obj: berry, intent: "collect-berry" };
+      } else if (teamCommand.type === "snail") {
+        if (pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "contest-snail-hard" };
+        if (!modeRules().disableSnail && (!snail.rider || snail.rider.team === this.team)) {
+          if (this.form === "warrior" && snail.rider) return { obj: snail.rider, intent: "escort-snail" };
+          return { obj: snail, intent: "ride-snail" };
+        }
+      } else if (teamCommand.type === "attack") {
+        if (enemyCarrier) return { obj: enemyCarrier, intent: "stop-carrier" };
+        if (enemyQueen) return { obj: enemyQueen, intent: "queen-hunt" };
+      }
+    }
+
     if (this.form === "warrior") {
       if (pressure.snailEnemy) return { obj: pressure.snailEnemy, intent: "contest-snail" };
       if (enemyCarrier) return { obj: enemyCarrier, intent: "stop-carrier" };
@@ -1414,6 +1507,9 @@ class Unit {
     }
     if (enemyCarrier && (diffSet.antiBerry > 0.35 || urgency > 0.3)) {
       return { obj: enemyCarrier, intent: "stop-carrier" };
+    }
+    if (this.form === "speed" && berry && Math.random() < 0.7) {
+      return { obj: berry, intent: "recover-berry" };
     }
 
     if (strategy === "snail") {
@@ -1690,6 +1786,42 @@ class Unit {
       if (this.carryingBerry) this.dropBerry();
       else attemptPlayerBerryPickup(this);
     }
+    if (control.command && keyTap(control.command)) this.issueLocalCommand();
+  }
+
+  issueLocalCommand() {
+    if (!this.isPlayer || this.dead) return;
+    const cmd = localCommands[this.team];
+    if (cmd.cooldown > 0) return;
+    const ownGate = gates[this.team];
+    const enemyGate = gates[enemyTeam(this.team)];
+    const nearOwnGate = dist(this.x, this.y, ownGate.x, ownGate.y) < 230;
+    const nearSnail = !modeRules().disableSnail && dist(this.x, this.y, snail.x, snail.y) < 220;
+    const nearEnemy = dist(this.x, this.y, enemyGate.x, enemyGate.y) < 320 || (this.team === "blue" ? this.x > world.width * 0.62 : this.x < world.width * 0.38);
+    if (!nearOwnGate && !nearSnail && !nearEnemy) return;
+
+    let type = "harvest";
+    let label = "HARVEST PUSH";
+    let x = ownGate.x + ownGate.w / 2;
+    let y = ownGate.y - 24;
+    if (nearSnail && !nearOwnGate) {
+      type = "snail";
+      label = "SNAIL PUSH";
+      x = snail.x;
+      y = snail.y - 24;
+    } else if (nearEnemy && !nearOwnGate) {
+      type = "attack";
+      label = "QUEEN HUNT";
+      x = enemyGate.x + enemyGate.w / 2;
+      y = enemyGate.y - 24;
+    }
+    cmd.type = type;
+    cmd.label = label;
+    cmd.x = x;
+    cmd.y = y;
+    cmd.timer = 260;
+    cmd.cooldown = 410;
+    addParticles(x, y, this.team === "blue" ? "#79dcff" : "#ffe67a", 18, 3);
   }
 
   tryMountSnail() {
@@ -1709,6 +1841,8 @@ class Unit {
   dismountSnail() {
     if (!this.onSnail || snail.rider !== this) return;
     snail.rider = null;
+    snail.skid = 12;
+    snail.momentum = 0;
     this.onSnail = false;
     this.snailMountCooldown = 50;
     this.vy = -3.0;
@@ -1729,8 +1863,8 @@ class Unit {
     if (this.isPlayer) {
       const isPrimaryPlayer = this === playerQueen;
       const control = isPrimaryPlayer
-        ? { left: "a", right: "d", up: "w", down: "s", pickup: "f" }
-        : { left: "arrowleft", right: "arrowright", up: "arrowup", down: "arrowdown", pickup: "." };
+        ? { left: "a", right: "d", up: "w", down: "s", pickup: "f", command: "e" }
+        : { left: "arrowleft", right: "arrowright", up: "arrowup", down: "arrowdown", pickup: ".", command: "shift" };
       this.playerControl(control);
     }
     else this.ai(strategy);
@@ -1740,9 +1874,12 @@ class Unit {
   }
 
   drawBeeBody(x, y, color, dir) {
+    const vis = teamVisuals(this.team);
     if (this.form === "warrior") {
       ctx.fillStyle = "rgba(25,25,30,0.5)";
-      ctx.fillRect(x + 6, y + 8, this.w - 10, this.h - 4);
+      ctx.fillRect(x + 4, y + 7, this.w - 8, this.h - 3);
+      ctx.fillStyle = "rgba(240,240,255,0.22)";
+      ctx.fillRect(x + (dir === 1 ? 6 : this.w - 14), y + 9, 8, 8);
     }
     ctx.fillStyle = color;
     ctx.fillRect(x + 10, y + 11, this.w - 18, 10);
@@ -1774,15 +1911,22 @@ class Unit {
     ctx.fillRect(x + 30, y + 20, 2, 5);
 
     if (this.form === "speed") {
-      ctx.fillStyle = "rgba(255,255,255,0.45)";
+      ctx.fillStyle = "rgba(255,255,255,0.58)";
       ctx.fillRect(x + (dir === 1 ? 2 : this.w - 8), y + 12, 5, 2);
       ctx.fillRect(x + (dir === 1 ? 0 : this.w - 10), y + 16, 3, 2);
+    }
+    if (this.role === "queen") {
+      ctx.fillStyle = vis.crest;
+      const crestX = dir === 1 ? x + this.w - 2 : x - 4;
+      ctx.fillRect(crestX, y + 8, 8, 3);
+      ctx.fillRect(crestX + (dir === 1 ? 4 : 0), y + 6, 4, 2);
     }
   }
 
   drawWings(x, y, flapFrame, dir) {
+    const vis = teamVisuals(this.team);
     const wingRise = flapFrame ? -11 : -3;
-    ctx.fillStyle = "rgba(220,255,255,0.55)";
+    ctx.fillStyle = vis.wing;
     if (dir === 1) {
       ctx.fillRect(x + 11, y + wingRise + 1, 8, 15);
       ctx.fillRect(x + 19, y + wingRise - 1, 9, 18);
@@ -1832,13 +1976,18 @@ class Unit {
       ctx.fillRect(x + 17, y - 8, 2, 2);
       ctx.fillRect(x + 20, y - 10, 2, 4);
       ctx.fillRect(x + 23, y - 8, 2, 2);
+      const vis = teamVisuals(this.team);
+      ctx.fillStyle = vis.accent;
+      if (dir === 1) ctx.fillRect(x + 30, y + 1, 14, 2);
+      else ctx.fillRect(x - 10, y + 1, 14, 2);
     }
 
     if (this.carryingBerry) {
-      ctx.fillStyle = "#46ff5c";
-      ctx.fillRect(x + this.w - 9, y - 2, 6, 6);
+      const bob = Math.sin(game.time * 0.22 + this.x * 0.1) * 2;
+      ctx.fillStyle = "#7dff94";
+      ctx.fillRect(x + this.w - 9, y - 2 + bob, 7, 7);
       ctx.fillStyle = "#a51fc5";
-      ctx.fillRect(x + this.w - 8, y - 1, 4, 4);
+      ctx.fillRect(x + this.w - 8, y - 1 + bob, 5, 5);
     }
   }
 
@@ -1865,6 +2014,14 @@ class Unit {
       ctx.fillRect(this.x - 4, this.y + 10, 2, 2);
       if (Math.floor(game.time / 3) % 2 === 0) ctx.fillRect(this.x + this.w / 2, this.y - 4, 2, 2);
     }
+    if (this.speedBloomTimer > 0) {
+      ctx.strokeStyle = "rgba(146,255,232,0.8)";
+      ctx.strokeRect(this.x - 4, this.y - 16, this.w + 8, 4);
+    }
+    if (this.shieldTimer > 0) {
+      ctx.strokeStyle = "rgba(167,241,255,0.9)";
+      ctx.strokeRect(this.x - 2, this.y - 2, this.w + 4, this.h + 4);
+    }
   }
 
   draw() {
@@ -1876,11 +2033,22 @@ class Unit {
     const sx = 1 + squash * 0.17;
     const sy = 1 - squash * 0.12;
     if (this.role === "queen") {
-      const aura = 8 + Math.sin(game.time * 0.12) * 2;
-      ctx.fillStyle = this.team === "blue" ? "rgba(94,214,255,0.26)" : "rgba(255,212,87,0.26)";
+      const lastLife = this.queenLives <= 1;
+      const aura = (lastLife ? 12 : 8) + Math.sin(game.time * 0.12) * (lastLife ? 3.6 : 2);
+      ctx.fillStyle = this.team === "blue"
+        ? `rgba(94,214,255,${lastLife ? 0.42 : 0.26})`
+        : `rgba(255,212,87,${lastLife ? 0.42 : 0.26})`;
       ctx.beginPath();
       ctx.arc(this.x + this.w / 2, this.y + this.h / 2 - 4, aura + 10, 0, Math.PI * 2);
       ctx.fill();
+      if (lastLife && Math.floor(game.time / 5) % 2 === 0) {
+        ctx.fillStyle = this.team === "blue" ? "rgba(196,249,255,0.4)" : "rgba(255,238,181,0.4)";
+        ctx.fillRect(this.x - 6, this.y - 6, this.w + 12, this.h + 12);
+      }
+    }
+    if (this.form === "speed" && Math.abs(this.vx) > 3.8) {
+      ctx.fillStyle = this.team === "blue" ? "rgba(110,255,236,0.26)" : "rgba(255,255,172,0.24)";
+      ctx.fillRect(this.x - this.dir * 10, this.y + 12, 10, 3);
     }
     if (this.impactFlash > 0) {
       ctx.fillStyle = `rgba(255,245,165,${this.impactFlash / 8})`;
@@ -1903,11 +2071,17 @@ class Unit {
 
 function spawnMatch() {
   applyMap(game.currentMapIndex);
+  game.hitStop = 0;
   units = [];
   teamTactics.blue.primarySnailRunner = null;
   teamTactics.blue.runnerLockUntil = 0;
   teamTactics.gold.primarySnailRunner = null;
   teamTactics.gold.runnerLockUntil = 0;
+  localCommands.blue = { type: null, x: 0, y: 0, timer: 0, cooldown: 0, label: "" };
+  localCommands.gold = { type: null, x: 0, y: 0, timer: 0, cooldown: 0, label: "" };
+  neutralObjective.active = null;
+  neutralObjective.spawnTimer = 420;
+  neutralObjective.duration = 0;
 
   const bq = new Unit({ team: "blue", role: "queen", x: 165, y: 650, isPlayer: true });
   const gq = new Unit({ team: "gold", role: "queen", x: world.width - 205, y: 650, isPlayer: game.splitScreen && !game.sameTeams });
@@ -2091,6 +2265,53 @@ function updateFireballs() {
   }
 }
 
+function updateLocalCommands() {
+  for (const team of ["blue", "gold"]) {
+    const cmd = localCommands[team];
+    cmd.timer = Math.max(0, cmd.timer - 1);
+    cmd.cooldown = Math.max(0, cmd.cooldown - 1);
+    if (cmd.timer <= 0 && cmd.type) {
+      cmd.type = null;
+      cmd.label = "";
+    }
+  }
+}
+
+function spawnNeutralObjective() {
+  const types = ["nectar", "shield", "vision"];
+  neutralObjective.active = types[randi(0, types.length - 1)];
+  neutralObjective.duration = 620;
+  neutralObjective.x = world.width * 0.5 + rand(-120, 120);
+  const midPlatform = world.platforms.slice().sort((a, b) => Math.abs((a.x + a.w / 2) - world.width / 2) - Math.abs((b.x + b.w / 2) - world.width / 2))[0];
+  neutralObjective.y = midPlatform ? midPlatform.y - 22 : world.snailTrackY - 62;
+}
+
+function updateNeutralObjective() {
+  if (neutralObjective.active) {
+    neutralObjective.duration--;
+    for (const u of units) {
+      if (u.dead) continue;
+      const d = dist(u.x + u.w / 2, u.y + u.h / 2, neutralObjective.x, neutralObjective.y);
+      if (d > neutralObjective.radius + 14) continue;
+      if (neutralObjective.active === "nectar") u.speedBloomTimer = Math.max(u.speedBloomTimer, 370);
+      if (neutralObjective.active === "shield") u.shieldTimer = Math.max(u.shieldTimer, 260);
+      if (neutralObjective.active === "vision") u.invuln = Math.max(u.invuln, 28);
+      addParticles(u.x + u.w / 2, u.y, u.team === "blue" ? "#86e8ff" : "#ffe98f", 14, 2.4);
+      neutralObjective.active = null;
+      neutralObjective.spawnTimer = 760;
+      neutralObjective.duration = 0;
+      return;
+    }
+    if (neutralObjective.duration <= 0) {
+      neutralObjective.active = null;
+      neutralObjective.spawnTimer = 480;
+    }
+  } else {
+    neutralObjective.spawnTimer--;
+    if (neutralObjective.spawnTimer <= 0 && world.mode === "standard") spawnNeutralObjective();
+  }
+}
+
 function berryInPickupRange(unit) {
   for (const bush of bushes) {
     const berry = bush.berry;
@@ -2116,8 +2337,9 @@ function handleBerries() {
     if (!berry.alive) continue;
 
     if (berry.carriedBy) {
-      berry.x = berry.carriedBy.x + berry.carriedBy.w - 6;
-      berry.y = berry.carriedBy.y - 2;
+      const bob = Math.sin(game.time * 0.25 + berry.carriedBy.x * 0.08) * 2.5;
+      berry.x = berry.carriedBy.x + berry.carriedBy.w - 7 + Math.sin(game.time * 0.18) * 1.4;
+      berry.y = berry.carriedBy.y - 4 + bob;
       continue;
     }
 
@@ -2125,18 +2347,18 @@ function handleBerries() {
     berry.x += berry.vx || 0;
     berry.y += berry.vy || 0;
     berry.vy = (berry.vy || 0) + 0.22;
-    berry.vx *= 0.97;
+    berry.vx *= 0.985;
     const floorY = bush.platformY - 20;
     if (berry.y >= floorY) {
       berry.y = floorY;
       if (berry.bounce > 0 && Math.abs(berry.vy) > 0.8) {
         berry.vy = -Math.abs(berry.vy) * (world.mode === "black-berry-blitz" ? 0.68 : 0.48);
-        berry.vx *= 0.92;
+        berry.vx *= 0.95;
         berry.bounce--;
         addParticles(berry.x, berry.y + 4, world.theme.bushBerry2, 4, 1.5);
       } else {
         berry.vy = 0;
-        berry.vx *= 0.7;
+        berry.vx *= 0.88;
       }
     }
 
@@ -2206,14 +2428,19 @@ function handleSnail() {
   if (snail.rider && snail.rider.dead) {
     snail.rider.onSnail = false;
     snail.rider = null;
+    snail.skid = 14;
+    snail.momentum = 0;
   }
 
+  snail.skid = Math.max(0, snail.skid - 1);
   if (snail.rider) {
     snail.dir = snail.rider.team === "blue" ? 1 : -1;
+    snail.momentum = clamp(snail.momentum + 0.005, 0, 0.26);
     const speedBonus = snail.rider.form === "speed" ? 0.28 : 0;
-    snail.x += snail.dir * (snail.speed + speedBonus);
-    if (game.time % 3 === 0) {
-      addParticles(snail.x - snail.dir * 15, snail.y + 16, "#f4d5ac", 3, 1.2);
+    snail.x += snail.dir * (snail.speed + speedBonus + snail.momentum);
+    if (game.time % 2 === 0) {
+      const dustCount = 3 + Math.floor(snail.momentum * 24);
+      addParticles(snail.x - snail.dir * 15, snail.y + 16, "#f4d5ac", dustCount, 1.3 + snail.momentum * 4);
     }
     snail.x = clamp(snail.x, world.snailLeftGoal, world.snailRightGoal);
 
@@ -2228,6 +2455,12 @@ function handleSnail() {
       game.winType = "SNAIL";
       game.state = "gameOver";
       soundWin();
+    }
+  } else {
+    snail.momentum = Math.max(0, snail.momentum - 0.018);
+    if (snail.skid > 0) {
+      snail.x = clamp(snail.x + snail.dir * (0.35 + snail.skid * 0.03), world.snailLeftGoal, world.snailRightGoal);
+      if (game.time % 2 === 0) addParticles(snail.x, snail.y + 16, "#ffe9c2", 2, 1.4);
     }
   }
 }
@@ -2254,19 +2487,21 @@ function handleCombat() {
       if (aCanKill && bCanDie && (aBottom < bBottom - 5 || (Math.abs(aBottom - bBottom) <= 5 && aPower > bPower))) {
         b.die();
         const stompBounce = 4.9 * a.landingBounceMultiplier();
-        a.vy = -stompBounce;
-        a.onLandingImpact(1.15, "stomp");
+        a.vy = -stompBounce * 1.08;
+        a.onLandingImpact(1.35, "stomp");
         b.onLandingImpact(0.9, "hit");
-        addParticles((a.x + b.x) * 0.5 + 12, (a.y + b.y) * 0.5 + 10, "#fff4a4", 14, 3.2);
+        addParticles((a.x + b.x) * 0.5 + 12, (a.y + b.y) * 0.5 + 10, "#fff4a4", 20, 3.8);
+        game.hitStop = Math.max(game.hitStop, 2);
         if (a.isPlayer || b.isPlayer) soundKill();
         addCameraPunch(4);
       } else if (bCanKill && aCanDie && (bBottom < aBottom - 5 || (Math.abs(aBottom - bBottom) <= 5 && bPower > aPower))) {
         a.die();
         const stompBounce = 4.9 * b.landingBounceMultiplier();
-        b.vy = -stompBounce;
-        b.onLandingImpact(1.15, "stomp");
+        b.vy = -stompBounce * 1.08;
+        b.onLandingImpact(1.35, "stomp");
         a.onLandingImpact(0.9, "hit");
-        addParticles((a.x + b.x) * 0.5 + 12, (a.y + b.y) * 0.5 + 10, "#fff4a4", 14, 3.2);
+        addParticles((a.x + b.x) * 0.5 + 12, (a.y + b.y) * 0.5 + 10, "#fff4a4", 20, 3.8);
+        game.hitStop = Math.max(game.hitStop, 2);
         if (a.isPlayer || b.isPlayer) soundKill();
         addCameraPunch(4);
       } else {
@@ -2275,12 +2510,12 @@ function handleCombat() {
         b.vx = push;
         const allyBump = a.team === b.team;
         if (allyBump) {
-          a.vy = Math.min(a.vy, -1.1 * a.landingBounceMultiplier());
-          b.vy = Math.min(b.vy, -1.1 * b.landingBounceMultiplier());
+          a.vy = Math.min(a.vy, -1.6 * a.landingBounceMultiplier());
+          b.vy = Math.min(b.vy, -1.6 * b.landingBounceMultiplier());
         } else {
-          a.vy -= 0.65;
-          b.vy -= 0.65;
-          addParticles((a.x + b.x) * 0.5 + 10, (a.y + b.y) * 0.5 + 8, "#ffffff", 6, 2.2);
+          a.vy -= 0.9;
+          b.vy -= 0.9;
+          addParticles((a.x + b.x) * 0.5 + 10, (a.y + b.y) * 0.5 + 8, "#ffffff", 10, 2.7);
           a.impactFlash = Math.max(a.impactFlash, 6);
           b.impactFlash = Math.max(b.impactFlash, 6);
         }
@@ -2376,6 +2611,12 @@ function update() {
   }
 
   game.time++;
+  if (game.hitStop > 0) {
+    game.hitStop--;
+    updateParticles();
+    updateCamera();
+    return;
+  }
   if (!world.theme.lockStrategies && keys["v"]) cyclePlayerStrategy();
   if (!world.theme.lockStrategies && game.splitScreen && !game.sameTeams && keys["/"]) cycleGoldStrategy();
   if (keys["b"] && !gameplayInputLock) {
@@ -2391,6 +2632,8 @@ function update() {
   }
 
   updateBushes();
+  updateLocalCommands();
+  updateNeutralObjective();
   handleBerries();
   handleSnail();
   updateFlags();
@@ -2728,6 +2971,17 @@ function drawBackdrop(camX = game.cameraX) {
     }
     ctx.restore();
   }
+
+  ctx.save();
+  ctx.translate(-camSlow * 0.7, 0);
+  for (const bit of ambientBits) {
+    const sway = Math.sin((game.time + bit.seed) * 0.02) * bit.amp;
+    const by = bit.y + Math.cos((game.time + bit.seed) * 0.014) * 5;
+    const bx = (bit.x + game.time * bit.spd * 0.6) % (world.width + 60) - 30 + sway;
+    ctx.fillStyle = world.mode === "assault" ? "rgba(255,145,90,0.16)" : "rgba(216,255,214,0.14)";
+    ctx.fillRect(bx, by, 2, 2);
+  }
+  ctx.restore();
 }
 
 function drawPlatforms() {
@@ -2776,11 +3030,20 @@ function drawLava() {
 }
 
 function drawGate(g) {
+  const vis = teamVisuals(g.team);
   const c = g.team === "blue" ? "#4dc9ff" : "#ffd24a";
+  const nearWin = g.berries >= modeRules().berryTarget - 1;
+  const pulse = nearWin ? (Math.sin(game.time * 0.25) + 1) * 0.5 : 0;
   ctx.fillStyle = shade(c, -40);
   ctx.fillRect(g.x, g.y, g.w, g.h);
   ctx.fillStyle = c;
   ctx.fillRect(g.x + 4, g.y + 4, g.w - 8, g.h - 8);
+  ctx.fillStyle = vis.accent;
+  ctx.fillRect(g.team === "blue" ? g.x + 6 : g.x + g.w - 12, g.y + 10, 6, 14);
+  if (nearWin) {
+    ctx.strokeStyle = `rgba(255,247,178,${0.45 + pulse * 0.5})`;
+    ctx.strokeRect(g.x - 4, g.y - 4, g.w + 8, g.h + 8);
+  }
 
   for (let i = 0; i < g.berries; i++) {
     const row = i % 5;
@@ -2800,7 +3063,7 @@ function drawGate(g) {
     else ctx.fillRect(maiden.x - 3, maiden.y - 4, 6, 8);
   }
 
-  ctx.fillStyle = "#fff";
+  ctx.fillStyle = nearWin ? "#fff2ac" : "#fff";
   ctx.font = "12px Courier New";
   ctx.fillText(g.berries + "/" + modeRules().berryTarget, g.x - 2, g.y - 8);
 }
@@ -2808,11 +3071,14 @@ function drawGate(g) {
 function drawHives() {
   for (const key of ["blue", "gold"]) {
     const h = hive[key];
+    const vis = teamVisuals(key);
     const c = key === "blue" ? "#50cfff" : "#ffd75a";
     ctx.fillStyle = shade(c, -35);
     ctx.fillRect(h.x - 28, h.y, 56, 22);
     ctx.fillStyle = c;
     ctx.fillRect(h.x - 20, h.y + 4, 40, 14);
+    ctx.fillStyle = vis.accent;
+    ctx.fillRect(h.x - (key === "blue" ? 22 : -18), h.y - 7, 12, 3);
     ctx.fillStyle = "#2c1d12";
     ctx.fillRect(h.x - 7, h.y + 8, 14, 8);
   }
@@ -2851,6 +3117,9 @@ function drawBushes() {
 }
 
 function drawSnail() {
+  const blueProg = getSnailDangerForTeam("blue").progress;
+  const goldProg = getSnailDangerForTeam("gold").progress;
+  const critical = blueProg > 0.85 || goldProg > 0.85;
   ctx.fillStyle = "#60391f";
   ctx.fillRect(world.snailLeftGoal - 30, world.snailTrackY + 18, world.snailRightGoal - world.snailLeftGoal + 60, 8);
   ctx.fillStyle = "#8a5a35";
@@ -2870,13 +3139,20 @@ function drawSnail() {
     ctx.fillRect(snail.x - 10, snail.y - 8, 28, 4);
     ctx.fillStyle = "#fff";
     ctx.fillRect(snail.x + 2, snail.y - 12, 4, 4);
+    ctx.fillStyle = snail.rider.team === "blue" ? "#a8f4ff" : "#fff1b2";
+    ctx.fillRect(snail.x - 12, snail.y - 14, 32, 2);
   }
   ctx.fillStyle = "#f1d7a0";
   ctx.fillRect(snail.x - 18, snail.y + 16, 12, 5);
   ctx.fillRect(snail.x + 12, snail.y + 16, 8, 5);
   if (Math.abs(snail.dir) > 0) {
-    ctx.fillStyle = "rgba(255,246,210,0.5)";
-    ctx.fillRect(snail.x - snail.dir * 22, snail.y + 14, 12, 3);
+    ctx.fillStyle = `rgba(255,246,210,${0.4 + snail.momentum * 1.2})`;
+    ctx.fillRect(snail.x - snail.dir * (22 + snail.momentum * 30), snail.y + 14, 12, 3);
+  }
+  if (critical || snail.momentum > 0.16) {
+    const pulse = (Math.sin(game.time * 0.25) + 1) * 0.5;
+    ctx.strokeStyle = `rgba(255,225,150,${0.35 + pulse * 0.45})`;
+    ctx.strokeRect(snail.x - 26, snail.y - 20, 52, 42);
   }
   ctx.fillStyle = "#fff";
   ctx.fillRect(snail.x - 16, snail.y + 9, 2, 5);
@@ -2909,6 +3185,42 @@ function drawParticles() {
   ctx.globalAlpha = 1;
 }
 
+function drawNeutralObjective() {
+  if (!neutralObjective.active) return;
+  const pulse = (Math.sin(game.time * 0.2) + 1) * 0.5;
+  const colors = {
+    nectar: ["#8dffe2", "#39cda9"],
+    shield: ["#9ceeff", "#4fb9ff"],
+    vision: ["#f7dcff", "#c389ff"]
+  };
+  const [c1, c2] = colors[neutralObjective.active];
+  ctx.fillStyle = `rgba(0,0,0,${0.35 + pulse * 0.2})`;
+  ctx.beginPath();
+  ctx.arc(neutralObjective.x, neutralObjective.y, neutralObjective.radius + 9, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = c1;
+  ctx.beginPath();
+  ctx.arc(neutralObjective.x, neutralObjective.y, 14 + pulse * 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = c2;
+  ctx.fillRect(neutralObjective.x - 4, neutralObjective.y - 4, 8, 8);
+}
+
+function drawCommandMarkers() {
+  for (const team of ["blue", "gold"]) {
+    const cmd = activeLocalCommand(team);
+    if (!cmd) continue;
+    const pulse = (Math.sin(game.time * 0.28) + 1) * 0.5;
+    ctx.strokeStyle = team === "blue" ? `rgba(121,220,255,${0.45 + pulse * 0.4})` : `rgba(255,230,122,${0.45 + pulse * 0.4})`;
+    ctx.strokeRect(cmd.x - 42, cmd.y - 12, 84, 18);
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(cmd.x - 40, cmd.y - 10, 80, 14);
+    ctx.fillStyle = team === "blue" ? "#bff1ff" : "#fff1b5";
+    ctx.font = "10px Courier New";
+    ctx.fillText(cmd.label, cmd.x - 36, cmd.y);
+  }
+}
+
 function drawWorld(camX = game.cameraX, camY = game.cameraY) {
   const shake = game.cameraPunch > 0 ? game.cameraPunch : 0;
   const shakeX = shake > 0 ? rand(-shake, shake) : 0;
@@ -2923,6 +3235,8 @@ function drawWorld(camX = game.cameraX, camY = game.cameraY) {
   drawGate(gates.gold);
   if (bushes.length) drawBushes();
   if (!modeRules().disableSnail) drawSnail();
+  drawNeutralObjective();
+  drawCommandMarkers();
   drawFlags();
   for (const u of units) u.draw();
   drawParticles();
@@ -2977,6 +3291,8 @@ function drawHUD() {
   const goldLastLife = goldQueen && goldQueen.queenLives <= 1 && !rules.disableMilitary;
   const snailThreatBlue = !rules.disableSnail && getSnailDangerForTeam("blue").severity === "critical";
   const snailThreatGold = !rules.disableSnail && getSnailDangerForTeam("gold").severity === "critical";
+  const blueCmd = localCommands.blue;
+  const goldCmd = localCommands.gold;
 
   ctx.fillStyle = "#000";
   ctx.fillRect(12, 12, 470, 110);
@@ -3007,19 +3323,19 @@ function drawHUD() {
   ctx.fillText("DIFF: " + currentDifficulty().name, 888, 32);
   ctx.fillText("AI LVL: " + currentDifficulty().level + "/10", 888, 52);
   if (game.splitScreen) {
-    ctx.fillText("P1 A/D/W/S  STRAT: V", 888, 70);
+    ctx.fillText("P1 A/D/W/S  E COMMAND  STRAT: V", 888, 70);
     ctx.fillText("P1 BERRY PICKUP:", 888, 88);
     drawKeyHint(1032, 75, "F", p1BerryReady);
     if (game.sameTeams) {
-      ctx.fillText("P2 ARROWS  BERRY:", 1062, 88);
+      ctx.fillText("P2 ARROWS  SHIFT CMD  BERRY:", 1040, 88);
       drawKeyHint(1170, 75, ".", p2BerryReady);
     } else {
-      ctx.fillText("P2 ARROWS + / STRAT", 1062, 88);
+      ctx.fillText("P2 ARROWS  SHIFT CMD  / STRAT", 992, 88);
     }
     ctx.fillText("SPLIT SCREEN: ON", 888, 104);
     ctx.fillText("WIN: " + (rules.economyOnly ? "ECONOMY ONLY" : "ALL CONDITIONS"), 888, 122);
   } else {
-    ctx.fillText("A/D MOVE  W TAP FLAP", 888, 70);
+    ctx.fillText("A/D MOVE  W TAP FLAP  E COMMAND", 888, 70);
     ctx.fillText("S DIVE  V CYCLE STRAT  F PICK", 888, 88);
     ctx.fillText("B AI DEBUG", 888, 104);
     ctx.fillText("WIN: " + (rules.economyOnly ? "ECONOMY ONLY" : "ALL CONDITIONS"), 888, 122);
@@ -3030,6 +3346,7 @@ function drawHUD() {
   if (blueNearBerry || goldNearBerry) warnings.push("FINAL BERRY PRESSURE");
   if (blueLastLife || goldLastLife) warnings.push("LAST LIFE");
   if (snailThreatBlue || snailThreatGold) warnings.push("SNAIL THREAT");
+  if (blueCmd.timer > 0 || goldCmd.timer > 0) warnings.push("TACTICAL COMMAND ACTIVE");
   if (rules.economyOnly) warnings.push("BLITZ RULES: ECONOMY ONLY • QUEENS INFINITE");
   if (warnings.length) {
     ctx.fillStyle = `rgba(0,0,0,${0.5 + pulse * 0.25})`;
@@ -3040,6 +3357,18 @@ function drawHUD() {
     ctx.font = "bold 18px Courier New";
     ctx.fillText(warnings.join("  |  "), 276, VIEW_H - 24);
   }
+
+  ctx.fillStyle = "#000";
+  ctx.fillRect(12, 126, 470, 26);
+  ctx.strokeStyle = "#7d7d7d";
+  ctx.strokeRect(12, 126, 470, 26);
+  ctx.fillStyle = "#d7f2ff";
+  ctx.font = "12px Courier New";
+  const blueCmdTxt = blueCmd.timer > 0 ? `${blueCmd.label} ${Math.ceil(blueCmd.timer / 60)}s` : `READY IN ${Math.ceil(blueCmd.cooldown / 60)}s`;
+  const goldCmdTxt = goldCmd.timer > 0 ? `${goldCmd.label} ${Math.ceil(goldCmd.timer / 60)}s` : `READY IN ${Math.ceil(goldCmd.cooldown / 60)}s`;
+  ctx.fillText(`BLUE CMD: ${blueCmdTxt}`, 18, 143);
+  ctx.fillStyle = "#ffeeb4";
+  ctx.fillText(`GOLD CMD: ${goldCmdTxt}`, 248, 143);
 }
 
 function drawAIDebug() {
