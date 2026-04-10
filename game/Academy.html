@@ -1,663 +1,905 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>QA Dashboard — Local (QA Only)</title>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>All Star Report (Retail + Referral Local Docks)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
-
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
-    --bg:#f6f7fb;
-    --card:#fff;
+    --bg:#f8fafc;
+    --card:#ffffff;
     --ink:#0f172a;
     --muted:#64748b;
-    --line:rgba(15,23,42,.12);
+    --line:#e2e8f0;
+    --soft:#f1f5f9;
     --accent:#2563eb;
     --good:#16a34a;
-    --bad:#dc2626;
     --warn:#f59e0b;
-    --shadow: 0 14px 30px rgba(2,6,23,.10);
+    --bad:#dc2626;
+    --shadow:0 16px 38px rgba(2,6,23,.08);
   }
   *{box-sizing:border-box}
-  html,body{height:100%}
   body{
     margin:0;
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
     background:var(--bg);
     color:var(--ink);
-    font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif
   }
-
-  header{
-    position:sticky;top:0;z-index:50;
-    background:#fff;border-bottom:1px solid var(--line);
-    padding:10px 12px;
+  .topbar{
+    position:sticky; top:0; z-index:50;
+    background:#fff;
+    border-bottom:1px solid var(--line);
+    padding:14px 16px;
   }
-  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  .row.tight{gap:8px}
-  .headerMain{
+  .title{ font-size:22px; font-weight:1000; }
+  .subtitle{ font-size:12px; color:var(--muted); font-weight:900; margin-top:3px; }
+  .wrap{
+    padding:14px;
     display:grid;
-    grid-template-columns:minmax(0,1fr) auto;
-    gap:12px;
-    align-items:start;
+    gap:14px;
   }
-  .headerLeft{min-width:0}
-  .headerRight{
-    min-width:260px;
-    display:flex;
-    flex-direction:column;
-    gap:8px;
-    align-items:flex-end;
-  }
-  @media (max-width:980px){
-    .headerMain{grid-template-columns:1fr}
-    .headerRight{align-items:flex-start;min-width:0}
-  }
-
-  h1{font-size:16px;margin:0;font-weight:950;letter-spacing:.2px}
-  label{font-size:12px;color:var(--muted);display:flex;gap:8px;align-items:center}
-  select,input,button{font-size:14px}
-  select,input{
-    border:1px solid var(--line);
-    border-radius:10px;
-    padding:7px 10px;
-    background:#fff;
-    outline:none;
-  }
-  input[type="text"]{min-width:220px}
-
-  .btn{
-    border:1px solid var(--line);
-    background:#fff;
-    padding:7px 10px;
-    border-radius:999px;
-    cursor:pointer;
-    font-weight:950;
-  }
-  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-  .btn.tiny{padding:6px 10px;font-size:12px}
-  .btn.active{
-    border-color: rgba(37,99,235,.55);
-    box-shadow: 0 0 0 3px rgba(37,99,235,.12);
-  }
-  .spacer{flex:1}
-  .wrap{padding:12px;max-width:1400px;margin:0 auto}
-
   .card{
     background:var(--card);
     border:1px solid var(--line);
-    border-radius:14px;
+    border-radius:18px;
     box-shadow:var(--shadow);
+    padding:14px;
   }
-  .notice{
-    border:1px dashed var(--line);
+  .row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .spacer{ flex:1; }
+  label{
+    display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+    font-size:12px; color:var(--muted); font-weight:900;
+  }
+  input,select,button{ font-size:14px; }
+  input,select{
+    border:1px solid var(--line);
     border-radius:12px;
-    padding:10px;
+    padding:8px 10px;
     background:#fff;
-    color:#334155;
-    font-size:12px;
+    color:var(--ink);
+    outline:none;
   }
-
-  .summaryBox{padding:12px}
-  .summaryHead{
-    display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;
-    margin-bottom:10px
-  }
-  .summaryHead .sub{font-size:12px;color:var(--muted);font-weight:800}
-  .summaryTblWrap{overflow:auto;border:1px solid var(--line);border-radius:12px}
-  .summaryTbl{border-collapse:separate;border-spacing:0;width:100%;min-width:860px;background:#fff}
-  .summaryTbl thead th{
-    background:#0f172a;color:#e5e7eb;
-    text-align:left;padding:10px;font-size:12px;white-space:nowrap;
-    position:sticky;top:0;z-index:1;
-  }
-  .summaryTbl tbody td{
-    border-bottom:1px solid var(--line);
-    padding:10px;font-size:13px;white-space:nowrap;
-    vertical-align:top;
-  }
-  .summaryTbl tbody tr:hover td{background:#f8fafc}
-
-  .pill{
-    display:inline-flex;align-items:center;gap:8px;
-    padding:6px 10px;border-radius:999px;border:1px solid var(--line);
-    background:#fff;font-size:12px;font-weight:900;color:#0f172a;
-  }
-  .pill.bad{border-color:rgba(220,38,38,.35);background:rgba(220,38,38,.08);color:#7f1d1d}
-  .pill.good{border-color:rgba(22,163,74,.35);background:rgba(22,163,74,.08);color:#065f46}
-  .pill.warn{border-color:rgba(245,158,11,.45);background:rgba(245,158,11,.10);color:#7c2d12}
-  .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
-
-  .stack{display:grid;gap:12px}
-
-  .compCategory{font-weight:950}
-  .diffGood{color:var(--good);font-weight:950}
-  .diffBad{color:var(--bad);font-weight:950}
-  .diffNeutral{color:#0f172a;font-weight:950}
-
-  .grid{
-    display:grid;
-    grid-template-columns: repeat(4, minmax(260px, 1fr));
-    gap:12px;
-    margin-top:12px;
-  }
-  @media (max-width:1200px){ .grid{grid-template-columns: repeat(3, minmax(260px, 1fr));} }
-  @media (max-width:950px){ .grid{grid-template-columns: repeat(2, minmax(260px, 1fr));} }
-  @media (max-width:620px){ .grid{grid-template-columns: 1fr;} }
-
-  .repCard{padding:12px;cursor:pointer;transition:transform .06s ease, box-shadow .12s ease}
-  .repCard:hover{transform:translateY(-1px);box-shadow:0 18px 40px rgba(2,6,23,.14)}
-  .repTop{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
-  .repName{font-weight:950;font-size:14px;line-height:1.15}
-  .repMeta{font-size:12px;color:var(--muted);margin-top:4px}
-  .sparkWrap{margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:8px;background:#fbfdff}
-  canvas.spark{width:100%;height:52px;display:block}
-  .repStats{margin-top:10px;display:grid;gap:6px}
-  .statLine{display:flex;justify-content:space-between;gap:10px;font-size:12px}
-  .statLine b{font-weight:950}
-  .trendUp{color:var(--good);font-weight:950}
-  .trendDn{color:var(--bad);font-weight:950}
-  .trendFlat{color:#0f172a;font-weight:950}
-  .miniRow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-  .mini{font-size:12px;font-weight:900;border:1px solid var(--line);border-radius:999px;padding:4px 8px;background:#fff}
-  .mini.bad{border-color:rgba(220,38,38,.35);background:rgba(220,38,38,.08);color:#7f1d1d}
-  .mini.good{border-color:rgba(22,163,74,.35);background:rgba(22,163,74,.08);color:#065f46}
-  .mini.warn{border-color:rgba(245,158,11,.45);background:rgba(245,158,11,.10);color:#7c2d12}
-
-  .coachFlag{
-    display:inline-flex;
-    align-items:center;
-    gap:6px;
-    font-size:12px;
-    font-weight:950;
-    padding:4px 8px;
+  button{
+    border:1px solid var(--line);
+    background:#fff;
+    color:var(--ink);
+    padding:8px 12px;
     border-radius:999px;
+    cursor:pointer;
+    font-weight:1000;
+  }
+  button.primary{
+    background:var(--accent);
+    color:#fff;
+    border-color:var(--accent);
+  }
+  button:hover{ filter:brightness(.98); }
+  details{
     border:1px solid var(--line);
+    border-radius:14px;
     background:#fff;
-  }
-  .coachFlag.good{
-    background:rgba(22,163,74,.08);
-    color:#166534;
-    border-color:rgba(22,163,74,.25);
-  }
-  .coachFlag.bad{
-    background:rgba(220,38,38,.08);
-    color:#991b1b;
-    border-color:rgba(220,38,38,.25);
-  }
-  .coachMark{font-size:14px;line-height:1}
-
-  .overlay{
-    position:fixed;inset:0;background:rgba(15,23,42,.55);
-    display:none;align-items:center;justify-content:center;padding:14px;z-index:9999
-  }
-  .overlay.show{display:flex}
-  .panel{
-    width:min(1100px, 96vw);
-    max-height:92vh;
-    background:#fff;border:1px solid rgba(226,232,240,.95);
-    border-radius:16px;
-    box-shadow:0 22px 60px rgba(2,6,23,.35);
-    overflow:hidden;
-    display:flex;flex-direction:column;
-  }
-  .panel.small{width:min(860px,96vw)}
-  .panel.medium{width:min(980px,96vw)}
-  .pHead{
-    padding:12px 14px;border-bottom:1px solid var(--line);
-    display:flex;gap:10px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;
-    background:linear-gradient(180deg, rgba(37,99,235,.08), rgba(37,99,235,0));
-  }
-  .pTitle{font-weight:950;margin:0;font-size:16px}
-  .pSub{margin-top:6px;color:#475569;font-weight:800;font-size:12px}
-  .pActions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:flex-end}
-  .pBody{padding:12px 14px;overflow:auto;min-height:0;display:grid;gap:12px}
-
-  .box{border:1px solid var(--line);border-radius:14px;background:#fff;padding:12px}
-  .boxHead{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;font-weight:950;margin-bottom:10px}
-  .chartWrap{height:260px;border:1px solid var(--line);border-radius:12px;padding:10px;background:#fbfdff}
-  .tblWrap{overflow:auto;border:1px solid var(--line);border-radius:14px}
-  table{border-collapse:separate;border-spacing:0;width:100%;min-width:980px;background:#fff}
-  thead th{
-    position:sticky;top:0;z-index:2;
-    background:#0f172a;color:#e5e7eb;
-    text-align:left;padding:10px;font-size:12px;white-space:nowrap
-  }
-  tbody td{border-bottom:1px solid var(--line);padding:8px 10px;font-size:13px;white-space:nowrap}
-  tbody tr:hover td{background:#f8fafc}
-
-  .coList{display:grid;gap:8px}
-  .coItem{
-    border:1px solid var(--line);
-    border-radius:12px;
-    background:#fbfdff;
     padding:10px 12px;
   }
-  .coHeadRow{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
-  .coHeadRow b{font-size:12px}
-  .coMeta{color:var(--muted);font-size:12px;font-weight:800;margin-top:2px}
-  .coDesc{
-    margin-top:8px;
-    white-space:pre-wrap;
-    font-size:12.5px;
-    line-height:1.35;
-    color:#0f172a;
-    border-top:1px dashed var(--line);
-    padding-top:8px;
+  summary{ cursor:pointer; font-weight:1000; }
+  .mono{
+    font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
   }
-
-  .reviewerList{
-    display:flex;
-    flex-wrap:wrap;
-    gap:8px;
+  .hint{
+    color:var(--muted);
+    font-size:12px;
+    font-weight:900;
   }
-  .reviewerChip{
-    display:inline-flex;
-    align-items:center;
-    gap:8px;
+  .heroGrid{
+    display:grid;
+    grid-template-columns: 1.2fr .8fr;
+    gap:14px;
+  }
+  @media (max-width:980px){
+    .heroGrid{ grid-template-columns:1fr; }
+  }
+  .statGrid{
+    display:grid;
+    grid-template-columns:repeat(4,minmax(140px,1fr));
+    gap:10px;
+  }
+  @media (max-width:900px){
+    .statGrid{ grid-template-columns:repeat(2,minmax(140px,1fr)); }
+  }
+  .stat{
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:10px;
+    background:linear-gradient(180deg, rgba(37,99,235,.06), rgba(37,99,235,0));
+  }
+  .stat .k{
+    font-size:12px; color:var(--muted); font-weight:900; margin-bottom:6px;
+  }
+  .stat .v{
+    font-size:20px; font-weight:1000;
+  }
+  .chipRow{
+    display:flex; gap:8px; flex-wrap:wrap; align-items:center;
+  }
+  .pill{
+    display:inline-flex; align-items:center; gap:6px;
     padding:6px 10px;
     border-radius:999px;
     border:1px solid var(--line);
-    background:#fff;
+    background:var(--soft);
     font-size:12px;
-    font-weight:900;
+    font-weight:1000;
   }
-  .reviewerChip button{
-    border:none;
-    background:transparent;
-    color:var(--bad);
-    font-weight:950;
-    cursor:pointer;
-    padding:0 2px;
+  .pill.good{ background:rgba(22,163,74,.1); color:#166534; border-color:rgba(22,163,74,.25); }
+  .pill.warn{ background:rgba(245,158,11,.12); color:#92400e; border-color:rgba(245,158,11,.28); }
+  .overallBanner{
+    border:1px solid rgba(245,158,11,.35);
+    background:linear-gradient(180deg, rgba(245,158,11,.15), rgba(245,158,11,.04));
+    border-radius:18px;
+    padding:14px;
   }
-
-  .optionsGrid{
-    display:grid;
-    grid-template-columns:repeat(2,minmax(260px,1fr));
-    gap:12px;
+  .overallBanner h2{
+    margin:0 0 6px 0;
+    font-size:20px;
   }
-  @media (max-width:760px){ .optionsGrid{grid-template-columns:1fr} }
-
-  .unreadBadge{
-    border-color:rgba(220,38,38,.35)!important;
-    background:rgba(220,38,38,.08)!important;
-    color:#7f1d1d!important;
+  .overallBanner .big{
+    font-size:28px; font-weight:1000;
   }
-
-  .inlineAction{
-    margin-left:8px;
-    vertical-align:middle;
+  .medal{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width:28px;
+    height:28px;
+    border-radius:999px;
+    font-size:16px;
+    font-weight:1000;
+    border:1px solid transparent;
   }
-  .unreadRepList{
+  .medal.gold{ background:rgba(245,158,11,.16); color:#92400e; border-color:rgba(245,158,11,.35); }
+  .medal.silver{ background:rgba(148,163,184,.16); color:#475569; border-color:rgba(148,163,184,.35); }
+  .medal.bronze{ background:rgba(180,83,9,.14); color:#92400e; border-color:rgba(180,83,9,.35); }
+  .topThree{
     display:grid;
     gap:10px;
   }
-  .unreadRepItem{
+  .winner{
     border:1px solid var(--line);
-    border-radius:12px;
-    background:#fbfdff;
-    overflow:hidden;
-  }
-  .unreadRepBtn{
-    width:100%;
-    border:0;
-    background:transparent;
+    border-radius:14px;
+    background:#fff;
     padding:10px 12px;
     display:flex;
     align-items:center;
+    gap:10px;
     justify-content:space-between;
-    gap:12px;
+    flex-wrap:wrap;
+  }
+  .winnerMain{
+    display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+  }
+  .tabs{
+    display:flex; gap:8px; flex-wrap:wrap;
+  }
+  .tab{
+    border:1px solid var(--line);
+    background:#fff;
+    color:var(--ink);
+    border-radius:999px;
+    padding:8px 14px;
+    font-size:13px;
+    font-weight:1000;
     cursor:pointer;
-    font-weight:900;
-    text-align:left;
   }
-  .unreadRepBtn:hover{background:#f1f5f9}
-  .unreadRepMeta{
-    color:var(--muted);
-    font-size:12px;
-    font-weight:800;
+  .tab.active{
+    background:rgba(37,99,235,.10);
+    border-color:rgba(37,99,235,.35);
+    box-shadow:0 0 0 2px rgba(37,99,235,.10);
   }
-  .unreadConvWrap{
-    border-top:1px dashed var(--line);
-    padding:10px 12px;
+  .tabPanel{ display:none; }
+  .tabPanel.active{ display:block; }
+
+  .teamCard{
+    border:1px solid var(--line);
+    border-radius:18px;
+    overflow:hidden;
     background:#fff;
   }
-  .unreadConvList{
-    margin:0;
-    padding-left:18px;
+  .teamHead{
+    padding:14px;
+    display:flex;
+    gap:10px;
+    justify-content:space-between;
+    align-items:center;
+    flex-wrap:wrap;
+    background:linear-gradient(180deg, rgba(37,99,235,.08), rgba(37,99,235,0));
+    cursor:pointer;
+  }
+  .teamHead:hover{ filter:brightness(.985); }
+  .teamTitle{
+    display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+  }
+  .teamName{
+    font-size:18px; font-weight:1000;
+  }
+  .teamBody{
+    display:none;
+    padding:14px;
+    border-top:1px solid var(--line);
+    background:#fbfdff;
+  }
+  .teamCard.open .teamBody{ display:block; }
+  .teamMiniStats{
     display:grid;
-    gap:6px;
+    grid-template-columns:repeat(5,minmax(120px,1fr));
+    gap:10px;
+    margin-bottom:12px;
   }
-  .unreadConvList li{
+  @media (max-width:920px){
+    .teamMiniStats{ grid-template-columns:repeat(2,minmax(120px,1fr)); }
+  }
+  .miniStat{
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:10px;
+    background:#fff;
+  }
+  .miniStat .k{
+    font-size:11px; font-weight:900; color:var(--muted); margin-bottom:4px;
+  }
+  .miniStat .v{
+    font-size:18px; font-weight:1000;
+  }
+  .subTitle{
+    font-size:14px;
+    font-weight:1000;
+    margin:2px 0 10px 0;
+  }
+  .tblWrap{
+    overflow:auto;
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:#fff;
+  }
+  table{
+    width:100%;
+    min-width:980px;
+    border-collapse:separate;
+    border-spacing:0;
+  }
+  th{
+    position:sticky; top:0;
+    background:#0f172a;
+    color:#e5e7eb;
+    text-align:left;
+    padding:10px;
     font-size:12px;
+    white-space:nowrap;
   }
+  td{
+    padding:8px 10px;
+    border-bottom:1px solid var(--line);
+    white-space:nowrap;
+    font-size:13px;
+    vertical-align:top;
+  }
+  tr:hover td{ background:#f8fafc; }
+  .right{ text-align:right; }
+  .goodTxt{ color:#166534; font-weight:1000; }
+  .warnTxt{ color:#92400e; font-weight:1000; }
+  .mutedTxt{ color:var(--muted); font-weight:900; }
+  .sectionHeader{
+    display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;
+    margin-bottom:10px;
+  }
+
+  .uploadZone{
+    border:1px dashed var(--line);
+    border-radius:14px;
+    padding:12px;
+    background:#fff;
+  }
+  .sheetBtnRow{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-top:10px;
+  }
+  .sheetBtn{
+    border:1px solid var(--line);
+    background:#fff;
+    color:var(--ink);
+    border-radius:999px;
+    padding:8px 12px;
+    cursor:pointer;
+    font-weight:1000;
+  }
+  .sheetBtn.active{
+    background:rgba(22,163,74,.10);
+    border-color:rgba(22,163,74,.35);
+    box-shadow:0 0 0 2px rgba(22,163,74,.10);
+  }
+
 </style>
 </head>
 <body>
-
-<header>
-  <div class="headerMain">
-    <div class="headerLeft">
-      <div class="row">
-        <h1>QA Dashboard (Local)</h1>
-
-        <label>Team / Coach
-          <select id="teamSel" style="min-width:220px"></select>
-        </label>
-
-        <label>Timeframe
-          <select id="tfSel" style="min-width:170px">
-            <option value="all" selected>All</option>
-            <option value="last7">Last 7 days</option>
-            <option value="last30">Last 30 days</option>
-            <option value="last90">Last 90 days</option>
-            <option value="custom">Custom…</option>
-          </select>
-        </label>
-        <label>Date basis
-          <select id="dateModeSel" style="min-width:180px">
-            <option value="interaction" selected>Interaction Date</option>
-            <option value="assigned">Assigned Date</option>
-          </select>
-        </label>
-
-        <label class="pill" title="Exclude evaluations with Score % = 0 from averages/charts">
-          <input id="excludeZero" type="checkbox"/>
-          Exclude zeros
-        </label>
-
-        <label>Representative search
-          <input id="searchInp" type="text" placeholder="rep name…"/>
-        </label>
-
-        <button class="btn" id="reviewersBtn">Reviewers (<span id="reviewersBtnCount">0</span>)</button>
-        <button class="btn" id="optionsBtn">Additional Options</button>
-      </div>
-
-      <div class="row tight" style="margin-top:8px">
-        <span class="pill mono" id="scopePill">—</span>
-        <span class="pill mono" id="qaReviewCountPill">QA reviewers: —</span>
-      </div>
-    </div>
-
-    <div class="headerRight">
-      <span class="pill mono" id="sortPill">Sort: Most evals</span>
-      <div class="row tight" id="sortWrap">
-        <button class="btn tiny sortBtn active" data-sort="count" title="Most evaluations first">Most evals</button>
-        <button class="btn tiny sortBtn" data-sort="avg" title="Highest to lowest average score">Avg score</button>
-        <button class="btn tiny sortBtn" data-sort="zeros" title="Most 0s first">Most 0s</button>
-        <button class="btn tiny sortBtn" data-sort="trend" title="Most negative to most positive trend">Trend</button>
-        <button class="btn tiny sortBtn" data-sort="coachings" title="Least to most Call Quality coachings (in timeframe)">Coachings</button>
-        <button class="btn tiny sortBtn" data-sort="coachingsWeighted" title="Least to most coachings, weighted down when score is lower">Weighted coachings</button>
-        <button class="btn tiny sortBtn" data-sort="unreviewed" title="Most unreviewed monitors first">Unreviewed</button>
-      </div>
-    </div>
+  <div class="topbar">
+    <div class="title">All Star Report — Retail + Referral Local Docks</div>
+    <div class="subtitle">Attendance counts only toward individual rep standings, not team overall rankings</div>
   </div>
-</header>
 
-<div class="wrap">
-  <div class="stack">
-    <div class="card summaryBox">
-      <div class="summaryHead">
-        <div>
-          <div style="font-weight:950">Overall Scores</div>
-          <div class="sub" id="summarySub">—</div>
+  <div class="wrap">
+    <div class="card">
+      <div class="row">
+        <label>Start
+          <input id="startDate" type="date">
+        </label>
+        <label>End
+          <input id="endDate" type="date">
+        </label>
+        <button class="primary" id="refreshBtn">Refresh</button>
+        <span class="spacer"></span>
+        <span class="mono hint" id="scopeHint">—</span>
+      </div>
+
+      <details style="margin-top:10px">
+        <summary>Data docks (localStorage)</summary>
+        <div class="row" style="margin-top:10px">
+          <label>Retail dock
+            <select id="retailDockSel" style="min-width:320px"></select>
+          </label>
+          <label>Referral dock
+            <select id="referralDockSel" style="min-width:320px"></select>
+          </label>
+          <label>QA dock
+            <select id="qaDockSel" style="min-width:320px"></select>
+          </label>
+          <label>Checklist dock
+            <select id="checkDockSel" style="min-width:320px"></select>
+          </label>
+          <button id="loadDocksBtn">Load docks</button>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <span class="mono hint" id="dockHint">—</span>
+        </div>
+      </details>
+      <div class="uploadZone" style="margin-top:12px">
+        <div class="sectionHeader">
+          <div class="subTitle">Compliment Calls Upload (Optional)</div>
+          <div class="chipRow">
+            <span class="pill">Works for Retail and Referral</span>
+            <span class="pill warn">Each in-range compliment subtracts 1 from total rank score</span>
+          </div>
         </div>
         <div class="row">
-          <span class="pill mono" id="teamTrendPill">Trend: —</span>
+          <input id="complimentFile" type="file" accept=".xlsx,.xls,.xlsm,.csv" />
+          <span class="mono hint" id="complimentFileHint">No compliment file loaded.</span>
         </div>
-      </div>
-
-      <div class="summaryTblWrap">
-        <table class="summaryTbl">
-          <thead>
-            <tr>
-              <th>Metric</th>
-              <th>Value</th>
-              <th>Count</th>
-              <th>Notes</th>
-            </tr>
-          </thead>
-          <tbody id="summaryTbody"></tbody>
-        </table>
+        <div class="sheetBtnRow" id="complimentSheetBtns"></div>
+        <div class="row" style="margin-top:10px">
+          <span class="mono hint" id="complimentHint">Expected headers: CSR/SSR Name, Director, CSR Team/Coach, Date of Call, Referral/Claim/WO/Chat Number, Taken By, Compliment, Date Letter Completed, Coord Initial</span>
+        </div>
       </div>
     </div>
 
-    <div class="card summaryBox">
-      <div class="summaryHead">
-        <div>
-          <div style="font-weight:950">Comparisons</div>
-          <div class="sub">Coach monitors on the left, difference/category in the middle, QA reviewer monitors on the right.</div>
+    <div class="heroGrid">
+      <div class="card">
+        <div class="sectionHeader">
+          <div class="subTitle">Top Overall Team (Current Tab)</div>
+        </div>
+        <div id="overallWinner" class="overallBanner">
+          <div class="mutedTxt">No data yet.</div>
         </div>
       </div>
 
-      <div class="summaryTblWrap">
-        <table class="summaryTbl">
-          <thead>
-            <tr>
-              <th>Coach</th>
-              <th>Difference / Category</th>
-              <th>QA</th>
-            </tr>
-          </thead>
-          <tbody id="compareTbody"></tbody>
-        </table>
+      <div class="card">
+        <div class="sectionHeader">
+          <div class="subTitle">Summary</div>
+        </div>
+        <div class="statGrid">
+          <div class="stat">
+            <div class="k">Retail Teams</div>
+            <div class="v" id="sumRetail">—</div>
+          </div>
+          <div class="stat">
+            <div class="k">Referral Teams</div>
+            <div class="v" id="sumReferral">—</div>
+          </div>
+          <div class="stat">
+            <div class="k">Retail Attendance Hits</div>
+            <div class="v" id="sumRetailAttendance">—</div>
+          </div>
+          <div class="stat">
+            <div class="k">Referral Attendance Hits</div>
+            <div class="v" id="sumReferralAttendance">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sectionHeader">
+        <div class="subTitle">Team Sections</div>
+        <div class="tabs">
+          <button class="tab active" data-tab="retail">Retail Teams</button>
+          <button class="tab" data-tab="referral">Referral Teams</button>
+        </div>
+      </div>
+
+      <div class="tabPanel active" id="panel-retail">
+        <div class="sectionHeader">
+          <div class="subTitle">Retail Team Rankings</div>
+          <div class="chipRow">
+            <span class="pill">Retail overall = Consumer + Wipers + CQ ranks − compliment calls</span>
+            <span class="pill warn">Attendance displayed, not used in team score</span>
+          </div>
+        </div>
+        <div class="tblWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Overall</th>
+                <th>Team</th>
+                <th class="right">Consumer Rank</th>
+                <th class="right">Wiper Rank</th>
+                <th class="right">CQ Rank</th>
+                <th class="right">Rank Total</th>
+                <th class="right">Compliments</th>
+                <th class="right">Overall Score</th>
+                <th class="right">Consumer Rate</th>
+                <th class="right">Wiper Rate</th>
+                <th class="right">CQ Avg</th>
+                <th class="right">Attendance Hits</th>
+                <th class="right">Active Reps</th>
+              </tr>
+            </thead>
+            <tbody id="retailRankBody"></tbody>
+          </table>
+        </div>
+        <div id="retailCards" style="margin-top:14px; display:grid; gap:14px;"></div>
+      </div>
+
+      <div class="tabPanel" id="panel-referral">
+        <div class="sectionHeader">
+          <div class="subTitle">Referral Team Rankings</div>
+          <div class="chipRow">
+            <span class="pill">Referral overall = Wipers + CQ + ITAC ranks − compliment calls</span>
+            <span class="pill warn">Attendance displayed, not used in team score</span>
+          </div>
+        </div>
+        <div class="tblWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Overall</th>
+                <th>Team</th>
+                <th class="right">Wiper Rank</th>
+                <th class="right">CQ Rank</th>
+                <th class="right">ITAC Rank</th>
+                <th class="right">Rank Total</th>
+                <th class="right">Compliments</th>
+                <th class="right">Overall Score</th>
+                <th class="right">Wiper Rate</th>
+                <th class="right">CQ Avg</th>
+                <th class="right">ITAC %</th>
+                <th class="right">Attendance Hits</th>
+                <th class="right">Active Reps</th>
+              </tr>
+            </thead>
+            <tbody id="referralRankBody"></tbody>
+          </table>
+        </div>
+        <div id="referralCards" style="margin-top:14px; display:grid; gap:14px;"></div>
       </div>
     </div>
   </div>
-
-  <div id="cards" class="grid"></div>
-  <div id="empty" class="notice" style="display:none;margin-top:12px"></div>
-</div>
-
-<div id="overlay" class="overlay" aria-hidden="true">
-  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="mTitle">
-    <div class="pHead">
-      <div>
-        <div id="mTitle" class="pTitle">Rep — QA</div>
-        <div id="mSub" class="pSub">—</div>
-      </div>
-      <div class="pActions">
-        <button class="btn" id="mClose">Close ✕</button>
-      </div>
-    </div>
-    <div id="mBody" class="pBody"></div>
-  </div>
-</div>
-
-<div id="reviewerOverlay" class="overlay" aria-hidden="true">
-  <div class="panel small" role="dialog" aria-modal="true" aria-labelledby="rTitle">
-    <div class="pHead">
-      <div>
-        <div id="rTitle" class="pTitle">QA Reviewers Included</div>
-        <div id="rSub" class="pSub">—</div>
-      </div>
-      <div class="pActions">
-        <button class="btn tiny" id="resetReviewersBtn">Reset reviewers</button>
-        <button class="btn" id="reviewerClose">Close ✕</button>
-      </div>
-    </div>
-    <div class="pBody">
-      <div class="box">
-        <div class="boxHead">
-          <span>Included reviewers</span>
-          <span class="pill mono" id="reviewerPopupCount">—</span>
-        </div>
-        <div id="reviewerList" class="reviewerList"></div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div id="optionsOverlay" class="overlay" aria-hidden="true">
-  <div class="panel medium" role="dialog" aria-modal="true" aria-labelledby="oTitle">
-    <div class="pHead">
-      <div>
-        <div id="oTitle" class="pTitle">Additional Options</div>
-        <div class="pSub">Load docks, custom date range, and refresh tools.</div>
-      </div>
-      <div class="pActions">
-        <button class="btn" id="optionsClose">Close ✕</button>
-      </div>
-    </div>
-    <div class="pBody">
-      <div class="optionsGrid">
-        <div class="box">
-          <div class="boxHead">
-            <span>QA Dock</span>
-          </div>
-          <div class="row">
-            <label style="width:100%">QA dock key
-              <select id="qaKeySel" style="min-width:100%;width:100%"></select>
-            </label>
-          </div>
-          <div class="row" style="margin-top:10px">
-            <button class="btn primary" id="loadBtn">Load QA</button>
-          </div>
-        </div>
-
-        <div class="box">
-          <div class="boxHead">
-            <span>Documented Coachings</span>
-          </div>
-          <div class="row">
-            <label style="width:100%">Doc coaching key
-              <select id="coKeySel" style="min-width:100%;width:100%"></select>
-            </label>
-          </div>
-          <div class="row" style="margin-top:10px">
-            <button class="btn" id="reloadCoBtn">Reload coachings</button>
-          </div>
-        </div>
-
-        <div class="box">
-          <div class="boxHead">
-            <span>Custom Timeframe</span>
-          </div>
-          <div id="customRange" class="row">
-            <label>
-              <span class="mono">From</span>
-              <input id="fromInp" type="date"/>
-            </label>
-            <label>
-              <span class="mono">To</span>
-              <input id="toInp" type="date"/>
-            </label>
-          </div>
-          <div class="notice" style="margin-top:10px">
-            These dates are only used when Timeframe is set to Custom.
-          </div>
-        </div>
-
-        <div class="box">
-          <div class="boxHead">
-            <span>Status / Actions</span>
-          </div>
-          <div class="row tight">
-            <span class="pill mono" id="statusPill">—</span>
-            <span class="pill mono" id="coStatusPill" title="Only Call Quality coachings are used in counts & details.">Coachings: —</span>
-          </div>
-          <div class="row" style="margin-top:10px">
-            <button class="btn" id="refreshBtn">Refresh</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div id="unreadOverlay" class="overlay" aria-hidden="true">
-  <div class="panel small" role="dialog" aria-modal="true" aria-labelledby="uTitle">
-    <div class="pHead">
-      <div>
-        <div id="uTitle" class="pTitle">Unreviewed Monitors by Representative</div>
-        <div id="uSub" class="pSub">—</div>
-      </div>
-      <div class="pActions">
-        <button class="btn" id="unreadClose">Close ✕</button>
-      </div>
-    </div>
-    <div class="pBody">
-      <div class="box">
-        <div class="boxHead">
-          <span>Representatives ranked by unreviewed monitors</span>
-          <span class="pill mono" id="unreadTotalPill">—</span>
-        </div>
-        <div id="unreadRepList" class="unreadRepList"></div>
-      </div>
-    </div>
-  </div>
-</div>
 
 <script>
-const SETTINGS_KEY = 'qaOnlyDash.settings.v6';
+let APP_NS = 'myone2';
+(function autodetectNs(){
+  const counts = new Map();
+  for(let i=0;i<localStorage.length;i++){
+    const k = localStorage.key(i);
+    if(!k) continue;
+    const m = k.match(/^(.*)\.dock\.(retail|referral|qa|coaching|checklist)$/i);
+    if(!m) continue;
+    const ns = m[1];
+    counts.set(ns, (counts.get(ns)||0)+1);
+  }
+  let best=null, bestN=0;
+  for(const [ns,n] of counts.entries()){
+    if(n>bestN){ best=ns; bestN=n; }
+  }
+  if(best) APP_NS = best;
+})();
 
-function loadSettings(){
-  try{ return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {}; }catch{ return {}; }
-}
-function saveSettings(partial){
-  const cur = loadSettings();
-  const next = {...cur, ...partial};
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
-}
+const PREF_KEY = `${APP_NS}.allstarreport.v2.prefs`;
+const MS_PER_DAY = 86400000;
 
+const els = {
+  startDate: document.getElementById('startDate'),
+  endDate: document.getElementById('endDate'),
+  refreshBtn: document.getElementById('refreshBtn'),
+  retailDockSel: document.getElementById('retailDockSel'),
+  referralDockSel: document.getElementById('referralDockSel'),
+  qaDockSel: document.getElementById('qaDockSel'),
+  checkDockSel: document.getElementById('checkDockSel'),
+  loadDocksBtn: document.getElementById('loadDocksBtn'),
+  complimentFile: document.getElementById('complimentFile'),
+  complimentFileHint: document.getElementById('complimentFileHint'),
+  complimentSheetBtns: document.getElementById('complimentSheetBtns'),
+  complimentHint: document.getElementById('complimentHint'),
+  dockHint: document.getElementById('dockHint'),
+  scopeHint: document.getElementById('scopeHint'),
+  overallWinner: document.getElementById('overallWinner'),
+  sumRetail: document.getElementById('sumRetail'),
+  sumReferral: document.getElementById('sumReferral'),
+  sumRetailAttendance: document.getElementById('sumRetailAttendance'),
+  sumReferralAttendance: document.getElementById('sumReferralAttendance'),
+  retailRankBody: document.getElementById('retailRankBody'),
+  referralRankBody: document.getElementById('referralRankBody'),
+  retailCards: document.getElementById('retailCards'),
+  referralCards: document.getElementById('referralCards')
+};
+
+let activeTab = 'retail';
+
+let retailDockKey = '';
+let referralDockKey = '';
+let qaDockKey = '';
+let checkDockKey = '';
+
+let retailRows = [];
+let referralRows = [];
+let qaRows = [];
+let checklistRows = [];
+let complimentWorkbook = null;
+let complimentSheetName = '';
+let complimentRows = [];
+
+let retailFieldMap = null;
+let referralFieldMap = null;
+
+function esc(s){
+  return String(s ?? '')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+function clamp01(x){ return Math.max(0, Math.min(1, x)); }
+function mean(nums){
+  const a = (nums||[]).filter(n=>Number.isFinite(n));
+  if(!a.length) return NaN;
+  return a.reduce((s,n)=>s+n,0) / a.length;
+}
+function toNumRaw(v){
+  if(v===undefined || v===null || v==='') return NaN;
+  const n = parseFloat(String(v).replace(/,/g,'').replace(/%/g,'').trim());
+  return Number.isFinite(n) ? n : NaN;
+}
 function normHdr(s){
-  return String(s ?? "")
+  return String(s ?? '')
     .trim().toLowerCase()
-    .replace(/\s+/g," ")
-    .replace(/[^a-z0-9% \-_]/g,"")
-    .replace(/[-_]/g,"")
-    .replace(/\s/g,"");
+    .replace(/\s+/g,' ')
+    .replace(/[^a-z0-9% \\-_]/g,'')
+    .replace(/[-_]/g,'')
+    .replace(/\s/g,'');
+}
+function parseDate(val){
+  if(val===null || val===undefined || val==='') return null;
+  if(val instanceof Date) return isNaN(val) ? null : val;
+
+  const asLocalDateOnly = (d) => {
+    if(!(d instanceof Date) || isNaN(d)) return null;
+    return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  };
+
+  if(typeof val === 'number' && Number.isFinite(val)){
+    if(val > 1e11){
+      const d = new Date(val);
+      return isNaN(d) ? null : d;
+    }
+    if(val > 0 && val < 100000){
+      const base = Date.UTC(1899,11,30);
+      const tmp = new Date(base + (val * MS_PER_DAY));
+      return asLocalDateOnly(tmp);
+    }
+    return null;
+  }
+
+  const s = String(val).trim();
+  if(!s) return null;
+  if(/^[+-]?\d+(\.\d+)?$/.test(s)) return parseDate(parseFloat(s));
+
+  const isoDateOnly = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(isoDateOnly){
+    return new Date(+isoDateOnly[1], +isoDateOnly[2]-1, +isoDateOnly[3]);
+  }
+
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:[,\s]+(\d{1,2})(?::(\d{2}))(?::(\d{2}))?\s*(AM|PM|am|pm)?)?$/);
+  if(m){
+    const mo = parseInt(m[1],10), da = parseInt(m[2],10);
+    let yr = parseInt(m[3],10);
+    if(m[3].length===2) yr = (yr <= 69 ? 2000 + yr : 1900 + yr);
+    let hh = m[4] ? parseInt(m[4],10) : 0;
+    const mi = m[5] ? parseInt(m[5],10) : 0;
+    const ss = m[6] ? parseInt(m[6],10) : 0;
+    const ap = m[7] ? m[7].toUpperCase() : '';
+    if(ap==='PM' && hh<12) hh += 12;
+    if(ap==='AM' && hh===12) hh = 0;
+    return new Date(yr, mo-1, da, hh, mi, ss);
+  }
+
+  if(/^\d{4}-\d{2}-\d{2}[T\s]/.test(s) && /([zZ]|[+\-]\d{2}:?\d{2})$/.test(s)){
+    const tmp = new Date(s);
+    return asLocalDateOnly(tmp) || (isNaN(tmp) ? null : tmp);
+  }
+
+  const d = new Date(s);
+  return isNaN(d) ? null : d;
+}
+function ymd(d){
+  if(!(d instanceof Date) || isNaN(d)) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function mmddyy(d){
+  if(!(d instanceof Date) || isNaN(d)) return '';
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  const y = d.getFullYear();
+  return `${m}/${day}/${y}`;
+}
+function personKey(name){
+  let s = String(name||'').trim().toLowerCase();
+  s = s.replace(/\./g,'').replace(/\s+/g,' ');
+  if(!s) return '';
+  if(s.includes(',')){
+    const parts = s.split(',');
+    const last = (parts[0]||'').trim();
+    const rest = (parts[1]||'').trim();
+    const first = (rest.split(/\s+/)[0]||'').trim();
+    if(first && last) s = `${first} ${last}`;
+    else s = s.replace(/,/g,' ');
+  }
+  const toks = s.split(/\s+/).filter(Boolean);
+  if(toks.length >= 2) return `${toks[0]} ${toks[toks.length-1]}`;
+  return toks[0] || '';
+}
+function displayNameFromRaw(name){
+  let s = String(name||'').trim().replace(/\s+/g,' ');
+  if(!s) return '';
+  if(s.includes(',')){
+    const parts = s.split(',');
+    const last = (parts[0]||'').trim();
+    const rest = (parts[1]||'').trim();
+    const first = (rest.split(/\s+/)[0]||'').trim();
+    if(first && last) s = `${first} ${last}`;
+    else s = s.replace(/,/g,' ');
+  }
+  s = s.replace(/[^\w\s'-]/g,' ').replace(/\s+/g,' ').trim();
+  const toks = s.split(/\s+/).filter(Boolean);
+  if(!toks.length) return '';
+  if(toks.length===1) return toks[0];
+  return `${toks[0]} ${toks[toks.length-1]}`;
+}
+function fmtPct1(frac){
+  return Number.isFinite(frac) ? `${(frac*100).toFixed(1)}%` : '—';
+}
+function normalizePct(v){
+  if(v===null || v===undefined || v==='') return NaN;
+  if(typeof v === 'number' && Number.isFinite(v)){
+    if(v <= 1) return clamp01(v);
+    return clamp01(v/100);
+  }
+  const s = String(v).trim();
+  if(!s) return NaN;
+  const hasPct = s.includes('%');
+  const n = toNumRaw(s);
+  if(!Number.isFinite(n)) return NaN;
+  if(hasPct) return clamp01(n/100);
+  if(n <= 1) return clamp01(n);
+  return clamp01(n/100);
+}
+function medalHtml(i){
+  if(i===0) return `<span class="medal gold">🥇</span>`;
+  if(i===1) return `<span class="medal silver">🥈</span>`;
+  if(i===2) return `<span class="medal bronze">🥉</span>`;
+  return `<span class="medal" style="background:#f8fafc;border-color:#e2e8f0;color:#64748b">${i+1}</span>`;
+}
+function rankMapDescending(items, key){
+  const arr = items.slice().sort((a,b)=>{
+    const av = a[key], bv = b[key];
+    const aBad = !Number.isFinite(av), bBad = !Number.isFinite(bv);
+    if(aBad && bBad) return String(a.name||'').localeCompare(String(b.name||''));
+    if(aBad) return 1;
+    if(bBad) return -1;
+    if(bv !== av) return bv - av;
+    return String(a.name||'').localeCompare(String(b.name||''));
+  });
+  const out = new Map();
+  let prev = null, rank = 0;
+  for(let i=0;i<arr.length;i++){
+    const v = arr[i][key];
+    if(prev === null || v !== prev) rank = i + 1;
+    out.set(arr[i].name, rank);
+    prev = v;
+  }
+  return out;
+}
+function rankMapAscending(items, key){
+  const arr = items.slice().sort((a,b)=>{
+    const av = a[key], bv = b[key];
+    const aBad = !Number.isFinite(av), bBad = !Number.isFinite(bv);
+    if(aBad && bBad) return String(a.name||'').localeCompare(String(b.name||''));
+    if(aBad) return 1;
+    if(bBad) return -1;
+    if(av !== bv) return av - bv;
+    return String(a.name||'').localeCompare(String(b.name||''));
+  });
+  const out = new Map();
+  let prev = null, rank = 0;
+  for(let i=0;i<arr.length;i++){
+    const v = arr[i][key];
+    if(prev === null || v !== prev) rank = i + 1;
+    out.set(arr[i].name, rank);
+    prev = v;
+  }
+  return out;
+}
+function sumField(rows, field){
+  if(!field) return 0;
+  let s = 0;
+  for(const r of rows){
+    const n = toNumRaw(r[field]);
+    if(Number.isFinite(n)) s += n;
+  }
+  return s;
+}
+function pickField(allKeys, patterns){
+  for(const re of patterns){
+    const hit = allKeys.find(k => re.test(k));
+    if(hit) return hit;
+  }
+  return null;
+}
+function pickFieldFromRow(row, candidates){
+  const map = {};
+  for(const k of Object.keys(row||{})) map[normHdr(k)] = k;
+  for(const cand of candidates){
+    const real = map[cand];
+    if(real !== undefined) return row[real];
+  }
+  return undefined;
 }
 
+function findFieldName(keys, patterns){
+  const normalized = new Map(keys.map(k => [normHdr(k), k]));
+  for(const pat of patterns){
+    for(const [nk, real] of normalized.entries()){
+      if(pat.test(nk)) return real;
+    }
+  }
+  return null;
+}
+function rowsFromSheet(ws){
+  if(!ws) return [];
+  const rows = XLSX.utils.sheet_to_json(ws, { defval:'', raw:false });
+  return Array.isArray(rows) ? rows : [];
+}
+function looksLikeComplimentRow(obj){
+  if(!obj || typeof obj !== 'object') return false;
+  const nk = Object.keys(obj).map(normHdr);
+  const hasName = nk.includes('csrssrname') || nk.includes('csrname') || nk.includes('ssrname');
+  const hasDate = nk.includes('dateofcall') || nk.includes('datecall') || nk.includes('calldate');
+  return hasName && hasDate;
+}
+function canonicalizeComplimentRows(rows){
+  if(!Array.isArray(rows) || !rows.length) return [];
+  const keys = Array.from(new Set(rows.flatMap(r => Object.keys(r||{}))));
+  const nameField = findFieldName(keys, [/^csrssrname$/, /^csrname$/, /^ssrname$/, /^csrssr$/]);
+  const teamField = findFieldName(keys, [/^csrteamcoach$/, /^teamcoach$/, /^csrteam$/, /^coach$/, /^team$/]);
+  const dateField = findFieldName(keys, [/^dateofcall$/, /^calldate$/, /^datecall$/]);
+  const directorField = findFieldName(keys, [/^director$/]);
+  const refNumField = findFieldName(keys, [/^referralclaimwochatnumber$/, /^referralclaimwochat#$/, /^referralclaimwochat$/, /^referralnumber$/, /^claimnumber$/, /^wonumber$/, /^chatnumber$/]);
+  const takenByField = findFieldName(keys, [/^takenby$/]);
+  const complimentField = findFieldName(keys, [/^compliment$/]);
+  const letterDateField = findFieldName(keys, [/^datelettercompleted$/]);
+  const coordField = findFieldName(keys, [/^coordinitial$/, /^coordinitials$/]);
+
+  const out = [];
+  for(const r of rows){
+    if(!looksLikeComplimentRow(r)) continue;
+    const name = displayNameFromRaw(nameField ? r[nameField] : '');
+    const repKey = personKey(name || (nameField ? r[nameField] : ''));
+    const team = String(teamField ? (r[teamField] ?? '') : '').trim();
+    const callDate = parseDate(dateField ? r[dateField] : null);
+    if(!repKey || !callDate) continue;
+    out.push({
+      raw: r,
+      rep: name || String(nameField ? r[nameField] : '').trim(),
+      repKey,
+      team,
+      callDate,
+      director: String(directorField ? (r[directorField] ?? '') : '').trim(),
+      caseNumber: String(refNumField ? (r[refNumField] ?? '') : '').trim(),
+      takenBy: String(takenByField ? (r[takenByField] ?? '') : '').trim(),
+      compliment: String(complimentField ? (r[complimentField] ?? '') : '').trim(),
+      dateLetterCompleted: String(letterDateField ? (r[letterDateField] ?? '') : '').trim(),
+      coordInitial: String(coordField ? (r[coordField] ?? '') : '').trim()
+    });
+  }
+  return out;
+}
+function renderComplimentSheetButtons(){
+  const names = complimentWorkbook?.SheetNames || [];
+  els.complimentSheetBtns.innerHTML = names.map(sn => `<button class="sheetBtn ${sn===complimentSheetName ? 'active' : ''}" data-compliment-sheet="${esc(sn)}">${esc(sn)}</button>`).join('');
+  els.complimentSheetBtns.querySelectorAll('[data-compliment-sheet]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      complimentSheetName = btn.getAttribute('data-compliment-sheet') || '';
+      loadComplimentSheet();
+      renderComplimentSheetButtons();
+      renderAll();
+      savePrefs();
+    });
+  });
+}
+function loadComplimentSheet(){
+  if(!complimentWorkbook || !complimentSheetName || !complimentWorkbook.Sheets?.[complimentSheetName]){
+    complimentRows = [];
+    els.complimentHint.textContent = 'No compliment sheet selected.';
+    return;
+  }
+  const rows = rowsFromSheet(complimentWorkbook.Sheets[complimentSheetName]);
+  complimentRows = canonicalizeComplimentRows(rows);
+  els.complimentHint.textContent = `${complimentSheetName} loaded • ${complimentRows.length} compliment rows found after header matching`;
+}
 function loadDockObjByKey(key){
   if(!key) return null;
   const raw = localStorage.getItem(key);
   if(!raw) return null;
-
   try{
     const json = LZString.decompressFromUTF16(raw);
     if(json) return JSON.parse(json);
-  }catch{}
-
-  try{ return JSON.parse(raw); }catch{}
+  }catch(e){}
+  try{ return JSON.parse(raw); }catch(e){}
   return null;
 }
-
 function aoaToRows(aoa){
-  if(!Array.isArray(aoa) || aoa.length<2) return [];
-  const header = (aoa[0]||[]).map(h=>String(h??"").trim());
-  const out=[];
+  if(!Array.isArray(aoa) || aoa.length < 2) return [];
+  const header = aoa[0].map(h => String(h ?? '').trim());
+  const out = [];
   for(let r=1;r<aoa.length;r++){
-    const row=aoa[r];
+    const row = aoa[r];
     if(!row) continue;
-    const obj={};
-    let any=false;
+    const obj = {};
+    let any = false;
     for(let c=0;c<header.length;c++){
       const k = header[c];
       if(!k) continue;
       const v = row[c];
-      if(v!==null && v!==undefined && String(v).trim()!=="") any=true;
-      obj[k]=v;
+      if(v !== null && v !== undefined && String(v).trim() !== '') any = true;
+      obj[k] = v;
     }
     if(any) out.push(obj);
   }
   return out;
 }
-
 function extractRowArrays(root, sheetNameFallback){
-  const found=[];
+  const found = [];
   const seen = new Set();
 
   function pushArray(arr, sheetName){
     if(!Array.isArray(arr) || !arr.length) return;
-    const id = sheetName + "|" + arr.length + "|" + (typeof arr[0]);
+    const id = `${sheetName}|${arr.length}|${typeof arr[0]}`;
     if(seen.has(id)) return;
     seen.add(id);
 
-    if(arr[0] && typeof arr[0]==="object" && !Array.isArray(arr[0])){
+    if(arr[0] && typeof arr[0] === 'object' && !Array.isArray(arr[0])){
       found.push({ rows: arr, sheetName });
       return;
     }
@@ -668,1815 +910,780 @@ function extractRowArrays(root, sheetNameFallback){
   }
 
   function walk(node, sheetName){
-    if(node===null || node===undefined) return;
+    if(node === null || node === undefined) return;
     if(Array.isArray(node)){
-      pushArray(node, sheetName ?? sheetNameFallback ?? "");
+      pushArray(node, sheetName ?? sheetNameFallback ?? '');
       return;
     }
-    if(typeof node!=="object") return;
+    if(typeof node !== 'object') return;
 
-    if(Array.isArray(node.rows)) pushArray(node.rows, sheetName ?? sheetNameFallback ?? "");
-    if(Array.isArray(node.data)) pushArray(node.data, sheetName ?? sheetNameFallback ?? "");
-    if(Array.isArray(node.table)) pushArray(node.table, sheetName ?? sheetNameFallback ?? "");
+    if(Array.isArray(node.rows)) pushArray(node.rows, sheetName ?? sheetNameFallback ?? '');
+    if(Array.isArray(node.data)) pushArray(node.data, sheetName ?? sheetNameFallback ?? '');
+    if(Array.isArray(node.table)) pushArray(node.table, sheetName ?? sheetNameFallback ?? '');
 
-    if(node.sheets && typeof node.sheets==="object" && !Array.isArray(node.sheets)){
-      for(const [sn, sv] of Object.entries(node.sheets)){
-        walk(sv, sn);
-      }
+    if(node.sheets && typeof node.sheets === 'object' && !Array.isArray(node.sheets)){
+      for(const [sn, sv] of Object.entries(node.sheets)) walk(sv, sn);
     }
     for(const [k,v] of Object.entries(node)){
-      if(k==="meta" || k==="sheets") continue;
+      if(k === 'meta' || k === 'sheets') continue;
       walk(v, sheetName);
     }
   }
+
   walk(root, sheetNameFallback);
   return found;
 }
-
-function pickFieldFromRow(row, candidates){
-  const map = {};
-  for(const k of Object.keys(row||{})){
-    map[normHdr(k)] = k;
+function findDockCandidates(kind){
+  const out = [];
+  const needle = `.dock.${String(kind).toLowerCase()}`;
+  for(let i=0;i<localStorage.length;i++){
+    const k = localStorage.key(i);
+    if(k && k.toLowerCase().includes(needle)) out.push(k);
   }
-  for(const cand of candidates){
-    const real = map[cand];
-    if(real!==undefined) return row[real];
-  }
-  return undefined;
+  out.sort((a,b)=>a.localeCompare(b));
+  return out;
 }
-
-function excelSerialToDate(serial){
-  const n = Number(serial);
-  if(!Number.isFinite(n)) return null;
-  const base = Date.UTC(1899,11,30);
-  const ms = Math.round(n * 86400000);
-  const d = new Date(base + ms);
-  return isNaN(d) ? null : d;
-}
-function parseAnyDate(v){
-  if(v instanceof Date && !isNaN(v)) return v;
-  if(v===null || v===undefined || v==="") return null;
-
-  const tryNum = (x)=>{
-    const n = (typeof x==="number") ? x : parseFloat(String(x).trim());
-    if(!Number.isFinite(n)) return null;
-    if(n > 20000 && n < 90000) return excelSerialToDate(n);
-    if(n > 1e12) { const d = new Date(n); return isNaN(d)?null:d; }
-    if(n > 1e9 && n < 1e12) { const d = new Date(n*1000); return isNaN(d)?null:d; }
-    return null;
-  };
-
-  const nDate = tryNum(v);
-  if(nDate) return nDate;
-
-  const s = String(v).trim();
-  if(!s) return null;
-
-  const nDate2 = tryNum(s);
-  if(nDate2) return nDate2;
-
-  const d1 = new Date(s);
-  if(!isNaN(d1)) return d1;
-
-  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?$/i);
-  if(m){
-    let mm = parseInt(m[1],10), dd = parseInt(m[2],10), yy = parseInt(m[3],10);
-    if(yy < 100) yy += 2000;
-    let hh = m[4] ? parseInt(m[4],10) : 0;
-    const mi = m[5] ? parseInt(m[5],10) : 0;
-    const ss = m[6] ? parseInt(m[6],10) : 0;
-    const ap = (m[7]||"").toUpperCase();
-    if(ap==="PM" && hh<12) hh += 12;
-    if(ap==="AM" && hh===12) hh = 0;
-    const d = new Date(yy, mm-1, dd, hh, mi, ss);
-    if(!isNaN(d)) return d;
-  }
-  return null;
-}
-
-function toNumRaw(v){
-  if(v===undefined||v===null||v==='') return NaN;
-  const n = parseFloat(String(v).replace(/,/g,'').replace(/%/g,'').trim());
-  return Number.isFinite(n) ? n : NaN;
-}
-function normPct(v){
-  const n = toNumRaw(v);
-  if(!Number.isFinite(n)) return NaN;
-  if(Math.abs(n) > 1.5) return n/100;
-  return n;
-}
-function fmtPct1(frac){ return Number.isFinite(frac) ? (frac*100).toFixed(1)+'%' : '—'; }
-function fmtPct2(frac){ return Number.isFinite(frac) ? (frac*100).toFixed(2)+'%' : '—'; }
-function fmtInt(n){ return Number.isFinite(n) ? Math.round(n).toLocaleString() : '—'; }
-function pad2(n){ return String(n).padStart(2,'0'); }
-
-function fmtDateTime(d){
-  if(!(d instanceof Date) || isNaN(d)) return '—';
-  const y = d.getFullYear();
-  const m = pad2(d.getMonth()+1);
-  const da= pad2(d.getDate());
-  let hh = d.getHours();
-  const am = hh>=12 ? 'PM' : 'AM';
-  hh = hh%12; if(hh===0) hh=12;
-  const mi = pad2(d.getMinutes());
-  return `${m}/${da}/${y} ${hh}:${mi} ${am}`;
-}
-function fmtDateOnly(d){
-  if(!(d instanceof Date) || isNaN(d)) return '—';
-  const y = d.getFullYear();
-  const m = pad2(d.getMonth()+1);
-  const da= pad2(d.getDate());
-  return `${m}/${da}/${y}`;
-}
-function isoWeekKey(d){
-  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const dayNum = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(),0,1));
-  const weekNo = Math.ceil((((date - yearStart) / 86400000) + 1)/7);
-  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2,'0')}`;
-}
-
-function personKey(name){
-  let s = String(name||"").trim().toLowerCase();
-  s = s.replace(/\./g,"").replace(/\s+/g," ");
-  if(!s) return "";
-
-  if(s.includes(",")){
-    const parts = s.split(",");
-    const last = (parts[0]||"").trim();
-    const rest = (parts[1]||"").trim();
-    const first = (rest.split(/\s+/)[0]||"").trim();
-    if(first && last) s = `${first} ${last}`;
-    else s = s.replace(/,/g," ");
-  }
-  const toks = s.split(/\s+/).filter(Boolean);
-  if(toks.length>=2) return `${toks[0]} ${toks[toks.length-1]}`;
-  return toks[0] || "";
-}
-
-function displayNameFromRaw(raw){
-  const s = String(raw||"").trim();
-  if(!s) return "";
-  if(s.includes(",")){
-    const parts = s.split(",");
-    const last = (parts[0]||"").trim();
-    const rest = (parts[1]||"").trim();
-    const first = (rest.split(/\s+/)[0]||"").trim();
-    if(first && last) return `${first} ${last}`;
-  }
-  return s;
-}
-function lastNameOf(full){
-  const s = String(full||"").trim();
-  if(!s) return "";
-  if(s.includes(",")) return s.split(",")[0].trim().toLowerCase();
-  const toks = s.replace(/\./g,'').split(/\s+/).filter(Boolean);
-  return (toks[toks.length-1]||"").trim().toLowerCase();
-}
-
-function parseDurationToSeconds(v){
-  if(v===null || v===undefined || v==="") return NaN;
-
-  if(typeof v === "number" && Number.isFinite(v)){
-    if(v >= 0 && v < 2) return Math.max(0, Math.round(v * 86400));
-    if(v >= 2 && v < 86400*5) return Math.round(v);
-  }
-
-  const s = String(v).trim();
-  if(!s) return NaN;
-
-  const n = parseFloat(s);
-  if(Number.isFinite(n) && String(n) === String(parseFloat(s)) && !s.includes(":")){
-    if(n >= 0 && n < 2) return Math.max(0, Math.round(n * 86400));
-    if(n >= 2 && n < 86400*5) return Math.round(n);
-  }
-
-  const parts = s.split(":").map(x=>x.trim()).filter(Boolean);
-  if(parts.length >= 2 && parts.length <= 3 && parts.every(p=>/^\d+$/.test(p))){
-    let hh=0, mm=0, ss=0;
-    if(parts.length===2){
-      mm = parseInt(parts[0],10);
-      ss = parseInt(parts[1],10);
-    }else{
-      hh = parseInt(parts[0],10);
-      mm = parseInt(parts[1],10);
-      ss = parseInt(parts[2],10);
-    }
-    return hh*3600 + mm*60 + ss;
-  }
-
-  const n2 = parseFloat(s);
-  if(Number.isFinite(n2)) return Math.round(n2);
-  return NaN;
-}
-
-function fmtHMS(seconds){
-  if(!Number.isFinite(seconds)) return '—';
-  const sec = Math.max(0, Math.round(seconds));
-  const h = Math.floor(sec/3600);
-  const m = Math.floor((sec%3600)/60);
-  const s = sec%60;
-  return `${h}:${pad2(m)}:${pad2(s)}`;
-}
-
-function findDockKeysBySuffix(suffix){
-  const hits=[];
-  const suf = String(suffix||"").toLowerCase();
+function findQADockCandidates(){
+  const preferred = [];
+  const fallback = [];
   for(let i=0;i<localStorage.length;i++){
     const k = localStorage.key(i);
     if(!k) continue;
     const lk = k.toLowerCase();
-    if(lk.endsWith(suf) || lk.includes(suf)) hits.push(k);
+    if(!lk.includes('.dock.')) continue;
+    if(lk.includes('.dock.qa')) preferred.push(k);
+    else if(lk.includes('qa') && (lk.includes('quality') || lk.includes('monitor') || lk.includes('score'))) fallback.push(k);
   }
-  hits.sort((a,b)=>{
-    const score = (s)=>{
-      let x=0;
-      const ls = s.toLowerCase();
-      if(ls.endsWith(suf)) x+=100;
-      if(ls.includes(".dock.qa")) x+=50;
-      if(ls.includes("myone")) x+=10;
-      x -= Math.min(20, ls.length/20);
-      return x;
-    };
-    return score(b)-score(a);
-  });
-  return hits;
+  return Array.from(new Set([...preferred, ...fallback])).sort((a,b)=>a.localeCompare(b));
+}
+function pickBestKey(kind){
+  const preferred = `${APP_NS}.dock.${kind}`;
+  if(localStorage.getItem(preferred)) return preferred;
+  const cands = kind === 'qa' ? findQADockCandidates() : findDockCandidates(kind);
+  return cands[0] || preferred || '';
+}
+function populateDockSelects(){
+  const retailCands = Array.from(new Set([pickBestKey('retail'), ...findDockCandidates('retail')].filter(Boolean)));
+  els.retailDockSel.innerHTML = retailCands.map(k=>`<option value="${esc(k)}">${esc(k)}</option>`).join('');
+  retailDockKey = retailDockKey || pickBestKey('retail');
+  if(retailCands.includes(retailDockKey)) els.retailDockSel.value = retailDockKey;
+  else if(retailCands.length){ retailDockKey = retailCands[0]; els.retailDockSel.value = retailDockKey; }
+
+  const referralCands = Array.from(new Set([pickBestKey('referral'), ...findDockCandidates('referral')].filter(Boolean)));
+  els.referralDockSel.innerHTML = referralCands.map(k=>`<option value="${esc(k)}">${esc(k)}</option>`).join('');
+  referralDockKey = referralDockKey || pickBestKey('referral');
+  if(referralCands.includes(referralDockKey)) els.referralDockSel.value = referralDockKey;
+  else if(referralCands.length){ referralDockKey = referralCands[0]; els.referralDockSel.value = referralDockKey; }
+
+  const qaCands = Array.from(new Set([pickBestKey('qa'), ...findQADockCandidates()].filter(Boolean)));
+  els.qaDockSel.innerHTML = qaCands.map(k=>`<option value="${esc(k)}">${esc(k)}</option>`).join('');
+  qaDockKey = qaDockKey || pickBestKey('qa');
+  if(qaCands.includes(qaDockKey)) els.qaDockSel.value = qaDockKey;
+  else if(qaCands.length){ qaDockKey = qaCands[0]; els.qaDockSel.value = qaDockKey; }
+
+  const checkCands = Array.from(new Set([pickBestKey('checklist'), ...findDockCandidates('checklist')].filter(Boolean)));
+  els.checkDockSel.innerHTML = checkCands.map(k=>`<option value="${esc(k)}">${esc(k)}</option>`).join('');
+  checkDockKey = checkDockKey || pickBestKey('checklist');
+  if(checkCands.includes(checkDockKey)) els.checkDockSel.value = checkDockKey;
+  else if(checkCands.length){ checkDockKey = checkCands[0]; els.checkDockSel.value = checkDockKey; }
+
+  els.dockHint.textContent = `APP_NS: ${APP_NS}`;
 }
 
-function looksLikeQARow(obj){
-  if(!obj || typeof obj!=="object") return false;
+function looksLikeStatRow(obj){
+  if(!obj || typeof obj !== 'object') return false;
   const nk = Object.keys(obj).map(normHdr);
-  const hasAgent = nk.includes("agentname") || nk.includes("agent") || nk.includes("csr") || nk.includes("associate") || nk.includes("rep") || nk.includes("name");
-  const hasScore = nk.includes("score%") || nk.includes("scorepct") || nk.includes("score") || nk.includes("qa%") || nk.includes("qascore");
-  const hasStart = nk.includes("interactionstarttime") || nk.includes("interactionstart") || nk.includes("starttime") || nk.includes("interactiontime");
-  return hasAgent && hasScore && hasStart;
+  const hasName = nk.includes('name') || nk.includes('associate') || nk.includes('agentname');
+  const hasDate = nk.includes('date') || nk.includes('week');
+  const hasSheet = nk.includes('sheet') || nk.includes('team') || nk.includes('coach');
+  return hasName && hasDate && hasSheet;
 }
-
-function normalizeReadFlag(v){
-  if(v===null || v===undefined || v==="") return null;
-  const s = String(v).trim().toLowerCase();
-  if(s==="1" || s==="true" || s==="yes" || s==="y") return 1;
-  if(s==="0" || s==="false" || s==="no" || s==="n") return 0;
-  const n = Number(s);
-  if(Number.isFinite(n)) return n > 0 ? 1 : 0;
-  return null;
+function canonicalizeStatRows(dockObj){
+  if(!dockObj) return [];
+  const arrays = extractRowArrays(dockObj, '');
+  const out = [];
+  for(const pack of arrays){
+    for(const r of pack.rows){
+      if(!looksLikeStatRow(r)) continue;
+      const nameRaw = pickFieldFromRow(r, ['name','associate','agentname']);
+      const dateRaw = pickFieldFromRow(r, ['date','week']);
+      const teamRaw = pickFieldFromRow(r, ['sheet','team','coach']);
+      const name = String(nameRaw ?? '').trim();
+      const d = parseDate(dateRaw);
+      const team = String(teamRaw ?? pack.sheetName ?? '').trim();
+      if(!name || !d || !team) continue;
+      const low = name.toLowerCase();
+      if(/^(total|totals|team totals?|summary)$/.test(low) || low.startsWith('totals -') || low.startsWith('total -')) continue;
+      out.push({
+        ...r,
+        Name: name,
+        Team: team,
+        _d: d,
+        repKey: personKey(name)
+      });
+    }
+  }
+  return out;
 }
-
+function buildFieldMap(sampleRows){
+  const keys = Array.from(new Set(sampleRows.flatMap(r=>Object.keys(r||{}))));
+  const map = {};
+  map.consumerApps = pickField(keys, [/^Consumer[_\s-]*Appointments?$/i, /consumer.*appointments?/i]);
+  map.consumerOpps = pickField(keys, [/^Consumer[_\s-]*Opportunit/i, /consumer.*opportunit/i]);
+  map.wiperCount = pickField(keys, [/^Wiper[_\s-]*Count$/i, /wiper.*count/i]);
+  map.wiperJobs = pickField(keys, [/^Wiper[_\s-]*Jobs$/i, /wiper.*jobs?/i]);
+  map.wipersAccept = pickField(keys, [/wipers?[_\s-]*accept/i, /wipers? accept/i]);
+  map.wipersAsked = pickField(keys, [/wipers?[_\s-]*asked/i, /wipers? asked/i]);
+  map.acw = pickField(keys, [/^ACW$/i, /avg.*acw/i, /average.*acw/i, /%.*acw/i, /acw.*%/i]);
+  map.itac = pickField(keys, [/^ITAC$/i, /^ITAC%$/i, /^ITACPercent$/i, /itac/i]);
+  return map;
+}
+function looksLikeQARow(obj){
+  if(!obj || typeof obj !== 'object') return false;
+  const nk = Object.keys(obj).map(normHdr);
+  const hasRep = nk.some(k => /^(agentname|agent|csr|associate|rep|name)$/.test(k));
+  const hasScore = nk.some(k => /^(score%|scorepct|score|qascore|qa%)$/.test(k));
+  const hasDate = nk.some(k => /^(interactionstarttime|interactionstart|starttime|interactiontime|date|scoreddate)$/.test(k));
+  return hasRep && hasScore && hasDate;
+}
 function canonicalizeQA(dockObj){
   if(!dockObj) return [];
-  const packs = extractRowArrays(dockObj,"");
-  const out=[];
-
-  for(const p of packs){
-    for(const r of p.rows){
+  const arrays = extractRowArrays(dockObj, '');
+  const out = [];
+  for(const pack of arrays){
+    for(const r of pack.rows){
       if(!looksLikeQARow(r)) continue;
-
-      const agentRaw = pickFieldFromRow(r, ["agentname","agent","csr","associate","rep","name"]);
-      const scoreRaw = pickFieldFromRow(r, ["score%","scorepct","score","qascore","qa%"]);
-      const startRaw = pickFieldFromRow(r, ["interactionstarttime","interactionstart","starttime","interactiontime"]);
-      const assignedRaw = pickFieldFromRow(r, ["assigneddate","assigned date","assigneddatetime","assignedtime","assigned"]);
-
-      const evalIdRaw = pickFieldFromRow(r, ["genesysevaluationid","evaluationid","evalid","monitorid","qaid","id"]);
-      const evaluatorRaw = pickFieldFromRow(r, ["evaluator","evaluatorname","reviewer","qaevaluator","coach"]);
-      const teamRaw = pickFieldFromRow(r, ["team","sheet","department","group","supervisor","manager","site","location"]);
-
-      const convIdRaw = pickFieldFromRow(r, ["conversationid","conversationid","interactionid","interactionid","contactid","contactid"]);
-      const durRaw = pickFieldFromRow(r, ["interactionduration","interactionduration","duration","calllength","calllength","interactionlength","interactionlength"]);
-      const agentHasReadRaw = pickFieldFromRow(r, ["agenthasread","agent has read","agentreviewed","agent reviewed","hasread","read"]);
-
-      const start = parseAnyDate(startRaw);
-      const assignedDate = parseAnyDate(assignedRaw);
-      const score = normPct(scoreRaw);
-
-      const agentDisplay = displayNameFromRaw(agentRaw);
-      const agentK = personKey(agentDisplay);
-      if(!agentK || !(start instanceof Date) || isNaN(start) || !Number.isFinite(score)) continue;
-
-      const durSec = parseDurationToSeconds(durRaw);
-      const agentHasRead = normalizeReadFlag(agentHasReadRaw);
-
+      const repRaw = pickFieldFromRow(r, ['agentname','agent','csr','associate','rep','name']);
+      const scoreRaw = pickFieldFromRow(r, ['score%','scorepct','score','qascore','qa%']);
+      const dateRaw = pickFieldFromRow(r, ['interactionstarttime','interactionstart','starttime','interactiontime','scoreddate','date']);
+      const teamRaw = pickFieldFromRow(r, ['team','sheet','dock','group']);
+      const rep = displayNameFromRaw(repRaw);
+      const repKey = personKey(rep || repRaw);
+      const score = normalizePct(scoreRaw);
+      const d = parseDate(dateRaw);
+      if(!rep || !repKey || !Number.isFinite(score) || !d) continue;
       out.push({
-        agentKey: agentK,
-        agent: agentDisplay,
-        start,
-        assignedDate,
-        week: isoWeekKey(start),
+        ...r,
+        rep,
+        repKey,
         score,
-        evaluator: String(evaluatorRaw ?? "").trim(),
-        evalId: String(evalIdRaw ?? "").trim(),
-        conversationId: String(convIdRaw ?? "").trim(),
-        durationSec: durSec,
-        durationText: fmtHMS(durSec),
-        team: String(teamRaw ?? "").trim(),
-        agentHasRead,
-        unreviewed: agentHasRead === 0 ? 1 : 0,
-        _sheetHint: p.sheetName || ""
+        startDate:d,
+        team:String(teamRaw ?? pack.sheetName ?? '').trim()
       });
     }
   }
   return out;
 }
-
-function findCoachingKeys(){
-  const keys=[];
-  for(let i=0;i<localStorage.length;i++){
-    const k = localStorage.key(i);
-    if(!k) continue;
-    const lk = k.toLowerCase();
-    if(!lk.includes(".dock.")) continue;
-    const looks = lk.includes("coach") || lk.includes("coaching") || lk.includes("document") || lk.includes("myone2");
-    if(looks) keys.push(k);
-  }
-  keys.sort((a,b)=>{
-    const score = (s)=>{
-      const lk = s.toLowerCase();
-      let x=0;
-      if(lk.includes("documented")) x+=80;
-      if(lk.includes("document")) x+=40;
-      if(lk.includes("coaching")) x+=35;
-      if(lk.includes("coachings")) x+=35;
-      if(lk.includes("coach")) x+=20;
-      if(lk.includes("myone2")) x+=10;
-      if(lk.endsWith(".dock.coaching")) x+=15;
-      if(lk.endsWith(".dock.coachings")) x+=15;
-      x -= Math.min(20, lk.length/20);
-      return x;
-    };
-    return score(b)-score(a);
-  });
-  return keys;
-}
-
-function splitTypes(val){
-  const s = String(val ?? "").trim();
-  if(!s) return [];
-  return s.split(/[,;|]+/).map(x=>String(x).trim()).filter(Boolean);
-}
-
-function looksLikeCoachingRow(obj){
-  if(!obj || typeof obj!=="object") return false;
+function looksLikeChecklistRow(obj){
+  if(!obj || typeof obj !== 'object') return false;
   const nk = Object.keys(obj).map(normHdr);
-  const hasRep = nk.includes("associatename") || nk.includes("associate") || nk.includes("name") || nk.includes("rep");
-  const hasDate = nk.includes("date") || nk.includes("dt") || nk.includes("day");
-  const hasType = nk.includes("coachingtypemulti") || nk.includes("coachingtype") || nk.includes("type");
-  return hasRep && hasDate && hasType;
+  const hasRep = nk.includes('associatename') || nk.includes('associate') || nk.includes('name') || nk.includes('rep');
+  const hasIncident = nk.includes('incident') || nk.includes('incidenttype') || nk.includes('incidentcategory');
+  const hasDate = nk.includes('incidentdate') || nk.includes('date') || nk.includes('dt') || nk.includes('day');
+  return hasRep && hasIncident && hasDate;
 }
-
-function isCallQualityType(t){
-  const s = String(t||"").trim();
-  if(!s) return false;
-  const low = s.toLowerCase();
-  if(low.includes("call quality")) return true;
-  if(s === "5") return true;
-  if(/^\s*5\s*[:\-]/.test(s)) return true;
-  return false;
-}
-
-function canonicalizeCoachings(dockObj){
+function canonicalizeChecklistRows(dockObj){
   if(!dockObj) return [];
-  const packs = extractRowArrays(dockObj,"");
-  const out=[];
-
-  for(const p of packs){
-    for(const r of p.rows){
-      if(!looksLikeCoachingRow(r)) continue;
-
-      const repRaw   = pickFieldFromRow(r, ["associatename","associate","name","rep"]);
-      const dateRaw  = pickFieldFromRow(r, ["date","dt","day"]);
-      const typeMulti  = pickFieldFromRow(r, ["coachingtypemulti"]);
-      const typeSingle = pickFieldFromRow(r, ["coachingtype","type"]);
-      const coachRaw = pickFieldFromRow(r, ["jobcoach","coach","sheet","team"]);
-      const descRaw  = pickFieldFromRow(r, ["description","desc","notes","note","details","summary","coachingnotes"]);
-
-      const repDisp = displayNameFromRaw(repRaw);
-      const repK = personKey(repDisp);
-      const d = parseAnyDate(dateRaw);
-      if(!repK || !d) continue;
-
-      const typesAll = Array.from(new Set([
-        ...splitTypes(typeMulti),
-        ...splitTypes(typeSingle)
-      ]));
-
-      const cqTypes = typesAll.filter(isCallQualityType);
-      if(!cqTypes.length) continue;
-
+  const arrays = extractRowArrays(dockObj, '');
+  const out = [];
+  for(const pack of arrays){
+    for(const r of pack.rows){
+      if(!looksLikeChecklistRow(r)) continue;
+      const repRaw = pickFieldFromRow(r, ['associatename','associate','name','rep']);
+      const incidentRaw = pickFieldFromRow(r, ['incident','incidenttype','incidentcategory','type']);
+      const dateRaw = pickFieldFromRow(r, ['incidentdate','date','dt','day']);
+      const actionRaw = pickFieldFromRow(r, ['actiontaken','action','resolution','status']);
+      const teamRaw = pickFieldFromRow(r, ['team','sheet','coach','jobcoach','coachassigned']);
+      const rep = displayNameFromRaw(repRaw || '');
+      const repKey = personKey(rep || repRaw);
+      const date = parseDate(dateRaw);
+      if(!rep || !repKey || !date || !incidentRaw) continue;
       out.push({
-        repKey: repK,
-        rep: repDisp || repK,
-        date: d,
-        week: isoWeekKey(d),
-        coach: String(coachRaw ?? "").trim(),
-        types: cqTypes,
-        desc: String(descRaw ?? "").trim(),
-        _sheetHint: p.sheetName || ""
+        ...r,
+        rep,
+        repKey,
+        date,
+        incident:String(incidentRaw ?? '').trim(),
+        actionTaken:String(actionRaw ?? '').trim(),
+        teamHint:String(teamRaw ?? '').trim()
       });
     }
   }
   return out;
 }
 
-function groupBy(arr, keyFn){
-  const m = new Map();
-  for(const x of arr){
-    const k = keyFn(x);
-    const a = m.get(k) || [];
-    a.push(x);
-    m.set(k,a);
+function loadRetail(){
+  retailDockKey = els.retailDockSel.value || retailDockKey || pickBestKey('retail');
+  const obj = loadDockObjByKey(retailDockKey);
+  retailRows = canonicalizeStatRows(obj);
+  retailFieldMap = buildFieldMap(retailRows);
+}
+function loadReferral(){
+  referralDockKey = els.referralDockSel.value || referralDockKey || pickBestKey('referral');
+  const obj = loadDockObjByKey(referralDockKey);
+  referralRows = canonicalizeStatRows(obj);
+  referralFieldMap = buildFieldMap(referralRows);
+}
+function loadQA(){
+  qaDockKey = els.qaDockSel.value || qaDockKey || pickBestKey('qa');
+  const obj = loadDockObjByKey(qaDockKey);
+  qaRows = canonicalizeQA(obj);
+}
+function loadChecklist(){
+  checkDockKey = els.checkDockSel.value || checkDockKey || pickBestKey('checklist');
+  const obj = loadDockObjByKey(checkDockKey);
+  checklistRows = canonicalizeChecklistRows(obj);
+}
+function initDates(){
+  const dates = [
+    ...retailRows.map(r=>r._d),
+    ...referralRows.map(r=>r._d),
+    ...qaRows.map(r=>r.startDate),
+    ...checklistRows.map(r=>r.date),
+    ...complimentRows.map(r=>r.callDate)
+  ].filter(d => d instanceof Date && !isNaN(d));
+  const today = new Date();
+  const end = dates.length ? new Date(Math.max(...dates.map(d=>d.getTime()))) : today;
+  const start = new Date(end.getTime() - (29 * MS_PER_DAY));
+  if(!els.endDate.value) els.endDate.value = ymd(end);
+  if(!els.startDate.value) els.startDate.value = ymd(start);
+}
+function getWindow(){
+  const sd = parseDate(els.startDate.value);
+  const ed = parseDate(els.endDate.value);
+  if(!(sd instanceof Date) || isNaN(sd) || !(ed instanceof Date) || isNaN(ed)) return { sd:null, ed:null };
+  return sd <= ed ? { sd, ed } : { sd:ed, ed:sd };
+}
+function inRange(d, sd, ed){
+  return d instanceof Date && !isNaN(d) && sd && ed && d >= sd && d <= ed;
+}
+function isAttendanceHit(item){
+  const inc = String(item.incident || '').toLowerCase();
+  const act = String(item.actionTaken || '').toLowerCase();
+  return (inc.includes('absent') || inc.includes('tardy')) && act.includes('addressed');
+}
+
+function buildSectionData(rows, fieldMap, type){
+  const { sd, ed } = getWindow();
+  const statRows = rows.filter(r => inRange(r._d, sd, ed));
+  const qaWindow = qaRows.filter(r => inRange(r.startDate, sd, ed));
+  const checklistWindow = checklistRows.filter(r => inRange(r.date, sd, ed));
+  const complimentWindow = complimentRows.filter(r => inRange(r.callDate, sd, ed));
+
+  const teamNames = Array.from(new Set(statRows.map(r => String(r.Team||'').trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+  const teams = [];
+
+  for(const teamName of teamNames){
+    const teamRows = statRows.filter(r => String(r.Team||'').trim() === teamName);
+    const repKeySet = new Set(teamRows.map(r=>r.repKey).filter(Boolean));
+    const qaTeamRows = qaWindow.filter(r => repKeySet.has(r.repKey) || String(r.team||'').trim() === teamName);
+    const checklistTeamRows = checklistWindow.filter(r => repKeySet.has(r.repKey) || String(r.teamHint||'').trim() === teamName);
+    const complimentTeamRows = complimentWindow.filter(r => repKeySet.has(r.repKey) || String(r.team||'').trim() === teamName);
+
+    const consumerApps = sumField(teamRows, fieldMap.consumerApps);
+    const consumerOpps = sumField(teamRows, fieldMap.consumerOpps);
+    const wiperCount = sumField(teamRows, fieldMap.wiperCount);
+    const wiperJobs = sumField(teamRows, fieldMap.wiperJobs);
+    const wipersAccept = sumField(teamRows, fieldMap.wipersAccept);
+    const wipersAsked = sumField(teamRows, fieldMap.wipersAsked);
+
+    const consumerRate = consumerOpps > 0 ? consumerApps / consumerOpps : NaN;
+    const wiperRate = type === 'retail'
+      ? (wiperJobs > 0 ? wiperCount / wiperJobs : NaN)
+      : (wipersAsked > 0 ? wipersAccept / wipersAsked : NaN);
+
+    const cqAvg = mean(qaTeamRows.map(r => r.score));
+    const attendanceHits = checklistTeamRows.filter(isAttendanceHit).length;
+    const complimentCount = complimentTeamRows.length;
+    const itacAvg = mean(teamRows.map(r => normalizePct(r[fieldMap.itac])));
+
+    const reps = Array.from(new Set(teamRows.map(r=>r.Name).filter(Boolean))).sort((a,b)=>a.localeCompare(b)).map(repName=>{
+      const repKey = personKey(repName);
+      const repRows = teamRows.filter(r => r.repKey === repKey);
+      const repQaRows = qaTeamRows.filter(r => r.repKey === repKey);
+      const repChecklist = checklistTeamRows.filter(r => r.repKey === repKey);
+      const repCompliments = complimentTeamRows.filter(r => r.repKey === repKey);
+
+      const repConsumerApps = sumField(repRows, fieldMap.consumerApps);
+      const repConsumerOpps = sumField(repRows, fieldMap.consumerOpps);
+      const repConsumerRate = repConsumerOpps > 0 ? repConsumerApps / repConsumerOpps : NaN;
+
+      const repWiperCount = sumField(repRows, fieldMap.wiperCount);
+      const repWiperJobs = sumField(repRows, fieldMap.wiperJobs);
+      const repWipersAccept = sumField(repRows, fieldMap.wipersAccept);
+      const repWipersAsked = sumField(repRows, fieldMap.wipersAsked);
+      const repWiperRate = type === 'retail'
+        ? (repWiperJobs > 0 ? repWiperCount / repWiperJobs : NaN)
+        : (repWipersAsked > 0 ? repWipersAccept / repWipersAsked : NaN);
+
+      const repCQ = mean(repQaRows.map(r => r.score));
+      const repAttendance = repChecklist.filter(isAttendanceHit).length;
+      const repACW = mean(repRows.map(r => normalizePct(r[fieldMap.acw])));
+      const repITAC = mean(repRows.map(r => normalizePct(r[fieldMap.itac])));
+
+      return {
+        name: repName,
+        consumerRate: repConsumerRate,
+        wiperRate: repWiperRate,
+        cqAvg: repCQ,
+        attendanceHits: repAttendance,
+        acwAvg: repACW,
+        itacAvg: repITAC,
+        complimentCount: repCompliments.length
+      };
+    });
+
+    teams.push({
+      name: teamName,
+      type,
+      activeRepCount: repKeySet.size,
+      consumerRate,
+      wiperRate,
+      cqAvg,
+      attendanceHits,
+      complimentCount,
+      itacAvg,
+      reps
+    });
   }
-  return m;
-}
 
-function avgScore(rows, excludeZero){
-  let sum=0, n=0;
-  for(const r of rows){
-    const s = r.score;
-    if(!Number.isFinite(s)) continue;
-    if(excludeZero && s===0) continue;
-    sum += s; n++;
-  }
-  return { avg: n? (sum/n) : NaN, n };
-}
-
-function avgDuration(rows, excludeZero){
-  let sum=0, n=0;
-  for(const r of rows){
-    if(excludeZero && r.score===0) continue;
-    const s = r.durationSec;
-    if(!Number.isFinite(s)) continue;
-    sum += s; n++;
-  }
-  return { avgSec: n ? (sum/n) : NaN, n };
-}
-
-function countUnreviewed(rows){
-  let n = 0;
-  for(const r of rows){
-    if(r.agentHasRead === 0) n++;
-  }
-  return n;
-}
-
-function splitHalfTrend(rows, excludeZero){
-  const sorted=[...rows]
-    .map(r=>({ row:r, d: rowDate(r) }))
-    .filter(x=>x.d)
-    .sort((a,b)=> a.d - b.d)
-    .map(x=>x.row);
-  const clean = excludeZero ? sorted.filter(r=>r.score!==0) : sorted;
-  if(clean.length < 2) return { d: NaN, a1: NaN, a2: NaN };
-  const mid = Math.floor(clean.length/2);
-  const first = clean.slice(0, mid);
-  const second = clean.slice(mid);
-  const a1 = avgScore(first, false).avg;
-  const a2 = avgScore(second, false).avg;
-  return { d: (Number.isFinite(a1)&&Number.isFinite(a2)) ? (a2-a1) : NaN, a1, a2 };
-}
-
-function sparkSeriesWeekly(rows, excludeZero){
-  const byWk = groupBy(rows, r=>rowWeek(r));
-  const weeks = Array.from(byWk.keys()).filter(Boolean).sort();
-  const vals = weeks.map(wk=>{
-    const a = avgScore(byWk.get(wk)||[], excludeZero).avg;
-    return Number.isFinite(a) ? a : null;
-  });
-  return { weeks, vals };
-}
-
-function drawSpark(canvas, values){
-  const ctx = canvas.getContext('2d');
-  const w = canvas.width, h = canvas.height;
-  ctx.clearRect(0,0,w,h);
-
-  const vals = values.filter(v=>v!==null && Number.isFinite(v));
-  if(vals.length < 2){
-    ctx.globalAlpha = 0.6;
-    ctx.strokeStyle = '#94a3b8';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(6, h/2);
-    ctx.lineTo(w-6, h/2);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-    return;
-  }
-
-  const min = Math.min(...vals);
-  const max = Math.max(...vals);
-  const pad = 6;
-  const range = Math.max(0.00001, max-min);
-
-  ctx.globalAlpha = 0.35;
-  ctx.strokeStyle = '#cbd5e1';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(0, h-1);
-  ctx.lineTo(w, h-1);
-  ctx.stroke();
-  ctx.globalAlpha = 1;
-
-  ctx.strokeStyle = '#2563eb';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-
-  const n = values.length;
-  let started=false;
-  for(let i=0;i<n;i++){
-    const v = values[i];
-    if(v===null || !Number.isFinite(v)){ started=false; continue; }
-    const x = pad + (i/(Math.max(1,n-1))) * (w - pad*2);
-    const y = pad + (1 - ((v-min)/range)) * (h - pad*2);
-    if(!started){ ctx.moveTo(x,y); started=true; }
-    else ctx.lineTo(x,y);
-  }
-  ctx.stroke();
-
-  ctx.fillStyle = '#0f172a';
-  for(let i=0;i<n;i++){
-    const v=values[i];
-    if(v===null || !Number.isFinite(v)) continue;
-    const x = pad + (i/(Math.max(1,n-1))) * (w - pad*2);
-    const y = pad + (1 - ((v-min)/range)) * (h - pad*2);
-    ctx.beginPath();
-    ctx.arc(x,y,2.4,0,Math.PI*2);
-    ctx.fill();
-  }
-}
-
-function isCoachEval(row){
-  const coachName = String(row.team||"").trim();
-  const evalName  = String(row.evaluator||"").trim();
-  if(!coachName || !evalName) return false;
-
-  const pkCoach = personKey(coachName);
-  const pkEval  = personKey(evalName);
-  if(pkCoach && pkEval && pkCoach === pkEval) return true;
-
-  const lnCoach = lastNameOf(coachName);
-  const lnEval  = lastNameOf(evalName);
-  return !!lnCoach && lnCoach === lnEval;
-}
-
-function uniqueSorted(arr){
-  return Array.from(new Set(arr.filter(Boolean))).sort((a,b)=>a.localeCompare(b));
-}
-
-function diffClass(num, type){
-  if(!Number.isFinite(num)) return 'diffNeutral';
-  if(type === 'count') return 'diffNeutral';
-  const abs = Math.abs(num);
-  return abs >= 5 ? 'diffBad' : 'diffGood';
-}
-
-function extractTeamScopedReviewerCandidates(rows){
-  const team = el.teamSel.value;
-  const tf = el.tfSel.value;
-  const range = timeframeRange(tf);
-
-  const base = rows.filter(r=>{
-    if(team && team !== '__ALL__'){
-      if(String(r.team||'').trim() !== team) return false;
+  if(type === 'retail'){
+    const consumerRank = rankMapDescending(teams, 'consumerRate');
+    const wiperRank = rankMapDescending(teams, 'wiperRate');
+    const cqRank = rankMapDescending(teams, 'cqAvg');
+    for(const t of teams){
+      t.consumerRank = consumerRank.get(t.name) || null;
+      t.wiperRank = wiperRank.get(t.name) || null;
+      t.cqRank = cqRank.get(t.name) || null;
+      t.rankTotal = [t.consumerRank, t.wiperRank, t.cqRank].filter(Number.isFinite).reduce((s,n)=>s+n,0);
+      t.overallScore = t.rankTotal - t.complimentCount;
     }
-    if(tf !== 'all' && !inRange(rowDate(r), range)) return false;
-    return true;
-  });
-
-  const teamRepKeys = new Set(base.map(r=>r.agentKey));
-  const coachName = team && team !== '__ALL__' ? String(team).trim() : '';
-
-  return uniqueSorted(
-    rows
-      .filter(r=>{
-        if(!teamRepKeys.has(r.agentKey)) return false;
-        if(tf !== 'all' && !inRange(rowDate(r), range)) return false;
-        if(isCoachEval(r)) return false;
-        const ev = String(r.evaluator||'').trim();
-        if(!ev) return false;
-        if(coachName && personKey(ev) === personKey(coachName)) return false;
-        return true;
-      })
-      .map(r=>String(r.evaluator||'').trim())
-  );
-}
-
-function loadReviewerState(){
-  const saved = loadSettings();
-  const candidates = canonicalQaReviewers;
-  const savedByTeam = saved.activeQaReviewersByTeam || {};
-  const teamKey = getReviewerScopeKey();
-  const prior = Array.isArray(savedByTeam[teamKey]) ? savedByTeam[teamKey] : [];
-  activeQaReviewers = prior.length
-    ? prior.filter(n => candidates.includes(n))
-    : [...candidates];
-
-  if(!activeQaReviewers.length && candidates.length){
-    activeQaReviewers = [...candidates];
-  }
-  persistReviewerState();
-}
-
-function persistReviewerState(){
-  const saved = loadSettings();
-  const map = saved.activeQaReviewersByTeam || {};
-  map[getReviewerScopeKey()] = [...activeQaReviewers];
-  saveSettings({ activeQaReviewersByTeam: map });
-}
-
-function getReviewerScopeKey(){
-  const team = el.teamSel?.value || '__ALL__';
-  const tf = el.tfSel?.value || 'all';
-  const dateMode = el.dateModeSel?.value || 'interaction';
-  const from = el.fromInp?.value || '';
-  const to = el.toInp?.value || '';
-  return `${team}|${tf}|${dateMode}|${from}|${to}`;
-}
-
-function isQaReviewer(row){
-  const ev = String(row.evaluator || '').trim();
-  return !isCoachEval(row) && !!ev && activeQaReviewers.includes(ev);
-}
-
-function splitRoleRows(rows){
-  const coachRows = [];
-  const qaRows = [];
-  for(const r of rows){
-    if(isCoachEval(r)) coachRows.push(r);
-    else if(isQaReviewer(r)) qaRows.push(r);
-  }
-  return { coachRows, qaRows };
-}
-
-const el = {
-  qaKeySel: document.getElementById('qaKeySel'),
-  loadBtn: document.getElementById('loadBtn'),
-
-  coKeySel: document.getElementById('coKeySel'),
-  reloadCoBtn: document.getElementById('reloadCoBtn'),
-
-  teamSel: document.getElementById('teamSel'),
-  tfSel: document.getElementById('tfSel'),
-  dateModeSel: document.getElementById('dateModeSel'),
-  customRange: document.getElementById('customRange'),
-  fromInp: document.getElementById('fromInp'),
-  toInp: document.getElementById('toInp'),
-  excludeZero: document.getElementById('excludeZero'),
-  searchInp: document.getElementById('searchInp'),
-  refreshBtn: document.getElementById('refreshBtn'),
-  reviewersBtn: document.getElementById('reviewersBtn'),
-  reviewersBtnCount: document.getElementById('reviewersBtnCount'),
-  optionsBtn: document.getElementById('optionsBtn'),
-  optionsOverlay: document.getElementById('optionsOverlay'),
-  optionsClose: document.getElementById('optionsClose'),
-
-  statusPill: document.getElementById('statusPill'),
-  coStatusPill: document.getElementById('coStatusPill'),
-  scopePill: document.getElementById('scopePill'),
-  qaReviewCountPill: document.getElementById('qaReviewCountPill'),
-
-  summarySub: document.getElementById('summarySub'),
-  summaryTbody: document.getElementById('summaryTbody'),
-  compareTbody: document.getElementById('compareTbody'),
-  teamTrendPill: document.getElementById('teamTrendPill'),
-
-  sortPill: document.getElementById('sortPill'),
-
-  cards: document.getElementById('cards'),
-  empty: document.getElementById('empty'),
-
-  overlay: document.getElementById('overlay'),
-  mClose: document.getElementById('mClose'),
-  mTitle: document.getElementById('mTitle'),
-  mSub: document.getElementById('mSub'),
-  mBody: document.getElementById('mBody'),
-
-  reviewerOverlay: document.getElementById('reviewerOverlay'),
-  reviewerClose: document.getElementById('reviewerClose'),
-  reviewerList: document.getElementById('reviewerList'),
-  reviewerPopupCount: document.getElementById('reviewerPopupCount'),
-  resetReviewersBtn: document.getElementById('resetReviewersBtn'),
-  rSub: document.getElementById('rSub'),
-
-  unreadOverlay: document.getElementById('unreadOverlay'),
-  unreadClose: document.getElementById('unreadClose'),
-  unreadRepList: document.getElementById('unreadRepList'),
-  unreadTotalPill: document.getElementById('unreadTotalPill'),
-  uSub: document.getElementById('uSub')
-};
-
-let QA_KEY = null;
-let CO_KEY = null;
-
-let qaLoaded = false;
-let qaRowsAll = [];
-
-let coLoaded = false;
-let coRowsAll = [];
-
-let chartMain = null;
-
-let activeQaReviewers = [];
-let canonicalQaReviewers = [];
-
-const DIFF_ALERT_PCTPTS = 10;
-const DIFF_ALERT_SECS = 120;
-
-let sortMode = "count";
-let unreadRepExpanded = new Set();
-
-function nowLocal(){ return new Date(); }
-function currentDateMode(){
-  return el.dateModeSel?.value === 'assigned' ? 'assigned' : 'interaction';
-}
-function rowDate(row){
-  const d = currentDateMode() === 'assigned' ? row?.assignedDate : row?.start;
-  return (d instanceof Date && !isNaN(d)) ? d : null;
-}
-function rowWeek(row){
-  const d = rowDate(row);
-  return d ? isoWeekKey(d) : '';
-}
-
-function timeframeRange(tf){
-  const now = nowLocal();
-  if(tf === 'last7')  return { from: new Date(now.getTime() - 7*86400000),  to: now };
-  if(tf === 'last30') return { from: new Date(now.getTime() - 30*86400000), to: now };
-  if(tf === 'last90') return { from: new Date(now.getTime() - 90*86400000), to: now };
-  if(tf === 'custom'){
-    const f = el.fromInp.value ? new Date(el.fromInp.value + "T00:00:00") : null;
-    const t = el.toInp.value ? new Date(el.toInp.value + "T23:59:59") : null;
-    return { from: f, to: t };
-  }
-  return { from:null, to:null };
-}
-function inRange(d, range){
-  if(!(d instanceof Date) || isNaN(d)) return false;
-  if(range.from && d < range.from) return false;
-  if(range.to && d > range.to) return false;
-  return true;
-}
-
-function buildTeamOptions(rows){
-  const teams = Array.from(new Set(rows.map(r=>String(r.team||"").trim()).filter(Boolean)))
-    .sort((a,b)=>a.localeCompare(b));
-
-  el.teamSel.innerHTML = '';
-  const optAll = document.createElement('option');
-  optAll.value = '__ALL__';
-  optAll.textContent = 'All';
-  el.teamSel.appendChild(optAll);
-
-  for(const t of teams){
-    const o = document.createElement('option');
-    o.value = t;
-    o.textContent = t;
-    el.teamSel.appendChild(o);
-  }
-}
-
-function recomputeReviewerScope(){
-  canonicalQaReviewers = extractTeamScopedReviewerCandidates(qaRowsAll);
-  loadReviewerState();
-}
-
-function filterRows(){
-  const team = el.teamSel.value;
-  const tf = el.tfSel.value;
-  const range = timeframeRange(tf);
-  const search = (el.searchInp.value||'').trim().toLowerCase();
-
-  return qaRowsAll.filter(r=>{
-    if(team && team!=='__ALL__'){
-      if(String(r.team||'').trim() !== team) return false;
-    }
-    if(tf!=='all'){
-      if(!inRange(rowDate(r), range)) return false;
-    }
-    if(search){
-      const dn = String(r.agent||'').toLowerCase();
-      const pk = String(r.agentKey||'').toLowerCase();
-      if(!dn.includes(search) && !pk.includes(search)) return false;
-    }
-    return isCoachEval(r) || isQaReviewer(r);
-  });
-}
-
-function coachingForRep(repKey, range){
-  if(!coLoaded) return [];
-  const pk = String(repKey||"").toLowerCase();
-  let rows = coRowsAll.filter(c=>{
-    if(String(c.repKey||"").toLowerCase() !== pk) return false;
-    if(range && (range.from || range.to)){
-      if(!inRange(c.date, range)) return false;
-    }
-    return true;
-  });
-  rows.sort((a,b)=> b.date - a.date);
-  return rows;
-}
-
-function computeGlobalSummary(rows, excludeZero){
-  const { coachRows, qaRows } = splitRoleRows(rows);
-
-  const all = avgScore(rows, excludeZero);
-  const allNoZero = avgScore(rows, true);
-
-  const coach = avgScore(coachRows, excludeZero);
-  const qa = avgScore(qaRows, excludeZero);
-
-  const coachNoZero = avgScore(coachRows, true);
-  const qaNoZero = avgScore(qaRows, true);
-
-  const durAll = avgDuration(rows, excludeZero);
-  const durCoach = avgDuration(coachRows, excludeZero);
-  const durQa = avgDuration(qaRows, excludeZero);
-
-  const unreviewedAll = countUnreviewed(rows);
-  const unreviewedCoach = countUnreviewed(coachRows);
-  const unreviewedQa = countUnreviewed(qaRows);
-
-  return {
-    all, allNoZero,
-    coach, qa,
-    coachNoZero, qaNoZero,
-    durAll, durCoach, durQa,
-    unreviewedAll, unreviewedCoach, unreviewedQa,
-    coachRows, qaRows
-  };
-}
-
-function teamHalfTrend(rows, excludeZero){
-  const tr = splitHalfTrend(rows, excludeZero);
-  if(!Number.isFinite(tr.d)) return { pp: NaN, a1: NaN, a2: NaN };
-  return { pp: tr.d*100, a1: tr.a1, a2: tr.a2 };
-}
-
-function paintReviewerControls(){
-  const counts = new Map();
-
-  const team = el.teamSel.value;
-  const tf = el.tfSel.value;
-  const range = timeframeRange(tf);
-
-  for(const r of qaRowsAll){
-    if(team && team !== '__ALL__' && String(r.team||'').trim() !== team) continue;
-    if(tf !== 'all' && !inRange(rowDate(r), range)) continue;
-    if(!isCoachEval(r)){
-      const ev = String(r.evaluator || '').trim();
-      if(ev && canonicalQaReviewers.includes(ev)) counts.set(ev, (counts.get(ev)||0)+1);
+  } else {
+    const wiperRank = rankMapDescending(teams, 'wiperRate');
+    const cqRank = rankMapDescending(teams, 'cqAvg');
+    const itacRank = rankMapDescending(teams, 'itacAvg');
+    for(const t of teams){
+      t.wiperRank = wiperRank.get(t.name) || null;
+      t.cqRank = cqRank.get(t.name) || null;
+      t.itacRank = itacRank.get(t.name) || null;
+      t.rankTotal = [t.wiperRank, t.cqRank, t.itacRank].filter(Number.isFinite).reduce((s,n)=>s+n,0);
+      t.overallScore = t.rankTotal - t.complimentCount;
     }
   }
 
-  el.qaReviewCountPill.textContent = `QA reviewers: ${activeQaReviewers.length}/${canonicalQaReviewers.length}`;
-  el.reviewersBtnCount.textContent = String(canonicalQaReviewers.length);
-  el.reviewerPopupCount.textContent = `${activeQaReviewers.length}/${canonicalQaReviewers.length} included`;
-
-  const teamLabel = team === '__ALL__' ? 'All teams' : team;
-  const tfLabel = el.tfSel.options[el.tfSel.selectedIndex]?.textContent || 'All';
-  const dateBasisLabel = currentDateMode() === 'assigned' ? 'Assigned Date' : 'Interaction Date';
-  el.rSub.textContent = `${teamLabel} • ${tfLabel} • ${dateBasisLabel} • Coach removed from reviewer list automatically`;
-
-  el.reviewerList.innerHTML = activeQaReviewers.length
-    ? activeQaReviewers.map(name => `
-        <span class="reviewerChip">
-          ${name}
-          <span class="mono">(${counts.get(name)||0})</span>
-          <button type="button" data-remove-reviewer="${name.replace(/"/g,'&quot;')}">✕</button>
-        </span>
-      `).join('')
-    : `<span class="notice">No QA reviewers currently included for this team scope.</span>`;
-}
-
-function paintSummary(rows){
-  const excludeZero = el.excludeZero.checked;
-
-  const teamLabel = (el.teamSel.value==='__ALL__') ? 'All teams' : el.teamSel.value;
-  const tfLabel = el.tfSel.options[el.tfSel.selectedIndex]?.textContent || 'All';
-  const dateBasisLabel = currentDateMode() === 'assigned' ? 'Assigned Date' : 'Interaction Date';
-  el.scopePill.textContent = `${teamLabel} • ${tfLabel} • ${dateBasisLabel} • Rows: ${rows.length}`;
-
-  const sum = computeGlobalSummary(rows, excludeZero);
-
-  const scoreGap = (Number.isFinite(sum.coach.avg) && Number.isFinite(sum.qa.avg))
-    ? (sum.coach.avg - sum.qa.avg)
-    : NaN;
-  const scoreGapPP = Number.isFinite(scoreGap) ? scoreGap*100 : NaN;
-
-  const durGapSec = (Number.isFinite(sum.durCoach.avgSec) && Number.isFinite(sum.durQa.avgSec))
-    ? (sum.durCoach.avgSec - sum.durQa.avgSec)
-    : NaN;
-  const durGapMin = Number.isFinite(durGapSec) ? (durGapSec / 60) : NaN;
-
-  const coachMonitoredRepSet = new Set(sum.coachRows.map(r=>r.agentKey));
-  const qaMonitoredRepSet = new Set(sum.qaRows.map(r=>r.agentKey));
-  const repsShown = new Set(rows.map(r=>r.agentKey));
-
-  let noCoachMonitor = 0;
-  let noQaMonitor = 0;
-  for(const rep of repsShown){
-    if(!coachMonitoredRepSet.has(rep)) noCoachMonitor++;
-    if(!qaMonitoredRepSet.has(rep)) noQaMonitor++;
-  }
-
-  const ttr = teamHalfTrend(rows, excludeZero);
-  const ttrTxt = Number.isFinite(ttr.pp) ? `${ttr.pp>=0?'+':''}${ttr.pp.toFixed(1)} pp` : '—';
-  el.teamTrendPill.className = `pill mono ${Number.isFinite(ttr.pp) ? (ttr.pp>0.1?'good':(ttr.pp<-0.1?'bad':'')) : ''}`;
-  el.teamTrendPill.textContent = `Trend (1st half → 2nd): ${ttrTxt}`;
-
-  el.summarySub.textContent = `Overall reflects the selected team/timeframe (${dateBasisLabel}), coach monitors, and only the QA reviewers currently included in the popup. Unreviewed monitors come from Agent Has Read = 0.`;
-
-  const overallRows = [
-    {
-      metric:'Overall average',
-      value:fmtPct1(sum.all.avg),
-      count:fmtInt(sum.all.n),
-      notes:excludeZero ? 'Zeros excluded' : 'Zeros included'
-    },
-    {
-      metric:'Overall average (no 0s)',
-      value:fmtPct1(sum.allNoZero.avg),
-      count:fmtInt(sum.allNoZero.n),
-      notes:'Always excludes zeros'
-    },
-    {
-      metric:'Total unreviewed monitors',
-      value:fmtInt(sum.unreviewedAll),
-      count:fmtInt(rows.length),
-      notes:'Count of all rows where Agent Has Read = 0'
-    },
-    {
-      metric:'Avg call duration',
-      value:fmtHMS(sum.durAll.avgSec),
-      count:fmtInt(sum.durAll.n),
-      notes:'Interaction duration when available'
-    }
-  ];
-
-  el.summaryTbody.innerHTML = overallRows.map(r=>`
-    <tr>
-      <td><b>${r.metric}</b></td>
-      <td class="mono">
-        <span class="pill mono ${r.metric==='Total unreviewed monitors' && Number(r.value.replace(/,/g,''))>0 ? 'bad' : ''}">
-          ${r.value}
-        </span>
-        ${r.metric==='Total unreviewed monitors' ? `<button class="btn tiny inlineAction" type="button" data-open-unreviewed>View more</button>` : ``}
-      </td>
-      <td class="mono">${r.count}</td>
-      <td>${r.notes}</td>
-    </tr>
-  `).join('');
-
-  const compRows = [
-    {
-      coach: fmtPct1(sum.coach.avg),
-      category:'Average score',
-      diff: Number.isFinite(scoreGapPP) ? `${scoreGapPP>=0?'+':''}${scoreGapPP.toFixed(1)} pp` : '—',
-      diffNum: scoreGapPP,
-      diffType: 'pct',
-      qa: fmtPct1(sum.qa.avg),
-      note:'Coach - QA'
-    },
-    {
-      coach: fmtInt(sum.coach.n),
-      category:'Monitor count',
-      diff: (Number.isFinite(sum.coach.n) && Number.isFinite(sum.qa.n))
-        ? `${sum.coach.n-sum.qa.n>=0?'+':''}${sum.coach.n-sum.qa.n}`
-        : '—',
-      diffNum: (sum.coach.n - sum.qa.n),
-      diffType: 'count',
-      qa: fmtInt(sum.qa.n),
-      note:'Coach - QA'
-    },
-    {
-      coach: fmtHMS(sum.durCoach.avgSec),
-      category:'Avg call duration',
-      diff: Number.isFinite(durGapSec)
-        ? `${durGapSec>=0?'+':''}${fmtHMS(Math.abs(durGapSec))}`
-        : '—',
-      diffNum: Number.isFinite(durGapMin) ? Math.abs(durGapMin * 100) : NaN,
-      diffType: 'pct',
-      qa: fmtHMS(sum.durQa.avgSec),
-      note:'Coach - QA'
-    },
-    {
-      coach: fmtPct1(sum.coachNoZero.avg),
-      category:'Average score (no 0s)',
-      diff: (Number.isFinite(sum.coachNoZero.avg) && Number.isFinite(sum.qaNoZero.avg))
-        ? `${((sum.coachNoZero.avg-sum.qaNoZero.avg)*100)>=0?'+':''}${((sum.coachNoZero.avg-sum.qaNoZero.avg)*100).toFixed(1)} pp`
-        : '—',
-      diffNum: (sum.coachNoZero.avg-sum.qaNoZero.avg)*100,
-      diffType: 'pct',
-      qa: fmtPct1(sum.qaNoZero.avg),
-      note:'Coach - QA'
-    },
-    {
-      coach: fmtInt(sum.unreviewedCoach),
-      category:'Unreviewed monitors',
-      diff: `${sum.unreviewedCoach-sum.unreviewedQa>=0?'+':''}${sum.unreviewedCoach-sum.unreviewedQa}`,
-      diffNum: (sum.unreviewedCoach-sum.unreviewedQa),
-      diffType: 'count',
-      qa: fmtInt(sum.unreviewedQa),
-      note:'Coach unread - QA unread'
-    },
-    {
-      coach: fmtInt(noCoachMonitor),
-      category:'Representatives without monitor',
-      diff: `${noCoachMonitor-noQaMonitor>=0?'+':''}${noCoachMonitor-noQaMonitor}`,
-      diffNum: (noCoachMonitor-noQaMonitor),
-      diffType: 'count',
-      qa: fmtInt(noQaMonitor),
-      note:'Coach none - QA none'
-    }
-  ];
-
-  el.compareTbody.innerHTML = compRows.map(r=>`
-    <tr>
-      <td class="mono"><b>${r.coach}</b></td>
-      <td>
-        <div class="compCategory">${r.category}</div>
-        <div class="${diffClass(r.diffNum, r.diffType)}">${r.diff}</div>
-        <div style="font-size:12px;color:var(--muted)">${r.note}</div>
-      </td>
-      <td class="mono"><b>${r.qa}</b></td>
-    </tr>
-  `).join('');
-}
-
-function coachingWeightFactor(avgFrac){
-  if(!Number.isFinite(avgFrac)) return 1;
-  const w = Math.max(0.15, Math.min(1, avgFrac));
-  return w;
-}
-
-function paintCards(rows){
-  el.cards.innerHTML = '';
-  el.empty.style.display = 'none';
-
-  if(!qaLoaded){
-    el.empty.style.display = '';
-    el.empty.textContent = 'QA: Upload needed. (No QA data detected in localStorage dock.)';
-    return;
-  }
-  if(!rows.length){
-    el.empty.style.display = '';
-    el.empty.textContent = 'No evaluations match the current Team / Timeframe / Search filters.';
-    return;
-  }
-
-  const excludeZero = el.excludeZero.checked;
-  const tf = el.tfSel.value;
-  const range = (tf==='all') ? {from:null,to:null} : timeframeRange(tf);
-
-  const byRep = groupBy(rows, r=>r.agentKey);
-  const reps = Array.from(byRep.keys()).sort((a,b)=>a.localeCompare(b));
-
-  const cards = reps.map(pk=>{
-    const arr = byRep.get(pk) || [];
-    const name = (arr[0]?.agent) || pk;
-
-    const total = avgScore(arr, excludeZero);
-    const totalIncl0 = avgScore(arr, false);
-    const wkSeries = sparkSeriesWeekly(arr, excludeZero);
-    const tr = splitHalfTrend(arr, excludeZero);
-    const trPP = Number.isFinite(tr.d) ? (tr.d*100) : NaN;
-
-    const zeros = arr.filter(r=>r.score===0).length;
-    const noZero = avgScore(arr, true);
-    const unreadCount = countUnreviewed(arr);
-
-    const { coachRows, qaRows } = splitRoleRows(arr);
-
-    const coachAvg = avgScore(coachRows, excludeZero).avg;
-    const qaAvg = avgScore(qaRows, excludeZero).avg;
-    const gap = (Number.isFinite(coachAvg)&&Number.isFinite(qaAvg)) ? (coachAvg-qaAvg) : NaN;
-    const gapBad = Number.isFinite(gap) && Math.abs(gap*100) >= DIFF_ALERT_PCTPTS;
-
-    const durAll = avgDuration(arr, excludeZero);
-    const durCoach = avgDuration(coachRows, excludeZero);
-    const durQa = avgDuration(qaRows, excludeZero);
-    const durGapSec = (Number.isFinite(durCoach.avgSec) && Number.isFinite(durQa.avgSec)) ? (durCoach.avgSec - durQa.avgSec) : NaN;
-    const durGapBad = Number.isFinite(durGapSec) && Math.abs(durGapSec) >= DIFF_ALERT_SECS;
-
-    const monitoredByCoach = coachRows.length > 0;
-
-    const coRows = coachingForRep(pk, range);
-    const coCount = coRows.length;
-    const coRecent = coRows[0]?.date || null;
-
-    const weightedCoachings = coCount * coachingWeightFactor(total.avg);
-
-    return {
-      pk, name, arr, total, totalIncl0, wkSeries,
-      trPP, zeros, noZero, unreadCount,
-      coachAvg, qaAvg, gapBad,
-      durAll, durCoach, durQa, durGapBad,
-      coCount, coRecent,
-      weightedCoachings,
-      monitoredByCoach,
-      coachCount: coachRows.length,
-      qaCount: qaRows.length
-    };
-  });
-
-  cards.sort((a,b)=>{
-    const aAvg = a.total.avg, bAvg = b.total.avg;
-    const aTrend = a.trPP, bTrend = b.trPP;
-    const fin = (x)=>Number.isFinite(x);
-
-    if(sortMode==="avg"){
-      if(fin(bAvg) && fin(aAvg) && bAvg!==aAvg) return bAvg - aAvg;
-      if(b.total.n !== a.total.n) return b.total.n - a.total.n;
-      return a.name.localeCompare(b.name);
-    }
-    if(sortMode==="zeros"){
-      if(b.zeros !== a.zeros) return b.zeros - a.zeros;
-      if(fin(aAvg) && fin(bAvg) && aAvg!==bAvg) return aAvg - bAvg;
-      return a.name.localeCompare(b.name);
-    }
-    if(sortMode==="trend"){
-      const aBad = !fin(aTrend), bBad = !fin(bTrend);
-      if(aBad && bBad) return 0;
-      if(aBad) return 1;
-      if(bBad) return -1;
-      if(aTrend !== bTrend) return aTrend - bTrend;
-      return a.name.localeCompare(b.name);
-    }
-    if(sortMode==="coachings"){
-      if(a.coCount !== b.coCount) return a.coCount - b.coCount;
-      if(fin(aAvg) && fin(bAvg) && aAvg!==bAvg) return aAvg - bAvg;
-      return a.name.localeCompare(b.name);
-    }
-    if(sortMode==="coachingsWeighted"){
-      if(a.weightedCoachings !== b.weightedCoachings) return a.weightedCoachings - b.weightedCoachings;
-      if(a.coCount !== b.coCount) return a.coCount - b.coCount;
-      if(fin(aAvg) && fin(bAvg) && aAvg!==bAvg) return aAvg - bAvg;
-      return a.name.localeCompare(b.name);
-    }
-    if(sortMode==="unreviewed"){
-      if(b.unreadCount !== a.unreadCount) return b.unreadCount - a.unreadCount;
-      if(b.total.n !== a.total.n) return b.total.n - a.total.n;
-      return a.name.localeCompare(b.name);
-    }
-
-    if(b.total.n !== a.total.n) return b.total.n - a.total.n;
+  teams.sort((a,b)=>{
+    const av = a.overallScore, bv = b.overallScore;
+    const aBad = !Number.isFinite(av), bBad = !Number.isFinite(bv);
+    if(aBad && bBad) return a.name.localeCompare(b.name);
+    if(aBad) return 1;
+    if(bBad) return -1;
+    if(av !== bv) return av - bv;
     return a.name.localeCompare(b.name);
   });
+  teams.forEach((t,i)=>t.overallRank = i+1);
 
-  for(const c of cards){
-    const trendCls = !Number.isFinite(c.trPP) ? 'trendFlat'
-      : (c.trPP > 0.1 ? 'trendUp' : (c.trPP < -0.1 ? 'trendDn' : 'trendFlat'));
-
-    const trendTxt = !Number.isFinite(c.trPP) ? '—'
-      : `${c.trPP>=0?'+':''}${c.trPP.toFixed(1)} pp`;
-
-    const splitTxt = (Number.isFinite(c.coachAvg) && Number.isFinite(c.qaAvg))
-      ? `Coach ${fmtPct1(c.coachAvg)} vs QA ${fmtPct1(c.qaAvg)}`
-      : 'Coach vs QA: —';
-
-    const durSplitTxt = (Number.isFinite(c.durCoach.avgSec) && Number.isFinite(c.durQa.avgSec))
-      ? `Dur Coach ${fmtHMS(c.durCoach.avgSec)} vs QA ${fmtHMS(c.durQa.avgSec)}`
-      : 'Dur split: —';
-
-    const coTxt = coLoaded
-      ? `CQ Coachings: <b>${fmtInt(c.coCount)}</b> • Recent: <b>${c.coRecent ? fmtDateOnly(c.coRecent) : '—'}</b>`
-      : `CQ Coachings: —`;
-
-    const unreadCls = c.unreadCount > 0 ? 'mini bad' : 'mini good';
-
-    const card = document.createElement('div');
-    card.className = 'card repCard';
-    card.dataset.rep = c.pk;
-
-    card.innerHTML = `
-      <div class="repTop">
-        <div>
-          <div class="repName">${c.name}</div>
-          <div class="repMeta">${c.wkSeries.weeks.length ? `${c.wkSeries.weeks[0]} → ${c.wkSeries.weeks[c.wkSeries.weeks.length-1]}` : '—'}</div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
-          <span class="coachFlag ${c.monitoredByCoach ? 'good' : 'bad'}">
-            <span class="coachMark">${c.monitoredByCoach ? '✔' : '✖'}</span>
-            Monitored by Coach
-          </span>
-          <div class="mini ${c.gapBad?'warn':''}" title="Coach vs QA score averages">${splitTxt}</div>
-          <div class="mini ${c.durGapBad?'warn':''}" title="Coach vs QA average call duration">${durSplitTxt}</div>
-        </div>
-      </div>
-
-      <div class="sparkWrap">
-        <canvas class="spark" width="520" height="110"></canvas>
-      </div>
-
-      <div class="repStats">
-        <div class="statLine">
-          <span>Unreviewed Monitor Count</span>
-          <span><span class="pill mono ${c.unreadCount>0?'bad':'good'}"><b>${fmtInt(c.unreadCount)}</b></span></span>
-        </div>
-        <div class="statLine"><span>Total</span><span><b>${fmtPct1(c.total.avg)}</b> • n <b>${fmtInt(c.total.n)}</b></span></div>
-        <div class="statLine"><span>Coach monitors</span><span><b>${fmtInt(c.coachCount)}</b></span></div>
-        <div class="statLine"><span>QA monitors</span><span><b>${fmtInt(c.qaCount)}</b></span></div>
-        <div class="statLine"><span>Avg call duration</span><span><b>${fmtHMS(c.durAll.avgSec)}</b> • n <b>${fmtInt(c.durAll.n)}</b></span></div>
-        <div class="statLine"><span>Trend (1st half → 2nd)</span><span class="${trendCls}">${trendTxt}</span></div>
-        <div class="statLine"><span>Zeros</span><span><b>${fmtInt(c.zeros)}</b> • Avg w/o 0s <b>${fmtPct1(c.noZero.avg)}</b></span></div>
-      </div>
-
-      <div class="miniRow">
-        <span class="${unreadCls}">Unread: ${fmtInt(c.unreadCount)}</span>
-        <span class="mini mono">Exclude 0s: ${excludeZero ? 'ON' : 'OFF'}</span>
-        <span class="mini mono">n(incl0): ${fmtInt(c.totalIncl0.n)}</span>
-        <span class="mini mono" title="Documented coachings filtered to Call Quality only">${coTxt}</span>
-      </div>
-    `;
-
-    el.cards.appendChild(card);
-    drawSpark(card.querySelector('canvas.spark'), c.wkSeries.vals);
-  }
-}
-
-function destroyModalChart(){
-  if(chartMain){
-    try{ chartMain.destroy(); }catch{}
-    chartMain = null;
-  }
-}
-
-function linearTrend(values){
-  const n = values.length;
-  if(n < 2) return null;
-  let sumX=0,sumY=0,sumXY=0,sumXX=0;
-  for(const p of values){
-    sumX += p.x; sumY += p.y; sumXY += p.x*p.y; sumXX += p.x*p.x;
-  }
-  const denom = (n*sumXX - sumX*sumX);
-  if(Math.abs(denom) < 1e-9) return null;
-  const m = (n*sumXY - sumX*sumY) / denom;
-  const b = (sumY - m*sumX) / n;
-  return { m, b };
-}
-
-function openModal(repKey){
-  const rowsScoped = filterRows();
-  const byRep = groupBy(rowsScoped, r=>r.agentKey);
-  const arr = byRep.get(repKey) || [];
-  if(!arr.length) return;
-
-  const excludeZero = el.excludeZero.checked;
-  const name = arr[0].agent || repKey;
-  const coachName = String(arr[0].team||"").trim() || '(blank Team/Coach)';
-  const sortedDesc = [...arr].sort((a,b)=> (rowDate(b)?.getTime()||0) - (rowDate(a)?.getTime()||0));
-
-  const total = avgScore(arr, excludeZero);
-  const incl0 = avgScore(arr, false);
-  const zeros = arr.filter(r=>r.score===0).length;
-  const noZero = avgScore(arr, true);
-  const unreadCount = countUnreviewed(arr);
-
-  const { coachRows, qaRows } = splitRoleRows(arr);
-
-  const coachAvg = avgScore(coachRows, excludeZero);
-  const qaAvg = avgScore(qaRows, excludeZero);
-  const gap = (Number.isFinite(coachAvg.avg)&&Number.isFinite(qaAvg.avg)) ? (coachAvg.avg-qaAvg.avg) : NaN;
-  const gapBad = Number.isFinite(gap) && Math.abs(gap*100) >= DIFF_ALERT_PCTPTS;
-
-  const durAll = avgDuration(arr, excludeZero);
-  const durCoach = avgDuration(coachRows, excludeZero);
-  const durQa = avgDuration(qaRows, excludeZero);
-  const durGapSec = (Number.isFinite(durCoach.avgSec)&&Number.isFinite(durQa.avgSec)) ? (durCoach.avgSec-durQa.avgSec) : NaN;
-  const durGapBad = Number.isFinite(durGapSec) && Math.abs(durGapSec) >= DIFF_ALERT_SECS;
-
-  const monitoredByCoach = coachRows.length > 0;
-
-  const evalCounts = new Map();
-  for(const r of arr){
-    const ev = (r.evaluator||'(blank)').trim() || '(blank)';
-    evalCounts.set(ev, (evalCounts.get(ev)||0)+1);
-  }
-  const evalTop = Array.from(evalCounts.entries()).sort((a,b)=>b[1]-a[1]).slice(0,10);
-
-  const teamLabel = (el.teamSel.value==='__ALL__') ? 'All teams' : el.teamSel.value;
-  const tfLabel = el.tfSel.options[el.tfSel.selectedIndex]?.textContent || 'All';
-  const tf = el.tfSel.value;
-  const range = (tf==='all') ? {from:null,to:null} : timeframeRange(tf);
-
-  const coRows = coachingForRep(repKey, range);
-  const coCount = coRows.length;
-  const coRecent = coRows[0]?.date || null;
-  const dateBasisLabel = currentDateMode() === 'assigned' ? 'Assigned Date' : 'Interaction Start Time';
-
-  el.mTitle.textContent = `${name} — QA Details`;
-  el.mSub.textContent = `${teamLabel} • ${tfLabel} • Rows: ${arr.length} • Team/Coach: ${coachName}`;
-
-  destroyModalChart();
-  el.mBody.innerHTML = '';
-
-  const stats = document.createElement('div');
-  stats.className = 'box';
-  stats.innerHTML = `
-    <div class="boxHead">
-      <span>Summary</span>
-      <span class="pill mono ${gapBad?'warn':''}">Coach vs QA gap: ${Number.isFinite(gap)? ((gap>=0?'+':'')+(gap*100).toFixed(1)+' pp') : '—'}</span>
-    </div>
-
-    <div class="row" style="gap:10px">
-      <span class="coachFlag ${monitoredByCoach ? 'good' : 'bad'}">
-        <span class="coachMark">${monitoredByCoach ? '✔' : '✖'}</span>
-        Monitored by Coach
-      </span>
-
-      <span class="pill mono ${unreadCount>0 ? 'bad' : 'good'}"><b>Unreviewed</b> ${fmtInt(unreadCount)}</span>
-      <span class="pill mono"><b>Total</b> ${fmtPct1(total.avg)} • n ${fmtInt(total.n)}</span>
-      <span class="pill mono"><b>Total (incl 0s)</b> ${fmtPct1(incl0.avg)} • n ${fmtInt(incl0.n)}</span>
-      <span class="pill mono"><b>Zeros</b> ${fmtInt(zeros)} • <b>Avg w/o 0s</b> ${fmtPct1(noZero.avg)}</span>
-
-      <span class="pill mono ${gapBad?'warn':''}"><b>Coach</b> ${fmtPct1(coachAvg.avg)} • n ${fmtInt(coachAvg.n)}</span>
-      <span class="pill mono ${gapBad?'warn':''}"><b>QA</b> ${fmtPct1(qaAvg.avg)} • n ${fmtInt(qaAvg.n)}</span>
-
-      <span class="pill mono"><b>Avg call</b> ${fmtHMS(durAll.avgSec)} • n ${fmtInt(durAll.n)}</span>
-      <span class="pill mono ${durGapBad?'warn':''}"><b>Dur coach</b> ${fmtHMS(durCoach.avgSec)} • n ${fmtInt(durCoach.n)}</span>
-      <span class="pill mono ${durGapBad?'warn':''}"><b>Dur QA</b> ${fmtHMS(durQa.avgSec)} • n ${fmtInt(durQa.n)}</span>
-      <span class="pill mono ${durGapBad?'warn':''}"><b>Dur gap</b> ${
-        Number.isFinite(durGapSec) ? `${durGapSec>=0?'+':''}${fmtHMS(Math.abs(durGapSec))}` : '—'
-      }</span>
-
-      <span class="pill mono" title="Documented Coachings filtered to Call Quality only (in selected timeframe)">
-        <b>CQ Coachings</b> ${fmtInt(coCount)} • <b>Most recent</b> ${coRecent ? fmtDateOnly(coRecent) : '—'}
-      </span>
-    </div>
-
-    <div style="margin-top:10px" class="notice">
-      <b>Top evaluators</b> (count): ${evalTop.map(([e,c])=>`${e} (${c})`).join(' • ') || '—'}
-    </div>
-  `;
-  el.mBody.appendChild(stats);
-
-  const coBox = document.createElement('div');
-  coBox.className = 'box';
-  coBox.innerHTML = `
-    <div class="boxHead">
-      <span>Documented Coachings — Call Quality</span>
-      <span class="pill mono">In timeframe: ${tfLabel}</span>
-    </div>
-    ${
-      !coLoaded
-        ? `<div class="notice">No documented coaching data loaded. Pick a Doc coaching key in Additional Options.</div>`
-        : (coRows.length
-          ? `<div class="coList">
-              ${coRows.slice(0, 50).map(c=>`
-                <div class="coItem">
-                  <div class="coHeadRow">
-                    <b>${fmtDateOnly(c.date)}</b>
-                    <span class="pill mono">${(c.coach||'—') ? String(c.coach||'—') : '—'}</span>
-                  </div>
-                  <div class="coMeta">Type: ${c.types.join(", ") || "Call Quality"} • Week: ${c.week || "—"}</div>
-                  ${c.desc ? `<div class="coDesc">${String(c.desc)}</div>` : `<div class="coDesc" style="color:#64748b">No description/notes found.</div>`}
-                </div>
-              `).join("")}
-            </div>
-            ${coRows.length>50 ? `<div class="notice" style="margin-top:10px">Showing newest 50. (${coRows.length} total in timeframe.)</div>` : ``}`
-          : `<div class="notice">No Call Quality coachings found for this rep in the selected timeframe.</div>`
-        )
-    }
-  `;
-  el.mBody.appendChild(coBox);
-
-  const chartBox = document.createElement('div');
-  chartBox.className = 'box';
-  chartBox.innerHTML = `
-    <div class="boxHead">
-      <span>Call Quality Over Time</span>
-      <span class="pill mono">Trendline included</span>
-    </div>
-    <div class="chartWrap"><canvas id="mainChart"></canvas></div>
-    <div class="notice" style="margin-top:10px">
-      Chart respects Exclude zeros.
-    </div>
-  `;
-  el.mBody.appendChild(chartBox);
-
-  const asc = [...arr].sort((a,b)=> (rowDate(a)?.getTime()||0) - (rowDate(b)?.getTime()||0));
-  const points = [];
-  const labels = [];
-  for(const r of asc){
-    if(excludeZero && r.score===0) continue;
-    labels.push(fmtDateTime(rowDate(r)));
-    points.push(r.score);
-  }
-
-  const trendPts = points.map((y,i)=>({x:i,y})).filter(p=>Number.isFinite(p.y));
-  const fit = linearTrend(trendPts);
-  const trendLine = fit ? points.map((_,i)=> (fit.m*i + fit.b)) : points.map(_=>null);
-
-  const ctx = chartBox.querySelector('#mainChart').getContext('2d');
-  chartMain = new Chart(ctx, {
-    type:'line',
-    data:{
-      labels,
-      datasets:[
-        { label:'Score %', data: points, tension:.25, pointRadius:3, pointHoverRadius:5, borderWidth:2 },
-        { label:'Trend', data: trendLine, tension:0, pointRadius:0, borderWidth:2, borderDash:[6,6] }
-      ]
-    },
-    options:{
-      maintainAspectRatio:false,
-      plugins:{
-        legend:{display:true},
-        tooltip:{
-          callbacks:{ label:(tt)=> Number.isFinite(tt.parsed.y) ? ` ${fmtPct2(tt.parsed.y)}` : ' —' }
-        }
-      },
-      scales:{
-        y:{
-          suggestedMin:0, suggestedMax:1,
-          ticks:{ callback:(v)=> Number.isFinite(v) ? (v*100).toFixed(0)+'%' : v }
-        },
-        x:{ ticks:{ maxRotation:0, autoSkip:true, maxTicksLimit:10 } }
+  for(const team of teams){
+    if(type === 'retail'){
+      const consumerRank = rankMapDescending(team.reps, 'consumerRate');
+      const wiperRank = rankMapDescending(team.reps, 'wiperRate');
+      const cqRank = rankMapDescending(team.reps, 'cqAvg');
+      const attendanceRank = rankMapAscending(team.reps, 'attendanceHits');
+      for(const r of team.reps){
+        r.consumerRank = consumerRank.get(r.name) || null;
+        r.wiperRank = wiperRank.get(r.name) || null;
+        r.cqRank = cqRank.get(r.name) || null;
+        r.attendanceRank = attendanceRank.get(r.name) || null;
+        r.rankTotal = [r.consumerRank, r.wiperRank, r.cqRank, r.attendanceRank].filter(Number.isFinite).reduce((s,n)=>s+n,0);
+        r.overallScore = r.rankTotal - r.complimentCount;
+      }
+    } else {
+      const wiperRank = rankMapDescending(team.reps, 'wiperRate');
+      const cqRank = rankMapDescending(team.reps, 'cqAvg');
+      const attendanceRank = rankMapAscending(team.reps, 'attendanceHits');
+      const acwRank = rankMapAscending(team.reps, 'acwAvg');
+      const itacRank = rankMapDescending(team.reps, 'itacAvg');
+      for(const r of team.reps){
+        r.wiperRank = wiperRank.get(r.name) || null;
+        r.cqRank = cqRank.get(r.name) || null;
+        r.attendanceRank = attendanceRank.get(r.name) || null;
+        r.acwRank = acwRank.get(r.name) || null;
+        r.itacRank = itacRank.get(r.name) || null;
+        r.rankTotal = [r.wiperRank, r.cqRank, r.attendanceRank, r.acwRank, r.itacRank].filter(Number.isFinite).reduce((s,n)=>s+n,0);
+        r.overallScore = r.rankTotal - r.complimentCount;
       }
     }
-  });
 
-  const tbl = document.createElement('div');
-  tbl.className = 'box';
-  tbl.innerHTML = `
-    <div class="boxHead">
-      <span>All Monitors (Most recent → oldest)</span>
-      <span class="pill mono">Includes Agent Has Read</span>
-    </div>
-    <div class="tblWrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Conversation ID</th>
-            <th>Genesys Evaluation ID</th>
-            <th>${dateBasisLabel}</th>
-            <th>Interaction Duration (H:MM:SS)</th>
-            <th>Evaluator</th>
-            <th>Monitor Type</th>
-            <th>Agent Has Read</th>
-            <th>Score %</th>
-            <th>Week</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${sortedDesc.map(r=>`
-            <tr>
-              <td class="mono">${r.conversationId ? String(r.conversationId) : '—'}</td>
-              <td class="mono">${(r.evalId||'—') ? String(r.evalId||'—') : '—'}</td>
-              <td class="mono">${fmtDateTime(rowDate(r))}</td>
-              <td class="mono">${r.durationText || '—'}</td>
-              <td>${r.evaluator ? r.evaluator : '—'}</td>
-              <td>${isCoachEval(r) ? 'Coach' : 'QA'}</td>
-              <td class="mono">${r.agentHasRead===null ? '—' : r.agentHasRead}</td>
-              <td class="mono">${fmtPct2(r.score)}</td>
-              <td class="mono">${rowWeek(r)}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
+    team.reps.sort((a,b)=>{
+      const av = a.overallScore, bv = b.overallScore;
+      const aBad = !Number.isFinite(av), bBad = !Number.isFinite(bv);
+      if(aBad && bBad) return a.name.localeCompare(b.name);
+      if(aBad) return 1;
+      if(bBad) return -1;
+      if(av !== bv) return av - bv;
+      return a.name.localeCompare(b.name);
+    });
+  }
+
+  return teams;
+}
+
+function topThreeHtml(team){
+  const top = team.reps.slice(0,3);
+  if(!top.length) return `<div class="mutedTxt">No reps in window.</div>`;
+  return `
+    <div class="topThree">
+      ${top.map((r, i)=>`
+        <div class="winner">
+          <div class="winnerMain">
+            ${medalHtml(i)}
+            <div>
+              <div style="font-weight:1000">${esc(r.name)}</div>
+              <div class="hint">Overall score ${esc(String(r.overallScore))}</div>
+            </div>
+          </div>
+          <div class="chipRow">
+            ${team.type === 'retail' ? `<span class="pill">Consumer ${fmtPct1(r.consumerRate)}</span>` : ``}
+            <span class="pill">Wipers ${fmtPct1(r.wiperRate)}</span>
+            <span class="pill">CQ ${fmtPct1(r.cqAvg)}</span>
+            <span class="pill ${r.attendanceHits>0 ? 'warn' : 'good'}">Attendance ${r.attendanceHits}</span>
+            <span class="pill">Compliments ${r.complimentCount || 0}</span>
+            ${team.type === 'referral' ? `<span class="pill">ACW ${fmtPct1(r.acwAvg)}</span><span class="pill">ITAC ${fmtPct1(r.itacAvg)}</span>` : ``}
+          </div>
+        </div>
+      `).join('')}
     </div>
   `;
-  el.mBody.appendChild(tbl);
-
-  el.overlay.classList.add('show');
-  el.overlay.setAttribute('aria-hidden','false');
 }
 
-function closeModal(){
-  destroyModalChart();
-  el.overlay.classList.remove('show');
-  el.overlay.setAttribute('aria-hidden','true');
-  el.mBody.innerHTML = '';
-}
-
-function openReviewerPopup(){
-  paintReviewerControls();
-  el.reviewerOverlay.classList.add('show');
-  el.reviewerOverlay.setAttribute('aria-hidden','false');
-}
-function closeReviewerPopup(){
-  el.reviewerOverlay.classList.remove('show');
-  el.reviewerOverlay.setAttribute('aria-hidden','true');
-}
-
-function openOptionsPopup(){
-  el.optionsOverlay.classList.add('show');
-  el.optionsOverlay.setAttribute('aria-hidden','false');
-}
-function closeOptionsPopup(){
-  el.optionsOverlay.classList.remove('show');
-  el.optionsOverlay.setAttribute('aria-hidden','true');
-}
-
-function unreviewedRows(rows){
-  return rows.filter(r=>r.unreviewed===1);
-}
-
-function unreviewedRepBreakdown(rows){
-  const byRep = groupBy(unreviewedRows(rows), r=>r.agentKey);
-  return Array.from(byRep.entries())
-    .map(([pk, arr])=>({
-      repKey: pk,
-      repName: arr[0]?.agent || pk || '(Unknown)',
-      total: arr.length,
-      rows: [...arr].sort((a,b)=> (rowDate(b)?.getTime()||0) - (rowDate(a)?.getTime()||0))
-    }))
-    .sort((a,b)=>{
-      if(b.total !== a.total) return b.total - a.total;
-      return a.repName.localeCompare(b.repName);
-    });
-}
-
-function paintUnreadPopup(rowsScoped){
-  const tfLabel = el.tfSel.options[el.tfSel.selectedIndex]?.textContent || 'All';
-  const teamLabel = (el.teamSel.value==='__ALL__') ? 'All teams' : el.teamSel.value;
-  const dateBasisLabel = currentDateMode() === 'assigned' ? 'Assigned Date' : 'Interaction Start Time';
-  const reps = unreviewedRepBreakdown(rowsScoped);
-  const totalUnreviewed = reps.reduce((n,r)=>n+r.total,0);
-
-  el.uSub.textContent = `${teamLabel} • ${tfLabel} • Date shown: ${dateBasisLabel} • Click a rep to show/hide conversations`;
-  el.unreadTotalPill.textContent = `Total: ${fmtInt(totalUnreviewed)} • Reps: ${fmtInt(reps.length)}`;
-
-  if(!reps.length){
-    el.unreadRepList.innerHTML = `<div class="notice">No unreviewed monitors found for the current filters.</div>`;
+function renderOverallWinner(sectionTeams){
+  if(!sectionTeams.length){
+    els.overallWinner.innerHTML = `<div class="mutedTxt">No data in the selected window for this tab.</div>`;
     return;
   }
+  const t = sectionTeams[0];
+  els.overallWinner.innerHTML = `
+    <h2>Top Overall ${esc(t.type === 'retail' ? 'Retail' : 'Referral')} Team</h2>
+    <div class="big">${medalHtml(0)} ${esc(t.name)}</div>
+    <div class="chipRow" style="margin-top:10px">
+      ${t.type === 'retail' ? `<span class="pill">Consumer <strong>${fmtPct1(t.consumerRate)}</strong></span>` : ``}
+      <span class="pill">Wipers <strong>${fmtPct1(t.wiperRate)}</strong></span>
+      <span class="pill">CQ <strong>${fmtPct1(t.cqAvg)}</strong></span>
+      <span class="pill">Rank total <strong>${esc(String(t.rankTotal ?? '—'))}</strong></span>
+      <span class="pill">Compliments <strong>${t.complimentCount || 0}</strong></span>
+      <span class="pill">Overall score <strong>${esc(String(t.overallScore))}</strong></span>
+      ${t.type === 'referral' ? `<span class="pill">ITAC <strong>${fmtPct1(t.itacAvg)}</strong></span>` : ``}
+      <span class="pill warn">Attendance shown only, not in team rank</span>
+      <span class="pill">Attendance hits <strong>${t.attendanceHits}</strong></span>
+      <span class="pill">Active reps <strong>${t.activeRepCount}</strong></span>
+    </div>
+  `;
+}
 
-  el.unreadRepList.innerHTML = reps.map((rep, idx)=>{
-    const open = unreadRepExpanded.has(rep.repKey);
-    return `
-      <div class="unreadRepItem">
-        <button class="unreadRepBtn" type="button" data-unread-rep="${rep.repKey.replace(/"/g,'&quot;')}">
-          <span>${idx+1}. ${rep.repName}</span>
-          <span class="unreadRepMeta">Unreviewed: ${fmtInt(rep.total)} ${open ? '▲' : '▼'}</span>
-        </button>
-        ${open ? `
-          <div class="unreadConvWrap">
-            <ol class="unreadConvList">
-              ${rep.rows.map(r=>`
-                <li>
-                  <span class="mono">Conversation ID: ${r.conversationId ? String(r.conversationId) : '—'}</span>
-                  <span> • ${dateBasisLabel}: <b>${fmtDateTime(rowDate(r))}</b></span>
-                </li>
-              `).join('')}
-            </ol>
+function renderRetailTable(teams){
+  els.retailRankBody.innerHTML = teams.map((t,i)=>`
+    <tr>
+      <td>${medalHtml(i)}</td>
+      <td><button data-open-team="${esc(t.name)}" data-section="retail" style="all:unset;cursor:pointer;color:#2563eb;font-weight:1000;text-decoration:underline">${esc(t.name)}</button></td>
+      <td class="right">${esc(String(t.consumerRank ?? '—'))}</td>
+      <td class="right">${esc(String(t.wiperRank ?? '—'))}</td>
+      <td class="right">${esc(String(t.cqRank ?? '—'))}</td>
+      <td class="right">${esc(String(t.rankTotal ?? '—'))}</td>
+      <td class="right" style="font-weight:1000">${t.complimentCount || 0}</td>
+      <td class="right"><strong>${esc(String(t.overallScore))}</strong></td>
+      <td class="right">${fmtPct1(t.consumerRate)}</td>
+      <td class="right">${fmtPct1(t.wiperRate)}</td>
+      <td class="right">${fmtPct1(t.cqAvg)}</td>
+      <td class="right ${t.attendanceHits>0 ? 'warnTxt' : 'goodTxt'}">${t.attendanceHits}</td>
+      <td class="right">${t.activeRepCount}</td>
+    </tr>
+  `).join('') || `<tr><td colspan="13" class="mutedTxt">No retail data.</td></tr>`;
+}
+function renderReferralTable(teams){
+  els.referralRankBody.innerHTML = teams.map((t,i)=>`
+    <tr>
+      <td>${medalHtml(i)}</td>
+      <td><button data-open-team="${esc(t.name)}" data-section="referral" style="all:unset;cursor:pointer;color:#2563eb;font-weight:1000;text-decoration:underline">${esc(t.name)}</button></td>
+      <td class="right">${esc(String(t.wiperRank ?? '—'))}</td>
+      <td class="right">${esc(String(t.cqRank ?? '—'))}</td>
+      <td class="right">${esc(String(t.itacRank ?? '—'))}</td>
+      <td class="right">${esc(String(t.rankTotal ?? '—'))}</td>
+      <td class="right" style="font-weight:1000">${t.complimentCount || 0}</td>
+      <td class="right"><strong>${esc(String(t.overallScore))}</strong></td>
+      <td class="right">${fmtPct1(t.wiperRate)}</td>
+      <td class="right">${fmtPct1(t.cqAvg)}</td>
+      <td class="right">${fmtPct1(t.itacAvg)}</td>
+      <td class="right ${t.attendanceHits>0 ? 'warnTxt' : 'goodTxt'}">${t.attendanceHits}</td>
+      <td class="right">${t.activeRepCount}</td>
+    </tr>
+  `).join('') || `<tr><td colspan="11" class="mutedTxt">No referral data.</td></tr>`;
+}
+
+function renderTeamCards(teams, mountEl, section){
+  mountEl.innerHTML = teams.map((t,i)=>`
+    <div class="teamCard ${i===0 ? 'open' : ''}" data-team="${esc(t.name)}" data-section="${esc(section)}">
+      <div class="teamHead">
+        <div class="teamTitle">
+          ${medalHtml(i)}
+          <div>
+            <div class="teamName">${esc(t.name)}</div>
+            <div class="hint">${esc(t.type === 'retail' ? 'Retail Team' : 'Referral Team')} • Overall score ${esc(String(t.overallScore))}</div>
           </div>
-        ` : ``}
+        </div>
+        <div class="chipRow">
+          ${t.type === 'retail' ? `<span class="pill">Consumer ${fmtPct1(t.consumerRate)}</span>` : ``}
+          <span class="pill">Wipers ${fmtPct1(t.wiperRate)}</span>
+          <span class="pill">CQ ${fmtPct1(t.cqAvg)}</span>
+          ${t.type === 'referral' ? `<span class="pill">ITAC ${fmtPct1(t.itacAvg)}</span>` : ``}
+          <span class="pill">Compliments ${t.complimentCount || 0}</span>
+          <span class="pill warn">Attendance ${t.attendanceHits}</span>
+          <span class="pill">Active reps ${t.activeRepCount}</span>
+        </div>
       </div>
-    `;
-  }).join('');
-}
+      <div class="teamBody">
+        <div class="teamMiniStats">
+          ${t.type === 'retail' ? `
+          <div class="miniStat">
+            <div class="k">Consumer Rank</div>
+            <div class="v">${esc(String(t.consumerRank ?? '—'))}</div>
+          </div>` : ``}
+          <div class="miniStat">
+            <div class="k">Wiper Rank</div>
+            <div class="v">${esc(String(t.wiperRank ?? '—'))}</div>
+          </div>
+          <div class="miniStat">
+            <div class="k">CQ Rank</div>
+            <div class="v">${esc(String(t.cqRank ?? '—'))}</div>
+          </div>
+          ${t.type === 'referral' ? `
+          <div class="miniStat">
+            <div class="k">ITAC Rank</div>
+            <div class="v">${esc(String(t.itacRank ?? '—'))}</div>
+          </div>` : ``}
+          <div class="miniStat">
+            <div class="k">Compliments</div>
+            <div class="v">${t.complimentCount || 0}</div>
+          </div>
+          <div class="miniStat">
+            <div class="k">Attendance Hits</div>
+            <div class="v ${t.attendanceHits>0 ? 'warnTxt' : 'goodTxt'}">${t.attendanceHits}</div>
+          </div>
+          <div class="miniStat">
+            <div class="k">Overall Rank</div>
+            <div class="v">${esc(String(t.overallRank))}</div>
+          </div>
+        </div>
 
-function openUnreadPopup(){
-  const rows = filterRows();
-  paintUnreadPopup(rows);
-  el.unreadOverlay.classList.add('show');
-  el.unreadOverlay.setAttribute('aria-hidden','false');
-}
+        <div class="subTitle">Top 3 Performers</div>
+        ${topThreeHtml(t)}
 
-function closeUnreadPopup(){
-  el.unreadOverlay.classList.remove('show');
-  el.unreadOverlay.setAttribute('aria-hidden','true');
-}
+        <div class="subTitle" style="margin-top:14px">Full Team Breakdown</div>
+        <div class="tblWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Overall</th>
+                <th>Rep</th>
+                ${t.type === 'retail' ? `<th class="right">Consumer Rank</th>` : ``}
+                <th class="right">Wiper Rank</th>
+                <th class="right">CQ Rank</th>
+                <th class="right">Attendance Rank</th>
+                ${t.type === 'referral' ? `<th class="right">ACW Rank</th><th class="right">ITAC Rank</th>` : ``}
+                <th class="right">Rank Total</th>
+                <th class="right">Compliments</th>
+                <th class="right">Overall Score</th>
+                ${t.type === 'retail' ? `<th class="right">Consumer Rate</th>` : ``}
+                <th class="right">Wiper Rate</th>
+                <th class="right">CQ Avg</th>
+                <th class="right">Attendance Hits</th>
+                ${t.type === 'referral' ? `<th class="right">ACW Avg</th><th class="right">ITAC %</th>` : ``}
+              </tr>
+            </thead>
+            <tbody>
+              ${t.reps.map((r, idx)=>`
+                <tr>
+                  <td>${medalHtml(idx)}</td>
+                  <td>${esc(r.name)}</td>
+                  ${t.type === 'retail' ? `<td class="right">${esc(String(r.consumerRank ?? '—'))}</td>` : ``}
+                  <td class="right">${esc(String(r.wiperRank ?? '—'))}</td>
+                  <td class="right">${esc(String(r.cqRank ?? '—'))}</td>
+                  <td class="right">${esc(String(r.attendanceRank ?? '—'))}</td>
+                  ${t.type === 'referral' ? `<td class="right">${esc(String(r.acwRank ?? '—'))}</td><td class="right">${esc(String(r.itacRank ?? '—'))}</td>` : ``}
+                  <td class="right">${esc(String(r.rankTotal ?? '—'))}</td>
+                  <td class="right" style="font-weight:1000">${r.complimentCount || 0}</td>
+                  <td class="right"><strong>${esc(String(r.overallScore))}</strong></td>
+                  ${t.type === 'retail' ? `<td class="right">${fmtPct1(r.consumerRate)}</td>` : ``}
+                  <td class="right">${fmtPct1(r.wiperRate)}</td>
+                  <td class="right">${fmtPct1(r.cqAvg)}</td>
+                  <td class="right ${r.attendanceHits>0 ? 'warnTxt' : 'goodTxt'}">${r.attendanceHits}</td>
+                  ${t.type === 'referral' ? `<td class="right">${fmtPct1(r.acwAvg)}</td><td class="right">${fmtPct1(r.itacAvg)}</td>` : ``}
+                </tr>
+              `).join('') || `<tr><td colspan="12" class="mutedTxt">No reps in window.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `).join('');
 
-function buildDockKeyOptions(){
-  const keys = findDockKeysBySuffix(".dock.qa");
-  el.qaKeySel.innerHTML = '';
-  if(!keys.length){
-    const o = document.createElement('option');
-    o.value = '';
-    o.textContent = '(no .dock.qa found in localStorage)';
-    el.qaKeySel.appendChild(o);
-    return;
-  }
-  for(const k of keys){
-    const o = document.createElement('option');
-    o.value = k;
-    o.textContent = k;
-    el.qaKeySel.appendChild(o);
-  }
-
-  const saved = loadSettings();
-  if(saved.qaKey && keys.includes(saved.qaKey)) el.qaKeySel.value = saved.qaKey;
-  else el.qaKeySel.value = keys[0];
-}
-
-function buildCoKeyOptions(){
-  const keys = findCoachingKeys();
-  el.coKeySel.innerHTML = '';
-  if(!keys.length){
-    const o = document.createElement('option');
-    o.value = '';
-    o.textContent = '(no coaching dock key found)';
-    el.coKeySel.appendChild(o);
-    return;
-  }
-  for(const k of keys){
-    const o = document.createElement('option');
-    o.value = k;
-    o.textContent = k;
-    el.coKeySel.appendChild(o);
-  }
-  const saved = loadSettings();
-  if(saved.coKey && keys.includes(saved.coKey)) el.coKeySel.value = saved.coKey;
-  else el.coKeySel.value = keys[0];
-}
-
-function loadCoachings(){
-  CO_KEY = el.coKeySel.value || null;
-  saveSettings({ coKey: CO_KEY });
-
-  if(!CO_KEY){
-    coLoaded = false;
-    coRowsAll = [];
-    el.coStatusPill.textContent = 'Coachings: (none found)';
-    return;
-  }
-  const obj = loadDockObjByKey(CO_KEY);
-  const rows = canonicalizeCoachings(obj);
-  coRowsAll = rows;
-
-  coLoaded = rows.length>0;
-  el.coStatusPill.textContent = coLoaded
-    ? `Coachings: ${rows.length} Call Quality coaching(s)`
-    : `Coachings: 0 (key loaded, but no Call Quality rows detected)`;
-}
-
-function loadQA(){
-  QA_KEY = el.qaKeySel.value || null;
-  saveSettings({ qaKey: QA_KEY });
-
-  if(!QA_KEY){
-    qaLoaded = false;
-    qaRowsAll = [];
-    el.statusPill.textContent = 'QA: Upload needed (no dock key found)';
-    return;
-  }
-  const obj = loadDockObjByKey(QA_KEY);
-  const rows = canonicalizeQA(obj);
-  qaRowsAll = rows;
-
-  qaLoaded = rows.length>0;
-  el.statusPill.textContent = qaLoaded
-    ? `Loaded QA: ${rows.length} evaluation(s)`
-    : `QA: Upload needed (dock found but no QA rows detected)`;
-
-  buildTeamOptions(qaRowsAll);
-
-  const saved = loadSettings();
-  if(saved.team && [...el.teamSel.options].some(o=>o.value===saved.team)) el.teamSel.value = saved.team;
-  if(saved.tf && [...el.tfSel.options].some(o=>o.value===saved.tf)) el.tfSel.value = saved.tf;
-  if(saved.dateMode && [...el.dateModeSel.options].some(o=>o.value===saved.dateMode)) el.dateModeSel.value = saved.dateMode;
-  if(saved.excludeZero !== undefined) el.excludeZero.checked = !!saved.excludeZero;
-  if(saved.search !== undefined) el.searchInp.value = saved.search;
-
-  if(el.tfSel.value === 'custom'){
-    if(saved.from) el.fromInp.value = saved.from;
-    if(saved.to) el.toInp.value = saved.to;
-  }
-
-  recomputeReviewerScope();
-}
-
-function render(){
-  if(qaLoaded){
-    recomputeReviewerScope();
-  }
-
-  const rows = filterRows();
-  paintSummary(rows);
-  paintReviewerControls();
-  paintCards(rows);
-
-  if(!qaLoaded){
-    el.empty.style.display = '';
-    el.empty.textContent = 'QA: Upload needed. (No QA data detected in localStorage dock.)';
-  } else if(!rows.length){
-    el.empty.style.display = '';
-    el.empty.textContent = 'No evaluations match the current filters or active QA reviewer list.';
-  } else {
-    el.empty.style.display = 'none';
-  }
-}
-
-function setSortMode(mode){
-  sortMode = mode;
-  saveSettings({ sortMode: mode });
-
-  document.querySelectorAll(".sortBtn").forEach(b=>{
-    b.classList.toggle("active", b.dataset.sort === mode);
+  mountEl.querySelectorAll('.teamHead').forEach(head=>{
+    head.addEventListener('click', ()=>{
+      head.parentElement.classList.toggle('open');
+    });
   });
-
-  const labelMap = {
-    count: "Most evals",
-    avg: "Avg score (high→low)",
-    zeros: "Most 0s",
-    trend: "Trend (neg→pos)",
-    coachings: "Coachings (low→high)",
-    coachingsWeighted: "Weighted coachings (low→high)",
-    unreviewed: "Most unreviewed"
-  };
-  el.sortPill.textContent = `Sort: ${labelMap[mode] || mode}`;
-  render();
 }
 
-el.loadBtn.addEventListener('click', ()=>{ loadQA(); render(); });
-el.reloadCoBtn.addEventListener('click', ()=>{ loadCoachings(); render(); });
-el.coKeySel.addEventListener('change', ()=>{ loadCoachings(); render(); });
+function bindOpenTeamLinks(){
+  document.querySelectorAll('[data-open-team]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const teamName = btn.getAttribute('data-open-team');
+      const section = btn.getAttribute('data-section');
+      setActiveTab(section);
+      const card = document.querySelector(`.teamCard[data-team="${CSS.escape(teamName)}"][data-section="${CSS.escape(section)}"]`);
+      if(card){
+        card.classList.add('open');
+        card.scrollIntoView({ behavior:'smooth', block:'start' });
+      }
+    });
+  });
+}
 
-el.tfSel.addEventListener('change', ()=>{
-  saveSettings({ tf: el.tfSel.value });
-  render();
-});
-el.dateModeSel.addEventListener('change', ()=>{
-  saveSettings({ dateMode: el.dateModeSel.value });
-  render();
-});
-el.teamSel.addEventListener('change', ()=>{ saveSettings({ team: el.teamSel.value }); render(); });
-el.excludeZero.addEventListener('change', ()=>{ saveSettings({ excludeZero: el.excludeZero.checked }); render(); });
-el.searchInp.addEventListener('input', ()=>{ saveSettings({ search: el.searchInp.value }); render(); });
-el.fromInp.addEventListener('change', ()=>{ saveSettings({ from: el.fromInp.value }); render(); });
-el.toInp.addEventListener('change', ()=>{ saveSettings({ to: el.toInp.value }); render(); });
-el.refreshBtn.addEventListener('click', render);
+function setActiveTab(tab){
+  activeTab = tab;
+  document.querySelectorAll('.tab').forEach(t=> t.classList.toggle('active', t.getAttribute('data-tab') === tab));
+  document.querySelectorAll('.tabPanel').forEach(p=> p.classList.toggle('active', p.id === `panel-${tab}`));
+}
 
-document.querySelectorAll(".sortBtn").forEach(b=>{
-  b.addEventListener("click", ()=> setSortMode(b.dataset.sort));
-});
+function renderAll(){
+  const retailTeams = buildSectionData(retailRows, retailFieldMap || {}, 'retail');
+  const referralTeams = buildSectionData(referralRows, referralFieldMap || {}, 'referral');
 
-el.reviewersBtn.addEventListener('click', openReviewerPopup);
-el.reviewerClose.addEventListener('click', closeReviewerPopup);
-el.reviewerOverlay.addEventListener('click', (e)=>{ if(e.target === el.reviewerOverlay) closeReviewerPopup(); });
+  els.sumRetail.textContent = String(retailTeams.length);
+  els.sumReferral.textContent = String(referralTeams.length);
+  els.sumRetailAttendance.textContent = String(retailTeams.reduce((s,t)=>s+(t.attendanceHits||0),0));
+  els.sumReferralAttendance.textContent = String(referralTeams.reduce((s,t)=>s+(t.attendanceHits||0),0));
 
-el.optionsBtn.addEventListener('click', openOptionsPopup);
-el.optionsClose.addEventListener('click', closeOptionsPopup);
-el.optionsOverlay.addEventListener('click', (e)=>{ if(e.target === el.optionsOverlay) closeOptionsPopup(); });
+  renderRetailTable(retailTeams);
+  renderReferralTable(referralTeams);
+  renderTeamCards(retailTeams, els.retailCards, 'retail');
+  renderTeamCards(referralTeams, els.referralCards, 'referral');
 
-el.summaryTbody.addEventListener('click', (e)=>{
-  const btn = e.target.closest('[data-open-unreviewed]');
-  if(!btn) return;
-  openUnreadPopup();
-});
+  renderOverallWinner(activeTab === 'retail' ? retailTeams : referralTeams);
+  bindOpenTeamLinks();
 
-el.unreadClose.addEventListener('click', closeUnreadPopup);
-el.unreadOverlay.addEventListener('click', (e)=>{ if(e.target === el.unreadOverlay) closeUnreadPopup(); });
-el.unreadRepList.addEventListener('click', (e)=>{
-  const btn = e.target.closest('[data-unread-rep]');
-  if(!btn) return;
-  const repKey = btn.getAttribute('data-unread-rep') || '';
-  if(!repKey) return;
-  if(unreadRepExpanded.has(repKey)) unreadRepExpanded.delete(repKey);
-  else unreadRepExpanded.add(repKey);
-  paintUnreadPopup(filterRows());
-});
+  const { sd, ed } = getWindow();
+  els.scopeHint.textContent = `${mmddyy(sd)} → ${mmddyy(ed)} • Retail ${retailTeams.length} • Referral ${referralTeams.length}`;
+}
 
-el.reviewerList.addEventListener('click', (e)=>{
-  const btn = e.target.closest('[data-remove-reviewer]');
-  if(!btn) return;
-  const name = btn.getAttribute('data-remove-reviewer');
-  activeQaReviewers = activeQaReviewers.filter(x => x !== name);
-  persistReviewerState();
-  render();
-});
+function savePrefs(){
+  try{
+    localStorage.setItem(PREF_KEY, JSON.stringify({
+      retailDockKey,
+      referralDockKey,
+      qaDockKey,
+      checkDockKey,
+      complimentSheetName,
+      startDate: els.startDate.value || '',
+      endDate: els.endDate.value || '',
+      activeTab
+    }));
+  }catch(e){}
+}
+function loadPrefs(){
+  try{
+    const raw = localStorage.getItem(PREF_KEY);
+    if(!raw) return;
+    const p = JSON.parse(raw);
+    if(typeof p.retailDockKey === 'string') retailDockKey = p.retailDockKey;
+    if(typeof p.referralDockKey === 'string') referralDockKey = p.referralDockKey;
+    if(typeof p.qaDockKey === 'string') qaDockKey = p.qaDockKey;
+    if(typeof p.checkDockKey === 'string') checkDockKey = p.checkDockKey;
+    if(typeof p.complimentSheetName === 'string') complimentSheetName = p.complimentSheetName;
+    if(typeof p.startDate === 'string') els.startDate.value = p.startDate;
+    if(typeof p.endDate === 'string') els.endDate.value = p.endDate;
+    if(typeof p.activeTab === 'string') activeTab = p.activeTab;
+  }catch(e){}
+}
 
-el.resetReviewersBtn.addEventListener('click', ()=>{
-  activeQaReviewers = [...canonicalQaReviewers];
-  persistReviewerState();
-  render();
-});
+function fullLoad(){
+  retailDockKey = els.retailDockSel.value || retailDockKey || pickBestKey('retail');
+  referralDockKey = els.referralDockSel.value || referralDockKey || pickBestKey('referral');
+  qaDockKey = els.qaDockSel.value || qaDockKey || pickBestKey('qa');
+  checkDockKey = els.checkDockSel.value || checkDockKey || pickBestKey('checklist');
 
-el.cards.addEventListener('click', (e)=>{
-  const card = e.target.closest('.repCard');
-  if(!card) return;
-  const pk = card.dataset.rep;
-  if(pk) openModal(pk);
-});
-
-el.mClose.addEventListener('click', closeModal);
-el.overlay.addEventListener('click', (e)=>{ if(e.target === el.overlay) closeModal(); });
-
-document.addEventListener('keydown', (e)=>{
-  if(e.key==='Escape' && el.overlay.classList.contains('show')) closeModal();
-  if(e.key==='Escape' && el.reviewerOverlay.classList.contains('show')) closeReviewerPopup();
-  if(e.key==='Escape' && el.optionsOverlay.classList.contains('show')) closeOptionsPopup();
-  if(e.key==='Escape' && el.unreadOverlay.classList.contains('show')) closeUnreadPopup();
-});
-
-(function boot(){
-  buildDockKeyOptions();
-  buildCoKeyOptions();
-
-  const s = loadSettings();
-  if(s.tf && [...el.tfSel.options].some(o=>o.value===s.tf)) el.tfSel.value = s.tf;
-  if(s.dateMode && [...el.dateModeSel.options].some(o=>o.value===s.dateMode)) el.dateModeSel.value = s.dateMode;
-  if(s.from) el.fromInp.value = s.from;
-  if(s.to) el.toInp.value = s.to;
-  if(s.excludeZero !== undefined) el.excludeZero.checked = !!s.excludeZero;
-  if(s.search !== undefined) el.searchInp.value = s.search;
-  if(s.sortMode) sortMode = s.sortMode;
-
+  loadRetail();
+  loadReferral();
   loadQA();
-  loadCoachings();
-  setSortMode(sortMode || "count");
-})();
-</script>
+  loadChecklist();
+  initDates();
+  savePrefs();
+  setActiveTab(activeTab);
+  renderAll();
+}
 
+document.querySelectorAll('.tab').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    setActiveTab(btn.getAttribute('data-tab'));
+    savePrefs();
+    renderAll();
+  });
+});
+
+els.complimentFile.addEventListener('change', async (e)=>{
+  const file = e.target.files && e.target.files[0];
+  if(!file){
+    complimentWorkbook = null;
+    complimentSheetName = '';
+    complimentRows = [];
+    els.complimentFileHint.textContent = 'No compliment file loaded.';
+    els.complimentSheetBtns.innerHTML = '';
+    els.complimentHint.textContent = 'Expected headers: CSR/SSR Name, Director, CSR Team/Coach, Date of Call, Referral/Claim/WO/Chat Number, Taken By, Compliment, Date Letter Completed, Coord Initial';
+    renderAll();
+    return;
+  }
+  try{
+    const buf = await file.arrayBuffer();
+    complimentWorkbook = XLSX.read(buf, { type:'array' });
+    els.complimentFileHint.textContent = `${file.name} loaded • ${complimentWorkbook.SheetNames.length} sheet(s)`;
+    if(!complimentWorkbook.SheetNames.includes(complimentSheetName)){
+      complimentSheetName = complimentWorkbook.SheetNames[0] || '';
+    }
+    loadComplimentSheet();
+    renderComplimentSheetButtons();
+    initDates();
+    savePrefs();
+    renderAll();
+  }catch(err){
+    console.error(err);
+    complimentWorkbook = null;
+    complimentSheetName = '';
+    complimentRows = [];
+    els.complimentFileHint.textContent = 'Could not read compliment workbook.';
+    els.complimentSheetBtns.innerHTML = '';
+    els.complimentHint.textContent = 'Upload failed. Please try another Excel file.';
+    renderAll();
+  }
+});
+
+populateDockSelects();
+loadPrefs();
+populateDockSelects();
+setActiveTab(activeTab);
+fullLoad();
+
+els.refreshBtn.addEventListener('click', ()=>{
+  savePrefs();
+  renderAll();
+});
+els.loadDocksBtn.addEventListener('click', ()=>{
+  fullLoad();
+});
+els.startDate.addEventListener('change', ()=>{ savePrefs(); renderAll(); });
+els.endDate.addEventListener('change', ()=>{ savePrefs(); renderAll(); });
+els.retailDockSel.addEventListener('change', ()=>{ retailDockKey = els.retailDockSel.value; savePrefs(); });
+els.referralDockSel.addEventListener('change', ()=>{ referralDockKey = els.referralDockSel.value; savePrefs(); });
+els.qaDockSel.addEventListener('change', ()=>{ qaDockKey = els.qaDockSel.value; savePrefs(); });
+els.checkDockSel.addEventListener('change', ()=>{ checkDockKey = els.checkDockSel.value; savePrefs(); });
+</script>
 </body>
 </html>
+
