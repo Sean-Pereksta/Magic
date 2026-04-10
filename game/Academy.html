@@ -1,1688 +1,1840 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>All Star Report (Retail + Referral Local Docks)</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Battleline Zero</title>
 <style>
-  :root{
-    --bg:#f8fafc;
-    --card:#ffffff;
-    --ink:#0f172a;
-    --muted:#64748b;
-    --line:#e2e8f0;
-    --soft:#f1f5f9;
-    --accent:#2563eb;
-    --good:#16a34a;
-    --warn:#f59e0b;
-    --bad:#dc2626;
-    --shadow:0 16px 38px rgba(2,6,23,.08);
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #0d1018;
+    overflow: hidden;
+    font-family: Arial, Helvetica, sans-serif;
+    color: white;
   }
-  *{box-sizing:border-box}
-  body{
-    margin:0;
-    font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-    background:var(--bg);
-    color:var(--ink);
+  canvas {
+    display: block;
+    background: linear-gradient(#121726, #0b0e15);
   }
-  .topbar{
-    position:sticky; top:0; z-index:50;
-    background:#fff;
-    border-bottom:1px solid var(--line);
-    padding:14px 16px;
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
   }
-  .title{ font-size:22px; font-weight:1000; }
-  .subtitle{ font-size:12px; color:var(--muted); font-weight:900; margin-top:3px; }
-  .wrap{
-    padding:14px;
-    display:grid;
-    gap:14px;
+  .panel {
+    pointer-events: auto;
+    background: rgba(10, 15, 28, 0.95);
+    border: 2px solid #7cb7ff;
+    box-shadow: 0 0 24px rgba(124, 183, 255, 0.25);
+    border-radius: 16px;
+    padding: 18px;
+    max-width: 980px;
+    width: min(92vw, 980px);
   }
-  .card{
-    background:var(--card);
-    border:1px solid var(--line);
-    border-radius:18px;
-    box-shadow:var(--shadow);
-    padding:14px;
+  h1, h2, h3, p {
+    margin: 0 0 10px 0;
   }
-  .row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-  .spacer{ flex:1; }
-  label{
-    display:flex; gap:8px; align-items:center; flex-wrap:wrap;
-    font-size:12px; color:var(--muted); font-weight:900;
+  .title {
+    font-size: 42px;
+    letter-spacing: 2px;
+    color: #a6d1ff;
+    text-shadow: 0 0 20px rgba(122, 190, 255, 0.4);
   }
-  input,select,button{ font-size:14px; }
-  input,select{
-    border:1px solid var(--line);
-    border-radius:12px;
-    padding:8px 10px;
-    background:#fff;
-    color:var(--ink);
-    outline:none;
+  .sub {
+    color: #d6e7ff;
+    opacity: 0.9;
   }
-  button{
-    border:1px solid var(--line);
-    background:#fff;
-    color:var(--ink);
-    padding:8px 12px;
-    border-radius:999px;
-    cursor:pointer;
-    font-weight:1000;
+  .row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
   }
-  button.primary{
-    background:var(--accent);
-    color:#fff;
-    border-color:var(--accent);
+  .btn {
+    background: #1b2a49;
+    color: white;
+    border: 1px solid #7cb7ff;
+    border-radius: 10px;
+    padding: 10px 14px;
+    cursor: pointer;
+    font-weight: bold;
   }
-  button:hover{ filter:brightness(.98); }
-  details{
-    border:1px solid var(--line);
-    border-radius:14px;
-    background:#fff;
-    padding:10px 12px;
-  }
-  summary{ cursor:pointer; font-weight:1000; }
-  .mono{
-    font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
-  }
-  .hint{
-    color:var(--muted);
-    font-size:12px;
-    font-weight:900;
-  }
-  .heroGrid{
-    display:grid;
-    grid-template-columns: 1.2fr .8fr;
-    gap:14px;
-  }
-  @media (max-width:980px){
-    .heroGrid{ grid-template-columns:1fr; }
-  }
-  .statGrid{
-    display:grid;
-    grid-template-columns:repeat(4,minmax(140px,1fr));
-    gap:10px;
-  }
-  @media (max-width:900px){
-    .statGrid{ grid-template-columns:repeat(2,minmax(140px,1fr)); }
-  }
-  .stat{
-    border:1px solid var(--line);
-    border-radius:14px;
-    padding:10px;
-    background:linear-gradient(180deg, rgba(37,99,235,.06), rgba(37,99,235,0));
-  }
-  .stat .k{
-    font-size:12px; color:var(--muted); font-weight:900; margin-bottom:6px;
-  }
-  .stat .v{
-    font-size:20px; font-weight:1000;
-  }
-  .chipRow{
-    display:flex; gap:8px; flex-wrap:wrap; align-items:center;
-  }
-  .pill{
-    display:inline-flex; align-items:center; gap:6px;
-    padding:6px 10px;
-    border-radius:999px;
-    border:1px solid var(--line);
-    background:var(--soft);
-    font-size:12px;
-    font-weight:1000;
-  }
-  .pill.good{ background:rgba(22,163,74,.1); color:#166534; border-color:rgba(22,163,74,.25); }
-  .pill.warn{ background:rgba(245,158,11,.12); color:#92400e; border-color:rgba(245,158,11,.28); }
-  .overallBanner{
-    border:1px solid rgba(245,158,11,.35);
-    background:linear-gradient(180deg, rgba(245,158,11,.15), rgba(245,158,11,.04));
-    border-radius:18px;
-    padding:14px;
-  }
-  .overallBanner h2{
-    margin:0 0 6px 0;
-    font-size:20px;
-  }
-  .overallBanner .big{
-    font-size:28px; font-weight:1000;
-  }
-  .medal{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    min-width:28px;
-    height:28px;
-    border-radius:999px;
-    font-size:16px;
-    font-weight:1000;
-    border:1px solid transparent;
-  }
-  .medal.gold{ background:rgba(245,158,11,.16); color:#92400e; border-color:rgba(245,158,11,.35); }
-  .medal.silver{ background:rgba(148,163,184,.16); color:#475569; border-color:rgba(148,163,184,.35); }
-  .medal.bronze{ background:rgba(180,83,9,.14); color:#92400e; border-color:rgba(180,83,9,.35); }
-  .topThree{
-    display:grid;
-    gap:10px;
-  }
-  .winner{
-    border:1px solid var(--line);
-    border-radius:14px;
-    background:#fff;
-    padding:10px 12px;
-    display:flex;
-    align-items:center;
-    gap:10px;
-    justify-content:space-between;
-    flex-wrap:wrap;
-  }
-  .winnerMain{
-    display:flex; gap:10px; align-items:center; flex-wrap:wrap;
-  }
-  .tabs{
-    display:flex; gap:8px; flex-wrap:wrap;
-  }
-  .tab{
-    border:1px solid var(--line);
-    background:#fff;
-    color:var(--ink);
-    border-radius:999px;
-    padding:8px 14px;
-    font-size:13px;
-    font-weight:1000;
-    cursor:pointer;
-  }
-  .tab.active{
-    background:rgba(37,99,235,.10);
-    border-color:rgba(37,99,235,.35);
-    box-shadow:0 0 0 2px rgba(37,99,235,.10);
-  }
-  .tabPanel{ display:none; }
-  .tabPanel.active{ display:block; }
+  .btn:hover { background: #25406e; }
+  .btn.red { border-color: #ff7a7a; background: #4a1b1b; }
+  .btn.green { border-color: #95ff9a; background: #183b1e; }
+  .btn.gold { border-color: #ffd56a; background: #4a3a12; }
 
-  .teamCard{
-    border:1px solid var(--line);
-    border-radius:18px;
-    overflow:hidden;
-    background:#fff;
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
   }
-  .teamHead{
-    padding:14px;
-    display:flex;
-    gap:10px;
-    justify-content:space-between;
-    align-items:center;
-    flex-wrap:wrap;
-    background:linear-gradient(180deg, rgba(37,99,235,.08), rgba(37,99,235,0));
-    cursor:pointer;
+  .card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(160, 210, 255, 0.35);
+    border-radius: 12px;
+    padding: 12px;
   }
-  .teamHead:hover{ filter:brightness(.985); }
-  .teamTitle{
-    display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+  .card h3 {
+    color: #b8d8ff;
+    margin-bottom: 8px;
   }
-  .teamName{
-    font-size:18px; font-weight:1000;
+  .small {
+    font-size: 13px;
+    opacity: 0.92;
+    line-height: 1.35;
   }
-  .teamBody{
-    display:none;
-    padding:14px;
-    border-top:1px solid var(--line);
-    background:#fbfdff;
+  .cost {
+    color: #ffd777;
+    font-weight: bold;
   }
-  .teamCard.open .teamBody{ display:block; }
-  .teamMiniStats{
-    display:grid;
-    grid-template-columns:repeat(5,minmax(120px,1fr));
-    gap:10px;
-    margin-bottom:12px;
+  .hidden {
+    display: none !important;
   }
-  @media (max-width:920px){
-    .teamMiniStats{ grid-template-columns:repeat(2,minmax(120px,1fr)); }
+  #topHud {
+    position: absolute;
+    left: 10px;
+    top: 10px;
+    z-index: 4;
+    background: rgba(6,10,20,0.76);
+    border: 1px solid rgba(170,210,255,0.3);
+    border-radius: 12px;
+    padding: 10px 12px;
+    min-width: 320px;
+    backdrop-filter: blur(5px);
   }
-  .miniStat{
-    border:1px solid var(--line);
-    border-radius:12px;
-    padding:10px;
-    background:#fff;
+  #rightHud {
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    z-index: 4;
+    background: rgba(6,10,20,0.76);
+    border: 1px solid rgba(170,210,255,0.3);
+    border-radius: 12px;
+    padding: 10px 12px;
+    width: 260px;
+    backdrop-filter: blur(5px);
   }
-  .miniStat .k{
-    font-size:11px; font-weight:900; color:var(--muted); margin-bottom:4px;
+  .barWrap {
+    background: rgba(255,255,255,0.08);
+    height: 10px;
+    border-radius: 999px;
+    overflow: hidden;
+    margin: 4px 0 10px;
   }
-  .miniStat .v{
-    font-size:18px; font-weight:1000;
+  .bar {
+    height: 100%;
+    background: linear-gradient(90deg, #6fb6ff, #ccedff);
   }
-  .subTitle{
-    font-size:14px;
-    font-weight:1000;
-    margin:2px 0 10px 0;
+  .enemyBar {
+    background: linear-gradient(90deg, #ff7b7b, #ffd0d0);
   }
-  .tblWrap{
-    overflow:auto;
-    border:1px solid var(--line);
-    border-radius:14px;
-    background:#fff;
+  .notice {
+    position: absolute;
+    top: 90px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+    background: rgba(10, 16, 32, 0.9);
+    border: 1px solid rgba(160, 210, 255, 0.45);
+    border-radius: 999px;
+    padding: 10px 18px;
+    font-weight: bold;
+    display: none;
   }
-  table{
-    width:100%;
-    min-width:980px;
-    border-collapse:separate;
-    border-spacing:0;
+  .key {
+    color: #8fd5ff;
+    font-weight: bold;
   }
-  th{
-    position:sticky; top:0;
-    background:#0f172a;
-    color:#e5e7eb;
-    text-align:left;
-    padding:10px;
-    font-size:12px;
-    white-space:nowrap;
-  }
-  td{
-    padding:8px 10px;
-    border-bottom:1px solid var(--line);
-    white-space:nowrap;
-    font-size:13px;
-    vertical-align:top;
-  }
-  tr:hover td{ background:#f8fafc; }
-  .right{ text-align:right; }
-  .goodTxt{ color:#166534; font-weight:1000; }
-  .warnTxt{ color:#92400e; font-weight:1000; }
-  .mutedTxt{ color:var(--muted); font-weight:900; }
-  .sectionHeader{
-    display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;
-    margin-bottom:10px;
-  }
-
-  .uploadZone{
-    border:1px dashed var(--line);
-    border-radius:14px;
-    padding:12px;
-    background:#fff;
-  }
-  .sheetBtnRow{
-    display:flex;
-    gap:8px;
-    flex-wrap:wrap;
-    margin-top:10px;
-  }
-  .sheetBtn{
-    border:1px solid var(--line);
-    background:#fff;
-    color:var(--ink);
-    border-radius:999px;
-    padding:8px 12px;
-    cursor:pointer;
-    font-weight:1000;
-  }
-  .sheetBtn.active{
-    background:rgba(22,163,74,.10);
-    border-color:rgba(22,163,74,.35);
-    box-shadow:0 0 0 2px rgba(22,163,74,.10);
-  }
-
 </style>
 </head>
 <body>
-  <div class="topbar">
-    <div class="title">All Star Report — Retail + Referral Local Docks</div>
-    <div class="subtitle">Attendance counts only toward individual rep standings, not team overall rankings</div>
+<canvas id="game"></canvas>
+
+<div id="topHud" class="hidden">
+  <div><strong>Class:</strong> <span id="hudClass">Commando</span></div>
+  <div><strong>Credits:</strong> <span id="hudCredits">0</span> | <strong>Difficulty:</strong> <span id="hudDiff">Normal</span></div>
+  <div><strong>Ability:</strong> <span id="hudAbility">-</span></div>
+  <div><strong>Respawn:</strong> <span id="hudRespawn">Alive</span></div>
+  <div style="margin-top:6px;">Your Base</div>
+  <div class="barWrap"><div id="playerBaseBar" class="bar" style="width:100%"></div></div>
+  <div>Enemy Base</div>
+  <div class="barWrap"><div id="enemyBaseBar" class="bar enemyBar" style="width:100%"></div></div>
+</div>
+
+<div id="rightHud" class="hidden">
+  <div><strong>Frontline Control</strong></div>
+  <div class="small">Get more units near the glowing barrier to push it toward the enemy backline. Equal pressure makes it hold.</div>
+  <hr style="border-color:rgba(255,255,255,0.12)">
+  <div><strong>Controls</strong></div>
+  <div class="small">
+    <span class="key">WASD</span> Move<br>
+    <span class="key">E</span> Fire / Engineer: place sentry<br>
+    <span class="key">Q</span> Special ability<br>
+    <span class="key">TAB</span> Open War Room<br>
+    <span class="key">R</span> Respawn/class select when dead
   </div>
+  <hr style="border-color:rgba(255,255,255,0.12)">
+  <div><strong>Forces</strong></div>
+  <div class="small">Allies: <span id="allyCount">0</span> + You</div>
+  <div class="small">Enemies: <span id="enemyCount">0</span></div>
+</div>
 
-  <div class="wrap">
-    <div class="card">
-      <div class="row">
-        <label>Start
-          <input id="startDate" type="date">
-        </label>
-        <label>End
-          <input id="endDate" type="date">
-        </label>
-        <button class="primary" id="refreshBtn">Refresh</button>
-        <span class="spacer"></span>
-        <span class="mono hint" id="scopeHint">—</span>
-      </div>
+<div id="notice" class="notice"></div>
 
-      <details style="margin-top:10px">
-        <summary>Data docks (localStorage)</summary>
-        <div class="row" style="margin-top:10px">
-          <label>Retail dock
-            <select id="retailDockSel" style="min-width:320px"></select>
-          </label>
-          <label>Referral dock
-            <select id="referralDockSel" style="min-width:320px"></select>
-          </label>
-          <label>QA dock
-            <select id="qaDockSel" style="min-width:320px"></select>
-          </label>
-          <label>Checklist dock
-            <select id="checkDockSel" style="min-width:320px"></select>
-          </label>
-          <button id="loadDocksBtn">Load docks</button>
-        </div>
-        <div class="row" style="margin-top:10px">
-          <span class="mono hint" id="dockHint">—</span>
-        </div>
-      </details>
-      <div class="uploadZone" style="margin-top:12px">
-        <div class="sectionHeader">
-          <div class="subTitle">Compliment Calls Upload (Optional)</div>
-          <div class="chipRow">
-            <span class="pill">Works for Retail and Referral</span>
-            <span class="pill warn">Compliments are applied to individual rep standings only (not team rankings)</span>
-          </div>
-        </div>
-        <div class="row">
-          <input id="complimentFile" type="file" accept=".xlsx,.xls,.xlsm,.csv" />
-          <span class="mono hint" id="complimentFileHint">No compliment file loaded.</span>
-        </div>
-        <div class="sheetBtnRow" id="complimentSheetBtns"></div>
-        <div class="row" style="margin-top:10px">
-          <span class="mono hint" id="complimentHint">Expected headers (A:N): ID, Start time, Completion time, Email, Name, CSR/SSR Name (This is the person being complimented), Director, CSR Team/Coach, Date of Call, Referral/Claim/WO/Chat Number (Only one type is needed), Taken By (This is the person reporting the compliment), Compliment, Date Letter Completed, Coord Initial</span>
-        </div>
-      </div>
+<div id="menuOverlay" class="overlay">
+  <div class="panel">
+    <div class="title">BATTLELINE ZERO</div>
+    <p class="sub">Arcade front-control warfare. Push the glowing battleline into the enemy backline, or destroy the enemy base.</p>
+    <div class="row" style="margin: 14px 0;">
+      <button class="btn green" id="startBtn">Start Battle</button>
+      <button class="btn" id="warRoomBtn">War Room</button>
     </div>
-
-    <div class="heroGrid">
-      <div class="card">
-        <div class="sectionHeader">
-          <div class="subTitle">Top Overall Team (Current Tab)</div>
-        </div>
-        <div id="overallWinner" class="overallBanner">
-          <div class="mutedTxt">No data yet.</div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="sectionHeader">
-          <div class="subTitle">Summary</div>
-        </div>
-        <div class="statGrid">
-          <div class="stat">
-            <div class="k">Retail Teams</div>
-            <div class="v" id="sumRetail">—</div>
-          </div>
-          <div class="stat">
-            <div class="k">Referral Teams</div>
-            <div class="v" id="sumReferral">—</div>
-          </div>
-          <div class="stat">
-            <div class="k">Retail Attendance Hits</div>
-            <div class="v" id="sumRetailAttendance">—</div>
-          </div>
-          <div class="stat">
-            <div class="k">Referral Attendance Hits</div>
-            <div class="v" id="sumReferralAttendance">—</div>
-          </div>
-        </div>
-      </div>
+    <h3>Difficulty</h3>
+    <div class="row" style="margin-bottom: 16px;">
+      <button class="btn diffBtn" data-diff="0">Recruit</button>
+      <button class="btn diffBtn gold" data-diff="1">Normal</button>
+      <button class="btn diffBtn" data-diff="2">Veteran</button>
+      <button class="btn diffBtn red" data-diff="3">Nightmare</button>
     </div>
-
-    <div class="card">
-      <div class="sectionHeader">
-        <div class="subTitle">Team Sections</div>
-        <div class="tabs">
-          <button class="tab active" data-tab="retail">Retail Teams</button>
-          <button class="tab" data-tab="referral">Referral Teams</button>
-        </div>
+    <div class="grid">
+      <div class="card">
+        <h3>Victory</h3>
+        <div class="small">Push the frontline barrier all the way into the enemy rear line, or destroy their base with sustained fire and rockets.</div>
       </div>
-
-      <div class="tabPanel active" id="panel-retail">
-        <div class="sectionHeader">
-          <div class="subTitle">Retail Team Rankings</div>
-          <div class="chipRow">
-            <span class="pill">Retail overall = Consumer + Wipers + CQ ranks</span>
-            <span class="pill warn">Attendance displayed, not used in team score</span>
-          </div>
-        </div>
-        <div class="tblWrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Overall</th>
-                <th>Team</th>
-                <th class="right">Consumer Rank</th>
-                <th class="right">Wiper Rank</th>
-                <th class="right">CQ Rank</th>
-                <th class="right">Rank Total</th>
-                <th class="right">Compliments</th>
-                <th class="right">Overall Score</th>
-                <th class="right">Consumer Rate</th>
-                <th class="right">Wiper Rate</th>
-                <th class="right">CQ Avg</th>
-                <th class="right">Attendance Hits</th>
-                <th class="right">Active Reps</th>
-              </tr>
-            </thead>
-            <tbody id="retailRankBody"></tbody>
-          </table>
-        </div>
-        <div id="retailCards" style="margin-top:14px; display:grid; gap:14px;"></div>
+      <div class="card">
+        <h3>Core Flow</h3>
+        <div class="small">You fight with 15 allied troops against a larger enemy force depending on difficulty. On death, choose a class and respawn 15 seconds later.</div>
       </div>
-
-      <div class="tabPanel" id="panel-referral">
-        <div class="sectionHeader">
-          <div class="subTitle">Referral Team Rankings</div>
-          <div class="chipRow">
-            <span class="pill">Referral overall = Wipers + CQ + ITAC ranks</span>
-            <span class="pill warn">Attendance displayed, not used in team score</span>
-          </div>
-        </div>
-        <div class="tblWrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Overall</th>
-                <th>Team</th>
-                <th class="right">Wiper Rank</th>
-                <th class="right">CQ Rank</th>
-                <th class="right">ITAC Rank</th>
-                <th class="right">Rank Total</th>
-                <th class="right">Compliments</th>
-                <th class="right">Overall Score</th>
-                <th class="right">Wiper Rate</th>
-                <th class="right">CQ Avg</th>
-                <th class="right">ITAC %</th>
-                <th class="right">Attendance Hits</th>
-                <th class="right">Active Reps</th>
-              </tr>
-            </thead>
-            <tbody id="referralRankBody"></tbody>
-          </table>
-        </div>
-        <div id="referralCards" style="margin-top:14px; display:grid; gap:14px;"></div>
+      <div class="card">
+        <h3>Builder Warfare</h3>
+        <div class="small">Engineers place sentry turrets with <strong>E</strong> and blocks with <strong>Q</strong>. Other classes deploy barricades, energy barriers, and fortress cover.</div>
+      </div>
+      <div class="card">
+        <h3>War Room</h3>
+        <div class="small">Use the War Room to review class costs, roles, and battlefield specialty before deployment.</div>
       </div>
     </div>
   </div>
+</div>
+
+<div id="warRoomOverlay" class="overlay hidden">
+  <div class="panel">
+    <div class="row" style="justify-content:space-between; align-items:center;">
+      <div>
+        <h2>War Room</h2>
+        <p class="sub">Advanced classes cost credits to spawn as. Credits come from time, kills, and frontline pressure.</p>
+      </div>
+      <button class="btn red" id="closeWarRoomBtn">Close</button>
+    </div>
+    <div class="grid" id="warRoomGrid"></div>
+  </div>
+</div>
+
+<div id="respawnOverlay" class="overlay hidden">
+  <div class="panel">
+    <h2>Respawn / Class Select</h2>
+    <p class="sub">Choose your next class. Respawn occurs 15 seconds after death if you can afford the class.</p>
+    <div style="margin:10px 0 12px 0;"><strong>Current Credits:</strong> <span id="respawnCredits">0</span></div>
+    <div class="grid" id="respawnGrid"></div>
+    <div class="row" style="margin-top:12px;">
+      <button class="btn red" id="closeRespawnBtn">Close</button>
+    </div>
+  </div>
+</div>
 
 <script>
-let APP_NS = 'myone2';
-(function autodetectNs(){
-  const counts = new Map();
-  for(let i=0;i<localStorage.length;i++){
-    const k = localStorage.key(i);
-    if(!k) continue;
-    const m = k.match(/^(.*)\.dock\.(retail|referral|qa|coaching|checklist)$/i);
-    if(!m) continue;
-    const ns = m[1];
-    counts.set(ns, (counts.get(ns)||0)+1);
-  }
-  let best=null, bestN=0;
-  for(const [ns,n] of counts.entries()){
-    if(n>bestN){ best=ns; bestN=n; }
-  }
-  if(best) APP_NS = best;
-})();
+(() => {
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
 
-const PREF_KEY = `${APP_NS}.allstarreport.v2.prefs`;
-const MS_PER_DAY = 86400000;
+  const menuOverlay = document.getElementById("menuOverlay");
+  const warRoomOverlay = document.getElementById("warRoomOverlay");
+  const respawnOverlay = document.getElementById("respawnOverlay");
+  const warRoomGrid = document.getElementById("warRoomGrid");
+  const respawnGrid = document.getElementById("respawnGrid");
+  const noticeEl = document.getElementById("notice");
 
-const els = {
-  startDate: document.getElementById('startDate'),
-  endDate: document.getElementById('endDate'),
-  refreshBtn: document.getElementById('refreshBtn'),
-  retailDockSel: document.getElementById('retailDockSel'),
-  referralDockSel: document.getElementById('referralDockSel'),
-  qaDockSel: document.getElementById('qaDockSel'),
-  checkDockSel: document.getElementById('checkDockSel'),
-  loadDocksBtn: document.getElementById('loadDocksBtn'),
-  complimentFile: document.getElementById('complimentFile'),
-  complimentFileHint: document.getElementById('complimentFileHint'),
-  complimentSheetBtns: document.getElementById('complimentSheetBtns'),
-  complimentHint: document.getElementById('complimentHint'),
-  dockHint: document.getElementById('dockHint'),
-  scopeHint: document.getElementById('scopeHint'),
-  overallWinner: document.getElementById('overallWinner'),
-  sumRetail: document.getElementById('sumRetail'),
-  sumReferral: document.getElementById('sumReferral'),
-  sumRetailAttendance: document.getElementById('sumRetailAttendance'),
-  sumReferralAttendance: document.getElementById('sumReferralAttendance'),
-  retailRankBody: document.getElementById('retailRankBody'),
-  referralRankBody: document.getElementById('referralRankBody'),
-  retailCards: document.getElementById('retailCards'),
-  referralCards: document.getElementById('referralCards')
-};
+  const hudClass = document.getElementById("hudClass");
+  const hudCredits = document.getElementById("hudCredits");
+  const hudDiff = document.getElementById("hudDiff");
+  const hudAbility = document.getElementById("hudAbility");
+  const hudRespawn = document.getElementById("hudRespawn");
+  const allyCountEl = document.getElementById("allyCount");
+  const enemyCountEl = document.getElementById("enemyCount");
+  const playerBaseBar = document.getElementById("playerBaseBar");
+  const enemyBaseBar = document.getElementById("enemyBaseBar");
+  const topHud = document.getElementById("topHud");
+  const rightHud = document.getElementById("rightHud");
 
-let activeTab = 'retail';
+  let W = innerWidth;
+  let H = innerHeight;
+  canvas.width = W;
+  canvas.height = H;
 
-let retailDockKey = '';
-let referralDockKey = '';
-let qaDockKey = '';
-let checkDockKey = '';
+  addEventListener("resize", () => {
+    W = innerWidth;
+    H = innerHeight;
+    canvas.width = W;
+    canvas.height = H;
+  });
 
-let retailRows = [];
-let referralRows = [];
-let qaRows = [];
-let checklistRows = [];
-let complimentWorkbook = null;
-let complimentSheetName = '';
-let complimentRows = [];
+  const difficultyDefs = [
+    { name: "Recruit", aim: 0.55, brain: 0.8, enemyCap: 16, pushMul: 0.95 },
+    { name: "Normal", aim: 0.72, brain: 1.0, enemyCap: 16, pushMul: 1.0 },
+    { name: "Veteran", aim: 0.88, brain: 1.15, enemyCap: 19, pushMul: 1.1 },
+    { name: "Nightmare", aim: 1.0, brain: 1.35, enemyCap: 22, pushMul: 1.18 }
+  ];
+  let difficultyIndex = 1;
 
-let retailFieldMap = null;
-let referralFieldMap = null;
-
-function esc(s){
-  return String(s ?? '')
-    .replace(/&/g,'&amp;')
-    .replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;');
-}
-function clamp01(x){ return Math.max(0, Math.min(1, x)); }
-function mean(nums){
-  const a = (nums||[]).filter(n=>Number.isFinite(n));
-  if(!a.length) return NaN;
-  return a.reduce((s,n)=>s+n,0) / a.length;
-}
-function toNumRaw(v){
-  if(v===undefined || v===null || v==='') return NaN;
-  const n = parseFloat(String(v).replace(/,/g,'').replace(/%/g,'').trim());
-  return Number.isFinite(n) ? n : NaN;
-}
-function normHdr(s){
-  return String(s ?? '')
-    .trim().toLowerCase()
-    .replace(/\s+/g,' ')
-    .replace(/[^a-z0-9% \\-_]/g,'')
-    .replace(/[-_]/g,'')
-    .replace(/\s/g,'');
-}
-function parseDate(val){
-  if(val===null || val===undefined || val==='') return null;
-  if(val instanceof Date) return isNaN(val) ? null : val;
-
-  const asLocalDateOnly = (d) => {
-    if(!(d instanceof Date) || isNaN(d)) return null;
-    return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  const CLASS_DEFS = {
+    commando: {
+      name: "Commando",
+      cost: 0,
+      role: "Balanced frontline rifleman",
+      abilityName: "Battle Burst",
+      hp: 100, speed: 2.4, fireRate: 0.22, damage: 10, range: 480, spread: 0.14, bulletSpeed: 10,
+      color: "#76b8ff",
+      qCooldown: 9,
+      onQ(unit) {
+        if (unit.qTimer > 0) return;
+        unit.qTimer = 5.0;
+        unit.cooldowns.q = this.qCooldown;
+        showNotice("Battle Burst activated");
+      }
+    },
+    sniper: {
+      name: "Sniper",
+      cost: 2,
+      role: "Long-range high damage shooter",
+      abilityName: "Focus Shot",
+      hp: 75, speed: 2.0, fireRate: 1.1, damage: 38, range: 820, spread: 0.035, bulletSpeed: 14,
+      color: "#c6deff",
+      qCooldown: 9,
+      onQ(unit) {
+        if (unit.cooldowns.q > 0) return;
+        unit.specialShot = 1;
+        unit.cooldowns.q = this.qCooldown;
+        if (unit.isPlayer) showNotice("Focus Shot ready");
+      }
+    },
+    heavy: {
+      name: "Heavy Gunner",
+      cost: 2,
+      role: "Suppressive anchor, cannot move while firing",
+      abilityName: "Suppression Mode",
+      hp: 145, speed: 1.8, fireRate: 0.10, damage: 8, range: 420, spread: 0.17, bulletSpeed: 9,
+      color: "#ffd878",
+      qCooldown: 11,
+      onQ(unit) {
+        if (unit.cooldowns.q > 0) return;
+        unit.cooldowns.q = this.qCooldown;
+        unit.qTimer = 4.5;
+        if (unit.isPlayer) showNotice("Suppression Mode activated");
+      }
+    },
+    medic: {
+      name: "Medic",
+      cost: 2,
+      role: "Sustain support and healing burst",
+      abilityName: "Burst Heal",
+      hp: 88, speed: 2.35, fireRate: 0.24, damage: 6, range: 360, spread: 0.16, bulletSpeed: 9,
+      color: "#7fffc0",
+      qCooldown: 10,
+      onQ(unit) {
+        if (unit.cooldowns.q > 0) return;
+        unit.cooldowns.q = this.qCooldown;
+        healBurst(unit, 110, 38);
+        if (unit.isPlayer) showNotice("Burst Heal triggered");
+      }
+    },
+    shield: {
+      name: "Shield Trooper",
+      cost: 2,
+      role: "Frontline protector and push anchor",
+      abilityName: "Deploy Shield Wall",
+      hp: 165, speed: 1.85, fireRate: 0.30, damage: 8, range: 300, spread: 0.12, bulletSpeed: 8.5,
+      color: "#9ddfff",
+      qCooldown: 11,
+      onQ(unit) {
+        if (unit.cooldowns.q > 0) return;
+        unit.cooldowns.q = this.qCooldown;
+        spawnBarrier(unit.team, unit.x + unit.facing * 30, unit.y, "shield");
+        if (unit.isPlayer) showNotice("Shield Wall deployed");
+      }
+    },
+    rocketeer: {
+      name: "Rocketeer",
+      cost: 3,
+      role: "Explosive anti-cover specialist",
+      abilityName: "Salvo Rocket",
+      hp: 96, speed: 2.0, fireRate: 1.05, damage: 30, range: 520, spread: 0.05, bulletSpeed: 7.4,
+      color: "#ffad76",
+      qCooldown: 10,
+      explosive: true,
+      explosionRadius: 56,
+      onQ(unit) {
+        if (unit.cooldowns.q > 0) return;
+        unit.cooldowns.q = this.qCooldown;
+        unit.salvoShots = 2;
+        if (unit.isPlayer) showNotice("Salvo Rocket ready");
+      }
+    },
+    captain: {
+      name: "Captain",
+      cost: 2,
+      role: "Buff leader and morale anchor",
+      abilityName: "Rally Command",
+      hp: 122, speed: 2.15, fireRate: 0.26, damage: 12, range: 420, spread: 0.08, bulletSpeed: 10.5,
+      color: "#f8f3a1",
+      qCooldown: 12,
+      onQ(unit) {
+        if (unit.cooldowns.q > 0) return;
+        unit.cooldowns.q = this.qCooldown;
+        unit.qTimer = 5;
+        if (unit.isPlayer) showNotice("Rally Command activated");
+      }
+    },
+    engineer: {
+      name: "Engineer",
+      cost: 2,
+      role: "Sentry builder on E, block builder on Q",
+      abilityName: "Build Block",
+      hp: 92, speed: 2.15, fireRate: 0.40, damage: 4, range: 240, spread: 0.18, bulletSpeed: 8,
+      color: "#a4ffc8",
+      qCooldown: 4,
+      turretCooldown: 8,
+      onQ(unit) {
+        if (unit.cooldowns.q > 0) return;
+        unit.cooldowns.q = this.qCooldown;
+        spawnBlock(unit.team, unit.x + unit.facing * 42, unit.y);
+        if (unit.isPlayer) showNotice("Engineer block placed");
+      },
+      onE(unit) {
+        if (unit.cooldowns.engineerTurret > 0) return false;
+        unit.cooldowns.engineerTurret = this.turretCooldown;
+        spawnSentry(unit.team, unit.x + unit.facing * 48, unit.y);
+        if (unit.isPlayer) showNotice("Sentry deployed");
+        return true;
+      }
+    },
+    barricade: {
+      name: "Barricade Trooper",
+      cost: 3,
+      role: "Deploys physical block barricades",
+      abilityName: "Block Barricade",
+      hp: 120, speed: 2.0, fireRate: 0.44, damage: 11, range: 250, spread: 0.12, bulletSpeed: 9,
+      color: "#d6ae85",
+      qCooldown: 8,
+      onQ(unit) {
+        if (unit.cooldowns.q > 0) return;
+        unit.cooldowns.q = this.qCooldown;
+        spawnBarricade(unit.team, unit.x + unit.facing * 44, unit.y);
+        if (unit.isPlayer) showNotice("Barricade deployed");
+      }
+    },
+    energy: {
+      name: "Energy Technician",
+      cost: 3,
+      role: "Deploys temporary bullet-blocking energy barriers",
+      abilityName: "Energy Barrier",
+      hp: 92, speed: 2.15, fireRate: 0.28, damage: 9, range: 360, spread: 0.09, bulletSpeed: 10,
+      color: "#8ef7ff",
+      qCooldown: 9,
+      onQ(unit) {
+        if (unit.cooldowns.q > 0) return;
+        unit.cooldowns.q = this.qCooldown;
+        spawnBarrier(unit.team, unit.x + unit.facing * 38, unit.y, "energy");
+        if (unit.isPlayer) showNotice("Energy Barrier deployed");
+      }
+    },
+    fortress: {
+      name: "Fortress Specialist",
+      cost: 4,
+      role: "Deploys sturdier static cover nest",
+      abilityName: "Fortress Nest",
+      hp: 138, speed: 1.85, fireRate: 0.38, damage: 10, range: 300, spread: 0.09, bulletSpeed: 8.5,
+      color: "#c18cff",
+      qCooldown: 12,
+      onQ(unit) {
+        if (unit.cooldowns.q > 0) return;
+        unit.cooldowns.q = this.qCooldown;
+        spawnFortressCover(unit.team, unit.x + unit.facing * 36, unit.y);
+        if (unit.isPlayer) showNotice("Fortress Nest deployed");
+      }
+    }
   };
 
-  if(typeof val === 'number' && Number.isFinite(val)){
-    if(val > 1e11){
-      const d = new Date(val);
-      return isNaN(d) ? null : d;
+  const classOrder = ["commando", "sniper", "heavy", "medic", "shield", "rocketeer", "captain", "engineer", "barricade", "energy", "fortress"];
+
+  function buildWarRoomCards() {
+    warRoomGrid.innerHTML = "";
+    respawnGrid.innerHTML = "";
+    for (const key of classOrder) {
+      const c = CLASS_DEFS[key];
+      const div = document.createElement("div");
+      div.className = "card";
+      div.innerHTML = `
+        <h3>${c.name}</h3>
+        <div class="small"><span class="cost">Cost: ${c.cost}</span></div>
+        <div class="small">${c.role}</div>
+        <div class="small" style="margin-top:6px;"><strong>Ability:</strong> ${c.abilityName}</div>
+        <div class="small">HP ${c.hp} | Speed ${c.speed} | Range ${c.range}</div>
+      `;
+      warRoomGrid.appendChild(div);
     }
-    if(val > 0 && val < 100000){
-      const base = Date.UTC(1899,11,30);
-      const tmp = new Date(base + (val * MS_PER_DAY));
-      return asLocalDateOnly(tmp);
-    }
-    return null;
+    renderRespawnCards();
   }
 
-  const s = String(val).trim();
-  if(!s) return null;
-  if(/^[+-]?\d+(\.\d+)?$/.test(s)) return parseDate(parseFloat(s));
-
-  const isoDateOnly = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if(isoDateOnly){
-    return new Date(+isoDateOnly[1], +isoDateOnly[2]-1, +isoDateOnly[3]);
-  }
-
-  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:[,\s]+(\d{1,2})(?::(\d{2}))(?::(\d{2}))?\s*(AM|PM|am|pm)?)?$/);
-  if(m){
-    const mo = parseInt(m[1],10), da = parseInt(m[2],10);
-    let yr = parseInt(m[3],10);
-    if(m[3].length===2) yr = (yr <= 69 ? 2000 + yr : 1900 + yr);
-    let hh = m[4] ? parseInt(m[4],10) : 0;
-    const mi = m[5] ? parseInt(m[5],10) : 0;
-    const ss = m[6] ? parseInt(m[6],10) : 0;
-    const ap = m[7] ? m[7].toUpperCase() : '';
-    if(ap==='PM' && hh<12) hh += 12;
-    if(ap==='AM' && hh===12) hh = 0;
-    return new Date(yr, mo-1, da, hh, mi, ss);
-  }
-
-  if(/^\d{4}-\d{2}-\d{2}[T\s]/.test(s) && /([zZ]|[+\-]\d{2}:?\d{2})$/.test(s)){
-    const tmp = new Date(s);
-    return asLocalDateOnly(tmp) || (isNaN(tmp) ? null : tmp);
-  }
-
-  const d = new Date(s);
-  return isNaN(d) ? null : d;
-}
-function ymd(d){
-  if(!(d instanceof Date) || isNaN(d)) return '';
-  const y = d.getFullYear();
-  const m = String(d.getMonth()+1).padStart(2,'0');
-  const day = String(d.getDate()).padStart(2,'0');
-  return `${y}-${m}-${day}`;
-}
-function mmddyy(d){
-  if(!(d instanceof Date) || isNaN(d)) return '';
-  const m = String(d.getMonth()+1).padStart(2,'0');
-  const day = String(d.getDate()).padStart(2,'0');
-  const y = d.getFullYear();
-  return `${m}/${day}/${y}`;
-}
-function personKey(name){
-  let s = String(name||'').trim().toLowerCase();
-  s = s.replace(/\./g,'').replace(/\s+/g,' ');
-  if(!s) return '';
-  if(s.includes(',')){
-    const parts = s.split(',');
-    const last = (parts[0]||'').trim();
-    const rest = (parts[1]||'').trim();
-    const first = (rest.split(/\s+/)[0]||'').trim();
-    if(first && last) s = `${first} ${last}`;
-    else s = s.replace(/,/g,' ');
-  }
-  const toks = s.split(/\s+/).filter(Boolean);
-  if(toks.length >= 2) return `${toks[0]} ${toks[toks.length-1]}`;
-  return toks[0] || '';
-}
-function displayNameFromRaw(name){
-  let s = String(name||'').trim().replace(/\s+/g,' ');
-  if(!s) return '';
-  if(s.includes(',')){
-    const parts = s.split(',');
-    const last = (parts[0]||'').trim();
-    const rest = (parts[1]||'').trim();
-    const first = (rest.split(/\s+/)[0]||'').trim();
-    if(first && last) s = `${first} ${last}`;
-    else s = s.replace(/,/g,' ');
-  }
-  s = s.replace(/[^\w\s'-]/g,' ').replace(/\s+/g,' ').trim();
-  const toks = s.split(/\s+/).filter(Boolean);
-  if(!toks.length) return '';
-  if(toks.length===1) return toks[0];
-  return `${toks[0]} ${toks[toks.length-1]}`;
-}
-function fmtPct1(frac){
-  return Number.isFinite(frac) ? `${(frac*100).toFixed(1)}%` : '—';
-}
-function normalizePct(v){
-  if(v===null || v===undefined || v==='') return NaN;
-  if(typeof v === 'number' && Number.isFinite(v)){
-    if(v <= 1) return clamp01(v);
-    return clamp01(v/100);
-  }
-  const s = String(v).trim();
-  if(!s) return NaN;
-  const hasPct = s.includes('%');
-  const n = toNumRaw(s);
-  if(!Number.isFinite(n)) return NaN;
-  if(hasPct) return clamp01(n/100);
-  if(n <= 1) return clamp01(n);
-  return clamp01(n/100);
-}
-function medalHtml(i){
-  if(i===0) return `<span class="medal gold">🥇</span>`;
-  if(i===1) return `<span class="medal silver">🥈</span>`;
-  if(i===2) return `<span class="medal bronze">🥉</span>`;
-  return `<span class="medal" style="background:#f8fafc;border-color:#e2e8f0;color:#64748b">${i+1}</span>`;
-}
-function rankMapDescending(items, key){
-  const arr = items.slice().sort((a,b)=>{
-    const av = a[key], bv = b[key];
-    const aBad = !Number.isFinite(av), bBad = !Number.isFinite(bv);
-    if(aBad && bBad) return String(a.name||'').localeCompare(String(b.name||''));
-    if(aBad) return 1;
-    if(bBad) return -1;
-    if(bv !== av) return bv - av;
-    return String(a.name||'').localeCompare(String(b.name||''));
-  });
-  const out = new Map();
-  let prev = null, rank = 0;
-  for(let i=0;i<arr.length;i++){
-    const v = arr[i][key];
-    if(prev === null || v !== prev) rank = i + 1;
-    out.set(arr[i].name, rank);
-    prev = v;
-  }
-  return out;
-}
-function rankMapAscending(items, key){
-  const arr = items.slice().sort((a,b)=>{
-    const av = a[key], bv = b[key];
-    const aBad = !Number.isFinite(av), bBad = !Number.isFinite(bv);
-    if(aBad && bBad) return String(a.name||'').localeCompare(String(b.name||''));
-    if(aBad) return 1;
-    if(bBad) return -1;
-    if(av !== bv) return av - bv;
-    return String(a.name||'').localeCompare(String(b.name||''));
-  });
-  const out = new Map();
-  let prev = null, rank = 0;
-  for(let i=0;i<arr.length;i++){
-    const v = arr[i][key];
-    if(prev === null || v !== prev) rank = i + 1;
-    out.set(arr[i].name, rank);
-    prev = v;
-  }
-  return out;
-}
-function sumField(rows, field){
-  if(!field) return 0;
-  let s = 0;
-  for(const r of rows){
-    const n = toNumRaw(r[field]);
-    if(Number.isFinite(n)) s += n;
-  }
-  return s;
-}
-function pickField(allKeys, patterns){
-  for(const re of patterns){
-    const hit = allKeys.find(k => re.test(k));
-    if(hit) return hit;
-  }
-  return null;
-}
-function pickFieldFromRow(row, candidates){
-  const map = {};
-  for(const k of Object.keys(row||{})) map[normHdr(k)] = k;
-  for(const cand of candidates){
-    const real = map[cand];
-    if(real !== undefined) return row[real];
-  }
-  return undefined;
-}
-
-function findFieldName(keys, patterns){
-  const normalized = new Map(keys.map(k => [normHdr(k), k]));
-  for(const pat of patterns){
-    for(const [nk, real] of normalized.entries()){
-      if(pat.test(nk)) return real;
-    }
-  }
-  return null;
-}
-function rowsFromSheet(ws){
-  if(!ws) return [];
-  const rows = XLSX.utils.sheet_to_json(ws, { defval:'', raw:false });
-  return Array.isArray(rows) ? rows : [];
-}
-function looksLikeComplimentRow(obj){
-  if(!obj || typeof obj !== 'object') return false;
-  const nk = Object.keys(obj).map(normHdr);
-  const hasName = nk.some(k => k.startsWith('csrssrname')) || nk.includes('csrname') || nk.includes('ssrname');
-  const hasDate = nk.some(k => k.startsWith('dateofcall')) || nk.includes('datecall') || nk.includes('calldate');
-  return hasName && hasDate;
-}
-function canonicalizeComplimentRows(rows){
-  if(!Array.isArray(rows) || !rows.length) return [];
-  const keys = Array.from(new Set(rows.flatMap(r => Object.keys(r||{}))));
-  const nameField = findFieldName(keys, [/^csrssrname/, /^csrname$/, /^ssrname$/, /^csrssr$/]);
-  const teamField = findFieldName(keys, [/^csrteamcoach$/, /^teamcoach$/, /^csrteam$/, /^coach$/, /^team$/]);
-  const dateField = findFieldName(keys, [/^dateofcall/, /^calldate$/, /^datecall$/]);
-  const directorField = findFieldName(keys, [/^director$/]);
-  const refNumField = findFieldName(keys, [/^referralclaimwochatnumber$/, /^referralclaimwochat#$/, /^referralclaimwochat$/, /^referralnumber$/, /^claimnumber$/, /^wonumber$/, /^chatnumber$/]);
-  const takenByField = findFieldName(keys, [/^takenby$/]);
-  const complimentField = findFieldName(keys, [/^compliment$/]);
-  const letterDateField = findFieldName(keys, [/^datelettercompleted$/]);
-  const coordField = findFieldName(keys, [/^coordinitial$/, /^coordinitials$/]);
-
-  const out = [];
-  for(const r of rows){
-    if(!looksLikeComplimentRow(r)) continue;
-    const name = displayNameFromRaw(nameField ? r[nameField] : '');
-    const repKey = personKey(name || (nameField ? r[nameField] : ''));
-    const team = String(teamField ? (r[teamField] ?? '') : '').trim();
-    const callDate = parseDate(dateField ? r[dateField] : null);
-    if(!repKey || !callDate) continue;
-    out.push({
-      raw: r,
-      rep: name || String(nameField ? r[nameField] : '').trim(),
-      repKey,
-      team,
-      callDate,
-      director: String(directorField ? (r[directorField] ?? '') : '').trim(),
-      caseNumber: String(refNumField ? (r[refNumField] ?? '') : '').trim(),
-      takenBy: String(takenByField ? (r[takenByField] ?? '') : '').trim(),
-      compliment: String(complimentField ? (r[complimentField] ?? '') : '').trim(),
-      dateLetterCompleted: String(letterDateField ? (r[letterDateField] ?? '') : '').trim(),
-      coordInitial: String(coordField ? (r[coordField] ?? '') : '').trim()
-    });
-  }
-  return out;
-}
-function renderComplimentSheetButtons(){
-  const names = complimentWorkbook?.SheetNames || [];
-  els.complimentSheetBtns.innerHTML = names.map(sn => `<button class="sheetBtn ${sn===complimentSheetName ? 'active' : ''}" data-compliment-sheet="${esc(sn)}">${esc(sn)}</button>`).join('');
-  els.complimentSheetBtns.querySelectorAll('[data-compliment-sheet]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      complimentSheetName = btn.getAttribute('data-compliment-sheet') || '';
-      loadComplimentSheet();
-      renderComplimentSheetButtons();
-      renderAll();
-      savePrefs();
-    });
-  });
-}
-function loadComplimentSheet(){
-  if(!complimentWorkbook || !complimentSheetName || !complimentWorkbook.Sheets?.[complimentSheetName]){
-    complimentRows = [];
-    els.complimentHint.textContent = 'No compliment sheet selected.';
-    return;
-  }
-  const rows = rowsFromSheet(complimentWorkbook.Sheets[complimentSheetName]);
-  complimentRows = canonicalizeComplimentRows(rows);
-  els.complimentHint.textContent = `${complimentSheetName} loaded • ${complimentRows.length} compliment rows found after header matching`;
-}
-function loadDockObjByKey(key){
-  if(!key) return null;
-  const raw = localStorage.getItem(key);
-  if(!raw) return null;
-  try{
-    const json = LZString.decompressFromUTF16(raw);
-    if(json) return JSON.parse(json);
-  }catch(e){}
-  try{ return JSON.parse(raw); }catch(e){}
-  return null;
-}
-function aoaToRows(aoa){
-  if(!Array.isArray(aoa) || aoa.length < 2) return [];
-  const header = aoa[0].map(h => String(h ?? '').trim());
-  const out = [];
-  for(let r=1;r<aoa.length;r++){
-    const row = aoa[r];
-    if(!row) continue;
-    const obj = {};
-    let any = false;
-    for(let c=0;c<header.length;c++){
-      const k = header[c];
-      if(!k) continue;
-      const v = row[c];
-      if(v !== null && v !== undefined && String(v).trim() !== '') any = true;
-      obj[k] = v;
-    }
-    if(any) out.push(obj);
-  }
-  return out;
-}
-function extractRowArrays(root, sheetNameFallback){
-  const found = [];
-  const seen = new Set();
-
-  function pushArray(arr, sheetName){
-    if(!Array.isArray(arr) || !arr.length) return;
-    const id = `${sheetName}|${arr.length}|${typeof arr[0]}`;
-    if(seen.has(id)) return;
-    seen.add(id);
-
-    if(arr[0] && typeof arr[0] === 'object' && !Array.isArray(arr[0])){
-      found.push({ rows: arr, sheetName });
-      return;
-    }
-    if(Array.isArray(arr[0])){
-      const rows = aoaToRows(arr);
-      if(rows.length) found.push({ rows, sheetName });
-    }
-  }
-
-  function walk(node, sheetName){
-    if(node === null || node === undefined) return;
-    if(Array.isArray(node)){
-      pushArray(node, sheetName ?? sheetNameFallback ?? '');
-      return;
-    }
-    if(typeof node !== 'object') return;
-
-    if(Array.isArray(node.rows)) pushArray(node.rows, sheetName ?? sheetNameFallback ?? '');
-    if(Array.isArray(node.data)) pushArray(node.data, sheetName ?? sheetNameFallback ?? '');
-    if(Array.isArray(node.table)) pushArray(node.table, sheetName ?? sheetNameFallback ?? '');
-
-    if(node.sheets && typeof node.sheets === 'object' && !Array.isArray(node.sheets)){
-      for(const [sn, sv] of Object.entries(node.sheets)) walk(sv, sn);
-    }
-    for(const [k,v] of Object.entries(node)){
-      if(k === 'meta' || k === 'sheets') continue;
-      walk(v, sheetName);
-    }
-  }
-
-  walk(root, sheetNameFallback);
-  return found;
-}
-function findDockCandidates(kind){
-  const out = [];
-  const needle = `.dock.${String(kind).toLowerCase()}`;
-  for(let i=0;i<localStorage.length;i++){
-    const k = localStorage.key(i);
-    if(k && k.toLowerCase().includes(needle)) out.push(k);
-  }
-  out.sort((a,b)=>a.localeCompare(b));
-  return out;
-}
-function findQADockCandidates(){
-  const preferred = [];
-  const fallback = [];
-  for(let i=0;i<localStorage.length;i++){
-    const k = localStorage.key(i);
-    if(!k) continue;
-    const lk = k.toLowerCase();
-    if(!lk.includes('.dock.')) continue;
-    if(lk.includes('.dock.qa')) preferred.push(k);
-    else if(lk.includes('qa') && (lk.includes('quality') || lk.includes('monitor') || lk.includes('score'))) fallback.push(k);
-  }
-  return Array.from(new Set([...preferred, ...fallback])).sort((a,b)=>a.localeCompare(b));
-}
-function pickBestKey(kind){
-  const preferred = `${APP_NS}.dock.${kind}`;
-  if(localStorage.getItem(preferred)) return preferred;
-  const cands = kind === 'qa' ? findQADockCandidates() : findDockCandidates(kind);
-  return cands[0] || preferred || '';
-}
-function populateDockSelects(){
-  const retailCands = Array.from(new Set([pickBestKey('retail'), ...findDockCandidates('retail')].filter(Boolean)));
-  els.retailDockSel.innerHTML = retailCands.map(k=>`<option value="${esc(k)}">${esc(k)}</option>`).join('');
-  retailDockKey = retailDockKey || pickBestKey('retail');
-  if(retailCands.includes(retailDockKey)) els.retailDockSel.value = retailDockKey;
-  else if(retailCands.length){ retailDockKey = retailCands[0]; els.retailDockSel.value = retailDockKey; }
-
-  const referralCands = Array.from(new Set([pickBestKey('referral'), ...findDockCandidates('referral')].filter(Boolean)));
-  els.referralDockSel.innerHTML = referralCands.map(k=>`<option value="${esc(k)}">${esc(k)}</option>`).join('');
-  referralDockKey = referralDockKey || pickBestKey('referral');
-  if(referralCands.includes(referralDockKey)) els.referralDockSel.value = referralDockKey;
-  else if(referralCands.length){ referralDockKey = referralCands[0]; els.referralDockSel.value = referralDockKey; }
-
-  const qaCands = Array.from(new Set([pickBestKey('qa'), ...findQADockCandidates()].filter(Boolean)));
-  els.qaDockSel.innerHTML = qaCands.map(k=>`<option value="${esc(k)}">${esc(k)}</option>`).join('');
-  qaDockKey = qaDockKey || pickBestKey('qa');
-  if(qaCands.includes(qaDockKey)) els.qaDockSel.value = qaDockKey;
-  else if(qaCands.length){ qaDockKey = qaCands[0]; els.qaDockSel.value = qaDockKey; }
-
-  const checkCands = Array.from(new Set([pickBestKey('checklist'), ...findDockCandidates('checklist')].filter(Boolean)));
-  els.checkDockSel.innerHTML = checkCands.map(k=>`<option value="${esc(k)}">${esc(k)}</option>`).join('');
-  checkDockKey = checkDockKey || pickBestKey('checklist');
-  if(checkCands.includes(checkDockKey)) els.checkDockSel.value = checkDockKey;
-  else if(checkCands.length){ checkDockKey = checkCands[0]; els.checkDockSel.value = checkDockKey; }
-
-  els.dockHint.textContent = `APP_NS: ${APP_NS}`;
-}
-
-function looksLikeStatRow(obj){
-  if(!obj || typeof obj !== 'object') return false;
-  const nk = Object.keys(obj).map(normHdr);
-  const hasName = nk.includes('name') || nk.includes('associate') || nk.includes('agentname');
-  const hasDate = nk.includes('date') || nk.includes('week');
-  const hasSheet = nk.includes('sheet') || nk.includes('team') || nk.includes('coach');
-  return hasName && hasDate && hasSheet;
-}
-function canonicalizeStatRows(dockObj){
-  if(!dockObj) return [];
-  const arrays = extractRowArrays(dockObj, '');
-  const out = [];
-  for(const pack of arrays){
-    for(const r of pack.rows){
-      if(!looksLikeStatRow(r)) continue;
-      const nameRaw = pickFieldFromRow(r, ['name','associate','agentname']);
-      const dateRaw = pickFieldFromRow(r, ['date','week']);
-      const teamRaw = pickFieldFromRow(r, ['sheet','team','coach']);
-      const name = String(nameRaw ?? '').trim();
-      const d = parseDate(dateRaw);
-      const team = String(teamRaw ?? pack.sheetName ?? '').trim();
-      if(!name || !d || !team) continue;
-      const low = name.toLowerCase();
-      if(/^(total|totals|team totals?|summary)$/.test(low) || low.startsWith('totals -') || low.startsWith('total -')) continue;
-      out.push({
-        ...r,
-        Name: name,
-        Team: team,
-        _d: d,
-        repKey: personKey(name)
-      });
-    }
-  }
-  return out;
-}
-function buildFieldMap(sampleRows){
-  const keys = Array.from(new Set(sampleRows.flatMap(r=>Object.keys(r||{}))));
-  const map = {};
-  map.consumerApps = pickField(keys, [/^Consumer[_\s-]*Appointments?$/i, /consumer.*appointments?/i]);
-  map.consumerOpps = pickField(keys, [/^Consumer[_\s-]*Opportunit/i, /consumer.*opportunit/i]);
-  map.wiperCount = pickField(keys, [/^Wiper[_\s-]*Count$/i, /wiper.*count/i]);
-  map.wiperJobs = pickField(keys, [/^Wiper[_\s-]*Jobs$/i, /wiper.*jobs?/i]);
-  map.wipersAccept = pickField(keys, [/wipers?[_\s-]*accept/i, /wipers? accept/i]);
-  map.wipersAsked = pickField(keys, [/wipers?[_\s-]*asked/i, /wipers? asked/i]);
-  map.acw = pickField(keys, [/^ACW$/i, /avg.*acw/i, /average.*acw/i, /%.*acw/i, /acw.*%/i]);
-  map.itac = pickField(keys, [/^ITAC$/i, /^ITAC%$/i, /^ITACPercent$/i, /itac/i]);
-  return map;
-}
-function looksLikeQARow(obj){
-  if(!obj || typeof obj !== 'object') return false;
-  const nk = Object.keys(obj).map(normHdr);
-  const hasRep = nk.some(k => /^(agentname|agent|csr|associate|rep|name)$/.test(k));
-  const hasScore = nk.some(k => /^(score%|scorepct|score|qascore|qa%)$/.test(k));
-  const hasDate = nk.some(k => /^(interactionstarttime|interactionstart|starttime|interactiontime|date|scoreddate)$/.test(k));
-  return hasRep && hasScore && hasDate;
-}
-function canonicalizeQA(dockObj){
-  if(!dockObj) return [];
-  const arrays = extractRowArrays(dockObj, '');
-  const out = [];
-  for(const pack of arrays){
-    for(const r of pack.rows){
-      if(!looksLikeQARow(r)) continue;
-      const repRaw = pickFieldFromRow(r, ['agentname','agent','csr','associate','rep','name']);
-      const scoreRaw = pickFieldFromRow(r, ['score%','scorepct','score','qascore','qa%']);
-      const dateRaw = pickFieldFromRow(r, ['interactionstarttime','interactionstart','starttime','interactiontime','scoreddate','date']);
-      const teamRaw = pickFieldFromRow(r, ['team','sheet','dock','group']);
-      const rep = displayNameFromRaw(repRaw);
-      const repKey = personKey(rep || repRaw);
-      const score = normalizePct(scoreRaw);
-      const d = parseDate(dateRaw);
-      if(!rep || !repKey || !Number.isFinite(score) || !d) continue;
-      out.push({
-        ...r,
-        rep,
-        repKey,
-        score,
-        startDate:d,
-        team:String(teamRaw ?? pack.sheetName ?? '').trim()
-      });
-    }
-  }
-  return out;
-}
-function looksLikeChecklistRow(obj){
-  if(!obj || typeof obj !== 'object') return false;
-  const nk = Object.keys(obj).map(normHdr);
-  const hasRep = nk.includes('associatename') || nk.includes('associate') || nk.includes('name') || nk.includes('rep');
-  const hasIncident = nk.includes('incident') || nk.includes('incidenttype') || nk.includes('incidentcategory');
-  const hasDate = nk.includes('incidentdate') || nk.includes('date') || nk.includes('dt') || nk.includes('day');
-  return hasRep && hasIncident && hasDate;
-}
-function canonicalizeChecklistRows(dockObj){
-  if(!dockObj) return [];
-  const arrays = extractRowArrays(dockObj, '');
-  const out = [];
-  for(const pack of arrays){
-    for(const r of pack.rows){
-      if(!looksLikeChecklistRow(r)) continue;
-      const repRaw = pickFieldFromRow(r, ['associatename','associate','name','rep']);
-      const incidentRaw = pickFieldFromRow(r, ['incident','incidenttype','incidentcategory','type']);
-      const dateRaw = pickFieldFromRow(r, ['incidentdate','date','dt','day']);
-      const actionRaw = pickFieldFromRow(r, ['actiontaken','action','resolution','status']);
-      const teamRaw = pickFieldFromRow(r, ['team','sheet','coach','jobcoach','coachassigned']);
-      const rep = displayNameFromRaw(repRaw || '');
-      const repKey = personKey(rep || repRaw);
-      const date = parseDate(dateRaw);
-      if(!rep || !repKey || !date || !incidentRaw) continue;
-      out.push({
-        ...r,
-        rep,
-        repKey,
-        date,
-        incident:String(incidentRaw ?? '').trim(),
-        actionTaken:String(actionRaw ?? '').trim(),
-        teamHint:String(teamRaw ?? '').trim()
-      });
-    }
-  }
-  return out;
-}
-
-function loadRetail(){
-  retailDockKey = els.retailDockSel.value || retailDockKey || pickBestKey('retail');
-  const obj = loadDockObjByKey(retailDockKey);
-  retailRows = canonicalizeStatRows(obj);
-  retailFieldMap = buildFieldMap(retailRows);
-}
-function loadReferral(){
-  referralDockKey = els.referralDockSel.value || referralDockKey || pickBestKey('referral');
-  const obj = loadDockObjByKey(referralDockKey);
-  referralRows = canonicalizeStatRows(obj);
-  referralFieldMap = buildFieldMap(referralRows);
-}
-function loadQA(){
-  qaDockKey = els.qaDockSel.value || qaDockKey || pickBestKey('qa');
-  const obj = loadDockObjByKey(qaDockKey);
-  qaRows = canonicalizeQA(obj);
-}
-function loadChecklist(){
-  checkDockKey = els.checkDockSel.value || checkDockKey || pickBestKey('checklist');
-  const obj = loadDockObjByKey(checkDockKey);
-  checklistRows = canonicalizeChecklistRows(obj);
-}
-function initDates(){
-  const dates = [
-    ...retailRows.map(r=>r._d),
-    ...referralRows.map(r=>r._d),
-    ...qaRows.map(r=>r.startDate),
-    ...checklistRows.map(r=>r.date),
-    ...complimentRows.map(r=>r.callDate)
-  ].filter(d => d instanceof Date && !isNaN(d));
-  const today = new Date();
-  const end = dates.length ? new Date(Math.max(...dates.map(d=>d.getTime()))) : today;
-  const start = new Date(end.getTime() - (29 * MS_PER_DAY));
-  if(!els.endDate.value) els.endDate.value = ymd(end);
-  if(!els.startDate.value) els.startDate.value = ymd(start);
-}
-function getWindow(){
-  const sd = parseDate(els.startDate.value);
-  const ed = parseDate(els.endDate.value);
-  if(!(sd instanceof Date) || isNaN(sd) || !(ed instanceof Date) || isNaN(ed)) return { sd:null, ed:null };
-  return sd <= ed ? { sd, ed } : { sd:ed, ed:sd };
-}
-function inRange(d, sd, ed){
-  return d instanceof Date && !isNaN(d) && sd && ed && d >= sd && d <= ed;
-}
-function isAttendanceHit(item){
-  const inc = String(item.incident || '').toLowerCase();
-  const act = String(item.actionTaken || '').toLowerCase();
-  return (inc.includes('absent') || inc.includes('tardy')) && act.includes('addressed');
-}
-
-function buildSectionData(rows, fieldMap, type){
-  const { sd, ed } = getWindow();
-  const statRows = rows.filter(r => inRange(r._d, sd, ed));
-  const qaWindow = qaRows.filter(r => inRange(r.startDate, sd, ed));
-  const checklistWindow = checklistRows.filter(r => inRange(r.date, sd, ed));
-  const complimentWindow = complimentRows.filter(r => inRange(r.callDate, sd, ed));
-
-  const teamNames = Array.from(new Set(statRows.map(r => String(r.Team||'').trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
-  const teams = [];
-
-  for(const teamName of teamNames){
-    const teamRows = statRows.filter(r => String(r.Team||'').trim() === teamName);
-    const repKeySet = new Set(teamRows.map(r=>r.repKey).filter(Boolean));
-    const qaTeamRows = qaWindow.filter(r => repKeySet.has(r.repKey) || String(r.team||'').trim() === teamName);
-    const checklistTeamRows = checklistWindow.filter(r => repKeySet.has(r.repKey) || String(r.teamHint||'').trim() === teamName);
-    const complimentTeamRows = complimentWindow.filter(r => repKeySet.has(r.repKey) || String(r.team||'').trim() === teamName);
-
-    const consumerApps = sumField(teamRows, fieldMap.consumerApps);
-    const consumerOpps = sumField(teamRows, fieldMap.consumerOpps);
-    const wiperCount = sumField(teamRows, fieldMap.wiperCount);
-    const wiperJobs = sumField(teamRows, fieldMap.wiperJobs);
-    const wipersAccept = sumField(teamRows, fieldMap.wipersAccept);
-    const wipersAsked = sumField(teamRows, fieldMap.wipersAsked);
-
-    const consumerRate = consumerOpps > 0 ? consumerApps / consumerOpps : NaN;
-    const wiperRate = type === 'retail'
-      ? (wiperJobs > 0 ? wiperCount / wiperJobs : NaN)
-      : (wipersAsked > 0 ? wipersAccept / wipersAsked : NaN);
-
-    const cqAvg = mean(qaTeamRows.map(r => r.score));
-    const attendanceHits = checklistTeamRows.filter(isAttendanceHit).length;
-    const complimentCount = complimentTeamRows.length;
-    const itacAvg = mean(teamRows.map(r => normalizePct(r[fieldMap.itac])));
-
-    const reps = Array.from(new Set(teamRows.map(r=>r.Name).filter(Boolean))).sort((a,b)=>a.localeCompare(b)).map(repName=>{
-      const repKey = personKey(repName);
-      const repRows = teamRows.filter(r => r.repKey === repKey);
-      const repQaRows = qaTeamRows.filter(r => r.repKey === repKey);
-      const repChecklist = checklistTeamRows.filter(r => r.repKey === repKey);
-      const repCompliments = complimentTeamRows.filter(r => r.repKey === repKey);
-
-      const repConsumerApps = sumField(repRows, fieldMap.consumerApps);
-      const repConsumerOpps = sumField(repRows, fieldMap.consumerOpps);
-      const repConsumerRate = repConsumerOpps > 0 ? repConsumerApps / repConsumerOpps : NaN;
-
-      const repWiperCount = sumField(repRows, fieldMap.wiperCount);
-      const repWiperJobs = sumField(repRows, fieldMap.wiperJobs);
-      const repWipersAccept = sumField(repRows, fieldMap.wipersAccept);
-      const repWipersAsked = sumField(repRows, fieldMap.wipersAsked);
-      const repWiperRate = type === 'retail'
-        ? (repWiperJobs > 0 ? repWiperCount / repWiperJobs : NaN)
-        : (repWipersAsked > 0 ? repWipersAccept / repWipersAsked : NaN);
-
-      const repCQ = mean(repQaRows.map(r => r.score));
-      const repAttendance = repChecklist.filter(isAttendanceHit).length;
-      const repACW = mean(repRows.map(r => normalizePct(r[fieldMap.acw])));
-      const repITAC = mean(repRows.map(r => normalizePct(r[fieldMap.itac])));
-
-      return {
-        name: repName,
-        consumerRate: repConsumerRate,
-        wiperRate: repWiperRate,
-        cqAvg: repCQ,
-        attendanceHits: repAttendance,
-        acwAvg: repACW,
-        itacAvg: repITAC,
-        complimentCount: repCompliments.length
+  function renderRespawnCards() {
+    respawnGrid.innerHTML = "";
+    document.getElementById("respawnCredits").textContent = state.playerCredits;
+    for (const key of classOrder) {
+      const c = CLASS_DEFS[key];
+      const afford = state.playerCredits >= c.cost;
+      const div = document.createElement("div");
+      div.className = "card";
+      div.innerHTML = `
+        <h3>${c.name}</h3>
+        <div class="small"><span class="cost">Cost: ${c.cost}</span></div>
+        <div class="small">${c.role}</div>
+        <div class="small"><strong>Ability:</strong> ${c.abilityName}</div>
+        <div class="small">HP ${c.hp} | Speed ${c.speed} | Range ${c.range}</div>
+      `;
+      const btn = document.createElement("button");
+      btn.className = "btn " + (afford ? "green" : "red");
+      btn.textContent = afford ? "Spawn as " + c.name : "Need " + c.cost + " credits";
+      btn.disabled = !afford;
+      btn.onclick = () => {
+        state.pendingSpawnClass = key;
+        state.playerCredits -= c.cost;
+        renderRespawnCards();
+        showNotice("Respawning as " + c.name);
       };
-    });
-
-    teams.push({
-      name: teamName,
-      type,
-      activeRepCount: repKeySet.size,
-      consumerRate,
-      wiperRate,
-      cqAvg,
-      attendanceHits,
-      complimentCount,
-      itacAvg,
-      reps
-    });
-  }
-
-  if(type === 'retail'){
-    const consumerRank = rankMapDescending(teams, 'consumerRate');
-    const wiperRank = rankMapDescending(teams, 'wiperRate');
-    const cqRank = rankMapDescending(teams, 'cqAvg');
-    for(const t of teams){
-      t.consumerRank = consumerRank.get(t.name) || null;
-      t.wiperRank = wiperRank.get(t.name) || null;
-      t.cqRank = cqRank.get(t.name) || null;
-      t.rankTotal = [t.consumerRank, t.wiperRank, t.cqRank].filter(Number.isFinite).reduce((s,n)=>s+n,0);
-      t.overallScore = t.rankTotal;
-    }
-  } else {
-    const wiperRank = rankMapDescending(teams, 'wiperRate');
-    const cqRank = rankMapDescending(teams, 'cqAvg');
-    const itacRank = rankMapDescending(teams, 'itacAvg');
-    for(const t of teams){
-      t.wiperRank = wiperRank.get(t.name) || null;
-      t.cqRank = cqRank.get(t.name) || null;
-      t.itacRank = itacRank.get(t.name) || null;
-      t.rankTotal = [t.wiperRank, t.cqRank, t.itacRank].filter(Number.isFinite).reduce((s,n)=>s+n,0);
-      t.overallScore = t.rankTotal;
+      div.appendChild(document.createElement("div")).style.height = "8px";
+      div.appendChild(btn);
+      respawnGrid.appendChild(div);
     }
   }
 
-  teams.sort((a,b)=>{
-    const av = a.overallScore, bv = b.overallScore;
-    const aBad = !Number.isFinite(av), bBad = !Number.isFinite(bv);
-    if(aBad && bBad) return a.name.localeCompare(b.name);
-    if(aBad) return 1;
-    if(bBad) return -1;
-    if(av !== bv) return av - bv;
-    return a.name.localeCompare(b.name);
-  });
-  teams.forEach((t,i)=>t.overallRank = i+1);
+  const state = {
+    running: false,
+    cameraX: 0,
+    cameraY: 0,
+    player: null,
+    playerCredits: 2,
+    pendingSpawnClass: "commando",
+    playerRespawnTimer: 0,
+    units: [],
+    bullets: [],
+    particles: [],
+    barriers: [],
+    blocks: [],
+    turrets: [],
+    explosions: [],
+    barrierX: 850,
+    mapW: 1700,
+    mapH: 1300,
+    minBarrierX: 360,
+    maxBarrierX: 1340,
+    playerBase: { x: 92, y: 650, hp: 1300, maxHp: 1300 },
+    enemyBase: { x: 1608, y: 650, hp: 1300, maxHp: 1300 },
+    allyRespawnQueue: 0,
+    enemyRespawnQueue: 0,
+    allyTargetCap: 15,
+    enemyTargetCap: 16,
+    spawnShieldGaps: [250, 650, 1035],
+    safeSpawnXLeft: 230,
+    safeSpawnXRight: 1470,
+    lastTime: 0,
+    keys: {},
+    gameOver: false,
+    winner: null
+  };
 
-  for(const team of teams){
-    if(type === 'retail'){
-      const consumerRank = rankMapDescending(team.reps, 'consumerRate');
-      const wiperRank = rankMapDescending(team.reps, 'wiperRate');
-      const cqRank = rankMapDescending(team.reps, 'cqAvg');
-      const attendanceRank = rankMapAscending(team.reps, 'attendanceHits');
-      for(const r of team.reps){
-        r.consumerRank = consumerRank.get(r.name) || null;
-        r.wiperRank = wiperRank.get(r.name) || null;
-        r.cqRank = cqRank.get(r.name) || null;
-        r.attendanceRank = attendanceRank.get(r.name) || null;
-        r.rankTotal = [r.consumerRank, r.wiperRank, r.cqRank, r.attendanceRank].filter(Number.isFinite).reduce((s,n)=>s+n,0);
-        r.overallScore = r.rankTotal - r.complimentCount;
+  function showNotice(msg, ms = 1500) {
+    noticeEl.textContent = msg;
+    noticeEl.style.display = "block";
+    clearTimeout(showNotice._timer);
+    showNotice._timer = setTimeout(() => noticeEl.style.display = "none", ms);
+  }
+
+  function resetGame() {
+    state.units = [];
+    state.bullets = [];
+    state.particles = [];
+    state.barriers = [];
+    state.blocks = [];
+    state.turrets = [];
+    state.explosions = [];
+    state.barrierX = 850;
+    state.playerCredits = 2;
+    state.playerBase.hp = state.playerBase.maxHp;
+    state.enemyBase.hp = state.enemyBase.maxHp;
+    state.playerRespawnTimer = 0;
+    state.pendingSpawnClass = "commando";
+    state.gameOver = false;
+    state.winner = null;
+    state.allyTargetCap = 15;
+    state.enemyTargetCap = difficultyDefs[difficultyIndex].enemyCap;
+    state.enemyRespawnQueue = 0;
+    state.allyRespawnQueue = 0;
+
+    state.player = createUnit("player", "commando", true);
+    state.units.push(state.player);
+
+    for (let i = 0; i < state.allyTargetCap; i++) {
+      state.units.push(createUnit("player", pickAIClass("player")));
+    }
+    for (let i = 0; i < state.enemyTargetCap; i++) {
+      state.units.push(createUnit("enemy", pickAIClass("enemy")));
+    }
+  }
+
+  function pickAIClass(team) {
+    const r = Math.random();
+    if (team === "player") {
+      if (r < 0.36) return "commando";
+      if (r < 0.48) return "medic";
+      if (r < 0.60) return "heavy";
+      if (r < 0.70) return "shield";
+      if (r < 0.78) return "engineer";
+      if (r < 0.86) return "barricade";
+      if (r < 0.92) return "captain";
+      if (r < 0.97) return "rocketeer";
+      return "sniper";
+    } else {
+      if (r < 0.32) return "commando";
+      if (r < 0.44) return "heavy";
+      if (r < 0.54) return "shield";
+      if (r < 0.64) return "medic";
+      if (r < 0.74) return "captain";
+      if (r < 0.82) return "engineer";
+      if (r < 0.89) return "rocketeer";
+      if (r < 0.95) return "barricade";
+      return Math.random() < 0.5 ? "sniper" : "energy";
+    }
+  }
+
+  function createUnit(team, classKey, isPlayer = false) {
+    const c = CLASS_DEFS[classKey];
+    const facing = team === "player" ? 1 : -1;
+    const spawnX = team === "player" ? rand(90, 130) : rand(1570, 1610);
+    const spawnY = state.spawnShieldGaps[Math.floor(Math.random() * state.spawnShieldGaps.length)] + rand(-60, 60);
+
+    return {
+      id: Math.random().toString(36).slice(2),
+      team,
+      classKey,
+      isPlayer,
+      x: spawnX,
+      y: clamp(spawnY, 80, state.mapH - 80),
+      vx: 0,
+      vy: 0,
+      w: 22,
+      h: 42,
+      hp: c.hp,
+      maxHp: c.hp,
+      speed: c.speed,
+      fireTimer: rand(0, 0.4),
+      qTimer: 0,
+      specialShot: 0,
+      salvoShots: 0,
+      facing,
+      cooldowns: {
+        q: 0,
+        engineerTurret: 0
+      },
+      alive: true,
+      walkTime: Math.random() * 5,
+      flash: 0,
+      aiState: "advance",
+      targetId: null,
+      aimJitter: rand(-0.05, 0.05),
+      shootPose: 0,
+      buffs: {
+        rally: 0
+      }
+    };
+  }
+
+  function spawnPlayerNow() {
+    const classKey = state.pendingSpawnClass || "commando";
+    state.player = createUnit("player", classKey, true);
+    state.player.x = rand(96, 126);
+    state.player.y = 650;
+    state.units.push(state.player);
+    hudClass.textContent = CLASS_DEFS[classKey].name;
+    hudAbility.textContent = CLASS_DEFS[classKey].abilityName;
+  }
+
+  function spawnSentry(team, x, y) {
+    x = clampBuildX(team, x);
+    state.turrets.push({
+      team, x, y, r: 16,
+      hp: 54,
+      maxHp: 54,
+      cooldown: rand(0, 0.4),
+      range: 360,
+      damage: 7,
+      bulletSpeed: 9,
+      spread: 0.09,
+      facing: team === "player" ? 1 : -1
+    });
+  }
+
+  function spawnBlock(team, x, y) {
+    x = clampBuildX(team, x);
+    state.blocks.push({
+      team, x, y,
+      w: 22, h: 22,
+      hp: 18, maxHp: 18
+    });
+  }
+
+  function spawnBarricade(team, x, y) {
+    for (let i = -1; i <= 1; i++) {
+      spawnBlock(team, x, y + i * 24);
+    }
+    if (Math.random() < 0.5) spawnBlock(team, x + (team === "player" ? 24 : -24), y);
+  }
+
+  function spawnBarrier(team, x, y, kind = "energy") {
+    x = clampBuildX(team, x);
+    state.barriers.push({
+      team, x, y,
+      w: kind === "shield" ? 18 : 14,
+      h: kind === "shield" ? 90 : 100,
+      hp: kind === "shield" ? 95 : 70,
+      maxHp: kind === "shield" ? 95 : 70,
+      kind,
+      ttl: kind === "energy" ? 10 : 12
+    });
+  }
+
+  function spawnFortressCover(team, x, y) {
+    spawnBarricade(team, x, y);
+    spawnBarrier(team, x + (team === "player" ? 28 : -28), y, "shield");
+    spawnBlock(team, x, y - 48);
+    spawnBlock(team, x, y + 48);
+  }
+
+  function clampBuildX(team, x) {
+    if (team === "player") {
+      return clamp(x, state.safeSpawnXLeft + 28, state.barrierX - 40);
+    } else {
+      return clamp(x, state.barrierX + 40, state.safeSpawnXRight - 28);
+    }
+  }
+
+  function healBurst(unit, radius, amount) {
+    for (const other of state.units) {
+      if (!other.alive || other.team !== unit.team) continue;
+      const d = dist(unit.x, unit.y, other.x, other.y);
+      if (d <= radius) {
+        other.hp = Math.min(other.maxHp, other.hp + amount);
+        other.flash = 0.25;
+        spawnHealParticles(other.x, other.y, 10);
+      }
+    }
+  }
+
+  function spawnHealParticles(x, y, count) {
+    for (let i = 0; i < count; i++) {
+      state.particles.push({
+        x, y, vx: rand(-1.2, 1.2), vy: rand(-1.2, 1.2),
+        life: rand(0.4, 0.8), color: "#8effc0", size: rand(2, 4)
+      });
+    }
+  }
+
+  function fireUnit(unit) {
+    const c = CLASS_DEFS[unit.classKey];
+    if (!unit.alive) return;
+
+    if (unit.classKey === "engineer" && unit.isPlayer) {
+      // Engineer E places a sentry instead of firing.
+      return;
+    }
+
+    let fireRate = c.fireRate;
+    let damage = c.damage;
+    let spread = c.spread;
+    let speed = c.bulletSpeed;
+    let explosive = !!c.explosive;
+    let explosionRadius = c.explosionRadius || 0;
+
+    if (unit.qTimer > 0 && unit.classKey === "commando") {
+      fireRate *= 0.45;
+      spread *= 0.8;
+    }
+    if (unit.qTimer > 0 && unit.classKey === "heavy") {
+      spread *= 0.6;
+      damage += 2;
+    }
+    if (unit.buffs.rally > 0) {
+      fireRate *= 0.85;
+      spread *= 0.85;
+    }
+    if (unit.specialShot > 0 && unit.classKey === "sniper") {
+      damage = 68;
+      spread = 0.01;
+      speed = 16;
+      unit.specialShot = 0;
+    }
+
+    unit.fireTimer = fireRate;
+    unit.shootPose = 0.13;
+
+    let shots = 1;
+    if (unit.classKey === "rocketeer" && unit.salvoShots > 0) {
+      shots = 1;
+      unit.salvoShots--;
+      if (unit.salvoShots > 0) {
+        unit.fireTimer = 0.25;
+      }
+    }
+
+    for (let s = 0; s < shots; s++) {
+      const baseAngle = Math.atan2(unit.vy || 0, unit.facing);
+      const angle = baseAngle + rand(-spread, spread) + unit.aimJitter;
+      const vx = Math.cos(angle) * speed * unit.facing;
+      const vy = Math.sin(angle) * speed;
+
+      state.bullets.push({
+        x: unit.x + unit.facing * 18,
+        y: unit.y - 10,
+        vx, vy,
+        team: unit.team,
+        life: c.range / speed,
+        damage,
+        explosive,
+        explosionRadius,
+        color: unit.team === "player" ? "#aee1ff" : "#ffb1b1",
+        fromClass: unit.classKey
+      });
+    }
+  }
+
+  function fireTurret(t) {
+    const target = findNearestEnemyObject(t.team, t.x, t.y, t.range);
+    if (!target) return;
+    t.cooldown = 0.48;
+    const dx = target.x - t.x;
+    const dy = target.y - t.y;
+    const angle = Math.atan2(dy, dx);
+    const dir = t.team === "player" ? 1 : -1;
+    state.bullets.push({
+      x: t.x + dir * 12,
+      y: t.y - 10,
+      vx: Math.cos(angle) * t.bulletSpeed,
+      vy: Math.sin(angle) * t.bulletSpeed,
+      team: t.team,
+      life: 44,
+      damage: t.damage,
+      explosive: false,
+      explosionRadius: 0,
+      color: t.team === "player" ? "#94faff" : "#ffc894",
+      fromClass: "sentry"
+    });
+  }
+
+  function canMovePastBarrier(team, newX) {
+    return team === "player" ? newX < state.barrierX - 12 : newX > state.barrierX + 12;
+  }
+
+  function updatePlayer(unit, dt) {
+    const c = CLASS_DEFS[unit.classKey];
+    let mx = 0, my = 0;
+    if (state.keys["a"]) mx -= 1;
+    if (state.keys["d"]) mx += 1;
+    if (state.keys["w"]) my -= 1;
+    if (state.keys["s"]) my += 1;
+
+    const moving = mx !== 0 || my !== 0;
+    if (moving) {
+      const len = Math.hypot(mx, my);
+      mx /= len; my /= len;
+    }
+
+    const speed = c.speed * 88 * dt;
+    const isHeavyFiring = unit.classKey === "heavy" && unit.shootPose > 0.03;
+    if (!isHeavyFiring) {
+      const nx = unit.x + mx * speed;
+      const ny = unit.y + my * speed;
+      if (canMovePastBarrier(unit.team, nx)) unit.x = nx;
+      unit.y = clamp(ny, 54, state.mapH - 26);
+    }
+
+    unit.walkTime += moving ? dt * 8 : dt * 2;
+
+    if (state.keys["q"]) {
+      c.onQ?.(unit);
+      state.keys["q"] = false;
+    }
+
+    if (state.keys["e"]) {
+      if (unit.classKey === "engineer") {
+        if (CLASS_DEFS.engineer.onE(unit)) {
+          state.keys["e"] = false;
+        }
+      } else if (unit.fireTimer <= 0) {
+        fireUnit(unit);
+      }
+    }
+  }
+
+  function updateAI(unit, dt) {
+    const c = CLASS_DEFS[unit.classKey];
+    unit.walkTime += dt * 4;
+
+    const target = findNearestEnemyObject(unit.team, unit.x, unit.y, c.range + 120);
+    const nearFront = Math.abs(unit.x - state.barrierX) < 150;
+    const teamDir = unit.team === "player" ? 1 : -1;
+    const diff = difficultyDefs[difficultyIndex];
+
+    if (unit.classKey === "medic") {
+      const wounded = findNearestWoundedAlly(unit.team, unit.x, unit.y, 180);
+      if (wounded && wounded.hp < wounded.maxHp * 0.66) {
+        moveToward(unit, wounded.x - teamDir * 40, wounded.y, dt, 0.9);
+        if (unit.cooldowns.q <= 0 && dist(unit.x, unit.y, wounded.x, wounded.y) < 110) {
+          c.onQ(unit);
+        }
+        return;
+      }
+    }
+
+    if (unit.classKey === "engineer" && unit.cooldowns.engineerTurret <= 0 && nearFront && Math.random() < 0.003 * diff.brain) {
+      spawnSentry(unit.team, unit.x + unit.facing * 48, unit.y);
+      unit.cooldowns.engineerTurret = CLASS_DEFS.engineer.turretCooldown + rand(0, 2);
+    }
+    if ((unit.classKey === "barricade" || unit.classKey === "energy" || unit.classKey === "fortress" || unit.classKey === "shield") && unit.cooldowns.q <= 0 && nearFront && Math.random() < 0.0024 * diff.brain) {
+      c.onQ(unit);
+    }
+    if (unit.classKey === "captain" && unit.cooldowns.q <= 0 && nearFront && Math.random() < 0.0025 * diff.brain) {
+      c.onQ(unit);
+    }
+    if (unit.classKey === "medic" && unit.cooldowns.q <= 0 && nearFront && Math.random() < 0.0022 * diff.brain) {
+      c.onQ(unit);
+    }
+    if (unit.classKey === "rocketeer" && unit.cooldowns.q <= 0 && target && Math.random() < 0.0018 * diff.brain) {
+      c.onQ(unit);
+    }
+
+    if (!target) {
+      const frontX = unit.team === "player" ? state.barrierX - 85 : state.barrierX + 85;
+      moveToward(unit, frontX, unit.y + Math.sin(performance.now() * 0.001 + unit.x) * 20, dt, 1);
+      return;
+    }
+
+    const d = dist(unit.x, unit.y, target.x, target.y);
+    const idealRange = c.classKey === "sniper" ? c.range * 0.75 : c.classKey === "heavy" ? 260 : c.classKey === "rocketeer" ? 320 : c.range * 0.6;
+
+    if (d > idealRange) {
+      moveToward(unit, target.x - teamDir * 40, target.y, dt, 1);
+    } else if (d < idealRange * 0.6 && unit.classKey !== "shield" && unit.classKey !== "heavy") {
+      moveToward(unit, unit.x - teamDir * 40, target.y, dt, 0.8);
+    } else {
+      unit.vy *= 0.8;
+    }
+
+    if (target.x > unit.x) unit.facing = 1;
+    if (target.x < unit.x) unit.facing = -1;
+
+    if (unit.fireTimer <= 0 && d <= c.range) {
+      if (unit.classKey === "heavy") {
+        unit.aimJitter = rand(-0.04, 0.04) * diff.aim;
+      } else {
+        unit.aimJitter = rand(-0.09, 0.09) * (1.08 - diff.aim * 0.45);
+      }
+      fireUnit(unit);
+    }
+  }
+
+  function moveToward(unit, tx, ty, dt, mul = 1) {
+    const c = CLASS_DEFS[unit.classKey];
+    if (unit.classKey === "heavy" && unit.shootPose > 0.03) return;
+    let dx = tx - unit.x;
+    let dy = ty - unit.y;
+    const d = Math.hypot(dx, dy) || 1;
+    dx /= d; dy /= d;
+    const sp = c.speed * 72 * dt * mul;
+    const nx = unit.x + dx * sp;
+    const ny = unit.y + dy * sp;
+    if (canMovePastBarrier(unit.team, nx)) unit.x = nx;
+    unit.y = clamp(ny, 54, state.mapH - 26);
+  }
+
+  function findNearestEnemyObject(team, x, y, range) {
+    let best = null;
+    let bestD = Infinity;
+    const enemyTeam = team === "player" ? "enemy" : "player";
+
+    for (const u of state.units) {
+      if (!u.alive || u.team !== enemyTeam) continue;
+      const d = dist(x, y, u.x, u.y);
+      if (d < range && d < bestD) { best = u; bestD = d; }
+    }
+
+    for (const t of state.turrets) {
+      if (t.team !== enemyTeam) continue;
+      const d = dist(x, y, t.x, t.y);
+      if (d < range && d < bestD) { best = t; bestD = d; }
+    }
+
+    for (const b of state.barriers) {
+      if (b.team !== enemyTeam) continue;
+      const d = dist(x, y, b.x, b.y);
+      if (d < range && d < bestD) { best = b; bestD = d; }
+    }
+
+    for (const b of state.blocks) {
+      if (b.team !== enemyTeam) continue;
+      const d = dist(x, y, b.x, b.y);
+      if (d < range && d < bestD) { best = b; bestD = d; }
+    }
+
+    const base = enemyTeam === "player" ? state.playerBase : state.enemyBase;
+    const dBase = dist(x, y, base.x, base.y);
+    if (dBase < range && dBase < bestD) best = base;
+
+    return best;
+  }
+
+  function findNearestWoundedAlly(team, x, y, range) {
+    let best = null;
+    let bestD = Infinity;
+    for (const u of state.units) {
+      if (!u.alive || u.team !== team || u.hp >= u.maxHp) continue;
+      const d = dist(x, y, u.x, u.y);
+      if (d < range && d < bestD) { best = u; bestD = d; }
+    }
+    return best;
+  }
+
+  function updateBullets(dt) {
+    for (let i = state.bullets.length - 1; i >= 0; i--) {
+      const b = state.bullets[i];
+      b.x += b.vx;
+      b.y += b.vy;
+      b.life -= dt * 60;
+
+      if (b.x < -20 || b.x > state.mapW + 20 || b.y < -20 || b.y > state.mapH + 20 || b.life <= 0) {
+        state.bullets.splice(i, 1);
+        continue;
+      }
+
+      if (hitsSpawnShield(b)) {
+        spawnSpark(b.x, b.y, b.team === "player" ? "#9bd8ff" : "#ff8f8f");
+        state.bullets.splice(i, 1);
+        continue;
+      }
+
+      let destroyed = false;
+
+      for (const block of state.blocks) {
+        if (block.team === b.team) continue;
+        if (aabbPoint(block.x - block.w/2, block.y - block.h/2, block.w, block.h, b.x, b.y)) {
+          damageBlock(block, b.damage, b.x, b.y);
+          if (b.explosive) explode(b.x, b.y, b.damage, b.team, b.explosionRadius);
+          state.bullets.splice(i, 1);
+          destroyed = true;
+          break;
+        }
+      }
+      if (destroyed) continue;
+
+      for (const bar of state.barriers) {
+        if (bar.team === b.team) continue;
+        if (aabbPoint(bar.x - bar.w/2, bar.y - bar.h/2, bar.w, bar.h, b.x, b.y)) {
+          damageBarrier(bar, b.damage, b.x, b.y);
+          if (b.explosive) explode(b.x, b.y, b.damage, b.team, b.explosionRadius);
+          state.bullets.splice(i, 1);
+          destroyed = true;
+          break;
+        }
+      }
+      if (destroyed) continue;
+
+      for (const t of state.turrets) {
+        if (t.team === b.team) continue;
+        if (dist(b.x, b.y, t.x, t.y) < 18) {
+          t.hp -= b.damage;
+          spawnSpark(b.x, b.y, "#fff1a5");
+          if (b.explosive) explode(b.x, b.y, b.damage, b.team, b.explosionRadius);
+          state.bullets.splice(i, 1);
+          destroyed = true;
+          break;
+        }
+      }
+      if (destroyed) continue;
+
+      for (const u of state.units) {
+        if (!u.alive || u.team === b.team) continue;
+        if (dist(b.x, b.y, u.x, u.y - 14) < 18) {
+          damageUnit(u, b.damage, b.x, b.y, b.team);
+          if (b.explosive) explode(b.x, b.y, b.damage, b.team, b.explosionRadius);
+          state.bullets.splice(i, 1);
+          destroyed = true;
+          break;
+        }
+      }
+      if (destroyed) continue;
+
+      const enemyBase = b.team === "player" ? state.enemyBase : state.playerBase;
+      if (dist(b.x, b.y, enemyBase.x, enemyBase.y) < 54) {
+        enemyBase.hp -= b.damage * (b.fromClass === "rocketeer" ? 1.2 : 0.55);
+        spawnSpark(b.x, b.y, "#ffde9e");
+        if (b.explosive) explode(b.x, b.y, b.damage, b.team, b.explosionRadius);
+        state.bullets.splice(i, 1);
+      }
+    }
+  }
+
+  function explode(x, y, damage, team, radius) {
+    state.explosions.push({ x, y, r: radius, life: 0.22 });
+    for (let p = 0; p < 16; p++) {
+      state.particles.push({
+        x, y,
+        vx: rand(-3.4, 3.4), vy: rand(-3.4, 3.4),
+        life: rand(0.25, 0.55),
+        color: Math.random() < 0.5 ? "#ffb26b" : "#ffe3b5",
+        size: rand(2, 5)
+      });
+    }
+
+    for (const u of state.units) {
+      if (!u.alive || u.team === team) continue;
+      const d = dist(x, y, u.x, u.y);
+      if (d <= radius) damageUnit(u, damage * (1 - d / radius), x, y, team);
+    }
+    for (const t of state.turrets) {
+      if (t.team === team) continue;
+      const d = dist(x, y, t.x, t.y);
+      if (d <= radius) t.hp -= damage * (1 - d / radius);
+    }
+    for (const b of state.blocks) {
+      if (b.team === team) continue;
+      const d = dist(x, y, b.x, b.y);
+      if (d <= radius) b.hp -= damage * 0.9 * (1 - d / radius);
+    }
+    for (const bar of state.barriers) {
+      if (bar.team === team) continue;
+      const d = dist(x, y, bar.x, bar.y);
+      if (d <= radius) bar.hp -= damage * 0.7 * (1 - d / radius);
+    }
+  }
+
+  function damageUnit(u, dmg, x, y, attackingTeam) {
+    u.hp -= dmg;
+    u.flash = 0.14;
+    spawnSpark(x, y, u.team === "player" ? "#8dd5ff" : "#ff9c9c");
+    if (u.hp <= 0) {
+      killUnit(u, attackingTeam);
+    }
+  }
+
+  function damageBlock(block, dmg, x, y) {
+    block.hp -= dmg;
+    spawnSpark(x, y, "#ccb88d");
+  }
+
+  function damageBarrier(bar, dmg, x, y) {
+    bar.hp -= dmg;
+    spawnSpark(x, y, bar.kind === "energy" ? "#8cf7ff" : "#b8e9ff");
+  }
+
+  function killUnit(u, attackingTeam) {
+    if (!u.alive) return;
+    u.alive = false;
+    for (let i = 0; i < 18; i++) {
+      state.particles.push({
+        x: u.x, y: u.y - 10,
+        vx: rand(-2.8, 2.8), vy: rand(-2.8, 2.8),
+        life: rand(0.35, 0.8),
+        color: u.team === "player" ? "#83c8ff" : "#ff7c7c",
+        size: rand(2, 5)
+      });
+    }
+
+    if (attackingTeam === "player") {
+      state.playerCredits += 1;
+      renderRespawnCards();
+    }
+
+    if (u.isPlayer) {
+      state.playerRespawnTimer = 15;
+      openRespawnOverlay();
+      showNotice("You were downed");
+    }
+  }
+
+  function updateUnits(dt) {
+    for (const u of state.units) {
+      if (!u.alive) continue;
+      const c = CLASS_DEFS[u.classKey];
+
+      u.fireTimer -= dt;
+      u.qTimer = Math.max(0, u.qTimer - dt);
+      u.cooldowns.q = Math.max(0, u.cooldowns.q - dt);
+      u.cooldowns.engineerTurret = Math.max(0, u.cooldowns.engineerTurret - dt);
+      u.flash = Math.max(0, u.flash - dt);
+      u.shootPose = Math.max(0, u.shootPose - dt);
+      u.buffs.rally = Math.max(0, u.buffs.rally - dt);
+
+      if (u.classKey === "captain" && u.qTimer > 0) {
+        for (const ally of state.units) {
+          if (!ally.alive || ally.team !== u.team) continue;
+          if (dist(u.x, u.y, ally.x, ally.y) < 120) ally.buffs.rally = 0.2;
+        }
+      }
+
+      if (u.isPlayer) updatePlayer(u, dt);
+      else updateAI(u, dt);
+
+      u.x = clamp(u.x, 45, state.mapW - 45);
+      u.y = clamp(u.y, 50, state.mapH - 25);
+
+      // prevent crossing frontline
+      if (u.team === "player" && u.x > state.barrierX - 14) u.x = state.barrierX - 14;
+      if (u.team === "enemy" && u.x < state.barrierX + 14) u.x = state.barrierX + 14;
+
+      // safe spawn walls block units except at openings
+      handleSpawnWallCollision(u);
+    }
+
+    state.units = state.units.filter(u => u.alive || u.isPlayer || (!u.alive && false));
+    state.units = state.units.filter(u => u.alive);
+  }
+
+  function handleSpawnWallCollision(unit) {
+    const gapHalf = 74;
+    const leftWallX = state.safeSpawnXLeft;
+    const rightWallX = state.safeSpawnXRight;
+
+    if (Math.abs(unit.x - leftWallX) < 8 && unit.team === "player") {
+      const inGap = state.spawnShieldGaps.some(g => Math.abs(unit.y - g) < gapHalf);
+      if (!inGap) unit.x = Math.min(unit.x, leftWallX - 8);
+    }
+    if (Math.abs(unit.x - rightWallX) < 8 && unit.team === "enemy") {
+      const inGap = state.spawnShieldGaps.some(g => Math.abs(unit.y - g) < gapHalf);
+      if (!inGap) unit.x = Math.max(unit.x, rightWallX + 8);
+    }
+  }
+
+  function hitsSpawnShield(b) {
+    const gapHalf = 72;
+
+    if (b.vx > 0) {
+      if (Math.abs(b.x - state.safeSpawnXRight) < 4) {
+        const inGap = state.spawnShieldGaps.some(g => Math.abs(b.y - g) < gapHalf);
+        if (!inGap) return true;
       }
     } else {
-      const wiperRank = rankMapDescending(team.reps, 'wiperRate');
-      const cqRank = rankMapDescending(team.reps, 'cqAvg');
-      const attendanceRank = rankMapAscending(team.reps, 'attendanceHits');
-      const acwRank = rankMapAscending(team.reps, 'acwAvg');
-      const itacRank = rankMapDescending(team.reps, 'itacAvg');
-      for(const r of team.reps){
-        r.wiperRank = wiperRank.get(r.name) || null;
-        r.cqRank = cqRank.get(r.name) || null;
-        r.attendanceRank = attendanceRank.get(r.name) || null;
-        r.acwRank = acwRank.get(r.name) || null;
-        r.itacRank = itacRank.get(r.name) || null;
-        r.rankTotal = [r.wiperRank, r.cqRank, r.attendanceRank, r.acwRank, r.itacRank].filter(Number.isFinite).reduce((s,n)=>s+n,0);
-        r.overallScore = r.rankTotal - r.complimentCount;
+      if (Math.abs(b.x - state.safeSpawnXLeft) < 4) {
+        const inGap = state.spawnShieldGaps.some(g => Math.abs(b.y - g) < gapHalf);
+        if (!inGap) return true;
       }
     }
-
-    team.reps.sort((a,b)=>{
-      const av = a.overallScore, bv = b.overallScore;
-      const aBad = !Number.isFinite(av), bBad = !Number.isFinite(bv);
-      if(aBad && bBad) return a.name.localeCompare(b.name);
-      if(aBad) return 1;
-      if(bBad) return -1;
-      if(av !== bv) return av - bv;
-      return a.name.localeCompare(b.name);
-    });
+    return false;
   }
 
-  return teams;
-}
-
-function topThreeHtml(team){
-  const top = team.reps.slice(0,3);
-  if(!top.length) return `<div class="mutedTxt">No reps in window.</div>`;
-  return `
-    <div class="topThree">
-      ${top.map((r, i)=>`
-        <div class="winner">
-          <div class="winnerMain">
-            ${medalHtml(i)}
-            <div>
-              <div style="font-weight:1000">${esc(r.name)}</div>
-              <div class="hint">Overall score ${esc(String(r.overallScore))}</div>
-            </div>
-          </div>
-          <div class="chipRow">
-            ${team.type === 'retail' ? `<span class="pill">Consumer ${fmtPct1(r.consumerRate)}</span>` : ``}
-            <span class="pill">Wipers ${fmtPct1(r.wiperRate)}</span>
-            <span class="pill">CQ ${fmtPct1(r.cqAvg)}</span>
-            <span class="pill ${r.attendanceHits>0 ? 'warn' : 'good'}">Attendance ${r.attendanceHits}</span>
-            <span class="pill">Compliments ${r.complimentCount || 0}</span>
-            ${team.type === 'referral' ? `<span class="pill">ACW ${fmtPct1(r.acwAvg)}</span><span class="pill">ITAC ${fmtPct1(r.itacAvg)}</span>` : ``}
-          </div>
-        </div>
-      `).join('')}
-    </div>
-  `;
-}
-
-function renderOverallWinner(sectionTeams){
-  if(!sectionTeams.length){
-    els.overallWinner.innerHTML = `<div class="mutedTxt">No data in the selected window for this tab.</div>`;
-    return;
-  }
-  const t = sectionTeams[0];
-  els.overallWinner.innerHTML = `
-    <h2>Top Overall ${esc(t.type === 'retail' ? 'Retail' : 'Referral')} Team</h2>
-    <div class="big">${medalHtml(0)} ${esc(t.name)}</div>
-    <div class="chipRow" style="margin-top:10px">
-      ${t.type === 'retail' ? `<span class="pill">Consumer <strong>${fmtPct1(t.consumerRate)}</strong></span>` : ``}
-      <span class="pill">Wipers <strong>${fmtPct1(t.wiperRate)}</strong></span>
-      <span class="pill">CQ <strong>${fmtPct1(t.cqAvg)}</strong></span>
-      <span class="pill">Rank total <strong>${esc(String(t.rankTotal ?? '—'))}</strong></span>
-      <span class="pill">Compliments <strong>${t.complimentCount || 0}</strong></span>
-      <span class="pill">Overall score <strong>${esc(String(t.overallScore))}</strong></span>
-      ${t.type === 'referral' ? `<span class="pill">ITAC <strong>${fmtPct1(t.itacAvg)}</strong></span>` : ``}
-      <span class="pill warn">Attendance shown only, not in team rank</span>
-      <span class="pill">Attendance hits <strong>${t.attendanceHits}</strong></span>
-      <span class="pill">Active reps <strong>${t.activeRepCount}</strong></span>
-    </div>
-  `;
-}
-
-function renderRetailTable(teams){
-  els.retailRankBody.innerHTML = teams.map((t,i)=>`
-    <tr>
-      <td>${medalHtml(i)}</td>
-      <td><button data-open-team="${esc(t.name)}" data-section="retail" style="all:unset;cursor:pointer;color:#2563eb;font-weight:1000;text-decoration:underline">${esc(t.name)}</button></td>
-      <td class="right">${esc(String(t.consumerRank ?? '—'))}</td>
-      <td class="right">${esc(String(t.wiperRank ?? '—'))}</td>
-      <td class="right">${esc(String(t.cqRank ?? '—'))}</td>
-      <td class="right">${esc(String(t.rankTotal ?? '—'))}</td>
-      <td class="right" style="font-weight:1000">${t.complimentCount || 0}</td>
-      <td class="right"><strong>${esc(String(t.overallScore))}</strong></td>
-      <td class="right">${fmtPct1(t.consumerRate)}</td>
-      <td class="right">${fmtPct1(t.wiperRate)}</td>
-      <td class="right">${fmtPct1(t.cqAvg)}</td>
-      <td class="right ${t.attendanceHits>0 ? 'warnTxt' : 'goodTxt'}">${t.attendanceHits}</td>
-      <td class="right">${t.activeRepCount}</td>
-    </tr>
-  `).join('') || `<tr><td colspan="13" class="mutedTxt">No retail data.</td></tr>`;
-}
-function renderReferralTable(teams){
-  els.referralRankBody.innerHTML = teams.map((t,i)=>`
-    <tr>
-      <td>${medalHtml(i)}</td>
-      <td><button data-open-team="${esc(t.name)}" data-section="referral" style="all:unset;cursor:pointer;color:#2563eb;font-weight:1000;text-decoration:underline">${esc(t.name)}</button></td>
-      <td class="right">${esc(String(t.wiperRank ?? '—'))}</td>
-      <td class="right">${esc(String(t.cqRank ?? '—'))}</td>
-      <td class="right">${esc(String(t.itacRank ?? '—'))}</td>
-      <td class="right">${esc(String(t.rankTotal ?? '—'))}</td>
-      <td class="right" style="font-weight:1000">${t.complimentCount || 0}</td>
-      <td class="right"><strong>${esc(String(t.overallScore))}</strong></td>
-      <td class="right">${fmtPct1(t.wiperRate)}</td>
-      <td class="right">${fmtPct1(t.cqAvg)}</td>
-      <td class="right">${fmtPct1(t.itacAvg)}</td>
-      <td class="right ${t.attendanceHits>0 ? 'warnTxt' : 'goodTxt'}">${t.attendanceHits}</td>
-      <td class="right">${t.activeRepCount}</td>
-    </tr>
-  `).join('') || `<tr><td colspan="11" class="mutedTxt">No referral data.</td></tr>`;
-}
-
-function renderTeamCards(teams, mountEl, section){
-  mountEl.innerHTML = teams.map((t,i)=>`
-    <div class="teamCard ${i===0 ? 'open' : ''}" data-team="${esc(t.name)}" data-section="${esc(section)}">
-      <div class="teamHead">
-        <div class="teamTitle">
-          ${medalHtml(i)}
-          <div>
-            <div class="teamName">${esc(t.name)}</div>
-            <div class="hint">${esc(t.type === 'retail' ? 'Retail Team' : 'Referral Team')} • Overall score ${esc(String(t.overallScore))}</div>
-          </div>
-        </div>
-        <div class="chipRow">
-          ${t.type === 'retail' ? `<span class="pill">Consumer ${fmtPct1(t.consumerRate)}</span>` : ``}
-          <span class="pill">Wipers ${fmtPct1(t.wiperRate)}</span>
-          <span class="pill">CQ ${fmtPct1(t.cqAvg)}</span>
-          ${t.type === 'referral' ? `<span class="pill">ITAC ${fmtPct1(t.itacAvg)}</span>` : ``}
-          <span class="pill">Compliments ${t.complimentCount || 0}</span>
-          <span class="pill warn">Attendance ${t.attendanceHits}</span>
-          <span class="pill">Active reps ${t.activeRepCount}</span>
-        </div>
-      </div>
-      <div class="teamBody">
-        <div class="teamMiniStats">
-          ${t.type === 'retail' ? `
-          <div class="miniStat">
-            <div class="k">Consumer Rank</div>
-            <div class="v">${esc(String(t.consumerRank ?? '—'))}</div>
-          </div>` : ``}
-          <div class="miniStat">
-            <div class="k">Wiper Rank</div>
-            <div class="v">${esc(String(t.wiperRank ?? '—'))}</div>
-          </div>
-          <div class="miniStat">
-            <div class="k">CQ Rank</div>
-            <div class="v">${esc(String(t.cqRank ?? '—'))}</div>
-          </div>
-          ${t.type === 'referral' ? `
-          <div class="miniStat">
-            <div class="k">ITAC Rank</div>
-            <div class="v">${esc(String(t.itacRank ?? '—'))}</div>
-          </div>` : ``}
-          <div class="miniStat">
-            <div class="k">Compliments</div>
-            <div class="v">${t.complimentCount || 0}</div>
-          </div>
-          <div class="miniStat">
-            <div class="k">Attendance Hits</div>
-            <div class="v ${t.attendanceHits>0 ? 'warnTxt' : 'goodTxt'}">${t.attendanceHits}</div>
-          </div>
-          <div class="miniStat">
-            <div class="k">Overall Rank</div>
-            <div class="v">${esc(String(t.overallRank))}</div>
-          </div>
-        </div>
-
-        <div class="subTitle">Top 3 Performers</div>
-        ${topThreeHtml(t)}
-
-        <div class="subTitle" style="margin-top:14px">Full Team Breakdown</div>
-        <div class="tblWrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Overall</th>
-                <th>Rep</th>
-                ${t.type === 'retail' ? `<th class="right">Consumer Rank</th>` : ``}
-                <th class="right">Wiper Rank</th>
-                <th class="right">CQ Rank</th>
-                <th class="right">Attendance Rank</th>
-                ${t.type === 'referral' ? `<th class="right">ACW Rank</th><th class="right">ITAC Rank</th>` : ``}
-                <th class="right">Rank Total</th>
-                <th class="right">Compliments</th>
-                <th class="right">Overall Score</th>
-                ${t.type === 'retail' ? `<th class="right">Consumer Rate</th>` : ``}
-                <th class="right">Wiper Rate</th>
-                <th class="right">CQ Avg</th>
-                <th class="right">Attendance Hits</th>
-                ${t.type === 'referral' ? `<th class="right">ACW Avg</th><th class="right">ITAC %</th>` : ``}
-              </tr>
-            </thead>
-            <tbody>
-              ${t.reps.map((r, idx)=>`
-                <tr>
-                  <td>${medalHtml(idx)}</td>
-                  <td>${esc(r.name)}</td>
-                  ${t.type === 'retail' ? `<td class="right">${esc(String(r.consumerRank ?? '—'))}</td>` : ``}
-                  <td class="right">${esc(String(r.wiperRank ?? '—'))}</td>
-                  <td class="right">${esc(String(r.cqRank ?? '—'))}</td>
-                  <td class="right">${esc(String(r.attendanceRank ?? '—'))}</td>
-                  ${t.type === 'referral' ? `<td class="right">${esc(String(r.acwRank ?? '—'))}</td><td class="right">${esc(String(r.itacRank ?? '—'))}</td>` : ``}
-                  <td class="right">${esc(String(r.rankTotal ?? '—'))}</td>
-                  <td class="right" style="font-weight:1000">${r.complimentCount || 0}</td>
-                  <td class="right"><strong>${esc(String(r.overallScore))}</strong></td>
-                  ${t.type === 'retail' ? `<td class="right">${fmtPct1(r.consumerRate)}</td>` : ``}
-                  <td class="right">${fmtPct1(r.wiperRate)}</td>
-                  <td class="right">${fmtPct1(r.cqAvg)}</td>
-                  <td class="right ${r.attendanceHits>0 ? 'warnTxt' : 'goodTxt'}">${r.attendanceHits}</td>
-                  ${t.type === 'referral' ? `<td class="right">${fmtPct1(r.acwAvg)}</td><td class="right">${fmtPct1(r.itacAvg)}</td>` : ``}
-                </tr>
-              `).join('') || `<tr><td colspan="12" class="mutedTxt">No reps in window.</td></tr>`}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  `).join('');
-
-  mountEl.querySelectorAll('.teamHead').forEach(head=>{
-    head.addEventListener('click', ()=>{
-      head.parentElement.classList.toggle('open');
-    });
-  });
-}
-
-function bindOpenTeamLinks(){
-  document.querySelectorAll('[data-open-team]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const teamName = btn.getAttribute('data-open-team');
-      const section = btn.getAttribute('data-section');
-      setActiveTab(section);
-      const card = document.querySelector(`.teamCard[data-team="${CSS.escape(teamName)}"][data-section="${CSS.escape(section)}"]`);
-      if(card){
-        card.classList.add('open');
-        card.scrollIntoView({ behavior:'smooth', block:'start' });
-      }
-    });
-  });
-}
-
-function setActiveTab(tab){
-  activeTab = tab;
-  document.querySelectorAll('.tab').forEach(t=> t.classList.toggle('active', t.getAttribute('data-tab') === tab));
-  document.querySelectorAll('.tabPanel').forEach(p=> p.classList.toggle('active', p.id === `panel-${tab}`));
-}
-
-function renderAll(){
-  const retailTeams = buildSectionData(retailRows, retailFieldMap || {}, 'retail');
-  const referralTeams = buildSectionData(referralRows, referralFieldMap || {}, 'referral');
-
-  els.sumRetail.textContent = String(retailTeams.length);
-  els.sumReferral.textContent = String(referralTeams.length);
-  els.sumRetailAttendance.textContent = String(retailTeams.reduce((s,t)=>s+(t.attendanceHits||0),0));
-  els.sumReferralAttendance.textContent = String(referralTeams.reduce((s,t)=>s+(t.attendanceHits||0),0));
-
-  renderRetailTable(retailTeams);
-  renderReferralTable(referralTeams);
-  renderTeamCards(retailTeams, els.retailCards, 'retail');
-  renderTeamCards(referralTeams, els.referralCards, 'referral');
-
-  renderOverallWinner(activeTab === 'retail' ? retailTeams : referralTeams);
-  bindOpenTeamLinks();
-
-  const { sd, ed } = getWindow();
-  els.scopeHint.textContent = `${mmddyy(sd)} → ${mmddyy(ed)} • Retail ${retailTeams.length} • Referral ${referralTeams.length}`;
-}
-
-function savePrefs(){
-  try{
-    localStorage.setItem(PREF_KEY, JSON.stringify({
-      retailDockKey,
-      referralDockKey,
-      qaDockKey,
-      checkDockKey,
-      complimentSheetName,
-      startDate: els.startDate.value || '',
-      endDate: els.endDate.value || '',
-      activeTab
-    }));
-  }catch(e){}
-}
-function loadPrefs(){
-  try{
-    const raw = localStorage.getItem(PREF_KEY);
-    if(!raw) return;
-    const p = JSON.parse(raw);
-    if(typeof p.retailDockKey === 'string') retailDockKey = p.retailDockKey;
-    if(typeof p.referralDockKey === 'string') referralDockKey = p.referralDockKey;
-    if(typeof p.qaDockKey === 'string') qaDockKey = p.qaDockKey;
-    if(typeof p.checkDockKey === 'string') checkDockKey = p.checkDockKey;
-    if(typeof p.complimentSheetName === 'string') complimentSheetName = p.complimentSheetName;
-    if(typeof p.startDate === 'string') els.startDate.value = p.startDate;
-    if(typeof p.endDate === 'string') els.endDate.value = p.endDate;
-    if(typeof p.activeTab === 'string') activeTab = p.activeTab;
-  }catch(e){}
-}
-
-function fullLoad(){
-  retailDockKey = els.retailDockSel.value || retailDockKey || pickBestKey('retail');
-  referralDockKey = els.referralDockSel.value || referralDockKey || pickBestKey('referral');
-  qaDockKey = els.qaDockSel.value || qaDockKey || pickBestKey('qa');
-  checkDockKey = els.checkDockSel.value || checkDockKey || pickBestKey('checklist');
-
-  loadRetail();
-  loadReferral();
-  loadQA();
-  loadChecklist();
-  initDates();
-  savePrefs();
-  setActiveTab(activeTab);
-  renderAll();
-}
-
-document.querySelectorAll('.tab').forEach(btn=>{
-  btn.addEventListener('click', ()=>{
-    setActiveTab(btn.getAttribute('data-tab'));
-    savePrefs();
-    renderAll();
-  });
-});
-
-els.complimentFile.addEventListener('change', async (e)=>{
-  const file = e.target.files && e.target.files[0];
-  if(!file){
-    complimentWorkbook = null;
-    complimentSheetName = '';
-    complimentRows = [];
-    els.complimentFileHint.textContent = 'No compliment file loaded.';
-    els.complimentSheetBtns.innerHTML = '';
-    els.complimentHint.textContent = 'Expected headers (A:N): ID, Start time, Completion time, Email, Name, CSR/SSR Name (This is the person being complimented), Director, CSR Team/Coach, Date of Call, Referral/Claim/WO/Chat Number (Only one type is needed), Taken By (This is the person reporting the compliment), Compliment, Date Letter Completed, Coord Initial';
-    renderAll();
-    return;
-  }
-  try{
-    const buf = await file.arrayBuffer();
-    complimentWorkbook = XLSX.read(buf, { type:'array' });
-    els.complimentFileHint.textContent = `${file.name} loaded • ${complimentWorkbook.SheetNames.length} sheet(s)`;
-    if(!complimentWorkbook.SheetNames.includes(complimentSheetName)){
-      complimentSheetName = complimentWorkbook.SheetNames[0] || '';
+  function updateStructures(dt) {
+    for (let i = state.barriers.length - 1; i >= 0; i--) {
+      const b = state.barriers[i];
+      b.ttl -= dt;
+      if (b.hp <= 0 || b.ttl <= 0) state.barriers.splice(i, 1);
     }
-    loadComplimentSheet();
-    renderComplimentSheetButtons();
-    initDates();
-    savePrefs();
-    renderAll();
-  }catch(err){
-    console.error(err);
-    complimentWorkbook = null;
-    complimentSheetName = '';
-    complimentRows = [];
-    els.complimentFileHint.textContent = 'Could not read compliment workbook.';
-    els.complimentSheetBtns.innerHTML = '';
-    els.complimentHint.textContent = 'Upload failed. Please try another Excel file.';
-    renderAll();
+    for (let i = state.blocks.length - 1; i >= 0; i--) {
+      if (state.blocks[i].hp <= 0) state.blocks.splice(i, 1);
+    }
+    for (let i = state.turrets.length - 1; i >= 0; i--) {
+      const t = state.turrets[i];
+      t.cooldown -= dt;
+      if (t.hp <= 0) {
+        state.turrets.splice(i, 1);
+        continue;
+      }
+      if (t.cooldown <= 0) fireTurret(t);
+    }
+    for (let i = state.explosions.length - 1; i >= 0; i--) {
+      state.explosions[i].life -= dt;
+      if (state.explosions[i].life <= 0) state.explosions.splice(i, 1);
+    }
   }
-});
 
-populateDockSelects();
-loadPrefs();
-populateDockSelects();
-setActiveTab(activeTab);
-fullLoad();
+  function updateFrontline(dt) {
+    let leftPressure = 0;
+    let rightPressure = 0;
+    const zone = 150;
 
-els.refreshBtn.addEventListener('click', ()=>{
-  savePrefs();
-  renderAll();
-});
-els.loadDocksBtn.addEventListener('click', ()=>{
-  fullLoad();
-});
-els.startDate.addEventListener('change', ()=>{ savePrefs(); renderAll(); });
-els.endDate.addEventListener('change', ()=>{ savePrefs(); renderAll(); });
-els.retailDockSel.addEventListener('change', ()=>{ retailDockKey = els.retailDockSel.value; savePrefs(); });
-els.referralDockSel.addEventListener('change', ()=>{ referralDockKey = els.referralDockSel.value; savePrefs(); });
-els.qaDockSel.addEventListener('change', ()=>{ qaDockKey = els.qaDockSel.value; savePrefs(); });
-els.checkDockSel.addEventListener('change', ()=>{ checkDockKey = els.checkDockSel.value; savePrefs(); });
+    for (const u of state.units) {
+      if (!u.alive) continue;
+      const d = Math.abs(u.x - state.barrierX);
+      if (d > zone) continue;
+      const weight = getPressureWeight(u.classKey);
+      if (u.team === "player") leftPressure += weight;
+      else rightPressure += weight;
+    }
+
+    for (const t of state.turrets) {
+      const d = Math.abs(t.x - state.barrierX);
+      if (d > zone) continue;
+      if (t.team === "player") leftPressure += 0.35;
+      else rightPressure += 0.35;
+    }
+
+    const diff = (leftPressure - rightPressure);
+    const pushSpeed = 11 * difficultyDefs[difficultyIndex].pushMul;
+
+    if (Math.abs(diff) > 0.15) {
+      state.barrierX += Math.sign(diff) * Math.min(1.7, Math.abs(diff) * 0.18) * pushSpeed * dt;
+    }
+
+    state.barrierX = clamp(state.barrierX, state.minBarrierX, state.maxBarrierX);
+
+    if (state.barrierX >= state.maxBarrierX - 2) {
+      endGame("player");
+    } else if (state.barrierX <= state.minBarrierX + 2) {
+      endGame("enemy");
+    }
+  }
+
+  function getPressureWeight(classKey) {
+    switch (classKey) {
+      case "shield": return 1.5;
+      case "heavy": return 1.4;
+      case "fortress": return 1.4;
+      case "captain": return 1.2;
+      case "barricade":
+      case "energy":
+      case "engineer":
+      case "rocketeer":
+      case "medic":
+        return 1.0;
+      case "sniper": return 0.8;
+      default: return 1.0;
+    }
+  }
+
+  function updateRespawns(dt) {
+    if (!state.player && state.playerRespawnTimer > 0) {
+      state.playerRespawnTimer -= dt;
+      hudRespawn.textContent = state.playerRespawnTimer.toFixed(1) + "s";
+      if (state.playerRespawnTimer <= 0) {
+        spawnPlayerNow();
+        closeRespawnOverlay();
+      }
+    } else {
+      hudRespawn.textContent = "Alive";
+    }
+
+    const alliesAlive = state.units.filter(u => u.team === "player" && !u.isPlayer).length;
+    const enemiesAlive = state.units.filter(u => u.team === "enemy").length;
+
+    allyCountEl.textContent = alliesAlive;
+    enemyCountEl.textContent = enemiesAlive;
+
+    state.allyRespawnQueue -= dt;
+    state.enemyRespawnQueue -= dt;
+
+    if (alliesAlive < state.allyTargetCap && state.allyRespawnQueue <= 0) {
+      state.units.push(createUnit("player", pickAIClass("player")));
+      state.allyRespawnQueue = 7.5;
+    }
+    if (enemiesAlive < state.enemyTargetCap && state.enemyRespawnQueue <= 0) {
+      state.units.push(createUnit("enemy", pickAIClass("enemy")));
+      state.enemyRespawnQueue = Math.max(4.5, 7 - difficultyIndex * 0.8);
+    }
+  }
+
+  function updateCredits(dt) {
+    state.playerCredits += dt * 0.22;
+    if (state.playerCredits > 99) state.playerCredits = 99;
+  }
+
+  function endGame(winner) {
+    if (state.gameOver) return;
+    state.gameOver = true;
+    state.winner = winner;
+    showNotice(winner === "player" ? "VICTORY" : "DEFEAT", 3500);
+    setTimeout(() => {
+      menuOverlay.classList.remove("hidden");
+      topHud.classList.add("hidden");
+      rightHud.classList.add("hidden");
+      state.running = false;
+    }, 2600);
+  }
+
+  function update(dt) {
+    if (!state.running || state.gameOver) return;
+
+    updateCredits(dt);
+
+    if (state.player && state.player.alive) {
+      state.cameraX = lerp(state.cameraX, clamp(state.player.x - W * 0.45, 0, state.mapW - W), 0.1);
+      state.cameraY = lerp(state.cameraY, clamp(state.player.y - H * 0.5, 0, state.mapH - H), 0.1);
+    }
+
+    updateUnits(dt);
+    updateStructures(dt);
+    updateBullets(dt);
+    updateFrontline(dt);
+    updateRespawns(dt);
+
+    // base death
+    state.playerBase.hp = clamp(state.playerBase.hp, 0, state.playerBase.maxHp);
+    state.enemyBase.hp = clamp(state.enemyBase.hp, 0, state.enemyBase.maxHp);
+    if (state.playerBase.hp <= 0) endGame("enemy");
+    if (state.enemyBase.hp <= 0) endGame("player");
+
+    // particles
+    for (let i = state.particles.length - 1; i >= 0; i--) {
+      const p = state.particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life -= dt;
+      p.vx *= 0.98;
+      p.vy *= 0.98;
+      if (p.life <= 0) state.particles.splice(i, 1);
+    }
+
+    // player ref
+    if (state.player && !state.player.alive) state.player = null;
+
+    // hud
+    hudCredits.textContent = Math.floor(state.playerCredits);
+    playerBaseBar.style.width = (state.playerBase.hp / state.playerBase.maxHp * 100) + "%";
+    enemyBaseBar.style.width = (state.enemyBase.hp / state.enemyBase.maxHp * 100) + "%";
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    drawWorld();
+    drawFrontlineArrow();
+  }
+
+  function drawWorld() {
+    ctx.save();
+    ctx.translate(-state.cameraX, -state.cameraY);
+
+    drawBackground();
+    drawMapDecor();
+    drawBases();
+    drawSpawnWalls();
+    drawStructures();
+    drawUnits();
+    drawBullets();
+    drawParticles();
+    drawExplosions();
+
+    ctx.restore();
+  }
+
+  function drawBackground() {
+    const g = ctx.createLinearGradient(0, 0, 0, state.mapH);
+    g.addColorStop(0, "#151b2c");
+    g.addColorStop(1, "#0d111a");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, state.mapW, state.mapH);
+
+    // lane lights
+    for (let y = 120; y < state.mapH; y += 120) {
+      ctx.fillStyle = "rgba(255,255,255,0.025)";
+      ctx.fillRect(0, y, state.mapW, 4);
+    }
+
+    // center glow
+    const centerGrad = ctx.createLinearGradient(state.barrierX - 20, 0, state.barrierX + 20, 0);
+    centerGrad.addColorStop(0, "rgba(80, 220, 255, 0.1)");
+    centerGrad.addColorStop(0.5, "rgba(120, 255, 255, 0.35)");
+    centerGrad.addColorStop(1, "rgba(80, 220, 255, 0.1)");
+    ctx.fillStyle = centerGrad;
+    ctx.fillRect(state.barrierX - 22, 0, 44, state.mapH);
+
+    ctx.strokeStyle = "#85f3ff";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(state.barrierX, 0);
+    ctx.lineTo(state.barrierX, state.mapH);
+    ctx.stroke();
+
+    for (let y = 0; y < state.mapH; y += 28) {
+      ctx.strokeStyle = y % 56 === 0 ? "rgba(200,255,255,0.5)" : "rgba(140,255,255,0.16)";
+      ctx.beginPath();
+      ctx.moveTo(state.barrierX - 10, y);
+      ctx.lineTo(state.barrierX + 10, y + 14);
+      ctx.stroke();
+    }
+  }
+
+  function drawMapDecor() {
+    // small cover and tech panels
+    for (let i = 0; i < 11; i++) {
+      const y = 80 + i * 110;
+      drawCrate(470, y, "#3a4458");
+      drawCrate(1225, y + 34, "#493b40");
+    }
+  }
+
+  function drawCrate(x, y, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, 36, 24);
+    ctx.strokeStyle = "rgba(255,255,255,0.15)";
+    ctx.strokeRect(x, y, 36, 24);
+  }
+
+  function drawBases() {
+    drawBase(state.playerBase, "player");
+    drawBase(state.enemyBase, "enemy");
+  }
+
+  function drawBase(base, team) {
+    const x = base.x;
+    const y = base.y;
+    ctx.save();
+    ctx.translate(x, y);
+
+    ctx.fillStyle = team === "player" ? "#173858" : "#591d1d";
+    ctx.fillRect(-58, -110, 116, 220);
+
+    ctx.fillStyle = team === "player" ? "#2e5f97" : "#a03838";
+    ctx.fillRect(-70, -16, 140, 32);
+
+    ctx.fillStyle = "#2a2f3b";
+    ctx.fillRect(-24, -74, 48, 148);
+
+    ctx.fillStyle = team === "player" ? "#9bd6ff" : "#ffb0b0";
+    ctx.fillRect(-12, -62, 24, 124);
+
+    ctx.fillStyle = "rgba(255,255,255,0.12)";
+    ctx.fillRect(-58, -110, 116, 20);
+    ctx.restore();
+  }
+
+  function drawSpawnWalls() {
+    drawSpawnWall(state.safeSpawnXLeft, "player");
+    drawSpawnWall(state.safeSpawnXRight, "enemy");
+  }
+
+  function drawSpawnWall(x, team) {
+    ctx.fillStyle = team === "player" ? "#3e6fa0" : "#954848";
+    ctx.strokeStyle = "rgba(255,255,255,0.2)";
+    for (let y = 0; y < state.mapH; y += 44) {
+      const gap = state.spawnShieldGaps.some(g => Math.abs((y + 22) - g) < 72);
+      if (gap) continue;
+      ctx.fillRect(x - 7, y, 14, 44);
+      ctx.strokeRect(x - 7, y, 14, 44);
+    }
+    // glow
+    ctx.strokeStyle = team === "player" ? "rgba(145,220,255,0.5)" : "rgba(255,155,155,0.5)";
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, state.mapH);
+    ctx.stroke();
+  }
+
+  function drawStructures() {
+    for (const block of state.blocks) {
+      ctx.fillStyle = block.team === "player" ? "#7da9d1" : "#b98585";
+      ctx.fillRect(block.x - block.w/2, block.y - block.h/2, block.w, block.h);
+      ctx.strokeStyle = "rgba(255,255,255,0.25)";
+      ctx.strokeRect(block.x - block.w/2, block.y - block.h/2, block.w, block.h);
+      drawHealthMini(block.x, block.y - 18, 18, block.hp / block.maxHp, "#9effc2");
+    }
+
+    for (const b of state.barriers) {
+      ctx.fillStyle = b.kind === "energy"
+        ? (b.team === "player" ? "rgba(100,255,255,0.42)" : "rgba(255,160,220,0.42)")
+        : (b.team === "player" ? "rgba(165,225,255,0.55)" : "rgba(255,190,190,0.55)");
+      ctx.fillRect(b.x - b.w/2, b.y - b.h/2, b.w, b.h);
+      ctx.strokeStyle = b.kind === "energy" ? "#8cfaff" : "#d7f3ff";
+      ctx.strokeRect(b.x - b.w/2, b.y - b.h/2, b.w, b.h);
+      drawHealthMini(b.x, b.y - b.h/2 - 8, 26, b.hp / b.maxHp, "#8cfaff");
+    }
+
+    for (const t of state.turrets) {
+      ctx.save();
+      ctx.translate(t.x, t.y);
+      ctx.fillStyle = t.team === "player" ? "#5fd2ff" : "#ff9b6f";
+      ctx.fillRect(-12, -8, 24, 8);
+      ctx.fillStyle = "#576275";
+      ctx.fillRect(-8, -20, 16, 12);
+      ctx.fillStyle = "#9ca8ba";
+      ctx.fillRect(-3, -30, 18 * (t.team === "player" ? 1 : -1), 4);
+      ctx.restore();
+      drawHealthMini(t.x, t.y - 32, 24, t.hp / t.maxHp, "#bdeaff");
+    }
+  }
+
+  function drawUnits() {
+    for (const u of state.units) {
+      if (!u.alive) continue;
+      drawUnit(u);
+    }
+  }
+
+  function drawUnit(u) {
+    const c = CLASS_DEFS[u.classKey];
+    ctx.save();
+    ctx.translate(u.x, u.y);
+
+    const walk = Math.sin(u.walkTime * 8) * 4;
+    const armSwing = Math.sin(u.walkTime * 8 + 1.3) * 3;
+    const shootLift = u.shootPose * 16;
+    const scaleX = u.team === "player" ? 1 : -1;
+    ctx.scale(scaleX, 1);
+
+    // shadow
+    ctx.fillStyle = "rgba(0,0,0,0.25)";
+    ctx.beginPath();
+    ctx.ellipse(0, 2, 14, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // legs
+    ctx.strokeStyle = "#1c2637";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(-4, 10);
+    ctx.lineTo(-6, 24 + walk);
+    ctx.moveTo(4, 10);
+    ctx.lineTo(6, 24 - walk);
+    ctx.stroke();
+
+    // torso
+    ctx.fillStyle = u.flash > 0 ? "#ffffff" : c.color;
+    ctx.fillRect(-10, -18, 20, 28);
+
+    // helmet/head
+    ctx.fillStyle = u.team === "player" ? "#d2f0ff" : "#ffd2d2";
+    ctx.beginPath();
+    ctx.arc(0, -24, 8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // class accents
+    if (u.classKey === "shield") {
+      ctx.fillStyle = "rgba(180,235,255,0.9)";
+      ctx.fillRect(10, -10, 10, 26);
+    }
+    if (u.classKey === "heavy") {
+      ctx.fillStyle = "#ffd373";
+      ctx.fillRect(-12, -16, 24, 8);
+    }
+    if (u.classKey === "captain") {
+      ctx.fillStyle = "#fff3a1";
+      ctx.fillRect(-2, -40, 4, 16);
+    }
+
+    // arms + weapon
+    ctx.strokeStyle = "#dfe8f1";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(-8, -4);
+    ctx.lineTo(3, -2 - shootLift + armSwing * 0.15);
+    ctx.moveTo(8, -4);
+    ctx.lineTo(7, 2 + armSwing * 0.15);
+    ctx.stroke();
+
+    ctx.fillStyle = weaponColor(u.classKey);
+    ctx.fillRect(2, -10 - shootLift, weaponLength(u.classKey), 6);
+
+    // hp bar
+    drawHealthMini(0, -40, 28, u.hp / u.maxHp, u.team === "player" ? "#93d7ff" : "#ff9d9d");
+
+    if (u.buffs.rally > 0) {
+      ctx.strokeStyle = "rgba(255,255,160,0.8)";
+      ctx.beginPath();
+      ctx.arc(0, -5, 18, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function drawHealthMini(x, y, w, pct, color) {
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.fillRect(x - w/2, y, w, 4);
+    ctx.fillStyle = color;
+    ctx.fillRect(x - w/2, y, w * clamp(pct, 0, 1), 4);
+  }
+
+  function weaponLength(classKey) {
+    switch (classKey) {
+      case "sniper": return 18;
+      case "heavy": return 16;
+      case "rocketeer": return 14;
+      case "engineer": return 10;
+      default: return 12;
+    }
+  }
+
+  function weaponColor(classKey) {
+    switch (classKey) {
+      case "rocketeer": return "#ffaf68";
+      case "heavy": return "#ffd66c";
+      case "sniper": return "#e1ecff";
+      case "engineer": return "#8cffb2";
+      case "medic": return "#8effc0";
+      default: return "#f1f4f7";
+    }
+  }
+
+  function drawBullets() {
+    for (const b of state.bullets) {
+      ctx.strokeStyle = b.color;
+      ctx.lineWidth = b.fromClass === "rocketeer" ? 4 : 2;
+      ctx.beginPath();
+      ctx.moveTo(b.x, b.y);
+      ctx.lineTo(b.x - b.vx * 1.5, b.y - b.vy * 1.5);
+      ctx.stroke();
+
+      if (b.fromClass === "rocketeer") {
+        ctx.fillStyle = "#ffd9a1";
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  function drawParticles() {
+    for (const p of state.particles) {
+      ctx.globalAlpha = Math.max(0, p.life * 1.6);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x, p.y, p.size, p.size);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawExplosions() {
+    for (const e of state.explosions) {
+      const alpha = e.life / 0.22;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = "#ffca88";
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, e.r * (1 - alpha * 0.15), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawFrontlineArrow() {
+    const pct = (state.barrierX - state.minBarrierX) / (state.maxBarrierX - state.minBarrierX);
+    ctx.save();
+    ctx.fillStyle = "rgba(12,18,30,0.75)";
+    ctx.fillRect(W/2 - 160, 10, 320, 32);
+    ctx.strokeStyle = "rgba(180,220,255,0.35)";
+    ctx.strokeRect(W/2 - 160, 10, 320, 32);
+
+    ctx.fillStyle = "#6ec4ff";
+    ctx.fillRect(W/2 - 156, 14, 312 * pct, 24);
+
+    ctx.fillStyle = "rgba(255,80,80,0.4)";
+    ctx.fillRect(W/2 - 156 + 312 * pct, 14, 312 * (1 - pct), 24);
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText("FRONTLINE", W/2 - 28, 31);
+    ctx.restore();
+  }
+
+  function spawnSpark(x, y, color) {
+    for (let i = 0; i < 5; i++) {
+      state.particles.push({
+        x, y,
+        vx: rand(-2.2, 2.2),
+        vy: rand(-2.2, 2.2),
+        life: rand(0.15, 0.35),
+        color,
+        size: rand(2, 4)
+      });
+    }
+  }
+
+  function loop(t) {
+    const dt = Math.min(0.033, (t - state.lastTime) / 1000 || 0.016);
+    state.lastTime = t;
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  function startGame() {
+    menuOverlay.classList.add("hidden");
+    topHud.classList.remove("hidden");
+    rightHud.classList.remove("hidden");
+    hudDiff.textContent = difficultyDefs[difficultyIndex].name;
+    resetGame();
+    buildWarRoomCards();
+    hudClass.textContent = CLASS_DEFS[state.player.classKey].name;
+    hudAbility.textContent = CLASS_DEFS[state.player.classKey].abilityName;
+    state.running = true;
+  }
+
+  function openWarRoom() {
+    buildWarRoomCards();
+    warRoomOverlay.classList.remove("hidden");
+  }
+
+  function closeWarRoom() {
+    warRoomOverlay.classList.add("hidden");
+  }
+
+  function openRespawnOverlay() {
+    renderRespawnCards();
+    respawnOverlay.classList.remove("hidden");
+  }
+
+  function closeRespawnOverlay() {
+    respawnOverlay.classList.add("hidden");
+  }
+
+  document.getElementById("startBtn").onclick = startGame;
+  document.getElementById("warRoomBtn").onclick = openWarRoom;
+  document.getElementById("closeWarRoomBtn").onclick = closeWarRoom;
+  document.getElementById("closeRespawnBtn").onclick = closeRespawnOverlay;
+
+  document.querySelectorAll(".diffBtn").forEach(btn => {
+    btn.onclick = () => {
+      difficultyIndex = Number(btn.dataset.diff);
+      showNotice("Difficulty: " + difficultyDefs[difficultyIndex].name);
+      hudDiff.textContent = difficultyDefs[difficultyIndex].name;
+    };
+  });
+
+  addEventListener("keydown", e => {
+    const k = e.key.toLowerCase();
+    if (["w","a","s","d","q","e","r","tab"].includes(k) || e.key === "Tab") e.preventDefault();
+
+    if (k === "tab") {
+      if (warRoomOverlay.classList.contains("hidden")) openWarRoom();
+      else closeWarRoom();
+      return;
+    }
+
+    if (k === "r" && !state.player) {
+      openRespawnOverlay();
+      return;
+    }
+
+    state.keys[k] = true;
+  });
+
+  addEventListener("keyup", e => {
+    state.keys[e.key.toLowerCase()] = false;
+  });
+
+  function rand(a, b) { return Math.random() * (b - a) + a; }
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function dist(x1, y1, x2, y2) { return Math.hypot(x2 - x1, y2 - y1); }
+  function aabbPoint(x, y, w, h, px, py) { return px >= x && px <= x + w && py >= y && py <= y + h; }
+
+  buildWarRoomCards();
+  requestAnimationFrame(loop);
+})();
 </script>
 </body>
 </html>
