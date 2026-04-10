@@ -1294,7 +1294,7 @@ function buildSectionData(rows, fieldMap, type){
         r.cqRank = cqRank.get(r.name) || null;
         r.attendanceRank = attendanceRank.get(r.name) || null;
         r.rankTotal = [r.consumerRank, r.wiperRank, r.cqRank, r.attendanceRank].filter(Number.isFinite).reduce((s,n)=>s+n,0);
-        r.overallScore = r.rankTotal - r.complimentCount;
+        r.overallScore = r.rankTotal - (r.complimentCount * 2);
       }
     } else {
       const wiperRank = rankMapDescending(team.reps, 'wiperRate');
@@ -1309,7 +1309,7 @@ function buildSectionData(rows, fieldMap, type){
         r.acwRank = acwRank.get(r.name) || null;
         r.itacRank = itacRank.get(r.name) || null;
         r.rankTotal = [r.wiperRank, r.cqRank, r.attendanceRank, r.acwRank, r.itacRank].filter(Number.isFinite).reduce((s,n)=>s+n,0);
-        r.overallScore = r.rankTotal - r.complimentCount;
+        r.overallScore = r.rankTotal - (r.complimentCount * 2);
       }
     }
 
