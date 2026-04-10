@@ -285,6 +285,54 @@
     background:rgba(220,38,38,.08)!important;
     color:#7f1d1d!important;
   }
+
+  .inlineAction{
+    margin-left:8px;
+    vertical-align:middle;
+  }
+  .unreadRepList{
+    display:grid;
+    gap:10px;
+  }
+  .unreadRepItem{
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:#fbfdff;
+    overflow:hidden;
+  }
+  .unreadRepBtn{
+    width:100%;
+    border:0;
+    background:transparent;
+    padding:10px 12px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    cursor:pointer;
+    font-weight:900;
+    text-align:left;
+  }
+  .unreadRepBtn:hover{background:#f1f5f9}
+  .unreadRepMeta{
+    color:var(--muted);
+    font-size:12px;
+    font-weight:800;
+  }
+  .unreadConvWrap{
+    border-top:1px dashed var(--line);
+    padding:10px 12px;
+    background:#fff;
+  }
+  .unreadConvList{
+    margin:0;
+    padding-left:18px;
+    display:grid;
+    gap:6px;
+  }
+  .unreadConvList li{
+    font-size:12px;
+  }
 </style>
 </head>
 <body>
@@ -515,6 +563,29 @@
             <button class="btn" id="refreshBtn">Refresh</button>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="unreadOverlay" class="overlay" aria-hidden="true">
+  <div class="panel small" role="dialog" aria-modal="true" aria-labelledby="uTitle">
+    <div class="pHead">
+      <div>
+        <div id="uTitle" class="pTitle">Unreviewed Monitors by Representative</div>
+        <div id="uSub" class="pSub">—</div>
+      </div>
+      <div class="pActions">
+        <button class="btn" id="unreadClose">Close ✕</button>
+      </div>
+    </div>
+    <div class="pBody">
+      <div class="box">
+        <div class="boxHead">
+          <span>Representatives ranked by unreviewed monitors</span>
+          <span class="pill mono" id="unreadTotalPill">—</span>
+        </div>
+        <div id="unreadRepList" class="unreadRepList"></div>
       </div>
     </div>
   </div>
@@ -1284,7 +1355,13 @@ const el = {
   reviewerList: document.getElementById('reviewerList'),
   reviewerPopupCount: document.getElementById('reviewerPopupCount'),
   resetReviewersBtn: document.getElementById('resetReviewersBtn'),
-  rSub: document.getElementById('rSub')
+  rSub: document.getElementById('rSub'),
+
+  unreadOverlay: document.getElementById('unreadOverlay'),
+  unreadClose: document.getElementById('unreadClose'),
+  unreadRepList: document.getElementById('unreadRepList'),
+  unreadTotalPill: document.getElementById('unreadTotalPill'),
+  uSub: document.getElementById('uSub')
 };
 
 let QA_KEY = null;
@@ -1305,6 +1382,7 @@ const DIFF_ALERT_PCTPTS = 10;
 const DIFF_ALERT_SECS = 120;
 
 let sortMode = "count";
+let unreadRepExpanded = new Set();
 
 function nowLocal(){ return new Date(); }
 function currentDateMode(){
@@ -1541,6 +1619,7 @@ function paintSummary(rows){
         <span class="pill mono ${r.metric==='Total unreviewed monitors' && Number(r.value.replace(/,/g,''))>0 ? 'bad' : ''}">
           ${r.value}
         </span>
+        ${r.metric==='Total unreviewed monitors' ? `<button class="btn tiny inlineAction" type="button" data-open-unreviewed>View more</button>` : ``}
       </td>
       <td class="mono">${r.count}</td>
       <td>${r.notes}</td>
@@ -2087,6 +2166,77 @@ function closeOptionsPopup(){
   el.optionsOverlay.setAttribute('aria-hidden','true');
 }
 
+function unreviewedRows(rows){
+  return rows.filter(r=>r.unreviewed===1);
+}
+
+function unreviewedRepBreakdown(rows){
+  const byRep = groupBy(unreviewedRows(rows), r=>r.agentKey);
+  return Array.from(byRep.entries())
+    .map(([pk, arr])=>({
+      repKey: pk,
+      repName: arr[0]?.agent || pk || '(Unknown)',
+      total: arr.length,
+      rows: [...arr].sort((a,b)=> (rowDate(b)?.getTime()||0) - (rowDate(a)?.getTime()||0))
+    }))
+    .sort((a,b)=>{
+      if(b.total !== a.total) return b.total - a.total;
+      return a.repName.localeCompare(b.repName);
+    });
+}
+
+function paintUnreadPopup(rowsScoped){
+  const tfLabel = el.tfSel.options[el.tfSel.selectedIndex]?.textContent || 'All';
+  const teamLabel = (el.teamSel.value==='__ALL__') ? 'All teams' : el.teamSel.value;
+  const dateBasisLabel = currentDateMode() === 'assigned' ? 'Assigned Date' : 'Interaction Start Time';
+  const reps = unreviewedRepBreakdown(rowsScoped);
+  const totalUnreviewed = reps.reduce((n,r)=>n+r.total,0);
+
+  el.uSub.textContent = `${teamLabel} • ${tfLabel} • Date shown: ${dateBasisLabel} • Click a rep to show/hide conversations`;
+  el.unreadTotalPill.textContent = `Total: ${fmtInt(totalUnreviewed)} • Reps: ${fmtInt(reps.length)}`;
+
+  if(!reps.length){
+    el.unreadRepList.innerHTML = `<div class="notice">No unreviewed monitors found for the current filters.</div>`;
+    return;
+  }
+
+  el.unreadRepList.innerHTML = reps.map((rep, idx)=>{
+    const open = unreadRepExpanded.has(rep.repKey);
+    return `
+      <div class="unreadRepItem">
+        <button class="unreadRepBtn" type="button" data-unread-rep="${rep.repKey.replace(/"/g,'&quot;')}">
+          <span>${idx+1}. ${rep.repName}</span>
+          <span class="unreadRepMeta">Unreviewed: ${fmtInt(rep.total)} ${open ? '▲' : '▼'}</span>
+        </button>
+        ${open ? `
+          <div class="unreadConvWrap">
+            <ol class="unreadConvList">
+              ${rep.rows.map(r=>`
+                <li>
+                  <span class="mono">Conversation ID: ${r.conversationId ? String(r.conversationId) : '—'}</span>
+                  <span> • ${dateBasisLabel}: <b>${fmtDateTime(rowDate(r))}</b></span>
+                </li>
+              `).join('')}
+            </ol>
+          </div>
+        ` : ``}
+      </div>
+    `;
+  }).join('');
+}
+
+function openUnreadPopup(){
+  const rows = filterRows();
+  paintUnreadPopup(rows);
+  el.unreadOverlay.classList.add('show');
+  el.unreadOverlay.setAttribute('aria-hidden','false');
+}
+
+function closeUnreadPopup(){
+  el.unreadOverlay.classList.remove('show');
+  el.unreadOverlay.setAttribute('aria-hidden','true');
+}
+
 function buildDockKeyOptions(){
   const keys = findDockKeysBySuffix(".dock.qa");
   el.qaKeySel.innerHTML = '';
@@ -2259,6 +2409,24 @@ el.optionsBtn.addEventListener('click', openOptionsPopup);
 el.optionsClose.addEventListener('click', closeOptionsPopup);
 el.optionsOverlay.addEventListener('click', (e)=>{ if(e.target === el.optionsOverlay) closeOptionsPopup(); });
 
+el.summaryTbody.addEventListener('click', (e)=>{
+  const btn = e.target.closest('[data-open-unreviewed]');
+  if(!btn) return;
+  openUnreadPopup();
+});
+
+el.unreadClose.addEventListener('click', closeUnreadPopup);
+el.unreadOverlay.addEventListener('click', (e)=>{ if(e.target === el.unreadOverlay) closeUnreadPopup(); });
+el.unreadRepList.addEventListener('click', (e)=>{
+  const btn = e.target.closest('[data-unread-rep]');
+  if(!btn) return;
+  const repKey = btn.getAttribute('data-unread-rep') || '';
+  if(!repKey) return;
+  if(unreadRepExpanded.has(repKey)) unreadRepExpanded.delete(repKey);
+  else unreadRepExpanded.add(repKey);
+  paintUnreadPopup(filterRows());
+});
+
 el.reviewerList.addEventListener('click', (e)=>{
   const btn = e.target.closest('[data-remove-reviewer]');
   if(!btn) return;
@@ -2288,6 +2456,7 @@ document.addEventListener('keydown', (e)=>{
   if(e.key==='Escape' && el.overlay.classList.contains('show')) closeModal();
   if(e.key==='Escape' && el.reviewerOverlay.classList.contains('show')) closeReviewerPopup();
   if(e.key==='Escape' && el.optionsOverlay.classList.contains('show')) closeOptionsPopup();
+  if(e.key==='Escape' && el.unreadOverlay.classList.contains('show')) closeUnreadPopup();
 });
 
 (function boot(){
@@ -2311,4 +2480,3 @@ document.addEventListener('keydown', (e)=>{
 
 </body>
 </html>
-
