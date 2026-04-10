@@ -713,7 +713,7 @@
 
   function createUnit(team, classKey, isPlayer = false) {
     const c = CLASS_DEFS[classKey];
-    const facing = team === "player" ? 1 : -1;
+    const facing = facingForTeam(team);
     const spawnX = team === "player" ? rand(90, 130) : rand(1570, 1610);
     const spawnY = state.spawnShieldGaps[Math.floor(Math.random() * state.spawnShieldGaps.length)] + rand(-60, 60);
 
@@ -777,7 +777,7 @@
       damage: 7,
       bulletSpeed: 9,
       spread: 0.09,
-      facing: team === "player" ? 1 : -1
+      facing: facingForTeam(team)
     });
     return true;
   }
@@ -872,6 +872,7 @@
 
   function fireUnit(unit) {
     const c = CLASS_DEFS[unit.classKey];
+    unit.facing = facingForTeam(unit.team);
     if (!unit.alive) return;
 
     if (unit.classKey === "engineer" && unit.isPlayer) {
@@ -917,14 +918,17 @@
       }
     }
 
+    const shotDir = facingForTeam(unit.team);
+    unit.facing = shotDir;
+
     for (let s = 0; s < shots; s++) {
-      const baseAngle = Math.atan2(unit.vy || 0, unit.facing);
+      const baseAngle = Math.atan2(unit.vy || 0, shotDir);
       const angle = baseAngle + rand(-spread, spread) + unit.aimJitter;
-      const vx = Math.cos(angle) * speed * unit.facing;
+      const vx = Math.cos(angle) * speed;
       const vy = Math.sin(angle) * speed;
 
       state.bullets.push({
-        x: unit.x + unit.facing * 18,
+        x: unit.x + shotDir * 18,
         y: unit.y - 10,
         vx, vy,
         team: unit.team,
@@ -936,7 +940,7 @@
         fromClass: unit.classKey
       });
       state.muzzleFlashes.push({
-        x: unit.x + unit.facing * 24, y: unit.y - 12, life: 0.08,
+        x: unit.x + shotDir * 24, y: unit.y - 12, life: 0.08,
         color: unit.classKey === "rocketeer" ? "#ffc37a" : "#e8f7ff"
       });
     }
@@ -946,10 +950,9 @@
     const target = findNearestEnemyObject(t.team, t.x, t.y, t.range);
     if (!target) return;
     t.cooldown = 0.48;
-    const dx = target.x - t.x;
     const dy = target.y - t.y;
-    const angle = Math.atan2(dy, dx);
-    const dir = Math.cos(angle) >= 0 ? 1 : -1;
+    const dir = facingForTeam(t.team);
+    const angle = Math.atan2(dy, dir);
     t.facing = dir;
     state.bullets.push({
       x: t.x + dir * 12,
@@ -972,6 +975,7 @@
 
   function updatePlayer(unit, dt) {
     const c = CLASS_DEFS[unit.classKey];
+    unit.facing = facingForTeam(unit.team);
     let mx = 0, my = 0;
     if (state.keys["a"]) mx -= 1;
     if (state.keys["d"]) mx += 1;
@@ -1016,7 +1020,8 @@
     unit.walkTime += dt * 4;
     const target = findPriorityTarget(unit, c.range + 130);
     const nearFront = Math.abs(unit.x - state.barrierX) < 170;
-    const teamDir = unit.team === "player" ? 1 : -1;
+    const teamDir = facingForTeam(unit.team);
+    unit.facing = teamDir;
     const diff = difficultyDefs[difficultyIndex];
     const lowHp = unit.hp < unit.maxHp * 0.35;
     unit.retreating = lowHp && unit.classKey !== "shield";
@@ -1079,8 +1084,6 @@
       unit.vy *= 0.8;
     }
 
-    if (target.x > unit.x) unit.facing = 1;
-    if (target.x < unit.x) unit.facing = -1;
 
     if (unit.fireTimer <= 0 && d <= c.range) {
       if (unit.classKey === "heavy") {
@@ -2137,6 +2140,7 @@
     state.keys[e.key.toLowerCase()] = false;
   });
 
+  function facingForTeam(team) { return team === "player" ? 1 : -1; }
   function rand(a, b) { return Math.random() * (b - a) + a; }
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
   function lerp(a, b, t) { return a + (b - a) * t; }
