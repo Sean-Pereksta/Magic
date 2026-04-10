@@ -369,7 +369,7 @@
           <div class="subTitle">Compliment Calls Upload (Optional)</div>
           <div class="chipRow">
             <span class="pill">Works for Retail and Referral</span>
-            <span class="pill warn">Each in-range compliment subtracts 1 from total rank score</span>
+            <span class="pill warn">Compliments are applied to individual rep standings only (not team rankings)</span>
           </div>
         </div>
         <div class="row">
@@ -431,7 +431,7 @@
         <div class="sectionHeader">
           <div class="subTitle">Retail Team Rankings</div>
           <div class="chipRow">
-            <span class="pill">Retail overall = Consumer + Wipers + CQ ranks − compliment calls</span>
+            <span class="pill">Retail overall = Consumer + Wipers + CQ ranks</span>
             <span class="pill warn">Attendance displayed, not used in team score</span>
           </div>
         </div>
@@ -464,7 +464,7 @@
         <div class="sectionHeader">
           <div class="subTitle">Referral Team Rankings</div>
           <div class="chipRow">
-            <span class="pill">Referral overall = Wipers + CQ + ITAC ranks − compliment calls</span>
+            <span class="pill">Referral overall = Wipers + CQ + ITAC ranks</span>
             <span class="pill warn">Attendance displayed, not used in team score</span>
           </div>
         </div>
@@ -1256,7 +1256,7 @@ function buildSectionData(rows, fieldMap, type){
       t.wiperRank = wiperRank.get(t.name) || null;
       t.cqRank = cqRank.get(t.name) || null;
       t.rankTotal = [t.consumerRank, t.wiperRank, t.cqRank].filter(Number.isFinite).reduce((s,n)=>s+n,0);
-      t.overallScore = t.rankTotal - t.complimentCount;
+      t.overallScore = t.rankTotal;
     }
   } else {
     const wiperRank = rankMapDescending(teams, 'wiperRate');
@@ -1267,7 +1267,7 @@ function buildSectionData(rows, fieldMap, type){
       t.cqRank = cqRank.get(t.name) || null;
       t.itacRank = itacRank.get(t.name) || null;
       t.rankTotal = [t.wiperRank, t.cqRank, t.itacRank].filter(Number.isFinite).reduce((s,n)=>s+n,0);
-      t.overallScore = t.rankTotal - t.complimentCount;
+      t.overallScore = t.rankTotal;
     }
   }
 
