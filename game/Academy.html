@@ -932,15 +932,35 @@ class BulletTracer{
     const geo = new THREE.BufferGeometry().setFromPoints([from.clone(), to.clone()]);
     const mat = new THREE.LineBasicMaterial({ color, transparent:true, opacity:1 });
     this.line = new THREE.Line(geo, mat);
-    this.line.scale.setScalar(weaponKey==="shotgun"?1.05:weaponKey==="marksman"?1.25:1.1);
+    this.line.scale.setScalar(weaponKey==="shotgun"?1.18:weaponKey==="marksman"?1.38:1.26);
     scene.add(this.line);
-    this.life = weaponKey==="smg" ? 0.06 : weaponKey==="marksman" ? 0.11 : 0.09;
+    this.life = weaponKey==="shotgun" ? 0.085 : weaponKey==="smg" ? 0.095 : weaponKey==="marksman" ? 0.155 : 0.125;
+    this.total = this.life;
+    this.fromGlow = new THREE.Mesh(
+      new THREE.SphereGeometry(weaponKey==="marksman"?0.07:0.055, 7, 7),
+      new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.95 })
+    );
+    this.toGlow = new THREE.Mesh(
+      new THREE.SphereGeometry(weaponKey==="marksman"?0.075:0.06, 7, 7),
+      new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.85 })
+    );
+    this.fromGlow.position.copy(from);
+    this.toGlow.position.copy(to);
+    scene.add(this.fromGlow, this.toGlow);
   }
   update(dt){
     this.life -= dt;
-    this.line.material.opacity = clamp(this.life / 0.08, 0, 1);
+    const k = clamp(this.life / this.total, 0, 1);
+    this.line.material.opacity = Math.max(0, Math.pow(k, 0.45));
+    this.fromGlow.material.opacity = clamp(k*1.05, 0, 1);
+    this.toGlow.material.opacity = clamp(k*0.9, 0, 1);
+    const puff = 1 + (1-k)*1.8;
+    this.fromGlow.scale.setScalar(puff*0.92);
+    this.toGlow.scale.setScalar(puff);
     if(this.life<=0){
       scene.remove(this.line);
+      scene.remove(this.fromGlow);
+      scene.remove(this.toGlow);
       return false;
     }
     return true;
@@ -965,16 +985,16 @@ class ImpactSpark{
 
 class BloodSpray{
   constructor(pos, intense=false){
-    this.life = intense ? 0.28 : 0.2;
+    this.life = intense ? 0.36 : 0.26;
     this.total = this.life;
     this.particles = [];
-    for(let i=0;i<(intense?12:7);i++){
+    for(let i=0;i<(intense?20:12);i++){
       const mesh = new THREE.Mesh(
-        new THREE.SphereGeometry(intense?0.05:0.035, 6, 6),
-        new THREE.MeshBasicMaterial({ color:intense?0xd32626:0xbb1f1f, transparent:true, opacity:0.92 })
+        new THREE.SphereGeometry(intense?0.08:0.06, 7, 7),
+        new THREE.MeshBasicMaterial({ color:intense?0xff2b2b:0xe23737, transparent:true, opacity:intense?0.96:0.93 })
       );
       mesh.position.copy(pos);
-      const vel = new THREE.Vector3(rand(-1,1), rand(0.2,1.7), rand(-1,1)).normalize().multiplyScalar(rand(2.5,6.5));
+      const vel = new THREE.Vector3(rand(-1.2,1.2), rand(0.25,1.9), rand(-1.2,1.2)).normalize().multiplyScalar(rand(intense?4.2:3.2, intense?8.9:7.2));
       this.particles.push({ mesh, vel });
       scene.add(mesh);
     }
@@ -983,10 +1003,10 @@ class BloodSpray{
     this.life -= dt;
     const k = clamp(this.life / this.total, 0, 1);
     for(const p of this.particles){
-      p.vel.y -= 9*dt;
+      p.vel.y -= 10.5*dt;
       p.mesh.position.addScaledVector(p.vel, dt);
       p.mesh.material.opacity = k;
-      p.mesh.scale.setScalar(0.7 + (1-k)*1.8);
+      p.mesh.scale.setScalar(0.9 + (1-k)*2.4);
     }
     if(this.life<=0){
       for(const p of this.particles) scene.remove(p.mesh);
@@ -1197,7 +1217,7 @@ function respawnEntity(ent){
 
 function setDead(ent){
   ent.alive = false;
-  ent.respawnTimer = settings.mode==="SND" ? 99999 : 2.4;
+  ent.respawnTimer = settings.mode==="SND" ? 99999 : 10.0;
   ent.deaths++;
   ent.mesh.position.set(999, -999, 999);
   if(ent.isPlayer) showBanner(settings.mode==="SND" ? "YOU ARE DOWN - NEXT ROUND" : "YOU DIED", 900);
@@ -1911,6 +1931,19 @@ function initRespawnClassUI(){
   }
 }
 
+function cyclePendingClass(direction){
+  const keys = Object.keys(classPresets);
+  if(!keys.length) return;
+  const current = settings.pendingClassPreset || settings.classPreset || keys[0];
+  let idx = keys.indexOf(current);
+  if(idx < 0) idx = 0;
+  idx = (idx + direction + keys.length) % keys.length;
+  const next = keys[idx];
+  settings.pendingClassPreset = next;
+  ui.classSelect.value = next;
+  initRespawnClassUI();
+}
+
 function startMatch(){
   settings.mode = ui.modeSelect.value;
   settings.botCount = parseInt(ui.botSelect.value,10);
@@ -1964,11 +1997,18 @@ window.addEventListener("mouseup", e=>{
 window.addEventListener("contextmenu", e=>e.preventDefault());
 
 window.addEventListener("keydown", e=>{
+  const deadClassSelectActive = !!(game && game.player && !game.player.alive && ui.respawnPanel.style.display === "block");
   switch(e.code){
     case "KeyW": input.forward = true; break;
     case "KeyS": input.back = true; break;
-    case "KeyA": input.left = true; break;
-    case "KeyD": input.right = true; break;
+    case "KeyA":
+      if(deadClassSelectActive){ cyclePendingClass(-1); break; }
+      input.left = true;
+      break;
+    case "KeyD":
+      if(deadClassSelectActive){ cyclePendingClass(1); break; }
+      input.right = true;
+      break;
     case "ShiftLeft":
     case "ShiftRight": input.sprint = true; break;
     case "KeyC": input.crouch = true; break;
@@ -2053,8 +2093,8 @@ function updatePlayer(dt){
 
   if(input.forward) move.add(forward);
   if(input.back) move.add(forward.clone().multiplyScalar(-1));
-  if(input.right) move.add(right);
-  if(input.left) move.add(right.clone().multiplyScalar(-1));
+  if(input.right) move.add(right.clone().multiplyScalar(-1));
+  if(input.left) move.add(right);
 
   if(move.lengthSq()>0){
     move.normalize();
@@ -2287,8 +2327,8 @@ function updateUI(dt){
     ui.respawnPanel.style.display = "block";
     const nextClass = (settings.pendingClassPreset || settings.classPreset).toUpperCase();
     ui.respawnText.textContent = settings.mode==="SND"
-      ? `ROUND RESPAWN • NEXT CLASS: ${nextClass}`
-      : `RESPAWN IN ${Math.max(0,p.respawnTimer).toFixed(1)}s • NEXT CLASS: ${nextClass}`;
+      ? `ROUND RESPAWN • A/D CHANGE CLASS • NEXT CLASS: ${nextClass}`
+      : `RESPAWN IN ${Math.max(0,p.respawnTimer).toFixed(1)}s • A/D CHANGE CLASS • NEXT CLASS: ${nextClass}`;
     [...ui.respawnClasses.querySelectorAll("button")].forEach(btn=>btn.classList.toggle("active", btn.textContent===nextClass));
   } else {
     ui.respawnPanel.style.display = "none";
