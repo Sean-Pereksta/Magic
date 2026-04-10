@@ -402,9 +402,16 @@
             <label>Class</label><br />
             <select id="classSelect" style="width:100%">
               <option value="rifleman" selected>Rifleman (AR + Frag)</option>
+              <option value="assault">Vanguard Assault (AR + Sidearm)</option>
+              <option value="support">Support Gunner (LMG + Frag)</option>
+              <option value="sniper">Longshot Sniper (Sniper + Sidearm)</option>
+              <option value="engineer">Engineer (Carbine + Smoke)</option>
               <option value="breacher">Breacher (SMG + Flash Frag)</option>
-              <option value="scout">Scout (Marksman + Smoke)</option>
-              <option value="heavy">Heavy Assault (Shotgun + Frag)</option>
+              <option value="scout">Scout (PDW + Smoke)</option>
+              <option value="heavy">Heavy Assault (Auto Shotgun + BR)</option>
+              <option value="battlerifle">Battle Rifle (BR + Pistol)</option>
+              <option value="burstops">Burst Ops (Burst Rifle + Pistol)</option>
+              <option value="runner">PDW Runner (PDW + Machine Pistol)</option>
             </select>
           </div>
         </div>
@@ -417,6 +424,8 @@
               <option value="desert">Desert Outpost</option>
               <option value="snow">Snow Facility</option>
               <option value="dam">Forest Dam</option>
+              <option value="harbor">Harbor Terminal</option>
+              <option value="relay">Mountain Relay</option>
             </select>
           </div>
         </div>
@@ -580,6 +589,54 @@ const weapons = {
     magSize:8, reserve:40, fireRate:1.25, reload:1.95, damage:13,
     headMult:1.3, spread:0.06, adsSpread:0.038, moveSpread:0.075,
     bulletColor:0xffcc8d, range:28, pellets:8
+  },
+  sniper: {
+    name:"SNIPER",
+    magSize:6, reserve:30, fireRate:1.05, reload:2.25, damage:82,
+    headMult:2.1, spread:0.0018, adsSpread:0.0004, moveSpread:0.018,
+    bulletColor:0xff4c4c, range:240
+  },
+  battleRifle: {
+    name:"BR",
+    magSize:20, reserve:100, fireRate:4.6, reload:1.8, damage:36,
+    headMult:1.75, spread:0.01, adsSpread:0.0035, moveSpread:0.018,
+    bulletColor:0xffd27f, range:125
+  },
+  lmg: {
+    name:"LMG",
+    magSize:70, reserve:210, fireRate:10.2, reload:3.15, damage:20,
+    headMult:1.52, spread:0.022, adsSpread:0.009, moveSpread:0.034,
+    bulletColor:0xffe29a, range:98
+  },
+  burst: {
+    name:"BURST",
+    magSize:27, reserve:135, fireRate:9.2, reload:1.65, damage:18,
+    headMult:1.72, spread:0.012, adsSpread:0.004, moveSpread:0.02,
+    bulletColor:0xbde6ff, range:95, burst:3
+  },
+  carbine: {
+    name:"CARBINE",
+    magSize:30, reserve:120, fireRate:10.8, reload:1.45, damage:21,
+    headMult:1.62, spread:0.019, adsSpread:0.0065, moveSpread:0.027,
+    bulletColor:0xb7ffcb, range:74
+  },
+  pdw: {
+    name:"PDW",
+    magSize:40, reserve:180, fireRate:14.2, reload:1.35, damage:15,
+    headMult:1.64, spread:0.027, adsSpread:0.009, moveSpread:0.038,
+    bulletColor:0x89efff, range:52
+  },
+  pistol: {
+    name:"PISTOL",
+    magSize:15, reserve:75, fireRate:5.4, reload:1.25, damage:29,
+    headMult:1.95, spread:0.015, adsSpread:0.006, moveSpread:0.022,
+    bulletColor:0xfff8cf, range:72
+  },
+  machinePistol: {
+    name:"MP9",
+    magSize:24, reserve:120, fireRate:16.5, reload:1.25, damage:13,
+    headMult:1.55, spread:0.03, adsSpread:0.014, moveSpread:0.043,
+    bulletColor:0x94e2ff, range:43
   }
 };
 
@@ -603,9 +660,16 @@ const botDifficulties = {
 
 const classPresets = {
   rifleman:{ primary:"rifle", secondary:"smg", grenadeType:"frag", sprintMult:1.0 },
+  assault:{ primary:"rifle", secondary:"pistol", grenadeType:"frag", sprintMult:1.02 },
+  support:{ primary:"lmg", secondary:"pistol", grenadeType:"frag", sprintMult:0.9 },
+  sniper:{ primary:"sniper", secondary:"machinePistol", grenadeType:"smoke", sprintMult:0.93 },
+  engineer:{ primary:"carbine", secondary:"pistol", grenadeType:"smoke", sprintMult:1.08 },
   breacher:{ primary:"smg", secondary:"shotgun", grenadeType:"flash", sprintMult:1.06 },
-  scout:{ primary:"marksman", secondary:"smg", grenadeType:"smoke", sprintMult:1.02 },
-  heavy:{ primary:"shotgun", secondary:"rifle", grenadeType:"frag", sprintMult:0.95 },
+  scout:{ primary:"pdw", secondary:"machinePistol", grenadeType:"smoke", sprintMult:1.14 },
+  heavy:{ primary:"shotgun", secondary:"battleRifle", grenadeType:"frag", sprintMult:0.92 },
+  battlerifle:{ primary:"battleRifle", secondary:"pistol", grenadeType:"frag", sprintMult:0.98 },
+  burstops:{ primary:"burst", secondary:"pistol", grenadeType:"flash", sprintMult:1.01 },
+  runner:{ primary:"pdw", secondary:"machinePistol", grenadeType:"flash", sprintMult:1.18 },
 };
 
 const botNamePool = ["RAVEN","WOLF","VIPER","ORBIT","ECHO","MAMBA","TITAN","GHOST","MERC","BLADE","HAVOC","NOVA","FALCON","RANGER","EMBER","SPECTER"];
@@ -625,6 +689,7 @@ function applyClassPreset(ent, presetKey){
 
 const map = {
   walls:[],
+  walkSurfaces:[],
   pickups:[],
   navNodes:[],
   navLinks:new Map(),
@@ -709,25 +774,29 @@ function clearSceneObjects(){
 hemi.userData.staticKeep = true;
 sun.userData.staticKeep = true;
 
-function buildNavGraph(step=12){
+function buildNavGraph(step=10){
   map.navNodes = [];
   map.navLinks = new Map();
-  for(let x=-map.bounds.x+8; x<=map.bounds.x-8; x+=step){
-    for(let z=-map.bounds.z+8; z<=map.bounds.z-8; z+=step){
-      const p = new THREE.Vector3(x,0,z);
-      let blocked = false;
-      for(const w of map.walls){
-        if(w.box.containsPoint(new THREE.Vector3(x,1.1,z))){ blocked = true; break; }
+  for(const s of map.walkSurfaces){
+    for(let x=s.minX+2; x<=s.maxX-2; x+=step){
+      for(let z=s.minZ+2; z<=s.maxZ-2; z+=step){
+        const p = new THREE.Vector3(x,s.y,z);
+        let blocked = false;
+        for(const w of map.walls){
+          if(w.box.containsPoint(new THREE.Vector3(x,s.y+1.1,z))){ blocked = true; break; }
+        }
+        if(!blocked) map.navNodes.push(p);
       }
-      if(!blocked) map.navNodes.push(p);
     }
   }
   for(let i=0;i<map.navNodes.length;i++) map.navLinks.set(i, []);
   for(let i=0;i<map.navNodes.length;i++){
     for(let j=i+1;j<map.navNodes.length;j++){
       const a=map.navNodes[i], b=map.navNodes[j];
-      if(a.distanceTo(b) > step*1.45) continue;
-      if(lineOfSight(a.clone().setY(1.1), b.clone().setY(1.1))){
+      if(Math.abs(a.y-b.y) > 1.4) continue;
+      const flatDist = Math.hypot(a.x-b.x,a.z-b.z);
+      if(flatDist > step*1.5) continue;
+      if(lineOfSight(a.clone().add(new THREE.Vector3(0,1.05,0)), b.clone().add(new THREE.Vector3(0,1.05,0)))){
         map.navLinks.get(i).push(j); map.navLinks.get(j).push(i);
       }
     }
@@ -737,6 +806,7 @@ function buildNavGraph(step=12){
 function buildMap(){
   clearSceneObjects();
   map.walls = [];
+  map.walkSurfaces = [];
   map.pickups = [];
   const groundGeo = new THREE.PlaneGeometry(140, 110);
   const palettes = {
@@ -745,6 +815,8 @@ function buildMap(){
     desert:{ sky:0xd8c08f, fog:0xd8c08f, ground:makeGroundTexture() },
     snow:{ sky:0xc6d7ee, fog:0xc6d7ee, ground:makeGroundTexture() },
     dam:{ sky:0x91af9e, fog:0x91af9e, ground:makeGroundTexture() },
+    harbor:{ sky:0x8db7c4, fog:0x8db7c4, ground:makeGroundTexture() },
+    relay:{ sky:0x7f95b9, fog:0x7f95b9, ground:makeGroundTexture() },
   };
   const pal = palettes[settings.map] || palettes.yard;
   scene.background = new THREE.Color(pal.sky);
@@ -756,7 +828,8 @@ function buildMap(){
   ground.receiveShadow = true;
   scene.add(ground);
 
-  map.bounds = settings.map==='dam' ? {x:68,z:52} : settings.map==='desert' ? {x:64,z:48} : {x:58,z:43};
+  map.bounds = settings.map==='dam' ? {x:68,z:52} : settings.map==='desert' ? {x:64,z:48} : settings.map==='harbor' ? {x:70,z:52} : settings.map==='relay' ? {x:72,z:54} : {x:58,z:43};
+  addWalkSurface(-map.bounds.x, map.bounds.x, -map.bounds.z, map.bounds.z, 0);
 
   addWall(0, 2, -map.bounds.z-2, map.bounds.x*2+4, 4, 2, 0x50545f, true);
   addWall(0, 2, map.bounds.z+2, map.bounds.x*2+4, 4, 2, 0x50545f, true);
@@ -768,6 +841,12 @@ function buildMap(){
     addWall(0, 2.2, -18, 28, 4.4, 6, 0x5e636d); addWall(0, 2.2, 18, 28, 4.4, 6, 0x5e636d);
     addWall(-34, 2.2, -12, 12, 4.4, 8, 0x6f5d4b); addWall(34, 2.2, 12, 12, 4.4, 8, 0x6f5d4b);
     for(let x=-44;x<=44;x+=11){ addWall(x,1.2,-8,5,2.4,2.4,0x707982); addWall(x,1.2,8,5,2.4,2.4,0x707982); }
+    addPlatform(-18,3.8,-28,16,1.6,10,0x77818c);
+    addPlatform(18,3.8,28,16,1.6,10,0x77818c);
+    addRampStep(-26,-28,16,10,3.8,7,"x",0x6a737d);
+    addRampStep(10,18,16,10,3.8,7,"x",0x6a737d);
+    addPlatform(0,6.2,0,18,1.6,8,0x5c6874);
+    addRampStep(-9,-5,18,8,6.2,10,"z",0x67707b);
     createFlag('blue', new THREE.Vector3(-48,0,0)); createFlag('red', new THREE.Vector3(48,0,0));
     createBombSite('A', new THREE.Vector3(-8,0.01,24)); createBombSite('B', new THREE.Vector3(8,0.01,-24));
     map.spawnsBlue=[new THREE.Vector3(-35,1,-20),new THREE.Vector3(-38,1,-5),new THREE.Vector3(-32,1,8),new THREE.Vector3(-28,1,18)];
@@ -776,6 +855,10 @@ function buildMap(){
     addWall(0,2.2,0,18,4.4,18,0x4f5259); addWall(-34,2,-12,18,4,6,0x7c6f66); addWall(34,2,12,18,4,6,0x7c6f66);
     for(let x=-48;x<=48;x+=12){ addWall(x,1.1,-20,5,2.2,2,0x8c8479); addWall(x,1.1,20,5,2.2,2,0x8c8479); }
     for(let z=-30;z<=30;z+=10){ addWall(-18,1.1,z,2,2.2,4,0x6a7480); addWall(18,1.1,z,2,2.2,4,0x6a7480); }
+    addPlatform(-24,4.2,24,18,1.6,10,0x69717c);
+    addRampStep(-32,18,16,12,4.2,7,"x",0x7e776e);
+    addPlatform(24,4.2,-24,18,1.6,10,0x69717c);
+    addRampStep(16,-30,16,12,4.2,7,"x",0x7e776e);
     createFlag('blue', new THREE.Vector3(-52,0,-6)); createFlag('red', new THREE.Vector3(52,0,6));
     createBombSite('A', new THREE.Vector3(-18,0.01,30)); createBombSite('B', new THREE.Vector3(22,0.01,-30));
     map.spawnsBlue=[new THREE.Vector3(-45,1,-25),new THREE.Vector3(-50,1,-8),new THREE.Vector3(-46,1,8),new THREE.Vector3(-42,1,24)];
@@ -784,6 +867,11 @@ function buildMap(){
     for(let x=-52;x<=52;x+=13){ addWall(x,1.5,-34,5,3,3,0x9b7f57); addWall(x,1.5,34,5,3,3,0x9b7f57);} 
     addWall(0,2.3,0,20,4.6,12,0x7f6a4a); addWall(-28,2.2,0,10,4.4,18,0x8f7852); addWall(28,2.2,0,10,4.4,18,0x8f7852);
     addWall(-8,1.6,-22,12,3.2,4,0xa48a62); addWall(8,1.6,22,12,3.2,4,0xa48a62);
+    addPlatform(-40,5.5,-18,12,3,12,0x8a714f);
+    addPlatform(40,5.5,18,12,3,12,0x8a714f);
+    addRampStep(-46,-30,12,12,5.5,8,"z",0xa4885e);
+    addRampStep(34,18,12,12,5.5,8,"z",0xa4885e);
+    addRampStep(-6,-4,12,16,4,8,"x",0x9c835c);
     createFlag('blue', new THREE.Vector3(-56,0,-4)); createFlag('red', new THREE.Vector3(56,0,4));
     createBombSite('A', new THREE.Vector3(-20,0.01,30)); createBombSite('B', new THREE.Vector3(20,0.01,-30));
     map.spawnsBlue=[new THREE.Vector3(-52,1,-30),new THREE.Vector3(-54,1,-8),new THREE.Vector3(-50,1,8),new THREE.Vector3(-46,1,26)];
@@ -792,18 +880,54 @@ function buildMap(){
     addWall(0,2.2,0,16,4.4,14,0x8a9bad); addWall(-26,2,10,12,4,8,0x95a8bb); addWall(26,2,-10,12,4,8,0x95a8bb);
     addWall(-10,2,-22,14,4,6,0x89a0b7); addWall(10,2,22,14,4,6,0x89a0b7);
     for(let z=-28;z<=28;z+=14){ addWall(0,1.2,z,4,2.4,3,0xc2d6e8); }
+    addPlatform(0,4.8,0,24,1.6,8,0xb7cadc);
+    addRampStep(-12,-4,12,8,4.8,7,"x",0xd3e4f2);
+    addRampStep(0,12,12,8,4.8,7,"x",0xd3e4f2);
+    addPlatform(-34,3.6,18,14,1.6,8,0xa9bfd3);
+    addRampStep(-40,12,12,8,3.6,6,"z",0xc1d7eb);
     createFlag('blue', new THREE.Vector3(-48,0,-10)); createFlag('red', new THREE.Vector3(48,0,10));
     createBombSite('A', new THREE.Vector3(-8,0.01,28)); createBombSite('B', new THREE.Vector3(10,0.01,-28));
     map.spawnsBlue=[new THREE.Vector3(-44,1,-20),new THREE.Vector3(-46,1,-4),new THREE.Vector3(-42,1,10),new THREE.Vector3(-38,1,24)];
     map.spawnsRed=[new THREE.Vector3(44,1,20),new THREE.Vector3(46,1,4),new THREE.Vector3(42,1,-10),new THREE.Vector3(38,1,-24)];
-  } else {
+  } else if(settings.map==='dam'){
     addWall(0,2.6,0,22,5.2,10,0x6a7770); addWall(-34,2.1,-12,16,4.2,8,0x4f6757); addWall(34,2.1,12,16,4.2,8,0x4f6757);
     addWall(-12,1.6,30,16,3.2,5,0x697970); addWall(12,1.6,-30,16,3.2,5,0x697970);
     for(let x=-60;x<=60;x+=15){ addWall(x,1.3,0,6,2.6,3,0x88968f); }
+    addPlatform(0,5.8,0,26,2,10,0x5f6f67);
+    addRampStep(-13,-5,14,10,5.8,9,"x",0x75837c);
+    addRampStep(-6,5,14,10,5.8,9,"x",0x75837c);
+    addPlatform(-42,4.2,-28,18,1.6,8,0x4e6456);
+    addRampStep(-50,-32,16,10,4.2,7,"x",0x628175);
     createFlag('blue', new THREE.Vector3(-60,0,-16)); createFlag('red', new THREE.Vector3(60,0,16));
     createBombSite('A', new THREE.Vector3(-24,0.01,36)); createBombSite('B', new THREE.Vector3(24,0.01,-36));
     map.spawnsBlue=[new THREE.Vector3(-58,1,-36),new THREE.Vector3(-62,1,-14),new THREE.Vector3(-56,1,6),new THREE.Vector3(-52,1,30)];
     map.spawnsRed=[new THREE.Vector3(58,1,36),new THREE.Vector3(62,1,14),new THREE.Vector3(56,1,-6),new THREE.Vector3(52,1,-30)];
+  } else if(settings.map==='harbor'){
+    for(let x=-52;x<=52;x+=13){ addWall(x,1.4,-18,10,2.8,4,0x6d7884); addWall(x,1.4,18,10,2.8,4,0x7f6f5f); }
+    addPlatform(-26,3.8,-4,16,1.6,12,0x72808c);
+    addPlatform(26,3.8,4,16,1.6,12,0x8a7563);
+    addPlatform(0,6,0,20,1.6,10,0x5f6b77);
+    addRampStep(-34,-10,16,12,3.8,7,"x",0x5f7180);
+    addRampStep(18,4,16,12,3.8,7,"x",0x7a6658);
+    addRampStep(-10,-5,20,10,6,9,"z",0x6b7782);
+    createFlag('blue', new THREE.Vector3(-62,0,-22)); createFlag('red', new THREE.Vector3(62,0,22));
+    createBombSite('A', new THREE.Vector3(-26,0.01,36)); createBombSite('B', new THREE.Vector3(26,0.01,-36));
+    map.spawnsBlue=[new THREE.Vector3(-60,1,-34),new THREE.Vector3(-64,1,-14),new THREE.Vector3(-58,1,8),new THREE.Vector3(-54,1,30)];
+    map.spawnsRed=[new THREE.Vector3(60,1,34),new THREE.Vector3(64,1,14),new THREE.Vector3(58,1,-8),new THREE.Vector3(54,1,-30)];
+  } else {
+    addWall(0,2.2,0,18,4.4,14,0x5d6778);
+    addPlatform(0,6.6,0,14,1.6,10,0x4e5666);
+    addRampStep(-6,-20,12,18,6.6,10,"z",0x6c7385);
+    addRampStep(-6,2,12,18,6.6,10,"z",0x6c7385);
+    addPlatform(-38,5.2,-20,18,1.6,12,0x5f6875);
+    addPlatform(38,5.2,20,18,1.6,12,0x5f6875);
+    addRampStep(-46,-26,16,12,5.2,8,"x",0x5f6878);
+    addRampStep(30,14,16,12,5.2,8,"x",0x5f6878);
+    for(let z=-44;z<=44;z+=11){ addWall(rand(-20,-10),1.6,z,8,3.2,4,0x76706a); addWall(rand(10,20),1.6,z,8,3.2,4,0x76706a); }
+    createFlag('blue', new THREE.Vector3(-66,0,-18)); createFlag('red', new THREE.Vector3(66,0,18));
+    createBombSite('A', new THREE.Vector3(-30,0.01,40)); createBombSite('B', new THREE.Vector3(30,0.01,-40));
+    map.spawnsBlue=[new THREE.Vector3(-64,1,-40),new THREE.Vector3(-68,1,-12),new THREE.Vector3(-60,1,14),new THREE.Vector3(-56,1,36)];
+    map.spawnsRed=[new THREE.Vector3(64,1,40),new THREE.Vector3(68,1,12),new THREE.Vector3(60,1,-14),new THREE.Vector3(56,1,-36)];
   }
   map.freeSpawns=[...map.spawnsBlue,...map.spawnsRed,new THREE.Vector3(0,1,-26),new THREE.Vector3(0,1,26)];
 
@@ -813,7 +937,7 @@ function buildMap(){
     base.position.copy(f.userData.home).add(new THREE.Vector3(0,0.18,0)); scene.add(base); f.userData.base = base;
   }
 
-  buildNavGraph(settings.map==='dam'?14:12);
+  buildNavGraph(settings.map==='relay' ? 9 : settings.map==='snow' ? 8 : 10);
 }
 
 function addWall(x,y,z,w,h,d,color=0x666666, invisible=false){
@@ -833,6 +957,35 @@ function addWall(x,y,z,w,h,d,color=0x666666, invisible=false){
   const box = new THREE.Box3().setFromObject(m);
   map.walls.push({ mesh:m, box, size:new THREE.Vector3(w,h,d) });
   return m;
+}
+
+function addWalkSurface(minX,maxX,minZ,maxZ,y){
+  map.walkSurfaces.push({ minX,maxX,minZ,maxZ,y });
+}
+
+function addPlatform(x,y,z,w,h,d,color){
+  addWall(x,y,z,w,h,d,color);
+  const top = y + h*0.5;
+  addWalkSurface(x-w*0.5+0.6, x+w*0.5-0.6, z-d*0.5+0.6, z+d*0.5-0.6, top);
+}
+
+function addRampStep(x,z,w,d,height,steps=7,axis="x",color=0x777777){
+  const stepHeight = height/steps;
+  for(let i=0;i<steps;i++){
+    if(axis==="x"){
+      const segW = w/steps;
+      const cx = x + segW*(i+0.5);
+      const h = stepHeight*(i+1);
+      addWall(cx, h*0.5, z, segW+0.04, h, d, color);
+      addWalkSurface(cx-segW*0.5+0.22, cx+segW*0.5-0.22, z-d*0.5+0.22, z+d*0.5-0.22, h);
+    } else {
+      const segD = d/steps;
+      const cz = z + segD*(i+0.5);
+      const h = stepHeight*(i+1);
+      addWall(x, h*0.5, cz, w, h, segD+0.04, color);
+      addWalkSurface(x-w*0.5+0.22, x+w*0.5-0.22, cz-segD*0.5+0.22, cz+segD*0.5-0.22, h);
+    }
+  }
 }
 
 function addDecoTower(x,y,z,color){
@@ -932,16 +1085,16 @@ class BulletTracer{
     const geo = new THREE.BufferGeometry().setFromPoints([from.clone(), to.clone()]);
     const mat = new THREE.LineBasicMaterial({ color, transparent:true, opacity:1 });
     this.line = new THREE.Line(geo, mat);
-    this.line.scale.setScalar(weaponKey==="shotgun"?1.18:weaponKey==="marksman"?1.38:1.26);
+    this.line.scale.setScalar(weaponKey==="shotgun"?1.18:(weaponKey==="marksman"||weaponKey==="sniper")?1.62:weaponKey==="lmg"?1.34:1.26);
     scene.add(this.line);
-    this.life = weaponKey==="shotgun" ? 0.085 : weaponKey==="smg" ? 0.095 : weaponKey==="marksman" ? 0.155 : 0.125;
+    this.life = weaponKey==="shotgun" ? 0.085 : (weaponKey==="smg"||weaponKey==="pdw"||weaponKey==="machinePistol") ? 0.095 : (weaponKey==="marksman"||weaponKey==="sniper") ? 0.19 : 0.125;
     this.total = this.life;
     this.fromGlow = new THREE.Mesh(
-      new THREE.SphereGeometry(weaponKey==="marksman"?0.07:0.055, 7, 7),
+      new THREE.SphereGeometry((weaponKey==="marksman"||weaponKey==="sniper")?0.08:0.055, 7, 7),
       new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.95 })
     );
     this.toGlow = new THREE.Mesh(
-      new THREE.SphereGeometry(weaponKey==="marksman"?0.075:0.06, 7, 7),
+      new THREE.SphereGeometry((weaponKey==="marksman"||weaponKey==="sniper")?0.088:0.06, 7, 7),
       new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.85 })
     );
     this.fromGlow.position.copy(from);
@@ -1307,18 +1460,22 @@ function attemptShoot(ent){
   // SOUND HOOK: play weapon fire sound by weapon class.
 
   const pellets = w.pellets || 1;
+  const burstCount = w.burst || 1;
   const from = ent.pos.clone().add(new THREE.Vector3(0, 1.72, 0));
-  const muzzle = new THREE.PointLight(ent.weaponKey==="marksman"?0xff3a3a:0xffb86b, 2.2, 10);
+  const muzzleColor = (ent.weaponKey==="marksman" || ent.weaponKey==="sniper") ? 0xff3a3a : (ent.weaponKey==="lmg" ? 0xffcf66 : 0xffb86b);
+  const muzzle = new THREE.PointLight(muzzleColor, 2.2, 10);
   muzzle.position.copy(from);
   scene.add(muzzle);
   setTimeout(()=>scene.remove(muzzle), 45);
-  game.effects.push(new ImpactSpark(from.clone().add(getAimDirection(ent).multiplyScalar(0.55)), ent.weaponKey==="marksman"?0xff3a3a:0xffcc7a, 0.09, 0.06));
+  game.effects.push(new ImpactSpark(from.clone().add(getAimDirection(ent).multiplyScalar(0.55)), (ent.weaponKey==="marksman" || ent.weaponKey==="sniper")?0xff3a3a:0xffcc7a, 0.09, 0.06));
 
-  for(let p=0;p<pellets;p++){
+  for(let b=0;b<burstCount;b++){
+    for(let p=0;p<pellets;p++){
     let spread = ent.aiming ? w.adsSpread : w.spread;
     if(ent.vel.lengthSq() > 2.5) spread += w.moveSpread;
     if(ent.crouch) spread *= 0.78;
     if(ent.isPlayer && ent.sprint) spread *= 1.5;
+    if(w.burst && b>0) spread *= 1.2 + b*0.08;
 
     const dir = getAimDirection(ent);
     dir.x += rand(-spread, spread);
@@ -1327,12 +1484,15 @@ function attemptShoot(ent){
     dir.normalize();
 
     const hit = raycastShot(from, dir, w.range, ent);
-    const tracerColor = ent.weaponKey==="marksman" ? 0xff2b2b : w.bulletColor;
+    const tracerColor = (ent.weaponKey==="marksman" || ent.weaponKey==="sniper") ? 0xff2b2b : w.bulletColor;
     newTracer(from, hit.point, tracerColor, ent.weaponKey);
 
     if(hit.entity){
       const headshot = hit.part === "head";
-      let dmg = w.damage * (headshot ? w.headMult : 1);
+      const shotDist = from.distanceTo(hit.point);
+      const falloffStart = ent.weaponKey==="sniper" ? w.range*0.7 : w.range*0.38;
+      const falloff = shotDist <= falloffStart ? 1 : clamp(1 - ((shotDist-falloffStart)/(w.range-falloffStart))*0.35, 0.55, 1);
+      let dmg = w.damage * falloff * (headshot ? w.headMult : 1);
       damageEntity(hit.entity, Math.round(dmg), ent, headshot, false);
       game.effects.push(new ImpactSpark(hit.point.clone(), headshot ? 0xffe38f : 0xff7a5e, headshot ? 0.12 : 0.09, 0.15));
       game.effects.push(new BloodSpray(hit.point.clone(), headshot));
@@ -1340,6 +1500,7 @@ function attemptShoot(ent){
       game.effects.push(new ImpactSpark(hit.point.clone(), 0xffcc88, 0.08, 0.1));
       game.effects.push(new ImpactSpark(hit.point.clone(), 0xb8b8b8, 0.05, 0.09));
     }
+  }
   }
 
   if(ent.isPlayer && ent.ammo===0 && ent.reserve>0){
@@ -1425,20 +1586,26 @@ function newTracer(from, to, color, weaponKey){
   game.tracers.push(new BulletTracer(from, to, color, weaponKey));
 }
 
+function getGroundHeightAt(x,z){
+  let h = 0;
+  for(const s of map.walkSurfaces){
+    if(x>=s.minX && x<=s.maxX && z>=s.minZ && z<=s.maxZ) h = Math.max(h, s.y);
+  }
+  return h;
+}
+
 function resolveEntityMovement(ent, dt){
+  const prevPos = ent.pos.clone();
   ent.pos.addScaledVector(ent.vel, dt);
   ent.pos.y += ent.vel.y * dt;
-  if(ent.pos.y < 0){
-    ent.pos.y = 0;
-    ent.vel.y = 0;
-    ent.onGround = true;
-  }
   const min = ent.pos.clone().add(new THREE.Vector3(-ent.radius,0,-ent.radius));
   const max = ent.pos.clone().add(new THREE.Vector3(ent.radius, ent.height, ent.radius));
   const ebox = new THREE.Box3(min, max);
 
   for(const wall of map.walls){
     if(ebox.intersectsBox(wall.box)){
+      const verticalOverlap = Math.min(ebox.max.y, wall.box.max.y) - Math.max(ebox.min.y, wall.box.min.y);
+      if(verticalOverlap <= 0.02 || ebox.min.y >= wall.box.max.y-0.06) continue;
       const wx = (wall.box.min.x + wall.box.max.x) * 0.5;
       const wz = (wall.box.min.z + wall.box.max.z) * 0.5;
       const dx = ent.pos.x - wx;
@@ -1458,6 +1625,17 @@ function resolveEntityMovement(ent, dt){
   }
   ent.pos.x = clamp(ent.pos.x, -map.bounds.x, map.bounds.x);
   ent.pos.z = clamp(ent.pos.z, -map.bounds.z, map.bounds.z);
+  const localGround = getGroundHeightAt(ent.pos.x, ent.pos.z);
+  if(localGround > ent.pos.y && localGround - ent.pos.y <= 1.1) ent.pos.y = localGround;
+  const prevGround = getGroundHeightAt(prevPos.x, prevPos.z);
+  if(localGround > prevGround && localGround - prevGround <= 1.05 && ent.pos.y < localGround + 0.02) ent.pos.y = localGround;
+  if(ent.pos.y <= localGround + 0.02 && ent.vel.y<=0){
+    ent.pos.y = localGround;
+    ent.vel.y = 0;
+    ent.onGround = true;
+  } else {
+    ent.onGround = false;
+  }
 }
 
 function lineOfSight(from, to){
@@ -1487,6 +1665,8 @@ function findBestEnemy(ent){
     const d = ent.pos.distanceTo(other.pos);
     let s = d;
     if(entityVisible(ent, other)) s -= 8;
+    if((ent.weaponKey==="sniper" || ent.weaponKey==="marksman") && other.pos.y < ent.pos.y-1.5) s -= 3.5;
+    if((ent.weaponKey==="sniper" || ent.weaponKey==="marksman") && d > 28) s -= 4;
     if(other.carryingFlag) s -= 12;
     if(settings.mode==="SND" && other.isPlayer) s -= 3;
     if(s < bestScore){
@@ -1500,7 +1680,8 @@ function findBestEnemy(ent){
 function findClosestNavNode(pos){
   let idx = -1, best = Infinity;
   for(let i=0;i<map.navNodes.length;i++){
-    const d = map.navNodes[i].distanceToSquared(pos);
+    const n = map.navNodes[i];
+    const d = (n.x-pos.x)*(n.x-pos.x) + (n.z-pos.z)*(n.z-pos.z) + (n.y-pos.y)*(n.y-pos.y)*1.25;
     if(d<best){ best=d; idx=i; }
   }
   return idx;
@@ -1536,7 +1717,7 @@ function updateAI(ent, dt){
 
   let moveTarget = null;
   let fireDesired = false;
-  const idealRange = ent.weaponKey==="shotgun" ? 8 : ent.weaponKey==="smg" ? 15 : ent.weaponKey==="marksman" ? 42 : 24;
+  const idealRange = ent.weaponKey==="shotgun" ? 8 : (ent.weaponKey==="smg" || ent.weaponKey==="pdw" || ent.weaponKey==="machinePistol") ? 15 : (ent.weaponKey==="marksman" || ent.weaponKey==="sniper") ? 66 : ent.weaponKey==="lmg" ? 30 : 24;
 
   if(settings.mode==="CTF"){
     const myFlag = ent.team==="blue" ? map.blueFlag : map.redFlag;
@@ -1571,9 +1752,11 @@ function updateAI(ent, dt){
     const aimAt = enemy.pos.clone().add(new THREE.Vector3(0, enemy.crouch ? 1.4 : 1.85, 0));
     const dir = aimAt.sub(ent.pos.clone().add(new THREE.Vector3(0,1.7,0)));
     const desiredYaw = Math.atan2(dir.x, dir.z);
-    const desiredPitch = Math.atan2(dir.y, Math.sqrt(dir.x*dir.x + dir.z*dir.z));
+    const desiredPitch = Math.atan2(dir.y, Math.max(0.01, Math.sqrt(dir.x*dir.x + dir.z*dir.z)));
     ent.yaw = angleLerp(ent.yaw, desiredYaw + rand(-diff.aimJitter,diff.aimJitter), dt*diff.tracking);
-    ent.pitch = lerp(ent.pitch, desiredPitch + rand(-diff.aimJitter*0.6,diff.aimJitter*0.6), dt*diff.tracking);
+    const verticalFactor = clamp(Math.abs(dir.y)/Math.max(2, d), 0, 0.35);
+    const pitchAssist = dir.y>0 ? verticalFactor*0.35 : -verticalFactor*0.22;
+    ent.pitch = lerp(ent.pitch, desiredPitch + pitchAssist + rand(-diff.aimJitter*0.45,diff.aimJitter*0.45), dt*(diff.tracking+1.2));
     if(d < idealRange*0.5 && Math.random() > diff.pushBias){
       const away = ent.pos.clone().sub(enemy.pos).setY(0).normalize();
       moveTarget = ent.pos.clone().add(away.multiplyScalar(7));
@@ -1589,9 +1772,11 @@ function updateAI(ent, dt){
     let navTarget = moveTarget;
     if(ent.navPath.length && ent.pathIndex < ent.navPath.length){
       navTarget = ent.navPath[ent.pathIndex];
-      if(ent.pos.distanceTo(navTarget) < 2.4) ent.pathIndex++;
+      if(ent.pos.distanceTo(navTarget) < 2.4 || (Math.hypot(ent.pos.x-navTarget.x, ent.pos.z-navTarget.z)<1.8 && Math.abs(ent.pos.y-navTarget.y)<1.4)) ent.pathIndex++;
     }
-    const desired = navTarget.clone().sub(ent.pos).setY(0);
+    const desired = navTarget.clone().sub(ent.pos);
+    const verticalNeed = desired.y;
+    desired.setY(0);
     if(desired.lengthSq()>0.2){
       desired.normalize();
       const probe = ent.pos.clone().add(desired.clone().multiplyScalar(1.8));
@@ -1602,7 +1787,7 @@ function updateAI(ent, dt){
           break;
         }
       }
-      const spd = ent.speed*(fireDesired?0.58:0.82);
+      const spd = ent.speed*(fireDesired?0.58:0.82) * (Math.abs(verticalNeed)>0.8 ? 0.9 : 1);
       ent.vel.x = desired.x * spd;
       ent.vel.z = desired.z * spd;
       if(!fireDesired) ent.yaw = angleLerp(ent.yaw, Math.atan2(desired.x,desired.z), dt*6);
@@ -1855,7 +2040,7 @@ function createGame(){
   player.place(settings.mode==="DM" ? getSpawn("ffa", true) : getSpawn("blue", false));
   entities.push(player);
 
-  const loadouts = ["rifle","smg","marksman","rifle","shotgun","smg","rifle","marksman","smg","rifle"];
+  const botClassPool = Object.keys(classPresets);
   const botCount = settings.botCount;
 
   const blueBotTarget = settings.mode==="DM" ? 0 : Math.max(2, Math.floor(botCount/2));
@@ -1867,8 +2052,9 @@ function createGame(){
     } else if(settings.mode==="DM"){
       team = "ffa";
     }
-    const bot = new Entity(`${botNamePool[i%botNamePool.length]}-${i+1}`, false, team, loadouts[i%loadouts.length]);
-    bot.secondaryWeaponKey = loadouts[(i+2)%loadouts.length];
+    const classKey = botClassPool[i%botClassPool.length];
+    const bot = new Entity(`${botNamePool[i%botNamePool.length]}-${i+1}`, false, team, "rifle");
+    applyClassPreset(bot, classKey);
     bot.aiRole = settings.mode==="CTF" ? (i%3===0?"defend":i%3===1?"escort":"attack") : settings.mode==="SND" ? (i%2===0?"stack":"hold") : "assault";
     bot.difficulty = botDifficulties[settings.botDifficulty] || botDifficulties.regular;
     bot.reactTimer = rand(bot.difficulty.reactionMin, bot.difficulty.reactionMax);
