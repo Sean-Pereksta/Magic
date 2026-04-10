@@ -378,7 +378,7 @@
         </div>
         <div class="sheetBtnRow" id="complimentSheetBtns"></div>
         <div class="row" style="margin-top:10px">
-          <span class="mono hint" id="complimentHint">Expected headers: CSR/SSR Name, Director, CSR Team/Coach, Date of Call, Referral/Claim/WO/Chat Number, Taken By, Compliment, Date Letter Completed, Coord Initial</span>
+          <span class="mono hint" id="complimentHint">Expected headers (A:N): ID, Start time, Completion time, Email, Name, CSR/SSR Name (This is the person being complimented), Director, CSR Team/Coach, Date of Call, Referral/Claim/WO/Chat Number (Only one type is needed), Taken By (This is the person reporting the compliment), Compliment, Date Letter Completed, Coord Initial</span>
         </div>
       </div>
     </div>
@@ -794,16 +794,16 @@ function rowsFromSheet(ws){
 function looksLikeComplimentRow(obj){
   if(!obj || typeof obj !== 'object') return false;
   const nk = Object.keys(obj).map(normHdr);
-  const hasName = nk.includes('csrssrname') || nk.includes('csrname') || nk.includes('ssrname');
-  const hasDate = nk.includes('dateofcall') || nk.includes('datecall') || nk.includes('calldate');
+  const hasName = nk.some(k => k.startsWith('csrssrname')) || nk.includes('csrname') || nk.includes('ssrname');
+  const hasDate = nk.some(k => k.startsWith('dateofcall')) || nk.includes('datecall') || nk.includes('calldate');
   return hasName && hasDate;
 }
 function canonicalizeComplimentRows(rows){
   if(!Array.isArray(rows) || !rows.length) return [];
   const keys = Array.from(new Set(rows.flatMap(r => Object.keys(r||{}))));
-  const nameField = findFieldName(keys, [/^csrssrname$/, /^csrname$/, /^ssrname$/, /^csrssr$/]);
+  const nameField = findFieldName(keys, [/^csrssrname/, /^csrname$/, /^ssrname$/, /^csrssr$/]);
   const teamField = findFieldName(keys, [/^csrteamcoach$/, /^teamcoach$/, /^csrteam$/, /^coach$/, /^team$/]);
-  const dateField = findFieldName(keys, [/^dateofcall$/, /^calldate$/, /^datecall$/]);
+  const dateField = findFieldName(keys, [/^dateofcall/, /^calldate$/, /^datecall$/]);
   const directorField = findFieldName(keys, [/^director$/]);
   const refNumField = findFieldName(keys, [/^referralclaimwochatnumber$/, /^referralclaimwochat#$/, /^referralclaimwochat$/, /^referralnumber$/, /^claimnumber$/, /^wonumber$/, /^chatnumber$/]);
   const takenByField = findFieldName(keys, [/^takenby$/]);
@@ -1636,7 +1636,7 @@ els.complimentFile.addEventListener('change', async (e)=>{
     complimentRows = [];
     els.complimentFileHint.textContent = 'No compliment file loaded.';
     els.complimentSheetBtns.innerHTML = '';
-    els.complimentHint.textContent = 'Expected headers: CSR/SSR Name, Director, CSR Team/Coach, Date of Call, Referral/Claim/WO/Chat Number, Taken By, Compliment, Date Letter Completed, Coord Initial';
+    els.complimentHint.textContent = 'Expected headers (A:N): ID, Start time, Completion time, Email, Name, CSR/SSR Name (This is the person being complimented), Director, CSR Team/Coach, Date of Call, Referral/Claim/WO/Chat Number (Only one type is needed), Taken By (This is the person reporting the compliment), Compliment, Date Letter Completed, Coord Initial';
     renderAll();
     return;
   }
@@ -1686,4 +1686,3 @@ els.checkDockSel.addEventListener('change', ()=>{ checkDockKey = els.checkDockSe
 </script>
 </body>
 </html>
-
