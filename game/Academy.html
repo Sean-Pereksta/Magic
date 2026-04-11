@@ -232,10 +232,40 @@
     color: #c6c6c6;
   }
   .towerSub { color:#a4b3c8; font-size:11px; }
+  #mainMenu { position:absolute; inset:0; z-index:80; display:flex; align-items:center; justify-content:center; background:radial-gradient(circle at 30% 25%, rgba(34,58,78,0.86), rgba(5,8,14,0.95)); color:#f5f8ff; }
+  #menuPanel { width:min(920px,94vw); max-height:92vh; overflow:auto; border-radius:18px; border:1px solid rgba(255,255,255,0.18); background:rgba(13,18,27,0.92); box-shadow:0 20px 44px rgba(0,0,0,0.45); padding:16px; }
+  .menuGrid { display:grid; grid-template-columns:1.5fr 1fr; gap:14px; }
+  .menuCards { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .menuCard { border-radius:12px; padding:10px; cursor:pointer; border:1px solid rgba(255,255,255,0.18); background:rgba(255,255,255,0.04); }
+  .menuCard.active { border-color:#8effa1; background:rgba(92,214,121,0.16); }
+  .menuChip { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  .menuTag { font-size:10px; border-radius:999px; padding:2px 7px; background:rgba(255,255,255,0.12); }
+  .menuSection { margin-bottom:10px; }
+  .menuLabel { color:#ffe978; font-weight:bold; margin-bottom:5px; }
+  .diffBtn { width:100%; text-align:left; margin:4px 0; border-radius:10px; border:1px solid rgba(255,255,255,0.16); background:rgba(255,255,255,0.05); color:#fff; padding:7px; cursor:pointer; }
+  .diffBtn.active { border-color:#9dd5ff; background:rgba(101,177,255,0.2); }
+  #startMatchBtn { width:100%; margin-top:8px; border:0; border-radius:12px; padding:11px; font-weight:bold; font-size:15px; background:linear-gradient(90deg,#62ff95,#81b9ff); color:#0f1522; cursor:pointer; }
 
 </style>
 </head>
 <body>
+<div id="mainMenu">
+  <div id="menuPanel">
+    <div style="font-size:24px;font-weight:bold;color:#ffe978;">Cat vs Mouse Survival 3D</div>
+    <div style="opacity:.85;margin:4px 0 12px;">Match Setup</div>
+    <div class="menuGrid">
+      <div>
+        <div class="menuSection"><div class="menuLabel">Select Map</div><div id="mapCards" class="menuCards"></div></div>
+        <div class="menuSection"><div class="menuLabel">Map Preview</div><div id="mapSummary" style="font-size:12px;line-height:1.35;color:#d8e2f4;"></div></div>
+      </div>
+      <div>
+        <div class="menuSection"><div class="menuLabel">Difficulty</div><div id="difficultyButtons"></div></div>
+        <div class="menuSection"><div class="menuLabel">Difficulty Effects</div><div id="difficultySummary" style="font-size:12px;line-height:1.35;color:#d8e2f4;"></div></div>
+        <button id="startMatchBtn">Start Match</button>
+      </div>
+    </div>
+  </div>
+</div>
 <div id="ui">
   <div class="title">Cat vs Mouse Survival 3D</div>
   <div class="topline">
@@ -295,6 +325,7 @@ let gameOver = false;
 let gameWon = false;
 let cheese = 24;
 let gas = 0;
+let matchStarted = false;
 
 const GRID_SIZE = 4;
 const BASE_MAP_SIZE = 190;
@@ -308,6 +339,12 @@ const BASE_CAT_HP = 7600;
 const BASE_CAT_DAMAGE = 24;
 
 const ui = {
+  mainMenu: document.getElementById("mainMenu"),
+  mapCards: document.getElementById("mapCards"),
+  mapSummary: document.getElementById("mapSummary"),
+  difficultyButtons: document.getElementById("difficultyButtons"),
+  difficultySummary: document.getElementById("difficultySummary"),
+  startMatchBtn: document.getElementById("startMatchBtn"),
   cheese: document.getElementById("cheeseCount"),
   gas: document.getElementById("gasCount"),
   servants: document.getElementById("servantCount"),
@@ -345,7 +382,7 @@ const occupiedCells = new Map();
 const terrainOccupiedCells = new Map();
 const repairBeams = [];
 const engineerMice = [];
-let gamePaused = false;
+let gamePaused = true;
 let activeTowerMenu = false;
 let nearestTowerOfCheese = null;
 const BASE_GAS_DELIVERY = 3;
@@ -367,13 +404,21 @@ const globalUpgrades = { walls:{level:0}, servants:{level:0}, attack:{range:0,sp
 let cat = null;
 let catSpawnTriggered = false;
 const DIFFICULTY_LEVELS = {
-  easy: { wave:0.85, cap:0.85, catIQ:0.72, flank:0.08, antiCamp:0.65, specials:0.4, elites:0.75 },
-  normal: { wave:1.0, cap:1.0, catIQ:1.0, flank:0.18, antiCamp:1.0, specials:1.0, elites:1.0 },
-  hard: { wave:1.2, cap:1.25, catIQ:1.35, flank:0.33, antiCamp:1.35, specials:1.35, elites:1.28 },
-  brutal: { wave:1.45, cap:1.55, catIQ:1.75, flank:0.52, antiCamp:1.8, specials:1.8, elites:1.65 }
+  easy: { label:"Easy", wave:0.75, cap:0.82, catIQ:0.72, flank:0.08, antiCamp:0.62, specials:0.38, elites:0.72, enemyHp:0.78, enemyDamage:0.75, enemySpeed:0.86, pickupYield:1.35, startCheese:40, startGas:12, summary:"Slower, weaker enemies. Generous starting stock and pickups." },
+  normal: { label:"Normal", wave:1.0, cap:1.0, catIQ:1.0, flank:0.18, antiCamp:1.0, specials:1.0, elites:1.0, enemyHp:1.0, enemyDamage:1.0, enemySpeed:1.0, pickupYield:1.0, startCheese:24, startGas:0, summary:"Baseline intended experience." },
+  hard: { label:"Hard", wave:1.24, cap:1.26, catIQ:1.35, flank:0.33, antiCamp:1.35, specials:1.35, elites:1.28, enemyHp:1.24, enemyDamage:1.22, enemySpeed:1.16, pickupYield:0.88, startCheese:18, startGas:0, summary:"Faster, tougher swarms with tighter economy." },
+  brutal: { label:"Brutal", wave:1.52, cap:1.62, catIQ:1.75, flank:0.52, antiCamp:1.8, specials:1.8, elites:1.65, enemyHp:1.45, enemyDamage:1.42, enemySpeed:1.3, pickupYield:0.72, startCheese:12, startGas:0, summary:"High pressure waves, aggressive enemies, reduced economy help." }
 };
-const difficultyKey = (new URLSearchParams(location.search).get("difficulty") || "hard").toLowerCase();
-const difficulty = DIFFICULTY_LEVELS[difficultyKey] || DIFFICULTY_LEVELS.hard;
+const MAP_PRESETS = {
+  meadow:{ name:"Lush Meadow • Forest Edge", short:"Open, welcoming fields with light cover and smooth movement lanes.", palette:{bg:0x95c7eb,fog:0x95c7eb}, tags:["Open Space","Vibrant","Beginner Friendly"] },
+  canyon:{ name:"Rocky Canyon • Badlands", short:"Narrow passes and stone chokepoints reward tighter tower placement.", palette:{bg:0xc9a677,fog:0xb98f62}, tags:["Chokepoints","Rugged","Tactical"] },
+  ruins:{ name:"Ruined Tech Zone • Corrupted Field", short:"Broken lanes and anomaly clusters create irregular fights and flanks.", palette:{bg:0x5f667f,fog:0x4e5872}, tags:["Unusual Lanes","High-Tech","Intense"] }
+};
+let selectedDifficultyKey = "normal";
+let selectedMapKey = "meadow";
+let difficultyKey = selectedDifficultyKey;
+let difficulty = DIFFICULTY_LEVELS[difficultyKey];
+const enemyObjectives = [];
 const combatDirector = {
   heat:0,
   lastPlayerPos:new THREE.Vector3(),
@@ -382,6 +427,36 @@ const combatDirector = {
   lastPocket:[],
   surgeCd:20
 };
+function renderMatchSetupMenu(){
+  ui.mapCards.innerHTML = Object.entries(MAP_PRESETS).map(([key, map])=>{
+    const tags = map.tags.map(t=>`<span class="menuTag">${t}</span>`).join("");
+    return `<button class="menuCard ${key===selectedMapKey?"active":""}" data-map="${key}">
+      <strong>${map.name}</strong>
+      <div style="font-size:11px;opacity:.9;margin-top:4px;">${map.short}</div>
+      <div class="menuChip">${tags}</div>
+    </button>`;
+  }).join("");
+  ui.difficultyButtons.innerHTML = Object.entries(DIFFICULTY_LEVELS).map(([key, diff])=>{
+    return `<button class="diffBtn ${key===selectedDifficultyKey?"active":""}" data-diff="${key}"><strong>${diff.label}</strong><br><span style="font-size:11px;opacity:.9;">${diff.summary}</span></button>`;
+  }).join("");
+  const map = MAP_PRESETS[selectedMapKey];
+  const diff = DIFFICULTY_LEVELS[selectedDifficultyKey];
+  ui.mapSummary.innerHTML = `${map.short}<br><br><strong>Gameplay identity:</strong> ${map.tags.join(" · ")}`;
+  ui.difficultySummary.innerHTML = `${diff.summary}<br><br>Enemy HP x${diff.enemyHp.toFixed(2)} · Damage x${diff.enemyDamage.toFixed(2)} · Speed x${diff.enemySpeed.toFixed(2)}<br>Wave pressure x${diff.wave.toFixed(2)} · Pickup yield x${diff.pickupYield.toFixed(2)}<br>Starting: ${diff.startCheese}🧀 / ${diff.startGas}⛽`;
+  ui.mapCards.querySelectorAll("[data-map]").forEach(b=>b.onclick=()=>{ selectedMapKey=b.dataset.map; renderMatchSetupMenu(); });
+  ui.difficultyButtons.querySelectorAll("[data-diff]").forEach(b=>b.onclick=()=>{ selectedDifficultyKey=b.dataset.diff; renderMatchSetupMenu(); });
+}
+function startSelectedMatch(){
+  difficultyKey = selectedDifficultyKey;
+  difficulty = DIFFICULTY_LEVELS[difficultyKey] || DIFFICULTY_LEVELS.normal;
+  cheese = difficulty.startCheese;
+  gas = difficulty.startGas;
+  applyMapPreset(selectedMapKey);
+  gamePaused = false;
+  matchStarted = true;
+  ui.mainMenu.style.display = "none";
+  showCenter(`${MAP_PRESETS[selectedMapKey].name}\n${difficulty.label} Mode`, 1.8);
+}
 const ENEMY_UNLOCK_STAGES = [
   { kind:"spitterBug", name:"Spitter Bug", icon:"🪲", unlockTime:250 },
   { kind:"burrowMole", name:"Burrow Mole", icon:"🕳️", unlockTime:340 },
@@ -548,8 +623,8 @@ function getCatRoundHpMultiplier(){ return Math.pow(2, currentLevel - 1); }
 function getEnemyRoundMultiplier(){ return Math.pow(1.5, currentLevel - 1); }
 function getCatLevelStats(){
   return {
-    hp: BASE_CAT_HP * getCatRoundHpMultiplier(),
-    damage: BASE_CAT_DAMAGE * Math.pow(2, currentLevel - 1)
+    hp: BASE_CAT_HP * getCatRoundHpMultiplier() * difficulty.enemyHp,
+    damage: BASE_CAT_DAMAGE * Math.pow(2, currentLevel - 1) * difficulty.enemyDamage
   };
 }
 function showLevelBanner(level){
@@ -560,10 +635,6 @@ const BARRIER_SHIELD_MAX = 30;
 const BARRIER_SHIELD_REGEN_PER_TOTEM = 4.5;
 const BARRIER_SHIELD_IMPACT_COLOR = 0x8cc8ff;
 const BREEDING_SPAWN_SEARCH_CELLS = 3;
-const SERVANT_REPAIR_RANGE = 12;
-const SERVANT_REPAIR_MAX_PER_TARGET = 2;
-const SERVANT_REPAIR_INTERVAL = 0.65;
-const SERVANT_REPAIR_AMOUNT = 3.0;
 const LATE_GAME_START = 200;
 const LATE_GAME_PEAK = 760;
 const POWER_RADIUS = GRID_SIZE * 5;
@@ -672,6 +743,17 @@ function showCenter(text, dur=1.5){
 function isEnemyTargetable(enemy){
   return !!enemy && !enemy.dead && !enemy.dying && !enemy.untargetable;
 }
+function nearestObjectiveInRange(origin, range){
+  const originPos = origin.pos || origin;
+  let best = null;
+  let bestD = range;
+  for(const obj of enemyObjectives){
+    if(obj.dead) continue;
+    const d = dist2(originPos, obj.pos);
+    if(d < bestD){ bestD = d; best = obj; }
+  }
+  return best;
+}
 function enemyThreatWeight(enemy){
   if(!enemy) return 0;
   const byKind = { titanRam:190, siegeRat:155, bombBeetle:152, plagueBrute:220, venomLobber:170, screecherBat:138, warClaw:165, spitterBug:130, burrowMole:126, dustRunner:104, ram:110, weasel:95, mole:70, rat:42, assassin:84 };
@@ -696,6 +778,10 @@ function nearestPriorityEnemyInRange(origin, range, biasKinds=[]){
       const score = enemyThreatWeight(cat) + (kindBias.get("cat") || 0) - d * 1.25 + 14;
       if(score > bestScore){ best = cat; }
     }
+  }
+  if(!best){
+    const obj = nearestObjectiveInRange(origin, range);
+    if(obj) best = obj;
   }
   return best;
 }
@@ -939,6 +1025,33 @@ function populateDecorBand(oldHalf,newHalf,level){
   }
 }
 populateDecorBand(0,dynamicHalfMap,1);
+function applyMapPreset(mapKey){
+  const map = MAP_PRESETS[mapKey] || MAP_PRESETS.meadow;
+  scene.background = new THREE.Color(map.palette.bg);
+  scene.fog = new THREE.Fog(map.palette.fog, 110, 300);
+  const tint = mapKey==="meadow" ? 0xffffff : mapKey==="canyon" ? 0xd2a06f : 0x9ba4d8;
+  groundBands.forEach(gb=>{ if(gb.material?.color) gb.material.color.setHex(tint); });
+  for(const obj of enemyObjectives){
+    obj.mesh.parent?.remove(obj.mesh);
+    obj.dead = true;
+  }
+  enemyObjectives.length = 0;
+  if(mapKey === "meadow"){
+    createEnemyObjective(34, -6, "Wild Nest Core");
+    createEnemyObjective(-28, 30, "Forest Shrine");
+  } else if(mapKey === "canyon"){
+    for(let i=-2;i<=2;i++) createCliff(i*6, 2, 5.4, 5.5, 6.2);
+    createEnemyObjective(46, -8, "Badlands War Totem");
+    createEnemyObjective(-42, 24, "Canyon Command Node");
+    createEnemyObjective(8, 46, "Dust Spawner");
+  } else if(mapKey === "ruins"){
+    for(let i=0;i<9;i++) createRock(rand(-48,48), rand(-48,48), rand(1.8,3.4), rand(2.2,5.2), rand(1.8,3.8), 0x4f5a76);
+    for(let i=-2;i<=2;i++) createCliff(i*7, i%2?20:-20, 4.5, 4.2, 9.5);
+    createEnemyObjective(38, 35, "Corrupted Pylon Alpha");
+    createEnemyObjective(-44, -18, "Corrupted Pylon Beta");
+    createEnemyObjective(2, -48, "Power Node Gamma");
+  }
+}
 function createGasVentAtCell(cx, cz){
   const {x,z} = cellToWorld(cx,cz);
   const g = new THREE.Group();
@@ -1911,11 +2024,37 @@ function spawnCheeseAt(x,z,amount=3,source="ambient"){
   g.position.set(x, groundHeight(x,z), z);
   g.traverse(c=>{ if(c.isMesh) c.castShadow = true; });
   scene.add(g);
-  cheeses.push({ group:g, pos:g.position, amount, spin:Math.random()*Math.PI*2, source, life:0 });
+  cheeses.push({ group:g, pos:g.position, amount:Math.max(1, Math.round(amount * difficulty.pickupYield)), spin:Math.random()*Math.PI*2, source, life:0 });
 }
 for(let i=0;i<18;i++){
   const p = randomFreePosition(1);
   spawnCheeseAt(p.x,p.z,3);
+}
+function createEnemyObjective(x, z, name="Corrupted Pylon"){
+  const g = new THREE.Group();
+  const core = new THREE.Mesh(new THREE.OctahedronGeometry(1.15, 0), new THREE.MeshStandardMaterial({ color:0xc46bff, emissive:0x6f2bc1, emissiveIntensity:0.7, metalness:0.2, roughness:0.35 }));
+  core.position.y = 1.85;
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 2.1, 1.2, 8), new THREE.MeshStandardMaterial({ color:0x474a63, roughness:0.8 }));
+  base.position.y = 0.6;
+  g.add(base, core);
+  g.position.set(x, groundHeight(x,z), z);
+  g.traverse(c=>{ if(c.isMesh){ c.castShadow = true; c.receiveShadow = true; } });
+  const hp = 900;
+  const bar = createHealthBar(2.4, 0xd55aff);
+  bar.position.y = 3.3;
+  g.add(bar);
+  setHealthBar(bar, 1);
+  scene.add(g);
+  enemyObjectives.push({ kind:"enemyObjective", name, pos:g.position, radius:1.7, hp, maxHp:hp, dead:false, mesh:g, healthBar:bar, isObjective:true, untargetable:false, isLiving:true, objectivePulse:Math.random()*Math.PI*2 });
+}
+function checkObjectiveVictory(){
+  if(!matchStarted || gameWon || gameOver) return;
+  const alive = enemyObjectives.filter(o=>!o.dead);
+  if(alive.length === 0){
+    gameWon = true;
+    gamePaused = true;
+    showCenter("VICTORY\nEnemy Strongholds Destroyed", 3.2);
+  }
 }
 
 // -------------------------------------------------
@@ -2413,6 +2552,15 @@ function applyDamageToLiving(target, damage, hitPos=null){
   if(target.healthBar) setHealthBar(target.healthBar, target.hp / target.maxHp);
   if(target === cat){
     if(target.hp <= 0) killCat();
+  } else if(target.isObjective){
+    if(target.hp <= 0){
+      target.hp = 0;
+      target.dead = true;
+      target.mesh.parent?.remove(target.mesh);
+      addBurst(target.pos.x, target.pos.y + 2.0, target.pos.z, 0xd46cff, 32, 6.8, 0.9, 0.1);
+      showCenter(`${target.name} Destroyed`, 1.1);
+      checkObjectiveVictory();
+    }
   } else if(target.kind){
     if(target.hp <= 0) killEnemy(target);
   } else if(target.state === "wild" || target.state === "servant"){
@@ -3456,6 +3604,13 @@ function explodeProjectile(p){
         applyDamageToLiving(cat, p.damage * (d < 0.8 ? 1 : Math.max(0.35, 1 - d/(p.splash+1.7))), p.pos);
       }
     }
+    for(const obj of enemyObjectives){
+      if(obj.dead) continue;
+      const d = dist2({x:p.pos.x,z:p.pos.z}, obj.pos);
+      if(d < obj.radius + p.splash){
+        applyDamageToLiving(obj, p.damage * Math.max(0.4, 1 - d/(obj.radius + p.splash + 0.01)), p.pos);
+      }
+    }
   }else{
     if(!player.dead && dist2({x:p.pos.x,z:p.pos.z}, player.pos) < 1.2 + p.splash) applyDamageToLiving(player, 999, p.pos);
     for(const m of servantMice){
@@ -3498,6 +3653,10 @@ function updateProjectiles(dt){
         }
       }
       if(cat && !cat.dead && !cat.dying && dist2(p.pos, cat.pos) < cat.radius + 0.5 && Math.abs(p.pos.y - (cat.pos.y+2)) < 2.6) hit = true;
+      for(const obj of enemyObjectives){
+        if(obj.dead) continue;
+        if(dist2(p.pos, obj.pos) < obj.radius + 0.45 && Math.abs(p.pos.y - (obj.pos.y+1.6)) < 2.5){ hit = true; break; }
+      }
       if(hit){
         explodeProjectile(p);
         p.mesh.parent?.remove(p.mesh);
@@ -3636,8 +3795,8 @@ function spawnWildMouse(x,z){
     dying:false,
     anim:Math.random()*20,
     attackAnim:0,
-    repairCd:0,
     assignedFactory:null,
+    assignedMechaHangar:null,
     orbitAngle:Math.random()*Math.PI*2,
     deathT:0
   });
@@ -3743,7 +3902,7 @@ function findBestServantForGasMine(mine){
     if(!isValidGasWorkerForMine(m, mine)) continue;
     if(m.assignedGasMine && m.assignedGasMine !== mine) continue;
     if(m.assignedMechaHangar && m.assignedMechaHangar.mechaPending && !m.assignedMechaHangar.dead) continue;
-    if(!m.assignedFactory && !m.repairTarget) idleCandidates.push(m);
+    if(!m.assignedFactory && !m.assignedMechaHangar) idleCandidates.push(m);
     else econCandidates.push(m);
   }
   const byNearest = (a,b)=>dist2(a.pos, mine.pos) - dist2(b.pos, mine.pos);
@@ -3825,7 +3984,6 @@ function updateGasMineServant(m, dt){
   }
   mine.assignedServant = m;
   m.assignedFactory = null;
-  m.repairTarget = null;
   if(!m.gasJobState) m.gasJobState = "toMine";
   if(!["toMine","mining","toDeposit"].includes(m.gasJobState)) m.gasJobState = "toMine";
 
@@ -3916,21 +4074,31 @@ function updateMouseEntity(m,dt){
     }
 
     let assignedFactory = null;
+    let assignedProduction = null;
     if(!m.assignedGasMine){
       for(const f of structures){
         if(f.dead || f.type!=="factory") continue;
-        if(!f.assignedServant || f.assignedServant===m){ assignedFactory = f; break; }
+        if(!f.assignedServant || f.assignedServant===m){ assignedFactory = f; assignedProduction = f; break; }
+      }
+      if(!assignedProduction){
+        for(const prod of structures){
+          if(prod.dead || !["robo","advancedRobo","mechaHangar","engineerShop"].includes(prod.type)) continue;
+          if(!prod.assignedServant || prod.assignedServant===m){ assignedProduction = prod; break; }
+        }
       }
     }
-    if(assignedFactory){
-      m.repairTarget = null;
+    if(assignedProduction){
       if(m.assignedFactory && m.assignedFactory !== assignedFactory && m.assignedFactory.assignedServant===m) m.assignedFactory.assignedServant = null;
+      if(m.assignedMechaHangar && m.assignedMechaHangar !== assignedProduction && m.assignedMechaHangar.assignedServant===m) m.assignedMechaHangar.assignedServant = null;
       m.assignedFactory = assignedFactory;
-      assignedFactory.assignedServant = m;
-      m.target = assignedFactory.pos;
+      m.assignedMechaHangar = assignedFactory ? null : assignedProduction;
+      assignedProduction.assignedServant = m;
+      m.target = assignedProduction.pos;
     } else {
       if(m.assignedFactory && m.assignedFactory.assignedServant===m) m.assignedFactory.assignedServant = null;
       m.assignedFactory = null;
+      if(m.assignedMechaHangar && m.assignedMechaHangar.assignedServant===m) m.assignedMechaHangar.assignedServant = null;
+      m.assignedMechaHangar = null;
 
       let nearestCheese = null, best = 9999;
       for(const c of cheeses){
@@ -3940,46 +4108,15 @@ function updateMouseEntity(m,dt){
 
       if(nearestCheese && best < 28){
         m.target = nearestCheese.pos;
-      } else if(!m.assignedGasMine && !m.assignedFactory){
-        let repairTarget = null;
-        let bestRepair = 9999;
-        for(const s of structures){
-          if(s.dead || s.hp >= s.maxHp) continue;
-          const d = dist2(m.pos,s.pos);
-          if(d > SERVANT_REPAIR_RANGE) continue;
-          const workersOnTarget = servantMice.filter(sm => sm!==m && !sm.dead && !sm.dying && sm.repairTarget === s).length;
-          if(workersOnTarget >= SERVANT_REPAIR_MAX_PER_TARGET) continue;
-          const structureWeight = ["turret","cannon","zapCoil","mortarBloom","sawBlaster","sniperTower","railGun","factory","gasMine","workshop"].includes(s.type) ? 0.75 : 1;
-          const score = d * structureWeight + (s.hp/s.maxHp)*4.8;
-          if(score < bestRepair){ bestRepair = score; repairTarget = s; }
-        }
-        m.repairTarget = repairTarget;
-        if(repairTarget){
-          m.target = repairTarget.pos;
-          const reach = dist2(m.pos, repairTarget.pos);
-          if(reach < repairTarget.radius + 1.2){
-            m.repairCd -= dt;
-            m.attackAnim = 0.9;
-            if(m.repairCd <= 0){
-              m.repairCd = SERVANT_REPAIR_INTERVAL;
-              repairTarget.hp = Math.min(repairTarget.maxHp, repairTarget.hp + SERVANT_REPAIR_AMOUNT);
-              setHealthBar(repairTarget.mesh.userData.healthBar, repairTarget.hp/repairTarget.maxHp);
-              updateWallDamageVisual(repairTarget);
-              addBurst(repairTarget.pos.x, repairTarget.pos.y+1.0, repairTarget.pos.z, 0x95ffb6, 4, 2.3, 0.3, 0.05);
-            }
-          }
-        } else {
-          m.orbitAngle += dt * 1.2;
-          const orbitR = 3.4 + (Math.sin(m.anim*0.7 + m.orbitAngle) * 1.2);
-          m.target = new THREE.Vector3(
-            player.pos.x + Math.sin(m.orbitAngle + m.heading*0.25) * orbitR,
-            0,
-            player.pos.z + Math.cos(m.orbitAngle + m.heading*0.25) * orbitR
-          );
-          m.target.y = groundHeight(m.target.x, m.target.z);
-        }
       } else {
-        m.repairTarget = null;
+        m.orbitAngle += dt * 1.2;
+        const orbitR = 3.4 + (Math.sin(m.anim*0.7 + m.orbitAngle) * 1.2);
+        m.target = new THREE.Vector3(
+          player.pos.x + Math.sin(m.orbitAngle + m.heading*0.25) * orbitR,
+          0,
+          player.pos.z + Math.cos(m.orbitAngle + m.heading*0.25) * orbitR
+        );
+        m.target.y = groundHeight(m.target.x, m.target.z);
       }
     }
 
@@ -4049,9 +4186,9 @@ function makeEnemy(kind,x,z){
   const eliteChance = clamp((time - 260) / 380, 0, 0.35) * difficulty.elites;
   const elite = Math.random() < eliteChance && !["ram","titanRam","siegeRat"].includes(kind);
   const progressionScale = getEnemyRoundMultiplier();
-  hp *= powerScale * levelScale * progressionScale;
-  damage *= powerScale * (1 + (enemyLevel - 1) * 0.03) * progressionScale;
-  speed *= (1 + phaseTime * 0.00045) * (["rat","assassin","weasel"].includes(kind) ? (1 + (enemyLevel - 1) * 0.004) : 1);
+  hp *= powerScale * levelScale * progressionScale * difficulty.enemyHp;
+  damage *= powerScale * (1 + (enemyLevel - 1) * 0.03) * progressionScale * difficulty.enemyDamage;
+  speed *= (1 + phaseTime * 0.00045) * (["rat","assassin","weasel"].includes(kind) ? (1 + (enemyLevel - 1) * 0.004) : 1) * difficulty.enemySpeed;
   if(elite){
     hp *= 1.55;
     damage *= 1.28;
@@ -4864,8 +5001,8 @@ function spawnCat(){
       hp:catLevelStats.hp,
       maxHp:catLevelStats.hp,
       damage:catLevelStats.damage,
-      speed:5.9,
-      sprint:8.6,
+      speed:5.9 * difficulty.enemySpeed,
+      sprint:8.6 * difficulty.enemySpeed,
       radius:2.2,
       attackRange:2.35,
       attackCd:0,
@@ -5173,6 +5310,8 @@ function nearestEnemyInRange(origin, range){
     const d = dist2(origin.pos || origin, cat.pos);
     if (d < bestD) { bestD = d; best = cat; }
   }
+  const obj = nearestObjectiveInRange(origin, bestD);
+  if(obj) best = obj;
   return best;
 }
 function updateStructureShieldFx(s, dt){
@@ -5219,6 +5358,11 @@ function robotTarget(r){
       bestD = d;
       best = cat;
     }
+  }
+  for(const obj of enemyObjectives){
+    if(obj.dead) continue;
+    const d = dist2(r.pos, obj.pos);
+    if(d < bestD){ bestD = d; best = obj; }
   }
 
   return best;
@@ -6388,6 +6532,11 @@ function updateUI(){
 function animate(){
   requestAnimationFrame(animate);
   const dt = Math.min(0.033, clock.getDelta());
+  if(!matchStarted){
+    updateUI();
+    renderer.render(scene,camera);
+    return;
+  }
 
   if(!gameOver && !gamePaused) time += dt;
 
@@ -6440,9 +6589,12 @@ function animate(){
   updateWorldHealthBars();
   updateCamera(dt);
   updateUI();
+  checkObjectiveVictory();
 
   renderer.render(scene,camera);
 }
+renderMatchSetupMenu();
+ui.startMatchBtn.onclick = startSelectedMatch;
 animate();
 
 window.addEventListener("resize", ()=>{
