@@ -185,6 +185,7 @@
     <div class="pill">Gas: <span id="gasCount">0</span></div>
     <div class="pill">Servants: <span id="servantCount">0</span></div>
     <div class="pill">Time: <span id="timeCount">0.0</span>s</div>
+    <div class="pill">Level: <span id="levelCount">1</span></div>
   </div>
   <div id="controls">W forward · S backpedal · A/D turn · Space place</div>
   <div id="catRow">
@@ -228,16 +229,23 @@ let gameWon = false;
 let cheese = 24;
 let gas = 0;
 
-const MAP_SIZE = 190;
-const HALF_MAP = MAP_SIZE / 2;
 const GRID_SIZE = 4;
-const GRID_HALF_CELLS = Math.floor(MAP_SIZE / GRID_SIZE / 2);
+const BASE_MAP_SIZE = 190;
+let currentLevel = 1;
+let levelTransitionActive = false;
+let dynamicMapSize = BASE_MAP_SIZE;
+let dynamicHalfMap = dynamicMapSize / 2;
+let dynamicGridHalfCells = Math.floor(dynamicMapSize / GRID_SIZE / 2);
+const MAP_EXPAND_PER_LEVEL = 24;
+const BASE_CAT_HP = 7600;
+const BASE_CAT_DAMAGE = 24;
 
 const ui = {
   cheese: document.getElementById("cheeseCount"),
   gas: document.getElementById("gasCount"),
   servants: document.getElementById("servantCount"),
   time: document.getElementById("timeCount"),
+  level: document.getElementById("levelCount"),
   msg: document.getElementById("centerMsg"),
   bossWrap: document.getElementById("bossBarWrap"),
   bossBar: document.getElementById("bossBar"),
@@ -287,7 +295,10 @@ const ENEMY_UNLOCK_STAGES = [
   { kind:"spitterBug", name:"Spitter Bug", icon:"🪲", unlockTime:250 },
   { kind:"burrowMole", name:"Burrow Mole", icon:"🕳️", unlockTime:340 },
   { kind:"siegeRat", name:"Siege Rat", icon:"🐀", unlockTime:440 },
-  { kind:"titanRam", name:"Titan Ram", icon:"🐏", unlockTime:560 }
+  { kind:"titanRam", name:"Titan Ram", icon:"🐏", unlockTime:560 },
+  { kind:"venomLobber", name:"Venom Lobber", icon:"🧪", unlockTime:700 },
+  { kind:"plagueBrute", name:"Plague Brute", icon:"☣️", unlockTime:860 },
+  { kind:"warClaw", name:"War Claw", icon:"🦾", unlockTime:980 }
 ];
 const unlockedEnemyKinds = new Set();
 let announcedUnlockKinds = new Set();
@@ -398,12 +409,24 @@ function formatClock(seconds){
 function cellKey(cx, cz){ return `${cx},${cz}`; }
 function worldToCell(x,z){
   return {
-    cx: clamp(Math.round(x / GRID_SIZE), -GRID_HALF_CELLS, GRID_HALF_CELLS),
-    cz: clamp(Math.round(z / GRID_SIZE), -GRID_HALF_CELLS, GRID_HALF_CELLS)
+    cx: clamp(Math.round(x / GRID_SIZE), -dynamicGridHalfCells, dynamicGridHalfCells),
+    cz: clamp(Math.round(z / GRID_SIZE), -dynamicGridHalfCells, dynamicGridHalfCells)
   };
 }
 function cellToWorld(cx,cz){ return { x:cx*GRID_SIZE, z:cz*GRID_SIZE }; }
 function getEnemyLevel(){ return 1 + Math.floor(Math.max(0, time - 60) / 90); }
+function getCatLevelStats(){
+  return {
+    hp: BASE_CAT_HP * Math.pow(3, currentLevel - 1),
+    damage: BASE_CAT_DAMAGE * Math.pow(2, currentLevel - 1)
+  };
+}
+function getEnemyLevelMultiplier(){
+  return Math.pow(2, currentLevel - 1);
+}
+function showLevelBanner(level){
+  showCenter(`LEVEL ${level}\nNew Ground Discovered\nStronger Enemies Approaching`, 2.4);
+}
 const BARRIER_SHIELD_RADIUS = GRID_SIZE * 4;
 const BARRIER_SHIELD_MAX = 30;
 const BARRIER_SHIELD_REGEN_PER_TOTEM = 4.5;
@@ -454,7 +477,7 @@ function isEnemyTargetable(enemy){
 }
 function enemyThreatWeight(enemy){
   if(!enemy) return 0;
-  const byKind = { titanRam:190, siegeRat:155, spitterBug:130, burrowMole:120, ram:110, weasel:95, mole:70, rat:42, assassin:84 };
+  const byKind = { titanRam:190, siegeRat:155, plagueBrute:220, venomLobber:170, warClaw:165, spitterBug:130, burrowMole:120, ram:110, weasel:95, mole:70, rat:42, assassin:84 };
   return (byKind[enemy.kind] || 60) + (enemy.elite ? 24 : 0) + clamp(enemy.maxHp || 0, 0, 220) * 0.12;
 }
 function nearestPriorityEnemyInRange(origin, range, biasKinds=[]){
@@ -481,6 +504,11 @@ function nearestPriorityEnemyInRange(origin, range, biasKinds=[]){
 }
 function updateEnemyUnlockWarning(){
   if(!ui.enemyUnlockWarning) return;
+  if(levelTransitionActive){
+    ui.enemyUnlockWarning.textContent = `⚠️ Level ${currentLevel} transition in progress`;
+    ui.enemyUnlockWarning.style.display = "block";
+    return;
+  }
   const nextStage = ENEMY_UNLOCK_STAGES.find(stage => !unlockedEnemyKinds.has(stage.kind));
   if(!nextStage){
     ui.enemyUnlockWarning.textContent = "⚔️ All enemy types unlocked";
@@ -490,6 +518,27 @@ function updateEnemyUnlockWarning(){
   const remain = Math.max(0, nextStage.unlockTime - time);
   ui.enemyUnlockWarning.textContent = `Up Next: ${nextStage.icon} ${nextStage.name} in ${formatClock(remain)}`;
   ui.enemyUnlockWarning.style.display = "block";
+}
+function announceEnemyUnlock(name, context){
+  ui.enemyUnlockWarning.classList.add("flash");
+  setTimeout(()=>ui.enemyUnlockWarning.classList.remove("flash"), 700);
+  showCenter(`${context}: ${name}`, 1.6);
+}
+function syncLevelEnemyUnlocks(force=false){
+  const levelRules = [];
+  if((difficultyKey==="hard" || difficultyKey==="brutal") && currentLevel >= 2) levelRules.push({kind:"venomLobber", name:"Venom Lobber"});
+  if((difficultyKey==="hard" || difficultyKey==="brutal") && currentLevel >= 3) levelRules.push({kind:"plagueBrute", name:"Plague Brute"});
+  if((difficultyKey==="brutal" && currentLevel >= 3) || (difficultyKey==="hard" && currentLevel >= 4)) levelRules.push({kind:"warClaw", name:"War Claw"});
+  if(difficultyKey==="normal" && currentLevel >= 5) levelRules.push({kind:"venomLobber", name:"Venom Lobber"});
+  for(const rule of levelRules){
+    if(!unlockedEnemyKinds.has(rule.kind)){
+      unlockedEnemyKinds.add(rule.kind);
+      if(force || !announcedUnlockKinds.has(rule.kind)){
+        announceEnemyUnlock(rule.name, `Level ${currentLevel} Threat Unlocked`);
+      }
+      announcedUnlockKinds.add(rule.kind);
+    }
+  }
 }
 function syncEnemyUnlockStages(){
   for(const stage of ENEMY_UNLOCK_STAGES){
@@ -503,6 +552,7 @@ function syncEnemyUnlockStages(){
       }
     }
   }
+  syncLevelEnemyUnlocks();
 }
 function groundHeight(x,z){
   return 0;
@@ -530,7 +580,7 @@ scene.add(sun);
 // WORLD
 // -------------------------------------------------
 function createGround(){
-  const geo = new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE, 180, 180);
+  const geo = new THREE.PlaneGeometry(dynamicMapSize, dynamicMapSize, 180, 180);
   geo.rotateX(-Math.PI/2);
   const pos = geo.attributes.position;
   const colors = [];
@@ -548,7 +598,34 @@ function createGround(){
   ground.receiveShadow = true;
   scene.add(ground);
 }
-createGround();
+const groundBands = [];
+function addGroundBand(oldHalf, newHalf, bandLevel=1){
+  const size = newHalf * 2;
+  const geo = new THREE.PlaneGeometry(size, size, 140, 140);
+  geo.rotateX(-Math.PI/2);
+  const pos = geo.attributes.position;
+  const colors = [];
+  for(let i=0;i<pos.count;i++){
+    const x = pos.getX(i), z = pos.getZ(i);
+    const inOuterBand = Math.abs(x) > oldHalf || Math.abs(z) > oldHalf;
+    pos.setY(i, 0.02 * Math.sin((x+z)*0.03));
+    const n = Math.sin((x+bandLevel*7)*0.06)*0.45 + Math.cos((z-bandLevel*5)*0.045)*0.38;
+    const shade = 0.45 + n*0.25;
+    const tintShift = Math.min(0.12, bandLevel * 0.02);
+    const r = inOuterBand ? 0.19 + shade*(0.12+tintShift) : 0.17 + shade*0.12;
+    const g = inOuterBand ? 0.27 + shade*(0.16-tintShift*0.3) : 0.3 + shade*0.16;
+    const b = inOuterBand ? 0.12 + shade*(0.07+tintShift*0.2) : 0.12 + shade*0.08;
+    colors.push(r,g,b);
+  }
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(colors,3));
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors:true, roughness:1 }));
+  mesh.receiveShadow = true;
+  mesh.position.y = -0.01 * bandLevel;
+  scene.add(mesh);
+  groundBands.push(mesh);
+}
+addGroundBand(0, dynamicHalfMap, 0);
 
 function createRock(x,z,sx,sy,sz,color=0x6d7379){
   const geo = new THREE.DodecahedronGeometry(1,0);
@@ -620,34 +697,47 @@ function createTree(x,z){
   trunk.receiveShadow = leaf.receiveShadow = true;
   scene.add(trunk,leaf);
 }
-for(let i=0;i<30;i++){
-  const x = rand(-HALF_MAP+12, HALF_MAP-12);
-  const z = rand(-HALF_MAP+12, HALF_MAP-12);
-  if(Math.hypot(x,z)<20) continue;
-  if(Math.random()<0.55) createRock(x,z, rand(2.4,5.7), rand(2.4,5.8), rand(2.4,5.7));
-  else createCliff(x,z, rand(6,12), rand(4.5,10), rand(5,12));
+function inExpansionBand(x,z,oldHalf,newHalf){
+  const insideNew = Math.abs(x) <= newHalf && Math.abs(z) <= newHalf;
+  const inOld = Math.abs(x) <= oldHalf && Math.abs(z) <= oldHalf;
+  return insideNew && !inOld;
 }
-for(let i=0;i<90;i++){
-  const x = rand(-HALF_MAP+8, HALF_MAP-8);
-  const z = rand(-HALF_MAP+8, HALF_MAP-8);
-  if(Math.hypot(x,z)<12) continue;
-  if(Math.random()<0.55) createBush(x,z);
+function populateDecorBand(oldHalf,newHalf,level){
+  const rockCount = level === 1 ? 30 : 10 + level * 3;
+  const bushCount = level === 1 ? 90 : 24 + level * 6;
+  const flowerCount = level === 1 ? 160 : 36 + level * 12;
+  for(let i=0;i<rockCount;i++){
+    const x = rand(-newHalf+8, newHalf-8);
+    const z = rand(-newHalf+8, newHalf-8);
+    if(!inExpansionBand(x,z,oldHalf,newHalf) && level > 1) continue;
+    if(Math.hypot(x,z)<20 && level===1) continue;
+    if(Math.random()<0.6) createRock(x,z, rand(2.3,5.3), rand(2.3,5.6), rand(2.3,5.4), level>1 ? 0x626b6f : 0x6d7379);
+    else createCliff(x,z, rand(5,11), rand(4,9), rand(5,11));
+  }
+  for(let i=0;i<bushCount;i++){
+    const x = rand(-newHalf+6, newHalf-6);
+    const z = rand(-newHalf+6, newHalf-6);
+    if(!inExpansionBand(x,z,oldHalf,newHalf) && level > 1) continue;
+    if(Math.random()<0.58) createBush(x,z);
+  }
+  for(let i=0;i<flowerCount;i++){
+    const x = rand(-newHalf+5, newHalf-5);
+    const z = rand(-newHalf+5, newHalf-5);
+    if(!inExpansionBand(x,z,oldHalf,newHalf) && level > 1) continue;
+    if(Math.random()<0.38) createFlower(x,z);
+  }
+  const treeCount = level === 1 ? 120 : 40;
+  for(let i=0;i<treeCount;i++){
+    const side = i % 4;
+    let x=0,z=0;
+    if(side===0){ x = -newHalf+4+Math.random()*3; z = rand(-newHalf, newHalf); }
+    if(side===1){ x = newHalf-4-Math.random()*3; z = rand(-newHalf, newHalf); }
+    if(side===2){ z = -newHalf+4+Math.random()*3; x = rand(-newHalf, newHalf); }
+    if(side===3){ z = newHalf-4-Math.random()*3; x = rand(-newHalf, newHalf); }
+    if(level===1 || inExpansionBand(x,z,oldHalf,newHalf)) createTree(x,z);
+  }
 }
-for(let i=0;i<160;i++){
-  const x = rand(-HALF_MAP+6, HALF_MAP-6);
-  const z = rand(-HALF_MAP+6, HALF_MAP-6);
-  if(Math.hypot(x,z)<10) continue;
-  if(Math.random()<0.35) createFlower(x,z);
-}
-for(let i=0;i<120;i++){
-  const side = i % 4;
-  let x=0,z=0;
-  if(side===0){ x = -HALF_MAP+4+Math.random()*3; z = rand(-HALF_MAP, HALF_MAP); }
-  if(side===1){ x = HALF_MAP-4-Math.random()*3; z = rand(-HALF_MAP, HALF_MAP); }
-  if(side===2){ z = -HALF_MAP+4+Math.random()*3; x = rand(-HALF_MAP, HALF_MAP); }
-  if(side===3){ z = HALF_MAP-4-Math.random()*3; x = rand(-HALF_MAP, HALF_MAP); }
-  createTree(x,z);
-}
+populateDecorBand(0,dynamicHalfMap,1);
 function createGasVentAtCell(cx, cz){
   const {x,z} = cellToWorld(cx,cz);
   const g = new THREE.Group();
@@ -669,17 +759,41 @@ function createGasVentAtCell(cx, cz){
 for(let i=0;i<24;i++){
   let tries = 0;
   while(tries++ < 80){
-    const cx = Math.floor(rand(-GRID_HALF_CELLS+3, GRID_HALF_CELLS-3));
-    const cz = Math.floor(rand(-GRID_HALF_CELLS+3, GRID_HALF_CELLS-3));
+    const cx = Math.floor(rand(-dynamicGridHalfCells+3, dynamicGridHalfCells-3));
+    const cz = Math.floor(rand(-dynamicGridHalfCells+3, dynamicGridHalfCells-3));
     if(Math.hypot(cx*GRID_SIZE, cz*GRID_SIZE) < 16) continue;
     if(gasVents.some(v => Math.abs(v.cx-cx)+Math.abs(v.cz-cz) < 3)) continue;
     createGasVentAtCell(cx,cz);
     break;
   }
 }
+function spawnGasVentsForExpansion(oldHalfMap, newHalfMap){
+  const target = clamp(Math.floor((newHalfMap - oldHalfMap) * 0.35), 4, 12);
+  let placed = 0;
+  let tries = 0;
+  while(placed < target && tries++ < 260){
+    const cx = Math.floor(rand(-dynamicGridHalfCells+2, dynamicGridHalfCells-2));
+    const cz = Math.floor(rand(-dynamicGridHalfCells+2, dynamicGridHalfCells-2));
+    const w = cellToWorld(cx,cz);
+    if(!inExpansionBand(w.x,w.z,oldHalfMap,newHalfMap)) continue;
+    if(gasVents.some(v => Math.abs(v.cx-cx)+Math.abs(v.cz-cz) < 3)) continue;
+    if(circleBlocked(w.x, w.z, 1.3, null, 0.95)) continue;
+    createGasVentAtCell(cx,cz);
+    placed++;
+  }
+}
+function expandMapForLevel(newLevel){
+  const oldHalfMap = dynamicHalfMap;
+  dynamicMapSize += MAP_EXPAND_PER_LEVEL;
+  dynamicHalfMap = dynamicMapSize / 2;
+  dynamicGridHalfCells = Math.floor(dynamicMapSize / GRID_SIZE / 2);
+  addGroundBand(oldHalfMap, dynamicHalfMap, newLevel);
+  populateDecorBand(oldHalfMap, dynamicHalfMap, newLevel);
+  spawnGasVentsForExpansion(oldHalfMap, dynamicHalfMap);
+}
 
 function circleBlocked(x,z,r, ignoreStructure=null, structureSpacingScale=1){
-  if(x < -HALF_MAP+2 || x > HALF_MAP-2 || z < -HALF_MAP+2 || z > HALF_MAP-2) return true;
+  if(x < -dynamicHalfMap+2 || x > dynamicHalfMap-2 || z < -dynamicHalfMap+2 || z > dynamicHalfMap-2) return true;
   for(const o of obstacles){
     if(Math.hypot(x-o.x, z-o.z) < r + o.r) return true;
   }
@@ -711,8 +825,8 @@ function lineBlocked(a,b){
 }
 function randomFreePosition(radius=1){
   for(let i=0;i<80;i++){
-    const x = rand(-HALF_MAP+10, HALF_MAP-10);
-    const z = rand(-HALF_MAP+10, HALF_MAP-10);
+    const x = rand(-dynamicHalfMap+10, dynamicHalfMap-10);
+    const z = rand(-dynamicHalfMap+10, dynamicHalfMap-10);
     if(!circleBlocked(x,z,radius)) return new THREE.Vector3(x, groundHeight(x,z), z);
   }
   return new THREE.Vector3(0, groundHeight(0,0), 0);
@@ -735,7 +849,7 @@ function findOpenSpawnCellNearStructure(structure, preferredRadiusCells=1, fallb
   for(const [ox,oz,r] of offsets){
     const cx = center.cx + ox;
     const cz = center.cz + oz;
-    if(cx < -GRID_HALF_CELLS || cx > GRID_HALF_CELLS || cz < -GRID_HALF_CELLS || cz > GRID_HALF_CELLS) continue;
+    if(cx < -dynamicGridHalfCells || cx > dynamicGridHalfCells || cz < -dynamicGridHalfCells || cz > dynamicGridHalfCells) continue;
     const wp = cellToWorld(cx, cz);
     if(circleBlocked(wp.x, wp.z, 0.84, null, 0.9)) continue;
     const d = Math.hypot(ox, oz) + r * 0.02;
@@ -1621,10 +1735,10 @@ function setPlayerTravelState(state){
   player.travel.stateTime = 0;
 }
 function isWithinMapBounds(x,z,pad=1.35){
-  return x > -HALF_MAP + pad && x < HALF_MAP - pad && z > -HALF_MAP + pad && z < HALF_MAP - pad;
+  return x > -dynamicHalfMap + pad && x < dynamicHalfMap - pad && z > -dynamicHalfMap + pad && z < dynamicHalfMap - pad;
 }
 function isTravelCellOpen(cx,cz,ignoreStructure=null){
-  if(cx < -GRID_HALF_CELLS || cx > GRID_HALF_CELLS || cz < -GRID_HALF_CELLS || cz > GRID_HALF_CELLS) return false;
+  if(cx < -dynamicGridHalfCells || cx > dynamicGridHalfCells || cz < -dynamicGridHalfCells || cz > dynamicGridHalfCells) return false;
   const w = cellToWorld(cx,cz);
   return !circleBlocked(w.x, w.z, player.radius * 0.95, ignoreStructure, 1);
 }
@@ -1646,7 +1760,7 @@ function getTeleporterExitPoint(target, preferDir){
   return best;
 }
 function tryTriggerLauncher(launcher){
-  if(player.dead || gameWon || player.travel.state !== PLAYER_TRAVEL_STATES.normal || player.travel.launcherCooldown > 0) return;
+  if(player.dead || levelTransitionActive || player.travel.state !== PLAYER_TRAVEL_STATES.normal || player.travel.launcherCooldown > 0) return;
   if(dist2(player.pos, launcher.pos) > 1.35) return;
   const dir = new THREE.Vector3(Math.sin(launcher.rotationY || 0), 0, Math.cos(launcher.rotationY || 0)).normalize();
   const start = player.pos.clone();
@@ -1686,7 +1800,7 @@ function tryTriggerLauncher(launcher){
   addBurst(start.x, start.y+0.6, start.z, 0x88dcff, 18, 4.6, 0.55, 0.09);
 }
 function tryTriggerTeleporter(entry){
-  if(player.dead || gameWon || player.travel.state !== PLAYER_TRAVEL_STATES.normal || player.travel.teleporterCooldown > 0) return;
+  if(player.dead || levelTransitionActive || player.travel.state !== PLAYER_TRAVEL_STATES.normal || player.travel.teleporterCooldown > 0) return;
   if((entry.travelCooldown||0) > 0) return;
   if(dist2(player.pos, entry.pos) > 1.45) return;
   const others = structures.filter(s => !s.dead && s.type==="teleporter" && s!==entry);
@@ -1757,8 +1871,8 @@ function updateBuildGridOverlay(centerX, centerZ){
   for(const entry of buildGridTiles){
     const cx = centerCell.cx + entry.ox;
     const cz = centerCell.cz + entry.oz;
-    const clampedCx = clamp(cx, -GRID_HALF_CELLS, GRID_HALF_CELLS);
-    const clampedCz = clamp(cz, -GRID_HALF_CELLS, GRID_HALF_CELLS);
+    const clampedCx = clamp(cx, -dynamicGridHalfCells, dynamicGridHalfCells);
+    const clampedCz = clamp(cz, -dynamicGridHalfCells, dynamicGridHalfCells);
     const world = cellToWorld(clampedCx, clampedCz);
     entry.tile.position.set(world.x, 0.02, world.z);
     const dark = (Math.abs(clampedCx + clampedCz) % 2) === 0;
@@ -1846,8 +1960,8 @@ function collisionPushOut(x,z,radius, collideWithStructures=true, ignoreStructur
         }
       }
     }
-    px = clamp(px, -HALF_MAP+2.25, HALF_MAP-2.25);
-    pz = clamp(pz, -HALF_MAP+2.25, HALF_MAP-2.25);
+    px = clamp(px, -dynamicHalfMap+2.25, dynamicHalfMap-2.25);
+    pz = clamp(pz, -dynamicHalfMap+2.25, dynamicHalfMap-2.25);
     if(!adjusted) break;
   }
   return { x:px, z:pz, hitCount };
@@ -1863,7 +1977,7 @@ function steerMove(entity, desired, dt, collideWithStructures=true, ignoreStruct
   const fullStep = speed * dt;
 
   function blockedAt(x, z){
-    if(x < -HALF_MAP+2 || x > HALF_MAP-2 || z < -HALF_MAP+2 || z > HALF_MAP-2) return true;
+    if(x < -dynamicHalfMap+2 || x > dynamicHalfMap-2 || z < -dynamicHalfMap+2 || z > dynamicHalfMap-2) return true;
     for(const o of obstacles){
       if(Math.hypot(x-o.x, z-o.z) < radius + o.r) return true;
     }
@@ -1914,7 +2028,7 @@ function steerMove(entity, desired, dt, collideWithStructures=true, ignoreStruct
     const dz = Math.cos(heading);
     const nx = start.x + dx * fullStep;
     const nz = start.z + dz * fullStep;
-    if(nx < -HALF_MAP+2 || nx > HALF_MAP-2 || nz < -HALF_MAP+2 || nz > HALF_MAP-2) continue;
+    if(nx < -dynamicHalfMap+2 || nx > dynamicHalfMap-2 || nz < -dynamicHalfMap+2 || nz > dynamicHalfMap-2) continue;
     let score = Math.abs(off)*0.18;
     score += neighborPenaltyAt(nx, nz);
     score += penetrationPenalty(nx, nz);
@@ -1932,7 +2046,7 @@ function steerMove(entity, desired, dt, collideWithStructures=true, ignoreStruct
   for(const scale of fallbackScales){
     const nx = start.x + fx * fullStep * scale;
     const nz = start.z + fz * fullStep * scale;
-    if(nx >= -HALF_MAP+2 && nx <= HALF_MAP-2 && nz >= -HALF_MAP+2 && nz <= HALF_MAP-2){
+    if(nx >= -dynamicHalfMap+2 && nx <= dynamicHalfMap-2 && nz >= -dynamicHalfMap+2 && nz <= dynamicHalfMap-2){
       return { x:nx, z:nz, heading:baseHeading };
     }
   }
@@ -1943,7 +2057,7 @@ function steerMove(entity, desired, dt, collideWithStructures=true, ignoreStruct
     const h = baseHeading + off;
     const nx = start.x + Math.sin(h) * fullStep * 0.24;
     const nz = start.z + Math.cos(h) * fullStep * 0.24;
-    if(nx >= -HALF_MAP+2 && nx <= HALF_MAP-2 && nz >= -HALF_MAP+2 && nz <= HALF_MAP-2){
+    if(nx >= -dynamicHalfMap+2 && nx <= dynamicHalfMap-2 && nz >= -dynamicHalfMap+2 && nz <= dynamicHalfMap-2){
       return { x:nx, z:nz, heading:h };
     }
   }
@@ -2021,16 +2135,16 @@ function setRepathPoint(entity, centerPos, radius=4.5){
   for(let i=0;i<20;i++){
     const a = Math.random() * Math.PI * 2;
     const r = rand(radius*0.25, radius);
-    const x = clamp(centerPos.x + Math.sin(a)*r, -HALF_MAP+3.2, HALF_MAP-3.2);
-    const z = clamp(centerPos.z + Math.cos(a)*r, -HALF_MAP+3.2, HALF_MAP-3.2);
+    const x = clamp(centerPos.x + Math.sin(a)*r, -dynamicHalfMap+3.2, dynamicHalfMap-3.2);
+    const z = clamp(centerPos.z + Math.cos(a)*r, -dynamicHalfMap+3.2, dynamicHalfMap-3.2);
     if(!circleBlocked(x, z, entity.radius || 0.85, entity.target && entity.target.type ? entity.target : null)){
       repath = new THREE.Vector3(x, 0, z);
       break;
     }
   }
   if(!repath){
-    const x = clamp(entity.pos.x, -HALF_MAP+3.2, HALF_MAP-3.2);
-    const z = clamp(entity.pos.z, -HALF_MAP+3.2, HALF_MAP-3.2);
+    const x = clamp(entity.pos.x, -dynamicHalfMap+3.2, dynamicHalfMap-3.2);
+    const z = clamp(entity.pos.z, -dynamicHalfMap+3.2, dynamicHalfMap-3.2);
     if(!circleBlocked(x, z, entity.radius || 0.85)) repath = new THREE.Vector3(x, 0, z);
   }
   entity.repathTarget = repath;
@@ -3043,10 +3157,43 @@ function killCat(){
   ui.bossWrap.style.display = "none";
   ui.bossLabel.style.display = "none";
   setTimeout(() => {
-    gameWon = true;
-    ui.msg.textContent = "YOU WIN";
-    ui.msg.style.opacity = "1";
-  }, 500);
+    showCenter(`LEVEL ${currentLevel} CLEARED`, 1.6);
+  }, 350);
+  setTimeout(() => {
+    advanceToNextLevel();
+  }, 1100);
+}
+function clearEnemiesForLevelTransition(){
+  for(let i=enemies.length-1;i>=0;i--){
+    const e = enemies[i];
+    if(e.spitTelegraph) clearSpitLandingTelegraph(e);
+    e.group.parent?.remove(e.group);
+    enemies.splice(i,1);
+  }
+  for(let i=projectiles.length-1;i>=0;i--){
+    const p = projectiles[i];
+    if(p.from === "enemy"){
+      p.mesh?.parent?.remove(p.mesh);
+      projectiles.splice(i,1);
+    }
+  }
+}
+function advanceToNextLevel(){
+  if(levelTransitionActive) return;
+  levelTransitionActive = true;
+  currentLevel += 1;
+  clearEnemiesForLevelTransition();
+  expandMapForLevel(currentLevel);
+  scene.fog.near = 105 - Math.min(24, (currentLevel-1)*2.2);
+  scene.fog.far = 300 - Math.min(54, (currentLevel-1)*4.5);
+  syncLevelEnemyUnlocks(true);
+  showLevelBanner(currentLevel);
+  setTimeout(()=>{
+    cat = null;
+    catSpawnTriggered = false;
+    spawnCat();
+    levelTransitionActive = false;
+  }, 2100);
 }
 
 // -------------------------------------------------
@@ -3129,9 +3276,9 @@ function updateMouseEntity(m,dt){
       const a = Math.random() * Math.PI * 2;
       const r = rand(3, 10);
       m.target = new THREE.Vector3(
-        clamp(m.pos.x + Math.sin(a)*r, -HALF_MAP+6, HALF_MAP-6),
+        clamp(m.pos.x + Math.sin(a)*r, -dynamicHalfMap+6, dynamicHalfMap-6),
         0,
-        clamp(m.pos.z + Math.cos(a)*r, -HALF_MAP+6, HALF_MAP-6)
+        clamp(m.pos.z + Math.cos(a)*r, -dynamicHalfMap+6, dynamicHalfMap-6)
       );
       m.target.y = groundHeight(m.target.x, m.target.z);
     }
@@ -3300,6 +3447,9 @@ function makeEnemy(kind,x,z){
   if(kind==="burrowMole"){ model = makeMoleModel(); hp = 118; speed = 6.4; damage = 30; radius = 1.02; attackRange = 1.35; turnRate = 4.1; }
   if(kind==="siegeRat"){ model = makeSiegeRatModel(); hp = 275; speed = 4.2; damage = 18; radius = 1.28; attackRange = 1.52; turnRate = 1.45; }
   if(kind==="titanRam"){ model = makeTitanRamModel(); hp = 650; speed = 3.2; damage = 42; radius = 1.75; attackRange = 1.65; turnRate = 0.82; }
+  if(kind==="plagueBrute"){ model = makeTitanRamModel(); hp = 1600; speed = 2.5; damage = 78; radius = 2.0; attackRange = 1.95; turnRate = 0.75; }
+  if(kind==="venomLobber"){ model = makeSpitterBugModel(); hp = 340; speed = 4.2; damage = 52; radius = 1.25; attackRange = 18.5; turnRate = 2.6; }
+  if(kind==="warClaw"){ model = makeWeaselModel(); hp = 280; speed = 13.6; damage = 68; radius = 0.95; attackRange = 1.3; turnRate = 7.3; }
 
   const phaseTime = Math.max(0, time - 60);
   const powerScale = 1 + phaseTime * 0.0016;
@@ -3307,8 +3457,9 @@ function makeEnemy(kind,x,z){
   const levelScale = 1 + (enemyLevel - 1) * 0.04;
   const eliteChance = clamp((time - 260) / 380, 0, 0.35) * difficulty.elites;
   const elite = Math.random() < eliteChance && !["ram","titanRam","siegeRat"].includes(kind);
-  hp *= powerScale * levelScale;
-  damage *= powerScale * (1 + (enemyLevel - 1) * 0.03);
+  const progressionScale = getEnemyLevelMultiplier();
+  hp *= powerScale * levelScale * progressionScale;
+  damage *= powerScale * (1 + (enemyLevel - 1) * 0.03) * progressionScale;
   speed *= (1 + phaseTime * 0.00045) * (["rat","assassin","weasel"].includes(kind) ? (1 + (enemyLevel - 1) * 0.004) : 1);
   if(elite){
     hp *= 1.55;
@@ -3318,7 +3469,7 @@ function makeEnemy(kind,x,z){
 
   model.position.set(x, groundHeight(x,z), z);
   scene.add(model);
-  const largeKinds = new Set(["weasel","ram","siegeRat","titanRam"]);
+  const largeKinds = new Set(["weasel","ram","siegeRat","titanRam","plagueBrute"]);
   const wide = largeKinds.has(kind) ? (kind==="titanRam" ? 2.5 : 1.9) : 1.4;
   const bar = createHealthBar(wide, 0x3aeb58);
   bar.position.y = kind==="titanRam" ? 3.0 : (largeKinds.has(kind) ? 2.35 : 1.8);
@@ -3380,6 +3531,19 @@ function makeEnemy(kind,x,z){
   if(kind==="titanRam"){
     e.role = "breaker";
     e.speed *= 0.82;
+  }
+  if(kind==="plagueBrute"){
+    e.role = "breaker";
+    e.speed *= 0.75;
+  }
+  if(kind==="venomLobber"){
+    e.role = "backline";
+    e.spitCd = rand(1.0, 2.2);
+    e.spitImpactRadius = 2.45;
+  }
+  if(kind==="warClaw"){
+    e.role = "supportHunter";
+    e.dashCd = rand(1.4, 2.5);
   }
   if(elite){
     e.group.traverse(c=>{ if(c.isMesh && c.material && c.material.color) c.material.color.offsetHSL(0.02, 0.08, 0.1); });
@@ -3454,7 +3618,7 @@ function chooseEnemyTarget(e){
     if(supportStructure && dist2(e.pos, supportStructure.pos) < 52) return supportStructure;
     if(!player.dead && dist2(e.pos, player.pos) < 18 && !lineBlocked(e.pos, player.pos)) return player;
   }
-  if(e.kind==="spitterBug"){
+  if(e.kind==="spitterBug" || e.kind==="venomLobber"){
     let bestBackline = null;
     let bestScore = 9999;
     for(const m of servantMice){
@@ -3489,6 +3653,20 @@ function chooseEnemyTarget(e){
     }
     if(bestCluster) return bestCluster;
   }
+  if(e.kind==="plagueBrute"){
+    const siegeTarget = nearestAttackableStructure(e, 999, s => ["wall","diamondWall","ultraWall","fortPlate","barrierTotem","turret","factory","mechaHangar"].includes(s.type));
+    if(siegeTarget) return siegeTarget;
+  }
+  if(e.kind==="venomLobber"){
+    const artillery = nearestAttackableStructure(e, 999, s => ["turret","breedingNest","factory","gasMine","advancedRobo","mechaHangar","railGun"].includes(s.type));
+    if(artillery) return artillery;
+  }
+  if(e.kind==="warClaw"){
+    for(const m of servantMice){ if(!m.dead && !m.dying && dist2(e.pos,m.pos)<45) return m; }
+    for(const r of robots){ if(!r.dead && !r.dying && dist2(e.pos,r.pos)<45) return r; }
+    const support = nearestAttackableStructure(e, 999, s => ["supplyNest","breedingNest","factory","gasMine","advancedRobo","workshop"].includes(s.type));
+    if(support) return support;
+  }
 
   const nearPlayer = !player.dead && dist2(e.pos, player.pos) < 16;
   if(!player.dead && nearPlayer && !lineBlocked(e.pos, player.pos)) return player;
@@ -3520,6 +3698,9 @@ function chooseEnemyTarget(e){
     mole: { wall: 2.2, diamondWall: 2.0, ultraWall: 2.1, fortPlate: 1.6, barrierTotem: 1.4, braceTower: 1.2, turret: 0.85, cannon: 0.8 },
     weasel: { turret: 2.1, cannon: 2.0, mortarBloom: 1.85, zapCoil: 1.7, sawBlaster: 1.75, robo: 1.35, beacon: 1.25, wall: 0.7, diamondWall: 0.6, ultraWall: 0.68 },
     spitterBug: { turret: 2.0, cannon: 1.85, mortarBloom: 1.7, breedingNest: 1.8, factory: 1.55, wall: 0.45, diamondWall: 0.4, ultraWall: 0.46 },
+    venomLobber: { turret: 2.35, cannon: 2.1, mortarBloom: 2.0, breedingNest: 2.1, factory: 1.8, wall: 0.35, diamondWall: 0.3, ultraWall: 0.32 },
+    plagueBrute: { wall: 2.8, diamondWall: 2.75, ultraWall: 2.9, fortPlate: 2.45, barrierTotem: 2.3, braceTower: 2.1, gasDepot: 1.85 },
+    warClaw: { supplyNest: 2.25, breedingNest: 2.4, factory: 2.0, gasMine: 2.1, advancedRobo: 2.1, mechaHangar: 2.05, wall: 0.45 },
     siegeRat: { wall: 2.6, diamondWall: 2.55, ultraWall: 2.75, gasDepot: 2.25, turret: 2.0, advancedRobo: 1.65, fortPlate: 1.75 },
     titanRam: { wall: 2.25, diamondWall: 2.1, ultraWall: 2.3, fortPlate: 2.2, barrierTotem: 2.0, braceTower: 1.9, gasDepot: 1.5, mechaHangar: 1.65 }
   };
@@ -3590,8 +3771,8 @@ function updateEnemies(dt){
         }
         if(e.burrowTimer <= 0){
           const tp = e.burrowTarget || e.pos;
-          e.pos.x = clamp(tp.x + rand(-1.1,1.1), -HALF_MAP+5, HALF_MAP-5);
-          e.pos.z = clamp(tp.z + rand(-1.1,1.1), -HALF_MAP+5, HALF_MAP-5);
+          e.pos.x = clamp(tp.x + rand(-1.1,1.1), -dynamicHalfMap+5, dynamicHalfMap-5);
+          e.pos.z = clamp(tp.z + rand(-1.1,1.1), -dynamicHalfMap+5, dynamicHalfMap-5);
           e.pos.y = groundHeight(e.pos.x,e.pos.z);
           e.burrowState = "surfacing";
           e.burrowTimer = 0.55;
@@ -3636,7 +3817,7 @@ function updateEnemies(dt){
           vel:new THREE.Vector3(horiz.x * (8.2 + d2*0.22), 8.8 + d2*0.12, horiz.z * (8.2 + d2*0.22)),
           damage:e.damage,
           splash:e.spitImpactRadius || 1.75,
-          color:0x8cff71,
+          color:e.kind==="venomLobber" ? 0x74ff4a : 0x8cff71,
           size:0.18,
           from:"enemy",
           kind:"acid",
@@ -3771,7 +3952,7 @@ function updateEnemies(dt){
       }
     } else if(!isStunned && d > meleeStopDistance(e, e.target || moveTarget, 0.1)){
       let speedScale = 1;
-      if(e.kind==="spitterBug"){
+      if(e.kind==="spitterBug" || e.kind==="venomLobber"){
         const frontline = enemies.some(other => other!==e && !other.dead && !other.dying && ["siegeRat","titanRam","ram","weasel","mole","burrowMole"].includes(other.kind) && dist2(other.pos, e.pos) < 12 && dist2(other.pos, targetPos) < dist2(e.pos, targetPos));
         speedScale = frontline ? 0.82 : 1.05;
       }
@@ -3864,7 +4045,7 @@ function updateEnemies(dt){
     e.pos.y = groundHeight(e.pos.x,e.pos.z);
     e.group.rotation.y = e.heading;
     if(e.kind==="weasel") animateWeaselRig(e.group, 1, e.anim, e.attackAnim, 0);
-    else if(e.kind==="spitterBug") animateSpitterBugRig(e.group, 0.8, e.anim, e.attackAnim);
+    else if(e.kind==="spitterBug" || e.kind==="venomLobber") animateSpitterBugRig(e.group, 0.8, e.anim, e.attackAnim);
     else if(e.kind==="titanRam") animateTitanRamRig(e.group, e.titanState==="charge" ? 1.3 : 0.7, e.anim, e.attackAnim);
     else animateMouseRig(e.group, e.kind==="siegeRat" ? 0.55 : 0.95, e.anim, e.attackAnim + (e.heavySwing>0 ? 0.5 : 0), 0);
   }
@@ -3876,6 +4057,7 @@ function updateEnemies(dt){
 function spawnCat(){
   if(cat || catSpawnTriggered) return;
   catSpawnTriggered = true;
+  const catLevelStats = getCatLevelStats();
 
   const tele = new THREE.Mesh(
     new THREE.CylinderGeometry(3.5,3.5,0.08,24),
@@ -3886,7 +4068,7 @@ function spawnCat(){
 
   let pulse = 0;
   const pulseId = setInterval(()=>{
-    if(gameOver || gameWon){ clearInterval(pulseId); tele.parent?.remove(tele); return; }
+    if(gameOver){ clearInterval(pulseId); tele.parent?.remove(tele); return; }
     pulse += 0.08;
     tele.scale.setScalar(1 + Math.sin(pulse*10)*0.12);
     tele.material.opacity = 0.38 + Math.sin(pulse*12)*0.2 + 0.22;
@@ -3921,8 +4103,9 @@ function spawnCat(){
     cat = {
       group:model,
       pos:model.position,
-      hp:7600,
-      maxHp:7600,
+      hp:catLevelStats.hp,
+      maxHp:catLevelStats.hp,
+      damage:catLevelStats.damage,
       speed:5.9,
       sprint:8.6,
       radius:2.2,
@@ -3959,7 +4142,7 @@ function spawnCat(){
 
     ui.bossWrap.style.display = "block";
     ui.bossLabel.style.display = "block";
-    showCenter("The Cat Has Spawned!", 2.2);
+    showCenter(`Level ${currentLevel} Cat Spawned!`, 2.2);
   }, 3000);
 }
 function catChooseTarget(){
@@ -3974,7 +4157,7 @@ function catChooseTarget(){
     return player;
   }
 
-  if(!player.dead && (cat.aggroMemory > 0 || playerDist < MAP_SIZE)){
+  if(!player.dead && (cat.aggroMemory > 0 || playerDist < dynamicMapSize)){
     if(cat.aggroMemory <= 0) cat.aggroMemory = pursuitMemory * 0.45;
     if(playerDist < 52) return { pos:cat.lastSeenPlayerPos.clone().lerp(player.pos, 0.35), radius:1.0, isMemoryTarget:true, isPlayerMemory:true };
   }
@@ -4009,7 +4192,7 @@ function catChooseTarget(){
   }
   if(nearestRobot && nearestRobotD < 26) return nearestRobot;
 
-  const bestStructure = nearestAttackableStructure(cat, MAP_SIZE);
+  const bestStructure = nearestAttackableStructure(cat, dynamicMapSize);
   if(bestStructure) return bestStructure;
   return null;
 }
@@ -4048,8 +4231,8 @@ function pickDetourWaypoint(entity, targetPos, ignoreStructure=null){
         0,
         entity.pos.z + toTarget.z * segment + normal.z * offset * side
       );
-      wp.x = clamp(wp.x, -HALF_MAP+3.2, HALF_MAP-3.2);
-      wp.z = clamp(wp.z, -HALF_MAP+3.2, HALF_MAP-3.2);
+      wp.x = clamp(wp.x, -dynamicHalfMap+3.2, dynamicHalfMap-3.2);
+      wp.z = clamp(wp.z, -dynamicHalfMap+3.2, dynamicHalfMap-3.2);
       wp.y = groundHeight(wp.x, wp.z);
       const radius = entity.radius || 1.1;
       if(circleBlocked(wp.x, wp.z, radius, ignoreStructure)) continue;
@@ -4058,8 +4241,8 @@ function pickDetourWaypoint(entity, targetPos, ignoreStructure=null){
       candidates.push({ wp, routeCost, side });
       for(const cornerOffset of [2.2, -2.2]){
         const wp2 = wp.clone().add(new THREE.Vector3(normal.x*cornerOffset,0,normal.z*cornerOffset));
-        wp2.x = clamp(wp2.x, -HALF_MAP+3.2, HALF_MAP-3.2);
-        wp2.z = clamp(wp2.z, -HALF_MAP+3.2, HALF_MAP-3.2);
+        wp2.x = clamp(wp2.x, -dynamicHalfMap+3.2, dynamicHalfMap-3.2);
+        wp2.z = clamp(wp2.z, -dynamicHalfMap+3.2, dynamicHalfMap-3.2);
         if(circleBlocked(wp2.x, wp2.z, radius, ignoreStructure)) continue;
         if(lineBlockedForCat(wp, wp2) || lineBlockedForCat(wp2, targetPos)) continue;
         candidates.push({ wp, wp2, routeCost:routeCost + dist2(wp,wp2)*0.6, side });
@@ -4111,7 +4294,7 @@ function updateCat(dt){
   } else {
     cat.visibleAggro = false;
     if(dist2(cat.pos, cat.prowlTarget) < 4){
-      cat.prowlTarget.set(rand(-HALF_MAP+18, HALF_MAP-18), 0, rand(-HALF_MAP+18, HALF_MAP-18));
+      cat.prowlTarget.set(rand(-dynamicHalfMap+18, dynamicHalfMap-18), 0, rand(-dynamicHalfMap+18, dynamicHalfMap-18));
     }
     moveTarget = cat.prowlTarget;
   }
@@ -4183,8 +4366,8 @@ function updateCat(dt){
       cat.attackAnim = 1;
       const dx = Math.sin(cat.heading), dz = Math.cos(cat.heading);
       addBurst(cat.pos.x + dx*1.5, cat.pos.y+2.0, cat.pos.z + dz*1.5, 0xff7f50, 20, 6, 0.7, 0.09);
-      const catDamage = 24 + catRamp * 10;
-      const catStructureDamage = 26 + catRamp * 12;
+      const catDamage = cat.damage + catRamp * 10;
+      const catStructureDamage = cat.damage * 1.08 + catRamp * 12;
       if(hitTarget === player) applyDamageToLiving(player, catDamage, cat.pos);
       else if(isLivingTarget(hitTarget)) applyDamageToLiving(hitTarget, catDamage * 1.12, hitTarget.pos);
       else if(hitTarget && !hitTarget.dead) damageStructure(hitTarget, catStructureDamage * (cat.failedRoute > 2 ? 1.45 : 1));
@@ -4963,7 +5146,7 @@ function updatePlayer(dt){
     animateMouseRig(player.group, 0, player.animTime, 0, clamp(player.deathT * 2, 0, 1));
     return;
   }
-  if(gameWon) return;
+  if(levelTransitionActive) return;
 
   player.travel.stateTime += dt;
   player.travel.inputLock = Math.max(0, player.travel.inputLock - dt);
@@ -5089,7 +5272,7 @@ function updatePlayer(dt){
 }
 function tryPlaceStructure(){
   const selected = getSelectedBuildData();
-  if(gameOver || gameWon || !selected) return;
+  if(gameOver || levelTransitionActive || !selected) return;
   if(cheese < selected.cost){ showCenter("Not enough cheese", 1); return; }
   if(gas < (selected.gasCost||0)){ showCenter("Not enough gas", 1); return; }
 
@@ -5152,6 +5335,9 @@ let lastSpitterSpawn = 250;
 let lastBurrowSpawn = 340;
 let lastSiegeSpawn = 440;
 let lastTitanSpawn = 560;
+let lastPlagueSpawn = 620;
+let lastVenomSpawn = 590;
+let lastWarClawSpawn = 700;
 
 function updateCheeses(dt){
   for(const c of cheeses){
@@ -5171,6 +5357,7 @@ function updateCheeses(dt){
   }
 }
 function updateSpawners(dt){
+  if(levelTransitionActive) return;
   updateCombatDirector(dt);
   syncEnemyUnlockStages();
   cheeseSpawnTimer += dt;
@@ -5246,6 +5433,24 @@ function updateSpawners(dt){
       spawnEnemyWave("titanRam", count);
       showCenter("TITAN RAM APPROACHING", 1.0);
     }
+    if(unlockedEnemyKinds.has("venomLobber") && time - lastVenomSpawn >= clamp(108 / difficulty.wave - phase * 0.0035, 35, 115)){
+      lastVenomSpawn = time;
+      const count = clamp(Math.floor((0.8 + phase/360 + combatDirector.heat*0.4) * difficulty.wave), 1, difficultyKey==="brutal" ? 5 : 3);
+      spawnEnemyWave("venomLobber", count);
+      showCenter("VENOM LOBBERS x" + count, 0.9);
+    }
+    if(unlockedEnemyKinds.has("plagueBrute") && time - lastPlagueSpawn >= clamp(132 / difficulty.wave - phase * 0.0026, 42, 148)){
+      lastPlagueSpawn = time;
+      const count = clamp(Math.floor((0.6 + phase/420) * difficulty.wave), 1, difficultyKey==="brutal" ? 3 : 2);
+      spawnEnemyWave("plagueBrute", count);
+      showCenter("PLAGUE BRUTE ADVANCE", 1.0);
+    }
+    if(unlockedEnemyKinds.has("warClaw") && time - lastWarClawSpawn >= clamp(86 / difficulty.wave - phase * 0.004, 24, 90)){
+      lastWarClawSpawn = time;
+      const count = clamp(Math.floor((1 + phase/300 + combatDirector.heat*0.5) * difficulty.wave), 1, difficultyKey==="brutal" ? 5 : 3);
+      spawnEnemyWave("warClaw", count);
+      showCenter("WAR CLAWS x" + count, 0.9);
+    }
     const supportCount = servantMice.filter(m=>!m.dead && !m.dying).length + robots.filter(r=>!r.dead && !r.dying).length;
     if(time >= 300 && time - lastAssassinSpawn >= clamp(62 / difficulty.wave - phase*0.005, 20, 60)){
       lastAssassinSpawn = time;
@@ -5269,6 +5474,9 @@ function updateSpawners(dt){
       if(unlockedEnemyKinds.has("burrowMole")) surgePool.push("burrowMole");
       if(unlockedEnemyKinds.has("siegeRat")) surgePool.push("siegeRat");
       if(unlockedEnemyKinds.has("titanRam") && Math.random() < 0.22) surgePool.push("titanRam");
+      if(unlockedEnemyKinds.has("venomLobber")) surgePool.push("venomLobber");
+      if(unlockedEnemyKinds.has("plagueBrute")) surgePool.push("plagueBrute");
+      if(unlockedEnemyKinds.has("warClaw")) surgePool.push("warClaw");
       spawnEnemyWave(surgePool[Math.floor(Math.random()*surgePool.length)], surge);
       showCenter("Surge Wave x" + surge, 0.85);
     }
@@ -5282,34 +5490,37 @@ function spawnEnemyWave(kind,count){
     const flankSpawn = difficulty.flank > 0.2 && Math.random() < (0.22 + combatDirector.heat*0.1);
     if(useCatCenter && !flankSpawn){
       const a = Math.random() * Math.PI * 2;
-      const r = rand(2.0, (kind==="ram" || kind==="titanRam") ? 7.5 : 5.5);
-      x = clamp(center.x + Math.sin(a)*r, -HALF_MAP+6, HALF_MAP-6);
-      z = clamp(center.z + Math.cos(a)*r, -HALF_MAP+6, HALF_MAP-6);
+      const r = rand(2.0, (kind==="ram" || kind==="titanRam" || kind==="plagueBrute") ? 7.5 : 5.5);
+      x = clamp(center.x + Math.sin(a)*r, -dynamicHalfMap+6, dynamicHalfMap-6);
+      z = clamp(center.z + Math.cos(a)*r, -dynamicHalfMap+6, dynamicHalfMap-6);
     } else {
       const toPlayer = Math.atan2(player.pos.x, player.pos.z);
       const sideA = toPlayer + (Math.random()<0.5 ? 1 : -1) * (Math.PI * rand(0.35, 0.7));
       if(flankSpawn){
-        x = clamp(Math.sin(sideA) * (HALF_MAP - rand(7,12)), -HALF_MAP+6, HALF_MAP-6);
-        z = clamp(Math.cos(sideA) * (HALF_MAP - rand(7,12)), -HALF_MAP+6, HALF_MAP-6);
+        x = clamp(Math.sin(sideA) * (dynamicHalfMap - rand(7,12)), -dynamicHalfMap+6, dynamicHalfMap-6);
+        z = clamp(Math.cos(sideA) * (dynamicHalfMap - rand(7,12)), -dynamicHalfMap+6, dynamicHalfMap-6);
       } else {
         const edge = Math.floor(Math.random()*4);
-        if(edge===0){ x = -HALF_MAP+5; z = rand(-HALF_MAP+8, HALF_MAP-8); }
-        if(edge===1){ x = HALF_MAP-5; z = rand(-HALF_MAP+8, HALF_MAP-8); }
-        if(edge===2){ z = -HALF_MAP+5; x = rand(-HALF_MAP+8, HALF_MAP-8); }
-        if(edge===3){ z = HALF_MAP-5; x = rand(-HALF_MAP+8, HALF_MAP-8); }
+        if(edge===0){ x = -dynamicHalfMap+5; z = rand(-dynamicHalfMap+8, dynamicHalfMap-8); }
+        if(edge===1){ x = dynamicHalfMap-5; z = rand(-dynamicHalfMap+8, dynamicHalfMap-8); }
+        if(edge===2){ z = -dynamicHalfMap+5; x = rand(-dynamicHalfMap+8, dynamicHalfMap-8); }
+        if(edge===3){ z = dynamicHalfMap-5; x = rand(-dynamicHalfMap+8, dynamicHalfMap-8); }
       }
       x += rand(-2,2); z += rand(-2,2);
     }
     if(dist2({x,z}, player.pos) < 11){
       const away = new THREE.Vector3(x-player.pos.x,0,z-player.pos.z).normalize();
-      x = clamp(player.pos.x + away.x * rand(11,16), -HALF_MAP+6, HALF_MAP-6);
-      z = clamp(player.pos.z + away.z * rand(11,16), -HALF_MAP+6, HALF_MAP-6);
+      x = clamp(player.pos.x + away.x * rand(11,16), -dynamicHalfMap+6, dynamicHalfMap-6);
+      z = clamp(player.pos.z + away.z * rand(11,16), -dynamicHalfMap+6, dynamicHalfMap-6);
     }
     const e = makeEnemy(kind, x, z);
     if(kind==="spitterBug") addBurst(x, groundHeight(x,z)+0.8, z, 0x8dff78, 8, 2.8, 0.35, 0.05);
     if(kind==="burrowMole") addBurst(x, groundHeight(x,z)+0.25, z, 0x8f6a40, 10, 3.0, 0.4, 0.06);
     if(kind==="siegeRat") addBurst(x, groundHeight(x,z)+0.95, z, 0xb8d4e2, 10, 3.1, 0.42, 0.06);
     if(kind==="titanRam") addBurst(x, groundHeight(x,z)+1.1, z, 0xffaa57, 14, 4.8, 0.6, 0.08);
+    if(kind==="venomLobber") addBurst(x, groundHeight(x,z)+0.9, z, 0x8dff5a, 12, 3.8, 0.5, 0.07);
+    if(kind==="plagueBrute") addBurst(x, groundHeight(x,z)+1.2, z, 0x86ff9e, 16, 4.6, 0.62, 0.08);
+    if(kind==="warClaw") addBurst(x, groundHeight(x,z)+0.95, z, 0xff7d64, 12, 4.4, 0.42, 0.07);
     if(useCatCenter) setRepathPoint(e, center, 5.5);
   }
 }
@@ -5318,7 +5529,7 @@ function spawnEnemyWave(kind,count){
 // DEATH / GAME OVER
 // -------------------------------------------------
 function diePlayer(){
-  if(player.dead || gameWon) return;
+  if(player.dead || levelTransitionActive) return;
   player.dead = true;
   gameOver = true;
   addBloodHit(player.pos.x, player.pos.y+0.9, player.pos.z, 1.35);
@@ -5335,6 +5546,7 @@ function updateUI(){
   ui.gas.textContent = Math.floor(gas);
   ui.servants.textContent = servantMice.filter(m => !m.dead).length;
   ui.time.textContent = time.toFixed(1);
+  ui.level.textContent = currentLevel;
   updateEnemyUnlockWarning();
 }
 
@@ -5345,7 +5557,7 @@ function animate(){
   requestAnimationFrame(animate);
   const dt = Math.min(0.033, clock.getDelta());
 
-  if(!gameOver && !gameWon) time += dt;
+  if(!gameOver) time += dt;
 
   updateSpawners(dt);
   updateCheeses(dt);
