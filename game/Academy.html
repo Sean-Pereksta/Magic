@@ -830,25 +830,31 @@ function createHealthBar(width=1.6, color=0x3aeb58){
     new THREE.PlaneGeometry(width*0.98,0.11),
     new THREE.MeshBasicMaterial({ color, side:THREE.DoubleSide, depthTest:false, depthWrite:false })
   );
+  const fillHolder = new THREE.Group();
+  fillHolder.position.x = -(width * 0.98) * 0.5;
+  fg.position.x = (width * 0.98) * 0.5;
   bg.position.z = 0.004;
   missing.position.z = 0.009;
   fg.position.z = 0.014;
-  g.add(bg, missing, fg);
+  fillHolder.add(fg);
+  g.add(bg, missing, fillHolder);
   g.renderOrder = 150;
   bg.renderOrder = 150;
   missing.renderOrder = 151;
+  fillHolder.renderOrder = 152;
   fg.renderOrder = 152;
-  g.userData = { fg, width, bg, missing };
+  g.userData = { bg, missing, fillHolder, fg, width };
   return g;
 }
+function normalizeHealthFrac(value){
+  if(!Number.isFinite(value)) return 1;
+  return clamp(value, 0, 1);
+}
 function setHealthBar(bar, frac){
-  if(!bar?.userData?.fg) return;
-  const safeFrac = clamp(frac,0,1);
-  const minVisible = safeFrac > 0 ? 0.03 : 0;
-  const displayFrac = Math.max(minVisible, safeFrac);
-  const fillWidth = bar.userData.width * 0.98;
-  bar.userData.fg.scale.x = displayFrac;
-  bar.userData.fg.position.x = -(fillWidth * 0.5) + (fillWidth * displayFrac * 0.5);
+  if(!bar?.userData?.fg || !bar?.userData?.fillHolder) return;
+  const safeFrac = normalizeHealthFrac(frac);
+  bar.userData.fillHolder.scale.x = safeFrac;
+  bar.userData.fillHolder.visible = safeFrac > 0;
   if(bar.userData.fg?.material){
     const low = new THREE.Color(0xff4f4f);
     const high = new THREE.Color(0x34eb72);
@@ -2568,7 +2574,15 @@ function damageStructure(s,dmg){
     addBurst(s.pos.x, s.pos.y+1.2, s.pos.z, 0xffcc66, 28, 6.8, 0.95, 0.11);
     if(s.beam){ scene.remove(s.beam); s.beam = null; }
     if(s.cell) occupiedCells.delete(cellKey(s.cell.cx, s.cell.cz));
-    if(s.type==="gasMine" && s.vent) s.vent.mine = null;
+    if(s.type==="gasMine"){
+      if(s.assignedServant?.assignedGasMine === s){
+        s.assignedServant.assignedGasMine = null;
+        s.assignedServant.gasJobState = null;
+        s.assignedServant.carryingGas = false;
+      }
+      s.assignedServant = null;
+      if(s.vent) s.vent.mine = null;
+    }
     scene.remove(s.mesh);
     s.mesh.visible = false;
   }
@@ -2862,6 +2876,23 @@ function recruitMouse(m){
   addBurst(m.pos.x, m.pos.y+0.9, m.pos.z, 0x8effa0, 16, 5, 0.75, 0.09);
   showCenter("A Mouse Joined You!", 1.1);
 }
+function isValidGasWorkerForMine(worker, mine){
+  if(!worker || !mine) return false;
+  if(worker.dead || worker.dying || worker.state !== "servant") return false;
+  if(worker.assignedMechaHangar) return false;
+  if(worker.assignedGasMine && worker.assignedGasMine !== mine) return false;
+  return true;
+}
+function getEligibleGasWorkersForMine(mine){
+  return servantMice.filter(m => isValidGasWorkerForMine(m, mine));
+}
+function pickRandomNearestGasWorker(mine, nearestPoolSize = 3){
+  const candidates = getEligibleGasWorkersForMine(mine);
+  if(!candidates.length) return null;
+  candidates.sort((a,b)=>dist2(a.pos, mine.pos) - dist2(b.pos, mine.pos));
+  const pool = candidates.slice(0, Math.max(1, nearestPoolSize));
+  return pool[(Math.random() * pool.length) | 0] || null;
+}
 function updateMouseEntity(m,dt){
   if (m.dead) return;
   if (m.dying) {
@@ -2890,6 +2921,12 @@ function updateMouseEntity(m,dt){
       m.target.y = groundHeight(m.target.x, m.target.z);
     }
   } else {
+    if(m.assignedGasMine && !isValidGasWorkerForMine(m, m.assignedGasMine)){
+      if(m.assignedGasMine.assignedServant === m) m.assignedGasMine.assignedServant = null;
+      m.assignedGasMine = null;
+      m.gasJobState = null;
+      m.carryingGas = false;
+    }
     if(m.assignedMechaHangar && (!m.assignedMechaHangar.dead) && m.assignedMechaHangar.mechaPending){
       m.target = m.assignedMechaHangar.pos;
       if(dist2(m.pos, m.assignedMechaHangar.pos) < 1.5){
@@ -4291,9 +4328,20 @@ function updateStructures(dt){
       }
     }
     if(s.type==="gasMine"){
-      if(!s.assignedServant || s.assignedServant.dead || s.assignedServant.dying || s.assignedServant.state!=="servant"){
-        s.assignedServant = servantMice.find(m => !m.dead && !m.dying && !m.assignedGasMine && !m.assignedMechaHangar) || null;
-        if(s.assignedServant) s.assignedServant.assignedGasMine = s;
+      if(s.assignedServant && !isValidGasWorkerForMine(s.assignedServant, s)){
+        if(s.assignedServant.assignedGasMine === s){
+          s.assignedServant.assignedGasMine = null;
+          s.assignedServant.gasJobState = null;
+          s.assignedServant.carryingGas = false;
+        }
+        s.assignedServant = null;
+      }
+      if(!s.assignedServant){
+        s.assignedServant = pickRandomNearestGasWorker(s, 3);
+        if(s.assignedServant){
+          s.assignedServant.assignedGasMine = s;
+          s.assignedServant.gasJobState = s.assignedServant.gasJobState || "toMine";
+        }
       }
     }
     if(s.type==="mechaHangar" && s.mechaPending){
@@ -4762,14 +4810,19 @@ function updateSpawners(dt){
 
   if(time >= 60 && cat && !cat.dead && !cat.dying){
     const phase = Math.max(0, time - 60);
+    const earlyRatT = clamp(time / 300, 0, 1);
+    const earlyRatSlowFactor = 1.25 - (0.25 * earlyRatT);
+    const earlyRatCountPenalty = time < 120 ? 2 : (time < 300 ? 1 : 0);
     const activeCap = Math.floor(clamp((12 + phase/28) * difficulty.cap, 10, 66));
     if(enemies.length > activeCap) return;
-    const ratCadence = clamp(30 / difficulty.wave - phase * 0.01, 11, 34);
+    const baseRatCadence = clamp(30 / difficulty.wave - phase * 0.01, 11, 34);
+    const ratCadence = baseRatCadence * earlyRatSlowFactor;
     const moleCadence = clamp(45 / difficulty.wave - phase * 0.008, 18, 58);
     const weaselCadence = clamp(55 / difficulty.wave - phase * 0.007, 24, 66);
     if(time - lastRatSpawn >= ratCadence){
       lastRatSpawn = time;
-      const count = clamp(Math.floor((2 + phase/64 + combatDirector.heat*1.2) * difficulty.wave), 2, 16);
+      const baseRatCount = Math.floor((2 + phase/64 + combatDirector.heat*1.2) * difficulty.wave);
+      const count = clamp(baseRatCount - earlyRatCountPenalty, 2, 16);
       spawnEnemyWave("rat", count);
       showCenter("Rat Wave x" + count, 0.8);
     }
