@@ -5165,6 +5165,12 @@ function updateCat(dt){
 
   cat.targetRetargetCd = Math.max(0, (cat.targetRetargetCd || 0) - dt);
   cat.navRepathCd = Math.max(0, (cat.navRepathCd || 0) - dt);
+  const clearCatPendingAttack = ()=>{
+    cat.pendingAttackTarget = null;
+    cat.attackWindup = 0;
+    if(cat.telegraphRing) cat.telegraphRing.material.opacity = 0;
+    if(cat.telegraphArc) cat.telegraphArc.material.opacity = 0;
+  };
   const catTargetInvalid = !isEnemyTargetCandidateAlive(cat.target);
   if(catTargetInvalid || cat.targetRetargetCd <= 0){
     cat.target = catChooseTarget();
@@ -5225,13 +5231,14 @@ function updateCat(dt){
   if(cat.smartWaypoint) moveTarget = cat.smartWaypoint;
   if(cat.repathTimer > 0 && cat.repathTarget) moveTarget = cat.repathTarget;
 
-  const d = dist2(cat.pos, moveTarget);
-  if(target && d < 9.5 && target===player && cat.burstT<=0 && cat.abilityCd<=0 && Math.random()<0.013*difficulty.specials){
+  const actualTargetPos = target ? (target.pos || target) : null;
+  const actualTargetDist = actualTargetPos ? dist2(cat.pos, actualTargetPos) : Infinity;
+  if(target && target===player && actualTargetDist < 9.5 && cat.burstT<=0 && cat.abilityCd<=0 && Math.random()<0.013*difficulty.specials){
     cat.burstT = 0.85;
     cat.abilityCd = 5.7 / difficulty.specials;
     addBurst(cat.pos.x,cat.pos.y+2.3,cat.pos.z,0xff8b52,16,5.6,0.62,0.1);
   }
-  if(target===player && cat.lungeCd<=0 && d < meleeStopDistance(cat, player, 1.45) && d > meleeStopDistance(cat, player, 0.2) && Math.random() < 0.014 * difficulty.specials){
+  if(target===player && cat.lungeCd<=0 && actualTargetDist < meleeStopDistance(cat, player, 1.45) && actualTargetDist > meleeStopDistance(cat, player, 0.2) && Math.random() < 0.014 * difficulty.specials){
     const dir = new THREE.Vector3(moveTarget.x-cat.pos.x,0,moveTarget.z-cat.pos.z).normalize();
     const lunge = collisionPushOut(cat.pos.x + dir.x*3.2, cat.pos.z + dir.z*3.2, cat.radius, true, null);
     cat.pos.x = lunge.x; cat.pos.z = lunge.z;
@@ -5239,7 +5246,7 @@ function updateCat(dt){
     addBurst(cat.pos.x,cat.pos.y+2.0,cat.pos.z,0xffb067,14,4.2,0.52,0.09);
   }
 
-  if(d > meleeStopDistance(cat, target || {radius:0.5}, 0.22)){
+  if(actualTargetDist > meleeStopDistance(cat, target || {radius:0.5}, 0.22)){
     const step = directSteerToward({ pos:cat.pos, speed:moveSpeed, radius:cat.radius }, moveTarget, dt, true, (target && !isWallStructure(target)) ? null : target);
     if(step){
       cat.heading += clamp(angleDiff(cat.heading, step.heading), -cat.turnRate*dt, cat.turnRate*dt);
@@ -5254,23 +5261,38 @@ function updateCat(dt){
     cat.attackAnim = 0.65;
   }
   if(cat.attackWindup > 0 && cat.pendingAttackTarget){
-    const pulse = 0.5 + Math.sin(time*24) * 0.5;
-    if(cat.telegraphRing) cat.telegraphRing.material.opacity = (0.2 + pulse * 0.28) * (cat.pendingAttackIsHeavy ? 1 : 0.65);
-    if(cat.telegraphArc){
-      cat.telegraphArc.material.opacity = (0.3 + pulse * 0.44) * (cat.pendingAttackIsHeavy ? 1 : 0.7);
-      cat.telegraphArc.rotation.z = -cat.heading + Math.PI/2;
-    }
-    if(cat.attackWindup <= 0.001){
-      const hitTarget = cat.pendingAttackTarget;
-      cat.pendingAttackTarget = null;
-      cat.attackAnim = 1;
-      const dx = Math.sin(cat.heading), dz = Math.cos(cat.heading);
-      addBurst(cat.pos.x + dx*1.5, cat.pos.y+2.0, cat.pos.z + dz*1.5, 0xff7f50, 20, 6, 0.7, 0.09);
-      const catDamage = cat.damage + catRamp * 10;
-      const catStructureDamage = cat.damage * 1.08 + catRamp * 12;
-      if(hitTarget === player) applyDamageToLiving(player, catDamage, cat.pos);
-      else if(isLivingTarget(hitTarget)) applyDamageToLiving(hitTarget, catDamage * 1.12, hitTarget.pos);
-      else if(hitTarget && !hitTarget.dead) damageStructure(hitTarget, catStructureDamage * (cat.failedRoute > 2 ? 1.45 : 1));
+    const pendingTarget = cat.pendingAttackTarget;
+    const pendingPos = pendingTarget ? (pendingTarget.pos || pendingTarget) : null;
+    const pendingRangeSlack = 0.55;
+    const pendingMaxRange = meleeStopDistance(cat, pendingTarget || {radius:0.5}, 0.22) + pendingRangeSlack;
+    const pendingDist = pendingPos ? dist2(cat.pos, pendingPos) : Infinity;
+    const hardRedirected = !!(cat.repathTimer > 0.2 && cat.repathTarget && pendingPos && dist2(cat.repathTarget, pendingPos) > 20);
+    if(!isEnemyTargetCandidateAlive(pendingTarget) || pendingDist > pendingMaxRange || hardRedirected){
+      clearCatPendingAttack();
+    } else {
+      const pulse = 0.5 + Math.sin(time*24) * 0.5;
+      if(cat.telegraphRing) cat.telegraphRing.material.opacity = (0.2 + pulse * 0.28) * (cat.pendingAttackIsHeavy ? 1 : 0.65);
+      if(cat.telegraphArc){
+        cat.telegraphArc.material.opacity = (0.3 + pulse * 0.44) * (cat.pendingAttackIsHeavy ? 1 : 0.7);
+        cat.telegraphArc.rotation.z = -cat.heading + Math.PI/2;
+      }
+      if(cat.attackWindup <= 0.001){
+        const hitTarget = cat.pendingAttackTarget;
+        cat.pendingAttackTarget = null;
+        cat.attackAnim = 1;
+        const dx = Math.sin(cat.heading), dz = Math.cos(cat.heading);
+        addBurst(cat.pos.x + dx*1.5, cat.pos.y+2.0, cat.pos.z + dz*1.5, 0xff7f50, 20, 6, 0.7, 0.09);
+        const catDamage = cat.damage + catRamp * 10;
+        const catStructureDamage = cat.damage * 1.08 + catRamp * 12;
+        const liveTargetPos = hitTarget ? (hitTarget.pos || hitTarget) : null;
+        const liveHitRange = meleeStopDistance(cat, hitTarget || {radius:0.5}, 0.22) + 0.35;
+        const liveTargetDist = liveTargetPos ? dist2(cat.pos, liveTargetPos) : Infinity;
+        if(liveTargetDist <= liveHitRange){
+          if(hitTarget === player) applyDamageToLiving(player, catDamage, cat.pos);
+          else if(isLivingTarget(hitTarget)) applyDamageToLiving(hitTarget, catDamage * 1.12, hitTarget.pos);
+          else if(hitTarget && !hitTarget.dead) damageStructure(hitTarget, catStructureDamage * (cat.failedRoute > 2 ? 1.45 : 1));
+        }
+      }
     }
   }
   if(cat.telegraphRing && cat.attackWindup <= 0){ cat.telegraphRing.material.opacity = 0; }
