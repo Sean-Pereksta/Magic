@@ -342,6 +342,7 @@ const servantMice = [];
 const robots = [];
 const gasVents = [];
 const occupiedCells = new Map();
+const terrainOccupiedCells = new Map();
 const repairBeams = [];
 const engineerMice = [];
 let gamePaused = false;
@@ -514,6 +515,24 @@ function worldToCell(x,z){
   };
 }
 function cellToWorld(cx,cz){ return { x:cx*GRID_SIZE, z:cz*GRID_SIZE }; }
+function getFootprintCellsForTerrain(terrain){
+  if(!terrain) return [];
+  if(Array.isArray(terrain.occupiedFootprint) && terrain.occupiedFootprint.length){
+    return terrain.occupiedFootprint.map(cell => ({ cx:cell.cx, cz:cell.cz }));
+  }
+  const center = worldToCell(terrain.x || 0, terrain.z || 0);
+  return [{ cx:center.cx, cz:center.cz }];
+}
+function markTerrainOccupiedCells(terrain){
+  const footprint = getFootprintCellsForTerrain(terrain);
+  terrain.occupiedFootprint = footprint;
+  for(const cell of footprint){
+    terrainOccupiedCells.set(cellKey(cell.cx, cell.cz), terrain);
+  }
+}
+function isCellBlockedByTerrain(cx, cz){
+  return terrainOccupiedCells.has(cellKey(cx, cz));
+}
 function getEnemyLevel(){ return 1 + Math.floor(Math.max(0, time - 60) / 90); }
 function getCatRoundHpMultiplier(){ return Math.pow(2, currentLevel - 1); }
 function getEnemyRoundMultiplier(){ return Math.pow(1.5, currentLevel - 1); }
@@ -792,7 +811,9 @@ function createRock(x,z,sx,sy,sz,color=0x6d7379){
   m.position.set(x, groundHeight(x,z) + sy*0.7, z);
   m.castShadow = m.receiveShadow = true;
   scene.add(m);
-  obstacles.push({ x,z,r:Math.max(sx,sz)*0.95, mesh:m });
+  const terrain = { x,z,r:Math.max(sx,sz)*0.95, mesh:m };
+  markTerrainOccupiedCells(terrain);
+  obstacles.push(terrain);
 }
 function createCliff(x,z,sx,sy,sz){
   const geo = new THREE.BoxGeometry(sx,sy,sz);
@@ -801,7 +822,9 @@ function createCliff(x,z,sx,sy,sz){
   m.position.set(x, groundHeight(x,z) + sy/2, z);
   m.castShadow = m.receiveShadow = true;
   scene.add(m);
-  obstacles.push({ x,z,r:Math.max(sx,sz)*0.56, mesh:m });
+  const terrain = { x,z,r:Math.max(sx,sz)*0.56, mesh:m };
+  markTerrainOccupiedCells(terrain);
+  obstacles.push(terrain);
 }
 function createBush(x,z){
   const g = new THREE.Group();
@@ -951,9 +974,15 @@ function expandMapForLevel(newLevel){
 
 function circleBlocked(x,z,r, ignoreStructure=null, structureSpacingScale=1, opts=null){
   const ignoreWallsForBurrow = !!opts?.ignoreWallsForBurrow;
+  const ignoreTerrainForBuild = !!opts?.ignoreTerrainForBuild;
   if(x < -dynamicHalfMap+2 || x > dynamicHalfMap-2 || z < -dynamicHalfMap+2 || z > dynamicHalfMap-2) return true;
-  for(const o of obstacles){
-    if(Math.hypot(x-o.x, z-o.z) < r + o.r) return true;
+  if(!ignoreTerrainForBuild){
+    for(const o of obstacles){
+      if(Math.hypot(x-o.x, z-o.z) < r + o.r) return true;
+    }
+  } else {
+    const cell = worldToCell(x, z);
+    if(isCellBlockedByTerrain(cell.cx, cell.cz)) return true;
   }
   for(const s of structures){
     if(s.dead || s===ignoreStructure) continue;
@@ -3160,13 +3189,14 @@ function getBuildValidation(selected, x, z){
   const c = worldToCell(x,z);
   const key = cellKey(c.cx,c.cz);
   if(occupiedCells.has(key)) return { ok:false, reason:"Cell occupied", cell:c };
+  if(isCellBlockedByTerrain(c.cx, c.cz)) return { ok:false, reason:"Terrain occupied", cell:c };
   if(selected.prereq && !hasStructureType(selected.prereq)) return { ok:false, reason:`Need ${prettyTypeName(selected.prereq)}`, cell:c };
   if(selected.requiresVent){
     const vent = gasVents.find(v => v.cx===c.cx && v.cz===c.cz);
     if(!vent) return { ok:false, reason:"Gas mine must be on vent", cell:c };
     if(vent.mine && !vent.mine.dead) return { ok:false, reason:"Vent already mined", cell:c };
   }
-  if(circleBlocked(x,z,selected.radius, null, 0.75)) return { ok:false, reason:"Cannot build there", cell:c };
+  if(circleBlocked(x,z,selected.radius, null, 0.75, { ignoreTerrainForBuild:true })) return { ok:false, reason:"Cannot build there", cell:c };
   return { ok:true, reason:"", cell:c };
 }
 function beaconBuffAt(x,z){
@@ -3608,6 +3638,56 @@ function updateGasMineDebugLabel(mine){
   label.material.map.needsUpdate = true;
   label.quaternion.copy(camera.quaternion);
 }
+function updateGasMineServant(m, dt){
+  const mine = m.assignedGasMine;
+  if(!mine || mine.dead){
+    clearServantGasMineAssignment(m);
+    return false;
+  }
+  if(mine.assignedServant && mine.assignedServant !== m){
+    clearServantGasMineAssignment(m);
+    return false;
+  }
+  mine.assignedServant = m;
+  m.assignedFactory = null;
+  m.repairTarget = null;
+  if(!m.gasJobState) m.gasJobState = "toMine";
+  if(!["toMine","mining","toDeposit"].includes(m.gasJobState)) m.gasJobState = "toMine";
+
+  if(m.gasJobState === "toMine"){
+    m.target = mine.pos;
+    if(dist2(m.pos, mine.pos) < 1.5){
+      m.gasJobState = "mining";
+      m.gasMineTimer = getGasMiningDuration();
+    }
+  } else if(m.gasJobState === "mining"){
+    m.target = mine.pos;
+    if(dist2(m.pos, mine.pos) < 1.7){
+      m.gasMineTimer = Math.max(0, (m.gasMineTimer || getGasMiningDuration()) - dt);
+      m.attackAnim = 1;
+      m.group.position.y += Math.sin(time*14) * 0.01;
+      if(Math.random() < 0.06) addCogParticle(m.pos.x+rand(-0.2,0.2), m.pos.y+0.8, m.pos.z+rand(-0.2,0.2));
+      if(m.gasMineTimer <= 0){ m.gasJobState = "toDeposit"; m.carryingGas = true; }
+    }
+  } else if(m.gasJobState === "toDeposit"){
+    let depot = null, depotD = Infinity;
+    for(const s of structures){
+      if(s.dead || s.type!=="gasDepot") continue;
+      const d = dist2(mine.pos, s.pos);
+      if(d < depotD){ depotD = d; depot = s; }
+    }
+    m.target = depot ? depot.pos : mine.pos;
+    if(dist2(m.pos, m.target) < 1.5){
+      const payout = getEconomyGasPerTrip();
+      gas += payout;
+      popWorldText(`+${payout}⛽`, m.pos.x, m.pos.y + 1.5, m.pos.z, "#9fffe4");
+      m.gasJobState = "toMine";
+      m.carryingGas = false;
+      m.target = mine.pos;
+    }
+  }
+  return true;
+}
 function updateMouseEntity(m,dt){
   if(gamePaused) return;
   if (m.dead) return;
@@ -3640,6 +3720,22 @@ function updateMouseEntity(m,dt){
     if(m.assignedGasMine && !isValidGasWorkerForMine(m, m.assignedGasMine)){
       clearServantGasMineAssignment(m);
     }
+    if(m.assignedGasMine && !m.assignedGasMine.dead){
+      if(updateGasMineServant(m, dt)){
+        const to = m.target || m.pos;
+        const desired = Math.atan2(to.x - m.pos.x, to.z - m.pos.z);
+        m.heading = angleLerp(m.heading, desired, dt*9);
+        const moveSpeed = m.speed * getServantSpeedMultiplier();
+        m.pos.x += Math.sin(m.heading) * moveSpeed * dt;
+        m.pos.z += Math.cos(m.heading) * moveSpeed * dt;
+        m.pos.y = groundHeight(m.pos.x,m.pos.z);
+        m.group.position.copy(m.pos);
+        m.group.rotation.y = m.heading;
+        const walking = dist2(m.pos,to) > 0.4 ? 1 : 0.4;
+        animateMouseRig(m.group, walking, m.anim, m.attackAnim, 0);
+        return;
+      }
+    }
     if(!m.assignedGasMine && m.assignedMechaHangar && (!m.assignedMechaHangar.dead) && m.assignedMechaHangar.mechaPending){
       m.target = m.assignedMechaHangar.pos;
       if(dist2(m.pos, m.assignedMechaHangar.pos) < 1.5){
@@ -3651,42 +3747,7 @@ function updateMouseEntity(m,dt){
         return;
       }
     }
-    if(m.assignedGasMine && !m.assignedGasMine.dead){
-      m.repairTarget = null;
-      const mine = m.assignedGasMine;
-      if(!m.gasJobState) m.gasJobState = "toMine";
-      if(m.gasJobState === "toMine"){
-        m.target = mine.pos;
-        if(dist2(m.pos, mine.pos) < 1.5){
-          m.gasJobState = "mining";
-          m.gasMineTimer = getGasMiningDuration();
-        }
-      } else if(m.gasJobState === "mining"){
-        m.target = mine.pos;
-        if(dist2(m.pos, mine.pos) < 1.7){
-          m.gasMineTimer = Math.max(0, (m.gasMineTimer || getGasMiningDuration()) - dt);
-          m.attackAnim = 1;
-          m.group.position.y += Math.sin(time*14) * 0.01;
-          if(Math.random() < 0.06) addCogParticle(m.pos.x+rand(-0.2,0.2), m.pos.y+0.8, m.pos.z+rand(-0.2,0.2));
-          if(m.gasMineTimer <= 0){ m.gasJobState = "toDeposit"; m.carryingGas = true; }
-        }
-      } else if(m.gasJobState === "toDeposit"){
-        let depot = null, depotD = Infinity;
-        for(const s of structures){
-          if(s.dead || s.type!=="gasDepot") continue;
-          const d = dist2(mine.pos, s.pos);
-          if(d < depotD){ depotD = d; depot = s; }
-        }
-        m.target = depot ? depot.pos : mine.pos;
-        if(dist2(m.pos, m.target) < 1.5){
-          const payout = getEconomyGasPerTrip();
-          gas += payout;
-          popWorldText(`+${payout}⛽`, m.pos.x, m.pos.y + 1.5, m.pos.z, "#9fffe4");
-          m.gasJobState = "toMine";
-          m.carryingGas = false;
-        }
-      }
-    } else {
+    if(m.assignedGasMine && m.assignedGasMine.dead){
       clearServantGasMineAssignment(m);
     }
 
