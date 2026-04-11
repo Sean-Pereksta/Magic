@@ -327,16 +327,16 @@ const CATEGORY_BUILDS = {
     { slot:5, name:"Workshop", cost:12, gasCost:20, type:"workshop", hp:180, radius:2.5, prereq:"gasMine" },
     { slot:6, name:"Advanced Robo Foundry", cost:14, gasCost:24, type:"advancedRobo", hp:190, radius:2.8, prereq:"workshop" },
     { slot:7, name:"Mecha Hangar", cost:16, gasCost:26, type:"mechaHangar", hp:210, radius:2.9, prereq:"workshop" },
-    { slot:8, name:"Beacon", cost:20, gasCost:8, type:"beacon", hp:100, radius:2.1, prereq:"workshop" },
+    { slot:8, name:"Phase Teleporter", cost:20, gasCost:12, type:"teleporter", hp:122, radius:2.2, prereq:"workshop" },
     { slot:9, name:"Robo Facility", cost:12, gasCost:6, type:"robo", hp:145, radius:2.6, prereq:"workshop" },
-    { slot:0, name:"Scout Post", cost:7, gasCost:0, type:"scoutPost", hp:82, radius:2.0 }
+    { slot:0, name:"Arc Launcher", cost:15, gasCost:10, type:"launcher", hp:136, radius:2.1, prereq:"workshop" }
   ]
 };
 const BUILD_ICONS = {
   factory:"🧀", fountain:"💧", supplyNest:"📦", beacon:"📡", robo:"⚙️", scoutPost:"👁️", breedingNest:"🐣", gasDepot:"🛢️", gasMine:"♨️",
   wall:"🧱", diamondWall:"💎", ultraWall:"🧿", barrierTotem:"🛡️", braceTower:"🏛️", repairAnchor:"🔧", fortPlate:"🪙",
   turret:"🎯", cannon:"💥", shardLauncher:"🔱", zapCoil:"⚡", mortarBloom:"🌸", sawBlaster:"🪚",
-  workshop:"🏭", advancedRobo:"🤖", mechaHangar:"🚀"
+  workshop:"🏭", advancedRobo:"🤖", mechaHangar:"🚀", launcher:"🚀", teleporter:"🌀"
 };
 
 function getSelectedBuildData() {
@@ -1436,10 +1436,131 @@ const player = {
   isLiving:true,
   animTime:0,
   attackAnim:0,
-  deathT:0
+  deathT:0,
+  travelState:"normal",
+  travel:{
+    state:"normal",
+    stateTime:0,
+    inputLock:0,
+    launcherCooldown:0,
+    teleporterCooldown:0,
+    launchData:null,
+    landingRecovery:0
+  }
 };
 player.group.position.copy(player.pos);
 scene.add(player.group);
+
+const PLAYER_TRAVEL_STATES = {
+  normal:"normal",
+  launching:"launching",
+  airborne:"airborne",
+  teleporting:"teleporting",
+  landingRecovery:"landingRecovery"
+};
+
+function setPlayerTravelState(state){
+  player.travel.state = state;
+  player.travelState = state;
+  player.travel.stateTime = 0;
+}
+function isWithinMapBounds(x,z,pad=1.35){
+  return x > -HALF_MAP + pad && x < HALF_MAP - pad && z > -HALF_MAP + pad && z < HALF_MAP - pad;
+}
+function isTravelCellOpen(cx,cz,ignoreStructure=null){
+  if(cx < -GRID_HALF_CELLS || cx > GRID_HALF_CELLS || cz < -GRID_HALF_CELLS || cz > GRID_HALF_CELLS) return false;
+  const w = cellToWorld(cx,cz);
+  return !circleBlocked(w.x, w.z, player.radius * 0.95, ignoreStructure, 1);
+}
+function getTeleporterExitPoint(target, preferDir){
+  const c = target.cell || worldToCell(target.pos.x, target.pos.z);
+  const dirs = [preferDir, (preferDir+1)%4, (preferDir+3)%4, (preferDir+2)%4];
+  let best = null;
+  for(const dir of dirs){
+    const side = [[0,1],[1,0],[0,-1],[-1,0]][dir];
+    const cx = c.cx + side[0];
+    const cz = c.cz + side[1];
+    if(!isTravelCellOpen(cx, cz, target)) continue;
+    const w = cellToWorld(cx,cz);
+    const score = Math.hypot(w.x - player.pos.x, w.z - player.pos.z);
+    if(!best || score < best.score){
+      best = { x:w.x, z:w.z, dir, score };
+    }
+  }
+  return best;
+}
+function tryTriggerLauncher(launcher){
+  if(player.dead || gameWon || player.travel.state !== PLAYER_TRAVEL_STATES.normal || player.travel.launcherCooldown > 0) return;
+  if(dist2(player.pos, launcher.pos) > 1.35) return;
+  const dir = new THREE.Vector3(Math.sin(launcher.rotationY || 0), 0, Math.cos(launcher.rotationY || 0)).normalize();
+  const start = player.pos.clone();
+  const maxRange = GRID_SIZE * 11;
+  const step = GRID_SIZE * 0.5;
+  let end = start.clone();
+  let clippedToEdge = false;
+  for(let d=step; d<=maxRange; d += step){
+    const test = start.clone().addScaledVector(dir, d);
+    if(!isWithinMapBounds(test.x, test.z, 2.6)){
+      clippedToEdge = true;
+      break;
+    }
+    if(circleBlocked(test.x, test.z, player.radius*0.9, launcher, 1)){
+      break;
+    }
+    end.copy(test);
+  }
+  if(dist2(start, end) < GRID_SIZE*2) return;
+  player.travel.launchData = {
+    source:launcher,
+    start,
+    end,
+    dir,
+    t:0,
+    duration:1.45,
+    arcHeight:Math.max(9.5, Math.hypot(end.x-start.x, end.z-start.z) * 0.45),
+    clippedToEdge,
+    dropMode:false,
+    dropStartY:start.y + 6.3,
+    dropVel:0
+  };
+  setPlayerTravelState(PLAYER_TRAVEL_STATES.launching);
+  player.travel.inputLock = 0.35;
+  player.travel.launcherCooldown = 1.55;
+  launcher.travelCooldown = 1.55;
+  addBurst(start.x, start.y+0.6, start.z, 0x88dcff, 18, 4.6, 0.55, 0.09);
+}
+function tryTriggerTeleporter(entry){
+  if(player.dead || gameWon || player.travel.state !== PLAYER_TRAVEL_STATES.normal || player.travel.teleporterCooldown > 0) return;
+  if((entry.travelCooldown||0) > 0) return;
+  if(dist2(player.pos, entry.pos) > 1.45) return;
+  const others = structures.filter(s => !s.dead && s.type==="teleporter" && s!==entry);
+  if(!others.length) return;
+  let target = others[0], bestD = dist2(entry.pos, others[0].pos);
+  for(let i=1;i<others.length;i++){
+    const d = dist2(entry.pos, others[i].pos);
+    if(d < bestD){ bestD = d; target = others[i]; }
+  }
+  const facingToEntry = Math.atan2(entry.pos.x - target.pos.x, entry.pos.z - target.pos.z);
+  const preferDir = Math.round((facingToEntry / (Math.PI/2))) & 3;
+  const exit = getTeleporterExitPoint(target, preferDir);
+  if(!exit) return;
+
+  setPlayerTravelState(PLAYER_TRAVEL_STATES.teleporting);
+  player.travel.inputLock = 0.26;
+  player.travel.teleporterCooldown = 1.05;
+  entry.travelCooldown = 1.05;
+  target.travelCooldown = 1.05;
+  addBurst(entry.pos.x, entry.pos.y+1.25, entry.pos.z, 0x8ca4ff, 16, 3.2, 0.42, 0.08);
+  addBurst(entry.pos.x, entry.pos.y+0.4, entry.pos.z, 0x67efff, 12, 2.1, 0.35, 0.07);
+
+  player.pos.x = exit.x;
+  player.pos.z = exit.z;
+  player.pos.y = groundHeight(exit.x, exit.z);
+  const side = [[0,1],[1,0],[0,-1],[-1,0]][exit.dir];
+  player.heading = Math.atan2(side[0], side[1]);
+  addBurst(exit.x, player.pos.y+1.1, exit.z, 0xc8f3ff, 22, 3.8, 0.5, 0.09);
+  addBurst(target.pos.x, target.pos.y+1.25, target.pos.z, 0xa099ff, 10, 2.7, 0.38, 0.07);
+}
 
 // -------------------------------------------------
 // BUILD GRID / TELEGRAPH
@@ -1806,7 +1927,8 @@ function structureColor(type){
     factory:0xfff09d, robo:0xc0c7d5, fountain:0x8ef7ff, shardLauncher:0xffd3a5, zapCoil:0xb6a6ff,
     mortarBloom:0xff98b5, sawBlaster:0xffb38f, barrierTotem:0x9ce6ff, braceTower:0xbef0c0,
     repairAnchor:0x93fff5, fortPlate:0xa7ceff, supplyNest:0xfff3b5, scoutPost:0xcff4ff,
-    breedingNest:0xffd8aa, gasDepot:0x9df3d3, gasMine:0x8bd4c3, workshop:0xaec4d8, advancedRobo:0x8ad9ff, mechaHangar:0xffbf90
+    breedingNest:0xffd8aa, gasDepot:0x9df3d3, gasMine:0x8bd4c3, workshop:0xaec4d8, advancedRobo:0x8ad9ff, mechaHangar:0xffbf90,
+    launcher:0x88deff, teleporter:0x9ea1ff
   };
   return colors[type] || 0xffffff;
 }
@@ -2037,6 +2159,75 @@ function createStructureMesh(type){
     eye.position.y = 2.95;
     g.add(post, eye);
     g.userData.eye = eye;
+  }
+  if(type==="launcher"){
+    commonBase.material.color.set(0x455063);
+    commonBase.material.metalness = 0.68;
+    commonBase.material.roughness = 0.24;
+    const pad = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.05,1.2,0.34,20),
+      new THREE.MeshStandardMaterial({ color:0x90a1bb, metalness:0.74, roughness:0.22 })
+    );
+    pad.position.y = 0.28;
+    const center = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.34,0.42,0.22,14),
+      new THREE.MeshStandardMaterial({ color:0x8bf6ff, emissive:0x2acbff, emissiveIntensity:0.88 })
+    );
+    center.position.y = 0.62;
+    const rails = new THREE.Group();
+    for(const side of [-1,1]){
+      const rail = new THREE.Mesh(
+        new THREE.BoxGeometry(0.14,0.3,1.65),
+        new THREE.MeshStandardMaterial({ color:0xc6e6ff, emissive:0x46ceff, emissiveIntensity:0.78 })
+      );
+      rail.position.set(side*0.55,0.6,0.2);
+      rails.add(rail);
+    }
+    const arc = new THREE.Mesh(
+      new THREE.TorusGeometry(0.72,0.08,10,26,Math.PI*1.35),
+      new THREE.MeshStandardMaterial({ color:0xd5f6ff, emissive:0x66d9ff, emissiveIntensity:0.9 })
+    );
+    arc.position.set(0,1.05,-0.16);
+    arc.rotation.set(0,Math.PI/2,Math.PI*0.2);
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.42,0.72,0.1,14),
+      new THREE.MeshBasicMaterial({ color:0x7ff3ff, transparent:true, opacity:0.42 })
+    );
+    beam.position.y = 0.7;
+    g.add(pad, center, rails, arc, beam);
+    g.userData.launcherCore = center;
+    g.userData.launcherRails = rails;
+    g.userData.launcherBeam = beam;
+  }
+  if(type==="teleporter"){
+    commonBase.material.color.set(0x3b4458);
+    commonBase.material.metalness = 0.72;
+    commonBase.material.roughness = 0.18;
+    const base = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.1,1.25,0.42,20),
+      new THREE.MeshStandardMaterial({ color:0x697487, metalness:0.58, roughness:0.32 })
+    );
+    base.position.y = 0.3;
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(0.98,0.12,14,32),
+      new THREE.MeshStandardMaterial({ color:0xbdcbff, emissive:0x6a73ff, emissiveIntensity:0.95, metalness:0.2, roughness:0.18 })
+    );
+    ring.position.y = 1.45;
+    ring.rotation.x = Math.PI/2;
+    const core = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.4,1.7),
+      new THREE.MeshBasicMaterial({ color:0x8e9fff, transparent:true, opacity:0.5, side:THREE.DoubleSide })
+    );
+    core.position.y = 1.45;
+    const halo = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.95,0.95,0.06,22),
+      new THREE.MeshBasicMaterial({ color:0x99f2ff, transparent:true, opacity:0.32 })
+    );
+    halo.position.y = 0.07;
+    g.add(base, ring, core, halo);
+    g.userData.teleporterRing = ring;
+    g.userData.teleporterCore = core;
+    g.userData.teleporterHalo = halo;
   }
 
   if(type==="barrierTotem"){
@@ -2321,7 +2512,7 @@ function createStructure(type,x,z,rotationY=0, dataOverride=null){
   const data = dataOverride || Object.values(CATEGORY_BUILDS).flat().find(v=>v.type===type);
   const mesh = createStructureMesh(type);
   mesh.position.set(x, groundHeight(x,z), z);
-  mesh.rotation.y = 0;
+  mesh.rotation.y = rotationY;
   scene.add(mesh);
   const cell = worldToCell(x,z);
 
@@ -2339,13 +2530,14 @@ function createStructure(type,x,z,rotationY=0, dataOverride=null){
     healCd:0,
     trapCd:0,
     assignedServant:null,
-    rotationY:0,
+    rotationY,
     cell,
     gasCarryCd:0,
     breedCd:25,
     mechaPending:type==="mechaHangar",
     isBeaconBuffed:false,
-    target:null
+    target:null,
+    travelCooldown:0
   };
   structures.push(s);
   occupiedCells.set(cellKey(cell.cx, cell.cz), s);
@@ -3956,6 +4148,47 @@ function updateStructures(dt){
 
   for(const s of structures){
     if(s.dead) continue;
+    if(s.travelCooldown > 0) s.travelCooldown = Math.max(0, s.travelCooldown - dt);
+
+    if(s.type==="launcher"){
+      const pulse = 0.5 + Math.sin(time*7 + s.pos.x*0.04 + s.pos.z*0.05) * 0.5;
+      const core = s.mesh.userData.launcherCore;
+      const rails = s.mesh.userData.launcherRails;
+      const beam = s.mesh.userData.launcherBeam;
+      if(core?.material) core.material.emissiveIntensity = 0.7 + pulse * 0.65;
+      if(rails){
+        rails.rotation.y += dt*1.2;
+        rails.position.y = 0.6 + pulse*0.06;
+      }
+      if(beam?.material){
+        beam.scale.setScalar(0.95 + pulse*0.25);
+        beam.material.opacity = 0.2 + pulse*0.28;
+      }
+      if(player.travel.state === PLAYER_TRAVEL_STATES.normal && dist2(player.pos, s.pos) < 4.8 && Math.random() < 0.03){
+        addBurst(s.pos.x, s.pos.y + 0.8, s.pos.z, 0x89deff, 2, 0.9, 0.22, 0.04);
+      }
+      tryTriggerLauncher(s);
+    }
+    if(s.type==="teleporter"){
+      const pulse = 0.5 + Math.sin(time*6 + s.pos.x*0.03) * 0.5;
+      const ring = s.mesh.userData.teleporterRing;
+      const core = s.mesh.userData.teleporterCore;
+      const halo = s.mesh.userData.teleporterHalo;
+      if(ring){
+        ring.rotation.y += dt*1.8;
+        ring.scale.setScalar(0.96 + pulse*0.12);
+        if(ring.material) ring.material.emissiveIntensity = 0.62 + pulse*0.78;
+      }
+      if(core?.material) core.material.opacity = 0.28 + pulse*0.42;
+      if(halo?.material){
+        halo.material.opacity = 0.2 + pulse*0.3;
+        halo.scale.setScalar(0.9 + pulse*0.32);
+      }
+      if(Math.random() < 0.025){
+        addBurst(s.pos.x + rand(-0.25,0.25), s.pos.y + rand(0.8,2.1), s.pos.z + rand(-0.25,0.25), 0x9ba0ff, 1, 0.9, 0.22, 0.04);
+      }
+      tryTriggerTeleporter(s);
+    }
 
     if(s.type==="beacon"){
       const top = s.mesh.userData.top;
@@ -4303,19 +4536,85 @@ function updatePlayer(dt){
   }
   if(gameWon) return;
 
-  const turnDir = (keys["a"] ? 1 : 0) + (keys["d"] ? -1 : 0);
+  player.travel.stateTime += dt;
+  player.travel.inputLock = Math.max(0, player.travel.inputLock - dt);
+  player.travel.launcherCooldown = Math.max(0, player.travel.launcherCooldown - dt);
+  player.travel.teleporterCooldown = Math.max(0, player.travel.teleporterCooldown - dt);
+
+  const controlLocked = player.travel.inputLock > 0 || player.travel.state !== PLAYER_TRAVEL_STATES.normal;
+  const turnDir = controlLocked ? 0 : (keys["a"] ? 1 : 0) + (keys["d"] ? -1 : 0);
   player.heading += turnDir * player.turnSpeed * dt;
 
   let moveInput = 0;
-  if(keys["w"]) moveInput += 1;
-  if(keys["s"]) moveInput -= 0.55;
+  if(!controlLocked){
+    if(keys["w"]) moveInput += 1;
+    if(keys["s"]) moveInput -= 0.55;
+  }
+
+  if(player.travel.state === PLAYER_TRAVEL_STATES.launching && player.travel.stateTime > 0.28){
+    setPlayerTravelState(PLAYER_TRAVEL_STATES.airborne);
+  }
+  if(player.travel.state === PLAYER_TRAVEL_STATES.teleporting && player.travel.stateTime > 0.08){
+    setPlayerTravelState(PLAYER_TRAVEL_STATES.landingRecovery);
+    player.travel.landingRecovery = 0.2;
+  }
+  if(player.travel.state === PLAYER_TRAVEL_STATES.landingRecovery){
+    player.travel.landingRecovery -= dt;
+    if(player.travel.landingRecovery <= 0){
+      setPlayerTravelState(PLAYER_TRAVEL_STATES.normal);
+    }
+  }
+
+  if(player.travel.state === PLAYER_TRAVEL_STATES.airborne && player.travel.launchData){
+    const launch = player.travel.launchData;
+    if(!launch.dropMode){
+      launch.t = clamp(launch.t + dt / launch.duration, 0, 1);
+      const nx = THREE.MathUtils.lerp(launch.start.x, launch.end.x, launch.t);
+      const nz = THREE.MathUtils.lerp(launch.start.z, launch.end.z, launch.t);
+      if(!isWithinMapBounds(nx, nz, 2.4)){
+        launch.dropMode = true;
+        launch.dropVel = 0;
+        launch.dropStartY = Math.max(player.pos.y, groundHeight(player.pos.x, player.pos.z) + launch.arcHeight * (1 - launch.t*0.45));
+      } else {
+        const arc = Math.sin(launch.t * Math.PI) * launch.arcHeight;
+        player.pos.x = nx;
+        player.pos.z = nz;
+        player.pos.y = groundHeight(nx, nz) + arc;
+      }
+    }
+    if(launch.dropMode){
+      launch.dropVel += 34 * dt;
+      player.pos.y = Math.max(groundHeight(player.pos.x, player.pos.z), (player.pos.y || launch.dropStartY) - launch.dropVel * dt);
+      if(player.pos.y <= groundHeight(player.pos.x, player.pos.z) + 0.01){
+        player.pos.y = groundHeight(player.pos.x, player.pos.z);
+        player.travel.launchData = null;
+        setPlayerTravelState(PLAYER_TRAVEL_STATES.landingRecovery);
+        player.travel.landingRecovery = 0.22;
+        addBurst(player.pos.x, player.pos.y+0.2, player.pos.z, 0xd6faff, 18, 3.8, 0.48, 0.08);
+      }
+    } else if(launch.t >= 1){
+      player.pos.x = launch.end.x;
+      player.pos.z = launch.end.z;
+      if(launch.clippedToEdge){
+        launch.dropMode = true;
+        launch.dropVel = 0;
+        player.pos.y = groundHeight(player.pos.x, player.pos.z) + launch.arcHeight * 0.42;
+      } else {
+        player.pos.y = groundHeight(player.pos.x, player.pos.z);
+        player.travel.launchData = null;
+        setPlayerTravelState(PLAYER_TRAVEL_STATES.landingRecovery);
+        player.travel.landingRecovery = 0.22;
+        addBurst(player.pos.x, player.pos.y+0.2, player.pos.z, 0xd6faff, 18, 3.8, 0.48, 0.08);
+      }
+    }
+  }
 
   const sprinting = keys["shift"] && moveInput > 0;
   const speed = sprinting ? player.sprintSpeed : player.moveSpeed;
   const vel = moveInput * speed;
   const forward = { x:Math.sin(player.heading), z:Math.cos(player.heading) };
 
-  if(Math.abs(vel) > 0.01){
+  if(Math.abs(vel) > 0.01 && player.travel.state === PLAYER_TRAVEL_STATES.normal){
     const desired = { x:forward.x * Math.sign(vel), z:forward.z * Math.sign(vel) };
     const step = steerMove({ pos:player.pos, speed:Math.abs(vel), radius:player.radius }, desired, dt, false);
     if(step){
@@ -4325,10 +4624,13 @@ function updatePlayer(dt){
     player.animTime += dt * (sprinting ? 1.5 : 1.0) * Math.abs(moveInput);
   }
 
-  player.pos.y = groundHeight(player.pos.x,player.pos.z);
+  if(player.travel.state !== PLAYER_TRAVEL_STATES.airborne){
+    player.pos.y = groundHeight(player.pos.x,player.pos.z);
+  }
   player.group.position.copy(player.pos);
   player.group.rotation.y = player.heading;
-  animateMouseRig(player.group, Math.abs(moveInput), player.animTime, player.attackAnim, 0);
+  const airborneAnim = player.travel.state === PLAYER_TRAVEL_STATES.airborne ? 0.55 : 0;
+  animateMouseRig(player.group, Math.abs(moveInput), player.animTime, player.attackAnim, airborneAnim);
 
   for(let i=cheeses.length-1;i>=0;i--){
     const c = cheeses[i];
