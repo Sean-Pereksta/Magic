@@ -330,24 +330,26 @@ const CATEGORY_BUILDS = {
     { slot:5, name:"Cheese Turret", cost:5, gasCost:0, type:"turret", hp:90, radius:2.0 },
     { slot:6, name:"Cheese Cannon", cost:10, gasCost:0, type:"cannon", hp:110, radius:2.2 },
     { slot:7, name:"Shard Launcher", cost:8, gasCost:0, type:"shardLauncher", hp:84, radius:2.0 },
-    { slot:8, name:"Zap Coil", cost:9, gasCost:2, type:"zapCoil", hp:76, radius:1.9 },
-    { slot:9, name:"Mortar Bloom", cost:12, gasCost:3, type:"mortarBloom", hp:94, radius:2.1, prereq:"workshop" },
-    { slot:0, name:"Saw Blaster", cost:11, gasCost:2, type:"sawBlaster", hp:96, radius:2.0, prereq:"workshop" }
+    { slot:8, name:"Zap Coil", cost:22, gasCost:14, type:"zapCoil", hp:110, radius:1.9, prereq:"workshop" },
+    { slot:9, name:"Mortar Bloom", cost:26, gasCost:18, type:"mortarBloom", hp:125, radius:2.1, prereq:"workshop" },
+    { slot:0, name:"Saw Blaster", cost:32, gasCost:22, type:"sawBlaster", hp:150, radius:2.0, prereq:"workshop" }
   ],
   5: [
-    { slot:5, name:"Workshop", cost:12, gasCost:20, type:"workshop", hp:180, radius:2.5, prereq:"gasMine" },
-    { slot:6, name:"Advanced Robo Foundry", cost:14, gasCost:24, type:"advancedRobo", hp:190, radius:2.8, prereq:"workshop" },
-    { slot:7, name:"Mecha Hangar", cost:16, gasCost:26, type:"mechaHangar", hp:210, radius:2.9, prereq:"workshop" },
-    { slot:8, name:"Sniper Tower", cost:14, gasCost:5, type:"sniperTower", hp:88, radius:2.0, prereq:"workshop" },
-    { slot:9, name:"Robo Facility", cost:12, gasCost:6, type:"robo", hp:145, radius:2.6, prereq:"workshop" },
-    { slot:0, name:"Rail Gun", cost:16, gasCost:7, type:"railGun", hp:102, radius:2.1, prereq:"workshop" }
+    { slot:5, name:"Workshop", cost:16, gasCost:24, type:"workshop", hp:195, radius:2.5, prereq:"gasMine" },
+    { slot:6, name:"Battery Structure", cost:14, gasCost:12, type:"battery", hp:170, radius:2.4, prereq:"workshop" },
+    { slot:7, name:"Advanced Battery", cost:34, gasCost:30, type:"advancedBattery", hp:285, radius:2.8, prereq:"workshop" },
+    { slot:8, name:"Sniper Tower", cost:28, gasCost:16, type:"sniperTower", hp:120, radius:2.0, prereq:"workshop" },
+    { slot:9, name:"Robo Facility", cost:24, gasCost:18, type:"robo", hp:185, radius:2.6, prereq:"workshop" },
+    { slot:0, name:"Rail Gun", cost:54, gasCost:42, type:"railGun", hp:165, radius:2.1, prereq:"workshop" },
+    { slot:1, name:"Advanced Robo Foundry", cost:42, gasCost:38, type:"advancedRobo", hp:255, radius:2.8, prereq:"workshop" },
+    { slot:2, name:"Mecha Hangar", cost:50, gasCost:44, type:"mechaHangar", hp:295, radius:2.9, prereq:"workshop" }
   ]
 };
 const BUILD_ICONS = {
   factory:"🧀", fountain:"💧", supplyNest:"📦", beacon:"📡", robo:"⚙️", scoutPost:"👁️", breedingNest:"🐣", gasDepot:"🛢️", gasMine:"♨️",
   wall:"🧱", diamondWall:"💎", ultraWall:"🧿", barrierTotem:"🛡️", braceTower:"🏛️", repairAnchor:"🔧", fortPlate:"🪙",
   turret:"🎯", cannon:"💥", shardLauncher:"🔱", zapCoil:"⚡", mortarBloom:"🌸", sawBlaster:"🪚", sniperTower:"🎯", railGun:"🧲",
-  workshop:"🏭", advancedRobo:"🤖", mechaHangar:"🚀", launcher:"🚀", teleporter:"🌀"
+  workshop:"🏭", advancedRobo:"🤖", mechaHangar:"🛸", launcher:"🚀", teleporter:"🌀", battery:"🔋", advancedBattery:"🪫"
 };
 
 function getSelectedBuildData() {
@@ -370,7 +372,7 @@ function updateBuildUI() {
       "3 Defensive",
       "4 Attack",
       "Q Tech",
-      "Then use 5 6 7 8 9 0",
+      "Then use 1 2 5 6 7 8 9 0",
       "Space places selected build"
     ];
     items.forEach((txt, i) => {
@@ -388,7 +390,10 @@ function updateBuildUI() {
     const icon = BUILD_ICONS[b.type] || "•";
     const prereqTxt = b.prereq && !hasStructureType(b.prereq) ? ` · Needs ${prettyTypeName(b.prereq)}` : "";
     const tip = b.requiresVent ? " · On vent only" : "";
-    div.innerHTML = `<span class="buildKey">${b.slot}</span><span class="buildIcon">${icon}</span>${b.name} (${b.cost}🧀/${b.gasCost||0}⛽)${prereqTxt}${tip}`;
+    const powerNeed = getStructurePowerRequirement(b.type);
+    const powerProvide = getStructurePowerProvided(b.type);
+    const powerTxt = powerNeed > 0 ? ` · Needs ${powerNeed}⚡` : (powerProvide > 0 ? ` · Provides ${powerProvide}⚡` : "");
+    div.innerHTML = `<span class="buildKey">${b.slot}</span><span class="buildIcon">${icon}</span>${b.name} (${b.cost}🧀/${b.gasCost||0}⛽)${prereqTxt}${tip}${powerTxt}`;
     ui.buildGrid.appendChild(div);
   }
 }
@@ -438,6 +443,9 @@ const SERVANT_REPAIR_INTERVAL = 0.65;
 const SERVANT_REPAIR_AMOUNT = 3.0;
 const LATE_GAME_START = 200;
 const LATE_GAME_PEAK = 760;
+const POWER_RADIUS = GRID_SIZE * 5;
+const POWER_SYMBOL_COLOR = 0xffdc5e;
+const LOW_POWER_SYMBOL_COLOR = 0xff6666;
 function getLateGameDefenseMultiplier(){
   const levelFactor = clamp((getEnemyLevel() - 2) / 9, 0, 1);
   const timeFactor = clamp((time - LATE_GAME_START) / (LATE_GAME_PEAK - LATE_GAME_START), 0, 1);
@@ -452,6 +460,47 @@ function getTowerLateScale(type){
   };
   return 1 + t * (gains[type] || 0.2);
 }
+function getStructurePowerRequirement(type){
+  const map = {
+    workshop:1, launcher:1, teleporter:1, robo:1, sniperTower:1,
+    advancedRobo:2, zapCoil:2, mortarBloom:2,
+    sawBlaster:3, mechaHangar:3, railGun:4
+  };
+  return map[type] || 0;
+}
+function getStructurePowerProvided(type){
+  if(type === "battery") return 1;
+  if(type === "advancedBattery") return 2;
+  return 0;
+}
+function isPowerSourceStructure(type){
+  return getStructurePowerProvided(type) > 0;
+}
+function isHighTechStructure(type){
+  return getStructurePowerRequirement(type) > 0 || isPowerSourceStructure(type);
+}
+function getNearbyPowerSources(targetStructure){
+  const nearby = [];
+  for(const s of structures){
+    if(s.dead || !isPowerSourceStructure(s.type)) continue;
+    if(dist2(s.pos, targetStructure.pos) <= POWER_RADIUS) nearby.push(s);
+  }
+  return nearby;
+}
+function updateStructurePowerStates(){
+  for(const s of structures){
+    if(s.dead) continue;
+    s.currentPowerNearby = 0;
+    if((s.powerRequired || 0) <= 0){
+      s.isPowered = true;
+      continue;
+    }
+    const nearby = getNearbyPowerSources(s);
+    s.currentPowerNearby = nearby.reduce((sum, src)=>sum + (src.powerProvided || 0), 0);
+    s.isPowered = s.currentPowerNearby >= s.powerRequired;
+  }
+}
+
 function hasStructureType(type){ return structures.some(s => !s.dead && s.type===type); }
 function prettyTypeName(type){
   const d = Object.values(CATEGORY_BUILDS).flat().find(v=>v.type===type);
@@ -1172,6 +1221,8 @@ function makeSymbolTexture(symbol, fill="#9bffb2"){
   return tex;
 }
 const DAZE_TEXTURE = makeSymbolTexture("💫", "#bfe7ff");
+const POWER_WARNING_TEXTURE = makeSymbolTexture("⚡", "#ffd85e");
+const POWER_FAIL_TEXTURE = makeSymbolTexture("⚡", "#ff6666");
 
 function createDazeSprite(){
   if(!DAZE_TEXTURE) return null;
@@ -1185,6 +1236,20 @@ function createDazeSprite(){
   sprite.scale.set(1.15, 1.15, 1);
   sprite.visible = false;
   sprite.renderOrder = 225;
+  return sprite;
+}
+
+function createPowerWarningSprite(){
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: POWER_WARNING_TEXTURE,
+    transparent: true,
+    depthTest: false,
+    depthWrite: false,
+    opacity: 0.95
+  }));
+  sprite.scale.set(0.9, 0.9, 1);
+  sprite.visible = false;
+  sprite.renderOrder = 226;
   return sprite;
 }
 
@@ -2198,7 +2263,7 @@ function structureColor(type){
     mortarBloom:0xff98b5, sawBlaster:0xffb38f, sniperTower:0x9ec6ff, railGun:0x95b5ff, barrierTotem:0x9ce6ff, braceTower:0xbef0c0,
     repairAnchor:0x93fff5, fortPlate:0xa7ceff, supplyNest:0xfff3b5, scoutPost:0xcff4ff,
     breedingNest:0xffd8aa, gasDepot:0x9df3d3, gasMine:0x8bd4c3, workshop:0xaec4d8, advancedRobo:0x8ad9ff, mechaHangar:0xffbf90,
-    launcher:0x88deff, teleporter:0x9ea1ff
+    launcher:0x88deff, teleporter:0x9ea1ff, battery:POWER_SYMBOL_COLOR, advancedBattery:0x7dd5ff
   };
   return colors[type] || 0xffffff;
 }
@@ -2498,6 +2563,49 @@ function createStructureMesh(type){
     g.userData.teleporterRing = ring;
     g.userData.teleporterCore = core;
     g.userData.teleporterHalo = halo;
+  }
+
+  if(type==="battery"){
+    commonBase.material.color.set(0x3f4e61);
+    commonBase.material.metalness = 0.58;
+    commonBase.material.roughness = 0.28;
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.45,1.8,1.45), new THREE.MeshStandardMaterial({ color:0x8da0b8, metalness:0.48, roughness:0.28 }));
+    body.position.y = 1.0;
+    const core = new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.32,1.6,14), new THREE.MeshStandardMaterial({ color:0xd2f3ff, emissive:0x54d0ff, emissiveIntensity:1.0 }));
+    core.position.y = 1.05;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.62,0.08,10,24), new THREE.MeshStandardMaterial({ color:0xaee7ff, emissive:0x59b9ff, emissiveIntensity:0.92 }));
+    ring.rotation.x = Math.PI/2;
+    ring.position.y = 1.25;
+    const floorRing = new THREE.Mesh(new THREE.RingGeometry(POWER_RADIUS-0.35, POWER_RADIUS+0.35, 56), new THREE.MeshBasicMaterial({ color:POWER_SYMBOL_COLOR, transparent:true, opacity:0.12, side:THREE.DoubleSide }));
+    floorRing.rotation.x = -Math.PI/2;
+    floorRing.position.y = 0.05;
+    g.add(body, core, ring, floorRing);
+    g.userData.powerCore = core;
+    g.userData.powerRing = ring;
+    g.userData.powerRadiusRing = floorRing;
+  }
+  if(type==="advancedBattery"){
+    commonBase.material.color.set(0x39435d);
+    commonBase.material.metalness = 0.72;
+    commonBase.material.roughness = 0.2;
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.92,1.08,2.25,16), new THREE.MeshStandardMaterial({ color:0x87a3bf, metalness:0.62, roughness:0.2 }));
+    body.position.y = 1.25;
+    const core = new THREE.Mesh(new THREE.CylinderGeometry(0.28,0.36,2.6,14), new THREE.MeshStandardMaterial({ color:0xcbf8ff, emissive:0x62d7ff, emissiveIntensity:1.25 }));
+    core.position.y = 1.45;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.84,0.1,10,30), new THREE.MeshStandardMaterial({ color:0xc8f4ff, emissive:0x74d6ff, emissiveIntensity:1.2 }));
+    ring.rotation.x = Math.PI/2;
+    ring.position.y = 1.45;
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(1.05,0.07,10,30), new THREE.MeshStandardMaterial({ color:0xd9fcff, emissive:0x6ff0ff, emissiveIntensity:1.1 }));
+    halo.rotation.x = Math.PI/2;
+    halo.position.y = 2.12;
+    const floorRing = new THREE.Mesh(new THREE.RingGeometry(POWER_RADIUS-0.4, POWER_RADIUS+0.4, 56), new THREE.MeshBasicMaterial({ color:0x7fd7ff, transparent:true, opacity:0.16, side:THREE.DoubleSide }));
+    floorRing.rotation.x = -Math.PI/2;
+    floorRing.position.y = 0.05;
+    g.add(body, core, ring, halo, floorRing);
+    g.userData.powerCore = core;
+    g.userData.powerRing = ring;
+    g.userData.powerHalo = halo;
+    g.userData.powerRadiusRing = floorRing;
   }
 
   if(type==="barrierTotem"){
@@ -2852,8 +2960,19 @@ function createStructure(type,x,z,rotationY=0, dataOverride=null){
     shield:0,
     maxShield:BARRIER_SHIELD_MAX,
     shieldRegenRate:0,
-    shieldFx:null
+    shieldFx:null,
+    powerRequired:getStructurePowerRequirement(type),
+    powerProvided:getStructurePowerProvided(type),
+    currentPowerNearby:0,
+    isPowered:true
   };
+  if(s.powerRequired > 0){
+    const powerWarningSprite = createPowerWarningSprite();
+    powerWarningSprite.position.set(0, 4.05, 0);
+    mesh.add(powerWarningSprite);
+    s.powerWarningSprite = powerWarningSprite;
+  }
+
   structures.push(s);
   occupiedCells.set(cellKey(cell.cx, cell.cz), s);
   if(type==="gasMine"){
@@ -4625,13 +4744,50 @@ function updateRepairBeams(dt) {
 function updateStructures(dt){
   updateBeaconGlow();
   updateRepairBeams(dt);
+  updateStructurePowerStates();
 
   for(const s of structures){
     if(s.dead) continue;
     updateStructureShieldFx(s, dt);
     if(s.travelCooldown > 0) s.travelCooldown = Math.max(0, s.travelCooldown - dt);
 
-    if(s.type==="launcher"){
+    if(s.powerWarningSprite){
+      const missingPower = Math.max(0, (s.powerRequired || 0) - (s.currentPowerNearby || 0));
+      s.powerWarningSprite.visible = missingPower > 0;
+      if(s.powerWarningSprite.visible){
+        s.powerWarningSprite.material.map = (s.currentPowerNearby || 0) > 0 ? POWER_WARNING_TEXTURE : POWER_FAIL_TEXTURE;
+        s.powerWarningSprite.material.opacity = 0.75 + Math.sin(time*8 + s.pos.x*0.1) * 0.2;
+        s.powerWarningSprite.position.y = 4.05 + Math.sin(time*7 + s.pos.z*0.07) * 0.12;
+        s.powerWarningSprite.quaternion.copy(camera.quaternion);
+      }
+    }
+
+    const canRun = (s.powerRequired || 0) <= 0 || s.isPowered;
+    if(isHighTechStructure(s.type) && s.mesh.userData.powerCore?.material){
+      const pulse = 0.5 + Math.sin(time*6 + s.pos.x*0.08 + s.pos.z*0.03) * 0.5;
+      s.mesh.userData.powerCore.material.emissiveIntensity = (canRun ? 0.6 : 0.12) + pulse * (canRun ? 0.9 : 0.15);
+    }
+    if(isPowerSourceStructure(s.type)) {
+      const ring = s.mesh.userData.powerRing;
+      const halo = s.mesh.userData.powerHalo;
+      const aura = s.mesh.userData.powerRadiusRing;
+      if(ring){
+        ring.rotation.y += dt * (s.type === "advancedBattery" ? 2.2 : 1.4);
+        ring.position.y = (s.type === "advancedBattery" ? 1.45 : 1.25) + Math.sin(time*5 + s.pos.x*0.02) * 0.05;
+      }
+      if(halo){
+        halo.rotation.z += dt * 1.6;
+        halo.position.y = 2.12 + Math.sin(time*4.2)*0.08;
+      }
+      if(aura?.material){
+        aura.material.opacity = (s.type === "advancedBattery" ? 0.12 : 0.09) + Math.sin(time*3.2 + s.pos.z*0.03) * 0.02;
+      }
+      if(Math.random() < (s.type === "advancedBattery" ? 0.03 : 0.018)){
+        addBurst(s.pos.x + rand(-0.35,0.35), s.pos.y + rand(1.0,2.4), s.pos.z + rand(-0.35,0.35), s.type === "advancedBattery" ? 0x8fe8ff : 0xffe27b, 2, 1.1, 0.24, 0.045);
+      }
+    }
+
+    if(s.type==="launcher" && canRun){
       const pulse = 0.5 + Math.sin(time*7 + s.pos.x*0.04 + s.pos.z*0.05) * 0.5;
       const core = s.mesh.userData.launcherCore;
       const rails = s.mesh.userData.launcherRails;
@@ -4650,7 +4806,7 @@ function updateStructures(dt){
       }
       tryTriggerLauncher(s);
     }
-    if(s.type==="teleporter"){
+    if(s.type==="teleporter" && canRun){
       const pulse = 0.5 + Math.sin(time*6 + s.pos.x*0.03) * 0.5;
       const ring = s.mesh.userData.teleporterRing;
       const core = s.mesh.userData.teleporterCore;
@@ -4761,18 +4917,18 @@ function updateStructures(dt){
       }
     }
 
-    if(s.type==="robo"){
+    if(s.type==="robo" && canRun){
       s.robotCd -= dt;
       if(s.robotCd <= 0){
-        s.robotCd = 8;
+        s.robotCd = 5.4;
         spawnRobot(s.pos.x+rand(-1.7,1.7), s.pos.z+rand(-1.7,1.7));
         addBurst(s.pos.x,s.pos.y+1.8,s.pos.z,0x8fe8ff,10,3,0.5,0.07);
       }
     }
-    if(s.type==="advancedRobo"){
+    if(s.type==="advancedRobo" && canRun){
       s.robotCd -= dt;
       if(s.robotCd <= 0){
-        s.robotCd = 10;
+        s.robotCd = 5.8;
         spawnRobot(s.pos.x+rand(-1.4,1.4), s.pos.z+rand(-1.4,1.4), true);
         addBurst(s.pos.x,s.pos.y+1.8,s.pos.z,0x73e6ff,12,3.5,0.55,0.08);
       }
@@ -4941,7 +5097,7 @@ function updateStructures(dt){
       }
     }
 
-    if(s.type==="zapCoil"){
+    if(s.type==="zapCoil" && canRun){
       s.fireCd -= dt;
       const late = getTowerLateScale("zapCoil");
       const coil = s.mesh.userData.coil;
@@ -4957,9 +5113,9 @@ function updateStructures(dt){
         const stunned = new Set();
         let previousPoint = new THREE.Vector3(s.pos.x, s.pos.y + 1.45, s.pos.z);
         let current = t;
-        let remainingBounces = 3;
+        let remainingBounces = 5;
         while(current && remainingBounces >= 0){
-          applyDamageToLiving(current, 4.2 * buff.damage * late, current.pos);
+          applyDamageToLiving(current, 16.5 * buff.damage * late, current.pos);
           setEnemyStunned(current, 0.5);
           stunned.add(current);
           const hitPoint = new THREE.Vector3(current.pos.x, current.pos.y + 1.0, current.pos.z);
@@ -4982,7 +5138,7 @@ function updateStructures(dt){
       }
     }
 
-    if(s.type==="mortarBloom"){
+    if(s.type==="mortarBloom" && canRun){
       s.fireCd -= dt;
       const late = getTowerLateScale("mortarBloom");
       const flower = s.mesh.userData.flower;
@@ -4997,8 +5153,8 @@ function updateStructures(dt){
         spawnProjectile({
           pos:new THREE.Vector3(s.pos.x,s.pos.y+1.9,s.pos.z),
           vel:new THREE.Vector3(dir.x*9.2,9.4,dir.z*9.2),
-          damage:22*buff.damage*late,
-          splash:3.4,
+          damage:58*buff.damage*late,
+          splash:4.7,
           color:0xff9dbc,
           size:0.24,
           from:"ally",
@@ -5008,7 +5164,7 @@ function updateStructures(dt){
       }
     }
 
-    if(s.type==="sawBlaster"){
+    if(s.type==="sawBlaster" && canRun){
       s.fireCd -= dt;
       const late = getTowerLateScale("sawBlaster");
       const headPivot = s.mesh.userData.headPivot;
@@ -5019,11 +5175,11 @@ function updateStructures(dt){
       }
       if (t && s.fireCd <= 0) {
         s.fireCd = 0.95 / buff.speed;
-        applyDamageToLiving(t, 14 * buff.damage * late, t.pos);
+        applyDamageToLiving(t, 34 * buff.damage * late, t.pos);
         addBurst(t.pos.x, t.pos.y+0.9, t.pos.z, 0xffc1a8, 8, 3, 0.35, 0.05);
       }
     }
-    if(s.type==="sniperTower"){
+    if(s.type==="sniperTower" && canRun){
       const late = getTowerLateScale("sniperTower");
       s.fireCd -= dt;
       const headPivot = s.mesh.userData.headPivot;
@@ -5045,12 +5201,12 @@ function updateStructures(dt){
           addBurst(t.pos.x, t.pos.y + 0.25, t.pos.z, 0x9cd2ff, 1, 0.6, 0.18, 0.035);
         }
         if(frac >= 1){
-          s.fireCd = 4.2 / buff.speed;
+          s.fireCd = 3.5 / buff.speed;
           s.chargeT = 0;
           const from = new THREE.Vector3(s.pos.x, s.pos.y + 2.0, s.pos.z);
           const to = new THREE.Vector3(t.pos.x, t.pos.y + 1.0, t.pos.z);
           addLightningArc(from, to, 0.2, 0xaed6ff);
-          applyDamageToLiving(t, 78 * buff.damage * late, t.pos);
+          applyDamageToLiving(t, 185 * buff.damage * late, t.pos);
           addBurst(t.pos.x, t.pos.y + 1.0, t.pos.z, 0xd2e7ff, 14, 4.8, 0.46, 0.08);
           s.lockedTarget = null;
         }
@@ -5060,7 +5216,7 @@ function updateStructures(dt){
         if(lens?.material) lens.material.emissiveIntensity = 0.8 + Math.sin(time*7)*0.22;
       }
     }
-    if(s.type==="railGun"){
+    if(s.type==="railGun" && canRun){
       const late = getTowerLateScale("railGun");
       s.fireCd -= dt;
       const headPivot = s.mesh.userData.headPivot;
@@ -5074,7 +5230,7 @@ function updateStructures(dt){
         const frac = clamp((s.chargeT || 0) / 1.45, 0, 1);
         if(core?.material) core.material.emissiveIntensity = 0.45 + frac * 1.45;
         if(frac >= 1){
-          s.fireCd = 5.1 / buff.speed;
+          s.fireCd = 4.5 / buff.speed;
           s.chargeT = 0;
           const from = new THREE.Vector3(s.pos.x, s.pos.y + 1.7, s.pos.z);
           const forward = new THREE.Vector3(Math.sin(s.aimYaw || 0), 0, Math.cos(s.aimYaw || 0)).normalize();
@@ -5097,10 +5253,10 @@ function updateStructures(dt){
             }
           }
           hits.sort((a,b)=>a.along-b.along);
-          let remaining = 7;
+          let remaining = 10;
           for(let hi=0; hi<hits.length && remaining>0; hi++, remaining--){
             const falloff = 1 - hi * 0.08;
-            applyDamageToLiving(hits[hi].e, 52 * buff.damage * late * Math.max(0.58, falloff), hits[hi].e.pos);
+            applyDamageToLiving(hits[hi].e, 160 * buff.damage * late * Math.max(0.64, falloff), hits[hi].e.pos);
             addBurst(hits[hi].e.pos.x, hits[hi].e.pos.y+1.0, hits[hi].e.pos.z, 0xbdd9ff, 7, 3.0, 0.28, 0.06);
           }
           const end = from.clone().addScaledVector(forward, maxDist);
@@ -5120,16 +5276,19 @@ function updateStructures(dt){
 document.addEventListener("keydown", e=>{
   keys[e.key.toLowerCase()] = true;
 
-  if (e.key === "1") { currentCategory = 1; currentSelectionSlot = null; updateBuildUI(); }
-  if (e.key === "2") { currentCategory = 2; if (currentSelectionSlot == null) currentSelectionSlot = 5; updateBuildUI(); }
-  if (e.key === "3") { currentCategory = 3; if (currentSelectionSlot == null) currentSelectionSlot = 5; updateBuildUI(); }
-  if (e.key === "4") { currentCategory = 4; if (currentSelectionSlot == null) currentSelectionSlot = 5; updateBuildUI(); }
-  if (e.key.toLowerCase() === "q") { currentCategory = 5; if (currentSelectionSlot == null) currentSelectionSlot = 5; updateBuildUI(); }
-
-  if (["5","6","7","8","9","0"].includes(e.key) && currentCategory !== 1) {
+  if (currentCategory !== 1 && ["1","2","5","6","7","8","9","0"].includes(e.key)) {
     currentSelectionSlot = e.key === "0" ? 0 : parseInt(e.key);
     updateBuildUI();
-  }
+  } else if (e.key === "1") { currentCategory = 1; currentSelectionSlot = null; updateBuildUI(); }
+  else if (e.key === "2") { currentCategory = 2; if (currentSelectionSlot == null) currentSelectionSlot = 5; updateBuildUI(); }
+  else if (e.key === "3") { currentCategory = 3; if (currentSelectionSlot == null) currentSelectionSlot = 5; updateBuildUI(); }
+  else if (e.key === "4") { currentCategory = 4; if (currentSelectionSlot == null) currentSelectionSlot = 5; updateBuildUI(); }
+  else if (e.key.toLowerCase() === "q") { currentCategory = 5; if (currentSelectionSlot == null) currentSelectionSlot = 5; updateBuildUI(); }
+  else if (e.key.toLowerCase() === "e") { currentCategory = 2; if (currentSelectionSlot == null) currentSelectionSlot = 5; updateBuildUI(); }
+  else if (e.key.toLowerCase() === "r") { currentCategory = 3; if (currentSelectionSlot == null) currentSelectionSlot = 5; updateBuildUI(); }
+  else if (e.key.toLowerCase() === "t") { currentCategory = 4; if (currentSelectionSlot == null) currentSelectionSlot = 5; updateBuildUI(); }
+  else if (e.key.toLowerCase() === "y") { currentCategory = 5; if (currentSelectionSlot == null) currentSelectionSlot = 5; updateBuildUI(); }
+  else if (e.key.toLowerCase() === "x") { currentCategory = 1; currentSelectionSlot = null; updateBuildUI(); }
 
   if(e.code === "Space"){
     e.preventDefault();
