@@ -3591,17 +3591,21 @@ function explodeProjectile(p){
   addBurst(p.pos.x,p.pos.y,p.pos.z, burstColor, p.kind==="cannon"||p.kind==="mortar"?18:8, 4.5, 0.6, 0.09);
 
   if(p.from === "ally"){
+  const isCheeseShot = p.kind === "pellet" || p.kind === "shard";
+  const directHitPad = isCheeseShot ? 0.42 : 1;
   for(const e of enemies){
     if(!isEnemyTargetable(e)) continue;
       const d = dist2({x:p.pos.x,z:p.pos.z}, e.pos);
-      if(d < 1 + p.splash){
-        applyDamageToLiving(e, p.damage * (d < 0.5 ? 1 : Math.max(0.35, 1 - d/(p.splash+1))), p.pos);
+      const hitRadius = e.radius + p.splash + directHitPad;
+      if(d < hitRadius){
+        applyDamageToLiving(e, p.damage * (d < e.radius * 0.55 ? 1 : Math.max(0.35, 1 - d/(hitRadius + 0.01))), p.pos);
       }
     }
     if(cat && !cat.dead && !cat.dying){
       const d = dist2({x:p.pos.x,z:p.pos.z}, cat.pos);
-      if(d < 1.7 + p.splash){
-        applyDamageToLiving(cat, p.damage * (d < 0.8 ? 1 : Math.max(0.35, 1 - d/(p.splash+1.7))), p.pos);
+      const hitRadius = cat.radius + p.splash + (isCheeseShot ? 0.6 : 1.7);
+      if(d < hitRadius){
+        applyDamageToLiving(cat, p.damage * (d < cat.radius * 0.45 ? 1 : Math.max(0.35, 1 - d/(hitRadius + 0.01))), p.pos);
       }
     }
     for(const obj of enemyObjectives){
