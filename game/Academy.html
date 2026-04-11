@@ -3130,12 +3130,7 @@ function damageStructure(s,dmg){
     }
     if(s.cell) occupiedCells.delete(cellKey(s.cell.cx, s.cell.cz));
     if(s.type==="gasMine"){
-      if(s.assignedServant?.assignedGasMine === s){
-        s.assignedServant.assignedGasMine = null;
-        s.assignedServant.gasJobState = null;
-        s.assignedServant.carryingGas = false;
-      }
-      s.assignedServant = null;
+      clearGasMineWorkerAssignment(s);
       if(s.vent) s.vent.mine = null;
     }
     scene.remove(s.mesh);
@@ -3364,9 +3359,7 @@ function beginDeath(entity, type="mouse"){
   if(entity.assignedFactory && entity.assignedFactory.assignedServant === entity){
     entity.assignedFactory.assignedServant = null;
   }
-  if(entity.assignedGasMine && entity.assignedGasMine.assignedServant === entity){
-    entity.assignedGasMine.assignedServant = null;
-  }
+  if(entity.assignedGasMine) clearServantGasMineAssignment(entity);
   entity.dying = true;
   entity.deathT = 0;
   entity.deathType = type;
@@ -3469,20 +3462,132 @@ function recruitMouse(m){
   addBurst(m.pos.x, m.pos.y+0.9, m.pos.z, 0x8effa0, 16, 5, 0.75, 0.09);
   showCenter("A Mouse Joined You!", 1.1);
 }
+const SHOW_GAS_MINE_DEBUG_TEXT = true;
+function clearServantGasMineAssignment(worker){
+  if(!worker) return;
+  if(worker.assignedGasMine && worker.assignedGasMine.assignedServant === worker){
+    worker.assignedGasMine.assignedServant = null;
+  }
+  worker.assignedGasMine = null;
+  worker.gasJobState = null;
+  worker.carryingGas = false;
+}
+function clearGasMineWorkerAssignment(mine){
+  if(!mine) return;
+  const worker = mine.assignedServant;
+  if(worker && worker.assignedGasMine === mine){
+    worker.assignedGasMine = null;
+    worker.gasJobState = null;
+    worker.carryingGas = false;
+  }
+  mine.assignedServant = null;
+}
 function isValidGasWorkerForMine(worker, mine){
   if(!worker || !mine) return false;
   if(worker.dead || worker.dying || worker.state !== "servant") return false;
   if(worker.assignedGasMine && worker.assignedGasMine !== mine) return false;
   return true;
 }
-function getEligibleGasWorkersForMine(mine){
-  return servantMice.filter(m => isValidGasWorkerForMine(m, mine));
+function validateGasMineAssignments(){
+  for(const mine of structures){
+    if(mine.dead || mine.type!=="gasMine") continue;
+    if(mine.assignedServant && !isValidGasWorkerForMine(mine.assignedServant, mine)){
+      clearGasMineWorkerAssignment(mine);
+    }
+  }
+  for(const m of servantMice){
+    if(m.dead || m.dying || m.state !== "servant"){
+      if(m.assignedGasMine) clearServantGasMineAssignment(m);
+      continue;
+    }
+    if(!m.assignedGasMine) continue;
+    const mine = m.assignedGasMine;
+    if(mine.dead || mine.type!=="gasMine"){
+      clearServantGasMineAssignment(m);
+      continue;
+    }
+    if(mine.assignedServant !== m){
+      if(!mine.assignedServant) mine.assignedServant = m;
+      else clearServantGasMineAssignment(m);
+    }
+  }
 }
-function pickRandomNearestGasWorker(mine, nearestPoolSize = 3){
-  const candidates = getEligibleGasWorkersForMine(mine);
-  if(!candidates.length) return null;
-  candidates.sort((a,b)=>dist2(a.pos, mine.pos) - dist2(b.pos, mine.pos));
-  return candidates[0] || null;
+function findBestServantForGasMine(mine){
+  const idleCandidates = [];
+  const econCandidates = [];
+  for(const m of servantMice){
+    if(!isValidGasWorkerForMine(m, mine)) continue;
+    if(m.assignedGasMine && m.assignedGasMine !== mine) continue;
+    if(m.assignedMechaHangar && m.assignedMechaHangar.mechaPending && !m.assignedMechaHangar.dead) continue;
+    if(!m.assignedFactory && !m.repairTarget) idleCandidates.push(m);
+    else econCandidates.push(m);
+  }
+  const byNearest = (a,b)=>dist2(a.pos, mine.pos) - dist2(b.pos, mine.pos);
+  idleCandidates.sort(byNearest);
+  econCandidates.sort(byNearest);
+  return idleCandidates[0] || econCandidates[0] || null;
+}
+function assignGasMineWorkers(){
+  const minesNeedingWorkers = structures.filter(s => !s.dead && s.type==="gasMine");
+  for(const mine of minesNeedingWorkers){
+    if(mine.assignedServant && isValidGasWorkerForMine(mine.assignedServant, mine)) continue;
+    if(mine.assignedServant) clearGasMineWorkerAssignment(mine);
+    const worker = findBestServantForGasMine(mine);
+    if(!worker) continue;
+    if(worker.assignedFactory && worker.assignedFactory.assignedServant===worker){
+      worker.assignedFactory.assignedServant = null;
+    }
+    worker.assignedFactory = null;
+    worker.assignedMechaHangar = null;
+    worker.assignedGasMine = mine;
+    worker.gasJobState = worker.gasJobState || "toMine";
+    mine.assignedServant = worker;
+  }
+}
+function ensureGasMineDebugLabel(mine){
+  if(!SHOW_GAS_MINE_DEBUG_TEXT || !mine?.mesh) return null;
+  if(mine.mesh.userData.gasDebugLabel) return mine.mesh.userData.gasDebugLabel;
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 96;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.needsUpdate = true;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, transparent:true, depthTest:false, depthWrite:false, opacity:0.95 }));
+  sprite.position.set(0, 3.55, 0);
+  sprite.scale.set(2.4, 0.8, 1);
+  sprite.renderOrder = 226;
+  mine.mesh.add(sprite);
+  mine.mesh.userData.gasDebugLabel = sprite;
+  return sprite;
+}
+function updateGasMineDebugLabel(mine){
+  if(!SHOW_GAS_MINE_DEBUG_TEXT || mine.dead || mine.type!=="gasMine") return;
+  const label = ensureGasMineDebugLabel(mine);
+  if(!label) return;
+  const worker = mine.assignedServant;
+  const workerName = worker ? `Mouse ${String(worker.id || worker.uid || worker._id || servantMice.indexOf(worker)+1)}` : "";
+  const status = worker ? "Gas: staffed" : "Gas: waiting";
+  const detail = worker ? `Gas: ${workerName}` : "";
+  const canvas = label.material.map?.image;
+  const ctx = canvas?.getContext?.("2d");
+  if(!ctx || !canvas) return;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.font = "bold 30px Arial";
+  ctx.textAlign = "center";
+  ctx.lineWidth = 9;
+  ctx.strokeStyle = "rgba(0,0,0,0.78)";
+  ctx.strokeText(status, canvas.width/2, 38);
+  ctx.fillStyle = worker ? "#a6ffe8" : "#ffe39c";
+  ctx.fillText(status, canvas.width/2, 38);
+  if(detail){
+    ctx.font = "bold 22px Arial";
+    ctx.lineWidth = 7;
+    ctx.strokeText(detail, canvas.width/2, 72);
+    ctx.fillStyle = "#d5fff2";
+    ctx.fillText(detail, canvas.width/2, 72);
+  }
+  label.material.map.needsUpdate = true;
+  label.quaternion.copy(camera.quaternion);
 }
 function updateMouseEntity(m,dt){
   if(gamePaused) return;
@@ -3514,12 +3619,9 @@ function updateMouseEntity(m,dt){
     }
   } else {
     if(m.assignedGasMine && !isValidGasWorkerForMine(m, m.assignedGasMine)){
-      if(m.assignedGasMine.assignedServant === m) m.assignedGasMine.assignedServant = null;
-      m.assignedGasMine = null;
-      m.gasJobState = null;
-      m.carryingGas = false;
+      clearServantGasMineAssignment(m);
     }
-    if(m.assignedMechaHangar && (!m.assignedMechaHangar.dead) && m.assignedMechaHangar.mechaPending){
+    if(!m.assignedGasMine && m.assignedMechaHangar && (!m.assignedMechaHangar.dead) && m.assignedMechaHangar.mechaPending){
       m.target = m.assignedMechaHangar.pos;
       if(dist2(m.pos, m.assignedMechaHangar.pos) < 1.5){
         m.assignedMechaHangar.mechaPending = false;
@@ -3550,13 +3652,13 @@ function updateMouseEntity(m,dt){
           if(m.gasMineTimer <= 0){ m.gasJobState = "toDeposit"; m.carryingGas = true; }
         }
       } else if(m.gasJobState === "toDeposit"){
-        let depot = null, depotD = dist2(mine.pos, player.pos);
+        let depot = null, depotD = Infinity;
         for(const s of structures){
           if(s.dead || s.type!=="gasDepot") continue;
           const d = dist2(mine.pos, s.pos);
           if(d < depotD){ depotD = d; depot = s; }
         }
-        m.target = depot ? depot.pos : player.pos;
+        m.target = depot ? depot.pos : mine.pos;
         if(dist2(m.pos, m.target) < 1.5){
           const payout = getEconomyGasPerTrip();
           gas += payout;
@@ -3566,9 +3668,7 @@ function updateMouseEntity(m,dt){
         }
       }
     } else {
-      m.assignedGasMine = null;
-      m.gasJobState = null;
-      m.carryingGas = false;
+      clearServantGasMineAssignment(m);
     }
 
     let assignedFactory = null;
@@ -4872,6 +4972,8 @@ function updateStructures(dt){
   updateBeaconGlow();
   updateRepairBeams(dt);
   updateStructurePowerStates();
+  validateGasMineAssignments();
+  assignGasMineWorkers();
 
   for(const s of structures){
     if(s.dead) continue;
@@ -5066,22 +5168,7 @@ function updateStructures(dt){
       }
     }
     if(s.type==="gasMine"){
-      if(s.assignedServant && !isValidGasWorkerForMine(s.assignedServant, s)){
-        if(s.assignedServant.assignedGasMine === s){
-          s.assignedServant.assignedGasMine = null;
-          s.assignedServant.gasJobState = null;
-          s.assignedServant.carryingGas = false;
-        }
-        s.assignedServant = null;
-      }
-      if(!s.assignedServant){
-        s.assignedServant = pickRandomNearestGasWorker(s, 3);
-        if(s.assignedServant){
-          s.assignedServant.assignedMechaHangar = null;
-          s.assignedServant.assignedGasMine = s;
-          s.assignedServant.gasJobState = s.assignedServant.gasJobState || "toMine";
-        }
-      }
+      updateGasMineDebugLabel(s);
     }
     if(s.type==="mechaHangar" && s.mechaPending){
       const pilot = servantMice.find(m => !m.dead && !m.dying && !m.assignedGasMine && !m.assignedMechaHangar);
