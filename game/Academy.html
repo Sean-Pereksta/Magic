@@ -374,9 +374,12 @@ const combatDirector = {
 const ENEMY_UNLOCK_STAGES = [
   { kind:"spitterBug", name:"Spitter Bug", icon:"🪲", unlockTime:250 },
   { kind:"burrowMole", name:"Burrow Mole", icon:"🕳️", unlockTime:340 },
+  { kind:"dustRunner", name:"Dust Runner", icon:"💨", unlockTime:395 },
   { kind:"siegeRat", name:"Siege Rat", icon:"🐀", unlockTime:440 },
+  { kind:"bombBeetle", name:"Bomb Beetle", icon:"💣", unlockTime:510 },
   { kind:"titanRam", name:"Titan Ram", icon:"🐏", unlockTime:560 },
   { kind:"venomLobber", name:"Venom Lobber", icon:"🧪", unlockTime:700 },
+  { kind:"screecherBat", name:"Screecher Bat", icon:"🦇", unlockTime:760 },
   { kind:"plagueBrute", name:"Plague Brute", icon:"☣️", unlockTime:860 },
   { kind:"warClaw", name:"War Claw", icon:"🦾", unlockTime:980 }
 ];
@@ -631,7 +634,7 @@ function isEnemyTargetable(enemy){
 }
 function enemyThreatWeight(enemy){
   if(!enemy) return 0;
-  const byKind = { titanRam:190, siegeRat:155, plagueBrute:220, venomLobber:170, warClaw:165, spitterBug:130, burrowMole:120, ram:110, weasel:95, mole:70, rat:42, assassin:84 };
+  const byKind = { titanRam:190, siegeRat:155, bombBeetle:152, plagueBrute:220, venomLobber:170, screecherBat:138, warClaw:165, spitterBug:130, burrowMole:126, dustRunner:104, ram:110, weasel:95, mole:70, rat:42, assassin:84 };
   return (byKind[enemy.kind] || 60) + (enemy.elite ? 24 : 0) + clamp(enemy.maxHp || 0, 0, 220) * 0.12;
 }
 function nearestPriorityEnemyInRange(origin, range, biasKinds=[]){
@@ -946,19 +949,22 @@ function expandMapForLevel(newLevel){
   spawnGasVentsForExpansion(oldHalfMap, dynamicHalfMap);
 }
 
-function circleBlocked(x,z,r, ignoreStructure=null, structureSpacingScale=1){
+function circleBlocked(x,z,r, ignoreStructure=null, structureSpacingScale=1, opts=null){
+  const ignoreWallsForBurrow = !!opts?.ignoreWallsForBurrow;
   if(x < -dynamicHalfMap+2 || x > dynamicHalfMap-2 || z < -dynamicHalfMap+2 || z > dynamicHalfMap-2) return true;
   for(const o of obstacles){
     if(Math.hypot(x-o.x, z-o.z) < r + o.r) return true;
   }
   for(const s of structures){
     if(s.dead || s===ignoreStructure) continue;
+    if(ignoreWallsForBurrow && isWallStructure(s)) continue;
     if(!structureBlocksMovement(s)) continue;
     if(Math.hypot(x-s.pos.x, z-s.pos.z) < (r + s.radius) * structureSpacingScale) return true;
   }
   return false;
 }
-function lineBlocked(a,b){
+function lineBlocked(a,b, opts=null){
+  const ignoreWallsForBurrow = !!opts?.ignoreWallsForBurrow;
   const dx = b.x-a.x, dz = b.z-a.z;
   const len = Math.hypot(dx,dz);
   const steps = Math.ceil(len/1.5);
@@ -971,6 +977,7 @@ function lineBlocked(a,b){
     }
     for(const s of structures){
       if(s.dead) continue;
+      if(ignoreWallsForBurrow && isWallStructure(s)) continue;
       if(!structureBlocksMovement(s)) continue;
       if(Math.hypot(x-s.pos.x, z-s.pos.z) < s.radius + 0.55) return true;
     }
@@ -2096,7 +2103,8 @@ function getSeparationVector(entity, list, desiredMinDist=1.8){
   }
   return out;
 }
-function collisionPushOut(x,z,radius, collideWithStructures=true, ignoreStructure=null){
+function collisionPushOut(x,z,radius, collideWithStructures=true, ignoreStructure=null, opts=null){
+  const ignoreWallsForBurrow = !!opts?.ignoreWallsForBurrow;
   let px = x, pz = z;
   let hitCount = 0;
   for(let iter=0; iter<4; iter++){
@@ -2117,6 +2125,7 @@ function collisionPushOut(x,z,radius, collideWithStructures=true, ignoreStructur
     if(collideWithStructures){
       for(const s of structures){
         if(s.dead || s===ignoreStructure || !structureBlocksMovement(s)) continue;
+        if(ignoreWallsForBurrow && isWallStructure(s)) continue;
         const dx = px - s.pos.x;
         const dz = pz - s.pos.z;
         const d = Math.hypot(dx, dz) || 0.0001;
@@ -2136,7 +2145,8 @@ function collisionPushOut(x,z,radius, collideWithStructures=true, ignoreStructur
   }
   return { x:px, z:pz, hitCount };
 }
-function steerMove(entity, desired, dt, collideWithStructures=true, ignoreStructure=null, neighborList=null){
+function steerMove(entity, desired, dt, collideWithStructures=true, ignoreStructure=null, neighborList=null, opts=null){
+  const ignoreWallsForBurrow = !!opts?.ignoreWallsForBurrow;
   const start = entity.pos;
   let best = null;
   let bestScore = Infinity;
@@ -2154,6 +2164,7 @@ function steerMove(entity, desired, dt, collideWithStructures=true, ignoreStruct
     if(collideWithStructures){
       for(const s of structures){
         if(s.dead || s===ignoreStructure) continue;
+        if(ignoreWallsForBurrow && isWallStructure(s)) continue;
         if(Math.hypot(x-s.pos.x, z-s.pos.z) < radius + s.radius) return true;
       }
     }
@@ -2170,6 +2181,7 @@ function steerMove(entity, desired, dt, collideWithStructures=true, ignoreStruct
     if(collideWithStructures){
       for(const s of structures){
         if(s.dead || s===ignoreStructure || !structureBlocksMovement(s)) continue;
+        if(ignoreWallsForBurrow && isWallStructure(s)) continue;
         const d = Math.hypot(x-s.pos.x, z-s.pos.z);
         const minD = radius + s.radius;
         if(d < minD) p += (minD - d) * 10;
@@ -2234,7 +2246,7 @@ function steerMove(entity, desired, dt, collideWithStructures=true, ignoreStruct
 
   return best;
 }
-function directSteerToward(entity, targetPos, dt, collideWithStructures=true, ignoreStructure=null, neighborList=null){
+function directSteerToward(entity, targetPos, dt, collideWithStructures=true, ignoreStructure=null, neighborList=null, opts=null){
   const dx = targetPos.x - entity.pos.x;
   const dz = targetPos.z - entity.pos.z;
   const len = Math.hypot(dx,dz) || 1;
@@ -2247,9 +2259,9 @@ function directSteerToward(entity, targetPos, dt, collideWithStructures=true, ig
     desired.x /= l2;
     desired.z /= l2;
   }
-  const raw = steerMove(entity, desired, dt, collideWithStructures, ignoreStructure, neighborList);
+  const raw = steerMove(entity, desired, dt, collideWithStructures, ignoreStructure, neighborList, opts);
   if(!raw) return raw;
-  const pushed = collisionPushOut(raw.x, raw.z, entity.radius || 0.8, collideWithStructures, ignoreStructure);
+  const pushed = collisionPushOut(raw.x, raw.z, entity.radius || 0.8, collideWithStructures, ignoreStructure, opts);
   raw.x = pushed.x;
   raw.z = pushed.z;
   raw.bumped = pushed.hitCount > 0;
@@ -3372,6 +3384,13 @@ function finalizeDeath(entity) {
 }
 function killEnemy(e){
   if(e.dead || e.dying) return;
+  if(e.kind==="bombBeetle" && !e.exploded){
+    e.exploded = true;
+    const r = 3.3;
+    addBurst(e.pos.x, e.pos.y + 0.45, e.pos.z, 0xff6e3d, 18, 4.2, 0.58, 0.08);
+    for(const s of structures){ if(!s.dead && dist2(s.pos, e.pos) < r + s.radius) damageStructure(s, e.damage * 0.65); }
+    for(const m of servantMice){ if(!m.dead && !m.dying && dist2(m.pos, e.pos) < r) applyDamageToLiving(m, e.damage * 0.42, e.pos); }
+  }
   beginDeath(e, e.kind === "weasel" ? "weasel" : "mouse");
   if(Math.random() < 0.7) spawnCheeseAt(e.pos.x+rand(-0.8,0.8), e.pos.z+rand(-0.8,0.8), 3);
 }
@@ -3757,7 +3776,9 @@ function updateMouseEntity(m,dt){
   const moveTarget = (m.repathTimer > 0 && m.repathTarget) ? m.repathTarget : m.target;
   if(moveTarget){
     const mouseNeighbors = m.state === "servant" ? servantMice : wildMice;
-    const step = directSteerToward({ pos:m.pos, speed:m.speed * (m.state==="servant"?getServantSpeedMultiplier():1), radius:m.radius }, moveTarget, dt, false, null, mouseNeighbors);
+    const slowed = (m.slowUntil || 0) > time;
+    const slowMult = slowed ? 0.72 : 1;
+    const step = directSteerToward({ pos:m.pos, speed:m.speed * (m.state==="servant"?getServantSpeedMultiplier():1) * slowMult, radius:m.radius }, moveTarget, dt, false, null, mouseNeighbors);
     if(step){
       m.heading += clamp(angleDiff(m.heading, step.heading), -4.4*dt, 4.4*dt);
       m.pos.x = step.x;
@@ -3792,6 +3813,9 @@ function makeEnemy(kind,x,z){
   if(kind==="plagueBrute"){ model = makeTitanRamModel(); hp = 1600; speed = 2.5; damage = 78; radius = 2.0; attackRange = 1.95; turnRate = 0.75; }
   if(kind==="venomLobber"){ model = makeSpitterBugModel(); hp = 340; speed = 4.2; damage = 52; radius = 1.25; attackRange = 18.5; turnRate = 2.6; }
   if(kind==="warClaw"){ model = makeWeaselModel(); hp = 280; speed = 13.6; damage = 68; radius = 0.95; attackRange = 1.3; turnRate = 7.3; }
+  if(kind==="dustRunner"){ model = makeWeaselModel(); hp = 62; speed = 14.8; damage = 18; radius = 0.72; attackRange = 1.1; turnRate = 7.7; }
+  if(kind==="bombBeetle"){ model = makeSpitterBugModel(); hp = 210; speed = 4.1; damage = 64; radius = 1.12; attackRange = 1.2; turnRate = 2.1; }
+  if(kind==="screecherBat"){ model = makeWeaselModel(); hp = 86; speed = 8.6; damage = 12; radius = 0.82; attackRange = 5.2; turnRate = 6.6; }
 
   const phaseTime = Math.max(0, time - 60);
   const powerScale = 1 + phaseTime * 0.0016;
@@ -3852,7 +3876,16 @@ function makeEnemy(kind,x,z){
     titanChargeT:0,
     telegraphT:0,
     siegeWindup:0,
-    siegePendingTarget:null
+    siegePendingTarget:null,
+    isBurrowed:false,
+    burrowRecover:0,
+    dashWindup:0,
+    dashDir:1,
+    detonateWindup:0,
+    exploded:false,
+    screamCd:rand(4.8,7.2),
+    screamWindup:0,
+    debuffCd:0
   };
   if(kind==="ram"){
     e.role = "breaker";
@@ -3866,6 +3899,9 @@ function makeEnemy(kind,x,z){
   }
   if(kind==="burrowMole"){
     e.role = "ambusher";
+    e.burrowState = "surface_seek";
+    e.burrowCd = rand(2.4, 4.8);
+    e.burrowRecover = 0;
   }
   if(kind==="siegeRat"){
     e.role = "breaker";
@@ -3886,6 +3922,21 @@ function makeEnemy(kind,x,z){
   if(kind==="warClaw"){
     e.role = "supportHunter";
     e.dashCd = rand(1.4, 2.5);
+  }
+  if(kind==="dustRunner"){
+    e.role = "harasser";
+    e.dashCd = rand(2.2, 4.0);
+    e.dashWindup = 0;
+    e.group.traverse(c=>{ if(c.isMesh && c.material?.color) c.material.color.setHex(0xc9b07a); });
+  }
+  if(kind==="bombBeetle"){
+    e.role = "breaker";
+    e.speed *= 0.88;
+    e.group.traverse(c=>{ if(c.isMesh && c.material?.color) c.material.color.offsetHSL(0.03, 0.14, -0.06); });
+  }
+  if(kind==="screecherBat"){
+    e.role = "support";
+    e.group.traverse(c=>{ if(c.isMesh && c.material?.color) c.material.color.setHex(0x7e89c9); });
   }
   if(elite){
     e.group.traverse(c=>{ if(c.isMesh && c.material && c.material.color) c.material.color.offsetHSL(0.02, 0.08, 0.1); });
@@ -3979,6 +4030,35 @@ function chooseEnemyTarget(e){
     const ambushStructure = nearestAttackableStructure(e, 999, s => ["turret","gasMine","breedingNest","supplyNest","advancedRobo","mechaHangar","factory","workshop","robo"].includes(s.type));
     if(ambushStructure) return ambushStructure;
   }
+  if(e.kind==="dustRunner"){
+    const eco = nearestAttackableStructure(e, 999, s => ["repairAnchor","fountain","supplyNest","factory","gasMine","gasDepot","breedingNest"].includes(s.type));
+    if(eco) return eco;
+    if(!player.dead && dist2(e.pos, player.pos) < 26) return player;
+  }
+  if(e.kind==="bombBeetle"){
+    let bestCluster = null, bestScore = 9999;
+    for(const s of structures){
+      if(s.dead) continue;
+      let nearby = 0;
+      for(const t of structures){ if(!t.dead && dist2(t.pos, s.pos) < 8.2) nearby++; }
+      const wallBias = isWallStructure(s) ? 3.1 : (isAttackStructureType(s.type) ? 2.2 : 1);
+      const score = dist2(e.pos, s.pos) - nearby * wallBias;
+      if(score < bestScore){ bestScore = score; bestCluster = s; }
+    }
+    if(bestCluster) return bestCluster;
+  }
+  if(e.kind==="screecherBat"){
+    let defended = null, defendedScore = 9999;
+    for(const s of structures){
+      if(s.dead) continue;
+      let defenses = 0;
+      for(const t of structures){ if(!t.dead && isAttackStructureType(t.type) && dist2(t.pos, s.pos) < 11) defenses++; }
+      const score = dist2(e.pos, s.pos) - defenses * 3.8;
+      if(score < defendedScore){ defendedScore = score; defended = s; }
+    }
+    if(defended) return defended;
+    if(!player.dead) return player;
+  }
   if(e.kind==="siegeRat"){
     const siegeTarget = nearestAttackableStructure(e, 999, s => ["wall","diamondWall","ultraWall","gasDepot","turret","sniperTower","railGun","advancedRobo","mechaHangar","fortPlate","barrierTotem","braceTower"].includes(s.type));
     if(siegeTarget) return siegeTarget;
@@ -4045,6 +4125,9 @@ function chooseEnemyTarget(e){
     warClaw: { supplyNest: 2.25, breedingNest: 2.4, factory: 2.0, gasMine: 2.1, advancedRobo: 2.1, mechaHangar: 2.05, wall: 0.45 },
     siegeRat: { wall: 2.6, diamondWall: 2.55, ultraWall: 2.75, gasDepot: 2.25, turret: 2.0, advancedRobo: 1.65, fortPlate: 1.75 },
     titanRam: { wall: 2.25, diamondWall: 2.1, ultraWall: 2.3, fortPlate: 2.2, barrierTotem: 2.0, braceTower: 1.9, gasDepot: 1.5, mechaHangar: 1.65 }
+    ,dustRunner: { repairAnchor: 2.2, fountain: 2.0, supplyNest: 2.1, factory: 2.0, gasMine: 1.95, gasDepot: 1.9, wall: 0.35, diamondWall: 0.3, ultraWall: 0.3 }
+    ,bombBeetle: { wall: 2.7, diamondWall: 2.55, ultraWall: 2.8, turret: 2.2, cannon: 2.0, zapCoil: 1.9, mortarBloom: 1.95, braceTower: 1.75 }
+    ,screecherBat: { turret: 2.2, cannon: 2.05, zapCoil: 2.1, mortarBloom: 2.0, sawBlaster: 1.9, sniperTower: 1.9, railGun: 1.95, wall: 0.25 }
   };
 
   let bestStructure = null, bestScore = 9999;
@@ -4087,7 +4170,10 @@ function updateEnemies(dt){
     e.attackCd -= dt;
     e.stunCd = Math.max(0, (e.stunCd || 0) - dt);
     e.burrowCd = Math.max(0, (e.burrowCd || 0) - dt);
+    e.burrowRecover = Math.max(0, (e.burrowRecover || 0) - dt);
     e.spitCd = Math.max(0, (e.spitCd || 0) - dt);
+    e.screamCd = Math.max(0, (e.screamCd || 0) - dt);
+    e.debuffCd = Math.max(0, (e.debuffCd || 0) - dt);
     e.heavySwing = Math.max(0, (e.heavySwing || 0) - dt);
     e.titanChargeCd = Math.max(0, (e.titanChargeCd || 0) - dt);
     e.siegeWindup = Math.max(0, (e.siegeWindup || 0) - dt);
@@ -4101,45 +4187,39 @@ function updateEnemies(dt){
       }
     }
     if(e.kind==="burrowMole"){
-      if(e.burrowState === "burrowing"){
+      if(e.burrowState === "burrow_enter"){
+        e.burrowTimer -= dt;
+        e.attackAnim = 0.6;
+        e.group.position.y = groundHeight(e.pos.x, e.pos.z) - clamp(1 - (e.burrowTimer / 0.38), 0, 1) * 0.9;
+        if(Math.random() < 0.35) addBurst(e.pos.x + rand(-0.25,0.25), groundHeight(e.pos.x,e.pos.z)+0.06, e.pos.z + rand(-0.25,0.25), 0x88623f, 1, 0.8, 0.25, 0.04);
+        if(e.burrowTimer <= 0){
+          e.burrowState = "burrow_travel";
+          e.isBurrowed = true;
+        }
+      } else if(e.burrowState === "burrow_travel"){
         e.untargetable = true;
         e.group.visible = false;
-        e.burrowTimer -= dt;
+        e.isBurrowed = true;
         if((e.burrowTelegraphCd || 0) <= 0){
-          e.burrowTelegraphCd = 0.18;
-          const tp = e.burrowTarget || e.pos;
-          addBurst(tp.x + rand(-0.35,0.35), groundHeight(tp.x,tp.z)+0.08, tp.z + rand(-0.35,0.35), 0x8a6a44, 2, 0.85, 0.35, 0.05);
-        } else {
-          e.burrowTelegraphCd -= dt;
-        }
-        if(e.burrowTimer <= 0){
-          const tp = e.burrowTarget || e.pos;
-          e.pos.x = clamp(tp.x + rand(-1.1,1.1), -dynamicHalfMap+5, dynamicHalfMap-5);
-          e.pos.z = clamp(tp.z + rand(-1.1,1.1), -dynamicHalfMap+5, dynamicHalfMap-5);
-          e.pos.y = groundHeight(e.pos.x,e.pos.z);
-          e.burrowState = "surfacing";
-          e.burrowTimer = 0.55;
-          e.group.visible = true;
-          e.untargetable = false;
-          e.target = chooseEnemyTarget(e);
-          addBurst(e.pos.x, e.pos.y + 0.35, e.pos.z, 0x8d5f2d, 16, 4.2, 0.6, 0.08);
-          for(const m of servantMice){
-            if(!m.dead && !m.dying && dist2(m.pos, e.pos) < 2.2){
-              const push = new THREE.Vector3(m.pos.x-e.pos.x,0,m.pos.z-e.pos.z).normalize().multiplyScalar(1.1);
-              m.pos.x += push.x; m.pos.z += push.z;
-              applyDamageToLiving(m, e.damage * 0.6, e.pos);
-            }
-          }
-          for(const s of structures){
-            if(!s.dead && dist2(s.pos, e.pos) < s.radius + 1.2) damageStructure(s, e.damage * 0.55);
-          }
-        }
-      } else if(e.burrowState === "surfacing"){
+          e.burrowTelegraphCd = 0.12;
+          addBurst(e.pos.x + rand(-0.18,0.18), groundHeight(e.pos.x,e.pos.z)+0.05, e.pos.z + rand(-0.18,0.18), 0x8a6a44, 2, 0.9, 0.26, 0.05);
+        } else e.burrowTelegraphCd -= dt;
+      } else if(e.burrowState === "burrow_emerge"){
         e.burrowTimer -= dt;
-        if(e.burrowTimer <= 0) e.burrowState = "idle";
+        e.group.visible = true;
+        e.untargetable = false;
+        e.isBurrowed = false;
+        e.group.position.y = groundHeight(e.pos.x, e.pos.z) - clamp(e.burrowTimer / 0.4, 0, 1) * 0.65;
+        if(Math.random() < 0.4) addBurst(e.pos.x + rand(-0.25,0.25), groundHeight(e.pos.x,e.pos.z)+0.08, e.pos.z + rand(-0.25,0.25), 0x9c7549, 1, 0.9, 0.3, 0.04);
+        if(e.burrowTimer <= 0){
+          e.burrowState = "surface_attack";
+          e.burrowRecover = 0.55;
+          addBurst(e.pos.x, e.pos.y + 0.3, e.pos.z, 0x8d5f2d, 14, 3.8, 0.52, 0.08);
+        }
       } else {
         e.untargetable = false;
         e.group.visible = true;
+        e.isBurrowed = false;
       }
     }
     if(e.kind==="spitterBug" && e.spitWindup > 0){
@@ -4198,6 +4278,16 @@ function updateEnemies(dt){
     let targetPos = moveTarget.pos || moveTarget;
     const d = dist2(e.pos, targetPos);
     const isStunned = e.stunCd > 0;
+    if(e.kind==="burrowMole" && e.burrowState==="surface_attack" && d > meleeStopDistance(e, e.target || moveTarget, 0.9)){
+      e.burrowState = "surface_seek";
+    }
+    if(e.kind==="burrowMole" && (e.burrowState==="surface_seek" || e.burrowState==="surface_attack") && d > meleeStopDistance(e, e.target || moveTarget, 0.38) && e.burrowCd <= 0 && e.burrowRecover <= 0){
+      e.burrowState = "burrow_enter";
+      e.burrowTimer = 0.38;
+      e.burrowCd = rand(6.8, 9.8);
+      e.burrowTarget = targetPos.clone ? targetPos.clone() : new THREE.Vector3(targetPos.x, 0, targetPos.z);
+      e.burrowTelegraphCd = 0;
+    }
     if(e.kind==="ram"){
       e.ramDaze = Math.max(0, e.ramDaze - dt);
       if(e.ramDaze > 0){
@@ -4205,7 +4295,7 @@ function updateEnemies(dt){
       }
     }
 
-    if(e.target && !e.repathTimer && !isStunned && e.kind !== "ram"){
+    if(e.target && !e.repathTimer && !isStunned && e.kind !== "ram" && !(e.kind==="burrowMole" && e.burrowState==="burrow_travel")){
       if(!e.attackSlot || dist2(e.attackSlot, targetPos) > 4.5 || Math.random() < 0.02){
         e.attackSlot = pickAttackSlot(e, targetPos, e.target.radius || 0.9, e._stuck?.phase % 2 ? -1 : 1);
       }
@@ -4296,17 +4386,46 @@ function updateEnemies(dt){
     } else if(!isStunned && d > meleeStopDistance(e, e.target || moveTarget, 0.1)){
       let speedScale = 1;
       if(e.kind==="spitterBug" || e.kind==="venomLobber"){
-        const frontline = enemies.some(other => other!==e && !other.dead && !other.dying && ["siegeRat","titanRam","ram","weasel","mole","burrowMole"].includes(other.kind) && dist2(other.pos, e.pos) < 12 && dist2(other.pos, targetPos) < dist2(e.pos, targetPos));
+        const frontline = enemies.some(other => other!==e && !other.dead && !other.dying && ["siegeRat","titanRam","ram","weasel","mole","burrowMole","bombBeetle"].includes(other.kind) && dist2(other.pos, e.pos) < 12 && dist2(other.pos, targetPos) < dist2(e.pos, targetPos));
         speedScale = frontline ? 0.82 : 1.05;
       }
       if(e.kind==="titanRam" && e.titanState!=="idle") speedScale = 0.5;
-      const step = directSteerToward({ pos:e.pos, speed:e.speed*speedScale*(1+e.avoidCrowdBias*0.2), radius:e.radius }, targetPos, dt, true, e.target, enemies);
+      const burrowTravel = e.kind==="burrowMole" && e.burrowState==="burrow_travel";
+      if(burrowTravel) speedScale *= 0.84;
+      if(e.kind==="screecherBat") speedScale *= 1.15;
+      if(e.kind==="dustRunner" && e.dashWindup > 0){
+        e.dashWindup -= dt;
+        e.attackAnim = 0.75;
+        if(Math.random() < 0.45) addBurst(e.pos.x, e.pos.y + 0.12, e.pos.z, 0xc8a46f, 1, 1.2, 0.22, 0.04);
+        if(e.dashWindup <= 0){
+          const toTarget = new THREE.Vector3(targetPos.x - e.pos.x, 0, targetPos.z - e.pos.z).normalize();
+          const side = new THREE.Vector3(-toTarget.z, 0, toTarget.x).multiplyScalar((e.dashDir || 1) * rand(2.2, 3.4));
+          const nx = clamp(e.pos.x + side.x, -dynamicHalfMap+2.3, dynamicHalfMap-2.3);
+          const nz = clamp(e.pos.z + side.z, -dynamicHalfMap+2.3, dynamicHalfMap-2.3);
+          const pushed = collisionPushOut(nx, nz, e.radius, true, e.target);
+          e.pos.x = pushed.x; e.pos.z = pushed.z;
+          addBurst(e.pos.x, e.pos.y+0.22, e.pos.z, 0xd2b074, 8, 3.6, 0.32, 0.05);
+        }
+      }
+      const step = directSteerToward(
+        { pos:e.pos, speed:e.speed*speedScale*(1+e.avoidCrowdBias*0.2), radius:e.radius },
+        targetPos, dt, true, e.target, enemies,
+        burrowTravel || e.kind==="screecherBat" ? { ignoreWallsForBurrow:true } : null
+      );
       if(step){
         e.heading += clamp(angleDiff(e.heading, step.heading), -e.turnRate*dt, e.turnRate*dt);
         e.pos.x = step.x;
         e.pos.z = step.z;
       }
+      if(burrowTravel && d < meleeStopDistance(e, e.target || moveTarget, 0.55)){
+        e.burrowState = "burrow_emerge";
+        e.burrowTimer = 0.4;
+      }
     } else if(!isStunned && e.attackCd <= 0 && e.target && !e.repathTimer && (e.kind!=="ram" || e.ramDaze > 0 || e.ramState==="idle")){
+      if(e.kind==="burrowMole" && (e.burrowState==="surface_seek" || e.burrowState==="surface_attack")){
+        e.burrowState = "surface_attack";
+        if(e.burrowRecover > 0) continue;
+      }
       if(e.kind==="siegeRat" && e.siegeWindup <= 0){
         e.siegeWindup = 0.26;
         e.siegePendingTarget = e.target;
@@ -4323,6 +4442,8 @@ function updateEnemies(dt){
       if(e.kind==="assassin") e.attackCd = 0.5;
       if(e.kind==="siegeRat") e.attackCd = 1.16;
       if(e.kind==="titanRam") e.attackCd = 1.45;
+      if(e.kind==="dustRunner") e.attackCd = 0.55;
+      if(e.kind==="bombBeetle") e.attackCd = 1.8;
       e.attackAnim = 1;
       addBurst(e.pos.x,e.pos.y+0.9,e.pos.z, e.kind==="mole"?0x884333:0xff6666, 10, 4, 0.45, 0.08);
 
@@ -4332,6 +4453,10 @@ function updateEnemies(dt){
         const bonus = (e.kind==="assassin" && (e.target.state==="servant" || e.target.kind==="robot")) ? 1.45 : 1;
         applyDamageToLiving(e.target, e.damage * bonus, e.target.pos);
       } else {
+        if(e.kind==="bombBeetle"){
+          e.detonateWindup = 0.45;
+          e.attackCd = 0.8;
+        }
         damageStructure(e.target, e.kind==="ram" ? e.damage*1.6 : e.kind==="siegeRat" ? e.damage*2.35 : e.kind==="titanRam" ? e.damage*2.7 : e.damage);
         if(e.kind==="mole"){
           killEnemy(e);
@@ -4356,17 +4481,13 @@ function updateEnemies(dt){
         setSpitLandingTelegraph(e, e.spitAim, 0.01, e.spitImpactRadius);
       }
     }
-    if(e.kind==="burrowMole" && e.burrowState==="idle" && !isStunned && e.burrowCd <= 0){
-      const ambush = nearestAttackableStructure(e, 999, s => ["turret","gasMine","breedingNest","supplyNest","advancedRobo","mechaHangar","factory","workshop"].includes(s.type));
-      if(ambush && dist2(e.pos, ambush.pos) > 5){
-        e.burrowCd = rand(8.0, 12.5);
-        e.burrowState = "burrowing";
-        e.burrowTimer = 1.2;
-        e.burrowTelegraphCd = 0;
-        e.burrowTarget = ambush.pos.clone();
-      }
-    }
     e.dashCd = Math.max(0, (e.dashCd || 0) - dt);
+    if(e.kind==="dustRunner" && e.dashCd <= 0 && e.target && d > 2.8 && d < 18){
+      e.dashCd = rand(3.2, 5.2);
+      e.dashWindup = 0.16;
+      e.dashDir = Math.random() < 0.5 ? -1 : 1;
+      addBurst(e.pos.x, e.pos.y+0.15, e.pos.z, 0xc69c61, 4, 2.0, 0.2, 0.04);
+    }
     if(e.kind==="assassin" && e.dashCd <= 0 && e.target && d > 2.2 && d < 10 && !lineBlocked(e.pos, targetPos)){
       e.dashCd = rand(2.5,4.1);
       const dir = new THREE.Vector3(targetPos.x - e.pos.x, 0, targetPos.z - e.pos.z).normalize();
@@ -4375,6 +4496,52 @@ function updateEnemies(dt){
       const pushed = collisionPushOut(nx, nz, e.radius, true, e.target);
       e.pos.x = pushed.x; e.pos.z = pushed.z;
       addBurst(e.pos.x, e.pos.y+0.8, e.pos.z, 0xb75fff, 7, 3.6, 0.34, 0.06);
+    }
+    if(e.kind==="bombBeetle"){
+      if(e.detonateWindup > 0){
+        e.detonateWindup -= dt;
+        e.attackAnim = 1;
+        if(Math.random() < 0.5) addBurst(e.pos.x, e.pos.y + 0.95, e.pos.z, 0xff8644, 1, 0.7, 0.18, 0.04);
+        if(e.group?.children?.length){
+          e.group.traverse(c=>{ if(c.isMesh && c.material?.emissive) c.material.emissiveIntensity = 0.45 + Math.sin(time*26) * 0.35; });
+        }
+        if(e.detonateWindup <= 0 && !e.exploded){
+          e.exploded = true;
+          const r = 3.6;
+          addBurst(e.pos.x, e.pos.y + 0.5, e.pos.z, 0xff6e3d, 22, 5.0, 0.65, 0.09);
+          for(const s of structures){ if(!s.dead && dist2(s.pos, e.pos) < r + s.radius) damageStructure(s, e.damage * (1 - clamp((dist2(s.pos,e.pos)-1.1)/4.3, 0, 0.72))); }
+          for(const m of servantMice){ if(!m.dead && !m.dying && dist2(m.pos, e.pos) < r) applyDamageToLiving(m, e.damage * 0.52, e.pos); }
+          if(!player.dead && dist2(player.pos, e.pos) < r*0.8) applyDamageToLiving(player, 999, e.pos);
+          killEnemy(e);
+          continue;
+        }
+      }
+    }
+    if(e.kind==="screecherBat" && !isStunned){
+      e.pos.y = groundHeight(e.pos.x, e.pos.z) + 1.3 + Math.sin(time*7 + e.anim) * 0.25;
+      if(e.screamWindup > 0){
+        e.screamWindup -= dt;
+        e.attackAnim = 0.9;
+        if(Math.random() < 0.25) addBurst(e.pos.x, e.pos.y + 0.1, e.pos.z, 0xa6b4ff, 1, 0.7, 0.2, 0.04);
+        if(e.screamWindup <= 0){
+          const radius = 7.2;
+          addRingTelegraph(e.pos.x, e.pos.z, radius, 0xa8b0ff, 0.55);
+          addBurst(e.pos.x, e.pos.y + 0.2, e.pos.z, 0x97a7ff, 16, 2.6, 0.45, 0.05);
+          for(const m of servantMice){
+            if(m.dead || m.dying) continue;
+            if(dist2(m.pos, e.pos) < radius){
+              m.slowUntil = Math.max(m.slowUntil || 0, time + 1.8);
+            }
+          }
+          for(const s of structures){
+            if(s.dead || !isAttackStructureType(s.type)) continue;
+            if(dist2(s.pos, e.pos) < radius) s.screechDebuffUntil = Math.max(s.screechDebuffUntil || 0, time + 1.75);
+          }
+          e.screamCd = rand(6.2, 8.8);
+        }
+      } else if(e.screamCd <= 0 && d < 13){
+        e.screamWindup = 0.42;
+      }
     }
     updateAgentStuck(e, dt, !!e.target, (phase)=>{
       e.target = chooseEnemyTarget(e);
@@ -4385,7 +4552,9 @@ function updateEnemies(dt){
       else setRepathPoint(e, e.target?.pos || player.pos, 7.5);
     });
 
-    e.pos.y = groundHeight(e.pos.x,e.pos.z);
+    if(e.kind!=="screecherBat"){
+      e.pos.y = groundHeight(e.pos.x,e.pos.z);
+    }
     e.group.rotation.y = e.heading;
     if(e.kind==="weasel") animateWeaselRig(e.group, 1, e.anim, e.attackAnim, 0);
     else if(e.kind==="spitterBug" || e.kind==="venomLobber") animateSpitterBugRig(e.group, 0.8, e.anim, e.attackAnim);
@@ -5243,6 +5412,7 @@ function updateStructures(dt){
     const buff = beaconBuffAt(s.pos.x,s.pos.z);
     const atk = getAttackUpgradeBuffs();
     const engDamage = (s.tempBuffs && time < s.tempBuffs.expiresAt) ? (s.tempBuffs.damageMult || 1) : 1;
+    const screechDebuffMult = (s.screechDebuffUntil || 0) > time ? 0.78 : 1;
 
     if(s.type==="turret"){
       s.fireCd -= dt;
@@ -5253,7 +5423,7 @@ function updateStructures(dt){
         smoothAimYaw(headPivot, s, "aimYaw", Math.atan2(t.pos.x - s.pos.x, t.pos.z - s.pos.z), dt, 8.8);
       }
       if (t && s.fireCd <= 0) {
-        s.fireCd = 0.42 / (buff.speed * atk.speedMult);
+        s.fireCd = 0.42 / (buff.speed * atk.speedMult * screechDebuffMult);
         const dir = new THREE.Vector3(t.pos.x-s.pos.x,0,t.pos.z-s.pos.z).normalize();
         spawnProjectile({
           pos:new THREE.Vector3(s.pos.x,s.pos.y+1.7,s.pos.z).add(dir.clone().multiplyScalar(1.2)),
@@ -5282,7 +5452,7 @@ function updateStructures(dt){
         barrelPivot.rotation.x = s.aimPitch;
       }
       if (t && s.fireCd <= 0) {
-        s.fireCd = 1.8 / (buff.speed * atk.speedMult);
+        s.fireCd = 1.8 / (buff.speed * atk.speedMult * screechDebuffMult);
         const dx = t.pos.x - s.pos.x;
         const dz = t.pos.z - s.pos.z;
         const d = Math.hypot(dx,dz);
@@ -5310,7 +5480,7 @@ function updateStructures(dt){
         smoothAimYaw(prongs, s, "aimYaw", Math.atan2(t.pos.x - s.pos.x, t.pos.z - s.pos.z), dt, 9.1);
       }
       if (t && s.fireCd <= 0) {
-        s.fireCd = 0.82 / (buff.speed * atk.speedMult);
+        s.fireCd = 0.82 / (buff.speed * atk.speedMult * screechDebuffMult);
         const baseDir = new THREE.Vector3(t.pos.x-s.pos.x,0,t.pos.z-s.pos.z).normalize();
         for (const spread of [-0.16, 0, 0.16]) {
           const a = Math.atan2(baseDir.x, baseDir.z) + spread;
@@ -5342,7 +5512,7 @@ function updateStructures(dt){
       }
       const t = nearestPriorityEnemyInRange(s, 9.5 * atk.rangeMult, ["titanRam","siegeRat","spitterBug","burrowMole","cat"]);
       if (t && s.fireCd <= 0) {
-        s.fireCd = 2.05 / (buff.speed * atk.speedMult);
+        s.fireCd = 2.05 / (buff.speed * atk.speedMult * screechDebuffMult);
         const stunned = new Set();
         let previousPoint = new THREE.Vector3(s.pos.x, s.pos.y + 1.45, s.pos.z);
         let current = t;
@@ -5378,7 +5548,7 @@ function updateStructures(dt){
       if (flower) flower.rotation.y += dt * 1.2;
       const t = nearestPriorityEnemyInRange(s, 28 * atk.rangeMult, ["titanRam","siegeRat","spitterBug","burrowMole","cat"]);
       if (t && s.fireCd <= 0) {
-        s.fireCd = 2.15 / (buff.speed * atk.speedMult);
+        s.fireCd = 2.15 / (buff.speed * atk.speedMult * screechDebuffMult);
         const dx = t.pos.x - s.pos.x;
         const dz = t.pos.z - s.pos.z;
         const d = Math.hypot(dx,dz);
@@ -5407,7 +5577,7 @@ function updateStructures(dt){
         smoothAimYaw(headPivot, s, "aimYaw", Math.atan2(t.pos.x - s.pos.x, t.pos.z - s.pos.z), dt, 11.5);
       }
       if (t && s.fireCd <= 0) {
-        s.fireCd = 0.95 / (buff.speed * atk.speedMult);
+        s.fireCd = 0.95 / (buff.speed * atk.speedMult * screechDebuffMult);
         applyDamageToLiving(t, 34 * buff.damage * late * atk.damageMult * engDamage, t.pos);
         addBurst(t.pos.x, t.pos.y+0.9, t.pos.z, 0xffc1a8, 8, 3, 0.35, 0.05);
       }
@@ -5434,7 +5604,7 @@ function updateStructures(dt){
           addBurst(t.pos.x, t.pos.y + 0.25, t.pos.z, 0x9cd2ff, 1, 0.6, 0.18, 0.035);
         }
         if(frac >= 1){
-          s.fireCd = 3.5 / (buff.speed * atk.speedMult);
+          s.fireCd = 3.5 / (buff.speed * atk.speedMult * screechDebuffMult);
           s.chargeT = 0;
           const from = new THREE.Vector3(s.pos.x, s.pos.y + 2.0, s.pos.z);
           const to = new THREE.Vector3(t.pos.x, t.pos.y + 1.0, t.pos.z);
@@ -5463,7 +5633,7 @@ function updateStructures(dt){
         const frac = clamp((s.chargeT || 0) / 1.45, 0, 1);
         if(core?.material) core.material.emissiveIntensity = 0.45 + frac * 1.45;
         if(frac >= 1){
-          s.fireCd = 4.5 / (buff.speed * atk.speedMult);
+          s.fireCd = 4.5 / (buff.speed * atk.speedMult * screechDebuffMult);
           s.chargeT = 0;
           const from = new THREE.Vector3(s.pos.x, s.pos.y + 1.7, s.pos.z);
           const forward = new THREE.Vector3(Math.sin(s.aimYaw || 0), 0, Math.cos(s.aimYaw || 0)).normalize();
@@ -5733,6 +5903,9 @@ let lastTitanSpawn = 560;
 let lastPlagueSpawn = 620;
 let lastVenomSpawn = 590;
 let lastWarClawSpawn = 700;
+let lastDustRunnerSpawn = 395;
+let lastBombBeetleSpawn = 510;
+let lastScreecherSpawn = 760;
 
 function updateCheeses(dt){
   for(const c of cheeses){
@@ -5815,12 +5988,24 @@ function updateSpawners(dt){
       spawnEnemyWave("burrowMole", count);
       showCenter("Burrow Moles x" + count, 0.85);
     }
+    if(unlockedEnemyKinds.has("dustRunner") && time - lastDustRunnerSpawn >= clamp(70 / difficulty.wave - phase * 0.005, 19, 76)){
+      lastDustRunnerSpawn = time;
+      const count = clamp(Math.floor((1.2 + phase/320 + combatDirector.heat*0.4) * difficulty.wave), 1, 6);
+      spawnEnemyWave("dustRunner", count);
+      showCenter("Dust Runners x" + count, 0.8);
+    }
     if(unlockedEnemyKinds.has("siegeRat") && time - lastSiegeSpawn >= clamp(96 / difficulty.wave - phase * 0.0048, 30, 102)){
       lastSiegeSpawn = time;
       const wallLocalSiege = structures.filter(s=>!s.dead && isWallStructure(s) && dist2(s.pos, player.pos) < 30).length;
       const count = clamp(Math.floor((0.7 + wallLocalSiege/5 + phase/360) * difficulty.wave), 1, 4);
       spawnEnemyWave("siegeRat", count);
       showCenter("Siege Rats x" + count, 0.9);
+    }
+    if(unlockedEnemyKinds.has("bombBeetle") && time - lastBombBeetleSpawn >= clamp(112 / difficulty.wave - phase * 0.0042, 34, 122)){
+      lastBombBeetleSpawn = time;
+      const count = clamp(Math.floor((0.75 + phase/380 + combatDirector.heat*0.34) * difficulty.wave), 1, 4);
+      spawnEnemyWave("bombBeetle", count);
+      showCenter("Bomb Beetles x" + count, 0.9);
     }
     if(unlockedEnemyKinds.has("titanRam") && time - lastTitanSpawn >= clamp(140 / difficulty.wave - phase * 0.003, 52, 160)){
       lastTitanSpawn = time;
@@ -5833,6 +6018,12 @@ function updateSpawners(dt){
       const count = clamp(Math.floor((0.8 + phase/360 + combatDirector.heat*0.4) * difficulty.wave), 1, difficultyKey==="brutal" ? 5 : 3);
       spawnEnemyWave("venomLobber", count);
       showCenter("VENOM LOBBERS x" + count, 0.9);
+    }
+    if(unlockedEnemyKinds.has("screecherBat") && time - lastScreecherSpawn >= clamp(102 / difficulty.wave - phase * 0.0039, 32, 116)){
+      lastScreecherSpawn = time;
+      const count = clamp(Math.floor((0.8 + phase/340 + combatDirector.heat*0.35) * difficulty.wave), 1, difficultyKey==="brutal" ? 5 : 3);
+      spawnEnemyWave("screecherBat", count);
+      showCenter("SCREECHER BATS x" + count, 0.9);
     }
     if(unlockedEnemyKinds.has("plagueBrute") && time - lastPlagueSpawn >= clamp(132 / difficulty.wave - phase * 0.0026, 42, 148)){
       lastPlagueSpawn = time;
@@ -5867,9 +6058,12 @@ function updateSpawners(dt){
       const surgePool = ["rat", "assassin"];
       if(unlockedEnemyKinds.has("spitterBug")) surgePool.push("spitterBug");
       if(unlockedEnemyKinds.has("burrowMole")) surgePool.push("burrowMole");
+      if(unlockedEnemyKinds.has("dustRunner")) surgePool.push("dustRunner");
       if(unlockedEnemyKinds.has("siegeRat")) surgePool.push("siegeRat");
+      if(unlockedEnemyKinds.has("bombBeetle")) surgePool.push("bombBeetle");
       if(unlockedEnemyKinds.has("titanRam") && Math.random() < 0.22) surgePool.push("titanRam");
       if(unlockedEnemyKinds.has("venomLobber")) surgePool.push("venomLobber");
+      if(unlockedEnemyKinds.has("screecherBat")) surgePool.push("screecherBat");
       if(unlockedEnemyKinds.has("plagueBrute")) surgePool.push("plagueBrute");
       if(unlockedEnemyKinds.has("warClaw")) surgePool.push("warClaw");
       spawnEnemyWave(surgePool[Math.floor(Math.random()*surgePool.length)], surge);
@@ -5911,9 +6105,12 @@ function spawnEnemyWave(kind,count){
     const e = makeEnemy(kind, x, z);
     if(kind==="spitterBug") addBurst(x, groundHeight(x,z)+0.8, z, 0x8dff78, 8, 2.8, 0.35, 0.05);
     if(kind==="burrowMole") addBurst(x, groundHeight(x,z)+0.25, z, 0x8f6a40, 10, 3.0, 0.4, 0.06);
+    if(kind==="dustRunner") addBurst(x, groundHeight(x,z)+0.18, z, 0xcda96f, 8, 3.4, 0.32, 0.05);
     if(kind==="siegeRat") addBurst(x, groundHeight(x,z)+0.95, z, 0xb8d4e2, 10, 3.1, 0.42, 0.06);
+    if(kind==="bombBeetle") addBurst(x, groundHeight(x,z)+0.82, z, 0xff8a51, 10, 2.9, 0.38, 0.06);
     if(kind==="titanRam") addBurst(x, groundHeight(x,z)+1.1, z, 0xffaa57, 14, 4.8, 0.6, 0.08);
     if(kind==="venomLobber") addBurst(x, groundHeight(x,z)+0.9, z, 0x8dff5a, 12, 3.8, 0.5, 0.07);
+    if(kind==="screecherBat") addBurst(x, groundHeight(x,z)+1.0, z, 0xa3b4ff, 10, 3.0, 0.36, 0.06);
     if(kind==="plagueBrute") addBurst(x, groundHeight(x,z)+1.2, z, 0x86ff9e, 16, 4.6, 0.62, 0.08);
     if(kind==="warClaw") addBurst(x, groundHeight(x,z)+0.95, z, 0xff7d64, 12, 4.4, 0.42, 0.07);
     if(useCatCenter) setRepathPoint(e, center, 5.5);
