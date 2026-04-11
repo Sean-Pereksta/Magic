@@ -327,15 +327,15 @@ const CATEGORY_BUILDS = {
     { slot:5, name:"Workshop", cost:12, gasCost:20, type:"workshop", hp:180, radius:2.5, prereq:"gasMine" },
     { slot:6, name:"Advanced Robo Foundry", cost:14, gasCost:24, type:"advancedRobo", hp:190, radius:2.8, prereq:"workshop" },
     { slot:7, name:"Mecha Hangar", cost:16, gasCost:26, type:"mechaHangar", hp:210, radius:2.9, prereq:"workshop" },
-    { slot:8, name:"Phase Teleporter", cost:20, gasCost:12, type:"teleporter", hp:122, radius:2.2, prereq:"workshop" },
+    { slot:8, name:"Sniper Tower", cost:14, gasCost:5, type:"sniperTower", hp:88, radius:2.0, prereq:"workshop" },
     { slot:9, name:"Robo Facility", cost:12, gasCost:6, type:"robo", hp:145, radius:2.6, prereq:"workshop" },
-    { slot:0, name:"Arc Launcher", cost:15, gasCost:10, type:"launcher", hp:136, radius:2.1, prereq:"workshop" }
+    { slot:0, name:"Rail Gun", cost:16, gasCost:7, type:"railGun", hp:102, radius:2.1, prereq:"workshop" }
   ]
 };
 const BUILD_ICONS = {
   factory:"🧀", fountain:"💧", supplyNest:"📦", beacon:"📡", robo:"⚙️", scoutPost:"👁️", breedingNest:"🐣", gasDepot:"🛢️", gasMine:"♨️",
   wall:"🧱", diamondWall:"💎", ultraWall:"🧿", barrierTotem:"🛡️", braceTower:"🏛️", repairAnchor:"🔧", fortPlate:"🪙",
-  turret:"🎯", cannon:"💥", shardLauncher:"🔱", zapCoil:"⚡", mortarBloom:"🌸", sawBlaster:"🪚",
+  turret:"🎯", cannon:"💥", shardLauncher:"🔱", zapCoil:"⚡", mortarBloom:"🌸", sawBlaster:"🪚", sniperTower:"🎯", railGun:"🧲",
   workshop:"🏭", advancedRobo:"🤖", mechaHangar:"🚀", launcher:"🚀", teleporter:"🌀"
 };
 
@@ -404,6 +404,31 @@ function worldToCell(x,z){
 }
 function cellToWorld(cx,cz){ return { x:cx*GRID_SIZE, z:cz*GRID_SIZE }; }
 function getEnemyLevel(){ return 1 + Math.floor(Math.max(0, time - 60) / 90); }
+const BARRIER_SHIELD_RADIUS = GRID_SIZE * 4;
+const BARRIER_SHIELD_MAX = 30;
+const BARRIER_SHIELD_REGEN_PER_TOTEM = 4.5;
+const BARRIER_SHIELD_IMPACT_COLOR = 0x8cc8ff;
+const BREEDING_SPAWN_SEARCH_CELLS = 3;
+const SERVANT_REPAIR_RANGE = 12;
+const SERVANT_REPAIR_MAX_PER_TARGET = 2;
+const SERVANT_REPAIR_INTERVAL = 0.65;
+const SERVANT_REPAIR_AMOUNT = 3.0;
+const LATE_GAME_START = 200;
+const LATE_GAME_PEAK = 760;
+function getLateGameDefenseMultiplier(){
+  const levelFactor = clamp((getEnemyLevel() - 2) / 9, 0, 1);
+  const timeFactor = clamp((time - LATE_GAME_START) / (LATE_GAME_PEAK - LATE_GAME_START), 0, 1);
+  return clamp(timeFactor * 0.75 + levelFactor * 0.6, 0, 1.5);
+}
+function getTowerLateScale(type){
+  const t = getLateGameDefenseMultiplier();
+  const gains = {
+    turret:0.45, cannon:0.62, shardLauncher:0.74,
+    zapCoil:1.35, mortarBloom:1.4, sawBlaster:1.3,
+    sniperTower:1.65, railGun:1.75
+  };
+  return 1 + t * (gains[type] || 0.2);
+}
 function hasStructureType(type){ return structures.some(s => !s.dead && s.type===type); }
 function prettyTypeName(type){
   const d = Object.values(CATEGORY_BUILDS).flat().find(v=>v.type===type);
@@ -426,6 +451,33 @@ function showCenter(text, dur=1.5){
 }
 function isEnemyTargetable(enemy){
   return !!enemy && !enemy.dead && !enemy.dying && !enemy.untargetable;
+}
+function enemyThreatWeight(enemy){
+  if(!enemy) return 0;
+  const byKind = { titanRam:190, siegeRat:155, spitterBug:130, burrowMole:120, ram:110, weasel:95, mole:70, rat:42, assassin:84 };
+  return (byKind[enemy.kind] || 60) + (enemy.elite ? 24 : 0) + clamp(enemy.maxHp || 0, 0, 220) * 0.12;
+}
+function nearestPriorityEnemyInRange(origin, range, biasKinds=[]){
+  const originPos = origin.pos || origin;
+  let best = null;
+  let bestScore = -99999;
+  const kindBias = new Map();
+  biasKinds.forEach((k, i)=>kindBias.set(k, (biasKinds.length - i) * 18));
+  for(const e of enemies){
+    if(!isEnemyTargetable(e)) continue;
+    const d = dist2(originPos, e.pos);
+    if(d > range) continue;
+    const score = enemyThreatWeight(e) + (kindBias.get(e.kind) || 0) - d * 1.45;
+    if(score > bestScore){ bestScore = score; best = e; }
+  }
+  if(cat && !cat.dead && !cat.dying){
+    const d = dist2(originPos, cat.pos);
+    if(d <= range){
+      const score = enemyThreatWeight(cat) + (kindBias.get("cat") || 0) - d * 1.25 + 14;
+      if(score > bestScore){ best = cat; }
+    }
+  }
+  return best;
 }
 function updateEnemyUnlockWarning(){
   if(!ui.enemyUnlockWarning) return;
@@ -665,6 +717,33 @@ function randomFreePosition(radius=1){
   }
   return new THREE.Vector3(0, groundHeight(0,0), 0);
 }
+function findOpenSpawnCellNearStructure(structure, preferredRadiusCells=1, fallbackRadiusCells=BREEDING_SPAWN_SEARCH_CELLS){
+  const center = structure.cell || worldToCell(structure.pos.x, structure.pos.z);
+  const offsets = [];
+  for(let r=1;r<=fallbackRadiusCells;r++){
+    const orth = [[r,0],[-r,0],[0,r],[0,-r]];
+    const diag = [[r,r],[-r,r],[r,-r],[-r,-r]];
+    const sides = [];
+    for(let i=-r+1;i<=r-1;i++){
+      sides.push([r,i],[-r,i],[i,r],[i,-r]);
+    }
+    const ring = r <= preferredRadiusCells ? [...orth, ...diag, ...sides] : [...orth, ...sides, ...diag];
+    for(const [ox,oz] of ring) offsets.push([ox,oz,r]);
+  }
+  let fallback = null;
+  let fallbackDist = 9999;
+  for(const [ox,oz,r] of offsets){
+    const cx = center.cx + ox;
+    const cz = center.cz + oz;
+    if(cx < -GRID_HALF_CELLS || cx > GRID_HALF_CELLS || cz < -GRID_HALF_CELLS || cz > GRID_HALF_CELLS) continue;
+    const wp = cellToWorld(cx, cz);
+    if(circleBlocked(wp.x, wp.z, 0.84, null, 0.9)) continue;
+    const d = Math.hypot(ox, oz) + r * 0.02;
+    if(r <= preferredRadiusCells) return { cx, cz };
+    if(d < fallbackDist){ fallbackDist = d; fallback = { cx, cz }; }
+  }
+  return fallback || center;
+}
 
 // -------------------------------------------------
 // PARTICLES / FX
@@ -811,6 +890,44 @@ function setEnemyTelegraph(e, frac=0){
     const yaw = Math.atan2(dir.x, dir.z);
     v.arc.rotation.z = -yaw + Math.PI/2;
   }
+}
+function ensureSpitLandingTelegraph(e){
+  if(e.spitTelegraph) return e.spitTelegraph;
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.72, 1.0, 30),
+    new THREE.MeshBasicMaterial({ color:0x96ff7e, transparent:true, opacity:0.0, side:THREE.DoubleSide, depthWrite:false })
+  );
+  ring.rotation.x = -Math.PI/2;
+  ring.position.y = 0.08;
+  const disc = new THREE.Mesh(
+    new THREE.CircleGeometry(0.72, 24),
+    new THREE.MeshBasicMaterial({ color:0x3fcf63, transparent:true, opacity:0.0, side:THREE.DoubleSide, depthWrite:false })
+  );
+  disc.rotation.x = -Math.PI/2;
+  disc.position.y = 0.07;
+  scene.add(ring, disc);
+  e.spitTelegraph = { ring, disc, pos:new THREE.Vector3() };
+  return e.spitTelegraph;
+}
+function setSpitLandingTelegraph(e, position, frac=0, radius=1.75){
+  if(!e || !position || e.dead || e.dying) return;
+  const t = ensureSpitLandingTelegraph(e);
+  t.pos.set(position.x, groundHeight(position.x, position.z), position.z);
+  const pulse = 1 + Math.sin(time*18) * 0.08 + frac * 0.12;
+  t.ring.position.set(t.pos.x, t.pos.y + 0.08, t.pos.z);
+  t.disc.position.set(t.pos.x, t.pos.y + 0.07, t.pos.z);
+  t.ring.scale.setScalar(radius * pulse);
+  t.disc.scale.setScalar(radius * (0.78 + frac * 0.16));
+  t.ring.material.opacity = 0.3 + frac * 0.5;
+  t.disc.material.opacity = 0.1 + frac * 0.2;
+  t.ring.visible = t.disc.visible = true;
+}
+function clearSpitLandingTelegraph(e){
+  if(!e?.spitTelegraph) return;
+  const { ring, disc } = e.spitTelegraph;
+  ring?.parent?.remove(ring);
+  disc?.parent?.remove(disc);
+  e.spitTelegraph = null;
 }
 
 // -------------------------------------------------
@@ -1964,7 +2081,7 @@ function structureColor(type){
   const colors = {
     wall:0xffde62, diamondWall:0x98ebff, ultraWall:0x93c8ff, cannon:0xffb85d, turret:0xf7d45b, beacon:0x7aff95,
     factory:0xfff09d, robo:0xc0c7d5, fountain:0x8ef7ff, shardLauncher:0xffd3a5, zapCoil:0xb6a6ff,
-    mortarBloom:0xff98b5, sawBlaster:0xffb38f, barrierTotem:0x9ce6ff, braceTower:0xbef0c0,
+    mortarBloom:0xff98b5, sawBlaster:0xffb38f, sniperTower:0x9ec6ff, railGun:0x95b5ff, barrierTotem:0x9ce6ff, braceTower:0xbef0c0,
     repairAnchor:0x93fff5, fortPlate:0xa7ceff, supplyNest:0xfff3b5, scoutPost:0xcff4ff,
     breedingNest:0xffd8aa, gasDepot:0x9df3d3, gasMine:0x8bd4c3, workshop:0xaec4d8, advancedRobo:0x8ad9ff, mechaHangar:0xffbf90,
     launcher:0x88deff, teleporter:0x9ea1ff
@@ -2487,6 +2604,47 @@ function createStructureMesh(type){
     g.add(base, headPivot);
     g.userData.headPivot = headPivot;
   }
+  if(type==="sniperTower"){
+    commonBase.material.color.set(0x49556d);
+    commonBase.material.metalness = 0.6;
+    commonBase.material.roughness = 0.28;
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.28,1.9,10), new THREE.MeshStandardMaterial({ color:0x8ba1bf, metalness:0.55, roughness:0.3 }));
+    mast.position.y = 1.2;
+    const headPivot = new THREE.Group();
+    headPivot.position.y = 2.05;
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.55,0.4,1.25), new THREE.MeshStandardMaterial({ color:0xa5bad8, metalness:0.62, roughness:0.24 }));
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.12,2.4,10), new THREE.MeshStandardMaterial({ color:0xb5c8e4, emissive:0x345d96, emissiveIntensity:0.35 }));
+    barrel.rotation.z = Math.PI/2;
+    barrel.position.z = 1.2;
+    const lens = new THREE.Mesh(new THREE.SphereGeometry(0.14,10,10), new THREE.MeshStandardMaterial({ color:0xbde9ff, emissive:0x5cbcff, emissiveIntensity:0.85 }));
+    lens.position.z = 2.35;
+    headPivot.add(body, barrel, lens);
+    g.add(mast, headPivot);
+    g.userData.headPivot = headPivot;
+    g.userData.sniperBarrel = barrel;
+    g.userData.sniperLens = lens;
+  }
+  if(type==="railGun"){
+    commonBase.material.color.set(0x3f4a62);
+    commonBase.material.metalness = 0.65;
+    commonBase.material.roughness = 0.24;
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.95,1.1,0.65,14), new THREE.MeshStandardMaterial({ color:0x7f92b5, metalness:0.5, roughness:0.35 }));
+    base.position.y = 0.45;
+    const headPivot = new THREE.Group();
+    headPivot.position.y = 1.55;
+    for(const side of [-1,1]){
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.12,0.18,2.25), new THREE.MeshStandardMaterial({ color:0xbad0ee, emissive:0x4f83d0, emissiveIntensity:0.6 }));
+      rail.position.set(side*0.23, 0, 1.1);
+      headPivot.add(rail);
+    }
+    const core = new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.1,2.15,10), new THREE.MeshStandardMaterial({ color:0xd9ecff, emissive:0x67b5ff, emissiveIntensity:0.45 }));
+    core.rotation.z = Math.PI/2;
+    core.position.z = 1.03;
+    headPivot.add(core);
+    g.add(base, headPivot);
+    g.userData.headPivot = headPivot;
+    g.userData.railCore = core;
+  }
   if(type==="breedingNest"){
     const nest = new THREE.Mesh(new THREE.TorusGeometry(0.75,0.22,10,20), new THREE.MeshStandardMaterial({ color:0xc9975f }));
     nest.rotation.x = Math.PI/2;
@@ -2576,7 +2734,11 @@ function createStructure(type,x,z,rotationY=0, dataOverride=null){
     mechaPending:type==="mechaHangar",
     isBeaconBuffed:false,
     target:null,
-    travelCooldown:0
+    travelCooldown:0,
+    shield:0,
+    maxShield:BARRIER_SHIELD_MAX,
+    shieldRegenRate:0,
+    shieldFx:null
   };
   structures.push(s);
   occupiedCells.set(cellKey(cell.cx, cell.cz), s);
@@ -2596,7 +2758,19 @@ function createStructure(type,x,z,rotationY=0, dataOverride=null){
 }
 function damageStructure(s,dmg){
   if(!s || s.dead) return;
-  s.hp -= dmg;
+  let damageLeft = Math.max(0, dmg);
+  if((s.shield || 0) > 0 && damageLeft > 0){
+    const shieldHit = Math.min(s.shield, damageLeft);
+    s.shield -= shieldHit;
+    damageLeft -= shieldHit;
+    addBurst(s.pos.x, s.pos.y + 1.15, s.pos.z, BARRIER_SHIELD_IMPACT_COLOR, 6, 3.2, 0.3, 0.07);
+  }
+  if(damageLeft <= 0){
+    setHealthBar(s.mesh.userData.healthBar, Math.max(0, s.hp/s.maxHp));
+    updateWallDamageVisual(s);
+    return;
+  }
+  s.hp -= damageLeft;
   setHealthBar(s.mesh.userData.healthBar, Math.max(0, s.hp/s.maxHp));
   updateWallDamageVisual(s);
   addBurst(s.pos.x, s.pos.y+1.1, s.pos.z, 0xffca77, 5, 3, 0.28, 0.07);
@@ -2606,6 +2780,10 @@ function damageStructure(s,dmg){
     addBurst(s.pos.x, s.pos.y+1.2, s.pos.z, 0xff6655, 42, 8.2, 1.15, 0.14);
     addBurst(s.pos.x, s.pos.y+1.2, s.pos.z, 0xffcc66, 28, 6.8, 0.95, 0.11);
     if(s.beam){ scene.remove(s.beam); s.beam = null; }
+    if(s.shieldFx){
+      s.shieldFx.parent?.remove(s.shieldFx);
+      s.shieldFx = null;
+    }
     if(s.cell) occupiedCells.delete(cellKey(s.cell.cx, s.cell.cz));
     if(s.type==="gasMine"){
       if(s.assignedServant?.assignedGasMine === s){
@@ -2734,6 +2912,9 @@ function spawnProjectile(opts){
 }
 function explodeProjectile(p){
   const burstColor = p.kind==="acid" ? 0x86ff77 : (p.from==="enemy"?0xff5555:0xffdd66);
+  if(p.impactPos){
+    p.pos.set(p.impactPos.x, p.impactPos.y, p.impactPos.z);
+  }
   addBurst(p.pos.x,p.pos.y,p.pos.z, burstColor, p.kind==="cannon"||p.kind==="mortar"?18:8, 4.5, 0.6, 0.09);
 
   if(p.from === "ally"){
@@ -2847,6 +3028,7 @@ function beginDeath(entity, type="mouse"){
   addBurst(entity.pos.x, entity.pos.y+0.8, entity.pos.z, type==="cat"?0xff7d44:0xff7777, 16, 4.5, 0.6, 0.08);
 }
 function finalizeDeath(entity) {
+  if(entity.spitTelegraph) clearSpitLandingTelegraph(entity);
   entity.dead = true;
   entity.group.parent?.remove(entity.group);
 }
@@ -2972,6 +3154,7 @@ function updateMouseEntity(m,dt){
       }
     }
     if(m.assignedGasMine && !m.assignedGasMine.dead){
+      m.repairTarget = null;
       const mine = m.assignedGasMine;
       if(!m.gasJobState) m.gasJobState = "toMine";
       if(m.gasJobState === "toMine"){
@@ -3001,53 +3184,59 @@ function updateMouseEntity(m,dt){
       m.carryingGas = false;
     }
 
-    let repairTarget = null;
-    let bestRepair = 9999;
-    for(const s of structures){
-      if(s.dead || s.hp >= s.maxHp) continue;
-      const d = dist2(m.pos,s.pos);
-      if(d < bestRepair && d < 24){ bestRepair = d; repairTarget = s; }
-    }
-
-    if(m.assignedGasMine){
-      // dedicated gas worker skips general jobs
-    } else if(repairTarget){
-      m.target = repairTarget.pos;
-      if(bestRepair < repairTarget.radius + 1.2){
-        m.repairCd -= dt;
-        m.attackAnim = 0.9;
-        if(m.repairCd <= 0){
-          m.repairCd = 0.5;
-          repairTarget.hp = Math.min(repairTarget.maxHp, repairTarget.hp + 3.2);
-          setHealthBar(repairTarget.mesh.userData.healthBar, repairTarget.hp/repairTarget.maxHp);
-          updateWallDamageVisual(repairTarget);
-          addBurst(repairTarget.pos.x, repairTarget.pos.y+1.0, repairTarget.pos.z, 0x95ffb6, 4, 2.3, 0.3, 0.05);
-        }
-      }
-    } else {
-      let assignedFactory = null;
+    let assignedFactory = null;
+    if(!m.assignedGasMine){
       for(const f of structures){
         if(f.dead || f.type!=="factory") continue;
         if(!f.assignedServant || f.assignedServant===m){ assignedFactory = f; break; }
       }
+    }
+    if(assignedFactory){
+      m.repairTarget = null;
+      if(m.assignedFactory && m.assignedFactory !== assignedFactory && m.assignedFactory.assignedServant===m) m.assignedFactory.assignedServant = null;
+      m.assignedFactory = assignedFactory;
+      assignedFactory.assignedServant = m;
+      m.target = assignedFactory.pos;
+    } else {
+      if(m.assignedFactory && m.assignedFactory.assignedServant===m) m.assignedFactory.assignedServant = null;
+      m.assignedFactory = null;
 
-      if(assignedFactory){
-        if(m.assignedFactory && m.assignedFactory !== assignedFactory && m.assignedFactory.assignedServant===m) m.assignedFactory.assignedServant = null;
-        m.assignedFactory = assignedFactory;
-        assignedFactory.assignedServant = m;
-        m.target = assignedFactory.pos;
-      } else {
-        if(m.assignedFactory && m.assignedFactory.assignedServant===m) m.assignedFactory.assignedServant = null;
-        m.assignedFactory = null;
+      let nearestCheese = null, best = 9999;
+      for(const c of cheeses){
+        const d = dist2(m.pos,c.pos);
+        if(d < best){ best = d; nearestCheese = c; }
+      }
 
-        let nearestCheese = null, best = 9999;
-        for(const c of cheeses){
-          const d = dist2(m.pos,c.pos);
-          if(d < best){ best = d; nearestCheese = c; }
+      if(nearestCheese && best < 28){
+        m.target = nearestCheese.pos;
+      } else if(!m.assignedGasMine && !m.assignedFactory){
+        let repairTarget = null;
+        let bestRepair = 9999;
+        for(const s of structures){
+          if(s.dead || s.hp >= s.maxHp) continue;
+          const d = dist2(m.pos,s.pos);
+          if(d > SERVANT_REPAIR_RANGE) continue;
+          const workersOnTarget = servantMice.filter(sm => sm!==m && !sm.dead && !sm.dying && sm.repairTarget === s).length;
+          if(workersOnTarget >= SERVANT_REPAIR_MAX_PER_TARGET) continue;
+          const structureWeight = ["turret","cannon","zapCoil","mortarBloom","sawBlaster","sniperTower","railGun","factory","gasMine","workshop"].includes(s.type) ? 0.75 : 1;
+          const score = d * structureWeight + (s.hp/s.maxHp)*4.8;
+          if(score < bestRepair){ bestRepair = score; repairTarget = s; }
         }
-
-        if(nearestCheese && best < 28){
-          m.target = nearestCheese.pos;
+        m.repairTarget = repairTarget;
+        if(repairTarget){
+          m.target = repairTarget.pos;
+          const reach = dist2(m.pos, repairTarget.pos);
+          if(reach < repairTarget.radius + 1.2){
+            m.repairCd -= dt;
+            m.attackAnim = 0.9;
+            if(m.repairCd <= 0){
+              m.repairCd = SERVANT_REPAIR_INTERVAL;
+              repairTarget.hp = Math.min(repairTarget.maxHp, repairTarget.hp + SERVANT_REPAIR_AMOUNT);
+              setHealthBar(repairTarget.mesh.userData.healthBar, repairTarget.hp/repairTarget.maxHp);
+              updateWallDamageVisual(repairTarget);
+              addBurst(repairTarget.pos.x, repairTarget.pos.y+1.0, repairTarget.pos.z, 0x95ffb6, 4, 2.3, 0.3, 0.05);
+            }
+          }
         } else {
           m.orbitAngle += dt * 1.2;
           const orbitR = 3.4 + (Math.sin(m.anim*0.7 + m.orbitAngle) * 1.2);
@@ -3058,6 +3247,8 @@ function updateMouseEntity(m,dt){
           );
           m.target.y = groundHeight(m.target.x, m.target.z);
         }
+      } else {
+        m.repairTarget = null;
       }
     }
 
@@ -3154,6 +3345,7 @@ function makeEnemy(kind,x,z){
     spitCd:rand(1.5,2.7),
     spitWindup:0,
     spitAim:null,
+    spitImpactRadius:1.75,
     burrowCd:rand(4.0,6.8),
     burrowState:"idle",
     burrowTimer:0,
@@ -3273,7 +3465,7 @@ function chooseEnemyTarget(e){
       const score = d - cluster * 1.8;
       if(score < bestScore){ bestScore = score; bestBackline = m; }
     }
-    const struct = nearestAttackableStructure(e, 999, s => ["turret","cannon","mortarBloom","shardLauncher","zapCoil","breedingNest","factory","gasMine","mechaHangar","advancedRobo"].includes(s.type));
+    const struct = nearestAttackableStructure(e, 999, s => ["turret","cannon","mortarBloom","shardLauncher","zapCoil","sawBlaster","sniperTower","railGun","breedingNest","factory","gasMine","mechaHangar","advancedRobo"].includes(s.type));
     if(bestBackline && bestScore < 65) return bestBackline;
     if(struct) return struct;
   }
@@ -3282,7 +3474,7 @@ function chooseEnemyTarget(e){
     if(ambushStructure) return ambushStructure;
   }
   if(e.kind==="siegeRat"){
-    const siegeTarget = nearestAttackableStructure(e, 999, s => ["wall","diamondWall","ultraWall","gasDepot","turret","advancedRobo","mechaHangar","fortPlate","barrierTotem","braceTower"].includes(s.type));
+    const siegeTarget = nearestAttackableStructure(e, 999, s => ["wall","diamondWall","ultraWall","gasDepot","turret","sniperTower","railGun","advancedRobo","mechaHangar","fortPlate","barrierTotem","braceTower"].includes(s.type));
     if(siegeTarget) return siegeTarget;
   }
   if(e.kind==="titanRam"){
@@ -3429,6 +3621,10 @@ function updateEnemies(dt){
     if(e.kind==="spitterBug" && e.spitWindup > 0){
       e.spitWindup -= dt;
       e.attackAnim = 1;
+      if(e.spitAim){
+        const frac = clamp(1 - (e.spitWindup / 0.5), 0, 1);
+        setSpitLandingTelegraph(e, e.spitAim, frac, e.spitImpactRadius || 1.75);
+      }
       if(Math.random() < 0.12) addBurst(e.pos.x, e.pos.y + 1.0, e.pos.z, 0x7bff89, 1, 0.8, 0.18, 0.03);
       if(e.spitWindup <= 0 && e.spitAim){
         const target = e.spitAim;
@@ -3439,14 +3635,21 @@ function updateEnemies(dt){
           pos:new THREE.Vector3(e.pos.x, e.pos.y + 1.05, e.pos.z).add(horiz.clone().multiplyScalar(0.35)),
           vel:new THREE.Vector3(horiz.x * (8.2 + d2*0.22), 8.8 + d2*0.12, horiz.z * (8.2 + d2*0.22)),
           damage:e.damage,
-          splash:1.75,
+          splash:e.spitImpactRadius || 1.75,
           color:0x8cff71,
           size:0.18,
           from:"enemy",
-          kind:"acid"
+          kind:"acid",
+          impactPos:new THREE.Vector3(target.x, groundHeight(target.x, target.z) + 0.12, target.z)
         });
+        clearSpitLandingTelegraph(e);
+        e.spitAim = null;
         addBurst(e.pos.x, e.pos.y + 1.0, e.pos.z, 0x96ff8d, 6, 2.4, 0.28, 0.05);
       }
+      if(e.spitWindup <= 0 && !e.spitAim) clearSpitLandingTelegraph(e);
+    }
+    if(e.kind==="spitterBug" && e.spitWindup <= 0 && !e.spitAim && e.spitTelegraph){
+      clearSpitLandingTelegraph(e);
     }
 
     // retarget more often if crowded around current target
@@ -3624,6 +3827,9 @@ function updateEnemies(dt){
         e.spitCd = rand(2.8,4.6);
         e.spitWindup = 0.5;
         e.spitAim = (e.target.pos || e.target).clone ? (e.target.pos || e.target).clone() : new THREE.Vector3(e.target.pos.x,e.target.pos.y,e.target.pos.z);
+        e.spitAim.y = groundHeight(e.spitAim.x, e.spitAim.z);
+        e.spitImpactRadius = 1.75;
+        setSpitLandingTelegraph(e, e.spitAim, 0.01, e.spitImpactRadius);
       }
     }
     if(e.kind==="burrowMole" && e.burrowState==="idle" && !isStunned && e.burrowCd <= 0){
@@ -3787,7 +3993,7 @@ function catChooseTarget(){
       if(d < nearestRobotD){ nearestRobot = r; nearestRobotD = d; }
     }
     if(cat.failedRoute >= 3 && cat.aggroMemory < 2.7){
-      const antiBase = nearestAttackableStructure(cat, 999, s => ["wall","diamondWall","ultraWall","turret","cannon","shardLauncher","sawBlaster","zapCoil","mortarBloom","barrierTotem","fortPlate"].includes(s.type));
+      const antiBase = nearestAttackableStructure(cat, 999, s => ["wall","diamondWall","ultraWall","turret","cannon","shardLauncher","sawBlaster","zapCoil","mortarBloom","sniperTower","railGun","barrierTotem","fortPlate"].includes(s.type));
       if(antiBase && dist2(cat.pos, antiBase.pos) < 56) return antiBase;
     }
     if(nearestServant && nearestServantD < 14 && Math.random() < 0.3) return nearestServant;
@@ -4027,6 +4233,27 @@ function nearestEnemyInRange(origin, range){
   }
   return best;
 }
+function updateStructureShieldFx(s, dt){
+  if(s.dead) return;
+  if(s.shield > 0.01){
+    if(!s.shieldFx){
+      const aura = new THREE.Mesh(
+        new THREE.TorusGeometry(Math.max(0.7, s.radius * 0.72), 0.07, 10, 22),
+        new THREE.MeshBasicMaterial({ color:0x8fd0ff, transparent:true, opacity:0.0, depthWrite:false })
+      );
+      aura.rotation.x = Math.PI/2;
+      aura.position.y = 0.15;
+      s.mesh.add(aura);
+      s.shieldFx = aura;
+    }
+    const frac = clamp(s.shield / Math.max(1, s.maxShield || BARRIER_SHIELD_MAX), 0, 1);
+    s.shieldFx.visible = true;
+    s.shieldFx.scale.setScalar(1 + Math.sin(time*5 + s.pos.x*0.1)*0.03 + frac*0.08);
+    s.shieldFx.material.opacity = 0.16 + frac * 0.25;
+  } else if(s.shieldFx){
+    s.shieldFx.visible = false;
+  }
+}
 
 // -------------------------------------------------
 // STRUCTURE UPDATE / COMBAT
@@ -4218,6 +4445,7 @@ function updateStructures(dt){
 
   for(const s of structures){
     if(s.dead) continue;
+    updateStructureShieldFx(s, dt);
     if(s.travelCooldown > 0) s.travelCooldown = Math.max(0, s.travelCooldown - dt);
 
     if(s.type==="launcher"){
@@ -4307,7 +4535,13 @@ function updateStructures(dt){
       }
       if(s.breedCd <= 0){
         s.breedCd = 25;
-        const spawn = randomFreePosition(0.9);
+        const spawnCell = findOpenSpawnCellNearStructure(s, 1, BREEDING_SPAWN_SEARCH_CELLS);
+        const wp = cellToWorld(spawnCell.cx, spawnCell.cz);
+        const spawn = new THREE.Vector3(wp.x, groundHeight(wp.x, wp.z), wp.z);
+        if(circleBlocked(spawn.x, spawn.z, 0.84, null, 0.9)){
+          const fallback = randomFreePosition(0.9);
+          spawn.copy(fallback);
+        }
         spawnWildMouse(spawn.x, spawn.z);
         const nw = wildMice[wildMice.length-1];
         recruitMouse(nw);
@@ -4384,7 +4618,27 @@ function updateStructures(dt){
 
     if(s.type==="barrierTotem"){
       const ring = s.mesh.userData.ring;
-      if (ring) ring.rotation.z += dt * 1.7;
+      if (ring){
+        ring.rotation.z += dt * 2.4;
+        ring.scale.setScalar(1 + Math.sin(time*5 + s.pos.x*0.1)*0.12);
+        ring.material.emissiveIntensity = 0.45 + Math.sin(time*6)*0.35;
+      }
+      if(Math.random() < 0.025){
+        addBurst(s.pos.x + rand(-0.35,0.35), s.pos.y + rand(1.0,2.5), s.pos.z + rand(-0.35,0.35), 0x9ed9ff, 2, 1.1, 0.2, 0.045);
+      }
+      for(const t of structures){
+        if(t.dead || t === s) continue;
+        if(dist2(s.pos, t.pos) <= BARRIER_SHIELD_RADIUS){
+          let sources = 0;
+          for(const other of structures){
+            if(other.dead || other.type!=="barrierTotem") continue;
+            if(dist2(other.pos, t.pos) <= BARRIER_SHIELD_RADIUS) sources++;
+          }
+          const regen = BARRIER_SHIELD_REGEN_PER_TOTEM * (1 + Math.max(0, sources-1) * 0.25);
+          t.shield = clamp((t.shield || 0) + regen * dt, 0, t.maxShield || BARRIER_SHIELD_MAX);
+          t.shieldRegenRate = regen;
+        }
+      }
     }
 
     if(s.type==="repairAnchor"){
@@ -4420,6 +4674,7 @@ function updateStructures(dt){
 
     if(s.type==="turret"){
       s.fireCd -= dt;
+      const late = getTowerLateScale("turret");
       const headPivot = s.mesh.userData.headPivot;
       const t = nearestEnemyInRange(s, 22);
       if (t && headPivot) {
@@ -4431,7 +4686,7 @@ function updateStructures(dt){
         spawnProjectile({
           pos:new THREE.Vector3(s.pos.x,s.pos.y+1.7,s.pos.z).add(dir.clone().multiplyScalar(1.2)),
           vel:new THREE.Vector3(dir.x*20,1.8,dir.z*20),
-          damage:7*buff.damage,
+          damage:7*buff.damage*late,
           splash:0,
           color:0xffe16c,
           size:0.12,
@@ -4444,6 +4699,7 @@ function updateStructures(dt){
 
     if(s.type==="cannon"){
       s.fireCd -= dt;
+      const late = getTowerLateScale("cannon");
       const barrelPivot = s.mesh.userData.barrelPivot;
       const t = nearestEnemyInRange(s, 28);
       if (t && barrelPivot) {
@@ -4462,8 +4718,8 @@ function updateStructures(dt){
         spawnProjectile({
           pos:new THREE.Vector3(s.pos.x,s.pos.y+2.1,s.pos.z),
           vel:new THREE.Vector3(dir.x*10.5,8.5,dir.z*10.5),
-          damage:28*buff.damage,
-          splash:2.5,
+          damage:28*buff.damage*late,
+          splash:2.8,
           color:0xffb34d,
           size:0.28,
           from:"ally",
@@ -4475,8 +4731,9 @@ function updateStructures(dt){
 
     if(s.type==="shardLauncher"){
       s.fireCd -= dt;
+      const late = getTowerLateScale("shardLauncher");
       const prongs = s.mesh.userData.prongs;
-      const t = nearestEnemyInRange(s, 19);
+      const t = nearestPriorityEnemyInRange(s, 20, ["siegeRat","spitterBug","burrowMole"]);
       if (t && prongs) {
         smoothAimYaw(prongs, s, "aimYaw", Math.atan2(t.pos.x - s.pos.x, t.pos.z - s.pos.z), dt, 9.1);
       }
@@ -4489,7 +4746,7 @@ function updateStructures(dt){
           spawnProjectile({
             pos:new THREE.Vector3(s.pos.x,s.pos.y+1.5,s.pos.z).add(dir.clone().multiplyScalar(0.7)),
             vel:new THREE.Vector3(dir.x*17,2.0,dir.z*17),
-            damage:5.5*buff.damage,
+            damage:5.5*buff.damage*late,
             splash:0,
             color:0xffd9b3,
             size:0.10,
@@ -4503,6 +4760,7 @@ function updateStructures(dt){
 
     if(s.type==="zapCoil"){
       s.fireCd -= dt;
+      const late = getTowerLateScale("zapCoil");
       const coil = s.mesh.userData.coil;
       const cap = s.mesh.userData.coilCap;
       if (coil) coil.rotation.z += dt * 3.9;
@@ -4510,7 +4768,7 @@ function updateStructures(dt){
         cap.rotation.y += dt * 4.4;
         cap.position.y = 1.55 + Math.sin(time*6)*0.05;
       }
-      const t = nearestEnemyInRange(s, 8);
+      const t = nearestPriorityEnemyInRange(s, 9.5, ["titanRam","siegeRat","spitterBug","burrowMole","cat"]);
       if (t && s.fireCd <= 0) {
         s.fireCd = 2.05 / buff.speed;
         const stunned = new Set();
@@ -4518,7 +4776,7 @@ function updateStructures(dt){
         let current = t;
         let remainingBounces = 3;
         while(current && remainingBounces >= 0){
-          applyDamageToLiving(current, 4.2 * buff.damage, current.pos);
+          applyDamageToLiving(current, 4.2 * buff.damage * late, current.pos);
           setEnemyStunned(current, 0.5);
           stunned.add(current);
           const hitPoint = new THREE.Vector3(current.pos.x, current.pos.y + 1.0, current.pos.z);
@@ -4543,9 +4801,10 @@ function updateStructures(dt){
 
     if(s.type==="mortarBloom"){
       s.fireCd -= dt;
+      const late = getTowerLateScale("mortarBloom");
       const flower = s.mesh.userData.flower;
       if (flower) flower.rotation.y += dt * 1.2;
-      const t = nearestEnemyInRange(s, 26);
+      const t = nearestPriorityEnemyInRange(s, 28, ["titanRam","siegeRat","spitterBug","burrowMole","cat"]);
       if (t && s.fireCd <= 0) {
         s.fireCd = 2.15 / buff.speed;
         const dx = t.pos.x - s.pos.x;
@@ -4555,8 +4814,8 @@ function updateStructures(dt){
         spawnProjectile({
           pos:new THREE.Vector3(s.pos.x,s.pos.y+1.9,s.pos.z),
           vel:new THREE.Vector3(dir.x*9.2,9.4,dir.z*9.2),
-          damage:22*buff.damage,
-          splash:3.0,
+          damage:22*buff.damage*late,
+          splash:3.4,
           color:0xff9dbc,
           size:0.24,
           from:"ally",
@@ -4568,16 +4827,105 @@ function updateStructures(dt){
 
     if(s.type==="sawBlaster"){
       s.fireCd -= dt;
+      const late = getTowerLateScale("sawBlaster");
       const headPivot = s.mesh.userData.headPivot;
-      const t = nearestEnemyInRange(s, 15);
+      const t = nearestPriorityEnemyInRange(s, 16, ["titanRam","siegeRat","spitterBug","burrowMole","cat"]);
       if (headPivot) headPivot.rotation.z += dt * 10;
       if (t && headPivot) {
         smoothAimYaw(headPivot, s, "aimYaw", Math.atan2(t.pos.x - s.pos.x, t.pos.z - s.pos.z), dt, 11.5);
       }
       if (t && s.fireCd <= 0) {
         s.fireCd = 0.95 / buff.speed;
-        applyDamageToLiving(t, 14 * buff.damage, t.pos);
+        applyDamageToLiving(t, 14 * buff.damage * late, t.pos);
         addBurst(t.pos.x, t.pos.y+0.9, t.pos.z, 0xffc1a8, 8, 3, 0.35, 0.05);
+      }
+    }
+    if(s.type==="sniperTower"){
+      const late = getTowerLateScale("sniperTower");
+      s.fireCd -= dt;
+      const headPivot = s.mesh.userData.headPivot;
+      const barrel = s.mesh.userData.sniperBarrel;
+      const lens = s.mesh.userData.sniperLens;
+      if((!s.lockedTarget || s.lockedTarget.dead || s.lockedTarget.dying || dist2(s.pos, s.lockedTarget.pos) > 54) && s.chargeT <= 0){
+        s.lockedTarget = nearestPriorityEnemyInRange(s, 54, ["titanRam","siegeRat","cat","spitterBug","burrowMole"]);
+      }
+      const t = s.lockedTarget || nearestPriorityEnemyInRange(s, 54, ["titanRam","siegeRat","cat","spitterBug","burrowMole"]);
+      if(t && headPivot){
+        smoothAimYaw(headPivot, s, "aimYaw", Math.atan2(t.pos.x - s.pos.x, t.pos.z - s.pos.z), dt, 6.2);
+      }
+      if(t && s.fireCd <= 0){
+        s.chargeT = Math.min(1.25, (s.chargeT || 0) + dt);
+        const frac = clamp((s.chargeT || 0) / 1.25, 0, 1);
+        if(barrel?.material) barrel.material.emissiveIntensity = 0.3 + frac * 1.25;
+        if(lens?.material) lens.material.emissiveIntensity = 0.7 + frac * 1.5;
+        if(Math.random() < 0.15 + frac * 0.2){
+          addBurst(t.pos.x, t.pos.y + 0.25, t.pos.z, 0x9cd2ff, 1, 0.6, 0.18, 0.035);
+        }
+        if(frac >= 1){
+          s.fireCd = 4.2 / buff.speed;
+          s.chargeT = 0;
+          const from = new THREE.Vector3(s.pos.x, s.pos.y + 2.0, s.pos.z);
+          const to = new THREE.Vector3(t.pos.x, t.pos.y + 1.0, t.pos.z);
+          addLightningArc(from, to, 0.2, 0xaed6ff);
+          applyDamageToLiving(t, 78 * buff.damage * late, t.pos);
+          addBurst(t.pos.x, t.pos.y + 1.0, t.pos.z, 0xd2e7ff, 14, 4.8, 0.46, 0.08);
+          s.lockedTarget = null;
+        }
+      } else {
+        s.chargeT = 0;
+        if(barrel?.material) barrel.material.emissiveIntensity = 0.35;
+        if(lens?.material) lens.material.emissiveIntensity = 0.8 + Math.sin(time*7)*0.22;
+      }
+    }
+    if(s.type==="railGun"){
+      const late = getTowerLateScale("railGun");
+      s.fireCd -= dt;
+      const headPivot = s.mesh.userData.headPivot;
+      const core = s.mesh.userData.railCore;
+      const t = nearestPriorityEnemyInRange(s, 42, ["siegeRat","titanRam","spitterBug","burrowMole","cat"]);
+      if(t && headPivot){
+        smoothAimYaw(headPivot, s, "aimYaw", Math.atan2(t.pos.x - s.pos.x, t.pos.z - s.pos.z), dt, 4.2);
+      }
+      if(t && s.fireCd <= 0){
+        s.chargeT = Math.min(1.45, (s.chargeT || 0) + dt);
+        const frac = clamp((s.chargeT || 0) / 1.45, 0, 1);
+        if(core?.material) core.material.emissiveIntensity = 0.45 + frac * 1.45;
+        if(frac >= 1){
+          s.fireCd = 5.1 / buff.speed;
+          s.chargeT = 0;
+          const from = new THREE.Vector3(s.pos.x, s.pos.y + 1.7, s.pos.z);
+          const forward = new THREE.Vector3(Math.sin(s.aimYaw || 0), 0, Math.cos(s.aimYaw || 0)).normalize();
+          const maxDist = 44;
+          const hits = [];
+          for(const e of enemies){
+            if(!isEnemyTargetable(e)) continue;
+            const toE = new THREE.Vector3(e.pos.x - from.x, 0, e.pos.z - from.z);
+            const along = toE.dot(forward);
+            if(along < 0 || along > maxDist) continue;
+            const perp = new THREE.Vector3().copy(toE).addScaledVector(forward, -along).length();
+            if(perp <= e.radius + 0.62) hits.push({ e, along });
+          }
+          if(cat && !cat.dead && !cat.dying){
+            const toCat = new THREE.Vector3(cat.pos.x - from.x, 0, cat.pos.z - from.z);
+            const along = toCat.dot(forward);
+            if(along >= 0 && along <= maxDist){
+              const perp = new THREE.Vector3().copy(toCat).addScaledVector(forward, -along).length();
+              if(perp <= cat.radius + 0.82) hits.push({ e:cat, along });
+            }
+          }
+          hits.sort((a,b)=>a.along-b.along);
+          let remaining = 7;
+          for(let hi=0; hi<hits.length && remaining>0; hi++, remaining--){
+            const falloff = 1 - hi * 0.08;
+            applyDamageToLiving(hits[hi].e, 52 * buff.damage * late * Math.max(0.58, falloff), hits[hi].e.pos);
+            addBurst(hits[hi].e.pos.x, hits[hi].e.pos.y+1.0, hits[hi].e.pos.z, 0xbdd9ff, 7, 3.0, 0.28, 0.06);
+          }
+          const end = from.clone().addScaledVector(forward, maxDist);
+          addLightningArc(from, end, 0.22, 0x9fc4ff);
+        }
+      } else {
+        s.chargeT = 0;
+        if(core?.material) core.material.emissiveIntensity = 0.55 + Math.sin(time*8)*0.2;
       }
     }
   }
