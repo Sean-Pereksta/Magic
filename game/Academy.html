@@ -351,7 +351,9 @@ let nearestTowerOfCheese = null;
 const BASE_GAS_DELIVERY = 3;
 const BASE_FACTORY_OUTPUT = 3;
 const BASE_GAS_MINE_TIME = 6;
-const SPAWN_UI_SHOW_DIST = 28;
+const SPAWN_UI_SHOW_DIST = 20;
+const CHEESE_DROP_DESPAWN_SEC = 30;
+const AMBIENT_CHEESE_SPAWN_END_TIME = 120;
 const SPAWN_STRUCTURE_CONFIG = {
   breedingNest:{ cap:3, respawnDelay:45, label:"Mice", spawnType:"servant", spawnFn:spawnServantFromNest },
   robo:{ cap:2, respawnDelay:20, label:"Robots", spawnType:"robot", spawnFn:(s)=>spawnRobotFromStructure(s, false, false) },
@@ -1439,9 +1441,9 @@ function shouldShowBar(bar, dist, near, far){
   return show;
 }
 function updateWorldHealthBars(){
-  const structureNear = 36, structureFar = 39;
-  const enemyNear = 46, enemyFar = 49;
-  const catNear = 58, catFar = 61;
+  const structureNear = 30, structureFar = 33;
+  const enemyNear = 38, enemyFar = 41;
+  const catNear = 48, catFar = 51;
 
   for(const s of structures){
     if(s.dead || !s.mesh?.userData?.healthBar) continue;
@@ -1888,7 +1890,7 @@ function animateCatRig(group, moveFactor, t, attackSwing=0, dying=0){
 // -------------------------------------------------
 // CHEESE PICKUP
 // -------------------------------------------------
-function spawnCheeseAt(x,z,amount=3){
+function spawnCheeseAt(x,z,amount=3,source="ambient"){
   const g = new THREE.Group();
   const cheeseMat = new THREE.MeshStandardMaterial({ color:0xffdf61, emissive:0x5a3d00, emissiveIntensity:0.22 });
   const wedge = new THREE.Mesh(new THREE.CylinderGeometry(0.0,0.75,0.65,6,1,false), cheeseMat);
@@ -1909,7 +1911,7 @@ function spawnCheeseAt(x,z,amount=3){
   g.position.set(x, groundHeight(x,z), z);
   g.traverse(c=>{ if(c.isMesh) c.castShadow = true; });
   scene.add(g);
-  cheeses.push({ group:g, pos:g.position, amount, spin:Math.random()*Math.PI*2 });
+  cheeses.push({ group:g, pos:g.position, amount, spin:Math.random()*Math.PI*2, source, life:0 });
 }
 for(let i=0;i<18;i++){
   const p = randomFreePosition(1);
@@ -3565,7 +3567,7 @@ function killEnemy(e){
     for(const m of servantMice){ if(!m.dead && !m.dying && dist2(m.pos, e.pos) < r) applyDamageToLiving(m, e.damage * 0.42, e.pos); }
   }
   beginDeath(e, e.kind === "weasel" ? "weasel" : "mouse");
-  if(Math.random() < 0.7) spawnCheeseAt(e.pos.x+rand(-0.8,0.8), e.pos.z+rand(-0.8,0.8), 3);
+  if(Math.random() < 0.7) spawnCheeseAt(e.pos.x+rand(-0.8,0.8), e.pos.z+rand(-0.8,0.8), 3, "enemyDrop");
 }
 function killCat(){
   if(!cat || cat.dead || cat.dying) return;
@@ -6134,7 +6136,14 @@ let lastBombBeetleSpawn = 510;
 let lastScreecherSpawn = 760;
 
 function updateCheeses(dt){
-  for(const c of cheeses){
+  for(let i=cheeses.length-1;i>=0;i--){
+    const c = cheeses[i];
+    c.life = (c.life || 0) + dt;
+    if(c.source === "enemyDrop" && c.life >= CHEESE_DROP_DESPAWN_SEC){
+      c.group.parent?.remove(c.group);
+      cheeses.splice(i,1);
+      continue;
+    }
     c.spin += dt * 2.4;
     c.group.rotation.y = c.spin;
     c.group.position.y = groundHeight(c.pos.x,c.pos.z) + 0.22 + Math.sin(time*3 + c.spin) * 0.12;
@@ -6154,11 +6163,13 @@ function updateSpawners(dt){
   if(levelTransitionActive || gamePaused) return;
   updateCombatDirector(dt);
   syncEnemyUnlockStages();
-  cheeseSpawnTimer += dt;
-  if(cheeseSpawnTimer >= 5.6){
-    cheeseSpawnTimer = 0;
-    const p = randomFreePosition(1);
-    spawnCheeseAt(p.x,p.z,3);
+  if(time < AMBIENT_CHEESE_SPAWN_END_TIME){
+    cheeseSpawnTimer += dt;
+    if(cheeseSpawnTimer >= 5.6){
+      cheeseSpawnTimer = 0;
+      const p = randomFreePosition(1);
+      spawnCheeseAt(p.x,p.z,3);
+    }
   }
 
   wildSpawnTimer += dt;
