@@ -54,7 +54,7 @@
   }
   #catRow {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 4px;
     margin-bottom: 5px;
   }
@@ -157,6 +157,7 @@
   <div class="title">Cat vs Mouse Survival 3D</div>
   <div class="topline">
     <div class="pill">Cheese: <span id="cheeseCount">0</span></div>
+    <div class="pill">Gas: <span id="gasCount">0</span></div>
     <div class="pill">Servants: <span id="servantCount">0</span></div>
     <div class="pill">Time: <span id="timeCount">0.0</span>s</div>
   </div>
@@ -166,6 +167,7 @@
     <div id="catEco" class="catBtn">2 Economic</div>
     <div id="catDef" class="catBtn">3 Defensive</div>
     <div id="catAtk" class="catBtn">4 Attack</div>
+    <div id="catTech" class="catBtn">Q Tech</div>
   </div>
   <div id="buildGrid"></div>
 </div>
@@ -198,12 +200,16 @@ let time = 0;
 let gameOver = false;
 let gameWon = false;
 let cheese = 24;
+let gas = 0;
 
 const MAP_SIZE = 190;
 const HALF_MAP = MAP_SIZE / 2;
+const GRID_SIZE = 4;
+const GRID_HALF_CELLS = Math.floor(MAP_SIZE / GRID_SIZE / 2);
 
 const ui = {
   cheese: document.getElementById("cheeseCount"),
+  gas: document.getElementById("gasCount"),
   servants: document.getElementById("servantCount"),
   time: document.getElementById("timeCount"),
   msg: document.getElementById("centerMsg"),
@@ -215,6 +221,7 @@ const ui = {
   catEco: document.getElementById("catEco"),
   catDef: document.getElementById("catDef"),
   catAtk: document.getElementById("catAtk"),
+  catTech: document.getElementById("catTech"),
 };
 
 const obstacles = [];
@@ -227,6 +234,8 @@ const enemies = [];
 const wildMice = [];
 const servantMice = [];
 const robots = [];
+const gasVents = [];
+const occupiedCells = new Map();
 const repairBeams = [];
 
 let cat = null;
@@ -256,34 +265,43 @@ let currentSelectionSlot = null;
 
 const CATEGORY_BUILDS = {
   2: [
-    { slot:5, name:"Cheese Factory", cost:5, type:"factory", hp:95, radius:2.5 },
-    { slot:6, name:"Repair Fountain", cost:9, type:"fountain", hp:90, radius:2.0 },
-    { slot:7, name:"Supply Nest", cost:6, type:"supplyNest", hp:78, radius:2.0 },
-    { slot:8, name:"Beacon", cost:20, type:"beacon", hp:100, radius:2.1 },
-    { slot:9, name:"Robo Facility", cost:12, type:"robo", hp:145, radius:2.6 },
-    { slot:0, name:"Scout Post", cost:7, type:"scoutPost", hp:82, radius:2.0 }
+    { slot:5, name:"Cheese Factory", cost:5, gasCost:0, type:"factory", hp:95, radius:2.5 },
+    { slot:6, name:"Supply Nest", cost:6, gasCost:0, type:"supplyNest", hp:78, radius:2.0 },
+    { slot:7, name:"Breeding Nest", cost:8, gasCost:0, type:"breedingNest", hp:102, radius:2.0 },
+    { slot:8, name:"Gas Depot", cost:8, gasCost:4, type:"gasDepot", hp:112, radius:2.1 },
+    { slot:9, name:"Gas Mine", cost:6, gasCost:0, type:"gasMine", hp:120, radius:2.0, requiresVent:true },
+    { slot:0, name:"Repair Fountain", cost:9, gasCost:0, type:"fountain", hp:90, radius:2.0 }
   ],
   3: [
-    { slot:5, name:"Cheese Wall", cost:3, type:"wall", hp:72, radius:2.1 },
-    { slot:6, name:"Diamond Wall", cost:8, type:"diamondWall", hp:165, radius:2.5 },
-    { slot:7, name:"Barrier Totem", cost:10, type:"barrierTotem", hp:88, radius:2.0 },
-    { slot:8, name:"Brace Tower", cost:11, type:"braceTower", hp:125, radius:2.0 },
-    { slot:9, name:"Repair Anchor", cost:9, type:"repairAnchor", hp:92, radius:2.0 },
-    { slot:0, name:"Fort Plate", cost:8, type:"fortPlate", hp:115, radius:2.2 }
+    { slot:5, name:"Cheese Wall", cost:3, gasCost:0, type:"wall", hp:72, radius:2.1 },
+    { slot:6, name:"Diamond Wall", cost:8, gasCost:3, type:"diamondWall", hp:165, radius:2.5 },
+    { slot:7, name:"Barrier Totem", cost:10, gasCost:2, type:"barrierTotem", hp:88, radius:2.0 },
+    { slot:8, name:"Brace Tower", cost:11, gasCost:3, type:"braceTower", hp:125, radius:2.0 },
+    { slot:9, name:"Repair Anchor", cost:9, gasCost:2, type:"repairAnchor", hp:92, radius:2.0 },
+    { slot:0, name:"Fort Plate", cost:8, gasCost:2, type:"fortPlate", hp:115, radius:2.2 }
   ],
   4: [
-    { slot:5, name:"Cheese Turret", cost:5, type:"turret", hp:90, radius:2.0 },
-    { slot:6, name:"Cheese Cannon", cost:10, type:"cannon", hp:110, radius:2.2 },
-    { slot:7, name:"Shard Launcher", cost:8, type:"shardLauncher", hp:84, radius:2.0 },
-    { slot:8, name:"Zap Coil", cost:9, type:"zapCoil", hp:76, radius:1.9 },
-    { slot:9, name:"Mortar Bloom", cost:12, type:"mortarBloom", hp:94, radius:2.1 },
-    { slot:0, name:"Saw Blaster", cost:11, type:"sawBlaster", hp:96, radius:2.0 }
+    { slot:5, name:"Cheese Turret", cost:5, gasCost:0, type:"turret", hp:90, radius:2.0 },
+    { slot:6, name:"Cheese Cannon", cost:10, gasCost:0, type:"cannon", hp:110, radius:2.2 },
+    { slot:7, name:"Shard Launcher", cost:8, gasCost:0, type:"shardLauncher", hp:84, radius:2.0 },
+    { slot:8, name:"Zap Coil", cost:9, gasCost:2, type:"zapCoil", hp:76, radius:1.9 },
+    { slot:9, name:"Mortar Bloom", cost:12, gasCost:3, type:"mortarBloom", hp:94, radius:2.1, prereq:"workshop" },
+    { slot:0, name:"Saw Blaster", cost:11, gasCost:2, type:"sawBlaster", hp:96, radius:2.0, prereq:"workshop" }
+  ],
+  5: [
+    { slot:5, name:"Workshop", cost:12, gasCost:20, type:"workshop", hp:180, radius:2.5, prereq:"gasMine" },
+    { slot:6, name:"Advanced Robo Foundry", cost:14, gasCost:24, type:"advancedRobo", hp:190, radius:2.8, prereq:"workshop" },
+    { slot:7, name:"Mecha Hangar", cost:16, gasCost:26, type:"mechaHangar", hp:210, radius:2.9, prereq:"workshop" },
+    { slot:8, name:"Beacon", cost:20, gasCost:8, type:"beacon", hp:100, radius:2.1, prereq:"workshop" },
+    { slot:9, name:"Robo Facility", cost:12, gasCost:6, type:"robo", hp:145, radius:2.6, prereq:"workshop" },
+    { slot:0, name:"Scout Post", cost:7, gasCost:0, type:"scoutPost", hp:82, radius:2.0 }
   ]
 };
 const BUILD_ICONS = {
-  factory:"🧀", fountain:"💧", supplyNest:"📦", beacon:"📡", robo:"⚙️", scoutPost:"👁️",
+  factory:"🧀", fountain:"💧", supplyNest:"📦", beacon:"📡", robo:"⚙️", scoutPost:"👁️", breedingNest:"🐣", gasDepot:"🛢️", gasMine:"♨️",
   wall:"🧱", diamondWall:"💎", barrierTotem:"🛡️", braceTower:"🏛️", repairAnchor:"🔧", fortPlate:"🪙",
-  turret:"🎯", cannon:"💥", shardLauncher:"🔱", zapCoil:"⚡", mortarBloom:"🌸", sawBlaster:"🪚"
+  turret:"🎯", cannon:"💥", shardLauncher:"🔱", zapCoil:"⚡", mortarBloom:"🌸", sawBlaster:"🪚",
+  workshop:"🏭", advancedRobo:"🤖", mechaHangar:"🚀"
 };
 
 function getSelectedBuildData() {
@@ -296,6 +314,7 @@ function updateBuildUI() {
   ui.catEco.classList.toggle("active", currentCategory === 2);
   ui.catDef.classList.toggle("active", currentCategory === 3);
   ui.catAtk.classList.toggle("active", currentCategory === 4);
+  ui.catTech.classList.toggle("active", currentCategory === 5);
 
   ui.buildGrid.innerHTML = "";
   if (currentCategory === 1) {
@@ -304,6 +323,7 @@ function updateBuildUI() {
       "2 Economic",
       "3 Defensive",
       "4 Attack",
+      "Q Tech",
       "Then use 5 6 7 8 9 0",
       "Space places selected build"
     ];
@@ -320,7 +340,9 @@ function updateBuildUI() {
     const div = document.createElement("div");
     div.className = "buildItem" + (currentSelectionSlot === b.slot ? " active" : "");
     const icon = BUILD_ICONS[b.type] || "•";
-    div.innerHTML = `<span class="buildKey">${b.slot}</span><span class="buildIcon">${icon}</span>${b.name} (${b.cost})`;
+    const prereqTxt = b.prereq && !hasStructureType(b.prereq) ? ` · Needs ${prettyTypeName(b.prereq)}` : "";
+    const tip = b.requiresVent ? " · On vent only" : "";
+    div.innerHTML = `<span class="buildKey">${b.slot}</span><span class="buildIcon">${icon}</span>${b.name} (${b.cost}🧀/${b.gasCost||0}⛽)${prereqTxt}${tip}`;
     ui.buildGrid.appendChild(div);
   }
 }
@@ -332,6 +354,19 @@ updateBuildUI();
 function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
 function rand(a,b){ return a + Math.random()*(b-a); }
 function dist2(a,b){ return Math.hypot(a.x-b.x, a.z-b.z); }
+function cellKey(cx, cz){ return `${cx},${cz}`; }
+function worldToCell(x,z){
+  return {
+    cx: clamp(Math.round(x / GRID_SIZE), -GRID_HALF_CELLS, GRID_HALF_CELLS),
+    cz: clamp(Math.round(z / GRID_SIZE), -GRID_HALF_CELLS, GRID_HALF_CELLS)
+  };
+}
+function cellToWorld(cx,cz){ return { x:cx*GRID_SIZE, z:cz*GRID_SIZE }; }
+function hasStructureType(type){ return structures.some(s => !s.dead && s.type===type); }
+function prettyTypeName(type){
+  const d = Object.values(CATEGORY_BUILDS).flat().find(v=>v.type===type);
+  return d ? d.name : type;
+}
 function isWallStructure(s){ return !!s && (s.type === "wall" || s.type === "diamondWall"); }
 function structureBlocksMovement(s){ return isWallStructure(s); }
 function angleDiff(a,b){
@@ -348,11 +383,7 @@ function showCenter(text, dur=1.5){
   }, dur * 1000);
 }
 function groundHeight(x,z){
-  const a = Math.sin(x*0.041)*1.7;
-  const b = Math.cos(z*0.036)*1.25;
-  const c = Math.sin((x+z)*0.023)*1.8;
-  const d = Math.cos((x-z)*0.016)*1.1;
-  return a+b+c+d;
+  return 0;
 }
 
 // -------------------------------------------------
@@ -383,10 +414,10 @@ function createGround(){
   const colors = [];
   for(let i=0;i<pos.count;i++){
     const x = pos.getX(i), z = pos.getZ(i);
-    const y = groundHeight(x,z);
-    pos.setY(i, y);
-    const shade = 0.25 + ((y + 6) / 14);
-    colors.push(0.23 + shade*0.14, 0.40 + shade*0.24, 0.17 + shade*0.10);
+    pos.setY(i, 0);
+    const n = Math.sin(x*0.07)*0.5 + Math.cos(z*0.05)*0.35 + Math.sin((x-z)*0.04)*0.25;
+    const shade = 0.5 + n*0.25;
+    colors.push(0.18 + shade*0.16, 0.32 + shade*0.22, 0.13 + shade*0.10);
   }
   geo.setAttribute("color", new THREE.Float32BufferAttribute(colors,3));
   geo.computeVertexNormals();
@@ -494,6 +525,35 @@ for(let i=0;i<120;i++){
   if(side===2){ z = -HALF_MAP+4+Math.random()*3; x = rand(-HALF_MAP, HALF_MAP); }
   if(side===3){ z = HALF_MAP-4-Math.random()*3; x = rand(-HALF_MAP, HALF_MAP); }
   createTree(x,z);
+}
+function createGasVentAtCell(cx, cz){
+  const {x,z} = cellToWorld(cx,cz);
+  const g = new THREE.Group();
+  const rim = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.15,1.25,0.3,14),
+    new THREE.MeshStandardMaterial({ color:0x4a5260, metalness:0.5, roughness:0.35 })
+  );
+  rim.position.y = 0.15;
+  const core = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.45,0.6,0.2,10),
+    new THREE.MeshStandardMaterial({ color:0x9effdf, emissive:0x1e9a7f, emissiveIntensity:0.8 })
+  );
+  core.position.y = 0.24;
+  g.add(rim, core);
+  g.position.set(x,0,z);
+  scene.add(g);
+  gasVents.push({cx,cz,x,z,group:g,steamT:Math.random()*5,mine:null});
+}
+for(let i=0;i<24;i++){
+  let tries = 0;
+  while(tries++ < 80){
+    const cx = Math.floor(rand(-GRID_HALF_CELLS+3, GRID_HALF_CELLS-3));
+    const cz = Math.floor(rand(-GRID_HALF_CELLS+3, GRID_HALF_CELLS-3));
+    if(Math.hypot(cx*GRID_SIZE, cz*GRID_SIZE) < 16) continue;
+    if(gasVents.some(v => Math.abs(v.cx-cx)+Math.abs(v.cz-cz) < 3)) continue;
+    createGasVentAtCell(cx,cz);
+    break;
+  }
 }
 
 function circleBlocked(x,z,r, ignoreStructure=null, structureSpacingScale=1){
@@ -1152,8 +1212,8 @@ const player = {
   pos: new THREE.Vector3(0,groundHeight(0,0),0),
   radius:0.9,
   heading:0,
-  moveSpeed:8.6,
-  sprintSpeed:12.2,
+  moveSpeed:11.2,
+  sprintSpeed:15.4,
   turnSpeed:2.6,
   dead:false,
   isLiving:true,
@@ -1165,15 +1225,66 @@ player.group.position.copy(player.pos);
 scene.add(player.group);
 
 // -------------------------------------------------
-// BUILD TELEGRAPH
+// BUILD GRID / TELEGRAPH
 // -------------------------------------------------
+const buildGridOverlay = new THREE.Group();
+for(let gx=-GRID_HALF_CELLS; gx<=GRID_HALF_CELLS; gx++){
+  for(let gz=-GRID_HALF_CELLS; gz<=GRID_HALF_CELLS; gz++){
+    const dark = (Math.abs(gx+gz)%2)===0;
+    const tile = new THREE.Mesh(
+      new THREE.PlaneGeometry(GRID_SIZE*0.97, GRID_SIZE*0.97),
+      new THREE.MeshBasicMaterial({
+        color: dark ? 0x2a4230 : 0x355641,
+        transparent:true,
+        opacity:0.22,
+        depthWrite:false,
+        side:THREE.DoubleSide
+      })
+    );
+    tile.rotation.x = -Math.PI/2;
+    tile.position.set(gx*GRID_SIZE, 0.02, gz*GRID_SIZE);
+    buildGridOverlay.add(tile);
+  }
+}
+buildGridOverlay.visible = false;
+scene.add(buildGridOverlay);
+
 const buildTelegraph = new THREE.Mesh(
-  new THREE.RingGeometry(1.25,1.52,28),
-  new THREE.MeshBasicMaterial({ color:0x7aff9a, transparent:true, opacity:0.74, side:THREE.DoubleSide })
+  new THREE.PlaneGeometry(GRID_SIZE*0.96, GRID_SIZE*0.96),
+  new THREE.MeshBasicMaterial({ color:0x7aff9a, transparent:true, opacity:0.42, side:THREE.DoubleSide })
 );
 buildTelegraph.rotation.x = -Math.PI/2;
 buildTelegraph.visible = false;
 scene.add(buildTelegraph);
+let buildPreview = null;
+
+function setBuildPreview(type, x, z, valid){
+  if(!type){
+    if(buildPreview){ scene.remove(buildPreview); buildPreview = null; }
+    return;
+  }
+  if(!buildPreview || buildPreview.userData.type !== type){
+    if(buildPreview) scene.remove(buildPreview);
+    buildPreview = createStructureMesh(type);
+    buildPreview.userData.type = type;
+    buildPreview.traverse(c=>{
+      if(c.isMesh){
+        c.material = c.material.clone();
+        c.material.transparent = true;
+        c.material.opacity = 0.55;
+      }
+    });
+    scene.add(buildPreview);
+  }
+  buildPreview.visible = true;
+  buildPreview.position.set(x, 0, z);
+  buildPreview.rotation.y = 0;
+  buildPreview.traverse(c=>{
+    if(c.isMesh && c.material?.color){
+      c.material.color.set(valid ? c.material.color : 0xff5555);
+    }
+  });
+}
 
 // -------------------------------------------------
 // PATHING / ANTI-CLUMP
@@ -1462,7 +1573,8 @@ function structureColor(type){
     wall:0xffde62, diamondWall:0x98ebff, cannon:0xffb85d, turret:0xf7d45b, beacon:0x7aff95,
     factory:0xfff09d, robo:0xc0c7d5, fountain:0x8ef7ff, shardLauncher:0xffd3a5, zapCoil:0xb6a6ff,
     mortarBloom:0xff98b5, sawBlaster:0xffb38f, barrierTotem:0x9ce6ff, braceTower:0xbef0c0,
-    repairAnchor:0x93fff5, fortPlate:0xa7ceff, supplyNest:0xfff3b5, scoutPost:0xcff4ff
+    repairAnchor:0x93fff5, fortPlate:0xa7ceff, supplyNest:0xfff3b5, scoutPost:0xcff4ff,
+    breedingNest:0xffd8aa, gasDepot:0x9df3d3, gasMine:0x8bd4c3, workshop:0xaec4d8, advancedRobo:0x8ad9ff, mechaHangar:0xffbf90
   };
   return colors[type] || 0xffffff;
 }
@@ -1523,6 +1635,12 @@ function updateWallDamageVisual(structure){
 }
 function createStructureMesh(type){
   const g = new THREE.Group();
+  const commonBase = new THREE.Mesh(
+    new THREE.BoxGeometry(2.25,1.15,2.25),
+    new THREE.MeshStandardMaterial({ color:0x7f684e, roughness:0.92 })
+  );
+  commonBase.position.y = 0.58;
+  g.add(commonBase);
 
   if(type==="wall"){
     g.add(makeCheeseWallMesh());
@@ -1875,6 +1993,48 @@ function createStructureMesh(type){
     g.add(base, headPivot);
     g.userData.headPivot = headPivot;
   }
+  if(type==="breedingNest"){
+    const nest = new THREE.Mesh(new THREE.TorusGeometry(0.75,0.22,10,20), new THREE.MeshStandardMaterial({ color:0xc9975f }));
+    nest.rotation.x = Math.PI/2;
+    nest.position.y = 1.35;
+    const egg = new THREE.Mesh(new THREE.SphereGeometry(0.28,12,10), new THREE.MeshStandardMaterial({ color:0xfff2d6, emissive:0x5f4012, emissiveIntensity:0.2 }));
+    egg.position.y = 1.65;
+    const timer = new THREE.Mesh(new THREE.RingGeometry(0.35,0.5,24), new THREE.MeshBasicMaterial({ color:0x8affc7, side:THREE.DoubleSide, transparent:true, opacity:0.9 }));
+    timer.position.set(0,2.4,0);
+    timer.rotation.x = -Math.PI/2;
+    g.add(nest, egg, timer);
+    g.userData.breedTimer = timer;
+  }
+  if(type==="gasDepot" || type==="gasMine" || type==="workshop" || type==="advancedRobo" || type==="mechaHangar"){
+    commonBase.material.color.set(type==="gasDepot"?0x5e6b64:0x64707d);
+  }
+  if(type==="gasDepot"){
+    const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.6,0.6,1.6,12), new THREE.MeshStandardMaterial({ color:0x9ceecf, emissive:0x246d58, emissiveIntensity:0.35 }));
+    tank.position.y = 1.65;
+    g.add(tank);
+  }
+  if(type==="gasMine"){
+    const drill = new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.24,1.3,10), new THREE.MeshStandardMaterial({ color:0x93b5bf, metalness:0.65 }));
+    drill.position.y = 1.55;
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(1.2,0.2,0.2), new THREE.MeshStandardMaterial({ color:0xc1d4db }));
+    arm.position.y = 1.4;
+    g.add(drill, arm);
+  }
+  if(type==="workshop"){
+    const stack = new THREE.Mesh(new THREE.BoxGeometry(1.2,1.8,1.2), new THREE.MeshStandardMaterial({ color:0x95a7b7, metalness:0.5 }));
+    stack.position.y = 1.9;
+    g.add(stack);
+  }
+  if(type==="advancedRobo"){
+    const pod = new THREE.Mesh(new THREE.CylinderGeometry(0.9,1.05,1.3,10), new THREE.MeshStandardMaterial({ color:0x88d6ff, emissive:0x114866, emissiveIntensity:0.4 }));
+    pod.position.y = 1.6;
+    g.add(pod);
+  }
+  if(type==="mechaHangar"){
+    const hangar = new THREE.Mesh(new THREE.BoxGeometry(1.9,1.2,1.5), new THREE.MeshStandardMaterial({ color:0xb8c3d1 }));
+    hangar.position.y = 1.45;
+    g.add(hangar);
+  }
 
   const hpBar = createHealthBar(2.1,0x77ff77);
   hpBar.position.y = 5;
@@ -1897,8 +2057,9 @@ function createStructure(type,x,z,rotationY=0, dataOverride=null){
   const data = dataOverride || Object.values(CATEGORY_BUILDS).flat().find(v=>v.type===type);
   const mesh = createStructureMesh(type);
   mesh.position.set(x, groundHeight(x,z), z);
-  mesh.rotation.y = rotationY;
+  mesh.rotation.y = 0;
   scene.add(mesh);
+  const cell = worldToCell(x,z);
 
   const s = {
     type,
@@ -1914,11 +2075,20 @@ function createStructure(type,x,z,rotationY=0, dataOverride=null){
     healCd:0,
     trapCd:0,
     assignedServant:null,
-    rotationY,
+    rotationY:0,
+    cell,
+    gasCarryCd:0,
+    breedCd:25,
+    mechaPending:type==="mechaHangar",
     isBeaconBuffed:false,
     target:null
   };
   structures.push(s);
+  occupiedCells.set(cellKey(cell.cx, cell.cz), s);
+  if(type==="gasMine"){
+    const vent = gasVents.find(v => v.cx===cell.cx && v.cz===cell.cz);
+    if(vent){ vent.mine = s; s.vent = vent; }
+  }
   setHealthBar(mesh.userData.healthBar, 1);
   updateWallDamageVisual(s);
 
@@ -1941,6 +2111,8 @@ function damageStructure(s,dmg){
     addBurst(s.pos.x, s.pos.y+1.2, s.pos.z, 0xff6655, 42, 8.2, 1.15, 0.14);
     addBurst(s.pos.x, s.pos.y+1.2, s.pos.z, 0xffcc66, 28, 6.8, 0.95, 0.11);
     if(s.beam){ scene.remove(s.beam); s.beam = null; }
+    if(s.cell) occupiedCells.delete(cellKey(s.cell.cx, s.cell.cz));
+    if(s.type==="gasMine" && s.vent) s.vent.mine = null;
     scene.remove(s.mesh);
     s.mesh.visible = false;
   }
@@ -1948,8 +2120,22 @@ function damageStructure(s,dmg){
 function getBuildPlace(){
   const forward = new THREE.Vector3(Math.sin(player.heading),0,Math.cos(player.heading));
   const p = player.pos.clone().addScaledVector(forward, 4.2);
-  p.y = groundHeight(p.x,p.z);
-  return p;
+  const cell = worldToCell(p.x,p.z);
+  const w = cellToWorld(cell.cx, cell.cz);
+  return new THREE.Vector3(w.x, groundHeight(w.x,w.z), w.z);
+}
+function getBuildValidation(selected, x, z){
+  const c = worldToCell(x,z);
+  const key = cellKey(c.cx,c.cz);
+  if(occupiedCells.has(key)) return { ok:false, reason:"Cell occupied", cell:c };
+  if(selected.prereq && !hasStructureType(selected.prereq)) return { ok:false, reason:`Need ${prettyTypeName(selected.prereq)}`, cell:c };
+  if(selected.requiresVent){
+    const vent = gasVents.find(v => v.cx===c.cx && v.cz===c.cz);
+    if(!vent) return { ok:false, reason:"Gas mine must be on vent", cell:c };
+    if(vent.mine && !vent.mine.dead) return { ok:false, reason:"Vent already mined", cell:c };
+  }
+  if(circleBlocked(x,z,selected.radius, null, 0.75)) return { ok:false, reason:"Cannot build there", cell:c };
+  return { ok:true, reason:"", cell:c };
 }
 function beaconBuffAt(x,z){
   let buff = { damage:1, speed:1, active:false };
@@ -2006,14 +2192,16 @@ function makeRobotModel(){
   g.traverse(c=>{ if(c.isMesh) c.castShadow = true; });
   return g;
 }
-function spawnRobot(x,z){
+function spawnRobot(x,z,advanced=false,mech=false){
   const model = makeRobotModel();
+  if(advanced || mech) model.scale.setScalar(mech ? 2.2 : 1.55);
   model.position.set(x, groundHeight(x,z), z);
   scene.add(model);
   robots.push({
     group:model, pos:model.position,
-    hp:8, damage:10, radius:0.7, speed:7.6,
+    hp:mech?80:(advanced?26:8), damage:mech?28:(advanced?22:10), radius:mech?1.25:(advanced?0.95:0.7), speed:mech?7.2:(advanced?8.3:7.9),
     fireCd:0, dead:false, dying:false, anim:Math.random()*10, deathT:0, isLiving:true
+    ,advanced, mech, telegraphCd:0
   });
 }
 
@@ -2146,6 +2334,9 @@ function beginDeath(entity, type="mouse"){
   if(entity.assignedFactory && entity.assignedFactory.assignedServant === entity){
     entity.assignedFactory.assignedServant = null;
   }
+  if(entity.assignedGasMine && entity.assignedGasMine.assignedServant === entity){
+    entity.assignedGasMine.assignedServant = null;
+  }
   entity.dying = true;
   entity.deathT = 0;
   entity.deathType = type;
@@ -2188,7 +2379,7 @@ function spawnWildMouse(x,z){
     maxHp:26,
     isLiving:true,
     heading:Math.random()*Math.PI*2,
-    speed:4.0,
+    speed:5.7,
     target:null,
     dead:false,
     dying:false,
@@ -2242,6 +2433,47 @@ function updateMouseEntity(m,dt){
       m.target.y = groundHeight(m.target.x, m.target.z);
     }
   } else {
+    if(m.assignedMechaHangar && (!m.assignedMechaHangar.dead) && m.assignedMechaHangar.mechaPending){
+      m.target = m.assignedMechaHangar.pos;
+      if(dist2(m.pos, m.assignedMechaHangar.pos) < 1.5){
+        m.assignedMechaHangar.mechaPending = false;
+        spawnRobot(m.assignedMechaHangar.pos.x+1.2, m.assignedMechaHangar.pos.z, false, true);
+        m.dead = true;
+        m.group.visible = false;
+        addBurst(m.pos.x,m.pos.y+0.8,m.pos.z,0xffb66f,18,5.5,0.8,0.1);
+        continue;
+      }
+    }
+    if(m.assignedGasMine && !m.assignedGasMine.dead){
+      const mine = m.assignedGasMine;
+      if(!m.gasJobState) m.gasJobState = "toMine";
+      if(m.gasJobState === "toMine"){
+        m.target = mine.pos;
+        if(dist2(m.pos, mine.pos) < 1.5){
+          m.gasJobState = "toDeposit";
+          m.carryingGas = true;
+        }
+      } else if(m.gasJobState === "toDeposit"){
+        let depot = null, depotD = dist2(mine.pos, player.pos);
+        for(const s of structures){
+          if(s.dead || s.type!=="gasDepot") continue;
+          const d = dist2(mine.pos, s.pos);
+          if(d < depotD){ depotD = d; depot = s; }
+        }
+        m.target = depot ? depot.pos : player.pos;
+        if(dist2(m.pos, m.target) < 1.5){
+          gas += 10;
+          popWorldText("+10⛽", m.pos.x, m.pos.y + 1.5, m.pos.z, "#9fffe4");
+          m.gasJobState = "toMine";
+          m.carryingGas = false;
+        }
+      }
+    } else {
+      m.assignedGasMine = null;
+      m.gasJobState = null;
+      m.carryingGas = false;
+    }
+
     let repairTarget = null;
     let bestRepair = 9999;
     for(const s of structures){
@@ -2250,7 +2482,9 @@ function updateMouseEntity(m,dt){
       if(d < bestRepair && d < 24){ bestRepair = d; repairTarget = s; }
     }
 
-    if(repairTarget){
+    if(m.assignedGasMine){
+      // dedicated gas worker skips general jobs
+    } else if(repairTarget){
       m.target = repairTarget.pos;
       if(bestRepair < repairTarget.radius + 1.2){
         m.repairCd -= dt;
@@ -2339,7 +2573,7 @@ function updateMouseEntity(m,dt){
 // -------------------------------------------------
 function makeEnemy(kind,x,z){
   let model,hp,speed,damage,radius,attackRange=1.3,turnRate=4.8;
-  if(kind==="rat"){ model = makeRatModel(); hp = 22; speed = 7.0; damage = 10; radius = 0.8; }
+  if(kind==="rat"){ model = makeRatModel(); hp = 22; speed = 8.4; damage = 10; radius = 0.8; }
   if(kind==="mole"){ model = makeMoleModel(); hp = 40; speed = 5.5; damage = 55; radius = 0.9; }
   if(kind==="weasel"){ model = makeWeaselModel(); hp = 115; speed = 10.1; damage = 24; radius = 1.1; turnRate = 1.6; }
   if(kind==="assassin"){ model = makeWeaselModel(); hp = 54; speed = 11.8; damage = 38; radius = 0.78; attackRange = 1.15; turnRate = 6.2; }
@@ -2706,8 +2940,8 @@ function spawnCat(){
       pos:model.position,
       hp:10000,
       maxHp:10000,
-      speed:4.9,
-      sprint:7.0,
+      speed:6.4,
+      sprint:9.3,
       radius:2.2,
       attackRange:2.35,
       attackCd:0,
@@ -2743,7 +2977,7 @@ function spawnCat(){
 function catChooseTarget(){
   if(!cat || cat.dead || cat.dying) return null;
   const playerDist = dist2(cat.pos, player.pos);
-  const playerVisible = !player.dead && !lineBlockedForCat(cat.pos, player.pos) && playerDist < 44;
+  const playerVisible = !player.dead && !lineBlockedForCat(cat.pos, player.pos);
   const pursuitMemory = (6.2 + difficulty.catIQ * 2.2 + combatDirector.heat * 2.1);
   if(playerVisible){
     cat.aggroMemory = pursuitMemory;
@@ -2752,7 +2986,7 @@ function catChooseTarget(){
     return player;
   }
 
-  if(!player.dead && (cat.aggroMemory > 0 || playerDist < 26 + combatDirector.heat*8)){
+  if(!player.dead && (cat.aggroMemory > 0 || playerDist < MAP_SIZE)){
     if(cat.aggroMemory <= 0) cat.aggroMemory = pursuitMemory * 0.45;
     if(playerDist < 52) return { pos:cat.lastSeenPlayerPos.clone().lerp(player.pos, 0.35), radius:1.0, isMemoryTarget:true, isPlayerMemory:true };
   }
@@ -2787,7 +3021,7 @@ function catChooseTarget(){
   }
   if(nearestRobot && nearestRobotD < 26) return nearestRobot;
 
-  const bestStructure = nearestAttackableStructure(cat, 45);
+  const bestStructure = nearestAttackableStructure(cat, MAP_SIZE);
   if(bestStructure) return bestStructure;
   return null;
 }
@@ -3049,7 +3283,10 @@ function updateRobots(dt){
 
     const t = robotTarget(r);
 
-    if (t) {
+    if (r.mech && dist2(r.pos, player.pos) > 14) {
+      const step = directSteerToward({ pos:r.pos, speed:r.speed, radius:r.radius }, player.pos, dt, false, null, robots);
+      if(step){ r.group.rotation.y = step.heading; r.pos.x = step.x; r.pos.z = step.z; }
+    } else if (t) {
       const d = dist2(r.pos, t.pos);
 
       const robotMoveTarget = (r.repathTimer > 0 && r.repathTarget) ? r.repathTarget : t.pos;
@@ -3069,9 +3306,29 @@ function updateRobots(dt){
           r.pos.z = step.z;
         }
       } else if (r.fireCd <= 0) {
-        r.fireCd = 0.55;
-        addBurst(r.pos.x, r.pos.y + 1.1, r.pos.z, 0x9fecff, 5, 2.5, 0.24, 0.05);
-        applyDamageToLiving(t, r.damage, t.pos);
+        if(r.advanced || r.mech){
+          r.fireCd = r.mech ? 1.55 : 1.1;
+          addBurst(t.pos.x, t.pos.y + 1.2, t.pos.z, 0xff6666, 4, 1.3, 0.2, 0.04);
+          const from = new THREE.Vector3(r.pos.x, r.pos.y + (r.mech?2.3:1.8), r.pos.z);
+          const to = new THREE.Vector3(t.pos.x, t.pos.y + 1, t.pos.z);
+          addLightningArc(from, to, 0.09, r.mech ? 0xffaa55 : 0x7ee8ff);
+          applyDamageToLiving(t, r.damage, t.pos);
+          if(r.mech){
+            for(const e of enemies){
+              if(e.dead || e.dying) continue;
+              const dd = dist2(e.pos, t.pos);
+              if(dd < 2.8){
+                applyDamageToLiving(e, r.damage * Math.max(0.35, 1 - dd/2.8), t.pos);
+                const kb = new THREE.Vector3(e.pos.x - t.pos.x, 0, e.pos.z - t.pos.z).normalize().multiplyScalar(0.65);
+                e.pos.x += kb.x; e.pos.z += kb.z;
+              }
+            }
+          }
+        } else {
+          r.fireCd = 0.55;
+          addBurst(r.pos.x, r.pos.y + 1.1, r.pos.z, 0x9fecff, 5, 2.5, 0.24, 0.05);
+          applyDamageToLiving(t, r.damage, t.pos);
+        }
       }
       updateAgentStuck(r, dt, true, ()=> setRepathPoint(r, t.pos, 3.6));
     } else {
@@ -3094,7 +3351,7 @@ function updateRobots(dt){
     }
 
     r.pos.y = groundHeight(r.pos.x, r.pos.z);
-    r.group.position.y += Math.sin(r.anim * 3) * 0.02;
+    r.group.position.y += Math.sin(r.anim * (r.advanced||r.mech?5:3)) * (r.mech?0.05:0.02);
   }
 }
 function updateRepairBeams(dt) {
@@ -3171,6 +3428,23 @@ function updateStructures(dt){
         spawnCheeseAt(s.pos.x + rand(-1.2,1.2), s.pos.z + rand(-1.2,1.2), 3);
       }
     }
+    if(s.type==="breedingNest"){
+      s.breedCd -= dt;
+      const timer = s.mesh.userData.breedTimer;
+      if(timer){
+        const frac = 1 - clamp(s.breedCd / 25, 0, 1);
+        timer.scale.setScalar(0.45 + frac * 0.7);
+        timer.material.opacity = 0.35 + frac*0.65;
+        timer.quaternion.copy(camera.quaternion);
+      }
+      if(s.breedCd <= 0){
+        s.breedCd = 25;
+        const spawn = randomFreePosition(0.9);
+        spawnWildMouse(spawn.x, spawn.z);
+        const nw = wildMice[wildMice.length-1];
+        recruitMouse(nw);
+      }
+    }
 
     if(s.type==="scoutPost"){
       const eye = s.mesh.userData.eye;
@@ -3209,6 +3483,24 @@ function updateStructures(dt){
         spawnRobot(s.pos.x+rand(-1.7,1.7), s.pos.z+rand(-1.7,1.7));
         addBurst(s.pos.x,s.pos.y+1.8,s.pos.z,0x8fe8ff,10,3,0.5,0.07);
       }
+    }
+    if(s.type==="advancedRobo"){
+      s.robotCd -= dt;
+      if(s.robotCd <= 0){
+        s.robotCd = 10;
+        spawnRobot(s.pos.x+rand(-1.4,1.4), s.pos.z+rand(-1.4,1.4), true);
+        addBurst(s.pos.x,s.pos.y+1.8,s.pos.z,0x73e6ff,12,3.5,0.55,0.08);
+      }
+    }
+    if(s.type==="gasMine"){
+      if(!s.assignedServant || s.assignedServant.dead || s.assignedServant.dying || s.assignedServant.state!=="servant"){
+        s.assignedServant = servantMice.find(m => !m.dead && !m.dying && !m.assignedGasMine && !m.assignedMechaHangar) || null;
+        if(s.assignedServant) s.assignedServant.assignedGasMine = s;
+      }
+    }
+    if(s.type==="mechaHangar" && s.mechaPending){
+      const pilot = servantMice.find(m => !m.dead && !m.dying && !m.assignedGasMine && !m.assignedMechaHangar);
+      if(pilot) pilot.assignedMechaHangar = s;
     }
 
     if(s.type==="barrierTotem"){
@@ -3422,6 +3714,7 @@ document.addEventListener("keydown", e=>{
   if (e.key === "2") { currentCategory = 2; if (currentSelectionSlot == null) currentSelectionSlot = 5; updateBuildUI(); }
   if (e.key === "3") { currentCategory = 3; if (currentSelectionSlot == null) currentSelectionSlot = 5; updateBuildUI(); }
   if (e.key === "4") { currentCategory = 4; if (currentSelectionSlot == null) currentSelectionSlot = 5; updateBuildUI(); }
+  if (e.key.toLowerCase() === "q") { currentCategory = 5; if (currentSelectionSlot == null) currentSelectionSlot = 5; updateBuildUI(); }
 
   if (["5","6","7","8","9","0"].includes(e.key) && currentCategory !== 1) {
     currentSelectionSlot = e.key === "0" ? 0 : parseInt(e.key);
@@ -3484,26 +3777,32 @@ function updatePlayer(dt){
 
   const selected = getSelectedBuildData();
   if(!selected){
+    buildGridOverlay.visible = false;
     buildTelegraph.visible = false;
+    setBuildPreview(null,0,0,false);
   } else {
+    buildGridOverlay.visible = true;
     const p = getBuildPlace();
+    const valid = getBuildValidation(selected, p.x, p.z).ok && cheese >= selected.cost && gas >= (selected.gasCost||0);
     buildTelegraph.visible = true;
     buildTelegraph.position.set(p.x, p.y+0.06, p.z);
-    buildTelegraph.scale.setScalar(selected.radius * 0.75);
-    buildTelegraph.material.color.set(circleBlocked(p.x,p.z,selected.radius, null, 0.75) ? 0xff4444 : 0x7aff9a);
-    buildTelegraph.rotation.set(-Math.PI/2, 0, 0); // always flat circle
+    buildTelegraph.material.color.set(valid ? 0x66ff99 : 0xff5555);
+    setBuildPreview(selected.type, p.x, p.z, valid);
   }
 }
 function tryPlaceStructure(){
   const selected = getSelectedBuildData();
   if(gameOver || gameWon || !selected) return;
   if(cheese < selected.cost){ showCenter("Not enough cheese", 1); return; }
+  if(gas < (selected.gasCost||0)){ showCenter("Not enough gas", 1); return; }
 
   const p = getBuildPlace();
-  if(circleBlocked(p.x,p.z,selected.radius, null, 0.75)){ showCenter("Cannot build there", 1); return; }
+  const valid = getBuildValidation(selected, p.x, p.z);
+  if(!valid.ok){ showCenter(valid.reason, 1); return; }
 
   cheese -= selected.cost;
-  createStructure(selected.type, p.x, p.z, player.heading, selected);
+  gas -= (selected.gasCost||0);
+  createStructure(selected.type, p.x, p.z, 0, selected);
 }
 function updateCamera(dt){
   const focus = player.pos.clone().add(new THREE.Vector3(0,1.7,0));
@@ -3558,6 +3857,16 @@ function updateCheeses(dt){
     c.spin += dt * 2.4;
     c.group.rotation.y = c.spin;
     c.group.position.y = groundHeight(c.pos.x,c.pos.z) + 0.22 + Math.sin(time*3 + c.spin) * 0.12;
+  }
+  for(const v of gasVents){
+    v.steamT += dt;
+    if(Math.random() < 0.08){
+      addBurst(v.x + rand(-0.2,0.2), 0.55 + Math.sin(v.steamT*3)*0.1, v.z + rand(-0.2,0.2), 0xb0fff0, 1, 0.7, 0.5, 0.08);
+    }
+    if(v.group){
+      const glow = v.group.children[1];
+      if(glow) glow.material.emissiveIntensity = 0.5 + Math.sin(v.steamT*4)*0.3;
+    }
   }
 }
 function updateSpawners(dt){
@@ -3680,6 +3989,7 @@ function diePlayer(){
 // -------------------------------------------------
 function updateUI(){
   ui.cheese.textContent = Math.floor(cheese);
+  ui.gas.textContent = Math.floor(gas);
   ui.servants.textContent = servantMice.filter(m => !m.dead).length;
   ui.time.textContent = time.toFixed(1);
 }
