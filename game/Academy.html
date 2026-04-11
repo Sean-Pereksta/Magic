@@ -1032,6 +1032,126 @@ function lineBlocked(a,b, opts=null){
   }
   return false;
 }
+function getPathingOptsForEntity(entity){
+  const kind = entity?.kind || "";
+  const burrowTravel = kind==="burrowMole" && entity?.burrowState==="burrow_travel";
+  const ignoreWallsForBurrow = burrowTravel || kind==="screecherBat";
+  return { ignoreWallsForBurrow };
+}
+function entityPathCellBlocked(entity, cx, cz, ignoreStructure=null, opts=null){
+  const world = cellToWorld(cx, cz);
+  const radius = Math.max(0.55, (entity?.radius || 0.8) * 0.92);
+  const pathOpts = opts || getPathingOptsForEntity(entity);
+  return circleBlocked(world.x, world.z, radius, ignoreStructure, 0.98, pathOpts);
+}
+function buildGridPath(entity, fromPos, toPos, ignoreStructure=null, opts=null){
+  if(!entity || !fromPos || !toPos) return null;
+  const pathOpts = opts || getPathingOptsForEntity(entity);
+  const start = worldToCell(fromPos.x, fromPos.z);
+  const goal = worldToCell(toPos.x, toPos.z);
+  const startKey = cellKey(start.cx, start.cz);
+  const goalKey = cellKey(goal.cx, goal.cz);
+  if(startKey === goalKey){
+    const wp = cellToWorld(goal.cx, goal.cz);
+    return [{ x:wp.x, y:groundHeight(wp.x, wp.z), z:wp.z }];
+  }
+  if(entityPathCellBlocked(entity, goal.cx, goal.cz, ignoreStructure, pathOpts)) return null;
+
+  const queue = [{ cx:start.cx, cz:start.cz }];
+  const cameFrom = new Map();
+  const visited = new Set([startKey]);
+  let found = false;
+  const dirs = [{x:1,z:0},{x:-1,z:0},{x:0,z:1},{x:0,z:-1}];
+  const maxExpand = 1800;
+  let expanded = 0;
+
+  while(queue.length && expanded < maxExpand){
+    const cur = queue.shift();
+    expanded++;
+    const curKey = cellKey(cur.cx, cur.cz);
+    if(curKey === goalKey){ found = true; break; }
+    for(const dir of dirs){
+      const nx = cur.cx + dir.x;
+      const nz = cur.cz + dir.z;
+      if(nx < -dynamicGridHalfCells || nx > dynamicGridHalfCells || nz < -dynamicGridHalfCells || nz > dynamicGridHalfCells) continue;
+      const nKey = cellKey(nx, nz);
+      if(visited.has(nKey)) continue;
+      if(entityPathCellBlocked(entity, nx, nz, ignoreStructure, pathOpts)) continue;
+      visited.add(nKey);
+      cameFrom.set(nKey, curKey);
+      queue.push({ cx:nx, cz:nz });
+      if(nKey === goalKey){ found = true; queue.length = 0; break; }
+    }
+  }
+  if(!found) return null;
+
+  const cells = [];
+  let curKey = goalKey;
+  while(curKey && curKey !== startKey){
+    const [cx, cz] = curKey.split(",").map(Number);
+    cells.push({ cx, cz });
+    curKey = cameFrom.get(curKey);
+  }
+  cells.reverse();
+  return cells.map(c=>{
+    const wp = cellToWorld(c.cx, c.cz);
+    return { x:wp.x, y:groundHeight(wp.x, wp.z), z:wp.z };
+  });
+}
+function ensurePathState(entity){
+  if(!entity) return;
+  if(!Array.isArray(entity.navPath)) entity.navPath = [];
+  if(typeof entity.navWaypointIndex !== "number") entity.navWaypointIndex = 0;
+  if(typeof entity.navTargetCellKey !== "string") entity.navTargetCellKey = "";
+  if(typeof entity.navRepathCd !== "number") entity.navRepathCd = 0;
+  if(typeof entity.navReachable !== "boolean") entity.navReachable = false;
+}
+function computeEntityPathToTarget(entity, target, force=false){
+  ensurePathState(entity);
+  if(!target){
+    entity.navPath = [];
+    entity.navWaypointIndex = 0;
+    entity.navReachable = false;
+    entity.navLastTarget = null;
+    entity.navTargetCellKey = "";
+    return false;
+  }
+  const targetPos = target.pos || target;
+  if(!targetPos) return false;
+  const targetCell = worldToCell(targetPos.x, targetPos.z);
+  const targetCellKey = cellKey(targetCell.cx, targetCell.cz);
+  const sourceCell = worldToCell(entity.pos.x, entity.pos.z);
+  const sourceCellKey = cellKey(sourceCell.cx, sourceCell.cz);
+  const targetChanged = entity.navTargetCellKey !== targetCellKey || entity.navLastTarget !== target;
+  const sourceChanged = entity.navSourceCellKey !== sourceCellKey;
+  let pathBlocked = false;
+  if(entity.navPath.length && entity.navWaypointIndex < entity.navPath.length){
+    const wp = entity.navPath[entity.navWaypointIndex];
+    const wpCell = worldToCell(wp.x, wp.z);
+    pathBlocked = entityPathCellBlocked(entity, wpCell.cx, wpCell.cz, target && target.type ? target : null);
+  }
+  const shouldRepath = force || targetChanged || sourceChanged || pathBlocked || entity.navRepathCd <= 0 || !entity.navPath.length || entity.navWaypointIndex >= entity.navPath.length;
+  if(!shouldRepath){
+    entity.navReachable = entity.navPath.length > 0;
+    return entity.navReachable;
+  }
+  const path = buildGridPath(entity, entity.pos, targetPos, target && target.type ? target : null);
+  entity.navPath = path || [];
+  entity.navWaypointIndex = 0;
+  entity.navTargetCellKey = targetCellKey;
+  entity.navSourceCellKey = sourceCellKey;
+  entity.navLastTarget = target;
+  entity.navRepathCd = 0.26 + Math.random() * 0.22;
+  entity.navReachable = !!(path && path.length);
+  return entity.navReachable;
+}
+function isTargetReachableByPath(entity, target){
+  if(!entity || !target) return false;
+  const targetPos = target.pos || target;
+  if(!targetPos) return false;
+  const probe = buildGridPath(entity, entity.pos, targetPos, target && target.type ? target : null);
+  return !!(probe && probe.length);
+}
 function randomFreePosition(radius=1){
   for(let i=0;i<80;i++){
     const x = rand(-dynamicHalfMap+10, dynamicHalfMap-10);
@@ -4111,7 +4231,13 @@ function makeEnemy(kind,x,z){
     debuffCd:0,
     retargetInterval:rand(0.35, 0.85),
     retargetCd:rand(0.05, 0.65),
-    lowFreqCd:rand(0.02, 0.25)
+    lowFreqCd:rand(0.02, 0.25),
+    navPath:[],
+    navWaypointIndex:0,
+    navTargetCellKey:"",
+    navSourceCellKey:"",
+    navRepathCd:0,
+    navReachable:false
   };
   if(kind==="ram"){
     e.role = "breaker";
@@ -4203,6 +4329,28 @@ function nearestRatTarget(e){
   if(current && current !== best && currentD <= bestD + stickBias) return current;
   return best;
 }
+function isEnemyTargetCandidateAlive(target){
+  if(!target) return false;
+  if(target === player) return !player.dead;
+  if(Array.isArray(target)) return false;
+  if(isLivingTarget(target)) return !target.dead && !target.dying;
+  if(typeof target.hp === "number") return !target.dead && target.hp > 0;
+  return !!target.pos;
+}
+function nearestReachableByPath(entity, candidates){
+  let best = null;
+  let bestD = Infinity;
+  for(const c of candidates){
+    if(!isEnemyTargetCandidateAlive(c)) continue;
+    if(!isTargetReachableByPath(entity, c)) continue;
+    const d = dist2(entity.pos, c.pos || c);
+    if(d < bestD){
+      best = c;
+      bestD = d;
+    }
+  }
+  return best;
+}
 function chooseEnemyTarget(e){
   // AI tuning helper: structure pressure map keeps enemies from dog-piling one wall.
   const structurePressure = new Map();
@@ -4220,22 +4368,17 @@ function chooseEnemyTarget(e){
     if(wall) return wall;
   }
   if(e.kind==="assassin"){
-    let bestSupport = null, bestScore = 9999;
-    for(const m of servantMice){
-      if(m.dead || m.dying) continue;
-      let nearbyGuards = 0;
-      for(const ally of servantMice){
-        if(ally===m || ally.dead || ally.dying) continue;
-        if(dist2(ally.pos, m.pos) < 3.5) nearbyGuards++;
-      }
-      const d = dist2(e.pos, m.pos);
-      const score = d + nearbyGuards * 4.4;
-      if(score < bestScore){ bestScore = score; bestSupport = m; }
-    }
-    if(bestSupport && bestScore < 48) return bestSupport;
-    const supportStructure = nearestAttackableStructure(e, 999, s => ["fountain","factory","supplyNest","repairAnchor","robo"].includes(s.type));
-    if(supportStructure && dist2(e.pos, supportStructure.pos) < 52) return supportStructure;
-    if(!player.dead && dist2(e.pos, player.pos) < 18 && !lineBlocked(e.pos, player.pos)) return player;
+    if(!player.dead && isTargetReachableByPath(e, player)) return player;
+    const mouseTargets = [];
+    for(const m of servantMice){ if(!m.dead && !m.dying) mouseTargets.push(m); }
+    for(const m of engineerMice){ if(!m.dead && !m.dying) mouseTargets.push(m); }
+    const reachableMouse = nearestReachableByPath(e, mouseTargets);
+    if(reachableMouse) return reachableMouse;
+    const fallback = [];
+    for(const r of robots){ if(!r.dead && !r.dying) fallback.push(r); }
+    for(const s of structures){ if(!s.dead && s.hp > 0) fallback.push(s); }
+    const reachableFallback = nearestReachableByPath(e, fallback);
+    if(reachableFallback) return reachableFallback;
   }
   if(e.kind==="spitterBug" || e.kind==="venomLobber"){
     let bestBackline = null;
@@ -4403,6 +4546,7 @@ function updateEnemies(dt){
     e.heavySwing = Math.max(0, (e.heavySwing || 0) - dt);
     e.titanChargeCd = Math.max(0, (e.titanChargeCd || 0) - dt);
     e.siegeWindup = Math.max(0, (e.siegeWindup || 0) - dt);
+    e.navRepathCd = Math.max(0, (e.navRepathCd || 0) - dt);
     setEnemyTelegraph(e, 0);
     if(e.dazeIcon){
       e.dazeIcon.visible = e.stunCd > 0;
@@ -4504,6 +4648,7 @@ function updateEnemies(dt){
       if(nextTarget && nextTarget !== e.target) e.retargetCd = (e.retargetInterval || 0.45) * (e.kind === "rat" ? 0.75 : 1);
       else e.retargetCd = (e.retargetInterval || 0.45);
       e.target = nextTarget;
+      computeEntityPathToTarget(e, e.target, true);
     } else if (e.target !== player && e.kind !== "rat") {
       let crowd = 0;
       for (const other of enemies) {
@@ -4513,13 +4658,23 @@ function updateEnemies(dt){
       if (crowd >= 3) {
         e.target = chooseEnemyTarget(e);
         e.retargetCd = (e.retargetInterval || 0.45) * 0.7;
+        computeEntityPathToTarget(e, e.target, true);
       }
     }
 
     e.repathTimer = Math.max(0, (e.repathTimer || 0) - dt);
-    const moveTarget = (e.repathTimer > 0 && e.repathTarget) ? e.repathTarget : e.target;
+    if(e.target) computeEntityPathToTarget(e, e.target, false);
+    let moveTarget = (e.repathTimer > 0 && e.repathTarget) ? e.repathTarget : e.target;
     if(!moveTarget) continue;
     let targetPos = moveTarget.pos || moveTarget;
+    if(!(e.repathTimer > 0 && e.repathTarget) && e.navPath?.length){
+      while(e.navWaypointIndex < e.navPath.length && dist2(e.pos, e.navPath[e.navWaypointIndex]) < Math.max(0.9, e.radius * 0.75)){
+        e.navWaypointIndex++;
+      }
+      if(e.navWaypointIndex < e.navPath.length){
+        targetPos = e.navPath[e.navWaypointIndex];
+      }
+    }
     const d = dist2(e.pos, targetPos);
     const isStunned = e.stunCd > 0;
     if(e.kind==="burrowMole" && e.burrowState==="surface_attack" && d > meleeStopDistance(e, e.target || moveTarget, 0.9)){
@@ -4732,9 +4887,11 @@ function updateEnemies(dt){
       e.dashDir = Math.random() < 0.5 ? -1 : 1;
       addBurst(e.pos.x, e.pos.y+0.15, e.pos.z, 0xc69c61, 4, 2.0, 0.2, 0.04);
     }
-    if(e.kind==="assassin" && e.dashCd <= 0 && e.target && d > 2.2 && d < 10 && !lineBlocked(e.pos, targetPos)){
+    const finalTargetPos = e.target ? (e.target.pos || e.target) : targetPos;
+    const finalTargetDist = e.target ? dist2(e.pos, finalTargetPos) : d;
+    if(e.kind==="assassin" && e.dashCd <= 0 && e.target && finalTargetDist > 1.9 && finalTargetDist < 5.2 && !lineBlocked(e.pos, finalTargetPos)){
       e.dashCd = rand(2.5,4.1);
-      const dir = new THREE.Vector3(targetPos.x - e.pos.x, 0, targetPos.z - e.pos.z).normalize();
+      const dir = new THREE.Vector3(finalTargetPos.x - e.pos.x, 0, finalTargetPos.z - e.pos.z).normalize();
       const nx = e.pos.x + dir.x * 3.6;
       const nz = e.pos.z + dir.z * 3.6;
       const pushed = collisionPushOut(nx, nz, e.radius, true, e.target);
@@ -4894,6 +5051,14 @@ function spawnCat(){
       ,pendingAttackIsHeavy:false
       ,telegraphRing:catTelegraphRing
       ,telegraphArc:catTelegraphArc
+      ,target:null
+      ,targetRetargetCd:0
+      ,navPath:[]
+      ,navWaypointIndex:0
+      ,navTargetCellKey:""
+      ,navSourceCellKey:""
+      ,navRepathCd:0
+      ,navReachable:false
     };
 
     ui.bossWrap.style.display = "block";
@@ -4903,53 +5068,14 @@ function spawnCat(){
 }
 function catChooseTarget(){
   if(!cat || cat.dead || cat.dying) return null;
-  const playerDist = dist2(cat.pos, player.pos);
-  const playerVisible = !player.dead && !lineBlockedForCat(cat.pos, player.pos);
-  const pursuitMemory = (6.2 + difficulty.catIQ * 2.2 + combatDirector.heat * 2.1);
-  if(playerVisible){
-    cat.aggroMemory = pursuitMemory;
-    cat.lastSeenPlayerPos.copy(player.pos);
-    cat.failedRoute = Math.max(0, cat.failedRoute - 1);
-    return player;
-  }
-
-  if(!player.dead && (cat.aggroMemory > 0 || playerDist < dynamicMapSize)){
-    if(cat.aggroMemory <= 0) cat.aggroMemory = pursuitMemory * 0.45;
-    if(playerDist < 52) return { pos:cat.lastSeenPlayerPos.clone().lerp(player.pos, 0.35), radius:1.0, isMemoryTarget:true, isPlayerMemory:true };
-  }
-
-  if(cat.aggroMemory > 0){
-    let nearestServant = null, nearestServantD = 9999;
-    for(const m of servantMice){
-      if(m.dead || m.dying) continue;
-      const d = dist2(cat.pos, m.pos);
-      if(d < nearestServantD){ nearestServant = m; nearestServantD = d; }
-    }
-    let nearestRobot = null, nearestRobotD = 9999;
-    for(const r of robots){
-      if(r.dead || r.dying) continue;
-      const d = dist2(cat.pos, r.pos);
-      if(d < nearestRobotD){ nearestRobot = r; nearestRobotD = d; }
-    }
-    if(cat.failedRoute >= 3 && cat.aggroMemory < 2.7){
-      const antiBase = nearestAttackableStructure(cat, 999, s => ["wall","diamondWall","ultraWall","turret","cannon","shardLauncher","sawBlaster","zapCoil","mortarBloom","sniperTower","railGun","barrierTotem","fortPlate"].includes(s.type));
-      if(antiBase && dist2(cat.pos, antiBase.pos) < 56) return antiBase;
-    }
-    if(nearestServant && nearestServantD < 14 && Math.random() < 0.3) return nearestServant;
-    if(nearestRobot && nearestRobotD < 14 && Math.random() < 0.22) return nearestRobot;
-    return { pos:cat.lastSeenPlayerPos, radius:1.0, isMemoryTarget:true };
-  }
-
-  let nearestRobot = null, nearestRobotD = 9999;
-  for(const r of robots){
-    if(r.dead || r.dying) continue;
-    const d = dist2(cat.pos, r.pos);
-    if(d < nearestRobotD){ nearestRobot = r; nearestRobotD = d; }
-  }
-  if(nearestRobot && nearestRobotD < 26) return nearestRobot;
-
-  const bestStructure = nearestAttackableStructure(cat, dynamicMapSize);
-  if(bestStructure) return bestStructure;
+  if(!player.dead && isTargetReachableByPath(cat, player)) return player;
+  const fallback = [];
+  for(const m of servantMice){ if(!m.dead && !m.dying) fallback.push(m); }
+  for(const m of engineerMice){ if(!m.dead && !m.dying) fallback.push(m); }
+  for(const r of robots){ if(!r.dead && !r.dying) fallback.push(r); }
+  for(const s of structures){ if(!s.dead && s.hp > 0) fallback.push(s); }
+  const reachableFallback = nearestReachableByPath(cat, fallback);
+  if(reachableFallback) return reachableFallback;
   return null;
 }
 function lineBlockedForCat(a,b){
@@ -5037,7 +5163,17 @@ function updateCat(dt){
   cat.repathTimer = Math.max(0, (cat.repathTimer || 0) - dt);
   cat.routePersist = Math.max(0, (cat.routePersist || 0) - dt);
 
-  const target = catChooseTarget();
+  cat.targetRetargetCd = Math.max(0, (cat.targetRetargetCd || 0) - dt);
+  cat.navRepathCd = Math.max(0, (cat.navRepathCd || 0) - dt);
+  const catTargetInvalid = !isEnemyTargetCandidateAlive(cat.target);
+  if(catTargetInvalid || cat.targetRetargetCd <= 0){
+    cat.target = catChooseTarget();
+    cat.targetRetargetCd = 0.35 + Math.random() * 0.2;
+    computeEntityPathToTarget(cat, cat.target, true);
+  } else if(cat.target){
+    computeEntityPathToTarget(cat, cat.target, false);
+  }
+  const target = cat.target;
   const catPhase = Math.max(0, time - 60);
   const catRamp = clamp(catPhase / 420, 0, 1);
   let moveTarget = null;
@@ -5047,7 +5183,6 @@ function updateCat(dt){
     moveTarget = target.pos || target;
     cat.visibleAggro = true;
     if(target === player) moveSpeed = cat.sprint * (1 + combatDirector.heat * 0.08);
-    else if(target.isMemoryTarget) moveSpeed = cat.sprint * 0.9;
   } else {
     cat.visibleAggro = false;
     if(dist2(cat.pos, cat.prowlTarget) < 4){
@@ -5055,7 +5190,7 @@ function updateCat(dt){
     }
     moveTarget = cat.prowlTarget;
   }
-  if(target === player || target?.isPlayerMemory){
+  if(target === player){
     const pv = new THREE.Vector3(Math.sin(player.heading), 0, Math.cos(player.heading)).multiplyScalar(clamp(dist2(cat.pos, player.pos)/9, 0.5, 2.4));
     const intercept = player.pos.clone().addScaledVector(pv, difficulty.catIQ * 0.58);
     if(Math.random() < difficulty.flank + combatDirector.heat * 0.2){
@@ -5064,6 +5199,14 @@ function updateCat(dt){
       intercept.addScaledVector(normal, side);
     }
     moveTarget = intercept;
+  }
+  if(cat.navPath?.length){
+    while(cat.navWaypointIndex < cat.navPath.length && dist2(cat.pos, cat.navPath[cat.navWaypointIndex]) < Math.max(1.25, cat.radius * 0.75)){
+      cat.navWaypointIndex++;
+    }
+    if(cat.navWaypointIndex < cat.navPath.length){
+      moveTarget = cat.navPath[cat.navWaypointIndex];
+    }
   }
   const canPathDirect = !lineBlockedForCat(cat.pos, moveTarget);
   if(canPathDirect){
@@ -5083,12 +5226,12 @@ function updateCat(dt){
   if(cat.repathTimer > 0 && cat.repathTarget) moveTarget = cat.repathTarget;
 
   const d = dist2(cat.pos, moveTarget);
-  if(!target?.isMemoryTarget && target && d < 9.5 && target===player && cat.burstT<=0 && cat.abilityCd<=0 && Math.random()<0.013*difficulty.specials){
+  if(target && d < 9.5 && target===player && cat.burstT<=0 && cat.abilityCd<=0 && Math.random()<0.013*difficulty.specials){
     cat.burstT = 0.85;
     cat.abilityCd = 5.7 / difficulty.specials;
     addBurst(cat.pos.x,cat.pos.y+2.3,cat.pos.z,0xff8b52,16,5.6,0.62,0.1);
   }
-  if(!target?.isMemoryTarget && target===player && cat.lungeCd<=0 && d < meleeStopDistance(cat, player, 1.45) && d > meleeStopDistance(cat, player, 0.2) && Math.random() < 0.014 * difficulty.specials){
+  if(target===player && cat.lungeCd<=0 && d < meleeStopDistance(cat, player, 1.45) && d > meleeStopDistance(cat, player, 0.2) && Math.random() < 0.014 * difficulty.specials){
     const dir = new THREE.Vector3(moveTarget.x-cat.pos.x,0,moveTarget.z-cat.pos.z).normalize();
     const lunge = collisionPushOut(cat.pos.x + dir.x*3.2, cat.pos.z + dir.z*3.2, cat.radius, true, null);
     cat.pos.x = lunge.x; cat.pos.z = lunge.z;
@@ -5103,7 +5246,7 @@ function updateCat(dt){
       cat.pos.x = step.x;
       cat.pos.z = step.z;
     }
-  } else if(target && !target.isMemoryTarget && cat.attackCd <= 0 && cat.repathTimer <= 0){
+  } else if(target && cat.attackCd <= 0 && cat.repathTimer <= 0){
     cat.attackCd = 1.22 - catRamp * 0.18;
     cat.attackWindup = 0.2;
     cat.pendingAttackTarget = target;
@@ -5147,7 +5290,7 @@ function updateCat(dt){
     cat.failedRoute += 0.8;
     cat.detourSide = phase % 2 ? -1 : 1;
     setRepathPoint(cat, target?.pos || player.pos, phase >= 2 ? 12.5 : 7.5);
-    if(target && (target === player || target?.isPlayerMemory)) cat.aggroMemory = Math.max(cat.aggroMemory, 4.5 + difficulty.catIQ * 1.8);
+    if(target === player) cat.aggroMemory = Math.max(cat.aggroMemory, 4.5 + difficulty.catIQ * 1.8);
   });
 
   cat.pos.y = groundHeight(cat.pos.x,cat.pos.z);
