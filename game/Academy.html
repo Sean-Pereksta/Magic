@@ -150,6 +150,31 @@
     display: none;
     text-shadow: 0 0 8px #000;
   }
+  #enemyUnlockWarning {
+    position: absolute;
+    left: 50%;
+    top: 38px;
+    transform: translateX(-50%);
+    z-index: 22;
+    color: #fff7cf;
+    font-size: 13px;
+    font-weight: bold;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(0,0,0,0.52);
+    border: 1px solid rgba(255,235,162,0.38);
+    text-shadow: 0 0 8px #000;
+    letter-spacing: 0.2px;
+    pointer-events: none;
+  }
+  #enemyUnlockWarning.flash {
+    animation: unlockPulse 0.55s ease-in-out 2;
+  }
+  @keyframes unlockPulse {
+    0% { transform: translateX(-50%) scale(1); }
+    50% { transform: translateX(-50%) scale(1.08); box-shadow: 0 0 20px rgba(255,198,110,0.5); }
+    100% { transform: translateX(-50%) scale(1); }
+  }
 </style>
 </head>
 <body>
@@ -174,6 +199,7 @@
 
 <div id="bossBarWrap"><div id="bossBar"></div></div>
 <div id="bossLabel">CAT BOSS • HP 0 / 0</div>
+<div id="enemyUnlockWarning"></div>
 <div id="centerMsg"></div>
 
 <script type="module">
@@ -216,6 +242,7 @@ const ui = {
   bossWrap: document.getElementById("bossBarWrap"),
   bossBar: document.getElementById("bossBar"),
   bossLabel: document.getElementById("bossLabel"),
+  enemyUnlockWarning: document.getElementById("enemyUnlockWarning"),
   buildGrid: document.getElementById("buildGrid"),
   catExplore: document.getElementById("catExplore"),
   catEco: document.getElementById("catEco"),
@@ -256,6 +283,14 @@ const combatDirector = {
   lastPocket:[],
   surgeCd:20
 };
+const ENEMY_UNLOCK_STAGES = [
+  { kind:"spitterBug", name:"Spitter Bug", icon:"🪲", unlockTime:250 },
+  { kind:"burrowMole", name:"Burrow Mole", icon:"🕳️", unlockTime:340 },
+  { kind:"siegeRat", name:"Siege Rat", icon:"🐀", unlockTime:440 },
+  { kind:"titanRam", name:"Titan Ram", icon:"🐏", unlockTime:560 }
+];
+const unlockedEnemyKinds = new Set();
+let announcedUnlockKinds = new Set();
 
 // -------------------------------------------------
 // BUILD CATEGORIES
@@ -354,6 +389,12 @@ updateBuildUI();
 function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
 function rand(a,b){ return a + Math.random()*(b-a); }
 function dist2(a,b){ return Math.hypot(a.x-b.x, a.z-b.z); }
+function formatClock(seconds){
+  const s = Math.max(0, Math.ceil(seconds));
+  const mm = String(Math.floor(s / 60)).padStart(2, "0");
+  const ss = String(s % 60).padStart(2, "0");
+  return `${mm}:${ss}`;
+}
 function cellKey(cx, cz){ return `${cx},${cz}`; }
 function worldToCell(x,z){
   return {
@@ -381,6 +422,34 @@ function showCenter(text, dur=1.5){
   setTimeout(() => {
     if (ui.msg.textContent === text) ui.msg.style.opacity = "0";
   }, dur * 1000);
+}
+function isEnemyTargetable(enemy){
+  return !!enemy && !enemy.dead && !enemy.dying && !enemy.untargetable;
+}
+function updateEnemyUnlockWarning(){
+  if(!ui.enemyUnlockWarning) return;
+  const nextStage = ENEMY_UNLOCK_STAGES.find(stage => !unlockedEnemyKinds.has(stage.kind));
+  if(!nextStage){
+    ui.enemyUnlockWarning.textContent = "⚔️ All enemy types unlocked";
+    ui.enemyUnlockWarning.style.display = "block";
+    return;
+  }
+  const remain = Math.max(0, nextStage.unlockTime - time);
+  ui.enemyUnlockWarning.textContent = `Up Next: ${nextStage.icon} ${nextStage.name} in ${formatClock(remain)}`;
+  ui.enemyUnlockWarning.style.display = "block";
+}
+function syncEnemyUnlockStages(){
+  for(const stage of ENEMY_UNLOCK_STAGES){
+    if(time >= stage.unlockTime && !unlockedEnemyKinds.has(stage.kind)){
+      unlockedEnemyKinds.add(stage.kind);
+      ui.enemyUnlockWarning.classList.add("flash");
+      setTimeout(()=>ui.enemyUnlockWarning.classList.remove("flash"), 700);
+      if(!announcedUnlockKinds.has(stage.kind)){
+        showCenter(`New Enemy Spawning: ${stage.name}`, 1.3);
+        announcedUnlockKinds.add(stage.kind);
+      }
+    }
+  }
 }
 function groundHeight(x,z){
   return 0;
@@ -842,7 +911,7 @@ function updateWorldHealthBars(){
   }
 
   for(const e of enemies){
-    if(e.dead || e.dying || !e.healthBar) continue;
+    if(!isEnemyTargetable(e) || !e.healthBar) continue;
     const d = dist2(player.pos, e.pos);
     e.healthBar.visible = shouldShowBar(e.healthBar, d, enemyNear, enemyFar);
     if(e.healthBar.visible) e.healthBar.quaternion.copy(camera.quaternion);
@@ -1047,6 +1116,85 @@ function makeWeaselModel(){
   g.traverse(c=>{ if(c.isMesh){ c.castShadow = true; c.receiveShadow = true; } });
   return g;
 }
+function makeSpitterBugModel(){
+  const g = new THREE.Group();
+  const shellMat = new THREE.MeshStandardMaterial({ color:0x4b6636, roughness:0.7 });
+  const sacMat = new THREE.MeshStandardMaterial({ color:0x6eff72, emissive:0x2cbf45, emissiveIntensity:0.42, roughness:0.5 });
+  const legMat = new THREE.MeshStandardMaterial({ color:0x2b2b2b, roughness:0.9 });
+  const bodyPivot = new THREE.Group(); g.add(bodyPivot);
+  const sacPivot = new THREE.Group(); bodyPivot.add(sacPivot);
+  const headPivot = new THREE.Group(); bodyPivot.add(headPivot);
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.76,14,12), shellMat);
+  body.scale.set(1.2,0.75,1.28); body.position.set(0,0.9,0.05); bodyPivot.add(body);
+  const sac = new THREE.Mesh(new THREE.SphereGeometry(0.45,12,10), sacMat);
+  sac.scale.set(1.0,0.85,1.2); sac.position.set(0,1.08,-0.58); sacPivot.add(sac);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.39,12,10), shellMat);
+  head.scale.set(1.05,0.85,1.15); head.position.set(0,0.86,0.88); headPivot.add(head);
+  const snout = new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.14,0.34,8), new THREE.MeshStandardMaterial({ color:0x88d08d, emissive:0x2f7a3d, emissiveIntensity:0.25 }));
+  snout.rotation.x = Math.PI/2; snout.position.set(0,0.82,1.15); headPivot.add(snout);
+  const legs = [];
+  for(const side of [-1,1]){
+    for(let i=0;i<3;i++){
+      const p = new THREE.Group();
+      p.position.set(0.42*side,0.68,0.65 - i*0.64);
+      g.add(p);
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.06,0.62,6), legMat);
+      leg.position.set(0.16*side,-0.24,0);
+      leg.rotation.z = side * 0.72;
+      p.add(leg);
+      legs.push(p);
+    }
+  }
+  g.userData = { bodyPivot, sacPivot, headPivot, legs };
+  g.traverse(c=>{ if(c.isMesh){ c.castShadow = true; c.receiveShadow = true; } });
+  return g;
+}
+function makeSiegeRatModel(){
+  const g = makeRatModel();
+  g.scale.set(1.45,1.2,1.7);
+  const armorMat = new THREE.MeshStandardMaterial({ color:0x666d77, metalness:0.35, roughness:0.55 });
+  const jawMat = new THREE.MeshStandardMaterial({ color:0xadb7c4, metalness:0.45, roughness:0.45 });
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(1.4,0.52,1.75), armorMat);
+  plate.position.set(0,1.28,-0.08); g.add(plate);
+  const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.6,0.28,1.35), armorMat);
+  ridge.position.set(0,1.56,-0.05); g.add(ridge);
+  const jaw = new THREE.Mesh(new THREE.ConeGeometry(0.26,0.75,10), jawMat);
+  jaw.rotation.x = Math.PI/2; jaw.position.set(0,0.88,1.8); g.add(jaw);
+  return g;
+}
+function makeTitanRamModel(){
+  const g = new THREE.Group();
+  const armorMat = new THREE.MeshStandardMaterial({ color:0x474b52, roughness:0.6, metalness:0.25 });
+  const hornMat = new THREE.MeshStandardMaterial({ color:0xe0d7bc, roughness:0.45 });
+  const glowMat = new THREE.MeshStandardMaterial({ color:0xffb765, emissive:0x8a4100, emissiveIntensity:0.35, roughness:0.5 });
+  const spine = new THREE.Group(); g.add(spine);
+  const headPivot = new THREE.Group(); g.add(headPivot);
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.98,2.9,8,14), armorMat);
+  body.rotation.z = Math.PI/2; body.position.set(0,1.55,0); spine.add(body);
+  const shoulder = new THREE.Mesh(new THREE.BoxGeometry(2.1,1.0,1.2), armorMat);
+  shoulder.position.set(0,1.75,0.88); spine.add(shoulder);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(1.4,1.18,1.38), armorMat);
+  head.position.set(0,1.56,1.95); headPivot.add(head);
+  const ramFace = new THREE.Mesh(new THREE.BoxGeometry(1.05,0.88,0.35), glowMat);
+  ramFace.position.set(0,1.42,2.72); headPivot.add(ramFace);
+  for(const side of [-1,1]){
+    const horn = new THREE.Mesh(new THREE.TorusGeometry(0.38,0.1,8,16,Math.PI*1.2), hornMat);
+    horn.position.set(side*0.58,1.7,2.35);
+    horn.rotation.y = side > 0 ? Math.PI/2 : -Math.PI/2;
+    headPivot.add(horn);
+  }
+  const legs = [];
+  [[-0.72,0.9,1.1],[0.72,0.9,1.1],[-0.72,0.9,-1.0],[0.72,0.9,-1.0]].forEach((p)=>{
+    const pivot = new THREE.Group();
+    pivot.position.set(...p); g.add(pivot);
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.24,1.05,8), armorMat);
+    leg.position.y = -0.42; pivot.add(leg);
+    legs.push(pivot);
+  });
+  g.userData = { spine, headPivot, legs };
+  g.traverse(c=>{ if(c.isMesh){ c.castShadow = true; c.receiveShadow = true; } });
+  return g;
+}
 function animateWeaselRig(group, speedFactor, t, attackAmount=0, dying=0){
   const rig = group.userData;
   const walk = t*(7+speedFactor*10);
@@ -1058,6 +1206,29 @@ function animateWeaselRig(group, speedFactor, t, attackAmount=0, dying=0){
   rig.tailMid.rotation.y = Math.sin(walk*2.1+0.7)*0.16;
   const phases = [0,Math.PI,Math.PI,0];
   rig.legs.forEach((l,i)=> l.rotation.x = Math.sin(walk+phases[i])*(0.7*speedFactor + 0.12) - attackAmount*0.42 + dying*0.7 );
+}
+function animateSpitterBugRig(group, speedFactor, t, attackAmount=0){
+  const rig = group.userData;
+  if(!rig) return;
+  const walk = t*(5 + speedFactor*7);
+  if(rig.bodyPivot) rig.bodyPivot.position.y = Math.sin(walk*1.8)*0.05;
+  if(rig.sacPivot){
+    rig.sacPivot.rotation.x = Math.sin(walk*1.4)*0.05 - attackAmount*0.35;
+    rig.sacPivot.position.z = -attackAmount*0.16;
+  }
+  if(rig.headPivot) rig.headPivot.rotation.x = attackAmount*0.4;
+  (rig.legs || []).forEach((leg, i)=> leg.rotation.x = Math.sin(walk + i*0.7) * (0.4*speedFactor + 0.08));
+}
+function animateTitanRamRig(group, speedFactor, t, attackAmount=0){
+  const rig = group.userData;
+  if(!rig) return;
+  const walk = t * (2.7 + speedFactor*3.8);
+  if(rig.spine) rig.spine.rotation.x = Math.sin(walk*1.3)*0.04 - attackAmount*0.2;
+  if(rig.headPivot) rig.headPivot.rotation.x = attackAmount*0.25;
+  const phases = [0,Math.PI,Math.PI,0];
+  (rig.legs || []).forEach((leg, i)=>{
+    leg.rotation.x = Math.sin(walk + phases[i]) * (0.46*speedFactor + 0.05);
+  });
 }
 function makeCatModel(){
   const g = new THREE.Group();
@@ -1548,6 +1719,7 @@ function nearestAttackableStructure(origin, maxRange=999, filterFn=null){
 }
 function applyDamageToLiving(target, damage, hitPos=null){
   if(!isLivingTarget(target)) return;
+  if(target.kind && target.untargetable) return;
   const src = hitPos || target.pos;
   addBloodHit(src.x, src.y + 0.8, src.z, clamp(damage/28, 0.5, 1.45));
   if(target === player){
@@ -2230,11 +2402,12 @@ function spawnProjectile(opts){
   });
 }
 function explodeProjectile(p){
-  addBurst(p.pos.x,p.pos.y,p.pos.z, p.from==="enemy"?0xff5555:0xffdd66, p.kind==="cannon"||p.kind==="mortar"?18:8, 4.5, 0.6, 0.09);
+  const burstColor = p.kind==="acid" ? 0x86ff77 : (p.from==="enemy"?0xff5555:0xffdd66);
+  addBurst(p.pos.x,p.pos.y,p.pos.z, burstColor, p.kind==="cannon"||p.kind==="mortar"?18:8, 4.5, 0.6, 0.09);
 
   if(p.from === "ally"){
-    for(const e of enemies){
-      if(e.dead || e.dying) continue;
+  for(const e of enemies){
+    if(!isEnemyTargetable(e)) continue;
       const d = dist2({x:p.pos.x,z:p.pos.z}, e.pos);
       if(d < 1 + p.splash){
         applyDamageToLiving(e, p.damage * (d < 0.5 ? 1 : Math.max(0.35, 1 - d/(p.splash+1))), p.pos);
@@ -2280,7 +2453,7 @@ function updateProjectiles(dt){
     if(p.from==="ally"){
       let hit = false;
       for(const e of enemies){
-        if(e.dead || e.dying) continue;
+        if(!isEnemyTargetable(e)) continue;
         if(dist2(p.pos, e.pos) < e.radius + 0.35 && Math.abs(p.pos.y - (e.pos.y+0.8)) < 1.5){
           hit = true; break;
         }
@@ -2578,11 +2751,15 @@ function makeEnemy(kind,x,z){
   if(kind==="weasel"){ model = makeWeaselModel(); hp = 115; speed = 10.1; damage = 24; radius = 1.1; turnRate = 1.6; }
   if(kind==="assassin"){ model = makeWeaselModel(); hp = 54; speed = 11.8; damage = 38; radius = 0.78; attackRange = 1.15; turnRate = 6.2; }
   if(kind==="ram"){ model = makeMoleModel(); hp = 380; speed = 4.9; damage = 30; radius = 1.25; attackRange = 1.45; turnRate = 1.0; }
+  if(kind==="spitterBug"){ model = makeSpitterBugModel(); hp = 68; speed = 6.1; damage = 17; radius = 0.96; attackRange = 12.8; turnRate = 3.1; }
+  if(kind==="burrowMole"){ model = makeMoleModel(); hp = 118; speed = 6.4; damage = 30; radius = 1.02; attackRange = 1.35; turnRate = 4.1; }
+  if(kind==="siegeRat"){ model = makeSiegeRatModel(); hp = 275; speed = 4.2; damage = 22; radius = 1.28; attackRange = 1.52; turnRate = 1.45; }
+  if(kind==="titanRam"){ model = makeTitanRamModel(); hp = 650; speed = 3.2; damage = 42; radius = 1.75; attackRange = 1.65; turnRate = 0.82; }
 
   const phaseTime = Math.max(0, time - 60);
   const powerScale = 1 + phaseTime * 0.0016;
   const eliteChance = clamp((time - 260) / 380, 0, 0.35) * difficulty.elites;
-  const elite = Math.random() < eliteChance && kind !== "ram";
+  const elite = Math.random() < eliteChance && !["ram","titanRam","siegeRat"].includes(kind);
   hp *= powerScale;
   damage *= powerScale;
   speed *= 1 + phaseTime * 0.00045;
@@ -2594,14 +2771,15 @@ function makeEnemy(kind,x,z){
 
   model.position.set(x, groundHeight(x,z), z);
   scene.add(model);
-  const wide = kind==="weasel" || kind==="ram" ? 1.9 : 1.4;
+  const largeKinds = new Set(["weasel","ram","siegeRat","titanRam"]);
+  const wide = largeKinds.has(kind) ? (kind==="titanRam" ? 2.5 : 1.9) : 1.4;
   const bar = createHealthBar(wide, 0x3aeb58);
-  bar.position.y = kind==="weasel" || kind==="ram" ? 2.35 : 1.8;
+  bar.position.y = kind==="titanRam" ? 3.0 : (largeKinds.has(kind) ? 2.35 : 1.8);
   model.add(bar);
   setHealthBar(bar, 1);
   const dazeIcon = createDazeSprite();
   if (dazeIcon) {
-    dazeIcon.position.set(0, kind==="weasel" || kind==="ram" ? 3.1 : 2.45, 0);
+    dazeIcon.position.set(0, kind==="titanRam" ? 3.7 : (largeKinds.has(kind) ? 3.1 : 2.45), 0);
     model.add(dazeIcon);
   }
 
@@ -2616,7 +2794,21 @@ function makeEnemy(kind,x,z){
     ramState:"idle",
     ramChargeDir:new THREE.Vector3(),
     ramWindup:0,
-    ramDaze:0
+    ramDaze:0,
+    spitCd:rand(1.5,2.7),
+    spitWindup:0,
+    spitAim:null,
+    burrowCd:rand(4.0,6.8),
+    burrowState:"idle",
+    burrowTimer:0,
+    burrowTarget:null,
+    untargetable:false,
+    heavySwing:0,
+    titanChargeCd:rand(7.8,10.5),
+    titanState:"idle",
+    titanWindup:0,
+    titanChargeDir:new THREE.Vector3(),
+    titanChargeT:0
   };
   if(kind==="ram"){
     e.role = "breaker";
@@ -2624,6 +2816,19 @@ function makeEnemy(kind,x,z){
   }
   if(kind==="assassin"){
     e.role = "supportHunter";
+  }
+  if(kind==="spitterBug"){
+    e.role = "backline";
+  }
+  if(kind==="burrowMole"){
+    e.role = "ambusher";
+  }
+  if(kind==="siegeRat"){
+    e.role = "breaker";
+  }
+  if(kind==="titanRam"){
+    e.role = "breaker";
+    e.speed *= 0.82;
   }
   if(elite){
     e.group.traverse(c=>{ if(c.isMesh && c.material && c.material.color) c.material.color.offsetHSL(0.02, 0.08, 0.1); });
@@ -2698,6 +2903,41 @@ function chooseEnemyTarget(e){
     if(supportStructure && dist2(e.pos, supportStructure.pos) < 52) return supportStructure;
     if(!player.dead && dist2(e.pos, player.pos) < 18 && !lineBlocked(e.pos, player.pos)) return player;
   }
+  if(e.kind==="spitterBug"){
+    let bestBackline = null;
+    let bestScore = 9999;
+    for(const m of servantMice){
+      if(m.dead || m.dying) continue;
+      let cluster = 0;
+      for(const s of structures){ if(!s.dead && dist2(m.pos, s.pos) < 7.5) cluster++; }
+      const d = dist2(e.pos, m.pos);
+      const score = d - cluster * 1.8;
+      if(score < bestScore){ bestScore = score; bestBackline = m; }
+    }
+    const struct = nearestAttackableStructure(e, 999, s => ["turret","cannon","mortarBloom","shardLauncher","zapCoil","breedingNest","factory","gasMine","mechaHangar","advancedRobo"].includes(s.type));
+    if(bestBackline && bestScore < 65) return bestBackline;
+    if(struct) return struct;
+  }
+  if(e.kind==="burrowMole"){
+    const ambushStructure = nearestAttackableStructure(e, 999, s => ["turret","gasMine","breedingNest","supplyNest","advancedRobo","mechaHangar","factory","workshop","robo"].includes(s.type));
+    if(ambushStructure) return ambushStructure;
+  }
+  if(e.kind==="siegeRat"){
+    const siegeTarget = nearestAttackableStructure(e, 999, s => ["wall","diamondWall","gasDepot","turret","advancedRobo","mechaHangar","fortPlate","barrierTotem","braceTower"].includes(s.type));
+    if(siegeTarget) return siegeTarget;
+  }
+  if(e.kind==="titanRam"){
+    let bestCluster = null;
+    let bestScore = 9999;
+    for(const s of structures){
+      if(s.dead) continue;
+      let nearby = 0;
+      for(const t of structures){ if(!t.dead && dist2(t.pos, s.pos) < 9) nearby++; }
+      const score = dist2(e.pos, s.pos) - nearby * 3.3;
+      if(score < bestScore){ bestScore = score; bestCluster = s; }
+    }
+    if(bestCluster) return bestCluster;
+  }
 
   const nearPlayer = !player.dead && dist2(e.pos, player.pos) < 16;
   if(!player.dead && nearPlayer && !lineBlocked(e.pos, player.pos)) return player;
@@ -2727,7 +2967,10 @@ function chooseEnemyTarget(e){
 
   const priorityByKind = {
     mole: { wall: 2.2, diamondWall: 2.0, fortPlate: 1.6, barrierTotem: 1.4, braceTower: 1.2, turret: 0.85, cannon: 0.8 },
-    weasel: { turret: 2.1, cannon: 2.0, mortarBloom: 1.85, zapCoil: 1.7, sawBlaster: 1.75, robo: 1.35, beacon: 1.25, wall: 0.7, diamondWall: 0.6 }
+    weasel: { turret: 2.1, cannon: 2.0, mortarBloom: 1.85, zapCoil: 1.7, sawBlaster: 1.75, robo: 1.35, beacon: 1.25, wall: 0.7, diamondWall: 0.6 },
+    spitterBug: { turret: 2.0, cannon: 1.85, mortarBloom: 1.7, breedingNest: 1.8, factory: 1.55, wall: 0.45, diamondWall: 0.4 },
+    siegeRat: { wall: 2.6, diamondWall: 2.55, gasDepot: 2.25, turret: 2.0, advancedRobo: 1.65, fortPlate: 1.75 },
+    titanRam: { wall: 2.25, diamondWall: 2.1, fortPlate: 2.2, barrierTotem: 2.0, braceTower: 1.9, gasDepot: 1.5, mechaHangar: 1.65 }
   };
 
   let bestStructure = null, bestScore = 9999;
@@ -2768,12 +3011,80 @@ function updateEnemies(dt){
     e.attackAnim = Math.max(0, e.attackAnim - dt*4);
     e.attackCd -= dt;
     e.stunCd = Math.max(0, (e.stunCd || 0) - dt);
+    e.burrowCd = Math.max(0, (e.burrowCd || 0) - dt);
+    e.spitCd = Math.max(0, (e.spitCd || 0) - dt);
+    e.heavySwing = Math.max(0, (e.heavySwing || 0) - dt);
+    e.titanChargeCd = Math.max(0, (e.titanChargeCd || 0) - dt);
     if(e.dazeIcon){
       e.dazeIcon.visible = e.stunCd > 0;
       if(e.dazeIcon.visible){
         e.dazeIcon.material.opacity = 0.75 + Math.sin(time*14) * 0.2;
-        e.dazeIcon.position.y = (e.kind==="weasel" ? 3.1 : 2.45) + Math.sin(time*10)*0.07;
+        e.dazeIcon.position.y = (e.kind==="titanRam" ? 3.7 : (e.kind==="weasel" || e.kind==="ram" || e.kind==="siegeRat" ? 3.1 : 2.45)) + Math.sin(time*10)*0.07;
         e.dazeIcon.quaternion.copy(camera.quaternion);
+      }
+    }
+    if(e.kind==="burrowMole"){
+      if(e.burrowState === "burrowing"){
+        e.untargetable = true;
+        e.group.visible = false;
+        e.burrowTimer -= dt;
+        if((e.burrowTelegraphCd || 0) <= 0){
+          e.burrowTelegraphCd = 0.18;
+          const tp = e.burrowTarget || e.pos;
+          addBurst(tp.x + rand(-0.35,0.35), groundHeight(tp.x,tp.z)+0.08, tp.z + rand(-0.35,0.35), 0x8a6a44, 2, 0.85, 0.35, 0.05);
+        } else {
+          e.burrowTelegraphCd -= dt;
+        }
+        if(e.burrowTimer <= 0){
+          const tp = e.burrowTarget || e.pos;
+          e.pos.x = clamp(tp.x + rand(-1.1,1.1), -HALF_MAP+5, HALF_MAP-5);
+          e.pos.z = clamp(tp.z + rand(-1.1,1.1), -HALF_MAP+5, HALF_MAP-5);
+          e.pos.y = groundHeight(e.pos.x,e.pos.z);
+          e.burrowState = "surfacing";
+          e.burrowTimer = 0.55;
+          e.group.visible = true;
+          e.untargetable = false;
+          e.target = chooseEnemyTarget(e);
+          addBurst(e.pos.x, e.pos.y + 0.35, e.pos.z, 0x8d5f2d, 16, 4.2, 0.6, 0.08);
+          for(const m of servantMice){
+            if(!m.dead && !m.dying && dist2(m.pos, e.pos) < 2.2){
+              const push = new THREE.Vector3(m.pos.x-e.pos.x,0,m.pos.z-e.pos.z).normalize().multiplyScalar(1.1);
+              m.pos.x += push.x; m.pos.z += push.z;
+              applyDamageToLiving(m, e.damage * 0.6, e.pos);
+            }
+          }
+          for(const s of structures){
+            if(!s.dead && dist2(s.pos, e.pos) < s.radius + 1.2) damageStructure(s, e.damage * 0.55);
+          }
+        }
+      } else if(e.burrowState === "surfacing"){
+        e.burrowTimer -= dt;
+        if(e.burrowTimer <= 0) e.burrowState = "idle";
+      } else {
+        e.untargetable = false;
+        e.group.visible = true;
+      }
+    }
+    if(e.kind==="spitterBug" && e.spitWindup > 0){
+      e.spitWindup -= dt;
+      e.attackAnim = 1;
+      if(Math.random() < 0.12) addBurst(e.pos.x, e.pos.y + 1.0, e.pos.z, 0x7bff89, 1, 0.8, 0.18, 0.03);
+      if(e.spitWindup <= 0 && e.spitAim){
+        const target = e.spitAim;
+        const horiz = new THREE.Vector3(target.x - e.pos.x, 0, target.z - e.pos.z);
+        const d2 = Math.max(2, horiz.length());
+        horiz.normalize();
+        spawnProjectile({
+          pos:new THREE.Vector3(e.pos.x, e.pos.y + 1.05, e.pos.z).add(horiz.clone().multiplyScalar(0.35)),
+          vel:new THREE.Vector3(horiz.x * (8.2 + d2*0.22), 8.8 + d2*0.12, horiz.z * (8.2 + d2*0.22)),
+          damage:e.damage,
+          splash:1.75,
+          color:0x8cff71,
+          size:0.18,
+          from:"enemy",
+          kind:"acid"
+        });
+        addBurst(e.pos.x, e.pos.y + 1.0, e.pos.z, 0x96ff8d, 6, 2.4, 0.28, 0.05);
       }
     }
 
@@ -2847,8 +3158,59 @@ function updateEnemies(dt){
           e.ramState = "idle";
         }
       }
+    } else if(e.kind==="titanRam" && !isStunned){
+      if(e.titanState === "idle" && e.titanChargeCd <= 0){
+        const clusterTarget = chooseEnemyTarget(e);
+        if(clusterTarget){
+          const tp = clusterTarget.pos || clusterTarget;
+          e.titanState = "windup";
+          e.titanWindup = 0.75;
+          e.titanChargeDir.set(tp.x - e.pos.x, 0, tp.z - e.pos.z).normalize();
+          addBurst(e.pos.x, e.pos.y + 1.2, e.pos.z, 0xffb057, 10, 2.8, 0.35, 0.06);
+        }
+      } else if(e.titanState === "windup"){
+        e.titanWindup -= dt;
+        e.attackAnim = 1;
+        if(Math.random() < 0.2) addBurst(e.pos.x + rand(-0.4,0.4), e.pos.y + 0.2, e.pos.z + rand(-0.4,0.4), 0xc9b394, 1, 0.9, 0.3, 0.04);
+        if(e.titanWindup <= 0){
+          e.titanState = "charge";
+          e.titanChargeT = 0.95;
+        }
+      } else if(e.titanState === "charge"){
+        e.titanChargeT -= dt;
+        const chargeSpeed = e.speed * 4.8;
+        const nx = e.pos.x + e.titanChargeDir.x * chargeSpeed * dt;
+        const nz = e.pos.z + e.titanChargeDir.z * chargeSpeed * dt;
+        const pushed = collisionPushOut(nx, nz, e.radius, true, null);
+        e.pos.x = pushed.x; e.pos.z = pushed.z;
+        e.heading = Math.atan2(e.titanChargeDir.x, e.titanChargeDir.z);
+        for(const s of structures){
+          if(s.dead) continue;
+          if(dist2(e.pos, s.pos) < s.radius + e.radius + 0.16) damageStructure(s, e.damage * 2.3);
+        }
+        for(const m of servantMice){
+          if(m.dead || m.dying) continue;
+          if(dist2(e.pos, m.pos) < e.radius + 1.25){
+            const kb = new THREE.Vector3(m.pos.x-e.pos.x,0,m.pos.z-e.pos.z).normalize().multiplyScalar(1.8);
+            m.pos.x += kb.x; m.pos.z += kb.z;
+            applyDamageToLiving(m, e.damage * 0.95, e.pos);
+          }
+        }
+        if(Math.random() < 0.2) addBurst(e.pos.x, e.pos.y + 0.15, e.pos.z, 0xc8a476, 2, 1.0, 0.32, 0.05);
+        if(e.titanChargeT <= 0){
+          e.titanState = "idle";
+          e.titanChargeCd = rand(8.4, 11.5);
+          addBurst(e.pos.x, e.pos.y + 0.45, e.pos.z, 0xff944d, 16, 4.6, 0.6, 0.08);
+        }
+      }
     } else if(!isStunned && d > meleeStopDistance(e, e.target || moveTarget, 0.1)){
-      const step = directSteerToward({ pos:e.pos, speed:e.speed*(1+e.avoidCrowdBias*0.2), radius:e.radius }, targetPos, dt, true, e.target, enemies);
+      let speedScale = 1;
+      if(e.kind==="spitterBug"){
+        const frontline = enemies.some(other => other!==e && !other.dead && !other.dying && ["siegeRat","titanRam","ram","weasel","mole","burrowMole"].includes(other.kind) && dist2(other.pos, e.pos) < 12 && dist2(other.pos, targetPos) < dist2(e.pos, targetPos));
+        speedScale = frontline ? 0.82 : 1.05;
+      }
+      if(e.kind==="titanRam" && e.titanState!=="idle") speedScale = 0.5;
+      const step = directSteerToward({ pos:e.pos, speed:e.speed*speedScale*(1+e.avoidCrowdBias*0.2), radius:e.radius }, targetPos, dt, true, e.target, enemies);
       if(step){
         e.heading += clamp(angleDiff(e.heading, step.heading), -e.turnRate*dt, e.turnRate*dt);
         e.pos.x = step.x;
@@ -2857,6 +3219,8 @@ function updateEnemies(dt){
     } else if(!isStunned && e.attackCd <= 0 && e.target && !e.repathTimer && (e.kind!=="ram" || e.ramDaze > 0 || e.ramState==="idle")){
       e.attackCd = e.kind==="weasel" ? 0.56 : e.kind==="mole" ? 0.98 : 0.72;
       if(e.kind==="assassin") e.attackCd = 0.5;
+      if(e.kind==="siegeRat") e.attackCd = 1.16;
+      if(e.kind==="titanRam") e.attackCd = 1.45;
       e.attackAnim = 1;
       addBurst(e.pos.x,e.pos.y+0.9,e.pos.z, e.kind==="mole"?0x884333:0xff6666, 10, 4, 0.45, 0.08);
 
@@ -2866,13 +3230,35 @@ function updateEnemies(dt){
         const bonus = (e.kind==="assassin" && (e.target.state==="servant" || e.target.kind==="robot")) ? 1.45 : 1;
         applyDamageToLiving(e.target, e.damage * bonus, e.target.pos);
       } else {
-        damageStructure(e.target, e.kind==="ram" ? e.damage*1.6 : e.damage);
+        damageStructure(e.target, e.kind==="ram" ? e.damage*1.6 : e.kind==="siegeRat" ? e.damage*2.35 : e.kind==="titanRam" ? e.damage*2.7 : e.damage);
         if(e.kind==="mole"){
           killEnemy(e);
+        }
+        if(e.kind==="siegeRat"){
+          e.heavySwing = 0.35;
+          addBurst(e.target.pos.x, e.target.pos.y + 0.8, e.target.pos.z, 0xb6d2e4, 6, 2.0, 0.3, 0.05);
         }
       }
       if(e.kind==="assassin"){
         e.dashCd = rand(1.3,2.1);
+      }
+    }
+    if(e.kind==="spitterBug" && !isStunned && e.spitCd <= 0 && e.spitWindup <= 0 && e.target){
+      const td = dist2(e.pos, e.target.pos || e.target);
+      if(td > 5.8 && td < 18.5){
+        e.spitCd = rand(2.8,4.6);
+        e.spitWindup = 0.5;
+        e.spitAim = (e.target.pos || e.target).clone ? (e.target.pos || e.target).clone() : new THREE.Vector3(e.target.pos.x,e.target.pos.y,e.target.pos.z);
+      }
+    }
+    if(e.kind==="burrowMole" && e.burrowState==="idle" && !isStunned && e.burrowCd <= 0){
+      const ambush = nearestAttackableStructure(e, 999, s => ["turret","gasMine","breedingNest","supplyNest","advancedRobo","mechaHangar","factory","workshop"].includes(s.type));
+      if(ambush && dist2(e.pos, ambush.pos) > 5){
+        e.burrowCd = rand(8.0, 12.5);
+        e.burrowState = "burrowing";
+        e.burrowTimer = 1.2;
+        e.burrowTelegraphCd = 0;
+        e.burrowTarget = ambush.pos.clone();
       }
     }
     e.dashCd = Math.max(0, (e.dashCd || 0) - dt);
@@ -2897,7 +3283,9 @@ function updateEnemies(dt){
     e.pos.y = groundHeight(e.pos.x,e.pos.z);
     e.group.rotation.y = e.heading;
     if(e.kind==="weasel") animateWeaselRig(e.group, 1, e.anim, e.attackAnim, 0);
-    else animateMouseRig(e.group, 0.95, e.anim, e.attackAnim, 0);
+    else if(e.kind==="spitterBug") animateSpitterBugRig(e.group, 0.8, e.anim, e.attackAnim);
+    else if(e.kind==="titanRam") animateTitanRamRig(e.group, e.titanState==="charge" ? 1.3 : 0.7, e.anim, e.attackAnim);
+    else animateMouseRig(e.group, e.kind==="siegeRat" ? 0.55 : 0.95, e.anim, e.attackAnim + (e.heavySwing>0 ? 0.5 : 0), 0);
   }
 }
 
@@ -3212,7 +3600,7 @@ function updateCat(dt){
 function nearestEnemyInRange(origin, range){
   let best = null, bestD = range;
   for (const e of enemies) {
-    if (e.dead || e.dying) continue;
+    if (!isEnemyTargetable(e)) continue;
     const d = dist2(origin.pos || origin, e.pos);
     if (d < bestD) { bestD = d; best = e; }
   }
@@ -3231,7 +3619,7 @@ function robotTarget(r){
   let bestD = 9999;
 
   for (const e of enemies) {
-    if (e.dead || e.dying) continue;
+    if (!isEnemyTargetable(e)) continue;
     const d = dist2(r.pos, e.pos);
     if (d < bestD) {
       bestD = d;
@@ -3315,7 +3703,7 @@ function updateRobots(dt){
           applyDamageToLiving(t, r.damage, t.pos);
           if(r.mech){
             for(const e of enemies){
-              if(e.dead || e.dying) continue;
+              if(!isEnemyTargetable(e)) continue;
               const dd = dist2(e.pos, t.pos);
               if(dd < 2.8){
                 applyDamageToLiving(e, r.damage * Math.max(0.35, 1 - dd/2.8), t.pos);
@@ -3648,7 +4036,7 @@ function updateStructures(dt){
           let next = null;
           let bestD = 999;
           for(const e of enemies){
-            if(e.dead || e.dying || stunned.has(e)) continue;
+            if(!isEnemyTargetable(e) || stunned.has(e)) continue;
             const ed = dist2(current.pos, e.pos);
             if(ed < 6.2 && ed < bestD){
               bestD = ed;
@@ -3851,6 +4239,10 @@ let lastMoleSpawn = 240;
 let lastWeaselSpawn = 420;
 let lastAssassinSpawn = 300;
 let lastRamSpawn = 340;
+let lastSpitterSpawn = 250;
+let lastBurrowSpawn = 340;
+let lastSiegeSpawn = 440;
+let lastTitanSpawn = 560;
 
 function updateCheeses(dt){
   for(const c of cheeses){
@@ -3871,6 +4263,7 @@ function updateCheeses(dt){
 }
 function updateSpawners(dt){
   updateCombatDirector(dt);
+  syncEnemyUnlockStages();
   cheeseSpawnTimer += dt;
   if(cheeseSpawnTimer >= 5.6){
     cheeseSpawnTimer = 0;
@@ -3912,6 +4305,33 @@ function updateSpawners(dt){
       spawnEnemyWave("weasel", count);
       showCenter("Weasels x" + count, 0.8);
     }
+    if(unlockedEnemyKinds.has("spitterBug") && time - lastSpitterSpawn >= clamp(72 / difficulty.wave - phase * 0.004, 23, 74)){
+      lastSpitterSpawn = time;
+      const frontline = clamp(Math.floor((1 + phase/280) * difficulty.wave), 1, 4);
+      const spitters = clamp(Math.floor((0.9 + phase/340 + combatDirector.heat*0.5) * difficulty.wave), 1, 6);
+      spawnEnemyWave("rat", frontline);
+      spawnEnemyWave("spitterBug", spitters);
+      showCenter("Spitter Bugs x" + spitters, 0.8);
+    }
+    if(unlockedEnemyKinds.has("burrowMole") && time - lastBurrowSpawn >= clamp(84 / difficulty.wave - phase * 0.0045, 26, 90)){
+      lastBurrowSpawn = time;
+      const count = clamp(Math.floor((0.85 + phase/330 + combatDirector.heat*0.42) * difficulty.wave), 1, 5);
+      spawnEnemyWave("burrowMole", count);
+      showCenter("Burrow Moles x" + count, 0.85);
+    }
+    if(unlockedEnemyKinds.has("siegeRat") && time - lastSiegeSpawn >= clamp(96 / difficulty.wave - phase * 0.0048, 30, 102)){
+      lastSiegeSpawn = time;
+      const wallLocalSiege = structures.filter(s=>!s.dead && isWallStructure(s) && dist2(s.pos, player.pos) < 30).length;
+      const count = clamp(Math.floor((0.7 + wallLocalSiege/5 + phase/360) * difficulty.wave), 1, 4);
+      spawnEnemyWave("siegeRat", count);
+      showCenter("Siege Rats x" + count, 0.9);
+    }
+    if(unlockedEnemyKinds.has("titanRam") && time - lastTitanSpawn >= clamp(140 / difficulty.wave - phase * 0.003, 52, 160)){
+      lastTitanSpawn = time;
+      const count = Math.random() < 0.75 ? 1 : 2;
+      spawnEnemyWave("titanRam", count);
+      showCenter("TITAN RAM APPROACHING", 1.0);
+    }
     const supportCount = servantMice.filter(m=>!m.dead && !m.dying).length + robots.filter(r=>!r.dead && !r.dying).length;
     if(time >= 300 && time - lastAssassinSpawn >= clamp(62 / difficulty.wave - phase*0.005, 20, 60)){
       lastAssassinSpawn = time;
@@ -3930,7 +4350,12 @@ function updateSpawners(dt){
     if(combatDirector.surgeCd <= 0 && phase > 260 && Math.random() < 0.18 * difficulty.wave){
       combatDirector.surgeCd = rand(24, 46);
       const surge = clamp(Math.floor((2 + phase/220 + combatDirector.heat) * difficulty.wave), 2, 12);
-      spawnEnemyWave(Math.random() < 0.5 ? "rat" : "assassin", surge);
+      const surgePool = ["rat", "assassin"];
+      if(unlockedEnemyKinds.has("spitterBug")) surgePool.push("spitterBug");
+      if(unlockedEnemyKinds.has("burrowMole")) surgePool.push("burrowMole");
+      if(unlockedEnemyKinds.has("siegeRat")) surgePool.push("siegeRat");
+      if(unlockedEnemyKinds.has("titanRam") && Math.random() < 0.22) surgePool.push("titanRam");
+      spawnEnemyWave(surgePool[Math.floor(Math.random()*surgePool.length)], surge);
       showCenter("Surge Wave x" + surge, 0.85);
     }
   }
@@ -3943,7 +4368,7 @@ function spawnEnemyWave(kind,count){
     const flankSpawn = difficulty.flank > 0.2 && Math.random() < (0.22 + combatDirector.heat*0.1);
     if(useCatCenter && !flankSpawn){
       const a = Math.random() * Math.PI * 2;
-      const r = rand(2.0, kind==="ram" ? 7.5 : 5.5);
+      const r = rand(2.0, (kind==="ram" || kind==="titanRam") ? 7.5 : 5.5);
       x = clamp(center.x + Math.sin(a)*r, -HALF_MAP+6, HALF_MAP-6);
       z = clamp(center.z + Math.cos(a)*r, -HALF_MAP+6, HALF_MAP-6);
     } else {
@@ -3967,6 +4392,10 @@ function spawnEnemyWave(kind,count){
       z = clamp(player.pos.z + away.z * rand(11,16), -HALF_MAP+6, HALF_MAP-6);
     }
     const e = makeEnemy(kind, x, z);
+    if(kind==="spitterBug") addBurst(x, groundHeight(x,z)+0.8, z, 0x8dff78, 8, 2.8, 0.35, 0.05);
+    if(kind==="burrowMole") addBurst(x, groundHeight(x,z)+0.25, z, 0x8f6a40, 10, 3.0, 0.4, 0.06);
+    if(kind==="siegeRat") addBurst(x, groundHeight(x,z)+0.95, z, 0xb8d4e2, 10, 3.1, 0.42, 0.06);
+    if(kind==="titanRam") addBurst(x, groundHeight(x,z)+1.1, z, 0xffaa57, 14, 4.8, 0.6, 0.08);
     if(useCatCenter) setRepathPoint(e, center, 5.5);
   }
 }
@@ -3992,6 +4421,7 @@ function updateUI(){
   ui.gas.textContent = Math.floor(gas);
   ui.servants.textContent = servantMice.filter(m => !m.dead).length;
   ui.time.textContent = time.toFixed(1);
+  updateEnemyUnlockWarning();
 }
 
 // -------------------------------------------------
