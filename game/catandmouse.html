@@ -569,6 +569,9 @@
   let showingUpgrades = false;
   const CHEESE_PICKUP = "__CHEESE_PICKUP__";
   const CHEESE_PICKUP_SYMBOL = "🧀";
+  const ENEMY_CHEESE_DROP_TTL_MS = 30000;
+  const AUTO_CHEESE_SPAWN_DURATION_MS = 120000;
+  const OVERLAY_RENDER_DISTANCE = 7;
 
   const BUILD_DEFS = {
     1:{symbol:"🧱",name:"Wall",cost:1,hp:15,minWins:0},
@@ -629,6 +632,8 @@
   let lastAcornShotAt = 0;
   let lastFanBurstAt = 0;
   let lastWebShotAt = 0;
+  let cheeseAutoSpawnStartedAt = null;
+  const cheesePickupExpiryByCell = {};
 
   let catWebTrappedUntil = 0;
   let catFacing = { dx: 1, dy: 0 };
@@ -664,10 +669,29 @@
     return grid[y][x] === "";
   }
 
-  function tryPlaceCheesePickupAt(x, y){
+  function tryPlaceCheesePickupAt(x, y, ttlMs = null){
     if (!canPlaceCheesePickupAt(x, y)) return false;
+    const key = `${x}_${y}`;
     grid[y][x] = CHEESE_PICKUP;
+    if (ttlMs && ttlMs > 0) cheesePickupExpiryByCell[key] = Date.now() + ttlMs;
+    else delete cheesePickupExpiryByCell[key];
     return true;
+  }
+
+  function cleanupExpiredCheeseDrops(){
+    const now = Date.now();
+    let removed = false;
+    for (const key of Object.keys(cheesePickupExpiryByCell)){
+      if (now < cheesePickupExpiryByCell[key]) continue;
+      const [xs, ys] = key.split("_");
+      const x = Number(xs), y = Number(ys);
+      if (x>=0 && x<gridSize && y>=0 && y<gridSize && isCheesePickupCell(grid[y][x])){
+        grid[y][x] = "";
+        removed = true;
+      }
+      delete cheesePickupExpiryByCell[key];
+    }
+    if (removed) renderGrid();
   }
 
   const localTileSeed = Math.floor(Math.random() * 9973);
@@ -1125,10 +1149,12 @@
       const cell = document.getElementById(`cell-${p.x}-${p.y}`);
       if (cell){
         cell.textContent = "🐭";
-        const nameTag = document.createElement("div");
-        nameTag.className = "name";
-        nameTag.textContent = (p.displayName || "mouse").toLowerCase();
-        cell.appendChild(nameTag);
+        if (Math.abs((p.x ?? 0) - centerX) + Math.abs((p.y ?? 0) - centerY) <= OVERLAY_RENDER_DISTANCE){
+          const nameTag = document.createElement("div");
+          nameTag.className = "name";
+          nameTag.textContent = (p.displayName || "mouse").toLowerCase();
+          cell.appendChild(nameTag);
+        }
       }
     }
 
@@ -1144,11 +1170,13 @@
       const cell = document.getElementById(`cell-${r.x}-${r.y}`);
       if (cell){
         cell.textContent = "🐀";
-        const hpTag = document.createElement("div");
-        hpTag.className = "name";
-        hpTag.style.color = "brown";
-        hpTag.textContent = `❤️${r.health}`;
-        cell.appendChild(hpTag);
+        if (Math.abs(r.x - centerX) + Math.abs(r.y - centerY) <= OVERLAY_RENDER_DISTANCE){
+          const hpTag = document.createElement("div");
+          hpTag.className = "name";
+          hpTag.style.color = "brown";
+          hpTag.textContent = `❤️${r.health}`;
+          cell.appendChild(hpTag);
+        }
       }
     }
 
@@ -1158,11 +1186,13 @@
       const cell = document.getElementById(`cell-${o.x}-${o.y}`);
       if (cell){
         cell.textContent = "🐂";
-        const hpTag = document.createElement("div");
-        hpTag.className = "name";
-        hpTag.style.color = "orange";
-        hpTag.textContent = `❤️${o.health}`;
-        cell.appendChild(hpTag);
+        if (Math.abs(o.x - centerX) + Math.abs(o.y - centerY) <= OVERLAY_RENDER_DISTANCE){
+          const hpTag = document.createElement("div");
+          hpTag.className = "name";
+          hpTag.style.color = "orange";
+          hpTag.textContent = `❤️${o.health}`;
+          cell.appendChild(hpTag);
+        }
       }
     }
 
@@ -1172,11 +1202,13 @@
       const cell = document.getElementById(`cell-${k.x}-${k.y}`);
       if (cell){
         cell.textContent = "👑";
-        const hpTag = document.createElement("div");
-        hpTag.className = "name";
-        hpTag.style.color = "#7c2d12";
-        hpTag.textContent = `❤️${k.health}`;
-        cell.appendChild(hpTag);
+        if (Math.abs(k.x - centerX) + Math.abs(k.y - centerY) <= OVERLAY_RENDER_DISTANCE){
+          const hpTag = document.createElement("div");
+          hpTag.className = "name";
+          hpTag.style.color = "#7c2d12";
+          hpTag.textContent = `❤️${k.health}`;
+          cell.appendChild(hpTag);
+        }
       }
     }
 
@@ -1186,11 +1218,13 @@
       const cell = document.getElementById(`cell-${r.x}-${r.y}`);
       if (cell){
         cell.textContent = "🐇";
-        const hpTag = document.createElement("div");
-        hpTag.className = "name";
-        hpTag.style.color = "#7c3aed";
-        hpTag.textContent = `❤️${r.health}`;
-        cell.appendChild(hpTag);
+        if (Math.abs(r.x - centerX) + Math.abs(r.y - centerY) <= OVERLAY_RENDER_DISTANCE){
+          const hpTag = document.createElement("div");
+          hpTag.className = "name";
+          hpTag.style.color = "#7c3aed";
+          hpTag.textContent = `❤️${r.health}`;
+          cell.appendChild(hpTag);
+        }
       }
     }
 
@@ -1208,7 +1242,11 @@
 
       const symbol = grid[y][x];
       const cell = document.getElementById(`cell-${x}-${y}`);
-      if (cell && ["🧱","🪳","💎","🚀","🏭","🔫","🗼","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️"].includes(symbol)){
+      if (
+        cell &&
+        Math.abs(x - centerX) + Math.abs(y - centerY) <= OVERLAY_RENDER_DISTANCE &&
+        ["🧱","🪳","💎","🚀","🏭","🔫","🗼","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️"].includes(symbol)
+      ){
         const shell = document.createElement("div");
         shell.className = "structure-health-shell";
 
@@ -1237,21 +1275,23 @@
     const catCell = document.getElementById(`cell-${catPos.x}-${catPos.y}`);
     if (catCell){
       catCell.textContent = "🐱";
-      const levelTag = document.createElement("div");
-      levelTag.className = "name";
-      levelTag.style.color = "red";
-      levelTag.innerHTML = `⚡Lv.${catPower}`;
-      catCell.appendChild(levelTag);
+      if (Math.abs(catPos.x - centerX) + Math.abs(catPos.y - centerY) <= OVERLAY_RENDER_DISTANCE){
+        const levelTag = document.createElement("div");
+        levelTag.className = "name";
+        levelTag.style.color = "red";
+        levelTag.innerHTML = `⚡Lv.${catPower}`;
+        catCell.appendChild(levelTag);
 
-      const bar = document.createElement("div");
-      bar.className = "health-bar";
-      const denom = Math.max(1, maxCatHealth);
-      const barWidth = Math.max(10, Math.min(100, (catHealth/denom)*100));
-      bar.style.width = `${barWidth}%`;
-      bar.style.background = "red";
-      bar.style.height = "3px";
-      bar.style.marginTop = "-10px";
-      catCell.appendChild(bar);
+        const bar = document.createElement("div");
+        bar.className = "health-bar";
+        const denom = Math.max(1, maxCatHealth);
+        const barWidth = Math.max(10, Math.min(100, (catHealth/denom)*100));
+        bar.style.width = `${barWidth}%`;
+        bar.style.background = "red";
+        bar.style.height = "3px";
+        bar.style.marginTop = "-10px";
+        catCell.appendChild(bar);
+      }
     }
 
     const pounceMark = catAbilityState.pouncePending;
@@ -1363,6 +1403,7 @@
   // Cheese
   // ============================================================
   function spawnCheese(){
+    if (cheeseAutoSpawnStartedAt && (Date.now() - cheeseAutoSpawnStartedAt) >= AUTO_CHEESE_SPAWN_DURATION_MS) return;
     let existingPickups = 0;
     for (let y=0; y<gridSize; y++){
       for (let x=0; x<gridSize; x++){
@@ -1390,6 +1431,7 @@
 
   function checkCheese(){
     if (isCheesePickupCell(grid[playerPos.y][playerPos.x])){
+      delete cheesePickupExpiryByCell[`${playerPos.x}_${playerPos.y}`];
       grid[playerPos.y][playerPos.x] = "";
       cheeseCount += 3 + cheesePickupBonus;
       document.getElementById("cheeseCount").textContent = cheeseCount;
@@ -2774,7 +2816,7 @@
           const nx = enemy.x + dx;
           const ny = enemy.y + dy;
           if (nx<0||ny<0||nx>=gridSize||ny>=gridSize) continue;
-          if (!tryPlaceCheesePickupAt(nx, ny)) continue;
+          if (!tryPlaceCheesePickupAt(nx, ny, ENEMY_CHEESE_DROP_TTL_MS)) continue;
           dropped++;
         }
       }
@@ -3697,9 +3739,11 @@
 
     // no pre-placed walls on match start
     renderGrid();
+    cheeseAutoSpawnStartedAt = Date.now();
 
     // cheese spawn (local only, same as your original)
     setInterval(spawnCheese, 10000);
+    setInterval(cleanupExpiredCheeseDrops, 1000);
 
     // ability cooldown UI
     setInterval(updateAbilityStatus, 1000);
