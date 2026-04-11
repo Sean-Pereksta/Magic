@@ -313,7 +313,7 @@ const CATEGORY_BUILDS = {
     { slot:7, name:"Barrier Totem", cost:10, gasCost:2, type:"barrierTotem", hp:88, radius:2.0 },
     { slot:8, name:"Brace Tower", cost:11, gasCost:3, type:"braceTower", hp:125, radius:2.0 },
     { slot:9, name:"Repair Anchor", cost:9, gasCost:2, type:"repairAnchor", hp:92, radius:2.0 },
-    { slot:0, name:"Fort Plate", cost:8, gasCost:2, type:"fortPlate", hp:115, radius:2.2 }
+    { slot:0, name:"Ultra Wall", cost:16, gasCost:8, type:"ultraWall", hp:420, radius:2.9, prereq:"workshop" }
   ],
   4: [
     { slot:5, name:"Cheese Turret", cost:5, gasCost:0, type:"turret", hp:90, radius:2.0 },
@@ -334,7 +334,7 @@ const CATEGORY_BUILDS = {
 };
 const BUILD_ICONS = {
   factory:"🧀", fountain:"💧", supplyNest:"📦", beacon:"📡", robo:"⚙️", scoutPost:"👁️", breedingNest:"🐣", gasDepot:"🛢️", gasMine:"♨️",
-  wall:"🧱", diamondWall:"💎", barrierTotem:"🛡️", braceTower:"🏛️", repairAnchor:"🔧", fortPlate:"🪙",
+  wall:"🧱", diamondWall:"💎", ultraWall:"🧿", barrierTotem:"🛡️", braceTower:"🏛️", repairAnchor:"🔧", fortPlate:"🪙",
   turret:"🎯", cannon:"💥", shardLauncher:"🔱", zapCoil:"⚡", mortarBloom:"🌸", sawBlaster:"🪚",
   workshop:"🏭", advancedRobo:"🤖", mechaHangar:"🚀"
 };
@@ -403,12 +403,13 @@ function worldToCell(x,z){
   };
 }
 function cellToWorld(cx,cz){ return { x:cx*GRID_SIZE, z:cz*GRID_SIZE }; }
+function getEnemyLevel(){ return 1 + Math.floor(Math.max(0, time - 60) / 90); }
 function hasStructureType(type){ return structures.some(s => !s.dead && s.type===type); }
 function prettyTypeName(type){
   const d = Object.values(CATEGORY_BUILDS).flat().find(v=>v.type===type);
   return d ? d.name : type;
 }
-function isWallStructure(s){ return !!s && (s.type === "wall" || s.type === "diamondWall"); }
+function isWallStructure(s){ return !!s && (s.type === "wall" || s.type === "diamondWall" || s.type === "ultraWall"); }
 function structureBlocksMovement(s){ return isWallStructure(s); }
 function angleDiff(a,b){
   let d = b-a;
@@ -776,6 +777,41 @@ function updateParticles(dt){
     }
   }
 }
+function ensureEnemyTelegraph(e){
+  if(e.telegraphVisual) return e.telegraphVisual;
+  const g = new THREE.Group();
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.95, 1.15, 28),
+    new THREE.MeshBasicMaterial({ color:0xffb347, transparent:true, opacity:0, side:THREE.DoubleSide, depthWrite:false })
+  );
+  ring.rotation.x = -Math.PI/2;
+  ring.position.y = 0.06;
+  const arc = new THREE.Mesh(
+    new THREE.RingGeometry(0.45, 2.2, 36, 1, -Math.PI*0.22, Math.PI*0.44),
+    new THREE.MeshBasicMaterial({ color:0xff6f4a, transparent:true, opacity:0, side:THREE.DoubleSide, depthWrite:false })
+  );
+  arc.rotation.x = -Math.PI/2;
+  arc.position.y = 0.07;
+  g.add(ring, arc);
+  e.group.add(g);
+  e.telegraphVisual = { group:g, ring, arc };
+  return e.telegraphVisual;
+}
+function setEnemyTelegraph(e, frac=0){
+  if(!e || e.dead || e.dying) return;
+  if(frac <= 0 && !e.telegraphVisual) return;
+  const v = ensureEnemyTelegraph(e);
+  const pulse = 0.55 + Math.sin(time*22) * 0.45;
+  const vis = clamp(frac, 0, 1) * pulse;
+  v.group.visible = vis > 0.02;
+  v.ring.material.opacity = vis * 0.58;
+  v.arc.material.opacity = vis * 0.85;
+  const dir = e.ramChargeDir?.lengthSq?.() > 0.001 ? e.ramChargeDir : (e.titanChargeDir?.lengthSq?.() > 0.001 ? e.titanChargeDir : null);
+  if(dir){
+    const yaw = Math.atan2(dir.x, dir.z);
+    v.arc.rotation.z = -yaw + Math.PI/2;
+  }
+}
 
 // -------------------------------------------------
 // HEALTH BAR
@@ -784,19 +820,25 @@ function createHealthBar(width=1.6, color=0x3aeb58){
   const g = new THREE.Group();
   const bg = new THREE.Mesh(
     new THREE.PlaneGeometry(width,0.16),
-    new THREE.MeshBasicMaterial({ color:0xc22a2a, transparent:true, opacity:0.92, side:THREE.DoubleSide, depthTest:false, depthWrite:false })
+    new THREE.MeshBasicMaterial({ color:0x511515, transparent:true, opacity:0.92, side:THREE.DoubleSide, depthTest:false, depthWrite:false })
+  );
+  const missing = new THREE.Mesh(
+    new THREE.PlaneGeometry(width*0.98,0.11),
+    new THREE.MeshBasicMaterial({ color:0xc43d3d, transparent:true, opacity:0.58, side:THREE.DoubleSide, depthTest:false, depthWrite:false })
   );
   const fg = new THREE.Mesh(
     new THREE.PlaneGeometry(width*0.98,0.11),
     new THREE.MeshBasicMaterial({ color, side:THREE.DoubleSide, depthTest:false, depthWrite:false })
   );
   bg.position.z = 0.004;
-  fg.position.z = 0.012;
-  g.add(bg,fg);
+  missing.position.z = 0.009;
+  fg.position.z = 0.014;
+  g.add(bg, missing, fg);
   g.renderOrder = 150;
   bg.renderOrder = 150;
-  fg.renderOrder = 151;
-  g.userData = { fg, width, bg };
+  missing.renderOrder = 151;
+  fg.renderOrder = 152;
+  g.userData = { fg, width, bg, missing };
   return g;
 }
 function setHealthBar(bar, frac){
@@ -806,11 +848,15 @@ function setHealthBar(bar, frac){
   const displayFrac = Math.max(minVisible, safeFrac);
   const fillWidth = bar.userData.width * 0.98;
   bar.userData.fg.scale.x = displayFrac;
-  bar.userData.fg.position.x = -(fillWidth) * (1-displayFrac)/2;
+  bar.userData.fg.position.x = -(fillWidth * 0.5) + (fillWidth * displayFrac * 0.5);
   if(bar.userData.fg?.material){
     const low = new THREE.Color(0xff4f4f);
     const high = new THREE.Color(0x34eb72);
     bar.userData.fg.material.color.copy(low).lerp(high, safeFrac);
+  }
+  if(bar.userData.missing){
+    bar.userData.missing.visible = safeFrac < 0.999;
+    bar.userData.missing.position.x = 0;
   }
 }
 function popWorldText(text, x, y, z, color="#ffe66f"){
@@ -1399,13 +1445,14 @@ scene.add(player.group);
 // BUILD GRID / TELEGRAPH
 // -------------------------------------------------
 const buildGridOverlay = new THREE.Group();
-for(let gx=-GRID_HALF_CELLS; gx<=GRID_HALF_CELLS; gx++){
-  for(let gz=-GRID_HALF_CELLS; gz<=GRID_HALF_CELLS; gz++){
-    const dark = (Math.abs(gx+gz)%2)===0;
+const BUILD_GRID_RADIUS = 6;
+const buildGridTiles = [];
+for(let gx=-BUILD_GRID_RADIUS; gx<=BUILD_GRID_RADIUS; gx++){
+  for(let gz=-BUILD_GRID_RADIUS; gz<=BUILD_GRID_RADIUS; gz++){
     const tile = new THREE.Mesh(
       new THREE.PlaneGeometry(GRID_SIZE*0.97, GRID_SIZE*0.97),
       new THREE.MeshBasicMaterial({
-        color: dark ? 0x2a4230 : 0x355641,
+        color: 0x2a4230,
         transparent:true,
         opacity:0.22,
         depthWrite:false,
@@ -1413,8 +1460,8 @@ for(let gx=-GRID_HALF_CELLS; gx<=GRID_HALF_CELLS; gx++){
       })
     );
     tile.rotation.x = -Math.PI/2;
-    tile.position.set(gx*GRID_SIZE, 0.02, gz*GRID_SIZE);
     buildGridOverlay.add(tile);
+    buildGridTiles.push({ tile, ox:gx, oz:gz });
   }
 }
 buildGridOverlay.visible = false;
@@ -1428,6 +1475,19 @@ buildTelegraph.rotation.x = -Math.PI/2;
 buildTelegraph.visible = false;
 scene.add(buildTelegraph);
 let buildPreview = null;
+function updateBuildGridOverlay(centerX, centerZ){
+  const centerCell = worldToCell(centerX, centerZ);
+  for(const entry of buildGridTiles){
+    const cx = centerCell.cx + entry.ox;
+    const cz = centerCell.cz + entry.oz;
+    const clampedCx = clamp(cx, -GRID_HALF_CELLS, GRID_HALF_CELLS);
+    const clampedCz = clamp(cz, -GRID_HALF_CELLS, GRID_HALF_CELLS);
+    const world = cellToWorld(clampedCx, clampedCz);
+    entry.tile.position.set(world.x, 0.02, world.z);
+    const dark = (Math.abs(clampedCx + clampedCz) % 2) === 0;
+    entry.tile.material.color.set(dark ? 0x2a4230 : 0x355641);
+  }
+}
 
 function setBuildPreview(type, x, z, valid){
   if(!type){
@@ -1742,7 +1802,7 @@ function applyDamageToLiving(target, damage, hitPos=null){
 // -------------------------------------------------
 function structureColor(type){
   const colors = {
-    wall:0xffde62, diamondWall:0x98ebff, cannon:0xffb85d, turret:0xf7d45b, beacon:0x7aff95,
+    wall:0xffde62, diamondWall:0x98ebff, ultraWall:0x93c8ff, cannon:0xffb85d, turret:0xf7d45b, beacon:0x7aff95,
     factory:0xfff09d, robo:0xc0c7d5, fountain:0x8ef7ff, shardLauncher:0xffd3a5, zapCoil:0xb6a6ff,
     mortarBloom:0xff98b5, sawBlaster:0xffb38f, barrierTotem:0x9ce6ff, braceTower:0xbef0c0,
     repairAnchor:0x93fff5, fortPlate:0xa7ceff, supplyNest:0xfff3b5, scoutPost:0xcff4ff,
@@ -1753,28 +1813,28 @@ function structureColor(type){
 function makeCheeseWallMesh(){
   const g = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({ color:0xffdb60, roughness:0.88 });
-  const block = new THREE.Mesh(new THREE.BoxGeometry(3.7,2.05,1.28), mat);
-  block.position.y = 1.02;
+  const block = new THREE.Mesh(new THREE.BoxGeometry(2.7,2.45,2.7), mat);
+  block.position.y = 1.23;
   g.add(block);
 
   const holeMat = new THREE.MeshStandardMaterial({ color:0xe0b847, roughness:0.95 });
   const holes = [
-    [-0.95,1.35,0.46,0.22], [-0.15,1.0,0.46,0.18], [0.8,1.45,0.46,0.24],
-    [0.35,0.72,0.46,0.15], [-1.2,0.7,0.46,0.14], [1.25,1.0,0.46,0.16]
+    [-0.65,1.58,1.14,0.22], [-0.1,1.12,1.15,0.18], [0.66,1.38,1.14,0.24],
+    [0.45,0.92,1.13,0.16], [-0.92,0.96,1.14,0.14], [1.05,1.08,1.15,0.16]
   ];
   holes.forEach(h=>{
     const s = new THREE.Mesh(new THREE.SphereGeometry(h[3],8,8), holeMat);
     s.position.set(h[0],h[1],h[2]);
     g.add(s);
     const s2 = s.clone();
-    s2.position.z = -0.46;
+    s2.position.z = -1.14;
     g.add(s2);
   });
 
   const crumbsMat = new THREE.MeshStandardMaterial({ color:0xffef99, emissive:0x664d00, emissiveIntensity:0.08 });
   for(let i=0;i<6;i++){
     const c = new THREE.Mesh(new THREE.SphereGeometry(rand(0.04,0.08),6,6), crumbsMat);
-    c.position.set(rand(-1.4,1.4), rand(2.0,2.35), rand(-0.45,0.45));
+    c.position.set(rand(-1.1,1.1), rand(2.25,2.62), rand(-1.1,1.1));
     g.add(c);
   }
   return g;
@@ -1782,15 +1842,17 @@ function makeCheeseWallMesh(){
 function attachWallCracks(group, tint=0x2a1908){
   const crackMat = new THREE.MeshBasicMaterial({ color:tint, transparent:true, opacity:0, depthWrite:false, side:THREE.DoubleSide });
   const planes = [
-    { x:-0.85, y:1.5, z:0.68, w:0.9, h:1.05, r:0.22 },
-    { x:0.62, y:1.15, z:0.68, w:1.1, h:1.2, r:-0.14 },
-    { x:0.08, y:0.86, z:-0.68, w:1.15, h:0.9, r:0.19 }
+    { x:-0.65, y:1.7, z:1.38, w:0.88, h:1.05, r:0.22, yaw:0 },
+    { x:0.52, y:1.28, z:1.38, w:1.05, h:1.18, r:-0.14, yaw:0 },
+    { x:0.06, y:1.12, z:-1.38, w:1.05, h:0.9, r:0.18, yaw:Math.PI },
+    { x:1.38, y:1.3, z:-0.2, w:0.95, h:1.0, r:-0.2, yaw:-Math.PI/2 },
+    { x:-1.38, y:1.05, z:0.45, w:0.92, h:0.88, r:0.14, yaw:Math.PI/2 }
   ];
   const cracks = [];
   planes.forEach(p=>{
     const crack = new THREE.Mesh(new THREE.PlaneGeometry(p.w, p.h), crackMat.clone());
     crack.position.set(p.x,p.y,p.z);
-    crack.rotation.y = p.z > 0 ? 0 : Math.PI;
+    crack.rotation.y = p.yaw;
     crack.rotation.z = p.r;
     group.add(crack);
     cracks.push(crack);
@@ -1821,17 +1883,47 @@ function createStructureMesh(type){
 
   if(type==="diamondWall"){
     const main = new THREE.Mesh(
-      new THREE.BoxGeometry(4.2,3.0,1.8),
-      new THREE.MeshStandardMaterial({ color:0x8fe8ff, metalness:0.15, roughness:0.38 })
+      new THREE.BoxGeometry(3.2,3.35,3.2),
+      new THREE.MeshStandardMaterial({ color:0x8fe8ff, metalness:0.2, roughness:0.34 })
     );
-    main.position.y = 1.5;
+    main.position.y = 1.68;
     const crystal = new THREE.Mesh(
       new THREE.OctahedronGeometry(0.84),
       new THREE.MeshStandardMaterial({ color:0xe4ffff, emissive:0x2e6c88, emissiveIntensity:0.42 })
     );
-    crystal.position.y = 3.35;
-    g.add(main,crystal);
+    crystal.position.y = 3.72;
+    const belt = new THREE.Mesh(
+      new THREE.TorusGeometry(1.18,0.12,10,28),
+      new THREE.MeshStandardMaterial({ color:0xd8f7ff, emissive:0x3aa7c7, emissiveIntensity:0.36 })
+    );
+    belt.rotation.x = Math.PI/2;
+    belt.position.y = 2.35;
+    g.add(main, crystal, belt);
     attachWallCracks(g, 0x1b4f64);
+  }
+  if(type==="ultraWall"){
+    const coreMat = new THREE.MeshStandardMaterial({ color:0x6f89be, metalness:0.5, roughness:0.24, emissive:0x183a7d, emissiveIntensity:0.34 });
+    const core = new THREE.Mesh(new THREE.BoxGeometry(3.5,3.9,3.5), coreMat);
+    core.position.y = 1.95;
+    const shell = new THREE.Mesh(
+      new THREE.BoxGeometry(3.75,4.15,3.75),
+      new THREE.MeshStandardMaterial({ color:0xb7d4ff, transparent:true, opacity:0.2, emissive:0x3f8eff, emissiveIntensity:0.4 })
+    );
+    shell.position.y = 2.08;
+    const seamMat = new THREE.MeshBasicMaterial({ color:0x7ed8ff, transparent:true, opacity:0.78 });
+    const seams = [];
+    for(const rot of [0, Math.PI/2]){
+      const seam = new THREE.Mesh(new THREE.PlaneGeometry(3.66,3.66), seamMat.clone());
+      seam.rotation.y = rot;
+      seam.position.y = 2.0;
+      g.add(seam);
+      seams.push(seam);
+    }
+    g.add(core, shell);
+    g.userData.ultraWallCore = core;
+    g.userData.ultraWallShell = shell;
+    g.userData.ultraWallSeams = seams;
+    attachWallCracks(g, 0x3a4c80);
   }
 
   if(type==="factory"){
@@ -2746,23 +2838,25 @@ function updateMouseEntity(m,dt){
 // -------------------------------------------------
 function makeEnemy(kind,x,z){
   let model,hp,speed,damage,radius,attackRange=1.3,turnRate=4.8;
-  if(kind==="rat"){ model = makeRatModel(); hp = 22; speed = 8.4; damage = 10; radius = 0.8; }
+  if(kind==="rat"){ model = makeRatModel(); hp = 22; speed = 8.4; damage = 7.5; radius = 0.8; }
   if(kind==="mole"){ model = makeMoleModel(); hp = 40; speed = 5.5; damage = 55; radius = 0.9; }
   if(kind==="weasel"){ model = makeWeaselModel(); hp = 115; speed = 10.1; damage = 24; radius = 1.1; turnRate = 1.6; }
   if(kind==="assassin"){ model = makeWeaselModel(); hp = 54; speed = 11.8; damage = 38; radius = 0.78; attackRange = 1.15; turnRate = 6.2; }
   if(kind==="ram"){ model = makeMoleModel(); hp = 380; speed = 4.9; damage = 30; radius = 1.25; attackRange = 1.45; turnRate = 1.0; }
   if(kind==="spitterBug"){ model = makeSpitterBugModel(); hp = 68; speed = 6.1; damage = 17; radius = 0.96; attackRange = 12.8; turnRate = 3.1; }
   if(kind==="burrowMole"){ model = makeMoleModel(); hp = 118; speed = 6.4; damage = 30; radius = 1.02; attackRange = 1.35; turnRate = 4.1; }
-  if(kind==="siegeRat"){ model = makeSiegeRatModel(); hp = 275; speed = 4.2; damage = 22; radius = 1.28; attackRange = 1.52; turnRate = 1.45; }
+  if(kind==="siegeRat"){ model = makeSiegeRatModel(); hp = 275; speed = 4.2; damage = 18; radius = 1.28; attackRange = 1.52; turnRate = 1.45; }
   if(kind==="titanRam"){ model = makeTitanRamModel(); hp = 650; speed = 3.2; damage = 42; radius = 1.75; attackRange = 1.65; turnRate = 0.82; }
 
   const phaseTime = Math.max(0, time - 60);
   const powerScale = 1 + phaseTime * 0.0016;
+  const enemyLevel = getEnemyLevel();
+  const levelScale = 1 + (enemyLevel - 1) * 0.04;
   const eliteChance = clamp((time - 260) / 380, 0, 0.35) * difficulty.elites;
   const elite = Math.random() < eliteChance && !["ram","titanRam","siegeRat"].includes(kind);
-  hp *= powerScale;
-  damage *= powerScale;
-  speed *= 1 + phaseTime * 0.00045;
+  hp *= powerScale * levelScale;
+  damage *= powerScale * (1 + (enemyLevel - 1) * 0.03);
+  speed *= (1 + phaseTime * 0.00045) * (["rat","assassin","weasel"].includes(kind) ? (1 + (enemyLevel - 1) * 0.004) : 1);
   if(elite){
     hp *= 1.55;
     damage *= 1.28;
@@ -2808,7 +2902,10 @@ function makeEnemy(kind,x,z){
     titanState:"idle",
     titanWindup:0,
     titanChargeDir:new THREE.Vector3(),
-    titanChargeT:0
+    titanChargeT:0,
+    telegraphT:0,
+    siegeWindup:0,
+    siegePendingTarget:null
   };
   if(kind==="ram"){
     e.role = "breaker";
@@ -2923,7 +3020,7 @@ function chooseEnemyTarget(e){
     if(ambushStructure) return ambushStructure;
   }
   if(e.kind==="siegeRat"){
-    const siegeTarget = nearestAttackableStructure(e, 999, s => ["wall","diamondWall","gasDepot","turret","advancedRobo","mechaHangar","fortPlate","barrierTotem","braceTower"].includes(s.type));
+    const siegeTarget = nearestAttackableStructure(e, 999, s => ["wall","diamondWall","ultraWall","gasDepot","turret","advancedRobo","mechaHangar","fortPlate","barrierTotem","braceTower"].includes(s.type));
     if(siegeTarget) return siegeTarget;
   }
   if(e.kind==="titanRam"){
@@ -2956,7 +3053,7 @@ function chooseEnemyTarget(e){
   }
 
   if(e.kind==="mole"){
-    const bestWall = nearestAttackableStructure(e, 999, s => (s.type==="wall" || s.type==="diamondWall")) || null;
+    const bestWall = nearestAttackableStructure(e, 999, s => (s.type==="wall" || s.type==="diamondWall" || s.type==="ultraWall")) || null;
     if(bestWall) return bestWall;
   }
   if(!player.dead && !lineBlocked(e.pos, player.pos) && dist2(e.pos, player.pos) < 26 + combatDirector.heat * 7){
@@ -2966,11 +3063,11 @@ function chooseEnemyTarget(e){
   if(nearestRobot && nearestRobotD < 22) return nearestRobot;
 
   const priorityByKind = {
-    mole: { wall: 2.2, diamondWall: 2.0, fortPlate: 1.6, barrierTotem: 1.4, braceTower: 1.2, turret: 0.85, cannon: 0.8 },
-    weasel: { turret: 2.1, cannon: 2.0, mortarBloom: 1.85, zapCoil: 1.7, sawBlaster: 1.75, robo: 1.35, beacon: 1.25, wall: 0.7, diamondWall: 0.6 },
-    spitterBug: { turret: 2.0, cannon: 1.85, mortarBloom: 1.7, breedingNest: 1.8, factory: 1.55, wall: 0.45, diamondWall: 0.4 },
-    siegeRat: { wall: 2.6, diamondWall: 2.55, gasDepot: 2.25, turret: 2.0, advancedRobo: 1.65, fortPlate: 1.75 },
-    titanRam: { wall: 2.25, diamondWall: 2.1, fortPlate: 2.2, barrierTotem: 2.0, braceTower: 1.9, gasDepot: 1.5, mechaHangar: 1.65 }
+    mole: { wall: 2.2, diamondWall: 2.0, ultraWall: 2.1, fortPlate: 1.6, barrierTotem: 1.4, braceTower: 1.2, turret: 0.85, cannon: 0.8 },
+    weasel: { turret: 2.1, cannon: 2.0, mortarBloom: 1.85, zapCoil: 1.7, sawBlaster: 1.75, robo: 1.35, beacon: 1.25, wall: 0.7, diamondWall: 0.6, ultraWall: 0.68 },
+    spitterBug: { turret: 2.0, cannon: 1.85, mortarBloom: 1.7, breedingNest: 1.8, factory: 1.55, wall: 0.45, diamondWall: 0.4, ultraWall: 0.46 },
+    siegeRat: { wall: 2.6, diamondWall: 2.55, ultraWall: 2.75, gasDepot: 2.25, turret: 2.0, advancedRobo: 1.65, fortPlate: 1.75 },
+    titanRam: { wall: 2.25, diamondWall: 2.1, ultraWall: 2.3, fortPlate: 2.2, barrierTotem: 2.0, braceTower: 1.9, gasDepot: 1.5, mechaHangar: 1.65 }
   };
 
   let bestStructure = null, bestScore = 9999;
@@ -3015,6 +3112,8 @@ function updateEnemies(dt){
     e.spitCd = Math.max(0, (e.spitCd || 0) - dt);
     e.heavySwing = Math.max(0, (e.heavySwing || 0) - dt);
     e.titanChargeCd = Math.max(0, (e.titanChargeCd || 0) - dt);
+    e.siegeWindup = Math.max(0, (e.siegeWindup || 0) - dt);
+    setEnemyTelegraph(e, 0);
     if(e.dazeIcon){
       e.dazeIcon.visible = e.stunCd > 0;
       if(e.dazeIcon.visible){
@@ -3136,6 +3235,7 @@ function updateEnemies(dt){
         }
       } else if(e.ramState === "windup"){
         e.ramWindup -= dt;
+        setEnemyTelegraph(e, clamp(1 - (e.ramWindup / 0.7), 0, 1));
         if(e.ramWindup <= 0){
           e.ramState = "charge";
         }
@@ -3170,6 +3270,7 @@ function updateEnemies(dt){
         }
       } else if(e.titanState === "windup"){
         e.titanWindup -= dt;
+        setEnemyTelegraph(e, clamp(1 - (e.titanWindup / 0.75), 0, 1));
         e.attackAnim = 1;
         if(Math.random() < 0.2) addBurst(e.pos.x + rand(-0.4,0.4), e.pos.y + 0.2, e.pos.z + rand(-0.4,0.4), 0xc9b394, 1, 0.9, 0.3, 0.04);
         if(e.titanWindup <= 0){
@@ -3217,6 +3318,18 @@ function updateEnemies(dt){
         e.pos.z = step.z;
       }
     } else if(!isStunned && e.attackCd <= 0 && e.target && !e.repathTimer && (e.kind!=="ram" || e.ramDaze > 0 || e.ramState==="idle")){
+      if(e.kind==="siegeRat" && e.siegeWindup <= 0){
+        e.siegeWindup = 0.26;
+        e.siegePendingTarget = e.target;
+        e.attackCd = 1.16;
+      }
+      if(e.kind==="siegeRat" && e.siegeWindup > 0){
+        setEnemyTelegraph(e, clamp(1 - (e.siegeWindup / 0.26), 0, 1));
+        e.attackAnim = 0.88;
+        if(e.siegeWindup > 0.001) continue;
+        e.target = e.siegePendingTarget || e.target;
+        e.siegePendingTarget = null;
+      }
       e.attackCd = e.kind==="weasel" ? 0.56 : e.kind==="mole" ? 0.98 : 0.72;
       if(e.kind==="assassin") e.attackCd = 0.5;
       if(e.kind==="siegeRat") e.attackCd = 1.16;
@@ -3322,14 +3435,28 @@ function spawnCat(){
     const bar = createHealthBar(6.8,0xff4444);
     bar.position.y = 6.8;
     model.add(bar);
+    const catTelegraphRing = new THREE.Mesh(
+      new THREE.RingGeometry(1.8,2.1,32),
+      new THREE.MeshBasicMaterial({ color:0xff8a5e, transparent:true, opacity:0, side:THREE.DoubleSide, depthWrite:false })
+    );
+    catTelegraphRing.rotation.x = -Math.PI/2;
+    catTelegraphRing.position.y = 0.09;
+    model.add(catTelegraphRing);
+    const catTelegraphArc = new THREE.Mesh(
+      new THREE.RingGeometry(0.8,3.0,40,1,-Math.PI*0.24,Math.PI*0.48),
+      new THREE.MeshBasicMaterial({ color:0xff533c, transparent:true, opacity:0, side:THREE.DoubleSide, depthWrite:false })
+    );
+    catTelegraphArc.rotation.x = -Math.PI/2;
+    catTelegraphArc.position.y = 0.1;
+    model.add(catTelegraphArc);
 
     cat = {
       group:model,
       pos:model.position,
-      hp:10000,
-      maxHp:10000,
-      speed:6.4,
-      sprint:9.3,
+      hp:7600,
+      maxHp:7600,
+      speed:5.9,
+      sprint:8.6,
       radius:2.2,
       attackRange:2.35,
       attackCd:0,
@@ -3355,6 +3482,11 @@ function spawnCat(){
       ,routePersist:0
       ,smartChain:[]
       ,heatTrack:0
+      ,attackWindup:0
+      ,pendingAttackTarget:null
+      ,pendingAttackIsHeavy:false
+      ,telegraphRing:catTelegraphRing
+      ,telegraphArc:catTelegraphArc
     };
 
     ui.bossWrap.style.display = "block";
@@ -3393,7 +3525,7 @@ function catChooseTarget(){
       if(d < nearestRobotD){ nearestRobot = r; nearestRobotD = d; }
     }
     if(cat.failedRoute >= 3 && cat.aggroMemory < 2.7){
-      const antiBase = nearestAttackableStructure(cat, 999, s => ["wall","diamondWall","turret","cannon","shardLauncher","sawBlaster","zapCoil","mortarBloom","barrierTotem","fortPlate"].includes(s.type));
+      const antiBase = nearestAttackableStructure(cat, 999, s => ["wall","diamondWall","ultraWall","turret","cannon","shardLauncher","sawBlaster","zapCoil","mortarBloom","barrierTotem","fortPlate"].includes(s.type));
       if(antiBase && dist2(cat.pos, antiBase.pos) < 56) return antiBase;
     }
     if(nearestServant && nearestServantD < 14 && Math.random() < 0.3) return nearestServant;
@@ -3488,6 +3620,7 @@ function updateCat(dt){
   cat.anim += dt;
   cat.attackAnim = Math.max(0, cat.attackAnim - dt*3);
   cat.attackCd -= dt;
+  cat.attackWindup = Math.max(0, (cat.attackWindup || 0) - dt);
   cat.abilityCd = Math.max(0, (cat.abilityCd || 0) - dt);
   cat.lungeCd = Math.max(0, (cat.lungeCd || 0) - dt);
   cat.roarCd = Math.max(0, (cat.roarCd || 0) - dt);
@@ -3497,8 +3630,10 @@ function updateCat(dt){
   cat.routePersist = Math.max(0, (cat.routePersist || 0) - dt);
 
   const target = catChooseTarget();
+  const catPhase = Math.max(0, time - 60);
+  const catRamp = clamp(catPhase / 420, 0, 1);
   let moveTarget = null;
-  let moveSpeed = cat.speed * (cat.burstT > 0 ? 1.65 : 1);
+  let moveSpeed = (cat.speed + catRamp * 0.85) * (cat.burstT > 0 ? (1.42 + catRamp*0.32) : 1);
 
   if(target){
     moveTarget = target.pos || target;
@@ -3540,16 +3675,16 @@ function updateCat(dt){
   if(cat.repathTimer > 0 && cat.repathTarget) moveTarget = cat.repathTarget;
 
   const d = dist2(cat.pos, moveTarget);
-  if(!target?.isMemoryTarget && target && d < 9.5 && target===player && cat.burstT<=0 && cat.abilityCd<=0 && Math.random()<0.016*difficulty.specials){
+  if(!target?.isMemoryTarget && target && d < 9.5 && target===player && cat.burstT<=0 && cat.abilityCd<=0 && Math.random()<0.013*difficulty.specials){
     cat.burstT = 0.85;
-    cat.abilityCd = 4.6 / difficulty.specials;
+    cat.abilityCd = 5.7 / difficulty.specials;
     addBurst(cat.pos.x,cat.pos.y+2.3,cat.pos.z,0xff8b52,16,5.6,0.62,0.1);
   }
-  if(!target?.isMemoryTarget && target===player && cat.lungeCd<=0 && d < meleeStopDistance(cat, player, 1.45) && d > meleeStopDistance(cat, player, 0.2) && Math.random() < 0.018 * difficulty.specials){
+  if(!target?.isMemoryTarget && target===player && cat.lungeCd<=0 && d < meleeStopDistance(cat, player, 1.45) && d > meleeStopDistance(cat, player, 0.2) && Math.random() < 0.014 * difficulty.specials){
     const dir = new THREE.Vector3(moveTarget.x-cat.pos.x,0,moveTarget.z-cat.pos.z).normalize();
     const lunge = collisionPushOut(cat.pos.x + dir.x*3.2, cat.pos.z + dir.z*3.2, cat.radius, true, null);
     cat.pos.x = lunge.x; cat.pos.z = lunge.z;
-    cat.lungeCd = 7.5 / difficulty.specials;
+    cat.lungeCd = 8.8 / difficulty.specials;
     addBurst(cat.pos.x,cat.pos.y+2.0,cat.pos.z,0xffb067,14,4.2,0.52,0.09);
   }
 
@@ -3561,14 +3696,34 @@ function updateCat(dt){
       cat.pos.z = step.z;
     }
   } else if(target && !target.isMemoryTarget && cat.attackCd <= 0 && cat.repathTimer <= 0){
-    cat.attackCd = 1.0;
-    cat.attackAnim = 1;
-    const dx = Math.sin(cat.heading), dz = Math.cos(cat.heading);
-    addBurst(cat.pos.x + dx*1.5, cat.pos.y+2.0, cat.pos.z + dz*1.5, 0xff7f50, 20, 6, 0.7, 0.09);
-    if(target === player) applyDamageToLiving(player, 999, cat.pos);
-    else if(isLivingTarget(target)) applyDamageToLiving(target, 38, target.pos);
-    else damageStructure(target, 35 * (cat.failedRoute > 2 ? 1.8 : 1));
+    cat.attackCd = 1.22 - catRamp * 0.18;
+    cat.attackWindup = 0.2;
+    cat.pendingAttackTarget = target;
+    cat.pendingAttackIsHeavy = dist2(cat.pos, target.pos || target) < 3.4;
+    cat.attackAnim = 0.65;
   }
+  if(cat.attackWindup > 0 && cat.pendingAttackTarget){
+    const pulse = 0.5 + Math.sin(time*24) * 0.5;
+    if(cat.telegraphRing) cat.telegraphRing.material.opacity = (0.2 + pulse * 0.28) * (cat.pendingAttackIsHeavy ? 1 : 0.65);
+    if(cat.telegraphArc){
+      cat.telegraphArc.material.opacity = (0.3 + pulse * 0.44) * (cat.pendingAttackIsHeavy ? 1 : 0.7);
+      cat.telegraphArc.rotation.z = -cat.heading + Math.PI/2;
+    }
+    if(cat.attackWindup <= 0.001){
+      const hitTarget = cat.pendingAttackTarget;
+      cat.pendingAttackTarget = null;
+      cat.attackAnim = 1;
+      const dx = Math.sin(cat.heading), dz = Math.cos(cat.heading);
+      addBurst(cat.pos.x + dx*1.5, cat.pos.y+2.0, cat.pos.z + dz*1.5, 0xff7f50, 20, 6, 0.7, 0.09);
+      const catDamage = 24 + catRamp * 10;
+      const catStructureDamage = 26 + catRamp * 12;
+      if(hitTarget === player) applyDamageToLiving(player, catDamage, cat.pos);
+      else if(isLivingTarget(hitTarget)) applyDamageToLiving(hitTarget, catDamage * 1.12, hitTarget.pos);
+      else if(hitTarget && !hitTarget.dead) damageStructure(hitTarget, catStructureDamage * (cat.failedRoute > 2 ? 1.45 : 1));
+    }
+  }
+  if(cat.telegraphRing && cat.attackWindup <= 0){ cat.telegraphRing.material.opacity = 0; }
+  if(cat.telegraphArc && cat.attackWindup <= 0){ cat.telegraphArc.material.opacity = 0; }
   if(cat.roarCd <= 0 && difficulty.specials > 1 && target===player && dist2(cat.pos, player.pos) < 14 && servantMice.length > 1){
     cat.roarCd = 14 / difficulty.specials;
     addBurst(cat.pos.x, cat.pos.y+2.3, cat.pos.z, 0xff6d43, 20, 6.5, 0.8, 0.1);
@@ -3809,6 +3964,28 @@ function updateStructures(dt){
         top.position.y = 4.2 + Math.sin(time*4)*0.12;
       }
       if(Math.random() < 0.03) addBurst(s.pos.x,s.pos.y+4.2,s.pos.z,0x76ff9c,2,1.1,0.32,0.04);
+    }
+    if(s.type==="ultraWall"){
+      const core = s.mesh.userData.ultraWallCore;
+      const shell = s.mesh.userData.ultraWallShell;
+      const seams = s.mesh.userData.ultraWallSeams || [];
+      if(core?.material){
+        core.material.emissiveIntensity = 0.28 + Math.sin(time*4.3 + s.pos.x*0.06 + s.pos.z*0.04) * 0.18;
+      }
+      if(shell?.material){
+        shell.material.opacity = 0.16 + Math.sin(time*3.2 + s.pos.x*0.03) * 0.06;
+      }
+      seams.forEach((seam, idx)=>{
+        seam.material.opacity = 0.45 + Math.sin(time*6.5 + idx*0.8) * 0.28;
+      });
+      if(Math.random() < 0.02){
+        const a = new THREE.Vector3(s.pos.x + rand(-1.25,1.25), s.pos.y + rand(1.2,3.6), s.pos.z + rand(-1.25,1.25));
+        const b = new THREE.Vector3(s.pos.x + rand(-1.25,1.25), s.pos.y + rand(1.2,3.6), s.pos.z + rand(-1.25,1.25));
+        addLightningArc(a, b, 0.12, 0x8bd6ff);
+      }
+      if(Math.random() < 0.015){
+        addBurst(s.pos.x + rand(-1.3,1.3), s.pos.y + rand(1.1,3.8), s.pos.z + rand(-1.3,1.3), 0x84d3ff, 2, 1.2, 0.32, 0.05);
+      }
     }
 
     if(s.type==="supplyNest"){
@@ -4171,6 +4348,7 @@ function updatePlayer(dt){
   } else {
     buildGridOverlay.visible = true;
     const p = getBuildPlace();
+    updateBuildGridOverlay(p.x, p.z);
     const valid = getBuildValidation(selected, p.x, p.z).ok && cheese >= selected.cost && gas >= (selected.gasCost||0);
     buildTelegraph.visible = true;
     buildTelegraph.position.set(p.x, p.y+0.06, p.z);
