@@ -261,6 +261,11 @@
   .diffBtn { width:100%; text-align:left; margin:4px 0; border-radius:10px; border:1px solid rgba(255,255,255,0.16); background:rgba(255,255,255,0.05); color:#fff; padding:7px; cursor:pointer; }
   .diffBtn.active { border-color:#9dd5ff; background:rgba(101,177,255,0.2); }
   #startMatchBtn { width:100%; margin-top:8px; border:0; border-radius:12px; padding:11px; font-weight:bold; font-size:15px; background:linear-gradient(90deg,#62ff95,#81b9ff); color:#0f1522; cursor:pointer; }
+  #pauseOverlay{
+    position:absolute; inset:0; z-index:82; display:none; align-items:center; justify-content:center;
+    background:rgba(4,8,14,0.55); color:#fff3cc; font-weight:bold; letter-spacing:1px; font-size:34px;
+    text-shadow:0 0 12px rgba(0,0,0,0.8);
+  }
 
 </style>
 </head>
@@ -282,6 +287,7 @@
     </div>
   </div>
 </div>
+<div id="pauseOverlay">PAUSED</div>
 <div id="ui">
   <div class="title">Cat vs Mouse Survival 3D</div>
   <div class="topline">
@@ -291,7 +297,7 @@
     <div class="pill">Time: <span id="timeCount">0.0</span>s</div>
     <div class="pill">Level: <span id="levelCount">1</span></div>
   </div>
-  <div id="controls">W forward · S backpedal · A/D turn · Space place</div>
+  <div id="controls">W forward · S backpedal · A/D turn · Space place · E interact · P pause</div>
   <div id="catRow">
     <div id="catExplore" class="catBtn active">1 Explore</div>
     <div id="catEco" class="catBtn">2 Economic</div>
@@ -378,6 +384,7 @@ const ui = {
   catDef: document.getElementById("catDef"),
   catAtk: document.getElementById("catAtk"),
   catTech: document.getElementById("catTech"),
+  pauseOverlay: document.getElementById("pauseOverlay"),
   towerPrompt: document.getElementById("towerPrompt"),
   towerMenu: document.getElementById("towerMenu"),
   towerRes: document.getElementById("towerRes"),
@@ -402,6 +409,7 @@ const repairBeams = [];
 const engineerMice = [];
 let gamePaused = true;
 let activeTowerMenu = false;
+let manualPause = false;
 let nearestTowerOfCheese = null;
 const BASE_GAS_DELIVERY = 3;
 const BASE_FACTORY_OUTPUT = 3;
@@ -423,6 +431,13 @@ let activeTowerTab = "global";
 const familyProgression = {};
 const FAMILY_TECH_TREES = {
   walls:{ label:"Walls", branches:{ bulwark:{label:"Bulwark", t2:["Citadel Plating","Cover Slits"], t3:"Fortress Face"}, conductor:{label:"Conductor", t2:["Live Wire","Relay Mesh"], t3:"Storm Fence"}, spikes:{label:"Spikes", t2:["Barbed Edge","Impaler Teeth"], t3:"Death Hedge"} } },
+  rapidTower:{ label:"Rapid Tower", branches:{ suppressor:{label:"Suppressor", t2:["Tracer Web","Lane Pressure"], t3:"Suppressor Matrix"}, hunter:{label:"Hunter", t2:["Scope Link","Target Lock"], t3:"Predator Frame"}, ripper:{label:"Ripper", t2:["Shred Teeth","Boss Mark"], t3:"Ripper Prime"} } },
+  heavyTower:{ label:"Heavy Tower", branches:{ cannon:{label:"Cannon", t2:["Shockwave Shell","Deep Chamber"], t3:"Siege Howitzer"}, mortar:{label:"Mortar", t2:["Delayed Burst","Siege Loader"], t3:"Mortar Citadel"}, breaker:{label:"Breaker", t2:["Armor Cracker","Impact Piston"], t3:"Breaker Engine"} } },
+  arcTower:{ label:"Arc Tower", branches:{ zap:{label:"Zap", t2:["Chain Fork","Lattice"], t3:"Storm Lattice"}, prism:{label:"Prism", t2:["Focused Lens","Overcharge"], t3:"Prism Crown"}, emp:{label:"EMP", t2:["Null Pulse","Field Clamp"], t3:"EMP Halo"} } },
+  siegeTower:{ label:"Siege Tower", branches:{ shard:{label:"Shard", t2:["Wide Pattern","Crystal Fan"], t3:"Shard Citadel"}, rail:{label:"Rail", t2:["Siege Lock","Pierce Spine"], t3:"Rail Dominion"}, bloom:{label:"Bloom", t2:["Burn Field","Bomb Blossom"], t3:"Bloom Cataclysm"} } },
+  servantNest:{ label:"Servant Nest", branches:{ logistics:{label:"Logistics Nest", t2:["Carrier Baskets","Supply Tunnels"], t3:"District Warren"}, swarm:{label:"Swarm Nest", t2:["Rapid Brood","Nest Signals"], t3:"Swarm Citadel"}, builder:{label:"Builder Nest", t2:["Scaffold Teams","Repair Packs"], t3:"Builder Haven"} } },
+  robotBay:{ label:"Robot Bay", branches:{ guardian:{label:"Guardian Bay", t2:["Shield Rack","Guard Rails"], t3:"Guardian Dock"}, assault:{label:"Assault Bay", t2:["Charge Thrusters","Impact Chassis"], t3:"Assault Forge"}, shield:{label:"Shield Bay", t2:["Bulwark Nodes","Reflective Plating"], t3:"Aegis Bay"} } },
+  rangedRobotBay:{ label:"Ranged Robot Bay", branches:{ marksman:{label:"Marksman Bay", t2:["Sniper Rails","Target Grid"], t3:"Deadeye Array"}, volley:{label:"Volley Bay", t2:["Burst Pods","Barrage Logic"], t3:"Volley Matrix"}, arc:{label:"Arc Bay", t2:["Ion Docks","Chain Relay"], t3:"Arc Observatory"} } },
   support:{ label:"Support Structures", branches:{ sanctuary:{label:"Sanctuary", t2:["Static Ward","Repulse Ward"], t3:"Aegis Choir"}, siegeFrame:{label:"Siege Frame", t2:["Gun Rack","Anchor Frame"], t3:"Fortified Cadence"}, rapidWeld:{label:"Rapid Weld", t2:["Renewal","Scrap Loop"], t3:"Sanctum Loop"} } },
   fastAttack:{ label:"Fast Attack Towers", branches:{ suppressor:{label:"Suppressor", t2:["Tracer Storm","Pinning Fire"], t3:"Crowd Shear"}, hunter:{label:"Hunter", t2:["Rapid Tracking","Trail Mark"], t3:"Predator Core"}, ripper:{label:"Ripper", t2:["Armor Saw","Point Blank"], t3:"Breach Spiral"} } },
   siege:{ label:"Siege / Explosive Towers", branches:{ siegebreaker:{label:"Siegebreaker", t2:["Shatter Rivet","Piercing Payload"], t3:"Crater Doctrine"}, shatterburst:{label:"Shatterburst", t2:["Cluster Dust","Delayed Bloom"], t3:"Cascade Field"}, zone:{label:"Zone Denial", t2:["Glue Cloud","Burning Ground"], t3:"No-Go Sector"} } },
@@ -431,6 +446,11 @@ const FAMILY_TECH_TREES = {
   gas:{ label:"Gas Mines", branches:{ refinery:{label:"Refinery", t2:["Pressure Tap","Purity Filter"], t3:"Deep Vein"}, hazard:{label:"Hazard", t2:["Caustic Exhaust","Volatile Leak"], t3:"Detonation Valve"}, grid:{label:"Grid Feed", t2:["Thermal Dynamo","Charge Pipe"], t3:"Fusion Feed"} } },
   robotics:{ label:"Robotics", branches:{ skirmish:{label:"Skirmish Protocol", t2:["Marksman Bots","Arc Riflers"], t3:"Vanguard Cloud"}, bulwark:{label:"Bulwark Protocol", t2:["Shell Tanks","Shield Tanks"], t3:"Titan March"}, command:{label:"Command Protocol", t2:["Aura Captain","Drone Marshal"], t3:"War Algorithm"} } },
   batteries:{ label:"Batteries / Power Grid", branches:{ overcharge:{label:"Overcharge Grid", t2:["Beam Overdrive","Shell Overcharge"], t3:"Surge Window"}, relay:{label:"Relay Web", t2:["Wide Grid","Efficient Routing"], t3:"District Backbone"}, fortress:{label:"Fortress Current", t2:["Shield Pulse","Retaliation Current"], t3:"Citadel Circuit"} } },
+  powerCore:{ label:"Power Core", branches:{ relay:{label:"Relay", t2:["Wide Grid","Web Link"], t3:"District Relay"}, overcharge:{label:"Overcharge", t2:["Surge Arcs","Hot Core"], t3:"Overcharge Crown"}, fortress:{label:"Fortress", t2:["Shield Panels","Fortress Current"], t3:"Bastion Core"} } },
+  restorationSpire:{ label:"Restoration Spire", branches:{ renewal:{label:"Renewal", t2:["Restoration Pulse","Vital Flow"], t3:"Renewal Sanctum"}, anchor:{label:"Anchor", t2:["Wall Weld","Stabilizer Arms"], t3:"Anchor Bastion"}, sanctum:{label:"Sanctum", t2:["Protective Halo","Aegis Beam"], t3:"Sanctum Dome"} } },
+  commandBeacon:{ label:"Command Beacon", branches:{ targeting:{label:"Targeting Beacon", t2:["Sensor Eye","Scan Wave"], t3:"Oracle Dish"}, battle:{label:"Battle Relay", t2:["Tempo Burst","Signal Rings"], t3:"Battle Chorus"}, siege:{label:"Siege Relay", t2:["Heavy Broadcast","Anchor Pylons"], t3:"Siege Nexus"} } },
+  phoenixTower:{ label:"Phoenix Tower", branches:{ ashen:{label:"Ashen Rebirth", t2:["Ember Reserve","Soul Cinder"], t3:"Ashen Crown"}, blazing:{label:"Blazing Return", t2:["Flare Wings","Solar Core"], t3:"Sunfire Return"}, guardian:{label:"Guardian Flame", t2:["Ward Feather","Aegis Ember"], t3:"Guardian Phoenix"} } },
+  armory:{ label:"Armory", branches:{ lancers:{label:"Lancers", t2:["Long Spear","Charge Drill"], t3:"Lancer Vanguard"}, wardens:{label:"Wardens", t2:["Plate Harness","Tower Shields"], t3:"Warden Cohort"}, vanguard:{label:"Vanguard", t2:["War Tempo","Assault Orders"], t3:"Vanguard Legion"} } },
   capstones:{ label:"Capstones", branches:{ storm:{label:"Storm Path", t2:["Pulse Cage","Conductive Reach"], t3:"Skybreaker"}, bulwark:{label:"Bulwark Path", t2:["Anchor Bastion","Siege Dampers"], t3:"Last Redoubt"}, industry:{label:"Industry Path", t2:["Heat Routing","Macro Conveyors"], t3:"Nexus Prime"} } }
 };
 const CAPSTONE_DEFS = [
@@ -492,7 +512,9 @@ function startSelectedMatch(){
   cheese = difficulty.startCheese;
   gas = difficulty.startGas;
   applyMapPreset(selectedMapKey);
-  gamePaused = false;
+  manualPause = false;
+  activeTowerMenu = false;
+  refreshPauseState();
   matchStarted = true;
   ui.mainMenu.style.display = "none";
   showCenter(`${MAP_PRESETS[selectedMapKey].name}\n${difficulty.label} Mode`, 1.8);
@@ -520,40 +542,36 @@ let currentSelectionSlot = null;
 
 const CATEGORY_BUILDS = {
   2: [
-    { slot:5, name:"Cheese Factory", cost:6, gasCost:0, type:"factory", hp:95, radius:2.5 },
-    { slot:6, name:"Supply Nest", cost:6, gasCost:0, type:"supplyNest", hp:78, radius:2.0 },
-    { slot:7, name:"Breeding Nest", cost:10, gasCost:0, type:"breedingNest", hp:102, radius:2.0 },
-    { slot:8, name:"Gas Depot", cost:8, gasCost:4, type:"gasDepot", hp:112, radius:2.1 },
-    { slot:9, name:"Gas Mine", cost:6, gasCost:0, type:"gasMine", hp:120, radius:2.0, requiresVent:true },
-    { slot:0, name:"Repair Fountain", cost:9, gasCost:0, type:"fountain", hp:90, radius:2.0 }
+    { slot:5, name:"Factory", cost:6, gasCost:0, type:"factory", hp:95, radius:2.5 },
+    { slot:6, name:"Servant Nest", cost:10, gasCost:0, type:"breedingNest", hp:102, radius:2.0 },
+    { slot:7, name:"Gas Depot", cost:8, gasCost:4, type:"gasDepot", hp:112, radius:2.1 },
+    { slot:8, name:"Gas Mine", cost:6, gasCost:0, type:"gasMine", hp:120, radius:2.0, requiresVent:true },
+    { slot:9, name:"Supply Nest", cost:6, gasCost:0, type:"supplyNest", hp:78, radius:2.0 },
+    { slot:0, name:"Workshop", cost:16, gasCost:24, type:"workshop", hp:195, radius:2.5, prereq:"gasMine" }
   ],
   3: [
-    { slot:5, name:"Cheese Wall", cost:3, gasCost:0, type:"wall", hp:72, radius:2.1 },
-    { slot:6, name:"Diamond Wall", cost:8, gasCost:3, type:"diamondWall", hp:165, radius:2.5 },
-    { slot:7, name:"Barrier Totem", cost:10, gasCost:2, type:"barrierTotem", hp:88, radius:2.0 },
-    { slot:8, name:"Brace Tower", cost:11, gasCost:3, type:"braceTower", hp:125, radius:2.0 },
-    { slot:9, name:"Repair Anchor", cost:9, gasCost:2, type:"repairAnchor", hp:92, radius:2.0 },
-    { slot:0, name:"Ultra Wall", cost:16, gasCost:8, type:"ultraWall", hp:420, radius:2.9, prereq:"workshop" }
+    { slot:5, name:"Wall I", cost:3, gasCost:0, type:"wall", hp:72, radius:2.1 },
+    { slot:6, name:"Wall II", cost:8, gasCost:3, type:"diamondWall", hp:165, radius:2.5 },
+    { slot:7, name:"Wall III", cost:16, gasCost:8, type:"ultraWall", hp:420, radius:2.9, prereq:"workshop" },
+    { slot:8, name:"Restoration Spire", cost:9, gasCost:2, type:"restorationSpire", hp:92, radius:2.0 },
+    { slot:9, name:"Command Beacon", cost:10, gasCost:2, type:"commandBeacon", hp:88, radius:2.0 },
+    { slot:0, name:"Phoenix Tower", cost:45, gasCost:22, type:"phoenixTower", hp:240, radius:2.7, prereq:"workshop" }
   ],
   4: [
-    { slot:5, name:"Cheese Turret", cost:5, gasCost:0, type:"turret", hp:90, radius:2.0 },
-    { slot:6, name:"Cheese Cannon", cost:10, gasCost:0, type:"cannon", hp:110, radius:2.2 },
-    { slot:7, name:"Shard Launcher", cost:8, gasCost:0, type:"shardLauncher", hp:84, radius:2.0 },
-    { slot:8, name:"Zap Coil", cost:30, gasCost:20, type:"zapCoil", hp:110, radius:1.9, prereq:"workshop" },
-    { slot:9, name:"Mortar Bloom", cost:36, gasCost:24, type:"mortarBloom", hp:125, radius:2.1, prereq:"workshop" },
-    { slot:0, name:"Saw Blaster", cost:46, gasCost:32, type:"sawBlaster", hp:150, radius:2.0, prereq:"workshop" }
+    { slot:5, name:"Rapid Tower", cost:5, gasCost:0, type:"turret", hp:90, radius:2.0 },
+    { slot:6, name:"Heavy Tower", cost:10, gasCost:0, type:"cannon", hp:110, radius:2.2 },
+    { slot:7, name:"Arc Tower", cost:30, gasCost:20, type:"zapCoil", hp:110, radius:1.9, prereq:"workshop" },
+    { slot:8, name:"Siege Tower", cost:8, gasCost:0, type:"shardLauncher", hp:84, radius:2.0 }
   ],
   5: [
-    { slot:5, name:"Workshop", cost:16, gasCost:24, type:"workshop", hp:195, radius:2.5, prereq:"gasMine" },
-    { slot:6, name:"Battery Structure", cost:14, gasCost:12, type:"battery", hp:170, radius:2.4, prereq:"workshop" },
-    { slot:7, name:"Advanced Battery", cost:34, gasCost:30, type:"advancedBattery", hp:285, radius:2.8, prereq:"workshop" },
-    { slot:8, name:"Sniper Tower", cost:210, gasCost:105, type:"sniperTower", hp:150, radius:2.0, prereq:"workshop" },
-    { slot:9, name:"Robo Facility", cost:90, gasCost:56, type:"robo", hp:220, radius:2.6, prereq:"workshop" },
-    { slot:0, name:"Rail Gun", cost:240, gasCost:120, type:"railGun", hp:220, radius:2.1, prereq:"workshop" },
-    { slot:1, name:"Advanced Robo Foundry", cost:130, gasCost:76, type:"advancedRobo", hp:300, radius:2.8, prereq:"workshop" },
-    { slot:2, name:"Mecha Hangar", cost:175, gasCost:105, type:"mechaHangar", hp:330, radius:2.9, prereq:"workshop" },
-    { slot:3, name:"Tower of Cheese", cost:40, gasCost:18, type:"towerOfCheese", hp:320, radius:3.1, prereq:"workshop" },
-    { slot:4, name:"Engineer Shop", cost:95, gasCost:55, type:"engineerShop", hp:250, radius:2.8, prereq:"workshop" },
+    { slot:5, name:"Power Core", cost:14, gasCost:12, type:"battery", hp:170, radius:2.4, prereq:"workshop" },
+    { slot:6, name:"Power District Core", cost:34, gasCost:30, type:"advancedBattery", hp:285, radius:2.8, prereq:"workshop" },
+    { slot:7, name:"Robot Bay", cost:90, gasCost:56, type:"robo", hp:220, radius:2.6, prereq:"workshop" },
+    { slot:8, name:"Ranged Robot Bay", cost:130, gasCost:76, type:"advancedRobo", hp:300, radius:2.8, prereq:"workshop" },
+    { slot:9, name:"Armory", cost:140, gasCost:84, type:"armory", hp:260, radius:2.8, prereq:"workshop" },
+    { slot:0, name:"Mecha Hangar", cost:175, gasCost:105, type:"mechaHangar", hp:330, radius:2.9, prereq:"workshop" },
+    { slot:1, name:"Tower of Cheese", cost:40, gasCost:18, type:"towerOfCheese", hp:320, radius:3.1, prereq:"workshop" },
+    { slot:2, name:"Factory Support", cost:95, gasCost:55, type:"engineerShop", hp:250, radius:2.8, prereq:"workshop" },
     { slot:10, name:"Storm Citadel", cost:420, gasCost:310, type:"stormCitadel", hp:980, radius:4.2, prereq:"workshop", capstoneKey:"stormCitadel" },
     { slot:11, name:"Iron Bulwark Bastion", cost:390, gasCost:280, type:"ironBulwarkBastion", hp:1200, radius:4.0, prereq:"workshop", capstoneKey:"ironBulwarkBastion" },
     { slot:12, name:"Foundry Nexus", cost:400, gasCost:290, type:"foundryNexus", hp:920, radius:4.1, prereq:"workshop", capstoneKey:"foundryNexus" },
@@ -563,9 +581,9 @@ const CATEGORY_BUILDS = {
 };
 const BUILD_ICONS = {
   factory:"🧀", fountain:"💧", supplyNest:"📦", beacon:"📡", robo:"⚙️", scoutPost:"👁️", breedingNest:"🐣", gasDepot:"🛢️", gasMine:"♨️",
-  wall:"🧱", diamondWall:"💎", ultraWall:"🧿", barrierTotem:"🛡️", braceTower:"🏛️", repairAnchor:"🔧", fortPlate:"🪙",
+  wall:"🧱", diamondWall:"💎", ultraWall:"🧿", barrierTotem:"🛡️", braceTower:"🏛️", repairAnchor:"🔧", fortPlate:"🪙", restorationSpire:"🔧", commandBeacon:"📡", phoenixTower:"🐦‍🔥",
   turret:"🎯", cannon:"💥", shardLauncher:"🔱", zapCoil:"⚡", mortarBloom:"🌸", sawBlaster:"🪚", sniperTower:"🎯", railGun:"🧲",
-  workshop:"🏭", advancedRobo:"🤖", mechaHangar:"🛸", towerOfCheese:"🧀", engineerShop:"🛠️", launcher:"🚀", teleporter:"🌀", battery:"🔋", advancedBattery:"🪫",
+  workshop:"🏭", advancedRobo:"🤖", mechaHangar:"🛸", towerOfCheese:"🧀", engineerShop:"🛠️", launcher:"🚀", teleporter:"🌀", battery:"🔋", advancedBattery:"🪫", armory:"🛡️",
   stormCitadel:"🌩️", ironBulwarkBastion:"🏰", foundryNexus:"🏗️", warCoreHangar:"🛰️", solarCheeseReactor:"☀️"
 };
 
@@ -704,7 +722,7 @@ function getTowerLateScale(type){
 }
 function getStructurePowerRequirement(type){
   const map = {
-    workshop:1, launcher:1, teleporter:1, robo:1, sniperTower:1,
+    workshop:1, launcher:1, teleporter:1, robo:1, sniperTower:1, commandBeacon:1, restorationSpire:1, armory:1, phoenixTower:2,
     advancedRobo:2, zapCoil:2, mortarBloom:2,
     sawBlaster:3, mechaHangar:3, railGun:4,
     stormCitadel:10, ironBulwarkBastion:10, foundryNexus:10, warCoreHangar:15, solarCheeseReactor:15
@@ -779,19 +797,19 @@ function getStructureTechModifiers(s){
   if(walls === "bulwark"){ out.hp *= 1.35; }
   if(walls === "conductor"){ out.aura += 0.2; }
   if(walls === "spikes"){ out.siegeFocus *= 1.12; }
-  const fast = familyProgression.fastAttack?.branch;
+  const fast = familyProgression.rapidTower?.branch || familyProgression.fastAttack?.branch;
   if(["turret","sawBlaster"].includes(atkType)){
     if(fast==="suppressor"){ out.speed*=1.2; }
     if(fast==="hunter"){ out.range*=1.16; }
     if(fast==="ripper"){ out.damage*=1.22; out.range*=0.92; }
   }
-  const siege = familyProgression.siege?.branch;
+  const siege = familyProgression.heavyTower?.branch || familyProgression.siege?.branch;
   if(["cannon","mortarBloom","shardLauncher"].includes(atkType)){
     if(siege==="siegebreaker"){ out.damage*=1.25; }
     if(siege==="shatterburst"){ out.splash+=0.9; }
     if(siege==="zone"){ out.speed*=1.1; }
   }
-  const tech = familyProgression.techWeapons?.branch;
+  const tech = familyProgression.arcTower?.branch || familyProgression.techWeapons?.branch;
   if(["zapCoil","sniperTower","railGun"].includes(atkType)){
     if(tech==="overcharge"){ out.damage*=1.28; out.speed*=0.88; }
     if(tech==="arc"){ out.chain += 1; }
@@ -804,7 +822,7 @@ function getStructureTechModifiers(s){
     if(f==="war") out.aura+=0.2;
   }
   if(["battery","advancedBattery"].includes(s.type)){
-    const b = familyProgression.batteries?.branch;
+    const b = familyProgression.powerCore?.branch || familyProgression.batteries?.branch;
     if(b==="overcharge") out.aura+=0.3;
     if(b==="relay") out.powerRadius*=1.35;
     if(b==="fortress") out.hp*=1.25;
@@ -843,7 +861,7 @@ function applyBranchVisuals(s, dt){
   }
 }
 function applyStructureMaxHpRescale(s, newMaxHp){ const pct = s.maxHp>0 ? s.hp/s.maxHp : 1; s.maxHp = newMaxHp; s.hp = clamp(newMaxHp * pct, 0, newMaxHp); setHealthBar(s.mesh.userData.healthBar, s.maxHp>0 ? s.hp/s.maxHp : 1); updateWallDamageVisual(s);}
-function reapplyGlobalUpgrades(){ for(const s of structures){ if(s.dead) continue; if(isWallStructure(s)){ const base = s.baseMaxHp || s.maxHp; s.baseMaxHp = base; applyStructureMaxHpRescale(s, base * getWallUpgradeMultiplier()); } } for(const m of servantMice){ m.speed = (m.baseSpeed || m.speed) * getServantSpeedMultiplier(); m.baseSpeed = m.baseSpeed || m.speed/getServantSpeedMultiplier(); } }
+function reapplyGlobalUpgrades(){ for(const s of structures){ if(s.dead) continue; if(isWallStructure(s)){ const base = s.baseMaxHp || s.maxHp; s.baseMaxHp = base; applyStructureMaxHpRescale(s, base * getWallUpgradeMultiplier()); } } for(const m of servantMice){ m.speed = (m.baseSpeed || m.speed) * getServantSpeedMultiplier(); m.baseSpeed = m.baseSpeed || m.speed/getServantSpeedMultiplier(); if(m.state==="knight"){ m.maxHp = 60 * getWallUpgradeMultiplier(); m.hp = Math.min(m.maxHp, Math.max(m.hp, m.maxHp*0.65)); m.knightDamage = 22 * getAttackUpgradeBuffs().damageMult; } } }
 function getUpgradeCost(track){
   const lvl = track.level || 0;
   const growth = 1 + lvl * 0.21 + Math.pow(lvl, 1.45) * 0.06;
@@ -898,7 +916,11 @@ function renderCapstoneRows(){
 }
 function refreshTowerMenu(){ if(!ui.towerUpgradeRows) return; ui.towerRes.textContent = `Cheese ${Math.floor(cheese)} · Gas ${Math.floor(gas)}`; ui.towerTabs.innerHTML = TOWER_MENU_TABS.map(t=>`<button class="towerTab ${activeTowerTab===t?"active":""}" data-tab="${t}">${t==="global"?"Global Upgrades":t==="trees"?"Tech Trees":"Capstones / Unlocks"}</button>`).join(""); let html = ""; if(activeTowerTab==="global") html = renderGlobalTowerRows(); if(activeTowerTab==="trees") html = renderTechTreeRows(); if(activeTowerTab==="capstones") html = renderCapstoneRows(); ui.towerUpgradeRows.innerHTML = html; ui.towerTabs.querySelectorAll("button[data-tab]").forEach(b=>b.onclick=()=>{ activeTowerTab = b.dataset.tab; refreshTowerMenu(); }); ui.towerUpgradeRows.querySelectorAll("button[data-up]").forEach(b=>b.onclick=()=>buyTowerUpgrade(b.dataset.up)); ui.towerUpgradeRows.querySelectorAll("button[data-fam]").forEach(b=>b.onclick=()=>buyFamilyNode(b.dataset.fam, Number(b.dataset.tier), b.dataset.key)); }
 function buyTowerUpgrade(kind){ let ref=null; if(kind==="walls") ref=globalUpgrades.walls; if(kind==="servants") ref=globalUpgrades.servants; if(kind==="economy") ref=globalUpgrades.economy; if(kind==="attackRange") ref={level:globalUpgrades.attack.range,set:v=>globalUpgrades.attack.range=v}; if(kind==="attackSpeed") ref={level:globalUpgrades.attack.speed,set:v=>globalUpgrades.attack.speed=v}; if(kind==="attackDamage") ref={level:globalUpgrades.attack.damage,set:v=>globalUpgrades.attack.damage=v}; if(!ref) return; const c=getUpgradeCost({level:ref.level}); if(cheese<c.cheese||gas<c.gas) return; cheese-=c.cheese; gas-=c.gas; const nl=ref.level+1; if(ref.set) ref.set(nl); else ref.level=nl; reapplyGlobalUpgrades(); showCenter("Upgrade Purchased",0.8); refreshTowerMenu(); }
-function setTowerMenuOpen(open){ activeTowerMenu=open; gamePaused=open; ui.towerMenu.classList.toggle("open", open); if(open) refreshTowerMenu(); }
+function refreshPauseState(){
+  gamePaused = !!(manualPause || activeTowerMenu);
+  if(ui.pauseOverlay) ui.pauseOverlay.style.display = manualPause ? "flex" : "none";
+}
+function setTowerMenuOpen(open){ activeTowerMenu=open; refreshPauseState(); ui.towerMenu.classList.toggle("open", open); if(open) refreshTowerMenu(); }
 function angleDiff(a,b){
   let d = b-a;
   while(d > Math.PI) d -= Math.PI*2;
@@ -1849,12 +1871,16 @@ function animateMouseRig(group, speedFactor, t, attackAmount=0, dying=0){
   if(!rig) return;
   const walk = t * (5 + speedFactor*8);
   if(rig.pelvis?.position) rig.pelvis.position.y = Math.sin(walk*2)*0.02;
+  if(rig.pelvis?.rotation){
+    rig.pelvis.rotation.y = Math.sin(walk*1.7) * (0.12 + speedFactor * 0.08);
+    rig.pelvis.rotation.z = Math.sin(walk*2.2 + 0.6) * (0.04 + speedFactor * 0.03);
+  }
   if(rig.spine?.rotation) rig.spine.rotation.x = Math.sin(walk*2)*0.05 + attackAmount*0.18 - dying*1.2;
   if(rig.neck?.rotation) rig.neck.rotation.x = Math.sin(walk*2+0.5)*0.04 - attackAmount*0.3 + dying*0.35;
 
   if(rig.tailBase?.rotation){
     rig.tailBase.rotation.x = 0.18 + Math.sin(walk*2.5)*0.16;
-    rig.tailBase.rotation.y = Math.sin(walk*1.8)*0.22;
+    rig.tailBase.rotation.y = Math.sin(walk*1.8)*0.28;
   }
   if(rig.tailMid?.rotation){
     rig.tailMid.rotation.x = 0.12 + Math.sin(walk*2.6+0.6)*0.14;
@@ -2739,7 +2765,7 @@ function applyDamageToLiving(target, damage, hitPos=null){
     }
   } else if(target.kind){
     if(target.hp <= 0) killEnemy(target);
-  } else if(target.state === "wild" || target.state === "servant"){
+  } else if(target.state === "wild" || target.state === "servant" || target.state === "knight"){
     if(target.hp <= 0) beginDeath(target, "mouse");
   }
 }
@@ -2764,7 +2790,7 @@ function structureColor(type){
     wall:0xffde62, diamondWall:0x98ebff, ultraWall:0x93c8ff, cannon:0xffb85d, turret:0xf7d45b, beacon:0x7aff95,
     factory:0xfff09d, robo:0xc0c7d5, fountain:0x8ef7ff, shardLauncher:0xffd3a5, zapCoil:0xb6a6ff,
     mortarBloom:0xff98b5, sawBlaster:0xffb38f, sniperTower:0x9ec6ff, railGun:0x95b5ff, barrierTotem:0x9ce6ff, braceTower:0xbef0c0,
-    repairAnchor:0x93fff5, fortPlate:0xa7ceff, supplyNest:0xfff3b5, scoutPost:0xcff4ff,
+    repairAnchor:0x93fff5, restorationSpire:0x93fff5, commandBeacon:0x7aff95, phoenixTower:0xff9d52, armory:0xd5b483, fortPlate:0xa7ceff, supplyNest:0xfff3b5, scoutPost:0xcff4ff,
     breedingNest:0xffd8aa, gasDepot:0x9df3d3, gasMine:0x8bd4c3, workshop:0xaec4d8, advancedRobo:0x8ad9ff, mechaHangar:0xffbf90,
     launcher:0x88deff, teleporter:0x9ea1ff, battery:POWER_SYMBOL_COLOR, advancedBattery:0x7dd5ff,
     stormCitadel:0x8cbcff, ironBulwarkBastion:0xbec5d8, foundryNexus:0xffca7f, warCoreHangar:0xe199ff, solarCheeseReactor:0xfff08d
@@ -3157,6 +3183,45 @@ function createStructureMesh(type){
     g.add(base, anchor);
     g.userData.anchor = anchor;
   }
+  if(type==="restorationSpire"){
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.42,2.4,10), new THREE.MeshStandardMaterial({ color:0x7fd1ff, emissive:0x2a6f9f, emissiveIntensity:0.18 }));
+    stem.position.y = 1.7;
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(0.88,0.08,10,28), new THREE.MeshStandardMaterial({ color:0x95ffc7, emissive:0x66ffc0, emissiveIntensity:0.4 }));
+    halo.position.y = 2.95;
+    halo.rotation.x = Math.PI/2;
+    g.add(stem, halo);
+    g.userData.restorationHalo = halo;
+  }
+  if(type==="commandBeacon"){
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.24,2.9,10), new THREE.MeshStandardMaterial({ color:0xaac0d9, metalness:0.25, roughness:0.45 }));
+    mast.position.y = 1.85;
+    const dish = new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.92,0.26,18), new THREE.MeshStandardMaterial({ color:0x8fe7ff, emissive:0x64d6ff, emissiveIntensity:0.35 }));
+    dish.position.y = 3.15;
+    dish.rotation.z = Math.PI/2.5;
+    g.add(mast, dish);
+    g.userData.commandDish = dish;
+  }
+  if(type==="phoenixTower"){
+    const column = new THREE.Mesh(new THREE.CylinderGeometry(0.42,0.72,3.8,12), new THREE.MeshStandardMaterial({ color:0xffb068, emissive:0xff7f3c, emissiveIntensity:0.28 }));
+    column.position.y = 2.35;
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(0.18,0.78,1.7), new THREE.MeshStandardMaterial({ color:0xffd29b, emissive:0xff9552, emissiveIntensity:0.25 }));
+    wing.position.set(0.82,2.85,0); wing.rotation.z = 0.46;
+    const wing2 = wing.clone(); wing2.position.x = -0.82; wing2.rotation.z = -0.46;
+    const crown = new THREE.Mesh(new THREE.SphereGeometry(0.38,10,9), new THREE.MeshStandardMaterial({ color:0xfff1ab, emissive:0xffcf66, emissiveIntensity:0.6 }));
+    crown.position.y = 4.35;
+    g.add(column, wing, wing2, crown);
+    g.userData.phoenixCrown = crown;
+  }
+  if(type==="armory"){
+    const hall = new THREE.Mesh(new THREE.BoxGeometry(1.8,1.5,1.2), new THREE.MeshStandardMaterial({ color:0xa6895b, roughness:0.6 }));
+    hall.position.y = 1.45;
+    const rack = new THREE.Mesh(new THREE.BoxGeometry(1.35,0.2,0.22), new THREE.MeshStandardMaterial({ color:0xd6c3a2 }));
+    rack.position.set(0,2.15,0.54);
+    const banner = new THREE.Mesh(new THREE.PlaneGeometry(0.68,0.92), new THREE.MeshStandardMaterial({ color:0xc84f4f, emissive:0x742525, emissiveIntensity:0.2, side:THREE.DoubleSide }));
+    banner.position.set(0,1.65,-0.62);
+    g.add(hall, rack, banner);
+    g.userData.armoryBanner = banner;
+  }
 
   if(type==="fortPlate"){
     const plate = new THREE.Mesh(
@@ -3545,6 +3610,7 @@ function createStructure(type,x,z,rotationY=0, dataOverride=null){
   const cell = worldToCell(x,z);
 
   if(type==="towerOfCheese" && structures.some(st=>!st.dead && st.type==="towerOfCheese")){ showCenter("Only one Tower of Cheese may stand", 1.2); return null; }
+  if(type==="phoenixTower" && structures.some(st=>!st.dead && st.type==="phoenixTower")){ showCenter("Only one Phoenix Tower may stand", 1.2); return null; }
   const s = {
     id:`st-${Math.random().toString(36).slice(2,10)}-${Math.floor(performance.now())}`,
     type,
@@ -3744,7 +3810,7 @@ function getBuildValidation(selected, x, z){
 function beaconBuffAt(x,z){
   let buff = { damage:1, speed:1, active:false };
   for(const s of structures){
-    if(s.dead || s.type!=="beacon") continue;
+    if(s.dead || !["beacon","commandBeacon"].includes(s.type)) continue;
     const d = Math.hypot(x-s.pos.x, z-s.pos.z);
     if(d < 13){
       buff.damage += 0.25;
@@ -3756,7 +3822,7 @@ function beaconBuffAt(x,z){
 }
 function updateBeaconGlow(){
   for(const s of structures){
-    if(s.dead || s.type === "beacon") continue;
+    if(s.dead || ["beacon","commandBeacon"].includes(s.type)) continue;
     const buff = beaconBuffAt(s.pos.x, s.pos.z);
     s.isBeaconBuffed = buff.active;
     const glow = s.mesh.userData.beaconGlow;
@@ -4079,6 +4145,42 @@ for(let i=0;i<4;i++){
   spawnWildMouse(p.x,p.z);
 }
 let wildSpawnTimer = 0;
+function findNearestArmory(range=5.4){
+  let best = null, bestD = range;
+  for(const s of structures){
+    if(s.dead || s.type!=="armory") continue;
+    const d = dist2(player.pos, s.pos);
+    if(d < bestD){ bestD = d; best = s; }
+  }
+  return best;
+}
+function getIdleServantsForArmory(){
+  return servantMice.filter(m=>!m.dead && !m.dying && m.state==="servant" && !m.assignedFactory && !m.assignedGasMine && !m.assignedMechaHangar);
+}
+function promoteServantToKnight(m){
+  m.state = "knight";
+  m.knightAttackCd = 0;
+  m.knightChargeCd = 0;
+  m.knightDamage = 22 * getAttackUpgradeBuffs().damageMult;
+  m.maxHp = 60 * getWallUpgradeMultiplier();
+  m.hp = Math.max(m.hp, m.maxHp);
+  m.speed = 6.8;
+  m.group.traverse(c=>{
+    if(c.isMesh && c.material?.color){
+      c.material = c.material.clone();
+      c.material.color.offsetHSL(0.02, -0.12, -0.1);
+    }
+  });
+  addBurst(m.pos.x, m.pos.y+1.0, m.pos.z, 0xaed6ff, 10, 3.4, 0.46, 0.06);
+}
+function activateArmory(armory){
+  if(!armory || armory.dead) return;
+  const candidates = getIdleServantsForArmory().slice(0, 4);
+  if(!candidates.length){ showCenter("No idle servants for knight formation", 0.9); return; }
+  candidates.forEach(promoteServantToKnight);
+  addBurst(armory.pos.x, armory.pos.y+1.5, armory.pos.z, 0xffd497, 20, 4.4, 0.62, 0.08);
+  showCenter(`Armory formed ${candidates.length} Knight Mice`, 1.0);
+}
 
 function recruitMouse(m, ownerStructure=null){
   const i = wildMice.indexOf(m);
@@ -4323,8 +4425,38 @@ function updateMouseEntity(m,dt){
       m.target.y = groundHeight(m.target.x, m.target.z);
     }
   } else {
+    if(m.state === "knight"){
+      m.knightAttackCd = Math.max(0, (m.knightAttackCd || 0) - dt);
+      m.knightChargeCd = Math.max(0, (m.knightChargeCd || 0) - dt);
+      const target = nearestEnemyInRange(m, 14) || cat;
+      if(target && !target.dead){
+        m.target = target.pos;
+        if(dist2(m.pos, target.pos) < 1.5 && m.knightAttackCd <= 0){
+          m.knightAttackCd = 0.72;
+          m.attackAnim = 1;
+          const dmg = (m.knightDamage || 22) * (1 + globalUpgrades.attack.damage * 0.25);
+          applyDamageToLiving(target, dmg, m.pos);
+          addBurst(m.pos.x, m.pos.y+0.8, m.pos.z, 0xffd7aa, 5, 2.1, 0.24, 0.05);
+        }
+      } else {
+        m.target = player.pos;
+      }
+    }
     if(m.assignedGasMine && !isValidGasWorkerForMine(m, m.assignedGasMine)){
       clearServantGasMineAssignment(m);
+    }
+    if(m.state === "knight"){
+      const moveTarget = m.target || player.pos;
+      const step = directSteerToward({ pos:m.pos, speed:m.speed * 1.1, radius:m.radius }, moveTarget, dt, false, null, servantMice);
+      if(step){
+        m.heading += clamp(angleDiff(m.heading, step.heading), -4.8*dt, 4.8*dt);
+        m.pos.x = step.x; m.pos.z = step.z;
+      }
+      m.pos.y = groundHeight(m.pos.x,m.pos.z);
+      m.group.position.copy(m.pos);
+      m.group.rotation.y = m.heading;
+      animateMouseRig(m.group, 0.95, m.anim, m.attackAnim, 0);
+      return;
     }
     if(m.assignedGasMine && !m.assignedGasMine.dead){
       if(updateGasMineServant(m, dt)){
@@ -5932,13 +6064,38 @@ function updateStructures(dt){
       tryTriggerTeleporter(s);
     }
 
-    if(s.type==="beacon"){
+    if(s.type==="beacon" || s.type==="commandBeacon"){
       const top = s.mesh.userData.top;
       if(top){
         top.rotation.y += dt*2.7;
         top.position.y = 4.2 + Math.sin(time*4)*0.12;
       }
+      const dish = s.mesh.userData.commandDish;
+      if(dish){
+        dish.rotation.y += dt * 2.3;
+        dish.rotation.x = Math.sin(time*3.5 + s.pos.x*0.04) * 0.26;
+      }
       if(Math.random() < 0.03) addBurst(s.pos.x,s.pos.y+4.2,s.pos.z,0x76ff9c,2,1.1,0.32,0.04);
+    }
+    if(s.type==="restorationSpire"){
+      const halo = s.mesh.userData.restorationHalo;
+      if(halo){
+        halo.rotation.z += dt*1.8;
+        halo.material.emissiveIntensity = 0.35 + Math.sin(time*5.8)*0.35;
+      }
+    }
+    if(s.type==="phoenixTower"){
+      const crown = s.mesh.userData.phoenixCrown;
+      if(crown?.material){
+        crown.material.emissiveIntensity = 0.55 + Math.sin(time*6 + s.pos.x*0.08) * 0.45;
+      }
+      if(Math.random() < 0.035) addBurst(s.pos.x + rand(-0.7,0.7), s.pos.y + rand(2.2,4.4), s.pos.z + rand(-0.7,0.7), 0xff8d3d, 2, 1.2, 0.24, 0.045);
+    }
+    if(s.type==="armory"){
+      const banner = s.mesh.userData.armoryBanner;
+      if(banner){
+        banner.rotation.y = Math.sin(time*2.8 + s.pos.x*0.03) * 0.22;
+      }
     }
     if(s.type==="ultraWall"){
       const core = s.mesh.userData.ultraWallCore;
@@ -6009,6 +6166,9 @@ function updateStructures(dt){
         popWorldText(`+${out}🧀`, worker.pos.x, worker.pos.y + 1.55, worker.pos.z, "#ffe66f");
         addBurst(s.pos.x,s.pos.y+1.4,s.pos.z,0xffe066,8,3,0.45,0.07);
       }
+      if(Math.random() < (workerNear ? 0.05 : 0.02)){
+        addCogParticle(s.pos.x + rand(-0.7,0.7), s.pos.y + rand(1.0,2.3), s.pos.z + rand(-0.7,0.7));
+      }
     }
 
     if((s.type==="robo" || s.type==="advancedRobo" || s.type==="mechaHangar" || s.type==="engineerShop" || s.type==="breedingNest") && canRun){
@@ -6023,6 +6183,10 @@ function updateStructures(dt){
     }
     if(s.type==="gasMine"){
       updateGasMineDebugLabel(s);
+      const staffed = !!s.assignedServant && !s.assignedServant.dead && !s.assignedServant.dying;
+      if(Math.random() < (staffed ? 0.08 : 0.03)){
+        addBurst(s.pos.x + rand(-0.45,0.45), s.pos.y + rand(1.1,2.2), s.pos.z + rand(-0.45,0.45), 0x91ffd4, staffed ? 3 : 1, 1.2, 0.26, 0.045);
+      }
     }
     if(s.type==="mechaHangar" && s.mechaPending){
       s.mechaPending = false;
@@ -6053,7 +6217,7 @@ function updateStructures(dt){
       }
     }
 
-    if(s.type==="repairAnchor"){
+    if(s.type==="repairAnchor" || s.type==="restorationSpire"){
       const anchor = s.mesh.userData.anchor;
       if (anchor) anchor.rotation.y += dt * 1.6;
       for (const t of structures) {
@@ -6356,8 +6520,17 @@ function updateStructures(dt){
 document.addEventListener("keydown", e=>{
   const k = e.key.toLowerCase();
   keys[k] = true;
+  if(k === "p" && matchStarted && !gameOver){
+    manualPause = !manualPause;
+    refreshPauseState();
+    return;
+  }
   if(k === "escape" && activeTowerMenu){ setTowerMenuOpen(false); return; }
-  if(k === "e" && nearestTowerOfCheese){ setTowerMenuOpen(!activeTowerMenu); return; }
+  if(k === "e"){
+    const armory = findNearestArmory();
+    if(armory && !activeTowerMenu){ activateArmory(armory); return; }
+    if(nearestTowerOfCheese){ setTowerMenuOpen(!activeTowerMenu); return; }
+  }
   if(activeTowerMenu) return;
 
   const map = getBuildShortcutMap(currentCategory);
@@ -6809,6 +6982,15 @@ function spawnEnemyWave(kind,count){
 // -------------------------------------------------
 function diePlayer(){
   if(player.dead || levelTransitionActive) return;
+  const phoenix = structures.find(s=>!s.dead && s.type==="phoenixTower");
+  if(phoenix){
+    player.pos.set(phoenix.pos.x, groundHeight(phoenix.pos.x, phoenix.pos.z), phoenix.pos.z);
+    player.group.position.copy(player.pos);
+    addBurst(phoenix.pos.x, phoenix.pos.y+2.1, phoenix.pos.z, 0xff9b47, 40, 8.4, 1.1, 0.12);
+    damageStructure(phoenix, phoenix.maxHp + 9999);
+    showCenter("Phoenix Rebirth!", 1.2);
+    return;
+  }
   player.dead = true;
   gameOver = true;
   addBloodHit(player.pos.x, player.pos.y+0.9, player.pos.z, 1.35);
