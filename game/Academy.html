@@ -232,6 +232,22 @@
     color: #c6c6c6;
   }
   .towerSub { color:#a4b3c8; font-size:11px; }
+  .towerTabs { display:flex; gap:8px; margin:10px 0 12px; flex-wrap:wrap; }
+  .towerTab {
+    border:1px solid rgba(255,255,255,0.25);
+    background:rgba(255,255,255,0.08);
+    color:#eef6ff;
+    border-radius:999px;
+    padding:5px 11px;
+    font-size:11px;
+    font-weight:bold;
+    cursor:pointer;
+  }
+  .towerTab.active { border-color:#9dcbff; background:rgba(83,154,255,0.28); }
+  .towerSection { margin-top:10px; border-top:1px solid rgba(255,255,255,0.12); padding-top:10px; }
+  .towerFamilyCard { border:1px solid rgba(255,255,255,0.15); border-radius:10px; padding:8px; margin:8px 0; background:rgba(255,255,255,0.04); }
+  .towerChoiceGrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:6px; margin-top:6px; }
+  .towerTiny { font-size:10px; color:#9eb0c8; }
   #mainMenu { position:absolute; inset:0; z-index:80; display:flex; align-items:center; justify-content:center; background:radial-gradient(circle at 30% 25%, rgba(34,58,78,0.86), rgba(5,8,14,0.95)); color:#f5f8ff; }
   #menuPanel { width:min(920px,94vw); max-height:92vh; overflow:auto; border-radius:18px; border:1px solid rgba(255,255,255,0.18); background:rgba(13,18,27,0.92); box-shadow:0 20px 44px rgba(0,0,0,0.45); padding:16px; }
   .menuGrid { display:grid; grid-template-columns:1.5fr 1fr; gap:14px; }
@@ -294,6 +310,7 @@
 <div id="towerMenu">
   <div id="towerPanel">
     <div class="towerRow"><strong style="font-size:15px;color:#ffe978;">Tower of Cheese Upgrades</strong><span id="towerRes" class="towerSub"></span></div>
+    <div id="towerTabs" class="towerTabs"></div>
     <div id="towerUpgradeRows"></div>
     <div class="towerSub" style="margin-top:8px;">Press E or Esc to close</div>
   </div>
@@ -364,6 +381,7 @@ const ui = {
   towerPrompt: document.getElementById("towerPrompt"),
   towerMenu: document.getElementById("towerMenu"),
   towerRes: document.getElementById("towerRes"),
+  towerTabs: document.getElementById("towerTabs"),
   towerUpgradeRows: document.getElementById("towerUpgradeRows"),
 };
 
@@ -398,8 +416,30 @@ const SPAWN_STRUCTURE_CONFIG = {
   mechaHangar:{ cap:2, respawnDelay:20, label:"Mecha", spawnType:"mecha", spawnFn:(s)=>spawnRobotFromStructure(s, false, true) },
   engineerShop:{ cap:1, respawnDelay:30, label:"Engineer", spawnType:"engineer", spawnFn:spawnEngineerForStructure }
 };
-const BUILD_EXTRA_KEYS = ["u","i","o","p","j","k","l",";"];
+const BUILD_EXTRA_KEYS = ["u","i","o","p","j","k","l",";","n","m","h","g"];
 const globalUpgrades = { walls:{level:0}, servants:{level:0}, attack:{range:0,speed:0,damage:0}, economy:{level:0} };
+const TOWER_MENU_TABS = ["global","trees","capstones"];
+let activeTowerTab = "global";
+const familyProgression = {};
+const FAMILY_TECH_TREES = {
+  walls:{ label:"Walls", branches:{ bulwark:{label:"Bulwark", t2:["Citadel Plating","Cover Slits"], t3:"Fortress Face"}, conductor:{label:"Conductor", t2:["Live Wire","Relay Mesh"], t3:"Storm Fence"}, spikes:{label:"Spikes", t2:["Barbed Edge","Impaler Teeth"], t3:"Death Hedge"} } },
+  support:{ label:"Support Structures", branches:{ sanctuary:{label:"Sanctuary", t2:["Static Ward","Repulse Ward"], t3:"Aegis Choir"}, siegeFrame:{label:"Siege Frame", t2:["Gun Rack","Anchor Frame"], t3:"Fortified Cadence"}, rapidWeld:{label:"Rapid Weld", t2:["Renewal","Scrap Loop"], t3:"Sanctum Loop"} } },
+  fastAttack:{ label:"Fast Attack Towers", branches:{ suppressor:{label:"Suppressor", t2:["Tracer Storm","Pinning Fire"], t3:"Crowd Shear"}, hunter:{label:"Hunter", t2:["Rapid Tracking","Trail Mark"], t3:"Predator Core"}, ripper:{label:"Ripper", t2:["Armor Saw","Point Blank"], t3:"Breach Spiral"} } },
+  siege:{ label:"Siege / Explosive Towers", branches:{ siegebreaker:{label:"Siegebreaker", t2:["Shatter Rivet","Piercing Payload"], t3:"Crater Doctrine"}, shatterburst:{label:"Shatterburst", t2:["Cluster Dust","Delayed Bloom"], t3:"Cascade Field"}, zone:{label:"Zone Denial", t2:["Glue Cloud","Burning Ground"], t3:"No-Go Sector"} } },
+  techWeapons:{ label:"Tech Weapons", branches:{ overcharge:{label:"Overcharge", t2:["Beam Overdrive","Shell Overcharge"], t3:"Surge Window"}, arc:{label:"Arc Lattice", t2:["Pierce Mesh","Chain Weave"], t3:"Storm Matrix"}, precision:{label:"Precision Core", t2:["Boss Mark","Execution Lens"], t3:"Critical Vector"} } },
+  factories:{ label:"Factories", branches:{ harvest:{label:"Harvest", t2:["Bulk Press","Golden Yield"], t3:"Overflow Line"}, logistics:{label:"Logistics", t2:["Fast Dispatch","Load Harness"], t3:"Relay Network"}, war:{label:"War Industry", t2:["Ammunition Press","Combat Rations"], t3:"Foundry Feed"} } },
+  gas:{ label:"Gas Mines", branches:{ refinery:{label:"Refinery", t2:["Pressure Tap","Purity Filter"], t3:"Deep Vein"}, hazard:{label:"Hazard", t2:["Caustic Exhaust","Volatile Leak"], t3:"Detonation Valve"}, grid:{label:"Grid Feed", t2:["Thermal Dynamo","Charge Pipe"], t3:"Fusion Feed"} } },
+  robotics:{ label:"Robotics", branches:{ skirmish:{label:"Skirmish Protocol", t2:["Marksman Bots","Arc Riflers"], t3:"Vanguard Cloud"}, bulwark:{label:"Bulwark Protocol", t2:["Shell Tanks","Shield Tanks"], t3:"Titan March"}, command:{label:"Command Protocol", t2:["Aura Captain","Drone Marshal"], t3:"War Algorithm"} } },
+  batteries:{ label:"Batteries / Power Grid", branches:{ overcharge:{label:"Overcharge Grid", t2:["Beam Overdrive","Shell Overcharge"], t3:"Surge Window"}, relay:{label:"Relay Web", t2:["Wide Grid","Efficient Routing"], t3:"District Backbone"}, fortress:{label:"Fortress Current", t2:["Shield Pulse","Retaliation Current"], t3:"Citadel Circuit"} } },
+  capstones:{ label:"Capstones", branches:{ storm:{label:"Storm Path", t2:["Pulse Cage","Conductive Reach"], t3:"Skybreaker"}, bulwark:{label:"Bulwark Path", t2:["Anchor Bastion","Siege Dampers"], t3:"Last Redoubt"}, industry:{label:"Industry Path", t2:["Heat Routing","Macro Conveyors"], t3:"Nexus Prime"} } }
+};
+const CAPSTONE_DEFS = [
+  { type:"stormCitadel", name:"Storm Citadel", requires:{ techWeapons:2, batteries:2 }, power:10 },
+  { type:"ironBulwarkBastion", name:"Iron Bulwark Bastion", requires:{ walls:2, support:2 }, power:10 },
+  { type:"foundryNexus", name:"Foundry Nexus", requires:{ factories:2, gas:2 }, power:10 },
+  { type:"warCoreHangar", name:"War Core Hangar", requires:{ robotics:2, batteries:3 }, power:15 },
+  { type:"solarCheeseReactor", name:"Solar Cheese Reactor", requires:{ factories:2, batteries:3, capstones:1 }, power:15 }
+];
 
 let cat = null;
 let catSpawnTriggered = false;
@@ -513,14 +553,20 @@ const CATEGORY_BUILDS = {
     { slot:1, name:"Advanced Robo Foundry", cost:130, gasCost:76, type:"advancedRobo", hp:300, radius:2.8, prereq:"workshop" },
     { slot:2, name:"Mecha Hangar", cost:175, gasCost:105, type:"mechaHangar", hp:330, radius:2.9, prereq:"workshop" },
     { slot:3, name:"Tower of Cheese", cost:40, gasCost:18, type:"towerOfCheese", hp:320, radius:3.1, prereq:"workshop" },
-    { slot:4, name:"Engineer Shop", cost:95, gasCost:55, type:"engineerShop", hp:250, radius:2.8, prereq:"workshop" }
+    { slot:4, name:"Engineer Shop", cost:95, gasCost:55, type:"engineerShop", hp:250, radius:2.8, prereq:"workshop" },
+    { slot:10, name:"Storm Citadel", cost:420, gasCost:310, type:"stormCitadel", hp:980, radius:4.2, prereq:"workshop", capstoneKey:"stormCitadel" },
+    { slot:11, name:"Iron Bulwark Bastion", cost:390, gasCost:280, type:"ironBulwarkBastion", hp:1200, radius:4.0, prereq:"workshop", capstoneKey:"ironBulwarkBastion" },
+    { slot:12, name:"Foundry Nexus", cost:400, gasCost:290, type:"foundryNexus", hp:920, radius:4.1, prereq:"workshop", capstoneKey:"foundryNexus" },
+    { slot:13, name:"War Core Hangar", cost:560, gasCost:420, type:"warCoreHangar", hp:1300, radius:4.5, prereq:"workshop", capstoneKey:"warCoreHangar" },
+    { slot:14, name:"Solar Cheese Reactor", cost:600, gasCost:450, type:"solarCheeseReactor", hp:1050, radius:4.4, prereq:"workshop", capstoneKey:"solarCheeseReactor" }
   ]
 };
 const BUILD_ICONS = {
   factory:"🧀", fountain:"💧", supplyNest:"📦", beacon:"📡", robo:"⚙️", scoutPost:"👁️", breedingNest:"🐣", gasDepot:"🛢️", gasMine:"♨️",
   wall:"🧱", diamondWall:"💎", ultraWall:"🧿", barrierTotem:"🛡️", braceTower:"🏛️", repairAnchor:"🔧", fortPlate:"🪙",
   turret:"🎯", cannon:"💥", shardLauncher:"🔱", zapCoil:"⚡", mortarBloom:"🌸", sawBlaster:"🪚", sniperTower:"🎯", railGun:"🧲",
-  workshop:"🏭", advancedRobo:"🤖", mechaHangar:"🛸", towerOfCheese:"🧀", engineerShop:"🛠️", launcher:"🚀", teleporter:"🌀", battery:"🔋", advancedBattery:"🪫"
+  workshop:"🏭", advancedRobo:"🤖", mechaHangar:"🛸", towerOfCheese:"🧀", engineerShop:"🛠️", launcher:"🚀", teleporter:"🌀", battery:"🔋", advancedBattery:"🪫",
+  stormCitadel:"🌩️", ironBulwarkBastion:"🏰", foundryNexus:"🏗️", warCoreHangar:"🛰️", solarCheeseReactor:"☀️"
 };
 
 function getBuildKeyForEntry(entry, index){
@@ -570,11 +616,13 @@ function updateBuildUI() {
     div.className = "buildItem" + (currentSelectionSlot === b.slot ? " active" : "");
     const icon = BUILD_ICONS[b.type] || "•";
     const prereqTxt = b.prereq && !hasStructureType(b.prereq) ? ` · Needs ${prettyTypeName(b.prereq)}` : "";
+    const capstoneLocked = !!b.capstoneKey && !isCapstoneUnlocked(b.capstoneKey);
+    const capstoneTxt = capstoneLocked ? " · Locked in Tower tech" : "";
     const tip = b.requiresVent ? " · On vent only" : "";
     const powerNeed = getStructurePowerRequirement(b.type);
     const powerProvide = getStructurePowerProvided(b.type);
     const powerTxt = powerNeed > 0 ? ` · Needs ${powerNeed}⚡` : (powerProvide > 0 ? ` · Provides ${powerProvide}⚡` : "");
-    div.innerHTML = `<span class="buildKey">${getBuildKeyForEntry(b, CATEGORY_BUILDS[currentCategory].indexOf(b)).toUpperCase()}</span><span class="buildIcon">${icon}</span>${b.name} (${b.cost}🧀/${b.gasCost||0}⛽)${prereqTxt}${tip}${powerTxt}`;
+    div.innerHTML = `<span class="buildKey">${getBuildKeyForEntry(b, CATEGORY_BUILDS[currentCategory].indexOf(b)).toUpperCase()}</span><span class="buildIcon">${icon}</span>${b.name} (${b.cost}🧀/${b.gasCost||0}⛽)${prereqTxt}${capstoneTxt}${tip}${powerTxt}`;
     ui.buildGrid.appendChild(div);
   }
 }
@@ -658,13 +706,14 @@ function getStructurePowerRequirement(type){
   const map = {
     workshop:1, launcher:1, teleporter:1, robo:1, sniperTower:1,
     advancedRobo:2, zapCoil:2, mortarBloom:2,
-    sawBlaster:3, mechaHangar:3, railGun:4
+    sawBlaster:3, mechaHangar:3, railGun:4,
+    stormCitadel:10, ironBulwarkBastion:10, foundryNexus:10, warCoreHangar:15, solarCheeseReactor:15
   };
   return map[type] || 0;
 }
 function getStructurePowerProvided(type){
-  if(type === "battery") return 1;
-  if(type === "advancedBattery") return 2;
+  if(type === "battery") return 2;
+  if(type === "advancedBattery") return 5;
   return 0;
 }
 function isPowerSourceStructure(type){
@@ -677,7 +726,8 @@ function getNearbyPowerSources(targetStructure){
   const nearby = [];
   for(const s of structures){
     if(s.dead || !isPowerSourceStructure(s.type)) continue;
-    if(dist2(s.pos, targetStructure.pos) <= POWER_RADIUS) nearby.push(s);
+    const radius = POWER_RADIUS * (s.powerRadiusMult || 1) * (getStructureTechModifiers(s).powerRadius || 1);
+    if(dist2(s.pos, targetStructure.pos) <= radius) nearby.push(s);
   }
   return nearby;
 }
@@ -710,17 +760,143 @@ function getAttackUpgradeBuffs(){ return { rangeMult:1 + globalUpgrades.attack.r
 function getEconomyGasPerTrip(){ return BASE_GAS_DELIVERY + globalUpgrades.economy.level; }
 function getFactoryOutputAmount(){ return BASE_FACTORY_OUTPUT + globalUpgrades.economy.level; }
 function getGasMiningDuration(){ return BASE_GAS_MINE_TIME / getServantTaskMultiplier(); }
+function getFamilyTier(fam){ const f = familyProgression[fam]; if(!f) return 0; return (f.t3 ? 3 : (f.t2 ? 2 : (f.branch ? 1 : 0))); }
+function getFamilyValue(fam){ return getFamilyTier(fam); }
+function isCapstoneUnlocked(type){
+  const def = CAPSTONE_DEFS.find(c=>c.type===type);
+  if(!def) return false;
+  return Object.entries(def.requires).every(([fam, need]) => getFamilyValue(fam) >= need);
+}
+function getTechCostForFamily(fam, tier){
+  const level = getFamilyTier(fam);
+  const scale = 1 + level * 0.45 + (tier-1) * 0.55;
+  return { cheese:Math.floor((45 + tier*28) * scale), gas:Math.floor((24 + tier*18) * scale) };
+}
+function getStructureTechModifiers(s){
+  const out = { damage:1, speed:1, range:1, hp:1, production:1, powerRadius:1, chain:0, splash:0, siegeFocus:1, aura:0 };
+  const atkType = s.type;
+  const walls = familyProgression.walls?.branch;
+  if(walls === "bulwark"){ out.hp *= 1.35; }
+  if(walls === "conductor"){ out.aura += 0.2; }
+  if(walls === "spikes"){ out.siegeFocus *= 1.12; }
+  const fast = familyProgression.fastAttack?.branch;
+  if(["turret","sawBlaster"].includes(atkType)){
+    if(fast==="suppressor"){ out.speed*=1.2; }
+    if(fast==="hunter"){ out.range*=1.16; }
+    if(fast==="ripper"){ out.damage*=1.22; out.range*=0.92; }
+  }
+  const siege = familyProgression.siege?.branch;
+  if(["cannon","mortarBloom","shardLauncher"].includes(atkType)){
+    if(siege==="siegebreaker"){ out.damage*=1.25; }
+    if(siege==="shatterburst"){ out.splash+=0.9; }
+    if(siege==="zone"){ out.speed*=1.1; }
+  }
+  const tech = familyProgression.techWeapons?.branch;
+  if(["zapCoil","sniperTower","railGun"].includes(atkType)){
+    if(tech==="overcharge"){ out.damage*=1.28; out.speed*=0.88; }
+    if(tech==="arc"){ out.chain += 1; }
+    if(tech==="precision"){ out.damage*=1.18; out.range*=1.14; }
+  }
+  if(s.type==="factory"){
+    const f = familyProgression.factories?.branch;
+    if(f==="harvest") out.production*=1.45;
+    if(f==="logistics") out.speed*=1.2;
+    if(f==="war") out.aura+=0.2;
+  }
+  if(["battery","advancedBattery"].includes(s.type)){
+    const b = familyProgression.batteries?.branch;
+    if(b==="overcharge") out.aura+=0.3;
+    if(b==="relay") out.powerRadius*=1.35;
+    if(b==="fortress") out.hp*=1.25;
+  }
+  return out;
+}
+function getBatteryDistrictBoost(s){
+  const out = { damage:1, speed:1, range:1, splash:0, industrial:1 };
+  if(!s) return out;
+  for(const p of structures){
+    if(p.dead || !["battery","advancedBattery"].includes(p.type)) continue;
+    const radius = POWER_RADIUS * (p.powerRadiusMult || 1);
+    if(dist2(p.pos, s.pos) > radius) continue;
+    if(["zapCoil","railGun","sniperTower"].includes(s.type)){ out.damage *= 1.18; out.range *= 1.08; }
+    if(["cannon","mortarBloom","shardLauncher"].includes(s.type)){ out.splash += 0.85; out.damage *= 1.1; }
+    if(["turret","sawBlaster"].includes(s.type)){ out.speed *= 1.18; }
+    if(["barrierTotem","braceTower","repairAnchor"].includes(s.type)){ out.damage *= 1.06; }
+    if(["robo","advancedRobo","mechaHangar","factory","gasMine"].includes(s.type)){ out.industrial *= 1.22; }
+  }
+  return out;
+}
+function applyBranchVisuals(s, dt){
+  if(!s?.mesh) return;
+  const wallBranch = familyProgression.walls?.branch;
+  if(isWallStructure(s) && wallBranch==="conductor" && Math.random() < 0.025){
+    addLightningArc(new THREE.Vector3(s.pos.x-1.2, s.pos.y+1.8, s.pos.z), new THREE.Vector3(s.pos.x+1.2, s.pos.y+1.8, s.pos.z), 0.05, 0x77c8ff);
+  }
+  if(isWallStructure(s) && wallBranch==="spikes" && Math.random() < 0.02){
+    addBurst(s.pos.x+rand(-1.0,1.0), s.pos.y+rand(0.6,2.6), s.pos.z+rand(-1.0,1.0), 0xffb07d, 2, 1.2, 0.2, 0.04);
+  }
+  if(s.type==="factory" && familyProgression.factories?.branch==="harvest"){
+    s.mesh.scale.set(1.08,1.08,1.08);
+  }
+  if(s.type==="gasMine" && familyProgression.gas?.branch==="hazard" && Math.random() < 0.03){
+    addBurst(s.pos.x+rand(-0.4,0.4), s.pos.y+1.0, s.pos.z+rand(-0.4,0.4), 0x81ff95, 2, 1.0, 0.22, 0.05);
+  }
+}
 function applyStructureMaxHpRescale(s, newMaxHp){ const pct = s.maxHp>0 ? s.hp/s.maxHp : 1; s.maxHp = newMaxHp; s.hp = clamp(newMaxHp * pct, 0, newMaxHp); setHealthBar(s.mesh.userData.healthBar, s.maxHp>0 ? s.hp/s.maxHp : 1); updateWallDamageVisual(s);}
 function reapplyGlobalUpgrades(){ for(const s of structures){ if(s.dead) continue; if(isWallStructure(s)){ const base = s.baseMaxHp || s.maxHp; s.baseMaxHp = base; applyStructureMaxHpRescale(s, base * getWallUpgradeMultiplier()); } } for(const m of servantMice){ m.speed = (m.baseSpeed || m.speed) * getServantSpeedMultiplier(); m.baseSpeed = m.baseSpeed || m.speed/getServantSpeedMultiplier(); } }
 function getUpgradeCost(track){
   const lvl = track.level || 0;
-  const growth = 1 + lvl * 0.08;
+  const growth = 1 + lvl * 0.21 + Math.pow(lvl, 1.45) * 0.06;
   return {
-    cheese: Math.floor(16 * Math.pow(2.05, lvl) * growth),
-    gas: Math.floor(8 * Math.pow(1.95, lvl) * (1 + lvl * 0.07))
+    cheese: Math.floor(20 * Math.pow(2.28, lvl) * growth),
+    gas: Math.floor(10 * Math.pow(2.14, lvl) * (1 + lvl * 0.16 + Math.pow(lvl, 1.35) * 0.04))
   };
 }
-function refreshTowerMenu(){ if(!ui.towerUpgradeRows) return; ui.towerRes.textContent = `Cheese ${Math.floor(cheese)} · Gas ${Math.floor(gas)}`; const rows=[]; const items=[{k:"walls",label:"Walls",level:globalUpgrades.walls.level,effect:`+50% wall hp / lvl`,act:()=>buyTowerUpgrade("walls")},{k:"servants",label:"Servant Mice",level:globalUpgrades.servants.level,effect:`+25% speed+task / lvl`,act:()=>buyTowerUpgrade("servants")},{k:"attackRange",label:"Attack Range",level:globalUpgrades.attack.range,effect:`+15% range / lvl`,act:()=>buyTowerUpgrade("attackRange")},{k:"attackSpeed",label:"Attack Speed",level:globalUpgrades.attack.speed,effect:`+25% speed / lvl`,act:()=>buyTowerUpgrade("attackSpeed")},{k:"attackDamage",label:"Attack Damage",level:globalUpgrades.attack.damage,effect:`+25% damage / lvl`,act:()=>buyTowerUpgrade("attackDamage")},{k:"economy",label:"Economy",level:globalUpgrades.economy.level,effect:`+1 gas trip, +1 factory output / lvl`,act:()=>buyTowerUpgrade("economy")}]; for(const it of items){ const c=getUpgradeCost({level:it.level}); const can=cheese>=c.cheese&&gas>=c.gas; rows.push(`<div class="towerRow"><div><strong>${it.label}</strong> <span class="towerSub">Lv ${it.level} · ${it.effect}</span></div><button class="towerBtn" data-up="${it.k}" ${can?"":"disabled"}>${c.cheese}🧀 ${c.gas}⛽</button></div>`);} ui.towerUpgradeRows.innerHTML=rows.join(""); ui.towerUpgradeRows.querySelectorAll("button[data-up]").forEach(b=>b.onclick=()=>buyTowerUpgrade(b.dataset.up)); }
+function buyFamilyNode(fam, tier, key){
+  const prog = familyProgression[fam] || (familyProgression[fam] = { branch:null, t2:null, t3:false });
+  if(tier===1 && prog.branch && prog.branch !== key) return;
+  if(tier===2 && (!prog.branch || prog.branch !== key.split(":")[0])) return;
+  if(tier===3 && (!prog.branch || !prog.t2)) return;
+  const cost = getTechCostForFamily(fam, tier);
+  if(cheese < cost.cheese || gas < cost.gas) return;
+  cheese -= cost.cheese; gas -= cost.gas;
+  if(tier===1) prog.branch = key;
+  if(tier===2) prog.t2 = key.split(":")[1];
+  if(tier===3) prog.t3 = true;
+  showCenter(`${FAMILY_TECH_TREES[fam].label} advanced`, 1);
+  refreshTowerMenu();
+}
+function renderGlobalTowerRows(){
+  const rows=[]; const items=[{k:"walls",label:"Walls",level:globalUpgrades.walls.level,effect:`+50% wall hp / lvl`},{k:"servants",label:"Servant Mice",level:globalUpgrades.servants.level,effect:`+25% speed+task / lvl`},{k:"attackRange",label:"Attack Range",level:globalUpgrades.attack.range,effect:`+15% range / lvl`},{k:"attackSpeed",label:"Attack Speed",level:globalUpgrades.attack.speed,effect:`+25% speed / lvl`},{k:"attackDamage",label:"Attack Damage",level:globalUpgrades.attack.damage,effect:`+25% damage / lvl`},{k:"economy",label:"Economy",level:globalUpgrades.economy.level,effect:`+1 gas trip, +1 factory output / lvl`}];
+  for(const it of items){ const c=getUpgradeCost({level:it.level}); const can=cheese>=c.cheese&&gas>=c.gas; rows.push(`<div class="towerRow"><div><strong>${it.label}</strong> <span class="towerSub">Lv ${it.level} · ${it.effect}</span></div><button class="towerBtn" data-up="${it.k}" ${can?"":"disabled"}>${c.cheese}🧀 ${c.gas}⛽</button></div>`);}
+  return rows.join("");
+}
+function renderTechTreeRows(){
+  const cards = [];
+  for(const [fam, def] of Object.entries(FAMILY_TECH_TREES)){
+    const prog = familyProgression[fam] || { branch:null, t2:null, t3:false };
+    const t1Cost = getTechCostForFamily(fam, 1); const t2Cost = getTechCostForFamily(fam, 2); const t3Cost = getTechCostForFamily(fam, 3);
+    const branches = Object.entries(def.branches).map(([k,b])=>{
+      const locked = prog.branch && prog.branch !== k;
+      return `<button class="towerBtn" data-fam="${fam}" data-tier="1" data-key="${k}" ${locked?"disabled":""}>${b.label}${locked?" 🔒":""}<div class="towerTiny">T1 · ${t1Cost.cheese}🧀 ${t1Cost.gas}⛽</div></button>`;
+    }).join("");
+    let tier2 = "";
+    if(prog.branch){
+      const b = def.branches[prog.branch];
+      tier2 = b.t2.map(v=>`<button class="towerBtn" data-fam="${fam}" data-tier="2" data-key="${prog.branch}:${v}" ${prog.t2 && prog.t2!==v?"disabled":""}>${v}${prog.t2 && prog.t2!==v?" 🔒":""}<div class="towerTiny">T2 · ${t2Cost.cheese}🧀 ${t2Cost.gas}⛽</div></button>`).join("");
+    }
+    cards.push(`<div class="towerFamilyCard"><div class="towerRow"><strong>${def.label}</strong><span class="towerSub">Tier ${getFamilyTier(fam)}/3</span></div><div class="towerChoiceGrid">${branches}</div>${tier2?`<div class="towerChoiceGrid" style="margin-top:7px">${tier2}<button class="towerBtn" data-fam="${fam}" data-tier="3" data-key="mastery" ${prog.t2&&!prog.t3?"":"disabled"}>${def.branches[prog.branch]?.t3 || "Mastery"}<div class="towerTiny">T3 · ${t3Cost.cheese}🧀 ${t3Cost.gas}⛽</div></button></div>`:""}</div>`);
+  }
+  return cards.join("");
+}
+function renderCapstoneRows(){
+  return CAPSTONE_DEFS.map(c=>{
+    const ok = isCapstoneUnlocked(c.type);
+    const reqs = Object.entries(c.requires).map(([fam,need])=>`${FAMILY_TECH_TREES[fam]?.label || fam} ${getFamilyValue(fam)}/${need}`).join(" · ");
+    return `<div class="towerFamilyCard"><div class="towerRow"><strong>${c.name}</strong><span class="towerSub">${ok?"Unlocked":"Locked"} · ${c.power}⚡</span></div><div class="towerTiny">${reqs}</div></div>`;
+  }).join("");
+}
+function refreshTowerMenu(){ if(!ui.towerUpgradeRows) return; ui.towerRes.textContent = `Cheese ${Math.floor(cheese)} · Gas ${Math.floor(gas)}`; ui.towerTabs.innerHTML = TOWER_MENU_TABS.map(t=>`<button class="towerTab ${activeTowerTab===t?"active":""}" data-tab="${t}">${t==="global"?"Global Upgrades":t==="trees"?"Tech Trees":"Capstones / Unlocks"}</button>`).join(""); let html = ""; if(activeTowerTab==="global") html = renderGlobalTowerRows(); if(activeTowerTab==="trees") html = renderTechTreeRows(); if(activeTowerTab==="capstones") html = renderCapstoneRows(); ui.towerUpgradeRows.innerHTML = html; ui.towerTabs.querySelectorAll("button[data-tab]").forEach(b=>b.onclick=()=>{ activeTowerTab = b.dataset.tab; refreshTowerMenu(); }); ui.towerUpgradeRows.querySelectorAll("button[data-up]").forEach(b=>b.onclick=()=>buyTowerUpgrade(b.dataset.up)); ui.towerUpgradeRows.querySelectorAll("button[data-fam]").forEach(b=>b.onclick=()=>buyFamilyNode(b.dataset.fam, Number(b.dataset.tier), b.dataset.key)); }
 function buyTowerUpgrade(kind){ let ref=null; if(kind==="walls") ref=globalUpgrades.walls; if(kind==="servants") ref=globalUpgrades.servants; if(kind==="economy") ref=globalUpgrades.economy; if(kind==="attackRange") ref={level:globalUpgrades.attack.range,set:v=>globalUpgrades.attack.range=v}; if(kind==="attackSpeed") ref={level:globalUpgrades.attack.speed,set:v=>globalUpgrades.attack.speed=v}; if(kind==="attackDamage") ref={level:globalUpgrades.attack.damage,set:v=>globalUpgrades.attack.damage=v}; if(!ref) return; const c=getUpgradeCost({level:ref.level}); if(cheese<c.cheese||gas<c.gas) return; cheese-=c.cheese; gas-=c.gas; const nl=ref.level+1; if(ref.set) ref.set(nl); else ref.level=nl; reapplyGlobalUpgrades(); showCenter("Upgrade Purchased",0.8); refreshTowerMenu(); }
 function setTowerMenuOpen(open){ activeTowerMenu=open; gamePaused=open; ui.towerMenu.classList.toggle("open", open); if(open) refreshTowerMenu(); }
 function angleDiff(a,b){
@@ -2590,7 +2766,8 @@ function structureColor(type){
     mortarBloom:0xff98b5, sawBlaster:0xffb38f, sniperTower:0x9ec6ff, railGun:0x95b5ff, barrierTotem:0x9ce6ff, braceTower:0xbef0c0,
     repairAnchor:0x93fff5, fortPlate:0xa7ceff, supplyNest:0xfff3b5, scoutPost:0xcff4ff,
     breedingNest:0xffd8aa, gasDepot:0x9df3d3, gasMine:0x8bd4c3, workshop:0xaec4d8, advancedRobo:0x8ad9ff, mechaHangar:0xffbf90,
-    launcher:0x88deff, teleporter:0x9ea1ff, battery:POWER_SYMBOL_COLOR, advancedBattery:0x7dd5ff
+    launcher:0x88deff, teleporter:0x9ea1ff, battery:POWER_SYMBOL_COLOR, advancedBattery:0x7dd5ff,
+    stormCitadel:0x8cbcff, ironBulwarkBastion:0xbec5d8, foundryNexus:0xffca7f, warCoreHangar:0xe199ff, solarCheeseReactor:0xfff08d
   };
   return colors[type] || 0xffffff;
 }
@@ -3236,6 +3413,18 @@ function createStructureMesh(type){
     hangar.position.y = 1.45;
     g.add(hangar);
   }
+  if(type==="stormCitadel" || type==="ironBulwarkBastion" || type==="foundryNexus" || type==="warCoreHangar" || type==="solarCheeseReactor"){
+    commonBase.scale.set(1.9,1.3,1.9);
+    commonBase.position.y = 0.7;
+    const coreColor = type==="stormCitadel" ? 0x8fc4ff : type==="ironBulwarkBastion" ? 0x9fa8ba : type==="foundryNexus" ? 0xffb76a : type==="warCoreHangar" ? 0xb6a4ff : 0xffef91;
+    const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.05,1.45,4.8,12), new THREE.MeshStandardMaterial({ color:coreColor, emissive:coreColor, emissiveIntensity:0.24, metalness:0.48, roughness:0.34 }));
+    tower.position.y = 2.8;
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(1.6,0.12,12,30), new THREE.MeshStandardMaterial({ color:0xe0f4ff, emissive:0x86b6ff, emissiveIntensity:0.7 }));
+    halo.position.y = 4.55;
+    halo.rotation.x = Math.PI/2;
+    g.add(tower, halo);
+    g.userData.capHalo = halo;
+  }
 
   const hpBar = createHealthBar(2.1,0x77ff77);
   hpBar.position.y = 5;
@@ -3387,6 +3576,11 @@ function createStructure(type,x,z,rotationY=0, dataOverride=null){
     powerProvided:getStructurePowerProvided(type),
     currentPowerNearby:0,
     isPowered:true,
+    fusionStage:0,
+    fusionDamageMult:1,
+    fusionRangeMult:1,
+    fusionProdMult:1,
+    powerRadiusMult:1,
     baseMaxHp:data.hp,
     baseRange:0,
     baseFireCd:0,
@@ -3422,6 +3616,71 @@ function createStructure(type,x,z,rotationY=0, dataOverride=null){
     addBurst(x + rand(-1.2,1.2), mesh.position.y+rand(0.3,2.1), z + rand(-0.6,0.6), 0xfff4a4, 1, 1.2, 0.4, 0.06);
   }
   return s;
+}
+function getStructureAtCell(cx, cz){
+  const st = occupiedCells.get(cellKey(cx, cz));
+  if(!st || st.dead) return null;
+  return st;
+}
+function canCapstoneBuild(selected){
+  return !selected.capstoneKey || isCapstoneUnlocked(selected.capstoneKey);
+}
+function applyFusionEvolution(s){
+  const stage = s.fusionStage || 0;
+  if(!s.mesh) return;
+  const scale = stage===2 ? 2.25 : stage===1 ? 1.55 : 1;
+  s.mesh.scale.setScalar(scale);
+  if(stage > 0){
+    s.mesh.traverse(c=>{ if(c.isMesh && c.material?.emissive){ c.material.emissiveIntensity = Math.max(c.material.emissiveIntensity || 0, 0.3 + stage*0.2); } });
+    s.fusionAura = true;
+  }
+}
+function fuseCluster(center, cluster, nextStage){
+  for(const st of cluster){
+    if(st===center) continue;
+    st.dead = true;
+    if(st.cell) occupiedCells.delete(cellKey(st.cell.cx, st.cell.cz));
+    scene.remove(st.mesh);
+    st.mesh.visible = false;
+    addBurst(st.pos.x, st.pos.y+1, st.pos.z, 0xffcf66, 14, 4.5, 0.6, 0.08);
+  }
+  center.fusionStage = nextStage;
+  if(isAttackStructureType(center.type)){
+    center.fusionDamageMult = nextStage===1 ? 6 : 8;
+    center.fusionRangeMult = nextStage===1 ? 1.5 : 1.8;
+    applyStructureMaxHpRescale(center, (center.baseMaxHp || center.maxHp) * (nextStage===1 ? 5 : 7.5));
+  } else if(["factory","robo","advancedRobo","mechaHangar"].includes(center.type)){
+    center.fusionProdMult = 5;
+    if(center.type==="factory") center.maxWorkers = 3;
+  } else if(["battery","advancedBattery"].includes(center.type)){
+    center.powerProvided = nextStage===1 ? 10 : 15;
+    center.powerRadiusMult = nextStage===1 ? 1.45 : 1.95;
+  }
+  applyFusionEvolution(center);
+  showCenter(nextStage===2 ? "Mythic Fusion Complete" : "Ultra Fusion Complete", 1.2);
+}
+function tryFusionSquare(build){
+  if(!build || !build.cell) return;
+  const isBattery = ["battery","advancedBattery"].includes(build.type);
+  const span = isBattery ? 2 : 3;
+  const offsets = [];
+  for(let dx=0; dx<span; dx++) for(let dz=0; dz<span; dz++) offsets.push({dx,dz});
+  for(let ox=-(span-1); ox<=0; ox++){
+    for(let oz=-(span-1); oz<=0; oz++){
+      const cells = offsets.map(o=>({cx:build.cell.cx+ox+o.dx, cz:build.cell.cz+oz+o.dz}));
+      const cluster = cells.map(c=>getStructureAtCell(c.cx,c.cz));
+      if(cluster.some(v=>!v)) continue;
+      const stage = cluster[0].fusionStage || 0;
+      if(cluster.some(v=>v.type!==build.type || (v.fusionStage||0)!==stage)) continue;
+      const centerIdx = isBattery ? 0 : 4;
+      const center = cluster[centerIdx];
+      if(isBattery && stage>=2) continue;
+      if(!isBattery && !isAttackStructureType(build.type) && !["factory","robo","advancedRobo","mechaHangar"].includes(build.type)) continue;
+      if(!isBattery && stage>=2) continue;
+      fuseCluster(center, cluster, stage+1);
+      return;
+    }
+  }
 }
 function damageStructure(s,dmg){
   if(!s || s.dead) return;
@@ -3556,7 +3815,17 @@ function spawnRobotFromStructure(structure, advanced=false, mech=false){
   if(!structure || structure.dead) return null;
   const spawnCell = findOpenSpawnCellNearStructure(structure, 1, 18);
   const wp = cellToWorld(spawnCell.cx, spawnCell.cz);
-  return spawnRobot(wp.x + rand(-0.65,0.65), wp.z + rand(-0.65,0.65), advanced, mech, structure);
+  const ultra = (structure.fusionStage || 0) >= 1;
+  const spawnAdvanced = advanced || ultra;
+  const spawnMech = mech || (ultra && structure.type==="mechaHangar");
+  const unit = spawnRobot(wp.x + rand(-0.65,0.65), wp.z + rand(-0.65,0.65), spawnAdvanced, spawnMech, structure);
+  if(unit && ultra){
+    unit.hp *= 1.8;
+    unit.damage *= 1.7;
+    unit.speed *= spawnMech ? 0.88 : 1.12;
+    unit.radius *= spawnMech ? 1.28 : 1.08;
+  }
+  return unit;
 }
 
 // -------------------------------------------------
@@ -4457,6 +4726,18 @@ function chooseEnemyTarget(e){
     for(const r of robots){ if(!r.dead && !r.dying && dist2(e.pos,r.pos)<45) return r; }
     const support = nearestAttackableStructure(e, 999, s => ["supplyNest","breedingNest","factory","gasMine","advancedRobo","workshop"].includes(s.type));
     if(support) return support;
+  }
+  if(e.kind==="siegeRat" || e.kind==="titanRam"){
+    const fortified = nearestAttackableStructure(e, 999, s => !s.dead && (isWallStructure(s) || s.type==="ironBulwarkBastion" || s.type==="barrierTotem"));
+    if(fortified) return fortified;
+  }
+  if(e.kind==="assassin" || e.kind==="warClaw" || e.kind==="dustRunner"){
+    const industry = nearestAttackableStructure(e, 999, s => !s.dead && ["factory","gasMine","foundryNexus","battery","advancedBattery","solarCheeseReactor"].includes(s.type));
+    if(industry) return industry;
+  }
+  if(e.kind==="spitterBug" || e.kind==="venomLobber"){
+    const techDistrict = nearestAttackableStructure(e, 999, s => !s.dead && ["zapCoil","sniperTower","railGun","stormCitadel","warCoreHangar"].includes(s.type));
+    if(techDistrict) return techDistrict;
   }
 
   const nearPlayer = !player.dead && dist2(e.pos, player.pos) < 16;
@@ -5554,6 +5835,7 @@ function updateStructures(dt){
 
   for(const s of structures){
     if(s.dead) continue;
+    applyBranchVisuals(s, dt);
     updateStructureShieldFx(s, dt);
     if(s.tempBuffs && time < (s.tempBuffs.expiresAt || 0)){
       if(isWallStructure(s)) s.mesh.traverse(c=>{ if(c.isMesh && c.material?.emissive) c.material.emissive.setHex(0x6fa8ff); });
@@ -5595,6 +5877,19 @@ function updateStructures(dt){
       if(Math.random() < (s.type === "advancedBattery" ? 0.03 : 0.018)){
         addBurst(s.pos.x + rand(-0.35,0.35), s.pos.y + rand(1.0,2.4), s.pos.z + rand(-0.35,0.35), s.type === "advancedBattery" ? 0x8fe8ff : 0xffe27b, 2, 1.1, 0.24, 0.045);
       }
+      if(Math.random() < 0.08){
+        const candidates = structures.filter(t=>!t.dead && t!==s && dist2(s.pos,t.pos) <= POWER_RADIUS * (s.powerRadiusMult || 1));
+        const target = candidates[Math.floor(Math.random()*candidates.length)];
+        if(target){
+          addLightningArc(new THREE.Vector3(s.pos.x,s.pos.y+1.4,s.pos.z), new THREE.Vector3(target.pos.x,target.pos.y+1.3,target.pos.z), 0.08, 0x86dfff);
+        }
+      }
+    }
+    if(["stormCitadel","ironBulwarkBastion","foundryNexus","warCoreHangar","solarCheeseReactor"].includes(s.type)){
+      const halo = s.mesh.userData.capHalo;
+      if(halo){ halo.rotation.z += dt * 0.8; halo.rotation.y += dt * 1.3; halo.position.y = 4.55 + Math.sin(time*3 + s.pos.x*0.03)*0.1; }
+      if(s.type==="foundryNexus" && Math.random() < 0.02) addBurst(s.pos.x+rand(-1.2,1.2), s.pos.y+rand(1.8,3.9), s.pos.z+rand(-1.2,1.2), 0xffc16e, 3, 1.6, 0.34, 0.06);
+      if(s.type==="solarCheeseReactor" && Math.random() < 0.018){ cheese += 0.6*dt; gas += 0.25*dt; }
     }
 
     if(s.type==="launcher" && canRun){
@@ -5706,8 +6001,10 @@ function updateStructures(dt){
         }
       }
       if(workerNear && s.produceCd <= 0){
-        s.produceCd = 7.5;
-        const out = getFactoryOutputAmount();
+        const ecoBoost = getStructureTechModifiers(s);
+        const batteryEco = getBatteryDistrictBoost(s);
+        s.produceCd = 7.5 / (ecoBoost.speed || 1);
+        const out = Math.floor(getFactoryOutputAmount() * (s.fusionProdMult || 1) * (ecoBoost.production || 1) * (batteryEco.industrial || 1));
         cheese += out;
         popWorldText(`+${out}🧀`, worker.pos.x, worker.pos.y + 1.55, worker.pos.z, "#ffe66f");
         addBurst(s.pos.x,s.pos.y+1.4,s.pos.z,0xffe066,8,3,0.45,0.07);
@@ -5787,6 +6084,10 @@ function updateStructures(dt){
     // ATTACK STRUCTURES
     const buff = beaconBuffAt(s.pos.x,s.pos.z);
     const atk = getAttackUpgradeBuffs();
+    const techMods = getStructureTechModifiers(s);
+    const fusionDamage = s.fusionDamageMult || 1;
+    const fusionRange = s.fusionRangeMult || 1;
+    const batteryBoost = getBatteryDistrictBoost(s);
     const engDamage = (s.tempBuffs && time < s.tempBuffs.expiresAt) ? (s.tempBuffs.damageMult || 1) : 1;
     const screechDebuffMult = (s.screechDebuffUntil || 0) > time ? 0.78 : 1;
 
@@ -5794,18 +6095,18 @@ function updateStructures(dt){
       s.fireCd -= dt;
       const late = getTowerLateScale("turret");
       const headPivot = s.mesh.userData.headPivot;
-      const t = nearestEnemyInRange(s, 22 * atk.rangeMult);
+      const t = nearestEnemyInRange(s, 22 * atk.rangeMult * techMods.range * fusionRange * batteryBoost.range);
       if (t && headPivot) {
         smoothAimYaw(headPivot, s, "aimYaw", Math.atan2(t.pos.x - s.pos.x, t.pos.z - s.pos.z), dt, 8.8);
       }
       if (t && s.fireCd <= 0) {
-        s.fireCd = 0.42 / (buff.speed * atk.speedMult * screechDebuffMult);
+        s.fireCd = 0.42 / (buff.speed * atk.speedMult * techMods.speed * batteryBoost.speed * screechDebuffMult);
         const dir = new THREE.Vector3(t.pos.x-s.pos.x,0,t.pos.z-s.pos.z).normalize();
         spawnProjectile({
           pos:new THREE.Vector3(s.pos.x,s.pos.y+1.7,s.pos.z).add(dir.clone().multiplyScalar(1.2)),
           vel:new THREE.Vector3(dir.x*20,1.8,dir.z*20),
-          damage:7*buff.damage*late*atk.damageMult*engDamage,
-          splash:0,
+          damage:7*buff.damage*late*atk.damageMult*techMods.damage*batteryBoost.damage*fusionDamage*engDamage,
+          splash:0 + batteryBoost.splash*0.2,
           color:0xffe16c,
           size:0.12,
           from:"ally",
@@ -5819,7 +6120,7 @@ function updateStructures(dt){
       s.fireCd -= dt;
       const late = getTowerLateScale("cannon");
       const barrelPivot = s.mesh.userData.barrelPivot;
-      const t = nearestEnemyInRange(s, 28 * atk.rangeMult);
+      const t = nearestEnemyInRange(s, 28 * atk.rangeMult * techMods.range * fusionRange * batteryBoost.range);
       if (t && barrelPivot) {
         smoothAimYaw(barrelPivot, s, "aimYaw", Math.atan2(t.pos.x - s.pos.x, t.pos.z - s.pos.z), dt, 6.8);
         const horiz = Math.hypot(t.pos.x-s.pos.x, t.pos.z-s.pos.z);
@@ -5828,7 +6129,7 @@ function updateStructures(dt){
         barrelPivot.rotation.x = s.aimPitch;
       }
       if (t && s.fireCd <= 0) {
-        s.fireCd = 1.8 / (buff.speed * atk.speedMult * screechDebuffMult);
+        s.fireCd = 1.8 / (buff.speed * atk.speedMult * techMods.speed * batteryBoost.speed * screechDebuffMult);
         const dx = t.pos.x - s.pos.x;
         const dz = t.pos.z - s.pos.z;
         const d = Math.hypot(dx,dz);
@@ -5836,8 +6137,8 @@ function updateStructures(dt){
         spawnProjectile({
           pos:new THREE.Vector3(s.pos.x,s.pos.y+2.1,s.pos.z),
           vel:new THREE.Vector3(dir.x*10.5,8.5,dir.z*10.5),
-          damage:28*buff.damage*late*atk.damageMult*engDamage,
-          splash:2.8,
+          damage:28*buff.damage*late*atk.damageMult*techMods.damage*batteryBoost.damage*fusionDamage*engDamage,
+          splash:2.8 + techMods.splash + batteryBoost.splash,
           color:0xffb34d,
           size:0.28,
           from:"ally",
@@ -5851,12 +6152,12 @@ function updateStructures(dt){
       s.fireCd -= dt;
       const late = getTowerLateScale("shardLauncher");
       const prongs = s.mesh.userData.prongs;
-      const t = nearestPriorityEnemyInRange(s, 20 * atk.rangeMult, ["siegeRat","spitterBug","burrowMole"]);
+      const t = nearestPriorityEnemyInRange(s, 20 * atk.rangeMult * techMods.range * fusionRange * batteryBoost.range, ["siegeRat","spitterBug","burrowMole"]);
       if (t && prongs) {
         smoothAimYaw(prongs, s, "aimYaw", Math.atan2(t.pos.x - s.pos.x, t.pos.z - s.pos.z), dt, 9.1);
       }
       if (t && s.fireCd <= 0) {
-        s.fireCd = 0.82 / (buff.speed * atk.speedMult * screechDebuffMult);
+        s.fireCd = 0.82 / (buff.speed * atk.speedMult * techMods.speed * batteryBoost.speed * screechDebuffMult);
         const baseDir = new THREE.Vector3(t.pos.x-s.pos.x,0,t.pos.z-s.pos.z).normalize();
         for (const spread of [-0.16, 0, 0.16]) {
           const a = Math.atan2(baseDir.x, baseDir.z) + spread;
@@ -5864,8 +6165,8 @@ function updateStructures(dt){
           spawnProjectile({
             pos:new THREE.Vector3(s.pos.x,s.pos.y+1.5,s.pos.z).add(dir.clone().multiplyScalar(0.7)),
             vel:new THREE.Vector3(dir.x*17,2.0,dir.z*17),
-            damage:5.5*buff.damage*late*atk.damageMult*engDamage,
-            splash:0,
+            damage:5.5*buff.damage*late*atk.damageMult*techMods.damage*batteryBoost.damage*fusionDamage*engDamage,
+            splash:0 + batteryBoost.splash*0.2,
             color:0xffd9b3,
             size:0.10,
             from:"ally",
@@ -5886,9 +6187,9 @@ function updateStructures(dt){
         cap.rotation.y += dt * 4.4;
         cap.position.y = 1.55 + Math.sin(time*6)*0.05;
       }
-      const t = nearestPriorityEnemyInRange(s, 9.5 * atk.rangeMult, ["titanRam","siegeRat","spitterBug","burrowMole","cat"]);
+      const t = nearestPriorityEnemyInRange(s, 9.5 * atk.rangeMult * techMods.range * fusionRange * batteryBoost.range, ["titanRam","siegeRat","spitterBug","burrowMole","cat"]);
       if (t && s.fireCd <= 0) {
-        s.fireCd = 2.05 / (buff.speed * atk.speedMult * screechDebuffMult);
+        s.fireCd = 2.05 / (buff.speed * atk.speedMult * techMods.speed * batteryBoost.speed * screechDebuffMult);
         const stunned = new Set();
         let previousPoint = new THREE.Vector3(s.pos.x, s.pos.y + 1.45, s.pos.z);
         let current = t;
@@ -5922,9 +6223,9 @@ function updateStructures(dt){
       const late = getTowerLateScale("mortarBloom");
       const flower = s.mesh.userData.flower;
       if (flower) flower.rotation.y += dt * 1.2;
-      const t = nearestPriorityEnemyInRange(s, 28 * atk.rangeMult, ["titanRam","siegeRat","spitterBug","burrowMole","cat"]);
+      const t = nearestPriorityEnemyInRange(s, 28 * atk.rangeMult * techMods.range * fusionRange * batteryBoost.range, ["titanRam","siegeRat","spitterBug","burrowMole","cat"]);
       if (t && s.fireCd <= 0) {
-        s.fireCd = 2.15 / (buff.speed * atk.speedMult * screechDebuffMult);
+        s.fireCd = 2.15 / (buff.speed * atk.speedMult * techMods.speed * batteryBoost.speed * screechDebuffMult);
         const dx = t.pos.x - s.pos.x;
         const dz = t.pos.z - s.pos.z;
         const d = Math.hypot(dx,dz);
@@ -5932,8 +6233,8 @@ function updateStructures(dt){
         spawnProjectile({
           pos:new THREE.Vector3(s.pos.x,s.pos.y+1.9,s.pos.z),
           vel:new THREE.Vector3(dir.x*9.2,9.4,dir.z*9.2),
-          damage:58*buff.damage*late*atk.damageMult*engDamage,
-          splash:4.7,
+          damage:58*buff.damage*late*atk.damageMult*techMods.damage*batteryBoost.damage*fusionDamage*engDamage,
+          splash:4.7 + techMods.splash + batteryBoost.splash,
           color:0xff9dbc,
           size:0.24,
           from:"ally",
@@ -5947,13 +6248,13 @@ function updateStructures(dt){
       s.fireCd -= dt;
       const late = getTowerLateScale("sawBlaster");
       const headPivot = s.mesh.userData.headPivot;
-      const t = nearestPriorityEnemyInRange(s, 16 * atk.rangeMult, ["titanRam","siegeRat","spitterBug","burrowMole","cat"]);
+      const t = nearestPriorityEnemyInRange(s, 16 * atk.rangeMult * techMods.range * fusionRange * batteryBoost.range, ["titanRam","siegeRat","spitterBug","burrowMole","cat"]);
       if (headPivot) headPivot.rotation.z += dt * 10;
       if (t && headPivot) {
         smoothAimYaw(headPivot, s, "aimYaw", Math.atan2(t.pos.x - s.pos.x, t.pos.z - s.pos.z), dt, 11.5);
       }
       if (t && s.fireCd <= 0) {
-        s.fireCd = 0.95 / (buff.speed * atk.speedMult * screechDebuffMult);
+        s.fireCd = 0.95 / (buff.speed * atk.speedMult * techMods.speed * batteryBoost.speed * screechDebuffMult);
         applyDamageToLiving(t, 34 * buff.damage * late * atk.damageMult * engDamage, t.pos);
         addBurst(t.pos.x, t.pos.y+0.9, t.pos.z, 0xffc1a8, 8, 3, 0.35, 0.05);
       }
@@ -5964,10 +6265,10 @@ function updateStructures(dt){
       const headPivot = s.mesh.userData.headPivot;
       const barrel = s.mesh.userData.sniperBarrel;
       const lens = s.mesh.userData.sniperLens;
-      if((!s.lockedTarget || s.lockedTarget.dead || s.lockedTarget.dying || dist2(s.pos, s.lockedTarget.pos) > 54 * atk.rangeMult) && s.chargeT <= 0){
-        s.lockedTarget = nearestPriorityEnemyInRange(s, 54 * atk.rangeMult, ["titanRam","siegeRat","cat","spitterBug","burrowMole"]);
+      if((!s.lockedTarget || s.lockedTarget.dead || s.lockedTarget.dying || dist2(s.pos, s.lockedTarget.pos) > 54 * atk.rangeMult * techMods.range * fusionRange * batteryBoost.range) && s.chargeT <= 0){
+        s.lockedTarget = nearestPriorityEnemyInRange(s, 54 * atk.rangeMult * techMods.range * fusionRange * batteryBoost.range, ["titanRam","siegeRat","cat","spitterBug","burrowMole"]);
       }
-      const t = s.lockedTarget || nearestPriorityEnemyInRange(s, 54 * atk.rangeMult, ["titanRam","siegeRat","cat","spitterBug","burrowMole"]);
+      const t = s.lockedTarget || nearestPriorityEnemyInRange(s, 54 * atk.rangeMult * techMods.range * fusionRange * batteryBoost.range, ["titanRam","siegeRat","cat","spitterBug","burrowMole"]);
       if(t && headPivot){
         smoothAimYaw(headPivot, s, "aimYaw", Math.atan2(t.pos.x - s.pos.x, t.pos.z - s.pos.z), dt, 6.2);
       }
@@ -5980,7 +6281,7 @@ function updateStructures(dt){
           addBurst(t.pos.x, t.pos.y + 0.25, t.pos.z, 0x9cd2ff, 1, 0.6, 0.18, 0.035);
         }
         if(frac >= 1){
-          s.fireCd = 3.5 / (buff.speed * atk.speedMult * screechDebuffMult);
+          s.fireCd = 3.5 / (buff.speed * atk.speedMult * techMods.speed * batteryBoost.speed * screechDebuffMult);
           s.chargeT = 0;
           const from = new THREE.Vector3(s.pos.x, s.pos.y + 2.0, s.pos.z);
           const to = new THREE.Vector3(t.pos.x, t.pos.y + 1.0, t.pos.z);
@@ -6000,7 +6301,7 @@ function updateStructures(dt){
       s.fireCd -= dt;
       const headPivot = s.mesh.userData.headPivot;
       const core = s.mesh.userData.railCore;
-      const t = nearestPriorityEnemyInRange(s, 46 * atk.rangeMult, ["siegeRat","titanRam","spitterBug","burrowMole","cat"]);
+      const t = nearestPriorityEnemyInRange(s, 46 * atk.rangeMult * techMods.range * fusionRange * batteryBoost.range, ["siegeRat","titanRam","spitterBug","burrowMole","cat"]);
       if(t && headPivot){
         smoothAimYaw(headPivot, s, "aimYaw", Math.atan2(t.pos.x - s.pos.x, t.pos.z - s.pos.z), dt, 4.2);
       }
@@ -6009,7 +6310,7 @@ function updateStructures(dt){
         const frac = clamp((s.chargeT || 0) / 1.45, 0, 1);
         if(core?.material) core.material.emissiveIntensity = 0.45 + frac * 1.45;
         if(frac >= 1){
-          s.fireCd = 4.5 / (buff.speed * atk.speedMult * screechDebuffMult);
+          s.fireCd = 4.5 / (buff.speed * atk.speedMult * techMods.speed * batteryBoost.speed * screechDebuffMult);
           s.chargeT = 0;
           const from = new THREE.Vector3(s.pos.x, s.pos.y + 1.7, s.pos.z);
           const forward = new THREE.Vector3(Math.sin(s.aimYaw || 0), 0, Math.cos(s.aimYaw || 0)).normalize();
@@ -6213,6 +6514,7 @@ function updatePlayer(dt){
 function tryPlaceStructure(){
   const selected = getSelectedBuildData();
   if(gameOver || levelTransitionActive || !selected) return;
+  if(!canCapstoneBuild(selected)){ showCenter("Capstone locked in Tower of Cheese", 1.1); return; }
   if(cheese < selected.cost){ showCenter("Not enough cheese", 1); return; }
   if(gas < (selected.gasCost||0)){ showCenter("Not enough gas", 1); return; }
 
@@ -6223,7 +6525,7 @@ function tryPlaceStructure(){
   cheese -= selected.cost;
   gas -= (selected.gasCost||0);
   const built = createStructure(selected.type, p.x, p.z, 0, selected);
-  if(!built){ cheese += selected.cost; gas += (selected.gasCost||0); } else reapplyGlobalUpgrades();
+  if(!built){ cheese += selected.cost; gas += (selected.gasCost||0); } else { reapplyGlobalUpgrades(); tryFusionSquare(built); }
 }
 function updateCamera(dt){
   const focus = player.pos.clone().add(new THREE.Vector3(0,1.7,0));
