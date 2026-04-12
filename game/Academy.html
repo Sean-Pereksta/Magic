@@ -470,10 +470,18 @@ const DIFFICULTY_LEVELS = {
   brutal: { label:"Brutal", wave:1.52, cap:1.62, catIQ:1.75, flank:0.52, antiCamp:1.8, specials:1.8, elites:1.65, enemyHp:1.45, enemyDamage:1.42, enemySpeed:1.3, pickupYield:0.72, startCheese:12, startGas:0, summary:"High pressure waves, aggressive enemies, reduced economy help." }
 };
 const MAP_PRESETS = {
-  meadow:{ name:"Lush Meadow • Forest Edge", short:"Open, welcoming fields with light cover and smooth movement lanes.", palette:{bg:0x95c7eb,fog:0x95c7eb}, tags:["Open Space","Vibrant","Beginner Friendly"] },
-  canyon:{ name:"Rocky Canyon • Badlands", short:"Narrow passes and stone chokepoints reward tighter tower placement.", palette:{bg:0xc9a677,fog:0xb98f62}, tags:["Chokepoints","Rugged","Tactical"] },
-  ruins:{ name:"Ruined Tech Zone • Corrupted Field", short:"Broken lanes and anomaly clusters create irregular fights and flanks.", palette:{bg:0x5f667f,fog:0x4e5872}, tags:["Unusual Lanes","High-Tech","Intense"] }
+  meadow:{ name:"Lush Meadow • Forest Edge", short:"Open expansion lanes, wider flanks, and spread resource hooks reward distributed defenses.", palette:{bg:0x95c7eb,fog:0x95c7eb}, tags:["Open Space","Flank Pressure","Economy Spread"] },
+  canyon:{ name:"Rocky Canyon • Badlands", short:"Chokepoints and compressed approach lanes make walls, Heavy, and lane denial stronger.", palette:{bg:0xc9a677,fog:0xb98f62}, tags:["Chokepoints","Siege Pressure","Lane Control"] },
+  ruins:{ name:"Ruined Tech Zone • Corrupted Field", short:"Irregular side routes and broken terrain clusters force reactive district planning.", palette:{bg:0x5f667f,fog:0x4e5872}, tags:["Unusual Lanes","Irregular Routing","Tactical Risk"] }
 };
+const MAP_GAMEPLAY_RULES = {
+  meadow:{ ventBase:30, ventExpansionMult:1.25, flankSpawnBonus:0.14, catRepathCadence:0.9, enemyLaneCompression:0.8 },
+  canyon:{ ventBase:18, ventExpansionMult:0.8, flankSpawnBonus:-0.06, catRepathCadence:0.7, enemyLaneCompression:1.26 },
+  ruins:{ ventBase:24, ventExpansionMult:1.05, flankSpawnBonus:0.08, catRepathCadence:0.8, enemyLaneCompression:1.0 }
+};
+let currentMapRules = MAP_GAMEPLAY_RULES.meadow;
+const KNIGHT_BASE_HP = 44;
+const BUFF_TOWER_RADIUS = GRID_SIZE * 2;
 let selectedDifficultyKey = "normal";
 let selectedMapKey = "meadow";
 let difficultyKey = selectedDifficultyKey;
@@ -847,6 +855,36 @@ function getBatteryDistrictBoost(s){
 function applyBranchVisuals(s, dt){
   if(!s?.mesh) return;
   const wallBranch = familyProgression.walls?.branch;
+  const wallTier = getFamilyTier("walls");
+  if(isWallStructure(s) && wallBranch && !s.mesh.userData.wallBranchApplied){
+    s.mesh.userData.wallBranchApplied = wallBranch;
+    if(wallBranch==="bulwark"){
+      const plateMat = new THREE.MeshStandardMaterial({ color:0x9ca9b8, metalness:0.4, roughness:0.42 });
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.4 + wallTier*0.12, 0.35), plateMat);
+      plate.position.set(0, 2.45 + wallTier*0.1, 1.42);
+      const brace = new THREE.Mesh(new THREE.BoxGeometry(0.35, 2.6 + wallTier*0.2, 0.35), plateMat);
+      brace.position.set(1.35, 1.4, -1.35);
+      const brace2 = brace.clone(); brace2.position.x = -1.35;
+      s.mesh.add(plate, brace, brace2);
+    } else if(wallBranch==="conductor"){
+      const nodeMat = new THREE.MeshStandardMaterial({ color:0x8ad9ff, emissive:0x57b9ff, emissiveIntensity:0.8 });
+      const cable = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.07, 8, 26), nodeMat);
+      cable.rotation.x = Math.PI/2;
+      cable.position.y = 2.2;
+      const node = new THREE.Mesh(new THREE.SphereGeometry(0.2,10,10), nodeMat);
+      node.position.set(1.1, 2.2, 0);
+      s.mesh.add(cable, node);
+    } else if(wallBranch==="spikes"){
+      const spikeMat = new THREE.MeshStandardMaterial({ color:0xe8c2a2, emissive:0x5e3521, emissiveIntensity:0.2 });
+      for(let i=0;i<6 + wallTier;i++){
+        const spike = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.45 + wallTier*0.07, 6), spikeMat);
+        const t = i / (6 + wallTier - 1);
+        spike.position.set(-1.2 + t*2.4, 2.15, 1.45);
+        spike.rotation.x = Math.PI/2;
+        s.mesh.add(spike);
+      }
+    }
+  }
   if(isWallStructure(s) && wallBranch==="conductor" && Math.random() < 0.025){
     addLightningArc(new THREE.Vector3(s.pos.x-1.2, s.pos.y+1.8, s.pos.z), new THREE.Vector3(s.pos.x+1.2, s.pos.y+1.8, s.pos.z), 0.05, 0x77c8ff);
   }
@@ -861,7 +899,7 @@ function applyBranchVisuals(s, dt){
   }
 }
 function applyStructureMaxHpRescale(s, newMaxHp){ const pct = s.maxHp>0 ? s.hp/s.maxHp : 1; s.maxHp = newMaxHp; s.hp = clamp(newMaxHp * pct, 0, newMaxHp); setHealthBar(s.mesh.userData.healthBar, s.maxHp>0 ? s.hp/s.maxHp : 1); updateWallDamageVisual(s);}
-function reapplyGlobalUpgrades(){ for(const s of structures){ if(s.dead) continue; if(isWallStructure(s)){ const base = s.baseMaxHp || s.maxHp; s.baseMaxHp = base; applyStructureMaxHpRescale(s, base * getWallUpgradeMultiplier()); } } for(const m of servantMice){ m.speed = (m.baseSpeed || m.speed) * getServantSpeedMultiplier(); m.baseSpeed = m.baseSpeed || m.speed/getServantSpeedMultiplier(); if(m.state==="knight"){ m.maxHp = 60 * getWallUpgradeMultiplier(); m.hp = Math.min(m.maxHp, Math.max(m.hp, m.maxHp*0.65)); m.knightDamage = 22 * getAttackUpgradeBuffs().damageMult; } } }
+function reapplyGlobalUpgrades(){ for(const s of structures){ if(s.dead) continue; if(isWallStructure(s)){ const base = s.baseMaxHp || s.maxHp; s.baseMaxHp = base; applyStructureMaxHpRescale(s, base * getWallUpgradeMultiplier()); } } for(const m of servantMice){ m.speed = (m.baseSpeed || m.speed) * getServantSpeedMultiplier(); m.baseSpeed = m.baseSpeed || m.speed/getServantSpeedMultiplier(); if(m.state==="knight"){ m.maxHp = KNIGHT_BASE_HP * getWallUpgradeMultiplier(); m.hp = Math.min(m.maxHp, Math.max(m.hp, m.maxHp*0.58)); m.knightDamage = 22 * getAttackUpgradeBuffs().damageMult; } } }
 function getUpgradeCost(track){
   const lvl = track.level || 0;
   const growth = 1 + lvl * 0.21 + Math.pow(lvl, 1.45) * 0.06;
@@ -1225,6 +1263,7 @@ function populateDecorBand(oldHalf,newHalf,level){
 populateDecorBand(0,dynamicHalfMap,1);
 function applyMapPreset(mapKey){
   const map = MAP_PRESETS[mapKey] || MAP_PRESETS.meadow;
+  currentMapRules = MAP_GAMEPLAY_RULES[mapKey] || MAP_GAMEPLAY_RULES.meadow;
   scene.background = new THREE.Color(map.palette.bg);
   scene.fog = new THREE.Fog(map.palette.fog, 110, 300);
   const tint = mapKey==="meadow" ? 0xffffff : mapKey==="canyon" ? 0xd2a06f : 0x9ba4d8;
@@ -1235,14 +1274,18 @@ function applyMapPreset(mapKey){
   }
   enemyObjectives.length = 0;
   if(mapKey === "meadow"){
+    ensureMapVentCount(currentMapRules.ventBase);
     createEnemyObjective(34, -6, "Wild Nest Core");
     createEnemyObjective(-28, 30, "Forest Shrine");
   } else if(mapKey === "canyon"){
+    ensureMapVentCount(currentMapRules.ventBase);
     for(let i=-2;i<=2;i++) createCliff(i*6, 2, 5.4, 5.5, 6.2);
+    for(let i=-2;i<=2;i++) createCliff(i*6, -6, 5.0, 5.2, 6.0);
     createEnemyObjective(46, -8, "Badlands War Totem");
     createEnemyObjective(-42, 24, "Canyon Command Node");
     createEnemyObjective(8, 46, "Dust Spawner");
   } else if(mapKey === "ruins"){
+    ensureMapVentCount(currentMapRules.ventBase);
     for(let i=0;i<9;i++) createRock(rand(-48,48), rand(-48,48), rand(1.8,3.4), rand(2.2,5.2), rand(1.8,3.8), 0x4f5a76);
     for(let i=-2;i<=2;i++) createCliff(i*7, i%2?20:-20, 4.5, 4.2, 9.5);
     createEnemyObjective(38, 35, "Corrupted Pylon Alpha");
@@ -1268,19 +1311,30 @@ function createGasVentAtCell(cx, cz){
   scene.add(g);
   gasVents.push({cx,cz,x,z,group:g,steamT:Math.random()*5,mine:null});
 }
-for(let i=0;i<24;i++){
+function tryCreateRandomVent(minInset=3){
   let tries = 0;
   while(tries++ < 80){
-    const cx = Math.floor(rand(-dynamicGridHalfCells+3, dynamicGridHalfCells-3));
-    const cz = Math.floor(rand(-dynamicGridHalfCells+3, dynamicGridHalfCells-3));
+    const cx = Math.floor(rand(-dynamicGridHalfCells+minInset, dynamicGridHalfCells-minInset));
+    const cz = Math.floor(rand(-dynamicGridHalfCells+minInset, dynamicGridHalfCells-minInset));
     if(Math.hypot(cx*GRID_SIZE, cz*GRID_SIZE) < 16) continue;
     if(gasVents.some(v => Math.abs(v.cx-cx)+Math.abs(v.cz-cz) < 3)) continue;
     createGasVentAtCell(cx,cz);
-    break;
+    return true;
+  }
+  return false;
+}
+function ensureMapVentCount(targetCount){
+  const target = Math.max(8, Math.floor(targetCount));
+  let guard = 0;
+  while(gasVents.length < target && guard++ < 180){
+    if(!tryCreateRandomVent(3)) break;
   }
 }
+for(let i=0;i<24;i++){
+  tryCreateRandomVent(3);
+}
 function spawnGasVentsForExpansion(oldHalfMap, newHalfMap){
-  const target = clamp(Math.floor((newHalfMap - oldHalfMap) * 0.35), 4, 12);
+  const target = clamp(Math.floor((newHalfMap - oldHalfMap) * 0.35 * (currentMapRules.ventExpansionMult || 1)), 3, 14);
   let placed = 0;
   let tries = 0;
   while(placed < target && tries++ < 260){
@@ -3852,13 +3906,21 @@ function beaconBuffAt(x,z){
   for(const s of structures){
     if(s.dead || !["beacon","commandBeacon"].includes(s.type)) continue;
     const d = Math.hypot(x-s.pos.x, z-s.pos.z);
-    if(d < 13){
+    if(d < BUFF_TOWER_RADIUS){
       buff.damage += 0.25;
       buff.speed += 0.2;
       buff.active = true;
     }
   }
   return buff;
+}
+function getEconomySupportBonus(type, x, z){
+  if(!["factory","gasMine"].includes(type)) return 0;
+  for(const s of structures){
+    if(s.dead || !["beacon","commandBeacon"].includes(s.type)) continue;
+    if(dist2({x,z}, s.pos) <= BUFF_TOWER_RADIUS) return 1;
+  }
+  return 0;
 }
 function updateBeaconGlow(){
   for(const s of structures){
@@ -3958,12 +4020,42 @@ function spawnProjectile(opts){
     returnHits:opts.returnHits || false
   });
 }
+function getProjectileStyle(type){
+  const rapid = familyProgression.rapidTower?.branch || familyProgression.fastAttack?.branch;
+  const heavy = familyProgression.heavyTower?.branch || familyProgression.siege?.branch;
+  const arc = familyProgression.arcTower?.branch || familyProgression.techWeapons?.branch;
+  if(type==="turret"){
+    if(rapid==="suppressor") return { color:0xffe479, kind:"suppressorTracer", speed:1.2 };
+    if(rapid==="hunter") return { color:0xe7f4ff, kind:"hunterBolt", speed:1.05 };
+    if(rapid==="ripper") return { color:0xffb085, kind:"ripperShred", speed:0.95 };
+  }
+  if(type==="cannon"){
+    if(heavy==="mortar") return { color:0xffc7a0, kind:"mortar", speed:0.92 };
+    if(heavy==="breaker") return { color:0xff9b6e, kind:"breakerShell", speed:0.96 };
+  }
+  if(type==="shardLauncher"){
+    if(heavy==="zone") return { color:0xff98ba, kind:"bloomPod", speed:0.88 };
+    if(heavy==="siegebreaker") return { color:0xffe2cb, kind:"railShard", speed:1.15 };
+  }
+  if(type==="zapCoil" && arc==="emp") return { color:0x8ac5ff, kind:"empPulse", speed:1 };
+  return null;
+}
 function explodeProjectile(p){
   const burstColor = p.kind==="acid" ? 0x86ff77 : (p.from==="enemy"?0xff5555:0xffdd66);
   if(p.impactPos){
     p.pos.set(p.impactPos.x, p.impactPos.y, p.impactPos.z);
   }
-  addBurst(p.pos.x,p.pos.y,p.pos.z, burstColor, p.kind==="cannon"||p.kind==="mortar"?18:8, 4.5, 0.6, 0.09);
+  const impactCount = (p.kind==="cannon"||p.kind==="mortar"||p.kind==="breakerShell") ? 18 : 8;
+  addBurst(p.pos.x,p.pos.y,p.pos.z, burstColor, impactCount, 4.5, 0.6, 0.09);
+  if(p.kind==="empPulse"){
+    addRingTelegraph(p.pos.x, p.pos.z, 2.8, 0x89c6ff, 0.35);
+  } else if(p.kind==="ripperShred"){
+    addBurst(p.pos.x,p.pos.y+0.2,p.pos.z,0xff8d6f,6,2.1,0.28,0.04);
+  } else if(p.kind==="railShard"){
+    addLightningArc(new THREE.Vector3(p.pos.x-0.6,p.pos.y,p.pos.z-0.6), new THREE.Vector3(p.pos.x+0.6,p.pos.y,p.pos.z+0.6), 0.04, 0xd9efff);
+  } else if(p.kind==="bloomPod"){
+    addBurst(p.pos.x,p.pos.y,p.pos.z,0xff87b3,10,3.8,0.42,0.06);
+  }
 
   if(p.from === "ally"){
   const isCheeseShot = p.kind === "pellet" || p.kind === "shard";
@@ -4202,7 +4294,7 @@ function promoteServantToKnight(m){
   m.knightAttackCd = 0;
   m.knightChargeCd = 0;
   m.knightDamage = 22 * getAttackUpgradeBuffs().damageMult;
-  m.maxHp = 60 * getWallUpgradeMultiplier();
+  m.maxHp = KNIGHT_BASE_HP * getWallUpgradeMultiplier();
   m.hp = Math.max(m.hp, m.maxHp);
   m.speed = 6.8;
   m.group.traverse(c=>{
@@ -4427,7 +4519,7 @@ function updateGasMineServant(m, dt){
     }
     m.target = depot ? depot.pos : mine.pos;
     if(dist2(m.pos, m.target) < 1.5){
-      const payout = getEconomyGasPerTrip();
+      const payout = getEconomyGasPerTrip() + getEconomySupportBonus("gasMine", mine.pos.x, mine.pos.z);
       gas += payout;
       popWorldText(`+${payout}⛽`, m.pos.x, m.pos.y + 1.5, m.pos.z, "#9fffe4");
       m.gasJobState = "toMine";
@@ -4764,6 +4856,10 @@ function isRatTargetValid(t){
 }
 function nearestRatTarget(e){
   const candidates = [];
+  const knightFrontline = servantMice.filter(m=>!m.dead && !m.dying && m.state==="knight");
+  for(const k of knightFrontline){
+    if(dist2(e.pos, k.pos) < 5.2) return k;
+  }
   if(!player.dead) candidates.push(player);
   for(const m of servantMice){ if(!m.dead && !m.dying) candidates.push(m); }
   for(const r of robots){ if(!r.dead && !r.dying) candidates.push(r); }
@@ -4797,6 +4893,17 @@ function chooseEnemyTarget(e){
   }
 
   const hotZonePressure = 1 + combatDirector.heat * 0.55 * difficulty.antiCamp;
+  const meleeKinds = new Set(["rat","weasel","assassin","siegeRat","warClaw","mole","burrowMole","bombBeetle","dustRunner","ram","titanRam","plagueBrute"]);
+  if(meleeKinds.has(e.kind)){
+    let closeKnight = null;
+    let closeKnightD = 999;
+    for(const m of servantMice){
+      if(m.dead || m.dying || m.state!=="knight") continue;
+      const d = dist2(e.pos, m.pos);
+      if(d < closeKnightD){ closeKnightD = d; closeKnight = m; }
+    }
+    if(closeKnight && closeKnightD < 6.2) return closeKnight;
+  }
   if(e.kind==="rat"){
     return nearestRatTarget(e);
   }
@@ -5501,13 +5608,38 @@ function spawnCat(){
 function catChooseTarget(){
   if(!cat || cat.dead || cat.dying) return null;
   const playerDist = dist2(cat.pos, player.pos);
-  const playerVisible = !player.dead && !lineBlockedForCat(cat.pos, player.pos);
+  const canPathToPlayer = !player.dead && !lineBlockedForCat(cat.pos, player.pos);
+  cat.repathPlayerCd = Math.max(0, (cat.repathPlayerCd || 0));
   const pursuitMemory = (6.2 + difficulty.catIQ * 2.2 + combatDirector.heat * 2.1);
-  if(playerVisible){
+  if(canPathToPlayer){
     cat.aggroMemory = pursuitMemory;
     cat.lastSeenPlayerPos.copy(player.pos);
     cat.failedRoute = Math.max(0, cat.failedRoute - 1);
+    cat.repathPlayerCd = 0.2;
     return player;
+  }
+  const fallbackPriority = [];
+  for(const m of servantMice){
+    if(m.dead || m.dying || m.state!=="knight") continue;
+    fallbackPriority.push({ t:m, d:dist2(cat.pos, m.pos), rank:0 });
+  }
+  for(const r of robots){
+    if(r.dead || r.dying) continue;
+    fallbackPriority.push({ t:r, d:dist2(cat.pos, r.pos), rank:1 });
+  }
+  for(const m of servantMice){
+    if(m.dead || m.dying || m.state==="knight") continue;
+    fallbackPriority.push({ t:m, d:dist2(cat.pos, m.pos), rank:1 });
+  }
+  for(const s of structures){
+    if(s.dead) continue;
+    fallbackPriority.push({ t:s, d:dist2(cat.pos, s.pos), rank:2 });
+  }
+  fallbackPriority.sort((a,b)=>(a.rank-b.rank) || (a.d-b.d));
+  const fallbackTarget = fallbackPriority[0]?.t || null;
+  if(fallbackTarget && fallbackPriority[0].d < 16){
+    cat.aggroMemory = Math.max(cat.aggroMemory, 1.2);
+    return fallbackTarget;
   }
 
   if(!player.dead && (cat.aggroMemory > 0 || playerDist < dynamicMapSize)){
@@ -5632,6 +5764,7 @@ function updateCat(dt){
   cat.burstT = Math.max(0, (cat.burstT || 0) - dt);
   cat.aggroMemory = Math.max(0, cat.aggroMemory - dt);
   cat.repathTimer = Math.max(0, (cat.repathTimer || 0) - dt);
+  cat.repathPlayerCd = Math.max(0, (cat.repathPlayerCd || 0) - dt);
   cat.routePersist = Math.max(0, (cat.routePersist || 0) - dt);
 
   const target = catChooseTarget();
@@ -5651,6 +5784,9 @@ function updateCat(dt){
       cat.prowlTarget.set(rand(-dynamicHalfMap+18, dynamicHalfMap-18), 0, rand(-dynamicHalfMap+18, dynamicHalfMap-18));
     }
     moveTarget = cat.prowlTarget;
+  }
+  if(cat.repathPlayerCd <= 0 && !player.dead && lineBlockedForCat(cat.pos, player.pos)){
+    cat.repathPlayerCd = currentMapRules.catRepathCadence || 0.8;
   }
   if(target === player || target?.isPlayerMemory){
     const pv = new THREE.Vector3(Math.sin(player.heading), 0, Math.cos(player.heading)).multiplyScalar(clamp(dist2(cat.pos, player.pos)/9, 0.5, 2.4));
@@ -6206,7 +6342,7 @@ function updateStructures(dt){
         const ecoBoost = getStructureTechModifiers(s);
         const batteryEco = getBatteryDistrictBoost(s);
         s.produceCd = 7.5 / (ecoBoost.speed || 1);
-        const out = Math.floor(getFactoryOutputAmount() * (s.fusionProdMult || 1) * (ecoBoost.production || 1) * (batteryEco.industrial || 1));
+        const out = Math.floor(getFactoryOutputAmount() * (s.fusionProdMult || 1) * (ecoBoost.production || 1) * (batteryEco.industrial || 1)) + getEconomySupportBonus("factory", s.pos.x, s.pos.z);
         cheese += out;
         popWorldText(`+${out}🧀`, worker.pos.x, worker.pos.y + 1.55, worker.pos.z, "#ffe66f");
         addBurst(s.pos.x,s.pos.y+1.4,s.pos.z,0xffe066,8,3,0.45,0.07);
@@ -6302,6 +6438,7 @@ function updateStructures(dt){
 
     if(s.type==="turret"){
       s.fireCd -= dt;
+      const shotStyle = getProjectileStyle("turret") || {};
       const late = getTowerLateScale("turret");
       const headPivot = s.mesh.userData.headPivot;
       const t = nearestEnemyInRange(s, 22 * atk.rangeMult * techMods.range * fusionRange * batteryBoost.range);
@@ -6313,20 +6450,21 @@ function updateStructures(dt){
         const dir = new THREE.Vector3(t.pos.x-s.pos.x,0,t.pos.z-s.pos.z).normalize();
         spawnProjectile({
           pos:new THREE.Vector3(s.pos.x,s.pos.y+1.7,s.pos.z).add(dir.clone().multiplyScalar(1.2)),
-          vel:new THREE.Vector3(dir.x*20,1.8,dir.z*20),
+          vel:new THREE.Vector3(dir.x*20*(shotStyle.speed || 1),1.8,dir.z*20*(shotStyle.speed || 1)),
           damage:7*buff.damage*late*atk.damageMult*techMods.damage*batteryBoost.damage*fusionDamage*engDamage,
           splash:0 + batteryBoost.splash*0.2,
-          color:0xffe16c,
+          color:shotStyle.color || 0xffe16c,
           size:0.12,
           from:"ally",
-          kind:"pellet"
+          kind:shotStyle.kind || "pellet"
         });
-        addBurst(s.pos.x+dir.x*1.2,s.pos.y+1.6,s.pos.z+dir.z*1.2,0xffe16c,4,2,0.18,0.04);
+        addBurst(s.pos.x+dir.x*1.2,s.pos.y+1.6,s.pos.z+dir.z*1.2,shotStyle.color || 0xffe16c,4,2,0.18,0.04);
       }
     }
 
     if(s.type==="cannon"){
       s.fireCd -= dt;
+      const shotStyle = getProjectileStyle("cannon") || {};
       const late = getTowerLateScale("cannon");
       const barrelPivot = s.mesh.userData.barrelPivot;
       const t = nearestEnemyInRange(s, 28 * atk.rangeMult * techMods.range * fusionRange * batteryBoost.range);
@@ -6345,20 +6483,21 @@ function updateStructures(dt){
         const dir = new THREE.Vector3(dx/d,0,dz/d);
         spawnProjectile({
           pos:new THREE.Vector3(s.pos.x,s.pos.y+2.1,s.pos.z),
-          vel:new THREE.Vector3(dir.x*10.5,8.5,dir.z*10.5),
+          vel:new THREE.Vector3(dir.x*10.5*(shotStyle.speed || 1),8.5,dir.z*10.5*(shotStyle.speed || 1)),
           damage:28*buff.damage*late*atk.damageMult*techMods.damage*batteryBoost.damage*fusionDamage*engDamage,
           splash:2.8 + techMods.splash + batteryBoost.splash,
-          color:0xffb34d,
+          color:shotStyle.color || 0xffb34d,
           size:0.28,
           from:"ally",
-          kind:"cannon"
+          kind:shotStyle.kind || "cannon"
         });
-        addBurst(s.pos.x,s.pos.y+2.1,s.pos.z,0xffc766,8,3,0.35,0.05);
+        addBurst(s.pos.x,s.pos.y+2.1,s.pos.z,shotStyle.color || 0xffc766,8,3,0.35,0.05);
       }
     }
 
     if(s.type==="shardLauncher"){
       s.fireCd -= dt;
+      const shotStyle = getProjectileStyle("shardLauncher") || {};
       const late = getTowerLateScale("shardLauncher");
       const prongs = s.mesh.userData.prongs;
       const t = nearestPriorityEnemyInRange(s, 20 * atk.rangeMult * techMods.range * fusionRange * batteryBoost.range, ["siegeRat","spitterBug","burrowMole"]);
@@ -6373,13 +6512,13 @@ function updateStructures(dt){
           const dir = new THREE.Vector3(Math.sin(a),0,Math.cos(a));
           spawnProjectile({
             pos:new THREE.Vector3(s.pos.x,s.pos.y+1.5,s.pos.z).add(dir.clone().multiplyScalar(0.7)),
-            vel:new THREE.Vector3(dir.x*17,2.0,dir.z*17),
+            vel:new THREE.Vector3(dir.x*17*(shotStyle.speed || 1),2.0,dir.z*17*(shotStyle.speed || 1)),
             damage:5.5*buff.damage*late*atk.damageMult*techMods.damage*batteryBoost.damage*fusionDamage*engDamage,
             splash:0 + batteryBoost.splash*0.2,
-            color:0xffd9b3,
+            color:shotStyle.color || 0xffd9b3,
             size:0.10,
             from:"ally",
-            kind:"shard"
+            kind:shotStyle.kind || "shard"
           });
         }
         addBurst(s.pos.x,s.pos.y+1.4,s.pos.z,0xffe2c1,5,2.1,0.22,0.04);
@@ -6981,7 +7120,8 @@ function spawnEnemyWave(kind,count){
   const center = useCatCenter ? cat.pos : null;
   for(let i=0;i<count;i++){
     let x=0,z=0;
-    const flankSpawn = difficulty.flank > 0.2 && Math.random() < (0.22 + combatDirector.heat*0.1);
+    const flankSpawnChance = 0.22 + combatDirector.heat*0.1 + (currentMapRules.flankSpawnBonus || 0);
+    const flankSpawn = difficulty.flank > 0.2 && Math.random() < flankSpawnChance;
     if(useCatCenter && !flankSpawn){
       const a = Math.random() * Math.PI * 2;
       const r = rand(2.0, (kind==="ram" || kind==="titanRam" || kind==="plagueBrute") ? 7.5 : 5.5);
@@ -7006,6 +7146,12 @@ function spawnEnemyWave(kind,count){
       const away = new THREE.Vector3(x-player.pos.x,0,z-player.pos.z).normalize();
       x = clamp(player.pos.x + away.x * rand(11,16), -dynamicHalfMap+6, dynamicHalfMap-6);
       z = clamp(player.pos.z + away.z * rand(11,16), -dynamicHalfMap+6, dynamicHalfMap-6);
+    }
+    if((currentMapRules.enemyLaneCompression || 1) > 1.05){
+      z *= 0.72;
+    } else if((currentMapRules.enemyLaneCompression || 1) < 0.95){
+      x *= 1.08;
+      z *= 1.08;
     }
     const e = makeEnemy(kind, x, z);
     if(kind==="spitterBug") addBurst(x, groundHeight(x,z)+0.8, z, 0x8dff78, 8, 2.8, 0.35, 0.05);
