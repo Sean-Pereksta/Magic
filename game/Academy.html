@@ -1156,6 +1156,9 @@ function addGroundBand(oldHalf, newHalf, bandLevel=1){
 }
 addGroundBand(0, dynamicHalfMap, 0);
 
+let pathingBlockVersion = 1;
+function markPathingDirty(){ pathingBlockVersion++; }
+
 function createRock(x,z,sx,sy,sz,color=0x6d7379){
   const geo = new THREE.DodecahedronGeometry(1,0);
   const mat = new THREE.MeshStandardMaterial({ color, roughness:1 });
@@ -1482,8 +1485,6 @@ function lineBlocked(a,b, opts=null){
   }
   return false;
 }
-let pathingBlockVersion = 1;
-function markPathingDirty(){ pathingBlockVersion++; }
 const PATH_CLASS = { small:"small", medium:"medium", large:"large", burrow:"burrow" };
 const PATHING_PROFILE = {
   small:{ clearanceRadius:0.72, clearancePenalty:0.12, narrowPenalty:0.25, recalcCadence:0.85, maxNodes:1400 },
