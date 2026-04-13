@@ -1087,6 +1087,9 @@ function groundHeight(x,z){
   return 0;
 }
 
+let pathingBlockVersion = 1;
+function markPathingDirty(){ pathingBlockVersion++; }
+
 // -------------------------------------------------
 // LIGHTING
 // -------------------------------------------------
@@ -1155,9 +1158,6 @@ function addGroundBand(oldHalf, newHalf, bandLevel=1){
   groundBands.push(mesh);
 }
 addGroundBand(0, dynamicHalfMap, 0);
-
-let pathingBlockVersion = 1;
-function markPathingDirty(){ pathingBlockVersion++; }
 
 function createRock(x,z,sx,sy,sz,color=0x6d7379){
   const geo = new THREE.DodecahedronGeometry(1,0);
