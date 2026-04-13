@@ -1399,13 +1399,56 @@ function lineBlocked(a,b, opts=null){
   }
   return false;
 }
-function randomFreePosition(radius=1){
+function randomFreePosition(radius=1, opts=null){
+  const terrainPadding = Math.max(0, opts?.terrainPadding || 0);
+  const minEdge = Math.max(10, radius + terrainPadding + 2);
   for(let i=0;i<80;i++){
-    const x = rand(-dynamicHalfMap+10, dynamicHalfMap-10);
-    const z = rand(-dynamicHalfMap+10, dynamicHalfMap-10);
-    if(!circleBlocked(x,z,radius)) return new THREE.Vector3(x, groundHeight(x,z), z);
+    const x = rand(-dynamicHalfMap+minEdge, dynamicHalfMap-minEdge);
+    const z = rand(-dynamicHalfMap+minEdge, dynamicHalfMap-minEdge);
+    if(circleBlocked(x,z,radius)) continue;
+    if(terrainPadding > 0){
+      let tooCloseToTerrain = false;
+      for(const o of obstacles){
+        if(Math.hypot(x-o.x, z-o.z) < radius + o.r + terrainPadding){
+          tooCloseToTerrain = true;
+          break;
+        }
+      }
+      if(tooCloseToTerrain) continue;
+    }
+    return new THREE.Vector3(x, groundHeight(x,z), z);
   }
   return new THREE.Vector3(0, groundHeight(0,0), 0);
+}
+function findSafeCatSpawnPosition(catRadius=2.2){
+  const preferred = new THREE.Vector3(0, groundHeight(0,0), 0);
+  if(!circleBlocked(preferred.x, preferred.z, catRadius, null, 1, { ignoreTerrainForBuild:false })){
+    let centerClear = true;
+    for(const o of obstacles){
+      if(Math.hypot(preferred.x-o.x, preferred.z-o.z) < catRadius + o.r + 4.5){ centerClear = false; break; }
+    }
+    if(centerClear) return preferred;
+  }
+  for(let i=0;i<120;i++){
+    const p = randomFreePosition(catRadius, { terrainPadding:4.5 });
+    if(Math.hypot(p.x, p.z) < 8) continue;
+    return p;
+  }
+  let best = null;
+  let bestClearance = -Infinity;
+  for(let i=0;i<160;i++){
+    const p = randomFreePosition(catRadius, { terrainPadding:0.8 });
+    if(circleBlocked(p.x, p.z, catRadius)) continue;
+    let nearest = Infinity;
+    for(const o of obstacles){
+      nearest = Math.min(nearest, Math.hypot(p.x-o.x, p.z-o.z) - (catRadius + o.r));
+    }
+    if(nearest > bestClearance){
+      bestClearance = nearest;
+      best = p;
+    }
+  }
+  return best || randomFreePosition(catRadius, { terrainPadding:2.2 });
 }
 function findOpenSpawnCellNearStructure(structure, preferredRadiusCells=1, fallbackRadiusCells=BREEDING_SPAWN_SEARCH_CELLS){
   const center = structure.cell || worldToCell(structure.pos.x, structure.pos.z);
@@ -4273,7 +4316,7 @@ function spawnWildMouse(x,z){
   });
 }
 for(let i=0;i<4;i++){
-  const p = randomFreePosition(1);
+  const p = randomFreePosition(1, { terrainPadding:2.2 });
   spawnWildMouse(p.x,p.z);
 }
 let wildSpawnTimer = 0;
@@ -5518,12 +5561,13 @@ function spawnCat(){
   if(cat || catSpawnTriggered) return;
   catSpawnTriggered = true;
   const catLevelStats = getCatLevelStats();
+  const catSpawnPos = findSafeCatSpawnPosition(2.2);
 
   const tele = new THREE.Mesh(
     new THREE.CylinderGeometry(3.5,3.5,0.08,24),
     new THREE.MeshBasicMaterial({ color:0xff3333, transparent:true, opacity:0.65 })
   );
-  tele.position.set(0, groundHeight(0,0)+0.05, 0);
+  tele.position.set(catSpawnPos.x, catSpawnPos.y+0.05, catSpawnPos.z);
   scene.add(tele);
 
   let pulse = 0;
@@ -5539,7 +5583,7 @@ function spawnCat(){
     tele.parent?.remove(tele);
 
     const model = makeCatModel();
-    model.position.set(0, groundHeight(0,0), 0);
+    model.position.set(catSpawnPos.x, catSpawnPos.y, catSpawnPos.z);
     scene.add(model);
 
     const bar = createHealthBar(6.8,0xff4444);
