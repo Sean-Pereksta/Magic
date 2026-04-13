@@ -472,12 +472,22 @@ const DIFFICULTY_LEVELS = {
 const MAP_PRESETS = {
   meadow:{ name:"Lush Meadow • Forest Edge", short:"Open expansion lanes, wider flanks, and spread resource hooks reward distributed defenses.", palette:{bg:0x95c7eb,fog:0x95c7eb}, tags:["Open Space","Flank Pressure","Economy Spread"] },
   canyon:{ name:"Rocky Canyon • Badlands", short:"Chokepoints and compressed approach lanes make walls, Heavy, and lane denial stronger.", palette:{bg:0xc9a677,fog:0xb98f62}, tags:["Chokepoints","Siege Pressure","Lane Control"] },
-  ruins:{ name:"Ruined Tech Zone • Corrupted Field", short:"Irregular side routes and broken terrain clusters force reactive district planning.", palette:{bg:0x5f667f,fog:0x4e5872}, tags:["Unusual Lanes","Irregular Routing","Tactical Risk"] }
+  ruins:{ name:"Ruined Tech Zone • Corrupted Field", short:"Irregular side routes and broken terrain clusters force reactive district planning.", palette:{bg:0x5f667f,fog:0x4e5872}, tags:["Unusual Lanes","Irregular Routing","Tactical Risk"] },
+  hedgeLabyrinth:{ name:"Hedge Labyrinth • Garden Courts", short:"Maze lanes connect roomy hedge courts with baseable inner pockets and vent outposts.", palette:{bg:0x8bb788,fog:0x7ea778}, tags:["Maze Chambers","Court Pockets","Flank Forks"] },
+  fortressMaze:{ name:"Ruined Fortress Maze • Broken Keep", short:"Collapsed walls form layered courtyards and breach corridors with strong fallback defense play.", palette:{bg:0x8790a2,fog:0x757d90}, tags:["Layered Defense","Courtyard Bases","Breach Routes"] },
+  cavernNetwork:{ name:"Cavern Network • Vent Hollows", short:"Organic channels open into broad chambers with risky gas pockets and route-control tension.", palette:{bg:0x596477,fog:0x4e5867}, tags:["Organic Maze","Chamber Expansion","Route Control"] },
+  ancientRuinGrid:{ name:"Ancient Ruin Grid • Temple Blocks", short:"Readable grid lanes and broken plazas create distinct districts, flanks, and expansion choices.", palette:{bg:0x8e8a73,fog:0x7c775f}, tags:["Readable Lanes","District Play","Strategic Plazas"] },
+  splitCanyon:{ name:"Split Canyon Maze • Switchbacks", short:"Twisting canyon turns and broad sand pockets reward timing, outposts, and multi-lane pressure.", palette:{bg:0xc79a63,fog:0xb98b54}, tags:["Switchbacks","Timing Routes","Forward Outposts"] }
 };
 const MAP_GAMEPLAY_RULES = {
   meadow:{ ventBase:30, ventExpansionMult:1.25, flankSpawnBonus:0.14, catRepathCadence:0.9, enemyLaneCompression:0.8 },
   canyon:{ ventBase:18, ventExpansionMult:0.8, flankSpawnBonus:-0.06, catRepathCadence:0.7, enemyLaneCompression:1.26 },
-  ruins:{ ventBase:24, ventExpansionMult:1.05, flankSpawnBonus:0.08, catRepathCadence:0.8, enemyLaneCompression:1.0 }
+  ruins:{ ventBase:24, ventExpansionMult:1.05, flankSpawnBonus:0.08, catRepathCadence:0.8, enemyLaneCompression:1.0 },
+  hedgeLabyrinth:{ ventBase:28, ventExpansionMult:1.2, flankSpawnBonus:0.2, catRepathCadence:0.75, enemyLaneCompression:1.18 },
+  fortressMaze:{ ventBase:22, ventExpansionMult:1.0, flankSpawnBonus:0.05, catRepathCadence:0.68, enemyLaneCompression:1.25 },
+  cavernNetwork:{ ventBase:26, ventExpansionMult:1.18, flankSpawnBonus:0.12, catRepathCadence:0.72, enemyLaneCompression:1.12 },
+  ancientRuinGrid:{ ventBase:24, ventExpansionMult:1.08, flankSpawnBonus:0.1, catRepathCadence:0.78, enemyLaneCompression:1.03 },
+  splitCanyon:{ ventBase:21, ventExpansionMult:0.95, flankSpawnBonus:-0.02, catRepathCadence:0.7, enemyLaneCompression:1.2 }
 };
 let currentMapRules = MAP_GAMEPLAY_RULES.meadow;
 const KNIGHT_BASE_HP = 44;
@@ -1157,6 +1167,7 @@ function createRock(x,z,sx,sy,sz,color=0x6d7379){
   const terrain = { x,z,r:Math.max(sx,sz)*0.95, mesh:m };
   markTerrainOccupiedCells(terrain);
   obstacles.push(terrain);
+  markPathingDirty();
 }
 function createCliff(x,z,sx,sy,sz){
   const geo = new THREE.BoxGeometry(sx,sy,sz);
@@ -1168,6 +1179,7 @@ function createCliff(x,z,sx,sy,sz){
   const terrain = { x,z,r:Math.max(sx,sz)*0.56, mesh:m };
   markTerrainOccupiedCells(terrain);
   obstacles.push(terrain);
+  markPathingDirty();
 }
 function createBush(x,z){
   const g = new THREE.Group();
@@ -1261,6 +1273,53 @@ function populateDecorBand(oldHalf,newHalf,level){
   }
 }
 populateDecorBand(0,dynamicHalfMap,1);
+function createMazeBarrierLine(x1,z1,x2,z2,segments=8,thickness=5.2,height=5.1){
+  for(let i=0;i<=segments;i++){
+    if(i===Math.floor(segments*0.35) || i===Math.floor(segments*0.68)) continue;
+    const t = i / segments;
+    const x = x1 + (x2-x1) * t;
+    const z = z1 + (z2-z1) * t;
+    createCliff(x, z, thickness, height, thickness * rand(0.92, 1.08));
+  }
+}
+function createVentPocketAt(x,z){
+  const c = worldToCell(x, z);
+  if(gasVents.some(v => v.cx===c.cx && v.cz===c.cz)) return;
+  const w = cellToWorld(c.cx, c.cz);
+  if(circleBlocked(w.x, w.z, 1.1, null, 0.95)) return;
+  createGasVentAtCell(c.cx, c.cz);
+}
+function addMazeMapLayout(mapKey){
+  if(mapKey === "hedgeLabyrinth"){
+    for(let i=-2;i<=2;i++) createMazeBarrierLine(-46, i*13, 46, i*13 + (i%2?4:-4), 10, 4.8, 4.2);
+    for(let i=-2;i<=2;i++) createMazeBarrierLine(i*15, -44, i*15 + (i%2?-3:3), 44, 10, 4.6, 4.1);
+    [[-30,-30],[-30,28],[30,-24],[28,30],[0,0]].forEach(([x,z])=>createVentPocketAt(x,z));
+  } else if(mapKey === "fortressMaze"){
+    for(let i=-3;i<=3;i++) createMazeBarrierLine(-48, i*12, 48, i*12, 10, 5.8, 5.6);
+    createMazeBarrierLine(-36,-36,36,36,8,5.0,4.8);
+    createMazeBarrierLine(-36,36,36,-36,8,5.0,4.8);
+    [[-34,0],[34,0],[0,-34],[0,34],[0,0]].forEach(([x,z])=>createVentPocketAt(x,z));
+  } else if(mapKey === "cavernNetwork"){
+    for(let i=0;i<26;i++){
+      const a = (i/26) * Math.PI * 2;
+      const r = 26 + Math.sin(i*0.9) * 10;
+      createRock(Math.sin(a)*r, Math.cos(a)*r, rand(2.4,4.8), rand(2.8,5.6), rand(2.4,4.8), 0x4f5f72);
+    }
+    for(let i=-2;i<=2;i++) createMazeBarrierLine(-44, i*15 + 4, 44, i*15 - 4, 9, 4.8, 4.7);
+    [[-26,-8],[26,10],[-4,30],[8,-30],[0,0]].forEach(([x,z])=>createVentPocketAt(x,z));
+  } else if(mapKey === "ancientRuinGrid"){
+    for(let i=-3;i<=3;i++){
+      createMazeBarrierLine(-46, i*12, 46, i*12, 10, 4.9, 4.9);
+      createMazeBarrierLine(i*12, -46, i*12, 46, 10, 4.9, 4.9);
+    }
+    [[-24,-24],[24,-24],[-24,24],[24,24],[0,0]].forEach(([x,z])=>createVentPocketAt(x,z));
+  } else if(mapKey === "splitCanyon"){
+    for(let i=-3;i<=3;i++) createMazeBarrierLine(-46, i*11, 46, i*11 + (i%2?8:-8), 9, 5.6, 5.2);
+    createMazeBarrierLine(-40,-40,-10,40,7,5.4,5.1);
+    createMazeBarrierLine(10,-40,40,40,7,5.4,5.1);
+    [[-30,20],[-12,-26],[12,24],[30,-18],[0,0]].forEach(([x,z])=>createVentPocketAt(x,z));
+  }
+}
 function applyMapPreset(mapKey){
   const map = MAP_PRESETS[mapKey] || MAP_PRESETS.meadow;
   currentMapRules = MAP_GAMEPLAY_RULES[mapKey] || MAP_GAMEPLAY_RULES.meadow;
@@ -1291,6 +1350,30 @@ function applyMapPreset(mapKey){
     createEnemyObjective(38, 35, "Corrupted Pylon Alpha");
     createEnemyObjective(-44, -18, "Corrupted Pylon Beta");
     createEnemyObjective(2, -48, "Power Node Gamma");
+  } else if(["hedgeLabyrinth","fortressMaze","cavernNetwork","ancientRuinGrid","splitCanyon"].includes(mapKey)){
+    ensureMapVentCount(currentMapRules.ventBase);
+    addMazeMapLayout(mapKey);
+    if(mapKey==="hedgeLabyrinth"){
+      createEnemyObjective(42, -34, "Garden Overmind");
+      createEnemyObjective(-44, 34, "Hedge Brood Core");
+      createEnemyObjective(4, 40, "Inner Court Relay");
+    } else if(mapKey==="fortressMaze"){
+      createEnemyObjective(0, 44, "Citadel Signal Spire");
+      createEnemyObjective(-44, 0, "Breach Relay West");
+      createEnemyObjective(44, 0, "Breach Relay East");
+    } else if(mapKey==="cavernNetwork"){
+      createEnemyObjective(-40, -30, "Glow Node Alpha");
+      createEnemyObjective(40, 30, "Glow Node Beta");
+      createEnemyObjective(0, 42, "Deep Vent Heart");
+    } else if(mapKey==="ancientRuinGrid"){
+      createEnemyObjective(-42, -42, "Temple Fragment I");
+      createEnemyObjective(42, -42, "Temple Fragment II");
+      createEnemyObjective(0, 42, "Temple Nexus");
+    } else if(mapKey==="splitCanyon"){
+      createEnemyObjective(-44, 34, "Canyon Banner West");
+      createEnemyObjective(44, -30, "Canyon Banner East");
+      createEnemyObjective(0, 44, "Switchback Beacon");
+    }
   }
 }
 function createGasVentAtCell(cx, cz){
@@ -1398,6 +1481,159 @@ function lineBlocked(a,b, opts=null){
     }
   }
   return false;
+}
+let pathingBlockVersion = 1;
+function markPathingDirty(){ pathingBlockVersion++; }
+const PATH_CLASS = { small:"small", medium:"medium", large:"large", burrow:"burrow" };
+const PATHING_PROFILE = {
+  small:{ clearanceRadius:0.72, clearancePenalty:0.12, narrowPenalty:0.25, recalcCadence:0.85, maxNodes:1400 },
+  medium:{ clearanceRadius:1.05, clearancePenalty:0.4, narrowPenalty:0.8, recalcCadence:0.68, maxNodes:1700 },
+  large:{ clearanceRadius:1.65, clearancePenalty:1.15, narrowPenalty:2.25, recalcCadence:0.54, maxNodes:2200 }
+};
+const PATH_DIRS = [
+  { dx:1, dz:0, c:1 }, { dx:-1, dz:0, c:1 }, { dx:0, dz:1, c:1 }, { dx:0, dz:-1, c:1 },
+  { dx:1, dz:1, c:1.4142 }, { dx:1, dz:-1, c:1.4142 }, { dx:-1, dz:1, c:1.4142 }, { dx:-1, dz:-1, c:1.4142 }
+];
+function getPathClassForKind(kind){
+  if(kind==="burrowMole" || kind==="screecherBat") return PATH_CLASS.burrow;
+  if(["siegeRat","titanRam","ram","plagueBrute","warClaw","weasel"].includes(kind)) return PATH_CLASS.medium;
+  return PATH_CLASS.small;
+}
+function getPathProfileForEntity(entity){
+  const cls = entity.pathClass || PATH_CLASS.small;
+  if(cls === PATH_CLASS.large) return PATHING_PROFILE.large;
+  if(cls === PATH_CLASS.medium) return PATHING_PROFILE.medium;
+  return PATHING_PROFILE.small;
+}
+function isPathCellBlockedForRadius(cx, cz, radius, ignoreStructure=null, opts=null){
+  const w = cellToWorld(cx, cz);
+  return circleBlocked(w.x, w.z, radius, ignoreStructure, 1, opts);
+}
+function estimateCellClearance(cx, cz, radius){
+  const maxRing = 4;
+  let clearance = 0;
+  for(let ring=1; ring<=maxRing; ring++){
+    let blocked = false;
+    for(let dx=-ring; dx<=ring && !blocked; dx++){
+      for(let dz=-ring; dz<=ring; dz++){
+        if(Math.abs(dx)!==ring && Math.abs(dz)!==ring) continue;
+        const nx = cx + dx, nz = cz + dz;
+        if(isPathCellBlockedForRadius(nx, nz, radius)){ blocked = true; break; }
+      }
+    }
+    if(blocked) break;
+    clearance = ring;
+  }
+  return clearance;
+}
+function buildPathToTarget(entity, targetPos, opts=null){
+  if(!entity || !targetPos) return null;
+  if(entity.pathClass === PATH_CLASS.burrow) return null;
+  const profile = getPathProfileForEntity(entity);
+  const start = worldToCell(entity.pos.x, entity.pos.z);
+  const goal = worldToCell(targetPos.x, targetPos.z);
+  const ignoreStructure = opts?.ignoreStructure || null;
+  const startKey = cellKey(start.cx, start.cz);
+  const goalKey = cellKey(goal.cx, goal.cz);
+  if(startKey === goalKey) return [cellToWorld(goal.cx, goal.cz)];
+  const heuristic = (a,b)=> Math.hypot(a.cx - b.cx, a.cz - b.cz);
+  const open = [{ cx:start.cx, cz:start.cz, key:startKey, g:0, f:heuristic(start,goal), parent:null }];
+  const openMap = new Map([[startKey, open[0]]]);
+  const closed = new Set();
+  let best = open[0];
+  let expanded = 0;
+  while(open.length && expanded < profile.maxNodes){
+    open.sort((a,b)=>a.f-b.f);
+    const node = open.shift();
+    openMap.delete(node.key);
+    if(!node) break;
+    if(node.key === goalKey){ best = node; break; }
+    closed.add(node.key);
+    expanded++;
+    if(heuristic(node, goal) < heuristic(best, goal)) best = node;
+    for(const dir of PATH_DIRS){
+      const nx = node.cx + dir.dx;
+      const nz = node.cz + dir.dz;
+      if(nx < -dynamicGridHalfCells || nx > dynamicGridHalfCells || nz < -dynamicGridHalfCells || nz > dynamicGridHalfCells) continue;
+      const nKey = cellKey(nx, nz);
+      if(closed.has(nKey)) continue;
+      if(isPathCellBlockedForRadius(nx, nz, profile.clearanceRadius, ignoreStructure, opts?.moveOpts)){
+        continue;
+      }
+      const clearance = estimateCellClearance(nx, nz, profile.clearanceRadius);
+      const narrowCost = Math.max(0, 2.8 - clearance) * profile.narrowPenalty;
+      const g = node.g + dir.c + (1 / (1 + clearance)) * profile.clearancePenalty + narrowCost;
+      const h = heuristic({cx:nx,cz:nz}, goal);
+      const f = g + h;
+      const existing = openMap.get(nKey);
+      if(existing && existing.g <= g) continue;
+      const next = { cx:nx, cz:nz, key:nKey, g, f, parent:node };
+      if(existing){
+        const idx = open.indexOf(existing);
+        if(idx >= 0) open[idx] = next;
+      } else {
+        open.push(next);
+      }
+      openMap.set(nKey, next);
+    }
+  }
+  if(!best || (best.key !== goalKey && heuristic(best, goal) > 6.5)) return null;
+  const out = [];
+  let cur = best;
+  while(cur){
+    const w = cellToWorld(cur.cx, cur.cz);
+    out.push(new THREE.Vector3(w.x, groundHeight(w.x, w.z), w.z));
+    cur = cur.parent;
+  }
+  out.reverse();
+  return out;
+}
+function refreshEntityPath(entity, targetPos, opts=null){
+  if(!entity || !targetPos || entity.pathClass===PATH_CLASS.burrow) return false;
+  const route = buildPathToTarget(entity, targetPos, opts);
+  entity.gridPath = route || null;
+  entity.gridPathIndex = 0;
+  entity.pathTargetCellKey = cellKey(worldToCell(targetPos.x, targetPos.z).cx, worldToCell(targetPos.x, targetPos.z).cz);
+  entity.pathBlockVersion = pathingBlockVersion;
+  entity.pathRefreshCd = getPathProfileForEntity(entity).recalcCadence * (0.75 + Math.random()*0.5);
+  entity.pathFailed = !route || route.length <= 1;
+  return !!route;
+}
+function getEntityPathMoveTarget(entity, targetPos, dt=0.016){
+  if(!entity || !targetPos || entity.pathClass===PATH_CLASS.burrow) return targetPos;
+  entity.pathRefreshCd = Math.max(0, (entity.pathRefreshCd || 0) - dt);
+  const targetCell = worldToCell(targetPos.x, targetPos.z);
+  const targetCellKey = cellKey(targetCell.cx, targetCell.cz);
+  const needsRefresh = !entity.gridPath || entity.pathTargetCellKey !== targetCellKey || entity.pathBlockVersion !== pathingBlockVersion || (entity.pathRefreshCd || 0) <= 0;
+  if(needsRefresh){
+    refreshEntityPath(entity, targetPos, { ignoreStructure:entity.target && entity.target.type ? entity.target : null, moveOpts:entity.pathClass===PATH_CLASS.burrow ? { ignoreWallsForBurrow:true } : null });
+  }
+  if(entity.gridPath && entity.gridPath.length){
+    const idx = clamp(entity.gridPathIndex || 0, 0, entity.gridPath.length-1);
+    let pathNode = entity.gridPath[idx];
+    if(pathNode && dist2(entity.pos, pathNode) < Math.max(1.2, (entity.radius || 0.8) + 0.35) && idx < entity.gridPath.length-1){
+      entity.gridPathIndex = idx + 1;
+      pathNode = entity.gridPath[entity.gridPathIndex];
+    }
+    return pathNode || targetPos;
+  }
+  return targetPos;
+}
+function findBlockingStructureToward(entity, targetPos, maxDist=12){
+  if(!entity || !targetPos) return null;
+  let best = null;
+  let bestScore = Infinity;
+  const canHit = (s)=> !s.dead && (isWallStructure(s) || ["fortPlate","barrierTotem","braceTower","ironBulwarkBastion"].includes(s.type));
+  for(const s of structures){
+    if(!canHit(s)) continue;
+    const dEnt = dist2(entity.pos, s.pos);
+    const dTar = dist2(s.pos, targetPos);
+    if(dEnt > maxDist) continue;
+    const lanePenalty = Math.abs((dEnt + dTar) - dist2(entity.pos, targetPos));
+    const score = dEnt + lanePenalty * 0.8;
+    if(score < bestScore){ bestScore = score; best = s; }
+  }
+  return best;
 }
 function randomFreePosition(radius=1, opts=null){
   const terrainPadding = Math.max(0, opts?.terrainPadding || 0);
@@ -3806,6 +4042,7 @@ function createStructure(type,x,z,rotationY=0, dataOverride=null){
 
   structures.push(s);
   occupiedCells.set(cellKey(cell.cx, cell.cz), s);
+  markPathingDirty();
   if(type==="gasMine"){
     const vent = gasVents.find(v => v.cx===cell.cx && v.cz===cell.cz);
     if(vent){ vent.mine = s; s.vent = vent; }
@@ -3846,6 +4083,7 @@ function fuseCluster(center, cluster, nextStage){
     if(st.cell) occupiedCells.delete(cellKey(st.cell.cx, st.cell.cz));
     scene.remove(st.mesh);
     st.mesh.visible = false;
+    markPathingDirty();
     addBurst(st.pos.x, st.pos.y+1, st.pos.z, 0xffcf66, 14, 4.5, 0.6, 0.08);
   }
   center.fusionStage = nextStage;
@@ -3921,6 +4159,7 @@ function damageStructure(s,dmg){
     }
     scene.remove(s.mesh);
     s.mesh.visible = false;
+    markPathingDirty();
   }
 }
 function getBuildPlace(){
@@ -4831,7 +5070,14 @@ function makeEnemy(kind,x,z){
     debuffCd:0,
     retargetInterval:rand(0.35, 0.85),
     retargetCd:rand(0.05, 0.65),
-    lowFreqCd:rand(0.02, 0.25)
+    lowFreqCd:rand(0.02, 0.25),
+    pathClass:getPathClassForKind(kind),
+    gridPath:null,
+    gridPathIndex:0,
+    pathRefreshCd:0,
+    pathFailed:false,
+    pathTargetCellKey:null,
+    pathBlockVersion:0
   };
   if(kind==="ram"){
     e.role = "breaker";
@@ -5250,6 +5496,10 @@ function updateEnemies(dt){
       const nextTarget = chooseEnemyTarget(e);
       if(nextTarget && nextTarget !== e.target) e.retargetCd = (e.retargetInterval || 0.45) * (e.kind === "rat" ? 0.75 : 1);
       else e.retargetCd = (e.retargetInterval || 0.45);
+      if(nextTarget !== e.target){
+        e.gridPath = null;
+        e.pathRefreshCd = 0;
+      }
       e.target = nextTarget;
     } else if (e.target !== player && e.kind !== "rat") {
       let crowd = 0;
@@ -5264,9 +5514,30 @@ function updateEnemies(dt){
     }
 
     e.repathTimer = Math.max(0, (e.repathTimer || 0) - dt);
-    const moveTarget = (e.repathTimer > 0 && e.repathTarget) ? e.repathTarget : e.target;
+    let moveTarget = (e.repathTimer > 0 && e.repathTarget) ? e.repathTarget : e.target;
     if(!moveTarget) continue;
     let targetPos = moveTarget.pos || moveTarget;
+    if(e.pathClass !== PATH_CLASS.burrow && e.target){
+      targetPos = getEntityPathMoveTarget(e, targetPos, dt);
+      if(e.pathFailed && e.target === player){
+        const fallback = chooseEnemyTarget(e);
+        if(fallback && fallback !== player){
+          e.target = fallback;
+          moveTarget = fallback;
+          targetPos = moveTarget.pos || moveTarget;
+          refreshEntityPath(e, targetPos, { ignoreStructure:e.target && e.target.type ? e.target : null });
+        }
+      }
+      if(e.pathFailed && ["siegeRat","titanRam","ram","plagueBrute"].includes(e.kind)){
+        const blocker = findBlockingStructureToward(e, (e.target?.pos || player.pos), 15);
+        if(blocker){
+          e.target = blocker;
+          moveTarget = blocker;
+          targetPos = blocker.pos;
+          refreshEntityPath(e, targetPos, { ignoreStructure:blocker });
+        }
+      }
+    }
     const d = dist2(e.pos, targetPos);
     const isStunned = e.stunCd > 0;
     if(e.kind==="burrowMole" && e.burrowState==="surface_attack" && d > meleeStopDistance(e, e.target || moveTarget, 0.9)){
@@ -5541,6 +5812,13 @@ function updateEnemies(dt){
       else if(phase === 1) setRepathPoint(e, e.target?.pos || e.pos, 5.2);
       else if(phase === 2) e._stuck.side = (e._stuck.side || 1) * -1;
       else setRepathPoint(e, e.target?.pos || player.pos, 7.5);
+      if(e.target && e.pathClass !== PATH_CLASS.burrow){
+        refreshEntityPath(e, e.target.pos || e.target, { ignoreStructure:e.target?.type ? e.target : null });
+      }
+      if(e.pathFailed && ["siegeRat","titanRam","ram","plagueBrute"].includes(e.kind)){
+        const blocker = findBlockingStructureToward(e, e.target?.pos || player.pos, 12);
+        if(blocker) e.target = blocker;
+      }
     });
 
     if(e.kind!=="screecherBat"){
@@ -5642,6 +5920,13 @@ function spawnCat(){
       ,pendingAttackIsHeavy:false
       ,telegraphRing:catTelegraphRing
       ,telegraphArc:catTelegraphArc
+      ,pathClass:PATH_CLASS.large
+      ,gridPath:null
+      ,gridPathIndex:0
+      ,pathRefreshCd:0
+      ,pathFailed:false
+      ,pathTargetCellKey:null
+      ,pathBlockVersion:0
     };
 
     ui.bossWrap.style.display = "block";
@@ -5857,6 +6142,23 @@ function updateCat(dt){
     if(cat.smartChain[0]) cat.smartWaypoint = cat.smartChain[0];
   }
   if(cat.smartWaypoint) moveTarget = cat.smartWaypoint;
+  moveTarget = getEntityPathMoveTarget(cat, moveTarget, dt);
+  if(cat.pathFailed){
+    cat.failedRoute += dt * 0.95;
+    if(target === player){
+      const fallback = catChooseTarget();
+      if(fallback && fallback !== player){
+        moveTarget = fallback.pos || fallback;
+        refreshEntityPath(cat, moveTarget, { ignoreStructure:fallback?.type ? fallback : null });
+      }
+    }
+    const blocker = findBlockingStructureToward(cat, target?.pos || player.pos, 20);
+    if(blocker && ["wall","diamondWall","ultraWall","fortPlate","barrierTotem"].includes(blocker.type)){
+      cat.pendingAttackTarget = blocker;
+      cat.attackWindup = Math.max(cat.attackWindup || 0, 0.1);
+      moveTarget = blocker.pos;
+    }
+  }
   if(cat.repathTimer > 0 && cat.repathTarget) moveTarget = cat.repathTarget;
 
   const d = dist2(cat.pos, moveTarget);
@@ -5924,6 +6226,11 @@ function updateCat(dt){
     cat.failedRoute += 0.8;
     cat.detourSide = phase % 2 ? -1 : 1;
     setRepathPoint(cat, target?.pos || player.pos, phase >= 2 ? 12.5 : 7.5);
+    if(target) refreshEntityPath(cat, target.pos || target, { ignoreStructure:target?.type ? target : null });
+    if(cat.pathFailed){
+      const blocker = findBlockingStructureToward(cat, target?.pos || player.pos, 20);
+      if(blocker) cat.pendingAttackTarget = blocker;
+    }
     if(target && (target === player || target?.isPlayerMemory)) cat.aggroMemory = Math.max(cat.aggroMemory, 4.5 + difficulty.catIQ * 1.8);
   });
 
