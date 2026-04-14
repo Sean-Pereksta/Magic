@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>3D Joust - Lava Arena</title>
+  <title>3D Joust - Sky Overworld</title>
   <style>
     html, body {
       margin: 0;
@@ -110,7 +110,7 @@
     <h1>3D Joust</h1>
     <div class="line">Score: <span id="score">0</span></div>
     <div class="line">Lives: <span id="lives">3</span></div>
-    <div class="line">Wave: <span id="wave">1</span></div>
+    <div class="line">Zone: <span id="wave">Verdant Cliffs</span></div>
     <div class="line">Enemies: <span id="enemies">0</span></div>
   </div>
 
@@ -144,11 +144,18 @@
     let particles = [];
     let platforms = [];
     let lava;
+    let hazardSurfaces = [];
     let arenaGroup;
-    let worldBounds = 90;
+    let worldZones = [];
+    let worldMinX = -160;
+    let worldMaxX = 160;
+    let worldMinZ = -160;
+    let worldMaxZ = 160;
     let wave = 1;
     let score = 0;
     let lives = 3;
+    let roamEnemyTarget = 11;
+    let enemySpawnTimer = 0;
     let gameEnded = false;
     let respawnTimer = 0;
     let centerMsgTimer = 0;
@@ -172,8 +179,8 @@
 
     function init() {
       scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x120b12);
-      scene.fog = new THREE.Fog(0x120b12, 40, 180);
+      scene.background = new THREE.Color(0x1a1d26);
+      scene.fog = new THREE.Fog(0x1a1d26, 50, 300);
 
       clock = new THREE.Clock();
 
@@ -211,7 +218,7 @@
       createLava();
       createPlatforms();
       createPlayer();
-      spawnWave();
+      spawnInitialEnemies();
 
       window.addEventListener("resize", onResize);
       window.addEventListener("keydown", (e) => {
@@ -224,7 +231,7 @@
       restartBtn.addEventListener("click", restartGame);
 
       updateUI();
-      showCenterMessage("WAVE 1", 1.8);
+      showCenterMessage("Explore the Overworld", 2.2);
     }
 
     function createSky() {
@@ -263,30 +270,71 @@
       arenaGroup = new THREE.Group();
       scene.add(arenaGroup);
 
-      const ringGeo = new THREE.TorusGeometry(78, 4, 16, 100);
-      const ringMat = new THREE.MeshStandardMaterial({
-        color: 0x2b2322,
-        roughness: 0.9,
-        metalness: 0.08
-      });
+      worldZones = [
+        { name: "Verdant Cliffs", center: new THREE.Vector3(-78, 0, -18), radius: 58, baseY: -6, hazardY: -24, color: 0x4f6b41, accent: 0x8dbf66, haze: 0x6e9f86, hazardType: "water" },
+        { name: "Ember Basin", center: new THREE.Vector3(0, 0, 0), radius: 62, baseY: -8, hazardY: -20, color: 0x5c392a, accent: 0xcc6b32, haze: 0x8f4f31, hazardType: "lava" },
+        { name: "Ruined Spires", center: new THREE.Vector3(82, 0, -20), radius: 54, baseY: -7, hazardY: -26, color: 0x5a5664, accent: 0x99a1b4, haze: 0x70758a, hazardType: "void" },
+        { name: "Storm Peaks", center: new THREE.Vector3(48, 0, 88), radius: 57, baseY: -5, hazardY: -23, color: 0x586e88, accent: 0xb2d6ff, haze: 0x6f8fb4, hazardType: "tempest" },
+        { name: "Hollow Depths", center: new THREE.Vector3(-70, 0, 88), radius: 52, baseY: -11, hazardY: -29, color: 0x3a3144, accent: 0x6e5b8f, haze: 0x4a3f5f, hazardType: "abyss" }
+      ];
 
-      const ring = new THREE.Mesh(ringGeo, ringMat);
-      ring.rotation.x = Math.PI / 2;
-      ring.position.y = -2;
-      ring.receiveShadow = true;
-      arenaGroup.add(ring);
+      worldMinX = Math.min(...worldZones.map((z) => z.center.x - z.radius - 16));
+      worldMaxX = Math.max(...worldZones.map((z) => z.center.x + z.radius + 16));
+      worldMinZ = Math.min(...worldZones.map((z) => z.center.z - z.radius - 16));
+      worldMaxZ = Math.max(...worldZones.map((z) => z.center.z + z.radius + 16));
 
-      for (let i = 0; i < 12; i++) {
-        const pillar = new THREE.Mesh(
-          new THREE.CylinderGeometry(2.3, 3.5, 30 + Math.random() * 18, 10),
-          new THREE.MeshStandardMaterial({ color: 0x3b2d2a, roughness: 1 })
+      for (const zone of worldZones) {
+        const land = new THREE.Mesh(
+          new THREE.CylinderGeometry(zone.radius * 0.78, zone.radius, 8, 28),
+          new THREE.MeshStandardMaterial({ color: zone.color, roughness: 0.95, metalness: 0.05 })
         );
-        const a = (i / 12) * Math.PI * 2;
-        const r = 55 + Math.random() * 18;
-        pillar.position.set(Math.cos(a) * r, -12, Math.sin(a) * r);
-        pillar.castShadow = true;
-        pillar.receiveShadow = true;
-        arenaGroup.add(pillar);
+        land.position.copy(zone.center).setY(zone.baseY);
+        land.castShadow = true;
+        land.receiveShadow = true;
+        arenaGroup.add(land);
+
+        const rim = new THREE.Mesh(
+          new THREE.TorusGeometry(zone.radius * 0.92, 2.3, 10, 56),
+          new THREE.MeshStandardMaterial({ color: zone.accent, roughness: 0.9, metalness: 0.1 })
+        );
+        rim.rotation.x = Math.PI / 2;
+        rim.position.copy(zone.center).setY(zone.baseY + 3.2);
+        arenaGroup.add(rim);
+
+        for (let i = 0; i < 8; i++) {
+          const pillar = new THREE.Mesh(
+            new THREE.CylinderGeometry(2.2, 3.8, 20 + Math.random() * 20, 9),
+            new THREE.MeshStandardMaterial({ color: zone.color, roughness: 1 })
+          );
+          const a = (i / 8) * Math.PI * 2 + Math.random() * 0.45;
+          const r = zone.radius * (0.35 + Math.random() * 0.55);
+          pillar.position.set(zone.center.x + Math.cos(a) * r, zone.baseY - 8, zone.center.z + Math.sin(a) * r);
+          pillar.castShadow = true;
+          pillar.receiveShadow = true;
+          arenaGroup.add(pillar);
+        }
+      }
+
+      const links = [
+        [worldZones[0], worldZones[1]],
+        [worldZones[1], worldZones[2]],
+        [worldZones[1], worldZones[3]],
+        [worldZones[3], worldZones[4]],
+        [worldZones[0], worldZones[4]]
+      ];
+      for (const [a, b] of links) {
+        const dir = b.center.clone().sub(a.center);
+        const len = dir.length();
+        const bridge = new THREE.Mesh(
+          new THREE.BoxGeometry(11, 2.2, len * 0.56),
+          new THREE.MeshStandardMaterial({ color: 0x6d5d4c, roughness: 0.9 })
+        );
+        bridge.position.copy(a.center.clone().lerp(b.center, 0.5));
+        bridge.position.y = -1.2 + Math.random() * 3;
+        bridge.lookAt(b.center.x, bridge.position.y, b.center.z);
+        bridge.castShadow = true;
+        bridge.receiveShadow = true;
+        arenaGroup.add(bridge);
       }
 
       for (let i = 0; i < 60; i++) {
@@ -295,9 +343,9 @@
           new THREE.MeshBasicMaterial({ color: new THREE.Color().setHSL(0.06 + Math.random() * 0.04, 1, 0.5) })
         );
         ember.position.set(
-          (Math.random() - 0.5) * 150,
-          -14 + Math.random() * 30,
-          (Math.random() - 0.5) * 150
+          (Math.random() - 0.5) * 300,
+          -22 + Math.random() * 54,
+          (Math.random() - 0.5) * 280
         );
         ember.userData = {
           drift: new THREE.Vector3((Math.random()-0.5)*0.08, 0.05 + Math.random() * 0.1, (Math.random()-0.5)*0.08),
@@ -309,32 +357,46 @@
     }
 
     function createLava() {
-      const geo = new THREE.CircleGeometry(180, 96);
-      const mat = new THREE.MeshStandardMaterial({
-        color: 0xff4a14,
-        emissive: 0xff5d12,
-        emissiveIntensity: 1.6,
-        roughness: 0.7,
-        metalness: 0.05
-      });
+      hazardSurfaces = [];
 
-      lava = new THREE.Mesh(geo, mat);
-      lava.rotation.x = -Math.PI / 2;
-      lava.position.y = -20;
-      lava.receiveShadow = true;
-      scene.add(lava);
+      for (const zone of worldZones) {
+        const hazardLook = {
+          lava: { color: 0xff4a14, emissive: 0xff5d12, glow: 0xff7a1f },
+          water: { color: 0x1f6ea9, emissive: 0x2f8ec0, glow: 0x87d2ff },
+          void: { color: 0x1e1c2a, emissive: 0x332f4f, glow: 0x6f7cab },
+          tempest: { color: 0x345a77, emissive: 0x547aa0, glow: 0xb8d9ff },
+          abyss: { color: 0x261f33, emissive: 0x45365c, glow: 0x9e86c9 }
+        }[zone.hazardType];
 
-      const lavaGlow = new THREE.Mesh(
-        new THREE.CircleGeometry(182, 96),
-        new THREE.MeshBasicMaterial({
-          color: 0xff7a1f,
-          transparent: true,
-          opacity: 0.15
-        })
-      );
-      lavaGlow.rotation.x = -Math.PI / 2;
-      lavaGlow.position.y = -19.92;
-      scene.add(lavaGlow);
+        const surface = new THREE.Mesh(
+          new THREE.CircleGeometry(zone.radius * 1.18, 72),
+          new THREE.MeshStandardMaterial({
+            color: hazardLook.color,
+            emissive: hazardLook.emissive,
+            emissiveIntensity: 1.2,
+            roughness: 0.72,
+            metalness: 0.06
+          })
+        );
+        surface.rotation.x = -Math.PI / 2;
+        surface.position.set(zone.center.x, zone.hazardY, zone.center.z);
+        surface.receiveShadow = true;
+        scene.add(surface);
+        hazardSurfaces.push(surface);
+        if (zone.hazardType === "lava") lava = surface;
+
+        const glow = new THREE.Mesh(
+          new THREE.CircleGeometry(zone.radius * 1.2, 72),
+          new THREE.MeshBasicMaterial({
+            color: hazardLook.glow,
+            transparent: true,
+            opacity: 0.12
+          })
+        );
+        glow.rotation.x = -Math.PI / 2;
+        glow.position.set(zone.center.x, zone.hazardY + 0.08, zone.center.z);
+        scene.add(glow);
+      }
     }
 
     function createPlatforms() {
@@ -345,18 +407,12 @@
       });
 
       const spots = [
-        [0, 5, 0, 12, 2.2, 12],
-        [18, 12, -15, 12, 2, 12],
-        [-22, 16, -10, 11, 2, 11],
-        [28, 22, 12, 10, 2, 10],
-        [-30, 10, 18, 10, 2, 10],
-        [10, 28, 26, 9, 2, 9],
-        [-12, 30, -28, 9, 2, 9],
-        [40, 15, -35, 9, 2, 9],
-        [-42, 24, 32, 10, 2, 10],
-        [48, 33, 8, 8, 2, 8],
-        [-50, 36, -5, 8, 2, 8],
-        [0, 40, -45, 8, 2, 8]
+        [-92, 8, -34, 13, 2.2, 12], [-62, 16, -24, 10, 2, 10], [-104, 24, 0, 10, 2, 9], [-72, 31, 18, 9, 2, 9],
+        [-30, 12, -8, 12, 2, 12], [2, 18, 0, 14, 2.2, 12], [32, 26, -6, 10, 2, 10], [0, 33, 20, 9, 2, 9],
+        [72, 10, -30, 12, 2.2, 12], [98, 18, -4, 10, 2, 10], [80, 29, 14, 10, 2, 10], [56, 36, -14, 9, 2, 9],
+        [34, 12, 66, 12, 2, 11], [66, 22, 90, 10, 2, 10], [42, 32, 112, 9, 2, 9], [18, 42, 84, 8, 2, 8],
+        [-86, 10, 66, 12, 2.2, 12], [-58, 18, 92, 10, 2, 10], [-86, 28, 116, 9, 2, 9], [-46, 37, 76, 9, 2, 8],
+        [-46, 20, 40, 10, 2, 10], [-10, 26, 52, 9, 2, 9], [20, 16, 46, 10, 2, 10], [58, 15, 42, 10, 2, 10]
       ];
 
       for (const s of spots) {
@@ -679,27 +735,30 @@
       return enemy;
     }
 
-    function spawnWave() {
+    function spawnInitialEnemies() {
       enemies.forEach(e => scene.remove(e.model));
       enemies = [];
-
-      const count = 3 + wave;
-      for (let i = 0; i < count; i++) {
-        const angle = (i / count) * Math.PI * 2 + Math.random() * 0.45;
-        const radius = 28 + Math.random() * 30;
-        const pos = new THREE.Vector3(
-          Math.cos(angle) * radius,
-          12 + Math.random() * 20,
-          Math.sin(angle) * radius
-        );
-
-        let type = "normal";
-        if (wave >= 3 && Math.random() < 0.3) type = "swift";
-        if (wave >= 4 && Math.random() < 0.25) type = "heavy";
-
-        spawnEnemy(pos, type);
+      for (let i = 0; i < roamEnemyTarget; i++) {
+        spawnRoamingEnemy();
       }
+      enemySpawnTimer = 4 + Math.random() * 4;
       updateUI();
+    }
+
+    function spawnRoamingEnemy() {
+      const zone = worldZones[Math.floor(Math.random() * worldZones.length)];
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 8 + Math.random() * zone.radius * 0.6;
+      const pos = new THREE.Vector3(
+        zone.center.x + Math.cos(angle) * radius,
+        12 + Math.random() * 26,
+        zone.center.z + Math.sin(angle) * radius
+      );
+
+      let type = "normal";
+      if (score >= 300 && Math.random() < 0.35) type = "swift";
+      if (score >= 900 && Math.random() < 0.25) type = "heavy";
+      spawnEnemy(pos, type);
     }
 
     function showCenterMessage(text, duration = 1.5) {
@@ -711,7 +770,8 @@
     function updateUI() {
       scoreEl.textContent = score;
       livesEl.textContent = lives;
-      waveEl.textContent = wave;
+      const zone = player ? getZoneAt(player.pos.x, player.pos.z) : worldZones[0];
+      waveEl.textContent = zone ? zone.name : "Overworld";
       enemiesEl.textContent = enemies.filter(e => e.alive).length;
     }
 
@@ -743,7 +803,7 @@
     function respawnPlayer() {
       player.alive = true;
       player.invuln = 2.2;
-      player.pos.set(0, 18, 0);
+      player.pos.set(-6, 20, -2);
       player.vel.set(0, 0, 0);
       player.yaw = Math.PI;
       player.model.visible = true;
@@ -759,23 +819,22 @@
 
     function restartGame() {
       gameEnded = false;
-      wave = 1;
       score = 0;
       lives = 3;
       respawnTimer = 0;
       player.alive = true;
       player.invuln = 2.2;
-      player.pos.set(0, 12, 8);
+      player.pos.set(-8, 14, -4);
       player.vel.set(0, 0, 0);
       player.yaw = Math.PI;
       player.model.visible = true;
 
       enemies.forEach(e => scene.remove(e.model));
       enemies = [];
-      spawnWave();
+      spawnInitialEnemies();
       updateUI();
       gameOverEl.style.display = "none";
-      showCenterMessage("WAVE 1", 1.8);
+      showCenterMessage("Ride Out Again", 1.6);
     }
 
     function spawnBurst(pos, count, color) {
@@ -862,20 +921,33 @@
       return bestTop;
     }
 
-    function keepInsideBounds(actor) {
-      const r = Math.hypot(actor.pos.x, actor.pos.z);
-      if (r > worldBounds) {
-        const nx = actor.pos.x / r;
-        const nz = actor.pos.z / r;
-        actor.pos.x = nx * worldBounds;
-        actor.pos.z = nz * worldBounds;
-
-        const dot = actor.vel.x * nx + actor.vel.z * nz;
-        if (dot > 0) {
-          actor.vel.x -= nx * dot * 1.7;
-          actor.vel.z -= nz * dot * 1.7;
+    function getZoneAt(x, z) {
+      let best = null;
+      let bestScore = Infinity;
+      for (const zone of worldZones) {
+        const d = Math.hypot(x - zone.center.x, z - zone.center.z);
+        const edge = Math.max(0, d - zone.radius);
+        if (edge < bestScore) {
+          bestScore = edge;
+          best = zone;
         }
       }
+      return best;
+    }
+
+    function hazardFloorAt(x, z) {
+      const zone = getZoneAt(x, z);
+      return zone ? zone.hazardY : -26;
+    }
+
+    function keepInsideBounds(actor) {
+      const pad = 4;
+      const clampedX = THREE.MathUtils.clamp(actor.pos.x, worldMinX + pad, worldMaxX - pad);
+      const clampedZ = THREE.MathUtils.clamp(actor.pos.z, worldMinZ + pad, worldMaxZ - pad);
+      if (clampedX !== actor.pos.x) actor.vel.x *= -0.2;
+      if (clampedZ !== actor.pos.z) actor.vel.z *= -0.2;
+      actor.pos.x = clampedX;
+      actor.pos.z = clampedZ;
     }
 
     function updatePlayer(dt) {
@@ -926,7 +998,7 @@
         player.vel.y = Math.max(2.8, Math.abs(player.vel.y) * 0.28);
       }
 
-      if (player.pos.y < -18.5) {
+      if (player.pos.y < hazardFloorAt(player.pos.x, player.pos.z) + 0.8) {
         killPlayer();
       }
 
@@ -999,7 +1071,7 @@
         enemy.vel.y = Math.max(2.0, Math.abs(enemy.vel.y) * 0.22);
       }
 
-      if (enemy.pos.y < -18.5) {
+      if (enemy.pos.y < hazardFloorAt(enemy.pos.x, enemy.pos.z) + 0.8) {
         enemy.alive = false;
         scene.remove(enemy.model);
         spawnBurst(enemy.pos.clone(), 10, 0xff7a2b);
@@ -1057,20 +1129,15 @@
 
       enemies = enemies.filter(e => e.alive);
 
-      if (!gameEnded && enemies.length === 0) {
-        wave++;
-        spawnWave();
-        showCenterMessage("WAVE " + wave, 1.6);
-        updateUI();
-      }
     }
 
     function updateParticles(dt) {
       const t = performance.now() * 0.001;
 
-      lava.position.y = -20 + Math.sin(t * 2.2) * 0.15;
-      lava.material.emissiveIntensity = 1.45 + Math.sin(t * 4.4) * 0.18;
-      lava.scale.setScalar(1 + Math.sin(t * 1.6) * 0.003);
+      for (const surface of hazardSurfaces) {
+        surface.position.y += Math.sin(t * 2.2 + surface.position.x * 0.01 + surface.position.z * 0.01) * 0.004;
+        surface.material.emissiveIntensity = 1.05 + Math.sin(t * 2.6 + surface.position.x * 0.013) * 0.24;
+      }
 
       for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
@@ -1103,9 +1170,10 @@
           new THREE.SphereGeometry(0.25 + Math.random() * 0.5, 6, 6),
           new THREE.MeshBasicMaterial({ color: 0xffd166 })
         );
+        const zone = worldZones[Math.floor(Math.random() * worldZones.length)];
         const a = Math.random() * Math.PI * 2;
-        const r = Math.random() * 70;
-        bubble.position.set(Math.cos(a) * r, -19.4, Math.sin(a) * r);
+        const r = Math.random() * zone.radius * 0.8;
+        bubble.position.set(zone.center.x + Math.cos(a) * r, zone.hazardY + 0.6, zone.center.z + Math.sin(a) * r);
         scene.add(bubble);
 
         particles.push({
@@ -1136,7 +1204,8 @@
       camera.lookAt(lookAt);
 
       // subtle shake when low over lava
-      const lavaDanger = THREE.MathUtils.clamp((3 - (player.pos.y + 18)) * 0.03, 0, 0.15);
+      const floor = hazardFloorAt(player.pos.x, player.pos.z);
+      const lavaDanger = THREE.MathUtils.clamp((4 - (player.pos.y - floor)) * 0.035, 0, 0.15);
       camera.position.x += (Math.random() - 0.5) * lavaDanger;
       camera.position.y += (Math.random() - 0.5) * lavaDanger;
       camera.position.z += (Math.random() - 0.5) * lavaDanger;
@@ -1169,6 +1238,11 @@
         updatePlayer(dt);
         for (const enemy of enemies) updateEnemyAI(enemy, dt);
         checkCombat();
+        enemySpawnTimer -= dt;
+        if (enemySpawnTimer <= 0 && enemies.length < roamEnemyTarget) {
+          spawnRoamingEnemy();
+          enemySpawnTimer = 3.2 + Math.random() * 4.5;
+        }
         updateUI();
       }
 
