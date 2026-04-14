@@ -123,14 +123,14 @@
 
   <div id="controls">
     <b>Controls</b><br/>
-    W = flap upward<br/>
+    Space = flap upward<br/>
+    W = spear thrust<br/>
     S = dive downward<br/>
     A / D = turn left / right<br/>
     Shift = speed burst<br/>
-    Space = flap boost<br/>
     R = restart after game over<br/><br/>
-    <b>Rule:</b> hit enemies from above to kill them.<br/>
-    If they hit you from above, you die.
+    <b>Rule:</b> thrust, dive, and reposition.<br/>
+    Most foes need multiple hits to bring down.
   </div>
 
   <div id="centerMsg"></div>
@@ -138,6 +138,7 @@
   <div id="upgradePanel" style="position:absolute;inset:auto 12px 12px auto;z-index:8;display:none;max-width:320px;background:rgba(6,7,11,.9);border:1px solid rgba(255,255,255,.22);border-radius:10px;padding:10px 10px 8px;backdrop-filter: blur(6px);">
     <div style="font-weight:700;color:#ffd37a;margin-bottom:5px">Checkpoint Upgrade</div>
     <div id="upgradeHint" style="font-size:12px;color:#d1d5db;margin-bottom:6px">Choose one permanent boost.</div>
+    <div id="upgradeTabs" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px"></div>
     <div id="upgradeChoices" style="display:grid;gap:6px"></div>
   </div>
 
@@ -182,7 +183,35 @@
       xp: 0,
       xpNeed: 80,
       points: 0,
-      upgrades: { flap: 0, health: 0, joust: 0, recovery: 0 }
+      selectedBranch: "combat",
+      upgrades: {
+        spearDamage: 0,
+        spearReach: 0,
+        spearCooldown: 0,
+        spearKnockback: 0,
+        critChance: 0,
+        diveImpact: 0,
+        antiArmor: 0,
+        flapPower: 0,
+        airControl: 0,
+        bounceRecovery: 0,
+        burstSpeed: 0,
+        landingStability: 0,
+        healthBoost: 0,
+        regenSpeed: 0,
+        regenDelay: 0,
+        resistance: 0,
+        heavyInvuln: 0,
+        goldGain: 0,
+        xpGain: 0,
+        pickupRadius: 0,
+        cheaperHub: 0,
+        healthDrop: 0,
+        lifeCap: 0,
+        reviveShield: 0,
+        deathMitigation: 0
+      },
+      livesPurchased: 0
     };
 
     const keys = {};
@@ -205,6 +234,7 @@
     const upgradePanelEl = document.getElementById("upgradePanel");
     const upgradeChoicesEl = document.getElementById("upgradeChoices");
     const upgradeHintEl = document.getElementById("upgradeHint");
+    const upgradeTabsEl = document.getElementById("upgradeTabs");
 
     const tmpVec = new THREE.Vector3();
     const upVec = new THREE.Vector3(0, 1, 0);
@@ -216,6 +246,24 @@
     const CHUNK_ENEMY_CAP = 3;
     const ZONE_ENEMY_CAP = 7;
     const HUB_SAFE_BUFFER = 5;
+
+    const ENEMY_SPECIES = {
+      giantBee: { label: "Giant Bee", family: "Verdant", behavior: "stinger", health: 64, speed: 17, turn: 2.8, aggroRange: 55, leashRange: 95, preferDistance: 8, attackCooldown: 1.6, damage: 10, knockback: 4.2, bounceMass: 0.8, reward: { score: 100, xp: 18, gold: 5 }, colors: { bird: 0x9a7c23, wing: 0x503c12, rider: 0xd7cf89, cloth: 0x2f7c3f } },
+      hornetGuard: { label: "Hornet Guard", family: "Verdant", behavior: "dash", health: 110, speed: 14.2, turn: 2.1, aggroRange: 48, leashRange: 88, preferDistance: 11, attackCooldown: 2.3, damage: 17, knockback: 6.4, bounceMass: 1.25, reward: { score: 150, xp: 26, gold: 7 }, colors: { bird: 0x6c5318, wing: 0x47330f, rider: 0xdcc76f, cloth: 0xa32717 } },
+      vineDrake: { label: "Vine Drake", family: "Verdant", behavior: "ranged", health: 96, speed: 13.8, turn: 2.2, aggroRange: 60, leashRange: 104, preferDistance: 15, attackCooldown: 2.4, damage: 14, knockback: 4.8, bounceMass: 1.05, reward: { score: 140, xp: 24, gold: 7 }, colors: { bird: 0x34713e, wing: 0x1f4b29, rider: 0xb2d7be, cloth: 0xb5eb7d } },
+      fireDrake: { label: "Fire Drake", family: "Ember", behavior: "breath", health: 118, speed: 13.5, turn: 2.0, aggroRange: 57, leashRange: 100, preferDistance: 13, attackCooldown: 2.8, damage: 20, knockback: 7.2, bounceMass: 1.35, reward: { score: 170, xp: 30, gold: 8 }, colors: { bird: 0xa54a2a, wing: 0x6a2917, rider: 0xcfada0, cloth: 0xff8a3d } },
+      magmaSerpent: { label: "Magma Serpent", family: "Ember", behavior: "weaver", health: 132, speed: 12.6, turn: 1.7, aggroRange: 62, leashRange: 112, preferDistance: 9, attackCooldown: 2.1, damage: 22, knockback: 8.2, bounceMass: 1.55, reward: { score: 185, xp: 32, gold: 10 }, colors: { bird: 0x8d3124, wing: 0x591c14, rider: 0xd3c7bc, cloth: 0xe55b2b } },
+      ashWasp: { label: "Ash Wasp", family: "Ember", behavior: "swarm", health: 48, speed: 18.5, turn: 3.0, aggroRange: 50, leashRange: 86, preferDistance: 7, attackCooldown: 1.25, damage: 8, knockback: 3.4, bounceMass: 0.62, reward: { score: 80, xp: 14, gold: 3 }, colors: { bird: 0x5b4b4a, wing: 0x2f2625, rider: 0xb9b0aa, cloth: 0xce7f4b } },
+      ironWyvern: { label: "Iron Wyvern", family: "Ruined", behavior: "bruiser", health: 176, speed: 11.2, turn: 1.4, aggroRange: 52, leashRange: 92, preferDistance: 10, attackCooldown: 2.6, damage: 24, knockback: 8.8, bounceMass: 1.85, reward: { score: 220, xp: 40, gold: 11 }, colors: { bird: 0x676d79, wing: 0x3f4350, rider: 0xd6dce8, cloth: 0x6ea8ff } },
+      spearSentinel: { label: "Spear Sentinel", family: "Ruined", behavior: "lancer", health: 164, speed: 12.5, turn: 1.9, aggroRange: 58, leashRange: 102, preferDistance: 12, attackCooldown: 1.9, damage: 21, knockback: 7.9, bounceMass: 1.52, reward: { score: 210, xp: 36, gold: 10 }, colors: { bird: 0x4d5363, wing: 0x2a3040, rider: 0xc8ced8, cloth: 0x81c3ff } },
+      boltRay: { label: "Bolt Ray", family: "Ruined", behavior: "sniper", health: 86, speed: 13.9, turn: 1.9, aggroRange: 72, leashRange: 122, preferDistance: 20, attackCooldown: 2.0, damage: 13, knockback: 4.2, bounceMass: 0.95, reward: { score: 130, xp: 22, gold: 6 }, colors: { bird: 0x57739c, wing: 0x2f425f, rider: 0xc3d9f5, cloth: 0xb9ecff } },
+      thunderSerpent: { label: "Thunder Serpent", family: "Storm", behavior: "loopDive", health: 126, speed: 14.7, turn: 2.1, aggroRange: 64, leashRange: 110, preferDistance: 11, attackCooldown: 2.2, damage: 20, knockback: 7.2, bounceMass: 1.42, reward: { score: 175, xp: 31, gold: 9 }, colors: { bird: 0x4e67b1, wing: 0x2c3d75, rider: 0xd6e6ff, cloth: 0x7ec8ff } },
+      stormDrake: { label: "Storm Drake", family: "Storm", behavior: "beam", health: 142, speed: 13.1, turn: 1.8, aggroRange: 68, leashRange: 116, preferDistance: 17, attackCooldown: 2.7, damage: 22, knockback: 8.0, bounceMass: 1.5, reward: { score: 200, xp: 34, gold: 10 }, colors: { bird: 0x547fa9, wing: 0x305273, rider: 0xd2e8ff, cloth: 0x84f0ff } },
+      skyEel: { label: "Sky Eel", family: "Storm", behavior: "curveStrike", health: 98, speed: 16.2, turn: 2.7, aggroRange: 58, leashRange: 100, preferDistance: 9, attackCooldown: 1.7, damage: 15, knockback: 5.0, bounceMass: 0.9, reward: { score: 140, xp: 23, gold: 6 }, colors: { bird: 0x568ead, wing: 0x2d5e74, rider: 0xbed9ee, cloth: 0x8de6ef } },
+      voidDragon: { label: "Void Dragon", family: "Hollow", behavior: "orb", health: 230, speed: 10.8, turn: 1.4, aggroRange: 66, leashRange: 122, preferDistance: 16, attackCooldown: 3.0, damage: 30, knockback: 10.0, bounceMass: 2.2, reward: { score: 310, xp: 54, gold: 14 }, colors: { bird: 0x3e2e54, wing: 0x221832, rider: 0xc7b6de, cloth: 0x8c5cff } },
+      shadeSerpent: { label: "Shade Serpent", family: "Hollow", behavior: "ambush", health: 124, speed: 15.8, turn: 2.4, aggroRange: 62, leashRange: 108, preferDistance: 8, attackCooldown: 1.9, damage: 18, knockback: 6.5, bounceMass: 1.12, reward: { score: 170, xp: 28, gold: 8 }, colors: { bird: 0x473b5d, wing: 0x281f36, rider: 0xbcb5cd, cloth: 0x7a64a8 } },
+      nightBee: { label: "Night Bee", family: "Hollow", behavior: "swarm", health: 58, speed: 19.2, turn: 3.2, aggroRange: 52, leashRange: 92, preferDistance: 7, attackCooldown: 1.2, damage: 9, knockback: 3.6, bounceMass: 0.66, reward: { score: 95, xp: 16, gold: 4 }, colors: { bird: 0x3f3250, wing: 0x22192c, rider: 0xccc4da, cloth: 0x9f79d7 } }
+    };
 
     init();
     animate();
@@ -315,11 +363,11 @@
       scene.add(arenaGroup);
 
       worldZones = [
-        { name: "Verdant Cliffs", center: new THREE.Vector3(-78, 0, -18), radius: 58, baseY: -6, hazardY: -24, color: 0x4f6b41, accent: 0x8dbf66, haze: 0x6e9f86, hazardType: "water", enemyVariants: ["swift", "normal", "heavy"] },
-        { name: "Ember Basin", center: new THREE.Vector3(0, 0, 0), radius: 62, baseY: -8, hazardY: -20, color: 0x5c392a, accent: 0xcc6b32, haze: 0x8f4f31, hazardType: "lava", enemyVariants: ["normal", "heavy", "swift"] },
-        { name: "Ruined Spires", center: new THREE.Vector3(82, 0, -20), radius: 54, baseY: -7, hazardY: -26, color: 0x5a5664, accent: 0x99a1b4, haze: 0x70758a, hazardType: "void", enemyVariants: ["heavy", "normal"] },
-        { name: "Storm Peaks", center: new THREE.Vector3(48, 0, 88), radius: 57, baseY: -5, hazardY: -23, color: 0x586e88, accent: 0xb2d6ff, haze: 0x6f8fb4, hazardType: "tempest", enemyVariants: ["swift", "normal"] },
-        { name: "Hollow Depths", center: new THREE.Vector3(-70, 0, 88), radius: 52, baseY: -11, hazardY: -29, color: 0x3a3144, accent: 0x6e5b8f, haze: 0x4a3f5f, hazardType: "abyss", enemyVariants: ["heavy", "swift", "normal"] }
+        { name: "Verdant Cliffs", center: new THREE.Vector3(-84, 0, -20), radius: 74, baseY: -6, hazardY: -24, color: 0x4f6b41, accent: 0x8dbf66, haze: 0x6e9f86, hazardType: "water", enemyFamilies: ["giantBee", "hornetGuard", "vineDrake"] },
+        { name: "Ember Basin", center: new THREE.Vector3(0, 0, 0), radius: 78, baseY: -8, hazardY: -20, color: 0x5c392a, accent: 0xcc6b32, haze: 0x8f4f31, hazardType: "lava", enemyFamilies: ["fireDrake", "magmaSerpent", "ashWasp"] },
+        { name: "Ruined Spires", center: new THREE.Vector3(90, 0, -22), radius: 68, baseY: -7, hazardY: -26, color: 0x5a5664, accent: 0x99a1b4, haze: 0x70758a, hazardType: "void", enemyFamilies: ["ironWyvern", "spearSentinel", "boltRay"] },
+        { name: "Storm Peaks", center: new THREE.Vector3(54, 0, 96), radius: 72, baseY: -5, hazardY: -23, color: 0x586e88, accent: 0xb2d6ff, haze: 0x6f8fb4, hazardType: "tempest", enemyFamilies: ["thunderSerpent", "stormDrake", "skyEel"] },
+        { name: "Hollow Depths", center: new THREE.Vector3(-78, 0, 96), radius: 70, baseY: -11, hazardY: -29, color: 0x3a3144, accent: 0x6e5b8f, haze: 0x4a3f5f, hazardType: "abyss", enemyFamilies: ["voidDragon", "shadeSerpent", "nightBee"] }
       ];
 
       worldMinX = Math.min(...worldZones.map((z) => z.center.x - z.radius - 16));
@@ -345,6 +393,21 @@
         rim.position.copy(zone.center).setY(zone.baseY + 3.2);
         arenaGroup.add(rim);
 
+        for (let ringIndex = 0; ringIndex < 4; ringIndex++) {
+          const circleRuins = new THREE.Mesh(
+            new THREE.TorusGeometry(zone.radius * (0.28 + ringIndex * 0.1), 1.1 + ringIndex * 0.22, 8, 30),
+            new THREE.MeshStandardMaterial({ color: zone.accent, roughness: 0.88, metalness: 0.14 })
+          );
+          circleRuins.position.set(
+            zone.center.x + Math.cos(ringIndex * 1.4) * (10 + ringIndex * 7),
+            zone.baseY + 7 + ringIndex * 8,
+            zone.center.z + Math.sin(ringIndex * 1.4) * (10 + ringIndex * 7)
+          );
+          circleRuins.rotation.x = Math.PI / 2 + ringIndex * 0.2;
+          circleRuins.rotation.y = ringIndex * 0.42;
+          arenaGroup.add(circleRuins);
+        }
+
         for (let i = 0; i < 8; i++) {
           const pillar = new THREE.Mesh(
             new THREE.CylinderGeometry(2.2, 3.8, 20 + Math.random() * 20, 9),
@@ -356,6 +419,18 @@
           pillar.castShadow = true;
           pillar.receiveShadow = true;
           arenaGroup.add(pillar);
+        }
+
+        for (let i = 0; i < 10; i++) {
+          const arch = new THREE.Mesh(
+            new THREE.TorusGeometry(3.2 + Math.random() * 3.6, 0.35, 8, 18, Math.PI + Math.random() * 0.5),
+            new THREE.MeshStandardMaterial({ color: zone.color, roughness: 0.95, metalness: 0.08 })
+          );
+          const a = (i / 10) * Math.PI * 2 + Math.random() * 0.4;
+          const r = zone.radius * (0.55 + Math.random() * 0.28);
+          arch.position.set(zone.center.x + Math.cos(a) * r, zone.baseY + 8 + Math.random() * 17, zone.center.z + Math.sin(a) * r);
+          arch.rotation.y = a;
+          arenaGroup.add(arch);
         }
       }
 
@@ -488,6 +563,24 @@
         under.receiveShadow = true;
         scene.add(under);
       }
+
+      for (const zone of worldZones) {
+        for (let i = 0; i < 7; i++) {
+          const radius = 6 + Math.random() * 8;
+          const ring = new THREE.Mesh(
+            new THREE.TorusGeometry(radius, 0.85, 8, 22),
+            new THREE.MeshStandardMaterial({ color: zone.accent, roughness: 0.82, metalness: 0.2 })
+          );
+          const a = Math.random() * Math.PI * 2;
+          const r = zone.radius * (0.25 + Math.random() * 0.5);
+          ring.position.set(zone.center.x + Math.cos(a) * r, zone.baseY + 10 + Math.random() * 24, zone.center.z + Math.sin(a) * r);
+          ring.rotation.x = Math.PI / 2 + (Math.random() - 0.5) * 0.45;
+          ring.rotation.y = Math.random() * Math.PI;
+          ring.castShadow = true;
+          ring.receiveShadow = true;
+          scene.add(ring);
+        }
+      }
     }
 
     function createSafeHubs() {
@@ -522,6 +615,28 @@
         deckTop.castShadow = true;
         deckTop.receiveShadow = true;
         hubRoot.add(deckTop);
+
+        for (let ringLayer = 0; ringLayer < 3; ringLayer++) {
+          const cityRing = new THREE.Mesh(
+            new THREE.TorusGeometry(8.8 + ringLayer * 3.5, 0.38, 10, 26),
+            new THREE.MeshStandardMaterial({ color: def.color, roughness: 0.8, metalness: 0.15 })
+          );
+          cityRing.position.y = 1.5 + ringLayer * 2.5;
+          cityRing.rotation.x = Math.PI / 2;
+          hubRoot.add(cityRing);
+        }
+
+        for (let i = 0; i < 8; i++) {
+          const tower = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.7, 1.1, 5 + Math.random() * 7, 8),
+            new THREE.MeshStandardMaterial({ color: def.style === "volcanic" ? 0x3f3230 : 0x6a727c, roughness: 0.86, metalness: 0.18 })
+          );
+          const a = (i / 8) * Math.PI * 2;
+          tower.position.set(Math.cos(a) * 11.5, 2 + Math.random() * 4, Math.sin(a) * 11.5);
+          tower.castShadow = true;
+          tower.receiveShadow = true;
+          hubRoot.add(tower);
+        }
 
         const shrine = new THREE.Mesh(
           new THREE.CylinderGeometry(1.8, 2.5, 4.4, 8),
@@ -798,8 +913,9 @@
       rider.add(cape);
 
       const lance = new THREE.Group();
-      lance.position.set(0.78, 0.05, 1.05);
-      lance.rotation.x = -0.07;
+      lance.position.set(0.78, 0.05, 1.45);
+      lance.rotation.x = -0.02;
+      lance.rotation.y = -Math.PI / 2;
       rider.add(lance);
 
       const lanceShaft = new THREE.Mesh(
@@ -828,7 +944,8 @@
         neck,
         head,
         rider,
-        lance
+        lance,
+        lanceRest: lance.position.clone()
       };
 
       return root;
@@ -855,6 +972,10 @@
         boostCooldown: 0,
         maxHealth: 100,
         health: 100,
+        regenWait: 0,
+        spearTimer: 0,
+        spearCooldown: 0,
+        spearHitSet: new Set(),
         perchTimer: 0,
         lastDeathPos: new THREE.Vector3(0, 12, 8)
       };
@@ -862,14 +983,38 @@
       updateActorTransform(player, 0);
     }
 
-    function spawnEnemy(pos, type = "normal") {
-      const colorSet = {
-        normal: { bird: 0x703b26, wing: 0x4e2519, rider: 0xc0b3ab, cloth: 0xc0392b },
-        swift: { bird: 0x444a7d, wing: 0x2d325c, rider: 0xc6cedc, cloth: 0xf1c40f },
-        heavy: { bird: 0x5c5b44, wing: 0x434232, rider: 0xd3cdb8, cloth: 0x9b59b6 }
-      }[type] || { bird: 0x703b26, wing: 0x4e2519, rider: 0xc0b3ab, cloth: 0xc0392b };
+    function makeEnemyHealthBar(enemy, speciesData) {
+      const hud = new THREE.Group();
+      const back = new THREE.Mesh(
+        new THREE.PlaneGeometry(2.8, 0.28),
+        new THREE.MeshBasicMaterial({ color: 0x1f2937, transparent: true, opacity: 0.9, depthTest: false })
+      );
+      const fill = new THREE.Mesh(
+        new THREE.PlaneGeometry(2.68, 0.2),
+        new THREE.MeshBasicMaterial({ color: enemy.elite ? 0xff7f50 : 0x4ade80, transparent: true, opacity: 0.95, depthTest: false })
+      );
+      fill.position.z = 0.01;
+      hud.add(back);
+      hud.add(fill);
+      hud.position.set(0, enemy.radius + 1.8, 0);
+      enemy.model.add(hud);
+      enemy.healthBar = { root: hud, fill };
 
-      const model = createBirdRider(colorSet);
+      if (enemy.elite) {
+        const elitePlate = new THREE.Mesh(
+          new THREE.PlaneGeometry(2.5, 0.22),
+          new THREE.MeshBasicMaterial({ color: 0xffcc66, transparent: true, opacity: 0.9, depthTest: false })
+        );
+        elitePlate.position.set(0, 0.35, 0.01);
+        hud.add(elitePlate);
+      }
+    }
+
+    function spawnEnemy(pos, species = "giantBee") {
+      const speciesData = { ...(ENEMY_SPECIES[species] || ENEMY_SPECIES.giantBee) };
+      speciesData.reward = { ...speciesData.reward };
+      speciesData.colors = { ...speciesData.colors };
+      const model = createBirdRider(speciesData.colors);
       scene.add(model);
 
       const enemy = {
@@ -877,9 +1022,15 @@
         pos: pos.clone(),
         vel: new THREE.Vector3(),
         yaw: Math.random() * Math.PI * 2,
-        radius: type === "heavy" ? 2.9 : 2.5,
-        type,
+        radius: speciesData.bounceMass > 1.45 ? 2.95 : 2.5,
+        type: species,
+        speciesData,
         alive: true,
+        maxHealth: speciesData.health,
+        health: speciesData.health,
+        hitReact: 0,
+        attackTimer: 0,
+        attackWindup: 0,
         flapPhase: Math.random() * 10,
         aiTimer: 0,
         desiredHeight: 15 + Math.random() * 12,
@@ -890,6 +1041,8 @@
         zoneName: "Overworld",
         chunkKey: "0:0"
       };
+
+      makeEnemyHealthBar(enemy, speciesData);
 
       enemies.push(enemy);
       return enemy;
@@ -919,11 +1072,10 @@
     }
 
     function chooseEnemyTypeForZone(zone) {
-      const variants = zone.enemyVariants || ["normal", "swift", "heavy"];
+      const variants = zone.enemyFamilies || ["giantBee", "hornetGuard", "vineDrake"];
       const roll = Math.random();
-      if (variants.length === 2) return roll < 0.65 ? variants[0] : variants[1];
-      if (roll < 0.5) return variants[0];
-      if (roll < 0.85) return variants[1];
+      if (roll < 0.52) return variants[0];
+      if (roll < 0.83) return variants[1];
       return variants[2];
     }
 
@@ -938,10 +1090,22 @@
 
     function playerStats() {
       return {
-        flapLift: 12.9 + progress.upgrades.flap * 0.65,
-        flapBoost: 6.8 + progress.upgrades.flap * 0.35,
-        joustImpact: 1 + progress.upgrades.joust * 0.12,
-        collisionRecovery: progress.upgrades.recovery * 0.15
+        flapLift: 12.7 + progress.upgrades.flapPower * 0.78,
+        flapBoost: 5.6 + progress.upgrades.flapPower * 0.5,
+        airControl: 2.2 + progress.upgrades.airControl * 0.2,
+        burstBonus: progress.upgrades.burstSpeed * 0.8,
+        diveImpact: 22 + progress.upgrades.diveImpact * 5,
+        spearDamage: 24 + progress.upgrades.spearDamage * 6,
+        spearReach: 5 + progress.upgrades.spearReach * 0.55,
+        spearCooldown: Math.max(0.23, 0.7 - progress.upgrades.spearCooldown * 0.06),
+        spearKnockback: 6 + progress.upgrades.spearKnockback * 1.1,
+        spearStagger: 0.18 + progress.upgrades.antiArmor * 0.08,
+        critChance: 0.06 + progress.upgrades.critChance * 0.025,
+        collisionRecovery: progress.upgrades.bounceRecovery * 0.12,
+        resistance: progress.upgrades.resistance * 0.04,
+        regenPerSecond: 1.5 + progress.upgrades.regenSpeed * 0.7,
+        regenDelay: Math.max(2.5, 4.3 - progress.upgrades.regenDelay * 0.35),
+        pickupRadius: 2.2 + progress.upgrades.pickupRadius * 0.5
       };
     }
 
@@ -989,6 +1153,9 @@
         if (enemy.elite) {
           enemy.radius += 0.35;
           enemy.model.scale.multiplyScalar(1.16);
+          enemy.maxHealth *= 1.9;
+          enemy.health = enemy.maxHealth;
+          enemy.speciesData.damage *= 1.18;
           const crown = new THREE.Mesh(
             new THREE.TorusGeometry(0.5, 0.07, 8, 16),
             new THREE.MeshStandardMaterial({ color: 0xffd166, emissive: 0x5a3b00, emissiveIntensity: 0.6, roughness: 0.35, metalness: 0.8 })
@@ -996,6 +1163,7 @@
           crown.rotation.x = Math.PI / 2;
           crown.position.y = 2.2;
           enemy.model.add(crown);
+          if (enemy.healthBar?.fill) enemy.healthBar.fill.material.color.set(0xff7849);
         }
         enemy.zoneName = zone.name;
         enemy.chunkKey = chunkKey;
@@ -1015,7 +1183,7 @@
 
     function updateUI() {
       scoreEl.textContent = score;
-      livesEl.textContent = lives;
+      livesEl.textContent = `${lives}/${maxLivesCarry()}`;
       healthEl.textContent = Math.max(0, Math.round(player?.health || 0));
       maxHealthEl.textContent = Math.round(player?.maxHealth || 100);
       goldEl.textContent = gold;
@@ -1033,10 +1201,12 @@
       if (!enemy.alive) return;
       enemy.alive = false;
       scene.remove(enemy.model);
-      score += enemy.elite ? 220 : 100;
-      grantXP(enemy.elite ? 38 : 14);
+      const reward = enemy.speciesData?.reward || { score: 100, xp: 14, gold: 4 };
+      score += (enemy.elite ? 1.4 : 1) * reward.score;
+      gold += Math.round((enemy.elite ? 1.5 : 1) * reward.gold * (1 + progress.upgrades.goldGain * 0.08));
+      grantXP((enemy.elite ? 1.5 : 1) * reward.xp * (1 + progress.upgrades.xpGain * 0.08));
       spawnDrops(enemy);
-      spawnBurst(enemy.pos.clone(), 16, 0xffcf88);
+      spawnBurst(enemy.pos.clone(), enemy.elite ? 24 : 16, 0xffcf88);
       showCenterMessage(enemy.elite ? "ELITE DOWN!" : "ENEMY DOWN!", 0.6);
       updateUI();
     }
@@ -1074,7 +1244,7 @@
       for (let i = 0; i < nGold; i++) {
         spawnPickup(enemy.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 2.4, 0.75 + Math.random() * 0.6, (Math.random() - 0.5) * 2.4)), "gold", enemy.elite ? 8 : 4);
       }
-      if (Math.random() < (enemy.elite ? 0.55 : 0.18)) {
+      if (Math.random() < (enemy.elite ? 0.55 : 0.18) + progress.upgrades.healthDrop * 0.03) {
         spawnPickup(enemy.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.4, 1.2, (Math.random() - 0.5) * 1.4)), "health", enemy.elite ? 24 : 15);
       }
     }
@@ -1083,7 +1253,7 @@
       if (!player.alive || player.invuln > 0 || gameEnded) return;
       player.alive = false;
       player.lastDeathPos.copy(player.pos);
-      lives--;
+      lives = Math.max(0, lives - 1);
       spawnBurst(player.pos.clone(), 24, 0x66c2ff);
       updateUI();
 
@@ -1103,8 +1273,12 @@
       player.invuln = 2.2;
       player.pos.copy(lastRespawnPoint);
       player.vel.set(0, 0, 0);
+      player.regenWait = 1.5;
+      player.spearTimer = 0;
+      player.spearCooldown = 0;
       player.yaw = Math.PI;
-      player.health = player.maxHealth;
+      const reviveRatio = progress.upgrades.reviveShield > 0 ? Math.min(0.55, 0.25 + progress.upgrades.reviveShield * 0.08) : 1;
+      player.health = player.maxHealth * reviveRatio;
       player.perchTimer = 0;
       player.model.visible = true;
       updateActorTransform(player, 0);
@@ -1123,12 +1297,30 @@
       score = 0;
       gold = 0;
       lives = 3;
-      progress = { level: 1, xp: 0, xpNeed: xpNeededForLevel(1), points: 0, upgrades: { flap: 0, health: 0, joust: 0, recovery: 0 } };
+      progress = {
+        level: 1,
+        xp: 0,
+        xpNeed: xpNeededForLevel(1),
+        points: 0,
+        selectedBranch: "combat",
+        upgrades: {
+          spearDamage: 0, spearReach: 0, spearCooldown: 0, spearKnockback: 0, critChance: 0, diveImpact: 0, antiArmor: 0,
+          flapPower: 0, airControl: 0, bounceRecovery: 0, burstSpeed: 0, landingStability: 0,
+          healthBoost: 0, regenSpeed: 0, regenDelay: 0, resistance: 0, heavyInvuln: 0,
+          goldGain: 0, xpGain: 0, pickupRadius: 0, cheaperHub: 0, healthDrop: 0,
+          lifeCap: 0, reviveShield: 0, deathMitigation: 0
+        },
+        livesPurchased: 0
+      };
       respawnTimer = 0;
       player.alive = true;
       player.invuln = 2.2;
       player.maxHealth = 100;
       player.health = player.maxHealth;
+      player.regenWait = 0;
+      player.spearTimer = 0;
+      player.spearCooldown = 0;
+      player.spearHitSet.clear();
       player.pos.set(-8, 14, -4);
       player.vel.set(0, 0, 0);
       player.yaw = Math.PI;
@@ -1185,6 +1377,14 @@
       anim.head.rotation.x = Math.sin(actor.flapPhase * 0.55) * 0.05;
       anim.neck.rotation.z = Math.sin(actor.flapPhase * 0.45) * 0.04;
       anim.rider.rotation.z = -actor.vel.x * 0.01;
+
+      if (actor === player) {
+        const rest = anim.lanceRest;
+        const thrustNorm = THREE.MathUtils.clamp(player.spearTimer / 0.25, 0, 1);
+        const thrustCurve = Math.sin((1 - thrustNorm) * Math.PI);
+        anim.lance.position.x = rest.x + thrustCurve * 0.2;
+        anim.lance.position.z = rest.z + thrustCurve * (2.4 + progress.upgrades.spearReach * 0.3);
+      }
     }
 
     function updateActorTransform(actor, dt) {
@@ -1208,6 +1408,14 @@
         actor.model.visible = blink;
       } else {
         actor.model.visible = actor.alive;
+      }
+
+      if (actor !== player) {
+        actor.model.traverse((child) => {
+          if (child.isMesh && child.material && "emissiveIntensity" in child.material) {
+            child.material.emissiveIntensity = actor.hitReact > 0 ? 0.7 : 0.12;
+          }
+        });
       }
     }
 
@@ -1303,7 +1511,7 @@
             showCenterMessage(`Checkpoint: ${cp.name}`, 1.1);
             updateUI();
           }
-          if (progress.points > 0) showUpgradePanel();
+          if (progress.points > 0 || gold >= lifeCost()) showUpgradePanel();
           return;
         }
       }
@@ -1324,20 +1532,35 @@
       actor.pos.z = clampedZ;
     }
 
+    function damageEnemy(enemy, amount, hitDir, source = "hit") {
+      if (!enemy.alive) return;
+      enemy.health -= amount;
+      enemy.hitReact = 0.22;
+      enemy.vel.add(hitDir.clone().multiplyScalar(0.5));
+      enemy.vel.y += 1.2;
+      spawnBurst(enemy.pos.clone().add(new THREE.Vector3(0, 0.8, 0)), 6, source === "thrust" ? 0xfff08d : 0xffffff);
+      if (enemy.health <= 0) {
+        killEnemy(enemy);
+      }
+    }
+
     function updatePlayer(dt) {
       if (!player.alive) return;
 
       player.invuln = Math.max(0, player.invuln - dt);
       player.boostCooldown = Math.max(0, player.boostCooldown - dt);
+      player.spearCooldown = Math.max(0, player.spearCooldown - dt);
+      player.spearTimer = Math.max(0, player.spearTimer - dt);
+      player.regenWait = Math.max(0, player.regenWait - dt);
 
       const turnSpeed = 2.9;
       const baseForward = 14.8;
       const stats = playerStats();
       const lift = stats.flapLift;
       const dive = 11.5;
-      const burst = keys["shift"] ? 8 : 0;
+      const burst = keys["shift"] ? 8 + stats.burstBonus : 0;
       const activelySteering = keys["a"] || keys["d"];
-      const activelyFlapping = keys["w"] || keys["s"];
+      const activelyFlapping = keys[" "] || keys["s"];
 
       if (keys["a"]) player.yaw += turnSpeed * dt;
       if (keys["d"]) player.yaw -= turnSpeed * dt;
@@ -1345,12 +1568,12 @@
       const forward = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
 
       const targetForwardSpeed = baseForward + burst + Math.max(0, -player.vel.y * 0.14);
-      player.vel.x += (forward.x * targetForwardSpeed - player.vel.x) * 2.2 * dt;
-      player.vel.z += (forward.z * targetForwardSpeed - player.vel.z) * 2.2 * dt;
+      player.vel.x += (forward.x * targetForwardSpeed - player.vel.x) * stats.airControl * dt;
+      player.vel.z += (forward.z * targetForwardSpeed - player.vel.z) * stats.airControl * dt;
 
       player.vel.y -= 10.8 * dt;
 
-      if (keys["w"]) {
+      if (keys[" "]) {
         player.vel.y += lift * dt;
       }
       if (keys["s"]) {
@@ -1360,7 +1583,13 @@
         player.vel.y += stats.flapBoost;
         player.vel.x += forward.x * 5.2;
         player.vel.z += forward.z * 5.2;
-        player.boostCooldown = 0.2;
+        player.boostCooldown = 0.28;
+      }
+
+      if (keys["w"] && player.spearCooldown <= 0) {
+        player.spearTimer = 0.25;
+        player.spearCooldown = stats.spearCooldown;
+        player.spearHitSet.clear();
       }
 
       player.vel.y = Math.max(player.vel.y, -29);
@@ -1382,7 +1611,7 @@
           player.vel.y = 0;
         }
 
-        const perchDamp = activelySteering || activelyFlapping ? 0.92 : 0.82;
+        const perchDamp = activelySteering || activelyFlapping ? 0.92 + progress.upgrades.landingStability * 0.01 : 0.82 + progress.upgrades.landingStability * 0.02;
         player.vel.x *= perchDamp;
         player.vel.z *= perchDamp;
 
@@ -1401,7 +1630,11 @@
         killPlayer();
       }
 
-      const canUpgrade = inUpgradeZone() && progress.points > 0;
+      if (player.regenWait <= 0 && player.health < player.maxHealth) {
+        player.health = Math.min(player.maxHealth, player.health + stats.regenPerSecond * dt);
+      }
+
+      const canUpgrade = inUpgradeZone() && (progress.points > 0 || gold >= lifeCost());
       if (canUpgrade) showUpgradePanel();
       else hideUpgradePanel();
 
@@ -1413,11 +1646,7 @@
       if (!enemy.alive) return;
       if (!player) return;
 
-      const typeStats = {
-        normal: { speed: 12.8, turn: 1.8, climb: 10.5, aggroRange: 46, leashRange: 84, patrol: 11 },
-        swift: { speed: 16.2, turn: 2.6, climb: 11.7, aggroRange: 58, leashRange: 98, patrol: 14 },
-        heavy: { speed: 10.8, turn: 1.4, climb: 9.4, aggroRange: 40, leashRange: 74, patrol: 8 }
-      }[enemy.type];
+      const typeStats = { climb: 10.2, patrol: 11, ...enemy.speciesData };
       if (enemy.elite) {
         typeStats.speed *= 1.08;
         typeStats.turn *= 1.06;
@@ -1459,6 +1688,8 @@
       }
 
       enemy.aiTimer -= dt;
+      enemy.attackTimer = Math.max(0, enemy.attackTimer - dt);
+      enemy.hitReact = Math.max(0, enemy.hitReact - dt);
       if (enemy.aiTimer <= 0) {
         enemy.aiTimer = enemy.state === "aggro" ? 0.65 + Math.random() * 0.55 : 1.2 + Math.random() * 0.9;
         const baseY = enemy.state === "aggro" ? player.pos.y : enemy.homePos.y;
@@ -1476,6 +1707,20 @@
       }
 
       let target = enemy.state === "aggro" ? player.pos.clone() : enemy.patrolTarget.clone();
+      if (enemy.state === "aggro") {
+        const f = typeStats.behavior;
+        const wobble = performance.now() * 0.001 + enemy.turnBias * 12;
+        if (f === "weaver" || f === "curveStrike" || f === "loopDive") {
+          target.x += Math.sin(wobble * 1.7) * (f === "loopDive" ? 13 : 9);
+          target.z += Math.cos(wobble * 1.4) * (f === "loopDive" ? 13 : 9);
+          target.y += Math.sin(wobble * 2.4) * 4;
+        } else if (f === "stinger" || f === "swarm") {
+          target.add(new THREE.Vector3(Math.sin(wobble * 3) * 6, 0, Math.cos(wobble * 2.4) * 6));
+        } else if (f === "ranged" || f === "beam" || f === "sniper" || f === "orb") {
+          const away = enemy.pos.clone().sub(player.pos).setY(0).normalize().multiplyScalar(typeStats.preferDistance);
+          target.copy(player.pos).add(away).setY(player.pos.y + 3.2);
+        }
+      }
 
       // Circle slightly when lower, commit when higher
       const relY = enemy.pos.y - target.y;
@@ -1536,6 +1781,21 @@
 
       keepInsideBounds(enemy);
       updateActorTransform(enemy, dt);
+      if (enemy.healthBar?.root) {
+        enemy.healthBar.root.lookAt(camera.position);
+        enemy.healthBar.fill.scale.x = THREE.MathUtils.clamp(enemy.health / enemy.maxHealth, 0.001, 1);
+        enemy.healthBar.fill.position.x = -1.34 + enemy.healthBar.fill.scale.x * 1.34;
+      }
+
+      if (enemy.state === "aggro" && distToPlayer < typeStats.preferDistance + 2 && enemy.attackTimer <= 0) {
+        enemy.attackTimer = typeStats.attackCooldown;
+        const attackDamage = typeStats.damage * (enemy.elite ? 1.22 : 1);
+        applyPlayerDamage(attackDamage, enemy.speciesData.label);
+        const pushDir = player.pos.clone().sub(enemy.pos).normalize().multiplyScalar(typeStats.knockback);
+        player.vel.add(pushDir);
+        player.vel.y += 1.2 + typeStats.knockback * 0.2;
+        spawnBurst(enemy.pos.clone().lerp(player.pos, 0.55), 7, 0xff9a66);
+      }
     }
 
     function checkCombat() {
@@ -1549,39 +1809,47 @@
           if (!enemy.alive) continue;
 
           const dist = player.pos.distanceTo(enemy.pos);
+          const stats = playerStats();
+
+          if (player.spearTimer > 0.03) {
+            const forward = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
+            const tipPos = player.pos.clone().add(forward.clone().multiplyScalar(stats.spearReach)).add(new THREE.Vector3(0, 1.4, 0));
+            if (enemy.pos.distanceTo(tipPos) < enemy.radius + 1.8 && !player.spearHitSet.has(enemy)) {
+              player.spearHitSet.add(enemy);
+              const crit = Math.random() < stats.critChance;
+              const dmg = (stats.spearDamage + (crit ? stats.spearDamage * 0.7 : 0)) * (enemy.elite ? 0.93 : 1);
+              const knock = forward.clone().multiplyScalar(stats.spearKnockback + enemy.speciesData.knockback * 0.2);
+              enemy.vel.add(knock);
+              damageEnemy(enemy, dmg, forward, "thrust");
+              showCenterMessage(crit ? "CRITICAL THRUST!" : "THRUST HIT!", 0.25);
+            }
+          }
+
           if (dist < player.radius + enemy.radius) {
             const playerHigher = player.pos.y - enemy.pos.y;
+            const side = enemy.pos.clone().sub(player.pos).setY(0);
+            if (side.lengthSq() < 0.0001) side.set(0.01, 0, 1);
+            side.normalize();
 
-            const playerForward = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
-            const enemyForward = new THREE.Vector3(Math.sin(enemy.yaw), 0, Math.cos(enemy.yaw));
-            const between = enemy.pos.clone().sub(player.pos).normalize();
-
-            const playerFacing = playerForward.dot(between);
-            const enemyFacing = enemyForward.dot(player.pos.clone().sub(enemy.pos).normalize());
-
-            // Encourage forward lance contacts, but still mostly height-based
-            const engageFactor = playerFacing > -0.5 || enemyFacing > -0.5;
-
-            if (!engageFactor) continue;
-
-            const stats = playerStats();
-            const stompNeed = enemy.elite ? 1.55 : 1.0;
-            if (playerHigher > stompNeed) {
-              killEnemy(enemy);
-              player.vel.y += 2.8 + stats.joustImpact * 0.8;
-              player.vel.x *= Math.max(0.72, 0.9 - stats.joustImpact * 0.04);
-              player.vel.z *= Math.max(0.72, 0.9 - stats.joustImpact * 0.04);
+            if (playerHigher > 1.2) {
+              const diveDamage = stats.diveImpact * (enemy.speciesData.bounceMass > 1.5 ? 0.75 : 1);
+              damageEnemy(enemy, diveDamage, side, "dive");
+              player.vel.y = Math.max(player.vel.y, 5.5);
+              player.vel.add(side.clone().multiplyScalar(-2.6));
+              enemy.vel.add(side.clone().multiplyScalar(4 + progress.upgrades.spearKnockback * 0.8));
+              spawnBurst(player.pos.clone().lerp(enemy.pos, 0.55), 11, 0xd6f2ff);
+              showCenterMessage("DIVE IMPACT!", 0.3);
             } else if (playerHigher < -1.0) {
-              applyPlayerDamage(enemy.elite ? 58 : (enemy.type === "heavy" ? 50 : 36), "enemy lance");
+              applyPlayerDamage(enemy.speciesData.damage * 1.35, "counter hit");
               if (gameEnded || !player.alive) return;
             } else {
-              // Bounce on equal clashes
-              const push = enemy.pos.clone().sub(player.pos).setY(0).normalize().multiplyScalar(5);
+              const push = side.multiplyScalar(5);
               player.vel.add(push.clone().multiplyScalar(-0.7));
-              enemy.vel.add(push.clone().multiplyScalar(0.7));
-              player.vel.y += 1.8 + stats.joustImpact * 0.3;
+              enemy.vel.add(push.clone().multiplyScalar(0.7 / Math.max(0.7, enemy.speciesData.bounceMass)));
+              player.vel.y += 1.8 + progress.upgrades.bounceRecovery * 0.22;
               enemy.vel.y += 1.8;
               applyPlayerDamage(Math.max(4, (enemy.elite ? 18 : 12) * (1 - stats.collisionRecovery)), "clash");
+              damageEnemy(enemy, 7 + progress.upgrades.antiArmor * 2, push.clone().normalize(), "clash");
               spawnBurst(player.pos.clone().lerp(enemy.pos, 0.5), 8, 0xffffff);
               showCenterMessage("CLASH!", 0.35);
             }
@@ -1633,7 +1901,7 @@
         p.mesh.rotation.y += dt * 2.2;
         if (player?.alive) {
           const d = p.mesh.position.distanceTo(player.pos);
-          if (d < 2.2) {
+          if (d < playerStats().pickupRadius) {
             collectPickup(p);
             continue;
           }
@@ -1704,9 +1972,12 @@
 
     function applyPlayerDamage(amount, label = "hit") {
       if (!player.alive || player.invuln > 0) return;
-      player.health -= amount;
-      showCenterMessage(`-${Math.round(amount)} HP (${label})`, 0.35);
-      player.invuln = 0.35 + progress.upgrades.recovery * 0.08;
+      const stats = playerStats();
+      const reduced = amount * (1 - stats.resistance);
+      player.health -= reduced;
+      player.regenWait = stats.regenDelay;
+      showCenterMessage(`-${Math.round(reduced)} HP (${label})`, 0.35);
+      player.invuln = 0.3 + progress.upgrades.heavyInvuln * 0.08;
       if (player.health <= 0) {
         player.health = 0;
         killPlayer();
@@ -1719,28 +1990,99 @@
       return !!activeCheckpoint && player.pos.distanceTo(activeCheckpoint.pos) <= activeCheckpoint.activateRadius + 2.2;
     }
 
-    function upgradeChoices() {
-      return [
-        { label: "Stronger Flap", desc: "+lift +boost", apply: () => { progress.upgrades.flap += 1; } },
-        { label: "More Health", desc: "+8 max HP", apply: () => { progress.upgrades.health += 1; player.maxHealth += 8; player.health += 8; } },
-        { label: "Joust Impact", desc: "harder strike", apply: () => { progress.upgrades.joust += 1; } },
-        { label: "Recovery", desc: "less clash dmg", apply: () => { progress.upgrades.recovery += 1; } }
-      ];
+    function maxLivesCarry() {
+      return 3 + progress.upgrades.lifeCap * 2;
+    }
+
+    function lifeCost() {
+      const base = 55;
+      const scaler = 1 + progress.livesPurchased * 0.58;
+      const discount = 1 - progress.upgrades.cheaperHub * 0.05;
+      return Math.round(base * scaler * Math.max(0.65, discount));
+    }
+
+    function upgradeChoices(branch = "combat") {
+      const entries = {
+        combat: [
+          { key: "spearDamage", label: "Spear Damage", desc: "+thrust damage", cost: 1 },
+          { key: "spearReach", label: "Spear Reach", desc: "+thrust range", cost: 1 },
+          { key: "spearCooldown", label: "Spear Cooldown", desc: "thrust faster", cost: 1 },
+          { key: "spearKnockback", label: "Spear Knockback", desc: "push enemies", cost: 1 },
+          { key: "critChance", label: "Crit Chance", desc: "high thrust crits", cost: 2 },
+          { key: "diveImpact", label: "Dive Impact", desc: "stronger stomp hit", cost: 1 },
+          { key: "antiArmor", label: "Armor Pierce", desc: "better vs heavy", cost: 2 }
+        ],
+        mobility: [
+          { key: "flapPower", label: "Stronger Flap", desc: "+lift +boost", cost: 1 },
+          { key: "airControl", label: "Air Control", desc: "snappier steering", cost: 1 },
+          { key: "bounceRecovery", label: "Recovery", desc: "faster after clashes", cost: 1 },
+          { key: "burstSpeed", label: "Burst Speed", desc: "faster Shift dash", cost: 1 },
+          { key: "landingStability", label: "Landing Stability", desc: "safer perch control", cost: 1 }
+        ],
+        survival: [
+          { key: "healthBoost", label: "Max Health", desc: "+10 HP", cost: 1, apply: () => { player.maxHealth += 10; player.health += 10; } },
+          { key: "regenSpeed", label: "Regen Speed", desc: "faster healing", cost: 1 },
+          { key: "regenDelay", label: "Regen Delay", desc: "heal sooner", cost: 1 },
+          { key: "resistance", label: "Resistance", desc: "reduce damage", cost: 1 },
+          { key: "heavyInvuln", label: "Heavy Hit Shield", desc: "longer i-frames", cost: 1 }
+        ],
+        utility: [
+          { key: "goldGain", label: "Gold Gain", desc: "more gold rewards", cost: 1 },
+          { key: "xpGain", label: "XP Gain", desc: "level faster", cost: 1 },
+          { key: "pickupRadius", label: "Pickup Magnet", desc: "larger pickup radius", cost: 1 },
+          { key: "cheaperHub", label: "Hub Discounts", desc: "cheaper purchases", cost: 1 },
+          { key: "healthDrop", label: "Health Drops", desc: "more healing drops", cost: 1 }
+        ],
+        rider: [
+          { key: "lifeCap", label: "Life Capacity", desc: `carry more lives (max ${maxLivesCarry()+2})`, cost: 2 },
+          { key: "reviveShield", label: "Revive Shield", desc: "respawn with guarded HP", cost: 1 },
+          { key: "deathMitigation", label: "Death Mitigation", desc: "future penalty reduction", cost: 1 },
+          { key: "buyLife", label: "Buy Extra Life", desc: `Cost ${lifeCost()} gold`, costGold: true }
+        ]
+      }[branch] || [];
+
+      return entries.map(entry => ({
+        ...entry,
+        apply: entry.apply || (() => { if (entry.key !== "buyLife") progress.upgrades[entry.key] += 1; })
+      }));
     }
 
     function showUpgradePanel() {
-      if (!progress.points || !inUpgradeZone() || gameEnded) return;
+      if ((!progress.points && gold < lifeCost()) || !inUpgradeZone() || gameEnded) return;
       upgradePanelEl.style.display = "block";
-      upgradeHintEl.textContent = `${progress.points} upgrade point${progress.points === 1 ? "" : "s"} available.`;
+      upgradeHintEl.textContent = `${progress.points} point${progress.points === 1 ? "" : "s"} • ${gold} gold • Lives ${lives}/${maxLivesCarry()}`;
+      const branches = ["combat", "mobility", "survival", "utility", "rider"];
+      upgradeTabsEl.innerHTML = "";
+      for (const branch of branches) {
+        const tab = document.createElement("button");
+        tab.textContent = branch.toUpperCase();
+        tab.style.cssText = `border:1px solid rgba(255,255,255,.2);background:${progress.selectedBranch === branch ? "rgba(251,191,36,.28)" : "rgba(255,255,255,.06)"};color:white;border-radius:6px;padding:4px 6px;font-size:11px;cursor:pointer`;
+        tab.onclick = () => { progress.selectedBranch = branch; showUpgradePanel(); };
+        upgradeTabsEl.appendChild(tab);
+      }
       upgradeChoicesEl.innerHTML = "";
-      for (const choice of upgradeChoices()) {
+      for (const choice of upgradeChoices(progress.selectedBranch)) {
         const btn = document.createElement("button");
-        btn.textContent = `${choice.label} • ${choice.desc}`;
+        btn.textContent = `${choice.label} • ${choice.desc}${choice.cost ? ` [${choice.cost}]` : ""}`;
         btn.style.cssText = "text-align:left;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.07);color:white;border-radius:8px;padding:8px 9px;cursor:pointer;font-weight:600";
         btn.onclick = () => {
-          if (!progress.points) return;
+          if (choice.key === "buyLife") {
+            const cost = lifeCost();
+            if (gold >= cost && lives < maxLivesCarry()) {
+              gold -= cost;
+              lives += 1;
+              progress.livesPurchased += 1;
+              showCenterMessage("Extra life purchased", 0.7);
+              updateUI();
+              showUpgradePanel();
+            } else {
+              showCenterMessage("Need more gold or life cap", 0.7);
+            }
+            return;
+          }
+          if (progress.points < (choice.cost || 1)) return;
           choice.apply();
-          progress.points -= 1;
+          progress.points -= (choice.cost || 1);
           player.health = Math.min(player.maxHealth, player.health);
           if (progress.points <= 0) hideUpgradePanel();
           else showUpgradePanel();
@@ -1753,6 +2095,7 @@
 
     function hideUpgradePanel() {
       upgradePanelEl.style.display = "none";
+      upgradeTabsEl.innerHTML = "";
     }
 
     function animate() {
