@@ -111,6 +111,7 @@
     <div class="line">Score: <span id="score">0</span></div>
     <div class="line">Lives: <span id="lives">3</span></div>
     <div class="line">Zone: <span id="wave">Verdant Cliffs</span></div>
+    <div class="line">Checkpoint: <span id="checkpoint">Green Cliff Outpost</span></div>
     <div class="line">Enemies: <span id="enemies">0</span></div>
   </div>
 
@@ -145,6 +146,8 @@
     let platforms = [];
     let lava;
     let hazardSurfaces = [];
+    let safeHubs = [];
+    let checkpoints = [];
     let arenaGroup;
     let worldZones = [];
     let worldMinX = -160;
@@ -159,11 +162,13 @@
     let centerMsgTimer = 0;
     let lastTime = performance.now();
     let lastRespawnPoint = new THREE.Vector3(-8, 14, -4);
+    let activeCheckpoint = null;
 
     const keys = {};
     const scoreEl = document.getElementById("score");
     const livesEl = document.getElementById("lives");
     const waveEl = document.getElementById("wave");
+    const checkpointEl = document.getElementById("checkpoint");
     const enemiesEl = document.getElementById("enemies");
     const centerMsg = document.getElementById("centerMsg");
     const gameOverEl = document.getElementById("gameOver");
@@ -179,6 +184,7 @@
     const GLOBAL_ENEMY_CAP = 16;
     const CHUNK_ENEMY_CAP = 3;
     const ZONE_ENEMY_CAP = 7;
+    const HUB_SAFE_BUFFER = 5;
 
     init();
     animate();
@@ -223,6 +229,7 @@
       createArena();
       createLava();
       createPlatforms();
+      createSafeHubs();
       createPlayer();
       spawnInitialEnemies();
 
@@ -450,6 +457,103 @@
         under.receiveShadow = true;
         scene.add(under);
       }
+    }
+
+    function createSafeHubs() {
+      safeHubs = [];
+      checkpoints = [];
+
+      const hubDefs = [
+        { name: "Green Cliff Outpost", zone: "Verdant Cliffs", pos: new THREE.Vector3(-92, 12, -16), color: 0x66b26e, glow: 0xb9f5ae, safeRadius: 16, disengageRadius: 27, style: "cliff" },
+        { name: "Volcanic Watch Station", zone: "Ember Basin", pos: new THREE.Vector3(20, 14, -8), color: 0xd5753b, glow: 0xffc274, safeRadius: 15, disengageRadius: 25, style: "volcanic" },
+        { name: "Storm Roost Sanctuary", zone: "Storm Peaks", pos: new THREE.Vector3(42, 36, 108), color: 0x7ca8db, glow: 0xd6ecff, safeRadius: 16, disengageRadius: 28, style: "storm" }
+      ];
+
+      for (const def of hubDefs) {
+        const hubRoot = new THREE.Group();
+        hubRoot.position.copy(def.pos);
+        scene.add(hubRoot);
+
+        const deck = new THREE.Mesh(
+          new THREE.CylinderGeometry(6.5, 8.2, 2.6, 12),
+          new THREE.MeshStandardMaterial({ color: def.color, roughness: 0.9, metalness: 0.08 })
+        );
+        deck.position.y = -1.2;
+        deck.castShadow = true;
+        deck.receiveShadow = true;
+        hubRoot.add(deck);
+
+        const deckTop = new THREE.Mesh(
+          new THREE.BoxGeometry(10, 1.8, 10),
+          new THREE.MeshStandardMaterial({ color: 0x64584e, roughness: 1, metalness: 0.04 })
+        );
+        deckTop.position.y = 0.4;
+        deckTop.castShadow = true;
+        deckTop.receiveShadow = true;
+        hubRoot.add(deckTop);
+
+        const shrine = new THREE.Mesh(
+          new THREE.CylinderGeometry(1.8, 2.5, 4.4, 8),
+          new THREE.MeshStandardMaterial({ color: 0xe1d6c5, roughness: 0.55, metalness: 0.16, emissive: def.glow, emissiveIntensity: 0.2 })
+        );
+        shrine.position.y = 3.2;
+        shrine.castShadow = true;
+        hubRoot.add(shrine);
+
+        const crest = new THREE.Mesh(
+          def.style === "volcanic" ? new THREE.ConeGeometry(1, 2.3, 6) : new THREE.SphereGeometry(1.15, 12, 10),
+          new THREE.MeshStandardMaterial({ color: def.glow, emissive: def.glow, emissiveIntensity: 0.75, roughness: 0.4, metalness: 0.2 })
+        );
+        crest.position.y = 6.3;
+        crest.castShadow = true;
+        hubRoot.add(crest);
+
+        if (def.style !== "volcanic") {
+          const ring = new THREE.Mesh(
+            new THREE.TorusGeometry(1.9, 0.16, 8, 18),
+            new THREE.MeshStandardMaterial({ color: def.glow, emissive: def.glow, emissiveIntensity: 0.6, roughness: 0.5 })
+          );
+          ring.rotation.x = Math.PI / 2;
+          ring.position.y = 6.3;
+          hubRoot.add(ring);
+        }
+
+        // Optional placeholder "warden" NPC silhouette
+        const npc = new THREE.Mesh(
+          new THREE.CapsuleGeometry(0.45, 1.8, 4, 8),
+          new THREE.MeshStandardMaterial({ color: 0xc8cdd8, roughness: 0.7, metalness: 0.1 })
+        );
+        npc.position.set(2.6, 2.1, 0.8);
+        npc.castShadow = true;
+        hubRoot.add(npc);
+
+        const checkpointPos = def.pos.clone().setY(def.pos.y + 1.65);
+        const checkpoint = {
+          id: def.name,
+          name: def.name,
+          zone: def.zone,
+          pos: checkpointPos,
+          activateRadius: 5.8
+        };
+        checkpoints.push(checkpoint);
+
+        safeHubs.push({
+          ...def,
+          checkpoint
+        });
+
+        // Add a hidden collision perch platform that matches hub deck top.
+        const perchPlatform = new THREE.Mesh(
+          new THREE.BoxGeometry(10, 1.8, 10),
+          new THREE.MeshBasicMaterial({ visible: false })
+        );
+        perchPlatform.position.set(def.pos.x, def.pos.y + 0.4, def.pos.z);
+        scene.add(perchPlatform);
+        platforms.push(perchPlatform);
+      }
+
+      activeCheckpoint = checkpoints[0] || null;
+      if (activeCheckpoint) lastRespawnPoint.copy(activeCheckpoint.pos);
     }
 
     function createBirdRider(colors = {}) {
@@ -710,7 +814,7 @@
 
       player = {
         model,
-        pos: new THREE.Vector3(0, 12, 8),
+        pos: activeCheckpoint ? activeCheckpoint.pos.clone() : new THREE.Vector3(0, 12, 8),
         vel: new THREE.Vector3(0, 0, 0),
         yaw: Math.PI,
         radius: 2.6,
@@ -821,6 +925,7 @@
         const inZone = Math.hypot(x - zone.center.x, z - zone.center.z) < zone.radius * 0.95;
         if (!inZone) continue;
         if (Math.hypot(x - player.pos.x, z - player.pos.z) < LOCAL_SPAWN_RADIUS_MIN) continue;
+        if (!canSpawnEnemyAt(x, z)) continue;
 
         const chunkKey = chunkKeyAt(x, z);
         if (chunkEnemyCount(chunkKey) >= CHUNK_ENEMY_CAP) continue;
@@ -849,6 +954,7 @@
       livesEl.textContent = lives;
       const zone = player ? getZoneAt(player.pos.x, player.pos.z) : worldZones[0];
       waveEl.textContent = zone ? zone.name : "Overworld";
+      checkpointEl.textContent = activeCheckpoint ? activeCheckpoint.name : "None";
       enemiesEl.textContent = enemies.filter(e => e.alive).length;
     }
 
@@ -880,7 +986,8 @@
 
     function respawnPlayer() {
       const fallback = findBestRespawnPoint(player.lastDeathPos.x, player.lastDeathPos.z);
-      lastRespawnPoint.copy(fallback);
+      const respawnPos = activeCheckpoint ? activeCheckpoint.pos : fallback;
+      lastRespawnPoint.copy(respawnPos);
       player.alive = true;
       player.invuln = 2.2;
       player.pos.copy(lastRespawnPoint);
@@ -910,7 +1017,9 @@
       player.yaw = Math.PI;
       player.perchTimer = 0;
       player.lastDeathPos.copy(player.pos);
-      lastRespawnPoint.copy(player.pos);
+      activeCheckpoint = checkpoints[0] || null;
+      lastRespawnPoint.copy(activeCheckpoint ? activeCheckpoint.pos : player.pos);
+      if (activeCheckpoint) player.pos.copy(activeCheckpoint.pos);
       player.model.visible = true;
 
       enemies.forEach(e => scene.remove(e.model));
@@ -1051,6 +1160,34 @@
       return best;
     }
 
+    function getHubAt(x, z, extraRadius = 0) {
+      for (const hub of safeHubs) {
+        const d = Math.hypot(x - hub.pos.x, z - hub.pos.z);
+        if (d <= hub.safeRadius + extraRadius) return hub;
+      }
+      return null;
+    }
+
+    function canSpawnEnemyAt(x, z) {
+      return !getHubAt(x, z, HUB_SAFE_BUFFER);
+    }
+
+    function maybeActivateCheckpoint() {
+      if (!player || !player.alive) return;
+      for (const cp of checkpoints) {
+        const dist = player.pos.distanceTo(cp.pos);
+        if (dist <= cp.activateRadius) {
+          if (!activeCheckpoint || activeCheckpoint.id !== cp.id) {
+            activeCheckpoint = cp;
+            lastRespawnPoint.copy(cp.pos);
+            showCenterMessage(`Checkpoint: ${cp.name}`, 1.1);
+            updateUI();
+          }
+          return;
+        }
+      }
+    }
+
     function hazardFloorAt(x, z) {
       const zone = getZoneAt(x, z);
       return zone ? zone.hazardY : -26;
@@ -1128,7 +1265,7 @@
         player.vel.z *= perchDamp;
 
         if (player.perchTimer > 0.16) {
-          lastRespawnPoint.set(player.pos.x, player.pos.y, player.pos.z);
+          maybeActivateCheckpoint();
         }
       } else {
         player.perchTimer = 0;
@@ -1156,10 +1293,20 @@
         heavy: { speed: 10.8, turn: 1.4, climb: 9.4, aggroRange: 40, leashRange: 74, patrol: 8 }
       }[enemy.type];
       const distToPlayer = enemy.pos.distanceTo(player.pos);
+      const enemyHub = getHubAt(enemy.pos.x, enemy.pos.z, 0);
+      const playerHub = getHubAt(player.pos.x, player.pos.z, 2);
 
       if (distToPlayer > ENEMY_DESPAWN_RANGE) {
         enemy.alive = false;
         scene.remove(enemy.model);
+        return;
+      }
+
+      // Hubs are safe pockets: enemies that enter core radius are cleaned up.
+      if (enemyHub) {
+        enemy.alive = false;
+        scene.remove(enemy.model);
+        spawnBurst(enemy.pos.clone(), 10, 0xaef2ff);
         return;
       }
 
@@ -1168,6 +1315,16 @@
       } else if (enemy.state === "aggro" && distToPlayer > typeStats.leashRange) {
         enemy.state = "idle";
         enemy.patrolTarget.copy(enemy.homePos);
+      }
+
+      // If the player has reached safety, nearby aggro enemies disengage.
+      if (playerHub && enemy.state === "aggro") {
+        const dToHub = Math.hypot(enemy.pos.x - playerHub.pos.x, enemy.pos.z - playerHub.pos.z);
+        if (dToHub <= playerHub.disengageRadius) {
+          enemy.state = "idle";
+          const away = enemy.pos.clone().sub(playerHub.pos).setY(0).normalize().multiplyScalar(8);
+          enemy.patrolTarget.copy(enemy.homePos.clone().add(away));
+        }
       }
 
       enemy.aiTimer -= dt;
@@ -1252,6 +1409,11 @@
 
     function checkCombat() {
       if (player.alive) {
+        const playerHub = getHubAt(player.pos.x, player.pos.z, 2);
+        if (playerHub) {
+          enemies = enemies.filter(e => e.alive);
+          return;
+        }
         for (const enemy of enemies) {
           if (!enemy.alive) continue;
 
