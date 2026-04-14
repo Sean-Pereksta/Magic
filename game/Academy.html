@@ -110,6 +110,12 @@
     <h1>3D Joust</h1>
     <div class="line">Score: <span id="score">0</span></div>
     <div class="line">Lives: <span id="lives">3</span></div>
+    <div class="line">HP: <span id="health">100</span>/<span id="maxHealth">100</span></div>
+    <div class="line">Gold: <span id="gold">0</span> • Lv <span id="level">1</span></div>
+    <div class="line">XP: <span id="xp">0</span>/<span id="xpNeed">80</span></div>
+    <div style="height:8px;border:1px solid rgba(255,255,255,.28);border-radius:999px;overflow:hidden;background:rgba(255,255,255,.08);margin-top:4px">
+      <div id="xpBar" style="height:100%;width:0;background:linear-gradient(90deg,#ffe082,#f59e0b)"></div>
+    </div>
     <div class="line">Zone: <span id="wave">Verdant Cliffs</span></div>
     <div class="line">Checkpoint: <span id="checkpoint">Green Cliff Outpost</span></div>
     <div class="line">Enemies: <span id="enemies">0</span></div>
@@ -129,6 +135,12 @@
 
   <div id="centerMsg"></div>
 
+  <div id="upgradePanel" style="position:absolute;inset:auto 12px 12px auto;z-index:8;display:none;max-width:320px;background:rgba(6,7,11,.9);border:1px solid rgba(255,255,255,.22);border-radius:10px;padding:10px 10px 8px;backdrop-filter: blur(6px);">
+    <div style="font-weight:700;color:#ffd37a;margin-bottom:5px">Checkpoint Upgrade</div>
+    <div id="upgradeHint" style="font-size:12px;color:#d1d5db;margin-bottom:6px">Choose one permanent boost.</div>
+    <div id="upgradeChoices" style="display:grid;gap:6px"></div>
+  </div>
+
   <div id="gameOver">
     <h2>Game Over</h2>
     <p>Final Score: <span id="finalScore">0</span></p>
@@ -143,6 +155,7 @@
     let player;
     let enemies = [];
     let particles = [];
+    let pickups = [];
     let platforms = [];
     let lava;
     let hazardSurfaces = [];
@@ -155,6 +168,7 @@
     let worldMinZ = -160;
     let worldMaxZ = 160;
     let score = 0;
+    let gold = 0;
     let lives = 3;
     let enemySpawnTimer = 0;
     let gameEnded = false;
@@ -163,10 +177,24 @@
     let lastTime = performance.now();
     let lastRespawnPoint = new THREE.Vector3(-8, 14, -4);
     let activeCheckpoint = null;
+    let progress = {
+      level: 1,
+      xp: 0,
+      xpNeed: 80,
+      points: 0,
+      upgrades: { flap: 0, health: 0, joust: 0, recovery: 0 }
+    };
 
     const keys = {};
     const scoreEl = document.getElementById("score");
     const livesEl = document.getElementById("lives");
+    const healthEl = document.getElementById("health");
+    const maxHealthEl = document.getElementById("maxHealth");
+    const goldEl = document.getElementById("gold");
+    const levelEl = document.getElementById("level");
+    const xpEl = document.getElementById("xp");
+    const xpNeedEl = document.getElementById("xpNeed");
+    const xpBarEl = document.getElementById("xpBar");
     const waveEl = document.getElementById("wave");
     const checkpointEl = document.getElementById("checkpoint");
     const enemiesEl = document.getElementById("enemies");
@@ -174,6 +202,9 @@
     const gameOverEl = document.getElementById("gameOver");
     const finalScoreEl = document.getElementById("finalScore");
     const restartBtn = document.getElementById("restartBtn");
+    const upgradePanelEl = document.getElementById("upgradePanel");
+    const upgradeChoicesEl = document.getElementById("upgradeChoices");
+    const upgradeHintEl = document.getElementById("upgradeHint");
 
     const tmpVec = new THREE.Vector3();
     const upVec = new THREE.Vector3(0, 1, 0);
@@ -822,6 +853,8 @@
         invuln: 0,
         flapPhase: 0,
         boostCooldown: 0,
+        maxHealth: 100,
+        health: 100,
         perchTimer: 0,
         lastDeathPos: new THREE.Vector3(0, 12, 8)
       };
@@ -894,6 +927,24 @@
       return variants[2];
     }
 
+    function zoneTier(zoneName) {
+      const idx = worldZones.findIndex(z => z.name === zoneName);
+      return idx < 0 ? 0 : idx;
+    }
+
+    function xpNeededForLevel(level) {
+      return 80 + (level - 1) * 30;
+    }
+
+    function playerStats() {
+      return {
+        flapLift: 12.9 + progress.upgrades.flap * 0.65,
+        flapBoost: 6.8 + progress.upgrades.flap * 0.35,
+        joustImpact: 1 + progress.upgrades.joust * 0.12,
+        collisionRecovery: progress.upgrades.recovery * 0.15
+      };
+    }
+
     function zoneEnemyCount(zoneName) {
       return enemies.filter(e => e.alive && e.zoneName === zoneName).length;
     }
@@ -933,6 +984,19 @@
         const type = chooseEnemyTypeForZone(zone);
         const y = Math.max(player.pos.y - 4 + Math.random() * 12, hazardFloorAt(x, z) + 3.2);
         const enemy = spawnEnemy(new THREE.Vector3(x, y, z), type);
+        const tier = zoneTier(zone.name);
+        enemy.elite = tier >= 2 && Math.random() < (0.08 + tier * 0.02);
+        if (enemy.elite) {
+          enemy.radius += 0.35;
+          enemy.model.scale.multiplyScalar(1.16);
+          const crown = new THREE.Mesh(
+            new THREE.TorusGeometry(0.5, 0.07, 8, 16),
+            new THREE.MeshStandardMaterial({ color: 0xffd166, emissive: 0x5a3b00, emissiveIntensity: 0.6, roughness: 0.35, metalness: 0.8 })
+          );
+          crown.rotation.x = Math.PI / 2;
+          crown.position.y = 2.2;
+          enemy.model.add(crown);
+        }
         enemy.zoneName = zone.name;
         enemy.chunkKey = chunkKey;
         enemy.homePos.copy(enemy.pos);
@@ -952,6 +1016,13 @@
     function updateUI() {
       scoreEl.textContent = score;
       livesEl.textContent = lives;
+      healthEl.textContent = Math.max(0, Math.round(player?.health || 0));
+      maxHealthEl.textContent = Math.round(player?.maxHealth || 100);
+      goldEl.textContent = gold;
+      levelEl.textContent = progress.level;
+      xpEl.textContent = Math.floor(progress.xp);
+      xpNeedEl.textContent = progress.xpNeed;
+      xpBarEl.style.width = `${THREE.MathUtils.clamp((progress.xp / Math.max(1, progress.xpNeed)) * 100, 0, 100).toFixed(1)}%`;
       const zone = player ? getZoneAt(player.pos.x, player.pos.z) : worldZones[0];
       waveEl.textContent = zone ? zone.name : "Overworld";
       checkpointEl.textContent = activeCheckpoint ? activeCheckpoint.name : "None";
@@ -962,10 +1033,50 @@
       if (!enemy.alive) return;
       enemy.alive = false;
       scene.remove(enemy.model);
-      score += 100;
+      score += enemy.elite ? 220 : 100;
+      grantXP(enemy.elite ? 38 : 14);
+      spawnDrops(enemy);
       spawnBurst(enemy.pos.clone(), 16, 0xffcf88);
-      showCenterMessage("ENEMY DOWN!", 0.6);
+      showCenterMessage(enemy.elite ? "ELITE DOWN!" : "ENEMY DOWN!", 0.6);
       updateUI();
+    }
+
+    function grantXP(amount) {
+      progress.xp += amount;
+      let leveled = false;
+      while (progress.xp >= progress.xpNeed) {
+        progress.xp -= progress.xpNeed;
+        progress.level += 1;
+        progress.points += 1;
+        progress.xpNeed = xpNeededForLevel(progress.level);
+        leveled = true;
+      }
+      if (leveled) showCenterMessage(`LEVEL ${progress.level}! Upgrade Ready`, 1.2);
+    }
+
+    function spawnPickup(pos, kind, value = 1) {
+      const colorMap = { score: 0x7dd3fc, gold: 0xfde047, health: 0x86efac };
+      const mesh = new THREE.Mesh(
+        new THREE.OctahedronGeometry(kind === "health" ? 0.5 : 0.42, 0),
+        new THREE.MeshStandardMaterial({ color: colorMap[kind] || 0xffffff, emissive: colorMap[kind] || 0xffffff, emissiveIntensity: 0.45, roughness: 0.35, metalness: 0.1 })
+      );
+      mesh.position.copy(pos);
+      scene.add(mesh);
+      pickups.push({ mesh, kind, value, age: 0, life: 10 + Math.random() * 4, bob: Math.random() * Math.PI * 2 });
+    }
+
+    function spawnDrops(enemy) {
+      const nScore = 1 + (Math.random() < 0.55 ? 1 : 0) + (enemy.elite ? 2 : 0);
+      const nGold = (Math.random() < 0.78 ? 1 : 0) + (enemy.elite ? 1 : 0);
+      for (let i = 0; i < nScore; i++) {
+        spawnPickup(enemy.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 2.1, 0.8 + Math.random() * 0.8, (Math.random() - 0.5) * 2.1)), "score", enemy.elite ? 45 : 25);
+      }
+      for (let i = 0; i < nGold; i++) {
+        spawnPickup(enemy.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 2.4, 0.75 + Math.random() * 0.6, (Math.random() - 0.5) * 2.4)), "gold", enemy.elite ? 8 : 4);
+      }
+      if (Math.random() < (enemy.elite ? 0.55 : 0.18)) {
+        spawnPickup(enemy.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.4, 1.2, (Math.random() - 0.5) * 1.4)), "health", enemy.elite ? 24 : 15);
+      }
     }
 
     function killPlayer() {
@@ -993,6 +1104,7 @@
       player.pos.copy(lastRespawnPoint);
       player.vel.set(0, 0, 0);
       player.yaw = Math.PI;
+      player.health = player.maxHealth;
       player.perchTimer = 0;
       player.model.visible = true;
       updateActorTransform(player, 0);
@@ -1000,6 +1112,7 @@
 
     function endGame() {
       gameEnded = true;
+      hideUpgradePanel();
       finalScoreEl.textContent = score;
       gameOverEl.style.display = "flex";
       showCenterMessage("GAME OVER", 2.0);
@@ -1008,10 +1121,14 @@
     function restartGame() {
       gameEnded = false;
       score = 0;
+      gold = 0;
       lives = 3;
+      progress = { level: 1, xp: 0, xpNeed: xpNeededForLevel(1), points: 0, upgrades: { flap: 0, health: 0, joust: 0, recovery: 0 } };
       respawnTimer = 0;
       player.alive = true;
       player.invuln = 2.2;
+      player.maxHealth = 100;
+      player.health = player.maxHealth;
       player.pos.set(-8, 14, -4);
       player.vel.set(0, 0, 0);
       player.yaw = Math.PI;
@@ -1024,7 +1141,10 @@
 
       enemies.forEach(e => scene.remove(e.model));
       enemies = [];
+      pickups.forEach(p => scene.remove(p.mesh));
+      pickups = [];
       spawnInitialEnemies();
+      hideUpgradePanel();
       updateUI();
       gameOverEl.style.display = "none";
       showCenterMessage("Ride Out Again", 1.6);
@@ -1183,6 +1303,7 @@
             showCenterMessage(`Checkpoint: ${cp.name}`, 1.1);
             updateUI();
           }
+          if (progress.points > 0) showUpgradePanel();
           return;
         }
       }
@@ -1211,7 +1332,8 @@
 
       const turnSpeed = 2.9;
       const baseForward = 14.8;
-      const lift = 12.9;
+      const stats = playerStats();
+      const lift = stats.flapLift;
       const dive = 11.5;
       const burst = keys["shift"] ? 8 : 0;
       const activelySteering = keys["a"] || keys["d"];
@@ -1235,7 +1357,7 @@
         player.vel.y -= dive * dt;
       }
       if (keys[" "] && player.boostCooldown <= 0) {
-        player.vel.y += 6.8;
+        player.vel.y += stats.flapBoost;
         player.vel.x += forward.x * 5.2;
         player.vel.z += forward.z * 5.2;
         player.boostCooldown = 0.2;
@@ -1279,6 +1401,10 @@
         killPlayer();
       }
 
+      const canUpgrade = inUpgradeZone() && progress.points > 0;
+      if (canUpgrade) showUpgradePanel();
+      else hideUpgradePanel();
+
       keepInsideBounds(player);
       updateActorTransform(player, dt);
     }
@@ -1292,6 +1418,11 @@
         swift: { speed: 16.2, turn: 2.6, climb: 11.7, aggroRange: 58, leashRange: 98, patrol: 14 },
         heavy: { speed: 10.8, turn: 1.4, climb: 9.4, aggroRange: 40, leashRange: 74, patrol: 8 }
       }[enemy.type];
+      if (enemy.elite) {
+        typeStats.speed *= 1.08;
+        typeStats.turn *= 1.06;
+        typeStats.aggroRange += 8;
+      }
       const distToPlayer = enemy.pos.distanceTo(player.pos);
       const enemyHub = getHubAt(enemy.pos.x, enemy.pos.z, 0);
       const playerHub = getHubAt(player.pos.x, player.pos.z, 2);
@@ -1433,21 +1564,24 @@
 
             if (!engageFactor) continue;
 
-            if (playerHigher > 1.0) {
+            const stats = playerStats();
+            const stompNeed = enemy.elite ? 1.55 : 1.0;
+            if (playerHigher > stompNeed) {
               killEnemy(enemy);
-              player.vel.y += 2.8;
-              player.vel.x *= 0.9;
-              player.vel.z *= 0.9;
+              player.vel.y += 2.8 + stats.joustImpact * 0.8;
+              player.vel.x *= Math.max(0.72, 0.9 - stats.joustImpact * 0.04);
+              player.vel.z *= Math.max(0.72, 0.9 - stats.joustImpact * 0.04);
             } else if (playerHigher < -1.0) {
-              killPlayer();
-              if (gameEnded) return;
+              applyPlayerDamage(enemy.elite ? 58 : (enemy.type === "heavy" ? 50 : 36), "enemy lance");
+              if (gameEnded || !player.alive) return;
             } else {
               // Bounce on equal clashes
               const push = enemy.pos.clone().sub(player.pos).setY(0).normalize().multiplyScalar(5);
               player.vel.add(push.clone().multiplyScalar(-0.7));
               enemy.vel.add(push.clone().multiplyScalar(0.7));
-              player.vel.y += 1.8;
+              player.vel.y += 1.8 + stats.joustImpact * 0.3;
               enemy.vel.y += 1.8;
+              applyPlayerDamage(Math.max(4, (enemy.elite ? 18 : 12) * (1 - stats.collisionRecovery)), "clash");
               spawnBurst(player.pos.clone().lerp(enemy.pos, 0.5), 8, 0xffffff);
               showCenterMessage("CLASH!", 0.35);
             }
@@ -1489,6 +1623,24 @@
           if (p.mesh.position.y > 20) {
             p.mesh.position.y = -18;
           }
+        }
+      }
+
+      for (let i = pickups.length - 1; i >= 0; i--) {
+        const p = pickups[i];
+        p.age += dt;
+        p.mesh.position.y += Math.sin(p.age * 4 + p.bob) * 0.004;
+        p.mesh.rotation.y += dt * 2.2;
+        if (player?.alive) {
+          const d = p.mesh.position.distanceTo(player.pos);
+          if (d < 2.2) {
+            collectPickup(p);
+            continue;
+          }
+        }
+        if (p.age > p.life) {
+          scene.remove(p.mesh);
+          pickups.splice(i, 1);
         }
       }
 
@@ -1537,6 +1689,70 @@
       camera.position.x += (Math.random() - 0.5) * lavaDanger;
       camera.position.y += (Math.random() - 0.5) * lavaDanger;
       camera.position.z += (Math.random() - 0.5) * lavaDanger;
+    }
+
+    function collectPickup(pickup) {
+      if (pickup.kind === "score") score += pickup.value;
+      else if (pickup.kind === "gold") gold += pickup.value;
+      else if (pickup.kind === "health") player.health = Math.min(player.maxHealth, player.health + pickup.value);
+      spawnBurst(pickup.mesh.position.clone(), pickup.kind === "health" ? 7 : 5, pickup.kind === "health" ? 0x86efac : 0xfff3b0);
+      scene.remove(pickup.mesh);
+      const idx = pickups.indexOf(pickup);
+      if (idx >= 0) pickups.splice(idx, 1);
+      updateUI();
+    }
+
+    function applyPlayerDamage(amount, label = "hit") {
+      if (!player.alive || player.invuln > 0) return;
+      player.health -= amount;
+      showCenterMessage(`-${Math.round(amount)} HP (${label})`, 0.35);
+      player.invuln = 0.35 + progress.upgrades.recovery * 0.08;
+      if (player.health <= 0) {
+        player.health = 0;
+        killPlayer();
+      }
+      updateUI();
+    }
+
+    function inUpgradeZone() {
+      if (!player?.alive) return false;
+      return !!activeCheckpoint && player.pos.distanceTo(activeCheckpoint.pos) <= activeCheckpoint.activateRadius + 2.2;
+    }
+
+    function upgradeChoices() {
+      return [
+        { label: "Stronger Flap", desc: "+lift +boost", apply: () => { progress.upgrades.flap += 1; } },
+        { label: "More Health", desc: "+8 max HP", apply: () => { progress.upgrades.health += 1; player.maxHealth += 8; player.health += 8; } },
+        { label: "Joust Impact", desc: "harder strike", apply: () => { progress.upgrades.joust += 1; } },
+        { label: "Recovery", desc: "less clash dmg", apply: () => { progress.upgrades.recovery += 1; } }
+      ];
+    }
+
+    function showUpgradePanel() {
+      if (!progress.points || !inUpgradeZone() || gameEnded) return;
+      upgradePanelEl.style.display = "block";
+      upgradeHintEl.textContent = `${progress.points} upgrade point${progress.points === 1 ? "" : "s"} available.`;
+      upgradeChoicesEl.innerHTML = "";
+      for (const choice of upgradeChoices()) {
+        const btn = document.createElement("button");
+        btn.textContent = `${choice.label} • ${choice.desc}`;
+        btn.style.cssText = "text-align:left;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.07);color:white;border-radius:8px;padding:8px 9px;cursor:pointer;font-weight:600";
+        btn.onclick = () => {
+          if (!progress.points) return;
+          choice.apply();
+          progress.points -= 1;
+          player.health = Math.min(player.maxHealth, player.health);
+          if (progress.points <= 0) hideUpgradePanel();
+          else showUpgradePanel();
+          showCenterMessage(`Upgrade: ${choice.label}`, 0.7);
+          updateUI();
+        };
+        upgradeChoicesEl.appendChild(btn);
+      }
+    }
+
+    function hideUpgradePanel() {
+      upgradePanelEl.style.display = "none";
     }
 
     function animate() {
