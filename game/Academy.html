@@ -151,10 +151,8 @@
     let worldMaxX = 160;
     let worldMinZ = -160;
     let worldMaxZ = 160;
-    let wave = 1;
     let score = 0;
     let lives = 3;
-    let roamEnemyTarget = 11;
     let enemySpawnTimer = 0;
     let gameEnded = false;
     let respawnTimer = 0;
@@ -173,6 +171,13 @@
 
     const tmpVec = new THREE.Vector3();
     const upVec = new THREE.Vector3(0, 1, 0);
+    const CHUNK_SIZE = 54;
+    const LOCAL_SPAWN_RADIUS_MIN = 28;
+    const LOCAL_SPAWN_RADIUS_MAX = 100;
+    const ENEMY_DESPAWN_RANGE = 175;
+    const GLOBAL_ENEMY_CAP = 16;
+    const CHUNK_ENEMY_CAP = 3;
+    const ZONE_ENEMY_CAP = 7;
 
     init();
     animate();
@@ -271,11 +276,11 @@
       scene.add(arenaGroup);
 
       worldZones = [
-        { name: "Verdant Cliffs", center: new THREE.Vector3(-78, 0, -18), radius: 58, baseY: -6, hazardY: -24, color: 0x4f6b41, accent: 0x8dbf66, haze: 0x6e9f86, hazardType: "water" },
-        { name: "Ember Basin", center: new THREE.Vector3(0, 0, 0), radius: 62, baseY: -8, hazardY: -20, color: 0x5c392a, accent: 0xcc6b32, haze: 0x8f4f31, hazardType: "lava" },
-        { name: "Ruined Spires", center: new THREE.Vector3(82, 0, -20), radius: 54, baseY: -7, hazardY: -26, color: 0x5a5664, accent: 0x99a1b4, haze: 0x70758a, hazardType: "void" },
-        { name: "Storm Peaks", center: new THREE.Vector3(48, 0, 88), radius: 57, baseY: -5, hazardY: -23, color: 0x586e88, accent: 0xb2d6ff, haze: 0x6f8fb4, hazardType: "tempest" },
-        { name: "Hollow Depths", center: new THREE.Vector3(-70, 0, 88), radius: 52, baseY: -11, hazardY: -29, color: 0x3a3144, accent: 0x6e5b8f, haze: 0x4a3f5f, hazardType: "abyss" }
+        { name: "Verdant Cliffs", center: new THREE.Vector3(-78, 0, -18), radius: 58, baseY: -6, hazardY: -24, color: 0x4f6b41, accent: 0x8dbf66, haze: 0x6e9f86, hazardType: "water", enemyVariants: ["swift", "normal", "heavy"] },
+        { name: "Ember Basin", center: new THREE.Vector3(0, 0, 0), radius: 62, baseY: -8, hazardY: -20, color: 0x5c392a, accent: 0xcc6b32, haze: 0x8f4f31, hazardType: "lava", enemyVariants: ["normal", "heavy", "swift"] },
+        { name: "Ruined Spires", center: new THREE.Vector3(82, 0, -20), radius: 54, baseY: -7, hazardY: -26, color: 0x5a5664, accent: 0x99a1b4, haze: 0x70758a, hazardType: "void", enemyVariants: ["heavy", "normal"] },
+        { name: "Storm Peaks", center: new THREE.Vector3(48, 0, 88), radius: 57, baseY: -5, hazardY: -23, color: 0x586e88, accent: 0xb2d6ff, haze: 0x6f8fb4, hazardType: "tempest", enemyVariants: ["swift", "normal"] },
+        { name: "Hollow Depths", center: new THREE.Vector3(-70, 0, 88), radius: 52, baseY: -11, hazardY: -29, color: 0x3a3144, accent: 0x6e5b8f, haze: 0x4a3f5f, hazardType: "abyss", enemyVariants: ["heavy", "swift", "normal"] }
       ];
 
       worldMinX = Math.min(...worldZones.map((z) => z.center.x - z.radius - 16));
@@ -728,7 +733,12 @@
         flapPhase: Math.random() * 10,
         aiTimer: 0,
         desiredHeight: 15 + Math.random() * 12,
-        turnBias: (Math.random() - 0.5) * 0.6
+        turnBias: (Math.random() - 0.5) * 0.6,
+        state: "idle",
+        homePos: pos.clone(),
+        patrolTarget: pos.clone(),
+        zoneName: "Overworld",
+        chunkKey: "0:0"
       };
 
       enemies.push(enemy);
@@ -738,27 +748,81 @@
     function spawnInitialEnemies() {
       enemies.forEach(e => scene.remove(e.model));
       enemies = [];
-      for (let i = 0; i < roamEnemyTarget; i++) {
-        spawnRoamingEnemy();
-      }
-      enemySpawnTimer = 4 + Math.random() * 4;
+      enemySpawnTimer = 0.35;
       updateUI();
     }
 
-    function spawnRoamingEnemy() {
-      const zone = worldZones[Math.floor(Math.random() * worldZones.length)];
-      const angle = Math.random() * Math.PI * 2;
-      const radius = 8 + Math.random() * zone.radius * 0.6;
-      const pos = new THREE.Vector3(
-        zone.center.x + Math.cos(angle) * radius,
-        12 + Math.random() * 26,
-        zone.center.z + Math.sin(angle) * radius
-      );
+    function nearbyZonesForSpawning() {
+      const p = player ? player.pos : new THREE.Vector3();
+      return worldZones.filter(zone => {
+        const dx = p.x - zone.center.x;
+        const dz = p.z - zone.center.z;
+        const d = Math.hypot(dx, dz);
+        return d < zone.radius + LOCAL_SPAWN_RADIUS_MAX;
+      });
+    }
 
-      let type = "normal";
-      if (score >= 300 && Math.random() < 0.35) type = "swift";
-      if (score >= 900 && Math.random() < 0.25) type = "heavy";
-      spawnEnemy(pos, type);
+    function chunkKeyAt(x, z) {
+      const cx = Math.floor((x - worldMinX) / CHUNK_SIZE);
+      const cz = Math.floor((z - worldMinZ) / CHUNK_SIZE);
+      return `${cx}:${cz}`;
+    }
+
+    function chooseEnemyTypeForZone(zone) {
+      const variants = zone.enemyVariants || ["normal", "swift", "heavy"];
+      const roll = Math.random();
+      if (variants.length === 2) return roll < 0.65 ? variants[0] : variants[1];
+      if (roll < 0.5) return variants[0];
+      if (roll < 0.85) return variants[1];
+      return variants[2];
+    }
+
+    function zoneEnemyCount(zoneName) {
+      return enemies.filter(e => e.alive && e.zoneName === zoneName).length;
+    }
+
+    function chunkEnemyCount(chunkKey) {
+      return enemies.filter(e => e.alive && e.chunkKey === chunkKey).length;
+    }
+
+    function spawnRegionalEnemy() {
+      if (!player) return false;
+      const aliveCount = enemies.filter(e => e.alive).length;
+      if (aliveCount >= GLOBAL_ENEMY_CAP) return false;
+
+      const zones = nearbyZonesForSpawning();
+      if (!zones.length) return false;
+      const currentZone = getZoneAt(player.pos.x, player.pos.z);
+      let zone = zones[Math.floor(Math.random() * zones.length)];
+      if (currentZone && zones.includes(currentZone) && Math.random() < 0.72) {
+        zone = currentZone;
+      }
+      if (zoneEnemyCount(zone.name) >= ZONE_ENEMY_CAP) return false;
+
+      for (let i = 0; i < 16; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const r = LOCAL_SPAWN_RADIUS_MIN + Math.random() * (LOCAL_SPAWN_RADIUS_MAX - LOCAL_SPAWN_RADIUS_MIN);
+        const x = player.pos.x + Math.cos(a) * r;
+        const z = player.pos.z + Math.sin(a) * r;
+
+        const inZone = Math.hypot(x - zone.center.x, z - zone.center.z) < zone.radius * 0.95;
+        if (!inZone) continue;
+        if (Math.hypot(x - player.pos.x, z - player.pos.z) < LOCAL_SPAWN_RADIUS_MIN) continue;
+
+        const chunkKey = chunkKeyAt(x, z);
+        if (chunkEnemyCount(chunkKey) >= CHUNK_ENEMY_CAP) continue;
+
+        const type = chooseEnemyTypeForZone(zone);
+        const y = Math.max(player.pos.y - 4 + Math.random() * 12, hazardFloorAt(x, z) + 3.2);
+        const enemy = spawnEnemy(new THREE.Vector3(x, y, z), type);
+        enemy.zoneName = zone.name;
+        enemy.chunkKey = chunkKey;
+        enemy.homePos.copy(enemy.pos);
+        enemy.patrolTarget.copy(enemy.pos);
+        return true;
+      }
+
+      return false;
     }
 
     function showCenterMessage(text, duration = 1.5) {
@@ -1008,24 +1072,49 @@
 
     function updateEnemyAI(enemy, dt) {
       if (!enemy.alive) return;
+      if (!player) return;
 
       const typeStats = {
-        normal: { speed: 12.8, turn: 1.8, climb: 10.5, aggression: 1.0 },
-        swift: { speed: 16.2, turn: 2.6, climb: 11.7, aggression: 1.2 },
-        heavy: { speed: 10.8, turn: 1.4, climb: 9.4, aggression: 0.9 }
+        normal: { speed: 12.8, turn: 1.8, climb: 10.5, aggroRange: 46, leashRange: 84, patrol: 11 },
+        swift: { speed: 16.2, turn: 2.6, climb: 11.7, aggroRange: 58, leashRange: 98, patrol: 14 },
+        heavy: { speed: 10.8, turn: 1.4, climb: 9.4, aggroRange: 40, leashRange: 74, patrol: 8 }
       }[enemy.type];
+      const distToPlayer = enemy.pos.distanceTo(player.pos);
+
+      if (distToPlayer > ENEMY_DESPAWN_RANGE) {
+        enemy.alive = false;
+        scene.remove(enemy.model);
+        return;
+      }
+
+      if (enemy.state !== "aggro" && distToPlayer < typeStats.aggroRange) {
+        enemy.state = "aggro";
+      } else if (enemy.state === "aggro" && distToPlayer > typeStats.leashRange) {
+        enemy.state = "idle";
+        enemy.patrolTarget.copy(enemy.homePos);
+      }
 
       enemy.aiTimer -= dt;
       if (enemy.aiTimer <= 0) {
-        enemy.aiTimer = 0.8 + Math.random() * 0.8;
-        enemy.desiredHeight = player.pos.y + 2 + (Math.random() * 14 - 5);
+        enemy.aiTimer = enemy.state === "aggro" ? 0.65 + Math.random() * 0.55 : 1.2 + Math.random() * 0.9;
+        const baseY = enemy.state === "aggro" ? player.pos.y : enemy.homePos.y;
+        enemy.desiredHeight = baseY + 2 + (Math.random() * 10 - 4);
         enemy.turnBias = (Math.random() - 0.5) * 0.4;
+        if (enemy.state !== "aggro" && (enemy.pos.distanceTo(enemy.patrolTarget) < 5 || Math.random() < 0.4)) {
+          const a = Math.random() * Math.PI * 2;
+          const r = 5 + Math.random() * typeStats.patrol;
+          enemy.patrolTarget.set(
+            enemy.homePos.x + Math.cos(a) * r,
+            enemy.homePos.y + (Math.random() * 5 - 2),
+            enemy.homePos.z + Math.sin(a) * r
+          );
+        }
       }
 
-      let target = player.pos.clone();
+      let target = enemy.state === "aggro" ? player.pos.clone() : enemy.patrolTarget.clone();
 
       // Circle slightly when lower, commit when higher
-      const relY = enemy.pos.y - player.pos.y;
+      const relY = enemy.pos.y - target.y;
       const offset = new THREE.Vector3(
         Math.sin(performance.now() * 0.001 + enemy.turnBias * 10) * 5,
         0,
@@ -1035,7 +1124,7 @@
       if (relY < -1.5) {
         target.add(offset);
       } else {
-        target.add(offset.multiplyScalar(0.3));
+        target.add(offset.multiplyScalar(enemy.state === "aggro" ? 0.3 : 0.15));
       }
 
       const toTarget = target.sub(enemy.pos);
@@ -1047,7 +1136,8 @@
       enemy.yaw += THREE.MathUtils.clamp(yawDiff, -typeStats.turn * dt, typeStats.turn * dt);
 
       const forward = new THREE.Vector3(Math.sin(enemy.yaw), 0, Math.cos(enemy.yaw));
-      const desiredSpeed = typeStats.speed + Math.max(0, -enemy.vel.y * 0.09);
+      const speedScale = enemy.state === "aggro" ? 1.0 : 0.68;
+      const desiredSpeed = typeStats.speed * speedScale + Math.max(0, -enemy.vel.y * 0.09);
 
       enemy.vel.x += (forward.x * desiredSpeed - enemy.vel.x) * 1.8 * dt;
       enemy.vel.z += (forward.z * desiredSpeed - enemy.vel.z) * 1.8 * dt;
@@ -1056,7 +1146,7 @@
 
       if (enemy.pos.y < enemy.desiredHeight) {
         enemy.vel.y += typeStats.climb * dt;
-      } else if (enemy.pos.y > player.pos.y + 8) {
+      } else if (enemy.pos.y > (enemy.state === "aggro" ? player.pos.y + 8 : enemy.homePos.y + 8)) {
         enemy.vel.y -= 3.5 * dt;
       }
 
@@ -1239,9 +1329,9 @@
         for (const enemy of enemies) updateEnemyAI(enemy, dt);
         checkCombat();
         enemySpawnTimer -= dt;
-        if (enemySpawnTimer <= 0 && enemies.length < roamEnemyTarget) {
-          spawnRoamingEnemy();
-          enemySpawnTimer = 3.2 + Math.random() * 4.5;
+        if (enemySpawnTimer <= 0) {
+          const didSpawn = spawnRegionalEnemy();
+          enemySpawnTimer = didSpawn ? (0.55 + Math.random() * 0.75) : (0.28 + Math.random() * 0.45);
         }
         updateUI();
       }
