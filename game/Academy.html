@@ -127,6 +127,8 @@
     W = spear thrust<br/>
     S = dive downward<br/>
     A / D = turn left / right<br/>
+    Q / E = lateral mount dash (advanced mounts)<br/>
+    F = cast spell (Sorcerer path)<br/>
     Shift = speed burst<br/>
     R = restart after game over<br/><br/>
     <b>Rule:</b> thrust, dive, and reposition.<br/>
@@ -193,6 +195,10 @@
     let worldZones = [];
     let spawnNodes = [];
     let nodeRespawns = [];
+    let allySummons = [];
+    let enemyProjectiles = [];
+    let worldChunkMap = new Map();
+    let mountSelection = null;
     let gamePaused = false;
     let tabMenuOpen = false;
     let worldMinX = -160;
@@ -216,6 +222,8 @@
       xpNeed: 80,
       points: 0,
       selectedBranch: "combat",
+      classChoice: null,
+      mount: "war-roc",
       upgrades: {
         spearDamage: 0,
         spearReach: 0,
@@ -241,7 +249,22 @@
         healthDrop: 0,
         lifeCap: 0,
         reviveShield: 0,
-        deathMitigation: 0
+        deathMitigation: 0,
+        summonCount: 0,
+        summonDurability: 0,
+        summonDamage: 0,
+        summonRespawn: 0,
+        summonAggression: 0,
+        summonEffects: 0,
+        warriorImpact: 0,
+        warriorArmor: 0,
+        warriorCombo: 0,
+        rangerProjectile: 0,
+        rangerPrecision: 0,
+        rangerMastery: 0,
+        sorcererPower: 0,
+        sorcererCooldown: 0,
+        sorcererChains: 0
       },
       livesPurchased: 0,
       inventory: [],
@@ -292,12 +315,12 @@
     const LOCAL_SPAWN_RADIUS_MIN = 28;
     const LOCAL_SPAWN_RADIUS_MAX = 100;
     const ENEMY_DESPAWN_RANGE = 175;
-    const GLOBAL_ENEMY_CAP = 16;
-    const CHUNK_ENEMY_CAP = 3;
-    const ZONE_ENEMY_CAP = 7;
+    const GLOBAL_ENEMY_CAP = 22;
+    const CHUNK_ENEMY_CAP = 4;
+    const ZONE_ENEMY_CAP = 9;
     const NODE_ENEMY_CAP = 3;
     const HUB_SAFE_BUFFER = 5;
-    const AMBIENT_SPAWN_CHANCE = 0.2;
+    const AMBIENT_SPAWN_CHANCE = 0.07;
 
     const ENEMY_SPECIES = {
       giantBee: { label: "Giant Bee", family: "Verdant", behavior: "stinger", health: 64, speed: 17, turn: 2.8, aggroRange: 55, leashRange: 95, preferDistance: 8, attackCooldown: 1.6, damage: 10, knockback: 4.2, bounceMass: 0.8, reward: { score: 100, xp: 18, gold: 5 }, colors: { bird: 0x9a7c23, wing: 0x503c12, rider: 0xd7cf89, cloth: 0x2f7c3f } },
@@ -314,7 +337,12 @@
       skyEel: { label: "Sky Eel", family: "Storm", behavior: "curveStrike", health: 98, speed: 16.2, turn: 2.7, aggroRange: 58, leashRange: 100, preferDistance: 9, attackCooldown: 1.7, damage: 15, knockback: 5.0, bounceMass: 0.9, reward: { score: 140, xp: 23, gold: 6 }, colors: { bird: 0x568ead, wing: 0x2d5e74, rider: 0xbed9ee, cloth: 0x8de6ef } },
       voidDragon: { label: "Void Dragon", family: "Hollow", behavior: "orb", health: 230, speed: 10.8, turn: 1.4, aggroRange: 66, leashRange: 122, preferDistance: 16, attackCooldown: 3.0, damage: 30, knockback: 10.0, bounceMass: 2.2, reward: { score: 310, xp: 54, gold: 14 }, colors: { bird: 0x3e2e54, wing: 0x221832, rider: 0xc7b6de, cloth: 0x8c5cff } },
       shadeSerpent: { label: "Shade Serpent", family: "Hollow", behavior: "ambush", health: 124, speed: 15.8, turn: 2.4, aggroRange: 62, leashRange: 108, preferDistance: 8, attackCooldown: 1.9, damage: 18, knockback: 6.5, bounceMass: 1.12, reward: { score: 170, xp: 28, gold: 8 }, colors: { bird: 0x473b5d, wing: 0x281f36, rider: 0xbcb5cd, cloth: 0x7a64a8 } },
-      nightBee: { label: "Night Bee", family: "Hollow", behavior: "swarm", health: 58, speed: 19.2, turn: 3.2, aggroRange: 52, leashRange: 92, preferDistance: 7, attackCooldown: 1.2, damage: 9, knockback: 3.6, bounceMass: 0.66, reward: { score: 95, xp: 16, gold: 4 }, colors: { bird: 0x3f3250, wing: 0x22192c, rider: 0xccc4da, cloth: 0x9f79d7 } }
+      nightBee: { label: "Night Bee", family: "Hollow", behavior: "swarm", health: 58, speed: 19.2, turn: 3.2, aggroRange: 52, leashRange: 92, preferDistance: 7, attackCooldown: 1.2, damage: 9, knockback: 3.6, bounceMass: 0.66, reward: { score: 95, xp: 16, gold: 4 }, colors: { bird: 0x3f3250, wing: 0x22192c, rider: 0xccc4da, cloth: 0x9f79d7 } },
+      armoredKnight: { label: "Armored Sky Knight", family: "Ruined", behavior: "lancer", health: 186, speed: 11.4, turn: 1.8, aggroRange: 56, leashRange: 100, preferDistance: 11, attackCooldown: 2.0, damage: 24, knockback: 8.4, bounceMass: 1.8, reward: { score: 240, xp: 42, gold: 12 }, colors: { bird: 0x6b7280, wing: 0x374151, rider: 0xe5e7eb, cloth: 0x93c5fd } },
+      stormSpirit: { label: "Storm Spirit", family: "Storm", behavior: "beam", health: 108, speed: 15.3, turn: 2.5, aggroRange: 70, leashRange: 128, preferDistance: 19, attackCooldown: 2.2, damage: 19, knockback: 6.2, bounceMass: 0.8, reward: { score: 165, xp: 27, gold: 8 }, colors: { bird: 0x60a5fa, wing: 0x2563eb, rider: 0xbfdbfe, cloth: 0x22d3ee } },
+      voidManta: { label: "Void Manta", family: "Hollow", behavior: "orb", health: 152, speed: 12.8, turn: 2.1, aggroRange: 64, leashRange: 120, preferDistance: 16, attackCooldown: 2.8, damage: 24, knockback: 8.4, bounceMass: 1.35, reward: { score: 210, xp: 34, gold: 10 }, colors: { bird: 0x2e1c45, wing: 0x1a1029, rider: 0xd8ccf5, cloth: 0x7c3aed } },
+      hiveQueen: { label: "Hive Queen", family: "Verdant", behavior: "swarm", health: 220, speed: 10.4, turn: 1.6, aggroRange: 58, leashRange: 100, preferDistance: 10, attackCooldown: 2.5, damage: 26, knockback: 9.3, bounceMass: 2.0, reward: { score: 320, xp: 54, gold: 16 }, colors: { bird: 0x7a5c1a, wing: 0x4a3811, rider: 0xfef3c7, cloth: 0xf59e0b } },
+      bombHarasser: { label: "Bomb Harasser", family: "Ember", behavior: "curveStrike", health: 82, speed: 17.8, turn: 2.9, aggroRange: 52, leashRange: 88, preferDistance: 8, attackCooldown: 1.6, damage: 16, knockback: 5.4, bounceMass: 0.92, reward: { score: 145, xp: 21, gold: 7 }, colors: { bird: 0x9a3412, wing: 0x7c2d12, rider: 0xfed7aa, cloth: 0xfb7185 } }
     };
 
     const RARITY_COLORS = { common: "#d1d5db", uncommon: "#86efac", rare: "#93c5fd", epic: "#c4b5fd", legendary: "#fbbf24" };
@@ -346,33 +374,60 @@
       { id: "venom-idol", name: "Venom Idol", slot: "trinket", rarity: "rare", stats: { poisonBonus: 0.2 }, desc: "Empowers poison effects.", sell: 30 },
       { id: "lightning-sigil", name: "Lightning Sigil", slot: "trinket", rarity: "epic", stats: { chainChance: 0.15 }, desc: "Arc chain enhancer.", sell: 46 },
       { id: "hunters-feather", name: "Hunter’s Feather", slot: "trinket", rarity: "epic", stats: { critChance: 0.06 }, desc: "Sharper strike accuracy.", sell: 48 },
-      { id: "halo-relic", name: "Halo Relic", slot: "trinket", rarity: "legendary", stats: { reviveShield: 0.15, pickupRadius: 1.4 }, desc: "Protective floating halo.", sell: 70 }
+      { id: "halo-relic", name: "Halo Relic", slot: "trinket", rarity: "legendary", stats: { reviveShield: 0.15, pickupRadius: 1.4 }, desc: "Protective floating halo.", sell: 70 },
+      { id: "war-lance-colossus", name: "Colossus War Lance", slot: "weapon", rarity: "epic", classReq: "warrior", stats: { spearDamage: 18, spearReach: 0.5 }, desc: "Warrior-only lance built for impact dives.", sell: 64 },
+      { id: "spirit-relic", name: "Spiritcaller Relic", slot: "trinket", rarity: "epic", classReq: "summoner", stats: { summonDamage: 0.2, summonCount: 1 }, desc: "Summoner-only relic that empowers allies.", sell: 58 },
+      { id: "storm-bowlance", name: "Storm Bow-Lance", slot: "weapon", rarity: "epic", classReq: "ranger", stats: { spearDamage: 14, critChance: 0.09 }, effect: "projectile", desc: "Ranger hybrid weapon tuned for lateral shots.", sell: 62 },
+      { id: "rune-focus", name: "Rune Focus", slot: "trinket", rarity: "legendary", classReq: "sorcerer", stats: { chainChance: 0.2, regenSpeed: 0.9 }, desc: "Sorcerer focus that stabilizes spellcasting.", sell: 75 }
     ];
 
+    const MOUNT_DB = [
+      { id: "war-roc", name: "War Roc", wingStyle: "feather", classHint: "Universal", speed: 1, accel: 1, turn: 1, flap: 1, impact: 1.2, landingFx: "knockback", lateral: false, colors: { bird: 0x84684b, wing: 0x5a3c2a, rider: 0xd0dce8, cloth: 0xf59e0b } },
+      { id: "storm-drake", name: "Storm Drake", wingStyle: "membrane", classHint: "Ranger/Sorcerer", speed: 1.18, accel: 1.1, turn: 1.08, flap: 0.95, impact: 0.8, landingFx: "lightning", lateral: true, colors: { bird: 0x4877ab, wing: 0x304d75, rider: 0xd0e8ff, cloth: 0x60a5fa } },
+      { id: "iron-gryphon", name: "Iron Gryphon", wingStyle: "feather", classHint: "Warrior", speed: 0.9, accel: 0.85, turn: 0.85, flap: 1.1, impact: 1.45, landingFx: "shockwave", lateral: false, colors: { bird: 0x737882, wing: 0x4e545f, rider: 0xd9e0ea, cloth: 0x9ca3af } },
+      { id: "ember-wyvern", name: "Ember Wyvern", wingStyle: "membrane", classHint: "Warrior/Sorcerer", speed: 1.04, accel: 1.02, turn: 0.94, flap: 1.05, impact: 1.1, landingFx: "fire", lateral: false, colors: { bird: 0xa04f2f, wing: 0x692b1b, rider: 0xe7c1b3, cloth: 0xfb923c } },
+      { id: "frost-hawk", name: "Frost Hawk", wingStyle: "feather", classHint: "Ranger", speed: 1.05, accel: 1.03, turn: 1.25, flap: 1, impact: 0.9, landingFx: "frost", lateral: true, colors: { bird: 0x88a8bf, wing: 0x69849a, rider: 0xdbeafe, cloth: 0x67e8f9 } },
+      { id: "venom-manta", name: "Venom Manta", wingStyle: "mystic", classHint: "Summoner/Ranger", speed: 1.03, accel: 0.96, turn: 1.15, flap: 0.92, impact: 0.88, landingFx: "poison", lateral: true, colors: { bird: 0x45635a, wing: 0x27433d, rider: 0xd4f8db, cloth: 0x4ade80 } },
+      { id: "sky-seraph", name: "Sky Seraph Mount", wingStyle: "mystic", classHint: "Late-Game", speed: 1.28, accel: 1.2, turn: 1.2, flap: 1.08, impact: 1.05, landingFx: "fear", lateral: true, colors: { bird: 0xb2a2ea, wing: 0x8166d3, rider: 0xf5efff, cloth: 0xc084fc } },
+      { id: "summoner-beast", name: "Summoner Beast", wingStyle: "mystic", classHint: "Summoner", speed: 0.96, accel: 0.95, turn: 1.04, flap: 0.98, impact: 0.72, landingFx: "buff", lateral: false, summonBuff: 0.3, colors: { bird: 0x5a6f89, wing: 0x33475f, rider: 0xd7e9ff, cloth: 0x22d3ee } }
+    ];
+
+    const CLASS_BRANCHES = {
+      summoner: { title: "Summoner", color: "#67e8f9" },
+      warrior: { title: "Warrior", color: "#fca5a5" },
+      ranger: { title: "Ranger", color: "#86efac" },
+      sorcerer: { title: "Sorcerer", color: "#c4b5fd" }
+    };
+
     const UPGRADE_TREE = [
-      { key: "spearDamage", branch: "COMBAT", label: "Spear Damage", desc: "+ thrust damage", cost: 1 },
-      { key: "spearReach", branch: "COMBAT", label: "Spear Reach", desc: "+ lunge range", cost: 1, req: "spearDamage" },
-      { key: "spearCooldown", branch: "COMBAT", label: "Spear Cooldown", desc: "faster thrust cycle", cost: 1, req: "spearDamage" },
-      { key: "spearKnockback", branch: "COMBAT", label: "Spear Knockback", desc: "strong pushback", cost: 1, req: "spearReach" },
-      { key: "critChance", branch: "COMBAT", label: "Crit Chance", desc: "higher crit rolls", cost: 2, req: "spearCooldown" },
-      { key: "antiArmor", branch: "COMBAT", label: "Anti-Armor", desc: "bonus vs heavy", cost: 2, req: "critChance" },
-      { key: "flapPower", branch: "MOBILITY", label: "Flap Strength", desc: "bigger lift pop", cost: 1 },
-      { key: "burstSpeed", branch: "MOBILITY", label: "Burst Speed", desc: "faster travel", cost: 1, req: "flapPower" },
-      { key: "airControl", branch: "MOBILITY", label: "Air Control", desc: "snappier steering", cost: 1, req: "burstSpeed" },
-      { key: "bounceRecovery", branch: "MOBILITY", label: "Collision Recovery", desc: "recover sooner", cost: 1, req: "airControl" },
-      { key: "landingStability", branch: "MOBILITY", label: "Landing Stability", desc: "safer perches", cost: 1, req: "bounceRecovery" },
-      { key: "healthBoost", branch: "SURVIVAL", label: "Max Health", desc: "+HP", cost: 1 },
-      { key: "regenSpeed", branch: "SURVIVAL", label: "Regen Speed", desc: "heal faster", cost: 1, req: "healthBoost" },
-      { key: "regenDelay", branch: "SURVIVAL", label: "Regen Delay", desc: "heal sooner", cost: 1, req: "regenSpeed" },
-      { key: "resistance", branch: "SURVIVAL", label: "Damage Resistance", desc: "reduce incoming", cost: 1, req: "regenDelay" },
-      { key: "heavyInvuln", branch: "SURVIVAL", label: "Post-hit Invuln", desc: "longer i-frames", cost: 1, req: "resistance" },
-      { key: "pickupRadius", branch: "UTILITY", label: "Pickup Radius", desc: "larger magnet", cost: 1 },
-      { key: "xpGain", branch: "UTILITY", label: "XP Gain", desc: "more xp drops", cost: 1, req: "pickupRadius" },
-      { key: "goldGain", branch: "UTILITY", label: "Gold Gain", desc: "more gold drops", cost: 1, req: "xpGain" },
-      { key: "healthDrop", branch: "UTILITY", label: "Drop Quality", desc: "better loot chance", cost: 1, req: "goldGain" },
-      { key: "lifeCap", branch: "LIFE / RECOVERY", label: "Stored Lives", desc: "higher life cap", cost: 2 },
-      { key: "cheaperHub", branch: "LIFE / RECOVERY", label: "Cheaper Lives", desc: "life purchases cheaper", cost: 1, req: "lifeCap" },
-      { key: "reviveShield", branch: "LIFE / RECOVERY", label: "Revive Shield", desc: "revive with partial shield", cost: 1, req: "cheaperHub" }
+      { key: "spearDamage", branch: "Core", label: "Spear Damage", desc: "+ thrust damage", cost: 1, x: 40, y: 40 },
+      { key: "flapPower", branch: "Core", label: "Flap Strength", desc: "more lift", cost: 1, x: 250, y: 40 },
+      { key: "healthBoost", branch: "Core", label: "Vitality", desc: "+ max hp", cost: 1, x: 460, y: 40 },
+      { key: "class_summoner", branch: "Class Gate", branchKey: "summoner", label: "Commit: Summoner", desc: "Locks other classes", cost: 2, req: "spearDamage", x: 40, y: 170 },
+      { key: "class_warrior", branch: "Class Gate", branchKey: "warrior", label: "Commit: Warrior", desc: "Locks other classes", cost: 2, req: "spearDamage", x: 250, y: 170 },
+      { key: "class_ranger", branch: "Class Gate", branchKey: "ranger", label: "Commit: Ranger", desc: "Locks other classes", cost: 2, req: "flapPower", x: 460, y: 170 },
+      { key: "class_sorcerer", branch: "Class Gate", branchKey: "sorcerer", label: "Commit: Sorcerer", desc: "Locks other classes", cost: 2, req: "healthBoost", x: 670, y: 170 },
+      { key: "summonCount", branch: "Summoner", branchKey: "summoner", label: "More Summons", desc: "increase minion cap", cost: 1, req: "class_summoner", x: 40, y: 320 },
+      { key: "summonDurability", branch: "Summoner", branchKey: "summoner", label: "Summon Durability", desc: "minions live longer", cost: 1, req: "summonCount", x: 40, y: 430 },
+      { key: "summonDamage", branch: "Summoner", branchKey: "summoner", label: "Summon Damage", desc: "harder hits", cost: 1, req: "summonCount", x: 190, y: 430 },
+      { key: "summonRespawn", branch: "Summoner", branchKey: "summoner", label: "Quick Ritual", desc: "faster respawn", cost: 1, req: "summonDurability", x: 40, y: 540 },
+      { key: "summonAggression", branch: "Summoner", branchKey: "summoner", label: "Aggressive Orders", desc: "higher pursuit", cost: 1, req: "summonDamage", x: 190, y: 540 },
+      { key: "summonEffects", branch: "Summoner", branchKey: "summoner", label: "Arcane Venom", desc: "minion status chance", cost: 2, req: "summonAggression", x: 110, y: 650 },
+      { key: "warriorImpact", branch: "Warrior", branchKey: "warrior", label: "Crush Landing", desc: "massive dive impact", cost: 1, req: "class_warrior", x: 290, y: 320 },
+      { key: "warriorArmor", branch: "Warrior", branchKey: "warrior", label: "Armored Charge", desc: "resist clashes", cost: 1, req: "warriorImpact", x: 290, y: 430 },
+      { key: "warriorCombo", branch: "Warrior", branchKey: "warrior", label: "Combo Thrust", desc: "followup damage", cost: 2, req: "warriorArmor", x: 290, y: 540 },
+      { key: "antiArmor", branch: "Warrior", branchKey: "warrior", label: "Anti-Armor", desc: "vs elites", cost: 1, req: "warriorImpact", x: 450, y: 430 },
+      { key: "diveImpact", branch: "Warrior", branchKey: "warrior", label: "Impact Shockwave", desc: "larger stomp radius", cost: 2, req: "warriorCombo", x: 360, y: 650 },
+      { key: "rangerProjectile", branch: "Ranger", branchKey: "ranger", label: "Projectile Lance", desc: "stronger ranged waves", cost: 1, req: "class_ranger", x: 520, y: 320 },
+      { key: "rangerPrecision", branch: "Ranger", branchKey: "ranger", label: "Weak-point Focus", desc: "higher crit + accuracy", cost: 1, req: "rangerProjectile", x: 520, y: 430 },
+      { key: "rangerMastery", branch: "Ranger", branchKey: "ranger", label: "Elemental Mastery", desc: "poison/frost/chain boost", cost: 2, req: "rangerPrecision", x: 520, y: 540 },
+      { key: "airControl", branch: "Ranger", branchKey: "ranger", label: "Lateral Discipline", desc: "better side movement", cost: 1, req: "rangerProjectile", x: 680, y: 430 },
+      { key: "goldGain", branch: "Ranger", branchKey: "ranger", label: "Hunter Spoils", desc: "better drops", cost: 1, req: "rangerMastery", x: 600, y: 650 },
+      { key: "sorcererPower", branch: "Sorcerer", branchKey: "sorcerer", label: "Spell Power", desc: "harder spell hits", cost: 1, req: "class_sorcerer", x: 760, y: 320 },
+      { key: "sorcererCooldown", branch: "Sorcerer", branchKey: "sorcerer", label: "Arcane Tempo", desc: "faster spell cycle", cost: 1, req: "sorcererPower", x: 760, y: 430 },
+      { key: "sorcererChains", branch: "Sorcerer", branchKey: "sorcerer", label: "Chain Sigils", desc: "multi-target spells", cost: 2, req: "sorcererCooldown", x: 760, y: 540 },
+      { key: "regenSpeed", branch: "Sorcerer", branchKey: "sorcerer", label: "Barrier Weave", desc: "spell shield sustain", cost: 1, req: "sorcererPower", x: 920, y: 430 },
+      { key: "xpGain", branch: "Sorcerer", branchKey: "sorcerer", label: "Mystic Study", desc: "bonus xp", cost: 1, req: "sorcererChains", x: 840, y: 650 }
     ];
 
     init();
@@ -416,6 +471,7 @@
 
       createSky();
       createArena();
+      createWorldGroundChunks();
       createLava();
       createPlatforms();
       createSafeHubs();
@@ -424,6 +480,7 @@
       refreshPlayerAppearance();
       createSpawnNodes();
       spawnInitialEnemies();
+      spawnAlliesFromUpgrades();
 
       window.addEventListener("resize", onResize);
       window.addEventListener("keydown", (e) => {
@@ -500,11 +557,11 @@
       scene.add(arenaGroup);
 
       worldZones = [
-        { name: "Verdant Cliffs", center: new THREE.Vector3(-84, 0, -20), radius: 74, baseY: -6, hazardY: -24, color: 0x4f6b41, accent: 0x8dbf66, haze: 0x6e9f86, hazardType: "water", enemyFamilies: ["giantBee", "hornetGuard", "vineDrake"] },
-        { name: "Ember Basin", center: new THREE.Vector3(0, 0, 0), radius: 78, baseY: -8, hazardY: -20, color: 0x5c392a, accent: 0xcc6b32, haze: 0x8f4f31, hazardType: "lava", enemyFamilies: ["fireDrake", "magmaSerpent", "ashWasp"] },
-        { name: "Ruined Spires", center: new THREE.Vector3(90, 0, -22), radius: 68, baseY: -7, hazardY: -26, color: 0x5a5664, accent: 0x99a1b4, haze: 0x70758a, hazardType: "void", enemyFamilies: ["ironWyvern", "spearSentinel", "boltRay"] },
-        { name: "Storm Peaks", center: new THREE.Vector3(54, 0, 96), radius: 72, baseY: -5, hazardY: -23, color: 0x586e88, accent: 0xb2d6ff, haze: 0x6f8fb4, hazardType: "tempest", enemyFamilies: ["thunderSerpent", "stormDrake", "skyEel"] },
-        { name: "Hollow Depths", center: new THREE.Vector3(-78, 0, 96), radius: 70, baseY: -11, hazardY: -29, color: 0x3a3144, accent: 0x6e5b8f, haze: 0x4a3f5f, hazardType: "abyss", enemyFamilies: ["voidDragon", "shadeSerpent", "nightBee"] }
+        { name: "Verdant Cliffs", center: new THREE.Vector3(-84, 0, -20), radius: 118, baseY: -6, hazardY: -24, color: 0x4f6b41, accent: 0x8dbf66, haze: 0x6e9f86, hazardType: "water", enemyFamilies: ["giantBee", "hornetGuard", "hiveQueen", "vineDrake"] },
+        { name: "Ember Basin", center: new THREE.Vector3(0, 0, 0), radius: 124, baseY: -8, hazardY: -20, color: 0x5c392a, accent: 0xcc6b32, haze: 0x8f4f31, hazardType: "lava", enemyFamilies: ["fireDrake", "magmaSerpent", "bombHarasser", "ashWasp"] },
+        { name: "Ruined Spires", center: new THREE.Vector3(90, 0, -22), radius: 116, baseY: -7, hazardY: -26, color: 0x5a5664, accent: 0x99a1b4, haze: 0x70758a, hazardType: "void", enemyFamilies: ["ironWyvern", "spearSentinel", "armoredKnight", "boltRay"] },
+        { name: "Storm Peaks", center: new THREE.Vector3(54, 0, 96), radius: 122, baseY: -5, hazardY: -23, color: 0x586e88, accent: 0xb2d6ff, haze: 0x6f8fb4, hazardType: "tempest", enemyFamilies: ["thunderSerpent", "stormDrake", "stormSpirit", "skyEel"] },
+        { name: "Hollow Depths", center: new THREE.Vector3(-78, 0, 96), radius: 118, baseY: -11, hazardY: -29, color: 0x3a3144, accent: 0x6e5b8f, haze: 0x4a3f5f, hazardType: "abyss", enemyFamilies: ["voidDragon", "voidManta", "shadeSerpent", "nightBee"] }
       ];
 
       worldMinX = Math.min(...worldZones.map((z) => z.center.x - z.radius - 16));
@@ -652,6 +709,65 @@
         glow.rotation.x = -Math.PI / 2;
         glow.position.set(zone.center.x, zone.hazardY + 0.08, zone.center.z);
         scene.add(glow);
+      }
+    }
+
+    function createWorldGroundChunks() {
+      worldChunkMap.clear();
+      updateWorldChunks(true);
+    }
+
+    function buildChunkForZone(zone, cx, cz) {
+      const group = new THREE.Group();
+      const chunkWorldX = worldMinX + cx * CHUNK_SIZE + CHUNK_SIZE * 0.5;
+      const chunkWorldZ = worldMinZ + cz * CHUNK_SIZE + CHUNK_SIZE * 0.5;
+      const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(CHUNK_SIZE, CHUNK_SIZE, 12, 12),
+        new THREE.MeshStandardMaterial({ color: zone.color, roughness: 0.96, metalness: 0.03 })
+      );
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.set(chunkWorldX, zone.baseY - 10, chunkWorldZ);
+      ground.receiveShadow = true;
+      group.add(ground);
+      for (let i = 0; i < 8; i++) {
+        const prop = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.45 + Math.random(), 0.7 + Math.random() * 1.6, 2 + Math.random() * 7, 6),
+          new THREE.MeshStandardMaterial({ color: zone.accent, roughness: 0.92, metalness: 0.05 })
+        );
+        prop.position.set(chunkWorldX + (Math.random() - 0.5) * CHUNK_SIZE * 0.9, zone.baseY - 8 + prop.geometry.parameters.height * 0.5, chunkWorldZ + (Math.random() - 0.5) * CHUNK_SIZE * 0.9);
+        prop.castShadow = true;
+        prop.receiveShadow = true;
+        group.add(prop);
+      }
+      return group;
+    }
+
+    function updateWorldChunks(force = false) {
+      if (!player && !force) return;
+      const centerX = Math.floor(((player?.pos.x || 0) - worldMinX) / CHUNK_SIZE);
+      const centerZ = Math.floor(((player?.pos.z || 0) - worldMinZ) / CHUNK_SIZE);
+      const radius = 3;
+      const needed = new Set();
+      for (let x = centerX - radius; x <= centerX + radius; x++) {
+        for (let z = centerZ - radius; z <= centerZ + radius; z++) {
+          const wx = worldMinX + x * CHUNK_SIZE + CHUNK_SIZE * 0.5;
+          const wz = worldMinZ + z * CHUNK_SIZE + CHUNK_SIZE * 0.5;
+          const zone = getZoneAt(wx, wz);
+          if (!zone) continue;
+          const key = `${x}:${z}`;
+          needed.add(key);
+          if (!worldChunkMap.has(key)) {
+            const chunk = buildChunkForZone(zone, x, z);
+            scene.add(chunk);
+            worldChunkMap.set(key, chunk);
+          }
+        }
+      }
+      for (const [key, chunk] of worldChunkMap.entries()) {
+        if (!needed.has(key)) {
+          scene.remove(chunk);
+          worldChunkMap.delete(key);
+        }
       }
     }
 
@@ -1114,12 +1230,8 @@
     }
 
     function createPlayer() {
-      const model = createBirdRider({
-        bird: 0x8a572f,
-        wing: 0x5a341e,
-        rider: 0xb6c2d1,
-        cloth: 0x1e90ff
-      });
+      mountSelection = MOUNT_DB.find((m) => m.id === progress.mount) || MOUNT_DB[0];
+      const model = createBirdRider(mountSelection.colors);
       scene.add(model);
 
       player = {
@@ -1137,6 +1249,7 @@
         regenWait: 0,
         spearTimer: 0,
         spearCooldown: 0,
+        spellCooldown: 0,
         spearHitSet: new Set(),
         perchTimer: 0,
         lastDeathPos: new THREE.Vector3(0, 12, 8)
@@ -1194,6 +1307,7 @@
         hitReact: 0,
         attackTimer: 0,
         attackWindup: 0,
+        telegraph: 0,
         flapPhase: Math.random() * 10,
         aiTimer: 0,
         desiredHeight: 15 + Math.random() * 12,
@@ -1228,7 +1342,8 @@
     function createSpawnNodes() {
       spawnNodes = [];
       for (const zone of worldZones) {
-        for (let i = 0; i < 5; i++) {
+        const nodeTypes = ["nest", "roost", "ruin", "air-lane", "hive", "shrine"];
+        for (let i = 0; i < 8; i++) {
           const a = (i / 5) * Math.PI * 2 + Math.random() * 0.6;
           const r = zone.radius * (0.28 + Math.random() * 0.5);
           const pos = new THREE.Vector3(zone.center.x + Math.cos(a) * r, zone.baseY + 12 + Math.random() * 16, zone.center.z + Math.sin(a) * r);
@@ -1238,9 +1353,10 @@
             zoneName: zone.name,
             pos,
             species,
-            count: 1 + (Math.random() < 0.32 ? 1 : 0),
+            nodeType: nodeTypes[i % nodeTypes.length],
+            count: 1 + (Math.random() < 0.18 ? 1 : 0),
             leashRange: 80 + Math.random() * 34,
-            respawn: 12 + Math.random() * 14
+            respawn: 24 + Math.random() * 28
           });
         }
       }
@@ -1278,9 +1394,10 @@
     function chooseEnemyTypeForZone(zone) {
       const variants = zone.enemyFamilies || ["giantBee", "hornetGuard", "vineDrake"];
       const roll = Math.random();
-      if (roll < 0.52) return variants[0];
-      if (roll < 0.83) return variants[1];
-      return variants[2];
+      if (roll < 0.45) return variants[0];
+      if (roll < 0.72) return variants[1] || variants[0];
+      if (roll < 0.91) return variants[2] || variants[1] || variants[0];
+      return variants[3] || variants[2] || variants[0];
     }
 
     function zoneTier(zoneName) {
@@ -1293,15 +1410,17 @@
     }
 
     function playerStats() {
+      const mount = MOUNT_DB.find((m) => m.id === progress.mount) || MOUNT_DB[0];
       const equipped = getEquippedItems();
       const bonus = aggregateItemStats(equipped);
+      const classBonus = progress.classChoice === "warrior" ? 1.16 : progress.classChoice === "summoner" ? 0.88 : 1;
       return {
-        flapLift: 14.8 + progress.upgrades.flapPower * 0.95 + (bonus.flapLift || 0),
+        flapLift: (14.8 + progress.upgrades.flapPower * 0.95 + (bonus.flapLift || 0)) * mount.flap,
         flapBoost: 7.4 + progress.upgrades.flapPower * 0.65,
-        airControl: 2.4 + progress.upgrades.airControl * 0.24 + (bonus.airControl || 0),
-        burstBonus: progress.upgrades.burstSpeed * 1.1 + (bonus.burstSpeed || 0),
-        diveImpact: 22 + progress.upgrades.diveImpact * 5,
-        spearDamage: 24 + progress.upgrades.spearDamage * 6 + (bonus.spearDamage || 0),
+        airControl: (2.4 + progress.upgrades.airControl * 0.24 + (bonus.airControl || 0)) * mount.accel,
+        burstBonus: (progress.upgrades.burstSpeed * 1.1 + (bonus.burstSpeed || 0)) * mount.speed,
+        diveImpact: (22 + progress.upgrades.diveImpact * 5 + progress.upgrades.warriorImpact * 6) * mount.impact * classBonus,
+        spearDamage: (24 + progress.upgrades.spearDamage * 6 + (bonus.spearDamage || 0)) * (progress.classChoice === "warrior" ? 1.15 : 1),
         spearReach: 5 + progress.upgrades.spearReach * 0.55 + (bonus.spearReach || 0),
         spearCooldown: Math.max(0.23, 0.7 - progress.upgrades.spearCooldown * 0.06),
         spearKnockback: 6 + progress.upgrades.spearKnockback * 1.1,
@@ -1315,7 +1434,9 @@
         freezeChance: bonus.freezeChance || 0,
         chainChance: bonus.chainChance || 0,
         poisonBonus: bonus.poisonBonus || 0,
-        reviveShield: bonus.reviveShield || 0
+        reviveShield: bonus.reviveShield || 0,
+        mount,
+        summonBuff: (mount.summonBuff || 0) + progress.upgrades.summonDamage * 0.08
       };
     }
 
@@ -1416,6 +1537,7 @@
 
     function refreshPlayerAppearance() {
       if (!player?.model?.userData?.anim) return;
+      const mount = MOUNT_DB.find((m) => m.id === progress.mount) || MOUNT_DB[0];
       const eq = getEquippedItems();
       const weapon = eq.weapon;
       const armor = eq.armor;
@@ -1435,6 +1557,11 @@
           }
         });
       }
+      const anim = player.model.userData.anim;
+      anim.leftWing.scale.set(mount.wingStyle === "feather" ? 1.15 : 1.28, 1, mount.wingStyle === "mystic" ? 1.4 : 1.18);
+      anim.rightWing.scale.copy(anim.leftWing.scale);
+      anim.leftWingTip.scale.set(mount.wingStyle === "membrane" ? 1.4 : 1.05, 1, mount.wingStyle === "mystic" ? 1.55 : 1.2);
+      anim.rightWingTip.scale.copy(anim.leftWingTip.scale);
       if (!player.model.userData.visualTrinkets) player.model.userData.visualTrinkets = [];
       for (const t of player.model.userData.visualTrinkets) player.model.remove(t);
       player.model.userData.visualTrinkets = [];
@@ -1568,6 +1695,7 @@
       player.regenWait = 1.5;
       player.spearTimer = 0;
       player.spearCooldown = 0;
+      player.spellCooldown = 0;
       player.yaw = Math.PI;
       const reviveRatio = progress.upgrades.reviveShield > 0 ? Math.min(0.55, 0.25 + progress.upgrades.reviveShield * 0.08) : 1;
       player.health = player.maxHealth * reviveRatio;
@@ -1595,12 +1723,18 @@
         xpNeed: xpNeededForLevel(1),
         points: 0,
         selectedBranch: "combat",
+        classChoice: null,
+        mount: "war-roc",
         upgrades: {
           spearDamage: 0, spearReach: 0, spearCooldown: 0, spearKnockback: 0, critChance: 0, diveImpact: 0, antiArmor: 0,
           flapPower: 0, airControl: 0, bounceRecovery: 0, burstSpeed: 0, landingStability: 0,
           healthBoost: 0, regenSpeed: 0, regenDelay: 0, resistance: 0, heavyInvuln: 0,
           goldGain: 0, xpGain: 0, pickupRadius: 0, cheaperHub: 0, healthDrop: 0,
-          lifeCap: 0, reviveShield: 0, deathMitigation: 0
+          lifeCap: 0, reviveShield: 0, deathMitigation: 0,
+          summonCount: 0, summonDurability: 0, summonDamage: 0, summonRespawn: 0, summonAggression: 0, summonEffects: 0,
+          warriorImpact: 0, warriorArmor: 0, warriorCombo: 0,
+          rangerProjectile: 0, rangerPrecision: 0, rangerMastery: 0,
+          sorcererPower: 0, sorcererCooldown: 0, sorcererChains: 0
         },
         livesPurchased: 0,
         inventory: [],
@@ -1619,6 +1753,7 @@
       player.regenWait = 0;
       player.spearTimer = 0;
       player.spearCooldown = 0;
+      player.spellCooldown = 0;
       player.spearHitSet.clear();
       player.pos.set(-8, 14, -4);
       player.vel.set(0, 0, 0);
@@ -1634,6 +1769,10 @@
       enemies = [];
       pickups.forEach(p => scene.remove(p.mesh));
       pickups = [];
+      enemyProjectiles.forEach((p) => scene.remove(p.mesh));
+      enemyProjectiles = [];
+      allySummons.forEach((a) => scene.remove(a.model));
+      allySummons = [];
       spawnInitialEnemies();
       seedPlayerProgression();
       refreshPlayerAppearance();
@@ -1665,9 +1804,66 @@
       }
     }
 
+    function summonCap() {
+      return (progress.classChoice === "summoner" ? 1 : 0) + progress.upgrades.summonCount;
+    }
+
+    function spawnAlliesFromUpgrades() {
+      const cap = summonCap();
+      while (allySummons.length < cap) {
+        const ally = spawnEnemy(player.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 8, 2 + Math.random() * 3, (Math.random() - 0.5) * 8)), "vineDrake");
+        ally.isAlly = true;
+        ally.spawnNodeId = null;
+        ally.maxHealth = 44 + progress.upgrades.summonDurability * 16;
+        ally.health = ally.maxHealth;
+        ally.damageScale = 0.48 + progress.upgrades.summonDamage * 0.12 + playerStats().summonBuff;
+        ally.respawnTimer = 0;
+        ally.state = "ally";
+        allySummons.push(ally);
+      }
+      while (allySummons.length > cap) {
+        const a = allySummons.pop();
+        a.alive = false;
+        scene.remove(a.model);
+      }
+    }
+
+    function updateAllies(dt) {
+      for (const ally of allySummons) {
+        if (!ally.alive) {
+          ally.respawnTimer -= dt;
+          if (ally.respawnTimer <= 0) {
+            ally.alive = true;
+            ally.health = ally.maxHealth;
+            ally.pos.copy(player.pos).add(new THREE.Vector3((Math.random() - 0.5) * 8, 3, (Math.random() - 0.5) * 8));
+            scene.add(ally.model);
+          }
+          continue;
+        }
+        const target = enemies.filter(e => e.alive && !e.isAlly).sort((a, b) => a.pos.distanceTo(ally.pos) - b.pos.distanceTo(ally.pos))[0];
+        if (!target) continue;
+        const dir = target.pos.clone().sub(ally.pos).normalize();
+        ally.vel.addScaledVector(dir, dt * (6 + progress.upgrades.summonAggression * 2));
+        ally.vel.multiplyScalar(0.96);
+        ally.pos.addScaledVector(ally.vel, dt);
+        ally.yaw = Math.atan2(dir.x, dir.z);
+        if (ally.pos.distanceTo(target.pos) < ally.radius + target.radius + 0.7) {
+          damageEnemy(target, (8 + progress.upgrades.summonDamage * 4) * ally.damageScale, dir, "ally");
+        }
+        if (ally.health <= 0) {
+          ally.alive = false;
+          scene.remove(ally.model);
+          ally.respawnTimer = Math.max(4, 11 - progress.upgrades.summonRespawn * 1.5);
+        }
+        updateActorTransform(ally, dt);
+      }
+    }
+
     function flapAnimation(actor, dt, flapStrength = 1) {
       actor.flapPhase += dt * (8 + actor.vel.length() * 0.12);
-      const flap = Math.sin(actor.flapPhase) * 0.65 * flapStrength;
+      const mount = actor === player ? (MOUNT_DB.find((m) => m.id === progress.mount) || MOUNT_DB[0]) : null;
+      const flapStyle = mount?.wingStyle === "membrane" ? 0.52 : mount?.wingStyle === "mystic" ? 0.74 : 0.65;
+      const flap = (Math.sin(actor.flapPhase) * flapStyle + Math.sin(actor.flapPhase * 0.5) * 0.17) * flapStrength;
       const anim = actor.model.userData.anim;
 
       anim.leftWing.rotation.z = 0.35 + flap;
@@ -1715,7 +1911,7 @@
       if (actor !== player) {
         actor.model.traverse((child) => {
           if (child.isMesh && child.material && "emissiveIntensity" in child.material) {
-            child.material.emissiveIntensity = actor.hitReact > 0 ? 0.7 : 0.12;
+            child.material.emissiveIntensity = actor.hitReact > 0 ? 0.7 : actor.telegraph > 0 ? 0.45 : 0.12;
           }
         });
       }
@@ -1872,18 +2068,33 @@
       }
     }
 
+    function castSorcererSpell() {
+      const baseCd = Math.max(0.8, 2.4 - progress.upgrades.sorcererCooldown * 0.22);
+      player.spellCooldown = baseCd;
+      const nearest = enemies.filter((e) => e.alive).sort((a, b) => a.pos.distanceTo(player.pos) - b.pos.distanceTo(player.pos)).slice(0, 1 + progress.upgrades.sorcererChains);
+      for (const enemy of nearest) {
+        if (enemy.pos.distanceTo(player.pos) > 38) continue;
+        const spellDamage = 18 + progress.upgrades.sorcererPower * 8;
+        damageEnemy(enemy, spellDamage, enemy.pos.clone().sub(player.pos).normalize(), "spell");
+        enemy.stunTimer = Math.max(enemy.stunTimer, 0.2 + progress.upgrades.sorcererChains * 0.1);
+        spawnBurst(enemy.pos.clone(), 10, 0xc084fc);
+      }
+      spawnBurst(player.pos.clone().add(new THREE.Vector3(0, 1.6, 0)), 10, 0x93c5fd);
+    }
+
     function updatePlayer(dt) {
       if (!player.alive) return;
 
       player.invuln = Math.max(0, player.invuln - dt);
       player.boostCooldown = Math.max(0, player.boostCooldown - dt);
       player.spearCooldown = Math.max(0, player.spearCooldown - dt);
+      player.spellCooldown = Math.max(0, player.spellCooldown - dt);
       player.spearTimer = Math.max(0, player.spearTimer - dt);
       player.regenWait = Math.max(0, player.regenWait - dt);
 
-      const turnSpeed = 3.35 + progress.upgrades.airControl * 0.08;
-      const baseForward = 17.2;
       const stats = playerStats();
+      const turnSpeed = (3.35 + progress.upgrades.airControl * 0.08) * stats.mount.turn;
+      const baseForward = 17.2 * stats.mount.speed;
       const lift = stats.flapLift;
       const dive = 11.5;
       const burst = keys["shift"] ? 8 + stats.burstBonus : 0;
@@ -1913,11 +2124,22 @@
         player.vel.z += forward.z * 5.2;
         player.boostCooldown = 0.28;
       }
+      if (stats.mount.lateral && keys["q"] && player.boostCooldown <= 0) {
+        player.vel.add(new THREE.Vector3(forward.z, 0.2, -forward.x).multiplyScalar(8.5));
+        player.boostCooldown = 0.36;
+      }
+      if (stats.mount.lateral && keys["e"] && player.boostCooldown <= 0) {
+        player.vel.add(new THREE.Vector3(-forward.z, 0.2, forward.x).multiplyScalar(8.5));
+        player.boostCooldown = 0.36;
+      }
 
       if (keys["w"] && player.spearCooldown <= 0) {
         player.spearTimer = 0.25;
         player.spearCooldown = stats.spearCooldown;
         player.spearHitSet.clear();
+      }
+      if (keys["f"] && progress.classChoice === "sorcerer" && player.spellCooldown <= 0) {
+        castSorcererSpell();
       }
 
       player.vel.y = Math.max(player.vel.y, -36);
@@ -1983,7 +2205,9 @@
         typeStats.turn *= 1.06;
         typeStats.aggroRange += 8;
       }
-      const distToPlayer = enemy.pos.distanceTo(player.pos);
+      const allyTarget = allySummons.filter(a => a.alive).sort((a, b) => a.pos.distanceTo(enemy.pos) - b.pos.distanceTo(enemy.pos))[0];
+      const combatTarget = allyTarget && allyTarget.pos.distanceTo(enemy.pos) < player.pos.distanceTo(enemy.pos) * 0.9 ? allyTarget : player;
+      const distToPlayer = enemy.pos.distanceTo(combatTarget.pos);
       const distHome = enemy.pos.distanceTo(enemy.homePos);
       const enemyHub = getHubAt(enemy.pos.x, enemy.pos.z, 0);
       const playerHub = getHubAt(player.pos.x, player.pos.z, 2);
@@ -2025,6 +2249,7 @@
 
       enemy.aiTimer -= dt;
       enemy.attackTimer = Math.max(0, enemy.attackTimer - dt);
+      enemy.telegraph = Math.max(0, enemy.telegraph - dt);
       enemy.hitReact = Math.max(0, enemy.hitReact - dt);
       enemy.poisonTimer = Math.max(0, enemy.poisonTimer - dt);
       enemy.freezeTimer = Math.max(0, enemy.freezeTimer - dt);
@@ -2052,7 +2277,7 @@
         }
       }
 
-      let target = enemy.state === "aggro" ? player.pos.clone() : enemy.patrolTarget.clone();
+      let target = enemy.state === "aggro" ? combatTarget.pos.clone() : enemy.patrolTarget.clone();
       if (enemy.state === "aggro") {
         const f = typeStats.behavior;
         const wobble = performance.now() * 0.001 + enemy.turnBias * 12;
@@ -2063,8 +2288,8 @@
         } else if (f === "stinger" || f === "swarm") {
           target.add(new THREE.Vector3(Math.sin(wobble * 3) * 6, 0, Math.cos(wobble * 2.4) * 6));
         } else if (f === "ranged" || f === "beam" || f === "sniper" || f === "orb") {
-          const away = enemy.pos.clone().sub(player.pos).setY(0).normalize().multiplyScalar(typeStats.preferDistance);
-          target.copy(player.pos).add(away).setY(player.pos.y + 3.2);
+          const away = enemy.pos.clone().sub(combatTarget.pos).setY(0).normalize().multiplyScalar(typeStats.preferDistance);
+          target.copy(combatTarget.pos).add(away).setY(combatTarget.pos.y + 3.2);
         }
       }
 
@@ -2133,14 +2358,35 @@
         enemy.healthBar.fill.position.x = -1.34 + enemy.healthBar.fill.scale.x * 1.34;
       }
 
-      if (enemy.state === "aggro" && distToPlayer < typeStats.preferDistance + 2 && enemy.attackTimer <= 0) {
+      if (enemy.state === "aggro" && distToPlayer < typeStats.preferDistance + 2 && enemy.attackTimer <= 0 && enemy.telegraph <= 0) {
+        enemy.telegraph = 0.45;
+      }
+      if (enemy.state === "aggro" && distToPlayer < typeStats.preferDistance + 2 && enemy.attackTimer <= 0 && enemy.telegraph > 0 && enemy.telegraph < 0.12) {
         enemy.attackTimer = typeStats.attackCooldown;
+        enemy.telegraph = 0;
         const attackDamage = typeStats.damage * (enemy.elite ? 1.22 : 1);
-        applyPlayerDamage(attackDamage, enemy.speciesData.label);
-        const pushDir = player.pos.clone().sub(enemy.pos).normalize().multiplyScalar(typeStats.knockback);
-        player.vel.add(pushDir);
-        player.vel.y += 1.2 + typeStats.knockback * 0.2;
+        const pushDir = combatTarget.pos.clone().sub(enemy.pos).normalize().multiplyScalar(typeStats.knockback);
+        if (combatTarget === player) {
+          applyPlayerDamage(attackDamage, enemy.speciesData.label);
+          player.vel.add(pushDir);
+          player.vel.y += 1.2 + typeStats.knockback * 0.2;
+        } else {
+          combatTarget.health -= attackDamage * 0.7;
+          combatTarget.vel.add(pushDir);
+        }
         spawnBurst(enemy.pos.clone().lerp(player.pos, 0.55), 7, 0xff9a66);
+        if (["beam", "sniper", "orb", "ranged", "breath"].includes(typeStats.behavior)) {
+          enemyProjectiles.push({
+            pos: enemy.pos.clone().add(new THREE.Vector3(0, 1.4, 0)),
+            vel: combatTarget.pos.clone().sub(enemy.pos).normalize().multiplyScalar(24),
+            life: 2.4,
+            damage: attackDamage * 0.75,
+            mesh: new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff8b8b }))
+          });
+          const last = enemyProjectiles[enemyProjectiles.length - 1];
+          last.mesh.position.copy(last.pos);
+          scene.add(last.mesh);
+        }
       }
     }
 
@@ -2181,6 +2427,23 @@
             if (playerHigher > 1.2) {
               const diveDamage = stats.diveImpact * (enemy.speciesData.bounceMass > 1.5 ? 0.75 : 1);
               damageEnemy(enemy, diveDamage, side, "dive");
+              const mountFx = stats.mount.landingFx;
+              if (mountFx === "fire" || mountFx === "frost" || mountFx === "poison" || mountFx === "lightning") {
+                for (const other of enemies) {
+                  if (!other.alive || other.pos.distanceTo(enemy.pos) > 9) continue;
+                  if (mountFx === "frost") other.freezeTimer = Math.max(other.freezeTimer, 0.9 + progress.upgrades.rangerMastery * 0.2);
+                  if (mountFx === "poison") other.poisonTimer = Math.max(other.poisonTimer, 2.8 + progress.upgrades.rangerMastery * 0.4);
+                  if (mountFx === "lightning") other.stunTimer = Math.max(other.stunTimer, 0.55);
+                  damageEnemy(other, diveDamage * 0.25, other.pos.clone().sub(enemy.pos).normalize(), "mountFx");
+                }
+                spawnBurst(enemy.pos.clone(), 12, mountFx === "fire" ? 0xff7a1a : mountFx === "frost" ? 0x7dd3fc : mountFx === "poison" ? 0x4ade80 : 0xa78bfa);
+              } else if (mountFx === "fear") {
+                for (const other of enemies) {
+                  if (!other.alive || other.pos.distanceTo(enemy.pos) > 13) continue;
+                  const away = other.pos.clone().sub(player.pos).normalize().multiplyScalar(7);
+                  other.vel.add(away);
+                }
+              }
               player.vel.y = Math.max(player.vel.y, 5.5);
               player.vel.add(side.clone().multiplyScalar(-2.6));
               enemy.vel.add(side.clone().multiplyScalar(4 + progress.upgrades.spearKnockback * 0.8));
@@ -2313,6 +2576,23 @@
       camera.position.z += (Math.random() - 0.5) * lavaDanger;
     }
 
+    function updateEnemyProjectiles(dt) {
+      for (let i = enemyProjectiles.length - 1; i >= 0; i--) {
+        const p = enemyProjectiles[i];
+        p.life -= dt;
+        p.pos.addScaledVector(p.vel, dt);
+        p.mesh.position.copy(p.pos);
+        if (player.alive && p.pos.distanceTo(player.pos) < player.radius + 0.8) {
+          applyPlayerDamage(p.damage, "telegraphed projectile");
+          p.life = 0;
+        }
+        if (p.life <= 0) {
+          scene.remove(p.mesh);
+          enemyProjectiles.splice(i, 1);
+        }
+      }
+    }
+
     function updateQuestArrow(dt) {
       if (!player) return;
       const q = progress.quests[progress.activeQuestIndex];
@@ -2435,6 +2715,8 @@
       if (!inUpgradeZone()) return false;
       if (progress.points < node.cost) return false;
       if (node.req && (progress.upgrades[node.req] || 0) <= 0) return false;
+      if (node.branchKey && progress.classChoice && progress.classChoice !== node.branchKey) return false;
+      if (node.key.startsWith("class_") && progress.classChoice && progress.classChoice !== node.branchKey) return false;
       return true;
     }
 
@@ -2448,36 +2730,49 @@
     }
 
     function renderUpgradeTreeMenu() {
-      const byBranch = {};
-      UPGRADE_TREE.forEach((n) => { (byBranch[n.branch] ||= []).push(n); });
-      menuMainPanelEl.innerHTML = "";
-      for (const [branch, nodes] of Object.entries(byBranch)) {
-        const sec = document.createElement("div");
-        sec.style.cssText = "margin-bottom:12px;padding:8px;border:1px solid rgba(255,255,255,.14);border-radius:10px;";
-        sec.innerHTML = `<div style="font-weight:800;color:#fbbf24;margin-bottom:6px">${branch}</div>`;
-        const row = document.createElement("div");
-        row.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;";
-        for (const node of nodes) {
-          const rank = progress.upgrades[node.key] || 0;
-          const locked = node.req && (progress.upgrades[node.req] || 0) <= 0;
-          const btn = document.createElement("button");
-          btn.style.cssText = `text-align:left;border:1px solid ${rank > 0 ? "rgba(251,191,36,.8)" : locked ? "rgba(255,255,255,.16)" : "rgba(134,239,172,.55)"};background:${rank > 0 ? "rgba(245,158,11,.22)" : locked ? "rgba(15,23,42,.55)" : "rgba(34,197,94,.12)"};color:white;border-radius:8px;padding:8px;cursor:${canBuyTreeNode(node) ? "pointer" : "default"}`;
-          btn.innerHTML = `<div style="font-weight:700">${node.label}</div><div style="font-size:11px;opacity:.86">${node.desc}</div><div style="font-size:11px;margin-top:4px">${rank > 0 ? `Purchased Lv ${rank}` : locked ? `Locked: needs ${node.req}` : `Cost ${node.cost}`}</div>`;
-          btn.onclick = () => {
-            if (!canBuyTreeNode(node)) return;
-            progress.points -= node.cost;
-            progress.upgrades[node.key] = (progress.upgrades[node.key] || 0) + 1;
-            if (node.key === "healthBoost") { player.maxHealth += 10; player.health += 10; }
-            renderTabMenu(); updateUI();
-          };
-          row.appendChild(btn);
+      menuMainPanelEl.innerHTML = `<div style="font-size:12px;margin-bottom:8px">Class: <b style="color:${progress.classChoice ? CLASS_BRANCHES[progress.classChoice].color : "#e5e7eb"}">${progress.classChoice ? CLASS_BRANCHES[progress.classChoice].title : "Uncommitted"}</b> • Scroll to explore the full tree.</div>`;
+      const canvas = document.createElement("div");
+      canvas.style.cssText = "position:relative;min-width:1040px;min-height:860px;background:linear-gradient(180deg,rgba(15,23,42,.3),rgba(2,6,23,.3));border-radius:10px;border:1px solid rgba(255,255,255,.08);";
+      for (const node of UPGRADE_TREE) {
+        if (node.req) {
+          const from = UPGRADE_TREE.find((n) => n.key === node.req);
+          if (!from) continue;
+          const line = document.createElement("div");
+          const dx = node.x - from.x;
+          const dy = node.y - from.y;
+          const len = Math.hypot(dx, dy);
+          const ang = Math.atan2(dy, dx) * 180 / Math.PI;
+          line.style.cssText = `position:absolute;left:${from.x + 70}px;top:${from.y + 30}px;width:${len}px;height:2px;background:rgba(148,163,184,.4);transform-origin:left center;transform:rotate(${ang}deg);`;
+          canvas.appendChild(line);
         }
-        sec.appendChild(row);
-        menuMainPanelEl.appendChild(sec);
       }
+      for (const node of UPGRADE_TREE) {
+        const rank = progress.upgrades[node.key] || 0;
+        const lockedReq = node.req && (progress.upgrades[node.req] || 0) <= 0;
+        const lockedRival = node.branchKey && progress.classChoice && progress.classChoice !== node.branchKey;
+        const btn = document.createElement("button");
+        btn.title = node.desc;
+        btn.style.cssText = `position:absolute;left:${node.x}px;top:${node.y}px;width:140px;text-align:left;border:1px solid ${rank > 0 ? "rgba(251,191,36,.8)" : (lockedReq || lockedRival) ? "rgba(100,116,139,.4)" : "rgba(134,239,172,.55)"};background:${rank > 0 ? "rgba(245,158,11,.22)" : lockedRival ? "rgba(55,65,81,.35)" : lockedReq ? "rgba(30,41,59,.4)" : "rgba(15,118,110,.2)"};color:white;border-radius:10px;padding:7px;cursor:${canBuyTreeNode(node) ? "pointer" : "default"}`;
+        btn.innerHTML = `<div style="font-size:12px;font-weight:700">${node.label}</div><div style="font-size:10px;opacity:.8">${node.branch}</div><div style="font-size:10px;margin-top:3px">${rank > 0 ? `Purchased` : lockedRival ? "Locked by rival class" : lockedReq ? `Need ${node.req}` : `Cost ${node.cost}`}</div>`;
+        btn.onclick = () => {
+          if (!canBuyTreeNode(node)) return;
+          progress.points -= node.cost;
+          progress.upgrades[node.key] = (progress.upgrades[node.key] || 0) + 1;
+          if (node.key === "healthBoost") { player.maxHealth += 10; player.health += 10; }
+          if (node.key.startsWith("class_")) progress.classChoice = node.branchKey;
+          if (node.key === "summonCount") spawnAlliesFromUpgrades();
+          renderTabMenu(); updateUI();
+        };
+        canvas.appendChild(btn);
+      }
+      menuMainPanelEl.appendChild(canvas);
     }
 
     function equipItem(item) {
+      if (item.classReq && progress.classChoice !== item.classReq) {
+        showCenterMessage(`Requires ${CLASS_BRANCHES[item.classReq].title}`, 0.8);
+        return;
+      }
       if (item.slot === "weapon") progress.equipped.weapon = item.id;
       if (item.slot === "armor") {
         progress.equipped.armor = item.id;
@@ -2495,7 +2790,7 @@
     function renderInventoryMenu() {
       const groups = { weapon: [], armor: [], trinket: [], quest: progress.questItems, material: progress.materials };
       progress.inventory.forEach((it) => groups[it.slot]?.push(it));
-      menuMainPanelEl.innerHTML = `<div style="margin-bottom:8px"><b>Equipped:</b> Weapon ${getItemById(progress.equipped.weapon)?.name || "None"} • Armor ${getItemById(progress.equipped.armor)?.name || "None"} • Trinkets ${getItemById(progress.equipped.trinket1)?.name || "None"} / ${getItemById(progress.equipped.trinket2)?.name || "None"}</div>`;
+      menuMainPanelEl.innerHTML = `<div style="margin-bottom:8px"><b>Equipped:</b> Weapon ${getItemById(progress.equipped.weapon)?.name || "None"} • Armor ${getItemById(progress.equipped.armor)?.name || "None"} • Trinkets ${getItemById(progress.equipped.trinket1)?.name || "None"} / ${getItemById(progress.equipped.trinket2)?.name || "None"} • Mount ${MOUNT_DB.find((m)=>m.id===progress.mount)?.name || "War Roc"}</div>`;
       ["weapon", "armor", "trinket"].forEach((slot) => {
         const sec = document.createElement("div");
         sec.style.cssText = "margin-bottom:10px;padding:8px;border:1px solid rgba(255,255,255,.14);border-radius:10px;";
@@ -2504,7 +2799,7 @@
           const row = document.createElement("div");
           row.style.cssText = "display:flex;justify-content:space-between;gap:6px;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.08)";
           const equipped = Object.values(progress.equipped).includes(item.id);
-          row.innerHTML = `<div><span style="color:${RARITY_COLORS[item.rarity] || "#fff"}">${item.name}</span> <small>(${item.rarity})</small><div style="font-size:11px;opacity:.8">${item.desc}</div><div style="font-size:11px;opacity:.7">Sell ${item.sell}g</div></div>`;
+          row.innerHTML = `<div><span style="color:${RARITY_COLORS[item.rarity] || "#fff"}">${item.name}</span> <small>(${item.rarity})</small>${item.classReq ? `<div style="font-size:11px;color:#fca5a5">Class: ${CLASS_BRANCHES[item.classReq].title}</div>` : ""}<div style="font-size:11px;opacity:.8">${item.desc}</div><div style="font-size:11px;opacity:.7">Sell ${item.sell}g</div></div>`;
           const actions = document.createElement("div");
           const eq = document.createElement("button");
           eq.textContent = equipped ? "Equipped" : "Equip";
@@ -2520,12 +2815,23 @@
         });
         menuMainPanelEl.appendChild(sec);
       });
+      const mountSec = document.createElement("div");
+      mountSec.style.cssText = "margin-bottom:10px;padding:8px;border:1px solid rgba(255,255,255,.14);border-radius:10px;";
+      mountSec.innerHTML = `<div style="font-weight:700;margin-bottom:5px">Mount Stable</div>`;
+      MOUNT_DB.forEach((m) => {
+        const b = document.createElement("button");
+        b.style.cssText = `display:block;width:100%;text-align:left;margin:4px 0;border:1px solid rgba(255,255,255,.2);background:${progress.mount === m.id ? "rgba(251,191,36,.25)" : "rgba(255,255,255,.06)"};color:white;border-radius:7px;padding:6px;`;
+        b.textContent = `${m.name} • ${m.classHint}${m.lateral ? " • Q/E Lateral" : ""}`;
+        b.onclick = () => { progress.mount = m.id; refreshPlayerAppearance(); renderTabMenu(); };
+        mountSec.appendChild(b);
+      });
+      menuMainPanelEl.appendChild(mountSec);
       const shopSection = document.createElement("div");
       shopSection.style.cssText = "padding:8px;border:1px solid rgba(255,255,255,.14);border-radius:10px;";
       shopSection.innerHTML = "<b>Nearby City Shop Stock</b>";
       const hub = getHubAt(player.pos.x, player.pos.z, 24);
       if (hub) {
-        const stock = ITEM_DB.filter((i) => (i.region === hub.zone || i.rarity === "common")).slice(0, 8);
+        const stock = ITEM_DB.filter((i) => (i.region === hub.zone || i.rarity === "common") && (!i.classReq || i.classReq === progress.classChoice)).slice(0, 10);
         stock.forEach((item) => {
           const cost = Math.round(item.sell * 1.7);
           const b = document.createElement("button");
@@ -2655,12 +2961,16 @@
         }
 
         updatePlayer(dt);
+        updateWorldChunks();
+        spawnAlliesFromUpgrades();
+        updateAllies(dt);
         for (const enemy of enemies) updateEnemyAI(enemy, dt);
+        updateEnemyProjectiles(dt);
         checkCombat();
         enemySpawnTimer -= dt;
         if (enemySpawnTimer <= 0) {
           const didSpawn = spawnRegionalEnemy();
-          enemySpawnTimer = didSpawn ? (2.6 + Math.random() * 2.3) : (1.2 + Math.random() * 1.2);
+          enemySpawnTimer = didSpawn ? (6.8 + Math.random() * 4.8) : (3.4 + Math.random() * 3.6);
         }
         for (let i = nodeRespawns.length - 1; i >= 0; i--) {
           nodeRespawns[i].timer -= dt;
