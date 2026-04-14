@@ -135,6 +135,31 @@
 
   <div id="centerMsg"></div>
 
+  <div id="questTrack" style="position:absolute;left:12px;top:208px;z-index:6;min-width:260px;background:rgba(12,14,20,.58);border:1px solid rgba(255,255,255,.18);border-radius:10px;padding:8px 10px;backdrop-filter:blur(4px);">
+    <div style="font-size:11px;opacity:.8">Tracked Quest</div>
+    <div id="questTrackText" style="font-size:13px;font-weight:700;color:#a4f3ff">No quest tracked.</div>
+  </div>
+
+  <div id="tabMenu" style="position:absolute;inset:0;z-index:20;display:none;align-items:center;justify-content:center;background:rgba(4,6,11,.72);backdrop-filter:blur(6px);">
+    <div style="width:min(1040px,94vw);height:min(720px,90vh);background:linear-gradient(180deg,rgba(24,30,46,.96),rgba(10,13,22,.96));border:1px solid rgba(255,255,255,.22);border-radius:16px;display:flex;flex-direction:column;box-shadow:0 14px 40px rgba(0,0,0,.55);">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.16);">
+        <div style="display:flex;gap:8px;">
+          <button id="tabBtnUpgrades" style="padding:8px 12px;border-radius:9px;border:1px solid rgba(255,255,255,.25);background:rgba(245,158,11,.24);color:#fff;font-weight:700;cursor:pointer;">Upgrades</button>
+          <button id="tabBtnInventory" style="padding:8px 12px;border-radius:9px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:#fff;font-weight:700;cursor:pointer;">Inventory / Equipped</button>
+        </div>
+        <div style="display:flex;gap:14px;font-size:13px;align-items:center;">
+          <span>Points: <b id="menuPoints">0</b></span>
+          <span>Gold: <b id="menuGold">0</b></span>
+          <span>Lv <b id="menuLevel">1</b> • XP <b id="menuXp">0</b>/<b id="menuXpNeed">80</b></span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;padding:12px;flex:1;min-height:0;">
+        <div id="menuMainPanel" style="min-height:0;overflow:auto;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);border-radius:12px;padding:10px;"></div>
+        <div id="menuSidePanel" style="min-height:0;overflow:auto;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);border-radius:12px;padding:10px;"></div>
+      </div>
+    </div>
+  </div>
+
   <div id="upgradePanel" style="position:absolute;inset:auto 12px 12px auto;z-index:8;display:none;max-width:320px;background:rgba(6,7,11,.9);border:1px solid rgba(255,255,255,.22);border-radius:10px;padding:10px 10px 8px;backdrop-filter: blur(6px);">
     <div style="font-weight:700;color:#ffd37a;margin-bottom:5px">Checkpoint Upgrade</div>
     <div id="upgradeHint" style="font-size:12px;color:#d1d5db;margin-bottom:6px">Choose one permanent boost.</div>
@@ -162,8 +187,14 @@
     let hazardSurfaces = [];
     let safeHubs = [];
     let checkpoints = [];
+    let shopPlatforms = [];
+    let cityCreatures = [];
     let arenaGroup;
     let worldZones = [];
+    let spawnNodes = [];
+    let nodeRespawns = [];
+    let gamePaused = false;
+    let tabMenuOpen = false;
     let worldMinX = -160;
     let worldMaxX = 160;
     let worldMinZ = -160;
@@ -175,6 +206,7 @@
     let gameEnded = false;
     let respawnTimer = 0;
     let centerMsgTimer = 0;
+    let questArrow = null;
     let lastTime = performance.now();
     let lastRespawnPoint = new THREE.Vector3(-8, 14, -4);
     let activeCheckpoint = null;
@@ -211,7 +243,14 @@
         reviveShield: 0,
         deathMitigation: 0
       },
-      livesPurchased: 0
+      livesPurchased: 0,
+      inventory: [],
+      materials: [],
+      questItems: [],
+      equipped: { weapon: "iron-pike", armor: "rider-leathers", trinket1: "amulet-lift", trinket2: null },
+      quests: [],
+      activeQuestIndex: 0,
+      menuTab: "upgrades"
     };
 
     const keys = {};
@@ -229,6 +268,17 @@
     const enemiesEl = document.getElementById("enemies");
     const centerMsg = document.getElementById("centerMsg");
     const gameOverEl = document.getElementById("gameOver");
+    const questTrackTextEl = document.getElementById("questTrackText");
+    const tabMenuEl = document.getElementById("tabMenu");
+    const tabBtnUpgradesEl = document.getElementById("tabBtnUpgrades");
+    const tabBtnInventoryEl = document.getElementById("tabBtnInventory");
+    const menuMainPanelEl = document.getElementById("menuMainPanel");
+    const menuSidePanelEl = document.getElementById("menuSidePanel");
+    const menuPointsEl = document.getElementById("menuPoints");
+    const menuGoldEl = document.getElementById("menuGold");
+    const menuLevelEl = document.getElementById("menuLevel");
+    const menuXpEl = document.getElementById("menuXp");
+    const menuXpNeedEl = document.getElementById("menuXpNeed");
     const finalScoreEl = document.getElementById("finalScore");
     const restartBtn = document.getElementById("restartBtn");
     const upgradePanelEl = document.getElementById("upgradePanel");
@@ -245,7 +295,9 @@
     const GLOBAL_ENEMY_CAP = 16;
     const CHUNK_ENEMY_CAP = 3;
     const ZONE_ENEMY_CAP = 7;
+    const NODE_ENEMY_CAP = 3;
     const HUB_SAFE_BUFFER = 5;
+    const AMBIENT_SPAWN_CHANCE = 0.2;
 
     const ENEMY_SPECIES = {
       giantBee: { label: "Giant Bee", family: "Verdant", behavior: "stinger", health: 64, speed: 17, turn: 2.8, aggroRange: 55, leashRange: 95, preferDistance: 8, attackCooldown: 1.6, damage: 10, knockback: 4.2, bounceMass: 0.8, reward: { score: 100, xp: 18, gold: 5 }, colors: { bird: 0x9a7c23, wing: 0x503c12, rider: 0xd7cf89, cloth: 0x2f7c3f } },
@@ -264,6 +316,64 @@
       shadeSerpent: { label: "Shade Serpent", family: "Hollow", behavior: "ambush", health: 124, speed: 15.8, turn: 2.4, aggroRange: 62, leashRange: 108, preferDistance: 8, attackCooldown: 1.9, damage: 18, knockback: 6.5, bounceMass: 1.12, reward: { score: 170, xp: 28, gold: 8 }, colors: { bird: 0x473b5d, wing: 0x281f36, rider: 0xbcb5cd, cloth: 0x7a64a8 } },
       nightBee: { label: "Night Bee", family: "Hollow", behavior: "swarm", health: 58, speed: 19.2, turn: 3.2, aggroRange: 52, leashRange: 92, preferDistance: 7, attackCooldown: 1.2, damage: 9, knockback: 3.6, bounceMass: 0.66, reward: { score: 95, xp: 16, gold: 4 }, colors: { bird: 0x3f3250, wing: 0x22192c, rider: 0xccc4da, cloth: 0x9f79d7 } }
     };
+
+    const RARITY_COLORS = { common: "#d1d5db", uncommon: "#86efac", rare: "#93c5fd", epic: "#c4b5fd", legendary: "#fbbf24" };
+    const ITEM_DB = [
+      { id: "iron-pike", name: "Iron Pike", slot: "weapon", rarity: "common", region: "Verdant Cliffs", stats: { spearDamage: 6, spearReach: 0.4 }, effect: "armorPierce", desc: "Reliable steel pike for disciplined thrusts.", sell: 14 },
+      { id: "sky-lancer", name: "Sky Lancer", slot: "weapon", rarity: "uncommon", region: "Verdant Cliffs", stats: { spearDamage: 9, burstSpeed: 1 }, effect: "projectile", desc: "Launches a small lance-wave on thrust.", sell: 22 },
+      { id: "ember-fang", name: "Ember Fang", slot: "weapon", rarity: "rare", region: "Ember Basin", stats: { spearDamage: 13 }, effect: "burnBurst", desc: "Explosive fire tongue on heavy hit.", sell: 34 },
+      { id: "frost-talon", name: "Frost Talon", slot: "weapon", rarity: "rare", region: "Storm Peaks", stats: { spearDamage: 12 }, effect: "freeze", desc: "Has a chance to freeze enemies in place.", sell: 36 },
+      { id: "venom-barb", name: "Venom Barb", slot: "weapon", rarity: "rare", region: "Hollow Depths", stats: { spearDamage: 11 }, effect: "poison", desc: "Applies damage-over-time venom.", sell: 35 },
+      { id: "stormglass-lance", name: "Stormglass Lance", slot: "weapon", rarity: "epic", region: "Storm Peaks", stats: { spearDamage: 15, spearReach: 0.8 }, effect: "chainLightning", desc: "Lightning arcs between nearby enemies.", sell: 52 },
+      { id: "chainlight-spear", name: "Chainlight Spear", slot: "weapon", rarity: "epic", region: "Ruined Spires", stats: { spearDamage: 16 }, effect: "stun", desc: "High chance to stagger and stun.", sell: 56 },
+      { id: "sunpiercer", name: "Sunpiercer", slot: "weapon", rarity: "legendary", region: "Ember Basin", stats: { spearDamage: 20, critChance: 0.08 }, effect: "lifesteal", desc: "Critical thrusts restore health.", sell: 78 },
+      { id: "voidthorn-pike", name: "Voidthorn Pike", slot: "weapon", rarity: "legendary", region: "Hollow Depths", stats: { spearDamage: 22 }, effect: "shockwave", desc: "Heavy thrusts release a void shockwave.", sell: 84 },
+      { id: "serpentbreaker", name: "Serpentbreaker", slot: "weapon", rarity: "epic", region: "Ember Basin", stats: { spearDamage: 17 }, effect: "antiArmor", desc: "Armor-piercing anti-elite specialist.", sell: 58 },
+      { id: "royal-joust-spear", name: "Royal Joust Spear", slot: "weapon", rarity: "epic", region: "Ruined Spires", stats: { spearDamage: 18, spearReach: 0.9 }, effect: "multiHit", desc: "Creates a triple thrust trail.", sell: 62 },
+      { id: "crystal-halberd", name: "Crystal Halberd", slot: "weapon", rarity: "legendary", region: "Storm Peaks", stats: { spearDamage: 24, spearReach: 1.2 }, effect: "projectile", desc: "Fires crystal shards while thrusting.", sell: 90 },
+      { id: "rider-leathers", name: "Rider Leathers", slot: "armor", rarity: "common", stats: { maxHealth: 12 }, desc: "Balanced light armor.", sell: 12 },
+      { id: "cliffguard-mail", name: "Cliffguard Mail", slot: "armor", rarity: "uncommon", stats: { maxHealth: 20, resistance: 0.03 }, desc: "Solid plates for cliff skirmishes.", sell: 24 },
+      { id: "emberplate", name: "Emberplate", slot: "armor", rarity: "rare", stats: { maxHealth: 28, resistance: 0.05 }, desc: "Tempered against heat and impact.", sell: 34 },
+      { id: "stormcloak-harness", name: "Stormcloak Harness", slot: "armor", rarity: "rare", stats: { maxHealth: 24, airControl: 0.4 }, desc: "Wind-cut cloak improves handling.", sell: 36 },
+      { id: "hollow-warden-robes", name: "Hollow Warden Robes", slot: "armor", rarity: "epic", stats: { maxHealth: 36, regenSpeed: 1.2 }, desc: "Regenerative stitched robes.", sell: 50 },
+      { id: "sky-knight-armor", name: "Sky Knight Armor", slot: "armor", rarity: "epic", stats: { maxHealth: 44, resistance: 0.08 }, desc: "Veteran sky knight plating.", sell: 58 },
+      { id: "dragonbone-plate", name: "Dragonbone Plate", slot: "armor", rarity: "legendary", stats: { maxHealth: 54, resistance: 0.12 }, desc: "Elite anti-dragon fortress armor.", sell: 82 },
+      { id: "serpent-scale-armor", name: "Serpent Scale Armor", slot: "armor", rarity: "legendary", stats: { maxHealth: 48, regenDelay: -0.4 }, desc: "Scaled weave with swift recovery.", sell: 80 },
+      { id: "amulet-lift", name: "Amulet of Lift", slot: "trinket", rarity: "uncommon", stats: { flapLift: 1.6 }, desc: "Enhances wing lift.", sell: 19 },
+      { id: "bee-charm", name: "Bee Charm", slot: "trinket", rarity: "uncommon", stats: { pickupRadius: 1.1 }, desc: "Buzzing magnet charm.", sell: 18 },
+      { id: "ring-recovery", name: "Ring of Recovery", slot: "trinket", rarity: "rare", stats: { regenSpeed: 0.8 }, desc: "Steady passive healing.", sell: 27 },
+      { id: "frost-totem", name: "Frost Totem", slot: "trinket", rarity: "rare", stats: { freezeChance: 0.1 }, desc: "Chills struck enemies.", sell: 28 },
+      { id: "venom-idol", name: "Venom Idol", slot: "trinket", rarity: "rare", stats: { poisonBonus: 0.2 }, desc: "Empowers poison effects.", sell: 30 },
+      { id: "lightning-sigil", name: "Lightning Sigil", slot: "trinket", rarity: "epic", stats: { chainChance: 0.15 }, desc: "Arc chain enhancer.", sell: 46 },
+      { id: "hunters-feather", name: "Hunter’s Feather", slot: "trinket", rarity: "epic", stats: { critChance: 0.06 }, desc: "Sharper strike accuracy.", sell: 48 },
+      { id: "halo-relic", name: "Halo Relic", slot: "trinket", rarity: "legendary", stats: { reviveShield: 0.15, pickupRadius: 1.4 }, desc: "Protective floating halo.", sell: 70 }
+    ];
+
+    const UPGRADE_TREE = [
+      { key: "spearDamage", branch: "COMBAT", label: "Spear Damage", desc: "+ thrust damage", cost: 1 },
+      { key: "spearReach", branch: "COMBAT", label: "Spear Reach", desc: "+ lunge range", cost: 1, req: "spearDamage" },
+      { key: "spearCooldown", branch: "COMBAT", label: "Spear Cooldown", desc: "faster thrust cycle", cost: 1, req: "spearDamage" },
+      { key: "spearKnockback", branch: "COMBAT", label: "Spear Knockback", desc: "strong pushback", cost: 1, req: "spearReach" },
+      { key: "critChance", branch: "COMBAT", label: "Crit Chance", desc: "higher crit rolls", cost: 2, req: "spearCooldown" },
+      { key: "antiArmor", branch: "COMBAT", label: "Anti-Armor", desc: "bonus vs heavy", cost: 2, req: "critChance" },
+      { key: "flapPower", branch: "MOBILITY", label: "Flap Strength", desc: "bigger lift pop", cost: 1 },
+      { key: "burstSpeed", branch: "MOBILITY", label: "Burst Speed", desc: "faster travel", cost: 1, req: "flapPower" },
+      { key: "airControl", branch: "MOBILITY", label: "Air Control", desc: "snappier steering", cost: 1, req: "burstSpeed" },
+      { key: "bounceRecovery", branch: "MOBILITY", label: "Collision Recovery", desc: "recover sooner", cost: 1, req: "airControl" },
+      { key: "landingStability", branch: "MOBILITY", label: "Landing Stability", desc: "safer perches", cost: 1, req: "bounceRecovery" },
+      { key: "healthBoost", branch: "SURVIVAL", label: "Max Health", desc: "+HP", cost: 1 },
+      { key: "regenSpeed", branch: "SURVIVAL", label: "Regen Speed", desc: "heal faster", cost: 1, req: "healthBoost" },
+      { key: "regenDelay", branch: "SURVIVAL", label: "Regen Delay", desc: "heal sooner", cost: 1, req: "regenSpeed" },
+      { key: "resistance", branch: "SURVIVAL", label: "Damage Resistance", desc: "reduce incoming", cost: 1, req: "regenDelay" },
+      { key: "heavyInvuln", branch: "SURVIVAL", label: "Post-hit Invuln", desc: "longer i-frames", cost: 1, req: "resistance" },
+      { key: "pickupRadius", branch: "UTILITY", label: "Pickup Radius", desc: "larger magnet", cost: 1 },
+      { key: "xpGain", branch: "UTILITY", label: "XP Gain", desc: "more xp drops", cost: 1, req: "pickupRadius" },
+      { key: "goldGain", branch: "UTILITY", label: "Gold Gain", desc: "more gold drops", cost: 1, req: "xpGain" },
+      { key: "healthDrop", branch: "UTILITY", label: "Drop Quality", desc: "better loot chance", cost: 1, req: "goldGain" },
+      { key: "lifeCap", branch: "LIFE / RECOVERY", label: "Stored Lives", desc: "higher life cap", cost: 2 },
+      { key: "cheaperHub", branch: "LIFE / RECOVERY", label: "Cheaper Lives", desc: "life purchases cheaper", cost: 1, req: "lifeCap" },
+      { key: "reviveShield", branch: "LIFE / RECOVERY", label: "Revive Shield", desc: "revive with partial shield", cost: 1, req: "cheaperHub" }
+    ];
 
     init();
     animate();
@@ -310,10 +420,18 @@
       createPlatforms();
       createSafeHubs();
       createPlayer();
+      seedPlayerProgression();
+      refreshPlayerAppearance();
+      createSpawnNodes();
       spawnInitialEnemies();
 
       window.addEventListener("resize", onResize);
       window.addEventListener("keydown", (e) => {
+        if (e.key === "Tab") {
+          e.preventDefault();
+          toggleTabMenu();
+          return;
+        }
         keys[e.key.toLowerCase()] = true;
         if (e.key.toLowerCase() === "r" && gameEnded) restartGame();
       });
@@ -321,6 +439,8 @@
         keys[e.key.toLowerCase()] = false;
       });
       restartBtn.addEventListener("click", restartGame);
+      tabBtnUpgradesEl.addEventListener("click", () => { progress.menuTab = "upgrades"; renderTabMenu(); });
+      tabBtnInventoryEl.addEventListener("click", () => { progress.menuTab = "inventory"; renderTabMenu(); });
 
       updateUI();
       showCenterMessage("Explore the Overworld", 2.2);
@@ -356,6 +476,23 @@
       });
       const sky = new THREE.Mesh(skyGeo, skyMat);
       scene.add(sky);
+    }
+
+    function seedPlayerProgression() {
+      const starter = ["iron-pike", "sky-lancer", "rider-leathers", "cliffguard-mail", "amulet-lift", "bee-charm", "ring-recovery"];
+      progress.inventory = starter.map((id) => ITEM_DB.find((i) => i.id === id)).filter(Boolean);
+      progress.quests = [
+        { id: "q-bee", name: "Purge the Giant Bees", target: "giantBee", need: 8, count: 0, state: "active", reward: { xp: 90, gold: 40, item: "stormcloak-harness" }, giverHub: "Green Cliff Outpost" },
+        { id: "q-serpent", name: "Magma Serpent Hunt", target: "magmaSerpent", need: 4, count: 0, state: "active", reward: { xp: 120, gold: 52, item: "ember-fang" }, giverHub: "Volcanic Watch Station" },
+        { id: "q-drake", name: "Storm Drake Cull", target: "stormDrake", need: 6, count: 0, state: "active", reward: { xp: 160, gold: 75, item: "stormglass-lance" }, giverHub: "Storm Roost Sanctuary" }
+      ];
+    }
+
+    function toggleTabMenu(force) {
+      tabMenuOpen = force !== undefined ? force : !tabMenuOpen;
+      gamePaused = tabMenuOpen;
+      tabMenuEl.style.display = tabMenuOpen ? "flex" : "none";
+      if (tabMenuOpen) renderTabMenu();
     }
 
     function createArena() {
@@ -672,6 +809,31 @@
         npc.position.set(2.6, 2.1, 0.8);
         npc.castShadow = true;
         hubRoot.add(npc);
+        hubRoot.userData.leader = { name: `${def.name} Leader`, questHub: def.name };
+
+        const merchantTypes = ["weapon", "armor", "trinket", "life"];
+        merchantTypes.forEach((type, idx) => {
+          const plat = new THREE.Mesh(
+            new THREE.CylinderGeometry(2.1, 2.5, 1.2, 10),
+            new THREE.MeshStandardMaterial({ color: 0x3c4454, emissive: def.glow, emissiveIntensity: 0.16, roughness: 0.78, metalness: 0.2 })
+          );
+          const a = (idx / merchantTypes.length) * Math.PI * 2;
+          plat.position.set(Math.cos(a) * 14.5, 1.8, Math.sin(a) * 14.5);
+          hubRoot.add(plat);
+          shopPlatforms.push({ hubName: def.name, type, worldPos: def.pos.clone().add(plat.position) });
+        });
+
+        for (let b = 0; b < 5; b++) {
+          const creature = new THREE.Mesh(
+            new THREE.ConeGeometry(0.35, 1.1, 5),
+            new THREE.MeshStandardMaterial({ color: def.style === "storm" ? 0x9fd9ff : 0xc5e8b3, emissive: def.glow, emissiveIntensity: 0.3, roughness: 0.5 })
+          );
+          creature.rotation.x = Math.PI / 2;
+          const ang = (b / 5) * Math.PI * 2;
+          creature.position.set(Math.cos(ang) * (18 + b), 6 + Math.random() * 6, Math.sin(ang) * (18 + b));
+          hubRoot.add(creature);
+          cityCreatures.push({ mesh: creature, base: creature.position.clone(), phase: Math.random() * Math.PI * 2 });
+        }
 
         const checkpointPos = def.pos.clone().setY(def.pos.y + 1.65);
         const checkpoint = {
@@ -980,6 +1142,7 @@
         lastDeathPos: new THREE.Vector3(0, 12, 8)
       };
       lastRespawnPoint.copy(player.pos);
+      refreshPlayerAppearance();
       updateActorTransform(player, 0);
     }
 
@@ -1036,6 +1199,9 @@
         desiredHeight: 15 + Math.random() * 12,
         turnBias: (Math.random() - 0.5) * 0.6,
         state: "idle",
+        poisonTimer: 0,
+        freezeTimer: 0,
+        stunTimer: 0,
         homePos: pos.clone(),
         patrolTarget: pos.clone(),
         zoneName: "Overworld",
@@ -1051,8 +1217,46 @@
     function spawnInitialEnemies() {
       enemies.forEach(e => scene.remove(e.model));
       enemies = [];
-      enemySpawnTimer = 0.35;
+      nodeRespawns = [];
+      for (const node of spawnNodes) {
+        for (let i = 0; i < node.count; i++) spawnNodeEnemy(node);
+      }
+      enemySpawnTimer = 1.8;
       updateUI();
+    }
+
+    function createSpawnNodes() {
+      spawnNodes = [];
+      for (const zone of worldZones) {
+        for (let i = 0; i < 5; i++) {
+          const a = (i / 5) * Math.PI * 2 + Math.random() * 0.6;
+          const r = zone.radius * (0.28 + Math.random() * 0.5);
+          const pos = new THREE.Vector3(zone.center.x + Math.cos(a) * r, zone.baseY + 12 + Math.random() * 16, zone.center.z + Math.sin(a) * r);
+          const species = chooseEnemyTypeForZone(zone);
+          spawnNodes.push({
+            id: `${zone.name}-${i}`,
+            zoneName: zone.name,
+            pos,
+            species,
+            count: 1 + (Math.random() < 0.32 ? 1 : 0),
+            leashRange: 80 + Math.random() * 34,
+            respawn: 12 + Math.random() * 14
+          });
+        }
+      }
+    }
+
+    function spawnNodeEnemy(node) {
+      const jitter = new THREE.Vector3((Math.random() - 0.5) * 8, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 8);
+      const enemy = spawnEnemy(node.pos.clone().add(jitter), node.species);
+      enemy.zoneName = node.zoneName;
+      enemy.homePos.copy(node.pos);
+      enemy.patrolTarget.copy(node.pos);
+      enemy.spawnNodeId = node.id;
+      enemy.leashRangeOverride = node.leashRange;
+      enemy.chunkKey = chunkKeyAt(node.pos.x, node.pos.z);
+      if (zoneTier(node.zoneName) >= 3 && Math.random() < 0.18) enemy.elite = true;
+      return enemy;
     }
 
     function nearbyZonesForSpawning() {
@@ -1089,23 +1293,29 @@
     }
 
     function playerStats() {
+      const equipped = getEquippedItems();
+      const bonus = aggregateItemStats(equipped);
       return {
-        flapLift: 12.7 + progress.upgrades.flapPower * 0.78,
-        flapBoost: 5.6 + progress.upgrades.flapPower * 0.5,
-        airControl: 2.2 + progress.upgrades.airControl * 0.2,
-        burstBonus: progress.upgrades.burstSpeed * 0.8,
+        flapLift: 14.8 + progress.upgrades.flapPower * 0.95 + (bonus.flapLift || 0),
+        flapBoost: 7.4 + progress.upgrades.flapPower * 0.65,
+        airControl: 2.4 + progress.upgrades.airControl * 0.24 + (bonus.airControl || 0),
+        burstBonus: progress.upgrades.burstSpeed * 1.1 + (bonus.burstSpeed || 0),
         diveImpact: 22 + progress.upgrades.diveImpact * 5,
-        spearDamage: 24 + progress.upgrades.spearDamage * 6,
-        spearReach: 5 + progress.upgrades.spearReach * 0.55,
+        spearDamage: 24 + progress.upgrades.spearDamage * 6 + (bonus.spearDamage || 0),
+        spearReach: 5 + progress.upgrades.spearReach * 0.55 + (bonus.spearReach || 0),
         spearCooldown: Math.max(0.23, 0.7 - progress.upgrades.spearCooldown * 0.06),
         spearKnockback: 6 + progress.upgrades.spearKnockback * 1.1,
         spearStagger: 0.18 + progress.upgrades.antiArmor * 0.08,
-        critChance: 0.06 + progress.upgrades.critChance * 0.025,
+        critChance: 0.06 + progress.upgrades.critChance * 0.025 + (bonus.critChance || 0),
         collisionRecovery: progress.upgrades.bounceRecovery * 0.12,
-        resistance: progress.upgrades.resistance * 0.04,
-        regenPerSecond: 1.5 + progress.upgrades.regenSpeed * 0.7,
-        regenDelay: Math.max(2.5, 4.3 - progress.upgrades.regenDelay * 0.35),
-        pickupRadius: 2.2 + progress.upgrades.pickupRadius * 0.5
+        resistance: progress.upgrades.resistance * 0.04 + (bonus.resistance || 0),
+        regenPerSecond: 1.5 + progress.upgrades.regenSpeed * 0.7 + (bonus.regenSpeed || 0),
+        regenDelay: Math.max(2.1, 4.3 - progress.upgrades.regenDelay * 0.35 + (bonus.regenDelay || 0)),
+        pickupRadius: 3.2 + progress.upgrades.pickupRadius * 0.65 + (bonus.pickupRadius || 0),
+        freezeChance: bonus.freezeChance || 0,
+        chainChance: bonus.chainChance || 0,
+        poisonBonus: bonus.poisonBonus || 0,
+        reviveShield: bonus.reviveShield || 0
       };
     }
 
@@ -1119,6 +1329,7 @@
 
     function spawnRegionalEnemy() {
       if (!player) return false;
+      if (Math.random() > AMBIENT_SPAWN_CHANCE) return false;
       const aliveCount = enemies.filter(e => e.alive).length;
       if (aliveCount >= GLOBAL_ENEMY_CAP) return false;
 
@@ -1181,6 +1392,64 @@
       centerMsgTimer = duration;
     }
 
+    function getItemById(id) {
+      return ITEM_DB.find((i) => i.id === id) || null;
+    }
+
+    function getEquippedItems() {
+      return {
+        weapon: getItemById(progress.equipped.weapon),
+        armor: getItemById(progress.equipped.armor),
+        trinket1: getItemById(progress.equipped.trinket1),
+        trinket2: getItemById(progress.equipped.trinket2)
+      };
+    }
+
+    function aggregateItemStats(itemsObj) {
+      const out = {};
+      for (const item of Object.values(itemsObj)) {
+        if (!item?.stats) continue;
+        for (const [k, v] of Object.entries(item.stats)) out[k] = (out[k] || 0) + v;
+      }
+      return out;
+    }
+
+    function refreshPlayerAppearance() {
+      if (!player?.model?.userData?.anim) return;
+      const eq = getEquippedItems();
+      const weapon = eq.weapon;
+      const armor = eq.armor;
+      const trinkets = [eq.trinket1, eq.trinket2].filter(Boolean);
+      const lance = player.model.userData.anim.lance;
+      const shaft = lance.children[0];
+      if (shaft?.geometry && weapon) {
+        const len = 4.2 + (weapon.stats?.spearReach || 0) * 1.4;
+        shaft.geometry.dispose();
+        shaft.geometry = new THREE.CylinderGeometry(0.04 + Math.min(0.07, (weapon.sell || 10) / 1200), 0.04, len, 8);
+        shaft.material.color.set(weapon.rarity === "legendary" ? 0xfbbf24 : weapon.rarity === "epic" ? 0xa78bfa : 0xc8b18a);
+      }
+      if (armor) {
+        player.model.traverse((m) => {
+          if (m.isMesh && m.material?.color) {
+            if (m.geometry.type.includes("Cone")) m.material.color.set(armor.rarity === "legendary" ? 0xf59e0b : 0x7f8fa3);
+          }
+        });
+      }
+      if (!player.model.userData.visualTrinkets) player.model.userData.visualTrinkets = [];
+      for (const t of player.model.userData.visualTrinkets) player.model.remove(t);
+      player.model.userData.visualTrinkets = [];
+      trinkets.forEach((trinket, idx) => {
+        const ring = new THREE.Mesh(
+          new THREE.TorusGeometry(0.34 + idx * 0.08, 0.04, 8, 14),
+          new THREE.MeshStandardMaterial({ color: trinket.rarity === "legendary" ? 0xfef08a : 0x67e8f9, emissive: 0x67e8f9, emissiveIntensity: 0.7 })
+        );
+        ring.position.set(0, 2 + idx * 0.3, 0);
+        ring.rotation.x = Math.PI / 2;
+        player.model.add(ring);
+        player.model.userData.visualTrinkets.push(ring);
+      });
+    }
+
     function updateUI() {
       scoreEl.textContent = score;
       livesEl.textContent = `${lives}/${maxLivesCarry()}`;
@@ -1195,6 +1464,13 @@
       waveEl.textContent = zone ? zone.name : "Overworld";
       checkpointEl.textContent = activeCheckpoint ? activeCheckpoint.name : "None";
       enemiesEl.textContent = enemies.filter(e => e.alive).length;
+      const q = progress.quests[progress.activeQuestIndex];
+      questTrackTextEl.textContent = q ? `${q.name}: ${q.count}/${q.need} ${q.state === "return" ? "(Return to leader)" : ""}` : "No quest tracked.";
+      menuPointsEl.textContent = progress.points;
+      menuGoldEl.textContent = gold;
+      menuLevelEl.textContent = progress.level;
+      menuXpEl.textContent = Math.floor(progress.xp);
+      menuXpNeedEl.textContent = progress.xpNeed;
     }
 
     function killEnemy(enemy) {
@@ -1205,9 +1481,19 @@
       score += (enemy.elite ? 1.4 : 1) * reward.score;
       gold += Math.round((enemy.elite ? 1.5 : 1) * reward.gold * (1 + progress.upgrades.goldGain * 0.08));
       grantXP((enemy.elite ? 1.5 : 1) * reward.xp * (1 + progress.upgrades.xpGain * 0.08));
+      for (const q of progress.quests) {
+        if (q.state === "active" && q.target === enemy.type) {
+          q.count += 1;
+          if (q.count >= q.need) q.state = "return";
+        }
+      }
       spawnDrops(enemy);
       spawnBurst(enemy.pos.clone(), enemy.elite ? 24 : 16, 0xffcf88);
       showCenterMessage(enemy.elite ? "ELITE DOWN!" : "ENEMY DOWN!", 0.6);
+      if (enemy.spawnNodeId) {
+        const node = spawnNodes.find((n) => n.id === enemy.spawnNodeId);
+        if (node) nodeRespawns.push({ nodeId: node.id, timer: node.respawn * (enemy.elite ? 1.65 : 1) });
+      }
       updateUI();
     }
 
@@ -1225,14 +1511,14 @@
     }
 
     function spawnPickup(pos, kind, value = 1) {
-      const colorMap = { score: 0x7dd3fc, gold: 0xfde047, health: 0x86efac };
+      const colorMap = { score: 0x7dd3fc, gold: 0xfde047, health: 0x86efac, item: 0xe9d5ff, material: 0xc4b5fd };
       const mesh = new THREE.Mesh(
         new THREE.OctahedronGeometry(kind === "health" ? 0.5 : 0.42, 0),
         new THREE.MeshStandardMaterial({ color: colorMap[kind] || 0xffffff, emissive: colorMap[kind] || 0xffffff, emissiveIntensity: 0.45, roughness: 0.35, metalness: 0.1 })
       );
       mesh.position.copy(pos);
       scene.add(mesh);
-      pickups.push({ mesh, kind, value, age: 0, life: 10 + Math.random() * 4, bob: Math.random() * Math.PI * 2 });
+      pickups.push({ mesh, kind, value, age: 0, life: 10 + Math.random() * 4, bob: Math.random() * Math.PI * 2, vel: new THREE.Vector3((Math.random()-0.5)*2, 0.6 + Math.random(), (Math.random()-0.5)*2) });
     }
 
     function spawnDrops(enemy) {
@@ -1247,6 +1533,12 @@
       if (Math.random() < (enemy.elite ? 0.55 : 0.18) + progress.upgrades.healthDrop * 0.03) {
         spawnPickup(enemy.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.4, 1.2, (Math.random() - 0.5) * 1.4)), "health", enemy.elite ? 24 : 15);
       }
+      if (Math.random() < 0.24 + progress.upgrades.healthDrop * 0.02) {
+        const itemPool = ITEM_DB.filter((i) => i.region === enemy.zoneName || i.slot === "trinket");
+        const item = itemPool[Math.floor(Math.random() * itemPool.length)];
+        if (item) spawnPickup(enemy.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.6, 1.4, (Math.random() - 0.5) * 1.6)), "item", item.id);
+      }
+      if (Math.random() < 0.38) spawnPickup(enemy.pos.clone(), "material", `${enemy.type}-core`);
     }
 
     function killPlayer() {
@@ -1310,7 +1602,14 @@
           goldGain: 0, xpGain: 0, pickupRadius: 0, cheaperHub: 0, healthDrop: 0,
           lifeCap: 0, reviveShield: 0, deathMitigation: 0
         },
-        livesPurchased: 0
+        livesPurchased: 0,
+        inventory: [],
+        materials: [],
+        questItems: [],
+        equipped: { weapon: "iron-pike", armor: "rider-leathers", trinket1: "amulet-lift", trinket2: null },
+        quests: [],
+        activeQuestIndex: 0,
+        menuTab: "upgrades"
       };
       respawnTimer = 0;
       player.alive = true;
@@ -1336,7 +1635,10 @@
       pickups.forEach(p => scene.remove(p.mesh));
       pickups = [];
       spawnInitialEnemies();
+      seedPlayerProgression();
+      refreshPlayerAppearance();
       hideUpgradePanel();
+      toggleTabMenu(false);
       updateUI();
       gameOverEl.style.display = "none";
       showCenterMessage("Ride Out Again", 1.6);
@@ -1544,6 +1846,32 @@
       }
     }
 
+    function applyWeaponEffects(enemy, baseDamage) {
+      const stats = playerStats();
+      const weapon = getItemById(progress.equipped.weapon);
+      if (!weapon) return;
+      const fx = weapon.effect;
+      if (fx === "poison" || stats.poisonBonus > 0) enemy.poisonTimer = Math.max(enemy.poisonTimer, 3.2 + stats.poisonBonus * 4);
+      if (fx === "freeze" && Math.random() < 0.25 + stats.freezeChance) enemy.freezeTimer = 1.25;
+      if (fx === "stun" && Math.random() < 0.22) enemy.stunTimer = 0.9;
+      if (fx === "lifesteal") player.health = Math.min(player.maxHealth, player.health + baseDamage * 0.08);
+      if (fx === "projectile" && Math.random() < 0.6) damageEnemy(enemy, baseDamage * 0.3, new THREE.Vector3(0, 0, 0), "projectile");
+      if (fx === "shockwave" && Math.random() < 0.25) {
+        for (const other of enemies) {
+          if (other !== enemy && other.alive && other.pos.distanceTo(enemy.pos) < 8) damageEnemy(other, baseDamage * 0.35, other.pos.clone().sub(enemy.pos).normalize(), "shockwave");
+        }
+      }
+      if ((fx === "chainLightning" || stats.chainChance > 0) && Math.random() < 0.22 + stats.chainChance) {
+        const candidates = enemies.filter((e) => e.alive && e !== enemy).sort((a, b) => a.pos.distanceTo(enemy.pos) - b.pos.distanceTo(enemy.pos)).slice(0, 2);
+        for (const c of candidates) {
+          if (c.pos.distanceTo(enemy.pos) < 14) {
+            damageEnemy(c, baseDamage * 0.45, c.pos.clone().sub(enemy.pos).normalize(), "chain");
+            spawnBurst(c.pos.clone(), 5, 0x8bdcff);
+          }
+        }
+      }
+    }
+
     function updatePlayer(dt) {
       if (!player.alive) return;
 
@@ -1553,8 +1881,8 @@
       player.spearTimer = Math.max(0, player.spearTimer - dt);
       player.regenWait = Math.max(0, player.regenWait - dt);
 
-      const turnSpeed = 2.9;
-      const baseForward = 14.8;
+      const turnSpeed = 3.35 + progress.upgrades.airControl * 0.08;
+      const baseForward = 17.2;
       const stats = playerStats();
       const lift = stats.flapLift;
       const dive = 11.5;
@@ -1571,7 +1899,7 @@
       player.vel.x += (forward.x * targetForwardSpeed - player.vel.x) * stats.airControl * dt;
       player.vel.z += (forward.z * targetForwardSpeed - player.vel.z) * stats.airControl * dt;
 
-      player.vel.y -= 10.8 * dt;
+      player.vel.y -= 14.5 * dt;
 
       if (keys[" "]) {
         player.vel.y += lift * dt;
@@ -1592,7 +1920,7 @@
         player.spearHitSet.clear();
       }
 
-      player.vel.y = Math.max(player.vel.y, -29);
+      player.vel.y = Math.max(player.vel.y, -36);
       player.vel.multiplyScalar(1 - 0.14 * dt);
 
       player.pos.addScaledVector(player.vel, dt);
@@ -1634,9 +1962,12 @@
         player.health = Math.min(player.maxHealth, player.health + stats.regenPerSecond * dt);
       }
 
-      const canUpgrade = inUpgradeZone() && (progress.points > 0 || gold >= lifeCost());
-      if (canUpgrade) showUpgradePanel();
-      else hideUpgradePanel();
+      if (inUpgradeZone() && !tabMenuOpen && (progress.points > 0 || gold >= lifeCost())) {
+        upgradeHintEl.textContent = "Press TAB to access upgrades and inventory.";
+        upgradePanelEl.style.display = "block";
+      } else {
+        hideUpgradePanel();
+      }
 
       keepInsideBounds(player);
       updateActorTransform(player, dt);
@@ -1653,6 +1984,7 @@
         typeStats.aggroRange += 8;
       }
       const distToPlayer = enemy.pos.distanceTo(player.pos);
+      const distHome = enemy.pos.distanceTo(enemy.homePos);
       const enemyHub = getHubAt(enemy.pos.x, enemy.pos.z, 0);
       const playerHub = getHubAt(player.pos.x, player.pos.z, 2);
 
@@ -1672,7 +2004,11 @@
 
       if (enemy.state !== "aggro" && distToPlayer < typeStats.aggroRange) {
         enemy.state = "aggro";
-      } else if (enemy.state === "aggro" && distToPlayer > typeStats.leashRange) {
+      } else if (enemy.state === "aggro" && distToPlayer > (enemy.leashRangeOverride || typeStats.leashRange)) {
+        enemy.state = "idle";
+        enemy.patrolTarget.copy(enemy.homePos);
+      }
+      if (distHome > (enemy.leashRangeOverride || typeStats.leashRange) * 1.2) {
         enemy.state = "idle";
         enemy.patrolTarget.copy(enemy.homePos);
       }
@@ -1690,6 +2026,16 @@
       enemy.aiTimer -= dt;
       enemy.attackTimer = Math.max(0, enemy.attackTimer - dt);
       enemy.hitReact = Math.max(0, enemy.hitReact - dt);
+      enemy.poisonTimer = Math.max(0, enemy.poisonTimer - dt);
+      enemy.freezeTimer = Math.max(0, enemy.freezeTimer - dt);
+      enemy.stunTimer = Math.max(0, enemy.stunTimer - dt);
+      if (enemy.poisonTimer > 0) enemy.health -= (enemy.elite ? 2.8 : 3.7) * dt;
+      if (enemy.health <= 0) { killEnemy(enemy); return; }
+      if (enemy.stunTimer > 0) {
+        enemy.vel.multiplyScalar(0.86);
+        updateActorTransform(enemy, dt);
+        return;
+      }
       if (enemy.aiTimer <= 0) {
         enemy.aiTimer = enemy.state === "aggro" ? 0.65 + Math.random() * 0.55 : 1.2 + Math.random() * 0.9;
         const baseY = enemy.state === "aggro" ? player.pos.y : enemy.homePos.y;
@@ -1751,7 +2097,7 @@
       enemy.vel.x += (forward.x * desiredSpeed - enemy.vel.x) * 1.8 * dt;
       enemy.vel.z += (forward.z * desiredSpeed - enemy.vel.z) * 1.8 * dt;
 
-      enemy.vel.y -= 7.0 * dt;
+      enemy.vel.y -= (enemy.freezeTimer > 0 ? 3.4 : 7.0) * dt;
 
       if (enemy.pos.y < enemy.desiredHeight) {
         enemy.vel.y += typeStats.climb * dt;
@@ -1821,6 +2167,7 @@
               const knock = forward.clone().multiplyScalar(stats.spearKnockback + enemy.speciesData.knockback * 0.2);
               enemy.vel.add(knock);
               damageEnemy(enemy, dmg, forward, "thrust");
+              applyWeaponEffects(enemy, dmg);
               showCenterMessage(crit ? "CRITICAL THRUST!" : "THRUST HIT!", 0.25);
             }
           }
@@ -1897,10 +2244,17 @@
       for (let i = pickups.length - 1; i >= 0; i--) {
         const p = pickups[i];
         p.age += dt;
-        p.mesh.position.y += Math.sin(p.age * 4 + p.bob) * 0.004;
+        p.vel.y -= 0.9 * dt;
+        p.mesh.position.addScaledVector(p.vel, dt);
+        p.mesh.position.y += Math.sin(p.age * 4 + p.bob) * 0.01;
         p.mesh.rotation.y += dt * 2.2;
         if (player?.alive) {
           const d = p.mesh.position.distanceTo(player.pos);
+          const pullRadius = playerStats().pickupRadius + 4;
+          if (d < pullRadius) {
+            const dir = player.pos.clone().add(new THREE.Vector3(0, 1.3, 0)).sub(p.mesh.position).normalize();
+            p.vel.addScaledVector(dir, (6 + progress.upgrades.pickupRadius * 1.8) * dt);
+          }
           if (d < playerStats().pickupRadius) {
             collectPickup(p);
             continue;
@@ -1959,10 +2313,40 @@
       camera.position.z += (Math.random() - 0.5) * lavaDanger;
     }
 
+    function updateQuestArrow(dt) {
+      if (!player) return;
+      const q = progress.quests[progress.activeQuestIndex];
+      if (!q || q.state !== "return") {
+        if (questArrow) questArrow.visible = false;
+        return;
+      }
+      const hub = safeHubs.find((h) => h.name === q.giverHub);
+      if (!hub) return;
+      if (!questArrow) {
+        questArrow = new THREE.Mesh(
+          new THREE.ConeGeometry(0.7, 2.2, 12),
+          new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x38bdf8, emissiveIntensity: 0.8 })
+        );
+        scene.add(questArrow);
+      }
+      const d = player.pos.distanceTo(hub.pos);
+      questArrow.visible = d < 120;
+      questArrow.position.copy(player.pos).add(new THREE.Vector3(0, 7 + Math.sin(performance.now() * 0.004) * 0.6, 0));
+      const dir = hub.pos.clone().sub(player.pos).setY(0).normalize();
+      questArrow.rotation.x = Math.PI;
+      questArrow.rotation.y = Math.atan2(dir.x, dir.z);
+    }
+
     function collectPickup(pickup) {
       if (pickup.kind === "score") score += pickup.value;
       else if (pickup.kind === "gold") gold += pickup.value;
       else if (pickup.kind === "health") player.health = Math.min(player.maxHealth, player.health + pickup.value);
+      else if (pickup.kind === "item") {
+        const item = getItemById(pickup.value);
+        if (item) progress.inventory.push(item);
+      } else if (pickup.kind === "material") {
+        progress.materials.push({ id: pickup.value, qty: 1 });
+      }
       spawnBurst(pickup.mesh.position.clone(), pickup.kind === "health" ? 7 : 5, pickup.kind === "health" ? 0x86efac : 0xfff3b0);
       scene.remove(pickup.mesh);
       const idx = pickups.indexOf(pickup);
@@ -2047,6 +2431,146 @@
       }));
     }
 
+    function canBuyTreeNode(node) {
+      if (!inUpgradeZone()) return false;
+      if (progress.points < node.cost) return false;
+      if (node.req && (progress.upgrades[node.req] || 0) <= 0) return false;
+      return true;
+    }
+
+    function renderTabMenu() {
+      if (!tabMenuOpen) return;
+      tabBtnUpgradesEl.style.background = progress.menuTab === "upgrades" ? "rgba(245,158,11,.24)" : "rgba(255,255,255,.1)";
+      tabBtnInventoryEl.style.background = progress.menuTab === "inventory" ? "rgba(245,158,11,.24)" : "rgba(255,255,255,.1)";
+      if (progress.menuTab === "upgrades") renderUpgradeTreeMenu();
+      else renderInventoryMenu();
+      renderQuestSidePanel();
+    }
+
+    function renderUpgradeTreeMenu() {
+      const byBranch = {};
+      UPGRADE_TREE.forEach((n) => { (byBranch[n.branch] ||= []).push(n); });
+      menuMainPanelEl.innerHTML = "";
+      for (const [branch, nodes] of Object.entries(byBranch)) {
+        const sec = document.createElement("div");
+        sec.style.cssText = "margin-bottom:12px;padding:8px;border:1px solid rgba(255,255,255,.14);border-radius:10px;";
+        sec.innerHTML = `<div style="font-weight:800;color:#fbbf24;margin-bottom:6px">${branch}</div>`;
+        const row = document.createElement("div");
+        row.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;";
+        for (const node of nodes) {
+          const rank = progress.upgrades[node.key] || 0;
+          const locked = node.req && (progress.upgrades[node.req] || 0) <= 0;
+          const btn = document.createElement("button");
+          btn.style.cssText = `text-align:left;border:1px solid ${rank > 0 ? "rgba(251,191,36,.8)" : locked ? "rgba(255,255,255,.16)" : "rgba(134,239,172,.55)"};background:${rank > 0 ? "rgba(245,158,11,.22)" : locked ? "rgba(15,23,42,.55)" : "rgba(34,197,94,.12)"};color:white;border-radius:8px;padding:8px;cursor:${canBuyTreeNode(node) ? "pointer" : "default"}`;
+          btn.innerHTML = `<div style="font-weight:700">${node.label}</div><div style="font-size:11px;opacity:.86">${node.desc}</div><div style="font-size:11px;margin-top:4px">${rank > 0 ? `Purchased Lv ${rank}` : locked ? `Locked: needs ${node.req}` : `Cost ${node.cost}`}</div>`;
+          btn.onclick = () => {
+            if (!canBuyTreeNode(node)) return;
+            progress.points -= node.cost;
+            progress.upgrades[node.key] = (progress.upgrades[node.key] || 0) + 1;
+            if (node.key === "healthBoost") { player.maxHealth += 10; player.health += 10; }
+            renderTabMenu(); updateUI();
+          };
+          row.appendChild(btn);
+        }
+        sec.appendChild(row);
+        menuMainPanelEl.appendChild(sec);
+      }
+    }
+
+    function equipItem(item) {
+      if (item.slot === "weapon") progress.equipped.weapon = item.id;
+      if (item.slot === "armor") {
+        progress.equipped.armor = item.id;
+        player.maxHealth = 100 + (item.stats?.maxHealth || 0) + progress.upgrades.healthBoost * 10;
+      }
+      if (item.slot === "trinket") {
+        if (!progress.equipped.trinket1 || progress.equipped.trinket1 === item.id) progress.equipped.trinket1 = item.id;
+        else progress.equipped.trinket2 = item.id;
+      }
+      refreshPlayerAppearance();
+      updateUI();
+      renderTabMenu();
+    }
+
+    function renderInventoryMenu() {
+      const groups = { weapon: [], armor: [], trinket: [], quest: progress.questItems, material: progress.materials };
+      progress.inventory.forEach((it) => groups[it.slot]?.push(it));
+      menuMainPanelEl.innerHTML = `<div style="margin-bottom:8px"><b>Equipped:</b> Weapon ${getItemById(progress.equipped.weapon)?.name || "None"} • Armor ${getItemById(progress.equipped.armor)?.name || "None"} • Trinkets ${getItemById(progress.equipped.trinket1)?.name || "None"} / ${getItemById(progress.equipped.trinket2)?.name || "None"}</div>`;
+      ["weapon", "armor", "trinket"].forEach((slot) => {
+        const sec = document.createElement("div");
+        sec.style.cssText = "margin-bottom:10px;padding:8px;border:1px solid rgba(255,255,255,.14);border-radius:10px;";
+        sec.innerHTML = `<div style="font-weight:700;text-transform:capitalize;margin-bottom:4px">${slot}s</div>`;
+        groups[slot].forEach((item) => {
+          const row = document.createElement("div");
+          row.style.cssText = "display:flex;justify-content:space-between;gap:6px;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.08)";
+          const equipped = Object.values(progress.equipped).includes(item.id);
+          row.innerHTML = `<div><span style="color:${RARITY_COLORS[item.rarity] || "#fff"}">${item.name}</span> <small>(${item.rarity})</small><div style="font-size:11px;opacity:.8">${item.desc}</div><div style="font-size:11px;opacity:.7">Sell ${item.sell}g</div></div>`;
+          const actions = document.createElement("div");
+          const eq = document.createElement("button");
+          eq.textContent = equipped ? "Equipped" : "Equip";
+          eq.style.cssText = "border:1px solid rgba(255,255,255,.25);background:rgba(59,130,246,.24);color:white;border-radius:6px;padding:4px 6px;cursor:pointer";
+          eq.onclick = () => equipItem(item);
+          const sell = document.createElement("button");
+          sell.textContent = "Sell";
+          sell.style.cssText = "margin-left:6px;border:1px solid rgba(255,255,255,.25);background:rgba(239,68,68,.24);color:white;border-radius:6px;padding:4px 6px;cursor:pointer";
+          sell.onclick = () => { gold += item.sell; progress.inventory = progress.inventory.filter((i) => i !== item); renderTabMenu(); updateUI(); };
+          actions.append(eq, sell);
+          row.appendChild(actions);
+          sec.appendChild(row);
+        });
+        menuMainPanelEl.appendChild(sec);
+      });
+      const shopSection = document.createElement("div");
+      shopSection.style.cssText = "padding:8px;border:1px solid rgba(255,255,255,.14);border-radius:10px;";
+      shopSection.innerHTML = "<b>Nearby City Shop Stock</b>";
+      const hub = getHubAt(player.pos.x, player.pos.z, 24);
+      if (hub) {
+        const stock = ITEM_DB.filter((i) => (i.region === hub.zone || i.rarity === "common")).slice(0, 8);
+        stock.forEach((item) => {
+          const cost = Math.round(item.sell * 1.7);
+          const b = document.createElement("button");
+          b.textContent = `Buy ${item.name} (${cost}g)`;
+          b.style.cssText = "display:block;margin-top:5px;border:1px solid rgba(255,255,255,.22);background:rgba(16,185,129,.22);color:white;border-radius:6px;padding:5px;cursor:pointer";
+          b.onclick = () => { if (gold >= cost) { gold -= cost; progress.inventory.push(item); renderTabMenu(); updateUI(); } };
+          shopSection.appendChild(b);
+        });
+      } else {
+        shopSection.innerHTML += "<div style='opacity:.8;margin-top:4px'>Travel to a city hub to buy items and lives.</div>";
+      }
+      menuMainPanelEl.appendChild(shopSection);
+    }
+
+    function renderQuestSidePanel() {
+      menuSidePanelEl.innerHTML = `<div style="font-weight:800;color:#93c5fd;margin-bottom:8px">Quests</div>`;
+      progress.quests.forEach((q, idx) => {
+        const card = document.createElement("div");
+        card.style.cssText = `padding:7px;border-radius:8px;margin-bottom:6px;border:1px solid rgba(255,255,255,.15);background:${idx === progress.activeQuestIndex ? "rgba(59,130,246,.24)" : "rgba(255,255,255,.04)"}`;
+        card.innerHTML = `<div style="font-weight:700">${q.name}</div><div style="font-size:12px">${q.count}/${q.need} ${ENEMY_SPECIES[q.target]?.label || q.target} • ${q.state}</div><div style="font-size:11px;opacity:.8">Rewards: ${q.reward.xp} XP, ${q.reward.gold}g${q.reward.item ? `, ${getItemById(q.reward.item)?.name || q.reward.item}` : ""}</div>`;
+        const track = document.createElement("button");
+        track.textContent = "Track";
+        track.style.cssText = "margin-top:4px;border:1px solid rgba(255,255,255,.24);background:rgba(255,255,255,.1);color:white;border-radius:6px;padding:3px 6px;cursor:pointer";
+        track.onclick = () => { progress.activeQuestIndex = idx; updateUI(); renderTabMenu(); };
+        card.appendChild(track);
+        if (q.state === "return" && getHubAt(player.pos.x, player.pos.z, 18)?.name === q.giverHub) {
+          const turnIn = document.createElement("button");
+          turnIn.textContent = "Turn In";
+          turnIn.style.cssText = "margin-left:6px;border:1px solid rgba(255,255,255,.24);background:rgba(34,197,94,.3);color:white;border-radius:6px;padding:3px 6px;cursor:pointer";
+          turnIn.onclick = () => {
+            q.state = "done"; gold += q.reward.gold; grantXP(q.reward.xp);
+            if (q.reward.item) { const it = getItemById(q.reward.item); if (it) progress.inventory.push(it); }
+            updateUI(); renderTabMenu();
+          };
+          card.appendChild(turnIn);
+        }
+        menuSidePanelEl.appendChild(card);
+      });
+      const cycleBtn = document.createElement("button");
+      cycleBtn.textContent = "Cycle Tracked Quest";
+      cycleBtn.style.cssText = "margin-top:4px;border:1px solid rgba(255,255,255,.24);background:rgba(255,255,255,.1);color:white;border-radius:7px;padding:6px;cursor:pointer;width:100%";
+      cycleBtn.onclick = () => { progress.activeQuestIndex = (progress.activeQuestIndex + 1) % Math.max(1, progress.quests.length); updateUI(); renderTabMenu(); };
+      menuSidePanelEl.appendChild(cycleBtn);
+    }
+
     function showUpgradePanel() {
       if ((!progress.points && gold < lifeCost()) || !inUpgradeZone() || gameEnded) return;
       upgradePanelEl.style.display = "block";
@@ -2111,9 +2635,17 @@
         if (centerMsgTimer <= 0) centerMsg.style.display = "none";
       }
 
-      updateParticles(dt);
+      if (!gamePaused) {
+        updateParticles(dt);
+      } else {
+        for (const c of cityCreatures) {
+          c.phase += dt;
+          c.mesh.position.y = c.base.y + Math.sin(c.phase * 2) * 0.35;
+          c.mesh.rotation.z = Math.sin(c.phase * 1.7) * 0.3;
+        }
+      }
 
-      if (!gameEnded) {
+      if (!gameEnded && !gamePaused) {
         if (!player.alive) {
           respawnTimer -= dt;
           player.model.visible = false;
@@ -2128,11 +2660,20 @@
         enemySpawnTimer -= dt;
         if (enemySpawnTimer <= 0) {
           const didSpawn = spawnRegionalEnemy();
-          enemySpawnTimer = didSpawn ? (0.55 + Math.random() * 0.75) : (0.28 + Math.random() * 0.45);
+          enemySpawnTimer = didSpawn ? (2.6 + Math.random() * 2.3) : (1.2 + Math.random() * 1.2);
+        }
+        for (let i = nodeRespawns.length - 1; i >= 0; i--) {
+          nodeRespawns[i].timer -= dt;
+          if (nodeRespawns[i].timer <= 0) {
+            const node = spawnNodes.find((n) => n.id === nodeRespawns[i].nodeId);
+            if (node && enemies.filter((e) => e.alive && e.spawnNodeId === node.id).length < NODE_ENEMY_CAP) spawnNodeEnemy(node);
+            nodeRespawns.splice(i, 1);
+          }
         }
         updateUI();
       }
 
+      updateQuestArrow(dt);
       updateCamera(dt);
       renderer.render(scene, camera);
     }
