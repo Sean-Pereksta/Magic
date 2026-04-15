@@ -245,6 +245,10 @@
     let currentRegionName = "";
     let regionEnterTime = 0;
     let questArrow = null;
+    let interactionTarget = null;
+    let interactionMode = null; // null | vendor | quest
+    let upgradeFlashTimer = 0;
+    let worldCollisionVolumes = [];
     let lastTime = performance.now();
     let lastRespawnPoint = new THREE.Vector3(-8, 14, -4);
     let activeCheckpoint = null;
@@ -341,6 +345,16 @@
     const upgradeChoicesEl = document.getElementById("upgradeChoices");
     const upgradeHintEl = document.getElementById("upgradeHint");
     const upgradeTabsEl = document.getElementById("upgradeTabs");
+
+    const VENDOR_LABEL = {
+      weapon: "Weapon Vendor",
+      armor: "Armor Vendor",
+      trinket: "Trinket Vendor",
+      mount: "Mount Roost Vendor",
+      life: "Quartermaster",
+      heal: "Field Medic",
+      quest: "Guild Chronicler"
+    };
 
     const tmpVec = new THREE.Vector3();
     const upVec = new THREE.Vector3(0, 1, 0);
@@ -570,6 +584,21 @@
           toggleTabMenu();
           return;
         }
+        if (e.key.toLowerCase() === "e") {
+          if (interactionMode) {
+            closeInteractionMenu();
+            return;
+          }
+          if (!tabMenuOpen && interactionTarget) {
+            if (interactionTarget.type === "quest") openQuestMenu(interactionTarget);
+            else openVendorMenu(interactionTarget);
+            return;
+          }
+        }
+        if (e.key === "Escape" && interactionMode) {
+          closeInteractionMenu();
+          return;
+        }
         keys[e.key.toLowerCase()] = true;
         if (e.key.toLowerCase() === "r" && gameEnded) restartGame();
       });
@@ -589,8 +618,9 @@
       const skyMat = new THREE.ShaderMaterial({
         side: THREE.BackSide,
         uniforms: {
-          topColor: { value: new THREE.Color(0x1b1226) },
-          bottomColor: { value: new THREE.Color(0x4a1b0d) }
+          topColor: { value: new THREE.Color(0x1e5fcf) },
+          bottomColor: { value: new THREE.Color(0xaedbff) },
+          sunTint: { value: new THREE.Color(0xffe7c0) }
         },
         vertexShader: `
           varying vec3 vWorldPosition;
@@ -603,11 +633,14 @@
         fragmentShader: `
           uniform vec3 topColor;
           uniform vec3 bottomColor;
+          uniform vec3 sunTint;
           varying vec3 vWorldPosition;
           void main() {
             float h = normalize(vWorldPosition + vec3(0.0, 80.0, 0.0)).y;
             float t = smoothstep(-0.5, 0.9, h);
+            float warm = smoothstep(-0.42, -0.08, h) * (1.0 - t);
             vec3 col = mix(bottomColor, topColor, t);
+            col = mix(col, sunTint, warm * 0.28);
             gl_FragColor = vec4(col, 1.0);
           }
         `
@@ -617,9 +650,8 @@
       skyRoot.add(sky);
       scene.add(skyRoot);
 
-      createCloudLayer({ type: "far", count: 26, radius: 280, minY: 56, maxY: 100, color: 0xe5eefb, opacity: 0.13, scale: [18, 44], drift: 0.18 });
-      createCloudLayer({ type: "mid", count: 18, radius: 220, minY: 30, maxY: 72, color: 0xf8fcff, opacity: 0.2, scale: [8, 24], drift: 0.34 });
-      createCloudLayer({ type: "near", count: 12, radius: 130, minY: 16, maxY: 44, color: 0xffffff, opacity: 0.24, scale: [4, 12], drift: 0.6 });
+      createCloudLayer({ type: "far", count: 14, radius: 280, minY: 64, maxY: 104, color: 0xf4f9ff, opacity: 0.08, scale: [22, 40], drift: 0.12 });
+      createCloudLayer({ type: "mid", count: 9, radius: 220, minY: 36, maxY: 74, color: 0xffffff, opacity: 0.12, scale: [10, 22], drift: 0.22 });
 
       createSkyLandmark({ type: "island", count: 7, radius: 260, minY: 46, maxY: 92, color: 0x39445c });
       createSkyLandmark({ type: "spire", count: 6, radius: 250, minY: 34, maxY: 78, color: 0x4d5368 });
@@ -713,9 +745,9 @@
       const starter = ["iron-pike", "sky-lancer", "rider-leathers", "cliffguard-mail", "amulet-lift", "bee-charm", "ring-recovery"];
       progress.inventory = starter.map((id) => ITEM_DB.find((i) => i.id === id)).filter(Boolean);
       progress.quests = [
-        { id: "q-bee", name: "Purge the Giant Bees", target: "giantBee", need: 8, count: 0, state: "active", reward: { xp: 90, gold: 40, item: "stormcloak-harness" }, giverHub: "Green Cliff Outpost" },
-        { id: "q-serpent", name: "Magma Serpent Hunt", target: "magmaSerpent", need: 4, count: 0, state: "active", reward: { xp: 120, gold: 52, item: "ember-fang" }, giverHub: "Dragon Hunter's Rest" },
-        { id: "q-drake", name: "Storm Drake Cull", target: "stormDrake", need: 6, count: 0, state: "active", reward: { xp: 160, gold: 75, item: "stormglass-lance" }, giverHub: "Storm Roost Sanctuary" }
+        { id: "q-bee", name: "Purge the Giant Bees", target: "giantBee", need: 8, count: 0, state: "available", reward: { xp: 90, gold: 40, item: "stormcloak-harness" }, giverHub: "Green Cliff Outpost" },
+        { id: "q-serpent", name: "Magma Serpent Hunt", target: "magmaSerpent", need: 4, count: 0, state: "available", reward: { xp: 120, gold: 52, item: "ember-fang" }, giverHub: "Dragon Hunter's Rest" },
+        { id: "q-drake", name: "Storm Drake Cull", target: "stormDrake", need: 6, count: 0, state: "available", reward: { xp: 160, gold: 75, item: "stormglass-lance" }, giverHub: "Storm Roost Sanctuary" }
       ];
     }
 
@@ -723,6 +755,11 @@
       tabMenuOpen = force !== undefined ? force : !tabMenuOpen;
       gamePaused = tabMenuOpen;
       tabMenuEl.style.display = tabMenuOpen ? "flex" : "none";
+      if (!tabMenuOpen) {
+        interactionMode = null;
+        tabBtnUpgradesEl.style.display = "";
+        tabBtnInventoryEl.style.display = "";
+      }
       if (tabMenuOpen) renderTabMenu();
     }
 
@@ -1511,6 +1548,7 @@
       checkpoints = [];
       shopPlatforms = [];
       cityCreatures = [];
+      worldCollisionVolumes = [];
 
       const hubDefs = [
         { name: "Green Cliff Outpost", zone: "Great Forest Canopy", pos: new THREE.Vector3(-812, 14, -410), color: 0x66b26e, glow: 0xb9f5ae, safeRadius: 34, disengageRadius: 54, style: "cliff", specialty: "mounts + supplies" },
@@ -1564,6 +1602,13 @@
           tower.castShadow = true;
           tower.receiveShadow = true;
           hubRoot.add(tower);
+          worldCollisionVolumes.push({
+            x: def.pos.x + tower.position.x,
+            z: def.pos.z + tower.position.z,
+            radius: 1.45,
+            minY: def.pos.y - 1,
+            maxY: def.pos.y + 26
+          });
         }
 
         const shrine = new THREE.Mesh(
@@ -1612,6 +1657,15 @@
           plat.position.set(Math.cos(a) * 18.5, 1.8, Math.sin(a) * 18.5);
           hubRoot.add(plat);
           shopPlatforms.push({ hubName: def.name, type, worldPos: def.pos.clone().add(plat.position) });
+          if (type !== "quest") {
+            worldCollisionVolumes.push({
+              x: def.pos.x + plat.position.x,
+              z: def.pos.z + plat.position.z,
+              radius: 2.2,
+              minY: def.pos.y - 1,
+              maxY: def.pos.y + 6
+            });
+          }
         });
 
         for (let b = 0; b < 12; b++) {
@@ -1649,6 +1703,13 @@
         perchPlatform.position.set(def.pos.x, def.pos.y + 0.4, def.pos.z);
         scene.add(perchPlatform);
         platforms.push(perchPlatform);
+        worldCollisionVolumes.push({
+          x: def.pos.x,
+          z: def.pos.z,
+          radius: 5.1,
+          minY: def.pos.y - 1.5,
+          maxY: def.pos.y + 8.5
+        });
       }
 
       activeCheckpoint = checkpoints[0] || null;
@@ -2522,7 +2583,7 @@
       checkpointEl.textContent = activeCheckpoint ? activeCheckpoint.name : "None";
       enemiesEl.textContent = enemies.filter(e => e.alive).length;
       const q = progress.quests[progress.activeQuestIndex];
-      questTrackTextEl.textContent = q ? `${q.name}: ${q.count}/${q.need} ${q.state === "return" ? "(Return to leader)" : ""}` : "No quest tracked.";
+      questTrackTextEl.textContent = q ? `${q.name}: ${q.count}/${q.need} ${q.state === "return" || q.state === "completed" ? "(Turn in at city)" : q.state === "available" ? "(Available at city)" : ""}` : "No quest tracked.";
       menuPointsEl.textContent = progress.points;
       menuGoldEl.textContent = gold;
       menuLevelEl.textContent = progress.level;
@@ -2542,7 +2603,7 @@
       for (const q of progress.quests) {
         if (q.state === "active" && q.target === enemy.type) {
           q.count += 1;
-          if (q.count >= q.need) q.state = "return";
+          if (q.count >= q.need) q.state = "completed";
         }
       }
       spawnDrops(enemy);
@@ -2685,20 +2746,8 @@
       return placed;
     }
 
-    function killPlayer() {
-      if (!player.alive || player.invuln > 0 || gameEnded) return;
-      player.alive = false;
-      player.lastDeathPos.copy(player.pos);
-      lives = Math.max(0, lives - 1);
-      spawnBurst(player.pos.clone(), 24, 0x66c2ff);
-      updateUI();
-
-      if (lives <= 0) {
-        endGame();
-      } else {
-        respawnTimer = 2.0;
-        showCenterMessage("YOU WERE UNHORSED!", 1.0);
-      }
+    function killPlayer(reason = "fatal") {
+      handlePlayerDeath(reason);
     }
 
     function respawnPlayer() {
@@ -2721,13 +2770,7 @@
       updateActorTransform(player, 0);
     }
 
-    function endGame() {
-      gameEnded = true;
-      hideUpgradePanel();
-      finalScoreEl.textContent = score;
-      gameOverEl.style.display = "flex";
-      showCenterMessage("GAME OVER", 2.0);
-    }
+    function endGame() { triggerGameOver("defeat"); }
 
     function restartGame() {
       gameEnded = false;
@@ -3126,6 +3169,20 @@
       }
     }
 
+    function nearestCityInteraction() {
+      let best = null;
+      let bestD = Infinity;
+      for (const p of shopPlatforms) {
+        const d = player.pos.distanceTo(p.worldPos);
+        if (d < bestD) {
+          bestD = d;
+          best = p;
+        }
+      }
+      if (!best || bestD > 7.2) return null;
+      return { ...best, d: bestD };
+    }
+
     function hazardFloorAt(x, z) {
       const zone = getZoneAt(x, z);
       if (!zone) return -999;
@@ -3168,6 +3225,35 @@
       if (clampedZ !== actor.pos.z) actor.vel.z *= -0.2;
       actor.pos.x = clampedX;
       actor.pos.z = clampedZ;
+    }
+
+    function resolveActorStructureCollision(actor, radius = 1.1) {
+      for (const c of worldCollisionVolumes) {
+        if (actor.pos.y < c.minY || actor.pos.y > c.maxY) continue;
+        const dx = actor.pos.x - c.x;
+        const dz = actor.pos.z - c.z;
+        const d = Math.hypot(dx, dz) || 0.0001;
+        const minD = c.radius + radius;
+        if (d < minD) {
+          const push = (minD - d);
+          actor.pos.x += (dx / d) * push;
+          actor.pos.z += (dz / d) * push;
+          actor.vel.x *= 0.7;
+          actor.vel.z *= 0.7;
+        }
+      }
+    }
+
+    function resolvePlayerTerrainCollision() {
+      const floor = nearestPlatformHeight(player.pos.x, player.pos.z) + 1.65;
+      if (player.pos.y < floor) {
+        player.pos.y = floor;
+        if (player.vel.y < 0) player.vel.y = 0;
+      }
+    }
+
+    function resolveEnemyWorldCollision(enemy) {
+      resolveActorStructureCollision(enemy, enemy.radius * 0.85);
     }
 
     function damageEnemy(enemy, amount, hitDir, source = "hit") {
@@ -3289,6 +3375,8 @@
       player.vel.multiplyScalar(1 - 0.14 * dt);
 
       player.pos.addScaledVector(player.vel, dt);
+      resolvePlayerTerrainCollision();
+      resolveActorStructureCollision(player, player.radius);
 
       const platformTop = nearestPlatformHeight(player.pos.x, player.pos.z);
       const floorY = platformTop > -900 ? platformTop + 1.65 : -999;
@@ -3320,7 +3408,7 @@
       }
 
       if (player.pos.y < hazardFloorAt(player.pos.x, player.pos.z) + 0.8) {
-        killPlayer();
+        setPlayerHealth(0, "hazard");
       }
 
       if (player.regenWait <= 0 && player.health < player.maxHealth) {
@@ -3332,6 +3420,14 @@
         upgradePanelEl.style.display = "block";
       } else {
         hideUpgradePanel();
+      }
+
+      if (!tabMenuOpen) {
+        interactionTarget = nearestCityInteraction();
+        if (interactionTarget) {
+          const label = interactionTarget.type === "quest" ? "Quest Board" : (VENDOR_LABEL[interactionTarget.type] || "Vendor");
+          showCenterMessage(`Press E: ${label}`, 0.18);
+        }
       }
 
       keepInsideBounds(player);
@@ -3564,6 +3660,7 @@
 
       enemy.vel.multiplyScalar(1 - 0.17 * dt);
       enemy.pos.addScaledVector(enemy.vel, dt);
+      resolveEnemyWorldCollision(enemy);
 
       const platformTop = nearestPlatformHeight(enemy.pos.x, enemy.pos.z);
       const floorY = platformTop > -900 ? platformTop + 1.65 : -999;
@@ -3914,7 +4011,7 @@
     function updateQuestArrow(dt) {
       if (!player) return;
       const q = progress.quests[progress.activeQuestIndex];
-      if (!q || q.state !== "return") {
+      if (!q || (q.state !== "return" && q.state !== "completed")) {
         if (questArrow) questArrow.visible = false;
         return;
       }
@@ -3959,20 +4056,52 @@
       updateUI();
     }
 
-    function applyPlayerDamage(amount, label = "hit") {
-      if (!player.alive || player.invuln > 0) return;
-      const stats = playerStats();
-      const reduced = amount * (1 - stats.resistance);
-      player.health -= reduced;
-      player.regenWait = stats.regenDelay;
-      showCenterMessage(`-${Math.round(reduced)} HP (${label})`, 0.35);
-      player.invuln = 0.3 + progress.upgrades.heavyInvuln * 0.08;
-      hitstopTimer = Math.max(hitstopTimer, 0.018);
-      if (player.health <= 0) {
-        player.health = 0;
-        killPlayer();
+    function setPlayerHealth(value, source = "effect") {
+      if (!player) return;
+      const prev = player.health;
+      player.health = THREE.MathUtils.clamp(value, 0, player.maxHealth);
+      if (prev > 0 && player.health <= 0) {
+        handlePlayerDeath(source);
       }
       updateUI();
+    }
+
+    function handlePlayerDeath(source = "fatal") {
+      if (!player.alive || gameEnded) return;
+      player.alive = false;
+      player.health = 0;
+      player.lastDeathPos.copy(player.pos);
+      lives = Math.max(0, lives - 1);
+      spawnBurst(player.pos.clone(), 24, 0x66c2ff);
+      if (lives <= 0) triggerGameOver(source);
+      else {
+        respawnTimer = 2.0;
+        showCenterMessage("YOU WERE UNHORSED!", 1.0);
+      }
+      updateUI();
+    }
+
+    function triggerGameOver(source = "defeat") {
+      gameEnded = true;
+      hideUpgradePanel();
+      finalScoreEl.textContent = score;
+      gameOverEl.style.display = "flex";
+      showCenterMessage(source === "hazard" ? "FELL INTO THE VOID" : "GAME OVER", 2.0);
+    }
+
+    function damagePlayer(amount, source = "hit") {
+      if (!player.alive || player.invuln > 0) return;
+      const stats = playerStats();
+      const reduced = Math.max(0, amount * (1 - stats.resistance));
+      player.regenWait = stats.regenDelay;
+      showCenterMessage(`-${Math.round(reduced)} HP (${source})`, 0.35);
+      player.invuln = 0.3 + progress.upgrades.heavyInvuln * 0.08;
+      hitstopTimer = Math.max(hitstopTimer, 0.018);
+      setPlayerHealth(player.health - reduced, source);
+    }
+
+    function applyPlayerDamage(amount, label = "hit") {
+      damagePlayer(amount, label);
     }
 
     function inUpgradeZone() {
@@ -4037,17 +4166,238 @@
       }));
     }
 
-    function canBuyTreeNode(node) {
+    function isUpgradeNodeUnlocked(node) {
+      if (!node.req) return true;
+      return (progress.upgrades[node.req] || 0) > 0;
+    }
+
+    function isUpgradeNodeBlockedByBranch(node) {
+      if (!node.branchKey || !progress.classChoice) return false;
+      return progress.classChoice !== node.branchKey;
+    }
+
+    function canPurchaseUpgradeNode(node) {
       if (!inUpgradeZone()) return false;
+      if ((progress.upgrades[node.key] || 0) > 0) return false;
       if (progress.points < node.cost) return false;
-      if (node.req && (progress.upgrades[node.req] || 0) <= 0) return false;
-      if (node.branchKey && progress.classChoice && progress.classChoice !== node.branchKey) return false;
-      if (node.key.startsWith("class_") && progress.classChoice && progress.classChoice !== node.branchKey) return false;
+      if (!isUpgradeNodeUnlocked(node)) return false;
+      if (isUpgradeNodeBlockedByBranch(node)) return false;
       return true;
+    }
+
+    function purchaseUpgradeNode(nodeKey) {
+      const node = UPGRADE_TREE.find((n) => n.key === nodeKey);
+      if (!node || !canPurchaseUpgradeNode(node)) return false;
+      progress.points -= node.cost;
+      progress.upgrades[node.key] = 1;
+      if (node.key === "healthBoost") { player.maxHealth += 10; player.health = Math.min(player.maxHealth, player.health + 10); }
+      if (node.key.startsWith("class_")) progress.classChoice = node.branchKey;
+      if (node.key === "summonCount") spawnAlliesFromUpgrades();
+      upgradeFlashTimer = 0.36;
+      showCenterMessage(`Upgrade acquired: ${node.label}`, 0.55);
+      refreshUpgradeTreeUI();
+      return true;
+    }
+
+    function upgradeNodeState(node) {
+      const purchased = (progress.upgrades[node.key] || 0) > 0;
+      if (purchased) return { key: "purchased", label: "Purchased", canClick: false };
+      if (!isUpgradeNodeUnlocked(node)) return { key: "lockedPrereq", label: `Locked: need ${node.req}`, canClick: false };
+      if (isUpgradeNodeBlockedByBranch(node)) return { key: "lockedBranch", label: `Locked by ${CLASS_BRANCHES[progress.classChoice]?.title || "class"} path`, canClick: false };
+      if (progress.points < node.cost) return { key: "unaffordable", label: `Need ${node.cost} points`, canClick: false };
+      return { key: "available", label: `Cost ${node.cost} points`, canClick: true };
+    }
+
+    function refreshUpgradeTreeUI() {
+      renderTabMenu();
+      updateUI();
+    }
+
+    function getVendorStockForCity(hubName, type) {
+      const hub = safeHubs.find((h) => h.name === hubName);
+      if (!hub) return [];
+      const tier = Math.max(0, zoneTier(hub.zone));
+      const slotByType = { weapon: "weapon", armor: "armor", trinket: "trinket" }[type] || null;
+      const rarityRanks = ["common", "uncommon", "rare", "epic", "legendary"];
+      const maxRarity = Math.min(rarityRanks.length - 1, 1 + Math.floor(tier / 2));
+      const isAllowed = (item) => {
+        if (slotByType && item.slot !== slotByType) return false;
+        if (type === "mount" && item.slot !== "trinket") return false;
+        if (type === "heal" && item.slot !== "armor" && item.slot !== "trinket") return false;
+        if (type === "life") return false;
+        if (rarityRanks.indexOf(item.rarity) > maxRarity) return false;
+        if (item.classReq && progress.classChoice && item.classReq !== progress.classChoice) return false;
+        return item.region === hub.zone || item.rarity === "common" || item.rarity === "uncommon";
+      };
+      return ITEM_DB.filter(isAllowed).slice(0, type === "weapon" ? 8 : 6);
+    }
+
+    function buyVendorItem(vendor, itemId) {
+      const item = getItemById(itemId);
+      if (!item) return;
+      const price = Math.round(item.sell * 1.65);
+      if (gold < price) return showCenterMessage("Not enough gold.", 0.6);
+      gold -= price;
+      progress.inventory.push(item);
+      showCenterMessage(`Bought ${item.name}`, 0.6);
+      renderInteractionMenu();
+      updateUI();
+    }
+
+    function sellPlayerItem(itemId) {
+      const idx = progress.inventory.findIndex((i) => i.id === itemId);
+      if (idx < 0) return;
+      const item = progress.inventory[idx];
+      const equipped = Object.values(progress.equipped).includes(item.id);
+      if (equipped && !confirm(`Sell equipped item ${item.name}?`)) return;
+      progress.inventory.splice(idx, 1);
+      gold += Math.max(1, item.sell || 1);
+      if (equipped) {
+        if (progress.equipped.weapon === item.id) progress.equipped.weapon = null;
+        if (progress.equipped.armor === item.id) progress.equipped.armor = null;
+        if (progress.equipped.trinket1 === item.id) progress.equipped.trinket1 = null;
+        if (progress.equipped.trinket2 === item.id) progress.equipped.trinket2 = null;
+      }
+      showCenterMessage(`Sold ${item.name}`, 0.6);
+      renderInteractionMenu();
+      updateUI();
+    }
+
+    function setTrackedQuest(questId) {
+      const idx = progress.quests.findIndex((q) => q.id === questId);
+      if (idx >= 0) progress.activeQuestIndex = idx;
+    }
+
+    function acceptQuest(questId) {
+      const q = progress.quests.find((quest) => quest.id === questId);
+      if (!q || q.state !== "available") return;
+      q.state = "accepted";
+      q.state = "active";
+      setTrackedQuest(questId);
+      showCenterMessage(`Accepted quest: ${q.name}`, 0.7);
+      renderInteractionMenu();
+      updateUI();
+    }
+
+    function turnInQuest(questId) {
+      const q = progress.quests.find((quest) => quest.id === questId);
+      if (!q || (q.state !== "completed" && q.state !== "return")) return;
+      q.state = "turnedIn";
+      gold += q.reward.gold;
+      grantXP(q.reward.xp);
+      if (q.reward.item) {
+        const it = getItemById(q.reward.item);
+        if (it) progress.inventory.push(it);
+      }
+      showCenterMessage(`Quest turned in: ${q.name}`, 0.8);
+      renderInteractionMenu();
+      updateUI();
+    }
+
+    function openVendorMenu(vendor) {
+      interactionMode = "vendor";
+      interactionTarget = vendor;
+      toggleTabMenu(true);
+      renderInteractionMenu();
+    }
+
+    function openQuestMenu(questGiver) {
+      interactionMode = "quest";
+      interactionTarget = questGiver;
+      toggleTabMenu(true);
+      renderInteractionMenu();
+    }
+
+    function closeInteractionMenu() {
+      interactionMode = null;
+      interactionTarget = null;
+      toggleTabMenu(false);
+    }
+
+    function renderInteractionMenu() {
+      if (!interactionMode || !interactionTarget) return;
+      tabBtnUpgradesEl.style.display = "none";
+      tabBtnInventoryEl.style.display = "none";
+      if (interactionMode === "vendor") {
+        const vendor = interactionTarget;
+        const stock = vendor.type === "life" ? [] : getVendorStockForCity(vendor.hubName, vendor.type);
+        menuMainPanelEl.innerHTML = `<div style="font-weight:800;margin-bottom:8px">${VENDOR_LABEL[vendor.type] || "Vendor"} — ${vendor.hubName}</div>`;
+        if (vendor.type === "life") {
+          const cost = lifeCost();
+          menuMainPanelEl.innerHTML += `<div style="opacity:.85;margin-bottom:8px">Buy an extra life for <b>${cost}g</b>.</div>`;
+          const b = document.createElement("button");
+          b.textContent = `Buy Life (${cost}g)`;
+          b.style.cssText = "border:1px solid rgba(255,255,255,.25);background:rgba(34,197,94,.2);color:white;border-radius:8px;padding:7px 10px;cursor:pointer";
+          b.onclick = () => {
+            if (gold < cost || lives >= maxLivesCarry()) return showCenterMessage("Need gold or more life capacity.", 0.7);
+            gold -= cost; lives += 1; progress.livesPurchased += 1; updateUI(); renderInteractionMenu();
+          };
+          menuMainPanelEl.appendChild(b);
+        } else {
+          stock.forEach((item) => {
+            const row = document.createElement("div");
+            const cost = Math.round(item.sell * 1.65);
+            row.style.cssText = "display:flex;justify-content:space-between;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.08)";
+            row.innerHTML = `<div><div style="color:${RARITY_COLORS[item.rarity] || "#fff"}">${item.name}</div><div style="font-size:11px;opacity:.75">${item.desc}</div><div style="font-size:11px;opacity:.8">${cost}g</div></div>`;
+            const btn = document.createElement("button");
+            btn.textContent = "Buy";
+            btn.style.cssText = "border:1px solid rgba(255,255,255,.25);background:rgba(59,130,246,.24);color:white;border-radius:6px;padding:4px 8px;cursor:pointer";
+            btn.onclick = () => buyVendorItem(vendor, item.id);
+            row.appendChild(btn);
+            menuMainPanelEl.appendChild(row);
+          });
+        }
+        menuSidePanelEl.innerHTML = `<div style="font-weight:800;margin-bottom:8px">Sell from Inventory</div>`;
+        progress.inventory.forEach((item) => {
+          const row = document.createElement("div");
+          const equipped = Object.values(progress.equipped).includes(item.id);
+          row.style.cssText = "display:flex;justify-content:space-between;gap:6px;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.08)";
+          row.innerHTML = `<div><span style="color:${RARITY_COLORS[item.rarity] || "#fff"}">${item.name}</span>${equipped ? " <b style='color:#fde68a'>(Equipped)</b>" : ""}<div style="font-size:11px;opacity:.75">Sell ${item.sell}g</div></div>`;
+          const sellBtn = document.createElement("button");
+          sellBtn.textContent = "Sell";
+          sellBtn.style.cssText = "border:1px solid rgba(255,255,255,.25);background:rgba(239,68,68,.24);color:white;border-radius:6px;padding:4px 8px;cursor:pointer";
+          sellBtn.onclick = () => sellPlayerItem(item.id);
+          row.appendChild(sellBtn);
+          menuSidePanelEl.appendChild(row);
+        });
+      } else if (interactionMode === "quest") {
+        const giver = interactionTarget;
+        menuMainPanelEl.innerHTML = `<div style="font-weight:800;margin-bottom:8px">Quest Board — ${giver.hubName}</div>`;
+        const byHub = progress.quests.filter((q) => q.giverHub === giver.hubName || q.state === "active" || q.state === "completed" || q.state === "return");
+        byHub.forEach((q) => {
+          const row = document.createElement("div");
+          row.style.cssText = "padding:7px 0;border-bottom:1px solid rgba(255,255,255,.08)";
+          row.innerHTML = `<div style="font-weight:700">${q.name}</div><div style="font-size:11px;opacity:.8">${q.count}/${q.need} • ${q.state}</div>`;
+          const actions = document.createElement("div");
+          if (q.state === "available") {
+            const b = document.createElement("button"); b.textContent = "Accept"; b.onclick = () => acceptQuest(q.id); actions.appendChild(b);
+          } else if (q.state === "return" || q.state === "completed") {
+            const b = document.createElement("button"); b.textContent = "Turn In"; b.onclick = () => turnInQuest(q.id); actions.appendChild(b);
+          } else if (q.state === "active") {
+            const b = document.createElement("button"); b.textContent = "Track"; b.onclick = () => { setTrackedQuest(q.id); updateUI(); }; actions.appendChild(b);
+          }
+          actions.style.cssText = "margin-top:6px;display:flex;gap:6px";
+          [...actions.children].forEach((c) => c.style.cssText = "border:1px solid rgba(255,255,255,.25);background:rgba(59,130,246,.24);color:white;border-radius:6px;padding:4px 8px;cursor:pointer");
+          row.appendChild(actions);
+          menuMainPanelEl.appendChild(row);
+        });
+        menuSidePanelEl.innerHTML = `<div style="font-weight:800;margin-bottom:8px">Quest States</div><div style="font-size:12px;line-height:1.45;opacity:.85">available • accepted • active • completed • turnedIn</div>`;
+      }
+      const closeBtn = document.createElement("button");
+      closeBtn.textContent = "Close (E / Esc)";
+      closeBtn.style.cssText = "margin-top:10px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.12);color:white;border-radius:7px;padding:6px 8px;cursor:pointer;width:100%";
+      closeBtn.onclick = closeInteractionMenu;
+      menuSidePanelEl.appendChild(closeBtn);
     }
 
     function renderTabMenu() {
       if (!tabMenuOpen) return;
+      if (interactionMode) {
+        renderInteractionMenu();
+        return;
+      }
+      tabBtnUpgradesEl.style.display = "";
+      tabBtnInventoryEl.style.display = "";
       tabBtnUpgradesEl.style.background = progress.menuTab === "upgrades" ? "rgba(245,158,11,.24)" : "rgba(255,255,255,.1)";
       tabBtnInventoryEl.style.background = progress.menuTab === "inventory" ? "rgba(245,158,11,.24)" : "rgba(255,255,255,.1)";
       if (progress.menuTab === "upgrades") renderUpgradeTreeMenu();
@@ -4073,21 +4423,22 @@
         }
       }
       for (const node of UPGRADE_TREE) {
-        const rank = progress.upgrades[node.key] || 0;
-        const lockedReq = node.req && (progress.upgrades[node.req] || 0) <= 0;
-        const lockedRival = node.branchKey && progress.classChoice && progress.classChoice !== node.branchKey;
+        const state = upgradeNodeState(node);
         const btn = document.createElement("button");
         btn.title = node.desc;
-        btn.style.cssText = `position:absolute;left:${node.x}px;top:${node.y}px;width:140px;text-align:left;border:1px solid ${rank > 0 ? "rgba(251,191,36,.8)" : (lockedReq || lockedRival) ? "rgba(100,116,139,.4)" : "rgba(134,239,172,.55)"};background:${rank > 0 ? "rgba(245,158,11,.22)" : lockedRival ? "rgba(55,65,81,.35)" : lockedReq ? "rgba(30,41,59,.4)" : "rgba(15,118,110,.2)"};color:white;border-radius:10px;padding:7px;cursor:${canBuyTreeNode(node) ? "pointer" : "default"}`;
-        btn.innerHTML = `<div style="font-size:12px;font-weight:700">${node.label}</div><div style="font-size:10px;opacity:.8">${node.branch}</div><div style="font-size:10px;margin-top:3px">${rank > 0 ? `Purchased` : lockedRival ? "Locked by rival class" : lockedReq ? `Need ${node.req}` : `Cost ${node.cost}`}</div>`;
+        const palette = {
+          purchased: ["rgba(251,191,36,.8)", "rgba(245,158,11,.24)"],
+          available: ["rgba(134,239,172,.75)", "rgba(15,118,110,.26)"],
+          unaffordable: ["rgba(244,114,182,.52)", "rgba(76,29,58,.28)"],
+          lockedBranch: ["rgba(148,163,184,.55)", "rgba(55,65,81,.36)"],
+          lockedPrereq: ["rgba(100,116,139,.45)", "rgba(30,41,59,.42)"]
+        }[state.key];
+        btn.style.cssText = `position:absolute;left:${node.x}px;top:${node.y}px;width:150px;min-height:78px;text-align:left;border:1px solid ${palette[0]};background:${palette[1]};color:white;border-radius:10px;padding:8px 9px;cursor:${state.canClick ? "pointer" : "not-allowed"};transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;box-shadow:${upgradeFlashTimer > 0 && state.key === "purchased" ? "0 0 20px rgba(251,191,36,.45)" : "none"};`;
+        btn.innerHTML = `<div style="font-size:12px;font-weight:700">${node.label}</div><div style="font-size:10px;opacity:.8">${node.branch}</div><div style="font-size:10px;margin-top:4px">${state.label}</div>`;
+        btn.onmouseenter = () => { if (!state.canClick) return; btn.style.transform = "translateY(-1px) scale(1.02)"; btn.style.boxShadow = "0 0 0 1px rgba(186,230,253,.45), 0 10px 20px rgba(15,23,42,.32)"; };
+        btn.onmouseleave = () => { btn.style.transform = "none"; btn.style.boxShadow = upgradeFlashTimer > 0 && state.key === "purchased" ? "0 0 20px rgba(251,191,36,.45)" : "none"; };
         btn.onclick = () => {
-          if (!canBuyTreeNode(node)) return;
-          progress.points -= node.cost;
-          progress.upgrades[node.key] = (progress.upgrades[node.key] || 0) + 1;
-          if (node.key === "healthBoost") { player.maxHealth += 10; player.health += 10; }
-          if (node.key.startsWith("class_")) progress.classChoice = node.branchKey;
-          if (node.key === "summonCount") spawnAlliesFromUpgrades();
-          renderTabMenu(); updateUI();
+          purchaseUpgradeNode(node.key);
         };
         canvas.appendChild(btn);
       }
@@ -4183,15 +4534,11 @@
         track.style.cssText = "margin-top:4px;border:1px solid rgba(255,255,255,.24);background:rgba(255,255,255,.1);color:white;border-radius:6px;padding:3px 6px;cursor:pointer";
         track.onclick = () => { progress.activeQuestIndex = idx; updateUI(); renderTabMenu(); };
         card.appendChild(track);
-        if (q.state === "return" && getHubAt(player.pos.x, player.pos.z, 18)?.name === q.giverHub) {
+        if ((q.state === "completed" || q.state === "return") && getHubAt(player.pos.x, player.pos.z, 18)?.name === q.giverHub) {
           const turnIn = document.createElement("button");
           turnIn.textContent = "Turn In";
           turnIn.style.cssText = "margin-left:6px;border:1px solid rgba(255,255,255,.24);background:rgba(34,197,94,.3);color:white;border-radius:6px;padding:3px 6px;cursor:pointer";
-          turnIn.onclick = () => {
-            q.state = "done"; gold += q.reward.gold; grantXP(q.reward.xp);
-            if (q.reward.item) { const it = getItemById(q.reward.item); if (it) progress.inventory.push(it); }
-            updateUI(); renderTabMenu();
-          };
+          turnIn.onclick = () => turnInQuest(q.id);
           card.appendChild(turnIn);
         }
         menuSidePanelEl.appendChild(card);
@@ -4270,6 +4617,7 @@
           centerMsg.style.opacity = "0";
         }
       }
+      upgradeFlashTimer = Math.max(0, upgradeFlashTimer - dt);
       if (hitstopTimer > 0) hitstopTimer = Math.max(0, hitstopTimer - dt);
       const simDt = hitstopTimer > 0 ? 0 : dt;
 
