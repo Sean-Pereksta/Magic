@@ -344,14 +344,14 @@
 
     const tmpVec = new THREE.Vector3();
     const upVec = new THREE.Vector3(0, 1, 0);
-    const CHUNK_SIZE = 54;
-    const LOCAL_SPAWN_RADIUS_MIN = 46;
-    const LOCAL_SPAWN_RADIUS_MAX = 158;
-    const ENEMY_DESPAWN_RANGE = 210;
-    const GLOBAL_ENEMY_CAP = 26;
-    const CHUNK_ENEMY_CAP = 4;
-    const ZONE_ENEMY_CAP = 8;
-    const NODE_ENEMY_CAP = 3;
+    const CHUNK_SIZE = 68;
+    const LOCAL_SPAWN_RADIUS_MIN = 62;
+    const LOCAL_SPAWN_RADIUS_MAX = 220;
+    const ENEMY_DESPAWN_RANGE = 290;
+    const GLOBAL_ENEMY_CAP = 42;
+    const CHUNK_ENEMY_CAP = 7;
+    const ZONE_ENEMY_CAP = 14;
+    const NODE_ENEMY_CAP = 5;
     const HUB_SAFE_BUFFER = 14;
     const AMBIENT_SPAWN_CHANCE = 0.016;
     const ARCHETYPE_BY_BEHAVIOR = {
@@ -391,7 +391,24 @@
       stormSpirit: { label: "Storm Spirit", family: "Storm", behavior: "beam", health: 108, speed: 15.3, turn: 2.5, aggroRange: 70, leashRange: 128, preferDistance: 19, attackCooldown: 2.2, damage: 19, knockback: 6.2, bounceMass: 0.8, reward: { score: 165, xp: 27, gold: 8 }, colors: { bird: 0x60a5fa, wing: 0x2563eb, rider: 0xbfdbfe, cloth: 0x22d3ee } },
       voidManta: { label: "Void Manta", family: "Hollow", behavior: "orb", health: 152, speed: 12.8, turn: 2.1, aggroRange: 64, leashRange: 120, preferDistance: 16, attackCooldown: 2.8, damage: 24, knockback: 8.4, bounceMass: 1.35, reward: { score: 210, xp: 34, gold: 10 }, colors: { bird: 0x2e1c45, wing: 0x1a1029, rider: 0xd8ccf5, cloth: 0x7c3aed } },
       hiveQueen: { label: "Hive Queen", family: "Verdant", behavior: "swarm", health: 220, speed: 10.4, turn: 1.6, aggroRange: 58, leashRange: 100, preferDistance: 10, attackCooldown: 2.5, damage: 26, knockback: 9.3, bounceMass: 2.0, reward: { score: 320, xp: 54, gold: 16 }, colors: { bird: 0x7a5c1a, wing: 0x4a3811, rider: 0xfef3c7, cloth: 0xf59e0b } },
-      bombHarasser: { label: "Bomb Harasser", family: "Ember", behavior: "curveStrike", health: 82, speed: 17.8, turn: 2.9, aggroRange: 52, leashRange: 88, preferDistance: 8, attackCooldown: 1.6, damage: 16, knockback: 5.4, bounceMass: 0.92, reward: { score: 145, xp: 21, gold: 7 }, colors: { bird: 0x9a3412, wing: 0x7c2d12, rider: 0xfed7aa, cloth: 0xfb7185 } }
+      bombHarasser: { label: "Bomb Harasser", family: "Ember", behavior: "curveStrike", health: 82, speed: 17.8, turn: 2.9, aggroRange: 52, leashRange: 88, preferDistance: 8, attackCooldown: 1.6, damage: 16, knockback: 5.4, bounceMass: 0.92, reward: { score: 145, xp: 21, gold: 7 }, colors: { bird: 0x9a3412, wing: 0x7c2d12, rider: 0xfed7aa, cloth: 0xfb7185 } },
+      forestSkimmer: { label: "Forest Skimmer", family: "Verdant", behavior: "swarm", health: 52, speed: 18.8, turn: 3.2, aggroRange: 52, leashRange: 96, preferDistance: 7, attackCooldown: 1.35, damage: 8, knockback: 3.6, bounceMass: 0.62, reward: { score: 82, xp: 14, gold: 4 }, colors: { bird: 0x88a857, wing: 0x4f6d34, rider: 0xdcecc5, cloth: 0x7bd389 } },
+      branchPouncer: { label: "Branch Pouncer", family: "Verdant", behavior: "ambush", health: 74, speed: 15.2, turn: 2.6, aggroRange: 48, leashRange: 94, preferDistance: 8, attackCooldown: 1.75, damage: 11, knockback: 4.3, bounceMass: 0.92, reward: { score: 110, xp: 18, gold: 5 }, colors: { bird: 0x6f7f49, wing: 0x3f4f2e, rider: 0xe1d4b0, cloth: 0xaad576 } },
+      thornBeak: { label: "Thorn Beak", family: "Verdant", behavior: "dash", health: 92, speed: 14.6, turn: 2.2, aggroRange: 52, leashRange: 98, preferDistance: 10, attackCooldown: 2.0, damage: 14, knockback: 5.6, bounceMass: 1.08, reward: { score: 126, xp: 21, gold: 6 }, colors: { bird: 0x5b6a2f, wing: 0x364518, rider: 0xd7e3ae, cloth: 0xc2a74a } },
+      youngHornetRider: { label: "Young Hornet Rider", family: "Verdant", behavior: "stinger", health: 66, speed: 18.1, turn: 2.9, aggroRange: 50, leashRange: 92, preferDistance: 8, attackCooldown: 1.55, damage: 10, knockback: 4.1, bounceMass: 0.84, reward: { score: 96, xp: 17, gold: 4 }, colors: { bird: 0x8a7023, wing: 0x4a3a12, rider: 0xe7dfaa, cloth: 0x6fbf73 } },
+      canopyDuelist: { label: "Canopy Duelist", family: "Verdant", behavior: "lancer", health: 112, speed: 13.2, turn: 2.05, aggroRange: 55, leashRange: 102, preferDistance: 11, attackCooldown: 2.15, damage: 17, knockback: 6.1, bounceMass: 1.22, reward: { score: 148, xp: 25, gold: 7 }, colors: { bird: 0x4f6c3d, wing: 0x2d4630, rider: 0xd9e8ca, cloth: 0x9ecb71 } },
+      cliffLancer: { label: "Cliff Lancer", family: "Frontier", behavior: "lancer", health: 142, speed: 13.8, turn: 1.95, aggroRange: 60, leashRange: 112, preferDistance: 13, attackCooldown: 2.0, damage: 20, knockback: 7.2, bounceMass: 1.45, reward: { score: 188, xp: 31, gold: 9 }, colors: { bird: 0x85724f, wing: 0x5e5034, rider: 0xe7dcc2, cloth: 0xe5b66f } },
+      ruinSentinel: { label: "Ruin Sentinel", family: "Ruined", behavior: "lancer", health: 176, speed: 12.1, turn: 1.75, aggroRange: 62, leashRange: 116, preferDistance: 13, attackCooldown: 2.2, damage: 23, knockback: 8.0, bounceMass: 1.7, reward: { score: 220, xp: 39, gold: 11 }, colors: { bird: 0x60677d, wing: 0x394156, rider: 0xd6dff0, cloth: 0x99b7ff } },
+      skyWeaver: { label: "Sky Weaver", family: "Frontier", behavior: "curveStrike", health: 114, speed: 16.6, turn: 2.8, aggroRange: 60, leashRange: 110, preferDistance: 9, attackCooldown: 1.7, damage: 17, knockback: 5.8, bounceMass: 0.94, reward: { score: 154, xp: 26, gold: 7 }, colors: { bird: 0x4f7fa1, wing: 0x2b536a, rider: 0xd1e9ff, cloth: 0x7ad3f7 } },
+      stormDiver: { label: "Storm Diver", family: "Storm", behavior: "loopDive", health: 136, speed: 15.4, turn: 2.25, aggroRange: 64, leashRange: 114, preferDistance: 11, attackCooldown: 2.0, damage: 21, knockback: 7.1, bounceMass: 1.36, reward: { score: 186, xp: 32, gold: 9 }, colors: { bird: 0x4f6faa, wing: 0x2f4472, rider: 0xdce9ff, cloth: 0x8fd9ff } },
+      emberDrake: { label: "Ember Drake", family: "Ember", behavior: "breath", health: 156, speed: 13.2, turn: 1.9, aggroRange: 61, leashRange: 112, preferDistance: 12, attackCooldown: 2.45, damage: 24, knockback: 8.2, bounceMass: 1.6, reward: { score: 210, xp: 35, gold: 10 }, colors: { bird: 0xb1522a, wing: 0x712e16, rider: 0xf2c6ad, cloth: 0xff9344 } },
+      hiveCaptain: { label: "Hive Captain", family: "Verdant", behavior: "dash", health: 148, speed: 14.1, turn: 2.0, aggroRange: 59, leashRange: 108, preferDistance: 10, attackCooldown: 2.1, damage: 22, knockback: 7.4, bounceMass: 1.48, reward: { score: 198, xp: 33, gold: 9 }, colors: { bird: 0x7a5f1d, wing: 0x4a370f, rider: 0xf4e7b3, cloth: 0xcf8f31 } },
+      stormCaster: { label: "Storm Caster", family: "Storm", behavior: "beam", health: 168, speed: 12.7, turn: 1.85, aggroRange: 73, leashRange: 130, preferDistance: 19, attackCooldown: 2.7, damage: 25, knockback: 8.0, bounceMass: 1.3, reward: { score: 228, xp: 39, gold: 11 }, colors: { bird: 0x587ebf, wing: 0x32568c, rider: 0xd8e9ff, cloth: 0x8ae2ff } },
+      magmaCrusher: { label: "Magma Crusher", family: "Ember", behavior: "bruiser", health: 244, speed: 10.2, turn: 1.35, aggroRange: 58, leashRange: 104, preferDistance: 10, attackCooldown: 2.85, damage: 31, knockback: 10.2, bounceMass: 2.28, reward: { score: 318, xp: 54, gold: 15 }, colors: { bird: 0x7d3425, wing: 0x4d1e15, rider: 0xf0d0c2, cloth: 0xff6e4f } },
+      hollowAmbusher: { label: "Hollow Ambusher", family: "Hollow", behavior: "ambush", health: 152, speed: 15.8, turn: 2.55, aggroRange: 64, leashRange: 112, preferDistance: 8, attackCooldown: 1.85, damage: 23, knockback: 7.0, bounceMass: 1.2, reward: { score: 206, xp: 34, gold: 10 }, colors: { bird: 0x4a3d63, wing: 0x2a1f3a, rider: 0xddd2f5, cloth: 0x9e7ae0 } },
+      rogueRooftopRider: { label: "Rogue Rooftop Rider", family: "City", behavior: "dash", health: 132, speed: 14.9, turn: 2.15, aggroRange: 54, leashRange: 104, preferDistance: 10, attackCooldown: 1.95, damage: 19, knockback: 6.8, bounceMass: 1.26, reward: { score: 174, xp: 29, gold: 8 }, colors: { bird: 0x6c7284, wing: 0x434b5d, rider: 0xe5ebf7, cloth: 0xf59e8b } },
+      dragonKnight: { label: "Dragon Knight", family: "Dragon", behavior: "lancer", health: 228, speed: 12.3, turn: 1.6, aggroRange: 66, leashRange: 124, preferDistance: 13, attackCooldown: 2.1, damage: 31, knockback: 10.1, bounceMass: 2.1, reward: { score: 330, xp: 56, gold: 15 }, colors: { bird: 0x734f44, wing: 0x3f2c25, rider: 0xf0ddd2, cloth: 0xe6a173 } },
+      apexRivalRider: { label: "Apex Rival Rider", family: "Dragon", behavior: "lancer", health: 272, speed: 13.6, turn: 1.75, aggroRange: 72, leashRange: 132, preferDistance: 14, attackCooldown: 1.85, damage: 36, knockback: 11.4, bounceMass: 2.4, reward: { score: 390, xp: 66, gold: 18 }, colors: { bird: 0x5c4a6f, wing: 0x332641, rider: 0xf1e8ff, cloth: 0xc495ff } }
     };
 
     const RARITY_COLORS = { common: "#d1d5db", uncommon: "#86efac", rare: "#93c5fd", epic: "#c4b5fd", legendary: "#fbbf24" };
@@ -499,11 +516,11 @@
     function init() {
       scene = new THREE.Scene();
       scene.background = new THREE.Color(0x1a1d26);
-      scene.fog = new THREE.Fog(0x1a1d26, 50, 300);
+      scene.fog = new THREE.Fog(0x1a1d26, 34, 210);
 
       clock = new THREE.Clock();
 
-      camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.1, 520);
       camera.position.set(0, 12, 22);
 
       renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -538,10 +555,10 @@
       createLava();
       createPlatforms();
       createSafeHubs();
+      createSpawnNodes();
       createPlayer();
       seedPlayerProgression();
       refreshPlayerAppearance();
-      createSpawnNodes();
       spawnTreasureCaches();
       spawnInitialEnemies();
       spawnAlliesFromUpgrades();
@@ -1241,18 +1258,18 @@
       cityAmbientProps = [];
 
       worldZones = [
-        { name: "Great Forest Canopy", subtitle: "City-State Frontier", center: new THREE.Vector3(-264, 0, -188), width: 208, depth: 184, radius: 92, baseY: -4, hazardY: -32, color: 0x43673f, accent: 0x9cd77a, haze: 0x7ca884, hazardType: "safe", enemyFamilies: ["giantBee", "ashWasp", "vineDrake", "hornetGuard"], danger: 0, terrainStyle: "forest", travelRhythm: "perch-chain", spawnThemes: ["forest-nest", "hanging-hive"] },
-        { name: "Mossfang Wilds", subtitle: "Frontier Territory", center: new THREE.Vector3(-56, 0, -188), width: 208, depth: 184, radius: 92, baseY: -6, hazardY: -33, color: 0x4f6340, accent: 0xb7d88d, haze: 0x85a77a, hazardType: "safe", enemyFamilies: ["giantBee", "hornetGuard", "vineDrake", "hiveQueen"], danger: 1, terrainStyle: "forest", travelRhythm: "canopy", spawnThemes: ["forest-nest", "hanging-hive"] },
-        { name: "Sunstone Highlands", subtitle: "Frontier Territory", center: new THREE.Vector3(152, 0, -188), width: 208, depth: 184, radius: 92, baseY: -5, hazardY: -34, color: 0x74664b, accent: 0xe7c074, haze: 0xb49361, hazardType: "safe", enemyFamilies: ["hornetGuard", "ironWyvern", "skyEel", "armoredKnight"], danger: 2, terrainStyle: "highland", travelRhythm: "cliff-hop", spawnThemes: ["watch-platform", "outskirts-roost"] },
-        { name: "Ashen Lava Basin", subtitle: "Dragon Territory", center: new THREE.Vector3(360, 0, -188), width: 208, depth: 184, radius: 92, baseY: -11, hazardY: -25, color: 0x5c392a, accent: 0xdd7c40, haze: 0x9a5030, hazardType: "lava", enemyFamilies: ["ashWasp", "bombHarasser", "fireDrake", "magmaSerpent"], danger: 6, terrainStyle: "lava", travelRhythm: "blast-gap", spawnThemes: ["lava-vent", "dragon-perch"] },
-        { name: "Seraphic City-State Ring", subtitle: "City of Spires", center: new THREE.Vector3(-264, 0, 0), width: 208, depth: 184, radius: 92, baseY: -2, hazardY: -36, color: 0x5d6072, accent: 0xcfd6ea, haze: 0x8fa3c6, hazardType: "safe", enemyFamilies: ["ashWasp", "vineDrake", "skyEel", "hornetGuard"], danger: 0, terrainStyle: "city", travelRhythm: "rooftop", spawnThemes: ["city-outskirts", "watch-platform"], hubTheme: "city" },
-        { name: "Ruin-Crown Expanse", subtitle: "Dangerous Territory", center: new THREE.Vector3(-56, 0, 0), width: 208, depth: 184, radius: 92, baseY: -8, hazardY: -34, color: 0x615a6e, accent: 0x9faacc, haze: 0x7f879c, hazardType: "safe", enemyFamilies: ["ironWyvern", "boltRay", "armoredKnight", "spearSentinel"], danger: 3, terrainStyle: "ruin", travelRhythm: "war-platform", spawnThemes: ["ruined-tower", "watch-platform"] },
-        { name: "Tempest Shelf", subtitle: "Dangerous Territory", center: new THREE.Vector3(152, 0, 0), width: 208, depth: 184, radius: 92, baseY: -6, hazardY: -35, color: 0x4e6f8d, accent: 0x9fd3ff, haze: 0x79a1cd, hazardType: "tempest", enemyFamilies: ["thunderSerpent", "skyEel", "stormSpirit", "stormDrake"], danger: 4, terrainStyle: "storm", travelRhythm: "air-current", spawnThemes: ["storm-pylon", "watch-platform"] },
-        { name: "Dragonspine Frontier", subtitle: "Monster Territory", center: new THREE.Vector3(360, 0, 0), width: 208, depth: 184, radius: 92, baseY: -9, hazardY: -36, color: 0x5f4d49, accent: 0xe0b8a4, haze: 0x9e7060, hazardType: "safe", enemyFamilies: ["ironWyvern", "fireDrake", "stormDrake", "voidDragon"], danger: 5, terrainStyle: "dragon", travelRhythm: "long-dive", spawnThemes: ["dragon-perch", "outskirts-roost"] },
-        { name: "Hollow Night Marsh", subtitle: "Monster Territory", center: new THREE.Vector3(-264, 0, 188), width: 208, depth: 184, radius: 92, baseY: -10, hazardY: -37, color: 0x3f3448, accent: 0x7f6a92, haze: 0x5a4668, hazardType: "abyss", enemyFamilies: ["shadeSerpent", "nightBee", "voidManta", "voidDragon"], danger: 5, terrainStyle: "marsh", travelRhythm: "gloom-rift", spawnThemes: ["hollow-fissure", "hanging-hive"] },
-        { name: "Sky Glacier Reach", subtitle: "Dangerous Territory", center: new THREE.Vector3(-56, 0, 188), width: 208, depth: 184, radius: 92, baseY: -8, hazardY: -36, color: 0x6a7c90, accent: 0xd8f1ff, haze: 0x9bb6cc, hazardType: "safe", enemyFamilies: ["stormSpirit", "skyEel", "thunderSerpent", "voidManta"], danger: 4, terrainStyle: "glacier", travelRhythm: "thin-perches", spawnThemes: ["storm-pylon", "watch-platform"] },
-        { name: "Obsidian Rift", subtitle: "Dragon Territory", center: new THREE.Vector3(152, 0, 188), width: 208, depth: 184, radius: 92, baseY: -12, hazardY: -24, color: 0x35313f, accent: 0x6f6a80, haze: 0x524a63, hazardType: "lava", enemyFamilies: ["magmaSerpent", "voidManta", "stormDrake", "voidDragon"], danger: 6, terrainStyle: "rift", travelRhythm: "ravine", spawnThemes: ["lava-vent", "hollow-fissure"] },
-        { name: "Outer Wyrm Wastes", subtitle: "Dragon Territory", center: new THREE.Vector3(360, 0, 188), width: 208, depth: 184, radius: 92, baseY: -12, hazardY: -24, color: 0x41333a, accent: 0xb37d89, haze: 0x6c4d59, hazardType: "lava", enemyFamilies: ["voidDragon", "fireDrake", "stormDrake", "armoredKnight"], danger: 7, terrainStyle: "wyrm", travelRhythm: "gauntlet", spawnThemes: ["dragon-perch", "hollow-fissure"] }
+        { name: "Great Forest Canopy", subtitle: "Starter Territory", center: new THREE.Vector3(-620, 0, -520), width: 484, depth: 428, radius: 210, baseY: -4, hazardY: -32, color: 0x43673f, accent: 0x9cd77a, haze: 0x7ca884, fogTint: 0x22332a, hazardType: "safe", enemyFamilies: ["forestSkimmer", "branchPouncer", "thornBeak", "youngHornetRider", "canopyDuelist"], danger: 0, terrainStyle: "forest", travelRhythm: "perch-chain", spawnThemes: ["forest-nest", "hanging-hive"] },
+        { name: "Mossfang Wilds", subtitle: "Frontier Territory", center: new THREE.Vector3(-110, 0, -520), width: 484, depth: 428, radius: 210, baseY: -6, hazardY: -33, color: 0x4f6340, accent: 0xb7d88d, haze: 0x85a77a, fogTint: 0x2a3b2b, hazardType: "safe", enemyFamilies: ["forestSkimmer", "branchPouncer", "canopyDuelist", "youngHornetRider", "cliffLancer"], danger: 1, terrainStyle: "forest", travelRhythm: "canopy", spawnThemes: ["forest-nest", "hanging-hive"] },
+        { name: "Sunstone Highlands", subtitle: "Early Midgame", center: new THREE.Vector3(400, 0, -520), width: 484, depth: 428, radius: 210, baseY: -5, hazardY: -34, color: 0x74664b, accent: 0xe7c074, haze: 0xb49361, fogTint: 0x433829, hazardType: "safe", enemyFamilies: ["cliffLancer", "skyWeaver", "stormDiver", "hiveCaptain"], danger: 2, terrainStyle: "highland", travelRhythm: "cliff-hop", spawnThemes: ["watch-platform", "outskirts-roost"] },
+        { name: "Ashen Lava Basin", subtitle: "Dragon Territory", center: new THREE.Vector3(910, 0, -520), width: 484, depth: 428, radius: 210, baseY: -11, hazardY: -25, color: 0x5c392a, accent: 0xdd7c40, haze: 0x9a5030, fogTint: 0x3f2319, hazardType: "lava", enemyFamilies: ["emberDrake", "magmaCrusher", "bombHarasser", "magmaSerpent"], danger: 6, terrainStyle: "lava", travelRhythm: "blast-gap", spawnThemes: ["lava-vent", "dragon-perch"] },
+        { name: "Seraphic City-State Ring", subtitle: "City of Spires", center: new THREE.Vector3(-620, 0, 0), width: 484, depth: 428, radius: 210, baseY: -2, hazardY: -36, color: 0x5d6072, accent: 0xcfd6ea, haze: 0x8fa3c6, fogTint: 0x2a2e42, hazardType: "safe", enemyFamilies: ["rogueRooftopRider", "cliffLancer", "canopyDuelist"], danger: 1, terrainStyle: "city", travelRhythm: "rooftop", spawnThemes: ["city-outskirts", "watch-platform"], hubTheme: "city" },
+        { name: "Ruin-Crown Expanse", subtitle: "Dangerous Territory", center: new THREE.Vector3(-110, 0, 0), width: 484, depth: 428, radius: 210, baseY: -8, hazardY: -34, color: 0x615a6e, accent: 0x9faacc, haze: 0x7f879c, fogTint: 0x343341, hazardType: "safe", enemyFamilies: ["ruinSentinel", "skyWeaver", "armoredKnight", "spearSentinel"], danger: 3, terrainStyle: "ruin", travelRhythm: "war-platform", spawnThemes: ["ruined-tower", "watch-platform"] },
+        { name: "Tempest Shelf", subtitle: "Dangerous Territory", center: new THREE.Vector3(400, 0, 0), width: 484, depth: 428, radius: 210, baseY: -6, hazardY: -35, color: 0x4e6f8d, accent: 0x9fd3ff, haze: 0x79a1cd, fogTint: 0x25374e, hazardType: "tempest", enemyFamilies: ["stormDiver", "stormCaster", "thunderSerpent", "stormDrake"], danger: 4, terrainStyle: "storm", travelRhythm: "air-current", spawnThemes: ["storm-pylon", "watch-platform"] },
+        { name: "Aurelian Skyhold", subtitle: "High City Bastion", center: new THREE.Vector3(910, 0, 0), width: 484, depth: 428, radius: 210, baseY: -3, hazardY: -36, color: 0x63687b, accent: 0xdbe3f7, haze: 0x95a9cf, fogTint: 0x343c52, hazardType: "safe", enemyFamilies: ["rogueRooftopRider", "ruinSentinel", "cliffLancer"], danger: 2, terrainStyle: "city", travelRhythm: "sky-lanes", spawnThemes: ["city-outskirts", "outskirts-roost"], hubTheme: "city" },
+        { name: "Hollow Night Marsh", subtitle: "Monster Territory", center: new THREE.Vector3(-620, 0, 520), width: 484, depth: 428, radius: 210, baseY: -10, hazardY: -37, color: 0x3f3448, accent: 0x7f6a92, haze: 0x5a4668, fogTint: 0x241a2f, hazardType: "abyss", enemyFamilies: ["hollowAmbusher", "nightBee", "voidManta", "shadeSerpent"], danger: 5, terrainStyle: "marsh", travelRhythm: "gloom-rift", spawnThemes: ["hollow-fissure", "hanging-hive"] },
+        { name: "Sky Glacier Reach", subtitle: "Dangerous Territory", center: new THREE.Vector3(-110, 0, 520), width: 484, depth: 428, radius: 210, baseY: -8, hazardY: -36, color: 0x6a7c90, accent: 0xd8f1ff, haze: 0x9bb6cc, fogTint: 0x2f4152, hazardType: "safe", enemyFamilies: ["stormDiver", "skyWeaver", "voidManta", "stormCaster"], danger: 4, terrainStyle: "glacier", travelRhythm: "thin-perches", spawnThemes: ["storm-pylon", "watch-platform"] },
+        { name: "Obsidian Rift", subtitle: "Dragon Territory", center: new THREE.Vector3(400, 0, 520), width: 484, depth: 428, radius: 210, baseY: -12, hazardY: -24, color: 0x35313f, accent: 0x6f6a80, haze: 0x524a63, fogTint: 0x261f2f, hazardType: "lava", enemyFamilies: ["emberDrake", "magmaCrusher", "voidManta", "voidDragon"], danger: 6, terrainStyle: "rift", travelRhythm: "ravine", spawnThemes: ["lava-vent", "hollow-fissure"] },
+        { name: "Outer Wyrm Wastes", subtitle: "Late Dragon Frontier", center: new THREE.Vector3(910, 0, 520), width: 484, depth: 428, radius: 210, baseY: -12, hazardY: -24, color: 0x41333a, accent: 0xb37d89, haze: 0x6c4d59, fogTint: 0x2f1f26, hazardType: "lava", enemyFamilies: ["dragonKnight", "apexRivalRider", "voidDragon", "magmaCrusher"], danger: 7, terrainStyle: "wyrm", travelRhythm: "gauntlet", spawnThemes: ["dragon-perch", "hollow-fissure"] }
       ];
 
       worldMinX = Math.min(...worldZones.map((z) => z.center.x - zoneHalfWidth(z) - 20));
@@ -1288,15 +1305,15 @@
         }
       }
 
-      for (let i = 0; i < 60; i++) {
+      for (let i = 0; i < 90; i++) {
         const ember = new THREE.Mesh(
           new THREE.SphereGeometry(0.12 + Math.random() * 0.15, 6, 6),
           new THREE.MeshBasicMaterial({ color: new THREE.Color().setHSL(0.06 + Math.random() * 0.04, 1, 0.5) })
         );
         ember.position.set(
-          (Math.random() - 0.5) * 620,
+          worldMinX + Math.random() * (worldMaxX - worldMinX),
           -22 + Math.random() * 54,
-          (Math.random() - 0.5) * 520
+          worldMinZ + Math.random() * (worldMaxZ - worldMinZ)
         );
         ember.userData = {
           drift: new THREE.Vector3((Math.random()-0.5)*0.08, 0.05 + Math.random() * 0.1, (Math.random()-0.5)*0.08),
@@ -1496,11 +1513,12 @@
       cityCreatures = [];
 
       const hubDefs = [
-        { name: "Green Cliff Outpost", zone: "Great Forest Canopy", pos: new THREE.Vector3(-178, 14, -76), color: 0x66b26e, glow: 0xb9f5ae, safeRadius: 25, disengageRadius: 39, style: "cliff", specialty: "mounts + supplies" },
-        { name: "Seraph Spire Bazaar", zone: "Seraphic City-State Ring", pos: new THREE.Vector3(-4, 20, 10), color: 0x8ea3ca, glow: 0xe4ebff, safeRadius: 28, disengageRadius: 43, style: "city", specialty: "trinkets + relics" },
-        { name: "Aegis Bastion", zone: "Ruin-Crown Expanse", pos: new THREE.Vector3(122, 21, 6), color: 0x8b93a5, glow: 0xcfd7f5, safeRadius: 26, disengageRadius: 41, style: "military", specialty: "armor + war lances" },
-        { name: "Storm Roost Sanctuary", zone: "Tempest Shelf", pos: new THREE.Vector3(84, 38, 124), color: 0x7ca8db, glow: 0xd6ecff, safeRadius: 24, disengageRadius: 39, style: "storm", specialty: "flight gear + mounts" },
-        { name: "Dragon Hunter's Rest", zone: "Dragonspine Frontier", pos: new THREE.Vector3(194, 24, 104), color: 0xc58563, glow: 0xffd4b8, safeRadius: 24, disengageRadius: 40, style: "frontier", specialty: "anti-dragon kits" }
+        { name: "Green Cliff Outpost", zone: "Great Forest Canopy", pos: new THREE.Vector3(-812, 14, -410), color: 0x66b26e, glow: 0xb9f5ae, safeRadius: 34, disengageRadius: 54, style: "cliff", specialty: "mounts + supplies" },
+        { name: "Seraph Spire Bazaar", zone: "Seraphic City-State Ring", pos: new THREE.Vector3(-612, 20, 20), color: 0x8ea3ca, glow: 0xe4ebff, safeRadius: 38, disengageRadius: 58, style: "city", specialty: "trinkets + relics" },
+        { name: "Aegis Bastion", zone: "Ruin-Crown Expanse", pos: new THREE.Vector3(80, 21, 16), color: 0x8b93a5, glow: 0xcfd7f5, safeRadius: 34, disengageRadius: 54, style: "military", specialty: "armor + war lances" },
+        { name: "Storm Roost Sanctuary", zone: "Tempest Shelf", pos: new THREE.Vector3(410, 38, 90), color: 0x7ca8db, glow: 0xd6ecff, safeRadius: 34, disengageRadius: 54, style: "storm", specialty: "flight gear + mounts" },
+        { name: "Skyhold Grand Roost", zone: "Aurelian Skyhold", pos: new THREE.Vector3(922, 26, 44), color: 0xa4b2d4, glow: 0xe6efff, safeRadius: 34, disengageRadius: 56, style: "city", specialty: "elite joust gear" },
+        { name: "Dragon Hunter's Rest", zone: "Outer Wyrm Wastes", pos: new THREE.Vector3(866, 24, 438), color: 0xc58563, glow: 0xffd4b8, safeRadius: 32, disengageRadius: 52, style: "frontier", specialty: "anti-dragon kits" }
       ];
 
       for (const def of hubDefs) {
@@ -2023,121 +2041,220 @@
       updateUI();
     }
 
+    function getRegionDepthFactor(zone, pos) {
+      const toCenter = pos.clone().sub(zone.center).setY(0);
+      const maxR = Math.max(18, zoneRadius(zone));
+      const radial = THREE.MathUtils.clamp(toCenter.length() / maxR, 0, 1);
+      const laneBias = Math.abs(toCenter.x / Math.max(1, zoneHalfWidth(zone))) * 0.35;
+      return THREE.MathUtils.clamp(radial * 0.82 + laneBias, 0, 1);
+    }
+
+    function chooseEnemyCompositionForRegion(zone, depthFactor = 0, spawnType = "wild") {
+      const families = [...(zone.enemyFamilies || ["forestSkimmer"])];
+      const tier = zone.danger || 0;
+      const depthTier = depthFactor < 0.34 ? 0 : depthFactor < 0.68 ? 1 : 2;
+      const weighted = [];
+      for (let i = 0; i < families.length; i++) {
+        const id = families[i];
+        const spec = ENEMY_SPECIES[id] || ENEMY_SPECIES.forestSkimmer;
+        let w = i === 0 ? 40 : i === 1 ? 28 : i === 2 ? 20 : 12;
+        if (zone.name === "Great Forest Canopy") {
+          const ranged = ["beam", "sniper", "orb", "ranged", "breath"].includes(spec.behavior);
+          if (ranged) w = 0;
+          if (spec.behavior === "lancer") w *= 0.55;
+        }
+        if (depthTier === 0 && spec.health > 150) w *= 0.45;
+        if (depthTier === 2) {
+          if (spec.behavior === "lancer" || spec.behavior === "bruiser") w *= 1.4;
+          if (spec.behavior === "beam" || spec.behavior === "orb") w *= 1.15;
+        }
+        if (spawnType.includes("city") && tier <= 2) {
+          if (id === "apexRivalRider" || id === "dragonKnight") w *= 0.2;
+        }
+        if (tier <= 1 && spec.health > 140) w *= 0.2;
+        const count = Math.max(0, Math.round(w));
+        for (let n = 0; n < count; n++) weighted.push(id);
+      }
+      return weighted.length ? weighted : families;
+    }
+
+    function createEnemyVisualForRegion(enemy, zone, depthFactor = 0) {
+      const scale = 1 + depthFactor * 0.16 + (enemy.elite ? 0.12 : 0);
+      enemy.model.scale.multiplyScalar(scale);
+      enemy.radius *= scale;
+      if (enemy.elite) {
+        const crest = new THREE.Mesh(
+          new THREE.ConeGeometry(0.18, 0.62, 7),
+          new THREE.MeshStandardMaterial({ color: zone.accent, emissive: zone.accent, emissiveIntensity: 0.45, roughness: 0.45, metalness: 0.38 })
+        );
+        crest.position.set(0, enemy.radius + 0.8, 0.3);
+        enemy.model.add(crest);
+      }
+    }
+
+    function applyEnemyDifficultyScaling(enemy, zone, depthFactor, node) {
+      const tier = zone.danger || 0;
+      const scale = 1 + tier * 0.05 + depthFactor * 0.22;
+      enemy.maxHealth *= scale;
+      enemy.health = enemy.maxHealth;
+      enemy.speciesData.damage *= 1 + tier * 0.04 + depthFactor * 0.18;
+      enemy.speciesData.speed *= 1 + depthFactor * 0.08;
+      enemy.speciesData.turn *= 1 + depthFactor * 0.06;
+      if (node.depthTier === "deep") enemy.speciesData.aggroRange += 6;
+      if (zone.name === "Great Forest Canopy") {
+        enemy.speciesData.damage *= 0.88;
+        if (["beam", "sniper", "orb", "ranged", "breath"].includes(enemy.speciesData.behavior)) {
+          enemy.speciesData.behavior = "dash";
+        }
+      }
+    }
+
+    function createEnemyByArchetype(enemyType, spawnPos, context = {}) {
+      const enemy = spawnEnemy(spawnPos, enemyType);
+      if (!enemy) return null;
+      const zone = context.zone || getZoneAt(spawnPos.x, spawnPos.z);
+      const depthFactor = context.depthFactor ?? (zone ? getRegionDepthFactor(zone, spawnPos) : 0);
+      if (zone) {
+        applyEnemyDifficultyScaling(enemy, zone, depthFactor, context.node || {});
+        createEnemyVisualForRegion(enemy, zone, depthFactor);
+      }
+      return enemy;
+    }
+
     function createSpawnLandmark(node, zone) {
       const landmark = new THREE.Group();
-      const base = new THREE.Mesh(
-        new THREE.CylinderGeometry(1.8, 2.8, 2.4, 8),
-        new THREE.MeshStandardMaterial({ color: zone.haze, roughness: 0.9, metalness: 0.08 })
-      );
+      const style = node.spawnType || "watch-platform";
+      const mat = new THREE.MeshStandardMaterial({ color: zone.haze, roughness: 0.9, metalness: 0.12 });
+      let baseGeom = new THREE.CylinderGeometry(2, 2.8, 2.4, 8);
+      if (style.includes("nest") || style.includes("hive")) baseGeom = new THREE.SphereGeometry(2.3, 10, 8);
+      else if (style.includes("tower") || style.includes("pylon")) baseGeom = new THREE.CylinderGeometry(1.4, 2.2, 7.5, 7);
+      else if (style.includes("vent") || style.includes("fissure")) baseGeom = new THREE.ConeGeometry(2.8, 4.2, 7);
+      const base = new THREE.Mesh(baseGeom, mat);
       landmark.add(base);
+      const ringColor = style.includes("lava") || style.includes("vent") ? 0xff7a3f : style.includes("storm") ? 0x9ad0ff : zone.accent;
       const glow = new THREE.Mesh(
-        new THREE.TorusGeometry(2.6, 0.22, 8, 18),
-        new THREE.MeshStandardMaterial({ color: zone.accent, emissive: zone.accent, emissiveIntensity: 0.35, transparent: true, opacity: 0.72 })
+        new THREE.TorusGeometry(3.2, 0.24, 8, 20),
+        new THREE.MeshStandardMaterial({ color: ringColor, emissive: ringColor, emissiveIntensity: 0.45, transparent: true, opacity: 0.72 })
       );
       glow.rotation.x = -Math.PI / 2;
-      glow.position.y = 1.4;
+      glow.position.y = 1.5;
       landmark.add(glow);
       landmark.position.copy(node.pos).setY(node.pos.y - 2.1);
       scene.add(landmark);
       return landmark;
     }
 
+    function createRegionSpawners(zone) {
+      const nodes = [];
+      const nodeTypes = zone.spawnThemes || ["watch-platform"];
+      const baseCount = 8 + Math.round((zone.danger || 0) * 1.3);
+      const zoneScale = THREE.MathUtils.clamp((zone.width * zone.depth) / (208 * 184), 1, 7);
+      const nodeCount = Math.max(6, Math.round(baseCount * Math.sqrt(zoneScale)));
+      for (let i = 0; i < nodeCount; i++) {
+        const p = randomPointInZone(zone, 0.11);
+        const y = terrainHeightAt(p.x, p.z);
+        if (y < -900) continue;
+        const pos = new THREE.Vector3(p.x, y + 8 + Math.random() * 12, p.z);
+        const nearHub = getHubAt(pos.x, pos.z, 34);
+        const nearCitySafe = getCitySafeZoneAt(pos.x, pos.z, 24);
+        const depthFactor = getRegionDepthFactor(zone, pos);
+        const depthTier = depthFactor < 0.34 ? "outer" : depthFactor < 0.68 ? "mid" : "deep";
+        const spawnType = nodeTypes[i % nodeTypes.length];
+        const cooldownBase = spawnType.includes("nest") || spawnType.includes("hive") ? 5.2 : spawnType.includes("tower") || spawnType.includes("perch") ? 8.6 : 7.2;
+        const node = {
+          id: `${zone.name}-${i}`,
+          regionName: zone.name,
+          zoneName: zone.name,
+          biome: zone.terrainStyle,
+          pos,
+          spawnType,
+          depthTier,
+          depthFactor,
+          activationRadius: 98 + (zone.danger || 0) * 8,
+          spawnCooldown: Math.max(3.6, cooldownBase - depthFactor * 1.4 + Math.random() * 1.8),
+          spawnTimer: 1.5 + Math.random() * 2.8,
+          localMaxActive: Math.min(NODE_ENEMY_CAP + Math.floor((zone.danger || 0) * 0.35), 7),
+          count: depthTier === "outer" ? 1 : depthTier === "mid" ? 2 : 2,
+          leashRange: 112 + Math.random() * 56 + (zone.danger || 0) * 8,
+          eliteChance: Math.min(0.52, 0.02 + (zone.danger || 0) * 0.03 + depthFactor * 0.24),
+          safeBlocked: !!nearHub || !!nearCitySafe,
+          allowedFamilies: chooseEnemyCompositionForRegion(zone, depthFactor, spawnType),
+          landmark: null,
+          active: false
+        };
+        if (!node.safeBlocked) {
+          const spaceProbe = enemies.filter((e) => e.alive && e.pos.distanceTo(pos) < 22).length;
+          if (spaceProbe === 0) node.landmark = createSpawnLandmark(node, zone);
+        }
+        nodes.push(node);
+      }
+      return nodes;
+    }
+
     function createSpawnNodes() {
       spawnNodes = [];
-      const spawnThemesByStyle = {
-        forest: ["forest-nest", "hanging-hive", "watch-platform"],
-        highland: ["watch-platform", "outskirts-roost"],
-        city: ["city-outskirts", "watch-platform"],
-        ruin: ["ruined-tower", "watch-platform"],
-        lava: ["lava-vent", "dragon-perch"],
-        storm: ["storm-pylon", "watch-platform"],
-        marsh: ["hollow-fissure", "hanging-hive"],
-        dragon: ["dragon-perch", "outskirts-roost"],
-        wyrm: ["dragon-perch", "hollow-fissure"],
-        glacier: ["storm-pylon", "watch-platform"],
-        rift: ["lava-vent", "hollow-fissure"]
-      };
-
       for (const zone of worldZones) {
-        const nodeTypes = zone.spawnThemes || spawnThemesByStyle[zone.terrainStyle] || ["watch-platform"];
-        const nodeCount = 5 + Math.round((zone.danger || 0) * 1.2);
-        for (let i = 0; i < nodeCount; i++) {
-          const p = randomPointInZone(zone, 0.16);
-          const y = terrainHeightAt(p.x, p.z);
-          if (y < -900) continue;
-          const pos = new THREE.Vector3(p.x, y + 7 + Math.random() * 9, p.z);
-          const nearHub = getHubAt(pos.x, pos.z, 20);
-          const nearCitySafe = getCitySafeZoneAt(pos.x, pos.z, 16);
-          const species = chooseEnemyTypeForZone(zone);
-          const spawnType = nodeTypes[i % nodeTypes.length];
-          const node = {
-            id: `${zone.name}-${i}`,
-            regionName: zone.name,
-            zoneName: zone.name,
-            pos,
-            spawnType,
-            species,
-            allowedFamilies: [...zone.enemyFamilies],
-            localMaxActive: Math.min(NODE_ENEMY_CAP, 1 + Math.floor((zone.danger || 0) * 0.45)),
-            count: 1,
-            leashRange: 84 + Math.random() * 38 + (zone.danger || 0) * 9,
-            respawnCooldown: 20 + Math.random() * 26 - (zone.danger || 0) * 1.1,
-            respawn: 20 + Math.random() * 26 - (zone.danger || 0) * 1.1,
-            eliteChance: Math.min(0.35, 0.03 + zone.danger * 0.035),
-            safeBlocked: !!nearHub || !!nearCitySafe,
-            landmark: null
-          };
-          if (!nearHub && !nearCitySafe) {
-            node.landmark = createSpawnLandmark(node, zone);
-          }
-          spawnNodes.push(node);
-        }
+        const regionNodes = createRegionSpawners(zone);
+        spawnNodes.push(...regionNodes);
       }
     }
 
-    function spawnNodeEnemy(node) {
+    function spawnEnemyGroupFromNode(node) {
+      const zone = worldZones.find((z) => z.name === node.zoneName);
+      if (!zone || node.safeBlocked) return 0;
       const nearby = enemies.filter((e) => e.alive && e.spawnNodeId === node.id).length;
-      if (nearby >= node.localMaxActive) return null;
-      const jitter = new THREE.Vector3((Math.random() - 0.5) * 10, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 10);
-      const spawnPos = node.pos.clone().add(jitter);
-      if (player && spawnPos.distanceTo(player.pos) < LOCAL_SPAWN_RADIUS_MIN + 4) return null;
-      const enemyType = node.allowedFamilies[Math.floor(Math.random() * node.allowedFamilies.length)] || node.species;
-      const enemy = spawnEnemy(spawnPos, enemyType);
-      enemy.zoneName = node.zoneName;
-      enemy.homePos.copy(node.pos);
-      enemy.patrolTarget.copy(node.pos);
-      enemy.spawnNodeId = node.id;
-      enemy.leashRangeOverride = node.leashRange;
-      enemy.chunkKey = chunkKeyAt(node.pos.x, node.pos.z);
-      if (Math.random() < node.eliteChance) enemy.elite = true;
-      return enemy;
+      if (nearby >= node.localMaxActive) return 0;
+      const zoneActive = enemies.filter((e) => e.alive && e.zoneName === zone.name).length;
+      if (zoneActive >= ZONE_ENEMY_CAP + (zone.danger || 0)) return 0;
+      const globalAlive = enemies.filter((e) => e.alive).length;
+      if (globalAlive >= GLOBAL_ENEMY_CAP) return 0;
+      const depthFactor = node.depthFactor ?? getRegionDepthFactor(zone, node.pos);
+      const groupSize = Math.min(node.localMaxActive - nearby, depthFactor < 0.34 ? 1 : depthFactor < 0.68 ? 2 : 3);
+      let spawned = 0;
+      for (let i = 0; i < groupSize; i++) {
+        const jitter = new THREE.Vector3((Math.random() - 0.5) * 14, (Math.random() - 0.5) * 5, (Math.random() - 0.5) * 14);
+        const spawnPos = node.pos.clone().add(jitter);
+        if (player && spawnPos.distanceTo(player.pos) < LOCAL_SPAWN_RADIUS_MIN + 12) continue;
+        const enemyType = node.allowedFamilies[Math.floor(Math.random() * node.allowedFamilies.length)] || zone.enemyFamilies[0];
+        const enemy = createEnemyByArchetype(enemyType, spawnPos, { zone, depthFactor, node });
+        if (!enemy) continue;
+        enemy.zoneName = node.zoneName;
+        enemy.homePos.copy(node.pos);
+        enemy.patrolTarget.copy(node.pos);
+        enemy.spawnNodeId = node.id;
+        enemy.leashRangeOverride = node.leashRange;
+        enemy.chunkKey = chunkKeyAt(node.pos.x, node.pos.z);
+        if (Math.random() < node.eliteChance) enemy.elite = true;
+        spawned++;
+      }
+      return spawned;
     }
 
-    function nearbyZonesForSpawning() {
-      const p = player ? player.pos : new THREE.Vector3();
-      return worldZones.filter(zone => zoneDistanceOutsideSquare(zone, p.x, p.z) < LOCAL_SPAWN_RADIUS_MAX);
+    function updateSpawnerActivation(node, dt) {
+      if (!player || node.safeBlocked) return 0;
+      const zone = worldZones.find((z) => z.name === node.zoneName);
+      if (!zone) return 0;
+      const dist = node.pos.distanceTo(player.pos);
+      node.active = dist <= node.activationRadius;
+      if (!node.active) {
+        node.spawnTimer = Math.min(node.spawnTimer + dt * 0.5, node.spawnCooldown);
+        return 0;
+      }
+      node.spawnTimer -= dt;
+      if (node.spawnTimer > 0) return 0;
+      const spawned = spawnEnemyGroupFromNode(node);
+      node.spawnTimer = node.spawnCooldown + (spawned === 0 ? 1.2 + Math.random() * 1.6 : 0.4 + Math.random() * 1.1);
+      return spawned;
     }
 
-    function chunkKeyAt(x, z) {
-      const cx = Math.floor((x - worldMinX) / CHUNK_SIZE);
-      const cz = Math.floor((z - worldMinZ) / CHUNK_SIZE);
-      return `${cx}:${cz}`;
+    function spawnNodeEnemy(node) {
+      return spawnEnemyGroupFromNode(node) > 0 ? true : null;
     }
 
     function chooseEnemyTypeForZone(zone) {
-      const variants = zone.enemyFamilies || ["giantBee", "hornetGuard", "vineDrake"];
-      const tier = zone.danger || 0;
-      const weighted = [];
-      variants.forEach((type, idx) => {
-        const behavior = ENEMY_SPECIES[type]?.behavior;
-        const isSpear = behavior === "lancer";
-        const baseWeight = idx === 0 ? 44 : idx === 1 ? 27 : idx === 2 ? 19 : 10;
-        let adjusted = isSpear ? Math.max(3, Math.round(baseWeight * (tier <= 1 ? 0.16 : 0.34))) : baseWeight;
-        if (tier <= 1 && (type === "hiveQueen" || type === "voidDragon" || type === "armoredKnight")) adjusted = 0;
-        if (tier >= 4 && (type === "giantBee" || type === "ashWasp")) adjusted = Math.max(4, Math.round(baseWeight * 0.22));
-        for (let i = 0; i < adjusted; i++) weighted.push(type);
-      });
-      return weighted[Math.floor(Math.random() * weighted.length)] || variants[0];
+      const depth = player ? getRegionDepthFactor(zone, player.pos) : 0.3;
+      const list = chooseEnemyCompositionForRegion(zone, depth, "ambient");
+      return list[Math.floor(Math.random() * list.length)] || zone.enemyFamilies?.[0] || "forestSkimmer";
     }
 
     function zoneTier(zoneName) {
@@ -2145,40 +2262,24 @@
       return zone ? (zone.danger ?? 0) : 0;
     }
 
-    function spawnFromNearbyNodes() {
+    function spawnFromNearbyNodes(dt = 0.5) {
       if (!player) return false;
       const zone = getZoneAt(player.pos.x, player.pos.z);
       if (!zone) return false;
-      const progressionScale = 1 + (progress.level - 1) * 0.06;
-      const localNodes = spawnNodes.filter((node) => node.zoneName === zone.name && !node.safeBlocked);
-      const spawnable = localNodes.filter((node) => {
-        if (getHubAt(node.pos.x, node.pos.z, HUB_SAFE_BUFFER) || getCitySafeZoneAt(node.pos.x, node.pos.z, 12)) return false;
-        if (node.pos.distanceTo(player.pos) < LOCAL_SPAWN_RADIUS_MIN + 8) return false;
-        if (zoneDistanceOutsideSquare(zone, node.pos.x, node.pos.z) > 1) return false;
-        const toNode = node.pos.clone().sub(player.pos).setY(0);
-        const forward = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
-        const offscreenBias = forward.dot(toNode.normalize()) < 0.72;
-        if (!offscreenBias && Math.random() < 0.65) return false;
-        const active = enemies.filter((e) => e.alive && e.spawnNodeId === node.id).length;
-        return active < Math.max(1, Math.round(node.localMaxActive * progressionScale));
-      });
-      if (!spawnable.length) return false;
-      const node = spawnable[Math.floor(Math.random() * spawnable.length)];
-      const enemy = spawnNodeEnemy(node);
-      if (!enemy) return false;
-      const farFromHub = safeHubs.reduce((m, hub) => Math.min(m, hub.pos.distanceTo(node.pos)), Infinity);
-      if (farFromHub > 140 && Math.random() < 0.2 + zone.danger * 0.025) enemy.elite = true;
-      return true;
+      const activeNodes = spawnNodes.filter((node) => node.zoneName === zone.name);
+      let any = false;
+      for (const node of activeNodes) {
+        const spawned = updateSpawnerActivation(node, dt);
+        if (spawned > 0) any = true;
+      }
+      return any;
     }
 
-    function spawnRegionalEnemy() {
+    function spawnRegionalEnemy(dt = 0.5) {
       if (!player) return false;
-      if (Math.random() > AMBIENT_SPAWN_CHANCE) return false;
-      const startHub = safeHubs[0];
-      if (startHub && player.pos.distanceTo(startHub.pos) < 78) return false;
       const aliveCount = enemies.filter(e => e.alive).length;
       if (aliveCount >= GLOBAL_ENEMY_CAP) return false;
-      return spawnFromNearbyNodes();
+      return spawnFromNearbyNodes(dt);
     }
 
     function showCenterMessage(text, duration = 1.5, subtitle = "") {
@@ -3237,6 +3338,66 @@
       updateActorTransform(player, dt);
     }
 
+    function getPreferredAttackWindow(enemy, distToTarget, alignment) {
+      const melee = enemy.speciesData.preferDistance + (enemy.archetype === "Duelist" ? 1.5 : 2.8);
+      const alignNeeded = enemy.archetype === "Duelist" ? 0.86 : enemy.archetype === "Charger" ? 0.74 : 0.58;
+      return { inRange: distToTarget < melee, aligned: alignment >= alignNeeded, alignNeeded };
+    }
+
+    function updateEnemyTelegraph(enemy, dt, attackStyle = "melee") {
+      enemy.telegraph = Math.max(0, enemy.telegraph - dt);
+      enemy.specialWindup = Math.max(0, enemy.specialWindup - dt);
+      if (!enemy.telegraphMesh) return;
+      enemy.telegraphMesh.position.copy(enemy.pos).setY(enemy.pos.y - enemy.radius + 0.1);
+      enemy.telegraphMesh.lookAt(camera.position);
+      const baseOpacity = attackStyle === "line" ? 0.3 : attackStyle === "cone" ? 0.26 : 0.2;
+      enemy.telegraphMesh.material.opacity = baseOpacity + (enemy.specialWindup > 0 ? 0.25 : enemy.telegraph > 0 ? 0.15 : 0);
+      if (attackStyle === "line" && enemy.specialWindup > 0) enemy.telegraphMesh.scale.set(1.7, 0.45, 1.7);
+      else enemy.telegraphMesh.scale.set(1, 1, 1);
+    }
+
+    function executeEnemyAttack(enemy, combatTarget, typeStats, forwardEnemy) {
+      const attackDamage = typeStats.damage * (enemy.elite ? 1.22 : 1);
+      const pushDir = combatTarget.pos.clone().sub(enemy.pos).normalize().multiplyScalar(typeStats.knockback);
+      if (enemy.archetype === "Charger") enemy.vel.add(pushDir.clone().multiplyScalar(11));
+      const behavior = typeStats.behavior;
+      if (behavior === "lancer") enemy.thrustTimer = 0.18;
+      if (combatTarget === player && behavior === "lancer") {
+        const sameLevel = Math.abs(player.pos.y - enemy.pos.y) < 2.4;
+        const spearTip = enemy.pos.clone().add(forwardEnemy.clone().multiplyScalar(enemy.radius + 3.3)).add(new THREE.Vector3(0, 1.3, 0));
+        const tipHit = player.pos.distanceTo(spearTip) < player.radius + 1.2;
+        if (sameLevel && tipHit) {
+          applyPlayerDamage(attackDamage * 0.95, `${enemy.speciesData.label} spear thrust`);
+          player.vel.add(pushDir);
+          player.vel.y += 0.8;
+        } else {
+          const deflectColor = sameLevel ? 0x9dcfff : 0x8bffc1;
+          spawnBurst(spearTip, 9, deflectColor);
+          enemy.vel.add(pushDir.clone().multiplyScalar(-0.25));
+          showCenterMessage("SPEAR DEFLECTED", 0.26);
+        }
+      } else if (combatTarget === player) {
+        applyPlayerDamage(attackDamage * 0.86, enemy.speciesData.label);
+        player.vel.add(pushDir);
+        player.vel.y += 1.2 + typeStats.knockback * 0.2;
+      } else {
+        combatTarget.health -= attackDamage * 0.7;
+        combatTarget.vel.add(pushDir);
+      }
+      if (["beam", "sniper", "orb", "ranged", "breath"].includes(typeStats.behavior)) {
+        enemyProjectiles.push({
+          pos: enemy.pos.clone().add(new THREE.Vector3(0, 1.4, 0)),
+          vel: combatTarget.pos.clone().sub(enemy.pos).normalize().multiplyScalar(typeStats.behavior === "beam" ? 28 : 24),
+          life: 2.4,
+          damage: attackDamage * 0.75,
+          mesh: new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff8b8b }))
+        });
+        const last = enemyProjectiles[enemyProjectiles.length - 1];
+        last.mesh.position.copy(last.pos);
+        scene.add(last.mesh);
+      }
+    }
+
     function updateEnemyAI(enemy, dt) {
       if (!enemy.alive) return;
       if (!player) return;
@@ -3313,21 +3474,15 @@
 
       enemy.aiTimer -= dt;
       enemy.attackTimer = Math.max(0, enemy.attackTimer - dt);
-      enemy.telegraph = Math.max(0, enemy.telegraph - dt);
       enemy.thrustTimer = Math.max(0, enemy.thrustTimer - dt);
       enemy.specialCooldown = Math.max(0, enemy.specialCooldown - dt);
-      enemy.specialWindup = Math.max(0, enemy.specialWindup - dt);
       enemy.hitReact = Math.max(0, enemy.hitReact - dt);
       enemy.poisonTimer = Math.max(0, enemy.poisonTimer - dt);
       enemy.freezeTimer = Math.max(0, enemy.freezeTimer - dt);
       enemy.stunTimer = Math.max(0, enemy.stunTimer - dt);
       if (enemy.poisonTimer > 0) enemy.health -= (enemy.elite ? 2.8 : 3.7) * dt;
       if (enemy.health <= 0) { killEnemy(enemy); return; }
-      if (enemy.telegraphMesh) {
-        enemy.telegraphMesh.position.copy(enemy.pos).setY(enemy.pos.y - enemy.radius + 0.1);
-        enemy.telegraphMesh.lookAt(camera.position);
-        enemy.telegraphMesh.material.opacity = 0.18 + (enemy.specialWindup > 0 ? 0.28 : enemy.telegraph > 0 ? 0.22 : 0);
-      }
+      updateEnemyTelegraph(enemy, dt, ["beam", "sniper", "orb", "ranged"].includes(typeStats.behavior) ? "line" : typeStats.behavior === "breath" ? "cone" : "melee");
       if (enemy.stunTimer > 0) {
         enemy.vel.multiplyScalar(0.86);
         updateActorTransform(enemy, dt);
@@ -3438,8 +3593,8 @@
       const forwardEnemy = new THREE.Vector3(Math.sin(enemy.yaw), 0, Math.cos(enemy.yaw));
       const toCombat = combatTarget.pos.clone().sub(enemy.pos).setY(0).normalize();
       const alignment = THREE.MathUtils.clamp(forwardEnemy.dot(toCombat), -1, 1);
-      const alignNeeded = enemy.archetype === "Duelist" ? 0.86 : 0.58;
-      if (enemy.state === "aggro" && distToPlayer < typeStats.preferDistance + 2 && enemy.attackTimer <= 0 && enemy.telegraph <= 0 && alignment >= alignNeeded) {
+      const attackWindow = getPreferredAttackWindow(enemy, distToPlayer, alignment);
+      if (enemy.state === "aggro" && attackWindow.inRange && enemy.attackTimer <= 0 && enemy.telegraph <= 0 && attackWindow.aligned) {
         enemy.telegraph = enemy.archetype === "Charger" ? 0.75 : enemy.archetype === "Crusher" ? 0.55 : 0.45;
       }
       const deepTier = zoneTier(enemy.zoneName);
@@ -3480,59 +3635,21 @@
         }
         enemy.specialWindup = 0;
       }
-      if (enemy.state === "aggro" && distToPlayer < typeStats.preferDistance + 2 && enemy.attackTimer <= 0 && enemy.telegraph > 0 && enemy.telegraph < 0.12) {
+      if (enemy.state === "aggro" && attackWindow.inRange && enemy.attackTimer <= 0 && enemy.telegraph > 0 && enemy.telegraph < 0.12) {
         enemy.attackTimer = typeStats.attackCooldown;
         enemy.telegraph = 0;
-        const attackDamage = typeStats.damage * (enemy.elite ? 1.22 : 1);
-        const pushDir = combatTarget.pos.clone().sub(enemy.pos).normalize().multiplyScalar(typeStats.knockback);
-        if (enemy.archetype === "Charger") enemy.vel.add(pushDir.clone().multiplyScalar(11));
-        const behavior = typeStats.behavior;
-        if (behavior === "lancer") enemy.thrustTimer = 0.18;
-        if (combatTarget === player && behavior === "lancer") {
-          const sameLevel = Math.abs(player.pos.y - enemy.pos.y) < 2.4;
-          const spearTip = enemy.pos.clone().add(forwardEnemy.clone().multiplyScalar(enemy.radius + 3.3)).add(new THREE.Vector3(0, 1.3, 0));
-          const tipHit = player.pos.distanceTo(spearTip) < player.radius + 1.2;
-          if (sameLevel && tipHit) {
-            applyPlayerDamage(attackDamage * 0.95, `${enemy.speciesData.label} spear thrust`);
-            player.vel.add(pushDir);
-            player.vel.y += 0.8;
-          } else {
-            const deflectColor = sameLevel ? 0x9dcfff : 0x8bffc1;
-            spawnBurst(spearTip, 9, deflectColor);
-            enemy.vel.add(pushDir.clone().multiplyScalar(-0.25));
-            showCenterMessage("SPEAR DEFLECTED", 0.26);
-          }
-        } else if (combatTarget === player) {
-          applyPlayerDamage(attackDamage * 0.86, enemy.speciesData.label);
-          player.vel.add(pushDir);
-          player.vel.y += 1.2 + typeStats.knockback * 0.2;
-        } else {
-          combatTarget.health -= attackDamage * 0.7;
-          combatTarget.vel.add(pushDir);
-        }
+        executeEnemyAttack(enemy, combatTarget, typeStats, forwardEnemy);
         if (enemy.archetype === "Crusher") {
           for (const other of [player, ...allySummons]) {
             if (!other?.alive || other === combatTarget) continue;
             if (other.pos.distanceTo(enemy.pos) > 7.5) continue;
             const aoeDir = other.pos.clone().sub(enemy.pos).normalize();
-            if (other === player) applyPlayerDamage(attackDamage * 0.45, `${enemy.speciesData.label} shockwave`);
+            if (other === player) applyPlayerDamage(typeStats.damage * 0.45, `${enemy.speciesData.label} shockwave`);
             other.vel.add(aoeDir.multiplyScalar(typeStats.knockback * 0.75));
           }
           spawnBurst(enemy.pos.clone(), 14, 0xffb089);
         }
         spawnBurst(enemy.pos.clone().lerp(player.pos, 0.55), 7, 0xff9a66);
-        if (["beam", "sniper", "orb", "ranged", "breath"].includes(typeStats.behavior)) {
-          enemyProjectiles.push({
-            pos: enemy.pos.clone().add(new THREE.Vector3(0, 1.4, 0)),
-            vel: combatTarget.pos.clone().sub(enemy.pos).normalize().multiplyScalar(24),
-            life: 2.4,
-            damage: attackDamage * 0.75,
-            mesh: new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff8b8b }))
-          });
-          const last = enemyProjectiles[enemyProjectiles.length - 1];
-          last.mesh.position.copy(last.pos);
-          scene.add(last.mesh);
-        }
       }
     }
 
@@ -3748,6 +3865,15 @@
 
     function updateCamera(dt) {
       if (!player) return;
+
+      const zone = getZoneAt(player.pos.x, player.pos.z);
+      if (zone) {
+        const targetFog = new THREE.Color(zone.fogTint || 0x1a1d26);
+        scene.fog.color.lerp(targetFog, 1 - Math.pow(0.001, dt));
+        const danger = zone.danger || 0;
+        scene.fog.near = THREE.MathUtils.lerp(scene.fog.near, 26 + danger * 2.4, 1 - Math.pow(0.001, dt));
+        scene.fog.far = THREE.MathUtils.lerp(scene.fog.far, 176 + danger * 10, 1 - Math.pow(0.001, dt));
+      }
 
       const yaw = player.yaw;
       const camBack = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
@@ -4176,8 +4302,8 @@
         checkCombat();
         enemySpawnTimer -= simDt;
         if (enemySpawnTimer <= 0) {
-          const didSpawn = spawnRegionalEnemy();
-          enemySpawnTimer = didSpawn ? (6.8 + Math.random() * 4.8) : (3.4 + Math.random() * 3.6);
+          const didSpawn = spawnRegionalEnemy(simDt);
+          enemySpawnTimer = didSpawn ? (1.2 + Math.random() * 1.4) : (0.55 + Math.random() * 0.9);
         }
         for (let i = nodeRespawns.length - 1; i >= 0; i--) {
           nodeRespawns[i].timer -= simDt;
