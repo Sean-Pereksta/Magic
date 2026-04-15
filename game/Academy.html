@@ -119,7 +119,7 @@
     <div style="height:8px;border:1px solid rgba(255,255,255,.28);border-radius:999px;overflow:hidden;background:rgba(255,255,255,.08);margin-top:4px">
       <div id="xpBar" style="height:100%;width:0;background:linear-gradient(90deg,#ffe082,#f59e0b)"></div>
     </div>
-    <div class="line">Zone: <span id="wave">Verdant Cliffs</span></div>
+    <div class="line">Zone: <span id="wave">Great Forest Canopy</span></div>
     <div class="line">Checkpoint: <span id="checkpoint">Green Cliff Outpost</span></div>
     <div class="line">Enemies: <span id="enemies">0</span></div>
   </div>
@@ -216,6 +216,9 @@
     let respawnTimer = 0;
     let centerMsgTimer = 0;
     let hitstopTimer = 0;
+    let regionBannerCooldown = 0;
+    let currentRegionName = "";
+    let regionEnterTime = 0;
     let questArrow = null;
     let lastTime = performance.now();
     let lastRespawnPoint = new THREE.Vector3(-8, 14, -4);
@@ -317,15 +320,15 @@
     const tmpVec = new THREE.Vector3();
     const upVec = new THREE.Vector3(0, 1, 0);
     const CHUNK_SIZE = 54;
-    const LOCAL_SPAWN_RADIUS_MIN = 28;
-    const LOCAL_SPAWN_RADIUS_MAX = 100;
-    const ENEMY_DESPAWN_RANGE = 175;
-    const GLOBAL_ENEMY_CAP = 22;
+    const LOCAL_SPAWN_RADIUS_MIN = 46;
+    const LOCAL_SPAWN_RADIUS_MAX = 158;
+    const ENEMY_DESPAWN_RANGE = 210;
+    const GLOBAL_ENEMY_CAP = 26;
     const CHUNK_ENEMY_CAP = 4;
-    const ZONE_ENEMY_CAP = 9;
+    const ZONE_ENEMY_CAP = 8;
     const NODE_ENEMY_CAP = 3;
-    const HUB_SAFE_BUFFER = 5;
-    const AMBIENT_SPAWN_CHANCE = 0.07;
+    const HUB_SAFE_BUFFER = 14;
+    const AMBIENT_SPAWN_CHANCE = 0.048;
     const ARCHETYPE_BY_BEHAVIOR = {
       lancer: "Duelist",
       weaver: "Weaver",
@@ -399,7 +402,21 @@
       { id: "war-lance-colossus", name: "Colossus War Lance", slot: "weapon", rarity: "epic", classReq: "warrior", stats: { spearDamage: 18, spearReach: 0.5 }, desc: "Warrior-only lance built for impact dives.", sell: 64 },
       { id: "spirit-relic", name: "Spiritcaller Relic", slot: "trinket", rarity: "epic", classReq: "summoner", stats: { summonDamage: 0.2, summonCount: 1 }, desc: "Summoner-only relic that empowers allies.", sell: 58 },
       { id: "storm-bowlance", name: "Storm Bow-Lance", slot: "weapon", rarity: "epic", classReq: "ranger", stats: { spearDamage: 14, critChance: 0.09 }, effect: "projectile", desc: "Ranger hybrid weapon tuned for lateral shots.", sell: 62 },
-      { id: "rune-focus", name: "Rune Focus", slot: "trinket", rarity: "legendary", classReq: "sorcerer", stats: { chainChance: 0.2, regenSpeed: 0.9 }, desc: "Sorcerer focus that stabilizes spellcasting.", sell: 75 }
+      { id: "rune-focus", name: "Rune Focus", slot: "trinket", rarity: "legendary", classReq: "sorcerer", stats: { chainChance: 0.2, regenSpeed: 0.9 }, desc: "Sorcerer focus that stabilizes spellcasting.", sell: 75 },
+      { id: "short-joust-lance", name: "Short Joust Lance", slot: "weapon", rarity: "common", region: "Great Forest Canopy", stats: { spearDamage: 8, spearCooldown: 0.05 }, desc: "Quick handling lance tuned for bounce timing.", sell: 20 },
+      { id: "impact-war-lance", name: "Impact War Lance", slot: "weapon", rarity: "rare", region: "Ruin-Crown Expanse", stats: { spearDamage: 15, diveImpact: 4 }, desc: "Heavy lance that rewards top-down hits.", sell: 44 },
+      { id: "anti-dragon-pike", name: "Anti-Dragon Pike", slot: "weapon", rarity: "epic", region: "Dragonspine Frontier", stats: { spearDamage: 18, antiArmor: 0.25 }, desc: "Piercing pike used by dragon hunters.", sell: 63 },
+      { id: "chain-storm-lance", name: "Chain Storm Lance", slot: "weapon", rarity: "epic", region: "Tempest Shelf", stats: { spearDamage: 17 }, effect: "chainLightning", desc: "Conductor lance chaining sky-bolts.", sell: 65 },
+      { id: "barbed-ritual-spear", name: "Barbed Ritual Spear", slot: "weapon", rarity: "legendary", region: "Outer Wyrm Wastes", stats: { spearDamage: 22, critChance: 0.1 }, effect: "poison", desc: "Relic spear recovered from deep ruins.", sell: 92 },
+      { id: "forest-scout-leathers", name: "Forest Scout Leathers", slot: "armor", rarity: "uncommon", stats: { maxHealth: 18, airControl: 0.35 }, desc: "Light woodland harness for agile jousting.", sell: 26 },
+      { id: "city-guard-plate", name: "City Guard Plate", slot: "armor", rarity: "rare", stats: { maxHealth: 30, resistance: 0.06 }, desc: "Urban military armor with balanced protection.", sell: 42 },
+      { id: "drake-scale-armor", name: "Drake-scale Armor", slot: "armor", rarity: "epic", stats: { maxHealth: 42, resistance: 0.1 }, desc: "Scaled anti-drake suit with heat shielding.", sell: 61 },
+      { id: "void-woven-robes", name: "Void-woven Robes", slot: "armor", rarity: "legendary", stats: { maxHealth: 38, regenSpeed: 1.4, regenDelay: -0.25 }, desc: "Arcane robes for elite late-game traversals.", sell: 86 },
+      { id: "stomp-driver-glyph", name: "Stomp Driver Glyph", slot: "trinket", rarity: "rare", stats: { diveImpact: 3.5 }, desc: "Enhances stomp finishers.", sell: 33 },
+      { id: "bounce-feather-charm", name: "Bounce Feather Charm", slot: "trinket", rarity: "rare", stats: { bounceRecovery: 0.2 }, desc: "Improves rebound control on close clashes.", sell: 35 },
+      { id: "deflection-rune", name: "Deflection Rune", slot: "trinket", rarity: "epic", stats: { resistance: 0.05, antiArmor: 0.12 }, desc: "Charm that softens spear-line pressure.", sell: 55 },
+      { id: "lava-ward-core", name: "Lava Ward Core", slot: "trinket", rarity: "epic", stats: { resistance: 0.08 }, desc: "Volcanic warding core for lava basins.", sell: 57 },
+      { id: "treasure-sense-relic", name: "Treasure Sense Relic", slot: "trinket", rarity: "legendary", stats: { pickupRadius: 1.8, goldGain: 0.12 }, desc: "Whispers when hidden caches are nearby.", sell: 79 }
     ];
 
     const MOUNT_DB = [
@@ -561,7 +578,7 @@
       progress.inventory = starter.map((id) => ITEM_DB.find((i) => i.id === id)).filter(Boolean);
       progress.quests = [
         { id: "q-bee", name: "Purge the Giant Bees", target: "giantBee", need: 8, count: 0, state: "active", reward: { xp: 90, gold: 40, item: "stormcloak-harness" }, giverHub: "Green Cliff Outpost" },
-        { id: "q-serpent", name: "Magma Serpent Hunt", target: "magmaSerpent", need: 4, count: 0, state: "active", reward: { xp: 120, gold: 52, item: "ember-fang" }, giverHub: "Volcanic Watch Station" },
+        { id: "q-serpent", name: "Magma Serpent Hunt", target: "magmaSerpent", need: 4, count: 0, state: "active", reward: { xp: 120, gold: 52, item: "ember-fang" }, giverHub: "Dragon Hunter's Rest" },
         { id: "q-drake", name: "Storm Drake Cull", target: "stormDrake", need: 6, count: 0, state: "active", reward: { xp: 160, gold: 75, item: "stormglass-lance" }, giverHub: "Storm Roost Sanctuary" }
       ];
     }
@@ -578,11 +595,18 @@
       scene.add(arenaGroup);
 
       worldZones = [
-        { name: "Verdant Cliffs", center: new THREE.Vector3(-84, 0, -20), radius: 118, baseY: -6, hazardY: -24, color: 0x4f6b41, accent: 0x8dbf66, haze: 0x6e9f86, hazardType: "water", enemyFamilies: ["giantBee", "hornetGuard", "hiveQueen", "vineDrake"] },
-        { name: "Ember Basin", center: new THREE.Vector3(0, 0, 0), radius: 124, baseY: -8, hazardY: -20, color: 0x5c392a, accent: 0xcc6b32, haze: 0x8f4f31, hazardType: "lava", enemyFamilies: ["fireDrake", "magmaSerpent", "bombHarasser", "ashWasp"] },
-        { name: "Ruined Spires", center: new THREE.Vector3(90, 0, -22), radius: 116, baseY: -7, hazardY: -26, color: 0x5a5664, accent: 0x99a1b4, haze: 0x70758a, hazardType: "void", enemyFamilies: ["ironWyvern", "spearSentinel", "armoredKnight", "boltRay"] },
-        { name: "Storm Peaks", center: new THREE.Vector3(54, 0, 96), radius: 122, baseY: -5, hazardY: -23, color: 0x586e88, accent: 0xb2d6ff, haze: 0x6f8fb4, hazardType: "tempest", enemyFamilies: ["thunderSerpent", "stormDrake", "stormSpirit", "skyEel"] },
-        { name: "Hollow Depths", center: new THREE.Vector3(-78, 0, 96), radius: 118, baseY: -11, hazardY: -29, color: 0x3a3144, accent: 0x6e5b8f, haze: 0x4a3f5f, hazardType: "abyss", enemyFamilies: ["voidDragon", "voidManta", "shadeSerpent", "nightBee"] }
+        { name: "Great Forest Canopy", subtitle: "Civilized Skies", center: new THREE.Vector3(-170, 0, -70), radius: 126, baseY: -4, hazardY: -32, color: 0x43673f, accent: 0x9cd77a, haze: 0x7ca884, hazardType: "safe", enemyFamilies: ["giantBee", "vineDrake", "ashWasp", "hornetGuard"], danger: 0, terrainStyle: "forest", travelRhythm: "perch-chain" },
+        { name: "Mossfang Wilds", subtitle: "Frontier Territory", center: new THREE.Vector3(-48, 0, -98), radius: 132, baseY: -5, hazardY: -33, color: 0x4f6340, accent: 0xb7d88d, haze: 0x85a77a, hazardType: "safe", enemyFamilies: ["giantBee", "hornetGuard", "vineDrake", "hiveQueen"], danger: 1, terrainStyle: "forest", travelRhythm: "canopy" },
+        { name: "Sunstone Highlands", subtitle: "Frontier Territory", center: new THREE.Vector3(86, 0, -108), radius: 124, baseY: -6, hazardY: -34, color: 0x74664b, accent: 0xe7c074, haze: 0xb49361, hazardType: "safe", enemyFamilies: ["hornetGuard", "ironWyvern", "skyEel", "armoredKnight"], danger: 1, terrainStyle: "highland", travelRhythm: "cliff-hop" },
+        { name: "Seraphic City-State Ring", subtitle: "City of Spires", center: new THREE.Vector3(-12, 0, 14), radius: 134, baseY: -2, hazardY: -36, color: 0x5d6072, accent: 0xcfd6ea, haze: 0x8fa3c6, hazardType: "safe", enemyFamilies: ["ashWasp", "vineDrake", "skyEel", "hornetGuard"], danger: 0, terrainStyle: "city", travelRhythm: "rooftop" },
+        { name: "Ruin-Crown Expanse", subtitle: "Danger Rising", center: new THREE.Vector3(128, 0, 8), radius: 128, baseY: -7, hazardY: -34, color: 0x615a6e, accent: 0x9faacc, haze: 0x7f879c, hazardType: "safe", enemyFamilies: ["ironWyvern", "boltRay", "armoredKnight", "spearSentinel"], danger: 2, terrainStyle: "ruin", travelRhythm: "war-platform" },
+        { name: "Tempest Shelf", subtitle: "Danger Rising", center: new THREE.Vector3(84, 0, 120), radius: 138, baseY: -5, hazardY: -35, color: 0x4e6f8d, accent: 0x9fd3ff, haze: 0x79a1cd, hazardType: "tempest", enemyFamilies: ["thunderSerpent", "skyEel", "stormSpirit", "stormDrake"], danger: 3, terrainStyle: "storm", travelRhythm: "air-current" },
+        { name: "Sky Glacier Reach", subtitle: "Danger Rising", center: new THREE.Vector3(-42, 0, 138), radius: 126, baseY: -8, hazardY: -36, color: 0x6a7c90, accent: 0xd8f1ff, haze: 0x9bb6cc, hazardType: "safe", enemyFamilies: ["stormSpirit", "skyEel", "thunderSerpent", "voidManta"], danger: 3, terrainStyle: "glacier", travelRhythm: "thin-perches" },
+        { name: "Hollow Night Marsh", subtitle: "Monster Territory", center: new THREE.Vector3(-164, 0, 86), radius: 136, baseY: -10, hazardY: -37, color: 0x3f3448, accent: 0x7f6a92, haze: 0x5a4668, hazardType: "abyss", enemyFamilies: ["shadeSerpent", "nightBee", "voidManta", "voidDragon"], danger: 4, terrainStyle: "marsh", travelRhythm: "gloom-rift" },
+        { name: "Dragonspine Frontier", subtitle: "Monster Territory", center: new THREE.Vector3(196, 0, 110), radius: 140, baseY: -9, hazardY: -36, color: 0x5f4d49, accent: 0xe0b8a4, haze: 0x9e7060, hazardType: "safe", enemyFamilies: ["ironWyvern", "fireDrake", "stormDrake", "voidDragon"], danger: 4, terrainStyle: "dragon", travelRhythm: "long-dive" },
+        { name: "Ashen Lava Basin", subtitle: "Dragon Territory", center: new THREE.Vector3(178, 0, -78), radius: 144, baseY: -11, hazardY: -25, color: 0x5c392a, accent: 0xdd7c40, haze: 0x9a5030, hazardType: "lava", enemyFamilies: ["ashWasp", "bombHarasser", "fireDrake", "magmaSerpent"], danger: 5, terrainStyle: "lava", travelRhythm: "blast-gap" },
+        { name: "Obsidian Rift", subtitle: "Dragon Territory", center: new THREE.Vector3(36, 0, -202), radius: 144, baseY: -12, hazardY: -24, color: 0x35313f, accent: 0x6f6a80, haze: 0x524a63, hazardType: "lava", enemyFamilies: ["magmaSerpent", "voidManta", "stormDrake", "voidDragon"], danger: 5, terrainStyle: "rift", travelRhythm: "ravine" },
+        { name: "Outer Wyrm Wastes", subtitle: "Dragon Territory", center: new THREE.Vector3(-130, 0, -212), radius: 150, baseY: -12, hazardY: -24, color: 0x41333a, accent: 0xb37d89, haze: 0x6c4d59, hazardType: "lava", enemyFamilies: ["voidDragon", "fireDrake", "stormDrake", "armoredKnight"], danger: 6, terrainStyle: "wyrm", travelRhythm: "gauntlet" }
       ];
 
       worldMinX = Math.min(...worldZones.map((z) => z.center.x - z.radius - 16));
@@ -649,13 +673,11 @@
         }
       }
 
-      const links = [
-        [worldZones[0], worldZones[1]],
-        [worldZones[1], worldZones[2]],
-        [worldZones[1], worldZones[3]],
-        [worldZones[3], worldZones[4]],
-        [worldZones[0], worldZones[4]]
-      ];
+      const links = [];
+      for (let i = 0; i < worldZones.length - 1; i++) {
+        links.push([worldZones[i], worldZones[i + 1]]);
+      }
+      links.push([worldZones[0], worldZones[3]], [worldZones[3], worldZones[5]], [worldZones[5], worldZones[8]], [worldZones[2], worldZones[9]], [worldZones[1], worldZones[7]]);
       for (const [a, b] of links) {
         const dir = b.center.clone().sub(a.center);
         const len = dir.length();
@@ -696,6 +718,7 @@
       for (const zone of worldZones) {
         const hazardLook = {
           lava: { color: 0xff4a14, emissive: 0xff5d12, glow: 0xff7a1f },
+          safe: { color: 0x30444f, emissive: 0x2c3e4a, glow: 0x80b8d3 },
           water: { color: 0x1f6ea9, emissive: 0x2f8ec0, glow: 0x87d2ff },
           void: { color: 0x1e1c2a, emissive: 0x332f4f, glow: 0x6f7cab },
           tempest: { color: 0x345a77, emissive: 0x547aa0, glow: 0xb8d9ff },
@@ -854,6 +877,32 @@
           ring.receiveShadow = true;
           scene.add(ring);
         }
+        if (zone.terrainStyle === "forest") {
+          for (let i = 0; i < 18; i++) {
+            const limb = new THREE.Mesh(
+              new THREE.CylinderGeometry(0.45 + Math.random() * 0.45, 0.7 + Math.random() * 0.65, 8 + Math.random() * 12, 7),
+              new THREE.MeshStandardMaterial({ color: 0x5a3f2d, roughness: 0.95 })
+            );
+            const a = Math.random() * Math.PI * 2;
+            const r = zone.radius * (0.18 + Math.random() * 0.58);
+            limb.position.set(zone.center.x + Math.cos(a) * r, zone.baseY + 10 + Math.random() * 24, zone.center.z + Math.sin(a) * r);
+            limb.rotation.z = (Math.random() - 0.5) * 1.3;
+            limb.castShadow = true;
+            scene.add(limb);
+          }
+        } else if (zone.terrainStyle === "city" || zone.terrainStyle === "ruin") {
+          for (let i = 0; i < 20; i++) {
+            const tower = new THREE.Mesh(
+              new THREE.BoxGeometry(3.2 + Math.random() * 3.5, 10 + Math.random() * 22, 3.2 + Math.random() * 3.5),
+              new THREE.MeshStandardMaterial({ color: zone.terrainStyle === "city" ? 0x8c95ad : 0x6b6774, roughness: 0.82, metalness: 0.12 })
+            );
+            const a = Math.random() * Math.PI * 2;
+            const r = zone.radius * (0.16 + Math.random() * 0.66);
+            tower.position.set(zone.center.x + Math.cos(a) * r, zone.baseY + 4 + tower.geometry.parameters.height * 0.5, zone.center.z + Math.sin(a) * r);
+            tower.castShadow = true;
+            scene.add(tower);
+          }
+        }
       }
     }
 
@@ -862,9 +911,11 @@
       checkpoints = [];
 
       const hubDefs = [
-        { name: "Green Cliff Outpost", zone: "Verdant Cliffs", pos: new THREE.Vector3(-92, 12, -16), color: 0x66b26e, glow: 0xb9f5ae, safeRadius: 16, disengageRadius: 27, style: "cliff" },
-        { name: "Volcanic Watch Station", zone: "Ember Basin", pos: new THREE.Vector3(20, 14, -8), color: 0xd5753b, glow: 0xffc274, safeRadius: 15, disengageRadius: 25, style: "volcanic" },
-        { name: "Storm Roost Sanctuary", zone: "Storm Peaks", pos: new THREE.Vector3(42, 36, 108), color: 0x7ca8db, glow: 0xd6ecff, safeRadius: 16, disengageRadius: 28, style: "storm" }
+        { name: "Green Cliff Outpost", zone: "Great Forest Canopy", pos: new THREE.Vector3(-178, 14, -76), color: 0x66b26e, glow: 0xb9f5ae, safeRadius: 25, disengageRadius: 39, style: "cliff", specialty: "mounts + supplies" },
+        { name: "Seraph Spire Bazaar", zone: "Seraphic City-State Ring", pos: new THREE.Vector3(-4, 20, 10), color: 0x8ea3ca, glow: 0xe4ebff, safeRadius: 28, disengageRadius: 43, style: "city", specialty: "trinkets + relics" },
+        { name: "Aegis Bastion", zone: "Ruin-Crown Expanse", pos: new THREE.Vector3(122, 21, 6), color: 0x8b93a5, glow: 0xcfd7f5, safeRadius: 26, disengageRadius: 41, style: "military", specialty: "armor + war lances" },
+        { name: "Storm Roost Sanctuary", zone: "Tempest Shelf", pos: new THREE.Vector3(84, 38, 124), color: 0x7ca8db, glow: 0xd6ecff, safeRadius: 24, disengageRadius: 39, style: "storm", specialty: "flight gear + mounts" },
+        { name: "Dragon Hunter's Rest", zone: "Dragonspine Frontier", pos: new THREE.Vector3(194, 24, 104), color: 0xc58563, glow: 0xffd4b8, safeRadius: 24, disengageRadius: 40, style: "frontier", specialty: "anti-dragon kits" }
       ];
 
       for (const def of hubDefs) {
@@ -890,7 +941,7 @@
         deckTop.receiveShadow = true;
         hubRoot.add(deckTop);
 
-        for (let ringLayer = 0; ringLayer < 3; ringLayer++) {
+        for (let ringLayer = 0; ringLayer < 5; ringLayer++) {
           const cityRing = new THREE.Mesh(
             new THREE.TorusGeometry(8.8 + ringLayer * 3.5, 0.38, 10, 26),
             new THREE.MeshStandardMaterial({ color: def.color, roughness: 0.8, metalness: 0.15 })
@@ -900,13 +951,13 @@
           hubRoot.add(cityRing);
         }
 
-        for (let i = 0; i < 8; i++) {
+        for (let i = 0; i < 16; i++) {
           const tower = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.7, 1.1, 5 + Math.random() * 7, 8),
+            new THREE.CylinderGeometry(0.8, 1.35, 9 + Math.random() * 18, 8),
             new THREE.MeshStandardMaterial({ color: def.style === "volcanic" ? 0x3f3230 : 0x6a727c, roughness: 0.86, metalness: 0.18 })
           );
           const a = (i / 8) * Math.PI * 2;
-          tower.position.set(Math.cos(a) * 11.5, 2 + Math.random() * 4, Math.sin(a) * 11.5);
+          tower.position.set(Math.cos(a) * (13.5 + Math.random() * 5), 2 + Math.random() * 8, Math.sin(a) * (13.5 + Math.random() * 5));
           tower.castShadow = true;
           tower.receiveShadow = true;
           hubRoot.add(tower);
@@ -948,19 +999,19 @@
         hubRoot.add(npc);
         hubRoot.userData.leader = { name: `${def.name} Leader`, questHub: def.name };
 
-        const merchantTypes = ["weapon", "armor", "trinket", "life"];
+        const merchantTypes = ["weapon", "armor", "trinket", "mount", "life", "heal", "quest"];
         merchantTypes.forEach((type, idx) => {
           const plat = new THREE.Mesh(
             new THREE.CylinderGeometry(2.1, 2.5, 1.2, 10),
             new THREE.MeshStandardMaterial({ color: 0x3c4454, emissive: def.glow, emissiveIntensity: 0.16, roughness: 0.78, metalness: 0.2 })
           );
           const a = (idx / merchantTypes.length) * Math.PI * 2;
-          plat.position.set(Math.cos(a) * 14.5, 1.8, Math.sin(a) * 14.5);
+          plat.position.set(Math.cos(a) * 18.5, 1.8, Math.sin(a) * 18.5);
           hubRoot.add(plat);
           shopPlatforms.push({ hubName: def.name, type, worldPos: def.pos.clone().add(plat.position) });
         });
 
-        for (let b = 0; b < 5; b++) {
+        for (let b = 0; b < 12; b++) {
           const creature = new THREE.Mesh(
             new THREE.ConeGeometry(0.35, 1.1, 5),
             new THREE.MeshStandardMaterial({ color: def.style === "storm" ? 0x9fd9ff : 0xc5e8b3, emissive: def.glow, emissiveIntensity: 0.3, roughness: 0.5 })
@@ -1329,7 +1380,12 @@
         hitReact: 0,
         attackTimer: 0,
         attackWindup: 0,
+        specialCooldown: 1.6 + Math.random() * 1.8,
+        specialWindup: 0,
+        specialType: null,
         telegraph: 0,
+        telegraphMesh: null,
+        thrustTimer: 0,
         flapPhase: Math.random() * 10,
         aiTimer: 0,
         desiredHeight: 15 + Math.random() * 12,
@@ -1343,6 +1399,10 @@
         zoneName: "Overworld",
         chunkKey: "0:0"
       };
+
+      const sizeScale = speciesData.health > 200 ? 1.42 : speciesData.health > 150 ? 1.18 : speciesData.health < 70 ? 0.82 : 1.0;
+      enemy.radius *= sizeScale;
+      enemy.model.scale.multiplyScalar(sizeScale);
 
       makeEnemyHealthBar(enemy, speciesData);
 
@@ -1365,9 +1425,10 @@
       spawnNodes = [];
       for (const zone of worldZones) {
         const nodeTypes = ["nest", "roost", "ruin", "air-lane", "hive", "shrine"];
-        for (let i = 0; i < 8; i++) {
+        const nodeCount = 6 + Math.round((zone.danger || 0) * 0.6);
+        for (let i = 0; i < nodeCount; i++) {
           const a = (i / 5) * Math.PI * 2 + Math.random() * 0.6;
-          const r = zone.radius * (0.28 + Math.random() * 0.5);
+          const r = zone.radius * (0.35 + Math.random() * 0.56);
           const pos = new THREE.Vector3(zone.center.x + Math.cos(a) * r, zone.baseY + 12 + Math.random() * 16, zone.center.z + Math.sin(a) * r);
           const species = chooseEnemyTypeForZone(zone);
           spawnNodes.push({
@@ -1376,9 +1437,9 @@
             pos,
             species,
             nodeType: nodeTypes[i % nodeTypes.length],
-            count: 1 + (Math.random() < 0.18 ? 1 : 0),
-            leashRange: 80 + Math.random() * 34,
-            respawn: 24 + Math.random() * 28
+            count: 1 + (Math.random() < (0.06 + (zone.danger || 0) * 0.04) ? 1 : 0),
+            leashRange: 84 + Math.random() * 38 + (zone.danger || 0) * 6,
+            respawn: 26 + Math.random() * 30 - (zone.danger || 0) * 1.4
           });
         }
       }
@@ -1415,16 +1476,20 @@
 
     function chooseEnemyTypeForZone(zone) {
       const variants = zone.enemyFamilies || ["giantBee", "hornetGuard", "vineDrake"];
-      const roll = Math.random();
-      if (roll < 0.45) return variants[0];
-      if (roll < 0.72) return variants[1] || variants[0];
-      if (roll < 0.91) return variants[2] || variants[1] || variants[0];
-      return variants[3] || variants[2] || variants[0];
+      const weighted = [];
+      variants.forEach((type, idx) => {
+        const behavior = ENEMY_SPECIES[type]?.behavior;
+        const isSpear = behavior === "lancer";
+        const baseWeight = idx === 0 ? 44 : idx === 1 ? 27 : idx === 2 ? 19 : 10;
+        const adjusted = isSpear ? Math.max(3, Math.round(baseWeight * 0.28)) : baseWeight;
+        for (let i = 0; i < adjusted; i++) weighted.push(type);
+      });
+      return weighted[Math.floor(Math.random() * weighted.length)] || variants[0];
     }
 
     function zoneTier(zoneName) {
-      const idx = worldZones.findIndex(z => z.name === zoneName);
-      return idx < 0 ? 0 : idx;
+      const zone = worldZones.find(z => z.name === zoneName);
+      return zone ? (zone.danger ?? 0) : 0;
     }
 
     function xpNeededForLevel(level) {
@@ -1483,11 +1548,15 @@
       if (currentZone && zones.includes(currentZone) && Math.random() < 0.72) {
         zone = currentZone;
       }
+      const zoneWarmup = currentZone && zone.name === currentZone.name ? Math.max(0, 4.5 - regionEnterTime) : 0;
+      if (zoneWarmup > 0 && Math.random() < 0.78) return false;
       if (zoneEnemyCount(zone.name) >= ZONE_ENEMY_CAP) return false;
 
       for (let i = 0; i < 16; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const r = LOCAL_SPAWN_RADIUS_MIN + Math.random() * (LOCAL_SPAWN_RADIUS_MAX - LOCAL_SPAWN_RADIUS_MIN);
+        const moveDir = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
+        const aheadBias = Math.random() < 0.72 ? Math.atan2(moveDir.x, moveDir.z) : Math.random() * Math.PI * 2;
+        const a = aheadBias + (Math.random() - 0.5) * 1.8;
+        const r = LOCAL_SPAWN_RADIUS_MIN + Math.random() * (LOCAL_SPAWN_RADIUS_MAX - LOCAL_SPAWN_RADIUS_MIN) + (zone.danger || 0) * 2;
         const x = player.pos.x + Math.cos(a) * r;
         const z = player.pos.z + Math.sin(a) * r;
 
@@ -1503,7 +1572,7 @@
         const y = Math.max(player.pos.y - 4 + Math.random() * 12, hazardFloorAt(x, z) + 3.2);
         const enemy = spawnEnemy(new THREE.Vector3(x, y, z), type);
         const tier = zoneTier(zone.name);
-        enemy.elite = tier >= 2 && Math.random() < (0.08 + tier * 0.02);
+        enemy.elite = tier >= 2 && Math.random() < (0.04 + tier * 0.03);
         if (enemy.elite) {
           enemy.radius += 0.35;
           enemy.model.scale.multiplyScalar(1.16);
@@ -1533,6 +1602,23 @@
       centerMsg.textContent = text;
       centerMsg.style.display = "block";
       centerMsgTimer = duration;
+    }
+
+    function updateRegionDiscovery(dt) {
+      if (!player) return;
+      const zone = getZoneAt(player.pos.x, player.pos.z);
+      if (!zone) return;
+      regionBannerCooldown = Math.max(0, regionBannerCooldown - dt);
+      if (zone.name === currentRegionName) {
+        regionEnterTime += dt;
+        return;
+      }
+      currentRegionName = zone.name;
+      regionEnterTime = 0;
+      if (regionBannerCooldown <= 0) {
+        showCenterMessage(`${zone.name}\n${zone.subtitle || ""}`.trim(), 2.1);
+        regionBannerCooldown = 4.8;
+      }
     }
 
     function getMomentumScale(actor) {
@@ -1640,6 +1726,7 @@
     function killEnemy(enemy) {
       if (!enemy.alive) return;
       enemy.alive = false;
+      if (enemy.telegraphMesh) scene.remove(enemy.telegraphMesh);
       scene.remove(enemy.model);
       const reward = enemy.speciesData?.reward || { score: 100, xp: 14, gold: 4 };
       score += (enemy.elite ? 1.4 : 1) * reward.score;
@@ -1686,8 +1773,9 @@
     }
 
     function spawnDrops(enemy) {
-      const nScore = 1 + (Math.random() < 0.55 ? 1 : 0) + (enemy.elite ? 2 : 0);
-      const nGold = (Math.random() < 0.78 ? 1 : 0) + (enemy.elite ? 1 : 0);
+      const danger = zoneTier(enemy.zoneName);
+      const nScore = 1 + (Math.random() < 0.55 ? 1 : 0) + (enemy.elite ? 2 : 0) + (danger >= 4 ? 1 : 0);
+      const nGold = (Math.random() < 0.78 ? 1 : 0) + (enemy.elite ? 1 : 0) + (danger >= 5 ? 1 : 0);
       for (let i = 0; i < nScore; i++) {
         spawnPickup(enemy.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 2.1, 0.8 + Math.random() * 0.8, (Math.random() - 0.5) * 2.1)), "score", enemy.elite ? 45 : 25);
       }
@@ -1697,8 +1785,8 @@
       if (Math.random() < (enemy.elite ? 0.55 : 0.18) + progress.upgrades.healthDrop * 0.03) {
         spawnPickup(enemy.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.4, 1.2, (Math.random() - 0.5) * 1.4)), "health", enemy.elite ? 24 : 15);
       }
-      if (Math.random() < 0.24 + progress.upgrades.healthDrop * 0.02) {
-        const itemPool = ITEM_DB.filter((i) => i.region === enemy.zoneName || i.slot === "trinket");
+      if (Math.random() < 0.22 + progress.upgrades.healthDrop * 0.02 + (danger * 0.02)) {
+        const itemPool = ITEM_DB.filter((i) => (i.region === enemy.zoneName || i.slot === "trinket") && (danger >= 4 ? i.rarity !== "common" : true));
         const item = itemPool[Math.floor(Math.random() * itemPool.length)];
         if (item) spawnPickup(enemy.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.6, 1.4, (Math.random() - 0.5) * 1.6)), "item", item.id);
       }
@@ -2058,7 +2146,8 @@
 
     function hazardFloorAt(x, z) {
       const zone = getZoneAt(x, z);
-      return zone ? zone.hazardY : -26;
+      if (!zone) return -999;
+      return zone.hazardType === "lava" ? zone.hazardY : -999;
     }
 
     function keepInsideBounds(actor) {
@@ -2305,12 +2394,20 @@
       enemy.aiTimer -= dt;
       enemy.attackTimer = Math.max(0, enemy.attackTimer - dt);
       enemy.telegraph = Math.max(0, enemy.telegraph - dt);
+      enemy.thrustTimer = Math.max(0, enemy.thrustTimer - dt);
+      enemy.specialCooldown = Math.max(0, enemy.specialCooldown - dt);
+      enemy.specialWindup = Math.max(0, enemy.specialWindup - dt);
       enemy.hitReact = Math.max(0, enemy.hitReact - dt);
       enemy.poisonTimer = Math.max(0, enemy.poisonTimer - dt);
       enemy.freezeTimer = Math.max(0, enemy.freezeTimer - dt);
       enemy.stunTimer = Math.max(0, enemy.stunTimer - dt);
       if (enemy.poisonTimer > 0) enemy.health -= (enemy.elite ? 2.8 : 3.7) * dt;
       if (enemy.health <= 0) { killEnemy(enemy); return; }
+      if (enemy.telegraphMesh) {
+        enemy.telegraphMesh.position.copy(enemy.pos).setY(enemy.pos.y - enemy.radius + 0.1);
+        enemy.telegraphMesh.lookAt(camera.position);
+        enemy.telegraphMesh.material.opacity = 0.18 + (enemy.specialWindup > 0 ? 0.28 : enemy.telegraph > 0 ? 0.22 : 0);
+      }
       if (enemy.stunTimer > 0) {
         enemy.vel.multiplyScalar(0.86);
         updateActorTransform(enemy, dt);
@@ -2425,14 +2522,68 @@
       if (enemy.state === "aggro" && distToPlayer < typeStats.preferDistance + 2 && enemy.attackTimer <= 0 && enemy.telegraph <= 0 && alignment >= alignNeeded) {
         enemy.telegraph = enemy.archetype === "Charger" ? 0.75 : enemy.archetype === "Crusher" ? 0.55 : 0.45;
       }
+      const deepTier = zoneTier(enemy.zoneName);
+      if (enemy.state === "aggro" && deepTier >= 4 && enemy.specialCooldown <= 0 && distToPlayer < 30) {
+        enemy.specialType = (typeStats.behavior === "breath" || enemy.type === "voidDragon") ? "cone" : (typeStats.behavior === "beam" || typeStats.behavior === "orb") ? "burst" : "dive";
+        enemy.specialWindup = 0.62 + Math.random() * 0.28;
+        enemy.specialCooldown = 4.5 - Math.min(2.1, deepTier * 0.2);
+        if (!enemy.telegraphMesh) {
+          enemy.telegraphMesh = new THREE.Mesh(
+            new THREE.RingGeometry(1.4, 2.8, 24),
+            new THREE.MeshBasicMaterial({ color: 0xff7a6b, transparent: true, opacity: 0.25, side: THREE.DoubleSide })
+          );
+          scene.add(enemy.telegraphMesh);
+        }
+      }
+      if (enemy.state === "aggro" && enemy.specialWindup > 0 && enemy.specialWindup < 0.12) {
+        const toPlayer = player.pos.clone().sub(enemy.pos).setY(0).normalize();
+        if (enemy.specialType === "cone") {
+          if (player.pos.distanceTo(enemy.pos) < 16 && toPlayer.dot(forwardEnemy) > 0.35) {
+            applyPlayerDamage(typeStats.damage * 1.05, `${enemy.speciesData.label} flame sweep`);
+            player.vel.add(toPlayer.clone().multiplyScalar(8));
+          }
+          spawnBurst(enemy.pos.clone().add(forwardEnemy.clone().multiplyScalar(4)), 12, 0xff8b3d);
+        } else if (enemy.specialType === "burst") {
+          if (player.pos.distanceTo(enemy.pos) < 10) {
+            applyPlayerDamage(typeStats.damage * 0.85, `${enemy.speciesData.label} shock ring`);
+            player.vel.add(player.pos.clone().sub(enemy.pos).normalize().multiplyScalar(7));
+          }
+          spawnBurst(enemy.pos.clone(), 16, 0x9bc4ff);
+        } else if (enemy.specialType === "dive") {
+          const impactPos = player.pos.clone();
+          if (enemy.pos.distanceTo(impactPos) < 6.5) {
+            applyPlayerDamage(typeStats.damage * 1.15, `${enemy.speciesData.label} dive slam`);
+          }
+          enemy.vel.add(toPlayer.multiplyScalar(15));
+          enemy.vel.y -= 5.5;
+          spawnBurst(impactPos, 15, 0xffb46a);
+        }
+        enemy.specialWindup = 0;
+      }
       if (enemy.state === "aggro" && distToPlayer < typeStats.preferDistance + 2 && enemy.attackTimer <= 0 && enemy.telegraph > 0 && enemy.telegraph < 0.12) {
         enemy.attackTimer = typeStats.attackCooldown;
         enemy.telegraph = 0;
         const attackDamage = typeStats.damage * (enemy.elite ? 1.22 : 1);
         const pushDir = combatTarget.pos.clone().sub(enemy.pos).normalize().multiplyScalar(typeStats.knockback);
         if (enemy.archetype === "Charger") enemy.vel.add(pushDir.clone().multiplyScalar(11));
-        if (combatTarget === player) {
-          applyPlayerDamage(attackDamage, enemy.speciesData.label);
+        const behavior = typeStats.behavior;
+        if (behavior === "lancer") enemy.thrustTimer = 0.18;
+        if (combatTarget === player && behavior === "lancer") {
+          const sameLevel = Math.abs(player.pos.y - enemy.pos.y) < 2.4;
+          const spearTip = enemy.pos.clone().add(forwardEnemy.clone().multiplyScalar(enemy.radius + 3.3)).add(new THREE.Vector3(0, 1.3, 0));
+          const tipHit = player.pos.distanceTo(spearTip) < player.radius + 1.2;
+          if (sameLevel && tipHit) {
+            applyPlayerDamage(attackDamage * 0.95, `${enemy.speciesData.label} spear thrust`);
+            player.vel.add(pushDir);
+            player.vel.y += 0.8;
+          } else {
+            const deflectColor = sameLevel ? 0x9dcfff : 0x8bffc1;
+            spawnBurst(spearTip, 9, deflectColor);
+            enemy.vel.add(pushDir.clone().multiplyScalar(-0.25));
+            showCenterMessage("SPEAR DEFLECTED", 0.26);
+          }
+        } else if (combatTarget === player) {
+          applyPlayerDamage(attackDamage * 0.86, enemy.speciesData.label);
           player.vel.add(pushDir);
           player.vel.y += 1.2 + typeStats.knockback * 0.2;
         } else {
@@ -2501,11 +2652,11 @@
             if (side.lengthSq() < 0.0001) side.set(0.01, 0, 1);
             side.normalize();
 
-            if (playerHigher > 1.2) {
+            if (playerHigher > 0.85) {
               const momentum = getMomentumScale(player);
-              const diveDamage = stats.diveImpact * momentum * (enemy.speciesData.bounceMass > 1.5 ? 0.75 : 1);
+              const diveDamage = stats.diveImpact * 1.15 * momentum * (enemy.speciesData.bounceMass > 1.5 ? 0.78 : 1.08);
               damageEnemy(enemy, diveDamage, side, "dive");
-              applyPlayerDamage(Math.max(2, enemy.speciesData.damage * 0.35), "impact recoil");
+              applyPlayerDamage(Math.max(1, enemy.speciesData.damage * 0.18), "impact recoil");
               if (gameEnded || !player.alive) return;
               const mountFx = stats.mount.landingFx;
               if (mountFx === "fire" || mountFx === "frost" || mountFx === "poison" || mountFx === "lightning") {
@@ -2529,9 +2680,9 @@
               enemy.vel.add(side.clone().multiplyScalar(4 + progress.upgrades.spearKnockback * 0.8));
               triggerHitFeedback(player, enemy, side, 1.1 + momentum * 0.2);
               spawnBurst(player.pos.clone().lerp(enemy.pos, 0.55), 11, 0xd6f2ff);
-              showCenterMessage("DIVE IMPACT!", 0.3);
-            } else if (playerHigher < -1.0) {
-              applyPlayerDamage(enemy.speciesData.damage * 1.35, "counter hit");
+              showCenterMessage(playerHigher > 1.45 ? "CRUSHING STOMP!" : "DIVE IMPACT!", 0.3);
+            } else if (playerHigher < -1.35) {
+              applyPlayerDamage(enemy.speciesData.damage * 1.15, "counter hit");
               if (gameEnded || !player.alive) return;
             } else {
               const push = side.multiplyScalar(5);
@@ -2539,8 +2690,8 @@
               enemy.vel.add(push.clone().multiplyScalar(0.7 / Math.max(0.7, enemy.speciesData.bounceMass)));
               player.vel.y += 1.8 + progress.upgrades.bounceRecovery * 0.22;
               enemy.vel.y += 1.8;
-              applyPlayerDamage(Math.max(4, (enemy.elite ? 18 : 12) * (1 - stats.collisionRecovery)), "clash");
-              damageEnemy(enemy, 7 + progress.upgrades.antiArmor * 2, push.clone().normalize(), "clash");
+              applyPlayerDamage(Math.max(2, (enemy.elite ? 12 : 8) * (1 - stats.collisionRecovery)), "clash");
+              damageEnemy(enemy, 10 + progress.upgrades.antiArmor * 2.5, push.clone().normalize(), "clash");
               triggerHitFeedback(enemy, player, push.clone().normalize().multiplyScalar(-1), 0.9);
               spawnBurst(player.pos.clone().lerp(enemy.pos, 0.5), 8, 0xffffff);
               showCenterMessage("CLASH!", 0.35);
@@ -2617,22 +2768,25 @@
           new THREE.SphereGeometry(0.25 + Math.random() * 0.5, 6, 6),
           new THREE.MeshBasicMaterial({ color: 0xffd166 })
         );
-        const zone = worldZones[Math.floor(Math.random() * worldZones.length)];
-        const a = Math.random() * Math.PI * 2;
-        const r = Math.random() * zone.radius * 0.8;
-        bubble.position.set(zone.center.x + Math.cos(a) * r, zone.hazardY + 0.6, zone.center.z + Math.sin(a) * r);
-        scene.add(bubble);
+        const lavaZones = worldZones.filter((z) => z.hazardType === "lava");
+        const zone = lavaZones[Math.floor(Math.random() * lavaZones.length)];
+        if (zone) {
+          const a = Math.random() * Math.PI * 2;
+          const r = Math.random() * zone.radius * 0.8;
+          bubble.position.set(zone.center.x + Math.cos(a) * r, zone.hazardY + 0.6, zone.center.z + Math.sin(a) * r);
+          scene.add(bubble);
 
-        particles.push({
-          mesh: bubble,
-          kind: "burst",
-          life: 0.55 + Math.random() * 0.3,
-          vel: new THREE.Vector3(
-            (Math.random() - 0.5) * 0.8,
-            1.6 + Math.random() * 1.4,
-            (Math.random() - 0.5) * 0.8
-          )
-        });
+          particles.push({
+            mesh: bubble,
+            kind: "burst",
+            life: 0.55 + Math.random() * 0.3,
+            vel: new THREE.Vector3(
+              (Math.random() - 0.5) * 0.8,
+              1.6 + Math.random() * 1.4,
+              (Math.random() - 0.5) * 0.8
+            )
+          });
+        }
       }
     }
 
@@ -3046,6 +3200,7 @@
         }
 
         updatePlayer(simDt);
+        updateRegionDiscovery(simDt);
         updateWorldChunks();
         spawnAlliesFromUpgrades();
         updateAllies(simDt);
