@@ -214,6 +214,11 @@
     let citySafeZones = [];
     let cityAmbientTraffic = [];
     let cityAmbientProps = [];
+    let skyCloudLayers = [];
+    let skyLandmarks = [];
+    let ambientSkyTraffic = [];
+    let skyRoot = null;
+    let activeSkyProfile = null;
     let arenaGroup;
     let worldZones = [];
     let spawnNodes = [];
@@ -537,6 +542,7 @@
       seedPlayerProgression();
       refreshPlayerAppearance();
       createSpawnNodes();
+      spawnTreasureCaches();
       spawnInitialEnemies();
       spawnAlliesFromUpgrades();
 
@@ -590,7 +596,100 @@
         `
       });
       const sky = new THREE.Mesh(skyGeo, skyMat);
-      scene.add(sky);
+      skyRoot = new THREE.Group();
+      skyRoot.add(sky);
+      scene.add(skyRoot);
+
+      createCloudLayer({ type: "far", count: 26, radius: 280, minY: 56, maxY: 100, color: 0xe5eefb, opacity: 0.13, scale: [18, 44], drift: 0.18 });
+      createCloudLayer({ type: "mid", count: 18, radius: 220, minY: 30, maxY: 72, color: 0xf8fcff, opacity: 0.2, scale: [8, 24], drift: 0.34 });
+      createCloudLayer({ type: "near", count: 12, radius: 130, minY: 16, maxY: 44, color: 0xffffff, opacity: 0.24, scale: [4, 12], drift: 0.6 });
+
+      createSkyLandmark({ type: "island", count: 7, radius: 260, minY: 46, maxY: 92, color: 0x39445c });
+      createSkyLandmark({ type: "spire", count: 6, radius: 250, minY: 34, maxY: 78, color: 0x4d5368 });
+      createSkyLandmark({ type: "ruin-arch", count: 4, radius: 235, minY: 40, maxY: 68, color: 0x55586f });
+      createSkyLandmark({ type: "chain", count: 4, radius: 210, minY: 28, maxY: 58, color: 0x2f3342 });
+
+      createAmbientSkyTraffic({ type: "birds", count: 14, radius: 170, color: 0xd7e8ff, speed: [0.06, 0.11] });
+      createAmbientSkyTraffic({ type: "riders", count: 6, radius: 200, color: 0xfff6cf, speed: [0.03, 0.06] });
+      createAmbientSkyTraffic({ type: "motes", count: 32, radius: 125, color: 0xe3d7ff, speed: [0.2, 0.46] });
+    }
+
+    function createCloudLayer(config) {
+      const layer = [];
+      for (let i = 0; i < config.count; i++) {
+        const cloud = new THREE.Mesh(
+          new THREE.PlaneGeometry(1, 1),
+          new THREE.MeshBasicMaterial({ color: config.color, transparent: true, opacity: config.opacity, depthWrite: false, side: THREE.DoubleSide })
+        );
+        const angle = Math.random() * Math.PI * 2;
+        const radius = config.radius * (0.55 + Math.random() * 0.5);
+        const scale = THREE.MathUtils.lerp(config.scale[0], config.scale[1], Math.random());
+        cloud.position.set(Math.cos(angle) * radius, THREE.MathUtils.lerp(config.minY, config.maxY, Math.random()), Math.sin(angle) * radius);
+        cloud.rotation.set(-Math.PI / 2 + (Math.random() - 0.5) * 0.16, Math.random() * Math.PI * 2, (Math.random() - 0.5) * 0.08);
+        cloud.scale.set(scale * (1.3 + Math.random()), scale, 1);
+        skyRoot.add(cloud);
+        layer.push({ mesh: cloud, type: config.type, angle, radius, drift: config.drift * (0.7 + Math.random() * 0.6), wobble: Math.random() * Math.PI * 2 });
+      }
+      skyCloudLayers.push(...layer);
+    }
+
+    function createSkyLandmark(config) {
+      for (let i = 0; i < config.count; i++) {
+        const root = new THREE.Group();
+        const angle = Math.random() * Math.PI * 2;
+        const radius = config.radius * (0.6 + Math.random() * 0.38);
+        root.position.set(Math.cos(angle) * radius, THREE.MathUtils.lerp(config.minY, config.maxY, Math.random()), Math.sin(angle) * radius);
+        root.rotation.y = Math.random() * Math.PI * 2;
+        const mat = new THREE.MeshStandardMaterial({ color: config.color, roughness: 0.93, metalness: 0.06, transparent: true, opacity: 0.82 });
+        if (config.type === "island") {
+          const slab = new THREE.Mesh(new THREE.DodecahedronGeometry(3.2 + Math.random() * 3.4, 0), mat);
+          slab.scale.set(1.8, 0.68, 1.4);
+          root.add(slab);
+        } else if (config.type === "spire") {
+          const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 1.4, 14 + Math.random() * 10, 5), mat);
+          root.add(spire);
+        } else if (config.type === "ruin-arch") {
+          const left = new THREE.Mesh(new THREE.BoxGeometry(1.8, 8, 1.8), mat);
+          const right = left.clone();
+          const top = new THREE.Mesh(new THREE.BoxGeometry(8, 1.8, 1.8), mat);
+          left.position.x = -3.1;
+          right.position.x = 3.1;
+          top.position.y = 3.2;
+          root.add(left, right, top);
+        } else if (config.type === "chain") {
+          for (let c = 0; c < 6; c++) {
+            const link = new THREE.Mesh(new THREE.TorusGeometry(1.2, 0.2, 6, 12), mat);
+            link.position.y = c * 2.1;
+            link.rotation.y = c % 2 === 0 ? 0 : Math.PI / 2;
+            root.add(link);
+          }
+        }
+        skyRoot.add(root);
+        skyLandmarks.push({ root, type: config.type, drift: 0.08 + Math.random() * 0.16, bobPhase: Math.random() * Math.PI * 2 });
+      }
+    }
+
+    function createAmbientSkyTraffic(config) {
+      for (let i = 0; i < config.count; i++) {
+        const mesh = new THREE.Mesh(
+          config.type === "motes" ? new THREE.SphereGeometry(0.12 + Math.random() * 0.14, 6, 6) : new THREE.ConeGeometry(0.22, config.type === "riders" ? 1.4 : 1, 5),
+          new THREE.MeshBasicMaterial({ color: config.color, transparent: true, opacity: config.type === "motes" ? 0.55 : 0.75, depthWrite: false })
+        );
+        mesh.rotation.x = Math.PI * 0.5;
+        const orbit = config.radius * (0.5 + Math.random() * 0.65);
+        const phase = Math.random() * Math.PI * 2;
+        const y = 18 + Math.random() * 40;
+        skyRoot.add(mesh);
+        ambientSkyTraffic.push({
+          mesh,
+          type: config.type,
+          orbit,
+          phase,
+          baseY: y,
+          speed: THREE.MathUtils.lerp(config.speed[0], config.speed[1], Math.random()),
+          tilt: (Math.random() - 0.5) * 0.25
+        });
+      }
     }
 
     function seedPlayerProgression() {
@@ -1631,15 +1730,18 @@
       root.add(rightWingTip);
 
       // Tail
+      const tailPivot = new THREE.Group();
+      tailPivot.position.set(0, 0.06, -1.72);
+      root.add(tailPivot);
       for (let i = 0; i < 3; i++) {
         const feather = new THREE.Mesh(
           new THREE.BoxGeometry(0.34, 0.08, 1.2),
           new THREE.MeshStandardMaterial({ color: wingColor, roughness: 0.95 })
         );
-        feather.position.set((i - 1) * 0.32, 0.05, -2.1);
+        feather.position.set((i - 1) * 0.32, 0.05, -0.45);
         feather.rotation.x = -0.38;
         feather.castShadow = true;
-        root.add(feather);
+        tailPivot.add(feather);
       }
 
       // Legs
@@ -1790,6 +1892,7 @@
         rider,
         riderAnchor,
         spearAnchor,
+        tailPivot,
         lance,
         lanceTip,
         lanceRest: lance.position.clone(),
@@ -2364,16 +2467,52 @@
       if (leveled) showCenterMessage(`LEVEL ${progress.level}! Upgrade Ready`, 1.2);
     }
 
-    function spawnPickup(pos, kind, value = 1) {
-      const colorMap = { score: 0x7dd3fc, gold: 0xfde047, health: 0x86efac, item: 0xe9d5ff, material: 0xc4b5fd };
-      const glow = colorMap[kind] || 0xffffff;
+    function pickupRarityFor(kind, value) {
+      if (kind === "cache") return "epic";
+      if (kind === "item") return getItemById(value)?.rarity || "rare";
+      if (kind === "gold") return value >= 12 ? "rare" : "common";
+      if (kind === "score") return value >= 45 ? "uncommon" : "common";
+      return "common";
+    }
+
+    function createLootVisual(kind, rarity = "common") {
+      const rarityColor = { common: 0xffffff, uncommon: 0x86efac, rare: 0x67e8f9, epic: 0xc084fc, legendary: 0xf59e0b };
+      const colorMap = { score: 0x8be0ff, gold: 0xffe066, health: 0x86efac, item: 0xf0d8ff, material: 0xc4b5fd, cache: 0xffcf87, gear: 0xb5f0ff };
+      const glow = rarityColor[rarity] || colorMap[kind] || 0xffffff;
+      const coreColor = colorMap[kind] || glow;
+      const geo = kind === "gold" ? new THREE.CylinderGeometry(0.32, 0.32, 0.1, 10) :
+        kind === "score" ? new THREE.SphereGeometry(0.34, 10, 9) :
+        kind === "item" || kind === "gear" ? new THREE.OctahedronGeometry(0.46, 0) :
+        kind === "cache" ? new THREE.BoxGeometry(0.76, 0.58, 0.58) :
+        new THREE.OctahedronGeometry(kind === "health" ? 0.5 : 0.42, 0);
       const mesh = new THREE.Mesh(
-        new THREE.OctahedronGeometry(kind === "health" ? 0.5 : 0.42, 0),
-        new THREE.MeshStandardMaterial({ color: glow, emissive: glow, emissiveIntensity: 0.62, roughness: 0.28, metalness: 0.18 })
+        geo,
+        new THREE.MeshStandardMaterial({ color: coreColor, emissive: glow, emissiveIntensity: rarity === "legendary" ? 0.95 : rarity === "epic" ? 0.8 : 0.62, roughness: 0.24, metalness: kind === "gold" ? 0.6 : 0.18 })
       );
+      if (kind === "gold") mesh.rotation.x = Math.PI / 2;
+      return { mesh, glow };
+    }
+
+    function spawnPickup(pos, kind, value = 1, opts = {}) {
+      const rarity = opts.rarity || pickupRarityFor(kind, value);
+      const { mesh, glow } = createLootVisual(kind, rarity);
       mesh.position.copy(pos);
       scene.add(mesh);
-      pickups.push({ mesh, kind, value, age: 0, life: 12 + Math.random() * 4, bob: Math.random() * Math.PI * 2, vel: new THREE.Vector3((Math.random()-0.5)*2, 0.6 + Math.random(), (Math.random()-0.5)*2), glow });
+      pickups.push({
+        mesh,
+        kind,
+        value,
+        rarity,
+        age: 0,
+        life: kind === "cache" ? 20 : 12 + Math.random() * 4,
+        bob: Math.random() * Math.PI * 2,
+        spin: 1.6 + Math.random() * 2.2,
+        pulse: Math.random() * Math.PI * 2,
+        vel: opts.vel ? opts.vel.clone() : new THREE.Vector3((Math.random() - 0.5) * 2, 0.7 + Math.random() * 1.2, (Math.random() - 0.5) * 2),
+        glow,
+        magnetized: false
+      });
+      if (rarity === "epic" || rarity === "legendary") spawnBurst(pos.clone(), rarity === "legendary" ? 8 : 5, glow);
     }
 
     function spawnDrops(enemy) {
@@ -2381,20 +2520,68 @@
       const nScore = 1 + (Math.random() < 0.55 ? 1 : 0) + (enemy.elite ? 2 : 0) + (danger >= 4 ? 1 : 0);
       const nGold = (Math.random() < 0.78 ? 1 : 0) + (enemy.elite ? 1 : 0) + (danger >= 5 ? 1 : 0);
       for (let i = 0; i < nScore; i++) {
-        spawnPickup(enemy.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 2.1, 0.8 + Math.random() * 0.8, (Math.random() - 0.5) * 2.1)), "score", enemy.elite ? 45 : 25);
+        const vel = new THREE.Vector3((Math.random() - 0.5) * (enemy.elite ? 5.8 : 4.2), 2.2 + Math.random() * (enemy.elite ? 2.2 : 1.3), (Math.random() - 0.5) * (enemy.elite ? 5.8 : 4.2));
+        spawnPickup(enemy.pos.clone().add(new THREE.Vector3(0, 1.1, 0)), "score", enemy.elite ? 45 : 25, { rarity: enemy.elite ? "rare" : "common", vel });
       }
       for (let i = 0; i < nGold; i++) {
-        spawnPickup(enemy.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 2.4, 0.75 + Math.random() * 0.6, (Math.random() - 0.5) * 2.4)), "gold", enemy.elite ? 8 : 4);
+        const vel = new THREE.Vector3((Math.random() - 0.5) * 5, 2 + Math.random() * 1.5, (Math.random() - 0.5) * 5);
+        spawnPickup(enemy.pos.clone().add(new THREE.Vector3(0, 1, 0)), "gold", enemy.elite ? 8 : 4, { rarity: enemy.elite ? "uncommon" : "common", vel });
       }
       if (Math.random() < (enemy.elite ? 0.55 : 0.18) + progress.upgrades.healthDrop * 0.03) {
-        spawnPickup(enemy.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.4, 1.2, (Math.random() - 0.5) * 1.4)), "health", enemy.elite ? 24 : 15);
+        spawnPickup(enemy.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.4, 1.2, (Math.random() - 0.5) * 1.4)), "health", enemy.elite ? 24 : 15, { rarity: enemy.elite ? "rare" : "uncommon" });
       }
       if (Math.random() < 0.22 + progress.upgrades.healthDrop * 0.02 + (danger * 0.02)) {
         const itemPool = ITEM_DB.filter((i) => (i.region === enemy.zoneName || i.slot === "trinket") && (danger >= 4 ? i.rarity !== "common" : true));
         const item = itemPool[Math.floor(Math.random() * itemPool.length)];
-        if (item) spawnPickup(enemy.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.6, 1.4, (Math.random() - 0.5) * 1.6)), "item", item.id);
+        if (item) spawnPickup(enemy.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.6, 1.4, (Math.random() - 0.5) * 1.6)), "item", item.id, { rarity: item.rarity });
       }
-      if (Math.random() < 0.38) spawnPickup(enemy.pos.clone(), "material", `${enemy.type}-core`);
+      if (Math.random() < 0.38) spawnPickup(enemy.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.4, 0.9, (Math.random() - 0.5) * 1.4)), "material", `${enemy.type}-core`, { rarity: danger >= 4 ? "uncommon" : "common" });
+      if (enemy.elite || danger >= 5) {
+        spawnPickup(enemy.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.1, 1.6, (Math.random() - 0.5) * 1.1)), "cache", Math.round(10 + danger * 2 + (enemy.elite ? 12 : 0)), { rarity: enemy.elite ? "epic" : "rare" });
+      }
+    }
+
+    function spawnTreasureCache(pos, type = "chest", zone = null) {
+      const root = new THREE.Group();
+      const rarity = zoneTier(zone?.name) >= 5 ? "epic" : "rare";
+      const bodyColor = type === "relic" ? 0x7c6bff : type === "coins" ? 0xd29c2a : 0x6c4b2e;
+      const body = new THREE.Mesh(
+        type === "relic" ? new THREE.OctahedronGeometry(0.8, 0) : new THREE.BoxGeometry(1.3, 0.9, 1.0),
+        new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.6, metalness: type === "coins" ? 0.55 : 0.24, emissive: rarity === "epic" ? 0x8b5cf6 : 0x000000, emissiveIntensity: 0.25 })
+      );
+      root.add(body);
+      root.position.copy(pos);
+      scene.add(root);
+      pickups.push({
+        mesh: root,
+        kind: "cache",
+        value: 18 + Math.round(Math.random() * 20),
+        rarity,
+        age: 0,
+        life: 60,
+        bob: Math.random() * Math.PI * 2,
+        spin: 0.4 + Math.random() * 0.4,
+        pulse: Math.random() * Math.PI * 2,
+        vel: new THREE.Vector3(0, 0, 0),
+        glow: rarity === "epic" ? 0xd8b4fe : 0xfde68a,
+        magnetized: false,
+        staticCache: true
+      });
+    }
+
+    function spawnTreasureCaches() {
+      const placed = [];
+      for (const zone of worldZones) {
+        const count = zone.danger >= 4 ? 2 : 1;
+        for (let i = 0; i < count; i++) {
+          const p = randomPointInZone(zone, 0.16);
+          p.y = nearestPlatformHeight(p.x, p.z) + 1.1 + Math.random() * 1.4;
+          const type = i % 3 === 0 ? "chest" : i % 3 === 1 ? "relic" : "coins";
+          spawnTreasureCache(p, type, zone);
+          placed.push(p);
+        }
+      }
+      return placed;
     }
 
     function killPlayer() {
@@ -2588,43 +2775,117 @@
       }
     }
 
-    function flapAnimation(actor, dt, flapStrength = 1) {
+    function skyProfileForZone(zone) {
+      const style = zone?.terrainStyle || "forest";
+      const map = {
+        forest: { cloud: 0xdaf6ce, mote: 0xd7fcbf, haze: 0xa8e59f, cloudBoost: 0.1 },
+        city: { cloud: 0xf3f7ff, mote: 0xffe7a8, haze: 0xc3d3e7, cloudBoost: -0.02 },
+        storm: { cloud: 0x8bb4e2, mote: 0xb3dbff, haze: 0x698cb6, cloudBoost: 0.2 },
+        lava: { cloud: 0xffac6c, mote: 0xff9b5f, haze: 0xca683e, cloudBoost: 0.18 },
+        hollow: { cloud: 0xa98cdf, mote: 0xd3bcff, haze: 0x6a4f9f, cloudBoost: 0.16 },
+        rift: { cloud: 0x9a7de3, mote: 0xdabfff, haze: 0x6342a9, cloudBoost: 0.2 },
+        dragon: { cloud: 0xded7c6, mote: 0xe3dbc9, haze: 0x927f65, cloudBoost: 0.08 },
+        glacier: { cloud: 0xe7f3ff, mote: 0xcff2ff, haze: 0xb3cde0, cloudBoost: 0.03 }
+      };
+      return map[style] || map.forest;
+    }
+
+    function updateSkyAtmosphere(dt) {
+      const t = performance.now() * 0.001;
+      const zone = player ? getZoneAt(player.pos.x, player.pos.z) : null;
+      activeSkyProfile = skyProfileForZone(zone);
+
+      for (const cloud of skyCloudLayers) {
+        cloud.angle += dt * cloud.drift * (cloud.type === "near" ? 0.62 : cloud.type === "mid" ? 0.35 : 0.17);
+        cloud.mesh.position.x = Math.cos(cloud.angle) * cloud.radius;
+        cloud.mesh.position.z = Math.sin(cloud.angle) * cloud.radius;
+        cloud.mesh.position.y += Math.sin(t * cloud.drift + cloud.wobble) * 0.006;
+        cloud.mesh.material.color.lerp(new THREE.Color(activeSkyProfile.cloud), 0.02);
+        const baseOpacity = cloud.type === "far" ? 0.13 : cloud.type === "mid" ? 0.2 : 0.24;
+        cloud.mesh.material.opacity = THREE.MathUtils.clamp(baseOpacity + activeSkyProfile.cloudBoost, 0.08, 0.36);
+      }
+
+      for (const landmark of skyLandmarks) {
+        landmark.root.position.y += Math.sin(t * landmark.drift + landmark.bobPhase) * 0.012;
+        landmark.root.rotation.y += dt * landmark.drift * 0.05;
+      }
+
+      for (const traffic of ambientSkyTraffic) {
+        traffic.phase += dt * traffic.speed;
+        const offset = traffic.type === "motes" ? 0.3 : 1;
+        traffic.mesh.position.set(
+          Math.cos(traffic.phase) * traffic.orbit,
+          traffic.baseY + Math.sin(traffic.phase * (1.7 + offset)) * (traffic.type === "motes" ? 3.4 : 1.5),
+          Math.sin(traffic.phase * 0.9) * traffic.orbit
+        );
+        traffic.mesh.rotation.z = traffic.tilt + Math.sin(traffic.phase * 1.2) * 0.2;
+        traffic.mesh.material.color.lerp(new THREE.Color(traffic.type === "motes" ? activeSkyProfile.mote : activeSkyProfile.haze), 0.016);
+      }
+    }
+
+    function setWingPose(anim, pose, blend = 1) {
+      const t = THREE.MathUtils.clamp(blend, 0, 1);
+      anim.leftWing.rotation.z = THREE.MathUtils.lerp(anim.leftWing.rotation.z, pose.wingZ, t);
+      anim.rightWing.rotation.z = THREE.MathUtils.lerp(anim.rightWing.rotation.z, -pose.wingZ, t);
+      anim.leftWingTip.rotation.z = THREE.MathUtils.lerp(anim.leftWingTip.rotation.z, pose.tipZ, t);
+      anim.rightWingTip.rotation.z = THREE.MathUtils.lerp(anim.rightWingTip.rotation.z, -pose.tipZ, t);
+      anim.leftWing.rotation.x = THREE.MathUtils.lerp(anim.leftWing.rotation.x, pose.sweepX, t);
+      anim.rightWing.rotation.x = THREE.MathUtils.lerp(anim.rightWing.rotation.x, pose.sweepX, t);
+    }
+
+    function updateMountWingAnimation(actor, dt, flapStrength = 1) {
       const horizontalSpeed = Math.hypot(actor.vel.x, actor.vel.z);
       const grounded = actor.pos.y <= nearestPlatformHeight(actor.pos.x, actor.pos.z) + 1.75;
       const climbState = actor.vel.y > 4.2;
-      const diveState = actor.vel.y < -8.4;
-      const brakingState = horizontalSpeed < 8.5 && actor.vel.y < -1.2;
-      const gliding = !grounded && Math.abs(actor.vel.y) < 1.5 && horizontalSpeed > 11;
+      const diveState = actor.vel.y < -7.8;
+      const gliding = !grounded && Math.abs(actor.vel.y) < 1.8 && horizontalSpeed > 11;
+      const landingState = !grounded && actor.vel.y < -2.2 && actor.pos.y <= nearestPlatformHeight(actor.pos.x, actor.pos.z) + 4.8;
+      const thrustState = actor.spearTimer > 0.05 || actor.boostCooldown > 0.1;
 
-      let flapRate = grounded ? 3.4 : 7.2 + horizontalSpeed * 0.08;
-      let amp = grounded ? 0.14 : 0.68;
-      if (gliding) { flapRate *= 0.55; amp *= 0.45; }
-      if (climbState) { flapRate *= 1.2; amp *= 1.22; }
-      if (diveState) { flapRate *= 0.88; amp *= 0.58; }
-      if (brakingState) { amp *= 0.9; }
+      let wingState = "activeFlap";
+      if (grounded) wingState = "idle";
+      else if (diveState) wingState = "dive";
+      else if (landingState) wingState = "landing";
+      else if (gliding) wingState = "glide";
+      else if (thrustState) wingState = "thrust";
 
-      actor.flapPhase += dt * flapRate;
       const mount = actor === player ? (MOUNT_DB.find((m) => m.id === progress.mount) || MOUNT_DB[0]) : null;
-      const flapStyle = mount?.wingStyle === "membrane" ? 0.54 : mount?.wingStyle === "mystic" ? 0.78 : 0.66;
-      const flap = (Math.sin(actor.flapPhase) * flapStyle + Math.sin(actor.flapPhase * 0.5) * 0.16) * flapStrength * amp;
+      const wingStyle = mount?.wingStyle || "feather";
+      const styleMod = wingStyle === "membrane" ? { arc: 0.88, tip: 0.8, sweep: 1.08, bounce: 0.05 } :
+        wingStyle === "mystic" ? { arc: 0.75, tip: 1.2, sweep: 0.72, bounce: 0.09 } :
+        { arc: 1.08, tip: 1.02, sweep: 0.95, bounce: 0.07 };
+      const stateProfile = {
+        idle: { rate: 2.3, amp: 0.1, sweepX: 0.06, baseWing: 0.22, baseTip: 0.48 },
+        glide: { rate: 3.1, amp: 0.28, sweepX: -0.16, baseWing: 0.34, baseTip: 0.64 },
+        activeFlap: { rate: 7.4, amp: 0.78, sweepX: climbState ? -0.24 : -0.04, baseWing: 0.3, baseTip: 0.6 },
+        dive: { rate: 5.1, amp: 0.38, sweepX: 0.28, baseWing: 0.14, baseTip: 0.4 },
+        landing: { rate: 4.2, amp: 0.52, sweepX: -0.06, baseWing: 0.4, baseTip: 0.72 },
+        thrust: { rate: 8.4, amp: 0.62, sweepX: -0.08, baseWing: 0.2, baseTip: 0.52 }
+      }[wingState];
+
+      actor.flapPhase += dt * stateProfile.rate * (mount?.flap || 1);
+      const flapCurve = Math.sin(actor.flapPhase);
+      const easedFlap = flapCurve > 0 ? Math.pow(flapCurve, 0.65) : -Math.pow(Math.abs(flapCurve), 1.24);
+      const flap = easedFlap * stateProfile.amp * styleMod.arc * flapStrength + Math.sin(actor.flapPhase * 0.5) * 0.06 * styleMod.tip;
       const anim = actor.model.userData.anim;
+      const pose = {
+        wingZ: stateProfile.baseWing + flap,
+        tipZ: stateProfile.baseTip + flap * (1.15 * styleMod.tip),
+        sweepX: stateProfile.sweepX * styleMod.sweep + (diveState ? 0.08 : 0)
+      };
+      setWingPose(anim, pose, 1 - Math.pow(0.002, dt * 60));
 
-      anim.leftWing.rotation.z = 0.32 + flap;
-      anim.rightWing.rotation.z = -0.32 - flap;
-      anim.leftWingTip.rotation.z = 0.58 + flap * 1.18;
-      anim.rightWingTip.rotation.z = -0.58 - flap * 1.18;
-      anim.leftWing.rotation.x = gliding ? -0.1 : diveState ? 0.2 : climbState ? -0.26 : 0;
-      anim.rightWing.rotation.x = anim.leftWing.rotation.x;
+      const bobAmp = grounded ? 0.03 : 0.1 + styleMod.bounce;
+      anim.cape.rotation.x = 0.16 + Math.sin(actor.flapPhase * 0.78) * (grounded ? 0.05 : 0.2);
+      anim.head.rotation.x = Math.sin(actor.flapPhase * 0.42) * 0.03 + (diveState ? -0.1 : landingState ? 0.06 : 0);
+      anim.neck.rotation.z = Math.sin(actor.flapPhase * 0.36) * 0.06 - actor.model.rotation.z * 0.06;
+      anim.rider.rotation.z = THREE.MathUtils.lerp(anim.rider.rotation.z, -actor.vel.x * 0.009 + (thrustState ? -0.08 : 0), 1 - Math.pow(0.015, dt * 60));
+      anim.rider.rotation.x = THREE.MathUtils.lerp(anim.rider.rotation.x, THREE.MathUtils.clamp(-actor.vel.y * 0.02, -0.22, 0.22), 1 - Math.pow(0.02, dt * 60));
+      anim.rider.position.y = 0.02 + Math.sin(actor.flapPhase * 0.95) * bobAmp;
+      anim.tailPivot.rotation.y = Math.sin(actor.flapPhase * 0.45 + horizontalSpeed * 0.03) * 0.16;
+      anim.tailPivot.rotation.x = -0.12 + Math.sin(actor.flapPhase * 0.6) * 0.12 + THREE.MathUtils.clamp(actor.vel.y * 0.01, -0.09, 0.12);
 
-      anim.cape.rotation.x = 0.18 + Math.sin(actor.flapPhase * 0.8) * (grounded ? 0.06 : 0.18);
-      anim.head.rotation.x = Math.sin(actor.flapPhase * 0.55) * 0.05 + (diveState ? -0.08 : climbState ? 0.06 : 0);
-      anim.neck.rotation.z = Math.sin(actor.flapPhase * 0.42) * 0.05;
-      anim.rider.rotation.z = -actor.vel.x * 0.01;
-      anim.rider.position.y = 0.02 + Math.sin(actor.flapPhase * 0.95) * (grounded ? 0.03 : 0.08);
-
-      if (actor === player) {
-        updateSpearPose(actor, dt);
-      }
+      if (actor === player) updateSpearPose(actor, dt);
     }
 
     function updateActorTransform(actor, dt) {
@@ -2641,7 +2902,7 @@
       actor.model.rotation.x = pitch * 0.7;
       actor.model.rotation.z = bank;
 
-      flapAnimation(actor, dt, 1 + Math.min(speed * 0.02, 0.4));
+      updateMountWingAnimation(actor, dt, 1 + Math.min(speed * 0.02, 0.4));
 
       if (actor === player && player.invuln > 0) {
         const blink = Math.floor(player.invuln * 12) % 2 === 0;
@@ -3367,8 +3628,30 @@
 
     }
 
+    function updateLootAttraction(pickup, dt) {
+      if (!player?.alive) return false;
+      const targetPos = player.pos.clone().add(new THREE.Vector3(0, 1.35, 0));
+      const d = pickup.mesh.position.distanceTo(targetPos);
+      const pullRadius = playerStats().pickupRadius + 4.8;
+      if (d < pullRadius) {
+        pickup.magnetized = true;
+        const dir = targetPos.sub(pickup.mesh.position).normalize();
+        const proximity = 1 - THREE.MathUtils.clamp(d / pullRadius, 0, 1);
+        const accel = 9 + proximity * proximity * 34 + progress.upgrades.pickupRadius * 2.5;
+        pickup.vel.addScaledVector(dir, accel * dt);
+        pickup.vel.multiplyScalar(1 - Math.min(0.65, dt * 0.8));
+        if (pickup.rarity !== "common" && Math.random() < 0.12) spawnBurst(pickup.mesh.position.clone(), 1, pickup.glow || 0xffffff);
+      }
+      if (d < playerStats().pickupRadius) {
+        collectPickup(pickup);
+        return true;
+      }
+      return false;
+    }
+
     function updateParticles(dt) {
       const t = performance.now() * 0.001;
+      updateSkyAtmosphere(dt);
 
       for (const surface of hazardSurfaces) {
         surface.position.y += Math.sin(t * 2.2 + surface.position.x * 0.01 + surface.position.z * 0.01) * 0.004;
@@ -3423,26 +3706,13 @@
       for (let i = pickups.length - 1; i >= 0; i--) {
         const p = pickups[i];
         p.age += dt;
-        p.vel.y -= 0.9 * dt;
+        if (!p.staticCache) p.vel.y -= 0.9 * dt;
         p.mesh.position.addScaledVector(p.vel, dt);
-        p.mesh.position.y += Math.sin(p.age * 4 + p.bob) * 0.01;
-        p.mesh.rotation.y += dt * 2.2;
-        if (player?.alive) {
-          const d = p.mesh.position.distanceTo(player.pos);
-          const pullRadius = playerStats().pickupRadius + 4;
-          if (d < pullRadius) {
-            const dir = player.pos.clone().add(new THREE.Vector3(0, 1.3, 0)).sub(p.mesh.position).normalize();
-            const magnet = d < pullRadius * 0.45 ? 22 : 8;
-            p.vel.addScaledVector(dir, (magnet + progress.upgrades.pickupRadius * 2.2) * dt);
-            if (Math.random() < 0.22) {
-              spawnBurst(p.mesh.position.clone(), 1, p.glow || 0xffffff);
-            }
-          }
-          if (d < playerStats().pickupRadius) {
-            collectPickup(p);
-            continue;
-          }
-        }
+        p.mesh.position.y += Math.sin(p.age * 3.6 + p.bob) * (p.staticCache ? 0.03 : 0.014);
+        p.mesh.rotation.y += dt * p.spin;
+        const pulseScale = 1 + Math.sin(p.age * 2.8 + p.pulse) * (p.rarity === "legendary" ? 0.2 : p.rarity === "epic" ? 0.14 : 0.08);
+        p.mesh.scale.setScalar(pulseScale);
+        if (updateLootAttraction(p, dt)) continue;
         if (p.age > p.life) {
           scene.remove(p.mesh);
           pickups.splice(i, 1);
@@ -3548,8 +3818,15 @@
         if (item) progress.inventory.push(item);
       } else if (pickup.kind === "material") {
         progress.materials.push({ id: pickup.value, qty: 1 });
+      } else if (pickup.kind === "cache") {
+        gold += pickup.value;
+        grantXP(Math.round(pickup.value * 0.75));
       }
-      spawnBurst(pickup.mesh.position.clone(), pickup.kind === "health" ? 7 : 5, pickup.kind === "health" ? 0x86efac : 0xfff3b0);
+      const color = pickup.kind === "health" ? 0x86efac : pickup.rarity === "legendary" ? 0xf59e0b : pickup.rarity === "epic" ? 0xc084fc : 0xfff3b0;
+      spawnBurst(pickup.mesh.position.clone(), pickup.kind === "health" ? 7 : pickup.kind === "cache" ? 10 : 5, color);
+      if (pickup.kind === "gold" || pickup.kind === "score" || pickup.kind === "cache") {
+        showCenterMessage(pickup.kind === "score" ? `+${pickup.value} score orb` : pickup.kind === "cache" ? `Treasure Cache +${pickup.value}g` : `+${pickup.value} gold`, 0.28);
+      }
       scene.remove(pickup.mesh);
       const idx = pickups.indexOf(pickup);
       if (idx >= 0) pickups.splice(idx, 1);
