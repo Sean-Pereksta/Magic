@@ -156,6 +156,7 @@
   </div>
 
   <div id="centerMsg"></div>
+  <div id="spawnDebug" style="position:absolute;right:12px;bottom:12px;z-index:7;display:none;min-width:230px;background:rgba(5,8,18,.72);border:1px solid rgba(151,203,255,.38);border-radius:10px;padding:8px 10px;font-size:12px;line-height:1.35;color:#dbeafe;backdrop-filter:blur(4px);"></div>
   <div id="bossPrompt" style="position:absolute;left:50%;bottom:92px;transform:translateX(-50%);z-index:7;display:none;padding:8px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.34);background:rgba(6,12,24,.84);font-weight:700;letter-spacing:.04em;box-shadow:0 0 20px rgba(90,180,255,.25)"></div>
   <div id="bossHealthWrap" style="position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:7;display:none;min-width:min(680px,78vw);max-width:86vw">
     <div id="bossHealthName" style="text-align:center;font-size:13px;font-weight:800;letter-spacing:.08em;margin-bottom:6px;color:#fee2e2"></div>
@@ -362,6 +363,7 @@
     const menuXpEl = document.getElementById("menuXp");
     const menuXpNeedEl = document.getElementById("menuXpNeed");
     const finalScoreEl = document.getElementById("finalScore");
+    const spawnDebugEl = document.getElementById("spawnDebug");
     const restartBtn = document.getElementById("restartBtn");
     const upgradePanelEl = document.getElementById("upgradePanel");
     const upgradeChoicesEl = document.getElementById("upgradeChoices");
@@ -381,18 +383,37 @@
     const tmpVec = new THREE.Vector3();
     const upVec = new THREE.Vector3(0, 1, 0);
     const CHUNK_SIZE = 68;
-    const LOCAL_SPAWN_RADIUS_MIN = 62;
-    const LOCAL_SPAWN_RADIUS_MAX = 220;
-    const ENEMY_DESPAWN_RANGE = 290;
-    const GLOBAL_ENEMY_CAP = 42;
-    const CHUNK_ENEMY_CAP = 7;
-    const ZONE_ENEMY_CAP = 14;
-    const NODE_ENEMY_CAP = 5;
+    const LOCAL_SPAWN_RADIUS_MIN = 72;
+    const LOCAL_SPAWN_RADIUS_MAX = 260;
+    const ENEMY_DESPAWN_RANGE = 330;
+    const GLOBAL_ENEMY_CAP = 58;
+    const CHUNK_ENEMY_CAP = 10;
+    const ZONE_ENEMY_CAP = 20;
+    const NODE_ENEMY_CAP = 7;
     const BOSS_GATE_RADIUS = 18;
     const BOSS_TRIGGER_RADIUS = 13;
     const BOSS_ARENA_RADIUS = 52;
     const HUB_SAFE_BUFFER = 14;
-    const AMBIENT_SPAWN_CHANCE = 0.016;
+    const AMBIENT_SPAWN_CHANCE = 0.085;
+
+    const spawnDebug = {
+      enabled: true,
+      nearbyActiveNests: 0,
+      attempts: 0,
+      success: 0,
+      ambientAttempts: 0,
+      ambientSuccess: 0,
+      regionAlive: 0
+    };
+
+    const CITY_THEME_PRESETS = {
+      seraphic: { wall: 0xe7edf8, wallDark: 0xbecadd, roof: 0xcfe4ff, trim: 0xeef6ff, plaza: 0xc0d3ec, bannerPalette: [0x9be8ff, 0xd7e6ff, 0xffffff, 0xa9c4ff], window: 0xcff3ff, roofProfiles: ["spire","dome","spire","halo"], skyline: { towerBias: 1.35, bridgeBias: 1.2, perchBias: 0.9 }, marketShape: "ring" },
+      aurelian: { wall: 0x9f947d, wallDark: 0x5d6472, roof: 0x7a8697, trim: 0xdabf7a, plaza: 0x6a7282, bannerPalette: [0xf4cd78, 0x9ca8bf, 0xd6dde9, 0x5f6f87], window: 0xffefbf, roofProfiles: ["battlement","wedge","battlement","spire"], skyline: { towerBias: 1.15, bridgeBias: 0.9, perchBias: 1.1 }, marketShape: "fort" },
+      frontier: { wall: 0x7a5d42, wallDark: 0x4e3928, roof: 0xb89062, trim: 0xd4b889, plaza: 0x6b4f36, bannerPalette: [0xd3a26e, 0x8cc7a7, 0xc78064, 0xbfd7d0], window: 0xffd9a6, roofProfiles: ["canvas","lean","cone","canvas"], skyline: { towerBias: 0.82, bridgeBias: 0.88, perchBias: 1.5 }, marketShape: "scattered" },
+      ruin: { wall: 0x867c78, wallDark: 0x55504d, roof: 0x707780, trim: 0x949089, plaza: 0x625c59, bannerPalette: [0x9ca1ae, 0xd28f72, 0xa7b3c2, 0xb7a598], window: 0xc6d4e8, roofProfiles: ["broken","dome","wedge","broken"], skyline: { towerBias: 1.0, bridgeBias: 1.08, perchBias: 1.0 }, marketShape: "arc" },
+      storm: { wall: 0x6e86a7, wallDark: 0x365173, roof: 0x89b4df, trim: 0x9cd7ff, plaza: 0x4b6384, bannerPalette: [0x8fd9ff, 0x6fa8ff, 0x9af0ff, 0x4f88cc], window: 0xa8edff, roofProfiles: ["rod","wedge","rod","spire"], skyline: { towerBias: 1.05, bridgeBias: 1.0, perchBias: 1.2 }, marketShape: "radial" },
+      dragon: { wall: 0x8d624f, wallDark: 0x4e2f26, roof: 0xa17152, trim: 0xdb9b6f, plaza: 0x6a4333, bannerPalette: [0xff9b62, 0xe98f70, 0x9a5740, 0xe6c57a], window: 0xffb27d, roofProfiles: ["plate","cone","plate","spire"], skyline: { towerBias: 1.25, bridgeBias: 0.75, perchBias: 1.25 }, marketShape: "fort" }
+    };
     const ARCHETYPE_BY_BEHAVIOR = {
       lancer: "Duelist",
       weaver: "Weaver",
@@ -656,6 +677,10 @@
         if (e.key.toLowerCase() === "f" && tryStartBossEncounter()) {
           return;
         }
+        if (e.key.toLowerCase() === "p") {
+          spawnDebug.enabled = !spawnDebug.enabled;
+          return;
+        }
         keys[e.key.toLowerCase()] = true;
         if (e.key.toLowerCase() === "r" && gameEnded) restartGame();
       });
@@ -671,7 +696,7 @@
     }
 
     function createSky() {
-      const skyGeo = new THREE.SphereGeometry(500, 32, 18);
+      const skyGeo = new THREE.SphereGeometry(1800, 42, 24);
       const skyMat = new THREE.ShaderMaterial({
         side: THREE.BackSide,
         uniforms: {
@@ -707,17 +732,17 @@
       skyRoot.add(sky);
       scene.add(skyRoot);
 
-      createCloudLayer({ type: "far", count: 14, radius: 280, minY: 64, maxY: 104, color: 0xf4f9ff, opacity: 0.08, scale: [22, 40], drift: 0.12 });
-      createCloudLayer({ type: "mid", count: 9, radius: 220, minY: 36, maxY: 74, color: 0xffffff, opacity: 0.12, scale: [10, 22], drift: 0.22 });
+      createCloudLayer({ type: "far", count: 26, radius: 1100, minY: 120, maxY: 360, color: 0xf4f9ff, opacity: 0.08, scale: [56, 120], drift: 0.12 });
+      createCloudLayer({ type: "mid", count: 20, radius: 840, minY: 70, maxY: 240, color: 0xffffff, opacity: 0.12, scale: [30, 72], drift: 0.22 });
 
-      createSkyLandmark({ type: "island", count: 7, radius: 260, minY: 46, maxY: 92, color: 0x39445c });
-      createSkyLandmark({ type: "spire", count: 6, radius: 250, minY: 34, maxY: 78, color: 0x4d5368 });
-      createSkyLandmark({ type: "ruin-arch", count: 4, radius: 235, minY: 40, maxY: 68, color: 0x55586f });
-      createSkyLandmark({ type: "chain", count: 4, radius: 210, minY: 28, maxY: 58, color: 0x2f3342 });
+      createSkyLandmark({ type: "island", count: 12, radius: 980, minY: 110, maxY: 280, color: 0x39445c });
+      createSkyLandmark({ type: "spire", count: 10, radius: 920, minY: 90, maxY: 245, color: 0x4d5368 });
+      createSkyLandmark({ type: "ruin-arch", count: 7, radius: 860, minY: 84, maxY: 220, color: 0x55586f });
+      createSkyLandmark({ type: "chain", count: 8, radius: 760, minY: 74, maxY: 200, color: 0x2f3342 });
 
-      createAmbientSkyTraffic({ type: "birds", count: 14, radius: 170, color: 0xd7e8ff, speed: [0.06, 0.11] });
-      createAmbientSkyTraffic({ type: "riders", count: 6, radius: 200, color: 0xfff6cf, speed: [0.03, 0.06] });
-      createAmbientSkyTraffic({ type: "motes", count: 32, radius: 125, color: 0xe3d7ff, speed: [0.2, 0.46] });
+      createAmbientSkyTraffic({ type: "birds", count: 30, radius: 620, color: 0xd7e8ff, speed: [0.03, 0.08] });
+      createAmbientSkyTraffic({ type: "riders", count: 16, radius: 760, color: 0xfff6cf, speed: [0.02, 0.05] });
+      createAmbientSkyTraffic({ type: "motes", count: 52, radius: 460, color: 0xe3d7ff, speed: [0.15, 0.4] });
     }
 
     function createCloudLayer(config) {
@@ -803,8 +828,13 @@
       progress.inventory = starter.map((id) => ITEM_DB.find((i) => i.id === id)).filter(Boolean);
       progress.quests = [
         { id: "q-bee", name: "Purge the Giant Bees", target: "giantBee", need: 8, count: 0, state: "available", reward: { xp: 90, gold: 40, item: "stormcloak-harness" }, giverHub: "Green Cliff Outpost" },
+        { id: "q-skimmer", name: "Frontier Skimmer Sweep", target: "forestSkimmer", need: 10, count: 0, state: "available", reward: { xp: 100, gold: 48, item: "broodmother-spur" }, giverHub: "Green Cliff Outpost" },
+        { id: "q-city-rogues", name: "Rogue Rooftop Crackdown", target: "rogueRooftopRider", need: 7, count: 0, state: "available", reward: { xp: 140, gold: 72, item: "city-guard-plate" }, giverHub: "Seraph Spire Bazaar" },
+        { id: "q-ruin-sentinels", name: "Sentinel Contract", target: "ruinSentinel", need: 6, count: 0, state: "available", reward: { xp: 175, gold: 90, item: "impact-war-lance" }, giverHub: "Aegis Bastion" },
+        { id: "q-storm-divers", name: "Tempest Loop Hunt", target: "stormDiver", need: 8, count: 0, state: "available", reward: { xp: 190, gold: 96, item: "chain-storm-lance" }, giverHub: "Storm Roost Sanctuary" },
         { id: "q-serpent", name: "Magma Serpent Hunt", target: "magmaSerpent", need: 4, count: 0, state: "available", reward: { xp: 120, gold: 52, item: "ember-fang" }, giverHub: "Dragon Hunter's Rest" },
-        { id: "q-drake", name: "Storm Drake Cull", target: "stormDrake", need: 6, count: 0, state: "available", reward: { xp: 160, gold: 75, item: "stormglass-lance" }, giverHub: "Storm Roost Sanctuary" }
+        { id: "q-drake", name: "Storm Drake Cull", target: "stormDrake", need: 6, count: 0, state: "available", reward: { xp: 160, gold: 75, item: "stormglass-lance" }, giverHub: "Storm Roost Sanctuary" },
+        { id: "q-apex", name: "Apex Wyrm Contract", target: "apexRivalRider", need: 2, count: 0, state: "available", reward: { xp: 360, gold: 240, item: "apex-wyrm-relic" }, giverHub: "Dragon Hunter's Rest" }
       ];
     }
 
@@ -932,16 +962,13 @@
     }
 
     function createCityTheme(zone) {
-      const isSeraph = zone.name.includes("Seraph");
-      return {
-        wall: isSeraph ? 0x707891 : 0x746f86,
-        wallDark: isSeraph ? 0x51596d : 0x545066,
-        roof: isSeraph ? 0x9caec7 : 0x9ea2b4,
-        trim: isSeraph ? 0xd5def3 : 0xc9c6d6,
-        plaza: isSeraph ? 0x7f8da8 : 0x86829a,
-        bannerPalette: isSeraph ? [0x7bd7ff, 0xffd67e, 0xff9fd1, 0xb7f5be] : [0x92c5ff, 0xc9a0ff, 0xffd38a, 0x9aeec9],
-        window: isSeraph ? 0xbfe9ff : 0xd0d6ff
-      };
+      if (zone.name.includes("Seraph")) return { ...CITY_THEME_PRESETS.seraphic, key: "seraphic" };
+      if (zone.name.includes("Aurelian")) return { ...CITY_THEME_PRESETS.aurelian, key: "aurelian" };
+      if (zone.name.includes("Ruin")) return { ...CITY_THEME_PRESETS.ruin, key: "ruin" };
+      if (zone.terrainStyle === "storm") return { ...CITY_THEME_PRESETS.storm, key: "storm" };
+      if (zone.terrainStyle === "lava" || zone.terrainStyle === "wyrm" || zone.name.includes("Dragon")) return { ...CITY_THEME_PRESETS.dragon, key: "dragon" };
+      if (zone.name.includes("Green Cliff") || zone.name.includes("Outpost") || zone.terrainStyle === "highland") return { ...CITY_THEME_PRESETS.frontier, key: "frontier" };
+      return { ...CITY_THEME_PRESETS.aurelian, key: "aurelian" };
     }
 
     function createCityRegion(zone) {
@@ -1048,7 +1075,9 @@
       root.add(plazaFloor);
 
       // VISUAL POLISH: denser city skyline and stronger vertical silhouettes.
-      const towerCount = district.type === "plaza" ? 5 : district.type === "market" ? 5 : 3 + Math.floor(Math.random() * 3);
+      const skyline = theme.skyline || { towerBias: 1, bridgeBias: 1, perchBias: 1 };
+      const towerBase = district.type === "plaza" ? 5 : district.type === "market" ? 5 : 3 + Math.floor(Math.random() * 3);
+      const towerCount = Math.max(2, Math.round(towerBase * skyline.towerBias));
       const capHeight = heightBaseByType[district.type] || 9;
       for (let i = 0; i < towerCount; i++) {
         const angle = (i / towerCount) * Math.PI * 2 + Math.random() * 0.45;
@@ -1068,7 +1097,15 @@
             new THREE.MeshStandardMaterial({ color: theme.wall, roughness: 0.88, metalness: 0.08 })
           );
           const a = (i / 6) * Math.PI * 2;
-          stall.position.set(Math.cos(a) * (district.sizeX * 0.24), 1.2, Math.sin(a) * (district.sizeZ * 0.24));
+          if (theme.marketShape === "scattered") {
+            stall.position.set((Math.random() - 0.5) * district.sizeX * 0.42, 1.2, (Math.random() - 0.5) * district.sizeZ * 0.36);
+          } else if (theme.marketShape === "fort") {
+            stall.position.set((i % 2 === 0 ? -1 : 1) * district.sizeX * 0.26, 1.2, (-0.36 + i * 0.14) * district.sizeZ * 0.5);
+          } else if (theme.marketShape === "arc") {
+            stall.position.set(Math.cos(a * 0.7 - 0.5) * (district.sizeX * 0.28), 1.2, Math.sin(a * 0.7 - 0.5) * (district.sizeZ * 0.2));
+          } else {
+            stall.position.set(Math.cos(a) * (district.sizeX * 0.24), 1.2, Math.sin(a) * (district.sizeZ * 0.24));
+          }
           stall.castShadow = true;
           stall.receiveShadow = true;
           root.add(stall);
@@ -1109,25 +1146,48 @@
       shaft.receiveShadow = true;
       root.add(shaft);
 
-      const roofType = Math.random() < 0.4 ? "cone" : Math.random() < 0.5 ? "dome" : "crown";
+      const profile = theme.roofProfiles || ["cone","dome","crown"];
+      const roofType = profile[Math.floor(Math.random() * profile.length)];
       let roof;
       if (roofType === "dome") {
         roof = new THREE.Mesh(
           new THREE.SphereGeometry(width * 0.95, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.5),
           new THREE.MeshStandardMaterial({ color: theme.roof, roughness: 0.58, metalness: 0.2 })
         );
-      } else if (roofType === "crown") {
+      } else if (roofType === "crown" || roofType === "battlement") {
         roof = new THREE.Mesh(
           new THREE.CylinderGeometry(width * 0.22, width * 0.98, width * 1.9, 8),
           new THREE.MeshStandardMaterial({ color: theme.trim, roughness: 0.5, metalness: 0.28 })
         );
+      } else if (roofType === "canvas" || roofType === "wedge" || roofType === "lean") {
+        roof = new THREE.Mesh(
+          new THREE.ConeGeometry(width * 1.2, width * (roofType === "canvas" ? 1.6 : 2.0), 5),
+          new THREE.MeshStandardMaterial({ color: theme.bannerPalette[Math.floor(Math.random() * theme.bannerPalette.length)], roughness: 0.82, metalness: 0.04 })
+        );
+      } else if (roofType === "rod") {
+        roof = new THREE.Mesh(
+          new THREE.CylinderGeometry(width * 0.15, width * 0.22, width * 2.7, 6),
+          new THREE.MeshStandardMaterial({ color: theme.trim, emissive: theme.window, emissiveIntensity: 0.28, roughness: 0.4, metalness: 0.45 })
+        );
+      } else if (roofType === "plate" || roofType === "broken") {
+        roof = new THREE.Mesh(
+          new THREE.BoxGeometry(width * 1.5, width * 0.7, width * 1.2),
+          new THREE.MeshStandardMaterial({ color: theme.roof, roughness: 0.76, metalness: 0.22 })
+        );
+        roof.rotation.y = Math.random() * Math.PI;
+      } else if (roofType === "halo") {
+        roof = new THREE.Mesh(
+          new THREE.TorusGeometry(width * 0.9, width * 0.14, 8, 16),
+          new THREE.MeshStandardMaterial({ color: theme.trim, emissive: theme.window, emissiveIntensity: 0.42, roughness: 0.3, metalness: 0.55 })
+        );
+        roof.rotation.x = Math.PI / 2;
       } else {
         roof = new THREE.Mesh(
           new THREE.ConeGeometry(width * 1.02, width * 2.2, 8),
           new THREE.MeshStandardMaterial({ color: theme.roof, roughness: 0.62, metalness: 0.18 })
         );
       }
-      roof.position.set(pos.x, pos.y + height * 0.5 + (roofType === "dome" ? width * 0.2 : width * 0.75), pos.z);
+      roof.position.set(pos.x, pos.y + height * 0.5 + ((roofType === "dome" || roofType === "halo") ? width * 0.2 : width * 0.75), pos.z);
       roof.castShadow = true;
       root.add(roof);
 
@@ -1214,7 +1274,8 @@
 
     function createPerchNetwork(cityData) {
       const { cityGroup, zone, theme } = cityData;
-      for (let i = 0; i < 14; i++) {
+      const perchCount = Math.round(14 * (theme.skyline?.perchBias || 1));
+      for (let i = 0; i < perchCount; i++) {
         const lane = (i % 2 === 0 ? -1 : 1) * (26 + (i % 4) * 10);
         const perch = new THREE.Mesh(
           new THREE.CylinderGeometry(1.1, 1.8, 9 + Math.random() * 8, 8),
@@ -1490,7 +1551,8 @@
       ground.receiveShadow = true;
       group.add(ground);
 
-      for (let i = 0; i < 14; i++) {
+      const perchCount = Math.round(14 * (theme.skyline?.perchBias || 1));
+      for (let i = 0; i < perchCount; i++) {
         const px = chunkWorldX + (Math.random() - 0.5) * CHUNK_SIZE * 0.9;
         const pz = chunkWorldZ + (Math.random() - 0.5) * CHUNK_SIZE * 0.9;
         const py = terrainHeightAt(px, pz);
@@ -1705,24 +1767,38 @@
         hubRoot.add(npc);
         hubRoot.userData.leader = { name: `${def.name} Leader`, questHub: def.name };
 
-        const merchantTypes = ["weapon", "armor", "trinket", "mount", "life", "heal", "quest"];
+        const vendorLayouts = {
+          "Green Cliff Outpost": ["weapon", "mount", "life", "quest"],
+          "Seraph Spire Bazaar": ["weapon", "trinket", "mount", "armor", "quest"],
+          "Aegis Bastion": ["weapon", "armor", "trinket", "quest"],
+          "Storm Roost Sanctuary": ["weapon", "trinket", "mount", "heal", "quest"],
+          "Skyhold Grand Roost": ["weapon", "armor", "mount", "trinket", "quest", "life"],
+          "Dragon Hunter's Rest": ["weapon", "armor", "trinket", "mount", "quest"]
+        };
+        const merchantTypes = vendorLayouts[def.name] || ["weapon", "armor", "trinket", "quest"];
         merchantTypes.forEach((type, idx) => {
-          const plat = new THREE.Mesh(
-            new THREE.CylinderGeometry(2.1, 2.5, 1.2, 10),
+          const lane = Math.floor(idx / 3);
+          const column = idx % 3;
+          const localPos = new THREE.Vector3(-11 + column * 11, 1.8 + lane * 0.6, 15 + lane * 10 + (column - 1) * 2.5);
+          const stall = new THREE.Group();
+          stall.position.copy(localPos);
+          const pad = new THREE.Mesh(
+            new THREE.CylinderGeometry(2.2, 2.7, 1.3, 10),
             new THREE.MeshStandardMaterial({ color: 0x3c4454, emissive: def.glow, emissiveIntensity: 0.16, roughness: 0.78, metalness: 0.2 })
           );
-          const a = (idx / merchantTypes.length) * Math.PI * 2;
-          plat.position.set(Math.cos(a) * 18.5, 1.8, Math.sin(a) * 18.5);
-          hubRoot.add(plat);
-          shopPlatforms.push({ hubName: def.name, type, worldPos: def.pos.clone().add(plat.position) });
+          stall.add(pad);
+          const canopy = new THREE.Mesh(new THREE.ConeGeometry(2.6, 2.2, 6), new THREE.MeshStandardMaterial({ color: type === "weapon" ? 0xc08457 : type === "armor" ? 0x94a3b8 : type === "mount" ? 0x7dd3fc : type === "quest" ? 0xfde68a : type === "heal" ? 0x86efac : 0xc4b5fd, roughness: 0.7 }));
+          canopy.position.y = 2.1;
+          stall.add(canopy);
+          const glyph = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.72, 14), new THREE.MeshStandardMaterial({ color: def.glow, emissive: def.glow, emissiveIntensity: 0.45, side: THREE.DoubleSide }));
+          glyph.rotation.x = -Math.PI / 2;
+          glyph.position.y = 0.76;
+          stall.add(glyph);
+          hubRoot.add(stall);
+          const worldPos = def.pos.clone().add(localPos);
+          shopPlatforms.push({ hubName: def.name, type, worldPos });
           if (type !== "quest") {
-            worldCollisionVolumes.push({
-              x: def.pos.x + plat.position.x,
-              z: def.pos.z + plat.position.z,
-              radius: 2.2,
-              minY: def.pos.y - 1,
-              maxY: def.pos.y + 6
-            });
+            worldCollisionVolumes.push({ x: worldPos.x, z: worldPos.z, radius: 2.4, minY: def.pos.y - 1, maxY: def.pos.y + 7 });
           }
         });
 
@@ -2148,6 +2224,20 @@
           if (id === "apexRivalRider" || id === "dragonKnight") w *= 0.2;
         }
         if (tier <= 1 && spec.health > 140) w *= 0.2;
+        if (zone.terrainStyle === "forest") {
+          if (["swarm","stinger","ambush"].includes(spec.behavior)) w *= 1.35;
+          if (["beam","orb"].includes(spec.behavior)) w *= 0.72;
+        } else if (zone.terrainStyle === "ruin") {
+          if (["lancer","dash"].includes(spec.behavior)) w *= 1.32;
+        } else if (zone.terrainStyle === "storm") {
+          if (["loopDive","beam","curveStrike"].includes(spec.behavior)) w *= 1.3;
+        } else if (zone.terrainStyle === "marsh") {
+          if (["ambush","swarm","orb"].includes(spec.behavior)) w *= 1.34;
+        } else if (zone.terrainStyle === "lava" || zone.terrainStyle === "wyrm" || zone.terrainStyle === "rift") {
+          if (["bruiser","breath","lancer"].includes(spec.behavior)) w *= 1.38;
+        } else if (zone.terrainStyle === "city" && spawnType.includes("outskirts")) {
+          if (["dash","lancer"].includes(spec.behavior)) w *= 1.28;
+        }
         const count = Math.max(0, Math.round(w));
         for (let n = 0; n < count; n++) weighted.push(id);
       }
@@ -2288,6 +2378,8 @@
           landmark: null,
           active: false,
           pulsePhase: Math.random() * Math.PI * 2,
+          prepTimer: 0,
+          state: "idle",
           respawn: 8.5 + Math.random() * 5.5
         };
         if (!node.safeBlocked) {
@@ -2521,21 +2613,35 @@
       node.active = dist <= node.activationRadius;
       if (node.landmark?.children?.[1]) {
         const ring = node.landmark.children[1];
-        node.pulsePhase += dt * (node.active ? 3.2 : 1.4);
-        const pulse = node.active ? 1 + Math.sin(node.pulsePhase) * 0.16 : 0.92 + Math.sin(node.pulsePhase * 0.6) * 0.05;
+        node.pulsePhase += dt * (node.active ? 3.2 : 1.1);
+        const pulse = node.active ? 1 + Math.sin(node.pulsePhase) * 0.2 : 0.88 + Math.sin(node.pulsePhase * 0.5) * 0.04;
         ring.scale.set(pulse, pulse, pulse);
-        ring.material.emissiveIntensity = node.active ? 0.75 : 0.38;
-        ring.material.opacity = node.active ? 0.88 : 0.62;
+        const activeCol = zone.terrainStyle === "storm" ? 0x89d6ff : zone.terrainStyle === "lava" || zone.terrainStyle === "wyrm" ? 0xff8f5c : zone.accent;
+        ring.material.color.setHex(node.active ? activeCol : 0x6b7280);
+        ring.material.emissiveIntensity = node.active ? 0.9 : 0.25;
+        ring.material.opacity = node.active ? 0.92 : 0.45;
       }
       if (!node.active) {
+        node.state = "idle";
+        node.prepTimer = 0;
         node.spawnTimer = Math.min(node.spawnTimer + dt * 0.5, node.spawnCooldown);
         return 0;
       }
       node.spawnTimer -= dt;
+      if (node.spawnTimer <= 1.1) {
+        node.state = "charging";
+        node.prepTimer += dt;
+      }
       if (node.spawnTimer > 0) return 0;
-      spawnBurst(node.pos.clone().add(new THREE.Vector3(0, 2, 0)), 7, zone.accent);
+      spawnDebug.attempts += 1;
+      spawnBurst(node.pos.clone().add(new THREE.Vector3(0, 2.4, 0)), 12, zone.accent);
       const spawned = spawnEnemyGroupFromNode(node);
-      node.spawnTimer = node.spawnCooldown + (spawned === 0 ? 1.2 + Math.random() * 1.6 : 0.4 + Math.random() * 1.1);
+      if (spawned > 0) {
+        spawnDebug.success += spawned;
+        node.state = "active";
+      }
+      node.prepTimer = 0;
+      node.spawnTimer = node.spawnCooldown + (spawned === 0 ? 0.9 + Math.random() * 1.2 : 0.25 + Math.random() * 0.9);
       return spawned;
     }
 
@@ -2567,11 +2673,75 @@
       return any;
     }
 
+
+    function spawnAmbientRegionalEncounter(zone) {
+      if (!player || !zone || !canSpawnEnemyAt(player.pos.x, player.pos.z)) return false;
+      spawnDebug.ambientAttempts += 1;
+      const depth = getRegionDepthFactor(zone, player.pos);
+      const encounterTable = [
+        { key: "single", count: 1, elite: 0.04 },
+        { key: "duo", count: 2, elite: 0.08 },
+        { key: "swarm", count: depth > 0.45 ? 4 : 3, elite: 0.05 },
+        { key: "escort", count: depth > 0.7 ? 3 : 2, elite: 0.22 }
+      ];
+      const encounter = encounterTable[Math.floor(Math.random() * encounterTable.length)];
+      let spawned = 0;
+      for (let i = 0; i < encounter.count; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const dist = LOCAL_SPAWN_RADIUS_MIN + 18 + Math.random() * (LOCAL_SPAWN_RADIUS_MAX - LOCAL_SPAWN_RADIUS_MIN - 24);
+        const pos = new THREE.Vector3(player.pos.x + Math.cos(ang) * dist, player.pos.y + (Math.random() - 0.2) * 20, player.pos.z + Math.sin(ang) * dist);
+        pos.y = Math.max(terrainHeightAt(pos.x, pos.z) + 8 + Math.random() * 10, player.pos.y - 10);
+        if (!canSpawnEnemyAt(pos.x, pos.z)) continue;
+        const localZone = getZoneAt(pos.x, pos.z) || zone;
+        const typePool = chooseEnemyCompositionForRegion(localZone, Math.max(depth, getRegionDepthFactor(localZone, pos)), `ambient-${encounter.key}`);
+        const enemyType = typePool[Math.floor(Math.random() * typePool.length)] || localZone.enemyFamilies[0];
+        const enemy = createEnemyByArchetype(enemyType, pos, { zone: localZone, depthFactor: getRegionDepthFactor(localZone, pos) });
+        if (!enemy) continue;
+        enemy.zoneName = localZone.name;
+        enemy.spawnNodeId = `ambient-${localZone.name}`;
+        enemy.homePos.copy(pos);
+        enemy.patrolTarget.copy(pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 40, 0, (Math.random() - 0.5) * 40)));
+        enemy.leashRangeOverride = 145;
+        if (Math.random() < encounter.elite + depth * 0.18) enemy.elite = true;
+        spawned += 1;
+      }
+      if (spawned > 0) {
+        spawnDebug.ambientSuccess += spawned;
+        spawnBurst(player.pos.clone().add(new THREE.Vector3(0, 5, 0)), 4, zone.haze);
+        return true;
+      }
+      return false;
+    }
+
     function spawnRegionalEnemy(dt = 0.5) {
       if (!player) return false;
+      const zone = getZoneAt(player.pos.x, player.pos.z);
+      if (!zone) return false;
       const aliveCount = enemies.filter(e => e.alive).length;
       if (aliveCount >= GLOBAL_ENEMY_CAP) return false;
-      return spawnFromNearbyNodes(dt);
+      const nodeSpawned = spawnFromNearbyNodes(dt);
+      const ambientAllowed = canSpawnEnemyAt(player.pos.x, player.pos.z) && Math.random() < (AMBIENT_SPAWN_CHANCE + zone.danger * 0.008);
+      const ambientSpawned = ambientAllowed ? spawnAmbientRegionalEncounter(zone) : false;
+      return nodeSpawned || ambientSpawned;
+    }
+
+    function updateSpawnDebugPanel() {
+      if (!spawnDebugEl || !player) return;
+      if (!(spawnDebug.enabled || keys["p"])) {
+        spawnDebugEl.style.display = "none";
+        return;
+      }
+      const zone = getZoneAt(player.pos.x, player.pos.z);
+      const nearbyNodes = spawnNodes.filter((n) => n.zoneName === zone?.name && player.pos.distanceTo(n.pos) < n.activationRadius);
+      spawnDebug.nearbyActiveNests = nearbyNodes.filter((n) => n.active).length;
+      spawnDebug.regionAlive = enemies.filter((e) => e.alive && e.zoneName === zone?.name).length;
+      spawnDebugEl.style.display = "block";
+      spawnDebugEl.innerHTML = `<div style="font-weight:800;color:#93c5fd">Spawn Debug (${zone?.name || "-"})</div>
+      <div>Active nests: <b>${spawnDebug.nearbyActiveNests}</b></div>
+      <div>Spawn attempts: <b>${spawnDebug.attempts}</b> / success <b>${spawnDebug.success}</b></div>
+      <div>Ambient attempts: <b>${spawnDebug.ambientAttempts}</b> / success <b>${spawnDebug.ambientSuccess}</b></div>
+      <div>Alive in region: <b>${spawnDebug.regionAlive}</b></div>
+      <div style="opacity:.72">Press P to toggle</div>`;
     }
 
     function showCenterMessage(text, duration = 1.5, subtitle = "") {
@@ -2680,9 +2850,11 @@
 
     function playerStats() {
       const eqStats = aggregateItemStats(getEquippedItems());
+      const temp = progress.tempBonuses || {};
+      const stat = (k) => (eqStats[k] || 0) + (temp[k] || 0);
       const mount = MOUNT_DB.find((m) => m.id === progress.mount) || MOUNT_DB[0];
 
-      const computedMaxHealth = 100 + progress.upgrades.healthBoost * 10 + (eqStats.maxHealth || 0);
+      const computedMaxHealth = 100 + progress.upgrades.healthBoost * 10 + stat("maxHealth");
       if (player) {
         if (!Number.isFinite(player.maxHealth) || player.maxHealth <= 0) player.maxHealth = computedMaxHealth;
         if (Math.abs(player.maxHealth - computedMaxHealth) > 0.001) {
@@ -2694,24 +2866,24 @@
 
       return {
         mount,
-        spearDamage: 16 + progress.upgrades.spearDamage * 4 + (eqStats.spearDamage || 0),
-        spearCooldown: Math.max(0.2, 0.72 - progress.upgrades.spearCooldown * 0.05 - (eqStats.spearCooldown || 0)),
-        spearKnockback: 8 + progress.upgrades.spearKnockback * 1.15 + (eqStats.spearKnockback || 0),
-        critChance: THREE.MathUtils.clamp(0.08 + progress.upgrades.critChance * 0.02 + (eqStats.critChance || 0), 0, 0.8),
-        diveImpact: 12 + progress.upgrades.diveImpact * 3 + (eqStats.diveImpact || 0),
-        flapLift: 24 * mount.flap + progress.upgrades.flapPower * 1.8 + (eqStats.flapLift || 0),
-        flapBoost: 3 + progress.upgrades.flapPower * 0.4 + (eqStats.flapBoost || 0),
-        burstBonus: progress.upgrades.burstSpeed * 0.9 + (eqStats.burstSpeed || 0),
-        airControl: THREE.MathUtils.clamp(2.8 + progress.upgrades.airControl * 0.12 + (eqStats.airControl || 0), 1.8, 6.2),
-        regenPerSecond: 1.4 + progress.upgrades.regenSpeed * 0.7 + (eqStats.regenSpeed || 0),
-        regenDelay: Math.max(0.4, 2.6 - progress.upgrades.regenDelay * 0.22 + (eqStats.regenDelay || 0)),
-        resistance: THREE.MathUtils.clamp(progress.upgrades.resistance * 0.03 + (eqStats.resistance || 0), 0, 0.75),
-        pickupRadius: 3.2 + progress.upgrades.pickupRadius * 0.9 + (eqStats.pickupRadius || 0),
-        collisionRecovery: THREE.MathUtils.clamp(progress.upgrades.bounceRecovery * 0.08 + (eqStats.collisionRecovery || 0), 0, 0.82),
-        poisonBonus: eqStats.poisonBonus || 0,
-        freezeChance: eqStats.freezeChance || 0,
-        chainChance: eqStats.chainChance || 0,
-        summonBuff: (mount.summonBuff || 0) + (eqStats.summonBuff || 0)
+        spearDamage: 16 + progress.upgrades.spearDamage * 4 + stat("spearDamage"),
+        spearCooldown: Math.max(0.2, 0.72 - progress.upgrades.spearCooldown * 0.05 - stat("spearCooldown")),
+        spearKnockback: 8 + progress.upgrades.spearKnockback * 1.15 + stat("spearKnockback"),
+        critChance: THREE.MathUtils.clamp(0.08 + progress.upgrades.critChance * 0.02 + stat("critChance"), 0, 0.8),
+        diveImpact: 12 + progress.upgrades.diveImpact * 3 + stat("diveImpact"),
+        flapLift: 24 * mount.flap + progress.upgrades.flapPower * 1.8 + stat("flapLift"),
+        flapBoost: 3 + progress.upgrades.flapPower * 0.4 + stat("flapBoost"),
+        burstBonus: progress.upgrades.burstSpeed * 0.9 + stat("burstSpeed"),
+        airControl: THREE.MathUtils.clamp(2.8 + progress.upgrades.airControl * 0.12 + stat("airControl"), 1.8, 6.2),
+        regenPerSecond: 1.4 + progress.upgrades.regenSpeed * 0.7 + stat("regenSpeed"),
+        regenDelay: Math.max(0.4, 2.6 - progress.upgrades.regenDelay * 0.22 + stat("regenDelay")),
+        resistance: THREE.MathUtils.clamp(progress.upgrades.resistance * 0.03 + stat("resistance"), 0, 0.75),
+        pickupRadius: 3.2 + progress.upgrades.pickupRadius * 0.9 + stat("pickupRadius"),
+        collisionRecovery: THREE.MathUtils.clamp(progress.upgrades.bounceRecovery * 0.08 + stat("collisionRecovery"), 0, 0.82),
+        poisonBonus: stat("poisonBonus"),
+        freezeChance: stat("freezeChance"),
+        chainChance: stat("chainChance"),
+        summonBuff: (mount.summonBuff || 0) + stat("summonBuff")
       };
     }
 
@@ -4611,28 +4783,49 @@
       const hub = safeHubs.find((h) => h.name === hubName);
       if (!hub) return [];
       const tier = Math.max(0, zoneTier(hub.zone));
-      const slotByType = { weapon: "weapon", armor: "armor", trinket: "trinket" }[type] || null;
       const rarityRanks = ["common", "uncommon", "rare", "epic", "legendary"];
-      const maxRarity = Math.min(rarityRanks.length - 1, 1 + Math.floor(tier / 2));
-      const isAllowed = (item) => {
+      const maxRarity = Math.min(rarityRanks.length - 1, 2 + Math.floor(tier / 2));
+      const targetCount = { weapon: 16, trinket: 16, armor: 13, mount: 9, heal: 10, life: 0 }[type] ?? 8;
+      const slotByType = { weapon: "weapon", armor: "armor", trinket: "trinket", heal: "trinket" }[type] || null;
+      const regionTag = [hub.zone, hub.name.includes("Dragon") ? "Outer Wyrm Wastes" : null].filter(Boolean);
+      let pool = ITEM_DB.filter((item) => {
         if (slotByType && item.slot !== slotByType) return false;
-        if (type === "mount" && item.slot !== "trinket") return false;
-        if (type === "heal" && item.slot !== "armor" && item.slot !== "trinket") return false;
+        if (type === "mount") return false;
         if (type === "life") return false;
         if (rarityRanks.indexOf(item.rarity) > maxRarity) return false;
         if (item.classReq && progress.classChoice && item.classReq !== progress.classChoice) return false;
-        return item.region === hub.zone || item.rarity === "common" || item.rarity === "uncommon";
-      };
-      return ITEM_DB.filter(isAllowed).slice(0, type === "weapon" ? 8 : 6);
+        return regionTag.includes(item.region) || item.region === hub.zone || item.rarity === "common" || item.rarity === "uncommon" || tier >= 4;
+      });
+      pool = pool.sort((a,b)=> rarityRanks.indexOf(a.rarity)-rarityRanks.indexOf(b.rarity) || a.sell-b.sell);
+      if (type === "mount") {
+        const mounts = MOUNT_DB.slice(0, Math.min(MOUNT_DB.length, 6 + Math.floor(tier / 2))).map((m,idx)=>({ id:`mount-${hubName.replace(/\W+/g,'-').toLowerCase()}-${m.id}`, name:m.name, rarity: idx < 2 ? "uncommon" : idx < 5 ? "rare" : "epic", stats:{ speed: Number((m.speed*100).toFixed(0)), turn: Number((m.turn*100).toFixed(0)), impact:Number((m.impact*100).toFixed(0))}, desc:`${m.classHint} mount permit with tuning package.`, sell: Math.round(32 + idx*9 + tier*6), vendorVirtual:true }));
+        const upgrades = [
+          { id:`mount-updraft-${hubName}`, name:"Updraft Harness", rarity:"rare", stats:{ flapLift: 2.2, burstSpeed: 0.8 }, desc:"Wing harness tuned for steep ascents.", sell: 66, vendorVirtual:true },
+          { id:`mount-plating-${hubName}`, name:"Impact Plating", rarity:"epic", stats:{ resistance: 0.07, diveImpact: 2.8 }, desc:"Reinforced mount barding for joust collisions.", sell: 88, vendorVirtual:true },
+          { id:`mount-afterburn-${hubName}`, name:"Afterburn Spurs", rarity:"epic", stats:{ burstSpeed: 1.2, airControl: 0.35 }, desc:"Thruster spurs for high-speed lane control.", sell: 92, vendorVirtual:true }
+        ];
+        return [...mounts, ...upgrades].slice(0, targetCount);
+      }
+      if (pool.length < targetCount) {
+        const fallback = ITEM_DB.filter((item)=> (!slotByType || item.slot===slotByType) && rarityRanks.indexOf(item.rarity)<=maxRarity && (!item.classReq || !progress.classChoice || item.classReq===progress.classChoice));
+        pool = [...pool, ...fallback.filter((f)=> !pool.some((p)=>p.id===f.id))];
+      }
+      return pool.slice(0, targetCount);
     }
 
     function buyVendorItem(vendor, itemId) {
-      const item = getItemById(itemId);
+      const stock = getVendorStockForCity(vendor.hubName, vendor.type);
+      const item = stock.find((it) => it.id === itemId) || getItemById(itemId);
       if (!item) return;
       const price = Math.round(item.sell * 1.65);
       if (gold < price) return showCenterMessage("Not enough gold.", 0.6);
       gold -= price;
-      progress.inventory.push(item);
+      if (item.vendorVirtual) {
+        progress.tempBonuses = progress.tempBonuses || {};
+        Object.entries(item.stats || {}).forEach(([k,v]) => progress.tempBonuses[k] = (progress.tempBonuses[k] || 0) + v * (typeof v === "number" && v > 5 ? 0.01 : 1));
+      } else {
+        progress.inventory.push(item);
+      }
       showCenterMessage(`Bought ${item.name}`, 0.6);
       renderInteractionMenu();
       updateUI();
@@ -4728,17 +4921,28 @@
           };
           menuMainPanelEl.appendChild(b);
         } else {
-          stock.forEach((item) => {
-            const row = document.createElement("div");
-            const cost = Math.round(item.sell * 1.65);
-            row.style.cssText = "display:flex;justify-content:space-between;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.08)";
-            row.innerHTML = `<div><div style="color:${RARITY_COLORS[item.rarity] || "#fff"}">${item.name}</div><div style="font-size:11px;opacity:.75">${item.desc}</div><div style="font-size:11px;opacity:.8">${cost}g</div></div>`;
-            const btn = document.createElement("button");
-            btn.textContent = "Buy";
-            btn.style.cssText = "border:1px solid rgba(255,255,255,.25);background:rgba(59,130,246,.24);color:white;border-radius:6px;padding:4px 8px;cursor:pointer";
-            btn.onclick = () => buyVendorItem(vendor, item.id);
-            row.appendChild(btn);
-            menuMainPanelEl.appendChild(row);
+          const grouped = {};
+          stock.forEach((item) => { (grouped[item.rarity] = grouped[item.rarity] || []).push(item); });
+          ["common","uncommon","rare","epic","legendary"].forEach((rarity) => {
+            const items = grouped[rarity];
+            if (!items?.length) return;
+            const h = document.createElement("div");
+            h.style.cssText = "margin-top:6px;font-size:11px;font-weight:800;letter-spacing:.08em;color:" + (RARITY_COLORS[rarity] || "#fff");
+            h.textContent = rarity.toUpperCase();
+            menuMainPanelEl.appendChild(h);
+            items.forEach((item) => {
+              const row = document.createElement("div");
+              const cost = Math.round(item.sell * 1.65);
+              const statLine = Object.entries(item.stats || {}).slice(0,3).map(([k,v]) => `${k}:${typeof v === "number" ? Number(v).toFixed(v < 2 ? 2 : 0) : v}`).join(" • ");
+              row.style.cssText = "display:flex;justify-content:space-between;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.08)";
+              row.innerHTML = `<div><div style="color:${RARITY_COLORS[item.rarity] || "#fff"}">${item.name}</div><div style="font-size:11px;opacity:.78">${item.desc}</div><div style="font-size:11px;opacity:.8">${statLine || "utility"} • <b>${cost}g</b></div></div>`;
+              const btn = document.createElement("button");
+              btn.textContent = "Buy";
+              btn.style.cssText = "border:1px solid rgba(255,255,255,.25);background:rgba(59,130,246,.24);color:white;border-radius:6px;padding:4px 8px;cursor:pointer";
+              btn.onclick = () => buyVendorItem(vendor, item.id);
+              row.appendChild(btn);
+              menuMainPanelEl.appendChild(row);
+            });
           });
         }
         menuSidePanelEl.innerHTML = `<div style="font-weight:800;margin-bottom:8px">Sell from Inventory</div>`;
@@ -5078,6 +5282,7 @@
 
       updateQuestArrow(dt);
       updateCamera(dt);
+      updateSpawnDebugPanel();
       renderer.render(scene, camera);
     }
 
