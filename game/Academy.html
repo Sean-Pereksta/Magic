@@ -427,7 +427,54 @@
       breath: "Crusher"
     };
 
-    const ENEMY_SPECIES = {
+    
+    const FAMILY_NAMEPLATE_COLORS = {
+      Verdant: { name: 0xc7f9b2, subtitle: 0xd2bf67, frame: 0x93d982, telegraph: 0x86d96d },
+      Frontier: { name: 0xe6cfaa, subtitle: 0x8ec9ff, frame: 0xc6a97c, telegraph: 0xc8a271 },
+      Ruined: { name: 0x9db3d8, subtitle: 0xd9e1ef, frame: 0x7e95bb, telegraph: 0x8aa4ce },
+      Storm: { name: 0x7ee8ff, subtitle: 0xcde8ff, frame: 0x79cbff, telegraph: 0x67d6ff },
+      Ember: { name: 0xffa057, subtitle: 0xff6c43, frame: 0xf18a52, telegraph: 0xff804a },
+      Hollow: { name: 0xba9cff, subtitle: 0xddd0ff, frame: 0x9e7fe7, telegraph: 0xa777ff },
+      Dragon: { name: 0xc98957, subtitle: 0x9f7bff, frame: 0xc87a59, telegraph: 0xb08dff },
+      City: { name: 0xf3e7cb, subtitle: 0xd8a1ac, frame: 0xddc8ac, telegraph: 0xe6b8a0 },
+      default: { name: 0xffffff, subtitle: 0xe5e7eb, frame: 0xb8c0d4, telegraph: 0xbcc9e5 }
+    };
+
+    const SPECIES_VISUAL_PROFILE = {
+      forestSkimmer: { bodyClass: "swarmer", wingClass: "needle", headClass: "beak", tailClass: "stinger", riderClass: "minimal", armorClass: "none", glowClass: "none" },
+      ashWasp: { bodyClass: "swarmer", wingClass: "needle", headClass: "beak", tailClass: "stinger", riderClass: "none", armorClass: "none", glowClass: "ember" },
+      nightBee: { bodyClass: "swarmer", wingClass: "needle", headClass: "beak", tailClass: "stinger", riderClass: "none", armorClass: "none", glowClass: "void" },
+      branchPouncer: { bodyClass: "ambusher", wingClass: "folded", headClass: "hook", tailClass: "predator", riderClass: "light", armorClass: "leather", glowClass: "eyes" },
+      shadeSerpent: { bodyClass: "weaver", wingClass: "ribbon", headClass: "serpent", tailClass: "serpent", riderClass: "minimal", armorClass: "none", glowClass: "void" },
+      hollowAmbusher: { bodyClass: "ambusher", wingClass: "ragged", headClass: "hook", tailClass: "predator", riderClass: "light", armorClass: "bone", glowClass: "void" },
+      canopyDuelist: { bodyClass: "duelist", wingClass: "broad", headClass: "beak", tailClass: "banner", riderClass: "duelist", armorClass: "lightPlate", glowClass: "none" },
+      cliffLancer: { bodyClass: "duelist", wingClass: "broad", headClass: "beak", tailClass: "banner", riderClass: "duelist", armorClass: "plate", glowClass: "none" },
+      ruinSentinel: { bodyClass: "duelist", wingClass: "broad", headClass: "beak", tailClass: "banner", riderClass: "duelist", armorClass: "plate", glowClass: "rune" },
+      armoredKnight: { bodyClass: "duelist", wingClass: "broad", headClass: "beak", tailClass: "banner", riderClass: "duelist", armorClass: "heavy", glowClass: "rune" },
+      dragonKnight: { bodyClass: "duelist", wingClass: "knuckle", headClass: "dragon", tailClass: "spine", riderClass: "duelist", armorClass: "heavy", glowClass: "ember" },
+      apexRivalRider: { bodyClass: "duelist", wingClass: "knuckle", headClass: "dragon", tailClass: "crest", riderClass: "duelist", armorClass: "royal", glowClass: "rune" },
+      magmaSerpent: { bodyClass: "weaver", wingClass: "fin", headClass: "serpent", tailClass: "serpent", riderClass: "minimal", armorClass: "scale", glowClass: "ember" },
+      skyWeaver: { bodyClass: "weaver", wingClass: "fin", headClass: "serpent", tailClass: "serpent", riderClass: "light", armorClass: "none", glowClass: "storm" },
+      skyEel: { bodyClass: "weaver", wingClass: "ribbon", headClass: "serpent", tailClass: "serpent", riderClass: "none", armorClass: "none", glowClass: "storm" },
+      stormDrake: { bodyClass: "caster", wingClass: "mantle", headClass: "dragon", tailClass: "spine", riderClass: "light", armorClass: "arcane", glowClass: "storm" },
+      stormCaster: { bodyClass: "caster", wingClass: "mantle", headClass: "dragon", tailClass: "banner", riderClass: "duelist", armorClass: "arcane", glowClass: "storm" },
+      voidManta: { bodyClass: "caster", wingClass: "manta", headClass: "manta", tailClass: "ribbon", riderClass: "none", armorClass: "void", glowClass: "void" },
+      voidDragon: { bodyClass: "caster", wingClass: "knuckle", headClass: "dragon", tailClass: "spine", riderClass: "minimal", armorClass: "void", glowClass: "void" },
+      boltRay: { bodyClass: "caster", wingClass: "manta", headClass: "manta", tailClass: "ribbon", riderClass: "none", armorClass: "arcane", glowClass: "storm" },
+      ironWyvern: { bodyClass: "crusher", wingClass: "broad", headClass: "dragon", tailClass: "club", riderClass: "duelist", armorClass: "heavy", glowClass: "rune" },
+      magmaCrusher: { bodyClass: "crusher", wingClass: "stub", headClass: "dragon", tailClass: "club", riderClass: "light", armorClass: "heavy", glowClass: "ember" },
+      hiveQueen: { bodyClass: "crusher", wingClass: "stub", headClass: "beak", tailClass: "stinger", riderClass: "none", armorClass: "chitin", glowClass: "hive" }
+    };
+
+    const SPECIES_MOVE_UNLOCKS = {
+      forestSkimmer: { outerMoves: ["flutterPass"], midMoves: ["doubleFeint"], deepMoves: ["circleReentry"] },
+      cliffLancer: { outerMoves: ["singleCharge"], midMoves: ["recoveryTurn"], deepMoves: ["fakeDisengage", "realignThrust"] },
+      stormDiver: { outerMoves: ["loopDive"], midMoves: ["shockLane"], deepMoves: ["chainLoop", "delayedDescent"] },
+      magmaCrusher: { outerMoves: ["heavySlam"], midMoves: ["emberBurst"], deepMoves: ["shockCone", "armoredRecover"] },
+      voidDragon: { outerMoves: ["orbVolley"], midMoves: ["driftReposition"], deepMoves: ["vacuumLane", "crashMarker"] }
+    };
+
+const ENEMY_SPECIES = {
       giantBee: { label: "Giant Bee", family: "Verdant", behavior: "stinger", health: 64, speed: 17, turn: 2.8, aggroRange: 55, leashRange: 95, preferDistance: 8, attackCooldown: 1.6, damage: 10, knockback: 4.2, bounceMass: 0.8, reward: { score: 100, xp: 18, gold: 5 }, colors: { bird: 0x9a7c23, wing: 0x503c12, rider: 0xd7cf89, cloth: 0x2f7c3f } },
       hornetGuard: { label: "Hornet Guard", family: "Verdant", behavior: "dash", health: 110, speed: 14.2, turn: 2.1, aggroRange: 48, leashRange: 88, preferDistance: 11, attackCooldown: 2.3, damage: 17, knockback: 6.4, bounceMass: 1.25, reward: { score: 150, xp: 26, gold: 7 }, colors: { bird: 0x6c5318, wing: 0x47330f, rider: 0xdcc76f, cloth: 0xa32717 } },
       vineDrake: { label: "Vine Drake", family: "Verdant", behavior: "ranged", health: 96, speed: 13.8, turn: 2.2, aggroRange: 60, leashRange: 104, preferDistance: 15, attackCooldown: 2.4, damage: 14, knockback: 4.8, bounceMass: 1.05, reward: { score: 140, xp: 24, gold: 7 }, colors: { bird: 0x34713e, wing: 0x1f4b29, rider: 0xb2d7be, cloth: 0xb5eb7d } },
@@ -1878,7 +1925,42 @@
       if (activeCheckpoint) lastRespawnPoint.copy(activeCheckpoint.pos);
     }
 
-    function createBirdRider(colors = {}) {
+    function normalizeBirdRiderConfig(config = {}) {
+      if (config.colors || config.visualProfile) return {
+        colors: { ...(config.colors || {}) },
+        visualProfile: { ...(config.visualProfile || {}) }
+      };
+      return { colors: { ...config }, visualProfile: {} };
+    }
+
+    function getSpeciesVisualProfile(species, archetype = "Duelist") {
+      const mapped = SPECIES_VISUAL_PROFILE[species] || {};
+      if (Object.keys(mapped).length) return { ...mapped };
+      const fallbackByArchetype = {
+        Swarmer: { bodyClass: "swarmer", wingClass: "needle", headClass: "beak", tailClass: "stinger", riderClass: "minimal", armorClass: "none", glowClass: "none" },
+        Percher: { bodyClass: "ambusher", wingClass: "folded", headClass: "hook", tailClass: "predator", riderClass: "light", armorClass: "leather", glowClass: "eyes" },
+        Duelist: { bodyClass: "duelist", wingClass: "broad", headClass: "beak", tailClass: "banner", riderClass: "duelist", armorClass: "plate", glowClass: "none" },
+        Weaver: { bodyClass: "weaver", wingClass: "ribbon", headClass: "serpent", tailClass: "serpent", riderClass: "minimal", armorClass: "none", glowClass: "none" },
+        Caster: { bodyClass: "caster", wingClass: "mantle", headClass: "dragon", tailClass: "ribbon", riderClass: "light", armorClass: "arcane", glowClass: "storm" },
+        Crusher: { bodyClass: "crusher", wingClass: "stub", headClass: "dragon", tailClass: "club", riderClass: "light", armorClass: "heavy", glowClass: "ember" }
+      };
+      return { ...(fallbackByArchetype[archetype] || fallbackByArchetype.Duelist) };
+    }
+
+    function createBirdRider(config = {}) {
+      const normalized = normalizeBirdRiderConfig(config);
+      const colors = normalized.colors;
+      const profile = {
+        bodyClass: "duelist",
+        wingClass: "broad",
+        headClass: "beak",
+        tailClass: "banner",
+        riderClass: "duelist",
+        armorClass: "plate",
+        glowClass: "none",
+        ...normalized.visualProfile
+      };
+
       const birdColor = colors.bird ?? 0x7c4b2c;
       const wingColor = colors.wing ?? 0x5e341d;
       const riderColor = colors.rider ?? 0xb3bcc7;
@@ -1887,7 +1969,6 @@
 
       const root = new THREE.Group();
 
-      // VISUAL POLISH: heroic mount silhouette with cleaner chest/neck/head profile.
       const body = new THREE.Mesh(new THREE.SphereGeometry(1.45, 16, 14), new THREE.MeshStandardMaterial({ color: birdColor, roughness: 0.84, metalness: 0.05 }));
       body.scale.set(1.48, 0.92, 2.0);
       body.castShadow = true;
@@ -1911,53 +1992,63 @@
       head.castShadow = true;
       root.add(head);
 
-      const beak = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.88, 8), new THREE.MeshStandardMaterial({ color: 0xd5aa49, roughness: 0.74, metalness: 0.18 }));
+      const beakGeo = profile.headClass === "dragon" ? new THREE.ConeGeometry(0.28, 1.08, 8) : profile.headClass === "serpent" ? new THREE.ConeGeometry(0.14, 0.95, 8) : new THREE.ConeGeometry(0.18, 0.88, 8);
+      const beak = new THREE.Mesh(beakGeo, new THREE.MeshStandardMaterial({ color: 0xd5aa49, roughness: 0.74, metalness: 0.18 }));
       beak.rotation.x = Math.PI / 2;
       beak.position.set(0, 1.16, 3.46);
       beak.castShadow = true;
       root.add(beak);
 
-      const crest = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.58, 6), new THREE.MeshStandardMaterial({ color: clothColor, roughness: 0.7 }));
+      const crest = new THREE.Mesh(new THREE.ConeGeometry(profile.armorClass === "royal" ? 0.2 : 0.13, profile.armorClass === "royal" ? 0.8 : 0.58, 6), new THREE.MeshStandardMaterial({ color: clothColor, roughness: 0.7 }));
       crest.position.set(0, 1.74, 2.96);
       crest.rotation.x = -0.44;
       crest.castShadow = true;
       root.add(crest);
 
-      const wingGeo = new THREE.BoxGeometry(2.5, 0.18, 1.16);
-      const wingMat = new THREE.MeshStandardMaterial({ color: wingColor, roughness: 0.9, metalness: 0.06 });
+      const wingLength = profile.wingClass === "needle" ? 3.05 : profile.wingClass === "stub" ? 1.85 : profile.wingClass === "manta" ? 3.4 : 2.5;
+      const wingThickness = profile.wingClass === "needle" ? 0.11 : profile.wingClass === "stub" ? 0.24 : 0.18;
+      const wingDepth = profile.wingClass === "manta" ? 1.65 : profile.wingClass === "folded" ? 0.88 : 1.16;
+      const wingGeo = new THREE.BoxGeometry(wingLength, wingThickness, wingDepth);
+      const wingMat = new THREE.MeshStandardMaterial({ color: wingColor, roughness: 0.9, metalness: 0.06, emissive: profile.glowClass === "storm" ? 0x68b8ff : profile.glowClass === "void" ? 0x6c4cff : 0x000000, emissiveIntensity: profile.glowClass === "none" ? 0 : 0.16 });
       const leftWing = new THREE.Mesh(wingGeo, wingMat);
       leftWing.position.set(-2.24, 0.34, 0.18);
-      leftWing.rotation.z = 0.35;
+      leftWing.rotation.z = profile.wingClass === "folded" ? 0.82 : 0.35;
       leftWing.castShadow = true;
       root.add(leftWing);
 
       const rightWing = new THREE.Mesh(wingGeo, wingMat);
       rightWing.position.set(2.24, 0.34, 0.18);
-      rightWing.rotation.z = -0.35;
+      rightWing.rotation.z = profile.wingClass === "folded" ? -0.82 : -0.35;
       rightWing.castShadow = true;
       root.add(rightWing);
 
-      const leftWingTip = new THREE.Mesh(new THREE.BoxGeometry(2.05, 0.13, 0.92), wingMat);
+      const leftWingTip = new THREE.Mesh(new THREE.BoxGeometry(Math.max(1.4, wingLength * 0.82), wingThickness * 0.72, Math.max(0.65, wingDepth * 0.82)), wingMat);
       leftWingTip.position.set(-4.06, 0.26, 0.2);
-      leftWingTip.rotation.z = 0.7;
+      leftWingTip.rotation.z = profile.wingClass === "folded" ? 0.88 : 0.7;
       leftWingTip.castShadow = true;
       root.add(leftWingTip);
 
       const rightWingTip = leftWingTip.clone();
       rightWingTip.position.x = 4.06;
-      rightWingTip.rotation.z = -0.7;
+      rightWingTip.rotation.z = profile.wingClass === "folded" ? -0.88 : -0.7;
       root.add(rightWingTip);
 
       const tailPivot = new THREE.Group();
       tailPivot.position.set(0, 0.16, -2.08);
       root.add(tailPivot);
-      for (let i = 0; i < 4; i++) {
-        const feather = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.08, 1.5 - i * 0.15), new THREE.MeshStandardMaterial({ color: wingColor, roughness: 0.9 }));
-        feather.position.set((i - 1.5) * 0.26, 0.03 + Math.abs(i - 1.5) * 0.02, -0.56 - i * 0.08);
-        feather.rotation.x = -0.42;
+      const tailCount = profile.tailClass === "serpent" ? 6 : 4;
+      for (let i = 0; i < tailCount; i++) {
+        const feather = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.08, (profile.tailClass === "club" ? 1.9 : 1.5) - i * 0.12), new THREE.MeshStandardMaterial({ color: wingColor, roughness: 0.9 }));
+        feather.position.set((i - (tailCount - 1) * 0.5) * 0.22, 0.03 + Math.abs(i - 1.5) * 0.02, -0.56 - i * 0.08);
+        feather.rotation.x = profile.tailClass === "serpent" ? -0.22 : -0.42;
         feather.castShadow = true;
         tailPivot.add(feather);
       }
+
+      const tailBanner = new THREE.Mesh(new THREE.PlaneGeometry(profile.tailClass === "banner" || profile.tailClass === "crest" ? 0.58 : 0.35, profile.tailClass === "banner" || profile.tailClass === "crest" ? 1.2 : 0.7), new THREE.MeshStandardMaterial({ color: clothColor, roughness: 0.78, side: THREE.DoubleSide }));
+      tailBanner.position.set(0, 0.3, -2.72);
+      tailBanner.rotation.x = -0.18;
+      if (profile.tailClass === "banner" || profile.tailClass === "crest") root.add(tailBanner);
 
       for (const x of [-0.72, 0.72]) {
         const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.95, 7), new THREE.MeshStandardMaterial({ color: 0xc29443, roughness: 0.68 }));
@@ -2046,17 +2137,20 @@
       cape.castShadow = true;
       rider.add(cape);
 
+      if (profile.armorClass === "none" || profile.riderClass === "none") rider.visible = false;
+      if (profile.riderClass === "minimal") rider.scale.setScalar(0.78);
+      if (profile.riderClass === "duelist") rider.scale.set(1.12, 1.16, 1.08);
+
       const spearAnchor = new THREE.Group();
       spearAnchor.position.set(0.55, 0.16, 0.34);
       spearAnchor.rotation.x = -0.08;
       rider.add(spearAnchor);
 
-      // VISUAL POLISH + SPEAR ORIENTATION FIX: lance now uses +Z forward local axis for shaft/tip alignment.
       const lance = new THREE.Group();
       lance.position.set(0.1, -0.02, 1.3);
       spearAnchor.add(lance);
 
-      const lanceLength = 4.8;
+      const lanceLength = 4.8 + (profile.bodyClass === "duelist" ? 0.5 : 0);
       const lanceShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.045, lanceLength, 9), new THREE.MeshStandardMaterial({ color: lanceColor, roughness: 0.64, metalness: 0.35 }));
       lanceShaft.rotation.x = Math.PI / 2;
       lanceShaft.position.z = lanceLength * 0.5;
@@ -2069,6 +2163,14 @@
       lanceTip.castShadow = true;
       lance.add(lanceTip);
 
+      const glowOrb = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), new THREE.MeshStandardMaterial({ color: profile.glowClass === "storm" ? 0x7fd7ff : profile.glowClass === "void" ? 0xa88aff : profile.glowClass === "ember" ? 0xff8f54 : 0xb3f58a, emissive: profile.glowClass === "none" ? 0x000000 : (profile.glowClass === "storm" ? 0x63baff : profile.glowClass === "void" ? 0x8d6bff : profile.glowClass === "ember" ? 0xff6e3c : 0x8ee86a), emissiveIntensity: profile.glowClass === "none" ? 0 : 0.85, roughness: 0.35 }));
+      glowOrb.position.set(0, 0.48, 1.56);
+      if (profile.glowClass !== "none") {
+        glowOrb.castShadow = true;
+        root.add(glowOrb);
+      }
+
+      root.userData.visualProfile = profile;
       root.userData.anim = {
         leftWing,
         rightWing,
@@ -2125,6 +2227,95 @@
       updateActorTransform(player, 0);
     }
 
+    function shouldShowEnemySubtitle(enemy) {
+      if (!player) return false;
+      if (enemy.elite || enemy.isBossTier || enemy.depthTier === "deep") {
+        return enemy.pos.distanceTo(player.pos) < 72;
+      }
+      return false;
+    }
+
+    function getEnemySubtitle(enemy) {
+      if (enemy.elite) return `Elite ${enemy.archetype || "Duelist"}`;
+      if (enemy.isBossTier) {
+        if (enemy.archetype === "Duelist") return "Elite Duelist";
+        if (enemy.archetype === "Crusher") return "Rift Tyrant";
+        return "Apex";
+      }
+      if (enemy.depthTier === "deep") {
+        if (enemy.archetype === "Swarmer") return "Brood Elite";
+        return enemy.archetype || "Duelist";
+      }
+      return "";
+    }
+
+    function makeTextSprite(text, options = {}) {
+      const width = options.width || 512;
+      const height = options.height || 160;
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, width, height);
+      if (options.bgAlpha && options.bgAlpha > 0) {
+        ctx.fillStyle = `rgba(10, 14, 22, ${options.bgAlpha})`;
+        ctx.fillRect(28, 20, width - 56, height - 40);
+      }
+      if (options.glowFrame) {
+        ctx.strokeStyle = options.frameColor || "rgba(245, 206, 112, 0.85)";
+        ctx.lineWidth = 4;
+        ctx.strokeRect(24, 16, width - 48, height - 32);
+      }
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = `${options.weight || 700} ${options.size || 46}px Arial`;
+      ctx.fillStyle = options.color || "#ffffff";
+      if (options.stroke) {
+        ctx.strokeStyle = options.stroke;
+        ctx.lineWidth = options.strokeWidth || 7;
+        ctx.strokeText(text, width / 2, height / 2);
+      }
+      ctx.fillText(text, width / 2, height / 2);
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.needsUpdate = true;
+      texture.minFilter = THREE.LinearFilter;
+      const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false });
+      const sprite = new THREE.Sprite(material);
+      sprite.scale.set(options.worldW || 3.4, options.worldH || 0.95, 1);
+      return sprite;
+    }
+
+    function makeEnemyNameplate(enemy, speciesData) {
+      const familyColors = FAMILY_NAMEPLATE_COLORS[speciesData.family] || FAMILY_NAMEPLATE_COLORS.default;
+      const nameSprite = makeTextSprite(speciesData.label || "Unknown", {
+        color: `#${familyColors.name.toString(16).padStart(6, "0")}`,
+        stroke: "rgba(9, 12, 20, 0.9)",
+        size: enemy.elite ? 54 : 46,
+        weight: enemy.elite ? 800 : 700,
+        glowFrame: !!enemy.elite,
+        frameColor: `#${familyColors.frame.toString(16).padStart(6, "0")}`,
+        bgAlpha: enemy.elite ? 0.24 : 0,
+        worldW: enemy.elite ? 4.2 : 3.6,
+        worldH: enemy.elite ? 1.12 : 0.92
+      });
+      nameSprite.position.set(0, 0.9, 0.02);
+
+      const subtitle = getEnemySubtitle(enemy);
+      const subtitleSprite = makeTextSprite(subtitle || enemy.archetype || "", {
+        color: `#${familyColors.subtitle.toString(16).padStart(6, "0")}`,
+        stroke: "rgba(6, 10, 16, 0.82)",
+        size: enemy.elite ? 32 : 28,
+        weight: enemy.elite ? 700 : 600,
+        bgAlpha: subtitle ? 0.14 : 0,
+        worldW: enemy.elite ? 3.2 : 2.8,
+        worldH: enemy.elite ? 0.58 : 0.52
+      });
+      subtitleSprite.position.set(0, 0.42, 0.02);
+      subtitleSprite.visible = !!subtitle && shouldShowEnemySubtitle(enemy);
+
+      return { nameSprite, subtitleSprite };
+    }
+
     function makeEnemyHealthBar(enemy, speciesData) {
       const hud = new THREE.Group();
       const back = new THREE.Mesh(
@@ -2136,27 +2327,27 @@
         new THREE.MeshBasicMaterial({ color: enemy.elite ? 0xff7f50 : 0x4ade80, transparent: true, opacity: 0.95, depthTest: false })
       );
       fill.position.z = 0.01;
+      back.position.y = -0.02;
+      fill.position.y = -0.02;
       hud.add(back);
       hud.add(fill);
+
+      const { nameSprite, subtitleSprite } = makeEnemyNameplate(enemy, speciesData);
+      hud.add(nameSprite);
+      hud.add(subtitleSprite);
+
       hud.position.set(0, enemy.radius + 1.8, 0);
       enemy.model.add(hud);
-      enemy.healthBar = { root: hud, fill };
-
-      if (enemy.elite) {
-        const elitePlate = new THREE.Mesh(
-          new THREE.PlaneGeometry(2.5, 0.22),
-          new THREE.MeshBasicMaterial({ color: 0xffcc66, transparent: true, opacity: 0.9, depthTest: false })
-        );
-        elitePlate.position.set(0, 0.35, 0.01);
-        hud.add(elitePlate);
-      }
+      enemy.healthBar = { root: hud, fill, nameSprite, subtitleSprite };
     }
 
     function spawnEnemy(pos, species = "giantBee") {
       const speciesData = { ...(ENEMY_SPECIES[species] || ENEMY_SPECIES.giantBee) };
       speciesData.reward = { ...speciesData.reward };
       speciesData.colors = { ...speciesData.colors };
-      const model = createBirdRider(speciesData.colors);
+      const visualProfile = getSpeciesVisualProfile(species, ARCHETYPE_BY_BEHAVIOR[speciesData.behavior] || "Duelist");
+      speciesData.visualProfile = visualProfile;
+      const model = createBirdRider({ colors: speciesData.colors, visualProfile });
       scene.add(model);
 
       const enemy = {
@@ -2168,6 +2359,11 @@
         type: species,
         speciesData,
         archetype: ARCHETYPE_BY_BEHAVIOR[speciesData.behavior] || "Duelist",
+        roleSubtitle: ARCHETYPE_BY_BEHAVIOR[speciesData.behavior] || "Duelist",
+        moveKit: { outerMoves: [], midMoves: [], deepMoves: [] },
+        depthTier: "outer",
+        depthFactor: 0,
+        isBossTier: false,
         alive: true,
         maxHealth: speciesData.health,
         health: speciesData.health,
@@ -2198,7 +2394,6 @@
       enemy.radius *= sizeScale;
       enemy.model.scale.multiplyScalar(sizeScale);
 
-      makeEnemyHealthBar(enemy, speciesData);
 
       enemies.push(enemy);
       return enemy;
@@ -2277,6 +2472,8 @@
       enemy.radius *= scale;
 
       const behavior = enemy.speciesData?.behavior || "lancer";
+      const profile = enemy.model.userData?.visualProfile || {};
+      const bodyClass = profile.bodyClass || "duelist";
       const anim = enemy.model.userData?.anim;
       if (anim) {
         // VISUAL POLISH: stronger enemy silhouette language by combat role.
@@ -2292,7 +2489,15 @@
           sniper: { body: [0.9, 0.88, 1.08], wing: [1.22, 0.9, 1.32], riderY: 0.05, lean: 0.04 }
         };
         const role = roleMap[behavior] || roleMap.lancer;
-        anim.body.scale.set(...role.body);
+        const classScale = {
+          swarmer: [0.82, 0.76, 0.9],
+          ambusher: [0.96, 0.84, 1.12],
+          duelist: [1.0, 0.98, 1.2],
+          weaver: [0.88, 0.78, 1.35],
+          caster: [1.0, 0.9, 1.12],
+          crusher: [1.28, 1.15, 1.08]
+        }[bodyClass] || [1, 1, 1];
+        anim.body.scale.set(role.body[0] * classScale[0], role.body[1] * classScale[1], role.body[2] * classScale[2]);
         anim.leftWing.scale.set(...role.wing);
         anim.rightWing.scale.copy(anim.leftWing.scale);
         anim.rider.position.y += role.riderY;
@@ -2312,6 +2517,13 @@
         const eliteCrest = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.72, 7), new THREE.MeshStandardMaterial({ color: zone.accent, emissive: zone.accent, emissiveIntensity: 0.55, roughness: 0.4, metalness: 0.45 }));
         eliteCrest.position.set(0, enemy.radius + 1.04, 0.26);
         enemy.model.add(eliteCrest);
+        const halo = new THREE.Mesh(new THREE.TorusGeometry(0.78, 0.08, 8, 18), new THREE.MeshStandardMaterial({ color: zone.accent, emissive: zone.accent, emissiveIntensity: 0.7, roughness: 0.3, metalness: 0.4 }));
+        halo.rotation.x = Math.PI / 2;
+        halo.position.set(0, enemy.radius + 1.18, 0.2);
+        enemy.model.add(halo);
+        const rune = new THREE.Mesh(new THREE.PlaneGeometry(0.92, 0.32), new THREE.MeshStandardMaterial({ color: 0xffd38a, emissive: 0xffd38a, emissiveIntensity: 0.5, roughness: 0.45, metalness: 0.2, side: THREE.DoubleSide }));
+        rune.position.set(0, 0.88, -1.42);
+        enemy.model.add(rune);
       }
     }
 
@@ -2323,24 +2535,45 @@
       enemy.speciesData.damage *= 1 + tier * 0.04 + depthFactor * 0.18;
       enemy.speciesData.speed *= 1 + depthFactor * 0.08;
       enemy.speciesData.turn *= 1 + depthFactor * 0.06;
-      if (node.depthTier === "deep") enemy.speciesData.aggroRange += 6;
+      enemy.depthFactor = depthFactor;
+      enemy.depthTier = node.depthTier || (depthFactor < 0.34 ? "outer" : depthFactor < 0.68 ? "mid" : "deep");
+      enemy.roleSubtitle = enemy.archetype;
+
+      const moveUnlock = SPECIES_MOVE_UNLOCKS[enemy.type] || { outerMoves: ["baseline"], midMoves: [], deepMoves: [] };
+      enemy.moveKit = {
+        outerMoves: [...(moveUnlock.outerMoves || ["baseline"])],
+        midMoves: enemy.depthTier === "outer" ? [] : [...(moveUnlock.midMoves || [])],
+        deepMoves: enemy.depthTier === "deep" ? [...(moveUnlock.deepMoves || [])] : []
+      };
+
+      if (enemy.depthTier === "deep") {
+        enemy.speciesData.aggroRange += 6;
+        enemy.speciesData.attackCooldown *= 0.92;
+      } else if (enemy.depthTier === "mid") {
+        enemy.speciesData.attackCooldown *= 0.96;
+      }
       if (zone.name === "Great Forest Canopy") {
         enemy.speciesData.damage *= 0.88;
         if (["beam", "sniper", "orb", "ranged", "breath"].includes(enemy.speciesData.behavior)) {
           enemy.speciesData.behavior = "dash";
+          enemy.roleSubtitle = "Percher";
         }
       }
+      if (enemy.elite) enemy.roleSubtitle = `Elite ${enemy.archetype}`;
     }
 
     function createEnemyByArchetype(enemyType, spawnPos, context = {}) {
       const enemy = spawnEnemy(spawnPos, enemyType);
       if (!enemy) return null;
+      enemy.elite = !!context.forceElite;
+      enemy.isBossTier = !!context.isBossTier;
       const zone = context.zone || getZoneAt(spawnPos.x, spawnPos.z);
       const depthFactor = context.depthFactor ?? (zone ? getRegionDepthFactor(zone, spawnPos) : 0);
       if (zone) {
         applyEnemyDifficultyScaling(enemy, zone, depthFactor, context.node || {});
         createEnemyVisualForRegion(enemy, zone, depthFactor);
       }
+      makeEnemyHealthBar(enemy, enemy.speciesData);
       return enemy;
     }
 
@@ -2404,43 +2637,70 @@
     function createSpawnLandmark(node, zone) {
       const landmark = new THREE.Group();
       const style = node.nestTheme || node.spawnType || "watch-platform";
-      const mat = new THREE.MeshStandardMaterial({ color: zone.haze, roughness: 0.82, metalness: 0.16, emissive: zone.haze, emissiveIntensity: 0.12 });
+      const themeCfg = {
+        "hanging-hive": { shape: "hive", color: 0x769a4a, ring: 0xd4cf5f, cue: "swarm" },
+        "branch-roost": { shape: "roost", color: 0x6b5940, ring: 0xa6d07c, cue: "ambusher" },
+        "cliff-roost": { shape: "tower", color: 0x74644d, ring: 0xd8b58b, cue: "duelist" },
+        "outlaw-roost": { shape: "rooftop", color: 0x5e6274, ring: 0xd6a6ae, cue: "duelist" },
+        "sentinel-pylon": { shape: "pylon", color: 0x5d6376, ring: 0x9fb4de, cue: "caster" },
+        "storm-pylon": { shape: "pylon", color: 0x4e6f93, ring: 0x85ddff, cue: "caster" },
+        "void-fissure": { shape: "fissure", color: 0x3f3154, ring: 0xb48eff, cue: "ambusher" },
+        "ember-vent": { shape: "vent", color: 0x62372d, ring: 0xff8c5a, cue: "crusher" },
+        "dragon-perch": { shape: "perch", color: 0x654239, ring: 0xc99568, cue: "apex" },
+        "watch-platform": { shape: "tower", color: zone.haze, ring: zone.accent, cue: "duelist" }
+      };
+      const cfg = themeCfg[style] || themeCfg["watch-platform"];
+      const mat = new THREE.MeshStandardMaterial({ color: cfg.color, roughness: 0.82, metalness: 0.16, emissive: cfg.color, emissiveIntensity: 0.15 });
       let baseGeom = new THREE.CylinderGeometry(2.8, 3.4, 4.5, 10);
-      let ringColor = zone.accent;
-      if (style.includes("hive") || style.includes("brood") || style.includes("roost")) {
-        baseGeom = new THREE.SphereGeometry(3.2, 12, 10);
-        ringColor = 0xa0d58a;
-      } else if (style.includes("pylon") || style.includes("tower") || style.includes("sentinel")) {
-        baseGeom = new THREE.CylinderGeometry(1.8, 2.6, 11.2, 8);
-        ringColor = zone.terrainStyle === "storm" ? 0x9ad0ff : 0xa8aec4;
-      } else if (style.includes("vent") || style.includes("fissure") || style.includes("ember")) {
-        baseGeom = new THREE.ConeGeometry(3.8, 6.2, 9);
-        ringColor = 0xff8a54;
-      }
+      if (cfg.shape === "hive") baseGeom = new THREE.SphereGeometry(3.2, 12, 10);
+      else if (cfg.shape === "roost") baseGeom = new THREE.CylinderGeometry(3.1, 4.2, 2.8, 9);
+      else if (cfg.shape === "pylon") baseGeom = new THREE.CylinderGeometry(1.8, 2.6, 11.2, 8);
+      else if (cfg.shape === "fissure") baseGeom = new THREE.ConeGeometry(3.6, 5.8, 9);
+      else if (cfg.shape === "vent") baseGeom = new THREE.ConeGeometry(3.8, 6.2, 9);
+      else if (cfg.shape === "perch") baseGeom = new THREE.CylinderGeometry(2.6, 3.7, 6.2, 7);
+      else if (cfg.shape === "rooftop") baseGeom = new THREE.BoxGeometry(6, 2.4, 4.4);
+
       const base = new THREE.Mesh(baseGeom, mat);
       base.castShadow = true;
       base.receiveShadow = true;
       landmark.add(base);
+
       const glow = new THREE.Mesh(
         new THREE.TorusGeometry(4.2, 0.36, 10, 28),
-        new THREE.MeshStandardMaterial({ color: ringColor, emissive: ringColor, emissiveIntensity: 0.55, transparent: true, opacity: 0.74 })
+        new THREE.MeshStandardMaterial({ color: cfg.ring, emissive: cfg.ring, emissiveIntensity: 0.55, transparent: true, opacity: 0.74 })
       );
       glow.rotation.x = -Math.PI / 2;
       glow.position.y = 2.25;
       landmark.add(glow);
       const pulse = new THREE.Mesh(
         new THREE.RingGeometry(3.5, 4.7, 28),
-        new THREE.MeshBasicMaterial({ color: ringColor, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false })
+        new THREE.MeshBasicMaterial({ color: cfg.ring, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false })
       );
       pulse.rotation.x = -Math.PI / 2;
       pulse.position.y = 0.24;
       landmark.add(pulse);
+
+      const cueNodes = [];
+      for (let i = 0; i < 4; i++) {
+        const cue = new THREE.Mesh(
+          new THREE.SphereGeometry(0.14 + Math.random() * 0.06, 7, 6),
+          new THREE.MeshBasicMaterial({ color: cfg.ring, transparent: true, opacity: 0.7, depthWrite: false })
+        );
+        const a = (i / 4) * Math.PI * 2;
+        cue.position.set(Math.cos(a) * 3.6, 0.9 + Math.random() * 1.3, Math.sin(a) * 3.6);
+        cue.userData.phase = Math.random() * Math.PI * 2;
+        landmark.add(cue);
+        cueNodes.push(cue);
+      }
+
       landmark.position.copy(node.pos).setY(node.pos.y - 2.8);
       scene.add(landmark);
       node.platformMesh = createNestPlatform(node, zone);
       landmark.userData.base = base;
       landmark.userData.ring = glow;
       landmark.userData.pulse = pulse;
+      landmark.userData.cueNodes = cueNodes;
+      landmark.userData.nestCue = cfg.cue;
       return landmark;
     }
 
@@ -2621,7 +2881,7 @@
     }
 
     function startBossEncounter(gate) {
-      const boss = createEnemyByArchetype(gate.boss.enemyType, gate.pos.clone().add(new THREE.Vector3(0, 7.2, 0)), { zone: worldZones.find((z) => z.name === gate.zoneName), depthFactor: 1 });
+      const boss = createEnemyByArchetype(gate.boss.enemyType, gate.pos.clone().add(new THREE.Vector3(0, 7.2, 0)), { zone: worldZones.find((z) => z.name === gate.zoneName), depthFactor: 1, isBossTier: true, forceElite: true });
       if (!boss) return;
       boss.isBoss = true;
       boss.zoneName = gate.zoneName;
@@ -2679,7 +2939,7 @@
       for (let i = 0; i < count; i++) {
         const type = spawnList[Math.floor(Math.random() * spawnList.length)] || zone.enemyFamilies[0];
         const pos = boss.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 16, Math.random() * 4, (Math.random() - 0.5) * 16));
-        const add = createEnemyByArchetype(type, pos, { zone, depthFactor: 0.95 });
+        const add = createEnemyByArchetype(type, pos, { zone, depthFactor: 0.95, forceElite: true, isBossTier: true });
         if (!add) continue;
         add.zoneName = zone.name;
         add.spawnNodeId = `boss-add-${zone.name}`;
@@ -2707,7 +2967,8 @@
         const spawnPos = node.pos.clone().add(jitter);
         if (player && spawnPos.distanceTo(player.pos) < LOCAL_SPAWN_RADIUS_MIN + 12) continue;
         const enemyType = node.allowedFamilies[Math.floor(Math.random() * node.allowedFamilies.length)] || zone.enemyFamilies[0];
-        const enemy = createEnemyByArchetype(enemyType, spawnPos, { zone, depthFactor, node });
+        const forceElite = Math.random() < node.eliteChance;
+        const enemy = createEnemyByArchetype(enemyType, spawnPos, { zone, depthFactor, node, forceElite });
         if (!enemy) continue;
         enemy.zoneName = node.zoneName;
         enemy.homePos.copy(node.pos);
@@ -2715,7 +2976,6 @@
         enemy.spawnNodeId = node.id;
         enemy.leashRangeOverride = Math.max(node.leashRange, node.patrolRadius);
         enemy.chunkKey = chunkKeyAt(node.pos.x, node.pos.z);
-        if (Math.random() < node.eliteChance) enemy.elite = true;
         spawned++;
       }
       return spawned;
@@ -2750,6 +3010,12 @@
         ring.material.emissiveIntensity = v.emissive;
         ring.material.opacity = v.opacity;
         pulse.material.opacity = v.pulse;
+        const cues = node.landmark.userData.cueNodes || [];
+        cues.forEach((cue, idx) => {
+          cue.userData.phase += dt * (node.active ? 3.5 : 1.2) * (1 + idx * 0.1);
+          cue.position.y = 0.8 + Math.sin(cue.userData.phase) * 0.5 + (node.visualState === "spawning" ? 0.45 : 0);
+          cue.material.opacity = node.visualState === "depleted" ? 0.2 : node.visualState === "spawning" ? 0.95 : 0.55;
+        });
       }
       if (!node.active) {
         node.state = "dormant";
@@ -4062,6 +4328,9 @@
       if (!enemy.telegraphMesh) return;
       enemy.telegraphMesh.position.copy(enemy.pos).setY(enemy.pos.y - enemy.radius + 0.1);
       enemy.telegraphMesh.lookAt(camera.position);
+      const family = enemy.speciesData?.family || "default";
+      const teleCol = (FAMILY_NAMEPLATE_COLORS[family] || FAMILY_NAMEPLATE_COLORS.default).telegraph;
+      if (enemy.telegraphMesh.material?.color) enemy.telegraphMesh.material.color.setHex(teleCol);
       const baseOpacity = attackStyle === "line" ? 0.3 : attackStyle === "cone" ? 0.26 : 0.2;
       enemy.telegraphMesh.material.opacity = baseOpacity + (enemy.specialWindup > 0 ? 0.25 : enemy.telegraph > 0 ? 0.15 : 0);
       if (attackStyle === "line" && enemy.specialWindup > 0) enemy.telegraphMesh.scale.set(1.7, 0.45, 1.7);
@@ -4220,19 +4489,34 @@
       if (enemy.state === "aggro") {
         const f = typeStats.behavior;
         const wobble = performance.now() * 0.001 + enemy.turnBias * 12;
+        const hasDeepKit = enemy.moveKit?.deepMoves?.length > 0;
+        const hasMidKit = enemy.moveKit?.midMoves?.length > 0;
+
         if (enemy.archetype === "Duelist") {
-          target.add(new THREE.Vector3(Math.sin(wobble * 1.8) * 8, 0, Math.cos(wobble * 1.8) * 8));
+          // line-up -> commit -> recover lane logic
+          const lineOffset = hasDeepKit ? 10 : 8;
+          target.add(new THREE.Vector3(Math.sin(wobble * 1.8) * lineOffset, 0, Math.cos(wobble * 1.8) * lineOffset));
+          if (hasDeepKit && enemy.attackTimer > typeStats.attackCooldown * 0.45) {
+            target.add(new THREE.Vector3(Math.sin(enemy.yaw), 0, Math.cos(enemy.yaw)).multiplyScalar(-6));
+          }
         } else if (f === "weaver" || f === "curveStrike" || f === "loopDive") {
-          target.x += Math.sin(wobble * 1.7) * (f === "loopDive" ? 13 : 9);
-          target.z += Math.cos(wobble * 1.4) * (f === "loopDive" ? 13 : 9);
-          target.y += Math.sin(wobble * 2.4) * 4;
+          const curveAmp = f === "loopDive" ? 13 : hasDeepKit ? 11 : 9;
+          target.x += Math.sin(wobble * 1.7) * curveAmp;
+          target.z += Math.cos(wobble * 1.4) * curveAmp;
+          target.y += Math.sin(wobble * 2.4) * (hasMidKit ? 5 : 4);
         } else if (f === "stinger" || f === "swarm") {
-          target.add(new THREE.Vector3(Math.sin(wobble * 3) * 6, 0, Math.cos(wobble * 2.4) * 6));
+          // flutter pass -> split -> return
+          const flutterAmp = hasMidKit ? 8.2 : 6;
+          target.add(new THREE.Vector3(Math.sin(wobble * 3.2) * flutterAmp, Math.sin(wobble * 2.1) * (hasDeepKit ? 1.8 : 0.8), Math.cos(wobble * 2.4) * flutterAmp));
+        } else if (f === "ambush") {
+          // hold high perch, then strike
+          target.y = combatTarget.pos.y + 10 + Math.sin(wobble * 1.3) * 3;
+          if (enemy.specialCooldown < 1.1) target.copy(combatTarget.pos.clone().add(new THREE.Vector3(0, 3.2, 0)));
         } else if (f === "ranged" || f === "beam" || f === "sniper" || f === "orb") {
-          const away = enemy.pos.clone().sub(combatTarget.pos).setY(0).normalize().multiplyScalar(typeStats.preferDistance);
-          target.copy(combatTarget.pos).add(away).setY(combatTarget.pos.y + 3.2);
+          const away = enemy.pos.clone().sub(combatTarget.pos).setY(0).normalize().multiplyScalar(typeStats.preferDistance + (hasDeepKit ? 2.2 : 0));
+          target.copy(combatTarget.pos).add(away).setY(combatTarget.pos.y + 3.2 + (hasMidKit ? 1.1 : 0));
         }
-        if (enemy.archetype === "Percher") {
+        if (enemy.archetype === "Percher" && f !== "ambush") {
           target.y = combatTarget.pos.y + 10 + Math.sin(wobble * 1.3) * 3;
         }
       }
@@ -4301,6 +4585,17 @@
         enemy.healthBar.root.lookAt(camera.position);
         enemy.healthBar.fill.scale.x = THREE.MathUtils.clamp(enemy.health / enemy.maxHealth, 0.001, 1);
         enemy.healthBar.fill.position.x = -1.34 + enemy.healthBar.fill.scale.x * 1.34;
+        const hudDist = enemy.pos.distanceTo(camera.position);
+        const hudScale = THREE.MathUtils.clamp(1 + hudDist * 0.0075, 0.88, 1.46);
+        enemy.healthBar.root.scale.setScalar(hudScale);
+        if (enemy.healthBar.nameSprite) {
+          enemy.healthBar.nameSprite.visible = hudDist < 180;
+          enemy.healthBar.nameSprite.position.y = 0.9;
+        }
+        if (enemy.healthBar.subtitleSprite) {
+          const subtitle = getEnemySubtitle(enemy);
+          enemy.healthBar.subtitleSprite.visible = !!subtitle && shouldShowEnemySubtitle(enemy) && hudDist < 120;
+        }
       }
 
       const forwardEnemy = new THREE.Vector3(Math.sin(enemy.yaw), 0, Math.cos(enemy.yaw));
@@ -4311,14 +4606,18 @@
         enemy.telegraph = enemy.archetype === "Charger" ? 0.75 : enemy.archetype === "Crusher" ? 0.55 : 0.45;
       }
       const deepTier = zoneTier(enemy.zoneName);
-      if (enemy.state === "aggro" && deepTier >= 4 && enemy.specialCooldown <= 0 && distToPlayer < 30) {
-        enemy.specialType = (typeStats.behavior === "breath" || enemy.type === "voidDragon") ? "cone" : (typeStats.behavior === "beam" || typeStats.behavior === "orb") ? "burst" : "dive";
-        enemy.specialWindup = 0.62 + Math.random() * 0.28;
-        enemy.specialCooldown = 4.5 - Math.min(2.1, deepTier * 0.2);
+      const depthBandValue = enemy.depthTier === "deep" ? 2 : enemy.depthTier === "mid" ? 1 : 0;
+      if (enemy.state === "aggro" && (deepTier >= 4 || depthBandValue >= 1) && enemy.specialCooldown <= 0 && distToPlayer < 30) {
+        const hasDeepKit = enemy.moveKit?.deepMoves?.length > 0;
+        if (typeStats.behavior === "breath" || enemy.type === "voidDragon") enemy.specialType = hasDeepKit ? "crash" : "cone";
+        else if (typeStats.behavior === "beam" || typeStats.behavior === "orb") enemy.specialType = "burst";
+        else enemy.specialType = hasDeepKit ? "loopDive" : "dive";
+        enemy.specialWindup = (enemy.depthTier === "outer" ? 0.7 : 0.58) + Math.random() * 0.28;
+        enemy.specialCooldown = 4.8 - Math.min(2.3, deepTier * 0.2 + depthBandValue * 0.42);
         if (!enemy.telegraphMesh) {
           enemy.telegraphMesh = new THREE.Mesh(
             new THREE.RingGeometry(1.4, 2.8, 24),
-            new THREE.MeshBasicMaterial({ color: 0xff7a6b, transparent: true, opacity: 0.25, side: THREE.DoubleSide })
+            new THREE.MeshBasicMaterial({ color: (FAMILY_NAMEPLATE_COLORS[enemy.speciesData?.family] || FAMILY_NAMEPLATE_COLORS.default).telegraph, transparent: true, opacity: 0.25, side: THREE.DoubleSide })
           );
           scene.add(enemy.telegraphMesh);
         }
@@ -4337,13 +4636,22 @@
             player.vel.add(player.pos.clone().sub(enemy.pos).normalize().multiplyScalar(7));
           }
           spawnBurst(enemy.pos.clone(), 16, 0x9bc4ff);
-        } else if (enemy.specialType === "dive") {
+        } else if (enemy.specialType === "crash") {
+          const impactPos = player.pos.clone();
+          if (enemy.pos.distanceTo(impactPos) < 7.2) {
+            applyPlayerDamage(typeStats.damage * 1.22, `${enemy.speciesData.label} rift crash`);
+          }
+          enemy.vel.add(toPlayer.multiplyScalar(12));
+          enemy.vel.y -= 7.2;
+          spawnBurst(impactPos, 20, 0xcf8bff);
+        } else if (enemy.specialType === "dive" || enemy.specialType === "loopDive") {
           const impactPos = player.pos.clone();
           if (enemy.pos.distanceTo(impactPos) < 6.5) {
             applyPlayerDamage(typeStats.damage * 1.15, `${enemy.speciesData.label} dive slam`);
           }
-          enemy.vel.add(toPlayer.multiplyScalar(15));
-          enemy.vel.y -= 5.5;
+          enemy.vel.add(toPlayer.multiplyScalar(enemy.specialType === "loopDive" ? 18 : 15));
+          enemy.vel.y -= enemy.specialType === "loopDive" ? 6.4 : 5.5;
+          if (enemy.specialType === "loopDive") spawnBurst(impactPos.clone().add(new THREE.Vector3(0, 0.6, 0)), 18, 0x8fd9ff);
           spawnBurst(impactPos, 15, 0xffb46a);
         }
         enemy.specialWindup = 0;
