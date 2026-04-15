@@ -111,6 +111,9 @@
     <div class="line">Score: <span id="score">0</span></div>
     <div class="line">Lives: <span id="lives">3</span></div>
     <div class="line">HP: <span id="health">100</span>/<span id="maxHealth">100</span></div>
+    <div style="height:10px;border:1px solid rgba(255,255,255,.28);border-radius:999px;overflow:hidden;background:rgba(255,255,255,.08);margin-top:4px">
+      <div id="hpBar" style="height:100%;width:100%;background:linear-gradient(90deg,#86efac,#22c55e)"></div>
+    </div>
     <div class="line">Gold: <span id="gold">0</span> • Lv <span id="level">1</span></div>
     <div class="line">XP: <span id="xp">0</span>/<span id="xpNeed">80</span></div>
     <div style="height:8px;border:1px solid rgba(255,255,255,.28);border-radius:999px;overflow:hidden;background:rgba(255,255,255,.08);margin-top:4px">
@@ -125,10 +128,10 @@
     <b>Controls</b><br/>
     Space = flap upward<br/>
     W = spear thrust<br/>
-    S = dive downward<br/>
+    S = cast spell (Sorcerer) / dive (others)<br/>
     A / D = turn left / right<br/>
     Q / E = lateral mount dash (advanced mounts)<br/>
-    F = cast spell (Sorcerer path)<br/>
+    F = optional spell cast (Sorcerer path)<br/>
     Shift = speed burst<br/>
     R = restart after game over<br/><br/>
     <b>Rule:</b> thrust, dive, and reposition.<br/>
@@ -212,6 +215,7 @@
     let gameEnded = false;
     let respawnTimer = 0;
     let centerMsgTimer = 0;
+    let hitstopTimer = 0;
     let questArrow = null;
     let lastTime = performance.now();
     let lastRespawnPoint = new THREE.Vector3(-8, 14, -4);
@@ -281,6 +285,7 @@
     const livesEl = document.getElementById("lives");
     const healthEl = document.getElementById("health");
     const maxHealthEl = document.getElementById("maxHealth");
+    const hpBarEl = document.getElementById("hpBar");
     const goldEl = document.getElementById("gold");
     const levelEl = document.getElementById("level");
     const xpEl = document.getElementById("xp");
@@ -321,6 +326,22 @@
     const NODE_ENEMY_CAP = 3;
     const HUB_SAFE_BUFFER = 5;
     const AMBIENT_SPAWN_CHANCE = 0.07;
+    const ARCHETYPE_BY_BEHAVIOR = {
+      lancer: "Duelist",
+      weaver: "Weaver",
+      swarm: "Swarmer",
+      bruiser: "Crusher",
+      dash: "Charger",
+      beam: "Caster",
+      sniper: "Caster",
+      orb: "Caster",
+      ranged: "Caster",
+      ambush: "Percher",
+      stinger: "Swarmer",
+      curveStrike: "Weaver",
+      loopDive: "Percher",
+      breath: "Crusher"
+    };
 
     const ENEMY_SPECIES = {
       giantBee: { label: "Giant Bee", family: "Verdant", behavior: "stinger", health: 64, speed: 17, turn: 2.8, aggroRange: 55, leashRange: 95, preferDistance: 8, attackCooldown: 1.6, damage: 10, knockback: 4.2, bounceMass: 0.8, reward: { score: 100, xp: 18, gold: 5 }, colors: { bird: 0x9a7c23, wing: 0x503c12, rider: 0xd7cf89, cloth: 0x2f7c3f } },
@@ -1301,6 +1322,7 @@
         radius: speciesData.bounceMass > 1.45 ? 2.95 : 2.5,
         type: species,
         speciesData,
+        archetype: ARCHETYPE_BY_BEHAVIOR[speciesData.behavior] || "Duelist",
         alive: true,
         maxHealth: speciesData.health,
         health: speciesData.health,
@@ -1513,6 +1535,20 @@
       centerMsgTimer = duration;
     }
 
+    function getMomentumScale(actor) {
+      const horizontalSpeed = Math.sqrt(actor.vel.x * actor.vel.x + actor.vel.z * actor.vel.z);
+      return 1 + THREE.MathUtils.clamp(horizontalSpeed / 26, 0, 0.95);
+    }
+
+    function triggerHitFeedback(attacker, target, hitDir, intensity = 1) {
+      const safeDir = hitDir && hitDir.lengthSq() > 0.0001 ? hitDir.clone().normalize() : target.pos.clone().sub(attacker.pos).setY(0).normalize();
+      const knock = (4.5 + attacker.vel.length() * 0.09) * intensity;
+      target.vel.add(safeDir.multiplyScalar(knock));
+      target.hitReact = Math.max(target.hitReact, 0.26 + intensity * 0.08);
+      hitstopTimer = Math.max(hitstopTimer, 0.035 + 0.01 * Math.min(intensity, 1.4));
+      spawnBurst(target.pos.clone().add(new THREE.Vector3(0, 1.2, 0)), Math.round(5 + intensity * 4), 0xfff0d0);
+    }
+
     function getItemById(id) {
       return ITEM_DB.find((i) => i.id === id) || null;
     }
@@ -1582,6 +1618,7 @@
       livesEl.textContent = `${lives}/${maxLivesCarry()}`;
       healthEl.textContent = Math.max(0, Math.round(player?.health || 0));
       maxHealthEl.textContent = Math.round(player?.maxHealth || 100);
+      hpBarEl.style.width = `${THREE.MathUtils.clamp(((player?.health || 0) / Math.max(1, player?.maxHealth || 100)) * 100, 0, 100).toFixed(1)}%`;
       goldEl.textContent = gold;
       levelEl.textContent = progress.level;
       xpEl.textContent = Math.floor(progress.xp);
@@ -1880,8 +1917,12 @@
         const rest = anim.lanceRest;
         const thrustNorm = THREE.MathUtils.clamp(player.spearTimer / 0.25, 0, 1);
         const thrustCurve = Math.sin((1 - thrustNorm) * Math.PI);
+        const moveDir = new THREE.Vector3(player.vel.x, 0, player.vel.z);
+        const useMoveDir = moveDir.lengthSq() > 0.08;
+        const localForwardYaw = useMoveDir ? (Math.atan2(moveDir.x, moveDir.z) - actor.yaw) : 0;
+        anim.lance.rotation.y = localForwardYaw;
         anim.lance.position.x = rest.x + thrustCurve * 0.2;
-        anim.lance.position.z = rest.z + thrustCurve * (2.4 + progress.upgrades.spearReach * 0.3);
+        anim.lance.position.z = rest.z + thrustCurve * (3.3 + progress.upgrades.spearReach * 0.42);
       }
     }
 
@@ -2036,6 +2077,7 @@
       enemy.hitReact = 0.22;
       enemy.vel.add(hitDir.clone().multiplyScalar(0.5));
       enemy.vel.y += 1.2;
+      hitstopTimer = Math.max(hitstopTimer, source === "thrust" || source === "dive" ? 0.04 : 0.02);
       spawnBurst(enemy.pos.clone().add(new THREE.Vector3(0, 0.8, 0)), 6, source === "thrust" ? 0xfff08d : 0xffffff);
       if (enemy.health <= 0) {
         killEnemy(enemy);
@@ -2099,7 +2141,7 @@
       const dive = 11.5;
       const burst = keys["shift"] ? 8 + stats.burstBonus : 0;
       const activelySteering = keys["a"] || keys["d"];
-      const activelyFlapping = keys[" "] || keys["s"];
+      const activelyFlapping = keys[" "] || (keys["s"] && progress.classChoice !== "sorcerer");
 
       if (keys["a"]) player.yaw += turnSpeed * dt;
       if (keys["d"]) player.yaw -= turnSpeed * dt;
@@ -2110,18 +2152,18 @@
       player.vel.x += (forward.x * targetForwardSpeed - player.vel.x) * stats.airControl * dt;
       player.vel.z += (forward.z * targetForwardSpeed - player.vel.z) * stats.airControl * dt;
 
-      player.vel.y -= 14.5 * dt;
+      player.vel.y -= 17.2 * dt;
 
       if (keys[" "]) {
         player.vel.y += lift * dt;
       }
-      if (keys["s"]) {
+      if (keys["s"] && progress.classChoice !== "sorcerer") {
         player.vel.y -= dive * dt;
       }
       if (keys[" "] && player.boostCooldown <= 0) {
-        player.vel.y += stats.flapBoost;
-        player.vel.x += forward.x * 5.2;
-        player.vel.z += forward.z * 5.2;
+        player.vel.y += stats.flapBoost * 1.24;
+        player.vel.x += forward.x * 6.6;
+        player.vel.z += forward.z * 6.6;
         player.boostCooldown = 0.28;
       }
       if (stats.mount.lateral && keys["q"] && player.boostCooldown <= 0) {
@@ -2137,8 +2179,9 @@
         player.spearTimer = 0.25;
         player.spearCooldown = stats.spearCooldown;
         player.spearHitSet.clear();
+        player.vel.add(forward.clone().multiplyScalar(-1.4));
       }
-      if (keys["f"] && progress.classChoice === "sorcerer" && player.spellCooldown <= 0) {
+      if ((keys["f"] || keys["s"]) && progress.classChoice === "sorcerer" && player.spellCooldown <= 0) {
         castSorcererSpell();
       }
 
@@ -2200,6 +2243,18 @@
       if (!player) return;
 
       const typeStats = { climb: 10.2, patrol: 11, ...enemy.speciesData };
+      if (enemy.archetype === "Crusher") {
+        typeStats.speed *= 0.84;
+        typeStats.damage *= 1.2;
+        typeStats.knockback *= 1.2;
+      } else if (enemy.archetype === "Charger") {
+        typeStats.turn *= 0.86;
+        typeStats.speed *= 1.08;
+      } else if (enemy.archetype === "Caster") {
+        typeStats.preferDistance += 3.5;
+      } else if (enemy.archetype === "Percher") {
+        typeStats.preferDistance += 2.5;
+      }
       if (enemy.elite) {
         typeStats.speed *= 1.08;
         typeStats.turn *= 1.06;
@@ -2281,7 +2336,9 @@
       if (enemy.state === "aggro") {
         const f = typeStats.behavior;
         const wobble = performance.now() * 0.001 + enemy.turnBias * 12;
-        if (f === "weaver" || f === "curveStrike" || f === "loopDive") {
+        if (enemy.archetype === "Duelist") {
+          target.add(new THREE.Vector3(Math.sin(wobble * 1.8) * 8, 0, Math.cos(wobble * 1.8) * 8));
+        } else if (f === "weaver" || f === "curveStrike" || f === "loopDive") {
           target.x += Math.sin(wobble * 1.7) * (f === "loopDive" ? 13 : 9);
           target.z += Math.cos(wobble * 1.4) * (f === "loopDive" ? 13 : 9);
           target.y += Math.sin(wobble * 2.4) * 4;
@@ -2290,6 +2347,9 @@
         } else if (f === "ranged" || f === "beam" || f === "sniper" || f === "orb") {
           const away = enemy.pos.clone().sub(combatTarget.pos).setY(0).normalize().multiplyScalar(typeStats.preferDistance);
           target.copy(combatTarget.pos).add(away).setY(combatTarget.pos.y + 3.2);
+        }
+        if (enemy.archetype === "Percher") {
+          target.y = combatTarget.pos.y + 10 + Math.sin(wobble * 1.3) * 3;
         }
       }
 
@@ -2358,14 +2418,19 @@
         enemy.healthBar.fill.position.x = -1.34 + enemy.healthBar.fill.scale.x * 1.34;
       }
 
-      if (enemy.state === "aggro" && distToPlayer < typeStats.preferDistance + 2 && enemy.attackTimer <= 0 && enemy.telegraph <= 0) {
-        enemy.telegraph = 0.45;
+      const forwardEnemy = new THREE.Vector3(Math.sin(enemy.yaw), 0, Math.cos(enemy.yaw));
+      const toCombat = combatTarget.pos.clone().sub(enemy.pos).setY(0).normalize();
+      const alignment = THREE.MathUtils.clamp(forwardEnemy.dot(toCombat), -1, 1);
+      const alignNeeded = enemy.archetype === "Duelist" ? 0.86 : 0.58;
+      if (enemy.state === "aggro" && distToPlayer < typeStats.preferDistance + 2 && enemy.attackTimer <= 0 && enemy.telegraph <= 0 && alignment >= alignNeeded) {
+        enemy.telegraph = enemy.archetype === "Charger" ? 0.75 : enemy.archetype === "Crusher" ? 0.55 : 0.45;
       }
       if (enemy.state === "aggro" && distToPlayer < typeStats.preferDistance + 2 && enemy.attackTimer <= 0 && enemy.telegraph > 0 && enemy.telegraph < 0.12) {
         enemy.attackTimer = typeStats.attackCooldown;
         enemy.telegraph = 0;
         const attackDamage = typeStats.damage * (enemy.elite ? 1.22 : 1);
         const pushDir = combatTarget.pos.clone().sub(enemy.pos).normalize().multiplyScalar(typeStats.knockback);
+        if (enemy.archetype === "Charger") enemy.vel.add(pushDir.clone().multiplyScalar(11));
         if (combatTarget === player) {
           applyPlayerDamage(attackDamage, enemy.speciesData.label);
           player.vel.add(pushDir);
@@ -2373,6 +2438,16 @@
         } else {
           combatTarget.health -= attackDamage * 0.7;
           combatTarget.vel.add(pushDir);
+        }
+        if (enemy.archetype === "Crusher") {
+          for (const other of [player, ...allySummons]) {
+            if (!other?.alive || other === combatTarget) continue;
+            if (other.pos.distanceTo(enemy.pos) > 7.5) continue;
+            const aoeDir = other.pos.clone().sub(enemy.pos).normalize();
+            if (other === player) applyPlayerDamage(attackDamage * 0.45, `${enemy.speciesData.label} shockwave`);
+            other.vel.add(aoeDir.multiplyScalar(typeStats.knockback * 0.75));
+          }
+          spawnBurst(enemy.pos.clone(), 14, 0xffb089);
         }
         spawnBurst(enemy.pos.clone().lerp(player.pos, 0.55), 7, 0xff9a66);
         if (["beam", "sniper", "orb", "ranged", "breath"].includes(typeStats.behavior)) {
@@ -2409,12 +2484,14 @@
             if (enemy.pos.distanceTo(tipPos) < enemy.radius + 1.8 && !player.spearHitSet.has(enemy)) {
               player.spearHitSet.add(enemy);
               const crit = Math.random() < stats.critChance;
-              const dmg = (stats.spearDamage + (crit ? stats.spearDamage * 0.7 : 0)) * (enemy.elite ? 0.93 : 1);
+              const momentum = getMomentumScale(player);
+              const dmg = (stats.spearDamage + (crit ? stats.spearDamage * 0.7 : 0)) * momentum * (enemy.elite ? 0.93 : 1);
               const knock = forward.clone().multiplyScalar(stats.spearKnockback + enemy.speciesData.knockback * 0.2);
               enemy.vel.add(knock);
               damageEnemy(enemy, dmg, forward, "thrust");
+              triggerHitFeedback(player, enemy, forward, momentum);
               applyWeaponEffects(enemy, dmg);
-              showCenterMessage(crit ? "CRITICAL THRUST!" : "THRUST HIT!", 0.25);
+              showCenterMessage(crit ? "CRITICAL THRUST!" : `THRUST HIT x${momentum.toFixed(2)}!`, 0.25);
             }
           }
 
@@ -2425,8 +2502,11 @@
             side.normalize();
 
             if (playerHigher > 1.2) {
-              const diveDamage = stats.diveImpact * (enemy.speciesData.bounceMass > 1.5 ? 0.75 : 1);
+              const momentum = getMomentumScale(player);
+              const diveDamage = stats.diveImpact * momentum * (enemy.speciesData.bounceMass > 1.5 ? 0.75 : 1);
               damageEnemy(enemy, diveDamage, side, "dive");
+              applyPlayerDamage(Math.max(2, enemy.speciesData.damage * 0.35), "impact recoil");
+              if (gameEnded || !player.alive) return;
               const mountFx = stats.mount.landingFx;
               if (mountFx === "fire" || mountFx === "frost" || mountFx === "poison" || mountFx === "lightning") {
                 for (const other of enemies) {
@@ -2447,6 +2527,7 @@
               player.vel.y = Math.max(player.vel.y, 5.5);
               player.vel.add(side.clone().multiplyScalar(-2.6));
               enemy.vel.add(side.clone().multiplyScalar(4 + progress.upgrades.spearKnockback * 0.8));
+              triggerHitFeedback(player, enemy, side, 1.1 + momentum * 0.2);
               spawnBurst(player.pos.clone().lerp(enemy.pos, 0.55), 11, 0xd6f2ff);
               showCenterMessage("DIVE IMPACT!", 0.3);
             } else if (playerHigher < -1.0) {
@@ -2460,6 +2541,7 @@
               enemy.vel.y += 1.8;
               applyPlayerDamage(Math.max(4, (enemy.elite ? 18 : 12) * (1 - stats.collisionRecovery)), "clash");
               damageEnemy(enemy, 7 + progress.upgrades.antiArmor * 2, push.clone().normalize(), "clash");
+              triggerHitFeedback(enemy, player, push.clone().normalize().multiplyScalar(-1), 0.9);
               spawnBurst(player.pos.clone().lerp(enemy.pos, 0.5), 8, 0xffffff);
               showCenterMessage("CLASH!", 0.35);
             }
@@ -2642,6 +2724,7 @@
       player.regenWait = stats.regenDelay;
       showCenterMessage(`-${Math.round(reduced)} HP (${label})`, 0.35);
       player.invuln = 0.3 + progress.upgrades.heavyInvuln * 0.08;
+      hitstopTimer = Math.max(hitstopTimer, 0.018);
       if (player.health <= 0) {
         player.health = 0;
         killPlayer();
@@ -2940,9 +3023,11 @@
         centerMsgTimer -= dt;
         if (centerMsgTimer <= 0) centerMsg.style.display = "none";
       }
+      if (hitstopTimer > 0) hitstopTimer = Math.max(0, hitstopTimer - dt);
+      const simDt = hitstopTimer > 0 ? 0 : dt;
 
       if (!gamePaused) {
-        updateParticles(dt);
+        updateParticles(simDt);
       } else {
         for (const c of cityCreatures) {
           c.phase += dt;
@@ -2953,27 +3038,27 @@
 
       if (!gameEnded && !gamePaused) {
         if (!player.alive) {
-          respawnTimer -= dt;
+          respawnTimer -= simDt;
           player.model.visible = false;
           if (respawnTimer <= 0 && lives > 0) {
             respawnPlayer();
           }
         }
 
-        updatePlayer(dt);
+        updatePlayer(simDt);
         updateWorldChunks();
         spawnAlliesFromUpgrades();
-        updateAllies(dt);
-        for (const enemy of enemies) updateEnemyAI(enemy, dt);
-        updateEnemyProjectiles(dt);
+        updateAllies(simDt);
+        for (const enemy of enemies) updateEnemyAI(enemy, simDt);
+        updateEnemyProjectiles(simDt);
         checkCombat();
-        enemySpawnTimer -= dt;
+        enemySpawnTimer -= simDt;
         if (enemySpawnTimer <= 0) {
           const didSpawn = spawnRegionalEnemy();
           enemySpawnTimer = didSpawn ? (6.8 + Math.random() * 4.8) : (3.4 + Math.random() * 3.6);
         }
         for (let i = nodeRespawns.length - 1; i >= 0; i--) {
-          nodeRespawns[i].timer -= dt;
+          nodeRespawns[i].timer -= simDt;
           if (nodeRespawns[i].timer <= 0) {
             const node = spawnNodes.find((n) => n.id === nodeRespawns[i].nodeId);
             if (node && enemies.filter((e) => e.alive && e.spawnNodeId === node.id).length < NODE_ENEMY_CAP) spawnNodeEnemy(node);
