@@ -607,107 +607,163 @@
       if (tabMenuOpen) renderTabMenu();
     }
 
+    function zoneHalfWidth(zone) {
+      return zone.width * 0.5;
+    }
+
+    function zoneHalfDepth(zone) {
+      return zone.depth * 0.5;
+    }
+
+    function zoneRadius(zone) {
+      return zone.radius || Math.min(zoneHalfWidth(zone), zoneHalfDepth(zone));
+    }
+
+    function zoneDistanceOutsideSquare(zone, x, z) {
+      const dx = Math.abs(x - zone.center.x) - zoneHalfWidth(zone);
+      const dz = Math.abs(z - zone.center.z) - zoneHalfDepth(zone);
+      const ox = Math.max(dx, 0);
+      const oz = Math.max(dz, 0);
+      return Math.hypot(ox, oz);
+    }
+
+    function randomPointInZone(zone, margin = 0.12) {
+      const innerW = zone.width * (0.5 - margin);
+      const innerD = zone.depth * (0.5 - margin);
+      return new THREE.Vector3(
+        zone.center.x + (Math.random() * 2 - 1) * innerW,
+        zone.baseY,
+        zone.center.z + (Math.random() * 2 - 1) * innerD
+      );
+    }
+
+    function createSquareRegionTerrain(zone) {
+      const block = new THREE.Mesh(
+        new THREE.BoxGeometry(zone.width, 9, zone.depth),
+        new THREE.MeshStandardMaterial({ color: zone.color, roughness: 0.94, metalness: 0.05 })
+      );
+      block.position.set(zone.center.x, zone.baseY - 3.8, zone.center.z);
+      block.castShadow = true;
+      block.receiveShadow = true;
+      arenaGroup.add(block);
+
+      const border = new THREE.Mesh(
+        new THREE.BoxGeometry(zone.width + 6, 0.9, zone.depth + 6),
+        new THREE.MeshStandardMaterial({ color: zone.accent, roughness: 0.82, metalness: 0.16, transparent: true, opacity: 0.65 })
+      );
+      border.position.set(zone.center.x, zone.baseY + 1.4, zone.center.z);
+      border.castShadow = true;
+      border.receiveShadow = true;
+      arenaGroup.add(border);
+
+      const laneCount = 2 + Math.floor(zone.danger * 0.4);
+      for (let i = 0; i < laneCount; i++) {
+        const lane = new THREE.Mesh(
+          new THREE.BoxGeometry(zone.width * 0.78, 0.6, 4.6),
+          new THREE.MeshStandardMaterial({ color: zone.haze, roughness: 0.8, metalness: 0.08, transparent: true, opacity: 0.45 })
+        );
+        lane.position.set(zone.center.x, zone.baseY + 3.1 + i * 0.9, zone.center.z + (i - laneCount * 0.5) * 20);
+        lane.castShadow = true;
+        lane.receiveShadow = true;
+        arenaGroup.add(lane);
+      }
+    }
+
+    function createRegionDecor(zone) {
+      const styleCounts = {
+        forest: 22,
+        highland: 18,
+        city: 24,
+        ruin: 20,
+        lava: 20,
+        storm: 16,
+        marsh: 18,
+        dragon: 18,
+        wyrm: 20,
+        glacier: 14,
+        rift: 16
+      };
+      const count = styleCounts[zone.terrainStyle] || 14;
+      for (let i = 0; i < count; i++) {
+        const p = randomPointInZone(zone, 0.08);
+        p.y = terrainHeightAt(p.x, p.z);
+        if (p.y < -900) continue;
+        let geom = new THREE.DodecahedronGeometry(1.2 + Math.random() * 1.6, 0);
+        let color = zone.haze;
+        if (zone.terrainStyle === 'forest') {
+          geom = Math.random() < 0.6 ? new THREE.CylinderGeometry(0.45, 0.75, 6 + Math.random() * 8, 7) : new THREE.ConeGeometry(1.3 + Math.random() * 1.2, 4 + Math.random() * 5, 7);
+          color = Math.random() < 0.5 ? 0x4d3a2d : zone.accent;
+        } else if (zone.terrainStyle === 'city') {
+          geom = new THREE.BoxGeometry(2.5 + Math.random() * 3.8, 5 + Math.random() * 14, 2.5 + Math.random() * 3.8);
+          color = 0x8c95ad;
+        } else if (zone.terrainStyle === 'ruin') {
+          geom = new THREE.BoxGeometry(2.8 + Math.random() * 4.6, 4 + Math.random() * 10, 2.8 + Math.random() * 4.6);
+          color = 0x6b6774;
+        } else if (zone.terrainStyle === 'lava' || zone.terrainStyle === 'rift') {
+          geom = new THREE.CylinderGeometry(0.8 + Math.random() * 1.1, 1.4 + Math.random() * 1.3, 5 + Math.random() * 8, 6);
+          color = 0x4a3a32;
+        } else if (zone.terrainStyle === 'storm') {
+          geom = new THREE.ConeGeometry(1.3 + Math.random() * 1.8, 7 + Math.random() * 11, 5);
+          color = 0x6e88aa;
+        }
+        const decor = new THREE.Mesh(
+          geom,
+          new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0.08 })
+        );
+        decor.position.set(p.x, p.y + (geom.parameters?.height || 2) * 0.5, p.z);
+        decor.rotation.y = Math.random() * Math.PI;
+        decor.castShadow = true;
+        decor.receiveShadow = true;
+        arenaGroup.add(decor);
+      }
+    }
+
     function createArena() {
       arenaGroup = new THREE.Group();
       scene.add(arenaGroup);
 
       worldZones = [
-        { name: "Great Forest Canopy", subtitle: "City-State Frontier", center: new THREE.Vector3(-210, 0, -95), radius: 168, baseY: -4, hazardY: -32, color: 0x43673f, accent: 0x9cd77a, haze: 0x7ca884, hazardType: "safe", enemyFamilies: ["giantBee", "ashWasp", "vineDrake", "hornetGuard"], danger: 0, terrainStyle: "forest", travelRhythm: "perch-chain" },
-        { name: "Mossfang Wilds", subtitle: "Frontier Territory", center: new THREE.Vector3(-65, 0, -118), radius: 164, baseY: -6, hazardY: -33, color: 0x4f6340, accent: 0xb7d88d, haze: 0x85a77a, hazardType: "safe", enemyFamilies: ["giantBee", "hornetGuard", "vineDrake", "hiveQueen"], danger: 1, terrainStyle: "forest", travelRhythm: "canopy" },
-        { name: "Sunstone Highlands", subtitle: "Frontier Territory", center: new THREE.Vector3(112, 0, -128), radius: 170, baseY: -5, hazardY: -34, color: 0x74664b, accent: 0xe7c074, haze: 0xb49361, hazardType: "safe", enemyFamilies: ["hornetGuard", "ironWyvern", "skyEel", "armoredKnight"], danger: 2, terrainStyle: "highland", travelRhythm: "cliff-hop" },
-        { name: "Seraphic City-State Ring", subtitle: "City of Spires", center: new THREE.Vector3(-8, 0, 28), radius: 176, baseY: -2, hazardY: -36, color: 0x5d6072, accent: 0xcfd6ea, haze: 0x8fa3c6, hazardType: "safe", enemyFamilies: ["ashWasp", "vineDrake", "skyEel", "hornetGuard"], danger: 0, terrainStyle: "city", travelRhythm: "rooftop" },
-        { name: "Ruin-Crown Expanse", subtitle: "Dangerous Territory", center: new THREE.Vector3(162, 0, 18), radius: 172, baseY: -8, hazardY: -34, color: 0x615a6e, accent: 0x9faacc, haze: 0x7f879c, hazardType: "safe", enemyFamilies: ["ironWyvern", "boltRay", "armoredKnight", "spearSentinel"], danger: 3, terrainStyle: "ruin", travelRhythm: "war-platform" },
-        { name: "Tempest Shelf", subtitle: "Dangerous Territory", center: new THREE.Vector3(110, 0, 162), radius: 180, baseY: -6, hazardY: -35, color: 0x4e6f8d, accent: 0x9fd3ff, haze: 0x79a1cd, hazardType: "tempest", enemyFamilies: ["thunderSerpent", "skyEel", "stormSpirit", "stormDrake"], danger: 4, terrainStyle: "storm", travelRhythm: "air-current" },
-        { name: "Sky Glacier Reach", subtitle: "Dangerous Territory", center: new THREE.Vector3(-58, 0, 174), radius: 170, baseY: -8, hazardY: -36, color: 0x6a7c90, accent: 0xd8f1ff, haze: 0x9bb6cc, hazardType: "safe", enemyFamilies: ["stormSpirit", "skyEel", "thunderSerpent", "voidManta"], danger: 4, terrainStyle: "glacier", travelRhythm: "thin-perches" },
-        { name: "Hollow Night Marsh", subtitle: "Monster Territory", center: new THREE.Vector3(-202, 0, 112), radius: 182, baseY: -10, hazardY: -37, color: 0x3f3448, accent: 0x7f6a92, haze: 0x5a4668, hazardType: "abyss", enemyFamilies: ["shadeSerpent", "nightBee", "voidManta", "voidDragon"], danger: 5, terrainStyle: "marsh", travelRhythm: "gloom-rift" },
-        { name: "Dragonspine Frontier", subtitle: "Monster Territory", center: new THREE.Vector3(242, 0, 134), radius: 190, baseY: -9, hazardY: -36, color: 0x5f4d49, accent: 0xe0b8a4, haze: 0x9e7060, hazardType: "safe", enemyFamilies: ["ironWyvern", "fireDrake", "stormDrake", "voidDragon"], danger: 5, terrainStyle: "dragon", travelRhythm: "long-dive" },
-        { name: "Ashen Lava Basin", subtitle: "Dragon Territory", center: new THREE.Vector3(220, 0, -106), radius: 198, baseY: -11, hazardY: -25, color: 0x5c392a, accent: 0xdd7c40, haze: 0x9a5030, hazardType: "lava", enemyFamilies: ["ashWasp", "bombHarasser", "fireDrake", "magmaSerpent"], danger: 6, terrainStyle: "lava", travelRhythm: "blast-gap" },
-        { name: "Obsidian Rift", subtitle: "Dragon Territory", center: new THREE.Vector3(42, 0, -246), radius: 190, baseY: -12, hazardY: -24, color: 0x35313f, accent: 0x6f6a80, haze: 0x524a63, hazardType: "lava", enemyFamilies: ["magmaSerpent", "voidManta", "stormDrake", "voidDragon"], danger: 6, terrainStyle: "rift", travelRhythm: "ravine" },
-        { name: "Outer Wyrm Wastes", subtitle: "Dragon Territory", center: new THREE.Vector3(-156, 0, -258), radius: 200, baseY: -12, hazardY: -24, color: 0x41333a, accent: 0xb37d89, haze: 0x6c4d59, hazardType: "lava", enemyFamilies: ["voidDragon", "fireDrake", "stormDrake", "armoredKnight"], danger: 7, terrainStyle: "wyrm", travelRhythm: "gauntlet" }
+        { name: "Great Forest Canopy", subtitle: "City-State Frontier", center: new THREE.Vector3(-264, 0, -188), width: 208, depth: 184, radius: 92, baseY: -4, hazardY: -32, color: 0x43673f, accent: 0x9cd77a, haze: 0x7ca884, hazardType: "safe", enemyFamilies: ["giantBee", "ashWasp", "vineDrake", "hornetGuard"], danger: 0, terrainStyle: "forest", travelRhythm: "perch-chain", spawnThemes: ["forest-nest", "hanging-hive"] },
+        { name: "Mossfang Wilds", subtitle: "Frontier Territory", center: new THREE.Vector3(-56, 0, -188), width: 208, depth: 184, radius: 92, baseY: -6, hazardY: -33, color: 0x4f6340, accent: 0xb7d88d, haze: 0x85a77a, hazardType: "safe", enemyFamilies: ["giantBee", "hornetGuard", "vineDrake", "hiveQueen"], danger: 1, terrainStyle: "forest", travelRhythm: "canopy", spawnThemes: ["forest-nest", "hanging-hive"] },
+        { name: "Sunstone Highlands", subtitle: "Frontier Territory", center: new THREE.Vector3(152, 0, -188), width: 208, depth: 184, radius: 92, baseY: -5, hazardY: -34, color: 0x74664b, accent: 0xe7c074, haze: 0xb49361, hazardType: "safe", enemyFamilies: ["hornetGuard", "ironWyvern", "skyEel", "armoredKnight"], danger: 2, terrainStyle: "highland", travelRhythm: "cliff-hop", spawnThemes: ["watch-platform", "outskirts-roost"] },
+        { name: "Ashen Lava Basin", subtitle: "Dragon Territory", center: new THREE.Vector3(360, 0, -188), width: 208, depth: 184, radius: 92, baseY: -11, hazardY: -25, color: 0x5c392a, accent: 0xdd7c40, haze: 0x9a5030, hazardType: "lava", enemyFamilies: ["ashWasp", "bombHarasser", "fireDrake", "magmaSerpent"], danger: 6, terrainStyle: "lava", travelRhythm: "blast-gap", spawnThemes: ["lava-vent", "dragon-perch"] },
+        { name: "Seraphic City-State Ring", subtitle: "City of Spires", center: new THREE.Vector3(-264, 0, 0), width: 208, depth: 184, radius: 92, baseY: -2, hazardY: -36, color: 0x5d6072, accent: 0xcfd6ea, haze: 0x8fa3c6, hazardType: "safe", enemyFamilies: ["ashWasp", "vineDrake", "skyEel", "hornetGuard"], danger: 0, terrainStyle: "city", travelRhythm: "rooftop", spawnThemes: ["city-outskirts", "watch-platform"], hubTheme: "city" },
+        { name: "Ruin-Crown Expanse", subtitle: "Dangerous Territory", center: new THREE.Vector3(-56, 0, 0), width: 208, depth: 184, radius: 92, baseY: -8, hazardY: -34, color: 0x615a6e, accent: 0x9faacc, haze: 0x7f879c, hazardType: "safe", enemyFamilies: ["ironWyvern", "boltRay", "armoredKnight", "spearSentinel"], danger: 3, terrainStyle: "ruin", travelRhythm: "war-platform", spawnThemes: ["ruined-tower", "watch-platform"] },
+        { name: "Tempest Shelf", subtitle: "Dangerous Territory", center: new THREE.Vector3(152, 0, 0), width: 208, depth: 184, radius: 92, baseY: -6, hazardY: -35, color: 0x4e6f8d, accent: 0x9fd3ff, haze: 0x79a1cd, hazardType: "tempest", enemyFamilies: ["thunderSerpent", "skyEel", "stormSpirit", "stormDrake"], danger: 4, terrainStyle: "storm", travelRhythm: "air-current", spawnThemes: ["storm-pylon", "watch-platform"] },
+        { name: "Dragonspine Frontier", subtitle: "Monster Territory", center: new THREE.Vector3(360, 0, 0), width: 208, depth: 184, radius: 92, baseY: -9, hazardY: -36, color: 0x5f4d49, accent: 0xe0b8a4, haze: 0x9e7060, hazardType: "safe", enemyFamilies: ["ironWyvern", "fireDrake", "stormDrake", "voidDragon"], danger: 5, terrainStyle: "dragon", travelRhythm: "long-dive", spawnThemes: ["dragon-perch", "outskirts-roost"] },
+        { name: "Hollow Night Marsh", subtitle: "Monster Territory", center: new THREE.Vector3(-264, 0, 188), width: 208, depth: 184, radius: 92, baseY: -10, hazardY: -37, color: 0x3f3448, accent: 0x7f6a92, haze: 0x5a4668, hazardType: "abyss", enemyFamilies: ["shadeSerpent", "nightBee", "voidManta", "voidDragon"], danger: 5, terrainStyle: "marsh", travelRhythm: "gloom-rift", spawnThemes: ["hollow-fissure", "hanging-hive"] },
+        { name: "Sky Glacier Reach", subtitle: "Dangerous Territory", center: new THREE.Vector3(-56, 0, 188), width: 208, depth: 184, radius: 92, baseY: -8, hazardY: -36, color: 0x6a7c90, accent: 0xd8f1ff, haze: 0x9bb6cc, hazardType: "safe", enemyFamilies: ["stormSpirit", "skyEel", "thunderSerpent", "voidManta"], danger: 4, terrainStyle: "glacier", travelRhythm: "thin-perches", spawnThemes: ["storm-pylon", "watch-platform"] },
+        { name: "Obsidian Rift", subtitle: "Dragon Territory", center: new THREE.Vector3(152, 0, 188), width: 208, depth: 184, radius: 92, baseY: -12, hazardY: -24, color: 0x35313f, accent: 0x6f6a80, haze: 0x524a63, hazardType: "lava", enemyFamilies: ["magmaSerpent", "voidManta", "stormDrake", "voidDragon"], danger: 6, terrainStyle: "rift", travelRhythm: "ravine", spawnThemes: ["lava-vent", "hollow-fissure"] },
+        { name: "Outer Wyrm Wastes", subtitle: "Dragon Territory", center: new THREE.Vector3(360, 0, 188), width: 208, depth: 184, radius: 92, baseY: -12, hazardY: -24, color: 0x41333a, accent: 0xb37d89, haze: 0x6c4d59, hazardType: "lava", enemyFamilies: ["voidDragon", "fireDrake", "stormDrake", "armoredKnight"], danger: 7, terrainStyle: "wyrm", travelRhythm: "gauntlet", spawnThemes: ["dragon-perch", "hollow-fissure"] }
       ];
 
-      worldMinX = Math.min(...worldZones.map((z) => z.center.x - z.radius - 16));
-      worldMaxX = Math.max(...worldZones.map((z) => z.center.x + z.radius + 16));
-      worldMinZ = Math.min(...worldZones.map((z) => z.center.z - z.radius - 16));
-      worldMaxZ = Math.max(...worldZones.map((z) => z.center.z + z.radius + 16));
+      worldMinX = Math.min(...worldZones.map((z) => z.center.x - zoneHalfWidth(z) - 20));
+      worldMaxX = Math.max(...worldZones.map((z) => z.center.x + zoneHalfWidth(z) + 20));
+      worldMinZ = Math.min(...worldZones.map((z) => z.center.z - zoneHalfDepth(z) - 20));
+      worldMaxZ = Math.max(...worldZones.map((z) => z.center.z + zoneHalfDepth(z) + 20));
 
       for (const zone of worldZones) {
-        const land = new THREE.Mesh(
-          new THREE.CylinderGeometry(zone.radius * 0.78, zone.radius, 8, 28),
-          new THREE.MeshStandardMaterial({ color: zone.color, roughness: 0.95, metalness: 0.05 })
-        );
-        land.position.copy(zone.center).setY(zone.baseY);
-        land.castShadow = true;
-        land.receiveShadow = true;
-        arenaGroup.add(land);
-
-        const rim = new THREE.Mesh(
-          new THREE.TorusGeometry(zone.radius * 0.92, 2.3, 10, 56),
-          new THREE.MeshStandardMaterial({ color: zone.accent, roughness: 0.9, metalness: 0.1 })
-        );
-        rim.rotation.x = Math.PI / 2;
-        rim.position.copy(zone.center).setY(zone.baseY + 3.2);
-        arenaGroup.add(rim);
-
-        for (let ringIndex = 0; ringIndex < 4; ringIndex++) {
-          const circleRuins = new THREE.Mesh(
-            new THREE.TorusGeometry(zone.radius * (0.28 + ringIndex * 0.1), 1.1 + ringIndex * 0.22, 8, 30),
-            new THREE.MeshStandardMaterial({ color: zone.accent, roughness: 0.88, metalness: 0.14 })
-          );
-          circleRuins.position.set(
-            zone.center.x + Math.cos(ringIndex * 1.4) * (10 + ringIndex * 7),
-            zone.baseY + 7 + ringIndex * 8,
-            zone.center.z + Math.sin(ringIndex * 1.4) * (10 + ringIndex * 7)
-          );
-          circleRuins.rotation.x = Math.PI / 2 + ringIndex * 0.2;
-          circleRuins.rotation.y = ringIndex * 0.42;
-          arenaGroup.add(circleRuins);
-        }
-
-        for (let i = 0; i < 8; i++) {
-          const pillar = new THREE.Mesh(
-            new THREE.CylinderGeometry(2.2, 3.8, 20 + Math.random() * 20, 9),
-            new THREE.MeshStandardMaterial({ color: zone.color, roughness: 1 })
-          );
-          const a = (i / 8) * Math.PI * 2 + Math.random() * 0.45;
-          const r = zone.radius * (0.35 + Math.random() * 0.55);
-          pillar.position.set(zone.center.x + Math.cos(a) * r, zone.baseY - 8, zone.center.z + Math.sin(a) * r);
-          pillar.castShadow = true;
-          pillar.receiveShadow = true;
-          arenaGroup.add(pillar);
-        }
-
-        for (let i = 0; i < 10; i++) {
-          const arch = new THREE.Mesh(
-            new THREE.TorusGeometry(3.2 + Math.random() * 3.6, 0.35, 8, 18, Math.PI + Math.random() * 0.5),
-            new THREE.MeshStandardMaterial({ color: zone.color, roughness: 0.95, metalness: 0.08 })
-          );
-          const a = (i / 10) * Math.PI * 2 + Math.random() * 0.4;
-          const r = zone.radius * (0.55 + Math.random() * 0.28);
-          arch.position.set(zone.center.x + Math.cos(a) * r, zone.baseY + 8 + Math.random() * 17, zone.center.z + Math.sin(a) * r);
-          arch.rotation.y = a;
-          arenaGroup.add(arch);
-        }
+        createSquareRegionTerrain(zone);
+        createRegionDecor(zone);
       }
 
-      const links = [];
-      for (let i = 0; i < worldZones.length - 1; i++) {
-        links.push([worldZones[i], worldZones[i + 1]]);
-      }
-      links.push([worldZones[0], worldZones[3]], [worldZones[3], worldZones[5]], [worldZones[5], worldZones[8]], [worldZones[2], worldZones[9]], [worldZones[1], worldZones[7]]);
-      for (const [a, b] of links) {
-        const dir = b.center.clone().sub(a.center);
-        const len = dir.length();
-        const bridge = new THREE.Mesh(
-          new THREE.BoxGeometry(11, 2.2, len * 0.56),
-          new THREE.MeshStandardMaterial({ color: 0x6d5d4c, roughness: 0.9 })
-        );
-        bridge.position.copy(a.center.clone().lerp(b.center, 0.5));
-        bridge.position.y = -1.2 + Math.random() * 3;
-        bridge.lookAt(b.center.x, bridge.position.y, b.center.z);
-        bridge.castShadow = true;
-        bridge.receiveShadow = true;
-        arenaGroup.add(bridge);
+      for (let i = 0; i < worldZones.length; i++) {
+        for (let j = i + 1; j < worldZones.length; j++) {
+          const a = worldZones[i];
+          const b = worldZones[j];
+          const dx = Math.abs(a.center.x - b.center.x);
+          const dz = Math.abs(a.center.z - b.center.z);
+          const edgeTouchX = Math.abs(dx - (zoneHalfWidth(a) + zoneHalfWidth(b))) < 8 && dz < Math.max(zoneHalfDepth(a), zoneHalfDepth(b)) * 0.72;
+          const edgeTouchZ = Math.abs(dz - (zoneHalfDepth(a) + zoneHalfDepth(b))) < 8 && dx < Math.max(zoneHalfWidth(a), zoneHalfWidth(b)) * 0.72;
+          if (!edgeTouchX && !edgeTouchZ) continue;
+          const seam = new THREE.Mesh(
+            new THREE.PlaneGeometry(edgeTouchX ? 12 : Math.min(zoneHalfWidth(a), zoneHalfWidth(b)) * 1.35, edgeTouchX ? Math.min(zoneHalfDepth(a), zoneHalfDepth(b)) * 1.2 : 12),
+            new THREE.MeshStandardMaterial({ color: 0x8094a2, transparent: true, opacity: 0.22, roughness: 0.9, metalness: 0.05 })
+          );
+          seam.rotation.x = -Math.PI / 2;
+          seam.position.set((a.center.x + b.center.x) * 0.5, Math.max(a.baseY, b.baseY) + 1.9, (a.center.z + b.center.z) * 0.5);
+          arenaGroup.add(seam);
+        }
       }
 
       for (let i = 0; i < 60; i++) {
@@ -716,9 +772,9 @@
           new THREE.MeshBasicMaterial({ color: new THREE.Color().setHSL(0.06 + Math.random() * 0.04, 1, 0.5) })
         );
         ember.position.set(
-          (Math.random() - 0.5) * 300,
+          (Math.random() - 0.5) * 620,
           -22 + Math.random() * 54,
-          (Math.random() - 0.5) * 280
+          (Math.random() - 0.5) * 520
         );
         ember.userData = {
           drift: new THREE.Vector3((Math.random()-0.5)*0.08, 0.05 + Math.random() * 0.1, (Math.random()-0.5)*0.08),
@@ -743,7 +799,7 @@
         }[zone.hazardType];
 
         const surface = new THREE.Mesh(
-          new THREE.CircleGeometry(zone.radius * 1.18, 72),
+          new THREE.PlaneGeometry(zone.width * 1.08, zone.depth * 1.08),
           new THREE.MeshStandardMaterial({
             color: hazardLook.color,
             emissive: hazardLook.emissive,
@@ -760,7 +816,7 @@
         if (zone.hazardType === "lava") lava = surface;
 
         const glow = new THREE.Mesh(
-          new THREE.CircleGeometry(zone.radius * 1.2, 72),
+          new THREE.PlaneGeometry(zone.width * 1.12, zone.depth * 1.12),
           new THREE.MeshBasicMaterial({
             color: hazardLook.glow,
             transparent: true,
@@ -900,40 +956,13 @@
             new THREE.TorusGeometry(radius, 0.85, 8, 22),
             new THREE.MeshStandardMaterial({ color: zone.accent, roughness: 0.82, metalness: 0.2 })
           );
-          const a = Math.random() * Math.PI * 2;
-          const r = zone.radius * (0.25 + Math.random() * 0.5);
-          ring.position.set(zone.center.x + Math.cos(a) * r, zone.baseY + 10 + Math.random() * 24, zone.center.z + Math.sin(a) * r);
+          const p = randomPointInZone(zone, 0.2);
+          ring.position.set(p.x, zone.baseY + 10 + Math.random() * 24, p.z);
           ring.rotation.x = Math.PI / 2 + (Math.random() - 0.5) * 0.45;
           ring.rotation.y = Math.random() * Math.PI;
           ring.castShadow = true;
           ring.receiveShadow = true;
           scene.add(ring);
-        }
-        if (zone.terrainStyle === "forest") {
-          for (let i = 0; i < 18; i++) {
-            const limb = new THREE.Mesh(
-              new THREE.CylinderGeometry(0.45 + Math.random() * 0.45, 0.7 + Math.random() * 0.65, 8 + Math.random() * 12, 7),
-              new THREE.MeshStandardMaterial({ color: 0x5a3f2d, roughness: 0.95 })
-            );
-            const a = Math.random() * Math.PI * 2;
-            const r = zone.radius * (0.18 + Math.random() * 0.58);
-            limb.position.set(zone.center.x + Math.cos(a) * r, zone.baseY + 10 + Math.random() * 24, zone.center.z + Math.sin(a) * r);
-            limb.rotation.z = (Math.random() - 0.5) * 1.3;
-            limb.castShadow = true;
-            scene.add(limb);
-          }
-        } else if (zone.terrainStyle === "city" || zone.terrainStyle === "ruin") {
-          for (let i = 0; i < 20; i++) {
-            const tower = new THREE.Mesh(
-              new THREE.BoxGeometry(3.2 + Math.random() * 3.5, 10 + Math.random() * 22, 3.2 + Math.random() * 3.5),
-              new THREE.MeshStandardMaterial({ color: zone.terrainStyle === "city" ? 0x8c95ad : 0x6b6774, roughness: 0.82, metalness: 0.12 })
-            );
-            const a = Math.random() * Math.PI * 2;
-            const r = zone.radius * (0.16 + Math.random() * 0.66);
-            tower.position.set(zone.center.x + Math.cos(a) * r, zone.baseY + 4 + tower.geometry.parameters.height * 0.5, zone.center.z + Math.sin(a) * r);
-            tower.castShadow = true;
-            scene.add(tower);
-          }
         }
       }
     }
@@ -1217,9 +1246,13 @@
       root.add(saddle);
 
       // Rider
+      const riderAnchor = new THREE.Group();
+      riderAnchor.position.set(0, 1.58, 0.08);
+      root.add(riderAnchor);
+
       const rider = new THREE.Group();
-      rider.position.set(0, 1.4, 0.1);
-      root.add(rider);
+      rider.position.set(0, 0, 0);
+      riderAnchor.add(rider);
 
       const torso = new THREE.Mesh(
         new THREE.BoxGeometry(0.7, 1.0, 0.45),
@@ -1294,11 +1327,15 @@
       cape.castShadow = true;
       rider.add(cape);
 
+      const spearAnchor = new THREE.Group();
+      spearAnchor.position.set(0.62, 0.18, 0.62);
+      rider.add(spearAnchor);
+
       const lance = new THREE.Group();
-      lance.position.set(0.78, 0.05, 1.45);
+      lance.position.set(0.26, 0.02, 1.92);
       lance.rotation.x = -0.02;
-      lance.rotation.y = -Math.PI / 2;
-      rider.add(lance);
+      lance.rotation.y = 0;
+      spearAnchor.add(lance);
 
       const lanceShaft = new THREE.Mesh(
         new THREE.CylinderGeometry(0.04, 0.04, 4.8, 8),
@@ -1326,8 +1363,13 @@
         neck,
         head,
         rider,
+        riderAnchor,
+        spearAnchor,
         lance,
-        lanceRest: lance.position.clone()
+        lanceTip,
+        lanceRest: lance.position.clone(),
+        spearTipWorld: new THREE.Vector3(),
+        spearForwardWorld: new THREE.Vector3(0, 0, 1)
       };
 
       return root;
@@ -1453,59 +1495,98 @@
       updateUI();
     }
 
+    function createSpawnLandmark(node, zone) {
+      const landmark = new THREE.Group();
+      const base = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.8, 2.8, 2.4, 8),
+        new THREE.MeshStandardMaterial({ color: zone.haze, roughness: 0.9, metalness: 0.08 })
+      );
+      landmark.add(base);
+      const glow = new THREE.Mesh(
+        new THREE.TorusGeometry(2.6, 0.22, 8, 18),
+        new THREE.MeshStandardMaterial({ color: zone.accent, emissive: zone.accent, emissiveIntensity: 0.35, transparent: true, opacity: 0.72 })
+      );
+      glow.rotation.x = -Math.PI / 2;
+      glow.position.y = 1.4;
+      landmark.add(glow);
+      landmark.position.copy(node.pos).setY(node.pos.y - 2.1);
+      scene.add(landmark);
+      return landmark;
+    }
+
     function createSpawnNodes() {
       spawnNodes = [];
+      const spawnThemesByStyle = {
+        forest: ["forest-nest", "hanging-hive", "watch-platform"],
+        highland: ["watch-platform", "outskirts-roost"],
+        city: ["city-outskirts", "watch-platform"],
+        ruin: ["ruined-tower", "watch-platform"],
+        lava: ["lava-vent", "dragon-perch"],
+        storm: ["storm-pylon", "watch-platform"],
+        marsh: ["hollow-fissure", "hanging-hive"],
+        dragon: ["dragon-perch", "outskirts-roost"],
+        wyrm: ["dragon-perch", "hollow-fissure"],
+        glacier: ["storm-pylon", "watch-platform"],
+        rift: ["lava-vent", "hollow-fissure"]
+      };
+
       for (const zone of worldZones) {
-        const nodeTypes = ["nest", "roost", "ruin", "air-lane", "hive", "shrine"];
-        const nodeCount = 5 + Math.round((zone.danger || 0) * 1.1);
+        const nodeTypes = zone.spawnThemes || spawnThemesByStyle[zone.terrainStyle] || ["watch-platform"];
+        const nodeCount = 5 + Math.round((zone.danger || 0) * 1.2);
         for (let i = 0; i < nodeCount; i++) {
-          const a = (i / 5) * Math.PI * 2 + Math.random() * 0.6;
-          const r = zone.radius * (0.35 + Math.random() * 0.56);
-          const pos = new THREE.Vector3(zone.center.x + Math.cos(a) * r, terrainHeightAt(zone.center.x + Math.cos(a) * r, zone.center.z + Math.sin(a) * r) + 8 + Math.random() * 10, zone.center.z + Math.sin(a) * r);
+          const p = randomPointInZone(zone, 0.16);
+          const y = terrainHeightAt(p.x, p.z);
+          if (y < -900) continue;
+          const pos = new THREE.Vector3(p.x, y + 7 + Math.random() * 9, p.z);
+          const nearHub = getHubAt(pos.x, pos.z, 20);
           const species = chooseEnemyTypeForZone(zone);
-          const nodeType = nodeTypes[i % nodeTypes.length];
-          spawnNodes.push({
+          const spawnType = nodeTypes[i % nodeTypes.length];
+          const node = {
             id: `${zone.name}-${i}`,
+            regionName: zone.name,
             zoneName: zone.name,
             pos,
+            spawnType,
             species,
-            nodeType,
-            count: 1 + (Math.random() < (0.06 + (zone.danger || 0) * 0.05) ? 1 : 0),
-            leashRange: 84 + Math.random() * 38 + (zone.danger || 0) * 8,
-            respawn: 24 + Math.random() * 28 - (zone.danger || 0) * 1.2
-          });
-          const marker = new THREE.Mesh(
-            new THREE.TorusGeometry(2.1 + (zone.danger || 0) * 0.18, 0.16, 8, 24),
-            new THREE.MeshStandardMaterial({ color: zone.accent, emissive: zone.accent, emissiveIntensity: 0.25, transparent: true, opacity: 0.7 })
-          );
-          marker.position.copy(pos).setY(pos.y - 1.9);
-          marker.rotation.x = -Math.PI / 2;
-          scene.add(marker);
+            allowedFamilies: [...zone.enemyFamilies],
+            localMaxActive: Math.min(NODE_ENEMY_CAP, 1 + Math.floor((zone.danger || 0) * 0.45)),
+            count: 1,
+            leashRange: 84 + Math.random() * 38 + (zone.danger || 0) * 9,
+            respawnCooldown: 20 + Math.random() * 26 - (zone.danger || 0) * 1.1,
+            respawn: 20 + Math.random() * 26 - (zone.danger || 0) * 1.1,
+            eliteChance: Math.min(0.35, 0.03 + zone.danger * 0.035),
+            safeBlocked: !!nearHub,
+            landmark: null
+          };
+          if (!nearHub) {
+            node.landmark = createSpawnLandmark(node, zone);
+          }
+          spawnNodes.push(node);
         }
       }
     }
 
     function spawnNodeEnemy(node) {
-      const jitter = new THREE.Vector3((Math.random() - 0.5) * 8, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 8);
-      const enemy = spawnEnemy(node.pos.clone().add(jitter), node.species);
+      const nearby = enemies.filter((e) => e.alive && e.spawnNodeId === node.id).length;
+      if (nearby >= node.localMaxActive) return null;
+      const jitter = new THREE.Vector3((Math.random() - 0.5) * 10, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 10);
+      const spawnPos = node.pos.clone().add(jitter);
+      if (player && spawnPos.distanceTo(player.pos) < LOCAL_SPAWN_RADIUS_MIN + 4) return null;
+      const enemyType = node.allowedFamilies[Math.floor(Math.random() * node.allowedFamilies.length)] || node.species;
+      const enemy = spawnEnemy(spawnPos, enemyType);
       enemy.zoneName = node.zoneName;
       enemy.homePos.copy(node.pos);
       enemy.patrolTarget.copy(node.pos);
       enemy.spawnNodeId = node.id;
       enemy.leashRangeOverride = node.leashRange;
       enemy.chunkKey = chunkKeyAt(node.pos.x, node.pos.z);
-      if (zoneTier(node.zoneName) >= 3 && Math.random() < 0.18) enemy.elite = true;
+      if (Math.random() < node.eliteChance) enemy.elite = true;
       return enemy;
     }
 
     function nearbyZonesForSpawning() {
       const p = player ? player.pos : new THREE.Vector3();
-      return worldZones.filter(zone => {
-        const dx = p.x - zone.center.x;
-        const dz = p.z - zone.center.z;
-        const d = Math.hypot(dx, dz);
-        return d < zone.radius + LOCAL_SPAWN_RADIUS_MAX;
-      });
+      return worldZones.filter(zone => zoneDistanceOutsideSquare(zone, p.x, p.z) < LOCAL_SPAWN_RADIUS_MAX);
     }
 
     function chunkKeyAt(x, z) {
@@ -1535,47 +1616,30 @@
       return zone ? (zone.danger ?? 0) : 0;
     }
 
-    function xpNeededForLevel(level) {
-      return 80 + (level - 1) * 30;
-    }
-
-    function playerStats() {
-      const mount = MOUNT_DB.find((m) => m.id === progress.mount) || MOUNT_DB[0];
-      const equipped = getEquippedItems();
-      const bonus = aggregateItemStats(equipped);
-      const classBonus = progress.classChoice === "warrior" ? 1.16 : progress.classChoice === "summoner" ? 0.88 : 1;
-      return {
-        flapLift: (14.8 + progress.upgrades.flapPower * 0.95 + (bonus.flapLift || 0)) * mount.flap,
-        flapBoost: 7.4 + progress.upgrades.flapPower * 0.65,
-        airControl: (2.4 + progress.upgrades.airControl * 0.24 + (bonus.airControl || 0)) * mount.accel,
-        burstBonus: (progress.upgrades.burstSpeed * 1.1 + (bonus.burstSpeed || 0)) * mount.speed,
-        diveImpact: (22 + progress.upgrades.diveImpact * 5 + progress.upgrades.warriorImpact * 6) * mount.impact * classBonus,
-        spearDamage: (24 + progress.upgrades.spearDamage * 6 + (bonus.spearDamage || 0)) * (progress.classChoice === "warrior" ? 1.15 : 1),
-        spearReach: 5 + progress.upgrades.spearReach * 0.55 + (bonus.spearReach || 0),
-        spearCooldown: Math.max(0.23, 0.7 - progress.upgrades.spearCooldown * 0.06),
-        spearKnockback: 6 + progress.upgrades.spearKnockback * 1.1,
-        spearStagger: 0.18 + progress.upgrades.antiArmor * 0.08,
-        critChance: 0.06 + progress.upgrades.critChance * 0.025 + (bonus.critChance || 0),
-        collisionRecovery: progress.upgrades.bounceRecovery * 0.12,
-        resistance: progress.upgrades.resistance * 0.04 + (bonus.resistance || 0),
-        regenPerSecond: 1.5 + progress.upgrades.regenSpeed * 0.7 + (bonus.regenSpeed || 0),
-        regenDelay: Math.max(2.1, 4.3 - progress.upgrades.regenDelay * 0.35 + (bonus.regenDelay || 0)),
-        pickupRadius: 3.2 + progress.upgrades.pickupRadius * 0.65 + (bonus.pickupRadius || 0),
-        freezeChance: bonus.freezeChance || 0,
-        chainChance: bonus.chainChance || 0,
-        poisonBonus: bonus.poisonBonus || 0,
-        reviveShield: bonus.reviveShield || 0,
-        mount,
-        summonBuff: (mount.summonBuff || 0) + progress.upgrades.summonDamage * 0.08
-      };
-    }
-
-    function zoneEnemyCount(zoneName) {
-      return enemies.filter(e => e.alive && e.zoneName === zoneName).length;
-    }
-
-    function chunkEnemyCount(chunkKey) {
-      return enemies.filter(e => e.alive && e.chunkKey === chunkKey).length;
+    function spawnFromNearbyNodes() {
+      if (!player) return false;
+      const zone = getZoneAt(player.pos.x, player.pos.z);
+      if (!zone) return false;
+      const progressionScale = 1 + (progress.level - 1) * 0.06;
+      const localNodes = spawnNodes.filter((node) => node.zoneName === zone.name && !node.safeBlocked);
+      const spawnable = localNodes.filter((node) => {
+        if (getHubAt(node.pos.x, node.pos.z, HUB_SAFE_BUFFER)) return false;
+        if (node.pos.distanceTo(player.pos) < LOCAL_SPAWN_RADIUS_MIN + 8) return false;
+        if (zoneDistanceOutsideSquare(zone, node.pos.x, node.pos.z) > 1) return false;
+        const toNode = node.pos.clone().sub(player.pos).setY(0);
+        const forward = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
+        const offscreenBias = forward.dot(toNode.normalize()) < 0.72;
+        if (!offscreenBias && Math.random() < 0.65) return false;
+        const active = enemies.filter((e) => e.alive && e.spawnNodeId === node.id).length;
+        return active < Math.max(1, Math.round(node.localMaxActive * progressionScale));
+      });
+      if (!spawnable.length) return false;
+      const node = spawnable[Math.floor(Math.random() * spawnable.length)];
+      const enemy = spawnNodeEnemy(node);
+      if (!enemy) return false;
+      const farFromHub = safeHubs.reduce((m, hub) => Math.min(m, hub.pos.distanceTo(node.pos)), Infinity);
+      if (farFromHub > 140 && Math.random() < 0.2 + zone.danger * 0.025) enemy.elite = true;
+      return true;
     }
 
     function spawnRegionalEnemy() {
@@ -1585,62 +1649,7 @@
       if (startHub && player.pos.distanceTo(startHub.pos) < 78) return false;
       const aliveCount = enemies.filter(e => e.alive).length;
       if (aliveCount >= GLOBAL_ENEMY_CAP) return false;
-
-      const zones = nearbyZonesForSpawning();
-      if (!zones.length) return false;
-      const currentZone = getZoneAt(player.pos.x, player.pos.z);
-      let zone = zones[Math.floor(Math.random() * zones.length)];
-      if (currentZone && zones.includes(currentZone) && Math.random() < 0.72) {
-        zone = currentZone;
-      }
-      const zoneWarmup = currentZone && zone.name === currentZone.name ? Math.max(0, 4.5 - regionEnterTime) : 0;
-      if (zoneWarmup > 0 && Math.random() < 0.78) return false;
-      if (zoneEnemyCount(zone.name) >= ZONE_ENEMY_CAP) return false;
-
-      for (let i = 0; i < 16; i++) {
-        const moveDir = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
-        const aheadBias = Math.random() < 0.72 ? Math.atan2(moveDir.x, moveDir.z) : Math.random() * Math.PI * 2;
-        const a = aheadBias + (Math.random() - 0.5) * 1.8;
-        const r = LOCAL_SPAWN_RADIUS_MIN + Math.random() * (LOCAL_SPAWN_RADIUS_MAX - LOCAL_SPAWN_RADIUS_MIN) + (zone.danger || 0) * 2;
-        const x = player.pos.x + Math.cos(a) * r;
-        const z = player.pos.z + Math.sin(a) * r;
-
-        const inZone = Math.hypot(x - zone.center.x, z - zone.center.z) < zone.radius * 0.95;
-        if (!inZone) continue;
-        if (Math.hypot(x - player.pos.x, z - player.pos.z) < LOCAL_SPAWN_RADIUS_MIN) continue;
-        if (!canSpawnEnemyAt(x, z)) continue;
-
-        const chunkKey = chunkKeyAt(x, z);
-        if (chunkEnemyCount(chunkKey) >= CHUNK_ENEMY_CAP) continue;
-
-        const type = chooseEnemyTypeForZone(zone);
-        const y = Math.max(player.pos.y - 4 + Math.random() * 12, hazardFloorAt(x, z) + 3.2);
-        const enemy = spawnEnemy(new THREE.Vector3(x, y, z), type);
-        const tier = zoneTier(zone.name);
-        enemy.elite = tier >= 2 && Math.random() < (0.04 + tier * 0.03);
-        if (enemy.elite) {
-          enemy.radius += 0.35;
-          enemy.model.scale.multiplyScalar(1.16);
-          enemy.maxHealth *= 1.9;
-          enemy.health = enemy.maxHealth;
-          enemy.speciesData.damage *= 1.18;
-          const crown = new THREE.Mesh(
-            new THREE.TorusGeometry(0.5, 0.07, 8, 16),
-            new THREE.MeshStandardMaterial({ color: 0xffd166, emissive: 0x5a3b00, emissiveIntensity: 0.6, roughness: 0.35, metalness: 0.8 })
-          );
-          crown.rotation.x = Math.PI / 2;
-          crown.position.y = 2.2;
-          enemy.model.add(crown);
-          if (enemy.healthBar?.fill) enemy.healthBar.fill.material.color.set(0xff7849);
-        }
-        enemy.zoneName = zone.name;
-        enemy.chunkKey = chunkKey;
-        enemy.homePos.copy(enemy.pos);
-        enemy.patrolTarget.copy(enemy.pos);
-        return true;
-      }
-
-      return false;
+      return spawnFromNearbyNodes();
     }
 
     function showCenterMessage(text, duration = 1.5, subtitle = "") {
@@ -1674,6 +1683,35 @@
     function getMomentumScale(actor) {
       const horizontalSpeed = Math.sqrt(actor.vel.x * actor.vel.x + actor.vel.z * actor.vel.z);
       return 1 + THREE.MathUtils.clamp(horizontalSpeed / 26, 0, 0.95);
+    }
+
+    function updateSpearPose(actor, dt) {
+      if (!actor?.model?.userData?.anim) return;
+      const anim = actor.model.userData.anim;
+      const rest = anim.lanceRest;
+      const thrustDuration = 0.36;
+      const thrustNorm = THREE.MathUtils.clamp(actor.spearTimer / thrustDuration, 0, 1);
+      const extend = Math.pow(Math.sin((1 - thrustNorm) * Math.PI), 0.8);
+      const forward = new THREE.Vector3(Math.sin(actor.yaw), 0, Math.cos(actor.yaw));
+
+      anim.riderAnchor.position.y = 1.56 + Math.sin(actor.flapPhase * 0.9) * 0.05;
+      anim.rider.position.y = 0.03 + Math.sin(actor.flapPhase * 0.95) * 0.04;
+      anim.spearAnchor.rotation.x = -0.06 + extend * 0.08;
+      anim.spearAnchor.rotation.y = 0;
+      anim.lance.position.set(rest.x + extend * 0.52, rest.y, rest.z + extend * (5.6 + progress.upgrades.spearReach * 0.65));
+
+      anim.lanceTip.getWorldPosition(anim.spearTipWorld);
+      anim.spearForwardWorld.copy(forward).normalize();
+    }
+
+    function applySpearImpact(enemy, forward, momentum, baseDamage) {
+      const mass = Math.max(0.65, enemy.speciesData?.bounceMass || 1);
+      const resist = 1 / Math.max(0.7, mass * 0.92);
+      const velocityFactor = THREE.MathUtils.clamp(player.vel.length() / 16, 0.55, 1.8);
+      const push = forward.clone().multiplyScalar((playerStats().spearKnockback * 0.9 + baseDamage * 0.12) * velocityFactor * resist);
+      push.y += THREE.MathUtils.clamp((player.pos.y - enemy.pos.y) * 0.18, -0.2, 1.6);
+      enemy.vel.add(push);
+      spawnBurst(player.model.userData.anim.spearTipWorld.clone(), Math.round(6 + momentum * 5), 0xfff0be);
     }
 
     function triggerHitFeedback(attacker, target, hitDir, intensity = 1) {
@@ -2122,15 +2160,7 @@
       anim.rider.position.y = 0.02 + Math.sin(actor.flapPhase * 0.95) * (grounded ? 0.03 : 0.08);
 
       if (actor === player) {
-        const rest = anim.lanceRest;
-        const thrustNorm = THREE.MathUtils.clamp(player.spearTimer / 0.25, 0, 1);
-        const thrustCurve = Math.sin((1 - thrustNorm) * Math.PI);
-        const moveDir = new THREE.Vector3(player.vel.x, 0, player.vel.z);
-        const useMoveDir = moveDir.lengthSq() > 0.08;
-        const localForwardYaw = useMoveDir ? (Math.atan2(moveDir.x, moveDir.z) - actor.yaw) : 0;
-        anim.lance.rotation.y = localForwardYaw;
-        anim.lance.position.x = rest.x + thrustCurve * 0.24;
-        anim.lance.position.z = rest.z + thrustCurve * (3.4 + progress.upgrades.spearReach * 0.45);
+        updateSpearPose(actor, dt);
       }
     }
 
@@ -2225,8 +2255,7 @@
       let best = null;
       let bestScore = Infinity;
       for (const zone of worldZones) {
-        const d = Math.hypot(x - zone.center.x, z - zone.center.z);
-        const edge = Math.max(0, d - zone.radius);
+        const edge = zoneDistanceOutsideSquare(zone, x, z);
         if (edge < bestScore) {
           bestScore = edge;
           best = zone;
@@ -2273,16 +2302,29 @@
     function terrainHeightAt(x, z) {
       const zone = getZoneAt(x, z);
       if (!zone) return -999;
-      const dx = x - zone.center.x;
-      const dz = z - zone.center.z;
-      const dist = Math.hypot(dx, dz);
-      if (dist > zone.radius * 1.06) return -999;
-      const n1 = Math.sin(x * 0.036 + zone.danger * 0.7) * Math.cos(z * 0.031 - zone.danger * 0.4);
-      const n2 = Math.sin((x + z) * 0.018) * 0.7 + Math.cos((x - z) * 0.013) * 0.6;
-      const ridge = Math.max(0, Math.sin((dist / Math.max(10, zone.radius)) * Math.PI * 2.2 + zone.danger));
-      const edgeFalloff = Math.pow(Math.max(0, 1 - dist / (zone.radius * 1.03)), 0.55);
-      const base = zone.baseY + 2.4 + (zone.danger || 0) * 0.35;
-      return base + (n1 * 3.2 + n2 * 1.8 + ridge * (1.4 + (zone.danger || 0) * 0.5)) * edgeFalloff;
+      const halfW = zoneHalfWidth(zone);
+      const halfD = zoneHalfDepth(zone);
+      const nx = (x - zone.center.x) / Math.max(halfW, 1);
+      const nz = (z - zone.center.z) / Math.max(halfD, 1);
+      if (Math.abs(nx) > 1.08 || Math.abs(nz) > 1.08) return -999;
+
+      const n1 = Math.sin(x * 0.028 + zone.danger * 0.77) * Math.cos(z * 0.024 - zone.danger * 0.33);
+      const n2 = Math.sin((x + z) * 0.018) * 0.6 + Math.cos((x - z) * 0.013) * 0.7;
+      const lane = Math.sin((x - zone.center.x) * 0.036) * Math.cos((z - zone.center.z) * 0.029);
+      const edgeBlend = Math.max(0, 1 - Math.max(Math.abs(nx), Math.abs(nz)));
+      let silhouette = n1 * 2.8 + n2 * 1.6;
+
+      if (zone.terrainStyle === 'forest') silhouette += Math.sin(x * 0.06) * 1.4 + Math.cos(z * 0.052) * 1.2;
+      else if (zone.terrainStyle === 'highland') silhouette += Math.abs(Math.sin(x * 0.03) * 2.8) + lane * 2.1;
+      else if (zone.terrainStyle === 'city') silhouette = silhouette * 0.45 + Math.round(lane * 3) * 0.7;
+      else if (zone.terrainStyle === 'ruin') silhouette += Math.sign(Math.sin((x + z) * 0.045)) * 1.6;
+      else if (zone.terrainStyle === 'lava' || zone.terrainStyle === 'rift') silhouette += Math.sin((x - z) * 0.05) * 2.4;
+      else if (zone.terrainStyle === 'storm') silhouette += Math.abs(Math.sin((x + z) * 0.055)) * 2.8;
+      else if (zone.terrainStyle === 'marsh') silhouette -= Math.abs(Math.sin(x * 0.04) * 2.1);
+      else if (zone.terrainStyle === 'dragon' || zone.terrainStyle === 'wyrm') silhouette += Math.abs(Math.sin((x + z) * 0.038) * 3.1);
+
+      const base = zone.baseY + 2.5 + zone.danger * 0.35;
+      return base + silhouette * Math.pow(edgeBlend, 0.58);
     }
 
     function keepInsideBounds(actor) {
@@ -2400,10 +2442,11 @@
       }
 
       if (keys["w"] && player.spearCooldown <= 0) {
-        player.spearTimer = 0.25;
+        player.spearTimer = 0.36;
         player.spearCooldown = stats.spearCooldown;
         player.spearHitSet.clear();
-        player.vel.add(forward.clone().multiplyScalar(-1.4));
+        player.vel.add(forward.clone().multiplyScalar(2.2));
+        player.vel.y += 0.5;
       }
       if ((keys["f"] || keys["s"]) && progress.classChoice === "sorcerer" && player.spellCooldown <= 0) {
         castSorcererSpell();
@@ -2764,20 +2807,20 @@
           const dist = player.pos.distanceTo(enemy.pos);
           const stats = playerStats();
 
-          if (player.spearTimer > 0.03) {
-            const forward = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
-            const tipPos = player.pos.clone().add(forward.clone().multiplyScalar(stats.spearReach)).add(new THREE.Vector3(0, 1.4, 0));
-            if (enemy.pos.distanceTo(tipPos) < enemy.radius + 1.8 && !player.spearHitSet.has(enemy)) {
+          if (player.spearTimer > 0.02) {
+            const anim = player.model.userData.anim;
+            const forward = anim.spearForwardWorld.clone();
+            const tipPos = anim.spearTipWorld.clone();
+            const toEnemy = enemy.pos.clone().sub(player.pos).normalize();
+            const forwardAlign = Math.max(0, forward.dot(toEnemy));
+            if (enemy.pos.distanceTo(tipPos) < enemy.radius + 2.15 && forwardAlign > 0.28 && !player.spearHitSet.has(enemy)) {
               player.spearHitSet.add(enemy);
               const crit = Math.random() < stats.critChance;
               const momentum = getMomentumScale(player);
-              const toEnemy = enemy.pos.clone().sub(player.pos).normalize();
-              const forwardAlign = Math.max(0, forward.dot(toEnemy));
-              const altitudeAdv = THREE.MathUtils.clamp((player.pos.y - enemy.pos.y + 1.2) / 4.5, 0.45, 1.45);
-              const angleReward = THREE.MathUtils.lerp(0.45, 1.45, forwardAlign) * altitudeAdv;
+              const altitudeAdv = THREE.MathUtils.clamp((player.pos.y - enemy.pos.y + 1.25) / 4.4, 0.52, 1.55);
+              const angleReward = THREE.MathUtils.lerp(0.38, 1.6, forwardAlign) * altitudeAdv;
               const dmg = (stats.spearDamage + (crit ? stats.spearDamage * 0.7 : 0)) * momentum * angleReward * (enemy.elite ? 0.93 : 1);
-              const knock = forward.clone().multiplyScalar(stats.spearKnockback + enemy.speciesData.knockback * 0.2);
-              enemy.vel.add(knock);
+              applySpearImpact(enemy, forward, momentum, dmg);
               damageEnemy(enemy, dmg, forward, "thrust");
               triggerHitFeedback(player, enemy, forward, momentum);
               applyWeaponEffects(enemy, dmg);
@@ -2914,9 +2957,8 @@
         const lavaZones = worldZones.filter((z) => z.hazardType === "lava");
         const zone = lavaZones[Math.floor(Math.random() * lavaZones.length)];
         if (zone) {
-          const a = Math.random() * Math.PI * 2;
-          const r = Math.random() * zone.radius * 0.8;
-          bubble.position.set(zone.center.x + Math.cos(a) * r, zone.hazardY + 0.6, zone.center.z + Math.sin(a) * r);
+          const p = randomPointInZone(zone, 0.08);
+          bubble.position.set(p.x, zone.hazardY + 0.6, p.z);
           scene.add(bubble);
 
           particles.push({
