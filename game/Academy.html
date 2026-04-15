@@ -2581,7 +2581,11 @@ const ENEMY_SPECIES = {
       enemies = [];
       nodeRespawns = [];
       for (const node of spawnNodes) {
-        for (let i = 0; i < node.count; i++) spawnNodeEnemy(node);
+        node.active = false;
+        node.state = "dormant";
+        node.visualState = "dormant";
+        node.prepTimer = 0;
+        node.spawnTimer = Math.max(0.4, Math.random() * (node.spawnCooldown * 0.55));
       }
       updateUI();
     }
