@@ -2171,6 +2171,43 @@
       return out;
     }
 
+    function playerStats() {
+      const eqStats = aggregateItemStats(getEquippedItems());
+      const mount = MOUNT_DB.find((m) => m.id === progress.mount) || MOUNT_DB[0];
+
+      const computedMaxHealth = 100 + progress.upgrades.healthBoost * 10 + (eqStats.maxHealth || 0);
+      if (player) {
+        if (!Number.isFinite(player.maxHealth) || player.maxHealth <= 0) player.maxHealth = computedMaxHealth;
+        if (Math.abs(player.maxHealth - computedMaxHealth) > 0.001) {
+          const healthRatio = THREE.MathUtils.clamp(player.health / Math.max(1, player.maxHealth), 0, 1);
+          player.maxHealth = computedMaxHealth;
+          player.health = Math.max(1, player.maxHealth * healthRatio);
+        }
+      }
+
+      return {
+        mount,
+        spearDamage: 16 + progress.upgrades.spearDamage * 4 + (eqStats.spearDamage || 0),
+        spearCooldown: Math.max(0.2, 0.72 - progress.upgrades.spearCooldown * 0.05 - (eqStats.spearCooldown || 0)),
+        spearKnockback: 8 + progress.upgrades.spearKnockback * 1.15 + (eqStats.spearKnockback || 0),
+        critChance: THREE.MathUtils.clamp(0.08 + progress.upgrades.critChance * 0.02 + (eqStats.critChance || 0), 0, 0.8),
+        diveImpact: 12 + progress.upgrades.diveImpact * 3 + (eqStats.diveImpact || 0),
+        flapLift: 24 * mount.flap + progress.upgrades.flapPower * 1.8 + (eqStats.flapLift || 0),
+        flapBoost: 3 + progress.upgrades.flapPower * 0.4 + (eqStats.flapBoost || 0),
+        burstBonus: progress.upgrades.burstSpeed * 0.9 + (eqStats.burstSpeed || 0),
+        airControl: THREE.MathUtils.clamp(2.8 + progress.upgrades.airControl * 0.12 + (eqStats.airControl || 0), 1.8, 6.2),
+        regenPerSecond: 1.4 + progress.upgrades.regenSpeed * 0.7 + (eqStats.regenSpeed || 0),
+        regenDelay: Math.max(0.4, 2.6 - progress.upgrades.regenDelay * 0.22 + (eqStats.regenDelay || 0)),
+        resistance: THREE.MathUtils.clamp(progress.upgrades.resistance * 0.03 + (eqStats.resistance || 0), 0, 0.75),
+        pickupRadius: 3.2 + progress.upgrades.pickupRadius * 0.9 + (eqStats.pickupRadius || 0),
+        collisionRecovery: THREE.MathUtils.clamp(progress.upgrades.bounceRecovery * 0.08 + (eqStats.collisionRecovery || 0), 0, 0.82),
+        poisonBonus: eqStats.poisonBonus || 0,
+        freezeChance: eqStats.freezeChance || 0,
+        chainChance: eqStats.chainChance || 0,
+        summonBuff: (mount.summonBuff || 0) + (eqStats.summonBuff || 0)
+      };
+    }
+
     function refreshPlayerAppearance() {
       if (!player?.model?.userData?.anim) return;
       const mount = MOUNT_DB.find((m) => m.id === progress.mount) || MOUNT_DB[0];
