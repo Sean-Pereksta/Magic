@@ -245,7 +245,6 @@
     let score = 0;
     let gold = 0;
     let lives = 3;
-    let enemySpawnTimer = 0;
     let gameEnded = false;
     let respawnTimer = 0;
     let centerMsgTimer = 0;
@@ -394,15 +393,12 @@
     const BOSS_TRIGGER_RADIUS = 13;
     const BOSS_ARENA_RADIUS = 52;
     const HUB_SAFE_BUFFER = 14;
-    const AMBIENT_SPAWN_CHANCE = 0.085;
 
     const spawnDebug = {
       enabled: true,
       nearbyActiveNests: 0,
       attempts: 0,
       success: 0,
-      ambientAttempts: 0,
-      ambientSuccess: 0,
       regionAlive: 0
     };
 
@@ -1663,6 +1659,43 @@
       }
     }
 
+    function createHubCentralTower(hubRoot, def) {
+      const towerRoot = new THREE.Group();
+      const style = def.style || "city";
+      let shaftColor = 0x7a8598;
+      let emissive = def.glow;
+      if (style === "city") shaftColor = 0x95a4c4;
+      else if (style === "military") shaftColor = 0x6d7484;
+      else if (style === "cliff" || style === "frontier") shaftColor = 0x7f6146;
+      else if (style === "storm") shaftColor = 0x5f85b3;
+      const shaft = new THREE.Mesh(
+        new THREE.CylinderGeometry(5.8, 8.2, 70, style === "military" ? 10 : 12),
+        new THREE.MeshStandardMaterial({ color: shaftColor, emissive, emissiveIntensity: style === "city" ? 0.2 : 0.1, roughness: 0.72, metalness: 0.3 })
+      );
+      shaft.position.y = 34;
+      shaft.castShadow = true;
+      shaft.receiveShadow = true;
+      towerRoot.add(shaft);
+      const crown = new THREE.Mesh(
+        style === "city" ? new THREE.CylinderGeometry(4.2, 5.2, 9.4, 12) : style === "storm" ? new THREE.ConeGeometry(5.2, 10.8, 9) : new THREE.CylinderGeometry(4.8, 6.4, 8.2, 8),
+        new THREE.MeshStandardMaterial({ color: def.color, emissive: def.glow, emissiveIntensity: 0.42, roughness: 0.5, metalness: 0.35 })
+      );
+      crown.position.y = 72;
+      crown.castShadow = true;
+      towerRoot.add(crown);
+      for (let i = 0; i < 3; i++) {
+        const halo = new THREE.Mesh(
+          new THREE.TorusGeometry(7 + i * 2.8, 0.38, 12, 32),
+          new THREE.MeshStandardMaterial({ color: def.glow, emissive: def.glow, emissiveIntensity: 0.52 - i * 0.08, transparent: true, opacity: 0.72 - i * 0.12 })
+        );
+        halo.rotation.x = Math.PI / 2;
+        halo.position.y = 40 + i * 11;
+        towerRoot.add(halo);
+      }
+      hubRoot.add(towerRoot);
+      return { minY: def.pos.y - 2, maxY: def.pos.y + 82, radius: 7.8 };
+    }
+
     function createSafeHubs() {
       safeHubs = [];
       checkpoints = [];
@@ -1671,12 +1704,12 @@
       worldCollisionVolumes = [];
 
       const hubDefs = [
-        { name: "Green Cliff Outpost", zone: "Great Forest Canopy", pos: new THREE.Vector3(-812, 14, -410), color: 0x66b26e, glow: 0xb9f5ae, safeRadius: 34, disengageRadius: 54, style: "cliff", specialty: "mounts + supplies" },
-        { name: "Seraph Spire Bazaar", zone: "Seraphic City-State Ring", pos: new THREE.Vector3(-612, 20, 20), color: 0x8ea3ca, glow: 0xe4ebff, safeRadius: 38, disengageRadius: 58, style: "city", specialty: "trinkets + relics" },
-        { name: "Aegis Bastion", zone: "Ruin-Crown Expanse", pos: new THREE.Vector3(80, 21, 16), color: 0x8b93a5, glow: 0xcfd7f5, safeRadius: 34, disengageRadius: 54, style: "military", specialty: "armor + war lances" },
-        { name: "Storm Roost Sanctuary", zone: "Tempest Shelf", pos: new THREE.Vector3(410, 38, 90), color: 0x7ca8db, glow: 0xd6ecff, safeRadius: 34, disengageRadius: 54, style: "storm", specialty: "flight gear + mounts" },
-        { name: "Skyhold Grand Roost", zone: "Aurelian Skyhold", pos: new THREE.Vector3(922, 26, 44), color: 0xa4b2d4, glow: 0xe6efff, safeRadius: 34, disengageRadius: 56, style: "city", specialty: "elite joust gear" },
-        { name: "Dragon Hunter's Rest", zone: "Outer Wyrm Wastes", pos: new THREE.Vector3(866, 24, 438), color: 0xc58563, glow: 0xffd4b8, safeRadius: 32, disengageRadius: 52, style: "frontier", specialty: "anti-dragon kits" }
+        { name: "Green Cliff Outpost", zone: "Great Forest Canopy", pos: new THREE.Vector3(-812, 14, -410), color: 0x66b26e, glow: 0xb9f5ae, safeRadius: 40, disengageRadius: 62, style: "cliff", specialty: "mounts + supplies" },
+        { name: "Seraph Spire Bazaar", zone: "Seraphic City-State Ring", pos: new THREE.Vector3(-612, 20, 20), color: 0x8ea3ca, glow: 0xe4ebff, safeRadius: 44, disengageRadius: 66, style: "city", specialty: "trinkets + relics" },
+        { name: "Aegis Bastion", zone: "Ruin-Crown Expanse", pos: new THREE.Vector3(80, 21, 16), color: 0x8b93a5, glow: 0xcfd7f5, safeRadius: 42, disengageRadius: 62, style: "military", specialty: "armor + war lances" },
+        { name: "Storm Roost Sanctuary", zone: "Tempest Shelf", pos: new THREE.Vector3(410, 38, 90), color: 0x7ca8db, glow: 0xd6ecff, safeRadius: 42, disengageRadius: 62, style: "storm", specialty: "flight gear + mounts" },
+        { name: "Skyhold Grand Roost", zone: "Aurelian Skyhold", pos: new THREE.Vector3(922, 26, 44), color: 0xa4b2d4, glow: 0xe6efff, safeRadius: 44, disengageRadius: 64, style: "city", specialty: "elite joust gear" },
+        { name: "Dragon Hunter's Rest", zone: "Outer Wyrm Wastes", pos: new THREE.Vector3(866, 24, 438), color: 0xc58563, glow: 0xffd4b8, safeRadius: 40, disengageRadius: 60, style: "frontier", specialty: "anti-dragon kits" }
       ];
 
       for (const def of hubDefs) {
@@ -1712,24 +1745,14 @@
           hubRoot.add(cityRing);
         }
 
-        for (let i = 0; i < 16; i++) {
-          const tower = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.8, 1.35, 9 + Math.random() * 18, 8),
-            new THREE.MeshStandardMaterial({ color: def.style === "volcanic" ? 0x3f3230 : 0x6a727c, roughness: 0.86, metalness: 0.18 })
-          );
-          const a = (i / 8) * Math.PI * 2;
-          tower.position.set(Math.cos(a) * (13.5 + Math.random() * 5), 2 + Math.random() * 8, Math.sin(a) * (13.5 + Math.random() * 5));
-          tower.castShadow = true;
-          tower.receiveShadow = true;
-          hubRoot.add(tower);
-          worldCollisionVolumes.push({
-            x: def.pos.x + tower.position.x,
-            z: def.pos.z + tower.position.z,
-            radius: 1.45,
-            minY: def.pos.y - 1,
-            maxY: def.pos.y + 26
-          });
-        }
+        const towerCollision = createHubCentralTower(hubRoot, def);
+        worldCollisionVolumes.push({
+          x: def.pos.x,
+          z: def.pos.z,
+          radius: towerCollision.radius,
+          minY: towerCollision.minY,
+          maxY: towerCollision.maxY
+        });
 
         const shrine = new THREE.Mesh(
           new THREE.CylinderGeometry(1.8, 2.5, 4.4, 8),
@@ -1776,24 +1799,29 @@
           "Dragon Hunter's Rest": ["weapon", "armor", "trinket", "mount", "quest"]
         };
         const merchantTypes = vendorLayouts[def.name] || ["weapon", "armor", "trinket", "quest"];
+        const ringRadius = 18;
         merchantTypes.forEach((type, idx) => {
-          const lane = Math.floor(idx / 3);
-          const column = idx % 3;
-          const localPos = new THREE.Vector3(-11 + column * 11, 1.8 + lane * 0.6, 15 + lane * 10 + (column - 1) * 2.5);
+          const angle = (idx / merchantTypes.length) * Math.PI * 2 - Math.PI * 0.5;
+          const localPos = new THREE.Vector3(Math.cos(angle) * ringRadius, 1.8, Math.sin(angle) * ringRadius);
           const stall = new THREE.Group();
           stall.position.copy(localPos);
           const pad = new THREE.Mesh(
-            new THREE.CylinderGeometry(2.2, 2.7, 1.3, 10),
+            new THREE.CylinderGeometry(2.5, 3.1, 1.4, 10),
             new THREE.MeshStandardMaterial({ color: 0x3c4454, emissive: def.glow, emissiveIntensity: 0.16, roughness: 0.78, metalness: 0.2 })
           );
           stall.add(pad);
-          const canopy = new THREE.Mesh(new THREE.ConeGeometry(2.6, 2.2, 6), new THREE.MeshStandardMaterial({ color: type === "weapon" ? 0xc08457 : type === "armor" ? 0x94a3b8 : type === "mount" ? 0x7dd3fc : type === "quest" ? 0xfde68a : type === "heal" ? 0x86efac : 0xc4b5fd, roughness: 0.7 }));
+          const canopy = new THREE.Mesh(new THREE.ConeGeometry(2.9, 2.4, 6), new THREE.MeshStandardMaterial({ color: type === "weapon" ? 0xc08457 : type === "armor" ? 0x94a3b8 : type === "mount" ? 0x7dd3fc : type === "quest" ? 0xfde68a : type === "heal" ? 0x86efac : type === "life" ? 0xfca5a5 : 0xc4b5fd, roughness: 0.7 }));
           canopy.position.y = 2.1;
+          canopy.rotation.y = angle + Math.PI;
           stall.add(canopy);
           const glyph = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.72, 14), new THREE.MeshStandardMaterial({ color: def.glow, emissive: def.glow, emissiveIntensity: 0.45, side: THREE.DoubleSide }));
           glyph.rotation.x = -Math.PI / 2;
           glyph.position.y = 0.76;
           stall.add(glyph);
+          const sign = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.5, 0.16), new THREE.MeshStandardMaterial({ color: type === "quest" ? 0xfef08a : def.glow, emissive: def.glow, emissiveIntensity: 0.35, roughness: 0.6, metalness: 0.14 }));
+          sign.position.set(0, 3.5, 0.8);
+          sign.rotation.y = angle + Math.PI;
+          stall.add(sign);
           hubRoot.add(stall);
           const worldPos = def.pos.clone().add(localPos);
           shopPlatforms.push({ hubName: def.name, type, worldPos });
@@ -2189,7 +2217,6 @@
       for (const node of spawnNodes) {
         for (let i = 0; i < node.count; i++) spawnNodeEnemy(node);
       }
-      enemySpawnTimer = 1.8;
       updateUI();
     }
 
@@ -2317,46 +2344,126 @@
       return enemy;
     }
 
+    function getNestThemeForZone(zone, spawnType = "watch-platform") {
+      if (zone.terrainStyle === "forest") return spawnType.includes("hive") ? "hanging-hive" : "branch-roost";
+      if (zone.terrainStyle === "highland") return "cliff-roost";
+      if (zone.terrainStyle === "lava" || zone.terrainStyle === "rift" || zone.terrainStyle === "wyrm") return spawnType.includes("dragon") ? "dragon-perch" : "ember-vent";
+      if (zone.terrainStyle === "ruin") return "sentinel-pylon";
+      if (zone.terrainStyle === "storm" || zone.terrainStyle === "glacier") return "storm-pylon";
+      if (zone.terrainStyle === "marsh") return "void-fissure";
+      if (zone.terrainStyle === "city") return "outlaw-roost";
+      return "watch-platform";
+    }
+
+    function shouldNestUseFloatingPlatform(zone, nestTheme, depthFactor) {
+      if (zone.terrainStyle === "forest" || zone.terrainStyle === "storm" || zone.terrainStyle === "glacier") return Math.random() < 0.52;
+      if (zone.terrainStyle === "ruin") return Math.random() < 0.42;
+      if (zone.terrainStyle === "lava" || zone.terrainStyle === "rift" || zone.terrainStyle === "wyrm") return Math.random() < 0.34;
+      if (zone.terrainStyle === "marsh") return Math.random() < 0.4;
+      if (zone.terrainStyle === "city") return depthFactor > 0.4 && Math.random() < 0.45;
+      return false;
+    }
+
+    function createNestPlatform(node, zone) {
+      if (!node.isPlatformNest) return null;
+      const platform = new THREE.Group();
+      let geom = new THREE.CylinderGeometry(5.2, 6.4, 2.2, 9);
+      let color = 0x5c5146;
+      if (zone.terrainStyle === "forest") {
+        geom = new THREE.CylinderGeometry(5.6, 6.8, 1.7, 11);
+        color = 0x5f492f;
+      } else if (zone.terrainStyle === "storm" || zone.terrainStyle === "glacier") {
+        geom = new THREE.CylinderGeometry(5.1, 6.2, 1.8, 12);
+        color = 0x547ba4;
+      } else if (zone.terrainStyle === "ruin") {
+        geom = new THREE.CylinderGeometry(5.5, 6.6, 1.9, 8);
+        color = 0x6f6a73;
+      } else if (zone.terrainStyle === "lava" || zone.terrainStyle === "rift" || zone.terrainStyle === "wyrm") {
+        geom = new THREE.CylinderGeometry(5.4, 6.4, 1.8, 7);
+        color = 0x55342b;
+      } else if (zone.terrainStyle === "marsh") {
+        geom = new THREE.CylinderGeometry(5.2, 6.6, 1.9, 10);
+        color = 0x413750;
+      }
+      const slab = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({ color, roughness: 0.92, metalness: 0.08 }));
+      slab.castShadow = true;
+      slab.receiveShadow = true;
+      platform.add(slab);
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(5.8, 0.26, 8, 24),
+        new THREE.MeshStandardMaterial({ color: zone.accent, emissive: zone.haze, emissiveIntensity: 0.35, roughness: 0.55, metalness: 0.2, transparent: true, opacity: 0.6 })
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.55;
+      platform.add(ring);
+      platform.position.set(node.pos.x, node.pos.y - 3.4, node.pos.z);
+      scene.add(platform);
+      return platform;
+    }
+
     function createSpawnLandmark(node, zone) {
       const landmark = new THREE.Group();
-      const style = node.spawnType || "watch-platform";
-      const mat = new THREE.MeshStandardMaterial({ color: zone.haze, roughness: 0.9, metalness: 0.12 });
-      let baseGeom = new THREE.CylinderGeometry(2, 2.8, 2.4, 8);
-      if (style.includes("nest") || style.includes("hive")) baseGeom = new THREE.SphereGeometry(2.3, 10, 8);
-      else if (style.includes("tower") || style.includes("pylon")) baseGeom = new THREE.CylinderGeometry(1.4, 2.2, 7.5, 7);
-      else if (style.includes("vent") || style.includes("fissure")) baseGeom = new THREE.ConeGeometry(2.8, 4.2, 7);
+      const style = node.nestTheme || node.spawnType || "watch-platform";
+      const mat = new THREE.MeshStandardMaterial({ color: zone.haze, roughness: 0.82, metalness: 0.16, emissive: zone.haze, emissiveIntensity: 0.12 });
+      let baseGeom = new THREE.CylinderGeometry(2.8, 3.4, 4.5, 10);
+      let ringColor = zone.accent;
+      if (style.includes("hive") || style.includes("brood") || style.includes("roost")) {
+        baseGeom = new THREE.SphereGeometry(3.2, 12, 10);
+        ringColor = 0xa0d58a;
+      } else if (style.includes("pylon") || style.includes("tower") || style.includes("sentinel")) {
+        baseGeom = new THREE.CylinderGeometry(1.8, 2.6, 11.2, 8);
+        ringColor = zone.terrainStyle === "storm" ? 0x9ad0ff : 0xa8aec4;
+      } else if (style.includes("vent") || style.includes("fissure") || style.includes("ember")) {
+        baseGeom = new THREE.ConeGeometry(3.8, 6.2, 9);
+        ringColor = 0xff8a54;
+      }
       const base = new THREE.Mesh(baseGeom, mat);
+      base.castShadow = true;
+      base.receiveShadow = true;
       landmark.add(base);
-      const ringColor = style.includes("lava") || style.includes("vent") ? 0xff7a3f : style.includes("storm") ? 0x9ad0ff : zone.accent;
       const glow = new THREE.Mesh(
-        new THREE.TorusGeometry(3.2, 0.24, 8, 20),
-        new THREE.MeshStandardMaterial({ color: ringColor, emissive: ringColor, emissiveIntensity: 0.45, transparent: true, opacity: 0.72 })
+        new THREE.TorusGeometry(4.2, 0.36, 10, 28),
+        new THREE.MeshStandardMaterial({ color: ringColor, emissive: ringColor, emissiveIntensity: 0.55, transparent: true, opacity: 0.74 })
       );
       glow.rotation.x = -Math.PI / 2;
-      glow.position.y = 1.5;
+      glow.position.y = 2.25;
       landmark.add(glow);
-      landmark.position.copy(node.pos).setY(node.pos.y - 2.1);
+      const pulse = new THREE.Mesh(
+        new THREE.RingGeometry(3.5, 4.7, 28),
+        new THREE.MeshBasicMaterial({ color: ringColor, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false })
+      );
+      pulse.rotation.x = -Math.PI / 2;
+      pulse.position.y = 0.24;
+      landmark.add(pulse);
+      landmark.position.copy(node.pos).setY(node.pos.y - 2.8);
       scene.add(landmark);
+      node.platformMesh = createNestPlatform(node, zone);
+      landmark.userData.base = base;
+      landmark.userData.ring = glow;
+      landmark.userData.pulse = pulse;
       return landmark;
     }
 
     function createRegionSpawners(zone) {
       const nodes = [];
       const nodeTypes = zone.spawnThemes || ["watch-platform"];
-      const baseCount = 13 + Math.round((zone.danger || 0) * 1.9);
+      const baseCount = 16 + Math.round((zone.danger || 0) * 2.5);
       const zoneScale = THREE.MathUtils.clamp((zone.width * zone.depth) / (208 * 184), 1, 7);
-      const nodeCount = Math.max(6, Math.round(baseCount * Math.sqrt(zoneScale)));
+      const nodeCount = Math.max(zone.danger <= 1 ? 6 : 8, Math.round(baseCount * Math.sqrt(zoneScale)));
       for (let i = 0; i < nodeCount; i++) {
         const p = randomPointInZone(zone, 0.11);
         const y = terrainHeightAt(p.x, p.z);
         if (y < -900) continue;
-        const pos = new THREE.Vector3(p.x, y + 8 + Math.random() * 12, p.z);
+        const depthFactor = getRegionDepthFactor(zone, new THREE.Vector3(p.x, y + 4, p.z));
+        const spawnType = nodeTypes[i % nodeTypes.length];
+        const nestTheme = getNestThemeForZone(zone, spawnType);
+        const usePlatform = shouldNestUseFloatingPlatform(zone, nestTheme, depthFactor);
+        const baseHeight = usePlatform ? 20 + Math.random() * 16 : 9 + Math.random() * 10;
+        const pos = new THREE.Vector3(p.x, y + baseHeight, p.z);
         const nearHub = getHubAt(pos.x, pos.z, 34);
         const nearCitySafe = getCitySafeZoneAt(pos.x, pos.z, 24);
-        const depthFactor = getRegionDepthFactor(zone, pos);
         const depthTier = depthFactor < 0.34 ? "outer" : depthFactor < 0.68 ? "mid" : "deep";
-        const spawnType = nodeTypes[i % nodeTypes.length];
-        const cooldownBase = spawnType.includes("nest") || spawnType.includes("hive") ? 5.2 : spawnType.includes("tower") || spawnType.includes("perch") ? 8.6 : 7.2;
+        const cooldownBase = spawnType.includes("nest") || spawnType.includes("hive") ? 5.2 : spawnType.includes("tower") || spawnType.includes("perch") ? 7.4 : 6.3;
         const node = {
           id: `${zone.name}-${i}`,
           regionName: zone.name,
@@ -2364,14 +2471,19 @@
           biome: zone.terrainStyle,
           pos,
           spawnType,
+          nestTheme,
+          placementType: usePlatform ? "floating-platform" : "terrain",
+          isPlatformNest: usePlatform,
           depthTier,
           depthFactor,
-          activationRadius: 98 + (zone.danger || 0) * 8,
+          activationRadius: 126 + (zone.danger || 0) * 11,
+          spawnRadius: 18 + (zone.danger || 0) * 2 + Math.random() * 14,
+          patrolRadius: 128 + (zone.danger || 0) * 13 + Math.random() * 34,
           spawnCooldown: Math.max(2.8, cooldownBase - depthFactor * 1.9 + Math.random() * 1.4),
           spawnTimer: 1.5 + Math.random() * 2.8,
-          localMaxActive: Math.min(NODE_ENEMY_CAP + 1 + Math.floor((zone.danger || 0) * 0.42), 9),
-          count: depthTier === "outer" ? 1 : depthTier === "mid" ? 2 : 3,
-          leashRange: 112 + Math.random() * 56 + (zone.danger || 0) * 8,
+          localMaxActive: Math.min(NODE_ENEMY_CAP + 2 + Math.floor((zone.danger || 0) * 0.55), 10),
+          count: depthTier === "outer" ? 1 : depthTier === "mid" ? 2 : 3 + (zone.danger >= 5 ? 1 : 0),
+          leashRange: 132 + Math.random() * 64 + (zone.danger || 0) * 10,
           eliteChance: Math.min(0.64, 0.02 + (zone.danger || 0) * 0.035 + depthFactor * 0.3),
           safeBlocked: !!nearHub || !!nearCitySafe,
           allowedFamilies: chooseEnemyCompositionForRegion(zone, depthFactor, spawnType),
@@ -2379,7 +2491,8 @@
           active: false,
           pulsePhase: Math.random() * Math.PI * 2,
           prepTimer: 0,
-          state: "idle",
+          state: "dormant",
+          visualState: "dormant",
           respawn: 8.5 + Math.random() * 5.5
         };
         if (!node.safeBlocked) {
@@ -2587,7 +2700,10 @@
       const groupSize = Math.min(node.localMaxActive - nearby, depthFactor < 0.34 ? 1 : depthFactor < 0.68 ? 2 : 3);
       let spawned = 0;
       for (let i = 0; i < groupSize; i++) {
-        const jitter = new THREE.Vector3((Math.random() - 0.5) * 14, (Math.random() - 0.5) * 5, (Math.random() - 0.5) * 14);
+        const angle = Math.random() * Math.PI * 2;
+        const radial = node.spawnRadius * (0.28 + Math.pow(Math.random(), 0.7) * 0.92);
+        const ringBias = i % 3 === 1 ? 0.65 : i % 3 === 2 ? 1.0 : 0.35;
+        const jitter = new THREE.Vector3(Math.cos(angle) * radial * ringBias, (Math.random() - 0.35) * 8, Math.sin(angle) * radial * ringBias);
         const spawnPos = node.pos.clone().add(jitter);
         if (player && spawnPos.distanceTo(player.pos) < LOCAL_SPAWN_RADIUS_MIN + 12) continue;
         const enemyType = node.allowedFamilies[Math.floor(Math.random() * node.allowedFamilies.length)] || zone.enemyFamilies[0];
@@ -2597,7 +2713,7 @@
         enemy.homePos.copy(node.pos);
         enemy.patrolTarget.copy(node.pos);
         enemy.spawnNodeId = node.id;
-        enemy.leashRangeOverride = node.leashRange;
+        enemy.leashRangeOverride = Math.max(node.leashRange, node.patrolRadius);
         enemy.chunkKey = chunkKeyAt(node.pos.x, node.pos.z);
         if (Math.random() < node.eliteChance) enemy.elite = true;
         spawned++;
@@ -2611,25 +2727,48 @@
       if (!zone) return 0;
       const dist = node.pos.distanceTo(player.pos);
       node.active = dist <= node.activationRadius;
-      if (node.landmark?.children?.[1]) {
-        const ring = node.landmark.children[1];
-        node.pulsePhase += dt * (node.active ? 3.2 : 1.1);
-        const pulse = node.active ? 1 + Math.sin(node.pulsePhase) * 0.2 : 0.88 + Math.sin(node.pulsePhase * 0.5) * 0.04;
-        ring.scale.set(pulse, pulse, pulse);
-        const activeCol = zone.terrainStyle === "storm" ? 0x89d6ff : zone.terrainStyle === "lava" || zone.terrainStyle === "wyrm" ? 0xff8f5c : zone.accent;
-        ring.material.color.setHex(node.active ? activeCol : 0x6b7280);
-        ring.material.emissiveIntensity = node.active ? 0.9 : 0.25;
-        ring.material.opacity = node.active ? 0.92 : 0.45;
+      if (node.landmark?.userData?.ring) {
+        const ring = node.landmark.userData.ring;
+        const base = node.landmark.userData.base;
+        const pulse = node.landmark.userData.pulse;
+        node.pulsePhase += dt * (node.active ? 3.4 : 1.2);
+        const activeCol = zone.terrainStyle === "storm" ? 0x89d6ff : zone.terrainStyle === "lava" || zone.terrainStyle === "wyrm" || zone.terrainStyle === "rift" ? 0xff8f5c : zone.accent;
+        const pulseScale = node.active ? 1 + Math.sin(node.pulsePhase) * 0.22 : 0.9 + Math.sin(node.pulsePhase * 0.6) * 0.05;
+        ring.scale.set(pulseScale, pulseScale, pulseScale);
+        base.position.y = Math.sin(node.pulsePhase * (node.active ? 1.6 : 0.6)) * 0.45;
+        const visual = node.visualState;
+        const palette = {
+          dormant: { color: 0x6b7280, emissive: 0.26, opacity: 0.5, pulse: 0.22 },
+          active: { color: activeCol, emissive: 0.95, opacity: 0.92, pulse: 0.34 },
+          spawning: { color: 0xffffff, emissive: 1.28, opacity: 1, pulse: 0.62 },
+          depleted: { color: 0x5a5f6d, emissive: 0.2, opacity: 0.4, pulse: 0.14 },
+          recovering: { color: zone.haze, emissive: 0.48, opacity: 0.64, pulse: 0.24 }
+        };
+        const v = palette[visual] || palette.dormant;
+        ring.material.color.setHex(v.color);
+        ring.material.emissive.setHex(v.color);
+        ring.material.emissiveIntensity = v.emissive;
+        ring.material.opacity = v.opacity;
+        pulse.material.opacity = v.pulse;
       }
       if (!node.active) {
-        node.state = "idle";
+        node.state = "dormant";
+        node.visualState = "dormant";
         node.prepTimer = 0;
         node.spawnTimer = Math.min(node.spawnTimer + dt * 0.5, node.spawnCooldown);
         return 0;
       }
       node.spawnTimer -= dt;
+      const localAlive = enemies.filter((e) => e.alive && e.spawnNodeId === node.id).length;
+      if (localAlive >= node.localMaxActive) {
+        node.state = "depleted";
+        node.visualState = "depleted";
+      } else {
+        node.visualState = "active";
+      }
       if (node.spawnTimer <= 1.1) {
-        node.state = "charging";
+        node.state = "spawning";
+        node.visualState = "spawning";
         node.prepTimer += dt;
       }
       if (node.spawnTimer > 0) return 0;
@@ -2639,6 +2778,10 @@
       if (spawned > 0) {
         spawnDebug.success += spawned;
         node.state = "active";
+        node.visualState = "active";
+      } else {
+        node.state = "recovering";
+        node.visualState = "recovering";
       }
       node.prepTimer = 0;
       node.spawnTimer = node.spawnCooldown + (spawned === 0 ? 0.9 + Math.random() * 1.2 : 0.25 + Math.random() * 0.9);
@@ -2647,12 +2790,6 @@
 
     function spawnNodeEnemy(node) {
       return spawnEnemyGroupFromNode(node) > 0 ? true : null;
-    }
-
-    function chooseEnemyTypeForZone(zone) {
-      const depth = player ? getRegionDepthFactor(zone, player.pos) : 0.3;
-      const list = chooseEnemyCompositionForRegion(zone, depth, "ambient");
-      return list[Math.floor(Math.random() * list.length)] || zone.enemyFamilies?.[0] || "forestSkimmer";
     }
 
     function zoneTier(zoneName) {
@@ -2674,55 +2811,13 @@
     }
 
 
-    function spawnAmbientRegionalEncounter(zone) {
-      if (!player || !zone || !canSpawnEnemyAt(player.pos.x, player.pos.z)) return false;
-      spawnDebug.ambientAttempts += 1;
-      const depth = getRegionDepthFactor(zone, player.pos);
-      const encounterTable = [
-        { key: "single", count: 1, elite: 0.04 },
-        { key: "duo", count: 2, elite: 0.08 },
-        { key: "swarm", count: depth > 0.45 ? 4 : 3, elite: 0.05 },
-        { key: "escort", count: depth > 0.7 ? 3 : 2, elite: 0.22 }
-      ];
-      const encounter = encounterTable[Math.floor(Math.random() * encounterTable.length)];
-      let spawned = 0;
-      for (let i = 0; i < encounter.count; i++) {
-        const ang = Math.random() * Math.PI * 2;
-        const dist = LOCAL_SPAWN_RADIUS_MIN + 18 + Math.random() * (LOCAL_SPAWN_RADIUS_MAX - LOCAL_SPAWN_RADIUS_MIN - 24);
-        const pos = new THREE.Vector3(player.pos.x + Math.cos(ang) * dist, player.pos.y + (Math.random() - 0.2) * 20, player.pos.z + Math.sin(ang) * dist);
-        pos.y = Math.max(terrainHeightAt(pos.x, pos.z) + 8 + Math.random() * 10, player.pos.y - 10);
-        if (!canSpawnEnemyAt(pos.x, pos.z)) continue;
-        const localZone = getZoneAt(pos.x, pos.z) || zone;
-        const typePool = chooseEnemyCompositionForRegion(localZone, Math.max(depth, getRegionDepthFactor(localZone, pos)), `ambient-${encounter.key}`);
-        const enemyType = typePool[Math.floor(Math.random() * typePool.length)] || localZone.enemyFamilies[0];
-        const enemy = createEnemyByArchetype(enemyType, pos, { zone: localZone, depthFactor: getRegionDepthFactor(localZone, pos) });
-        if (!enemy) continue;
-        enemy.zoneName = localZone.name;
-        enemy.spawnNodeId = `ambient-${localZone.name}`;
-        enemy.homePos.copy(pos);
-        enemy.patrolTarget.copy(pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 40, 0, (Math.random() - 0.5) * 40)));
-        enemy.leashRangeOverride = 145;
-        if (Math.random() < encounter.elite + depth * 0.18) enemy.elite = true;
-        spawned += 1;
-      }
-      if (spawned > 0) {
-        spawnDebug.ambientSuccess += spawned;
-        spawnBurst(player.pos.clone().add(new THREE.Vector3(0, 5, 0)), 4, zone.haze);
-        return true;
-      }
-      return false;
-    }
-
     function spawnRegionalEnemy(dt = 0.5) {
       if (!player) return false;
       const zone = getZoneAt(player.pos.x, player.pos.z);
       if (!zone) return false;
       const aliveCount = enemies.filter(e => e.alive).length;
       if (aliveCount >= GLOBAL_ENEMY_CAP) return false;
-      const nodeSpawned = spawnFromNearbyNodes(dt);
-      const ambientAllowed = canSpawnEnemyAt(player.pos.x, player.pos.z) && Math.random() < (AMBIENT_SPAWN_CHANCE + zone.danger * 0.008);
-      const ambientSpawned = ambientAllowed ? spawnAmbientRegionalEncounter(zone) : false;
-      return nodeSpawned || ambientSpawned;
+      return spawnFromNearbyNodes(dt);
     }
 
     function updateSpawnDebugPanel() {
@@ -2736,11 +2831,12 @@
       spawnDebug.nearbyActiveNests = nearbyNodes.filter((n) => n.active).length;
       spawnDebug.regionAlive = enemies.filter((e) => e.alive && e.zoneName === zone?.name).length;
       spawnDebugEl.style.display = "block";
+      const lines = nearbyNodes.slice(0, 4).map((n) => `${n.nestTheme || n.spawnType}: ${n.visualState}`);
       spawnDebugEl.innerHTML = `<div style="font-weight:800;color:#93c5fd">Spawn Debug (${zone?.name || "-"})</div>
       <div>Active nests: <b>${spawnDebug.nearbyActiveNests}</b></div>
       <div>Spawn attempts: <b>${spawnDebug.attempts}</b> / success <b>${spawnDebug.success}</b></div>
-      <div>Ambient attempts: <b>${spawnDebug.ambientAttempts}</b> / success <b>${spawnDebug.ambientSuccess}</b></div>
       <div>Alive in region: <b>${spawnDebug.regionAlive}</b></div>
+      <div>Nearby states: <b>${lines.length ? lines.join(" | ") : "none"}</b></div>
       <div style="opacity:.72">Press P to toggle</div>`;
     }
 
@@ -5264,16 +5360,15 @@
         updateBossEncounter(simDt);
         updateEnemyProjectiles(simDt);
         checkCombat();
-        enemySpawnTimer -= simDt;
-        if (enemySpawnTimer <= 0) {
-          const didSpawn = spawnRegionalEnemy(simDt);
-          enemySpawnTimer = didSpawn ? (1.2 + Math.random() * 1.4) : (0.55 + Math.random() * 0.9);
-        }
+        spawnRegionalEnemy(simDt);
         for (let i = nodeRespawns.length - 1; i >= 0; i--) {
           nodeRespawns[i].timer -= simDt;
           if (nodeRespawns[i].timer <= 0) {
             const node = spawnNodes.find((n) => n.id === nodeRespawns[i].nodeId);
-            if (node && enemies.filter((e) => e.alive && e.spawnNodeId === node.id).length < NODE_ENEMY_CAP) spawnNodeEnemy(node);
+            if (node && enemies.filter((e) => e.alive && e.spawnNodeId === node.id).length < node.localMaxActive) {
+              spawnBurst(node.pos.clone().add(new THREE.Vector3(0, 2.8, 0)), 10, 0xdbeafe);
+              spawnNodeEnemy(node);
+            }
             nodeRespawns.splice(i, 1);
           }
         }
