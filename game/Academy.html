@@ -211,6 +211,9 @@
     let checkpoints = [];
     let shopPlatforms = [];
     let cityCreatures = [];
+    let citySafeZones = [];
+    let cityAmbientTraffic = [];
+    let cityAmbientProps = [];
     let arenaGroup;
     let worldZones = [];
     let spawnNodes = [];
@@ -718,9 +721,425 @@
       }
     }
 
+    function createCityTheme(zone) {
+      const isSeraph = zone.name.includes("Seraph");
+      return {
+        wall: isSeraph ? 0x707891 : 0x746f86,
+        wallDark: isSeraph ? 0x51596d : 0x545066,
+        roof: isSeraph ? 0x9caec7 : 0x9ea2b4,
+        trim: isSeraph ? 0xd5def3 : 0xc9c6d6,
+        plaza: isSeraph ? 0x7f8da8 : 0x86829a,
+        bannerPalette: isSeraph ? [0x7bd7ff, 0xffd67e, 0xff9fd1, 0xb7f5be] : [0x92c5ff, 0xc9a0ff, 0xffd38a, 0x9aeec9],
+        window: isSeraph ? 0xbfe9ff : 0xd0d6ff
+      };
+    }
+
+    function createCityRegion(zone) {
+      const cityGroup = new THREE.Group();
+      cityGroup.position.copy(zone.center);
+      arenaGroup.add(cityGroup);
+      const theme = createCityTheme(zone);
+      const cityData = { zone, cityGroup, theme, blocks: [], towers: [], plazas: [], districtNodes: [] };
+      generateCityDistricts(cityData);
+      createCityWalls(cityData);
+      createPerchNetwork(cityData);
+      createCitySkyLanes(cityData);
+      populateCityAmbientTraffic(cityData);
+      return cityData;
+    }
+
+    function generateCityDistricts(cityData) {
+      const { zone, theme } = cityData;
+      const halfW = zoneHalfWidth(zone) - 18;
+      const halfD = zoneHalfDepth(zone) - 18;
+      const gridX = 5;
+      const gridZ = 4;
+      const stepX = (halfW * 2) / gridX;
+      const stepZ = (halfD * 2) / gridZ;
+      const districtPool = ["residential", "market", "guard", "temple", "landing", "roost", "outerwall"];
+      const districtTargets = [];
+      for (let gx = 0; gx < gridX; gx++) {
+        for (let gz = 0; gz < gridZ; gz++) {
+          const local = new THREE.Vector3(-halfW + stepX * (gx + 0.5), zone.baseY + 2.4, -halfD + stepZ * (gz + 0.5));
+          const type = gx === Math.floor(gridX / 2) && gz === Math.floor(gridZ / 2)
+            ? "plaza"
+            : districtPool[(gx * 7 + gz * 3 + zone.danger) % districtPool.length];
+          districtTargets.push({ type, local, sizeX: stepX * 0.86, sizeZ: stepZ * 0.82 });
+        }
+      }
+
+      for (const district of districtTargets) {
+        const block = createCityBlock(cityData, district);
+        cityData.blocks.push(block);
+        if (district.type === "plaza") {
+          cityData.plazas.push({ center: block.worldCenter.clone(), radius: Math.max(12, Math.min(block.sizeX, block.sizeZ) * 0.48), zone: zone.name });
+        }
+      }
+
+      // Connect district tower anchors with elevated bridges and skyways.
+      for (let i = 1; i < cityData.districtNodes.length; i++) {
+        const a = cityData.districtNodes[i - 1];
+        const b = cityData.districtNodes[i];
+        createBridgeSpan(cityData, a, b, i % 2 === 0);
+      }
+
+      // Protect core plaza and two radial lanes to preserve flight readability.
+      for (const plaza of cityData.plazas) {
+        citySafeZones.push({ center: plaza.center.clone(), radius: plaza.radius + 11, zone: zone.name, reason: "plaza-core" });
+      }
+      citySafeZones.push(
+        { center: zone.center.clone().add(new THREE.Vector3(0, zone.baseY + 14, 0)), radius: 18, zone: zone.name, reason: "air-lane-cross" },
+        { center: zone.center.clone().add(new THREE.Vector3(28, zone.baseY + 15, 0)), radius: 14, zone: zone.name, reason: "air-lane-east" },
+        { center: zone.center.clone().add(new THREE.Vector3(-28, zone.baseY + 15, 0)), radius: 14, zone: zone.name, reason: "air-lane-west" }
+      );
+
+      // District ambient props via instancing for performance.
+      const vaneGeom = new THREE.BoxGeometry(0.12, 2.2, 0.12);
+      const vaneMat = new THREE.MeshStandardMaterial({ color: theme.trim, roughness: 0.45, metalness: 0.5 });
+      const vaneCount = Math.min(24, cityData.blocks.length * 2);
+      const vanes = new THREE.InstancedMesh(vaneGeom, vaneMat, vaneCount);
+      const dummy = new THREE.Object3D();
+      for (let i = 0; i < vaneCount; i++) {
+        const b = cityData.blocks[i % cityData.blocks.length];
+        const y = b.height + 4 + (i % 3) * 1.8;
+        dummy.position.set(b.localCenter.x + (Math.random() - 0.5) * b.sizeX * 0.35, y, b.localCenter.z + (Math.random() - 0.5) * b.sizeZ * 0.35);
+        dummy.rotation.y = Math.random() * Math.PI;
+        dummy.updateMatrix();
+        vanes.setMatrixAt(i, dummy.matrix);
+      }
+      vanes.castShadow = true;
+      cityData.cityGroup.add(vanes);
+    }
+
+    function createCityBlock(cityData, district) {
+      const { cityGroup, theme, zone } = cityData;
+      const root = new THREE.Group();
+      root.position.copy(district.local);
+      cityGroup.add(root);
+
+      const heightBaseByType = {
+        plaza: 5.2,
+        residential: 10,
+        market: 8,
+        guard: 12,
+        temple: 16,
+        landing: 7,
+        roost: 11,
+        outerwall: 9
+      };
+
+      const plazaFloor = new THREE.Mesh(
+        new THREE.CylinderGeometry(Math.min(district.sizeX, district.sizeZ) * 0.43, Math.min(district.sizeX, district.sizeZ) * 0.5, district.type === "plaza" ? 2.8 : 1.8, 18),
+        new THREE.MeshStandardMaterial({ color: district.type === "plaza" ? theme.plaza : theme.wallDark, roughness: 0.9, metalness: 0.12 })
+      );
+      plazaFloor.position.y = 0;
+      plazaFloor.castShadow = true;
+      plazaFloor.receiveShadow = true;
+      root.add(plazaFloor);
+
+      const towerCount = district.type === "plaza" ? 3 : district.type === "market" ? 4 : 2 + Math.floor(Math.random() * 3);
+      const capHeight = heightBaseByType[district.type] || 9;
+      for (let i = 0; i < towerCount; i++) {
+        const angle = (i / towerCount) * Math.PI * 2 + Math.random() * 0.45;
+        const radial = (Math.min(district.sizeX, district.sizeZ) * 0.22) + Math.random() * Math.min(district.sizeX, district.sizeZ) * 0.22;
+        const width = 2 + Math.random() * 2.8;
+        const height = capHeight + Math.random() * (district.type === "temple" ? 16 : 11);
+        const towerPos = new THREE.Vector3(Math.cos(angle) * radial, 1.5 + height * 0.5, Math.sin(angle) * radial);
+        const towerType = district.type === "market" && i === 0 ? "domed-hall" : district.type === "guard" ? "angular-guard" : district.type === "roost" ? "roost-pillar" : "spire";
+        const tower = createCityTower({ root, theme, width, height, towerType, districtType: district.type, pos: towerPos });
+        cityData.towers.push(tower);
+      }
+
+      if (district.type === "market" || district.type === "plaza") {
+        for (let i = 0; i < 6; i++) {
+          const stall = new THREE.Mesh(
+            new THREE.BoxGeometry(2.3 + Math.random() * 0.8, 1.3, 1.8 + Math.random() * 0.5),
+            new THREE.MeshStandardMaterial({ color: theme.wall, roughness: 0.88, metalness: 0.08 })
+          );
+          const a = (i / 6) * Math.PI * 2;
+          stall.position.set(Math.cos(a) * (district.sizeX * 0.24), 1.2, Math.sin(a) * (district.sizeZ * 0.24));
+          stall.castShadow = true;
+          stall.receiveShadow = true;
+          root.add(stall);
+
+          const canopy = new THREE.Mesh(
+            new THREE.PlaneGeometry(2.4, 2.1),
+            new THREE.MeshStandardMaterial({ color: theme.bannerPalette[i % theme.bannerPalette.length], side: THREE.DoubleSide, roughness: 0.76, metalness: 0.02 })
+          );
+          canopy.position.set(stall.position.x, 2.25, stall.position.z);
+          canopy.rotation.x = -Math.PI / 2;
+          root.add(canopy);
+        }
+      }
+
+      const blockData = {
+        type: district.type,
+        root,
+        localCenter: district.local.clone(),
+        worldCenter: district.local.clone().add(zone.center),
+        sizeX: district.sizeX,
+        sizeZ: district.sizeZ,
+        height: capHeight + 8
+      };
+      cityData.districtNodes.push(new THREE.Vector3(district.local.x, capHeight + 8 + Math.random() * 6, district.local.z));
+      return blockData;
+    }
+
+    function createCityTower({ root, theme, width, height, towerType, districtType, pos }) {
+      const shaftGeo = towerType === "angular-guard"
+        ? new THREE.BoxGeometry(width * 1.12, height, width * 1.12)
+        : new THREE.CylinderGeometry(width * 0.68, width, height, towerType === "spire" ? 8 : 10);
+      const shaft = new THREE.Mesh(
+        shaftGeo,
+        new THREE.MeshStandardMaterial({ color: theme.wall, roughness: 0.78, metalness: 0.2 })
+      );
+      shaft.position.copy(pos);
+      shaft.castShadow = true;
+      shaft.receiveShadow = true;
+      root.add(shaft);
+
+      const roofType = Math.random() < 0.4 ? "cone" : Math.random() < 0.5 ? "dome" : "crown";
+      let roof;
+      if (roofType === "dome") {
+        roof = new THREE.Mesh(
+          new THREE.SphereGeometry(width * 0.95, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.5),
+          new THREE.MeshStandardMaterial({ color: theme.roof, roughness: 0.58, metalness: 0.2 })
+        );
+      } else if (roofType === "crown") {
+        roof = new THREE.Mesh(
+          new THREE.CylinderGeometry(width * 0.22, width * 0.98, width * 1.9, 8),
+          new THREE.MeshStandardMaterial({ color: theme.trim, roughness: 0.5, metalness: 0.28 })
+        );
+      } else {
+        roof = new THREE.Mesh(
+          new THREE.ConeGeometry(width * 1.02, width * 2.2, 8),
+          new THREE.MeshStandardMaterial({ color: theme.roof, roughness: 0.62, metalness: 0.18 })
+        );
+      }
+      roof.position.set(pos.x, pos.y + height * 0.5 + (roofType === "dome" ? width * 0.2 : width * 0.75), pos.z);
+      roof.castShadow = true;
+      root.add(roof);
+
+      // Rooftop perch + gameplay ledge.
+      const perch = new THREE.Mesh(
+        new THREE.CylinderGeometry(width * 1.15, width * 1.15, 0.9, 10),
+        new THREE.MeshStandardMaterial({ color: theme.wallDark, roughness: 0.92, metalness: 0.08 })
+      );
+      perch.position.set(pos.x, pos.y + height * 0.5 + 0.5, pos.z);
+      perch.castShadow = true;
+      perch.receiveShadow = true;
+      root.add(perch);
+      const perchWorld = root.localToWorld(perch.position.clone());
+      const perchCollider = new THREE.Mesh(
+        new THREE.CylinderGeometry(width * 1.2, width * 1.2, 1.2, 10),
+        new THREE.MeshBasicMaterial({ visible: false })
+      );
+      perchCollider.position.copy(perchWorld);
+      scene.add(perchCollider);
+      platforms.push(perchCollider);
+
+      // Decorative windows + banners.
+      const windowRows = Math.max(2, Math.floor(height / 4));
+      for (let r = 0; r < windowRows; r++) {
+        const ringY = pos.y - height * 0.4 + r * (height / windowRows);
+        const win = new THREE.Mesh(
+          new THREE.TorusGeometry(width * 0.72, 0.08, 6, 14),
+          new THREE.MeshStandardMaterial({ color: theme.window, emissive: theme.window, emissiveIntensity: (r % 2 === 0 ? 0.24 : 0.12), roughness: 0.48, metalness: 0.1 })
+        );
+        win.rotation.x = Math.PI / 2;
+        win.position.set(pos.x, ringY, pos.z);
+        root.add(win);
+      }
+
+      if (districtType !== "guard") {
+        const banner = new THREE.Mesh(
+          new THREE.PlaneGeometry(0.8 + Math.random() * 0.5, 2.4 + Math.random() * 1.6),
+          new THREE.MeshStandardMaterial({
+            color: theme.bannerPalette[Math.floor(Math.random() * theme.bannerPalette.length)],
+            side: THREE.DoubleSide,
+            roughness: 0.84,
+            metalness: 0.02
+          })
+        );
+        banner.position.set(pos.x + width * 0.95, pos.y + height * 0.18, pos.z);
+        banner.rotation.y = Math.PI / 2 + (Math.random() - 0.5) * 0.4;
+        root.add(banner);
+      }
+      return { perchWorld, apex: root.localToWorld(new THREE.Vector3(pos.x, pos.y + height * 0.68, pos.z)) };
+    }
+
+    function createBridgeSpan(cityData, from, to, arched = false) {
+      const mid = from.clone().lerp(to, 0.5);
+      const dist = from.distanceTo(to);
+      const segments = Math.max(4, Math.floor(dist / 8));
+      const laneWidth = 3.8;
+      for (let i = 0; i < segments; i++) {
+        const a = i / segments;
+        const b = (i + 1) / segments;
+        const pa = from.clone().lerp(to, a);
+        const pb = from.clone().lerp(to, b);
+        const center = pa.clone().lerp(pb, 0.5);
+        if (arched) center.y += Math.sin((a + b) * Math.PI * 0.5) * 2.6;
+        const seg = new THREE.Mesh(
+          new THREE.BoxGeometry(laneWidth, 0.8, pa.distanceTo(pb) + 0.2),
+          new THREE.MeshStandardMaterial({ color: cityData.theme.trim, roughness: 0.74, metalness: 0.26 })
+        );
+        seg.position.copy(center);
+        seg.lookAt(pb.x, pb.y, pb.z);
+        seg.rotateY(Math.PI / 2);
+        seg.castShadow = true;
+        seg.receiveShadow = true;
+        cityData.cityGroup.add(seg);
+      }
+
+      const perchRail = new THREE.Mesh(
+        new THREE.TorusGeometry(dist * 0.24, 0.12, 6, 24),
+        new THREE.MeshStandardMaterial({ color: cityData.theme.wallDark, roughness: 0.85, metalness: 0.2 })
+      );
+      perchRail.position.set(mid.x, mid.y + 2.2, mid.z);
+      perchRail.rotation.x = Math.PI / 2;
+      cityData.cityGroup.add(perchRail);
+    }
+
+    function createPerchNetwork(cityData) {
+      const { cityGroup, zone, theme } = cityData;
+      for (let i = 0; i < 14; i++) {
+        const lane = (i % 2 === 0 ? -1 : 1) * (26 + (i % 4) * 10);
+        const perch = new THREE.Mesh(
+          new THREE.CylinderGeometry(1.1, 1.8, 9 + Math.random() * 8, 8),
+          new THREE.MeshStandardMaterial({ color: theme.wallDark, roughness: 0.9, metalness: 0.13 })
+        );
+        perch.position.set(lane, zone.baseY + 8 + Math.random() * 18, -zoneHalfDepth(zone) + 18 + Math.random() * (zone.depth - 36));
+        perch.castShadow = true;
+        perch.receiveShadow = true;
+        cityGroup.add(perch);
+
+        const top = new THREE.Mesh(
+          new THREE.BoxGeometry(4.6, 0.8, 4.6),
+          new THREE.MeshStandardMaterial({ color: theme.trim, roughness: 0.84, metalness: 0.12 })
+        );
+        top.position.copy(perch.position).add(new THREE.Vector3(0, perch.geometry.parameters.height * 0.5 + 0.5, 0));
+        top.castShadow = true;
+        top.receiveShadow = true;
+        cityGroup.add(top);
+
+        const worldTop = cityGroup.localToWorld(top.position.clone());
+        const perchCollider = new THREE.Mesh(new THREE.BoxGeometry(4.8, 1.3, 4.8), new THREE.MeshBasicMaterial({ visible: false }));
+        perchCollider.position.copy(worldTop);
+        scene.add(perchCollider);
+        platforms.push(perchCollider);
+      }
+    }
+
+    function createCitySkyLanes(cityData) {
+      const { cityGroup, zone, theme } = cityData;
+      const laneMaterial = new THREE.MeshStandardMaterial({ color: zone.haze, roughness: 0.6, metalness: 0.2, transparent: true, opacity: 0.42 });
+      const lanes = [
+        { len: zone.width * 0.84, z: -24, y: zone.baseY + 13 },
+        { len: zone.width * 0.9, z: 0, y: zone.baseY + 16 },
+        { len: zone.width * 0.84, z: 24, y: zone.baseY + 19 }
+      ];
+      for (const lane of lanes) {
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(lane.len, 0.7, 10.5), laneMaterial);
+        mesh.position.set(0, lane.y, lane.z);
+        cityGroup.add(mesh);
+      }
+
+      for (let i = 0; i < 6; i++) {
+        const arch = new THREE.Mesh(
+          new THREE.TorusGeometry(10 + i * 1.4, 0.28, 10, 22, Math.PI),
+          new THREE.MeshStandardMaterial({ color: theme.trim, roughness: 0.7, metalness: 0.22 })
+        );
+        arch.position.set(-zoneHalfWidth(zone) + 26 + i * 18, zone.baseY + 8 + (i % 3) * 4, -zoneHalfDepth(zone) + 12 + (i % 4) * 18);
+        arch.rotation.z = Math.PI / 2;
+        cityGroup.add(arch);
+      }
+    }
+
+    function createCityWalls(cityData) {
+      const { cityGroup, zone, theme } = cityData;
+      const halfW = zoneHalfWidth(zone);
+      const halfD = zoneHalfDepth(zone);
+      const segments = [
+        { x: 0, z: -halfD + 4, w: zone.width - 8, d: 8 },
+        { x: 0, z: halfD - 4, w: zone.width - 8, d: 8 },
+        { x: -halfW + 4, z: 0, w: 8, d: zone.depth - 8 },
+        { x: halfW - 4, z: 0, w: 8, d: zone.depth - 8 }
+      ];
+      for (const seg of segments) {
+        const wall = new THREE.Mesh(
+          new THREE.BoxGeometry(seg.w, 11, seg.d),
+          new THREE.MeshStandardMaterial({ color: theme.wallDark, roughness: 0.88, metalness: 0.15 })
+        );
+        wall.position.set(seg.x, zone.baseY + 5.2, seg.z);
+        wall.castShadow = true;
+        wall.receiveShadow = true;
+        cityGroup.add(wall);
+      }
+      for (let i = 0; i < 8; i++) {
+        const gate = new THREE.Mesh(
+          new THREE.BoxGeometry(7.5, 9 + (i % 3) * 2.2, 7.5),
+          new THREE.MeshStandardMaterial({ color: theme.trim, roughness: 0.82, metalness: 0.2 })
+        );
+        gate.position.set(-halfW + 12 + i * ((zone.width - 24) / 7), zone.baseY + 5.5, (i % 2 === 0 ? -halfD + 7 : halfD - 7));
+        gate.castShadow = true;
+        gate.receiveShadow = true;
+        cityGroup.add(gate);
+      }
+    }
+
+    function populateCityAmbientTraffic(cityData) {
+      const { zone, cityGroup, theme } = cityData;
+      for (let i = 0; i < 18; i++) {
+        const rider = createBirdRider({
+          bird: 0x7d868f,
+          wing: 0x4f5864,
+          rider: 0xc7d3e0,
+          cloth: theme.bannerPalette[i % theme.bannerPalette.length],
+          lance: 0xe2d6bd
+        });
+        rider.scale.setScalar(0.34 + Math.random() * 0.06);
+        rider.position.set((Math.random() - 0.5) * zone.width * 0.72, zone.baseY + 12 + Math.random() * 22, (Math.random() - 0.5) * zone.depth * 0.72);
+        cityGroup.add(rider);
+        cityAmbientTraffic.push({
+          mesh: rider,
+          center: zone.center.clone(),
+          radiusX: zone.width * (0.2 + Math.random() * 0.24),
+          radiusZ: zone.depth * (0.2 + Math.random() * 0.24),
+          baseY: zone.baseY + 12 + Math.random() * 24,
+          speed: 0.25 + Math.random() * 0.38,
+          phase: Math.random() * Math.PI * 2
+        });
+      }
+
+      for (let i = 0; i < 26; i++) {
+        const bird = new THREE.Mesh(
+          new THREE.ConeGeometry(0.3, 0.9, 5),
+          new THREE.MeshStandardMaterial({ color: 0xdbe7f7, emissive: theme.window, emissiveIntensity: 0.2, roughness: 0.6 })
+        );
+        bird.rotation.x = Math.PI / 2;
+        bird.position.set((Math.random() - 0.5) * zone.width * 0.78, zone.baseY + 8 + Math.random() * 28, (Math.random() - 0.5) * zone.depth * 0.78);
+        cityGroup.add(bird);
+        cityAmbientProps.push({ mesh: bird, type: "bird", phase: Math.random() * Math.PI * 2, home: bird.position.clone() });
+      }
+
+      for (let i = 0; i < 10; i++) {
+        const vane = new THREE.Mesh(
+          new THREE.BoxGeometry(0.12, 3.2, 1.8),
+          new THREE.MeshStandardMaterial({ color: theme.trim, roughness: 0.42, metalness: 0.6 })
+        );
+        vane.position.set((Math.random() - 0.5) * zone.width * 0.7, zone.baseY + 10 + Math.random() * 18, (Math.random() - 0.5) * zone.depth * 0.7);
+        cityGroup.add(vane);
+        cityAmbientProps.push({ mesh: vane, type: "vane", phase: Math.random() * Math.PI * 2, home: vane.position.clone() });
+      }
+    }
+
     function createArena() {
       arenaGroup = new THREE.Group();
       scene.add(arenaGroup);
+      citySafeZones = [];
+      cityAmbientTraffic = [];
+      cityAmbientProps = [];
 
       worldZones = [
         { name: "Great Forest Canopy", subtitle: "City-State Frontier", center: new THREE.Vector3(-264, 0, -188), width: 208, depth: 184, radius: 92, baseY: -4, hazardY: -32, color: 0x43673f, accent: 0x9cd77a, haze: 0x7ca884, hazardType: "safe", enemyFamilies: ["giantBee", "ashWasp", "vineDrake", "hornetGuard"], danger: 0, terrainStyle: "forest", travelRhythm: "perch-chain", spawnThemes: ["forest-nest", "hanging-hive"] },
@@ -744,7 +1163,11 @@
 
       for (const zone of worldZones) {
         createSquareRegionTerrain(zone);
-        createRegionDecor(zone);
+        if (zone.terrainStyle === "city") {
+          createCityRegion(zone);
+        } else {
+          createRegionDecor(zone);
+        }
       }
 
       for (let i = 0; i < worldZones.length; i++) {
@@ -970,6 +1393,8 @@
     function createSafeHubs() {
       safeHubs = [];
       checkpoints = [];
+      shopPlatforms = [];
+      cityCreatures = [];
 
       const hubDefs = [
         { name: "Green Cliff Outpost", zone: "Great Forest Canopy", pos: new THREE.Vector3(-178, 14, -76), color: 0x66b26e, glow: 0xb9f5ae, safeRadius: 25, disengageRadius: 39, style: "cliff", specialty: "mounts + supplies" },
@@ -1539,6 +1964,7 @@
           if (y < -900) continue;
           const pos = new THREE.Vector3(p.x, y + 7 + Math.random() * 9, p.z);
           const nearHub = getHubAt(pos.x, pos.z, 20);
+          const nearCitySafe = getCitySafeZoneAt(pos.x, pos.z, 16);
           const species = chooseEnemyTypeForZone(zone);
           const spawnType = nodeTypes[i % nodeTypes.length];
           const node = {
@@ -1555,10 +1981,10 @@
             respawnCooldown: 20 + Math.random() * 26 - (zone.danger || 0) * 1.1,
             respawn: 20 + Math.random() * 26 - (zone.danger || 0) * 1.1,
             eliteChance: Math.min(0.35, 0.03 + zone.danger * 0.035),
-            safeBlocked: !!nearHub,
+            safeBlocked: !!nearHub || !!nearCitySafe,
             landmark: null
           };
-          if (!nearHub) {
+          if (!nearHub && !nearCitySafe) {
             node.landmark = createSpawnLandmark(node, zone);
           }
           spawnNodes.push(node);
@@ -1623,7 +2049,7 @@
       const progressionScale = 1 + (progress.level - 1) * 0.06;
       const localNodes = spawnNodes.filter((node) => node.zoneName === zone.name && !node.safeBlocked);
       const spawnable = localNodes.filter((node) => {
-        if (getHubAt(node.pos.x, node.pos.z, HUB_SAFE_BUFFER)) return false;
+        if (getHubAt(node.pos.x, node.pos.z, HUB_SAFE_BUFFER) || getCitySafeZoneAt(node.pos.x, node.pos.z, 12)) return false;
         if (node.pos.distanceTo(player.pos) < LOCAL_SPAWN_RADIUS_MIN + 8) return false;
         if (zoneDistanceOutsideSquare(zone, node.pos.x, node.pos.z) > 1) return false;
         const toNode = node.pos.clone().sub(player.pos).setY(0);
@@ -2272,8 +2698,16 @@
       return null;
     }
 
+    function getCitySafeZoneAt(x, z, extraRadius = 0) {
+      for (const safe of citySafeZones) {
+        const d = Math.hypot(x - safe.center.x, z - safe.center.z);
+        if (d <= safe.radius + extraRadius) return safe;
+      }
+      return null;
+    }
+
     function canSpawnEnemyAt(x, z) {
-      return !getHubAt(x, z, HUB_SAFE_BUFFER);
+      return !getHubAt(x, z, HUB_SAFE_BUFFER) && !getCitySafeZoneAt(x, z, 6);
     }
 
     function maybeActivateCheckpoint() {
@@ -2533,6 +2967,8 @@
       const distHome = enemy.pos.distanceTo(enemy.homePos);
       const enemyHub = getHubAt(enemy.pos.x, enemy.pos.z, 0);
       const playerHub = getHubAt(player.pos.x, player.pos.z, 2);
+      const enemyCitySafe = getCitySafeZoneAt(enemy.pos.x, enemy.pos.z, 0);
+      const playerCitySafe = getCitySafeZoneAt(player.pos.x, player.pos.z, 0);
 
       if (distToPlayer > ENEMY_DESPAWN_RANGE) {
         enemy.alive = false;
@@ -2541,7 +2977,7 @@
       }
 
       // Hubs are safe pockets: enemies that enter core radius are cleaned up.
-      if (enemyHub) {
+      if (enemyHub || enemyCitySafe) {
         enemy.alive = false;
         scene.remove(enemy.model);
         spawnBurst(enemy.pos.clone(), 10, 0xaef2ff);
@@ -2565,6 +3001,14 @@
         if (dToHub <= playerHub.disengageRadius) {
           enemy.state = "idle";
           const away = enemy.pos.clone().sub(playerHub.pos).setY(0).normalize().multiplyScalar(8);
+          enemy.patrolTarget.copy(enemy.homePos.clone().add(away));
+        }
+      }
+      if (playerCitySafe && enemy.state === "aggro") {
+        const dToSafe = Math.hypot(enemy.pos.x - playerCitySafe.center.x, enemy.pos.z - playerCitySafe.center.z);
+        if (dToSafe <= playerCitySafe.radius + 10) {
+          enemy.state = "idle";
+          const away = enemy.pos.clone().sub(playerCitySafe.center).setY(0).normalize().multiplyScalar(10);
           enemy.patrolTarget.copy(enemy.homePos.clone().add(away));
         }
       }
@@ -2916,6 +3360,26 @@
           if (p.mesh.position.y > 20) {
             p.mesh.position.y = -18;
           }
+        }
+      }
+
+      for (const traffic of cityAmbientTraffic) {
+        traffic.phase += dt * traffic.speed;
+        const ox = Math.cos(traffic.phase) * traffic.radiusX;
+        const oz = Math.sin(traffic.phase * 0.92) * traffic.radiusZ;
+        traffic.mesh.position.set(ox, traffic.baseY + Math.sin(traffic.phase * 2.6) * 2.2, oz);
+        const tangent = new THREE.Vector3(-Math.sin(traffic.phase), 0, Math.cos(traffic.phase * 0.92));
+        traffic.mesh.rotation.y = Math.atan2(tangent.x, tangent.z);
+      }
+
+      for (const prop of cityAmbientProps) {
+        prop.phase += dt;
+        if (prop.type === "bird") {
+          prop.mesh.position.y = prop.home.y + Math.sin(prop.phase * 2.4) * 0.45;
+          prop.mesh.rotation.z = Math.sin(prop.phase * 1.5) * 0.28;
+        } else if (prop.type === "vane") {
+          prop.mesh.rotation.y += dt * 0.9;
+          prop.mesh.rotation.z = Math.sin(prop.phase * 1.8) * 0.08;
         }
       }
 
@@ -3371,12 +3835,12 @@
 
       if (!gamePaused) {
         updateParticles(simDt);
-      } else {
-        for (const c of cityCreatures) {
-          c.phase += dt;
-          c.mesh.position.y = c.base.y + Math.sin(c.phase * 2) * 0.35;
-          c.mesh.rotation.z = Math.sin(c.phase * 1.7) * 0.3;
-        }
+      }
+
+      for (const c of cityCreatures) {
+        c.phase += dt;
+        c.mesh.position.y = c.base.y + Math.sin(c.phase * 2) * 0.35;
+        c.mesh.rotation.z = Math.sin(c.phase * 1.7) * 0.3;
       }
 
       if (!gameEnded && !gamePaused) {
