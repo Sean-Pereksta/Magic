@@ -45,12 +45,29 @@
       transform: translate(-50%, -50%);
       z-index: 6;
       font-size: 34px;
-      font-weight: bold;
+      font-weight: 800;
       text-align: center;
       color: #ffeaa0;
       text-shadow: 0 0 12px rgba(255,160,0,0.7);
       pointer-events: none;
       display: none;
+      opacity: 0;
+      transition: opacity .35s ease;
+      line-height: 1.05;
+      letter-spacing: .04em;
+    }
+    #centerMsg .regionTitle {
+      font-size: clamp(28px,4.8vw,62px);
+      text-transform: uppercase;
+      text-shadow: 0 0 18px rgba(255,204,120,.8),0 0 44px rgba(255,120,0,.35);
+    }
+    #centerMsg .regionSub {
+      margin-top: 8px;
+      font-size: clamp(14px,2vw,24px);
+      font-weight: 600;
+      color: #c9f7ff;
+      text-shadow: 0 0 12px rgba(120,220,255,.6);
+      letter-spacing: .18em;
     }
 
     #controls {
@@ -328,7 +345,7 @@
     const ZONE_ENEMY_CAP = 8;
     const NODE_ENEMY_CAP = 3;
     const HUB_SAFE_BUFFER = 14;
-    const AMBIENT_SPAWN_CHANCE = 0.048;
+    const AMBIENT_SPAWN_CHANCE = 0.016;
     const ARCHETYPE_BY_BEHAVIOR = {
       lancer: "Duelist",
       weaver: "Weaver",
@@ -595,18 +612,18 @@
       scene.add(arenaGroup);
 
       worldZones = [
-        { name: "Great Forest Canopy", subtitle: "Civilized Skies", center: new THREE.Vector3(-170, 0, -70), radius: 126, baseY: -4, hazardY: -32, color: 0x43673f, accent: 0x9cd77a, haze: 0x7ca884, hazardType: "safe", enemyFamilies: ["giantBee", "vineDrake", "ashWasp", "hornetGuard"], danger: 0, terrainStyle: "forest", travelRhythm: "perch-chain" },
-        { name: "Mossfang Wilds", subtitle: "Frontier Territory", center: new THREE.Vector3(-48, 0, -98), radius: 132, baseY: -5, hazardY: -33, color: 0x4f6340, accent: 0xb7d88d, haze: 0x85a77a, hazardType: "safe", enemyFamilies: ["giantBee", "hornetGuard", "vineDrake", "hiveQueen"], danger: 1, terrainStyle: "forest", travelRhythm: "canopy" },
-        { name: "Sunstone Highlands", subtitle: "Frontier Territory", center: new THREE.Vector3(86, 0, -108), radius: 124, baseY: -6, hazardY: -34, color: 0x74664b, accent: 0xe7c074, haze: 0xb49361, hazardType: "safe", enemyFamilies: ["hornetGuard", "ironWyvern", "skyEel", "armoredKnight"], danger: 1, terrainStyle: "highland", travelRhythm: "cliff-hop" },
-        { name: "Seraphic City-State Ring", subtitle: "City of Spires", center: new THREE.Vector3(-12, 0, 14), radius: 134, baseY: -2, hazardY: -36, color: 0x5d6072, accent: 0xcfd6ea, haze: 0x8fa3c6, hazardType: "safe", enemyFamilies: ["ashWasp", "vineDrake", "skyEel", "hornetGuard"], danger: 0, terrainStyle: "city", travelRhythm: "rooftop" },
-        { name: "Ruin-Crown Expanse", subtitle: "Danger Rising", center: new THREE.Vector3(128, 0, 8), radius: 128, baseY: -7, hazardY: -34, color: 0x615a6e, accent: 0x9faacc, haze: 0x7f879c, hazardType: "safe", enemyFamilies: ["ironWyvern", "boltRay", "armoredKnight", "spearSentinel"], danger: 2, terrainStyle: "ruin", travelRhythm: "war-platform" },
-        { name: "Tempest Shelf", subtitle: "Danger Rising", center: new THREE.Vector3(84, 0, 120), radius: 138, baseY: -5, hazardY: -35, color: 0x4e6f8d, accent: 0x9fd3ff, haze: 0x79a1cd, hazardType: "tempest", enemyFamilies: ["thunderSerpent", "skyEel", "stormSpirit", "stormDrake"], danger: 3, terrainStyle: "storm", travelRhythm: "air-current" },
-        { name: "Sky Glacier Reach", subtitle: "Danger Rising", center: new THREE.Vector3(-42, 0, 138), radius: 126, baseY: -8, hazardY: -36, color: 0x6a7c90, accent: 0xd8f1ff, haze: 0x9bb6cc, hazardType: "safe", enemyFamilies: ["stormSpirit", "skyEel", "thunderSerpent", "voidManta"], danger: 3, terrainStyle: "glacier", travelRhythm: "thin-perches" },
-        { name: "Hollow Night Marsh", subtitle: "Monster Territory", center: new THREE.Vector3(-164, 0, 86), radius: 136, baseY: -10, hazardY: -37, color: 0x3f3448, accent: 0x7f6a92, haze: 0x5a4668, hazardType: "abyss", enemyFamilies: ["shadeSerpent", "nightBee", "voidManta", "voidDragon"], danger: 4, terrainStyle: "marsh", travelRhythm: "gloom-rift" },
-        { name: "Dragonspine Frontier", subtitle: "Monster Territory", center: new THREE.Vector3(196, 0, 110), radius: 140, baseY: -9, hazardY: -36, color: 0x5f4d49, accent: 0xe0b8a4, haze: 0x9e7060, hazardType: "safe", enemyFamilies: ["ironWyvern", "fireDrake", "stormDrake", "voidDragon"], danger: 4, terrainStyle: "dragon", travelRhythm: "long-dive" },
-        { name: "Ashen Lava Basin", subtitle: "Dragon Territory", center: new THREE.Vector3(178, 0, -78), radius: 144, baseY: -11, hazardY: -25, color: 0x5c392a, accent: 0xdd7c40, haze: 0x9a5030, hazardType: "lava", enemyFamilies: ["ashWasp", "bombHarasser", "fireDrake", "magmaSerpent"], danger: 5, terrainStyle: "lava", travelRhythm: "blast-gap" },
-        { name: "Obsidian Rift", subtitle: "Dragon Territory", center: new THREE.Vector3(36, 0, -202), radius: 144, baseY: -12, hazardY: -24, color: 0x35313f, accent: 0x6f6a80, haze: 0x524a63, hazardType: "lava", enemyFamilies: ["magmaSerpent", "voidManta", "stormDrake", "voidDragon"], danger: 5, terrainStyle: "rift", travelRhythm: "ravine" },
-        { name: "Outer Wyrm Wastes", subtitle: "Dragon Territory", center: new THREE.Vector3(-130, 0, -212), radius: 150, baseY: -12, hazardY: -24, color: 0x41333a, accent: 0xb37d89, haze: 0x6c4d59, hazardType: "lava", enemyFamilies: ["voidDragon", "fireDrake", "stormDrake", "armoredKnight"], danger: 6, terrainStyle: "wyrm", travelRhythm: "gauntlet" }
+        { name: "Great Forest Canopy", subtitle: "City-State Frontier", center: new THREE.Vector3(-210, 0, -95), radius: 168, baseY: -4, hazardY: -32, color: 0x43673f, accent: 0x9cd77a, haze: 0x7ca884, hazardType: "safe", enemyFamilies: ["giantBee", "ashWasp", "vineDrake", "hornetGuard"], danger: 0, terrainStyle: "forest", travelRhythm: "perch-chain" },
+        { name: "Mossfang Wilds", subtitle: "Frontier Territory", center: new THREE.Vector3(-65, 0, -118), radius: 164, baseY: -6, hazardY: -33, color: 0x4f6340, accent: 0xb7d88d, haze: 0x85a77a, hazardType: "safe", enemyFamilies: ["giantBee", "hornetGuard", "vineDrake", "hiveQueen"], danger: 1, terrainStyle: "forest", travelRhythm: "canopy" },
+        { name: "Sunstone Highlands", subtitle: "Frontier Territory", center: new THREE.Vector3(112, 0, -128), radius: 170, baseY: -5, hazardY: -34, color: 0x74664b, accent: 0xe7c074, haze: 0xb49361, hazardType: "safe", enemyFamilies: ["hornetGuard", "ironWyvern", "skyEel", "armoredKnight"], danger: 2, terrainStyle: "highland", travelRhythm: "cliff-hop" },
+        { name: "Seraphic City-State Ring", subtitle: "City of Spires", center: new THREE.Vector3(-8, 0, 28), radius: 176, baseY: -2, hazardY: -36, color: 0x5d6072, accent: 0xcfd6ea, haze: 0x8fa3c6, hazardType: "safe", enemyFamilies: ["ashWasp", "vineDrake", "skyEel", "hornetGuard"], danger: 0, terrainStyle: "city", travelRhythm: "rooftop" },
+        { name: "Ruin-Crown Expanse", subtitle: "Dangerous Territory", center: new THREE.Vector3(162, 0, 18), radius: 172, baseY: -8, hazardY: -34, color: 0x615a6e, accent: 0x9faacc, haze: 0x7f879c, hazardType: "safe", enemyFamilies: ["ironWyvern", "boltRay", "armoredKnight", "spearSentinel"], danger: 3, terrainStyle: "ruin", travelRhythm: "war-platform" },
+        { name: "Tempest Shelf", subtitle: "Dangerous Territory", center: new THREE.Vector3(110, 0, 162), radius: 180, baseY: -6, hazardY: -35, color: 0x4e6f8d, accent: 0x9fd3ff, haze: 0x79a1cd, hazardType: "tempest", enemyFamilies: ["thunderSerpent", "skyEel", "stormSpirit", "stormDrake"], danger: 4, terrainStyle: "storm", travelRhythm: "air-current" },
+        { name: "Sky Glacier Reach", subtitle: "Dangerous Territory", center: new THREE.Vector3(-58, 0, 174), radius: 170, baseY: -8, hazardY: -36, color: 0x6a7c90, accent: 0xd8f1ff, haze: 0x9bb6cc, hazardType: "safe", enemyFamilies: ["stormSpirit", "skyEel", "thunderSerpent", "voidManta"], danger: 4, terrainStyle: "glacier", travelRhythm: "thin-perches" },
+        { name: "Hollow Night Marsh", subtitle: "Monster Territory", center: new THREE.Vector3(-202, 0, 112), radius: 182, baseY: -10, hazardY: -37, color: 0x3f3448, accent: 0x7f6a92, haze: 0x5a4668, hazardType: "abyss", enemyFamilies: ["shadeSerpent", "nightBee", "voidManta", "voidDragon"], danger: 5, terrainStyle: "marsh", travelRhythm: "gloom-rift" },
+        { name: "Dragonspine Frontier", subtitle: "Monster Territory", center: new THREE.Vector3(242, 0, 134), radius: 190, baseY: -9, hazardY: -36, color: 0x5f4d49, accent: 0xe0b8a4, haze: 0x9e7060, hazardType: "safe", enemyFamilies: ["ironWyvern", "fireDrake", "stormDrake", "voidDragon"], danger: 5, terrainStyle: "dragon", travelRhythm: "long-dive" },
+        { name: "Ashen Lava Basin", subtitle: "Dragon Territory", center: new THREE.Vector3(220, 0, -106), radius: 198, baseY: -11, hazardY: -25, color: 0x5c392a, accent: 0xdd7c40, haze: 0x9a5030, hazardType: "lava", enemyFamilies: ["ashWasp", "bombHarasser", "fireDrake", "magmaSerpent"], danger: 6, terrainStyle: "lava", travelRhythm: "blast-gap" },
+        { name: "Obsidian Rift", subtitle: "Dragon Territory", center: new THREE.Vector3(42, 0, -246), radius: 190, baseY: -12, hazardY: -24, color: 0x35313f, accent: 0x6f6a80, haze: 0x524a63, hazardType: "lava", enemyFamilies: ["magmaSerpent", "voidManta", "stormDrake", "voidDragon"], danger: 6, terrainStyle: "rift", travelRhythm: "ravine" },
+        { name: "Outer Wyrm Wastes", subtitle: "Dragon Territory", center: new THREE.Vector3(-156, 0, -258), radius: 200, baseY: -12, hazardY: -24, color: 0x41333a, accent: 0xb37d89, haze: 0x6c4d59, hazardType: "lava", enemyFamilies: ["voidDragon", "fireDrake", "stormDrake", "armoredKnight"], danger: 7, terrainStyle: "wyrm", travelRhythm: "gauntlet" }
       ];
 
       worldMinX = Math.min(...worldZones.map((z) => z.center.x - z.radius - 16));
@@ -765,20 +782,35 @@
       const group = new THREE.Group();
       const chunkWorldX = worldMinX + cx * CHUNK_SIZE + CHUNK_SIZE * 0.5;
       const chunkWorldZ = worldMinZ + cz * CHUNK_SIZE + CHUNK_SIZE * 0.5;
+      const seg = 12;
+      const geom = new THREE.PlaneGeometry(CHUNK_SIZE, CHUNK_SIZE, seg, seg);
+      const pos = geom.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const lx = pos.getX(i) + chunkWorldX;
+        const lz = pos.getY(i) + chunkWorldZ;
+        const h = terrainHeightAt(lx, lz);
+        pos.setZ(i, h > -900 ? h : zone.baseY - 10);
+      }
+      geom.computeVertexNormals();
       const ground = new THREE.Mesh(
-        new THREE.PlaneGeometry(CHUNK_SIZE, CHUNK_SIZE, 12, 12),
+        geom,
         new THREE.MeshStandardMaterial({ color: zone.color, roughness: 0.96, metalness: 0.03 })
       );
       ground.rotation.x = -Math.PI / 2;
-      ground.position.set(chunkWorldX, zone.baseY - 10, chunkWorldZ);
       ground.receiveShadow = true;
       group.add(ground);
-      for (let i = 0; i < 8; i++) {
+
+      for (let i = 0; i < 14; i++) {
+        const px = chunkWorldX + (Math.random() - 0.5) * CHUNK_SIZE * 0.9;
+        const pz = chunkWorldZ + (Math.random() - 0.5) * CHUNK_SIZE * 0.9;
+        const py = terrainHeightAt(px, pz);
+        if (py < -900) continue;
+        const isTree = zone.terrainStyle === "forest" && Math.random() < 0.55;
         const prop = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.45 + Math.random(), 0.7 + Math.random() * 1.6, 2 + Math.random() * 7, 6),
-          new THREE.MeshStandardMaterial({ color: zone.accent, roughness: 0.92, metalness: 0.05 })
+          isTree ? new THREE.ConeGeometry(1.2 + Math.random() * 1.4, 4 + Math.random() * 5, 7) : new THREE.DodecahedronGeometry(0.6 + Math.random() * 1.8, 0),
+          new THREE.MeshStandardMaterial({ color: isTree ? zone.accent : zone.haze, roughness: 0.9, metalness: 0.04 })
         );
-        prop.position.set(chunkWorldX + (Math.random() - 0.5) * CHUNK_SIZE * 0.9, zone.baseY - 8 + prop.geometry.parameters.height * 0.5, chunkWorldZ + (Math.random() - 0.5) * CHUNK_SIZE * 0.9);
+        prop.position.set(px, py + (isTree ? 2.8 : 0.8), pz);
         prop.castShadow = true;
         prop.receiveShadow = true;
         group.add(prop);
@@ -1425,22 +1457,30 @@
       spawnNodes = [];
       for (const zone of worldZones) {
         const nodeTypes = ["nest", "roost", "ruin", "air-lane", "hive", "shrine"];
-        const nodeCount = 6 + Math.round((zone.danger || 0) * 0.6);
+        const nodeCount = 5 + Math.round((zone.danger || 0) * 1.1);
         for (let i = 0; i < nodeCount; i++) {
           const a = (i / 5) * Math.PI * 2 + Math.random() * 0.6;
           const r = zone.radius * (0.35 + Math.random() * 0.56);
-          const pos = new THREE.Vector3(zone.center.x + Math.cos(a) * r, zone.baseY + 12 + Math.random() * 16, zone.center.z + Math.sin(a) * r);
+          const pos = new THREE.Vector3(zone.center.x + Math.cos(a) * r, terrainHeightAt(zone.center.x + Math.cos(a) * r, zone.center.z + Math.sin(a) * r) + 8 + Math.random() * 10, zone.center.z + Math.sin(a) * r);
           const species = chooseEnemyTypeForZone(zone);
+          const nodeType = nodeTypes[i % nodeTypes.length];
           spawnNodes.push({
             id: `${zone.name}-${i}`,
             zoneName: zone.name,
             pos,
             species,
-            nodeType: nodeTypes[i % nodeTypes.length],
-            count: 1 + (Math.random() < (0.06 + (zone.danger || 0) * 0.04) ? 1 : 0),
-            leashRange: 84 + Math.random() * 38 + (zone.danger || 0) * 6,
-            respawn: 26 + Math.random() * 30 - (zone.danger || 0) * 1.4
+            nodeType,
+            count: 1 + (Math.random() < (0.06 + (zone.danger || 0) * 0.05) ? 1 : 0),
+            leashRange: 84 + Math.random() * 38 + (zone.danger || 0) * 8,
+            respawn: 24 + Math.random() * 28 - (zone.danger || 0) * 1.2
           });
+          const marker = new THREE.Mesh(
+            new THREE.TorusGeometry(2.1 + (zone.danger || 0) * 0.18, 0.16, 8, 24),
+            new THREE.MeshStandardMaterial({ color: zone.accent, emissive: zone.accent, emissiveIntensity: 0.25, transparent: true, opacity: 0.7 })
+          );
+          marker.position.copy(pos).setY(pos.y - 1.9);
+          marker.rotation.x = -Math.PI / 2;
+          scene.add(marker);
         }
       }
     }
@@ -1476,12 +1516,15 @@
 
     function chooseEnemyTypeForZone(zone) {
       const variants = zone.enemyFamilies || ["giantBee", "hornetGuard", "vineDrake"];
+      const tier = zone.danger || 0;
       const weighted = [];
       variants.forEach((type, idx) => {
         const behavior = ENEMY_SPECIES[type]?.behavior;
         const isSpear = behavior === "lancer";
         const baseWeight = idx === 0 ? 44 : idx === 1 ? 27 : idx === 2 ? 19 : 10;
-        const adjusted = isSpear ? Math.max(3, Math.round(baseWeight * 0.28)) : baseWeight;
+        let adjusted = isSpear ? Math.max(3, Math.round(baseWeight * (tier <= 1 ? 0.16 : 0.34))) : baseWeight;
+        if (tier <= 1 && (type === "hiveQueen" || type === "voidDragon" || type === "armoredKnight")) adjusted = 0;
+        if (tier >= 4 && (type === "giantBee" || type === "ashWasp")) adjusted = Math.max(4, Math.round(baseWeight * 0.22));
         for (let i = 0; i < adjusted; i++) weighted.push(type);
       });
       return weighted[Math.floor(Math.random() * weighted.length)] || variants[0];
@@ -1538,6 +1581,8 @@
     function spawnRegionalEnemy() {
       if (!player) return false;
       if (Math.random() > AMBIENT_SPAWN_CHANCE) return false;
+      const startHub = safeHubs[0];
+      if (startHub && player.pos.distanceTo(startHub.pos) < 78) return false;
       const aliveCount = enemies.filter(e => e.alive).length;
       if (aliveCount >= GLOBAL_ENEMY_CAP) return false;
 
@@ -1598,9 +1643,14 @@
       return false;
     }
 
-    function showCenterMessage(text, duration = 1.5) {
-      centerMsg.textContent = text;
+    function showCenterMessage(text, duration = 1.5, subtitle = "") {
+      if (subtitle) {
+        centerMsg.innerHTML = `<div class="regionTitle">${text}</div><div class="regionSub">${subtitle}</div>`;
+      } else {
+        centerMsg.textContent = text;
+      }
       centerMsg.style.display = "block";
+      centerMsg.style.opacity = "1";
       centerMsgTimer = duration;
     }
 
@@ -1616,7 +1666,7 @@
       currentRegionName = zone.name;
       regionEnterTime = 0;
       if (regionBannerCooldown <= 0) {
-        showCenterMessage(`${zone.name}\n${zone.subtitle || ""}`.trim(), 2.1);
+        showCenterMessage(zone.name, 2.6, zone.subtitle || "Frontier");
         regionBannerCooldown = 4.8;
       }
     }
@@ -1665,12 +1715,59 @@
       const armor = eq.armor;
       const trinkets = [eq.trinket1, eq.trinket2].filter(Boolean);
       const lance = player.model.userData.anim.lance;
-      const shaft = lance.children[0];
-      if (shaft?.geometry && weapon) {
-        const len = 4.2 + (weapon.stats?.spearReach || 0) * 1.4;
-        shaft.geometry.dispose();
-        shaft.geometry = new THREE.CylinderGeometry(0.04 + Math.min(0.07, (weapon.sell || 10) / 1200), 0.04, len, 8);
-        shaft.material.color.set(weapon.rarity === "legendary" ? 0xfbbf24 : weapon.rarity === "epic" ? 0xa78bfa : 0xc8b18a);
+      while (lance.children.length) {
+        const c = lance.children.pop();
+        if (c.geometry) c.geometry.dispose();
+        lance.remove(c);
+      }
+      if (weapon) {
+        const lower = `${weapon.id} ${weapon.name}`.toLowerCase();
+        const isTrident = lower.includes("trident");
+        const isWand = lower.includes("wand") || lower.includes("focus");
+        const isHalberd = lower.includes("halberd");
+        const isRoyal = lower.includes("royal");
+        const isCrystal = lower.includes("crystal");
+        const isJagged = lower.includes("barbed") || lower.includes("anti") || lower.includes("war");
+        const len = (isWand ? 3.3 : isPikeLike(lower) ? 6.5 : 4.7) + (weapon.stats?.spearReach || 0) * 1.45;
+        const thickness = isWand ? 0.06 : isJagged ? 0.09 : isRoyal ? 0.075 : 0.065;
+        const shaftCol = isCrystal ? 0x9bd4ff : isRoyal ? 0xf8d178 : isJagged ? 0x746a60 : 0xc8b18a;
+        const headCol = isCrystal ? 0x8bf0ff : isRoyal ? 0xfbbf24 : isWand ? 0xb794f4 : 0xd8dee9;
+
+        const shaft = new THREE.Mesh(
+          new THREE.CylinderGeometry(thickness * 0.85, thickness, len, 10),
+          new THREE.MeshStandardMaterial({ color: shaftCol, roughness: 0.62, metalness: 0.42 })
+        );
+        shaft.rotation.z = -Math.PI / 2;
+        shaft.castShadow = true;
+        lance.add(shaft);
+
+        if (isTrident) {
+          for (const t of [-0.14, 0, 0.14]) {
+            const prong = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.68, 8), new THREE.MeshStandardMaterial({ color: headCol, metalness: 0.9, roughness: 0.3, emissive: isCrystal ? 0x3fd6ff : 0x000000, emissiveIntensity: isCrystal ? 0.6 : 0 }));
+            prong.rotation.z = -Math.PI / 2;
+            prong.position.set(len * 0.5 + 0.28, t, 0);
+            prong.castShadow = true;
+            lance.add(prong);
+          }
+        } else if (isWand) {
+          const orb = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), new THREE.MeshStandardMaterial({ color: headCol, emissive: headCol, emissiveIntensity: 0.8, roughness: 0.2, metalness: 0.55 }));
+          orb.position.set(len * 0.5 + 0.12, 0, 0);
+          lance.add(orb);
+        } else {
+          const tip = new THREE.Mesh(
+            isHalberd ? new THREE.ConeGeometry(0.13, 0.72, 8) : new THREE.ConeGeometry(isJagged ? 0.11 : 0.09, isRoyal ? 0.8 : 0.56, 8),
+            new THREE.MeshStandardMaterial({ color: headCol, roughness: 0.34, metalness: 0.92, emissive: isCrystal ? 0x39cfff : 0x000000, emissiveIntensity: isCrystal ? 0.75 : 0 })
+          );
+          tip.rotation.z = -Math.PI / 2;
+          tip.position.set(len * 0.5 + 0.25, 0, 0);
+          tip.castShadow = true;
+          lance.add(tip);
+          if (isHalberd || isJagged) {
+            const hook = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.08, 0.02), new THREE.MeshStandardMaterial({ color: headCol, roughness: 0.4, metalness: 0.8 }));
+            hook.position.set(len * 0.5 - 0.05, 0.16, 0);
+            lance.add(hook);
+          }
+        }
       }
       if (armor) {
         player.model.traverse((m) => {
@@ -1697,6 +1794,11 @@
         player.model.add(ring);
         player.model.userData.visualTrinkets.push(ring);
       });
+    }
+
+
+    function isPikeLike(label) {
+      return label.includes("pike") || label.includes("lance") || label.includes("spear");
     }
 
     function updateUI() {
@@ -1763,13 +1865,14 @@
 
     function spawnPickup(pos, kind, value = 1) {
       const colorMap = { score: 0x7dd3fc, gold: 0xfde047, health: 0x86efac, item: 0xe9d5ff, material: 0xc4b5fd };
+      const glow = colorMap[kind] || 0xffffff;
       const mesh = new THREE.Mesh(
         new THREE.OctahedronGeometry(kind === "health" ? 0.5 : 0.42, 0),
-        new THREE.MeshStandardMaterial({ color: colorMap[kind] || 0xffffff, emissive: colorMap[kind] || 0xffffff, emissiveIntensity: 0.45, roughness: 0.35, metalness: 0.1 })
+        new THREE.MeshStandardMaterial({ color: glow, emissive: glow, emissiveIntensity: 0.62, roughness: 0.28, metalness: 0.18 })
       );
       mesh.position.copy(pos);
       scene.add(mesh);
-      pickups.push({ mesh, kind, value, age: 0, life: 10 + Math.random() * 4, bob: Math.random() * Math.PI * 2, vel: new THREE.Vector3((Math.random()-0.5)*2, 0.6 + Math.random(), (Math.random()-0.5)*2) });
+      pickups.push({ mesh, kind, value, age: 0, life: 12 + Math.random() * 4, bob: Math.random() * Math.PI * 2, vel: new THREE.Vector3((Math.random()-0.5)*2, 0.6 + Math.random(), (Math.random()-0.5)*2), glow });
     }
 
     function spawnDrops(enemy) {
@@ -1985,21 +2088,38 @@
     }
 
     function flapAnimation(actor, dt, flapStrength = 1) {
-      actor.flapPhase += dt * (8 + actor.vel.length() * 0.12);
+      const horizontalSpeed = Math.hypot(actor.vel.x, actor.vel.z);
+      const grounded = actor.pos.y <= nearestPlatformHeight(actor.pos.x, actor.pos.z) + 1.75;
+      const climbState = actor.vel.y > 4.2;
+      const diveState = actor.vel.y < -8.4;
+      const brakingState = horizontalSpeed < 8.5 && actor.vel.y < -1.2;
+      const gliding = !grounded && Math.abs(actor.vel.y) < 1.5 && horizontalSpeed > 11;
+
+      let flapRate = grounded ? 3.4 : 7.2 + horizontalSpeed * 0.08;
+      let amp = grounded ? 0.14 : 0.68;
+      if (gliding) { flapRate *= 0.55; amp *= 0.45; }
+      if (climbState) { flapRate *= 1.2; amp *= 1.22; }
+      if (diveState) { flapRate *= 0.88; amp *= 0.58; }
+      if (brakingState) { amp *= 0.9; }
+
+      actor.flapPhase += dt * flapRate;
       const mount = actor === player ? (MOUNT_DB.find((m) => m.id === progress.mount) || MOUNT_DB[0]) : null;
-      const flapStyle = mount?.wingStyle === "membrane" ? 0.52 : mount?.wingStyle === "mystic" ? 0.74 : 0.65;
-      const flap = (Math.sin(actor.flapPhase) * flapStyle + Math.sin(actor.flapPhase * 0.5) * 0.17) * flapStrength;
+      const flapStyle = mount?.wingStyle === "membrane" ? 0.54 : mount?.wingStyle === "mystic" ? 0.78 : 0.66;
+      const flap = (Math.sin(actor.flapPhase) * flapStyle + Math.sin(actor.flapPhase * 0.5) * 0.16) * flapStrength * amp;
       const anim = actor.model.userData.anim;
 
-      anim.leftWing.rotation.z = 0.35 + flap;
-      anim.rightWing.rotation.z = -0.35 - flap;
-      anim.leftWingTip.rotation.z = 0.62 + flap * 1.15;
-      anim.rightWingTip.rotation.z = -0.62 - flap * 1.15;
+      anim.leftWing.rotation.z = 0.32 + flap;
+      anim.rightWing.rotation.z = -0.32 - flap;
+      anim.leftWingTip.rotation.z = 0.58 + flap * 1.18;
+      anim.rightWingTip.rotation.z = -0.58 - flap * 1.18;
+      anim.leftWing.rotation.x = gliding ? -0.1 : diveState ? 0.2 : climbState ? -0.26 : 0;
+      anim.rightWing.rotation.x = anim.leftWing.rotation.x;
 
-      anim.cape.rotation.x = 0.25 + Math.sin(actor.flapPhase * 0.7) * 0.15;
-      anim.head.rotation.x = Math.sin(actor.flapPhase * 0.55) * 0.05;
-      anim.neck.rotation.z = Math.sin(actor.flapPhase * 0.45) * 0.04;
+      anim.cape.rotation.x = 0.18 + Math.sin(actor.flapPhase * 0.8) * (grounded ? 0.06 : 0.18);
+      anim.head.rotation.x = Math.sin(actor.flapPhase * 0.55) * 0.05 + (diveState ? -0.08 : climbState ? 0.06 : 0);
+      anim.neck.rotation.z = Math.sin(actor.flapPhase * 0.42) * 0.05;
       anim.rider.rotation.z = -actor.vel.x * 0.01;
+      anim.rider.position.y = 0.02 + Math.sin(actor.flapPhase * 0.95) * (grounded ? 0.03 : 0.08);
 
       if (actor === player) {
         const rest = anim.lanceRest;
@@ -2009,8 +2129,8 @@
         const useMoveDir = moveDir.lengthSq() > 0.08;
         const localForwardYaw = useMoveDir ? (Math.atan2(moveDir.x, moveDir.z) - actor.yaw) : 0;
         anim.lance.rotation.y = localForwardYaw;
-        anim.lance.position.x = rest.x + thrustCurve * 0.2;
-        anim.lance.position.z = rest.z + thrustCurve * (3.3 + progress.upgrades.spearReach * 0.42);
+        anim.lance.position.x = rest.x + thrustCurve * 0.24;
+        anim.lance.position.z = rest.z + thrustCurve * (3.4 + progress.upgrades.spearReach * 0.45);
       }
     }
 
@@ -2047,7 +2167,7 @@
     }
 
     function nearestPlatformHeight(x, z) {
-      let bestTop = -999;
+      let bestTop = terrainHeightAt(x, z);
       let nearestDist = Infinity;
 
       for (const p of platforms) {
@@ -2148,6 +2268,21 @@
       const zone = getZoneAt(x, z);
       if (!zone) return -999;
       return zone.hazardType === "lava" ? zone.hazardY : -999;
+    }
+
+    function terrainHeightAt(x, z) {
+      const zone = getZoneAt(x, z);
+      if (!zone) return -999;
+      const dx = x - zone.center.x;
+      const dz = z - zone.center.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > zone.radius * 1.06) return -999;
+      const n1 = Math.sin(x * 0.036 + zone.danger * 0.7) * Math.cos(z * 0.031 - zone.danger * 0.4);
+      const n2 = Math.sin((x + z) * 0.018) * 0.7 + Math.cos((x - z) * 0.013) * 0.6;
+      const ridge = Math.max(0, Math.sin((dist / Math.max(10, zone.radius)) * Math.PI * 2.2 + zone.danger));
+      const edgeFalloff = Math.pow(Math.max(0, 1 - dist / (zone.radius * 1.03)), 0.55);
+      const base = zone.baseY + 2.4 + (zone.danger || 0) * 0.35;
+      return base + (n1 * 3.2 + n2 * 1.8 + ridge * (1.4 + (zone.danger || 0) * 0.5)) * edgeFalloff;
     }
 
     function keepInsideBounds(actor) {
@@ -2281,7 +2416,7 @@
 
       const platformTop = nearestPlatformHeight(player.pos.x, player.pos.z);
       const floorY = platformTop > -900 ? platformTop + 1.65 : -999;
-      const landingSnap = 1.25;
+      const landingSnap = 1.35;
       const onPlatform = platformTop > -900 && player.pos.y <= floorY + landingSnap && player.vel.y <= 0;
 
       if (onPlatform) {
@@ -2636,7 +2771,11 @@
               player.spearHitSet.add(enemy);
               const crit = Math.random() < stats.critChance;
               const momentum = getMomentumScale(player);
-              const dmg = (stats.spearDamage + (crit ? stats.spearDamage * 0.7 : 0)) * momentum * (enemy.elite ? 0.93 : 1);
+              const toEnemy = enemy.pos.clone().sub(player.pos).normalize();
+              const forwardAlign = Math.max(0, forward.dot(toEnemy));
+              const altitudeAdv = THREE.MathUtils.clamp((player.pos.y - enemy.pos.y + 1.2) / 4.5, 0.45, 1.45);
+              const angleReward = THREE.MathUtils.lerp(0.45, 1.45, forwardAlign) * altitudeAdv;
+              const dmg = (stats.spearDamage + (crit ? stats.spearDamage * 0.7 : 0)) * momentum * angleReward * (enemy.elite ? 0.93 : 1);
               const knock = forward.clone().multiplyScalar(stats.spearKnockback + enemy.speciesData.knockback * 0.2);
               enemy.vel.add(knock);
               damageEnemy(enemy, dmg, forward, "thrust");
@@ -2749,7 +2888,11 @@
           const pullRadius = playerStats().pickupRadius + 4;
           if (d < pullRadius) {
             const dir = player.pos.clone().add(new THREE.Vector3(0, 1.3, 0)).sub(p.mesh.position).normalize();
-            p.vel.addScaledVector(dir, (6 + progress.upgrades.pickupRadius * 1.8) * dt);
+            const magnet = d < pullRadius * 0.45 ? 22 : 8;
+            p.vel.addScaledVector(dir, (magnet + progress.upgrades.pickupRadius * 2.2) * dt);
+            if (Math.random() < 0.22) {
+              spawnBurst(p.mesh.position.clone(), 1, p.glow || 0xffffff);
+            }
           }
           if (d < playerStats().pickupRadius) {
             collectPickup(p);
@@ -3175,7 +3318,11 @@
 
       if (centerMsgTimer > 0) {
         centerMsgTimer -= dt;
-        if (centerMsgTimer <= 0) centerMsg.style.display = "none";
+        centerMsg.style.opacity = String(Math.min(1, centerMsgTimer * 1.25));
+        if (centerMsgTimer <= 0) {
+          centerMsg.style.display = "none";
+          centerMsg.style.opacity = "0";
+        }
       }
       if (hitstopTimer > 0) hitstopTimer = Math.max(0, hitstopTimer - dt);
       const simDt = hitstopTimer > 0 ? 0 : dt;
