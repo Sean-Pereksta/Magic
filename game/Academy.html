@@ -218,6 +218,7 @@
     let skyLandmarks = [];
     let ambientSkyTraffic = [];
     let skyRoot = null;
+    let hemiLight, dirLight, lavaLight;
     let activeSkyProfile = null;
     let arenaGroup;
     let worldZones = [];
@@ -543,23 +544,23 @@
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       document.body.appendChild(renderer.domElement);
 
-      const hemi = new THREE.HemisphereLight(0xffc98b, 0x2d1f17, 1.1);
-      scene.add(hemi);
+      hemiLight = new THREE.HemisphereLight(0xffc98b, 0x2d1f17, 1.1);
+      scene.add(hemiLight);
 
-      const dir = new THREE.DirectionalLight(0xffddb0, 1.1);
-      dir.position.set(18, 28, 10);
-      dir.castShadow = true;
-      dir.shadow.mapSize.width = 2048;
-      dir.shadow.mapSize.height = 2048;
-      dir.shadow.camera.near = 1;
-      dir.shadow.camera.far = 120;
-      dir.shadow.camera.left = -70;
-      dir.shadow.camera.right = 70;
-      dir.shadow.camera.top = 70;
-      dir.shadow.camera.bottom = -70;
-      scene.add(dir);
+      dirLight = new THREE.DirectionalLight(0xffddb0, 1.1);
+      dirLight.position.set(18, 28, 10);
+      dirLight.castShadow = true;
+      dirLight.shadow.mapSize.width = 2048;
+      dirLight.shadow.mapSize.height = 2048;
+      dirLight.shadow.camera.near = 1;
+      dirLight.shadow.camera.far = 120;
+      dirLight.shadow.camera.left = -70;
+      dirLight.shadow.camera.right = 70;
+      dirLight.shadow.camera.top = 70;
+      dirLight.shadow.camera.bottom = -70;
+      scene.add(dirLight);
 
-      const lavaLight = new THREE.PointLight(0xff5c1c, 3.2, 220, 2);
+      lavaLight = new THREE.PointLight(0xff5c1c, 3.2, 220, 2);
       lavaLight.position.set(0, -16, 0);
       scene.add(lavaLight);
 
@@ -905,8 +906,8 @@
       const { zone, theme } = cityData;
       const halfW = zoneHalfWidth(zone) - 18;
       const halfD = zoneHalfDepth(zone) - 18;
-      const gridX = 5;
-      const gridZ = 4;
+      const gridX = 6;
+      const gridZ = 5;
       const stepX = (halfW * 2) / gridX;
       const stepZ = (halfD * 2) / gridZ;
       const districtPool = ["residential", "market", "guard", "temple", "landing", "roost", "outerwall"];
@@ -990,7 +991,8 @@
       plazaFloor.receiveShadow = true;
       root.add(plazaFloor);
 
-      const towerCount = district.type === "plaza" ? 3 : district.type === "market" ? 4 : 2 + Math.floor(Math.random() * 3);
+      // VISUAL POLISH: denser city skyline and stronger vertical silhouettes.
+      const towerCount = district.type === "plaza" ? 5 : district.type === "market" ? 5 : 3 + Math.floor(Math.random() * 3);
       const capHeight = heightBaseByType[district.type] || 9;
       for (let i = 0; i < towerCount; i++) {
         const angle = (i / towerCount) * Math.PI * 2 + Math.random() * 0.45;
@@ -1725,238 +1727,185 @@
 
       const root = new THREE.Group();
 
-      // Bird body
-      const body = new THREE.Mesh(
-        new THREE.SphereGeometry(1.45, 16, 14),
-        new THREE.MeshStandardMaterial({ color: birdColor, roughness: 0.9, metalness: 0.03 })
-      );
-      body.scale.set(1.4, 0.9, 1.8);
+      // VISUAL POLISH: heroic mount silhouette with cleaner chest/neck/head profile.
+      const body = new THREE.Mesh(new THREE.SphereGeometry(1.45, 16, 14), new THREE.MeshStandardMaterial({ color: birdColor, roughness: 0.84, metalness: 0.05 }));
+      body.scale.set(1.48, 0.92, 2.0);
       body.castShadow = true;
       root.add(body);
 
-      const chest = new THREE.Mesh(
-        new THREE.SphereGeometry(0.9, 12, 12),
-        new THREE.MeshStandardMaterial({ color: birdColor, roughness: 0.9 })
-      );
-      chest.position.set(0, -0.1, 1.4);
-      chest.scale.set(1.05, 0.85, 1.0);
+      const chest = new THREE.Mesh(new THREE.SphereGeometry(1.0, 14, 12), new THREE.MeshStandardMaterial({ color: birdColor, roughness: 0.82, metalness: 0.06 }));
+      chest.position.set(0, -0.04, 1.58);
+      chest.scale.set(1.18, 0.96, 1.06);
       chest.castShadow = true;
       root.add(chest);
 
-      const neck = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.28, 0.38, 1.25, 8),
-        new THREE.MeshStandardMaterial({ color: birdColor, roughness: 0.9 })
-      );
-      neck.position.set(0, 0.5, 2.1);
-      neck.rotation.x = Math.PI / 4.5;
+      const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.42, 1.5, 10), new THREE.MeshStandardMaterial({ color: birdColor, roughness: 0.83 }));
+      neck.position.set(0, 0.6, 2.26);
+      neck.rotation.x = Math.PI / 4.3;
       neck.castShadow = true;
       root.add(neck);
 
-      const head = new THREE.Mesh(
-        new THREE.SphereGeometry(0.48, 12, 12),
-        new THREE.MeshStandardMaterial({ color: birdColor, roughness: 0.85 })
-      );
-      head.position.set(0, 1.1, 2.7);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 12), new THREE.MeshStandardMaterial({ color: birdColor, roughness: 0.8 }));
+      head.position.set(0, 1.25, 2.98);
+      head.scale.set(1.08, 0.95, 1.22);
       head.castShadow = true;
       root.add(head);
 
-      const beak = new THREE.Mesh(
-        new THREE.ConeGeometry(0.16, 0.7, 8),
-        new THREE.MeshStandardMaterial({ color: 0xd5aa49, roughness: 0.8 })
-      );
+      const beak = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.88, 8), new THREE.MeshStandardMaterial({ color: 0xd5aa49, roughness: 0.74, metalness: 0.18 }));
       beak.rotation.x = Math.PI / 2;
-      beak.position.set(0, 1.0, 3.08);
+      beak.position.set(0, 1.16, 3.46);
       beak.castShadow = true;
       root.add(beak);
 
-      const crest = new THREE.Mesh(
-        new THREE.ConeGeometry(0.12, 0.5, 6),
-        new THREE.MeshStandardMaterial({ color: clothColor, roughness: 0.7 })
-      );
-      crest.position.set(0, 1.55, 2.75);
-      crest.rotation.x = -0.4;
+      const crest = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.58, 6), new THREE.MeshStandardMaterial({ color: clothColor, roughness: 0.7 }));
+      crest.position.set(0, 1.74, 2.96);
+      crest.rotation.x = -0.44;
       crest.castShadow = true;
       root.add(crest);
 
-      // Wings
-      const wingGeo = new THREE.BoxGeometry(2.2, 0.18, 1.0);
-      const wingMat = new THREE.MeshStandardMaterial({ color: wingColor, roughness: 0.95 });
-
+      const wingGeo = new THREE.BoxGeometry(2.5, 0.18, 1.16);
+      const wingMat = new THREE.MeshStandardMaterial({ color: wingColor, roughness: 0.9, metalness: 0.06 });
       const leftWing = new THREE.Mesh(wingGeo, wingMat);
-      leftWing.position.set(-2.1, 0.25, 0.2);
-      leftWing.rotation.z = 0.3;
+      leftWing.position.set(-2.24, 0.34, 0.18);
+      leftWing.rotation.z = 0.35;
       leftWing.castShadow = true;
       root.add(leftWing);
 
       const rightWing = new THREE.Mesh(wingGeo, wingMat);
-      rightWing.position.set(2.1, 0.25, 0.2);
-      rightWing.rotation.z = -0.3;
+      rightWing.position.set(2.24, 0.34, 0.18);
+      rightWing.rotation.z = -0.35;
       rightWing.castShadow = true;
       root.add(rightWing);
 
-      const leftWingTip = new THREE.Mesh(
-        new THREE.BoxGeometry(1.7, 0.14, 0.8),
-        wingMat
-      );
-      leftWingTip.position.set(-3.75, 0.2, 0.22);
-      leftWingTip.rotation.z = 0.62;
+      const leftWingTip = new THREE.Mesh(new THREE.BoxGeometry(2.05, 0.13, 0.92), wingMat);
+      leftWingTip.position.set(-4.06, 0.26, 0.2);
+      leftWingTip.rotation.z = 0.7;
       leftWingTip.castShadow = true;
       root.add(leftWingTip);
 
       const rightWingTip = leftWingTip.clone();
-      rightWingTip.position.x = 3.75;
-      rightWingTip.rotation.z = -0.62;
+      rightWingTip.position.x = 4.06;
+      rightWingTip.rotation.z = -0.7;
       root.add(rightWingTip);
 
-      // Tail
       const tailPivot = new THREE.Group();
-      tailPivot.position.set(0, 0.06, -1.72);
+      tailPivot.position.set(0, 0.16, -2.08);
       root.add(tailPivot);
-      for (let i = 0; i < 3; i++) {
-        const feather = new THREE.Mesh(
-          new THREE.BoxGeometry(0.34, 0.08, 1.2),
-          new THREE.MeshStandardMaterial({ color: wingColor, roughness: 0.95 })
-        );
-        feather.position.set((i - 1) * 0.32, 0.05, -0.45);
-        feather.rotation.x = -0.38;
+      for (let i = 0; i < 4; i++) {
+        const feather = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.08, 1.5 - i * 0.15), new THREE.MeshStandardMaterial({ color: wingColor, roughness: 0.9 }));
+        feather.position.set((i - 1.5) * 0.26, 0.03 + Math.abs(i - 1.5) * 0.02, -0.56 - i * 0.08);
+        feather.rotation.x = -0.42;
         feather.castShadow = true;
         tailPivot.add(feather);
       }
 
-      // Legs
-      for (const x of [-0.7, 0.7]) {
-        const leg = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.07, 0.08, 0.9, 6),
-          new THREE.MeshStandardMaterial({ color: 0xc29443, roughness: 0.7 })
-        );
-        leg.position.set(x, -1.0, 0.8);
+      for (const x of [-0.72, 0.72]) {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.95, 7), new THREE.MeshStandardMaterial({ color: 0xc29443, roughness: 0.68 }));
+        leg.position.set(x, -1.05, 0.84);
         leg.castShadow = true;
         root.add(leg);
 
-        const foot = new THREE.Mesh(
-          new THREE.BoxGeometry(0.33, 0.08, 0.55),
-          new THREE.MeshStandardMaterial({ color: 0xc29443, roughness: 0.7 })
-        );
-        foot.position.set(x, -1.45, 1.0);
+        const foot = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.08, 0.58), new THREE.MeshStandardMaterial({ color: 0xc29443, roughness: 0.68 }));
+        foot.position.set(x, -1.5, 1.06);
         foot.castShadow = true;
         root.add(foot);
       }
 
-      // Saddle
-      const saddle = new THREE.Mesh(
-        new THREE.BoxGeometry(0.9, 0.25, 1.0),
-        new THREE.MeshStandardMaterial({ color: 0x4f3423, roughness: 0.8 })
-      );
-      saddle.position.set(0, 0.75, 0.15);
+      const saddle = new THREE.Mesh(new THREE.BoxGeometry(1.06, 0.29, 1.24), new THREE.MeshStandardMaterial({ color: 0x4f3423, roughness: 0.74, metalness: 0.1 }));
+      saddle.position.set(0, 0.86, 0.12);
       saddle.castShadow = true;
       root.add(saddle);
 
-      // Rider
+      const saddleHorn = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.22), new THREE.MeshStandardMaterial({ color: 0x7b5f44, roughness: 0.6 }));
+      saddleHorn.position.set(0, 1.0, 0.66);
+      root.add(saddleHorn);
+
       const riderAnchor = new THREE.Group();
-      riderAnchor.position.set(0, 1.58, 0.08);
+      riderAnchor.position.set(0, 1.64, 0.12);
       root.add(riderAnchor);
 
       const rider = new THREE.Group();
-      rider.position.set(0, 0, 0);
       riderAnchor.add(rider);
 
-      const torso = new THREE.Mesh(
-        new THREE.BoxGeometry(0.7, 1.0, 0.45),
-        new THREE.MeshStandardMaterial({ color: riderColor, roughness: 0.6, metalness: 0.3 })
-      );
+      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.78, 1.05, 0.52), new THREE.MeshStandardMaterial({ color: riderColor, roughness: 0.46, metalness: 0.48 }));
       torso.castShadow = true;
       rider.add(torso);
 
-      const headHuman = new THREE.Mesh(
-        new THREE.SphereGeometry(0.24, 12, 12),
-        new THREE.MeshStandardMaterial({ color: 0xe0c2a0, roughness: 0.85 })
-      );
-      headHuman.position.set(0, 0.73, 0);
+      const chestPlate = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.56, 0.2), new THREE.MeshStandardMaterial({ color: 0xa9b6c9, roughness: 0.4, metalness: 0.65 }));
+      chestPlate.position.set(0, 0.03, 0.25);
+      rider.add(chestPlate);
+
+      const shoulderL = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), new THREE.MeshStandardMaterial({ color: riderColor, roughness: 0.5, metalness: 0.45 }));
+      shoulderL.position.set(-0.44, 0.36, 0.06);
+      rider.add(shoulderL);
+      const shoulderR = shoulderL.clone();
+      shoulderR.position.x = 0.44;
+      rider.add(shoulderR);
+
+      const headHuman = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 12), new THREE.MeshStandardMaterial({ color: 0xe0c2a0, roughness: 0.82 }));
+      headHuman.position.set(0, 0.75, 0.01);
       headHuman.castShadow = true;
       rider.add(headHuman);
 
-      const helmet = new THREE.Mesh(
-        new THREE.ConeGeometry(0.28, 0.5, 8),
-        new THREE.MeshStandardMaterial({ color: 0x7f8fa3, roughness: 0.5, metalness: 0.5 })
-      );
-      helmet.position.set(0, 0.95, 0);
+      const helmet = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.56, 8), new THREE.MeshStandardMaterial({ color: 0x7f8fa3, roughness: 0.4, metalness: 0.62 }));
+      helmet.position.set(0, 1.0, 0);
       helmet.castShadow = true;
       rider.add(helmet);
 
-      const plume = new THREE.Mesh(
-        new THREE.BoxGeometry(0.08, 0.45, 0.08),
-        new THREE.MeshStandardMaterial({ color: clothColor, roughness: 0.85 })
-      );
-      plume.position.set(0, 1.17, -0.02);
+      const plume = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.55, 0.1), new THREE.MeshStandardMaterial({ color: clothColor, roughness: 0.8 }));
+      plume.position.set(0, 1.28, -0.02);
       plume.rotation.z = 0.2;
       plume.castShadow = true;
       rider.add(plume);
 
-      const leftArm = new THREE.Mesh(
-        new THREE.BoxGeometry(0.16, 0.7, 0.16),
-        new THREE.MeshStandardMaterial({ color: riderColor, roughness: 0.6, metalness: 0.25 })
-      );
-      leftArm.position.set(-0.42, 0.05, 0);
-      leftArm.rotation.z = 0.45;
+      const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.72, 0.17), new THREE.MeshStandardMaterial({ color: riderColor, roughness: 0.52, metalness: 0.36 }));
+      leftArm.position.set(-0.44, 0.06, 0.06);
+      leftArm.rotation.z = 0.5;
       leftArm.castShadow = true;
       rider.add(leftArm);
 
-      const rightArm = new THREE.Mesh(
-        new THREE.BoxGeometry(0.16, 0.9, 0.16),
-        new THREE.MeshStandardMaterial({ color: riderColor, roughness: 0.6, metalness: 0.25 })
-      );
-      rightArm.position.set(0.38, 0.03, 0.02);
-      rightArm.rotation.z = -0.65;
-      rightArm.rotation.x = 0.1;
+      const rightArm = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.96, 0.16), new THREE.MeshStandardMaterial({ color: riderColor, roughness: 0.52, metalness: 0.36 }));
+      rightArm.position.set(0.4, 0.04, 0.08);
+      rightArm.rotation.z = -0.56;
+      rightArm.rotation.x = -0.2;
       rightArm.castShadow = true;
       rider.add(rightArm);
 
-      const leftLeg = new THREE.Mesh(
-        new THREE.BoxGeometry(0.18, 0.8, 0.18),
-        new THREE.MeshStandardMaterial({ color: 0x444b57, roughness: 0.75 })
-      );
-      leftLeg.position.set(-0.18, -0.82, 0.18);
-      leftLeg.rotation.x = -1.0;
+      const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.84, 0.2), new THREE.MeshStandardMaterial({ color: 0x444b57, roughness: 0.7, metalness: 0.2 }));
+      leftLeg.position.set(-0.2, -0.84, 0.2);
+      leftLeg.rotation.x = -1.05;
       leftLeg.castShadow = true;
       rider.add(leftLeg);
-
       const rightLeg = leftLeg.clone();
-      rightLeg.position.x = 0.18;
+      rightLeg.position.x = 0.2;
       rider.add(rightLeg);
 
-      const cape = new THREE.Mesh(
-        new THREE.BoxGeometry(0.6, 0.9, 0.05),
-        new THREE.MeshStandardMaterial({ color: clothColor, roughness: 0.9 })
-      );
-      cape.position.set(0, 0.02, -0.27);
-      cape.rotation.x = 0.25;
+      const cape = new THREE.Mesh(new THREE.BoxGeometry(0.72, 1.08, 0.05), new THREE.MeshStandardMaterial({ color: clothColor, roughness: 0.84, metalness: 0.06 }));
+      cape.position.set(0, 0.03, -0.31);
+      cape.rotation.x = 0.3;
       cape.castShadow = true;
       rider.add(cape);
 
       const spearAnchor = new THREE.Group();
-      spearAnchor.position.set(0.62, 0.18, 0.62);
+      spearAnchor.position.set(0.55, 0.16, 0.34);
+      spearAnchor.rotation.x = -0.08;
       rider.add(spearAnchor);
 
+      // VISUAL POLISH + SPEAR ORIENTATION FIX: lance now uses +Z forward local axis for shaft/tip alignment.
       const lance = new THREE.Group();
-      lance.position.set(0.26, 0.02, 1.92);
-      lance.rotation.x = -0.02;
-      lance.rotation.y = 0;
+      lance.position.set(0.1, -0.02, 1.3);
       spearAnchor.add(lance);
 
-      const lanceShaft = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.04, 0.04, 4.8, 8),
-        new THREE.MeshStandardMaterial({ color: lanceColor, roughness: 0.75 })
-      );
-      lanceShaft.rotation.z = -Math.PI / 2;
+      const lanceLength = 4.8;
+      const lanceShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.045, lanceLength, 9), new THREE.MeshStandardMaterial({ color: lanceColor, roughness: 0.64, metalness: 0.35 }));
+      lanceShaft.rotation.x = Math.PI / 2;
+      lanceShaft.position.z = lanceLength * 0.5;
       lanceShaft.castShadow = true;
       lance.add(lanceShaft);
 
-      const lanceTip = new THREE.Mesh(
-        new THREE.ConeGeometry(0.08, 0.42, 8),
-        new THREE.MeshStandardMaterial({ color: 0xd0d6df, roughness: 0.35, metalness: 0.9 })
-      );
-      lanceTip.rotation.z = -Math.PI / 2;
-      lanceTip.position.set(2.55, 0, 0);
+      const lanceTip = new THREE.Mesh(new THREE.ConeGeometry(0.085, 0.48, 9), new THREE.MeshStandardMaterial({ color: 0xd0d6df, roughness: 0.3, metalness: 0.95 }));
+      lanceTip.rotation.x = Math.PI / 2;
+      lanceTip.position.set(0, 0, lanceLength + 0.28);
       lanceTip.castShadow = true;
       lance.add(lanceTip);
 
@@ -1972,6 +1921,10 @@
         riderAnchor,
         spearAnchor,
         tailPivot,
+        chest,
+        saddle,
+        body,
+        crest,
         lance,
         lanceTip,
         lanceRest: lance.position.clone(),
@@ -2149,13 +2102,43 @@
       const scale = 1 + depthFactor * 0.16 + (enemy.elite ? 0.12 : 0);
       enemy.model.scale.multiplyScalar(scale);
       enemy.radius *= scale;
+
+      const behavior = enemy.speciesData?.behavior || "lancer";
+      const anim = enemy.model.userData?.anim;
+      if (anim) {
+        // VISUAL POLISH: stronger enemy silhouette language by combat role.
+        const roleMap = {
+          lancer: { body: [0.94, 0.96, 1.22], wing: [1.12, 1, 1.24], riderY: 0.04, lean: 0.06 },
+          bruiser: { body: [1.25, 1.1, 1.08], wing: [1.05, 1.06, 1.1], riderY: -0.04, lean: -0.02 },
+          swarm: { body: [0.76, 0.74, 0.86], wing: [1.32, 0.86, 1.4], riderY: 0.08, lean: 0.2 },
+          stinger: { body: [0.72, 0.7, 0.9], wing: [1.34, 0.82, 1.48], riderY: 0.09, lean: 0.24 },
+          beam: { body: [0.9, 0.92, 1.08], wing: [1.22, 0.9, 1.3], riderY: 0.06, lean: 0.02 },
+          orb: { body: [0.9, 0.88, 1.06], wing: [1.2, 0.9, 1.26], riderY: 0.06, lean: 0.04 },
+          ambush: { body: [1.0, 0.86, 1.18], wing: [1.18, 0.94, 1.2], riderY: 0.02, lean: 0.18 },
+          dash: { body: [0.94, 0.9, 1.22], wing: [1.16, 0.94, 1.24], riderY: 0.02, lean: 0.22 },
+          sniper: { body: [0.9, 0.88, 1.08], wing: [1.22, 0.9, 1.32], riderY: 0.05, lean: 0.04 }
+        };
+        const role = roleMap[behavior] || roleMap.lancer;
+        anim.body.scale.set(...role.body);
+        anim.leftWing.scale.set(...role.wing);
+        anim.rightWing.scale.copy(anim.leftWing.scale);
+        anim.rider.position.y += role.riderY;
+        anim.rider.rotation.x += role.lean;
+
+        if (!enemy.model.userData.roleCrest) {
+          const crest = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.55, 7), new THREE.MeshStandardMaterial({ color: zone.accent, emissive: zone.haze, emissiveIntensity: 0.3, roughness: 0.5, metalness: 0.3 }));
+          crest.position.set(0, enemy.radius + 0.82, 0.45);
+          enemy.model.add(crest);
+          enemy.model.userData.roleCrest = crest;
+        }
+        enemy.model.userData.roleCrest.scale.set(1, behavior === "bruiser" ? 1.3 : behavior === "swarm" || behavior === "stinger" ? 0.7 : 1, 1);
+        enemy.model.userData.roleCrest.material.color.setHex(behavior === "beam" || behavior === "orb" ? 0x9ad7ff : behavior === "swarm" || behavior === "stinger" ? 0x7cf779 : zone.accent);
+      }
+
       if (enemy.elite) {
-        const crest = new THREE.Mesh(
-          new THREE.ConeGeometry(0.18, 0.62, 7),
-          new THREE.MeshStandardMaterial({ color: zone.accent, emissive: zone.accent, emissiveIntensity: 0.45, roughness: 0.45, metalness: 0.38 })
-        );
-        crest.position.set(0, enemy.radius + 0.8, 0.3);
-        enemy.model.add(crest);
+        const eliteCrest = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.72, 7), new THREE.MeshStandardMaterial({ color: zone.accent, emissive: zone.accent, emissiveIntensity: 0.55, roughness: 0.4, metalness: 0.45 }));
+        eliteCrest.position.set(0, enemy.radius + 1.04, 0.26);
+        enemy.model.add(eliteCrest);
       }
     }
 
@@ -2388,14 +2371,17 @@
       const rest = anim.lanceRest;
       const thrustDuration = 0.36;
       const thrustNorm = THREE.MathUtils.clamp(actor.spearTimer / thrustDuration, 0, 1);
-      const extend = Math.pow(Math.sin((1 - thrustNorm) * Math.PI), 0.8);
+      const thrustPulse = Math.pow(Math.sin((1 - thrustNorm) * Math.PI), 0.8);
       const forward = new THREE.Vector3(Math.sin(actor.yaw), 0, Math.cos(actor.yaw));
 
-      anim.riderAnchor.position.y = 1.56 + Math.sin(actor.flapPhase * 0.9) * 0.05;
-      anim.rider.position.y = 0.03 + Math.sin(actor.flapPhase * 0.95) * 0.04;
-      anim.spearAnchor.rotation.x = -0.06 + extend * 0.08;
+      anim.riderAnchor.position.y = 1.58 + Math.sin(actor.flapPhase * 0.9) * 0.06;
+      anim.rider.position.y = 0.04 + Math.sin(actor.flapPhase * 0.95) * 0.05;
+      anim.spearAnchor.rotation.x = -0.12 + thrustPulse * 0.12;
       anim.spearAnchor.rotation.y = 0;
-      anim.lance.position.set(rest.x + extend * 0.52, rest.y, rest.z + extend * (5.6 + progress.upgrades.spearReach * 0.65));
+
+      // SPEAR ORIENTATION FIX: extension now drives strictly along local forward (+Z) axis.
+      const reach = 5.2 + progress.upgrades.spearReach * 0.72;
+      anim.lance.position.set(rest.x, rest.y - thrustPulse * 0.03, rest.z + thrustPulse * reach);
 
       anim.lanceTip.getWorldPosition(anim.spearTipWorld);
       anim.spearForwardWorld.copy(forward).normalize();
@@ -2408,7 +2394,15 @@
       const push = forward.clone().multiplyScalar((playerStats().spearKnockback * 0.9 + baseDamage * 0.12) * velocityFactor * resist);
       push.y += THREE.MathUtils.clamp((player.pos.y - enemy.pos.y) * 0.18, -0.2, 1.6);
       enemy.vel.add(push);
-      spawnBurst(player.model.userData.anim.spearTipWorld.clone(), Math.round(6 + momentum * 5), 0xfff0be);
+      spawnBurst(player.model.userData.anim.spearTipWorld.clone(), Math.round(7 + momentum * 6), 0xfff0be);
+      // VISUAL POLISH: thrust trail line for readable heavy strikes.
+      if (momentum > 0.85) {
+        const trail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 2.4 + momentum * 0.9), new THREE.MeshBasicMaterial({ color: 0xfff2c4, transparent: true, opacity: 0.72 }));
+        trail.position.copy(player.model.userData.anim.spearTipWorld).add(forward.clone().multiplyScalar(-1.3));
+        trail.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), forward.clone().normalize());
+        scene.add(trail);
+        particles.push({ mesh: trail, kind: "burst", life: 0.14, vel: forward.clone().multiplyScalar(8) });
+      }
     }
 
     function triggerHitFeedback(attacker, target, hitDir, intensity = 1) {
@@ -2486,12 +2480,15 @@
       const weapon = eq.weapon;
       const armor = eq.armor;
       const trinkets = [eq.trinket1, eq.trinket2].filter(Boolean);
-      const lance = player.model.userData.anim.lance;
+      const anim = player.model.userData.anim;
+      const lance = anim.lance;
       while (lance.children.length) {
         const c = lance.children.pop();
         if (c.geometry) c.geometry.dispose();
         lance.remove(c);
       }
+
+      // VISUAL POLISH: weapon archetype identity + forward-facing standards for all polearms.
       if (weapon) {
         const lower = `${weapon.id} ${weapon.name}`.toLowerCase();
         const isTrident = lower.includes("trident");
@@ -2500,71 +2497,121 @@
         const isRoyal = lower.includes("royal");
         const isCrystal = lower.includes("crystal");
         const isJagged = lower.includes("barbed") || lower.includes("anti") || lower.includes("war");
-        const len = (isWand ? 3.3 : isPikeLike(lower) ? 6.5 : 4.7) + (weapon.stats?.spearReach || 0) * 1.45;
-        const thickness = isWand ? 0.06 : isJagged ? 0.09 : isRoyal ? 0.075 : 0.065;
+        const isPike = isPikeLike(lower) || isHalberd || isTrident;
+        const len = (isWand ? 2.6 : isPike ? 5.8 : 4.2) + (weapon.stats?.spearReach || 0) * 1.35 + (isRoyal ? 0.5 : 0);
+        const thickness = isWand ? 0.05 : isJagged ? 0.095 : isRoyal ? 0.075 : 0.065;
         const shaftCol = isCrystal ? 0x9bd4ff : isRoyal ? 0xf8d178 : isJagged ? 0x746a60 : 0xc8b18a;
         const headCol = isCrystal ? 0x8bf0ff : isRoyal ? 0xfbbf24 : isWand ? 0xb794f4 : 0xd8dee9;
+        const rarityBoost = weapon.rarity === "legendary" ? 1 : weapon.rarity === "epic" ? 0.7 : weapon.rarity === "rare" ? 0.45 : 0;
 
-        const shaft = new THREE.Mesh(
-          new THREE.CylinderGeometry(thickness * 0.85, thickness, len, 10),
-          new THREE.MeshStandardMaterial({ color: shaftCol, roughness: 0.62, metalness: 0.42 })
-        );
-        shaft.rotation.z = -Math.PI / 2;
+        const shaft = new THREE.Mesh(new THREE.CylinderGeometry(thickness * 0.84, thickness, len, 10), new THREE.MeshStandardMaterial({ color: shaftCol, roughness: 0.56, metalness: 0.48, emissive: isCrystal ? 0x2a9fd6 : 0x000000, emissiveIntensity: isCrystal ? 0.35 + rarityBoost * 0.2 : 0 }));
+        shaft.rotation.x = Math.PI / 2;
+        shaft.position.z = len * 0.5;
         shaft.castShadow = true;
         lance.add(shaft);
 
         if (isTrident) {
-          for (const t of [-0.14, 0, 0.14]) {
-            const prong = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.68, 8), new THREE.MeshStandardMaterial({ color: headCol, metalness: 0.9, roughness: 0.3, emissive: isCrystal ? 0x3fd6ff : 0x000000, emissiveIntensity: isCrystal ? 0.6 : 0 }));
-            prong.rotation.z = -Math.PI / 2;
-            prong.position.set(len * 0.5 + 0.28, t, 0);
+          for (const offset of [-0.16, 0, 0.16]) {
+            const prong = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.72, 9), new THREE.MeshStandardMaterial({ color: headCol, metalness: 0.9, roughness: 0.28, emissive: isCrystal ? 0x3fd6ff : 0x000000, emissiveIntensity: isCrystal ? 0.7 : 0 }));
+            prong.rotation.x = Math.PI / 2;
+            prong.position.set(offset, 0, len + 0.32 + Math.abs(offset) * 0.22);
             prong.castShadow = true;
             lance.add(prong);
           }
         } else if (isWand) {
-          const orb = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), new THREE.MeshStandardMaterial({ color: headCol, emissive: headCol, emissiveIntensity: 0.8, roughness: 0.2, metalness: 0.55 }));
-          orb.position.set(len * 0.5 + 0.12, 0, 0);
+          const ring = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.04, 8, 14), new THREE.MeshStandardMaterial({ color: headCol, emissive: headCol, emissiveIntensity: 0.85, roughness: 0.22, metalness: 0.6 }));
+          ring.position.set(0, 0.09, len + 0.2);
+          ring.rotation.x = Math.PI / 2;
+          lance.add(ring);
+          const orb = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 12), new THREE.MeshStandardMaterial({ color: headCol, emissive: headCol, emissiveIntensity: 1, roughness: 0.2, metalness: 0.55 }));
+          orb.position.set(0, 0, len + 0.28);
           lance.add(orb);
         } else {
-          const tip = new THREE.Mesh(
-            isHalberd ? new THREE.ConeGeometry(0.13, 0.72, 8) : new THREE.ConeGeometry(isJagged ? 0.11 : 0.09, isRoyal ? 0.8 : 0.56, 8),
-            new THREE.MeshStandardMaterial({ color: headCol, roughness: 0.34, metalness: 0.92, emissive: isCrystal ? 0x39cfff : 0x000000, emissiveIntensity: isCrystal ? 0.75 : 0 })
-          );
-          tip.rotation.z = -Math.PI / 2;
-          tip.position.set(len * 0.5 + 0.25, 0, 0);
+          const tip = new THREE.Mesh(isHalberd ? new THREE.ConeGeometry(0.13, 0.86, 8) : new THREE.ConeGeometry(isJagged ? 0.11 : 0.09, isRoyal ? 0.86 : 0.62, 8), new THREE.MeshStandardMaterial({ color: headCol, roughness: 0.28, metalness: 0.94, emissive: isCrystal ? 0x39cfff : 0x000000, emissiveIntensity: isCrystal ? 0.8 : 0 }));
+          tip.rotation.x = Math.PI / 2;
+          tip.position.set(0, 0, len + 0.3);
           tip.castShadow = true;
           lance.add(tip);
+
           if (isHalberd || isJagged) {
-            const hook = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.08, 0.02), new THREE.MeshStandardMaterial({ color: headCol, roughness: 0.4, metalness: 0.8 }));
-            hook.position.set(len * 0.5 - 0.05, 0.16, 0);
+            const hook = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.08, 0.03), new THREE.MeshStandardMaterial({ color: headCol, roughness: 0.38, metalness: 0.84 }));
+            hook.position.set(0.22, 0.12, len + 0.05);
+            hook.rotation.y = 0.18;
             lance.add(hook);
           }
         }
       }
-      if (armor) {
-        player.model.traverse((m) => {
-          if (m.isMesh && m.material?.color) {
-            if (m.geometry.type.includes("Cone")) m.material.color.set(armor.rarity === "legendary" ? 0xf59e0b : 0x7f8fa3);
-          }
-        });
+
+      const armorTier = armor?.rarity || "common";
+      const armorStyle = (armor?.name || "").toLowerCase().includes("robe") ? "robe" : armorTier === "legendary" || armorTier === "epic" ? "heavy" : "light";
+      const armorColor = armorTier === "legendary" ? 0xf59e0b : armorTier === "epic" ? 0xa78bfa : armorTier === "rare" ? 0x93c5fd : 0x9ca3af;
+      anim.cape.scale.set(armorStyle === "robe" ? 1.2 : 1, armorStyle === "robe" ? 1.26 : 1.05, 1);
+      anim.cape.material.color.set(armorTier === "legendary" ? 0x7f1d1d : armorTier === "epic" ? 0x4338ca : 0x7f1d1d);
+
+      if (!anim.armorSet) {
+        anim.armorSet = new THREE.Group();
+        anim.rider.add(anim.armorSet);
       }
-      const anim = player.model.userData.anim;
-      anim.leftWing.scale.set(mount.wingStyle === "feather" ? 1.15 : 1.28, 1, mount.wingStyle === "mystic" ? 1.4 : 1.18);
+      while (anim.armorSet.children.length) anim.armorSet.remove(anim.armorSet.children[0]);
+      const shoulderScale = armorStyle === "heavy" ? 1.32 : armorStyle === "robe" ? 0.9 : 1.05;
+      const spaulderMat = new THREE.MeshStandardMaterial({ color: armorColor, roughness: 0.4, metalness: 0.68, emissive: armorTier === "legendary" ? 0x7c2d12 : 0x000000, emissiveIntensity: armorTier === "legendary" ? 0.25 : 0 });
+      for (const sx of [-1, 1]) {
+        const spaulder = new THREE.Mesh(new THREE.SphereGeometry(0.2 * shoulderScale, 8, 8), spaulderMat);
+        spaulder.position.set(0.38 * sx, 0.32, 0.08);
+        anim.armorSet.add(spaulder);
+      }
+      const backPlate = new THREE.Mesh(new THREE.BoxGeometry(0.54, armorStyle === "robe" ? 0.88 : 0.62, 0.08), new THREE.MeshStandardMaterial({ color: armorColor, roughness: 0.45, metalness: 0.58 }));
+      backPlate.position.set(0, -0.05, -0.28);
+      anim.armorSet.add(backPlate);
+
+      // VISUAL POLISH: mount identity per type (shape + accents + wing/tail style).
+      const profile = {
+        "war-roc": { body: [1.1, 0.96, 1.22], wing: [1.16, 1, 1.32], tip: [1.08, 1, 1.2], neck: [1, 1.18, 1], tailX: 1.22, glow: 0x000000, crestY: 1.75 },
+        "storm-drake": { body: [0.95, 0.9, 1.35], wing: [1.34, 0.95, 1.45], tip: [1.4, 0.92, 1.6], neck: [0.82, 1.26, 0.9], tailX: 0.72, glow: 0x4cc9ff, crestY: 1.67 },
+        "iron-gryphon": { body: [1.26, 1.02, 1.1], wing: [1.12, 1.06, 1.16], tip: [1.03, 1.03, 1.1], neck: [1.06, 1.08, 1.04], tailX: 1.34, glow: 0x7d8ca3, crestY: 1.86 },
+        "ember-wyvern": { body: [1.04, 0.95, 1.28], wing: [1.28, 0.94, 1.5], tip: [1.34, 0.92, 1.62], neck: [0.9, 1.22, 0.94], tailX: 0.82, glow: 0xff7b3c, crestY: 1.72 },
+        "frost-hawk": { body: [0.9, 0.9, 1.24], wing: [1.22, 0.92, 1.34], tip: [1.18, 0.92, 1.42], neck: [0.92, 1.16, 0.95], tailX: 0.86, glow: 0x8be7ff, crestY: 1.68 },
+        "venom-manta": { body: [1.06, 0.86, 1.3], wing: [1.48, 0.78, 1.7], tip: [1.64, 0.72, 1.86], neck: [0.74, 1.1, 0.76], tailX: 0.58, glow: 0x62ffa5, crestY: 1.6 },
+        "sky-seraph": { body: [1.0, 0.94, 1.25], wing: [1.42, 0.9, 1.68], tip: [1.56, 0.84, 1.9], neck: [0.88, 1.22, 0.9], tailX: 0.96, glow: 0xd1a8ff, crestY: 1.92 },
+        "summoner-beast": { body: [0.96, 0.9, 1.2], wing: [1.36, 0.86, 1.62], tip: [1.48, 0.8, 1.78], neck: [0.82, 1.18, 0.85], tailX: 0.64, glow: 0x5ed6ff, crestY: 1.8 }
+      }[mount.id] || { body: [1, 1, 1], wing: [1, 1, 1], tip: [1, 1, 1], neck: [1, 1, 1], tailX: 1, glow: 0x000000, crestY: 1.75 };
+
+      anim.body.scale.set(...profile.body);
+      anim.chest.scale.set(profile.body[0] * 0.82, profile.body[1] * 0.96, profile.body[2] * 0.86);
+      anim.neck.scale.set(...profile.neck);
+      anim.leftWing.scale.set(...profile.wing);
       anim.rightWing.scale.copy(anim.leftWing.scale);
-      anim.leftWingTip.scale.set(mount.wingStyle === "membrane" ? 1.4 : 1.05, 1, mount.wingStyle === "mystic" ? 1.55 : 1.2);
+      anim.leftWingTip.scale.set(...profile.tip);
       anim.rightWingTip.scale.copy(anim.leftWingTip.scale);
+      anim.tailPivot.scale.set(profile.tailX, 1, 1.1 + (profile.tailX < 0.8 ? 0.2 : 0));
+      anim.crest.position.y = profile.crestY;
+
+      if (!anim.mountAccent) {
+        const orb = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 10), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.6, roughness: 0.22, metalness: 0.4 }));
+        orb.position.set(0, 1.16, -1.55);
+        player.model.add(orb);
+        anim.mountAccent = orb;
+      }
+      anim.mountAccent.material.emissive.setHex(profile.glow || 0x000000);
+      anim.mountAccent.material.color.setHex(profile.glow || 0x8899aa);
+      anim.mountAccent.visible = (profile.glow || 0) !== 0;
+
       if (!player.model.userData.visualTrinkets) player.model.userData.visualTrinkets = [];
       for (const t of player.model.userData.visualTrinkets) player.model.remove(t);
       player.model.userData.visualTrinkets = [];
       trinkets.forEach((trinket, idx) => {
-        const ring = new THREE.Mesh(
-          new THREE.TorusGeometry(0.34 + idx * 0.08, 0.04, 8, 14),
-          new THREE.MeshStandardMaterial({ color: trinket.rarity === "legendary" ? 0xfef08a : 0x67e8f9, emissive: 0x67e8f9, emissiveIntensity: 0.7 })
-        );
-        ring.position.set(0, 2 + idx * 0.3, 0);
+        const rare = trinket.rarity === "legendary" || trinket.rarity === "epic";
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.34 + idx * 0.08, 0.04, 8, 14), new THREE.MeshStandardMaterial({ color: rare ? 0xfef08a : 0x67e8f9, emissive: rare ? 0xf59e0b : 0x67e8f9, emissiveIntensity: rare ? 1.05 : 0.72 }));
+        ring.position.set(0, 2 + idx * 0.32, 0);
         ring.rotation.x = Math.PI / 2;
         player.model.add(ring);
         player.model.userData.visualTrinkets.push(ring);
+        if (rare) {
+          const charm = new THREE.Mesh(new THREE.OctahedronGeometry(0.12, 0), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff7c2, emissiveIntensity: 0.85 }));
+          charm.position.set(0.42 + idx * 0.08, 2.08 + idx * 0.32, 0);
+          player.model.add(charm);
+          player.model.userData.visualTrinkets.push(charm);
+        }
       });
     }
 
@@ -2853,7 +2900,7 @@
       for (let i = 0; i < count; i++) {
         const mesh = new THREE.Mesh(
           new THREE.SphereGeometry(0.12 + Math.random() * 0.18, 6, 6),
-          new THREE.MeshBasicMaterial({ color })
+          new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.96 })
         );
         mesh.position.copy(pos);
         scene.add(mesh);
@@ -2927,15 +2974,20 @@
 
     function skyProfileForZone(zone) {
       const style = zone?.terrainStyle || "forest";
+      // VISUAL POLISH: stronger biome identity via sky/fog grading presets.
       const map = {
-        forest: { cloud: 0xdaf6ce, mote: 0xd7fcbf, haze: 0xa8e59f, cloudBoost: 0.1 },
-        city: { cloud: 0xf3f7ff, mote: 0xffe7a8, haze: 0xc3d3e7, cloudBoost: -0.02 },
-        storm: { cloud: 0x8bb4e2, mote: 0xb3dbff, haze: 0x698cb6, cloudBoost: 0.2 },
-        lava: { cloud: 0xffac6c, mote: 0xff9b5f, haze: 0xca683e, cloudBoost: 0.18 },
-        hollow: { cloud: 0xa98cdf, mote: 0xd3bcff, haze: 0x6a4f9f, cloudBoost: 0.16 },
-        rift: { cloud: 0x9a7de3, mote: 0xdabfff, haze: 0x6342a9, cloudBoost: 0.2 },
-        dragon: { cloud: 0xded7c6, mote: 0xe3dbc9, haze: 0x927f65, cloudBoost: 0.08 },
-        glacier: { cloud: 0xe7f3ff, mote: 0xcff2ff, haze: 0xb3cde0, cloudBoost: 0.03 }
+        forest: { cloud: 0xcdf4ce, mote: 0xd5ffd1, haze: 0x8ed19d, cloudBoost: 0.12, top: 0x2a77cf, bottom: 0xb8ecff },
+        highland: { cloud: 0xf7efd8, mote: 0xfff6df, haze: 0xd9b481, cloudBoost: 0.05, top: 0x4f85cf, bottom: 0xf6e6be },
+        city: { cloud: 0xf3f7ff, mote: 0xffe7a8, haze: 0xc3d3e7, cloudBoost: 0, top: 0x4d7fd2, bottom: 0xdce7ff },
+        storm: { cloud: 0x7da7d8, mote: 0xbbe1ff, haze: 0x5777a8, cloudBoost: 0.24, top: 0x2f5f9d, bottom: 0xa4d2ff },
+        lava: { cloud: 0xff9c5b, mote: 0xff8d53, haze: 0xbc5832, cloudBoost: 0.2, top: 0x7b3752, bottom: 0xffb070 },
+        hollow: { cloud: 0xa185e3, mote: 0xd2b8ff, haze: 0x5a448d, cloudBoost: 0.2, top: 0x3d3768, bottom: 0x9f8ccc },
+        rift: { cloud: 0x916ce0, mote: 0xd1b3ff, haze: 0x533294, cloudBoost: 0.24, top: 0x352a63, bottom: 0x8f74d2 },
+        marsh: { cloud: 0xb9ccbe, mote: 0xd0e5d7, haze: 0x75907a, cloudBoost: 0.14, top: 0x446b77, bottom: 0xb6d4c3 },
+        dragon: { cloud: 0xd9cebf, mote: 0xe3dbc9, haze: 0x8f7356, cloudBoost: 0.1, top: 0x6a6281, bottom: 0xd7c5a7 },
+        wyrm: { cloud: 0xd8c9bb, mote: 0xf2dbc4, haze: 0x8a6c56, cloudBoost: 0.12, top: 0x625a73, bottom: 0xccb08e },
+        glacier: { cloud: 0xe7f7ff, mote: 0xd2f5ff, haze: 0x9fcde2, cloudBoost: 0.06, top: 0x3f80c4, bottom: 0xdcf7ff },
+        ruin: { cloud: 0xd8d8ea, mote: 0xe8edff, haze: 0x8488aa, cloudBoost: 0.1, top: 0x59658c, bottom: 0xced4ea }
       };
       return map[style] || map.forest;
     }
@@ -2944,6 +2996,11 @@
       const t = performance.now() * 0.001;
       const zone = player ? getZoneAt(player.pos.x, player.pos.z) : null;
       activeSkyProfile = skyProfileForZone(zone);
+      const skyMat = skyRoot?.children?.[0]?.material;
+      if (skyMat?.uniforms) {
+        skyMat.uniforms.topColor.value.lerp(new THREE.Color(activeSkyProfile.top), 1 - Math.pow(0.001, dt));
+        skyMat.uniforms.bottomColor.value.lerp(new THREE.Color(activeSkyProfile.bottom), 1 - Math.pow(0.001, dt));
+      }
 
       for (const cloud of skyCloudLayers) {
         cloud.angle += dt * cloud.drift * (cloud.type === "near" ? 0.62 : cloud.type === "mid" ? 0.35 : 0.17);
@@ -3026,14 +3083,15 @@
       setWingPose(anim, pose, 1 - Math.pow(0.002, dt * 60));
 
       const bobAmp = grounded ? 0.03 : 0.1 + styleMod.bounce;
-      anim.cape.rotation.x = 0.16 + Math.sin(actor.flapPhase * 0.78) * (grounded ? 0.05 : 0.2);
+      // VISUAL POLISH: stronger cape and tail response, smoother momentum read.
+      anim.cape.rotation.x = 0.12 + Math.sin(actor.flapPhase * 0.78) * (grounded ? 0.07 : 0.28);
       anim.head.rotation.x = Math.sin(actor.flapPhase * 0.42) * 0.03 + (diveState ? -0.1 : landingState ? 0.06 : 0);
       anim.neck.rotation.z = Math.sin(actor.flapPhase * 0.36) * 0.06 - actor.model.rotation.z * 0.06;
       anim.rider.rotation.z = THREE.MathUtils.lerp(anim.rider.rotation.z, -actor.vel.x * 0.009 + (thrustState ? -0.08 : 0), 1 - Math.pow(0.015, dt * 60));
       anim.rider.rotation.x = THREE.MathUtils.lerp(anim.rider.rotation.x, THREE.MathUtils.clamp(-actor.vel.y * 0.02, -0.22, 0.22), 1 - Math.pow(0.02, dt * 60));
       anim.rider.position.y = 0.02 + Math.sin(actor.flapPhase * 0.95) * bobAmp;
-      anim.tailPivot.rotation.y = Math.sin(actor.flapPhase * 0.45 + horizontalSpeed * 0.03) * 0.16;
-      anim.tailPivot.rotation.x = -0.12 + Math.sin(actor.flapPhase * 0.6) * 0.12 + THREE.MathUtils.clamp(actor.vel.y * 0.01, -0.09, 0.12);
+      anim.tailPivot.rotation.y = Math.sin(actor.flapPhase * 0.45 + horizontalSpeed * 0.04) * 0.22;
+      anim.tailPivot.rotation.x = -0.16 + Math.sin(actor.flapPhase * 0.6) * 0.16 + THREE.MathUtils.clamp(actor.vel.y * 0.012, -0.13, 0.16);
 
       if (actor === player) updateSpearPose(actor, dt);
     }
@@ -3803,6 +3861,7 @@
               applyPlayerDamage(Math.max(1, enemy.speciesData.damage * 0.18), "impact recoil");
               if (gameEnded || !player.alive) return;
               const mountFx = stats.mount.landingFx;
+              spawnBurst(player.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), 10, 0xffe2b8);
               if (mountFx === "fire" || mountFx === "frost" || mountFx === "poison" || mountFx === "lightning") {
                 for (const other of enemies) {
                   if (!other.alive || other.pos.distanceTo(enemy.pos) > 9) continue;
@@ -3971,11 +4030,24 @@
 
       const zone = getZoneAt(player.pos.x, player.pos.z);
       if (zone) {
+        // VISUAL POLISH: zone-aware atmosphere + safe performance-friendly lighting pass.
         const targetFog = new THREE.Color(zone.fogTint || 0x1a1d26);
         scene.fog.color.lerp(targetFog, 1 - Math.pow(0.001, dt));
+        scene.background.lerp(targetFog.clone().lerp(new THREE.Color(0x5ba8ff), 0.38), 1 - Math.pow(0.004, dt));
         const danger = zone.danger || 0;
-        scene.fog.near = THREE.MathUtils.lerp(scene.fog.near, 26 + danger * 2.4, 1 - Math.pow(0.001, dt));
-        scene.fog.far = THREE.MathUtils.lerp(scene.fog.far, 176 + danger * 10, 1 - Math.pow(0.001, dt));
+        const style = zone.terrainStyle || "forest";
+        const nearTarget = style === "city" ? 32 : style === "storm" ? 24 : style === "lava" || style === "rift" ? 20 : 26;
+        const farTarget = style === "city" ? 236 : style === "forest" ? 228 : style === "storm" ? 182 : style === "lava" || style === "rift" ? 166 : 194;
+        scene.fog.near = THREE.MathUtils.lerp(scene.fog.near, nearTarget + danger * 1.8, 1 - Math.pow(0.001, dt));
+        scene.fog.far = THREE.MathUtils.lerp(scene.fog.far, farTarget + danger * 8.5, 1 - Math.pow(0.001, dt));
+
+        if (hemiLight && dirLight && lavaLight) {
+          const warm = style === "lava" || style === "rift" ? 0.9 : style === "highland" ? 0.6 : 0.35;
+          hemiLight.intensity = THREE.MathUtils.lerp(hemiLight.intensity, 0.92 + (style === "storm" ? -0.15 : 0.12), 1 - Math.pow(0.03, dt * 60));
+          hemiLight.color.lerp(new THREE.Color(style === "glacier" ? 0xd8f2ff : style === "hollow" ? 0xe2d2ff : 0xffd6a4), 1 - Math.pow(0.01, dt * 60));
+          dirLight.intensity = THREE.MathUtils.lerp(dirLight.intensity, 0.9 + warm * 0.45, 1 - Math.pow(0.02, dt * 60));
+          lavaLight.intensity = THREE.MathUtils.lerp(lavaLight.intensity, style === "lava" || style === "rift" ? 4.8 : style === "storm" ? 2.2 : 2.8, 1 - Math.pow(0.02, dt * 60));
+        }
       }
 
       const yaw = player.yaw;
