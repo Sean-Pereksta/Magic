@@ -156,6 +156,13 @@
   </div>
 
   <div id="centerMsg"></div>
+  <div id="bossPrompt" style="position:absolute;left:50%;bottom:92px;transform:translateX(-50%);z-index:7;display:none;padding:8px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.34);background:rgba(6,12,24,.84);font-weight:700;letter-spacing:.04em;box-shadow:0 0 20px rgba(90,180,255,.25)"></div>
+  <div id="bossHealthWrap" style="position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:7;display:none;min-width:min(680px,78vw);max-width:86vw">
+    <div id="bossHealthName" style="text-align:center;font-size:13px;font-weight:800;letter-spacing:.08em;margin-bottom:6px;color:#fee2e2"></div>
+    <div style="height:16px;border:1px solid rgba(255,255,255,.3);border-radius:999px;overflow:hidden;background:rgba(0,0,0,.5)">
+      <div id="bossHealthBar" style="height:100%;width:100%;background:linear-gradient(90deg,#f97316,#ef4444,#7f1d1d)"></div>
+    </div>
+  </div>
 
   <div id="questTrack" style="position:absolute;left:12px;top:208px;z-index:6;min-width:260px;background:rgba(12,14,20,.58);border:1px solid rgba(255,255,255,.18);border-radius:10px;padding:8px 10px;backdrop-filter:blur(4px);">
     <div style="font-size:11px;opacity:.8">Tracked Quest</div>
@@ -248,7 +255,15 @@
     let questArrow = null;
     let interactionTarget = null;
     let interactionMode = null; // null | vendor | quest
+    let bossGates = [];
+    let nearbyBossGate = null;
+    let activeBossEncounter = null;
+    let bossIntroTimer = 0;
+    let bossVictoryTimer = 0;
     let upgradeFlashTimer = 0;
+    let upgradePulseNodeKey = "";
+    let upgradeHoverNodeKey = "";
+    let audioCtx = null;
     let worldCollisionVolumes = [];
     let lastTime = performance.now();
     let lastRespawnPoint = new THREE.Vector3(-8, 14, -4);
@@ -310,7 +325,9 @@
       equipped: { weapon: "iron-pike", armor: "rider-leathers", trinket1: "amulet-lift", trinket2: null },
       quests: [],
       activeQuestIndex: 0,
-      menuTab: "upgrades"
+      menuTab: "upgrades",
+      bossClears: {},
+      bossFirstRewardClaimed: {}
     };
 
     const keys = {};
@@ -328,6 +345,10 @@
     const checkpointEl = document.getElementById("checkpoint");
     const enemiesEl = document.getElementById("enemies");
     const centerMsg = document.getElementById("centerMsg");
+    const bossPromptEl = document.getElementById("bossPrompt");
+    const bossHealthWrapEl = document.getElementById("bossHealthWrap");
+    const bossHealthNameEl = document.getElementById("bossHealthName");
+    const bossHealthBarEl = document.getElementById("bossHealthBar");
     const gameOverEl = document.getElementById("gameOver");
     const questTrackTextEl = document.getElementById("questTrackText");
     const tabMenuEl = document.getElementById("tabMenu");
@@ -367,6 +388,9 @@
     const CHUNK_ENEMY_CAP = 7;
     const ZONE_ENEMY_CAP = 14;
     const NODE_ENEMY_CAP = 5;
+    const BOSS_GATE_RADIUS = 18;
+    const BOSS_TRIGGER_RADIUS = 13;
+    const BOSS_ARENA_RADIUS = 52;
     const HUB_SAFE_BUFFER = 14;
     const AMBIENT_SPAWN_CHANCE = 0.016;
     const ARCHETYPE_BY_BEHAVIOR = {
@@ -473,7 +497,19 @@
       { id: "bounce-feather-charm", name: "Bounce Feather Charm", slot: "trinket", rarity: "rare", stats: { bounceRecovery: 0.2 }, desc: "Improves rebound control on close clashes.", sell: 35 },
       { id: "deflection-rune", name: "Deflection Rune", slot: "trinket", rarity: "epic", stats: { resistance: 0.05, antiArmor: 0.12 }, desc: "Charm that softens spear-line pressure.", sell: 55 },
       { id: "lava-ward-core", name: "Lava Ward Core", slot: "trinket", rarity: "epic", stats: { resistance: 0.08 }, desc: "Volcanic warding core for lava basins.", sell: 57 },
-      { id: "treasure-sense-relic", name: "Treasure Sense Relic", slot: "trinket", rarity: "legendary", stats: { pickupRadius: 1.8, goldGain: 0.12 }, desc: "Whispers when hidden caches are nearby.", sell: 79 }
+      { id: "treasure-sense-relic", name: "Treasure Sense Relic", slot: "trinket", rarity: "legendary", stats: { pickupRadius: 1.8, goldGain: 0.12 }, desc: "Whispers when hidden caches are nearby.", sell: 79 },
+      { id: "broodmother-spur", name: "Broodmother's Spur", slot: "weapon", rarity: "rare", region: "Great Forest Canopy", stats: { spearDamage: 12, spearReach: 0.5 }, desc: "Hive-forged spur that rewards top-down thrusts.", sell: 48 },
+      { id: "thornwing-crest", name: "Thornwing Crest", slot: "trinket", rarity: "rare", region: "Mossfang Wilds", stats: { critChance: 0.05, burstSpeed: 1.1 }, desc: "Queen crest tuned for aggressive lateral jousts.", sell: 50 },
+      { id: "suncliff-banner-lance", name: "Suncliff Banner Lance", slot: "weapon", rarity: "epic", region: "Sunstone Highlands", stats: { spearDamage: 17, spearReach: 0.9 }, desc: "Duel-banner lance with long committed reach.", sell: 72 },
+      { id: "cindermaw-core", name: "Cindermaw Core", slot: "trinket", rarity: "legendary", region: "Ashen Lava Basin", stats: { resistance: 0.1, diveImpact: 4.2 }, desc: "Molten drake core radiating ember pressure.", sell: 95 },
+      { id: "duelists-ribbon", name: "Duelist's Ribbon", slot: "trinket", rarity: "epic", region: "Seraphic City-State Ring", stats: { critChance: 0.08, airControl: 0.5 }, desc: "Sky duelist ribbon for precision strike timing.", sell: 74 },
+      { id: "crownbreaker-pike", name: "Crownbreaker Pike", slot: "weapon", rarity: "legendary", region: "Ruin-Crown Expanse", stats: { spearDamage: 23, antiArmor: 0.2 }, desc: "Bastion pike built to shatter plated foes.", sell: 102 },
+      { id: "choir-sigil", name: "Choir Sigil", slot: "trinket", rarity: "legendary", region: "Tempest Shelf", stats: { chainChance: 0.2, burstSpeed: 1.2 }, desc: "Storm choir sigil that arcs between targets.", sell: 100 },
+      { id: "usurpers-medal", name: "Usurper's Medal", slot: "armor", rarity: "legendary", region: "Aurelian Skyhold", stats: { maxHealth: 50, resistance: 0.1 }, desc: "Royal medal plating with city-guard authority.", sell: 98 },
+      { id: "hollow-widow-idol", name: "Hollow Widow Idol", slot: "trinket", rarity: "legendary", region: "Hollow Night Marsh", stats: { poisonBonus: 0.28, regenSpeed: 1.1 }, desc: "Void idol trailing ghostly poison wisps.", sell: 99 },
+      { id: "frosttalon-heart", name: "Frosttalon Heart", slot: "weapon", rarity: "legendary", region: "Sky Glacier Reach", stats: { spearDamage: 21, freezeChance: 0.18 }, desc: "Crystal heart that chills on landing impacts.", sell: 101 },
+      { id: "rift-maw-spine", name: "Rift Maw Spine", slot: "weapon", rarity: "legendary", region: "Obsidian Rift", stats: { spearDamage: 25, antiArmor: 0.22 }, desc: "Void-lava spine with punishing midrange force.", sell: 110 },
+      { id: "apex-wyrm-relic", name: "Apex Wyrm Relic", slot: "trinket", rarity: "legendary", region: "Outer Wyrm Wastes", stats: { critChance: 0.12, chainChance: 0.18 }, desc: "Legendary late-game relic of the wyrm lord.", sell: 130 }
     ];
 
     const MOUNT_DB = [
@@ -525,6 +561,22 @@
       { key: "xpGain", branch: "Sorcerer", branchKey: "sorcerer", label: "Mystic Study", desc: "bonus xp", cost: 1, req: "sorcererChains", x: 840, y: 650 }
     ];
 
+
+    const BOSS_REGION_DATA = {
+      "Great Forest Canopy": { bossName: "The Broodmother of Mossfang", title: "Hive-Canopy Brood Tyrant", enemyType: "hiveQueen", move: "Swooping brood guardian", attacks: ["Lunging peck rush", "Summons small forest skimmers", "Hanging venom glob telegraphs"], dropId: "broodmother-spur", dropName: "Broodmother's Spur", gold: 280, xp: 220, speciesScale: 1.35 },
+      "Mossfang Wilds": { bossName: "Thornwing Matriarch", title: "Queen of Barbed Winds", enemyType: "hiveCaptain", move: "Aggressive lateral weaving", attacks: ["Rapid dash slashes", "Thorn burst cone", "Brief enraged charge"], dropId: "thornwing-crest", dropName: "Thornwing Crest", gold: 330, xp: 260, speciesScale: 1.34 },
+      "Sunstone Highlands": { bossName: "The Suncliff Challenger", title: "Radiant Duel Banner", enemyType: "cliffLancer", move: "Disciplined duelist", attacks: ["Committed lance charges", "Fake-out feint turn", "Shockwave landing slam"], dropId: "suncliff-banner-lance", dropName: "Suncliff Banner Lance", gold: 400, xp: 310, speciesScale: 1.36 },
+      "Ashen Lava Basin": { bossName: "Cindermaw Tyrant", title: "Magma-Bound Sovereign", enemyType: "emberDrake", move: "Heavy oppressive arcs", attacks: ["Lava breath telegraph", "Molten dive bomb", "Magma pool hazards"], dropId: "cindermaw-core", dropName: "Cindermaw Core", gold: 760, xp: 540, speciesScale: 1.5 },
+      "Seraphic City-State Ring": { bossName: "The Exiled Sky Duelist", title: "Rooftop Oathbreaker", enemyType: "rogueRooftopRider", move: "Precise joust duelist", attacks: ["Thrust chains", "Rooftop dash ambush", "Aerial fake retreat charge"], dropId: "duelists-ribbon", dropName: "Duelist's Ribbon", gold: 420, xp: 300, speciesScale: 1.34 },
+      "Ruin-Crown Expanse": { bossName: "Crownbreaker Sentinel", title: "Shattered Throne Bastion", enemyType: "ruinSentinel", move: "Heavy armored jouster", attacks: ["Shielded frontal charges", "Spear-line shockwave", "Summons ruin sentinels"], dropId: "crownbreaker-pike", dropName: "Crownbreaker Pike", gold: 540, xp: 400, speciesScale: 1.48 },
+      "Tempest Shelf": { bossName: "The Storm Choir", title: "Serpent of Ringed Tempests", enemyType: "thunderSerpent", move: "Looping high-altitude dive", attacks: ["Lightning lane telegraphs", "Storm beam sweep", "Chained storm orbs"], dropId: "choir-sigil", dropName: "Choir Sigil", gold: 620, xp: 480, speciesScale: 1.52 },
+      "Aurelian Skyhold": { bossName: "High Roost Usurper", title: "Skyhold Pretender-King", enemyType: "armoredKnight", move: "Regal ruthless jouster", attacks: ["Command dash", "Summoned city guard riders", "Spiral plunge strike"], dropId: "usurpers-medal", dropName: "Usurper's Medal", gold: 560, xp: 420, speciesScale: 1.44 },
+      "Hollow Night Marsh": { bossName: "Widow of the Hollow Reed", title: "Void-Sworn Marsh Queen", enemyType: "shadeSerpent", move: "Vanish-reappear ambusher", attacks: ["Shadow perch ambush", "Swarm release", "Void puddle zones"], dropId: "hollow-widow-idol", dropName: "Hollow Widow Idol", gold: 650, xp: 500, speciesScale: 1.46 },
+      "Sky Glacier Reach": { bossName: "Frosttalon Ascendant", title: "Crystal Storm Raptor", enemyType: "stormDiver", move: "Sharp lateral cuts and altitude resets", attacks: ["Icicle volley telegraphs", "Freezing glide slash", "Frost ring burst landing"], dropId: "frosttalon-heart", dropName: "Frosttalon Heart", gold: 670, xp: 520, speciesScale: 1.48 },
+      "Obsidian Rift": { bossName: "Rift Maw Sovereign", title: "Void-Lava Maw", enemyType: "voidDragon", move: "Brutal midrange zoning", attacks: ["Void orb volleys", "Magma fissure lines", "Rift pull heavy strike"], dropId: "rift-maw-spine", dropName: "Rift Maw Spine", gold: 880, xp: 640, speciesScale: 1.56 },
+      "Outer Wyrm Wastes": { bossName: "Apex Wyrm Lord", title: "Final Sky Rival", enemyType: "apexRivalRider", move: "Elite joust champion-dragon hybrid", attacks: ["Chained lance charges", "Wyrm echo summons", "Telegraphed sky crash"], dropId: "apex-wyrm-relic", dropName: "Apex Wyrm Relic", gold: 1200, xp: 900, speciesScale: 1.62 }
+    };
+
     init();
     animate();
 
@@ -571,6 +623,7 @@
       createPlatforms();
       createSafeHubs();
       createSpawnNodes();
+      createBossGates();
       createPlayer();
       seedPlayerProgression();
       refreshPlayerAppearance();
@@ -598,6 +651,9 @@
         }
         if (e.key === "Escape" && interactionMode) {
           closeInteractionMenu();
+          return;
+        }
+        if (e.key.toLowerCase() === "f" && tryStartBossEncounter()) {
           return;
         }
         keys[e.key.toLowerCase()] = true;
@@ -2197,7 +2253,7 @@
     function createRegionSpawners(zone) {
       const nodes = [];
       const nodeTypes = zone.spawnThemes || ["watch-platform"];
-      const baseCount = 8 + Math.round((zone.danger || 0) * 1.3);
+      const baseCount = 13 + Math.round((zone.danger || 0) * 1.9);
       const zoneScale = THREE.MathUtils.clamp((zone.width * zone.depth) / (208 * 184), 1, 7);
       const nodeCount = Math.max(6, Math.round(baseCount * Math.sqrt(zoneScale)));
       for (let i = 0; i < nodeCount; i++) {
@@ -2221,16 +2277,18 @@
           depthTier,
           depthFactor,
           activationRadius: 98 + (zone.danger || 0) * 8,
-          spawnCooldown: Math.max(3.6, cooldownBase - depthFactor * 1.4 + Math.random() * 1.8),
+          spawnCooldown: Math.max(2.8, cooldownBase - depthFactor * 1.9 + Math.random() * 1.4),
           spawnTimer: 1.5 + Math.random() * 2.8,
-          localMaxActive: Math.min(NODE_ENEMY_CAP + Math.floor((zone.danger || 0) * 0.35), 7),
-          count: depthTier === "outer" ? 1 : depthTier === "mid" ? 2 : 2,
+          localMaxActive: Math.min(NODE_ENEMY_CAP + 1 + Math.floor((zone.danger || 0) * 0.42), 9),
+          count: depthTier === "outer" ? 1 : depthTier === "mid" ? 2 : 3,
           leashRange: 112 + Math.random() * 56 + (zone.danger || 0) * 8,
-          eliteChance: Math.min(0.52, 0.02 + (zone.danger || 0) * 0.03 + depthFactor * 0.24),
+          eliteChance: Math.min(0.64, 0.02 + (zone.danger || 0) * 0.035 + depthFactor * 0.3),
           safeBlocked: !!nearHub || !!nearCitySafe,
           allowedFamilies: chooseEnemyCompositionForRegion(zone, depthFactor, spawnType),
           landmark: null,
-          active: false
+          active: false,
+          pulsePhase: Math.random() * Math.PI * 2,
+          respawn: 8.5 + Math.random() * 5.5
         };
         if (!node.safeBlocked) {
           const spaceProbe = enemies.filter((e) => e.alive && e.pos.distanceTo(pos) < 22).length;
@@ -2246,6 +2304,181 @@
       for (const zone of worldZones) {
         const regionNodes = createRegionSpawners(zone);
         spawnNodes.push(...regionNodes);
+      }
+    }
+
+    function createBossGateMesh(zone, gate) {
+      const root = new THREE.Group();
+      const ringOuter = new THREE.Mesh(
+        new THREE.TorusGeometry(8.2, 0.56, 14, 30),
+        new THREE.MeshStandardMaterial({ color: zone.accent, emissive: zone.accent, emissiveIntensity: 0.6, roughness: 0.35, metalness: 0.5, transparent: true, opacity: 0.85 })
+      );
+      ringOuter.rotation.x = Math.PI / 2;
+      ringOuter.position.y = 4.8;
+      root.add(ringOuter);
+      const ringInner = new THREE.Mesh(
+        new THREE.TorusGeometry(5.8, 0.4, 12, 24),
+        new THREE.MeshStandardMaterial({ color: zone.haze, emissive: zone.haze, emissiveIntensity: 0.75, roughness: 0.3, metalness: 0.42, transparent: true, opacity: 0.9 })
+      );
+      ringInner.rotation.x = Math.PI / 2;
+      ringInner.position.y = 4.3;
+      root.add(ringInner);
+      for (let i = 0; i < 3; i++) {
+        const pylon = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.55, 0.8, 8.2, 8),
+          new THREE.MeshStandardMaterial({ color: zone.fogTint, emissive: zone.haze, emissiveIntensity: 0.22, roughness: 0.72, metalness: 0.35 })
+        );
+        const ang = (i / 3) * Math.PI * 2;
+        pylon.position.set(Math.cos(ang) * 6.2, 3.2, Math.sin(ang) * 6.2);
+        root.add(pylon);
+      }
+      const sigil = new THREE.Mesh(
+        new THREE.CircleGeometry(4.1, 24),
+        new THREE.MeshStandardMaterial({ color: zone.haze, emissive: zone.accent, emissiveIntensity: 0.45, transparent: true, opacity: 0.55, side: THREE.DoubleSide })
+      );
+      sigil.rotation.x = -Math.PI / 2;
+      sigil.position.y = 0.12;
+      root.add(sigil);
+      root.position.copy(gate.pos);
+      scene.add(root);
+      return root;
+    }
+
+    function createBossGates() {
+      bossGates = [];
+      for (const zone of worldZones) {
+        const data = BOSS_REGION_DATA[zone.name];
+        if (!data) continue;
+        const gatePos2 = randomPointInZone(zone, 0.58);
+        const pos = new THREE.Vector3(gatePos2.x, terrainHeightAt(gatePos2.x, gatePos2.z) + 2.4, gatePos2.z);
+        const nearHub = getHubAt(pos.x, pos.z, 56) || getCitySafeZoneAt(pos.x, pos.z, 52);
+        if (nearHub) continue;
+        const gate = {
+          id: `boss-gate-${zone.name.replace(/\s+/g, "-").toLowerCase()}`,
+          zoneName: zone.name,
+          boss: { ...data },
+          pos,
+          radius: BOSS_GATE_RADIUS,
+          triggerRadius: BOSS_TRIGGER_RADIUS,
+          arenaRadius: BOSS_ARENA_RADIUS + zone.danger * 3,
+          cooldown: 0,
+          markerPulse: Math.random() * Math.PI * 2,
+          mesh: null
+        };
+        gate.mesh = createBossGateMesh(zone, gate);
+        bossGates.push(gate);
+      }
+    }
+
+    function updateBossGatePrompt(dt) {
+      if (!player || !bossGates.length || activeBossEncounter) {
+        nearbyBossGate = null;
+        bossPromptEl.style.display = "none";
+        return;
+      }
+      let nearest = null;
+      let nearestDist = 99999;
+      for (const gate of bossGates) {
+        gate.cooldown = Math.max(0, gate.cooldown - dt);
+        const d = gate.pos.distanceTo(player.pos);
+        gate.markerPulse += dt * 2.1;
+        if (gate.mesh) {
+          gate.mesh.position.y = gate.pos.y + Math.sin(gate.markerPulse) * 0.22;
+          gate.mesh.rotation.y += dt * 0.32;
+          const pulse = 1 + Math.sin(gate.markerPulse * 1.8) * 0.06;
+          gate.mesh.scale.setScalar(pulse);
+        }
+        if (d < nearestDist) {
+          nearest = gate;
+          nearestDist = d;
+        }
+      }
+      nearbyBossGate = nearest && nearestDist <= nearest.radius ? nearest : null;
+      if (!nearbyBossGate) {
+        bossPromptEl.style.display = "none";
+        return;
+      }
+      const locked = nearbyBossGate.cooldown > 0 ? ` (Recovering ${Math.ceil(nearbyBossGate.cooldown)}s)` : "";
+      bossPromptEl.textContent = `Press F to challenge ${nearbyBossGate.boss.bossName}${locked}`;
+      bossPromptEl.style.display = "block";
+      bossPromptEl.style.borderColor = nearbyBossGate.cooldown > 0 ? "rgba(251,191,36,.45)" : "rgba(248,113,113,.6)";
+    }
+
+    function tryStartBossEncounter() {
+      if (!nearbyBossGate || !player || tabMenuOpen || interactionMode) return false;
+      if (player.pos.distanceTo(nearbyBossGate.pos) > nearbyBossGate.triggerRadius) return false;
+      if (nearbyBossGate.cooldown > 0 || activeBossEncounter) {
+        showCenterMessage("Boss gate is recovering.", 0.7);
+        return true;
+      }
+      startBossEncounter(nearbyBossGate);
+      return true;
+    }
+
+    function startBossEncounter(gate) {
+      const boss = createEnemyByArchetype(gate.boss.enemyType, gate.pos.clone().add(new THREE.Vector3(0, 7.2, 0)), { zone: worldZones.find((z) => z.name === gate.zoneName), depthFactor: 1 });
+      if (!boss) return;
+      boss.isBoss = true;
+      boss.zoneName = gate.zoneName;
+      boss.homePos.copy(gate.pos);
+      boss.leashRangeOverride = gate.arenaRadius;
+      boss.maxHealth *= 2.7 + zoneTier(gate.zoneName) * 0.12;
+      boss.health = boss.maxHealth;
+      boss.speciesData.damage *= 1.45 + zoneTier(gate.zoneName) * 0.05;
+      boss.speciesData.speed *= 1.05;
+      boss.model.scale.multiplyScalar(gate.boss.speciesScale || 1.4);
+      boss.radius *= gate.boss.speciesScale || 1.4;
+      boss.phase = 0;
+      boss.phaseFlags = { p70: false, p40: false, p15: false };
+      boss.attackPlanTimer = 1.9;
+      boss.specialWindup = 0;
+      activeBossEncounter = { gateId: gate.id, zoneName: gate.zoneName, boss, active: true, messageTimer: 0 };
+      bossIntroTimer = 2.6;
+      showCenterMessage(gate.boss.bossName, 2.4, gate.boss.title);
+      gate.cooldown = 16;
+      spawnBurst(gate.pos.clone().add(new THREE.Vector3(0, 4, 0)), 26, 0xff8b8b);
+    }
+
+    function updateBossEncounter(dt) {
+      if (!activeBossEncounter?.active || !activeBossEncounter.boss?.alive) {
+        bossHealthWrapEl.style.display = "none";
+        return;
+      }
+      const boss = activeBossEncounter.boss;
+      const gate = bossGates.find((g) => g.id === activeBossEncounter.gateId);
+      const hpRatio = THREE.MathUtils.clamp(boss.health / Math.max(1, boss.maxHealth), 0, 1);
+      bossHealthWrapEl.style.display = "block";
+      bossHealthNameEl.textContent = `${gate?.boss?.bossName || "Regional Boss"} — ${gate?.boss?.move || "Joust Apex"}`;
+      bossHealthBarEl.style.width = `${(hpRatio * 100).toFixed(2)}%`;
+      if (!boss.phaseFlags.p70 && hpRatio <= 0.7) { boss.phaseFlags.p70 = true; spawnBurst(boss.pos.clone(), 14, 0xfee2e2); showCenterMessage("Phase Shift: Pressure Rising", 0.9); boss.speciesData.speed *= 1.08; }
+      if (!boss.phaseFlags.p40 && hpRatio <= 0.4) { boss.phaseFlags.p40 = true; spawnBurst(boss.pos.clone(), 20, 0xfca5a5); showCenterMessage("Phase Shift: Elite Assault", 1.0); summonBossMinions(boss, 2); }
+      if (!boss.phaseFlags.p15 && hpRatio <= 0.15) { boss.phaseFlags.p15 = true; spawnBurst(boss.pos.clone(), 24, 0xfb7185); showCenterMessage("Final Phase: Execute!", 1.1); boss.speciesData.damage *= 1.2; boss.speciesData.attackCooldown *= 0.82; }
+      if (gate && player && player.pos.distanceTo(gate.pos) > gate.arenaRadius + 22) {
+        const pull = gate.pos.clone().sub(player.pos).setY(0).normalize().multiplyScalar(28 * dt);
+        player.vel.add(pull);
+        showCenterMessage("Boss Arena Boundary!", 0.2);
+      }
+      boss.attackPlanTimer -= dt;
+      if (boss.attackPlanTimer <= 0) {
+        const telegraphPos = boss.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 14, -boss.radius + 0.2, (Math.random() - 0.5) * 14));
+        spawnBurst(telegraphPos, 8, gate ? worldZones.find((z) => z.name === gate.zoneName)?.accent || 0xff8888 : 0xff8888);
+        if (Math.random() < 0.35) summonBossMinions(boss, hpRatio < 0.35 ? 3 : 1);
+        boss.attackPlanTimer = 2.6 - (1 - hpRatio) * 1.1;
+      }
+    }
+
+    function summonBossMinions(boss, count = 1) {
+      const zone = worldZones.find((z) => z.name === boss.zoneName);
+      if (!zone) return;
+      const spawnList = chooseEnemyCompositionForRegion(zone, 0.92, "boss-adds");
+      for (let i = 0; i < count; i++) {
+        const type = spawnList[Math.floor(Math.random() * spawnList.length)] || zone.enemyFamilies[0];
+        const pos = boss.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 16, Math.random() * 4, (Math.random() - 0.5) * 16));
+        const add = createEnemyByArchetype(type, pos, { zone, depthFactor: 0.95 });
+        if (!add) continue;
+        add.zoneName = zone.name;
+        add.spawnNodeId = `boss-add-${zone.name}`;
+        add.homePos.copy(boss.homePos);
       }
     }
 
@@ -2286,12 +2519,21 @@
       if (!zone) return 0;
       const dist = node.pos.distanceTo(player.pos);
       node.active = dist <= node.activationRadius;
+      if (node.landmark?.children?.[1]) {
+        const ring = node.landmark.children[1];
+        node.pulsePhase += dt * (node.active ? 3.2 : 1.4);
+        const pulse = node.active ? 1 + Math.sin(node.pulsePhase) * 0.16 : 0.92 + Math.sin(node.pulsePhase * 0.6) * 0.05;
+        ring.scale.set(pulse, pulse, pulse);
+        ring.material.emissiveIntensity = node.active ? 0.75 : 0.38;
+        ring.material.opacity = node.active ? 0.88 : 0.62;
+      }
       if (!node.active) {
         node.spawnTimer = Math.min(node.spawnTimer + dt * 0.5, node.spawnCooldown);
         return 0;
       }
       node.spawnTimer -= dt;
       if (node.spawnTimer > 0) return 0;
+      spawnBurst(node.pos.clone().add(new THREE.Vector3(0, 2, 0)), 7, zone.accent);
       const spawned = spawnEnemyGroupFromNode(node);
       node.spawnTimer = node.spawnCooldown + (spawned === 0 ? 1.2 + Math.random() * 1.6 : 0.4 + Math.random() * 1.1);
       return spawned;
@@ -2649,6 +2891,10 @@
       enemy.alive = false;
       if (enemy.telegraphMesh) scene.remove(enemy.telegraphMesh);
       scene.remove(enemy.model);
+      if (enemy.isBoss) {
+        handleBossVictory(enemy);
+        return;
+      }
       const reward = enemy.speciesData?.reward || { score: 100, xp: 14, gold: 4 };
       score += (enemy.elite ? 1.4 : 1) * reward.score;
       gold += Math.round((enemy.elite ? 1.5 : 1) * reward.gold * (1 + progress.upgrades.goldGain * 0.08));
@@ -2666,6 +2912,39 @@
         const node = spawnNodes.find((n) => n.id === enemy.spawnNodeId);
         if (node) nodeRespawns.push({ nodeId: node.id, timer: node.respawn * (enemy.elite ? 1.65 : 1) });
       }
+      updateUI();
+    }
+
+    function handleBossVictory(enemy) {
+      const gate = bossGates.find((g) => g.id === activeBossEncounter?.gateId) || bossGates.find((g) => g.zoneName === enemy.zoneName);
+      const bossData = gate?.boss || BOSS_REGION_DATA[enemy.zoneName];
+      if (!bossData) return;
+      const firstClear = !progress.bossClears[enemy.zoneName];
+      progress.bossClears[enemy.zoneName] = true;
+      score += 1200 + zoneTier(enemy.zoneName) * 200;
+      const goldReward = firstClear ? bossData.gold : Math.round(bossData.gold * 0.45);
+      const xpReward = firstClear ? bossData.xp : Math.round(bossData.xp * 0.55);
+      gold += goldReward;
+      grantXP(xpReward);
+      if (firstClear || (Math.random() < 0.22 && !progress.bossFirstRewardClaimed[enemy.zoneName])) {
+        const item = getItemById(bossData.dropId);
+        if (item) {
+          progress.inventory.push(item);
+          progress.bossFirstRewardClaimed[enemy.zoneName] = true;
+          showCenterMessage(`Victory! ${bossData.dropName} claimed`, 1.8, `+${goldReward} Gold • +${xpReward} XP`);
+        }
+      } else {
+        showCenterMessage(`Boss Defeated: ${bossData.bossName}`, 1.5, `+${goldReward} Gold • +${xpReward} XP`);
+      }
+      spawnBurst(enemy.pos.clone(), 45, 0xfde68a);
+      for (let i = 0; i < 15; i++) {
+        const vel = new THREE.Vector3((Math.random() - 0.5) * 8, 3 + Math.random() * 2.4, (Math.random() - 0.5) * 8);
+        spawnPickup(enemy.pos.clone().add(new THREE.Vector3(0, 1.5, 0)), "gold", 10 + Math.round(zoneTier(enemy.zoneName) * 1.5), { rarity: "epic", vel });
+      }
+      if (gate) gate.cooldown = firstClear ? 180 : 95;
+      activeBossEncounter = null;
+      bossVictoryTimer = 2.4;
+      bossHealthWrapEl.style.display = "none";
       updateUI();
     }
 
@@ -2856,8 +3135,13 @@
         equipped: { weapon: "iron-pike", armor: "rider-leathers", trinket1: "amulet-lift", trinket2: null },
         quests: [],
         activeQuestIndex: 0,
-        menuTab: "upgrades"
+        menuTab: "upgrades",
+        bossClears: {},
+        bossFirstRewardClaimed: {}
       };
+      activeBossEncounter = null;
+      nearbyBossGate = null;
+      for (const gate of bossGates) gate.cooldown = 0;
       respawnTimer = 0;
       player.alive = true;
       player.invuln = 2.2;
@@ -4254,36 +4538,68 @@
       return progress.classChoice !== node.branchKey;
     }
 
-    function canPurchaseUpgradeNode(node) {
-      if (!inUpgradeZone()) return false;
-      if ((progress.upgrades[node.key] || 0) > 0) return false;
-      if (progress.points < node.cost) return false;
-      if (!isUpgradeNodeUnlocked(node)) return false;
-      if (isUpgradeNodeBlockedByBranch(node)) return false;
-      return true;
+    function canPurchaseUpgradeNode(node, opts = {}) {
+      const state = upgradeNodeState(node, opts);
+      return state.canClick;
     }
 
-    function purchaseUpgradeNode(nodeKey) {
+    function upgradeNodeState(node, opts = {}) {
+      const needsUpgradeZone = !!opts.requireUpgradeZone;
+      const purchased = (progress.upgrades[node.key] || 0) > 0;
+      if (purchased) return { key: "purchased", label: "Purchased", canClick: false, reason: "already" };
+      if (needsUpgradeZone && !inUpgradeZone()) return { key: "zoneLocked", label: "Visit checkpoint altar", canClick: false, reason: "zone" };
+      if (!isUpgradeNodeUnlocked(node)) return { key: "lockedPrereq", label: "Need prerequisite", canClick: false, reason: "prereq" };
+      if (isUpgradeNodeBlockedByBranch(node)) return { key: "lockedBranch", label: "Locked by class", canClick: false, reason: "class" };
+      if (progress.points < node.cost) return { key: "unaffordable", label: "Need more points", canClick: false, reason: "points" };
+      return { key: "available", label: "Available", canClick: true, reason: "ok" };
+    }
+
+    function playUpgradeSuccessCue() {
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === "suspended") audioCtx.resume();
+        const now = audioCtx.currentTime;
+        const o1 = audioCtx.createOscillator();
+        const o2 = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o1.type = "triangle";
+        o2.type = "sine";
+        o1.frequency.setValueAtTime(520, now);
+        o1.frequency.exponentialRampToValueAtTime(860, now + 0.13);
+        o2.frequency.setValueAtTime(660, now);
+        o2.frequency.exponentialRampToValueAtTime(980, now + 0.11);
+        g.gain.setValueAtTime(0.0001, now);
+        g.gain.exponentialRampToValueAtTime(0.08, now + 0.03);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + 0.2);
+        o1.connect(g); o2.connect(g); g.connect(audioCtx.destination);
+        o1.start(now); o2.start(now + 0.01);
+        o1.stop(now + 0.21); o2.stop(now + 0.21);
+      } catch (err) {}
+    }
+
+    function purchaseUpgradeNode(nodeKey, opts = {}) {
       const node = UPGRADE_TREE.find((n) => n.key === nodeKey);
-      if (!node || !canPurchaseUpgradeNode(node)) return false;
+      if (!node) return false;
+      const state = upgradeNodeState(node, opts);
+      if (!state.canClick) {
+        const reasons = { already: "Already purchased.", prereq: "Need prerequisite node.", class: "Blocked by chosen class.", points: "Not enough upgrade points.", zone: "Must be at an upgrade checkpoint." };
+        showCenterMessage(reasons[state.reason] || "Cannot purchase this node.", 0.62);
+        return false;
+      }
       progress.points -= node.cost;
       progress.upgrades[node.key] = 1;
       if (node.key === "healthBoost") { player.maxHealth += 10; player.health = Math.min(player.maxHealth, player.health + 10); }
       if (node.key.startsWith("class_")) progress.classChoice = node.branchKey;
-      if (node.key === "summonCount") spawnAlliesFromUpgrades();
-      upgradeFlashTimer = 0.36;
-      showCenterMessage(`Upgrade acquired: ${node.label}`, 0.55);
+      if (node.key === "summonCount" || node.key === "summonDurability" || node.key === "summonDamage") spawnAlliesFromUpgrades();
+      playerStats();
+      refreshPlayerAppearance();
+      upgradeFlashTimer = 0.46;
+      upgradePulseNodeKey = node.key;
+      playUpgradeSuccessCue();
+      spawnBurst(player.pos.clone().add(new THREE.Vector3(0, 2.2, 0)), 10, 0xfbbf24);
+      showCenterMessage(`Upgrade acquired: ${node.label}`, 0.7);
       refreshUpgradeTreeUI();
       return true;
-    }
-
-    function upgradeNodeState(node) {
-      const purchased = (progress.upgrades[node.key] || 0) > 0;
-      if (purchased) return { key: "purchased", label: "Purchased", canClick: false };
-      if (!isUpgradeNodeUnlocked(node)) return { key: "lockedPrereq", label: `Locked: need ${node.req}`, canClick: false };
-      if (isUpgradeNodeBlockedByBranch(node)) return { key: "lockedBranch", label: `Locked by ${CLASS_BRANCHES[progress.classChoice]?.title || "class"} path`, canClick: false };
-      if (progress.points < node.cost) return { key: "unaffordable", label: `Need ${node.cost} points`, canClick: false };
-      return { key: "available", label: `Cost ${node.cost} points`, canClick: true };
     }
 
     function refreshUpgradeTreeUI() {
@@ -4484,9 +4800,13 @@
     }
 
     function renderUpgradeTreeMenu() {
-      menuMainPanelEl.innerHTML = `<div style="font-size:12px;margin-bottom:8px">Class: <b style="color:${progress.classChoice ? CLASS_BRANCHES[progress.classChoice].color : "#e5e7eb"}">${progress.classChoice ? CLASS_BRANCHES[progress.classChoice].title : "Uncommitted"}</b> • Scroll to explore the full tree.</div>`;
+      menuMainPanelEl.innerHTML = `<div style="font-size:12px;margin-bottom:8px">Class: <b style="color:${progress.classChoice ? CLASS_BRANCHES[progress.classChoice].color : "#e5e7eb"}">${progress.classChoice ? CLASS_BRANCHES[progress.classChoice].title : "Uncommitted"}</b> • Upgrades can be purchased from this tab anywhere.</div>`;
       const canvas = document.createElement("div");
       canvas.style.cssText = "position:relative;min-width:1040px;min-height:860px;background:linear-gradient(180deg,rgba(15,23,42,.3),rgba(2,6,23,.3));border-radius:10px;border:1px solid rgba(255,255,255,.08);";
+      const tooltip = document.createElement("div");
+      tooltip.style.cssText = "position:absolute;right:12px;top:12px;width:250px;padding:9px;border:1px solid rgba(255,255,255,.2);border-radius:10px;background:rgba(4,10,22,.72);font-size:11px;line-height:1.4;z-index:3;";
+      tooltip.innerHTML = "<b>Node Details</b><div style='opacity:.82;margin-top:6px'>Hover a node for description and requirements.</div>";
+      canvas.appendChild(tooltip);
       for (const node of UPGRADE_TREE) {
         if (node.req) {
           const from = UPGRADE_TREE.find((n) => n.key === node.req);
@@ -4502,19 +4822,30 @@
       }
       for (const node of UPGRADE_TREE) {
         const state = upgradeNodeState(node);
+        const palette = {
+          purchased: ["rgba(251,191,36,.88)", "rgba(245,158,11,.28)"],
+          available: ["rgba(134,239,172,.95)", "rgba(16,185,129,.32)"],
+          unaffordable: ["rgba(244,114,182,.58)", "rgba(76,29,58,.34)"],
+          lockedBranch: ["rgba(148,163,184,.58)", "rgba(55,65,81,.38)"],
+          lockedPrereq: ["rgba(100,116,139,.45)", "rgba(30,41,59,.44)"]
+        }[state.key] || ["rgba(148,163,184,.58)", "rgba(55,65,81,.38)"];
         const btn = document.createElement("button");
         btn.title = node.desc;
-        const palette = {
-          purchased: ["rgba(251,191,36,.8)", "rgba(245,158,11,.24)"],
-          available: ["rgba(134,239,172,.75)", "rgba(15,118,110,.26)"],
-          unaffordable: ["rgba(244,114,182,.52)", "rgba(76,29,58,.28)"],
-          lockedBranch: ["rgba(148,163,184,.55)", "rgba(55,65,81,.36)"],
-          lockedPrereq: ["rgba(100,116,139,.45)", "rgba(30,41,59,.42)"]
-        }[state.key];
-        btn.style.cssText = `position:absolute;left:${node.x}px;top:${node.y}px;width:150px;min-height:78px;text-align:left;border:1px solid ${palette[0]};background:${palette[1]};color:white;border-radius:10px;padding:8px 9px;cursor:${state.canClick ? "pointer" : "not-allowed"};transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;box-shadow:${upgradeFlashTimer > 0 && state.key === "purchased" ? "0 0 20px rgba(251,191,36,.45)" : "none"};`;
-        btn.innerHTML = `<div style="font-size:12px;font-weight:700">${node.label}</div><div style="font-size:10px;opacity:.8">${node.branch}</div><div style="font-size:10px;margin-top:4px">${state.label}</div>`;
-        btn.onmouseenter = () => { if (!state.canClick) return; btn.style.transform = "translateY(-1px) scale(1.02)"; btn.style.boxShadow = "0 0 0 1px rgba(186,230,253,.45), 0 10px 20px rgba(15,23,42,.32)"; };
-        btn.onmouseleave = () => { btn.style.transform = "none"; btn.style.boxShadow = upgradeFlashTimer > 0 && state.key === "purchased" ? "0 0 20px rgba(251,191,36,.45)" : "none"; };
+        const pulse = upgradePulseNodeKey === node.key && upgradeFlashTimer > 0 ? "0 0 20px rgba(251,191,36,.55), 0 0 0 1px rgba(251,191,36,.75)" : "none";
+        btn.style.cssText = `position:absolute;left:${node.x}px;top:${node.y}px;width:150px;min-height:84px;text-align:left;border:1px solid ${palette[0]};background:${palette[1]};color:white;border-radius:10px;padding:8px 9px;cursor:${state.canClick ? "pointer" : "not-allowed"};transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;box-shadow:${pulse};`;
+        btn.innerHTML = `<div style="font-size:12px;font-weight:700">${node.label}</div><div style="font-size:10px;opacity:.8">${node.branch} • Cost ${node.cost}</div><div style="font-size:10px;margin-top:4px;color:${state.key === "available" ? "#bbf7d0" : "#e5e7eb"}">${state.label}</div>`;
+        btn.onmouseenter = () => {
+          upgradeHoverNodeKey = node.key;
+          if (state.canClick) {
+            btn.style.transform = "translateY(-1px) scale(1.02)";
+            btn.style.boxShadow = "0 0 0 1px rgba(186,230,253,.45), 0 10px 20px rgba(15,23,42,.32)";
+          }
+          tooltip.innerHTML = `<b>${node.label}</b><div style='opacity:.78'>${node.branch} branch</div><div style='margin-top:5px;color:#cbd5e1'>${node.desc}</div><div style='margin-top:6px'>Cost: <b>${node.cost}</b> points</div><div>State: <b>${state.label}</b></div>${node.req ? `<div>Prerequisite: <b>${UPGRADE_TREE.find((n)=>n.key===node.req)?.label || node.req}</b></div>` : ""}${node.branchKey ? `<div>Class Rule: <b>${CLASS_BRANCHES[node.branchKey]?.title || node.branchKey}</b></div>` : ""}`;
+        };
+        btn.onmouseleave = () => {
+          btn.style.transform = "none";
+          btn.style.boxShadow = pulse;
+        };
         btn.onclick = () => {
           purchaseUpgradeNode(node.key);
         };
@@ -4602,7 +4933,8 @@
     }
 
     function renderQuestSidePanel() {
-      menuSidePanelEl.innerHTML = `<div style="font-weight:800;color:#93c5fd;margin-bottom:8px">Quests</div>`;
+      const bossCleared = Object.keys(progress.bossClears || {}).length;
+      menuSidePanelEl.innerHTML = `<div style="font-weight:800;color:#93c5fd;margin-bottom:8px">Quests</div><div style="font-size:11px;opacity:.82;margin-bottom:8px;color:#fda4af">Regional Bosses Cleared: ${bossCleared}/${Object.keys(BOSS_REGION_DATA).length}</div>`;
       progress.quests.forEach((q, idx) => {
         const card = document.createElement("div");
         card.style.cssText = `padding:7px;border-radius:8px;margin-bottom:6px;border:1px solid rgba(255,255,255,.15);background:${idx === progress.activeQuestIndex ? "rgba(59,130,246,.24)" : "rgba(255,255,255,.04)"}`;
@@ -4661,7 +4993,7 @@
             }
             return;
           }
-          if (progress.points < (choice.cost || 1)) return;
+          if (progress.points < (choice.cost || 1)) return showCenterMessage("Need more points", 0.6);
           choice.apply();
           progress.points -= (choice.cost || 1);
           player.health = Math.min(player.maxHealth, player.health);
@@ -4720,10 +5052,12 @@
 
         updatePlayer(simDt);
         updateRegionDiscovery(simDt);
+        updateBossGatePrompt(simDt);
         updateWorldChunks();
         spawnAlliesFromUpgrades();
         updateAllies(simDt);
         for (const enemy of enemies) updateEnemyAI(enemy, simDt);
+        updateBossEncounter(simDt);
         updateEnemyProjectiles(simDt);
         checkCombat();
         enemySpawnTimer -= simDt;
