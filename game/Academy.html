@@ -120,6 +120,39 @@
       color: #111;
       font-weight: bold;
     }
+
+    #abilityBar {
+      position: absolute;
+      left: 50%;
+      bottom: 14px;
+      transform: translateX(-50%);
+      z-index: 9;
+      display: none;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .ability-slot {
+      width: 108px;
+      height: 64px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,.35);
+      background: rgba(8,12,24,.82);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
+      position: relative;
+      padding: 5px 7px;
+      overflow: hidden;
+      opacity: .35;
+    }
+    .ability-slot.unlocked { opacity: .98; }
+    .ability-slot .hotkey { position:absolute;top:4px;right:6px;font-size:11px;opacity:.82;font-weight:700; }
+    .ability-slot .sigil { font-size:18px;font-weight:700;line-height:1;margin-top:2px; }
+    .ability-slot .name { font-size:11px; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .ability-slot .cooldown-fill { position:absolute;left:0;right:0;bottom:0;height:0%;background:rgba(2,6,23,.7);transition:height .08s linear; }
+    .ability-slot .cooldown-text { position:absolute;left:0;right:0;top:22px;text-align:center;font-size:14px;font-weight:800;color:#e2e8f0;text-shadow:0 0 9px rgba(0,0,0,.7);display:none; }
+    .ability-slot .charges { position:absolute;left:6px;bottom:4px;font-size:11px;color:#fef9c3;display:none; }
+    .ability-slot.ready-pulse { animation: abPulse .45s ease; }
+    @keyframes abPulse { 0%{box-shadow:0 0 0 rgba(255,255,255,0)} 50%{box-shadow:0 0 12px rgba(255,255,255,.75)} 100%{box-shadow:0 0 0 rgba(255,255,255,0)} }
   </style>
 </head>
 <body>
@@ -145,7 +178,8 @@
     <b>Controls</b><br/>
     Space = flap upward<br/>
     W = spear thrust<br/>
-    S = cast spell (Sorcerer) / dive (others)<br/>
+    1-5 = class abilities (unlocked skills)<br/>
+    S = fallback class action / dive<br/>
     A / D = turn left / right<br/>
     Q / E = lateral mount dash (advanced mounts)<br/>
     F = optional spell cast (Sorcerer path)<br/>
@@ -196,6 +230,8 @@
     <div id="upgradeTabs" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px"></div>
     <div id="upgradeChoices" style="display:grid;gap:6px"></div>
   </div>
+
+  <div id="abilityBar"></div>
 
   <div id="gameOver">
     <h2>Game Over</h2>
@@ -316,7 +352,55 @@
         rangerMastery: 0,
         sorcererPower: 0,
         sorcererCooldown: 0,
-        sorcererChains: 0
+        sorcererChains: 0,
+        summonLeashMastery: 0,
+        summonLifetime: 0,
+        summonVariety: 0,
+        summonCommand: 0,
+        summonInstinct: 0,
+        summonWard: 0,
+        summonSpecialization: 0,
+        broodGate: 0,
+        familiarCore: 0,
+        serpentBinding: 0,
+        beetleLegion: 0,
+        arcBolt: 0,
+        chainArc: 0,
+        flameLanceSpell: 0,
+        frostRing: 0,
+        voidOrb: 0,
+        meteorSigil: 0,
+        spellRadius: 0,
+        spellCrit: 0,
+        spellEcho: 0,
+        spellVelocity: 0,
+        spellBurn: 0,
+        spellFreeze: 0,
+        spellVoidWeakness: 0,
+        piercingShot: 0,
+        splitShot: 0,
+        hunterMark: 0,
+        volleyRain: 0,
+        grappleShot: 0,
+        falconDrive: 0,
+        projectileVelocity: 0,
+        projectileCount: 0,
+        markBonus: 0,
+        weakspotCrit: 0,
+        rangerReload: 0,
+        rangerCharge: 0,
+        cleaveSwing: 0,
+        shieldRam: 0,
+        skybreakerSlam: 0,
+        tripleThrust: 0,
+        warCry: 0,
+        executionDive: 0,
+        armorMomentum: 0,
+        meleeRange: 0,
+        slamRadius: 0,
+        comboSpeed: 0,
+        guardFrames: 0,
+        antiEliteMelee: 0
       },
       livesPurchased: 0,
       inventory: [],
@@ -331,6 +415,17 @@
     };
 
     const keys = {};
+    let playerAbilities = {};
+    let playerAbilitySlots = [null, null, null, null, null];
+    let playerCooldowns = {};
+    let playerSummonSlots = {};
+    let playerActiveSummonGroups = {};
+    let playerGlobalCastLock = 0;
+    let playerMeleeComboState = { chain: 0, timer: 0 };
+    let playerLastAbilityUse = 0;
+    let playerMarkedEnemy = null;
+    let lastAbilityCooldownStamp = {};
+
     const scoreEl = document.getElementById("score");
     const livesEl = document.getElementById("lives");
     const healthEl = document.getElementById("health");
@@ -368,6 +463,7 @@
     const upgradeChoicesEl = document.getElementById("upgradeChoices");
     const upgradeHintEl = document.getElementById("upgradeHint");
     const upgradeTabsEl = document.getElementById("upgradeTabs");
+    const abilityBarEl = document.getElementById("abilityBar");
 
     const VENDOR_LABEL = {
       weapon: "Weapon Vendor",
@@ -594,6 +690,54 @@ const ENEMY_SPECIES = {
       sorcerer: { title: "Sorcerer", color: "#c4b5fd" }
     };
 
+
+    const CLASS_THEMES = {
+      summoner: "#2dd4bf",
+      warrior: "#ef4444",
+      ranger: "#facc15",
+      sorcerer: "#a78bfa",
+      neutral: "#94a3b8"
+    };
+
+    const ABILITY_DEFS = {
+      vineDrakeCall: { name: "Vine Drake Call", icon: "✦", cooldown: 18, class: "summoner", desc: "Call 2 ranged drakes.", summonType: "vineDrakeCompanion", cast: () => castSummonWave("vineDrakeCompanion", 2, 22) },
+      thornBeetleSwarm: { name: "Thorn Beetle Swarm", icon: "❖", cooldown: 24, class: "summoner", desc: "3 bodyguard beetles.", summonType: "thornBeetleCompanion", cast: () => castSummonWave("thornBeetleCompanion", 3, 18) },
+      serpentWisp: { name: "Serpent Wisp", icon: "☄", cooldown: 20, class: "summoner", desc: "Control serpent.", summonType: "serpentWispCompanion", cast: () => castSummonWave("serpentWispCompanion", 1, 20) },
+      skyTotemFamiliar: { name: "Sky Totem Familiar", icon: "✧", cooldown: 30, class: "summoner", desc: "Support familiar.", summonType: "haloMoteCompanion", cast: () => castSummonWave("haloMoteCompanion", 1, 16) },
+      broodGate: { name: "Brood Gate", icon: "◎", cooldown: 55, class: "summoner", desc: "Mixed summon burst.", cast: () => { castSummonWave("broodlingCompanion", 3, 14); castSummonWave("emberHoundCompanion", 2, 12); } },
+      cleaveSwing: { name: "Cleave Swing", icon: "⟂", cooldown: 4, class: "warrior", desc: "Short arc slash.", cast: () => castMeleeArc(8.5, 42) },
+      shieldRam: { name: "Shield Ram", icon: "⬡", cooldown: 9, class: "warrior", desc: "Armored surge.", cast: () => castShieldRam() },
+      skybreakerSlam: { name: "Skybreaker Slam", icon: "⬇", cooldown: 14, class: "warrior", desc: "Dive slam.", cast: () => castSkybreaker() },
+      tripleThrust: { name: "Triple Thrust", icon: "⋮", cooldown: 12, class: "warrior", desc: "Three thrust pulses.", cast: () => { playerMeleeComboState.chain = 3; playerMeleeComboState.timer = 1.1; } },
+      warCry: { name: "War Cry", icon: "⚑", cooldown: 20, class: "warrior", desc: "Power + resist buff.", cast: () => { player.warCryTimer = 8; spawnBurst(player.pos.clone(), 10, 0xf87171); } },
+      piercingShot: { name: "Piercing Shot", icon: "➶", cooldown: 4, class: "ranger", desc: "Line projectile.", cast: () => castLineShot(1, 54, 26, 0x93c5fd) },
+      splitShot: { name: "Split Shot", icon: "⫶", cooldown: 7, class: "ranger", desc: "Triple spread.", cast: () => castLineShot(3, 46, 16, 0xfde68a) },
+      hunterMark: { name: "Hunter Mark", icon: "◉", cooldown: 12, class: "ranger", desc: "Mark high value target.", cast: () => castHunterMark() },
+      volleyRain: { name: "Volley Rain", icon: "☂", cooldown: 16, class: "ranger", desc: "Rain ahead.", cast: () => castVolleyRain() },
+      grappleShot: { name: "Grapple Dash Shot", icon: "⇢", cooldown: 14, class: "ranger", desc: "Dash + shot.", cast: () => castGrappleShot() },
+      arcBolt: { name: "Arc Bolt", icon: "✹", cooldown: 3, class: "sorcerer", desc: "Fast bolt.", cast: () => castArcBolt() },
+      chainArc: { name: "Chain Arc", icon: "ϟ", cooldown: 8, class: "sorcerer", desc: "Jumps targets.", cast: () => castChainArc() },
+      flameLanceSpell: { name: "Flame Lance", icon: "✸", cooldown: 10, class: "sorcerer", desc: "Forward flame lane.", cast: () => castFlameLance() },
+      frostRing: { name: "Frost Ring", icon: "❄", cooldown: 14, class: "sorcerer", desc: "Defensive freeze ring.", cast: () => castFrostRing() },
+      voidOrb: { name: "Void Orb", icon: "⬤", cooldown: 18, class: "sorcerer", desc: "Weakening zone orb.", cast: () => castVoidOrb() }
+    };
+
+    const UPGRADE_ABILITY_UNLOCKS = {
+      summonCount: "vineDrakeCall", beetleLegion: "thornBeetleSwarm", serpentBinding: "serpentWisp", familiarCore: "skyTotemFamiliar", broodGate: "broodGate",
+      warriorImpact: "cleaveSwing", shieldRam: "shieldRam", skybreakerSlam: "skybreakerSlam", warriorCombo: "tripleThrust", warCry: "warCry",
+      rangerProjectile: "piercingShot", splitShot: "splitShot", hunterMark: "hunterMark", volleyRain: "volleyRain", grappleShot: "grappleShot",
+      sorcererPower: "arcBolt", chainArc: "chainArc", flameLanceSpell: "flameLanceSpell", frostRing: "frostRing", voidOrb: "voidOrb"
+    };
+
+    const SUMMON_TYPE_DEFS = {
+      vineDrakeCompanion: { baseType: "vineDrake", role: "ranged", preferredRange: 13, speed: 15, life: 22, leashSoft: 18, leashHard: 30, combatRadius: 34, vfx: 0x86efac },
+      thornBeetleCompanion: { baseType: "hornetGuard", role: "bodyguard", preferredRange: 4, speed: 12, life: 18, leashSoft: 16, leashHard: 28, combatRadius: 30, vfx: 0xa3e635 },
+      serpentWispCompanion: { baseType: "shadeSerpent", role: "control", preferredRange: 9, speed: 16, life: 20, leashSoft: 18, leashHard: 30, combatRadius: 32, vfx: 0x67e8f9 },
+      haloMoteCompanion: { baseType: "stormSpirit", role: "support", preferredRange: 10, speed: 14, life: 16, leashSoft: 15, leashHard: 27, combatRadius: 28, vfx: 0x93c5fd },
+      broodlingCompanion: { baseType: "forestSkimmer", role: "swarm", preferredRange: 7, speed: 17, life: 14, leashSoft: 18, leashHard: 30, combatRadius: 33, vfx: 0xfde68a },
+      emberHoundCompanion: { baseType: "ashWasp", role: "dive", preferredRange: 6, speed: 18, life: 12, leashSoft: 20, leashHard: 32, combatRadius: 34, vfx: 0xfb923c }
+    };
+
     const UPGRADE_TREE = [
       { key: "spearDamage", branch: "Core", label: "Spear Damage", desc: "+ thrust damage", cost: 1, x: 40, y: 40 },
       { key: "flapPower", branch: "Core", label: "Flap Strength", desc: "more lift", cost: 1, x: 250, y: 40 },
@@ -608,19 +752,37 @@ const ENEMY_SPECIES = {
       { key: "summonRespawn", branch: "Summoner", branchKey: "summoner", label: "Quick Ritual", desc: "faster respawn", cost: 1, req: "summonDurability", x: 40, y: 540 },
       { key: "summonAggression", branch: "Summoner", branchKey: "summoner", label: "Aggressive Orders", desc: "higher pursuit", cost: 1, req: "summonDamage", x: 190, y: 540 },
       { key: "summonEffects", branch: "Summoner", branchKey: "summoner", label: "Arcane Venom", desc: "minion status chance", cost: 2, req: "summonAggression", x: 110, y: 650 },
+      { key: "beetleLegion", branch: "Summoner", branchKey: "summoner", label: "Thorn Beetle Swarm", desc: "Unlock active: bodyguard swarm", cost: 1, req: "summonDurability", x: 260, y: 320 },
+      { key: "serpentBinding", branch: "Summoner", branchKey: "summoner", label: "Serpent Wisp", desc: "Unlock active control summon", cost: 1, req: "summonDamage", x: 260, y: 430 },
+      { key: "familiarCore", branch: "Summoner", branchKey: "summoner", label: "Sky Totem Familiar", desc: "Unlock support familiar", cost: 2, req: "serpentBinding", x: 260, y: 540 },
+      { key: "broodGate", branch: "Summoner", branchKey: "summoner", label: "Brood Gate", desc: "Capstone mixed summon portal", cost: 2, req: "familiarCore", x: 260, y: 650 },
+      { key: "summonLeashMastery", branch: "Summoner", branchKey: "summoner", label: "Leash Mastery", desc: "tighter regroup", cost: 1, req: "summonCount", x: 20, y: 760 },
+      { key: "summonLifetime", branch: "Summoner", branchKey: "summoner", label: "Summon Lifetime", desc: "extend temporary life", cost: 1, req: "summonDurability", x: 120, y: 760 },
+      { key: "summonCommand", branch: "Summoner", branchKey: "summoner", label: "Summon Command", desc: "higher summon cap", cost: 2, req: "summonLeashMastery", x: 220, y: 760 },
       { key: "warriorImpact", branch: "Warrior", branchKey: "warrior", label: "Crush Landing", desc: "massive dive impact", cost: 1, req: "class_warrior", x: 290, y: 320 },
       { key: "warriorArmor", branch: "Warrior", branchKey: "warrior", label: "Armored Charge", desc: "resist clashes", cost: 1, req: "warriorImpact", x: 290, y: 430 },
       { key: "warriorCombo", branch: "Warrior", branchKey: "warrior", label: "Combo Thrust", desc: "followup damage", cost: 2, req: "warriorArmor", x: 290, y: 540 },
+      { key: "shieldRam", branch: "Warrior", branchKey: "warrior", label: "Shield Ram", desc: "Unlock armored surge", cost: 1, req: "warriorArmor", x: 430, y: 540 },
+      { key: "skybreakerSlam", branch: "Warrior", branchKey: "warrior", label: "Skybreaker Slam", desc: "Unlock dive slam", cost: 1, req: "warriorImpact", x: 430, y: 320 },
+      { key: "warCry", branch: "Warrior", branchKey: "warrior", label: "War Cry", desc: "Unlock offensive buff", cost: 2, req: "warriorCombo", x: 430, y: 650 },
       { key: "antiArmor", branch: "Warrior", branchKey: "warrior", label: "Anti-Armor", desc: "vs elites", cost: 1, req: "warriorImpact", x: 450, y: 430 },
       { key: "diveImpact", branch: "Warrior", branchKey: "warrior", label: "Impact Shockwave", desc: "larger stomp radius", cost: 2, req: "warriorCombo", x: 360, y: 650 },
       { key: "rangerProjectile", branch: "Ranger", branchKey: "ranger", label: "Projectile Lance", desc: "stronger ranged waves", cost: 1, req: "class_ranger", x: 520, y: 320 },
       { key: "rangerPrecision", branch: "Ranger", branchKey: "ranger", label: "Weak-point Focus", desc: "higher crit + accuracy", cost: 1, req: "rangerProjectile", x: 520, y: 430 },
       { key: "rangerMastery", branch: "Ranger", branchKey: "ranger", label: "Elemental Mastery", desc: "poison/frost/chain boost", cost: 2, req: "rangerPrecision", x: 520, y: 540 },
+      { key: "splitShot", branch: "Ranger", branchKey: "ranger", label: "Split Shot", desc: "Unlock 3-shot fan", cost: 1, req: "rangerProjectile", x: 680, y: 320 },
+      { key: "hunterMark", branch: "Ranger", branchKey: "ranger", label: "Hunter Mark", desc: "Unlock target marking", cost: 1, req: "rangerPrecision", x: 680, y: 540 },
+      { key: "volleyRain", branch: "Ranger", branchKey: "ranger", label: "Volley Rain", desc: "Unlock zone volley", cost: 2, req: "hunterMark", x: 680, y: 650 },
+      { key: "grappleShot", branch: "Ranger", branchKey: "ranger", label: "Grapple Dash Shot", desc: "Unlock dash shot", cost: 2, req: "splitShot", x: 820, y: 430 },
       { key: "airControl", branch: "Ranger", branchKey: "ranger", label: "Lateral Discipline", desc: "better side movement", cost: 1, req: "rangerProjectile", x: 680, y: 430 },
       { key: "goldGain", branch: "Ranger", branchKey: "ranger", label: "Hunter Spoils", desc: "better drops", cost: 1, req: "rangerMastery", x: 600, y: 650 },
       { key: "sorcererPower", branch: "Sorcerer", branchKey: "sorcerer", label: "Spell Power", desc: "harder spell hits", cost: 1, req: "class_sorcerer", x: 760, y: 320 },
       { key: "sorcererCooldown", branch: "Sorcerer", branchKey: "sorcerer", label: "Arcane Tempo", desc: "faster spell cycle", cost: 1, req: "sorcererPower", x: 760, y: 430 },
       { key: "sorcererChains", branch: "Sorcerer", branchKey: "sorcerer", label: "Chain Sigils", desc: "multi-target spells", cost: 2, req: "sorcererCooldown", x: 760, y: 540 },
+      { key: "chainArc", branch: "Sorcerer", branchKey: "sorcerer", label: "Chain Arc", desc: "Unlock chain spell", cost: 1, req: "sorcererCooldown", x: 920, y: 320 },
+      { key: "flameLanceSpell", branch: "Sorcerer", branchKey: "sorcerer", label: "Flame Lance", desc: "Unlock line flame", cost: 1, req: "sorcererPower", x: 920, y: 540 },
+      { key: "frostRing", branch: "Sorcerer", branchKey: "sorcerer", label: "Frost Ring", desc: "Unlock defensive ring", cost: 2, req: "flameLanceSpell", x: 920, y: 650 },
+      { key: "voidOrb", branch: "Sorcerer", branchKey: "sorcerer", label: "Void Orb", desc: "Unlock orb control", cost: 2, req: "chainArc", x: 1030, y: 430 },
       { key: "regenSpeed", branch: "Sorcerer", branchKey: "sorcerer", label: "Barrier Weave", desc: "spell shield sustain", cost: 1, req: "sorcererPower", x: 920, y: 430 },
       { key: "xpGain", branch: "Sorcerer", branchKey: "sorcerer", label: "Mystic Study", desc: "bonus xp", cost: 1, req: "sorcererChains", x: 840, y: 650 }
     ];
@@ -694,6 +856,7 @@ const ENEMY_SPECIES = {
       spawnTreasureCaches();
       spawnInitialEnemies();
       spawnAlliesFromUpgrades();
+      initAbilitySystem();
 
       window.addEventListener("resize", onResize);
       window.addEventListener("keydown", (e) => {
@@ -722,6 +885,10 @@ const ENEMY_SPECIES = {
         }
         if (e.key.toLowerCase() === "p") {
           spawnDebug.enabled = !spawnDebug.enabled;
+          return;
+        }
+        if (["1","2","3","4","5"].includes(e.key)) {
+          if (!tabMenuOpen && !interactionMode) tryUseAbilitySlot(Number(e.key) - 1);
           return;
         }
         keys[e.key.toLowerCase()] = true;
@@ -2221,6 +2388,9 @@ const ENEMY_SPECIES = {
         spellCooldown: 0,
         spearHitSet: new Set(),
         perchTimer: 0,
+        warCryTimer: 0,
+        meleeComboState: { chain: 0, timer: 0 },
+        lastAbilityUse: 0,
         lastDeathPos: new THREE.Vector3(0, 12, 8)
       };
       lastRespawnPoint.copy(player.pos);
@@ -3419,6 +3589,7 @@ const ENEMY_SPECIES = {
       menuLevelEl.textContent = progress.level;
       menuXpEl.textContent = Math.floor(progress.xp);
       menuXpNeedEl.textContent = progress.xpNeed;
+      updateAbilityCooldownUI();
     }
 
     function killEnemy(enemy) {
@@ -3705,6 +3876,10 @@ const ENEMY_SPECIES = {
       enemyProjectiles = [];
       allySummons.forEach((a) => scene.remove(a.model));
       allySummons = [];
+      playerAbilities = {};
+      playerAbilitySlots = [null, null, null, null, null];
+      playerCooldowns = {};
+      playerActiveSummonGroups = {};
       spawnInitialEnemies();
       seedPlayerProgression();
       refreshPlayerAppearance();
@@ -3740,58 +3915,301 @@ const ENEMY_SPECIES = {
       return (progress.classChoice === "summoner" ? 1 : 0) + progress.upgrades.summonCount;
     }
 
-    function spawnAlliesFromUpgrades() {
-      const cap = summonCap();
-      while (allySummons.length < cap) {
-        const ally = spawnEnemy(player.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 8, 2 + Math.random() * 3, (Math.random() - 0.5) * 8)), "vineDrake");
-        ally.isAlly = true;
-        ally.spawnNodeId = null;
-        ally.maxHealth = 44 + progress.upgrades.summonDurability * 16;
-        ally.health = ally.maxHealth;
-        ally.damageScale = 0.48 + progress.upgrades.summonDamage * 0.12 + playerStats().summonBuff;
-        ally.respawnTimer = 0;
-        ally.state = "ally";
-        allySummons.push(ally);
+    function summonHardCap() {
+      return 6 + Math.min(2, progress.upgrades.summonCommand || 0);
+    }
+
+    function classThemeColor(cls = progress.classChoice) {
+      return CLASS_THEMES[cls] || CLASS_THEMES.neutral;
+    }
+
+    function initAbilitySystem() {
+      playerAbilities = {};
+      playerAbilitySlots = [null, null, null, null, null];
+      playerCooldowns = {};
+      playerSummonSlots = {};
+      playerActiveSummonGroups = {};
+      playerGlobalCastLock = 0;
+      playerMeleeComboState = { chain: 0, timer: 0 };
+      playerLastAbilityUse = 0;
+      lastAbilityCooldownStamp = {};
+      syncAbilitiesFromUpgrades();
+      renderAbilityBar();
+    }
+
+    function syncAbilitiesFromUpgrades() {
+      Object.entries(UPGRADE_ABILITY_UNLOCKS).forEach(([upgradeKey, abilityId]) => {
+        if ((progress.upgrades[upgradeKey] || 0) > 0) unlockPlayerAbility(abilityId, false);
+      });
+      if (progress.classChoice === 'sorcerer' && (progress.upgrades.sorcererPower || 0) > 0) unlockPlayerAbility('arcBolt', false);
+      renderAbilityBar();
+    }
+
+    function unlockPlayerAbility(abilityId, notify = true) {
+      if (!ABILITY_DEFS[abilityId] || playerAbilities[abilityId]) return;
+      playerAbilities[abilityId] = { unlockedAt: performance.now() * 0.001 };
+      const slot = playerAbilitySlots.findIndex((s) => !s);
+      if (slot >= 0) {
+        playerAbilitySlots[slot] = abilityId;
+        playerSummonSlots[abilityId] = slot;
+        if (notify) showCenterMessage(`Unlocked: ${ABILITY_DEFS[abilityId].name} [${slot + 1}]`, 1.2);
       }
-      while (allySummons.length > cap) {
-        const a = allySummons.pop();
-        a.alive = false;
-        scene.remove(a.model);
+      renderAbilityBar();
+    }
+
+    function tryUseAbilitySlot(slotIndex) {
+      const abilityId = playerAbilitySlots[slotIndex];
+      if (!abilityId || !playerAbilities[abilityId]) return false;
+      const ability = ABILITY_DEFS[abilityId];
+      if (!ability) return false;
+      const now = performance.now() * 0.001;
+      if (playerGlobalCastLock > 0) return false;
+      if ((playerCooldowns[abilityId] || 0) > 0) return false;
+      if (ability.class && progress.classChoice !== ability.class) return false;
+      ability.cast?.();
+      const cdScale = 1 - (progress.upgrades.sorcererCooldown || 0) * 0.05 - (progress.upgrades.rangerReload || 0) * 0.04;
+      playerCooldowns[abilityId] = Math.max(0.7, ability.cooldown * Math.max(0.55, cdScale));
+      playerGlobalCastLock = 0.08;
+      playerLastAbilityUse = now;
+      lastAbilityCooldownStamp[abilityId] = 1;
+      updateAbilityCooldownUI();
+      return true;
+    }
+
+    function renderAbilityBar() {
+      if (!abilityBarEl) return;
+      const unlocked = Object.keys(playerAbilities).length > 0;
+      abilityBarEl.style.display = unlocked ? 'flex' : 'none';
+      abilityBarEl.innerHTML = '';
+      const border = classThemeColor();
+      for (let i = 0; i < 5; i++) {
+        const abilityId = playerAbilitySlots[i];
+        const ability = abilityId ? ABILITY_DEFS[abilityId] : null;
+        const slot = document.createElement('div');
+        slot.className = `ability-slot ${ability ? 'unlocked' : ''}`;
+        slot.style.borderColor = ability ? border : 'rgba(148,163,184,.4)';
+        slot.innerHTML = `<div class='hotkey'>${i + 1}</div><div class='sigil' style='color:${ability ? border : '#64748b'}'>${ability ? ability.icon : '·'}</div><div class='name'>${ability ? ability.name : 'Empty'}</div><div class='cooldown-fill'></div><div class='cooldown-text'></div><div class='charges'></div>`;
+        abilityBarEl.appendChild(slot);
+      }
+      updateAbilityCooldownUI();
+    }
+
+    function updateAbilityCooldownUI() {
+      if (!abilityBarEl || abilityBarEl.style.display === 'none') return;
+      const nodes = abilityBarEl.querySelectorAll('.ability-slot');
+      nodes.forEach((slot, i) => {
+        const abilityId = playerAbilitySlots[i];
+        const ability = abilityId ? ABILITY_DEFS[abilityId] : null;
+        const fill = slot.querySelector('.cooldown-fill');
+        const text = slot.querySelector('.cooldown-text');
+        if (!ability) {
+          fill.style.height = '0%';
+          text.style.display = 'none';
+          return;
+        }
+        const remain = Math.max(0, playerCooldowns[abilityId] || 0);
+        const pct = ability.cooldown > 0 ? (remain / ability.cooldown) * 100 : 0;
+        fill.style.height = `${THREE.MathUtils.clamp(pct, 0, 100)}%`;
+        text.style.display = remain > 1 ? 'block' : 'none';
+        text.textContent = `${Math.ceil(remain)}`;
+        if (remain <= 0.03 && lastAbilityCooldownStamp[abilityId]) {
+          slot.classList.remove('ready-pulse');
+          void slot.offsetWidth;
+          slot.classList.add('ready-pulse');
+          lastAbilityCooldownStamp[abilityId] = 0;
+        }
+      });
+    }
+
+    function spawnAlliesFromUpgrades() {
+      const persistentCap = THREE.MathUtils.clamp(summonCap(), 0, 3);
+      const currentPersistent = allySummons.filter((a) => a.owner === player && a.persistent).length;
+      for (let i = currentPersistent; i < persistentCap; i++) {
+        const type = i % 2 === 0 ? "thornBeetleCompanion" : "vineDrakeCompanion";
+        const ally = createSummonFromType(type, true, 9999, null);
+        if (ally) allySummons.push(ally);
+      }
+      for (let i = allySummons.length - 1; i >= 0; i--) {
+        const a = allySummons[i];
+        if (a.persistent && currentPersistent > persistentCap && i >= persistentCap) {
+          scene.remove(a.model);
+          allySummons.splice(i, 1);
+        }
       }
     }
 
+    function createSummonFromType(type, persistent = false, lifetimeOverride = null, sourceSlot = null) {
+      const def = SUMMON_TYPE_DEFS[type];
+      if (!def) return null;
+      if (allySummons.length >= summonHardCap()) return null;
+      const base = spawnEnemy(player.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 4, 1.8 + Math.random() * 2.4, (Math.random() - 0.5) * 4)), def.baseType);
+      base.isAlly = true;
+      base.owner = player;
+      base.persistent = persistent;
+      base.state = 'follow';
+      base.targetId = null;
+      base.summonType = type;
+      base.summonLifetime = 0;
+      const extraLife = 1 + (progress.upgrades.summonLifetime || 0) * 0.12;
+      base.summonMaxLifetime = persistent ? 9999 : (lifetimeOverride || def.life) * extraLife;
+      base.leashRadiusSoft = Math.max(12, def.leashSoft - (progress.upgrades.summonLeashMastery || 0) * 1.4);
+      base.leashRadiusHard = Math.max(base.leashRadiusSoft + 8, def.leashHard - (progress.upgrades.summonLeashMastery || 0) * 1.8);
+      base.combatRadius = def.combatRadius + (progress.upgrades.summonInstinct || 0) * 2;
+      base.returnSpeed = def.speed + 4;
+      base.followOffset = new THREE.Vector3((Math.random() - 0.5) * 7, 1.2 + Math.random() * 2.4, -6 - Math.random() * 5);
+      base.abilitySourceSlot = sourceSlot;
+      base.maxHealth = persistent ? 58 + progress.upgrades.summonDurability * 18 : 34 + progress.upgrades.summonDurability * 10;
+      base.health = base.maxHealth;
+      base.damageScale = 0.62 + progress.upgrades.summonDamage * 0.16 + playerStats().summonBuff;
+      base.attackTimer = 0;
+      base.respawnTimer = 0;
+      return base;
+    }
+
+    function castSummonWave(type, count, life) {
+      if (allySummons.length >= summonHardCap()) return;
+      const slot = playerAbilitySlots.findIndex((id) => ABILITY_DEFS[id]?.summonType === type);
+      const gid = `${type}-${Math.floor(performance.now())}`;
+      playerActiveSummonGroups[gid] = [];
+      for (let i = 0; i < count; i++) {
+        const ally = createSummonFromType(type, false, life, slot);
+        if (!ally) continue;
+        playerActiveSummonGroups[gid].push(ally);
+        allySummons.push(ally);
+      }
+    }
+
+    function acquireSummonTarget(ally) {
+      const near = enemies.filter((e) => e.alive && !e.isAlly && e.pos.distanceTo(player.pos) <= ally.combatRadius);
+      if (!near.length) return null;
+      near.sort((a, b) => a.pos.distanceTo(ally.pos) - b.pos.distanceTo(ally.pos));
+      return near[0];
+    }
+
     function updateAllies(dt) {
-      for (const ally of allySummons) {
+      for (let i = allySummons.length - 1; i >= 0; i--) {
+        const ally = allySummons[i];
         if (!ally.alive) {
-          ally.respawnTimer -= dt;
-          if (ally.respawnTimer <= 0) {
-            ally.alive = true;
-            ally.health = ally.maxHealth;
-            ally.pos.copy(player.pos).add(new THREE.Vector3((Math.random() - 0.5) * 8, 3, (Math.random() - 0.5) * 8));
-            scene.add(ally.model);
+          if (ally.persistent) {
+            ally.respawnTimer -= dt;
+            if (ally.respawnTimer <= 0) {
+              ally.alive = true;
+              ally.health = ally.maxHealth;
+              ally.state = 'follow';
+              ally.pos.copy(player.pos).add(new THREE.Vector3((Math.random() - 0.5) * 5, 2.5, -6));
+              scene.add(ally.model);
+            }
+          } else {
+            scene.remove(ally.model);
+            allySummons.splice(i, 1);
           }
           continue;
         }
-        const target = enemies.filter(e => e.alive && !e.isAlly).sort((a, b) => a.pos.distanceTo(ally.pos) - b.pos.distanceTo(ally.pos))[0];
-        if (!target) continue;
-        const dir = target.pos.clone().sub(ally.pos).normalize();
-        ally.vel.addScaledVector(dir, dt * (6 + progress.upgrades.summonAggression * 2));
-        ally.vel.multiplyScalar(0.96);
-        ally.pos.addScaledVector(ally.vel, dt);
-        ally.yaw = Math.atan2(dir.x, dir.z);
-        if (ally.pos.distanceTo(target.pos) < ally.radius + target.radius + 0.7) {
-          damageEnemy(target, (8 + progress.upgrades.summonDamage * 4) * ally.damageScale, dir, "ally");
+        ally.summonLifetime += dt;
+        ally.attackTimer = Math.max(0, ally.attackTimer - dt);
+        if (!ally.persistent && ally.summonLifetime >= ally.summonMaxLifetime) {
+          spawnBurst(ally.pos.clone(), 6, SUMMON_TYPE_DEFS[ally.summonType]?.vfx || 0x67e8f9);
+          scene.remove(ally.model);
+          ally.alive = false;
+          allySummons.splice(i, 1);
+          continue;
         }
+
+        const distToOwner = ally.pos.distanceTo(player.pos);
+        if (distToOwner > 40) {
+          ally.pos.copy(player.pos).add(ally.followOffset);
+          ally.vel.multiplyScalar(0.1);
+          ally.state = 'return';
+        }
+
+        let target = enemies.find((e) => e.alive && e.id === ally.targetId) || null;
+        if (!target && (ally.state === 'acquire' || ally.state === 'follow')) {
+          target = acquireSummonTarget(ally);
+          if (target) ally.targetId = target.id;
+        }
+        if (target && (!target.alive || target.pos.distanceTo(player.pos) > ally.combatRadius || distToOwner > ally.leashRadiusHard)) {
+          target = null;
+          ally.targetId = null;
+          ally.state = 'return';
+        }
+
+        if (target) {
+          ally.state = 'engage';
+          const dir = target.pos.clone().sub(ally.pos).normalize();
+          ally.vel.addScaledVector(dir, dt * 9.5);
+          const strikeRange = (SUMMON_TYPE_DEFS[ally.summonType]?.preferredRange || 7) + ally.radius;
+          if (ally.pos.distanceTo(target.pos) < strikeRange && ally.attackTimer <= 0) {
+            const baseDamage = 8 + progress.upgrades.summonDamage * 5;
+            damageEnemy(target, baseDamage * ally.damageScale, dir, 'ally');
+            if (ally.summonType === 'serpentWispCompanion') {
+              target.poisonTimer = Math.max(target.poisonTimer, 3 + progress.upgrades.summonEffects * 0.7);
+              target.freezeTimer = Math.max(target.freezeTimer, 0.4 + progress.upgrades.summonEffects * 0.1);
+            }
+            ally.attackTimer = ally.summonType === 'thornBeetleCompanion' ? 1.15 : 0.85;
+          }
+        } else {
+          ally.state = distToOwner > ally.leashRadiusSoft ? 'return' : 'follow';
+          const desired = player.pos.clone().add(ally.followOffset);
+          const dir = desired.sub(ally.pos);
+          if (dir.lengthSq() > 0.01) ally.vel.addScaledVector(dir.normalize(), dt * (ally.state === 'return' ? ally.returnSpeed : 7.2));
+          if (ally.summonType === 'haloMoteCompanion' && Math.floor(ally.summonLifetime * 2) !== Math.floor((ally.summonLifetime - dt) * 2)) {
+            for (const other of allySummons) {
+              if (other.alive && other.pos.distanceTo(ally.pos) < 10) other.health = Math.min(other.maxHealth, other.health + 2 + progress.upgrades.summonSpecialization * 0.5);
+            }
+          }
+        }
+
+        ally.vel.multiplyScalar(0.93);
+        ally.pos.addScaledVector(ally.vel, dt);
         if (ally.health <= 0) {
           ally.alive = false;
           scene.remove(ally.model);
-          ally.respawnTimer = Math.max(4, 11 - progress.upgrades.summonRespawn * 1.5);
+          ally.state = 'dead';
+          ally.respawnTimer = ally.persistent ? Math.max(5, 14 - progress.upgrades.summonRespawn * 1.6) : 0;
+          continue;
         }
         updateActorTransform(ally, dt);
       }
     }
 
-    function skyProfileForZone(zone) {
+    function castMeleeArc(range = 8, damage = 30) {
+      const f = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
+      for (const enemy of enemies) {
+        if (!enemy.alive) continue;
+        const toEnemy = enemy.pos.clone().sub(player.pos);
+        if (toEnemy.length() > range) continue;
+        const dot = toEnemy.normalize().dot(f);
+        if (dot > -0.3) damageEnemy(enemy, damage + progress.upgrades.warriorImpact * 5, f, 'ability');
+      }
+      spawnBurst(player.pos.clone().add(new THREE.Vector3(0, 1.4, 0)), 8, 0xfca5a5);
+    }
+
+    function castShieldRam() { const f = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)); player.vel.add(f.multiplyScalar(13)); player.invuln = Math.max(player.invuln, 0.45 + progress.upgrades.guardFrames * 0.08); castMeleeArc(7.5, 24); }
+    function castSkybreaker() { player.vel.y -= 14; castMeleeArc(10 + progress.upgrades.slamRadius * 1.1, 38); }
+    function castLineShot(count, range, damage, color) {
+      const base = player.yaw;
+      const spread = count === 1 ? [0] : [-0.18, 0, 0.18];
+      for (const a of spread.slice(0, count)) {
+        const dir = new THREE.Vector3(Math.sin(base + a), 0, Math.cos(base + a));
+        for (const enemy of enemies) {
+          if (!enemy.alive) continue;
+          const to = enemy.pos.clone().sub(player.pos);
+          if (to.length() > range) continue;
+          if (to.normalize().dot(dir) > 0.93) damageEnemy(enemy, damage + progress.upgrades.rangerProjectile * 4, dir, 'projectile');
+        }
+      }
+      spawnBurst(player.pos.clone().add(new THREE.Vector3(0, 1.2, 0)), 6, color);
+    }
+    function castHunterMark() { const t = enemies.filter((e)=>e.alive).sort((a,b)=>a.pos.distanceTo(player.pos)-b.pos.distanceTo(player.pos))[0]; if (!t) return; playerMarkedEnemy = t; spawnBurst(t.pos.clone().add(new THREE.Vector3(0,2,0)), 8, 0xfde047); }
+    function castVolleyRain() { const f = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)); const c = player.pos.clone().add(f.multiplyScalar(18)); for (const e of enemies) if (e.alive && e.pos.distanceTo(c) < 11) damageEnemy(e, 24 + progress.upgrades.rangerMastery * 5, e.pos.clone().sub(c).normalize(), 'projectile'); spawnBurst(c.add(new THREE.Vector3(0,1,0)), 14, 0x93c5fd); }
+    function castGrappleShot() { const s = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw)); player.vel.add(s.multiplyScalar((Math.random()<0.5?-1:1)*11)); castLineShot(1, 40, 18, 0x86efac); }
+    function castArcBolt() { castLineShot(1, 48, 20 + progress.upgrades.sorcererPower * 5, 0xc4b5fd); }
+    function castChainArc() { castSorcererSpell(); }
+    function castFlameLance() { castLineShot(1, 36, 28 + progress.upgrades.spellBurn * 4, 0xfb923c); }
+    function castFrostRing() { for (const e of enemies) if (e.alive && e.pos.distanceTo(player.pos) < 11 + progress.upgrades.spellRadius * 1.4) { damageEnemy(e, 16 + progress.upgrades.sorcererPower * 4, e.pos.clone().sub(player.pos).normalize(), 'spell'); e.freezeTimer = Math.max(e.freezeTimer, 0.5 + progress.upgrades.spellFreeze * 0.2); } spawnBurst(player.pos.clone(), 12, 0x93c5fd); }
+    function castVoidOrb() { const f = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)); const c = player.pos.clone().add(f.multiplyScalar(12)); for (const e of enemies) if (e.alive && e.pos.distanceTo(c) < 9) { damageEnemy(e, 26 + progress.upgrades.spellVoidWeakness * 4, e.pos.clone().sub(c).normalize(), 'spell'); e.stunTimer = Math.max(e.stunTimer, 0.4); } spawnBurst(c, 12, 0x818cf8); }
+
+function skyProfileForZone(zone) {
       const style = zone?.terrainStyle || "forest";
       // VISUAL POLISH: stronger biome identity via sky/fog grading presets.
       const map = {
@@ -4141,7 +4559,10 @@ const ENEMY_SPECIES = {
 
     function damageEnemy(enemy, amount, hitDir, source = "hit") {
       if (!enemy.alive) return;
-      enemy.health -= amount;
+      let finalAmount = amount;
+      if (enemy === playerMarkedEnemy) finalAmount *= 1.18 + (progress.upgrades.markBonus || 0) * 0.08;
+      if (player?.warCryTimer > 0) finalAmount *= 1.16 + (progress.upgrades.antiEliteMelee || 0) * 0.04;
+      enemy.health -= finalAmount;
       enemy.hitReact = 0.22;
       enemy.vel.add(hitDir.clone().multiplyScalar(0.5));
       enemy.vel.y += 1.2;
@@ -4201,6 +4622,11 @@ const ENEMY_SPECIES = {
       player.spellCooldown = Math.max(0, player.spellCooldown - dt);
       player.spearTimer = Math.max(0, player.spearTimer - dt);
       player.regenWait = Math.max(0, player.regenWait - dt);
+      playerGlobalCastLock = Math.max(0, playerGlobalCastLock - dt);
+      player.warCryTimer = Math.max(0, player.warCryTimer - dt);
+      playerMeleeComboState.timer = Math.max(0, playerMeleeComboState.timer - dt);
+      if (playerMeleeComboState.timer <= 0) playerMeleeComboState.chain = 0;
+      Object.keys(playerCooldowns).forEach((k) => { playerCooldowns[k] = Math.max(0, (playerCooldowns[k] || 0) - dt); });
 
       const stats = playerStats();
       const turnSpeed = (3.35 + progress.upgrades.airControl * 0.08) * stats.mount.turn;
@@ -4250,8 +4676,22 @@ const ENEMY_SPECIES = {
         player.vel.add(forward.clone().multiplyScalar(2.2));
         player.vel.y += 0.5;
       }
-      if ((keys["f"] || keys["s"]) && progress.classChoice === "sorcerer" && player.spellCooldown <= 0) {
+      if ((keys["f"]) && progress.classChoice === "sorcerer" && player.spellCooldown <= 0) {
         castSorcererSpell();
+      }
+      if (keys["s"]) {
+        const hasHotkey = playerAbilitySlots.some(Boolean);
+        if (!hasHotkey) {
+          if (progress.classChoice === 'sorcerer' && player.spellCooldown <= 0) castSorcererSpell();
+          else if (progress.classChoice === 'summoner') castSummonWave('vineDrakeCompanion', 1, 10);
+          else if (progress.classChoice === 'warrior') castMeleeArc(7, 24);
+          else if (progress.classChoice === 'ranger') castLineShot(1, 34, 14, 0xfef08a);
+        }
+      }
+      if (playerMeleeComboState.chain > 0 && playerMeleeComboState.timer > 0 && player.spearCooldown <= 0) {
+        castMeleeArc(7.5 + progress.upgrades.meleeRange * 0.5, 18 + progress.upgrades.warriorCombo * 6);
+        playerMeleeComboState.chain -= 1;
+        player.spearCooldown = Math.max(0.18, 0.34 - progress.upgrades.comboSpeed * 0.02);
       }
 
       player.vel.y = Math.max(player.vel.y, -36);
@@ -5167,8 +5607,11 @@ const ENEMY_SPECIES = {
       progress.upgrades[node.key] = 1;
       if (node.key === "healthBoost") { player.maxHealth += 10; player.health = Math.min(player.maxHealth, player.health + 10); }
       if (node.key.startsWith("class_")) progress.classChoice = node.branchKey;
-      if (node.key === "summonCount" || node.key === "summonDurability" || node.key === "summonDamage") spawnAlliesFromUpgrades();
+      const unlockAbilityId = UPGRADE_ABILITY_UNLOCKS[node.key];
+      if (unlockAbilityId) unlockPlayerAbility(unlockAbilityId, true);
+      if (node.key === "summonCount" || node.key === "summonDurability" || node.key === "summonDamage" || node.key === "summonCommand" || node.key === "summonLeashMastery") spawnAlliesFromUpgrades();
       playerStats();
+      renderAbilityBar();
       refreshPlayerAppearance();
       upgradeFlashTimer = 0.46;
       upgradePulseNodeKey = node.key;
@@ -5449,7 +5892,10 @@ const ENEMY_SPECIES = {
             btn.style.transform = "translateY(-1px) scale(1.02)";
             btn.style.boxShadow = "0 0 0 1px rgba(186,230,253,.45), 0 10px 20px rgba(15,23,42,.32)";
           }
-          tooltip.innerHTML = `<b>${node.label}</b><div style='opacity:.78'>${node.branch} branch</div><div style='margin-top:5px;color:#cbd5e1'>${node.desc}</div><div style='margin-top:6px'>Cost: <b>${node.cost}</b> points</div><div>State: <b>${state.label}</b></div>${node.req ? `<div>Prerequisite: <b>${UPGRADE_TREE.find((n)=>n.key===node.req)?.label || node.req}</b></div>` : ""}${node.branchKey ? `<div>Class Rule: <b>${CLASS_BRANCHES[node.branchKey]?.title || node.branchKey}</b></div>` : ""}`;
+          const aId = UPGRADE_ABILITY_UNLOCKS[node.key];
+          const slotIx = aId ? playerAbilitySlots.indexOf(aId) : -1;
+          const a = aId ? ABILITY_DEFS[aId] : null;
+          tooltip.innerHTML = `<b>${node.label}</b><div style='opacity:.78'>${node.branch} branch</div><div style='margin-top:5px;color:#cbd5e1'>${node.desc}</div><div style='margin-top:6px'>Cost: <b>${node.cost}</b> points</div><div>State: <b>${state.label}</b></div>${a ? `<div style='margin-top:7px;color:#bfdbfe'><b>${a.name} ${slotIx >= 0 ? `[${slotIx + 1}]` : ''}</b><br/>Cooldown: ${a.cooldown}s<br/>${a.desc}<br/><span style='opacity:.8'>Scales with class nodes and core stats.</span></div>` : ''}${node.req ? `<div>Prerequisite: <b>${UPGRADE_TREE.find((n)=>n.key===node.req)?.label || node.req}</b></div>` : ""}${node.branchKey ? `<div>Class Rule: <b>${CLASS_BRANCHES[node.branchKey]?.title || node.branchKey}</b></div>` : ""}`;
         };
         btn.onmouseleave = () => {
           btn.style.transform = "none";
@@ -5683,6 +6129,8 @@ const ENEMY_SPECIES = {
         }
         updateUI();
       }
+
+      updateAbilityCooldownUI();
 
       updateQuestArrow(dt);
       updateCamera(dt);
