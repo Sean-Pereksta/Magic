@@ -2771,17 +2771,39 @@ const ENEMY_SPECIES = {
     function createSerpentMount(mount) {
       const rig = createBaseMountRig(mount, true);
       const root = rig.root;
-      const mat = new THREE.MeshStandardMaterial({ color: mount.colors?.bird ?? 0x5a466f, roughness: 0.78 });
+      const baseColor = mount.colors?.bird ?? 0x5a466f;
+      const accentColor = mount.colors?.cloth ?? 0x8b5cf6;
+      const mat = new THREE.MeshStandardMaterial({ color: baseColor, roughness: 0.72, metalness: 0.08 });
+      const stripeMat = new THREE.MeshStandardMaterial({ color: accentColor, emissive: accentColor, emissiveIntensity: 0.18, roughness: 0.55, metalness: 0.05 });
       const tailPivot = new THREE.Group();
       root.add(tailPivot);
       const segments = [];
-      for (let i = 0; i < 7; i++) {
-        const seg = addMountMesh(tailPivot, new THREE.CapsuleGeometry(Math.max(0.12, 0.34 - i * 0.03), 0.8, 4, 10), mat, 0, 0.5 - i * 0.04, 1.4 - i * 0.86, Math.PI / 2.2, 0, 0);
+      const segmentPivots = [];
+      let chainParent = tailPivot;
+      for (let i = 0; i < 8; i++) {
+        const segPivot = new THREE.Group();
+        segPivot.position.set(0, i === 0 ? 0.58 : -0.01, i === 0 ? 1.58 : -0.82);
+        chainParent.add(segPivot);
+        const segRadius = Math.max(0.2, 0.46 - i * 0.038);
+        const seg = addMountMesh(segPivot, new THREE.CapsuleGeometry(segRadius, 1.02, 6, 14), mat, 0, 0, 0, Math.PI / 2.08, 0, 0);
+        const stripe = addMountMesh(segPivot, new THREE.TorusGeometry(segRadius * 0.86, 0.045, 10, 20), stripeMat, 0, 0, 0.08, Math.PI / 2);
+        stripe.scale.set(1, 1, 0.84);
+        segmentPivots.push(segPivot);
         segments.push(seg);
+        chainParent = segPivot;
       }
-      const head = addMountMesh(root, new THREE.ConeGeometry(0.2, 1.1, 10), new THREE.MeshStandardMaterial({ color: mount.colors?.bird ?? 0x5a466f, roughness: 0.75 }), 0, 0.92, 2.45, Math.PI / 2, 0, 0);
-      const neck = addMountMesh(root, new THREE.CylinderGeometry(0.18, 0.26, 0.9, 10), mat, 0, 0.78, 1.88, Math.PI / 3.2, 0, 0);
-      root.userData.anim = { ...rig, body: segments[2], chest: segments[1], neck, head, tailPivot, tailSegments: segments, leftWing: new THREE.Group(), rightWing: new THREE.Group(), leftWingTip: new THREE.Group(), rightWingTip: new THREE.Group(), spearTipWorld: new THREE.Vector3(), spearForwardWorld: new THREE.Vector3(0, 0, 1) };
+      const neck = addMountMesh(root, new THREE.CylinderGeometry(0.28, 0.38, 1.2, 12), mat, 0, 0.88, 1.95, Math.PI / 3.25, 0, 0);
+      const head = addMountMesh(root, new THREE.CapsuleGeometry(0.34, 0.78, 6, 12), new THREE.MeshStandardMaterial({ color: baseColor, roughness: 0.62 }), 0, 1.12, 2.76, Math.PI / 2.02, 0, 0);
+      addMountMesh(head, new THREE.SphereGeometry(0.08, 10, 10), new THREE.MeshStandardMaterial({ color: 0x9be3ff, emissive: 0x7dd3fc, emissiveIntensity: 0.8, roughness: 0.25 }), -0.17, 0.1, 0.33);
+      addMountMesh(head, new THREE.SphereGeometry(0.08, 10, 10), new THREE.MeshStandardMaterial({ color: 0x9be3ff, emissive: 0x7dd3fc, emissiveIntensity: 0.8, roughness: 0.25 }), 0.17, 0.1, 0.33);
+      for (let side = -1; side <= 1; side += 2) {
+        for (let i = 0; i < 5; i++) {
+          const z = 0.18 - i * 0.15;
+          const x = side * (0.16 + i * 0.006);
+          addMountMesh(head, new THREE.ConeGeometry(0.03, 0.12, 6), new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.35 }), x, -0.1, z, Math.PI, 0, side * 0.18);
+        }
+      }
+      root.userData.anim = { ...rig, body: segments[2], chest: segments[1], neck, head, tailPivot, tailSegments: segments, tailSegmentPivots: segmentPivots, leftWing: new THREE.Group(), rightWing: new THREE.Group(), leftWingTip: new THREE.Group(), rightWingTip: new THREE.Group(), spearTipWorld: new THREE.Vector3(), spearForwardWorld: new THREE.Vector3(0, 0, 1) };
       return root;
     }
 
@@ -5540,10 +5562,26 @@ const ENEMY_SPECIES = {
     function castVolleyRain() { const f = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)); const c = player.pos.clone().add(f.multiplyScalar(18)); for (const e of enemies) if (e.alive && e.pos.distanceTo(c) < 11) damageEnemy(e, 24 + progress.upgrades.rangerMastery * 5, e.pos.clone().sub(c).normalize(), 'projectile'); spawnBurst(c.add(new THREE.Vector3(0,1,0)), 14, 0x93c5fd); spawnAbilityRingFx(c.clone(), 11, 0x93c5fd, 0.45, 0.12); }
     function castGrappleShot() { const s = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw)); player.vel.add(s.multiplyScalar((Math.random()<0.5?-1:1)*11)); spawnAbilityLineFx(player.pos.clone(), s, 9, 0.28, 0x34d399, 0.14); castLineShot(1, 40, 18, 0x86efac); }
     function castArcBolt() { castLineShot(1, 48, 20 + progress.upgrades.sorcererPower * 5, 0xc4b5fd); }
-    function castChainArc() { castSorcererSpell(); spawnAbilityLineFx(player.pos.clone().add(new THREE.Vector3(0,1.4,0)), new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)), 20, 0.25, 0x60a5fa, 0.16); }
+    function castChainArc() { castSorcererSpell({ mode: "forwardChain" }); spawnAbilityLineFx(player.pos.clone().add(new THREE.Vector3(0,1.4,0)), new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)), 20, 0.25, 0x60a5fa, 0.16); }
     function castFlameLance() { const d = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)); spawnAbilityLineFx(player.pos.clone().add(new THREE.Vector3(0,1.1,0)), d, 36, 0.7, 0xfb923c, 0.32); castLineShot(1, 36, 28 + progress.upgrades.spellBurn * 4, 0xfb923c); }
     function castFrostRing() { const ringRadius = 11 + progress.upgrades.spellRadius * 1.4; for (const e of enemies) if (e.alive && e.pos.distanceTo(player.pos) < ringRadius) { damageEnemy(e, 16 + progress.upgrades.sorcererPower * 4, e.pos.clone().sub(player.pos).normalize(), 'spell'); e.freezeTimer = Math.max(e.freezeTimer, 0.5 + progress.upgrades.spellFreeze * 0.2); } spawnBurst(player.pos.clone(), 12, 0x93c5fd); spawnAbilityRingFx(player.pos.clone(), ringRadius, 0x7dd3fc, 0.62, 0.16); }
-    function castVoidOrb() { const f = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)); const c = player.pos.clone().add(f.multiplyScalar(12)); for (const e of enemies) if (e.alive && e.pos.distanceTo(c) < 9) { damageEnemy(e, 26 + progress.upgrades.spellVoidWeakness * 4, e.pos.clone().sub(c).normalize(), 'spell'); e.stunTimer = Math.max(e.stunTimer, 0.4); } spawnBurst(c, 12, 0x818cf8); spawnVoidOrbFieldFx(c, 9); }
+    function castVoidOrb() {
+      const f = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
+      const c = player.pos.clone().add(f.multiplyScalar(13));
+      const orbRadius = 10.5 + progress.upgrades.spellRadius * 0.5;
+      for (const e of enemies) {
+        if (!e.alive) continue;
+        const dist = e.pos.distanceTo(c);
+        if (dist >= orbRadius) continue;
+        const falloff = 1 - Math.min(0.72, dist / orbRadius * 0.72);
+        const damage = (44 + progress.upgrades.spellVoidWeakness * 8) * falloff;
+        damageEnemy(e, damage, e.pos.clone().sub(c).normalize(), 'spell');
+        e.stunTimer = Math.max(e.stunTimer, 0.65);
+      }
+      spawnBurst(c, 15, 0x818cf8);
+      spawnAbilityRingFx(c.clone(), orbRadius, 0x818cf8, 0.62, 0.14);
+      spawnVoidOrbFieldFx(c, orbRadius);
+    }
 
 function skyProfileForZone(zone) {
       const style = zone?.terrainStyle || "forest";
@@ -5700,9 +5738,20 @@ function skyProfileForZone(zone) {
       anim.tailPivot.rotation.y = Math.sin(actor.flapPhase * (isSerpent ? 0.9 : 0.45) + horizontalSpeed * 0.04) * (mount?.tailSway || 0.22) * (isSerpent ? 1.4 : 1);
       anim.tailPivot.rotation.x = (isHeavy ? -0.08 : -0.16) + Math.sin(actor.flapPhase * (isHover ? 0.4 : 0.6)) * (isSerpent ? 0.28 : 0.16) + THREE.MathUtils.clamp(actor.vel.y * (isHeavy ? 0.02 : 0.012), -0.13, 0.16);
       if (isSerpent && Array.isArray(anim.tailSegments)) {
+        const segPivots = Array.isArray(anim.tailSegmentPivots) ? anim.tailSegmentPivots : [];
+        const thrustBoost = thrustState ? 0.2 : 0;
         anim.tailSegments.forEach((seg, idx) => {
-          seg.rotation.y = Math.sin(actor.flapPhase * 1.2 - idx * 0.65) * 0.26;
-          seg.rotation.x = Math.PI / 2.2 + Math.sin(actor.flapPhase * 1.05 - idx * 0.55) * 0.09;
+          const travel = actor.flapPhase * (1.35 + Math.min(horizontalSpeed * 0.018, 0.65));
+          const phase = travel - idx * 0.56;
+          const swayAmp = (0.34 + thrustBoost) * Math.max(0.26, 1 - idx * 0.08);
+          const liftAmp = 0.13 * Math.max(0.35, 1 - idx * 0.07);
+          seg.rotation.x = Math.PI / 2.08 + Math.sin(phase * 0.98) * liftAmp + (diveState ? -0.06 : 0);
+          seg.rotation.y = Math.sin(phase) * swayAmp;
+          seg.position.y = Math.sin(phase * 1.24) * 0.03;
+          if (segPivots[idx]) {
+            segPivots[idx].rotation.y = Math.sin(phase * 0.9) * (swayAmp * 0.58);
+            segPivots[idx].rotation.x = Math.sin(phase * 1.05) * (liftAmp * 0.52);
+          }
         });
       }
       if (creatureType === "insect") {
@@ -6023,12 +6072,26 @@ function skyProfileForZone(zone) {
       }
     }
 
-    function castSorcererSpell() {
+    function castSorcererSpell(options = {}) {
+      const mode = options.mode || "nearest";
       const baseCd = Math.max(0.8, 2.4 - progress.upgrades.sorcererCooldown * 0.22);
       player.spellCooldown = baseCd;
-      const nearest = enemies.filter((e) => e.alive).sort((a, b) => a.pos.distanceTo(player.pos) - b.pos.distanceTo(player.pos)).slice(0, 1 + progress.upgrades.sorcererChains);
-      for (const enemy of nearest) {
-        if (enemy.pos.distanceTo(player.pos) > 38) continue;
+      const aliveEnemies = enemies.filter((e) => e.alive);
+      let targets = [];
+      if (mode === "forwardChain") {
+        const forward = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
+        const coneTargets = aliveEnemies
+          .map((enemy) => ({ enemy, to: enemy.pos.clone().sub(player.pos), dist: enemy.pos.distanceTo(player.pos) }))
+          .filter((entry) => entry.dist <= 44 && entry.to.clone().normalize().dot(forward) > 0.55)
+          .sort((a, b) => a.dist - b.dist)
+          .slice(0, 1 + progress.upgrades.sorcererChains)
+          .map((entry) => entry.enemy);
+        targets = coneTargets.length ? coneTargets : aliveEnemies.sort((a, b) => a.pos.distanceTo(player.pos) - b.pos.distanceTo(player.pos)).slice(0, 1);
+      } else {
+        targets = aliveEnemies.sort((a, b) => a.pos.distanceTo(player.pos) - b.pos.distanceTo(player.pos)).slice(0, 1 + progress.upgrades.sorcererChains);
+      }
+      for (const enemy of targets) {
+        if (enemy.pos.distanceTo(player.pos) > 44) continue;
         const spellDamage = 18 + progress.upgrades.sorcererPower * 8;
         damageEnemy(enemy, spellDamage, enemy.pos.clone().sub(player.pos).normalize(), "spell");
         enemy.stunTimer = Math.max(enemy.stunTimer, 0.2 + progress.upgrades.sorcererChains * 0.1);
