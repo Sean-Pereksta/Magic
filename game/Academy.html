@@ -215,6 +215,7 @@
         <div style="display:flex;gap:8px;">
           <button id="tabBtnUpgrades" style="padding:8px 12px;border-radius:9px;border:1px solid rgba(255,255,255,.25);background:rgba(245,158,11,.24);color:#fff;font-weight:700;cursor:pointer;">Upgrades</button>
           <button id="tabBtnInventory" style="padding:8px 12px;border-radius:9px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:#fff;font-weight:700;cursor:pointer;">Inventory / Equipped</button>
+          <button id="tabBtnAbilities" style="padding:8px 12px;border-radius:9px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:#fff;font-weight:700;cursor:pointer;">Abilities / Loadout</button>
         </div>
         <div style="display:flex;gap:14px;font-size:13px;align-items:center;">
           <span>Points: <b id="menuPoints">0</b></span>
@@ -538,6 +539,7 @@
     const tabMenuEl = document.getElementById("tabMenu");
     const tabBtnUpgradesEl = document.getElementById("tabBtnUpgrades");
     const tabBtnInventoryEl = document.getElementById("tabBtnInventory");
+    const tabBtnAbilitiesEl = document.getElementById("tabBtnAbilities");
     const menuMainPanelEl = document.getElementById("menuMainPanel");
     const menuSidePanelEl = document.getElementById("menuSidePanel");
     const menuPointsEl = document.getElementById("menuPoints");
@@ -926,7 +928,13 @@ const ENEMY_SPECIES = {
       for (const entry of ARMOR_SET_KEYWORDS) {
         if (entry.terms.some((term) => text.includes(term))) return entry.set;
       }
-      return item.rarity === "legendary" ? "royal" : item.rarity === "epic" ? "darkKnight" : "spartan";
+      const weightedFallbacks = item.rarity === "legendary"
+        ? ["royal", "darkKnight", "dragonHunter", "fortress"]
+        : item.rarity === "epic"
+          ? ["darkKnight", "gladiator", "viking", "ranger", "mage"]
+          : ["spartan", "ranger", "viking", "gladiator", "tribal"];
+      const hash = (item.id || item.name || "armor").split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+      return weightedFallbacks[hash % weightedFallbacks.length];
     }
 
     ITEM_DB.forEach((item) => {
@@ -1042,6 +1050,28 @@ const ENEMY_SPECIES = {
       Object.assign(mount, creaturePhysics);
     });
 
+    const RARITY_EXPONENT = { common: 1.06, uncommon: 1.11, rare: 1.16, epic: 1.22, legendary: 1.28 };
+    function rebalanceProgressionEconomy() {
+      ITEM_DB.forEach((item, ix) => {
+        const exp = RARITY_EXPONENT[item.rarity] || 1.12;
+        const tierBoost = Math.pow(exp, Math.max(1, ix + 1));
+        item.sell = Math.max(item.sell || 10, Math.round((item.sell || 10) * (0.85 + tierBoost * 0.12)));
+        if (item.slot === "weapon" && item.stats?.spearDamage) item.stats.spearDamage = Math.round(item.stats.spearDamage * (1.08 + tierBoost * 0.02));
+        if (item.slot === "armor" && item.stats?.maxHealth) item.stats.maxHealth = Math.round(item.stats.maxHealth * (1.1 + tierBoost * 0.03));
+        if (item.slot === "armor" && item.stats?.resistance) item.stats.resistance = Math.min(0.32, item.stats.resistance * (1.04 + tierBoost * 0.01));
+        if (item.slot === "trinket" && item.stats) {
+          Object.keys(item.stats).forEach((k) => { if (typeof item.stats[k] === "number") item.stats[k] *= (1.02 + tierBoost * 0.006); });
+        }
+      });
+      MOUNT_DB.forEach((mount, ix) => {
+        const tier = 1 + ix * 0.1;
+        mount.sell = Math.round((mount.sell || 80) * Math.pow(1.13, tier));
+        mount.impact *= (1 + ix * 0.02);
+        mount.speed *= (1 + ix * 0.01);
+      });
+    }
+    rebalanceProgressionEconomy();
+
     const CLASS_BRANCHES = {
       summoner: { title: "Summoner", color: "#2dd4bf" },
       warrior: { title: "Warrior", color: "#fb7185" },
@@ -1064,21 +1094,41 @@ const ENEMY_SPECIES = {
       serpentWisp: { name: "Serpent Wisp", icon: "☄", cooldown: 20, class: "summoner", desc: "Control serpent.", summonType: "serpentWispCompanion", cast: () => castSummonWave("serpentWispCompanion", 1, 20) },
       skyTotemFamiliar: { name: "Sky Totem Familiar", icon: "✧", cooldown: 30, class: "summoner", desc: "Support familiar.", summonType: "haloMoteCompanion", cast: () => castSummonWave("haloMoteCompanion", 1, 16) },
       broodGate: { name: "Brood Gate", icon: "◎", cooldown: 55, class: "summoner", desc: "Mixed summon burst.", cast: () => { castSummonWave("broodlingCompanion", 3, 14); castSummonWave("emberHoundCompanion", 2, 12); } },
+      packRecall: { name: "Pack Recall", icon: "↺", cooldown: 15, class: "summoner", desc: "Recall summons and pulse ward.", cast: () => castPackRecall() },
+      wyrmlingCallPrime: { name: "Wyrmling Call", icon: "🐉", cooldown: 20, class: "summoner", desc: "Temporary mini drakes.", cast: () => castSummonWave("emberHoundCompanion", 2 + Math.floor((progress.level-1)/18), 10 + progress.level * 0.2) },
+      totemBloom: { name: "Totem Bloom", icon: "✿", cooldown: 22, class: "summoner", desc: "Support bloom for summons.", cast: () => castTotemBloom() },
+      swarmRush: { name: "Swarm Rush", icon: "➹", cooldown: 13, class: "summoner", desc: "Force active summons to dive mark.", cast: () => castSwarmRush() },
+      spiritHatchery: { name: "Spirit Hatchery", icon: "◌", cooldown: 24, class: "summoner", desc: "Spawn fragile broodlings.", cast: () => castSummonWave("broodlingCompanion", 4 + Math.floor(progress.level/14), 8 + progress.level * 0.18) },
       cleaveSwing: { name: "Cleave Swing", icon: "⟂", cooldown: 4, class: "warrior", desc: "Short arc slash.", cast: () => castMeleeArc(8.5, 42) },
       shieldRam: { name: "Shield Ram", icon: "⬡", cooldown: 9, class: "warrior", desc: "Armored surge.", cast: () => castShieldRam() },
       skybreakerSlam: { name: "Skybreaker Slam", icon: "⬇", cooldown: 14, class: "warrior", desc: "Dive slam.", cast: () => castSkybreaker() },
       tripleThrust: { name: "Triple Thrust", icon: "⋮", cooldown: 12, class: "warrior", desc: "Three thrust pulses.", cast: () => { playerMeleeComboState.chain = 3; playerMeleeComboState.timer = 1.1; } },
       warCry: { name: "War Cry", icon: "⚑", cooldown: 20, class: "warrior", desc: "Power + resist buff.", cast: () => { player.warCryTimer = 8; spawnBurst(player.pos.clone(), 10, 0xf87171); spawnAbilityRingFx(player.pos.clone(), 9.5, 0xf87171, 0.55, 0.2); } },
+      meteorDive: { name: "Meteor Dive", icon: "☄", cooldown: 17, class: "warrior", desc: "Heavy vertical impact.", cast: () => castMeteorDive() },
+      ironCyclone: { name: "Iron Cyclone", icon: "🜂", cooldown: 11, class: "warrior", desc: "360 spinning melee burst.", cast: () => castIronCyclone() },
+      bannerChargePlus: { name: "Banner Charge", icon: "⚐", cooldown: 12, class: "warrior", desc: "Armored surge.", cast: () => castBannerChargePlus() },
+      executionStrike: { name: "Execution Strike", icon: "✶", cooldown: 8, class: "warrior", desc: "Finisher vs weak enemies.", cast: () => castExecutionStrike() },
+      guardBreakRoar: { name: "Guard Break Roar", icon: "🜁", cooldown: 16, class: "warrior", desc: "Armor break shockcone.", cast: () => castGuardBreakRoar() },
       piercingShot: { name: "Piercing Shot", icon: "➶", cooldown: 4, class: "ranger", desc: "Line projectile.", cast: () => castLineShot(1, 54, 26, 0x93c5fd) },
       splitShot: { name: "Split Shot", icon: "⫶", cooldown: 7, class: "ranger", desc: "Triple spread.", cast: () => castLineShot(3, 46, 16, 0xfde68a) },
       hunterMark: { name: "Hunter Mark", icon: "◉", cooldown: 12, class: "ranger", desc: "Mark high value target.", cast: () => castHunterMark() },
       volleyRain: { name: "Volley Rain", icon: "☂", cooldown: 16, class: "ranger", desc: "Rain ahead.", cast: () => castVolleyRain() },
       grappleShot: { name: "Grapple Dash Shot", icon: "⇢", cooldown: 14, class: "ranger", desc: "Dash + shot.", cast: () => castGrappleShot() },
+      ricochetShotPlus: { name: "Ricochet Shot", icon: "↯", cooldown: 8, class: "ranger", desc: "Bouncing precision shot.", cast: () => castRicochetShotPlus() },
+      snareBoltPlus: { name: "Snare Bolt", icon: "⌖", cooldown: 10, class: "ranger", desc: "Slow/root utility bolt.", cast: () => castSnareBoltPlus() },
+      falconRush: { name: "Falcon Rush", icon: "🜃", cooldown: 12, class: "ranger", desc: "Burst movement + shot.", cast: () => castFalconRush() },
+      scatterFan: { name: "Scatter Fan", icon: "⋉", cooldown: 7, class: "ranger", desc: "Close broad spread.", cast: () => castScatterFan() },
+      precisionRain: { name: "Precision Rain", icon: "✧", cooldown: 18, class: "ranger", desc: "Delayed high damage volley.", cast: () => castPrecisionRain() },
       arcBolt: { name: "Arc Bolt", icon: "✹", cooldown: 3, class: "sorcerer", desc: "Fast bolt.", cast: () => castArcBolt() },
       chainArc: { name: "Chain Arc", icon: "ϟ", cooldown: 8, class: "sorcerer", desc: "Jumps targets.", cast: () => castChainArc() },
       flameLanceSpell: { name: "Flame Lance", icon: "✸", cooldown: 10, class: "sorcerer", desc: "Forward flame lane.", cast: () => castFlameLance() },
       frostRing: { name: "Frost Ring", icon: "❄", cooldown: 14, class: "sorcerer", desc: "Defensive freeze ring.", cast: () => castFrostRing() },
-      voidOrb: { name: "Void Orb", icon: "⬤", cooldown: 18, class: "sorcerer", desc: "Weakening zone orb.", cast: () => castVoidOrb() }
+      voidOrb: { name: "Void Orb", icon: "⬤", cooldown: 18, class: "sorcerer", desc: "Weakening zone orb.", cast: () => castVoidOrb() },
+      prismBeamPlus: { name: "Prism Beam", icon: "⟐", cooldown: 12, class: "sorcerer", desc: "Focused beam lane.", cast: () => castPrismBeamPlus() },
+      meteorSigilPlus: { name: "Meteor Sigil", icon: "☌", cooldown: 16, class: "sorcerer", desc: "Delayed meteor strike.", cast: () => castMeteorSigilPlus() },
+      stormNovaPlus: { name: "Storm Nova", icon: "✺", cooldown: 13, class: "sorcerer", desc: "Radial lightning blast.", cast: () => castStormNovaPlus() },
+      phaseBlinkPlus: { name: "Phase Blink", icon: "⇶", cooldown: 9, class: "sorcerer", desc: "Short blink reposition.", cast: () => castPhaseBlinkPlus() },
+      gravityWell: { name: "Gravity Well", icon: "⦿", cooldown: 20, class: "sorcerer", desc: "Localized pull field.", cast: () => castGravityWell() }
     };
 
     const UPGRADE_ABILITY_UNLOCKS = {
@@ -1089,7 +1139,11 @@ const ENEMY_SPECIES = {
       rangerProjectile: "piercingShot", splitShot: "splitShot", hunterMark: "hunterMark", volleyRain: "volleyRain", grappleShot: "grappleShot",
       ricochetShot: "splitShot", falconBurst: "volleyRain", snareBolt: "hunterMark", relentlessPursuit: "grappleShot",
       sorcererPower: "arcBolt", chainArc: "chainArc", flameLanceSpell: "flameLanceSpell", frostRing: "frostRing", voidOrb: "voidOrb",
-      prismBeam: "chainArc", stormNova: "frostRing", phaseBlink: "arcBolt", orbOfRuin: "voidOrb"
+      prismBeam: "chainArc", stormNova: "frostRing", phaseBlink: "arcBolt", orbOfRuin: "voidOrb",
+      summonPackRecall: "packRecall", summonWyrmlingPrime: "wyrmlingCallPrime", summonTotemBloom: "totemBloom", summonSwarmRush: "swarmRush", summonHatchery: "spiritHatchery",
+      warriorMeteorDive: "meteorDive", warriorIronCyclone: "ironCyclone", warriorBannerChargePlus: "bannerChargePlus", warriorExecutionStrike: "executionStrike", warriorGuardBreakRoar: "guardBreakRoar",
+      rangerRicochetPlus: "ricochetShotPlus", rangerSnarePlus: "snareBoltPlus", rangerFalconRush: "falconRush", rangerScatterFan: "scatterFan", rangerPrecisionRain: "precisionRain",
+      sorcererPrismBeamPlus: "prismBeamPlus", sorcererMeteorSigilPlus: "meteorSigilPlus", sorcererStormNovaPlus: "stormNovaPlus", sorcererPhaseBlinkPlus: "phaseBlinkPlus", sorcererGravityWell: "gravityWell"
     };
 
     const UPGRADE_TREE = [
@@ -1171,6 +1225,51 @@ const ENEMY_SPECIES = {
       { key: "voidDominion", section: "sorcerer", branch: "Sorcerer", branchKey: "sorcerer", label: "Void Dominion", desc: "Void Caller capstone", cost: 2, req: "orbOfRuin", tier: 4, lane: 2 },
       { key: "archmageSky", section: "sorcerer", branch: "Sorcerer", branchKey: "sorcerer", label: "Archmage of the Open Sky", desc: "master capstone for all schools", cost: 2, req: "sorcererChains", tier: 5, lane: 1 }
     ];
+    const CLASS_EXPANSION_DEFS = {
+      summoner: { req: "broodGate", prefix: "summon", title: "Summoner", keys: ["Pack Alpha", "Wyrm Mastery", "Totem Signal", "Swarm Pathing", "Spirit Fuel", "Pulse Ward", "Leash Burst", "Brood Surge", "Hatch Cadence", "Howling Bond", "Moon Brood", "Venom Brood", "Sky Nest", "Ritual Tempo", "Familiar Flux", "Commander Eye", "Guardian Shell", "Cradle Bloom", "Aegis Hatch", "Blood Pack", "Storm Pack", "Warden Pack", "Brood Crown", "Soul Anchor", "Capstone Bond"] },
+      warrior: { req: "unbrokenCharge", prefix: "warrior", title: "Warrior", keys: ["Reach Mastery", "Meteor Mastery", "Cyclone Flow", "Roar Control", "Execution Rhythm", "Steel Nerves", "Guardline", "Skull Splitter", "Impact Rhythm", "Banner Tempo", "Wall Charge", "Shockwave Echo", "Drive Core", "Helm Crack", "Iron Skin", "War Banner", "Rider Crush", "Sunder Pace", "Crushpoint", "Wing Break", "Brutal Loop", "Parry Hunger", "Bastion", "Colossus", "Capstone Legend"] },
+      ranger: { req: "relentlessPursuit", prefix: "ranger", title: "Ranger", keys: ["Arrow Count", "Ricochet Theory", "Volley Density", "Snare Mastery", "Pursuit Tempo", "Windline", "Split Arc", "Falcon Rhythm", "Mark Focus", "Eagle Vision", "Skirmish Tempo", "Needle Shot", "Serrated Tips", "Trap Draft", "Storm Quiver", "Hunter Sigil", "Lateral Burst", "Snapdraw", "Aerial Pin", "Moon Shot", "Stepline", "Chaser Path", "Raven Mark", "Skyline", "Capstone Hawkeye"] },
+      sorcerer: { req: "archmageSky", prefix: "sorcerer", title: "Sorcerer", keys: ["Arc Reach", "Beam Width", "Meteor Depth", "Blink Range", "Prism Mastery", "Void Grip", "Frost Depth", "Flame Pulse", "Storm Focus", "Rift Spin", "Echo Surge", "Orb Gravity", "Chain Array", "Arc Tempo", "Moon Sigil", "Rune Reach", "Pulse Break", "Celestial Burn", "Winter Lattice", "Aether Wake", "Deep Null", "Star Burst", "Halo Conduit", "Ancient Circuit", "Capstone Ascendant"] }
+    };
+    Object.entries(CLASS_EXPANSION_DEFS).forEach(([cls, spec]) => {
+      spec.keys.forEach((name, ix) => {
+        const key = `${spec.prefix}${name.replace(/[^a-z0-9]+/gi, "")}`;
+        UPGRADE_TREE.push({
+          key,
+          section: cls,
+          branch: spec.title,
+          branchKey: cls,
+          label: name,
+          desc: `${spec.title} specialization bonus`,
+          cost: ix > 20 ? 2 : 1,
+          req: ix === 0 ? spec.req : `${spec.prefix}${spec.keys[ix - 1].replace(/[^a-z0-9]+/gi, "")}`,
+          tier: 6 + Math.floor(ix / 5),
+          lane: ix % 5
+        });
+      });
+    });
+    UPGRADE_TREE.push(
+      { key: "summonPackRecall", section: "summoner", branch: "Summoner", branchKey: "summoner", label: "Pack Recall", desc: "unlock summon regroup pulse", cost: 1, req: "summonBroodCrown", tier: 11, lane: 0 },
+      { key: "summonWyrmlingPrime", section: "summoner", branch: "Summoner", branchKey: "summoner", label: "Prime Wyrmling", desc: "unlock drake call active", cost: 1, req: "summonSoulAnchor", tier: 11, lane: 1 },
+      { key: "summonTotemBloom", section: "summoner", branch: "Summoner", branchKey: "summoner", label: "Totem Bloom", desc: "unlock summon buff totem", cost: 1, req: "summonCradleBloom", tier: 11, lane: 2 },
+      { key: "summonSwarmRush", section: "summoner", branch: "Summoner", branchKey: "summoner", label: "Swarm Rush", desc: "unlock focused command rush", cost: 1, req: "summonAegisHatch", tier: 11, lane: 3 },
+      { key: "summonHatchery", section: "summoner", branch: "Summoner", branchKey: "summoner", label: "Spirit Hatchery", desc: "unlock broodling hatchery", cost: 1, req: "summonCapstoneBond", tier: 12, lane: 2 },
+      { key: "warriorMeteorDive", section: "warrior", branch: "Warrior", branchKey: "warrior", label: "Meteor Dive", desc: "unlock high commitment slam", cost: 1, req: "warriorBastion", tier: 11, lane: 0 },
+      { key: "warriorIronCyclone", section: "warrior", branch: "Warrior", branchKey: "warrior", label: "Iron Cyclone", desc: "unlock spinning burst", cost: 1, req: "warriorBrutalLoop", tier: 11, lane: 1 },
+      { key: "warriorBannerChargePlus", section: "warrior", branch: "Warrior", branchKey: "warrior", label: "Banner Charge+", desc: "unlock armored charge", cost: 1, req: "warriorColossus", tier: 11, lane: 2 },
+      { key: "warriorExecutionStrike", section: "warrior", branch: "Warrior", branchKey: "warrior", label: "Execution Strike", desc: "unlock finisher strike", cost: 1, req: "warriorCrushpoint", tier: 11, lane: 3 },
+      { key: "warriorGuardBreakRoar", section: "warrior", branch: "Warrior", branchKey: "warrior", label: "Guard Break Roar", desc: "unlock armor break cone", cost: 1, req: "warriorCapstoneLegend", tier: 12, lane: 2 },
+      { key: "rangerRicochetPlus", section: "ranger", branch: "Ranger", branchKey: "ranger", label: "Ricochet Shot+", desc: "unlock ricochet specialist shot", cost: 1, req: "rangerRavenMark", tier: 11, lane: 0 },
+      { key: "rangerSnarePlus", section: "ranger", branch: "Ranger", branchKey: "ranger", label: "Snare Bolt+", desc: "unlock strong snare bolt", cost: 1, req: "rangerAerialPin", tier: 11, lane: 1 },
+      { key: "rangerFalconRush", section: "ranger", branch: "Ranger", branchKey: "ranger", label: "Falcon Rush", desc: "unlock mobility burst", cost: 1, req: "rangerSkyline", tier: 11, lane: 2 },
+      { key: "rangerScatterFan", section: "ranger", branch: "Ranger", branchKey: "ranger", label: "Scatter Fan", desc: "unlock close spread burst", cost: 1, req: "rangerNeedleShot", tier: 11, lane: 3 },
+      { key: "rangerPrecisionRain", section: "ranger", branch: "Ranger", branchKey: "ranger", label: "Precision Rain", desc: "unlock delayed high damage barrage", cost: 1, req: "rangerCapstoneHawkeye", tier: 12, lane: 2 },
+      { key: "sorcererPrismBeamPlus", section: "sorcerer", branch: "Sorcerer", branchKey: "sorcerer", label: "Prism Beam+", desc: "unlock sustained prism beam", cost: 1, req: "sorcererHaloConduit", tier: 11, lane: 0 },
+      { key: "sorcererMeteorSigilPlus", section: "sorcerer", branch: "Sorcerer", branchKey: "sorcerer", label: "Meteor Sigil+", desc: "unlock delayed meteor strike", cost: 1, req: "sorcererStarBurst", tier: 11, lane: 1 },
+      { key: "sorcererStormNovaPlus", section: "sorcerer", branch: "Sorcerer", branchKey: "sorcerer", label: "Storm Nova+", desc: "unlock radial lightning nova", cost: 1, req: "sorcererAncientCircuit", tier: 11, lane: 2 },
+      { key: "sorcererPhaseBlinkPlus", section: "sorcerer", branch: "Sorcerer", branchKey: "sorcerer", label: "Phase Blink+", desc: "unlock tactical blink", cost: 1, req: "sorcererRuneReach", tier: 11, lane: 3 },
+      { key: "sorcererGravityWell", section: "sorcerer", branch: "Sorcerer", branchKey: "sorcerer", label: "Gravity Well", desc: "unlock pull field control", cost: 1, req: "sorcererCapstoneAscendant", tier: 12, lane: 2 }
+    );
     const SUMMON_TYPE_DEFS = {
       vineDrakeCompanion: { baseType: "vineDrake", role: "ranged", preferredRange: 13, speed: 15, life: 22, leashSoft: 18, leashHard: 30, combatRadius: 34, vfx: 0x86efac },
       thornBeetleCompanion: { baseType: "hornetGuard", role: "bodyguard", preferredRange: 4, speed: 12, life: 18, leashSoft: 16, leashHard: 28, combatRadius: 30, vfx: 0xa3e635 },
@@ -1294,6 +1393,7 @@ const ENEMY_SPECIES = {
       restartBtn.addEventListener("click", restartGame);
       tabBtnUpgradesEl.addEventListener("click", () => { progress.menuTab = "upgrades"; renderTabMenu(); });
       tabBtnInventoryEl.addEventListener("click", () => { progress.menuTab = "inventory"; renderTabMenu(); });
+      tabBtnAbilitiesEl.addEventListener("click", () => { progress.menuTab = "abilities"; renderTabMenu(); });
       saveBtnEl?.addEventListener("click", () => saveProgressLocal(false));
       loadBtnEl?.addEventListener("click", () => loadProgressLocal());
       clearSaveBtnEl?.addEventListener("click", () => clearProgressLocalSave());
@@ -1557,6 +1657,7 @@ const ENEMY_SPECIES = {
         interactionMode = null;
         tabBtnUpgradesEl.style.display = "";
         tabBtnInventoryEl.style.display = "";
+      tabBtnAbilitiesEl.style.display = "";
       }
       if (tabMenuOpen) renderTabMenu();
     }
@@ -4532,7 +4633,7 @@ const ENEMY_SPECIES = {
 
       return {
         mount,
-        spearDamage: 16 + progress.upgrades.spearDamage * 4 + stat("spearDamage"),
+        spearDamage: 16 + Math.max(0, progress.level - 1) * 1.35 + progress.upgrades.spearDamage * 4 + stat("spearDamage"),
         spearCooldown: Math.max(0.2, 0.72 - progress.upgrades.spearCooldown * 0.05 - stat("spearCooldown")),
         spearKnockback: 8 + progress.upgrades.spearKnockback * 1.15 + stat("spearKnockback"),
         critChance: THREE.MathUtils.clamp(0.08 + progress.upgrades.critChance * 0.02 + stat("critChance"), 0, 0.8),
@@ -5119,6 +5220,25 @@ const ENEMY_SPECIES = {
       return CLASS_THEMES[cls] || CLASS_THEMES.neutral;
     }
 
+    function abilityLevelScale(mult = 1) {
+      return 1 + Math.max(0, progress.level - 1) * 0.045 * mult;
+    }
+
+    function upgradeValue(...keys) {
+      return keys.reduce((sum, key) => sum + (progress.upgrades[key] || 0), 0);
+    }
+
+    function abilityPower(abilityId, base, cfg = {}) {
+      const ability = ABILITY_DEFS[abilityId] || {};
+      const classKey = ability.class || progress.classChoice;
+      const classNodes = classKey === "summoner" ? upgradeValue("summonDamage","summonCommand","summonPackAlpha","summonWyrmMastery","summonerCapstoneBond")
+        : classKey === "warrior" ? upgradeValue("warriorImpact","comboSpeed","warriorMeteorMastery","warriorRoarControl","warriorCapstoneLegend")
+        : classKey === "ranger" ? upgradeValue("rangerProjectile","rangerMastery","rangerRicochetTheory","rangerStormQuiver","rangerCapstoneHawkeye")
+        : upgradeValue("sorcererPower","sorcererChains","spellRadius","sorcererPrismMastery","sorcererCapstoneAscendant");
+      const itemBonus = playerStats().spearDamage * (cfg.itemRatio || 0.08);
+      return base * abilityLevelScale(cfg.levelMult || 1) + classNodes * (cfg.nodeFlat || 1.8) + itemBonus;
+    }
+
     function initAbilitySystem() {
       playerAbilities = {};
       playerAbilitySlots = [null, null, null, null, null];
@@ -5527,44 +5647,68 @@ const ENEMY_SPECIES = {
       spawnAbilityRingFx(center.clone().add(new THREE.Vector3(0, 0.3, 0)), radius, 0xa78bfa, 0.62, 0.14);
     }
 
-    function castMeleeArc(range = 8, damage = 30) {
+    function castMeleeArc(range = 8, damage = 30, abilityId = "cleaveSwing") {
       const f = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
+      const scaledDamage = abilityPower(abilityId, damage, { levelMult: 1.05, nodeFlat: 2.2, itemRatio: 0.1 });
+      const scaledRange = range + Math.max(0, progress.level - 1) * 0.05 + upgradeValue("warriorReachMastery", "warriorCycloneFlow") * 0.2;
       for (const enemy of enemies) {
         if (!enemy.alive) continue;
         const toEnemy = enemy.pos.clone().sub(player.pos);
-        if (toEnemy.length() > range) continue;
+        if (toEnemy.length() > scaledRange) continue;
         const dot = toEnemy.normalize().dot(f);
-        if (dot > -0.3) damageEnemy(enemy, damage + progress.upgrades.warriorImpact * 5, f, 'ability');
+        if (dot > -0.3) damageEnemy(enemy, scaledDamage + progress.upgrades.warriorImpact * 5, f, 'ability');
       }
       spawnBurst(player.pos.clone().add(new THREE.Vector3(0, 1.4, 0)), 8, 0xfca5a5);
-      spawnAbilityConeFx(player.pos.clone(), player.yaw, range, 0xfb7185, 0.28);
+      spawnAbilityConeFx(player.pos.clone(), player.yaw, scaledRange, 0xfb7185, 0.28);
     }
 
-    function castShieldRam() { const f = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)); player.vel.add(f.multiplyScalar(13)); player.invuln = Math.max(player.invuln, 0.45 + progress.upgrades.guardFrames * 0.08); spawnAbilityLineFx(player.pos.clone().add(new THREE.Vector3(0,1.2,0)), f, 10, 0.6, 0xfb923c, 0.2); castMeleeArc(7.5, 24); }
-    function castSkybreaker() { player.vel.y -= 14; const radius = 10 + progress.upgrades.slamRadius * 1.1; spawnAbilityRingFx(player.pos.clone(), radius, 0xf97316, 0.6, 0.24); castMeleeArc(radius, 38); }
-    function castLineShot(count, range, damage, color) {
+    function castShieldRam() { const f = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)); player.vel.add(f.multiplyScalar(13 + (progress.level - 1) * 0.08)); player.invuln = Math.max(player.invuln, 0.45 + progress.upgrades.guardFrames * 0.08); spawnAbilityLineFx(player.pos.clone().add(new THREE.Vector3(0,1.2,0)), f, 10, 0.6, 0xfb923c, 0.2); castMeleeArc(7.5, 24, "shieldRam"); }
+    function castSkybreaker() { player.vel.y -= 14; const radius = 10 + progress.upgrades.slamRadius * 1.1 + (progress.level - 1) * 0.05; spawnAbilityRingFx(player.pos.clone(), radius, 0xf97316, 0.6, 0.24); castMeleeArc(radius, 38, "skybreakerSlam"); }
+    function castLineShot(count, range, damage, color, abilityId = "piercingShot") {
       const base = player.yaw;
-      const spread = count === 1 ? [0] : [-0.18, 0, 0.18];
-      for (const a of spread.slice(0, count)) {
+      const extra = Math.floor((progress.level - 1) / 15);
+      const totalCount = count + extra + Math.floor(upgradeValue("rangerArrowCount", "rangerVolleyDensity") * 0.5);
+      const spread = totalCount === 1 ? [0] : Array.from({length: totalCount}, (_, i) => (i - (totalCount - 1) / 2) * 0.18);
+      const scaledRange = range + Math.max(0, progress.level - 1) * 0.22;
+      const scaledDamage = abilityPower(abilityId, damage, { levelMult: 0.95, nodeFlat: 1.5, itemRatio: 0.06 });
+      for (const a of spread.slice(0, totalCount)) {
         const dir = new THREE.Vector3(Math.sin(base + a), 0, Math.cos(base + a));
         for (const enemy of enemies) {
           if (!enemy.alive) continue;
           const to = enemy.pos.clone().sub(player.pos);
-          if (to.length() > range) continue;
-          if (to.normalize().dot(dir) > 0.93) damageEnemy(enemy, damage + progress.upgrades.rangerProjectile * 4, dir, 'projectile');
+          if (to.length() > scaledRange) continue;
+          if (to.normalize().dot(dir) > 0.93) damageEnemy(enemy, scaledDamage + progress.upgrades.rangerProjectile * 4, dir, 'projectile');
         }
       }
       spawnBurst(player.pos.clone().add(new THREE.Vector3(0, 1.2, 0)), 6, color);
       const forward = new THREE.Vector3(Math.sin(base), 0, Math.cos(base));
-      spawnAbilityLineFx(player.pos.clone().add(new THREE.Vector3(0, 1.2, 0)), forward, range, 0.35 + count * 0.16, color, 0.18);
+      spawnAbilityLineFx(player.pos.clone().add(new THREE.Vector3(0, 1.2, 0)), forward, scaledRange, 0.35 + totalCount * 0.12, color, 0.18);
     }
     function castHunterMark() { const t = enemies.filter((e)=>e.alive).sort((a,b)=>a.pos.distanceTo(player.pos)-b.pos.distanceTo(player.pos))[0]; if (!t) return; playerMarkedEnemy = t; spawnBurst(t.pos.clone().add(new THREE.Vector3(0,2,0)), 8, 0xfde047); spawnTargetMarkFx(t); }
-    function castVolleyRain() { const f = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)); const c = player.pos.clone().add(f.multiplyScalar(18)); for (const e of enemies) if (e.alive && e.pos.distanceTo(c) < 11) damageEnemy(e, 24 + progress.upgrades.rangerMastery * 5, e.pos.clone().sub(c).normalize(), 'projectile'); spawnBurst(c.add(new THREE.Vector3(0,1,0)), 14, 0x93c5fd); spawnAbilityRingFx(c.clone(), 11, 0x93c5fd, 0.45, 0.12); }
-    function castGrappleShot() { const s = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw)); player.vel.add(s.multiplyScalar((Math.random()<0.5?-1:1)*11)); spawnAbilityLineFx(player.pos.clone(), s, 9, 0.28, 0x34d399, 0.14); castLineShot(1, 40, 18, 0x86efac); }
-    function castArcBolt() { castLineShot(1, 48, 20 + progress.upgrades.sorcererPower * 5, 0xc4b5fd); }
+    function castVolleyRain() { const f = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)); const c = player.pos.clone().add(f.multiplyScalar(18)); const zone = 11 + (progress.level - 1) * 0.06 + upgradeValue("rangerVolleyDensity") * 0.4; for (const e of enemies) if (e.alive && e.pos.distanceTo(c) < zone) damageEnemy(e, abilityPower("volleyRain", 24 + progress.upgrades.rangerMastery * 5, { levelMult: 1, nodeFlat: 1.8 }), e.pos.clone().sub(c).normalize(), 'projectile'); spawnBurst(c.add(new THREE.Vector3(0,1,0)), 14, 0x93c5fd); spawnAbilityRingFx(c.clone(), zone, 0x93c5fd, 0.45, 0.12); }
+    function castGrappleShot() { const s = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw)); player.vel.add(s.multiplyScalar((Math.random()<0.5?-1:1)*(11 + (progress.level - 1) * 0.12))); spawnAbilityLineFx(player.pos.clone(), s, 9, 0.28, 0x34d399, 0.14); castLineShot(1, 40, 18, 0x86efac, "grappleShot"); }
+    function castArcBolt() { castLineShot(1, 48 + upgradeValue("sorcererArcReach"), 20 + progress.upgrades.sorcererPower * 5, 0xc4b5fd, "arcBolt"); }
     function castChainArc() { castSorcererSpell({ mode: "forwardChain" }); spawnAbilityLineFx(player.pos.clone().add(new THREE.Vector3(0,1.4,0)), new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)), 20, 0.25, 0x60a5fa, 0.16); }
-    function castFlameLance() { const d = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)); spawnAbilityLineFx(player.pos.clone().add(new THREE.Vector3(0,1.1,0)), d, 36, 0.7, 0xfb923c, 0.32); castLineShot(1, 36, 28 + progress.upgrades.spellBurn * 4, 0xfb923c); }
-    function castFrostRing() { const ringRadius = 11 + progress.upgrades.spellRadius * 1.4; for (const e of enemies) if (e.alive && e.pos.distanceTo(player.pos) < ringRadius) { damageEnemy(e, 16 + progress.upgrades.sorcererPower * 4, e.pos.clone().sub(player.pos).normalize(), 'spell'); e.freezeTimer = Math.max(e.freezeTimer, 0.5 + progress.upgrades.spellFreeze * 0.2); } spawnBurst(player.pos.clone(), 12, 0x93c5fd); spawnAbilityRingFx(player.pos.clone(), ringRadius, 0x7dd3fc, 0.62, 0.16); }
+    function castFlameLance() { const d = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)); const len = 36 + (progress.level - 1) * 0.35 + upgradeValue("sorcererBeamWidth") * 1.3; spawnAbilityLineFx(player.pos.clone().add(new THREE.Vector3(0,1.1,0)), d, len, 0.7, 0xfb923c, 0.32); castLineShot(1, len, 28 + progress.upgrades.spellBurn * 4, 0xfb923c, "flameLanceSpell"); }
+    function castFrostRing() { const ringRadius = 11 + progress.upgrades.spellRadius * 1.4 + (progress.level - 1) * 0.08; for (const e of enemies) if (e.alive && e.pos.distanceTo(player.pos) < ringRadius) { damageEnemy(e, abilityPower("frostRing", 16 + progress.upgrades.sorcererPower * 4, { levelMult: 0.9, nodeFlat: 1.4 }), e.pos.clone().sub(player.pos).normalize(), 'spell'); e.freezeTimer = Math.max(e.freezeTimer, 0.5 + progress.upgrades.spellFreeze * 0.2 + (progress.level - 1) * 0.01); } spawnBurst(player.pos.clone(), 12, 0x93c5fd); spawnAbilityRingFx(player.pos.clone(), ringRadius, 0x7dd3fc, 0.62, 0.16); }
+    function castPackRecall() { for (const ally of allySummons) { if (ally.owner !== player) continue; ally.pos.copy(player.pos.clone().add(new THREE.Vector3((Math.random()-0.5)*2, 1.5, -3-Math.random()*2))); ally.vel.multiplyScalar(0.2); } player.invuln = Math.max(player.invuln, 0.25 + upgradeValue("summonDefenderPulse") * 0.05); spawnAbilityRingFx(player.pos.clone(), 8 + upgradeValue("summonLeashMastery"), 0x34d399, 0.45, 0.18); }
+    function castTotemBloom() { player.warCryTimer = Math.max(player.warCryTimer, 4 + upgradeValue("summonTotemSignal") * 0.6); castSummonWave("haloMoteCompanion", 1 + Math.floor(progress.level / 20), 8 + progress.level * 0.18); }
+    function castSwarmRush() { castHunterMark(); allySummons.forEach((ally) => { if (ally.owner !== player) return; ally.state = "attack"; ally.attackTimer = 0; }); }
+    function castMeteorDive() { player.vel.y -= (16 + Math.max(0, progress.level - 1) * 0.08); castMeleeArc(11 + upgradeValue("warriorMeteorMastery"), 46, "meteorDive"); }
+    function castIronCyclone() { castMeleeArc(9.5 + upgradeValue("warriorCycloneFlow") * 0.4, 34, "ironCyclone"); castMeleeArc(9 + upgradeValue("warriorCycloneFlow") * 0.4, 22, "ironCyclone"); }
+    function castBannerChargePlus() { castShieldRam(); player.invuln = Math.max(player.invuln, 0.55); }
+    function castExecutionStrike() { const weak = enemies.filter((e) => e.alive).sort((a,b)=>(a.health/a.maxHealth)-(b.health/b.maxHealth))[0]; if (!weak) return; damageEnemy(weak, abilityPower("executionStrike", 55, { levelMult: 1.1, nodeFlat: 2.6 }), weak.pos.clone().sub(player.pos).normalize(), "ability"); }
+    function castGuardBreakRoar() { castMeleeArc(10 + upgradeValue("warriorRoarControl") * 0.5, 28, "guardBreakRoar"); enemies.forEach((e)=>{ if (e.alive && e.pos.distanceTo(player.pos) < 12) e.debuffArmor = Math.max(e.debuffArmor || 0, 6); }); }
+    function castRicochetShotPlus() { castLineShot(2, 52, 24, 0x93c5fd, "ricochetShotPlus"); }
+    function castSnareBoltPlus() { castLineShot(1, 40, 16, 0x99f6e4, "snareBoltPlus"); enemies.forEach((e)=>{ if (e.alive && e.pos.distanceTo(player.pos) < 18) e.slowTimer = Math.max(e.slowTimer || 0, 1.2 + upgradeValue("rangerSnareMastery") * 0.2); }); }
+    function castFalconRush() { castGrappleShot(); castLineShot(1, 34, 20, 0xfde68a, "falconRush"); }
+    function castScatterFan() { castLineShot(5, 24, 18, 0xfef08a, "scatterFan"); }
+    function castPrecisionRain() { castVolleyRain(); castVolleyRain(); }
+    function castPrismBeamPlus() { castFlameLance(); castChainArc(); }
+    function castMeteorSigilPlus() { setTimeout(() => castSkybreaker(), 320); spawnAbilityRingFx(player.pos.clone().add(new THREE.Vector3(0,0,-2)), 6 + upgradeValue("sorcererMeteorDepth"), 0xfca5a5, 0.35, 0.35); }
+    function castStormNovaPlus() { castFrostRing(); castChainArc(); }
+    function castPhaseBlinkPlus() { const f = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)); player.pos.add(f.multiplyScalar(7 + upgradeValue("sorcererBlinkRange") * 0.8)); spawnBurst(player.pos.clone(), 10, 0xc4b5fd); }
+    function castGravityWell() { const c = player.pos.clone().add(new THREE.Vector3(Math.sin(player.yaw)*10, 1, Math.cos(player.yaw)*10)); for (const e of enemies) { if (!e.alive) continue; const d = e.pos.distanceTo(c); if (d < 13) { const pull = c.clone().sub(e.pos).normalize().multiplyScalar((13 - d) * 0.22); e.vel.add(pull); damageEnemy(e, abilityPower("gravityWell", 14, { levelMult: 0.7, nodeFlat: 1.2 }), pull, "spell"); } } spawnAbilityRingFx(c, 13, 0xa78bfa, 0.5, 0.2); }
     function castVoidOrb() {
       const f = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
       const c = player.pos.clone().add(f.multiplyScalar(13));
@@ -7424,6 +7568,7 @@ function skyProfileForZone(zone) {
       if (!interactionMode || !interactionTarget) return;
       tabBtnUpgradesEl.style.display = "none";
       tabBtnInventoryEl.style.display = "none";
+      tabBtnAbilitiesEl.style.display = "none";
       if (interactionMode === "vendor") {
         const vendor = interactionTarget;
         const stock = vendor.type === "life" ? [] : getVendorStockForCity(vendor.hubName, vendor.type);
@@ -7515,10 +7660,13 @@ function skyProfileForZone(zone) {
       }
       tabBtnUpgradesEl.style.display = "";
       tabBtnInventoryEl.style.display = "";
+      tabBtnAbilitiesEl.style.display = "";
       tabBtnUpgradesEl.style.background = progress.menuTab === "upgrades" ? "rgba(245,158,11,.24)" : "rgba(255,255,255,.1)";
       tabBtnInventoryEl.style.background = progress.menuTab === "inventory" ? "rgba(245,158,11,.24)" : "rgba(255,255,255,.1)";
+      tabBtnAbilitiesEl.style.background = progress.menuTab === "abilities" ? "rgba(245,158,11,.24)" : "rgba(255,255,255,.1)";
       if (progress.menuTab === "upgrades") renderUpgradeTreeMenu();
-      else renderInventoryMenu();
+      else if (progress.menuTab === "inventory") renderInventoryMenu();
+      else renderLoadoutMenu();
       renderQuestSidePanel();
     }
 
@@ -7691,6 +7839,74 @@ function skyProfileForZone(zone) {
         shopSection.innerHTML += "<div style='opacity:.8;margin-top:4px'>Travel to a city hub to buy items and lives.</div>";
       }
       menuMainPanelEl.appendChild(shopSection);
+    }
+
+    function renderLoadoutMenu() {
+      const unlockedIds = Object.keys(playerAbilities || {}).filter((id) => ABILITY_DEFS[id]);
+      const slotted = new Set(playerAbilitySlots.filter(Boolean));
+      const unslotted = unlockedIds.filter((id) => !slotted.has(id));
+      menuMainPanelEl.innerHTML = `<div style="display:grid;grid-template-columns:1.1fr .9fr;gap:12px;min-height:100%"></div>`;
+      const root = menuMainPanelEl.firstElementChild;
+      const pool = document.createElement("div");
+      pool.style.cssText = "border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:8px;background:rgba(255,255,255,.03)";
+      pool.innerHTML = `<div style="font-weight:700;margin-bottom:6px">Unlocked Abilities (drag into slots)</div>`;
+      const poolList = document.createElement("div");
+      poolList.dataset.zone = "pool";
+      poolList.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;min-height:120px";
+      unslotted.forEach((abilityId) => {
+        const a = ABILITY_DEFS[abilityId];
+        const card = document.createElement("div");
+        card.draggable = true;
+        card.dataset.abilityId = abilityId;
+        card.style.cssText = "border:1px solid rgba(148,163,184,.35);border-radius:8px;padding:6px;cursor:grab;background:rgba(15,23,42,.45)";
+        card.innerHTML = `<div style="font-weight:700">${a.icon} ${a.name}</div><div style="font-size:11px;opacity:.8">${a.cooldown}s • ${a.desc}</div>`;
+        card.ondragstart = (ev) => ev.dataTransfer.setData("text/plain", JSON.stringify({ abilityId, from: "pool" }));
+        poolList.appendChild(card);
+      });
+      poolList.ondragover = (ev) => ev.preventDefault();
+      poolList.ondrop = (ev) => {
+        ev.preventDefault();
+        const data = JSON.parse(ev.dataTransfer.getData("text/plain") || "{}");
+        if (Number.isInteger(data.fromSlot)) playerAbilitySlots[data.fromSlot] = null;
+        renderAbilityBar();
+        renderLoadoutMenu();
+      };
+      pool.appendChild(poolList);
+
+      const slotsPanel = document.createElement("div");
+      slotsPanel.style.cssText = "border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:8px;background:rgba(255,255,255,.03)";
+      slotsPanel.innerHTML = `<div style="font-weight:700;margin-bottom:6px">Active Slots 1-5</div>`;
+      const slotList = document.createElement("div");
+      slotList.style.cssText = "display:grid;gap:8px";
+      for (let i = 0; i < 5; i++) {
+        const abilityId = playerAbilitySlots[i];
+        const a = abilityId ? ABILITY_DEFS[abilityId] : null;
+        const row = document.createElement("div");
+        row.style.cssText = "border:1px dashed rgba(148,163,184,.45);border-radius:8px;padding:8px;min-height:52px;background:rgba(2,6,23,.48)";
+        row.innerHTML = a ? `<div draggable='true' data-slot='${i}' data-ability='${abilityId}' style='cursor:grab'><b>[${i+1}] ${a.icon} ${a.name}</b><div style='font-size:11px;opacity:.8'>${a.cooldown}s • ${a.desc}</div></div>` : `<div style='opacity:.6'>[${i+1}] Empty slot — drop ability here</div>`;
+        row.ondragover = (ev) => ev.preventDefault();
+        row.ondrop = (ev) => {
+          ev.preventDefault();
+          const data = JSON.parse(ev.dataTransfer.getData("text/plain") || "{}");
+          const incoming = data.abilityId;
+          if (!incoming || !playerAbilities[incoming]) return;
+          const fromSlot = Number.isInteger(data.fromSlot) ? data.fromSlot : playerAbilitySlots.indexOf(incoming);
+          if (Number.isInteger(fromSlot) && fromSlot >= 0) playerAbilitySlots[fromSlot] = null;
+          const replaced = playerAbilitySlots[i];
+          playerAbilitySlots[i] = incoming;
+          if (replaced && Number.isInteger(fromSlot) && fromSlot >= 0 && fromSlot !== i) playerAbilitySlots[fromSlot] = replaced;
+          renderAbilityBar();
+          renderLoadoutMenu();
+        };
+        row.querySelector("[draggable='true']")?.addEventListener("dragstart", (ev) => {
+          const ability = ev.target.dataset.ability;
+          const fromSlot = Number(ev.target.dataset.slot);
+          ev.dataTransfer.setData("text/plain", JSON.stringify({ abilityId: ability, fromSlot }));
+        });
+        slotList.appendChild(row);
+      }
+      slotsPanel.appendChild(slotList);
+      root.append(pool, slotsPanel);
     }
 
     function renderQuestSidePanel() {
