@@ -256,6 +256,7 @@
     let shopPlatforms = [];
     let cityCreatures = [];
     let citySafeZones = [];
+    let cityRegions = [];
     let cityAmbientTraffic = [];
     let cityAmbientProps = [];
     let skyCloudLayers = [];
@@ -304,6 +305,14 @@
     let audioCtx = null;
     let worldCollisionVolumes = [];
     let lastTime = performance.now();
+    const DEFAULT_WORLD_CHUNK_RADIUS = 2;
+    const LOW_PERFORMANCE_CHUNK_RADIUS = 1;
+    const CITY_LOD_NEAR_DISTANCE = 270;
+    const CITY_LOD_MID_DISTANCE = 480;
+    const CITY_AMBIENT_NEAR_DISTANCE = 240;
+    const CITY_AMBIENT_MID_DISTANCE = 380;
+    const SKY_AMBIENT_CULL_DISTANCE = 760;
+    const DROP_LIFETIME_SECONDS = 30;
     let lastRespawnPoint = new THREE.Vector3(-8, 14, -4);
     let activeCheckpoint = null;
     let progress = {
@@ -861,7 +870,7 @@ const ENEMY_SPECIES = {
     function init() {
       scene = new THREE.Scene();
       scene.background = new THREE.Color(0x1a1d26);
-      scene.fog = new THREE.Fog(0x1a1d26, 34, 210);
+      scene.fog = new THREE.Fog(0x1a1d26, 32, 192);
 
       clock = new THREE.Clock();
 
@@ -1238,13 +1247,42 @@ const ENEMY_SPECIES = {
       cityGroup.position.copy(zone.center);
       arenaGroup.add(cityGroup);
       const theme = createCityTheme(zone);
-      const cityData = { zone, cityGroup, theme, blocks: [], towers: [], plazas: [], districtNodes: [] };
+      const cityData = { zone, cityGroup, theme, blocks: [], towers: [], plazas: [], districtNodes: [], lodBand: "near", majorMeshes: [], detailMeshes: [] };
       generateCityDistricts(cityData);
       createCityWalls(cityData);
       createPerchNetwork(cityData);
       createCitySkyLanes(cityData);
       populateCityAmbientTraffic(cityData);
+      classifyCityLODMeshes(cityData);
+      cityRegions.push(cityData);
       return cityData;
+    }
+
+    function classifyCityLODMeshes(cityData) {
+      cityData.majorMeshes.length = 0;
+      cityData.detailMeshes.length = 0;
+      cityData.cityGroup.traverse((obj) => {
+        if (!obj.isMesh || obj.userData.cityAmbient) return;
+        const gp = obj.geometry?.parameters || {};
+        const sizeHint = Math.max(gp.width || 0, gp.height || 0, gp.depth || 0, gp.radius || 0, gp.radiusTop || 0, gp.radiusBottom || 0, gp.outerRadius || 0);
+        const major = sizeHint >= 6 || obj.position.y <= cityData.zone.baseY + 8;
+        (major ? cityData.majorMeshes : cityData.detailMeshes).push(obj);
+      });
+    }
+
+    function setCityLodBand(cityData, band) {
+      if (cityData.lodBand === band) return;
+      cityData.lodBand = band;
+      const mid = band === "mid";
+      const far = band === "far";
+      cityData.majorMeshes.forEach((mesh) => {
+        mesh.visible = true;
+        mesh.castShadow = !far;
+      });
+      cityData.detailMeshes.forEach((mesh, idx) => {
+        mesh.visible = !far && (!mid || idx % 2 === 0);
+        mesh.castShadow = !mid && !far;
+      });
     }
 
     function generateCityDistricts(cityData) {
@@ -1634,6 +1672,7 @@ const ENEMY_SPECIES = {
         });
         rider.scale.setScalar(0.34 + Math.random() * 0.06);
         rider.position.set((Math.random() - 0.5) * zone.width * 0.72, zone.baseY + 12 + Math.random() * 22, (Math.random() - 0.5) * zone.depth * 0.72);
+        rider.traverse((child) => { if (child.isMesh) child.userData.cityAmbient = true; });
         cityGroup.add(rider);
         cityAmbientTraffic.push({
           mesh: rider,
@@ -1652,9 +1691,11 @@ const ENEMY_SPECIES = {
           new THREE.MeshStandardMaterial({ color: 0xdbe7f7, emissive: theme.window, emissiveIntensity: 0.2, roughness: 0.6 })
         );
         bird.rotation.x = Math.PI / 2;
+        bird.castShadow = false;
         bird.position.set((Math.random() - 0.5) * zone.width * 0.78, zone.baseY + 8 + Math.random() * 28, (Math.random() - 0.5) * zone.depth * 0.78);
+        bird.userData.cityAmbient = true;
         cityGroup.add(bird);
-        cityAmbientProps.push({ mesh: bird, type: "bird", phase: Math.random() * Math.PI * 2, home: bird.position.clone() });
+        cityAmbientProps.push({ mesh: bird, type: "bird", phase: Math.random() * Math.PI * 2, home: bird.position.clone(), center: zone.center.clone(), tick: 0 });
       }
 
       for (let i = 0; i < 10; i++) {
@@ -1662,9 +1703,11 @@ const ENEMY_SPECIES = {
           new THREE.BoxGeometry(0.12, 3.2, 1.8),
           new THREE.MeshStandardMaterial({ color: theme.trim, roughness: 0.42, metalness: 0.6 })
         );
+        vane.castShadow = false;
         vane.position.set((Math.random() - 0.5) * zone.width * 0.7, zone.baseY + 10 + Math.random() * 18, (Math.random() - 0.5) * zone.depth * 0.7);
+        vane.userData.cityAmbient = true;
         cityGroup.add(vane);
-        cityAmbientProps.push({ mesh: vane, type: "vane", phase: Math.random() * Math.PI * 2, home: vane.position.clone() });
+        cityAmbientProps.push({ mesh: vane, type: "vane", phase: Math.random() * Math.PI * 2, home: vane.position.clone(), center: zone.center.clone(), tick: 0 });
       }
     }
 
@@ -1672,6 +1715,7 @@ const ENEMY_SPECIES = {
       arenaGroup = new THREE.Group();
       scene.add(arenaGroup);
       citySafeZones = [];
+      cityRegions = [];
       cityAmbientTraffic = [];
       cityAmbientProps = [];
 
@@ -1837,7 +1881,7 @@ const ENEMY_SPECIES = {
       if (!player && !force) return;
       const centerX = Math.floor(((player?.pos.x || 0) - worldMinX) / CHUNK_SIZE);
       const centerZ = Math.floor(((player?.pos.z || 0) - worldMinZ) / CHUNK_SIZE);
-      const radius = 3;
+      const radius = window.__ACADEMY_LOW_PERF_MODE ? LOW_PERFORMANCE_CHUNK_RADIUS : DEFAULT_WORLD_CHUNK_RADIUS;
       const needed = new Set();
       for (let x = centerX - radius; x <= centerX + radius; x++) {
         for (let z = centerZ - radius; z <= centerZ + radius; z++) {
@@ -3794,7 +3838,7 @@ const ENEMY_SPECIES = {
         value,
         rarity,
         age: 0,
-        life: kind === "cache" ? 20 : 12 + Math.random() * 4,
+        life: DROP_LIFETIME_SECONDS,
         bob: Math.random() * Math.PI * 2,
         spin: 1.6 + Math.random() * 2.2,
         pulse: Math.random() * Math.PI * 2,
@@ -4444,7 +4488,11 @@ function skyProfileForZone(zone) {
         landmark.root.rotation.y += dt * landmark.drift * 0.05;
       }
 
+      const playerSkyDist = player ? Math.hypot(player.pos.x, player.pos.z) : 0;
+      const farSky = playerSkyDist > SKY_AMBIENT_CULL_DISTANCE;
       for (const traffic of ambientSkyTraffic) {
+        traffic.mesh.visible = !farSky;
+        if (farSky) continue;
         traffic.phase += dt * traffic.speed;
         const offset = traffic.type === "motes" ? 0.3 : 1;
         traffic.mesh.position.set(
@@ -5468,8 +5516,24 @@ function skyProfileForZone(zone) {
         if (wp.life <= 0 || hit) { scene.remove(wp.mesh); weaponProjectiles.splice(i, 1); }
       }
 
+      for (const city of cityRegions) {
+        const dx = player.pos.x - city.zone.center.x;
+        const dz = player.pos.z - city.zone.center.z;
+        const cityDist = Math.hypot(dx, dz);
+        const lodBand = cityDist > CITY_LOD_MID_DISTANCE ? "far" : cityDist > CITY_LOD_NEAR_DISTANCE ? "mid" : "near";
+        setCityLodBand(city, lodBand);
+      }
+
       for (const traffic of cityAmbientTraffic) {
-        traffic.phase += dt * traffic.speed;
+        const dx = player.pos.x - traffic.center.x;
+        const dz = player.pos.z - traffic.center.z;
+        const dist = Math.hypot(dx, dz);
+        const far = dist > CITY_AMBIENT_MID_DISTANCE;
+        const mid = !far && dist > CITY_AMBIENT_NEAR_DISTANCE;
+        traffic.mesh.visible = !far;
+        traffic.mesh.traverse((child) => { if (child.isMesh) child.castShadow = !mid && !far; });
+        if (far) continue;
+        traffic.phase += dt * traffic.speed * (mid ? 0.45 : 1);
         const ox = Math.cos(traffic.phase) * traffic.radiusX;
         const oz = Math.sin(traffic.phase * 0.92) * traffic.radiusZ;
         traffic.mesh.position.set(ox, traffic.baseY + Math.sin(traffic.phase * 2.6) * 2.2, oz);
@@ -5478,6 +5542,16 @@ function skyProfileForZone(zone) {
       }
 
       for (const prop of cityAmbientProps) {
+        const dx = player.pos.x - prop.center.x;
+        const dz = player.pos.z - prop.center.z;
+        const dist = Math.hypot(dx, dz);
+        const far = dist > CITY_AMBIENT_MID_DISTANCE;
+        const mid = !far && dist > CITY_AMBIENT_NEAR_DISTANCE;
+        prop.mesh.visible = !far;
+        prop.mesh.castShadow = !mid && !far;
+        if (far) continue;
+        prop.tick = (prop.tick || 0) + 1;
+        if (mid && prop.tick % 2 !== 0) continue;
         prop.phase += dt;
         if (prop.type === "bird") {
           prop.mesh.position.y = prop.home.y + Math.sin(prop.phase * 2.4) * 0.45;
@@ -5498,6 +5572,11 @@ function skyProfileForZone(zone) {
         const pulseScale = 1 + Math.sin(p.age * 2.8 + p.pulse) * (p.rarity === "legendary" ? 0.2 : p.rarity === "epic" ? 0.14 : 0.08);
         p.mesh.scale.setScalar(pulseScale);
         if (updateLootAttraction(p, dt)) continue;
+        const timeLeft = p.life - p.age;
+        if (timeLeft <= 4 && p.mesh.material && "opacity" in p.mesh.material) {
+          p.mesh.material.transparent = true;
+          p.mesh.material.opacity = 0.45 + Math.abs(Math.sin(p.age * 16)) * 0.5;
+        }
         if (p.age > p.life) {
           scene.remove(p.mesh);
           pickups.splice(i, 1);
@@ -5542,8 +5621,8 @@ function skyProfileForZone(zone) {
         scene.background.lerp(targetFog.clone().lerp(new THREE.Color(0x5ba8ff), 0.38), 1 - Math.pow(0.004, dt));
         const danger = zone.danger || 0;
         const style = zone.terrainStyle || "forest";
-        const nearTarget = style === "city" ? 32 : style === "storm" ? 24 : style === "lava" || style === "rift" ? 20 : 26;
-        const farTarget = style === "city" ? 236 : style === "forest" ? 228 : style === "storm" ? 182 : style === "lava" || style === "rift" ? 166 : 194;
+        const nearTarget = style === "city" ? 30 : style === "storm" ? 22 : style === "lava" || style === "rift" ? 18 : 24;
+        const farTarget = style === "city" ? 214 : style === "forest" ? 206 : style === "storm" ? 170 : style === "lava" || style === "rift" ? 154 : 182;
         scene.fog.near = THREE.MathUtils.lerp(scene.fog.near, nearTarget + danger * 1.8, 1 - Math.pow(0.001, dt));
         scene.fog.far = THREE.MathUtils.lerp(scene.fog.far, farTarget + danger * 8.5, 1 - Math.pow(0.001, dt));
 
