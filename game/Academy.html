@@ -758,6 +758,28 @@ const ENEMY_SPECIES = {
     });
 
     const RARITY_COLORS = { common: "#d1d5db", uncommon: "#86efac", rare: "#93c5fd", epic: "#c4b5fd", legendary: "#fbbf24" };
+
+    const ARMOR_SLOTS = ["helmet", "chest", "shoulders", "cloak", "arms", "legs"];
+    const ARMOR_SET_LIBRARY = {
+      spartan: { label: "Spartan", silhouette: "plumed helm, disciplined plate", colorPrimary: 0xb68a4e, colorSecondary: 0x7f1d1d, emissive: 0x000000, shoulderScale: 0.84, cloakLength: 0.74, rarityBias: 0.2 },
+      viking: { label: "Viking", silhouette: "fur-heavy bulk", colorPrimary: 0x8b6a4d, colorSecondary: 0x3f2a1b, emissive: 0x000000, shoulderScale: 1.35, cloakLength: 0.92, rarityBias: 0.4 },
+      darkKnight: { label: "Dark Knight", silhouette: "spiked elite", colorPrimary: 0x4b5563, colorSecondary: 0x111827, emissive: 0x5b21b6, shoulderScale: 1.45, cloakLength: 1.02, rarityBias: 0.7 },
+      ranger: { label: "Ranger", silhouette: "slim hooded scout", colorPrimary: 0x4b6b38, colorSecondary: 0x2f3e1e, emissive: 0x000000, shoulderScale: 0.72, cloakLength: 1.2, rarityBias: 0.3 },
+      mage: { label: "Arcane Mage", silhouette: "flowing robe caster", colorPrimary: 0x5b5fb8, colorSecondary: 0x9ca3ff, emissive: 0x93c5fd, shoulderScale: 0.66, cloakLength: 1.34, rarityBias: 0.9 },
+      gladiator: { label: "Gladiator", silhouette: "asymmetric arena armor", colorPrimary: 0xa16207, colorSecondary: 0x7f1d1d, emissive: 0x000000, shoulderScale: 1.18, cloakLength: 0.64, rarityBias: 0.45 },
+      royal: { label: "Royal", silhouette: "ornate crowned champion", colorPrimary: 0xfbbf24, colorSecondary: 0x7c3aed, emissive: 0xfde68a, shoulderScale: 1.08, cloakLength: 1.26, rarityBias: 0.85 }
+    };
+
+    const ARMOR_SET_KEYWORDS = [
+      { set: "spartan", terms: ["spartan", "lancer", "cliffguard", "citadel knight", "joust", "rune lancer"] },
+      { set: "viking", terms: ["harness", "bone", "drake", "scar wyrm", "bastion", "dragonproof"] },
+      { set: "darkKnight", terms: ["hollow", "void", "night", "fortress", "latebound", "crestguard"] },
+      { set: "ranger", terms: ["scout", "leather", "cloak", "sprinter", "warden coat", "weave"] },
+      { set: "mage", terms: ["robe", "robes", "arcane", "lumen", "raiment", "summoner", "lanternweave"] },
+      { set: "gladiator", terms: ["ember", "frontier", "mesa", "city guard", "plate", "driver"] },
+      { set: "royal", terms: ["royal", "elite", "regalia", "usurper", "moon", "orbglass"] }
+    ];
+
     const ITEM_DB = [
       { id: "iron-pike", name: "Iron Pike", slot: "weapon", rarity: "common", region: "Verdant Cliffs", stats: { spearDamage: 6, spearReach: 0.4 }, effect: "armorPierce", desc: "Reliable steel pike for disciplined thrusts.", sell: 14 },
       { id: "sky-lancer", name: "Sky Lancer", slot: "weapon", rarity: "uncommon", region: "Verdant Cliffs", stats: { spearDamage: 9, burstSpeed: 1 }, effect: "projectile", desc: "Launches a small lance-wave on thrust.", sell: 22 },
@@ -897,6 +919,25 @@ const ENEMY_SPECIES = {
       { id: "apex-wyrm-relic", name: "Apex Wyrm Relic", slot: "trinket", rarity: "legendary", region: "Outer Wyrm Wastes", stats: { critChance: 0.12, chainChance: 0.18 }, desc: "Legendary late-game relic of the wyrm lord.", sell: 130 }
     ];
 
+    function inferArmorSetFromItem(item) {
+      if (!item || item.slot !== "armor") return "spartan";
+      if (item.armorSet && ARMOR_SET_LIBRARY[item.armorSet]) return item.armorSet;
+      const text = `${item.id || ""} ${item.name || ""} ${item.desc || ""}`.toLowerCase();
+      for (const entry of ARMOR_SET_KEYWORDS) {
+        if (entry.terms.some((term) => text.includes(term))) return entry.set;
+      }
+      return item.rarity === "legendary" ? "royal" : item.rarity === "epic" ? "darkKnight" : "spartan";
+    }
+
+    ITEM_DB.forEach((item) => {
+      if (item.slot !== "armor") return;
+      item.armorSet = inferArmorSetFromItem(item);
+      item.visual = `${item.armorSet}Set`;
+    });
+
+    function getArmorSetDefinition(item) {
+      return ARMOR_SET_LIBRARY[inferArmorSetFromItem(item)] || ARMOR_SET_LIBRARY.spartan;
+    }
 
     const MOUNT_ARCHETYPES = {
       burstRaptor: { label: "Burst Raptor", feel: "Heavy burst climber", descriptors: ["Explosive flap", "Aggressive dive joust"] },
@@ -3118,7 +3159,8 @@ const ENEMY_SPECIES = {
         lanceTip,
         lanceRest: lance.position.clone(),
         spearTipWorld: new THREE.Vector3(),
-        spearForwardWorld: new THREE.Vector3(0, 0, 1)
+        spearForwardWorld: new THREE.Vector3(0, 0, 1),
+        baseRiderParts: { torso, chestPlate, shoulderL, shoulderR, headHuman, helmet, plume, leftArm, rightArm, leftLeg, rightLeg }
       };
 
       return root;
@@ -4489,6 +4531,123 @@ const ENEMY_SPECIES = {
       };
     }
 
+    function clearGroupChildren(group) {
+      while (group.children.length) {
+        const c = group.children.pop();
+        if (c.geometry) c.geometry.dispose();
+        group.remove(c);
+      }
+    }
+
+    function makeArmorMat(color, metalness = 0.55, roughness = 0.48, emissive = 0x000000, emissiveIntensity = 0) {
+      return new THREE.MeshStandardMaterial({ color, metalness, roughness, emissive, emissiveIntensity });
+    }
+
+    function buildArmorSilhouette(anim, armorItem) {
+      const setId = inferArmorSetFromItem(armorItem);
+      const setDef = getArmorSetDefinition(armorItem);
+      const rarityTier = armorItem?.rarity || "common";
+      const rarityComplexity = rarityTier === "legendary" ? 1 : rarityTier === "epic" ? 0.78 : rarityTier === "rare" ? 0.55 : rarityTier === "uncommon" ? 0.35 : 0.2;
+      const glowOn = rarityComplexity + (setDef.rarityBias || 0) > 1.2;
+
+      if (!anim.armorRig) {
+        anim.armorRig = { root: new THREE.Group(), slots: {}, pulseMeshes: [] };
+        anim.rider.add(anim.armorRig.root);
+      }
+      if (!anim.armorRig.slots.helmet) {
+        ARMOR_SLOTS.forEach((slot) => {
+          const g = new THREE.Group();
+          anim.armorRig.root.add(g);
+          anim.armorRig.slots[slot] = g;
+        });
+      }
+      ARMOR_SLOTS.forEach((slot) => clearGroupChildren(anim.armorRig.slots[slot]));
+      anim.armorRig.pulseMeshes = [];
+
+      const pri = setDef.colorPrimary;
+      const sec = setDef.colorSecondary;
+      const emi = setDef.emissive || 0x000000;
+      const plateMat = makeArmorMat(pri, 0.72, 0.38, glowOn ? emi : 0x000000, glowOn ? 0.24 : 0);
+      const clothMat = makeArmorMat(sec, 0.08, 0.86, glowOn && setId === "mage" ? emi : 0x000000, glowOn && setId === "mage" ? 0.35 : 0);
+
+      const helmetSlot = anim.armorRig.slots.helmet;
+      const chestSlot = anim.armorRig.slots.chest;
+      const shoulderSlot = anim.armorRig.slots.shoulders;
+      const cloakSlot = anim.armorRig.slots.cloak;
+      const armsSlot = anim.armorRig.slots.arms;
+      const legsSlot = anim.armorRig.slots.legs;
+
+      if (setId === "spartan") {
+        const helm = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.34, 8), plateMat); helm.position.set(0, 0.98, 0); helmetSlot.add(helm);
+        const plume = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.48, 0.16), clothMat); plume.position.set(0, 1.28, 0); helmetSlot.add(plume);
+        const chest = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.68, 0.3), plateMat); chest.position.set(0, 0.06, 0.21); chestSlot.add(chest);
+        for (const sx of [-1, 1]) { const sh = new THREE.Mesh(new THREE.SphereGeometry(0.18 * setDef.shoulderScale, 8, 8), plateMat); sh.position.set(0.4 * sx, 0.32, 0.1); shoulderSlot.add(sh); }
+        const cape = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.7 * setDef.cloakLength), clothMat); cape.position.set(0, -0.02, -0.34); cape.rotation.x = 0.22; cloakSlot.add(cape);
+        const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.4, 0.44, 10, 1, true), plateMat); skirt.position.set(0, -0.56, 0.11); legsSlot.add(skirt);
+      } else if (setId === "viking") {
+        const helm = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 0.34, 9), plateMat); helm.position.set(0, 0.98, 0); helmetSlot.add(helm);
+        for (const sx of [-1, 1]) { const horn = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.26, 6), makeArmorMat(0xd1d5db, 0.2, 0.82)); horn.position.set(0.18 * sx, 1.08, 0.03); horn.rotation.z = sx * 0.9; helmetSlot.add(horn); }
+        const chest = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.78, 0.4), makeArmorMat(pri, 0.18, 0.74)); chest.position.set(0, 0.02, 0.18); chestSlot.add(chest);
+        for (const sx of [-1, 1]) { const fur = new THREE.Mesh(new THREE.SphereGeometry(0.28 * setDef.shoulderScale, 8, 8), makeArmorMat(sec, 0.05, 0.96)); fur.position.set(0.46 * sx, 0.34, 0.04); shoulderSlot.add(fur); }
+        const cloak = new THREE.Mesh(new THREE.BoxGeometry(0.88, 1.0 * setDef.cloakLength, 0.12), makeArmorMat(sec, 0.02, 0.98)); cloak.position.set(0, -0.07, -0.36); cloak.rotation.x = 0.28; cloakSlot.add(cloak);
+        for (const sx of [-1, 1]) { const wrap = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.62, 8), makeArmorMat(0x6b4f38, 0.08, 0.86)); wrap.position.set(0.44 * sx, 0.0, 0.12); wrap.rotation.z = sx * -0.18; armsSlot.add(wrap); }
+      } else if (setId === "darkKnight") {
+        const helm = new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.54, 7), plateMat); helm.position.set(0, 1.03, 0.02); helmetSlot.add(helm);
+        for (const sx of [-1, 1]) { const spike = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.24, 6), plateMat); spike.position.set(0.14 * sx, 1.18, -0.03); spike.rotation.z = sx * 0.4; helmetSlot.add(spike); }
+        const chest = new THREE.Mesh(new THREE.BoxGeometry(0.94, 0.72, 0.42), plateMat); chest.position.set(0, 0.05, 0.2); chestSlot.add(chest);
+        for (const sx of [-1, 1]) {
+          const pauldron = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.24, 0.34), plateMat); pauldron.position.set(0.46 * sx, 0.36, 0.06); shoulderSlot.add(pauldron);
+          const spike = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.24, 6), plateMat); spike.position.set(0.58 * sx, 0.42, 0.04); spike.rotation.z = sx * -1.1; shoulderSlot.add(spike);
+        }
+        const cloak = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.12 * setDef.cloakLength), clothMat); cloak.position.set(0, -0.1, -0.36); cloak.rotation.x = 0.33; cloakSlot.add(cloak);
+        for (const sx of [-1, 1]) { const arm = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.7, 0.18), plateMat); arm.position.set(0.43 * sx, -0.02, 0.1); arm.rotation.z = sx * -0.12; armsSlot.add(arm); }
+      } else if (setId === "ranger") {
+        const hood = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.62, 9), clothMat); hood.position.set(0, 1.02, -0.01); helmetSlot.add(hood);
+        const chest = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.62, 0.26), makeArmorMat(pri, 0.14, 0.82)); chest.position.set(0.04, 0.02, 0.2); chest.rotation.y = -0.12; chestSlot.add(chest);
+        for (const sx of [-1, 1]) { const pad = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.1, 0.22), makeArmorMat(0x2f4f2f, 0.1, 0.84)); pad.position.set(0.38 * sx, 0.32, sx > 0 ? 0.1 : 0.18); shoulderSlot.add(pad); }
+        const cloak = new THREE.Mesh(new THREE.PlaneGeometry(0.84, 1.2 * setDef.cloakLength), clothMat); cloak.position.set(0.02, -0.16, -0.34); cloak.rotation.x = 0.25; cloak.rotation.z = 0.08; cloakSlot.add(cloak);
+        for (const sx of [-1, 1]) { const bracer = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.56, 0.12), makeArmorMat(0x5b4636, 0.16, 0.78)); bracer.position.set(0.42 * sx, -0.04, 0.1); bracer.rotation.z = sx * -0.24; armsSlot.add(bracer); }
+      } else if (setId === "mage") {
+        const circlet = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.03, 8, 16), makeArmorMat(0xbfc9ff, 0.35, 0.38, emi, 0.5)); circlet.position.set(0, 1.03, 0); circlet.rotation.x = Math.PI / 2; helmetSlot.add(circlet);
+        const robe = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.5, 1.18, 12), clothMat); robe.position.set(0, -0.08, 0.08); chestSlot.add(robe);
+        const shawl = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.2, 0.34), clothMat); shawl.position.set(0, 0.28, 0.12); shoulderSlot.add(shawl);
+        const cloak = new THREE.Mesh(new THREE.PlaneGeometry(0.96, 1.34 * setDef.cloakLength), clothMat); cloak.position.set(0, -0.2, -0.36); cloak.rotation.x = 0.18; cloakSlot.add(cloak);
+        const rune = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.025, 8, 18), makeArmorMat(0xc4b5fd, 0.2, 0.28, emi, 0.8)); rune.position.set(0, 0.02, 0.34); rune.rotation.x = Math.PI / 2; chestSlot.add(rune);
+        anim.armorRig.pulseMeshes.push(rune, circlet);
+      } else if (setId === "gladiator") {
+        const helm = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.24, 0.3, 8), plateMat); helm.position.set(0.04, 0.98, 0); helmetSlot.add(helm);
+        const guard = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.22, 0.08), plateMat); guard.position.set(0.08, 0.93, 0.2); helmetSlot.add(guard);
+        const chest = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.66, 0.26), makeArmorMat(pri, 0.46, 0.52)); chest.position.set(-0.1, 0.05, 0.2); chestSlot.add(chest);
+        const pauldron = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.24, 0.3), plateMat); pauldron.position.set(-0.5, 0.34, 0.06); shoulderSlot.add(pauldron);
+        const armL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.72, 0.14), plateMat); armL.position.set(-0.45, -0.02, 0.11); armsSlot.add(armL);
+        const sash = new THREE.Mesh(new THREE.PlaneGeometry(0.28, 0.66), clothMat); sash.position.set(0.22, -0.24, 0.16); sash.rotation.y = -0.1; legsSlot.add(sash);
+      } else {
+        const helm = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.26, 0.32, 9), plateMat); helm.position.set(0, 0.99, 0); helmetSlot.add(helm);
+        const crown = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.05, 8, 18), makeArmorMat(0xfde68a, 0.85, 0.26, emi, 0.45)); crown.position.set(0, 1.16, 0); crown.rotation.x = Math.PI / 2; helmetSlot.add(crown);
+        const chest = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.72, 0.34), plateMat); chest.position.set(0, 0.06, 0.2); chestSlot.add(chest);
+        for (const sx of [-1, 1]) { const sh = new THREE.Mesh(new THREE.SphereGeometry(0.22 * setDef.shoulderScale, 10, 10), plateMat); sh.position.set(0.42 * sx, 0.34, 0.1); shoulderSlot.add(sh); }
+        const cloak = new THREE.Mesh(new THREE.PlaneGeometry(0.98, 1.18 * setDef.cloakLength), clothMat); cloak.position.set(0, -0.14, -0.34); cloak.rotation.x = 0.26; cloakSlot.add(cloak);
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.31, 0.39, 0.56, 10), plateMat); leg.position.set(0, -0.52, 0.08); legsSlot.add(leg);
+        anim.armorRig.pulseMeshes.push(crown);
+      }
+
+      anim.armorRig.root.userData.setId = setId;
+      anim.armorRig.root.userData.setDef = setDef;
+      anim.armorRig.root.userData.complexity = rarityComplexity;
+      anim.armorRig.root.userData.visual = `${setId}Set`;
+      anim.armorRig.root.userData.slotMeshes = Object.fromEntries(ARMOR_SLOTS.map((slot) => [slot, anim.armorRig.slots[slot].children.length]));
+      anim.armorRig.root.userData.pulse = glowOn;
+
+      if (anim.baseRiderParts) {
+        anim.baseRiderParts.helmet.visible = false;
+        anim.baseRiderParts.plume.visible = false;
+        anim.baseRiderParts.chestPlate.visible = false;
+        anim.baseRiderParts.shoulderL.visible = false;
+        anim.baseRiderParts.shoulderR.visible = false;
+      }
+      anim.cape.visible = false;
+    }
+
     function refreshPlayerAppearance() {
       if (!player?.model) return;
       const mount = getEquippedMount();
@@ -4525,24 +4684,16 @@ const ENEMY_SPECIES = {
       anim.spearAnchor.rotation.set(hrot[0], hrot[1], hrot[2]);
       player.model.userData.weaponProfile = hp;
 
-      const armorTier = armor?.rarity || "common";
-      const armorStyle = (armor?.name || "").toLowerCase().includes("robe") ? "robe" : armorTier === "legendary" || armorTier === "epic" ? "heavy" : "light";
-      const armorColor = armorTier === "legendary" ? 0xf59e0b : armorTier === "epic" ? 0xa78bfa : armorTier === "rare" ? 0x93c5fd : 0x9ca3af;
-      anim.cape.scale.set(armorStyle === "robe" ? 1.2 : 1, armorStyle === "robe" ? 1.26 : 1.05, 1);
-      anim.cape.material.color.set(armorTier === "legendary" ? 0x7f1d1d : armorTier === "epic" ? 0x4338ca : 0x7f1d1d);
-      if (!anim.armorSet) { anim.armorSet = new THREE.Group(); anim.rider.add(anim.armorSet); }
-      while (anim.armorSet.children.length) anim.armorSet.remove(anim.armorSet.children[0]);
-      for (const sx of [-1, 1]) {
-        const spaulder = new THREE.Mesh(new THREE.SphereGeometry(0.2 * (armorStyle === "heavy" ? 1.32 : 1.05), 8, 8), new THREE.MeshStandardMaterial({ color: armorColor, roughness: 0.4, metalness: 0.68 }));
-        spaulder.position.set(0.38 * sx, 0.32, 0.08);
-        anim.armorSet.add(spaulder);
-      }
+      buildArmorSilhouette(anim, armor);
+      player.model.userData.armorSet = inferArmorSetFromItem(armor);
+      player.model.userData.armorVisual = armor?.visual || `${player.model.userData.armorSet}Set`;
+      player.model.userData.armorSlots = ARMOR_SLOTS.slice();
 
       const heavy = mount.handling === "heavyWarBeast";
       const mystic = mount.handling === "hoverMystic" || mount.handling === "glideSerpent";
       anim.rider.position.y = heavy ? -0.03 : mystic ? 0.08 : 0.02;
       anim.rider.rotation.z = 0;
-      anim.cape.visible = !mystic;
+      if (anim.armorRig?.slots?.cloak) anim.armorRig.slots.cloak.visible = !mystic;
 
       if (!anim.mountAccent) {
         const orb = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 10), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.6, roughness: 0.22, metalness: 0.4 }));
@@ -5529,7 +5680,18 @@ function skyProfileForZone(zone) {
       const isHeavy = creatureType === "dragon" || creatureType === "griffon";
       const bobAmp = grounded ? (isHeavy ? 0.02 : 0.03) : (isHover ? 0.16 : 0.1 + styleMod.bounce);
       // VISUAL POLISH: stronger cape and tail response, smoother momentum read.
-      anim.cape.rotation.x = 0.12 + Math.sin(actor.flapPhase * 0.78) * (grounded ? 0.07 : 0.28);
+      const cloakSwing = 0.12 + Math.sin(actor.flapPhase * 0.78) * (grounded ? 0.07 : 0.28);
+      anim.cape.rotation.x = cloakSwing;
+      if (anim.armorRig?.slots?.cloak) {
+        anim.armorRig.slots.cloak.rotation.x = cloakSwing + 0.1;
+        anim.armorRig.slots.cloak.rotation.z = Math.sin(actor.flapPhase * 0.46) * 0.08;
+      }
+      if (anim.armorRig?.pulseMeshes?.length) {
+        const pulse = 0.35 + Math.sin(performance.now() * 0.004 + actor.flapPhase * 0.2) * 0.25;
+        anim.armorRig.pulseMeshes.forEach((mesh) => {
+          if (mesh?.material && "emissiveIntensity" in mesh.material) mesh.material.emissiveIntensity = pulse;
+        });
+      }
       anim.head.rotation.x = Math.sin(actor.flapPhase * 0.42) * 0.03 + (diveState ? -0.1 : landingState ? 0.06 : 0);
       anim.neck.rotation.z = (isSerpent ? Math.sin(actor.flapPhase * 0.62) * 0.22 : Math.sin(actor.flapPhase * 0.36) * 0.06) - actor.model.rotation.z * 0.06;
       anim.rider.rotation.z = THREE.MathUtils.lerp(anim.rider.rotation.z, -actor.vel.x * 0.009 + (thrustState ? -0.08 : 0), 1 - Math.pow(0.015, dt * 60));
@@ -7385,6 +7547,13 @@ function skyProfileForZone(zone) {
       renderTabMenu();
     }
 
+    function getArmorPreviewHtml(item) {
+      if (item.slot !== "armor") return "";
+      const setId = inferArmorSetFromItem(item);
+      const setDef = ARMOR_SET_LIBRARY[setId] || ARMOR_SET_LIBRARY.spartan;
+      return `<div style="font-size:11px;color:#fef08a">Set: ${setDef.label} • Silhouette: ${setDef.silhouette}</div><div style="font-size:11px;opacity:.75">Slots: ${ARMOR_SLOTS.join(" / ")} • visual: ${item.visual || `${setId}Set`}</div>`;
+    }
+
     function renderInventoryMenu() {
       normalizeMountOwnershipState();
       const groups = { weapon: [], armor: [], trinket: [], quest: progress.questItems, material: progress.materials };
@@ -7400,7 +7569,7 @@ function skyProfileForZone(zone) {
           const row = document.createElement("div");
           row.style.cssText = "display:flex;justify-content:space-between;gap:6px;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.08)";
           const equipped = Object.values(progress.equipped).includes(item.id);
-          row.innerHTML = `<div><span style="color:${RARITY_COLORS[item.rarity] || "#fff"}">${item.name}</span> <small>(${item.rarity})</small>${item.classReq ? `<div style="font-size:11px;color:#fca5a5">Class: ${CLASS_BRANCHES[item.classReq].title}</div>` : ""}<div style="font-size:11px;opacity:.85">${item.desc}</div><div style="font-size:11px;opacity:.75">${getWeaponProfile(item).weaponClass || item.slot} • ${getWeaponProfile(item).feel || ""}</div><div style="font-size:11px;opacity:.7">Sell ${item.sell}g</div></div>`;
+          row.innerHTML = `<div><span style="color:${RARITY_COLORS[item.rarity] || "#fff"}">${item.name}</span> <small>(${item.rarity})</small>${item.classReq ? `<div style="font-size:11px;color:#fca5a5">Class: ${CLASS_BRANCHES[item.classReq].title}</div>` : ""}<div style="font-size:11px;opacity:.85">${item.desc}</div>${getArmorPreviewHtml(item)}<div style="font-size:11px;opacity:.75">${getWeaponProfile(item).weaponClass || item.slot} • ${getWeaponProfile(item).feel || ""}</div><div style="font-size:11px;opacity:.7">Sell ${item.sell}g</div></div>`;
           const actions = document.createElement("div");
           const eq = document.createElement("button");
           eq.textContent = equipped ? "Equipped" : "Equip";
