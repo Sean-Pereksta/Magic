@@ -315,6 +315,8 @@
     const DROP_LIFETIME_SECONDS = 30;
     let lastRespawnPoint = new THREE.Vector3(-8, 14, -4);
     let activeCheckpoint = null;
+    const STARTER_MOUNT_ID = "war-roc";
+
     let progress = {
       level: 1,
       xp: 0,
@@ -322,7 +324,8 @@
       points: 0,
       selectedBranch: "combat",
       classChoice: null,
-      mount: "war-roc",
+      mount: STARTER_MOUNT_ID,
+      ownedMounts: [STARTER_MOUNT_ID],
       upgrades: {
         spearDamage: 0,
         spearReach: 0,
@@ -424,6 +427,44 @@
       bossClears: {},
       bossFirstRewardClaimed: {}
     };
+
+    function normalizeMountOwnershipState() {
+      const starter = MOUNT_DB.find((m) => m.id === STARTER_MOUNT_ID)?.id || MOUNT_DB[0]?.id;
+      progress.ownedMounts = Array.isArray(progress.ownedMounts) ? progress.ownedMounts.filter((id, idx, arr) => arr.indexOf(id) === idx) : [];
+      if (starter && !progress.ownedMounts.includes(starter)) progress.ownedMounts.unshift(starter);
+      progress.ownedMounts = progress.ownedMounts.filter((id) => MOUNT_DB.some((m) => m.id === id));
+      if (!progress.ownedMounts.length && starter) progress.ownedMounts = [starter];
+      if (!isOwnedMount(progress.mount)) progress.mount = progress.ownedMounts[0] || starter;
+    }
+
+    function isOwnedMount(mountId) {
+      return Array.isArray(progress.ownedMounts) && progress.ownedMounts.includes(mountId);
+    }
+
+    function getEquippedMount() {
+      const mount = MOUNT_DB.find((m) => m.id === progress.mount);
+      if (mount && isOwnedMount(mount.id)) return mount;
+      normalizeMountOwnershipState();
+      return MOUNT_DB.find((m) => m.id === progress.mount) || MOUNT_DB[0];
+    }
+
+    function ownMount(mountId) {
+      const mount = MOUNT_DB.find((m) => m.id === mountId);
+      if (!mount) return false;
+      if (!isOwnedMount(mountId)) progress.ownedMounts.push(mountId);
+      return true;
+    }
+
+    function equipMount(mountId, silent = false) {
+      const mount = MOUNT_DB.find((m) => m.id === mountId);
+      if (!mount || !isOwnedMount(mountId)) {
+        normalizeMountOwnershipState();
+        if (!silent) showCenterMessage("Mount unavailable. Reverting to starter mount.", 0.9);
+        return false;
+      }
+      progress.mount = mountId;
+      return true;
+    }
 
     const keys = {};
     let playerAbilities = {};
@@ -849,6 +890,37 @@ const ENEMY_SPECIES = {
       { id: "ironhorn-roc", name: "Ironhorn Roc", classHint: "War Mount", handling: "heavyWarBeast", silhouetteProfile: "warbeast", animationProfile: "heavyBird", speed: 0.9, accel: 0.82, turn: 0.74, flap: 1.14, impact: 1.72, lateral: false, landingFx: "knockback", gravityScale: 1.34, fallSpeedCap: 44, flapBurst: 9.8, flapCooldown: 0.56, boostPower: 12.1, boostCooldown: 1.14, boostDuration: 0.32, glideFactor: 0.66, airDrag: 0.36, momentumRetention: 0.9, turnResponsiveness: 0.68, hoverAssist: 0, diveAcceleration: 1.24, stallRecovery: 0.86, landingSkid: 1.0, wingbeatRate: 0.62, idleBobStyle: "heavy", dashStyle: "ram", wingAmplitude: 0.82, wingFrequency: 0.6, tailSway: 0.18, bodyPitchLag: 0.28, diveTuckAmount: 0.5, landingCompression: 0.78, boostTrailType: "iron", colors: { bird: 0x666b75, wing: 0x454a55, rider: 0xe5e9f1, cloth: 0x94a3b8 } }
     ];
 
+    const MOUNT_VISUAL_PROFILES_BY_HANDLING = {
+      burstRaptor: { creatureClass: "raptorBird", bodyProfile: "raptorCompact", headProfile: "predatorBeak", wingProfile: "featherRazor", tailProfile: "quillFan", limbProfile: "talonRunner", ornamentProfile: "crestSpikes", animationProfile: "burstRaptor" },
+      glideSerpent: { creatureClass: "wingedSerpent", bodyProfile: "serpentRibbon", headProfile: "serpentHorned", wingProfile: "finMembrane", tailProfile: "ribbonTail", limbProfile: "none", ornamentProfile: "arcaneFins", animationProfile: "serpentGlide" },
+      heavyWarBeast: { creatureClass: "warBeast", bodyProfile: "armoredMass", headProfile: "ramGuard", wingProfile: "armoredStub", tailProfile: "maceTail", limbProfile: "crusherLegs", ornamentProfile: "warPlates", animationProfile: "heavyWar" },
+      skySkimmer: { creatureClass: "skimmerAvian", bodyProfile: "narrowSkimmer", headProfile: "sleekBeak", wingProfile: "sweptFeather", tailProfile: "rudderTail", limbProfile: "lightTalons", ornamentProfile: "sunCrest", animationProfile: "skimmerPrecision" },
+      rocketDiver: { creatureClass: "diveDrake", bodyProfile: "dartDrake", headProfile: "falconDrake", wingProfile: "diveMembrane", tailProfile: "splitBlade", limbProfile: "raptorClaws", ornamentProfile: "jetHorns", animationProfile: "rocketDive" },
+      hoverMystic: { creatureClass: "mysticGlider", bodyProfile: "levitatingManta", headProfile: "spiritMask", wingProfile: "haloVeil", tailProfile: "etherStreamers", limbProfile: "hoverTendrils", ornamentProfile: "arcaneHalo", animationProfile: "hoverMystic" }
+    };
+
+    const MOUNT_VISUAL_OVERRIDES = {
+      "war-roc": { bodyProfile: "starterRoc", animationProfile: "starterRaptor" },
+      "crystal-manta": { creatureClass: "mysticManta", bodyProfile: "crystalManta", wingProfile: "crystalFins", tailProfile: "rayWhip", ornamentProfile: "crystalSpines", animationProfile: "mantaGlide" },
+      "rift-serpent": { creatureClass: "riftSerpent", bodyProfile: "voidRibbon", wingProfile: "voidSails", ornamentProfile: "riftHorns", animationProfile: "voidUndulate" },
+      "iron-gryphon": { creatureClass: "gryphonWarbeast", bodyProfile: "gryphonBulk", headProfile: "hookBeak", wingProfile: "ironFeather", tailProfile: "lionPlume", limbProfile: "lionClaws", ornamentProfile: "shieldPlates", animationProfile: "gryphonHeavy" },
+      "mossfang-glider": { creatureClass: "spiritBeetle", bodyProfile: "beetleGlider", headProfile: "mandibleMask", wingProfile: "beetleWings", limbProfile: "hoverTendrils", ornamentProfile: "mossHorns", animationProfile: "insectHover" }
+    };
+
+    MOUNT_DB.forEach((mount) => {
+      const fromHandling = MOUNT_VISUAL_PROFILES_BY_HANDLING[mount.handling] || MOUNT_VISUAL_PROFILES_BY_HANDLING.burstRaptor;
+      const override = MOUNT_VISUAL_OVERRIDES[mount.id] || {};
+      const visual = { ...fromHandling, ...override };
+      mount.creatureClass = visual.creatureClass;
+      mount.bodyProfile = visual.bodyProfile;
+      mount.headProfile = visual.headProfile;
+      mount.wingProfile = visual.wingProfile;
+      mount.tailProfile = visual.tailProfile;
+      mount.limbProfile = visual.limbProfile;
+      mount.ornamentProfile = visual.ornamentProfile;
+      mount.animationProfile = visual.animationProfile || mount.animationProfile;
+    });
+
     const CLASS_BRANCHES = {
       summoner: { title: "Summoner", color: "#2dd4bf" },
       warrior: { title: "Warrior", color: "#fb7185" },
@@ -1237,6 +1309,7 @@ const ENEMY_SPECIES = {
     function seedPlayerProgression() {
       const starter = ["iron-pike", "sky-lancer", "rider-leathers", "cliffguard-mail", "amulet-lift", "bee-charm", "ring-recovery"];
       progress.inventory = starter.map((id) => ITEM_DB.find((i) => i.id === id)).filter(Boolean);
+      normalizeMountOwnershipState();
       progress.quests = [
         { id: "q-bee", name: "Purge the Giant Bees", target: "giantBee", need: 8, count: 0, state: "available", reward: { xp: 90, gold: 40, item: "stormcloak-harness" }, giverHub: "Green Cliff Outpost" },
         { id: "q-skimmer", name: "Frontier Skimmer Sweep", target: "forestSkimmer", need: 10, count: 0, state: "available", reward: { xp: 100, gold: 48, item: "broodmother-spur" }, giverHub: "Green Cliff Outpost" },
@@ -2353,6 +2426,81 @@ const ENEMY_SPECIES = {
       return { colors: { ...config }, visualProfile: {} };
     }
 
+    function buildVisualProfileFromMount(mount) {
+      const bodyMap = {
+        raptorCompact: "duelist",
+        starterRoc: "duelist",
+        gryphonBulk: "knight",
+        armoredMass: "knight",
+        dartDrake: "dragon",
+        serpentRibbon: "serpentLong",
+        voidRibbon: "serpentLong",
+        narrowSkimmer: "ray",
+        levitatingManta: "ray",
+        crystalManta: "ray",
+        beetleGlider: "orb"
+      };
+      const headMap = {
+        predatorBeak: "beak",
+        sleekBeak: "beak",
+        hookBeak: "hook",
+        falconDrake: "dragon",
+        ramGuard: "dragon",
+        serpentHorned: "serpent",
+        spiritMask: "orb",
+        mandibleMask: "orb"
+      };
+      const wingMap = {
+        featherRazor: "broad",
+        sweptFeather: "needle",
+        ironFeather: "folded",
+        armoredStub: "stub",
+        diveMembrane: "dragon",
+        finMembrane: "manta",
+        haloVeil: "halo",
+        crystalFins: "manta",
+        beetleWings: "halo",
+        voidSails: "manta"
+      };
+      const tailMap = {
+        quillFan: "banner",
+        rudderTail: "crest",
+        lionPlume: "banner",
+        maceTail: "club",
+        splitBlade: "club",
+        ribbonTail: "serpent",
+        etherStreamers: "serpent",
+        rayWhip: "serpent"
+      };
+      const ornamentMap = {
+        crestSpikes: "royal",
+        sunCrest: "royal",
+        warPlates: "heavy",
+        shieldPlates: "heavy",
+        arcaneHalo: "arcane",
+        crystalSpines: "royal"
+      };
+      return {
+        bodyClass: bodyMap[mount?.bodyProfile] || "duelist",
+        headClass: headMap[mount?.headProfile] || "beak",
+        wingClass: wingMap[mount?.wingProfile] || "broad",
+        tailClass: tailMap[mount?.tailProfile] || "banner",
+        riderClass: mount?.limbProfile === "none" ? "minimal" : "duelist",
+        armorClass: ornamentMap[mount?.ornamentProfile] || "plate",
+        glowClass: mount?.handling === "hoverMystic" || mount?.handling === "glideSerpent" ? "storm" : mount?.boostTrailType === "void" ? "void" : mount?.boostTrailType === "ember" ? "ember" : "none"
+      };
+    }
+
+    function createPlayerMountModel(mount) {
+      const safeMount = mount || MOUNT_DB[0];
+      const model = createBirdRider({
+        colors: safeMount.colors,
+        visualProfile: buildVisualProfileFromMount(safeMount)
+      });
+      model.userData.mountId = safeMount.id;
+      return model;
+    }
+
     function getSpeciesVisualProfile(species, archetype = "Duelist") {
       const mapped = SPECIES_VISUAL_PROFILE[species] || {};
       if (Object.keys(mapped).length) return { ...mapped };
@@ -2634,8 +2782,9 @@ const ENEMY_SPECIES = {
     }
 
     function createPlayer() {
-      mountSelection = MOUNT_DB.find((m) => m.id === progress.mount) || MOUNT_DB[0];
-      const model = createBirdRider(mountSelection.colors);
+      normalizeMountOwnershipState();
+      mountSelection = getEquippedMount();
+      const model = createPlayerMountModel(mountSelection);
       scene.add(model);
 
       player = {
@@ -3767,7 +3916,7 @@ const ENEMY_SPECIES = {
       const eqStats = aggregateItemStats(getEquippedItems());
       const temp = progress.tempBonuses || {};
       const stat = (k) => (eqStats[k] || 0) + (temp[k] || 0);
-      const mount = MOUNT_DB.find((m) => m.id === progress.mount) || MOUNT_DB[0];
+      const mount = getEquippedMount();
 
       const computedMaxHealth = 100 + progress.upgrades.healthBoost * 10 + stat("maxHealth");
       if (player) {
@@ -3803,13 +3952,23 @@ const ENEMY_SPECIES = {
     }
 
     function refreshPlayerAppearance() {
-      if (!player?.model?.userData?.anim) return;
-      const mount = MOUNT_DB.find((m) => m.id === progress.mount) || MOUNT_DB[0];
+      if (!player?.model) return;
+      const mount = getEquippedMount();
+      if (!player.model.userData?.anim || player.model.userData.mountId !== mount.id) {
+        const oldModel = player.model;
+        const replacement = createPlayerMountModel(mount);
+        replacement.position.copy(oldModel.position);
+        replacement.rotation.copy(oldModel.rotation);
+        replacement.visible = oldModel.visible;
+        player.model = replacement;
+        scene.add(replacement);
+        scene.remove(oldModel);
+      }
+      const anim = player.model.userData.anim;
       const eq = getEquippedItems();
       const weapon = eq.weapon;
       const armor = eq.armor;
       const trinkets = [eq.trinket1, eq.trinket2].filter(Boolean);
-      const anim = player.model.userData.anim;
       const lance = anim.lance;
       while (lance.children.length) {
         const c = lance.children.pop();
@@ -3840,28 +3999,11 @@ const ENEMY_SPECIES = {
         anim.armorSet.add(spaulder);
       }
 
-      const silhouette = mount.silhouetteProfile || "roc";
-      const silhouetteScales = {
-        roc: { body: [1.14, 0.96, 1.28], wing: [1.2, 1, 1.3], tip: [1.1,1,1.22], tailX: 1.2 },
-        hawk: { body: [0.94, 0.9, 1.18], wing: [1.18,0.92,1.26], tip: [1.14,0.9,1.3], tailX: 0.9 },
-        eagle: { body: [1.02,0.94,1.26], wing: [1.26,0.94,1.34], tip: [1.22,0.92,1.4], tailX: 0.96 },
-        gryphon: { body: [1.24, 1.03, 1.1], wing: [1.1,1.06,1.16], tip: [1.02,1.04,1.08], tailX: 1.34 },
-        wyvern: { body: [1.02,0.92,1.34], wing: [1.34,0.9,1.52], tip: [1.4,0.88,1.64], tailX: 0.76 },
-        drake: { body: [1.14,1.0,1.2], wing: [1.12,0.96,1.2], tip: [1.06,0.95,1.22], tailX: 0.82 },
-        serpent: { body: [0.86,0.8,1.5], wing: [1.48,0.78,1.72], tip: [1.64,0.72,1.88], tailX: 0.56 },
-        manta: { body: [1.04,0.84,1.32], wing: [1.56,0.72,1.9], tip: [1.7,0.68,2.02], tailX: 0.52 },
-        seraph: { body: [1.0,0.94,1.26], wing: [1.48,0.88,1.72], tip: [1.62,0.84,1.92], tailX: 0.94 },
-        warbeast: { body: [1.28,1.06,1.12], wing: [1.06,1.08,1.12], tip: [1,1.06,1.08], tailX: 1.42 },
-        beetle: { body: [1.08,0.92,1.22], wing: [1.36,0.74,1.5], tip: [1.42,0.7,1.6], tailX: 0.66 },
-        falcon: { body: [0.9,0.88,1.2], wing: [1.24,0.9,1.3], tip: [1.2,0.9,1.38], tailX: 0.86 }
-      }[silhouette] || { body: [1,1,1], wing: [1,1,1], tip: [1,1,1], tailX: 1 };
-      anim.body.scale.set(...silhouetteScales.body);
-      anim.chest.scale.set(silhouetteScales.body[0] * 0.82, silhouetteScales.body[1] * 0.96, silhouetteScales.body[2] * 0.86);
-      anim.leftWing.scale.set(...silhouetteScales.wing);
-      anim.rightWing.scale.copy(anim.leftWing.scale);
-      anim.leftWingTip.scale.set(...silhouetteScales.tip);
-      anim.rightWingTip.scale.copy(anim.leftWingTip.scale);
-      anim.tailPivot.scale.set(silhouetteScales.tailX, 1, 1.12 + (silhouetteScales.tailX < 0.8 ? 0.2 : 0));
+      const heavy = mount.handling === "heavyWarBeast";
+      const mystic = mount.handling === "hoverMystic" || mount.handling === "glideSerpent";
+      anim.rider.position.y = heavy ? -0.03 : mystic ? 0.08 : 0.02;
+      anim.rider.rotation.z = 0;
+      anim.cape.visible = !mystic;
 
       if (!anim.mountAccent) {
         const orb = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 10), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.6, roughness: 0.22, metalness: 0.4 }));
@@ -4147,7 +4289,8 @@ const ENEMY_SPECIES = {
         points: 0,
         selectedBranch: "combat",
         classChoice: null,
-        mount: "war-roc",
+        mount: STARTER_MOUNT_ID,
+        ownedMounts: [STARTER_MOUNT_ID],
         upgrades: {
           spearDamage: 0, spearReach: 0, spearCooldown: 0, spearKnockback: 0, critChance: 0, diveImpact: 0, antiArmor: 0,
           flapPower: 0, airControl: 0, bounceRecovery: 0, burstSpeed: 0, landingStability: 0,
@@ -4722,10 +4865,13 @@ function skyProfileForZone(zone) {
       else if (gliding) wingState = "glide";
       else if (thrustState) wingState = "thrust";
 
-      const mount = actor === player ? (MOUNT_DB.find((m) => m.id === progress.mount) || MOUNT_DB[0]) : null;
-      const wingStyle = mount?.wingStyle || "feather";
+      const mount = actor === player ? getEquippedMount() : null;
+      const wingStyle = mount?.wingProfile?.includes("Membrane") || mount?.wingProfile?.includes("dive") ? "membrane" :
+        mount?.wingProfile?.includes("halo") || mount?.wingProfile?.includes("Fins") ? "mystic" :
+        mount?.wingProfile?.includes("Stub") ? "heavy" : "feather";
       const styleMod = wingStyle === "membrane" ? { arc: 0.88, tip: 0.8, sweep: 1.08, bounce: 0.05 } :
         wingStyle === "mystic" ? { arc: 0.75, tip: 1.2, sweep: 0.72, bounce: 0.09 } :
+        wingStyle === "heavy" ? { arc: 0.62, tip: 0.7, sweep: 1.16, bounce: 0.03 } :
         { arc: 1.08, tip: 1.02, sweep: 0.95, bounce: 0.07 };
       const ampMod = mount?.wingAmplitude || 1;
       const freqMod = mount?.wingFrequency || 1;
@@ -4750,16 +4896,19 @@ function skyProfileForZone(zone) {
       };
       setWingPose(anim, pose, 1 - Math.pow(0.002, dt * 60));
 
-      const bobAmp = grounded ? 0.03 : 0.1 + styleMod.bounce;
+      const isSerpent = mount?.animationProfile?.toLowerCase().includes("serpent") || mount?.animationProfile?.toLowerCase().includes("undulate");
+      const isHover = mount?.animationProfile?.toLowerCase().includes("hover") || mount?.handling === "hoverMystic";
+      const isHeavy = mount?.handling === "heavyWarBeast";
+      const bobAmp = grounded ? (isHeavy ? 0.02 : 0.03) : (isHover ? 0.16 : 0.1 + styleMod.bounce);
       // VISUAL POLISH: stronger cape and tail response, smoother momentum read.
       anim.cape.rotation.x = 0.12 + Math.sin(actor.flapPhase * 0.78) * (grounded ? 0.07 : 0.28);
       anim.head.rotation.x = Math.sin(actor.flapPhase * 0.42) * 0.03 + (diveState ? -0.1 : landingState ? 0.06 : 0);
-      anim.neck.rotation.z = Math.sin(actor.flapPhase * 0.36) * 0.06 - actor.model.rotation.z * 0.06;
+      anim.neck.rotation.z = (isSerpent ? Math.sin(actor.flapPhase * 0.62) * 0.15 : Math.sin(actor.flapPhase * 0.36) * 0.06) - actor.model.rotation.z * 0.06;
       anim.rider.rotation.z = THREE.MathUtils.lerp(anim.rider.rotation.z, -actor.vel.x * 0.009 + (thrustState ? -0.08 : 0), 1 - Math.pow(0.015, dt * 60));
       anim.rider.rotation.x = THREE.MathUtils.lerp(anim.rider.rotation.x, THREE.MathUtils.clamp(-actor.vel.y * (0.015 + (mount?.bodyPitchLag || 0.12) * 0.03), -0.28, 0.28), 1 - Math.pow(0.02, dt * 60));
       anim.rider.position.y = 0.02 + Math.sin(actor.flapPhase * 0.95) * bobAmp;
-      anim.tailPivot.rotation.y = Math.sin(actor.flapPhase * 0.45 + horizontalSpeed * 0.04) * (mount?.tailSway || 0.22);
-      anim.tailPivot.rotation.x = -0.16 + Math.sin(actor.flapPhase * 0.6) * 0.16 + THREE.MathUtils.clamp(actor.vel.y * 0.012, -0.13, 0.16);
+      anim.tailPivot.rotation.y = Math.sin(actor.flapPhase * (isSerpent ? 0.9 : 0.45) + horizontalSpeed * 0.04) * (mount?.tailSway || 0.22) * (isSerpent ? 1.4 : 1);
+      anim.tailPivot.rotation.x = (isHeavy ? -0.08 : -0.16) + Math.sin(actor.flapPhase * (isHover ? 0.4 : 0.6)) * (isSerpent ? 0.28 : 0.16) + THREE.MathUtils.clamp(actor.vel.y * (isHeavy ? 0.02 : 0.012), -0.13, 0.16);
 
       if (actor === player) updateSpearPose(actor, dt);
     }
@@ -6174,7 +6323,10 @@ function skyProfileForZone(zone) {
       });
       pool = pool.sort((a,b)=> rarityRanks.indexOf(a.rarity)-rarityRanks.indexOf(b.rarity) || a.sell-b.sell);
       if (type === "mount") {
-        const mounts = MOUNT_DB.slice(0, Math.min(MOUNT_DB.length, 6 + Math.floor(tier / 2))).map((m,idx)=>({ id:`mount-${hubName.replace(/\W+/g,'-').toLowerCase()}-${m.id}`, name:m.name, rarity: idx < 2 ? "uncommon" : idx < 5 ? "rare" : "epic", stats:{ speed: Number((m.speed*100).toFixed(0)), turn: Number((m.turn*100).toFixed(0)), impact:Number((m.impact*100).toFixed(0))}, desc:`${m.classHint} mount permit with tuning package.`, sell: Math.round(32 + idx*9 + tier*6), vendorVirtual:true }));
+        const mounts = MOUNT_DB
+          .slice(0, Math.min(MOUNT_DB.length, 6 + Math.floor(tier / 2)))
+          .filter((m) => !isOwnedMount(m.id))
+          .map((m,idx)=>({ id:`mount-${hubName.replace(/\W+/g,'-').toLowerCase()}-${m.id}`, mountId: m.id, name:m.name, rarity: idx < 2 ? "uncommon" : idx < 5 ? "rare" : "epic", stats:{ speed: Number((m.speed*100).toFixed(0)), turn: Number((m.turn*100).toFixed(0)), impact:Number((m.impact*100).toFixed(0))}, desc:`${m.classHint} mount permit with tuning package.`, sell: Math.round(32 + idx*9 + tier*6), vendorVirtual:true, vendorType: "mountPermit" }));
         const upgrades = [
           { id:`mount-updraft-${hubName}`, name:"Updraft Harness", rarity:"rare", stats:{ flapLift: 2.2, burstSpeed: 0.8 }, desc:"Wing harness tuned for steep ascents.", sell: 66, vendorVirtual:true },
           { id:`mount-plating-${hubName}`, name:"Impact Plating", rarity:"epic", stats:{ resistance: 0.07, diveImpact: 2.8 }, desc:"Reinforced mount barding for joust collisions.", sell: 88, vendorVirtual:true },
@@ -6193,10 +6345,17 @@ function skyProfileForZone(zone) {
       const stock = getVendorStockForCity(vendor.hubName, vendor.type);
       const item = stock.find((it) => it.id === itemId) || getItemById(itemId);
       if (!item) return;
+      if (item.vendorType === "mountPermit" && item.mountId && isOwnedMount(item.mountId)) {
+        return showCenterMessage("You already own this mount.", 0.7);
+      }
       const price = Math.round(item.sell * 1.65);
       if (gold < price) return showCenterMessage("Not enough gold.", 0.6);
       gold -= price;
-      if (item.vendorVirtual) {
+      if (item.vendorType === "mountPermit" && item.mountId) {
+        ownMount(item.mountId);
+        equipMount(item.mountId, true);
+        refreshPlayerAppearance();
+      } else if (item.vendorVirtual) {
         progress.tempBonuses = progress.tempBonuses || {};
         Object.entries(item.stats || {}).forEach(([k,v]) => progress.tempBonuses[k] = (progress.tempBonuses[k] || 0) + v * (typeof v === "number" && v > 5 ? 0.01 : 1));
       } else {
@@ -6311,7 +6470,7 @@ function skyProfileForZone(zone) {
               const cost = Math.round(item.sell * 1.65);
               const statLine = Object.entries(item.stats || {}).slice(0,3).map(([k,v]) => `${k}:${typeof v === "number" ? Number(v).toFixed(v < 2 ? 2 : 0) : v}`).join(" • ");
               row.style.cssText = "display:flex;justify-content:space-between;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.08)";
-              row.innerHTML = `<div><div style="color:${RARITY_COLORS[item.rarity] || "#fff"}">${item.name}</div><div style="font-size:11px;opacity:.78">${item.desc}</div><div style="font-size:11px;opacity:.8">${statLine || "utility"} • <b>${cost}g</b></div></div>`;
+              row.innerHTML = `<div><div style="color:${RARITY_COLORS[item.rarity] || "#fff"}">${item.name}${item.vendorType === "mountPermit" ? " <span style='font-size:10px;color:#93c5fd'>[Mount Permit]</span>" : ""}</div><div style="font-size:11px;opacity:.78">${item.desc}</div><div style="font-size:11px;opacity:.8">${statLine || "utility"} • <b>${cost}g</b></div></div>`;
               const btn = document.createElement("button");
               btn.textContent = "Buy";
               btn.style.cssText = "border:1px solid rgba(255,255,255,.25);background:rgba(59,130,246,.24);color:white;border-radius:6px;padding:4px 8px;cursor:pointer";
@@ -6468,10 +6627,11 @@ function skyProfileForZone(zone) {
     }
 
     function renderInventoryMenu() {
+      normalizeMountOwnershipState();
       const groups = { weapon: [], armor: [], trinket: [], quest: progress.questItems, material: progress.materials };
       progress.inventory.forEach((it) => groups[it.slot]?.push(it));
       const equippedWeapon = getItemById(progress.equipped.weapon);
-      const equippedMount = MOUNT_DB.find((m)=>m.id===progress.mount) || MOUNT_DB[0];
+      const equippedMount = getEquippedMount();
       menuMainPanelEl.innerHTML = `<div style="margin-bottom:8px"><b>Equipped:</b> Weapon ${equippedWeapon?.name || "None"} <span style="opacity:.75">(${getWeaponProfile(equippedWeapon).weaponClass})</span> • Armor ${getItemById(progress.equipped.armor)?.name || "None"} • Trinkets ${getItemById(progress.equipped.trinket1)?.name || "None"} / ${getItemById(progress.equipped.trinket2)?.name || "None"} • Mount ${equippedMount.name} <span style="opacity:.75">(${MOUNT_ARCHETYPES[equippedMount.handling]?.label || equippedMount.handling}: ${getMountHandlingDescriptor(equippedMount)})</span></div>`;
       ["weapon", "armor", "trinket"].forEach((slot) => {
         const sec = document.createElement("div");
@@ -6499,14 +6659,27 @@ function skyProfileForZone(zone) {
       });
       const mountSec = document.createElement("div");
       mountSec.style.cssText = "margin-bottom:10px;padding:8px;border:1px solid rgba(255,255,255,.14);border-radius:10px;";
-      mountSec.innerHTML = `<div style="font-weight:700;margin-bottom:5px">Mount Stable</div>`;
-      MOUNT_DB.forEach((m) => {
+      mountSec.innerHTML = `<div style="font-weight:700;margin-bottom:5px">Mounts (Owned)</div>`;
+      progress.ownedMounts.forEach((mountId) => {
+        const m = MOUNT_DB.find((entry) => entry.id === mountId);
+        if (!m) return;
+        const isEquipped = progress.mount === m.id;
         const b = document.createElement("button");
-        b.style.cssText = `display:block;width:100%;text-align:left;margin:4px 0;border:1px solid rgba(255,255,255,.2);background:${progress.mount === m.id ? "rgba(251,191,36,.25)" : "rgba(255,255,255,.06)"};color:white;border-radius:7px;padding:6px;`;
-        b.textContent = `${m.name} • ${MOUNT_ARCHETYPES[m.handling]?.label || m.classHint} • ${getMountHandlingDescriptor(m)}${m.lateral ? " • Q/E Lateral" : ""}`;
-        b.onclick = () => { progress.mount = m.id; refreshPlayerAppearance(); renderTabMenu(); };
+        b.style.cssText = `display:block;width:100%;text-align:left;margin:4px 0;border:1px solid ${isEquipped ? "rgba(251,191,36,.9)" : "rgba(255,255,255,.2)"};box-shadow:${isEquipped ? "0 0 10px rgba(251,191,36,.55)" : "none"};background:${isEquipped ? "rgba(251,191,36,.25)" : "rgba(255,255,255,.06)"};color:white;border-radius:7px;padding:6px;`;
+        b.innerHTML = `<div style="font-weight:700">${m.name}${isEquipped ? " <span style='color:#fde68a'>(Equipped)</span>" : ""}</div><div style="font-size:11px;opacity:.82">${MOUNT_ARCHETYPES[m.handling]?.label || m.classHint} • ${getMountHandlingDescriptor(m)}${m.lateral ? " • Q/E Lateral" : ""}</div>`;
+        b.onclick = () => {
+          if (!equipMount(m.id)) return;
+          refreshPlayerAppearance();
+          renderTabMenu();
+        };
         mountSec.appendChild(b);
       });
+      if (progress.ownedMounts.length <= 1) {
+        const hint = document.createElement("div");
+        hint.style.cssText = "font-size:11px;opacity:.76;margin-top:5px;";
+        hint.textContent = "Buy additional mount permits from mount vendors to expand this list.";
+        mountSec.appendChild(hint);
+      }
       menuMainPanelEl.appendChild(mountSec);
       const shopSection = document.createElement("div");
       shopSection.style.cssText = "padding:8px;border:1px solid rgba(255,255,255,.14);border-radius:10px;";
