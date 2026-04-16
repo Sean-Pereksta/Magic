@@ -850,10 +850,10 @@ const ENEMY_SPECIES = {
     ];
 
     const CLASS_BRANCHES = {
-      summoner: { title: "Summoner", color: "#67e8f9" },
-      warrior: { title: "Warrior", color: "#fca5a5" },
-      ranger: { title: "Ranger", color: "#86efac" },
-      sorcerer: { title: "Sorcerer", color: "#c4b5fd" }
+      summoner: { title: "Summoner", color: "#2dd4bf" },
+      warrior: { title: "Warrior", color: "#fb7185" },
+      ranger: { title: "Ranger", color: "#facc15" },
+      sorcerer: { title: "Sorcerer", color: "#a78bfa" }
     };
 
 
@@ -890,11 +890,94 @@ const ENEMY_SPECIES = {
 
     const UPGRADE_ABILITY_UNLOCKS = {
       summonCount: "vineDrakeCall", beetleLegion: "thornBeetleSwarm", serpentBinding: "serpentWisp", familiarCore: "skyTotemFamiliar", broodGate: "broodGate",
+      skyfangPack: "thornBeetleSwarm", orbFamiliar: "skyTotemFamiliar", wyrmlingCall: "serpentWisp", livingGate: "broodGate",
       warriorImpact: "cleaveSwing", shieldRam: "shieldRam", skybreakerSlam: "skybreakerSlam", warriorCombo: "tripleThrust", warCry: "warCry",
+      whirlThrust: "cleaveSwing", meteorDrop: "skybreakerSlam", bannerCharge: "shieldRam", unbrokenCharge: "warCry",
       rangerProjectile: "piercingShot", splitShot: "splitShot", hunterMark: "hunterMark", volleyRain: "volleyRain", grappleShot: "grappleShot",
-      sorcererPower: "arcBolt", chainArc: "chainArc", flameLanceSpell: "flameLanceSpell", frostRing: "frostRing", voidOrb: "voidOrb"
+      ricochetShot: "splitShot", falconBurst: "volleyRain", snareBolt: "hunterMark", relentlessPursuit: "grappleShot",
+      sorcererPower: "arcBolt", chainArc: "chainArc", flameLanceSpell: "flameLanceSpell", frostRing: "frostRing", voidOrb: "voidOrb",
+      prismBeam: "chainArc", stormNova: "frostRing", phaseBlink: "arcBolt", orbOfRuin: "voidOrb"
     };
 
+    const UPGRADE_TREE = [
+      { key: "spearDamage", section: "core", branch: "Core", label: "Spear Damage", desc: "+ thrust damage", cost: 1, tier: 0, lane: 0 },
+      { key: "flapPower", section: "core", branch: "Core", label: "Flap Strength", desc: "more lift", cost: 1, tier: 0, lane: 1 },
+      { key: "healthBoost", section: "core", branch: "Core", label: "Vitality", desc: "+ max hp", cost: 1, tier: 0, lane: 2 },
+      { key: "pickupRadius", section: "core", branch: "Core", label: "Magnet Grip", desc: "pickup radius", cost: 1, req: "flapPower", tier: 1, lane: 0 },
+      { key: "regenDelay", section: "core", branch: "Core", label: "Second Wind", desc: "regen starts sooner", cost: 1, req: "healthBoost", tier: 1, lane: 1 },
+      { key: "critChance", section: "core", branch: "Core", label: "Critical Aim", desc: "higher crit chance", cost: 1, req: "spearDamage", tier: 1, lane: 2 },
+      { key: "airControl", section: "core", branch: "Core", label: "Glide Control", desc: "better strafe control", cost: 1, req: "flapPower", tier: 1, lane: 3 },
+      { key: "goldGain", section: "core", branch: "Core", label: "Salvage Instinct", desc: "bonus gold gain", cost: 1, req: "pickupRadius", tier: 2, lane: 0 },
+      { key: "xpGain", section: "core", branch: "Core", label: "Sky Study", desc: "bonus XP gain", cost: 1, req: "regenDelay", tier: 2, lane: 1 },
+      { key: "diveImpact", section: "core", branch: "Core", label: "Top-Down Impact", desc: "stronger dive impact", cost: 1, req: "critChance", tier: 2, lane: 2 },
+      { key: "resistance", section: "core", branch: "Core", label: "Telegraph Ward", desc: "beam/telegraph resistance", cost: 1, req: "airControl", tier: 2, lane: 3 },
+      { key: "antiArmor", section: "core", branch: "Core", label: "Anti-Elite Focus", desc: "bonus damage vs heavy foes", cost: 1, req: "diveImpact", tier: 3, lane: 1 },
+      { key: "landingStability", section: "core", branch: "Core", label: "Landing Recovery", desc: "recover faster after impacts", cost: 1, req: "resistance", tier: 3, lane: 2 },
+
+      { key: "class_summoner", section: "classGate", branch: "Class Gate", branchKey: "summoner", label: "Commit: Summoner", desc: "Locks other classes", cost: 2, req: "spearDamage", tier: 0, lane: 0 },
+      { key: "class_warrior", section: "classGate", branch: "Class Gate", branchKey: "warrior", label: "Commit: Warrior", desc: "Locks other classes", cost: 2, req: "spearDamage", tier: 0, lane: 1 },
+      { key: "class_ranger", section: "classGate", branch: "Class Gate", branchKey: "ranger", label: "Commit: Ranger", desc: "Locks other classes", cost: 2, req: "flapPower", tier: 0, lane: 2 },
+      { key: "class_sorcerer", section: "classGate", branch: "Class Gate", branchKey: "sorcerer", label: "Commit: Sorcerer", desc: "Locks other classes", cost: 2, req: "healthBoost", tier: 0, lane: 3 },
+
+      { key: "summonCount", section: "summoner", branch: "Summoner", branchKey: "summoner", label: "Packmaster Bond", desc: "summons stay closer and cap increases", cost: 1, req: "class_summoner", tier: 0, lane: 1 },
+      { key: "summonLeashMastery", section: "summoner", branch: "Summoner", branchKey: "summoner", label: "Leash Command", desc: "faster regroup and tighter follow", cost: 1, req: "summonCount", tier: 1, lane: 0 },
+      { key: "summonDurability", section: "summoner", branch: "Summoner", branchKey: "summoner", label: "Spirit Plating", desc: "summons gain damage resistance", cost: 1, req: "summonCount", tier: 1, lane: 1 },
+      { key: "summonDamage", section: "summoner", branch: "Summoner", branchKey: "summoner", label: "Predator Instinct", desc: "summons hit weakened enemies harder", cost: 1, req: "summonCount", tier: 1, lane: 2 },
+      { key: "summonRespawn", section: "summoner", branch: "Summoner", branchKey: "summoner", label: "Ritual Reservoir", desc: "reduced summon cooldowns", cost: 1, req: "summonDurability", tier: 2, lane: 1 },
+      { key: "summonAggression", section: "summoner", branch: "Summoner", branchKey: "summoner", label: "Wide Hunt", desc: "summons spread and target different foes", cost: 1, req: "summonDamage", tier: 2, lane: 2 },
+      { key: "summonEffects", section: "summoner", branch: "Summoner", branchKey: "summoner", label: "Shared Hunger", desc: "summon damage lightly heals rider", cost: 1, req: "summonAggression", tier: 3, lane: 2 },
+      { key: "summonLifetime", section: "summoner", branch: "Summoner", branchKey: "summoner", label: "Guardian Ring", desc: "one summon remains in close defense", cost: 1, req: "summonLeashMastery", tier: 2, lane: 0 },
+      { key: "beetleLegion", section: "summoner", branch: "Summoner", branchKey: "summoner", label: "Skyfang Pack", desc: "Unlock active fast pouncing pack", cost: 1, req: "summonDurability", tier: 2, lane: 3 },
+      { key: "orbFamiliar", section: "summoner", branch: "Summoner", branchKey: "summoner", label: "Orb Familiar", desc: "Unlock floating bolt support", cost: 1, req: "beetleLegion", tier: 3, lane: 3 },
+      { key: "wyrmlingCall", section: "summoner", branch: "Summoner", branchKey: "summoner", label: "Wyrmling Call", desc: "Unlock dragonling breath summon", cost: 1, req: "summonAggression", tier: 3, lane: 1 },
+      { key: "summonCommand", section: "summoner", branch: "Summoner", branchKey: "summoner", label: "Brood Sovereign", desc: "more total summons active", cost: 2, req: "summonRespawn", tier: 4, lane: 1 },
+      { key: "livingGate", section: "summoner", branch: "Summoner", branchKey: "summoner", label: "Living Gate", desc: "periodically spawns lesser summons", cost: 2, req: "orbFamiliar", tier: 4, lane: 3 },
+      { key: "broodGate", section: "summoner", branch: "Summoner", branchKey: "summoner", label: "Master of the Sky Swarm", desc: "mixed summon synergy capstone", cost: 2, req: "summonCommand", tier: 5, lane: 2 },
+
+      { key: "warriorImpact", section: "warrior", branch: "Warrior", branchKey: "warrior", label: "Crushing Momentum", desc: "bonus damage while descending fast", cost: 1, req: "class_warrior", tier: 0, lane: 1 },
+      { key: "warriorArmor", section: "warrior", branch: "Warrior", branchKey: "warrior", label: "Iron Posture", desc: "reduced knockback in clashes", cost: 1, req: "warriorImpact", tier: 1, lane: 0 },
+      { key: "executionDive", section: "warrior", branch: "Warrior", branchKey: "warrior", label: "Execution Window", desc: "execute low-health enemies", cost: 1, req: "warriorImpact", tier: 1, lane: 1 },
+      { key: "antiEliteMelee", section: "warrior", branch: "Warrior", branchKey: "warrior", label: "Lance Breaker", desc: "better vs armored enemies", cost: 1, req: "warriorImpact", tier: 1, lane: 2 },
+      { key: "warriorCombo", section: "warrior", branch: "Warrior", branchKey: "warrior", label: "Combo Chain", desc: "faster melee followups", cost: 1, req: "executionDive", tier: 2, lane: 1 },
+      { key: "whirlThrust", section: "warrior", branch: "Warrior", branchKey: "warrior", label: "Whirl Thrust", desc: "unlock spinning melee burst", cost: 1, req: "warriorArmor", tier: 2, lane: 0 },
+      { key: "meteorDrop", section: "warrior", branch: "Warrior", branchKey: "warrior", label: "Meteor Drop", desc: "unlock powerful dive impact", cost: 1, req: "executionDive", tier: 2, lane: 2 },
+      { key: "bannerCharge", section: "warrior", branch: "Warrior", branchKey: "warrior", label: "Banner Charge", desc: "unlock forward surge with resistance", cost: 1, req: "antiEliteMelee", tier: 2, lane: 3 },
+      { key: "guardFrames", section: "warrior", branch: "Warrior", branchKey: "warrior", label: "Battle Temper", desc: "temporary resist after hit", cost: 1, req: "warriorArmor", tier: 3, lane: 0 },
+      { key: "slamRadius", section: "warrior", branch: "Warrior", branchKey: "warrior", label: "Juggernaut Drive", desc: "tankier slam-focused style", cost: 1, req: "whirlThrust", tier: 3, lane: 1 },
+      { key: "comboSpeed", section: "warrior", branch: "Warrior", branchKey: "warrior", label: "Duelist Tempo", desc: "faster bruiser combo style", cost: 1, req: "meteorDrop", tier: 3, lane: 2 },
+      { key: "warCry", section: "warrior", branch: "Warrior", branchKey: "warrior", label: "Colossus Rider", desc: "heavy war aura capstone", cost: 2, req: "bannerCharge", tier: 4, lane: 3 },
+      { key: "skybreakerSlam", section: "warrior", branch: "Warrior", branchKey: "warrior", label: "War God's Descent", desc: "devastating vertical crash", cost: 2, req: "slamRadius", tier: 4, lane: 1 },
+      { key: "unbrokenCharge", section: "warrior", branch: "Warrior", branchKey: "warrior", label: "Unbroken Charge", desc: "unstoppable charge finisher", cost: 2, req: "comboSpeed", tier: 4, lane: 2 },
+
+      { key: "rangerProjectile", section: "ranger", branch: "Ranger", branchKey: "ranger", label: "Longshot Discipline", desc: "projectile range and speed", cost: 1, req: "class_ranger", tier: 0, lane: 1 },
+      { key: "rangerCharge", section: "ranger", branch: "Ranger", branchKey: "ranger", label: "Windstep Control", desc: "improved lateral movement", cost: 1, req: "rangerProjectile", tier: 1, lane: 0 },
+      { key: "rangerPrecision", section: "ranger", branch: "Ranger", branchKey: "ranger", label: "Marked Weakness", desc: "bonus damage to marked targets", cost: 1, req: "rangerProjectile", tier: 1, lane: 1 },
+      { key: "rangerReload", section: "ranger", branch: "Ranger", branchKey: "ranger", label: "Feather Reflex", desc: "shorter recovery after bursts", cost: 1, req: "rangerProjectile", tier: 1, lane: 2 },
+      { key: "splitShot", section: "ranger", branch: "Ranger", branchKey: "ranger", label: "Ricochet Shot", desc: "unlock bouncing projectile", cost: 1, req: "rangerPrecision", tier: 2, lane: 1 },
+      { key: "falconBurst", section: "ranger", branch: "Ranger", branchKey: "ranger", label: "Falcon Burst", desc: "unlock rapid cone multi-shot", cost: 1, req: "rangerReload", tier: 2, lane: 2 },
+      { key: "snareBolt", section: "ranger", branch: "Ranger", branchKey: "ranger", label: "Snare Bolt", desc: "unlock slow/pin utility shot", cost: 1, req: "rangerCharge", tier: 2, lane: 0 },
+      { key: "volleyRain", section: "ranger", branch: "Ranger", branchKey: "ranger", label: "Piercing Rain", desc: "strong delayed volley zone", cost: 2, req: "splitShot", tier: 3, lane: 1 },
+      { key: "hunterMark", section: "ranger", branch: "Ranger", branchKey: "ranger", label: "Hunter Path", desc: "mark, crit, execution path", cost: 1, req: "snareBolt", tier: 3, lane: 0 },
+      { key: "grappleShot", section: "ranger", branch: "Ranger", branchKey: "ranger", label: "Skirmisher Path", desc: "speed and reposition style", cost: 1, req: "falconBurst", tier: 3, lane: 2 },
+      { key: "rangerMastery", section: "ranger", branch: "Ranger", branchKey: "ranger", label: "Trickshot Path", desc: "ricochet and utility focus", cost: 1, req: "volleyRain", tier: 4, lane: 1 },
+      { key: "stormArcher", section: "ranger", branch: "Ranger", branchKey: "ranger", label: "Storm Archer of the Sky", desc: "capstone precision barrage", cost: 2, req: "hunterMark", tier: 5, lane: 0 },
+      { key: "deadeyeRider", section: "ranger", branch: "Ranger", branchKey: "ranger", label: "Deadeye Rider", desc: "capstone high-crit rider", cost: 2, req: "rangerMastery", tier: 5, lane: 1 },
+      { key: "relentlessPursuit", section: "ranger", branch: "Ranger", branchKey: "ranger", label: "Relentless Pursuit", desc: "capstone chase pressure", cost: 2, req: "grappleShot", tier: 5, lane: 2 },
+
+      { key: "sorcererPower", section: "sorcerer", branch: "Sorcerer", branchKey: "sorcerer", label: "Arcane Reservoir", desc: "stronger spell throughput", cost: 1, req: "class_sorcerer", tier: 0, lane: 1 },
+      { key: "spellEcho", section: "sorcerer", branch: "Sorcerer", branchKey: "sorcerer", label: "Spell Echo", desc: "chance for spells to repeat", cost: 1, req: "sorcererPower", tier: 1, lane: 0 },
+      { key: "sorcererCooldown", section: "sorcerer", branch: "Sorcerer", branchKey: "sorcerer", label: "Arcane Tempo", desc: "lower cooldowns and flow", cost: 1, req: "sorcererPower", tier: 1, lane: 1 },
+      { key: "spellRadius", section: "sorcerer", branch: "Sorcerer", branchKey: "sorcerer", label: "Rift Attunement", desc: "larger control spell radius", cost: 1, req: "sorcererPower", tier: 1, lane: 2 },
+      { key: "prismBeam", section: "sorcerer", branch: "Sorcerer", branchKey: "sorcerer", label: "Prism Beam", desc: "unlock telegraphed beam spell", cost: 1, req: "spellEcho", tier: 2, lane: 0 },
+      { key: "stormNova", section: "sorcerer", branch: "Sorcerer", branchKey: "sorcerer", label: "Storm Nova", desc: "unlock circular lightning burst", cost: 1, req: "sorcererCooldown", tier: 2, lane: 1 },
+      { key: "meteorSigil", section: "sorcerer", branch: "Sorcerer", branchKey: "sorcerer", label: "Meteor Sigil", desc: "unlock delayed impact sigil", cost: 1, req: "spellRadius", tier: 2, lane: 2 },
+      { key: "phaseBlink", section: "sorcerer", branch: "Sorcerer", branchKey: "sorcerer", label: "Phase Blink", desc: "unlock short reposition blink", cost: 1, req: "stormNova", tier: 3, lane: 1 },
+      { key: "orbOfRuin", section: "sorcerer", branch: "Sorcerer", branchKey: "sorcerer", label: "Orb of Ruin", desc: "unlock damaging floating orb", cost: 1, req: "meteorSigil", tier: 3, lane: 2 },
+      { key: "sorcererChains", section: "sorcerer", branch: "Sorcerer", branchKey: "sorcerer", label: "Mystic Overload", desc: "bonus after chaining spells", cost: 1, req: "prismBeam", tier: 3, lane: 0 },
+      { key: "stormCrown", section: "sorcerer", branch: "Sorcerer", branchKey: "sorcerer", label: "Storm Crown", desc: "Storm Mage capstone", cost: 2, req: "phaseBlink", tier: 4, lane: 0 },
+      { key: "voidDominion", section: "sorcerer", branch: "Sorcerer", branchKey: "sorcerer", label: "Void Dominion", desc: "Void Caller capstone", cost: 2, req: "orbOfRuin", tier: 4, lane: 2 },
+      { key: "archmageSky", section: "sorcerer", branch: "Sorcerer", branchKey: "sorcerer", label: "Archmage of the Open Sky", desc: "master capstone for all schools", cost: 2, req: "sorcererChains", tier: 5, lane: 1 }
+    ];
     const SUMMON_TYPE_DEFS = {
       vineDrakeCompanion: { baseType: "vineDrake", role: "ranged", preferredRange: 13, speed: 15, life: 22, leashSoft: 18, leashHard: 30, combatRadius: 34, vfx: 0x86efac },
       thornBeetleCompanion: { baseType: "hornetGuard", role: "bodyguard", preferredRange: 4, speed: 12, life: 18, leashSoft: 16, leashHard: 28, combatRadius: 30, vfx: 0xa3e635 },
@@ -903,56 +986,6 @@ const ENEMY_SPECIES = {
       broodlingCompanion: { baseType: "forestSkimmer", role: "swarm", preferredRange: 7, speed: 17, life: 14, leashSoft: 18, leashHard: 30, combatRadius: 33, vfx: 0xfde68a },
       emberHoundCompanion: { baseType: "ashWasp", role: "dive", preferredRange: 6, speed: 18, life: 12, leashSoft: 20, leashHard: 32, combatRadius: 34, vfx: 0xfb923c }
     };
-
-    const UPGRADE_TREE = [
-      { key: "spearDamage", branch: "Core", label: "Spear Damage", desc: "+ thrust damage", cost: 1, x: 40, y: 40 },
-      { key: "flapPower", branch: "Core", label: "Flap Strength", desc: "more lift", cost: 1, x: 250, y: 40 },
-      { key: "healthBoost", branch: "Core", label: "Vitality", desc: "+ max hp", cost: 1, x: 460, y: 40 },
-      { key: "class_summoner", branch: "Class Gate", branchKey: "summoner", label: "Commit: Summoner", desc: "Locks other classes", cost: 2, req: "spearDamage", x: 40, y: 170 },
-      { key: "class_warrior", branch: "Class Gate", branchKey: "warrior", label: "Commit: Warrior", desc: "Locks other classes", cost: 2, req: "spearDamage", x: 250, y: 170 },
-      { key: "class_ranger", branch: "Class Gate", branchKey: "ranger", label: "Commit: Ranger", desc: "Locks other classes", cost: 2, req: "flapPower", x: 460, y: 170 },
-      { key: "class_sorcerer", branch: "Class Gate", branchKey: "sorcerer", label: "Commit: Sorcerer", desc: "Locks other classes", cost: 2, req: "healthBoost", x: 670, y: 170 },
-      { key: "summonCount", branch: "Summoner", branchKey: "summoner", label: "More Summons", desc: "increase minion cap", cost: 1, req: "class_summoner", x: 40, y: 320 },
-      { key: "summonDurability", branch: "Summoner", branchKey: "summoner", label: "Summon Durability", desc: "minions live longer", cost: 1, req: "summonCount", x: 40, y: 430 },
-      { key: "summonDamage", branch: "Summoner", branchKey: "summoner", label: "Summon Damage", desc: "harder hits", cost: 1, req: "summonCount", x: 190, y: 430 },
-      { key: "summonRespawn", branch: "Summoner", branchKey: "summoner", label: "Quick Ritual", desc: "faster respawn", cost: 1, req: "summonDurability", x: 40, y: 540 },
-      { key: "summonAggression", branch: "Summoner", branchKey: "summoner", label: "Aggressive Orders", desc: "higher pursuit", cost: 1, req: "summonDamage", x: 190, y: 540 },
-      { key: "summonEffects", branch: "Summoner", branchKey: "summoner", label: "Arcane Venom", desc: "minion status chance", cost: 2, req: "summonAggression", x: 110, y: 650 },
-      { key: "beetleLegion", branch: "Summoner", branchKey: "summoner", label: "Thorn Beetle Swarm", desc: "Unlock active: bodyguard swarm", cost: 1, req: "summonDurability", x: 260, y: 320 },
-      { key: "serpentBinding", branch: "Summoner", branchKey: "summoner", label: "Serpent Wisp", desc: "Unlock active control summon", cost: 1, req: "summonDamage", x: 260, y: 430 },
-      { key: "familiarCore", branch: "Summoner", branchKey: "summoner", label: "Sky Totem Familiar", desc: "Unlock support familiar", cost: 2, req: "serpentBinding", x: 260, y: 540 },
-      { key: "broodGate", branch: "Summoner", branchKey: "summoner", label: "Brood Gate", desc: "Capstone mixed summon portal", cost: 2, req: "familiarCore", x: 260, y: 650 },
-      { key: "summonLeashMastery", branch: "Summoner", branchKey: "summoner", label: "Leash Mastery", desc: "tighter regroup", cost: 1, req: "summonCount", x: 20, y: 760 },
-      { key: "summonLifetime", branch: "Summoner", branchKey: "summoner", label: "Summon Lifetime", desc: "extend temporary life", cost: 1, req: "summonDurability", x: 120, y: 760 },
-      { key: "summonCommand", branch: "Summoner", branchKey: "summoner", label: "Summon Command", desc: "higher summon cap", cost: 2, req: "summonLeashMastery", x: 220, y: 760 },
-      { key: "warriorImpact", branch: "Warrior", branchKey: "warrior", label: "Crush Landing", desc: "massive dive impact", cost: 1, req: "class_warrior", x: 290, y: 320 },
-      { key: "warriorArmor", branch: "Warrior", branchKey: "warrior", label: "Armored Charge", desc: "resist clashes", cost: 1, req: "warriorImpact", x: 290, y: 430 },
-      { key: "warriorCombo", branch: "Warrior", branchKey: "warrior", label: "Combo Thrust", desc: "followup damage", cost: 2, req: "warriorArmor", x: 290, y: 540 },
-      { key: "shieldRam", branch: "Warrior", branchKey: "warrior", label: "Shield Ram", desc: "Unlock armored surge", cost: 1, req: "warriorArmor", x: 430, y: 540 },
-      { key: "skybreakerSlam", branch: "Warrior", branchKey: "warrior", label: "Skybreaker Slam", desc: "Unlock dive slam", cost: 1, req: "warriorImpact", x: 430, y: 320 },
-      { key: "warCry", branch: "Warrior", branchKey: "warrior", label: "War Cry", desc: "Unlock offensive buff", cost: 2, req: "warriorCombo", x: 430, y: 650 },
-      { key: "antiArmor", branch: "Warrior", branchKey: "warrior", label: "Anti-Armor", desc: "vs elites", cost: 1, req: "warriorImpact", x: 450, y: 430 },
-      { key: "diveImpact", branch: "Warrior", branchKey: "warrior", label: "Impact Shockwave", desc: "larger stomp radius", cost: 2, req: "warriorCombo", x: 360, y: 650 },
-      { key: "rangerProjectile", branch: "Ranger", branchKey: "ranger", label: "Projectile Lance", desc: "stronger ranged waves", cost: 1, req: "class_ranger", x: 520, y: 320 },
-      { key: "rangerPrecision", branch: "Ranger", branchKey: "ranger", label: "Weak-point Focus", desc: "higher crit + accuracy", cost: 1, req: "rangerProjectile", x: 520, y: 430 },
-      { key: "rangerMastery", branch: "Ranger", branchKey: "ranger", label: "Elemental Mastery", desc: "poison/frost/chain boost", cost: 2, req: "rangerPrecision", x: 520, y: 540 },
-      { key: "splitShot", branch: "Ranger", branchKey: "ranger", label: "Split Shot", desc: "Unlock 3-shot fan", cost: 1, req: "rangerProjectile", x: 680, y: 320 },
-      { key: "hunterMark", branch: "Ranger", branchKey: "ranger", label: "Hunter Mark", desc: "Unlock target marking", cost: 1, req: "rangerPrecision", x: 680, y: 540 },
-      { key: "volleyRain", branch: "Ranger", branchKey: "ranger", label: "Volley Rain", desc: "Unlock zone volley", cost: 2, req: "hunterMark", x: 680, y: 650 },
-      { key: "grappleShot", branch: "Ranger", branchKey: "ranger", label: "Grapple Dash Shot", desc: "Unlock dash shot", cost: 2, req: "splitShot", x: 820, y: 430 },
-      { key: "airControl", branch: "Ranger", branchKey: "ranger", label: "Lateral Discipline", desc: "better side movement", cost: 1, req: "rangerProjectile", x: 680, y: 430 },
-      { key: "goldGain", branch: "Ranger", branchKey: "ranger", label: "Hunter Spoils", desc: "better drops", cost: 1, req: "rangerMastery", x: 600, y: 650 },
-      { key: "sorcererPower", branch: "Sorcerer", branchKey: "sorcerer", label: "Spell Power", desc: "harder spell hits", cost: 1, req: "class_sorcerer", x: 760, y: 320 },
-      { key: "sorcererCooldown", branch: "Sorcerer", branchKey: "sorcerer", label: "Arcane Tempo", desc: "faster spell cycle", cost: 1, req: "sorcererPower", x: 760, y: 430 },
-      { key: "sorcererChains", branch: "Sorcerer", branchKey: "sorcerer", label: "Chain Sigils", desc: "multi-target spells", cost: 2, req: "sorcererCooldown", x: 760, y: 540 },
-      { key: "chainArc", branch: "Sorcerer", branchKey: "sorcerer", label: "Chain Arc", desc: "Unlock chain spell", cost: 1, req: "sorcererCooldown", x: 920, y: 320 },
-      { key: "flameLanceSpell", branch: "Sorcerer", branchKey: "sorcerer", label: "Flame Lance", desc: "Unlock line flame", cost: 1, req: "sorcererPower", x: 920, y: 540 },
-      { key: "frostRing", branch: "Sorcerer", branchKey: "sorcerer", label: "Frost Ring", desc: "Unlock defensive ring", cost: 2, req: "flameLanceSpell", x: 920, y: 650 },
-      { key: "voidOrb", branch: "Sorcerer", branchKey: "sorcerer", label: "Void Orb", desc: "Unlock orb control", cost: 2, req: "chainArc", x: 1030, y: 430 },
-      { key: "regenSpeed", branch: "Sorcerer", branchKey: "sorcerer", label: "Barrier Weave", desc: "spell shield sustain", cost: 1, req: "sorcererPower", x: 920, y: 430 },
-      { key: "xpGain", branch: "Sorcerer", branchKey: "sorcerer", label: "Mystic Study", desc: "bonus xp", cost: 1, req: "sorcererChains", x: 840, y: 650 }
-    ];
-
 
     const BOSS_REGION_DATA = {
       "Great Forest Canopy": { bossName: "The Broodmother of Mossfang", title: "Hive-Canopy Brood Tyrant", enemyType: "hiveQueen", move: "Swooping brood guardian", attacks: ["Lunging peck rush", "Summons small forest skimmers", "Hanging venom glob telegraphs"], dropId: "broodmother-spur", dropName: "Broodmother's Spur", gold: 280, xp: 220, speciesScale: 1.35 },
@@ -6009,9 +6042,55 @@ function skyProfileForZone(zone) {
       return state.canClick;
     }
 
+    function isUpgradeNodeVisible(node) {
+      if (!node) return false;
+      if (progress.classChoice && node.branchKey && progress.classChoice !== node.branchKey) return false;
+      if (!progress.classChoice && node.section && !["core", "classGate"].includes(node.section)) return false;
+      return true;
+    }
+
+    function getVisibleUpgradeNodes() {
+      return UPGRADE_TREE.filter((node) => isUpgradeNodeVisible(node));
+    }
+
+    function getUpgradeLayout(visibleNodes) {
+      const nodeWidth = 172;
+      const nodeHeight = 92;
+      const laneGap = 18;
+      const tierGap = 132;
+      const layout = {};
+      const placeSection = (nodes, { top = 20, centerX = 640 } = {}) => {
+        const byTier = {};
+        nodes.forEach((node) => {
+          const tier = node.tier || 0;
+          (byTier[tier] = byTier[tier] || []).push(node);
+        });
+        Object.entries(byTier).forEach(([tier, tierNodes]) => {
+          const ordered = tierNodes.sort((a, b) => (a.lane || 0) - (b.lane || 0));
+          const totalWidth = ordered.length * nodeWidth + Math.max(0, ordered.length - 1) * laneGap;
+          let x = centerX - totalWidth * 0.5;
+          ordered.forEach((node) => {
+            layout[node.key] = { x, y: top + Number(tier) * tierGap, width: nodeWidth, height: nodeHeight };
+            x += nodeWidth + laneGap;
+          });
+        });
+      };
+
+      const coreNodes = visibleNodes.filter((node) => node.section === "core");
+      placeSection(coreNodes, { top: 24, centerX: 620 });
+      const gateNodes = visibleNodes.filter((node) => node.section === "classGate");
+      placeSection(gateNodes, { top: 560, centerX: 620 });
+      if (progress.classChoice) {
+        const classNodes = visibleNodes.filter((node) => node.section === progress.classChoice);
+        placeSection(classNodes, { top: 720, centerX: 620 });
+      }
+      return layout;
+    }
+
     function upgradeNodeState(node, opts = {}) {
       const needsUpgradeZone = !!opts.requireUpgradeZone;
       const purchased = (progress.upgrades[node.key] || 0) > 0;
+      if (!isUpgradeNodeVisible(node)) return { key: "hidden", label: "Hidden", canClick: false, reason: "hidden" };
       if (purchased) return { key: "purchased", label: "Purchased", canClick: false, reason: "already" };
       if (needsUpgradeZone && !inUpgradeZone()) return { key: "zoneLocked", label: "Visit checkpoint altar", canClick: false, reason: "zone" };
       if (!isUpgradeNodeUnlocked(node)) return { key: "lockedPrereq", label: "Need prerequisite", canClick: false, reason: "prereq" };
@@ -6048,7 +6127,7 @@ function skyProfileForZone(zone) {
       if (!node) return false;
       const state = upgradeNodeState(node, opts);
       if (!state.canClick) {
-        const reasons = { already: "Already purchased.", prereq: "Need prerequisite node.", class: "Blocked by chosen class.", points: "Not enough upgrade points.", zone: "Must be at an upgrade checkpoint." };
+        const reasons = { already: "Already purchased.", prereq: "Need prerequisite node.", class: "Blocked by chosen class.", points: "Not enough upgrade points.", zone: "Must be at an upgrade checkpoint.", hidden: "This branch is hidden by your class choice." };
         showCenterMessage(reasons[state.reason] || "Cannot purchase this node.", 0.62);
         return false;
       }
@@ -6302,27 +6381,38 @@ function skyProfileForZone(zone) {
 
     function renderUpgradeTreeMenu() {
       menuMainPanelEl.innerHTML = `<div style="font-size:12px;margin-bottom:8px">Class: <b style="color:${progress.classChoice ? CLASS_BRANCHES[progress.classChoice].color : "#e5e7eb"}">${progress.classChoice ? CLASS_BRANCHES[progress.classChoice].title : "Uncommitted"}</b> • Upgrades can be purchased from this tab anywhere.</div>`;
+      const visibleNodes = getVisibleUpgradeNodes();
+      const layout = getUpgradeLayout(visibleNodes);
       const canvas = document.createElement("div");
-      canvas.style.cssText = "position:relative;min-width:1040px;min-height:860px;background:linear-gradient(180deg,rgba(15,23,42,.3),rgba(2,6,23,.3));border-radius:10px;border:1px solid rgba(255,255,255,.08);";
+      canvas.style.cssText = "position:relative;min-width:1240px;min-height:1420px;background:linear-gradient(180deg,rgba(15,23,42,.35),rgba(2,6,23,.3));border-radius:10px;border:1px solid rgba(255,255,255,.08);overflow:auto;";
+      const heading = document.createElement("div");
+      heading.style.cssText = "position:sticky;left:12px;top:12px;display:inline-block;padding:6px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.22);font-size:11px;background:rgba(2,6,23,.72);z-index:5;";
+      heading.textContent = progress.classChoice ? `Focused Branch: ${CLASS_BRANCHES[progress.classChoice]?.title || progress.classChoice}` : "Focus: Core + Class Gates";
+      canvas.appendChild(heading);
       const tooltip = document.createElement("div");
       tooltip.style.cssText = "position:absolute;right:12px;top:12px;width:250px;padding:9px;border:1px solid rgba(255,255,255,.2);border-radius:10px;background:rgba(4,10,22,.72);font-size:11px;line-height:1.4;z-index:3;";
       tooltip.innerHTML = "<b>Node Details</b><div style='opacity:.82;margin-top:6px'>Hover a node for description and requirements.</div>";
       canvas.appendChild(tooltip);
-      for (const node of UPGRADE_TREE) {
+      for (const node of visibleNodes) {
         if (node.req) {
-          const from = UPGRADE_TREE.find((n) => n.key === node.req);
-          if (!from) continue;
+          const from = visibleNodes.find((n) => n.key === node.req);
+          if (!from || !layout[from.key] || !layout[node.key]) continue;
           const line = document.createElement("div");
-          const dx = node.x - from.x;
-          const dy = node.y - from.y;
+          const fromPos = layout[from.key];
+          const toPos = layout[node.key];
+          const dx = toPos.x - fromPos.x;
+          const dy = toPos.y - fromPos.y;
           const len = Math.hypot(dx, dy);
           const ang = Math.atan2(dy, dx) * 180 / Math.PI;
-          line.style.cssText = `position:absolute;left:${from.x + 70}px;top:${from.y + 30}px;width:${len}px;height:2px;background:rgba(148,163,184,.4);transform-origin:left center;transform:rotate(${ang}deg);`;
+          line.style.cssText = `position:absolute;left:${fromPos.x + fromPos.width * 0.5}px;top:${fromPos.y + fromPos.height * 0.5}px;width:${len}px;height:2px;background:rgba(148,163,184,.32);transform-origin:left center;transform:rotate(${ang}deg);`;
           canvas.appendChild(line);
         }
       }
-      for (const node of UPGRADE_TREE) {
+      for (const node of visibleNodes) {
         const state = upgradeNodeState(node);
+        const pos = layout[node.key];
+        if (!pos) continue;
+        const classHue = node.branchKey ? CLASS_THEMES[node.branchKey] : "rgba(148,163,184,.9)";
         const palette = {
           purchased: ["rgba(251,191,36,.88)", "rgba(245,158,11,.28)"],
           available: ["rgba(134,239,172,.95)", "rgba(16,185,129,.32)"],
@@ -6333,8 +6423,8 @@ function skyProfileForZone(zone) {
         const btn = document.createElement("button");
         btn.title = node.desc;
         const pulse = upgradePulseNodeKey === node.key && upgradeFlashTimer > 0 ? "0 0 20px rgba(251,191,36,.55), 0 0 0 1px rgba(251,191,36,.75)" : "none";
-        btn.style.cssText = `position:absolute;left:${node.x}px;top:${node.y}px;width:150px;min-height:84px;text-align:left;border:1px solid ${palette[0]};background:${palette[1]};color:white;border-radius:10px;padding:8px 9px;cursor:${state.canClick ? "pointer" : "not-allowed"};transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;box-shadow:${pulse};`;
-        btn.innerHTML = `<div style="font-size:12px;font-weight:700">${node.label}</div><div style="font-size:10px;opacity:.8">${node.branch} • Cost ${node.cost}</div><div style="font-size:10px;margin-top:4px;color:${state.key === "available" ? "#bbf7d0" : "#e5e7eb"}">${state.label}</div>`;
+        btn.style.cssText = `position:absolute;left:${pos.x}px;top:${pos.y}px;width:${pos.width}px;min-height:${pos.height}px;text-align:left;border:1px solid ${palette[0]};background:${palette[1]};color:white;border-radius:10px;padding:8px 9px;cursor:${state.canClick ? "pointer" : "not-allowed"};transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;box-shadow:${pulse};`;
+        btn.innerHTML = `<div style="font-size:12px;font-weight:700">${node.label}</div><div style="font-size:10px;opacity:.8;color:${classHue}">${node.branch} • Cost ${node.cost}</div><div style="font-size:10px;margin-top:4px;color:${state.key === "available" ? "#bbf7d0" : "#e5e7eb"}">${state.label}</div>`;
         btn.onmouseenter = () => {
           upgradeHoverNodeKey = node.key;
           if (state.canClick) {
