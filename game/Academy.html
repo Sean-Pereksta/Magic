@@ -515,7 +515,8 @@
       frontier: { wall: 0x7a5d42, wallDark: 0x4e3928, roof: 0xb89062, trim: 0xd4b889, plaza: 0x6b4f36, bannerPalette: [0xd3a26e, 0x8cc7a7, 0xc78064, 0xbfd7d0], window: 0xffd9a6, roofProfiles: ["canvas","lean","cone","canvas"], skyline: { towerBias: 0.82, bridgeBias: 0.88, perchBias: 1.5 }, marketShape: "scattered" },
       ruin: { wall: 0x867c78, wallDark: 0x55504d, roof: 0x707780, trim: 0x949089, plaza: 0x625c59, bannerPalette: [0x9ca1ae, 0xd28f72, 0xa7b3c2, 0xb7a598], window: 0xc6d4e8, roofProfiles: ["broken","dome","wedge","broken"], skyline: { towerBias: 1.0, bridgeBias: 1.08, perchBias: 1.0 }, marketShape: "arc" },
       storm: { wall: 0x6e86a7, wallDark: 0x365173, roof: 0x89b4df, trim: 0x9cd7ff, plaza: 0x4b6384, bannerPalette: [0x8fd9ff, 0x6fa8ff, 0x9af0ff, 0x4f88cc], window: 0xa8edff, roofProfiles: ["rod","wedge","rod","spire"], skyline: { towerBias: 1.05, bridgeBias: 1.0, perchBias: 1.2 }, marketShape: "radial" },
-      dragon: { wall: 0x8d624f, wallDark: 0x4e2f26, roof: 0xa17152, trim: 0xdb9b6f, plaza: 0x6a4333, bannerPalette: [0xff9b62, 0xe98f70, 0x9a5740, 0xe6c57a], window: 0xffb27d, roofProfiles: ["plate","cone","plate","spire"], skyline: { towerBias: 1.25, bridgeBias: 0.75, perchBias: 1.25 }, marketShape: "fort" }
+      dragon: { wall: 0x8d624f, wallDark: 0x4e2f26, roof: 0xa17152, trim: 0xdb9b6f, plaza: 0x6a4333, bannerPalette: [0xff9b62, 0xe98f70, 0x9a5740, 0xe6c57a], window: 0xffb27d, roofProfiles: ["plate","cone","plate","spire"], skyline: { towerBias: 1.25, bridgeBias: 0.75, perchBias: 1.25 }, marketShape: "fort" },
+      moonglass: { wall: 0xc8d7ff, wallDark: 0x5f628f, roof: 0x9fb5ff, trim: 0xded6ff, plaza: 0x8698d8, bannerPalette: [0xb8c9ff, 0xcad9ff, 0xe9deff, 0x8bc6ff], window: 0x9de5ff, roofProfiles: ["spire","halo","rod","dome"], skyline: { towerBias: 1.55, bridgeBias: 1.45, perchBias: 1.42 }, marketShape: "radial" }
     };
     const ARCHETYPE_BY_BEHAVIOR = {
       lancer: "Duelist",
@@ -531,7 +532,11 @@
       stinger: "Swarmer",
       curveStrike: "Weaver",
       loopDive: "Percher",
-      breath: "Crusher"
+      breath: "Crusher",
+      serpent: "Weaver",
+      dragonGlide: "Crusher",
+      beamSweep: "Caster",
+      heavyLancer: "Duelist"
     };
 
     
@@ -543,6 +548,8 @@
       Ember: { name: 0xffa057, subtitle: 0xff6c43, frame: 0xf18a52, telegraph: 0xff804a },
       Hollow: { name: 0xba9cff, subtitle: 0xddd0ff, frame: 0x9e7fe7, telegraph: 0xa777ff },
       Dragon: { name: 0xc98957, subtitle: 0x9f7bff, frame: 0xc87a59, telegraph: 0xb08dff },
+      Arcane: { name: 0xc9d8ff, subtitle: 0xe2dcff, frame: 0xaec3ff, telegraph: 0xb8a6ff },
+      Badlands: { name: 0xffc6a0, subtitle: 0xffdcb5, frame: 0xd88962, telegraph: 0xff9c6a },
       City: { name: 0xf3e7cb, subtitle: 0xd8a1ac, frame: 0xddc8ac, telegraph: 0xe6b8a0 },
       default: { name: 0xffffff, subtitle: 0xe5e7eb, frame: 0xb8c0d4, telegraph: 0xbcc9e5 }
     };
@@ -570,6 +577,19 @@
       boltRay: { bodyClass: "caster", wingClass: "manta", headClass: "manta", tailClass: "ribbon", riderClass: "none", armorClass: "arcane", glowClass: "storm" },
       ironWyvern: { bodyClass: "crusher", wingClass: "broad", headClass: "dragon", tailClass: "club", riderClass: "duelist", armorClass: "heavy", glowClass: "rune" },
       magmaCrusher: { bodyClass: "crusher", wingClass: "stub", headClass: "dragon", tailClass: "club", riderClass: "light", armorClass: "heavy", glowClass: "ember" },
+      moonOrbSentinel: { bodyClass: "orb", wingClass: "halo", headClass: "orb", tailClass: "ribbon", riderClass: "none", armorClass: "arcane", glowClass: "moon" },
+      prismHaloWatcher: { bodyClass: "orb", wingClass: "halo", headClass: "orb", tailClass: "ribbon", riderClass: "none", armorClass: "arcane", glowClass: "moon" },
+      moonbeamConstruct: { bodyClass: "orb", wingClass: "mantle", headClass: "orb", tailClass: "ribbon", riderClass: "none", armorClass: "arcane", glowClass: "moon" },
+      ribbonSerpent: { bodyClass: "serpentLong", wingClass: "ribbon", headClass: "serpent", tailClass: "serpent", riderClass: "none", armorClass: "none", glowClass: "moon" },
+      bonecrestSerpent: { bodyClass: "serpentLong", wingClass: "fin", headClass: "serpent", tailClass: "serpent", riderClass: "none", armorClass: "bone", glowClass: "ember" },
+      nightglassDrake: { bodyClass: "dragon", wingClass: "dragon", headClass: "dragon", tailClass: "spine", riderClass: "minimal", armorClass: "arcane", glowClass: "moon" },
+      dustscaleWyvern: { bodyClass: "dragon", wingClass: "dragon", headClass: "dragon", tailClass: "club", riderClass: "light", armorClass: "scale", glowClass: "ember" },
+      redMesaDrake: { bodyClass: "dragon", wingClass: "dragon", headClass: "dragon", tailClass: "crest", riderClass: "none", armorClass: "scale", glowClass: "ember" },
+      wyrmscarDragon: { bodyClass: "dragon", wingClass: "dragon", headClass: "dragon", tailClass: "club", riderClass: "minimal", armorClass: "heavy", glowClass: "ember" },
+      haloLancer: { bodyClass: "duelist", wingClass: "halo", headClass: "beak", tailClass: "banner", riderClass: "duelist", armorClass: "arcane", glowClass: "moon" },
+      ironSpurRider: { bodyClass: "knight", wingClass: "broad", headClass: "hook", tailClass: "banner", riderClass: "duelist", armorClass: "heavy", glowClass: "ember" },
+      canyonAmbushLancer: { bodyClass: "knight", wingClass: "stub", headClass: "hook", tailClass: "banner", riderClass: "duelist", armorClass: "heavy", glowClass: "ember" },
+      arcManta: { bodyClass: "ray", wingClass: "manta", headClass: "manta", tailClass: "ribbon", riderClass: "none", armorClass: "arcane", glowClass: "moon" },
       hiveQueen: { bodyClass: "crusher", wingClass: "stub", headClass: "beak", tailClass: "stinger", riderClass: "none", armorClass: "chitin", glowClass: "hive" }
     };
 
@@ -578,7 +598,11 @@
       cliffLancer: { outerMoves: ["singleCharge"], midMoves: ["recoveryTurn"], deepMoves: ["fakeDisengage", "realignThrust"] },
       stormDiver: { outerMoves: ["loopDive"], midMoves: ["shockLane"], deepMoves: ["chainLoop", "delayedDescent"] },
       magmaCrusher: { outerMoves: ["heavySlam"], midMoves: ["emberBurst"], deepMoves: ["shockCone", "armoredRecover"] },
-      voidDragon: { outerMoves: ["orbVolley"], midMoves: ["driftReposition"], deepMoves: ["vacuumLane", "crashMarker"] }
+      voidDragon: { outerMoves: ["orbVolley"], midMoves: ["driftReposition"], deepMoves: ["vacuumLane", "crashMarker"] },
+      moonOrbSentinel: { outerMoves: ["chargeBeam"], midMoves: ["sweepBeam"], deepMoves: ["beamFan", "pulseBurst"] },
+      ribbonSerpent: { outerMoves: ["longPass"], midMoves: ["wideBank"], deepMoves: ["laneCommit", "loopReturn"] },
+      nightglassDrake: { outerMoves: ["glideDive"], midMoves: ["breathTelegraph"], deepMoves: ["perchRelaunch", "tailLane"] },
+      wyrmscarDragon: { outerMoves: ["glideDive"], midMoves: ["breathTelegraph"], deepMoves: ["perchRelaunch", "summonLesser"] }
     };
 
 const ENEMY_SPECIES = {
@@ -618,7 +642,20 @@ const ENEMY_SPECIES = {
       hollowAmbusher: { label: "Hollow Ambusher", family: "Hollow", behavior: "ambush", health: 152, speed: 15.8, turn: 2.55, aggroRange: 64, leashRange: 112, preferDistance: 8, attackCooldown: 1.85, damage: 23, knockback: 7.0, bounceMass: 1.2, reward: { score: 206, xp: 34, gold: 10 }, colors: { bird: 0x4a3d63, wing: 0x2a1f3a, rider: 0xddd2f5, cloth: 0x9e7ae0 } },
       rogueRooftopRider: { label: "Rogue Rooftop Rider", family: "City", behavior: "dash", health: 132, speed: 14.9, turn: 2.15, aggroRange: 54, leashRange: 104, preferDistance: 10, attackCooldown: 1.95, damage: 19, knockback: 6.8, bounceMass: 1.26, reward: { score: 174, xp: 29, gold: 8 }, colors: { bird: 0x6c7284, wing: 0x434b5d, rider: 0xe5ebf7, cloth: 0xf59e8b } },
       dragonKnight: { label: "Dragon Knight", family: "Dragon", behavior: "lancer", health: 228, speed: 12.3, turn: 1.6, aggroRange: 66, leashRange: 124, preferDistance: 13, attackCooldown: 2.1, damage: 31, knockback: 10.1, bounceMass: 2.1, reward: { score: 330, xp: 56, gold: 15 }, colors: { bird: 0x734f44, wing: 0x3f2c25, rider: 0xf0ddd2, cloth: 0xe6a173 } },
-      apexRivalRider: { label: "Apex Rival Rider", family: "Dragon", behavior: "lancer", health: 272, speed: 13.6, turn: 1.75, aggroRange: 72, leashRange: 132, preferDistance: 14, attackCooldown: 1.85, damage: 36, knockback: 11.4, bounceMass: 2.4, reward: { score: 390, xp: 66, gold: 18 }, colors: { bird: 0x5c4a6f, wing: 0x332641, rider: 0xf1e8ff, cloth: 0xc495ff } }
+      apexRivalRider: { label: "Apex Rival Rider", family: "Dragon", behavior: "lancer", health: 272, speed: 13.6, turn: 1.75, aggroRange: 72, leashRange: 132, preferDistance: 14, attackCooldown: 1.85, damage: 36, knockback: 11.4, bounceMass: 2.4, reward: { score: 390, xp: 66, gold: 18 }, colors: { bird: 0x5c4a6f, wing: 0x332641, rider: 0xf1e8ff, cloth: 0xc495ff } },
+      moonOrbSentinel: { label: "Moon Orb Sentinel", family: "Arcane", behavior: "beamSweep", health: 172, speed: 11.6, turn: 1.15, aggroRange: 78, leashRange: 138, preferDistance: 20, attackCooldown: 2.6, damage: 25, knockback: 7.4, bounceMass: 1.24, reward: { score: 230, xp: 38, gold: 11 }, colors: { bird: 0x9cb7ff, wing: 0x6676c7, rider: 0xe8edff, cloth: 0xb794ff } },
+      prismHaloWatcher: { label: "Prism Halo Watcher", family: "Arcane", behavior: "beam", health: 156, speed: 12.4, turn: 1.2, aggroRange: 76, leashRange: 136, preferDistance: 19, attackCooldown: 2.4, damage: 23, knockback: 6.8, bounceMass: 1.18, reward: { score: 214, xp: 35, gold: 10 }, colors: { bird: 0xaed1ff, wing: 0x7082ce, rider: 0xeff4ff, cloth: 0xc4a2ff } },
+      moonbeamConstruct: { label: "Moonbeam Construct", family: "Arcane", behavior: "orb", health: 188, speed: 10.8, turn: 1.1, aggroRange: 80, leashRange: 144, preferDistance: 21, attackCooldown: 2.85, damage: 27, knockback: 8.1, bounceMass: 1.4, reward: { score: 250, xp: 41, gold: 12 }, colors: { bird: 0x93b0ff, wing: 0x5569b4, rider: 0xe5ecff, cloth: 0x8be9ff } },
+      ribbonSerpent: { label: "Ribbon Serpent", family: "Arcane", behavior: "serpent", health: 168, speed: 15.8, turn: 1.1, aggroRange: 68, leashRange: 120, preferDistance: 11, attackCooldown: 2.0, damage: 22, knockback: 7.0, bounceMass: 1.26, reward: { score: 208, xp: 34, gold: 10 }, colors: { bird: 0x6f6ac5, wing: 0x413f7f, rider: 0xded9ff, cloth: 0x8ca8ff } },
+      nightglassDrake: { label: "Nightglass Drake", family: "Arcane", behavior: "dragonGlide", health: 226, speed: 12.2, turn: 1.28, aggroRange: 70, leashRange: 126, preferDistance: 13, attackCooldown: 2.45, damage: 31, knockback: 10.2, bounceMass: 2.05, reward: { score: 318, xp: 52, gold: 15 }, colors: { bird: 0x5a5ea2, wing: 0x363b70, rider: 0xe6eaff, cloth: 0x9ad7ff } },
+      arcManta: { label: "Arc Manta", family: "Arcane", behavior: "orb", health: 148, speed: 13.1, turn: 1.5, aggroRange: 74, leashRange: 132, preferDistance: 18, attackCooldown: 2.35, damage: 20, knockback: 6.6, bounceMass: 1.16, reward: { score: 196, xp: 30, gold: 9 }, colors: { bird: 0x6f85cb, wing: 0x3e4f8e, rider: 0xdce9ff, cloth: 0x9fe7ff } },
+      haloLancer: { label: "Halo Lancer", family: "Arcane", behavior: "lancer", health: 198, speed: 13.2, turn: 1.65, aggroRange: 66, leashRange: 118, preferDistance: 12, attackCooldown: 2.0, damage: 26, knockback: 8.4, bounceMass: 1.72, reward: { score: 242, xp: 40, gold: 12 }, colors: { bird: 0x8ca2de, wing: 0x5d73b0, rider: 0xeef3ff, cloth: 0xd4c4ff } },
+      dustscaleWyvern: { label: "Dustscale Wyvern", family: "Badlands", behavior: "dragonGlide", health: 236, speed: 12.6, turn: 1.22, aggroRange: 70, leashRange: 126, preferDistance: 12, attackCooldown: 2.35, damage: 32, knockback: 10.4, bounceMass: 2.12, reward: { score: 330, xp: 53, gold: 15 }, colors: { bird: 0x8a4f34, wing: 0x5a2f1e, rider: 0xf0ddcf, cloth: 0xffa56a } },
+      redMesaDrake: { label: "Red Mesa Drake", family: "Badlands", behavior: "dragonGlide", health: 212, speed: 12.9, turn: 1.3, aggroRange: 68, leashRange: 120, preferDistance: 12, attackCooldown: 2.25, damage: 28, knockback: 9.2, bounceMass: 1.96, reward: { score: 296, xp: 48, gold: 13 }, colors: { bird: 0x9b5532, wing: 0x5f321d, rider: 0xeecfbc, cloth: 0xf97316 } },
+      bonecrestSerpent: { label: "Bonecrest Serpent", family: "Badlands", behavior: "serpent", health: 178, speed: 15.1, turn: 1.0, aggroRange: 66, leashRange: 122, preferDistance: 10, attackCooldown: 1.95, damage: 23, knockback: 7.5, bounceMass: 1.35, reward: { score: 224, xp: 36, gold: 10 }, colors: { bird: 0x886a56, wing: 0x5b4637, rider: 0xeedfcf, cloth: 0xfda172 } },
+      ironSpurRider: { label: "Iron Spur Rider", family: "Badlands", behavior: "heavyLancer", health: 244, speed: 11.3, turn: 1.3, aggroRange: 63, leashRange: 114, preferDistance: 11, attackCooldown: 2.15, damage: 30, knockback: 10.8, bounceMass: 2.24, reward: { score: 340, xp: 56, gold: 16 }, colors: { bird: 0x6f4e40, wing: 0x423028, rider: 0xe5ddd5, cloth: 0xd87b52 } },
+      wyrmscarDragon: { label: "Wyrmscar Dragon", family: "Badlands", behavior: "dragonGlide", health: 284, speed: 11.7, turn: 1.05, aggroRange: 72, leashRange: 132, preferDistance: 13, attackCooldown: 2.7, damage: 38, knockback: 12.4, bounceMass: 2.45, reward: { score: 420, xp: 70, gold: 19 }, colors: { bird: 0x7f3c2a, wing: 0x4a2117, rider: 0xf0d7c7, cloth: 0xff7b36 } },
+      canyonAmbushLancer: { label: "Canyon Ambush Lancer", family: "Badlands", behavior: "heavyLancer", health: 206, speed: 12.8, turn: 1.52, aggroRange: 64, leashRange: 116, preferDistance: 11, attackCooldown: 1.95, damage: 27, knockback: 9.0, bounceMass: 1.92, reward: { score: 258, xp: 43, gold: 12 }, colors: { bird: 0x7a5e4b, wing: 0x4f3d31, rider: 0xf0e3d6, cloth: 0xe68b5f } }
     };
 
     const RARITY_COLORS = { common: "#d1d5db", uncommon: "#86efac", rare: "#93c5fd", epic: "#c4b5fd", legendary: "#fbbf24" };
@@ -693,6 +730,71 @@ const ENEMY_SPECIES = {
       { id: "hollow-widow-idol", name: "Hollow Widow Idol", slot: "trinket", rarity: "legendary", region: "Hollow Night Marsh", stats: { poisonBonus: 0.28, regenSpeed: 1.1 }, desc: "Void idol trailing ghostly poison wisps.", sell: 99 },
       { id: "frosttalon-heart", name: "Frosttalon Heart", slot: "weapon", rarity: "legendary", region: "Sky Glacier Reach", stats: { spearDamage: 21, freezeChance: 0.18 }, desc: "Crystal heart that chills on landing impacts.", sell: 101 },
       { id: "rift-maw-spine", name: "Rift Maw Spine", slot: "weapon", rarity: "legendary", region: "Obsidian Rift", stats: { spearDamage: 25, antiArmor: 0.22 }, desc: "Void-lava spine with punishing midrange force.", sell: 110 },
+      { id: "moonglass-lance", name: "Moonglass Lance", slot: "weapon", rarity: "rare", region: "Moonglass Citadel", stats: { spearDamage: 18, spearReach: 0.9 }, weaponClass: "spear", modelProfile: "moon", attackProfile: "thrust", desc: "Silver-blue lance etched with moon runes.", sell: 70 },
+      { id: "riftcoil-pike", name: "Riftcoil Pike", slot: "weapon", rarity: "epic", region: "Moonveil Expanse", stats: { spearDamage: 20, antiArmor: 0.14 }, weaponClass: "spear", modelProfile: "void", attackProfile: "heavyThrust", desc: "Coiled pike tuned for lane commits.", sell: 82 },
+      { id: "drakefang-pike", name: "Drakefang Pike", slot: "weapon", rarity: "epic", region: "Wyrmscar Badlands", stats: { spearDamage: 21, antiArmor: 0.16 }, weaponClass: "spear", modelProfile: "dragon", attackProfile: "thrust", desc: "Honed around true drake fang ridges.", sell: 84 },
+      { id: "bone-banner-lance", name: "Bone Banner Lance", slot: "weapon", rarity: "rare", region: "Wyrmscar Badlands", stats: { spearDamage: 17, burstSpeed: 1.1 }, weaponClass: "spear", modelProfile: "badlands", attackProfile: "thrust", desc: "Badlands cavalry lance with rib-bone pennant.", sell: 66 },
+      { id: "sunshard-lance", name: "Sunshard Lance", slot: "weapon", rarity: "epic", region: "Aurelian Skyhold", stats: { spearDamage: 20, critChance: 0.07 }, weaponClass: "spear", modelProfile: "holy", attackProfile: "thrust", desc: "Refined shard lance for city duels.", sell: 88 },
+      { id: "serpentbinder-trident", name: "Serpentbinder Trident", slot: "weapon", rarity: "rare", region: "Moonveil Expanse", stats: { spearDamage: 18, spearReach: 0.7 }, weaponClass: "trident", modelProfile: "moon", attackProfile: "forkDrive", desc: "Pronged trap trident for serpent lanes.", sell: 72 },
+      { id: "stormcoil-trident", name: "Stormcoil Trident", slot: "weapon", rarity: "epic", region: "Tempest Shelf", stats: { spearDamage: 19, chainChance: 0.1 }, weaponClass: "trident", modelProfile: "storm", attackProfile: "forkDrive", desc: "Conductive trident with ion forks.", sell: 86 },
+      { id: "celestial-fork", name: "Celestial Fork", slot: "weapon", rarity: "legendary", region: "Moonglass Citadel", stats: { spearDamage: 23, critChance: 0.08 }, weaponClass: "trident", modelProfile: "moon", attackProfile: "forkDrive", desc: "Astral fork with radiant lock-on tip.", sell: 112 },
+      { id: "starfall-glaive", name: "Starfall Glaive", slot: "weapon", rarity: "epic", region: "Moonveil Expanse", stats: { spearDamage: 20, diveImpact: 3.8 }, weaponClass: "glaive", modelProfile: "moon", attackProfile: "diagSlash", desc: "Sweeping glaive that rewards plunges.", sell: 90 },
+      { id: "embercrest-halberd", name: "Embercrest Halberd", slot: "weapon", rarity: "epic", region: "Wyrmscar Badlands", stats: { spearDamage: 21, resistance: 0.03 }, weaponClass: "halberd", modelProfile: "badlands", attackProfile: "heavyThrust", desc: "Weighted halberd for canyon skirmishes.", sell: 92 },
+      { id: "iron-mesa-poleaxe", name: "Iron Mesa Poleaxe", slot: "weapon", rarity: "rare", region: "Wyrmscar Badlands", stats: { spearDamage: 18, antiArmor: 0.1 }, weaponClass: "halberd", modelProfile: "iron", attackProfile: "heavyThrust", desc: "Blocky armored poleaxe for rider hunts.", sell: 74 },
+      { id: "wyrmtooth-cleaver", name: "Wyrmtooth Cleaver", slot: "weapon", rarity: "legendary", region: "Wyrmscar Badlands", stats: { spearDamage: 25, antiArmor: 0.22 }, weaponClass: "greatBlade", modelProfile: "dragon", attackProfile: "downChop", desc: "Massive downward cleaver from wyrm tusk.", sell: 118 },
+      { id: "badlands-breaker", name: "Badlands Breaker", slot: "weapon", rarity: "epic", region: "Wyrmscar Badlands", stats: { spearDamage: 22, diveImpact: 4.4 }, weaponClass: "greatBlade", modelProfile: "badlands", attackProfile: "downChop", desc: "Mesa-forged breaker for impact riders.", sell: 98 },
+      { id: "nightglass-blade", name: "Nightglass Blade", slot: "weapon", rarity: "epic", region: "Moonglass Citadel", stats: { spearDamage: 21, critChance: 0.09 }, weaponClass: "greatBlade", modelProfile: "moon", attackProfile: "downChop", desc: "Dark crystal blade with precision edge.", sell: 96 },
+      { id: "halo-prism-wand", name: "Halo Prism Wand", slot: "weapon", rarity: "rare", region: "Moonglass Citadel", stats: { spearDamage: 14, chainChance: 0.08 }, weaponClass: "wand", modelProfile: "moon", attackProfile: "casterBolt", projectileType: "arcBolt", desc: "Prism wand that refracts into beamlets.", sell: 68 },
+      { id: "dreadbeam-rod", name: "Dreadbeam Rod", slot: "weapon", rarity: "epic", region: "Moonveil Expanse", stats: { spearDamage: 15, beamPower: 0.15 }, weaponClass: "wand", modelProfile: "void", attackProfile: "casterBolt", projectileType: "voidSpike", desc: "Beam rod that excels during telegraph windows.", sell: 88 },
+      { id: "arcspire-focus", name: "Arcspire Focus", slot: "weapon", rarity: "legendary", region: "Moonglass Citadel", stats: { spearDamage: 16, chainChance: 0.18 }, weaponClass: "staff", modelProfile: "moon", attackProfile: "staffBurst", projectileType: "radiantSpear", desc: "Citadel focus for long-cast control.", sell: 108 },
+      { id: "void-ring-scepter", name: "Void Ring Scepter", slot: "weapon", rarity: "epic", region: "Moonveil Expanse", stats: { spearDamage: 17, chainChance: 0.12 }, weaponClass: "staff", modelProfile: "void", attackProfile: "staffBurst", projectileType: "voidSpike", desc: "Ringed scepter with delayed burst pulse.", sell: 94 },
+      { id: "ashscale-impaler", name: "Ashscale Impaler", slot: "weapon", rarity: "legendary", region: "Wyrmscar Badlands", stats: { spearDamage: 24, antiArmor: 0.2 }, weaponClass: "dragonFang", modelProfile: "dragon", attackProfile: "heavyThrust", desc: "Dragon-hunting impaler for plated targets.", sell: 116 },
+      { id: "crystal-thorn-spear", name: "Crystal Thorn Spear", slot: "weapon", rarity: "rare", region: "Moonveil Expanse", stats: { spearDamage: 17, freezeChance: 0.1 }, weaponClass: "spear", modelProfile: "crystal", attackProfile: "thrust", desc: "Moon crystal spear with brittle chill wake.", sell: 69 },
+
+      { id: "moon-citadel-knight", name: "Moon Citadel Knight Armor", slot: "armor", rarity: "epic", region: "Moonglass Citadel", stats: { maxHealth: 46, resistance: 0.09 }, desc: "Arcane plated knight suit of the citadel.", sell: 88 },
+      { id: "arcane-lumen-robes", name: "Arcane Lumen Robes", slot: "armor", rarity: "epic", region: "Moonveil Expanse", stats: { maxHealth: 34, regenSpeed: 1.5, chainChance: 0.1 }, desc: "High-focus robes for beam duelists.", sell: 82 },
+      { id: "serpent-scale-mail", name: "Serpent Scale Mail", slot: "armor", rarity: "rare", region: "Moonveil Expanse", stats: { maxHealth: 30, airControl: 0.5 }, desc: "Flexible segmented mail for lane passes.", sell: 68 },
+      { id: "storm-rider-cloak", name: "Storm Rider Cloak", slot: "armor", rarity: "rare", region: "Tempest Shelf", stats: { maxHealth: 26, airControl: 0.7, burstSpeed: 0.6 }, desc: "Agile cloak for lateral storms.", sell: 64 },
+      { id: "badlands-bone-plate", name: "Badlands Heavy Bone Armor", slot: "armor", rarity: "epic", region: "Wyrmscar Badlands", stats: { maxHealth: 52, resistance: 0.1 }, desc: "Heavy ribbed armor for harsh ambush lanes.", sell: 92 },
+      { id: "crystal-sky-plate", name: "Crystal-Plated Sky Armor", slot: "armor", rarity: "epic", region: "Sky Glacier Reach", stats: { maxHealth: 40, resistance: 0.07, freezeChance: 0.08 }, desc: "Crystal plates with glacial temper.", sell: 86 },
+      { id: "voidweft-archmage", name: "Voidweft Archmage Robes", slot: "armor", rarity: "legendary", region: "Moonveil Expanse", stats: { maxHealth: 42, regenSpeed: 1.8, regenDelay: -0.3 }, desc: "Void-thread robes for sustained casting.", sell: 108 },
+      { id: "frontier-joust-harness", name: "Frontier Joust Harness", slot: "armor", rarity: "rare", region: "Sunstone Highlands", stats: { maxHealth: 32, diveImpact: 2.6 }, desc: "Harness tuned for long-lane impacts.", sell: 70 },
+      { id: "elite-duelist-regalia", name: "Elite City Duelist Regalia", slot: "armor", rarity: "legendary", region: "Moonglass Citadel", stats: { maxHealth: 44, critChance: 0.09, airControl: 0.55 }, desc: "Prestige gear for apex city jousters.", sell: 112 },
+      { id: "dragonproof-bastion", name: "Dragonproof Bastion Plate", slot: "armor", rarity: "legendary", region: "Wyrmscar Badlands", stats: { maxHealth: 58, resistance: 0.14, beamResist: 0.1 }, desc: "Late-game anti-dragon fortress armor.", sell: 118 },
+      { id: "moonveil-scout", name: "Moonveil Scout Weave", slot: "armor", rarity: "rare", region: "Moonveil Expanse", stats: { maxHealth: 28, glideFactor: 0.12, airControl: 0.45 }, desc: "Light weave for curved flight routes.", sell: 66 },
+      { id: "rune-lancer-shell", name: "Rune Lancer Shell", slot: "armor", rarity: "epic", region: "Moonglass Citadel", stats: { maxHealth: 47, antiArmor: 0.12 }, desc: "Arcane shell worn by halo lancers.", sell: 94 },
+      { id: "mesa-warden-coat", name: "Mesa Warden Coat", slot: "armor", rarity: "rare", region: "Wyrmscar Badlands", stats: { maxHealth: 35, pickupRadius: 1.2 }, desc: "Frontier coat for extended patrol runs.", sell: 67 },
+      { id: "orbglass-raiment", name: "Orbglass Raiment", slot: "armor", rarity: "epic", region: "Moonveil Expanse", stats: { maxHealth: 36, beamResist: 0.16, chainChance: 0.08 }, desc: "Refraction cloth against beam casters.", sell: 91 },
+      { id: "scar-wyrm-harness", name: "Scar Wyrm Harness", slot: "armor", rarity: "legendary", region: "Wyrmscar Badlands", stats: { maxHealth: 54, diveImpact: 3.8, antiArmor: 0.16 }, desc: "Predatory harness from wyrm hunts.", sell: 116 },
+      { id: "lanternweave-garb", name: "Lanternweave Garb", slot: "armor", rarity: "rare", region: "Moonglass Citadel", stats: { maxHealth: 30, regenSpeed: 0.9 }, desc: "Glowing arcane trim improves stamina flow.", sell: 65 },
+      { id: "crestguard-fortress", name: "Crestguard Fortress Armor", slot: "armor", rarity: "epic", region: "Aegis Bastion", stats: { maxHealth: 50, resistance: 0.11 }, desc: "Blocky fortress armor for knight riders.", sell: 96 },
+      { id: "skyblade-sprinter", name: "Skyblade Sprinter Vest", slot: "armor", rarity: "rare", region: "Seraphic City-State Ring", stats: { maxHealth: 24, critChance: 0.07, burstSpeed: 0.8 }, desc: "Agile set for crit-focused aerial duels.", sell: 63 },
+      { id: "summoner-aegis-silk", name: "Summoner Aegis Silk", slot: "armor", rarity: "epic", region: "Moonveil Expanse", stats: { maxHealth: 33, summonDamage: 0.2, summonCount: 1 }, desc: "Silk robe that empowers summoned escorts.", sell: 89 },
+      { id: "latebound-vanguard", name: "Latebound Vanguard Plate", slot: "armor", rarity: "legendary", region: "Outer Wyrm Wastes", stats: { maxHealth: 60, resistance: 0.13, regenSpeed: 0.8 }, desc: "Endgame survivability set for deep zones.", sell: 124 },
+
+      { id: "moon-halo-charm", name: "Moon Halo Charm", slot: "trinket", rarity: "rare", region: "Moonglass Citadel", stats: { beamResist: 0.12 }, desc: "Softens incoming beam focus.", sell: 48 },
+      { id: "serpent-eye-idol", name: "Serpent Eye Idol", slot: "trinket", rarity: "rare", region: "Moonveil Expanse", stats: { serpentTracking: 0.2 }, desc: "Improves tracking on serpent passes.", sell: 49 },
+      { id: "beamglass-prism", name: "Beamglass Prism", slot: "trinket", rarity: "epic", region: "Moonveil Expanse", stats: { beamResist: 0.18, beamReflect: 0.08 }, desc: "Prism that partially reflects beam bursts.", sell: 72 },
+      { id: "wyrm-hunter-token", name: "Wyrm Hunter Token", slot: "trinket", rarity: "epic", region: "Wyrmscar Badlands", stats: { antiArmor: 0.18, critChance: 0.05 }, desc: "Specialized token for dragon hunts.", sell: 75 },
+      { id: "citadel-crest", name: "Citadel Crest", slot: "trinket", rarity: "rare", region: "Moonglass Citadel", stats: { regenSpeed: 0.9, pickupRadius: 1.2 }, desc: "City crest for sustain and pickups.", sell: 50 },
+      { id: "arc-coil-loop", name: "Arc Coil Loop", slot: "trinket", rarity: "epic", region: "Moonveil Expanse", stats: { chainChance: 0.14 }, desc: "Boosts chain-based arc effects.", sell: 73 },
+      { id: "dragonscale-sigil", name: "Dragonscale Sigil", slot: "trinket", rarity: "epic", region: "Wyrmscar Badlands", stats: { resistance: 0.09, antiArmor: 0.1 }, desc: "Sigil carved from plated drake scale.", sell: 74 },
+      { id: "void-lantern", name: "Void Lantern", slot: "trinket", rarity: "epic", region: "Moonveil Expanse", stats: { pickupRadius: 1.5, chainChance: 0.08 }, desc: "Lantern that reveals hidden drops.", sell: 71 },
+      { id: "storm-prayer-bead", name: "Storm Prayer Bead", slot: "trinket", rarity: "rare", region: "Tempest Shelf", stats: { burstSpeed: 0.7, airControl: 0.25 }, desc: "Keeps control during violent crosswinds.", sell: 47 },
+      { id: "badlands-spur", name: "Badlands Spur", slot: "trinket", rarity: "rare", region: "Wyrmscar Badlands", stats: { diveImpact: 2.8 }, desc: "Impact spur for harsh landing strikes.", sell: 50 },
+      { id: "hunters-spiral", name: "Hunter's Spiral", slot: "trinket", rarity: "epic", region: "Wyrmscar Badlands", stats: { critChance: 0.08, antiArmor: 0.1 }, desc: "Spiral marker for anti-armor precision.", sell: 76 },
+      { id: "rift-compass", name: "Rift Compass", slot: "trinket", rarity: "rare", region: "Obsidian Rift", stats: { pickupRadius: 1.3, goldGain: 0.1 }, desc: "Points to caches near rift currents.", sell: 46 },
+      { id: "crown-feather", name: "Crown Feather", slot: "trinket", rarity: "rare", region: "Aurelian Skyhold", stats: { critChance: 0.06 }, desc: "Refined plume for precise jousts.", sell: 45 },
+      { id: "ember-ward-loop", name: "Ember Ward Loop", slot: "trinket", rarity: "epic", region: "Wyrmscar Badlands", stats: { resistance: 0.08, beamResist: 0.08 }, desc: "Deflective loop against ember volleys.", sell: 70 },
+      { id: "sky-duel-ribbon", name: "Sky Duel Ribbon", slot: "trinket", rarity: "rare", region: "Moonglass Citadel", stats: { burstSpeed: 0.9, critChance: 0.05 }, desc: "Ribbon worn by rooftop duelists.", sell: 49 },
+      { id: "orbbreaker-mark", name: "Orbbreaker Mark", slot: "trinket", rarity: "epic", region: "Moonveil Expanse", stats: { orbBonus: 0.24 }, desc: "Specialized against floating orb enemies.", sell: 77 },
+      { id: "frost-halo-ring", name: "Frost Halo Ring", slot: "trinket", rarity: "rare", region: "Sky Glacier Reach", stats: { freezeChance: 0.12, beamResist: 0.07 }, desc: "Cold halo improves caster duels.", sell: 51 },
+      { id: "bone-charm-mesa", name: "Bone Charm of the Mesa", slot: "trinket", rarity: "rare", region: "Wyrmscar Badlands", stats: { summonDamage: 0.14 }, desc: "Mesa charm empowering summoned allies.", sell: 48 },
+      { id: "lantern-deep-flight", name: "Lantern of Deep Flight", slot: "trinket", rarity: "legendary", region: "Moonveil Expanse", stats: { glideFactor: 0.2, lateralControl: 0.3 }, desc: "Late-flight lantern for long glides.", sell: 98 },
+      { id: "crystal-lung-medallion", name: "Crystal Lung Medallion", slot: "trinket", rarity: "legendary", region: "Moonglass Citadel", stats: { regenSpeed: 1.6, burstSpeed: 0.8 }, desc: "Arcane medallion for sustained aerial pressure.", sell: 102 },
+
+      { id: "moon-lens-core", name: "Moon Lens Core", slot: "trinket", rarity: "legendary", region: "Moonveil Expanse", stats: { beamResist: 0.2, chainChance: 0.16 }, desc: "Sovereign core that refracts incoming beam pressure.", sell: 132 },
+      { id: "rhazakar-fang", name: "Rhazakar Fang", slot: "weapon", rarity: "legendary", region: "Wyrmscar Badlands", stats: { spearDamage: 27, antiArmor: 0.26 }, desc: "Scar wyrm fang forged into a brutal hunting lance.", sell: 138 },
       { id: "apex-wyrm-relic", name: "Apex Wyrm Relic", slot: "trinket", rarity: "legendary", region: "Outer Wyrm Wastes", stats: { critChance: 0.12, chainChance: 0.18 }, desc: "Legendary late-game relic of the wyrm lord.", sell: 130 }
     ];
 
@@ -741,7 +843,10 @@ const ENEMY_SPECIES = {
       { id: "stoneback-warbird", name: "Stoneback Warbird", classHint: "Heavy", handling: "heavyWarBeast", silhouetteProfile: "warbeast", animationProfile: "heavyBird", speed: 0.88, accel: 0.8, turn: 0.78, flap: 1.02, impact: 1.64, lateral: false, landingFx: "knockback", gravityScale: 1.3, fallSpeedCap: 43, flapBurst: 8.4, flapCooldown: 0.5, boostPower: 11.2, boostCooldown: 1.08, boostDuration: 0.3, glideFactor: 0.68, airDrag: 0.34, momentumRetention: 0.88, turnResponsiveness: 0.7, hoverAssist: 0, diveAcceleration: 1.2, stallRecovery: 0.88, landingSkid: 0.98, wingbeatRate: 0.64, idleBobStyle: "heavy", dashStyle: "ram", wingAmplitude: 0.8, wingFrequency: 0.62, tailSway: 0.16, bodyPitchLag: 0.26, diveTuckAmount: 0.46, landingCompression: 0.74, boostTrailType: "iron", colors: { bird: 0x6f6a5a, wing: 0x4f4a3d, rider: 0xe8e5dc, cloth: 0x94a3b8 } },
       { id: "halo-seraph", name: "Halo Seraph", classHint: "Hover Mystic", handling: "hoverMystic", silhouetteProfile: "seraph", animationProfile: "seraph", speed: 1.12, accel: 1.02, turn: 1.2, flap: 0.9, impact: 0.76, lateral: true, landingFx: "buff", gravityScale: 0.7, fallSpeedCap: 24, flapBurst: 7.6, flapCooldown: 0.26, boostPower: 6.8, boostCooldown: 0.4, boostDuration: 0.2, glideFactor: 1.2, airDrag: 0.11, momentumRetention: 1.08, turnResponsiveness: 1.28, hoverAssist: 0.36, diveAcceleration: 0.7, stallRecovery: 1.3, landingSkid: 0.34, wingbeatRate: 1.18, idleBobStyle: "mystic", dashStyle: "halo", wingAmplitude: 0.54, wingFrequency: 1.2, tailSway: 0.5, bodyPitchLag: 0.04, diveTuckAmount: 0.18, landingCompression: 0.22, boostTrailType: "holy", colors: { bird: 0xd8ccff, wing: 0xa78bfa, rider: 0xf5efff, cloth: 0xfef08a } },
       { id: "mossfang-glider", name: "Mossfang Glider", classHint: "Forest Mystic", handling: "hoverMystic", silhouetteProfile: "beetle", animationProfile: "insect", speed: 0.98, accel: 0.94, turn: 1.18, flap: 0.88, impact: 0.84, lateral: true, landingFx: "poison", gravityScale: 0.78, fallSpeedCap: 28, flapBurst: 7.1, flapCooldown: 0.3, boostPower: 6.3, boostCooldown: 0.44, boostDuration: 0.2, glideFactor: 1.16, airDrag: 0.12, momentumRetention: 1.04, turnResponsiveness: 1.24, hoverAssist: 0.26, diveAcceleration: 0.74, stallRecovery: 1.18, landingSkid: 0.36, wingbeatRate: 1.16, idleBobStyle: "mystic", dashStyle: "forest", wingAmplitude: 0.6, wingFrequency: 1.14, tailSway: 0.44, bodyPitchLag: 0.06, diveTuckAmount: 0.2, landingCompression: 0.28, boostTrailType: "forest", colors: { bird: 0x5f7b4f, wing: 0x355338, rider: 0xe5f4d8, cloth: 0x4ade80 } },
-      { id: "ember-talon", name: "Ember Talon", classHint: "Burst Raptor", handling: "burstRaptor", silhouetteProfile: "hawk", animationProfile: "featherRaptor", speed: 1.1, accel: 1.04, turn: 1.02, flap: 1.08, impact: 1.16, lateral: false, landingFx: "fire", gravityScale: 1.16, fallSpeedCap: 45, flapBurst: 11.6, flapCooldown: 0.42, boostPower: 8.8, boostCooldown: 0.7, boostDuration: 0.22, glideFactor: 0.82, airDrag: 0.24, momentumRetention: 0.8, turnResponsiveness: 0.94, hoverAssist: 0, diveAcceleration: 1.32, stallRecovery: 0.86, landingSkid: 0.68, wingbeatRate: 0.86, idleBobStyle: "raptor", dashStyle: "ember", wingAmplitude: 0.96, wingFrequency: 0.84, tailSway: 0.3, bodyPitchLag: 0.14, diveTuckAmount: 0.62, landingCompression: 0.5, boostTrailType: "ember", colors: { bird: 0x9d4a30, wing: 0x692a1d, rider: 0xf2d1b8, cloth: 0xfb923c } }
+      { id: "ember-talon", name: "Ember Talon", classHint: "Burst Raptor", handling: "burstRaptor", silhouetteProfile: "hawk", animationProfile: "featherRaptor", speed: 1.1, accel: 1.04, turn: 1.02, flap: 1.08, impact: 1.16, lateral: false, landingFx: "fire", gravityScale: 1.16, fallSpeedCap: 45, flapBurst: 11.6, flapCooldown: 0.42, boostPower: 8.8, boostCooldown: 0.7, boostDuration: 0.22, glideFactor: 0.82, airDrag: 0.24, momentumRetention: 0.8, turnResponsiveness: 0.94, hoverAssist: 0, diveAcceleration: 1.32, stallRecovery: 0.86, landingSkid: 0.68, wingbeatRate: 0.86, idleBobStyle: "raptor", dashStyle: "ember", wingAmplitude: 0.96, wingFrequency: 0.84, tailSway: 0.3, bodyPitchLag: 0.14, diveTuckAmount: 0.62, landingCompression: 0.5, boostTrailType: "ember", colors: { bird: 0x9d4a30, wing: 0x692a1d, rider: 0xf2d1b8, cloth: 0xfb923c } },
+      { id: "moonray-glider", name: "Moonray Glider", classHint: "Arcane Manta", handling: "glideSerpent", silhouetteProfile: "manta", animationProfile: "manta", speed: 1.03, accel: 0.9, turn: 1.24, flap: 0.82, impact: 0.7, lateral: true, landingFx: "holy", gravityScale: 0.62, fallSpeedCap: 22, flapBurst: 6.4, flapCooldown: 0.26, boostPower: 6.1, boostCooldown: 0.4, boostDuration: 0.2, glideFactor: 1.42, airDrag: 0.08, momentumRetention: 1.26, turnResponsiveness: 1.34, hoverAssist: 0.34, diveAcceleration: 0.68, stallRecovery: 1.28, landingSkid: 0.28, wingbeatRate: 1.2, idleBobStyle: "mystic", dashStyle: "halo", wingAmplitude: 0.5, wingFrequency: 1.24, tailSway: 0.52, bodyPitchLag: 0.05, diveTuckAmount: 0.16, landingCompression: 0.2, boostTrailType: "holy", colors: { bird: 0xa8baff, wing: 0x7f92d8, rider: 0xf2f5ff, cloth: 0xc4b5fd } },
+      { id: "wyrmrunner-drake", name: "Wyrmrunner Drake", classHint: "Predator Drake", handling: "rocketDiver", silhouetteProfile: "drake", animationProfile: "drake", speed: 1.08, accel: 1.0, turn: 0.92, flap: 1.12, impact: 1.38, lateral: false, landingFx: "shockwave", gravityScale: 1.3, fallSpeedCap: 52, flapBurst: 13.2, flapCooldown: 0.52, boostPower: 10.6, boostCooldown: 0.9, boostDuration: 0.24, glideFactor: 0.76, airDrag: 0.28, momentumRetention: 0.78, turnResponsiveness: 0.84, hoverAssist: 0, diveAcceleration: 1.52, stallRecovery: 0.8, landingSkid: 0.76, wingbeatRate: 0.76, idleBobStyle: "dragon", dashStyle: "ember", wingAmplitude: 1.06, wingFrequency: 0.72, tailSway: 0.36, bodyPitchLag: 0.18, diveTuckAmount: 0.74, landingCompression: 0.6, boostTrailType: "ember", colors: { bird: 0x8a4a36, wing: 0x59281d, rider: 0xf2d7c8, cloth: 0xfb923c } },
+      { id: "ironhorn-roc", name: "Ironhorn Roc", classHint: "War Mount", handling: "heavyWarBeast", silhouetteProfile: "warbeast", animationProfile: "heavyBird", speed: 0.9, accel: 0.82, turn: 0.74, flap: 1.14, impact: 1.72, lateral: false, landingFx: "knockback", gravityScale: 1.34, fallSpeedCap: 44, flapBurst: 9.8, flapCooldown: 0.56, boostPower: 12.1, boostCooldown: 1.14, boostDuration: 0.32, glideFactor: 0.66, airDrag: 0.36, momentumRetention: 0.9, turnResponsiveness: 0.68, hoverAssist: 0, diveAcceleration: 1.24, stallRecovery: 0.86, landingSkid: 1.0, wingbeatRate: 0.62, idleBobStyle: "heavy", dashStyle: "ram", wingAmplitude: 0.82, wingFrequency: 0.6, tailSway: 0.18, bodyPitchLag: 0.28, diveTuckAmount: 0.5, landingCompression: 0.78, boostTrailType: "iron", colors: { bird: 0x666b75, wing: 0x454a55, rider: 0xe5e9f1, cloth: 0x94a3b8 } }
     ];
 
     const CLASS_BRANCHES = {
@@ -861,7 +966,9 @@ const ENEMY_SPECIES = {
       "Hollow Night Marsh": { bossName: "Widow of the Hollow Reed", title: "Void-Sworn Marsh Queen", enemyType: "shadeSerpent", move: "Vanish-reappear ambusher", attacks: ["Shadow perch ambush", "Swarm release", "Void puddle zones"], dropId: "hollow-widow-idol", dropName: "Hollow Widow Idol", gold: 650, xp: 500, speciesScale: 1.46 },
       "Sky Glacier Reach": { bossName: "Frosttalon Ascendant", title: "Crystal Storm Raptor", enemyType: "stormDiver", move: "Sharp lateral cuts and altitude resets", attacks: ["Icicle volley telegraphs", "Freezing glide slash", "Frost ring burst landing"], dropId: "frosttalon-heart", dropName: "Frosttalon Heart", gold: 670, xp: 520, speciesScale: 1.48 },
       "Obsidian Rift": { bossName: "Rift Maw Sovereign", title: "Void-Lava Maw", enemyType: "voidDragon", move: "Brutal midrange zoning", attacks: ["Void orb volleys", "Magma fissure lines", "Rift pull heavy strike"], dropId: "rift-maw-spine", dropName: "Rift Maw Spine", gold: 880, xp: 640, speciesScale: 1.56 },
-      "Outer Wyrm Wastes": { bossName: "Apex Wyrm Lord", title: "Final Sky Rival", enemyType: "apexRivalRider", move: "Elite joust champion-dragon hybrid", attacks: ["Chained lance charges", "Wyrm echo summons", "Telegraphed sky crash"], dropId: "apex-wyrm-relic", dropName: "Apex Wyrm Relic", gold: 1200, xp: 900, speciesScale: 1.62 }
+      "Outer Wyrm Wastes": { bossName: "Apex Wyrm Lord", title: "Final Sky Rival", enemyType: "apexRivalRider", move: "Elite joust champion-dragon hybrid", attacks: ["Chained lance charges", "Wyrm echo summons", "Telegraphed sky crash"], dropId: "apex-wyrm-relic", dropName: "Apex Wyrm Relic", gold: 1200, xp: 900, speciesScale: 1.62 },
+      "Moonveil Expanse": { bossName: "The Moon Lens Sovereign", title: "Arcane Aperture Tyrant", enemyType: "moonbeamConstruct", move: "Hover-lock beam conductor", attacks: ["Telegraphed focus beam", "Rotating beam fan", "Pulse wave + orbiting sentinels"], dropId: "moon-lens-core", dropName: "Moon Lens Core", gold: 980, xp: 720, speciesScale: 1.58 },
+      "Wyrmscar Badlands": { bossName: "Rhazakar, the Scar Wyrm", title: "Badlands Apex Predator", enemyType: "wyrmscarDragon", move: "Heavy glide tyrant", attacks: ["Breath sweep telegraph", "Dive lane crush", "Tail-lane passes + lesser drakes"], dropId: "rhazakar-fang", dropName: "Rhazakar Fang", gold: 1120, xp: 830, speciesScale: 1.64 }
     };
 
     init();
@@ -1105,6 +1212,8 @@ const ENEMY_SPECIES = {
         { id: "q-storm-divers", name: "Tempest Loop Hunt", target: "stormDiver", need: 8, count: 0, state: "available", reward: { xp: 190, gold: 96, item: "chain-storm-lance" }, giverHub: "Storm Roost Sanctuary" },
         { id: "q-serpent", name: "Magma Serpent Hunt", target: "magmaSerpent", need: 4, count: 0, state: "available", reward: { xp: 120, gold: 52, item: "ember-fang" }, giverHub: "Dragon Hunter's Rest" },
         { id: "q-drake", name: "Storm Drake Cull", target: "stormDrake", need: 6, count: 0, state: "available", reward: { xp: 160, gold: 75, item: "stormglass-lance" }, giverHub: "Storm Roost Sanctuary" },
+        { id: "q-moon-orb", name: "Moonveil Orb Break", target: "moonOrbSentinel", need: 7, count: 0, state: "available", reward: { xp: 280, gold: 150, item: "beamglass-prism" }, giverHub: "Moonglass Grand Market" },
+        { id: "q-wyrmscar", name: "Scar Wyrm Pursuit", target: "wyrmscarDragon", need: 3, count: 0, state: "available", reward: { xp: 420, gold: 260, item: "rhazakar-fang" }, giverHub: "Dragon Hunter's Rest" },
         { id: "q-apex", name: "Apex Wyrm Contract", target: "apexRivalRider", need: 2, count: 0, state: "available", reward: { xp: 360, gold: 240, item: "apex-wyrm-relic" }, giverHub: "Dragon Hunter's Rest" }
       ];
     }
@@ -1195,7 +1304,9 @@ const ENEMY_SPECIES = {
         dragon: 18,
         wyrm: 20,
         glacier: 14,
-        rift: 16
+        rift: 16,
+        moonveil: 24,
+        badlands: 20
       };
       const count = styleCounts[zone.terrainStyle] || 14;
       for (let i = 0; i < count; i++) {
@@ -1219,6 +1330,12 @@ const ENEMY_SPECIES = {
         } else if (zone.terrainStyle === 'storm') {
           geom = new THREE.ConeGeometry(1.3 + Math.random() * 1.8, 7 + Math.random() * 11, 5);
           color = 0x6e88aa;
+        } else if (zone.terrainStyle === 'moonveil') {
+          geom = Math.random() < 0.5 ? new THREE.OctahedronGeometry(1.6 + Math.random() * 1.8, 0) : new THREE.TorusGeometry(1 + Math.random() * 1.2, 0.24, 10, 16);
+          color = Math.random() < 0.5 ? 0xa4b8ff : 0xc8b2ff;
+        } else if (zone.terrainStyle === 'badlands') {
+          geom = Math.random() < 0.45 ? new THREE.CylinderGeometry(0.9, 1.5, 6 + Math.random() * 10, 6) : new THREE.ConeGeometry(1.4 + Math.random() * 1.6, 6 + Math.random() * 9, 5);
+          color = Math.random() < 0.5 ? 0x6a4335 : 0x9d6b51;
         }
         const decor = new THREE.Mesh(
           geom,
@@ -1233,6 +1350,7 @@ const ENEMY_SPECIES = {
     }
 
     function createCityTheme(zone) {
+      if (zone.name.includes("Moonglass") || zone.name.includes("Moonveil")) return { ...CITY_THEME_PRESETS.moonglass, key: "moonglass" };
       if (zone.name.includes("Seraph")) return { ...CITY_THEME_PRESETS.seraphic, key: "seraphic" };
       if (zone.name.includes("Aurelian")) return { ...CITY_THEME_PRESETS.aurelian, key: "aurelian" };
       if (zone.name.includes("Ruin")) return { ...CITY_THEME_PRESETS.ruin, key: "ruin" };
@@ -1731,7 +1849,10 @@ const ENEMY_SPECIES = {
         { name: "Hollow Night Marsh", subtitle: "Monster Territory", center: new THREE.Vector3(-620, 0, 520), width: 484, depth: 428, radius: 210, baseY: -10, hazardY: -37, color: 0x3f3448, accent: 0x7f6a92, haze: 0x5a4668, fogTint: 0x241a2f, hazardType: "abyss", enemyFamilies: ["hollowAmbusher", "nightBee", "voidManta", "shadeSerpent"], danger: 5, terrainStyle: "marsh", travelRhythm: "gloom-rift", spawnThemes: ["hollow-fissure", "hanging-hive"] },
         { name: "Sky Glacier Reach", subtitle: "Dangerous Territory", center: new THREE.Vector3(-110, 0, 520), width: 484, depth: 428, radius: 210, baseY: -8, hazardY: -36, color: 0x6a7c90, accent: 0xd8f1ff, haze: 0x9bb6cc, fogTint: 0x2f4152, hazardType: "safe", enemyFamilies: ["stormDiver", "skyWeaver", "voidManta", "stormCaster"], danger: 4, terrainStyle: "glacier", travelRhythm: "thin-perches", spawnThemes: ["storm-pylon", "watch-platform"] },
         { name: "Obsidian Rift", subtitle: "Dragon Territory", center: new THREE.Vector3(400, 0, 520), width: 484, depth: 428, radius: 210, baseY: -12, hazardY: -24, color: 0x35313f, accent: 0x6f6a80, haze: 0x524a63, fogTint: 0x261f2f, hazardType: "lava", enemyFamilies: ["emberDrake", "magmaCrusher", "voidManta", "voidDragon"], danger: 6, terrainStyle: "rift", travelRhythm: "ravine", spawnThemes: ["lava-vent", "hollow-fissure"] },
-        { name: "Outer Wyrm Wastes", subtitle: "Late Dragon Frontier", center: new THREE.Vector3(910, 0, 520), width: 484, depth: 428, radius: 210, baseY: -12, hazardY: -24, color: 0x41333a, accent: 0xb37d89, haze: 0x6c4d59, fogTint: 0x2f1f26, hazardType: "lava", enemyFamilies: ["dragonKnight", "apexRivalRider", "voidDragon", "magmaCrusher"], danger: 7, terrainStyle: "wyrm", travelRhythm: "gauntlet", spawnThemes: ["dragon-perch", "hollow-fissure"] }
+        { name: "Outer Wyrm Wastes", subtitle: "Late Dragon Frontier", center: new THREE.Vector3(910, 0, 520), width: 484, depth: 428, radius: 210, baseY: -12, hazardY: -24, color: 0x41333a, accent: 0xb37d89, haze: 0x6c4d59, fogTint: 0x2f1f26, hazardType: "lava", enemyFamilies: ["dragonKnight", "apexRivalRider", "voidDragon", "magmaCrusher"], danger: 7, terrainStyle: "wyrm", travelRhythm: "gauntlet", spawnThemes: ["dragon-perch", "hollow-fissure"] },
+        { name: "Moonglass Citadel", subtitle: "Arcane Sky Metropolis", center: new THREE.Vector3(1420, 0, 0), width: 484, depth: 428, radius: 210, baseY: -2, hazardY: -38, color: 0x5d67a6, accent: 0xcad3ff, haze: 0x8ca3e4, fogTint: 0x222a49, hazardType: "safe", enemyFamilies: ["haloLancer", "moonOrbSentinel", "ribbonSerpent"], danger: 3, terrainStyle: "city", travelRhythm: "rune-lanes", spawnThemes: ["city-outskirts", "watch-platform"], hubTheme: "city" },
+        { name: "Moonveil Expanse", subtitle: "Arcane Frontier", center: new THREE.Vector3(1420, 0, 520), width: 484, depth: 428, radius: 210, baseY: -8, hazardY: -37, color: 0x4a4581, accent: 0xbfc8ff, haze: 0x798bd0, fogTint: 0x1c1f3e, hazardType: "abyss", enemyFamilies: ["moonOrbSentinel", "prismHaloWatcher", "ribbonSerpent", "nightglassDrake", "arcManta", "moonbeamConstruct"], danger: 6, terrainStyle: "moonveil", travelRhythm: "arc-lanes", spawnThemes: ["moon-arch", "floating-crystal"] },
+        { name: "Wyrmscar Badlands", subtitle: "Dragon Frontier", center: new THREE.Vector3(1420, 0, -520), width: 484, depth: 428, radius: 210, baseY: -12, hazardY: -25, color: 0x5b372c, accent: 0xe2b187, haze: 0xa06d52, fogTint: 0x311a14, hazardType: "lava", enemyFamilies: ["dustscaleWyvern", "redMesaDrake", "bonecrestSerpent", "ironSpurRider", "wyrmscarDragon", "canyonAmbushLancer"], danger: 7, terrainStyle: "badlands", travelRhythm: "ambush-lane", spawnThemes: ["bone-rib", "dragon-perch"] }
       ];
 
       worldMinX = Math.min(...worldZones.map((z) => z.center.x - zoneHalfWidth(z) - 20));
@@ -2020,7 +2141,8 @@ const ENEMY_SPECIES = {
         { name: "Aegis Bastion", zone: "Ruin-Crown Expanse", pos: new THREE.Vector3(80, 21, 16), color: 0x8b93a5, glow: 0xcfd7f5, safeRadius: 42, disengageRadius: 62, style: "military", specialty: "armor + war lances" },
         { name: "Storm Roost Sanctuary", zone: "Tempest Shelf", pos: new THREE.Vector3(410, 38, 90), color: 0x7ca8db, glow: 0xd6ecff, safeRadius: 42, disengageRadius: 62, style: "storm", specialty: "flight gear + mounts" },
         { name: "Skyhold Grand Roost", zone: "Aurelian Skyhold", pos: new THREE.Vector3(922, 26, 44), color: 0xa4b2d4, glow: 0xe6efff, safeRadius: 44, disengageRadius: 64, style: "city", specialty: "elite joust gear" },
-        { name: "Dragon Hunter's Rest", zone: "Outer Wyrm Wastes", pos: new THREE.Vector3(866, 24, 438), color: 0xc58563, glow: 0xffd4b8, safeRadius: 40, disengageRadius: 60, style: "frontier", specialty: "anti-dragon kits" }
+        { name: "Dragon Hunter's Rest", zone: "Outer Wyrm Wastes", pos: new THREE.Vector3(866, 24, 438), color: 0xc58563, glow: 0xffd4b8, safeRadius: 40, disengageRadius: 60, style: "frontier", specialty: "anti-dragon kits" },
+        { name: "Moonglass Grand Market", zone: "Moonglass Citadel", pos: new THREE.Vector3(1418, 26, 28), color: 0x8ea4e6, glow: 0xdde4ff, safeRadius: 46, disengageRadius: 68, style: "city", specialty: "arcane gear + mounts" }
       ];
 
       for (const def of hubDefs) {
@@ -2107,7 +2229,8 @@ const ENEMY_SPECIES = {
           "Aegis Bastion": ["weapon", "armor", "trinket", "quest"],
           "Storm Roost Sanctuary": ["weapon", "trinket", "mount", "heal", "quest"],
           "Skyhold Grand Roost": ["weapon", "armor", "mount", "trinket", "quest", "life"],
-          "Dragon Hunter's Rest": ["weapon", "armor", "trinket", "mount", "quest"]
+          "Dragon Hunter's Rest": ["weapon", "armor", "trinket", "mount", "quest"],
+          "Moonglass Grand Market": ["weapon", "armor", "trinket", "mount", "heal", "life", "quest"]
         };
         const merchantTypes = vendorLayouts[def.name] || ["weapon", "armor", "trinket", "quest"];
         const ringRadius = 18;
@@ -2233,33 +2356,43 @@ const ENEMY_SPECIES = {
 
       const root = new THREE.Group();
 
-      const body = new THREE.Mesh(new THREE.SphereGeometry(1.45, 16, 14), new THREE.MeshStandardMaterial({ color: birdColor, roughness: 0.84, metalness: 0.05 }));
-      body.scale.set(1.48, 0.92, 2.0);
+      const isDragonLike = profile.bodyClass === "dragon" || profile.headClass === "dragon";
+      const isOrbBody = profile.bodyClass === "orb" || profile.headClass === "orb";
+      const isSerpentLong = profile.bodyClass === "serpentLong";
+      const isRay = profile.bodyClass === "ray";
+      const isHeavyKnight = profile.bodyClass === "knight";
+
+      const body = new THREE.Mesh(new THREE.SphereGeometry(isOrbBody ? 1.3 : 1.45, 16, 14), new THREE.MeshStandardMaterial({ color: birdColor, roughness: 0.84, metalness: isHeavyKnight ? 0.22 : 0.05 }));
+      body.scale.set(
+        isSerpentLong ? 1.08 : isDragonLike ? 1.7 : isHeavyKnight ? 1.6 : isRay ? 1.24 : isOrbBody ? 1.18 : 1.48,
+        isSerpentLong ? 0.64 : isDragonLike ? 1.08 : isHeavyKnight ? 1.14 : isRay ? 0.5 : isOrbBody ? 1.18 : 0.92,
+        isSerpentLong ? 2.7 : isDragonLike ? 2.3 : isHeavyKnight ? 1.8 : isRay ? 2.5 : isOrbBody ? 1.24 : 2.0
+      );
       body.castShadow = true;
       root.add(body);
 
-      const chest = new THREE.Mesh(new THREE.SphereGeometry(1.0, 14, 12), new THREE.MeshStandardMaterial({ color: birdColor, roughness: 0.82, metalness: 0.06 }));
-      chest.position.set(0, -0.04, 1.58);
-      chest.scale.set(1.18, 0.96, 1.06);
+      const chest = new THREE.Mesh(new THREE.SphereGeometry(isDragonLike ? 1.2 : 1.0, 14, 12), new THREE.MeshStandardMaterial({ color: birdColor, roughness: 0.82, metalness: isHeavyKnight ? 0.18 : 0.06 }));
+      chest.position.set(0, isDragonLike ? 0.06 : -0.04, isSerpentLong ? 1.95 : 1.58);
+      chest.scale.set(isDragonLike ? 1.36 : 1.18, isDragonLike ? 1.08 : 0.96, isDragonLike ? 1.24 : 1.06);
       chest.castShadow = true;
       root.add(chest);
 
-      const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.42, 1.5, 10), new THREE.MeshStandardMaterial({ color: birdColor, roughness: 0.83 }));
-      neck.position.set(0, 0.6, 2.26);
-      neck.rotation.x = Math.PI / 4.3;
+      const neck = new THREE.Mesh(new THREE.CylinderGeometry(isDragonLike ? 0.34 : 0.26, isDragonLike ? 0.56 : 0.42, isDragonLike ? 2.1 : 1.5, 10), new THREE.MeshStandardMaterial({ color: birdColor, roughness: 0.83 }));
+      neck.position.set(0, isDragonLike ? 0.84 : 0.6, isDragonLike ? 2.55 : 2.26);
+      neck.rotation.x = isDragonLike ? Math.PI / 4.9 : Math.PI / 4.3;
       neck.castShadow = true;
       root.add(neck);
 
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 12), new THREE.MeshStandardMaterial({ color: birdColor, roughness: 0.8 }));
-      head.position.set(0, 1.25, 2.98);
-      head.scale.set(1.08, 0.95, 1.22);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(isDragonLike ? 0.62 : isOrbBody ? 0.44 : 0.5, 12, 12), new THREE.MeshStandardMaterial({ color: birdColor, roughness: 0.8 }));
+      head.position.set(0, isDragonLike ? 1.52 : 1.25, isDragonLike ? 3.42 : 2.98);
+      head.scale.set(isDragonLike ? 1.26 : 1.08, isDragonLike ? 0.84 : 0.95, isDragonLike ? 1.56 : 1.22);
       head.castShadow = true;
       root.add(head);
 
-      const beakGeo = profile.headClass === "dragon" ? new THREE.ConeGeometry(0.28, 1.08, 8) : profile.headClass === "serpent" ? new THREE.ConeGeometry(0.14, 0.95, 8) : new THREE.ConeGeometry(0.18, 0.88, 8);
-      const beak = new THREE.Mesh(beakGeo, new THREE.MeshStandardMaterial({ color: 0xd5aa49, roughness: 0.74, metalness: 0.18 }));
+      const beakGeo = profile.headClass === "dragon" ? new THREE.ConeGeometry(0.32, 1.34, 8) : profile.headClass === "serpent" ? new THREE.ConeGeometry(0.14, 1.2, 8) : profile.headClass === "orb" ? new THREE.SphereGeometry(0.18, 8, 8) : new THREE.ConeGeometry(0.18, 0.88, 8);
+      const beak = new THREE.Mesh(beakGeo, new THREE.MeshStandardMaterial({ color: profile.headClass === "dragon" ? 0xb08a66 : 0xd5aa49, roughness: 0.74, metalness: 0.18 }));
       beak.rotation.x = Math.PI / 2;
-      beak.position.set(0, 1.16, 3.46);
+      beak.position.set(0, isDragonLike ? 1.42 : 1.16, isDragonLike ? 4.18 : 3.46);
       beak.castShadow = true;
       root.add(beak);
 
@@ -2269,11 +2402,11 @@ const ENEMY_SPECIES = {
       crest.castShadow = true;
       root.add(crest);
 
-      const wingLength = profile.wingClass === "needle" ? 3.05 : profile.wingClass === "stub" ? 1.85 : profile.wingClass === "manta" ? 3.4 : 2.5;
-      const wingThickness = profile.wingClass === "needle" ? 0.11 : profile.wingClass === "stub" ? 0.24 : 0.18;
-      const wingDepth = profile.wingClass === "manta" ? 1.65 : profile.wingClass === "folded" ? 0.88 : 1.16;
+      const wingLength = profile.wingClass === "needle" ? 3.05 : profile.wingClass === "stub" ? 1.85 : profile.wingClass === "manta" ? 3.4 : profile.wingClass === "dragon" ? 2.05 : profile.wingClass === "halo" ? 2.85 : 2.5;
+      const wingThickness = profile.wingClass === "needle" ? 0.11 : profile.wingClass === "stub" ? 0.24 : profile.wingClass === "dragon" ? 0.3 : 0.18;
+      const wingDepth = profile.wingClass === "manta" ? 1.65 : profile.wingClass === "folded" ? 0.88 : profile.wingClass === "dragon" ? 2.0 : profile.wingClass === "halo" ? 0.74 : 1.16;
       const wingGeo = new THREE.BoxGeometry(wingLength, wingThickness, wingDepth);
-      const wingMat = new THREE.MeshStandardMaterial({ color: wingColor, roughness: 0.9, metalness: 0.06, emissive: profile.glowClass === "storm" ? 0x68b8ff : profile.glowClass === "void" ? 0x6c4cff : 0x000000, emissiveIntensity: profile.glowClass === "none" ? 0 : 0.16 });
+      const wingMat = new THREE.MeshStandardMaterial({ color: wingColor, roughness: 0.9, metalness: profile.wingClass === "halo" ? 0.25 : 0.06, emissive: profile.glowClass === "storm" ? 0x68b8ff : profile.glowClass === "void" ? 0x6c4cff : profile.glowClass === "moon" ? 0x8ca7ff : 0x000000, emissiveIntensity: profile.glowClass === "none" ? 0 : 0.16 });
       const leftWing = new THREE.Mesh(wingGeo, wingMat);
       leftWing.position.set(-2.24, 0.34, 0.18);
       leftWing.rotation.z = profile.wingClass === "folded" ? 0.82 : 0.35;
@@ -2296,13 +2429,19 @@ const ENEMY_SPECIES = {
       rightWingTip.position.x = 4.06;
       rightWingTip.rotation.z = profile.wingClass === "folded" ? -0.88 : -0.7;
       root.add(rightWingTip);
+      if (profile.wingClass === "halo") {
+        const haloRing = new THREE.Mesh(new THREE.TorusGeometry(2.6, 0.12, 10, 24), new THREE.MeshStandardMaterial({ color: clothColor, emissive: clothColor, emissiveIntensity: 0.45, transparent: true, opacity: 0.75 }));
+        haloRing.rotation.x = Math.PI / 2;
+        haloRing.position.set(0, 1.18, 0.4);
+        root.add(haloRing);
+      }
 
       const tailPivot = new THREE.Group();
       tailPivot.position.set(0, 0.16, -2.08);
       root.add(tailPivot);
-      const tailCount = profile.tailClass === "serpent" ? 6 : 4;
+      const tailCount = profile.tailClass === "serpent" ? 8 : 4;
       for (let i = 0; i < tailCount; i++) {
-        const feather = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.08, (profile.tailClass === "club" ? 1.9 : 1.5) - i * 0.12), new THREE.MeshStandardMaterial({ color: wingColor, roughness: 0.9 }));
+        const feather = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.08, (profile.tailClass === "club" ? 2.3 : profile.tailClass === "serpent" ? 2.0 : 1.5) - i * 0.12), new THREE.MeshStandardMaterial({ color: wingColor, roughness: 0.9 }));
         feather.position.set((i - (tailCount - 1) * 0.5) * 0.22, 0.03 + Math.abs(i - 1.5) * 0.02, -0.56 - i * 0.08);
         feather.rotation.x = profile.tailClass === "serpent" ? -0.22 : -0.42;
         feather.castShadow = true;
@@ -2706,7 +2845,7 @@ const ENEMY_SPECIES = {
         const spec = ENEMY_SPECIES[id] || ENEMY_SPECIES.forestSkimmer;
         let w = i === 0 ? 40 : i === 1 ? 28 : i === 2 ? 20 : 12;
         if (zone.name === "Great Forest Canopy") {
-          const ranged = ["beam", "sniper", "orb", "ranged", "breath"].includes(spec.behavior);
+          const ranged = ["beam", "sniper", "orb", "ranged", "breath", "beamSweep"].includes(spec.behavior);
           if (ranged) w = 0;
           if (spec.behavior === "lancer") w *= 0.55;
         }
@@ -2721,11 +2860,11 @@ const ENEMY_SPECIES = {
         if (tier <= 1 && spec.health > 140) w *= 0.2;
         if (zone.terrainStyle === "forest") {
           if (["swarm","stinger","ambush"].includes(spec.behavior)) w *= 1.35;
-          if (["beam","orb"].includes(spec.behavior)) w *= 0.72;
+          if (["beam","orb","beamSweep"].includes(spec.behavior)) w *= 0.72;
         } else if (zone.terrainStyle === "ruin") {
           if (["lancer","dash"].includes(spec.behavior)) w *= 1.32;
         } else if (zone.terrainStyle === "storm") {
-          if (["loopDive","beam","curveStrike"].includes(spec.behavior)) w *= 1.3;
+          if (["loopDive","beam","curveStrike","beamSweep"].includes(spec.behavior)) w *= 1.3;
         } else if (zone.terrainStyle === "marsh") {
           if (["ambush","swarm","orb"].includes(spec.behavior)) w *= 1.34;
         } else if (zone.terrainStyle === "lava" || zone.terrainStyle === "wyrm" || zone.terrainStyle === "rift") {
@@ -2759,7 +2898,11 @@ const ENEMY_SPECIES = {
           orb: { body: [0.9, 0.88, 1.06], wing: [1.2, 0.9, 1.26], riderY: 0.06, lean: 0.04 },
           ambush: { body: [1.0, 0.86, 1.18], wing: [1.18, 0.94, 1.2], riderY: 0.02, lean: 0.18 },
           dash: { body: [0.94, 0.9, 1.22], wing: [1.16, 0.94, 1.24], riderY: 0.02, lean: 0.22 },
-          sniper: { body: [0.9, 0.88, 1.08], wing: [1.22, 0.9, 1.32], riderY: 0.05, lean: 0.04 }
+          sniper: { body: [0.9, 0.88, 1.08], wing: [1.22, 0.9, 1.32], riderY: 0.05, lean: 0.04 },
+          beamSweep: { body: [0.98, 0.95, 1.02], wing: [1.08, 0.86, 1.1], riderY: 0.1, lean: -0.02 },
+          dragonGlide: { body: [1.28, 1.14, 1.34], wing: [0.98, 1.1, 1.02], riderY: -0.06, lean: -0.08 },
+          heavyLancer: { body: [1.2, 1.08, 1.18], wing: [1.02, 1.02, 1.08], riderY: -0.05, lean: 0.01 },
+          serpent: { body: [0.8, 0.72, 1.7], wing: [1.34, 0.72, 1.68], riderY: 0.12, lean: 0.24 }
         };
         const role = roleMap[behavior] || roleMap.lancer;
         const classScale = {
@@ -2768,7 +2911,12 @@ const ENEMY_SPECIES = {
           duelist: [1.0, 0.98, 1.2],
           weaver: [0.88, 0.78, 1.35],
           caster: [1.0, 0.9, 1.12],
-          crusher: [1.28, 1.15, 1.08]
+          crusher: [1.28, 1.15, 1.08],
+          orb: [0.92, 0.92, 0.98],
+          ray: [0.86, 0.74, 1.46],
+          serpentLong: [0.72, 0.66, 1.86],
+          knight: [1.22, 1.18, 1.18],
+          dragon: [1.3, 1.16, 1.38]
         }[bodyClass] || [1, 1, 1];
         anim.body.scale.set(role.body[0] * classScale[0], role.body[1] * classScale[1], role.body[2] * classScale[2]);
         anim.leftWing.scale.set(...role.wing);
@@ -2783,7 +2931,7 @@ const ENEMY_SPECIES = {
           enemy.model.userData.roleCrest = crest;
         }
         enemy.model.userData.roleCrest.scale.set(1, behavior === "bruiser" ? 1.3 : behavior === "swarm" || behavior === "stinger" ? 0.7 : 1, 1);
-        enemy.model.userData.roleCrest.material.color.setHex(behavior === "beam" || behavior === "orb" ? 0x9ad7ff : behavior === "swarm" || behavior === "stinger" ? 0x7cf779 : zone.accent);
+        enemy.model.userData.roleCrest.material.color.setHex(behavior === "beam" || behavior === "orb" || behavior === "beamSweep" ? 0x9ad7ff : behavior === "swarm" || behavior === "stinger" ? 0x7cf779 : zone.accent);
       }
 
       if (enemy.elite) {
@@ -2827,7 +2975,7 @@ const ENEMY_SPECIES = {
       }
       if (zone.name === "Great Forest Canopy") {
         enemy.speciesData.damage *= 0.88;
-        if (["beam", "sniper", "orb", "ranged", "breath"].includes(enemy.speciesData.behavior)) {
+        if (["beam", "sniper", "orb", "ranged", "breath", "beamSweep"].includes(enemy.speciesData.behavior)) {
           enemy.speciesData.behavior = "dash";
           enemy.roleSubtitle = "Percher";
         }
@@ -2854,6 +3002,8 @@ const ENEMY_SPECIES = {
       if (zone.terrainStyle === "forest") return spawnType.includes("hive") ? "hanging-hive" : "branch-roost";
       if (zone.terrainStyle === "highland") return "cliff-roost";
       if (zone.terrainStyle === "lava" || zone.terrainStyle === "rift" || zone.terrainStyle === "wyrm") return spawnType.includes("dragon") ? "dragon-perch" : "ember-vent";
+      if (zone.terrainStyle === "badlands") return spawnType.includes("dragon") ? "dragon-perch" : "watch-platform";
+      if (zone.terrainStyle === "moonveil") return spawnType.includes("moon") ? "moon-arch" : "storm-pylon";
       if (zone.terrainStyle === "ruin") return "sentinel-pylon";
       if (zone.terrainStyle === "storm" || zone.terrainStyle === "glacier") return "storm-pylon";
       if (zone.terrainStyle === "marsh") return "void-fissure";
@@ -2865,6 +3015,8 @@ const ENEMY_SPECIES = {
       if (zone.terrainStyle === "forest" || zone.terrainStyle === "storm" || zone.terrainStyle === "glacier") return Math.random() < 0.52;
       if (zone.terrainStyle === "ruin") return Math.random() < 0.42;
       if (zone.terrainStyle === "lava" || zone.terrainStyle === "rift" || zone.terrainStyle === "wyrm") return Math.random() < 0.34;
+      if (zone.terrainStyle === "moonveil") return Math.random() < 0.62;
+      if (zone.terrainStyle === "badlands") return Math.random() < 0.28;
       if (zone.terrainStyle === "marsh") return Math.random() < 0.4;
       if (zone.terrainStyle === "city") return depthFactor > 0.4 && Math.random() < 0.45;
       return false;
@@ -2887,6 +3039,12 @@ const ENEMY_SPECIES = {
       } else if (zone.terrainStyle === "lava" || zone.terrainStyle === "rift" || zone.terrainStyle === "wyrm") {
         geom = new THREE.CylinderGeometry(5.4, 6.4, 1.8, 7);
         color = 0x55342b;
+      } else if (zone.terrainStyle === "moonveil") {
+        geom = new THREE.CylinderGeometry(5.0, 6.2, 1.7, 12);
+        color = 0x5663a6;
+      } else if (zone.terrainStyle === "badlands") {
+        geom = new THREE.CylinderGeometry(5.5, 6.8, 2.0, 8);
+        color = 0x6a4032;
       } else if (zone.terrainStyle === "marsh") {
         geom = new THREE.CylinderGeometry(5.2, 6.6, 1.9, 10);
         color = 0x413750;
@@ -5069,10 +5227,10 @@ function skyProfileForZone(zone) {
         combatTarget.health -= attackDamage * 0.7;
         combatTarget.vel.add(pushDir);
       }
-      if (["beam", "sniper", "orb", "ranged", "breath"].includes(typeStats.behavior)) {
+      if (["beam", "sniper", "orb", "ranged", "breath", "beamSweep"].includes(typeStats.behavior)) {
         enemyProjectiles.push({
           pos: enemy.pos.clone().add(new THREE.Vector3(0, 1.4, 0)),
-          vel: combatTarget.pos.clone().sub(enemy.pos).normalize().multiplyScalar(typeStats.behavior === "beam" ? 28 : 24),
+          vel: combatTarget.pos.clone().sub(enemy.pos).normalize().multiplyScalar(["beam","beamSweep"].includes(typeStats.behavior) ? 28 : 24),
           life: 2.4,
           damage: attackDamage * 0.75,
           mesh: new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff8b8b }))
@@ -5167,7 +5325,7 @@ function skyProfileForZone(zone) {
       enemy.stunTimer = Math.max(0, enemy.stunTimer - dt);
       if (enemy.poisonTimer > 0) enemy.health -= (enemy.elite ? 2.8 : 3.7) * dt;
       if (enemy.health <= 0) { killEnemy(enemy); return; }
-      updateEnemyTelegraph(enemy, dt, ["beam", "sniper", "orb", "ranged"].includes(typeStats.behavior) ? "line" : typeStats.behavior === "breath" ? "cone" : "melee");
+      updateEnemyTelegraph(enemy, dt, ["beam", "sniper", "orb", "ranged", "beamSweep"].includes(typeStats.behavior) ? "line" : typeStats.behavior === "breath" ? "cone" : "melee");
       if (enemy.stunTimer > 0) {
         enemy.vel.multiplyScalar(0.86);
         updateActorTransform(enemy, dt);
@@ -5203,11 +5361,12 @@ function skyProfileForZone(zone) {
           if (hasDeepKit && enemy.attackTimer > typeStats.attackCooldown * 0.45) {
             target.add(new THREE.Vector3(Math.sin(enemy.yaw), 0, Math.cos(enemy.yaw)).multiplyScalar(-6));
           }
-        } else if (f === "weaver" || f === "curveStrike" || f === "loopDive") {
-          const curveAmp = f === "loopDive" ? 13 : hasDeepKit ? 11 : 9;
+        } else if (f === "weaver" || f === "curveStrike" || f === "loopDive" || f === "serpent") {
+          const curveAmp = f === "loopDive" ? 13 : f === "serpent" ? 15 : hasDeepKit ? 11 : 9;
           target.x += Math.sin(wobble * 1.7) * curveAmp;
           target.z += Math.cos(wobble * 1.4) * curveAmp;
-          target.y += Math.sin(wobble * 2.4) * (hasMidKit ? 5 : 4);
+          target.y += Math.sin(wobble * 2.4) * (f === "serpent" ? (hasMidKit ? 2.2 : 1.6) : (hasMidKit ? 5 : 4));
+          if (f === "serpent") { target.add(new THREE.Vector3(Math.sin(enemy.yaw) * 9, 0, Math.cos(enemy.yaw) * 9)); }
         } else if (f === "stinger" || f === "swarm") {
           // flutter pass -> split -> return
           const flutterAmp = hasMidKit ? 8.2 : 6;
@@ -5216,9 +5375,10 @@ function skyProfileForZone(zone) {
           // hold high perch, then strike
           target.y = combatTarget.pos.y + 10 + Math.sin(wobble * 1.3) * 3;
           if (enemy.specialCooldown < 1.1) target.copy(combatTarget.pos.clone().add(new THREE.Vector3(0, 3.2, 0)));
-        } else if (f === "ranged" || f === "beam" || f === "sniper" || f === "orb") {
+        } else if (f === "ranged" || f === "beam" || f === "sniper" || f === "orb" || f === "beamSweep") {
           const away = enemy.pos.clone().sub(combatTarget.pos).setY(0).normalize().multiplyScalar(typeStats.preferDistance + (hasDeepKit ? 2.2 : 0));
           target.copy(combatTarget.pos).add(away).setY(combatTarget.pos.y + 3.2 + (hasMidKit ? 1.1 : 0));
+          if (f === "beamSweep") target.add(new THREE.Vector3(Math.sin(wobble * 0.7) * 6, Math.sin(wobble * 1.2) * 2.4, Math.cos(wobble * 0.7) * 6));
         }
         if (enemy.archetype === "Percher" && f !== "ambush") {
           target.y = combatTarget.pos.y + 10 + Math.sin(wobble * 1.3) * 3;
@@ -5245,10 +5405,11 @@ function skyProfileForZone(zone) {
       let yawDiff = (desiredYaw - enemy.yaw + Math.PI * 3) % (Math.PI * 2) - Math.PI;
       yawDiff += enemy.turnBias * 0.05;
 
-      enemy.yaw += THREE.MathUtils.clamp(yawDiff, -typeStats.turn * dt, typeStats.turn * dt);
+      const turnCap = (typeStats.behavior === "serpent" ? typeStats.turn * 0.74 : typeStats.behavior === "dragonGlide" ? typeStats.turn * 0.82 : typeStats.turn) * dt;
+      enemy.yaw += THREE.MathUtils.clamp(yawDiff, -turnCap, turnCap);
 
       const forward = new THREE.Vector3(Math.sin(enemy.yaw), 0, Math.cos(enemy.yaw));
-      const speedScale = enemy.state === "aggro" ? 1.0 : 0.68;
+      const speedScale = enemy.state === "aggro" ? (typeStats.behavior === "dragonGlide" ? 1.08 : typeStats.behavior === "serpent" ? 1.04 : 1.0) : 0.68;
       const desiredSpeed = typeStats.speed * speedScale + Math.max(0, -enemy.vel.y * 0.09);
 
       enemy.vel.x += (forward.x * desiredSpeed - enemy.vel.x) * 1.8 * dt;
@@ -5313,8 +5474,8 @@ function skyProfileForZone(zone) {
       const depthBandValue = enemy.depthTier === "deep" ? 2 : enemy.depthTier === "mid" ? 1 : 0;
       if (enemy.state === "aggro" && (deepTier >= 4 || depthBandValue >= 1) && enemy.specialCooldown <= 0 && distToPlayer < 30) {
         const hasDeepKit = enemy.moveKit?.deepMoves?.length > 0;
-        if (typeStats.behavior === "breath" || enemy.type === "voidDragon") enemy.specialType = hasDeepKit ? "crash" : "cone";
-        else if (typeStats.behavior === "beam" || typeStats.behavior === "orb") enemy.specialType = "burst";
+        if (typeStats.behavior === "breath" || typeStats.behavior === "dragonGlide" || enemy.type === "voidDragon") enemy.specialType = hasDeepKit ? "crash" : "cone";
+        else if (typeStats.behavior === "beam" || typeStats.behavior === "orb" || typeStats.behavior === "beamSweep") enemy.specialType = enemy.type === "moonOrbSentinel" ? "beamFan" : "burst";
         else enemy.specialType = hasDeepKit ? "loopDive" : "dive";
         enemy.specialWindup = (enemy.depthTier === "outer" ? 0.7 : 0.58) + Math.random() * 0.28;
         enemy.specialCooldown = 4.8 - Math.min(2.3, deepTier * 0.2 + depthBandValue * 0.42);
@@ -5334,6 +5495,10 @@ function skyProfileForZone(zone) {
             player.vel.add(toPlayer.clone().multiplyScalar(8));
           }
           spawnBurst(enemy.pos.clone().add(forwardEnemy.clone().multiplyScalar(4)), 12, 0xff8b3d);
+        } else if (enemy.specialType === "beamFan") {
+          const d = player.pos.distanceTo(enemy.pos);
+          if (d < 14) applyPlayerDamage(typeStats.damage * 0.95, `${enemy.speciesData.label} beam fan`);
+          spawnBurst(enemy.pos.clone().add(forwardEnemy.clone().multiplyScalar(4)), 18, 0xb4c6ff);
         } else if (enemy.specialType === "burst") {
           if (player.pos.distanceTo(enemy.pos) < 10) {
             applyPlayerDamage(typeStats.damage * 0.85, `${enemy.speciesData.label} shock ring`);
