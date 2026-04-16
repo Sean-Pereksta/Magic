@@ -270,6 +270,7 @@
     let nodeRespawns = [];
     let allySummons = [];
     let enemyProjectiles = [];
+    let weaponProjectiles = [];
     let worldChunkMap = new Map();
     let mountSelection = null;
     let gamePaused = false;
@@ -649,6 +650,19 @@ const ENEMY_SPECIES = {
       { id: "anti-dragon-pike", name: "Anti-Dragon Pike", slot: "weapon", rarity: "epic", region: "Dragonspine Frontier", stats: { spearDamage: 18, antiArmor: 0.25 }, desc: "Piercing pike used by dragon hunters.", sell: 63 },
       { id: "chain-storm-lance", name: "Chain Storm Lance", slot: "weapon", rarity: "epic", region: "Tempest Shelf", stats: { spearDamage: 17 }, effect: "chainLightning", desc: "Conductor lance chaining sky-bolts.", sell: 65 },
       { id: "barbed-ritual-spear", name: "Barbed Ritual Spear", slot: "weapon", rarity: "legendary", region: "Outer Wyrm Wastes", stats: { spearDamage: 22, critChance: 0.1 }, effect: "poison", desc: "Relic spear recovered from deep ruins.", sell: 92 },
+
+      { id: "forest-thorn-spear", name: "Forest Thorn Spear", slot: "weapon", rarity: "uncommon", region: "Great Forest Canopy", stats: { spearDamage: 10, spearReach: 0.4 }, weaponClass: "spear", modelProfile: "forest", attackProfile: "thrust", trailProfile: "leaf", impactFx: "leafBurst", headType: "thorn", shaftType: "wood", ornamentType: "leaf", desc: "Barbed canopy spear with leaf wisps.", sell: 26 },
+      { id: "hive-knight-lance", name: "Hive Knight Lance", slot: "weapon", rarity: "rare", region: "Mossfang Wilds", stats: { spearDamage: 13, spearReach: 0.6 }, weaponClass: "spear", modelProfile: "hive", attackProfile: "heavyThrust", trailProfile: "amber", impactFx: "hiveDust", headType: "stinger", shaftType: "chitin", ornamentType: "chain", desc: "Chitin lance built for committed jousts.", sell: 42 },
+      { id: "frontier-cavalry-pike", name: "Frontier Cavalry Pike", slot: "weapon", rarity: "rare", region: "Sunstone Highlands", stats: { spearDamage: 14, spearReach: 0.9 }, weaponClass: "spear", modelProfile: "frontier", attackProfile: "thrust", trailProfile: "banner", impactFx: "dust", headType: "pike", shaftType: "steel", ornamentType: "pennant", desc: "Long tournament pike from frontier riders.", sell: 46 },
+      { id: "ruin-halberd", name: "Ruin Halberd", slot: "weapon", rarity: "epic", region: "Ruin-Crown Expanse", stats: { spearDamage: 17, antiArmor: 0.12 }, weaponClass: "halberd", modelProfile: "ruin", attackProfile: "heavyThrust", trailProfile: "dust", impactFx: "stoneShock", headType: "axe", shaftType: "agedSteel", ornamentType: "chain", desc: "Relic halberd with fractured axe-head.", sell: 68 },
+      { id: "sunstone-trident", name: "Sunstone Trident", slot: "weapon", rarity: "epic", region: "Aurelian Skyhold", stats: { spearDamage: 18, critChance: 0.06 }, weaponClass: "trident", modelProfile: "city", attackProfile: "forkDrive", trailProfile: "gold", impactFx: "radiant", headType: "trident", shaftType: "gold", ornamentType: "pennant", desc: "Three-pronged city-state trident.", sell: 72 },
+      { id: "stormglass-wand", name: "Stormglass Wand", slot: "weapon", rarity: "epic", region: "Tempest Shelf", stats: { spearDamage: 11, spearCooldown: 0.12 }, weaponClass: "wand", modelProfile: "storm", attackProfile: "casterBolt", projectileType: "chainSpark", projectileSpeed: 38, projectileScale: 0.34, trailProfile: "ion", impactFx: "lightning", headType: "focus", shaftType: "crystal", ornamentType: "glow", desc: "Arc-focus wand launching chain sparks.", sell: 70 },
+      { id: "frost-fang-glaive", name: "Frost Fang Glaive", slot: "weapon", rarity: "epic", region: "Sky Glacier Reach", stats: { spearDamage: 16, freezeChance: 0.14 }, weaponClass: "glaive", modelProfile: "storm", attackProfile: "diagSlash", trailProfile: "frost", impactFx: "frost", headType: "crescent", shaftType: "iceSteel", ornamentType: "cloth", desc: "Elegant curved glaive with icy wake.", sell: 74 },
+      { id: "obsidian-cleaver", name: "Obsidian Cleaver", slot: "weapon", rarity: "legendary", region: "Ashen Lava Basin", stats: { spearDamage: 23 }, weaponClass: "greatBlade", modelProfile: "lava", attackProfile: "downChop", trailProfile: "ember", impactFx: "ember", headType: "cleaver", shaftType: "obsidian", ornamentType: "chain", desc: "Massive sky-cleaver for committed dives.", sell: 98 },
+      { id: "voidthorn-staff", name: "Voidthorn Staff", slot: "weapon", rarity: "legendary", region: "Hollow Night Marsh", stats: { spearDamage: 14, chainChance: 0.16 }, weaponClass: "staff", modelProfile: "void", attackProfile: "staffBurst", projectileType: "voidSpike", projectileSpeed: 30, projectileScale: 0.44, trailProfile: "void", impactFx: "void", headType: "rune", shaftType: "bone", ornamentType: "glow", desc: "Warped rune-staff discharging void spikes.", sell: 104 },
+      { id: "dragonbone-great-blade", name: "Dragonbone Great Blade", slot: "weapon", rarity: "legendary", region: "Dragonspine Frontier", stats: { spearDamage: 24, antiArmor: 0.18 }, weaponClass: "dragonFang", modelProfile: "dragon", attackProfile: "downChop", trailProfile: "fang", impactFx: "bone", headType: "fangBlade", shaftType: "bone", ornamentType: "tassel", desc: "Late-game bone cleaver of wyrm hunts.", sell: 108 },
+      { id: "halo-joust-lance", name: "Halo Joust Lance", slot: "weapon", rarity: "legendary", region: "Seraphic City-State Ring", stats: { spearDamage: 20, spearReach: 1.1 }, weaponClass: "spear", modelProfile: "holy", attackProfile: "thrust", trailProfile: "halo", impactFx: "radiant", headType: "lance", shaftType: "silver", ornamentType: "halo", desc: "Refined joust lance with radiant wake.", sell: 101 },
+      { id: "rift-splitter-trident", name: "Rift-Splitter Trident", slot: "weapon", rarity: "legendary", region: "Obsidian Rift", stats: { spearDamage: 22, critChance: 0.08 }, weaponClass: "trident", modelProfile: "void", attackProfile: "forkDrive", trailProfile: "void", impactFx: "rift", headType: "trident", shaftType: "obsidian", ornamentType: "glow", desc: "Void-forged trident with wide fork drive.", sell: 110 },
       { id: "forest-scout-leathers", name: "Forest Scout Leathers", slot: "armor", rarity: "uncommon", stats: { maxHealth: 18, airControl: 0.35 }, desc: "Light woodland harness for agile jousting.", sell: 26 },
       { id: "city-guard-plate", name: "City Guard Plate", slot: "armor", rarity: "rare", stats: { maxHealth: 30, resistance: 0.06 }, desc: "Urban military armor with balanced protection.", sell: 42 },
       { id: "drake-scale-armor", name: "Drake-scale Armor", slot: "armor", rarity: "epic", stats: { maxHealth: 42, resistance: 0.1 }, desc: "Scaled anti-drake suit with heat shielding.", sell: 61 },
@@ -672,15 +686,52 @@ const ENEMY_SPECIES = {
       { id: "apex-wyrm-relic", name: "Apex Wyrm Relic", slot: "trinket", rarity: "legendary", region: "Outer Wyrm Wastes", stats: { critChance: 0.12, chainChance: 0.18 }, desc: "Legendary late-game relic of the wyrm lord.", sell: 130 }
     ];
 
+
+    const MOUNT_ARCHETYPES = {
+      burstRaptor: { label: "Burst Raptor", feel: "Heavy burst climber", descriptors: ["Explosive flap", "Aggressive dive joust"] },
+      glideSerpent: { label: "Glide Serpent", feel: "Floaty glider", descriptors: ["Long momentum retention", "Soft turning"] },
+      heavyWarBeast: { label: "Heavy War Beast", feel: "Heavy impact mount", descriptors: ["Committed missile lines", "Strong landing shocks"] },
+      skySkimmer: { label: "Sky Skimmer", feel: "Smooth skimmer", descriptors: ["Precision weave", "Fast recoveries"] },
+      rocketDiver: { label: "Rocket Diver", feel: "Fast-fall diver", descriptors: ["Huge climb burst", "Punishing dives"] },
+      hoverMystic: { label: "Hover Mystic", feel: "Apex hover rider", descriptors: ["Mild hover assist", "Arcane control"] }
+    };
+
+    const WEAPON_CLASS_PRESETS = {
+      spear: { weaponClass: "Spear / Pike", attackProfile: "thrust", trailProfile: "line", thrustLength: 5.6, swingArc: 0.2, holdOffset: [0.1, -0.02, 1.2], holdRotation: [-0.08, 0, 0], feel: "Thrust polearm" },
+      trident: { weaponClass: "Trident", attackProfile: "forkDrive", trailProfile: "fork", thrustLength: 5.3, swingArc: 0.28, holdOffset: [0.08, 0, 1.15], holdRotation: [-0.06, 0, 0], feel: "Forked trident" },
+      greatBlade: { weaponClass: "Great Blade", attackProfile: "downChop", trailProfile: "cleave", thrustLength: 4.0, swingArc: 1.1, holdOffset: [0.12, -0.04, 1.05], holdRotation: [-0.26, 0.12, 0], feel: "Downward cleaver" },
+      halberd: { weaponClass: "Halberd", attackProfile: "heavyThrust", trailProfile: "axe", thrustLength: 4.8, swingArc: 0.55, holdOffset: [0.1, -0.02, 1.16], holdRotation: [-0.1, 0.08, 0], feel: "Hybrid halberd" },
+      wand: { weaponClass: "Wand / Focus Rod", attackProfile: "casterBolt", trailProfile: "arcane", thrustLength: 2.6, swingArc: 0.12, holdOffset: [0.05, 0.1, 0.7], holdRotation: [0.3, 0.18, 0], projectileType: "arcBolt", projectileSpeed: 36, projectileScale: 0.35, feel: "Projectile wand" },
+      staff: { weaponClass: "Rune Staff", attackProfile: "staffBurst", trailProfile: "rune", thrustLength: 3.3, swingArc: 0.18, holdOffset: [0.08, 0.08, 0.9], holdRotation: [0.12, 0.1, 0], projectileType: "radiantSpear", projectileSpeed: 28, projectileScale: 0.46, feel: "Burst staff" },
+      glaive: { weaponClass: "Glaive", attackProfile: "diagSlash", trailProfile: "slice", thrustLength: 4.7, swingArc: 0.8, holdOffset: [0.1, -0.02, 1.2], holdRotation: [-0.16, 0.05, 0], feel: "Hybrid glaive" },
+      dragonFang: { weaponClass: "Bone / Dragon Fang", attackProfile: "heavyThrust", trailProfile: "fang", thrustLength: 4.9, swingArc: 0.62, holdOffset: [0.1, -0.02, 1.22], holdRotation: [-0.12, 0.05, 0], feel: "Monstrous fang" }
+    };
+
+    const PROJECTILE_FAMILIES = {
+      arcBolt: { color: 0x7dd3fc, speed: 36, life: 1.2, scale: 0.34, shape: "sphere", burst: 0x93c5fd },
+      emberDart: { color: 0xfb923c, speed: 34, life: 1.05, scale: 0.28, shape: "spike", burst: 0xfb7185 },
+      frostShard: { color: 0xa5f3fc, speed: 31, life: 1.2, scale: 0.38, shape: "crystal", burst: 0x67e8f9 },
+      voidSpike: { color: 0xa78bfa, speed: 33, life: 1.15, scale: 0.36, shape: "spike", burst: 0x8b5cf6 },
+      radiantSpear: { color: 0xfde68a, speed: 29, life: 1.05, scale: 0.42, shape: "lance", burst: 0xfbbf24 },
+      poisonNeedle: { color: 0x86efac, speed: 37, life: 1.1, scale: 0.26, shape: "needle", burst: 0x4ade80 },
+      chainSpark: { color: 0x93c5fd, speed: 35, life: 1.0, scale: 0.3, shape: "spark", burst: 0x60a5fa },
+      crystalLancelet: { color: 0x67e8f9, speed: 32, life: 1.25, scale: 0.4, shape: "crystal", burst: 0x22d3ee }
+    };
+
     const MOUNT_DB = [
-      { id: "war-roc", name: "War Roc", wingStyle: "feather", classHint: "Universal", speed: 1, accel: 1, turn: 1, flap: 1, impact: 1.2, landingFx: "knockback", lateral: false, colors: { bird: 0x84684b, wing: 0x5a3c2a, rider: 0xd0dce8, cloth: 0xf59e0b } },
-      { id: "storm-drake", name: "Storm Drake", wingStyle: "membrane", classHint: "Ranger/Sorcerer", speed: 1.18, accel: 1.1, turn: 1.08, flap: 0.95, impact: 0.8, landingFx: "lightning", lateral: true, colors: { bird: 0x4877ab, wing: 0x304d75, rider: 0xd0e8ff, cloth: 0x60a5fa } },
-      { id: "iron-gryphon", name: "Iron Gryphon", wingStyle: "feather", classHint: "Warrior", speed: 0.9, accel: 0.85, turn: 0.85, flap: 1.1, impact: 1.45, landingFx: "shockwave", lateral: false, colors: { bird: 0x737882, wing: 0x4e545f, rider: 0xd9e0ea, cloth: 0x9ca3af } },
-      { id: "ember-wyvern", name: "Ember Wyvern", wingStyle: "membrane", classHint: "Warrior/Sorcerer", speed: 1.04, accel: 1.02, turn: 0.94, flap: 1.05, impact: 1.1, landingFx: "fire", lateral: false, colors: { bird: 0xa04f2f, wing: 0x692b1b, rider: 0xe7c1b3, cloth: 0xfb923c } },
-      { id: "frost-hawk", name: "Frost Hawk", wingStyle: "feather", classHint: "Ranger", speed: 1.05, accel: 1.03, turn: 1.25, flap: 1, impact: 0.9, landingFx: "frost", lateral: true, colors: { bird: 0x88a8bf, wing: 0x69849a, rider: 0xdbeafe, cloth: 0x67e8f9 } },
-      { id: "venom-manta", name: "Venom Manta", wingStyle: "mystic", classHint: "Summoner/Ranger", speed: 1.03, accel: 0.96, turn: 1.15, flap: 0.92, impact: 0.88, landingFx: "poison", lateral: true, colors: { bird: 0x45635a, wing: 0x27433d, rider: 0xd4f8db, cloth: 0x4ade80 } },
-      { id: "sky-seraph", name: "Sky Seraph Mount", wingStyle: "mystic", classHint: "Late-Game", speed: 1.28, accel: 1.2, turn: 1.2, flap: 1.08, impact: 1.05, landingFx: "fear", lateral: true, colors: { bird: 0xb2a2ea, wing: 0x8166d3, rider: 0xf5efff, cloth: 0xc084fc } },
-      { id: "summoner-beast", name: "Summoner Beast", wingStyle: "mystic", classHint: "Summoner", speed: 0.96, accel: 0.95, turn: 1.04, flap: 0.98, impact: 0.72, landingFx: "buff", lateral: false, summonBuff: 0.3, colors: { bird: 0x5a6f89, wing: 0x33475f, rider: 0xd7e9ff, cloth: 0x22d3ee } }
+      { id: "war-roc", name: "War Roc", classHint: "Universal", handling: "burstRaptor", silhouetteProfile: "roc", animationProfile: "featherRaptor", speed: 1.02, accel: 1.02, turn: 1, flap: 1, impact: 1.22, lateral: false, landingFx: "knockback", gravityScale: 1.18, fallSpeedCap: 44, flapBurst: 10.2, flapCooldown: 0.44, boostPower: 8.3, boostCooldown: 0.74, boostDuration: 0.22, glideFactor: 0.84, airDrag: 0.24, momentumRetention: 0.78, turnResponsiveness: 0.9, hoverAssist: 0, diveAcceleration: 1.24, stallRecovery: 0.86, landingSkid: 0.7, wingbeatRate: 0.84, idleBobStyle: "raptor", dashStyle: "talon", wingAmplitude: 0.94, wingFrequency: 0.85, tailSway: 0.25, bodyPitchLag: 0.12, diveTuckAmount: 0.52, landingCompression: 0.46, boostTrailType: "dust", colors: { bird: 0x84684b, wing: 0x5a3c2a, rider: 0xd0dce8, cloth: 0xf59e0b } },
+      { id: "thunder-roc", name: "Thunder Roc", classHint: "Storm Burst", handling: "rocketDiver", silhouetteProfile: "eagle", animationProfile: "stormRaptor", speed: 1.08, accel: 1.05, turn: 0.95, flap: 1.06, impact: 1.18, lateral: false, landingFx: "lightning", gravityScale: 1.25, fallSpeedCap: 50, flapBurst: 13.8, flapCooldown: 0.52, boostPower: 9.6, boostCooldown: 0.82, boostDuration: 0.22, glideFactor: 0.76, airDrag: 0.28, momentumRetention: 0.72, turnResponsiveness: 0.84, hoverAssist: 0, diveAcceleration: 1.44, stallRecovery: 0.82, landingSkid: 0.64, wingbeatRate: 0.74, idleBobStyle: "raptor", dashStyle: "storm", wingAmplitude: 1.05, wingFrequency: 0.72, tailSway: 0.2, bodyPitchLag: 0.18, diveTuckAmount: 0.72, landingCompression: 0.55, boostTrailType: "storm", colors: { bird: 0x4c71b6, wing: 0x27457d, rider: 0xdcebff, cloth: 0x60a5fa } },
+      { id: "iron-gryphon", name: "Iron Gryphon", classHint: "Warrior", handling: "heavyWarBeast", silhouetteProfile: "gryphon", animationProfile: "heavyGryphon", speed: 0.9, accel: 0.84, turn: 0.82, flap: 1.08, impact: 1.56, lateral: false, landingFx: "shockwave", gravityScale: 1.28, fallSpeedCap: 42, flapBurst: 8.2, flapCooldown: 0.5, boostPower: 10.8, boostCooldown: 1.1, boostDuration: 0.28, glideFactor: 0.7, airDrag: 0.32, momentumRetention: 0.86, turnResponsiveness: 0.72, hoverAssist: 0, diveAcceleration: 1.12, stallRecovery: 0.9, landingSkid: 0.92, wingbeatRate: 0.68, idleBobStyle: "heavy", dashStyle: "ram", wingAmplitude: 0.82, wingFrequency: 0.66, tailSway: 0.16, bodyPitchLag: 0.24, diveTuckAmount: 0.4, landingCompression: 0.68, boostTrailType: "iron", colors: { bird: 0x737882, wing: 0x4e545f, rider: 0xd9e0ea, cloth: 0x9ca3af } },
+      { id: "ash-wyvern", name: "Ash Wyvern", classHint: "Ember", handling: "heavyWarBeast", silhouetteProfile: "wyvern", animationProfile: "wyvern", speed: 1.02, accel: 0.94, turn: 0.88, flap: 1.04, impact: 1.3, lateral: false, landingFx: "fire", gravityScale: 1.2, fallSpeedCap: 46, flapBurst: 9.4, flapCooldown: 0.46, boostPower: 9.8, boostCooldown: 0.88, boostDuration: 0.24, glideFactor: 0.8, airDrag: 0.28, momentumRetention: 0.81, turnResponsiveness: 0.82, hoverAssist: 0, diveAcceleration: 1.36, stallRecovery: 0.84, landingSkid: 0.78, wingbeatRate: 0.78, idleBobStyle: "dragon", dashStyle: "ember", wingAmplitude: 0.96, wingFrequency: 0.74, tailSway: 0.3, bodyPitchLag: 0.18, diveTuckAmount: 0.64, landingCompression: 0.54, boostTrailType: "ember", colors: { bird: 0xa04f2f, wing: 0x692b1b, rider: 0xe7c1b3, cloth: 0xfb923c } },
+      { id: "crystal-manta", name: "Crystal Manta", classHint: "Mystic Glide", handling: "glideSerpent", silhouetteProfile: "manta", animationProfile: "manta", speed: 1.04, accel: 0.92, turn: 1.16, flap: 0.86, impact: 0.82, lateral: true, landingFx: "frost", gravityScale: 0.68, fallSpeedCap: 24, flapBurst: 6.8, flapCooldown: 0.3, boostPower: 6.5, boostCooldown: 0.5, boostDuration: 0.18, glideFactor: 1.34, airDrag: 0.1, momentumRetention: 1.14, turnResponsiveness: 1.2, hoverAssist: 0.24, diveAcceleration: 0.72, stallRecovery: 1.2, landingSkid: 0.4, wingbeatRate: 1.12, idleBobStyle: "mystic", dashStyle: "crystal", wingAmplitude: 0.58, wingFrequency: 1.14, tailSway: 0.46, bodyPitchLag: 0.08, diveTuckAmount: 0.2, landingCompression: 0.26, boostTrailType: "holy", colors: { bird: 0x84b3c7, wing: 0x5b89b3, rider: 0xe6f5ff, cloth: 0x67e8f9 } },
+      { id: "rift-serpent", name: "Rift Serpent", classHint: "Void Glide", handling: "glideSerpent", silhouetteProfile: "serpent", animationProfile: "serpent", speed: 1.06, accel: 0.9, turn: 1.1, flap: 0.82, impact: 0.9, lateral: true, landingFx: "fear", gravityScale: 0.74, fallSpeedCap: 26, flapBurst: 7.2, flapCooldown: 0.34, boostPower: 6.9, boostCooldown: 0.48, boostDuration: 0.2, glideFactor: 1.28, airDrag: 0.12, momentumRetention: 1.22, turnResponsiveness: 1.14, hoverAssist: 0.18, diveAcceleration: 0.8, stallRecovery: 1.16, landingSkid: 0.38, wingbeatRate: 1.06, idleBobStyle: "serpent", dashStyle: "void", wingAmplitude: 0.52, wingFrequency: 1.08, tailSway: 0.58, bodyPitchLag: 0.1, diveTuckAmount: 0.24, landingCompression: 0.24, boostTrailType: "void", colors: { bird: 0x473b5d, wing: 0x281f36, rider: 0xbcb5cd, cloth: 0x8b5cf6 } },
+      { id: "suncrest-hawk", name: "Suncrest Hawk", classHint: "Sky Skimmer", handling: "skySkimmer", silhouetteProfile: "hawk", animationProfile: "featherSkimmer", speed: 1.14, accel: 1.12, turn: 1.26, flap: 1.02, impact: 0.94, lateral: true, landingFx: "holy", gravityScale: 0.9, fallSpeedCap: 33, flapBurst: 8.7, flapCooldown: 0.24, boostPower: 7.6, boostCooldown: 0.42, boostDuration: 0.22, glideFactor: 1.04, airDrag: 0.16, momentumRetention: 0.96, turnResponsiveness: 1.34, hoverAssist: 0.06, diveAcceleration: 1.0, stallRecovery: 1.18, landingSkid: 0.48, wingbeatRate: 1.02, idleBobStyle: "skimmer", dashStyle: "sun", wingAmplitude: 0.74, wingFrequency: 1.02, tailSway: 0.28, bodyPitchLag: 0.06, diveTuckAmount: 0.3, landingCompression: 0.33, boostTrailType: "holy", colors: { bird: 0x9a8748, wing: 0x6e5d2f, rider: 0xfff6dc, cloth: 0xfbbf24 } },
+      { id: "windrunner-falcon", name: "Windrunner Falcon", classHint: "Precision", handling: "skySkimmer", silhouetteProfile: "falcon", animationProfile: "featherSkimmer", speed: 1.2, accel: 1.14, turn: 1.34, flap: 0.96, impact: 0.86, lateral: true, landingFx: "buff", gravityScale: 0.86, fallSpeedCap: 31, flapBurst: 8.1, flapCooldown: 0.22, boostPower: 8.2, boostCooldown: 0.36, boostDuration: 0.22, glideFactor: 1.12, airDrag: 0.14, momentumRetention: 1.04, turnResponsiveness: 1.42, hoverAssist: 0.08, diveAcceleration: 0.94, stallRecovery: 1.24, landingSkid: 0.45, wingbeatRate: 1.08, idleBobStyle: "skimmer", dashStyle: "wind", wingAmplitude: 0.68, wingFrequency: 1.08, tailSway: 0.26, bodyPitchLag: 0.05, diveTuckAmount: 0.28, landingCompression: 0.3, boostTrailType: "forest", colors: { bird: 0x75a8c4, wing: 0x4a7898, rider: 0xdff5ff, cloth: 0x22d3ee } },
+      { id: "dread-drake", name: "Dread Drake", classHint: "Rocket Diver", handling: "rocketDiver", silhouetteProfile: "drake", animationProfile: "drake", speed: 1.06, accel: 1.02, turn: 0.9, flap: 1.16, impact: 1.32, lateral: false, landingFx: "shockwave", gravityScale: 1.34, fallSpeedCap: 54, flapBurst: 14.4, flapCooldown: 0.56, boostPower: 10.2, boostCooldown: 0.94, boostDuration: 0.24, glideFactor: 0.72, airDrag: 0.3, momentumRetention: 0.74, turnResponsiveness: 0.82, hoverAssist: 0, diveAcceleration: 1.58, stallRecovery: 0.78, landingSkid: 0.82, wingbeatRate: 0.72, idleBobStyle: "dragon", dashStyle: "void", wingAmplitude: 1.08, wingFrequency: 0.72, tailSway: 0.34, bodyPitchLag: 0.2, diveTuckAmount: 0.76, landingCompression: 0.62, boostTrailType: "void", colors: { bird: 0x6e4b4b, wing: 0x3f2424, rider: 0xf0ddd2, cloth: 0xfb7185 } },
+      { id: "stoneback-warbird", name: "Stoneback Warbird", classHint: "Heavy", handling: "heavyWarBeast", silhouetteProfile: "warbeast", animationProfile: "heavyBird", speed: 0.88, accel: 0.8, turn: 0.78, flap: 1.02, impact: 1.64, lateral: false, landingFx: "knockback", gravityScale: 1.3, fallSpeedCap: 43, flapBurst: 8.4, flapCooldown: 0.5, boostPower: 11.2, boostCooldown: 1.08, boostDuration: 0.3, glideFactor: 0.68, airDrag: 0.34, momentumRetention: 0.88, turnResponsiveness: 0.7, hoverAssist: 0, diveAcceleration: 1.2, stallRecovery: 0.88, landingSkid: 0.98, wingbeatRate: 0.64, idleBobStyle: "heavy", dashStyle: "ram", wingAmplitude: 0.8, wingFrequency: 0.62, tailSway: 0.16, bodyPitchLag: 0.26, diveTuckAmount: 0.46, landingCompression: 0.74, boostTrailType: "iron", colors: { bird: 0x6f6a5a, wing: 0x4f4a3d, rider: 0xe8e5dc, cloth: 0x94a3b8 } },
+      { id: "halo-seraph", name: "Halo Seraph", classHint: "Hover Mystic", handling: "hoverMystic", silhouetteProfile: "seraph", animationProfile: "seraph", speed: 1.12, accel: 1.02, turn: 1.2, flap: 0.9, impact: 0.76, lateral: true, landingFx: "buff", gravityScale: 0.7, fallSpeedCap: 24, flapBurst: 7.6, flapCooldown: 0.26, boostPower: 6.8, boostCooldown: 0.4, boostDuration: 0.2, glideFactor: 1.2, airDrag: 0.11, momentumRetention: 1.08, turnResponsiveness: 1.28, hoverAssist: 0.36, diveAcceleration: 0.7, stallRecovery: 1.3, landingSkid: 0.34, wingbeatRate: 1.18, idleBobStyle: "mystic", dashStyle: "halo", wingAmplitude: 0.54, wingFrequency: 1.2, tailSway: 0.5, bodyPitchLag: 0.04, diveTuckAmount: 0.18, landingCompression: 0.22, boostTrailType: "holy", colors: { bird: 0xd8ccff, wing: 0xa78bfa, rider: 0xf5efff, cloth: 0xfef08a } },
+      { id: "mossfang-glider", name: "Mossfang Glider", classHint: "Forest Mystic", handling: "hoverMystic", silhouetteProfile: "beetle", animationProfile: "insect", speed: 0.98, accel: 0.94, turn: 1.18, flap: 0.88, impact: 0.84, lateral: true, landingFx: "poison", gravityScale: 0.78, fallSpeedCap: 28, flapBurst: 7.1, flapCooldown: 0.3, boostPower: 6.3, boostCooldown: 0.44, boostDuration: 0.2, glideFactor: 1.16, airDrag: 0.12, momentumRetention: 1.04, turnResponsiveness: 1.24, hoverAssist: 0.26, diveAcceleration: 0.74, stallRecovery: 1.18, landingSkid: 0.36, wingbeatRate: 1.16, idleBobStyle: "mystic", dashStyle: "forest", wingAmplitude: 0.6, wingFrequency: 1.14, tailSway: 0.44, bodyPitchLag: 0.06, diveTuckAmount: 0.2, landingCompression: 0.28, boostTrailType: "forest", colors: { bird: 0x5f7b4f, wing: 0x355338, rider: 0xe5f4d8, cloth: 0x4ade80 } },
+      { id: "ember-talon", name: "Ember Talon", classHint: "Burst Raptor", handling: "burstRaptor", silhouetteProfile: "hawk", animationProfile: "featherRaptor", speed: 1.1, accel: 1.04, turn: 1.02, flap: 1.08, impact: 1.16, lateral: false, landingFx: "fire", gravityScale: 1.16, fallSpeedCap: 45, flapBurst: 11.6, flapCooldown: 0.42, boostPower: 8.8, boostCooldown: 0.7, boostDuration: 0.22, glideFactor: 0.82, airDrag: 0.24, momentumRetention: 0.8, turnResponsiveness: 0.94, hoverAssist: 0, diveAcceleration: 1.32, stallRecovery: 0.86, landingSkid: 0.68, wingbeatRate: 0.86, idleBobStyle: "raptor", dashStyle: "ember", wingAmplitude: 0.96, wingFrequency: 0.84, tailSway: 0.3, bodyPitchLag: 0.14, diveTuckAmount: 0.62, landingCompression: 0.5, boostTrailType: "ember", colors: { bird: 0x9d4a30, wing: 0x692a1d, rider: 0xf2d1b8, cloth: 0xfb923c } }
     ];
 
     const CLASS_BRANCHES = {
@@ -2391,7 +2442,9 @@ const ENEMY_SPECIES = {
         warCryTimer: 0,
         meleeComboState: { chain: 0, timer: 0 },
         lastAbilityUse: 0,
-        lastDeathPos: new THREE.Vector3(0, 12, 8)
+        lastDeathPos: new THREE.Vector3(0, 12, 8),
+        flapLockout: 0,
+        boostBurstTimer: 0
       };
       lastRespawnPoint.copy(player.pos);
       refreshPlayerAppearance();
@@ -3334,22 +3387,91 @@ const ENEMY_SPECIES = {
       return 1 + THREE.MathUtils.clamp(horizontalSpeed / 26, 0, 0.95);
     }
 
+
+    function getWeaponProfile(item) {
+      const fallback = WEAPON_CLASS_PRESETS.spear;
+      if (!item) return fallback;
+      const key = item.weaponClass || ((`${item.id} ${item.name}`.toLowerCase().includes("wand") || `${item.id} ${item.name}`.toLowerCase().includes("staff")) ? "wand" : "spear");
+      return { ...fallback, ...(WEAPON_CLASS_PRESETS[key] || fallback), ...item };
+    }
+
+    function getMountHandlingDescriptor(mount) {
+      const arche = MOUNT_ARCHETYPES[mount?.handling] || MOUNT_ARCHETYPES.burstRaptor;
+      return arche.feel;
+    }
+
+    function buildWeaponModel(item, mount, playerClass) {
+      const profile = getWeaponProfile(item);
+      const root = new THREE.Group();
+      const part = (geo, mat, pos = [0, 0, 0], rot = [0, 0, 0]) => {
+        const m = new THREE.Mesh(geo, mat);
+        m.position.set(...pos); m.rotation.set(...rot); m.castShadow = true; root.add(m); return m;
+      };
+      const shaftLen = profile.thrustLength || 4.8;
+      const shaftColor = profile.modelProfile === "forest" ? 0x7b5d35 : profile.modelProfile === "void" ? 0x43305d : profile.modelProfile === "lava" ? 0x6b3a2e : 0xc8b18a;
+      const glowColor = profile.modelProfile === "storm" ? 0x7dd3fc : profile.modelProfile === "holy" ? 0xfde68a : profile.modelProfile === "void" ? 0xa78bfa : 0;
+      part(new THREE.CylinderGeometry(0.05, 0.055, shaftLen, 10), new THREE.MeshStandardMaterial({ color: shaftColor, roughness: 0.58, metalness: 0.42 }), [0,0,shaftLen*0.5], [Math.PI/2,0,0]);
+      part(new THREE.CylinderGeometry(0.08,0.08,0.32,10), new THREE.MeshStandardMaterial({ color: 0x5b4b3d, roughness: 0.7 }), [0,0,0.52], [Math.PI/2,0,0]);
+      if (profile.weaponClass?.includes("Trident")) {
+        for (const o of [-0.18,0,0.18]) part(new THREE.ConeGeometry(0.07,0.78,9), new THREE.MeshStandardMaterial({ color: 0xdfe7f7, metalness: 0.92, roughness: 0.24 }), [o,0,shaftLen+0.3+Math.abs(o)*0.2], [Math.PI/2,0,0]);
+      } else if (profile.weaponClass?.includes("Wand") || profile.weaponClass?.includes("Staff")) {
+        part(new THREE.SphereGeometry(profile.weaponClass.includes("Staff") ? 0.19 : 0.14, 12, 12), new THREE.MeshStandardMaterial({ color: glowColor || 0xb794f4, emissive: glowColor || 0xb794f4, emissiveIntensity: 0.9, roughness: 0.25 }), [0,0,shaftLen+0.18]);
+        if (profile.weaponClass.includes("Staff")) part(new THREE.TorusGeometry(0.19,0.03,8,16), new THREE.MeshStandardMaterial({ color: glowColor || 0xfde68a, emissive: glowColor || 0xfde68a, emissiveIntensity: 0.8 }), [0,0.06,shaftLen+0.22], [Math.PI/2,0,0]);
+      } else if (profile.weaponClass?.includes("Great Blade")) {
+        part(new THREE.BoxGeometry(0.42, 0.08, 1.7), new THREE.MeshStandardMaterial({ color: 0xd7dde6, metalness: 0.9, roughness: 0.26 }), [0.14,0,shaftLen+0.25], [0,0.32,0.14]);
+      } else if (profile.weaponClass?.includes("Halberd")) {
+        part(new THREE.BoxGeometry(0.54,0.1,0.08), new THREE.MeshStandardMaterial({ color: 0xd8dee9, metalness: 0.88, roughness: 0.3 }), [0.24,0.1,shaftLen+0.02], [0,0.2,0]);
+        part(new THREE.ConeGeometry(0.1,0.76,8), new THREE.MeshStandardMaterial({ color: 0xd8dee9, metalness: 0.92, roughness: 0.22 }), [0,0,shaftLen+0.26], [Math.PI/2,0,0]);
+      } else if (profile.weaponClass?.includes("Glaive")) {
+        part(new THREE.TorusGeometry(0.26,0.05,8,16,Math.PI*0.75), new THREE.MeshStandardMaterial({ color: 0xe5edf7, metalness: 0.84, roughness: 0.32 }), [0.08,0,shaftLen+0.14], [0,0.2,Math.PI*0.45]);
+      } else {
+        part(new THREE.ConeGeometry(0.09,0.7,8), new THREE.MeshStandardMaterial({ color: 0xd8dee9, roughness: 0.28, metalness: 0.94 }), [0,0,shaftLen+0.28], [Math.PI/2,0,0]);
+      }
+      return { root, profile };
+    }
+
+    function spawnWeaponAttackEffect(item, origin, dir) {
+      const profile = getWeaponProfile(item);
+      if (!profile.projectileType) return;
+      const proj = PROJECTILE_FAMILIES[profile.projectileType] || PROJECTILE_FAMILIES.arcBolt;
+      const g = proj.shape === "lance" ? new THREE.CylinderGeometry(0.07, 0.07, 0.72, 8) : proj.shape === "needle" ? new THREE.CylinderGeometry(0.03,0.03,0.5,8) : proj.shape === "crystal" ? new THREE.OctahedronGeometry(0.22,0) : new THREE.SphereGeometry(0.18,8,8);
+      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: proj.color, emissive: proj.color, emissiveIntensity: 0.8, roughness: 0.2, metalness: 0.5 }));
+      m.position.copy(origin);
+      if (proj.shape === "lance" || proj.shape === "needle") m.rotation.x = Math.PI / 2;
+      m.scale.setScalar((profile.projectileScale || proj.scale || 0.3));
+      scene.add(m);
+      weaponProjectiles.push({ mesh: m, vel: dir.clone().normalize().multiplyScalar(profile.projectileSpeed || proj.speed), life: proj.life, damage: 7 + playerStats().spearDamage * 0.42, burst: proj.burst });
+    }
+
     function updateSpearPose(actor, dt) {
       if (!actor?.model?.userData?.anim) return;
       const anim = actor.model.userData.anim;
       const rest = anim.lanceRest;
-      const thrustDuration = 0.36;
+      const weapon = getItemById(progress.equipped.weapon);
+      const weaponProfile = getWeaponProfile(weapon);
+      const thrustDuration = weaponProfile.attackProfile === "heavyThrust" ? 0.44 : weaponProfile.attackProfile === "downChop" ? 0.5 : weaponProfile.attackProfile === "casterBolt" || weaponProfile.attackProfile === "staffBurst" ? 0.3 : 0.36;
       const thrustNorm = THREE.MathUtils.clamp(actor.spearTimer / thrustDuration, 0, 1);
       const thrustPulse = Math.pow(Math.sin((1 - thrustNorm) * Math.PI), 0.8);
       const forward = new THREE.Vector3(Math.sin(actor.yaw), 0, Math.cos(actor.yaw));
 
       anim.riderAnchor.position.y = 1.58 + Math.sin(actor.flapPhase * 0.9) * 0.06;
       anim.rider.position.y = 0.04 + Math.sin(actor.flapPhase * 0.95) * 0.05;
-      anim.spearAnchor.rotation.x = -0.12 + thrustPulse * 0.12;
-      anim.spearAnchor.rotation.y = 0;
+      if (weaponProfile.attackProfile === "downChop") {
+        anim.spearAnchor.rotation.x = -0.5 + thrustPulse * 0.95;
+        anim.spearAnchor.rotation.y = 0.22;
+      } else if (weaponProfile.attackProfile === "diagSlash") {
+        anim.spearAnchor.rotation.x = -0.32 + thrustPulse * 0.55;
+        anim.spearAnchor.rotation.y = -0.32 + thrustPulse * 0.42;
+      } else if (weaponProfile.attackProfile === "casterBolt" || weaponProfile.attackProfile === "staffBurst") {
+        anim.spearAnchor.rotation.x = 0.12 + thrustPulse * 0.22;
+        anim.spearAnchor.rotation.y = 0.06;
+      } else {
+        anim.spearAnchor.rotation.x = -0.12 + thrustPulse * 0.12;
+        anim.spearAnchor.rotation.y = 0;
+      }
 
       // SPEAR ORIENTATION FIX: extension now drives strictly along local forward (+Z) axis.
-      const reach = 5.2 + progress.upgrades.spearReach * 0.72;
+      const reach = (weaponProfile.thrustLength || 5.2) + progress.upgrades.spearReach * 0.72;
       anim.lance.position.set(rest.x, rest.y - thrustPulse * 0.03, rest.z + thrustPulse * reach);
 
       anim.lanceTip.getWorldPosition(anim.spearTipWorld);
@@ -3459,103 +3581,51 @@ const ENEMY_SPECIES = {
         lance.remove(c);
       }
 
-      // VISUAL POLISH: weapon archetype identity + forward-facing standards for all polearms.
-      if (weapon) {
-        const lower = `${weapon.id} ${weapon.name}`.toLowerCase();
-        const isTrident = lower.includes("trident");
-        const isWand = lower.includes("wand") || lower.includes("focus");
-        const isHalberd = lower.includes("halberd");
-        const isRoyal = lower.includes("royal");
-        const isCrystal = lower.includes("crystal");
-        const isJagged = lower.includes("barbed") || lower.includes("anti") || lower.includes("war");
-        const isPike = isPikeLike(lower) || isHalberd || isTrident;
-        const len = (isWand ? 2.6 : isPike ? 5.8 : 4.2) + (weapon.stats?.spearReach || 0) * 1.35 + (isRoyal ? 0.5 : 0);
-        const thickness = isWand ? 0.05 : isJagged ? 0.095 : isRoyal ? 0.075 : 0.065;
-        const shaftCol = isCrystal ? 0x9bd4ff : isRoyal ? 0xf8d178 : isJagged ? 0x746a60 : 0xc8b18a;
-        const headCol = isCrystal ? 0x8bf0ff : isRoyal ? 0xfbbf24 : isWand ? 0xb794f4 : 0xd8dee9;
-        const rarityBoost = weapon.rarity === "legendary" ? 1 : weapon.rarity === "epic" ? 0.7 : weapon.rarity === "rare" ? 0.45 : 0;
-
-        const shaft = new THREE.Mesh(new THREE.CylinderGeometry(thickness * 0.84, thickness, len, 10), new THREE.MeshStandardMaterial({ color: shaftCol, roughness: 0.56, metalness: 0.48, emissive: isCrystal ? 0x2a9fd6 : 0x000000, emissiveIntensity: isCrystal ? 0.35 + rarityBoost * 0.2 : 0 }));
-        shaft.rotation.x = Math.PI / 2;
-        shaft.position.z = len * 0.5;
-        shaft.castShadow = true;
-        lance.add(shaft);
-
-        if (isTrident) {
-          for (const offset of [-0.16, 0, 0.16]) {
-            const prong = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.72, 9), new THREE.MeshStandardMaterial({ color: headCol, metalness: 0.9, roughness: 0.28, emissive: isCrystal ? 0x3fd6ff : 0x000000, emissiveIntensity: isCrystal ? 0.7 : 0 }));
-            prong.rotation.x = Math.PI / 2;
-            prong.position.set(offset, 0, len + 0.32 + Math.abs(offset) * 0.22);
-            prong.castShadow = true;
-            lance.add(prong);
-          }
-        } else if (isWand) {
-          const ring = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.04, 8, 14), new THREE.MeshStandardMaterial({ color: headCol, emissive: headCol, emissiveIntensity: 0.85, roughness: 0.22, metalness: 0.6 }));
-          ring.position.set(0, 0.09, len + 0.2);
-          ring.rotation.x = Math.PI / 2;
-          lance.add(ring);
-          const orb = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 12), new THREE.MeshStandardMaterial({ color: headCol, emissive: headCol, emissiveIntensity: 1, roughness: 0.2, metalness: 0.55 }));
-          orb.position.set(0, 0, len + 0.28);
-          lance.add(orb);
-        } else {
-          const tip = new THREE.Mesh(isHalberd ? new THREE.ConeGeometry(0.13, 0.86, 8) : new THREE.ConeGeometry(isJagged ? 0.11 : 0.09, isRoyal ? 0.86 : 0.62, 8), new THREE.MeshStandardMaterial({ color: headCol, roughness: 0.28, metalness: 0.94, emissive: isCrystal ? 0x39cfff : 0x000000, emissiveIntensity: isCrystal ? 0.8 : 0 }));
-          tip.rotation.x = Math.PI / 2;
-          tip.position.set(0, 0, len + 0.3);
-          tip.castShadow = true;
-          lance.add(tip);
-
-          if (isHalberd || isJagged) {
-            const hook = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.08, 0.03), new THREE.MeshStandardMaterial({ color: headCol, roughness: 0.38, metalness: 0.84 }));
-            hook.position.set(0.22, 0.12, len + 0.05);
-            hook.rotation.y = 0.18;
-            lance.add(hook);
-          }
-        }
-      }
+      const built = buildWeaponModel(weapon, mount, progress.classChoice);
+      lance.add(built.root);
+      const hp = built.profile;
+      const hold = hp.holdOffset || [0.1, -0.02, 1.2];
+      const hrot = hp.holdRotation || [-0.08, 0, 0];
+      anim.lance.position.set(hold[0], hold[1], hold[2]);
+      anim.lanceRest.copy(anim.lance.position);
+      anim.spearAnchor.rotation.set(hrot[0], hrot[1], hrot[2]);
+      player.model.userData.weaponProfile = hp;
 
       const armorTier = armor?.rarity || "common";
       const armorStyle = (armor?.name || "").toLowerCase().includes("robe") ? "robe" : armorTier === "legendary" || armorTier === "epic" ? "heavy" : "light";
       const armorColor = armorTier === "legendary" ? 0xf59e0b : armorTier === "epic" ? 0xa78bfa : armorTier === "rare" ? 0x93c5fd : 0x9ca3af;
       anim.cape.scale.set(armorStyle === "robe" ? 1.2 : 1, armorStyle === "robe" ? 1.26 : 1.05, 1);
       anim.cape.material.color.set(armorTier === "legendary" ? 0x7f1d1d : armorTier === "epic" ? 0x4338ca : 0x7f1d1d);
-
-      if (!anim.armorSet) {
-        anim.armorSet = new THREE.Group();
-        anim.rider.add(anim.armorSet);
-      }
+      if (!anim.armorSet) { anim.armorSet = new THREE.Group(); anim.rider.add(anim.armorSet); }
       while (anim.armorSet.children.length) anim.armorSet.remove(anim.armorSet.children[0]);
-      const shoulderScale = armorStyle === "heavy" ? 1.32 : armorStyle === "robe" ? 0.9 : 1.05;
-      const spaulderMat = new THREE.MeshStandardMaterial({ color: armorColor, roughness: 0.4, metalness: 0.68, emissive: armorTier === "legendary" ? 0x7c2d12 : 0x000000, emissiveIntensity: armorTier === "legendary" ? 0.25 : 0 });
       for (const sx of [-1, 1]) {
-        const spaulder = new THREE.Mesh(new THREE.SphereGeometry(0.2 * shoulderScale, 8, 8), spaulderMat);
+        const spaulder = new THREE.Mesh(new THREE.SphereGeometry(0.2 * (armorStyle === "heavy" ? 1.32 : 1.05), 8, 8), new THREE.MeshStandardMaterial({ color: armorColor, roughness: 0.4, metalness: 0.68 }));
         spaulder.position.set(0.38 * sx, 0.32, 0.08);
         anim.armorSet.add(spaulder);
       }
-      const backPlate = new THREE.Mesh(new THREE.BoxGeometry(0.54, armorStyle === "robe" ? 0.88 : 0.62, 0.08), new THREE.MeshStandardMaterial({ color: armorColor, roughness: 0.45, metalness: 0.58 }));
-      backPlate.position.set(0, -0.05, -0.28);
-      anim.armorSet.add(backPlate);
 
-      // VISUAL POLISH: mount identity per type (shape + accents + wing/tail style).
-      const profile = {
-        "war-roc": { body: [1.1, 0.96, 1.22], wing: [1.16, 1, 1.32], tip: [1.08, 1, 1.2], neck: [1, 1.18, 1], tailX: 1.22, glow: 0x000000, crestY: 1.75 },
-        "storm-drake": { body: [0.95, 0.9, 1.35], wing: [1.34, 0.95, 1.45], tip: [1.4, 0.92, 1.6], neck: [0.82, 1.26, 0.9], tailX: 0.72, glow: 0x4cc9ff, crestY: 1.67 },
-        "iron-gryphon": { body: [1.26, 1.02, 1.1], wing: [1.12, 1.06, 1.16], tip: [1.03, 1.03, 1.1], neck: [1.06, 1.08, 1.04], tailX: 1.34, glow: 0x7d8ca3, crestY: 1.86 },
-        "ember-wyvern": { body: [1.04, 0.95, 1.28], wing: [1.28, 0.94, 1.5], tip: [1.34, 0.92, 1.62], neck: [0.9, 1.22, 0.94], tailX: 0.82, glow: 0xff7b3c, crestY: 1.72 },
-        "frost-hawk": { body: [0.9, 0.9, 1.24], wing: [1.22, 0.92, 1.34], tip: [1.18, 0.92, 1.42], neck: [0.92, 1.16, 0.95], tailX: 0.86, glow: 0x8be7ff, crestY: 1.68 },
-        "venom-manta": { body: [1.06, 0.86, 1.3], wing: [1.48, 0.78, 1.7], tip: [1.64, 0.72, 1.86], neck: [0.74, 1.1, 0.76], tailX: 0.58, glow: 0x62ffa5, crestY: 1.6 },
-        "sky-seraph": { body: [1.0, 0.94, 1.25], wing: [1.42, 0.9, 1.68], tip: [1.56, 0.84, 1.9], neck: [0.88, 1.22, 0.9], tailX: 0.96, glow: 0xd1a8ff, crestY: 1.92 },
-        "summoner-beast": { body: [0.96, 0.9, 1.2], wing: [1.36, 0.86, 1.62], tip: [1.48, 0.8, 1.78], neck: [0.82, 1.18, 0.85], tailX: 0.64, glow: 0x5ed6ff, crestY: 1.8 }
-      }[mount.id] || { body: [1, 1, 1], wing: [1, 1, 1], tip: [1, 1, 1], neck: [1, 1, 1], tailX: 1, glow: 0x000000, crestY: 1.75 };
-
-      anim.body.scale.set(...profile.body);
-      anim.chest.scale.set(profile.body[0] * 0.82, profile.body[1] * 0.96, profile.body[2] * 0.86);
-      anim.neck.scale.set(...profile.neck);
-      anim.leftWing.scale.set(...profile.wing);
+      const silhouette = mount.silhouetteProfile || "roc";
+      const silhouetteScales = {
+        roc: { body: [1.14, 0.96, 1.28], wing: [1.2, 1, 1.3], tip: [1.1,1,1.22], tailX: 1.2 },
+        hawk: { body: [0.94, 0.9, 1.18], wing: [1.18,0.92,1.26], tip: [1.14,0.9,1.3], tailX: 0.9 },
+        eagle: { body: [1.02,0.94,1.26], wing: [1.26,0.94,1.34], tip: [1.22,0.92,1.4], tailX: 0.96 },
+        gryphon: { body: [1.24, 1.03, 1.1], wing: [1.1,1.06,1.16], tip: [1.02,1.04,1.08], tailX: 1.34 },
+        wyvern: { body: [1.02,0.92,1.34], wing: [1.34,0.9,1.52], tip: [1.4,0.88,1.64], tailX: 0.76 },
+        drake: { body: [1.14,1.0,1.2], wing: [1.12,0.96,1.2], tip: [1.06,0.95,1.22], tailX: 0.82 },
+        serpent: { body: [0.86,0.8,1.5], wing: [1.48,0.78,1.72], tip: [1.64,0.72,1.88], tailX: 0.56 },
+        manta: { body: [1.04,0.84,1.32], wing: [1.56,0.72,1.9], tip: [1.7,0.68,2.02], tailX: 0.52 },
+        seraph: { body: [1.0,0.94,1.26], wing: [1.48,0.88,1.72], tip: [1.62,0.84,1.92], tailX: 0.94 },
+        warbeast: { body: [1.28,1.06,1.12], wing: [1.06,1.08,1.12], tip: [1,1.06,1.08], tailX: 1.42 },
+        beetle: { body: [1.08,0.92,1.22], wing: [1.36,0.74,1.5], tip: [1.42,0.7,1.6], tailX: 0.66 },
+        falcon: { body: [0.9,0.88,1.2], wing: [1.24,0.9,1.3], tip: [1.2,0.9,1.38], tailX: 0.86 }
+      }[silhouette] || { body: [1,1,1], wing: [1,1,1], tip: [1,1,1], tailX: 1 };
+      anim.body.scale.set(...silhouetteScales.body);
+      anim.chest.scale.set(silhouetteScales.body[0] * 0.82, silhouetteScales.body[1] * 0.96, silhouetteScales.body[2] * 0.86);
+      anim.leftWing.scale.set(...silhouetteScales.wing);
       anim.rightWing.scale.copy(anim.leftWing.scale);
-      anim.leftWingTip.scale.set(...profile.tip);
+      anim.leftWingTip.scale.set(...silhouetteScales.tip);
       anim.rightWingTip.scale.copy(anim.leftWingTip.scale);
-      anim.tailPivot.scale.set(profile.tailX, 1, 1.1 + (profile.tailX < 0.8 ? 0.2 : 0));
-      anim.crest.position.y = profile.crestY;
+      anim.tailPivot.scale.set(silhouetteScales.tailX, 1, 1.12 + (silhouetteScales.tailX < 0.8 ? 0.2 : 0));
 
       if (!anim.mountAccent) {
         const orb = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 10), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.6, roughness: 0.22, metalness: 0.4 }));
@@ -3563,9 +3633,10 @@ const ENEMY_SPECIES = {
         player.model.add(orb);
         anim.mountAccent = orb;
       }
-      anim.mountAccent.material.emissive.setHex(profile.glow || 0x000000);
-      anim.mountAccent.material.color.setHex(profile.glow || 0x8899aa);
-      anim.mountAccent.visible = (profile.glow || 0) !== 0;
+      const glowMap = { storm: 0x60a5fa, ember: 0xfb923c, void: 0xa78bfa, forest: 0x4ade80, holy: 0xfde68a, iron: 0x9ca3af };
+      anim.mountAccent.material.emissive.setHex(glowMap[mount.boostTrailType] || 0x000000);
+      anim.mountAccent.material.color.setHex(glowMap[mount.boostTrailType] || 0x8899aa);
+      anim.mountAccent.visible = !!glowMap[mount.boostTrailType];
 
       if (!player.model.userData.visualTrinkets) player.model.userData.visualTrinkets = [];
       for (const t of player.model.userData.visualTrinkets) player.model.remove(t);
@@ -3577,12 +3648,6 @@ const ENEMY_SPECIES = {
         ring.rotation.x = Math.PI / 2;
         player.model.add(ring);
         player.model.userData.visualTrinkets.push(ring);
-        if (rare) {
-          const charm = new THREE.Mesh(new THREE.OctahedronGeometry(0.12, 0), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff7c2, emissiveIntensity: 0.85 }));
-          charm.position.set(0.42 + idx * 0.08, 2.08 + idx * 0.32, 0);
-          player.model.add(charm);
-          player.model.userData.visualTrinkets.push(charm);
-        }
       });
     }
 
@@ -4322,6 +4387,8 @@ function skyProfileForZone(zone) {
       const styleMod = wingStyle === "membrane" ? { arc: 0.88, tip: 0.8, sweep: 1.08, bounce: 0.05 } :
         wingStyle === "mystic" ? { arc: 0.75, tip: 1.2, sweep: 0.72, bounce: 0.09 } :
         { arc: 1.08, tip: 1.02, sweep: 0.95, bounce: 0.07 };
+      const ampMod = mount?.wingAmplitude || 1;
+      const freqMod = mount?.wingFrequency || 1;
       const stateProfile = {
         idle: { rate: 2.3, amp: 0.1, sweepX: 0.06, baseWing: 0.22, baseTip: 0.48 },
         glide: { rate: 3.1, amp: 0.28, sweepX: -0.16, baseWing: 0.34, baseTip: 0.64 },
@@ -4331,10 +4398,10 @@ function skyProfileForZone(zone) {
         thrust: { rate: 8.4, amp: 0.62, sweepX: -0.08, baseWing: 0.2, baseTip: 0.52 }
       }[wingState];
 
-      actor.flapPhase += dt * stateProfile.rate * (mount?.flap || 1);
+      actor.flapPhase += dt * stateProfile.rate * (mount?.flap || 1) * freqMod;
       const flapCurve = Math.sin(actor.flapPhase);
       const easedFlap = flapCurve > 0 ? Math.pow(flapCurve, 0.65) : -Math.pow(Math.abs(flapCurve), 1.24);
-      const flap = easedFlap * stateProfile.amp * styleMod.arc * flapStrength + Math.sin(actor.flapPhase * 0.5) * 0.06 * styleMod.tip;
+      const flap = easedFlap * stateProfile.amp * styleMod.arc * flapStrength * ampMod + Math.sin(actor.flapPhase * 0.5) * 0.06 * styleMod.tip;
       const anim = actor.model.userData.anim;
       const pose = {
         wingZ: stateProfile.baseWing + flap,
@@ -4349,9 +4416,9 @@ function skyProfileForZone(zone) {
       anim.head.rotation.x = Math.sin(actor.flapPhase * 0.42) * 0.03 + (diveState ? -0.1 : landingState ? 0.06 : 0);
       anim.neck.rotation.z = Math.sin(actor.flapPhase * 0.36) * 0.06 - actor.model.rotation.z * 0.06;
       anim.rider.rotation.z = THREE.MathUtils.lerp(anim.rider.rotation.z, -actor.vel.x * 0.009 + (thrustState ? -0.08 : 0), 1 - Math.pow(0.015, dt * 60));
-      anim.rider.rotation.x = THREE.MathUtils.lerp(anim.rider.rotation.x, THREE.MathUtils.clamp(-actor.vel.y * 0.02, -0.22, 0.22), 1 - Math.pow(0.02, dt * 60));
+      anim.rider.rotation.x = THREE.MathUtils.lerp(anim.rider.rotation.x, THREE.MathUtils.clamp(-actor.vel.y * (0.015 + (mount?.bodyPitchLag || 0.12) * 0.03), -0.28, 0.28), 1 - Math.pow(0.02, dt * 60));
       anim.rider.position.y = 0.02 + Math.sin(actor.flapPhase * 0.95) * bobAmp;
-      anim.tailPivot.rotation.y = Math.sin(actor.flapPhase * 0.45 + horizontalSpeed * 0.04) * 0.22;
+      anim.tailPivot.rotation.y = Math.sin(actor.flapPhase * 0.45 + horizontalSpeed * 0.04) * (mount?.tailSway || 0.22);
       anim.tailPivot.rotation.x = -0.16 + Math.sin(actor.flapPhase * 0.6) * 0.16 + THREE.MathUtils.clamp(actor.vel.y * 0.012, -0.13, 0.16);
 
       if (actor === player) updateSpearPose(actor, dt);
@@ -4645,6 +4712,8 @@ function skyProfileForZone(zone) {
       player.spearCooldown = Math.max(0, player.spearCooldown - dt);
       player.spellCooldown = Math.max(0, player.spellCooldown - dt);
       player.spearTimer = Math.max(0, player.spearTimer - dt);
+      player.flapLockout = Math.max(0, (player.flapLockout || 0) - dt);
+      player.boostBurstTimer = Math.max(0, (player.boostBurstTimer || 0) - dt);
       player.regenWait = Math.max(0, player.regenWait - dt);
       playerGlobalCastLock = Math.max(0, playerGlobalCastLock - dt);
       player.warCryTimer = Math.max(0, player.warCryTimer - dt);
@@ -4653,11 +4722,12 @@ function skyProfileForZone(zone) {
       Object.keys(playerCooldowns).forEach((k) => { playerCooldowns[k] = Math.max(0, (playerCooldowns[k] || 0) - dt); });
 
       const stats = playerStats();
-      const turnSpeed = (3.35 + progress.upgrades.airControl * 0.08) * stats.mount.turn;
-      const baseForward = 17.2 * stats.mount.speed;
-      const lift = stats.flapLift;
-      const dive = 11.5;
-      const burst = keys["shift"] ? 8 + stats.burstBonus : 0;
+      const mount = stats.mount;
+      const turnSpeed = (3.2 + progress.upgrades.airControl * 0.08) * mount.turn * (mount.turnResponsiveness || 1);
+      const baseForward = 17.2 * mount.speed;
+      const lift = stats.flapLift * (mount.flap || 1);
+      const dive = 11.5 * (mount.diveAcceleration || 1);
+      const burst = (keys["shift"] && player.boostBurstTimer <= 0) ? (mount.boostPower || 8) + stats.burstBonus : 0;
       const activelySteering = keys["a"] || keys["d"];
       const activelyFlapping = keys[" "] || (keys["s"] && progress.classChoice !== "sorcerer");
 
@@ -4667,10 +4737,13 @@ function skyProfileForZone(zone) {
       const forward = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
 
       const targetForwardSpeed = baseForward + burst + Math.max(0, -player.vel.y * 0.14);
-      player.vel.x += (forward.x * targetForwardSpeed - player.vel.x) * stats.airControl * dt;
-      player.vel.z += (forward.z * targetForwardSpeed - player.vel.z) * stats.airControl * dt;
+      const accelCurve = mount.handling === "heavyWarBeast" ? 0.72 : mount.handling === "skySkimmer" ? 1.2 : 1;
+      player.vel.x += (forward.x * targetForwardSpeed - player.vel.x) * stats.airControl * accelCurve * dt;
+      player.vel.z += (forward.z * targetForwardSpeed - player.vel.z) * stats.airControl * accelCurve * dt;
 
-      player.vel.y -= 17.2 * dt;
+      const hoverAssist = mount.hoverAssist || 0;
+      const nearApex = player.vel.y < 1.6 && player.vel.y > -0.9 && player.pos.y > nearestPlatformHeight(player.pos.x, player.pos.z) + 8;
+      player.vel.y -= 17.2 * dt * (mount.gravityScale || 1) * (nearApex ? (1 - hoverAssist * 0.55) : 1);
 
       if (keys[" "]) {
         player.vel.y += lift * dt;
@@ -4678,27 +4751,34 @@ function skyProfileForZone(zone) {
       if (keys["s"] && progress.classChoice !== "sorcerer") {
         player.vel.y -= dive * dt;
       }
-      if (keys[" "] && player.boostCooldown <= 0) {
-        player.vel.y += stats.flapBoost * 1.24;
-        player.vel.x += forward.x * 6.6;
-        player.vel.z += forward.z * 6.6;
-        player.boostCooldown = 0.28;
+      if (keys[" "] && player.boostCooldown <= 0 && player.flapLockout <= 0) {
+        player.vel.y += (stats.flapBoost + (mount.flapBurst || 8) * 0.42) * 1.24;
+        player.vel.x += forward.x * (mount.boostPower || 7.6);
+        player.vel.z += forward.z * (mount.boostPower || 7.6);
+        player.boostCooldown = mount.flapCooldown || 0.32;
+        player.flapLockout = mount.flapCooldown || 0.32;
       }
-      if (stats.mount.lateral && keys["q"] && player.boostCooldown <= 0) {
-        player.vel.add(new THREE.Vector3(forward.z, 0.2, -forward.x).multiplyScalar(8.5));
-        player.boostCooldown = 0.36;
+      if (burst > 0) {
+        player.vel.add(forward.clone().multiplyScalar(burst * (mount.boostDuration || 0.2)));
+        player.boostBurstTimer = mount.boostCooldown || 0.72;
       }
-      if (stats.mount.lateral && keys["e"] && player.boostCooldown <= 0) {
-        player.vel.add(new THREE.Vector3(-forward.z, 0.2, forward.x).multiplyScalar(8.5));
-        player.boostCooldown = 0.36;
+      if (mount.lateral && keys["q"] && player.boostCooldown <= 0) {
+        player.vel.add(new THREE.Vector3(forward.z, 0.18, -forward.x).multiplyScalar(8.2 + (mount.turnResponsiveness || 1) * 1.5));
+        player.boostCooldown = mount.boostCooldown || 0.38;
+      }
+      if (mount.lateral && keys["e"] && player.boostCooldown <= 0) {
+        player.vel.add(new THREE.Vector3(-forward.z, 0.18, forward.x).multiplyScalar(8.2 + (mount.turnResponsiveness || 1) * 1.5));
+        player.boostCooldown = mount.boostCooldown || 0.38;
       }
 
       if (keys["w"] && player.spearCooldown <= 0) {
-        player.spearTimer = 0.36;
-        player.spearCooldown = stats.spearCooldown;
+        const wp = getWeaponProfile(getItemById(progress.equipped.weapon));
+        player.spearTimer = wp.attackProfile === "heavyThrust" ? 0.42 : wp.attackProfile === "downChop" ? 0.5 : wp.attackProfile === "casterBolt" || wp.attackProfile === "staffBurst" ? 0.28 : 0.36;
+        player.spearCooldown = stats.spearCooldown + (wp.attackProfile === "downChop" ? 0.08 : 0);
         player.spearHitSet.clear();
         player.vel.add(forward.clone().multiplyScalar(2.2));
-        player.vel.y += 0.5;
+        player.vel.y += wp.attackProfile === "downChop" ? -0.2 : 0.5;
+        if (wp.projectileType) spawnWeaponAttackEffect(getItemById(progress.equipped.weapon), player.model.userData.anim.spearTipWorld.clone().add(forward.clone().multiplyScalar(0.8)), forward);
       }
       if ((keys["f"]) && progress.classChoice === "sorcerer" && player.spellCooldown <= 0) {
         castSorcererSpell();
@@ -4718,8 +4798,12 @@ function skyProfileForZone(zone) {
         player.spearCooldown = Math.max(0.18, 0.34 - progress.upgrades.comboSpeed * 0.02);
       }
 
-      player.vel.y = Math.max(player.vel.y, -36);
-      player.vel.multiplyScalar(1 - 0.14 * dt);
+      player.vel.y = Math.max(player.vel.y, -(mount.fallSpeedCap || 36));
+      const glideDrag = Math.max(0.04, (mount.airDrag || 0.16));
+      const momentumRetain = THREE.MathUtils.clamp(mount.momentumRetention || 0.92, 0.6, 1.3);
+      player.vel.x *= 1 - glideDrag * dt;
+      player.vel.z *= 1 - glideDrag * dt;
+      player.vel.multiplyScalar(1 - (0.12 + (1 - momentumRetain) * 0.08) * dt);
 
       player.pos.addScaledVector(player.vel, dt);
       resolvePlayerTerrainCollision();
@@ -5285,6 +5369,23 @@ function skyProfileForZone(zone) {
             p.mesh.position.y = -18;
           }
         }
+      }
+
+      for (let i = weaponProjectiles.length - 1; i >= 0; i--) {
+        const wp = weaponProjectiles[i];
+        wp.life -= dt;
+        wp.mesh.position.addScaledVector(wp.vel, dt);
+        let hit = false;
+        for (const enemy of enemies) {
+          if (!enemy.alive) continue;
+          if (enemy.pos.distanceTo(wp.mesh.position) < enemy.radius + 0.8) {
+            damageEnemy(enemy, wp.damage, wp.vel.clone().normalize(), "projectile");
+            spawnBurst(wp.mesh.position.clone(), 6, wp.burst || 0x93c5fd);
+            hit = true;
+            break;
+          }
+        }
+        if (wp.life <= 0 || hit) { scene.remove(wp.mesh); weaponProjectiles.splice(i, 1); }
       }
 
       for (const traffic of cityAmbientTraffic) {
@@ -5955,7 +6056,9 @@ function skyProfileForZone(zone) {
     function renderInventoryMenu() {
       const groups = { weapon: [], armor: [], trinket: [], quest: progress.questItems, material: progress.materials };
       progress.inventory.forEach((it) => groups[it.slot]?.push(it));
-      menuMainPanelEl.innerHTML = `<div style="margin-bottom:8px"><b>Equipped:</b> Weapon ${getItemById(progress.equipped.weapon)?.name || "None"} • Armor ${getItemById(progress.equipped.armor)?.name || "None"} • Trinkets ${getItemById(progress.equipped.trinket1)?.name || "None"} / ${getItemById(progress.equipped.trinket2)?.name || "None"} • Mount ${MOUNT_DB.find((m)=>m.id===progress.mount)?.name || "War Roc"}</div>`;
+      const equippedWeapon = getItemById(progress.equipped.weapon);
+      const equippedMount = MOUNT_DB.find((m)=>m.id===progress.mount) || MOUNT_DB[0];
+      menuMainPanelEl.innerHTML = `<div style="margin-bottom:8px"><b>Equipped:</b> Weapon ${equippedWeapon?.name || "None"} <span style="opacity:.75">(${getWeaponProfile(equippedWeapon).weaponClass})</span> • Armor ${getItemById(progress.equipped.armor)?.name || "None"} • Trinkets ${getItemById(progress.equipped.trinket1)?.name || "None"} / ${getItemById(progress.equipped.trinket2)?.name || "None"} • Mount ${equippedMount.name} <span style="opacity:.75">(${MOUNT_ARCHETYPES[equippedMount.handling]?.label || equippedMount.handling}: ${getMountHandlingDescriptor(equippedMount)})</span></div>`;
       ["weapon", "armor", "trinket"].forEach((slot) => {
         const sec = document.createElement("div");
         sec.style.cssText = "margin-bottom:10px;padding:8px;border:1px solid rgba(255,255,255,.14);border-radius:10px;";
@@ -5964,7 +6067,7 @@ function skyProfileForZone(zone) {
           const row = document.createElement("div");
           row.style.cssText = "display:flex;justify-content:space-between;gap:6px;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.08)";
           const equipped = Object.values(progress.equipped).includes(item.id);
-          row.innerHTML = `<div><span style="color:${RARITY_COLORS[item.rarity] || "#fff"}">${item.name}</span> <small>(${item.rarity})</small>${item.classReq ? `<div style="font-size:11px;color:#fca5a5">Class: ${CLASS_BRANCHES[item.classReq].title}</div>` : ""}<div style="font-size:11px;opacity:.8">${item.desc}</div><div style="font-size:11px;opacity:.7">Sell ${item.sell}g</div></div>`;
+          row.innerHTML = `<div><span style="color:${RARITY_COLORS[item.rarity] || "#fff"}">${item.name}</span> <small>(${item.rarity})</small>${item.classReq ? `<div style="font-size:11px;color:#fca5a5">Class: ${CLASS_BRANCHES[item.classReq].title}</div>` : ""}<div style="font-size:11px;opacity:.85">${item.desc}</div><div style="font-size:11px;opacity:.75">${getWeaponProfile(item).weaponClass || item.slot} • ${getWeaponProfile(item).feel || ""}</div><div style="font-size:11px;opacity:.7">Sell ${item.sell}g</div></div>`;
           const actions = document.createElement("div");
           const eq = document.createElement("button");
           eq.textContent = equipped ? "Equipped" : "Equip";
@@ -5986,7 +6089,7 @@ function skyProfileForZone(zone) {
       MOUNT_DB.forEach((m) => {
         const b = document.createElement("button");
         b.style.cssText = `display:block;width:100%;text-align:left;margin:4px 0;border:1px solid rgba(255,255,255,.2);background:${progress.mount === m.id ? "rgba(251,191,36,.25)" : "rgba(255,255,255,.06)"};color:white;border-radius:7px;padding:6px;`;
-        b.textContent = `${m.name} • ${m.classHint}${m.lateral ? " • Q/E Lateral" : ""}`;
+        b.textContent = `${m.name} • ${MOUNT_ARCHETYPES[m.handling]?.label || m.classHint} • ${getMountHandlingDescriptor(m)}${m.lateral ? " • Q/E Lateral" : ""}`;
         b.onclick = () => { progress.mount = m.id; refreshPlayerAppearance(); renderTabMenu(); };
         mountSec.appendChild(b);
       });
