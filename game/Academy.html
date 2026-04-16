@@ -959,6 +959,28 @@ const ENEMY_SPECIES = {
       mount.limbProfile = visual.limbProfile;
       mount.ornamentProfile = visual.ornamentProfile;
       mount.animationProfile = visual.animationProfile || mount.animationProfile;
+
+      const name = (mount.name || "").toLowerCase();
+      const hint = (mount.classHint || "").toLowerCase();
+      const silhouette = (mount.silhouetteProfile || "").toLowerCase();
+      const animation = (mount.animationProfile || "").toLowerCase();
+      if (name.includes("serpent") || silhouette.includes("serpent") || animation.includes("serpent") || animation.includes("undulate")) mount.creatureType = "serpent";
+      else if (name.includes("wyvern") || silhouette.includes("wyvern")) mount.creatureType = "wyvern";
+      else if (name.includes("gryphon") || silhouette.includes("gryphon")) mount.creatureType = "griffon";
+      else if (name.includes("orb") || name.includes("seraph") || hint.includes("hover")) mount.creatureType = "arcane";
+      else if (name.includes("beetle") || silhouette.includes("beetle") || animation.includes("insect")) mount.creatureType = "insect";
+      else if (name.includes("drake") || name.includes("dragon") || silhouette.includes("drake")) mount.creatureType = "dragon";
+      else mount.creatureType = "wyvern";
+
+      const creaturePhysics = {
+        serpent: { turn: 1.28, accel: 1.08, glideFactor: 1.36, gravityScale: 0.72, boostPower: 7.2, boostCooldown: 0.42, boostDuration: 0.2, flapBurst: 6.6, bodyPitchLag: 0.06, lateral: true, hitboxRadius: 2.05, hitboxLength: 3.5 },
+        wyvern: { turn: 0.88, accel: 0.9, glideFactor: 0.86, gravityScale: 1.12, boostPower: 10.1, boostCooldown: 0.92, boostDuration: 0.27, flapBurst: 9.2, bodyPitchLag: 0.16, hitboxRadius: 2.75, hitboxLength: 2.8 },
+        griffon: { turn: 0.82, accel: 0.82, glideFactor: 0.72, gravityScale: 1.24, boostPower: 10.8, boostCooldown: 1.08, boostDuration: 0.28, flapBurst: 8.8, bodyPitchLag: 0.22, hitboxRadius: 2.9, hitboxLength: 2.4 },
+        arcane: { turn: 1.32, accel: 1.06, glideFactor: 1.42, gravityScale: 0.62, boostPower: 7.4, boostCooldown: 0.34, boostDuration: 0.18, flapBurst: 5.8, bodyPitchLag: 0.03, lateral: true, hitboxRadius: 1.85, hitboxLength: 1.9 },
+        dragon: { turn: 0.78, accel: 0.86, glideFactor: 0.76, gravityScale: 1.3, boostPower: 11.6, boostCooldown: 1.12, boostDuration: 0.3, flapBurst: 11.6, bodyPitchLag: 0.24, hitboxRadius: 3.1, hitboxLength: 3.2 },
+        insect: { turn: 1.24, accel: 1.12, glideFactor: 1.04, gravityScale: 0.82, boostPower: 8.4, boostCooldown: 0.4, boostDuration: 0.19, flapBurst: 7.2, bodyPitchLag: 0.08, lateral: true, hitboxRadius: 2.1, hitboxLength: 2.0 }
+      }[mount.creatureType];
+      Object.assign(mount, creaturePhysics);
     });
 
     const CLASS_BRANCHES = {
@@ -2635,13 +2657,172 @@ const ENEMY_SPECIES = {
       };
     }
 
+    function mountSilhouetteGlyph(type) {
+      return ({
+        serpent: "〰",
+        wyvern: "𓅃",
+        griffon: "🜲",
+        arcane: "◉",
+        dragon: "🐉",
+        insect: "✶"
+      })[type] || "◆";
+    }
+
+    function addMountMesh(root, geometry, material, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) {
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(x, y, z);
+      mesh.rotation.set(rx, ry, rz);
+      mesh.castShadow = true;
+      root.add(mesh);
+      return mesh;
+    }
+
+    function createBaseMountRig(mount, hideRider = false) {
+      const colors = mount.colors || {};
+      const clothColor = colors.cloth ?? 0x8b5cf6;
+      const riderColor = colors.rider ?? 0xd7dce3;
+      const root = new THREE.Group();
+      const riderAnchor = new THREE.Group();
+      riderAnchor.position.set(0, 1.6, 0.1);
+      root.add(riderAnchor);
+      const rider = new THREE.Group();
+      riderAnchor.add(rider);
+      addMountMesh(rider, new THREE.BoxGeometry(0.64, 0.9, 0.44), new THREE.MeshStandardMaterial({ color: riderColor, roughness: 0.52, metalness: 0.4 }));
+      const cape = addMountMesh(rider, new THREE.BoxGeometry(0.58, 0.95, 0.05), new THREE.MeshStandardMaterial({ color: clothColor, roughness: 0.82 }), 0, -0.05, -0.22, 0.24, 0, 0);
+      const spearAnchor = new THREE.Group();
+      spearAnchor.position.set(0.5, 0.1, 0.2);
+      rider.add(spearAnchor);
+      const lance = new THREE.Group();
+      lance.position.set(0.1, 0, 1.2);
+      spearAnchor.add(lance);
+      const lanceTip = addMountMesh(lance, new THREE.ConeGeometry(0.08, 0.44, 9), new THREE.MeshStandardMaterial({ color: 0xd0d6df, metalness: 0.92, roughness: 0.3 }), 0, 0, 0.5, Math.PI / 2, 0, 0);
+      if (hideRider) rider.visible = false;
+      return {
+        root,
+        rider,
+        riderAnchor,
+        spearAnchor,
+        lance,
+        lanceTip,
+        cape,
+        lanceRest: lance.position.clone()
+      };
+    }
+
+    function createSerpentMount(mount) {
+      const rig = createBaseMountRig(mount, true);
+      const root = rig.root;
+      const mat = new THREE.MeshStandardMaterial({ color: mount.colors?.bird ?? 0x5a466f, roughness: 0.78 });
+      const tailPivot = new THREE.Group();
+      root.add(tailPivot);
+      const segments = [];
+      for (let i = 0; i < 7; i++) {
+        const seg = addMountMesh(tailPivot, new THREE.CapsuleGeometry(Math.max(0.12, 0.34 - i * 0.03), 0.8, 4, 10), mat, 0, 0.5 - i * 0.04, 1.4 - i * 0.86, Math.PI / 2.2, 0, 0);
+        segments.push(seg);
+      }
+      const head = addMountMesh(root, new THREE.ConeGeometry(0.2, 1.1, 10), new THREE.MeshStandardMaterial({ color: mount.colors?.bird ?? 0x5a466f, roughness: 0.75 }), 0, 0.92, 2.45, Math.PI / 2, 0, 0);
+      const neck = addMountMesh(root, new THREE.CylinderGeometry(0.18, 0.26, 0.9, 10), mat, 0, 0.78, 1.88, Math.PI / 3.2, 0, 0);
+      root.userData.anim = { ...rig, body: segments[2], chest: segments[1], neck, head, tailPivot, tailSegments: segments, leftWing: new THREE.Group(), rightWing: new THREE.Group(), leftWingTip: new THREE.Group(), rightWingTip: new THREE.Group(), spearTipWorld: new THREE.Vector3(), spearForwardWorld: new THREE.Vector3(0, 0, 1) };
+      return root;
+    }
+
+    function createWyvernMount(mount) {
+      const rig = createBaseMountRig(mount);
+      const root = rig.root;
+      const body = addMountMesh(root, new THREE.BoxGeometry(2.5, 1.0, 3.7), new THREE.MeshStandardMaterial({ color: mount.colors?.bird ?? 0x7c4b2c, roughness: 0.8 }), 0, 0.3, 0.2);
+      const chest = addMountMesh(root, new THREE.BoxGeometry(2.0, 0.95, 1.5), new THREE.MeshStandardMaterial({ color: mount.colors?.bird ?? 0x7c4b2c, roughness: 0.78 }), 0, 0.45, 1.8);
+      const neck = addMountMesh(root, new THREE.CylinderGeometry(0.25, 0.4, 1.4, 8), new THREE.MeshStandardMaterial({ color: mount.colors?.bird ?? 0x7c4b2c, roughness: 0.8 }), 0, 0.92, 2.6, Math.PI / 4.5);
+      const head = addMountMesh(root, new THREE.BoxGeometry(0.72, 0.5, 1.2), new THREE.MeshStandardMaterial({ color: mount.colors?.bird ?? 0x7c4b2c, roughness: 0.75 }), 0, 1.28, 3.28);
+      const wingMat = new THREE.MeshStandardMaterial({ color: mount.colors?.wing ?? 0x5a3c2a, roughness: 0.86 });
+      const leftWing = addMountMesh(root, new THREE.BoxGeometry(3.6, 0.2, 2.2), wingMat, -2.4, 0.55, 0.6, -0.04, 0, 0.4);
+      const rightWing = addMountMesh(root, new THREE.BoxGeometry(3.6, 0.2, 2.2), wingMat, 2.4, 0.55, 0.6, -0.04, 0, -0.4);
+      const leftWingTip = addMountMesh(root, new THREE.BoxGeometry(2.9, 0.14, 1.5), wingMat, -4.7, 0.48, 0.5, -0.08, 0, 0.76);
+      const rightWingTip = addMountMesh(root, new THREE.BoxGeometry(2.9, 0.14, 1.5), wingMat, 4.7, 0.48, 0.5, -0.08, 0, -0.76);
+      const tailPivot = new THREE.Group();
+      tailPivot.position.set(0, 0.35, -2.05);
+      root.add(tailPivot);
+      addMountMesh(tailPivot, new THREE.CylinderGeometry(0.22, 0.34, 3.2, 8), new THREE.MeshStandardMaterial({ color: mount.colors?.wing ?? 0x5a3c2a, roughness: 0.85 }), 0, 0, -1.4, Math.PI / 2.05);
+      root.userData.anim = { ...rig, body, chest, neck, head, leftWing, rightWing, leftWingTip, rightWingTip, tailPivot, spearTipWorld: new THREE.Vector3(), spearForwardWorld: new THREE.Vector3(0, 0, 1) };
+      return root;
+    }
+
+    function createGriffonMount(mount) {
+      const rig = createBaseMountRig(mount);
+      const root = rig.root;
+      const body = addMountMesh(root, new THREE.BoxGeometry(2.7, 1.28, 3.0), new THREE.MeshStandardMaterial({ color: mount.colors?.bird ?? 0x777f8a, roughness: 0.8 }), 0, 0.2, -0.12);
+      const chest = addMountMesh(root, new THREE.BoxGeometry(2.35, 1.5, 2.0), new THREE.MeshStandardMaterial({ color: mount.colors?.bird ?? 0x777f8a, roughness: 0.78 }), 0, 0.5, 1.4);
+      const neck = addMountMesh(root, new THREE.CylinderGeometry(0.24, 0.34, 1.1, 9), new THREE.MeshStandardMaterial({ color: mount.colors?.wing ?? 0x5e6470, roughness: 0.8 }), 0, 1.08, 2.38, Math.PI / 4.3);
+      const head = addMountMesh(root, new THREE.ConeGeometry(0.28, 1.0, 8), new THREE.MeshStandardMaterial({ color: 0xd5aa49, roughness: 0.74 }), 0, 1.45, 3.06, Math.PI / 2);
+      const leftWing = addMountMesh(root, new THREE.BoxGeometry(2.3, 0.2, 1.7), new THREE.MeshStandardMaterial({ color: mount.colors?.wing ?? 0x5e6470, roughness: 0.88 }), -1.9, 0.72, 0.5, 0, 0, 0.46);
+      const rightWing = addMountMesh(root, new THREE.BoxGeometry(2.3, 0.2, 1.7), new THREE.MeshStandardMaterial({ color: mount.colors?.wing ?? 0x5e6470, roughness: 0.88 }), 1.9, 0.72, 0.5, 0, 0, -0.46);
+      const leftWingTip = addMountMesh(root, new THREE.BoxGeometry(1.7, 0.14, 1.2), new THREE.MeshStandardMaterial({ color: mount.colors?.wing ?? 0x5e6470, roughness: 0.88 }), -3.3, 0.64, 0.44, 0, 0, 0.8);
+      const rightWingTip = addMountMesh(root, new THREE.BoxGeometry(1.7, 0.14, 1.2), new THREE.MeshStandardMaterial({ color: mount.colors?.wing ?? 0x5e6470, roughness: 0.88 }), 3.3, 0.64, 0.44, 0, 0, -0.8);
+      const tailPivot = new THREE.Group();
+      tailPivot.position.set(0, 0.3, -1.8);
+      root.add(tailPivot);
+      addMountMesh(tailPivot, new THREE.BoxGeometry(0.42, 0.3, 2.0), new THREE.MeshStandardMaterial({ color: mount.colors?.wing ?? 0x5e6470, roughness: 0.86 }), 0, 0, -1.0, -0.25);
+      root.userData.anim = { ...rig, body, chest, neck, head, leftWing, rightWing, leftWingTip, rightWingTip, tailPivot, spearTipWorld: new THREE.Vector3(), spearForwardWorld: new THREE.Vector3(0, 0, 1) };
+      return root;
+    }
+
+    function createArcaneMount(mount) {
+      const rig = createBaseMountRig(mount, true);
+      const root = rig.root;
+      const core = addMountMesh(root, new THREE.SphereGeometry(1.2, 20, 20), new THREE.MeshStandardMaterial({ color: mount.colors?.bird ?? 0xa2b8ff, emissive: mount.colors?.cloth ?? 0xc4b5fd, emissiveIntensity: 0.35, roughness: 0.3 }), 0, 0.8, 0);
+      const ring = addMountMesh(root, new THREE.TorusGeometry(2.0, 0.14, 10, 32), new THREE.MeshStandardMaterial({ color: mount.colors?.wing ?? 0x798bdb, emissive: mount.colors?.wing ?? 0x798bdb, emissiveIntensity: 0.45, transparent: true, opacity: 0.86 }), 0, 0.8, 0, Math.PI / 2);
+      const ring2 = addMountMesh(root, new THREE.TorusGeometry(1.5, 0.1, 10, 32), new THREE.MeshStandardMaterial({ color: mount.colors?.cloth ?? 0xc4b5fd, emissive: mount.colors?.cloth ?? 0xc4b5fd, emissiveIntensity: 0.48, transparent: true, opacity: 0.75 }), 0, 0.8, 0, 0.25, 0.3, 0);
+      const tailPivot = new THREE.Group();
+      tailPivot.position.set(0, 0.8, 0);
+      root.add(tailPivot);
+      root.userData.anim = { ...rig, body: core, chest: core, neck: ring2, head: core, leftWing: new THREE.Group(), rightWing: new THREE.Group(), leftWingTip: new THREE.Group(), rightWingTip: new THREE.Group(), tailPivot, arcaneRing: ring, arcaneRing2: ring2, spearTipWorld: new THREE.Vector3(), spearForwardWorld: new THREE.Vector3(0, 0, 1) };
+      return root;
+    }
+
+    function createDragonMount(mount) {
+      const rig = createBaseMountRig(mount);
+      const root = rig.root;
+      const body = addMountMesh(root, new THREE.BoxGeometry(3.1, 1.35, 4.0), new THREE.MeshStandardMaterial({ color: mount.colors?.bird ?? 0x77483e, roughness: 0.82 }), 0, 0.32, 0.08);
+      const chest = addMountMesh(root, new THREE.BoxGeometry(2.4, 1.25, 2.05), new THREE.MeshStandardMaterial({ color: mount.colors?.bird ?? 0x77483e, roughness: 0.8 }), 0, 0.58, 1.82);
+      const neck = addMountMesh(root, new THREE.CylinderGeometry(0.3, 0.52, 1.8, 9), new THREE.MeshStandardMaterial({ color: mount.colors?.bird ?? 0x77483e, roughness: 0.78 }), 0, 1.15, 2.76, Math.PI / 5.1);
+      const head = addMountMesh(root, new THREE.BoxGeometry(0.96, 0.64, 1.6), new THREE.MeshStandardMaterial({ color: mount.colors?.bird ?? 0x77483e, roughness: 0.76 }), 0, 1.62, 3.66);
+      const wingMat = new THREE.MeshStandardMaterial({ color: mount.colors?.wing ?? 0x482b25, roughness: 0.87 });
+      const leftWing = addMountMesh(root, new THREE.BoxGeometry(3.9, 0.22, 2.5), wingMat, -2.7, 0.72, 0.44, -0.08, 0, 0.34);
+      const rightWing = addMountMesh(root, new THREE.BoxGeometry(3.9, 0.22, 2.5), wingMat, 2.7, 0.72, 0.44, -0.08, 0, -0.34);
+      const leftWingTip = addMountMesh(root, new THREE.BoxGeometry(3.2, 0.16, 1.9), wingMat, -5.5, 0.55, 0.36, -0.12, 0, 0.7);
+      const rightWingTip = addMountMesh(root, new THREE.BoxGeometry(3.2, 0.16, 1.9), wingMat, 5.5, 0.55, 0.36, -0.12, 0, -0.7);
+      const tailPivot = new THREE.Group();
+      tailPivot.position.set(0, 0.35, -2.4);
+      root.add(tailPivot);
+      addMountMesh(tailPivot, new THREE.CylinderGeometry(0.3, 0.44, 3.9, 9), new THREE.MeshStandardMaterial({ color: mount.colors?.wing ?? 0x482b25, roughness: 0.85 }), 0, 0, -1.7, Math.PI / 2.1);
+      root.userData.anim = { ...rig, body, chest, neck, head, leftWing, rightWing, leftWingTip, rightWingTip, tailPivot, spearTipWorld: new THREE.Vector3(), spearForwardWorld: new THREE.Vector3(0, 0, 1) };
+      return root;
+    }
+
+    function createInsectMount(mount) {
+      const rig = createBaseMountRig(mount, true);
+      const root = rig.root;
+      const body = addMountMesh(root, new THREE.CapsuleGeometry(0.52, 2.1, 6, 12), new THREE.MeshStandardMaterial({ color: mount.colors?.bird ?? 0x5f7b4f, roughness: 0.66, metalness: 0.14 }), 0, 0.55, 0, Math.PI / 2.1);
+      const chest = addMountMesh(root, new THREE.SphereGeometry(0.8, 14, 12), new THREE.MeshStandardMaterial({ color: mount.colors?.bird ?? 0x5f7b4f, roughness: 0.64 }), 0, 0.6, 1.26);
+      const head = addMountMesh(root, new THREE.SphereGeometry(0.54, 12, 10), new THREE.MeshStandardMaterial({ color: mount.colors?.wing ?? 0x355338, roughness: 0.6 }), 0, 0.68, 2.12);
+      const leftWing = addMountMesh(root, new THREE.PlaneGeometry(2.6, 1.3), new THREE.MeshStandardMaterial({ color: mount.colors?.wing ?? 0x355338, transparent: true, opacity: 0.55, side: THREE.DoubleSide }), -1.18, 1.05, 0.2, -0.2, 0.2, 0.2);
+      const rightWing = addMountMesh(root, new THREE.PlaneGeometry(2.6, 1.3), new THREE.MeshStandardMaterial({ color: mount.colors?.wing ?? 0x355338, transparent: true, opacity: 0.55, side: THREE.DoubleSide }), 1.18, 1.05, 0.2, -0.2, -0.2, -0.2);
+      const leftWingTip = addMountMesh(root, new THREE.PlaneGeometry(1.8, 0.9), new THREE.MeshStandardMaterial({ color: mount.colors?.wing ?? 0x355338, transparent: true, opacity: 0.5, side: THREE.DoubleSide }), -2.35, 1.1, 0.3, -0.24, 0.2, 0.55);
+      const rightWingTip = addMountMesh(root, new THREE.PlaneGeometry(1.8, 0.9), new THREE.MeshStandardMaterial({ color: mount.colors?.wing ?? 0x355338, transparent: true, opacity: 0.5, side: THREE.DoubleSide }), 2.35, 1.1, 0.3, -0.24, -0.2, -0.55);
+      const tailPivot = new THREE.Group();
+      tailPivot.position.set(0, 0.45, -1.4);
+      root.add(tailPivot);
+      for (let i = -1; i <= 1; i++) addMountMesh(tailPivot, new THREE.CylinderGeometry(0.04, 0.04, 1.1, 6), new THREE.MeshStandardMaterial({ color: 0x2d3d2c, roughness: 0.8 }), i * 0.54, -0.45, 0.1, Math.PI / 3.1, 0, i * 0.12);
+      root.userData.anim = { ...rig, body, chest, neck: chest, head, leftWing, rightWing, leftWingTip, rightWingTip, tailPivot, spearTipWorld: new THREE.Vector3(), spearForwardWorld: new THREE.Vector3(0, 0, 1) };
+      return root;
+    }
+
     function createPlayerMountModel(mount) {
       const safeMount = mount || MOUNT_DB[0];
-      const model = createBirdRider({
-        colors: safeMount.colors,
-        visualProfile: buildVisualProfileFromMount(safeMount)
-      });
+      const type = safeMount.creatureType || "wyvern";
+      const builders = { serpent: createSerpentMount, wyvern: createWyvernMount, griffon: createGriffonMount, arcane: createArcaneMount, dragon: createDragonMount, insect: createInsectMount };
+      const model = (builders[type] || createWyvernMount)(safeMount);
       model.userData.mountId = safeMount.id;
+      model.userData.creatureType = type;
       return model;
     }
 
@@ -2936,7 +3117,7 @@ const ENEMY_SPECIES = {
         pos: activeCheckpoint ? activeCheckpoint.pos.clone() : new THREE.Vector3(0, 12, 8),
         vel: new THREE.Vector3(0, 0, 0),
         yaw: Math.PI,
-        radius: 2.6,
+        radius: mountSelection?.hitboxRadius || 2.6,
         alive: true,
         invuln: 0,
         flapPhase: 0,
@@ -4174,6 +4355,7 @@ const ENEMY_SPECIES = {
     function refreshPlayerAppearance() {
       if (!player?.model) return;
       const mount = getEquippedMount();
+      player.radius = mount.hitboxRadius || 2.6;
       if (!player.model.userData?.anim || player.model.userData.mountId !== mount.id) {
         const oldModel = player.model;
         const replacement = createPlayerMountModel(mount);
@@ -5164,6 +5346,7 @@ function skyProfileForZone(zone) {
       else if (thrustState) wingState = "thrust";
 
       const mount = actor === player ? getEquippedMount() : null;
+      const creatureType = mount?.creatureType || actor.model.userData?.creatureType || "wyvern";
       const wingStyle = mount?.wingProfile?.includes("Membrane") || mount?.wingProfile?.includes("dive") ? "membrane" :
         mount?.wingProfile?.includes("halo") || mount?.wingProfile?.includes("Fins") ? "mystic" :
         mount?.wingProfile?.includes("Stub") ? "heavy" : "feather";
@@ -5187,26 +5370,47 @@ function skyProfileForZone(zone) {
       const easedFlap = flapCurve > 0 ? Math.pow(flapCurve, 0.65) : -Math.pow(Math.abs(flapCurve), 1.24);
       const flap = easedFlap * stateProfile.amp * styleMod.arc * flapStrength * ampMod + Math.sin(actor.flapPhase * 0.5) * 0.06 * styleMod.tip;
       const anim = actor.model.userData.anim;
+      if (creatureType === "arcane") {
+        if (anim.arcaneRing) anim.arcaneRing.rotation.z += dt * 1.8;
+        if (anim.arcaneRing2) anim.arcaneRing2.rotation.x -= dt * 1.25;
+        anim.rider.visible = false;
+        anim.body.position.y = 0.76 + Math.sin(actor.flapPhase * 1.5) * 0.08;
+      } else {
+        anim.rider.visible = true;
+      }
       const pose = {
         wingZ: stateProfile.baseWing + flap,
         tipZ: stateProfile.baseTip + flap * (1.15 * styleMod.tip),
         sweepX: stateProfile.sweepX * styleMod.sweep + (diveState ? 0.08 : 0)
       };
-      setWingPose(anim, pose, 1 - Math.pow(0.002, dt * 60));
+      if (creatureType !== "serpent" && creatureType !== "arcane") {
+        setWingPose(anim, pose, 1 - Math.pow(0.002, dt * 60));
+      }
 
-      const isSerpent = mount?.animationProfile?.toLowerCase().includes("serpent") || mount?.animationProfile?.toLowerCase().includes("undulate");
-      const isHover = mount?.animationProfile?.toLowerCase().includes("hover") || mount?.handling === "hoverMystic";
-      const isHeavy = mount?.handling === "heavyWarBeast";
+      const isSerpent = creatureType === "serpent";
+      const isHover = creatureType === "arcane";
+      const isHeavy = creatureType === "dragon" || creatureType === "griffon";
       const bobAmp = grounded ? (isHeavy ? 0.02 : 0.03) : (isHover ? 0.16 : 0.1 + styleMod.bounce);
       // VISUAL POLISH: stronger cape and tail response, smoother momentum read.
       anim.cape.rotation.x = 0.12 + Math.sin(actor.flapPhase * 0.78) * (grounded ? 0.07 : 0.28);
       anim.head.rotation.x = Math.sin(actor.flapPhase * 0.42) * 0.03 + (diveState ? -0.1 : landingState ? 0.06 : 0);
-      anim.neck.rotation.z = (isSerpent ? Math.sin(actor.flapPhase * 0.62) * 0.15 : Math.sin(actor.flapPhase * 0.36) * 0.06) - actor.model.rotation.z * 0.06;
+      anim.neck.rotation.z = (isSerpent ? Math.sin(actor.flapPhase * 0.62) * 0.22 : Math.sin(actor.flapPhase * 0.36) * 0.06) - actor.model.rotation.z * 0.06;
       anim.rider.rotation.z = THREE.MathUtils.lerp(anim.rider.rotation.z, -actor.vel.x * 0.009 + (thrustState ? -0.08 : 0), 1 - Math.pow(0.015, dt * 60));
       anim.rider.rotation.x = THREE.MathUtils.lerp(anim.rider.rotation.x, THREE.MathUtils.clamp(-actor.vel.y * (0.015 + (mount?.bodyPitchLag || 0.12) * 0.03), -0.28, 0.28), 1 - Math.pow(0.02, dt * 60));
       anim.rider.position.y = 0.02 + Math.sin(actor.flapPhase * 0.95) * bobAmp;
       anim.tailPivot.rotation.y = Math.sin(actor.flapPhase * (isSerpent ? 0.9 : 0.45) + horizontalSpeed * 0.04) * (mount?.tailSway || 0.22) * (isSerpent ? 1.4 : 1);
       anim.tailPivot.rotation.x = (isHeavy ? -0.08 : -0.16) + Math.sin(actor.flapPhase * (isHover ? 0.4 : 0.6)) * (isSerpent ? 0.28 : 0.16) + THREE.MathUtils.clamp(actor.vel.y * (isHeavy ? 0.02 : 0.012), -0.13, 0.16);
+      if (isSerpent && Array.isArray(anim.tailSegments)) {
+        anim.tailSegments.forEach((seg, idx) => {
+          seg.rotation.y = Math.sin(actor.flapPhase * 1.2 - idx * 0.65) * 0.26;
+          seg.rotation.x = Math.PI / 2.2 + Math.sin(actor.flapPhase * 1.05 - idx * 0.55) * 0.09;
+        });
+      }
+      if (creatureType === "insect") {
+        const jitter = Math.sin(actor.flapPhase * 6.5) * 0.08;
+        anim.leftWing.rotation.x += jitter * 0.55;
+        anim.rightWing.rotation.x -= jitter * 0.55;
+      }
 
       if (actor === player) updateSpearPose(actor, dt);
     }
@@ -6306,11 +6510,15 @@ function skyProfileForZone(zone) {
 
       const yaw = player.yaw;
       const camBack = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+      const mount = getEquippedMount();
+      const type = mount?.creatureType || "wyvern";
+      const camDistance = type === "dragon" ? 16.2 : type === "serpent" ? 11.4 : type === "griffon" ? 13.6 : 13;
+      const camHeight = type === "griffon" ? 5.7 : type === "arcane" ? 6.8 : 6.2;
       const camTargetPos = player.pos.clone()
-        .add(camBack.multiplyScalar(13))
-        .add(new THREE.Vector3(0, 6.2, 0));
+        .add(camBack.multiplyScalar(camDistance))
+        .add(new THREE.Vector3(0, camHeight, 0));
 
-      const lookAt = player.pos.clone().add(new THREE.Vector3(0, 2.2, 0));
+      const lookAt = player.pos.clone().add(new THREE.Vector3(0, type === "griffon" ? 1.8 : 2.2, 0));
 
       camera.position.lerp(camTargetPos, 1 - Math.pow(0.001, dt));
       camera.lookAt(lookAt);
@@ -6994,7 +7202,8 @@ function skyProfileForZone(zone) {
         const isEquipped = progress.mount === m.id;
         const b = document.createElement("button");
         b.style.cssText = `display:block;width:100%;text-align:left;margin:4px 0;border:1px solid ${isEquipped ? "rgba(251,191,36,.9)" : "rgba(255,255,255,.2)"};box-shadow:${isEquipped ? "0 0 10px rgba(251,191,36,.55)" : "none"};background:${isEquipped ? "rgba(251,191,36,.25)" : "rgba(255,255,255,.06)"};color:white;border-radius:7px;padding:6px;`;
-        b.innerHTML = `<div style="font-weight:700">${m.name}${isEquipped ? " <span style='color:#fde68a'>(Equipped)</span>" : ""}</div><div style="font-size:11px;opacity:.82">${MOUNT_ARCHETYPES[m.handling]?.label || m.classHint} • ${getMountHandlingDescriptor(m)}${m.lateral ? " • Q/E Lateral" : ""}</div>`;
+        const glyph = mountSilhouetteGlyph(m.creatureType);
+        b.innerHTML = `<div style="font-weight:700;display:flex;align-items:center;gap:8px"><span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(0,0,0,.35);font-size:14px">${glyph}</span><span>${m.name}${isEquipped ? " <span style='color:#fde68a'>(Equipped)</span>" : ""}</span></div><div style="font-size:11px;opacity:.82">${(m.creatureType || "wyvern").toUpperCase()} silhouette • ${MOUNT_ARCHETYPES[m.handling]?.label || m.classHint} • ${getMountHandlingDescriptor(m)}${m.lateral ? " • Q/E Lateral" : ""}</div>`;
         b.onclick = () => {
           if (!equipMount(m.id)) return;
           refreshPlayerAppearance();
