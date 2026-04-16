@@ -172,6 +172,11 @@
     <div class="line">Zone: <span id="wave">Great Forest Canopy</span></div>
     <div class="line">Checkpoint: <span id="checkpoint">Green Cliff Outpost</span></div>
     <div class="line">Enemies: <span id="enemies">0</span></div>
+    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+      <button id="saveBtn" style="padding:4px 8px;border-radius:7px;border:1px solid rgba(255,255,255,.25);background:rgba(52,211,153,.2);color:#ecfeff;cursor:pointer;font-weight:700;">Save</button>
+      <button id="loadBtn" style="padding:4px 8px;border-radius:7px;border:1px solid rgba(255,255,255,.25);background:rgba(96,165,250,.2);color:#ecfeff;cursor:pointer;font-weight:700;">Load</button>
+      <button id="clearSaveBtn" style="padding:4px 8px;border-radius:7px;border:1px solid rgba(255,255,255,.25);background:rgba(251,113,133,.18);color:#fee2e2;cursor:pointer;font-weight:700;">Delete Save</button>
+    </div>
   </div>
 
   <div id="controls">
@@ -317,6 +322,10 @@
     let activeCheckpoint = null;
     const STARTER_MOUNT_ID = "war-roc";
     const STARTER_WEAPON_ID = "iron-pike";
+    const LOCAL_SAVE_KEY = "joust3d_local_progress_v1";
+    const LEVEL_HEALTH_GAIN = 8;
+    const LEVEL_REGEN_GAIN = 0.09;
+    const LEVEL_REGEN_DELAY_REDUCTION = 0.015;
 
     let progress = {
       level: 1,
@@ -429,6 +438,33 @@
       bossFirstRewardClaimed: {}
     };
 
+    const BASE_PROGRESS_TEMPLATE = JSON.parse(JSON.stringify(progress));
+
+    function createFreshProgressState() {
+      return JSON.parse(JSON.stringify(BASE_PROGRESS_TEMPLATE));
+    }
+
+    function normalizeProgressForRuntime(input) {
+      const safe = createFreshProgressState();
+      const src = (input && typeof input === "object") ? input : {};
+      Object.assign(safe, src);
+      safe.upgrades = Object.assign({}, BASE_PROGRESS_TEMPLATE.upgrades, src.upgrades || {});
+      safe.inventory = Array.isArray(src.inventory) ? src.inventory.slice() : [];
+      safe.materials = Array.isArray(src.materials) ? src.materials.slice() : [];
+      safe.questItems = Array.isArray(src.questItems) ? src.questItems.slice() : [];
+      safe.quests = Array.isArray(src.quests) ? src.quests.slice() : [];
+      safe.ownedMounts = Array.isArray(src.ownedMounts) ? src.ownedMounts.slice() : [STARTER_MOUNT_ID];
+      safe.equipped = Object.assign({}, BASE_PROGRESS_TEMPLATE.equipped, src.equipped || {});
+      safe.bossClears = Object.assign({}, src.bossClears || {});
+      safe.bossFirstRewardClaimed = Object.assign({}, src.bossFirstRewardClaimed || {});
+      safe.level = Math.max(1, Math.floor(Number(safe.level) || 1));
+      safe.xp = Math.max(0, Number(safe.xp) || 0);
+      safe.xpNeed = Math.max(1, Math.floor(Number(safe.xpNeed) || xpNeededForLevel(safe.level)));
+      safe.points = Math.max(0, Math.floor(Number(safe.points) || 0));
+      safe.livesPurchased = Math.max(0, Math.floor(Number(safe.livesPurchased) || 0));
+      return safe;
+    }
+
     function normalizeMountOwnershipState() {
       const starter = MOUNT_DB.find((m) => m.id === STARTER_MOUNT_ID)?.id || MOUNT_DB[0]?.id;
       progress.ownedMounts = Array.isArray(progress.ownedMounts) ? progress.ownedMounts.filter((id, idx, arr) => arr.indexOf(id) === idx) : [];
@@ -517,6 +553,9 @@
     const upgradeHintEl = document.getElementById("upgradeHint");
     const upgradeTabsEl = document.getElementById("upgradeTabs");
     const abilityBarEl = document.getElementById("abilityBar");
+    const saveBtnEl = document.getElementById("saveBtn");
+    const loadBtnEl = document.getElementById("loadBtn");
+    const clearSaveBtnEl = document.getElementById("clearSaveBtn");
 
     const VENDOR_LABEL = {
       weapon: "Weapon Vendor",
@@ -948,7 +987,7 @@ const ENEMY_SPECIES = {
       shieldRam: { name: "Shield Ram", icon: "⬡", cooldown: 9, class: "warrior", desc: "Armored surge.", cast: () => castShieldRam() },
       skybreakerSlam: { name: "Skybreaker Slam", icon: "⬇", cooldown: 14, class: "warrior", desc: "Dive slam.", cast: () => castSkybreaker() },
       tripleThrust: { name: "Triple Thrust", icon: "⋮", cooldown: 12, class: "warrior", desc: "Three thrust pulses.", cast: () => { playerMeleeComboState.chain = 3; playerMeleeComboState.timer = 1.1; } },
-      warCry: { name: "War Cry", icon: "⚑", cooldown: 20, class: "warrior", desc: "Power + resist buff.", cast: () => { player.warCryTimer = 8; spawnBurst(player.pos.clone(), 10, 0xf87171); } },
+      warCry: { name: "War Cry", icon: "⚑", cooldown: 20, class: "warrior", desc: "Power + resist buff.", cast: () => { player.warCryTimer = 8; spawnBurst(player.pos.clone(), 10, 0xf87171); spawnAbilityRingFx(player.pos.clone(), 9.5, 0xf87171, 0.55, 0.2); } },
       piercingShot: { name: "Piercing Shot", icon: "➶", cooldown: 4, class: "ranger", desc: "Line projectile.", cast: () => castLineShot(1, 54, 26, 0x93c5fd) },
       splitShot: { name: "Split Shot", icon: "⫶", cooldown: 7, class: "ranger", desc: "Triple spread.", cast: () => castLineShot(3, 46, 16, 0xfde68a) },
       hunterMark: { name: "Hunter Mark", icon: "◉", cooldown: 12, class: "ranger", desc: "Mark high value target.", cast: () => castHunterMark() },
@@ -1174,9 +1213,113 @@ const ENEMY_SPECIES = {
       restartBtn.addEventListener("click", restartGame);
       tabBtnUpgradesEl.addEventListener("click", () => { progress.menuTab = "upgrades"; renderTabMenu(); });
       tabBtnInventoryEl.addEventListener("click", () => { progress.menuTab = "inventory"; renderTabMenu(); });
+      saveBtnEl?.addEventListener("click", () => saveProgressLocal(false));
+      loadBtnEl?.addEventListener("click", () => loadProgressLocal());
+      clearSaveBtnEl?.addEventListener("click", () => clearProgressLocalSave());
 
       updateUI();
       showCenterMessage("Explore the Overworld", 2.2);
+    }
+
+    function snapshotProgressState() {
+      return {
+        version: 1,
+        savedAt: Date.now(),
+        score,
+        gold,
+        lives,
+        progress: JSON.parse(JSON.stringify(progress)),
+        playerState: player ? {
+          pos: { x: player.pos.x, y: player.pos.y, z: player.pos.z },
+          vel: { x: player.vel.x, y: player.vel.y, z: player.vel.z },
+          health: player.health,
+          regenWait: player.regenWait,
+          yaw: player.yaw
+        } : null,
+        checkpointId: activeCheckpoint?.id || null,
+        lastRespawnPoint: { x: lastRespawnPoint.x, y: lastRespawnPoint.y, z: lastRespawnPoint.z },
+        playerAbilities: Object.keys(playerAbilities || {}),
+        playerAbilitySlots: Array.isArray(playerAbilitySlots) ? playerAbilitySlots.slice(0, 5) : [null, null, null, null, null]
+      };
+    }
+
+    function saveProgressLocal(isAuto = false) {
+      try {
+        localStorage.setItem(LOCAL_SAVE_KEY, JSON.stringify(snapshotProgressState()));
+        if (!isAuto) showCenterMessage("Progress Saved Locally", 0.8);
+        return true;
+      } catch (err) {
+        if (!isAuto) showCenterMessage("Save failed", 0.8);
+        return false;
+      }
+    }
+
+    function clearProgressLocalSave() {
+      localStorage.removeItem(LOCAL_SAVE_KEY);
+      showCenterMessage("Save cleared", 0.75);
+    }
+
+    function autoSaveProgress(trigger) {
+      saveProgressLocal(true);
+      if (trigger) showCenterMessage(`Auto-saved (${trigger})`, 0.35);
+    }
+
+    function loadProgressLocal() {
+      const raw = localStorage.getItem(LOCAL_SAVE_KEY);
+      if (!raw) {
+        showCenterMessage("No save found", 0.8);
+        return false;
+      }
+      let parsed = null;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (err) {
+        showCenterMessage("Save corrupted", 0.9);
+        return false;
+      }
+      try {
+        const base = createFreshProgressState();
+        progress = normalizeProgressForRuntime(Object.assign(base, parsed.progress || {}));
+        normalizeMountOwnershipState();
+
+        score = Math.max(0, Number(parsed.score) || 0);
+        gold = Math.max(0, Number(parsed.gold) || 0);
+        lives = Math.max(0, Number(parsed.lives) || 3);
+
+        initAbilitySystem();
+        syncAbilitiesFromUpgrades();
+        const savedAbilities = Array.isArray(parsed.playerAbilities) ? parsed.playerAbilities : [];
+        savedAbilities.forEach((abilityId) => unlockPlayerAbility(abilityId, false));
+        if (Array.isArray(parsed.playerAbilitySlots)) {
+          playerAbilitySlots = parsed.playerAbilitySlots.slice(0, 5).map((id) => (id && playerAbilities[id]) ? id : null);
+        }
+        renderAbilityBar();
+
+        refreshPlayerAppearance();
+        const stats = playerStats();
+        if (parsed.playerState?.pos) player.pos.set(parsed.playerState.pos.x || 0, parsed.playerState.pos.y || 12, parsed.playerState.pos.z || 0);
+        if (parsed.playerState?.vel) player.vel.set(parsed.playerState.vel.x || 0, parsed.playerState.vel.y || 0, parsed.playerState.vel.z || 0);
+        if (Number.isFinite(parsed.playerState?.yaw)) player.yaw = parsed.playerState.yaw;
+        player.health = THREE.MathUtils.clamp(Number(parsed.playerState?.health) || player.maxHealth, 1, player.maxHealth);
+        player.regenWait = Math.max(0, Number(parsed.playerState?.regenWait) || 0);
+
+        activeCheckpoint = checkpoints.find((cp) => cp.id === parsed.checkpointId) || activeCheckpoint || checkpoints[0] || null;
+        if (parsed.lastRespawnPoint) lastRespawnPoint.set(parsed.lastRespawnPoint.x || player.pos.x, parsed.lastRespawnPoint.y || player.pos.y, parsed.lastRespawnPoint.z || player.pos.z);
+        else if (activeCheckpoint) lastRespawnPoint.copy(activeCheckpoint.pos);
+
+        player.health = Math.min(player.maxHealth, player.health);
+        player.spellCooldown = 0;
+        player.spearCooldown = 0;
+        playerCooldowns = {};
+        updateActorTransform(player, 0);
+        updateUI();
+        renderTabMenu();
+        showCenterMessage("Loaded", 0.8);
+        return true;
+      } catch (err) {
+        showCenterMessage("Load failed", 0.8);
+        return false;
+      }
     }
 
     function createSky() {
@@ -3994,7 +4137,8 @@ const ENEMY_SPECIES = {
       const stat = (k) => (eqStats[k] || 0) + (temp[k] || 0);
       const mount = getEquippedMount();
 
-      const computedMaxHealth = 100 + progress.upgrades.healthBoost * 10 + stat("maxHealth");
+      const levelBonusHealth = Math.max(0, (progress.level - 1) * LEVEL_HEALTH_GAIN);
+      const computedMaxHealth = 100 + levelBonusHealth + progress.upgrades.healthBoost * 10 + stat("maxHealth");
       if (player) {
         if (!Number.isFinite(player.maxHealth) || player.maxHealth <= 0) player.maxHealth = computedMaxHealth;
         if (Math.abs(player.maxHealth - computedMaxHealth) > 0.001) {
@@ -4015,8 +4159,8 @@ const ENEMY_SPECIES = {
         flapBoost: 3 + progress.upgrades.flapPower * 0.4 + stat("flapBoost"),
         burstBonus: progress.upgrades.burstSpeed * 0.9 + stat("burstSpeed"),
         airControl: THREE.MathUtils.clamp(2.8 + progress.upgrades.airControl * 0.12 + stat("airControl"), 1.8, 6.2),
-        regenPerSecond: 1.4 + progress.upgrades.regenSpeed * 0.7 + stat("regenSpeed"),
-        regenDelay: Math.max(0.4, 2.6 - progress.upgrades.regenDelay * 0.22 + stat("regenDelay")),
+        regenPerSecond: 1.4 + Math.max(0, progress.level - 1) * LEVEL_REGEN_GAIN + progress.upgrades.regenSpeed * 0.7 + stat("regenSpeed"),
+        regenDelay: Math.max(0.35, 2.6 - progress.upgrades.regenDelay * 0.22 - Math.max(0, progress.level - 1) * LEVEL_REGEN_DELAY_REDUCTION + stat("regenDelay")),
         resistance: THREE.MathUtils.clamp(progress.upgrades.resistance * 0.03 + stat("resistance"), 0, 0.75),
         pickupRadius: 3.2 + progress.upgrades.pickupRadius * 0.9 + stat("pickupRadius"),
         collisionRecovery: THREE.MathUtils.clamp(progress.upgrades.bounceRecovery * 0.08 + stat("collisionRecovery"), 0, 0.82),
@@ -4194,20 +4338,36 @@ const ENEMY_SPECIES = {
       activeBossEncounter = null;
       bossVictoryTimer = 2.4;
       bossHealthWrapEl.style.display = "none";
+      autoSaveProgress("boss");
       updateUI();
     }
 
     function grantXP(amount) {
       progress.xp += amount;
       let leveled = false;
+      let levelsGained = 0;
       while (progress.xp >= progress.xpNeed) {
+        const prevMax = player?.maxHealth || 100;
         progress.xp -= progress.xpNeed;
         progress.level += 1;
         progress.points += 1;
         progress.xpNeed = xpNeededForLevel(progress.level);
+        if (player) {
+          playerStats();
+          const gainedMax = Math.max(0, player.maxHealth - prevMax);
+          player.health = Math.min(player.maxHealth, player.health + gainedMax);
+          player.regenWait = Math.max(0, player.regenWait - 0.08);
+          spawnBurst(player.pos.clone().add(new THREE.Vector3(0, 1.5, 0)), 14, 0xfde68a);
+          spawnAbilityRingFx(player.pos.clone(), 8.5, 0xfde68a, 0.55, 0.16);
+        }
         leveled = true;
+        levelsGained += 1;
       }
-      if (leveled) showCenterMessage(`LEVEL ${progress.level}! Upgrade Ready`, 1.2);
+      if (leveled) {
+        showCenterMessage(`LEVEL ${progress.level}!`, 1.4, `+${LEVEL_HEALTH_GAIN * levelsGained} Max HP • Regen Up`);
+        autoSaveProgress("level");
+        updateUI();
+      }
     }
 
     function pickupRarityFor(kind, value) {
@@ -4619,11 +4779,13 @@ const ENEMY_SPECIES = {
       const slot = playerAbilitySlots.findIndex((id) => ABILITY_DEFS[id]?.summonType === type);
       const gid = `${type}-${Math.floor(performance.now())}`;
       playerActiveSummonGroups[gid] = [];
+      spawnAbilityRingFx(player.pos.clone(), 5.2, 0x2dd4bf, 0.48, 0.14);
       for (let i = 0; i < count; i++) {
         const ally = createSummonFromType(type, false, life, slot);
         if (!ally) continue;
         playerActiveSummonGroups[gid].push(ally);
         allySummons.push(ally);
+        spawnBurst(ally.pos.clone(), 4, SUMMON_TYPE_DEFS[type]?.vfx || 0x67e8f9);
       }
     }
 
@@ -4783,6 +4945,7 @@ const ENEMY_SPECIES = {
           if (ally.pos.distanceTo(target.pos) < strikeRange && ally.attackTimer <= 0) {
             const baseDamage = 8 + progress.upgrades.summonDamage * 5;
             damageEnemy(target, baseDamage * ally.damageScale, dir, 'ally');
+            spawnAbilityLineFx(ally.pos.clone().add(new THREE.Vector3(0, 1, 0)), dir, Math.min(strikeRange + 1, 9), 0.2, SUMMON_TYPE_DEFS[ally.summonType]?.vfx || 0x67e8f9, 0.12);
             if (ally.summonType === 'serpentWispCompanion') {
               target.poisonTimer = Math.max(target.poisonTimer, 3 + progress.upgrades.summonEffects * 0.7);
               target.freezeTimer = Math.max(target.freezeTimer, 0.4 + progress.upgrades.summonEffects * 0.1);
@@ -4816,6 +4979,62 @@ const ENEMY_SPECIES = {
       }
     }
 
+    function spawnAbilityRingFx(pos, radius = 8, color = 0x7dd3fc, life = 0.45, thickness = 0.18) {
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(Math.max(1.2, radius), thickness, 10, 34),
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.75, depthWrite: false })
+      );
+      ring.position.copy(pos);
+      ring.rotation.x = Math.PI / 2;
+      scene.add(ring);
+      particles.push({ kind: "fxmesh", mesh: ring, life, maxLife: life, scaleGrow: 1.8 });
+    }
+
+    function spawnAbilityLineFx(origin, dir, length = 30, width = 0.55, color = 0xfbbf24, life = 0.22) {
+      const lane = new THREE.Mesh(
+        new THREE.CylinderGeometry(width, width, length, 9, 1, true),
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.62, depthWrite: false })
+      );
+      lane.rotation.z = Math.PI / 2;
+      const d = dir.clone().normalize();
+      lane.position.copy(origin).add(d.clone().multiplyScalar(length * 0.5));
+      lane.lookAt(lane.position.clone().add(d));
+      scene.add(lane);
+      particles.push({ kind: "fxmesh", mesh: lane, life, maxLife: life, scaleGrow: 1.25 });
+    }
+
+    function spawnAbilityConeFx(origin, yaw, range = 8, color = 0xfb923c, life = 0.28) {
+      const cone = new THREE.Mesh(
+        new THREE.ConeGeometry(Math.max(1.6, range * 0.42), range, 18, 1, true),
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.42, side: THREE.DoubleSide, depthWrite: false })
+      );
+      cone.position.copy(origin).add(new THREE.Vector3(0, 1.5, 0));
+      cone.rotation.x = -Math.PI / 2;
+      cone.rotation.z = yaw;
+      scene.add(cone);
+      particles.push({ kind: "fxmesh", mesh: cone, life, maxLife: life, scaleGrow: 1.08 });
+    }
+
+    function spawnTargetMarkFx(target) {
+      if (!target?.alive) return;
+      const mark = new THREE.Mesh(
+        new THREE.TorusGeometry(1.15, 0.08, 8, 24),
+        new THREE.MeshBasicMaterial({ color: 0xfde047, transparent: true, opacity: 0.92, depthWrite: false })
+      );
+      mark.position.copy(target.pos).add(new THREE.Vector3(0, 2.2, 0));
+      mark.rotation.x = Math.PI / 2;
+      scene.add(mark);
+      particles.push({ kind: "fxfollow", mesh: mark, follow: target, y: 2.2, life: 0.8, maxLife: 0.8 });
+    }
+
+    function spawnVoidOrbFieldFx(center, radius = 9) {
+      const orb = new THREE.Mesh(new THREE.SphereGeometry(0.85, 14, 14), new THREE.MeshBasicMaterial({ color: 0x818cf8, transparent: true, opacity: 0.8 }));
+      orb.position.copy(center).add(new THREE.Vector3(0, 1.6, 0));
+      scene.add(orb);
+      particles.push({ kind: "fxmesh", mesh: orb, life: 0.75, maxLife: 0.75, bob: true, spin: true });
+      spawnAbilityRingFx(center.clone().add(new THREE.Vector3(0, 0.3, 0)), radius, 0xa78bfa, 0.62, 0.14);
+    }
+
     function castMeleeArc(range = 8, damage = 30) {
       const f = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
       for (const enemy of enemies) {
@@ -4826,10 +5045,11 @@ const ENEMY_SPECIES = {
         if (dot > -0.3) damageEnemy(enemy, damage + progress.upgrades.warriorImpact * 5, f, 'ability');
       }
       spawnBurst(player.pos.clone().add(new THREE.Vector3(0, 1.4, 0)), 8, 0xfca5a5);
+      spawnAbilityConeFx(player.pos.clone(), player.yaw, range, 0xfb7185, 0.28);
     }
 
-    function castShieldRam() { const f = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)); player.vel.add(f.multiplyScalar(13)); player.invuln = Math.max(player.invuln, 0.45 + progress.upgrades.guardFrames * 0.08); castMeleeArc(7.5, 24); }
-    function castSkybreaker() { player.vel.y -= 14; castMeleeArc(10 + progress.upgrades.slamRadius * 1.1, 38); }
+    function castShieldRam() { const f = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)); player.vel.add(f.multiplyScalar(13)); player.invuln = Math.max(player.invuln, 0.45 + progress.upgrades.guardFrames * 0.08); spawnAbilityLineFx(player.pos.clone().add(new THREE.Vector3(0,1.2,0)), f, 10, 0.6, 0xfb923c, 0.2); castMeleeArc(7.5, 24); }
+    function castSkybreaker() { player.vel.y -= 14; const radius = 10 + progress.upgrades.slamRadius * 1.1; spawnAbilityRingFx(player.pos.clone(), radius, 0xf97316, 0.6, 0.24); castMeleeArc(radius, 38); }
     function castLineShot(count, range, damage, color) {
       const base = player.yaw;
       const spread = count === 1 ? [0] : [-0.18, 0, 0.18];
@@ -4843,15 +5063,17 @@ const ENEMY_SPECIES = {
         }
       }
       spawnBurst(player.pos.clone().add(new THREE.Vector3(0, 1.2, 0)), 6, color);
+      const forward = new THREE.Vector3(Math.sin(base), 0, Math.cos(base));
+      spawnAbilityLineFx(player.pos.clone().add(new THREE.Vector3(0, 1.2, 0)), forward, range, 0.35 + count * 0.16, color, 0.18);
     }
-    function castHunterMark() { const t = enemies.filter((e)=>e.alive).sort((a,b)=>a.pos.distanceTo(player.pos)-b.pos.distanceTo(player.pos))[0]; if (!t) return; playerMarkedEnemy = t; spawnBurst(t.pos.clone().add(new THREE.Vector3(0,2,0)), 8, 0xfde047); }
-    function castVolleyRain() { const f = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)); const c = player.pos.clone().add(f.multiplyScalar(18)); for (const e of enemies) if (e.alive && e.pos.distanceTo(c) < 11) damageEnemy(e, 24 + progress.upgrades.rangerMastery * 5, e.pos.clone().sub(c).normalize(), 'projectile'); spawnBurst(c.add(new THREE.Vector3(0,1,0)), 14, 0x93c5fd); }
-    function castGrappleShot() { const s = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw)); player.vel.add(s.multiplyScalar((Math.random()<0.5?-1:1)*11)); castLineShot(1, 40, 18, 0x86efac); }
+    function castHunterMark() { const t = enemies.filter((e)=>e.alive).sort((a,b)=>a.pos.distanceTo(player.pos)-b.pos.distanceTo(player.pos))[0]; if (!t) return; playerMarkedEnemy = t; spawnBurst(t.pos.clone().add(new THREE.Vector3(0,2,0)), 8, 0xfde047); spawnTargetMarkFx(t); }
+    function castVolleyRain() { const f = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)); const c = player.pos.clone().add(f.multiplyScalar(18)); for (const e of enemies) if (e.alive && e.pos.distanceTo(c) < 11) damageEnemy(e, 24 + progress.upgrades.rangerMastery * 5, e.pos.clone().sub(c).normalize(), 'projectile'); spawnBurst(c.add(new THREE.Vector3(0,1,0)), 14, 0x93c5fd); spawnAbilityRingFx(c.clone(), 11, 0x93c5fd, 0.45, 0.12); }
+    function castGrappleShot() { const s = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw)); player.vel.add(s.multiplyScalar((Math.random()<0.5?-1:1)*11)); spawnAbilityLineFx(player.pos.clone(), s, 9, 0.28, 0x34d399, 0.14); castLineShot(1, 40, 18, 0x86efac); }
     function castArcBolt() { castLineShot(1, 48, 20 + progress.upgrades.sorcererPower * 5, 0xc4b5fd); }
-    function castChainArc() { castSorcererSpell(); }
-    function castFlameLance() { castLineShot(1, 36, 28 + progress.upgrades.spellBurn * 4, 0xfb923c); }
-    function castFrostRing() { for (const e of enemies) if (e.alive && e.pos.distanceTo(player.pos) < 11 + progress.upgrades.spellRadius * 1.4) { damageEnemy(e, 16 + progress.upgrades.sorcererPower * 4, e.pos.clone().sub(player.pos).normalize(), 'spell'); e.freezeTimer = Math.max(e.freezeTimer, 0.5 + progress.upgrades.spellFreeze * 0.2); } spawnBurst(player.pos.clone(), 12, 0x93c5fd); }
-    function castVoidOrb() { const f = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)); const c = player.pos.clone().add(f.multiplyScalar(12)); for (const e of enemies) if (e.alive && e.pos.distanceTo(c) < 9) { damageEnemy(e, 26 + progress.upgrades.spellVoidWeakness * 4, e.pos.clone().sub(c).normalize(), 'spell'); e.stunTimer = Math.max(e.stunTimer, 0.4); } spawnBurst(c, 12, 0x818cf8); }
+    function castChainArc() { castSorcererSpell(); spawnAbilityLineFx(player.pos.clone().add(new THREE.Vector3(0,1.4,0)), new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)), 20, 0.25, 0x60a5fa, 0.16); }
+    function castFlameLance() { const d = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)); spawnAbilityLineFx(player.pos.clone().add(new THREE.Vector3(0,1.1,0)), d, 36, 0.7, 0xfb923c, 0.32); castLineShot(1, 36, 28 + progress.upgrades.spellBurn * 4, 0xfb923c); }
+    function castFrostRing() { const ringRadius = 11 + progress.upgrades.spellRadius * 1.4; for (const e of enemies) if (e.alive && e.pos.distanceTo(player.pos) < ringRadius) { damageEnemy(e, 16 + progress.upgrades.sorcererPower * 4, e.pos.clone().sub(player.pos).normalize(), 'spell'); e.freezeTimer = Math.max(e.freezeTimer, 0.5 + progress.upgrades.spellFreeze * 0.2); } spawnBurst(player.pos.clone(), 12, 0x93c5fd); spawnAbilityRingFx(player.pos.clone(), ringRadius, 0x7dd3fc, 0.62, 0.16); }
+    function castVoidOrb() { const f = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw)); const c = player.pos.clone().add(f.multiplyScalar(12)); for (const e of enemies) if (e.alive && e.pos.distanceTo(c) < 9) { damageEnemy(e, 26 + progress.upgrades.spellVoidWeakness * 4, e.pos.clone().sub(c).normalize(), 'spell'); e.stunTimer = Math.max(e.stunTimer, 0.4); } spawnBurst(c, 12, 0x818cf8); spawnVoidOrbFieldFx(c, 9); }
 
 function skyProfileForZone(zone) {
       const style = zone?.terrainStyle || "forest";
@@ -5118,6 +5340,7 @@ function skyProfileForZone(zone) {
             activeCheckpoint = cp;
             lastRespawnPoint.copy(cp.pos);
             showCenterMessage(`Checkpoint: ${cp.name}`, 1.1);
+            autoSaveProgress("checkpoint");
             updateUI();
           }
           if (progress.points > 0 || gold >= lifeCost()) showUpgradePanel();
@@ -5915,6 +6138,25 @@ function skyProfileForZone(zone) {
             scene.remove(p.mesh);
             particles.splice(i, 1);
           }
+        } else if (p.kind === "fxmesh") {
+          p.life -= dt;
+          if (p.bob) p.mesh.position.y += Math.sin(t * 11) * 0.004;
+          if (p.spin) p.mesh.rotation.y += dt * 5.5;
+          const elapsed = 1 - (p.life / Math.max(0.0001, p.maxLife || p.life || 1));
+          const grow = p.scaleGrow || 1;
+          p.mesh.scale.setScalar(1 + elapsed * (grow - 1));
+          if (p.mesh.material) {
+            p.mesh.material.transparent = true;
+            p.mesh.material.opacity = Math.max(0, 0.85 * (p.life / Math.max(0.0001, p.maxLife || 1)));
+          }
+          if (p.life <= 0) { scene.remove(p.mesh); particles.splice(i, 1); }
+        } else if (p.kind === "fxfollow") {
+          p.life -= dt;
+          if (!p.follow?.alive) p.life = 0;
+          if (p.follow?.pos) p.mesh.position.copy(p.follow.pos).add(new THREE.Vector3(0, p.y || 2, 0));
+          p.mesh.rotation.z += dt * 3.4;
+          if (p.mesh.material) p.mesh.material.opacity = Math.max(0, p.life / Math.max(0.001, p.maxLife || 1));
+          if (p.life <= 0) { scene.remove(p.mesh); particles.splice(i, 1); }
         } else if (p.kind === "ember") {
           p.mesh.position.addScaledVector(p.mesh.userData.drift, 1);
           p.mesh.position.x += Math.sin(t + p.mesh.position.z * 0.03) * 0.01;
@@ -6376,6 +6618,7 @@ function skyProfileForZone(zone) {
       spawnBurst(player.pos.clone().add(new THREE.Vector3(0, 2.2, 0)), 10, 0xfbbf24);
       showCenterMessage(`Upgrade acquired: ${node.label}`, 0.7);
       refreshUpgradeTreeUI();
+      autoSaveProgress("upgrade");
       return true;
     }
 
@@ -6444,6 +6687,7 @@ function skyProfileForZone(zone) {
       showCenterMessage(`Bought ${item.name}`, 0.6);
       renderInteractionMenu();
       updateUI();
+      autoSaveProgress("shop");
     }
 
     function sellPlayerItem(itemId) {
@@ -6481,6 +6725,7 @@ function skyProfileForZone(zone) {
       showCenterMessage(`Accepted quest: ${q.name}`, 0.7);
       renderInteractionMenu();
       updateUI();
+      autoSaveProgress("quest");
     }
 
     function turnInQuest(questId) {
@@ -6496,6 +6741,7 @@ function skyProfileForZone(zone) {
       showCenterMessage(`Quest turned in: ${q.name}`, 0.8);
       renderInteractionMenu();
       updateUI();
+      autoSaveProgress("quest");
     }
 
     function openVendorMenu(vendor) {
