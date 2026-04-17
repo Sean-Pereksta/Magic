@@ -633,7 +633,10 @@
       serpent: "Weaver",
       dragonGlide: "Crusher",
       beamSweep: "Caster",
-      heavyLancer: "Duelist"
+      heavyLancer: "Duelist",
+      wyvernDive: "Crusher",
+      mantaSweep: "Weaver",
+      leviathanSurge: "Crusher"
     };
 
     
@@ -755,11 +758,12 @@ const ENEMY_SPECIES = {
       canyonAmbushLancer: { label: "Canyon Ambush Lancer", family: "Badlands", behavior: "heavyLancer", health: 206, speed: 12.8, turn: 1.52, aggroRange: 64, leashRange: 116, preferDistance: 11, attackCooldown: 1.95, damage: 27, knockback: 9.0, bounceMass: 1.92, reward: { score: 258, xp: 43, gold: 12 }, colors: { bird: 0x7a5e4b, wing: 0x4f3d31, rider: 0xf0e3d6, cloth: 0xe68b5f } }
     };
 
-    const SILHOUETTE_TYPES = ["bird", "wyvern", "serpent", "orb", "leviathan", "construct", "insect"];
+    const SILHOUETTE_TYPES = ["bird", "wyvern", "serpent", "orb", "leviathan", "manta", "construct", "insect"];
 
     function inferSilhouetteType(enemyType, speciesData = {}) {
       if (enemyType.includes("construct")) return "construct";
-      if (enemyType.includes("orb") || enemyType.includes("spirit") || enemyType.includes("manta") || enemyType.includes("ray")) return "orb";
+      if (enemyType.includes("manta") || enemyType.includes("ray")) return "manta";
+      if (enemyType.includes("orb") || enemyType.includes("spirit")) return "orb";
       if (enemyType.includes("leviathan") || enemyType.includes("eel")) return "leviathan";
       if (enemyType.includes("serpent") || speciesData.behavior === "serpent") return "serpent";
       if (enemyType.includes("drake") || enemyType.includes("dragon") || enemyType.includes("wyvern")) return "wyvern";
@@ -771,6 +775,32 @@ const ENEMY_SPECIES = {
       if (!species.silhouetteType || !SILHOUETTE_TYPES.includes(species.silhouetteType)) {
         species.silhouetteType = inferSilhouetteType(enemyType, species);
       }
+    });
+
+    const SPECIES_SILHOUETTE_OVERRIDES = {
+      vineDrake: "wyvern",
+      fireDrake: "wyvern",
+      stormDrake: "wyvern",
+      emberDrake: "wyvern",
+      nightglassDrake: "wyvern",
+      redMesaDrake: "wyvern",
+      stormSpirit: "orb",
+      voidDragon: "wyvern",
+      moonbeamConstruct: "orb",
+      moonOrbSentinel: "orb",
+      prismHaloWatcher: "orb",
+      boltRay: "manta",
+      voidManta: "manta",
+      arcManta: "manta",
+      skyEel: "leviathan",
+      thunderSerpent: "leviathan",
+      ribbonSerpent: "serpent",
+      bonecrestSerpent: "serpent",
+      magmaSerpent: "serpent",
+      shadeSerpent: "serpent"
+    };
+    Object.entries(SPECIES_SILHOUETTE_OVERRIDES).forEach(([speciesKey, silhouetteType]) => {
+      if (ENEMY_SPECIES[speciesKey]) ENEMY_SPECIES[speciesKey].silhouetteType = silhouetteType;
     });
 
     const RARITY_COLORS = { common: "#d1d5db", uncommon: "#86efac", rare: "#93c5fd", epic: "#c4b5fd", legendary: "#fbbf24" };
@@ -1073,6 +1103,7 @@ const ENEMY_SPECIES = {
       const silhouette = (mount.silhouetteProfile || "").toLowerCase();
       const animation = (mount.animationProfile || "").toLowerCase();
       if (name.includes("serpent") || silhouette.includes("serpent") || animation.includes("serpent") || animation.includes("undulate")) mount.creatureType = "serpent";
+      else if (name.includes("manta") || name.includes("ray") || silhouette.includes("manta") || animation.includes("manta")) mount.creatureType = "manta";
       else if (name.includes("wyvern") || silhouette.includes("wyvern")) mount.creatureType = "wyvern";
       else if (name.includes("gryphon") || silhouette.includes("gryphon")) mount.creatureType = "griffon";
       else if (name.includes("orb") || name.includes("seraph") || hint.includes("hover")) mount.creatureType = "arcane";
@@ -1081,7 +1112,8 @@ const ENEMY_SPECIES = {
       else mount.creatureType = "wyvern";
 
       const creaturePhysics = {
-        serpent: { turn: 1.28, accel: 1.08, glideFactor: 1.36, gravityScale: 0.72, boostPower: 7.2, boostCooldown: 0.42, boostDuration: 0.2, flapBurst: 6.6, bodyPitchLag: 0.06, lateral: true, hitboxRadius: 2.05, hitboxLength: 3.5 },
+        serpent: { turn: 1.16, accel: 0.98, glideFactor: 1.44, gravityScale: 0.74, boostPower: 7.4, boostCooldown: 0.44, boostDuration: 0.22, flapBurst: 6.8, bodyPitchLag: 0.08, lateral: true, hitboxRadius: 2.0, hitboxLength: 3.9 },
+        manta: { turn: 1.08, accel: 0.9, glideFactor: 1.5, gravityScale: 0.64, boostPower: 6.9, boostCooldown: 0.38, boostDuration: 0.2, flapBurst: 6.1, bodyPitchLag: 0.05, lateral: true, hitboxRadius: 2.35, hitboxLength: 4.2 },
         wyvern: { turn: 0.88, accel: 0.9, glideFactor: 0.86, gravityScale: 1.12, boostPower: 10.1, boostCooldown: 0.92, boostDuration: 0.27, flapBurst: 9.2, bodyPitchLag: 0.16, hitboxRadius: 2.75, hitboxLength: 2.8 },
         griffon: { turn: 0.82, accel: 0.82, glideFactor: 0.72, gravityScale: 1.24, boostPower: 10.8, boostCooldown: 1.08, boostDuration: 0.28, flapBurst: 8.8, bodyPitchLag: 0.22, hitboxRadius: 2.9, hitboxLength: 2.4 },
         arcane: { turn: 1.32, accel: 1.06, glideFactor: 1.42, gravityScale: 0.62, boostPower: 7.4, boostCooldown: 0.34, boostDuration: 0.18, flapBurst: 5.8, bodyPitchLag: 0.03, lateral: true, hitboxRadius: 1.85, hitboxLength: 1.9 },
@@ -2952,19 +2984,53 @@ const ENEMY_SPECIES = {
     function createWyvernMount(mount) {
       const rig = createBaseMountRig(mount);
       const root = rig.root;
-      const body = addMountMesh(root, new THREE.BoxGeometry(2.5, 1.0, 3.7), new THREE.MeshStandardMaterial({ color: mount.colors?.bird ?? 0x7c4b2c, roughness: 0.8 }), 0, 0.3, 0.2);
-      const chest = addMountMesh(root, new THREE.BoxGeometry(2.0, 0.95, 1.5), new THREE.MeshStandardMaterial({ color: mount.colors?.bird ?? 0x7c4b2c, roughness: 0.78 }), 0, 0.45, 1.8);
-      const neck = addMountMesh(root, new THREE.CylinderGeometry(0.25, 0.4, 1.4, 8), new THREE.MeshStandardMaterial({ color: mount.colors?.bird ?? 0x7c4b2c, roughness: 0.8 }), 0, 0.92, 2.6, Math.PI / 4.5);
-      const head = addMountMesh(root, new THREE.BoxGeometry(0.72, 0.5, 1.2), new THREE.MeshStandardMaterial({ color: mount.colors?.bird ?? 0x7c4b2c, roughness: 0.75 }), 0, 1.28, 3.28);
+      const hideMat = new THREE.MeshStandardMaterial({ color: mount.colors?.bird ?? 0x7c4b2c, roughness: 0.72, metalness: 0.08 });
+      const membraneMat = new THREE.MeshStandardMaterial({ color: mount.colors?.wing ?? 0x5a3c2a, roughness: 0.86, metalness: 0.05, transparent: true, opacity: 0.95, side: THREE.DoubleSide });
+      const body = addMountMesh(root, new THREE.CapsuleGeometry(0.82, 3.6, 7, 14), hideMat, 0, 0.38, 0.02, Math.PI / 2.1, 0.02, 0);
+      const chest = addMountMesh(root, new THREE.SphereGeometry(1.06, 12, 10), hideMat, 0, 0.54, 1.45);
+      chest.scale.set(1.1, 0.82, 1.25);
+      const neck = addMountMesh(root, new THREE.CylinderGeometry(0.22, 0.36, 1.7, 10), hideMat, 0, 0.86, 2.32, Math.PI / 4.7);
+      const head = addMountMesh(root, new THREE.ConeGeometry(0.42, 1.58, 8), hideMat, 0, 1.16, 3.3, Math.PI / 2, 0, 0);
+      head.scale.set(0.95, 0.74, 1.4);
+      addMountMesh(root, new THREE.ConeGeometry(0.11, 0.54, 6), new THREE.MeshStandardMaterial({ color: mount.colors?.cloth ?? 0xc97f54, roughness: 0.6 }), 0, 1.58, 3.12, -0.35, 0, 0);
+      addMountMesh(root, new THREE.ConeGeometry(0.08, 0.34, 6), new THREE.MeshStandardMaterial({ color: mount.colors?.cloth ?? 0xc97f54, roughness: 0.6 }), -0.26, 1.38, 3.0, 0.24, 0, 0.15);
+      addMountMesh(root, new THREE.ConeGeometry(0.08, 0.34, 6), new THREE.MeshStandardMaterial({ color: mount.colors?.cloth ?? 0xc97f54, roughness: 0.6 }), 0.26, 1.38, 3.0, 0.24, 0, -0.15);
       const wingMat = new THREE.MeshStandardMaterial({ color: mount.colors?.wing ?? 0x5a3c2a, roughness: 0.86 });
-      const leftWing = addMountMesh(root, new THREE.BoxGeometry(3.6, 0.2, 2.2), wingMat, -2.4, 0.55, 0.6, -0.04, 0, 0.4);
-      const rightWing = addMountMesh(root, new THREE.BoxGeometry(3.6, 0.2, 2.2), wingMat, 2.4, 0.55, 0.6, -0.04, 0, -0.4);
-      const leftWingTip = addMountMesh(root, new THREE.BoxGeometry(2.9, 0.14, 1.5), wingMat, -4.7, 0.48, 0.5, -0.08, 0, 0.76);
-      const rightWingTip = addMountMesh(root, new THREE.BoxGeometry(2.9, 0.14, 1.5), wingMat, 4.7, 0.48, 0.5, -0.08, 0, -0.76);
+      const leftWing = addMountMesh(root, new THREE.BoxGeometry(4.0, 0.22, 0.36), wingMat, -2.6, 0.7, 0.18, -0.12, 0.03, 0.28);
+      const rightWing = addMountMesh(root, new THREE.BoxGeometry(4.0, 0.22, 0.36), wingMat, 2.6, 0.7, 0.18, -0.12, -0.03, -0.28);
+      const leftWingTip = addMountMesh(root, new THREE.BoxGeometry(3.8, 0.16, 0.28), wingMat, -5.8, 0.6, -0.05, -0.16, 0.06, 0.6);
+      const rightWingTip = addMountMesh(root, new THREE.BoxGeometry(3.8, 0.16, 0.28), wingMat, 5.8, 0.6, -0.05, -0.16, -0.06, -0.6);
+      addMountMesh(root, new THREE.PlaneGeometry(5.0, 1.8), membraneMat, -4.1, 0.52, 0.68, -0.42, 0.1, 0.26);
+      addMountMesh(root, new THREE.PlaneGeometry(5.0, 1.8), membraneMat, 4.1, 0.52, 0.68, -0.42, -0.1, -0.26);
       const tailPivot = new THREE.Group();
-      tailPivot.position.set(0, 0.35, -2.05);
+      tailPivot.position.set(0, 0.3, -2.25);
       root.add(tailPivot);
-      addMountMesh(tailPivot, new THREE.CylinderGeometry(0.22, 0.34, 3.2, 8), new THREE.MeshStandardMaterial({ color: mount.colors?.wing ?? 0x5a3c2a, roughness: 0.85 }), 0, 0, -1.4, Math.PI / 2.05);
+      addMountMesh(tailPivot, new THREE.CylinderGeometry(0.16, 0.28, 4.7, 10), new THREE.MeshStandardMaterial({ color: mount.colors?.wing ?? 0x5a3c2a, roughness: 0.85 }), 0, 0, -2.16, Math.PI / 2.06);
+      addMountMesh(tailPivot, new THREE.ConeGeometry(0.18, 0.82, 8), new THREE.MeshStandardMaterial({ color: mount.colors?.cloth ?? 0xc97f54, roughness: 0.7 }), 0, -0.02, -4.72, Math.PI / 2.02);
+      root.userData.anim = { ...rig, body, chest, neck, head, leftWing, rightWing, leftWingTip, rightWingTip, tailPivot, spearTipWorld: new THREE.Vector3(), spearForwardWorld: new THREE.Vector3(0, 0, 1) };
+      return root;
+    }
+
+    function createMantaMount(mount) {
+      const rig = createBaseMountRig(mount, true);
+      const root = rig.root;
+      const bodyMat = new THREE.MeshStandardMaterial({ color: mount.colors?.bird ?? 0x84b3c7, roughness: 0.58, metalness: 0.08, emissive: mount.colors?.cloth ?? 0x67e8f9, emissiveIntensity: 0.14 });
+      const finMat = new THREE.MeshStandardMaterial({ color: mount.colors?.wing ?? 0x5b89b3, roughness: 0.52, metalness: 0.06, transparent: true, opacity: 0.92, side: THREE.DoubleSide });
+      const body = addMountMesh(root, new THREE.SphereGeometry(1.35, 22, 18), bodyMat, 0, 0.76, 0);
+      body.scale.set(1.1, 0.34, 1.6);
+      const chest = addMountMesh(root, new THREE.SphereGeometry(0.9, 16, 14), bodyMat, 0, 0.72, 1.02);
+      chest.scale.set(0.84, 0.3, 0.9);
+      const leftWing = addMountMesh(root, new THREE.PlaneGeometry(5.7, 2.9), finMat, -2.85, 0.72, 0.2, -0.22, 0.02, 0.09);
+      const rightWing = addMountMesh(root, new THREE.PlaneGeometry(5.7, 2.9), finMat, 2.85, 0.72, 0.2, -0.22, -0.02, -0.09);
+      const leftWingTip = addMountMesh(root, new THREE.PlaneGeometry(3.3, 1.8), finMat, -5.6, 0.68, -0.18, -0.28, 0.05, 0.2);
+      const rightWingTip = addMountMesh(root, new THREE.PlaneGeometry(3.3, 1.8), finMat, 5.6, 0.68, -0.18, -0.28, -0.05, -0.2);
+      const neck = addMountMesh(root, new THREE.CylinderGeometry(0.2, 0.26, 0.7, 10), bodyMat, 0, 0.7, 1.68, Math.PI / 2.95);
+      const head = addMountMesh(root, new THREE.SphereGeometry(0.34, 12, 10), bodyMat, 0, 0.68, 2.0);
+      head.scale.set(0.84, 0.4, 1.05);
+      const tailPivot = new THREE.Group();
+      tailPivot.position.set(0, 0.64, -1.3);
+      root.add(tailPivot);
+      addMountMesh(tailPivot, new THREE.CylinderGeometry(0.06, 0.09, 4.8, 8), new THREE.MeshStandardMaterial({ color: mount.colors?.cloth ?? 0x67e8f9, roughness: 0.5, emissive: mount.colors?.cloth ?? 0x67e8f9, emissiveIntensity: 0.22 }), 0, 0, -2.34, Math.PI / 2.02);
       root.userData.anim = { ...rig, body, chest, neck, head, leftWing, rightWing, leftWingTip, rightWingTip, tailPivot, spearTipWorld: new THREE.Vector3(), spearForwardWorld: new THREE.Vector3(0, 0, 1) };
       return root;
     }
@@ -3042,7 +3108,7 @@ const ENEMY_SPECIES = {
     function createPlayerMountModel(mount) {
       const safeMount = mount || MOUNT_DB[0];
       const type = safeMount.creatureType || "wyvern";
-      const builders = { serpent: createSerpentMount, wyvern: createWyvernMount, griffon: createGriffonMount, arcane: createArcaneMount, dragon: createDragonMount, insect: createInsectMount };
+      const builders = { serpent: createSerpentMount, manta: createMantaMount, wyvern: createWyvernMount, griffon: createGriffonMount, arcane: createArcaneMount, dragon: createDragonMount, insect: createInsectMount };
       const model = (builders[type] || createWyvernMount)(safeMount);
       model.userData.mountId = safeMount.id;
       model.userData.creatureType = type;
@@ -3490,58 +3556,103 @@ const ENEMY_SPECIES = {
       const root = new THREE.Group();
       const bodyMat = new THREE.MeshStandardMaterial({ color: speciesData.colors?.bird ?? 0x7f4d3a, roughness: 0.78 });
       const wingMat = new THREE.MeshStandardMaterial({ color: speciesData.colors?.wing ?? 0x4a2d24, roughness: 0.72 });
-      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.9, 2.8, 5, 12), bodyMat);
+      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.82, 3.2, 6, 12), bodyMat);
       body.rotation.z = Math.PI / 2;
       root.add(body);
-      const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.34, 1.5, 8), bodyMat);
-      neck.position.set(0, 0.35, 1.8);
-      neck.rotation.x = -0.75;
+      const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.3, 1.7, 8), bodyMat);
+      neck.position.set(0, 0.44, 2.15);
+      neck.rotation.x = -0.72;
       root.add(neck);
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.55, 1.0), bodyMat);
-      head.position.set(0, 0.74, 2.4);
+      const head = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.1, 8), bodyMat);
+      head.rotation.x = Math.PI / 2;
+      head.scale.set(1.08, 0.86, 1.18);
+      head.position.set(0, 0.76, 3.04);
       root.add(head);
-      const wingL = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.16, 1.5), wingMat);
-      wingL.position.set(-1.6, 0.35, 0.2);
-      wingL.rotation.z = 0.24;
+      const wingL = new THREE.Mesh(new THREE.BoxGeometry(3.9, 0.16, 0.34), wingMat);
+      wingL.position.set(-2.55, 0.5, 0.28);
+      wingL.rotation.z = 0.3;
       root.add(wingL);
       const wingR = wingL.clone();
-      wingR.position.x = 1.6;
-      wingR.rotation.z = -0.24;
+      wingR.position.x = 2.55;
+      wingR.rotation.z = -0.3;
       root.add(wingR);
-      const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.33, 2.4, 8), bodyMat);
-      tail.position.set(0, 0.1, -2.1);
-      tail.rotation.x = Math.PI / 2.7;
+      const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.26, 4.2, 8), bodyMat);
+      tail.position.set(0, 0.1, -2.7);
+      tail.rotation.x = Math.PI / 2.2;
       root.add(tail);
       root.userData.enemyModelType = "wyvern";
       root.userData.wyvernAnim = { leftWing: wingL, rightWing: wingR, tailPivot: tail, body };
-      return { model: root, radius: 2.9, hitboxes: [{ kind: "sphere", offset: new THREE.Vector3(0, 0.4, 0), radius: 2.4 }] };
+      return {
+        model: root,
+        radius: 2.85,
+        hitboxes: [
+          { kind: "sphere", offset: new THREE.Vector3(0, 0.55, 1.22), radius: 1.6, weakPoint: true },
+          { kind: "sphere", offset: new THREE.Vector3(0, 0.3, -0.3), radius: 1.45 }
+        ]
+      };
     }
 
-    function createSerpentEnemy(speciesData, silhouetteType = "serpent") {
+    function createSerpentEnemy(speciesData) {
       const root = new THREE.Group();
-      const segCount = silhouetteType === "leviathan" ? 10 : 14;
+      const segCount = 14;
       const segments = [];
+      const restPositions = [];
       const mat = new THREE.MeshStandardMaterial({
-        color: speciesData.colors?.bird ?? (silhouetteType === "leviathan" ? 0x65a6d6 : 0x7d5f4d),
-        emissive: silhouetteType === "leviathan" ? (speciesData.colors?.cloth ?? 0x77ddff) : 0x000000,
-        emissiveIntensity: silhouetteType === "leviathan" ? 0.35 : 0,
-        roughness: silhouetteType === "leviathan" ? 0.4 : 0.75,
-        metalness: silhouetteType === "leviathan" ? 0.28 : 0.1
+        color: speciesData.colors?.bird ?? 0x7d5f4d,
+        emissive: 0x000000,
+        emissiveIntensity: 0,
+        roughness: 0.75,
+        metalness: 0.1
       });
       for (let i = 0; i < segCount; i++) {
         const t = i / Math.max(1, segCount - 1);
-        const radius = silhouetteType === "leviathan" ? (0.65 - t * 0.34) : (0.48 - t * 0.28);
+        const radius = 0.48 - t * 0.28;
         const seg = new THREE.Mesh(new THREE.SphereGeometry(Math.max(0.16, radius), 8, 7), mat);
-        seg.position.set(0, 0.25 + Math.sin(t * Math.PI) * (silhouetteType === "leviathan" ? 0.35 : 0.15), -i * (silhouetteType === "leviathan" ? 0.72 : 0.58));
+        seg.position.set(0, 0.24 + Math.sin(t * Math.PI) * 0.12, -i * 0.58);
         root.add(seg);
         segments.push(seg);
+        restPositions.push(seg.position.clone());
       }
-      root.userData.enemyModelType = silhouetteType;
+      root.userData.enemyModelType = "serpent";
       root.userData.segments = segments;
+      root.userData.segmentRest = restPositions;
       return {
         model: root,
-        radius: silhouetteType === "leviathan" ? 2.6 : 2.25,
-        hitboxes: segments.map((seg, idx) => ({ kind: "segment", segmentIndex: idx, radius: idx === 0 ? 0.9 : silhouetteType === "leviathan" ? 0.78 : 0.62, weakPoint: idx === 0 }))
+        radius: 2.25,
+        hitboxes: segments.map((seg, idx) => ({ kind: "segment", segmentIndex: idx, radius: idx === 0 ? 0.92 : 0.58, weakPoint: idx === 0 }))
+      };
+    }
+
+    function createLeviathanEnemy(speciesData) {
+      const root = new THREE.Group();
+      const segCount = 11;
+      const segments = [];
+      const restPositions = [];
+      const mat = new THREE.MeshStandardMaterial({
+        color: speciesData.colors?.bird ?? 0x65a6d6,
+        emissive: speciesData.colors?.cloth ?? 0x77ddff,
+        emissiveIntensity: 0.32,
+        roughness: 0.44,
+        metalness: 0.26,
+        transparent: true,
+        opacity: 0.9
+      });
+      for (let i = 0; i < segCount; i++) {
+        const t = i / Math.max(1, segCount - 1);
+        const radius = 0.7 - t * 0.33;
+        const seg = new THREE.Mesh(new THREE.SphereGeometry(Math.max(0.2, radius), 10, 8), mat);
+        seg.position.set(0, 0.28 + Math.sin(t * Math.PI) * 0.34, -i * 0.74);
+        root.add(seg);
+        segments.push(seg);
+        restPositions.push(seg.position.clone());
+      }
+      root.userData.enemyModelType = "leviathan";
+      root.userData.segments = segments;
+      root.userData.segmentRest = restPositions;
+      return {
+        model: root,
+        radius: 2.65,
+        hitboxes: segments.map((seg, idx) => ({ kind: "segment", segmentIndex: idx, radius: idx < 3 ? 0.95 : 0.78, weakPoint: idx === 0 }))
       };
     }
 
@@ -3564,6 +3675,31 @@ const ENEMY_SPECIES = {
       return { model: root, radius: 2.2, hitboxes: [{ kind: "sphere", offset: new THREE.Vector3(), radius: 2.05 }] };
     }
 
+    function createMantaEnemy(speciesData) {
+      const root = new THREE.Group();
+      const bodyMat = new THREE.MeshStandardMaterial({ color: speciesData.colors?.bird ?? 0x6f85cb, roughness: 0.55, emissive: speciesData.colors?.cloth ?? 0x9fe7ff, emissiveIntensity: 0.14 });
+      const finMat = new THREE.MeshStandardMaterial({ color: speciesData.colors?.wing ?? 0x3e4f8e, roughness: 0.52, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
+      const body = new THREE.Mesh(new THREE.SphereGeometry(1.1, 18, 14), bodyMat);
+      body.scale.set(1.05, 0.38, 1.45);
+      body.position.y = 0.4;
+      root.add(body);
+      const leftWing = new THREE.Mesh(new THREE.PlaneGeometry(4.8, 2.4), finMat);
+      leftWing.position.set(-2.45, 0.4, 0.2);
+      leftWing.rotation.set(-0.2, 0.02, 0.08);
+      root.add(leftWing);
+      const rightWing = leftWing.clone();
+      rightWing.position.x = 2.45;
+      rightWing.rotation.z = -0.08;
+      root.add(rightWing);
+      const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 3.8, 8), new THREE.MeshStandardMaterial({ color: speciesData.colors?.cloth ?? 0x9fe7ff, roughness: 0.48, emissive: speciesData.colors?.cloth ?? 0x9fe7ff, emissiveIntensity: 0.18 }));
+      tail.position.set(0, 0.34, -2.0);
+      tail.rotation.x = Math.PI / 2;
+      root.add(tail);
+      root.userData.enemyModelType = "manta";
+      root.userData.mantaAnim = { leftWing, rightWing, tail };
+      return { model: root, radius: 2.5, hitboxes: [{ kind: "box", offset: new THREE.Vector3(0, 0.4, 0), size: new THREE.Vector3(4.8, 1.2, 3.8), radius: 2.6, weakPoint: true }] };
+    }
+
     function createConstructEnemy(speciesData) {
       const root = new THREE.Group();
       const mat = new THREE.MeshStandardMaterial({ color: speciesData.colors?.bird ?? 0x6b7280, emissive: speciesData.colors?.cloth ?? 0x93c5fd, emissiveIntensity: 0.22, roughness: 0.55, metalness: 0.68 });
@@ -3584,8 +3720,9 @@ const ENEMY_SPECIES = {
     function createEnemyFromSilhouette(enemyType, silhouetteType, speciesData, visualProfile) {
       if (silhouetteType === "bird" || silhouetteType === "insect") return createBirdEnemy(speciesData, visualProfile);
       if (silhouetteType === "wyvern") return createWyvernEnemy(speciesData);
-      if (silhouetteType === "serpent") return createSerpentEnemy(speciesData, "serpent");
-      if (silhouetteType === "leviathan") return createSerpentEnemy(speciesData, "leviathan");
+      if (silhouetteType === "serpent") return createSerpentEnemy(speciesData);
+      if (silhouetteType === "leviathan") return createLeviathanEnemy(speciesData);
+      if (silhouetteType === "manta") return createMantaEnemy(speciesData);
       if (silhouetteType === "orb") return createOrbEnemy(speciesData);
       if (silhouetteType === "construct") return createConstructEnemy(speciesData);
       return createBirdEnemy(speciesData, visualProfile);
@@ -3598,6 +3735,14 @@ const ENEMY_SPECIES = {
       const visualProfile = getSpeciesVisualProfile(species, ARCHETYPE_BY_BEHAVIOR[speciesData.behavior] || "Duelist");
       speciesData.visualProfile = visualProfile;
       const silhouetteType = speciesData.silhouetteType || inferSilhouetteType(species, speciesData);
+      const silhouetteBehavior = ({
+        wyvern: "wyvernDive",
+        serpent: "serpent",
+        leviathan: "leviathanSurge",
+        manta: "mantaSweep",
+        orb: "orb"
+      })[silhouetteType] || speciesData.behavior;
+      speciesData.combatBehavior = silhouetteBehavior;
       const built = createEnemyFromSilhouette(species, silhouetteType, speciesData, visualProfile);
       const model = built.model;
       scene.add(model);
@@ -3613,8 +3758,8 @@ const ENEMY_SPECIES = {
         silhouetteType,
         usesBirdModel: model.userData?.enemyModelType === "bird",
         speciesData,
-        archetype: ARCHETYPE_BY_BEHAVIOR[speciesData.behavior] || "Duelist",
-        roleSubtitle: ARCHETYPE_BY_BEHAVIOR[speciesData.behavior] || "Duelist",
+        archetype: ARCHETYPE_BY_BEHAVIOR[silhouetteBehavior] || ARCHETYPE_BY_BEHAVIOR[speciesData.behavior] || "Duelist",
+        roleSubtitle: ARCHETYPE_BY_BEHAVIOR[silhouetteBehavior] || ARCHETYPE_BY_BEHAVIOR[speciesData.behavior] || "Duelist",
         moveKit: { outerMoves: [], midMoves: [], deepMoves: [] },
         depthTier: "outer",
         depthFactor: 0,
@@ -6000,6 +6145,7 @@ function skyProfileForZone(zone) {
       }
 
       const isSerpent = creatureType === "serpent";
+      const isManta = creatureType === "manta";
       const isHover = creatureType === "arcane";
       const isHeavy = creatureType === "dragon" || creatureType === "griffon";
       const bobAmp = grounded ? (isHeavy ? 0.02 : 0.03) : (isHover ? 0.16 : 0.1 + styleMod.bounce);
@@ -6017,26 +6163,33 @@ function skyProfileForZone(zone) {
         });
       }
       anim.head.rotation.x = Math.sin(actor.flapPhase * 0.42) * 0.03 + (diveState ? -0.1 : landingState ? 0.06 : 0);
-      anim.neck.rotation.z = (isSerpent ? Math.sin(actor.flapPhase * 0.62) * 0.22 : Math.sin(actor.flapPhase * 0.36) * 0.06) - actor.model.rotation.z * 0.06;
+      anim.neck.rotation.z = (isSerpent ? Math.sin(actor.flapPhase * 0.48) * 0.11 : isManta ? Math.sin(actor.flapPhase * 0.33) * 0.04 : Math.sin(actor.flapPhase * 0.36) * 0.06) - actor.model.rotation.z * (isSerpent ? 0.045 : 0.06);
       anim.rider.rotation.z = THREE.MathUtils.lerp(anim.rider.rotation.z, -actor.vel.x * 0.009 + (thrustState ? -0.08 : 0), 1 - Math.pow(0.015, dt * 60));
       anim.rider.rotation.x = THREE.MathUtils.lerp(anim.rider.rotation.x, THREE.MathUtils.clamp(-actor.vel.y * (0.015 + (mount?.bodyPitchLag || 0.12) * 0.03), -0.28, 0.28), 1 - Math.pow(0.02, dt * 60));
       anim.rider.position.y = 0.02 + Math.sin(actor.flapPhase * 0.95) * bobAmp;
-      anim.tailPivot.rotation.y = Math.sin(actor.flapPhase * (isSerpent ? 0.9 : 0.45) + horizontalSpeed * 0.04) * (mount?.tailSway || 0.22) * (isSerpent ? 1.4 : 1);
-      anim.tailPivot.rotation.x = (isHeavy ? -0.08 : -0.16) + Math.sin(actor.flapPhase * (isHover ? 0.4 : 0.6)) * (isSerpent ? 0.28 : 0.16) + THREE.MathUtils.clamp(actor.vel.y * (isHeavy ? 0.02 : 0.012), -0.13, 0.16);
+      anim.tailPivot.rotation.y = Math.sin(actor.flapPhase * (isSerpent ? 0.66 : isManta ? 0.44 : 0.45) + horizontalSpeed * 0.028) * (mount?.tailSway || 0.22) * (isSerpent ? 0.9 : isManta ? 0.7 : 1);
+      anim.tailPivot.rotation.x = (isHeavy ? -0.08 : -0.16) + Math.sin(actor.flapPhase * (isHover ? 0.4 : isManta ? 0.48 : 0.6)) * (isSerpent ? 0.15 : isManta ? 0.1 : 0.16) + THREE.MathUtils.clamp(actor.vel.y * (isHeavy ? 0.02 : 0.012), -0.13, 0.16);
+      if (isManta) {
+        const finWave = Math.sin(actor.flapPhase * 0.84) * 0.34;
+        anim.leftWing.rotation.z = THREE.MathUtils.lerp(anim.leftWing.rotation.z, 0.14 + finWave * 0.36, 1 - Math.pow(0.006, dt * 60));
+        anim.rightWing.rotation.z = THREE.MathUtils.lerp(anim.rightWing.rotation.z, -0.14 - finWave * 0.36, 1 - Math.pow(0.006, dt * 60));
+        anim.leftWing.rotation.x = THREE.MathUtils.lerp(anim.leftWing.rotation.x, -0.24 + Math.sin(actor.flapPhase * 0.62) * 0.1, 1 - Math.pow(0.008, dt * 60));
+        anim.rightWing.rotation.x = THREE.MathUtils.lerp(anim.rightWing.rotation.x, -0.24 + Math.sin(actor.flapPhase * 0.62 + Math.PI) * 0.1, 1 - Math.pow(0.008, dt * 60));
+      }
       if (isSerpent && Array.isArray(anim.tailSegments)) {
         const segPivots = Array.isArray(anim.tailSegmentPivots) ? anim.tailSegmentPivots : [];
-        const thrustBoost = thrustState ? 0.2 : 0;
+        const thrustBoost = thrustState ? 0.08 : 0;
         anim.tailSegments.forEach((seg, idx) => {
-          const travel = actor.flapPhase * (1.35 + Math.min(horizontalSpeed * 0.018, 0.65));
-          const phase = travel - idx * 0.56;
-          const swayAmp = (0.34 + thrustBoost) * Math.max(0.26, 1 - idx * 0.08);
-          const liftAmp = 0.13 * Math.max(0.35, 1 - idx * 0.07);
-          seg.rotation.x = Math.PI / 2.08 + Math.sin(phase * 0.98) * liftAmp + (diveState ? -0.06 : 0);
+          const travel = actor.flapPhase * (0.88 + Math.min(horizontalSpeed * 0.012, 0.36));
+          const phase = travel - idx * 0.46;
+          const swayAmp = (0.17 + thrustBoost) * Math.max(0.32, 1 - idx * 0.07);
+          const liftAmp = 0.07 * Math.max(0.42, 1 - idx * 0.06);
+          seg.rotation.x = Math.PI / 2.08 + Math.sin(phase * 0.82) * liftAmp + (diveState ? -0.03 : 0);
           seg.rotation.y = Math.sin(phase) * swayAmp;
-          seg.position.y = Math.sin(phase * 1.24) * 0.03;
+          seg.position.y = Math.sin(phase * 0.9) * 0.012;
           if (segPivots[idx]) {
-            segPivots[idx].rotation.y = Math.sin(phase * 0.9) * (swayAmp * 0.58);
-            segPivots[idx].rotation.x = Math.sin(phase * 1.05) * (liftAmp * 0.52);
+            segPivots[idx].rotation.y = Math.sin(phase * 0.8) * (swayAmp * 0.42);
+            segPivots[idx].rotation.x = Math.sin(phase * 0.88) * (liftAmp * 0.4);
           }
         });
       }
@@ -6094,19 +6247,33 @@ function skyProfileForZone(zone) {
       if (enemy.silhouetteType === "wyvern") {
         const anim = enemy.model.userData?.wyvernAnim;
         if (anim?.leftWing && anim?.rightWing) {
-          const flap = Math.sin(t * 2.1) * 0.42;
-          anim.leftWing.rotation.z = 0.24 + flap;
-          anim.rightWing.rotation.z = -0.24 - flap;
-          if (anim.tailPivot) anim.tailPivot.rotation.y = Math.sin(t * 1.3) * 0.22;
+          const flap = Math.sin(t * 1.55) * 0.28;
+          anim.leftWing.rotation.z = 0.3 + flap;
+          anim.rightWing.rotation.z = -0.3 - flap;
+          if (anim.tailPivot) anim.tailPivot.rotation.y = Math.sin(t * 0.9) * 0.18;
         }
       } else if (enemy.silhouetteType === "serpent" || enemy.silhouetteType === "leviathan") {
         const segs = enemy.model.userData?.segments || [];
-        const amp = enemy.silhouetteType === "leviathan" ? 0.38 : 0.52;
+        const rests = enemy.model.userData?.segmentRest || [];
+        const amp = enemy.silhouetteType === "leviathan" ? 0.26 : 0.18;
         segs.forEach((seg, idx) => {
-          const lag = idx * (enemy.silhouetteType === "leviathan" ? 0.35 : 0.42);
-          seg.position.x = Math.sin(t * (enemy.silhouetteType === "leviathan" ? 1.6 : 2.4) - lag) * amp;
-          seg.position.y += Math.sin(t * 1.8 - lag) * (enemy.silhouetteType === "leviathan" ? 0.003 : 0.006);
+          const lag = idx * (enemy.silhouetteType === "leviathan" ? 0.28 : 0.34);
+          const rest = rests[idx] || seg.position;
+          const targetX = Math.sin(t * (enemy.silhouetteType === "leviathan" ? 1.2 : 1.35) - lag) * amp * Math.max(0.3, 1 - idx * 0.05);
+          const targetY = rest.y + Math.sin(t * 0.95 - lag) * (enemy.silhouetteType === "leviathan" ? 0.03 : 0.018);
+          seg.position.x = THREE.MathUtils.lerp(seg.position.x, targetX, 0.18);
+          seg.position.y = THREE.MathUtils.lerp(seg.position.y, targetY, 0.14);
         });
+      } else if (enemy.silhouetteType === "manta") {
+        const manta = enemy.model.userData?.mantaAnim;
+        if (manta?.leftWing && manta?.rightWing) {
+          const finWave = Math.sin(t * 1.1) * 0.22;
+          manta.leftWing.rotation.z = 0.08 + finWave * 0.4;
+          manta.rightWing.rotation.z = -0.08 - finWave * 0.4;
+          manta.leftWing.rotation.x = -0.2 + Math.sin(t * 0.72) * 0.08;
+          manta.rightWing.rotation.x = -0.2 + Math.sin(t * 0.72 + Math.PI) * 0.08;
+          if (manta.tail) manta.tail.rotation.y = Math.sin(t * 0.65) * 0.18;
+        }
       } else if (enemy.silhouetteType === "orb") {
         const orb = enemy.model.userData?.orb;
         if (orb?.core) {
@@ -6649,7 +6816,7 @@ function skyProfileForZone(zone) {
       const attackDamage = typeStats.damage * (enemy.elite ? 1.22 : 1);
       const pushDir = combatTarget.pos.clone().sub(enemy.pos).normalize().multiplyScalar(typeStats.knockback);
       if (enemy.archetype === "Charger") enemy.vel.add(pushDir.clone().multiplyScalar(11));
-      const behavior = typeStats.behavior;
+      const behavior = typeStats.combatBehavior || typeStats.behavior;
       if (behavior === "lancer") enemy.thrustTimer = 0.18;
       if (combatTarget === player && behavior === "lancer") {
         const sameLevel = Math.abs(player.pos.y - enemy.pos.y) < 2.4;
@@ -6673,13 +6840,13 @@ function skyProfileForZone(zone) {
         combatTarget.health -= attackDamage * 0.7;
         combatTarget.vel.add(pushDir);
       }
-      if (["beam", "sniper", "orb", "ranged", "breath", "beamSweep"].includes(typeStats.behavior)) {
+      if (["beam", "sniper", "orb", "ranged", "breath", "beamSweep", "mantaSweep", "leviathanSurge", "wyvernDive"].includes(behavior)) {
         enemyProjectiles.push({
           pos: enemy.pos.clone().add(new THREE.Vector3(0, 1.4, 0)),
-          vel: combatTarget.pos.clone().sub(enemy.pos).normalize().multiplyScalar(["beam","beamSweep"].includes(typeStats.behavior) ? 28 : 24),
+          vel: combatTarget.pos.clone().sub(enemy.pos).normalize().multiplyScalar(["beam","beamSweep","orb"].includes(behavior) ? 28 : behavior === "wyvernDive" ? 31 : 24),
           life: 2.4,
-          damage: attackDamage * 0.75,
-          mesh: new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff8b8b }))
+          damage: attackDamage * (behavior === "wyvernDive" ? 0.85 : 0.75),
+          mesh: new THREE.Mesh(new THREE.SphereGeometry(behavior === "leviathanSurge" ? 0.42 : behavior === "mantaSweep" ? 0.38 : 0.35, 8, 8), new THREE.MeshBasicMaterial({ color: behavior === "mantaSweep" ? 0x9fe7ff : behavior === "leviathanSurge" ? 0x67d6ff : 0xff8b8b }))
         });
         const last = enemyProjectiles[enemyProjectiles.length - 1];
         last.mesh.position.copy(last.pos);
@@ -6692,6 +6859,16 @@ function skyProfileForZone(zone) {
       if (!player) return;
 
       const typeStats = { climb: 10.2, patrol: 11, ...enemy.speciesData };
+      const silhouette = enemy.silhouetteType || "bird";
+      const behaviorBySilhouette = {
+        wyvern: "wyvernDive",
+        serpent: "serpent",
+        leviathan: "leviathanSurge",
+        manta: "mantaSweep",
+        orb: "orb"
+      };
+      const behavior = behaviorBySilhouette[silhouette] || typeStats.behavior;
+      typeStats.combatBehavior = behavior;
       if (enemy.archetype === "Crusher") {
         typeStats.speed *= 0.84;
         typeStats.damage *= 1.2;
@@ -6771,7 +6948,7 @@ function skyProfileForZone(zone) {
       enemy.stunTimer = Math.max(0, enemy.stunTimer - dt);
       if (enemy.poisonTimer > 0) enemy.health -= (enemy.elite ? 2.8 : 3.7) * dt;
       if (enemy.health <= 0) { killEnemy(enemy); return; }
-      updateEnemyTelegraph(enemy, dt, ["beam", "sniper", "orb", "ranged", "beamSweep"].includes(typeStats.behavior) ? "line" : typeStats.behavior === "breath" ? "cone" : "melee");
+      updateEnemyTelegraph(enemy, dt, ["beam", "sniper", "orb", "ranged", "beamSweep", "mantaSweep"].includes(behavior) ? "line" : behavior === "breath" || behavior === "wyvernDive" ? "cone" : "melee");
       if (enemy.stunTimer > 0) {
         enemy.vel.multiplyScalar(0.86);
         updateActorTransform(enemy, dt);
@@ -6794,9 +6971,8 @@ function skyProfileForZone(zone) {
       }
 
       let target = enemy.state === "aggro" ? combatTarget.pos.clone() : enemy.patrolTarget.clone();
-      const silhouette = enemy.silhouetteType || "bird";
       if (enemy.state === "aggro") {
-        const f = typeStats.behavior;
+        const f = behavior;
         const wobble = performance.now() * 0.001 + enemy.turnBias * 12;
         const hasDeepKit = enemy.moveKit?.deepMoves?.length > 0;
         const hasMidKit = enemy.moveKit?.midMoves?.length > 0;
@@ -6808,12 +6984,14 @@ function skyProfileForZone(zone) {
           if (hasDeepKit && enemy.attackTimer > typeStats.attackCooldown * 0.45) {
             target.add(new THREE.Vector3(Math.sin(enemy.yaw), 0, Math.cos(enemy.yaw)).multiplyScalar(-6));
           }
-        } else if (f === "weaver" || f === "curveStrike" || f === "loopDive" || f === "serpent") {
-          const curveAmp = f === "loopDive" ? 13 : f === "serpent" ? 15 : hasDeepKit ? 11 : 9;
+        } else if (f === "weaver" || f === "curveStrike" || f === "loopDive" || f === "serpent" || f === "leviathanSurge") {
+          const curveAmp = f === "loopDive" ? 13 : f === "leviathanSurge" ? 12 : f === "serpent" ? 15 : hasDeepKit ? 11 : 9;
           target.x += Math.sin(wobble * 1.7) * curveAmp;
           target.z += Math.cos(wobble * 1.4) * curveAmp;
-          target.y += Math.sin(wobble * 2.4) * (f === "serpent" ? (hasMidKit ? 2.2 : 1.6) : (hasMidKit ? 5 : 4));
-          if (f === "serpent") { target.add(new THREE.Vector3(Math.sin(enemy.yaw) * 9, 0, Math.cos(enemy.yaw) * 9)); }
+          target.y += Math.sin(wobble * 2.0) * (f === "serpent" ? (hasMidKit ? 2.2 : 1.6) : f === "leviathanSurge" ? 2.7 : (hasMidKit ? 5 : 4));
+          if (f === "serpent" || f === "leviathanSurge") { target.add(new THREE.Vector3(Math.sin(enemy.yaw) * (f === "leviathanSurge" ? 7 : 9), 0, Math.cos(enemy.yaw) * (f === "leviathanSurge" ? 7 : 9))); }
+        } else if (f === "mantaSweep") {
+          target.add(new THREE.Vector3(Math.sin(wobble * 1.1) * 14, Math.sin(wobble * 1.6) * 2.8, Math.cos(wobble * 1.1) * 14));
         } else if (f === "stinger" || f === "swarm") {
           // flutter pass -> split -> return
           const flutterAmp = hasMidKit ? 8.2 : 6;
@@ -6852,13 +7030,13 @@ function skyProfileForZone(zone) {
       let yawDiff = (desiredYaw - enemy.yaw + Math.PI * 3) % (Math.PI * 2) - Math.PI;
       yawDiff += enemy.turnBias * 0.05;
 
-      const silhouetteTurnMult = silhouette === "wyvern" ? 0.74 : silhouette === "serpent" ? 0.62 : silhouette === "leviathan" ? 0.58 : silhouette === "orb" ? 1.22 : silhouette === "construct" ? 0.88 : 1;
-      const turnCap = (typeStats.behavior === "serpent" ? typeStats.turn * 0.74 : typeStats.behavior === "dragonGlide" ? typeStats.turn * 0.82 : typeStats.turn) * silhouetteTurnMult * dt;
+      const silhouetteTurnMult = silhouette === "wyvern" ? 0.74 : silhouette === "serpent" ? 0.62 : silhouette === "leviathan" ? 0.58 : silhouette === "manta" ? 0.78 : silhouette === "orb" ? 1.22 : silhouette === "construct" ? 0.88 : 1;
+      const turnCap = (behavior === "serpent" ? typeStats.turn * 0.74 : behavior === "dragonGlide" || behavior === "wyvernDive" ? typeStats.turn * 0.82 : behavior === "mantaSweep" ? typeStats.turn * 0.92 : typeStats.turn) * silhouetteTurnMult * dt;
       enemy.yaw += THREE.MathUtils.clamp(yawDiff, -turnCap, turnCap);
 
       const forward = new THREE.Vector3(Math.sin(enemy.yaw), 0, Math.cos(enemy.yaw));
-      const silhouetteSpeedMult = silhouette === "wyvern" ? 0.9 : silhouette === "serpent" ? 1.05 : silhouette === "leviathan" ? 1.0 : silhouette === "orb" ? 0.88 : silhouette === "construct" ? 0.82 : 1;
-      const speedScale = (enemy.state === "aggro" ? (typeStats.behavior === "dragonGlide" ? 1.08 : typeStats.behavior === "serpent" ? 1.04 : 1.0) : 0.68) * silhouetteSpeedMult;
+      const silhouetteSpeedMult = silhouette === "wyvern" ? 0.9 : silhouette === "serpent" ? 1.05 : silhouette === "leviathan" ? 1.0 : silhouette === "manta" ? 0.94 : silhouette === "orb" ? 0.88 : silhouette === "construct" ? 0.82 : 1;
+      const speedScale = (enemy.state === "aggro" ? (behavior === "dragonGlide" || behavior === "wyvernDive" ? 1.08 : behavior === "serpent" || behavior === "leviathanSurge" ? 1.04 : behavior === "mantaSweep" ? 0.98 : 1.0) : 0.68) * silhouetteSpeedMult;
       const desiredSpeed = typeStats.speed * speedScale + Math.max(0, -enemy.vel.y * 0.09);
 
       enemy.vel.x += (forward.x * desiredSpeed - enemy.vel.x) * 1.8 * dt;
@@ -6866,7 +7044,7 @@ function skyProfileForZone(zone) {
 
       if (silhouette === "orb" || silhouette === "construct") {
         enemy.vel.y += (enemy.desiredHeight - enemy.pos.y) * 0.9 * dt;
-      } else if (silhouette === "serpent" || silhouette === "leviathan") {
+      } else if (silhouette === "serpent" || silhouette === "leviathan" || silhouette === "manta") {
         enemy.vel.y += Math.sin(performance.now() * 0.0024 + enemy.turnBias * 8) * (silhouette === "leviathan" ? 0.8 : 1.2) * dt;
       }
 
@@ -6933,8 +7111,10 @@ function skyProfileForZone(zone) {
       const depthBandValue = enemy.depthTier === "deep" ? 2 : enemy.depthTier === "mid" ? 1 : 0;
       if (enemy.state === "aggro" && (deepTier >= 4 || depthBandValue >= 1) && enemy.specialCooldown <= 0 && distToPlayer < 30) {
         const hasDeepKit = enemy.moveKit?.deepMoves?.length > 0;
-        if (typeStats.behavior === "breath" || typeStats.behavior === "dragonGlide" || enemy.type === "voidDragon") enemy.specialType = hasDeepKit ? "crash" : "cone";
-        else if (typeStats.behavior === "beam" || typeStats.behavior === "orb" || typeStats.behavior === "beamSweep") enemy.specialType = enemy.type === "moonOrbSentinel" ? "beamFan" : "burst";
+        if (behavior === "breath" || behavior === "dragonGlide" || behavior === "wyvernDive" || enemy.type === "voidDragon") enemy.specialType = hasDeepKit ? "crash" : "cone";
+        else if (behavior === "beam" || behavior === "orb" || behavior === "beamSweep") enemy.specialType = enemy.type === "moonOrbSentinel" ? "beamFan" : "burst";
+        else if (behavior === "leviathanSurge") enemy.specialType = "surge";
+        else if (behavior === "mantaSweep") enemy.specialType = "sweep";
         else enemy.specialType = hasDeepKit ? "loopDive" : "dive";
         enemy.specialWindup = (enemy.depthTier === "outer" ? 0.7 : 0.58) + Math.random() * 0.28;
         enemy.specialCooldown = 4.8 - Math.min(2.3, deepTier * 0.2 + depthBandValue * 0.42);
@@ -6972,6 +7152,14 @@ function skyProfileForZone(zone) {
           enemy.vel.add(toPlayer.multiplyScalar(12));
           enemy.vel.y -= 7.2;
           spawnBurst(impactPos, 20, 0xcf8bff);
+        } else if (enemy.specialType === "surge") {
+          const impactPos = player.pos.clone();
+          if (enemy.pos.distanceTo(impactPos) < 7.6) applyPlayerDamage(typeStats.damage * 1.1, `${enemy.speciesData.label} surge coil`);
+          enemy.vel.add(toPlayer.multiplyScalar(14));
+          spawnBurst(impactPos, 16, 0x83deff);
+        } else if (enemy.specialType === "sweep") {
+          if (player.pos.distanceTo(enemy.pos) < 12) applyPlayerDamage(typeStats.damage * 0.92, `${enemy.speciesData.label} manta pulse`);
+          spawnBurst(enemy.pos.clone().add(forwardEnemy.clone().multiplyScalar(6)), 14, 0x9fe7ff);
         } else if (enemy.specialType === "dive" || enemy.specialType === "loopDive") {
           const impactPos = player.pos.clone();
           if (enemy.pos.distanceTo(impactPos) < 6.5) {
@@ -7011,6 +7199,20 @@ function skyProfileForZone(zone) {
           seg.getWorldPosition(wp);
           return { pos: wp, radius: enemy.silhouetteType === "leviathan" ? 1.05 : 0.82, weakPoint: idx === 0 };
         });
+      }
+      if (enemy.silhouetteType === "wyvern") {
+        return [
+          { pos: enemy.pos.clone().add(new THREE.Vector3(0, 0.45, 1.3)), radius: enemy.radius * 0.58, weakPoint: true },
+          { pos: enemy.pos.clone().add(new THREE.Vector3(0, 0.2, -0.4)), radius: enemy.radius * 0.5, weakPoint: false }
+        ];
+      }
+      if (enemy.silhouetteType === "manta") {
+        return [
+          { pos: enemy.pos.clone().add(new THREE.Vector3(0, 0.3, 0)), radius: enemy.radius * 0.94, weakPoint: true }
+        ];
+      }
+      if (enemy.silhouetteType === "orb") {
+        return [{ pos: enemy.pos.clone(), radius: enemy.radius * 0.78, weakPoint: true }];
       }
       return [{ pos: enemy.pos.clone(), radius: enemy.radius, weakPoint: true }];
     }
