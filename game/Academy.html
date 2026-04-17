@@ -636,7 +636,13 @@
       heavyLancer: "Duelist",
       wyvernDive: "Crusher",
       mantaSweep: "Weaver",
-      leviathanSurge: "Crusher"
+      leviathanSurge: "Crusher",
+      precisionBeam: "Caster",
+      sweepBeam: "Caster",
+      pulseBurst: "Caster",
+      heavyCannon: "Crusher",
+      crossfire: "Caster",
+      machineLock: "Sentinel"
     };
 
     
@@ -651,6 +657,7 @@
       Arcane: { name: 0xc9d8ff, subtitle: 0xe2dcff, frame: 0xaec3ff, telegraph: 0xb8a6ff },
       Badlands: { name: 0xffc6a0, subtitle: 0xffdcb5, frame: 0xd88962, telegraph: 0xff9c6a },
       City: { name: 0xf3e7cb, subtitle: 0xd8a1ac, frame: 0xddc8ac, telegraph: 0xe6b8a0 },
+      Machine: { name: 0xc7d2e8, subtitle: 0x9fd4ff, frame: 0x6f7f9a, telegraph: 0xff5f5f },
       default: { name: 0xffffff, subtitle: 0xe5e7eb, frame: 0xb8c0d4, telegraph: 0xbcc9e5 }
     };
 
@@ -690,7 +697,12 @@
       ironSpurRider: { bodyClass: "knight", wingClass: "broad", headClass: "hook", tailClass: "banner", riderClass: "duelist", armorClass: "heavy", glowClass: "ember" },
       canyonAmbushLancer: { bodyClass: "knight", wingClass: "stub", headClass: "hook", tailClass: "banner", riderClass: "duelist", armorClass: "heavy", glowClass: "ember" },
       arcManta: { bodyClass: "ray", wingClass: "manta", headClass: "manta", tailClass: "ribbon", riderClass: "none", armorClass: "arcane", glowClass: "moon" },
-      hiveQueen: { bodyClass: "crusher", wingClass: "stub", headClass: "beak", tailClass: "stinger", riderClass: "none", armorClass: "chitin", glowClass: "hive" }
+      hiveQueen: { bodyClass: "crusher", wingClass: "stub", headClass: "beak", tailClass: "stinger", riderClass: "none", armorClass: "chitin", glowClass: "hive" },
+      hoverDrone: { bodyClass: "construct", wingClass: "plate", headClass: "sensor", tailClass: "none", riderClass: "none", armorClass: "machine", glowClass: "ion" },
+      laserSentinel: { bodyClass: "construct", wingClass: "plate", headClass: "sensor", tailClass: "none", riderClass: "none", armorClass: "machine", glowClass: "ion" },
+      walkerConstruct: { bodyClass: "construct", wingClass: "strut", headClass: "sensor", tailClass: "none", riderClass: "none", armorClass: "machine", glowClass: "forge" },
+      bladeDrone: { bodyClass: "construct", wingClass: "blade", headClass: "sensor", tailClass: "none", riderClass: "none", armorClass: "machine", glowClass: "ion" },
+      siegeAutomaton: { bodyClass: "construct", wingClass: "strut", headClass: "sensor", tailClass: "none", riderClass: "none", armorClass: "machine", glowClass: "forge" }
     };
 
     const SPECIES_MOVE_UNLOCKS = {
@@ -702,7 +714,12 @@
       moonOrbSentinel: { outerMoves: ["chargeBeam"], midMoves: ["sweepBeam"], deepMoves: ["beamFan", "pulseBurst"] },
       ribbonSerpent: { outerMoves: ["longPass"], midMoves: ["wideBank"], deepMoves: ["laneCommit", "loopReturn"] },
       nightglassDrake: { outerMoves: ["glideDive"], midMoves: ["breathTelegraph"], deepMoves: ["perchRelaunch", "tailLane"] },
-      wyrmscarDragon: { outerMoves: ["glideDive"], midMoves: ["breathTelegraph"], deepMoves: ["perchRelaunch", "summonLesser"] }
+      wyrmscarDragon: { outerMoves: ["glideDive"], midMoves: ["breathTelegraph"], deepMoves: ["perchRelaunch", "summonLesser"] },
+      hoverDrone: { outerMoves: ["chargeBeam"], midMoves: ["crossfire"], deepMoves: ["pulseBurst"] },
+      laserSentinel: { outerMoves: ["chargeBeam"], midMoves: ["sweepBeam"], deepMoves: ["heavyCannon"] },
+      walkerConstruct: { outerMoves: ["laneHold"], midMoves: ["heavyCannon"], deepMoves: ["lockCrush"] },
+      bladeDrone: { outerMoves: ["sliceRush"], midMoves: ["doubleFeint"], deepMoves: ["crossfire"] },
+      siegeAutomaton: { outerMoves: ["heavyCannon"], midMoves: ["sweepBeam"], deepMoves: ["crossfire", "lockCrush"] }
     };
 
 const ENEMY_SPECIES = {
@@ -755,7 +772,12 @@ const ENEMY_SPECIES = {
       bonecrestSerpent: { label: "Bonecrest Serpent", family: "Badlands", behavior: "serpent", health: 178, speed: 15.1, turn: 1.0, aggroRange: 66, leashRange: 122, preferDistance: 10, attackCooldown: 1.95, damage: 23, knockback: 7.5, bounceMass: 1.35, reward: { score: 224, xp: 36, gold: 10 }, colors: { bird: 0x886a56, wing: 0x5b4637, rider: 0xeedfcf, cloth: 0xfda172 } },
       ironSpurRider: { label: "Iron Spur Rider", family: "Badlands", behavior: "heavyLancer", health: 244, speed: 11.3, turn: 1.3, aggroRange: 63, leashRange: 114, preferDistance: 11, attackCooldown: 2.15, damage: 30, knockback: 10.8, bounceMass: 2.24, reward: { score: 340, xp: 56, gold: 16 }, colors: { bird: 0x6f4e40, wing: 0x423028, rider: 0xe5ddd5, cloth: 0xd87b52 } },
       wyrmscarDragon: { label: "Wyrmscar Dragon", family: "Badlands", behavior: "dragonGlide", health: 284, speed: 11.7, turn: 1.05, aggroRange: 72, leashRange: 132, preferDistance: 13, attackCooldown: 2.7, damage: 38, knockback: 12.4, bounceMass: 2.45, reward: { score: 420, xp: 70, gold: 19 }, colors: { bird: 0x7f3c2a, wing: 0x4a2117, rider: 0xf0d7c7, cloth: 0xff7b36 } },
-      canyonAmbushLancer: { label: "Canyon Ambush Lancer", family: "Badlands", behavior: "heavyLancer", health: 206, speed: 12.8, turn: 1.52, aggroRange: 64, leashRange: 116, preferDistance: 11, attackCooldown: 1.95, damage: 27, knockback: 9.0, bounceMass: 1.92, reward: { score: 258, xp: 43, gold: 12 }, colors: { bird: 0x7a5e4b, wing: 0x4f3d31, rider: 0xf0e3d6, cloth: 0xe68b5f } }
+      canyonAmbushLancer: { label: "Canyon Ambush Lancer", family: "Badlands", behavior: "heavyLancer", health: 206, speed: 12.8, turn: 1.52, aggroRange: 64, leashRange: 116, preferDistance: 11, attackCooldown: 1.95, damage: 27, knockback: 9.0, bounceMass: 1.92, reward: { score: 258, xp: 43, gold: 12 }, colors: { bird: 0x7a5e4b, wing: 0x4f3d31, rider: 0xf0e3d6, cloth: 0xe68b5f } },
+      hoverDrone: { label: "Hover Drone", family: "Machine", behavior: "precisionBeam", health: 198, speed: 13.4, turn: 1.55, aggroRange: 78, leashRange: 144, preferDistance: 20, attackCooldown: 1.8, damage: 24, knockback: 6.4, bounceMass: 1.52, reward: { score: 286, xp: 46, gold: 14 }, colors: { bird: 0x596476, wing: 0x3c4658, rider: 0xcdd8ef, cloth: 0x60a5fa } },
+      laserSentinel: { label: "Laser Sentinel", family: "Machine", behavior: "sweepBeam", health: 244, speed: 11.2, turn: 1.08, aggroRange: 84, leashRange: 150, preferDistance: 24, attackCooldown: 2.35, damage: 31, knockback: 8.9, bounceMass: 2.04, reward: { score: 344, xp: 58, gold: 18 }, colors: { bird: 0x4b5667, wing: 0x2f3948, rider: 0xdde6f7, cloth: 0x38bdf8 } },
+      walkerConstruct: { label: "Walker Construct", family: "Machine", behavior: "machineLock", health: 286, speed: 10.4, turn: 0.92, aggroRange: 70, leashRange: 134, preferDistance: 14, attackCooldown: 2.5, damage: 34, knockback: 10.4, bounceMass: 2.42, reward: { score: 386, xp: 64, gold: 19 }, colors: { bird: 0x5a5f67, wing: 0x343a44, rider: 0xe5e7eb, cloth: 0xf97316 } },
+      bladeDrone: { label: "Blade Drone", family: "Machine", behavior: "pulseBurst", health: 176, speed: 16.9, turn: 1.95, aggroRange: 66, leashRange: 124, preferDistance: 10, attackCooldown: 1.6, damage: 22, knockback: 6.8, bounceMass: 1.2, reward: { score: 248, xp: 40, gold: 12 }, colors: { bird: 0x6b7280, wing: 0x3f4654, rider: 0xe5e7eb, cloth: 0xef4444 } },
+      siegeAutomaton: { label: "Siege Automaton", family: "Machine", behavior: "heavyCannon", health: 358, speed: 9.3, turn: 0.74, aggroRange: 88, leashRange: 158, preferDistance: 25, attackCooldown: 2.9, damage: 42, knockback: 12.8, bounceMass: 2.85, reward: { score: 470, xp: 78, gold: 24 }, colors: { bird: 0x444b56, wing: 0x262c36, rider: 0xf3f4f6, cloth: 0xf97316 } }
     };
 
     const SILHOUETTE_TYPES = ["bird", "wyvern", "serpent", "orb", "leviathan", "manta", "construct", "insect"];
@@ -811,7 +833,12 @@ const ENEMY_SPECIES = {
       ribbonSerpent: "serpent",
       bonecrestSerpent: "serpent",
       magmaSerpent: "serpent",
-      shadeSerpent: "serpent"
+      shadeSerpent: "serpent",
+      hoverDrone: "construct",
+      laserSentinel: "construct",
+      walkerConstruct: "construct",
+      bladeDrone: "construct",
+      siegeAutomaton: "construct"
     };
     Object.entries(SPECIES_SILHOUETTE_OVERRIDES).forEach(([speciesKey, silhouetteType]) => {
       if (ENEMY_SPECIES[speciesKey]) ENEMY_SPECIES[speciesKey].silhouetteType = silhouetteType;
@@ -941,6 +968,10 @@ const ENEMY_SPECIES = {
       { id: "stormbreaker-glaive", name: "Stormbreaker Glaive", slot: "weapon", rarity: "legendary", region: "Ruin-Crown Expanse", stats: { spearDamage: 26, antiArmor: 0.2, chainChance: 0.12 }, effect: "chainLightning", weaponClass: "glaive", modelProfile: "storm", attackProfile: "diagSlash", trailProfile: "ion", impactFx: "lightning", desc: "Elite-killer glaive with anti-armor shock ring strikes.", sell: 142 },
       { id: "gravefire-lance", name: "Gravefire Lance", slot: "weapon", rarity: "legendary", region: "Obsidian Rift", stats: { spearDamage: 27, critChance: 0.06 }, effect: "shockwave", weaponClass: "spear", modelProfile: "void", attackProfile: "heavyThrust", trailProfile: "ember", impactFx: "rift", desc: "Hybrid lance that fuses black flame with void collapse.", sell: 146 },
       { id: "leviathan-fang", name: "Leviathan Fang", slot: "weapon", rarity: "legendary", region: "Outer Wyrm Wastes", stats: { spearDamage: 28, burstSpeed: 1.3, antiArmor: 0.18 }, effect: "stun", weaponClass: "greatBlade", modelProfile: "dragon", attackProfile: "downChop", trailProfile: "ion", impactFx: "lightning", desc: "Signature late-game fang blade with serpent-like shock dashes.", sell: 150 },
+      { id: "rail-lance", name: "Rail Lance", slot: "weapon", rarity: "legendary", region: "Ironforge Expanse", stats: { spearDamage: 30, antiArmor: 0.24, beamPower: 0.12 }, effect: "chainLightning", weaponClass: "spear", modelProfile: "iron", attackProfile: "heavyThrust", trailProfile: "ion", impactFx: "lightning", desc: "Linear accelerator lance tuned for machine armor breaches.", sell: 168 },
+      { id: "ion-pike", name: "Ion Pike", slot: "weapon", rarity: "epic", region: "Ironforge Expanse", stats: { spearDamage: 24, chainChance: 0.16, spearReach: 0.8 }, effect: "stun", weaponClass: "spear", modelProfile: "storm", attackProfile: "thrust", trailProfile: "ion", impactFx: "lightning", desc: "High-voltage pike that overloads robotic cores.", sell: 126 },
+      { id: "machinehunter-cloak", name: "Machinehunter Cloak", slot: "armor", rarity: "epic", region: "Ironforge Expanse", stats: { maxHealth: 42, antiArmor: 0.14, beamResist: 0.14 }, desc: "Arc-insulated weave for laser-heavy foundries.", sell: 118 },
+      { id: "overcharge-loop", name: "Overcharge Loop", slot: "trinket", rarity: "legendary", region: "Ironforge Expanse", stats: { chainChance: 0.18, burstSpeed: 1.0, diveImpact: 3.4 }, desc: "Conductor loop amplifying anti-machine finishing impacts.", sell: 138 },
 
       { id: "moon-citadel-knight", name: "Moon Citadel Knight Armor", slot: "armor", rarity: "epic", region: "Moonglass Citadel", stats: { maxHealth: 46, resistance: 0.09 }, desc: "Arcane plated knight suit of the citadel.", sell: 88 },
       { id: "arcane-lumen-robes", name: "Arcane Lumen Robes", slot: "armor", rarity: "epic", region: "Moonveil Expanse", stats: { maxHealth: 34, regenSpeed: 1.5, chainChance: 0.1 }, desc: "High-focus robes for beam duelists.", sell: 82 },
@@ -1079,7 +1110,12 @@ const ENEMY_SPECIES = {
       { id: "ember-talon", name: "Ember Talon", classHint: "Burst Raptor", handling: "burstRaptor", silhouetteProfile: "hawk", animationProfile: "featherRaptor", speed: 1.1, accel: 1.04, turn: 1.02, flap: 1.08, impact: 1.16, lateral: false, landingFx: "fire", gravityScale: 1.16, fallSpeedCap: 45, flapBurst: 11.6, flapCooldown: 0.42, boostPower: 8.8, boostCooldown: 0.7, boostDuration: 0.22, glideFactor: 0.82, airDrag: 0.24, momentumRetention: 0.8, turnResponsiveness: 0.94, hoverAssist: 0, diveAcceleration: 1.32, stallRecovery: 0.86, landingSkid: 0.68, wingbeatRate: 0.86, idleBobStyle: "raptor", dashStyle: "ember", wingAmplitude: 0.96, wingFrequency: 0.84, tailSway: 0.3, bodyPitchLag: 0.14, diveTuckAmount: 0.62, landingCompression: 0.5, boostTrailType: "ember", colors: { bird: 0x9d4a30, wing: 0x692a1d, rider: 0xf2d1b8, cloth: 0xfb923c } },
       { id: "moonray-glider", name: "Moonray Glider", classHint: "Arcane Manta", handling: "glideSerpent", silhouetteProfile: "manta", animationProfile: "manta", speed: 1.03, accel: 0.9, turn: 1.24, flap: 0.82, impact: 0.7, lateral: true, landingFx: "holy", gravityScale: 0.62, fallSpeedCap: 22, flapBurst: 6.4, flapCooldown: 0.26, boostPower: 6.1, boostCooldown: 0.4, boostDuration: 0.2, glideFactor: 1.42, airDrag: 0.08, momentumRetention: 1.26, turnResponsiveness: 1.34, hoverAssist: 0.34, diveAcceleration: 0.68, stallRecovery: 1.28, landingSkid: 0.28, wingbeatRate: 1.2, idleBobStyle: "mystic", dashStyle: "halo", wingAmplitude: 0.5, wingFrequency: 1.24, tailSway: 0.52, bodyPitchLag: 0.05, diveTuckAmount: 0.16, landingCompression: 0.2, boostTrailType: "holy", colors: { bird: 0xa8baff, wing: 0x7f92d8, rider: 0xf2f5ff, cloth: 0xc4b5fd } },
       { id: "wyrmrunner-drake", name: "Wyrmrunner Drake", classHint: "Predator Drake", handling: "rocketDiver", silhouetteProfile: "drake", animationProfile: "drake", speed: 1.08, accel: 1.0, turn: 0.92, flap: 1.12, impact: 1.38, lateral: false, landingFx: "shockwave", gravityScale: 1.3, fallSpeedCap: 52, flapBurst: 13.2, flapCooldown: 0.52, boostPower: 10.6, boostCooldown: 0.9, boostDuration: 0.24, glideFactor: 0.76, airDrag: 0.28, momentumRetention: 0.78, turnResponsiveness: 0.84, hoverAssist: 0, diveAcceleration: 1.52, stallRecovery: 0.8, landingSkid: 0.76, wingbeatRate: 0.76, idleBobStyle: "dragon", dashStyle: "ember", wingAmplitude: 1.06, wingFrequency: 0.72, tailSway: 0.36, bodyPitchLag: 0.18, diveTuckAmount: 0.74, landingCompression: 0.6, boostTrailType: "ember", colors: { bird: 0x8a4a36, wing: 0x59281d, rider: 0xf2d7c8, cloth: 0xfb923c } },
-      { id: "ironhorn-roc", name: "Ironhorn Roc", classHint: "War Mount", handling: "heavyWarBeast", silhouetteProfile: "warbeast", animationProfile: "heavyBird", speed: 0.9, accel: 0.82, turn: 0.74, flap: 1.14, impact: 1.72, lateral: false, landingFx: "knockback", gravityScale: 1.34, fallSpeedCap: 44, flapBurst: 9.8, flapCooldown: 0.56, boostPower: 12.1, boostCooldown: 1.14, boostDuration: 0.32, glideFactor: 0.66, airDrag: 0.36, momentumRetention: 0.9, turnResponsiveness: 0.68, hoverAssist: 0, diveAcceleration: 1.24, stallRecovery: 0.86, landingSkid: 1.0, wingbeatRate: 0.62, idleBobStyle: "heavy", dashStyle: "ram", wingAmplitude: 0.82, wingFrequency: 0.6, tailSway: 0.18, bodyPitchLag: 0.28, diveTuckAmount: 0.5, landingCompression: 0.78, boostTrailType: "iron", colors: { bird: 0x666b75, wing: 0x454a55, rider: 0xe5e9f1, cloth: 0x94a3b8 } }
+      { id: "ironhorn-roc", name: "Ironhorn Roc", classHint: "War Mount", handling: "heavyWarBeast", silhouetteProfile: "warbeast", animationProfile: "heavyBird", speed: 0.9, accel: 0.82, turn: 0.74, flap: 1.14, impact: 1.72, lateral: false, landingFx: "knockback", gravityScale: 1.34, fallSpeedCap: 44, flapBurst: 9.8, flapCooldown: 0.56, boostPower: 12.1, boostCooldown: 1.14, boostDuration: 0.32, glideFactor: 0.66, airDrag: 0.36, momentumRetention: 0.9, turnResponsiveness: 0.68, hoverAssist: 0, diveAcceleration: 1.24, stallRecovery: 0.86, landingSkid: 1.0, wingbeatRate: 0.62, idleBobStyle: "heavy", dashStyle: "ram", wingAmplitude: 0.82, wingFrequency: 0.6, tailSway: 0.18, bodyPitchLag: 0.28, diveTuckAmount: 0.5, landingCompression: 0.78, boostTrailType: "iron", colors: { bird: 0x666b75, wing: 0x454a55, rider: 0xe5e9f1, cloth: 0x94a3b8 } },
+      { id: "storm-razor", name: "Storm Razor", classHint: "Premium Lightning", handling: "skySkimmer", silhouetteProfile: "falcon", animationProfile: "stormRaptor", creatureType: "wyvern", premiumTier: 3, speed: 1.34, accel: 1.29, turn: 1.48, flap: 1.12, impact: 1.02, lateral: true, landingFx: "lightning", gravityScale: 0.92, fallSpeedCap: 39, flapBurst: 12.2, flapCooldown: 0.2, boostPower: 11.8, boostCooldown: 0.3, boostDuration: 0.26, glideFactor: 1.08, airDrag: 0.12, momentumRetention: 1.08, turnResponsiveness: 1.54, hoverAssist: 0.06, diveAcceleration: 1.18, stallRecovery: 1.26, landingSkid: 0.4, wingbeatRate: 1.12, idleBobStyle: "skimmer", dashStyle: "storm", wingAmplitude: 0.82, wingFrequency: 1.12, tailSway: 0.24, bodyPitchLag: 0.04, diveTuckAmount: 0.32, landingCompression: 0.26, boostTrailType: "storm", colors: { bird: 0x5179d8, wing: 0x2b4f9a, rider: 0xe4f1ff, cloth: 0x38bdf8 } },
+      { id: "sunflare-skimmer", name: "Sunflare Skimmer", classHint: "Premium Glide", handling: "skySkimmer", silhouetteProfile: "hawk", animationProfile: "featherSkimmer", creatureType: "manta", premiumTier: 3, speed: 1.3, accel: 1.22, turn: 1.38, flap: 1.0, impact: 0.92, lateral: true, landingFx: "holy", gravityScale: 0.78, fallSpeedCap: 30, flapBurst: 9.2, flapCooldown: 0.2, boostPower: 9.8, boostCooldown: 0.32, boostDuration: 0.24, glideFactor: 1.24, airDrag: 0.1, momentumRetention: 1.2, turnResponsiveness: 1.46, hoverAssist: 0.14, diveAcceleration: 0.9, stallRecovery: 1.32, landingSkid: 0.36, wingbeatRate: 1.16, idleBobStyle: "skimmer", dashStyle: "sun", wingAmplitude: 0.64, wingFrequency: 1.16, tailSway: 0.32, bodyPitchLag: 0.04, diveTuckAmount: 0.22, landingCompression: 0.22, boostTrailType: "holy", colors: { bird: 0xc09c53, wing: 0x8d6d30, rider: 0xfff8dc, cloth: 0xf59e0b } },
+      { id: "rift-fang-wyvern", name: "Rift Fang Wyvern", classHint: "Premium Predator", handling: "rocketDiver", silhouetteProfile: "wyvern", animationProfile: "drake", creatureType: "dragon", premiumTier: 3, speed: 1.26, accel: 1.2, turn: 1.02, flap: 1.24, impact: 1.54, lateral: false, landingFx: "shockwave", gravityScale: 1.3, fallSpeedCap: 58, flapBurst: 16.4, flapCooldown: 0.46, boostPower: 12.8, boostCooldown: 0.78, boostDuration: 0.3, glideFactor: 0.78, airDrag: 0.24, momentumRetention: 0.84, turnResponsiveness: 0.9, hoverAssist: 0, diveAcceleration: 1.82, stallRecovery: 0.86, landingSkid: 0.78, wingbeatRate: 0.76, idleBobStyle: "dragon", dashStyle: "void", wingAmplitude: 1.12, wingFrequency: 0.74, tailSway: 0.36, bodyPitchLag: 0.16, diveTuckAmount: 0.84, landingCompression: 0.66, boostTrailType: "void", colors: { bird: 0x6a4a6f, wing: 0x3f244a, rider: 0xf1e2ff, cloth: 0xa855f7 } },
+      { id: "velocity-manta", name: "Velocity Manta", classHint: "Premium Momentum", handling: "glideSerpent", silhouetteProfile: "manta", animationProfile: "manta", creatureType: "manta", premiumTier: 3, speed: 1.28, accel: 1.08, turn: 1.3, flap: 0.9, impact: 0.82, lateral: true, landingFx: "frost", gravityScale: 0.62, fallSpeedCap: 24, flapBurst: 7.8, flapCooldown: 0.22, boostPower: 8.6, boostCooldown: 0.32, boostDuration: 0.24, glideFactor: 1.54, airDrag: 0.07, momentumRetention: 1.32, turnResponsiveness: 1.36, hoverAssist: 0.24, diveAcceleration: 0.76, stallRecovery: 1.36, landingSkid: 0.28, wingbeatRate: 1.22, idleBobStyle: "mystic", dashStyle: "wind", wingAmplitude: 0.54, wingFrequency: 1.22, tailSway: 0.6, bodyPitchLag: 0.04, diveTuckAmount: 0.18, landingCompression: 0.18, boostTrailType: "holy", colors: { bird: 0x5f8bb0, wing: 0x335a7a, rider: 0xe6fbff, cloth: 0x22d3ee } },
+      { id: "arc-serpent", name: "Arc Serpent", classHint: "Premium Pursuit", handling: "glideSerpent", silhouetteProfile: "serpent", animationProfile: "serpent", creatureType: "serpent", premiumTier: 3, speed: 1.32, accel: 1.16, turn: 1.42, flap: 0.92, impact: 0.96, lateral: true, landingFx: "lightning", gravityScale: 0.72, fallSpeedCap: 28, flapBurst: 8.8, flapCooldown: 0.24, boostPower: 9.2, boostCooldown: 0.34, boostDuration: 0.25, glideFactor: 1.4, airDrag: 0.1, momentumRetention: 1.26, turnResponsiveness: 1.44, hoverAssist: 0.2, diveAcceleration: 0.94, stallRecovery: 1.28, landingSkid: 0.34, wingbeatRate: 1.14, idleBobStyle: "serpent", dashStyle: "storm", wingAmplitude: 0.58, wingFrequency: 1.12, tailSway: 0.62, bodyPitchLag: 0.05, diveTuckAmount: 0.24, landingCompression: 0.24, boostTrailType: "storm", colors: { bird: 0x506fbe, wing: 0x2f4886, rider: 0xe6eeff, cloth: 0x60a5fa } }
     ];
 
     const MOUNT_VISUAL_PROFILES_BY_HANDLING = {
@@ -1096,6 +1132,11 @@ const ENEMY_SPECIES = {
       "crystal-manta": { creatureClass: "mysticManta", bodyProfile: "crystalManta", wingProfile: "crystalFins", tailProfile: "rayWhip", ornamentProfile: "crystalSpines", animationProfile: "mantaGlide" },
       "rift-serpent": { creatureClass: "riftSerpent", bodyProfile: "voidRibbon", wingProfile: "voidSails", ornamentProfile: "riftHorns", animationProfile: "voidUndulate" },
       "iron-gryphon": { creatureClass: "gryphonWarbeast", bodyProfile: "gryphonBulk", headProfile: "hookBeak", wingProfile: "ironFeather", tailProfile: "lionPlume", limbProfile: "lionClaws", ornamentProfile: "shieldPlates", animationProfile: "gryphonHeavy" },
+      "storm-razor": { creatureClass: "stormRazor", ornamentProfile: "jetHorns", animationProfile: "rocketDive" },
+      "sunflare-skimmer": { creatureClass: "sunSkimmer", ornamentProfile: "sunCrest", animationProfile: "skimmerPrecision" },
+      "rift-fang-wyvern": { creatureClass: "riftHunter", ornamentProfile: "riftHorns", animationProfile: "rocketDive" },
+      "velocity-manta": { creatureClass: "velocityManta", ornamentProfile: "arcaneFins", animationProfile: "mantaGlide" },
+      "arc-serpent": { creatureClass: "arcSerpent", ornamentProfile: "riftHorns", animationProfile: "voidUndulate" },
       "mossfang-glider": { creatureClass: "spiritBeetle", bodyProfile: "beetleGlider", headProfile: "mandibleMask", wingProfile: "beetleWings", limbProfile: "hoverTendrils", ornamentProfile: "mossHorns", animationProfile: "insectHover" }
     };
 
@@ -1825,7 +1866,8 @@ const ENEMY_SPECIES = {
         glacier: 14,
         rift: 16,
         moonveil: 24,
-        badlands: 20
+        badlands: 20,
+        machine: 26
       };
       const count = styleCounts[zone.terrainStyle] || 14;
       for (let i = 0; i < count; i++) {
@@ -1855,6 +1897,9 @@ const ENEMY_SPECIES = {
         } else if (zone.terrainStyle === 'badlands') {
           geom = Math.random() < 0.45 ? new THREE.CylinderGeometry(0.9, 1.5, 6 + Math.random() * 10, 6) : new THREE.ConeGeometry(1.4 + Math.random() * 1.6, 6 + Math.random() * 9, 5);
           color = Math.random() < 0.5 ? 0x6a4335 : 0x9d6b51;
+        } else if (zone.terrainStyle === 'machine') {
+          geom = Math.random() < 0.5 ? new THREE.BoxGeometry(2.2 + Math.random() * 3.4, 4 + Math.random() * 14, 2.2 + Math.random() * 3.4) : new THREE.CylinderGeometry(0.55, 0.9, 6 + Math.random() * 10, 8);
+          color = Math.random() < 0.4 ? 0x454f60 : Math.random() < 0.7 ? 0xef4444 : 0x3b82f6;
         }
         const decor = new THREE.Mesh(
           geom,
@@ -2371,7 +2416,8 @@ const ENEMY_SPECIES = {
         { name: "Outer Wyrm Wastes", subtitle: "Late Dragon Frontier", center: new THREE.Vector3(910, 0, 520), width: 484, depth: 428, radius: 210, baseY: -12, hazardY: -24, color: 0x41333a, accent: 0xb37d89, haze: 0x6c4d59, fogTint: 0x2f1f26, hazardType: "lava", enemyFamilies: ["dragonKnight", "apexRivalRider", "voidDragon", "magmaCrusher"], danger: 7, terrainStyle: "wyrm", travelRhythm: "gauntlet", spawnThemes: ["dragon-perch", "hollow-fissure"] },
         { name: "Moonglass Citadel", subtitle: "Arcane Sky Metropolis", center: new THREE.Vector3(1420, 0, 0), width: 484, depth: 428, radius: 210, baseY: -2, hazardY: -38, color: 0x5d67a6, accent: 0xcad3ff, haze: 0x8ca3e4, fogTint: 0x222a49, hazardType: "safe", enemyFamilies: ["haloLancer", "moonOrbSentinel", "ribbonSerpent"], danger: 3, terrainStyle: "city", travelRhythm: "rune-lanes", spawnThemes: ["city-outskirts", "watch-platform"], hubTheme: "city" },
         { name: "Moonveil Expanse", subtitle: "Arcane Frontier", center: new THREE.Vector3(1420, 0, 520), width: 484, depth: 428, radius: 210, baseY: -8, hazardY: -37, color: 0x4a4581, accent: 0xbfc8ff, haze: 0x798bd0, fogTint: 0x1c1f3e, hazardType: "abyss", enemyFamilies: ["moonOrbSentinel", "prismHaloWatcher", "ribbonSerpent", "nightglassDrake", "arcManta", "moonbeamConstruct"], danger: 6, terrainStyle: "moonveil", travelRhythm: "arc-lanes", spawnThemes: ["moon-arch", "floating-crystal"] },
-        { name: "Wyrmscar Badlands", subtitle: "Dragon Frontier", center: new THREE.Vector3(1420, 0, -520), width: 484, depth: 428, radius: 210, baseY: -12, hazardY: -25, color: 0x5b372c, accent: 0xe2b187, haze: 0xa06d52, fogTint: 0x311a14, hazardType: "lava", enemyFamilies: ["dustscaleWyvern", "redMesaDrake", "bonecrestSerpent", "ironSpurRider", "wyrmscarDragon", "canyonAmbushLancer"], danger: 7, terrainStyle: "badlands", travelRhythm: "ambush-lane", spawnThemes: ["bone-rib", "dragon-perch"] }
+        { name: "Wyrmscar Badlands", subtitle: "Dragon Frontier", center: new THREE.Vector3(1420, 0, -520), width: 484, depth: 428, radius: 210, baseY: -12, hazardY: -25, color: 0x5b372c, accent: 0xe2b187, haze: 0xa06d52, fogTint: 0x311a14, hazardType: "lava", enemyFamilies: ["dustscaleWyvern", "redMesaDrake", "bonecrestSerpent", "ironSpurRider", "wyrmscarDragon", "canyonAmbushLancer"], danger: 7, terrainStyle: "badlands", travelRhythm: "ambush-lane", spawnThemes: ["bone-rib", "dragon-perch"] },
+        { name: "Ironforge Expanse", subtitle: "Arcane-Tech War Factory", center: new THREE.Vector3(1930, 0, 520), width: 484, depth: 428, radius: 210, baseY: -10, hazardY: -33, color: 0x3f4654, accent: 0x60a5fa, haze: 0x556173, fogTint: 0x151b2a, hazardType: "abyss", enemyFamilies: ["hoverDrone", "laserSentinel", "walkerConstruct", "bladeDrone", "siegeAutomaton"], danger: 8, terrainStyle: "machine", travelRhythm: "energy-rail", spawnThemes: ["foundry-spire", "steel-platform"] }
       ];
 
       worldMinX = Math.min(...worldZones.map((z) => z.center.x - zoneHalfWidth(z) - 20));
@@ -4019,6 +4065,7 @@ const ENEMY_SPECIES = {
       if (zone.terrainStyle === "lava" || zone.terrainStyle === "rift" || zone.terrainStyle === "wyrm") return spawnType.includes("dragon") ? "dragon-perch" : "ember-vent";
       if (zone.terrainStyle === "badlands") return spawnType.includes("dragon") ? "dragon-perch" : "watch-platform";
       if (zone.terrainStyle === "moonveil") return spawnType.includes("moon") ? "moon-arch" : "storm-pylon";
+      if (zone.terrainStyle === "machine") return spawnType.includes("foundry") ? "foundry-spire" : "sentinel-pylon";
       if (zone.terrainStyle === "ruin") return "sentinel-pylon";
       if (zone.terrainStyle === "storm" || zone.terrainStyle === "glacier") return "storm-pylon";
       if (zone.terrainStyle === "marsh") return "void-fissure";
@@ -4032,6 +4079,7 @@ const ENEMY_SPECIES = {
       if (zone.terrainStyle === "lava" || zone.terrainStyle === "rift" || zone.terrainStyle === "wyrm") return Math.random() < 0.34;
       if (zone.terrainStyle === "moonveil") return Math.random() < 0.62;
       if (zone.terrainStyle === "badlands") return Math.random() < 0.28;
+      if (zone.terrainStyle === "machine") return Math.random() < 0.66;
       if (zone.terrainStyle === "marsh") return Math.random() < 0.4;
       if (zone.terrainStyle === "city") return depthFactor > 0.4 && Math.random() < 0.45;
       return false;
@@ -4063,6 +4111,9 @@ const ENEMY_SPECIES = {
       } else if (zone.terrainStyle === "marsh") {
         geom = new THREE.CylinderGeometry(5.2, 6.6, 1.9, 10);
         color = 0x413750;
+      } else if (zone.terrainStyle === "machine") {
+        geom = new THREE.CylinderGeometry(5.4, 6.2, 1.8, 8);
+        color = 0x4b5563;
       }
       const slab = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({ color, roughness: 0.92, metalness: 0.08 }));
       slab.castShadow = true;
@@ -5739,7 +5790,11 @@ const ENEMY_SPECIES = {
       enemy.pos.add(separate.clone().multiplyScalar(0.55)).add(new THREE.Vector3(0, -0.08, 0));
 
       if (canTopDownHit) {
-        const diveDamage = stats.diveImpact * 1.15 * momentum * (enemy.speciesData.bounceMass > 1.5 ? 0.78 : 1.08);
+        const mountType = stats.mount.creatureType || "wyvern";
+        const impactSpeed = Math.max(0.65, Math.min(2.1, Math.abs(player.vel.y) / 10 + player.vel.length() / 28));
+        const quality = THREE.MathUtils.clamp((playerHigher - 0.6) * 0.85 + momentum * 0.35, 0.72, 1.65);
+        const mountImpactClass = mountType === "griffon" || mountType === "dragon" ? 1.34 : mountType === "wyvern" ? 1.18 : mountType === "serpent" || mountType === "manta" || mountType === "arcane" ? 0.9 : 1.02;
+        const diveDamage = stats.diveImpact * 1.22 * momentum * impactSpeed * quality * mountImpactClass * (enemy.speciesData.bounceMass > 1.5 ? 0.82 : 1.12);
         damageEnemy(enemy, diveDamage, side, "dive");
         applyPlayerDamage(Math.max(1, enemy.speciesData.damage * 0.18), "impact recoil");
         if (gameEnded || !player.alive) return;
@@ -5749,8 +5804,15 @@ const ENEMY_SPECIES = {
         markPlayerEnemyContactResolved(enemy, pairLock);
 
         const mountFx = stats.mount.landingFx;
-        spawnBurst(player.pos.clone().add(new THREE.Vector3(0, 0.75, 0)), 14, 0xfff0ca);
-        spawnBurst(enemy.pos.clone().add(side.clone().multiplyScalar(1.2)), 16, 0xcffafe);
+        spawnBurst(player.pos.clone().add(new THREE.Vector3(0, 0.75, 0)), 20, 0xfff0ca);
+        spawnBurst(enemy.pos.clone().add(side.clone().multiplyScalar(1.2)), 24, 0xcffafe);
+        if (mountType === "griffon" || mountType === "dragon") {
+          spawnAbilityRingFx(enemy.pos.clone(), 7.5, 0xe2e8f0, 0.45, 0.18);
+        } else if (stats.mount.landingFx === "lightning") {
+          spawnChainBeam(player.pos.clone().add(new THREE.Vector3(0, 1.1, 0)), enemy.pos.clone().add(new THREE.Vector3(0, 1.0, 0)), 0x93c5fd, 0.12);
+        } else if (stats.mount.landingFx === "fire") {
+          spawnAbilityRingFx(enemy.pos.clone(), 5.8, 0xfb923c, 0.45, 0.16);
+        }
         hitstopTimer = Math.max(hitstopTimer, enemy.isBossTier ? 0.055 : 0.04);
         if (mountFx === "fire" || mountFx === "frost" || mountFx === "poison" || mountFx === "lightning") {
           for (const other of enemies) {
@@ -6470,6 +6532,7 @@ function skyProfileForZone(zone) {
       else if (zone.terrainStyle === 'storm') silhouette += Math.abs(Math.sin((x + z) * 0.055)) * 2.8;
       else if (zone.terrainStyle === 'marsh') silhouette -= Math.abs(Math.sin(x * 0.04) * 2.1);
       else if (zone.terrainStyle === 'dragon' || zone.terrainStyle === 'wyrm') silhouette += Math.abs(Math.sin((x + z) * 0.038) * 3.1);
+      else if (zone.terrainStyle === 'machine') silhouette = silhouette * 0.6 + Math.round(lane * 5) * 0.9;
 
       const base = zone.baseY + 2.5 + zone.danger * 0.35;
       return base + silhouette * Math.pow(edgeBlend, 0.58);
@@ -6524,7 +6587,8 @@ function skyProfileForZone(zone) {
       Badlands: { weakTo: ["frost", "antiArmor"], resistTo: ["fire"] },
       Ember: { weakTo: ["frost", "void"], resistTo: ["fire"] },
       Frontier: { weakTo: ["bleed"], resistTo: ["physical"] },
-      City: { weakTo: ["shock", "void"], resistTo: ["bleed"] }
+      City: { weakTo: ["shock", "void"], resistTo: ["bleed"] },
+      Machine: { weakTo: ["lightning", "antiArmor", "shock", "arcane"], resistTo: ["poison", "bleed", "physical"] }
     };
 
     function effectDamageType(effect = "", source = "") {
@@ -6652,6 +6716,27 @@ function skyProfileForZone(zone) {
       spawnBurst(player.pos.clone().add(new THREE.Vector3(0, 1.6, 0)), 10, 0x93c5fd);
     }
 
+
+    const COMBAT_SPEED_TUNING = {
+      playerForward: 1.13,
+      playerTurn: 1.15,
+      playerFlapBurst: 1.16,
+      playerBurst: 1.18,
+      enemyGlobal: 1.1,
+      enemyAggroAccel: 1.18
+    };
+
+    function getEnemyTempoProfile(enemy, behavior = "lancer") {
+      const silhouette = enemy?.silhouetteType || "bird";
+      if (silhouette === "bird" || silhouette === "insect") return { speed: 1.16, turn: 1.18, attack: 0.88 };
+      if (silhouette === "wyvern") return { speed: 1.11, turn: 0.94, attack: 0.9 };
+      if (silhouette === "serpent") return { speed: 1.14, turn: 0.8, attack: 0.9 };
+      if (silhouette === "manta") return { speed: 1.08, turn: 0.84, attack: 0.92 };
+      if (silhouette === "orb") return { speed: 1.03, turn: 1.12, attack: 0.82 };
+      if (silhouette === "leviathan") return { speed: 1.12, turn: 0.78, attack: 0.92 };
+      if (silhouette === "construct") return { speed: behavior === "blade" ? 1.14 : 1.05, turn: 0.9, attack: 0.8 };
+      return { speed: 1.08, turn: 1.0, attack: 0.92 };
+    }
     function updatePlayer(dt) {
       if (!player.alive) return;
 
@@ -6680,11 +6765,11 @@ function skyProfileForZone(zone) {
 
       const stats = playerStats();
       const mount = stats.mount;
-      const turnSpeed = (3.2 + progress.upgrades.airControl * 0.08) * mount.turn * (mount.turnResponsiveness || 1);
-      const baseForward = 17.2 * mount.speed;
+      const turnSpeed = (3.2 + progress.upgrades.airControl * 0.08) * mount.turn * (mount.turnResponsiveness || 1) * COMBAT_SPEED_TUNING.playerTurn;
+      const baseForward = 17.2 * mount.speed * COMBAT_SPEED_TUNING.playerForward;
       const lift = stats.flapLift * (mount.flap || 1);
       const dive = 11.5 * (mount.diveAcceleration || 1);
-      const burst = (keys["shift"] && player.boostBurstTimer <= 0) ? (mount.boostPower || 8) + stats.burstBonus : 0;
+      const burst = (keys["shift"] && player.boostBurstTimer <= 0) ? ((mount.boostPower || 8) + stats.burstBonus) * COMBAT_SPEED_TUNING.playerBurst : 0;
       const activelySteering = keys["a"] || keys["d"];
       const activelyFlapping = keys[" "] || (keys["s"] && progress.classChoice !== "sorcerer");
 
@@ -6709,7 +6794,7 @@ function skyProfileForZone(zone) {
         player.vel.y -= dive * dt;
       }
       if (keys[" "] && player.boostCooldown <= 0 && player.flapLockout <= 0) {
-        player.vel.y += (stats.flapBoost + (mount.flapBurst || 8) * 0.42) * 1.24;
+        player.vel.y += (stats.flapBoost + (mount.flapBurst || 8) * 0.42) * 1.24 * COMBAT_SPEED_TUNING.playerFlapBurst;
         player.vel.x += forward.x * (mount.boostPower || 7.6);
         player.vel.z += forward.z * (mount.boostPower || 7.6);
         player.boostCooldown = mount.flapCooldown || 0.32;
@@ -6782,7 +6867,7 @@ function skyProfileForZone(zone) {
           player.vel.y = 0;
         }
 
-        const perchDamp = activelySteering || activelyFlapping ? 0.92 + progress.upgrades.landingStability * 0.01 : 0.82 + progress.upgrades.landingStability * 0.02;
+        const perchDamp = activelySteering || activelyFlapping ? 0.94 + progress.upgrades.landingStability * 0.01 : 0.86 + progress.upgrades.landingStability * 0.02;
         player.vel.x *= perchDamp;
         player.vel.z *= perchDamp;
 
@@ -6840,8 +6925,9 @@ function skyProfileForZone(zone) {
     function getEnemyDamageType(enemy, behavior) {
       const family = enemy.speciesData?.family;
       if (family === "Ember" || behavior === "breath") return "fire";
-      if (family === "Storm" || behavior === "beam" || behavior === "beamSweep") return "lightning";
+      if (family === "Storm" || behavior === "beam" || behavior === "beamSweep" || ["precisionBeam","sweepBeam","pulseBurst","crossfire"].includes(behavior)) return "lightning";
       if (family === "Hollow") return "void";
+      if (family === "Machine") return "lightning";
       if (family === "Arcane" || behavior === "orb") return "arcane";
       if (family === "Verdant") return "poison";
       if (family === "Dragon" || family === "Badlands") return "physical";
@@ -6850,7 +6936,7 @@ function skyProfileForZone(zone) {
 
     function getAttackStyleForEnemy(enemy, behavior, isSpecial = false) {
       const silhouette = enemy.silhouetteType || "bird";
-      if (behavior === "beam" || behavior === "sniper" || behavior === "orb" || behavior === "ranged" || behavior === "beamSweep") return "line";
+      if (["beam","sniper","orb","ranged","beamSweep","precisionBeam","sweepBeam","pulseBurst","heavyCannon","crossfire","machineLock"].includes(behavior)) return "line";
       if (behavior === "breath" || behavior === "wyvernDive") return "cone";
       if (behavior === "serpent" || behavior === "leviathanSurge") return isSpecial ? "coil" : "line";
       if (behavior === "mantaSweep") return isSpecial ? "sweep" : "line";
@@ -6988,10 +7074,10 @@ function skyProfileForZone(zone) {
         combatTarget.health -= attackDamage * 0.7;
         combatTarget.vel.add(pushDir);
       }
-      if (["beam", "sniper", "orb", "ranged", "breath", "beamSweep", "mantaSweep", "leviathanSurge", "wyvernDive"].includes(behavior)) {
+      if (["beam", "sniper", "orb", "ranged", "breath", "beamSweep", "mantaSweep", "leviathanSurge", "wyvernDive", "precisionBeam", "sweepBeam", "pulseBurst", "heavyCannon", "crossfire", "machineLock"].includes(behavior)) {
         enemyProjectiles.push({
           pos: enemy.pos.clone().add(new THREE.Vector3(0, 1.4, 0)),
-          vel: combatTarget.pos.clone().sub(enemy.pos).normalize().multiplyScalar(["beam","beamSweep","orb"].includes(behavior) ? 28 : behavior === "wyvernDive" ? 31 : 24),
+          vel: combatTarget.pos.clone().sub(enemy.pos).normalize().multiplyScalar(["beam","beamSweep","orb","precisionBeam","sweepBeam","crossfire"].includes(behavior) ? 32 : behavior === "heavyCannon" ? 26 : behavior === "wyvernDive" ? 31 : 24),
           life: 2.4,
           damage: attackDamage * (behavior === "wyvernDive" ? 0.85 : 0.75),
           mesh: new THREE.Mesh(new THREE.SphereGeometry(behavior === "leviathanSurge" ? 0.42 : behavior === "mantaSweep" ? 0.38 : 0.35, 8, 8), new THREE.MeshBasicMaterial({ color: behavior === "mantaSweep" ? 0x9fe7ff : behavior === "leviathanSurge" ? 0x67d6ff : 0xff8b8b }))
@@ -7034,6 +7120,10 @@ function skyProfileForZone(zone) {
         typeStats.turn *= 1.06;
         typeStats.aggroRange += 8;
       }
+      const tempoProfile = getEnemyTempoProfile(enemy, behavior);
+      typeStats.speed *= COMBAT_SPEED_TUNING.enemyGlobal * tempoProfile.speed;
+      typeStats.turn *= tempoProfile.turn;
+      typeStats.attackCooldown *= tempoProfile.attack;
       const allyTarget = allySummons.filter(a => a.alive).sort((a, b) => a.pos.distanceTo(enemy.pos) - b.pos.distanceTo(enemy.pos))[0];
       const combatTarget = allyTarget && allyTarget.pos.distanceTo(enemy.pos) < player.pos.distanceTo(enemy.pos) * 0.9 ? allyTarget : player;
       const distToPlayer = enemy.pos.distanceTo(combatTarget.pos);
@@ -7098,7 +7188,7 @@ function skyProfileForZone(zone) {
       enemy.stunTimer = Math.max(0, enemy.stunTimer - dt);
       if (enemy.poisonTimer > 0) enemy.health -= (enemy.elite ? 2.8 : 3.7) * dt;
       if (enemy.health <= 0) { killEnemy(enemy); return; }
-      updateEnemyTelegraph(enemy, dt, ["beam", "sniper", "orb", "ranged", "beamSweep", "mantaSweep"].includes(behavior) ? "line" : behavior === "breath" || behavior === "wyvernDive" ? "cone" : "melee", behavior);
+      updateEnemyTelegraph(enemy, dt, ["beam", "sniper", "orb", "ranged", "beamSweep", "mantaSweep", "precisionBeam", "sweepBeam", "pulseBurst", "heavyCannon", "crossfire", "machineLock"].includes(behavior) ? "line" : behavior === "breath" || behavior === "wyvernDive" ? "cone" : "melee", behavior);
       if (enemy.stunTimer > 0) {
         enemy.vel.multiplyScalar(0.86);
         updateActorTransform(enemy, dt);
@@ -7150,7 +7240,7 @@ function skyProfileForZone(zone) {
           // hold high perch, then strike
           target.y = combatTarget.pos.y + 10 + Math.sin(wobble * 1.3) * 3;
           if (enemy.specialCooldown < 1.1) target.copy(combatTarget.pos.clone().add(new THREE.Vector3(0, 3.2, 0)));
-        } else if (f === "ranged" || f === "beam" || f === "sniper" || f === "orb" || f === "beamSweep") {
+        } else if (f === "ranged" || f === "beam" || f === "sniper" || f === "orb" || f === "beamSweep" || f === "precisionBeam" || f === "sweepBeam" || f === "pulseBurst" || f === "heavyCannon" || f === "crossfire" || f === "machineLock") {
           const away = enemy.pos.clone().sub(combatTarget.pos).setY(0).normalize().multiplyScalar(typeStats.preferDistance + (hasDeepKit ? 2.2 : 0));
           target.copy(combatTarget.pos).add(away).setY(combatTarget.pos.y + 3.2 + (hasMidKit ? 1.1 : 0));
           if (f === "beamSweep") target.add(new THREE.Vector3(Math.sin(wobble * 0.7) * 6, Math.sin(wobble * 1.2) * 2.4, Math.cos(wobble * 0.7) * 6));
@@ -7189,8 +7279,8 @@ function skyProfileForZone(zone) {
       const speedScale = (enemy.state === "aggro" ? (behavior === "dragonGlide" || behavior === "wyvernDive" ? 1.08 : behavior === "serpent" || behavior === "leviathanSurge" ? 1.04 : behavior === "mantaSweep" ? 0.98 : 1.0) : 0.68) * silhouetteSpeedMult;
       const desiredSpeed = typeStats.speed * speedScale + Math.max(0, -enemy.vel.y * 0.09);
 
-      enemy.vel.x += (forward.x * desiredSpeed - enemy.vel.x) * 1.8 * dt;
-      enemy.vel.z += (forward.z * desiredSpeed - enemy.vel.z) * 1.8 * dt;
+      enemy.vel.x += (forward.x * desiredSpeed - enemy.vel.x) * COMBAT_SPEED_TUNING.enemyAggroAccel * dt;
+      enemy.vel.z += (forward.z * desiredSpeed - enemy.vel.z) * COMBAT_SPEED_TUNING.enemyAggroAccel * dt;
 
       if (silhouette === "orb" || silhouette === "construct") {
         enemy.vel.y += (enemy.desiredHeight - enemy.pos.y) * 0.9 * dt;
@@ -7266,10 +7356,10 @@ function skyProfileForZone(zone) {
       }
       const deepTier = zoneTier(enemy.zoneName);
       const depthBandValue = enemy.depthTier === "deep" ? 2 : enemy.depthTier === "mid" ? 1 : 0;
-      if (enemy.state === "aggro" && (deepTier >= 4 || depthBandValue >= 1) && enemy.specialCooldown <= 0 && distToPlayer < 30) {
+      if (enemy.state === "aggro" && (deepTier >= 4 || depthBandValue >= 1) && enemy.specialCooldown <= 0 && distToPlayer < 34) {
         const hasDeepKit = enemy.moveKit?.deepMoves?.length > 0;
         if (behavior === "breath" || behavior === "dragonGlide" || behavior === "wyvernDive" || enemy.type === "voidDragon") enemy.specialType = hasDeepKit ? "crash" : "cone";
-        else if (behavior === "beam" || behavior === "orb" || behavior === "beamSweep") enemy.specialType = enemy.type === "moonOrbSentinel" ? "beamFan" : "burst";
+        else if (["beam","orb","beamSweep","precisionBeam","sweepBeam","pulseBurst","heavyCannon","crossfire","machineLock"].includes(behavior)) enemy.specialType = enemy.type === "moonOrbSentinel" ? "beamFan" : enemy.type === "laserSentinel" ? "heavyCannonLine" : enemy.type === "hoverDrone" || enemy.type === "bladeDrone" ? "crossfire" : enemy.type === "walkerConstruct" ? "lockLaser" : "burst";
         else if (behavior === "leviathanSurge") enemy.specialType = "surge";
         else if (behavior === "mantaSweep") enemy.specialType = "sweep";
         else enemy.specialType = hasDeepKit ? "loopDive" : "dive";
@@ -7294,6 +7384,25 @@ function skyProfileForZone(zone) {
           const d = player.pos.distanceTo(enemy.pos);
           if (d < 14) applyPlayerDamage(typeStats.damage * 0.95, `${enemy.speciesData.label} beam fan`);
           spawnBurst(enemy.pos.clone().add(forwardEnemy.clone().multiplyScalar(4)), 18, 0xb4c6ff);
+        } else if (enemy.specialType === "lockLaser") {
+          const lockPos = player.pos.clone();
+          const isHit = enemy.pos.distanceTo(lockPos) < 16 && toPlayer.dot(forwardEnemy) > 0.22;
+          if (isHit) applyPlayerDamage(typeStats.damage * 1.05, `${enemy.speciesData.label} lock laser`);
+          spawnChainBeam(enemy.pos.clone().add(new THREE.Vector3(0, 1.2, 0)), lockPos.clone().add(new THREE.Vector3(0, 1.1, 0)), 0xff4d4d, 0.16);
+          spawnBurst(lockPos, 14, 0xff5f5f);
+        } else if (enemy.specialType === "heavyCannonLine") {
+          const lanePos = player.pos.clone();
+          if (enemy.pos.distanceTo(lanePos) < 18) applyPlayerDamage(typeStats.damage * 1.18, `${enemy.speciesData.label} heavy cannon line`);
+          spawnChainBeam(enemy.pos.clone().add(new THREE.Vector3(0, 1.4, 0)), lanePos.clone().add(new THREE.Vector3(0, 1.2, 0)), 0xff7f50, 0.22);
+          spawnBurst(lanePos, 20, 0xff7849);
+        } else if (enemy.specialType === "crossfire") {
+          const side = new THREE.Vector3(forwardEnemy.z, 0, -forwardEnemy.x);
+          const p1 = player.pos.clone().add(side.clone().multiplyScalar(4.8));
+          const p2 = player.pos.clone().add(side.clone().multiplyScalar(-4.8));
+          if (enemy.pos.distanceTo(player.pos) < 15) applyPlayerDamage(typeStats.damage * 0.92, `${enemy.speciesData.label} crossfire`);
+          spawnChainBeam(enemy.pos.clone().add(new THREE.Vector3(0, 1.1, 0)), p1.clone().add(new THREE.Vector3(0, 1.0, 0)), 0x60a5fa, 0.14);
+          spawnChainBeam(enemy.pos.clone().add(new THREE.Vector3(0, 1.1, 0)), p2.clone().add(new THREE.Vector3(0, 1.0, 0)), 0x60a5fa, 0.14);
+          spawnBurst(player.pos.clone(), 12, 0x93c5fd);
         } else if (enemy.specialType === "burst") {
           if (player.pos.distanceTo(enemy.pos) < 10) {
             applyPlayerDamage(typeStats.damage * 0.85, `${enemy.speciesData.label} shock ring`);
@@ -8030,7 +8139,7 @@ function skyProfileForZone(zone) {
         const mounts = MOUNT_DB
           .slice(0, Math.min(MOUNT_DB.length, 6 + Math.floor(tier / 2)))
           .filter((m) => !isOwnedMount(m.id))
-          .map((m,idx)=>({ id:`mount-${hubName.replace(/\W+/g,'-').toLowerCase()}-${m.id}`, mountId: m.id, name:m.name, rarity: idx < 2 ? "uncommon" : idx < 5 ? "rare" : "epic", stats:{ speed: Number((m.speed*100).toFixed(0)), turn: Number((m.turn*100).toFixed(0)), impact:Number((m.impact*100).toFixed(0))}, desc:`${m.classHint} mount permit with tuning package.`, sell: Math.round(32 + idx*9 + tier*6), vendorVirtual:true, vendorType: "mountPermit" }));
+          .map((m,idx)=>{ const premiumTier = Number(m.premiumTier || 0); const rarity = premiumTier >= 3 ? "legendary" : idx < 2 ? "uncommon" : idx < 5 ? "rare" : "epic"; const speedPremium = Math.max(0, (m.speed - 1.08) * 180); const premiumPrice = premiumTier >= 3 ? 80 : premiumTier > 0 ? 34 : 0; return ({ id:`mount-${hubName.replace(/\W+/g,'-').toLowerCase()}-${m.id}`, mountId: m.id, name:m.name, rarity, stats:{ speed: Number((m.speed*100).toFixed(0)), turn: Number((m.turn*100).toFixed(0)), impact:Number((m.impact*100).toFixed(0))}, desc:`${m.classHint} mount permit with tuning package.`, sell: Math.round(34 + idx*10 + tier*7 + speedPremium + premiumPrice), vendorVirtual:true, vendorType: "mountPermit" }); } );
         const upgrades = [
           { id:`mount-updraft-${hubName}`, name:"Updraft Harness", rarity:"rare", stats:{ flapLift: 2.2, burstSpeed: 0.8 }, desc:"Wing harness tuned for steep ascents.", sell: 66, vendorVirtual:true },
           { id:`mount-plating-${hubName}`, name:"Impact Plating", rarity:"epic", stats:{ resistance: 0.07, diveImpact: 2.8 }, desc:"Reinforced mount barding for joust collisions.", sell: 88, vendorVirtual:true },
