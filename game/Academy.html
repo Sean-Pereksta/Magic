@@ -305,6 +305,7 @@
     let bossIntroTimer = 0;
     let bossVictoryTimer = 0;
     const playerTopDownHitLocks = new WeakMap();
+    const playerEnemyContactLocks = new WeakMap();
     let upgradeFlashTimer = 0;
     let upgradePulseNodeKey = "";
     let upgradeHoverNodeKey = "";
@@ -327,6 +328,19 @@
     const LEVEL_HEALTH_GAIN = 8;
     const LEVEL_REGEN_GAIN = 0.09;
     const LEVEL_REGEN_DELAY_REDUCTION = 0.015;
+    const BOUNCE_PAIR_LOCK_TIME = 0.18;
+    const BOUNCE_PAIR_SEPARATION_BUFFER = 1.1;
+    const MAX_PLAYER_BOUNCE_UP = 8.6;
+    const MAX_PLAYER_BOUNCE_SIDE = 11.5;
+    const MAX_PLAYER_BOUNCE_SPEED = 17.5;
+    const MAX_ENEMY_BOUNCE_SPEED = 16.5;
+    const ENEMY_CONTACT_DAMAGE_COOLDOWN = 0.22;
+    let damageTypeFeedbackCooldown = 0;
+
+    function xpNeededForLevel(level) {
+      const lv = Math.max(1, Number(level) || 1);
+      return Math.round(80 + Math.pow(lv - 1, 1.34) * 36 + (lv - 1) * 10);
+    }
 
     let progress = {
       level: 1,
@@ -873,6 +887,16 @@ const ENEMY_SPECIES = {
       { id: "void-ring-scepter", name: "Void Ring Scepter", slot: "weapon", rarity: "epic", region: "Moonveil Expanse", stats: { spearDamage: 17, chainChance: 0.12 }, weaponClass: "staff", modelProfile: "void", attackProfile: "staffBurst", projectileType: "voidSpike", desc: "Ringed scepter with delayed burst pulse.", sell: 94 },
       { id: "ashscale-impaler", name: "Ashscale Impaler", slot: "weapon", rarity: "legendary", region: "Wyrmscar Badlands", stats: { spearDamage: 24, antiArmor: 0.2 }, weaponClass: "dragonFang", modelProfile: "dragon", attackProfile: "heavyThrust", desc: "Dragon-hunting impaler for plated targets.", sell: 116 },
       { id: "crystal-thorn-spear", name: "Crystal Thorn Spear", slot: "weapon", rarity: "rare", region: "Moonveil Expanse", stats: { spearDamage: 17, freezeChance: 0.1 }, weaponClass: "spear", modelProfile: "crystal", attackProfile: "thrust", desc: "Moon crystal spear with brittle chill wake.", sell: 69 },
+      { id: "thundercoil-lance", name: "Thundercoil Lance", slot: "weapon", rarity: "epic", region: "Tempest Shelf", stats: { spearDamage: 20, chainChance: 0.14 }, effect: "chainLightning", weaponClass: "spear", modelProfile: "storm", attackProfile: "thrust", trailProfile: "ion", impactFx: "lightning", desc: "Conductor lance that jumps arcs across grouped fliers.", sell: 104 },
+      { id: "venomspine-pike", name: "Venomspine Pike", slot: "weapon", rarity: "rare", region: "Hollow Night Marsh", stats: { spearDamage: 18, poisonBonus: 0.24 }, effect: "poison", weaponClass: "spear", modelProfile: "hive", attackProfile: "thrust", trailProfile: "leaf", impactFx: "poison", desc: "Dripping barbs spread a corrosive poison wake.", sell: 84 },
+      { id: "cinderwake-halberd", name: "Cinderwake Halberd", slot: "weapon", rarity: "epic", region: "Ashen Lava Basin", stats: { spearDamage: 22, diveImpact: 3.2 }, effect: "burnBurst", weaponClass: "halberd", modelProfile: "lava", attackProfile: "heavyThrust", trailProfile: "ember", impactFx: "ember", desc: "Heavy halberd that erupts in ember bursts on contact.", sell: 112 },
+      { id: "frostbrand-trident", name: "Frostbrand Trident", slot: "weapon", rarity: "epic", region: "Sky Glacier Reach", stats: { spearDamage: 21, freezeChance: 0.18 }, effect: "freeze", weaponClass: "trident", modelProfile: "storm", attackProfile: "forkDrive", trailProfile: "frost", impactFx: "frost", desc: "Control trident that chills lanes and slows threats.", sell: 110 },
+      { id: "riftglass-rod", name: "Riftglass Rod", slot: "weapon", rarity: "epic", region: "Moonveil Expanse", stats: { spearDamage: 16, chainChance: 0.1 }, effect: "shockwave", weaponClass: "wand", modelProfile: "void", attackProfile: "casterBolt", projectileType: "voidSpike", projectileSpeed: 34, trailProfile: "void", impactFx: "arcane", desc: "A pulsing rod that detonates unstable void pulses.", sell: 106 },
+      { id: "sunflare-pike", name: "Sunflare Pike", slot: "weapon", rarity: "legendary", region: "Aurelian Skyhold", stats: { spearDamage: 24, critChance: 0.08 }, effect: "lifesteal", weaponClass: "spear", modelProfile: "holy", attackProfile: "thrust", trailProfile: "halo", impactFx: "radiant", desc: "Radiant anti-hollow pike with brilliant holy finishers.", sell: 136 },
+      { id: "barbtalon-spear", name: "Barbtalon Spear", slot: "weapon", rarity: "rare", region: "Mossfang Wilds", stats: { spearDamage: 19, critChance: 0.06 }, effect: "poison", weaponClass: "spear", modelProfile: "forest", attackProfile: "heavyThrust", trailProfile: "leaf", impactFx: "bleed", desc: "Hooked talon spear that tears and stacks rupture pressure.", sell: 88 },
+      { id: "stormbreaker-glaive", name: "Stormbreaker Glaive", slot: "weapon", rarity: "legendary", region: "Ruin-Crown Expanse", stats: { spearDamage: 26, antiArmor: 0.2, chainChance: 0.12 }, effect: "chainLightning", weaponClass: "glaive", modelProfile: "storm", attackProfile: "diagSlash", trailProfile: "ion", impactFx: "lightning", desc: "Elite-killer glaive with anti-armor shock ring strikes.", sell: 142 },
+      { id: "gravefire-lance", name: "Gravefire Lance", slot: "weapon", rarity: "legendary", region: "Obsidian Rift", stats: { spearDamage: 27, critChance: 0.06 }, effect: "shockwave", weaponClass: "spear", modelProfile: "void", attackProfile: "heavyThrust", trailProfile: "ember", impactFx: "rift", desc: "Hybrid lance that fuses black flame with void collapse.", sell: 146 },
+      { id: "leviathan-fang", name: "Leviathan Fang", slot: "weapon", rarity: "legendary", region: "Outer Wyrm Wastes", stats: { spearDamage: 28, burstSpeed: 1.3, antiArmor: 0.18 }, effect: "stun", weaponClass: "greatBlade", modelProfile: "dragon", attackProfile: "downChop", trailProfile: "ion", impactFx: "lightning", desc: "Signature late-game fang blade with serpent-like shock dashes.", sell: 150 },
 
       { id: "moon-citadel-knight", name: "Moon Citadel Knight Armor", slot: "armor", rarity: "epic", region: "Moonglass Citadel", stats: { maxHealth: 46, resistance: 0.09 }, desc: "Arcane plated knight suit of the citadel.", sell: 88 },
       { id: "arcane-lumen-robes", name: "Arcane Lumen Robes", slot: "armor", rarity: "epic", region: "Moonveil Expanse", stats: { maxHealth: 34, regenSpeed: 1.5, chainChance: 0.1 }, desc: "High-focus robes for beam duelists.", sell: 82 },
@@ -920,6 +944,23 @@ const ENEMY_SPECIES = {
       { id: "rhazakar-fang", name: "Rhazakar Fang", slot: "weapon", rarity: "legendary", region: "Wyrmscar Badlands", stats: { spearDamage: 27, antiArmor: 0.26 }, desc: "Scar wyrm fang forged into a brutal hunting lance.", sell: 138 },
       { id: "apex-wyrm-relic", name: "Apex Wyrm Relic", slot: "trinket", rarity: "legendary", region: "Outer Wyrm Wastes", stats: { critChance: 0.12, chainChance: 0.18 }, desc: "Legendary late-game relic of the wyrm lord.", sell: 130 }
     ];
+
+    function rebalanceItemSellPrice(item) {
+      const rarityFloor = { common: 16, uncommon: 28, rare: 52, epic: 82, legendary: 116 };
+      const rarityCeil = { common: 36, uncommon: 58, rare: 94, epic: 138, legendary: 188 };
+      const tier = item.rarity || "common";
+      const base = Number(item.sell) || rarityFloor[tier] || 20;
+      const slotScale = item.slot === "weapon" ? 1.16 : item.slot === "armor" ? 1.08 : item.slot === "mount" ? 1.22 : 1;
+      const statCount = Object.keys(item.stats || {}).length;
+      const statBonus = 1 + Math.min(0.22, statCount * 0.03);
+      const effectBonus = item.effect ? 1.08 : 1;
+      const raw = Math.round(base * slotScale * statBonus * effectBonus);
+      return THREE.MathUtils.clamp(raw, rarityFloor[tier] || 16, rarityCeil[tier] || 188);
+    }
+
+    ITEM_DB.forEach((item) => {
+      item.sell = rebalanceItemSellPrice(item);
+    });
 
     function inferArmorSetFromItem(item) {
       if (!item || item.slot !== "armor") return "spartan";
@@ -4404,7 +4445,23 @@ const ENEMY_SPECIES = {
       const fallback = WEAPON_CLASS_PRESETS.spear;
       if (!item) return fallback;
       const key = item.weaponClass || ((`${item.id} ${item.name}`.toLowerCase().includes("wand") || `${item.id} ${item.name}`.toLowerCase().includes("staff")) ? "wand" : "spear");
-      return { ...fallback, ...(WEAPON_CLASS_PRESETS[key] || fallback), ...item };
+      const effectToFx = {
+        chainLightning: "lightning",
+        stun: "lightning",
+        burnBurst: "ember",
+        freeze: "frost",
+        poison: "poison",
+        shockwave: "arcane",
+        projectile: key === "wand" || key === "staff" ? "arcane" : "dust",
+        lifesteal: "radiant",
+        antiArmor: "stoneShock",
+        armorPierce: "bleed",
+        multiHit: "bleed"
+      };
+      const merged = { ...fallback, ...(WEAPON_CLASS_PRESETS[key] || fallback), ...item };
+      if (!merged.impactFx && merged.effect) merged.impactFx = effectToFx[merged.effect] || merged.impactFx;
+      if (!merged.trailProfile && merged.impactFx) merged.trailProfile = merged.impactFx;
+      return merged;
     }
 
     function getFallbackWeaponItem() {
@@ -4478,9 +4535,13 @@ const ENEMY_SPECIES = {
       const map = {
         ember: { primary: 0xfb923c, secondary: 0xffedd5, burst: 12, spread: 1.6 },
         lightning: { primary: 0x93c5fd, secondary: 0xe0f2fe, burst: 8, spread: 1.3 },
+        poison: { primary: 0x4ade80, secondary: 0xbbf7d0, burst: 10, spread: 1.4 },
         frost: { primary: 0x7dd3fc, secondary: 0xdbeafe, burst: 9, spread: 1.4 },
         void: { primary: 0xa78bfa, secondary: 0xc4b5fd, burst: 10, spread: 1.5 },
         radiant: { primary: 0xfde68a, secondary: 0xfffbeb, burst: 11, spread: 1.5 },
+        bleed: { primary: 0xef4444, secondary: 0xfca5a5, burst: 10, spread: 1.35 },
+        arcane: { primary: 0xc084fc, secondary: 0xddd6fe, burst: 11, spread: 1.45 },
+        toxicCloud: { primary: 0x22c55e, secondary: 0x86efac, burst: 12, spread: 1.6 },
         leafBurst: { primary: 0x4ade80, secondary: 0xdcfce7, burst: 9, spread: 1.3 },
         dust: { primary: 0xd6b88d, secondary: 0xf5e6cc, burst: 7, spread: 1.2 },
         rift: { primary: 0x8b5cf6, secondary: 0xddd6fe, burst: 12, spread: 1.65 },
@@ -4501,6 +4562,23 @@ const ENEMY_SPECIES = {
       trail.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir.clone().normalize());
       scene.add(trail);
       particles.push({ mesh: trail, kind: "burst", life: 0.13 + intensity * 0.04, vel: dir.clone().multiplyScalar(6.8 * palette.spread) });
+      if (profile.weaponClass === "wand" || profile.weaponClass === "staff") {
+        const aura = new THREE.Mesh(new THREE.SphereGeometry(0.16 + intensity * 0.08, 8, 8), new THREE.MeshBasicMaterial({ color: palette.secondary, transparent: true, opacity: 0.7 }));
+        aura.position.copy(origin);
+        scene.add(aura);
+        particles.push({ mesh: aura, kind: "burst", life: 0.1 + intensity * 0.05, vel: dir.clone().multiplyScalar(2.1) });
+      }
+    }
+
+    function spawnChainBeam(from, to, color = 0x93c5fd, life = 0.09) {
+      const delta = to.clone().sub(from);
+      const len = delta.length();
+      if (len < 0.2) return;
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, len, 6), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85 }));
+      beam.position.copy(from).add(to).multiplyScalar(0.5);
+      beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), delta.clone().normalize());
+      scene.add(beam);
+      particles.push({ mesh: beam, kind: "burst", life, vel: new THREE.Vector3(0, 0, 0) });
     }
 
     function spawnWeaponImpactFx(profile, pos, intensity = 1) {
@@ -4514,6 +4592,31 @@ const ENEMY_SPECIES = {
           scene.add(bolt);
           particles.push({ mesh: bolt, kind: "burst", life: 0.16, vel: new THREE.Vector3(0, 2.4 + Math.random() * 2, 0) });
         }
+      } else if (profile.impactFx === "poison" || profile.impactFx === "toxicCloud") {
+        const cloud = new THREE.Mesh(new THREE.SphereGeometry(0.7 + Math.random() * 0.35, 10, 8), new THREE.MeshBasicMaterial({ color: palette.primary, transparent: true, opacity: 0.42 }));
+        cloud.position.copy(pos).add(new THREE.Vector3((Math.random() - 0.5) * 0.4, 0.25, (Math.random() - 0.5) * 0.4));
+        scene.add(cloud);
+        particles.push({ mesh: cloud, kind: "burst", life: 0.42, vel: new THREE.Vector3(0, 0.5, 0) });
+      } else if (profile.impactFx === "frost") {
+        const ring = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.95, 18), new THREE.MeshBasicMaterial({ color: palette.secondary, transparent: true, opacity: 0.76, side: THREE.DoubleSide }));
+        ring.position.copy(pos).add(new THREE.Vector3(0, 0.08, 0));
+        ring.rotation.x = -Math.PI / 2;
+        scene.add(ring);
+        particles.push({ mesh: ring, kind: "burst", life: 0.2, vel: new THREE.Vector3(0, 0.4, 0) });
+      } else if (profile.impactFx === "void" || profile.impactFx === "rift" || profile.impactFx === "arcane") {
+        const pulse = new THREE.Mesh(new THREE.TorusGeometry(0.56, 0.08, 8, 18), new THREE.MeshBasicMaterial({ color: palette.primary, transparent: true, opacity: 0.8 }));
+        pulse.position.copy(pos);
+        pulse.rotation.x = Math.PI / 2;
+        scene.add(pulse);
+        particles.push({ mesh: pulse, kind: "burst", life: 0.23, vel: new THREE.Vector3(0, 0.7, 0) });
+      } else if (profile.impactFx === "radiant") {
+        const halo = new THREE.Mesh(new THREE.RingGeometry(0.35, 0.82, 16), new THREE.MeshBasicMaterial({ color: palette.secondary, transparent: true, opacity: 0.84, side: THREE.DoubleSide }));
+        halo.position.copy(pos).add(new THREE.Vector3(0, 0.38, 0));
+        halo.rotation.x = Math.PI / 2;
+        scene.add(halo);
+        particles.push({ mesh: halo, kind: "burst", life: 0.2, vel: new THREE.Vector3(0, 0.9, 0) });
+      } else if (profile.impactFx === "bleed" || profile.impactFx === "barbed") {
+        spawnBurst(pos.clone().add(new THREE.Vector3(0, 0.2, 0)), 7, 0xdc2626);
       }
     }
 
@@ -5429,9 +5532,42 @@ const ENEMY_SPECIES = {
       return forward.multiplyScalar(behindDist).add(right.multiplyScalar(sideDist)).add(new THREE.Vector3(0, y, 0));
     }
 
+    function getPlayerEnemyContactState(enemy) {
+      let state = playerEnemyContactLocks.get(enemy);
+      if (!state) {
+        state = { timer: 0, separated: true };
+        playerEnemyContactLocks.set(enemy, state);
+      }
+      return state;
+    }
+
+    function markPlayerEnemyContactResolved(enemy, duration = BOUNCE_PAIR_LOCK_TIME) {
+      const state = getPlayerEnemyContactState(enemy);
+      state.timer = Math.max(state.timer, duration);
+      state.separated = false;
+    }
+
+    function canResolvePlayerEnemyContact(enemy) {
+      const state = getPlayerEnemyContactState(enemy);
+      return state.timer <= 0 || state.separated;
+    }
+
+    function clampActorVelocity(actor, maxHoriz, maxUp, maxDown, maxTotal) {
+      if (!actor?.vel) return;
+      actor.vel.y = THREE.MathUtils.clamp(actor.vel.y, -Math.abs(maxDown), Math.abs(maxUp));
+      const horiz = Math.hypot(actor.vel.x, actor.vel.z);
+      if (horiz > maxHoriz) {
+        const m = maxHoriz / Math.max(0.0001, horiz);
+        actor.vel.x *= m;
+        actor.vel.z *= m;
+      }
+      const total = actor.vel.length();
+      if (total > maxTotal) actor.vel.multiplyScalar(maxTotal / Math.max(0.0001, total));
+    }
+
     function resolveTopDownClash(enemy, side, momentum, stats, playerHigher, dist) {
       const lockRemaining = playerTopDownHitLocks.get(enemy) || 0;
-      const canTopDownHit = playerHigher > 0.85 && player.vel.y <= 0.7 && lockRemaining <= 0;
+      const canTopDownHit = playerHigher > 0.85 && player.vel.y <= 0.7 && lockRemaining <= 0 && canResolvePlayerEnemyContact(enemy);
       const overlap = Math.max(0, player.radius + enemy.radius - dist + 0.18);
       const separate = side.clone().multiplyScalar(Math.max(0.55, overlap * 0.55));
       player.pos.add(separate.clone().multiplyScalar(-0.45)).add(new THREE.Vector3(0, 0.45, 0));
@@ -5445,6 +5581,7 @@ const ENEMY_SPECIES = {
         const pairLock = enemy.isBossTier || enemy.maxHealth >= 210 ? 0.42 : 0.28;
         playerTopDownHitLocks.set(enemy, pairLock);
         enemy.recentTopDownHitByPlayerTimer = Math.max(enemy.recentTopDownHitByPlayerTimer || 0, pairLock);
+        markPlayerEnemyContactResolved(enemy, pairLock);
 
         const mountFx = stats.mount.landingFx;
         spawnBurst(player.pos.clone().add(new THREE.Vector3(0, 0.75, 0)), 14, 0xfff0ca);
@@ -5466,16 +5603,21 @@ const ENEMY_SPECIES = {
             other.vel.add(away);
           }
         }
-        player.vel.y = Math.max(player.vel.y, enemy.isBossTier ? 7.2 : 6.3);
+        player.vel.y = Math.min(MAX_PLAYER_BOUNCE_UP, Math.max(player.vel.y, enemy.isBossTier ? 7.2 : 6.3));
         player.vel.add(side.clone().multiplyScalar(-4.2));
-        enemy.vel.add(side.clone().multiplyScalar(6 + progress.upgrades.spearKnockback * 0.8));
+        enemy.vel.add(side.clone().multiplyScalar(Math.min(8.5, 6 + progress.upgrades.spearKnockback * 0.8)));
         enemy.vel.y -= enemy.pos.y > nearestPlatformHeight(enemy.pos.x, enemy.pos.z) + 3 ? 1.8 : 0.5;
+        clampActorVelocity(player, MAX_PLAYER_BOUNCE_SIDE, MAX_PLAYER_BOUNCE_UP, 20, MAX_PLAYER_BOUNCE_SPEED);
+        clampActorVelocity(enemy, 10.5, 7.5, 18, MAX_ENEMY_BOUNCE_SPEED);
         triggerHitFeedback(player, enemy, side, 1.2 + momentum * 0.22);
         showCenterMessage(playerHigher > 1.45 ? "CRUSHING STOMP!" : "DIVE IMPACT!", 0.3);
       } else {
+        markPlayerEnemyContactResolved(enemy, 0.12);
         player.vel.y = Math.max(player.vel.y, 3.4 + progress.upgrades.bounceRecovery * 0.35);
         player.vel.add(side.clone().multiplyScalar(-2.2));
         enemy.vel.add(side.clone().multiplyScalar(2.4 / Math.max(0.8, enemy.speciesData.bounceMass)));
+        clampActorVelocity(player, MAX_PLAYER_BOUNCE_SIDE * 0.92, MAX_PLAYER_BOUNCE_UP * 0.9, 20, MAX_PLAYER_BOUNCE_SPEED * 0.94);
+        clampActorVelocity(enemy, 9.4, 6.8, 18, MAX_ENEMY_BOUNCE_SPEED * 0.92);
       }
     }
 
@@ -6173,17 +6315,72 @@ function skyProfileForZone(zone) {
       resolveActorStructureCollision(enemy, enemy.radius * 0.85);
     }
 
+    const FAMILY_DAMAGE_AFFINITIES = {
+      Storm: { weakTo: ["physical", "frost"], resistTo: ["lightning"] },
+      Arcane: { weakTo: ["physical", "void"], resistTo: ["holy", "arcane"] },
+      Verdant: { weakTo: ["fire", "poison"], resistTo: ["physical"] },
+      Hollow: { weakTo: ["holy", "fire"], resistTo: ["poison", "bleed"] },
+      Ruined: { weakTo: ["antiArmor", "lightning", "shock"], resistTo: ["physical", "poison"] },
+      Dragon: { weakTo: ["frost", "antiArmor", "lightning"], resistTo: ["fire"] },
+      Badlands: { weakTo: ["frost", "antiArmor"], resistTo: ["fire"] },
+      Ember: { weakTo: ["frost", "void"], resistTo: ["fire"] },
+      Frontier: { weakTo: ["bleed"], resistTo: ["physical"] },
+      City: { weakTo: ["shock", "void"], resistTo: ["bleed"] }
+    };
+
+    function effectDamageType(effect = "", source = "") {
+      const fx = `${effect || ""}`.toLowerCase();
+      const src = `${source || ""}`.toLowerCase();
+      if (fx.includes("lightning") || fx.includes("chain") || fx.includes("stun") || src.includes("chain")) return "lightning";
+      if (fx.includes("poison") || fx.includes("venom") || fx.includes("toxic")) return "poison";
+      if (fx.includes("burn") || fx.includes("ember") || fx.includes("fire")) return "fire";
+      if (fx.includes("frost") || fx.includes("freeze") || fx.includes("ice")) return "frost";
+      if (fx.includes("void") || fx.includes("rift") || src.includes("void")) return "void";
+      if (fx.includes("radiant") || fx.includes("holy") || fx.includes("halo")) return "holy";
+      if (fx.includes("barb") || fx.includes("bleed")) return "bleed";
+      if (fx.includes("shockwave")) return "shock";
+      if (fx.includes("antiarmor") || fx.includes("armorpierce")) return "antiArmor";
+      if (fx.includes("arcane")) return "arcane";
+      return "physical";
+    }
+
+    function currentWeaponDamageType(source = "hit") {
+      const weapon = resolveEquippedWeaponItem();
+      const profile = getWeaponProfile(weapon);
+      if (source === "dive" || source === "clash") return "physical";
+      return effectDamageType(weapon?.effect || profile?.impactFx || profile?.trailProfile || "", source);
+    }
+
+    function damageTypeModifierForEnemy(enemy, damageType = "physical") {
+      const affinity = FAMILY_DAMAGE_AFFINITIES[enemy?.speciesData?.family] || {};
+      const weakTo = affinity.weakTo || [];
+      const resistTo = affinity.resistTo || [];
+      const immuneTo = affinity.immuneTo || [];
+      if (immuneTo.includes(damageType)) return { mult: 0, tag: "immune" };
+      if (weakTo.includes(damageType)) return { mult: 1.26, tag: "weak" };
+      if (resistTo.includes(damageType)) return { mult: 0.78, tag: "resist" };
+      return { mult: 1, tag: null };
+    }
+
     function damageEnemy(enemy, amount, hitDir, source = "hit") {
       if (!enemy.alive) return;
+      const damageType = typeof source === "object" ? (source.damageType || "physical") : currentWeaponDamageType(source);
+      const interaction = damageTypeModifierForEnemy(enemy, damageType);
       let finalAmount = amount;
       if (enemy === playerMarkedEnemy) finalAmount *= 1.18 + (progress.upgrades.markBonus || 0) * 0.08;
       if (player?.warCryTimer > 0) finalAmount *= 1.16 + (progress.upgrades.antiEliteMelee || 0) * 0.04;
+      finalAmount *= interaction.mult;
       enemy.health -= finalAmount;
       enemy.hitReact = 0.22;
       enemy.vel.add(hitDir.clone().multiplyScalar(0.5));
       enemy.vel.y += 1.2;
       hitstopTimer = Math.max(hitstopTimer, source === "thrust" || source === "dive" ? 0.04 : 0.02);
-      spawnBurst(enemy.pos.clone().add(new THREE.Vector3(0, 0.8, 0)), 6, source === "thrust" ? 0xfff08d : 0xffffff);
+      const hitColor = interaction.tag === "weak" ? 0x86efac : interaction.tag === "resist" ? 0xfca5a5 : source === "thrust" ? 0xfff08d : 0xffffff;
+      spawnBurst(enemy.pos.clone().add(new THREE.Vector3(0, 0.8, 0)), interaction.tag === "weak" ? 10 : 6, hitColor);
+      if (interaction.tag && damageTypeFeedbackCooldown <= 0) {
+        showCenterMessage(interaction.tag === "weak" ? "Weak!" : interaction.tag === "resist" ? "Resist" : "Immune", 0.18);
+        damageTypeFeedbackCooldown = 0.2;
+      }
       if (enemy.health <= 0) {
         killEnemy(enemy);
       }
@@ -6195,15 +6392,25 @@ function skyProfileForZone(zone) {
       if (!weapon) return;
       const weaponProfile = getWeaponProfile(weapon);
       const fx = weapon.effect;
-      if (fx === "poison" || stats.poisonBonus > 0) enemy.poisonTimer = Math.max(enemy.poisonTimer, 3.2 + stats.poisonBonus * 4);
-      if (fx === "freeze" && Math.random() < 0.25 + stats.freezeChance) enemy.freezeTimer = 1.25;
-      if (fx === "stun" && Math.random() < 0.22) enemy.stunTimer = 0.9;
+      if (fx === "poison" || stats.poisonBonus > 0) {
+        enemy.poisonTimer = Math.max(enemy.poisonTimer, 3.2 + stats.poisonBonus * 4);
+        spawnWeaponImpactFx({ ...weaponProfile, impactFx: "poison" }, enemy.pos.clone().add(new THREE.Vector3(0, 0.7, 0)), 0.8);
+      }
+      if (fx === "freeze" && Math.random() < 0.25 + stats.freezeChance) {
+        enemy.freezeTimer = 1.25;
+        spawnWeaponImpactFx({ ...weaponProfile, impactFx: "frost" }, enemy.pos.clone().add(new THREE.Vector3(0, 0.65, 0)), 0.85);
+      }
+      if (fx === "stun" && Math.random() < 0.22) {
+        enemy.stunTimer = 0.9;
+        spawnWeaponImpactFx({ ...weaponProfile, impactFx: "lightning" }, enemy.pos.clone().add(new THREE.Vector3(0, 1.0, 0)), 0.7);
+      }
       if (fx === "lifesteal") player.health = Math.min(player.maxHealth, player.health + baseDamage * 0.08);
       if (fx === "projectile" && Math.random() < 0.6) damageEnemy(enemy, baseDamage * 0.3, new THREE.Vector3(0, 0, 0), "projectile");
       if (fx === "shockwave" && Math.random() < 0.25) {
         for (const other of enemies) {
           if (other !== enemy && other.alive && other.pos.distanceTo(enemy.pos) < 8) damageEnemy(other, baseDamage * 0.35, other.pos.clone().sub(enemy.pos).normalize(), "shockwave");
         }
+        spawnWeaponImpactFx({ ...weaponProfile, impactFx: "arcane" }, enemy.pos.clone(), 0.9);
       }
       if ((fx === "chainLightning" || stats.chainChance > 0) && Math.random() < 0.22 + stats.chainChance) {
         const candidates = enemies.filter((e) => e.alive && e !== enemy).sort((a, b) => a.pos.distanceTo(enemy.pos) - b.pos.distanceTo(enemy.pos)).slice(0, 2);
@@ -6211,6 +6418,7 @@ function skyProfileForZone(zone) {
           if (c.pos.distanceTo(enemy.pos) < 14) {
             damageEnemy(c, baseDamage * 0.45, c.pos.clone().sub(enemy.pos).normalize(), "chain");
             spawnWeaponImpactFx({ ...weaponProfile, impactFx: "lightning" }, c.pos.clone(), 0.72);
+            spawnChainBeam(enemy.pos.clone().add(new THREE.Vector3(0, 1, 0)), c.pos.clone().add(new THREE.Vector3(0, 1, 0)), 0x93c5fd, 0.1);
           }
         }
       }
@@ -6265,7 +6473,10 @@ function skyProfileForZone(zone) {
         if (enemy.recentTopDownHitByPlayerTimer > 0) enemy.recentTopDownHitByPlayerTimer = Math.max(0, enemy.recentTopDownHitByPlayerTimer - dt);
         const lock = playerTopDownHitLocks.get(enemy) || 0;
         if (lock > 0) playerTopDownHitLocks.set(enemy, Math.max(0, lock - dt));
+        const contact = getPlayerEnemyContactState(enemy);
+        contact.timer = Math.max(0, contact.timer - dt);
       }
+      damageTypeFeedbackCooldown = Math.max(0, damageTypeFeedbackCooldown - dt);
 
       const stats = playerStats();
       const mount = stats.mount;
@@ -6854,6 +7065,12 @@ function skyProfileForZone(zone) {
 
           const bodyHit = nearestEnemyHitTarget(enemy, player.pos);
           if (bodyHit && player.pos.distanceTo(bodyHit.pos) < player.radius + bodyHit.radius) {
+            const contactState = getPlayerEnemyContactState(enemy);
+            const sepThreshold = player.radius + bodyHit.radius + BOUNCE_PAIR_SEPARATION_BUFFER;
+            const pairDist = player.pos.distanceTo(bodyHit.pos);
+            contactState.separated = pairDist > sepThreshold;
+            if (!canResolvePlayerEnemyContact(enemy)) continue;
+
             const playerHigher = player.pos.y - bodyHit.pos.y;
             const side = bodyHit.pos.clone().sub(player.pos).setY(0);
             if (side.lengthSq() < 0.0001) side.set(0.01, 0, 1);
@@ -6865,16 +7082,21 @@ function skyProfileForZone(zone) {
               resolveTopDownClash(enemy, side, momentum, stats, playerHigher, player.pos.distanceTo(bodyHit.pos));
             } else if ((enemy.silhouetteType === "orb" || enemy.silhouetteType === "construct") && playerHigher > 0.3) {
               applyPlayerDamage(enemy.speciesData.damage * 1.2, `${enemy.speciesData.label} collision shield`);
+              markPlayerEnemyContactResolved(enemy, ENEMY_CONTACT_DAMAGE_COOLDOWN);
               if (gameEnded || !player.alive) return;
             } else if (playerHigher < -1.35) {
               applyPlayerDamage(enemy.speciesData.damage * 1.15, "counter hit");
+              markPlayerEnemyContactResolved(enemy, ENEMY_CONTACT_DAMAGE_COOLDOWN);
               if (gameEnded || !player.alive) return;
             } else {
+              markPlayerEnemyContactResolved(enemy, ENEMY_CONTACT_DAMAGE_COOLDOWN);
               const push = side.multiplyScalar(5);
               player.vel.add(push.clone().multiplyScalar(-0.7));
               enemy.vel.add(push.clone().multiplyScalar(0.7 / Math.max(0.7, enemy.speciesData.bounceMass)));
               player.vel.y += 1.8 + progress.upgrades.bounceRecovery * 0.22;
               enemy.vel.y += 1.8;
+              clampActorVelocity(player, MAX_PLAYER_BOUNCE_SIDE, MAX_PLAYER_BOUNCE_UP, 20, MAX_PLAYER_BOUNCE_SPEED);
+              clampActorVelocity(enemy, 10.5, 8.2, 18, MAX_ENEMY_BOUNCE_SPEED);
               applyPlayerDamage(Math.max(2, (enemy.elite ? 12 : 8) * (1 - stats.collisionRecovery)), "clash");
               damageEnemy(enemy, 10 + progress.upgrades.antiArmor * 2.5, push.clone().normalize(), "clash");
               triggerHitFeedback(enemy, player, push.clone().normalize().multiplyScalar(-1), 0.9);
@@ -7471,7 +7693,7 @@ function skyProfileForZone(zone) {
       if (item.vendorType === "mountPermit" && item.mountId && isOwnedMount(item.mountId)) {
         return showCenterMessage("You already own this mount.", 0.7);
       }
-      const price = Math.round(item.sell * 1.65);
+      const price = Math.round(item.sell * 1.45);
       if (gold < price) return showCenterMessage("Not enough gold.", 0.6);
       gold -= price;
       if (item.vendorType === "mountPermit" && item.mountId) {
