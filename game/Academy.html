@@ -778,10 +778,23 @@ const ENEMY_SPECIES = {
     });
 
     const SPECIES_SILHOUETTE_OVERRIDES = {
+      forestSkimmer: "bird",
+      branchPouncer: "bird",
+      thornBeak: "bird",
+      youngHornetRider: "bird",
+      canopyDuelist: "bird",
+      cliffLancer: "bird",
+      rogueRooftopRider: "bird",
+      spearSentinel: "bird",
+      hiveCaptain: "bird",
+      giantBee: "bird",
+      dragonKnight: "wyvern",
+      apexRivalRider: "wyvern",
       vineDrake: "wyvern",
       fireDrake: "wyvern",
       stormDrake: "wyvern",
       emberDrake: "wyvern",
+      ironWyvern: "wyvern",
       nightglassDrake: "wyvern",
       redMesaDrake: "wyvern",
       stormSpirit: "orb",
@@ -792,8 +805,9 @@ const ENEMY_SPECIES = {
       boltRay: "manta",
       voidManta: "manta",
       arcManta: "manta",
-      skyEel: "leviathan",
-      thunderSerpent: "leviathan",
+      skyEel: "serpent",
+      thunderSerpent: "serpent",
+      skyWeaver: "serpent",
       ribbonSerpent: "serpent",
       bonecrestSerpent: "serpent",
       magmaSerpent: "serpent",
@@ -3772,9 +3786,15 @@ const ENEMY_SPECIES = {
         attackWindup: 0,
         specialCooldown: 1.6 + Math.random() * 1.8,
         specialWindup: 0,
+        specialWindupTotal: 0,
         specialType: null,
         telegraph: 0,
+        telegraphTotal: 0,
         telegraphMesh: null,
+        telegraphVisuals: null,
+        telegraphStage: "idle",
+        telegraphPose: 0,
+        punishWindow: 0,
         thrustTimer: 0,
         flapPhase: Math.random() * 10,
         aiTimer: 0,
@@ -4573,7 +4593,7 @@ const ENEMY_SPECIES = {
       for (const enemy of enemies) {
         if (!enemy?.alive) continue;
         enemy.alive = false;
-        if (enemy.telegraphMesh) scene.remove(enemy.telegraphMesh);
+        clearEnemyTelegraph(enemy);
         if (enemy.model) scene.remove(enemy.model);
       }
       enemies = enemies.filter((e) => e.alive);
@@ -5123,7 +5143,7 @@ const ENEMY_SPECIES = {
     function killEnemy(enemy) {
       if (!enemy.alive) return;
       enemy.alive = false;
-      if (enemy.telegraphMesh) scene.remove(enemy.telegraphMesh);
+      clearEnemyTelegraph(enemy);
       scene.remove(enemy.model);
       if (enemy.isBoss) {
         handleBossVictory(enemy);
@@ -6232,7 +6252,7 @@ function skyProfileForZone(zone) {
       if (actor !== player) {
         actor.model.traverse((child) => {
           if (child.isMesh && child.material && "emissiveIntensity" in child.material) {
-            child.material.emissiveIntensity = actor.hitReact > 0 ? 0.7 : actor.telegraph > 0 ? 0.45 : 0.12;
+            child.material.emissiveIntensity = actor.hitReact > 0 ? 0.74 : actor.punishWindow > 0 ? 0.78 : actor.telegraph > 0 ? 0.46 : 0.12;
           }
         });
       }
@@ -6240,6 +6260,7 @@ function skyProfileForZone(zone) {
 
     function updateEnemySilhouetteAnimation(enemy, dt, speed) {
       const t = performance.now() * 0.001 + enemy.flapPhase;
+      const telePose = enemy.telegraphPose || 0;
       if (enemy.silhouetteType === "bird" || enemy.silhouetteType === "insect") {
         updateMountWingAnimation(enemy, dt, 0.9 + Math.min(speed * 0.03, 0.46));
         return;
@@ -6248,9 +6269,13 @@ function skyProfileForZone(zone) {
         const anim = enemy.model.userData?.wyvernAnim;
         if (anim?.leftWing && anim?.rightWing) {
           const flap = Math.sin(t * 1.55) * 0.28;
-          anim.leftWing.rotation.z = 0.3 + flap;
-          anim.rightWing.rotation.z = -0.3 - flap;
-          if (anim.tailPivot) anim.tailPivot.rotation.y = Math.sin(t * 0.9) * 0.18;
+          anim.leftWing.rotation.z = 0.3 + flap + telePose * 0.22;
+          anim.rightWing.rotation.z = -0.3 - flap - telePose * 0.22;
+          if (anim.tailPivot) {
+            anim.tailPivot.rotation.y = Math.sin(t * 0.9) * 0.18;
+            anim.tailPivot.rotation.x = telePose * -0.22;
+          }
+          if (anim.body) anim.body.rotation.x = -telePose * 0.16;
         }
       } else if (enemy.silhouetteType === "serpent" || enemy.silhouetteType === "leviathan") {
         const segs = enemy.model.userData?.segments || [];
@@ -6260,27 +6285,34 @@ function skyProfileForZone(zone) {
           const lag = idx * (enemy.silhouetteType === "leviathan" ? 0.28 : 0.34);
           const rest = rests[idx] || seg.position;
           const targetX = Math.sin(t * (enemy.silhouetteType === "leviathan" ? 1.2 : 1.35) - lag) * amp * Math.max(0.3, 1 - idx * 0.05);
-          const targetY = rest.y + Math.sin(t * 0.95 - lag) * (enemy.silhouetteType === "leviathan" ? 0.03 : 0.018);
+          const targetY = rest.y + Math.sin(t * 0.95 - lag) * (enemy.silhouetteType === "leviathan" ? 0.03 : 0.018) + (idx === 0 ? telePose * 0.06 : 0);
           seg.position.x = THREE.MathUtils.lerp(seg.position.x, targetX, 0.18);
           seg.position.y = THREE.MathUtils.lerp(seg.position.y, targetY, 0.14);
+          if (idx === 0) seg.scale.setScalar(1 + telePose * 0.1);
         });
       } else if (enemy.silhouetteType === "manta") {
         const manta = enemy.model.userData?.mantaAnim;
         if (manta?.leftWing && manta?.rightWing) {
           const finWave = Math.sin(t * 1.1) * 0.22;
-          manta.leftWing.rotation.z = 0.08 + finWave * 0.4;
-          manta.rightWing.rotation.z = -0.08 - finWave * 0.4;
+          manta.leftWing.rotation.z = 0.08 + finWave * 0.4 + telePose * 0.26;
+          manta.rightWing.rotation.z = -0.08 - finWave * 0.4 - telePose * 0.26;
           manta.leftWing.rotation.x = -0.2 + Math.sin(t * 0.72) * 0.08;
           manta.rightWing.rotation.x = -0.2 + Math.sin(t * 0.72 + Math.PI) * 0.08;
-          if (manta.tail) manta.tail.rotation.y = Math.sin(t * 0.65) * 0.18;
+          if (manta.tail) {
+            manta.tail.rotation.y = Math.sin(t * 0.65) * 0.18;
+            manta.tail.rotation.x = telePose * 0.14;
+          }
         }
       } else if (enemy.silhouetteType === "orb") {
         const orb = enemy.model.userData?.orb;
         if (orb?.core) {
           const pulse = 1 + Math.sin(t * 2.4) * 0.08;
-          orb.core.scale.setScalar(pulse);
+          orb.core.scale.setScalar(pulse + telePose * 0.15);
           orb.core.rotation.y += dt * 1.8;
-          orb.rings?.forEach((ring, idx) => { ring.rotation.z += dt * (idx === 0 ? 1.1 : -0.9); });
+          orb.rings?.forEach((ring, idx) => {
+            ring.rotation.z += dt * (idx === 0 ? 1.1 + telePose * 1.8 : -0.9 - telePose * 1.2);
+            ring.scale.setScalar(1 + telePose * 0.18);
+          });
         }
       } else if (enemy.silhouetteType === "construct") {
         enemy.model.rotation.y += dt * 0.8;
@@ -6538,14 +6570,15 @@ function skyProfileForZone(zone) {
       if (player?.warCryTimer > 0) finalAmount *= 1.16 + (progress.upgrades.antiEliteMelee || 0) * 0.04;
       finalAmount *= interaction.mult;
       enemy.health -= finalAmount;
-      enemy.hitReact = 0.22;
+      enemy.hitReact = interaction.tag === "weak" ? 0.34 : interaction.tag === "resist" ? 0.14 : 0.22;
+      if (interaction.tag === "weak") enemy.stunTimer = Math.max(enemy.stunTimer || 0, 0.1);
       enemy.vel.add(hitDir.clone().multiplyScalar(0.5));
       enemy.vel.y += 1.2;
       hitstopTimer = Math.max(hitstopTimer, source === "thrust" || source === "dive" ? 0.04 : 0.02);
       const hitColor = interaction.tag === "weak" ? 0x86efac : interaction.tag === "resist" ? 0xfca5a5 : source === "thrust" ? 0xfff08d : 0xffffff;
-      spawnBurst(enemy.pos.clone().add(new THREE.Vector3(0, 0.8, 0)), interaction.tag === "weak" ? 10 : 6, hitColor);
+      spawnBurst(enemy.pos.clone().add(new THREE.Vector3(0, 0.8, 0)), interaction.tag === "weak" ? 14 : interaction.tag === "resist" ? 4 : 6, hitColor);
       if (interaction.tag && damageTypeFeedbackCooldown <= 0) {
-        showCenterMessage(interaction.tag === "weak" ? "Weak!" : interaction.tag === "resist" ? "Resist" : "Immune", 0.18);
+        showCenterMessage(interaction.tag === "weak" ? "Weak!" : interaction.tag === "resist" ? "Resist" : "Immune", interaction.tag === "weak" ? 0.24 : 0.18);
         damageTypeFeedbackCooldown = 0.2;
       }
       if (enemy.health <= 0) {
@@ -6791,29 +6824,144 @@ function skyProfileForZone(zone) {
       updateActorTransform(player, dt);
     }
 
+    const DAMAGE_TELEGRAPH_COLORS = {
+      fire: 0xff6b3d,
+      lightning: 0x8fd9ff,
+      poison: 0x7cf779,
+      frost: 0xb9f2ff,
+      void: 0x9f7aff,
+      holy: 0xf7e08b,
+      physical: 0xffb38a,
+      arcane: 0xa9b8ff,
+      bleed: 0xff9aa2,
+      shock: 0x88ddff
+    };
+
+    function getEnemyDamageType(enemy, behavior) {
+      const family = enemy.speciesData?.family;
+      if (family === "Ember" || behavior === "breath") return "fire";
+      if (family === "Storm" || behavior === "beam" || behavior === "beamSweep") return "lightning";
+      if (family === "Hollow") return "void";
+      if (family === "Arcane" || behavior === "orb") return "arcane";
+      if (family === "Verdant") return "poison";
+      if (family === "Dragon" || family === "Badlands") return "physical";
+      return "physical";
+    }
+
+    function getAttackStyleForEnemy(enemy, behavior, isSpecial = false) {
+      const silhouette = enemy.silhouetteType || "bird";
+      if (behavior === "beam" || behavior === "sniper" || behavior === "orb" || behavior === "ranged" || behavior === "beamSweep") return "line";
+      if (behavior === "breath" || behavior === "wyvernDive") return "cone";
+      if (behavior === "serpent" || behavior === "leviathanSurge") return isSpecial ? "coil" : "line";
+      if (behavior === "mantaSweep") return isSpecial ? "sweep" : "line";
+      if (silhouette === "orb") return isSpecial ? "circle" : "line";
+      if (silhouette === "manta") return "sweep";
+      if (silhouette === "serpent" || silhouette === "leviathan") return isSpecial ? "coil" : "line";
+      if (silhouette === "wyvern") return "cone";
+      return "circle";
+    }
+
+    function clearEnemyTelegraph(enemy) {
+      if (!enemy?.telegraphVisuals) return;
+      for (const mesh of enemy.telegraphVisuals.meshes || []) scene.remove(mesh);
+      enemy.telegraphVisuals = null;
+    }
+
+    function ensureEnemyTelegraphVisual(enemy, style = "circle", teleColor = 0xffaa66) {
+      if (!enemy.telegraphVisuals || enemy.telegraphVisuals.style !== style) {
+        clearEnemyTelegraph(enemy);
+        const meshes = [];
+        const baseMat = new THREE.MeshBasicMaterial({ color: teleColor, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false });
+        if (style === "line") {
+          const lane = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 10.2), baseMat.clone());
+          lane.rotation.x = -Math.PI / 2;
+          lane.position.y = 0.06;
+          meshes.push(lane);
+        } else if (style === "cone" || style === "sweep") {
+          const cone = new THREE.Mesh(new THREE.CircleGeometry(5.4, 28, -Math.PI * 0.2, Math.PI * 0.4), baseMat.clone());
+          cone.rotation.x = -Math.PI / 2;
+          cone.position.y = 0.06;
+          meshes.push(cone);
+        } else if (style === "coil") {
+          const outer = new THREE.Mesh(new THREE.RingGeometry(2.5, 3.7, 30), baseMat.clone());
+          outer.rotation.x = -Math.PI / 2;
+          outer.position.y = 0.06;
+          const inner = new THREE.Mesh(new THREE.CircleGeometry(2.2, 24), baseMat.clone());
+          inner.rotation.x = -Math.PI / 2;
+          inner.position.y = 0.05;
+          inner.material.opacity = 0.08;
+          meshes.push(outer, inner);
+        } else {
+          const circle = new THREE.Mesh(new THREE.RingGeometry(2.1, 3.2, 28), baseMat.clone());
+          circle.rotation.x = -Math.PI / 2;
+          circle.position.y = 0.06;
+          meshes.push(circle);
+        }
+        meshes.forEach((m) => scene.add(m));
+        enemy.telegraphVisuals = { style, meshes };
+      }
+      for (const mesh of enemy.telegraphVisuals.meshes) {
+        if (mesh.material?.color) mesh.material.color.setHex(teleColor);
+      }
+    }
+
     function getPreferredAttackWindow(enemy, distToTarget, alignment) {
       const melee = enemy.speciesData.preferDistance + (enemy.archetype === "Duelist" ? 1.5 : 2.8);
       const alignNeeded = enemy.archetype === "Duelist" ? 0.86 : enemy.archetype === "Charger" ? 0.74 : 0.58;
       return { inRange: distToTarget < melee, aligned: alignment >= alignNeeded, alignNeeded };
     }
 
-    function updateEnemyTelegraph(enemy, dt, attackStyle = "melee") {
+    function updateEnemyTelegraph(enemy, dt, attackStyle = "melee", behavior = "lancer") {
       enemy.telegraph = Math.max(0, enemy.telegraph - dt);
       enemy.specialWindup = Math.max(0, enemy.specialWindup - dt);
-      if (!enemy.telegraphMesh) return;
-      enemy.telegraphMesh.position.copy(enemy.pos).setY(enemy.pos.y - enemy.radius + 0.1);
-      enemy.telegraphMesh.lookAt(camera.position);
-      const family = enemy.speciesData?.family || "default";
-      const teleCol = (FAMILY_NAMEPLATE_COLORS[family] || FAMILY_NAMEPLATE_COLORS.default).telegraph;
-      if (enemy.telegraphMesh.material?.color) enemy.telegraphMesh.material.color.setHex(teleCol);
-      const baseOpacity = attackStyle === "line" ? 0.3 : attackStyle === "cone" ? 0.26 : 0.2;
-      enemy.telegraphMesh.material.opacity = baseOpacity + (enemy.specialWindup > 0 ? 0.25 : enemy.telegraph > 0 ? 0.15 : 0);
-      if (attackStyle === "line" && enemy.specialWindup > 0) enemy.telegraphMesh.scale.set(1.7, 0.45, 1.7);
-      else enemy.telegraphMesh.scale.set(1, 1, 1);
+      enemy.punishWindow = Math.max(0, (enemy.punishWindow || 0) - dt);
+      const activeWindup = Math.max(enemy.telegraph, enemy.specialWindup);
+      if (activeWindup <= 0) {
+        clearEnemyTelegraph(enemy);
+        enemy.telegraphPose = 0;
+        return;
+      }
+      const damageType = getEnemyDamageType(enemy, behavior);
+      const teleCol = DAMAGE_TELEGRAPH_COLORS[damageType] || (FAMILY_NAMEPLATE_COLORS[enemy.speciesData?.family] || FAMILY_NAMEPLATE_COLORS.default).telegraph;
+      const style = getAttackStyleForEnemy(enemy, behavior, enemy.specialWindup > 0);
+      ensureEnemyTelegraphVisual(enemy, style, teleCol);
+      const total = enemy.specialWindup > 0 ? Math.max(0.001, enemy.specialWindupTotal || enemy.specialWindup) : Math.max(0.001, enemy.telegraphTotal || enemy.telegraph);
+      const stageProgress = THREE.MathUtils.clamp(1 - (activeWindup / total), 0, 1);
+      const stage = stageProgress < 0.34 ? "warning" : stageProgress < 0.75 ? "commitment" : "release";
+      enemy.telegraphStage = stage;
+      enemy.telegraphPose = stage === "warning" ? 0.25 : stage === "commitment" ? 0.72 : 1.0;
+      enemy.punishWindow = stage === "release" ? Math.max(enemy.punishWindow || 0, 0.24) : enemy.punishWindow || 0;
+
+      const forward = new THREE.Vector3(Math.sin(enemy.yaw), 0, Math.cos(enemy.yaw));
+      const right = new THREE.Vector3(forward.z, 0, -forward.x);
+      const basePos = enemy.pos.clone().setY(enemy.pos.y - enemy.radius + 0.08);
+      const intensity = stage === "warning" ? 0.36 : stage === "commitment" ? 0.7 : 1;
+      const pulse = 0.9 + Math.sin(performance.now() * 0.018) * 0.1;
+      for (let i = 0; i < (enemy.telegraphVisuals?.meshes?.length || 0); i++) {
+        const mesh = enemy.telegraphVisuals.meshes[i];
+        mesh.position.copy(basePos);
+        mesh.rotation.y = enemy.yaw;
+        if (style === "line") {
+          const reach = enemy.specialWindup > 0 ? 18 : 13;
+          mesh.position.add(forward.clone().multiplyScalar(reach * 0.42));
+          mesh.scale.set(1 + intensity * 0.25, THREE.MathUtils.lerp(0.58, 1.18, intensity) * pulse, 1);
+        } else if (style === "cone" || style === "sweep") {
+          mesh.position.add(forward.clone().multiplyScalar(2.1)).add(right.clone().multiplyScalar(style === "sweep" ? 1.2 : 0));
+          mesh.scale.setScalar(0.82 + intensity * 0.45);
+        } else if (style === "coil") {
+          mesh.scale.setScalar(i === 0 ? 0.94 + intensity * 0.44 : 0.88 + intensity * 0.32);
+        } else {
+          mesh.scale.setScalar(0.9 + intensity * 0.4);
+        }
+        if (mesh.material) {
+          mesh.material.opacity = stage === "warning" ? 0.14 : stage === "commitment" ? 0.3 : 0.42;
+        }
+      }
     }
 
     function executeEnemyAttack(enemy, combatTarget, typeStats, forwardEnemy) {
       const attackDamage = typeStats.damage * (enemy.elite ? 1.22 : 1);
+      enemy.punishWindow = Math.max(enemy.punishWindow || 0, enemy.archetype === "Crusher" ? 0.48 : 0.34);
       const pushDir = combatTarget.pos.clone().sub(enemy.pos).normalize().multiplyScalar(typeStats.knockback);
       if (enemy.archetype === "Charger") enemy.vel.add(pushDir.clone().multiplyScalar(11));
       const behavior = typeStats.combatBehavior || typeStats.behavior;
@@ -6897,6 +7045,7 @@ function skyProfileForZone(zone) {
 
       if (distToPlayer > ENEMY_DESPAWN_RANGE) {
         enemy.alive = false;
+        clearEnemyTelegraph(enemy);
         scene.remove(enemy.model);
         return;
       }
@@ -6904,6 +7053,7 @@ function skyProfileForZone(zone) {
       // Hubs are safe pockets: enemies that enter core radius are cleaned up.
       if (enemyHub || enemyCitySafe) {
         enemy.alive = false;
+        clearEnemyTelegraph(enemy);
         scene.remove(enemy.model);
         spawnBurst(enemy.pos.clone(), 10, 0xaef2ff);
         return;
@@ -6948,7 +7098,7 @@ function skyProfileForZone(zone) {
       enemy.stunTimer = Math.max(0, enemy.stunTimer - dt);
       if (enemy.poisonTimer > 0) enemy.health -= (enemy.elite ? 2.8 : 3.7) * dt;
       if (enemy.health <= 0) { killEnemy(enemy); return; }
-      updateEnemyTelegraph(enemy, dt, ["beam", "sniper", "orb", "ranged", "beamSweep", "mantaSweep"].includes(behavior) ? "line" : behavior === "breath" || behavior === "wyvernDive" ? "cone" : "melee");
+      updateEnemyTelegraph(enemy, dt, ["beam", "sniper", "orb", "ranged", "beamSweep", "mantaSweep"].includes(behavior) ? "line" : behavior === "breath" || behavior === "wyvernDive" ? "cone" : "melee", behavior);
       if (enemy.stunTimer > 0) {
         enemy.vel.multiplyScalar(0.86);
         updateActorTransform(enemy, dt);
@@ -7074,6 +7224,7 @@ function skyProfileForZone(zone) {
 
       if (enemy.pos.y < hazardFloorAt(enemy.pos.x, enemy.pos.z) + 0.8) {
         enemy.alive = false;
+        clearEnemyTelegraph(enemy);
         scene.remove(enemy.model);
         spawnBurst(enemy.pos.clone(), 10, 0xff7a2b);
         score += 50;
@@ -7106,6 +7257,12 @@ function skyProfileForZone(zone) {
       const attackWindow = getPreferredAttackWindow(enemy, distToPlayer, alignment);
       if (enemy.state === "aggro" && attackWindow.inRange && enemy.attackTimer <= 0 && enemy.telegraph <= 0 && attackWindow.aligned) {
         enemy.telegraph = enemy.archetype === "Charger" ? 0.75 : enemy.archetype === "Crusher" ? 0.55 : 0.45;
+        enemy.telegraphTotal = enemy.telegraph;
+        ensureEnemyTelegraphVisual(
+          enemy,
+          getAttackStyleForEnemy(enemy, behavior, false),
+          DAMAGE_TELEGRAPH_COLORS[getEnemyDamageType(enemy, behavior)] || 0xffb38a
+        );
       }
       const deepTier = zoneTier(enemy.zoneName);
       const depthBandValue = enemy.depthTier === "deep" ? 2 : enemy.depthTier === "mid" ? 1 : 0;
@@ -7117,14 +7274,13 @@ function skyProfileForZone(zone) {
         else if (behavior === "mantaSweep") enemy.specialType = "sweep";
         else enemy.specialType = hasDeepKit ? "loopDive" : "dive";
         enemy.specialWindup = (enemy.depthTier === "outer" ? 0.7 : 0.58) + Math.random() * 0.28;
+        enemy.specialWindupTotal = enemy.specialWindup;
         enemy.specialCooldown = 4.8 - Math.min(2.3, deepTier * 0.2 + depthBandValue * 0.42);
-        if (!enemy.telegraphMesh) {
-          enemy.telegraphMesh = new THREE.Mesh(
-            new THREE.RingGeometry(1.4, 2.8, 24),
-            new THREE.MeshBasicMaterial({ color: (FAMILY_NAMEPLATE_COLORS[enemy.speciesData?.family] || FAMILY_NAMEPLATE_COLORS.default).telegraph, transparent: true, opacity: 0.25, side: THREE.DoubleSide })
-          );
-          scene.add(enemy.telegraphMesh);
-        }
+        ensureEnemyTelegraphVisual(
+          enemy,
+          getAttackStyleForEnemy(enemy, behavior, true),
+          DAMAGE_TELEGRAPH_COLORS[getEnemyDamageType(enemy, behavior)] || 0xffb38a
+        );
       }
       if (enemy.state === "aggro" && enemy.specialWindup > 0 && enemy.specialWindup < 0.12) {
         const toPlayer = player.pos.clone().sub(enemy.pos).setY(0).normalize();
@@ -7175,6 +7331,7 @@ function skyProfileForZone(zone) {
       if (enemy.state === "aggro" && attackWindow.inRange && enemy.attackTimer <= 0 && enemy.telegraph > 0 && enemy.telegraph < 0.12) {
         enemy.attackTimer = typeStats.attackCooldown;
         enemy.telegraph = 0;
+        enemy.telegraphTotal = 0;
         executeEnemyAttack(enemy, combatTarget, typeStats, forwardEnemy);
         if (enemy.archetype === "Crusher") {
           for (const other of [player, ...allySummons]) {
