@@ -278,6 +278,7 @@
     let allySummons = [];
     let enemyProjectiles = [];
     let weaponProjectiles = [];
+    let pendingRangedBursts = [];
     let worldChunkMap = new Map();
     let mountSelection = null;
     let gamePaused = false;
@@ -880,6 +881,21 @@ const ENEMY_SPECIES = {
       { id: "serpentbreaker", name: "Serpentbreaker", slot: "weapon", rarity: "epic", region: "Ember Basin", stats: { spearDamage: 17 }, effect: "antiArmor", desc: "Armor-piercing anti-elite specialist.", sell: 58 },
       { id: "royal-joust-spear", name: "Royal Joust Spear", slot: "weapon", rarity: "epic", region: "Ruined Spires", stats: { spearDamage: 18, spearReach: 0.9 }, effect: "multiHit", desc: "Creates a triple thrust trail.", sell: 62 },
       { id: "crystal-halberd", name: "Crystal Halberd", slot: "weapon", rarity: "legendary", region: "Storm Peaks", stats: { spearDamage: 24, spearReach: 1.2 }, effect: "projectile", desc: "Fires crystal shards while thrusting.", sell: 90 },
+      { id: "ironhail-repeater", name: "Ironhail Repeater", slot: "weapon", rarity: "uncommon", region: "Great Forest Canopy", rangedClass: "machineGun", weaponClass: "Machine Gun / Auto Repeater", modelWeaponClass: "wand", attackProfile: "casterBolt", projectileType: "chainSpark", projectileVisualType: "tracer", stats: { spearDamage: 10, rangedAccuracy: 0.66, rangedRate: 0.16 }, rangeBand: "shortMid", accuracy: 0.66, shotsPerAttack: 1, rateOfFire: 0.16, projectileSpeed: 42, spread: 0.07, burstCount: 1, burstDelay: 0, falloff: 0.22, desc: "Entry auto repeater that floods close lanes with iron tracers.", sell: 30 },
+      { id: "stormcoil-carbine", name: "Stormcoil Carbine", slot: "weapon", rarity: "rare", region: "Tempest Shelf", rangedClass: "repeater", weaponClass: "Repeater / Carbine", modelWeaponClass: "wand", attackProfile: "casterBolt", projectileType: "chainSpark", projectileVisualType: "bolt", statusEffect: "lightning", stats: { spearDamage: 13, chainChance: 0.05, rangedAccuracy: 0.78 }, rangeBand: "mid", accuracy: 0.78, shotsPerAttack: 1, rateOfFire: 0.36, projectileSpeed: 46, spread: 0.035, burstCount: 1, burstDelay: 0, falloff: 0.1, desc: "Balanced electric carbine with reliable mid-range pressure.", sell: 44 },
+      { id: "thornburst-scattergun", name: "Thornburst Scattergun", slot: "weapon", rarity: "uncommon", region: "Mossfang Wilds", rangedClass: "scattergun", weaponClass: "Scattergun / Shot Blaster", modelWeaponClass: "wand", attackProfile: "casterBolt", projectileType: "poisonNeedle", projectileVisualType: "scatter", statusEffect: "bleed", stats: { spearDamage: 8, poisonBonus: 0.08 }, rangeBand: "close", accuracy: 0.54, shotsPerAttack: 6, rateOfFire: 0.72, projectileSpeed: 29, spread: 0.24, burstCount: 1, burstDelay: 0, falloff: 0.55, desc: "Thorn-pellet blast weapon that dominates close fly-bys.", sell: 33 },
+      { id: "sunflare-arc-rifle", name: "Sunflare Arc Rifle", slot: "weapon", rarity: "epic", region: "Aurelian Skyhold", rangedClass: "precisionRifle", weaponClass: "Precision Rifle / Arc Rifle", modelWeaponClass: "staff", attackProfile: "staffBurst", projectileType: "radiantSpear", projectileVisualType: "rail", statusEffect: "radiant", stats: { spearDamage: 18, critChance: 0.08 }, rangeBand: "long", accuracy: 0.92, shotsPerAttack: 1, rateOfFire: 0.64, projectileSpeed: 54, spread: 0.012, burstCount: 1, burstDelay: 0, falloff: 0.05, desc: "Long-range radiant rifle tuned for precision elite picks.", sell: 78 },
+      { id: "riftspike-launcher", name: "Riftspike Launcher", slot: "weapon", rarity: "rare", region: "Moonveil Expanse", rangedClass: "burstLauncher", weaponClass: "Burst Launcher", modelWeaponClass: "staff", attackProfile: "staffBurst", projectileType: "voidSpike", projectileVisualType: "burst", statusEffect: "void", stats: { spearDamage: 14 }, rangeBand: "mid", accuracy: 0.76, shotsPerAttack: 1, rateOfFire: 0.52, projectileSpeed: 39, spread: 0.05, burstCount: 3, burstDelay: 0.08, falloff: 0.12, desc: "Void launcher firing disciplined three-spike bursts.", sell: 48 },
+      { id: "ember-spray-caster", name: "Ember Spray Caster", slot: "weapon", rarity: "rare", region: "Ashen Lava Basin", rangedClass: "sprayCaster", weaponClass: "Close-Range Ember Sprayer", modelWeaponClass: "wand", attackProfile: "casterBolt", projectileType: "emberDart", projectileVisualType: "spray", statusEffect: "burn", stats: { spearDamage: 9 }, rangeBand: "pointBlank", accuracy: 0.48, shotsPerAttack: 7, rateOfFire: 0.24, projectileSpeed: 25, spread: 0.3, burstCount: 1, burstDelay: 0, falloff: 0.65, desc: "Cone ember pressure tool for aggressive short-range dives.", sell: 46 },
+      { id: "crystal-buckshot-wand", name: "Crystal Buckshot Wand", slot: "weapon", rarity: "rare", region: "Moonglass Citadel", rangedClass: "scattergun", weaponClass: "Arcane Sidearm / Wandcaster", modelWeaponClass: "wand", attackProfile: "casterBolt", projectileType: "crystalLancelet", projectileVisualType: "scatter", stats: { spearDamage: 12, freezeChance: 0.08 }, rangeBand: "shortMid", accuracy: 0.62, shotsPerAttack: 5, rateOfFire: 0.52, projectileSpeed: 33, spread: 0.17, burstCount: 1, burstDelay: 0, falloff: 0.42, desc: "Shard-splitting wand that pops clustered enemies up close.", sell: 52 },
+      { id: "railglass-pikegun", name: "Railglass Pikegun", slot: "weapon", rarity: "legendary", region: "Ironforge Expanse", rangedClass: "heavyCannon", weaponClass: "Heavy Cannon / Rail Weapon", modelWeaponClass: "staff", attackProfile: "heavyThrust", projectileType: "radiantSpear", projectileVisualType: "rail", stats: { spearDamage: 24, antiArmor: 0.2 }, rangeBand: "long", accuracy: 0.97, shotsPerAttack: 1, rateOfFire: 0.92, projectileSpeed: 62, spread: 0.008, burstCount: 1, burstDelay: 0, falloff: 0.02, pierce: 2, desc: "Slow rail pikegun that pierces armored lines.", sell: 126 },
+      { id: "venom-jet-sprayer", name: "Venom Jet Sprayer", slot: "weapon", rarity: "rare", region: "Hollow Night Marsh", rangedClass: "machineGun", weaponClass: "Toxic Sprayer", modelWeaponClass: "wand", attackProfile: "casterBolt", projectileType: "poisonNeedle", projectileVisualType: "spray", statusEffect: "poison", stats: { spearDamage: 9, poisonBonus: 0.22 }, rangeBand: "close", accuracy: 0.52, shotsPerAttack: 2, rateOfFire: 0.18, projectileSpeed: 31, spread: 0.16, burstCount: 1, burstDelay: 0, falloff: 0.45, desc: "Short-range toxic stream that stacks poison on durable foes.", sell: 50 },
+      { id: "moonshot-prism-bow", name: "Moonshot Prism Bow", slot: "weapon", rarity: "legendary", region: "Moonglass Citadel", rangedClass: "precisionRifle", weaponClass: "Precision Rifle / Arc Rifle", modelWeaponClass: "staff", attackProfile: "staffBurst", projectileType: "arcBolt", projectileVisualType: "beam", statusEffect: "radiant", stats: { spearDamage: 22, critChance: 0.1 }, rangeBand: "precision", accuracy: 0.98, shotsPerAttack: 1, rateOfFire: 0.7, projectileSpeed: 60, spread: 0.006, burstCount: 1, burstDelay: 0, falloff: 0.02, desc: "Beam-arrow bow for extreme-range precision punishments.", sell: 132 },
+      { id: "tempest-needler", name: "Tempest Needler", slot: "weapon", rarity: "legendary", region: "Tempest Shelf", rangedClass: "machineGun", weaponClass: "Machine Gun / Auto Repeater", modelWeaponClass: "wand", attackProfile: "casterBolt", projectileType: "chainSpark", projectileVisualType: "tracer", statusEffect: "lightning", stats: { spearDamage: 15, chainChance: 0.1 }, rangeBand: "mid", accuracy: 0.72, shotsPerAttack: 1, rateOfFire: 0.11, projectileSpeed: 47, spread: 0.065, burstCount: 1, burstDelay: 0, falloff: 0.2, desc: "Premium needle stream with storm pressure and chain sparks.", sell: 114 },
+      { id: "ironfang-burst-carbine", name: "Ironfang Burst Carbine", slot: "weapon", rarity: "epic", region: "Wyrmscar Badlands", rangedClass: "burstLauncher", weaponClass: "Burst Launcher", modelWeaponClass: "wand", attackProfile: "casterBolt", projectileType: "emberDart", projectileVisualType: "burst", stats: { spearDamage: 17, antiArmor: 0.1 }, rangeBand: "mid", accuracy: 0.84, shotsPerAttack: 1, rateOfFire: 0.48, projectileSpeed: 45, spread: 0.03, burstCount: 3, burstDelay: 0.07, falloff: 0.08, desc: "Controlled 3-round burst carbine for disciplined pressure.", sell: 86 },
+      { id: "halo-scattercaster", name: "Halo Scattercaster", slot: "weapon", rarity: "legendary", region: "Seraphic City-State Ring", rangedClass: "scattergun", weaponClass: "Scattergun / Shot Blaster", modelWeaponClass: "staff", attackProfile: "staffBurst", projectileType: "radiantSpear", projectileVisualType: "fan", statusEffect: "radiant", stats: { spearDamage: 16, critChance: 0.05 }, rangeBand: "shortMid", accuracy: 0.6, shotsPerAttack: 7, rateOfFire: 0.62, projectileSpeed: 34, spread: 0.21, burstCount: 1, burstDelay: 0, falloff: 0.4, desc: "Fan-shaped holy scatter blast with punishing point-blank burst.", sell: 120 },
+      { id: "void-hail-projector", name: "Void Hail Projector", slot: "weapon", rarity: "legendary", region: "Obsidian Rift", rangedClass: "machineGun", weaponClass: "Machine Gun / Auto Repeater", modelWeaponClass: "wand", attackProfile: "casterBolt", projectileType: "voidSpike", projectileVisualType: "tracer", statusEffect: "void", stats: { spearDamage: 16, chainChance: 0.08 }, rangeBand: "shortMid", accuracy: 0.58, shotsPerAttack: 2, rateOfFire: 0.13, projectileSpeed: 43, spread: 0.12, burstCount: 1, burstDelay: 0, falloff: 0.3, desc: "Unstable void auto-caster with volatile spread pressure.", sell: 124 },
+      { id: "leviathan-pulse-cannon", name: "Leviathan Pulse Cannon", slot: "weapon", rarity: "legendary", region: "Outer Wyrm Wastes", rangedClass: "heavyCannon", weaponClass: "Heavy Cannon / Rail Weapon", modelWeaponClass: "staff", attackProfile: "heavyThrust", projectileType: "chainSpark", projectileVisualType: "pulse", statusEffect: "stun", stats: { spearDamage: 27, antiArmor: 0.2, chainChance: 0.12 }, rangeBand: "midLong", accuracy: 0.9, shotsPerAttack: 1, rateOfFire: 0.88, projectileSpeed: 55, spread: 0.015, burstCount: 1, burstDelay: 0, falloff: 0.05, pierce: 1, desc: "Premium pulse cannon delivering heavy shock blasts and pierce.", sell: 148 },
       { id: "rider-leathers", name: "Rider Leathers", slot: "armor", rarity: "common", stats: { maxHealth: 12 }, desc: "Balanced light armor.", sell: 12 },
       { id: "cliffguard-mail", name: "Cliffguard Mail", slot: "armor", rarity: "uncommon", stats: { maxHealth: 20, resistance: 0.03 }, desc: "Solid plates for cliff skirmishes.", sell: 24 },
       { id: "emberplate", name: "Emberplate", slot: "armor", rarity: "rare", stats: { maxHealth: 28, resistance: 0.05 }, desc: "Tempered against heat and impact.", sell: 34 },
@@ -1081,6 +1097,27 @@ const ENEMY_SPECIES = {
       staff: { weaponClass: "Rune Staff", attackProfile: "staffBurst", trailProfile: "rune", thrustLength: 3.3, swingArc: 0.18, holdOffset: [0.08, 0.08, 0.9], holdRotation: [0.12, 0.1, 0], projectileType: "radiantSpear", projectileSpeed: 28, projectileScale: 0.46, feel: "Burst staff" },
       glaive: { weaponClass: "Glaive", attackProfile: "diagSlash", trailProfile: "slice", thrustLength: 4.7, swingArc: 0.8, holdOffset: [0.1, -0.02, 1.2], holdRotation: [-0.16, 0.05, 0], feel: "Hybrid glaive" },
       dragonFang: { weaponClass: "Bone / Dragon Fang", attackProfile: "heavyThrust", trailProfile: "fang", thrustLength: 4.9, swingArc: 0.62, holdOffset: [0.1, -0.02, 1.22], holdRotation: [-0.12, 0.05, 0], feel: "Monstrous fang" }
+    };
+
+    const RANGE_BANDS = {
+      pointBlank: { label: "Very Short", units: 18, life: 0.45 },
+      close: { label: "Close", units: 24, life: 0.6 },
+      shortMid: { label: "Short-Mid", units: 34, life: 0.82 },
+      mid: { label: "Mid", units: 44, life: 1.04 },
+      midLong: { label: "Mid-Long", units: 54, life: 1.2 },
+      long: { label: "Long", units: 66, life: 1.45 },
+      precision: { label: "Extreme", units: 78, life: 1.7 }
+    };
+
+    const RANGED_CLASS_PRESETS = {
+      precisionRifle: { weaponClass: "Precision Rifle / Arc Rifle", modelWeaponClass: "staff", accuracy: 0.95, rangeBand: "long", shotsPerAttack: 1, rateOfFire: 0.62, projectileSpeed: 52, spread: 0.01, burstCount: 1, burstDelay: 0, falloff: 0.05, pierce: 0, projectileVisualType: "rail", shotPattern: "single" },
+      repeater: { weaponClass: "Repeater / Carbine", modelWeaponClass: "wand", accuracy: 0.82, rangeBand: "mid", shotsPerAttack: 1, rateOfFire: 0.4, projectileSpeed: 42, spread: 0.03, burstCount: 1, burstDelay: 0, falloff: 0.1, pierce: 0, projectileVisualType: "bolt", shotPattern: "single" },
+      machineGun: { weaponClass: "Machine Gun / Auto Repeater", modelWeaponClass: "wand", accuracy: 0.68, rangeBand: "shortMid", shotsPerAttack: 1, rateOfFire: 0.14, projectileSpeed: 44, spread: 0.06, burstCount: 1, burstDelay: 0, falloff: 0.2, pierce: 0, projectileVisualType: "tracer", shotPattern: "rapidStream" },
+      scattergun: { weaponClass: "Scattergun / Shot Blaster", modelWeaponClass: "wand", accuracy: 0.56, rangeBand: "close", shotsPerAttack: 6, rateOfFire: 0.7, projectileSpeed: 30, spread: 0.24, burstCount: 1, burstDelay: 0, falloff: 0.5, pierce: 0, projectileVisualType: "scatter", shotPattern: "scatterBurst" },
+      burstLauncher: { weaponClass: "Burst Launcher", modelWeaponClass: "staff", accuracy: 0.78, rangeBand: "mid", shotsPerAttack: 1, rateOfFire: 0.5, projectileSpeed: 40, spread: 0.04, burstCount: 3, burstDelay: 0.06, falloff: 0.14, pierce: 0, projectileVisualType: "burst", shotPattern: "burstFire" },
+      sidearm: { weaponClass: "Arcane Sidearm / Wandcaster", modelWeaponClass: "wand", accuracy: 0.8, rangeBand: "shortMid", shotsPerAttack: 1, rateOfFire: 0.26, projectileSpeed: 39, spread: 0.045, burstCount: 1, burstDelay: 0, falloff: 0.16, pierce: 0, projectileVisualType: "arcane", shotPattern: "single" },
+      heavyCannon: { weaponClass: "Heavy Cannon / Rail Weapon", modelWeaponClass: "staff", accuracy: 0.92, rangeBand: "midLong", shotsPerAttack: 1, rateOfFire: 0.85, projectileSpeed: 56, spread: 0.015, burstCount: 1, burstDelay: 0, falloff: 0.04, pierce: 1, projectileVisualType: "rail", shotPattern: "single" },
+      sprayCaster: { weaponClass: "Spray Caster", modelWeaponClass: "wand", accuracy: 0.5, rangeBand: "pointBlank", shotsPerAttack: 5, rateOfFire: 0.2, projectileSpeed: 24, spread: 0.28, burstCount: 1, burstDelay: 0, falloff: 0.62, pierce: 0, projectileVisualType: "spray", shotPattern: "wideCone" }
     };
 
     const PROJECTILE_FAMILIES = {
@@ -4660,7 +4697,10 @@ const ENEMY_SPECIES = {
     function getWeaponProfile(item) {
       const fallback = WEAPON_CLASS_PRESETS.spear;
       if (!item) return fallback;
-      const key = item.weaponClass || ((`${item.id} ${item.name}`.toLowerCase().includes("wand") || `${item.id} ${item.name}`.toLowerCase().includes("staff")) ? "wand" : "spear");
+      const textKey = `${item.id || ""} ${item.name || ""}`.toLowerCase();
+      const inferredModelClass = item.modelWeaponClass || item.weaponModelClass || item.weaponClassKey || item.weaponClass || ((textKey.includes("wand") || textKey.includes("staff") || textKey.includes("caster")) ? "wand" : "spear");
+      const modelPreset = WEAPON_CLASS_PRESETS[inferredModelClass] || fallback;
+      const rangedPreset = item.rangedClass ? (RANGED_CLASS_PRESETS[item.rangedClass] || {}) : {};
       const effectToFx = {
         chainLightning: "lightning",
         stun: "lightning",
@@ -4668,13 +4708,25 @@ const ENEMY_SPECIES = {
         freeze: "frost",
         poison: "poison",
         shockwave: "arcane",
-        projectile: key === "wand" || key === "staff" ? "arcane" : "dust",
+        projectile: inferredModelClass === "wand" || inferredModelClass === "staff" ? "arcane" : "dust",
         lifesteal: "radiant",
         antiArmor: "stoneShock",
         armorPierce: "bleed",
         multiHit: "bleed"
       };
-      const merged = { ...fallback, ...(WEAPON_CLASS_PRESETS[key] || fallback), ...item };
+      const merged = { ...fallback, ...modelPreset, ...rangedPreset, ...item };
+      merged.modelWeaponClass = merged.modelWeaponClass || inferredModelClass;
+      if (!merged.weaponClass) merged.weaponClass = modelPreset.weaponClass;
+      if (!merged.rangeBand) merged.rangeBand = merged.projectileType ? "mid" : "close";
+      if (!Number.isFinite(merged.accuracy)) merged.accuracy = merged.projectileType ? 0.82 : 1;
+      if (!Number.isFinite(merged.shotsPerAttack)) merged.shotsPerAttack = merged.projectileType ? 1 : 0;
+      if (!Number.isFinite(merged.rateOfFire)) merged.rateOfFire = merged.projectileType ? 0.34 : 0.72;
+      if (!Number.isFinite(merged.projectileSpeed)) merged.projectileSpeed = (PROJECTILE_FAMILIES[merged.projectileType || ""]?.speed || modelPreset.projectileSpeed || 34);
+      if (!Number.isFinite(merged.spread)) merged.spread = merged.projectileType ? 0.04 : 0;
+      if (!Number.isFinite(merged.burstCount)) merged.burstCount = 1;
+      if (!Number.isFinite(merged.burstDelay)) merged.burstDelay = 0;
+      if (!Number.isFinite(merged.falloff)) merged.falloff = merged.projectileType ? 0.14 : 0;
+      if (!Number.isFinite(merged.pierce)) merged.pierce = 0;
       if (!merged.impactFx && merged.effect) merged.impactFx = effectToFx[merged.effect] || merged.impactFx;
       if (!merged.trailProfile && merged.impactFx) merged.trailProfile = merged.impactFx;
       return merged;
@@ -4705,13 +4757,14 @@ const ENEMY_SPECIES = {
         const m = new THREE.Mesh(geo, mat);
         m.position.set(...pos); m.rotation.set(...rot); m.castShadow = true; root.add(m); return m;
       };
-      const classKey = (profile.weaponClass || "").toLowerCase();
+      const modelClass = profile.modelWeaponClass || profile.weaponClass;
+      const classKey = (modelClass || "").toLowerCase();
       const shaftLen = profile.attackProfile === "casterBolt" ? 2.4 : profile.attackProfile === "staffBurst" ? 3.8 : (profile.thrustLength || 4.8);
-      const shaftR = profile.weaponClass === "staff" ? 0.075 : profile.weaponClass === "wand" ? 0.04 : 0.055;
+      const shaftR = modelClass === "staff" ? 0.075 : modelClass === "wand" ? 0.04 : 0.055;
       const glowColor = profile.modelProfile === "storm" ? 0x7dd3fc : profile.modelProfile === "holy" ? 0xfde68a : profile.modelProfile === "void" ? 0xa78bfa : profile.modelProfile === "lava" ? 0xfb923c : 0;
       const shaftColor = profile.shaftType === "obsidian" ? 0x33242a : profile.shaftType === "bone" ? 0xdccdb9 : profile.shaftType === "chitin" ? 0x7f6742 : profile.shaftType === "gold" ? 0xe5c971 : profile.shaftType === "crystal" ? 0x7c8fd8 : profile.modelProfile === "forest" ? 0x7b5d35 : 0xc8b18a;
       const metalColor = profile.modelProfile === "void" ? 0xb4a2ff : profile.modelProfile === "lava" ? 0xffb48a : profile.modelProfile === "holy" ? 0xfef3c7 : 0xd8dee9;
-      const isCaster = profile.weaponClass === "wand" || profile.weaponClass === "staff";
+      const isCaster = modelClass === "wand" || modelClass === "staff";
       part(new THREE.CylinderGeometry(shaftR, shaftR * 1.08, shaftLen, 10), new THREE.MeshStandardMaterial({ color: shaftColor, roughness: 0.52, metalness: isCaster ? 0.28 : 0.5 }), [0,0,shaftLen*0.5], [Math.PI/2,0,0]);
       part(new THREE.CylinderGeometry(shaftR * 1.65, shaftR * 1.65, 0.34, 10), new THREE.MeshStandardMaterial({ color: 0x5b4b3d, roughness: 0.7 }), [0,0,0.5], [Math.PI/2,0,0]);
       if (profile.ornamentType === "pennant" || profile.ornamentType === "tassel") {
@@ -4719,25 +4772,25 @@ const ENEMY_SPECIES = {
       } else if (profile.ornamentType === "chain") {
         part(new THREE.TorusGeometry(0.08, 0.016, 6, 12), new THREE.MeshStandardMaterial({ color: 0x9aa3b7, metalness: 0.88, roughness: 0.32 }), [0.08, 0.02, shaftLen * 0.56], [Math.PI / 2, 0, 0]);
       }
-      if (profile.weaponClass === "trident" || profile.headType === "trident" || classKey.includes("trident")) {
+      if (modelClass === "trident" || profile.headType === "trident" || classKey.includes("trident")) {
         part(new THREE.CylinderGeometry(0.034, 0.034, 0.9, 8), new THREE.MeshStandardMaterial({ color: metalColor, metalness: 0.92, roughness: 0.2 }), [0, 0, shaftLen + 0.18], [Math.PI / 2, 0, 0]);
         for (const o of [-0.22, 0, 0.22]) {
           part(new THREE.ConeGeometry(o === 0 ? 0.09 : 0.07, o === 0 ? 0.92 : 0.74, 9), new THREE.MeshStandardMaterial({ color: metalColor, metalness: 0.94, roughness: 0.2 }), [o,0,shaftLen+0.48+Math.abs(o)*0.18], [Math.PI/2,0,0]);
         }
-      } else if (profile.weaponClass === "wand" || classKey.includes("wand")) {
+      } else if (modelClass === "wand" || classKey.includes("wand")) {
         part(new THREE.SphereGeometry(0.12, 12, 12), new THREE.MeshStandardMaterial({ color: glowColor || 0xb794f4, emissive: glowColor || 0xb794f4, emissiveIntensity: 1.2, roughness: 0.22 }), [0,0,shaftLen+0.14]);
         part(new THREE.OctahedronGeometry(0.11, 0), new THREE.MeshStandardMaterial({ color: glowColor || 0xddd6fe, emissive: glowColor || 0xddd6fe, emissiveIntensity: 0.86, roughness: 0.2 }), [0,0,shaftLen+0.3], [0, Math.PI * 0.25, 0]);
-      } else if (profile.weaponClass === "staff" || classKey.includes("staff")) {
+      } else if (modelClass === "staff" || classKey.includes("staff")) {
         part(new THREE.SphereGeometry(0.17, 12, 12), new THREE.MeshStandardMaterial({ color: glowColor || 0xa78bfa, emissive: glowColor || 0xa78bfa, emissiveIntensity: 0.95, roughness: 0.24 }), [0,0,shaftLen+0.15]);
         part(new THREE.TorusGeometry(0.21,0.028,8,16), new THREE.MeshStandardMaterial({ color: glowColor || 0xfde68a, emissive: glowColor || 0xfde68a, emissiveIntensity: 0.95 }), [0,0.06,shaftLen+0.2], [Math.PI/2,0,0]);
         part(new THREE.ConeGeometry(0.07, 0.36, 7), new THREE.MeshStandardMaterial({ color: metalColor, metalness: 0.72, roughness: 0.24 }), [0,0,shaftLen+0.46], [Math.PI / 2, 0, 0]);
-      } else if (profile.weaponClass === "greatBlade" || classKey.includes("great blade") || profile.headType === "cleaver" || profile.headType === "fangBlade") {
+      } else if (modelClass === "greatBlade" || classKey.includes("great blade") || profile.headType === "cleaver" || profile.headType === "fangBlade") {
         part(new THREE.BoxGeometry(0.56, 0.11, 2.05), new THREE.MeshStandardMaterial({ color: metalColor, metalness: 0.9, roughness: 0.24 }), [0.16,0,shaftLen+0.38], [0,0.24,0.14]);
         part(new THREE.BoxGeometry(0.18, 0.16, 0.22), new THREE.MeshStandardMaterial({ color: 0x4b5563, metalness: 0.76, roughness: 0.34 }), [0.05,0,shaftLen+0.02], [0,0.14,0]);
-      } else if (profile.weaponClass === "glaive" || classKey.includes("glaive") || profile.headType === "crescent") {
+      } else if (modelClass === "glaive" || classKey.includes("glaive") || profile.headType === "crescent") {
         part(new THREE.TorusGeometry(0.34,0.05,8,18,Math.PI*0.82), new THREE.MeshStandardMaterial({ color: metalColor, metalness: 0.88, roughness: 0.26 }), [0.18,0,shaftLen+0.15], [0,0.2,Math.PI*0.42]);
         part(new THREE.ConeGeometry(0.06,0.6,8), new THREE.MeshStandardMaterial({ color: metalColor, metalness: 0.92, roughness: 0.2 }), [0,0,shaftLen+0.24], [Math.PI/2,0,0]);
-      } else if (profile.weaponClass === "halberd" || classKey.includes("halberd") || profile.headType === "axe") {
+      } else if (modelClass === "halberd" || classKey.includes("halberd") || profile.headType === "axe") {
         part(new THREE.BoxGeometry(0.62,0.12,0.11), new THREE.MeshStandardMaterial({ color: metalColor, metalness: 0.9, roughness: 0.28 }), [0.26,0.08,shaftLen+0.08], [0,0.2,0]);
         part(new THREE.ConeGeometry(0.1,0.84,8), new THREE.MeshStandardMaterial({ color: metalColor, metalness: 0.9, roughness: 0.2 }), [0,0,shaftLen+0.3], [Math.PI/2,0,0]);
       } else {
@@ -4836,21 +4889,47 @@ const ENEMY_SPECIES = {
       }
     }
 
-    function spawnWeaponProjectile(item, origin, dir) {
+    function spawnWeaponProjectile(item, origin, dir, shotConfig = {}) {
       const profile = getWeaponProfile(item);
       if (!profile.projectileType) return;
       const proj = PROJECTILE_FAMILIES[profile.projectileType] || PROJECTILE_FAMILIES.arcBolt;
       const g = proj.shape === "lance" ? new THREE.CylinderGeometry(0.07, 0.07, 0.72, 8) : proj.shape === "needle" ? new THREE.CylinderGeometry(0.03,0.03,0.5,8) : proj.shape === "crystal" ? new THREE.OctahedronGeometry(0.22,0) : new THREE.SphereGeometry(0.18,8,8);
-      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: proj.color, emissive: proj.color, emissiveIntensity: 0.8, roughness: 0.2, metalness: 0.5 }));
+      const color = shotConfig.tint || proj.color;
+      const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: shotConfig.visualType === "rail" ? 1.15 : 0.8, roughness: 0.2, metalness: 0.5 }));
       m.position.copy(origin);
       if (proj.shape === "lance" || proj.shape === "needle") m.rotation.x = Math.PI / 2;
-      m.scale.setScalar((profile.projectileScale || proj.scale || 0.3));
+      m.scale.setScalar((profile.projectileScale || proj.scale || 0.3) * (shotConfig.scaleMult || 1));
       scene.add(m);
-      weaponProjectiles.push({ mesh: m, vel: dir.clone().normalize().multiplyScalar(profile.projectileSpeed || proj.speed), life: proj.life, damage: 7 + playerStats().spearDamage * 0.42, burst: proj.burst, profile });
+      const speed = shotConfig.projectileSpeed || profile.projectileSpeed || proj.speed;
+      const range = RANGE_BANDS[profile.rangeBand] || RANGE_BANDS.mid;
+      const maxLife = Math.max(0.2, range.life * (shotConfig.rangeMult || 1));
+      weaponProjectiles.push({ mesh: m, vel: dir.clone().normalize().multiplyScalar(speed), life: maxLife, maxLife, damage: shotConfig.damage || (7 + playerStats().spearDamage * 0.42), burst: proj.burst, profile, falloff: profile.falloff || 0, remainingPierce: Math.max(0, shotConfig.pierce ?? profile.pierce ?? 0), statusEffect: shotConfig.statusEffect || profile.statusEffect, sourceWeaponClass: profile.weaponClass });
     }
 
     function spawnWeaponAttackEffect(item, origin, dir) {
-      spawnWeaponProjectile(item, origin, dir);
+      const profile = getWeaponProfile(item);
+      if (!profile.projectileType) return;
+      const shots = Math.max(1, Math.round(profile.shotsPerAttack || 1));
+      const spread = Math.max(0, profile.spread || 0);
+      const accuracy = THREE.MathUtils.clamp(profile.accuracy || 0.8, 0.2, 1);
+      const classMult = progress.classChoice === "ranger" ? 1.16 + (progress.upgrades.rangerPrecision || 0) * 0.02 : progress.classChoice === "sorcerer" && (profile.modelWeaponClass === "wand" || profile.modelWeaponClass === "staff") ? 1.12 + (progress.upgrades.sorcererPower || 0) * 0.015 : progress.classChoice === "warrior" && (profile.weaponClass || "").includes("Heavy Cannon") ? 1.06 : progress.classChoice === "summoner" && profile.statusEffect ? 1.08 : 1;
+      const baseDamage = ((item.stats?.spearDamage || 7) + playerStats().spearDamage * 0.34) * classMult;
+      for (let i = 0; i < shots; i++) {
+        const centerOffset = shots > 1 ? (i - (shots - 1) * 0.5) / Math.max(1, shots - 1) : 0;
+        const jitter = (Math.random() - 0.5) * spread * (2 - accuracy);
+        const yaw = centerOffset * spread + jitter;
+        const localDir = dir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw).normalize();
+        const accuracyDamage = THREE.MathUtils.lerp(0.84, 1.08, accuracy);
+        const pelletDamage = baseDamage * accuracyDamage * (shots > 1 ? 0.58 : 1);
+        spawnWeaponProjectile(item, origin, localDir, {
+          damage: pelletDamage,
+          statusEffect: profile.statusEffect,
+          visualType: profile.projectileVisualType,
+          rangeMult: THREE.MathUtils.lerp(0.72, 1.1, accuracy),
+          scaleMult: shots > 3 ? 0.82 : 1,
+          pierce: profile.pierce || 0
+        });
+      }
     }
 
     function updateSpearPose(actor, dt) {
@@ -6737,6 +6816,24 @@ function skyProfileForZone(zone) {
       if (silhouette === "construct") return { speed: behavior === "blade" ? 1.14 : 1.05, turn: 0.9, attack: 0.8 };
       return { speed: 1.08, turn: 1.0, attack: 0.92 };
     }
+
+    function queueRangedBurst(item, origin, forward, count = 1, burstDelay = 0.05) {
+      for (let i = 0; i < count; i++) {
+        pendingRangedBursts.push({ item, origin: origin.clone(), forward: forward.clone(), timer: i * burstDelay });
+      }
+    }
+
+    function updatePendingRangedBursts(dt) {
+      for (let i = pendingRangedBursts.length - 1; i >= 0; i--) {
+        const shot = pendingRangedBursts[i];
+        shot.timer -= dt;
+        if (shot.timer <= 0) {
+          spawnWeaponAttackEffect(shot.item, shot.origin.clone(), shot.forward.clone());
+          pendingRangedBursts.splice(i, 1);
+        }
+      }
+    }
+
     function updatePlayer(dt) {
       if (!player.alive) return;
 
@@ -6817,13 +6914,17 @@ function skyProfileForZone(zone) {
         const equippedWeapon = resolveEquippedWeaponItem();
         const wp = getWeaponProfile(equippedWeapon);
         player.spearTimer = wp.attackProfile === "heavyThrust" ? 0.42 : wp.attackProfile === "downChop" ? 0.5 : wp.attackProfile === "casterBolt" || wp.attackProfile === "staffBurst" ? 0.28 : 0.36;
-        player.spearCooldown = stats.spearCooldown + (wp.attackProfile === "downChop" ? 0.08 : 0);
+        player.spearCooldown = Math.max(0.1, wp.rateOfFire || stats.spearCooldown) + (wp.attackProfile === "downChop" ? 0.08 : 0);
         player.spearHitSet.clear();
         player.vel.add(forward.clone().multiplyScalar(2.2));
         player.vel.y += wp.attackProfile === "downChop" ? -0.2 : 0.5;
-        spawnWeaponTrail(wp, player.model.userData.anim.spearTipWorld.clone(), forward, 0.95);
-        if (wp.projectileType) spawnWeaponAttackEffect(equippedWeapon, player.model.userData.anim.spearTipWorld.clone().add(forward.clone().multiplyScalar(0.8)), forward);
+        const tipOrigin = player.model.userData.anim.spearTipWorld.clone();
+        spawnWeaponTrail(wp, tipOrigin, forward, 0.95);
+        if (wp.projectileType) {
+          queueRangedBurst(equippedWeapon, tipOrigin.clone().add(forward.clone().multiplyScalar(0.8)), forward, Math.max(1, wp.burstCount || 1), wp.burstDelay || 0);
+        }
       }
+      updatePendingRangedBursts(dt);
       if ((keys["f"]) && progress.classChoice === "sorcerer" && player.spellCooldown <= 0) {
         castSorcererSpell();
       }
@@ -7662,10 +7763,24 @@ function skyProfileForZone(zone) {
         for (const enemy of enemies) {
           if (!enemy.alive) continue;
           if (enemy.pos.distanceTo(wp.mesh.position) < enemy.radius + 0.8) {
-            damageEnemy(enemy, wp.damage, wp.vel.clone().normalize(), "projectile");
+            const distanceFactor = wp.maxLife ? THREE.MathUtils.clamp(wp.life / wp.maxLife, 0.25, 1) : 1;
+            const falloffMult = 1 - ((wp.falloff || 0) * (1 - distanceFactor));
+            let profileBonus = 1;
+            if ((wp.sourceWeaponClass || "").includes("Machine Gun") && ["ranged", "orb"].includes(enemy.speciesData?.behavior)) profileBonus = 1.1;
+            if ((wp.sourceWeaponClass || "").includes("Precision") && ["sniper", "heavyCannon", "machineLock"].includes(enemy.speciesData?.behavior)) profileBonus = 1.18;
+            if ((wp.sourceWeaponClass || "").includes("Scatter") && enemy.pos.distanceTo(player.pos) < 18) profileBonus = 1.16;
+            const finalDamage = wp.damage * Math.max(0.22, falloffMult) * profileBonus;
+            damageEnemy(enemy, finalDamage, wp.vel.clone().normalize(), "projectile");
+            if (wp.statusEffect === "poison") enemy.poisonTimer = Math.max(enemy.poisonTimer || 0, 2.8);
+            if (wp.statusEffect === "stun" && Math.random() < 0.24) enemy.stunTimer = Math.max(enemy.stunTimer || 0, 0.7);
+            if ((wp.statusEffect === "burn" || wp.statusEffect === "radiant") && Math.random() < 0.2) enemy.hitReact = Math.max(enemy.hitReact || 0, 0.36);
             spawnWeaponImpactFx(wp.profile || WEAPON_CLASS_PRESETS.wand, wp.mesh.position.clone(), 1);
-            hit = true;
-            break;
+            if (wp.remainingPierce > 0) {
+              wp.remainingPierce -= 1;
+            } else {
+              hit = true;
+              break;
+            }
           }
         }
         if (wp.life <= 0 || hit) { scene.remove(wp.mesh); weaponProjectiles.splice(i, 1); }
@@ -8455,6 +8570,26 @@ function skyProfileForZone(zone) {
       return `<div style="font-size:11px;color:#fef08a">Set: ${setDef.label} • Silhouette: ${setDef.silhouette}</div><div style="font-size:11px;opacity:.75">Slots: ${ARMOR_SLOTS.join(" / ")} • visual: ${item.visual || `${setId}Set`}</div>`;
     }
 
+
+    function weaponRateLabel(rate) {
+      if (rate <= 0.14) return "Very Fast";
+      if (rate <= 0.24) return "Fast";
+      if (rate <= 0.42) return "Steady";
+      if (rate <= 0.62) return "Slow";
+      return "Heavy";
+    }
+
+    function formatWeaponStatsHtml(item) {
+      if (!item || item.slot !== "weapon") return "";
+      const p = getWeaponProfile(item);
+      const range = RANGE_BANDS[p.rangeBand] || RANGE_BANDS.mid;
+      const damage = Math.max(1, Math.round((item.stats?.spearDamage || 0) + (p.shotsPerAttack > 1 ? 0 : 0)));
+      const accuracy = p.shotsPerAttack > 3 ? `${Math.round((p.accuracy || 0.7) * 100)}% (spread)` : `${Math.round((p.accuracy || 0.8) * 100)}%`;
+      const burst = p.burstCount > 1 ? `${p.burstCount}-burst / ${(p.burstDelay || 0).toFixed(2)}s` : (p.shotPattern || "Single");
+      const effect = p.statusEffect || item.effect || "None";
+      return `<div style="font-size:11px;color:#bfdbfe">Damage: ${damage}${p.shotsPerAttack > 1 ? ` x ${p.shotsPerAttack}` : ""} • Range: ${range.label} • Accuracy: ${accuracy}</div><div style="font-size:11px;color:#c7d2fe">Fire Rate: ${weaponRateLabel(p.rateOfFire || 0.4)} (${(1 / Math.max(0.05, p.rateOfFire || 0.4)).toFixed(1)}/s) • Shots: ${p.shotsPerAttack || 1} • Pattern: ${burst}</div><div style="font-size:11px;opacity:.78">Speed: ${Math.round(p.projectileSpeed || 0)} • Pierce: ${p.pierce || 0} • Effect: ${effect}</div>`;
+    }
+
     function renderInventoryMenu() {
       normalizeMountOwnershipState();
       const groups = { weapon: [], armor: [], trinket: [], quest: progress.questItems, material: progress.materials };
@@ -8470,7 +8605,7 @@ function skyProfileForZone(zone) {
           const row = document.createElement("div");
           row.style.cssText = "display:flex;justify-content:space-between;gap:6px;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.08)";
           const equipped = Object.values(progress.equipped).includes(item.id);
-          row.innerHTML = `<div><span style="color:${RARITY_COLORS[item.rarity] || "#fff"}">${item.name}</span> <small>(${item.rarity})</small>${item.classReq ? `<div style="font-size:11px;color:#fca5a5">Class: ${CLASS_BRANCHES[item.classReq].title}</div>` : ""}<div style="font-size:11px;opacity:.85">${item.desc}</div>${getArmorPreviewHtml(item)}<div style="font-size:11px;opacity:.75">${getWeaponProfile(item).weaponClass || item.slot} • ${getWeaponProfile(item).feel || ""}</div><div style="font-size:11px;opacity:.7">Sell ${item.sell}g</div></div>`;
+          row.innerHTML = `<div><span style="color:${RARITY_COLORS[item.rarity] || "#fff"}">${item.name}</span> <small>(${item.rarity})</small>${item.classReq ? `<div style="font-size:11px;color:#fca5a5">Class: ${CLASS_BRANCHES[item.classReq].title}</div>` : ""}<div style="font-size:11px;opacity:.85">${item.desc}</div>${getArmorPreviewHtml(item)}${formatWeaponStatsHtml(item)}<div style="font-size:11px;opacity:.75">${getWeaponProfile(item).weaponClass || item.slot} • ${getWeaponProfile(item).feel || ""}</div><div style="font-size:11px;opacity:.7">Sell ${item.sell}g</div></div>`;
           const actions = document.createElement("div");
           const eq = document.createElement("button");
           eq.textContent = equipped ? "Equipped" : "Equip";
@@ -8520,7 +8655,7 @@ function skyProfileForZone(zone) {
         stock.forEach((item) => {
           const cost = Math.round(item.sell * 1.7);
           const b = document.createElement("button");
-          b.textContent = `Buy ${item.name} (${cost}g)`;
+          b.innerHTML = `<div>Buy ${item.name} (${cost}g)</div>${formatWeaponStatsHtml(item)}`;
           b.style.cssText = "display:block;margin-top:5px;border:1px solid rgba(255,255,255,.22);background:rgba(16,185,129,.22);color:white;border-radius:6px;padding:5px;cursor:pointer";
           b.onclick = () => { if (gold >= cost) { gold -= cost; progress.inventory.push(item); renderTabMenu(); updateUI(); } };
           shopSection.appendChild(b);
