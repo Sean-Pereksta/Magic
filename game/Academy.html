@@ -165,6 +165,7 @@
       <div id="hpBar" style="height:100%;width:100%;background:linear-gradient(90deg,#86efac,#22c55e)"></div>
     </div>
     <div class="line">Gold: <span id="gold">0</span> • Lv <span id="level">1</span></div>
+    <div class="line">Faction: <span id="factionState">Independent</span></div>
     <div class="line">XP: <span id="xp">0</span>/<span id="xpNeed">80</span></div>
     <div style="height:8px;border:1px solid rgba(255,255,255,.28);border-radius:999px;overflow:hidden;background:rgba(255,255,255,.08);margin-top:4px">
       <div id="xpBar" style="height:100%;width:0;background:linear-gradient(90deg,#ffe082,#f59e0b)"></div>
@@ -189,6 +190,8 @@
     Q / E = lateral mount dash (advanced mounts)<br/>
     F = optional spell cast (Sorcerer path)<br/>
     Shift = speed burst<br/>
+    J = quartermaster faction actions<br/>
+    U = faction troop upgrades<br/>
     R = restart after game over<br/><br/>
     <b>Rule:</b> thrust, dive, and reposition.<br/>
     Most foes need multiple hits to bring down.
@@ -265,6 +268,15 @@
     let cityRegions = [];
     let cityAmbientTraffic = [];
     let cityAmbientProps = [];
+    let factionArmies = [];
+    let factionSoldiers = [];
+    let factionCities = [];
+    let factionById = {};
+    let factionQuestProgress = {};
+    let factionUpgradeState = {};
+    let factionRaidTimer = 0;
+    let warCooldown = 12;
+    let worldWarTicker = 0;
     let skyCloudLayers = [];
     let skyLandmarks = [];
     let ambientSkyTraffic = [];
@@ -343,6 +355,20 @@
       return Math.round(80 + Math.pow(lv - 1, 1.34) * 36 + (lv - 1) * 10);
     }
 
+    function getFactionById(id) {
+      return factionById[id] || FACTIONS[0];
+    }
+
+    function currentPlayerFactionId() {
+      return progress.playerFactionId || "independent";
+    }
+
+    function areFactionsHostile(a, b) {
+      if (!a || !b) return false;
+      if (a === b) return false;
+      return true;
+    }
+
     let progress = {
       level: 1,
       xp: 0,
@@ -350,6 +376,8 @@
       points: 0,
       selectedBranch: "combat",
       classChoice: null,
+      playerFactionId: "independent",
+      factionRank: 0,
       mount: STARTER_MOUNT_ID,
       ownedMounts: [STARTER_MOUNT_ID],
       upgrades: {
@@ -542,6 +570,7 @@
     const xpNeedEl = document.getElementById("xpNeed");
     const xpBarEl = document.getElementById("xpBar");
     const waveEl = document.getElementById("wave");
+    const factionStateEl = document.getElementById("factionState");
     const checkpointEl = document.getElementById("checkpoint");
     const enemiesEl = document.getElementById("enemies");
     const centerMsg = document.getElementById("centerMsg");
@@ -616,6 +645,15 @@
       dragon: { wall: 0x8d624f, wallDark: 0x4e2f26, roof: 0xa17152, trim: 0xdb9b6f, plaza: 0x6a4333, bannerPalette: [0xff9b62, 0xe98f70, 0x9a5740, 0xe6c57a], window: 0xffb27d, roofProfiles: ["plate","cone","plate","spire"], skyline: { towerBias: 1.25, bridgeBias: 0.75, perchBias: 1.25 }, marketShape: "fort" },
       moonglass: { wall: 0xc8d7ff, wallDark: 0x5f628f, roof: 0x9fb5ff, trim: 0xded6ff, plaza: 0x8698d8, bannerPalette: [0xb8c9ff, 0xcad9ff, 0xe9deff, 0x8bc6ff], window: 0x9de5ff, roofProfiles: ["spire","halo","rod","dome"], skyline: { towerBias: 1.55, bridgeBias: 1.45, perchBias: 1.42 }, marketShape: "radial" }
     };
+
+    const FACTIONS = [
+      { id: "independent", name: "Lone Banner", primaryColor: 0xb8becf, secondaryColor: 0x6d7284, glowColor: 0xe2e8f0, symbol: "◈", troopStyle: "neutral" },
+      { id: "aurelian", name: "Aurelian Order", primaryColor: 0xf4cd78, secondaryColor: 0xffffff, glowColor: 0x93c5fd, symbol: "☀", troopStyle: "knight" },
+      { id: "stormbound", name: "Stormbound Covenant", primaryColor: 0x60a5fa, secondaryColor: 0xc7d2fe, glowColor: 0x67e8f9, symbol: "⚡", troopStyle: "storm" },
+      { id: "ember", name: "Ember Throne", primaryColor: 0xef4444, secondaryColor: 0x3f1d1d, glowColor: 0xfb923c, symbol: "✦", troopStyle: "war" },
+      { id: "hollow", name: "Hollow Banner", primaryColor: 0xa78bfa, secondaryColor: 0x2e1065, glowColor: 0xddd6fe, symbol: "☾", troopStyle: "void" },
+      { id: "iron", name: "Iron Dominion", primaryColor: 0x6b7280, secondaryColor: 0xdc2626, glowColor: 0xfb923c, symbol: "⚙", troopStyle: "iron" }
+    ];
     const ARCHETYPE_BY_BEHAVIOR = {
       lancer: "Duelist",
       weaver: "Weaver",
@@ -1501,6 +1539,7 @@ const ENEMY_SPECIES = {
       scene.add(lavaLight);
 
       createSky();
+      initFactionSystem();
       createArena();
       createWorldGroundChunks();
       createLava();
@@ -1539,6 +1578,14 @@ const ENEMY_SPECIES = {
           return;
         }
         if (e.key.toLowerCase() === "f" && tryStartBossEncounter()) {
+          return;
+        }
+        if (e.key.toLowerCase() === "j") {
+          tryJoinFactionAtQuartermaster();
+          return;
+        }
+        if (e.key.toLowerCase() === "u") {
+          tryPurchaseFactionUpgrade();
           return;
         }
         if (e.key.toLowerCase() === "p") {
@@ -2430,6 +2477,57 @@ const ENEMY_SPECIES = {
       }
     }
 
+    function initFactionSystem() {
+      factionById = Object.fromEntries(FACTIONS.map((f) => [f.id, { ...f }]));
+      factionArmies = [];
+      factionSoldiers = [];
+      factionQuestProgress = {};
+      factionUpgradeState = {};
+      for (const f of FACTIONS) {
+        factionUpgradeState[f.id] = { troopHealth: 0, troopDamage: 0, armySize: 0, towerDefense: 0 };
+      }
+      const contractTargets = ["stormDrake", "rogueRooftopRider", "hollowAmbusher", "magmaSerpent", "spearSentinel"];
+      for (const f of FACTIONS) {
+        if (f.id === "independent") continue;
+        factionQuestProgress[f.id] = contractTargets.map((target, idx) => ({ target, need: 4 + idx, count: 0, completed: false }));
+      }
+      if (!progress.playerFactionId) progress.playerFactionId = "independent";
+      if (!Number.isFinite(progress.factionRank)) progress.factionRank = 0;
+    }
+
+    function factionForHubName(hubName) {
+      const map = {
+        "Seraph Spire Bazaar": "aurelian",
+        "Aegis Bastion": "iron",
+        "Storm Roost Sanctuary": "stormbound",
+        "Skyhold Grand Roost": "aurelian",
+        "Moonglass Grand Market": "hollow",
+        "Emberwatch Citadel": "ember",
+        "Iron Dominion Skyforge": "iron"
+      };
+      return map[hubName] || "independent";
+    }
+
+    function ensurePlayerFactionFlag() {
+      if (!player?.model) return;
+      const anim = player.model.userData.anim;
+      if (!anim?.rider) return;
+      if (player.model.userData.factionFlag) player.model.userData.factionFlag.removeFromParent();
+      const faction = getFactionById(currentPlayerFactionId());
+      const root = new THREE.Group();
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 2.3, 7), new THREE.MeshStandardMaterial({ color: 0xcbd5e1, metalness: 0.65, roughness: 0.25 }));
+      pole.position.set(-0.5, 0.9, -0.55);
+      pole.rotation.z = 0.2;
+      const cloth = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.5), new THREE.MeshStandardMaterial({ color: faction.primaryColor, emissive: faction.glowColor, emissiveIntensity: 0.22, side: THREE.DoubleSide, transparent: true, opacity: 0.92 }));
+      cloth.position.set(-0.08, 1.6, -0.48);
+      cloth.rotation.y = 0.4;
+      const sigil = makeTextSprite(faction.symbol, { color: "#ffffff", size: 120, worldW: 0.4, worldH: 0.4, bgAlpha: 0.1 });
+      sigil.position.set(-0.08, 1.6, -0.44);
+      root.add(pole, cloth, sigil);
+      anim.rider.add(root);
+      player.model.userData.factionFlag = root;
+    }
+
     function createArena() {
       arenaGroup = new THREE.Group();
       scene.add(arenaGroup);
@@ -2452,6 +2550,8 @@ const ENEMY_SPECIES = {
         { name: "Obsidian Rift", subtitle: "Dragon Territory", center: new THREE.Vector3(400, 0, 520), width: 484, depth: 428, radius: 210, baseY: -12, hazardY: -24, color: 0x35313f, accent: 0x6f6a80, haze: 0x524a63, fogTint: 0x261f2f, hazardType: "lava", enemyFamilies: ["emberDrake", "magmaCrusher", "voidManta", "voidDragon"], danger: 6, terrainStyle: "rift", travelRhythm: "ravine", spawnThemes: ["lava-vent", "hollow-fissure"] },
         { name: "Outer Wyrm Wastes", subtitle: "Late Dragon Frontier", center: new THREE.Vector3(910, 0, 520), width: 484, depth: 428, radius: 210, baseY: -12, hazardY: -24, color: 0x41333a, accent: 0xb37d89, haze: 0x6c4d59, fogTint: 0x2f1f26, hazardType: "lava", enemyFamilies: ["dragonKnight", "apexRivalRider", "voidDragon", "magmaCrusher"], danger: 7, terrainStyle: "wyrm", travelRhythm: "gauntlet", spawnThemes: ["dragon-perch", "hollow-fissure"] },
         { name: "Moonglass Citadel", subtitle: "Arcane Sky Metropolis", center: new THREE.Vector3(1420, 0, 0), width: 484, depth: 428, radius: 210, baseY: -2, hazardY: -38, color: 0x5d67a6, accent: 0xcad3ff, haze: 0x8ca3e4, fogTint: 0x222a49, hazardType: "safe", enemyFamilies: ["haloLancer", "moonOrbSentinel", "ribbonSerpent"], danger: 3, terrainStyle: "city", travelRhythm: "rune-lanes", spawnThemes: ["city-outskirts", "watch-platform"], hubTheme: "city" },
+        { name: "Emberwatch Citadel", subtitle: "War Furnace Capital", center: new THREE.Vector3(-1130, 0, 0), width: 484, depth: 428, radius: 210, baseY: -6, hazardY: -30, color: 0x6a3b35, accent: 0xff9f6b, haze: 0xb4664d, fogTint: 0x2f1715, hazardType: "lava", enemyFamilies: ["emberDrake", "magmaSerpent", "ironSpurRider"], danger: 5, terrainStyle: "city", travelRhythm: "war-lanes", spawnThemes: ["city-outskirts", "dragon-perch"], hubTheme: "dragon" },
+        { name: "Iron Dominion Skyforge", subtitle: "Engine Capital", center: new THREE.Vector3(1930, 0, 0), width: 484, depth: 428, radius: 210, baseY: -5, hazardY: -34, color: 0x4b525f, accent: 0xf97316, haze: 0x7a8799, fogTint: 0x1c202d, hazardType: "safe", enemyFamilies: ["laserSentinel", "hoverDrone", "walkerConstruct"], danger: 7, terrainStyle: "city", travelRhythm: "forge-lanes", spawnThemes: ["foundry-spire", "watch-platform"], hubTheme: "storm" },
         { name: "Moonveil Expanse", subtitle: "Arcane Frontier", center: new THREE.Vector3(1420, 0, 520), width: 484, depth: 428, radius: 210, baseY: -8, hazardY: -37, color: 0x4a4581, accent: 0xbfc8ff, haze: 0x798bd0, fogTint: 0x1c1f3e, hazardType: "abyss", enemyFamilies: ["moonOrbSentinel", "prismHaloWatcher", "ribbonSerpent", "nightglassDrake", "arcManta", "moonbeamConstruct"], danger: 6, terrainStyle: "moonveil", travelRhythm: "arc-lanes", spawnThemes: ["moon-arch", "floating-crystal"] },
         { name: "Wyrmscar Badlands", subtitle: "Dragon Frontier", center: new THREE.Vector3(1420, 0, -520), width: 484, depth: 428, radius: 210, baseY: -12, hazardY: -25, color: 0x5b372c, accent: 0xe2b187, haze: 0xa06d52, fogTint: 0x311a14, hazardType: "lava", enemyFamilies: ["dustscaleWyvern", "redMesaDrake", "bonecrestSerpent", "ironSpurRider", "wyrmscarDragon", "canyonAmbushLancer"], danger: 7, terrainStyle: "badlands", travelRhythm: "ambush-lane", spawnThemes: ["bone-rib", "dragon-perch"] },
         { name: "Ironforge Expanse", subtitle: "Arcane-Tech War Factory", center: new THREE.Vector3(1930, 0, 520), width: 484, depth: 428, radius: 210, baseY: -10, hazardY: -33, color: 0x3f4654, accent: 0x60a5fa, haze: 0x556173, fogTint: 0x151b2a, hazardType: "abyss", enemyFamilies: ["hoverDrone", "laserSentinel", "walkerConstruct", "bladeDrone", "siegeAutomaton"], danger: 8, terrainStyle: "machine", travelRhythm: "energy-rail", spawnThemes: ["foundry-spire", "steel-platform"] }
@@ -2727,7 +2827,7 @@ const ENEMY_SPECIES = {
         towerRoot.add(halo);
       }
       hubRoot.add(towerRoot);
-      return { minY: def.pos.y - 2, maxY: def.pos.y + 82, radius: 7.8 };
+      return { minY: def.pos.y - 2, maxY: def.pos.y + 82, radius: 7.8, towerRoot, shaft, crown };
     }
 
     function createSafeHubs() {
@@ -2735,16 +2835,19 @@ const ENEMY_SPECIES = {
       checkpoints = [];
       shopPlatforms = [];
       cityCreatures = [];
+      factionCities = [];
       worldCollisionVolumes = [];
 
       const hubDefs = [
-        { name: "Green Cliff Outpost", zone: "Great Forest Canopy", pos: new THREE.Vector3(-812, 14, -410), color: 0x66b26e, glow: 0xb9f5ae, safeRadius: 40, disengageRadius: 62, style: "cliff", specialty: "mounts + supplies" },
-        { name: "Seraph Spire Bazaar", zone: "Seraphic City-State Ring", pos: new THREE.Vector3(-612, 20, 20), color: 0x8ea3ca, glow: 0xe4ebff, safeRadius: 44, disengageRadius: 66, style: "city", specialty: "trinkets + relics" },
-        { name: "Aegis Bastion", zone: "Ruin-Crown Expanse", pos: new THREE.Vector3(80, 21, 16), color: 0x8b93a5, glow: 0xcfd7f5, safeRadius: 42, disengageRadius: 62, style: "military", specialty: "armor + war lances" },
-        { name: "Storm Roost Sanctuary", zone: "Tempest Shelf", pos: new THREE.Vector3(410, 38, 90), color: 0x7ca8db, glow: 0xd6ecff, safeRadius: 42, disengageRadius: 62, style: "storm", specialty: "flight gear + mounts" },
-        { name: "Skyhold Grand Roost", zone: "Aurelian Skyhold", pos: new THREE.Vector3(922, 26, 44), color: 0xa4b2d4, glow: 0xe6efff, safeRadius: 44, disengageRadius: 64, style: "city", specialty: "elite joust gear" },
-        { name: "Dragon Hunter's Rest", zone: "Outer Wyrm Wastes", pos: new THREE.Vector3(866, 24, 438), color: 0xc58563, glow: 0xffd4b8, safeRadius: 40, disengageRadius: 60, style: "frontier", specialty: "anti-dragon kits" },
-        { name: "Moonglass Grand Market", zone: "Moonglass Citadel", pos: new THREE.Vector3(1418, 26, 28), color: 0x8ea4e6, glow: 0xdde4ff, safeRadius: 46, disengageRadius: 68, style: "city", specialty: "arcane gear + mounts" }
+        { name: "Green Cliff Outpost", zone: "Great Forest Canopy", pos: new THREE.Vector3(-812, 14, -410), color: 0x66b26e, glow: 0xb9f5ae, safeRadius: 40, disengageRadius: 62, style: "cliff", specialty: "mounts + supplies", factionId: "independent" },
+        { name: "Seraph Spire Bazaar", zone: "Seraphic City-State Ring", pos: new THREE.Vector3(-612, 20, 20), color: 0x8ea3ca, glow: 0xe4ebff, safeRadius: 44, disengageRadius: 66, style: "city", specialty: "trinkets + relics", factionId: "aurelian" },
+        { name: "Aegis Bastion", zone: "Ruin-Crown Expanse", pos: new THREE.Vector3(80, 21, 16), color: 0x8b93a5, glow: 0xcfd7f5, safeRadius: 42, disengageRadius: 62, style: "military", specialty: "armor + war lances", factionId: "iron" },
+        { name: "Storm Roost Sanctuary", zone: "Tempest Shelf", pos: new THREE.Vector3(410, 38, 90), color: 0x7ca8db, glow: 0xd6ecff, safeRadius: 42, disengageRadius: 62, style: "storm", specialty: "flight gear + mounts", factionId: "stormbound" },
+        { name: "Skyhold Grand Roost", zone: "Aurelian Skyhold", pos: new THREE.Vector3(922, 26, 44), color: 0xa4b2d4, glow: 0xe6efff, safeRadius: 44, disengageRadius: 64, style: "city", specialty: "elite joust gear", factionId: "aurelian" },
+        { name: "Dragon Hunter's Rest", zone: "Outer Wyrm Wastes", pos: new THREE.Vector3(866, 24, 438), color: 0xc58563, glow: 0xffd4b8, safeRadius: 40, disengageRadius: 60, style: "frontier", specialty: "anti-dragon kits", factionId: "ember" },
+        { name: "Moonglass Grand Market", zone: "Moonglass Citadel", pos: new THREE.Vector3(1418, 26, 28), color: 0x8ea4e6, glow: 0xdde4ff, safeRadius: 46, disengageRadius: 68, style: "city", specialty: "arcane gear + mounts", factionId: "hollow" },
+        { name: "Emberwatch Citadel", zone: "Emberwatch Citadel", pos: new THREE.Vector3(-1130, 24, 18), color: 0xcd724d, glow: 0xffc4a3, safeRadius: 44, disengageRadius: 68, style: "frontier", specialty: "war forges + siege kits", factionId: "ember" },
+        { name: "Iron Dominion Skyforge", zone: "Iron Dominion Skyforge", pos: new THREE.Vector3(1930, 28, 22), color: 0x6b7280, glow: 0xfba56d, safeRadius: 44, disengageRadius: 68, style: "military", specialty: "heavy mechs + beam shields", factionId: "iron" }
       ];
 
       for (const def of hubDefs) {
@@ -2781,6 +2884,25 @@ const ENEMY_SPECIES = {
         }
 
         const towerCollision = createHubCentralTower(hubRoot, def);
+        const defFaction = getFactionById(def.factionId || factionForHubName(def.name));
+        for (let i = 0; i < 4; i++) {
+          const ang = (i / 4) * Math.PI * 2;
+          const banner = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.2), new THREE.MeshStandardMaterial({ color: defFaction.primaryColor, emissive: defFaction.glowColor, emissiveIntensity: 0.35, side: THREE.DoubleSide }));
+          banner.position.set(Math.cos(ang) * 9.4, 8.2, Math.sin(ang) * 9.4);
+          banner.lookAt(def.pos.x, 8.2, def.pos.z);
+          hubRoot.add(banner);
+          const sigil = makeTextSprite(defFaction.symbol, { color: "#ffffff", size: 128, worldW: 1.1, worldH: 1.1, bgAlpha: 0.15 });
+          sigil.position.copy(banner.position).add(new THREE.Vector3(0, 0.04, 0));
+          hubRoot.add(sigil);
+        }
+        if (towerCollision.shaft?.material) {
+          towerCollision.shaft.material.color.setHex(defFaction.secondaryColor);
+          towerCollision.shaft.material.emissive.setHex(defFaction.glowColor);
+        }
+        if (towerCollision.crown?.material) {
+          towerCollision.crown.material.color.setHex(defFaction.primaryColor);
+          towerCollision.crown.material.emissive.setHex(defFaction.glowColor);
+        }
         worldCollisionVolumes.push({
           x: def.pos.x,
           z: def.pos.z,
@@ -2832,7 +2954,9 @@ const ENEMY_SPECIES = {
           "Storm Roost Sanctuary": ["weapon", "trinket", "mount", "heal", "quest"],
           "Skyhold Grand Roost": ["weapon", "armor", "mount", "trinket", "quest", "life"],
           "Dragon Hunter's Rest": ["weapon", "armor", "trinket", "mount", "quest"],
-          "Moonglass Grand Market": ["weapon", "armor", "trinket", "mount", "heal", "life", "quest"]
+          "Moonglass Grand Market": ["weapon", "armor", "trinket", "mount", "heal", "life", "quest"],
+          "Emberwatch Citadel": ["weapon", "armor", "trinket", "mount", "quest", "life"],
+          "Iron Dominion Skyforge": ["weapon", "armor", "trinket", "quest", "heal"]
         };
         const merchantTypes = vendorLayouts[def.name] || ["weapon", "armor", "trinket", "quest"];
         const ringRadius = 18;
@@ -2892,6 +3016,19 @@ const ENEMY_SPECIES = {
           ...def,
           checkpoint
         });
+        if (def.factionId && def.factionId !== "independent") {
+          factionCities.push({
+            id: def.name,
+            zone: def.zone,
+            hub: def.name,
+            factionId: def.factionId,
+            towerHp: 3800,
+            towerMaxHp: 3800,
+            towerParts: towerCollision,
+            pos: def.pos.clone(),
+            bannerRoot: hubRoot
+          });
+        }
 
         // Add a hidden collision perch platform that matches hub deck top.
         const perchPlatform = new THREE.Mesh(
@@ -3526,6 +3663,7 @@ const ENEMY_SPECIES = {
       };
       lastRespawnPoint.copy(player.pos);
       refreshPlayerAppearance();
+      ensurePlayerFactionFlag();
       updateActorTransform(player, 0);
     }
 
@@ -5258,6 +5396,8 @@ const ENEMY_SPECIES = {
       xpBarEl.style.width = `${THREE.MathUtils.clamp((progress.xp / Math.max(1, progress.xpNeed)) * 100, 0, 100).toFixed(1)}%`;
       const zone = player ? getZoneAt(player.pos.x, player.pos.z) : worldZones[0];
       waveEl.textContent = zone ? zone.name : "Overworld";
+      const playerFaction = getFactionById(currentPlayerFactionId());
+      factionStateEl.textContent = `${playerFaction.name}${progress.factionRank ? ` • Rank ${progress.factionRank}` : ""}`;
       checkpointEl.textContent = activeCheckpoint ? activeCheckpoint.name : "None";
       enemiesEl.textContent = enemies.filter(e => e.alive).length;
       const q = progress.quests[progress.activeQuestIndex];
@@ -5287,6 +5427,14 @@ const ENEMY_SPECIES = {
         if (q.state === "active" && q.target === enemy.type) {
           q.count += 1;
           if (q.count >= q.need) q.state = "completed";
+        }
+      }
+      for (const [factionId, contracts] of Object.entries(factionQuestProgress)) {
+        for (const contract of contracts) {
+          if (!contract.completed && contract.target === enemy.type) {
+            contract.count += 1;
+            if (contract.count >= contract.need) contract.completed = true;
+          }
         }
       }
       spawnDrops(enemy);
@@ -8813,6 +8961,143 @@ function skyProfileForZone(zone) {
       upgradeTabsEl.innerHTML = "";
     }
 
+    function tryJoinFactionAtQuartermaster() {
+      const hub = getHubAt(player.pos.x, player.pos.z, 24);
+      if (!hub?.factionId || hub.factionId === "independent") return;
+      const factionId = hub.factionId;
+      const contracts = factionQuestProgress[factionId] || [];
+      const completed = contracts.filter((q) => q.completed).length;
+      if (currentPlayerFactionId() === factionId) {
+        showCenterMessage(`Already sworn: ${getFactionById(factionId).name}`, 0.9);
+        return;
+      }
+      if (completed < 3) {
+        showCenterMessage(`Quartermaster: prove yourself (${completed}/3 faction contracts).`, 1.2);
+        return;
+      }
+      progress.playerFactionId = factionId;
+      progress.factionRank = Math.max(progress.factionRank || 0, 1);
+      ensurePlayerFactionFlag();
+      showCenterMessage(`Joined ${getFactionById(factionId).name}!`, 1.1);
+    }
+
+    function tryPurchaseFactionUpgrade() {
+      const factionId = currentPlayerFactionId();
+      if (factionId === "independent") return;
+      const hub = getHubAt(player.pos.x, player.pos.z, 24);
+      if (!hub || hub.factionId !== factionId) return;
+      const state = factionUpgradeState[factionId];
+      const cost = 80 + (state.troopHealth + state.troopDamage + state.armySize + state.towerDefense) * 45;
+      if (gold < cost) { showCenterMessage(`Need ${cost} gold for war upgrade.`, 0.9); return; }
+      gold -= cost;
+      state.troopHealth += 1;
+      state.troopDamage += Math.random() < 0.6 ? 1 : 0;
+      state.armySize += Math.random() < 0.5 ? 1 : 0;
+      state.towerDefense += 1;
+      showCenterMessage(`Faction troops upgraded (-${cost}g).`, 0.9);
+    }
+
+    function spawnFactionArmy(fromCity, toCity, factionId, count = 5, raid = false) {
+      const faction = getFactionById(factionId);
+      const group = new THREE.Group();
+      const members = [];
+      for (let i = 0; i < count; i++) {
+        const rider = new THREE.Mesh(new THREE.OctahedronGeometry(0.85, 0), new THREE.MeshStandardMaterial({ color: faction.primaryColor, emissive: faction.glowColor, emissiveIntensity: 0.6, metalness: 0.45, roughness: 0.28 }));
+        rider.position.set((Math.random() - 0.5) * 8, 8 + Math.random() * 4, (Math.random() - 0.5) * 8);
+        group.add(rider);
+        members.push({ hp: 120 + (factionUpgradeState[factionId]?.troopHealth || 0) * 25 });
+      }
+      group.position.copy(fromCity.pos);
+      scene.add(group);
+      factionArmies.push({ group, members, fromCity, toCity, factionId, state: "march", raid, speed: 32 });
+    }
+
+    function changeCityOwnership(city, newFactionId) {
+      city.factionId = newFactionId;
+      city.towerHp = city.towerMaxHp;
+      const faction = getFactionById(newFactionId);
+      if (city.towerParts?.shaft?.material) city.towerParts.shaft.material.color.setHex(faction.secondaryColor);
+      if (city.towerParts?.crown?.material) city.towerParts.crown.material.color.setHex(faction.primaryColor);
+      showCenterMessage(`${city.id} captured by ${faction.name}!`, 1.1);
+      if (currentPlayerFactionId() === newFactionId) {
+        const payout = 70 + Math.round(20 * (progress.factionRank || 0));
+        gold += payout;
+        showCenterMessage(`Faction Victory Reward: +${payout} Gold`, 1.1);
+      }
+    }
+
+    function updateFactionWarSystem(dt) {
+      if (!player) return;
+      worldWarTicker += dt;
+      warCooldown -= dt;
+      factionRaidTimer -= dt;
+      if (worldWarTicker > 24) {
+        worldWarTicker = 0;
+        for (const f of Object.keys(factionUpgradeState)) {
+          if (f !== currentPlayerFactionId() && Math.random() < 0.55) factionUpgradeState[f].troopHealth += 0.2;
+        }
+      }
+      if (warCooldown <= 0 && factionCities.length > 1) {
+        warCooldown = 22 + Math.random() * 12;
+        const hostilePairs = [];
+        for (const a of factionCities) for (const b of factionCities) if (a !== b && areFactionsHostile(a.factionId, b.factionId)) hostilePairs.push([a, b]);
+        if (hostilePairs.length) {
+          const [a, b] = hostilePairs[Math.floor(Math.random() * hostilePairs.length)];
+          spawnFactionArmy(a, b, a.factionId, 5 + Math.floor(Math.random() * 4) + Math.floor((factionUpgradeState[a.factionId]?.armySize || 0)));
+          spawnFactionArmy(b, a, b.factionId, 5 + Math.floor(Math.random() * 4) + Math.floor((factionUpgradeState[b.factionId]?.armySize || 0)));
+          showCenterMessage(`${getFactionById(a.factionId).name} marches on ${getFactionById(b.factionId).name}`, 1);
+        }
+      }
+      const owners = new Set(factionCities.map((c) => c.factionId));
+      if (owners.size === 1 && factionRaidTimer <= 0 && factionCities.length) {
+        factionRaidTimer = 28;
+        const dominant = [...owners][0];
+        const city = factionCities[Math.floor(Math.random() * factionCities.length)];
+        const alt = FACTIONS.find((f) => f.id !== dominant && f.id !== "independent");
+        const edgeFrom = city.pos.clone().add(new THREE.Vector3(city.pos.x > 0 ? -300 : 300, 0, city.pos.z > 0 ? -220 : 220));
+        spawnFactionArmy({ pos: edgeFrom }, city, alt.id, 8, true);
+        spawnFactionArmy(city, { pos: edgeFrom.clone() }, dominant, 6, false);
+        showCenterMessage(`${getFactionById(alt.id).name} raiders strike from the frontier!`, 1.2);
+      }
+      for (let i = factionArmies.length - 1; i >= 0; i--) {
+        const army = factionArmies[i];
+        const target = (army.state === "siege" ? army.toCity.pos : army.toCity.pos);
+        const dir = target.clone().sub(army.group.position).setY(0);
+        if (dir.lengthSq() > 0.2) army.group.position.add(dir.normalize().multiplyScalar(army.speed * dt));
+        army.group.position.y = 12 + Math.sin(performance.now() * 0.002 + i) * 2;
+        const playerFaction = currentPlayerFactionId();
+        const nearPlayer = player.pos.distanceTo(army.group.position) < 20;
+        if (nearPlayer && areFactionsHostile(playerFaction, army.factionId)) {
+          applyPlayerDamage((12 + army.members.length * 0.4) * dt, `${getFactionById(army.factionId).name} warband`);
+        }
+        for (const other of factionArmies) {
+          if (other === army || other.factionId === army.factionId) continue;
+          if (army.group.position.distanceTo(other.group.position) < 28 && army.state === "march" && other.state === "march") {
+            army.state = other.state = "battle";
+            const dmg = 28 * dt;
+            if (army.members.length) army.members[army.members.length - 1].hp -= dmg;
+            if (other.members.length) other.members[other.members.length - 1].hp -= dmg;
+            if (army.members.at(-1)?.hp <= 0) army.members.pop();
+            if (other.members.at(-1)?.hp <= 0) other.members.pop();
+          }
+        }
+        if (army.members.length <= 0) {
+          scene.remove(army.group);
+          factionArmies.splice(i, 1);
+          continue;
+        }
+        if (army.state !== "siege" && army.group.position.distanceTo(army.toCity.pos) < 32) army.state = "siege";
+        if (army.state === "siege" && army.toCity.towerHp !== undefined) {
+          army.toCity.towerHp -= (20 + army.members.length * 3 + (factionUpgradeState[army.factionId]?.troopDamage || 0) * 2) * dt;
+          if (army.toCity.towerHp <= 0) {
+            changeCityOwnership(army.toCity, army.factionId);
+            scene.remove(army.group);
+            factionArmies.splice(i, 1);
+          }
+        }
+      }
+    }
+
     function animate() {
       requestAnimationFrame(animate);
 
@@ -8862,6 +9147,7 @@ function skyProfileForZone(zone) {
         updateBossEncounter(simDt);
         updateEnemyProjectiles(simDt);
         checkCombat();
+        updateFactionWarSystem(simDt);
         spawnRegionalEnemy(simDt);
         for (let i = nodeRespawns.length - 1; i >= 0; i--) {
           nodeRespawns[i].timer -= simDt;
