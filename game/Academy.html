@@ -268,6 +268,7 @@
     let cityRegions = [];
     let cityAmbientTraffic = [];
     let cityAmbientProps = [];
+    let cityFactionDecor = [];
     let factionArmies = [];
     let factionSoldiers = [];
     let factionCities = [];
@@ -637,13 +638,13 @@
     };
 
     const CITY_THEME_PRESETS = {
-      seraphic: { wall: 0xe7edf8, wallDark: 0xbecadd, roof: 0xcfe4ff, trim: 0xeef6ff, plaza: 0xc0d3ec, bannerPalette: [0x9be8ff, 0xd7e6ff, 0xffffff, 0xa9c4ff], window: 0xcff3ff, roofProfiles: ["spire","dome","spire","halo"], skyline: { towerBias: 1.35, bridgeBias: 1.2, perchBias: 0.9 }, marketShape: "ring" },
-      aurelian: { wall: 0x9f947d, wallDark: 0x5d6472, roof: 0x7a8697, trim: 0xdabf7a, plaza: 0x6a7282, bannerPalette: [0xf4cd78, 0x9ca8bf, 0xd6dde9, 0x5f6f87], window: 0xffefbf, roofProfiles: ["battlement","wedge","battlement","spire"], skyline: { towerBias: 1.15, bridgeBias: 0.9, perchBias: 1.1 }, marketShape: "fort" },
-      frontier: { wall: 0x7a5d42, wallDark: 0x4e3928, roof: 0xb89062, trim: 0xd4b889, plaza: 0x6b4f36, bannerPalette: [0xd3a26e, 0x8cc7a7, 0xc78064, 0xbfd7d0], window: 0xffd9a6, roofProfiles: ["canvas","lean","cone","canvas"], skyline: { towerBias: 0.82, bridgeBias: 0.88, perchBias: 1.5 }, marketShape: "scattered" },
-      ruin: { wall: 0x867c78, wallDark: 0x55504d, roof: 0x707780, trim: 0x949089, plaza: 0x625c59, bannerPalette: [0x9ca1ae, 0xd28f72, 0xa7b3c2, 0xb7a598], window: 0xc6d4e8, roofProfiles: ["broken","dome","wedge","broken"], skyline: { towerBias: 1.0, bridgeBias: 1.08, perchBias: 1.0 }, marketShape: "arc" },
-      storm: { wall: 0x6e86a7, wallDark: 0x365173, roof: 0x89b4df, trim: 0x9cd7ff, plaza: 0x4b6384, bannerPalette: [0x8fd9ff, 0x6fa8ff, 0x9af0ff, 0x4f88cc], window: 0xa8edff, roofProfiles: ["rod","wedge","rod","spire"], skyline: { towerBias: 1.05, bridgeBias: 1.0, perchBias: 1.2 }, marketShape: "radial" },
-      dragon: { wall: 0x8d624f, wallDark: 0x4e2f26, roof: 0xa17152, trim: 0xdb9b6f, plaza: 0x6a4333, bannerPalette: [0xff9b62, 0xe98f70, 0x9a5740, 0xe6c57a], window: 0xffb27d, roofProfiles: ["plate","cone","plate","spire"], skyline: { towerBias: 1.25, bridgeBias: 0.75, perchBias: 1.25 }, marketShape: "fort" },
-      moonglass: { wall: 0xc8d7ff, wallDark: 0x5f628f, roof: 0x9fb5ff, trim: 0xded6ff, plaza: 0x8698d8, bannerPalette: [0xb8c9ff, 0xcad9ff, 0xe9deff, 0x8bc6ff], window: 0x9de5ff, roofProfiles: ["spire","halo","rod","dome"], skyline: { towerBias: 1.55, bridgeBias: 1.45, perchBias: 1.42 }, marketShape: "radial" }
+      seraphic: { wall: 0xe7edf8, wallDark: 0xbecadd, roof: 0xcfe4ff, trim: 0xeef6ff, plaza: 0xc0d3ec, bannerPalette: [0x9be8ff, 0xd7e6ff, 0xffffff, 0xa9c4ff], window: 0xcff3ff, roofProfiles: ["spire","dome","spire","halo"], skyline: { towerBias: 1.65, bridgeBias: 1.4, perchBias: 1.05 }, marketShape: "ring" },
+      aurelian: { wall: 0x9f947d, wallDark: 0x5d6472, roof: 0x7a8697, trim: 0xdabf7a, plaza: 0x6a7282, bannerPalette: [0xf4cd78, 0x9ca8bf, 0xd6dde9, 0x5f6f87], window: 0xffefbf, roofProfiles: ["battlement","wedge","battlement","spire"], skyline: { towerBias: 1.35, bridgeBias: 1.15, perchBias: 1.15 }, marketShape: "fort" },
+      frontier: { wall: 0x7a5d42, wallDark: 0x4e3928, roof: 0xb89062, trim: 0xd4b889, plaza: 0x6b4f36, bannerPalette: [0xd3a26e, 0x8cc7a7, 0xc78064, 0xbfd7d0], window: 0xffd9a6, roofProfiles: ["canvas","lean","cone","canvas"], skyline: { towerBias: 0.92, bridgeBias: 0.95, perchBias: 1.75 }, marketShape: "scattered" },
+      ruin: { wall: 0x867c78, wallDark: 0x55504d, roof: 0x707780, trim: 0x949089, plaza: 0x625c59, bannerPalette: [0x9ca1ae, 0xd28f72, 0xa7b3c2, 0xb7a598], window: 0xc6d4e8, roofProfiles: ["broken","dome","wedge","broken"], skyline: { towerBias: 1.22, bridgeBias: 1.25, perchBias: 1.02 }, marketShape: "arc" },
+      storm: { wall: 0x6e86a7, wallDark: 0x365173, roof: 0x89b4df, trim: 0x9cd7ff, plaza: 0x4b6384, bannerPalette: [0x8fd9ff, 0x6fa8ff, 0x9af0ff, 0x4f88cc], window: 0xa8edff, roofProfiles: ["rod","wedge","rod","spire"], skyline: { towerBias: 1.25, bridgeBias: 1.2, perchBias: 1.42 }, marketShape: "radial" },
+      dragon: { wall: 0x8d624f, wallDark: 0x4e2f26, roof: 0xa17152, trim: 0xdb9b6f, plaza: 0x6a4333, bannerPalette: [0xff9b62, 0xe98f70, 0x9a5740, 0xe6c57a], window: 0xffb27d, roofProfiles: ["plate","cone","plate","spire"], skyline: { towerBias: 1.45, bridgeBias: 0.88, perchBias: 1.35 }, marketShape: "fort" },
+      moonglass: { wall: 0xc8d7ff, wallDark: 0x5f628f, roof: 0x9fb5ff, trim: 0xded6ff, plaza: 0x8698d8, bannerPalette: [0xb8c9ff, 0xcad9ff, 0xe9deff, 0x8bc6ff], window: 0x9de5ff, roofProfiles: ["spire","halo","rod","dome"], skyline: { towerBias: 1.9, bridgeBias: 1.62, perchBias: 1.62 }, marketShape: "radial" }
     };
 
     const FACTIONS = [
@@ -2837,12 +2838,62 @@ const ENEMY_SPECIES = {
       return { minY: def.pos.y - 2, maxY: def.pos.y + 82, radius: 7.8, towerRoot, shaft, crown };
     }
 
+    function createFactionBannerMesh(width, height, faction, phase = 0) {
+      const banner = new THREE.Mesh(new THREE.PlaneGeometry(width, height, 4, 8), new THREE.MeshStandardMaterial({ color: faction.primaryColor, emissive: faction.glowColor, emissiveIntensity: 0.34, side: THREE.DoubleSide, roughness: 0.84 }));
+      banner.userData.wavePhase = phase;
+      banner.userData.baseRotZ = banner.rotation.z;
+      return banner;
+    }
+
+    function attachCityWallBanners(city) {
+      const faction = getFactionById(city.factionId);
+      const root = city.bannerRoot;
+      const records = [];
+      for (let i = 0; i < 14; i++) {
+        const ang = (i / 14) * Math.PI * 2;
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 2.6, 6), new THREE.MeshStandardMaterial({ color: faction.secondaryColor, roughness: 0.45, metalness: 0.45 }));
+        pole.position.set(Math.cos(ang) * 15.8, 5.8, Math.sin(ang) * 15.8);
+        root.add(pole);
+        const banner = createFactionBannerMesh(1.25, 1.9, faction, i * 0.4);
+        banner.position.copy(pole.position).add(new THREE.Vector3(0.72 * Math.cos(ang), 0.4, 0.72 * Math.sin(ang)));
+        banner.lookAt(city.pos.x, banner.position.y, city.pos.z);
+        root.add(banner);
+        records.push(banner);
+      }
+      for (let i = 0; i < 4; i++) {
+        const ang = (i / 4) * Math.PI * 2 + Math.PI * 0.25;
+        const towerBanner = createFactionBannerMesh(1.7, 3.2, faction, i * 0.7 + 1.5);
+        towerBanner.position.set(Math.cos(ang) * 10.5, 10.6, Math.sin(ang) * 10.5);
+        towerBanner.lookAt(city.pos.x, towerBanner.position.y, city.pos.z);
+        root.add(towerBanner);
+        records.push(towerBanner);
+      }
+      const sigBanner = createFactionBannerMesh(2.5, 4.2, faction, 2.2);
+      sigBanner.position.set(0, 13.2, 0);
+      sigBanner.rotation.y = Math.PI * 0.5;
+      root.add(sigBanner);
+      records.push(sigBanner);
+      cityFactionDecor.push({ cityId: city.id, factionId: city.factionId, banners: records, sigils: [] });
+    }
+
+    function refreshCityFactionDecor(city) {
+      const old = cityFactionDecor.find((d) => d.cityId === city.id);
+      if (!old) return;
+      const faction = getFactionById(city.factionId);
+      for (const b of old.banners) {
+        if (!b.material) continue;
+        b.material.color.setHex(faction.primaryColor);
+        b.material.emissive.setHex(faction.glowColor);
+      }
+    }
+
     function createSafeHubs() {
       safeHubs = [];
       checkpoints = [];
       shopPlatforms = [];
       cityCreatures = [];
       factionCities = [];
+      cityFactionDecor = [];
       worldCollisionVolumes = [];
 
       const hubDefs = [
@@ -2892,16 +2943,6 @@ const ENEMY_SPECIES = {
 
         const towerCollision = createHubCentralTower(hubRoot, def);
         const defFaction = getFactionById(def.factionId || factionForHubName(def.name));
-        for (let i = 0; i < 4; i++) {
-          const ang = (i / 4) * Math.PI * 2;
-          const banner = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.2), new THREE.MeshStandardMaterial({ color: defFaction.primaryColor, emissive: defFaction.glowColor, emissiveIntensity: 0.35, side: THREE.DoubleSide }));
-          banner.position.set(Math.cos(ang) * 9.4, 8.2, Math.sin(ang) * 9.4);
-          banner.lookAt(def.pos.x, 8.2, def.pos.z);
-          hubRoot.add(banner);
-          const sigil = makeTextSprite(defFaction.symbol, { color: "#ffffff", size: 128, worldW: 1.1, worldH: 1.1, bgAlpha: 0.15 });
-          sigil.position.copy(banner.position).add(new THREE.Vector3(0, 0.04, 0));
-          hubRoot.add(sigil);
-        }
         if (towerCollision.shaft?.material) {
           towerCollision.shaft.material.color.setHex(defFaction.secondaryColor);
           towerCollision.shaft.material.emissive.setHex(defFaction.glowColor);
@@ -3024,7 +3065,7 @@ const ENEMY_SPECIES = {
           checkpoint
         });
         if (def.factionId && def.factionId !== "independent") {
-          factionCities.push({
+          const city = {
             id: def.name,
             zone: def.zone,
             hub: def.name,
@@ -3034,7 +3075,9 @@ const ENEMY_SPECIES = {
             towerParts: towerCollision,
             pos: def.pos.clone(),
             bannerRoot: hubRoot
-          });
+          };
+          factionCities.push(city);
+          attachCityWallBanners(city);
         }
 
         // Add a hidden collision perch platform that matches hub deck top.
@@ -7929,6 +7972,23 @@ function skyProfileForZone(zone) {
             }
           }
         }
+        if (!hit) {
+          for (const soldier of factionSoldiers) {
+            if (soldier.state === "dead") continue;
+            if (soldier.mesh.position.distanceTo(wp.mesh.position) < 1.2) {
+              soldier.health -= wp.damage;
+              const army = factionArmies.find((a) => a.id === soldier.armyId);
+              markArmyHostileToPlayer(army);
+              spawnBurst(soldier.mesh.position.clone(), 4, getFactionById(soldier.factionId).glowColor);
+              if (soldier.health <= 0) {
+                soldier.state = "dead";
+                spawnBurst(soldier.mesh.position.clone(), 9, getFactionById(soldier.factionId).primaryColor);
+              }
+              if (wp.remainingPierce > 0) wp.remainingPierce -= 1;
+              else { hit = true; break; }
+            }
+          }
+        }
         if (wp.life <= 0 || hit) { scene.remove(wp.mesh); weaponProjectiles.splice(i, 1); }
       }
 
@@ -7975,6 +8035,22 @@ function skyProfileForZone(zone) {
         } else if (prop.type === "vane") {
           prop.mesh.rotation.y += dt * 0.9;
           prop.mesh.rotation.z = Math.sin(prop.phase * 1.8) * 0.08;
+        }
+      }
+
+      for (const decor of cityFactionDecor) {
+        for (const banner of decor.banners) {
+          if (!banner.geometry?.attributes?.position) continue;
+          const pos = banner.geometry.attributes.position;
+          const tPhase = t * 3.3 + (banner.userData.wavePhase || 0);
+          for (let i = 0; i < pos.count; i++) {
+            const x = pos.getX(i);
+            const y = pos.getY(i);
+            const sway = Math.sin(tPhase + y * 2.4 + x * 5.2) * 0.08 * (0.25 + Math.abs(x));
+            pos.setZ(i, sway);
+          }
+          pos.needsUpdate = true;
+          banner.rotation.z = (banner.userData.baseRotZ || 0) + Math.sin(tPhase * 0.7) * 0.04;
         }
       }
 
@@ -8995,19 +9071,120 @@ function skyProfileForZone(zone) {
       showCenterMessage(`Faction troops upgraded (-${cost}g).`, 0.9);
     }
 
-    function spawnFactionArmy(fromCity, toCity, factionId, count = 5, raid = false) {
+    function factionFormationFlavor(factionId) {
+      if (factionId === "aurelian") return { spreadX: 4.4, spreadZ: 3.1, rows: 3 };
+      if (factionId === "stormbound") return { spreadX: 6.2, spreadZ: 2.8, rows: 2 };
+      if (factionId === "ember") return { spreadX: 4.2, spreadZ: 2.4, rows: 2 };
+      if (factionId === "hollow") return { spreadX: 6.8, spreadZ: 3.8, rows: 3 };
+      if (factionId === "iron") return { spreadX: 3.2, spreadZ: 2.2, rows: 3 };
+      return { spreadX: 4.8, spreadZ: 3.2, rows: 2 };
+    }
+
+    function buildFactionTroopVisual(factionId) {
       const faction = getFactionById(factionId);
-      const group = new THREE.Group();
-      const members = [];
+      const root = new THREE.Group();
+      const mountBody = new THREE.Mesh(new THREE.CapsuleGeometry(0.36, factionId === "iron" ? 1.45 : 1.25, 4, 8), new THREE.MeshStandardMaterial({ color: faction.secondaryColor, roughness: 0.72, metalness: factionId === "iron" ? 0.42 : 0.2 }));
+      mountBody.rotation.z = Math.PI / 2;
+      root.add(mountBody);
+      const wingGeo = new THREE.BoxGeometry(factionId === "stormbound" ? 0.28 : 0.36, 0.07, factionId === "stormbound" ? 1.35 : 1.1);
+      const wingMat = new THREE.MeshStandardMaterial({ color: faction.primaryColor, emissive: faction.glowColor, emissiveIntensity: factionId === "hollow" ? 0.35 : 0.18, roughness: 0.58, metalness: 0.14 });
+      const leftWing = new THREE.Mesh(wingGeo, wingMat);
+      leftWing.position.set(0.16, 0.15, -0.42);
+      const rightWing = leftWing.clone();
+      rightWing.position.z = 0.42;
+      root.add(leftWing, rightWing);
+      const rider = new THREE.Mesh(new THREE.CapsuleGeometry(0.19, 0.6, 4, 8), new THREE.MeshStandardMaterial({ color: 0xf4f4f4, roughness: 0.5, metalness: 0.55 }));
+      rider.position.set(0.1, 0.58, 0);
+      root.add(rider);
+      const lance = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.6, 6), new THREE.MeshStandardMaterial({ color: 0xd9d9d9, roughness: 0.4, metalness: 0.75 }));
+      lance.rotation.z = Math.PI / 2;
+      lance.position.set(0.72, 0.55, 0.18);
+      root.add(lance);
+      const pennant = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.55), new THREE.MeshStandardMaterial({ color: faction.primaryColor, emissive: faction.glowColor, emissiveIntensity: 0.25, side: THREE.DoubleSide, roughness: 0.84 }));
+      pennant.position.set(0.42, 0.6, 0.18);
+      pennant.rotation.y = Math.PI * 0.5;
+      root.add(pennant);
+      const hpDot = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 8), new THREE.MeshBasicMaterial({ color: faction.primaryColor }));
+      hpDot.position.set(0, 1.2, 0);
+      root.add(hpDot);
+      root.userData.leftWing = leftWing;
+      root.userData.rightWing = rightWing;
+      root.userData.hpDot = hpDot;
+      root.userData.pennant = pennant;
+      return root;
+    }
+
+    function spawnFactionSoldier(army, slotIndex, originCity) {
+      const up = factionUpgradeState[army.factionId] || { troopHealth: 0, troopDamage: 0 };
+      const visual = buildFactionTroopVisual(army.factionId);
+      const slot = army.formationSlots[slotIndex % army.formationSlots.length] || new THREE.Vector3();
+      const spawnCenter = originCity?.pos || army.fromCity.pos;
+      visual.position.copy(spawnCenter).add(new THREE.Vector3(slot.x, 8 + Math.random() * 3, slot.z));
+      scene.add(visual);
+      const soldier = {
+        mesh: visual,
+        armyId: army.id,
+        factionId: army.factionId,
+        health: 90 + up.troopHealth * 25,
+        maxHealth: 90 + up.troopHealth * 25,
+        damage: 18 + up.troopDamage * 3,
+        speed: 22 + Math.random() * 3,
+        turnRate: 2.8,
+        attackCooldown: Math.random() * 0.4,
+        flapPhase: Math.random() * Math.PI * 2,
+        state: "march",
+        targetSoldier: null,
+        targetCity: army.toCity,
+        targetTower: army.toCity?.towerParts || null,
+        hostileToPlayer: false,
+        mountStyle: army.factionId,
+        riderStyle: army.factionId,
+        slotOffset: slot.clone(),
+        strikeTimer: 0,
+        lowDetailTick: Math.floor(Math.random() * 3)
+      };
+      army.soldiers.push(soldier);
+      factionSoldiers.push(soldier);
+      return soldier;
+    }
+
+    function spawnFactionArmy(fromCity, toCity, factionId, count = 5, raid = false) {
+      const flavor = factionFormationFlavor(factionId);
+      const rows = flavor.rows;
+      const army = {
+        id: `army-${Math.random().toString(36).slice(2, 9)}-${Date.now().toString(36)}`,
+        factionId,
+        fromCity,
+        toCity,
+        state: "march",
+        soldiers: [],
+        objectivePoint: toCity.pos.clone(),
+        battleCenter: fromCity.pos.clone().lerp(toCity.pos, 0.5),
+        aggressionRadius: 26,
+        hostileToPlayer: false,
+        siegeProgress: 0,
+        aliveCount: 0,
+        raid,
+        speed: 21,
+        enemyArmyId: null,
+        formationSlots: []
+      };
       for (let i = 0; i < count; i++) {
-        const rider = new THREE.Mesh(new THREE.OctahedronGeometry(0.85, 0), new THREE.MeshStandardMaterial({ color: faction.primaryColor, emissive: faction.glowColor, emissiveIntensity: 0.6, metalness: 0.45, roughness: 0.28 }));
-        rider.position.set((Math.random() - 0.5) * 8, 8 + Math.random() * 4, (Math.random() - 0.5) * 8);
-        group.add(rider);
-        members.push({ hp: 120 + (factionUpgradeState[factionId]?.troopHealth || 0) * 25 });
+        const row = Math.floor(i / rows);
+        const rowPos = (i % rows) - ((rows - 1) * 0.5);
+        const aggressionBias = army.factionId === "ember" ? -row * 1.8 : row * 1.2;
+        army.formationSlots.push(new THREE.Vector3(rowPos * flavor.spreadX + (Math.random() - 0.5) * 0.9, 0, aggressionBias - row * flavor.spreadZ));
       }
-      group.position.copy(fromCity.pos);
-      scene.add(group);
-      factionArmies.push({ group, members, fromCity, toCity, factionId, state: "march", raid, speed: 32 });
+      for (let i = 0; i < count; i++) spawnFactionSoldier(army, i, fromCity);
+      army.aliveCount = army.soldiers.length;
+      factionArmies.push(army);
+      return army;
+    }
+
+    function markArmyHostileToPlayer(army) {
+      if (!army || army.hostileToPlayer) return;
+      army.hostileToPlayer = true;
+      for (const s of army.soldiers) s.hostileToPlayer = true;
     }
 
     function changeCityOwnership(city, newFactionId) {
@@ -9016,11 +9193,135 @@ function skyProfileForZone(zone) {
       const faction = getFactionById(newFactionId);
       if (city.towerParts?.shaft?.material) city.towerParts.shaft.material.color.setHex(faction.secondaryColor);
       if (city.towerParts?.crown?.material) city.towerParts.crown.material.color.setHex(faction.primaryColor);
+      refreshCityFactionDecor(city);
       showCenterMessage(`${city.id} captured by ${faction.name}!`, 1.1);
       if (currentPlayerFactionId() === newFactionId) {
         const payout = 70 + Math.round(20 * (progress.factionRank || 0));
         gold += payout;
         showCenterMessage(`Faction Victory Reward: +${payout} Gold`, 1.1);
+      }
+    }
+
+    function beginArmyBattle(armyA, armyB) {
+      if (!armyA || !armyB || armyA.state === "dead" || armyB.state === "dead") return;
+      armyA.state = "battle";
+      armyB.state = "battle";
+      armyA.enemyArmyId = armyB.id;
+      armyB.enemyArmyId = armyA.id;
+      armyA.battleCenter = getArmyCenter(armyA).lerp(getArmyCenter(armyB), 0.5);
+      armyB.battleCenter = armyA.battleCenter.clone();
+    }
+
+    function getArmyCenter(army) {
+      const alive = army.soldiers.filter((s) => s.state !== "dead");
+      if (!alive.length) return army.objectivePoint.clone();
+      const center = new THREE.Vector3();
+      for (const s of alive) center.add(s.mesh.position);
+      return center.multiplyScalar(1 / alive.length);
+    }
+
+    function removeDeadFactionSoldiers() {
+      for (let i = factionSoldiers.length - 1; i >= 0; i--) {
+        const s = factionSoldiers[i];
+        if (s.state === "dead") {
+          scene.remove(s.mesh);
+          factionSoldiers.splice(i, 1);
+        }
+      }
+    }
+
+    function updateFactionSoldier(soldier, army, dt, lowDetail = false) {
+      if (soldier.state === "dead") return;
+      soldier.attackCooldown = Math.max(0, soldier.attackCooldown - dt);
+      soldier.flapPhase += dt * (lowDetail ? 3.8 : 7.2);
+      const flap = Math.sin(soldier.flapPhase);
+      if (!lowDetail) {
+        soldier.mesh.userData.leftWing.rotation.z = 0.4 + flap * 0.7;
+        soldier.mesh.userData.rightWing.rotation.z = -0.4 - flap * 0.7;
+      }
+      soldier.mesh.position.y += Math.sin(soldier.flapPhase * 0.7) * (lowDetail ? 0.012 : 0.03);
+      const hpRatio = THREE.MathUtils.clamp(soldier.health / Math.max(1, soldier.maxHealth), 0, 1);
+      soldier.mesh.userData.hpDot.scale.setScalar(0.4 + hpRatio * 0.8);
+      soldier.mesh.userData.hpDot.visible = player.pos.distanceTo(soldier.mesh.position) < 90;
+      const targetPos = new THREE.Vector3();
+      if (army.state === "battle" && soldier.targetSoldier?.state !== "dead") {
+        targetPos.copy(soldier.targetSoldier.mesh.position);
+      } else if (army.state === "siege") {
+        targetPos.copy(army.toCity.pos).add(new THREE.Vector3((Math.random() - 0.5) * 6, 6 + Math.random() * 1.5, (Math.random() - 0.5) * 6));
+      } else {
+        const center = getArmyCenter(army);
+        targetPos.copy(center).add(soldier.slotOffset);
+        const marchDir = army.objectivePoint.clone().sub(center).setY(0).normalize();
+        targetPos.add(marchDir.multiplyScalar(7));
+      }
+      if (army.hostileToPlayer && player.pos.distanceTo(soldier.mesh.position) < 16) {
+        targetPos.copy(player.pos).add(new THREE.Vector3(0, 2, 0));
+      }
+      const to = targetPos.sub(soldier.mesh.position);
+      const d = to.length();
+      if (d > 0.1) {
+        to.normalize();
+        soldier.mesh.position.addScaledVector(to, soldier.speed * dt * (army.state === "battle" ? 0.84 : 1));
+        soldier.mesh.lookAt(soldier.mesh.position.x + to.x * 2, soldier.mesh.position.y, soldier.mesh.position.z + to.z * 2);
+      }
+      if (army.state === "battle" && soldier.targetSoldier && soldier.targetSoldier.state !== "dead") {
+        const enemyDist = soldier.mesh.position.distanceTo(soldier.targetSoldier.mesh.position);
+        if (enemyDist < 2.7 && soldier.attackCooldown <= 0) {
+          soldier.attackCooldown = 0.6 + Math.random() * 0.35;
+          soldier.targetSoldier.health -= soldier.damage;
+          soldier.mesh.position.addScaledVector(soldier.mesh.position.clone().sub(soldier.targetSoldier.mesh.position).setY(0).normalize(), 1.3);
+          spawnBurst(soldier.mesh.position.clone(), 3, getFactionById(army.factionId).glowColor);
+          if (soldier.targetSoldier.health <= 0 && soldier.targetSoldier.state !== "dead") {
+            soldier.targetSoldier.state = "dead";
+            soldier.targetSoldier.mesh.position.y -= 0.6;
+            spawnBurst(soldier.targetSoldier.mesh.position.clone(), 10, getFactionById(soldier.targetSoldier.factionId).primaryColor);
+          }
+        }
+      }
+      if (army.hostileToPlayer && player.pos.distanceTo(soldier.mesh.position) < 6.8) {
+        applyPlayerDamage((4 + soldier.damage * 0.18) * dt, `${getFactionById(army.factionId).name} lancer`);
+      }
+    }
+
+    function updateFactionArmy(army, dt) {
+      const near = player.pos.distanceTo(getArmyCenter(army)) < 150;
+      for (let i = 0; i < army.soldiers.length; i++) {
+        const soldier = army.soldiers[i];
+        soldier.lowDetailTick = (soldier.lowDetailTick + 1) % 3;
+        if (!near && soldier.lowDetailTick !== 0) continue;
+        if (army.state === "battle" && (!soldier.targetSoldier || soldier.targetSoldier.state === "dead")) {
+          let closest = null;
+          let best = 9999;
+          const enemyArmy = factionArmies.find((a) => a.id === army.enemyArmyId);
+          for (const e of enemyArmy?.soldiers || []) {
+            if (e.state === "dead") continue;
+            const d = soldier.mesh.position.distanceTo(e.mesh.position);
+            if (d < best) { best = d; closest = e; }
+          }
+          soldier.targetSoldier = closest;
+        }
+        updateFactionSoldier(soldier, army, dt, !near);
+      }
+      army.aliveCount = army.soldiers.filter((s) => s.state !== "dead").length;
+      if (army.aliveCount <= 0) army.state = "dead";
+      if (army.state === "battle") {
+        const enemyArmy = factionArmies.find((a) => a.id === army.enemyArmyId);
+        if (!enemyArmy || enemyArmy.aliveCount <= 0) {
+          army.state = "advance";
+          army.enemyArmyId = null;
+        }
+      }
+      if ((army.state === "march" || army.state === "advance") && getArmyCenter(army).distanceTo(army.toCity.pos) < 26) {
+        army.state = "siege";
+      }
+      if (army.state === "siege" && army.aliveCount > 0 && army.toCity?.towerHp !== undefined) {
+        army.siegeProgress += dt * (army.aliveCount * 0.7);
+        if (Math.random() < 0.24) spawnBurst(army.toCity.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 8, 8 + Math.random() * 4, (Math.random() - 0.5) * 8)), 2, getFactionById(army.factionId).glowColor);
+        army.toCity.towerHp -= (10 + army.aliveCount * 2.8 + (factionUpgradeState[army.factionId]?.troopDamage || 0) * 1.6) * dt;
+        if (army.toCity.towerHp <= 0) {
+          changeCityOwnership(army.toCity, army.factionId);
+          army.state = "dead";
+        }
       }
     }
 
@@ -9036,19 +9337,21 @@ function skyProfileForZone(zone) {
         }
       }
       if (warCooldown <= 0 && factionCities.length > 1) {
-        warCooldown = 22 + Math.random() * 12;
+        warCooldown = 45 + Math.random() * 35;
         const hostilePairs = [];
         for (const a of factionCities) for (const b of factionCities) if (a !== b && areFactionsHostile(a.factionId, b.factionId)) hostilePairs.push([a, b]);
         if (hostilePairs.length) {
           const [a, b] = hostilePairs[Math.floor(Math.random() * hostilePairs.length)];
-          spawnFactionArmy(a, b, a.factionId, 5 + Math.floor(Math.random() * 4) + Math.floor((factionUpgradeState[a.factionId]?.armySize || 0)));
-          spawnFactionArmy(b, a, b.factionId, 5 + Math.floor(Math.random() * 4) + Math.floor((factionUpgradeState[b.factionId]?.armySize || 0)));
-          showCenterMessage(`${getFactionById(a.factionId).name} marches on ${getFactionById(b.factionId).name}`, 1);
+          const aCount = 5 + Math.floor(Math.random() * 4) + Math.floor((factionUpgradeState[a.factionId]?.armySize || 0));
+          const bCount = 5 + Math.floor(Math.random() * 4) + Math.floor((factionUpgradeState[b.factionId]?.armySize || 0));
+          spawnFactionArmy(a, b, a.factionId, aCount);
+          spawnFactionArmy(b, a, b.factionId, bCount);
+          showCenterMessage(`${getFactionById(a.factionId).name} vs ${getFactionById(b.factionId).name}: ${a.id} → ${b.id}`, 1.3);
         }
       }
       const owners = new Set(factionCities.map((c) => c.factionId));
       if (owners.size === 1 && factionRaidTimer <= 0 && factionCities.length) {
-        factionRaidTimer = 28;
+        factionRaidTimer = 70;
         const dominant = [...owners][0];
         const city = factionCities[Math.floor(Math.random() * factionCities.length)];
         const alt = FACTIONS.find((f) => f.id !== dominant && f.id !== "independent");
@@ -9059,41 +9362,23 @@ function skyProfileForZone(zone) {
       }
       for (let i = factionArmies.length - 1; i >= 0; i--) {
         const army = factionArmies[i];
-        const target = (army.state === "siege" ? army.toCity.pos : army.toCity.pos);
-        const dir = target.clone().sub(army.group.position).setY(0);
-        if (dir.lengthSq() > 0.2) army.group.position.add(dir.normalize().multiplyScalar(army.speed * dt));
-        army.group.position.y = 12 + Math.sin(performance.now() * 0.002 + i) * 2;
-        const playerFaction = currentPlayerFactionId();
-        const nearPlayer = player.pos.distanceTo(army.group.position) < 20;
-        if (nearPlayer && areFactionsHostile(playerFaction, army.factionId)) {
-          applyPlayerDamage((12 + army.members.length * 0.4) * dt, `${getFactionById(army.factionId).name} warband`);
+        if (army.state === "dead") continue;
+        if (army.state === "march") {
+          const playerFaction = currentPlayerFactionId();
+          if (playerFaction !== "independent" && areFactionsHostile(playerFaction, army.factionId) && player.pos.distanceTo(getArmyCenter(army)) < 18) markArmyHostileToPlayer(army);
         }
         for (const other of factionArmies) {
           if (other === army || other.factionId === army.factionId) continue;
-          if (army.group.position.distanceTo(other.group.position) < 28 && army.state === "march" && other.state === "march") {
-            army.state = other.state = "battle";
-            const dmg = 28 * dt;
-            if (army.members.length) army.members[army.members.length - 1].hp -= dmg;
-            if (other.members.length) other.members[other.members.length - 1].hp -= dmg;
-            if (army.members.at(-1)?.hp <= 0) army.members.pop();
-            if (other.members.at(-1)?.hp <= 0) other.members.pop();
+          if ((army.state === "march" || army.state === "advance") && (other.state === "march" || other.state === "advance") && getArmyCenter(army).distanceTo(getArmyCenter(other)) < 35) {
+            beginArmyBattle(army, other);
           }
         }
-        if (army.members.length <= 0) {
-          scene.remove(army.group);
+        updateFactionArmy(army, dt);
+        if (army.state === "dead") {
           factionArmies.splice(i, 1);
-          continue;
-        }
-        if (army.state !== "siege" && army.group.position.distanceTo(army.toCity.pos) < 32) army.state = "siege";
-        if (army.state === "siege" && army.toCity.towerHp !== undefined) {
-          army.toCity.towerHp -= (20 + army.members.length * 3 + (factionUpgradeState[army.factionId]?.troopDamage || 0) * 2) * dt;
-          if (army.toCity.towerHp <= 0) {
-            changeCityOwnership(army.toCity, army.factionId);
-            scene.remove(army.group);
-            factionArmies.splice(i, 1);
-          }
         }
       }
+      removeDeadFactionSoldiers();
     }
 
     function animate() {
