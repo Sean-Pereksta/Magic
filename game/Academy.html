@@ -1498,7 +1498,14 @@ const ENEMY_SPECIES = {
       "Moonveil Expanse": { bossName: "The Moon Lens Sovereign", title: "Arcane Aperture Tyrant", enemyType: "moonbeamConstruct", move: "Hover-lock beam conductor", attacks: ["Telegraphed focus beam", "Rotating beam fan", "Pulse wave + orbiting sentinels"], dropId: "moon-lens-core", dropName: "Moon Lens Core", gold: 980, xp: 720, speciesScale: 1.58 },
       "Wyrmscar Badlands": { bossName: "Rhazakar, the Scar Wyrm", title: "Badlands Apex Predator", enemyType: "wyrmscarDragon", move: "Heavy glide tyrant", attacks: ["Breath sweep telegraph", "Dive lane crush", "Tail-lane passes + lesser drakes"], dropId: "rhazakar-fang", dropName: "Rhazakar Fang", gold: 1120, xp: 830, speciesScale: 1.64 }
     };
-
+   const COMBAT_SPEED_TUNING = {
+      playerForward: 1.13,
+      playerTurn: 1.15,
+      playerFlapBurst: 1.16,
+      playerBurst: 1.18,
+      enemyGlobal: 1.1,
+      enemyAggroAccel: 1.18
+    };
     init();
     animate();
 
@@ -6943,15 +6950,6 @@ function skyProfileForZone(zone) {
       spawnBurst(player.pos.clone().add(new THREE.Vector3(0, 1.6, 0)), 10, 0x93c5fd);
     }
 
-
-    const COMBAT_SPEED_TUNING = {
-      playerForward: 1.13,
-      playerTurn: 1.15,
-      playerFlapBurst: 1.16,
-      playerBurst: 1.18,
-      enemyGlobal: 1.1,
-      enemyAggroAccel: 1.18
-    };
 
     function getEnemyTempoProfile(enemy, behavior = "lancer") {
       const silhouette = enemy?.silhouetteType || "bird";
