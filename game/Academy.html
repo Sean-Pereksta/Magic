@@ -121,6 +121,15 @@
   .datasetPill{font-weight:900}
   .weeklyTableWrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:#fff}
   .weeklySummary{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+  .weeklyFilterBar{
+    display:flex;gap:8px;align-items:end;flex-wrap:wrap;
+    border:1px solid var(--line);border-radius:12px;padding:10px;background:#f8fafc;
+    margin:10px 0;
+  }
+  .weeklyFilterBar label{font-size:12px;font-weight:900;color:#334155;display:grid;gap:6px}
+  .weeklyFilterBar input,.weeklyFilterBar select{min-width:180px}
+  .weeklyCustomRange{display:none}
+  .weeklyCustomRange.show{display:flex;gap:8px;flex-wrap:wrap}
   .weeklyRowBtn{
     border:0;background:none;padding:0;margin:0;cursor:pointer;color:var(--accent);font-weight:800;
   }
@@ -150,6 +159,7 @@
   }
   .pill.bad{border-color:rgba(220,38,38,.35);background:rgba(220,38,38,.08);color:#7f1d1d}
   .pill.good{border-color:rgba(22,163,74,.35);background:rgba(22,163,74,.08);color:#065f46}
+  .pill.midgood{border-color:rgba(132,204,22,.4);background:rgba(132,204,22,.12);color:#3f6212}
   .pill.warn{border-color:rgba(245,158,11,.45);background:rgba(245,158,11,.10);color:#7c2d12}
   .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
 
@@ -497,7 +507,7 @@
       <div class="summaryHead">
         <div>
           <div style="font-weight:950">Weekly Monitor Tracking</div>
-          <div class="sub">Reviewer production in the selected timeframe and date basis.</div>
+          <div class="sub">Reviewer production with local period and reviewer filters (independent from header filters).</div>
         </div>
         <div class="row tight">
           <button class="btn tiny weeklySortBtn active" data-weekly-sort="monitors">Most monitors</button>
@@ -505,6 +515,32 @@
           <button class="btn tiny weeklySortBtn" data-weekly-sort="duration">Avg duration</button>
           <button class="btn tiny weeklySortBtn" data-weekly-sort="name">Name</button>
         </div>
+      </div>
+      <div class="weeklyFilterBar">
+        <label>Period Type
+          <select id="weeklyPeriodType">
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+            <option value="quarterly">Quarterly</option>
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+        <label>Period
+          <select id="weeklyPeriodSel"></select>
+        </label>
+        <div id="weeklyCustomRange" class="weeklyCustomRange">
+          <label>From
+            <input type="date" id="weeklyFromInp">
+          </label>
+          <label>To
+            <input type="date" id="weeklyToInp">
+          </label>
+        </div>
+        <label>Reviewer
+          <select id="weeklyReviewerSel">
+            <option value="__ALL__">All</option>
+          </select>
+        </label>
       </div>
       <div id="weeklySummaryStats" class="weeklySummary"></div>
       <div class="weeklyTableWrap">
@@ -980,6 +1016,51 @@ function fmtHMS(seconds){
   const m = Math.floor((sec%3600)/60);
   const s = sec%60;
   return `${h}:${pad2(m)}:${pad2(s)}`;
+}
+
+function formatDurationMinutes(seconds){
+  if(!Number.isFinite(seconds)) return '—';
+  const sec = Math.max(0, Math.round(seconds));
+  const mm = Math.floor(sec/60);
+  const ss = sec%60;
+  return `${mm}:${pad2(ss)}`;
+}
+function getScoreColorClass(pct){
+  if(!Number.isFinite(pct)) return '';
+  if(pct >= 0.90) return 'good';
+  if(pct >= 0.85) return 'midgood';
+  if(pct >= 0.80) return 'warn';
+  return 'bad';
+}
+function getDurationColorClass(sec){
+  if(!Number.isFinite(sec)) return '';
+  const min = sec / 60;
+  if(min >= 7 && min <= 9) return 'good';
+  if((min >= 5 && min < 7) || (min > 9 && min <= 11)) return 'warn';
+  return 'bad';
+}
+function weekRangeFromIso(isoKey){
+  const m = String(isoKey||'').match(/^(\d{4})-W(\d{2})$/);
+  if(!m) return { start:null, end:null };
+  const year = Number(m[1]);
+  const week = Number(m[2]);
+  const jan4 = new Date(year, 0, 4);
+  const jan4Day = jan4.getDay() || 7;
+  const week1Monday = new Date(year, 0, 4 - (jan4Day - 1));
+  const start = new Date(week1Monday);
+  start.setDate(week1Monday.getDate() + (week-1) * 7);
+  start.setHours(0,0,0,0);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  end.setHours(23,59,59,999);
+  return { start, end };
+}
+function quarterRange(year, quarter){
+  const q = Number(quarter);
+  const startMonth = (q-1) * 3;
+  const start = new Date(Number(year), startMonth, 1, 0, 0, 0, 0);
+  const end = new Date(Number(year), startMonth + 3, 0, 23, 59, 59, 999);
+  return { start, end };
 }
 
 function findDockKeysBySuffix(suffix){
@@ -1485,6 +1566,12 @@ const el = {
   empty: document.getElementById('empty'),
   repView: document.getElementById('repView'),
   weeklyView: document.getElementById('weeklyView'),
+  weeklyPeriodType: document.getElementById('weeklyPeriodType'),
+  weeklyPeriodSel: document.getElementById('weeklyPeriodSel'),
+  weeklyCustomRange: document.getElementById('weeklyCustomRange'),
+  weeklyFromInp: document.getElementById('weeklyFromInp'),
+  weeklyToInp: document.getElementById('weeklyToInp'),
+  weeklyReviewerSel: document.getElementById('weeklyReviewerSel'),
   weeklySummaryStats: document.getElementById('weeklySummaryStats'),
   weeklyTbody: document.getElementById('weeklyTbody'),
   weeklyEmpty: document.getElementById('weeklyEmpty'),
@@ -1537,8 +1624,12 @@ const DIFF_ALERT_SECS = 120;
 
 let sortMode = "count";
 let weeklySortMode = "monitors";
+let weeklyPeriodType = "weekly";
+let weeklyPeriodValue = "";
+let weeklyReviewerValue = "__ALL__";
 let activeTab = "rep";
 let unreadRepExpanded = new Set();
+let weeklyDetailRows = [];
 
 function nowLocal(){ return new Date(); }
 function currentDateMode(){
@@ -2535,14 +2626,91 @@ function updateQaSourceControls(){
     : 'Uploaded file: none';
 }
 
+function getWeeklyPeriodOptions(type){
+  const rows = getActiveQaRows().filter(r=>rowDate(r));
+  if(type === 'weekly'){
+    const weeks = Array.from(new Set(rows.map(r=>rowWeek(r)).filter(Boolean))).sort().reverse();
+    return weeks.map(w=>{
+      const { start, end } = weekRangeFromIso(w);
+      const [year, wNo] = w.split('-W');
+      return {
+        value: w,
+        label: `Week ${wNo} (${year}) — ${fmtDateOnly(start)} to ${fmtDateOnly(end)}`,
+        range: { from: start, to: end },
+        summaryLabel: `Week ${wNo} (${year}): ${fmtDateOnly(start)} to ${fmtDateOnly(end)}`
+      };
+    });
+  }
+  if(type === 'monthly'){
+    const months = Array.from(new Set(rows.map(r=>{
+      const d = rowDate(r);
+      return `${d.getFullYear()}-${pad2(d.getMonth()+1)}`;
+    }))).sort().reverse();
+    return months.map(key=>{
+      const [y,m] = key.split('-').map(Number);
+      const from = new Date(y, m-1, 1, 0, 0, 0, 0);
+      const to = new Date(y, m, 0, 23, 59, 59, 999);
+      return {
+        value: key,
+        label: from.toLocaleString(undefined, { month:'long', year:'numeric' }),
+        range: { from, to },
+        summaryLabel: `${from.toLocaleString(undefined, { month:'long', year:'numeric' })}: ${fmtDateOnly(from)} to ${fmtDateOnly(to)}`
+      };
+    });
+  }
+  if(type === 'quarterly'){
+    const quarters = Array.from(new Set(rows.map(r=>{
+      const d = rowDate(r);
+      const q = Math.floor(d.getMonth()/3) + 1;
+      return `${d.getFullYear()}-Q${q}`;
+    }))).sort().reverse();
+    return quarters.map(key=>{
+      const [yPart, qPart] = key.split('-Q');
+      const range = quarterRange(Number(yPart), Number(qPart));
+      return {
+        value: key,
+        label: `Q${qPart} ${yPart} (${fmtDateOnly(range.start)}–${fmtDateOnly(range.end)})`,
+        range: { from: range.start, to: range.end },
+        summaryLabel: `Q${qPart} ${yPart}: ${fmtDateOnly(range.start)} to ${fmtDateOnly(range.end)}`
+      };
+    });
+  }
+  return [];
+}
+
+function getWeeklyRangeAndLabel(){
+  if(weeklyPeriodType === 'custom'){
+    const from = el.weeklyFromInp.value ? new Date(el.weeklyFromInp.value + "T00:00:00") : null;
+    const to = el.weeklyToInp.value ? new Date(el.weeklyToInp.value + "T23:59:59") : null;
+    const fromTxt = from ? fmtDateOnly(from) : 'Any';
+    const toTxt = to ? fmtDateOnly(to) : 'Any';
+    return { range: { from, to }, summaryLabel: `Custom: ${fromTxt} to ${toTxt}` };
+  }
+  const options = getWeeklyPeriodOptions(weeklyPeriodType);
+  const selected = options.find(o=>o.value===weeklyPeriodValue) || options[0] || null;
+  if(!selected) return { range: { from:null, to:null }, summaryLabel: `${weeklyPeriodType}: no data` };
+  weeklyPeriodValue = selected.value;
+  return { range: selected.range, summaryLabel: selected.summaryLabel };
+}
+
+function syncWeeklyFilterControls(){
+  const showCustom = weeklyPeriodType === 'custom';
+  el.weeklyCustomRange.classList.toggle('show', showCustom);
+
+  const options = getWeeklyPeriodOptions(weeklyPeriodType);
+  el.weeklyPeriodSel.disabled = showCustom;
+  el.weeklyPeriodSel.innerHTML = options.length ? options.map(o=>`<option value="${o.value}">${o.label}</option>`).join('') : `<option value="">No periods available</option>`;
+  const nextValue = options.some(o=>o.value===weeklyPeriodValue) ? weeklyPeriodValue : (options[0]?.value || '');
+  weeklyPeriodValue = nextValue;
+  el.weeklyPeriodSel.value = nextValue;
+}
+
 function getReviewerTrackingRows(){
-  const tf = el.tfSel.value;
-  const range = timeframeRange(tf);
+  const { range } = getWeeklyRangeAndLabel();
   const rows = getActiveQaRows().filter(r=>{
     const ev = String(r.evaluator||'').trim();
     if(!ev) return false;
-    if(tf !== 'all' && !inRange(rowDate(r), range)) return false;
-    return true;
+    return inRange(rowDate(r), range);
   });
   const byReviewer = groupBy(rows, r=>String(r.evaluator||'').trim());
   const excludeZero = el.excludeZero.checked;
@@ -2560,7 +2728,13 @@ function getReviewerTrackingRows(){
 }
 
 function renderWeeklyTrackingView(){
+  syncWeeklyFilterControls();
   const rows = getReviewerTrackingRows();
+  const reviewerNames = Array.from(new Set(rows.map(r=>r.reviewer))).sort((a,b)=>a.localeCompare(b));
+  const hasWeeklyReviewer = reviewerNames.includes(weeklyReviewerValue);
+  if(!hasWeeklyReviewer) weeklyReviewerValue = '__ALL__';
+  el.weeklyReviewerSel.innerHTML = `<option value="__ALL__">All</option>${reviewerNames.map(n=>`<option value="${n.replace(/"/g,'&quot;')}">${n}</option>`).join('')}`;
+  el.weeklyReviewerSel.value = weeklyReviewerValue;
   const sorted = [...rows].sort((a,b)=>{
     if(weeklySortMode === 'name') return a.reviewer.localeCompare(b.reviewer);
     if(weeklySortMode === 'score') return (b.avgScore||-1)-(a.avgScore||-1);
@@ -2568,37 +2742,48 @@ function renderWeeklyTrackingView(){
     if(b.count !== a.count) return b.count - a.count;
     return a.reviewer.localeCompare(b.reviewer);
   });
+  const sortedScoped = weeklyReviewerValue === '__ALL__' ? sorted : sorted.filter(r=>r.reviewer===weeklyReviewerValue);
+  weeklyDetailRows = sortedScoped;
 
-  const overallScore = avgScore(sorted.flatMap(x=>x.rows), el.excludeZero.checked).avg;
-  const overallDur = avgDuration(el.excludeZero.checked ? sorted.flatMap(x=>x.rows).filter(r=>r.score!==0) : sorted.flatMap(x=>x.rows), false).avgSec;
+  const { summaryLabel } = getWeeklyRangeAndLabel();
+  const scopedFlatRows = sortedScoped.flatMap(x=>x.rows);
+  const overallScore = avgScore(scopedFlatRows, el.excludeZero.checked).avg;
+  const overallDur = avgDuration(el.excludeZero.checked ? scopedFlatRows.filter(r=>r.score!==0) : scopedFlatRows, false).avgSec;
+  const overallScoreClass = getScoreColorClass(overallScore);
+  const overallDurationClass = getDurationColorClass(overallDur);
   el.weeklySummaryStats.innerHTML = `
-    <span class="pill mono">Reviewers: ${fmtInt(sorted.length)}</span>
-    <span class="pill mono">Monitors: ${fmtInt(sorted.reduce((n,r)=>n+r.count,0))}</span>
-    <span class="pill mono">Overall avg score: ${fmtPct1(overallScore)}</span>
-    <span class="pill mono">Overall avg duration: ${fmtHMS(overallDur)}</span>
+    <span class="pill mono">${summaryLabel}</span>
+    <span class="pill mono">Reviewers: ${fmtInt(sortedScoped.length)}</span>
+    <span class="pill mono">Monitors: ${fmtInt(sortedScoped.reduce((n,r)=>n+r.count,0))}</span>
+    <span class="pill mono ${overallScoreClass}">Overall avg score: ${fmtPct1(overallScore)}</span>
+    <span class="pill mono ${overallDurationClass}">Overall avg duration: ${formatDurationMinutes(overallDur)}</span>
   `;
 
-  if(!sorted.length){
+  if(!sortedScoped.length){
     el.weeklyTbody.innerHTML = '';
     el.weeklyEmpty.style.display = '';
-    el.weeklyEmpty.textContent = getActiveQaRows().length ? 'No reviewer rows match the current date filters.' : 'No QA data available for this source.';
+    el.weeklyEmpty.textContent = getActiveQaRows().length ? 'No reviewer rows match the selected weekly tracking filters.' : 'No QA data available for this source.';
     return;
   }
   el.weeklyEmpty.style.display = 'none';
-  el.weeklyTbody.innerHTML = sorted.map(r=>`
+  el.weeklyTbody.innerHTML = sortedScoped.map(r=>{
+    const scoreClass = getScoreColorClass(r.avgScore);
+    const durationClass = getDurationColorClass(r.avgDurationSec);
+    return `
     <tr data-weekly-reviewer="${r.reviewer.replace(/"/g,'&quot;')}">
       <td><button class="weeklyRowBtn" type="button">${r.reviewer}</button></td>
       <td class="mono">${fmtInt(r.count)}</td>
-      <td class="mono">${fmtHMS(r.avgDurationSec)}</td>
-      <td class="mono">${fmtPct2(r.avgScore)}</td>
+      <td class="mono"><span class="pill mono ${durationClass}">${formatDurationMinutes(r.avgDurationSec)}</span></td>
+      <td class="mono"><span class="pill mono ${scoreClass}">${fmtPct2(r.avgScore)}</span></td>
       <td class="mono">${fmtDateTime(r.firstDate)}</td>
       <td class="mono">${fmtDateTime(r.lastDate)}</td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function openWeeklyReviewerDetails(name){
-  const hit = getReviewerTrackingRows().find(x=>x.reviewer===name);
+  const hit = weeklyDetailRows.find(x=>x.reviewer===name);
   if(!hit) return;
   const dateBasisLabel = currentDateMode() === 'assigned' ? 'Assigned Date' : 'Interaction Date';
   el.wTitle.textContent = `Reviewer — ${name}`;
@@ -2747,6 +2932,29 @@ document.querySelectorAll('.weeklySortBtn').forEach(btn=>{
     render();
   });
 });
+el.weeklyPeriodType.addEventListener('change', ()=>{
+  weeklyPeriodType = el.weeklyPeriodType.value || 'weekly';
+  saveSettings({ weeklyPeriodType });
+  render();
+});
+el.weeklyPeriodSel.addEventListener('change', ()=>{
+  weeklyPeriodValue = el.weeklyPeriodSel.value || '';
+  saveSettings({ weeklyPeriodValue });
+  render();
+});
+el.weeklyFromInp.addEventListener('change', ()=>{
+  saveSettings({ weeklyFrom: el.weeklyFromInp.value });
+  render();
+});
+el.weeklyToInp.addEventListener('change', ()=>{
+  saveSettings({ weeklyTo: el.weeklyToInp.value });
+  render();
+});
+el.weeklyReviewerSel.addEventListener('change', ()=>{
+  weeklyReviewerValue = el.weeklyReviewerSel.value || '__ALL__';
+  saveSettings({ weeklyReviewerValue });
+  render();
+});
 el.weeklyTbody.addEventListener('click', (e)=>{
   const tr = e.target.closest('tr[data-weekly-reviewer]');
   if(!tr) return;
@@ -2832,6 +3040,12 @@ document.addEventListener('keydown', (e)=>{
   if(s.search !== undefined) el.searchInp.value = s.search;
   if(s.sortMode) sortMode = s.sortMode;
   if(s.weeklySortMode) weeklySortMode = s.weeklySortMode;
+  weeklyPeriodType = s.weeklyPeriodType || 'weekly';
+  weeklyPeriodValue = s.weeklyPeriodValue || '';
+  weeklyReviewerValue = s.weeklyReviewerValue || '__ALL__';
+  el.weeklyPeriodType.value = weeklyPeriodType;
+  if(s.weeklyFrom) el.weeklyFromInp.value = s.weeklyFrom;
+  if(s.weeklyTo) el.weeklyToInp.value = s.weeklyTo;
   if(s.activeTab) activeTab = s.activeTab;
   if(s.qaDataSource) qaDataSource = s.qaDataSource;
   if(s.uploadedQaFilename) uploadedQaFilename = s.uploadedQaFilename;
