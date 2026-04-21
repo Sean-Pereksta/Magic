@@ -7,6 +7,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <style>
   :root{
@@ -37,6 +38,14 @@
   }
   .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   .row.tight{gap:8px}
+  .headerCustomRange{
+    display:none;
+    gap:8px;
+    align-items:center;
+    flex-wrap:wrap;
+  }
+  .headerCustomRange.show{display:flex}
+  .headerCustomRange label{font-size:12px}
   .headerMain{
     display:grid;
     grid-template-columns:minmax(0,1fr) auto;
@@ -101,6 +110,20 @@
   }
 
   .summaryBox{padding:12px}
+  .tabBar{
+    display:flex;
+    gap:8px;
+    margin-bottom:12px;
+    flex-wrap:wrap;
+  }
+  .viewSection{display:none}
+  .viewSection.active{display:block}
+  .datasetPill{font-weight:900}
+  .weeklyTableWrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:#fff}
+  .weeklySummary{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+  .weeklyRowBtn{
+    border:0;background:none;padding:0;margin:0;cursor:pointer;color:var(--accent);font-weight:800;
+  }
   .summaryHead{
     display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;
     margin-bottom:10px
@@ -355,6 +378,16 @@
             <option value="last90">Last 90 days</option>
             <option value="custom">Custom…</option>
           </select>
+          <span id="headerCustomRange" class="headerCustomRange">
+            <label>
+              <span class="mono">From</span>
+              <input id="fromInp" type="date"/>
+            </label>
+            <label>
+              <span class="mono">To</span>
+              <input id="toInp" type="date"/>
+            </label>
+          </span>
         </label>
         <label>Date basis
           <select id="dateModeSel" style="min-width:180px">
@@ -379,6 +412,7 @@
       <div class="row tight" style="margin-top:8px">
         <span class="pill mono" id="scopePill">—</span>
         <span class="pill mono" id="qaReviewCountPill">QA reviewers: —</span>
+        <span class="pill mono datasetPill" id="qaSourcePill">Source: Local Cache</span>
       </div>
     </div>
 
@@ -398,6 +432,12 @@
 </header>
 
 <div class="wrap">
+  <div class="tabBar">
+    <button class="btn tiny viewTab active" data-tab="rep">Representative View</button>
+    <button class="btn tiny viewTab" data-tab="weekly">Weekly Monitor Tracking</button>
+  </div>
+
+  <section id="repView" class="viewSection active">
   <div class="stack">
     <div class="card summaryBox">
       <div class="summaryHead">
@@ -450,6 +490,41 @@
 
   <div id="cards" class="grid"></div>
   <div id="empty" class="notice" style="display:none;margin-top:12px"></div>
+  </section>
+
+  <section id="weeklyView" class="viewSection">
+    <div class="card summaryBox">
+      <div class="summaryHead">
+        <div>
+          <div style="font-weight:950">Weekly Monitor Tracking</div>
+          <div class="sub">Reviewer production in the selected timeframe and date basis.</div>
+        </div>
+        <div class="row tight">
+          <button class="btn tiny weeklySortBtn active" data-weekly-sort="monitors">Most monitors</button>
+          <button class="btn tiny weeklySortBtn" data-weekly-sort="score">Avg score</button>
+          <button class="btn tiny weeklySortBtn" data-weekly-sort="duration">Avg duration</button>
+          <button class="btn tiny weeklySortBtn" data-weekly-sort="name">Name</button>
+        </div>
+      </div>
+      <div id="weeklySummaryStats" class="weeklySummary"></div>
+      <div class="weeklyTableWrap">
+        <table class="summaryTbl" style="min-width:980px">
+          <thead>
+            <tr>
+              <th>Reviewer</th>
+              <th># Monitors</th>
+              <th>Avg Length</th>
+              <th>Avg Score</th>
+              <th>First Monitor</th>
+              <th>Last Monitor</th>
+            </tr>
+          </thead>
+          <tbody id="weeklyTbody"></tbody>
+        </table>
+      </div>
+      <div id="weeklyEmpty" class="notice" style="display:none;margin-top:10px"></div>
+    </div>
+  </section>
 </div>
 
 <div id="overlay" class="overlay" aria-hidden="true">
@@ -536,18 +611,30 @@
           <div class="boxHead">
             <span>Custom Timeframe</span>
           </div>
-          <div id="customRange" class="row">
-            <label>
-              <span class="mono">From</span>
-              <input id="fromInp" type="date"/>
-            </label>
-            <label>
-              <span class="mono">To</span>
-              <input id="toInp" type="date"/>
+          <div class="notice" style="margin-top:10px">
+            Custom dates are now controlled in the header beside the Timeframe selector.
+          </div>
+        </div>
+
+        <div class="box">
+          <div class="boxHead">
+            <span>Uploaded QA File</span>
+          </div>
+          <div class="row">
+            <label style="width:100%">Import QA workbook (.xlsx, .xls, .csv)
+              <input id="qaUploadInp" type="file" accept=".xlsx,.xls,.csv" style="width:100%"/>
             </label>
           </div>
-          <div class="notice" style="margin-top:10px">
-            These dates are only used when Timeframe is set to Custom.
+          <div class="row" style="margin-top:10px">
+            <label>Dataset source
+              <select id="qaSourceSel" style="min-width:220px">
+                <option value="local">Use Local Cache</option>
+                <option value="uploaded">Use Uploaded File</option>
+              </select>
+            </label>
+          </div>
+          <div class="notice" id="uploadNote" style="margin-top:10px">
+            Uploaded file: none
           </div>
         </div>
 
@@ -588,6 +675,21 @@
         <div id="unreadRepList" class="unreadRepList"></div>
       </div>
     </div>
+  </div>
+</div>
+
+<div id="weeklyOverlay" class="overlay" aria-hidden="true">
+  <div class="panel medium" role="dialog" aria-modal="true" aria-labelledby="wTitle">
+    <div class="pHead">
+      <div>
+        <div id="wTitle" class="pTitle">Reviewer Details</div>
+        <div id="wSub" class="pSub">—</div>
+      </div>
+      <div class="pActions">
+        <button class="btn" id="weeklyClose">Close ✕</button>
+      </div>
+    </div>
+    <div id="weeklyBody" class="pBody"></div>
   </div>
 </div>
 
@@ -978,6 +1080,40 @@ function canonicalizeQA(dockObj){
   return out;
 }
 
+function getActiveQaRows(){
+  if(qaDataSource === 'uploaded' && qaRowsUploaded.length) return qaRowsUploaded;
+  return qaRowsLocal;
+}
+
+function canonicalizeQARowsFromPlainRows(rows){
+  return canonicalizeQA({ sheets: { Uploaded: { rows: rows || [] } } });
+}
+
+async function parseUploadedQaWorkbook(file){
+  if(!file) return [];
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type:'array', cellDates:true });
+  const hits = [];
+  for(const sheetName of wb.SheetNames || []){
+    const ws = wb.Sheets[sheetName];
+    if(!ws) continue;
+    const jsonRows = XLSX.utils.sheet_to_json(ws, { defval:'', raw:false });
+    if(Array.isArray(jsonRows) && jsonRows.length && looksLikeQARow(jsonRows[0])){
+      hits.push(...jsonRows);
+      continue;
+    }
+    const aoa = XLSX.utils.sheet_to_json(ws, { header:1, blankrows:false, raw:false });
+    const rows = aoaToRows(aoa);
+    if(rows.length && looksLikeQARow(rows[0])) hits.push(...rows);
+  }
+  if(!hits.length && wb.SheetNames?.length){
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const fallback = XLSX.utils.sheet_to_json(ws, { defval:'', raw:false });
+    return canonicalizeQARowsFromPlainRows(fallback);
+  }
+  return canonicalizeQARowsFromPlainRows(hits);
+}
+
 function findCoachingKeys(){
   const keys=[];
   for(let i=0;i<localStorage.length;i++){
@@ -1317,7 +1453,7 @@ const el = {
   teamSel: document.getElementById('teamSel'),
   tfSel: document.getElementById('tfSel'),
   dateModeSel: document.getElementById('dateModeSel'),
-  customRange: document.getElementById('customRange'),
+  headerCustomRange: document.getElementById('headerCustomRange'),
   fromInp: document.getElementById('fromInp'),
   toInp: document.getElementById('toInp'),
   excludeZero: document.getElementById('excludeZero'),
@@ -1333,6 +1469,10 @@ const el = {
   coStatusPill: document.getElementById('coStatusPill'),
   scopePill: document.getElementById('scopePill'),
   qaReviewCountPill: document.getElementById('qaReviewCountPill'),
+  qaSourcePill: document.getElementById('qaSourcePill'),
+  qaUploadInp: document.getElementById('qaUploadInp'),
+  qaSourceSel: document.getElementById('qaSourceSel'),
+  uploadNote: document.getElementById('uploadNote'),
 
   summarySub: document.getElementById('summarySub'),
   summaryTbody: document.getElementById('summaryTbody'),
@@ -1343,6 +1483,11 @@ const el = {
 
   cards: document.getElementById('cards'),
   empty: document.getElementById('empty'),
+  repView: document.getElementById('repView'),
+  weeklyView: document.getElementById('weeklyView'),
+  weeklySummaryStats: document.getElementById('weeklySummaryStats'),
+  weeklyTbody: document.getElementById('weeklyTbody'),
+  weeklyEmpty: document.getElementById('weeklyEmpty'),
 
   overlay: document.getElementById('overlay'),
   mClose: document.getElementById('mClose'),
@@ -1361,14 +1506,23 @@ const el = {
   unreadClose: document.getElementById('unreadClose'),
   unreadRepList: document.getElementById('unreadRepList'),
   unreadTotalPill: document.getElementById('unreadTotalPill'),
-  uSub: document.getElementById('uSub')
+  uSub: document.getElementById('uSub'),
+
+  weeklyOverlay: document.getElementById('weeklyOverlay'),
+  weeklyClose: document.getElementById('weeklyClose'),
+  weeklyBody: document.getElementById('weeklyBody'),
+  wTitle: document.getElementById('wTitle'),
+  wSub: document.getElementById('wSub')
 };
 
 let QA_KEY = null;
 let CO_KEY = null;
 
 let qaLoaded = false;
-let qaRowsAll = [];
+let qaRowsLocal = [];
+let qaRowsUploaded = [];
+let qaDataSource = 'local';
+let uploadedQaFilename = '';
 
 let coLoaded = false;
 let coRowsAll = [];
@@ -1382,6 +1536,8 @@ const DIFF_ALERT_PCTPTS = 10;
 const DIFF_ALERT_SECS = 120;
 
 let sortMode = "count";
+let weeklySortMode = "monitors";
+let activeTab = "rep";
 let unreadRepExpanded = new Set();
 
 function nowLocal(){ return new Date(); }
@@ -1435,17 +1591,18 @@ function buildTeamOptions(rows){
 }
 
 function recomputeReviewerScope(){
-  canonicalQaReviewers = extractTeamScopedReviewerCandidates(qaRowsAll);
+  canonicalQaReviewers = extractTeamScopedReviewerCandidates(getActiveQaRows());
   loadReviewerState();
 }
 
 function filterRows(){
+  const activeRows = getActiveQaRows();
   const team = el.teamSel.value;
   const tf = el.tfSel.value;
   const range = timeframeRange(tf);
   const search = (el.searchInp.value||'').trim().toLowerCase();
 
-  return qaRowsAll.filter(r=>{
+  return activeRows.filter(r=>{
     if(team && team!=='__ALL__'){
       if(String(r.team||'').trim() !== team) return false;
     }
@@ -1513,12 +1670,13 @@ function teamHalfTrend(rows, excludeZero){
 
 function paintReviewerControls(){
   const counts = new Map();
+  const activeRows = getActiveQaRows();
 
   const team = el.teamSel.value;
   const tf = el.tfSel.value;
   const range = timeframeRange(tf);
 
-  for(const r of qaRowsAll){
+  for(const r of activeRows){
     if(team && team !== '__ALL__' && String(r.team||'').trim() !== team) continue;
     if(tf !== 'all' && !inRange(rowDate(r), range)) continue;
     if(!isCoachEval(r)){
@@ -1712,9 +1870,11 @@ function paintCards(rows){
   el.cards.innerHTML = '';
   el.empty.style.display = 'none';
 
-  if(!qaLoaded){
+  if(!getActiveQaRows().length){
     el.empty.style.display = '';
-    el.empty.textContent = 'QA: Upload needed. (No QA data detected in localStorage dock.)';
+    el.empty.textContent = qaDataSource === 'uploaded'
+      ? 'Uploaded source selected, but no uploaded QA data is available.'
+      : 'QA: Upload needed. (No QA data detected in localStorage dock.)';
     return;
   }
   if(!rows.length){
@@ -2306,20 +2466,21 @@ function loadQA(){
 
   if(!QA_KEY){
     qaLoaded = false;
-    qaRowsAll = [];
+    qaRowsLocal = [];
     el.statusPill.textContent = 'QA: Upload needed (no dock key found)';
+    updateQaSourceControls();
     return;
   }
   const obj = loadDockObjByKey(QA_KEY);
   const rows = canonicalizeQA(obj);
-  qaRowsAll = rows;
+  qaRowsLocal = rows;
 
   qaLoaded = rows.length>0;
   el.statusPill.textContent = qaLoaded
     ? `Loaded QA: ${rows.length} evaluation(s)`
     : `QA: Upload needed (dock found but no QA rows detected)`;
 
-  buildTeamOptions(qaRowsAll);
+  buildTeamOptions(getActiveQaRows());
 
   const saved = loadSettings();
   if(saved.team && [...el.teamSel.options].some(o=>o.value===saved.team)) el.teamSel.value = saved.team;
@@ -2334,27 +2495,173 @@ function loadQA(){
   }
 
   recomputeReviewerScope();
+  updateQaSourceControls();
 }
 
 function render(){
-  if(qaLoaded){
+  if(getActiveQaRows().length){
     recomputeReviewerScope();
   }
 
-  const rows = filterRows();
-  paintSummary(rows);
-  paintReviewerControls();
-  paintCards(rows);
+  renderActiveView();
 
-  if(!qaLoaded){
+  if(!getActiveQaRows().length){
     el.empty.style.display = '';
-    el.empty.textContent = 'QA: Upload needed. (No QA data detected in localStorage dock.)';
-  } else if(!rows.length){
+    el.empty.textContent = qaDataSource === 'uploaded'
+      ? 'Uploaded source selected, but no uploaded QA data is available.'
+      : 'QA: Upload needed. (No QA data detected in localStorage dock.)';
+  } else if(!filterRows().length){
     el.empty.style.display = '';
     el.empty.textContent = 'No evaluations match the current filters or active QA reviewer list.';
   } else {
     el.empty.style.display = 'none';
   }
+}
+
+function toggleHeaderCustomRange(){
+  const show = el.tfSel.value === 'custom';
+  el.headerCustomRange.classList.toggle('show', show);
+}
+
+function updateQaSourceControls(){
+  const hasUpload = qaRowsUploaded.length > 0;
+  const uploadedOpt = [...el.qaSourceSel.options].find(o=>o.value==='uploaded');
+  if(uploadedOpt) uploadedOpt.disabled = !hasUpload;
+  if(qaDataSource === 'uploaded' && !hasUpload) qaDataSource = 'local';
+  el.qaSourceSel.value = qaDataSource;
+  el.qaSourcePill.textContent = `Source: ${qaDataSource === 'uploaded' ? 'Uploaded File' : 'Local Cache'}`;
+  el.uploadNote.textContent = hasUpload
+    ? `Uploaded file: ${uploadedQaFilename} (${qaRowsUploaded.length} rows)`
+    : 'Uploaded file: none';
+}
+
+function getReviewerTrackingRows(){
+  const tf = el.tfSel.value;
+  const range = timeframeRange(tf);
+  const rows = getActiveQaRows().filter(r=>{
+    const ev = String(r.evaluator||'').trim();
+    if(!ev) return false;
+    if(tf !== 'all' && !inRange(rowDate(r), range)) return false;
+    return true;
+  });
+  const byReviewer = groupBy(rows, r=>String(r.evaluator||'').trim());
+  const excludeZero = el.excludeZero.checked;
+  const out = [];
+  for(const [reviewer, arr] of byReviewer.entries()){
+    const sorted = [...arr].sort((a,b)=>(rowDate(b)?.getTime()||0)-(rowDate(a)?.getTime()||0));
+    const scoreRows = excludeZero ? arr.filter(r=>r.score!==0) : arr;
+    const avgSc = avgScore(scoreRows, false).avg;
+    const durRows = excludeZero ? arr.filter(r=>r.score!==0) : arr;
+    const avgDur = avgDuration(durRows, false).avgSec;
+    const dates = arr.map(r=>rowDate(r)).filter(Boolean).sort((a,b)=>a-b);
+    out.push({ reviewer, count: arr.length, avgScore: avgSc, avgDurationSec: avgDur, firstDate: dates[0]||null, lastDate: dates[dates.length-1]||null, rows: sorted });
+  }
+  return out;
+}
+
+function renderWeeklyTrackingView(){
+  const rows = getReviewerTrackingRows();
+  const sorted = [...rows].sort((a,b)=>{
+    if(weeklySortMode === 'name') return a.reviewer.localeCompare(b.reviewer);
+    if(weeklySortMode === 'score') return (b.avgScore||-1)-(a.avgScore||-1);
+    if(weeklySortMode === 'duration') return (b.avgDurationSec||-1)-(a.avgDurationSec||-1);
+    if(b.count !== a.count) return b.count - a.count;
+    return a.reviewer.localeCompare(b.reviewer);
+  });
+
+  const overallScore = avgScore(sorted.flatMap(x=>x.rows), el.excludeZero.checked).avg;
+  const overallDur = avgDuration(el.excludeZero.checked ? sorted.flatMap(x=>x.rows).filter(r=>r.score!==0) : sorted.flatMap(x=>x.rows), false).avgSec;
+  el.weeklySummaryStats.innerHTML = `
+    <span class="pill mono">Reviewers: ${fmtInt(sorted.length)}</span>
+    <span class="pill mono">Monitors: ${fmtInt(sorted.reduce((n,r)=>n+r.count,0))}</span>
+    <span class="pill mono">Overall avg score: ${fmtPct1(overallScore)}</span>
+    <span class="pill mono">Overall avg duration: ${fmtHMS(overallDur)}</span>
+  `;
+
+  if(!sorted.length){
+    el.weeklyTbody.innerHTML = '';
+    el.weeklyEmpty.style.display = '';
+    el.weeklyEmpty.textContent = getActiveQaRows().length ? 'No reviewer rows match the current date filters.' : 'No QA data available for this source.';
+    return;
+  }
+  el.weeklyEmpty.style.display = 'none';
+  el.weeklyTbody.innerHTML = sorted.map(r=>`
+    <tr data-weekly-reviewer="${r.reviewer.replace(/"/g,'&quot;')}">
+      <td><button class="weeklyRowBtn" type="button">${r.reviewer}</button></td>
+      <td class="mono">${fmtInt(r.count)}</td>
+      <td class="mono">${fmtHMS(r.avgDurationSec)}</td>
+      <td class="mono">${fmtPct2(r.avgScore)}</td>
+      <td class="mono">${fmtDateTime(r.firstDate)}</td>
+      <td class="mono">${fmtDateTime(r.lastDate)}</td>
+    </tr>
+  `).join('');
+}
+
+function openWeeklyReviewerDetails(name){
+  const hit = getReviewerTrackingRows().find(x=>x.reviewer===name);
+  if(!hit) return;
+  const dateBasisLabel = currentDateMode() === 'assigned' ? 'Assigned Date' : 'Interaction Date';
+  el.wTitle.textContent = `Reviewer — ${name}`;
+  el.wSub.textContent = `Monitors: ${fmtInt(hit.count)} • Avg score: ${fmtPct2(hit.avgScore)} • Avg length: ${fmtHMS(hit.avgDurationSec)}`;
+  el.weeklyBody.innerHTML = `
+    <div class="tblWrap">
+      <table>
+        <thead>
+          <tr>
+            <th>${dateBasisLabel}</th>
+            <th>Conversation ID</th>
+            <th>Representative</th>
+            <th>Score</th>
+            <th>Duration</th>
+            <th>Team / Coach</th>
+            <th>Evaluation ID</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${hit.rows.map(r=>`
+            <tr>
+              <td class="mono">${fmtDateTime(rowDate(r))}</td>
+              <td class="mono">${r.conversationId || '—'}</td>
+              <td>${r.agent || '—'}</td>
+              <td class="mono">${fmtPct2(r.score)}</td>
+              <td class="mono">${fmtHMS(r.durationSec)}</td>
+              <td>${r.team || '—'}</td>
+              <td class="mono">${r.evalId || '—'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+  el.weeklyOverlay.classList.add('show');
+  el.weeklyOverlay.setAttribute('aria-hidden','false');
+}
+
+function closeWeeklyOverlay(){
+  el.weeklyOverlay.classList.remove('show');
+  el.weeklyOverlay.setAttribute('aria-hidden','true');
+  el.weeklyBody.innerHTML = '';
+}
+
+function setActiveTab(tab){
+  activeTab = tab === 'weekly' ? 'weekly' : 'rep';
+  saveSettings({ activeTab });
+  document.querySelectorAll('.viewTab').forEach(btn=>btn.classList.toggle('active', btn.dataset.tab===activeTab));
+  el.repView.classList.toggle('active', activeTab==='rep');
+  el.weeklyView.classList.toggle('active', activeTab==='weekly');
+}
+
+function renderRepView(){
+  const rows = filterRows();
+  paintSummary(rows);
+  paintReviewerControls();
+  paintCards(rows);
+}
+
+function renderActiveView(){
+  setActiveTab(activeTab);
+  if(activeTab === 'weekly') renderWeeklyTrackingView();
+  else renderRepView();
 }
 
 function setSortMode(mode){
@@ -2384,6 +2691,7 @@ el.coKeySel.addEventListener('change', ()=>{ loadCoachings(); render(); });
 
 el.tfSel.addEventListener('change', ()=>{
   saveSettings({ tf: el.tfSel.value });
+  toggleHeaderCustomRange();
   render();
 });
 el.dateModeSel.addEventListener('change', ()=>{
@@ -2396,6 +2704,57 @@ el.searchInp.addEventListener('input', ()=>{ saveSettings({ search: el.searchInp
 el.fromInp.addEventListener('change', ()=>{ saveSettings({ from: el.fromInp.value }); render(); });
 el.toInp.addEventListener('change', ()=>{ saveSettings({ to: el.toInp.value }); render(); });
 el.refreshBtn.addEventListener('click', render);
+el.qaSourceSel.addEventListener('change', ()=>{
+  qaDataSource = el.qaSourceSel.value === 'uploaded' ? 'uploaded' : 'local';
+  if(qaDataSource === 'uploaded' && !qaRowsUploaded.length) qaDataSource = 'local';
+  saveSettings({ qaDataSource });
+  buildTeamOptions(getActiveQaRows());
+  recomputeReviewerScope();
+  updateQaSourceControls();
+  render();
+});
+el.qaUploadInp.addEventListener('change', async ()=>{
+  const file = el.qaUploadInp.files?.[0];
+  if(!file) return;
+  try{
+    const rows = await parseUploadedQaWorkbook(file);
+    qaRowsUploaded = rows;
+    uploadedQaFilename = file.name;
+    if(rows.length){
+      qaDataSource = 'uploaded';
+      saveSettings({ qaDataSource, uploadedQaFilename });
+      buildTeamOptions(getActiveQaRows());
+      recomputeReviewerScope();
+    }
+    updateQaSourceControls();
+    render();
+  }catch(err){
+    console.error(err);
+    el.uploadNote.textContent = `Upload failed: ${err?.message || err}`;
+  }
+});
+document.querySelectorAll('.viewTab').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    setActiveTab(btn.dataset.tab);
+    render();
+  });
+});
+document.querySelectorAll('.weeklySortBtn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    weeklySortMode = btn.dataset.weeklySort || 'monitors';
+    document.querySelectorAll('.weeklySortBtn').forEach(x=>x.classList.toggle('active', x===btn));
+    saveSettings({ weeklySortMode });
+    render();
+  });
+});
+el.weeklyTbody.addEventListener('click', (e)=>{
+  const tr = e.target.closest('tr[data-weekly-reviewer]');
+  if(!tr) return;
+  const reviewer = tr.getAttribute('data-weekly-reviewer');
+  if(reviewer) openWeeklyReviewerDetails(reviewer);
+});
+el.weeklyClose.addEventListener('click', closeWeeklyOverlay);
+el.weeklyOverlay.addEventListener('click', (e)=>{ if(e.target === el.weeklyOverlay) closeWeeklyOverlay(); });
 
 document.querySelectorAll(".sortBtn").forEach(b=>{
   b.addEventListener("click", ()=> setSortMode(b.dataset.sort));
@@ -2457,6 +2816,7 @@ document.addEventListener('keydown', (e)=>{
   if(e.key==='Escape' && el.reviewerOverlay.classList.contains('show')) closeReviewerPopup();
   if(e.key==='Escape' && el.optionsOverlay.classList.contains('show')) closeOptionsPopup();
   if(e.key==='Escape' && el.unreadOverlay.classList.contains('show')) closeUnreadPopup();
+  if(e.key==='Escape' && el.weeklyOverlay.classList.contains('show')) closeWeeklyOverlay();
 });
 
 (function boot(){
@@ -2471,13 +2831,20 @@ document.addEventListener('keydown', (e)=>{
   if(s.excludeZero !== undefined) el.excludeZero.checked = !!s.excludeZero;
   if(s.search !== undefined) el.searchInp.value = s.search;
   if(s.sortMode) sortMode = s.sortMode;
+  if(s.weeklySortMode) weeklySortMode = s.weeklySortMode;
+  if(s.activeTab) activeTab = s.activeTab;
+  if(s.qaDataSource) qaDataSource = s.qaDataSource;
+  if(s.uploadedQaFilename) uploadedQaFilename = s.uploadedQaFilename;
 
   loadQA();
   loadCoachings();
+  toggleHeaderCustomRange();
+  updateQaSourceControls();
+  document.querySelectorAll('.weeklySortBtn').forEach(btn=>btn.classList.toggle('active', btn.dataset.weeklySort===weeklySortMode));
+  setActiveTab(activeTab);
   setSortMode(sortMode || "count");
 })();
 </script>
 
 </body>
 </html>
-
