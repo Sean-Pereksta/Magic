@@ -908,6 +908,7 @@
   <div class="reportTabs">
     <button class="reportTab active" id="reportTabIndividual" type="button">Individual Coach</button>
     <button class="reportTab" id="reportTabTeam" type="button">Team Report</button>
+    <button class="reportTab" id="reportTabAnalysis" type="button">Team Analysis</button>
   </div>
   <!-- Controls -->
   <div class="row">
@@ -1194,7 +1195,16 @@
       </table>
     </div>
   </div>
-  <div class="card">
+  
+  <div class="card hiddenForIndividual" id="teamAnalysisCard">
+    <div class="row" style="margin-bottom:8px">
+      <div style="font-weight:1000">Team Analysis (Selected team)</div>
+      <span class="spacer"></span>
+      <span class="mono" id="teamAnalysisHint" style="color:var(--muted);font-weight:900">—</span>
+    </div>
+    <div id="teamAnalysisBody"></div>
+  </div>
+<div class="card">
     <div class="row" id="repTimelineHead" style="margin-bottom:10px">
       <div style="font-weight:1000">Representatives (Timelines)</div>
       <span class="spacer"></span>
@@ -2000,6 +2010,7 @@ const els = {
   barMeta: document.getElementById('barMeta'),
   reportTabIndividual: document.getElementById('reportTabIndividual'),
   reportTabTeam: document.getElementById('reportTabTeam'),
+  reportTabAnalysis: document.getElementById('reportTabAnalysis'),
 
   modeSel: document.getElementById('modeSel'),
   teamSelLabel: document.getElementById('teamSelLabel'),
@@ -2078,6 +2089,9 @@ const els = {
   teamReportHint: document.getElementById('teamReportHint'),
   teamReportPills: document.getElementById('teamReportPills'),
   teamReportBody: document.getElementById('teamReportBody'),
+  teamAnalysisCard: document.getElementById('teamAnalysisCard'),
+  teamAnalysisHint: document.getElementById('teamAnalysisHint'),
+  teamAnalysisBody: document.getElementById('teamAnalysisBody'),
 
   repModalOverlay: document.getElementById('repModalOverlay'),
   repModalTitle: document.getElementById('repModalTitle'),
@@ -2478,7 +2492,7 @@ function loadPrefs(){
         slaAgingEnabled = p.slaAgingEnabled;
         if(els.slaAgingToggle) els.slaAgingToggle.checked = slaAgingEnabled;
       }
-      if(p.reportView === 'team' || p.reportView === 'individual') reportView = p.reportView;
+      if(p.reportView === 'team' || p.reportView === 'individual' || p.reportView === 'analysis') reportView = p.reportView;
       const savedNoCorrectiveFlag = (typeof p.teamReportShowNoCorrectiveFlag === 'boolean')
         ? p.teamReportShowNoCorrectiveFlag
         : p.teamReportShowHighRedNoCorrective;
@@ -4764,7 +4778,7 @@ function timelineOrbHtml(repName, weeks){
 }
 
 function setReportView(next){
-  reportView = next === 'team' ? 'team' : 'individual';
+  reportView = next === 'team' ? 'team' : (next === 'analysis' ? 'analysis' : 'individual');
   savePrefs();
   render();
 }
@@ -5063,18 +5077,174 @@ function renderTeamReportView(ctx){
     });
   });
 }
+function teamAnalysisChecklistKey(){
+  return `${APP_NS}.teamAnalysisChecklist.${mode}.${personKey(selectedTeam || 'unknown')}`;
+}
+function loadTeamAnalysisChecklist(){
+  try{
+    const raw = localStorage.getItem(teamAnalysisChecklistKey());
+    const parsed = raw ? JSON.parse(raw) : null;
+    if(parsed && Array.isArray(parsed.open) && Array.isArray(parsed.done)) return parsed;
+  }catch(e){}
+  return { open:[], done:[] };
+}
+function saveTeamAnalysisChecklist(state){
+  try{ localStorage.setItem(teamAnalysisChecklistKey(), JSON.stringify(state || { open:[], done:[] })); }catch(e){}
+}
+function coachMatchesLane(c, lane){
+  const txt = normalizeCoachText(`${(c?.types||[]).join(' ')} ${(c?.desc||'')} ${(c?.category||'')} ${(c?.type||'')}`);
+  if(lane === 'callQuality') return /\b(call quality|quality coaching|quality|qa)\b/.test(txt);
+  return /\b(appointment rate|appt rate|consumer appointment rate|appointment coaching|appointment)\b/.test(txt);
+}
+function checklistMatchesLane(it, lane){
+  const inc = normalizeCoachText(it?.incident || '');
+  return lane === 'callQuality' ? inc.includes('call quality behaviors') : inc.includes('appointment behaviors');
+}
+function repKpiSnapshot(repName, weeks, lane, goals, sd, ed){
+  const goal = goals[lane];
+  const cells = weeks.map((wk, idx)=>{
+    const ws = weekStatsForRep(repName, wk, sd, ed, lane);
+    const v = Number(ws?.[lane]);
+    const hasData = Number.isFinite(v);
+    const isRed = hasData && Number.isFinite(goal) ? v < goal : false;
+    const rk = personKey(repName);
+    const coachAll = (coachingByRepWeek.get(rk)?.get(wk) || []).filter(c=>coachMatchesLane(c, lane));
+    const coachThisOrNext = coachAll.length > 0 || ((idx + 1 < weeks.length) && ((coachingByRepWeek.get(rk)?.get(weeks[idx+1]) || []).some(c=>coachMatchesLane(c, lane))));
+    const checks = (checklistByRepWeek.get(rk)?.get(wk) || []).filter(it=>checklistMatchesLane(it, lane));
+    return { wk, v, hasData, isRed, coachCount:coachAll.length, coachedThisOrNext:coachThisOrNext, checkCount:checks.length, checks };
+  });
+  return cells;
+}
+function weightedConsumerRateForWeeks(repName, weeks){
+  let apps=0, opps=0;
+  for(const wk of weeks){
+    const ws = weekStatsForRep(repName, wk, null, null, 'consumerRate');
+    const o = Number(ws?.consumerOpps||0), a = Number(ws?.consumerApps||0);
+    if(Number.isFinite(o) && o>0){ opps += o; apps += (Number.isFinite(a)?a:0); }
+  }
+  return { apps, opps, rate: opps>0 ? (apps/opps) : NaN };
+}
+function renderTeamAnalysisView(ctx){
+  const { weeks, sd, ed } = ctx;
+  const reps = Array.from(teamIndex.keys()).sort((a,b)=>a.localeCompare(b));
+  const last13 = weeks.slice(-13), last6 = weeks.slice(-6), prior6 = weeks.slice(-12, -6);
+  const goals = { callQuality:getGoalFracForKpi('callQuality'), consumerRate:getGoalFracForKpi('consumerRate') };
+  const lanes = [
+    { key:'callQuality', label:'Call Quality' },
+    { key:'consumerRate', label:'Consumer Appointment Rate' }
+  ];
+  const laneData = {};
+  for(const lane of lanes){
+    laneData[lane.key] = reps.map(rep=>{
+      const c13 = repKpiSnapshot(rep, last13, lane.key, goals, sd, ed);
+      const c6 = repKpiSnapshot(rep, last6, lane.key, goals, sd, ed);
+      const red13 = c13.filter(c=>c.isRed).length;
+      const relCoach13 = c13.reduce((s,c)=>s+c.coachCount,0);
+      const relChecks13 = c13.reduce((s,c)=>s+c.checkCount,0);
+      const needsCorrective = red13 >= 3 && relCoach13 >= 2 && c13.some((c,i)=>i>0 && c.isRed && c13.slice(0,i).some(x=>x.coachCount>0));
+      const red6 = c6.filter(c=>c.isRed).length;
+      const red6Covered = c6.filter(c=>c.isRed && c.coachedThisOrNext).length;
+      const uncoachedRed6 = c6.filter(c=>c.isRed && !c.coachedThisOrNext).length;
+      let reason = 'Stable';
+      if(needsCorrective) reason = `Repeated red (${red13}) after coaching`;
+      else if(uncoachedRed6>=3) reason = `3+ uncoached red weeks in last 6`;
+      else if(uncoachedRed6>=2) reason = `2 uncoached red weeks in last 6`;
+      const rate6 = lane.key === 'consumerRate'
+        ? weightedConsumerRateForWeeks(rep, last6).rate
+        : mean(c6.filter(c=>c.hasData).map(c=>c.v));
+      return { rep, c13, c6, red13, relCoach13, relChecks13, needsCorrective, reason, red6, red6Covered, uncoachedRed6, coverage:red6?red6Covered/red6:NaN, rate6 };
+    });
+  }
+  const cq = laneData.callQuality, cr = laneData.consumerRate;
+  const teamCoverage = (arr)=>{
+    const red = arr.reduce((s,r)=>s+r.red6,0), cov = arr.reduce((s,r)=>s+r.red6Covered,0);
+    return { red, cov, pct:red?cov/red:NaN };
+  };
+  const cqCov = teamCoverage(cq), crCov = teamCoverage(cr);
+  const bottom5Appt = cr.slice().filter(r=>Number.isFinite(r.rate6)).sort((a,b)=>a.rate6-b.rate6).slice(0,5);
+  const bottom5CQ = cq.slice().filter(r=>Number.isFinite(r.rate6)).sort((a,b)=>a.rate6-b.rate6).slice(0,5);
+  const teamAll = reps.map(r=>weightedConsumerRateForWeeks(r, last6));
+  const allApps = teamAll.reduce((s,x)=>s+x.apps,0), allOpps = teamAll.reduce((s,x)=>s+x.opps,0);
+  const dropSet = new Set(bottom5Appt.map(x=>x.rep));
+  const kept = reps.filter(r=>!dropSet.has(r)).map(r=>weightedConsumerRateForWeeks(r, last6));
+  const keptApps = kept.reduce((s,x)=>s+x.apps,0), keptOpps = kept.reduce((s,x)=>s+x.opps,0);
+  const teamRate = allOpps?allApps/allOpps:NaN, teamRateNoB5 = keptOpps?keptApps/keptOpps:NaN;
+  const checklist = loadTeamAnalysisChecklist();
+  const cWatchCountCQ = cq.filter(r=>r.needsCorrective).length;
+  const cWatchCountCR = cr.filter(r=>r.needsCorrective).length;
+  const makeRows=(arr,lane)=>arr.map(r=>`<tr><td>${escAttr(r.rep)}</td><td>${lane}</td><td>${r.red13}</td><td>${r.relCoach13}</td><td>${r.relChecks13}</td><td>${r.needsCorrective?'Yes':'No'}</td><td>${escAttr(r.reason)}</td></tr>`).join('')||'<tr><td colspan="7">No rows.</td></tr>';
+  const redTable=(arr,lane)=>arr.map(r=>`<tr><td>${escAttr(r.rep)}</td><td>${last6.map(w=>escAttr(w)).join('<br>')}</td><td>${r.c6.map(c=>Number.isFinite(c.v)?fmtPct1(c.v):'—').join('<br>')}</td><td>${r.c6.map(c=>c.isRed?'Yes':'No').join('<br>')}</td><td>${r.c6.map(c=>c.isRed?(c.coachedThisOrNext?'Yes':'No'):'—').join('<br>')}</td><td>${r.uncoachedRed6}</td><td><span class="${r.uncoachedRed6>=3?'metricBad':(r.uncoachedRed6>=2?'metricWarn':'metricGood')}">${r.uncoachedRed6>=3?'Red':(r.uncoachedRed6>=2?'Yellow':'OK')}</span></td></tr>`).join('')||'<tr><td colspan="7">No rows.</td></tr>';
+  const statChecklistFromSignals = ()=>{
+    const out = [];
+    const add = (rep, cat, desc)=>{
+      const id = `${rep}|${cat}`;
+      if(out.some(x=>x.id===id) || checklist.open.some(x=>x.id===id)) return;
+      out.push({ id, rep, cat, desc, date: ymd(new Date()) });
+    };
+    cq.filter(r=>r.needsCorrective).forEach(r=>add(r.rep,'Call Quality Corrective Watch','Call Quality corrective watch: repeated red after prior Call Quality coaching'));
+    cr.filter(r=>r.needsCorrective).forEach(r=>add(r.rep,'Appointment Corrective Watch','Appointment Rate corrective watch: repeated red after prior appointment coaching'));
+    [...cq,...cr].filter(r=>r.uncoachedRed6>=3).forEach(r=>add(r.rep,'Red Without Coaching','3 red weeks in last 6 without relevant coaching'));
+    bottom5Appt.forEach(r=>add(r.rep,'Bottom 5 Appointment Rate','Bottom 5 weighted Consumer Appointment Rate over last 6 weeks'));
+    bottom5CQ.forEach(r=>add(r.rep,'Bottom 5 Call Quality','Bottom 5 Call Quality over last 6 weeks'));
+    return out;
+  };
+  els.teamAnalysisHint.textContent = `${selectedTeam || '—'} • ${mmddyy(sd)} → ${mmddyy(ed)} • 13w/6w analysis`;
+  els.teamAnalysisBody.innerHTML = `
+    <div class="topStats" style="margin-bottom:10px">
+      <div class="stat"><div class="k">CQ corrective-watch count</div><div class="v">${cWatchCountCQ}</div></div>
+      <div class="stat"><div class="k">Appt corrective-watch count</div><div class="v">${cWatchCountCR}</div></div>
+      <div class="stat"><div class="k">CQ red-week coaching coverage</div><div class="v">${fmtPct0(cqCov.pct)}</div></div>
+      <div class="stat"><div class="k">Appt red-week coaching coverage</div><div class="v">${fmtPct0(crCov.pct)}</div></div>
+      <div class="stat"><div class="k">Weighted team consumer rate (6w)</div><div class="v">${fmtPct1(teamRate)}</div></div>
+      <div class="stat"><div class="k">Without bottom 5 appt</div><div class="v">${fmtPct1(teamRateNoB5)}</div></div>
+    </div>
+    <details open><summary>Corrective Watch — Call Quality & Appointment Rate (13 weeks)</summary><div class="tblWrap"><table><thead><tr><th>Rep</th><th>Lane</th><th>Red weeks</th><th>Relevant coachings</th><th>Relevant checklist items</th><th>Corrective watch</th><th>Reason</th></tr></thead><tbody>${makeRows(cq,'Call Quality')}${makeRows(cr,'Consumer Appointment Rate')}</tbody></table></div></details>
+    <details open><summary>Recent Red Without Coaching (Last 6 weeks, same week or next)</summary><div class="tblWrap"><table><thead><tr><th>Rep</th><th>Weeks</th><th>KPI results</th><th>Red?</th><th>Covered by coaching?</th><th>Uncoached red weeks</th><th>Severity</th></tr></thead><tbody>${redTable(cq,'Call Quality')}${redTable(cr,'Consumer Appointment Rate')}</tbody></table></div></details>
+    <details open><summary>Bottom 5 Performers</summary><div class="row"><div style="flex:1;min-width:320px"><div class="mono" style="font-weight:900">Bottom 5 by weighted Consumer Appointment Rate</div><div class="tblWrap"><table><thead><tr><th>Rep</th><th>Rate</th><th>Red weeks</th><th>Red without coaching</th><th>Corrective watch</th></tr></thead><tbody>${bottom5Appt.map(r=>`<tr><td>${escAttr(r.rep)}</td><td>${fmtPct1(r.rate6)}</td><td>${r.red6}</td><td>${r.uncoachedRed6}</td><td>${r.needsCorrective?'Yes':'No'}</td></tr>`).join('') || '<tr><td colspan=\"5\">No rows.</td></tr>'}</tbody></table></div></div><div style="flex:1;min-width:320px"><div class="mono" style="font-weight:900">Bottom 5 by Call Quality</div><div class="tblWrap"><table><thead><tr><th>Rep</th><th>6w avg CQ</th><th>Red weeks</th><th>Red without coaching</th><th>Corrective watch</th></tr></thead><tbody>${bottom5CQ.map(r=>`<tr><td>${escAttr(r.rep)}</td><td>${fmtPct1(r.rate6)}</td><td>${r.red6}</td><td>${r.uncoachedRed6}</td><td>${r.needsCorrective?'Yes':'No'}</td></tr>`).join('') || '<tr><td colspan=\"5\">No rows.</td></tr>'}</tbody></table></div></div></div></details>
+    <details open><summary>Team Rate With vs Without Bottom 5 (weighted Consumer Appointment Rate, 6 weeks)</summary><div class="mini"><span class="pill">With everyone: <strong>${fmtPct1(teamRate)}</strong></span><span class="pill">Without bottom 5: <strong>${fmtPct1(teamRateNoB5)}</strong></span><span class="pill">Difference: <strong>${fmtPp(teamRateNoB5-teamRate)}</strong></span><span class="pill">Opps removed: <strong>${(allOpps-keptOpps).toLocaleString()}</strong></span><span class="pill">Apps removed: <strong>${(allApps-keptApps).toLocaleString()}</strong></span></div></details>
+    <details open><summary>Stat Checklist</summary><div class="row"><button class="btn" id="taCreateChecklistBtn">Create Stat Checklist</button><button class="btn" id="taClearChecklistBtn">Clear Items</button></div><div class="row" style="margin-top:8px;align-items:flex-start"><div style="flex:1;min-width:320px"><div class="mono" style="font-weight:900">Open Items</div><div class="tblWrap"><table><thead><tr><th>Rep</th><th>Date Added</th><th>Category</th><th>Description</th><th></th></tr></thead><tbody id="taOpenBody">${checklist.open.map((it,i)=>`<tr><td>${escAttr(it.rep)}</td><td>${escAttr(it.date)}</td><td>${escAttr(it.cat)}</td><td>${escAttr(it.desc)}</td><td><button class="btn" data-ta-address=\"${i}\">Addressed</button></td></tr>`).join('') || '<tr><td colspan=\"5\">No open items.</td></tr>'}</tbody></table></div></div><div style="flex:1;min-width:320px"><div class="mono" style="font-weight:900">Addressed Items</div><div class="tblWrap"><table><thead><tr><th>Rep</th><th>Date Added</th><th>Category</th><th>Description</th></tr></thead><tbody>${checklist.done.map(it=>`<tr><td>${escAttr(it.rep)}</td><td>${escAttr(it.date)}</td><td>${escAttr(it.cat)}</td><td>${escAttr(it.desc)}</td></tr>`).join('') || '<tr><td colspan=\"4\">No addressed items.</td></tr>'}</tbody></table></div></div></div></details>
+  `;
+  const createBtn = document.getElementById('taCreateChecklistBtn');
+  if(createBtn) createBtn.addEventListener('click', ()=>{
+    const add = statChecklistFromSignals();
+    if(add.length){
+      checklist.open = [...checklist.open, ...add];
+      saveTeamAnalysisChecklist(checklist);
+    }
+    render();
+  });
+  const clearBtn = document.getElementById('taClearChecklistBtn');
+  if(clearBtn) clearBtn.addEventListener('click', ()=>{
+    saveTeamAnalysisChecklist({ open:[], done:[] });
+    render();
+  });
+  document.querySelectorAll('[data-ta-address]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const idx = Number(btn.getAttribute('data-ta-address'));
+      if(!Number.isInteger(idx) || idx < 0 || idx >= checklist.open.length) return;
+      const [it] = checklist.open.splice(idx, 1);
+      if(it) checklist.done.unshift(it);
+      saveTeamAnalysisChecklist(checklist);
+      render();
+    });
+  });
+}
 function syncReportViewUI(){
   const isTeam = reportView === 'team';
-  els.reportTabIndividual.classList.toggle('active', !isTeam);
+  const isAnalysis = reportView === 'analysis';
+  const isIndividual = reportView === 'individual';
+  els.reportTabIndividual.classList.toggle('active', isIndividual);
   els.reportTabTeam.classList.toggle('active', isTeam);
+  if(els.reportTabAnalysis) els.reportTabAnalysis.classList.toggle('active', isAnalysis);
   els.teamSelLabel.classList.toggle('hiddenForTeam', isTeam);
-  els.sortSelLabel.classList.toggle('hiddenForTeam', isTeam);
+  els.sortSelLabel.classList.toggle('hiddenForTeam', !isIndividual);
   els.teamReportCard.classList.toggle('hiddenForIndividual', !isTeam);
-  document.getElementById('coachReportCard').classList.toggle('hiddenForTeam', isTeam);
-  document.getElementById('teamSummaryCard').classList.toggle('hiddenForTeam', isTeam);
-  document.getElementById('gapCard').classList.toggle('hiddenForTeam', isTeam);
-  els.repTimelineHead.classList.toggle('hiddenForTeam', isTeam);
-  els.repList.classList.toggle('hiddenForTeam', isTeam);
+  if(els.teamAnalysisCard) els.teamAnalysisCard.classList.toggle('hiddenForIndividual', !isAnalysis);
+  document.getElementById('coachReportCard').classList.toggle('hiddenForTeam', !isIndividual);
+  document.getElementById('teamSummaryCard').classList.toggle('hiddenForTeam', !isIndividual);
+  document.getElementById('gapCard').classList.toggle('hiddenForTeam', !isIndividual);
+  els.repTimelineHead.classList.toggle('hiddenForTeam', !isIndividual);
+  els.repList.classList.toggle('hiddenForTeam', !isIndividual);
   els.teamHighRedToggleWrap.classList.toggle('hiddenForIndividual', !isTeam);
 }
 
@@ -5128,6 +5298,10 @@ function render(){
   const allRepNames = Array.from(teamIndex.keys()).sort((a,b)=>a.localeCompare(b));
   if(reportView === 'team'){
     renderTeamReportView({ weeks, goalFrac, oppGateKey, oppMinN, minCovFrac, sd, ed });
+    return;
+  }
+  if(reportView === 'analysis'){
+    renderTeamAnalysisView({ weeks, sd, ed });
     return;
   }
 
@@ -5314,6 +5488,7 @@ function render(){
 els.disclaimerSettingsBtn.addEventListener('click', ()=> openDisclaimerModal());
 els.reportTabIndividual.addEventListener('click', ()=> setReportView('individual'));
 els.reportTabTeam.addEventListener('click', ()=> setReportView('team'));
+if(els.reportTabAnalysis) els.reportTabAnalysis.addEventListener('click', ()=> setReportView('analysis'));
 if(els.teamShowHighRedNoCorrective){
   els.teamShowHighRedNoCorrective.addEventListener('change', ()=>{
     teamReportShowNoCorrectiveFlag = !!els.teamShowHighRedNoCorrective.checked;
