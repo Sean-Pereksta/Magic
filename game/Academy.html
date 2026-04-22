@@ -141,6 +141,45 @@
     padding:12px;
     box-shadow: var(--shadow);
   }
+  .intelGrid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+    gap:12px;
+    margin-bottom:12px;
+  }
+  .intelCard{
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:12px;
+    box-shadow: var(--shadow);
+    background:#fff;
+  }
+  .intelRisk{ background:linear-gradient(180deg, rgba(220,38,38,.12), rgba(255,255,255,.95)); border-color:rgba(220,38,38,.22); }
+  .intelOpportunity{ background:linear-gradient(180deg, rgba(245,158,11,.14), rgba(255,255,255,.95)); border-color:rgba(245,158,11,.3); }
+  .intelPerformance{ background:linear-gradient(180deg, rgba(37,99,235,.14), rgba(255,255,255,.95)); border-color:rgba(37,99,235,.28); }
+  .intelRecovery{ background:linear-gradient(180deg, rgba(22,163,74,.14), rgba(255,255,255,.95)); border-color:rgba(22,163,74,.3); }
+  .intelPredictive{ background:linear-gradient(180deg, rgba(147,51,234,.16), rgba(255,255,255,.95)); border-color:rgba(147,51,234,.28); }
+  .intelTitle{ font-weight:1000; font-size:16px; margin:0 0 8px; display:flex; align-items:center; gap:8px; }
+  .intelMetrics{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-bottom:8px; }
+  .intelMetric{ border:1px solid var(--line); background:#fff; border-radius:12px; padding:8px; }
+  .intelMetric .k{ font-size:11px; font-weight:900; color:var(--muted); }
+  .intelMetric .v{ font-size:18px; font-weight:1000; }
+  .intelList{ margin:6px 0 0; padding-left:18px; font-size:12px; font-weight:700; color:#1e293b; }
+  .intelList li{ margin:4px 0; }
+  .riskBucketGrid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+    gap:8px;
+    margin-top:6px;
+  }
+  .riskBucket{
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:8px;
+  }
+  .riskBucket .h{ font-size:12px; font-weight:1000; margin-bottom:6px; }
+  .riskBucket .n{ font-size:20px; font-weight:1000; margin-bottom:4px; }
 
   .topStats{
     display:grid;
@@ -5169,6 +5208,110 @@ function renderTeamAnalysisView(ctx){
   const kept = reps.filter(r=>!dropSet.has(r)).map(r=>weightedConsumerRateForWeeks(r, last6));
   const keptApps = kept.reduce((s,x)=>s+x.apps,0), keptOpps = kept.reduce((s,x)=>s+x.opps,0);
   const teamRate = allOpps?allApps/allOpps:NaN, teamRateNoB5 = keptOpps?keptApps/keptOpps:NaN;
+  const teamMedianRate = (()=> {
+    const vals = cr.map(r=>r.rate6).filter(v=>Number.isFinite(v)).sort((a,b)=>a-b);
+    if(!vals.length) return NaN;
+    const mid = Math.floor(vals.length / 2);
+    return vals.length % 2 ? vals[mid] : ((vals[mid-1] + vals[mid]) / 2);
+  })();
+  const ifMedian = reps.map(rep=>{
+    const w = weightedConsumerRateForWeeks(rep, last6);
+    if(!(Number.isFinite(w.opps) && w.opps > 0)) return { apps:0, opps:0 };
+    const rate = Number.isFinite(teamMedianRate) ? teamMedianRate : (Number.isFinite(w.rate) ? w.rate : 0);
+    return { apps:w.opps * rate, opps:w.opps };
+  });
+  const ifMedianRate = (()=> {
+    const apps = ifMedian.reduce((s,x)=>s+x.apps,0);
+    const opps = ifMedian.reduce((s,x)=>s+x.opps,0);
+    return opps ? (apps/opps) : NaN;
+  })();
+
+  const repIntel = reps.map(rep=>{
+    const cq6 = cq.find(x=>x.rep===rep) || {};
+    const cr6 = cr.find(x=>x.rep===rep) || {};
+    const w6 = weightedConsumerRateForWeeks(rep, last6);
+    const wp = weightedConsumerRateForWeeks(rep, prior6);
+    const oppShare = allOpps > 0 ? (w6.opps / allOpps) : 0;
+    const gap = Number.isFinite(goals.consumerRate) && Number.isFinite(w6.rate) ? Math.max(0, goals.consumerRate - w6.rate) : 0;
+    const redFreq = ((Number(cq6.red6||0) + Number(cr6.red6||0)) / Math.max(1, last6.length * 2));
+    const redNoCoach = Number(cq6.uncoachedRed6 || 0) + Number(cr6.uncoachedRed6 || 0);
+    const coachingCoverage = Number(cq6.coverage || 0) * 0.5 + Number(cr6.coverage || 0) * 0.5;
+    const trendDelta = Number.isFinite(w6.rate) && Number.isFinite(wp.rate) ? (w6.rate - wp.rate) : 0;
+    const riskPct = clamp01((redFreq * 0.5) + (redNoCoach / 8) + (Math.max(0, -trendDelta) * 2.2) + ((1 - clamp01(coachingCoverage)) * 0.2)) * 100;
+    const missedCoachingScore = (redNoCoach * 1.5) + (Number(cq6.red13||0) + Number(cr6.red13||0) - (Number(cq6.relCoach13||0) + Number(cr6.relCoach13||0)) * 0.4) + (trendDelta < 0 ? 1.5 : 0);
+    const missedRisk = missedCoachingScore >= 7 ? 'High' : (missedCoachingScore >= 4 ? 'Medium' : 'Low');
+    const correctiveWeeks = missedRisk === 'High' ? Math.max(2, Math.round(6 - (Math.min(4, riskPct / 30)))) : null;
+    const impactScore = (w6.opps * gap);
+    return { rep, cq6, cr6, w6, wp, oppShare, gap, redFreq, redNoCoach, trendDelta, riskPct, missedRisk, correctiveWeeks, impactScore };
+  });
+
+  const highRiskReps = repIntel.filter(r=>r.riskPct >= 65 || r.missedRisk === 'High');
+  const impactRanked = repIntel.slice().sort((a,b)=>b.impactScore-a.impactScore);
+  const top3Impact = impactRanked.slice(0,3);
+  const lowImpact = impactRanked.slice(-3).filter(x=>x.impactScore > 0);
+  const notCoachedHighImpact = impactRanked.filter(r=>r.impactScore > 0 && ((Number(r.cq6.relCoach13||0)+Number(r.cr6.relCoach13||0)) === 0)).slice(0,5);
+  const negativeAttribution = repIntel
+    .map(r=>({ ...r, missShare: allOpps > 0 ? ((r.w6.opps * r.gap) / allOpps) : 0 }))
+    .sort((a,b)=>b.missShare-a.missShare)
+    .slice(0,5);
+
+  const coachingTypeLift = { direct:{ name:'Direct 1:1', n:0, lift:0 }, scorecard:{ name:'Scorecard', n:0, lift:0 }, teamMeeting:{ name:'Team Meeting', n:0, lift:0 } };
+  let coachedImproved = 0, coachedFlat = 0, coachedWorse = 0, coachedTotal = 0;
+  let wastedCoaching = [];
+  for(const row of repIntel){
+    const repKey = personKey(row.rep);
+    const repCoachings = (coachingByRepKey.get(repKey) || []).filter(c=>last6.includes(c.wk));
+    const postDelta = Number.isFinite(row.w6.rate) && Number.isFinite(row.wp.rate) ? (row.w6.rate - row.wp.rate) : 0;
+    if(repCoachings.length){
+      coachedTotal++;
+      if(postDelta > 0.005) coachedImproved++;
+      else if(postDelta < -0.005){ coachedWorse++; wastedCoaching.push(row); }
+      else { coachedFlat++; wastedCoaching.push(row); }
+    }
+    for(const c of repCoachings){
+      const bucket = isTeamMeetingCoaching(c) ? coachingTypeLift.teamMeeting : (isScorecardCoaching(c) ? coachingTypeLift.scorecard : coachingTypeLift.direct);
+      bucket.n++;
+      bucket.lift += postDelta;
+    }
+  }
+  const typeRows = Object.values(coachingTypeLift).map(x=>({ ...x, avgLift:x.n ? (x.lift / x.n) : 0 })).sort((a,b)=>b.avgLift-a.avgLift);
+  const bestType = typeRows[0];
+
+  const behaviorPairs = {};
+  const repeatedBehaviorFailures = [];
+  for(const rep of reps){
+    const rk = personKey(rep);
+    const repFails = {};
+    for(const wk of last6){
+      const checks = (checklistByRepWeek.get(rk)?.get(wk) || []);
+      for(const it of checks){
+        const key = String(it.incident || 'Unknown');
+        behaviorPairs[key] = (behaviorPairs[key] || 0) + 1;
+        repFails[key] = (repFails[key] || 0) + 1;
+      }
+    }
+    Object.keys(repFails).forEach(k=>{
+      if(repFails[k] >= 2) repeatedBehaviorFailures.push({ rep, incident:k, n:repFails[k] });
+    });
+  }
+  const topBehaviors = Object.entries(behaviorPairs).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+  const riskBuckets = {
+    highUncoached: [],
+    highNoResponse: [],
+    medium: [],
+    improving: [],
+    stable: []
+  };
+  for(const r of repIntel){
+    const hasCoach13 = (Number(r.cq6.relCoach13||0)+Number(r.cr6.relCoach13||0)) > 0;
+    if(r.riskPct >= 70 && !hasCoach13) riskBuckets.highUncoached.push(r.rep);
+    else if(r.riskPct >= 70 && r.trendDelta <= 0) riskBuckets.highNoResponse.push(r.rep);
+    else if(r.riskPct >= 45) riskBuckets.medium.push(r.rep);
+    else if(r.trendDelta > 0.01) riskBuckets.improving.push(r.rep);
+    else riskBuckets.stable.push(r.rep);
+  }
+
   const checklist = loadTeamAnalysisChecklist();
   const cWatchCountCQ = cq.filter(r=>r.needsCorrective).length;
   const cWatchCountCR = cr.filter(r=>r.needsCorrective).length;
@@ -5186,6 +5329,11 @@ function renderTeamAnalysisView(ctx){
     [...cq,...cr].filter(r=>r.uncoachedRed6>=3).forEach(r=>add(r.rep,'Red Without Coaching','3 red weeks in last 6 without relevant coaching'));
     bottom5Appt.forEach(r=>add(r.rep,'Bottom 5 Appointment Rate','Bottom 5 weighted Consumer Appointment Rate over last 6 weeks'));
     bottom5CQ.forEach(r=>add(r.rep,'Bottom 5 Call Quality','Bottom 5 Call Quality over last 6 weeks'));
+    highRiskReps.forEach(r=>add(r.rep,'Predictive Risk','High predictive risk of red week next period'));
+    notCoachedHighImpact.forEach(r=>add(r.rep,'High Impact Uncoached','High leverage opportunity not currently coached'));
+    negativeAttribution.forEach(r=>add(r.rep,'High Negative Attribution','Disproportionate contribution to team performance gap'));
+    wastedCoaching.slice(0,5).forEach(r=>add(r.rep,'Poor Post-Coaching Response','Coaching present but flat/worse KPI change'));
+    repeatedBehaviorFailures.slice(0,8).forEach(r=>add(r.rep,'Repeated Behavior Failure',`${r.incident} repeated ${r.n}x in last 6 weeks`));
     return out;
   };
   els.teamAnalysisHint.textContent = `${selectedTeam || '—'} • ${mmddyy(sd)} → ${mmddyy(ed)} • 13w/6w analysis`;
@@ -5198,10 +5346,71 @@ function renderTeamAnalysisView(ctx){
       <div class="stat"><div class="k">Weighted team consumer rate (6w)</div><div class="v">${fmtPct1(teamRate)}</div></div>
       <div class="stat"><div class="k">Without bottom 5 appt</div><div class="v">${fmtPct1(teamRateNoB5)}</div></div>
     </div>
-    <details open><summary>Corrective Watch — Call Quality & Appointment Rate (13 weeks)</summary><div class="tblWrap"><table><thead><tr><th>Rep</th><th>Lane</th><th>Red weeks</th><th>Relevant coachings</th><th>Relevant checklist items</th><th>Corrective watch</th><th>Reason</th></tr></thead><tbody>${makeRows(cq,'Call Quality')}${makeRows(cr,'Consumer Appointment Rate')}</tbody></table></div></details>
-    <details open><summary>Recent Red Without Coaching (Last 6 weeks, same week or next)</summary><div class="tblWrap"><table><thead><tr><th>Rep</th><th>Weeks</th><th>KPI results</th><th>Red?</th><th>Covered by coaching?</th><th>Uncoached red weeks</th><th>Severity</th></tr></thead><tbody>${redTable(cq,'Call Quality')}${redTable(cr,'Consumer Appointment Rate')}</tbody></table></div></details>
-    <details open><summary>Bottom 5 Performers</summary><div class="row"><div style="flex:1;min-width:320px"><div class="mono" style="font-weight:900">Bottom 5 by weighted Consumer Appointment Rate</div><div class="tblWrap"><table><thead><tr><th>Rep</th><th>Rate</th><th>Red weeks</th><th>Red without coaching</th><th>Corrective watch</th></tr></thead><tbody>${bottom5Appt.map(r=>`<tr><td>${escAttr(r.rep)}</td><td>${fmtPct1(r.rate6)}</td><td>${r.red6}</td><td>${r.uncoachedRed6}</td><td>${r.needsCorrective?'Yes':'No'}</td></tr>`).join('') || '<tr><td colspan=\"5\">No rows.</td></tr>'}</tbody></table></div></div><div style="flex:1;min-width:320px"><div class="mono" style="font-weight:900">Bottom 5 by Call Quality</div><div class="tblWrap"><table><thead><tr><th>Rep</th><th>6w avg CQ</th><th>Red weeks</th><th>Red without coaching</th><th>Corrective watch</th></tr></thead><tbody>${bottom5CQ.map(r=>`<tr><td>${escAttr(r.rep)}</td><td>${fmtPct1(r.rate6)}</td><td>${r.red6}</td><td>${r.uncoachedRed6}</td><td>${r.needsCorrective?'Yes':'No'}</td></tr>`).join('') || '<tr><td colspan=\"5\">No rows.</td></tr>'}</tbody></table></div></div></div></details>
-    <details open><summary>Team Rate With vs Without Bottom 5 (weighted Consumer Appointment Rate, 6 weeks)</summary><div class="mini"><span class="pill">With everyone: <strong>${fmtPct1(teamRate)}</strong></span><span class="pill">Without bottom 5: <strong>${fmtPct1(teamRateNoB5)}</strong></span><span class="pill">Difference: <strong>${fmtPp(teamRateNoB5-teamRate)}</strong></span><span class="pill">Opps removed: <strong>${(allOpps-keptOpps).toLocaleString()}</strong></span><span class="pill">Apps removed: <strong>${(allApps-keptApps).toLocaleString()}</strong></span></div></details>
+    <div class="intelGrid">
+      <section class="intelCard intelPredictive">
+        <h3 class="intelTitle">🟣 Predictive Risk & Forecast</h3>
+        <div class="intelMetrics">
+          <div class="intelMetric" title="Reps with >=65% next-week red risk or high missed coaching risk"><div class="k">High-risk reps</div><div class="v">${highRiskReps.length}</div></div>
+          <div class="intelMetric" title="Average modeled next red-week risk across team"><div class="k">Team avg risk</div><div class="v">${fmtPct0(mean(repIntel.map(r=>r.riskPct/100)))}</div></div>
+        </div>
+        <details><summary>Next-week red risk, missed coaching risk, corrective forecast</summary><ul class="intelList">${repIntel.slice().sort((a,b)=>b.riskPct-a.riskPct).slice(0,8).map(r=>`<li><button class="repNameBtn" data-rep="${escAttr(r.rep)}">${escAttr(r.rep)}</button> • Risk ${fmtPct0(r.riskPct/100)} • Missed coaching: <strong>${r.missedRisk}</strong>${r.correctiveWeeks?` • likely corrective in ${r.correctiveWeeks}w`:''}</li>`).join('') || '<li>No rows.</li>'}</ul></details>
+      </section>
+      <section class="intelCard intelOpportunity">
+        <h3 class="intelTitle">🟡 Coaching Impact & Load Optimization</h3>
+        <div class="intelMetrics">
+          <div class="intelMetric" title="Highest potential KPI gain reps"><div class="k">🔥 Top leverage reps</div><div class="v">${top3Impact.length}</div></div>
+          <div class="intelMetric" title="High leverage reps with zero relevant coaching in period"><div class="k">Uncoached leverage</div><div class="v">${notCoachedHighImpact.length}</div></div>
+        </div>
+        <details><summary>Impact score ranking, top-3 and low-impact reps</summary><ul class="intelList">${impactRanked.slice(0,8).map((r,i)=>`<li>#${i+1} <button class="repNameBtn" data-rep="${escAttr(r.rep)}">${escAttr(r.rep)}</button> • potential team lift ${fmtPct1((r.impactScore/Math.max(1,allOpps)))} • opp share ${fmtPct1(r.oppShare)}</li>`).join('')}<li>❄️ Low-impact: ${lowImpact.map(r=>escAttr(r.rep)).join(', ') || 'None'}</li></ul></details>
+      </section>
+      <section class="intelCard intelPerformance">
+        <h3 class="intelTitle">🔵 Team Performance Attribution</h3>
+        <div class="intelMetrics">
+          <div class="intelMetric" title="Current weighted consumer appointment rate"><div class="k">Current team rate</div><div class="v">${fmtPct1(teamRate)}</div></div>
+          <div class="intelMetric" title="Modeled team rate if all reps performed at current median rate"><div class="k">If all at median</div><div class="v">${fmtPct1(ifMedianRate)}</div></div>
+        </div>
+        <details><summary>Contribution to missed performance + team simulations</summary><ul class="intelList">${negativeAttribution.map(r=>`<li><button class="repNameBtn" data-rep="${escAttr(r.rep)}">${escAttr(r.rep)}</button> • ${fmtPct1(r.oppShare)} of opps • ${fmtPct1(r.missShare)} of underperformance</li>`).join('') || '<li>No rows.</li>'}<li>Without bottom 5 performers: <strong>${fmtPct1(teamRateNoB5)}</strong> (${fmtPp(teamRateNoB5-teamRate)} delta)</li></ul></details>
+      </section>
+      <section class="intelCard intelPerformance">
+        <h3 class="intelTitle">🧠 Coaching Effectiveness Score</h3>
+        <div class="intelMetrics">
+          <div class="intelMetric" title="% coached reps that improved in last 6 weeks vs prior 6"><div class="k">Improved / Flat / Worse</div><div class="v">${coachedTotal?`${fmtPct0(coachedImproved/coachedTotal)} / ${fmtPct0(coachedFlat/coachedTotal)} / ${fmtPct0(coachedWorse/coachedTotal)}`:'—'}</div></div>
+          <div class="intelMetric" title="Average KPI lift after coaching"><div class="k">Avg post-coaching lift</div><div class="v">${coachedTotal?fmtPp((repIntel.reduce((s,r)=>s+(Number.isFinite(r.w6.rate)&&Number.isFinite(r.wp.rate)?(r.w6.rate-r.wp.rate):0),0))/coachedTotal):'—'}</div></div>
+        </div>
+        <details><summary>Coaching type effectiveness + wasted coaching detector</summary><ul class="intelList">${typeRows.map(t=>`<li>${escAttr(t.name)} • avg lift ${fmtPp(t.avgLift)} (${t.n} sessions)</li>`).join('')}<li>Best lift source: <strong>${escAttr(bestType?.name || '—')}</strong></li><li>Wasted coaching flags: ${wastedCoaching.slice(0,6).map(r=>escAttr(r.rep)).join(', ') || 'None'}</li></ul></details>
+      </section>
+      <section class="intelCard intelRecovery">
+        <h3 class="intelTitle">🟢 Momentum & Recovery</h3>
+        <div class="intelMetrics">
+          <div class="intelMetric" title="Red weeks followed by non-red within 2 weeks"><div class="k">Team recovery score</div><div class="v">${fmtPct0(mean(repIntel.map(r=>1-clamp01(r.redNoCoach/Math.max(1,r.cq6.red6+r.cr6.red6+1)))))}</div></div>
+          <div class="intelMetric" title="Trend direction from prior 6 weeks to last 6 weeks"><div class="k">📈 / ➡️ / 📉</div><div class="v">${repIntel.filter(r=>r.trendDelta>0.01).length} / ${repIntel.filter(r=>Math.abs(r.trendDelta)<=0.01).length} / ${repIntel.filter(r=>r.trendDelta<-0.01).length}</div></div>
+        </div>
+        <details><summary>Recovery and acceleration by rep</summary><ul class="intelList">${repIntel.slice().sort((a,b)=>b.trendDelta-a.trendDelta).slice(0,8).map(r=>`<li><button class="repNameBtn" data-rep="${escAttr(r.rep)}">${escAttr(r.rep)}</button> • trend ${fmtPp(r.trendDelta)} • ${r.trendDelta>0.01?'📈 Strong Upward':(r.trendDelta<-0.01?'📉 Declining':'➡️ Flat')}</li>`).join('') || '<li>No rows.</li>'}</ul></details>
+      </section>
+      <section class="intelCard intelRisk">
+        <h3 class="intelTitle">🔴 Behavior Drivers & Failures</h3>
+        <div class="intelMetrics">
+          <div class="intelMetric" title="Most repeated checklist behavior incidents in analysis window"><div class="k">Top behavior signal</div><div class="v">${topBehaviors[0] ? escAttr(topBehaviors[0][0]) : '—'}</div></div>
+          <div class="intelMetric" title="Reps with recurring same behavior issue"><div class="k">Repeated behavior failures</div><div class="v">${repeatedBehaviorFailures.length}</div></div>
+        </div>
+        <details><summary>Behavior correlation, repeated failures, risk flags</summary><ul class="intelList">${topBehaviors.map(([k,v])=>`<li>${escAttr(k)} appears in ${v} checklist incident(s)</li>`).join('') || '<li>No checklist incidents matched in window.</li>'}${repeatedBehaviorFailures.slice(0,8).map(x=>`<li><button class="repNameBtn" data-rep="${escAttr(x.rep)}">${escAttr(x.rep)}</button> • ${escAttr(x.incident)} (${x.n} repeats)</li>`).join('')}</ul></details>
+      </section>
+      <section class="intelCard intelRisk">
+        <h3 class="intelTitle">🔴 Team Risk Matrix</h3>
+        <div class="riskBucketGrid">
+          <div class="riskBucket"><div class="h">High Risk / Uncoached</div><div class="n">${riskBuckets.highUncoached.length}</div><div>${riskBuckets.highUncoached.map(r=>`<button class="repNameBtn" data-rep="${escAttr(r)}">${escAttr(r)}</button>`).join(', ') || '—'}</div></div>
+          <div class="riskBucket"><div class="h">High Risk / Coached no response</div><div class="n">${riskBuckets.highNoResponse.length}</div><div>${riskBuckets.highNoResponse.map(r=>`<button class="repNameBtn" data-rep="${escAttr(r)}">${escAttr(r)}</button>`).join(', ') || '—'}</div></div>
+          <div class="riskBucket"><div class="h">Medium Risk</div><div class="n">${riskBuckets.medium.length}</div><div>${riskBuckets.medium.map(r=>`<button class="repNameBtn" data-rep="${escAttr(r)}">${escAttr(r)}</button>`).join(', ') || '—'}</div></div>
+          <div class="riskBucket"><div class="h">Improving</div><div class="n">${riskBuckets.improving.length}</div><div>${riskBuckets.improving.map(r=>`<button class="repNameBtn" data-rep="${escAttr(r)}">${escAttr(r)}</button>`).join(', ') || '—'}</div></div>
+          <div class="riskBucket"><div class="h">Stable</div><div class="n">${riskBuckets.stable.length}</div><div>${riskBuckets.stable.map(r=>`<button class="repNameBtn" data-rep="${escAttr(r)}">${escAttr(r)}</button>`).join(', ') || '—'}</div></div>
+        </div>
+      </section>
+    </div>
+    <details open><summary>Integrated Operational Feeds (Corrective Watch, Red Without Coaching, Bottom 5, Weighted metrics)</summary>
+      <div class="tblWrap"><table><thead><tr><th>Rep</th><th>Lane</th><th>Red weeks</th><th>Relevant coachings</th><th>Relevant checklist items</th><th>Corrective watch</th><th>Reason</th></tr></thead><tbody>${makeRows(cq,'Call Quality')}${makeRows(cr,'Consumer Appointment Rate')}</tbody></table></div>
+      <div class="tblWrap" style="margin-top:8px"><table><thead><tr><th>Rep</th><th>Weeks</th><th>KPI results</th><th>Red?</th><th>Covered by coaching?</th><th>Uncoached red weeks</th><th>Severity</th></tr></thead><tbody>${redTable(cq,'Call Quality')}${redTable(cr,'Consumer Appointment Rate')}</tbody></table></div>
+      <div class="mini" style="margin-top:8px"><span class="pill">With everyone: <strong>${fmtPct1(teamRate)}</strong></span><span class="pill">Without bottom 5: <strong>${fmtPct1(teamRateNoB5)}</strong></span><span class="pill">Difference: <strong>${fmtPp(teamRateNoB5-teamRate)}</strong></span><span class="pill">Opps removed: <strong>${(allOpps-keptOpps).toLocaleString()}</strong></span><span class="pill">Apps removed: <strong>${(allApps-keptApps).toLocaleString()}</strong></span></div>
+    </details>
     <details open><summary>Stat Checklist</summary><div class="row"><button class="btn" id="taCreateChecklistBtn">Create Stat Checklist</button><button class="btn" id="taClearChecklistBtn">Clear Items</button></div><div class="row" style="margin-top:8px;align-items:flex-start"><div style="flex:1;min-width:320px"><div class="mono" style="font-weight:900">Open Items</div><div class="tblWrap"><table><thead><tr><th>Rep</th><th>Date Added</th><th>Category</th><th>Description</th><th></th></tr></thead><tbody id="taOpenBody">${checklist.open.map((it,i)=>`<tr><td>${escAttr(it.rep)}</td><td>${escAttr(it.date)}</td><td>${escAttr(it.cat)}</td><td>${escAttr(it.desc)}</td><td><button class="btn" data-ta-address=\"${i}\">Addressed</button></td></tr>`).join('') || '<tr><td colspan=\"5\">No open items.</td></tr>'}</tbody></table></div></div><div style="flex:1;min-width:320px"><div class="mono" style="font-weight:900">Addressed Items</div><div class="tblWrap"><table><thead><tr><th>Rep</th><th>Date Added</th><th>Category</th><th>Description</th></tr></thead><tbody>${checklist.done.map(it=>`<tr><td>${escAttr(it.rep)}</td><td>${escAttr(it.date)}</td><td>${escAttr(it.cat)}</td><td>${escAttr(it.desc)}</td></tr>`).join('') || '<tr><td colspan=\"4\">No addressed items.</td></tr>'}</tbody></table></div></div></div></details>
   `;
   const createBtn = document.getElementById('taCreateChecklistBtn');
@@ -5226,6 +5435,12 @@ function renderTeamAnalysisView(ctx){
       if(it) checklist.done.unshift(it);
       saveTeamAnalysisChecklist(checklist);
       render();
+    });
+  });
+  els.teamAnalysisBody.querySelectorAll('.repNameBtn').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      openRepModal(btn.getAttribute('data-rep'));
     });
   });
 }
