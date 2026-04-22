@@ -66,6 +66,44 @@
     margin:0;
     line-height:1.1;
   }
+  .titleRow{
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .helpBtn{
+    border:1px solid var(--line);
+    background:var(--soft);
+    color:var(--ink);
+    border-radius:999px;
+    padding:4px 10px;
+    font-size:11px;
+    font-weight:1000;
+    line-height:1.2;
+    cursor:pointer;
+  }
+  .helpBtn:hover{ filter:brightness(.98); }
+  .helpSection{
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:10px 12px;
+    background:#fff;
+  }
+  .helpSection h4{
+    margin:0 0 8px;
+    font-size:13px;
+    font-weight:1000;
+  }
+  .helpList{
+    margin:0;
+    padding-left:18px;
+    display:grid;
+    gap:5px;
+    font-size:12px;
+    line-height:1.3;
+    color:#1e293b;
+    font-weight:850;
+  }
   #barMeta{
     margin-left:auto;
     font-size:12px;
@@ -951,7 +989,10 @@
 <div id="topBar" title="Click to collapse/expand the top panel">
   <div id="panelChevron">▾</div>
   <div style="display:flex; flex-direction:column; gap:2px; min-width:180px;">
-    <div id="topTitle">Gaps — Coaching vs Performance</div>
+    <div class="titleRow">
+      <div id="topTitle">Gaps — Coaching vs Performance</div>
+      <button id="helpBtn" class="helpBtn" type="button" aria-label="Open quick instructions">Help</button>
+    </div>
     <div class="mono" style="color:var(--muted); font-weight:900; font-size:11px;">Click bar to collapse/expand</div>
   </div>
   <div id="barMeta" class="mono">—</div>
@@ -1421,6 +1462,51 @@
             <input id="disclaimerFollowupLabelText" />
           </label>
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="helpModalOverlay" class="modalOverlay" aria-hidden="true">
+  <div class="modalPanel" role="dialog" aria-modal="true" aria-labelledby="helpModalTitle" style="width:min(680px, 96vw)">
+    <div class="modalHead">
+      <div>
+        <div id="helpModalTitle" class="modalTitle">Quick Help</div>
+        <div class="modalSub">Fast guide for first-time users.</div>
+      </div>
+      <div class="modalActions">
+        <button class="btn" id="helpModalClose" type="button">Close</button>
+      </div>
+    </div>
+    <div class="modalBody">
+      <div class="helpSection">
+        <h4>Tabs</h4>
+        <ul class="helpList">
+          <li><strong>Individual Coach:</strong> Shows each rep’s timeline, coaching, and performance.</li>
+          <li><strong>Team Report:</strong> Shows team-level summaries and compares teams.</li>
+          <li><strong>Team Analysis:</strong> Shows a deeper breakdown of the selected team.</li>
+        </ul>
+      </div>
+      <div class="helpSection">
+        <h4>Filters</h4>
+        <ul class="helpList">
+          <li><strong>Mode:</strong> Switches between Retail and Referral data.</li>
+          <li><strong>Team:</strong> Chooses which team to view.</li>
+          <li><strong>KPI:</strong> Picks the main metric being reviewed.</li>
+          <li><strong>Multi View KPI:</strong> Adds another KPI for comparison.</li>
+          <li><strong>Goal %:</strong> Sets the target percentage for success.</li>
+          <li><strong>Start / End:</strong> Limits the date range.</li>
+          <li><strong>Min KPI Coverage %:</strong> Requires enough KPI data before showing results.</li>
+          <li><strong>Sort:</strong> Changes how reps are ordered.</li>
+          <li><strong>Opportunity Gate:</strong> Filters out low-volume data.</li>
+          <li><strong>Types:</strong> Chooses which coaching types to include.</li>
+          <li><strong>Documented Coaching Filter:</strong> Lets you exclude certain coaching categories or wording.</li>
+          <li><strong>Checklist Item:</strong> Filters checklist issues you want to track.</li>
+          <li><strong>Keyword Phrase:</strong> Matches checklist descriptions by phrase.</li>
+          <li><strong>SLA Aging:</strong> Colors checklist items by how old they are.</li>
+          <li><strong>Data Docks:</strong> Selects which saved local data sources the dashboard should use.</li>
+          <li><strong>Refresh:</strong> Rebuilds the report using current filters.</li>
+        </ul>
       </div>
     </div>
   </div>
@@ -2065,6 +2151,7 @@ const els = {
   reportTabIndividual: document.getElementById('reportTabIndividual'),
   reportTabTeam: document.getElementById('reportTabTeam'),
   reportTabAnalysis: document.getElementById('reportTabAnalysis'),
+  helpBtn: document.getElementById('helpBtn'),
 
   modeSel: document.getElementById('modeSel'),
   teamSelLabel: document.getElementById('teamSelLabel'),
@@ -2159,6 +2246,8 @@ const els = {
   itemModalClose: document.getElementById('itemModalClose'),
   disclaimerModalOverlay: document.getElementById('disclaimerModalOverlay'),
   disclaimerModalClose: document.getElementById('disclaimerModalClose'),
+  helpModalOverlay: document.getElementById('helpModalOverlay'),
+  helpModalClose: document.getElementById('helpModalClose'),
   disclaimerMasterEnabled: document.getElementById('disclaimerMasterEnabled'),
   disclaimerSummaryHint: document.getElementById('disclaimerSummaryHint'),
   disclaimerDefaultCount: document.getElementById('disclaimerDefaultCount'),
@@ -2511,6 +2600,17 @@ function closeDisclaimerModal(){
   els.disclaimerModalOverlay.classList.remove('show');
   els.disclaimerModalOverlay.setAttribute('aria-hidden','true');
 }
+const HELP_MODAL = { open:false };
+function openHelpModal(){
+  HELP_MODAL.open = true;
+  els.helpModalOverlay.classList.add('show');
+  els.helpModalOverlay.setAttribute('aria-hidden','false');
+}
+function closeHelpModal(){
+  HELP_MODAL.open = false;
+  els.helpModalOverlay.classList.remove('show');
+  els.helpModalOverlay.setAttribute('aria-hidden','true');
+}
 
 /* =================== top panel collapse =================== */
 function setPanelCollapsed(collapsed){
@@ -2523,6 +2623,10 @@ function togglePanel(){
   setPanelCollapsed(!collapsed);
 }
 els.topBar.addEventListener('click', ()=> togglePanel());
+els.helpBtn.addEventListener('click', (e)=>{
+  e.stopPropagation();
+  openHelpModal();
+});
 
 /* =================== prefs =================== */
 function loadPrefs(){
@@ -5903,6 +6007,9 @@ if(els.teamShowHighRedNoCorrective){
 els.disclaimerModalClose.addEventListener('click', ()=> closeDisclaimerModal());
 els.disclaimerModalOverlay.addEventListener('click', (e)=>{ if(e.target===els.disclaimerModalOverlay) closeDisclaimerModal(); });
 document.addEventListener('keydown', (e)=>{ if(e.key==='Escape' && DISCLAIMER_MODAL.open) closeDisclaimerModal(); });
+els.helpModalClose.addEventListener('click', ()=> closeHelpModal());
+els.helpModalOverlay.addEventListener('click', (e)=>{ if(e.target===els.helpModalOverlay) closeHelpModal(); });
+document.addEventListener('keydown', (e)=>{ if(e.key==='Escape' && HELP_MODAL.open) closeHelpModal(); });
 els.disclaimerEnableTop.addEventListener('change', ()=>{
   disclaimerSettings.enabled = !!els.disclaimerEnableTop.checked;
   els.disclaimerMasterEnabled.checked = disclaimerSettings.enabled;
