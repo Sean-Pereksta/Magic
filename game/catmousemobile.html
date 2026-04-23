@@ -999,6 +999,7 @@ function nearestStructureFrom(x,y){
   let pick=null, best=1e9;
   for(const s of structures.values()){
     if (!["🧱","🔫","💣","🏭"].includes(s.t)) continue;
+    if ((s.hp||0) <= 0) continue;
     const d=manhattan(x,y,s.x,s.y);
     if (d<best){best=d; pick=s;}
   }
@@ -1203,7 +1204,7 @@ async function hostBearsThink(){
 }
 async function hostCaterpillarsThink(){
   if (!I_AM_HOST) return;
-  const reservedTargets = new Set();
+  const reservedTargets = new Map();
   const reservedMoves = new Set();
 
   for(const [id,c] of caterpillars){
@@ -1213,7 +1214,8 @@ async function hostCaterpillarsThink(){
     if (!st) continue;
 
     const targetKey = key(st.x, st.y);
-    if (reservedTargets.has(targetKey)) continue;
+    const hpNow = structures.get(targetKey)?.hp ?? 0;
+    if ((reservedTargets.get(targetKey) || 0) > 0 && hpNow <= 0) continue;
 
     const p=findPath(c.x,c.y,st.x,st.y,true);
     let nextX = c.x;
@@ -1237,14 +1239,14 @@ async function hostCaterpillarsThink(){
     }
 
     if (canStrike){
-      reservedTargets.add(targetKey);
+      reservedTargets.set(targetKey, (reservedTargets.get(targetKey) || 0) + 1);
       await damageStructureHost(st.x,st.y,20);
 
-      const hpNow = Math.max(0, (c.hp||12) - 6);
-      if (hpNow<=0){
+      const caterHpNow = Math.max(0, (c.hp||12) - 6);
+      if (caterHpNow<=0){
         await safeDelete(doc(catsCol,id));
       } else {
-        await safeUpdate(doc(catsCol,id),{hp:hpNow,lastHostTick:Date.now()});
+        await safeUpdate(doc(catsCol,id),{hp:caterHpNow,lastHostTick:Date.now()});
       }
     }
   }
@@ -2079,7 +2081,6 @@ start();
 </script>
 </body>
 </html>
-
 
 
 
