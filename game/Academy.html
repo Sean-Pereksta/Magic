@@ -1609,7 +1609,7 @@ function onKeyUp(e){
 }
 
 function handleActionButton(char){
-  if(gameOver || char.moveState === "stepback" || char.moveState === "pumpfake" || char.moveState === "sidehop") return;
+  if(gameOver || char.moveState !== "normal") return;
   if(possession === char.id && ballState === "dribble" && !hasShotThisPossession){
     if(!shotCharging){
       shotCharging = true;
@@ -1799,7 +1799,7 @@ function updatePlayerControl(char,ctrl,dt){
   const baseSpeed = 3.85 * p.speed + move.acceleration*.24;
   const sprintSpeed = 6.65 * p.speed * p.sprint;
   const backSpeed = 2.1 * p.speed + move.stopSpeed*.2;
-  if(char.moveState === "stepback" || char.moveState === "sidehop" || char.moveState === "pumpfake"){
+  if(char.moveState !== "normal"){
     updateMoveState(char,dt);
     return;
   }
@@ -1835,13 +1835,28 @@ function updateBot(dt){
   if(!botBrain) initBotBrain();
   updateBotMemoryOfPlayer();
   adjustBotPersonalityByDifficulty();
-  if(ballState === "loose"){
-    moveBotToward(p2,ball.position.clone(),difficultySettings[selectedDifficulty].speed*1.25,dt);
-    return;
-  }
+  if(updateBotLooseBall(dt)) return;
   updateBotReactionMemory(dt);
   if(possession === "p1") updateBotDefense(dt);
   else updateBotOffense(dt);
+}
+
+function updateBotLooseBall(dt){
+  if(ballState !== "loose") return false;
+
+  const target = ball.position.clone();
+  target.y = 0;
+  moveBotToward(p2,target,difficultySettings[selectedDifficulty].speed * 1.05,dt);
+
+  if(ball.position.y > 1.1 && ball.position.y < 2.6 && flatDistance(p2.group.position,ball.position) < 1.4){
+    if(p2.onGround && p2.jumpCooldown <= 0 && Math.random() < dt * difficultySettings[selectedDifficulty].defensiveIQ){
+      tryJumpBlock(p2,false);
+    }else{
+      raiseHands(p2);
+    }
+  }
+
+  return true;
 }
 
 function moveBotToward(bot,target,speed,dt){
@@ -2060,6 +2075,33 @@ function updateCharacters(dt){
 
 function updateMoveState(char,dt){
   if(char.moveState === "normal") return;
+
+  if(char.moveState === "gather"){
+    char.moveTimer += dt;
+    const pct = THREE.MathUtils.clamp(char.moveTimer / Math.max(.001,char.moveDuration),0,1);
+    animateGatherBall(char,pct,char.moveMeta.gatherType || "pickup");
+    if(pct >= 1){
+      char.moveState = "normal";
+      char.moveTimer = 0;
+      char.moveDuration = 0;
+      char.group.scale.y = 1;
+    }
+    return;
+  }
+
+  if(char.moveState === "bobble"){
+    char.moveTimer += dt;
+    const pct = THREE.MathUtils.clamp(char.moveTimer / Math.max(.001,char.moveDuration),0,1);
+    animateBobble(char,pct);
+    if(pct >= 1){
+      char.moveState = "normal";
+      char.moveTimer = 0;
+      char.moveDuration = 0;
+      char.group.scale.y = 1;
+    }
+    return;
+  }
+
   char.moveTimer += dt;
   const pct = THREE.MathUtils.clamp(char.moveTimer / Math.max(.001,char.moveDuration),0,1);
   if(char.moveState === "stepback") updateStepBack(char,dt,pct);
@@ -2279,6 +2321,8 @@ function animateCharacter(char,dt){
   if(char.moveState === "sidehop") animateSideHop(char,THREE.MathUtils.clamp(char.moveTimer/Math.max(.001,char.moveDuration),0,1));
   if(char.moveState === "stepback") animateStepBack(char,THREE.MathUtils.clamp(char.moveTimer/Math.max(.001,char.moveDuration),0,1));
   if(char.moveState === "pumpfake") animatePumpFake(char,THREE.MathUtils.clamp(char.moveTimer/Math.max(.001,char.moveDuration),0,1));
+  if(char.moveState === "gather") animateGatherBall(char,THREE.MathUtils.clamp(char.moveTimer/Math.max(.001,char.moveDuration),0,1),char.moveMeta.gatherType || "pickup");
+  if(char.moveState === "bobble") animateBobble(char,THREE.MathUtils.clamp(char.moveTimer/Math.max(.001,char.moveDuration),0,1));
 }
 function animateShotTimeline(char,pct,type){
   if(type === "stepback"){ char.group.position.y = Math.max(char.group.position.y, Math.sin(Math.min(1,pct/.35)*Math.PI)*.12); }
@@ -2319,6 +2363,38 @@ function getDribbleHandPosition(char){
 function animateProtectDribble(char,dt){ char.rightArm.rotation.y = .3; }
 function animateHesitationDribble(char,dt){ char.anim.targetLean = Math.sin(char.dribbleBounce)>0 ? -.04 : .18; }
 function animateLowCrossover(char,dt){ char.leftHand.position.y = Math.min(char.leftHand.position.y,.58*char.profile.height); char.rightHand.position.y = Math.min(char.rightHand.position.y,.58*char.profile.height); }
+function animateGatherBall(char,pct,type){
+  const w = char.profile.width;
+  const h = char.profile.height;
+  const t = smoothstep(pct);
+  resetArmDefaults(char);
+
+  if(type === "catch"){
+    char.leftArm.position.set(-0.34*w,1.48*h,-0.16);
+    char.rightArm.position.set(0.34*w,1.48*h,-0.16);
+    char.leftForearm.position.set(-0.22*w,1.32*h,-0.38);
+    char.rightForearm.position.set(0.22*w,1.32*h,-0.38);
+    char.leftHand.position.set(-0.16*w,1.22*h,-0.52);
+    char.rightHand.position.set(0.16*w,1.22*h,-0.52);
+  }else{
+    char.group.scale.y = 1 - Math.sin(t * Math.PI) * 0.06;
+    char.leftForearm.position.y -= 0.18 * h;
+    char.rightForearm.position.y -= 0.18 * h;
+    char.leftHand.position.y -= 0.28 * h;
+    char.rightHand.position.y -= 0.28 * h;
+    char.leftHand.position.z -= 0.28;
+    char.rightHand.position.z -= 0.28;
+  }
+}
+function animateBobble(char,pct){
+  const w = char.profile.width;
+  const shake = Math.sin(pct * Math.PI * 5) * 0.08;
+  resetArmDefaults(char);
+  char.leftHand.position.x -= 0.14*w + shake;
+  char.rightHand.position.x += 0.14*w - shake;
+  char.leftForearm.rotation.z -= 0.25;
+  char.rightForearm.rotation.z += 0.25;
+}
 function animateDefensiveStance(char,dt){
   char.group.position.y = Math.max(0,char.group.position.y - dt*.2);
   char.leftLeg.rotation.z = -.18; char.rightLeg.rotation.z = .18;
@@ -2480,19 +2556,118 @@ function checkBallPlayerBodyCollision(char){
   }
 }
 
+function canPickupLooseBall(char){
+  if(ballState !== "loose") return false;
+  if(loosePickupDelay > 0) return false;
+
+  const charPos = char.group.position;
+  const flatDist = flatDistance(charPos,ball.position);
+  const height = char.profile.height;
+  const width = char.profile.width;
+
+  const groundPickupRange = 0.95 * width;
+  const bodyCatchRange = 1.05 * width;
+  const handCatchRange = 0.62 + char.profile.steal * 0.10 + char.profile.handle * 0.10;
+  const ballY = ball.position.y;
+
+  if(ballY <= 0.9 && flatDist <= groundPickupRange) return true;
+  if(ballY > 0.9 && ballY <= 1.85 * height && flatDist <= bodyCatchRange) return true;
+
+  const leftHand = getWorldHand(char,"left");
+  const rightHand = getWorldHand(char,"right");
+  if(leftHand.distanceTo(ball.position) <= handCatchRange) return true;
+  if(rightHand.distanceTo(ball.position) <= handCatchRange) return true;
+
+  const reachCenter = char.group.position.clone().add(new THREE.Vector3(0,1.55 * height,0));
+  const reachRadius = 0.72 * width + char.profile.block * 0.20 + char.profile.jump * 0.12;
+  if(ballY <= 2.45 * height && reachCenter.distanceTo(ball.position) <= reachRadius) return true;
+
+  return false;
+}
+
+function getLooseBallPickupQuality(char){
+  const speed = ballVelocity.length();
+  const ballY = ball.position.y;
+  let quality = 1.0;
+  quality -= Math.max(0,speed - 4.5) * 0.08;
+  if(ballY > 1.85 * char.profile.height) quality -= 0.18;
+  if(ballY < 0.35) quality -= 0.06;
+  quality += (char.profile.handle - 1) * 0.22;
+  quality += (char.profile.jump - 1) * 0.08;
+  quality += (char.profile.block - 1) * 0.06;
+  if(char.velocity && char.velocity.length() > 5.5) quality -= 0.12;
+  return THREE.MathUtils.clamp(quality,0.15,0.98);
+}
+
+function getPickupPriorityScore(char){
+  const flatDist = flatDistance(char.group.position,ball.position);
+  const handDist = Math.min(
+    getWorldHand(char,"left").distanceTo(ball.position),
+    getWorldHand(char,"right").distanceTo(ball.position)
+  );
+  let score = 0;
+  score += (2.2 - flatDist) * 1.8;
+  score += (1.5 - handDist) * 1.2;
+  score += char.profile.handle * 0.35;
+  score += char.profile.jump * 0.12;
+  score += Math.random() * 0.15;
+  return score;
+}
+
+function bobbleLooseBall(char){
+  const forward = getForward(char.angle);
+  const right = getBodyRightVector(char);
+  const bobbleDir = forward.clone()
+    .multiplyScalar(0.8)
+    .add(right.clone().multiplyScalar((Math.random() - 0.5) * 1.4))
+    .normalize();
+  ballVelocity.copy(bobbleDir.multiplyScalar(2.3 + Math.random() * 1.6));
+  ballVelocity.y = 0.8 + Math.random() * 1.4;
+  loosePickupDelay = 0.18;
+
+  char.moveState = "bobble";
+  char.moveTimer = 0;
+  char.moveDuration = 0.32;
+  char.moveMeta = char.moveMeta || {};
+  char.moveMeta.gatherType = null;
+  flash(`${char.id.toUpperCase()} bobbled it!`);
+}
+
+function attemptLooseBallGather(char){
+  const gatherType = ball.position.y > 1.0 ? "catch" : "pickup";
+  const quality = getLooseBallPickupQuality(char);
+  if(Math.random() <= quality){
+    gainPossession(char.id);
+    char.moveState = "gather";
+    char.moveTimer = 0;
+    char.moveDuration = 0.22;
+    char.moveMeta = char.moveMeta || {};
+    char.moveMeta.gatherType = gatherType;
+    flash(gatherType === "catch" ? `${char.id.toUpperCase()} catches it!` : `${char.id.toUpperCase()} picks it up!`);
+    return;
+  }
+  bobbleLooseBall(char);
+}
+
 function handleLooseBallPickup(){
   if(ballState !== "loose") return;
   if(loosePickupDelay > 0) return;
 
-  const d1 = flatDistance(p1.group.position,ball.position);
-  const d2 = flatDistance(p2.group.position,ball.position);
+  const p1Can = canPickupLooseBall(p1);
+  const p2Can = canPickupLooseBall(p2);
 
-  const p1Grab = d1 < .95 && ball.position.y < 1.1;
-  const p2Grab = d2 < .95 && ball.position.y < 1.1;
+  if(!p1Can && !p2Can) return;
 
-  if(p1Grab && p2Grab) gainPossession(d1 <= d2 ? "p1" : "p2");
-  else if(p1Grab) gainPossession("p1");
-  else if(p2Grab) gainPossession("p2");
+  if(p1Can && p2Can){
+    const p1Score = getPickupPriorityScore(p1);
+    const p2Score = getPickupPriorityScore(p2);
+    if(p1Score >= p2Score) attemptLooseBallGather(p1);
+    else attemptLooseBallGather(p2);
+    return;
+  }
+
+  if(p1Can) attemptLooseBallGather(p1);
+  else if(p2Can) attemptLooseBallGather(p2);
 }
 
 function segmentSphereIntersect(a,b,center,radius){
@@ -2872,6 +3047,7 @@ function shotValueFor(ownerId){
 }
 
 function gainPossession(who){
+  const newOwner = who === "p1" ? p1 : p2;
   possession = who;
   ballOwner = who;
   ballState = "dribble";
@@ -2882,7 +3058,7 @@ function gainPossession(who){
   hasShotThisPossession = false;
   layupActive = false;
   foulMeter = 0;
-  loosePickupDelay = 0;
+  loosePickupDelay = .12;
   ballCollisionCooldown = 0;
   crossover.active = false;
   crossover.progress = 1;
@@ -2892,6 +3068,10 @@ function gainPossession(who){
 
   ballSideValue = 1;
   ballSide = "right";
+
+  const secureHand = getWorldHand(newOwner,"right");
+  const chest = newOwner.group.position.clone().add(new THREE.Vector3(0,1.24*newOwner.profile.height,-0.25));
+  ball.position.copy(secureHand.lerp(chest,.55));
 }
 
 function resetPossession(who,reposition){
