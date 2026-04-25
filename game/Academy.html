@@ -58,6 +58,26 @@ h1{
   color:white;
   background:#26354e;
 }
+.optionRow{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin:8px 0 14px;
+}
+.optionBtn{
+  padding:7px 11px;
+  border:none;
+  border-radius:999px;
+  background:#33486a;
+  color:#fff;
+  cursor:pointer;
+  font-size:12px;
+  font-weight:bold;
+}
+.optionBtn.selected{
+  background:#65f0ff;
+  color:#112;
+}
 .modeBtn.selected,.difficultyBtn.selected{
   background:#ffd56a;
   color:#111;
@@ -150,6 +170,8 @@ h1{
 .bar{height:100%;width:100%;}
 #p1SprintBar{background:linear-gradient(90deg,#66ff99,#ffee55);}
 #p2SprintBar{background:linear-gradient(90deg,#66ccff,#ffee55);}
+#p1TakeoverBar{background:linear-gradient(90deg,#3bf98a,#ffd43d,#ff7a3d);}
+#p2TakeoverBar{background:linear-gradient(90deg,#59c8ff,#9d6cff,#ff7a3d);}
 #powerBar{background:linear-gradient(90deg,#47ff7d,#ffee55,#ff5d5d);}
 #foulBar{background:linear-gradient(90deg,#89c4ff,#ffcc33,#ff3333);}
 #crossBar{background:linear-gradient(90deg,#ff5555,#ffee55,#66ff99);}
@@ -266,6 +288,13 @@ button.small{
     <div class="sectionTitle" style="margin-top:16px;">Bot Difficulty</div>
     <div id="difficultyButtons"></div>
 
+    <div class="sectionTitle" style="margin-top:12px;">Game Mode</div>
+    <div id="gameModeButtons" class="optionRow"></div>
+    <div class="sectionTitle">Rules & Style</div>
+    <div id="ruleButtons" class="optionRow"></div>
+    <div class="sectionTitle">Graphics Quality</div>
+    <div id="qualityButtons" class="optionRow"></div>
+
     <button id="startBtn">START GAME</button>
 
     <div class="sub" style="margin-top:14px;text-align:left;">
@@ -304,6 +333,10 @@ button.small{
 
   <div>P2 Sprint</div>
   <div class="barWrap"><div id="p2SprintBar" class="bar"></div></div>
+  <div>P1 Takeover</div>
+  <div class="barWrap"><div id="p1TakeoverBar" class="bar"></div></div>
+  <div>P2 Takeover</div>
+  <div class="barWrap"><div id="p2TakeoverBar" class="bar"></div></div>
 </div>
 
 <div id="msg">Choose Mode</div>
@@ -311,6 +344,7 @@ button.small{
 <div id="p1Label" class="splitLabel">PLAYER 1</div>
 <div id="p2Label" class="splitLabel">PLAYER 2</div>
 <div id="hideTip">Press H to hide/show UI</div>
+<div id="shotFeedback" class="splitLabel" style="left:50%;transform:translateX(-50%);bottom:auto;top:72px;display:none;"></div>
 <div id="winnerOverlay">
   <div id="winnerCard">
     <div id="winnerText">P1 WINS!</div>
@@ -328,6 +362,14 @@ let p1, p2, ball, rim, backboard;
 let scoreboardPlane, scoreboardTexture, scoreboardCtx;
 let arcLine;
 let arenaWalls = [];
+let ledBoardMesh, ledBoardTexture, ledBoardCtx;
+let crowdMembers = [];
+let crowdWave = 0;
+let arenaLightStrips = [];
+let shotTrailPool = [];
+let shotTrailActive = [];
+let particlePool = [];
+let particlesActive = [];
 
 let keys = {};
 let gameStarted = false;
@@ -376,6 +418,16 @@ let screenShake = 0;
 const DOUBLE_TAP_WINDOW = 0.28;
 let botBrain = null;
 const moveFeedbackTimers = [];
+let ledBoardTimer = 0;
+let activeSlowMo = {timer:0, scale:1};
+let cameraEffects = {shake:0, zoomPulse:0};
+let gameMode = {targetScore:11, winBy2:true, makeItTakeIt:false, losersBall:false, arcade:false};
+const qualitySettings = {
+  low:{crowd:false,particles:false,reflections:false,glow:false},
+  medium:{crowd:true,particles:true,reflections:false,glow:true},
+  high:{crowd:true,particles:true,reflections:true,glow:true}
+};
+let graphicsQuality = "medium";
 
 let crossover = {
   active:false,
@@ -505,10 +557,43 @@ function buildMenu(){
     diffBox.appendChild(btn);
   });
 
+  buildOptionButtons("gameModeButtons",[
+    {label:"First to 7",onClick:()=>targetScore=7,selected:()=>targetScore===7},
+    {label:"First to 11",onClick:()=>targetScore=11,selected:()=>targetScore===11},
+    {label:"First to 21",onClick:()=>targetScore=21,selected:()=>targetScore===21}
+  ]);
+  buildOptionButtons("ruleButtons",[
+    {label:"Win by 2",onClick:()=>{gameMode.winBy2=!gameMode.winBy2;winBy=gameMode.winBy2?2:1;},selected:()=>gameMode.winBy2},
+    {label:"Make it take it",onClick:()=>gameMode.makeItTakeIt=!gameMode.makeItTakeIt,selected:()=>gameMode.makeItTakeIt},
+    {label:"Loser's ball",onClick:()=>gameMode.losersBall=!gameMode.losersBall,selected:()=>gameMode.losersBall},
+    {label:"Arcade mode",onClick:()=>gameMode.arcade=!gameMode.arcade,selected:()=>gameMode.arcade}
+  ]);
+  buildOptionButtons("qualityButtons",[
+    {label:"Low",onClick:()=>setGraphicsQuality("low"),selected:()=>graphicsQuality==="low"},
+    {label:"Medium",onClick:()=>setGraphicsQuality("medium"),selected:()=>graphicsQuality==="medium"},
+    {label:"High",onClick:()=>setGraphicsQuality("high"),selected:()=>graphicsQuality==="high"}
+  ]);
+
   document.getElementById("startBtn").onclick = startGame;
   document.getElementById("hideUiBtn").onclick = toggleUI;
   document.getElementById("rematchBtn").onclick = () => rematchSamePlayers();
   document.getElementById("changeCharsBtn").onclick = () => returnToCharacterMenu();
+}
+
+function buildOptionButtons(containerId, options){
+  const box = document.getElementById(containerId);
+  options.forEach(opt=>{
+    const btn = document.createElement("button");
+    btn.className = "optionBtn";
+    btn.textContent = opt.label;
+    btn.onclick = () => {
+      opt.onClick();
+      [...box.children].forEach(c=>c.classList.remove("selected"));
+      options.forEach((o,i)=>{ if(o.selected()) box.children[i].classList.add("selected"); });
+    };
+    if(opt.selected()) btn.classList.add("selected");
+    box.appendChild(btn);
+  });
 }
 
 function buildCharacterCards(containerId, which){
@@ -533,6 +618,7 @@ function buildCharacterCards(containerId, which){
 }
 
 function startGame(){
+  winBy = gameMode.winBy2 ? 2 : 1;
   if(p1) scene.remove(p1.group);
   if(p2) scene.remove(p2.group);
 
@@ -592,6 +678,8 @@ function init(){
   buildHoop();
   buildBall();
   createArcLine();
+  createParticlePool();
+  setGraphicsQuality(graphicsQuality);
 
   window.addEventListener("resize", onResize);
   window.addEventListener("keydown", onKeyDown);
@@ -610,7 +698,7 @@ function addSpotLight(x,y,z){
 function buildArena(){
   const court = new THREE.Mesh(
     new THREE.BoxGeometry(COURT_W,.18,COURT_L),
-    new THREE.MeshStandardMaterial({map:makeCourtTexture(),roughness:.5,metalness:.03})
+    new THREE.MeshStandardMaterial({map:makeImprovedCourtTexture(),roughness:.34,metalness:.16,emissive:0x0f0a04,emissiveIntensity:.08})
   );
   court.position.y = -.09;
   court.receiveShadow = true;
@@ -656,6 +744,9 @@ function buildArena(){
   scene.add(key);
 
   buildThreePointLine(line);
+  addCourtLogos();
+  addFloorScuffs();
+  addGlowingCourtLines();
   buildArenaWalls();
 
   // Back wall / crowd end zone behind the hoop
@@ -679,17 +770,10 @@ function buildArena(){
     scene.add(m);
   });
 
-  const colors=[0xffd56a,0x1d6cff,0xff4b3d,0x29c77a,0xffffff,0x9d6cff];
-  for(let row=0;row<5;row++){
-    for(let i=0;i<30;i++){
-      const fan = new THREE.Mesh(
-        new THREE.SphereGeometry(.13,10,10),
-        new THREE.MeshStandardMaterial({color:colors[(i+row)%colors.length],roughness:.55})
-      );
-      fan.position.set(-8.4+i*.58,1.15+row*.42,-14.3-row*.2);
-      scene.add(fan);
-    }
-  }
+  buildCrowdSection("back");
+  buildCrowdSection("left");
+  buildCrowdSection("right");
+  buildArenaBanners();
 
   // Side bleacher hints so the world feels less empty.
   for(let side of [-1,1]){
@@ -701,6 +785,16 @@ function buildArena(){
       bench.position.set(side*(COURT_W/2+1.3+r*.62),.35+r*.35,0);
       scene.add(bench);
     }
+  }
+
+  for(let i=0;i<20;i++){
+    const strip = new THREE.Mesh(
+      new THREE.BoxGeometry((COURT_W+1.2)/20,.08,.16),
+      new THREE.MeshBasicMaterial({color:0x65d9ff})
+    );
+    strip.position.set(-COURT_W/2-.6+(i+.5)*((COURT_W+1.2)/20),.15,COURT_L/2+.45);
+    scene.add(strip);
+    arenaLightStrips.push(strip);
   }
 }
 
@@ -747,6 +841,88 @@ function buildArenaWalls(){
   });
 }
 
+function buildCrowdSection(side){
+  const colors=[0xffd56a,0x1d6cff,0xff4b3d,0x29c77a,0xffffff,0x9d6cff];
+  const sideSign = side === "left" ? -1 : side === "right" ? 1 : 0;
+  const rows = side === "back" ? 5 : 4;
+  const cols = side === "back" ? 30 : 24;
+  for(let row=0;row<rows;row++){
+    for(let i=0;i<cols;i++){
+      const fan = new THREE.Mesh(
+        new THREE.SphereGeometry(.13,8,8),
+        new THREE.MeshStandardMaterial({color:colors[(i+row)%colors.length],roughness:.58})
+      );
+      if(side === "back") fan.position.set(-8.4+i*.58,1.15+row*.42,-14.3-row*.2);
+      else fan.position.set(sideSign*(COURT_W/2+2.7+row*.48),1.1+row*.4,-8+i*.7);
+      fan.userData.baseY = fan.position.y;
+      crowdMembers.push(fan);
+      scene.add(fan);
+    }
+  }
+}
+
+function updateCrowd(dt){
+  if(!qualitySettings[graphicsQuality].crowd) return;
+  crowdWave = Math.max(0,crowdWave - dt*.7);
+  const t = performance.now()*.001;
+  crowdMembers.forEach((fan,i)=>{
+    fan.position.y = fan.userData.baseY + Math.sin(t*2.4 + i*.17)*.03 + crowdWave*.14*Math.sin(i*.27+t*8);
+    fan.material.emissive = new THREE.Color(0x000000).lerp(new THREE.Color(0x3355aa),crowdWave*.55);
+  });
+}
+
+function buildArenaBanners(){
+  const txtTex = makeBannerTexture("STREET COURT • FIRST TO 11 • NO EASY BUCKETS");
+  const banner = new THREE.Mesh(
+    new THREE.PlaneGeometry(10.5,1.3),
+    new THREE.MeshStandardMaterial({map:txtTex,transparent:true,emissive:0x102034,emissiveIntensity:.5})
+  );
+  banner.position.set(0,5.3,-14.72);
+  scene.add(banner);
+
+  const ledCanvas = document.createElement("canvas");
+  ledCanvas.width = 1024; ledCanvas.height = 128;
+  ledBoardCtx = ledCanvas.getContext("2d");
+  ledBoardTexture = new THREE.CanvasTexture(ledCanvas);
+  ledBoardMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(COURT_W+1,.9),
+    new THREE.MeshBasicMaterial({map:ledBoardTexture,transparent:true})
+  );
+  ledBoardMesh.position.set(0,2.2,COURT_L/2+.62);
+  scene.add(ledBoardMesh);
+  updateLEDBoards("FIRST TO 11");
+}
+
+function makeBannerTexture(text){
+  const c = document.createElement("canvas");
+  c.width = 1024; c.height = 128;
+  const g = c.getContext("2d");
+  g.fillStyle = "#09111a"; g.fillRect(0,0,c.width,c.height);
+  g.strokeStyle = "#ffd56a"; g.lineWidth = 8; g.strokeRect(8,8,c.width-16,c.height-16);
+  g.fillStyle = "#d9efff"; g.font = "bold 48px Arial"; g.textAlign = "center"; g.textBaseline = "middle";
+  g.fillText(text,c.width/2,c.height/2);
+  return new THREE.CanvasTexture(c);
+}
+
+function updateLEDBoards(text){
+  if(!ledBoardCtx) return;
+  ledBoardCtx.fillStyle = "#03050a";
+  ledBoardCtx.fillRect(0,0,1024,128);
+  ledBoardCtx.fillStyle = "#38ff9a";
+  ledBoardCtx.font = "bold 58px 'Courier New', monospace";
+  ledBoardCtx.textAlign = "center";
+  ledBoardCtx.textBaseline = "middle";
+  ledBoardCtx.fillText(text,512,64);
+  ledBoardTexture.needsUpdate = true;
+}
+
+function pulseArenaLights(colorIntensity){
+  arenaLightStrips.forEach((s,i)=>{
+    const pulse = (.5+.5*Math.sin(performance.now()*.004 + i*.4))*colorIntensity;
+    s.material.color.setRGB(0.2 + pulse*0.2,0.5 + pulse*0.35,0.9);
+  });
+}
+
 function buildThreePointLine(lineFn){
   const mat = new THREE.LineBasicMaterial({color:0xffffff});
   const pts = [];
@@ -768,24 +944,24 @@ function buildThreePointLine(lineFn){
   lineFn(COURT_W/2-1.35,-10.2,.08,4.25);
 }
 
-function makeCourtTexture(){
+function makeImprovedCourtTexture(){
   const canvas = document.createElement("canvas");
   canvas.width = 1024;
   canvas.height = 1024;
   const ctx = canvas.getContext("2d");
   const grad = ctx.createLinearGradient(0,0,1024,1024);
-  grad.addColorStop(0,"#c9823e");
-  grad.addColorStop(.5,"#b87338");
-  grad.addColorStop(1,"#9f5e2d");
+  grad.addColorStop(0,"#cf8b45");
+  grad.addColorStop(.5,"#bd7838");
+  grad.addColorStop(1,"#9b5a2b");
   ctx.fillStyle = grad;
   ctx.fillRect(0,0,1024,1024);
-  for(let i=0;i<24;i++){
-    ctx.fillStyle = i%2 ? "rgba(255,255,255,.035)" : "rgba(0,0,0,.035)";
-    ctx.fillRect(i*44,0,44,1024);
+  for(let i=0;i<28;i++){
+    ctx.fillStyle = i%2 ? "rgba(255,255,255,.04)" : "rgba(0,0,0,.05)";
+    ctx.fillRect(i*37,0,37,1024);
   }
-  ctx.strokeStyle = "rgba(70,35,10,.28)";
-  ctx.lineWidth = 3;
-  for(let x=0;x<1024;x+=44){
+  ctx.strokeStyle = "rgba(70,35,10,.35)";
+  ctx.lineWidth = 2;
+  for(let x=0;x<1024;x+=37){
     ctx.beginPath();
     ctx.moveTo(x,0);
     ctx.lineTo(x,1024);
@@ -799,6 +975,63 @@ function makeCourtTexture(){
   tex.repeat.set(1.1,1.6);
   tex.anisotropy = 8;
   return tex;
+}
+
+function addCourtLogos(){
+  const logoCanvas = document.createElement("canvas");
+  logoCanvas.width = 512; logoCanvas.height = 512;
+  const ctx = logoCanvas.getContext("2d");
+  ctx.clearRect(0,0,512,512);
+  ctx.fillStyle = "rgba(16,34,64,.82)";
+  ctx.beginPath(); ctx.arc(256,256,160,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle = "rgba(255,213,106,.9)";
+  ctx.lineWidth = 12;
+  ctx.beginPath(); ctx.arc(256,256,150,0,Math.PI*2); ctx.stroke();
+  ctx.fillStyle = "#f2f6ff";
+  ctx.font = "bold 46px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText("1V1 ARENA",256,250);
+  ctx.font = "bold 24px Arial";
+  ctx.fillText("STREET COURT",256,292);
+  const logoTex = new THREE.CanvasTexture(logoCanvas);
+  const logo = new THREE.Mesh(
+    new THREE.PlaneGeometry(3.8,3.8),
+    new THREE.MeshStandardMaterial({map:logoTex,transparent:true,opacity:.9,emissive:0x112244,emissiveIntensity:.25})
+  );
+  logo.rotation.x = -Math.PI/2;
+  logo.position.set(0,.03,.2);
+  scene.add(logo);
+}
+
+function addFloorScuffs(){
+  const scuffGeo = new THREE.PlaneGeometry(1.2,1.2);
+  for(let i=0;i<18;i++){
+    const dark = i%3===0;
+    const m = new THREE.Mesh(
+      scuffGeo,
+      new THREE.MeshBasicMaterial({color:dark?0x2a1808:0x4b2d14,transparent:true,opacity:dark?.11:.08})
+    );
+    m.rotation.x = -Math.PI/2;
+    m.rotation.z = Math.random()*Math.PI;
+    const nearRimBias = i < 10 ? -9.8 + Math.random()*2.6 : -2 + Math.random()*4;
+    m.position.set((Math.random()-.5)*10,.026,nearRimBias);
+    scene.add(m);
+  }
+}
+
+function addGlowingCourtLines(){
+  const mat = new THREE.MeshBasicMaterial({color:0xbbe7ff,transparent:true,opacity:.42});
+  const lines = [
+    new THREE.Mesh(new THREE.BoxGeometry(12,.02,.06),mat),
+    new THREE.Mesh(new THREE.BoxGeometry(5.2,.02,.06),mat),
+    new THREE.Mesh(new THREE.BoxGeometry(.06,.02,4.25),mat),
+    new THREE.Mesh(new THREE.BoxGeometry(.06,.02,4.25),mat)
+  ];
+  lines[0].position.set(0,.08,-6.7);
+  lines[1].position.set(0,.08,-10.8);
+  lines[2].position.set(-COURT_W/2+1.35,.08,-10.2);
+  lines[3].position.set(COURT_W/2-1.35,.08,-10.2);
+  lines.forEach(l=>scene.add(l));
 }
 
 function buildHoop(){
@@ -953,6 +1186,13 @@ function createCharacter(profile,pos,id){
   body.position.y = 1.32*h;
   body.castShadow = true;
   group.add(body);
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(.3*w,.38*w,.55*h,16),jersey);
+  torso.position.y = 1.18*h;
+  torso.scale.set(1,.92,1);
+  group.add(torso);
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(.08*w,.09*w,.12*h,12),skin);
+  neck.position.y = 1.88*h;
+  group.add(neck);
 
   const head = new THREE.Mesh(new THREE.SphereGeometry(.28*w,24,24),skin);
   head.position.y = 2.12*h;
@@ -1012,6 +1252,10 @@ function createCharacter(profile,pos,id){
   rightShoe.position.x = .18*w;
   group.add(rightShoe);
 
+  addShoeDetails({profile,group,leftShoe,rightShoe});
+  addJerseyTrim({profile,group,w,h});
+  addPlayerAccessories({profile,group,w,h,leftArm,rightArm,leftLeg,rightLeg});
+
   const shadow = new THREE.Mesh(
     new THREE.CircleGeometry(.72*w,32),
     new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:.22})
@@ -1052,6 +1296,8 @@ function createCharacter(profile,pos,id){
     lastRightTapTime:-99,
     lastPumpFakeTime:-99,
     lastContestLabel:"Open",
+    anim:{runCycle:0,lean:0,targetLean:0,armBlend:0,legBlend:0,torsoTwist:0,landingSquash:0,contactReact:0,shotFollowThrough:0},
+    takeover:0,takeoverActive:false,takeoverTimer:0,stamina:1,dribbleStyle:"normal",stats:{fga:0,fgm:0,tpa:0,tpm:0,blocks:0,steals:0,turnovers:0,ankle:0,perfect:0},
     movement:{
       acceleration:5.2 * (1 + (profile.speed-1)*.7),
       lateralSpeed:3.4 * (1 + (profile.speed-1)*.52 + (profile.handle-1)*.23),
@@ -1082,6 +1328,54 @@ function makeTextSprite(text,color,size){
   ctx.fillText(text,128,68);
   const tex = new THREE.CanvasTexture(canvas);
   return new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true}));
+}
+
+function addPlayerAccessories(char){
+  const {profile,group,w,h,leftArm,rightArm,leftLeg,rightLeg} = char;
+  const bandMat = new THREE.MeshStandardMaterial({color:0xffffff,roughness:.35});
+  const leftBand = new THREE.Mesh(new THREE.TorusGeometry(.12*w,.03*w,8,24),bandMat);
+  leftBand.position.set(-.48*w,1.2*h,0); leftBand.rotation.y = Math.PI/2; group.add(leftBand);
+  const rightBand = leftBand.clone(); rightBand.position.x = .48*w; group.add(rightBand);
+  const sockMat = new THREE.MeshStandardMaterial({color:profile.name.includes("Sky")||profile.name.includes("Tower")?0xe8f6ff:0xdadada,roughness:.55});
+  const lSock = new THREE.Mesh(new THREE.CylinderGeometry(.11*w,.11*w,.22*h,10),sockMat);
+  lSock.position.set(-.18*w,.24*h,.02); group.add(lSock);
+  const rSock = lSock.clone(); rSock.position.x=.18*w; group.add(rSock);
+  if(profile.name.includes("Flash")){
+    const headband = new THREE.Mesh(new THREE.TorusGeometry(.24*w,.03*w,8,28),new THREE.MeshStandardMaterial({color:0xffffff}));
+    headband.position.y = 2.14*h; headband.rotation.x = Math.PI/2; group.add(headband);
+  }
+  if(profile.name.includes("Claw") || profile.name.includes("Crafty") || profile.name.includes("Smooth")){
+    const sleeveMat = new THREE.MeshStandardMaterial({color:0x111820,roughness:.48});
+    const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(.1*w,.1*w,.35*h,10),sleeveMat);
+    sleeve.position.set(profile.name.includes("Crafty")?- .46*w:.46*w,1.18*h,0); group.add(sleeve);
+  }
+  addPlayerRimLight({group});
+}
+
+function addShoeDetails(char){
+  const accentMap = {
+    "Sky Riser":0x74d2ff,"Flash Guard":0xffd84d,"Smooth Shooter":0xffffff,"Paint Bruiser":0x333333,
+    "The Claw":0x5d6ba0,"Rocket Wing":0xff6a2d,"Crafty Lefty":0x22aa99,"Glass Tower":0x66d9ff
+  };
+  const accent = accentMap[char.profile.name] || 0xffffff;
+  [char.leftShoe,char.rightShoe].forEach((s)=>{
+    const sole = new THREE.Mesh(new THREE.BoxGeometry(.32*char.profile.width,.04,.48*char.profile.width),new THREE.MeshStandardMaterial({color:0x111111}));
+    sole.position.y = -.07; s.add(sole);
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(.3*char.profile.width,.03,.08),new THREE.MeshStandardMaterial({color:accent,emissive:accent,emissiveIntensity:.2}));
+    stripe.position.set(0,.05,.1); s.add(stripe);
+  });
+}
+
+function addJerseyTrim(char){
+  const trimMat = new THREE.MeshStandardMaterial({color:0xfff1b5,emissive:0x302810,emissiveIntensity:.2});
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(.35*char.w,.03,8,26),trimMat);
+  ring.position.set(0,1.63*char.h,.01); ring.rotation.x = Math.PI/2; char.group.add(ring);
+}
+
+function addPlayerRimLight(char){
+  const rim = new THREE.PointLight(0x8fd1ff,.45,4.4);
+  rim.position.set(0,1.8,1.1);
+  char.group.add(rim);
 }
 
 
@@ -1119,6 +1413,34 @@ function screenSideToBodySide(char,screenSide){
 
 function bodySideName(sideSign){
   return sideSign < 0 ? "left" : "right";
+}
+
+function smoothAnimValue(value,target,speed,dt){
+  return value + (target - value) * (1 - Math.exp(-speed * dt));
+}
+
+function setAnimationState(char,state){
+  char.anim.targetLean = state === "backpedal" ? -.12 : state === "run" ? .12 : 0;
+}
+
+function updateAnimationBlend(char,dt){
+  char.anim.lean = smoothAnimValue(char.anim.lean,char.anim.targetLean,8,dt);
+  char.anim.armBlend = smoothAnimValue(char.anim.armBlend,char.hasBall?1:0,10,dt);
+  char.anim.legBlend = smoothAnimValue(char.anim.legBlend,char.velocity.length()>.2?1:0,7,dt);
+  char.anim.contactReact = smoothAnimValue(char.anim.contactReact,0,6,dt);
+}
+
+function animateTorsoLean(char,dt){
+  char.group.rotation.x = smoothAnimValue(char.group.rotation.x,-char.anim.lean + char.anim.contactReact*.06,9,dt);
+}
+
+function animateLanding(char,dt){
+  char.anim.landingSquash = smoothAnimValue(char.anim.landingSquash,char.onGround?0:0.1,6,dt);
+  char.group.scale.y = 1 - char.anim.landingSquash;
+}
+
+function animateContactReaction(char,dt){
+  char.group.rotation.z = smoothAnimValue(char.group.rotation.z,char.anim.contactReact*.08,8,dt);
 }
 
 function resetArmDefaults(char){
@@ -1197,8 +1519,12 @@ function onKeyDown(e){
 
   if(!gameStarted || possessionFrozen || gameOver) return;
 
-  if(e.code === "Space") handleActionButton(p1);
+  if(e.code === "Space"){
+    if(keys["ShiftLeft"] && p1 && p1.takeover >= 100) activateTakeover(p1);
+    handleActionButton(p1);
+  }
   if(e.code === "Enter" || e.code === "Numpad0"){
+    if((keys["ShiftRight"] || keys["NumpadAdd"]) && p2 && p2.takeover >= 100) activateTakeover(p2);
     if(twoPlayerMode) handleActionButton(p2);
   }
 
@@ -1329,6 +1655,19 @@ function animate(){
       checkSteals();
       checkBlocksAndCatches();
       checkFouls(dt);
+      updateTakeover(dt);
+      updateCrowd(dt);
+      updateShotTrail(dt);
+      updateParticles(dt);
+      updateCameraEffects(dt);
+      updateReboundAI(dt);
+      ledBoardTimer -= dt;
+      if(ledBoardTimer <= 0){
+        ledBoardTimer = 2.8;
+        const msgs = ["GAME POINT","ANKLE BREAKER","BLOCKED","HE'S HEATING UP",`FIRST TO ${targetScore}`];
+        updateLEDBoards(msgs[Math.floor(Math.random()*msgs.length)]);
+      }
+      pulseArenaLights(.35 + crowdWave*.5);
     }
   }
 
@@ -1407,13 +1746,17 @@ function updatePlayerControl(char,ctrl,dt){
   if(wantsSprint && char.sprint > SPRINT_MIN){
     char.velocity.add(forward.clone().multiplyScalar(sprintSpeed));
     char.sprint = Math.max(0,char.sprint - SPRINT_DRAIN * dt);
+    char.stamina = Math.max(0,char.stamina - (.32 + (1-char.profile.width)*.08)*dt);
   }else{
     if(keys[ctrl.forward]) char.velocity.add(forward.clone().multiplyScalar(baseSpeed));
     char.sprint = Math.min(1,char.sprint + SPRINT_RECOVER * dt);
+    char.stamina = Math.min(1,char.stamina + (keys[ctrl.forward] ? .12 : .24)*dt*(char.profile.width>1.1?.8:1.05));
   }
 
   if(keys[ctrl.back]) char.velocity.add(forward.clone().multiplyScalar(-backSpeed));
+  setAnimationState(char, keys[ctrl.back] ? "backpedal" : (keys[ctrl.forward] ? "run" : "idle"));
   if(char.stumbledTimer > 0) char.velocity.multiplyScalar(.45);
+  if(char.stamina < .2) char.velocity.multiplyScalar(.82);
 
   char.group.position.add(char.velocity.clone().multiplyScalar(dt));
   keepInCourt(char.group.position);
@@ -1422,6 +1765,12 @@ function updatePlayerControl(char,ctrl,dt){
 
 function updateBot(dt){
   if(!botBrain) initBotBrain();
+  updateBotMemoryOfPlayer();
+  adjustBotPersonalityByDifficulty();
+  if(ballState === "loose"){
+    moveBotToward(p2,ball.position.clone(),difficultySettings[selectedDifficulty].speed*1.25,dt);
+    return;
+  }
   updateBotReactionMemory(dt);
   if(possession === "p1") updateBotDefense(dt);
   else updateBotOffense(dt);
@@ -1548,6 +1897,28 @@ function updateBotReactionMemory(dt){
     botBrain.reactionTimer = THREE.MathUtils.randFloat(s.reactionMin,s.reactionMax);
   }
 }
+function updateBotMemoryOfPlayer(){
+  if(!botBrain) return;
+  botBrain.playerTendency = getPlayerTendency();
+}
+function getPlayerTendency(){
+  if(!p1) return "balanced";
+  const shotRate = p1.stats.fga > 0 ? p1.stats.tpa / Math.max(1,p1.stats.fga) : .3;
+  if(shotRate > .45) return "perimeter";
+  if(p1.stats.ankle > 1) return "dribble-heavy";
+  return "drive";
+}
+function chooseCounterMove(){
+  const t = botBrain && botBrain.playerTendency;
+  if(t === "perimeter") return "closeout";
+  if(t === "dribble-heavy") return "body-up";
+  return "paint-wall";
+}
+function adjustBotPersonalityByDifficulty(){
+  if(!botBrain) return;
+  const d = selectedDifficulty;
+  botBrain.adaptiveness = d === "legend" ? .95 : d === "elite" ? .78 : d === "hard" ? .58 : .35;
+}
 function getDefensiveTarget(defender,ballHandler){
   const hoopBias = HOOP_POS.clone().sub(ballHandler.group.position); hoopBias.y = 0; hoopBias.normalize();
   const cutoff = ballHandler.group.position.clone().add(hoopBias.multiplyScalar(1.2 + (1-defender.movement.recoverySpeed)*.4));
@@ -1609,7 +1980,7 @@ function resolveBodyCollisions(){
     keepInCourt(p1.group.position);
     keepInCourt(p2.group.position);
     applyBodyContact(possession === "p1" ? p1 : p2, possession === "p1" ? p2 : p1);
-    screenShake = Math.min(.22,screenShake + .04);
+    screenShake = Math.min(.22,screenShake + .04); applyCameraShake(.06);
   }
 }
 
@@ -1626,6 +1997,7 @@ function updateMoveState(char,dt){
   if(char.moveState === "stepback") updateStepBack(char,dt,pct);
   if(char.moveState === "pumpfake") updatePumpFake(char,dt,pct);
   if(char.moveState === "sidehop") updateSideHop(char,dt,pct);
+  if(char.moveState === "postup") updatePostUp(char,dt);
   if(pct >= 1){ char.moveState = "normal"; char.moveTimer = 0; char.moveDuration = 0; }
 }
 function startStepBack(char){
@@ -1683,11 +2055,50 @@ function triggerAnkleBreaker(defender,attacker){
   }
 }
 function applyBodyContact(offense,defense){
+  const contact = detectDriveContact(offense,defense);
+  if(contact) applyContactPhysics(offense,defense,contact);
   const d = flatDistance(offense.group.position,defense.group.position);
   if(d > offense.bodyRadius + defense.bodyRadius + .22) return;
   const diff = defense.movement.contactStrength - offense.movement.contactStrength;
   if(diff > 0) offense.velocity.multiplyScalar(1 - Math.min(.2,diff*.08));
 }
+function detectDriveContact(offense,defense){
+  const d = flatDistance(offense.group.position,defense.group.position);
+  if(d < .9) return defense.movement.contactStrength > offense.movement.contactStrength ? "hard_bump" : "light_bump";
+  return null;
+}
+function applyContactPhysics(offense,defense,contactType){
+  if(contactType === "hard_bump"){ offense.stamina = Math.max(0,offense.stamina-.08); offense.anim.contactReact = .7; }
+  if(contactType === "light_bump"){ offense.anim.contactReact = .35; }
+}
+function startContactAnimation(char,type){ char.anim.contactReact = type === "hard_bump" ? .75 : .35; }
+function calculateBlowByChance(offense,defense){
+  return THREE.MathUtils.clamp(.24 + (offense.profile.speed-defense.profile.speed)*.35 + (offense.profile.handle-defense.profile.steal)*.18, .06,.78);
+}
+
+function startPostUp(char){ char.moveState = "postup"; char.moveTimer = 0; char.moveDuration = .55; }
+function updatePostUp(char,dt){
+  const defender = char.id === "p1" ? p2 : p1;
+  const toDef = defender.group.position.clone().sub(char.group.position); toDef.y=0;
+  if(toDef.length() < 1.35){
+    const push = getForward(char.angle).multiplyScalar((char.movement.contactStrength-defender.movement.contactStrength)*.35*dt);
+    char.group.position.add(push);
+  }
+}
+function startDropStep(char,side){ startSideHop(char,side==="left"?"left":"right"); }
+function shootHookShot(char){ shotPower = .55; shootBall(char,"hook"); }
+function shootFadeaway(char){ startStepBack(char); }
+function startHesitation(char){ char.dribbleStyle = "hesitation"; char.stamina = Math.max(0,char.stamina-.04); }
+function startBehindBack(char,side){ attemptCrossover(char,side==="left"?-1:1); }
+function startSpinMove(char,side){ char.angle += (side==="left"?1:-1)*Math.PI*.65; }
+function startEuroStep(char,side){ startSideHop(char,side==="left"?"left":"right"); }
+function shootFloater(char){ shotPower = .44; shootBall(char,"floater"); }
+function shootRunner(char){ shotPower = .52; shootBall(char,"runner"); }
+function isDefenderInGoodPosition(defender,offense){ return flatDistance(defender.group.position,offense.group.position) < 1.7; }
+function getContestConeStrength(defender,shooter){ return isDefenderInGoodPosition(defender,shooter) ? .65 : .2; }
+function startCloseout(defender){ defender.velocity.add(getForward(defender.angle).multiplyScalar(1.1)); }
+function startRecoveryStep(defender){ defender.stumbledTimer = Math.max(defender.stumbledTimer,.18); }
+function punishBadReach(defender){ defender.stumbledTimer = .45; defender.stamina = Math.max(0,defender.stamina-.1); }
 function calculateShotContest(shooter){
   const defender = shooter.id === "p1" ? p2 : p1;
   const d = flatDistance(shooter.group.position,defender.group.position);
@@ -1695,6 +2106,20 @@ function calculateShotContest(shooter){
   if(shooter.moveMeta && shooter.moveMeta.lastShotType === "stepback") value *= .82;
   const label = value < .12 ? "Open" : value < .28 ? "Light Contest" : value < .48 ? "Good Contest" : value < .7 ? "Heavy Contest" : "Smothered";
   return {value,label};
+}
+function calculateCoverage(shooter,defender){ return calculateShotContest(shooter).label; }
+function calculateReleaseGrade(power,idealPower){
+  const d = Math.abs(power-idealPower);
+  if(d < .04) return "Perfect";
+  if(d < .08) return power < idealPower ? "Slightly Early" : "Slightly Late";
+  if(d < .14) return "Good";
+  return power < idealPower ? "Early" : "Late";
+}
+function showShotBreakdown(release,coverage,type,result){
+  const el = document.getElementById("shotFeedback");
+  el.style.display = "block";
+  el.textContent = `${release} • ${coverage} • ${type} • ${result}`;
+  setTimeout(()=>{ el.style.display = "none"; }, 1500);
 }
 function showShotFeedback(text){ showMoveFeedback(text,.8); }
 function showMoveFeedback(text,duration=1){
@@ -1705,10 +2130,42 @@ function updateMoveFeedback(dt){
   for(const m of moveFeedbackTimers) m.time -= dt;
   while(moveFeedbackTimers.length && moveFeedbackTimers[0].time <= 0) moveFeedbackTimers.shift();
 }
+function createShotTrail(){
+  if(!qualitySettings[graphicsQuality].particles) return;
+  if(!shotTrailPool.length){
+    for(let i=0;i<24;i++){
+      const p = new THREE.Mesh(new THREE.SphereGeometry(.06,8,8),new THREE.MeshBasicMaterial({color:0x8affee,transparent:true,opacity:0}));
+      scene.add(p); shotTrailPool.push(p);
+    }
+  }
+  const p = shotTrailPool.pop();
+  if(!p) return;
+  p.position.copy(ball.position);
+  p.material.opacity = .65;
+  p.userData.life = .34;
+  shotTrailActive.push(p);
+}
+function updateShotTrail(dt){
+  for(let i=shotTrailActive.length-1;i>=0;i--){
+    const p = shotTrailActive[i];
+    p.userData.life -= dt;
+    p.material.opacity = Math.max(0,p.userData.life/.34);
+    p.scale.multiplyScalar(.98);
+    if(p.userData.life <= 0){ p.material.opacity = 0; p.scale.set(1,1,1); shotTrailActive.splice(i,1); shotTrailPool.push(p); }
+  }
+}
+function animateNetSwish(){
+  pulseArenaLights(.8);
+}
 
 function animateCharacter(char,dt){
   char.handsUpTime = Math.max(0,char.handsUpTime - dt);
   char.dribbleBounce += dt * 7.8;
+  updateAnimationBlend(char,dt);
+  animateTorsoLean(char,dt);
+  animateLanding(char,dt);
+  animateContactReaction(char,dt);
+  updateDribbleStyle(char,dt);
 
   animateRunCycle(char,dt);
 
@@ -1750,16 +2207,40 @@ function animateShotTimeline(char,pct,type){
   poseShotArms(char,pct);
 }
 function animateDribble(char,dt){
+  const handPos = getDribbleHandPosition(char);
   if(ballSideValue < 0){
     char.leftForearm.rotation.x = Math.sin(char.dribbleBounce)*.45;
-    char.leftHand.position.z -= .12;
+    char.leftHand.position.z = handPos.z;
+    char.leftHand.position.x = handPos.x;
     char.rightArm.rotation.z += .08;
   }else{
     char.rightForearm.rotation.x = Math.sin(char.dribbleBounce)*.45;
-    char.rightHand.position.z -= .12;
+    char.rightHand.position.z = handPos.z;
+    char.rightHand.position.x = -handPos.x;
     char.leftArm.rotation.z -= .08;
   }
 }
+function updateDribbleStyle(char,dt){
+  if(!char.hasBall || ballState !== "dribble") return;
+  const speed = char.velocity.length();
+  if(char.moveState === "stepback") char.dribbleStyle = "stepback_gather";
+  else if(char.moveState === "sidehop") char.dribbleStyle = "crossover";
+  else if(speed > 6) char.dribbleStyle = "sprint";
+  else if(speed < 1.4) char.dribbleStyle = "protect";
+  else char.dribbleStyle = "normal";
+  if(char.dribbleStyle === "protect") animateProtectDribble(char,dt);
+  if(char.dribbleStyle === "hesitation") animateHesitationDribble(char,dt);
+  if(char.dribbleStyle === "crossover") animateLowCrossover(char,dt);
+}
+function getDribbleHandPosition(char){
+  const beat = Math.sin(char.dribbleBounce);
+  const depth = char.dribbleStyle === "sprint" ? -.24 : char.dribbleStyle === "protect" ? -.05 : -.14;
+  const width = char.dribbleStyle === "protect" ? -.58*char.profile.width : -.65*char.profile.width;
+  return {x:width + beat*.02,z:depth + Math.max(0,-beat)*-.12};
+}
+function animateProtectDribble(char,dt){ char.rightArm.rotation.y = .3; }
+function animateHesitationDribble(char,dt){ char.anim.targetLean = Math.sin(char.dribbleBounce)>0 ? -.04 : .18; }
+function animateLowCrossover(char,dt){ char.leftHand.position.y = Math.min(char.leftHand.position.y,.58*char.profile.height); char.rightHand.position.y = Math.min(char.rightHand.position.y,.58*char.profile.height); }
 function animateDefensiveStance(char,dt){
   char.group.position.y = Math.max(0,char.group.position.y - dt*.2);
   char.leftLeg.rotation.z = -.18; char.rightLeg.rotation.z = .18;
@@ -1811,6 +2292,7 @@ function updateBall(dt){
   }
 
   if(ballState === "shot" || ballState === "loose"){
+    if(ballState === "shot" && Math.random() < dt*24) createShotTrail();
     ballVelocity.y += GRAVITY * dt;
     ball.position.add(ballVelocity.clone().multiplyScalar(dt));
 
@@ -1823,6 +2305,7 @@ function updateBall(dt){
       ballVelocity.z *= .76;
       if(Math.abs(ballVelocity.y) < 1.2 && ballState === "shot") ballState = "loose";
       ball.scale.set(1.08,.92,1.08);
+      playDribbleSound();
     }
 
     handleBackboardAndRim();
@@ -1871,6 +2354,9 @@ function handleBackboardAndRim(){
     ballVelocity.z *= -.62;
     ballVelocity.x *= .88;
     ballVelocity.y *= .9;
+    handleBankShot();
+    spawnParticle(ball.position,0x88d7ff);
+    playRimSound();
   }
 
   const rimFlat = new THREE.Vector3(ball.position.x-HOOP_POS.x,0,ball.position.z-HOOP_POS.z);
@@ -1882,6 +2368,9 @@ function handleBackboardAndRim(){
     ballVelocity.x += n.x*2.5;
     ballVelocity.z += n.z*2.5;
     ballVelocity.y = Math.abs(ballVelocity.y)*.55 + 1.2;
+    handleRimRattle();
+    spawnParticle(ball.position,0xff9f5a);
+    playRimSound();
   }
 }
 
@@ -1924,12 +2413,12 @@ function updateLayup(dt){
         scoreP1 += 2;
         flash("P1 layup!");
         updateMomentum(p1,true,2,"Good Contest");
-        setTimeout(() => resetPossession("p2",true),650);
+        setTimeout(() => resetPossession(nextPossessionAfterScore("p1"),true),650);
       }else{
         scoreP2 += 2;
         flash("P2 layup!");
         updateMomentum(p2,true,2,"Good Contest");
-        setTimeout(() => resetPossession("p1",true),650);
+        setTimeout(() => resetPossession(nextPossessionAfterScore("p2"),true),650);
       }
       updateScoreboard();
       checkGameWinner();
@@ -1986,12 +2475,14 @@ function shootBall(char,shotType="jumper"){
 
   const power = THREE.MathUtils.clamp(shotPower,.12,1);
   const idealPower = THREE.MathUtils.clamp(dist/10.5,.35,.92);
+  const release = calculateReleaseGrade(power,idealPower);
   const baseAcc = (1 - Math.abs(power - idealPower))*char.profile.shot;
   const staminaFactor = .84 + char.sprint*.16;
   const streakFactor = 1 + char.confidence*.08;
   const moveFactor = shotType === "stepback" ? (1.02 + char.stepBackQuality*.14) : (shotType === "pullup" ? .94 : 1);
   const contestFactor = 1 - contest.value*.36;
   const accuracy = THREE.MathUtils.clamp(baseAcc * staminaFactor * streakFactor * moveFactor * contestFactor,0,1);
+  if(release === "Perfect"){ accuracy && (char.stats.perfect += 1); pulseArenaLights(.9); }
 
   target.x += (Math.random()-.5) * (2.0*(1-accuracy));
   target.z += (Math.random()-.5) * (2.4*(1-accuracy));
@@ -2004,6 +2495,11 @@ function shootBall(char,shotType="jumper"){
   ballVelocity.y = (needed.y - .5*GRAVITY*flightTime*flightTime) / flightTime;
 
   shotPower = 0;
+  char.stats.fga += 1;
+  if(dist >= THREE_RADIUS) char.stats.tpa += 1;
+  showShotBreakdown(release,contest.label,shotType === "pullup" ? "Pull-Up" : shotType === "stepback" ? "Step-Back" : "Jumper","In Flight");
+  createShotTrail();
+  playShotSound();
   flash(`${char.id.toUpperCase()} ${shotType === "stepback" ? "step-back jumper!" : "shot!"}`);
 }
 
@@ -2039,7 +2535,9 @@ function checkSteals(){
     flash(`${defender.id.toUpperCase()} steal!`);
     showShotFeedback("Stripped!");
     defender.confidence = Math.min(1,defender.confidence + .08);
-    screenShake = Math.min(.22,screenShake + .08);
+    defender.stats.steals += 1;
+    addTakeover(10,defender);
+    screenShake = Math.min(.22,screenShake + .08); applyCameraShake(.09);
   }
 }
 
@@ -2062,7 +2560,10 @@ function checkBlocksAndCatches(){
       ballVelocity.set((Math.random()-.5)*2,2.8,2.2);
       flash(`${blocker.id.toUpperCase()} perfect layup block!`);
       showShotFeedback("Blocked");
-      screenShake = Math.min(.3,screenShake + .14);
+      blocker.stats.blocks += 1;
+      addTakeover(12,blocker);
+      playBlockSound();
+      screenShake = Math.min(.3,screenShake + .14); applyCameraShake(.16);
     }
     return;
   }
@@ -2083,7 +2584,10 @@ function checkBlocksAndCatches(){
       ballVelocity.y = 2.2;
       flash(`${blocker.id.toUpperCase()} blocked it!`);
       showShotFeedback("Blocked");
-      screenShake = Math.min(.28,screenShake + .12);
+      blocker.stats.blocks += 1;
+      addTakeover(10,blocker);
+      playBlockSound();
+      screenShake = Math.min(.28,screenShake + .12); applyCameraShake(.13);
     }
   }
 }
@@ -2110,16 +2614,28 @@ function checkScore(){
     const points = shotValueFor(ballOwner);
     if(ballOwner === "p1"){
       scoreP1 += points;
+      p1.stats.fgm += 1;
+      if(points===3) p1.stats.tpm += 1;
       flash(`P1 scores ${points}!`);
+      showShotBreakdown("Good",p1.lastContestLabel,points===3?"Jumper":"Layup","Made");
+      animateNetSwish();
+      playSwishSound();
+      playCrowdPulse();
       updateMomentum(p1, true, points, p1.lastContestLabel);
       updateMomentum(p2, false, 0, p1.lastContestLabel);
-      setTimeout(() => resetPossession("p2",true),900);
+      setTimeout(() => resetPossession(nextPossessionAfterScore("p1"),true),900);
     }else{
       scoreP2 += points;
+      p2.stats.fgm += 1;
+      if(points===3) p2.stats.tpm += 1;
       flash(`P2 scores ${points}!`);
+      showShotBreakdown("Good",p2.lastContestLabel,points===3?"Jumper":"Layup","Made");
+      animateNetSwish();
+      playSwishSound();
+      playCrowdPulse();
       updateMomentum(p2, true, points, p2.lastContestLabel);
       updateMomentum(p1, false, 0, p2.lastContestLabel);
-      setTimeout(() => resetPossession("p1",true),900);
+      setTimeout(() => resetPossession(nextPossessionAfterScore("p2"),true),900);
     }
 
     updateScoreboard();
@@ -2135,11 +2651,16 @@ function checkGameWinner(){
     }
   }
 }
+function nextPossessionAfterScore(scorer){
+  if(gameMode.makeItTakeIt) return scorer;
+  if(gameMode.losersBall) return scorer === "p1" ? (scoreP1 <= scoreP2 ? "p1":"p2") : (scoreP2 <= scoreP1 ? "p2":"p1");
+  return scorer === "p1" ? "p2" : "p1";
+}
 function endGame(winner){
   gameOver = true;
   possessionFrozen = true;
   showWinnerOverlay(winner);
-  screenShake = .28;
+  screenShake = .28; applyCameraShake(.22); triggerSlowMo(.45,.55);
 }
 
 function shotValueFor(ownerId){
@@ -2235,11 +2756,22 @@ function returnToCharacterMenu(){
 }
 function showWinnerOverlay(winner){
   document.getElementById("winnerText").textContent = winner === "p1" ? "P1 WINS!" : "P2 WINS!";
+  showWinnerStats();
   document.getElementById("winnerOverlay").style.display = "flex";
 }
 function hideWinnerOverlay(){
   document.getElementById("winnerOverlay").style.display = "none";
 }
+function updatePlayerStats(char,key,amount=1){
+  if(!char || !char.stats) return;
+  char.stats[key] = (char.stats[key] || 0) + amount;
+}
+function showWinnerStats(){
+  if(!p1 || !p2) return;
+  const line = `P1 ${p1.stats.fgm}/${p1.stats.fga} FG, STL ${p1.stats.steals}, BLK ${p1.stats.blocks} | P2 ${p2.stats.fgm}/${p2.stats.fga} FG, STL ${p2.stats.steals}, BLK ${p2.stats.blocks}`;
+  document.getElementById("winnerSub").textContent = line;
+}
+function buildBroadcastScorebug(){}
 
 function resetBody(char){
   char.group.position.y = 0;
@@ -2286,13 +2818,17 @@ function updateCameras(dt){
 function updateFollowCamera(cam,char,dt){
   const forward = getForward(char.angle);
   const target = char.group.position.clone()
-    .add(forward.clone().multiplyScalar(-5.4))
+    .add(forward.clone().multiplyScalar(-5.4 - cameraEffects.zoomPulse*2.2))
     .add(new THREE.Vector3(0,3.35,0));
 
   cam.position.lerp(target,dt*8);
   if(screenShake > 0){
     cam.position.x += (Math.random()-.5)*screenShake;
     cam.position.y += (Math.random()-.5)*screenShake*.4;
+  }
+  if(cameraEffects.shake > 0){
+    cam.position.x += (Math.random()-.5)*cameraEffects.shake;
+    cam.position.y += (Math.random()-.5)*cameraEffects.shake*.45;
   }
 
   const look = char.group.position.clone()
@@ -2342,6 +2878,10 @@ function updateHUD(){
   document.getElementById("foulBar").style.width = `${Math.round(foulMeter*100)}%`;
   document.getElementById("p1SprintBar").style.width = `${Math.round((p1?p1.sprint:1)*100)}%`;
   document.getElementById("p2SprintBar").style.width = `${Math.round((p2?p2.sprint:1)*100)}%`;
+  document.getElementById("p1TakeoverBar").style.width = `${Math.round((p1?p1.takeover:0))}%`;
+  document.getElementById("p2TakeoverBar").style.width = `${Math.round((p2?p2.takeover:0))}%`;
+  document.getElementById("p1SprintBar").style.opacity = p1 && p1.stamina < .2 ? .45 + Math.sin(performance.now()*.02)*.3 : 1;
+  document.getElementById("p2SprintBar").style.opacity = p2 && p2.stamina < .2 ? .45 + Math.sin(performance.now()*.02)*.3 : 1;
   let ruleText = `First to ${targetScore}, win by ${winBy}`;
   if(scoreP1 >= targetScore-1 && scoreP2 >= targetScore-1) ruleText += " (Win by 2)";
   document.getElementById("gameRulesText").textContent = ruleText;
@@ -2407,12 +2947,104 @@ function updateMomentum(char,made,points,contestLabel){
   if(char.hotStreak >= 3) showMoveFeedback("Heating up");
   if(char.hotStreak <= -2) showMoveFeedback("Cold");
   if(char.confidence > .5) showMoveFeedback("Locked in");
+  addTakeover(made ? (points===3?15:11) : -6,char);
+  if(made) crowdWave = Math.min(1,crowdWave + .45);
 }
+
+function addTakeover(amount,char){
+  const mult = gameMode.arcade ? 1.3 : 1;
+  char.takeover = THREE.MathUtils.clamp(char.takeover + amount*mult,0,100);
+  if(char.takeover >= 100 && !char.takeoverActive) flash(`${char.id.toUpperCase()} TAKEOVER READY`);
+}
+function activateTakeover(char){
+  if(char.takeover < 100 || char.takeoverActive) return;
+  char.takeoverActive = true;
+  char.takeoverTimer = 12;
+  char.takeover = 100;
+  applyCameraShake(.15);
+  updateLEDBoards("HE'S HEATING UP");
+}
+function updateTakeover(dt){
+  [p1,p2].forEach(c=>{
+    if(!c) return;
+    if(c.takeoverActive){
+      c.takeoverTimer -= dt;
+      c.takeover = THREE.MathUtils.clamp(c.takeover - dt*9,0,100);
+      if(c.takeoverTimer <= 0 || c.takeover <= 0){ c.takeoverActive = false; c.takeover = Math.max(0,c.takeover); }
+    }
+  });
+}
+function drawTakeoverUI(){}
+
+function applyCameraShake(amount){ cameraEffects.shake = Math.min(.4,cameraEffects.shake + amount*(gameMode.arcade?1.3:1)); }
+function applyCameraZoomPulse(amount){ cameraEffects.zoomPulse = Math.min(.3,cameraEffects.zoomPulse + amount); }
+function updateCameraEffects(dt){
+  cameraEffects.shake = Math.max(0,cameraEffects.shake - dt*.8);
+  cameraEffects.zoomPulse = Math.max(0,cameraEffects.zoomPulse - dt*.9);
+  if(activeSlowMo.timer > 0){
+    activeSlowMo.timer -= dt;
+    const s = activeSlowMo.scale;
+    clock.elapsedTime += dt*(s-1);
+  }
+}
+function triggerSlowMo(duration,scale){ activeSlowMo = {timer:duration,scale}; }
+
+function createParticlePool(){
+  for(let i=0;i<40;i++){
+    const p = new THREE.Mesh(new THREE.SphereGeometry(.05,6,6),new THREE.MeshBasicMaterial({color:0xffd56a,transparent:true,opacity:0}));
+    scene.add(p); particlePool.push(p);
+  }
+}
+function spawnParticle(pos,color=0xffd56a){
+  if(!qualitySettings[graphicsQuality].particles) return;
+  const p = particlePool.pop(); if(!p) return;
+  p.position.copy(pos); p.material.color.setHex(color); p.material.opacity=.75;
+  p.userData.vel = new THREE.Vector3((Math.random()-.5)*1.2,Math.random()*1.8,(Math.random()-.5)*1.2);
+  p.userData.life = .45;
+  particlesActive.push(p);
+}
+function updateParticles(dt){
+  for(let i=particlesActive.length-1;i>=0;i--){
+    const p = particlesActive[i];
+    p.userData.life -= dt;
+    p.position.addScaledVector(p.userData.vel,dt);
+    p.material.opacity = Math.max(0,p.userData.life/.45);
+    if(p.userData.life<=0){ p.material.opacity=0; particlesActive.splice(i,1); particlePool.push(p); }
+  }
+}
+function setGraphicsQuality(level){ graphicsQuality = level in qualitySettings ? level : "medium"; }
+
+function calculateReboundVector(){ return new THREE.Vector3((Math.random()-.5)*4,2.2,Math.random()*3.8); }
+function updateReboundAI(dt){
+  if(!gameStarted || twoPlayerMode || ballState !== "loose") return;
+  moveBotToward(p2,ball.position.clone(),difficultySettings[selectedDifficulty].speed*1.1,dt);
+}
+function handleRimRattle(){ ballVelocity.multiplyScalar(.92); ballVelocity.y += .25; }
+function handleBankShot(){ ballVelocity.z *= -.7; }
 
 function flash(text){
   document.getElementById("msg").textContent = text;
   messageTimer = 1.55;
 }
+
+let audioCtx;
+function tone(freq=240,duration=.06,type="sine",gain=.03){
+  if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = type; o.frequency.value = freq; g.gain.value = gain;
+  o.connect(g).connect(audioCtx.destination);
+  o.start();
+  o.stop(audioCtx.currentTime + duration);
+}
+function playDribbleSound(){ tone(132,.035,"triangle",.012); }
+function playShoeSqueak(){ tone(840,.025,"sawtooth",.008); }
+function playShotSound(){ tone(520,.05,"triangle",.02); }
+function playRimSound(){ tone(300,.06,"square",.015); }
+function playSwishSound(){ tone(980,.04,"sine",.01); }
+function playBlockSound(){ tone(180,.08,"square",.024); }
+function playCrowdPulse(){ tone(110,.12,"sawtooth",.015); }
+function playBuzzer(){ tone(98,.3,"square",.02); }
 
 function keepInCourt(pos){
   pos.x = THREE.MathUtils.clamp(pos.x,-COURT_W/2+.8,COURT_W/2-.8);
