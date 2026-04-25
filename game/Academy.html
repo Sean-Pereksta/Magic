@@ -405,6 +405,10 @@ let layupTimer = 0;
 let layupDuration = 0.68;
 let layupScored = false;
 let layupBlockWindow = 0;
+let loosePickupDelay = 0;
+let ballCollisionCooldown = 0;
+let debugDirections = false;
+let debugDirHelpers = null;
 
 let foulMeter = 0;
 let messageTimer = 0;
@@ -621,12 +625,17 @@ function startGame(){
   winBy = gameMode.winBy2 ? 2 : 1;
   if(p1) scene.remove(p1.group);
   if(p2) scene.remove(p2.group);
+  if(debugDirHelpers && debugDirHelpers.group){
+    scene.remove(debugDirHelpers.group);
+    debugDirHelpers = null;
+  }
 
   p1 = createCharacter(profiles[selectedP1], P1_OFFENSE_START, "p1");
   p2 = createCharacter(profiles[selectedP2], P2_DEFENSE_START, "p2");
 
   scene.add(p1.group);
   scene.add(p2.group);
+  ensureDebugDirectionMeshes();
 
   document.getElementById("menu").style.display = "none";
   document.getElementById("p1Label").style.display = twoPlayerMode ? "block" : "none";
@@ -1295,6 +1304,8 @@ function createCharacter(profile,pos,id){
     lastLeftTapTime:-99,
     lastRightTapTime:-99,
     lastPumpFakeTime:-99,
+    debugLeftInputTimer:0,
+    debugRightInputTimer:0,
     lastContestLabel:"Open",
     anim:{runCycle:0,lean:0,targetLean:0,armBlend:0,legBlend:0,torsoTwist:0,landingSquash:0,contactReact:0,shotFollowThrough:0},
     takeover:0,takeoverActive:false,takeoverTimer:0,stamina:1,dribbleStyle:"normal",stats:{fga:0,fgm:0,tpa:0,tpm:0,blocks:0,steals:0,turnovers:0,ankle:0,perfect:0},
@@ -1378,22 +1389,74 @@ function addPlayerRimLight(char){
   char.group.add(rim);
 }
 
+function createDebugArrow(color){
+  return new THREE.ArrowHelper(new THREE.Vector3(0,0,1),new THREE.Vector3(),1,color,.28,.16);
+}
+
+function ensureDebugDirectionMeshes(){
+  if(debugDirHelpers || !scene || !p1 || !p2) return;
+  const group = new THREE.Group();
+  const mk = ()=>({
+    forward:createDebugArrow(0x34ff66),
+    left:createDebugArrow(0x2d8cff),
+    right:createDebugArrow(0xffdd44),
+    reach:new THREE.Mesh(new THREE.SphereGeometry(.08,10,10),new THREE.MeshBasicMaterial({color:0xff3344}))
+  });
+  const p1d = mk();
+  const p2d = mk();
+  [p1d,p2d].forEach((d)=>{
+    group.add(d.forward); group.add(d.left); group.add(d.right); group.add(d.reach);
+  });
+  group.visible = debugDirections;
+  scene.add(group);
+  debugDirHelpers = {group,p1:p1d,p2:p2d};
+}
+
+function updateDebugDirections(dt){
+  if(!p1 || !p2) return;
+  ensureDebugDirectionMeshes();
+  p1.debugLeftInputTimer = Math.max(0,(p1.debugLeftInputTimer || 0) - dt);
+  p1.debugRightInputTimer = Math.max(0,(p1.debugRightInputTimer || 0) - dt);
+  p2.debugLeftInputTimer = Math.max(0,(p2.debugLeftInputTimer || 0) - dt);
+  p2.debugRightInputTimer = Math.max(0,(p2.debugRightInputTimer || 0) - dt);
+  if(!debugDirHelpers || !debugDirections) return;
+  const updateChar = (char,dbg)=>{
+    const chest = char.group.position.clone().add(new THREE.Vector3(0,1.2*char.profile.height,0));
+    const forward = getForward(char.angle).clone().normalize();
+    dbg.forward.position.copy(chest);
+    dbg.forward.setDirection(forward);
+    dbg.forward.setLength(1.3);
+    const leftVec = getScreenSideVectorForChar(char,"left");
+    const rightVec = getScreenSideVectorForChar(char,"right");
+    dbg.left.position.copy(chest);
+    dbg.left.setDirection(leftVec);
+    dbg.left.setLength(char.debugLeftInputTimer > 0 ? 1.15 : .7);
+    dbg.right.position.copy(chest);
+    dbg.right.setDirection(rightVec);
+    dbg.right.setLength(char.debugRightInputTimer > 0 ? 1.15 : .7);
+    const reachPoint = getReachHitPoint(char,char.swipeSide || "right");
+    dbg.reach.position.copy(reachPoint);
+  };
+  updateChar(p1,debugDirHelpers.p1);
+  updateChar(p2,debugDirHelpers.p2);
+}
+
 
 function getActiveCameraForChar(char){
   if(twoPlayerMode && gameStarted) return char === p2 ? camP2 : camP1;
   return camMain;
 }
 
-function getScreenRightVectorForChar(char){
+function getScreenSideVectorForChar(char,screenSide){
   const cam = getActiveCameraForChar(char);
-  const dir = new THREE.Vector3();
-  cam.getWorldDirection(dir);
-  dir.y = 0;
-  if(dir.lengthSq() < .0001) dir.set(0,0,-1);
-  dir.normalize();
-  const up = new THREE.Vector3(0,1,0);
-  const right = new THREE.Vector3().crossVectors(dir,up).normalize();
-  return right;
+  const camDir = new THREE.Vector3();
+  cam.getWorldDirection(camDir);
+  camDir.y = 0;
+  if(camDir.lengthSq() < .0001) camDir.set(0,0,-1);
+  camDir.normalize();
+  const worldUp = new THREE.Vector3(0,1,0);
+  const screenRight = new THREE.Vector3().crossVectors(camDir,worldUp).normalize();
+  return screenSide === "right" ? screenRight : screenRight.clone().multiplyScalar(-1);
 }
 
 function getBodyRightVector(char){
@@ -1401,18 +1464,10 @@ function getBodyRightVector(char){
   return new THREE.Vector3(f.z,0,-f.x).normalize();
 }
 
-function screenSideToBodySide(char,screenSide){
-  // screenSide: -1 means left side of that player's viewport, +1 means right side.
-  // Compare the body's right side against the current camera's screen-right direction.
+function getBestHandForScreenSide(char,screenSide){
+  const screenVec = getScreenSideVectorForChar(char,screenSide);
   const bodyRight = getBodyRightVector(char);
-  const screenRight = getScreenRightVectorForChar(char);
-  const bodyRightLooksRight = bodyRight.dot(screenRight) >= 0 ? 1 : -1;
-  const desiredScreen = screenSide === "left" ? -1 : 1;
-  return desiredScreen * bodyRightLooksRight;
-}
-
-function bodySideName(sideSign){
-  return sideSign < 0 ? "left" : "right";
+  return bodyRight.dot(screenVec) >= 0 ? "right" : "left";
 }
 
 function smoothAnimValue(value,target,speed,dt){
@@ -1465,29 +1520,27 @@ function poseSwipeArm(char,side,reach){
   const upper = side === "left" ? char.leftArm : char.rightArm;
   const fore = side === "left" ? char.leftForearm : char.rightForearm;
   const hand = side === "left" ? char.leftHand : char.rightHand;
-
-  // Shoulder stays attached. Forearm and hand extend forward from that shoulder.
-  upper.position.set(sign*.45*w,1.48*h,-.03);
-  upper.rotation.set(-.55-reach*.3,0,sign*.22);
-  fore.position.set(sign*(.52*w + reach*.06*w),1.12*h,-.10-reach*.44);
-  fore.rotation.set(-1.05-reach*.55,0,sign*.12);
-  hand.position.set(sign*(.58*w + reach*.09*w),.94*h,-.18-reach*.78);
+  const forwardZ = -1;
+  upper.position.set(sign * 0.42 * w, 1.48 * h, -0.08);
+  fore.position.set(sign * 0.46 * w, 1.18 * h, forwardZ * (0.28 + reach * 0.42));
+  hand.position.set(sign * 0.48 * w, 1.02 * h, forwardZ * (0.46 + reach * 0.75));
+  upper.rotation.set(-0.65 - reach * 0.35, 0, sign * 0.18);
+  fore.rotation.set(-1.05 - reach * 0.45, 0, sign * 0.08);
 }
 
 function poseBlockArms(char,reach){
   const w = char.profile.width;
   const h = char.profile.height;
-  // Attached shoulders, vertical contest, slight forward extension.
-  char.leftArm.position.set(-.42*w,1.55*h,-.02);
-  char.rightArm.position.set(.42*w,1.55*h,-.02);
-  char.leftForearm.position.set(-.36*w,1.95*h,-.12-reach*.2);
-  char.rightForearm.position.set(.36*w,1.95*h,-.12-reach*.2);
-  char.leftHand.position.set(-.33*w,2.28*h,-.18-reach*.28);
-  char.rightHand.position.set(.33*w,2.28*h,-.18-reach*.28);
-  char.leftArm.rotation.set(-1.75-reach*.35,0,-.18);
-  char.rightArm.rotation.set(-1.75-reach*.35,0,.18);
-  char.leftForearm.rotation.set(-.95-reach*.35,0,-.08);
-  char.rightForearm.rotation.set(-.95-reach*.35,0,.08);
+  char.leftArm.position.set(-.4*w,1.55*h,-.08);
+  char.rightArm.position.set(.4*w,1.55*h,-.08);
+  char.leftForearm.position.set(-.34*w,1.9*h,-.24-reach*.22);
+  char.rightForearm.position.set(.34*w,1.9*h,-.24-reach*.22);
+  char.leftHand.position.set(-.31*w,2.2*h,-.34-reach*.3);
+  char.rightHand.position.set(.31*w,2.2*h,-.34-reach*.3);
+  char.leftArm.rotation.set(-1.66-reach*.32,0,-.16);
+  char.rightArm.rotation.set(-1.66-reach*.32,0,.16);
+  char.leftForearm.rotation.set(-.9-reach*.32,0,-.06);
+  char.rightForearm.rotation.set(-.9-reach*.32,0,.06);
 }
 
 function poseShotArms(char,pct){
@@ -1514,6 +1567,14 @@ function onKeyDown(e){
 
   if(e.key.toLowerCase() === "h" && gameStarted){
     toggleUI();
+    return;
+  }
+  if(e.code === "F3"){
+    debugDirections = !debugDirections;
+    if(debugDirHelpers){
+      debugDirHelpers.group.visible = debugDirections;
+    }
+    flash(debugDirections ? "Direction debug ON" : "Direction debug OFF");
     return;
   }
 
@@ -1565,23 +1626,26 @@ function handleActionButton(char){
 
 function handleHandAction(char,screenSide){
   if(gameOver) return;
-  const bodySide = screenSideToBodySide(char,screenSide);
-  const localSideName = bodySideName(bodySide);
+  const handSide = getBestHandForScreenSide(char,screenSide);
+  if(screenSide === "left") char.debugLeftInputTimer = .2;
+  else char.debugRightInputTimer = .2;
 
   if(possession === char.id && ballState === "dribble"){
     if(checkDoubleTap(char,screenSide)){
       startSideHop(char,screenSide);
       return;
     }
-    attemptCrossover(char,bodySide);
+    attemptCrossover(char,screenSide);
   }else{
-    char.swipeSide = localSideName;
+    char.swipeSide = handSide;
     char.swipeScreenSide = screenSide;
     char.swipeTime = .34;
   }
 }
 
-function attemptCrossover(char,desiredSide){
+function attemptCrossover(char,screenSide){
+  const handSide = getBestHandForScreenSide(char,screenSide);
+  const desiredSide = handSide === "left" ? -1 : 1;
   if(crossover.active && crossover.player === char){
     const unsafe = crossover.progress < .72 || crossover.riskWindow > 0;
     if(unsafe){
@@ -1611,6 +1675,7 @@ function attemptCrossover(char,desiredSide){
   crossover.to = desiredSide;
   crossover.progress = 0;
   crossover.riskWindow = .28;
+  crossover.screenSide = screenSide;
   flash(`${char.id.toUpperCase()} crossover!`);
 }
 
@@ -1652,6 +1717,8 @@ function animate(){
       updateCharacters(dt);
       updateBall(dt);
       updateLayup(dt);
+      loosePickupDelay = Math.max(0,loosePickupDelay - dt);
+      ballCollisionCooldown = Math.max(0,ballCollisionCooldown - dt);
       checkSteals();
       checkBlocksAndCatches();
       checkFouls(dt);
@@ -1671,6 +1738,7 @@ function animate(){
     }
   }
 
+  updateDebugDirections(dt);
   updateCameras(dt);
   updateHUD();
   renderScene();
@@ -1858,7 +1926,7 @@ function executeBotIntent(dt){
   }else if(intent==="step_back"){ startStepBack(bot); }
   else if(intent==="pump_fake"){ startPumpFake(bot); }
   else if(intent.includes("side_hop")){ startSideHop(bot,intent.includes("left")?"left":"right"); }
-  else if(intent.includes("crossover")){ attemptCrossover(bot,intent.includes("left")?-1:1); }
+  else if(intent.includes("crossover")){ attemptCrossover(bot,intent.includes("left")?"left":"right"); }
   else if(intent==="pull_up" && flatDistance(bot.group.position,HOOP_POS)<8.4){ shotPower = .58 + Math.random()*.24; shootBall(bot,"pullup"); }
   else if(intent==="post_up" || intent==="back_down"){ moveBotToward(bot,new THREE.Vector3(0,0,-8.7),difficultySettings[selectedDifficulty].speed*.86,dt); }
   else { moveBotToward(bot,new THREE.Vector3(2.2*Math.sin(performance.now()*.0017),0,-7.4),difficultySettings[selectedDifficulty].speed*.72,dt); }
@@ -2023,16 +2091,26 @@ function updatePumpFake(char,dt,pct){
 }
 function startSideHop(char,screenSide){
   if(char.moveState !== "normal" || char.sideHopCooldown > 0) return;
-  char.moveState = "sidehop"; char.moveTimer = 0; char.moveDuration = .34; char.sideHopCooldown = .55;
-  char.moveMeta.sideHop = screenSide; char.sprint = Math.max(0,char.sprint-.12);
+  const sideVec = getScreenSideVectorForChar(char,screenSide);
+  const handSide = getBestHandForScreenSide(char,screenSide);
+  char.moveState = "sidehop"; char.moveTimer = 0; char.moveDuration = .36; char.sideHopCooldown = .55;
+  char.moveMeta.sideHop = screenSide;
+  char.moveMeta.sideHopVec = sideVec.clone();
+  char.moveMeta.sideHopDistance = 1.25 + char.profile.handle * 0.25;
+  char.moveMeta.sideHopStart = char.group.position.clone();
+  char.moveMeta.sideHopHand = handSide;
+  char.sprint = Math.max(0,char.sprint-.12);
+  ballSide = handSide;
+  ballSideValue = handSide === "left" ? -1 : 1;
   showMoveFeedback("Side hop!");
   const defender = char.id === "p1" ? p2 : p1;
   triggerAnkleBreaker(defender,char);
 }
 function updateSideHop(char,dt,pct){
-  const right = getScreenRightVectorForChar(char);
-  const side = (char.moveMeta.sideHop || "right") === "left" ? -1 : 1;
-  char.group.position.add(right.multiplyScalar(side * (2.8 * (1-Math.abs(pct-.5))) * dt));
+  const sideVec = (char.moveMeta.sideHopVec || getScreenSideVectorForChar(char,char.moveMeta.sideHop || "right")).clone();
+  const dist = char.moveMeta.sideHopDistance || (1.25 + char.profile.handle * 0.25);
+  const speed = dist * (2.8 * (1-Math.abs(pct-.5)));
+  char.group.position.add(sideVec.multiplyScalar(speed * dt));
   keepInCourt(char.group.position);
 }
 function checkDoubleTap(char,side){
@@ -2089,7 +2167,7 @@ function startDropStep(char,side){ startSideHop(char,side==="left"?"left":"right
 function shootHookShot(char){ shotPower = .55; shootBall(char,"hook"); }
 function shootFadeaway(char){ startStepBack(char); }
 function startHesitation(char){ char.dribbleStyle = "hesitation"; char.stamina = Math.max(0,char.stamina-.04); }
-function startBehindBack(char,side){ attemptCrossover(char,side==="left"?-1:1); }
+function startBehindBack(char,side){ attemptCrossover(char,side==="left"?"left":"right"); }
 function startSpinMove(char,side){ char.angle += (side==="left"?1:-1)*Math.PI*.65; }
 function startEuroStep(char,side){ startSideHop(char,side==="left"?"left":"right"); }
 function shootFloater(char){ shotPower = .44; shootBall(char,"floater"); }
@@ -2253,7 +2331,12 @@ function animateRunCycle(char,dt){
   char.rightLeg.rotation.x = -walk*(.32 + speedScale*.2);
   char.group.position.y += Math.sin(performance.now()*.018) * .0008 * speedScale;
 }
-function animateSideHop(char,pct){ char.group.rotation.z = ((char.moveMeta.sideHop==="left")?-1:1) * Math.sin(pct*Math.PI)*.06; }
+function animateSideHop(char,pct){
+  const sideSign = (char.moveMeta.sideHop==="left")?-1:1;
+  char.group.rotation.z = sideSign * Math.sin(pct*Math.PI)*.06;
+  const protectHand = char.moveMeta.sideHopHand || getBestHandForScreenSide(char,char.moveMeta.sideHop || "right");
+  poseSwipeArm(char,protectHand,Math.sin(pct*Math.PI)*.42);
+}
 function animateStepBack(char,pct){ char.group.rotation.x = -Math.sin(pct*Math.PI)*.08; }
 function animatePumpFake(char,pct){ poseShotArms(char,Math.min(.45,pct*.9)); }
 function updateBall(dt){
@@ -2300,15 +2383,15 @@ function updateBall(dt){
 
     if(ball.position.y < BALL_RADIUS){
       ball.position.y = BALL_RADIUS;
-      ballVelocity.y *= -.58;
-      ballVelocity.x *= .76;
-      ballVelocity.z *= .76;
+      ballVelocity.copy(reflectVelocity(new THREE.Vector3(0,1,0),.58,.76));
       if(Math.abs(ballVelocity.y) < 1.2 && ballState === "shot") ballState = "loose";
       ball.scale.set(1.08,.92,1.08);
       playDribbleSound();
     }
 
     handleBackboardAndRim();
+    checkBallPlayerBodyCollision(p1);
+    checkBallPlayerBodyCollision(p2);
     checkScore();
     handleLooseBallPickup();
   }
@@ -2326,19 +2409,19 @@ function keepBallInBounds(){
 
   if(ball.position.x < minX){
     ball.position.x = minX;
-    ballVelocity.x = Math.abs(ballVelocity.x) * .72;
+    ballVelocity.copy(reflectVelocity(new THREE.Vector3(1,0,0),.72,.92));
   }
   if(ball.position.x > maxX){
     ball.position.x = maxX;
-    ballVelocity.x = -Math.abs(ballVelocity.x) * .72;
+    ballVelocity.copy(reflectVelocity(new THREE.Vector3(-1,0,0),.72,.92));
   }
   if(ball.position.z < minZ){
     ball.position.z = minZ;
-    ballVelocity.z = Math.abs(ballVelocity.z) * .72;
+    ballVelocity.copy(reflectVelocity(new THREE.Vector3(0,0,1),.72,.92));
   }
   if(ball.position.z > maxZ){
     ball.position.z = maxZ;
-    ballVelocity.z = -Math.abs(ballVelocity.z) * .72;
+    ballVelocity.copy(reflectVelocity(new THREE.Vector3(0,0,-1),.72,.92));
   }
 }
 
@@ -2351,8 +2434,7 @@ function handleBackboardAndRim(){
     ball.position.y < 4.55
   ){
     ball.position.z = -11.1;
-    ballVelocity.z *= -.62;
-    ballVelocity.x *= .88;
+    ballVelocity.copy(reflectVelocity(new THREE.Vector3(0,0,1),.62,.88));
     ballVelocity.y *= .9;
     handleBankShot();
     spawnParticle(ball.position,0x88d7ff);
@@ -2365,17 +2447,42 @@ function handleBackboardAndRim(){
 
   if(rimDist < RIM_RADIUS + BALL_RADIUS && rimDist > RIM_RADIUS - BALL_RADIUS && yDiff < .23){
     const n = rimFlat.normalize();
-    ballVelocity.x += n.x*2.5;
-    ballVelocity.z += n.z*2.5;
-    ballVelocity.y = Math.abs(ballVelocity.y)*.55 + 1.2;
+    ballVelocity.copy(reflectVelocity(new THREE.Vector3(n.x,0,n.z),.68,.9));
+    ballVelocity.y = Math.max(Math.abs(ballVelocity.y)*.55 + 1.2,1.2);
     handleRimRattle();
     spawnParticle(ball.position,0xff9f5a);
     playRimSound();
   }
 }
 
+function reflectVelocity(normal,bounce=.65,friction=.88){
+  const reflected = ballVelocity.clone().reflect(normal).multiplyScalar(bounce);
+  reflected.x *= friction;
+  reflected.z *= friction;
+  return reflected;
+}
+
+function checkBallPlayerBodyCollision(char){
+  if(!char || ballCollisionCooldown > 0) return;
+  if(ballState !== "shot" && ballState !== "loose") return;
+  const bodyCenter = char.group.position.clone().add(new THREE.Vector3(0,1.12*char.profile.height,0));
+  const radius = 0.42*char.profile.width + BALL_RADIUS;
+  const diff = ball.position.clone().sub(bodyCenter);
+  if(diff.length() < radius){
+    const n = diff.lengthSq() < 0.0001 ? getForward(char.angle).clone().multiplyScalar(-1) : diff.normalize();
+    ball.position.copy(bodyCenter.clone().add(n.clone().multiplyScalar(radius + 0.02)));
+    ballVelocity.copy(reflectVelocity(n,.58,.88));
+    ballVelocity.y = Math.max(ballVelocity.y,0.8);
+    if(ballState === "shot") ballState = "loose";
+    loosePickupDelay = Math.max(loosePickupDelay,.18);
+    ballCollisionCooldown = .06;
+    flash("Deflected!");
+  }
+}
+
 function handleLooseBallPickup(){
   if(ballState !== "loose") return;
+  if(loosePickupDelay > 0) return;
 
   const d1 = flatDistance(p1.group.position,ball.position);
   const d2 = flatDistance(p2.group.position,ball.position);
@@ -2388,25 +2495,91 @@ function handleLooseBallPickup(){
   else if(p2Grab) gainPossession("p2");
 }
 
+function segmentSphereIntersect(a,b,center,radius){
+  const ab = b.clone().sub(a);
+  const t = THREE.MathUtils.clamp(center.clone().sub(a).dot(ab) / Math.max(ab.lengthSq(),0.0001),0,1);
+  const closest = a.clone().add(ab.multiplyScalar(t));
+  return closest.distanceTo(center) <= radius;
+}
+
+function checkLayupDefenderCollision(owner,defender,prevBallPos,currentBallPos){
+  const bodyCenter = defender.group.position.clone().add(new THREE.Vector3(0,1.15*defender.profile.height,0));
+  const bodyRadius = 0.48*defender.profile.width;
+  const headCenter = defender.group.position.clone().add(new THREE.Vector3(0,2.05*defender.profile.height,0));
+  const headRadius = 0.28*defender.profile.width;
+  const leftHand = getWorldHand(defender,"left");
+  const rightHand = getWorldHand(defender,"right");
+  if(segmentSphereIntersect(prevBallPos,currentBallPos,bodyCenter,bodyRadius + BALL_RADIUS)) return {hit:true,type:"body",point:bodyCenter};
+  if(segmentSphereIntersect(prevBallPos,currentBallPos,headCenter,headRadius + BALL_RADIUS)) return {hit:true,type:"body",point:headCenter};
+  if(segmentSphereIntersect(prevBallPos,currentBallPos,leftHand,0.28*defender.profile.block + BALL_RADIUS)) return {hit:true,type:"hand",point:leftHand};
+  if(segmentSphereIntersect(prevBallPos,currentBallPos,rightHand,0.28*defender.profile.block + BALL_RADIUS)) return {hit:true,type:"hand",point:rightHand};
+  return {hit:false};
+}
+
+function isDefenderBetweenBallAndRim(defender,ballPos){
+  const a = ballPos.clone();
+  const b = HOOP_POS.clone();
+  const bodyCenter = defender.group.position.clone().add(new THREE.Vector3(0,1.15*defender.profile.height,0));
+  return segmentSphereIntersect(a,b,bodyCenter,0.52*defender.profile.width + BALL_RADIUS);
+}
+
+function deflectLayupBall(owner,defender,hit){
+  layupActive = false;
+  layupScored = false;
+  ballState = "loose";
+  owner.hasBall = false;
+  const away = ball.position.clone().sub(hit.point);
+  away.y = 0.25;
+  if(away.lengthSq() < 0.0001){
+    away.copy(owner.group.position).sub(defender.group.position);
+    away.y = 0.25;
+  }
+  away.normalize();
+  const ownerForward = getForward(owner.angle);
+  const randomness = new THREE.Vector3((Math.random()-.5)*1.2,Math.random()*.8,(Math.random()-.5)*1.2);
+  const force = hit.type === "hand" ? 4.8 : 3.4;
+  ballVelocity.copy(away.multiplyScalar(force).add(ownerForward.multiplyScalar(1.2)).add(randomness));
+  ballVelocity.y = hit.type === "hand" ? 2.6 + Math.random()*1.2 : 1.8 + Math.random()*0.8;
+  flash(hit.type === "hand" ? "LAYUP BLOCKED!" : "LAYUP DEFLECTED!");
+  applyCameraShake(hit.type === "hand" ? .35 : .22);
+  if(hit.type === "hand") addBlockStat(defender);
+  if(hit.type === "body" && defender.blockTime <= 0 && defender.handsUpTime <= 0){
+    foulMeter = Math.min(1,foulMeter + 0.12);
+  }
+  loosePickupDelay = Math.max(loosePickupDelay,.22);
+}
+
 function updateLayup(dt){
   if(!layupActive) return;
   layupTimer += dt;
   layupBlockWindow = Math.max(0,layupBlockWindow - dt);
 
   const owner = layupOwner === "p1" ? p1 : p2;
+  const defender = layupOwner === "p1" ? p2 : p1;
   const progress = THREE.MathUtils.clamp(layupTimer/layupDuration,0,1);
+  const prevBallPos = ball.position.clone();
 
   owner.group.position.add(getForward(owner.angle).multiplyScalar(2.15*dt));
   keepInCourt(owner.group.position);
 
-  const hand = getWorldHand(owner,"right");
+  const handSide = getBestHandForScreenSide(owner,"right");
+  const hand = getWorldHand(owner,handSide);
   const target = HOOP_POS.clone().add(new THREE.Vector3(0,.18,.08));
   const arcHeight = Math.sin(progress*Math.PI)*.9;
 
   ball.position.copy(hand.lerp(target,smoothstep(progress)));
   ball.position.y += arcHeight;
+  const collision = checkLayupDefenderCollision(owner,defender,prevBallPos,ball.position.clone());
+  if(collision.hit){
+    deflectLayupBall(owner,defender,collision);
+    return;
+  }
 
   if(progress > .78 && !layupScored){
+    if(isDefenderBetweenBallAndRim(defender,ball.position)){
+      deflectLayupBall(owner,defender,{type:"body",point:defender.group.position.clone().add(new THREE.Vector3(0,1.15*defender.profile.height,0))});
+      return;
+    }
     if(flatDistance(ball.position,HOOP_POS) < .9){
       layupScored = true;
       if(layupOwner === "p1"){
@@ -2429,6 +2602,7 @@ function updateLayup(dt){
     layupActive = false;
     ballState = "loose";
     ballVelocity.set((Math.random()-.5)*1.2,1.4,1.2);
+    loosePickupDelay = Math.max(loosePickupDelay,.2);
   }
 }
 
@@ -2525,12 +2699,50 @@ function startLayup(char){
   flash(`${char.id.toUpperCase()} layup!`);
 }
 
+function getReachHitPoint(char,handSide){
+  const forward = getForward(char.angle).normalize();
+  const right = getBodyRightVector(char).normalize();
+  const sign = handSide === "left" ? -1 : 1;
+  return char.group.position.clone()
+    .add(new THREE.Vector3(0,1.05*char.profile.height,0))
+    .add(forward.clone().multiplyScalar(0.75 + char.profile.steal * 0.18))
+    .add(right.clone().multiplyScalar(sign * 0.32 * char.profile.width));
+}
+
+function isFacingTarget(char,target,minDot=.25){
+  const forward = getForward(char.angle);
+  const toTarget = target.clone().sub(char.group.position);
+  toTarget.y = 0;
+  if(toTarget.lengthSq() < .0001) return true;
+  toTarget.normalize();
+  return forward.dot(toTarget) >= minDot;
+}
+
+function applyBlockDeflection(blocker,shooter){
+  const blockerForward = getForward(blocker.angle);
+  const handSide = Math.random() < .5 ? "left" : "right";
+  const handPoint = getWorldHand(blocker,handSide);
+  const away = ball.position.clone().sub(handPoint);
+  if(away.lengthSq() < 0.0001) away.copy(ball.position).sub(blocker.group.position);
+  away.normalize();
+  const power = 2.4 + blocker.profile.block * 1.8 + (blocker.blockBoost ? 1.4 : 0) + Math.max(0,blocker.yVel) * 0.15;
+  ballVelocity.copy(away.multiplyScalar(power).add(blockerForward.multiplyScalar(1.2)));
+  ballVelocity.y = Math.max(1.8,2.0 + blocker.profile.block * 0.5);
+  ballState = "loose";
+  layupActive = false;
+  loosePickupDelay = Math.max(loosePickupDelay,.22);
+}
+
 function checkSteals(){
   if(ballState !== "dribble") return;
   const defender = possession === "p1" ? p2 : p1;
   if(defender.swipeTime <= 0) return;
-  const hand = getWorldHand(defender,defender.swipeSide || "right");
-  if(hand.distanceTo(ball.position) < .52 * defender.profile.steal){
+  const side = defender.swipeSide || "right";
+  const hand = getWorldHand(defender,side);
+  const reachPoint = getReachHitPoint(defender,side);
+  const reachDist = Math.min(hand.distanceTo(ball.position),reachPoint.distanceTo(ball.position));
+  if(!isFacingTarget(defender,ball.position,0.15)) return;
+  if(reachDist < .52 * defender.profile.steal){
     gainPossession(defender.id);
     flash(`${defender.id.toUpperCase()} steal!`);
     showShotFeedback("Stripped!");
@@ -2556,12 +2768,10 @@ function checkBlocksAndCatches(){
     const perfect = layupBlockWindow > 0 && layupTimer > .17 && layupTimer < .58;
     if(near < threshold && perfect){
       layupActive = false;
-      ballState = "loose";
-      ballVelocity.set((Math.random()-.5)*2,2.8,2.2);
+      applyBlockDeflection(blocker,ballOwner === "p1" ? p1 : p2);
       flash(`${blocker.id.toUpperCase()} perfect layup block!`);
       showShotFeedback("Blocked");
-      blocker.stats.blocks += 1;
-      addTakeover(12,blocker);
+      addBlockStat(blocker,12);
       playBlockSound();
       screenShake = Math.min(.3,screenShake + .14); applyCameraShake(.16);
     }
@@ -2574,18 +2784,10 @@ function checkBlocksAndCatches(){
       gainPossession(blocker.id);
       flash(`${blocker.id.toUpperCase()} caught the shot!`);
     }else{
-      const away = ball.position.clone().sub(blocker.group.position);
-      away.y = 0;
-      if(away.length() < .01) away.set(Math.random()-.5,0,Math.random()-.5);
-      away.normalize();
-      ballState = "loose";
-      layupActive = false;
-      ballVelocity.copy(away.multiplyScalar(3.1));
-      ballVelocity.y = 2.2;
+      applyBlockDeflection(blocker,ballOwner === "p1" ? p1 : p2);
       flash(`${blocker.id.toUpperCase()} blocked it!`);
       showShotFeedback("Blocked");
-      blocker.stats.blocks += 1;
-      addTakeover(10,blocker);
+      addBlockStat(blocker,10);
       playBlockSound();
       screenShake = Math.min(.28,screenShake + .12); applyCameraShake(.13);
     }
@@ -2680,6 +2882,8 @@ function gainPossession(who){
   hasShotThisPossession = false;
   layupActive = false;
   foulMeter = 0;
+  loosePickupDelay = 0;
+  ballCollisionCooldown = 0;
   crossover.active = false;
   crossover.progress = 1;
 
@@ -2704,6 +2908,8 @@ function resetPossession(who,reposition){
   hasShotThisPossession = false;
   layupActive = false;
   foulMeter = 0;
+  loosePickupDelay = 0;
+  ballCollisionCooldown = 0;
   crossover.active = false;
   crossover.progress = 1;
 
@@ -2949,6 +3155,12 @@ function updateMomentum(char,made,points,contestLabel){
   if(char.confidence > .5) showMoveFeedback("Locked in");
   addTakeover(made ? (points===3?15:11) : -6,char);
   if(made) crowdWave = Math.min(1,crowdWave + .45);
+}
+
+function addBlockStat(char,takeoverAmount=10){
+  if(!char) return;
+  char.stats.blocks += 1;
+  addTakeover(takeoverAmount,char);
 }
 
 function addTakeover(amount,char){
