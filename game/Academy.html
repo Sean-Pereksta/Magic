@@ -215,8 +215,6 @@ h1{
 #powerBar{background:linear-gradient(90deg,#47ff7d,#ffee55,#ff5d5d);}
 #foulBar{background:linear-gradient(90deg,#89c4ff,#ffcc33,#ff3333);}
 #crossBar{background:linear-gradient(90deg,#ff5555,#ffee55,#66ff99);}
-#p1SpecialBar{background:linear-gradient(90deg,#35ff6b,#65d9ff);}
-#p2SpecialBar{background:linear-gradient(90deg,#9d6cff,#ff7a3d);}
 #msg{
   position:fixed;
   top:18px;
@@ -360,8 +358,6 @@ button.small{
     <div class="sub" style="margin-top:14px;text-align:left;">
       <b>Player 1:</b> W forward, S backpedal, A/D turn, Left Shift sprint, Q/E screen-left/screen-right crossover/steal, Space shoot/jump/hands-up block, hold Q/E + Space for high jumper.<br>
       <b>Player 2:</b> I forward, K backpedal, J/L turn, Right Shift sprint, U/O or Numpad4/6 screen-left/screen-right crossover/steal, Enter/Numpad0 shoot/jump/hands-up block, hold U/O or Num4/6 + Enter/Num0 for high jumper.<br>
-      <b>Special Shot:</b> P1 hold C + Space, P2 hold M + Enter / Numpad0.<br>
-      <b>Note:</b> Special shots have cooldowns and still require timing.<br>
       <b>Hide UI:</b> Press H during play.
     </div>
   </div>
@@ -372,7 +368,6 @@ button.small{
   <div>P1: WASD, Q/E, Space, Left Shift</div>
   <div>P2: I/J/K/L, U/O or Num4/6, Enter/Num0, Right Shift</div>
   <div>H: Hide/show UI</div>
-  <div>Special Shot: P1 C+Space, P2 M+Enter/Num0</div>
   <button id="hideUiBtn" class="small">Hide UI</button>
   <hr>
   <div>Mode: <strong id="modeText">1P vs Bot</strong></div>
@@ -400,11 +395,6 @@ button.small{
   <div class="barWrap"><div id="p1TakeoverBar" class="bar"></div></div>
   <div>P2 Takeover</div>
   <div class="barWrap"><div id="p2TakeoverBar" class="bar"></div></div>
-
-  <div>P1 Special: <strong id="p1SpecialText">READY</strong></div>
-  <div class="barWrap"><div id="p1SpecialBar" class="bar"></div></div>
-  <div>P2 Special: <strong id="p2SpecialText">READY</strong></div>
-  <div class="barWrap"><div id="p2SpecialBar" class="bar"></div></div>
 </div>
 
 <div id="msg">Choose Mode</div>
@@ -488,11 +478,6 @@ let dunkOwner = null;
 let dunkTimer = 0;
 let dunkDuration = 0.55;
 let dunkScored = false;
-let rimHangActive = false;
-let rimHangPlayer = null;
-let rimHangTimer = 0;
-let rimHangDuration = 0.35;
-let lastShotMeta = { p1:null, p2:null };
 
 let foulMeter = 0;
 let messageTimer = 0;
@@ -544,65 +529,46 @@ const SPRINT_DRAIN = 0.62;
 const SPRINT_RECOVER = 0.24;
 const SPRINT_MIN = 0.12;
 
-const splashTypes = {
-  green:{label:"GREEN!",color:0x35ff6b,particles:26,ringScale:1.25,duration:0.45},
-  gold:{label:"SPLASH!",color:0xffd56a,particles:34,ringScale:1.45,duration:0.55},
-  blue:{label:"HIGH ARC!",color:0x65d9ff,particles:22,ringScale:1.1,duration:0.42}
-};
-
-const crowdReactions = {
-  dunk:{message:"SLAM!",intensity:1.0,lightPulse:1.0,shake:0.3},
-  block:{message:"GET THAT OUT!",intensity:0.8,lightPulse:0.75,shake:0.2},
-  green:{message:"GREEN RELEASE!",intensity:0.65,lightPulse:0.55,shake:0.08},
-  three:{message:"FROM DEEP!",intensity:0.9,lightPulse:0.8,shake:0.15},
-  hook:{message:"SKY HOOK!",intensity:0.72,lightPulse:0.65,shake:0.1},
-  special:{message:"SPECIAL!",intensity:1.0,lightPulse:1.0,shake:0.22},
-  steal:{message:"COOKIE!",intensity:0.55,lightPulse:0.45,shake:0.08},
-  rimHang:{message:"ON THE RIM!",intensity:0.9,lightPulse:0.8,shake:0.18}
-};
-
-const botSpecialChanceByDifficulty = { rookie:0.04,easy:0.07,normal:0.11,hard:0.16,elite:0.22,nightmare:0.27,legend:0.33 };
-
 const profiles = {
   sky:{
     name:"Sky Riser",desc:"Tall finisher and rim protector. Huge layup reach.",
     jersey:0x1d6cff,shorts:0x0b2b78,skin:0xf1c27d,hair:0x1e1209,
-    height:1.16,width:1.02,speed:.92,sprint:.88,jump:1.15,layup:1.34,handle:.74,shot:.86,block:1.48,steal:.72,number:"32",specialShot:{name:"Sky Hook",type:"hook",accuracyBonus:0.13,arcBonus:0.34,blockResistance:0.24,rangeLimit:5.5,color:0x65d9ff}
+    height:1.16,width:1.02,speed:.92,sprint:.88,jump:1.15,layup:1.34,handle:.74,shot:.86,block:1.48,steal:.72,number:"32"
   },
   flash:{
     name:"Flash Guard",desc:"Tiny speed demon. Best sprint and handles, weak body.",
     jersey:0xff3d6e,shorts:0x74162e,skin:0x9b5a35,hair:0x111111,
-    height:.9,width:.84,speed:1.26,sprint:1.38,jump:.9,layup:.82,handle:1.52,shot:.95,block:.56,steal:1.35,number:"3",specialShot:{name:"Flash Floater",type:"floater",accuracyBonus:0.08,arcBonus:0.42,speedBonus:0.16,blockResistance:0.2,rangeLimit:6.2,color:0xff3d6e}
+    height:.9,width:.84,speed:1.26,sprint:1.38,jump:.9,layup:.82,handle:1.52,shot:.95,block:.56,steal:1.35,number:"3"
   },
   smooth:{
     name:"Smooth Shooter",desc:"Pure shooter. Best jumper, weaker contact defense.",
     jersey:0x29c77a,shorts:0x0d6037,skin:0xd49a6a,hair:0x2b160d,
-    height:1.0,width:.92,speed:1.0,sprint:.98,jump:.88,layup:.9,handle:1.04,shot:1.55,block:.72,steal:.82,number:"11",specialShot:{name:"Silky Fade",type:"fadeaway",accuracyBonus:0.16,arcBonus:0.18,separationBonus:0.35,rangeLimit:8.4,color:0x29c77a}
+    height:1.0,width:.92,speed:1.0,sprint:.98,jump:.88,layup:.9,handle:1.04,shot:1.55,block:.72,steal:.82,number:"11"
   },
   bruiser:{
     name:"Paint Bruiser",desc:"Strong post scorer. Wins body contact, slow laterally.",
     jersey:0xffa42b,shorts:0x7a4200,skin:0x5d3425,hair:0x0b0705,
-    height:1.1,width:1.24,speed:.82,sprint:.78,jump:.9,layup:1.48,handle:.62,shot:.72,block:1.12,steal:.62,number:"55",specialShot:{name:"Power Hook",type:"powerHook",accuracyBonus:0.12,arcBonus:0.25,contactBonus:0.3,blockResistance:0.28,rangeLimit:4.8,color:0xffa42b}
+    height:1.1,width:1.24,speed:.82,sprint:.78,jump:.9,layup:1.48,handle:.62,shot:.72,block:1.12,steal:.62,number:"55"
   },
   claw:{
     name:"The Claw",desc:"Long defensive specialist. Elite blocks, steals, catches.",
     jersey:0x9d6cff,shorts:0x3b1f77,skin:0x704327,hair:0x080808,
-    height:1.06,width:1.04,speed:.98,sprint:.98,jump:1.02,layup:.86,handle:.9,shot:.78,block:1.7,steal:1.55,number:"2",specialShot:{name:"Claw Scoop",type:"scoop",accuracyBonus:0.09,arcBonus:0.28,stealMomentumBonus:0.25,rangeLimit:5.3,color:0x9d6cff}
+    height:1.06,width:1.04,speed:.98,sprint:.98,jump:1.02,layup:.86,handle:.9,shot:.78,block:1.7,steal:1.55,number:"2"
   },
   rocket:{
     name:"Rocket Wing",desc:"Explosive chase-down athlete. Great sprint blocks.",
     jersey:0xff4d1e,shorts:0x802111,skin:0xc8845b,hair:0x20100a,
-    height:1.02,width:.98,speed:1.1,sprint:1.45,jump:1.2,layup:1.08,handle:.85,shot:.78,block:1.22,steal:.9,number:"8",specialShot:{name:"Rocket Leaner",type:"leaner",accuracyBonus:0.1,arcBonus:0.26,momentumBonus:0.32,rangeLimit:6.7,color:0xff4d1e}
+    height:1.02,width:.98,speed:1.1,sprint:1.45,jump:1.2,layup:1.08,handle:.85,shot:.78,block:1.22,steal:.9,number:"8"
   },
   crafty:{
     name:"Crafty Lefty",desc:"Best crossover safety and weird angles. Not explosive.",
     jersey:0xffffff,shorts:0x222222,skin:0xe1aa7a,hair:0x332012,
-    height:.96,width:.9,speed:1.03,sprint:.96,jump:.78,layup:1.02,handle:1.62,shot:1.08,block:.52,steal:1.05,number:"7",specialShot:{name:"Wrong-Foot Runner",type:"runner",accuracyBonus:0.11,arcBonus:0.31,timingWindowBonus:0.08,rangeLimit:6.5,color:0xffffff}
+    height:.96,width:.9,speed:1.03,sprint:.96,jump:.78,layup:1.02,handle:1.62,shot:1.08,block:.52,steal:1.05,number:"7"
   },
   tower:{
     name:"Glass Tower",desc:"Massive shot blocker. Slow, but nearly impossible to shoot over.",
     jersey:0x00b8d9,shorts:0x005a6a,skin:0x3d2418,hair:0x080808,
-    height:1.24,width:1.16,speed:.72,sprint:.68,jump:.95,layup:1.22,handle:.48,shot:.58,block:2.05,steal:.48,number:"44",specialShot:{name:"Glass Drop",type:"dropShot",accuracyBonus:0.14,arcBonus:0.46,blockResistance:0.38,rangeLimit:4.6,color:0x00b8d9}
+    height:1.24,width:1.16,speed:.72,sprint:.68,jump:.95,layup:1.22,handle:.48,shot:.58,block:2.05,steal:.48,number:"44"
   }
 };
 
@@ -788,7 +754,6 @@ function buildCharacterCards(containerId, which){
       <div class="cardName">${p.name} #${p.number}</div>
       <div class="cardDesc">${p.desc}</div>
       <div class="cardDesc">Speed ${Math.round(p.speed*100)} | Handle ${Math.round(p.handle*100)} | Block ${Math.round(p.block*100)}</div>
-      <div class="cardDesc">Special: ${p.specialShot ? p.specialShot.name : "None"}</div>
     `;
     div.onclick = () => {
       if(which === "p1") selectedP1 = key;
@@ -1519,7 +1484,7 @@ function createCharacter(profile,pos,id){
     debugRightInputTimer:0,
     lastContestLabel:"Open",
     anim:{runCycle:0,lean:0,targetLean:0,armBlend:0,legBlend:0,torsoTwist:0,landingSquash:0,contactReact:0,shotFollowThrough:0},
-    takeover:0,takeoverActive:false,takeoverTimer:0,stamina:1,dribbleStyle:"normal",specialCooldown:0,specialReady:true,currentShotType:null,currentSpecial:null,lastStealTime:-99,specialGlow:0,stats:{fga:0,fgm:0,tpa:0,tpm:0,blocks:0,steals:0,turnovers:0,ankle:0,perfect:0},
+    takeover:0,takeoverActive:false,takeoverTimer:0,stamina:1,dribbleStyle:"normal",stats:{fga:0,fgm:0,tpa:0,tpm:0,blocks:0,steals:0,turnovers:0,ankle:0,perfect:0},
     movement:{
       acceleration:5.2 * (1 + (profile.speed-1)*.7),
       lateralSpeed:3.4 * (1 + (profile.speed-1)*.52 + (profile.handle-1)*.23),
@@ -1708,74 +1673,6 @@ function getRequestedShotType(char){
     if(keys["KeyU"] || keys["KeyO"] || keys["Numpad4"] || keys["Numpad6"] || keys["u"] || keys["o"]) return "jumper";
   }
   return "setshot";
-}
-
-function wantsSpecialShot(player){
-  if(player.id === "p1") return !!keys["KeyC"];
-  if(player.id === "p2") return !!keys["KeyM"];
-  return false;
-}
-
-function canUseSpecialShot(player){
-  if(!player || !player.profile.specialShot) return false;
-  return player.specialReady && player.specialCooldown <= 0;
-}
-
-function startNormalShotCharge(player){
-  shotCharging = true;
-  chargingPlayer = player;
-  player.currentShotType = "normal";
-  player.currentSpecial = null;
-  shotPower = .08;
-  chargeDir = 1;
-  player.moveMeta.chargeHeld = 0;
-}
-
-function startSpecialShotCharge(player){
-  const spec = player.profile.specialShot;
-  if(!spec || !canUseSpecialShot(player)) return false;
-  shotCharging = true;
-  chargingPlayer = player;
-  player.currentShotType = "special";
-  player.currentSpecial = spec;
-  shotPower = 0;
-  chargeDir = 1;
-  player.moveMeta.chargeHeld = 0;
-  triggerSpecialShotVisual(player,spec,"charge");
-  showMessage(`${spec.name} charging...`);
-  return true;
-}
-
-function consumeSpecialShot(player){
-  const SPECIAL_COOLDOWN = gameMode.arcade ? 3.5 : 8.0;
-  player.specialCooldown = SPECIAL_COOLDOWN;
-  player.specialReady = false;
-  player.specialGlow = 0;
-}
-
-function updateSpecialCooldowns(dt){
-  [p1,p2].forEach(player=>{
-    if(!player) return;
-    player.specialCooldown = Math.max(0,player.specialCooldown - dt);
-    if(player.specialCooldown <= 0){
-      player.specialReady = true;
-      player.specialGlow = Math.min(1,(player.specialGlow || 0) + dt * 3);
-    }
-    else player.specialGlow = Math.max(0,(player.specialGlow || 0) - dt * 4);
-  });
-}
-
-function botHasGoodSpecialSituation(bot){
-  const spec = bot && bot.profile.specialShot;
-  if(!spec) return false;
-  const d = flatDistance(bot.group.position,HOOP_POS);
-  if(d > (spec.rangeLimit || 6)) return false;
-  const defenderDist = flatDistance(bot.group.position,p1.group.position);
-  if(spec.type === "powerHook" || spec.type === "hook" || spec.type === "dropShot") return d < 5.2 && defenderDist < 2.2;
-  if(spec.type === "fadeaway") return d > 3 && d < 8.5;
-  if(spec.type === "leaner" || spec.type === "floater") return bot.velocity.length() > 3 || defenderDist < 1.8;
-  if(spec.type === "scoop") return performance.now() * .001 - bot.lastStealTime < 3.8 || defenderDist < 1.5;
-  return d < 6.8;
 }
 
 function calculateShotTiming(held){
@@ -1987,8 +1884,11 @@ function handleActionButton(char){
   if(gameOver || char.moveState !== "normal") return;
   if(possession === char.id && ballState === "dribble" && !hasShotThisPossession){
     if(!shotCharging){
-      if(wantsSpecialShot(char) && canUseSpecialShot(char)) startSpecialShotCharge(char);
-      else startNormalShotCharge(char);
+      shotCharging = true;
+      chargingPlayer = char;
+      shotPower = .08;
+      chargeDir = 1;
+      char.moveMeta.chargeHeld = 0;
     }
   }else{
     if(char.onGround) tryJumpBlock(char, isSprinting(char));
@@ -2090,8 +1990,6 @@ function animate(){
       updateBall(dt);
       updateLayup(dt);
       updateDunk(dt);
-      updateRimHang(dt);
-      updateSpecialCooldowns(dt);
       loosePickupDelay = Math.max(0,loosePickupDelay - dt);
       ballCollisionCooldown = Math.max(0,ballCollisionCooldown - dt);
       checkSteals();
@@ -2374,14 +2272,6 @@ function updateBotOffense(dt){
     botBrain.recentMoves.push(botBrain.intent); if(botBrain.recentMoves.length > 8) botBrain.recentMoves.shift();
     botBrain.intentTimer = THREE.MathUtils.randFloat(.35,1.4);
     botBrain.decisionCooldown = THREE.MathUtils.randFloat(.16,.34) * (1.2-s.composure*.35);
-  }
-  const chance = botSpecialChanceByDifficulty[selectedDifficulty] || 0.1;
-  if(p2 && canUseSpecialShot(p2) && botHasGoodSpecialSituation(p2) && Math.random() < dt * chance * 3.2){
-    startSpecialShotCharge(p2);
-    p2.moveMeta.chargeHeld = THREE.MathUtils.randFloat(.62,.94);
-    shotPower = .58 + Math.random() * .28;
-    releaseShootOrFake(p2);
-    return;
   }
   executeBotIntent(dt);
 }
@@ -2700,36 +2590,6 @@ function showShotFeedback(text){ showMoveFeedback(text,.8); }
 function showMoveFeedback(text,duration=1){
   moveFeedbackTimers.push({text,time:duration});
   flash(text);
-}
-function showMessage(text,duration=.9){
-  showMoveFeedback(text,duration);
-}
-
-function triggerCrowdReaction(type,intensity=1){
-  const cfg = crowdReactions[type] || crowdReactions.green;
-  const boost = cfg.intensity * intensity;
-  crowdWave = Math.max(crowdWave, boost);
-  pulseArenaLights(cfg.lightPulse * intensity);
-  applyCameraShake(cfg.shake * intensity);
-  updateLEDBoards(cfg.message);
-}
-
-function triggerShotSplash(player,quality="green",customColor=null){
-  const cfg = splashTypes[quality] || splashTypes.green;
-  const releasePoint = getShotReleasePoint(player,player.moveMeta.lastShotType || "setshot");
-  for(let i=0;i<cfg.particles;i++) spawnParticle(releasePoint.clone().add(new THREE.Vector3((Math.random()-.5)*.4,Math.random()*.25,(Math.random()-.5)*.4)),customColor || cfg.color);
-  showMoveFeedback(cfg.label,cfg.duration);
-  pulseArenaLights(.4 + cfg.ringScale * .2);
-}
-
-function triggerSpecialShotVisual(player,spec,phase){
-  if(!player || !spec) return;
-  const col = spec.color || player.profile.jersey;
-  if(phase === "charge") player.specialGlow = 1;
-  if(phase === "release") triggerShotSplash(player,"blue",col);
-  if(phase === "make"){ triggerShotSplash(player,"gold",col); triggerCrowdReaction("special",1); }
-  if(phase === "blocked"){ for(let i=0;i<16;i++) spawnParticle(ball.position,col); triggerCrowdReaction("block",.95); }
-  updateLEDBoards(spec.name.toUpperCase());
 }
 function updateMoveFeedback(dt){
   for(const m of moveFeedbackTimers) m.time -= dt;
@@ -3333,10 +3193,6 @@ function releaseShootOrFake(char){
 
 function releaseOffenseMove(char){
   if(gameOver) return;
-  if(char.currentShotType === "special" && char.currentSpecial){
-    releaseShot(char,"special",{special:char.currentSpecial,shotSubType:char.currentSpecial.type,arcBonus:char.currentSpecial.arcBonus,accuracyBonus:char.currentSpecial.accuracyBonus,blockResistance:char.currentSpecial.blockResistance||0});
-    return;
-  }
   const backHeld = char.id === "p1" ? !!keys["KeyS"] : !!keys["KeyK"];
   if(backHeld && char.moveState === "normal"){
     startStepBack(char);
@@ -3348,28 +3204,22 @@ function releaseOffenseMove(char){
 }
 
 function shootBall(char,shotType="setshot"){
-  releaseShot(char,shotType,{});
-}
-
-function releaseShot(char,shotType="setshot",options={}){
   if(possession !== char.id || ballState !== "dribble") return;
-  const spec = options.special || null;
-  const realShotType = shotType === "special" ? (options.shotSubType || (spec ? spec.type : "setshot")) : shotType;
 
   shotCharging = false;
   chargingPlayer = null;
   hasShotThisPossession = true;
   ballState = "shot";
   ballOwner = char.id;
-  char.shotMotionTime = .46 + (spec && (spec.type === "hook" || spec.type === "powerHook") ? .12 : 0);
-  char.moveMeta.lastShotType = shotType === "special" ? realShotType : shotType;
+  char.shotMotionTime = .46;
+  char.moveMeta.lastShotType = shotType;
   rimTouchCount = 0;
   rimCollisionCooldown = 0;
   const contest = calculateShotContest(char);
   showShotFeedback(contest.label);
   char.lastContestLabel = contest.label;
 
-  const start = getShotReleasePoint(char,realShotType === "dropShot" ? "jumper" : realShotType);
+  const start = getShotReleasePoint(char,shotType);
   ball.position.copy(start);
   const dist = flatDistance(start,HOOP_POS);
   const target = HOOP_POS.clone();
@@ -3381,47 +3231,32 @@ function releaseShot(char,shotType="setshot",options={}){
   const baseAcc = THREE.MathUtils.clamp(char.profile.shot * (1.04 - dist/24), .18, 1.4);
   const staminaFactor = .8 + char.stamina*.2;
   const streakFactor = 1 + char.confidence*.08;
-  const moveFactor = realShotType === "stepback" ? (1.02 + char.stepBackQuality*.14) : (realShotType === "pullup" ? .94 : 1);
-  const shotTypeModifier = realShotType === "jumper" ? .82 : 1;
-  const specialAcc = spec ? (1 + (options.accuracyBonus || 0)) : 1;
-  const contestDampen = spec ? (1 - Math.max(0,contest.value - (options.blockResistance || 0))*.3) : (1 - contest.value*.36);
-  const accuracy = THREE.MathUtils.clamp(baseAcc * timing.accuracyMultiplier * shotTypeModifier * staminaFactor * streakFactor * moveFactor * contestDampen * specialAcc,0,1);
-  if(release === "Green Release"){
-    char.stats.perfect += 1;
-    triggerShotSplash(char,"green");
-    triggerCrowdReaction("green",0.7);
-  }
+  const moveFactor = shotType === "stepback" ? (1.02 + char.stepBackQuality*.14) : (shotType === "pullup" ? .94 : 1);
+  const shotTypeModifier = shotType === "jumper" ? .82 : 1;
+  const contestFactor = 1 - contest.value*.36;
+  const accuracy = THREE.MathUtils.clamp(baseAcc * timing.accuracyMultiplier * shotTypeModifier * staminaFactor * streakFactor * moveFactor * contestFactor,0,1);
+  if(release === "Green Release"){ char.stats.perfect += 1; pulseArenaLights(.9); }
 
   target.x += (Math.random()-.5) * (2.0*(1-accuracy));
   target.z += (Math.random()-.5) * (2.4*(1-accuracy));
 
-  const flightTime = THREE.MathUtils.lerp(.85,1.45,power) + (realShotType === "jumper" ? .18 : 0);
+  const flightTime = THREE.MathUtils.lerp(.85,1.45,power) + (shotType === "jumper" ? .18 : 0);
   const needed = target.clone().sub(start);
 
   ballVelocity.x = needed.x / flightTime;
   ballVelocity.z = needed.z / flightTime;
   ballVelocity.y = (needed.y - .5*GRAVITY*flightTime*flightTime) / flightTime;
-  ballVelocity.y += getArcBonus(char,realShotType) + (options.arcBonus || 0) * 2.8;
+  ballVelocity.y += getArcBonus(char,shotType);
 
   shotPower = 0;
   char.moveMeta.chargeHeld = 0;
   char.stats.fga += 1;
   if(dist >= THREE_RADIUS) char.stats.tpa += 1;
-
-  const shotLabel = shotType === "special" ? `${spec ? spec.name : "Special"}` : (realShotType === "jumper" ? "High Jumper" : realShotType === "setshot" ? "Set Shot" : (realShotType === "pullup" ? "Pull-Up" : realShotType === "stepback" ? "Step-Back" : "Jumper"));
+  const shotLabel = shotType === "jumper" ? "High Jumper" : shotType === "setshot" ? "Set Shot" : (shotType === "pullup" ? "Pull-Up" : shotType === "stepback" ? "Step-Back" : "Jumper");
   showShotBreakdown(release,shotLabel,contest.label,"In Flight");
   createShotTrail();
   playShotSound();
-  lastShotMeta[char.id] = { shotType:realShotType, wasSpecial:shotType === "special", special:spec, release, distance:dist };
-  if(realShotType === "jumper") triggerShotSplash(char,"blue");
-  if(shotType === "special" && spec){
-    triggerSpecialShotVisual(char,spec,"release");
-    triggerCrowdReaction("special",0.95);
-    consumeSpecialShot(char);
-  }
   flash(`${char.id.toUpperCase()} ${shotLabel.toLowerCase()}!`);
-  char.currentShotType = null;
-  char.currentSpecial = null;
 }
 
 function botShoot(){
@@ -3491,56 +3326,16 @@ function updateDunk(dt){
     }
     updateScoreboard();
     animateNetSwish();
-    triggerCrowdReaction("dunk",1);
+    playCrowdPulse();
+    applyCameraShake(.23);
     checkGameWinner();
-    const hangChance = 0.25 + owner.profile.height * 0.15 + owner.profile.layup * 0.1 + (owner.takeoverActive ? 0.25 : 0);
-    if(Math.random() < hangChance) startRimHang(owner);
-    else setTimeout(()=>resetPossession(nextPossessionAfterScore(dunkOwner),true),620);
+    setTimeout(()=>resetPossession(nextPossessionAfterScore(dunkOwner),true),620);
   }
-  if(t >= 1 && !rimHangActive){
+  if(t >= 1){
     dunkActive = false;
     ballState = "loose";
     ballVelocity.set(0,1.1,1.3);
   }
-}
-
-function startRimHang(player){
-  rimHangActive = true;
-  rimHangPlayer = player;
-  rimHangTimer = rimHangDuration;
-  player.velocity.set(0,0,0);
-  player.yVel = 0;
-  player.onGround = false;
-  triggerCrowdReaction("rimHang",0.9);
-  updateLEDBoards("RIM HANG!");
-}
-
-function endRimHang(){
-  if(!rimHangPlayer) return;
-  rimHangPlayer.onGround = false;
-  rimHangPlayer.yVel = -1.2;
-  rimHangActive = false;
-  const scorer = rimHangPlayer.id;
-  rimHangPlayer = null;
-  dunkActive = false;
-  ballState = "loose";
-  ballVelocity.set(0,1.1,1.2);
-  setTimeout(()=>resetPossession(nextPossessionAfterScore(scorer),true),480);
-}
-
-function updateRimHang(dt){
-  if(!rimHangActive || !rimHangPlayer) return;
-  rimHangTimer -= dt;
-  const p = rimHangPlayer;
-  const t = 1 - rimHangTimer / rimHangDuration;
-  p.group.position.x = THREE.MathUtils.lerp(p.group.position.x, HOOP_POS.x, dt * 10);
-  p.group.position.z = THREE.MathUtils.lerp(p.group.position.z, HOOP_POS.z + 0.1, dt * 10);
-  p.group.position.y = 1.55 + Math.sin(t * Math.PI) * 0.12;
-  p.leftArm.rotation.x = -2.1;
-  p.rightArm.rotation.x = -2.1;
-  p.leftLeg.rotation.x = Math.sin(t * Math.PI * 2) * 0.25;
-  p.rightLeg.rotation.x = -Math.sin(t * Math.PI * 2) * 0.25;
-  if(rimHangTimer <= 0) endRimHang();
 }
 
 function getReachHitPoint(char,handSide){
@@ -3592,9 +3387,7 @@ function checkSteals(){
     showShotFeedback("Stripped!");
     defender.confidence = Math.min(1,defender.confidence + .08);
     defender.stats.steals += 1;
-    defender.lastStealTime = performance.now() * .001;
     addTakeover(10,defender);
-    triggerCrowdReaction("steal",0.75);
     screenShake = Math.min(.22,screenShake + .08); applyCameraShake(.09);
   }
 }
@@ -3620,7 +3413,6 @@ function checkBlocksAndCatches(){
       flash(`${blocker.id.toUpperCase()} perfect layup block!`);
       showShotFeedback("Blocked");
       addBlockStat(blocker,12);
-      triggerCrowdReaction("block",0.9);
       playBlockSound();
       screenShake = Math.min(.3,screenShake + .14); applyCameraShake(.16);
     }
@@ -3637,7 +3429,6 @@ function checkBlocksAndCatches(){
       flash(`${blocker.id.toUpperCase()} blocked it!`);
       showShotFeedback("Blocked");
       addBlockStat(blocker,10);
-      triggerCrowdReaction("block",0.85);
       playBlockSound();
       screenShake = Math.min(.28,screenShake + .12); applyCameraShake(.13);
     }
@@ -3666,9 +3457,6 @@ function checkScore(){
     rimCollisionCooldown = 0;
 
     const points = shotValueFor(ballOwner);
-    const shooter = ballOwner === "p1" ? p1 : p2;
-    const defender = ballOwner === "p1" ? p2 : p1;
-    const meta = lastShotMeta[ballOwner] || {};
     if(ballOwner === "p1"){
       scoreP1 += points;
       p1.stats.fgm += 1;
@@ -3694,13 +3482,6 @@ function checkScore(){
       updateMomentum(p1, false, 0, p2.lastContestLabel);
       setTimeout(() => resetPossession(nextPossessionAfterScore("p2"),true),900);
     }
-    if(meta.release === "Green Release") triggerShotSplash(shooter,"green");
-    if(points === 3){ triggerShotSplash(shooter,"gold"); triggerCrowdReaction("three",0.95); }
-    if(meta.shotType === "jumper") triggerShotSplash(shooter,"blue");
-    if(meta.shotType === "hook" || meta.shotType === "powerHook"){ triggerShotSplash(shooter,"gold"); triggerCrowdReaction("hook",0.82); }
-    if(meta.wasSpecial && meta.special){ triggerSpecialShotVisual(shooter,meta.special,"make"); }
-    if(scoreP1 >= targetScore-1 || scoreP2 >= targetScore-1) triggerCrowdReaction("special",0.7);
-    lastShotMeta[ballOwner] = null;
 
     updateScoreboard();
     checkGameWinner();
@@ -3724,7 +3505,6 @@ function endGame(winner){
   gameOver = true;
   possessionFrozen = true;
   showWinnerOverlay(winner);
-  triggerCrowdReaction("special",1);
   screenShake = .28; applyCameraShake(.22); triggerSlowMo(.45,.55);
 }
 
@@ -3745,8 +3525,6 @@ function gainPossession(who){
   chargingPlayer = null;
   shotPower = 0;
   hasShotThisPossession = false;
-  p1.currentShotType = null; p2.currentShotType = null; p1.currentSpecial = null; p2.currentSpecial = null;
-  if(newOwner){ newOwner.currentShotType = null; newOwner.currentSpecial = null; }
   layupActive = false;
   layupOwner = null;
   layupScored = false;
@@ -3786,7 +3564,6 @@ function resetPossession(who,reposition){
   chargingPlayer = null;
   shotPower = 0;
   hasShotThisPossession = false;
-  if(newOwner){ newOwner.currentShotType = null; newOwner.currentSpecial = null; }
   layupActive = false;
   dunkActive = false;
   dunkOwner = null;
@@ -3980,15 +3757,6 @@ function updateHUD(){
   let crossSafety = 100;
   if(crossover.active) crossSafety = Math.round(crossover.progress * 100);
   document.getElementById("crossBar").style.width = `${crossSafety}%`;
-
-  const p1SpecialCd = p1 ? p1.specialCooldown : 0;
-  const p2SpecialCd = p2 ? p2.specialCooldown : 0;
-  document.getElementById("p1SpecialText").textContent = p1 && p1.specialReady ? "READY" : `${p1SpecialCd.toFixed(1)}s`;
-  document.getElementById("p2SpecialText").textContent = p2 && p2.specialReady ? "READY" : `${p2SpecialCd.toFixed(1)}s`;
-  document.getElementById("p1SpecialBar").style.width = `${Math.round(((p1 && p1.specialReady) ? 1 : 1-(p1SpecialCd / (gameMode.arcade ? 3.5 : 8.0))) * 100)}%`;
-  document.getElementById("p2SpecialBar").style.width = `${Math.round(((p2 && p2.specialReady) ? 1 : 1-(p2SpecialCd / (gameMode.arcade ? 3.5 : 8.0))) * 100)}%`;
-  document.getElementById("p1SpecialBar").style.opacity = p1 && p1.specialReady ? .7 + Math.sin(performance.now()*.02)*.3 : .88;
-  document.getElementById("p2SpecialBar").style.opacity = p2 && p2.specialReady ? .7 + Math.sin(performance.now()*.02)*.3 : .88;
 
   let status = "Choose players";
   if(gameStarted){
