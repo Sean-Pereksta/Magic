@@ -223,6 +223,18 @@ button.small{
   cursor:pointer;
   font-weight:bold;
 }
+#winnerOverlay{
+  position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:80;
+  background:rgba(4,8,14,.78);backdrop-filter:blur(4px);
+}
+#winnerCard{
+  background:linear-gradient(180deg,#1a2f49,#0f1d2f);
+  border:3px solid #ffd56a;border-radius:16px;padding:28px 30px;min-width:340px;text-align:center;
+  box-shadow:0 20px 45px rgba(0,0,0,.45);
+}
+#winnerText{font-size:44px;font-weight:900;color:#ffd56a;letter-spacing:1px;margin-bottom:14px;}
+#winnerSub{opacity:.88;margin-bottom:18px}
+#winnerCard button{margin:6px}
 </style>
 </head>
 <body>
@@ -273,6 +285,7 @@ button.small{
   <hr>
   <div>Mode: <strong id="modeText">1P vs Bot</strong></div>
   <div>Score: <strong id="scoreText">0 - 0</strong></div>
+  <div>Game: <strong id="gameRulesText">First to 11, win by 2</strong></div>
   <div>Possession: <strong id="posText">P1</strong></div>
   <div>Status: <strong id="statusText">Choose players</strong></div>
   <div>Bot Strategy: <strong id="strategyText">-</strong></div>
@@ -298,6 +311,14 @@ button.small{
 <div id="p1Label" class="splitLabel">PLAYER 1</div>
 <div id="p2Label" class="splitLabel">PLAYER 2</div>
 <div id="hideTip">Press H to hide/show UI</div>
+<div id="winnerOverlay">
+  <div id="winnerCard">
+    <div id="winnerText">P1 WINS!</div>
+    <div id="winnerSub">First to 11, win by 2</div>
+    <button id="rematchBtn" class="modeBtn">Rematch Same Players</button>
+    <button id="changeCharsBtn" class="modeBtn">Change Characters</button>
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 <script>
@@ -319,6 +340,9 @@ let selectedDifficulty = "normal";
 
 let scoreP1 = 0;
 let scoreP2 = 0;
+let targetScore = 11;
+let winBy = 2;
+let gameOver = false;
 
 let possession = "p1";
 let ballOwner = "p1";
@@ -348,6 +372,10 @@ let countdownTimer = 0;
 let possessionFrozen = false;
 
 let botStrategy = "drive";
+let screenShake = 0;
+const DOUBLE_TAP_WINDOW = 0.28;
+let botBrain = null;
+const moveFeedbackTimers = [];
 
 let crossover = {
   active:false,
@@ -420,13 +448,24 @@ const profiles = {
 };
 
 const difficultySettings = {
-  rookie:{reaction:.28,steal:.18,block:.08,speed:2.25,sprint:.1,attack:.18},
-  easy:{reaction:.45,steal:.35,block:.2,speed:2.65,sprint:.22,attack:.32},
-  normal:{reaction:.7,steal:.9,block:.6,speed:3.2,sprint:.48,attack:.58},
-  hard:{reaction:.9,steal:1.5,block:1.15,speed:3.85,sprint:.68,attack:.78},
-  elite:{reaction:1.02,steal:1.95,block:1.55,speed:4.15,sprint:.82,attack:.95},
-  nightmare:{reaction:1.15,steal:2.4,block:2,speed:4.55,sprint:.93,attack:1.1},
-  legend:{reaction:1.28,steal:3,block:2.6,speed:4.9,sprint:1,attack:1.25}
+  rookie:{reactionMin:.45,reactionMax:.65,steal:.18,block:.08,speed:2.2,sprint:.08,attack:.16,aggression:.35,patience:.28,mistakeChance:.28,fakeBiteChance:.56,shotDiscipline:.35,defensiveIQ:.32,crossoverUse:.2,pumpFakeUse:.24,stepBackUse:.08,sideHopUse:.12,contestTiming:.32,stealDiscipline:.25,staminaManagement:.3,spacingIQ:.26,composure:.24},
+  easy:{reactionMin:.35,reactionMax:.5,steal:.35,block:.2,speed:2.6,sprint:.2,attack:.3,aggression:.45,patience:.36,mistakeChance:.22,fakeBiteChance:.45,shotDiscipline:.48,defensiveIQ:.45,crossoverUse:.28,pumpFakeUse:.22,stepBackUse:.1,sideHopUse:.18,contestTiming:.42,stealDiscipline:.34,staminaManagement:.42,spacingIQ:.44,composure:.42},
+  normal:{reactionMin:.25,reactionMax:.38,steal:.9,block:.6,speed:3.2,sprint:.48,attack:.58,aggression:.58,patience:.52,mistakeChance:.16,fakeBiteChance:.32,shotDiscipline:.58,defensiveIQ:.58,crossoverUse:.34,pumpFakeUse:.3,stepBackUse:.18,sideHopUse:.24,contestTiming:.56,stealDiscipline:.52,staminaManagement:.56,spacingIQ:.6,composure:.56},
+  hard:{reactionMin:.18,reactionMax:.28,steal:1.5,block:1.15,speed:3.8,sprint:.66,attack:.78,aggression:.68,patience:.62,mistakeChance:.12,fakeBiteChance:.22,shotDiscipline:.68,defensiveIQ:.72,crossoverUse:.4,pumpFakeUse:.38,stepBackUse:.26,sideHopUse:.34,contestTiming:.68,stealDiscipline:.68,staminaManagement:.66,spacingIQ:.72,composure:.68},
+  elite:{reactionMin:.12,reactionMax:.2,steal:1.95,block:1.55,speed:4.1,sprint:.8,attack:.94,aggression:.74,patience:.72,mistakeChance:.1,fakeBiteChance:.16,shotDiscipline:.78,defensiveIQ:.82,crossoverUse:.46,pumpFakeUse:.45,stepBackUse:.34,sideHopUse:.4,contestTiming:.78,stealDiscipline:.78,staminaManagement:.74,spacingIQ:.82,composure:.8},
+  nightmare:{reactionMin:.09,reactionMax:.16,steal:2.4,block:2,speed:4.45,sprint:.9,attack:1.08,aggression:.84,patience:.68,mistakeChance:.09,fakeBiteChance:.12,shotDiscipline:.86,defensiveIQ:.9,crossoverUse:.5,pumpFakeUse:.52,stepBackUse:.42,sideHopUse:.45,contestTiming:.86,stealDiscipline:.86,staminaManagement:.8,spacingIQ:.9,composure:.86},
+  legend:{reactionMin:.06,reactionMax:.12,steal:3,block:2.6,speed:4.8,sprint:1,attack:1.22,aggression:.9,patience:.82,mistakeChance:.08,fakeBiteChance:.08,shotDiscipline:.92,defensiveIQ:.95,crossoverUse:.62,pumpFakeUse:.58,stepBackUse:.5,sideHopUse:.55,contestTiming:.92,stealDiscipline:.92,staminaManagement:.9,spacingIQ:.94,composure:.94}
+};
+
+const botPersonalities = {
+  rim_runner: { drive:.38, layup:.34, pullUp:.08, pumpFake:.08, stepBack:.02, post:.10 },
+  ankle_breaker: { crossover:.28, hesitation:.22, drive:.28, pullUp:.10, sideHop:.08, pumpFake:.04 },
+  sharpshooter: { pullUp:.30, stepBack:.26, pumpFake:.20, drive:.12, hesitation:.08, layup:.04 },
+  post_bully: { post:.34, backDown:.28, layup:.24, pumpFake:.10, pullUp:.04 },
+  lockdown: { safeDrive:.22, pullUp:.12, reset:.20, layup:.16, crossover:.10, defensePressure:.40 },
+  slasher: { drive:.38, sideHop:.18, hesitation:.14, layup:.22, pullUp:.06, stepBack:.02 },
+  fake_master: { pumpFake:.24, hesitation:.22, crossover:.18, sideHop:.14, pullUp:.12, layup:.10 },
+  paint_anchor: { post:.36, layup:.32, backDown:.22, pullUp:.04, pumpFake:.06 }
 };
 
 buildMenu();
@@ -468,6 +507,8 @@ function buildMenu(){
 
   document.getElementById("startBtn").onclick = startGame;
   document.getElementById("hideUiBtn").onclick = toggleUI;
+  document.getElementById("rematchBtn").onclick = () => rematchSamePlayers();
+  document.getElementById("changeCharsBtn").onclick = () => returnToCharacterMenu();
 }
 
 function buildCharacterCards(containerId, which){
@@ -507,9 +548,12 @@ function startGame(){
   document.getElementById("modeText").textContent = twoPlayerMode ? "2P Split Screen" : "1P vs Bot";
 
   gameStarted = true;
+  gameOver = false;
   scoreP1 = 0;
   scoreP2 = 0;
+  hideWinnerOverlay();
   updateScoreboard();
+  initBotBrain();
   resetPossession("p1", true);
 }
 
@@ -842,6 +886,15 @@ function updateScoreboard(){
   ctx.fillStyle = "#ffd56a";
   ctx.font = "bold 24px 'Courier New', monospace";
   ctx.fillText("P1      P2",256,145);
+  ctx.font = "bold 18px Arial";
+  ctx.fillStyle = "#8ce1ff";
+  ctx.fillText(`First to ${targetScore}, win by ${winBy}`,256,170);
+  const gamePoint = (scoreP1 >= targetScore-1 || scoreP2 >= targetScore-1) && Math.abs(scoreP1-scoreP2) >= 1;
+  if(gamePoint){
+    ctx.fillStyle = "#ffcf44";
+    ctx.font = "bold 20px Arial";
+    ctx.fillText(scoreP1 > scoreP2 ? "P1 GAME POINT" : "P2 GAME POINT",256,28);
+  }
 
   scoreboardTexture.needsUpdate = true;
 }
@@ -984,7 +1037,30 @@ function createCharacter(profile,pos,id){
     blockTime:0,
     handsUpTime:0,
     shotMotionTime:0,
-    blockBoost:false
+    blockBoost:false,
+    moveState:"normal",
+    moveTimer:0,
+    moveDuration:0,
+    moveMeta:{},
+    stepBackQuality:0,
+    pumpFakeCooldown:0,
+    sideHopCooldown:0,
+    stumbledTimer:0,
+    confidence:0,
+    hotStreak:0,
+    lastLeftTapTime:-99,
+    lastRightTapTime:-99,
+    lastPumpFakeTime:-99,
+    lastContestLabel:"Open",
+    movement:{
+      acceleration:5.2 * (1 + (profile.speed-1)*.7),
+      lateralSpeed:3.4 * (1 + (profile.speed-1)*.52 + (profile.handle-1)*.23),
+      turnSpeed:2.6 * (1 + (profile.handle-1)*.2),
+      contactStrength:1 + (profile.width-1)*1.3 + (profile.block-1)*.2,
+      defensiveWidth:.95 + (profile.width-1)*1.5,
+      stopSpeed:1 + (profile.shot-1)*.4 + (profile.handle-1)*.2,
+      recoverySpeed:1 + (profile.steal-1)*.3 + (profile.speed-1)*.25
+    }
   };
 }
 
@@ -1119,7 +1195,7 @@ function onKeyDown(e){
     return;
   }
 
-  if(!gameStarted || possessionFrozen) return;
+  if(!gameStarted || possessionFrozen || gameOver) return;
 
   if(e.code === "Space") handleActionButton(p1);
   if(e.code === "Enter" || e.code === "Numpad0"){
@@ -1139,19 +1215,21 @@ function onKeyUp(e){
   keys[e.code] = false;
   keys[e.key.toLowerCase()] = false;
 
-  if(!gameStarted || possessionFrozen) return;
+  if(!gameStarted || possessionFrozen || gameOver) return;
 
-  if(e.code === "Space" && shotCharging && chargingPlayer === p1) releaseOffenseMove(p1);
-  if((e.code === "Enter" || e.code === "Numpad0") && shotCharging && chargingPlayer === p2) releaseOffenseMove(p2);
+  if(e.code === "Space" && shotCharging && chargingPlayer === p1) releaseShootOrFake(p1);
+  if((e.code === "Enter" || e.code === "Numpad0") && shotCharging && chargingPlayer === p2) releaseShootOrFake(p2);
 }
 
 function handleActionButton(char){
+  if(gameOver || char.moveState === "stepback" || char.moveState === "pumpfake" || char.moveState === "sidehop") return;
   if(possession === char.id && ballState === "dribble" && !hasShotThisPossession){
     if(!shotCharging){
       shotCharging = true;
       chargingPlayer = char;
       shotPower = .08;
       chargeDir = 1;
+      char.moveMeta.chargeHeld = 0;
     }
   }else{
     if(char.onGround) tryJumpBlock(char, isSprinting(char));
@@ -1160,10 +1238,15 @@ function handleActionButton(char){
 }
 
 function handleHandAction(char,screenSide){
+  if(gameOver) return;
   const bodySide = screenSideToBodySide(char,screenSide);
   const localSideName = bodySideName(bodySide);
 
   if(possession === char.id && ballState === "dribble"){
+    if(checkDoubleTap(char,screenSide)){
+      startSideHop(char,screenSide);
+      return;
+    }
     attemptCrossover(char,bodySide);
   }else{
     char.swipeSide = localSideName;
@@ -1234,7 +1317,7 @@ function animate(){
     messageTimer -= dt;
     updateCountdown(dt);
 
-    if(!possessionFrozen){
+    if(!possessionFrozen && !gameOver){
       updateHumanControls(dt);
       if(!twoPlayerMode) updateBot(dt);
       updateJumpPhysics(p1,dt);
@@ -1289,6 +1372,7 @@ function updateHumanControls(dt){
   }
 
   if(shotCharging && chargingPlayer){
+    chargingPlayer.moveMeta.chargeHeld = (chargingPlayer.moveMeta.chargeHeld || 0) + dt;
     shotPower += dt * .85 * chargeDir;
     if(shotPower >= 1){ shotPower = 1; chargeDir = -1; }
     if(shotPower <= .08){ shotPower = .08; chargeDir = 1; }
@@ -1297,10 +1381,21 @@ function updateHumanControls(dt){
 
 function updatePlayerControl(char,ctrl,dt){
   const p = char.profile;
-  const turnSpeed = 2.65 * (p.speed > 1 ? 1.05 : .94);
-  const baseSpeed = 4.35 * p.speed;
-  const sprintSpeed = 7.45 * p.speed * p.sprint;
-  const backSpeed = 2.35 * p.speed;
+  if(char.stumbledTimer > 0){
+    char.stumbledTimer -= dt;
+  }
+  char.pumpFakeCooldown = Math.max(0,char.pumpFakeCooldown - dt);
+  char.sideHopCooldown = Math.max(0,char.sideHopCooldown - dt);
+
+  const move = char.movement;
+  const turnSpeed = move.turnSpeed * (p.speed > 1 ? 1.05 : .94);
+  const baseSpeed = 3.85 * p.speed + move.acceleration*.24;
+  const sprintSpeed = 6.65 * p.speed * p.sprint;
+  const backSpeed = 2.1 * p.speed + move.stopSpeed*.2;
+  if(char.moveState === "stepback" || char.moveState === "sidehop" || char.moveState === "pumpfake"){
+    updateMoveState(char,dt);
+    return;
+  }
 
   if(keys[ctrl.left]) char.angle += turnSpeed * dt;
   if(keys[ctrl.right]) char.angle -= turnSpeed * dt;
@@ -1318,6 +1413,7 @@ function updatePlayerControl(char,ctrl,dt){
   }
 
   if(keys[ctrl.back]) char.velocity.add(forward.clone().multiplyScalar(-backSpeed));
+  if(char.stumbledTimer > 0) char.velocity.multiplyScalar(.45);
 
   char.group.position.add(char.velocity.clone().multiplyScalar(dt));
   keepInCourt(char.group.position);
@@ -1325,57 +1421,10 @@ function updatePlayerControl(char,ctrl,dt){
 }
 
 function updateBot(dt){
-  const bot = p2;
-  const human = p1;
-  const settings = difficultySettings[selectedDifficulty];
-
-  if(possession === "p1"){
-    const hoopDir = HOOP_POS.clone().sub(human.group.position);
-    hoopDir.y = 0;
-    hoopDir.normalize();
-
-    const target = human.group.position.clone().add(hoopDir.multiplyScalar(1.1));
-    moveBotToward(bot,target,settings.speed,dt);
-
-    if(ballState === "dribble" && flatDistance(bot.group.position,human.group.position) < 1.85){
-      if(Math.random() < dt * settings.steal){
-        bot.swipeSide = Math.random() < .5 ? "left" : "right";
-        bot.swipeTime = .34;
-      }
-    }
-
-    if((shotCharging || layupActive) && flatDistance(bot.group.position,human.group.position) < 3.6){
-      if(bot.jumpCooldown <= 0 && Math.random() < dt * settings.block){
-        tryJumpBlock(bot, bot.sprint > .25 && Math.random() < settings.sprint);
-      }else if(!bot.onGround && Math.random() < dt * settings.block){
-        raiseHands(bot);
-      }
-    }
-  }else{
-    updateBotOffense(bot,settings,dt);
-  }
-}
-
-function updateBotOffense(bot,settings,dt){
-  const distHoop = flatDistance(bot.group.position,HOOP_POS);
-  let target;
-
-  if(botStrategy === "drive") target = new THREE.Vector3(0,0,-8.8);
-  else if(botStrategy === "pullUp") target = new THREE.Vector3(2.5*Math.sin(performance.now()*.002),0,-6.8);
-  else if(botStrategy === "post") target = new THREE.Vector3(0,0,-8.4);
-  else target = new THREE.Vector3(3*Math.sin(performance.now()*.004),0,-8.2);
-
-  moveBotToward(bot,target,settings.speed,dt);
-
-  if(ballState === "dribble"){
-    if(isCloseLayupRange(bot) && Math.random() < dt * 1.4){
-      startLayup(bot);
-    }else if(botStrategy === "pullUp" && distHoop < 7 && Math.random() < dt * 1.0){
-      botShoot();
-    }else if(distHoop < 5.5 && Math.random() < dt * .45){
-      botShoot();
-    }
-  }
+  if(!botBrain) initBotBrain();
+  updateBotReactionMemory(dt);
+  if(possession === "p1") updateBotDefense(dt);
+  else updateBotOffense(dt);
 }
 
 function moveBotToward(bot,target,speed,dt){
@@ -1401,6 +1450,109 @@ function moveBotToward(bot,target,speed,dt){
   bot.group.position.add(bot.velocity.clone().multiplyScalar(dt));
   keepInCourt(bot.group.position);
   bot.group.rotation.y = bot.angle;
+}
+
+function initBotBrain(){
+  botBrain = {
+    intent:"size_up", intentTimer:0, decisionCooldown:0, reactionTimer:0,
+    lastSeenPlayerPosition:p1 ? p1.group.position.clone() : new THREE.Vector3(),
+    lastSeenBallPosition:ball ? ball.position.clone() : new THREE.Vector3(),
+    aggression:.5, patience:.5, confidence:.5, fakeBiteChance:.25, mistakeChance:.12, defensiveSpacing:1.7,
+    preferredDriveSide:Math.random()<.5?-1:1, recentMoves:[], crossedRecently:0, gotBeatRecently:0, shotClockMentalTimer:0,
+    blockCooldown:0, stealCooldown:0, crossoverCooldown:0, pumpFakeCooldown:0, stepBackCooldown:0, sideHopCooldown:0, helpDelay:0
+  };
+  configureBotBrainFromDifficulty();
+}
+function configureBotBrainFromDifficulty(){
+  const s = difficultySettings[selectedDifficulty];
+  if(!s || !botBrain) return;
+  botBrain.aggression = s.aggression;
+  botBrain.patience = s.patience;
+  botBrain.fakeBiteChance = s.fakeBiteChance;
+  botBrain.mistakeChance = s.mistakeChance;
+  botBrain.confidence = s.composure;
+}
+function getBotPersonality(){
+  const map={sky:"rim_runner",flash:"ankle_breaker",smooth:"sharpshooter",bruiser:"post_bully",claw:"lockdown",rocket:"slasher",crafty:"fake_master",tower:"paint_anchor"};
+  return botPersonalities[map[selectedP2] || "slasher"];
+}
+function chooseBotIntent(){
+  const s = difficultySettings[selectedDifficulty];
+  const w = {...getBotPersonality()};
+  const dist = flatDistance(p2.group.position,HOOP_POS);
+  const defDist = flatDistance(p2.group.position,p1.group.position);
+  if(dist < 2.9){ w.attack_rim = .38; w.layup = (w.layup || .2) + .25; }
+  if(defDist < 1.3){ w.step_back = (w.stepBack || 0) + s.stepBackUse*.5; w.pump_fake = (w.pumpFake || 0) + s.pumpFakeUse*.45; }
+  if(p1.stumbledTimer > 0){ w.pull_up = (w.pullUp || 0) + .22; }
+  const recentPenalty = new Set(botBrain.recentMoves.slice(-3));
+  Object.keys(w).forEach(k=>{ if(recentPenalty.has(k)) w[k] *= (selectedDifficulty==="rookie"?.9:.45); });
+  const entries = Object.entries(w).map(([k,v])=>[k,Math.max(0.01,v)]);
+  const total = entries.reduce((a,[,v])=>a+v,0);
+  let r = Math.random()*total;
+  for(const [key,val] of entries){ r -= val; if(r<=0) return normalizeIntentName(key); }
+  return "size_up";
+}
+function normalizeIntentName(key){
+  const map={pullUp:"pull_up",stepBack:"step_back",pumpFake:"pump_fake",sideHop:"side_hop_right",drive:"attack_rim",layup:"attack_rim",post:"post_up",crossover:"crossover_left",safeDrive:"drive_right",backDown:"back_down",hesitation:"hesitation",reset:"reset_dribble"};
+  return map[key] || key;
+}
+function executeBotIntent(dt){
+  const bot = p2;
+  const intent = botBrain.intent;
+  if(bot.moveState !== "normal"){ updateMoveState(bot,dt); return; }
+  if(intent.includes("drive") || intent==="attack_rim"){
+    const side = intent.includes("left")?-1:1;
+    const toRim = HOOP_POS.clone().sub(bot.group.position); toRim.y=0; toRim.normalize();
+    const sideV = new THREE.Vector3(toRim.z,0,-toRim.x).multiplyScalar(side*1.3);
+    moveBotToward(bot, bot.group.position.clone().add(toRim.multiplyScalar(2.2)).add(sideV), difficultySettings[selectedDifficulty].speed, dt);
+    if(isCloseLayupRange(bot) && Math.random()<dt*1.3) startLayup(bot);
+  }else if(intent==="step_back"){ startStepBack(bot); }
+  else if(intent==="pump_fake"){ startPumpFake(bot); }
+  else if(intent.includes("side_hop")){ startSideHop(bot,intent.includes("left")?"left":"right"); }
+  else if(intent.includes("crossover")){ attemptCrossover(bot,intent.includes("left")?-1:1); }
+  else if(intent==="pull_up" && flatDistance(bot.group.position,HOOP_POS)<8.4){ shotPower = .58 + Math.random()*.24; shootBall(bot,"pullup"); }
+  else if(intent==="post_up" || intent==="back_down"){ moveBotToward(bot,new THREE.Vector3(0,0,-8.7),difficultySettings[selectedDifficulty].speed*.86,dt); }
+  else { moveBotToward(bot,new THREE.Vector3(2.2*Math.sin(performance.now()*.0017),0,-7.4),difficultySettings[selectedDifficulty].speed*.72,dt); }
+}
+function updateBotDefense(dt){
+  const s = difficultySettings[selectedDifficulty];
+  const target = getDefensiveTarget(p2,p1);
+  moveBotToward(p2,target,s.speed*(.9+s.defensiveIQ*.2),dt);
+  if(ballState === "dribble" && flatDistance(p2.group.position,p1.group.position) < (1.25 + p2.movement.defensiveWidth*.4) && botBrain.stealCooldown <= 0){
+    const disciplined = Math.random() < s.stealDiscipline;
+    if(disciplined && Math.random() < dt*s.steal){ p2.swipeSide = Math.random()<.5?"left":"right"; p2.swipeTime = .34; botBrain.stealCooldown = .55; }
+  }
+  if((shotCharging || layupActive) && flatDistance(p2.group.position,p1.group.position) < 3.8 && botBrain.blockCooldown <= 0){
+    if(Math.random() < dt * s.block * s.contestTiming){ tryJumpBlock(p2, p2.sprint > .25 && Math.random() < s.sprint); botBrain.blockCooldown = .62; }
+    else if(!p2.onGround && Math.random() < dt * s.block) raiseHands(p2);
+  }
+}
+function updateBotOffense(dt){
+  const s = difficultySettings[selectedDifficulty];
+  botBrain.intentTimer -= dt; botBrain.decisionCooldown -= dt;
+  if(botBrain.intentTimer <= 0 && botBrain.decisionCooldown <= 0){
+    botBrain.intent = chooseBotIntent();
+    botBrain.recentMoves.push(botBrain.intent); if(botBrain.recentMoves.length > 8) botBrain.recentMoves.shift();
+    botBrain.intentTimer = THREE.MathUtils.randFloat(.35,1.4);
+    botBrain.decisionCooldown = THREE.MathUtils.randFloat(.16,.34) * (1.2-s.composure*.35);
+  }
+  executeBotIntent(dt);
+}
+function updateBotReactionMemory(dt){
+  if(!botBrain) return;
+  const s = difficultySettings[selectedDifficulty];
+  botBrain.reactionTimer -= dt; botBrain.blockCooldown = Math.max(0,botBrain.blockCooldown - dt); botBrain.stealCooldown = Math.max(0,botBrain.stealCooldown - dt);
+  if(botBrain.reactionTimer <= 0){
+    botBrain.lastSeenPlayerPosition.copy(p1.group.position);
+    botBrain.lastSeenBallPosition.copy(ball.position);
+    botBrain.reactionTimer = THREE.MathUtils.randFloat(s.reactionMin,s.reactionMax);
+  }
+}
+function getDefensiveTarget(defender,ballHandler){
+  const hoopBias = HOOP_POS.clone().sub(ballHandler.group.position); hoopBias.y = 0; hoopBias.normalize();
+  const cutoff = ballHandler.group.position.clone().add(hoopBias.multiplyScalar(1.2 + (1-defender.movement.recoverySpeed)*.4));
+  const sideBias = new THREE.Vector3(hoopBias.z,0,-hoopBias.x).multiplyScalar((botBrain.preferredDriveSide||1)*.4);
+  return cutoff.add(sideBias);
 }
 
 function updateJumpPhysics(char,dt){
@@ -1456,29 +1608,116 @@ function resolveBodyCollisions(){
     p2.group.position.add(n.clone().multiplyScalar(-pen*.5));
     keepInCourt(p1.group.position);
     keepInCourt(p2.group.position);
+    applyBodyContact(possession === "p1" ? p1 : p2, possession === "p1" ? p2 : p1);
+    screenShake = Math.min(.22,screenShake + .04);
   }
 }
 
 function updateCharacters(dt){
+  updateMoveFeedback(dt);
   animateCharacter(p1,dt);
   animateCharacter(p2,dt);
+}
+
+function updateMoveState(char,dt){
+  if(char.moveState === "normal") return;
+  char.moveTimer += dt;
+  const pct = THREE.MathUtils.clamp(char.moveTimer / Math.max(.001,char.moveDuration),0,1);
+  if(char.moveState === "stepback") updateStepBack(char,dt,pct);
+  if(char.moveState === "pumpfake") updatePumpFake(char,dt,pct);
+  if(char.moveState === "sidehop") updateSideHop(char,dt,pct);
+  if(pct >= 1){ char.moveState = "normal"; char.moveTimer = 0; char.moveDuration = 0; }
+}
+function startStepBack(char){
+  if(char.moveState !== "normal" || char.sprint < .15) return;
+  char.moveState = "stepback"; char.moveTimer = 0; char.moveDuration = 0.42; char.stepBackQuality = THREE.MathUtils.randFloat(.4,1);
+  char.sprint = Math.max(0,char.sprint - .18); showMoveFeedback("Step-back!");
+}
+function updateStepBack(char,dt,pct){
+  const back = getForward(char.angle).multiplyScalar(-2.9 * (1-pct*.55));
+  char.group.position.add(back.multiplyScalar(dt));
+  keepInCourt(char.group.position);
+  if(pct > .72 && !char.moveMeta.stepShotReleased){ char.moveMeta.stepShotReleased = true; shotPower = Math.max(.42,shotPower); shootBall(char,"stepback"); }
+  if(pct >= 1){ char.moveMeta.stepShotReleased = false; }
+}
+function startPumpFake(char){
+  if(char.moveState !== "normal") return;
+  char.moveState = "pumpfake"; char.moveTimer = 0; char.moveDuration = .42; char.pumpFakeCooldown = .45; char.lastPumpFakeTime = performance.now()*.001;
+  showMoveFeedback("Pump fake!");
+  if(!twoPlayerMode && possession === "p1" && Math.random() < botBrain.fakeBiteChance){ tryJumpBlock(p2,false); showMoveFeedback("Defender bit!"); }
+}
+function updatePumpFake(char,dt,pct){
+  char.velocity.multiplyScalar(.25);
+}
+function startSideHop(char,screenSide){
+  if(char.moveState !== "normal" || char.sideHopCooldown > 0) return;
+  char.moveState = "sidehop"; char.moveTimer = 0; char.moveDuration = .34; char.sideHopCooldown = .55;
+  char.moveMeta.sideHop = screenSide; char.sprint = Math.max(0,char.sprint-.12);
+  showMoveFeedback("Side hop!");
+  const defender = char.id === "p1" ? p2 : p1;
+  triggerAnkleBreaker(defender,char);
+}
+function updateSideHop(char,dt,pct){
+  const right = getScreenRightVectorForChar(char);
+  const side = (char.moveMeta.sideHop || "right") === "left" ? -1 : 1;
+  char.group.position.add(right.multiplyScalar(side * (2.8 * (1-Math.abs(pct-.5))) * dt));
+  keepInCourt(char.group.position);
+}
+function checkDoubleTap(char,side){
+  const now = performance.now() * .001;
+  if(side === "left"){
+    const ok = now - char.lastLeftTapTime <= DOUBLE_TAP_WINDOW;
+    char.lastLeftTapTime = now;
+    return ok;
+  }
+  const ok = now - char.lastRightTapTime <= DOUBLE_TAP_WINDOW;
+  char.lastRightTapTime = now;
+  return ok;
+}
+function triggerAnkleBreaker(defender,attacker){
+  const movingWrongWay = defender.velocity.length() > .8 && defender.velocity.clone().normalize().dot(getForward(attacker.angle)) < -.15;
+  const chance = THREE.MathUtils.clamp(.08 + (attacker.profile.handle-1)*.18 + (movingWrongWay?.12:0) - (defender.movement.recoverySpeed-1)*.2, .02, .34);
+  if(Math.random() < chance){
+    defender.stumbledTimer = THREE.MathUtils.randFloat(.4,.9);
+    showMoveFeedback("Ankle breaker!");
+  }
+}
+function applyBodyContact(offense,defense){
+  const d = flatDistance(offense.group.position,defense.group.position);
+  if(d > offense.bodyRadius + defense.bodyRadius + .22) return;
+  const diff = defense.movement.contactStrength - offense.movement.contactStrength;
+  if(diff > 0) offense.velocity.multiplyScalar(1 - Math.min(.2,diff*.08));
+}
+function calculateShotContest(shooter){
+  const defender = shooter.id === "p1" ? p2 : p1;
+  const d = flatDistance(shooter.group.position,defender.group.position);
+  let value = THREE.MathUtils.clamp((2.8 - d) / 2.8,0,1) * THREE.MathUtils.clamp(defender.profile.block*.55 + defender.profile.steal*.35, .35,1.8);
+  if(shooter.moveMeta && shooter.moveMeta.lastShotType === "stepback") value *= .82;
+  const label = value < .12 ? "Open" : value < .28 ? "Light Contest" : value < .48 ? "Good Contest" : value < .7 ? "Heavy Contest" : "Smothered";
+  return {value,label};
+}
+function showShotFeedback(text){ showMoveFeedback(text,.8); }
+function showMoveFeedback(text,duration=1){
+  moveFeedbackTimers.push({text,time:duration});
+  flash(text);
+}
+function updateMoveFeedback(dt){
+  for(const m of moveFeedbackTimers) m.time -= dt;
+  while(moveFeedbackTimers.length && moveFeedbackTimers[0].time <= 0) moveFeedbackTimers.shift();
 }
 
 function animateCharacter(char,dt){
   char.handsUpTime = Math.max(0,char.handsUpTime - dt);
   char.dribbleBounce += dt * 7.8;
 
-  const moving = char.velocity.length() > .2;
-  const walk = moving ? Math.sin(performance.now()*.017) : 0;
-  char.leftLeg.rotation.x = walk*.42;
-  char.rightLeg.rotation.x = -walk*.42;
+  animateRunCycle(char,dt);
 
   resetArmDefaults(char);
 
   if(char.shotMotionTime > 0){
     char.shotMotionTime -= dt;
     const pct = THREE.MathUtils.clamp(1 - char.shotMotionTime/.46,0,1);
-    poseShotArms(char,pct);
+    animateShotTimeline(char,pct,char.moveMeta.lastShotType || "jumper");
     return;
   }
 
@@ -1486,6 +1725,7 @@ function animateCharacter(char,dt){
     char.blockTime = Math.max(0,char.blockTime - dt);
     const blockPct = 1 - THREE.MathUtils.clamp(char.blockTime/.42,0,1);
     const reach = Math.sin(blockPct*Math.PI);
+    animateDefensiveStance(char,dt);
     poseBlockArms(char,reach);
     return;
   }
@@ -1499,15 +1739,42 @@ function animateCharacter(char,dt){
   }
 
   if(char.hasBall && ballState === "dribble"){
-    if(ballSideValue < 0){
-      char.leftForearm.rotation.x = Math.sin(char.dribbleBounce)*.45;
-      char.leftHand.position.z -= .12;
-    }else{
-      char.rightForearm.rotation.x = Math.sin(char.dribbleBounce)*.45;
-      char.rightHand.position.z -= .12;
-    }
+    animateDribble(char,dt);
+  }
+  if(char.moveState === "sidehop") animateSideHop(char,THREE.MathUtils.clamp(char.moveTimer/Math.max(.001,char.moveDuration),0,1));
+  if(char.moveState === "stepback") animateStepBack(char,THREE.MathUtils.clamp(char.moveTimer/Math.max(.001,char.moveDuration),0,1));
+  if(char.moveState === "pumpfake") animatePumpFake(char,THREE.MathUtils.clamp(char.moveTimer/Math.max(.001,char.moveDuration),0,1));
+}
+function animateShotTimeline(char,pct,type){
+  if(type === "stepback"){ char.group.position.y = Math.max(char.group.position.y, Math.sin(Math.min(1,pct/.35)*Math.PI)*.12); }
+  poseShotArms(char,pct);
+}
+function animateDribble(char,dt){
+  if(ballSideValue < 0){
+    char.leftForearm.rotation.x = Math.sin(char.dribbleBounce)*.45;
+    char.leftHand.position.z -= .12;
+    char.rightArm.rotation.z += .08;
+  }else{
+    char.rightForearm.rotation.x = Math.sin(char.dribbleBounce)*.45;
+    char.rightHand.position.z -= .12;
+    char.leftArm.rotation.z -= .08;
   }
 }
+function animateDefensiveStance(char,dt){
+  char.group.position.y = Math.max(0,char.group.position.y - dt*.2);
+  char.leftLeg.rotation.z = -.18; char.rightLeg.rotation.z = .18;
+}
+function animateRunCycle(char,dt){
+  const moving = char.velocity.length() > .18;
+  const speedScale = THREE.MathUtils.clamp(char.velocity.length()/6,0,1.4);
+  const walk = moving ? Math.sin(performance.now()*(.012 + speedScale*.014)) : 0;
+  char.leftLeg.rotation.x = walk*(.32 + speedScale*.2);
+  char.rightLeg.rotation.x = -walk*(.32 + speedScale*.2);
+  char.group.position.y += Math.sin(performance.now()*.018) * .0008 * speedScale;
+}
+function animateSideHop(char,pct){ char.group.rotation.z = ((char.moveMeta.sideHop==="left")?-1:1) * Math.sin(pct*Math.PI)*.06; }
+function animateStepBack(char,pct){ char.group.rotation.x = -Math.sin(pct*Math.PI)*.08; }
+function animatePumpFake(char,pct){ poseShotArms(char,Math.min(.45,pct*.9)); }
 function updateBall(dt){
   if(ballState === "dribble"){
     const owner = getOwner();
@@ -1555,6 +1822,7 @@ function updateBall(dt){
       ballVelocity.x *= .76;
       ballVelocity.z *= .76;
       if(Math.abs(ballVelocity.y) < 1.2 && ballState === "shot") ballState = "loose";
+      ball.scale.set(1.08,.92,1.08);
     }
 
     handleBackboardAndRim();
@@ -1564,6 +1832,7 @@ function updateBall(dt){
 
   ball.rotation.x += dt * 5;
   ball.rotation.z += dt * 3;
+  ball.scale.lerp(new THREE.Vector3(1,1,1),dt*12);
 }
 
 function keepBallInBounds(){
@@ -1654,13 +1923,16 @@ function updateLayup(dt){
       if(layupOwner === "p1"){
         scoreP1 += 2;
         flash("P1 layup!");
+        updateMomentum(p1,true,2,"Good Contest");
         setTimeout(() => resetPossession("p2",true),650);
       }else{
         scoreP2 += 2;
         flash("P2 layup!");
+        updateMomentum(p2,true,2,"Good Contest");
         setTimeout(() => resetPossession("p1",true),650);
       }
       updateScoreboard();
+      checkGameWinner();
     }
   }
 
@@ -1671,12 +1943,30 @@ function updateLayup(dt){
   }
 }
 
-function releaseOffenseMove(char){
-  if(isCloseLayupRange(char)) startLayup(char);
-  else shootBall(char);
+function releaseShootOrFake(char){
+  const held = char.moveMeta.chargeHeld || 0;
+  if(held < .18 && char.pumpFakeCooldown <= 0){
+    shotCharging = false;
+    chargingPlayer = null;
+    shotPower = 0;
+    startPumpFake(char);
+    return;
+  }
+  releaseOffenseMove(char);
 }
 
-function shootBall(char){
+function releaseOffenseMove(char){
+  if(gameOver) return;
+  const backHeld = char.id === "p1" ? !!keys["KeyS"] : !!keys["KeyK"];
+  if(backHeld && char.moveState === "normal"){
+    startStepBack(char);
+    return;
+  }
+  if(isCloseLayupRange(char)) startLayup(char);
+  else shootBall(char,char.moveMeta && char.moveMeta.lastShotType || "jumper");
+}
+
+function shootBall(char,shotType="jumper"){
   if(possession !== char.id || ballState !== "dribble") return;
 
   shotCharging = false;
@@ -1685,6 +1975,10 @@ function shootBall(char){
   ballState = "shot";
   ballOwner = char.id;
   char.shotMotionTime = .46;
+  char.moveMeta.lastShotType = shotType;
+  const contest = calculateShotContest(char);
+  showShotFeedback(contest.label);
+  char.lastContestLabel = contest.label;
 
   const start = ball.position.clone();
   const dist = flatDistance(start,HOOP_POS);
@@ -1692,7 +1986,12 @@ function shootBall(char){
 
   const power = THREE.MathUtils.clamp(shotPower,.12,1);
   const idealPower = THREE.MathUtils.clamp(dist/10.5,.35,.92);
-  const accuracy = THREE.MathUtils.clamp((1 - Math.abs(power - idealPower))*char.profile.shot,0,1);
+  const baseAcc = (1 - Math.abs(power - idealPower))*char.profile.shot;
+  const staminaFactor = .84 + char.sprint*.16;
+  const streakFactor = 1 + char.confidence*.08;
+  const moveFactor = shotType === "stepback" ? (1.02 + char.stepBackQuality*.14) : (shotType === "pullup" ? .94 : 1);
+  const contestFactor = 1 - contest.value*.36;
+  const accuracy = THREE.MathUtils.clamp(baseAcc * staminaFactor * streakFactor * moveFactor * contestFactor,0,1);
 
   target.x += (Math.random()-.5) * (2.0*(1-accuracy));
   target.z += (Math.random()-.5) * (2.4*(1-accuracy));
@@ -1705,7 +2004,7 @@ function shootBall(char){
   ballVelocity.y = (needed.y - .5*GRAVITY*flightTime*flightTime) / flightTime;
 
   shotPower = 0;
-  flash(`${char.id.toUpperCase()} shot!`);
+  flash(`${char.id.toUpperCase()} ${shotType === "stepback" ? "step-back jumper!" : "shot!"}`);
 }
 
 function botShoot(){
@@ -1738,6 +2037,9 @@ function checkSteals(){
   if(hand.distanceTo(ball.position) < .52 * defender.profile.steal){
     gainPossession(defender.id);
     flash(`${defender.id.toUpperCase()} steal!`);
+    showShotFeedback("Stripped!");
+    defender.confidence = Math.min(1,defender.confidence + .08);
+    screenShake = Math.min(.22,screenShake + .08);
   }
 }
 
@@ -1759,6 +2061,8 @@ function checkBlocksAndCatches(){
       ballState = "loose";
       ballVelocity.set((Math.random()-.5)*2,2.8,2.2);
       flash(`${blocker.id.toUpperCase()} perfect layup block!`);
+      showShotFeedback("Blocked");
+      screenShake = Math.min(.3,screenShake + .14);
     }
     return;
   }
@@ -1778,6 +2082,8 @@ function checkBlocksAndCatches(){
       ballVelocity.copy(away.multiplyScalar(3.1));
       ballVelocity.y = 2.2;
       flash(`${blocker.id.toUpperCase()} blocked it!`);
+      showShotFeedback("Blocked");
+      screenShake = Math.min(.28,screenShake + .12);
     }
   }
 }
@@ -1805,26 +2111,35 @@ function checkScore(){
     if(ballOwner === "p1"){
       scoreP1 += points;
       flash(`P1 scores ${points}!`);
+      updateMomentum(p1, true, points, p1.lastContestLabel);
+      updateMomentum(p2, false, 0, p1.lastContestLabel);
       setTimeout(() => resetPossession("p2",true),900);
     }else{
       scoreP2 += points;
       flash(`P2 scores ${points}!`);
+      updateMomentum(p2, true, points, p2.lastContestLabel);
+      updateMomentum(p1, false, 0, p2.lastContestLabel);
       setTimeout(() => resetPossession("p1",true),900);
     }
 
     updateScoreboard();
+    checkGameWinner();
     setTimeout(() => lastScored = false,1000);
+  }
+}
 
-    if(scoreP1 >= 11 || scoreP2 >= 11){
-      setTimeout(() => {
-        flash(scoreP1 >= 11 ? "P1 wins!" : "P2 wins!");
-        scoreP1 = 0;
-        scoreP2 = 0;
-        updateScoreboard();
-        resetPossession("p1",true);
-      },1300);
+function checkGameWinner(){
+  if(scoreP1 >= targetScore || scoreP2 >= targetScore){
+    if(Math.abs(scoreP1 - scoreP2) >= winBy){
+      endGame(scoreP1 > scoreP2 ? "p1" : "p2");
     }
   }
+}
+function endGame(winner){
+  gameOver = true;
+  possessionFrozen = true;
+  showWinnerOverlay(winner);
+  screenShake = .28;
 }
 
 function shotValueFor(ownerId){
@@ -1855,6 +2170,7 @@ function gainPossession(who){
 }
 
 function resetPossession(who,reposition){
+  if(gameOver) return;
   possession = who;
   ballOwner = who;
   ballState = "dribble";
@@ -1899,6 +2215,32 @@ function resetPossession(who,reposition){
   startCountdown();
 }
 
+function rematchSamePlayers(){
+  if(!gameStarted) return;
+  scoreP1 = 0; scoreP2 = 0; gameOver = false; possessionFrozen = false;
+  hideWinnerOverlay();
+  updateScoreboard();
+  initBotBrain();
+  p1.confidence = 0; p2.confidence = 0; p1.hotStreak = 0; p2.hotStreak = 0;
+  p1.moveState = p2.moveState = "normal";
+  p1.sideHopCooldown = p2.sideHopCooldown = 0;
+  p1.pumpFakeCooldown = p2.pumpFakeCooldown = 0;
+  resetPossession("p1",true);
+}
+function returnToCharacterMenu(){
+  gameOver = false;
+  hideWinnerOverlay();
+  document.getElementById("menu").style.display = "flex";
+  gameStarted = false;
+}
+function showWinnerOverlay(winner){
+  document.getElementById("winnerText").textContent = winner === "p1" ? "P1 WINS!" : "P2 WINS!";
+  document.getElementById("winnerOverlay").style.display = "flex";
+}
+function hideWinnerOverlay(){
+  document.getElementById("winnerOverlay").style.display = "none";
+}
+
 function resetBody(char){
   char.group.position.y = 0;
   char.yVel = 0;
@@ -1908,7 +2250,11 @@ function resetBody(char){
   char.handsUpTime = 0;
   char.swipeTime = 0;
   char.shotMotionTime = 0;
-}
+  char.moveState = "normal";
+  char.moveTimer = 0;
+  char.moveDuration = 0;
+  char.stumbledTimer = 0;
+  }
 
 function chooseBotStrategy(){
   const r = Math.random();
@@ -1944,12 +2290,17 @@ function updateFollowCamera(cam,char,dt){
     .add(new THREE.Vector3(0,3.35,0));
 
   cam.position.lerp(target,dt*8);
+  if(screenShake > 0){
+    cam.position.x += (Math.random()-.5)*screenShake;
+    cam.position.y += (Math.random()-.5)*screenShake*.4;
+  }
 
   const look = char.group.position.clone()
     .add(forward.clone().multiplyScalar(3.8))
     .add(new THREE.Vector3(0,1.35,0));
 
   cam.lookAt(look);
+  screenShake = Math.max(0,screenShake - dt*.75);
 }
 
 function renderScene(){
@@ -1986,11 +2337,14 @@ function renderScene(){
 function updateHUD(){
   document.getElementById("scoreText").textContent = `${scoreP1} - ${scoreP2}`;
   document.getElementById("posText").textContent = possession.toUpperCase();
-  document.getElementById("strategyText").textContent = twoPlayerMode ? "Human" : botStrategy;
+  document.getElementById("strategyText").textContent = twoPlayerMode ? "Human" : (botBrain ? botBrain.intent : botStrategy);
   document.getElementById("powerBar").style.width = `${Math.round(shotPower*100)}%`;
   document.getElementById("foulBar").style.width = `${Math.round(foulMeter*100)}%`;
   document.getElementById("p1SprintBar").style.width = `${Math.round((p1?p1.sprint:1)*100)}%`;
   document.getElementById("p2SprintBar").style.width = `${Math.round((p2?p2.sprint:1)*100)}%`;
+  let ruleText = `First to ${targetScore}, win by ${winBy}`;
+  if(scoreP1 >= targetScore-1 && scoreP2 >= targetScore-1) ruleText += " (Win by 2)";
+  document.getElementById("gameRulesText").textContent = ruleText;
 
   let crossSafety = 100;
   if(crossover.active) crossSafety = Math.round(crossover.progress * 100);
@@ -2009,7 +2363,11 @@ function updateHUD(){
   document.getElementById("statusText").textContent = status;
 
   if(messageTimer <= 0 && gameStarted){
-    document.getElementById("msg").textContent = "First to 11";
+    let gm = `Game: First to ${targetScore}, win by ${winBy}`;
+    const high = Math.max(scoreP1,scoreP2), low = Math.min(scoreP1,scoreP2);
+    if(high >= targetScore-1 && high-low >= 1) gm += " | Game Point";
+    if(scoreP1 >= targetScore-1 && scoreP2 >= targetScore-1) gm += " | Win by 2";
+    document.getElementById("msg").textContent = gm;
   }
 }
 
@@ -2036,6 +2394,19 @@ function getWorldHand(char,side){
 function isSprinting(char){
   if(char === p1) return keys["ShiftLeft"] && keys["KeyW"];
   return keys["ShiftRight"] && keys["KeyI"];
+}
+
+function updateMomentum(char,made,points,contestLabel){
+  if(made){
+    char.hotStreak = Math.min(4,char.hotStreak + 1);
+    char.confidence = Math.min(1,char.confidence + (.05 + (contestLabel === "Heavy Contest" || contestLabel === "Smothered" ? .06 : 0)));
+  }else{
+    char.hotStreak = Math.max(-4,char.hotStreak - 1);
+    char.confidence = Math.max(-1,char.confidence - .05);
+  }
+  if(char.hotStreak >= 3) showMoveFeedback("Heating up");
+  if(char.hotStreak <= -2) showMoveFeedback("Cold");
+  if(char.confidence > .5) showMoveFeedback("Locked in");
 }
 
 function flash(text){
