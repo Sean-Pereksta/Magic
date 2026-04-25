@@ -905,44 +905,17 @@ function makeJerseyTexture(jerseyDef,numberText="23"){
   const c = document.createElement("canvas"); c.width = 512; c.height = 512;
   const ctx = c.getContext("2d");
   ctx.fillStyle = toHex(jerseyDef.primary); ctx.fillRect(0,0,512,512);
-  ctx.fillStyle = toHex(jerseyDef.secondary); ctx.fillRect(68,62,376,372);
-  drawPattern(ctx,jerseyDef.pattern,{primary:jerseyDef.primary,secondary:jerseyDef.secondary,trim:jerseyDef.trim},{x:68,y:62,w:376,h:372});
-  ctx.fillStyle = toHex(jerseyDef.trim);
-  ctx.fillRect(52,56,16,390); ctx.fillRect(444,56,16,390); // side trim
-  ctx.fillRect(92,90,328,14); ctx.fillRect(92,418,328,12); // shoulder + waist trim
-  ctx.fillRect(70,140,12,210); ctx.fillRect(430,140,12,210);
-  // subtle cloth noise
-  for(let i=0;i<950;i++){
-    const a = 0.03 + Math.random()*0.04;
-    ctx.fillStyle = `rgba(255,255,255,${a})`;
-    ctx.fillRect(Math.random()*512,Math.random()*512,1,1);
-  }
-  // chest badge
-  ctx.fillStyle = "rgba(255,255,255,.92)";
-  ctx.beginPath(); ctx.arc(176,164,28,0,Math.PI*2); ctx.fill();
-  ctx.fillStyle = toHex(jerseyDef.trim); ctx.font = "bold 26px Arial"; ctx.textAlign = "center"; ctx.fillText("1V1",176,172);
-  // front + back numbers
-  ctx.strokeStyle = "rgba(0,0,0,.35)"; ctx.lineWidth = 8;
-  ctx.fillStyle = "#ffffff"; ctx.font = "900 126px Arial"; ctx.textAlign = "center";
-  ctx.strokeText(numberText,256,304); ctx.fillText(numberText,256,304);
-  ctx.font = "900 88px Arial"; ctx.strokeText(numberText,256,460); ctx.fillText(numberText,256,460);
-  if(graphicsQuality === "high"){
-    const shine = ctx.createLinearGradient(40,40,440,460);
-    shine.addColorStop(0,"rgba(255,255,255,.24)");
-    shine.addColorStop(.5,"rgba(255,255,255,0)");
-    shine.addColorStop(1,"rgba(255,255,255,.16)");
-    ctx.fillStyle = shine; ctx.fillRect(58,58,396,390);
-  }
+  ctx.fillStyle = toHex(jerseyDef.secondary); ctx.fillRect(74,72,364,356);
+  drawPattern(ctx,jerseyDef.pattern,{primary:jerseyDef.primary,secondary:jerseyDef.secondary,trim:jerseyDef.trim},{x:74,y:72,w:364,h:356});
+  ctx.fillStyle = toHex(jerseyDef.trim); ctx.fillRect(58,64,16,384); ctx.fillRect(438,64,16,384); ctx.fillRect(90,102,332,16); ctx.fillRect(102,414,308,13);
+  ctx.fillStyle = "#ffffff"; ctx.font = "bold 128px Arial"; ctx.textAlign = "center"; ctx.fillText(numberText,256,300);
   const tex = new THREE.CanvasTexture(c); tex.needsUpdate=true; return tex;
 }
 function makeShortsTexture(jerseyDef){
   const c = document.createElement("canvas"); c.width=256; c.height=256; const ctx=c.getContext("2d");
   ctx.fillStyle = toHex(jerseyDef.secondary); ctx.fillRect(0,0,256,256);
-  drawPattern(ctx,jerseyDef.pattern,{primary:jerseyDef.primary,secondary:jerseyDef.secondary,trim:jerseyDef.trim},{x:8,y:16,w:240,h:232});
-  ctx.fillStyle = toHex(jerseyDef.trim);
-  ctx.fillRect(0,0,256,14); ctx.fillRect(0,242,256,14);
-  ctx.fillRect(16,0,14,256); ctx.fillRect(226,0,14,256);
-  ctx.fillRect(44,38,6,176); ctx.fillRect(206,38,6,176);
+  drawPattern(ctx,jerseyDef.pattern,{primary:jerseyDef.primary,secondary:jerseyDef.secondary,trim:jerseyDef.trim},{x:0,y:0,w:256,h:256});
+  ctx.fillStyle = toHex(jerseyDef.trim); ctx.fillRect(0,0,256,18); ctx.fillRect(0,238,256,18); ctx.fillRect(18,0,12,256); ctx.fillRect(226,0,12,256);
   const tex = new THREE.CanvasTexture(c); tex.needsUpdate=true; return tex;
 }
 function makeShoeTexture(shoeDef){
@@ -1358,10 +1331,8 @@ function animateCrowdPerson(person,dt,excitement){
   const t = performance.now()*.001 + person.userData.phase;
   const poseMul = person.userData.pose === "hype" ? 1.35 : person.userData.pose === "standing" ? 1.05 : .85;
   const bob = Math.sin(t*(2.1+excitement*1.3))*0.02*poseMul;
-  const clapBurst = Math.max(0,crowdWave - 0.28);
-  const jump = person.userData.pose !== "seated" ? Math.max(0,Math.sin(t*6.2 + person.userData.col*.35))*0.05*clapBurst : 0;
   const sway = Math.sin(t*1.7)*0.05 + excitement*0.1*Math.sin(t*5 + person.userData.col*.3);
-  person.position.y = person.userData.baseY + bob + crowdWave*0.04 + jump;
+  person.position.y = person.userData.baseY + bob + crowdWave*0.04;
   person.rotation.y = sway*0.4;
   if(person.userData.armL && person.userData.armR){
     const clap = Math.sin(t*8 + person.userData.row)*0.5 + 0.5;
@@ -1730,15 +1701,15 @@ function createCharacter(profile,pos,id){
   const h = profile.height;
   const w = profile.width;
 
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(.39*w,.8*h,8,20),jersey);
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(.35*w,.78*h,8,18),jersey);
   body.position.y = 1.32*h;
   body.castShadow = true;
   group.add(body);
-  const torso = new THREE.Mesh(new THREE.CylinderGeometry(.29*w,.42*w,.6*h,18),jersey);
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(.3*w,.38*w,.55*h,16),jersey);
   torso.position.y = 1.18*h;
   torso.scale.set(1,.92,1);
   group.add(torso);
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(.085*w,.1*w,.14*h,12),skin);
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(.08*w,.09*w,.12*h,12),skin);
   neck.position.y = 1.88*h;
   group.add(neck);
 
@@ -1749,28 +1720,29 @@ function createCharacter(profile,pos,id){
   group.add(head);
 
   const hair = createHair(profile.hairStyle || "shortFade",profile.hair,w,h);
-  head.add(hair);
+  hair.position.y = 2.06*h;
+  group.add(hair);
 
   const num = makeTextSprite(profile.number,"white",80);
   num.position.set(0,1.43*h,-.38*w);
   num.scale.set(.45,.22,.22);
   group.add(num);
 
-  const leftArm = makeLimb(.125*w,.56*h,skin);
+  const leftArm = makeLimb(.12*w,.6*h,skin);
   leftArm.position.set(-.46*w,1.45*h,0);
   leftArm.rotation.z = -.35;
   group.add(leftArm);
 
-  const rightArm = makeLimb(.125*w,.56*h,skin);
+  const rightArm = makeLimb(.12*w,.6*h,skin);
   rightArm.position.set(.46*w,1.45*h,0);
   rightArm.rotation.z = .35;
   group.add(rightArm);
 
-  const leftForearm = makeLimb(.11*w,.5*h,skin);
+  const leftForearm = makeLimb(.105*w,.5*h,skin);
   leftForearm.position.set(-.64*w,1*h,.05);
   group.add(leftForearm);
 
-  const rightForearm = makeLimb(.11*w,.5*h,skin);
+  const rightForearm = makeLimb(.105*w,.5*h,skin);
   rightForearm.position.set(.64*w,1*h,.05);
   group.add(rightForearm);
 
@@ -1782,20 +1754,13 @@ function createCharacter(profile,pos,id){
   rightHand.position.set(.65*w,.72*h,.07);
   group.add(rightHand);
 
-  const leftLeg = makeLimb(.155*w,.68*h,shorts);
+  const leftLeg = makeLimb(.14*w,.7*h,shorts);
   leftLeg.position.set(-.18*w,.62*h,0);
   group.add(leftLeg);
 
-  const rightLeg = makeLimb(.155*w,.68*h,shorts);
+  const rightLeg = makeLimb(.14*w,.7*h,shorts);
   rightLeg.position.set(.18*w,.62*h,0);
   group.add(rightLeg);
-
-  const leftCalf = makeLimb(.12*w,.56*h,skin);
-  leftCalf.position.set(-.18*w,.3*h,.02);
-  group.add(leftCalf);
-  const rightCalf = makeLimb(.12*w,.56*h,skin);
-  rightCalf.position.set(.18*w,.3*h,.02);
-  group.add(rightCalf);
 
   const leftShoe = new THREE.Mesh(new THREE.BoxGeometry(.3*w,.12,.45*w),shoeMat);
   leftShoe.position.set(-.18*w,.08,.12);
@@ -1826,7 +1791,7 @@ function createCharacter(profile,pos,id){
     jumpCooldown:0,
     sprint:1,
     bodyRadius:.55*w,
-    leftArm,rightArm,leftForearm,rightForearm,leftHand,rightHand,leftLeg,rightLeg,leftCalf,rightCalf,leftShoe,rightShoe,hookIndicator:createHookIndicator(),
+    leftArm,rightArm,leftForearm,rightForearm,leftHand,rightHand,leftLeg,rightLeg,leftShoe,rightShoe,
     hasBall:id==="p1",
     dribbleBounce:0,
     swipeSide:null,
@@ -1853,7 +1818,7 @@ function createCharacter(profile,pos,id){
     lastContestLabel:"Open",
     anim:{runCycle:0,lean:0,targetLean:0,armBlend:0,legBlend:0,torsoTwist:0,landingSquash:0,contactReact:0,shotFollowThrough:0},
     takeover:0,takeoverActive:false,takeoverTimer:0,stamina:1,dribbleStyle:"normal",stats:{fga:0,fgm:0,tpa:0,tpm:0,blocks:0,steals:0,turnovers:0,ankle:0,perfect:0},
-    pendingShotValue:2,pendingShotStartPos:null,movement:{
+    movement:{
       acceleration:5.2 * (1 + (profile.speed-1)*.7),
       lateralSpeed:3.4 * (1 + (profile.speed-1)*.52 + (profile.handle-1)*.23),
       turnSpeed:2.6 * (1 + (profile.handle-1)*.2),
@@ -1866,7 +1831,6 @@ function createCharacter(profile,pos,id){
   if(sneaker.sprintRecover) player.movement.recoverySpeed *= (1 + sneaker.sprintRecover);
   if(sneaker.defense) player.movement.defensiveWidth *= (1 + sneaker.defense);
   if(sneaker.jump) player.profile.jump *= (1 + sneaker.jump);
-  player.group.add(player.hookIndicator.group);
   return player;
 }
 
@@ -1879,89 +1843,45 @@ function makeLimb(radius,length,mat){
 function createHair(style,color,w,h){
   const group = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({color,roughness:.7});
-  const addCap = (sx=1,sy=.45,sz=1,rad=.24)=>{
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(rad*w,16,16),mat);
-    cap.scale.set(sx,sy,sz); group.add(cap); return cap;
-  };
   if(style === "afro"){
-    const puff = new THREE.Mesh(new THREE.SphereGeometry(.31*w,18,18),mat);
-    puff.scale.set(1.04,.95,1.04); group.add(puff);
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(.31*w,16,16),mat);
+    puff.scale.set(1.03,.92,1.03);
+    group.add(puff);
   }else if(style === "braids"){
-    addCap(.98,.5,.98,.24);
-    for(let i=0;i<7;i++){
-      const braid = new THREE.Mesh(new THREE.CylinderGeometry(.022*w,.02*w,.25*h,8),mat);
-      braid.position.set((i-3)*.06*w,-.08*h,-.12*w);
-      braid.rotation.x = 0.42;
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(.24*w,14,14),mat);
+    cap.scale.set(.98,.52,.98); group.add(cap);
+    for(let i=0;i<6;i++){
+      const braid = new THREE.Mesh(new THREE.CylinderGeometry(.025*w,.02*w,.28*h,8),mat);
+      braid.position.set((i-2.5)*.07*w,-.1*h,-.14*w);
+      braid.rotation.x = 0.5;
       group.add(braid);
     }
   }else if(style === "spiky"){
-    addCap(1,.42,1,.22);
-    for(let i=0;i<9;i++){
-      const spike = new THREE.Mesh(new THREE.ConeGeometry(.05*w,.14*h,8),mat);
-      spike.position.set(Math.sin(i*.72)*.14*w,.06*h,Math.cos(i*.72)*.12*w);
-      spike.rotation.x = -0.1;
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(.22*w,12,12),mat); cap.scale.set(1,.42,1); group.add(cap);
+    for(let i=0;i<8;i++){
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(.05*w,.16*h,8),mat);
+      spike.position.set(Math.sin(i*.8)*.14*w,.07*h,Math.cos(i*.8)*.12*w);
       group.add(spike);
     }
   }else if(style === "buzz"){
-    addCap(.96,.16,.96,.25);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(.25*w,14,14),mat);
+    cap.scale.set(.95,.2,.95); group.add(cap);
   }else if(style === "curlyTop"){
-    addCap(.98,.34,.98,.23);
-    for(let i=0;i<16;i++){
-      const curl = new THREE.Mesh(new THREE.SphereGeometry(.052*w,8,8),mat);
-      const a = (i/16)*Math.PI*2;
-      curl.position.set(Math.cos(a)*.13*w + (Math.random()-.5)*.04*w,Math.random()*.12*h,Math.sin(a)*.12*w + (Math.random()-.5)*.04*w);
+    for(let i=0;i<14;i++){
+      const curl = new THREE.Mesh(new THREE.SphereGeometry(.06*w,8,8),mat);
+      curl.position.set((Math.random()-.5)*.38*w,Math.random()*.16*h,(Math.random()-.5)*.36*w);
       group.add(curl);
     }
   }else if(style === "headband"){
-    addCap(.98,.42,.98,.23);
-    const band = new THREE.Mesh(new THREE.TorusGeometry(.22*w,.023*w,8,24),new THREE.MeshStandardMaterial({color:0xffffff,roughness:.28}));
-    band.rotation.x = Math.PI/2; band.position.y = -.03*h; group.add(band);
-  }else if(style === "highTop"){
-    const high = new THREE.Mesh(new THREE.BoxGeometry(.34*w,.24*h,.32*w),mat);
-    high.position.y = .08*h; group.add(high);
-    addCap(.95,.2,.95,.22);
-  }else if(style === "tiedBack" || style === "longHair"){
-    addCap(1,.46,1,.24);
-    const tie = new THREE.Mesh(new THREE.CylinderGeometry(.05*w,.04*w,.34*h,9),mat);
-    tie.position.set(0,-.02*h,-.2*w); tie.rotation.x = .3; group.add(tie);
-  }else if(style === "shortFade"){
-    addCap(.94,.28,.94,.25);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(.23*w,14,14),mat);
+    cap.scale.set(.98,.45,.98); group.add(cap);
+    const band = new THREE.Mesh(new THREE.TorusGeometry(.22*w,.025*w,8,24),new THREE.MeshStandardMaterial({color:0xffffff,roughness:.28}));
+    band.rotation.x = Math.PI/2; band.position.y = -.02*h; group.add(band);
   }else{
-    addCap(.94,.42,.94,.27);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(.27*w,16,16),mat);
+    cap.scale.set(.94,.42,.94); group.add(cap);
   }
-  group.position.y = 0.05*h;
   return group;
-}
-
-function createHookIndicator(){
-  const group = new THREE.Group();
-  group.visible = false;
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(.08,.012,8,22),new THREE.MeshBasicMaterial({color:0x5cf7ff,transparent:true,opacity:0}));
-  ring.rotation.x = Math.PI/2;
-  const label = makeTextSprite("HOOK","#8efbff",56);
-  label.scale.set(.24,.12,.12);
-  label.position.y = .12;
-  label.material.opacity = 0;
-  group.add(ring); group.add(label);
-  return {group,ring,label,alpha:0,bob:0,hand:"left"};
-}
-
-function updateHookIndicator(player,dt){
-  if(!player || !player.hookIndicator) return;
-  const data = getHookShotData(player);
-  const indicator = player.hookIndicator;
-  const shouldShow = data.eligible && player.moveState === "normal";
-  indicator.alpha = smoothAnimValue(indicator.alpha,shouldShow ? 1 : 0,10,dt);
-  indicator.group.visible = indicator.alpha > 0.03;
-  if(!indicator.group.visible) return;
-  indicator.bob += dt*5.5;
-  indicator.hand = data.hookHand || "left";
-  const handPos = getWorldHand(player,indicator.hand);
-  indicator.group.position.copy(handPos).add(new THREE.Vector3(0,.28 + Math.sin(indicator.bob)*.04,0));
-  const cam = getActiveCameraForChar(player);
-  indicator.group.lookAt(cam.position);
-  indicator.ring.material.opacity = indicator.alpha * .72;
-  indicator.label.material.opacity = indicator.alpha;
 }
 
 function makeTextSprite(text,color,size){
@@ -2235,16 +2155,6 @@ function smoothAnimValue(value,target,speed,dt){
   return value + (target - value) * (1 - Math.exp(-speed * dt));
 }
 
-function smoothStepPose(char,key,target,speed,dt){
-  if(!char.poseCache) char.poseCache = {};
-  const cur = char.poseCache[key] || {x:0,y:0,z:0};
-  cur.x = smoothAnimValue(cur.x,target.x,speed,dt);
-  cur.y = smoothAnimValue(cur.y,target.y,speed,dt);
-  cur.z = smoothAnimValue(cur.z,target.z,speed,dt);
-  char.poseCache[key] = cur;
-  return cur;
-}
-
 function getShotTimingQuality(held){
   return THREE.MathUtils.clamp(calculateShotTiming(held).accuracyMultiplier,0.45,1.2);
 }
@@ -2255,31 +2165,25 @@ function getDistancePenalty(shooter){
   const dist = flatDistance(shooter.group.position,HOOP_POS);
   return THREE.MathUtils.clamp(Math.max(0,dist - 3.8) * 0.024,0,0.36);
 }
-function getHookShotData(player){
-  if(!player || !player.hasBall || ballState !== "dribble" || layupActive || dunkActive) return {eligible:false};
+function canHookShot(player){
+  if(!player.hasBall || layupActive || dunkActive) return false;
   const flatPlayerPos = player.group.position.clone().setY(0);
   const flatRimPos = HOOP_POS.clone().setY(0);
-  const toRim = flatRimPos.sub(flatPlayerPos);
-  const distToRim = toRim.length();
-  if(distToRim < 0.001) return {eligible:false};
-  toRim.normalize();
+  const toRim = flatRimPos.sub(flatPlayerPos).normalize();
   const forward = getPlayerForward(player).setY(0).normalize();
   const right = getPlayerRight(player).setY(0).normalize();
-  const rimSide = Math.sign(right.dot(toRim)) || 1;
-  const hookHand = rimSide > 0 ? "left" : "right";
+  const distToRim = player.group.position.distanceTo(HOOP_POS);
+  const facingDot = forward.dot(toRim);
+  const rimSide = Math.sign(right.dot(toRim));
   const inHookRange = distToRim <= 4.8 && distToRim > 1.45;
-  const insideArc = flatDistance(player.group.position,HOOP_POS) < THREE_RADIUS;
-  const sidewaysDot = Math.abs(right.dot(toRim));
+  const sidewaysDot = Math.abs(getPlayerRight(player).dot(toRim));
   const validSidewaysAngle = sidewaysDot >= Math.cos(THREE.MathUtils.degToRad(50));
-  const ballOnOppositeArm = (hookHand === "left" && ballSideValue < 0) || (hookHand === "right" && ballSideValue > 0);
-  const blockedByAnim = player.shotMotionTime > 0 || player.moveState === "dunk";
-  const eligible = inHookRange && insideArc && validSidewaysAngle && ballOnOppositeArm && !blockedByAnim;
-  return {eligible,hookHand,rimSide,distToRim,insideArc,validSidewaysAngle,ballOnOppositeArm};
+  const ballOnOppositeArm =
+    (rimSide > 0 && ballSideValue < 0) ||
+    (rimSide < 0 && ballSideValue > 0);
+  return inHookRange && validSidewaysAngle && ballOnOppositeArm;
 }
-function isHookShotAvailable(player){ return getHookShotData(player).eligible; }
-function canHookShot(player){ return isHookShotAvailable(player); }
 function canStartHookShot(player){ return canHookShot(player); }
-
 function getHookReleasePoint(player){
   const toRim = HOOP_POS.clone().sub(player.group.position).setY(0).normalize();
   const right = getPlayerRight(player).setY(0).normalize();
@@ -2390,25 +2294,6 @@ function poseShotArms(char,pct){
   char.rightArm.rotation.set(-.95-lift*.9,0,.05);
   char.leftForearm.rotation.set(-.65-lift*.9-follow*.35,0,-.05);
   char.rightForearm.rotation.set(-.65-lift*.9-follow*.35,0,.05);
-}
-
-function enforceLimbConnections(char,dt){
-  const w = char.profile.width;
-  const h = char.profile.height;
-  const align = (parent,child,offset,speed=14)=>{
-    const target = parent.position.clone().add(offset);
-    child.position.lerp(target,1 - Math.exp(-speed*dt));
-  };
-  align(char.leftArm,char.leftForearm,new THREE.Vector3(-0.14*w,-0.4*h,-0.04));
-  align(char.rightArm,char.rightForearm,new THREE.Vector3(0.14*w,-0.4*h,-0.04));
-  align(char.leftForearm,char.leftHand,new THREE.Vector3(0,-0.3*h,-0.04));
-  align(char.rightForearm,char.rightHand,new THREE.Vector3(0,-0.3*h,-0.04));
-  align(char.leftLeg,char.leftCalf,new THREE.Vector3(0,-0.42*h,0.02));
-  align(char.rightLeg,char.rightCalf,new THREE.Vector3(0,-0.42*h,0.02));
-  align(char.leftCalf,char.leftShoe,new THREE.Vector3(0,-0.35*h,0.12),18);
-  align(char.rightCalf,char.rightShoe,new THREE.Vector3(0,-0.35*h,0.12),18);
-  char.leftShoe.rotation.x = smoothAnimValue(char.leftShoe.rotation.x,char.leftCalf.rotation.x*0.8,12,dt);
-  char.rightShoe.rotation.x = smoothAnimValue(char.rightShoe.rotation.x,char.rightCalf.rotation.x*0.8,12,dt);
 }
 
 function onKeyDown(e){
@@ -3022,8 +2907,6 @@ function updateCharacters(dt){
   updateMoveFeedback(dt);
   animateCharacter(p1,dt);
   animateCharacter(p2,dt);
-  updateHookIndicator(p1,dt);
-  updateHookIndicator(p2,dt);
 }
 
 function updateMoveState(char,dt){
@@ -3252,7 +3135,6 @@ function animateCharacter(char,dt){
     char.shotMotionTime -= dt;
     const pct = THREE.MathUtils.clamp(1 - char.shotMotionTime/.46,0,1);
     animateShotTimeline(char,pct,char.moveMeta.lastShotType || "jumper");
-    enforceLimbConnections(char,dt);
     return;
   }
 
@@ -3262,7 +3144,6 @@ function animateCharacter(char,dt){
     const reach = Math.sin(blockPct*Math.PI);
     animateDefensiveStance(char,dt);
     poseBlockArms(char,reach);
-    enforceLimbConnections(char,dt);
     return;
   }
 
@@ -3271,7 +3152,6 @@ function animateCharacter(char,dt){
     const pct = 1 - THREE.MathUtils.clamp(char.swipeTime/.34,0,1);
     const reach = Math.sin(pct*Math.PI);
     poseSwipeArm(char,char.swipeSide || "right",reach);
-    enforceLimbConnections(char,dt);
     return;
   }
 
@@ -3283,7 +3163,6 @@ function animateCharacter(char,dt){
   if(char.moveState === "pumpfake") animatePumpFake(char,THREE.MathUtils.clamp(char.moveTimer/Math.max(.001,char.moveDuration),0,1));
   if(char.moveState === "gather") animateGatherBall(char,THREE.MathUtils.clamp(char.moveTimer/Math.max(.001,char.moveDuration),0,1),char.moveMeta.gatherType || "pickup");
   if(char.moveState === "bobble") animateBobble(char,THREE.MathUtils.clamp(char.moveTimer/Math.max(.001,char.moveDuration),0,1));
-  enforceLimbConnections(char,dt);
 }
 function animateShotTimeline(char,pct,type){
   if(type === "stepback"){ char.group.position.y = Math.max(char.group.position.y, Math.sin(Math.min(1,pct/.35)*Math.PI)*.12); }
@@ -3405,9 +3284,8 @@ function animateRunCycle(char,dt){
   const sprinting = moving && char.velocity.length() > 5.6;
   const backpedal = fwdDot < -0.25;
   const turningOnly = !moving && (keys[char.id==="p1"?"KeyA":"KeyJ"] || keys[char.id==="p1"?"KeyD":"KeyL"]);
-  const lateralOnly = Math.abs(fwdDot) < 0.22 && moving;
   const speedFactor = THREE.MathUtils.clamp(char.velocity.length()/5.8,0,1.45);
-  const stride = (backpedal ? .18 : lateralOnly ? .2 : .34) + (sprinting ? .25 : .08) * speedFactor;
+  const stride = (backpedal ? .16 : .34) + (sprinting ? .25 : .08) * speedFactor;
   const sprintFactor = sprinting ? 1.45 : backpedal ? .82 : 1;
   const runRate = THREE.MathUtils.clamp(char.velocity.length() * 3.8 * sprintFactor,0,12);
   const blendDown = (char.shotMotionTime > 0 || char.blockTime > 0 || char.swipeTime > 0 || char.moveMeta.lastShotType === "hook") ? 0.42 : 1;
@@ -3420,10 +3298,8 @@ function animateRunCycle(char,dt){
   const rightBase = char.rightShoe.userData.base || (char.rightShoe.userData.base = char.rightShoe.position.clone());
   char.leftLeg.rotation.x = walk * stride;
   char.rightLeg.rotation.x = -walk * stride;
-  char.leftLeg.rotation.z = backpedal ? -0.08 : lateralOnly ? -0.16*Math.sign(Math.sin(cyc)) : 0;
-  char.rightLeg.rotation.z = backpedal ? 0.08 : lateralOnly ? 0.16*Math.sign(Math.sin(cyc)) : 0;
-  char.leftCalf.rotation.x = smoothAnimValue(char.leftCalf.rotation.x,Math.max(-0.15,char.leftLeg.rotation.x*0.85),10,dt);
-  char.rightCalf.rotation.x = smoothAnimValue(char.rightCalf.rotation.x,Math.max(-0.15,char.rightLeg.rotation.x*0.85),10,dt);
+  char.leftLeg.rotation.z = backpedal ? -0.08 : 0;
+  char.rightLeg.rotation.z = backpedal ? 0.08 : 0;
   char.leftShoe.position.z = leftBase.z + walk * shoeStride;
   char.rightShoe.position.z = rightBase.z - walk * shoeStride;
   char.leftShoe.position.y = leftBase.y + Math.max(0,walk) * lift;
@@ -3447,7 +3323,7 @@ function animateRunCycle(char,dt){
     char.leftArm.rotation.z += Math.sin(cyc)*armPump;
     char.rightArm.rotation.z -= Math.sin(cyc)*armPump;
   }
-  char.anim.targetLean = sprinting ? 0.24 : backpedal ? -0.14 : lateralOnly ? -0.04 : moving ? 0.1 : 0;
+  char.anim.targetLean = sprinting ? 0.24 : backpedal ? -0.11 : moving ? 0.1 : 0;
   char.group.position.y += Math.sin(cyc*1.9) * .0008 * speedFactor;
 }
 function animateSideHop(char,pct){
@@ -3888,14 +3764,14 @@ function triggerShotSplash(position,type="green"){
 }
 function triggerCrowdReaction(type,intensity=1){
   const typeBoost = {
-    make:0.18,madeShot:0.18,threePointer:0.32,hook_make:0.22,green:0.24,dunk:0.42,rim_hang:0.4,block:0.34,steal:0.2,miss:0.08,game_point:0.26
+    make:0.18,hook_make:0.2,green:0.24,dunk:0.35,rim_hang:0.4,block:0.3,miss:0.08,game_point:0.26
   }[type] || 0.12;
   arenaExcitement = THREE.MathUtils.clamp(arenaExcitement + typeBoost + intensity*0.08,0,1);
-  crowdWave = Math.max(crowdWave,intensity + arenaExcitement*0.3 + (type==="threePointer"?.18:0));
-  if(type === "dunk" || type === "block") cameraEffects.shake = Math.max(cameraEffects.shake,intensity * 0.18 + arenaExcitement*0.06);
+  crowdWave = Math.max(crowdWave,intensity + arenaExcitement*0.3);
+  cameraEffects.shake = Math.max(cameraEffects.shake,intensity * 0.18 + arenaExcitement*0.06);
   pulseArenaLights(Math.min(1.35,intensity + arenaExcitement*0.5));
-  if(ledBoardCtx && Math.random() < 0.35 + arenaExcitement*0.35){
-    const msg = type === "dunk" ? "DUNK!" : type === "block" ? "BLOCK!" : type === "threePointer" ? "THREE!" : type === "steal" ? "STEAL!" : type === "hook_make" ? "BUCKET!" : "BUCKET!";
+  if(ledBoardCtx && Math.random() < 0.25 + arenaExcitement*0.35){
+    const msg = type === "dunk" ? "DUNK ALERT" : type === "block" ? "REJECTION" : type === "green" ? "PURE GREEN" : "CROWD NOISE";
     updateLEDBoards(msg);
   }
 }
@@ -3917,10 +3793,6 @@ function releaseShot(shooter,shotType,options={}){
 
   const releasePoint = options.releasePoint || getShotReleasePoint(shooter,shotType);
   ball.position.copy(releasePoint);
-  shooter.pendingShotStartPos = shooter.group.position.clone();
-  const startDist = flatDistance(shooter.pendingShotStartPos,HOOP_POS);
-  shooter.pendingShotValue = startDist > THREE_RADIUS ? 3 : 2;
-  if(shotType === "hook") shooter.pendingShotValue = 2;
   const dist = flatDistance(releasePoint,HOOP_POS);
   const held = shooter.moveMeta.chargeHeld || 0;
   const timing = calculateShotTiming(held);
@@ -3972,7 +3844,6 @@ function releaseShot(shooter,shotType,options={}){
   const shotLabel = shotType === "hook" ? "Hook Shot" : shotType === "jumper" ? "High Jumper" : shotType === "setshot" ? "Set Shot" : (shotType === "pullup" ? "Pull-Up" : shotType === "stepback" ? "Step-Back" : "Jumper");
   showShotBreakdown(timing.grade,shotLabel,contest.label,"In Flight");
   playShotSound();
-  if(shotType === "hook") showMoveFeedback("HOOK!",0.55);
   flash(`${shooter.id.toUpperCase()} ${shotLabel.toLowerCase()}!`);
   return true;
 }
@@ -4168,7 +4039,6 @@ function checkSteals(){
     defender.confidence = Math.min(1,defender.confidence + .08);
     defender.stats.steals += 1;
     addTakeover(10,defender);
-    triggerCrowdReaction("steal",0.72);
     screenShake = Math.min(.22,screenShake + .08); applyCameraShake(.09);
   }
 }
@@ -4195,7 +4065,6 @@ function checkBlocksAndCatches(){
       flash(`${blocker.id.toUpperCase()} perfect layup block!`);
       showShotFeedback("Blocked");
       addBlockStat(blocker,12);
-      triggerCrowdReaction("block",0.9);
       playBlockSound();
       screenShake = Math.min(.3,screenShake + .14); applyCameraShake(.16);
     }
@@ -4212,7 +4081,6 @@ function checkBlocksAndCatches(){
       flash(`${blocker.id.toUpperCase()} blocked it!`);
       showShotFeedback("Blocked");
       addBlockStat(blocker,10);
-      triggerCrowdReaction("block",0.85);
       playBlockSound();
       screenShake = Math.min(.28,screenShake + .12); applyCameraShake(.13);
     }
@@ -4246,17 +4114,14 @@ function checkScore(){
       scoreP1 += points;
       p1.stats.fgm += 1;
       if(points===3) p1.stats.tpm += 1;
-      flash(points===3?"P1 3 POINTER!":(p1.moveMeta.lastShotType==="hook"?"P1 HOOK 2!":"P1 2 POINTS"));
+      flash(`P1 scores ${points}!`);
       const shotKind = p1.moveMeta.lastShotType === "hook" ? "Hook Shot" : (points===3?"Jumper":"Layup");
       showShotBreakdown("Good",shotKind,p1.lastContestLabel,"Made");
       animateNetSwish();
       playSwishSound();
       playCrowdPulse();
       triggerShotSplash(HOOP_POS.clone(),points===3?"gold":(p1.moveMeta.lastShotType==="hook"?"blue":"green"));
-      triggerCrowdReaction(points===3?"threePointer":(p1.moveMeta.lastShotType==="hook"?"hook_make":"madeShot"),points===3?1.1:0.8);
-      if(points===3) showMoveFeedback("3 POINTER!",0.8);
-      else if(p1.moveMeta.lastShotType==="hook") showMoveFeedback("HOOK 2!",0.8);
-      else showMoveFeedback("2 POINTS",0.8);
+      triggerCrowdReaction(p1.moveMeta.lastShotType==="hook"?"hook_make":"make",points===3?1.05:0.8);
       updateMomentum(p1, true, points, p1.lastContestLabel);
       updateMomentum(p2, false, 0, p1.lastContestLabel);
       setTimeout(() => resetPossession(nextPossessionAfterScore("p1"),true),900);
@@ -4264,17 +4129,14 @@ function checkScore(){
       scoreP2 += points;
       p2.stats.fgm += 1;
       if(points===3) p2.stats.tpm += 1;
-      flash(points===3?"P2 3 POINTER!":(p2.moveMeta.lastShotType==="hook"?"P2 HOOK 2!":"P2 2 POINTS"));
+      flash(`P2 scores ${points}!`);
       const shotKind = p2.moveMeta.lastShotType === "hook" ? "Hook Shot" : (points===3?"Jumper":"Layup");
       showShotBreakdown("Good",shotKind,p2.lastContestLabel,"Made");
       animateNetSwish();
       playSwishSound();
       playCrowdPulse();
       triggerShotSplash(HOOP_POS.clone(),points===3?"gold":(p2.moveMeta.lastShotType==="hook"?"blue":"green"));
-      triggerCrowdReaction(points===3?"threePointer":(p2.moveMeta.lastShotType==="hook"?"hook_make":"madeShot"),points===3?1.1:0.8);
-      if(points===3) showMoveFeedback("3 POINTER!",0.8);
-      else if(p2.moveMeta.lastShotType==="hook") showMoveFeedback("HOOK 2!",0.8);
-      else showMoveFeedback("2 POINTS",0.8);
+      triggerCrowdReaction(p2.moveMeta.lastShotType==="hook"?"hook_make":"make",points===3?1.05:0.8);
       updateMomentum(p2, true, points, p2.lastContestLabel);
       updateMomentum(p1, false, 0, p2.lastContestLabel);
       setTimeout(() => resetPossession(nextPossessionAfterScore("p2"),true),900);
@@ -4308,7 +4170,8 @@ function endGame(winner){
 function shotValueFor(ownerId){
   const shooter = ownerId === "p1" ? p1 : p2;
   if(!shooter) return 2;
-  return shooter.pendingShotValue || 2;
+  const d = flatDistance(shooter.group.position, HOOP_POS);
+  return d >= THREE_RADIUS ? 3 : 2;
 }
 
 function gainPossession(who){
@@ -4339,7 +4202,6 @@ function gainPossession(who){
 
   p1.hasBall = who === "p1";
   p2.hasBall = who === "p2";
-  p1.pendingShotValue = 2; p2.pendingShotValue = 2;
   if(oldOwner) oldOwner.hasBall = false;
 
   ballSideValue = 1;
@@ -4379,7 +4241,6 @@ function resetPossession(who,reposition){
 
   p1.hasBall = who === "p1";
   p2.hasBall = who === "p2";
-  p1.pendingShotValue = 2; p2.pendingShotValue = 2;
 
   resetBody(p1);
   resetBody(p2);
