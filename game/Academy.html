@@ -488,6 +488,9 @@ let possession = "p1";
 let ballOwner = "p1";
 let lastShotShooter = "p1";
 let ballState = "dribble"; // dribble, shot, loose, layup, dunk
+let lastShotValue = 2;
+let lastShotReleasePos = new THREE.Vector3();
+let lastShotWasHook = false;
 let ballSide = "right";
 let ballSideValue = 1;
 let ballVelocity = new THREE.Vector3();
@@ -577,12 +580,12 @@ const profiles = {
   sky:{
     name:"Sky Riser",desc:"Tall finisher and rim protector. Huge layup reach.",
     jersey:0x1d6cff,shorts:0x0b2b78,skin:0xf1c27d,hair:0x1e1209,
-    height:1.16,width:1.02,speed:.98,sprint:.94,jump:1.15,layup:1.34,handle:.68,shot:.86,block:1.48,steal:.72,hook:1.12,number:"32",hairStyle:"curlyTop"
+    height:1.16,width:1.02,speed:1.0,sprint:.98,jump:1.15,layup:1.34,handle:.68,shot:.86,block:1.48,steal:.72,hook:1.12,number:"32",hairStyle:"curlyTop"
   },
   flash:{
     name:"Flash Guard",desc:"Tiny speed demon. Best sprint and handles, weak body.",
     jersey:0xff3d6e,shorts:0x74162e,skin:0x9b5a35,hair:0x111111,
-    height:.9,width:.84,speed:1.26,sprint:1.38,jump:.9,layup:.82,handle:1.52,shot:.95,block:.56,steal:1.35,hook:.55,number:"3",hairStyle:"spiky"
+    height:.9,width:.84,speed:1.2,sprint:1.3,jump:.9,layup:.82,handle:1.52,shot:.95,block:.56,steal:1.35,hook:.55,number:"3",hairStyle:"spiky"
   },
   smooth:{
     name:"Smooth Shooter",desc:"Pure shooter. Best jumper, weaker contact defense.",
@@ -592,7 +595,7 @@ const profiles = {
   bruiser:{
     name:"Paint Bruiser",desc:"Strong post scorer. Wins body contact, slow laterally.",
     jersey:0xffa42b,shorts:0x7a4200,skin:0x5d3425,hair:0x0b0705,
-    height:1.1,width:1.24,speed:.92,sprint:.88,jump:.9,layup:1.48,handle:.54,shot:.72,block:1.12,steal:.62,hook:1.35,number:"55",hairStyle:"afro"
+    height:1.1,width:1.24,speed:.96,sprint:.93,jump:.9,layup:1.48,handle:.54,shot:.72,block:1.12,steal:.62,hook:1.35,number:"55",hairStyle:"afro"
   },
   claw:{
     name:"The Claw",desc:"Long defensive specialist. Elite blocks, steals, catches.",
@@ -602,7 +605,7 @@ const profiles = {
   rocket:{
     name:"Rocket Wing",desc:"Explosive chase-down athlete. Great sprint blocks.",
     jersey:0xff4d1e,shorts:0x802111,skin:0xc8845b,hair:0x20100a,
-    height:1.02,width:.98,speed:1.1,sprint:1.45,jump:1.2,layup:1.08,handle:.85,shot:.78,block:1.22,steal:.9,hook:.7,number:"8",hairStyle:"headband"
+    height:1.02,width:.98,speed:1.08,sprint:1.34,jump:1.2,layup:1.08,handle:.85,shot:.78,block:1.22,steal:.9,hook:.7,number:"8",hairStyle:"headband"
   },
   crafty:{
     name:"Crafty Lefty",desc:"Best crossover safety and weird angles. Not explosive.",
@@ -612,7 +615,7 @@ const profiles = {
   tower:{
     name:"Glass Tower",desc:"Massive shot blocker. Slow, but nearly impossible to shoot over.",
     jersey:0x00b8d9,shorts:0x005a6a,skin:0x3d2418,hair:0x080808,
-    height:1.24,width:1.16,speed:.84,sprint:.78,jump:.95,layup:1.22,handle:.38,shot:.58,block:2.05,steal:.48,hook:1.22,number:"44",hairStyle:"afro"
+    height:1.24,width:1.16,speed:.91,sprint:.87,jump:.95,layup:1.22,handle:.38,shot:.58,block:2.05,steal:.48,hook:1.22,number:"44",hairStyle:"afro"
   }
 };
 
@@ -636,7 +639,12 @@ const jerseys = {
   solarFlare:{name:"Solar Flare",primary:0x4a1e05,secondary:0xffae00,trim:0xfff1a8,pattern:"sunburst",style:"Solar"},
   venom:{name:"Venom",primary:0x050505,secondary:0x39ff14,trim:0xffffff,pattern:"fang",style:"Venom"},
   roseHeat:{name:"Rose Heat",primary:0x6f1133,secondary:0xff5f8f,trim:0xffffff,pattern:"petal",style:"Rose"},
-  prism:{name:"Prism",primary:0x202040,secondary:0x9d6cff,trim:0x65f0ff,pattern:"prism",style:"Prismatic"}
+  prism:{name:"Prism",primary:0x202040,secondary:0x9d6cff,trim:0x65f0ff,pattern:"prism",style:"Prismatic"},
+  royalLegacy:{name:"Royal Legacy",primary:0x2f1662,secondary:0x1a1034,trim:0xffd56a,pattern:"royal_trim",style:"Royal"},
+  skylineSlash:{name:"Skyline Slash",primary:0x141a26,secondary:0xd7e5ff,trim:0x5aa7ff,pattern:"slash_city",style:"City"},
+  frostedSteel:{name:"Frosted Steel",primary:0xdbefff,secondary:0x8ebce8,trim:0xffffff,pattern:"frost",style:"Ice"},
+  toxicNeon:{name:"Toxic Neon",primary:0x0a1309,secondary:0x39ff14,trim:0xb6ff00,pattern:"slime",style:"Neon"},
+  chromeSlash:{name:"Chrome Slash",primary:0xc9d5e8,secondary:0x5f6f82,trim:0x101620,pattern:"slash",style:"Chrome"}
 };
 const jerseyKeys = Object.keys(jerseys);
 
@@ -662,7 +670,13 @@ const sneakers = {
   neonVenom:{name:"Neon Venom",primary:0x050505,sole:0x39ff14,accent:0xb6ff00,type:"glow",pattern:"drip",style:"Neon"},
   solarJump:{name:"Solar Jump",primary:0x4a1e05,sole:0xffae00,accent:0xfff1a8,type:"boost",pattern:"sunburst",style:"Solar"},
   prismDrive:{name:"Prism Drive",primary:0x202040,sole:0x9d6cff,accent:0x65f0ff,type:"glow",pattern:"prism",style:"Prism"},
-  roseBlaze:{name:"Rose Blaze",primary:0x6f1133,sole:0xff5f8f,accent:0xffffff,type:"low",pattern:"petal",style:"Rose"}
+  roseBlaze:{name:"Rose Blaze",primary:0x6f1133,sole:0xff5f8f,accent:0xffffff,type:"low",pattern:"petal",style:"Rose"},
+  neonGlow:{name:"Neon Glow",primary:0x121226,sole:0x39ff14,accent:0x65f0ff,type:"glow",pattern:"pulse",style:"Neon"},
+  royalHi:{name:"Royal High-Tops",primary:0x2f1662,sole:0xffd56a,accent:0xffffff,type:"high",pattern:"crown",style:"Royal"},
+  streetLow:{name:"Street Low-Tops",primary:0x222222,sole:0x111111,accent:0xff6b2d,type:"low",pattern:"slash",style:"Street"},
+  solarOrange:{name:"Solar Orange",primary:0x4a1e05,sole:0xff8b2b,accent:0xffd56a,type:"boost",pattern:"sunburst",style:"Solar"},
+  iceAura:{name:"Ice Aura",primary:0xeaf8ff,sole:0x7ad7ff,accent:0xffffff,type:"glow",pattern:"frost",style:"Ice"},
+  toxicGreen:{name:"Toxic Green",primary:0x091209,sole:0x2aff37,accent:0xb6ff00,type:"low",pattern:"slime",style:"Toxic"}
 };
 const sneakerKeys = Object.keys(sneakers);
 
@@ -897,6 +911,45 @@ function drawPattern(ctx,patternName,palette,area={x:0,y:0,w:256,h:256}){
   }else if(patternName === "petal"){
     ctx.fillStyle = "rgba(255,190,220,.45)";
     for(let i=0;i<11;i++){ ctx.beginPath(); const px=x+Math.random()*w, py=y+Math.random()*h; ctx.ellipse(px,py,8,14,Math.random()*Math.PI,0,Math.PI*2); ctx.fill(); }
+  }else if(patternName === "slash" || patternName === "slash_city"){
+    ctx.fillStyle = "rgba(255,255,255,.25)";
+    for(let i=0;i<5;i++){
+      const sx = x + w*(0.1 + i*0.18);
+      ctx.beginPath();
+      ctx.moveTo(sx,y+h*.06);
+      ctx.lineTo(sx+w*.11,y+h*.06);
+      ctx.lineTo(sx-w*.07,y+h*.94);
+      ctx.lineTo(sx-w*.18,y+h*.94);
+      ctx.closePath();
+      ctx.fill();
+    }
+    if(patternName === "slash_city"){
+      ctx.fillStyle = "rgba(220,240,255,.35)";
+      for(let i=0;i<8;i++) ctx.fillRect(x+w*(0.05+i*0.115),y+h*.55,w*.07,h*.4-(i%3)*h*.08);
+    }
+  }else if(patternName === "royal_trim"){
+    ctx.strokeStyle = trim;
+    ctx.lineWidth = Math.max(2,w*0.02);
+    ctx.strokeRect(x+w*.08,y+h*.08,w*.84,h*.84);
+    ctx.strokeRect(x+w*.18,y+h*.18,w*.64,h*.64);
+    ctx.fillStyle = "rgba(255,213,106,.22)";
+    ctx.fillRect(x+w*.2,y+h*.2,w*.6,h*.6);
+  }else if(patternName === "frost"){
+    ctx.strokeStyle = "rgba(255,255,255,.6)";
+    ctx.lineWidth = Math.max(1.5,w*0.008);
+    for(let i=0;i<7;i++){
+      const sy = y+h*(0.12+i*0.11);
+      ctx.beginPath();
+      ctx.moveTo(x+w*.08,sy);
+      ctx.lineTo(x+w*.92,sy+h*.04*Math.sin(i*1.6));
+      ctx.stroke();
+    }
+    ctx.fillStyle = "rgba(255,255,255,.24)";
+    for(let i=0;i<16;i++){
+      const px = x+w*(0.08 + (i%8)*0.11);
+      const py = y+h*(0.1 + Math.floor(i/8)*0.36 + ((i%2)*0.03));
+      ctx.fillRect(px,py,3,3);
+    }
   }
   ctx.restore();
 }
@@ -904,26 +957,61 @@ function drawPattern(ctx,patternName,palette,area={x:0,y:0,w:256,h:256}){
 function makeJerseyTexture(jerseyDef,numberText="23"){
   const c = document.createElement("canvas"); c.width = 512; c.height = 512;
   const ctx = c.getContext("2d");
-  ctx.fillStyle = toHex(jerseyDef.primary); ctx.fillRect(0,0,512,512);
-  ctx.fillStyle = toHex(jerseyDef.secondary); ctx.fillRect(74,72,364,356);
-  drawPattern(ctx,jerseyDef.pattern,{primary:jerseyDef.primary,secondary:jerseyDef.secondary,trim:jerseyDef.trim},{x:74,y:72,w:364,h:356});
-  ctx.fillStyle = toHex(jerseyDef.trim); ctx.fillRect(58,64,16,384); ctx.fillRect(438,64,16,384); ctx.fillRect(90,102,332,16); ctx.fillRect(102,414,308,13);
-  ctx.fillStyle = "#ffffff"; ctx.font = "bold 128px Arial"; ctx.textAlign = "center"; ctx.fillText(numberText,256,300);
+  const primary = toHex(jerseyDef.primary);
+  const secondary = toHex(jerseyDef.secondary);
+  const trim = toHex(jerseyDef.trim);
+  const bodyX = 88, bodyY = 62, bodyW = 336, bodyH = 382;
+  ctx.fillStyle = primary; ctx.fillRect(0,0,512,512);
+  const panelGrad = ctx.createLinearGradient(0,bodyY,0,bodyY+bodyH);
+  panelGrad.addColorStop(0,secondary);
+  panelGrad.addColorStop(1,primary);
+  ctx.fillStyle = panelGrad;
+  ctx.fillRect(bodyX,bodyY,bodyW,bodyH);
+  drawPattern(ctx,jerseyDef.pattern,{primary:jerseyDef.primary,secondary:jerseyDef.secondary,trim:jerseyDef.trim},{x:bodyX+8,y:bodyY+16,w:bodyW-16,h:bodyH-42});
+  ctx.fillStyle = trim;
+  ctx.fillRect(bodyX-18,bodyY+20,14,bodyH-38); ctx.fillRect(bodyX+bodyW+4,bodyY+20,14,bodyH-38);
+  ctx.fillRect(bodyX+16,bodyY+22,bodyW-32,12);
+  ctx.fillRect(bodyX+26,bodyY+bodyH-26,bodyW-52,11);
+  ctx.fillRect(bodyX+14,bodyY+56,18,bodyH-112);
+  ctx.fillRect(bodyX+bodyW-32,bodyY+56,18,bodyH-112);
+  ctx.strokeStyle = "rgba(255,255,255,.42)";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(bodyX+5,bodyY+5,bodyW-10,bodyH-10);
+  ctx.fillStyle = "#ffffff";
+  ctx.strokeStyle = "rgba(0,0,0,.35)";
+  ctx.lineWidth = 7;
+  ctx.font = "bold 136px Arial";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.strokeText(numberText,256,250);
+  ctx.fillText(numberText,256,250);
+  ctx.fillStyle = trim;
+  ctx.font = "bold 36px Arial";
+  ctx.fillText("ACADEMY",256,327);
   const tex = new THREE.CanvasTexture(c); tex.needsUpdate=true; return tex;
 }
 function makeShortsTexture(jerseyDef){
   const c = document.createElement("canvas"); c.width=256; c.height=256; const ctx=c.getContext("2d");
   ctx.fillStyle = toHex(jerseyDef.secondary); ctx.fillRect(0,0,256,256);
-  drawPattern(ctx,jerseyDef.pattern,{primary:jerseyDef.primary,secondary:jerseyDef.secondary,trim:jerseyDef.trim},{x:0,y:0,w:256,h:256});
-  ctx.fillStyle = toHex(jerseyDef.trim); ctx.fillRect(0,0,256,18); ctx.fillRect(0,238,256,18); ctx.fillRect(18,0,12,256); ctx.fillRect(226,0,12,256);
+  drawPattern(ctx,jerseyDef.pattern,{primary:jerseyDef.primary,secondary:jerseyDef.secondary,trim:jerseyDef.trim},{x:16,y:18,w:224,h:212});
+  ctx.fillStyle = toHex(jerseyDef.trim); ctx.fillRect(0,0,256,16); ctx.fillRect(0,240,256,16); ctx.fillRect(20,0,10,256); ctx.fillRect(226,0,10,256);
+  ctx.fillRect(106,0,44,256);
+  ctx.fillStyle = "rgba(255,255,255,.18)";
+  ctx.fillRect(36,38,18,162); ctx.fillRect(202,38,18,162);
   const tex = new THREE.CanvasTexture(c); tex.needsUpdate=true; return tex;
 }
 function makeShoeTexture(shoeDef){
   const c = document.createElement("canvas"); c.width=256; c.height=128; const ctx=c.getContext("2d");
-  const g = ctx.createLinearGradient(0,0,256,0); g.addColorStop(0,toHex(shoeDef.primary)); g.addColorStop(1,toHex(shoeDef.sole));
+  const g = ctx.createLinearGradient(0,0,256,0); g.addColorStop(0,toHex(shoeDef.primary)); g.addColorStop(.78,toHex(shoeDef.accent)); g.addColorStop(1,toHex(shoeDef.sole));
   ctx.fillStyle = g; ctx.fillRect(0,0,256,128);
-  drawPattern(ctx,shoeDef.pattern||"geo",{primary:shoeDef.primary,secondary:shoeDef.accent,trim:shoeDef.sole,accent:shoeDef.accent},{x:0,y:0,w:256,h:128});
-  ctx.fillStyle = toHex(shoeDef.accent); ctx.fillRect(0,10,256,8); ctx.fillRect(0,110,256,10);
+  drawPattern(ctx,shoeDef.pattern||"geo",{primary:shoeDef.primary,secondary:shoeDef.accent,trim:shoeDef.sole,accent:shoeDef.accent},{x:10,y:14,w:236,h:90});
+  ctx.fillStyle = toHex(shoeDef.sole); ctx.fillRect(0,105,256,23);
+  ctx.fillStyle = "rgba(255,255,255,.55)";
+  ctx.fillRect(14,28,210,5); ctx.fillRect(16,46,168,4);
+  ctx.fillStyle = toHex(shoeDef.accent);
+  ctx.fillRect(20,20,30,10); // heel accent
+  ctx.fillRect(188,74,44,16); // toe cap
+  ctx.fillRect(80,102,92,6); // mid sole stripe
   const tex = new THREE.CanvasTexture(c); tex.needsUpdate=true; return tex;
 }
 
@@ -936,7 +1024,8 @@ function drawSneakerPreview(canvas,sneaker,time=0){
   ctx.save(); ctx.translate(x,y); ctx.rotate(-0.08);
   ctx.fillStyle = toHex(sneaker.sole); ctx.fillRect(-58,4,118,13 + (sneaker.type==="boost"?4:0));
   ctx.fillStyle = toHex(sneaker.primary); ctx.beginPath(); ctx.moveTo(-58,8); ctx.lineTo(34,-17); ctx.lineTo(60,5); ctx.lineTo(16,12); ctx.lineTo(-52,15); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = toHex(sneaker.accent); ctx.fillRect(-16,-3,38,5); ctx.fillRect(-40,-7,18,10);
+  ctx.fillStyle = toHex(sneaker.accent); ctx.fillRect(-16,-3,38,5); ctx.fillRect(-40,-7,18,10); ctx.fillRect(26,2,16,8);
+  ctx.fillStyle = "rgba(255,255,255,.45)"; ctx.fillRect(-44,-2,62,3);
   if(sneaker.type==="high") ctx.fillRect(-48,-13,22,14);
   if(sneaker.type==="glow"||sneaker.type==="boost"){ ctx.fillStyle = "rgba(120,240,255,.7)"; ctx.fillRect(24,8,18,6); }
   ctx.restore();
@@ -1299,7 +1388,14 @@ function createCrowdPerson(type,palette={}){
     const hair = new THREE.Mesh(new THREE.SphereGeometry(.095,8,8),hairMat); hair.position.y=.53; hair.scale.y=.5; g.add(hair);
   }
   g.scale.setScalar(scale);
-  g.userData = {baseY:0,phase:Math.random()*Math.PI*2,pose:archetype.pose,type,torso,armL,armR};
+  if(archetype.top === "hoodie"){
+    const hood = new THREE.Mesh(new THREE.TorusGeometry(.09,.024,8,16,Math.PI),topMat);
+    hood.position.set(0,.37,-.03); hood.rotation.x = Math.PI/2; g.add(hood);
+  }else if(archetype.top === "jersey"){
+    const trim = new THREE.Mesh(new THREE.TorusGeometry(.078,.012,8,14),new THREE.MeshStandardMaterial({color:0xffffff,roughness:.35}));
+    trim.position.set(0,.39,.01); trim.rotation.x = Math.PI/2; g.add(trim);
+  }
+  g.userData = {baseY:0,phase:Math.random()*Math.PI*2,pose:archetype.pose,type,torso,armL,armR,reactionBias:THREE.MathUtils.randFloat(0.75,1.28),standMix:Math.random()};
   g.traverse(o=>{ if(o.material) arenaThemeRefs.crowdMats.push(o.material); });
   return g;
 }
@@ -1330,23 +1426,25 @@ function buildCrowdSection(side,theme=courts[selectedCourt]){
 function animateCrowdPerson(person,dt,excitement){
   const t = performance.now()*.001 + person.userData.phase;
   const poseMul = person.userData.pose === "hype" ? 1.35 : person.userData.pose === "standing" ? 1.05 : .85;
-  const bob = Math.sin(t*(2.1+excitement*1.3))*0.02*poseMul;
+  const react = excitement * person.userData.reactionBias;
+  const bob = Math.sin(t*(2.1+react*1.6))*0.02*poseMul;
   const sway = Math.sin(t*1.7)*0.05 + excitement*0.1*Math.sin(t*5 + person.userData.col*.3);
-  person.position.y = person.userData.baseY + bob + crowdWave*0.04;
+  const standLift = react > .48 && person.userData.pose === "seated" && person.userData.standMix > 0.62 ? THREE.MathUtils.clamp((react-0.48)*0.3,0,0.11) : 0;
+  person.position.y = person.userData.baseY + bob + crowdWave*0.04 + standLift;
   person.rotation.y = sway*0.4;
   if(person.userData.armL && person.userData.armR){
     const clap = Math.sin(t*8 + person.userData.row)*0.5 + 0.5;
-    const hype = excitement > .45 || person.userData.pose === "hype";
-    person.userData.armL.rotation.z = hype ? -0.4 - clap*0.9 : -0.2 - clap*0.2;
-    person.userData.armR.rotation.z = hype ? 0.4 + clap*0.9 : 0.2 + clap*0.2;
+    const hype = react > .4 || person.userData.pose === "hype";
+    person.userData.armL.rotation.z = hype ? -0.45 - clap*(0.7+react*0.5) : -0.2 - clap*0.2;
+    person.userData.armR.rotation.z = hype ? 0.45 + clap*(0.7+react*0.5) : 0.2 + clap*0.2;
   }
-  person.traverse(o=>{ if(o.material && o.material.emissive){ o.material.emissive.setHex(0x000000); o.material.emissiveIntensity = .02 + excitement*.15; } });
+  person.traverse(o=>{ if(o.material && o.material.emissive){ o.material.emissive.setHex(0x000000); o.material.emissiveIntensity = .03 + react*.18; } });
 }
 
 function updateCrowd(dt){
   if(!qualitySettings[graphicsQuality].crowd) return;
-  crowdWave = Math.max(0,crowdWave - dt*.7);
-  arenaExcitement = Math.max(0,arenaExcitement - dt*.25);
+  crowdWave = Math.max(0,crowdWave - dt*.62);
+  arenaExcitement = Math.max(0,arenaExcitement - dt*.22);
   const excit = THREE.MathUtils.clamp(arenaExcitement + crowdWave*.35,0,1);
   crowdMembers.forEach((fan,i)=>{
     if(graphicsQuality === "low" && i%3!==0) return;
@@ -1769,6 +1867,8 @@ function createCharacter(profile,pos,id){
   const rightShoe = leftShoe.clone();
   rightShoe.position.x = .18*w;
   group.add(rightShoe);
+  const hookIndicator = createHookIndicator();
+  group.add(hookIndicator);
 
   addShoeDetails({profile,group,leftShoe,rightShoe,sneaker});
   addJerseyTrim({profile,group,w,h,jerseyStyle});
@@ -1783,7 +1883,7 @@ function createCharacter(profile,pos,id){
   group.add(shadow);
 
   const player = {
-    id, group, profile, sneaker, jerseyStyle,
+    id, group, profile, sneaker, jerseyStyle, hookIndicator,
     velocity:new THREE.Vector3(),
     angle:Math.PI,
     yVel:0,
@@ -2165,8 +2265,14 @@ function getDistancePenalty(shooter){
   const dist = flatDistance(shooter.group.position,HOOP_POS);
   return THREE.MathUtils.clamp(Math.max(0,dist - 3.8) * 0.024,0,0.36);
 }
+function isInsideArc(player){
+  const dx = player.group.position.x - HOOP_POS.x;
+  const dz = player.group.position.z - HOOP_POS.z;
+  return Math.hypot(dx,dz) < THREE_RADIUS;
+}
 function canHookShot(player){
   if(!player.hasBall || layupActive || dunkActive) return false;
+  if(!isInsideArc(player)) return false;
   const flatPlayerPos = player.group.position.clone().setY(0);
   const flatRimPos = HOOP_POS.clone().setY(0);
   const toRim = flatRimPos.sub(flatPlayerPos).normalize();
@@ -2184,6 +2290,50 @@ function canHookShot(player){
   return inHookRange && validSidewaysAngle && ballOnOppositeArm;
 }
 function canStartHookShot(player){ return canHookShot(player); }
+function createHookIndicator(){
+  const c = document.createElement("canvas");
+  c.width = 128; c.height = 128;
+  const ctx = c.getContext("2d");
+  ctx.clearRect(0,0,128,128);
+  ctx.strokeStyle = "rgba(95,225,255,0.95)";
+  ctx.lineWidth = 10;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.arc(58,58,30,Math.PI*0.25,Math.PI*1.72);
+  ctx.stroke();
+  ctx.fillStyle = "rgba(255,235,140,0.95)";
+  ctx.beginPath();
+  ctx.moveTo(74,24); ctx.lineTo(104,36); ctx.lineTo(82,52);
+  ctx.closePath();
+  ctx.fill();
+  const tex = new THREE.CanvasTexture(c);
+  const mat = new THREE.SpriteMaterial({
+    map:tex,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,color:0x8fe9ff
+  });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(.7,.7,.7);
+  sprite.visible = false;
+  return sprite;
+}
+function updateHookIndicator(player,dt){
+  if(!player || !player.hookIndicator) return;
+  const indicator = player.hookIndicator;
+  const eligible = canHookShot(player) && possession === player.id && ballState === "dribble";
+  if(!eligible){
+    indicator.material.opacity = Math.max(0,indicator.material.opacity - dt*8);
+    if(indicator.material.opacity <= .01) indicator.visible = false;
+    return;
+  }
+  const toRim = HOOP_POS.clone().sub(player.group.position).setY(0).normalize();
+  const right = getPlayerRight(player).setY(0).normalize();
+  const rimSide = Math.sign(right.dot(toRim));
+  const hookSide = rimSide > 0 ? -1 : 1;
+  const pulse = .65 + .35*Math.sin(performance.now()*.009 + (player.id === "p1" ? 0 : 1.3));
+  indicator.visible = true;
+  indicator.position.set(hookSide * .48 * player.profile.width,1.64*player.profile.height,0.26);
+  indicator.scale.setScalar(0.62 + pulse*0.15);
+  indicator.material.opacity = Math.min(1,0.42 + pulse*0.5);
+}
 function getHookReleasePoint(player){
   const toRim = HOOP_POS.clone().sub(player.group.position).setY(0).normalize();
   const right = getPlayerRight(player).setY(0).normalize();
@@ -2562,10 +2712,12 @@ function updatePlayerControl(char,ctrl,dt){
   char.sideHopCooldown = Math.max(0,char.sideHopCooldown - dt);
 
   const move = char.movement;
-  const turnSpeed = move.turnSpeed * (p.speed > 1 ? 1.08 : .98);
-  const baseSpeed = 4.15 * p.speed + move.acceleration*.32;
-  const sprintSpeed = 6.95 * p.speed * p.sprint;
-  const backSpeed = 2.1 * p.speed + move.stopSpeed*.2;
+  const balancedSpeed = THREE.MathUtils.lerp(1.0,p.speed,0.75);
+  const balancedSprint = THREE.MathUtils.lerp(1.0,p.sprint,0.75);
+  const turnSpeed = move.turnSpeed * (balancedSpeed > 1 ? 1.08 : .98);
+  const baseSpeed = 4.15 * balancedSpeed + move.acceleration*.32;
+  const sprintSpeed = 6.95 * balancedSpeed * balancedSprint;
+  const backSpeed = 2.1 * balancedSpeed + move.stopSpeed*.2;
   if(char.moveState !== "normal"){
     updateMoveState(char,dt);
     return;
@@ -2907,6 +3059,8 @@ function updateCharacters(dt){
   updateMoveFeedback(dt);
   animateCharacter(p1,dt);
   animateCharacter(p2,dt);
+  updateHookIndicator(p1,dt);
+  updateHookIndicator(p2,dt);
 }
 
 function updateMoveState(char,dt){
@@ -3763,15 +3917,20 @@ function triggerShotSplash(position,type="green"){
   flash(labels[type] || "SPLASH!");
 }
 function triggerCrowdReaction(type,intensity=1){
+  const baseIntensity = {
+    make:0.45, hook_make:0.52, block:0.75, dunk:1.0, three:0.9, steal:0.5, green:0.72, rim_hang:1.0, miss:0.2, game_point:0.82
+  }[type] || 0.4;
+  const finalIntensity = THREE.MathUtils.clamp(baseIntensity * intensity,0.15,1.2);
   const typeBoost = {
-    make:0.18,hook_make:0.2,green:0.24,dunk:0.35,rim_hang:0.4,block:0.3,miss:0.08,game_point:0.26
+    make:0.16,hook_make:0.2,green:0.26,dunk:0.38,three:0.33,rim_hang:0.42,block:0.32,steal:0.2,miss:0.06,game_point:0.3
   }[type] || 0.12;
-  arenaExcitement = THREE.MathUtils.clamp(arenaExcitement + typeBoost + intensity*0.08,0,1);
-  crowdWave = Math.max(crowdWave,intensity + arenaExcitement*0.3);
-  cameraEffects.shake = Math.max(cameraEffects.shake,intensity * 0.18 + arenaExcitement*0.06);
-  pulseArenaLights(Math.min(1.35,intensity + arenaExcitement*0.5));
+  arenaExcitement = THREE.MathUtils.clamp(arenaExcitement + typeBoost + finalIntensity*0.1,0,1);
+  crowdWave = Math.max(crowdWave,finalIntensity + arenaExcitement*0.35);
+  cameraEffects.shake = Math.max(cameraEffects.shake,finalIntensity * 0.2 + arenaExcitement*0.08);
+  if(type === "dunk" || type === "block") applyCameraZoomPulse(0.08 + finalIntensity*0.04);
+  pulseArenaLights(Math.min(1.45,finalIntensity + arenaExcitement*0.55));
   if(ledBoardCtx && Math.random() < 0.25 + arenaExcitement*0.35){
-    const msg = type === "dunk" ? "DUNK ALERT" : type === "block" ? "REJECTION" : type === "green" ? "PURE GREEN" : "CROWD NOISE";
+    const msg = type === "dunk" ? "DUNK ALERT" : type === "block" ? "REJECTION" : type === "three" ? "FROM DEEP" : type === "green" ? "PURE GREEN" : "CROWD NOISE";
     updateLEDBoards(msg);
   }
 }
@@ -3793,6 +3952,11 @@ function releaseShot(shooter,shotType,options={}){
 
   const releasePoint = options.releasePoint || getShotReleasePoint(shooter,shotType);
   ball.position.copy(releasePoint);
+  const releaseDist = flatDistance(releasePoint,HOOP_POS);
+  lastShotValue = releaseDist > THREE_RADIUS ? 3 : 2;
+  if(shotType === "hook") lastShotValue = 2;
+  lastShotReleasePos.copy(releasePoint);
+  lastShotWasHook = shotType === "hook";
   const dist = flatDistance(releasePoint,HOOP_POS);
   const held = shooter.moveMeta.chargeHeld || 0;
   const timing = calculateShotTiming(held);
@@ -3835,7 +3999,7 @@ function releaseShot(shooter,shotType,options={}){
   shotPower = 0;
   shooter.moveMeta.chargeHeld = 0;
   shooter.stats.fga += 1;
-  if(dist >= THREE_RADIUS) shooter.stats.tpa += 1;
+  if(lastShotValue === 3) shooter.stats.tpa += 1;
   if(timing.grade === "Green Release"){
     shooter.stats.perfect += 1;
     triggerShotSplash(releasePoint,"green");
@@ -3873,6 +4037,9 @@ function startLayup(char){
   layupActive = true;
   layupOwner = char.id;
   lastShotShooter = char.id;
+  lastShotValue = 2;
+  lastShotWasHook = false;
+  lastShotReleasePos.copy(char.group.position);
   ballOwner = char.id;
   ballState = "layup";
   layupTimer = 0;
@@ -3892,6 +4059,9 @@ function startDunk(char){
   dunkActive = true;
   dunkOwner = char.id;
   lastShotShooter = char.id;
+  lastShotValue = 2;
+  lastShotWasHook = false;
+  lastShotReleasePos.copy(char.group.position);
   dunkTimer = 0;
   dunkScored = false;
   rimHangActive = false;
@@ -4036,6 +4206,7 @@ function checkSteals(){
     gainPossession(defender.id);
     flash(`${defender.id.toUpperCase()} steal!`);
     showShotFeedback("Stripped!");
+    triggerCrowdReaction("steal",0.75);
     defender.confidence = Math.min(1,defender.confidence + .08);
     defender.stats.steals += 1;
     addTakeover(10,defender);
@@ -4065,6 +4236,7 @@ function checkBlocksAndCatches(){
       flash(`${blocker.id.toUpperCase()} perfect layup block!`);
       showShotFeedback("Blocked");
       addBlockStat(blocker,12);
+      triggerCrowdReaction("block",0.95);
       playBlockSound();
       screenShake = Math.min(.3,screenShake + .14); applyCameraShake(.16);
     }
@@ -4081,6 +4253,7 @@ function checkBlocksAndCatches(){
       flash(`${blocker.id.toUpperCase()} blocked it!`);
       showShotFeedback("Blocked");
       addBlockStat(blocker,10);
+      triggerCrowdReaction("block",0.88);
       playBlockSound();
       screenShake = Math.min(.28,screenShake + .12); applyCameraShake(.13);
     }
@@ -4121,7 +4294,7 @@ function checkScore(){
       playSwishSound();
       playCrowdPulse();
       triggerShotSplash(HOOP_POS.clone(),points===3?"gold":(p1.moveMeta.lastShotType==="hook"?"blue":"green"));
-      triggerCrowdReaction(p1.moveMeta.lastShotType==="hook"?"hook_make":"make",points===3?1.05:0.8);
+      triggerCrowdReaction(points===3?"three":(p1.moveMeta.lastShotType==="hook"?"hook_make":"make"),points===3?0.95:0.72);
       updateMomentum(p1, true, points, p1.lastContestLabel);
       updateMomentum(p2, false, 0, p1.lastContestLabel);
       setTimeout(() => resetPossession(nextPossessionAfterScore("p1"),true),900);
@@ -4136,7 +4309,7 @@ function checkScore(){
       playSwishSound();
       playCrowdPulse();
       triggerShotSplash(HOOP_POS.clone(),points===3?"gold":(p2.moveMeta.lastShotType==="hook"?"blue":"green"));
-      triggerCrowdReaction(p2.moveMeta.lastShotType==="hook"?"hook_make":"make",points===3?1.05:0.8);
+      triggerCrowdReaction(points===3?"three":(p2.moveMeta.lastShotType==="hook"?"hook_make":"make"),points===3?0.95:0.72);
       updateMomentum(p2, true, points, p2.lastContestLabel);
       updateMomentum(p1, false, 0, p2.lastContestLabel);
       setTimeout(() => resetPossession(nextPossessionAfterScore("p2"),true),900);
@@ -4168,10 +4341,9 @@ function endGame(winner){
 }
 
 function shotValueFor(ownerId){
-  const shooter = ownerId === "p1" ? p1 : p2;
-  if(!shooter) return 2;
-  const d = flatDistance(shooter.group.position, HOOP_POS);
-  return d >= THREE_RADIUS ? 3 : 2;
+  if(ballState === "layup" || dunkActive) return 2;
+  if(lastShotWasHook) return 2;
+  return lastShotValue || 2;
 }
 
 function gainPossession(who){
@@ -4220,6 +4392,9 @@ function resetPossession(who,reposition){
   ballOwner = who;
   lastShotShooter = who;
   ballState = "dribble";
+  lastShotValue = 2;
+  lastShotWasHook = false;
+  lastShotReleasePos.set(0,0,0);
   ballSide = "right";
   ballSideValue = 1;
   ballVelocity.set(0,0,0);
