@@ -2628,8 +2628,7 @@ function bobbleLooseBall(char){
   char.moveState = "bobble";
   char.moveTimer = 0;
   char.moveDuration = 0.32;
-  char.moveMeta = char.moveMeta || {};
-  char.moveMeta.gatherType = null;
+  char.moveMeta = {};
   flash(`${char.id.toUpperCase()} bobbled it!`);
 }
 
@@ -3048,6 +3047,7 @@ function shotValueFor(ownerId){
 
 function gainPossession(who){
   const newOwner = who === "p1" ? p1 : p2;
+  const oldOwner = who === "p1" ? p2 : p1;
   possession = who;
   ballOwner = who;
   ballState = "dribble";
@@ -3057,6 +3057,8 @@ function gainPossession(who){
   shotPower = 0;
   hasShotThisPossession = false;
   layupActive = false;
+  layupOwner = null;
+  layupScored = false;
   foulMeter = 0;
   loosePickupDelay = .12;
   ballCollisionCooldown = 0;
@@ -3065,12 +3067,15 @@ function gainPossession(who){
 
   p1.hasBall = who === "p1";
   p2.hasBall = who === "p2";
+  if(oldOwner) oldOwner.hasBall = false;
 
   ballSideValue = 1;
   ballSide = "right";
 
   const secureHand = getWorldHand(newOwner,"right");
-  const chest = newOwner.group.position.clone().add(new THREE.Vector3(0,1.24*newOwner.profile.height,-0.25));
+  const chest = newOwner.group.position.clone()
+    .add(new THREE.Vector3(0,1.24*newOwner.profile.height,0))
+    .add(getForward(newOwner.angle).multiplyScalar(0.22));
   ball.position.copy(secureHand.lerp(chest,.55));
 }
 
