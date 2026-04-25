@@ -577,42 +577,50 @@ const profiles = {
   sky:{
     name:"Sky Riser",desc:"Tall finisher and rim protector. Huge layup reach.",
     jersey:0x1d6cff,shorts:0x0b2b78,skin:0xf1c27d,hair:0x1e1209,
-    height:1.16,width:1.02,speed:.98,sprint:.94,jump:1.15,layup:1.34,handle:.68,shot:.86,block:1.48,steal:.72,hook:1.12,number:"32",hairStyle:"curlyTop"
+    height:1.16,width:1.02,speed:.98,sprint:.94,jump:1.15,layup:1.34,handle:.68,shot:.86,block:1.48,steal:.72,hook:1.12,number:"32",hairStyle:"curlyTop",
+    build:"power",shoulderScale:1.08,armBulk:1.06,thighBulk:1.08,calfBulk:1.04
   },
   flash:{
     name:"Flash Guard",desc:"Tiny speed demon. Best sprint and handles, weak body.",
     jersey:0xff3d6e,shorts:0x74162e,skin:0x9b5a35,hair:0x111111,
-    height:.9,width:.84,speed:1.26,sprint:1.38,jump:.9,layup:.82,handle:1.52,shot:.95,block:.56,steal:1.35,hook:.55,number:"3",hairStyle:"spiky"
+    height:.9,width:.84,speed:1.26,sprint:1.38,jump:.9,layup:.82,handle:1.52,shot:.95,block:.56,steal:1.35,hook:.55,number:"3",hairStyle:"spiky",
+    build:"lean",shoulderScale:.94,armBulk:.9,thighBulk:.92,calfBulk:.9
   },
   smooth:{
     name:"Smooth Shooter",desc:"Pure shooter. Best jumper, weaker contact defense.",
     jersey:0x29c77a,shorts:0x0d6037,skin:0xd49a6a,hair:0x2b160d,
-    height:1.0,width:.92,speed:1.0,sprint:.98,jump:.88,layup:.9,handle:1.04,shot:1.55,block:.72,steal:.82,hook:.72,number:"11",hairStyle:"shortFade"
+    height:1.0,width:.92,speed:1.0,sprint:.98,jump:.88,layup:.9,handle:1.04,shot:1.55,block:.72,steal:.82,hook:.72,number:"11",hairStyle:"fade",
+    build:"athletic",shoulderScale:.98,armBulk:.96,waistScale:.9,chestScale:1.02
   },
   bruiser:{
     name:"Paint Bruiser",desc:"Strong post scorer. Wins body contact, slow laterally.",
     jersey:0xffa42b,shorts:0x7a4200,skin:0x5d3425,hair:0x0b0705,
-    height:1.1,width:1.24,speed:.92,sprint:.88,jump:.9,layup:1.48,handle:.54,shot:.72,block:1.12,steal:.62,hook:1.35,number:"55",hairStyle:"afro"
+    height:1.1,width:1.24,speed:.92,sprint:.88,jump:.9,layup:1.48,handle:.54,shot:.72,block:1.12,steal:.62,hook:1.35,number:"55",hairStyle:"afro",
+    build:"power",shoulderScale:1.14,armBulk:1.16,thighBulk:1.14,calfBulk:1.12,chestScale:1.1
   },
   claw:{
     name:"The Claw",desc:"Long defensive specialist. Elite blocks, steals, catches.",
     jersey:0x9d6cff,shorts:0x3b1f77,skin:0x704327,hair:0x080808,
-    height:1.06,width:1.04,speed:.98,sprint:.98,jump:1.02,layup:.86,handle:.9,shot:.78,block:1.7,steal:1.55,hook:.84,number:"2",hairStyle:"braids"
+    height:1.06,width:1.04,speed:.98,sprint:.98,jump:1.02,layup:.86,handle:.9,shot:.78,block:1.7,steal:1.55,hook:.84,number:"2",hairStyle:"braids",
+    build:"long",shoulderScale:1.04,armBulk:1.0,forearmBulk:.98,thighBulk:1.0
   },
   rocket:{
     name:"Rocket Wing",desc:"Explosive chase-down athlete. Great sprint blocks.",
     jersey:0xff4d1e,shorts:0x802111,skin:0xc8845b,hair:0x20100a,
-    height:1.02,width:.98,speed:1.1,sprint:1.45,jump:1.2,layup:1.08,handle:.85,shot:.78,block:1.22,steal:.9,hook:.7,number:"8",hairStyle:"headband"
+    height:1.02,width:.98,speed:1.1,sprint:1.45,jump:1.2,layup:1.08,handle:.85,shot:.78,block:1.22,steal:.9,hook:.7,number:"8",hairStyle:"headbandShort",
+    build:"athletic",shoulderScale:1.02,armBulk:1.0,thighBulk:1.04,calfBulk:1.03
   },
   crafty:{
     name:"Crafty Lefty",desc:"Best crossover safety and weird angles. Not explosive.",
     jersey:0xffffff,shorts:0x222222,skin:0xe1aa7a,hair:0x332012,
-    height:.96,width:.9,speed:1.03,sprint:.96,jump:.78,layup:1.02,handle:1.62,shot:1.08,block:.52,steal:1.05,hook:1.05,number:"7",hairStyle:"buzz"
+    height:.96,width:.9,speed:1.03,sprint:.96,jump:.78,layup:1.02,handle:1.62,shot:1.08,block:.52,steal:1.05,hook:1.05,number:"7",hairStyle:"waves",
+    build:"lean",shoulderScale:.95,armBulk:.9,waistScale:.87,thighBulk:.9
   },
   tower:{
     name:"Glass Tower",desc:"Massive shot blocker. Slow, but nearly impossible to shoot over.",
     jersey:0x00b8d9,shorts:0x005a6a,skin:0x3d2418,hair:0x080808,
-    height:1.24,width:1.16,speed:.84,sprint:.78,jump:.95,layup:1.22,handle:.38,shot:.58,block:2.05,steal:.48,hook:1.22,number:"44",hairStyle:"afro"
+    height:1.24,width:1.16,speed:.84,sprint:.78,jump:.95,layup:1.22,handle:.38,shot:.58,block:2.05,steal:.48,hook:1.22,number:"44",hairStyle:"flatTop",
+    build:"power",shoulderScale:1.12,armBulk:1.12,thighBulk:1.12,calfBulk:1.06,chestScale:1.12
   }
 };
 
@@ -1682,96 +1690,224 @@ function createArcLine(){
   scene.add(arcLine);
 }
 
-function createCharacter(profile,pos,id){
-  const group = new THREE.Group();
-  group.position.copy(pos);
-
+function buildPlayerMaterials(profile,id){
   const jerseyKey = id === "p1" ? selectedP1Jersey : selectedP2Jersey;
   const jerseyStyle = jerseys[jerseyKey] || jerseys.classicBlue;
-  const skin = new THREE.MeshStandardMaterial({color:profile.skin,roughness:.62});
+  const skin = new THREE.MeshStandardMaterial({color:profile.skin,roughness:.62,metalness:.05});
   const jerseyTex = makeJerseyTexture(jerseyStyle,profile.number || "23");
   const shortsTex = makeShortsTexture(jerseyStyle);
-  const jersey = new THREE.MeshStandardMaterial({color:jerseyStyle.primary,map:jerseyTex,roughness:.55});
+  const jersey = new THREE.MeshStandardMaterial({color:jerseyStyle.primary,map:jerseyTex,roughness:.55,metalness:.06});
   const shorts = new THREE.MeshStandardMaterial({color:jerseyStyle.secondary,map:shortsTex,roughness:.65});
   const sneakerKey = id === "p1" ? selectedP1Sneaker : selectedP2Sneaker;
   const sneaker = sneakers[sneakerKey] || sneakers.classic;
   const shoeTex = makeShoeTexture(sneaker);
-  const shoeMat = new THREE.MeshStandardMaterial({color:sneaker.primary,map:shoeTex,roughness:.35});
+  const shoeMat = new THREE.MeshStandardMaterial({color:sneaker.primary,map:shoeTex,roughness:.35,metalness:.08});
+  return {jerseyStyle,skin,jersey,shorts,sneaker,shoeMat};
+}
 
+function getProfileBuildScales(profile){
+  const presets = {
+    lean:{shoulderScale:.92,armBulk:.88,forearmBulk:.9,thighBulk:.92,calfBulk:.9,waistScale:.88,chestScale:.93,limbLength:1.02},
+    athletic:{shoulderScale:1.0,armBulk:1.0,forearmBulk:1.0,thighBulk:1.02,calfBulk:1.0,waistScale:.92,chestScale:1.0,limbLength:1.0},
+    power:{shoulderScale:1.14,armBulk:1.14,forearmBulk:1.08,thighBulk:1.16,calfBulk:1.1,waistScale:.96,chestScale:1.12,limbLength:.97},
+    long:{shoulderScale:1.04,armBulk:.98,forearmBulk:.96,thighBulk:1.0,calfBulk:.96,waistScale:.9,chestScale:1.0,limbLength:1.08}
+  };
+  const base = presets[profile.build || "athletic"] || presets.athletic;
+  return {
+    shoulderScale:(profile.shoulderScale || 1)*base.shoulderScale,
+    armBulk:(profile.armBulk || 1)*base.armBulk,
+    forearmBulk:(profile.forearmBulk || 1)*base.forearmBulk,
+    thighBulk:(profile.thighBulk || 1)*base.thighBulk,
+    calfBulk:(profile.calfBulk || 1)*base.calfBulk,
+    waistScale:(profile.waistScale || 1)*base.waistScale,
+    chestScale:(profile.chestScale || 1)*base.chestScale,
+    limbLength:(profile.limbLength || 1)*base.limbLength
+  };
+}
+
+function makeUpperArm(radiusTop,radiusBottom,length,material){
+  const seg = new THREE.Mesh(new THREE.CylinderGeometry(radiusTop,radiusBottom,length,16),material);
+  seg.castShadow = true;
+  const bicep = new THREE.Mesh(new THREE.SphereGeometry(radiusTop*1.03,14,14),material);
+  bicep.position.y = length * .16;
+  bicep.scale.set(1.02,1.15,1.05);
+  seg.add(bicep);
+  return seg;
+}
+
+function makeForearm(radiusTop,radiusBottom,length,material){
+  const seg = new THREE.Mesh(new THREE.CylinderGeometry(radiusTop,radiusBottom,length,14),material);
+  seg.castShadow = true;
+  const brachio = new THREE.Mesh(new THREE.SphereGeometry(radiusBottom*.85,12,12),material);
+  brachio.position.y = -length * .1;
+  brachio.scale.set(1.0,1.12,1.05);
+  seg.add(brachio);
+  return seg;
+}
+
+function makeThigh(radiusTop,radiusBottom,length,material){
+  const seg = new THREE.Mesh(new THREE.CylinderGeometry(radiusTop,radiusBottom,length,16),material);
+  seg.castShadow = true;
+  const quad = new THREE.Mesh(new THREE.SphereGeometry(radiusTop*.92,12,12),material);
+  quad.position.y = length*.1;
+  quad.position.z = radiusTop*.25;
+  quad.scale.set(1.0,1.16,1.28);
+  seg.add(quad);
+  return seg;
+}
+
+function makeCalf(radiusTop,radiusBottom,length,material){
+  const seg = new THREE.Mesh(new THREE.CylinderGeometry(radiusTop,radiusBottom,length,14),material);
+  seg.castShadow = true;
+  const calfBulge = new THREE.Mesh(new THREE.SphereGeometry(radiusTop*.85,12,12),material);
+  calfBulge.position.y = length*.2;
+  calfBulge.position.z = -radiusTop*.18;
+  calfBulge.scale.set(1.0,1.2,1.06);
+  seg.add(calfBulge);
+  return seg;
+}
+
+function makeShoulder(profile,material,build){
+  const shoulder = new THREE.Mesh(new THREE.SphereGeometry(.16*profile.width*build.shoulderScale,14,14),material);
+  shoulder.scale.set(1.18,1.04,1.06);
+  shoulder.castShadow = true;
+  return shoulder;
+}
+
+function makeHand(profile,material,build){
+  const hand = new THREE.Mesh(new THREE.SphereGeometry(.11*profile.width*Math.max(.9,build.forearmBulk),14,14),material);
+  hand.scale.set(1.05,.72,1.18);
+  hand.castShadow = true;
+  return hand;
+}
+
+function makeTorso(profile,materials,build){
+  const torso = new THREE.Group();
+  const w = profile.width;
+  const h = profile.height;
+
+  const pelvis = new THREE.Mesh(new THREE.CylinderGeometry(.28*w,.3*w,.2*h,14),materials.shorts);
+  pelvis.position.y = .86*h;
+  pelvis.scale.x = build.waistScale;
+  pelvis.castShadow = true;
+  torso.add(pelvis);
+
+  const waist = new THREE.Mesh(new THREE.CylinderGeometry(.27*w*build.waistScale,.31*w,.34*h,16),materials.jersey);
+  waist.position.y = 1.05*h;
+  waist.castShadow = true;
+  torso.add(waist);
+
+  const chest = new THREE.Mesh(new THREE.CylinderGeometry(.35*w*build.chestScale,.29*w*build.waistScale,.5*h,18),materials.jersey);
+  chest.position.y = 1.38*h;
+  chest.castShadow = true;
+  torso.add(chest);
+
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(.095*w,.11*w,.13*h,12),materials.skin);
+  neck.position.y = 1.84*h;
+  neck.castShadow = true;
+  torso.add(neck);
+
+  return {torso,pelvis,waist,chest,neck};
+}
+
+function createCharacter(profile,pos,id){
+  const group = new THREE.Group();
+  group.position.copy(pos);
+
+  const materials = buildPlayerMaterials(profile,id);
+  const build = getProfileBuildScales(profile);
   const h = profile.height;
   const w = profile.width;
 
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(.35*w,.78*h,8,18),jersey);
-  body.position.y = 1.32*h;
-  body.castShadow = true;
-  group.add(body);
-  const torso = new THREE.Mesh(new THREE.CylinderGeometry(.3*w,.38*w,.55*h,16),jersey);
-  torso.position.y = 1.18*h;
-  torso.scale.set(1,.92,1);
-  group.add(torso);
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(.08*w,.09*w,.12*h,12),skin);
-  neck.position.y = 1.88*h;
-  group.add(neck);
+  const torsoSection = makeTorso(profile,materials,build);
+  group.add(torsoSection.torso);
 
-  const head = new THREE.Mesh(new THREE.SphereGeometry(.28*w,24,24),skin);
-  head.position.y = 2.12*h;
-  head.scale.set(.9,1.08,.9);
+  const shoulderYOffset = 1.56 * h;
+  const shoulderX = .38 * w * build.shoulderScale;
+  const leftShoulder = makeShoulder(profile,materials.skin,build);
+  leftShoulder.position.set(-shoulderX,shoulderYOffset,.01);
+  group.add(leftShoulder);
+  const rightShoulder = makeShoulder(profile,materials.skin,build);
+  rightShoulder.position.set(shoulderX,shoulderYOffset,.01);
+  group.add(rightShoulder);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(.28*w,24,24),materials.skin);
+  head.position.y = 2.09*h;
+  head.scale.set(.9,1.06,.9);
   head.castShadow = true;
   group.add(head);
 
-  const hair = createHair(profile.hairStyle || "shortFade",profile.hair,w,h);
-  hair.position.y = 2.06*h;
+  const hair = createHair(profile.hairStyle || "short",profile.hair,w,h);
+  hair.position.y = 2.07*h;
   group.add(hair);
 
   const num = makeTextSprite(profile.number,"white",80);
-  num.position.set(0,1.43*h,-.38*w);
+  num.position.set(0,1.43*h,-.4*w);
   num.scale.set(.45,.22,.22);
   group.add(num);
 
-  const leftArm = makeLimb(.12*w,.6*h,skin);
-  leftArm.position.set(-.46*w,1.45*h,0);
-  leftArm.rotation.z = -.35;
+  const upperArmLen = .34 * h * build.limbLength;
+  const forearmLen = .31 * h * build.limbLength;
+  const armX = .5 * w * build.shoulderScale;
+  const armY = 1.38 * h;
+
+  const leftArm = makeUpperArm(.14*w*build.armBulk,.108*w*build.armBulk,upperArmLen,materials.skin);
+  leftArm.position.set(-armX,armY,-.02);
+  leftArm.rotation.z = -.34;
   group.add(leftArm);
 
-  const rightArm = makeLimb(.12*w,.6*h,skin);
-  rightArm.position.set(.46*w,1.45*h,0);
-  rightArm.rotation.z = .35;
+  const rightArm = makeUpperArm(.14*w*build.armBulk,.108*w*build.armBulk,upperArmLen,materials.skin);
+  rightArm.position.set(armX,armY,-.02);
+  rightArm.rotation.z = .34;
   group.add(rightArm);
 
-  const leftForearm = makeLimb(.105*w,.5*h,skin);
-  leftForearm.position.set(-.64*w,1*h,.05);
+  const leftForearm = makeForearm(.1*w*build.forearmBulk,.112*w*build.forearmBulk,forearmLen,materials.skin);
+  leftForearm.position.set(-.61*w,1.01*h,.04);
+  leftForearm.rotation.z = -.1;
   group.add(leftForearm);
 
-  const rightForearm = makeLimb(.105*w,.5*h,skin);
-  rightForearm.position.set(.64*w,1*h,.05);
+  const rightForearm = makeForearm(.1*w*build.forearmBulk,.112*w*build.forearmBulk,forearmLen,materials.skin);
+  rightForearm.position.set(.61*w,1.01*h,.04);
+  rightForearm.rotation.z = .1;
   group.add(rightForearm);
 
-  const leftHand = new THREE.Mesh(new THREE.SphereGeometry(.13*w,16,16),skin);
-  leftHand.position.set(-.65*w,.72*h,.07);
+  const leftHand = makeHand(profile,materials.skin,build);
+  leftHand.position.set(-.63*w,.78*h,.08);
   group.add(leftHand);
 
-  const rightHand = new THREE.Mesh(new THREE.SphereGeometry(.13*w,16,16),skin);
-  rightHand.position.set(.65*w,.72*h,.07);
+  const rightHand = makeHand(profile,materials.skin,build);
+  rightHand.position.set(.63*w,.78*h,.08);
   group.add(rightHand);
 
-  const leftLeg = makeLimb(.14*w,.7*h,shorts);
-  leftLeg.position.set(-.18*w,.62*h,0);
+  const thighLen = .44*h*build.limbLength;
+  const calfLen = .36*h*build.limbLength;
+  const leftLeg = makeThigh(.155*w*build.thighBulk,.12*w*build.thighBulk,thighLen,materials.shorts);
+  leftLeg.position.set(-.19*w,.66*h,0);
   group.add(leftLeg);
 
-  const rightLeg = makeLimb(.14*w,.7*h,shorts);
-  rightLeg.position.set(.18*w,.62*h,0);
+  const rightLeg = makeThigh(.155*w*build.thighBulk,.12*w*build.thighBulk,thighLen,materials.shorts);
+  rightLeg.position.set(.19*w,.66*h,0);
   group.add(rightLeg);
 
-  const leftShoe = new THREE.Mesh(new THREE.BoxGeometry(.3*w,.12,.45*w),shoeMat);
-  leftShoe.position.set(-.18*w,.08,.12);
+  const leftCalf = makeCalf(.11*w*build.calfBulk,.085*w*build.calfBulk,calfLen,materials.skin);
+  leftCalf.position.set(-.19*w,.31*h,.03);
+  group.add(leftCalf);
+
+  const rightCalf = makeCalf(.11*w*build.calfBulk,.085*w*build.calfBulk,calfLen,materials.skin);
+  rightCalf.position.set(.19*w,.31*h,.03);
+  group.add(rightCalf);
+
+  const leftShoe = new THREE.Mesh(new THREE.BoxGeometry(.32*w,.13,.5*w),materials.shoeMat);
+  leftShoe.position.set(-.19*w,.08,.12);
+  leftShoe.castShadow = true;
   group.add(leftShoe);
 
   const rightShoe = leftShoe.clone();
-  rightShoe.position.x = .18*w;
+  rightShoe.position.x = .19*w;
   group.add(rightShoe);
 
-  addShoeDetails({profile,group,leftShoe,rightShoe,sneaker});
-  addJerseyTrim({profile,group,w,h,jerseyStyle});
+  addShoeDetails({profile,group,leftShoe,rightShoe,sneaker:materials.sneaker});
+  addJerseyTrim({profile,group,w,h,jerseyStyle:materials.jerseyStyle});
   addPlayerAccessories({profile,group,w,h,leftArm,rightArm,leftLeg,rightLeg});
 
   const shadow = new THREE.Mesh(
@@ -1782,8 +1918,16 @@ function createCharacter(profile,pos,id){
   shadow.position.y = .012;
   group.add(shadow);
 
+  const bodyAnchors = {
+    leftArm:new THREE.Vector3(-armX,armY,-.02), rightArm:new THREE.Vector3(armX,armY,-.02),
+    leftForearm:new THREE.Vector3(-.61*w,1.01*h,.04), rightForearm:new THREE.Vector3(.61*w,1.01*h,.04),
+    leftHand:new THREE.Vector3(-.63*w,.78*h,.08), rightHand:new THREE.Vector3(.63*w,.78*h,.08),
+    leftLeg:new THREE.Vector3(-.19*w,.66*h,0), rightLeg:new THREE.Vector3(.19*w,.66*h,0),
+    leftCalf:new THREE.Vector3(-.19*w,.31*h,.03), rightCalf:new THREE.Vector3(.19*w,.31*h,.03)
+  };
+
   const player = {
-    id, group, profile, sneaker, jerseyStyle,
+    id, group, profile, sneaker:materials.sneaker, jerseyStyle:materials.jerseyStyle,
     velocity:new THREE.Vector3(),
     angle:Math.PI,
     yVel:0,
@@ -1791,7 +1935,14 @@ function createCharacter(profile,pos,id){
     jumpCooldown:0,
     sprint:1,
     bodyRadius:.55*w,
-    leftArm,rightArm,leftForearm,rightForearm,leftHand,rightHand,leftLeg,rightLeg,leftShoe,rightShoe,
+    leftShoulder,rightShoulder,leftArm,rightArm,leftForearm,rightForearm,leftHand,rightHand,leftLeg,rightLeg,leftCalf,rightCalf,leftShoe,rightShoe,
+    bodyParts:{
+      torso:torsoSection.torso,chest:torsoSection.chest,waist:torsoSection.waist,pelvis:torsoSection.pelvis,neck:torsoSection.neck,
+      head,hair,leftShoulder,rightShoulder,leftUpperArm:leftArm,rightUpperArm:rightArm,leftForearm,rightForearm,leftHand,rightHand,
+      leftThigh:leftLeg,rightThigh:rightLeg,leftCalf,rightCalf,leftFoot:leftShoe,rightFoot:rightShoe
+    },
+    build,
+    bodyAnchors,
     hasBall:id==="p1",
     dribbleBounce:0,
     swipeSide:null,
@@ -1816,7 +1967,7 @@ function createCharacter(profile,pos,id){
     debugLeftInputTimer:0,
     debugRightInputTimer:0,
     lastContestLabel:"Open",
-    anim:{runCycle:0,lean:0,targetLean:0,armBlend:0,legBlend:0,torsoTwist:0,landingSquash:0,contactReact:0,shotFollowThrough:0},
+    anim:{runCycle:0,lean:0,targetLean:0,armBlend:0,legBlend:0,torsoTwist:0,landingSquash:0,contactReact:0,shotFollowThrough:0,muscleFlex:0},
     takeover:0,takeoverActive:false,takeoverTimer:0,stamina:1,dribbleStyle:"normal",stats:{fga:0,fgm:0,tpa:0,tpm:0,blocks:0,steals:0,turnovers:0,ankle:0,perfect:0},
     movement:{
       acceleration:5.2 * (1 + (profile.speed-1)*.7),
@@ -1828,60 +1979,104 @@ function createCharacter(profile,pos,id){
       recoverySpeed:1 + (profile.steal-1)*.3 + (profile.speed-1)*.25
     }
   };
-  if(sneaker.sprintRecover) player.movement.recoverySpeed *= (1 + sneaker.sprintRecover);
-  if(sneaker.defense) player.movement.defensiveWidth *= (1 + sneaker.defense);
-  if(sneaker.jump) player.profile.jump *= (1 + sneaker.jump);
+  if(materials.sneaker.sprintRecover) player.movement.recoverySpeed *= (1 + materials.sneaker.sprintRecover);
+  if(materials.sneaker.defense) player.movement.defensiveWidth *= (1 + materials.sneaker.defense);
+  if(materials.sneaker.jump) player.profile.jump *= (1 + materials.sneaker.jump);
   return player;
-}
-
-function makeLimb(radius,length,mat){
-  const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(radius,length,8,16),mat);
-  mesh.castShadow = true;
-  return mesh;
 }
 
 function createHair(style,color,w,h){
   const group = new THREE.Group();
-  const mat = new THREE.MeshStandardMaterial({color,roughness:.7});
-  if(style === "afro"){
-    const puff = new THREE.Mesh(new THREE.SphereGeometry(.31*w,16,16),mat);
-    puff.scale.set(1.03,.92,1.03);
-    group.add(puff);
-  }else if(style === "braids"){
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(.24*w,14,14),mat);
-    cap.scale.set(.98,.52,.98); group.add(cap);
-    for(let i=0;i<6;i++){
-      const braid = new THREE.Mesh(new THREE.CylinderGeometry(.025*w,.02*w,.28*h,8),mat);
-      braid.position.set((i-2.5)*.07*w,-.1*h,-.14*w);
-      braid.rotation.x = 0.5;
-      group.add(braid);
-    }
+  const mat = new THREE.MeshStandardMaterial({color,roughness:.72});
+  const frontOffset = .09 * w;
+  const addCap = (sx=.95,sy=.42,sz=.95)=>{
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(.25*w,14,14),mat);
+    cap.scale.set(sx,sy,sz);
+    cap.position.z = -.01;
+    group.add(cap);
+    return cap;
+  };
+  if(style === "buzz"){
+    addCap(.95,.2,.95);
+  }else if(style === "fade"){
+    addCap(.95,.28,.95);
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(.18*w,.2*w,.08*h,10),mat);
+    top.position.y = .04*h;
+    group.add(top);
+  }else if(style === "short" || style === "shortFade"){
+    addCap(1,.46,1);
   }else if(style === "spiky"){
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(.22*w,12,12),mat); cap.scale.set(1,.42,1); group.add(cap);
-    for(let i=0;i<8;i++){
-      const spike = new THREE.Mesh(new THREE.ConeGeometry(.05*w,.16*h,8),mat);
-      spike.position.set(Math.sin(i*.8)*.14*w,.07*h,Math.cos(i*.8)*.12*w);
+    addCap(1,.35,1);
+    for(let i=0;i<9;i++){
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(.045*w,.13*h,7),mat);
+      spike.position.set(Math.sin(i*.72)*.13*w,.08*h,Math.cos(i*.72)*.1*w-frontOffset*.2);
+      spike.rotation.x = -.15;
       group.add(spike);
     }
-  }else if(style === "buzz"){
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(.25*w,14,14),mat);
-    cap.scale.set(.95,.2,.95); group.add(cap);
+  }else if(style === "afro"){
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(.31*w,16,16),mat);
+    puff.scale.set(1.04,.95,1.04);
+    puff.position.y = .03*h;
+    group.add(puff);
   }else if(style === "curlyTop"){
-    for(let i=0;i<14;i++){
-      const curl = new THREE.Mesh(new THREE.SphereGeometry(.06*w,8,8),mat);
-      curl.position.set((Math.random()-.5)*.38*w,Math.random()*.16*h,(Math.random()-.5)*.36*w);
+    addCap(.9,.28,.9);
+    for(let i=0;i<16;i++){
+      const curl = new THREE.Mesh(new THREE.SphereGeometry(.055*w,8,8),mat);
+      curl.position.set((Math.random()-.5)*.36*w,Math.random()*.18*h,(Math.random()-.5)*.3*w-frontOffset*.2);
       group.add(curl);
     }
-  }else if(style === "headband"){
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(.23*w,14,14),mat);
-    cap.scale.set(.98,.45,.98); group.add(cap);
-    const band = new THREE.Mesh(new THREE.TorusGeometry(.22*w,.025*w,8,24),new THREE.MeshStandardMaterial({color:0xffffff,roughness:.28}));
-    band.rotation.x = Math.PI/2; band.position.y = -.02*h; group.add(band);
+  }else if(style === "braids"){
+    addCap(.98,.5,.98);
+    for(let i=0;i<7;i++){
+      const braid = new THREE.Mesh(new THREE.CylinderGeometry(.02*w,.018*w,.32*h,8),mat);
+      braid.position.set((i-3)*.055*w,-.1*h,-.14*w);
+      braid.rotation.x = .56;
+      braid.userData.hairSway = true;
+      group.add(braid);
+    }
+  }else if(style === "dreads"){
+    addCap(1,.5,1);
+    for(let i=0;i<8;i++){
+      const dread = new THREE.Mesh(new THREE.CylinderGeometry(.028*w,.023*w,.3*h,7),mat);
+      dread.position.set((i-3.5)*.05*w,-.08*h,-.12*w + (i%2)*.02);
+      dread.rotation.x = .46;
+      dread.userData.hairSway = true;
+      group.add(dread);
+    }
+  }else if(style === "flatTop"){
+    const sides = new THREE.Mesh(new THREE.CylinderGeometry(.2*w,.22*w,.1*h,10),mat);
+    sides.position.y = .02*h;
+    const top = new THREE.Mesh(new THREE.BoxGeometry(.4*w,.14*h,.32*w),mat);
+    top.position.y = .1*h;
+    group.add(sides); group.add(top);
+  }else if(style === "waves"){
+    const waves = addCap(.98,.26,.98);
+    waves.rotation.z = .04;
+  }else if(style === "headbandShort" || style === "headband"){
+    addCap(.97,.4,.97);
+    const band = new THREE.Mesh(new THREE.TorusGeometry(.22*w,.026*w,8,26),new THREE.MeshStandardMaterial({color:0xffffff,roughness:.32}));
+    band.rotation.x = Math.PI/2;
+    band.position.y = -.02*h;
+    group.add(band);
   }else{
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(.27*w,16,16),mat);
-    cap.scale.set(.94,.42,.94); group.add(cap);
+    addCap(.96,.42,.96);
   }
+  group.userData.style = style;
   return group;
+}
+
+function animateHair(char,dt){
+  const hair = char.bodyParts && char.bodyParts.hair;
+  if(!hair) return;
+  const style = hair.userData.style || "short";
+  if(style !== "braids" && style !== "dreads") return;
+  const sway = Math.sin(performance.now()*.008 + char.anim.runCycle*0.45) * 0.12;
+  hair.children.forEach((child,idx)=>{
+    if(!child.userData.hairSway) return;
+    const base = child.userData.baseRotX;
+    if(base == null) child.userData.baseRotX = child.rotation.x;
+    child.rotation.x = child.userData.baseRotX + sway * (0.55 + idx*0.03) + char.velocity.length()*.004;
+  });
 }
 
 function makeTextSprite(text,color,size){
@@ -2233,18 +2428,19 @@ function animateContactReaction(char,dt){
 }
 
 function resetArmDefaults(char){
-  const w = char.profile.width;
-  const h = char.profile.height;
-  char.leftArm.position.set(-.46*w,1.45*h,0);
-  char.rightArm.position.set(.46*w,1.45*h,0);
-  char.leftForearm.position.set(-.64*w,1*h,.05);
-  char.rightForearm.position.set(.64*w,1*h,.05);
-  char.leftHand.position.set(-.65*w,.72*h,.07);
-  char.rightHand.position.set(.65*w,.72*h,.07);
+  const a = char.bodyAnchors;
+  char.leftArm.position.copy(a.leftArm);
+  char.rightArm.position.copy(a.rightArm);
+  char.leftForearm.position.copy(a.leftForearm);
+  char.rightForearm.position.copy(a.rightForearm);
+  char.leftHand.position.copy(a.leftHand);
+  char.rightHand.position.copy(a.rightHand);
   char.leftArm.rotation.set(0,0,-.35);
   char.rightArm.rotation.set(0,0,.35);
   char.leftForearm.rotation.set(0,0,-.1);
   char.rightForearm.rotation.set(0,0,.1);
+  char.leftHand.rotation.set(0,0,0);
+  char.rightHand.rotation.set(0,0,0);
 }
 
 function poseSwipeArm(char,side,reach){
@@ -3114,6 +3310,26 @@ function animateNetSwish(){
   pulseArenaLights(.8);
 }
 
+function animateMuscleFlex(char,dt){
+  const speed = char.velocity.length();
+  const action = Math.max(char.swipeTime > 0 ? .3 : 0,char.blockTime > 0 ? .4 : 0,char.shotMotionTime > 0 ? .5 : 0);
+  const target = Math.max(speed > 4.8 ? .22 : 0,action);
+  char.anim.muscleFlex = smoothAnimValue(char.anim.muscleFlex || 0,target,8,dt);
+  const flex = char.anim.muscleFlex;
+  const armScale = 1 + flex*.06;
+  const foreScale = 1 + flex*.05;
+  const thighScale = 1 + flex*.07;
+  const calfScale = 1 + flex*.06;
+  char.leftArm.scale.set(armScale,1,armScale*.96);
+  char.rightArm.scale.set(armScale,1,armScale*.96);
+  char.leftForearm.scale.set(foreScale,1.02,foreScale);
+  char.rightForearm.scale.set(foreScale,1.02,foreScale);
+  char.leftLeg.scale.set(thighScale,1,thighScale*.97);
+  char.rightLeg.scale.set(thighScale,1,thighScale*.97);
+  char.leftCalf.scale.set(calfScale,1,calfScale);
+  char.rightCalf.scale.set(calfScale,1,calfScale);
+}
+
 function animateCharacter(char,dt){
   char.handsUpTime = Math.max(0,char.handsUpTime - dt);
   char.dribbleBounce += dt * 7.8;
@@ -3124,6 +3340,8 @@ function animateCharacter(char,dt){
   updateDribbleStyle(char,dt);
 
   animateRunCycle(char,dt);
+  animateMuscleFlex(char,dt);
+  animateHair(char,dt);
 
   resetArmDefaults(char);
 
@@ -3276,6 +3494,7 @@ function animateBobble(char,pct){
 function animateDefensiveStance(char,dt){
   char.group.position.y = Math.max(0,char.group.position.y - dt*.2);
   char.leftLeg.rotation.z = -.18; char.rightLeg.rotation.z = .18;
+  char.leftCalf.rotation.x = -.22; char.rightCalf.rotation.x = -.22;
 }
 function animateRunCycle(char,dt){
   const moving = char.velocity.length() > .18;
@@ -3300,6 +3519,10 @@ function animateRunCycle(char,dt){
   char.rightLeg.rotation.x = -walk * stride;
   char.leftLeg.rotation.z = backpedal ? -0.08 : 0;
   char.rightLeg.rotation.z = backpedal ? 0.08 : 0;
+  char.leftCalf.rotation.x = Math.max(-0.45,(-walk * stride * .86) - .12);
+  char.rightCalf.rotation.x = Math.max(-0.45,(walk * stride * .86) - .12);
+  char.leftCalf.rotation.z = backpedal ? -0.04 : 0;
+  char.rightCalf.rotation.z = backpedal ? 0.04 : 0;
   char.leftShoe.position.z = leftBase.z + walk * shoeStride;
   char.rightShoe.position.z = rightBase.z - walk * shoeStride;
   char.leftShoe.position.y = leftBase.y + Math.max(0,walk) * lift;
@@ -3323,6 +3546,9 @@ function animateRunCycle(char,dt){
     char.leftArm.rotation.z += Math.sin(cyc)*armPump;
     char.rightArm.rotation.z -= Math.sin(cyc)*armPump;
   }
+  const shoulderRoll = moving ? Math.sin(cyc + Math.PI*.5) * (sprinting ? .06 : .03) : 0;
+  char.leftShoulder.rotation.x = shoulderRoll;
+  char.rightShoulder.rotation.x = -shoulderRoll;
   char.anim.targetLean = sprinting ? 0.24 : backpedal ? -0.11 : moving ? 0.1 : 0;
   char.group.position.y += Math.sin(cyc*1.9) * .0008 * speedFactor;
 }
