@@ -531,6 +531,7 @@ let messageTimer = 0;
 let lastScored = false;
 
 let countdownTimer = 0;
+const COUNTDOWN_DEFENDER_MIN_DISTANCE = 1.9;
 let possessionFrozen = false;
 
 let botStrategy = "drive";
@@ -2593,34 +2594,38 @@ function animate(){
     messageTimer -= dt;
     updateCountdown(dt);
 
-    if(!possessionFrozen && !gameOver){
-      updateHumanControls(dt);
-      if(!twoPlayerMode) updateBot(dt);
-      updateJumpPhysics(p1,dt);
-      updateJumpPhysics(p2,dt);
-      resolveBodyCollisions();
-      updateCharacters(dt);
-      updateBall(dt);
-      updateLayup(dt);
-      updateDunk(dt);
-      loosePickupDelay = Math.max(0,loosePickupDelay - dt);
-      ballCollisionCooldown = Math.max(0,ballCollisionCooldown - dt);
-      checkSteals();
-      checkBlocksAndCatches();
-      checkFouls(dt);
-      updateTakeover(dt);
-      updateCrowd(dt);
-      updateShotTrail(dt);
-      updateParticles(dt);
-      updateCameraEffects(dt);
-      updateReboundAI(dt);
-      ledBoardTimer -= dt;
-      if(ledBoardTimer <= 0){
-        ledBoardTimer = 2.8;
-        const msgs = ["GAME POINT","ANKLE BREAKER","BLOCKED","HE'S HEATING UP",`FIRST TO ${targetScore}`];
-        updateLEDBoards(msgs[Math.floor(Math.random()*msgs.length)]);
+    if(!gameOver){
+      if(possessionFrozen){
+        updateCountdownMovement(dt);
+      }else{
+        updateHumanControls(dt);
+        if(!twoPlayerMode) updateBot(dt);
+        updateJumpPhysics(p1,dt);
+        updateJumpPhysics(p2,dt);
+        resolveBodyCollisions();
+        updateCharacters(dt);
+        updateBall(dt);
+        updateLayup(dt);
+        updateDunk(dt);
+        loosePickupDelay = Math.max(0,loosePickupDelay - dt);
+        ballCollisionCooldown = Math.max(0,ballCollisionCooldown - dt);
+        checkSteals();
+        checkBlocksAndCatches();
+        checkFouls(dt);
+        updateTakeover(dt);
+        updateCrowd(dt);
+        updateShotTrail(dt);
+        updateParticles(dt);
+        updateCameraEffects(dt);
+        updateReboundAI(dt);
+        ledBoardTimer -= dt;
+        if(ledBoardTimer <= 0){
+          ledBoardTimer = 2.8;
+          const msgs = ["GAME POINT","ANKLE BREAKER","BLOCKED","HE'S HEATING UP",`FIRST TO ${targetScore}`];
+          updateLEDBoards(msgs[Math.floor(Math.random()*msgs.length)]);
+        }
+        pulseArenaLights(.35 + crowdWave*.5);
       }
-      pulseArenaLights(.35 + crowdWave*.5);
     }
   }
 
@@ -2676,6 +2681,33 @@ function updateHumanControls(dt){
   }
 }
 
+function updateCountdownMovement(dt){
+  updateHumanControls(dt);
+  if(!twoPlayerMode) updateBotCountdown(dt);
+  resolveBodyCollisions();
+  updateCharacters(dt);
+  const handler = possession === "p1" ? p1 : p2;
+  const defender = possession === "p1" ? p2 : p1;
+  if(handler && defender && ballState === "dribble"){
+    enforceCountdownDefenderGap(defender,handler,COUNTDOWN_DEFENDER_MIN_DISTANCE);
+  }
+}
+
+function enforceCountdownDefenderGap(defender,ballHandler,minDistance){
+  const push = defender.group.position.clone().sub(ballHandler.group.position);
+  push.y = 0;
+  if(push.lengthSq() < 0.0001){
+    push.copy(defender.group.position).sub(HOOP_POS);
+    push.y = 0;
+  }
+  if(push.lengthSq() < 0.0001) push.set(1,0,0);
+  const dist = push.length();
+  if(dist >= minDistance) return;
+  push.normalize().multiplyScalar(minDistance);
+  defender.group.position.copy(ballHandler.group.position.clone().add(push));
+  keepInCourt(defender.group.position);
+}
+
 function updateShotMeterVisuals(dt){
   if(!shotMeter) return;
   if(!shotCharging || !chargingPlayer){
@@ -2723,6 +2755,15 @@ function updatePlayerControl(char,ctrl,dt){
     return;
   }
 
+  const countdownDribble = possessionFrozen && countdownTimer > 0 && ballState === "dribble";
+  const isBallHandler = possession === char.id;
+  if(countdownDribble && isBallHandler){
+    char.velocity.set(0,0,0);
+    setAnimationState(char,"idle");
+    char.group.rotation.y = char.angle;
+    return;
+  }
+
   if(keys[ctrl.left]) char.angle += turnSpeed * dt;
   if(keys[ctrl.right]) char.angle -= turnSpeed * dt;
 
@@ -2753,8 +2794,18 @@ function updatePlayerControl(char,ctrl,dt){
   }
 
   char.group.position.add(char.velocity.clone().multiplyScalar(dt));
+  if(countdownDribble && !isBallHandler){
+    const handler = possession === "p1" ? p1 : p2;
+    if(handler) enforceCountdownDefenderGap(char,handler,COUNTDOWN_DEFENDER_MIN_DISTANCE);
+  }
   keepInCourt(char.group.position);
   char.group.rotation.y = char.angle;
+}
+
+function updateBotCountdown(dt){
+  if(!p1 || !p2 || ballState !== "dribble" || possession !== "p1") return;
+  const containTarget = getDefensiveTarget(p2,p1,"contain_drive");
+  moveBotToward(p2,containTarget,difficultySettings[selectedDifficulty].speed * 0.82,dt);
 }
 
 function updateBot(dt){
