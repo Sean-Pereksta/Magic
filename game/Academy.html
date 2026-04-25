@@ -320,6 +320,7 @@ button.small{
         <button id="courtNext" class="sneakerArrow">&#9654;</button>
       </div>
       <div id="courtName" class="sneakerName"></div>
+      <div id="courtStyle" class="sneakerName" style="opacity:.75;font-size:11px;"></div>
     </div>
 
     <div class="selectGrid">
@@ -334,6 +335,7 @@ button.small{
             <button id="p1SneakerNext" class="sneakerArrow">&#9654;</button>
           </div>
           <div id="p1SneakerName" class="sneakerName"></div>
+          <div id="p1SneakerStyle" class="sneakerName" style="opacity:.75;font-size:11px;"></div>
         </div>
         <div class="sneakerBox">
           <div class="sneakerTitle">Player 1 Jersey</div>
@@ -343,6 +345,7 @@ button.small{
             <button id="p1JerseyNext" class="sneakerArrow">&#9654;</button>
           </div>
           <div id="p1JerseyName" class="sneakerName"></div>
+          <div id="p1JerseyStyle" class="sneakerName" style="opacity:.75;font-size:11px;"></div>
         </div>
       </div>
 
@@ -357,6 +360,7 @@ button.small{
             <button id="p2SneakerNext" class="sneakerArrow">&#9654;</button>
           </div>
           <div id="p2SneakerName" class="sneakerName"></div>
+          <div id="p2SneakerStyle" class="sneakerName" style="opacity:.75;font-size:11px;"></div>
         </div>
         <div class="sneakerBox">
           <div class="sneakerTitle">Bot / Player 2 Jersey</div>
@@ -366,6 +370,7 @@ button.small{
             <button id="p2JerseyNext" class="sneakerArrow">&#9654;</button>
           </div>
           <div id="p2JerseyName" class="sneakerName"></div>
+          <div id="p2JerseyStyle" class="sneakerName" style="opacity:.75;font-size:11px;"></div>
         </div>
       </div>
     </div>
@@ -451,7 +456,9 @@ let arenaThemeRefs = {court:null,lineMats:[],trimMats:[],logoCanvases:[],crowdMa
 let ledBoardMesh, ledBoardTexture, ledBoardCtx;
 let crowdMembers = [];
 let crowdWave = 0;
+let arenaExcitement = 0;
 let arenaLightStrips = [];
+let arenaMoodLight = null;
 let shotTrailPool = [];
 let shotTrailActive = [];
 let particlePool = [];
@@ -610,44 +617,81 @@ const profiles = {
 };
 
 const jerseys = {
-  classicBlue:{name:"Classic Blue",primary:0x1d6cff,secondary:0xffffff,trim:0xffd56a,pattern:"sideStripes"},
-  firestorm:{name:"Firestorm",primary:0xff3d1f,secondary:0x111111,trim:0xffd56a,pattern:"flames"},
-  neonNight:{name:"Neon Night",primary:0x101820,secondary:0x65f0ff,trim:0xff3dff,pattern:"neonLines"},
-  royalGold:{name:"Royal Gold",primary:0x4b2cff,secondary:0xffd56a,trim:0xffffff,pattern:"goldPanels"},
-  streetCamo:{name:"Street Camo",primary:0x263524,secondary:0x8fa36c,trim:0xffffff,pattern:"camo"},
-  blackout:{name:"Blackout",primary:0x050505,secondary:0x222222,trim:0xff4444,pattern:"sharpTrim"},
-  skyline:{name:"Skyline",primary:0xffffff,secondary:0x65d9ff,trim:0x1d6cff,pattern:"city"},
-  galaxy:{name:"Galaxy",primary:0x151030,secondary:0x9d6cff,trim:0x65f0ff,pattern:"stars"}
+  classicBlue:{name:"Classic Blue",primary:0x1d6cff,secondary:0xffffff,trim:0xffd56a,pattern:"wave",style:"Legacy"},
+  firestorm:{name:"Firestorm",primary:0xff3d1f,secondary:0x111111,trim:0xffd56a,pattern:"flames",style:"Attack"},
+  neonNight:{name:"Neon Night",primary:0x101820,secondary:0x65f0ff,trim:0xff3dff,pattern:"pulse",style:"Neon"},
+  royalGold:{name:"Royal Gold",primary:0x4b2cff,secondary:0xffd56a,trim:0xffffff,pattern:"crown",style:"Royal"},
+  streetCamo:{name:"Street Camo",primary:0x263524,secondary:0x8fa36c,trim:0xffffff,pattern:"camo",style:"Urban"},
+  blackout:{name:"Blackout",primary:0x050505,secondary:0x222222,trim:0xff4444,pattern:"geo",style:"Stealth"},
+  skyline:{name:"Skyline",primary:0xffffff,secondary:0x65d9ff,trim:0x1d6cff,pattern:"city",style:"Downtown"},
+  galaxy:{name:"Galaxy",primary:0x151030,secondary:0x9d6cff,trim:0x65f0ff,pattern:"stars",style:"Cosmic"},
+  lightningStrike:{name:"Lightning Strike",primary:0x15253f,secondary:0xffffff,trim:0xfff15c,pattern:"lightning",style:"Storm"},
+  inferno:{name:"Inferno",primary:0x1a0b08,secondary:0xff6b2d,trim:0xffd56a,pattern:"flames",style:"Heat"},
+  frostbite:{name:"Frostbite",primary:0xdff6ff,secondary:0x4fc3ff,trim:0xffffff,pattern:"ice",style:"Winter"},
+  toxicWave:{name:"Toxic Wave",primary:0x101810,secondary:0x39ff14,trim:0xb6ff00,pattern:"slime",style:"Toxic"},
+  stormPulse:{name:"Storm Pulse",primary:0x0f1625,secondary:0x65f0ff,trim:0xff3dff,pattern:"pulse",style:"Energy"},
+  tigerFire:{name:"Tiger Fire",primary:0x1a1209,secondary:0xff8c1a,trim:0xffffff,pattern:"claw",style:"Wild"},
+  chromeElite:{name:"Chrome Elite",primary:0xd8e4ff,secondary:0x5a6a7f,trim:0x111111,pattern:"chrome",style:"Tech"},
+  cityRush:{name:"City Rush",primary:0x1f2430,secondary:0x5aa7ff,trim:0xffffff,pattern:"city",style:"Metro"},
+  solarFlare:{name:"Solar Flare",primary:0x4a1e05,secondary:0xffae00,trim:0xfff1a8,pattern:"sunburst",style:"Solar"},
+  venom:{name:"Venom",primary:0x050505,secondary:0x39ff14,trim:0xffffff,pattern:"fang",style:"Venom"},
+  roseHeat:{name:"Rose Heat",primary:0x6f1133,secondary:0xff5f8f,trim:0xffffff,pattern:"petal",style:"Rose"},
+  prism:{name:"Prism",primary:0x202040,secondary:0x9d6cff,trim:0x65f0ff,pattern:"prism",style:"Prismatic"}
 };
 const jerseyKeys = Object.keys(jerseys);
 
 const sneakers = {
-  classic: { name:"Classic Whites", primary:0xffffff, sole:0x111111, accent:0xdadada, type:"low" },
-  lightning: { name:"Lightning Lows", primary:0xf6f6f6, sole:0x111111, accent:0xffd84d, type:"low", sprintRecover:.02 },
-  lockdown: { name:"High-Top Lockdowns", primary:0x222833, sole:0x050505, accent:0x65d9ff, type:"high", defense:.02 },
-  riser: { name:"Sky Risers", primary:0xffffff, sole:0x2f3b4f, accent:0x7ce7ff, type:"boost", jump:.02 },
-  street: { name:"Street Reds", primary:0xd62828, sole:0x111111, accent:0xffffff, type:"low" },
-  tower: { name:"Glass Towers", primary:0xeaf8ff, sole:0x1b344d, accent:0x67d6ff, type:"high" },
-  galaxyFoams:{name:"Galaxy Foams",primary:0x151030,sole:0x65f0ff,accent:0xff4dff,type:"glow",pattern:"stars"},
-  lavaBurst:{name:"Lava Bursts",primary:0x111111,sole:0xff3d1f,accent:0xffd56a,type:"high",pattern:"lava"},
-  iceGrip:{name:"Ice Grips",primary:0xeaf8ff,sole:0x4fc3ff,accent:0xffffff,type:"low",pattern:"frost"},
-  toxicSlime:{name:"Toxic Slimes",primary:0x101810,sole:0x39ff14,accent:0xb6ff00,type:"boost",pattern:"drip"},
-  royalRush:{name:"Royal Rush",primary:0x3b1f77,sole:0xffd56a,accent:0xffffff,type:"high",pattern:"crown"},
-  chromeFlash:{name:"Chrome Flash",primary:0xd8e4ff,sole:0x111111,accent:0x65f0ff,type:"low",pattern:"chrome"},
-  tigerClaw:{name:"Tiger Claws",primary:0xff8c1a,sole:0x111111,accent:0xffffff,type:"low",pattern:"claw"},
-  midnightPulse:{name:"Midnight Pulse",primary:0x050510,sole:0x1d6cff,accent:0xff3dff,type:"glow",pattern:"pulse"}
+  classic:{name:"Classic Whites",primary:0xffffff,sole:0x111111,accent:0xdadada,type:"low",pattern:"chrome",style:"Baseline"},
+  lightning:{name:"Lightning Lows",primary:0xf6f6f6,sole:0x111111,accent:0xffd84d,type:"low",pattern:"lightning",style:"Quick",sprintRecover:.02},
+  lockdown:{name:"High-Top Lockdowns",primary:0x222833,sole:0x050505,accent:0x65d9ff,type:"high",pattern:"geo",style:"Defense",defense:.02},
+  riser:{name:"Sky Risers",primary:0xffffff,sole:0x2f3b4f,accent:0x7ce7ff,type:"boost",pattern:"wave",style:"Lift",jump:.02},
+  street:{name:"Street Reds",primary:0xd62828,sole:0x111111,accent:0xffffff,type:"low",pattern:"claw",style:"Street"},
+  tower:{name:"Glass Towers",primary:0xeaf8ff,sole:0x1b344d,accent:0x67d6ff,type:"high",pattern:"ice",style:"Tower"},
+  galaxyFoams:{name:"Galaxy Foams",primary:0x151030,sole:0x65f0ff,accent:0xff4dff,type:"glow",pattern:"stars",style:"Cosmic"},
+  lavaBurst:{name:"Lava Bursts",primary:0x111111,sole:0xff3d1f,accent:0xffd56a,type:"high",pattern:"flames",style:"Heat"},
+  iceGrip:{name:"Ice Grips",primary:0xeaf8ff,sole:0x4fc3ff,accent:0xffffff,type:"low",pattern:"ice",style:"Ice"},
+  toxicSlime:{name:"Toxic Slimes",primary:0x101810,sole:0x39ff14,accent:0xb6ff00,type:"boost",pattern:"slime",style:"Toxic"},
+  royalRush:{name:"Royal Rush",primary:0x3b1f77,sole:0xffd56a,accent:0xffffff,type:"high",pattern:"crown",style:"Royal"},
+  chromeFlash:{name:"Chrome Flash",primary:0xd8e4ff,sole:0x111111,accent:0x65f0ff,type:"low",pattern:"chrome",style:"Chrome"},
+  tigerClaw:{name:"Tiger Claws",primary:0xff8c1a,sole:0x111111,accent:0xffffff,type:"low",pattern:"claw",style:"Wild"},
+  midnightPulse:{name:"Midnight Pulse",primary:0x050510,sole:0x1d6cff,accent:0xff3dff,type:"glow",pattern:"pulse",style:"Night"},
+  thunderStep:{name:"Thunder Step",primary:0x15253f,sole:0xfff15c,accent:0xffffff,type:"high",pattern:"lightning",style:"Storm"},
+  infernoX:{name:"Inferno X",primary:0x111111,sole:0xff4d1f,accent:0xffd56a,type:"glow",pattern:"flames",style:"Inferno"},
+  frostRunner:{name:"Frost Runner",primary:0xeaf8ff,sole:0x4fc3ff,accent:0xffffff,type:"low",pattern:"ice",style:"Frost"},
+  cityDash:{name:"City Dash",primary:0x1f2430,sole:0x5aa7ff,accent:0xd9e6ff,type:"low",pattern:"city",style:"Metro"},
+  neonVenom:{name:"Neon Venom",primary:0x050505,sole:0x39ff14,accent:0xb6ff00,type:"glow",pattern:"drip",style:"Neon"},
+  solarJump:{name:"Solar Jump",primary:0x4a1e05,sole:0xffae00,accent:0xfff1a8,type:"boost",pattern:"sunburst",style:"Solar"},
+  prismDrive:{name:"Prism Drive",primary:0x202040,sole:0x9d6cff,accent:0x65f0ff,type:"glow",pattern:"prism",style:"Prism"},
+  roseBlaze:{name:"Rose Blaze",primary:0x6f1133,sole:0xff5f8f,accent:0xffffff,type:"low",pattern:"petal",style:"Rose"}
 };
 const sneakerKeys = Object.keys(sneakers);
 
 const courts = {
-  classicArena:{name:"Classic Arena",woodA:"#cf8b45",woodB:"#9b5a2b",lineColor:0xffffff,trimColor:0xffd56a,logoText:"1V1 ARENA",fog:0x0f1725,crowd:0x2a3852},
-  neonStreet:{name:"Neon Street",woodA:"#111827",woodB:"#05070c",lineColor:0x65f0ff,trimColor:0xff3dff,logoText:"NEON RUN",fog:0x090b15,crowd:0x1b1430},
-  beachCourt:{name:"Beach Court",woodA:"#e4c17a",woodB:"#c9984a",lineColor:0xffffff,trimColor:0x4fc3ff,logoText:"BOARDWALK",fog:0x182740,crowd:0x2c4458},
-  royalCourt:{name:"Royal Court",woodA:"#3b1f77",woodB:"#1b103d",lineColor:0xffd56a,trimColor:0xffffff,logoText:"ROYAL HOOPS",fog:0x120d28,crowd:0x2a1b46},
-  blacktop:{name:"Blacktop",woodA:"#202020",woodB:"#080808",lineColor:0xf2f2f2,trimColor:0xff4444,logoText:"BLACKTOP",fog:0x0a0b0f,crowd:0x262626},
-  galaxyCourt:{name:"Galaxy Court",woodA:"#151030",woodB:"#050510",lineColor:0x9d6cff,trimColor:0x65f0ff,logoText:"GALAXY RUN",fog:0x080515,crowd:0x1c1736}
+  classicArena:{name:"Classic Arena",woodA:"#cf8b45",woodB:"#9b5a2b",lineColor:0xffffff,trimColor:0xffd56a,logoText:"1V1 ARENA",theme:"classic",style:"Pro Hardwood",fog:0x0f1725,crowd:0x2a3852,mood:0xffd56a},
+  neonStreet:{name:"Neon Street",woodA:"#111827",woodB:"#05070c",lineColor:0x65f0ff,trimColor:0xff3dff,logoText:"NEON RUN",theme:"neon",style:"Night Neon",fog:0x090b15,crowd:0x1b1430,mood:0x65f0ff},
+  beachCourt:{name:"Beach Court",woodA:"#e4c17a",woodB:"#c9984a",lineColor:0xffffff,trimColor:0x4fc3ff,logoText:"BOARDWALK",theme:"beach",style:"Sun & Sand",fog:0x182740,crowd:0x2c4458,mood:0xffcd6f},
+  royalCourt:{name:"Royal Court",woodA:"#3b1f77",woodB:"#1b103d",lineColor:0xffd56a,trimColor:0xffffff,logoText:"ROYAL HOOPS",theme:"royal",style:"Crown League",fog:0x120d28,crowd:0x2a1b46,mood:0xffd56a},
+  blacktop:{name:"Blacktop",woodA:"#202020",woodB:"#080808",lineColor:0xf2f2f2,trimColor:0xff4444,logoText:"BLACKTOP",theme:"street",style:"Urban Dark",fog:0x0a0b0f,crowd:0x262626,mood:0xff6b2d},
+  galaxyCourt:{name:"Galaxy Court",woodA:"#151030",woodB:"#050510",lineColor:0x9d6cff,trimColor:0x65f0ff,logoText:"GALAXY RUN",theme:"galaxy",style:"Deep Space",fog:0x080515,crowd:0x1c1736,mood:0x9d6cff},
+  lavaRun:{name:"Lava Run",woodA:"#2c0d07",woodB:"#4a1208",lineColor:0xffb347,trimColor:0xff4d1f,logoText:"LAVA RUN",theme:"lava",style:"Molten",fog:0x140807,crowd:0x34140f,mood:0xff5c1f},
+  thunderCourt:{name:"Thunder Court",woodA:"#18243c",woodB:"#0b1220",lineColor:0x9fd8ff,trimColor:0xfff15c,logoText:"THUNDER",theme:"lightning",style:"Electric",fog:0x0b1325,crowd:0x202d44,mood:0x9fd8ff},
+  sunsetPark:{name:"Sunset Park",woodA:"#d88b52",woodB:"#9b4d36",lineColor:0xffffff,trimColor:0xffd56a,logoText:"SUNSET PARK",theme:"sunset",style:"Golden Hour",fog:0x2a1f2a,crowd:0x4e3e54,mood:0xffbf73},
+  icePalace:{name:"Ice Palace",woodA:"#dff6ff",woodB:"#bde7ff",lineColor:0x4fc3ff,trimColor:0xffffff,logoText:"ICE PALACE",theme:"ice",style:"Frozen",fog:0x0f2740,crowd:0x214762,mood:0x8fe9ff},
+  cyberGrid:{name:"Cyber Grid",woodA:"#0b0f1a",woodB:"#151c2f",lineColor:0x65f0ff,trimColor:0xff3dff,logoText:"CYBER GRID",theme:"cyber",style:"Digital",fog:0x090d16,crowd:0x251a3a,mood:0x65f0ff},
+  jungleRun:{name:"Jungle Run",woodA:"#34512f",woodB:"#1d3218",lineColor:0xe9f7d7,trimColor:0x8eff5e,logoText:"JUNGLE RUN",theme:"jungle",style:"Wild",fog:0x0e1b13,crowd:0x23341f,mood:0x8eff5e},
+  goldLeague:{name:"Gold League",woodA:"#4a3b14",woodB:"#221908",lineColor:0xfff2b0,trimColor:0xffd56a,logoText:"GOLD LEAGUE",theme:"gold",style:"Championship",fog:0x161106,crowd:0x3a2e12,mood:0xffd56a},
+  midnightCity:{name:"Midnight City",woodA:"#10131d",woodB:"#05070c",lineColor:0xd9e6ff,trimColor:0x5aa7ff,logoText:"MIDNIGHT CITY",theme:"city",style:"Metro Night",fog:0x070a14,crowd:0x1b2637,mood:0x5aa7ff},
+  candyShock:{name:"Candy Shock",woodA:"#ff77b7",woodB:"#8b4dff",lineColor:0xffffff,trimColor:0x65f0ff,logoText:"CANDY SHOCK",theme:"candy",style:"Arcade",fog:0x251033,crowd:0x3b1f4f,mood:0xff77b7},
+  desertStorm:{name:"Desert Storm",woodA:"#c59a59",woodB:"#8e6d3a",lineColor:0xffffff,trimColor:0x5c3b1f,logoText:"DESERT STORM",theme:"desert",style:"Dust Bowl",fog:0x2a2118,crowd:0x4a3a2c,mood:0xd4a56a}
 };
 const courtKeys = Object.keys(courts);
+
+const crowdArchetypes = {
+  tshirtFan:{top:"tee",pose:"seated"}, hoodieFan:{top:"hoodie",pose:"seated"}, jerseyFan:{top:"jersey",pose:"standing"},
+  jacketFan:{top:"jacket",pose:"seated"}, capFan:{hat:"cap",pose:"standing"}, beanieFan:{hat:"beanie",pose:"seated"},
+  longHairFan:{hair:"long",pose:"seated"}, kidFan:{scale:0.82,pose:"seated"}, largeFan:{scale:1.18,pose:"standing"},
+  hypeFan:{top:"jersey",pose:"hype"}, chillFan:{top:"hoodie",pose:"seated"}
+};
 
 const difficultySettings = {
   rookie:{reactionMin:.45,reactionMax:.65,steal:.18,block:.08,speed:2.2,sprint:.08,attack:.16,aggression:.35,patience:.28,mistakeChance:.28,fakeBiteChance:.56,shotDiscipline:.35,defensiveIQ:.32,crossoverUse:.2,pumpFakeUse:.24,stepBackUse:.08,sideHopUse:.12,contestTiming:.32,stealDiscipline:.25,staminaManagement:.3,spacingIQ:.26,composure:.24},
@@ -754,6 +798,8 @@ function setupSneakerSelectors(){
 function refreshSneakerSelectorUI(){
   document.getElementById("p1SneakerName").textContent = sneakers[selectedP1Sneaker].name;
   document.getElementById("p2SneakerName").textContent = sneakers[selectedP2Sneaker].name;
+  document.getElementById("p1SneakerStyle").textContent = sneakers[selectedP1Sneaker].style || "Style";
+  document.getElementById("p2SneakerStyle").textContent = sneakers[selectedP2Sneaker].style || "Style";
   drawSneakerPreview(document.getElementById("p1SneakerPreview"),sneakers[selectedP1Sneaker],performance.now()*.001);
   drawSneakerPreview(document.getElementById("p2SneakerPreview"),sneakers[selectedP2Sneaker],performance.now()*.001 + .8);
 }
@@ -778,6 +824,8 @@ function setupJerseySelectors(){
 function refreshJerseySelectorUI(){
   document.getElementById("p1JerseyName").textContent = jerseys[selectedP1Jersey].name;
   document.getElementById("p2JerseyName").textContent = jerseys[selectedP2Jersey].name;
+  document.getElementById("p1JerseyStyle").textContent = jerseys[selectedP1Jersey].style || "Style";
+  document.getElementById("p2JerseyStyle").textContent = jerseys[selectedP2Jersey].style || "Style";
   drawJerseyPreview(document.getElementById("p1JerseyPreview"),jerseys[selectedP1Jersey]);
   drawJerseyPreview(document.getElementById("p2JerseyPreview"),jerseys[selectedP2Jersey]);
 }
@@ -794,95 +842,120 @@ function setupCourtSelector(){
 }
 function refreshCourtSelectorUI(){
   document.getElementById("courtName").textContent = courts[selectedCourt].name;
+  document.getElementById("courtStyle").textContent = courts[selectedCourt].style || (courts[selectedCourt].theme || "Theme");
   drawCourtPreview(document.getElementById("courtPreview"),courts[selectedCourt]);
 }
 
-function drawSneakerPreview(canvas,sneaker,time=0){
-  const ctx = canvas.getContext("2d");
-  const w = canvas.width, h = canvas.height;
-  ctx.clearRect(0,0,w,h);
-  const grad = ctx.createLinearGradient(0,0,0,h);
-  grad.addColorStop(0,"rgba(255,255,255,.15)");
-  grad.addColorStop(1,"rgba(0,0,0,.28)");
-  ctx.fillStyle = grad; ctx.fillRect(0,0,w,h);
-  const swing = Math.sin(time*2.1)*8;
-  const x = w*.48 + swing;
-  const y = h*.52;
-  const len = 116, ht = 26;
+function toHex(n){ return "#" + n.toString(16).padStart(6,"0"); }
+
+function drawPattern(ctx,patternName,palette,area={x:0,y:0,w:256,h:256}){
+  const {x,y,w,h} = area;
   ctx.save();
-  ctx.translate(x,y);
-  ctx.rotate(-0.08);
-  ctx.fillStyle = "#00000066";
-  ctx.fillRect(-len*.5+10,20,len*.82,8);
-  ctx.fillStyle = "#" + sneaker.sole.toString(16).padStart(6,"0");
-  ctx.fillRect(-len*.5,-2,len,12 + (sneaker.type==="boost"?4:0));
-  ctx.fillStyle = "#" + sneaker.primary.toString(16).padStart(6,"0");
-  ctx.beginPath();
-  ctx.moveTo(-len*.5,3);
-  ctx.lineTo(len*.28,-ht*.45);
-  ctx.lineTo(len*.44,-ht*.24);
-  ctx.lineTo(len*.5,4);
-  ctx.lineTo(len*.3,ht*.2 + (sneaker.type==="high"?-8:0));
-  ctx.lineTo(-len*.45,ht*.24 + (sneaker.type==="high"?-10:0));
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = "#" + sneaker.accent.toString(16).padStart(6,"0");
-  ctx.fillRect(-len*.18,-5,len*.43,5);
-  if(sneaker.type==="high"){ ctx.fillRect(-len*.44,-11,26,15); }
-  if(sneaker.type==="boost"){
-    ctx.fillStyle = "rgba(124,231,255,.8)";
-    ctx.fillRect(len*.3,7,14,7);
+  ctx.beginPath(); ctx.rect(x,y,w,h); ctx.clip();
+  const c1 = toHex(palette.primary || 0x222222);
+  const c2 = toHex(palette.secondary || 0xffffff);
+  const trim = toHex(palette.trim || palette.accent || 0xffd56a);
+  if(patternName === "flames"){
+    for(let i=0;i<8;i++){ ctx.fillStyle = i%2?"rgba(255,210,120,.5)":"rgba(255,90,40,.5)"; ctx.beginPath(); ctx.moveTo(x+i*w/8,y+h); ctx.quadraticCurveTo(x+i*w/8+w/18,y+h*.35-Math.random()*h*.2,x+i*w/8+w/10,y+h); ctx.fill(); }
+  }else if(patternName === "lightning"){
+    ctx.strokeStyle = trim; ctx.lineWidth = 3;
+    for(let i=0;i<4;i++){ const sx=x+w*(.08+i*.24); ctx.beginPath(); ctx.moveTo(sx,y+h*.1); ctx.lineTo(sx+w*.07,y+h*.35); ctx.lineTo(sx+w*.02,y+h*.37); ctx.lineTo(sx+w*.11,y+h*.78); ctx.stroke(); }
+  }else if(patternName === "ice"){
+    ctx.strokeStyle = "rgba(255,255,255,.55)"; ctx.lineWidth = 2;
+    for(let i=0;i<11;i++){ ctx.beginPath(); const sx=x+Math.random()*w, sy=y+Math.random()*h; ctx.moveTo(sx,sy); ctx.lineTo(sx+(Math.random()-.5)*36,sy+(Math.random()-.5)*36); ctx.stroke(); }
+  }else if(patternName === "slime" || patternName === "drip"){
+    ctx.fillStyle = "rgba(100,255,70,.45)";
+    for(let i=0;i<7;i++) ctx.fillRect(x+i*w/7,y+h*.05,w/12,h*(.28+Math.random()*.46));
+  }else if(patternName === "claw"){
+    ctx.strokeStyle = "rgba(255,255,255,.75)"; ctx.lineWidth = 4;
+    for(let i=0;i<3;i++){ ctx.beginPath(); ctx.moveTo(x+w*(.15+i*.2),y+h*.15); ctx.lineTo(x+w*(.35+i*.2),y+h*.9); ctx.stroke(); }
+  }else if(patternName === "city"){
+    ctx.fillStyle = "rgba(255,255,255,.22)";
+    for(let i=0;i<12;i++) ctx.fillRect(x+i*w/12,y+h*(.45+Math.random()*.3),w/15,h*.5);
+  }else if(patternName === "stars"){
+    ctx.fillStyle = "rgba(255,255,255,.82)";
+    for(let i=0;i<30;i++) ctx.fillRect(x+Math.random()*w,y+Math.random()*h,2,2);
+  }else if(patternName === "chrome"){
+    const g = ctx.createLinearGradient(x,y,x+w,y+h); g.addColorStop(0,"rgba(255,255,255,.45)"); g.addColorStop(.5,"rgba(80,120,160,.25)"); g.addColorStop(1,"rgba(255,255,255,.5)");
+    ctx.fillStyle = g; ctx.fillRect(x,y,w,h);
+  }else if(patternName === "pulse" || patternName === "wave"){
+    ctx.strokeStyle = trim; ctx.lineWidth = 2;
+    for(let i=0;i<6;i++){ ctx.beginPath(); for(let px=0;px<=w;px+=8){ const py = y + h*(.2+i*.12) + Math.sin(px*.08+i)*6; if(px===0)ctx.moveTo(x+px,py); else ctx.lineTo(x+px,py);} ctx.stroke(); }
+  }else if(patternName === "camo"){
+    [c1,c2,trim].forEach((col,idx)=>{ ctx.fillStyle = col + (idx===2?"aa":"99"); for(let i=0;i<9;i++) ctx.fillRect(x+Math.random()*w,y+Math.random()*h,20+Math.random()*25,12+Math.random()*20); });
+  }else if(patternName === "sunburst"){
+    ctx.strokeStyle = "rgba(255,235,150,.5)"; ctx.lineWidth = 3;
+    for(let i=0;i<14;i++){ const a=(i/14)*Math.PI*2; ctx.beginPath(); ctx.moveTo(x+w/2,y+h/2); ctx.lineTo(x+w/2+Math.cos(a)*w*.55,y+h/2+Math.sin(a)*h*.55); ctx.stroke(); }
+  }else if(patternName === "crown"){
+    ctx.strokeStyle = trim; ctx.lineWidth = 3; ctx.strokeRect(x+w*.32,y+h*.28,w*.36,h*.3);
+    ctx.beginPath(); ctx.moveTo(x+w*.32,y+h*.28); ctx.lineTo(x+w*.42,y+h*.15); ctx.lineTo(x+w*.5,y+h*.28); ctx.lineTo(x+w*.58,y+h*.13); ctx.lineTo(x+w*.68,y+h*.28); ctx.stroke();
+  }else if(patternName === "fang"){
+    ctx.fillStyle = "rgba(255,255,255,.7)";
+    for(let i=0;i<5;i++) ctx.fillRect(x+w*(.12+i*.16),y+h*.1,8,h*.75);
+  }else if(patternName === "prism" || patternName === "geo"){
+    for(let i=0;i<12;i++){ ctx.fillStyle = `hsla(${(i*33)%360},80%,70%,.35)`; ctx.beginPath(); ctx.moveTo(x+Math.random()*w,y+Math.random()*h); ctx.lineTo(x+Math.random()*w,y+Math.random()*h); ctx.lineTo(x+Math.random()*w,y+Math.random()*h); ctx.fill(); }
+  }else if(patternName === "petal"){
+    ctx.fillStyle = "rgba(255,190,220,.45)";
+    for(let i=0;i<11;i++){ ctx.beginPath(); const px=x+Math.random()*w, py=y+Math.random()*h; ctx.ellipse(px,py,8,14,Math.random()*Math.PI,0,Math.PI*2); ctx.fill(); }
   }
   ctx.restore();
 }
+
+function makeJerseyTexture(jerseyDef,numberText="23"){
+  const c = document.createElement("canvas"); c.width = 512; c.height = 512;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = toHex(jerseyDef.primary); ctx.fillRect(0,0,512,512);
+  ctx.fillStyle = toHex(jerseyDef.secondary); ctx.fillRect(74,72,364,356);
+  drawPattern(ctx,jerseyDef.pattern,{primary:jerseyDef.primary,secondary:jerseyDef.secondary,trim:jerseyDef.trim},{x:74,y:72,w:364,h:356});
+  ctx.fillStyle = toHex(jerseyDef.trim); ctx.fillRect(58,64,16,384); ctx.fillRect(438,64,16,384); ctx.fillRect(90,102,332,16); ctx.fillRect(102,414,308,13);
+  ctx.fillStyle = "#ffffff"; ctx.font = "bold 128px Arial"; ctx.textAlign = "center"; ctx.fillText(numberText,256,300);
+  const tex = new THREE.CanvasTexture(c); tex.needsUpdate=true; return tex;
+}
+function makeShortsTexture(jerseyDef){
+  const c = document.createElement("canvas"); c.width=256; c.height=256; const ctx=c.getContext("2d");
+  ctx.fillStyle = toHex(jerseyDef.secondary); ctx.fillRect(0,0,256,256);
+  drawPattern(ctx,jerseyDef.pattern,{primary:jerseyDef.primary,secondary:jerseyDef.secondary,trim:jerseyDef.trim},{x:0,y:0,w:256,h:256});
+  ctx.fillStyle = toHex(jerseyDef.trim); ctx.fillRect(0,0,256,18); ctx.fillRect(0,238,256,18); ctx.fillRect(18,0,12,256); ctx.fillRect(226,0,12,256);
+  const tex = new THREE.CanvasTexture(c); tex.needsUpdate=true; return tex;
+}
+function makeShoeTexture(shoeDef){
+  const c = document.createElement("canvas"); c.width=256; c.height=128; const ctx=c.getContext("2d");
+  const g = ctx.createLinearGradient(0,0,256,0); g.addColorStop(0,toHex(shoeDef.primary)); g.addColorStop(1,toHex(shoeDef.sole));
+  ctx.fillStyle = g; ctx.fillRect(0,0,256,128);
+  drawPattern(ctx,shoeDef.pattern||"geo",{primary:shoeDef.primary,secondary:shoeDef.accent,trim:shoeDef.sole,accent:shoeDef.accent},{x:0,y:0,w:256,h:128});
+  ctx.fillStyle = toHex(shoeDef.accent); ctx.fillRect(0,10,256,8); ctx.fillRect(0,110,256,10);
+  const tex = new THREE.CanvasTexture(c); tex.needsUpdate=true; return tex;
+}
+
+function drawSneakerPreview(canvas,sneaker,time=0){
+  const ctx = canvas.getContext("2d"); const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h); ctx.fillStyle = "rgba(8,14,26,.8)"; ctx.fillRect(0,0,w,h);
+  const tex = makeShoeTexture(sneaker);
+  ctx.drawImage(tex.image,12,10,w-24,h-20);
+  const swing = Math.sin(time*2.1)*7; const x = w*.52 + swing; const y = h*.56;
+  ctx.save(); ctx.translate(x,y); ctx.rotate(-0.08);
+  ctx.fillStyle = toHex(sneaker.sole); ctx.fillRect(-58,4,118,13 + (sneaker.type==="boost"?4:0));
+  ctx.fillStyle = toHex(sneaker.primary); ctx.beginPath(); ctx.moveTo(-58,8); ctx.lineTo(34,-17); ctx.lineTo(60,5); ctx.lineTo(16,12); ctx.lineTo(-52,15); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = toHex(sneaker.accent); ctx.fillRect(-16,-3,38,5); ctx.fillRect(-40,-7,18,10);
+  if(sneaker.type==="high") ctx.fillRect(-48,-13,22,14);
+  if(sneaker.type==="glow"||sneaker.type==="boost"){ ctx.fillStyle = "rgba(120,240,255,.7)"; ctx.fillRect(24,8,18,6); }
+  ctx.restore();
+}
 function drawJerseyPreview(canvas,jersey){
-  const ctx = canvas.getContext("2d");
-  const w = canvas.width, h = canvas.height;
-  ctx.clearRect(0,0,w,h);
-  const grad = ctx.createLinearGradient(0,0,0,h);
-  grad.addColorStop(0,"rgba(255,255,255,.14)");
-  grad.addColorStop(1,"rgba(0,0,0,.3)");
-  ctx.fillStyle = grad; ctx.fillRect(0,0,w,h);
-  const toHex = n => "#" + n.toString(16).padStart(6,"0");
-  ctx.fillStyle = toHex(jersey.primary);
-  ctx.fillRect(82,14,92,52);
-  ctx.fillStyle = toHex(jersey.secondary);
-  ctx.fillRect(98,22,60,34);
-  ctx.fillStyle = toHex(jersey.trim);
-  ctx.fillRect(76,18,8,42); ctx.fillRect(174,18,8,42);
-  ctx.fillRect(90,28,76,6); ctx.fillRect(92,56,72,5);
-  if(jersey.pattern === "flames" || jersey.pattern === "lava"){
-    ctx.fillStyle = "rgba(255,180,90,.65)";
-    for(let i=0;i<5;i++) ctx.fillRect(86 + i*16,46 - Math.random()*8,10,16);
-  }else if(jersey.pattern === "stars" || jersey.pattern === "city"){
-    ctx.fillStyle = "rgba(255,255,255,.68)";
-    for(let i=0;i<9;i++) ctx.fillRect(84 + (i*19)%88,20 + ((i*11)%32),2,2);
-  }else if(jersey.pattern === "camo"){
-    ctx.fillStyle = "rgba(0,0,0,.18)";
-    for(let i=0;i<5;i++) ctx.fillRect(84+i*18,24+(i%2)*14,14,8);
-  }
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 20px Arial";
-  ctx.textAlign = "center";
-  ctx.fillText("23",128,45);
+  const ctx = canvas.getContext("2d"); const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h); ctx.fillStyle="rgba(8,14,26,.8)"; ctx.fillRect(0,0,w,h);
+  const tex = makeJerseyTexture(jersey,"23");
+  ctx.drawImage(tex.image,78,10,100,56);
+  const shorts = makeShortsTexture(jersey);
+  ctx.drawImage(shorts.image,184,20,56,44);
 }
 function drawCourtPreview(canvas,court){
-  const ctx = canvas.getContext("2d");
-  const w = canvas.width, h = canvas.height;
-  ctx.clearRect(0,0,w,h);
-  ctx.fillStyle = court.woodA; ctx.fillRect(0,0,w,h);
-  ctx.fillStyle = court.woodB; ctx.fillRect(0,h*.18,w,h*.16); ctx.fillRect(0,h*.58,w,h*.16);
-  ctx.strokeStyle = "#" + court.lineColor.toString(16).padStart(6,"0");
-  ctx.lineWidth = 2.6;
-  ctx.strokeRect(10,8,w-20,h-16);
-  ctx.beginPath(); ctx.moveTo(w/2,8); ctx.lineTo(w/2,h-8); ctx.stroke();
-  ctx.beginPath(); ctx.arc(w/2,h/2,12,0,Math.PI*2); ctx.stroke();
-  ctx.fillStyle = "#" + court.trimColor.toString(16).padStart(6,"0");
-  ctx.fillRect(0,0,w,4); ctx.fillRect(0,h-4,w,4);
-  ctx.fillStyle = "rgba(255,255,255,.92)";
-  ctx.font = "bold 14px Arial";
-  ctx.textAlign = "center";
-  ctx.fillText(court.logoText,w/2,h/2+5);
+  const ctx = canvas.getContext("2d"); const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h); ctx.fillStyle = court.woodA; ctx.fillRect(0,0,w,h); ctx.fillStyle = court.woodB; ctx.fillRect(0,h*.2,w,h*.16); ctx.fillRect(0,h*.62,w,h*.16);
+  drawPattern(ctx,court.theme,{primary:parseInt(court.woodA.replace('#',''),16),secondary:parseInt(court.woodB.replace('#',''),16),trim:court.trimColor},{x:14,y:12,w:w-28,h:h-24});
+  ctx.strokeStyle = toHex(court.lineColor); ctx.lineWidth=2.4; ctx.strokeRect(10,8,w-20,h-16); ctx.beginPath(); ctx.moveTo(w/2,8); ctx.lineTo(w/2,h-8); ctx.stroke(); ctx.beginPath(); ctx.arc(w/2,h/2,12,0,Math.PI*2); ctx.stroke();
+  ctx.fillStyle = toHex(court.trimColor); ctx.fillRect(0,0,w,4); ctx.fillRect(0,h-4,w,4);
+  ctx.fillStyle = "rgba(255,255,255,.95)"; ctx.font = "bold 13px Arial"; ctx.textAlign = "center"; ctx.fillText(court.logoText,w/2,h/2+4);
 }
 
 function buildOptionButtons(containerId, options){
@@ -973,6 +1046,9 @@ function init(){
   camP2 = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, .1, 500);
 
   scene.add(new THREE.HemisphereLight(0xffffff,0x162234,1.25));
+  arenaMoodLight = new THREE.PointLight(0x65d9ff,0.18,60);
+  arenaMoodLight.position.set(0,7,0);
+  scene.add(arenaMoodLight);
 
   const sun = new THREE.DirectionalLight(0xffffff,1.9);
   sun.position.set(7,16,8);
@@ -1191,35 +1267,90 @@ function buildArenaWalls(){
   });
 }
 
-function buildCrowdSection(side,theme=courts[selectedCourt]){
-  const colors=[0xffd56a,0x1d6cff,0xff4b3d,0x29c77a,0xffffff,0x9d6cff];
+function createCrowdPerson(type,palette={}){
+  const archetype = crowdArchetypes[type] || crowdArchetypes.tshirtFan;
+  const g = new THREE.Group();
+  const scale = (archetype.scale || 1) * THREE.MathUtils.randFloat(0.88,1.15);
+  const skinTones = [0xf4c79a,0xd49a6a,0xb37a4b,0x8b5a37,0x5d3425,0x3d2418];
+  const topColors = palette.top || [0xffd56a,0x65f0ff,0xff5f8f,0xffffff,0x7de35f,0x9d6cff,0x3f7bff];
+  const pantColors = palette.pants || [0x263248,0x1a1a1a,0x334258,0x505f72];
+  const skinMat = new THREE.MeshStandardMaterial({color:skinTones[Math.floor(Math.random()*skinTones.length)],roughness:.6});
+  const topMat = new THREE.MeshStandardMaterial({color:topColors[Math.floor(Math.random()*topColors.length)],roughness:.55});
+  const pantMat = new THREE.MeshStandardMaterial({color:pantColors[Math.floor(Math.random()*pantColors.length)],roughness:.68});
+  const head = new THREE.Mesh(new THREE.SphereGeometry(.11,10,10),skinMat); head.position.y=.46; g.add(head);
+  const torsoH = archetype.pose === "seated" ? .18 : .24;
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(.1,torsoH,6,10),topMat); torso.position.y=.29; g.add(torso);
+  const armL = new THREE.Mesh(new THREE.CapsuleGeometry(.04,.16,5,8),skinMat); armL.position.set(-.13,.3,0); g.add(armL);
+  const armR = armL.clone(); armR.position.x=.13; g.add(armR);
+  if(archetype.pose === "seated"){
+    const lower = new THREE.Mesh(new THREE.BoxGeometry(.22,.1,.12),pantMat); lower.position.set(0,.12,.05); g.add(lower);
+  }else{
+    const legL = new THREE.Mesh(new THREE.CapsuleGeometry(.045,.15,5,8),pantMat); legL.position.set(-.06,.1,0); g.add(legL);
+    const legR = legL.clone(); legR.position.x=.06; g.add(legR);
+  }
+  const hairMat = new THREE.MeshStandardMaterial({color:palette.hair || [0x0d0d0d,0x2e1d12,0x4a2d18,0x6a4028][Math.floor(Math.random()*4)],roughness:.7});
+  if(archetype.hat === "cap"){
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(.1,.09,.05,10),new THREE.MeshStandardMaterial({color:0x223b77})); cap.position.set(0,.55,.01); g.add(cap);
+  }else if(archetype.hat === "beanie"){
+    const beanie = new THREE.Mesh(new THREE.SphereGeometry(.1,10,10),new THREE.MeshStandardMaterial({color:0x4b2c7a})); beanie.position.y=.54; beanie.scale.y=.7; g.add(beanie);
+  }else if(archetype.hair === "long"){
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(.105,10,10),hairMat); hair.position.set(0,.5,-.02); hair.scale.set(1,1.3,1.1); g.add(hair);
+  }else{
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(.095,8,8),hairMat); hair.position.y=.53; hair.scale.y=.5; g.add(hair);
+  }
+  g.scale.setScalar(scale);
+  g.userData = {baseY:0,phase:Math.random()*Math.PI*2,pose:archetype.pose,type,torso,armL,armR};
+  g.traverse(o=>{ if(o.material) arenaThemeRefs.crowdMats.push(o.material); });
+  return g;
+}
+
+
+function createCrowdSection(side,rowCount,colCount){
+  const theme = courts[selectedCourt] || courts.classicArena;
   const sideSign = side === "left" ? -1 : side === "right" ? 1 : 0;
-  const rows = side === "back" ? 5 : 4;
-  const cols = side === "back" ? 30 : 24;
-  for(let row=0;row<rows;row++){
-    for(let i=0;i<cols;i++){
-      const fan = new THREE.Mesh(
-        new THREE.SphereGeometry(.13,8,8),
-        new THREE.MeshStandardMaterial({color:colors[(i+row)%colors.length],roughness:.58})
-      );
-      if(side === "back") fan.position.set(-8.4+i*.58,1.15+row*.42,-14.3-row*.2);
-      else fan.position.set(sideSign*(COURT_W/2+2.7+row*.48),1.1+row*.4,-8+i*.7);
-      fan.userData.baseY = fan.position.y;
-      fan.userData.theme = theme;
-      arenaThemeRefs.crowdMats.push(fan.material);
-      crowdMembers.push(fan);
-      scene.add(fan);
+  const types = Object.keys(crowdArchetypes);
+  for(let row=0;row<rowCount;row++){
+    for(let i=0;i<colCount;i++){
+      const type = types[(i+row*2)%types.length];
+      const fan = createCrowdPerson(type,{top:[theme.trimColor,theme.lineColor,0xffffff],pants:[0x1a1f2c,0x2a3142]});
+      if(side === "back") fan.position.set(-8.2+i*.62,1.0+row*.39,-14.45-row*.24);
+      else fan.position.set(sideSign*(COURT_W/2+2.8+row*.52),1+row*.38,-7.6+i*.72);
+      fan.userData.baseY = fan.position.y; fan.userData.row=row; fan.userData.col=i;
+      crowdMembers.push(fan); scene.add(fan);
     }
   }
+}
+
+function buildCrowdSection(side,theme=courts[selectedCourt]){
+  const rows = side === "back" ? 6 : 4;
+  const cols = side === "back" ? 28 : 22;
+  createCrowdSection(side,rows,cols);
+}
+
+function animateCrowdPerson(person,dt,excitement){
+  const t = performance.now()*.001 + person.userData.phase;
+  const poseMul = person.userData.pose === "hype" ? 1.35 : person.userData.pose === "standing" ? 1.05 : .85;
+  const bob = Math.sin(t*(2.1+excitement*1.3))*0.02*poseMul;
+  const sway = Math.sin(t*1.7)*0.05 + excitement*0.1*Math.sin(t*5 + person.userData.col*.3);
+  person.position.y = person.userData.baseY + bob + crowdWave*0.04;
+  person.rotation.y = sway*0.4;
+  if(person.userData.armL && person.userData.armR){
+    const clap = Math.sin(t*8 + person.userData.row)*0.5 + 0.5;
+    const hype = excitement > .45 || person.userData.pose === "hype";
+    person.userData.armL.rotation.z = hype ? -0.4 - clap*0.9 : -0.2 - clap*0.2;
+    person.userData.armR.rotation.z = hype ? 0.4 + clap*0.9 : 0.2 + clap*0.2;
+  }
+  person.traverse(o=>{ if(o.material && o.material.emissive){ o.material.emissive.setHex(0x000000); o.material.emissiveIntensity = .02 + excitement*.15; } });
 }
 
 function updateCrowd(dt){
   if(!qualitySettings[graphicsQuality].crowd) return;
   crowdWave = Math.max(0,crowdWave - dt*.7);
-  const t = performance.now()*.001;
+  arenaExcitement = Math.max(0,arenaExcitement - dt*.25);
+  const excit = THREE.MathUtils.clamp(arenaExcitement + crowdWave*.35,0,1);
   crowdMembers.forEach((fan,i)=>{
-    fan.position.y = fan.userData.baseY + Math.sin(t*2.4 + i*.17)*.03 + crowdWave*.14*Math.sin(i*.27+t*8);
-    fan.material.emissive = new THREE.Color(0x000000).lerp(new THREE.Color(0x3355aa),crowdWave*.55);
+    if(graphicsQuality === "low" && i%3!==0) return;
+    animateCrowdPerson(fan,dt,excit);
   });
 }
 
@@ -1269,10 +1400,16 @@ function updateLEDBoards(text){
 }
 
 function pulseArenaLights(colorIntensity){
+  const mood = courts[selectedCourt] || courts.classicArena;
+  const moodColor = new THREE.Color(mood.trimColor || 0x65d9ff);
   arenaLightStrips.forEach((s,i)=>{
-    const pulse = (.5+.5*Math.sin(performance.now()*.004 + i*.4))*colorIntensity;
-    s.material.color.setRGB(0.2 + pulse*0.2,0.5 + pulse*0.35,0.9);
+    const pulse = (.5+.5*Math.sin(performance.now()*.004 + i*.4))*(colorIntensity + arenaExcitement*0.4);
+    const c = moodColor.clone().lerp(new THREE.Color(0xffffff),0.12 + pulse*0.2);
+    s.material.color.copy(c);
   });
+  if(arenaMoodLight){
+    arenaMoodLight.intensity = 0.15 + arenaExcitement*0.45 + colorIntensity*0.08;
+  }
 }
 
 function buildThreePointLine(lineFn){
@@ -1322,6 +1459,7 @@ function makeImprovedCourtTexture(theme=courts[selectedCourt]){
   ctx.fillStyle = "rgba(255,213,106,.08)";
   ctx.fillRect(0,0,1024,18);
   ctx.fillRect(0,1006,1024,18);
+  drawPattern(ctx,theme.theme || "wave",{primary:parseInt(theme.woodA.replace('#',''),16),secondary:parseInt(theme.woodB.replace('#',''),16),trim:theme.trimColor},{x:190,y:188,w:644,h:644});
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(1.1,1.6);
@@ -1336,19 +1474,20 @@ function addCourtLogos(theme=courts[selectedCourt]){
   ctx.clearRect(0,0,512,512);
   ctx.fillStyle = "rgba(16,34,64,.82)";
   ctx.beginPath(); ctx.arc(256,256,160,0,Math.PI*2); ctx.fill();
-  ctx.strokeStyle = "#" + theme.trimColor.toString(16).padStart(6,"0");
+  drawPattern(ctx,theme.theme,{primary:parseInt(theme.woodA.replace('#',''),16),secondary:parseInt(theme.woodB.replace('#',''),16),trim:theme.trimColor},{x:120,y:120,w:272,h:272});
+  ctx.strokeStyle = toHex(theme.trimColor);
   ctx.lineWidth = 12;
   ctx.beginPath(); ctx.arc(256,256,150,0,Math.PI*2); ctx.stroke();
   ctx.fillStyle = "#f2f6ff";
   ctx.font = "bold 46px Arial";
   ctx.textAlign = "center";
-  ctx.fillText(theme.logoText,256,250);
-  ctx.font = "bold 24px Arial";
-  ctx.fillText("STREET COURT",256,292);
+  ctx.fillText(theme.logoText,256,248);
+  ctx.font = "bold 22px Arial";
+  ctx.fillText((theme.style || theme.theme || "ARENA").toUpperCase(),256,292);
   const logoTex = new THREE.CanvasTexture(logoCanvas);
   const logo = new THREE.Mesh(
     new THREE.PlaneGeometry(3.8,3.8),
-    new THREE.MeshStandardMaterial({map:logoTex,transparent:true,opacity:.9,emissive:0x112244,emissiveIntensity:.25})
+    new THREE.MeshStandardMaterial({map:logoTex,transparent:true,opacity:.92,emissive:theme.trimColor,emissiveIntensity:.12})
   );
   logo.rotation.x = -Math.PI/2;
   logo.position.set(0,.03,.2);
@@ -1395,10 +1534,15 @@ function applyCourtTheme(courtKey){
   arenaThemeRefs.lineMats.forEach(m=>m.color.setHex(theme.lineColor));
   arenaThemeRefs.trimMats.forEach(m=>m.color.setHex(theme.trimColor));
   arenaThemeRefs.crowdMats.forEach((m,i)=>{
-    if(i%5===0) m.color.setHex(theme.trimColor);
+    if(m.color && i%7===0) m.color.setHex(theme.trimColor);
   });
   if(scene && scene.fog) scene.fog.color.setHex(theme.fog || 0x08111c);
   if(scene && scene.background) scene.background.setHex(theme.fog || 0x08111c);
+  if(arenaMoodLight){
+    arenaMoodLight.color.setHex(theme.mood || theme.trimColor || 0x65d9ff);
+    arenaMoodLight.intensity = .18 + arenaExcitement*.35;
+  }
+  updateLEDBoards(`${theme.logoText} • ${theme.style || theme.theme || "ARENA"}`);
 }
 
 function buildHoop(){
@@ -1494,6 +1638,7 @@ function updateScoreboard(){
     ctx.fillStyle = "#ffcf44";
     ctx.font = "bold 20px Arial";
     ctx.fillText(scoreP1 > scoreP2 ? "P1 GAME POINT" : "P2 GAME POINT",256,28);
+    triggerCrowdReaction("game_point",0.75);
   }
 
   scoreboardTexture.needsUpdate = true;
@@ -1544,11 +1689,14 @@ function createCharacter(profile,pos,id){
   const jerseyKey = id === "p1" ? selectedP1Jersey : selectedP2Jersey;
   const jerseyStyle = jerseys[jerseyKey] || jerseys.classicBlue;
   const skin = new THREE.MeshStandardMaterial({color:profile.skin,roughness:.62});
-  const jersey = new THREE.MeshStandardMaterial({color:jerseyStyle.primary,roughness:.55});
-  const shorts = new THREE.MeshStandardMaterial({color:jerseyStyle.secondary,roughness:.65});
+  const jerseyTex = makeJerseyTexture(jerseyStyle,profile.number || "23");
+  const shortsTex = makeShortsTexture(jerseyStyle);
+  const jersey = new THREE.MeshStandardMaterial({color:jerseyStyle.primary,map:jerseyTex,roughness:.55});
+  const shorts = new THREE.MeshStandardMaterial({color:jerseyStyle.secondary,map:shortsTex,roughness:.65});
   const sneakerKey = id === "p1" ? selectedP1Sneaker : selectedP2Sneaker;
   const sneaker = sneakers[sneakerKey] || sneakers.classic;
-  const shoeMat = new THREE.MeshStandardMaterial({color:sneaker.primary,roughness:.35});
+  const shoeTex = makeShoeTexture(sneaker);
+  const shoeMat = new THREE.MeshStandardMaterial({color:sneaker.primary,map:shoeTex,roughness:.35});
 
   const h = profile.height;
   const w = profile.width;
@@ -3582,6 +3730,7 @@ function updateLayup(dt){
     ballState = "loose";
     ballVelocity.set((Math.random()-.5)*1.2,1.4,1.2);
     loosePickupDelay = Math.max(loosePickupDelay,.2);
+    triggerCrowdReaction("miss",0.26);
   }
 }
 
@@ -3614,9 +3763,17 @@ function triggerShotSplash(position,type="green"){
   flash(labels[type] || "SPLASH!");
 }
 function triggerCrowdReaction(type,intensity=1){
-  crowdWave = Math.max(crowdWave,intensity);
-  cameraEffects.shake = Math.max(cameraEffects.shake,intensity * 0.18);
-  pulseArenaLights(intensity);
+  const typeBoost = {
+    make:0.18,hook_make:0.2,green:0.24,dunk:0.35,rim_hang:0.4,block:0.3,miss:0.08,game_point:0.26
+  }[type] || 0.12;
+  arenaExcitement = THREE.MathUtils.clamp(arenaExcitement + typeBoost + intensity*0.08,0,1);
+  crowdWave = Math.max(crowdWave,intensity + arenaExcitement*0.3);
+  cameraEffects.shake = Math.max(cameraEffects.shake,intensity * 0.18 + arenaExcitement*0.06);
+  pulseArenaLights(Math.min(1.35,intensity + arenaExcitement*0.5));
+  if(ledBoardCtx && Math.random() < 0.25 + arenaExcitement*0.35){
+    const msg = type === "dunk" ? "DUNK ALERT" : type === "block" ? "REJECTION" : type === "green" ? "PURE GREEN" : "CROWD NOISE";
+    updateLEDBoards(msg);
+  }
 }
 
 function releaseShot(shooter,shotType,options={}){
