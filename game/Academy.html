@@ -579,42 +579,42 @@ const SPRINT_MIN = 0.12;
 
 const profiles = {
   sky:{
-    name:"Sky Riser",desc:"Tall finisher and rim protector. Huge layup reach.",
+    name:"Sky Riser",desc:"Tall finisher with a high release and elite rim finishing.",bodyType:"Tall",
     jersey:0x1d6cff,shorts:0x0b2b78,skin:0xf1c27d,hair:0x1e1209,
     height:1.16,width:1.02,speed:1.0,sprint:.98,jump:1.15,layup:1.34,handle:.68,shot:.86,block:1.48,steal:.72,hook:1.12,number:"32",hairStyle:"curlyTop"
   },
   flash:{
-    name:"Flash Guard",desc:"Tiny speed demon. Best sprint and handles, weak body.",
+    name:"Flash Guard",desc:"Fastest guard with sharp change-of-pace dribbles, weaker through contact.",bodyType:"Small/Fast",
     jersey:0xff3d6e,shorts:0x74162e,skin:0x9b5a35,hair:0x111111,
     height:.9,width:.84,speed:1.2,sprint:1.3,jump:.9,layup:.82,handle:1.52,shot:.95,block:.56,steal:1.35,hook:.55,number:"3",hairStyle:"spiky"
   },
   smooth:{
-    name:"Smooth Shooter",desc:"Pure shooter. Best jumper, weaker contact defense.",
+    name:"Smooth Shooter",desc:"Largest green windows on jumpers and set shots, weaker at rim contact.",bodyType:"Shooter",
     jersey:0x29c77a,shorts:0x0d6037,skin:0xd49a6a,hair:0x2b160d,
     height:1.0,width:.92,speed:1.0,sprint:.98,jump:.88,layup:.9,handle:1.04,shot:1.55,block:.72,steal:.82,hook:.72,number:"11",hairStyle:"shortFade"
   },
   bruiser:{
-    name:"Paint Bruiser",desc:"Strong post scorer. Wins body contact, slow laterally.",
+    name:"Paint Bruiser",desc:"Strong contact finisher with powerful hooks and slower lateral movement.",bodyType:"Bruiser",
     jersey:0xffa42b,shorts:0x7a4200,skin:0x5d3425,hair:0x0b0705,
     height:1.1,width:1.24,speed:.96,sprint:.93,jump:.9,layup:1.48,handle:.54,shot:.72,block:1.12,steal:.62,hook:1.35,number:"55",hairStyle:"afro"
   },
   claw:{
-    name:"The Claw",desc:"Long defensive specialist. Elite blocks, steals, catches.",
+    name:"The Claw",desc:"Best steal and block timing with long reach, lower shot consistency.",bodyType:"Defender",
     jersey:0x9d6cff,shorts:0x3b1f77,skin:0x704327,hair:0x080808,
     height:1.06,width:1.04,speed:.98,sprint:.98,jump:1.02,layup:.86,handle:.9,shot:.78,block:1.7,steal:1.55,hook:.84,number:"2",hairStyle:"braids"
   },
   rocket:{
-    name:"Rocket Wing",desc:"Explosive chase-down athlete. Great sprint blocks.",
+    name:"Rocket Wing",desc:"Explosive first step slasher with chase-down block upside.",bodyType:"Wing",
     jersey:0xff4d1e,shorts:0x802111,skin:0xc8845b,hair:0x20100a,
     height:1.02,width:.98,speed:1.08,sprint:1.34,jump:1.2,layup:1.08,handle:.85,shot:.78,block:1.22,steal:.9,hook:.7,number:"8",hairStyle:"headband"
   },
   crafty:{
-    name:"Crafty Lefty",desc:"Best crossover safety and weird angles. Not explosive.",
+    name:"Crafty Lefty",desc:"Best hook setup and tricky angles with safe side-hop/cross moves.",bodyType:"Playmaker",
     jersey:0xffffff,shorts:0x222222,skin:0xe1aa7a,hair:0x332012,
     height:.96,width:.9,speed:1.03,sprint:.96,jump:.78,layup:1.02,handle:1.62,shot:1.08,block:.52,steal:1.05,hook:1.05,number:"7",hairStyle:"buzz"
   },
   tower:{
-    name:"Glass Tower",desc:"Massive shot blocker. Slow, but nearly impossible to shoot over.",
+    name:"Glass Tower",desc:"Highest release and strongest blocks, very slow with low handle.",bodyType:"Tall",
     jersey:0x00b8d9,shorts:0x005a6a,skin:0x3d2418,hair:0x080808,
     height:1.24,width:1.16,speed:.91,sprint:.87,jump:.95,layup:1.22,handle:.38,shot:.58,block:2.05,steal:.48,hook:1.22,number:"44",hairStyle:"afro"
   }
@@ -645,7 +645,12 @@ const jerseys = {
   skylineSlash:{name:"Skyline Slash",primary:0x141a26,secondary:0xd7e5ff,trim:0x5aa7ff,pattern:"slash_city",style:"City"},
   frostedSteel:{name:"Frosted Steel",primary:0xdbefff,secondary:0x8ebce8,trim:0xffffff,pattern:"frost",style:"Ice"},
   toxicNeon:{name:"Toxic Neon",primary:0x0a1309,secondary:0x39ff14,trim:0xb6ff00,pattern:"slime",style:"Neon"},
-  chromeSlash:{name:"Chrome Slash",primary:0xc9d5e8,secondary:0x5f6f82,trim:0x101620,pattern:"slash",style:"Chrome"}
+  chromeSlash:{name:"Chrome Slash",primary:0xc9d5e8,secondary:0x5f6f82,trim:0x101620,pattern:"slash",style:"Chrome"},
+  darkClaw:{name:"Brown Beast Claw",primary:0x3a2316,secondary:0x1a130f,trim:0xf2e4c8,pattern:"claw",style:"Beast"},
+  beastMode:{name:"Beast Mode",primary:0x0c0d10,secondary:0x2a1a10,trim:0xff5a1f,pattern:"beast",style:"Predator"},
+  lightningBeast:{name:"Lightning Beast",primary:0x101f45,secondary:0xf2dd2e,trim:0xffffff,pattern:"lightning",style:"Storm Beast"},
+  iceFang:{name:"Ice Fang",primary:0xeaf7ff,secondary:0x2a3b52,trim:0x69f7ff,pattern:"ice",style:"Fang"},
+  venomFang:{name:"Venom Fang",primary:0x050505,secondary:0x18d64d,trim:0xe7f7df,pattern:"venom",style:"Toxic"}
 };
 const jerseyKeys = Object.keys(jerseys);
 
@@ -677,7 +682,12 @@ const sneakers = {
   streetLow:{name:"Street Low-Tops",primary:0x222222,sole:0x111111,accent:0xff6b2d,type:"low",pattern:"slash",style:"Street"},
   solarOrange:{name:"Solar Orange",primary:0x4a1e05,sole:0xff8b2b,accent:0xffd56a,type:"boost",pattern:"sunburst",style:"Solar"},
   iceAura:{name:"Ice Aura",primary:0xeaf8ff,sole:0x7ad7ff,accent:0xffffff,type:"glow",pattern:"frost",style:"Ice"},
-  toxicGreen:{name:"Toxic Green",primary:0x091209,sole:0x2aff37,accent:0xb6ff00,type:"low",pattern:"slime",style:"Toxic"}
+  toxicGreen:{name:"Toxic Green",primary:0x091209,sole:0x2aff37,accent:0xb6ff00,type:"low",pattern:"slime",style:"Toxic"},
+  beastClaws:{name:"Beast Claws",primary:0x3a2316,sole:0x0b0b0b,accent:0xf2e4c8,type:"high",pattern:"claw",style:"Beast"},
+  predatorSteps:{name:"Predator Steps",primary:0x050505,sole:0x4d0e0b,accent:0xff8c2b,type:"high",pattern:"scratch",style:"Aggressive"},
+  thunderBeasts:{name:"Thunder Beasts",primary:0x10244f,sole:0xfff15c,accent:0xffffff,type:"boost",pattern:"lightning",style:"Explosive"},
+  iceFangHighs:{name:"Ice Fang Highs",primary:0xf3fbff,sole:0x57e7ff,accent:0x6a90b4,type:"high",pattern:"fang",style:"Defensive"},
+  toxicTalons:{name:"Toxic Talons",primary:0x060806,sole:0x39ff14,accent:0x7dff52,type:"glow",pattern:"talon",style:"Neon"}
 };
 const sneakerKeys = Object.keys(sneakers);
 
@@ -817,6 +827,7 @@ function refreshSneakerSelectorUI(){
   document.getElementById("p2SneakerStyle").textContent = sneakers[selectedP2Sneaker].style || "Style";
   drawSneakerPreview(document.getElementById("p1SneakerPreview"),sneakers[selectedP1Sneaker],performance.now()*.001);
   drawSneakerPreview(document.getElementById("p2SneakerPreview"),sneakers[selectedP2Sneaker],performance.now()*.001 + .8);
+  refreshCharacterCardPreviews();
 }
 
 function setupJerseySelectors(){
@@ -843,6 +854,7 @@ function refreshJerseySelectorUI(){
   document.getElementById("p2JerseyStyle").textContent = jerseys[selectedP2Jersey].style || "Style";
   drawJerseyPreview(document.getElementById("p1JerseyPreview"),jerseys[selectedP1Jersey]);
   drawJerseyPreview(document.getElementById("p2JerseyPreview"),jerseys[selectedP2Jersey]);
+  refreshCharacterCardPreviews();
 }
 
 function setupCourtSelector(){
@@ -855,6 +867,17 @@ function setupCourtSelector(){
   document.getElementById("courtNext").onclick = ()=>rotate(1);
   refreshCourtSelectorUI();
 }
+function refreshCharacterCardPreviews(){
+  document.querySelectorAll("#p1Cards .card").forEach((card)=>{
+    const key = card.querySelector(".cardPreview")?.dataset.profile;
+    if(key && profiles[key]) drawProfileCardPreview(card.querySelector(".cardPreview"),profiles[key],selectedP1Jersey,selectedP1Sneaker);
+  });
+  document.querySelectorAll("#p2Cards .card").forEach((card)=>{
+    const key = card.querySelector(".cardPreview")?.dataset.profile;
+    if(key && profiles[key]) drawProfileCardPreview(card.querySelector(".cardPreview"),profiles[key],selectedP2Jersey,selectedP2Sneaker);
+  });
+}
+
 function refreshCourtSelectorUI(){
   document.getElementById("courtName").textContent = courts[selectedCourt].name;
   document.getElementById("courtStyle").textContent = courts[selectedCourt].style || (courts[selectedCourt].theme || "Theme");
@@ -935,6 +958,20 @@ function drawPattern(ctx,patternName,palette,area={x:0,y:0,w:256,h:256}){
     ctx.strokeRect(x+w*.18,y+h*.18,w*.64,h*.64);
     ctx.fillStyle = "rgba(255,213,106,.22)";
     ctx.fillRect(x+w*.2,y+h*.2,w*.6,h*.6);
+  }else if(patternName === "scratch" || patternName === "talon" || patternName === "beast" || patternName === "venom"){
+    ctx.strokeStyle = patternName === "venom" ? "rgba(130,255,120,.7)" : "rgba(255,255,255,.7)";
+    ctx.lineWidth = Math.max(2,w*0.015);
+    for(let i=0;i<5;i++){
+      const sx = x + w*(0.08+i*0.17);
+      ctx.beginPath();
+      ctx.moveTo(sx,y+h*.15);
+      ctx.lineTo(sx+w*.12,y+h*.88);
+      ctx.stroke();
+    }
+    if(patternName === "beast"){
+      ctx.fillStyle = "rgba(255,140,70,.22)";
+      for(let i=0;i<4;i++) ctx.fillRect(x+w*(.12+i*.2),y+h*.2,w*.1,h*.6);
+    }
   }else if(patternName === "frost"){
     ctx.strokeStyle = "rgba(255,255,255,.6)";
     ctx.lineWidth = Math.max(1.5,w*0.008);
@@ -1064,6 +1101,28 @@ function buildOptionButtons(containerId, options){
   });
 }
 
+function drawProfileCardPreview(canvas,profile,jerseyKey,sneakerKey){
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = "rgba(8,14,24,.9)"; ctx.fillRect(0,0,w,h);
+  const jersey = jerseys[jerseyKey] || jerseys.classicBlue;
+  const shoe = sneakers[sneakerKey] || sneakers.classic;
+  const scale = THREE.MathUtils.clamp(profile.height,0.9,1.24);
+  const bw = 26*profile.width, bh = 34*scale;
+  ctx.fillStyle = toHex(profile.skin); ctx.beginPath(); ctx.arc(40,24,10*scale,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = toHex(profile.hair); ctx.fillRect(30,13,20,6);
+  ctx.fillStyle = toHex(jersey.primary); ctx.fillRect(28,34,bw,bh);
+  ctx.fillStyle = toHex(jersey.secondary); ctx.fillRect(30,58,bw-4,18*scale);
+  ctx.fillStyle = toHex(jersey.trim); ctx.fillRect(28,34,bw,4);
+  ctx.fillStyle = "rgba(255,255,255,.9)"; ctx.font = "bold 11px Arial"; ctx.fillText(profile.number || "0",40,52);
+  ctx.fillStyle = toHex(shoe.primary); ctx.fillRect(24,76,18,7); ctx.fillRect(46,76,18,7);
+  ctx.fillStyle = toHex(shoe.sole); ctx.fillRect(24,82,18,3); ctx.fillRect(46,82,18,3);
+  ctx.fillStyle = "rgba(255,255,255,.75)"; ctx.font = "bold 10px Arial"; ctx.fillText(profile.bodyType || "",104,18);
+  ctx.fillStyle = toHex(jersey.primary); ctx.fillRect(84,30,56,20); ctx.fillStyle = toHex(jersey.secondary); ctx.fillRect(84,50,56,12);
+  ctx.fillStyle = toHex(shoe.primary); ctx.fillRect(84,66,26,10); ctx.fillStyle = toHex(shoe.sole); ctx.fillRect(84,76,26,4);
+}
+
 function buildCharacterCards(containerId, which){
   const box = document.getElementById(containerId);
   Object.entries(profiles).forEach(([key,p]) => {
@@ -1073,7 +1132,8 @@ function buildCharacterCards(containerId, which){
     div.innerHTML = `
       <div class="cardName">${p.name} #${p.number}</div>
       <div class="cardDesc">${p.desc}</div>
-      <div class="cardDesc">Speed ${Math.round(p.speed*100)} | Handle ${Math.round(p.handle*100)} | Block ${Math.round(p.block*100)}</div>
+      <canvas class="cardPreview" width="160" height="86" data-profile="${key}"></canvas>
+      <div class="cardDesc">${p.bodyType || "Balanced"} • Speed ${Math.round(p.speed*100)} | Handle ${Math.round(p.handle*100)} | Block ${Math.round(p.block*100)}</div>
     `;
     div.onclick = () => {
       if(which === "p1") selectedP1 = key;
@@ -1082,6 +1142,10 @@ function buildCharacterCards(containerId, which){
       div.classList.add("selected");
     };
     box.appendChild(div);
+    const canvas = div.querySelector(".cardPreview");
+    const jerseyKey = which === "p1" ? selectedP1Jersey : selectedP2Jersey;
+    const sneakerKey = which === "p1" ? selectedP1Sneaker : selectedP2Sneaker;
+    if(canvas) drawProfileCardPreview(canvas,p,jerseyKey,sneakerKey);
   });
 }
 
@@ -1190,7 +1254,10 @@ function createShotMeter(){
   glow.position.z = .006;
   group.add(glow);
   group.visible = false;
-  shotMeter = {group,fill,glow};
+  const greenRegion = new THREE.Mesh(new THREE.PlaneGeometry(.2,.082),new THREE.MeshBasicMaterial({color:0x35ff6b,transparent:true,opacity:.38,side:THREE.DoubleSide}));
+  greenRegion.position.z = .003;
+  group.add(greenRegion);
+  shotMeter = {group,fill,glow,stripCanvas,sctx,greenRegion,lastProfile:null};
   scene.add(group);
 }
 
@@ -1913,6 +1980,7 @@ function createCharacter(profile,pos,id){
     hotStreak:0,
     lastLeftTapTime:-99,
     lastRightTapTime:-99,
+    tapTimes:{KeyQ:-99,KeyE:-99,KeyU:-99,KeyO:-99,Numpad4:-99,Numpad6:-99},
     lastPumpFakeTime:-99,
     debugLeftInputTimer:0,
     debugRightInputTimer:0,
@@ -1929,6 +1997,9 @@ function createCharacter(profile,pos,id){
       recoverySpeed:1 + (profile.steal-1)*.3 + (profile.speed-1)*.25
     }
   };
+  player.shotIndicator = createFloatingIndicator(player,"SHOT","#ffffff",.42);
+  player.staminaIndicator = createStaminaIndicator();
+  player.group.add(player.staminaIndicator);
   if(sneaker.sprintRecover) player.movement.recoverySpeed *= (1 + sneaker.sprintRecover);
   if(sneaker.defense) player.movement.defensiveWidth *= (1 + sneaker.defense);
   if(sneaker.jump) player.profile.jump *= (1 + sneaker.jump);
@@ -1997,6 +2068,45 @@ function makeTextSprite(text,color,size){
   ctx.fillText(text,128,68);
   const tex = new THREE.CanvasTexture(canvas);
   return new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true}));
+}
+
+function createFloatingIndicator(player,type="SHOT",color="#ffffff",scale=.44){
+  const sprite = makeTextSprite(type,color,82);
+  sprite.scale.set(scale,scale*.52,scale*.52);
+  sprite.material.opacity = 0;
+  sprite.material.depthTest = false;
+  sprite.visible = false;
+  player.group.add(sprite);
+  return sprite;
+}
+
+function createStaminaIndicator(){
+  const c = document.createElement("canvas"); c.width = 128; c.height = 128;
+  const ctx = c.getContext("2d");
+  const tex = new THREE.CanvasTexture(c);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,opacity:.7,depthWrite:false}));
+  sprite.userData.canvas = c;
+  sprite.userData.ctx = ctx;
+  sprite.scale.set(.28,.28,.28);
+  return sprite;
+}
+
+function drawStaminaIndicator(char){
+  if(!char || !char.staminaIndicator) return;
+  const c = char.staminaIndicator.userData.canvas;
+  const ctx = char.staminaIndicator.userData.ctx;
+  const st = THREE.MathUtils.clamp(char.stamina,0,1);
+  const hue = 120 * st;
+  ctx.clearRect(0,0,c.width,c.height);
+  ctx.strokeStyle = "rgba(15,24,36,.8)";
+  ctx.lineWidth = 14;
+  ctx.beginPath(); ctx.arc(64,64,42,0,Math.PI*2); ctx.stroke();
+  ctx.strokeStyle = `hsl(${hue},95%,56%)`;
+  ctx.lineWidth = 12;
+  ctx.beginPath(); ctx.arc(64,64,42,-Math.PI/2,-Math.PI/2 + Math.PI*2*st); ctx.stroke();
+  ctx.fillStyle = `hsl(${hue},95%,62%)`;
+  ctx.beginPath(); ctx.arc(64,64,7,0,Math.PI*2); ctx.fill();
+  char.staminaIndicator.material.map.needsUpdate = true;
 }
 
 function addPlayerAccessories(char){
@@ -2187,22 +2297,53 @@ function chooseShotType(player){
   return getRequestedShotType(player);
 }
 
-function calculateShotTiming(held){
-  const maxMeterTime = 1.35;
+function getShotMeterProfile(shotType,shooter,contest){
+  const movePenalty = THREE.MathUtils.clamp((shooter.velocity ? shooter.velocity.length() : 0) * 0.028,0,0.16);
+  const contestPenalty = THREE.MathUtils.clamp((contest ? contest.value : 0) * 0.14,0,0.2);
+  const base = {
+    setshot:{greenStart:.5,greenEnd:.78,slightlyEarlyStart:.28,slightlyLateEnd:.94,greenAccuracyMultiplier:1.22,baseMakeBonus:.1,meterFillSpeed:1},
+    jumper:{greenStart:.54,greenEnd:.74,slightlyEarlyStart:.32,slightlyLateEnd:.92,greenAccuracyMultiplier:1.2,baseMakeBonus:.06,meterFillSpeed:1.06},
+    hook:{greenStart:.57,greenEnd:.71,slightlyEarlyStart:.35,slightlyLateEnd:.9,greenAccuracyMultiplier:1.15,baseMakeBonus:.05,meterFillSpeed:1.02},
+    layup:{greenStart:.44,greenEnd:.8,slightlyEarlyStart:.24,slightlyLateEnd:.96,greenAccuracyMultiplier:1.08,baseMakeBonus:.08,meterFillSpeed:.9},
+    dunk:{greenStart:.38,greenEnd:.86,slightlyEarlyStart:.18,slightlyLateEnd:.98,greenAccuracyMultiplier:1.05,baseMakeBonus:.18,meterFillSpeed:.85},
+    stepback:{greenStart:.56,greenEnd:.72,slightlyEarlyStart:.34,slightlyLateEnd:.9,greenAccuracyMultiplier:1.18,baseMakeBonus:.05,meterFillSpeed:1.1},
+    pullup:{greenStart:.55,greenEnd:.73,slightlyEarlyStart:.33,slightlyLateEnd:.9,greenAccuracyMultiplier:1.16,baseMakeBonus:.05,meterFillSpeed:1.08},
+    floater:{greenStart:.5,greenEnd:.76,slightlyEarlyStart:.28,slightlyLateEnd:.94,greenAccuracyMultiplier:1.14,baseMakeBonus:.05,meterFillSpeed:.95},
+    runner:{greenStart:.5,greenEnd:.76,slightlyEarlyStart:.28,slightlyLateEnd:.94,greenAccuracyMultiplier:1.12,baseMakeBonus:.05,meterFillSpeed:.95}
+  }[shotType] || {
+    greenStart:.5,greenEnd:.76,slightlyEarlyStart:.3,slightlyLateEnd:.92,greenAccuracyMultiplier:1.16,baseMakeBonus:.05,meterFillSpeed:1
+  };
+  const shrink = movePenalty + contestPenalty;
+  const greenCenter = (base.greenStart + base.greenEnd) * .5;
+  const half = Math.max(.05,(base.greenEnd - base.greenStart)*.5 - shrink*.45);
+  return {
+    greenStart:THREE.MathUtils.clamp(greenCenter - half,0.08,0.9),
+    greenEnd:THREE.MathUtils.clamp(greenCenter + half,0.1,0.95),
+    slightlyEarlyStart:Math.max(0.04,base.slightlyEarlyStart - shrink*.3),
+    slightlyLateEnd:Math.min(0.99,base.slightlyLateEnd + shrink*.15),
+    greenAccuracyMultiplier:base.greenAccuracyMultiplier,
+    baseMakeBonus:base.baseMakeBonus,
+    meterFillSpeed:base.meterFillSpeed
+  };
+}
+
+function calculateShotTiming(held,shotType="setshot",shooter=null,contest=null){
+  const profile = getShotMeterProfile(shotType,shooter || {velocity:new THREE.Vector3()},contest || {value:0});
+  const maxMeterTime = 1.35 / profile.meterFillSpeed;
   const pct = THREE.MathUtils.clamp(held / maxMeterTime, 0, 1);
   let grade = "Early";
   let accuracyMultiplier = .68;
   let color = 0xff3333;
-  if(held >= .25 && held < .55){
-    grade = "Slightly Early"; accuracyMultiplier = .88; color = 0xffcc33;
-  }else if(held >= .55 && held <= .95){
-    grade = "Green Release"; accuracyMultiplier = 1.18; color = 0x35ff6b;
-  }else if(held > .95 && held <= 1.2){
-    grade = "Slightly Late"; accuracyMultiplier = .88; color = 0xffa533;
-  }else if(held > 1.2){
+  if(pct >= profile.slightlyEarlyStart && pct < profile.greenStart){
+    grade = "Slightly Early"; accuracyMultiplier = .9; color = 0xffcc33;
+  }else if(pct >= profile.greenStart && pct <= profile.greenEnd){
+    grade = "Green Release"; accuracyMultiplier = profile.greenAccuracyMultiplier; color = 0x35ff6b;
+  }else if(pct > profile.greenEnd && pct <= profile.slightlyLateEnd){
+    grade = "Slightly Late"; accuracyMultiplier = .9; color = 0xffa533;
+  }else if(pct > profile.slightlyLateEnd){
     grade = "Overheld"; accuracyMultiplier = .52; color = 0xff3333;
   }
-  return {pct, grade, accuracyMultiplier, color};
+  return {pct, grade, accuracyMultiplier, color, profile};
 }
 
 function getArcBonus(char,shotType){
@@ -2256,8 +2397,8 @@ function smoothAnimValue(value,target,speed,dt){
   return value + (target - value) * (1 - Math.exp(-speed * dt));
 }
 
-function getShotTimingQuality(held){
-  return THREE.MathUtils.clamp(calculateShotTiming(held).accuracyMultiplier,0.45,1.2);
+function getShotTimingQuality(held,shotType="setshot",shooter=null,contest=null){
+  return THREE.MathUtils.clamp(calculateShotTiming(held,shotType,shooter,contest).accuracyMultiplier,0.45,1.28);
 }
 function getContestPenalty(shooter){
   return calculateShotContest(shooter).value * 0.34;
@@ -2448,6 +2589,8 @@ function poseShotArms(char,pct){
 }
 
 function onKeyDown(e){
+  const controlledTapKeys = ["KeyQ","KeyE","KeyU","KeyO","Numpad4","Numpad6"];
+  if(e.repeat && controlledTapKeys.includes(e.code)) return;
   keys[e.code] = true;
   keys[e.key.toLowerCase()] = true;
 
@@ -2475,12 +2618,12 @@ function onKeyDown(e){
     if(twoPlayerMode) handleActionButton(p2);
   }
 
-  if(e.key.toLowerCase() === "q") handleHandAction(p1,"left");
-  if(e.key.toLowerCase() === "e") handleHandAction(p1,"right");
+  if(e.code === "KeyQ" || e.key.toLowerCase() === "q") handleHandAction(p1,"left","KeyQ");
+  if(e.code === "KeyE" || e.key.toLowerCase() === "e") handleHandAction(p1,"right","KeyE");
 
   if(twoPlayerMode){
-    if(e.code === "Numpad4" || e.key.toLowerCase() === "u") handleHandAction(p2,"left");
-    if(e.code === "Numpad6" || e.key.toLowerCase() === "o") handleHandAction(p2,"right");
+    if(e.code === "Numpad4" || e.code === "KeyU" || e.key.toLowerCase() === "u") handleHandAction(p2,"left", e.code === "Numpad4" ? "Numpad4" : "KeyU");
+    if(e.code === "Numpad6" || e.code === "KeyO" || e.key.toLowerCase() === "o") handleHandAction(p2,"right", e.code === "Numpad6" ? "Numpad6" : "KeyO");
   }
 }
 
@@ -2510,15 +2653,16 @@ function handleActionButton(char){
   }
 }
 
-function handleHandAction(char,screenSide){
+function handleHandAction(char,screenSide,inputKey){
   if(gameOver) return;
   const handSide = getBestHandForScreenSide(char,screenSide);
   if(screenSide === "left") char.debugLeftInputTimer = .2;
   else char.debugRightInputTimer = .2;
 
   if(possession === char.id && ballState === "dribble"){
-    if(checkDoubleTap(char,screenSide)){
+    if(checkDoubleTap(char,screenSide,inputKey)){
       startSideHop(char,screenSide);
+      showMoveFeedback("SIDE HOP!",0.6);
       return;
     }
     attemptCrossover(char,screenSide);
@@ -2677,7 +2821,10 @@ function updateHumanControls(dt){
 
   if(shotCharging && chargingPlayer){
     chargingPlayer.moveMeta.chargeHeld = (chargingPlayer.moveMeta.chargeHeld || 0) + dt;
-    shotPower = THREE.MathUtils.clamp(.12 + chargingPlayer.moveMeta.chargeHeld * .82, .12, 1);
+    const chargeShotType = chooseShotType(chargingPlayer);
+    const chargeContest = calculateShotContest(chargingPlayer);
+    const profile = getShotMeterProfile(chargeShotType,chargingPlayer,chargeContest);
+    shotPower = THREE.MathUtils.clamp(.12 + chargingPlayer.moveMeta.chargeHeld * .82 * profile.meterFillSpeed, .12, 1);
   }
 }
 
@@ -2715,15 +2862,22 @@ function updateShotMeterVisuals(dt){
     return;
   }
   const held = chargingPlayer.moveMeta.chargeHeld || 0;
-  const timing = calculateShotTiming(held);
+  const shotType = chooseShotType(chargingPlayer);
+  const contest = calculateShotContest(chargingPlayer);
+  const timing = calculateShotTiming(held,shotType,chargingPlayer,contest);
+  const profile = timing.profile;
   shotMeter.group.visible = true;
   shotMeter.group.position.copy(chargingPlayer.group.position.clone().add(new THREE.Vector3(0, 2.65 * chargingPlayer.profile.height, 0)));
   const cam = getActiveCameraForChar(chargingPlayer);
   shotMeter.group.lookAt(cam.position);
   shotMeter.fill.position.x = -0.6 + timing.pct * 1.2;
+  shotMeter.greenRegion.position.x = -0.6 + ((profile.greenStart + profile.greenEnd)*.5) * 1.2;
+  shotMeter.greenRegion.scale.x = Math.max(.15,(profile.greenEnd-profile.greenStart)*6.2);
   shotMeter.fill.material.color.setHex(timing.color);
   shotMeter.glow.position.x = shotMeter.fill.position.x;
   const inGreen = timing.grade === "Green Release";
+  const alphaBase = 0.2 + Math.max(0,0.8-contest.value)*0.22;
+  shotMeter.greenRegion.material.opacity = inGreen ? 0.5 + Math.sin(performance.now()*.02)*.2 : alphaBase;
   shotMeter.glow.material.opacity = inGreen ? .55 + Math.sin(performance.now()*.02)*.25 : 0;
   if(canStartHookShot(chargingPlayer)){
     const el = document.getElementById("shotFeedback");
@@ -3112,6 +3266,51 @@ function updateCharacters(dt){
   animateCharacter(p2,dt);
   updateHookIndicator(p1,dt);
   updateHookIndicator(p2,dt);
+  updateFloatingIndicators(p1,dt);
+  updateFloatingIndicators(p2,dt);
+}
+
+
+function getPlayerIndicatorText(char){
+  const charging = shotCharging && chargingPlayer === char;
+  if(canStartDunk(char) && possession === char.id && ballState === "dribble") return "DUNK";
+  if(canHookShot(char) && possession === char.id && ballState === "dribble") return "HOOK";
+  if(canLayup(char) && possession === char.id && ballState === "dribble") return "LAYUP";
+  if(charging){
+    const isJumper = getRequestedShotType(char) === "jumper";
+    if(!isInsideArc(char)) return "3PT";
+    return isJumper ? "JUMPER" : "SHOT";
+  }
+  return "";
+}
+
+function updateFloatingIndicators(char,dt){
+  if(!char || !char.shotIndicator || !char.staminaIndicator) return;
+  const txt = getPlayerIndicatorText(char);
+  const sprite = char.shotIndicator;
+  if(txt){
+    sprite.visible = true;
+    if(sprite.userData.lastText !== txt){
+      const color = txt === "DUNK" ? "#ff9a2f" : txt === "HOOK" ? "#8fe9ff" : txt === "3PT" ? "#65f0ff" : "#ffffff";
+      const next = makeTextSprite(txt,color,86);
+      sprite.material.map = next.material.map;
+      sprite.userData.lastText = txt;
+    }
+    sprite.position.set(0,2.5*char.profile.height,0);
+    sprite.scale.setScalar((txt === "DUNK" ? .55:.42) + Math.sin(performance.now()*.01 + (char.id === "p1" ? 0:1))*0.03);
+    sprite.material.opacity = Math.min(1,sprite.material.opacity + dt*8);
+    sprite.lookAt(getActiveCameraForChar(char).position);
+  }else{
+    sprite.material.opacity = Math.max(0,sprite.material.opacity - dt*8);
+    if(sprite.material.opacity <= .02) sprite.visible = false;
+  }
+
+  drawStaminaIndicator(char);
+  const st = THREE.MathUtils.clamp(char.stamina,0,1);
+  char.staminaIndicator.position.set(0,2.15*char.profile.height,0);
+  char.staminaIndicator.lookAt(getActiveCameraForChar(char).position);
+  const emph = (isSprinting(char) || st < .35) ? 1 : .78;
+  char.staminaIndicator.material.opacity = THREE.MathUtils.lerp(char.staminaIndicator.material.opacity || .7, emph * (st > .92 ? .42:.9), dt*6);
 }
 
 function updateMoveState(char,dt){
@@ -3185,7 +3384,7 @@ function startSideHop(char,screenSide){
   char.sprint = Math.max(0,char.sprint-.12);
   ballSide = handSide;
   ballSideValue = handSide === "left" ? -1 : 1;
-  showMoveFeedback("Side hop!");
+  showMoveFeedback("SIDE HOP!");
   const defender = char.id === "p1" ? p2 : p1;
   triggerAnkleBreaker(defender,char);
 }
@@ -3196,15 +3395,15 @@ function updateSideHop(char,dt,pct){
   char.group.position.add(sideVec.multiplyScalar(speed * dt));
   keepInCourt(char.group.position);
 }
-function checkDoubleTap(char,side){
+function checkDoubleTap(char,side,inputKey){
   const now = performance.now() * .001;
-  if(side === "left"){
-    const ok = now - char.lastLeftTapTime <= DOUBLE_TAP_WINDOW;
-    char.lastLeftTapTime = now;
-    return ok;
-  }
-  const ok = now - char.lastRightTapTime <= DOUBLE_TAP_WINDOW;
-  char.lastRightTapTime = now;
+  const key = inputKey || (side === "left" ? "KeyQ" : "KeyE");
+  const prev = char.tapTimes && char.tapTimes[key] != null ? char.tapTimes[key] : -99;
+  const ok = now - prev <= DOUBLE_TAP_WINDOW;
+  if(!char.tapTimes) char.tapTimes = {};
+  char.tapTimes[key] = now;
+  if(side === "left") char.lastLeftTapTime = now;
+  else char.lastRightTapTime = now;
   return ok;
 }
 function triggerAnkleBreaker(defender,attacker){
@@ -3213,6 +3412,7 @@ function triggerAnkleBreaker(defender,attacker){
   if(Math.random() < chance){
     defender.stumbledTimer = THREE.MathUtils.randFloat(.4,.9);
     showMoveFeedback("Ankle breaker!");
+    triggerCrowdReaction("green",0.7);
   }
 }
 function applyBodyContact(offense,defense){
@@ -3567,12 +3767,10 @@ function updateBall(dt){
     }
 
     const bounce = Math.abs(Math.sin(owner.dribbleBounce));
-    const offset = right.clone()
-      .multiplyScalar(.55*sideValue*owner.profile.width)
-      .add(forward.clone().multiplyScalar(.23+diagonalPush));
-
-    ball.position.copy(owner.group.position.clone().add(offset));
-    ball.position.y = .34 + bounce*.82 + owner.group.position.y;
+    const handName = sideValue < 0 ? "left" : "right";
+    const dribbleOffset = right.clone().multiplyScalar(0.16*sideValue*owner.profile.width).add(forward.clone().multiplyScalar(.12+diagonalPush*0.55));
+    attachBallToHand(owner,handName,dribbleOffset);
+    ball.position.y = Math.max(.24 + owner.group.position.y, ball.position.y - .72 + bounce*.84);
   }
 
   if(ballState === "shot" || ballState === "loose"){
@@ -3894,7 +4092,7 @@ function updateLayup(dt){
   owner.group.position.add(getForward(owner.angle).multiplyScalar(2.15*dt));
   keepInCourt(owner.group.position);
 
-  const handSide = getBestHandForScreenSide(owner,"right");
+  const handSide = getBestHandForScreenSide(owner,getScreenSideVectorForChar(owner,"right").dot(HOOP_POS.clone().sub(owner.group.position)) > 0 ? "right" : "left");
   const hand = getWorldHand(owner,handSide);
   const target = HOOP_POS.clone().add(new THREE.Vector3(0,.18,.08));
   const arcHeight = Math.sin(progress*Math.PI)*.9;
@@ -3980,6 +4178,7 @@ function triggerCrowdReaction(type,intensity=1){
   cameraEffects.shake = Math.max(cameraEffects.shake,finalIntensity * 0.2 + arenaExcitement*0.08);
   if(type === "dunk" || type === "block") applyCameraZoomPulse(0.08 + finalIntensity*0.04);
   pulseArenaLights(Math.min(1.45,finalIntensity + arenaExcitement*0.55));
+  if(Math.abs(scoreP1-scoreP2) <= 1 && (scoreP1 >= targetScore-2 || scoreP2 >= targetScore-2)) crowdWave = Math.max(crowdWave,finalIntensity + 0.35);
   if(ledBoardCtx && Math.random() < 0.25 + arenaExcitement*0.35){
     const msg = type === "dunk" ? "DUNK ALERT" : type === "block" ? "REJECTION" : type === "three" ? "FROM DEEP" : type === "green" ? "PURE GREEN" : "CROWD NOISE";
     updateLEDBoards(msg);
@@ -4010,9 +4209,10 @@ function releaseShot(shooter,shotType,options={}){
   lastShotWasHook = shotType === "hook";
   const dist = flatDistance(releasePoint,HOOP_POS);
   const held = shooter.moveMeta.chargeHeld || 0;
-  const timing = calculateShotTiming(held);
-  const timingQuality = getShotTimingQuality(held);
   const contest = calculateShotContest(shooter);
+  const timing = calculateShotTiming(held,shotType,shooter,contest);
+  const timingQuality = getShotTimingQuality(held,shotType,shooter,contest);
+  const meterProfile = timing.profile;
   const distancePenalty = getDistancePenalty(shooter);
   const movementPenalty = shooter.velocity.length() * 0.035;
   const rushedPenalty = held < 0.2 ? 0.08 : 0;
@@ -4027,7 +4227,7 @@ function releaseShot(shooter,shotType,options={}){
   }else{
     finalAccuracy =
       shooter.profile.shot * 0.45 +
-      timingQuality * 0.4 -
+      timingQuality * 0.4 + meterProfile.baseMakeBonus -
       getContestPenalty(shooter) -
       distancePenalty -
       movementPenalty -
@@ -4035,7 +4235,9 @@ function releaseShot(shooter,shotType,options={}){
       fatiguePenalty -
       highJumperPenalty;
   }
-  finalAccuracy = THREE.MathUtils.clamp(finalAccuracy,0.05,0.98);
+  if(timing.grade === "Green Release") finalAccuracy += meterProfile.baseMakeBonus + (1-contest.value)*0.12;
+  if(contest.value > 0.72 && timing.grade === "Green Release") finalAccuracy -= 0.08;
+  finalAccuracy = THREE.MathUtils.clamp(finalAccuracy,0.05,0.985);
   const target = HOOP_POS.clone();
   target.x += (Math.random()-.5) * (2.2 * (1-finalAccuracy));
   target.z += (Math.random()-.5) * (2.6 * (1-finalAccuracy));
@@ -4132,12 +4334,17 @@ function updateDunk(dt){
   const t = THREE.MathUtils.clamp(dunkTimer / dunkDuration,0,1);
   owner.group.position.add(getForward(owner.angle).multiplyScalar(1.45*dt));
   keepInCourt(owner.group.position);
-  const start = getShotReleasePoint(owner,"jumper");
-  const apex = HOOP_POS.clone().add(new THREE.Vector3(0,.62,.14));
+  const style = owner.profile.width > 1.08 ? "twohand" : owner.profile.sprint > 1.15 ? "tomahawk" : "quick";
+  const start = getHandWorldPosition(owner,style === "tomahawk" ? "right" : "left").add(new THREE.Vector3(0,0.42,0));
+  const apex = HOOP_POS.clone().add(new THREE.Vector3(style === "tomahawk" ? 0.2:0,.72,.14));
   const finish = HOOP_POS.clone().add(new THREE.Vector3(0,-.42,.02));
   const phase = t < .52 ? smoothstep(t/.52) : smoothstep((t-.52)/.48);
   const target = t < .52 ? start.clone().lerp(apex,phase) : apex.clone().lerp(finish,phase);
-  ball.position.copy(target);
+  if(t < .8){
+    if(style === "twohand") attachBallBetweenHands(owner,new THREE.Vector3(0,0.36 + Math.sin(t*Math.PI)*0.2,-0.22));
+    else attachBallToHand(owner, style === "tomahawk" ? "right" : "left", new THREE.Vector3(0,0.42 + Math.sin(t*Math.PI)*0.2,-0.24));
+    ball.position.lerp(target,0.45);
+  }else ball.position.copy(target);
   ballVelocity.set(0,-1.2,0);
   if(t > .56 && !dunkScored){
     dunkScored = true;
@@ -4156,6 +4363,8 @@ function updateDunk(dt){
     animateNetSwish();
     playCrowdPulse();
     triggerShotSplash(HOOP_POS.clone(),"orange");
+    showMoveFeedback("DUNK!",0.7);
+    crowdWave = Math.max(crowdWave,1.1);
     triggerCrowdReaction("dunk",1.05);
     applyCameraShake(.23);
     const hangChance =
@@ -4685,9 +4894,21 @@ function getOwner(){
   return ballOwner === "p1" ? p1 : p2;
 }
 
-function getWorldHand(char,side){
-  const local = side === "left" ? char.leftHand.position.clone() : char.rightHand.position.clone();
+function getHandWorldPosition(char,handName){
+  const local = handName === "left" ? char.leftHand.position.clone() : char.rightHand.position.clone();
   return char.group.localToWorld(local);
+}
+function getWorldHand(char,side){
+  return getHandWorldPosition(char,side);
+}
+function attachBallToHand(char,handName,offset=new THREE.Vector3()){
+  const p = getHandWorldPosition(char,handName);
+  ball.position.copy(p.add(offset));
+}
+function attachBallBetweenHands(char,offset=new THREE.Vector3()){
+  const l = getHandWorldPosition(char,"left");
+  const r = getHandWorldPosition(char,"right");
+  ball.position.copy(l.lerp(r,.5).add(offset));
 }
 
 function isSprinting(char){
