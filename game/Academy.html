@@ -181,6 +181,70 @@ h1{
   font-weight:900;
   cursor:pointer;
 }
+.bigMenuTitle{
+  font-size:54px;
+  margin:0 0 14px;
+  text-align:center;
+  color:#ffd56a;
+  letter-spacing:.6px;
+}
+.primarySubtitle{
+  text-align:center;
+  color:#d9e6ff;
+  margin-bottom:22px;
+}
+.primaryButtons{
+  max-width:420px;
+  margin:0 auto;
+  display:grid;
+  gap:12px;
+}
+.menuLargeBtn{
+  border:none;
+  border-radius:14px;
+  padding:16px 14px;
+  font-weight:800;
+  color:#111;
+  background:linear-gradient(90deg,#ffe074,#ff9e42);
+  cursor:pointer;
+}
+.menuBackBtn{
+  border:none;
+  border-radius:999px;
+  padding:8px 14px;
+  background:#33486a;
+  color:#fff;
+  cursor:pointer;
+  font-weight:700;
+  margin-bottom:10px;
+}
+.menuScreen{display:none;}
+.menuScreen.active{display:block;}
+.statusMsg{
+  margin-top:12px;
+  color:#9dffd3;
+  font-size:13px;
+  text-align:center;
+}
+.standingsTable{
+  width:100%;
+  border-collapse:collapse;
+  font-size:13px;
+  margin:10px 0 14px;
+}
+.standingsTable th,.standingsTable td{
+  border:1px solid rgba(255,255,255,.14);
+  padding:6px 8px;
+  text-align:left;
+}
+.standingsTable th{
+  background:rgba(255,213,106,.14);
+  color:#ffd56a;
+}
+.standingsTable tr.playerRow{
+  background:rgba(101,240,255,.16);
+  outline:1px solid rgba(255,213,106,.7);
+}
 #hud{
   position:fixed;
   top:10px;
@@ -303,16 +367,29 @@ button.small{
 
 <div id="menu">
   <div id="menuBox">
-    <h1>3D 1v1 Basketball Final</h1>
-    <div class="sub">
-      Split-screen 2-player mode, screen-relative Q/E and J/L handles, improved shot/swipe/block animations, full arena walls, airborne blocks/catches, 3-point line, no out-of-bounds ball, and removable in-play UI.
+    <div id="primaryMenuScreen" class="menuScreen active">
+      <div class="bigMenuTitle">3D 1v1 Basketball</div>
+      <div class="primarySubtitle">Quick Play, split screen, or a 12-round tournament road.</div>
+      <div class="primaryButtons">
+        <button id="primaryQuickPlayBtn" class="menuLargeBtn">Quick Play</button>
+        <button id="primaryTournamentBtn" class="menuLargeBtn">Tournament</button>
+        <button id="primaryLoadTournamentBtn" class="menuLargeBtn">Load Tournament</button>
+      </div>
+      <div id="primaryMenuMsg" class="statusMsg"></div>
     </div>
 
-    <div class="modeRow">
+    <div id="quickPlayScreen" class="menuScreen">
+      <button id="quickPlayBackBtn" class="menuBackBtn">← Back</button>
+      <h1>Quick Play Setup</h1>
+      <div class="sub">
+        Split-screen 2-player mode, screen-relative Q/E and J/L handles, improved shot/swipe/block animations, full arena walls, airborne blocks/catches, 3-point line, no out-of-bounds ball, and removable in-play UI.
+      </div>
+
+      <div class="modeRow">
       <button id="onePlayerBtn" class="modeBtn selected">1 Player vs Bot</button>
       <button id="twoPlayerBtn" class="modeBtn">2 Player Split Screen</button>
-    </div>
-    <div class="sneakerBox" style="max-width:560px;margin:8px auto 14px;">
+      </div>
+      <div class="sneakerBox" style="max-width:560px;margin:8px auto 14px;">
       <div class="sneakerTitle">Court Design</div>
       <div class="sneakerRow">
         <button id="courtPrev" class="sneakerArrow">&#9664;</button>
@@ -391,6 +468,52 @@ button.small{
       <b>Player 1:</b> W forward, S backpedal, A/D turn, Left Shift sprint, <u>with ball</u> Q/E crossover and double tap Q/E big side-jump, <u>without ball</u> Q/E steal attempts, <u>with ball</u> double tap S back-jump (shoot during it for fadeaway), Space shoot/jump/hands-up block.<br>
       <b>Player 2:</b> I forward, K backpedal, J/L turn, Right Shift sprint, <u>with ball</u> U/O or Numpad4/6 crossover and double tap U/O or Num4/6 big side-jump, <u>without ball</u> U/O or Numpad4/6 steal attempts, <u>with ball</u> double tap K back-jump (shoot during it for fadeaway), Enter/Numpad0 shoot/jump/hands-up block.<br>
       <b>Hide UI:</b> Press H during play.
+      </div>
+    </div>
+
+    <div id="tournamentSetupScreen" class="menuScreen">
+      <button id="tournamentSetupBackBtn" class="menuBackBtn">← Back</button>
+      <h1>Tournament Setup</h1>
+      <div class="sub">Choose your player profile, shoes, and jersey for a 12-round road to the championship.</div>
+      <div class="selectPanel" style="max-width:860px;margin:0 auto;">
+        <div class="sectionTitle">Player Character</div>
+        <div class="cards" id="tourP1Cards"></div>
+        <div class="sneakerBox">
+          <div class="sneakerTitle">Sneakers</div>
+          <div class="sneakerRow">
+            <button id="tourP1SneakerPrev" class="sneakerArrow">&#9664;</button>
+            <canvas id="tourP1SneakerPreview" class="sneakerPreview" width="260" height="74"></canvas>
+            <button id="tourP1SneakerNext" class="sneakerArrow">&#9654;</button>
+          </div>
+          <div id="tourP1SneakerName" class="sneakerName"></div>
+          <div id="tourP1SneakerStyle" class="sneakerName" style="opacity:.75;font-size:11px;"></div>
+        </div>
+        <div class="sneakerBox">
+          <div class="sneakerTitle">Jersey</div>
+          <div class="sneakerRow">
+            <button id="tourP1JerseyPrev" class="sneakerArrow">&#9664;</button>
+            <canvas id="tourP1JerseyPreview" class="sneakerPreview" width="260" height="74"></canvas>
+            <button id="tourP1JerseyNext" class="sneakerArrow">&#9654;</button>
+          </div>
+          <div id="tourP1JerseyName" class="sneakerName"></div>
+          <div id="tourP1JerseyStyle" class="sneakerName" style="opacity:.75;font-size:11px;"></div>
+        </div>
+      </div>
+      <button id="startTournamentBtn" style="margin-top:14px;" class="menuLargeBtn">START TOURNAMENT</button>
+      <div id="tournamentSetupMsg" class="statusMsg"></div>
+    </div>
+
+    <div id="tournamentBetweenScreen" class="menuScreen">
+      <h1 id="tournamentBetweenTitle">Tournament Between Rounds</h1>
+      <div class="sub" id="tournamentBetweenSub"></div>
+      <div id="tournamentStandingsWrap"></div>
+      <div class="sub" id="tournamentNextPreview"></div>
+      <div class="modeRow">
+        <button id="saveTournamentBtn" class="modeBtn selected">Save Tournament</button>
+        <button id="continueTournamentBtn" class="modeBtn">Continue</button>
+        <button id="betweenMainMenuBtn" class="modeBtn">Main Menu</button>
+      </div>
+      <div id="tournamentBetweenMsg" class="statusMsg"></div>
     </div>
   </div>
 </div>
@@ -468,6 +591,15 @@ let keys = {};
 let gameStarted = false;
 let twoPlayerMode = false;
 let uiHidden = false;
+let isTournamentGame = false;
+let tournamentState = null;
+let currentTournamentEnemy = null;
+let isChampionshipGame = false;
+const TOURNAMENT_SAVE_KEY = "basketballTournamentSave";
+const TOURNAMENT_PLAYER_ID = "player";
+const tournamentDifficultyStrength = {rookie:1,easy:2,normal:3,hard:4,elite:5,nightmare:6,legend:7};
+let confettiPool = [];
+let confettiActive = [];
 
 let selectedP1 = "sky";
 let selectedP2 = "claw";
@@ -752,11 +884,14 @@ init();
 animate();
 
 function buildMenu(){
+  buildPrimaryMenu();
   buildCharacterCards("p1Cards","p1");
   buildCharacterCards("p2Cards","p2");
+  buildCharacterCards("tourP1Cards","tournamentP1");
   setupSneakerSelectors();
   setupJerseySelectors();
   setupCourtSelector();
+  setupTournamentSelectors();
 
   document.getElementById("onePlayerBtn").onclick = () => {
     twoPlayerMode = false;
@@ -808,6 +943,41 @@ function buildMenu(){
   document.getElementById("hideUiBtn").onclick = toggleUI;
   document.getElementById("rematchBtn").onclick = () => rematchSamePlayers();
   document.getElementById("changeCharsBtn").onclick = () => returnToCharacterMenu();
+  showPrimaryMenu();
+}
+
+function buildPrimaryMenu(){
+  document.getElementById("primaryQuickPlayBtn").onclick = ()=>showQuickPlaySetup();
+  document.getElementById("primaryTournamentBtn").onclick = ()=>showTournamentSetup();
+  document.getElementById("primaryLoadTournamentBtn").onclick = ()=>loadTournament();
+  document.getElementById("quickPlayBackBtn").onclick = ()=>showPrimaryMenu();
+  document.getElementById("tournamentSetupBackBtn").onclick = ()=>showPrimaryMenu();
+  document.getElementById("startTournamentBtn").onclick = ()=>startNewTournament();
+  document.getElementById("saveTournamentBtn").onclick = ()=>saveTournament();
+  document.getElementById("continueTournamentBtn").onclick = ()=>continueTournamentFlow();
+  document.getElementById("betweenMainMenuBtn").onclick = ()=>showPrimaryMenu();
+}
+
+function showMenuScreen(id){
+  document.querySelectorAll("#menuBox .menuScreen").forEach(el=>el.classList.remove("active"));
+  const target = document.getElementById(id);
+  if(target) target.classList.add("active");
+  document.getElementById("menu").style.display = "flex";
+}
+function showPrimaryMenu(message=""){
+  gameStarted = false;
+  isTournamentGame = false;
+  isChampionshipGame = false;
+  showMenuScreen("primaryMenuScreen");
+  document.getElementById("primaryMenuMsg").textContent = message;
+}
+function showQuickPlaySetup(){
+  showMenuScreen("quickPlayScreen");
+}
+function showTournamentSetup(message=""){
+  showMenuScreen("tournamentSetupScreen");
+  document.getElementById("tournamentSetupMsg").textContent = message;
+  refreshTournamentSelectorUI();
 }
 
 function setupSneakerSelectors(){
@@ -865,6 +1035,37 @@ function refreshJerseySelectorUI(){
   refreshCharacterCardPreviews();
 }
 
+function setupTournamentSelectors(){
+  const rotateSneaker = (dir)=>{
+    const i = sneakerKeys.indexOf(selectedP1Sneaker);
+    selectedP1Sneaker = sneakerKeys[(i + dir + sneakerKeys.length) % sneakerKeys.length];
+    refreshTournamentSelectorUI();
+  };
+  const rotateJersey = (dir)=>{
+    const i = jerseyKeys.indexOf(selectedP1Jersey);
+    selectedP1Jersey = jerseyKeys[(i + dir + jerseyKeys.length) % jerseyKeys.length];
+    refreshTournamentSelectorUI();
+  };
+  document.getElementById("tourP1SneakerPrev").onclick = ()=>rotateSneaker(-1);
+  document.getElementById("tourP1SneakerNext").onclick = ()=>rotateSneaker(1);
+  document.getElementById("tourP1JerseyPrev").onclick = ()=>rotateJersey(-1);
+  document.getElementById("tourP1JerseyNext").onclick = ()=>rotateJersey(1);
+  refreshTournamentSelectorUI();
+}
+function refreshTournamentSelectorUI(){
+  document.getElementById("tourP1SneakerName").textContent = sneakers[selectedP1Sneaker].name;
+  document.getElementById("tourP1SneakerStyle").textContent = sneakers[selectedP1Sneaker].style || "Style";
+  drawSneakerPreview(document.getElementById("tourP1SneakerPreview"),sneakers[selectedP1Sneaker],performance.now()*.001 + .3);
+  document.getElementById("tourP1JerseyName").textContent = jerseys[selectedP1Jersey].name;
+  document.getElementById("tourP1JerseyStyle").textContent = jerseys[selectedP1Jersey].style || "Style";
+  drawJerseyPreview(document.getElementById("tourP1JerseyPreview"),jerseys[selectedP1Jersey]);
+  document.querySelectorAll("#tourP1Cards .card").forEach((card)=>{
+    const key = card.querySelector(".cardPreview")?.dataset.profile;
+    if(key && profiles[key]) drawProfileCardPreview(card.querySelector(".cardPreview"),profiles[key],selectedP1Jersey,selectedP1Sneaker);
+    card.classList.toggle("selected",key === selectedP1);
+  });
+}
+
 function setupCourtSelector(){
   const rotate=(dir)=>{
     const i = courtKeys.indexOf(selectedCourt);
@@ -890,6 +1091,215 @@ function refreshCourtSelectorUI(){
   document.getElementById("courtName").textContent = courts[selectedCourt].name;
   document.getElementById("courtStyle").textContent = courts[selectedCourt].style || (courts[selectedCourt].theme || "Theme");
   drawCourtPreview(document.getElementById("courtPreview"),courts[selectedCourt]);
+}
+
+function createTournamentEnemies(){
+  return [
+    {id:"e1",name:"Rookie Park Guard",profileKey:"sky",sneakerKey:"classic",jerseyKey:"classicBlue",courtKey:"classicArena",difficultyKey:"rookie",wins:0,losses:0},
+    {id:"e2",name:"Street Slasher",profileKey:"rocket",sneakerKey:"street",jerseyKey:"cityRush",courtKey:"neonStreet",difficultyKey:"easy",wins:0,losses:0},
+    {id:"e3",name:"Neon Shooter",profileKey:"smooth",sneakerKey:"midnightPulse",jerseyKey:"neonNight",courtKey:"beachCourt",difficultyKey:"easy",wins:0,losses:0},
+    {id:"e4",name:"Paint Bully",profileKey:"bruiser",sneakerKey:"beastClaws",jerseyKey:"beastMode",courtKey:"royalCourt",difficultyKey:"normal",wins:0,losses:0},
+    {id:"e5",name:"Coastline Wing",profileKey:"flash",sneakerKey:"lightning",jerseyKey:"skyline",courtKey:"blacktop",difficultyKey:"normal",wins:0,losses:0},
+    {id:"e6",name:"Royal Defender",profileKey:"claw",sneakerKey:"royalRush",jerseyKey:"royalGold",courtKey:"galaxyCourt",difficultyKey:"hard",wins:0,losses:0},
+    {id:"e7",name:"Blacktop Claw",profileKey:"claw",sneakerKey:"tigerClaw",jerseyKey:"darkClaw",courtKey:"lavaRun",difficultyKey:"hard",wins:0,losses:0},
+    {id:"e8",name:"Galaxy Shotmaker",profileKey:"smooth",sneakerKey:"galaxyFoams",jerseyKey:"galaxy",courtKey:"thunderCourt",difficultyKey:"elite",wins:0,losses:0},
+    {id:"e9",name:"Lava Bruiser",profileKey:"bruiser",sneakerKey:"lavaBurst",jerseyKey:"inferno",courtKey:"sunsetPark",difficultyKey:"elite",wins:0,losses:0},
+    {id:"e10",name:"Ice Tower",profileKey:"tower",sneakerKey:"iceFangHighs",jerseyKey:"frostbite",courtKey:"icePalace",difficultyKey:"nightmare",wins:0,losses:0},
+    {id:"e11",name:"Cyber Phantom",profileKey:"crafty",sneakerKey:"chromeFlash",jerseyKey:"chromeElite",courtKey:"cyberGrid",difficultyKey:"nightmare",wins:0,losses:0},
+    {id:"e12",name:"Final Boss Rival",profileKey:"tower",sneakerKey:"thunderBeasts",jerseyKey:"royalLegacy",courtKey:"jungleRun",difficultyKey:"legend",wins:0,losses:0}
+  ];
+}
+function startNewTournament(){
+  const enemies = createTournamentEnemies();
+  tournamentState = {
+    active:true, playerProfileKey:selectedP1, playerSneakerKey:selectedP1Sneaker, playerJerseyKey:selectedP1Jersey,
+    round:1, maxRounds:12, playerWins:0, playerLosses:0, enemies,
+    standings:[], schedule:enemies.map(e=>({round:parseInt(e.id.slice(1),10),enemyId:e.id,courtKey:e.courtKey})),
+    completedGames:[], nextOpponentId:enemies[0].id, nextCourtKey:enemies[0].courtKey,
+    finalsQualified:false, finalsComplete:false, champion:null
+  };
+  updateTournamentStandings();
+  saveTournament(false);
+  startTournamentRound();
+}
+function startTournamentRound(){
+  if(!tournamentState) return;
+  const idx = Math.max(0,Math.min(tournamentState.round-1,tournamentState.enemies.length-1));
+  currentTournamentEnemy = tournamentState.enemies[idx];
+  tournamentState.nextOpponentId = currentTournamentEnemy.id;
+  tournamentState.nextCourtKey = currentTournamentEnemy.courtKey;
+  isTournamentGame = true;
+  isChampionshipGame = false;
+  startGame();
+}
+function finishTournamentGame(winner){
+  gameStarted = false;
+  const playerWon = winner === "p1";
+  if(playerWon) tournamentState.playerWins += 1; else tournamentState.playerLosses += 1;
+  if(currentTournamentEnemy){
+    if(playerWon) currentTournamentEnemy.losses += 1; else currentTournamentEnemy.wins += 1;
+  }
+  tournamentState.completedGames.push({round:tournamentState.round,type:isChampionshipGame?"championship":"round",opponentId:currentTournamentEnemy?.id,result:playerWon?"W":"L"});
+  triggerSlowMo(.35,.65);
+  simulateEnemyRoundResults();
+  updateTournamentStandings();
+  if(isChampionshipGame){
+    tournamentState.finalsComplete = true;
+    tournamentState.champion = playerWon ? TOURNAMENT_PLAYER_ID : (currentTournamentEnemy?.id || null);
+    saveTournament(false);
+    if(playerWon) showTournamentVictory(); else showTournamentLoss("Runner-up finish. Championship lost.");
+    return;
+  }
+  tournamentState.round += 1;
+  if(tournamentState.round > tournamentState.maxRounds){
+    showTournamentFinalsScreen();
+  }else{
+    const next = tournamentState.enemies[tournamentState.round-1];
+    tournamentState.nextOpponentId = next.id;
+    tournamentState.nextCourtKey = next.courtKey;
+    saveTournament(false);
+    showTournamentBetweenRounds(playerWon ? `You won Round ${tournamentState.round-1}!` : `You lost Round ${tournamentState.round-1}.`);
+  }
+}
+function simulateEnemyRoundResults(){
+  if(!tournamentState) return;
+  const shuffled = [...tournamentState.enemies].sort(()=>Math.random()-.5);
+  for(let i=0;i<shuffled.length-1;i+=2){
+    const a = shuffled[i], b = shuffled[i+1];
+    const sa = tournamentDifficultyStrength[a.difficultyKey] || 1;
+    const sb = tournamentDifficultyStrength[b.difficultyKey] || 1;
+    let chanceA = sa/(sa+sb);
+    chanceA = THREE.MathUtils.clamp(chanceA + (Math.random()-.5)*0.18,0.12,0.88);
+    const aWon = Math.random() < chanceA;
+    if(aWon){ a.wins++; b.losses++; } else { b.wins++; a.losses++; }
+    tournamentState.completedGames.push({round:tournamentState.round,type:"sim",a:a.id,b:b.id,winner:aWon?a.id:b.id});
+  }
+}
+function updateTournamentStandings(){
+  if(!tournamentState) return;
+  const rows = [{id:TOURNAMENT_PLAYER_ID,name:"You",wins:tournamentState.playerWins,losses:tournamentState.playerLosses,strength:6,difficultyKey:"player"}];
+  tournamentState.enemies.forEach(e=>rows.push({id:e.id,name:e.name,wins:e.wins,losses:e.losses,strength:tournamentDifficultyStrength[e.difficultyKey]||1,difficultyKey:e.difficultyKey}));
+  rows.sort((a,b)=> (b.wins-a.wins) || (a.losses-b.losses) || (b.strength-a.strength) || (Math.random()-.5));
+  tournamentState.standings = rows.map((r,idx)=>({...r,rank:idx+1}));
+}
+function standingsHTML(){
+  const rows = (tournamentState?.standings || []).map(r=>{
+    const last = [...(tournamentState.completedGames||[])].reverse().find(g=>g.opponentId===r.id || g.a===r.id || g.b===r.id || (r.id===TOURNAMENT_PLAYER_ID && g.result));
+    const lastResult = r.id===TOURNAMENT_PLAYER_ID ? (last?.result || "-") : (last?.winner===r.id?"W":(last?"L":"-"));
+    return `<tr class="${r.id===TOURNAMENT_PLAYER_ID?"playerRow":""}"><td>${r.rank}</td><td>${r.name}</td><td>${r.wins}-${r.losses}</td><td>${lastResult}</td><td>${r.difficultyKey.toUpperCase()}</td></tr>`;
+  }).join("");
+  return `<div class="sectionTitle">Tournament Standings</div><table class="standingsTable"><thead><tr><th>Rank</th><th>Player/Enemy</th><th>Record</th><th>Last Result</th><th>Difficulty/Strength</th></tr></thead><tbody>${rows}</tbody></table><div class="sub">Top 2 after Round 12 advance to the Championship.</div>`;
+}
+function showTournamentBetweenRounds(resultText="Tournament updated."){
+  showMenuScreen("tournamentBetweenScreen");
+  document.getElementById("saveTournamentBtn").textContent = "Save Tournament";
+  document.getElementById("continueTournamentBtn").textContent = "Continue";
+  document.getElementById("betweenMainMenuBtn").textContent = "Main Menu";
+  document.getElementById("saveTournamentBtn").onclick = ()=>saveTournament();
+  document.getElementById("continueTournamentBtn").onclick = ()=>continueTournamentFlow();
+  document.getElementById("betweenMainMenuBtn").onclick = ()=>showPrimaryMenu();
+  document.getElementById("tournamentBetweenTitle").textContent = `Tournament - Round ${Math.min(tournamentState.round,tournamentState.maxRounds)} / ${tournamentState.maxRounds}`;
+  document.getElementById("tournamentBetweenSub").textContent = `${resultText} Record: ${tournamentState.playerWins} - ${tournamentState.playerLosses}`;
+  document.getElementById("tournamentStandingsWrap").innerHTML = standingsHTML();
+  const nextEnemy = tournamentState.enemies[tournamentState.round-1];
+  document.getElementById("tournamentNextPreview").textContent = nextEnemy ? `Next Opponent: ${nextEnemy.name} (${nextEnemy.difficultyKey.toUpperCase()}) • Stadium: ${(courts[nextEnemy.courtKey]||{}).name || nextEnemy.courtKey}` : "Finals qualification check next.";
+  document.getElementById("tournamentBetweenMsg").textContent = "";
+}
+function saveTournament(showToast=true){
+  if(!tournamentState) return;
+  localStorage.setItem(TOURNAMENT_SAVE_KEY,JSON.stringify(tournamentState));
+  if(showToast){
+    const el = document.getElementById("tournamentBetweenMsg");
+    if(el) el.textContent = "Tournament saved!";
+  }
+}
+function loadTournament(){
+  const raw = localStorage.getItem(TOURNAMENT_SAVE_KEY);
+  if(!raw){ showPrimaryMenu("No saved tournament found."); return; }
+  try{
+    tournamentState = JSON.parse(raw);
+  }catch(e){ showPrimaryMenu("No saved tournament found."); return; }
+  if(!tournamentState?.active){ showPrimaryMenu("No saved tournament found."); return; }
+  selectedP1 = tournamentState.playerProfileKey || selectedP1;
+  selectedP1Sneaker = tournamentState.playerSneakerKey || selectedP1Sneaker;
+  selectedP1Jersey = tournamentState.playerJerseyKey || selectedP1Jersey;
+  updateTournamentStandings();
+  if(tournamentState.finalsComplete){
+    showTournamentBetweenRounds("Completed tournament loaded.");
+    return;
+  }
+  if(tournamentState.round > tournamentState.maxRounds) showTournamentFinalsScreen(); else showTournamentBetweenRounds("Tournament loaded.");
+}
+function continueTournamentFlow(){
+  if(!tournamentState) return;
+  if(tournamentState.round > tournamentState.maxRounds){ showTournamentFinalsScreen(); return; }
+  startTournamentRound();
+}
+function showTournamentFinalsScreen(){
+  updateTournamentStandings();
+  const top2 = tournamentState.standings.slice(0,2);
+  const playerTop2 = top2.some(r=>r.id===TOURNAMENT_PLAYER_ID);
+  tournamentState.finalsQualified = playerTop2;
+  if(!playerTop2){
+    showTournamentLoss("You finished outside the Top 2. Tournament over.");
+    saveTournament(false);
+    return;
+  }
+  const other = top2.find(r=>r.id!==TOURNAMENT_PLAYER_ID);
+  const opp = tournamentState.enemies.find(e=>e.id===other.id);
+  currentTournamentEnemy = opp;
+  showMenuScreen("tournamentBetweenScreen");
+  document.getElementById("tournamentBetweenTitle").textContent = "You made the Championship!";
+  document.getElementById("tournamentBetweenSub").textContent = `${opp.name} (${opp.wins}-${opp.losses}) at ${(courts.goldLeague||courts[opp.courtKey]).name}. Championship opponent is faster and stronger.`;
+  document.getElementById("tournamentStandingsWrap").innerHTML = standingsHTML();
+  document.getElementById("tournamentNextPreview").textContent = "Championship game to 11, win by 2.";
+  document.getElementById("continueTournamentBtn").textContent = "Start Championship";
+  document.getElementById("continueTournamentBtn").onclick = ()=>startChampionshipGame();
+}
+function startChampionshipGame(){
+  if(!currentTournamentEnemy) return;
+  isTournamentGame = true;
+  isChampionshipGame = true;
+  selectedCourt = "goldLeague" in courts ? "goldLeague" : currentTournamentEnemy.courtKey;
+  tournamentState.nextCourtKey = selectedCourt;
+  startGame();
+}
+function showTournamentVictory(){
+  isTournamentGame = false;
+  showMenuScreen("tournamentBetweenScreen");
+  document.getElementById("tournamentBetweenTitle").textContent = "YOU ARE THE CHAMPION!";
+  document.getElementById("tournamentBetweenSub").textContent = `Final Record: ${tournamentState.playerWins}-${tournamentState.playerLosses}. Defeated ${currentTournamentEnemy?.name || "rival"}.`;
+  document.getElementById("tournamentStandingsWrap").innerHTML = standingsHTML();
+  document.getElementById("tournamentNextPreview").textContent = "TOURNAMENT CHAMPION";
+  document.getElementById("continueTournamentBtn").textContent = "New Tournament";
+  document.getElementById("continueTournamentBtn").onclick = ()=>showTournamentSetup();
+  document.getElementById("betweenMainMenuBtn").textContent = "Main Menu";
+  document.getElementById("saveTournamentBtn").textContent = "Quick Play";
+  document.getElementById("saveTournamentBtn").onclick = ()=>showQuickPlaySetup();
+  spawnConfetti();
+  updateLEDBoards("TOURNAMENT CHAMPION");
+}
+function showTournamentLoss(message){
+  isTournamentGame = false;
+  showMenuScreen("tournamentBetweenScreen");
+  document.getElementById("tournamentBetweenTitle").textContent = "Tournament Complete";
+  document.getElementById("tournamentBetweenSub").textContent = message;
+  document.getElementById("tournamentStandingsWrap").innerHTML = standingsHTML();
+  document.getElementById("tournamentNextPreview").textContent = "Start a new run to chase the title.";
+  document.getElementById("continueTournamentBtn").textContent = "New Tournament";
+  document.getElementById("continueTournamentBtn").onclick = ()=>showTournamentSetup();
+}
+function createTournamentBoostedProfile(enemy,isFinal=false){
+  const base = JSON.parse(JSON.stringify(profiles[enemy.profileKey] || profiles.claw));
+  const roundNum = isFinal ? (tournamentState?.maxRounds || 12) + 1 : (tournamentState?.round || 1);
+  const roundBoost = 1 + (roundNum - 1) * 0.025;
+  ["speed","sprint","block","steal","layup"].forEach(k=>base[k] *= roundBoost);
+  base.width *= (1 + (roundBoost-1)*0.4);
+  if(isFinal){
+    base.speed *= 1.05; base.sprint *= 1.05; base.block *= 1.05; base.layup *= 1.05;
+    base.width *= 1.08;
+  }
+  return base;
 }
 
 function toHex(n){ return "#" + n.toString(16).padStart(6,"0"); }
@@ -1135,7 +1545,7 @@ function buildCharacterCards(containerId, which){
   const box = document.getElementById(containerId);
   Object.entries(profiles).forEach(([key,p]) => {
     const div = document.createElement("div");
-    const selected = which === "p1" ? key === selectedP1 : key === selectedP2;
+    const selected = which === "p1" ? key === selectedP1 : (which === "tournamentP1" ? key === selectedP1 : key === selectedP2);
     div.className = "card" + (selected ? " selected" : "");
     div.innerHTML = `
       <div class="cardName">${p.name} #${p.number}</div>
@@ -1145,20 +1555,38 @@ function buildCharacterCards(containerId, which){
     `;
     div.onclick = () => {
       if(which === "p1") selectedP1 = key;
+      else if(which === "tournamentP1") selectedP1 = key;
       else selectedP2 = key;
       box.querySelectorAll(".card").forEach(c => c.classList.remove("selected"));
       div.classList.add("selected");
+      if(which === "tournamentP1") refreshTournamentSelectorUI();
     };
     box.appendChild(div);
     const canvas = div.querySelector(".cardPreview");
-    const jerseyKey = which === "p1" ? selectedP1Jersey : selectedP2Jersey;
-    const sneakerKey = which === "p1" ? selectedP1Sneaker : selectedP2Sneaker;
+    const jerseyKey = which === "p1" || which === "tournamentP1" ? selectedP1Jersey : selectedP2Jersey;
+    const sneakerKey = which === "p1" || which === "tournamentP1" ? selectedP1Sneaker : selectedP2Sneaker;
     if(canvas) drawProfileCardPreview(canvas,p,jerseyKey,sneakerKey);
   });
 }
 
 function startGame(){
-  winBy = gameMode.winBy2 ? 2 : 1;
+  if(isTournamentGame && tournamentState){
+    twoPlayerMode = false;
+    const enemy = currentTournamentEnemy || tournamentState.enemies.find(e=>e.id===tournamentState.nextOpponentId);
+    if(enemy){
+      selectedP1 = tournamentState.playerProfileKey;
+      selectedP1Sneaker = tournamentState.playerSneakerKey;
+      selectedP1Jersey = tournamentState.playerJerseyKey;
+      selectedP2 = enemy.profileKey;
+      selectedP2Sneaker = enemy.sneakerKey;
+      selectedP2Jersey = enemy.jerseyKey;
+      selectedCourt = enemy.courtKey || tournamentState.nextCourtKey || selectedCourt;
+      selectedDifficulty = enemy.difficultyKey || "normal";
+      targetScore = 11;
+      winBy = 2;
+    }
+  }
+  winBy = isTournamentGame ? 2 : (gameMode.winBy2 ? 2 : 1);
   if(p1) scene.remove(p1.group);
   if(p2) scene.remove(p2.group);
   if(debugDirHelpers && debugDirHelpers.group){
@@ -1167,7 +1595,11 @@ function startGame(){
   }
 
   p1 = createCharacter(profiles[selectedP1], P1_OFFENSE_START, "p1");
-  p2 = createCharacter(profiles[selectedP2], P2_DEFENSE_START, "p2");
+  let p2Profile = profiles[selectedP2];
+  if(isTournamentGame && currentTournamentEnemy){
+    p2Profile = createTournamentBoostedProfile(currentTournamentEnemy,isChampionshipGame);
+  }
+  p2 = createCharacter(p2Profile, P2_DEFENSE_START, "p2");
   applyCourtTheme(selectedCourt);
 
   scene.add(p1.group);
@@ -1230,6 +1662,7 @@ function init(){
   createArcLine();
   createShotMeter();
   createParticlePool();
+  createConfettiPool();
   setGraphicsQuality(graphicsQuality);
 
   window.addEventListener("resize", onResize);
@@ -2682,6 +3115,12 @@ function onKeyDown(e){
     flash(debugDirections ? "Direction debug ON" : "Direction debug OFF");
     return;
   }
+  if(e.code === "Escape" && gameStarted && !gameOver){
+    possessionFrozen = !possessionFrozen;
+    flash(possessionFrozen ? "Paused - press Escape to resume" : "Resumed");
+    if(isTournamentGame && possessionFrozen) saveTournament(false);
+    return;
+  }
 
   if(!gameStarted || possessionFrozen || gameOver) return;
 
@@ -2915,6 +3354,7 @@ function animate(){
         updateCrowd(dt);
         updateShotTrail(dt);
         updateParticles(dt);
+        updateConfetti(dt);
         updateCameraEffects(dt);
         updateReboundAI(dt);
         ledBoardTimer -= dt;
@@ -2934,6 +3374,7 @@ function animate(){
     refreshSneakerSelectorUI();
     refreshJerseySelectorUI();
     refreshCourtSelectorUI();
+    if(document.getElementById("tournamentSetupScreen").classList.contains("active")) refreshTournamentSelectorUI();
   }
   updateCameras(dt);
   updateHUD();
@@ -5087,6 +5528,10 @@ function nextPossessionAfterScore(scorer){
 function endGame(winner){
   gameOver = true;
   possessionFrozen = true;
+  if(isTournamentGame){
+    finishTournamentGame(winner);
+    return;
+  }
   showWinnerOverlay(winner);
   screenShake = .28; applyCameraShake(.22); triggerSlowMo(.45,.55);
 }
@@ -5211,8 +5656,7 @@ function rematchSamePlayers(){
 function returnToCharacterMenu(){
   gameOver = false;
   hideWinnerOverlay();
-  document.getElementById("menu").style.display = "flex";
-  gameStarted = false;
+  showQuickPlaySetup();
 }
 function showWinnerOverlay(winner){
   document.getElementById("winnerText").textContent = winner === "p1" ? "P1 WINS!" : "P2 WINS!";
@@ -5472,6 +5916,43 @@ function createParticlePool(){
   for(let i=0;i<40;i++){
     const p = new THREE.Mesh(new THREE.SphereGeometry(.05,6,6),new THREE.MeshBasicMaterial({color:0xffd56a,transparent:true,opacity:0}));
     scene.add(p); particlePool.push(p);
+  }
+}
+function createConfettiPool(){
+  for(let i=0;i<90;i++){
+    const c = new THREE.Mesh(new THREE.PlaneGeometry(.08,.14),new THREE.MeshBasicMaterial({color:0xffd56a,side:THREE.DoubleSide,transparent:true,opacity:0}));
+    c.visible = false;
+    scene.add(c);
+    confettiPool.push(c);
+  }
+}
+function spawnConfetti(){
+  const burst = graphicsQuality === "low" ? 26 : 70;
+  for(let i=0;i<burst;i++){
+    const p = confettiPool.pop();
+    if(!p) break;
+    p.visible = true;
+    p.material.opacity = .9;
+    p.material.color.setHex([0xffd56a,0x65f0ff,0xff4d7a,0x8eff5e,0xffffff][Math.floor(Math.random()*5)]);
+    p.position.set((Math.random()-.5)*8,4.8+Math.random()*2.5,-1 + (Math.random()-.5)*6);
+    p.userData.vel = new THREE.Vector3((Math.random()-.5)*1.4,-(1.6+Math.random()*2.2),(Math.random()-.5)*1.2);
+    p.userData.spin = (Math.random()-.5)*8;
+    p.userData.life = 3 + Math.random()*2;
+    confettiActive.push(p);
+  }
+}
+function updateConfetti(dt){
+  for(let i=confettiActive.length-1;i>=0;i--){
+    const p = confettiActive[i];
+    p.userData.life -= dt;
+    p.position.addScaledVector(p.userData.vel,dt);
+    p.rotation.z += p.userData.spin * dt;
+    if(p.userData.life <= 0 || p.position.y < -0.2){
+      p.visible = false;
+      p.material.opacity = 0;
+      confettiActive.splice(i,1);
+      confettiPool.push(p);
+    }
   }
 }
 function spawnParticle(pos,color=0xffd56a){
