@@ -164,7 +164,11 @@ const ball={
   outDead:false,
   tippedBy:null,
   tipRecoverTimer:0,
-  tipRecoverTeam:null
+  tipRecoverTeam:null,
+  inTrunkTeam:null,
+  trunkSettleTime:0,
+  trunkScored:false,
+  trunkAnnounced:false
 };
 
 const ui=document.getElementById("ui");
@@ -446,6 +450,13 @@ function createCars(){
   cars.red=car(0,RED_Z,0,0xe12f2f,RED);
 }
 
+function resetBallTrunkState(){
+  ball.inTrunkTeam=null;
+  ball.trunkSettleTime=0;
+  ball.trunkScored=false;
+  ball.trunkAnnounced=false;
+}
+
 function car(x,z,rot,color,team){
   const g=new THREE.Group();
   g.position.set(x,CAR_BASE_Y,z);
@@ -476,10 +487,17 @@ function car(x,z,rot,color,team){
 
   const hole=new THREE.Mesh(
     new THREE.BoxGeometry(TRUNK_W,TRUNK_H,TRUNK_D),
-    black
+    new THREE.MeshStandardMaterial({color:0x020202,roughness:.95,metalness:.02})
   );
   hole.position.set(0,2.25,3.25);
   g.add(hole);
+
+  const cavity=new THREE.Mesh(
+    new THREE.BoxGeometry(TRUNK_W-.38,TRUNK_H-.22,TRUNK_D-.25),
+    new THREE.MeshStandardMaterial({color:0x000000,roughness:1,metalness:0})
+  );
+  cavity.position.set(0,2.2,3.36);
+  g.add(cavity);
 
   const lid=new THREE.Mesh(new THREE.BoxGeometry(TRUNK_W+.55,.28,3.45),bodyMat);
   lid.position.set(0,4.35,4.18);
@@ -500,16 +518,17 @@ function car(x,z,rot,color,team){
 
 
   const trunkGlow=new THREE.Mesh(
-    new THREE.RingGeometry(TRUNK_W/2,TRUNK_W/2+.08,64),
+    new THREE.RingGeometry(TRUNK_W/2-.95,TRUNK_W/2-.72,64),
     new THREE.MeshBasicMaterial({
-      color:0x88ccff,
+      color:0x9de0ff,
       transparent:true,
-      opacity:.28,
+      opacity:.35,
       side:THREE.DoubleSide
     })
   );
-  trunkGlow.scale.y=TRUNK_H/TRUNK_W;
-  trunkGlow.position.set(0,2.25,1.42);
+  trunkGlow.scale.y=.62;
+  trunkGlow.position.set(0,1.05,3.58);
+  trunkGlow.rotation.x=-Math.PI/2;
   g.add(trunkGlow);
 
   for(const sx of [-3.05,3.05]){
@@ -1124,6 +1143,7 @@ function launchBallFromHand(p,velocity,isShot,receiver,passType="fast",target){
   ball.tippedBy=null;
   ball.tipRecoverTimer=0;
   ball.tipRecoverTeam=null;
+  resetBallTrunkState();
 
   ball.vel.copy(velocity);
 
@@ -1508,7 +1528,7 @@ function updateBall(dt){
   checkOutOfBounds();
   if(ball.outDead)return;
 
-  scoreCheck();
+  scoreCheck(dt);
   if(ball.intendedType==="shot"&&ball.shotTargetCar){
     const local=ball.pos.clone();
     ball.shotTargetCar.group.worldToLocal(local);
@@ -1525,6 +1545,7 @@ function updateBall(dt){
     ball.shotCatchLocked=false;
     ball.onCar=false;
     ball.carContact=null;
+    resetBallTrunkState();
 
     if(Math.abs(ball.vel.y)>3.5){
       ball.vel.y*=-GROUND_BOUNCE;
@@ -1568,6 +1589,7 @@ function checkOutOfBounds(){
 
   ball.outDead=true;
   ballInAir=false;
+  resetBallTrunkState();
 
   const newTeam=opposite(ball.lastTouch);
 
@@ -1578,22 +1600,46 @@ function checkOutOfBounds(){
   },850);
 }
 
-function scoreCheck(){
+function scoreCheck(dt){
   if(!ball.isShot)return;
 
   const car=oppCar(ball.owner);
-  const local=ball.pos.clone();
-  const prevLocal=ball.prevPos.clone();
+  const state=getTrunkInteriorState(car);
 
-  car.group.worldToLocal(local);
-  car.group.worldToLocal(prevLocal);
+  if(state.inside){
+    if(ball.inTrunkTeam!==car.team){
+      ball.inTrunkTeam=car.team;
+      ball.trunkSettleTime=0;
+      ball.trunkAnnounced=false;
+    }
+    if(!ball.trunkAnnounced){
+      float("Settling...",ball.pos.clone().add(new THREE.Vector3(0,1.4,0)),"#8be1ff");
+      ball.trunkAnnounced=true;
+    }
 
-  const scoredThroughMouth=isBallPassingThroughFrontMouth(local,prevLocal);
-  const notFromTop=!(prevLocal.y>4.2&&local.y>3.15);
+    ball.vel.multiplyScalar(.82);
+    ball.vel.y-=2*dt;
 
-  if(scoredThroughMouth&&notFromTop&&ball.vel.length()<30){
-    score(ball.owner);
+    const centerLocal=new THREE.Vector3(0,1.05,3.6);
+    const centerWorld=centerLocal.clone();
+    car.group.localToWorld(centerWorld);
+    const pull=centerWorld.sub(ball.pos);
+    if(pull.lengthSq()>.0001){
+      pull.multiplyScalar(Math.min(1,.8*dt));
+      ball.vel.add(pull);
+    }
+
+    ball.trunkSettleTime+=dt;
+
+    if(ball.trunkSettleTime>=.35&&ball.vel.length()<8&&!ball.trunkScored){
+      ball.trunkScored=true;
+      float("TRUNK GOAL!",ball.pos.clone().add(new THREE.Vector3(0,1.6,0)),"#9dfbff");
+      score(ball.owner,"trunk");
+    }
+    return;
   }
+
+  if(ball.inTrunkTeam===car.team)resetBallTrunkState();
 }
 
 function carBallCollision(){
@@ -1601,21 +1647,23 @@ function carBallCollision(){
     const car=cars[key];
 
     const local=ball.pos.clone();
-    const prevLocal=ball.prevPos.clone();
     car.group.worldToLocal(local);
-    car.group.worldToLocal(prevLocal);
-
-    const throughMouth=isBallPassingThroughFrontMouth(local,prevLocal);
-    if(throughMouth)return;
+    const trunkState=getTrunkInteriorState(car);
+    if(trunkState.inside)continue;
 
     const nearTrunkOpening=
-      Math.abs(local.x)<TRUNK_W/2+.65&&
-      local.y>.55&&
-      local.y<4.05&&
-      local.z>1.15&&
-      local.z<5.65;
+      Math.abs(local.x)<TRUNK_W/2+.62&&
+      local.y>.58&&
+      local.y<3.95&&
+      local.z>.95&&
+      local.z<2.05;
 
-    if(nearTrunkOpening&&!throughMouth){
+    const trunkCenterGap=
+      Math.abs(local.x)<TRUNK_W/2-.5&&
+      local.y>.95&&
+      local.y<3.6;
+
+    if(nearTrunkOpening&&!trunkCenterGap){
       let n=new THREE.Vector3();
 
       const leftEdgeDist=Math.abs(local.x+TRUNK_W/2);
@@ -1623,6 +1671,7 @@ function carBallCollision(){
       const topEdgeDist=Math.abs(local.y-3.75);
       const bottomEdgeDist=Math.abs(local.y-.75);
       const minEdge=Math.min(leftEdgeDist,rightEdgeDist,topEdgeDist,bottomEdgeDist);
+      if(minEdge>.45)continue;
 
       if(minEdge===leftEdgeDist)n.set(-1,0,0);
       else if(minEdge===rightEdgeDist)n.set(1,0,0);
@@ -1648,7 +1697,14 @@ function carBallCollision(){
       local.y>.35&&
       local.y<3.62&&
       local.z>-4.85&&
-      local.z<5.1;
+      local.z<5.1&&
+      !(
+        Math.abs(local.x)<TRUNK_W/2+.15&&
+        local.y>.7&&
+        local.y<3.95&&
+        local.z>1.15&&
+        local.z<5.7
+      );
 
     const hitCabin=
       Math.abs(local.x)<2.35&&
@@ -1827,6 +1883,7 @@ function deflect(p,msg){
   ball.tippedBy=p;
   ball.tipRecoverTimer=.55;
   ball.tipRecoverTeam=p.team;
+  resetBallTrunkState();
 
   const body=p.group.position.clone().add(new THREE.Vector3(0,2.4,0));
   let n=ball.pos.clone().sub(body);
@@ -1883,6 +1940,7 @@ function catchBall(p,reason){
   ball.tippedBy=null;
   ball.tipRecoverTimer=0;
   ball.tipRecoverTeam=null;
+  resetBallTrunkState();
 
   if(p.team===BLUE){
     controlledBlue=p;
@@ -1907,9 +1965,10 @@ function groundTurnover(){
   if(r)catchBall(r,"turnover on ground");
 }
 
-function score(team){
+function score(team,type="standard"){
   team===BLUE?blueScore++:redScore++;
   updateScore();
+  resetBallTrunkState();
 
   frozen=true;
   ballInAir=false;
@@ -1918,7 +1977,8 @@ function score(team){
   clearInput(BLUE);
   clearInput(RED);
 
-  noticeMsg(`${cap(team)} scores!<br><small>${cap(opposite(team))} ball in 3...</small>`,3000);
+  const title=type==="trunk"?"TRUNK GOAL!":`${cap(team)} scores!`;
+  noticeMsg(`${title}<br><small>${cap(opposite(team))} ball in 3...</small>`,3000);
 
   setTimeout(()=>{
     frozen=false;
@@ -1973,6 +2033,7 @@ function startPossession(team,reason=""){
   ball.tippedBy=null;
   ball.tipRecoverTimer=0;
   ball.tipRecoverTeam=null;
+  resetBallTrunkState();
 
   if(team===BLUE){
     controlledBlue=s;
@@ -2987,6 +3048,18 @@ function isBallPassingThroughFrontMouth(local,prevLocal){
   const withinHeight=local.y>.75&&local.y<3.75;
   const enteringFromFront=prevLocal.z<1.45&&local.z>=1.45;
   return withinWidth&&withinHeight&&enteringFromFront;
+}
+
+function getTrunkInteriorState(car){
+  const local=ball.pos.clone();
+  car.group.worldToLocal(local);
+
+  const insideX=Math.abs(local.x)<TRUNK_W/2-ball.radius*.35;
+  const insideY=local.y>.8&&local.y<3.85;
+  const insideZ=local.z>1.45&&local.z<5.45;
+
+  const inside=insideX&&insideY&&insideZ;
+  return {inside,local};
 }
 
 function getTeammateIQ(team){
