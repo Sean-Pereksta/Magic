@@ -388,8 +388,8 @@ button.small{
     <button id="startBtn">START GAME</button>
 
     <div class="sub" style="margin-top:14px;text-align:left;">
-      <b>Player 1:</b> W forward, S backpedal, A/D turn, Left Shift sprint, Q/E screen-left/screen-right crossover/steal, Space shoot/jump/hands-up block, hold Q/E + Space for high jumper.<br>
-      <b>Player 2:</b> I forward, K backpedal, J/L turn, Right Shift sprint, U/O or Numpad4/6 screen-left/screen-right crossover/steal, Enter/Numpad0 shoot/jump/hands-up block, hold U/O or Num4/6 + Enter/Num0 for high jumper.<br>
+      <b>Player 1:</b> W forward, S backpedal, A/D turn, Left Shift sprint, Q/E crossover/steal, double tap Q/E big side-jump, double tap S back-jump, Space shoot/jump/hands-up block, shoot during/after back-jump for fadeaway.<br>
+      <b>Player 2:</b> I forward, K backpedal, J/L turn, Right Shift sprint, U/O or Numpad4/6 crossover/steal, double tap U/O or Num4/6 big side-jump, double tap K back-jump, Enter/Numpad0 shoot/jump/hands-up block, shoot during/after back-jump for fadeaway.<br>
       <b>Hide UI:</b> Press H during play.
     </div>
   </div>
@@ -397,8 +397,8 @@ button.small{
 
 <div id="hud">
   <div><strong>Controls</strong></div>
-  <div>P1: WASD, Q/E, Space, Left Shift</div>
-  <div>P2: I/J/K/L, U/O or Num4/6, Enter/Num0, Right Shift</div>
+  <div>P1: WASD, Q/E crossover, dbl Q/E side-jump, dbl S back-jump, Space shoot</div>
+  <div>P2: I/J/K/L, U/O or Num4/6 crossover, dbl U/O/Num4/6 side-jump, dbl K back-jump, Enter/Num0 shoot</div>
   <div>H: Hide/show UI</div>
   <button id="hideUiBtn" class="small">Hide UI</button>
   <hr>
@@ -537,6 +537,10 @@ let possessionFrozen = false;
 let botStrategy = "drive";
 let screenShake = 0;
 const DOUBLE_TAP_WINDOW = 0.28;
+const tapMemory = {
+  p1:{q:0,e:0,s:0},
+  p2:{u:0,o:0,k:0,numpad4:0,numpad6:0,numpad0:0}
+};
 let botBrain = null;
 const moveFeedbackTimers = [];
 let ledBoardTimer = 0;
@@ -1985,7 +1989,7 @@ function createCharacter(profile,pos,id){
     debugLeftInputTimer:0,
     debugRightInputTimer:0,
     lastContestLabel:"Open",
-    anim:{runCycle:0,lean:0,targetLean:0,armBlend:0,legBlend:0,torsoTwist:0,landingSquash:0,contactReact:0,shotFollowThrough:0},
+    anim:{runCycle:0,lean:0,targetLean:0,armBlend:0,legBlend:0,torsoTwist:0,landingSquash:0,contactReact:0,shotFollowThrough:0,sideLean:0,legKick:0,fadeLean:0,hookWindup:0,hookRelease:0},
     takeover:0,takeoverActive:false,takeoverTimer:0,stamina:1,dribbleStyle:"normal",stats:{fga:0,fgm:0,tpa:0,tpm:0,blocks:0,steals:0,turnovers:0,ankle:0,perfect:0},
     movement:{
       acceleration:5.2 * (1 + (profile.speed-1)*.7),
@@ -2291,6 +2295,7 @@ function canLayup(player){
   return dist < 3.4 && player.velocity.length() > 1.2;
 }
 function chooseShotType(player){
+  if(player.moveState === "backjump" || (player.moveMeta && player.moveMeta.fadeawayArmed)) return "fadeaway";
   if(canDunk(player)) return "dunk";
   if(canHookShot(player)) return "hook";
   if(canLayup(player)) return "layup";
@@ -2310,6 +2315,7 @@ function getShotMeterProfile(shotType,shooter,contest){
     pullup:{greenStart:.55,greenEnd:.73,slightlyEarlyStart:.33,slightlyLateEnd:.9,greenAccuracyMultiplier:1.16,baseMakeBonus:.05,meterFillSpeed:1.08},
     floater:{greenStart:.5,greenEnd:.76,slightlyEarlyStart:.28,slightlyLateEnd:.94,greenAccuracyMultiplier:1.14,baseMakeBonus:.05,meterFillSpeed:.95},
     runner:{greenStart:.5,greenEnd:.76,slightlyEarlyStart:.28,slightlyLateEnd:.94,greenAccuracyMultiplier:1.12,baseMakeBonus:.05,meterFillSpeed:.95}
+    ,fadeaway:{greenStart:.58,greenEnd:.70,slightlyEarlyStart:.36,slightlyLateEnd:.88,greenAccuracyMultiplier:1.15,baseMakeBonus:.035,meterFillSpeed:1.12}
   }[shotType] || {
     greenStart:.5,greenEnd:.76,slightlyEarlyStart:.3,slightlyLateEnd:.92,greenAccuracyMultiplier:1.16,baseMakeBonus:.05,meterFillSpeed:1
   };
@@ -2481,9 +2487,9 @@ function getHookReleasePoint(player){
   const right = getPlayerRight(player).setY(0).normalize();
   const rimSide = Math.sign(right.dot(toRim));
   const hookSide = rimSide > 0 ? -1 : 1;
-  const sideOffset = right.multiplyScalar(hookSide * 0.58 * player.profile.width);
-  const releaseHeight = 1.85 + player.profile.height * 0.82 + Math.max(0,player.group.position.y);
-  const forwardOffset = getPlayerForward(player).multiplyScalar(0.1);
+  const sideOffset = right.multiplyScalar(hookSide * 0.62 * player.profile.width);
+  const releaseHeight = 1.95 + player.profile.height * 0.9 + Math.max(0,player.group.position.y);
+  const forwardOffset = getPlayerForward(player).multiplyScalar(0.15);
   return player.group.position.clone().add(sideOffset).add(forwardOffset).add(new THREE.Vector3(0,releaseHeight,0));
 }
 function canDunk(player){
@@ -2513,6 +2519,7 @@ function updateAnimationBlend(char,dt){
 
 function animateTorsoLean(char,dt){
   char.group.rotation.x = smoothAnimValue(char.group.rotation.x,-char.anim.lean + char.anim.contactReact*.06,9,dt);
+  char.group.rotation.z = smoothAnimValue(char.group.rotation.z,(char.anim.sideLean || 0) * -0.16 + (char.anim.fadeLean || 0) * -0.08,10,dt);
 }
 
 function animateLanding(char,dt){
@@ -2521,7 +2528,7 @@ function animateLanding(char,dt){
 }
 
 function animateContactReaction(char,dt){
-  char.group.rotation.z = smoothAnimValue(char.group.rotation.z,char.anim.contactReact*.08,8,dt);
+  char.group.rotation.z += char.anim.contactReact * dt * 0.12;
 }
 
 function resetArmDefaults(char){
@@ -2589,7 +2596,7 @@ function poseShotArms(char,pct){
 }
 
 function onKeyDown(e){
-  const controlledTapKeys = ["KeyQ","KeyE","KeyU","KeyO","Numpad4","Numpad6"];
+  const controlledTapKeys = ["KeyQ","KeyE","KeyS","KeyU","KeyO","KeyK","Numpad4","Numpad6"];
   if(e.repeat && controlledTapKeys.includes(e.code)) return;
   keys[e.code] = true;
   keys[e.key.toLowerCase()] = true;
@@ -2608,6 +2615,8 @@ function onKeyDown(e){
   }
 
   if(!gameStarted || possessionFrozen || gameOver) return;
+
+  processTapInputs(e);
 
   if(e.code === "Space"){
     if(keys["ShiftLeft"] && p1 && p1.takeover >= 100) activateTakeover(p1);
@@ -2638,8 +2647,13 @@ function onKeyUp(e){
 }
 
 function handleActionButton(char){
-  if(gameOver || char.moveState !== "normal") return;
+  if(gameOver || (char.moveState !== "normal" && char.moveState !== "backjump")) return;
   if(possession === char.id && ballState === "dribble" && !hasShotThisPossession){
+    if(char.moveState === "backjump"){
+      shotPower = Math.max(shotPower,0.56);
+      shootBall(char,"fadeaway");
+      return;
+    }
     if(!shotCharging){
       shotCharging = true;
       chargingPlayer = char;
@@ -2660,16 +2674,51 @@ function handleHandAction(char,screenSide,inputKey){
   else char.debugRightInputTimer = .2;
 
   if(possession === char.id && ballState === "dribble"){
-    if(checkDoubleTap(char,screenSide,inputKey)){
-      startSideHop(char,screenSide);
-      showMoveFeedback("SIDE HOP!",0.6);
-      return;
-    }
     attemptCrossover(char,screenSide);
   }else{
     char.swipeSide = handSide;
     char.swipeScreenSide = screenSide;
     char.swipeTime = .34;
+  }
+}
+
+function processTapInputs(e){
+  const key = e.key.toLowerCase();
+  const code = e.code;
+  const now = performance.now() * .001;
+  if(key === "q"){
+    if(now - tapMemory.p1.q < DOUBLE_TAP_WINDOW) startSideJump(p1,"left");
+    tapMemory.p1.q = now;
+  }
+  if(key === "e"){
+    if(now - tapMemory.p1.e < DOUBLE_TAP_WINDOW) startSideJump(p1,"right");
+    tapMemory.p1.e = now;
+  }
+  if(key === "s"){
+    if(now - tapMemory.p1.s < DOUBLE_TAP_WINDOW) startBackJump(p1);
+    tapMemory.p1.s = now;
+  }
+  if(twoPlayerMode){
+    if(key === "u"){
+      if(now - tapMemory.p2.u < DOUBLE_TAP_WINDOW) startSideJump(p2,"left");
+      tapMemory.p2.u = now;
+    }
+    if(key === "o"){
+      if(now - tapMemory.p2.o < DOUBLE_TAP_WINDOW) startSideJump(p2,"right");
+      tapMemory.p2.o = now;
+    }
+    if(key === "k"){
+      if(now - tapMemory.p2.k < DOUBLE_TAP_WINDOW) startBackJump(p2);
+      tapMemory.p2.k = now;
+    }
+    if(code === "Numpad4"){
+      if(now - tapMemory.p2.numpad4 < DOUBLE_TAP_WINDOW) startSideJump(p2,"left");
+      tapMemory.p2.numpad4 = now;
+    }
+    if(code === "Numpad6"){
+      if(now - tapMemory.p2.numpad6 < DOUBLE_TAP_WINDOW) startSideJump(p2,"right");
+      tapMemory.p2.numpad6 = now;
+    }
   }
 }
 
@@ -2896,6 +2945,12 @@ function updatePlayerControl(char,ctrl,dt){
   }
   char.pumpFakeCooldown = Math.max(0,char.pumpFakeCooldown - dt);
   char.sideHopCooldown = Math.max(0,char.sideHopCooldown - dt);
+  if(char.moveMeta && char.moveMeta.fadeawayArmed){
+    char.moveMeta.fadeawayWindow = Math.max(0,(char.moveMeta.fadeawayWindow || 0) - dt);
+    if(char.moveMeta.fadeawayWindow <= 0){
+      char.moveMeta.fadeawayArmed = false;
+    }
+  }
 
   const move = char.movement;
   const balancedSpeed = THREE.MathUtils.lerp(1.0,p.speed,0.75);
@@ -3347,8 +3402,18 @@ function updateMoveState(char,dt){
   if(char.moveState === "stepback") updateStepBack(char,dt,pct);
   if(char.moveState === "pumpfake") updatePumpFake(char,dt,pct);
   if(char.moveState === "sidehop") updateSideHop(char,dt,pct);
+  if(char.moveState === "sidejump") updateSideJump(char,dt,pct);
+  if(char.moveState === "backjump") updateBackJump(char,dt,pct);
   if(char.moveState === "postup") updatePostUp(char,dt);
-  if(pct >= 1){ char.moveState = "normal"; char.moveTimer = 0; char.moveDuration = 0; }
+  if(pct >= 1){
+    char.moveState = "normal";
+    char.moveTimer = 0;
+    char.moveDuration = 0;
+    char.visualJumpY = 0;
+    char.anim.sideLean = 0;
+    char.anim.legKick = 0;
+    char.anim.fadeLean = 0;
+  }
 }
 function startStepBack(char){
   if(char.moveState !== "normal" || char.sprint < .15) return;
@@ -3388,12 +3453,91 @@ function startSideHop(char,screenSide){
   const defender = char.id === "p1" ? p2 : p1;
   triggerAnkleBreaker(defender,char);
 }
+function moveWithCollisionDampen(char,nextPos){
+  const defender = char.id === "p1" ? p2 : p1;
+  if(!defender) return nextPos;
+  const minDist = char.bodyRadius + defender.bodyRadius;
+  const delta = nextPos.clone().sub(defender.group.position);
+  delta.y = 0;
+  const dist = delta.length();
+  if(dist >= minDist || dist <= .0001) return nextPos;
+  const normal = delta.normalize();
+  const dampened = defender.group.position.clone().add(normal.multiplyScalar(minDist + .01));
+  dampened.y = nextPos.y;
+  startContactAnimation(char,"light_bump");
+  showMoveFeedback("CONTACT!",0.25);
+  return dampened;
+}
 function updateSideHop(char,dt,pct){
   const sideVec = (char.moveMeta.sideHopVec || getScreenSideVectorForChar(char,char.moveMeta.sideHop || "right")).clone();
   const dist = char.moveMeta.sideHopDistance || (1.25 + char.profile.handle * 0.25);
   const speed = dist * (2.8 * (1-Math.abs(pct-.5)));
   char.group.position.add(sideVec.multiplyScalar(speed * dt));
   keepInCourt(char.group.position);
+}
+function startSideJump(char,screenSide){
+  if(char.moveState !== "normal" || char.sideHopCooldown > 0 || char.sprint < .12) return;
+  const sideVec = getScreenSideVectorForChar(char,screenSide);
+  const handSide = screenSide === "left" ? "left" : "right";
+  char.moveState = "sidejump";
+  char.moveTimer = 0;
+  char.moveDuration = 0.48;
+  char.sideHopCooldown = 0.72;
+  char.moveMeta.sideJump = screenSide;
+  char.moveMeta.sideJumpVec = sideVec.clone();
+  char.moveMeta.sideJumpDistance = 2.45 + char.profile.handle * 0.35 + char.profile.speed * 0.2;
+  char.moveMeta.sideJumpStart = char.group.position.clone();
+  char.moveMeta.sideJumpHand = handSide;
+  char.moveMeta.sideJumpLift = 0.34 + char.profile.jump * 0.08;
+  char.sprint = Math.max(0, char.sprint - 0.22);
+  ballSide = handSide;
+  ballSideValue = handSide === "left" ? -1 : 1;
+  showMoveFeedback("BIG SIDE JUMP!");
+}
+function updateSideJump(char,dt,pct){
+  const hang = Math.sin(pct * Math.PI);
+  const travelEase = 1 - Math.pow(1 - pct, 2.2);
+  const start = char.moveMeta.sideJumpStart || char.group.position.clone();
+  const vec = (char.moveMeta.sideJumpVec || getBodyRightVector(char)).clone();
+  const target = start.clone().add(vec.multiplyScalar(char.moveMeta.sideJumpDistance || 2.7));
+  const next = start.clone().lerp(target,travelEase);
+  const resolved = moveWithCollisionDampen(char,next);
+  char.group.position.x = resolved.x;
+  char.group.position.z = resolved.z;
+  keepInCourt(char.group.position);
+  char.visualJumpY = (char.moveMeta.sideJumpLift || .36) * hang;
+  char.anim.sideLean = (char.moveMeta.sideJump === "left" ? 1 : -1) * hang;
+  char.anim.legKick = hang;
+}
+function startBackJump(char){
+  if(char.moveState !== "normal" || char.sprint < .12) return;
+  char.moveState = "backjump";
+  char.moveTimer = 0;
+  char.moveDuration = 0.52;
+  char.moveMeta.backJumpStart = char.group.position.clone();
+  char.moveMeta.backJumpVec = getForward(char.angle).multiplyScalar(-1);
+  char.moveMeta.backJumpDistance = 2.75 + char.profile.handle * 0.22 + char.profile.jump * 0.18;
+  char.moveMeta.backJumpLift = 0.42 + char.profile.jump * 0.12;
+  char.moveMeta.fadeawayWindow = 0.75;
+  char.moveMeta.fadeawayArmed = true;
+  char.moveMeta.lastShotType = "fadeaway";
+  char.sprint = Math.max(0, char.sprint - 0.24);
+  showMoveFeedback("BACK JUMP!");
+}
+function updateBackJump(char,dt,pct){
+  const hang = Math.sin(pct * Math.PI);
+  const travelEase = 1 - Math.pow(1 - pct, 2.0);
+  const start = char.moveMeta.backJumpStart || char.group.position.clone();
+  const vec = (char.moveMeta.backJumpVec || getForward(char.angle).multiplyScalar(-1)).clone();
+  const target = start.clone().add(vec.multiplyScalar(char.moveMeta.backJumpDistance || 3.0));
+  const next = start.clone().lerp(target,travelEase);
+  const resolved = moveWithCollisionDampen(char,next);
+  char.group.position.x = resolved.x;
+  char.group.position.z = resolved.z;
+  keepInCourt(char.group.position);
+  char.visualJumpY = (char.moveMeta.backJumpLift || .45) * hang;
+  char.anim.fadeLean = hang;
+  char.anim.legKick = hang;
 }
 function checkDoubleTap(char,side,inputKey){
   const now = performance.now() * .001;
@@ -3465,6 +3609,7 @@ function calculateShotContest(shooter){
   const d = flatDistance(shooter.group.position,defender.group.position);
   let value = THREE.MathUtils.clamp((2.8 - d) / 2.8,0,1) * THREE.MathUtils.clamp(defender.profile.block*.55 + defender.profile.steal*.35, .35,1.8);
   if(shooter.moveMeta && shooter.moveMeta.lastShotType === "stepback") value *= .82;
+  if(shooter.moveMeta && shooter.moveMeta.lastShotType === "fadeaway") value *= .72;
   const label = value < .12 ? "Open" : value < .28 ? "Light Contest" : value < .48 ? "Good Contest" : value < .7 ? "Heavy Contest" : "Smothered";
   return {value,label};
 }
@@ -3531,6 +3676,7 @@ function animateCharacter(char,dt){
   animateRunCycle(char,dt);
 
   resetArmDefaults(char);
+  if(char.onGround) char.group.position.y = Math.max(0,char.visualJumpY || 0);
 
   if(char.shotMotionTime > 0){
     if(char.hasBall && char.shotMotionTime > 0.4 && ballOwner === char.id){
@@ -3564,7 +3710,9 @@ function animateCharacter(char,dt){
     animateDribble(char,dt);
   }
   if(char.moveState === "sidehop") animateSideHop(char,THREE.MathUtils.clamp(char.moveTimer/Math.max(.001,char.moveDuration),0,1));
+  if(char.moveState === "sidejump") animateSideJump(char,THREE.MathUtils.clamp(char.moveTimer/Math.max(.001,char.moveDuration),0,1));
   if(char.moveState === "stepback") animateStepBack(char,THREE.MathUtils.clamp(char.moveTimer/Math.max(.001,char.moveDuration),0,1));
+  if(char.moveState === "backjump") animateBackJump(char,THREE.MathUtils.clamp(char.moveTimer/Math.max(.001,char.moveDuration),0,1));
   if(char.moveState === "pumpfake") animatePumpFake(char,THREE.MathUtils.clamp(char.moveTimer/Math.max(.001,char.moveDuration),0,1));
   if(char.moveState === "gather") animateGatherBall(char,THREE.MathUtils.clamp(char.moveTimer/Math.max(.001,char.moveDuration),0,1),char.moveMeta.gatherType || "pickup");
   if(char.moveState === "bobble") animateBobble(char,THREE.MathUtils.clamp(char.moveTimer/Math.max(.001,char.moveDuration),0,1));
@@ -3587,26 +3735,21 @@ function animateShotTimeline(char,pct,type){
     const shootingForearm = hookSide > 0 ? char.rightForearm : char.leftForearm;
     const shootingHand = hookSide > 0 ? char.rightHand : char.leftHand;
     const guideArm = hookSide > 0 ? char.leftArm : char.rightArm;
-    if(pct < 0.35){
-      shootingArm.rotation.x = THREE.MathUtils.lerp(0.2,-0.8,pct/0.35);
-      shootingArm.rotation.z = hookSide * 0.55;
-      guideArm.rotation.x = -0.25;
-      guideArm.rotation.z = -hookSide * 0.35;
-    }else if(pct < 0.72){
-      const k = (pct - 0.35) / 0.37;
-      shootingArm.rotation.x = THREE.MathUtils.lerp(-0.8,-2.15,k);
-      shootingArm.rotation.z = hookSide * THREE.MathUtils.lerp(0.55,0.9,k);
-      shootingForearm.rotation.x = THREE.MathUtils.lerp(-0.3,-1.35,k);
-      guideArm.rotation.x = -0.4;
-    }else{
-      const k = (pct - 0.72) / 0.28;
-      shootingArm.rotation.x = -2.15;
-      shootingArm.rotation.z = hookSide * 0.85;
-      shootingForearm.rotation.x = -1.15;
-      shootingHand.rotation.x = -0.55;
-      guideArm.rotation.x = THREE.MathUtils.lerp(-0.4,0.1,k);
+    const wind = Math.sin(Math.min(1,pct/.7) * Math.PI);
+    shootingArm.rotation.x = -1.35;
+    shootingArm.rotation.z = -hookSide * 0.85;
+    shootingArm.position.x += hookSide * 0.18;
+    shootingForearm.rotation.x = -1.1 - wind * 0.35;
+    shootingHand.rotation.x = -0.6;
+    guideArm.rotation.x = -0.45;
+    guideArm.rotation.z = hookSide * 0.65;
+    char.group.rotation.z = -hookSide * 0.08 * wind;
+    char.group.rotation.y += hookSide * 0.01 * wind;
+    if(char.hookIndicator){
+      char.hookIndicator.visible = true;
+      char.hookIndicator.material.opacity = Math.max(char.hookIndicator.material.opacity,0.6 * wind);
+      char.hookIndicator.position.set(hookSide * .62 * char.profile.width,1.92*char.profile.height,0.26);
     }
-    char.group.rotation.y += hookSide * 0.002;
   }else{
     poseShotArms(char,pct);
   }
@@ -3629,7 +3772,7 @@ function updateDribbleStyle(char,dt){
   if(!char.hasBall || ballState !== "dribble") return;
   const speed = char.velocity.length();
   if(char.moveState === "stepback") char.dribbleStyle = "stepback_gather";
-  else if(char.moveState === "sidehop") char.dribbleStyle = "crossover";
+  else if(char.moveState === "sidehop" || char.moveState === "sidejump") char.dribbleStyle = "crossover";
   else if(speed > 6) char.dribbleStyle = "sprint";
   else if(speed < 1.4) char.dribbleStyle = "protect";
   else char.dribbleStyle = "normal";
@@ -3737,7 +3880,21 @@ function animateSideHop(char,pct){
   const protectHand = char.moveMeta.sideHopHand || getBestHandForScreenSide(char,char.moveMeta.sideHop || "right");
   poseSwipeArm(char,protectHand,Math.sin(pct*Math.PI)*.42);
 }
+function animateSideJump(char,pct){
+  const sideSign = (char.moveMeta.sideJump === "left") ? -1 : 1;
+  const hang = Math.sin(pct*Math.PI);
+  char.leftLeg.rotation.x = -0.12 + hang * 0.42;
+  char.rightLeg.rotation.x = -0.12 + hang * 0.42;
+  char.leftLeg.rotation.z = sideSign * -0.16 * hang;
+  char.rightLeg.rotation.z = sideSign * 0.16 * hang;
+}
 function animateStepBack(char,pct){ char.group.rotation.x = -Math.sin(pct*Math.PI)*.08; }
+function animateBackJump(char,pct){
+  const hang = Math.sin(pct*Math.PI);
+  char.leftLeg.rotation.x = -0.2 + hang * 0.34;
+  char.rightLeg.rotation.x = -0.2 + hang * 0.34;
+  char.group.rotation.x = -hang * 0.18;
+}
 function animatePumpFake(char,pct){ poseShotArms(char,Math.min(.45,pct*.9)); }
 function updateBall(dt){
   rimCollisionCooldown = Math.max(0,rimCollisionCooldown - dt);
@@ -4147,6 +4304,10 @@ function releaseShootOrFake(char){
 
 function releaseOffenseMove(char){
   if(gameOver) return;
+  if(char.moveState === "backjump" || (char.moveMeta && char.moveMeta.fadeawayArmed)){
+    shootBall(char,"fadeaway");
+    return;
+  }
   const backHeld = char.id === "p1" ? !!keys["KeyS"] : !!keys["KeyK"];
   if(backHeld && char.moveState === "normal"){
     startStepBack(char);
@@ -4218,6 +4379,7 @@ function releaseShot(shooter,shotType,options={}){
   const rushedPenalty = held < 0.2 ? 0.08 : 0;
   const fatiguePenalty = (1 - shooter.stamina) * 0.18;
   const highJumperPenalty = shotType === "jumper" ? 0.06 : 0;
+  const fadeawayPenalty = shotType === "fadeaway" ? 0.08 : 0;
 
   let finalAccuracy;
   if(shotType === "hook"){
@@ -4233,7 +4395,8 @@ function releaseShot(shooter,shotType,options={}){
       movementPenalty -
       rushedPenalty -
       fatiguePenalty -
-      highJumperPenalty;
+      highJumperPenalty -
+      fadeawayPenalty;
   }
   if(timing.grade === "Green Release") finalAccuracy += meterProfile.baseMakeBonus + (1-contest.value)*0.12;
   if(contest.value > 0.72 && timing.grade === "Green Release") finalAccuracy -= 0.08;
@@ -4242,7 +4405,7 @@ function releaseShot(shooter,shotType,options={}){
   target.x += (Math.random()-.5) * (2.2 * (1-finalAccuracy));
   target.z += (Math.random()-.5) * (2.6 * (1-finalAccuracy));
   const power = THREE.MathUtils.clamp(shotPower,.12,1);
-  const flightTime = THREE.MathUtils.lerp(.84,1.42,power) + (shotType === "jumper" ? .18 : 0) + (shotType === "hook" ? .12 : 0);
+  const flightTime = THREE.MathUtils.lerp(.84,1.42,power) + (shotType === "jumper" ? .18 : 0) + (shotType === "hook" ? .12 : 0) + (shotType === "fadeaway" ? .08 : 0);
   const needed = target.clone().sub(releasePoint);
   ballVelocity.x = needed.x / flightTime;
   ballVelocity.z = needed.z / flightTime;
@@ -4258,7 +4421,7 @@ function releaseShot(shooter,shotType,options={}){
     triggerShotSplash(releasePoint,"green");
     triggerCrowdReaction("green",0.8);
   }
-  const shotLabel = shotType === "hook" ? "Hook Shot" : shotType === "jumper" ? "High Jumper" : shotType === "setshot" ? "Set Shot" : (shotType === "pullup" ? "Pull-Up" : shotType === "stepback" ? "Step-Back" : "Jumper");
+  const shotLabel = shotType === "hook" ? "Hook Shot" : shotType === "fadeaway" ? "Fadeaway" : shotType === "jumper" ? "High Jumper" : shotType === "setshot" ? "Set Shot" : (shotType === "pullup" ? "Pull-Up" : shotType === "stepback" ? "Step-Back" : "Jumper");
   showShotBreakdown(timing.grade,shotLabel,contest.label,"In Flight");
   playShotSound();
   flash(`${shooter.id.toUpperCase()} ${shotLabel.toLowerCase()}!`);
@@ -4269,12 +4432,31 @@ function shootBall(char,shotType="setshot"){
   if(possession !== char.id || ballState !== "dribble") return;
   shotCharging = false;
   chargingPlayer = null;
-  releaseShot(char,shotType,shotType === "hook" ? {
-    releasePoint:getHookReleasePoint(char),
-    arcBonus:0.45,
-    blockResistance:0.25,
-    accuracyPenalty:0.16
-  } : {});
+  if(shotType === "hook"){
+    char.anim.hookWindup = 1;
+    char.anim.hookRelease = 1;
+    char.moveMeta.lastShotType = "hook";
+    showMoveFeedback("HOOK SHOT!");
+  }
+  if(shotType === "fadeaway"){
+    lastShotWasHook = false;
+    char.moveMeta.lastShotType = "fadeaway";
+    char.moveMeta.fadeawayArmed = false;
+    char.moveMeta.fadeawayWindow = 0;
+    showMoveFeedback("FADEAWAY!");
+  }
+  const options = {};
+  if(shotType === "hook"){
+    options.releasePoint = getHookReleasePoint(char);
+    options.arcBonus = 0.8;
+    options.blockResistance = 0.25;
+    options.accuracyPenalty = 0.16;
+  }
+  if(shotType === "fadeaway"){
+    options.releasePoint = getShotReleasePoint(char,"jumper").clone().add(new THREE.Vector3(0,0.25 + char.profile.height * 0.18,0));
+    options.arcBonus = 0.55;
+  }
+  releaseShot(char,shotType,options);
 }
 
 function botShoot(){
