@@ -100,7 +100,11 @@ const THROWER_IGNORE=.42, CATCH_SETTLE=.35;
 const PASS_TAP_THRESHOLD=.22;
 const LOB_PASS_FLIGHT_TIME=1.18, LOB_PASS_EXTRA_HEIGHT=5.5, LOB_PASS_MIN_PEAK_Y=7.8, LOB_PASS_RECEIVER_LEAD=.22;
 const FAST_PASS_BASE_SPEED=28, FAST_PASS_BONUS_SPEED=20, FAST_PASS_Y=3.2, FAST_PASS_MAX_Y=6.2;
-const SHOT_FIXED_FLIGHT_TIME=.92, SHOT_LOW_ARC_BONUS=.35, SHOT_JUMP_ARC_BONUS=.65, MAX_SHOT_AIM_ERROR=3.2;
+const SHOT_MIN_POWER=.62, SHOT_MAX_POWER=1.12;
+const SHOT_BASE_FLIGHT_TIME=.82, SHOT_MIN_FLIGHT_TIME=.68, SHOT_MAX_FLIGHT_TIME=1.05;
+const SHOT_LOW_ARC_BONUS=.05, SHOT_MAX_ARC_BONUS=.55, SHOT_JUMP_ARC_BONUS=.35;
+const MAX_SHOT_AIM_ERROR=3.0;
+const SWAT_RADIUS_GROUND=1.05, SWAT_RADIUS_JUMPING=1.35;
 const GROUND_BOUNCE=.28, GROUND_FRICTION=.94, LOOSE_BALL_PICKUP_SPEED=7.5;
 const BALL_RESTITUTION=.42, BALL_SURFACE_FRICTION=.985, CAR_ROOF_ROLL_FORCE=8.5, CAR_EDGE_DROP_FORCE=5.5, BALL_MIN_ROOF_ROLL_SPEED=2.8;
 const PASS_FLATNESS=.65, PASS_RECEIVER_LEAD_AMOUNT=.35, PASS_DEFENDER_REACTION_WINDOW=.25;
@@ -840,8 +844,14 @@ function control(dt,team,p,c){
   }else{
     clearPassPreview();
     if(justPressed[c.shoot])jump(p);
-    if(justPressed[c.hl])swat(p,"left");
-    if(justPressed[c.hr])swat(p,"right");
+    if(justPressed[c.hl]){
+      const hand=getScreenSideHand(p,"left",team===BLUE?cam1:cam2);
+      swat(p,hand);
+    }
+    if(justPressed[c.hr]){
+      const hand=getScreenSideHand(p,"right",team===BLUE?cam1:cam2);
+      swat(p,hand);
+    }
   }
 }
 
@@ -965,6 +975,9 @@ function begin(team,type){
   inp.start=performance.now();
   inp.offset=0;
   bar(team).style.display="block";
+  if(type==="shot"){
+    setHint("Hold Space for power — release green for trunk line","#dfffb1");
+  }
 }
 
 function clearInput(team){
@@ -1109,16 +1122,21 @@ function throwFastPass(passer,receiver,info){
 function throwShot(p,info){
   const start=handPos(p);
   let target=getTrunkShotTarget(p,oppCar(p.team));
+  const shotCharge=THREE.MathUtils.clamp(info.t,0,1);
+  const power=THREE.MathUtils.lerp(SHOT_MIN_POWER,SHOT_MAX_POWER,shotCharge);
   const aimError=(1-info.accuracy)*MAX_SHOT_AIM_ERROR;
   target.x+=(Math.random()-.5)*aimError;
-  target.y+=(Math.random()-.5)*aimError*.25;
+  target.y+=(Math.random()-.5)*aimError*.18;
   target.z+=(Math.random()-.5)*aimError;
   const dist=flat(start,target);
-  const flightTime=THREE.MathUtils.clamp(dist/25,.72,SHOT_FIXED_FLIGHT_TIME);
-  const arcBonus=(p.isJumping||p.y>.2)?SHOT_JUMP_ARC_BONUS:SHOT_LOW_ARC_BONUS;
+  const flightTime=THREE.MathUtils.clamp(dist/(25*power),SHOT_MIN_FLIGHT_TIME,SHOT_MAX_FLIGHT_TIME);
+  const arcBonus=
+    THREE.MathUtils.lerp(SHOT_LOW_ARC_BONUS,SHOT_MAX_ARC_BONUS,shotCharge)+
+    ((p.isJumping||p.y>.2)?SHOT_JUMP_ARC_BONUS:0);
   const vel=calculateArcVelocity(start,target,arcBonus,flightTime);
-  launchBallFromHand(p,vel,true,null,null,target);
-  float(info.accuracy>.72?"Green!":"Off!",p.group.position.clone().add(new THREE.Vector3(0,4.8,0)),info.accuracy>.72?"#80ff80":"#ff7777");
+  ball.vel.copy(vel);
+  launchBallFromHand(p,ball.vel,true,null,"shot",target);
+  float(info.accuracy>.72?"Trunk line!":"Off line!",p.group.position.clone().add(new THREE.Vector3(0,5.2,0)),info.accuracy>.72?"#8cff8c":"#ff7777");
 }
 
 function trackSteps(p){
@@ -1509,17 +1527,17 @@ function scoreCheck(){
   car.group.worldToLocal(prevLocal);
 
   const inOpenTrunk=
-    Math.abs(local.x)<TRUNK_W/2&&
-    local.y>1.25&&
-    local.y<3.85&&
-    local.z>1.9&&
-    local.z<5.05;
+    Math.abs(local.x)<TRUNK_W/2+.25&&
+    local.y>1.15&&
+    local.y<3.65&&
+    local.z>1.65&&
+    local.z<5.15;
 
   const cameThroughMouth=
-    prevLocal.z<local.z || local.z>2.35;
+    local.z>1.75&&prevLocal.z<local.z+.45;
 
   const notFromTop=
-    !(prevLocal.y>4.05&&local.y>3.1);
+    !(prevLocal.y>4.15&&local.y>3.2);
 
   if(inOpenTrunk&&cameThroughMouth&&notFromTop&&ball.vel.length()<30){
     score(ball.owner);
@@ -1679,9 +1697,13 @@ function contactCheck(){
       }
     }
 
-    if(!same&&p.swatTimer>0&&(l.distanceTo(ball.pos)<.9+catchReach*.35||r.distanceTo(ball.pos)<.9+catchReach*.35)){
-      deflect(p,"Swatted!");
-      return;
+    if(!same&&p.swatTimer>0){
+      const activeArm=armPos(p,p.swatHand);
+      const swatRadius=(p.isJumping||p.y>.2)?SWAT_RADIUS_JUMPING:SWAT_RADIUS_GROUND;
+      if(activeArm.distanceTo(ball.pos)<swatRadius){
+        deflect(p,"Blocked!");
+        return;
+      }
     }
 
     if(!same&&(body.distanceTo(ball.pos)<.98||head.distanceTo(ball.pos)<.56||flat(p.group.position,ball.pos)<1.05)){
@@ -2135,7 +2157,7 @@ function handPos(p){
 function armPos(p,hand){
   const side=hand==="left"?-1:1;
   const loc=new THREE.Vector3(side*1.45,2.72,.95);
-  if(p.swatTimer>0){
+  if(p.swatTimer>0&&p.swatHand===hand){
     loc.y+=1.15;
     loc.z+=.65;
   }
@@ -2715,10 +2737,10 @@ function trunkTarget(car){
 }
 
 function getTrunkShotTarget(shooter,targetCar){
-  const localTarget=new THREE.Vector3(0,2.45,2.35);
+  const localTarget=new THREE.Vector3(0,2.25,2.15);
   const target=targetCar.group.localToWorld(localTarget);
-  const distance=flat(shooter.group.position,targetCar.group.position);
-  target.y+=THREE.MathUtils.clamp(distance/80,.05,.35);
+  const dist=flat(shooter.group.position,targetCar.group.position);
+  target.y+=THREE.MathUtils.clamp(dist/120,0,.22);
   return target;
 }
 
