@@ -332,8 +332,12 @@ function keyDown(e){
 
     if(["q","e","u","o"].includes(k)){
       const n=performance.now();
-      if(n-(tapTimes[k]||0)<270)sideHop(k);
-      tapTimes[k]=n;
+      if(n-(tapTimes[k]||0)<270){
+        sideHop(k);
+        tapTimes[k]=0;
+      }else{
+        tapTimes[k]=n;
+      }
     }
 
     if(["w","a","s","d","i","j","k","l"].includes(k)){
@@ -2703,13 +2707,28 @@ function jump(p){
 }
 
 function sideHop(k){
-  const team=(k==="u"||k==="o")?RED:BLUE;
-  const p=team===BLUE?controlledBlue:controlledRed;
+  let p,side,camera;
+  if(k==="q"||k==="e"){
+    p=controlledBlue;
+    camera=cam1;
+    side=k==="q"?"left":"right";
+  }else if(k==="u"||k==="o"){
+    if(!split)return;
+    p=controlledRed;
+    camera=cam2;
+    side=k==="u"?"left":"right";
+  }
 
-  if(!p||!p.hasBall||p.steps>=3||(team===RED&&!split))return;
+  if(!p||!p.hasBall||p.steps>=3)return;
 
   jump(p);
-  p.sideHopVel.copy(right(p).multiplyScalar((k==="e"||k==="o"?1:-1)*12));
+  const hopDir=getScreenSideVector(p,side,camera);
+  p.sideHopVel.copy(hopDir.multiplyScalar(12.5));
+  float(
+    side==="left"?"Left hop!":"Right hop!",
+    p.group.position.clone().add(new THREE.Vector3(0,4.8,0)),
+    "#aee7ff"
+  );
 }
 
 function swat(p,hand){
@@ -2824,6 +2843,14 @@ function getScreenSideHand(p,side,camera){
   const r=armPos(p,"right").clone().project(camera);
   if(side==="left")return l.x<r.x?"left":"right";
   return l.x>r.x?"left":"right";
+}
+
+function getScreenSideVector(p,side,camera){
+  const camForward=new THREE.Vector3();
+  camera.getWorldDirection(camForward);
+  const camRight=camForward.cross(new THREE.Vector3(0,1,0)).setY(0).normalize();
+  if(side==="left")camRight.multiplyScalar(-1);
+  return camRight;
 }
 
 function getHandLaneQuality(passer,target){
