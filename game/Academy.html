@@ -388,8 +388,8 @@ button.small{
     <button id="startBtn">START GAME</button>
 
     <div class="sub" style="margin-top:14px;text-align:left;">
-      <b>Player 1:</b> W forward, S backpedal, A/D turn, Left Shift sprint, Q/E crossover/steal, double tap Q/E big side-jump, double tap S back-jump, Space shoot/jump/hands-up block, shoot during/after back-jump for fadeaway.<br>
-      <b>Player 2:</b> I forward, K backpedal, J/L turn, Right Shift sprint, U/O or Numpad4/6 crossover/steal, double tap U/O or Num4/6 big side-jump, double tap K back-jump, Enter/Numpad0 shoot/jump/hands-up block, shoot during/after back-jump for fadeaway.<br>
+      <b>Player 1:</b> W forward, S backpedal, A/D turn, Left Shift sprint, <u>with ball</u> Q/E crossover and double tap Q/E big side-jump, <u>without ball</u> Q/E steal attempts, <u>with ball</u> double tap S back-jump (shoot during it for fadeaway), Space shoot/jump/hands-up block.<br>
+      <b>Player 2:</b> I forward, K backpedal, J/L turn, Right Shift sprint, <u>with ball</u> U/O or Numpad4/6 crossover and double tap U/O or Num4/6 big side-jump, <u>without ball</u> U/O or Numpad4/6 steal attempts, <u>with ball</u> double tap K back-jump (shoot during it for fadeaway), Enter/Numpad0 shoot/jump/hands-up block.<br>
       <b>Hide UI:</b> Press H during play.
     </div>
   </div>
@@ -397,8 +397,8 @@ button.small{
 
 <div id="hud">
   <div><strong>Controls</strong></div>
-  <div>P1: WASD, Q/E crossover, dbl Q/E side-jump, dbl S back-jump, Space shoot</div>
-  <div>P2: I/J/K/L, U/O or Num4/6 crossover, dbl U/O/Num4/6 side-jump, dbl K back-jump, Enter/Num0 shoot</div>
+  <div>P1: WASD, with ball Q/E crossover + dbl Q/E side-jump, without ball Q/E steal, with ball dbl S back-jump/fadeaway, Space shoot</div>
+  <div>P2: I/J/K/L, with ball U/O or Num4/6 crossover + dbl side-jump, without ball U/O or Num4/6 steal, with ball dbl K back-jump/fadeaway, Enter/Num0 shoot</div>
   <div>H: Hide/show UI</div>
   <button id="hideUiBtn" class="small">Hide UI</button>
   <hr>
@@ -2289,12 +2289,19 @@ function getRequestedShotType(char){
   }
   return "setshot";
 }
+function playerHasBall(char){
+  if(!char) return false;
+  return ballOwner === char.id && ballState === "dribble";
+}
 function canLayup(player){
   if(!player.hasBall || ballState !== "dribble") return false;
   const dist = flatDistance(player.group.position,HOOP_POS);
   return dist < 3.4 && player.velocity.length() > 1.2;
 }
 function chooseShotType(player){
+  if(!playerHasBall(player) && player.moveMeta){
+    player.moveMeta.fadeawayArmed = false;
+  }
   if(player.moveState === "backjump" || (player.moveMeta && player.moveMeta.fadeawayArmed)) return "fadeaway";
   if(canDunk(player)) return "dunk";
   if(canHookShot(player)) return "hook";
@@ -2687,36 +2694,36 @@ function processTapInputs(e){
   const code = e.code;
   const now = performance.now() * .001;
   if(key === "q"){
-    if(now - tapMemory.p1.q < DOUBLE_TAP_WINDOW) startSideJump(p1,"left");
+    if(now - tapMemory.p1.q < DOUBLE_TAP_WINDOW && playerHasBall(p1)) startSideJump(p1,"left");
     tapMemory.p1.q = now;
   }
   if(key === "e"){
-    if(now - tapMemory.p1.e < DOUBLE_TAP_WINDOW) startSideJump(p1,"right");
+    if(now - tapMemory.p1.e < DOUBLE_TAP_WINDOW && playerHasBall(p1)) startSideJump(p1,"right");
     tapMemory.p1.e = now;
   }
   if(key === "s"){
-    if(now - tapMemory.p1.s < DOUBLE_TAP_WINDOW) startBackJump(p1);
+    if(now - tapMemory.p1.s < DOUBLE_TAP_WINDOW && playerHasBall(p1)) startBackJump(p1);
     tapMemory.p1.s = now;
   }
   if(twoPlayerMode){
     if(key === "u"){
-      if(now - tapMemory.p2.u < DOUBLE_TAP_WINDOW) startSideJump(p2,"left");
+      if(now - tapMemory.p2.u < DOUBLE_TAP_WINDOW && playerHasBall(p2)) startSideJump(p2,"left");
       tapMemory.p2.u = now;
     }
     if(key === "o"){
-      if(now - tapMemory.p2.o < DOUBLE_TAP_WINDOW) startSideJump(p2,"right");
+      if(now - tapMemory.p2.o < DOUBLE_TAP_WINDOW && playerHasBall(p2)) startSideJump(p2,"right");
       tapMemory.p2.o = now;
     }
     if(key === "k"){
-      if(now - tapMemory.p2.k < DOUBLE_TAP_WINDOW) startBackJump(p2);
+      if(now - tapMemory.p2.k < DOUBLE_TAP_WINDOW && playerHasBall(p2)) startBackJump(p2);
       tapMemory.p2.k = now;
     }
     if(code === "Numpad4"){
-      if(now - tapMemory.p2.numpad4 < DOUBLE_TAP_WINDOW) startSideJump(p2,"left");
+      if(now - tapMemory.p2.numpad4 < DOUBLE_TAP_WINDOW && playerHasBall(p2)) startSideJump(p2,"left");
       tapMemory.p2.numpad4 = now;
     }
     if(code === "Numpad6"){
-      if(now - tapMemory.p2.numpad6 < DOUBLE_TAP_WINDOW) startSideJump(p2,"right");
+      if(now - tapMemory.p2.numpad6 < DOUBLE_TAP_WINDOW && playerHasBall(p2)) startSideJump(p2,"right");
       tapMemory.p2.numpad6 = now;
     }
   }
@@ -2765,6 +2772,7 @@ function loseBallOnCrossover(char){
 
   ballState = "loose";
   char.hasBall = false;
+  clearShotCreationStates();
 
   const forward = getForward(char.angle);
   const right = new THREE.Vector3(forward.z,0,-forward.x);
@@ -3476,6 +3484,7 @@ function updateSideHop(char,dt,pct){
   keepInCourt(char.group.position);
 }
 function startSideJump(char,screenSide){
+  if(!playerHasBall(char)) return;
   if(char.moveState !== "normal" || char.sideHopCooldown > 0 || char.sprint < .12) return;
   const sideVec = getScreenSideVectorForChar(char,screenSide);
   const handSide = screenSide === "left" ? "left" : "right";
@@ -3510,6 +3519,7 @@ function updateSideJump(char,dt,pct){
   char.anim.legKick = hang;
 }
 function startBackJump(char){
+  if(!playerHasBall(char)) return;
   if(char.moveState !== "normal" || char.sprint < .12) return;
   char.moveState = "backjump";
   char.moveTimer = 0;
@@ -3549,6 +3559,22 @@ function checkDoubleTap(char,side,inputKey){
   if(side === "left") char.lastLeftTapTime = now;
   else char.lastRightTapTime = now;
   return ok;
+}
+function clearShotCreationStates(){
+  [p1,p2].forEach(char => {
+    if(!char || !char.moveMeta) return;
+    char.moveMeta.fadeawayArmed = false;
+    char.moveMeta.fadeawayWindow = 0;
+    char.moveMeta.lastShotType = null;
+    if(char.moveState === "backjump" && !playerHasBall(char)){
+      char.moveState = "normal";
+      char.moveTimer = 0;
+      char.moveDuration = 0;
+      char.visualJumpY = 0;
+      char.anim.fadeLean = 0;
+      char.anim.legKick = 0;
+    }
+  });
 }
 function triggerAnkleBreaker(defender,attacker){
   const movingWrongWay = defender.velocity.length() > .8 && defender.velocity.clone().normalize().dot(getForward(attacker.angle)) < -.15;
@@ -4214,6 +4240,7 @@ function deflectLayupBall(owner,defender,hit){
   layupActive = false;
   layupScored = false;
   ballState = "loose";
+  clearShotCreationStates();
   owner.hasBall = false;
   const away = ball.position.clone().sub(hit.point);
   away.y = 0.25;
@@ -4350,6 +4377,7 @@ function releaseShot(shooter,shotType,options={}){
   if(possession !== shooter.id || ballState !== "dribble") return false;
   shooter.hasBall = false;
   ballOwner = null;
+  clearShotCreationStates();
   lastShotShooter = shooter.id;
   ballState = "shot";
   hasShotThisPossession = true;
@@ -4627,6 +4655,7 @@ function applyBlockDeflection(blocker,shooter){
   ballVelocity.copy(away.multiplyScalar(power).add(blockerForward.multiplyScalar(1.2)));
   ballVelocity.y = Math.max(1.8,2.0 + blocker.profile.block * 0.5);
   ballState = "loose";
+  clearShotCreationStates();
   layupActive = false;
   loosePickupDelay = Math.max(loosePickupDelay,.22);
 }
@@ -4795,6 +4824,7 @@ function gainPossession(who){
   ballOwner = who;
   lastShotShooter = who;
   ballState = "dribble";
+  clearShotCreationStates();
   ballVelocity.set(0,0,0);
   shotCharging = false;
   chargingPlayer = null;
@@ -4834,6 +4864,7 @@ function resetPossession(who,reposition){
   ballOwner = who;
   lastShotShooter = who;
   ballState = "dribble";
+  clearShotCreationStates();
   lastShotValue = 2;
   lastShotWasHook = false;
   lastShotReleasePos.set(0,0,0);
