@@ -85,7 +85,7 @@
   P2: I/K, J/L, U/O, H, Right Shift, Enter sprint<br><br>
   Double-tap movement = shove. Out of steps + forward = shove.<br>
   Sprint is brief and must recharge.<br>
-  Hold throw: red → green → red. Arc rises as you hold.
+  Hold throw: red → green → red. Green improves aim.
 </div>
 
 <script type="module">
@@ -94,18 +94,22 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
 const BLUE="blue", RED="red";
 const FIELD_W=52, FIELD_L=88, BLUE_Z=36, RED_Z=-36;
 const NO_SHOOT=10, TRUNK_W=4.8, TRUNK_H=2.6, TRUNK_D=3.2;
-const GRAVITY=22, JUMP_V=16.5, STEP_DIST=3.55;
-const JUMP_GRAVITY=24, JUMP_SHOT_BONUS_Y=3.8, JUMP_BLOCK_REACH_BONUS=1.6, JUMP_CATCH_REACH_BONUS=1.4;
+const GRAVITY=22, JUMP_V=19.5, STEP_DIST=3.55;
+const JUMP_GRAVITY=25.5, JUMP_SHOT_RELEASE_BONUS=1.65, JUMP_BLOCK_REACH_BONUS=2.15, JUMP_CATCH_REACH_BONUS=2.0;
 const THROWER_IGNORE=.42, CATCH_SETTLE=.35;
-const PASS_BASE_SPEED=24, PASS_BONUS_SPEED=22, PASS_MIN_Y=4.0, PASS_BONUS_Y=7.0;
-const SHOT_BASE_SPEED=11.5, SHOT_BONUS_SPEED=15.5, SHOT_MIN_Y=8.5, SHOT_BONUS_Y=10.5;
-const SHOT_MAX_FORWARD_SPEED=24, SHOT_MAX_Y_SPEED=18;
+const PASS_TAP_THRESHOLD=.22;
+const LOB_PASS_FLIGHT_TIME=1.18, LOB_PASS_EXTRA_HEIGHT=5.5, LOB_PASS_MIN_PEAK_Y=7.8, LOB_PASS_RECEIVER_LEAD=.22;
+const FAST_PASS_BASE_SPEED=28, FAST_PASS_BONUS_SPEED=20, FAST_PASS_Y=3.2, FAST_PASS_MAX_Y=6.2;
+const SHOT_FIXED_FLIGHT_TIME=.92, SHOT_LOW_ARC_BONUS=.35, SHOT_JUMP_ARC_BONUS=.65, MAX_SHOT_AIM_ERROR=3.2;
 const GROUND_BOUNCE=.28, GROUND_FRICTION=.94, LOOSE_BALL_PICKUP_SPEED=7.5;
 const BALL_RESTITUTION=.42, BALL_SURFACE_FRICTION=.985, CAR_ROOF_ROLL_FORCE=8.5, CAR_EDGE_DROP_FORCE=5.5, BALL_MIN_ROOF_ROLL_SPEED=2.8;
 const PASS_FLATNESS=.65, PASS_RECEIVER_LEAD_AMOUNT=.35, PASS_DEFENDER_REACTION_WINDOW=.25;
 const MIN_TEAMMATE_BALL_DISTANCE=8.5, IDEAL_PASS_DISTANCE=13.5, TEAMMATE_SPACING_FORCE=1.25, TEAMMATE_NO_CROWD_RADIUS=6.5;
 const DEFENDER_PRESSURE_DISTANCE=3.7, DEFENDER_MIN_DISTANCE=2.35, DEFENDER_BACKOFF_DISTANCE=2.8, DEFENDER_SWAT_RANGE=3.2;
 const LANE_PULL_STRENGTH=.72, LANE_MIN_SEPARATION=7.5, LANE_WIDTH=8.5, CUT_DURATION=1.1, CUT_COOLDOWN=2.4;
+const CAR_BASE_Y=.45, ARM_LENGTH=1.65, ARM_RADIUS=.25;
+const TRUNK_PRESSURE_RADIUS=16, DEFENSIVE_PUSH_RANGE=2.15, DEFENSIVE_PUSH_SPEED_MIN=4.5, DEFENSIVE_PUSH_COOLDOWN=.85, DEFENSIVE_PUSH_FORCE=2.2, DEFENSIVE_PUSH_STUMBLE_TIME=.22;
+const STUMBLE_ACCURACY_PENALTY=.18, STUMBLE_MOVE_MULT=.55;
 const LANES={
   [BLUE]:[{name:"left",x:-13},{name:"middle",x:0},{name:"right",x:13}],
   [RED]:[{name:"left",x:-13},{name:"middle",x:0},{name:"right",x:13}]
@@ -144,6 +148,7 @@ const ball={
   loose:false,
   intendedReceiver:null,
   intendedType:"pass",
+  passType:null,
   shotTargetCar:null,
   onCar:false,
   carContact:null,
@@ -430,7 +435,7 @@ function createCars(){
 
 function car(x,z,rot,color,team){
   const g=new THREE.Group();
-  g.position.set(x,0,z);
+  g.position.set(x,CAR_BASE_Y,z);
   g.rotation.y=rot;
 
   const bodyMat=new THREE.MeshStandardMaterial({color,roughness:.32,metalness:.18});
@@ -547,11 +552,11 @@ function player(name,team,x,z,rot,index){
   hr.position.y=3.9;
   g.add(hr);
 
-  const la=limb(.27,1.35,skin);
-  const ra=limb(.27,1.35,skin);
-  la.position.set(-.78,2.42,0);
+  const la=limb(ARM_RADIUS,ARM_LENGTH,skin);
+  const ra=limb(ARM_RADIUS,ARM_LENGTH,skin);
+  la.position.set(-.92,2.42,0);
   la.rotation.z=.25;
-  ra.position.set(.78,2.42,0);
+  ra.position.set(.92,2.42,0);
   ra.rotation.z=-.25;
   g.add(la,ra);
 
@@ -615,7 +620,14 @@ function player(name,team,x,z,rot,index){
     laneName:["left","middle","right"][index],
     forceLaneTimer:0,
     forceClearTimer:0,
-    defensiveRole:"denyMiddle"
+    defensiveRole:"denyMiddle",
+    isReceivingPass:false,
+    receiveTarget:new THREE.Vector3(),
+    receiveTimer:0,
+    receiveMode:"goToSpot",
+    passThreatened:false,
+    defPushCooldown:0,
+    stumbleTimer:0
   };
 }
 
@@ -708,6 +720,7 @@ function update(dt){
     collisions();
     players.forEach(p=>applyAntiClump(p,dt));
     frameVel(dt);
+    updateDefensivePushes(dt);
     updateBall(dt);
     guardLinesUpdate();
     updateGameplayIndicators(dt);
@@ -765,11 +778,12 @@ function control(dt,team,p,c){
 
     const moving=mv.lengthSq()>.01;
     const sprintMult=updateSprint(p,!!keys[c.sprint],moving,dt);
+    const stumbleMult=p.stumbleTimer>0?STUMBLE_MOVE_MULT:1;
 
     if(moving){
       mv.normalize();
       const old=p.group.position.clone();
-      p.group.position.add(mv.multiplyScalar(p.speed*sprintMult*dt));
+      p.group.position.add(mv.multiplyScalar(p.speed*sprintMult*stumbleMult*dt));
       clamp(p.group.position);
       avoidObstacles(p);
       p.walkPhase+=old.distanceTo(p.group.position)*4.2;
@@ -784,8 +798,8 @@ function control(dt,team,p,c){
 
   if(canThrow){
     if(!inp.pass&&!inp.shot){
-      if(justPressed[c.hl])p.hand="left";
-      if(justPressed[c.hr])p.hand="right";
+      if(justPressed[c.hl])p.hand=getScreenSideHand(p,"left",team===BLUE?cam1:cam2);
+      if(justPressed[c.hr])p.hand=getScreenSideHand(p,"right",team===BLUE?cam1:cam2);
     }
 
     if(justPressed[c.pass]&&!inp.pass&&!inp.shot)begin(team,"pass");
@@ -795,6 +809,22 @@ function control(dt,team,p,c){
     if(inp.shot&&justReleased[c.shoot])releaseShot(team);
 
     if(inp.pass||inp.shot){
+      if(justPressed[c.hl]){
+        p.hand=getScreenSideHand(p,"left",team===BLUE?cam1:cam2);
+        const currentTarget=inp.pass?(bestMate(p)?getLeadPassTarget(p,bestMate(p)):null):getTrunkShotTarget(p,oppCar(p.team));
+        if(currentTarget){
+          const quality=getHandLaneQuality(p,currentTarget);
+          setHint(quality>.65?"Outside hand lane!":quality<.35?"Hand blocked!":"Switch hand to change lane",quality>.65?"#8fffab":quality<.35?"#ff9d9d":"#ffe07b");
+        }
+      }
+      if(justPressed[c.hr]){
+        p.hand=getScreenSideHand(p,"right",team===BLUE?cam1:cam2);
+        const currentTarget=inp.pass?(bestMate(p)?getLeadPassTarget(p,bestMate(p)):null):getTrunkShotTarget(p,oppCar(p.team));
+        if(currentTarget){
+          const quality=getHandLaneQuality(p,currentTarget);
+          setHint(quality>.65?"Outside hand lane!":quality<.35?"Hand blocked!":"Switch hand to change lane",quality>.65?"#8fffab":quality<.35?"#ff9d9d":"#ffe07b");
+        }
+      }
       if(keys[c.hl])inp.offset+=1.55*dt;
       if(keys[c.hr])inp.offset-=1.55*dt;
       inp.offset=THREE.MathUtils.clamp(inp.offset,-.95,.95);
@@ -981,7 +1011,13 @@ function releasePass(team){
     return;
   }
 
-  throwBall(p,getLeadPassTarget(p,r),charge(team),false,r,input[team].offset);
+  const heldTime=(performance.now()-input[team].start)/1000;
+  const isLob=heldTime<PASS_TAP_THRESHOLD;
+  const info=charge(team);
+  if(p.stumbleTimer>0)info.accuracy=Math.max(0,info.accuracy-STUMBLE_ACCURACY_PENALTY);
+
+  if(isLob)throwLobPass(p,r,info);
+  else throwFastPass(p,r,info);
 
   clearInput(team);
 }
@@ -1002,11 +1038,13 @@ function releaseShot(team){
     return;
   }
 
-  throwBall(p,getTrunkShotTarget(p,car),charge(team),true,null,input[team].offset);
+  const info=charge(team);
+  if(p.stumbleTimer>0)info.accuracy=Math.max(0,info.accuracy-STUMBLE_ACCURACY_PENALTY);
+  throwShot(p,info);
   clearInput(team);
 }
 
-function throwBall(p,target,info,isShot,receiver,offset=0){
+function launchBallFromHand(p,velocity,isShot,receiver,passType="fast",target){
   const start=handPos(p);
 
   p.hasBall=false;
@@ -1023,10 +1061,11 @@ function throwBall(p,target,info,isShot,receiver,offset=0){
   ball.lastTouch=p.team;
   ball.thrower=p;
   ball.throwTime=performance.now()/1000;
-  ball.receiver=receiver;
+  ball.receiver=receiver||null;
   ball.intendedReceiver=receiver;
   ball.isShot=isShot;
   ball.intendedType=isShot?"shot":"pass";
+  ball.passType=isShot?null:passType;
   ball.loose=false;
   ball.shotTargetCar=isShot?oppCar(p.team):null;
   ball.shotCatchLocked=isShot;
@@ -1035,52 +1074,51 @@ function throwBall(p,target,info,isShot,receiver,offset=0){
   ball.lastContact=null;
   ball.outDead=false;
 
-  const flatv=target.clone().sub(start);
-  flatv.y=0;
-
-  let dir=flatv.lengthSq()>.01?flatv.normalize():forward(p);
-
-  const laneQuality=isShot?1:getPassLaneQuality(start,target,p.team);
-  const receiverSeparationScore=receiver?THREE.MathUtils.clamp(nearestDef(receiver.group.position,p.team)/8,0,1):1;
-  const finalAccuracy=isShot
-    ?info.accuracy
-    :THREE.MathUtils.clamp(info.accuracy*.55+laneQuality*.30+receiverSeparationScore*.15,0,1);
-  const miss=(Math.random()-.5)*(1-finalAccuracy)*(isShot?.42:.18);
-  dir=rotate(dir,offset*(isShot?.25:.42)+miss);
-
-  const pow=THREE.MathUtils.clamp(info.t,.1,1.05);
-
-  if(!isShot){
-    ball.vel.copy(dir.multiplyScalar(PASS_BASE_SPEED+pow*PASS_BONUS_SPEED));
-    ball.vel.y=PASS_MIN_Y+pow*PASS_BONUS_Y;
-  }else{
-    const dist=flat(start,target);
-    const flightTime=THREE.MathUtils.clamp(dist/18,.75,1.35);
-    const arcHeight=THREE.MathUtils.lerp(1.0,3.5,pow);
-    ball.vel.copy(calculateArcVelocity(start,target,arcHeight,flightTime));
-    ball.vel.x=THREE.MathUtils.clamp(ball.vel.x,-SHOT_MAX_FORWARD_SPEED,SHOT_MAX_FORWARD_SPEED);
-    ball.vel.z=THREE.MathUtils.clamp(ball.vel.z,-SHOT_MAX_FORWARD_SPEED,SHOT_MAX_FORWARD_SPEED);
-    ball.vel.y=THREE.MathUtils.clamp(ball.vel.y,8,SHOT_MAX_Y_SPEED);
-    if(p.isJumping){
-      ball.vel.y+=JUMP_SHOT_BONUS_Y;
-      float("Jumper!",p.group.position.clone().add(new THREE.Vector3(0,5.2,0)),"#ffffff");
-    }
-  }
-  ball.vel.x+=dir.x*(isShot?.65:1.25)*miss;
-  ball.vel.z+=dir.z*(isShot?.65:1.25)*miss;
+  ball.vel.copy(velocity);
 
   p.throwAnim=.35;
   if(receiver&&!isShot){
     receiver.isReceivingPass=true;
-    receiver.receiveTarget=predictCatch();
+    receiver.receiveTarget=target?target.clone():predictCatch();
     receiver.receiveTimer=1.2;
+    receiver.passThreatened=hasThreatInPassPath(start,receiver.receiveTarget,receiver.team);
+    receiver.receiveMode=receiver.passThreatened?"fightForPath":"goToSpot";
   }
+}
 
-  float(
-    finalAccuracy>.72?"Green!":"Off!",
-    p.group.position.clone().add(new THREE.Vector3(0,4.8,0)),
-    finalAccuracy>.72?"#80ff80":"#ff7777"
-  );
+function throwLobPass(passer,receiver,info){
+  const start=handPos(passer);
+  const target=getLobPassTarget(passer,receiver);
+  let vel=calculateArcVelocity(start,target,LOB_PASS_EXTRA_HEIGHT,LOB_PASS_FLIGHT_TIME);
+  vel.y=Math.max(vel.y,LOB_PASS_MIN_PEAK_Y);
+  launchBallFromHand(passer,vel,false,receiver,"lob",target);
+  float(info.accuracy>.72?"Green Lob!":"Lob",passer.group.position.clone().add(new THREE.Vector3(0,4.8,0)),info.accuracy>.72?"#80ff80":"#ffd789");
+}
+
+function throwFastPass(passer,receiver,info){
+  const start=handPos(passer);
+  const target=getLeadPassTarget(passer,receiver);
+  const dir=target.clone().sub(start).normalize();
+  const pow=THREE.MathUtils.clamp(info.t,.15,1.05);
+  const vel=dir.clone().multiplyScalar(FAST_PASS_BASE_SPEED+pow*FAST_PASS_BONUS_SPEED);
+  vel.y=THREE.MathUtils.clamp(dir.y*10+FAST_PASS_Y,FAST_PASS_Y,FAST_PASS_MAX_Y);
+  launchBallFromHand(passer,vel,false,receiver,"fast",target);
+  float(info.accuracy>.72?"Green Fast!":"Fast pass",passer.group.position.clone().add(new THREE.Vector3(0,4.8,0)),info.accuracy>.72?"#80ff80":"#ff7777");
+}
+
+function throwShot(p,info){
+  const start=handPos(p);
+  let target=getTrunkShotTarget(p,oppCar(p.team));
+  const aimError=(1-info.accuracy)*MAX_SHOT_AIM_ERROR;
+  target.x+=(Math.random()-.5)*aimError;
+  target.y+=(Math.random()-.5)*aimError*.25;
+  target.z+=(Math.random()-.5)*aimError;
+  const dist=flat(start,target);
+  const flightTime=THREE.MathUtils.clamp(dist/25,.72,SHOT_FIXED_FLIGHT_TIME);
+  const arcBonus=(p.isJumping||p.y>.2)?SHOT_JUMP_ARC_BONUS:SHOT_LOW_ARC_BONUS;
+  const vel=calculateArcVelocity(start,target,arcBonus,flightTime);
+  launchBallFromHand(p,vel,true,null,null,target);
+  float(info.accuracy>.72?"Green!":"Off!",p.group.position.clone().add(new THREE.Vector3(0,4.8,0)),info.accuracy>.72?"#80ff80":"#ff7777");
 }
 
 function trackSteps(p){
@@ -1197,13 +1235,24 @@ function aiThrow(p,target,isShot,receiver){
     accuracy:THREE.MathUtils.clamp(THREE.MathUtils.lerp(.35,.9,int)+(Math.random()-.5)*.25,.1,1)
   };
 
-  throwBall(p,target,info,isShot,receiver,0);
+  if(isShot){
+    throwShot(p,info);
+  }else if(receiver){
+    const lane=getPassLaneQuality(handPos(p),getLeadPassTarget(p,receiver),p.team);
+    if(lane<.42&&Math.random()<.6)throwLobPass(p,receiver,info);
+    else throwFastPass(p,receiver,info);
+  }
   p.aiCooldown=THREE.MathUtils.lerp(1.1,.25,int)+.35;
 }
 
 function offAI(p,dt){
   if(!ballHolder||p===ballHolder)return;
   const sincePossession=performance.now()/1000-possessionStartTime;
+  const teammateIQ=getTeammateIQ(p.team);
+  const OPEN_CUT_REACTION=THREE.MathUtils.lerp(.85,.20,teammateIQ);
+  const OPEN_SPACE_SEARCH_RADIUS=THREE.MathUtils.lerp(5,12,teammateIQ);
+  const TEAMMATE_SEPARATION_WEIGHT=THREE.MathUtils.lerp(.4,1.3,teammateIQ);
+  const LANE_DISCIPLINE_WEIGHT=THREE.MathUtils.lerp(.35,1.25,teammateIQ);
 
   p.targetTimer-=dt;
   p.cutTimer-=dt;
@@ -1213,14 +1262,14 @@ function offAI(p,dt){
   const nearD=nearestDef(p.group.position,p.team);
   const pressured=nearD<5.2;
 
-  if(p.cutTimer<=0&&pressured&&p.forceClearTimer<=0){
+  if(p.cutTimer<=0&&pressured&&p.forceClearTimer<=0&&Math.random()>OPEN_CUT_REACTION){
     p.cutTimer=CUT_DURATION;
     p.cutDir*=-1;
     float("Cut!",p.group.position.clone().add(new THREE.Vector3(0,4.7,0)),"#d8ff7a");
   }
 
   if(p.targetTimer<=0||pressured){
-    p.targetTimer=pressured?.18+Math.random()*.15:.42+Math.random()*.4;
+    p.targetTimer=pressured?THREE.MathUtils.lerp(.3,.16,teammateIQ)+Math.random()*.15:THREE.MathUtils.lerp(.55,.25,teammateIQ)+Math.random()*.4;
     p.aiTarget.copy(getLaneSupportSpot(p,ballHolder));
     if(sincePossession<1){
       const spread=right(ballHolder).multiplyScalar((p.index%2===0?-1:1)*8);
@@ -1234,7 +1283,7 @@ function offAI(p,dt){
       if(toGoal.lengthSq()<.01)toGoal.set(0,0,p.team===BLUE?-1:1);
       toGoal.normalize();
 
-      const side=new THREE.Vector3(toGoal.z,0,-toGoal.x).multiplyScalar(p.cutDir*5.5);
+      const side=new THREE.Vector3(toGoal.z,0,-toGoal.x).multiplyScalar(p.cutDir*OPEN_SPACE_SEARCH_RADIUS);
       p.aiTarget.add(side);
       clamp(p.aiTarget);
     }
@@ -1245,12 +1294,12 @@ function offAI(p,dt){
     float("Clear!",p.group.position.clone().add(new THREE.Vector3(0,4.7,0)),"#aee7ff");
   }
 
-  const burst=burstMult(p,dt,pressured||Math.random()<.015);
+  const burst=burstMult(p,dt,pressured||Math.random()<THREE.MathUtils.lerp(.01,.03,teammateIQ));
   move(p,p.aiTarget,dt,(pressured?1.18:.82)*burst);
   const laneX=LANES[p.team][p.laneIndex].x;
-  p.group.position.x=THREE.MathUtils.lerp(p.group.position.x,laneX,Math.min(1,LANE_PULL_STRENGTH*dt));
+  p.group.position.x=THREE.MathUtils.lerp(p.group.position.x,laneX,Math.min(1,LANE_PULL_STRENGTH*LANE_DISCIPLINE_WEIGHT*dt));
   face(p,ballHolder.group.position,dt);
-  separate(p,dt);
+  separate(p,dt*TEAMMATE_SEPARATION_WEIGHT);
   applyAntiClump(p,dt);
 }
 
@@ -1309,7 +1358,12 @@ function airAI(p,dt){
 
   if(p.team===ball.owner){
     if(p.isReceivingPass&&p.receiveTimer>0&&!ball.loose){
-      move(p,p.receiveTarget,dt,1.2);
+      if(p.receiveMode==="fightForPath"){
+        const contestPoint=getBestContestPointOnPassPath(p,ball);
+        move(p,contestPoint,dt,1.45);
+      }else{
+        move(p,p.receiveTarget,dt,1.25);
+      }
       face(p,ball.pos,dt);
       if(ball.pos.y>2.3&&flat(p.group.position,ball.pos)<5.5)maybeJump(p);
       return;
@@ -1345,7 +1399,8 @@ function airAI(p,dt){
       swat(p,l.distanceTo(ball.pos)<r.distanceTo(ball.pos)?"left":"right");
     }
 
-    if(Math.min(l.distanceTo(ball.pos),r.distanceTo(ball.pos))<1.25||(db<1.75&&ball.pos.y>1.4)){
+    const lobBlocked=ball.passType!=="lob"||p.isJumping||p.y>.45||ball.pos.y<3.6||l.distanceTo(ball.pos)<1.15||r.distanceTo(ball.pos)<1.15;
+    if(lobBlocked&&(Math.min(l.distanceTo(ball.pos),r.distanceTo(ball.pos))<1.25||(db<1.75&&ball.pos.y>1.4))){
       deflect(p,"Tipped!");
     }
   }else{
@@ -1630,7 +1685,22 @@ function contactCheck(){
     }
 
     if(!same&&(body.distanceTo(ball.pos)<.98||head.distanceTo(ball.pos)<.56||flat(p.group.position,ball.pos)<1.05)){
-      catchBall(p,"interception");
+      if(ball.passType==="lob"){
+        const defenderCanContest=
+          p.isJumping||
+          p.y>.45||
+          ball.pos.y<3.6||
+          armPos(p,"left").distanceTo(ball.pos)<1.15||
+          armPos(p,"right").distanceTo(ball.pos)<1.15;
+        if(!defenderCanContest)continue;
+      }
+      if(ball.intendedType==="pass"){
+        const chance=getInterceptionChance(p,ball);
+        if(Math.random()<chance)catchBall(p,"interception");
+        else deflect(p,"Tipped!");
+      }else{
+        catchBall(p,"interception");
+      }
       return;
     }
   }
@@ -1686,6 +1756,7 @@ function catchBall(p,reason){
   ball.thrower=null;
   ball.isShot=false;
   ball.intendedType="pass";
+  ball.passType=null;
   ball.loose=false;
   ball.shotTargetCar=null;
   ball.shotCatchLocked=false;
@@ -1772,6 +1843,7 @@ function startPossession(team,reason=""){
   ball.thrower=null;
   ball.isShot=false;
   ball.intendedType="pass";
+  ball.passType=null;
   ball.loose=false;
   ball.shotTargetCar=null;
   ball.shotCatchLocked=false;
@@ -1831,8 +1903,12 @@ function reset(p,a){
     isReceivingPass:false,
     receiveTarget:new THREE.Vector3(),
     receiveTimer:0,
+    receiveMode:"goToSpot",
+    passThreatened:false,
     defenseState:"contain",
-    defenseTimer:0
+    defenseTimer:0,
+    defPushCooldown:0,
+    stumbleTimer:0
   });
 
   p.sideHopVel.set(0,0,0);
@@ -2050,18 +2126,20 @@ function updateBallToHand(){
 }
 
 function handPos(p){
-  const loc=p.hand==="left"?new THREE.Vector3(-.95,2.54,.36):new THREE.Vector3(.95,2.54,.36);
-  if(p.isJumping||p.y>.2)loc.y+=1.15;
+  const side=p.hand==="left"?-1:1;
+  const loc=new THREE.Vector3(side*1.35,2.72,.58);
+  if(p.isJumping||p.y>.2)loc.y+=JUMP_SHOT_RELEASE_BONUS;
   return p.group.localToWorld(loc);
 }
 
 function armPos(p,hand){
-  const loc=hand==="left"?new THREE.Vector3(-1.08,2.62,.9):new THREE.Vector3(1.08,2.62,.9);
-  if(p.isJumping||p.y>.2)loc.y+=JUMP_BLOCK_REACH_BONUS;
+  const side=hand==="left"?-1:1;
+  const loc=new THREE.Vector3(side*1.45,2.72,.95);
   if(p.swatTimer>0){
-    loc.y+=1.05;
-    loc.z+=.42;
+    loc.y+=1.15;
+    loc.z+=.65;
   }
+  if(p.isJumping||p.y>.2)loc.y+=JUMP_BLOCK_REACH_BONUS;
   return p.group.localToWorld(loc);
 }
 
@@ -2637,10 +2715,10 @@ function trunkTarget(car){
 }
 
 function getTrunkShotTarget(shooter,targetCar){
-  const localTarget=new THREE.Vector3(0,2.55,2.65);
+  const localTarget=new THREE.Vector3(0,2.45,2.35);
   const target=targetCar.group.localToWorld(localTarget);
-  const distance=flat(shooter.group.position,targetCar.pos);
-  target.y+=THREE.MathUtils.clamp(distance/35,.15,.85);
+  const distance=flat(shooter.group.position,targetCar.group.position);
+  target.y+=THREE.MathUtils.clamp(distance/80,.05,.35);
   return target;
 }
 
@@ -2654,6 +2732,112 @@ function getShotQuality(shooter,car){
   quality-=pressure<3?.35:0;
   quality+=lane*.25;
   return THREE.MathUtils.clamp(quality,0,1);
+}
+
+function getLobPassTarget(passer,receiver){
+  const rv=receiver.frameVel||new THREE.Vector3();
+  return receiver.group.position.clone().add(rv.clone().multiplyScalar(LOB_PASS_RECEIVER_LEAD)).add(new THREE.Vector3(0,2.65,0));
+}
+
+function hasThreatInPassPath(start,target,team){
+  return players.some(def=>{
+    if(def.team===team)return false;
+    const d=distSeg(def.group.position,start,target);
+    const ahead=progressAlongSegment(def.group.position,start,target);
+    return d<3.2&&ahead>.15&&ahead<.9;
+  });
+}
+
+function getBestContestPointOnPassPath(p,ballRef){
+  const s=ballRef.prevPos.clone();
+  const t=ballRef.pos.clone();
+  const ahead=Math.max(.2,progressAlongSegment(p.group.position,s,t));
+  return s.lerp(t,THREE.MathUtils.clamp(ahead+.14,.2,.95));
+}
+
+function progressAlongSegment(point,start,end){
+  const seg=end.clone().sub(start);
+  const lenSq=seg.lengthSq();
+  if(lenSq<.0001)return 0;
+  return THREE.MathUtils.clamp(point.clone().sub(start).dot(seg)/lenSq,0,1);
+}
+
+function defenderFacingBallScore(defender,ballRef){
+  const f=forward(defender);
+  const toBall=ballRef.pos.clone().sub(defender.group.position).setY(0);
+  if(toBall.lengthSq()<.001)return .5;
+  toBall.normalize();
+  return THREE.MathUtils.clamp((f.dot(toBall)+1)/2,0,1);
+}
+
+function getInterceptionChance(defender,ballRef){
+  const body=defender.group.position.clone().add(new THREE.Vector3(0,2.4,0));
+  const distToBody=body.distanceTo(ballRef.pos);
+  const facingScore=defenderFacingBallScore(defender,ballRef);
+  const heightScore=ballRef.pos.y<3.8?1:.55;
+  const speedScore=ballRef.vel.length()<36?1:.7;
+  const difficultyInterceptBonus=THREE.MathUtils.lerp(-.18,.18,aiDiff/5);
+  let chance=.35;
+  chance+=THREE.MathUtils.clamp(1.4-distToBody,0,1)*.35;
+  chance+=facingScore*.20;
+  chance+=heightScore*.15;
+  chance+=speedScore*.10;
+  chance+=difficultyInterceptBonus;
+  return THREE.MathUtils.clamp(chance,.15,.95);
+}
+
+function getTeammateIQ(team){
+  if(team===BLUE&&!split)return THREE.MathUtils.clamp(aiDiff/5,.2,1);
+  if(team===RED&&!split)return THREE.MathUtils.clamp(aiDiff/5,.2,1);
+  return .65;
+}
+
+function getScreenSideHand(p,side,camera){
+  const l=armPos(p,"left").clone().project(camera);
+  const r=armPos(p,"right").clone().project(camera);
+  if(side==="left")return l.x<r.x?"left":"right";
+  return l.x>r.x?"left":"right";
+}
+
+function getHandLaneQuality(passer,target){
+  return getPassLaneQuality(handPos(passer),target,passer.team);
+}
+
+function tryDefensivePush(defender,holder){
+  if(!holder||!holder.hasBall||defender.team===holder.team||defender.defPushCooldown>0)return;
+  const pushAggression=THREE.MathUtils.lerp(.25,1,aiDiff/5);
+  if(Math.random()>pushAggression)return;
+  const targetCar=oppCar(holder.team);
+  const nearTrunk=flat(holder.group.position,targetCar.group.position)<TRUNK_PRESSURE_RADIUS;
+  if(!nearTrunk)return;
+  const dist=flat(defender.group.position,holder.group.position);
+  if(dist>DEFENSIVE_PUSH_RANGE)return;
+  if(defender.frameVel.length()<DEFENSIVE_PUSH_SPEED_MIN)return;
+  const moveDir=defender.frameVel.clone().setY(0);
+  if(moveDir.lengthSq()<.01)return;
+  moveDir.normalize();
+  const toHolder=holder.group.position.clone().sub(defender.group.position).setY(0);
+  if(toHolder.lengthSq()<.01)return;
+  toHolder.normalize();
+  if(moveDir.dot(toHolder)<.62)return;
+  defender.defPushCooldown=DEFENSIVE_PUSH_COOLDOWN;
+  holder.stumbleTimer=DEFENSIVE_PUSH_STUMBLE_TIME;
+  holder.group.position.add(toHolder.clone().multiplyScalar(DEFENSIVE_PUSH_FORCE));
+  clamp(holder.group.position);
+  avoidObstacles(holder);
+  float("Body Up!",holder.group.position.clone().add(new THREE.Vector3(0,4.8,0)),"#ffdd77");
+}
+
+function updateDefensivePushes(dt){
+  players.forEach(p=>{
+    if(p.defPushCooldown>0)p.defPushCooldown-=dt;
+    if(p.stumbleTimer>0)p.stumbleTimer-=dt;
+  });
+  const holder=ballHolder;
+  if(!holder)return;
+  players.forEach(def=>{
+    if(def.team!==holder.team)tryDefensivePush(def,holder);
+  });
 }
 
 function opposite(t){
@@ -2744,18 +2928,28 @@ function clearPassPreview(){
 function updatePassPreview(passer,receiver){
   if(!passPreviewLine||!receiver)return;
   const from=handPos(passer);
-  const target=getLeadPassTarget(passer,receiver);
+  const held=(performance.now()-input[passer.team].start)/1000;
+  const lobPreview=held<PASS_TAP_THRESHOLD;
+  const target=lobPreview?getLobPassTarget(passer,receiver):getLeadPassTarget(passer,receiver);
   const quality=getPassLaneQuality(from,target,passer.team);
-  passPreviewLine.geometry.setFromPoints([from,target]);
+  if(lobPreview){
+    const mid=from.clone().lerp(target,.5);
+    mid.y=Math.max(from.y,target.y)+4.6;
+    passPreviewLine.geometry.setFromPoints([from,mid,target]);
+  }else{
+    passPreviewLine.geometry.setFromPoints([from,target]);
+  }
   const col=quality>.72?0x67d2ff:quality>.45?0xffd34d:0xff4f4f;
   passPreviewLine.material.color.set(col);
+  passPreviewLine.material.opacity=lobPreview?.65:.9;
   passPreviewLine.visible=true;
   receiverRing.position.copy(receiver.group.position).setY(.08);
   receiverRing.material.color.set(col);
   receiverRing.visible=true;
   catchMarker.position.copy(target).setY(.08);
   catchMarker.visible=true;
-  setHint(quality>.72?"Clean pass lane":quality>.45?"Risky pass":"Bad lane",quality>.72?"#8ce9ff":quality>.45?"#ffe07b":"#ff8b8b");
+  const laneHint=quality>.72?"Clean pass lane":quality>.45?"Risky pass":"Bad lane";
+  setHint(`${lobPreview?"Lob":"Fast"}: ${laneHint}`,quality>.72?"#8ce9ff":quality>.45?"#ffe07b":"#ff8b8b");
 }
 
 function clearFriendlyShotLane(shooter){
