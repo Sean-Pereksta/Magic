@@ -546,6 +546,10 @@ const moveFeedbackTimers = [];
 let ledBoardTimer = 0;
 let activeSlowMo = {timer:0, scale:1};
 let cameraEffects = {shake:0, zoomPulse:0};
+let crowdReactionState = "normal";
+let crowdReactionTimer = 0;
+let courtThemePulse = 0;
+const DEFENSIVE_SHADE_HOLD = 0.16;
 let gameMode = {targetScore:11, winBy2:true, makeItTakeIt:false, losersBall:false, arcade:false};
 const qualitySettings = {
   low:{crowd:false,particles:false,reflections:false,glow:false},
@@ -1498,7 +1502,11 @@ function buildCrowdSection(side,theme=courts[selectedCourt]){
 function animateCrowdPerson(person,dt,excitement){
   const t = performance.now()*.001 + person.userData.phase;
   const poseMul = person.userData.pose === "hype" ? 1.35 : person.userData.pose === "standing" ? 1.05 : .85;
-  const react = excitement * person.userData.reactionBias;
+  let stateBoost = 1;
+  if(crowdReactionState === "hype") stateBoost = 1.35;
+  else if(crowdReactionState === "stunned") stateBoost = 0.72;
+  else if(crowdReactionState === "gamePoint") stateBoost = 1.5;
+  const react = excitement * person.userData.reactionBias * stateBoost;
   const bob = Math.sin(t*(2.1+react*1.6))*0.02*poseMul;
   const sway = Math.sin(t*1.7)*0.05 + excitement*0.1*Math.sin(t*5 + person.userData.col*.3);
   const standLift = react > .48 && person.userData.pose === "seated" && person.userData.standMix > 0.62 ? THREE.MathUtils.clamp((react-0.48)*0.3,0,0.11) : 0;
@@ -1515,6 +1523,8 @@ function animateCrowdPerson(person,dt,excitement){
 
 function updateCrowd(dt){
   if(!qualitySettings[graphicsQuality].crowd) return;
+  crowdReactionTimer = Math.max(0,crowdReactionTimer - dt);
+  if(crowdReactionTimer <= 0 && crowdReactionState !== "normal") crowdReactionState = "normal";
   crowdWave = Math.max(0,crowdWave - dt*.62);
   arenaExcitement = Math.max(0,arenaExcitement - dt*.22);
   const excit = THREE.MathUtils.clamp(arenaExcitement + crowdWave*.35,0,1);
@@ -1559,9 +1569,10 @@ function makeBannerTexture(text){
 
 function updateLEDBoards(text){
   if(!ledBoardCtx) return;
+  const fx = getCourtEffectTheme();
   ledBoardCtx.fillStyle = "#03050a";
   ledBoardCtx.fillRect(0,0,1024,128);
-  ledBoardCtx.fillStyle = "#38ff9a";
+  ledBoardCtx.fillStyle = fx === "urban" ? "#ff7a45" : fx === "gold" ? "#ffd56a" : fx === "ice" ? "#9fe9ff" : "#38ff9a";
   ledBoardCtx.font = "bold 58px 'Courier New', monospace";
   ledBoardCtx.textAlign = "center";
   ledBoardCtx.textBaseline = "middle";
@@ -1572,13 +1583,15 @@ function updateLEDBoards(text){
 function pulseArenaLights(colorIntensity){
   const mood = courts[selectedCourt] || courts.classicArena;
   const moodColor = new THREE.Color(mood.trimColor || 0x65d9ff);
+  courtThemePulse = Math.max(0,courtThemePulse - 0.9/60);
+  const themeColor = new THREE.Color(getThemeColorForEvent(crowdReactionState === "hype" ? "green" : "make"));
   arenaLightStrips.forEach((s,i)=>{
-    const pulse = (.5+.5*Math.sin(performance.now()*.004 + i*.4))*(colorIntensity + arenaExcitement*0.4);
-    const c = moodColor.clone().lerp(new THREE.Color(0xffffff),0.12 + pulse*0.2);
+    const pulse = (.5+.5*Math.sin(performance.now()*.004 + i*.4))*(colorIntensity + arenaExcitement*0.4 + courtThemePulse*0.45);
+    const c = moodColor.clone().lerp(themeColor,0.08 + courtThemePulse*0.35).lerp(new THREE.Color(0xffffff),0.12 + pulse*0.2);
     s.material.color.copy(c);
   });
   if(arenaMoodLight){
-    arenaMoodLight.intensity = 0.15 + arenaExcitement*0.45 + colorIntensity*0.08;
+    arenaMoodLight.intensity = 0.15 + arenaExcitement*0.45 + colorIntensity*0.08 + courtThemePulse*0.14;
   }
 }
 
@@ -1968,6 +1981,7 @@ function createCharacter(profile,pos,id){
     dribbleBounce:0,
     swipeSide:null,
     swipeTime:0,
+    swipeReachScale:1,
     blockTime:0,
     handsUpTime:0,
     shotMotionTime:0,
@@ -1988,6 +2002,16 @@ function createCharacter(profile,pos,id){
     lastPumpFakeTime:-99,
     debugLeftInputTimer:0,
     debugRightInputTimer:0,
+    defensiveShadeSide:null,
+    defensiveShadeTime:0,
+    defensiveContainBonus:0,
+    defensiveContainLabelTime:0,
+    pendingStealTap:null,
+    pendingStealSide:null,
+    pendingStealScreenSide:null,
+    pendingStealCode:null,
+    contactType:null,
+    contactSlide:0,
     lastContestLabel:"Open",
     anim:{runCycle:0,lean:0,targetLean:0,armBlend:0,legBlend:0,torsoTwist:0,landingSquash:0,contactReact:0,shotFollowThrough:0,sideLean:0,legKick:0,fadeLean:0,hookWindup:0,hookRelease:0},
     takeover:0,takeoverActive:false,takeoverTimer:0,stamina:1,dribbleStyle:"normal",stats:{fga:0,fgm:0,tpa:0,tpm:0,blocks:0,steals:0,turnovers:0,ankle:0,perfect:0},
@@ -2002,6 +2026,7 @@ function createCharacter(profile,pos,id){
     }
   };
   player.shotIndicator = createFloatingIndicator(player,"SHOT","#ffffff",.42);
+  player.defenseIndicator = createFloatingIndicator(player,"CONTAIN","#a5e4ff",.4);
   player.staminaIndicator = createStaminaIndicator();
   player.group.add(player.staminaIndicator);
   if(sneaker.sprintRecover) player.movement.recoverySpeed *= (1 + sneaker.sprintRecover);
@@ -2065,13 +2090,37 @@ function makeTextSprite(text,color,size){
   canvas.width = 256;
   canvas.height = 128;
   const ctx = canvas.getContext("2d");
+  drawTextSprite(canvas,ctx,text,color,size);
+  const tex = new THREE.CanvasTexture(canvas);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true}));
+  sprite.userData.canvas = canvas;
+  sprite.userData.ctx = ctx;
+  sprite.userData.fontSize = size;
+  sprite.userData.color = color;
+  return sprite;
+}
+
+function drawTextSprite(canvas,ctx,text,color,size){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
   ctx.font = `900 ${size}px Arial`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
+  ctx.fillStyle = "rgba(7,13,24,.75)";
+  ctx.fillText(text,128,72);
   ctx.fillStyle = color;
   ctx.fillText(text,128,68);
-  const tex = new THREE.CanvasTexture(canvas);
-  return new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true}));
+}
+
+function setSpriteText(sprite,text,color,size){
+  if(!sprite || !sprite.userData || !sprite.userData.ctx) return;
+  const canvas = sprite.userData.canvas;
+  const ctx = sprite.userData.ctx;
+  const finalColor = color || sprite.userData.color || "#ffffff";
+  const finalSize = size || sprite.userData.fontSize || 82;
+  drawTextSprite(canvas,ctx,text,finalColor,finalSize);
+  sprite.userData.color = finalColor;
+  sprite.userData.fontSize = finalSize;
+  if(sprite.material && sprite.material.map) sprite.material.map.needsUpdate = true;
 }
 
 function createFloatingIndicator(player,type="SHOT",color="#ffffff",scale=.44){
@@ -2485,18 +2534,18 @@ function updateHookIndicator(player,dt){
   const hookSide = rimSide > 0 ? -1 : 1;
   const pulse = .65 + .35*Math.sin(performance.now()*.009 + (player.id === "p1" ? 0 : 1.3));
   indicator.visible = true;
-  indicator.position.set(hookSide * .48 * player.profile.width,1.64*player.profile.height,0.26);
-  indicator.scale.setScalar(0.62 + pulse*0.15);
-  indicator.material.opacity = Math.min(1,0.42 + pulse*0.5);
+  indicator.position.set(hookSide * .58 * player.profile.width,1.76*player.profile.height,0.26);
+  indicator.scale.setScalar(0.72 + pulse*0.2);
+  indicator.material.opacity = Math.min(1,0.52 + pulse*0.45);
 }
 function getHookReleasePoint(player){
   const toRim = HOOP_POS.clone().sub(player.group.position).setY(0).normalize();
   const right = getPlayerRight(player).setY(0).normalize();
   const rimSide = Math.sign(right.dot(toRim));
   const hookSide = rimSide > 0 ? -1 : 1;
-  const sideOffset = right.multiplyScalar(hookSide * 0.62 * player.profile.width);
-  const releaseHeight = 1.95 + player.profile.height * 0.9 + Math.max(0,player.group.position.y);
-  const forwardOffset = getPlayerForward(player).multiplyScalar(0.15);
+  const sideOffset = right.multiplyScalar(hookSide * 0.95 * player.profile.width);
+  const releaseHeight = 2.15 + player.profile.height * 1.02 + Math.max(0,player.group.position.y);
+  const forwardOffset = getPlayerForward(player).multiplyScalar(0.24);
   return player.group.position.clone().add(sideOffset).add(forwardOffset).add(new THREE.Vector3(0,releaseHeight,0));
 }
 function canDunk(player){
@@ -2535,7 +2584,18 @@ function animateLanding(char,dt){
 }
 
 function animateContactReaction(char,dt){
-  char.group.rotation.z += char.anim.contactReact * dt * 0.12;
+  const react = char.anim.contactReact;
+  char.group.rotation.z += react * dt * 0.12;
+  if(char.contactSlide > 0){
+    const slideVec = getPlayerForward(char).multiplyScalar(-0.18 * char.contactSlide * dt);
+    char.group.position.add(slideVec);
+    char.contactSlide = Math.max(0,char.contactSlide - dt*3.8);
+  }
+  if(char.contactType === "stonewall"){
+    char.group.rotation.x = smoothAnimValue(char.group.rotation.x,0.12,8,dt);
+  }else if(char.contactType === "blow_by"){
+    char.group.rotation.x = smoothAnimValue(char.group.rotation.x,-0.08,8,dt);
+  }
 }
 
 function resetArmDefaults(char){
@@ -2560,11 +2620,12 @@ function poseSwipeArm(char,side,reach){
   const upper = side === "left" ? char.leftArm : char.rightArm;
   const fore = side === "left" ? char.leftForearm : char.rightForearm;
   const hand = side === "left" ? char.leftHand : char.rightHand;
-  const reachForward = -Math.max(0.18,0.28 + reach * 0.48);
+  const reachScale = char.swipeReachScale || 1;
+  const reachForward = -Math.max(0.14,0.24 + reach * 0.48 * reachScale);
   const crossBody = sign * (0.42 - reach * 0.1) * w;
   upper.position.set(sign * 0.42 * w, 1.48 * h, -0.08);
   fore.position.set(crossBody, 1.18 * h, reachForward);
-  hand.position.set(crossBody + sign * 0.06*w, 1.02 * h, reachForward - (0.12 + reach * 0.22));
+  hand.position.set(crossBody + sign * 0.06*w, 1.02 * h, reachForward - (0.08 + reach * 0.22 * reachScale));
   upper.rotation.set(-0.65 - reach * 0.35, 0, sign * 0.12);
   fore.rotation.set(-0.92 - reach * 0.4, 0, sign * 0.06);
 }
@@ -2587,15 +2648,16 @@ function poseBlockArms(char,reach){
 function poseShotArms(char,pct){
   const w = char.profile.width;
   const h = char.profile.height;
-  const lift = smoothstep(Math.min(pct*1.35,1));
+  const gather = smoothstep(Math.min(pct/.38,1));
+  const lift = smoothstep(Math.min(Math.max(0,pct-.16)*1.35,1));
   const follow = Math.max(0,(pct-.55)/.45);
-  // Ball starts near the chest, rises to forehead, then follows through with wrists high.
+  const chestDip = (1-gather) * 0.22;
   char.leftArm.position.set(-.24*w,1.48*h,-.12);
   char.rightArm.position.set(.24*w,1.48*h,-.12);
-  char.leftForearm.position.set(-.18*w,1.55*h + lift*.42*h,-.28-lift*.20-follow*.15);
-  char.rightForearm.position.set(.18*w,1.55*h + lift*.42*h,-.28-lift*.20-follow*.15);
-  char.leftHand.position.set(-.13*w,1.45*h + lift*.82*h,-.38-lift*.24-follow*.18);
-  char.rightHand.position.set(.13*w,1.45*h + lift*.82*h,-.38-lift*.24-follow*.18);
+  char.leftForearm.position.set(-.18*w,1.55*h + lift*.42*h - chestDip*h,-.28-lift*.20-follow*.15);
+  char.rightForearm.position.set(.18*w,1.55*h + lift*.42*h - chestDip*h,-.28-lift*.20-follow*.15);
+  char.leftHand.position.set(-.13*w,1.45*h + lift*.82*h - chestDip*h,-.38-lift*.24-follow*.18);
+  char.rightHand.position.set(.13*w,1.45*h + lift*.82*h - chestDip*h,-.38-lift*.24-follow*.18);
   char.leftArm.rotation.set(-.95-lift*.9,0,-.05);
   char.rightArm.rotation.set(-.95-lift*.9,0,.05);
   char.leftForearm.rotation.set(-.65-lift*.9-follow*.35,0,-.05);
@@ -2634,12 +2696,12 @@ function onKeyDown(e){
     if(twoPlayerMode) handleActionButton(p2);
   }
 
-  if(e.code === "KeyQ" || e.key.toLowerCase() === "q") handleHandAction(p1,"left","KeyQ");
-  if(e.code === "KeyE" || e.key.toLowerCase() === "e") handleHandAction(p1,"right","KeyE");
+  if(e.code === "KeyQ" || e.key.toLowerCase() === "q") queueHandAction(p1,"left","KeyQ");
+  if(e.code === "KeyE" || e.key.toLowerCase() === "e") queueHandAction(p1,"right","KeyE");
 
   if(twoPlayerMode){
-    if(e.code === "Numpad4" || e.code === "KeyU" || e.key.toLowerCase() === "u") handleHandAction(p2,"left", e.code === "Numpad4" ? "Numpad4" : "KeyU");
-    if(e.code === "Numpad6" || e.code === "KeyO" || e.key.toLowerCase() === "o") handleHandAction(p2,"right", e.code === "Numpad6" ? "Numpad6" : "KeyO");
+    if(e.code === "Numpad4" || e.code === "KeyU" || e.key.toLowerCase() === "u") queueHandAction(p2,"left", e.code === "Numpad4" ? "Numpad4" : "KeyU");
+    if(e.code === "Numpad6" || e.code === "KeyO" || e.key.toLowerCase() === "o") queueHandAction(p2,"right", e.code === "Numpad6" ? "Numpad6" : "KeyO");
   }
 }
 
@@ -2651,6 +2713,38 @@ function onKeyUp(e){
 
   if(e.code === "Space" && shotCharging && chargingPlayer === p1) releaseShootOrFake(p1);
   if((e.code === "Enter" || e.code === "Numpad0") && shotCharging && chargingPlayer === p2) releaseShootOrFake(p2);
+  finalizeHandActionOnRelease(p1,e.code);
+  if(twoPlayerMode) finalizeHandActionOnRelease(p2,e.code);
+}
+
+function queueHandAction(char,screenSide,inputKey){
+  if(!char) return;
+  if(possession === char.id && ballState === "dribble"){
+    handleHandAction(char,screenSide,inputKey);
+    return;
+  }
+  char.pendingStealTap = performance.now() * .001;
+  char.pendingStealSide = getBestHandForScreenSide(char,screenSide);
+  char.pendingStealScreenSide = screenSide;
+  char.pendingStealCode = inputKey;
+}
+
+function finalizeHandActionOnRelease(char,inputCode){
+  if(!char || !char.pendingStealTap || char.pendingStealCode !== inputCode) return;
+  const held = performance.now() * .001 - char.pendingStealTap;
+  if(held < DEFENSIVE_SHADE_HOLD){
+    handleHandAction(char,char.pendingStealScreenSide,char.pendingStealCode);
+  }
+  clearPendingSteal(char,inputCode);
+}
+
+function clearPendingSteal(char,inputCode=null){
+  if(!char) return;
+  if(inputCode && char.pendingStealCode !== inputCode) return;
+  char.pendingStealTap = null;
+  char.pendingStealSide = null;
+  char.pendingStealScreenSide = null;
+  char.pendingStealCode = null;
 }
 
 function handleActionButton(char){
@@ -2686,6 +2780,10 @@ function handleHandAction(char,screenSide,inputKey){
     char.swipeSide = handSide;
     char.swipeScreenSide = screenSide;
     char.swipeTime = .34;
+    char.swipeReachScale = char.defensiveShadeSide ? 0.78 : 1;
+    char.defensiveContainLabelTime = 0.3;
+    char.defensiveShadeTime = 0;
+    char.defensiveShadeSide = null;
   }
 }
 
@@ -2867,12 +2965,12 @@ function updateCountdown(dt){
 
 function updateHumanControls(dt){
   updatePlayerControl(p1, {
-    left:"KeyA", right:"KeyD", forward:"KeyW", back:"KeyS", sprint:"ShiftLeft"
+    left:"KeyA", right:"KeyD", forward:"KeyW", back:"KeyS", sprint:"ShiftLeft", handLeft:"KeyQ", handRight:"KeyE"
   }, dt);
 
   if(twoPlayerMode){
     updatePlayerControl(p2, {
-      left:"KeyJ", right:"KeyL", forward:"KeyI", back:"KeyK", sprint:"ShiftRight"
+      left:"KeyJ", right:"KeyL", forward:"KeyI", back:"KeyK", sprint:"ShiftRight", handLeft:(keys["Numpad4"] ? "Numpad4" : "KeyU"), handRight:(keys["Numpad6"] ? "Numpad6" : "KeyO")
     }, dt);
   }
 
@@ -2967,6 +3065,7 @@ function updatePlayerControl(char,ctrl,dt){
   const baseSpeed = 4.15 * balancedSpeed + move.acceleration*.32;
   const sprintSpeed = 6.95 * balancedSpeed * balancedSprint;
   const backSpeed = 2.1 * balancedSpeed + move.stopSpeed*.2;
+  updateDefensiveShade(char,ctrl,dt);
   if(char.moveState !== "normal"){
     updateMoveState(char,dt);
     return;
@@ -2999,6 +3098,20 @@ function updatePlayerControl(char,ctrl,dt){
   }
 
   if(keys[ctrl.back]) char.velocity.add(forward.clone().multiplyScalar(-backSpeed));
+  if(char.defensiveShadeSide && possession !== char.id && ballState === "dribble"){
+    const screenVec = getScreenSideVectorForChar(char,char.defensiveShadeSide);
+    const shadeSlide = screenVec.multiplyScalar((0.36 + char.movement.defensiveWidth*0.1) * dt);
+    char.group.position.add(shadeSlide);
+    const handler = possession === "p1" ? p1 : p2;
+    if(handler){
+      const toBall = handler.group.position.clone().sub(char.group.position);
+      toBall.y = 0;
+      if(toBall.lengthSq() > 0.001){
+        const targetAngle = Math.atan2(toBall.x,toBall.z);
+        char.angle = lerpAngle(char.angle,targetAngle,dt*6.4);
+      }
+    }
+  }
   setAnimationState(char, keys[ctrl.back] ? "backpedal" : (keys[ctrl.forward] ? "run" : "idle"));
   if(char.stumbledTimer > 0) char.velocity.multiplyScalar(.45);
   if(char.stamina < .2) char.velocity.multiplyScalar(.82);
@@ -3017,6 +3130,38 @@ function updatePlayerControl(char,ctrl,dt){
   }
   keepInCourt(char.group.position);
   char.group.rotation.y = char.angle;
+}
+
+function updateDefensiveShade(char,ctrl,dt){
+  if(!char) return;
+  char.defensiveContainLabelTime = Math.max(0,char.defensiveContainLabelTime - dt);
+  if(possession === char.id || ballState !== "dribble"){
+    clearPendingSteal(char);
+    char.defensiveShadeSide = null;
+    char.defensiveShadeTime = 0;
+    char.defensiveContainBonus = 0;
+    return;
+  }
+  if(char.pendingStealTap && char.pendingStealScreenSide){
+    const held = performance.now() * .001 - char.pendingStealTap;
+    if(held >= DEFENSIVE_SHADE_HOLD && keys[char.pendingStealCode]){
+      char.defensiveShadeSide = char.pendingStealScreenSide;
+      char.defensiveShadeTime = Math.min(1.2,char.defensiveShadeTime + dt*2.4);
+      char.defensiveContainBonus = 0.2 + char.defensiveShadeTime*0.33;
+      char.defensiveContainLabelTime = 0.24;
+      clearPendingSteal(char,char.pendingStealCode);
+    }
+  }
+  const holdingLeft = char.id === "p1" ? !!keys["KeyQ"] : (!!keys["KeyU"] || !!keys["Numpad4"]);
+  const holdingRight = char.id === "p1" ? !!keys["KeyE"] : (!!keys["KeyO"] || !!keys["Numpad6"]);
+  const desired = holdingLeft && !holdingRight ? "left" : holdingRight && !holdingLeft ? "right" : null;
+  if(!desired){
+    char.defensiveShadeTime = Math.max(0,char.defensiveShadeTime - dt*3.4);
+    if(char.defensiveShadeTime <= 0.02) char.defensiveShadeSide = null;
+  }else if(char.defensiveShadeSide === desired){
+    char.defensiveShadeTime = Math.min(1.35,char.defensiveShadeTime + dt*2.2);
+    char.defensiveContainBonus = 0.18 + char.defensiveShadeTime*0.35;
+  }
 }
 
 function updateBotCountdown(dt){
@@ -3319,7 +3464,10 @@ function resolveBodyCollisions(){
     keepInCourt(p1.group.position);
     keepInCourt(p2.group.position);
     applyBodyContact(possession === "p1" ? p1 : p2, possession === "p1" ? p2 : p1);
-    screenShake = Math.min(.22,screenShake + .04); applyCameraShake(.06);
+    const offense = possession === "p1" ? p1 : p2;
+    const hard = offense.contactType === "hard_bump" || offense.contactType === "stonewall";
+    screenShake = Math.min(.22,screenShake + (hard ? .07 : .03));
+    applyCameraShake(hard ? .1 : .05);
   }
 }
 
@@ -3336,6 +3484,7 @@ function updateCharacters(dt){
 
 function getPlayerIndicatorText(char){
   const charging = shotCharging && chargingPlayer === char;
+  if(char.moveMeta && char.moveMeta.lastShotType === "fadeaway" && char.shotMotionTime > 0.1) return "FADEAWAY";
   if(canStartDunk(char) && possession === char.id && ballState === "dribble") return "DUNK";
   if(canHookShot(char) && possession === char.id && ballState === "dribble") return "HOOK";
   if(canLayup(char) && possession === char.id && ballState === "dribble") return "LAYUP";
@@ -3355,8 +3504,7 @@ function updateFloatingIndicators(char,dt){
     sprite.visible = true;
     if(sprite.userData.lastText !== txt){
       const color = txt === "DUNK" ? "#ff9a2f" : txt === "HOOK" ? "#8fe9ff" : txt === "3PT" ? "#65f0ff" : "#ffffff";
-      const next = makeTextSprite(txt,color,86);
-      sprite.material.map = next.material.map;
+      setSpriteText(sprite,txt,color,86);
       sprite.userData.lastText = txt;
     }
     sprite.position.set(0,2.5*char.profile.height,0);
@@ -3366,6 +3514,23 @@ function updateFloatingIndicators(char,dt){
   }else{
     sprite.material.opacity = Math.max(0,sprite.material.opacity - dt*8);
     if(sprite.material.opacity <= .02) sprite.visible = false;
+  }
+  if(char.defenseIndicator){
+    const defTxt = char.defensiveShadeSide ? (char.defensiveShadeSide === "left" ? "SHADE LEFT" : "SHADE RIGHT") : (char.defensiveContainLabelTime > 0 ? "CONTAIN" : "");
+    if(defTxt){
+      char.defenseIndicator.visible = true;
+      if(char.defenseIndicator.userData.lastText !== defTxt){
+        setSpriteText(char.defenseIndicator,defTxt,"#a5e4ff",64);
+        char.defenseIndicator.userData.lastText = defTxt;
+      }
+      char.defenseIndicator.position.set(0,2.86*char.profile.height,0);
+      char.defenseIndicator.scale.set(.5,.26,.26);
+      char.defenseIndicator.material.opacity = Math.min(0.95,(char.defenseIndicator.material.opacity || 0) + dt*6.5);
+      char.defenseIndicator.lookAt(getActiveCameraForChar(char).position);
+    }else{
+      char.defenseIndicator.material.opacity = Math.max(0,(char.defenseIndicator.material.opacity || 0) - dt*6);
+      if(char.defenseIndicator.material.opacity <= .03) char.defenseIndicator.visible = false;
+    }
   }
 
   drawStaminaIndicator(char);
@@ -3595,14 +3760,36 @@ function applyBodyContact(offense,defense){
 }
 function detectDriveContact(offense,defense){
   const d = flatDistance(offense.group.position,defense.group.position);
-  if(d < .9) return defense.movement.contactStrength > offense.movement.contactStrength ? "hard_bump" : "light_bump";
-  return null;
+  if(d > 1.08) return null;
+  const toOff = offense.group.position.clone().sub(defense.group.position).setY(0).normalize();
+  const defenseFace = getPlayerForward(defense).setY(0).normalize();
+  const inFront = defenseFace.dot(toOff) > 0.25;
+  const shadeWall = defense.defensiveShadeSide ? 0.14 + defense.defensiveContainBonus*0.12 : 0;
+  const strengthEdge = defense.movement.contactStrength - offense.movement.contactStrength + shadeWall;
+  const blowBy = calculateBlowByChance(offense,defense);
+  if(strengthEdge > 0.28 && inFront) return d < .84 ? "stonewall" : "hard_bump";
+  if(blowBy > 0.56 && !inFront) return "blow_by";
+  return d < .88 ? "hard_bump" : "light_bump";
 }
 function applyContactPhysics(offense,defense,contactType){
-  if(contactType === "hard_bump"){ offense.stamina = Math.max(0,offense.stamina-.08); offense.anim.contactReact = .7; }
-  if(contactType === "light_bump"){ offense.anim.contactReact = .35; }
+  const contactScale = contactType === "stonewall" ? 1.15 : contactType === "hard_bump" ? .9 : contactType === "blow_by" ? .55 : .4;
+  offense.stamina = Math.max(0,offense.stamina - (0.03 + contactScale*0.04));
+  offense.velocity.multiplyScalar(contactType === "blow_by" ? 0.9 : (1 - contactScale*0.14));
+  offense.anim.contactReact = Math.max(offense.anim.contactReact,0.2 + contactScale*0.5);
+  defense.anim.contactReact = Math.max(defense.anim.contactReact,contactType === "blow_by" ? 0.2 : 0.22 + contactScale*0.34);
+  offense.contactType = contactType;
+  defense.contactType = contactType;
+  offense.contactSlide = Math.max(offense.contactSlide || 0,0.2 + contactScale*0.4);
+  defense.contactSlide = Math.max(defense.contactSlide || 0,0.08 + contactScale*0.2);
+  startContactAnimation(offense,contactType);
+  if(contactType !== "blow_by") startContactAnimation(defense,contactType === "stonewall" ? "hard_bump" : "light_bump");
+  spawnCourtThemedParticle(offense.group.position.clone(),"contact");
+  showMoveFeedback(contactType === "stonewall" ? "STONEWALL" : contactType === "blow_by" ? "BLOW BY" : (Math.random() > 0.5 ? "BUMP" : "CONTACT"),0.2);
+  if(flatDistance(offense.group.position,HOOP_POS) < 4.4 && (contactType === "stonewall" || contactType === "hard_bump")) triggerCrowdReaction("contact",0.35);
 }
-function startContactAnimation(char,type){ char.anim.contactReact = type === "hard_bump" ? .75 : .35; }
+function startContactAnimation(char,type){
+  char.anim.contactReact = Math.max(char.anim.contactReact,type === "stonewall" ? .86 : type === "hard_bump" ? .75 : .35);
+}
 function calculateBlowByChance(offense,defense){
   return THREE.MathUtils.clamp(.24 + (offense.profile.speed-defense.profile.speed)*.35 + (offense.profile.handle-defense.profile.steal)*.18, .06,.78);
 }
@@ -3662,7 +3849,7 @@ function updateMoveFeedback(dt){
   for(const m of moveFeedbackTimers) m.time -= dt;
   while(moveFeedbackTimers.length && moveFeedbackTimers[0].time <= 0) moveFeedbackTimers.shift();
 }
-function createShotTrail(){
+function createShotTrail(type="shot"){
   if(!qualitySettings[graphicsQuality].particles) return;
   if(!shotTrailPool.length){
     for(let i=0;i<24;i++){
@@ -3673,16 +3860,24 @@ function createShotTrail(){
   const p = shotTrailPool.pop();
   if(!p) return;
   p.position.copy(ball.position);
-  p.material.opacity = .65;
-  p.userData.life = .34;
+  p.material.color.setHex(type === "hook" ? getThemeColorForEvent("green") : 0x8affee);
+  p.material.opacity = type === "hook" ? .8 : .65;
+  p.userData.life = type === "hook" ? .4 : .34;
+  p.userData.type = type;
   shotTrailActive.push(p);
 }
 function updateShotTrail(dt){
   for(let i=shotTrailActive.length-1;i>=0;i--){
     const p = shotTrailActive[i];
+    const maxLife = p.userData.type === "hook" ? .4 : .34;
     p.userData.life -= dt;
-    p.material.opacity = Math.max(0,p.userData.life/.34);
-    p.scale.multiplyScalar(.98);
+    p.material.opacity = Math.max(0,p.userData.life/maxLife);
+    if(p.userData.type === "hook"){
+      p.position.y += dt*0.25;
+      p.scale.multiplyScalar(1.005);
+    }else{
+      p.scale.multiplyScalar(.98);
+    }
     if(p.userData.life <= 0){ p.material.opacity = 0; p.scale.set(1,1,1); shotTrailActive.splice(i,1); shotTrailPool.push(p); }
   }
 }
@@ -3706,7 +3901,6 @@ function animateCharacter(char,dt){
 
   if(char.shotMotionTime > 0){
     if(char.hasBall && char.shotMotionTime > 0.4 && ballOwner === char.id){
-      console.warn("Shot animation without release detected. Forcing release.", char.id);
       releaseShot(char,"jumper",{forced:true});
     }
     char.shotMotionTime -= dt;
@@ -3730,6 +3924,9 @@ function animateCharacter(char,dt){
     const reach = Math.sin(pct*Math.PI);
     poseSwipeArm(char,char.swipeSide || "right",reach);
     return;
+  }
+  if(char.defensiveShadeSide && possession !== char.id && ballState === "dribble"){
+    animateDefensiveStance(char,dt);
   }
 
   if(char.hasBall && ballState === "dribble"){
@@ -3761,16 +3958,17 @@ function animateShotTimeline(char,pct,type){
     const shootingForearm = hookSide > 0 ? char.rightForearm : char.leftForearm;
     const shootingHand = hookSide > 0 ? char.rightHand : char.leftHand;
     const guideArm = hookSide > 0 ? char.leftArm : char.rightArm;
-    const wind = Math.sin(Math.min(1,pct/.7) * Math.PI);
-    shootingArm.rotation.x = -1.35;
-    shootingArm.rotation.z = -hookSide * 0.85;
-    shootingArm.position.x += hookSide * 0.18;
-    shootingForearm.rotation.x = -1.1 - wind * 0.35;
+    const wind = Math.sin(Math.min(1,pct/.62) * Math.PI);
+    const shoulderTurn = smoothstep(Math.min(1,pct/.24));
+    shootingArm.rotation.x = -1.25 - wind*0.35;
+    shootingArm.rotation.z = -hookSide * (0.8 + shoulderTurn*0.4);
+    shootingArm.position.x += hookSide * (0.18 + shoulderTurn*0.18);
+    shootingForearm.rotation.x = -1.2 - wind * 0.42;
     shootingHand.rotation.x = -0.6;
     guideArm.rotation.x = -0.45;
     guideArm.rotation.z = hookSide * 0.65;
-    char.group.rotation.z = -hookSide * 0.08 * wind;
-    char.group.rotation.y += hookSide * 0.01 * wind;
+    char.group.rotation.z = -hookSide * 0.12 * wind;
+    char.group.rotation.y += hookSide * (0.08*shoulderTurn + 0.04*wind);
     if(char.hookIndicator){
       char.hookIndicator.visible = true;
       char.hookIndicator.material.opacity = Math.max(char.hookIndicator.material.opacity,0.6 * wind);
@@ -3778,6 +3976,12 @@ function animateShotTimeline(char,pct,type){
     }
   }else{
     poseShotArms(char,pct);
+  }
+  if(type === "fadeaway"){
+    const hang = Math.sin(Math.min(1,pct/.88)*Math.PI);
+    char.group.rotation.x = -0.12 - hang*0.14;
+    char.leftLeg.rotation.x = -0.22 + hang*0.4;
+    char.rightLeg.rotation.x = -0.22 + hang*0.4;
   }
 }
 function animateDribble(char,dt){
@@ -3828,6 +4032,15 @@ function animateGatherBall(char,pct,type){
     char.rightForearm.position.set(0.22*w,1.32*h,-0.38);
     char.leftHand.position.set(-0.16*w,1.22*h,-0.52);
     char.rightHand.position.set(0.16*w,1.22*h,-0.52);
+  }else if(type === "shot"){
+    const bend = Math.sin(t*Math.PI);
+    char.group.scale.y = 1 - bend * 0.08;
+    char.leftForearm.position.y -= (0.1 + bend*0.12) * h;
+    char.rightForearm.position.y -= (0.1 + bend*0.12) * h;
+    char.leftHand.position.y -= (0.16 + bend*0.16) * h;
+    char.rightHand.position.y -= (0.16 + bend*0.16) * h;
+    char.leftHand.position.z -= 0.18 + bend*0.12;
+    char.rightHand.position.z -= 0.18 + bend*0.12;
   }else{
     char.group.scale.y = 1 - Math.sin(t * Math.PI) * 0.06;
     char.leftForearm.position.y -= 0.18 * h;
@@ -3849,7 +4062,13 @@ function animateBobble(char,pct){
 }
 function animateDefensiveStance(char,dt){
   char.group.position.y = Math.max(0,char.group.position.y - dt*.2);
+  const shadeDir = char.defensiveShadeSide === "left" ? -1 : char.defensiveShadeSide === "right" ? 1 : 0;
   char.leftLeg.rotation.z = -.18; char.rightLeg.rotation.z = .18;
+  if(shadeDir){
+    char.leftArm.rotation.z = -0.58 - shadeDir*0.08;
+    char.rightArm.rotation.z = 0.58 - shadeDir*0.08;
+    char.group.rotation.x = Math.max(char.group.rotation.x,0.06 + char.defensiveShadeTime*0.05);
+  }
 }
 function animateRunCycle(char,dt){
   const moving = char.velocity.length() > .18;
@@ -3957,7 +4176,7 @@ function updateBall(dt){
   }
 
   if(ballState === "shot" || ballState === "loose"){
-    if(ballState === "shot" && Math.random() < dt*24) createShotTrail();
+    if(ballState === "shot" && Math.random() < dt*24) createShotTrail(lastShotWasHook ? "hook" : "shot");
     ballVelocity.y += GRAVITY * dt;
     ball.position.add(ballVelocity.clone().multiplyScalar(dt));
 
@@ -4274,6 +4493,9 @@ function updateLayup(dt){
   const prevBallPos = ball.position.clone();
 
   owner.group.position.add(getForward(owner.angle).multiplyScalar(2.15*dt));
+  owner.group.rotation.x = -Math.sin(progress*Math.PI)*0.1;
+  owner.leftArm.rotation.z = -0.25;
+  owner.rightArm.rotation.z = 0.25;
   keepInCourt(owner.group.position);
 
   const handSide = getBestHandForScreenSide(owner,getScreenSideVectorForChar(owner,"right").dot(HOOP_POS.clone().sub(owner.group.position)) > 0 ? "right" : "left");
@@ -4308,6 +4530,8 @@ function updateLayup(dt){
         setTimeout(() => resetPossession(nextPossessionAfterScore("p2"),true),650);
       }
       updateScoreboard();
+      triggerCrowdReaction("make",0.62);
+      spawnCourtThemedParticle(HOOP_POS.clone(),"make");
       checkGameWinner();
     }
   }
@@ -4352,23 +4576,67 @@ function triggerShotSplash(position,type="green"){
   const colors = {green:0x35ff6b,gold:0xffd84d,blue:0x50b7ff,orange:0xff8b2b};
   spawnParticle(position,colors[type] || 0x35ff6b);
   flash(labels[type] || "SPLASH!");
+  pulseCourtTheme(type);
+  spawnCourtThemedParticle(position,type);
+}
+function getCourtEffectTheme(){
+  const theme = (courts[selectedCourt] || courts.classicArena).theme || "classic";
+  if(theme === "neon" || theme === "cyber") return "neon";
+  if(theme === "beach" || theme === "sunset" || theme === "desert") return "sun";
+  if(theme === "lava") return "lava";
+  if(theme === "ice") return "ice";
+  if(theme === "galaxy") return "galaxy";
+  if(theme === "jungle") return "jungle";
+  if(theme === "royal" || theme === "gold") return "gold";
+  if(theme === "street" || theme === "city") return "urban";
+  return "classic";
+}
+function getThemeColorForEvent(eventType="make"){
+  const court = courts[selectedCourt] || courts.classicArena;
+  const fx = getCourtEffectTheme();
+  if(fx === "neon") return eventType === "green" ? 0xff42f9 : 0x65f0ff;
+  if(fx === "sun") return 0xffc46b;
+  if(fx === "lava") return 0xff6e2b;
+  if(fx === "ice") return 0x8fe9ff;
+  if(fx === "galaxy") return 0x9d6cff;
+  if(fx === "jungle") return 0x8eff5e;
+  if(fx === "gold") return 0xffd56a;
+  if(fx === "urban") return 0x9ec3ff;
+  return court.trimColor || 0x65d9ff;
+}
+function spawnCourtThemedParticle(position,eventType){
+  if(!qualitySettings[graphicsQuality].particles) return;
+  const q = graphicsQuality === "high" ? 3 : graphicsQuality === "medium" ? 2 : 1;
+  for(let i=0;i<q;i++){
+    const jitter = new THREE.Vector3((Math.random()-.5)*0.35,Math.random()*0.22,(Math.random()-.5)*0.35);
+    spawnParticle(position.clone().add(jitter),getThemeColorForEvent(eventType));
+  }
+}
+function pulseCourtTheme(eventType){
+  const base = eventType === "dunk" ? 1 : eventType === "green" ? 0.88 : 0.55;
+  const qualityMul = graphicsQuality === "high" ? 1 : graphicsQuality === "medium" ? .78 : .45;
+  courtThemePulse = Math.max(courtThemePulse,base*qualityMul);
 }
 function triggerCrowdReaction(type,intensity=1){
   const baseIntensity = {
-    make:0.45, hook_make:0.52, block:0.75, dunk:1.0, three:0.9, steal:0.5, green:0.72, rim_hang:1.0, miss:0.2, game_point:0.82
+    make:0.45, hook_make:0.52, block:0.75, dunk:1.0, three:0.9, steal:0.5, green:0.72, rim_hang:1.0, miss:0.2, game_point:0.82, contact:0.36
   }[type] || 0.4;
   const finalIntensity = THREE.MathUtils.clamp(baseIntensity * intensity,0.15,1.2);
   const typeBoost = {
-    make:0.16,hook_make:0.2,green:0.26,dunk:0.38,three:0.33,rim_hang:0.42,block:0.32,steal:0.2,miss:0.06,game_point:0.3
+    make:0.16,hook_make:0.2,green:0.26,dunk:0.38,three:0.33,rim_hang:0.42,block:0.32,steal:0.2,miss:0.06,game_point:0.3,contact:0.1
   }[type] || 0.12;
+  crowdReactionState = type === "game_point" ? "gamePoint" : type === "dunk" || type === "green" ? "hype" : type === "miss" ? "stunned" : "cheering";
+  crowdReactionTimer = Math.max(crowdReactionTimer,type === "game_point" ? 3.4 : type === "dunk" ? 2.1 : 1.4);
   arenaExcitement = THREE.MathUtils.clamp(arenaExcitement + typeBoost + finalIntensity*0.1,0,1);
   crowdWave = Math.max(crowdWave,finalIntensity + arenaExcitement*0.35);
   cameraEffects.shake = Math.max(cameraEffects.shake,finalIntensity * 0.2 + arenaExcitement*0.08);
   if(type === "dunk" || type === "block") applyCameraZoomPulse(0.08 + finalIntensity*0.04);
   pulseArenaLights(Math.min(1.45,finalIntensity + arenaExcitement*0.55));
   if(Math.abs(scoreP1-scoreP2) <= 1 && (scoreP1 >= targetScore-2 || scoreP2 >= targetScore-2)) crowdWave = Math.max(crowdWave,finalIntensity + 0.35);
+  pulseCourtTheme(type);
+  if(type === "dunk" || type === "block" || type === "green" || type === "steal" || type === "game_point" || type === "miss") spawnCourtThemedParticle(HOOP_POS.clone(),type);
   if(ledBoardCtx && Math.random() < 0.25 + arenaExcitement*0.35){
-    const msg = type === "dunk" ? "DUNK ALERT" : type === "block" ? "REJECTION" : type === "three" ? "FROM DEEP" : type === "green" ? "PURE GREEN" : "CROWD NOISE";
+    const msg = type === "dunk" ? "DUNK ALERT" : type === "block" ? "REJECTION" : type === "three" ? "FROM DEEP" : type === "green" ? "GREEN!" : type === "steal" ? "STRIPPED" : type === "game_point" ? "GAME POINT" : type === "miss" ? "OOF" : "CROWD NOISE";
     updateLEDBoards(msg);
   }
 }
@@ -4439,6 +4707,10 @@ function releaseShot(shooter,shotType,options={}){
   ballVelocity.z = needed.z / flightTime;
   ballVelocity.y = (needed.y - .5*GRAVITY*flightTime*flightTime) / flightTime;
   ballVelocity.y += getArcBonus(shooter,shotType) + (options.arcBonus || 0);
+  if(shotType === "hook"){
+    triggerShotSplash(releasePoint.clone(),"blue");
+    spawnCourtThemedParticle(releasePoint.clone(),"hook");
+  }
 
   shotPower = 0;
   shooter.moveMeta.chargeHeld = 0;
@@ -4465,6 +4737,7 @@ function shootBall(char,shotType="setshot"){
     char.anim.hookRelease = 1;
     char.moveMeta.lastShotType = "hook";
     showMoveFeedback("HOOK SHOT!");
+    pulseCourtTheme("hook");
   }
   if(shotType === "fadeaway"){
     lastShotWasHook = false;
@@ -4508,6 +4781,7 @@ function startLayup(char){
   layupTimer = 0;
   layupScored = false;
   layupBlockWindow = .34;
+  char.moveMeta.gatherType = "layup";
   char.yVel = 3.9 * char.profile.jump;
   char.onGround = false;
   flash(`${char.id.toUpperCase()} layup!`);
@@ -4534,6 +4808,7 @@ function startDunk(char){
   rimTouchCount = 0;
   rimCollisionCooldown = 0;
   shotHasHitRimOrBoard = false;
+  char.moveMeta.gatherType = "dunk";
   flash(`${char.id.toUpperCase()} dunk!`);
 }
 
@@ -4549,6 +4824,9 @@ function updateDunk(dt){
   const apex = HOOP_POS.clone().add(new THREE.Vector3(style === "tomahawk" ? 0.2:0,.72,.14));
   const finish = HOOP_POS.clone().add(new THREE.Vector3(0,-.42,.02));
   const phase = t < .52 ? smoothstep(t/.52) : smoothstep((t-.52)/.48);
+  owner.group.rotation.x = -Math.sin(Math.min(1,t/.45)*Math.PI)*0.18;
+  owner.leftLeg.rotation.x = -0.2 + Math.sin(t*Math.PI)*0.42;
+  owner.rightLeg.rotation.x = -0.2 + Math.sin(t*Math.PI)*0.42;
   const target = t < .52 ? start.clone().lerp(apex,phase) : apex.clone().lerp(finish,phase);
   if(t < .8){
     if(style === "twohand") attachBallBetweenHands(owner,new THREE.Vector3(0,0.36 + Math.sin(t*Math.PI)*0.2,-0.22));
@@ -4577,6 +4855,8 @@ function updateDunk(dt){
     crowdWave = Math.max(crowdWave,1.1);
     triggerCrowdReaction("dunk",1.05);
     applyCameraShake(.23);
+    pulseCourtTheme("dunk");
+    spawnCourtThemedParticle(HOOP_POS.clone(),"dunk");
     const hangChance =
       0.15 +
       owner.profile.height * 0.1 +
