@@ -93,7 +93,7 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
 
 const BLUE="blue", RED="red";
 const FIELD_W=52, FIELD_L=88, BLUE_Z=36, RED_Z=-36;
-const NO_SHOOT=10, TRUNK_W=4.8, TRUNK_H=2.6, TRUNK_D=3.2;
+const NO_SHOOT=10, TRUNK_W=6.4, TRUNK_H=3.4, TRUNK_D=4.1;
 const GRAVITY=22, JUMP_V=19.5, STEP_DIST=3.55;
 const JUMP_GRAVITY=25.5, JUMP_SHOT_RELEASE_BONUS=1.65, JUMP_BLOCK_REACH_BONUS=2.15, JUMP_CATCH_REACH_BONUS=2.0;
 const THROWER_IGNORE=.42, CATCH_SETTLE=.35;
@@ -102,7 +102,7 @@ const LOB_PASS_FLIGHT_TIME=1.18, LOB_PASS_EXTRA_HEIGHT=5.5, LOB_PASS_MIN_PEAK_Y=
 const FAST_PASS_BASE_SPEED=28, FAST_PASS_BONUS_SPEED=20, FAST_PASS_Y=3.2, FAST_PASS_MAX_Y=6.2;
 const SHOT_MIN_POWER=.62, SHOT_MAX_POWER=1.12;
 const SHOT_BASE_FLIGHT_TIME=.82, SHOT_MIN_FLIGHT_TIME=.68, SHOT_MAX_FLIGHT_TIME=1.05;
-const SHOT_LOW_ARC_BONUS=.05, SHOT_MAX_ARC_BONUS=.55, SHOT_JUMP_ARC_BONUS=.35;
+const SHOT_LOW_ARC_BONUS=-.10, SHOT_MAX_ARC_BONUS=.28, SHOT_JUMP_ARC_BONUS=.22;
 const MAX_SHOT_AIM_ERROR=3.0;
 const SWAT_RADIUS_GROUND=1.05, SWAT_RADIUS_JUMPING=1.35;
 const GROUND_BOUNCE=.28, GROUND_FRICTION=.94, LOOSE_BALL_PICKUP_SPEED=7.5;
@@ -459,8 +459,11 @@ function car(x,z,rot,color,team){
   cabin.castShadow=true;
   g.add(cabin);
 
-  const hole=new THREE.Mesh(new THREE.BoxGeometry(TRUNK_W,TRUNK_H,TRUNK_D),black);
-  hole.position.set(0,2.45,3.45);
+  const hole=new THREE.Mesh(
+    new THREE.BoxGeometry(TRUNK_W,TRUNK_H,TRUNK_D),
+    black
+  );
+  hole.position.set(0,2.25,3.25);
   g.add(hole);
 
   const lid=new THREE.Mesh(new THREE.BoxGeometry(TRUNK_W+.55,.28,3.45),bodyMat);
@@ -470,10 +473,10 @@ function car(x,z,rot,color,team){
   g.add(lid);
 
   [
-    [0,3.82,2,TRUNK_W+.4,.18,.24],
-    [-TRUNK_W/2,2.45,2,.18,TRUNK_H,.24],
-    [TRUNK_W/2,2.45,2,.18,TRUNK_H,.24],
-    [0,1.12,2,TRUNK_W+.4,.18,.24]
+    [0,3.95,2.0,TRUNK_W+.55,.18,.24],
+    [-TRUNK_W/2,2.25,2.0,.18,TRUNK_H,.24],
+    [TRUNK_W/2,2.25,2.0,.18,TRUNK_H,.24],
+    [0,.55,2.0,TRUNK_W+.55,.18,.24]
   ].forEach(a=>{
     const m=new THREE.Mesh(new THREE.BoxGeometry(a[3],a[4],a[5]),rim);
     m.position.set(a[0],a[1],a[2]);
@@ -1126,13 +1129,15 @@ function throwShot(p,info){
   const power=THREE.MathUtils.lerp(SHOT_MIN_POWER,SHOT_MAX_POWER,shotCharge);
   const aimError=(1-info.accuracy)*MAX_SHOT_AIM_ERROR;
   target.x+=(Math.random()-.5)*aimError;
-  target.y+=(Math.random()-.5)*aimError*.18;
+  target.y+=(Math.random()-.5)*aimError*.08;
   target.z+=(Math.random()-.5)*aimError;
   const dist=flat(start,target);
   const flightTime=THREE.MathUtils.clamp(dist/(25*power),SHOT_MIN_FLIGHT_TIME,SHOT_MAX_FLIGHT_TIME);
-  const arcBonus=
+  const arcBonus=Math.max(
+    0,
     THREE.MathUtils.lerp(SHOT_LOW_ARC_BONUS,SHOT_MAX_ARC_BONUS,shotCharge)+
-    ((p.isJumping||p.y>.2)?SHOT_JUMP_ARC_BONUS:0);
+      ((p.isJumping||p.y>.2)?SHOT_JUMP_ARC_BONUS:0)
+  );
   const vel=calculateArcVelocity(start,target,arcBonus,flightTime);
   ball.vel.copy(vel);
   launchBallFromHand(p,ball.vel,true,null,"shot",target);
@@ -1527,17 +1532,17 @@ function scoreCheck(){
   car.group.worldToLocal(prevLocal);
 
   const inOpenTrunk=
-    Math.abs(local.x)<TRUNK_W/2+.25&&
-    local.y>1.15&&
-    local.y<3.65&&
-    local.z>1.65&&
-    local.z<5.15;
+    Math.abs(local.x)<TRUNK_W/2+.35&&
+    local.y>.75&&
+    local.y<3.75&&
+    local.z>1.35&&
+    local.z<5.45;
 
   const cameThroughMouth=
-    local.z>1.75&&prevLocal.z<local.z+.45;
+    local.z>1.45&&prevLocal.z<local.z+.65;
 
   const notFromTop=
-    !(prevLocal.y>4.15&&local.y>3.2);
+    !(prevLocal.y>4.2&&local.y>3.15);
 
   if(inOpenTrunk&&cameThroughMouth&&notFromTop&&ball.vel.length()<30){
     score(ball.owner);
@@ -1554,11 +1559,11 @@ function carBallCollision(){
     car.group.worldToLocal(prevLocal);
 
     const inTrunkOpening=
-      Math.abs(local.x)<TRUNK_W/2&&
-      local.y>1.2&&
-      local.y<3.9&&
-      local.z>1.85&&
-      local.z<5.15;
+      Math.abs(local.x)<TRUNK_W/2+.25&&
+      local.y>.75&&
+      local.y<3.85&&
+      local.z>1.25&&
+      local.z<5.55;
 
     if(inTrunkOpening)return;
 
@@ -2737,10 +2742,10 @@ function trunkTarget(car){
 }
 
 function getTrunkShotTarget(shooter,targetCar){
-  const localTarget=new THREE.Vector3(0,2.25,2.15);
+  const localTarget=new THREE.Vector3(0,1.85,2.05);
   const target=targetCar.group.localToWorld(localTarget);
   const dist=flat(shooter.group.position,targetCar.group.position);
-  target.y+=THREE.MathUtils.clamp(dist/120,0,.22);
+  target.y+=THREE.MathUtils.clamp(dist/180,0,.16);
   return target;
 }
 
