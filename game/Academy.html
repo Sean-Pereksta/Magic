@@ -25,6 +25,11 @@
   .green{position:absolute;left:42%;width:16%;top:0;height:100%;background:rgba(255,255,255,.22);border-left:2px solid #fff;border-right:2px solid #fff}
   .marker{height:100%;width:5px;background:white;box-shadow:0 0 8px #fff;position:absolute;left:0;top:0}
   #controls{position:fixed;right:12px;top:12px;max-width:470px;color:#fff;background:rgba(0,0,0,.55);border-radius:14px;padding:11px 14px;z-index:10;font-size:13px;line-height:1.35;display:none}
+  #gameHint{
+    position:fixed;left:50%;bottom:90px;transform:translateX(-50%);
+    background:rgba(0,0,0,.62);color:#fff;padding:8px 14px;border-radius:12px;
+    border:1px solid rgba(255,255,255,.35);font-weight:bold;z-index:16;display:none
+  }
 </style>
 </head>
 <body>
@@ -69,6 +74,7 @@
 
 <div id="ui"><div id="score">Blue 0 - 0 Red</div><div id="status"></div></div>
 <div id="notice"></div>
+<div id="gameHint"></div>
 
 <div id="bar1" class="bar"><div class="green"></div><div id="mark1" class="marker"></div></div>
 <div id="bar2" class="bar"><div class="green"></div><div id="mark2" class="marker"></div></div>
@@ -90,6 +96,11 @@ const FIELD_W=52, FIELD_L=88, BLUE_Z=36, RED_Z=-36;
 const NO_SHOOT=10, TRUNK_W=4.8, TRUNK_H=2.6, TRUNK_D=3.2;
 const GRAVITY=22, JUMP_V=11.35, STEP_DIST=3.55;
 const THROWER_IGNORE=.42, CATCH_SETTLE=.35;
+const PASS_BASE_SPEED=22, PASS_MAX_BONUS_SPEED=24, PASS_MIN_ARC_Y=4.2, PASS_MAX_ARC_Y=9.2;
+const SHOT_BASE_SPEED=15, SHOT_MAX_BONUS_SPEED=31, SHOT_MIN_ARC_Y=5.5, SHOT_MAX_ARC_Y=21;
+const PASS_FLATNESS=.65, PASS_RECEIVER_LEAD_AMOUNT=.35, PASS_DEFENDER_REACTION_WINDOW=.25;
+const MIN_TEAMMATE_BALL_DISTANCE=8.5, IDEAL_PASS_DISTANCE=13.5, TEAMMATE_SPACING_FORCE=1.25, TEAMMATE_NO_CROWD_RADIUS=6.5;
+const DEFENDER_PRESSURE_DISTANCE=3.7, DEFENDER_MIN_DISTANCE=2.35, DEFENDER_BACKOFF_DISTANCE=2.8, DEFENDER_SWAT_RANGE=3.2;
 
 let scene, renderer, clock, cam1, cam2;
 let split=false, started=false, aiDiff=3;
@@ -98,6 +109,8 @@ let players=[], cars={}, guardLines=[], texts=[], scenery=[];
 let controlledBlue=null, controlledRed=null, defensiveBlue=null;
 let possession=BLUE, ballHolder=null, ballInAir=false, frozen=false;
 let defensiveAssignTimer=0;
+let possessionStartTime=performance.now()/1000;
+let passPreviewLine=null, receiverRing=null, catchMarker=null, handlerRing=null;
 
 const keys={}, justPressed={}, justReleased={}, tapTimes={};
 
@@ -119,6 +132,10 @@ const ball={
   throwTime:0,
   isShot:false,
   shotCatchLocked:false,
+  loose:false,
+  intendedReceiver:null,
+  intendedType:"pass",
+  shotTargetCar:null,
   lastContact:null,
   lastContactTime:0,
   outDead:false
@@ -128,6 +145,7 @@ const ui=document.getElementById("ui");
 const scoreEl=document.getElementById("score");
 const statusEl=document.getElementById("status");
 const notice=document.getElementById("notice");
+const gameHint=document.getElementById("gameHint");
 const bar1=document.getElementById("bar1");
 const bar2=document.getElementById("bar2");
 const mark1=document.getElementById("mark1");
@@ -173,6 +191,7 @@ function init(){
   createBall();
   createPlayers();
   createGuardLines();
+  createIndicators();
 
   addEventListener("resize",()=>renderer.setSize(innerWidth,innerHeight));
   addEventListener("keydown",keyDown);
@@ -607,6 +626,31 @@ function createGuardLines(){
   });
 }
 
+function createIndicators(){
+  passPreviewLine=new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]),
+    new THREE.LineBasicMaterial({color:0x66d9ff,transparent:true,opacity:.9})
+  );
+  passPreviewLine.visible=false;
+  scene.add(passPreviewLine);
+
+  const ringGeo=new THREE.RingGeometry(1,1.28,24);
+  receiverRing=new THREE.Mesh(ringGeo,new THREE.MeshBasicMaterial({color:0x88ddff,side:THREE.DoubleSide,transparent:true,opacity:.85}));
+  receiverRing.rotation.x=-Math.PI/2;
+  receiverRing.visible=false;
+  scene.add(receiverRing);
+
+  catchMarker=new THREE.Mesh(new THREE.RingGeometry(.7,.92,20),new THREE.MeshBasicMaterial({color:0xffffff,side:THREE.DoubleSide,transparent:true,opacity:.8}));
+  catchMarker.rotation.x=-Math.PI/2;
+  catchMarker.visible=false;
+  scene.add(catchMarker);
+
+  handlerRing=new THREE.Mesh(new THREE.RingGeometry(1.2,1.5,28),new THREE.MeshBasicMaterial({color:0x80b3ff,side:THREE.DoubleSide,transparent:true,opacity:.8}));
+  handlerRing.rotation.x=-Math.PI/2;
+  handlerRing.visible=false;
+  scene.add(handlerRing);
+}
+
 function animate(){
   requestAnimationFrame(animate);
 
@@ -631,6 +675,7 @@ function update(dt){
     frameVel(dt);
     updateBall(dt);
     guardLinesUpdate();
+    updateGameplayIndicators(dt);
   }
 
   textsUpdate(dt);
@@ -719,8 +764,16 @@ function control(dt,team,p,c){
       if(keys[c.hr])inp.offset-=1.55*dt;
       inp.offset=THREE.MathUtils.clamp(inp.offset,-.95,.95);
       marker(team).style.left=`${charge(team).marker*100}%`;
+      if(inp.pass){
+        const r=bestMate(p);
+        if(r)updatePassPreview(p,r);
+      }else{
+        clearPassPreview();
+      }
+      if(inp.shot)clearFriendlyShotLane(p);
     }
   }else{
+    clearPassPreview();
     if(justPressed[c.shoot])jump(p);
     if(justPressed[c.hl])swat(p,"left");
     if(justPressed[c.hr])swat(p,"right");
@@ -856,6 +909,7 @@ function clearInput(team){
   inp.start=0;
   inp.offset=0;
   bar(team).style.display="none";
+  clearPassPreview();
 }
 
 function charge(team){
@@ -884,14 +938,7 @@ function releasePass(team){
     return;
   }
 
-  throwBall(
-    p,
-    r.group.position.clone().add(new THREE.Vector3(0,2.8,0)),
-    charge(team),
-    false,
-    r,
-    input[team].offset
-  );
+  throwBall(p,getLeadPassTarget(p,r),charge(team),false,r,input[team].offset);
 
   clearInput(team);
 }
@@ -934,7 +981,11 @@ function throwBall(p,target,info,isShot,receiver,offset=0){
   ball.thrower=p;
   ball.throwTime=performance.now()/1000;
   ball.receiver=receiver;
+  ball.intendedReceiver=receiver;
   ball.isShot=isShot;
+  ball.intendedType=isShot?"shot":"pass";
+  ball.loose=false;
+  ball.shotTargetCar=isShot?oppCar(p.team):null;
   ball.shotCatchLocked=isShot;
   ball.lastContact=null;
   ball.outDead=false;
@@ -944,20 +995,35 @@ function throwBall(p,target,info,isShot,receiver,offset=0){
 
   let dir=flatv.lengthSq()>.01?flatv.normalize():forward(p);
 
-  const miss=(Math.random()-.5)*(1-info.accuracy)*(isShot?.42:.34);
+  const laneQuality=isShot?1:getPassLaneQuality(start,target,p.team);
+  const receiverSeparationScore=receiver?THREE.MathUtils.clamp(nearestDef(receiver.group.position,p.team)/8,0,1):1;
+  const finalAccuracy=isShot
+    ?info.accuracy
+    :THREE.MathUtils.clamp(info.accuracy*.55+laneQuality*.30+receiverSeparationScore*.15,0,1);
+  const miss=(Math.random()-.5)*(1-finalAccuracy)*(isShot?.42:.18);
   dir=rotate(dir,offset*(isShot?.25:.42)+miss);
 
   const pow=THREE.MathUtils.clamp(info.t,.1,1.05);
 
-  ball.vel.copy(dir.multiplyScalar((isShot?15:12)+pow*(isShot?31:24)));
-  ball.vel.y=5.5+pow*15.5+(p.isJumping?2.8:0);
+  if(!isShot){
+    ball.vel.copy(dir.multiplyScalar(PASS_BASE_SPEED+pow*PASS_MAX_BONUS_SPEED));
+    ball.vel.y=PASS_MIN_ARC_Y+pow*PASS_MAX_ARC_Y*PASS_FLATNESS;
+  }else{
+    ball.vel.copy(dir.multiplyScalar(SHOT_BASE_SPEED+pow*SHOT_MAX_BONUS_SPEED));
+    ball.vel.y=SHOT_MIN_ARC_Y+pow*SHOT_MAX_ARC_Y+(p.isJumping?2.8:0);
+  }
 
   p.throwAnim=.35;
+  if(receiver&&!isShot){
+    receiver.isReceivingPass=true;
+    receiver.receiveTarget=predictCatch();
+    receiver.receiveTimer=1.2;
+  }
 
   float(
-    info.accuracy>.72?"Green!":"Off!",
+    finalAccuracy>.72?"Green!":"Off!",
     p.group.position.clone().add(new THREE.Vector3(0,4.8,0)),
-    info.accuracy>.72?"#80ff80":"#ff7777"
+    finalAccuracy>.72?"#80ff80":"#ff7777"
   );
 }
 
@@ -1018,11 +1084,11 @@ function redAI(p,dt){
   const car=oppCar(p.team);
   const d=flat(p.group.position,car.pos);
   const int=aiDiff/5;
-  const lane=laneScore(p.group.position,trunkTarget(car),p.team);
+  const shotQ=getShotQuality(p,car);
 
   const can=!insideNo(p.group.position,p.team)&&
     d<THREE.MathUtils.lerp(18,31,int)&&
-    lane>THREE.MathUtils.lerp(-.8,-.05,int);
+    shotQ>.55;
 
   const mate=bestAIMate(p);
   const pressure=nearestDef(p.group.position,p.team);
@@ -1032,17 +1098,17 @@ function redAI(p,dt){
 
   if(p.aiCooldown<=0||must){
     if(can&&(d<THREE.MathUtils.lerp(13,22,int)||p.steps>=3||Math.random()<THREE.MathUtils.lerp(.22,.62,int))){
-      aiThrow(p,trunkTarget(car),true,null);
+      aiThrow(p,getTrunkShotTarget(p,car),true,null);
       return;
     }
 
     if(mate&&(must||Math.random()<THREE.MathUtils.lerp(.45,.88,int))){
-      aiThrow(p,mate.group.position.clone().add(new THREE.Vector3(0,2.65,0)),false,mate);
+      aiThrow(p,getLeadPassTarget(p,mate),false,mate);
       return;
     }
 
     if(can){
-      aiThrow(p,trunkTarget(car),true,null);
+      aiThrow(p,getTrunkShotTarget(p,car),true,null);
       return;
     }
 
@@ -1081,6 +1147,7 @@ function aiThrow(p,target,isShot,receiver){
 
 function offAI(p,dt){
   if(!ballHolder||p===ballHolder)return;
+  const sincePossession=performance.now()/1000-possessionStartTime;
 
   p.targetTimer-=dt;
   p.cutTimer-=dt;
@@ -1097,6 +1164,11 @@ function offAI(p,dt){
   if(p.targetTimer<=0||pressured){
     p.targetTimer=pressured?.18+Math.random()*.15:.42+Math.random()*.4;
     p.aiTarget.copy(ballHolder.steps>=3?emergencySpot(p,ballHolder):supportSpot(p,ballHolder));
+    if(sincePossession<1){
+      const spread=right(ballHolder).multiplyScalar((p.index%2===0?-1:1)*8);
+      p.aiTarget.copy(ballHolder.group.position.clone().add(spread));
+      clamp(p.aiTarget);
+    }
 
     if(pressured){
       const toGoal=oppCar(p.team).pos.clone().sub(p.group.position);
@@ -1118,15 +1190,37 @@ function offAI(p,dt){
 
 function defAI(p,dt){
   if(!ballHolder)return;
+  const int=aiDiff/5;
+  const reactionDelay=THREE.MathUtils.lerp(.75,.18,int);
+  const preferredDistance=THREE.MathUtils.lerp(4.8,3.0,int);
+  p.defenseTimer-=dt;
 
   if(!p.mark||p.mark===ballHolder){
-    const spot=pressureSpot(ballHolder);
-    move(p,spot,dt,.82);
+    const dBall=flat(p.group.position,ballHolder.group.position);
+    const sincePossession=performance.now()/1000-possessionStartTime;
+    const pressAllowed=sincePossession>1||closestMate(p.team,ballHolder.group.position)===p;
+    if(dBall<DEFENDER_MIN_DISTANCE)p.defenseState="recover";
+    else if(pressAllowed&&dBall<DEFENDER_PRESSURE_DISTANCE)p.defenseState="pressure";
+    else p.defenseState="contain";
+
+    let spot=pressureSpot(ballHolder);
+    if(p.defenseState==="contain"){
+      const away=ballHolder.group.position.clone().sub(oppCar(ballHolder.team).pos).setY(0).normalize();
+      spot=ballHolder.group.position.clone().add(away.multiplyScalar(preferredDistance));
+      clamp(spot);
+    }else if(p.defenseState==="recover"){
+      const back=p.group.position.clone().sub(ballHolder.group.position).setY(0).normalize().multiplyScalar(DEFENDER_BACKOFF_DISTANCE);
+      spot=ballHolder.group.position.clone().add(back);
+      clamp(spot);
+    }
+    move(p,spot,dt,p.defenseState==="pressure"?.95:.72);
     face(p,ballHolder.group.position,dt);
 
-    if(flat(p.group.position,ballHolder.group.position)<3.6&&p.aiCooldown<=0){
+    if(flat(p.group.position,ballHolder.group.position)<DEFENDER_SWAT_RANGE&&p.aiCooldown<=0&&p.defenseTimer<=0){
       Math.random()<.5?swat(p,Math.random()<.5?"left":"right"):jump(p);
-      p.aiCooldown=.8;
+      p.aiCooldown=reactionDelay;
+      p.defenseState="lunge";
+      p.defenseTimer=.35;
     }
   }else{
     move(p,guardSpot(p.mark,ballHolder),dt,.72);
@@ -1143,6 +1237,12 @@ function airAI(p,dt){
   const closest=closestMate(ball.owner,cp);
 
   if(p.team===ball.owner){
+    if(p.isReceivingPass&&p.receiveTimer>0&&!ball.loose){
+      move(p,p.receiveTarget,dt,1.2);
+      face(p,ball.pos,dt);
+      if(ball.pos.y>2.3&&flat(p.group.position,ball.pos)<5.5)maybeJump(p);
+      return;
+    }
     if(ball.isShot&&ball.shotCatchLocked){
       if(p.team===possession)offAI(p,dt);
       return;
@@ -1202,13 +1302,22 @@ function updateBall(dt){
   if(ball.outDead)return;
 
   scoreCheck();
+  if(ball.intendedType==="shot"&&ball.shotTargetCar){
+    const local=ball.pos.clone();
+    ball.shotTargetCar.group.worldToLocal(local);
+    if(local.z>6.2||ball.vel.y<-3.5)ball.loose=true;
+  }
   carBallCollision();
   contactCheck();
 
   if(ball.pos.y<=ball.radius){
+    ball.loose=true;
+    ball.intendedType="loose";
     ball.pos.y=ball.radius;
     ball.mesh.position.copy(ball.pos);
     ball.shotCatchLocked=false;
+    ball.loose=true;
+    ball.intendedType="loose";
 
     if(ball.vel.y<-4.2){
       ball.vel.y*=-.22;
@@ -1356,6 +1465,11 @@ function contactCheck(){
     const same=p.team===ball.owner;
 
     if(same){
+      if(ball.intendedType==="shot"){
+        const shotAge=now-ball.throwTime;
+        const stillProtected=!ball.loose&&shotAge<.9&&ball.vel.y>-1.5;
+        if(stillProtected)continue;
+      }
       if(ball.isShot&&ball.shotCatchLocked)continue;
 
       if(
@@ -1387,6 +1501,8 @@ function deflect(p,msg){
   ball.lastContact=p;
   ball.lastContactTime=performance.now()/1000;
   ball.shotCatchLocked=false;
+  ball.loose=true;
+  ball.intendedType="loose";
 
   const body=p.group.position.clone().add(new THREE.Vector3(0,2.4,0));
   let n=ball.pos.clone().sub(body);
@@ -1398,6 +1514,7 @@ function deflect(p,msg){
   ball.vel.copy(n.multiplyScalar(THREE.MathUtils.clamp(ball.vel.length()*.62,9,22)));
   ball.vel.y=4.7+Math.random()*3.8;
   ball.receiver=null;
+  ball.intendedReceiver=null;
   ball.lastTouch=p.team;
 
   float(msg,p.group.position.clone().add(new THREE.Vector3(0,4.8,0)),"#ffef70");
@@ -1419,14 +1536,19 @@ function catchBall(p,reason){
 
   ballHolder=p;
   possession=p.team;
+  possessionStartTime=performance.now()/1000;
   ballInAir=false;
 
   ball.vel.set(0,0,0);
   ball.owner=p.team;
   ball.lastTouch=p.team;
   ball.receiver=null;
+  ball.intendedReceiver=null;
   ball.thrower=null;
   ball.isShot=false;
+  ball.intendedType="pass";
+  ball.loose=false;
+  ball.shotTargetCar=null;
   ball.shotCatchLocked=false;
   ball.outDead=false;
 
@@ -1474,6 +1596,7 @@ function score(team){
 
 function startPossession(team,reason=""){
   frozen=false;
+  possessionStartTime=performance.now()/1000;
 
   clearInput(BLUE);
   clearInput(RED);
@@ -1498,8 +1621,12 @@ function startPossession(team,reason=""){
   ball.owner=team;
   ball.lastTouch=team;
   ball.receiver=null;
+  ball.intendedReceiver=null;
   ball.thrower=null;
   ball.isShot=false;
+  ball.intendedType="pass";
+  ball.loose=false;
+  ball.shotTargetCar=null;
   ball.shotCatchLocked=false;
   ball.outDead=false;
 
@@ -1546,7 +1673,12 @@ function reset(p,a){
     burstCooldown:.8+Math.random()*1.5,
     cutTimer:0,
     cutDir:Math.random()<.5?-1:1,
-    mark:null
+    mark:null,
+    isReceivingPass:false,
+    receiveTarget:new THREE.Vector3(),
+    receiveTimer:0,
+    defenseState:"contain",
+    defenseTimer:0
   });
 
   p.sideHopVel.set(0,0,0);
@@ -1556,6 +1688,8 @@ function reset(p,a){
 
 function updatePlayers(dt){
   for(const p of players){
+    if(p.receiveTimer>0)p.receiveTimer-=dt;
+    if(p.receiveTimer<=0)p.isReceivingPass=false;
     if(p.catchSettle>0)p.catchSettle-=dt;
     if(p.jumpCooldown>0)p.jumpCooldown-=dt;
     if(p.shoveCooldown>0)p.shoveCooldown-=dt;
@@ -1777,14 +1911,18 @@ function armPos(p,hand){
 }
 
 function supportSpot(p,h){
-  const hp=h.group.position.clone();
-  const goal=oppCar(p.team).pos;
+  return getOffBallSupportSpot(p,h);
+}
+
+function getOffBallSupportSpot(teammate,holder){
+  const hp=holder.group.position.clone();
+  const goal=oppCar(teammate.team).pos;
   const gd=goal.clone().sub(hp);
   gd.y=0;
   gd.normalize();
 
   const rt=new THREE.Vector3(gd.z,0,-gd.x);
-  const lane=p.index===0?-1:p.index===1?0:1;
+  const lane=teammate.index===0?-1:1;
   const spots=[];
 
   [[8,lane*8],[11,lane*5],[5,lane*12],[14,lane*3],[3,(-lane*8||7)],[-4,lane*7]].forEach(a=>{
@@ -1793,17 +1931,30 @@ function supportSpot(p,h){
     spots.push(c);
   });
 
-  return spots.sort((a,b)=>spotScore(b,p,h)-spotScore(a,p,h))[0];
+  const best=spots.sort((a,b)=>spotScore(b,teammate,holder)-spotScore(a,teammate,holder))[0];
+  const dist=flat(best,hp);
+  if(dist<MIN_TEAMMATE_BALL_DISTANCE){
+    const push=best.clone().sub(hp).setY(0).normalize().multiplyScalar((MIN_TEAMMATE_BALL_DISTANCE-dist)*TEAMMATE_SPACING_FORCE);
+    best.add(push);
+    clamp(best);
+  }
+  return best;
 }
 
 function spotScore(c,p,h){
   const hp=h.group.position;
+  const trunk=trunkTarget(oppCar(p.team));
   const dist=flat(c,hp);
   const ahead=progress(hp,c,p.team);
   const lane=laneScore(hp,c,p.team);
   const sep=nearestDef(c,p.team);
+  const shotLane=distSeg(c,hp,trunk);
+  const crowdMate=players.filter(t=>t.team===p.team&&t!==p&&t!==h).reduce((m,t)=>Math.min(m,flat(c,t.group.position)),99);
 
   let s=ahead*.45+lane*4.2+sep*.75-Math.abs(dist-13)*.28;
+  s-=Math.abs(dist-IDEAL_PASS_DISTANCE)*.16;
+  if(shotLane<3.2)s-=8;
+  if(crowdMate<TEAMMATE_NO_CROWD_RADIUS)s-=6;
 
   if(dist>23)s-=20;
   if(ahead>14)s-=8;
@@ -2001,6 +2152,28 @@ function bestMate(p){
   });
 
   return best;
+}
+
+function getLeadPassTarget(passer,receiver){
+  const receiverVelocity=receiver.frameVel||new THREE.Vector3();
+  const distance=flat(passer.group.position,receiver.group.position);
+  const leadTime=THREE.MathUtils.clamp(distance/28,.15,.55);
+  return receiver.group.position
+    .clone()
+    .add(receiverVelocity.clone().multiplyScalar(leadTime*PASS_RECEIVER_LEAD_AMOUNT))
+    .add(new THREE.Vector3(0,2.65,0));
+}
+
+function getPassLaneQuality(from,to,team){
+  let quality=1;
+  players.forEach(def=>{
+    if(def.team===team)return;
+    const d=distSeg(def.group.position,from,to);
+    if(d<1.5)quality-=.55;
+    else if(d<3.0)quality-=.28;
+    else if(d<4.5)quality-=.12;
+  });
+  return THREE.MathUtils.clamp(quality,0,1);
 }
 
 function bestAIMate(p){
@@ -2267,6 +2440,26 @@ function trunkTarget(car){
   return car.group.localToWorld(new THREE.Vector3(0,2.55,3.35));
 }
 
+function getTrunkShotTarget(shooter,targetCar){
+  const localTarget=new THREE.Vector3(0,2.85,3.15);
+  const target=targetCar.group.localToWorld(localTarget);
+  const distance=flat(shooter.group.position,targetCar.pos);
+  target.y+=THREE.MathUtils.clamp(distance/18,.2,1.25);
+  return target;
+}
+
+function getShotQuality(shooter,car){
+  const target=getTrunkShotTarget(shooter,car);
+  const dist=flat(shooter.group.position,car.pos);
+  const pressure=nearestDef(shooter.group.position,shooter.team);
+  const lane=getPassLaneQuality(handPos(shooter),target,shooter.team);
+  let quality=1;
+  quality-=Math.abs(dist-22)/30;
+  quality-=pressure<3?.35:0;
+  quality+=lane*.25;
+  return THREE.MathUtils.clamp(quality,0,1);
+}
+
 function opposite(t){
   return t===BLUE?RED:BLUE;
 }
@@ -2334,6 +2527,73 @@ function noticeMsg(html,ms=900){
   noticeMsg.timer=setTimeout(()=>{
     notice.style.display="none";
   },ms);
+}
+
+function setHint(text,color="#ffffff"){
+  if(!text){
+    gameHint.style.display="none";
+    return;
+  }
+  gameHint.style.display="block";
+  gameHint.style.color=color;
+  gameHint.textContent=text;
+}
+
+function clearPassPreview(){
+  if(passPreviewLine)passPreviewLine.visible=false;
+  if(receiverRing)receiverRing.visible=false;
+  if(catchMarker)catchMarker.visible=false;
+}
+
+function updatePassPreview(passer,receiver){
+  if(!passPreviewLine||!receiver)return;
+  const from=handPos(passer);
+  const target=getLeadPassTarget(passer,receiver);
+  const quality=getPassLaneQuality(from,target,passer.team);
+  passPreviewLine.geometry.setFromPoints([from,target]);
+  const col=quality>.72?0x67d2ff:quality>.45?0xffd34d:0xff4f4f;
+  passPreviewLine.material.color.set(col);
+  passPreviewLine.visible=true;
+  receiverRing.position.copy(receiver.group.position).setY(.08);
+  receiverRing.material.color.set(col);
+  receiverRing.visible=true;
+  catchMarker.position.copy(target).setY(.08);
+  catchMarker.visible=true;
+  setHint(quality>.72?"Clean pass lane":quality>.45?"Risky pass":"Bad lane",quality>.72?"#8ce9ff":quality>.45?"#ffe07b":"#ff8b8b");
+}
+
+function clearFriendlyShotLane(shooter){
+  const target=trunkTarget(oppCar(shooter.team));
+  players.forEach(p=>{
+    if(p.team!==shooter.team||p===shooter)return;
+    const d=distSeg(p.group.position,shooter.group.position,target);
+    if(d<3.2){
+      const side=right(shooter).multiplyScalar(p.index%2===0?1:-1);
+      p.aiTarget.copy(p.group.position.clone().add(side.multiplyScalar(7)));
+      setHint("Shot lane blocked","#ffda7a");
+    }
+  });
+}
+
+function updateGameplayIndicators(dt){
+  if(ballHolder){
+    handlerRing.visible=true;
+    handlerRing.position.copy(ballHolder.group.position).setY(.07);
+    const charging=input[ballHolder.team].pass||input[ballHolder.team].shot;
+    handlerRing.material.color.set(charging?0xffd76b:(ballHolder.team===BLUE?0x66b0ff:0xff7777));
+  }else{
+    handlerRing.visible=false;
+  }
+  if(ballInAir&&ball.loose){
+    catchMarker.visible=true;
+    catchMarker.position.copy(ball.pos).setY(.08);
+    catchMarker.material.opacity=.4+.4*Math.sin(performance.now()*.012);
+  }
+  players.forEach(p=>{
+    if(p.isReceivingPass&&p.receiveTimer>0){
+      if(Math.random()<.03)float("TARGET",p.group.position.clone().add(new THREE.Vector3(0,5.1,0)),"#9fe7ff");
+    }
+  });
 }
 
 function updateScore(){
