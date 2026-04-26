@@ -102,7 +102,7 @@ const LOB_PASS_FLIGHT_TIME=.98, LOB_PASS_EXTRA_HEIGHT=3.6, LOB_PASS_MIN_PEAK_Y=6
 const FAST_PASS_BASE_SPEED=28, FAST_PASS_BONUS_SPEED=20, FAST_PASS_Y=3.2, FAST_PASS_MAX_Y=6.2;
 const SHOT_MIN_POWER=.62, SHOT_MAX_POWER=1.12;
 const SHOT_BASE_FLIGHT_TIME=.82, SHOT_MIN_FLIGHT_TIME=.68, SHOT_MAX_FLIGHT_TIME=1.05;
-const SHOT_LOW_ARC_BONUS=-.10, SHOT_MAX_ARC_BONUS=.28, SHOT_JUMP_ARC_BONUS=.22;
+const SHOT_LOW_ARC_BONUS=-.22, SHOT_MAX_ARC_BONUS=.18, SHOT_JUMP_ARC_BONUS=.16;
 const MAX_SHOT_AIM_ERROR=3.0;
 const SWAT_RADIUS_GROUND=1.05, SWAT_RADIUS_JUMPING=1.35;
 const GROUND_BOUNCE=.28, GROUND_FRICTION=.94, LOOSE_BALL_PICKUP_SPEED=7.5;
@@ -1106,7 +1106,7 @@ function releaseShot(team){
   }
 
   const info=charge(team);
-  if(p.stumbleTimer>0)info.accuracy=Math.max(0,info.accuracy-STUMBLE_ACCURACY_PENALTY);
+  info.stumblePenalty=p.stumbleTimer>0?STUMBLE_ACCURACY_PENALTY:0;
   throwShot(p,info);
   clearInput(team);
 }
@@ -1185,26 +1185,40 @@ function throwFastPass(passer,receiver,info){
   float(info.accuracy>.72?"Green Fast!":"Fast pass",passer.group.position.clone().add(new THREE.Vector3(0,4.8,0)),info.accuracy>.72?"#80ff80":"#ff7777");
 }
 
+function chargeAccuracy(marker){
+  const center=.5;
+  const distance=Math.abs(marker-center);
+  return THREE.MathUtils.clamp(1-distance*2.6,0,1);
+}
+
 function throwShot(p,info){
   const start=handPos(p);
   let target=getTrunkShotTarget(p,oppCar(p.team));
-  const shotCharge=THREE.MathUtils.clamp(info.t,0,1);
-  const power=THREE.MathUtils.lerp(SHOT_MIN_POWER,SHOT_MAX_POWER,shotCharge);
-  const aimError=(1-info.accuracy)*MAX_SHOT_AIM_ERROR;
+  const hold=THREE.MathUtils.clamp(info.marker,0,1);
+  const shotStrength=THREE.MathUtils.lerp(SHOT_MIN_POWER,SHOT_MAX_POWER,hold);
+  const baseAccuracy=chargeAccuracy(hold);
+  const overhold=Math.max(0,hold-.58);
+  const finalAccuracy=THREE.MathUtils.clamp(baseAccuracy-(info.stumblePenalty||0)-overhold*1.8,0,1);
+  target.y-=.35;
+  const aimError=(1-finalAccuracy)*MAX_SHOT_AIM_ERROR;
   target.x+=(Math.random()-.5)*aimError;
-  target.y+=(Math.random()-.5)*aimError*.08;
+  target.y+=(Math.random()-.5)*aimError*.05;
   target.z+=(Math.random()-.5)*aimError;
   const dist=flat(start,target);
-  const flightTime=THREE.MathUtils.clamp(dist/(25*power),SHOT_MIN_FLIGHT_TIME,SHOT_MAX_FLIGHT_TIME);
+  const flightTime=THREE.MathUtils.clamp(dist/(25*shotStrength),SHOT_MIN_FLIGHT_TIME,SHOT_MAX_FLIGHT_TIME);
   const arcBonus=Math.max(
     0,
-    THREE.MathUtils.lerp(SHOT_LOW_ARC_BONUS,SHOT_MAX_ARC_BONUS,shotCharge)+
+    THREE.MathUtils.lerp(SHOT_LOW_ARC_BONUS,SHOT_MAX_ARC_BONUS,hold)+
       ((p.isJumping||p.y>.2)?SHOT_JUMP_ARC_BONUS:0)
   );
   const vel=calculateArcVelocity(start,target,arcBonus,flightTime);
   ball.vel.copy(vel);
   launchBallFromHand(p,ball.vel,true,null,"shot",target);
-  float(info.accuracy>.72?"Trunk line!":"Off line!",p.group.position.clone().add(new THREE.Vector3(0,5.2,0)),info.accuracy>.72?"#8cff8c":"#ff7777");
+  float(
+    finalAccuracy>.72?"Green trunk line!":hold>.62?"Overthrown!":"Weak shot!",
+    p.group.position.clone().add(new THREE.Vector3(0,5.2,0)),
+    finalAccuracy>.72?"#8cff8c":"#ff7777"
+  );
 }
 
 function trackSteps(p){
@@ -2931,7 +2945,7 @@ function trunkTarget(car){
 }
 
 function getTrunkShotTarget(shooter,targetCar){
-  const localTarget=new THREE.Vector3(0,1.85,2.05);
+  const localTarget=new THREE.Vector3(0,1.95,2.05);
   const target=targetCar.group.localToWorld(localTarget);
   const dist=flat(shooter.group.position,targetCar.group.position);
   target.y+=THREE.MathUtils.clamp(dist/180,0,.16);
