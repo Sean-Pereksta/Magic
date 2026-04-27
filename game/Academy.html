@@ -8,6 +8,8 @@
   canvas{display:block}
   #menu{
     position:fixed;inset:0;z-index:50;color:#fff;display:flex;align-items:center;justify-content:center;
+    overflow-y:auto;
+    padding:18px 0;
     background:
       radial-gradient(circle at 72% 14%,rgba(255,241,127,.95),rgba(255,241,127,.45) 5%,transparent 12%),
       linear-gradient(#77ccff 0%,#bcecff 48%,#73be61 100%);
@@ -31,7 +33,7 @@
   .presetRow{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
   .presetRow button{font-size:11px;padding:8px;margin-top:0}
   .typeIcon{display:inline-block;min-width:18px;text-align:center;margin-right:4px}
-  .card{width:580px;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.32);border-radius:22px;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,.38)}
+  .card{width:580px;max-height:calc(100vh - 36px);overflow:auto;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.32);border-radius:22px;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,.38)}
   h1{margin:0 0 8px;font-size:42px;letter-spacing:1px}
   p{color:#e7f4ff;line-height:1.4}.row{margin:16px 0}label{display:block;font-weight:bold;margin-bottom:8px}
   select,button{width:100%;padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,.3);background:#101f36;color:white;font-size:16px}
@@ -169,8 +171,10 @@ const MIN_TEAMMATE_BALL_DISTANCE=8.5, IDEAL_PASS_DISTANCE=13.5, TEAMMATE_SPACING
 const DEFENDER_PRESSURE_DISTANCE=3.7, DEFENDER_MIN_DISTANCE=2.35, DEFENDER_BACKOFF_DISTANCE=2.8, DEFENDER_SWAT_RANGE=3.2;
 const LANE_PULL_STRENGTH=.72, LANE_MIN_SEPARATION=7.5, LANE_WIDTH=8.5, CUT_DURATION=1.1, CUT_COOLDOWN=2.4;
 const CAR_BASE_Y=.45, ARM_LENGTH=1.65, ARM_RADIUS=.25;
+const TRUNK_SCORE_SETTLE_TIME=.28, TRUNK_INTERIOR_SCORE_GRACE=.18, TRUNK_BOX_MISS_GRACE=.35;
 const TRUNK_PRESSURE_RADIUS=16, DEFENSIVE_PUSH_RANGE=2.15, DEFENSIVE_PUSH_SPEED_MIN=4.5, DEFENSIVE_PUSH_COOLDOWN=.85, DEFENSIVE_PUSH_FORCE=2.2, DEFENSIVE_PUSH_STUMBLE_TIME=.22;
 const STUMBLE_ACCURACY_PENALTY=.18, STUMBLE_MOVE_MULT=.55;
+const AI_TARGET_EPSILON=.45;
 const LANES={
   [BLUE]:[{name:"left",x:-13},{name:"middle",x:0},{name:"right",x:13}],
   [RED]:[{name:"left",x:-13},{name:"middle",x:0},{name:"right",x:13}]
@@ -280,6 +284,15 @@ const ball={
   trunkScored:false,
   trunkAnnounced:false,
   enteredTrunkRear:false,
+  trunkScoreArmed:false,
+  trunkScoreCarTeam:null,
+  trunkScoreTimer:0,
+  trunkLastInsideTime:0,
+  enteredTrunkMouth:false,
+  enteredTrunkMouthTeam:null,
+  trunkBoxMissTeam:null,
+  trunkBoxMissTimer:0,
+  trunkBoxMissArmed:false,
   lastRimMsg:0
 };
 
@@ -784,6 +797,23 @@ function resetBallTrunkState(){
   ball.trunkScored=false;
   ball.trunkAnnounced=false;
   ball.enteredTrunkRear=false;
+  ball.enteredTrunkMouth=false;
+  ball.enteredTrunkMouthTeam=null;
+  resetTrunkScoreState();
+  resetTrunkBoxMiss();
+}
+
+function resetTrunkScoreState(){
+  ball.trunkScoreArmed=false;
+  ball.trunkScoreCarTeam=null;
+  ball.trunkScoreTimer=0;
+  ball.trunkLastInsideTime=0;
+}
+
+function resetTrunkBoxMiss(){
+  ball.trunkBoxMissTeam=null;
+  ball.trunkBoxMissTimer=0;
+  ball.trunkBoxMissArmed=false;
 }
 
 function car(x,z,rot,color,team){
@@ -1115,7 +1145,10 @@ function update(dt){
     controls(dt);
     ai(dt);
     updatePlayers(dt);
+    players.forEach(p=>stabilizePlayer(p,dt));
     collisions();
+    players.forEach(p=>stabilizePlayer(p,dt));
+    enforceGroundedPlayersOutsideBoxes();
     players.forEach(p=>applyAntiClump(p,dt));
     frameVel(dt);
     updateDefensivePushes(dt);
@@ -1187,6 +1220,7 @@ function control(dt,team,p,c){
       p.group.position.add(mv.multiplyScalar(p.speed*(arenaState?.moveMult||1)*sprintMult*stumbleMult*dt));
       clamp(p.group.position);
       avoidObstacles(p);
+      if(!p.isJumping&&p.y<=.05&&playerInsideAnyTrunkBox(p))pushOutOfNoShootBox(p);
       p.walkPhase+=old.distanceTo(p.group.position)*4.2;
       if(has)trackSteps(p);
     }
@@ -1459,6 +1493,12 @@ function releasePass(team){
     return;
   }
 
+  if(playerInsideAnyTrunkBox(p)){
+    noticeMsg("Cannot throw from inside the box!",750);
+    clearInput(team);
+    return;
+  }
+
   const heldTime=(performance.now()-input[team].start)/1000;
   const now=performance.now();
   const wasDoubleTap=now-passTapTimes[team]<PASS_DOUBLE_TAP_WINDOW;
@@ -1480,10 +1520,8 @@ function releaseShot(team){
     return;
   }
 
-  const car=oppCar(team);
-
-  if(flat(p.group.position,car.pos)<NO_SHOOT){
-    noticeMsg("No shooting inside the trunk box!",850);
+  if(playerInsideAnyTrunkBox(p)){
+    noticeMsg("Cannot throw from inside the box!",750);
     clearInput(team);
     return;
   }
@@ -1715,6 +1753,10 @@ function redAI(p,dt){
 }
 
 function aiThrow(p,target,isShot,receiver){
+  if(playerInsideAnyTrunkBox(p)){
+    p.aiCooldown=.45;
+    return;
+  }
   const int=aiDiff/5;
 
   const info={
@@ -1758,11 +1800,10 @@ function offAI(p,dt){
 
   if(p.targetTimer<=0||pressured){
     p.targetTimer=pressured?THREE.MathUtils.lerp(.3,.16,teammateIQ)+Math.random()*.15:THREE.MathUtils.lerp(.55,.25,teammateIQ)+Math.random()*.4;
-    p.aiTarget.copy(getLaneSupportSpot(p,ballHolder));
+    setAiTarget(p,getLaneSupportSpot(p,ballHolder));
     if(sincePossession<1){
       const spread=right(ballHolder).multiplyScalar((p.index%2===0?-1:1)*8);
-      p.aiTarget.copy(ballHolder.group.position.clone().add(spread));
-      clamp(p.aiTarget);
+      setAiTarget(p,ballHolder.group.position.clone().add(spread));
     }
 
     if(pressured&&p.forceLaneTimer<=0){
@@ -1776,19 +1817,20 @@ function offAI(p,dt){
       clamp(p.aiTarget);
     }
     if(teamCommand===1){
-      p.aiTarget.copy(oppCar(p.team).pos.clone().add(new THREE.Vector3((p.index-1)*4,0,p.team===BLUE?8:-8)));
+      setAiTarget(p,oppCar(p.team).pos.clone().add(new THREE.Vector3((p.index-1)*4,0,p.team===BLUE?8:-8)));
     }else if(teamCommand===2){
-      p.aiTarget.copy(ballHolder.group.position.clone().add(right(ballHolder).multiplyScalar((p.index===0?-1:1)*5)));
+      setAiTarget(p,ballHolder.group.position.clone().add(right(ballHolder).multiplyScalar((p.index===0?-1:1)*5)));
     }else if(teamCommand===3){
       const screenTarget=closestMate(opposite(p.team),ballHolder.group.position);
-      if(screenTarget&&Math.random()<0.72*(p.stats?.screenTendency||1))p.aiTarget.copy(screenTarget.group.position);
+      if(screenTarget&&Math.random()<0.72*(p.stats?.screenTendency||1))setAiTarget(p,screenTarget.group.position);
     }else if(teamCommand===4){
-      p.aiTarget.copy(oppCar(p.team).pos.clone().add(new THREE.Vector3((p.index-1)*3,0,p.team===BLUE?6:-6)));
+      setAiTarget(p,oppCar(p.team).pos.clone().add(new THREE.Vector3((p.index-1)*3,0,p.team===BLUE?6:-6)));
     }
   }
   if(p.forceClearTimer>0){
     const laneX=LANES[p.team][p.laneIndex].x+(p.laneIndex===0?-LANE_WIDTH*.6:LANE_WIDTH*.6);
     p.aiTarget.x=THREE.MathUtils.clamp(laneX,-FIELD_W/2+2,FIELD_W/2-2);
+    sanitizeTargetOutsideBoxes(p.aiTarget);
     float("Clear!",p.group.position.clone().add(new THREE.Vector3(0,4.7,0)),"#aee7ff");
   }
 
@@ -1940,7 +1982,11 @@ function updateBall(dt){
   checkOutOfBounds();
   if(ball.outDead)return;
 
+  const targetCar=ball.isShot?oppCar(ball.owner):null;
+  if(targetCar)checkTrunkMouthEntry(targetCar);
+
   scoreCheck(dt);
+  if(ball.trunkScored)return;
   if(ball.intendedType==="shot"&&ball.shotTargetCar){
     const local=ball.pos.clone();
     ball.shotTargetCar.group.worldToLocal(local);
@@ -1948,28 +1994,72 @@ function updateBall(dt){
   }
   carBallCollision();
   contactCheck();
+  handleGroundBounce(dt);
+  updateTrunkBoxMiss(dt);
+}
 
-  if(ball.pos.y<=ball.radius){
-    ball.loose=true;
-    ball.intendedType="loose";
-    ball.pos.y=ball.radius;
-    ball.mesh.position.copy(ball.pos);
-    ball.shotCatchLocked=false;
-    ball.onCar=false;
-    ball.carContact=null;
-    resetBallTrunkState();
+function handleGroundBounce(dt){
+  if(ball.pos.y>ball.radius)return;
+  const wasTrunkArmed=ball.trunkScoreArmed;
+  ball.loose=true;
+  ball.intendedType="loose";
+  ball.pos.y=ball.radius;
+  ball.mesh.position.copy(ball.pos);
+  ball.shotCatchLocked=false;
+  ball.onCar=false;
+  ball.carContact=null;
+  if(!wasTrunkArmed)resetBallTrunkState();
 
-    if(Math.abs(ball.vel.y)>3.5){
-      ball.vel.y*=-GROUND_BOUNCE*(arenaState?.bounceMult||1);
-      ball.vel.x*=GROUND_FRICTION*(arenaState?.rollFriction||1);
-      ball.vel.z*=GROUND_FRICTION*(arenaState?.rollFriction||1);
-    }else{
-      ball.vel.y=0;
-      ball.vel.x*=GROUND_FRICTION*(arenaState?.rollFriction||1);
-      ball.vel.z*=GROUND_FRICTION*(arenaState?.rollFriction||1);
-      if(ball.vel.length()<LOOSE_BALL_PICKUP_SPEED*.25)groundTurnover();
-    }
+  if(Math.abs(ball.vel.y)>3.5){
+    ball.vel.y*=-GROUND_BOUNCE*(arenaState?.bounceMult||1);
+    ball.vel.x*=GROUND_FRICTION*(arenaState?.rollFriction||1);
+    ball.vel.z*=GROUND_FRICTION*(arenaState?.rollFriction||1);
+  }else{
+    ball.vel.y=0;
+    ball.vel.x*=GROUND_FRICTION*(arenaState?.rollFriction||1);
+    ball.vel.z*=GROUND_FRICTION*(arenaState?.rollFriction||1);
+    if(ball.vel.length()<LOOSE_BALL_PICKUP_SPEED*.25)groundTurnover();
   }
+  const targetCar=oppCar(ball.owner);
+  const insideBox=flat(ball.pos,targetCar.pos)<NO_SHOOT;
+  const validTrunk=getTrunkInteriorState(targetCar).inside;
+  if(
+    ball.isShot&&
+    insideBox&&
+    !validTrunk&&
+    !wasTrunkArmed&&
+    !ball.enteredTrunkMouth&&
+    ball.pos.y<=ball.radius+.08
+  ){
+    ball.trunkBoxMissArmed=true;
+    ball.trunkBoxMissTeam=targetCar.team;
+    ball.trunkBoxMissTimer=0;
+  }
+}
+
+function updateTrunkBoxMiss(dt){
+  if(!ball.trunkBoxMissArmed)return;
+  if(ball.trunkScoreArmed)return;
+  const targetCar=oppCar(ball.owner);
+  const stillInsideBox=flat(ball.pos,targetCar.pos)<NO_SHOOT;
+  const nowInsideTrunk=getTrunkInteriorState(targetCar).inside;
+  if(ball.trunkScoreArmed||nowInsideTrunk||ball.enteredTrunkMouth){
+    resetTrunkBoxMiss();
+    return;
+  }
+  ball.trunkBoxMissTimer+=dt;
+  if(!stillInsideBox||ball.trunkBoxMissTimer>=TRUNK_BOX_MISS_GRACE){
+    trunkBoxTurnover(targetCar.team);
+  }
+}
+
+function trunkBoxTurnover(newTeam){
+  ballInAir=false;
+  resetBallTrunkState();
+  noticeMsg(`Trunk box miss!<br><small>${cap(newTeam)} ball</small>`,900);
+  setTimeout(()=>{
+    startPossession(newTeam,"trunk box miss");
+  },850);
 }
 
 function updateBallOnCar(dt){
@@ -2017,39 +2107,27 @@ function scoreCheck(dt){
 
   const car=oppCar(ball.owner);
   const state=getTrunkInteriorState(car);
-  const prevLocal=ball.prevPos.clone();
-  car.group.worldToLocal(prevLocal);
-  if(!ball.enteredTrunkRear&&isBallPassingThroughFrontMouth(state.local,prevLocal)){
-    ball.enteredTrunkRear=true;
-  }
-
-  if(state.inside&&ball.enteredTrunkRear&&!state.touchingRim){
-    if(ball.inTrunkTeam!==car.team){
-      ball.inTrunkTeam=car.team;
-      ball.trunkSettleTime=0;
-      ball.trunkAnnounced=false;
-    }
-    if(!ball.trunkAnnounced){
+  if(state.inside&&ball.enteredTrunkMouth&&ball.enteredTrunkMouthTeam===car.team){
+    if(!ball.trunkScoreArmed){
+      ball.trunkScoreArmed=true;
+      ball.trunkScoreCarTeam=car.team;
+      ball.trunkScoreTimer=0;
+      ball.trunkLastInsideTime=performance.now()/1000;
       float("Settling...",ball.pos.clone().add(new THREE.Vector3(0,1.4,0)),"#8be1ff");
-      ball.trunkAnnounced=true;
+      resetTrunkBoxMiss();
     }
-
-    ball.vel.multiplyScalar(.82);
-    ball.vel.y-=2*dt;
-
+    ball.trunkScoreTimer+=dt;
+    ball.trunkLastInsideTime=performance.now()/1000;
+    ball.vel.multiplyScalar(.78);
     const centerLocal=new THREE.Vector3(0,1.05,3.6);
     const centerWorld=centerLocal.clone();
     car.group.localToWorld(centerWorld);
     const pull=centerWorld.sub(ball.pos);
     if(pull.lengthSq()>.0001){
-      pull.multiplyScalar(Math.min(1,.8*dt));
-      ball.vel.add(pull);
+      ball.vel.add(pull.multiplyScalar(Math.min(1,1.1*dt)));
     }
-
-    ball.trunkSettleTime+=dt;
-
-    updateTrunkFeedback(car,ball.trunkSettleTime/.42,true);
-    if(ball.trunkSettleTime>=.42&&ball.vel.length()<7.5&&!ball.trunkScored){
+    updateTrunkFeedback(car,ball.trunkScoreTimer/TRUNK_SCORE_SETTLE_TIME,true);
+    if(ball.trunkScoreTimer>=TRUNK_SCORE_SETTLE_TIME&&!ball.trunkScored){
       ball.trunkScored=true;
       float("TRUNK GOAL!",ball.pos.clone().add(new THREE.Vector3(0,1.6,0)),"#9dfbff");
       score(ball.owner,"trunk");
@@ -2061,7 +2139,19 @@ function scoreCheck(dt){
     float("Trunk Rim!",ball.pos.clone().add(new THREE.Vector3(0,1.3,0)),"#ffffff");
     ball.lastRimMsg=performance.now();
   }
-  if(ball.inTrunkTeam===car.team)resetBallTrunkState();
+  if(ball.trunkScoreArmed){
+    const now=performance.now()/1000;
+    if(now-ball.trunkLastInsideTime<=TRUNK_INTERIOR_SCORE_GRACE){
+      ball.trunkScoreTimer+=dt;
+      if(ball.trunkScoreTimer>=TRUNK_SCORE_SETTLE_TIME&&!ball.trunkScored){
+        ball.trunkScored=true;
+        float("TRUNK GOAL!",ball.pos.clone().add(new THREE.Vector3(0,1.6,0)),"#9dfbff");
+        score(ball.owner,"trunk");
+      }
+      return;
+    }
+  }
+  resetTrunkScoreState();
   updateTrunkFeedback(car,0,false);
 }
 
@@ -2072,7 +2162,7 @@ function carBallCollision(){
     const local=ball.pos.clone();
     car.group.worldToLocal(local);
     const trunkState=getTrunkInteriorState(car);
-    if(trunkState.inside)continue;
+    if(ball.trunkScoreArmed||trunkState.inside)continue;
 
     const nearTrunkOpening=
       Math.abs(local.x)<TRUNK_W/2+.62&&
@@ -2554,6 +2644,7 @@ function updatePlayers(dt){
         p.y=0;
         p.jumpVel=0;
         p.isJumping=false;
+        if(playerInsideAnyTrunkBox(p))pushOutOfNoShootBox(p);
       }
     }
 
@@ -2562,10 +2653,12 @@ function updatePlayers(dt){
       p.sideHopVel.multiplyScalar(.9);
       clamp(p.group.position);
       avoidObstacles(p);
+      if(!p.isJumping&&p.y<=.05&&playerInsideAnyTrunkBox(p))pushOutOfNoShootBox(p);
     }
 
     p.group.position.y=p.y;
     avoidObstacles(p);
+    if(!p.isJumping&&p.y<=.05&&playerInsideAnyTrunkBox(p))pushOutOfNoShootBox(p);
 
     if(p.swatTimer>0)p.swatTimer-=dt;
     if(p.throwAnim>0)p.throwAnim-=dt;
@@ -2690,40 +2783,8 @@ function avoidCars(p){
 }
 
 function avoidNoShootCircles(p){
-  const zones=[
-    {pos:cars.blue.pos,team:BLUE},
-    {pos:cars.red.pos,team:RED}
-  ];
-
-  for(const z of zones){
-    const dx=p.group.position.x-z.pos.x;
-    const dz=p.group.position.z-z.pos.z;
-    const dist=Math.sqrt(dx*dx+dz*dz);
-    const minDist=NO_SHOOT+1.05;
-
-    if(dist<minDist){
-      let nx=dx,nz=dz;
-
-      if(dist<.001){
-        nx=0;
-        nz=p.team===BLUE?-1:1;
-      }else{
-        nx/=dist;
-        nz/=dist;
-      }
-
-      p.group.position.x=z.pos.x+nx*minDist;
-      p.group.position.z=z.pos.z+nz*minDist;
-
-      const inward=p.sideHopVel.x*(-nx)+p.sideHopVel.z*(-nz);
-      if(inward>0){
-        p.sideHopVel.x+=nx*inward;
-        p.sideHopVel.z+=nz*inward;
-      }
-
-      clamp(p.group.position);
-    }
-  }
+  if(p.isJumping||p.y>.05)return;
+  if(playerInsideAnyTrunkBox(p))pushOutOfNoShootBox(p);
 }
 
 function frameVel(dt){
@@ -2731,6 +2792,21 @@ function frameVel(dt){
     p.frameVel.copy(p.group.position).sub(p.prevPos).divideScalar(Math.max(dt,.001));
     p.prevPos.copy(p.group.position);
   });
+}
+
+function stabilizePlayer(player,dt){
+  if(!player.isJumping&&player.y<=.05){
+    if(player.sideHopVel.lengthSq()<.02){
+      player.sideHopVel.set(0,0,0);
+    }else{
+      player.sideHopVel.multiplyScalar(Math.pow(.08,dt));
+    }
+  }
+  if(player.stumbleTimer<=0&&player.shoveAnim<=0&&!player.isSprinting){
+    if(player.frameVel.lengthSq()<.0025){
+      player.frameVel.set(0,0,0);
+    }
+  }
 }
 
 function updateBallToHand(){
@@ -2789,11 +2865,11 @@ function getLaneSupportSpot(p,holder){
   const holderZ=holder.group.position.z;
   const targetZ=holderZ+attackDir*(p.index===1?10:6);
   const laneX=LANES[p.team][p.laneIndex].x;
-  return new THREE.Vector3(
+  return sanitizeTargetOutsideBoxes(new THREE.Vector3(
     laneX,
     0,
     THREE.MathUtils.clamp(targetZ,-FIELD_L/2+8,FIELD_L/2-8)
-  );
+  ));
 }
 
 function getOffBallSupportSpot(teammate,holder){
@@ -2820,7 +2896,7 @@ function getOffBallSupportSpot(teammate,holder){
     best.add(push);
     clamp(best);
   }
-  return best;
+  return sanitizeTargetOutsideBoxes(best);
 }
 
 function spotScore(c,p,h){
@@ -2861,7 +2937,7 @@ function emergencySpot(p,h){
   pos.add(gd.multiplyScalar(p.index!==1?2.8:-4.5));
   clamp(pos);
 
-  return pos;
+  return sanitizeTargetOutsideBoxes(pos);
 }
 
 function pressureSpot(h){
@@ -2876,7 +2952,7 @@ function pressureSpot(h){
   const s=h.group.position.clone().add(away.multiplyScalar(2.85));
   clamp(s);
 
-  return s;
+  return sanitizeTargetOutsideBoxes(s);
 }
 
 function guardSpot(mark,h){
@@ -2892,7 +2968,7 @@ function guardSpot(mark,h){
   const s=mark.group.position.clone().add(th.multiplyScalar(.65).add(tg.multiplyScalar(.35)).normalize().multiplyScalar(2.65));
   clamp(s);
 
-  return s;
+  return sanitizeTargetOutsideBoxes(s);
 }
 
 function predictCatch(){
@@ -2907,13 +2983,13 @@ function predictCatch(){
 
     if(pos.y<.5){
       pos.y=.5;
-      return pos;
+      return sanitizeTargetOutsideBoxes(pos);
     }
 
     if(pos.y>1.4&&pos.y<4.4)best=pos.clone();
   }
 
-  return best;
+  return sanitizeTargetOutsideBoxes(best);
 }
 
 function closestMate(team,pt){
@@ -3064,10 +3140,10 @@ function getLeadPassTarget(passer,receiver){
   const receiverVelocity=receiver.frameVel||new THREE.Vector3();
   const distance=flat(passer.group.position,receiver.group.position);
   const leadTime=THREE.MathUtils.clamp(distance/28,.15,.55);
-  return receiver.group.position
+  return sanitizeTargetOutsideBoxes(receiver.group.position
     .clone()
     .add(receiverVelocity.clone().multiplyScalar(leadTime*PASS_RECEIVER_LEAD_AMOUNT))
-    .add(new THREE.Vector3(0,2.65,0));
+    .add(new THREE.Vector3(0,2.65,0)));
 }
 
 function getPassLaneQuality(from,to,team){
@@ -3154,6 +3230,56 @@ function insideNo(pos,team){
   return flat(pos,oppCar(team).pos)<NO_SHOOT;
 }
 
+function playerInsideAnyTrunkBox(player){
+  return flat(player.group.position,cars.blue.pos)<NO_SHOOT||
+    flat(player.group.position,cars.red.pos)<NO_SHOOT;
+}
+
+function pushOutOfNoShootBox(player){
+  let box=null;
+  if(flat(player.group.position,cars.blue.pos)<NO_SHOOT)box=cars.blue;
+  if(flat(player.group.position,cars.red.pos)<NO_SHOOT)box=cars.red;
+  if(!box)return;
+  const dir=player.group.position.clone().sub(box.pos);
+  dir.y=0;
+  if(dir.lengthSq()<.001)dir.set(0,0,player.team===BLUE?1:-1);
+  dir.normalize();
+  player.group.position.copy(box.pos.clone().add(dir.clone().multiplyScalar(NO_SHOOT+.35)));
+  player.sideHopVel.add(dir.clone().multiplyScalar(3.2));
+  player.steps=Math.min(player.steps,3);
+  clamp(player.group.position);
+  float("Out of the box!",player.group.position.clone().add(new THREE.Vector3(0,4.6,0)),"#ffdf6a");
+}
+
+function enforceGroundedPlayersOutsideBoxes(){
+  players.forEach(p=>{
+    if(!p.isJumping&&p.y<=.05&&playerInsideAnyTrunkBox(p))pushOutOfNoShootBox(p);
+  });
+}
+
+function sanitizeTargetOutsideBoxes(target){
+  for(const key of ["blue","red"]){
+    const car=cars[key];
+    const d=flat(target,car.pos);
+    if(d<NO_SHOOT+.5){
+      const dir=target.clone().sub(car.pos);
+      dir.y=0;
+      if(dir.lengthSq()<.001)dir.set(1,0,0);
+      dir.normalize();
+      target.copy(car.pos.clone().add(dir.multiplyScalar(NO_SHOOT+.8)));
+    }
+  }
+  clamp(target);
+  return target;
+}
+
+function setAiTarget(p,newTarget){
+  const sanitized=sanitizeTargetOutsideBoxes(newTarget.clone());
+  if(p.aiTarget.distanceTo(sanitized)>AI_TARGET_EPSILON){
+    p.aiTarget.copy(sanitized);
+  }
+}
+
 function nearest(pos,team){
   let best=null,bd=Infinity;
 
@@ -3170,10 +3296,11 @@ function nearest(pos,team){
 }
 
 function move(p,target,dt,mult=1){
-  const d=target.clone().sub(p.group.position);
+  const safeTarget=sanitizeTargetOutsideBoxes(target.clone());
+  const d=safeTarget.clone().sub(p.group.position);
   d.y=0;
 
-  if(d.lengthSq()<.45)return;
+  if(d.length()<.25)return;
 
   d.normalize();
 
@@ -3181,6 +3308,7 @@ function move(p,target,dt,mult=1){
   p.group.position.add(d.multiplyScalar(p.speed*(arenaState?.moveMult||1)*mult*dt));
   clamp(p.group.position);
   avoidObstacles(p);
+  if(!p.isJumping&&p.y<=.05&&playerInsideAnyTrunkBox(p))pushOutOfNoShootBox(p);
   p.walkPhase+=old.distanceTo(p.group.position)*4.2;
 }
 
@@ -3409,7 +3537,7 @@ function getShotQuality(shooter,car){
 
 function getLobPassTarget(passer,receiver){
   const rv=receiver.frameVel||new THREE.Vector3();
-  return receiver.group.position.clone().add(rv.clone().multiplyScalar(LOB_PASS_RECEIVER_LEAD)).add(new THREE.Vector3(0,2.65,0));
+  return sanitizeTargetOutsideBoxes(receiver.group.position.clone().add(rv.clone().multiplyScalar(LOB_PASS_RECEIVER_LEAD)).add(new THREE.Vector3(0,2.65,0)));
 }
 
 function hasThreatInPassPath(start,target,team){
@@ -3425,7 +3553,7 @@ function getBestContestPointOnPassPath(p,ballRef){
   const s=ballRef.prevPos.clone();
   const t=ballRef.pos.clone();
   const ahead=Math.max(.2,progressAlongSegment(p.group.position,s,t));
-  return s.lerp(t,THREE.MathUtils.clamp(ahead+.14,.2,.95));
+  return sanitizeTargetOutsideBoxes(s.lerp(t,THREE.MathUtils.clamp(ahead+.14,.2,.95)));
 }
 
 function progressAlongSegment(point,start,end){
@@ -3505,11 +3633,21 @@ function updateTipRecovery(dt){
   }
 }
 
-function isBallPassingThroughFrontMouth(local,prevLocal){
-  const withinWidth=Math.abs(local.x)<TRUNK_W/2;
-  const withinHeight=local.y>.75&&local.y<3.75;
-  const enteringFromFront=prevLocal.z<1.45&&local.z>=1.45;
-  return withinWidth&&withinHeight&&enteringFromFront;
+function checkTrunkMouthEntry(car){
+  const local=ball.pos.clone();
+  car.group.worldToLocal(local);
+  const prevLocal=ball.prevPos.clone();
+  car.group.worldToLocal(prevLocal);
+  const withinOpening=
+    Math.abs(local.x)<TRUNK_W/2-.25&&
+    local.y>.75&&
+    local.y<3.75;
+  const crossedMouth=prevLocal.z<2.05&&local.z>=2.05;
+  if(withinOpening&&crossedMouth){
+    ball.enteredTrunkMouth=true;
+    ball.enteredTrunkMouthTeam=car.team;
+    ball.enteredTrunkRear=true;
+  }
 }
 
 function getTrunkInteriorState(car){
@@ -3518,11 +3656,11 @@ function getTrunkInteriorState(car){
 
   const insideX=Math.abs(local.x)<TRUNK_W/2-ball.radius*.35;
   const insideY=local.y>.8&&local.y<3.85;
-  const insideZ=local.z>1.45&&local.z<5.45;
+  const insideZ=local.z>2.05&&local.z<5.45;
   const touchingRim=
     Math.abs(local.x)>TRUNK_W/2-ball.radius*.55||
     local.y<.92||local.y>3.78||
-    local.z<1.62;
+    local.z<2.18;
   const inside=insideX&&insideY&&insideZ;
   return {inside,local,touchingRim};
 }
@@ -3783,7 +3921,7 @@ function clearFriendlyShotLane(shooter){
       const laneSide=p.laneIndex===0?-1:1;
       const clearTarget=p.group.position.clone();
       clearTarget.x+=laneSide*8;
-      p.aiTarget.copy(clearTarget);
+      setAiTarget(p,clearTarget);
       p.forceClearTimer=.7;
       float("Clear!",p.group.position.clone().add(new THREE.Vector3(0,4.7,0)),"#aee7ff");
       setHint("Shot lane blocked","#ffda7a");
