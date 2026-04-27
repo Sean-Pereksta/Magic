@@ -12,6 +12,8 @@
       radial-gradient(circle at 72% 14%,rgba(255,241,127,.95),rgba(255,241,127,.45) 5%,transparent 12%),
       linear-gradient(#77ccff 0%,#bcecff 48%,#73be61 100%);
   }
+  #mainMenu{display:flex;flex-direction:column;gap:10px}
+  #setupMenu{display:none}
   .card{width:580px;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.32);border-radius:22px;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,.38)}
   h1{margin:0 0 8px;font-size:42px;letter-spacing:1px}
   p{color:#e7f4ff;line-height:1.4}.row{margin:16px 0}label{display:block;font-weight:bold;margin-bottom:8px}
@@ -30,49 +32,68 @@
     background:rgba(0,0,0,.62);color:#fff;padding:8px 14px;border-radius:12px;
     border:1px solid rgba(255,255,255,.35);font-weight:bold;z-index:16;display:none
   }
+  #centerScore{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:18;color:#fff;font-weight:bold;font-size:24px;text-shadow:0 2px 6px rgba(0,0,0,.5);display:none}
+  #teamCommand{position:fixed;left:50%;top:54px;transform:translateX(-50%);z-index:18;color:#ffe37c;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.35);padding:6px 12px;border-radius:10px;display:none;font-weight:bold}
+  #trunkFeedback{position:fixed;left:50%;top:80px;transform:translateX(-50%);z-index:18;color:#bff6ff;background:rgba(0,0,0,.55);border:1px solid rgba(157,233,255,.6);padding:4px 10px;border-radius:8px;font-size:13px;display:none}
 </style>
 </head>
 <body>
 
 <div id="menu">
   <div class="card">
-    <h1>TRUNKBALL</h1>
-    <p>
-      3v3 trunkball. Three big steps, then pass or shoot. No one can step into the trunk circle.
-      Cars have collisions, and shots only count if they go into the open trunk.
-    </p>
-
-    <div class="row">
-      <label>Mode</label>
-      <select id="mode">
-        <option value="one">1 Player vs AI</option>
-        <option value="two">2 Player Split Screen</option>
-      </select>
+    <div id="mainMenu">
+      <h1>TRUNKBALL</h1>
+      <p>Choose a mode.</p>
+      <button id="quickPlayBtn">Quick Play</button>
+      <button id="tournamentBtn">Tournament</button>
+      <button id="loadTournamentBtn">Load Tournament</button>
     </div>
+    <div id="setupMenu">
+      <h1>TRUNKBALL</h1>
+      <p>
+        3v3 trunkball. Three big steps, then pass or shoot. No one can step into the trunk circle.
+        Cars have collisions, and shots only count if they settle into the open trunk.
+      </p>
 
-    <div class="row" id="diffRow">
-      <label>AI Difficulty</label>
-      <select id="diff">
-        <option value="1">1 - Casual</option>
-        <option value="2">2 - Learning</option>
-        <option value="3" selected>3 - Competitive</option>
-        <option value="4">4 - Smart</option>
-        <option value="5">5 - Ruthless</option>
-      </select>
+      <div class="row">
+        <label>Mode</label>
+        <select id="mode">
+          <option value="one">1 Player vs AI</option>
+          <option value="two">2 Player Split Screen</option>
+        </select>
+      </div>
+
+      <div class="row" id="diffRow">
+        <label>AI Difficulty</label>
+        <select id="diff">
+          <option value="1">1 - Casual</option>
+          <option value="2">2 - Learning</option>
+          <option value="3" selected>3 - Competitive</option>
+          <option value="4">4 - Smart</option>
+          <option value="5">5 - Ruthless</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Arena</label>
+        <select id="arena"></select>
+      </div>
+      <button id="start">Start Game</button>
+      <button id="backToMain">Back</button>
+      <p style="font-size:13px">
+        P1: W/S move, A/D turn, Q/E hand/swat, F pass, Space shoot/jump, Left Shift sprint.<br>
+        Double-tap W/A/S/D to shove that direction. Out of steps + W = forward shove.<br><br>
+        P2: I/K move, J/L turn, U/O hand/swat, H pass, Right Shift shoot/jump, Enter sprint.<br>
+        Double-tap I/J/K/L to shove that direction.<br><br>
+        Team commands: 1 Spread, 2 Cut to Trunk, 3 Come to Ball, 4 Set Screen, 5 Crash Trunk.
+      </p>
     </div>
-
-    <button id="start">Start Game</button>
-
-    <p style="font-size:13px">
-      P1: W/S move, A/D turn, Q/E hand/swat, F pass, Space shoot/jump, Left Shift sprint.<br>
-      Double-tap W/A/S/D to shove that direction. Out of steps + W = forward shove.<br><br>
-      P2: I/K move, J/L turn, U/O hand/swat, H pass, Right Shift shoot/jump, Enter sprint.<br>
-      Double-tap I/J/K/L to shove that direction.
-    </p>
   </div>
 </div>
 
 <div id="ui"><div id="score">Blue 0 - 0 Red</div><div id="status"></div></div>
+<div id="centerScore">Blue 0 - 0 Red</div>
+<div id="teamCommand"></div>
+<div id="trunkFeedback"></div>
 <div id="notice"></div>
 <div id="gameHint"></div>
 
@@ -118,16 +139,39 @@ const LANES={
   [BLUE]:[{name:"left",x:-13},{name:"middle",x:0},{name:"right",x:13}],
   [RED]:[{name:"left",x:-13},{name:"middle",x:0},{name:"right",x:13}]
 };
+const ARENAS={
+  suburban:{name:"Suburban Street",groundColor:0x2e8b43,skyColor:0x83d5ff,bounceMult:1,rollFriction:1,spaceMult:1},
+  junkyard:{name:"Junkyard",groundColor:0x5b5b50,skyColor:0xb8a77a,bounceMult:1.15,rollFriction:.96,spaceMult:1},
+  neon:{name:"Neon Garage",groundColor:0x16182f,skyColor:0x1b1733,bounceMult:1.08,rollFriction:.99,spaceMult:1},
+  parking:{name:"Parking Lot",groundColor:0x464646,skyColor:0x9ac8ec,bounceMult:1,rollFriction:1.02,spaceMult:1.05},
+  stadium:{name:"Stadium Drive-In",groundColor:0x2a6842,skyColor:0x6aa7d9,bounceMult:1.04,rollFriction:1,spaceMult:1},
+  hilltop:{name:"Hilltop Road",groundColor:0x3f8f52,skyColor:0xf7a56e,bounceMult:.98,rollFriction:.93,spaceMult:1}
+};
+const TEAM_TYPES=["handler","bruiser","trunkSpecialist","jumper","interceptor"];
+const TYPE_STATS={
+  handler:{shotAccuracyMult:.92,passAccuracyMult:1.18,speedMult:1.05,turnMult:1.16,jumpMult:.95,shovePowerMult:.86,stealReachMult:.95,blockReachMult:.92,catchRadiusMult:1.03,bodyStrengthMult:.82,greenBoost:0},
+  bruiser:{shotAccuracyMult:.85,passAccuracyMult:.9,speedMult:.9,turnMult:.88,jumpMult:.9,shovePowerMult:1.3,stealReachMult:.95,blockReachMult:1,catchRadiusMult:1,bodyStrengthMult:1.28,greenBoost:-.03},
+  jumper:{shotAccuracyMult:.98,passAccuracyMult:.98,speedMult:1,turnMult:1,jumpMult:1.24,shovePowerMult:1,stealReachMult:1.02,blockReachMult:1.2,catchRadiusMult:1.17,bodyStrengthMult:1,greenBoost:0},
+  trunkSpecialist:{shotAccuracyMult:1.3,passAccuracyMult:1,speedMult:.96,turnMult:1,jumpMult:.95,shovePowerMult:.9,stealReachMult:.88,blockReachMult:.84,catchRadiusMult:1.03,bodyStrengthMult:.9,greenBoost:.08},
+  interceptor:{shotAccuracyMult:.8,passAccuracyMult:.92,speedMult:1.03,turnMult:1.06,jumpMult:1.02,shovePowerMult:.95,stealReachMult:1.3,blockReachMult:1.08,catchRadiusMult:1.12,bodyStrengthMult:.96,greenBoost:0}
+};
+const TYPE_LABELS={handler:"Handler",bruiser:"Bruiser",jumper:"Jumper",trunkSpecialist:"Trunk Specialist",interceptor:"Interceptor"};
+const COMMANDS=["Spread Out","Cut to Trunk","Come to Ball","Set Screen","Crash Trunk"];
+const TOURNAMENT_TEAMS=["Trunk Kings","Alley Mechanics","Chrome Vipers","Redline Bruisers","Junkyard Giants","Skyline Shooters","Street Sparks","Hoodline Heroes","Garage Ghosts","Neon Drivers","Asphalt Titans","The Slam Shutters"];
 
 let scene, renderer, clock, cam1, cam2;
 let split=false, started=false, aiDiff=3;
+let arenaKey="suburban", arenaState=ARENAS.suburban;
 let blueScore=0, redScore=0;
-let players=[], cars={}, guardLines=[], texts=[], scenery=[];
+let players=[], cars={}, guardLines=[], texts=[], scenery=[], groundMesh=null;
 let controlledBlue=null, controlledRed=null, defensiveBlue=null;
 let possession=BLUE, ballHolder=null, ballInAir=false, frozen=false;
 let defensiveAssignTimer=0;
 let possessionStartTime=performance.now()/1000;
 let passPreviewLine=null, receiverRing=null, catchMarker=null, handlerRing=null;
+let teamCommand=0;
+let tournamentMode=false;
+let tournamentData=null;
 
 const keys={}, justPressed={}, justReleased={}, tapTimes={};
 const passTapTimes={blue:0,red:0};
@@ -168,12 +212,17 @@ const ball={
   inTrunkTeam:null,
   trunkSettleTime:0,
   trunkScored:false,
-  trunkAnnounced:false
+  trunkAnnounced:false,
+  enteredTrunkRear:false,
+  lastRimMsg:0
 };
 
 const ui=document.getElementById("ui");
 const scoreEl=document.getElementById("score");
 const statusEl=document.getElementById("status");
+const centerScore=document.getElementById("centerScore");
+const teamCommandEl=document.getElementById("teamCommand");
+const trunkFeedbackEl=document.getElementById("trunkFeedback");
 const notice=document.getElementById("notice");
 const gameHint=document.getElementById("gameHint");
 const bar1=document.getElementById("bar1");
@@ -185,13 +234,64 @@ document.getElementById("mode").onchange=e=>{
   document.getElementById("diffRow").style.display=e.target.value==="one"?"block":"none";
 };
 
+for(const [key,val] of Object.entries(ARENAS)){
+  const op=document.createElement("option");
+  op.value=key;
+  op.textContent=val.name;
+  document.getElementById("arena").appendChild(op);
+}
+
+document.getElementById("quickPlayBtn").onclick=()=>{
+  tournamentMode=false;
+  document.getElementById("mainMenu").style.display="none";
+  document.getElementById("setupMenu").style.display="block";
+};
+
+document.getElementById("tournamentBtn").onclick=()=>{
+  tournamentMode=true;
+  tournamentData=createTournamentData();
+  saveTournament();
+  document.getElementById("mainMenu").style.display="none";
+  document.getElementById("setupMenu").style.display="block";
+};
+
+document.getElementById("loadTournamentBtn").onclick=()=>{
+  const saved=localStorage.getItem("trunkballTournament");
+  if(!saved){
+    noticeMsg("No saved tournament found.",1200);
+    return;
+  }
+  tournamentMode=true;
+  tournamentData=JSON.parse(saved);
+  arenaKey=tournamentData.arena||"suburban";
+  document.getElementById("arena").value=arenaKey;
+  document.getElementById("mainMenu").style.display="none";
+  document.getElementById("setupMenu").style.display="block";
+  noticeMsg(`Loaded Round ${tournamentData.currentRound+1}`,1200);
+};
+
+document.getElementById("backToMain").onclick=()=>{
+  document.getElementById("mainMenu").style.display="flex";
+  document.getElementById("setupMenu").style.display="none";
+};
+
 document.getElementById("start").onclick=()=>{
   split=document.getElementById("mode").value==="two";
   aiDiff=+document.getElementById("diff").value;
+  if(tournamentMode&&tournamentData){
+    aiDiff=THREE.MathUtils.clamp(2+tournamentData.currentRound,2,5);
+  }
+  arenaKey=document.getElementById("arena").value||"suburban";
+  arenaState=ARENAS[arenaKey]||ARENAS.suburban;
   document.getElementById("menu").style.display="none";
   ui.style.display="block";
+  centerScore.style.display="block";
+  teamCommandEl.style.display="block";
+  trunkFeedbackEl.style.display="block";
   document.getElementById("controls").style.display="block";
   started=true;
+  applyArenaTheme();
+  setTeamCommand(0);
   startPossession(BLUE,"opening possession");
 };
 
@@ -361,6 +461,7 @@ function keyDown(e){
   }
 
   keys[k]=true;
+  if(started&&["1","2","3","4","5"].includes(k))setTeamCommand(+k-1);
 }
 
 function keyUp(e){
@@ -376,6 +477,7 @@ function createField(){
   );
   ground.receiveShadow=true;
   scene.add(ground);
+  groundMesh=ground;
 
   const mat=new THREE.MeshBasicMaterial({color:0xffffff});
 
@@ -455,6 +557,7 @@ function resetBallTrunkState(){
   ball.trunkSettleTime=0;
   ball.trunkScored=false;
   ball.trunkAnnounced=false;
+  ball.enteredTrunkRear=false;
 }
 
 function car(x,z,rot,color,team){
@@ -547,7 +650,7 @@ function car(x,z,rot,color,team){
     }
   }
 
-  const lab=sprite(team===BLUE?"BLUE TRUNK":"RED TRUNK",team===BLUE?"#80b3ff":"#ff8a8a");
+  const lab=sprite(team===BLUE?"BLUE OPEN TRUNK":"RED OPEN TRUNK",team===BLUE?"#80b3ff":"#ff8a8a");
   lab.position.set(0,5.55,2.8);
   lab.scale.set(4,1,1);
   g.add(lab);
@@ -572,16 +675,18 @@ function createBall(){
 }
 
 function createPlayers(){
+  const blueTypes=["handler","bruiser","trunkSpecialist"];
+  const redTypes=["interceptor","jumper","bruiser"];
   [[-7,25,Math.PI],[0,22,Math.PI],[7,25,Math.PI]].forEach((p,i)=>{
-    players.push(player(`Blue ${i+1}`,BLUE,p[0],p[1],p[2],i));
+    players.push(player(`Blue ${i+1}`,BLUE,p[0],p[1],p[2],i,blueTypes[i]));
   });
 
   [[-7,-25,0],[0,-22,0],[7,-25,0]].forEach((p,i)=>{
-    players.push(player(`Red ${i+1}`,RED,p[0],p[1],p[2],i));
+    players.push(player(`Red ${i+1}`,RED,p[0],p[1],p[2],i,redTypes[i]));
   });
 }
 
-function player(name,team,x,z,rot,index){
+function player(name,team,x,z,rot,index,type="handler"){
   const g=new THREE.Group();
   g.position.set(x,0,z);
   g.rotation.y=rot;
@@ -629,18 +734,20 @@ function player(name,team,x,z,rot,index){
   rs.position.x=.33;
   g.add(ls,rs);
 
-  const lab=sprite(name,team===BLUE?"#80b3ff":"#ff8a8a");
+  const lab=sprite(`${name} — ${TYPE_LABELS[type]||type}`,team===BLUE?"#80b3ff":"#ff8a8a");
   lab.position.set(0,4.45,0);
-  lab.scale.set(3.2,.8,1);
+  lab.scale.set(4.2,.9,1);
   g.add(lab);
 
   scene.add(g);
 
+  const t=TYPE_STATS[type]||TYPE_STATS.handler;
   return {
     name,team,index,group:g,
+    type,
     leftArm:la,rightArm:ra,leftLeg:ll,rightLeg:rl,leftShoe:ls,rightShoe:rs,
-    speed:10.4,
-    turnSpeed:3.55,
+    speed:10.4*t.speedMult,
+    turnSpeed:3.55*t.turnMult,
     sprint:1,
     sprintCooldown:0,
     isSprinting:false,
@@ -682,7 +789,8 @@ function player(name,team,x,z,rot,index){
     receiveMode:"goToSpot",
     passThreatened:false,
     defPushCooldown:0,
-    stumbleTimer:0
+    stumbleTimer:0,
+    stats:t
   };
 }
 
@@ -885,6 +993,11 @@ function control(dt,team,p,c){
       if(keys[c.hr])inp.offset-=1.55*dt;
       inp.offset=THREE.MathUtils.clamp(inp.offset,-.95,.95);
       marker(team).style.left=`${charge(team).marker*100}%`;
+      const cState=charge(team);
+      if(inp.shot){
+        const tint=cState.zone==="Perfect"?"#8cff9e":cState.zone==="Good"?"#d5ff9e":cState.zone==="Weak"?"#ff9a9a":"#ffd37e";
+        setHint(cState.zone,tint);
+      }
       if(inp.pass){
         const r=bestMate(p);
         if(r)updatePassPreview(p,r);
@@ -1047,9 +1160,14 @@ function charge(team){
   const t=THREE.MathUtils.clamp((performance.now()-inp.start)/1500,0,1.25);
   const marker=Math.min(t,1);
   const err=Math.abs(marker-.5);
-  let acc=THREE.MathUtils.clamp(1-err*2.7,0,1);
-  if(t>1)acc*=.45;
-  return{t,marker,accuracy:acc};
+  let acc=THREE.MathUtils.clamp(1-err*2.8,0,1);
+  if(t>1)acc*=.35;
+  let zone="Weak";
+  if(marker>.2&&marker<=.42)zone="Risky";
+  if(marker>.42&&marker<.58)zone=err<.04?"Perfect":"Good";
+  if(marker>=.58&&marker<.8)zone="Too strong";
+  if(marker>=.8||t>1)zone="Overcharged";
+  return{t,marker,accuracy:acc,zone};
 }
 
 function calculateArcVelocity(start,target,arcHeight,flightTime){
@@ -1178,9 +1296,12 @@ function throwFastPass(passer,receiver,info){
   const start=handPos(passer);
   const target=getLeadPassTarget(passer,receiver);
   const dir=target.clone().sub(start).normalize();
-  const pow=THREE.MathUtils.clamp(info.t,.15,1.05);
+  const passMult=passer.stats?.passAccuracyMult||1;
+  const pow=THREE.MathUtils.clamp(info.t,.15,1.05)*THREE.MathUtils.lerp(.92,1.06,passMult-0.8);
   const vel=dir.clone().multiplyScalar(FAST_PASS_BASE_SPEED+pow*FAST_PASS_BONUS_SPEED);
   vel.y=THREE.MathUtils.clamp(dir.y*10+FAST_PASS_Y,FAST_PASS_Y,FAST_PASS_MAX_Y);
+  vel.x+=(Math.random()-.5)*(1-info.accuracy)*(2.4-passMult);
+  vel.z+=(Math.random()-.5)*(1-info.accuracy)*(2.4-passMult);
   launchBallFromHand(passer,vel,false,receiver,"fast",target);
   float(info.accuracy>.72?"Green Fast!":"Fast pass",passer.group.position.clone().add(new THREE.Vector3(0,4.8,0)),info.accuracy>.72?"#80ff80":"#ff7777");
 }
@@ -1195,27 +1316,25 @@ function throwShot(p,info){
   const start=handPos(p);
   let target=getTrunkShotTarget(p,oppCar(p.team));
   const hold=THREE.MathUtils.clamp(info.marker,0,1);
-  const shotStrength=THREE.MathUtils.lerp(SHOT_MIN_POWER,SHOT_MAX_POWER,hold);
-  const baseAccuracy=chargeAccuracy(hold);
-  const overhold=Math.max(0,hold-.58);
-  const finalAccuracy=THREE.MathUtils.clamp(baseAccuracy-(info.stumblePenalty||0)-overhold*1.8,0,1);
-  target.y-=.35;
-  const aimError=(1-finalAccuracy)*MAX_SHOT_AIM_ERROR;
+  const typeStats=p.stats||TYPE_STATS.handler;
+  const early=Math.max(0,.38-hold);
+  const late=Math.max(0,hold-.62);
+  const shotStrength=THREE.MathUtils.clamp(THREE.MathUtils.lerp(.45,1.24,hold)-early*.2,SHOT_MIN_POWER*.75,1.28);
+  const baseAccuracy=chargeAccuracy(hold)+(typeStats.greenBoost||0);
+  const finalAccuracy=THREE.MathUtils.clamp((baseAccuracy-(info.stumblePenalty||0)-early*.7-late*.5)*typeStats.shotAccuracyMult,0,1);
+  target.y-=.9;
+  const aimError=(1-finalAccuracy)*(MAX_SHOT_AIM_ERROR+(early*4)+(late*2.5));
   target.x+=(Math.random()-.5)*aimError;
-  target.y+=(Math.random()-.5)*aimError*.05;
+  target.y+=(Math.random()-.5)*aimError*.03;
   target.z+=(Math.random()-.5)*aimError;
   const dist=flat(start,target);
   const flightTime=THREE.MathUtils.clamp(dist/(25*shotStrength),SHOT_MIN_FLIGHT_TIME,SHOT_MAX_FLIGHT_TIME);
-  const arcBonus=Math.max(
-    0,
-    THREE.MathUtils.lerp(SHOT_LOW_ARC_BONUS,SHOT_MAX_ARC_BONUS,hold)+
-      ((p.isJumping||p.y>.2)?SHOT_JUMP_ARC_BONUS:0)
-  );
+  const arcBonus=Math.max(0,THREE.MathUtils.lerp(SHOT_LOW_ARC_BONUS-.09,SHOT_MAX_ARC_BONUS,hold)+((p.isJumping||p.y>.2)?SHOT_JUMP_ARC_BONUS:0)+late*.12);
   const vel=calculateArcVelocity(start,target,arcBonus,flightTime);
   ball.vel.copy(vel);
   launchBallFromHand(p,ball.vel,true,null,"shot",target);
   float(
-    finalAccuracy>.72?"Green trunk line!":hold>.62?"Overthrown!":"Weak shot!",
+    finalAccuracy>.74?"Green shot":hold>.8?"Overcharged":hold<.35?"Weak shot":"Strong shot",
     p.group.position.clone().add(new THREE.Vector3(0,5.2,0)),
     finalAccuracy>.72?"#8cff8c":"#ff7777"
   );
@@ -1386,6 +1505,16 @@ function offAI(p,dt){
       const side=new THREE.Vector3(toGoal.z,0,-toGoal.x).multiplyScalar(p.cutDir*OPEN_SPACE_SEARCH_RADIUS);
       p.aiTarget.add(side);
       clamp(p.aiTarget);
+    }
+    if(teamCommand===1){
+      p.aiTarget.copy(oppCar(p.team).pos.clone().add(new THREE.Vector3((p.index-1)*4,0,p.team===BLUE?8:-8)));
+    }else if(teamCommand===2){
+      p.aiTarget.copy(ballHolder.group.position.clone().add(right(ballHolder).multiplyScalar((p.index===0?-1:1)*5)));
+    }else if(teamCommand===3){
+      const screenTarget=closestMate(opposite(p.team),ballHolder.group.position);
+      if(p.type==="bruiser"&&screenTarget)p.aiTarget.copy(screenTarget.group.position);
+    }else if(teamCommand===4){
+      p.aiTarget.copy(oppCar(p.team).pos.clone().add(new THREE.Vector3((p.index-1)*3,0,p.team===BLUE?6:-6)));
     }
   }
   if(p.forceClearTimer>0){
@@ -1562,13 +1691,13 @@ function updateBall(dt){
     resetBallTrunkState();
 
     if(Math.abs(ball.vel.y)>3.5){
-      ball.vel.y*=-GROUND_BOUNCE;
-      ball.vel.x*=GROUND_FRICTION;
-      ball.vel.z*=GROUND_FRICTION;
+      ball.vel.y*=-GROUND_BOUNCE*(arenaState?.bounceMult||1);
+      ball.vel.x*=GROUND_FRICTION*(arenaState?.rollFriction||1);
+      ball.vel.z*=GROUND_FRICTION*(arenaState?.rollFriction||1);
     }else{
       ball.vel.y=0;
-      ball.vel.x*=GROUND_FRICTION;
-      ball.vel.z*=GROUND_FRICTION;
+      ball.vel.x*=GROUND_FRICTION*(arenaState?.rollFriction||1);
+      ball.vel.z*=GROUND_FRICTION*(arenaState?.rollFriction||1);
       if(ball.vel.length()<LOOSE_BALL_PICKUP_SPEED*.25)groundTurnover();
     }
   }
@@ -1619,8 +1748,13 @@ function scoreCheck(dt){
 
   const car=oppCar(ball.owner);
   const state=getTrunkInteriorState(car);
+  const prevLocal=ball.prevPos.clone();
+  car.group.worldToLocal(prevLocal);
+  if(!ball.enteredTrunkRear&&isBallPassingThroughFrontMouth(state.local,prevLocal)){
+    ball.enteredTrunkRear=true;
+  }
 
-  if(state.inside){
+  if(state.inside&&ball.enteredTrunkRear&&!state.touchingRim){
     if(ball.inTrunkTeam!==car.team){
       ball.inTrunkTeam=car.team;
       ball.trunkSettleTime=0;
@@ -1645,7 +1779,8 @@ function scoreCheck(dt){
 
     ball.trunkSettleTime+=dt;
 
-    if(ball.trunkSettleTime>=.35&&ball.vel.length()<8&&!ball.trunkScored){
+    updateTrunkFeedback(car,ball.trunkSettleTime/.42,true);
+    if(ball.trunkSettleTime>=.42&&ball.vel.length()<7.5&&!ball.trunkScored){
       ball.trunkScored=true;
       float("TRUNK GOAL!",ball.pos.clone().add(new THREE.Vector3(0,1.6,0)),"#9dfbff");
       score(ball.owner,"trunk");
@@ -1653,7 +1788,12 @@ function scoreCheck(dt){
     return;
   }
 
+  if(state.touchingRim&&performance.now()-ball.lastRimMsg>320){
+    float("Trunk Rim!",ball.pos.clone().add(new THREE.Vector3(0,1.3,0)),"#ffffff");
+    ball.lastRimMsg=performance.now();
+  }
   if(ball.inTrunkTeam===car.team)resetBallTrunkState();
+  updateTrunkFeedback(car,0,false);
 }
 
 function carBallCollision(){
@@ -1777,6 +1917,7 @@ function carBallCollision(){
       ball.loose=true;
       ball.shotCatchLocked=false;
       ball.lastTouch=opposite(car.team);
+      float("No score — roof!",ball.pos.clone().add(new THREE.Vector3(0,1.2,0)),"#ff9d9d");
       ball.mesh.position.copy(ball.pos);
       return;
     }
@@ -1850,7 +1991,7 @@ function contactCheck(){
 
     if(!same&&p.swatTimer>0){
       const activeArm=armPos(p,p.swatHand);
-      const swatRadius=(p.isJumping||p.y>.2)?SWAT_RADIUS_JUMPING:SWAT_RADIUS_GROUND;
+      const swatRadius=((p.isJumping||p.y>.2)?SWAT_RADIUS_JUMPING:SWAT_RADIUS_GROUND)*(p.stats?.blockReachMult||1);
       if(activeArm.distanceTo(ball.pos)<swatRadius){
         const interceptChance=getTipInterceptionChance(p,ball);
         if(Math.random()<interceptChance){
@@ -1983,6 +2124,12 @@ function score(team,type="standard"){
   team===BLUE?blueScore++:redScore++;
   updateScore();
   resetBallTrunkState();
+  if(tournamentMode&&(blueScore>=5||redScore>=5)){
+    advanceTournamentIfNeeded(blueScore>redScore?BLUE:RED);
+    blueScore=0;
+    redScore=0;
+    updateScore();
+  }
 
   frozen=true;
   ballInAir=false;
@@ -2062,6 +2209,7 @@ function startPossession(team,reason=""){
   updateBallToHand();
   assignMarks();
   updateScore();
+  saveTournament();
 
   noticeMsg(`${cap(team)} ball<br><small>${reason}</small>`,900);
 }
@@ -2886,7 +3034,7 @@ function jump(p){
   if(p.isJumping||p.jumpCooldown>0)return;
 
   p.isJumping=true;
-  p.jumpVel=JUMP_V;
+  p.jumpVel=JUMP_V*(p.stats?.jumpMult||1);
   p.jumpCooldown=.25;
 }
 
@@ -2945,7 +3093,11 @@ function trunkTarget(car){
 }
 
 function getTrunkShotTarget(shooter,targetCar){
-  const localTarget=new THREE.Vector3(0,1.95,2.05);
+  const localTarget=new THREE.Vector3(0,1.45,2.22);
+  if(shooter.type==="trunkSpecialist"){
+    localTarget.y=1.35;
+    localTarget.z=2.35;
+  }
   const target=targetCar.group.localToWorld(localTarget);
   const dist=flat(shooter.group.position,targetCar.group.position);
   target.y+=THREE.MathUtils.clamp(dist/180,0,.16);
@@ -3013,6 +3165,7 @@ function getInterceptionChance(defender,ballRef){
   chance+=heightScore*.15;
   chance+=speedScore*.10;
   chance+=difficultyInterceptBonus;
+  chance+=(defender.stats?.stealReachMult||1)-1;
   return THREE.MathUtils.clamp(chance,.15,.95);
 }
 
@@ -3043,6 +3196,7 @@ function getTipInterceptionChance(defender,ballRef){
   if(ballSpeed>42)chance-=.18;
   else if(ballSpeed<30)chance+=.10;
   chance+=THREE.MathUtils.lerp(-.12,.16,aiDiff/5);
+  chance+=((defender.stats?.stealReachMult||1)-1)*.7;
   return THREE.MathUtils.clamp(chance,.10,.92);
 }
 
@@ -3071,9 +3225,12 @@ function getTrunkInteriorState(car){
   const insideX=Math.abs(local.x)<TRUNK_W/2-ball.radius*.35;
   const insideY=local.y>.8&&local.y<3.85;
   const insideZ=local.z>1.45&&local.z<5.45;
-
+  const touchingRim=
+    Math.abs(local.x)>TRUNK_W/2-ball.radius*.55||
+    local.y<.92||local.y>3.78||
+    local.z<1.62;
   const inside=insideX&&insideY&&insideZ;
-  return {inside,local};
+  return {inside,local,touchingRim};
 }
 
 function getTeammateIQ(team){
@@ -3136,6 +3293,68 @@ function updateDefensivePushes(dt){
   players.forEach(def=>{
     if(def.team!==holder.team)tryDefensivePush(def,holder);
   });
+}
+
+function setTeamCommand(index){
+  teamCommand=THREE.MathUtils.clamp(index,0,4);
+  teamCommandEl.textContent=`Team Command: ${COMMANDS[teamCommand]}`;
+  float(COMMANDS[teamCommand],(ballHolder?ballHolder.group.position:players[1].group.position).clone().add(new THREE.Vector3(0,5.4,0)),"#ffe37c");
+}
+
+function updateTrunkFeedback(car,settleProgress,isSettling){
+  const mouth=car.group.localToWorld(new THREE.Vector3(0,2.25,1.28)).project(cam1);
+  const sx=(mouth.x*.5+.5)*innerWidth;
+  const sy=(-mouth.y*.5+.5)*innerHeight;
+  trunkFeedbackEl.style.left=`${Math.round(sx)}px`;
+  trunkFeedbackEl.style.top=`${Math.round(sy)}px`;
+  if(isSettling){
+    trunkFeedbackEl.textContent=`OPEN TRUNK • Settling ${(THREE.MathUtils.clamp(settleProgress,0,1)*100|0)}%`;
+  }else{
+    trunkFeedbackEl.textContent="OPEN TRUNK";
+  }
+}
+
+function applyArenaTheme(){
+  const a=ARENAS[arenaKey]||ARENAS.suburban;
+  arenaState=a;
+  scene.background=new THREE.Color(a.skyColor);
+  scene.fog=new THREE.Fog(a.skyColor,95,215);
+  document.body.style.background=`#${a.skyColor.toString(16).padStart(6,"0")}`;
+  if(groundMesh)groundMesh.material.color.set(a.groundColor);
+}
+
+function createTournamentData(){
+  return{
+    currentRound:0,
+    playerTeam:"Trunk Kings",
+    opponentTeam:TOURNAMENT_TEAMS[1],
+    records:{},
+    completedGames:[],
+    arena:arenaKey,
+    unlocks:{}
+  };
+}
+
+function saveTournament(){
+  if(!tournamentMode||!tournamentData)return;
+  tournamentData.arena=arenaKey;
+  localStorage.setItem("trunkballTournament",JSON.stringify(tournamentData));
+}
+
+function advanceTournamentIfNeeded(winner){
+  if(!tournamentMode||!tournamentData)return;
+  const round=tournamentData.currentRound;
+  const opp=TOURNAMENT_TEAMS[Math.min(round+1,TOURNAMENT_TEAMS.length-1)];
+  tournamentData.completedGames.push({round,opponent:opp,winner,date:new Date().toISOString()});
+  tournamentData.currentRound++;
+  tournamentData.opponentTeam=TOURNAMENT_TEAMS[Math.min(tournamentData.currentRound+1,TOURNAMENT_TEAMS.length-1)];
+  aiDiff=THREE.MathUtils.clamp(2+tournamentData.currentRound,2,5);
+  saveTournament();
+  if(tournamentData.currentRound>=TOURNAMENT_TEAMS.length-1&&winner===BLUE){
+    noticeMsg("🏆 CHAMPIONS! THE SLAM SHUTTERS DEFEATED! 🎉",3000);
+  }else{
+    noticeMsg(`Tournament Round ${tournamentData.currentRound+1} ready`,1800);
+  }
 }
 
 function opposite(t){
@@ -3268,6 +3487,8 @@ function clearFriendlyShotLane(shooter){
 }
 
 function updateGameplayIndicators(dt){
+  const activeCar=oppCar(possession);
+  if(activeCar)updateTrunkFeedback(activeCar,0,false);
   if(ballHolder){
     handlerRing.visible=true;
     handlerRing.position.copy(ballHolder.group.position).setY(.07);
@@ -3296,7 +3517,9 @@ function updateGameplayIndicators(dt){
 }
 
 function updateScore(){
-  scoreEl.textContent=`Blue ${blueScore} - ${redScore} Red`;
+  const txt=`Blue ${blueScore} - ${redScore} Red`;
+  scoreEl.textContent=txt;
+  centerScore.textContent=txt;
 }
 
 function status(){
@@ -3313,10 +3536,12 @@ function status(){
 
   statusEl.innerHTML=
     `Mode: <b>${mode}</b><br>`+
+    `Arena: <b>${arenaState.name}</b>${tournamentMode?` | Tournament Round <b>${(tournamentData?.currentRound||0)+1}</b>`:""}<br>`+
     `Possession: <b style="color:${possession===BLUE?"#80b3ff":"#ff8a8a"}">${cap(possession)}</b><br>`+
-    `P1 controls: <b>${p.name}</b>${p.hasBall?" — ball":""}${g}<br>`+
+    `P1 controls: <b>${p.name}</b> (${TYPE_LABELS[p.type]})${p.hasBall?" — ball":""}${g}<br>`+
     `Hand: <b>${p.hand}</b> | Steps: <b>${p.steps}/3</b> | Shove: <b>${p.shoveCooldown>0?"cooling":"ready"}</b> | Sprint: <b>${Math.round(p.sprint*100)}%</b>${p.isSprinting?" ⚡":""}<br>`+
-    `${split&&controlledRed?`P2 controls: <b>${controlledRed.name}</b>${controlledRed.hasBall?" — ball":""} | Sprint: <b>${Math.round(controlledRed.sprint*100)}%</b>${controlledRed.isSprinting?" ⚡":""}<br>`:""}`+
+    `${split&&controlledRed?`P2 controls: <b>${controlledRed.name}</b> (${TYPE_LABELS[controlledRed.type]})${controlledRed.hasBall?" — ball":""} | Sprint: <b>${Math.round(controlledRed.sprint*100)}%</b>${controlledRed.isSprinting?" ⚡":""}<br>`:""}`+
+    `Team Command: <b>${COMMANDS[teamCommand]}</b><br>`+
     `${p.hasBall&&p.steps>=3?`<span style="color:#fff06a">3 steps used — W shoves, or pass/shoot!</span><br>`:""}`+
     `${p.hasBall&&insideNo(p.group.position,p.team)?`<span style="color:#ff7373">No-shoot box: cannot shoot here</span>`:""}`;
 }
