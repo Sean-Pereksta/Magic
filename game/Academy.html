@@ -955,125 +955,374 @@ function getEnemyRosterTypes(){
   return ENEMY_TEAM_ROSTERS[idx].types.slice(0,3);
 }
 
+function createAnimalMaterials(animal,team,index){
+  const furToneByAnimal={fox:0xd18753,bear:0x775641,kangaroo:0xb28660,raccoon:0x8f9298,hawk:0x7d7464};
+  const muzzleToneByAnimal={fox:0xf2dcc1,bear:0xb89f86,kangaroo:0xd9bf9f,raccoon:0xdad7d1,hawk:0xd6c7a0};
+  const chestToneByAnimal={fox:0xf3e5cf,bear:0x9f876d,kangaroo:0xe4d0b4,raccoon:0xbfc1c6,hawk:0xb3a789};
+  return {
+    fur:new THREE.MeshStandardMaterial({color:furToneByAnimal[animal]||0xc88958,roughness:.7,metalness:0}),
+    muzzle:new THREE.MeshStandardMaterial({color:muzzleToneByAnimal[animal]||0xe2c4a3,roughness:.64}),
+    chest:new THREE.MeshStandardMaterial({color:chestToneByAnimal[animal]||0xd7c2a7,roughness:.68}),
+    nose:new THREE.MeshStandardMaterial({color:animal==="hawk"?0xd3ae5d:0x111111,roughness:.52}),
+    eyeWhite:new THREE.MeshStandardMaterial({color:0xffffff,roughness:.3}),
+    pupil:new THREE.MeshStandardMaterial({color:0x111111,roughness:.2}),
+    claws:new THREE.MeshStandardMaterial({color:animal==="hawk"?0x2a2519:0x1a1a1a,roughness:.45}),
+    jersey:new THREE.MeshStandardMaterial({color:team===BLUE?0x2f74ff:0xff3333,roughness:.5}),
+    shorts:new THREE.MeshStandardMaterial({color:team===BLUE?0x132964:0x681111,roughness:.6}),
+    shoes:new THREE.MeshStandardMaterial({color:index===0?0xfefefe:index===1?0xf7e978:0x212121,roughness:.3}),
+    trim:new THREE.MeshStandardMaterial({color:team===BLUE?0xa8c7ff:0xffb8b8,roughness:.4}),
+    feather:new THREE.MeshStandardMaterial({color:animal==="hawk"?0x696257:(team===BLUE?0x7ea6ff:0xff8f8f),roughness:.72}),
+    mask:new THREE.MeshStandardMaterial({color:animal==="raccoon"?0x25272f:0x333333,roughness:.75})
+  };
+}
+
+function makeClaws(parent,animal,scale=1){
+  const digits=animal==="hawk"?3:3;
+  const spread=animal==="hawk"?.2:.13;
+  for(let i=0;i<digits;i++){
+    const clawGeo=animal==="hawk"?new THREE.ConeGeometry(.03*scale,.18*scale,8):new THREE.ConeGeometry(.028*scale,.09*scale,8);
+    const claw=new THREE.Mesh(clawGeo,new THREE.MeshStandardMaterial({color:animal==="hawk"?0x2a2519:0x171717,roughness:.5}));
+    claw.rotation.x=Math.PI/2;
+    claw.position.set((i-(digits-1)/2)*spread*scale,-.01,.12*scale+(animal==="hawk"?.04:0));
+    parent.add(claw);
+  }
+}
+
+function makePaw(animal,side,materials){
+  const paw=new THREE.Group();
+  const sign=side==="left"?-1:1;
+  const isHawk=animal==="hawk";
+  const baseGeo=isHawk?new THREE.CapsuleGeometry(.11,.18,6,10):new THREE.SphereGeometry(animal==="bear"?.22:animal==="raccoon"?.15:.17,14,12);
+  const palm=new THREE.Mesh(baseGeo,isHawk?materials.feather:materials.fur);
+  palm.scale.set(isHawk?.7:1,isHawk?1.1:animal==="bear"?.88:1,animal==="fox"?1.2:1);
+  paw.add(palm);
+  if(isHawk){
+    const wingPlate=new THREE.Mesh(new THREE.BoxGeometry(.34,.08,.28),materials.feather);
+    wingPlate.position.set(sign*.05,.05,-.02);
+    paw.add(wingPlate);
+  }else{
+    makeClaws(paw,animal,animal==="bear"?1.2:animal==="raccoon"?.85:1);
+  }
+  return paw;
+}
+
+function makeTalonFoot(side,materials){
+  const g=new THREE.Group();
+  const sign=side==="left"?-1:1;
+  const base=new THREE.Mesh(new THREE.CapsuleGeometry(.1,.24,6,10),materials.shoes);
+  base.rotation.z=Math.PI/2;
+  base.scale.z=1.35;
+  g.add(base);
+  for(let i=0;i<3;i++){
+    const talon=new THREE.Mesh(new THREE.ConeGeometry(.03,.2,8),materials.claws);
+    talon.rotation.x=Math.PI/2+.2;
+    talon.position.set((i-1)*.09*sign,-.02,.22);
+    g.add(talon);
+  }
+  return g;
+}
+
+function makeFoot(animal,side,materials){
+  if(animal==="hawk")return makeTalonFoot(side,materials);
+  const g=new THREE.Group();
+  const sign=side==="left"?-1:1;
+  const len=animal==="kangaroo"?1.05:animal==="fox"?.85:animal==="bear"?.8:.72;
+  const width=animal==="bear"?.42:animal==="kangaroo"?.28:animal==="raccoon"?.25:.24;
+  const shoe=new THREE.Mesh(new THREE.CapsuleGeometry(.12,len*.62,6,12),materials.shoes);
+  shoe.rotation.z=Math.PI/2;
+  shoe.scale.set(1,width/.24,1.2);
+  g.add(shoe);
+  const toe=new THREE.Mesh(new THREE.SphereGeometry(animal==="bear"?.16:.12,12,10),materials.shoes);
+  toe.position.set(sign*.04,-.02,len*.26);
+  toe.scale.set(width/.24,.9,1.4);
+  g.add(toe);
+  if(animal!=="kangaroo")makeClaws(g,animal,animal==="bear"?1.15:.9);
+  if(animal==="kangaroo"){
+    const heel=new THREE.Mesh(new THREE.SphereGeometry(.11,10,10),materials.shoes);
+    heel.position.set(0,-.02,-.3);
+    g.add(heel);
+  }
+  return g;
+}
+
+function makeRoundedTorso(animal,bodyScale,materials){
+  const bodyRoot=new THREE.Group();
+  const hips=new THREE.Mesh(new THREE.CapsuleGeometry(.36,.32,8,16),materials.shorts);
+  hips.position.y=1.72;
+  hips.scale.set(bodyScale[0]*(animal==="kangaroo"?1.06:1),bodyScale[1]*(animal==="bear"?1.1:1),bodyScale[2]*(animal==="raccoon"?1.04:1));
+  bodyRoot.add(hips);
+  const torso=new THREE.Mesh(new THREE.CapsuleGeometry(.46,.8,8,16),materials.jersey);
+  torso.position.y=2.52;
+  torso.scale.set(bodyScale[0]*(animal==="bear"?1.18:animal==="fox"?.92:1),bodyScale[1],bodyScale[2]*(animal==="hawk"?.9:1));
+  bodyRoot.add(torso);
+  const chest=new THREE.Mesh(new THREE.SphereGeometry(.42,16,14),materials.chest);
+  chest.position.set(0,2.55,.28*bodyScale[2]);
+  chest.scale.set(animal==="bear"?1.28:animal==="hawk"?.82:1,animal==="bear"?.95:1,animal==="hawk"?.72:.72);
+  bodyRoot.add(chest);
+  const shoulders=new THREE.Mesh(new THREE.CapsuleGeometry(.3,.62,6,12),animal==="hawk"?materials.feather:materials.jersey);
+  shoulders.position.y=2.93;
+  shoulders.rotation.z=Math.PI/2;
+  shoulders.scale.set(bodyScale[0]*(animal==="bear"?1.48:animal==="hawk"?.9:1.18),1,1);
+  bodyRoot.add(shoulders);
+  return {bodyRoot,hips,torso,chest,shoulders};
+}
+
+function makeAnimalEars(animal,materials){
+  if(animal==="hawk")return {leftEar:null,rightEar:null,ears:[]};
+  const ears=[];
+  const leftEar=new THREE.Mesh(new THREE.ConeGeometry(.11,animal==="bear"?.24:animal==="kangaroo"?.48:.33,12),materials.fur);
+  const rightEar=leftEar.clone();
+  leftEar.position.set(-.24,.24,-.1);
+  rightEar.position.set(.24,.24,-.1);
+  if(animal==="bear"){
+    leftEar.geometry=new THREE.SphereGeometry(.12,10,10);
+    rightEar.geometry=new THREE.SphereGeometry(.12,10,10);
+    leftEar.position.y=.2; rightEar.position.y=.2;
+  }else if(animal==="raccoon"){
+    leftEar.scale.set(.88,.88,.88);
+    rightEar.scale.set(.88,.88,.88);
+  }else if(animal==="kangaroo"){
+    leftEar.scale.set(.92,1.45,.85);
+    rightEar.scale.set(.92,1.45,.85);
+    leftEar.position.y=.34; rightEar.position.y=.34;
+  }
+  ears.push(leftEar,rightEar);
+  return {leftEar,rightEar,ears};
+}
+
+function makeAnimalSnoutOrBeak(animal,materials){
+  if(animal==="hawk"){
+    const beak=new THREE.Mesh(new THREE.ConeGeometry(.1,.34,12),materials.nose);
+    beak.rotation.x=Math.PI/2;
+    beak.position.set(0,-.02,.48);
+    return beak;
+  }
+  const snout=new THREE.Mesh(new THREE.CapsuleGeometry(animal==="bear"?.16:.12,animal==="fox"?.32:animal==="kangaroo"?.28:.2,6,10),materials.muzzle);
+  snout.rotation.x=Math.PI/2;
+  snout.position.set(0,-.02,animal==="fox"?.44:animal==="kangaroo"?.4:.38);
+  if(animal==="bear")snout.scale.set(1.25,.9,1.05);
+  if(animal==="raccoon")snout.scale.set(.9,.88,1);
+  const nose=new THREE.Mesh(new THREE.SphereGeometry(.05,10,10),materials.nose);
+  nose.position.set(0,.02,animal==="fox"?.61:.53);
+  snout.add(nose);
+  return snout;
+}
+
+function makeAnimalFace(animal,head,materials){
+  const faceParts={};
+  const eyeY=.07, eyeZ=.42, eyeX=animal==="bear"?.16:.18;
+  const makeEye=(side)=>{
+    const g=new THREE.Group();
+    const white=new THREE.Mesh(new THREE.SphereGeometry(.08,10,10),materials.eyeWhite);
+    white.scale.set(1,.85,.4);
+    const pupil=new THREE.Mesh(new THREE.SphereGeometry(.035,8,8),materials.pupil);
+    pupil.position.z=.045;
+    const brow=new THREE.Mesh(new THREE.BoxGeometry(.13,.03,.03),materials.pupil);
+    brow.position.y=.08;
+    g.add(white,pupil,brow);
+    g.position.set(side*eyeX,eyeY,eyeZ);
+    g.rotation.y=side*-.1;
+    head.add(g);
+    return {white,pupil,brow,root:g};
+  };
+  faceParts.leftEye=makeEye(-1);
+  faceParts.rightEye=makeEye(1);
+  if(animal==="raccoon"){
+    const mask=new THREE.Mesh(new THREE.CapsuleGeometry(.2,.22,6,12),materials.mask);
+    mask.rotation.z=Math.PI/2;
+    mask.position.set(0,.06,.35);
+    mask.scale.set(1.7,.9,.7);
+    head.add(mask);
+    faceParts.mask=mask;
+  }
+  if(animal==="hawk"){
+    const crest=new THREE.Mesh(new THREE.ConeGeometry(.08,.22,10),materials.feather);
+    crest.position.set(0,.28,-.04);
+    crest.rotation.x=-.2;
+    head.add(crest);
+    faceParts.crest=crest;
+  }
+  return faceParts;
+}
+
+function makeAnimalHead(animal,materials){
+  const neck=new THREE.Group();
+  neck.position.y=3.2;
+  const neckMesh=new THREE.Mesh(new THREE.CapsuleGeometry(animal==="bear"?.18:.14,.2,6,10),animal==="hawk"?materials.feather:materials.fur);
+  neckMesh.position.y=-.04;
+  neck.add(neckMesh);
+  const head=new THREE.Group();
+  head.position.y=.35;
+  const skull=new THREE.Mesh(new THREE.SphereGeometry(animal==="bear"?.54:animal==="kangaroo"?.45:.48,18,16),materials.fur);
+  if(animal==="bear")skull.scale.set(1.12,1.03,1.02);
+  if(animal==="fox")skull.scale.set(.96,.96,1.04);
+  if(animal==="hawk")skull.scale.set(.88,.96,.92);
+  head.add(skull);
+  const snout=makeAnimalSnoutOrBeak(animal,materials);
+  head.add(snout);
+  const earData=makeAnimalEars(animal,materials);
+  earData.ears.forEach(e=>head.add(e));
+  const faceParts=makeAnimalFace(animal,head,materials);
+  neck.add(head);
+  return {neck,head,snout,leftEar:earData.leftEar,rightEar:earData.rightEar,ears:earData.ears,faceParts};
+}
+
+function makeSegmentedArm(animal,side,materials,armScale){
+  const sign=side==="left"?-1:1;
+  const rig=new THREE.Group();
+  const upperLen=.6*armScale[1]*(animal==="bear"?1.12:1);
+  const lowerLen=.56*armScale[1]*(animal==="hawk"?.95:1);
+  const upperArm=new THREE.Mesh(new THREE.CapsuleGeometry(.11*armScale[0],upperLen,6,12),animal==="hawk"?materials.feather:materials.fur);
+  upperArm.position.y=-upperLen*.32;
+  upperArm.scale.z=armScale[2];
+  rig.add(upperArm);
+  const elbowJoint=new THREE.Mesh(new THREE.SphereGeometry(.1,10,10),animal==="hawk"?materials.feather:materials.fur);
+  elbowJoint.position.y=-upperLen*.62;
+  rig.add(elbowJoint);
+  const forearmPivot=new THREE.Group();
+  forearmPivot.position.y=-upperLen*.64;
+  rig.add(forearmPivot);
+  const forearm=new THREE.Mesh(new THREE.CapsuleGeometry(.1*armScale[0],lowerLen,6,12),animal==="hawk"?materials.feather:materials.fur);
+  forearm.position.y=-lowerLen*.34;
+  forearm.scale.z=armScale[2]*(animal==="fox"?1.03:1);
+  forearmPivot.add(forearm);
+  const wristJoint=new THREE.Mesh(new THREE.SphereGeometry(.08,10,10),animal==="hawk"?materials.feather:materials.fur);
+  wristJoint.position.y=-lowerLen*.66;
+  forearmPivot.add(wristJoint);
+  const paw=makePaw(animal,side,materials);
+  paw.position.set(sign*.02,-lowerLen*.74,.02);
+  forearmPivot.add(paw);
+  return {rig,upperArm,forearmPivot,forearm,paw};
+}
+
+function makeSegmentedLeg(animal,side,materials,legScale){
+  const sign=side==="left"?-1:1;
+  const rig=new THREE.Group();
+  const thighLen=.68*legScale[1]*(animal==="kangaroo"?1.2:animal==="bear"?1.06:1);
+  const shinLen=.6*legScale[1]*(animal==="kangaroo"?1.12:1);
+  const thigh=new THREE.Mesh(new THREE.CapsuleGeometry(.14*legScale[0],thighLen,6,12),materials.shorts);
+  thigh.position.y=-thighLen*.35;
+  thigh.scale.z=legScale[2]*(animal==="bear"?1.08:1);
+  rig.add(thigh);
+  const kneeJoint=new THREE.Mesh(new THREE.SphereGeometry(.11,10,10),materials.shorts);
+  kneeJoint.position.y=-thighLen*.68;
+  rig.add(kneeJoint);
+  const lowerLegPivot=new THREE.Group();
+  lowerLegPivot.position.y=-thighLen*.7;
+  rig.add(lowerLegPivot);
+  const lowerLeg=new THREE.Mesh(new THREE.CapsuleGeometry(.12*legScale[0],shinLen,6,12),animal==="hawk"?materials.feather:materials.fur);
+  lowerLeg.position.y=-shinLen*.33;
+  lowerLeg.scale.z=legScale[2]*(animal==="hawk"?.8:1);
+  lowerLegPivot.add(lowerLeg);
+  const ankleJoint=new THREE.Mesh(new THREE.SphereGeometry(.09,10,10),animal==="hawk"?materials.feather:materials.fur);
+  ankleJoint.position.y=-shinLen*.66;
+  lowerLegPivot.add(ankleJoint);
+  const foot=makeFoot(animal,side,materials);
+  foot.position.set(sign*.02,-shinLen*.75,animal==="kangaroo"?.2:.06);
+  lowerLegPivot.add(foot);
+  return {rig,thigh,lowerLegPivot,lowerLeg,foot};
+}
+
+function makeAnimalTail(animal,materials){
+  const tail=new THREE.Group();
+  const segCount=animal==="fox"?3:animal==="raccoon"?4:animal==="kangaroo"?2:animal==="hawk"?3:1;
+  for(let i=0;i<segCount;i++){
+    const seg=new THREE.Mesh(
+      new THREE.CapsuleGeometry((animal==="bear"?.1:animal==="kangaroo"?.12:.09)*(1-i*.1),(animal==="kangaroo"?.55:.36)*(1-i*.05),6,12),
+      animal==="hawk"?materials.feather:(animal==="raccoon"&&i%2?materials.mask:materials.fur)
+    );
+    seg.position.set(0,-i*.22,-.16-i*.24);
+    seg.rotation.x=animal==="kangaroo"?.75:.95;
+    if(animal==="fox"&&i===segCount-1)seg.material=materials.chest;
+    tail.add(seg);
+  }
+  return tail;
+}
+
+function applyAnimalPoseDefaults(model,animal){
+  if(animal==="kangaroo"){
+    model.bodyRoot.rotation.x=.08;
+    model.tail.rotation.x=-.2;
+  }else if(animal==="hawk"){
+    model.bodyRoot.rotation.x=.06;
+    model.leftArmRig.rotation.z=.34;
+    model.rightArmRig.rotation.z=-.34;
+  }else if(animal==="bear"){
+    model.bodyRoot.position.y=.03;
+    model.leftArmRig.rotation.z=.18;
+    model.rightArmRig.rotation.z=-.18;
+  }else if(animal==="raccoon"){
+    model.bodyRoot.rotation.x=.04;
+  }
+}
+
 function buildAnimalPlayerModel(type,team,index){
   const t=PLAYER_TYPES[type]||PLAYER_TYPES.handler;
   const m=t.model||{};
   const bodyScale=m.bodyScale||[1,1,1];
-  const skinToneByAnimal={fox:0xd28f5e,bear:0x7f6148,kangaroo:0xb4865f,raccoon:0xa4a5a9,hawk:0x8e8470};
-  const furTone=skinToneByAnimal[t.animal]||0xc88958;
-  const skin=new THREE.MeshStandardMaterial({color:furTone,roughness:.56});
-  const jersey=new THREE.MeshStandardMaterial({color:team===BLUE?0x2f74ff:0xff3333,roughness:.48});
-  const chestFur=new THREE.MeshStandardMaterial({color:t.animal==="fox"?0xf2d2ac:0xcfc0a2,roughness:.62});
-  const shorts=new THREE.MeshStandardMaterial({color:team===BLUE?0x0d246b:0x681111,roughness:.55});
-  const shoes=new THREE.MeshStandardMaterial({color:index===0?0xffffff:index===1?0xfff06a:0x111111,roughness:.35});
-  const trim=new THREE.MeshStandardMaterial({color:team===BLUE?0xa8c7ff:0xffb4b4,roughness:.35});
-
+  const materials=createAnimalMaterials(t.animal,team,index);
   const root=new THREE.Group();
-  const torso=new THREE.Mesh(new THREE.BoxGeometry(1.05*bodyScale[0],1.6*bodyScale[1],.62*bodyScale[2]),jersey);
-  torso.position.y=2.42;
-  torso.castShadow=true;
-  root.add(torso);
-
-  if(t.animal==="fox"||t.animal==="raccoon"){
-    const patch=new THREE.Mesh(new THREE.BoxGeometry(.52,.7,.02),chestFur);
-    patch.position.set(0,2.42,bodyScale[2]*.34);
-    root.add(patch);
-  }
-
-  const headScale=t.animal==="bear"?[1.08,1.02,1.02]:t.animal==="kangaroo"?[.95,1.06,.95]:[1,1,1];
-  const head=new THREE.Mesh(new THREE.SphereGeometry(.48,24,24),skin);
-  head.position.y=3.55;
-  head.scale.set(...headScale);
-  head.castShadow=true;
-  root.add(head);
-
-  const leftEar=new THREE.Mesh(new THREE.ConeGeometry(.12,t.animal==="bear"?.2:.42,12),skin);
-  const rightEar=leftEar.clone();
-  leftEar.position.set(-.22,3.98,-.04);
-  rightEar.position.set(.22,3.98,-.04);
-  if(m.ears==="round"){
-    leftEar.geometry=new THREE.SphereGeometry(.13,12,12);
-    rightEar.geometry=new THREE.SphereGeometry(.13,12,12);
-  }else if(m.ears==="none"){
-    leftEar.visible=false;
-    rightEar.visible=false;
-  }else if(m.ears==="tall"){
-    leftEar.scale.set(.9,1.5,.9);
-    rightEar.scale.set(.9,1.5,.9);
-    leftEar.position.y+=.12;
-    rightEar.position.y+=.12;
-  }
-  root.add(leftEar,rightEar);
-
-  let snout=null;
-  if(m.snout){
-    snout=new THREE.Mesh(new THREE.BoxGeometry(t.animal==="bear"?.42:.34,.2,.28),skin);
-    snout.position.set(0,3.45,.42);
-    if(t.animal==="fox"||t.animal==="raccoon")snout.scale.z=1.25;
-    root.add(snout);
-  }
-  if(m.beak){
-    snout=new THREE.Mesh(new THREE.ConeGeometry(.09,.28,10),new THREE.MeshStandardMaterial({color:0xd5b05e,roughness:.42}));
-    snout.rotation.x=Math.PI/2;
-    snout.position.set(0,3.46,.48);
-    root.add(snout);
-  }
-
+  const bodyBundle=makeRoundedTorso(t.animal,bodyScale,materials);
+  const bodyRoot=bodyBundle.bodyRoot;
+  root.add(bodyRoot);
+  const {torso,chest}=bodyBundle;
+  const headBundle=makeAnimalHead(t.animal,materials);
+  const neck=headBundle.neck;
+  bodyRoot.add(neck);
+  const head=headBundle.head;
   const armScale=m.armScale||[1,1,1];
-  const la=limb(ARM_RADIUS*armScale[0],ARM_LENGTH*armScale[1],skin);
-  const ra=limb(ARM_RADIUS*armScale[0],ARM_LENGTH*armScale[1],skin);
-  la.scale.z=armScale[2];
-  ra.scale.z=armScale[2];
-  la.position.set(-.92*bodyScale[0],2.42,0);
-  la.rotation.z=.25;
-  ra.position.set(.92*bodyScale[0],2.42,0);
-  ra.rotation.z=-.25;
-  root.add(la,ra);
-
+  const leftArmData=makeSegmentedArm(t.animal,"left",materials,armScale);
+  const rightArmData=makeSegmentedArm(t.animal,"right",materials,armScale);
+  const la=leftArmData.rig, ra=rightArmData.rig;
+  la.position.set(-.68*bodyScale[0],2.85,.02);
+  ra.position.set(.68*bodyScale[0],2.85,.02);
+  la.rotation.z=.22;
+  ra.rotation.z=-.22;
+  bodyRoot.add(la,ra);
   const legScale=m.legScale||[1,1,1];
-  const ll=limb(.34*legScale[0],1.32*legScale[1],shorts);
-  const rl=limb(.34*legScale[0],1.32*legScale[1],shorts);
-  ll.scale.z=legScale[2];
-  rl.scale.z=legScale[2];
-  ll.position.set(-.33*bodyScale[0],1.02,0);
-  rl.position.set(.33*bodyScale[0],1.02,0);
-  root.add(ll,rl);
-
-  const leftPaw=new THREE.Mesh(new THREE.SphereGeometry(.17,12,12),skin);
-  const rightPaw=leftPaw.clone();
-  leftPaw.position.set(0,-ARM_LENGTH*.48,0);
-  rightPaw.position.set(0,-ARM_LENGTH*.48,0);
-  la.add(leftPaw);
-  ra.add(rightPaw);
-
-  const ls=new THREE.Mesh(new THREE.BoxGeometry(.42*(t.animal==="kangaroo"?1.15:1),.22,.82),shoes);
-  ls.position.set(-.33*bodyScale[0],.23,.16);
-  ls.castShadow=true;
-  const rs=ls.clone();
-  rs.position.x=.33*bodyScale[0];
-  root.add(ls,rs);
-
-  const tailStyle=m.tail||"";
-  let tail=null;
-  if(tailStyle){
-    tail=new THREE.Mesh(new THREE.CylinderGeometry(.08,.12,tailStyle==="kangarooTail"?1.75:tailStyle==="smallBearTail"?.48:1.25,12),skin);
-    tail.position.set(0,1.95,-.45*bodyScale[2]);
-    tail.rotation.x=tailStyle==="kangarooTail"?1.1:Math.PI/2.7;
-    if(tailStyle==="ringedTail")tail.material=new THREE.MeshStandardMaterial({color:0x8f8f93,roughness:.52});
-    root.add(tail);
-  }
-
+  const leftLegData=makeSegmentedLeg(t.animal,"left",materials,legScale);
+  const rightLegData=makeSegmentedLeg(t.animal,"right",materials,legScale);
+  const ll=leftLegData.rig, rl=rightLegData.rig;
+  ll.position.set(-.3*bodyScale[0],1.6,.02);
+  rl.position.set(.3*bodyScale[0],1.6,.02);
+  bodyRoot.add(ll,rl);
+  const ls=leftLegData.foot, rs=rightLegData.foot;
+  const leftPaw=leftArmData.paw, rightPaw=rightArmData.paw;
   let featherLeft=null, featherRight=null;
-  if(m.feathers){
-    featherLeft=new THREE.Mesh(new THREE.BoxGeometry(.16,.56,.55),trim);
+  if(t.animal==="hawk"){
+    featherLeft=new THREE.Mesh(new THREE.BoxGeometry(.34,.06,.42),materials.feather);
     featherRight=featherLeft.clone();
-    featherLeft.position.set(-.13,0,.04);
-    featherRight.position.set(.13,0,.04);
-    la.add(featherLeft);
-    ra.add(featherRight);
+    featherLeft.position.set(-.08,-.06,-.03);
+    featherRight.position.set(.08,-.06,-.03);
+    leftPaw.add(featherLeft);
+    rightPaw.add(featherRight);
   }
-
-  return {root,torso,head,leftArm:la,rightArm:ra,leftLeg:ll,rightLeg:rl,leftShoe:ls,rightShoe:rs,animalParts:{tail,leftEar,rightEar,snout,leftPaw,rightPaw,featherLeft,featherRight}};
+  const tail=makeAnimalTail(t.animal,materials);
+  tail.position.set(0,1.96,-.36*bodyScale[2]);
+  bodyRoot.add(tail);
+  const model={
+    root,bodyRoot,torso,chest,head,neck,
+    leftArmRig:la,rightArmRig:ra,
+    leftForearm:leftArmData.forearm,rightForearm:rightArmData.forearm,
+    leftPaw,rightPaw,
+    leftLegRig:ll,rightLegRig:rl,
+    leftLowerLeg:leftLegData.lowerLeg,rightLowerLeg:rightLegData.lowerLeg,
+    leftFoot:ls,rightFoot:rs,
+    tail,ears:headBundle.ears,
+    faceParts:headBundle.faceParts,
+    animalParts:{
+      tail,leftEar:headBundle.leftEar,rightEar:headBundle.rightEar,snout:headBundle.snout,
+      leftPaw,rightPaw,featherLeft,featherRight,head,neck,chest,torso
+    }
+  };
+  model.leftArm=model.leftArmRig;
+  model.rightArm=model.rightArmRig;
+  model.leftLeg=model.leftLegRig;
+  model.rightLeg=model.rightLegRig;
+  model.leftShoe=model.leftFoot;
+  model.rightShoe=model.rightFoot;
+  applyAnimalPoseDefaults(model,t.animal);
+  return model;
 }
 
 function player(name,team,x,z,rot,index,type="handler"){
@@ -1082,7 +1331,13 @@ function player(name,team,x,z,rot,index,type="handler"){
   g.rotation.y=rot;
 
   const model=buildAnimalPlayerModel(type,team,index);
-  const {leftArm:la,rightArm:ra,leftLeg:ll,rightLeg:rl,leftShoe:ls,rightShoe:rs,animalParts}=model;
+  const la=model.leftArmRig||model.leftArm;
+  const ra=model.rightArmRig||model.rightArm;
+  const ll=model.leftLegRig||model.leftLeg;
+  const rl=model.rightLegRig||model.rightLeg;
+  const ls=model.leftFoot||model.leftShoe;
+  const rs=model.rightFoot||model.rightShoe;
+  const animalParts=model.animalParts||{};
   g.add(model.root);
 
   const icon=(PLAYER_TYPES[type]||PLAYER_TYPES.handler).icon;
@@ -1099,6 +1354,8 @@ function player(name,team,x,z,rot,index,type="handler"){
     type,
     animal:t.animal,
     leftArm:la,rightArm:ra,leftLeg:ll,rightLeg:rl,leftShoe:ls,rightShoe:rs,
+    leftForearm:model.leftForearm,rightForearm:model.rightForearm,
+    leftLowerLeg:model.leftLowerLeg,rightLowerLeg:model.rightLowerLeg,
     animalParts,
     collisionRadius:THREE.MathUtils.clamp(1.34+((t.model?.bodyScale?.[0]||1)-1)*.18,1.24,1.52),
     speed:10.4*t.speedMult,
@@ -2837,58 +3094,73 @@ function animBody(p){
   const moving=speed>.12;
   const idleBreath=Math.sin(performance.now()*.005+p.index)*.04;
   const strideBoost=p.type==="jumper"?.62:p.type==="bruiser"?.38:.48;
+  const armSwingMult=p.type==="handler"?1.2:p.type==="bruiser"?.72:p.type==="interceptor"?1.1:1;
   const w1=Math.sin(p.walkPhase);
   const w2=Math.sin(p.walkPhase+Math.PI);
-
-  p.leftLeg.rotation.x=w1*strideBoost;
-  p.rightLeg.rotation.x=w2*strideBoost;
-  p.leftShoe.position.z=.16+w1*(p.type==="jumper"?.2:.16);
-  p.rightShoe.position.z=.16+w2*(p.type==="jumper"?.2:.16);
+  const leftLeg=p.leftLeg, rightLeg=p.rightLeg, leftArm=p.leftArm, rightArm=p.rightArm;
+  if(leftLeg)leftLeg.rotation.x=w1*strideBoost;
+  if(rightLeg)rightLeg.rotation.x=w2*strideBoost;
+  if(p.leftShoe)p.leftShoe.position.z=.06+w1*(p.type==="jumper"?.22:.12);
+  if(p.rightShoe)p.rightShoe.position.z=.06+w2*(p.type==="jumper"?.22:.12);
+  if(p.leftLowerLeg)p.leftLowerLeg.rotation.x=(-w1*.28)+(p.isJumping?.28:0);
+  if(p.rightLowerLeg)p.rightLowerLeg.rotation.x=(-w2*.28)+(p.isJumping?.28:0);
   p.group.position.y=p.y+idleBreath*(moving?.35:1);
-
-  p.leftArm.rotation.x=w2*.18;
-  p.rightArm.rotation.x=w1*.18;
-  p.leftArm.rotation.z=.25;
-  p.rightArm.rotation.z=-.25;
+  if(leftArm)leftArm.rotation.x=w2*.18*armSwingMult;
+  if(rightArm)rightArm.rotation.x=w1*.18*armSwingMult;
+  if(leftArm)leftArm.rotation.z=.22;
+  if(rightArm)rightArm.rotation.z=-.22;
+  if(p.leftForearm)p.leftForearm.rotation.x=.12+Math.max(0,w2)*.22;
+  if(p.rightForearm)p.rightForearm.rotation.x=.12+Math.max(0,w1)*.22;
+  if(p.animalParts?.torso)p.animalParts.torso.rotation.y=(moving?Math.sin(p.walkPhase*.5)*.08:0);
+  if(p.animalParts?.head)p.animalParts.head.rotation.y=(moving?Math.sin(p.walkPhase*.5+1.2)*.05:0);
 
   if(p.hasBall){
     const holdHeight=p.type==="jumper"?-1.05:p.type==="bruiser"?-.72:p.type==="interceptor"?-.88:-.9;
     const holdSwing=p.type==="handler"?.52:.45;
     if(p.hand==="left"){
-      p.leftArm.rotation.x=holdHeight;
-      p.leftArm.rotation.z=-holdSwing;
+      if(leftArm)p.leftArm.rotation.x=holdHeight;
+      if(leftArm)p.leftArm.rotation.z=-holdSwing;
+      if(p.leftForearm)p.leftForearm.rotation.x=-.45;
     }else{
-      p.rightArm.rotation.x=holdHeight;
-      p.rightArm.rotation.z=holdSwing;
+      if(rightArm)p.rightArm.rotation.x=holdHeight;
+      if(rightArm)p.rightArm.rotation.z=holdSwing;
+      if(p.rightForearm)p.rightForearm.rotation.x=-.45;
     }
   }
 
   if(p.shoveAnim>0){
-    p.leftArm.rotation.x=p.type==="bruiser"?-1.52:-1.35;
-    p.rightArm.rotation.x=p.type==="bruiser"?-1.52:-1.35;
-    p.leftArm.rotation.z=-.35;
-    p.rightArm.rotation.z=.35;
+    if(leftArm)p.leftArm.rotation.x=p.type==="bruiser"?-1.52:-1.35;
+    if(rightArm)p.rightArm.rotation.x=p.type==="bruiser"?-1.52:-1.35;
+    if(leftArm)p.leftArm.rotation.z=-.35;
+    if(rightArm)p.rightArm.rotation.z=.35;
+    if(p.leftForearm)p.leftForearm.rotation.x=-.35;
+    if(p.rightForearm)p.rightForearm.rotation.x=-.35;
   }
 
   if(p.swatTimer>0){
     const slash=p.type==="interceptor"?1.55:1.25;
     if(p.swatHand==="left"){
-      p.leftArm.rotation.x=-1.9;
-      p.leftArm.rotation.z=-slash;
+      if(leftArm)p.leftArm.rotation.x=-1.9;
+      if(leftArm)p.leftArm.rotation.z=-slash;
+      if(p.leftForearm)p.leftForearm.rotation.x=-.55;
     }else{
-      p.rightArm.rotation.x=-1.9;
-      p.rightArm.rotation.z=slash;
+      if(rightArm)p.rightArm.rotation.x=-1.9;
+      if(rightArm)p.rightArm.rotation.z=slash;
+      if(p.rightForearm)p.rightForearm.rotation.x=-.55;
     }
   }
 
   if(p.throwAnim>0){
     const snap=p.type==="handler"?-2.35:p.type==="bruiser"?-2.0:-2.2;
+    if(p.animalParts?.torso)p.animalParts.torso.rotation.y=(p.hand==="left"?-.2:.2)*(p.throwAnim/.25);
     if(p.hand==="left"){
-      p.leftArm.rotation.x=snap;
-      p.leftArm.rotation.z=-.25;
+      if(leftArm)p.leftArm.rotation.x=snap;
+      if(leftArm)p.leftArm.rotation.z=-.25;
+      if(p.leftForearm)p.leftForearm.rotation.x=-.9;
     }else{
-      p.rightArm.rotation.x=snap;
-      p.rightArm.rotation.z=.25;
+      if(rightArm)p.rightArm.rotation.x=snap;
+      if(rightArm)p.rightArm.rotation.z=.25;
+      if(p.rightForearm)p.rightForearm.rotation.x=-.9;
     }
   }
   updateAnimalAnimation(p,moving,speed);
@@ -2910,15 +3182,18 @@ function updateFoxAnimation(p,moving,speed){
   if(p.animalParts?.leftEar)p.animalParts.leftEar.rotation.z=-p.frameVel.x*.03;
   if(p.animalParts?.rightEar)p.animalParts.rightEar.rotation.z=-p.frameVel.x*.03;
   if(!moving){
-    p.leftShoe.position.y=.23+Math.sin(performance.now()*.01+p.index)*.04;
+    if(p.leftShoe)p.leftShoe.position.y=.02+Math.sin(performance.now()*.01+p.index)*.04;
   }
+  if(p.animalParts?.head)p.animalParts.head.rotation.x=(moving?.05:0)+Math.sin(performance.now()*.004+p.index)*.02;
 }
 
 function updateBearAnimation(p,moving){
   if(moving){
     p.group.rotation.z=Math.sin(p.walkPhase*.5)*.05;
+    if(p.animalParts?.chest)p.animalParts.chest.position.y=2.55+Math.sin(p.walkPhase*.5)*.05;
   }else{
     p.group.rotation.z=0;
+    if(p.animalParts?.chest)p.animalParts.chest.position.y=2.55+Math.sin(performance.now()*.003+p.index)*.03;
   }
   const tail=p.animalParts?.tail;
   if(tail)tail.rotation.x=Math.PI/2.8;
@@ -2931,12 +3206,14 @@ function updateKangarooAnimation(p,moving,speed){
     tail.rotation.y=-p.frameVel.x*.02;
   }
   if(p.isJumping){
-    p.leftArm.rotation.x-=.25;
-    p.rightArm.rotation.x-=.25;
+    if(p.leftArm)p.leftArm.rotation.x-=.25;
+    if(p.rightArm)p.rightArm.rotation.x-=.25;
+    if(p.leftLowerLeg)p.leftLowerLeg.rotation.x+=.22;
+    if(p.rightLowerLeg)p.rightLowerLeg.rotation.x+=.22;
   }
   if(moving&&speed>.7){
-    p.leftLeg.rotation.x*=1.12;
-    p.rightLeg.rotation.x*=1.12;
+    if(p.leftLeg)p.leftLeg.rotation.x*=1.12;
+    if(p.rightLeg)p.rightLeg.rotation.x*=1.12;
   }
 }
 
@@ -2944,15 +3221,17 @@ function updateRaccoonAnimation(p,moving){
   const tail=p.animalParts?.tail;
   if(tail)tail.rotation.y=Math.sin(p.walkPhase*1.3)*.3+(p.throwAnim>0?.35:0);
   if(p.hasBall&&!moving){
-    p.leftArm.rotation.z-=.08;
-    p.rightArm.rotation.z+=.08;
+    if(p.leftArm)p.leftArm.rotation.z-=.08;
+    if(p.rightArm)p.rightArm.rotation.z+=.08;
   }
+  if(p.animalParts?.head)p.animalParts.head.rotation.z=Math.sin(performance.now()*.004+p.index)*.03;
 }
 
 function updateHawkAnimation(p,moving){
   if(p.animalParts?.featherLeft)p.animalParts.featherLeft.rotation.z=(moving?.35:.15)+(p.swatTimer>0?.5:0);
   if(p.animalParts?.featherRight)p.animalParts.featherRight.rotation.z=-(moving?.35:.15)-(p.swatTimer>0?.5:0);
   if(p.animalParts?.snout)p.animalParts.snout.rotation.x=p.swatTimer>0?.25:0;
+  if(p.animalParts?.head)p.animalParts.head.rotation.x=(moving?.08:.04)+(p.swatTimer>0?.15:0);
 }
 
 function collisions(){
