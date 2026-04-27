@@ -392,8 +392,22 @@ document.getElementById("start").onclick=()=>{
   document.getElementById("controls").style.display="block";
   started=true;
   applyArenaTheme();
-  setTeamCommand(0);
   startPossession(BLUE,"opening possession");
+  snapCameraToPlayer(cam1,controlledBlue||players[1]);
+  if(split){
+    snapCameraToPlayer(cam2,controlledRed||players[4]);
+  }
+  setTeamCommand(0);
+  console.log("Startup visual check",{
+    players:players.length,
+    controlledBlue:!!controlledBlue,
+    controlledRed:!!controlledRed,
+    cam1:cam1?.position,
+    ball:!!ball?.mesh,
+    blueCar:!!cars?.blue?.group,
+    redCar:!!cars?.red?.group
+  });
+  render();
 };
 
 document.getElementById("presetBalanced").onclick=()=>applyTeamPreset("balanced");
@@ -504,6 +518,10 @@ function init(){
   createPlayers();
   createGuardLines();
   createIndicators();
+  cam1.position.set(0,28,62);
+  cam1.lookAt(0,0,0);
+  cam2.position.set(0,28,-62);
+  cam2.lookAt(0,0,0);
 
   addEventListener("resize",()=>renderer.setSize(innerWidth,innerHeight));
   addEventListener("keydown",keyDown);
@@ -1534,7 +1552,18 @@ function animate(){
 
   const dt=Math.min(clock.getDelta(),.033);
 
-  if(started)update(dt);
+  if(started){
+    try{
+      update(dt);
+    }catch(err){
+      console.error("Game update crashed:",err);
+      try{
+        cameras(dt);
+      }catch(camErr){
+        console.error("Camera update also failed:",camErr);
+      }
+    }
+  }
 
   render();
 
@@ -4054,28 +4083,56 @@ function camFollow(cam,p,dt){
   cam.lookAt(p.group.position.clone().add(fw.multiplyScalar(8)).add(new THREE.Vector3(0,2.45,0)));
 }
 
+function snapCameraToPlayer(cam,p){
+  if(!cam||!p||!p.group)return;
+
+  const fw=forward(p);
+  const want=p.group.position
+    .clone()
+    .add(fw.clone().multiplyScalar(-10))
+    .add(new THREE.Vector3(0,6.5,0));
+
+  cam.position.copy(want);
+  cam.lookAt(
+    p.group.position
+      .clone()
+      .add(fw.clone().multiplyScalar(8))
+      .add(new THREE.Vector3(0,2.45,0))
+  );
+  cam.updateProjectionMatrix();
+}
+
 function render(){
+  if(!renderer||!scene||!cam1)return;
+
   const w=innerWidth,h=innerHeight;
 
-  if(started&&split){
-    renderer.setViewport(0,0,w/2,h);
-    renderer.setScissor(0,0,w/2,h);
-    cam1.aspect=(w/2)/h;
+  if(!split){
+    renderer.setScissorTest(false);
+    renderer.setViewport(0,0,w,h);
+    cam1.aspect=w/h;
     cam1.updateProjectionMatrix();
     renderer.render(scene,cam1);
+    return;
+  }
 
+  renderer.setScissorTest(true);
+
+  renderer.setViewport(0,0,w/2,h);
+  renderer.setScissor(0,0,w/2,h);
+  cam1.aspect=(w/2)/h;
+  cam1.updateProjectionMatrix();
+  renderer.render(scene,cam1);
+
+  if(cam2){
     renderer.setViewport(w/2,0,w/2,h);
     renderer.setScissor(w/2,0,w/2,h);
     cam2.aspect=(w/2)/h;
     cam2.updateProjectionMatrix();
     renderer.render(scene,cam2);
-  }else{
-    renderer.setViewport(0,0,w,h);
-    renderer.setScissor(0,0,w,h);
-    cam1.aspect=w/h;
-    cam1.updateProjectionMatrix();
-    renderer.render(scene,cam1);
   }
+
+  renderer.setScissorTest(false);
 }
 
 function jump(p){
