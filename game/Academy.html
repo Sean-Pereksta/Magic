@@ -1291,7 +1291,166 @@ function createSpeciesAthlete(base,animal,spec){
     animalParts:{tail,leftEar,rightEar,snout,leftPaw:leftArmRig.paw,rightPaw:rightArmRig.paw,featherLeft,featherRight,leftKnee:leftLegRig.knee,rightKnee:rightLegRig.knee,pelvis,chest,neck}
   };
 }
+function player(name, team, x, z, rot, index, type = "handler") {
+  const model = buildAnimalPlayerModel(type, team, index);
+  const stats = PLAYER_TYPES[type] || PLAYER_TYPES.handler;
 
+  const g = model.root || model.group || new THREE.Group();
+  g.position.set(x, 0, z);
+  g.rotation.y = rot;
+  g.castShadow = true;
+
+  scene.add(g);
+
+  // Pull animation rig parts from the animal model.
+  // animBody(p) expects these directly on the player object.
+  const leftLeg =
+    model.leftLeg ||
+    model?.legs?.left ||
+    model?.leftLegRig?.hip ||
+    null;
+
+  const rightLeg =
+    model.rightLeg ||
+    model?.legs?.right ||
+    model?.rightLegRig?.hip ||
+    null;
+
+  const leftArm =
+    model.leftArm ||
+    model?.arms?.left ||
+    model?.leftArmRig?.shoulder ||
+    null;
+
+  const rightArm =
+    model.rightArm ||
+    model?.arms?.right ||
+    model?.rightArmRig?.shoulder ||
+    null;
+
+  const leftShoe =
+    model.leftShoe ||
+    model?.feet?.left ||
+    model?.leftFoot ||
+    model?.leftLegRig?.foot ||
+    null;
+
+  const rightShoe =
+    model.rightShoe ||
+    model?.feet?.right ||
+    model?.rightFoot ||
+    model?.rightLegRig?.foot ||
+    null;
+
+  const p = {
+    name,
+    team,
+    type,
+    stats,
+    index,
+
+    group: g,
+    model,
+
+    // Direct aliases for older animation/gameplay code
+    leftLeg,
+    rightLeg,
+    leftArm,
+    rightArm,
+    leftShoe,
+    rightShoe,
+
+    // Extra animal-rig references, safe even if missing
+    animalParts: model.animalParts || {},
+    head: model.head || model?.animalParts?.head || null,
+    torso: model.torso || model?.animalParts?.torso || null,
+    tail: model.tail || model?.animalParts?.tail || null,
+    leftEar: model.leftEar || model?.animalParts?.leftEar || null,
+    rightEar: model.rightEar || model?.animalParts?.rightEar || null,
+
+    hasBall: false,
+    showed: false,
+    hand: "right",
+    steps: 0,
+
+    // Required by catchBall/startPossession logic
+    lastStepPos: new THREE.Vector3(x, 0, z),
+
+    y: 0,
+    vy: 0,
+    jumpVel: 0,
+    isJumping: false,
+    jumpCooldown: 0,
+
+    speed: 10 * (stats.speedMult || 1),
+    turnSpeed: 3.2 * (stats.turnMult || 1),
+
+    sprint: 1,
+    isSprinting: false,
+    sprintCooldown: 0,
+
+    shoveCooldown: 0,
+    shoveAnim: 0,
+    stumbleTimer: 0,
+    defPushCooldown: 0,
+
+    swatTimer: 0,
+    swatHand: "right",
+    throwAnim: 0,
+
+    sideHopVel: new THREE.Vector3(),
+    frameVel: new THREE.Vector3(),
+    prevPos: new THREE.Vector3(x, 0, z),
+
+    aiTarget: new THREE.Vector3(x, 0, z),
+    aiCooldown: 0.8 + Math.random() * 0.5,
+    targetTimer: 0,
+    burstTimer: 0,
+    burstCooldown: 0.8 + Math.random() * 1.5,
+
+    mark: null,
+
+    cutTimer: 0,
+    cutCooldown: 0,
+    cutDir: Math.random() < 0.5 ? -1 : 1,
+
+    lane: index,
+    laneIndex: index,
+    laneName: ["left", "middle", "right"][index] || "middle",
+    commandTimer: 0,
+    forceLaneTimer: 0,
+    forceClearTimer: 0,
+
+    defensiveRole: "denyMiddle",
+    defenseState: "contain",
+    defenseTimer: 0,
+
+    isReceivingPass: false,
+    receiveTarget: new THREE.Vector3(x, 0, z),
+    receiveTimer: 0,
+    receiveMode: "goToSpot",
+    passThreatened: false,
+
+    catchSettle: 0
+  };
+
+  // Helpful warning instead of a hard crash later in animBody()
+  if (!p.leftLeg || !p.rightLeg || !p.leftArm || !p.rightArm || !p.leftShoe || !p.rightShoe) {
+    console.warn("Player rig is missing animation parts:", {
+      name,
+      type,
+      leftLeg: !!p.leftLeg,
+      rightLeg: !!p.rightLeg,
+      leftArm: !!p.leftArm,
+      rightArm: !!p.rightArm,
+      leftShoe: !!p.leftShoe,
+      rightShoe: !!p.rightShoe,
+      model
+    });
+  }
+
+  return p;
+}
 function buildAnimalPlayerModel(type,team,index){
   const base=createBaseAthleteRig(type,team,index);
   switch(type){
@@ -4225,10 +4384,24 @@ function updateDefensivePushes(dt){
   });
 }
 
-function setTeamCommand(index){
-  teamCommand=THREE.MathUtils.clamp(index,0,4);
-  teamCommandEl.textContent=`Team Command: ${COMMANDS[teamCommand]}`;
-  float(COMMANDS[teamCommand],(ballHolder?ballHolder.group.position:players[1].group.position).clone().add(new THREE.Vector3(0,5.4,0)),"#ffe37c");
+function setTeamCommand(index) {
+  teamCommand = THREE.MathUtils.clamp(index, 0, 4);
+
+  if (teamCommandEl) {
+    teamCommandEl.textContent = `Team Command: ${COMMANDS[teamCommand]}`;
+  }
+
+  const anchor =
+    ballHolder?.group?.position ||
+    players[1]?.group?.position ||
+    players[0]?.group?.position ||
+    new THREE.Vector3(0, 0, 0);
+
+  float(
+    COMMANDS[teamCommand],
+    anchor.clone().add(new THREE.Vector3(0, 5.4, 0)),
+    "#ffe37c"
+  );
 }
 
 function updateTrunkFeedback(car,settleProgress,isSettling,stateText=""){
