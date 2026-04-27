@@ -116,9 +116,9 @@
       <button id="start">Start Game</button>
       <button id="backToMain">Back</button>
       <p style="font-size:13px">
-        P1: W/S move, A/D turn, Q/E hand/swat, F pass, Space shoot/jump, Left Shift sprint.<br>
+        P1: W/S move, A/D turn, Q/E hand/swat, Space jump, F contextual throw, Left Shift sprint.<br>
         Double-tap W/A/S/D to shove that direction. Out of steps + W = forward shove.<br><br>
-        P2: I/K move, J/L turn, U/O hand/swat, H pass, Right Shift shoot/jump, Enter sprint.<br>
+        P2: I/K move, J/L turn, U/O hand/swat, Right Shift jump, H contextual throw, Enter sprint.<br>
         Double-tap I/J/K/L to shove that direction.<br><br>
         Team commands: 1 Spread, 2 Cut to Trunk, 3 Come to Ball, 4 Set Screen, 5 Crash Trunk.
       </p>
@@ -140,8 +140,9 @@
 
 <div id="controls">
   <b>Controls</b><br>
-  P1: W/S, A/D, Q/E, F, Space, Left Shift sprint<br>
-  P2: I/K, J/L, U/O, H, Right Shift, Enter sprint<br><br>
+  P1: W/S, A/D, Q/E, Space jump, F throw/pass, Left Shift sprint<br>
+  P2: I/K, J/L, U/O, Right Shift jump, H throw/pass, Enter sprint<br>
+  F/H contextual: shot if facing trunk, pass if facing teammate.<br><br>
   Double-tap movement = shove. Out of steps + forward = shove.<br>
   Sprint is brief and must recharge.<br>
   Hold throw: red → green → red. Green improves aim.
@@ -152,7 +153,7 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
 
 const BLUE="blue", RED="red";
 const FIELD_W=52, FIELD_L=88, BLUE_Z=36, RED_Z=-36;
-const NO_SHOOT=10, TRUNK_W=6.4, TRUNK_H=3.4, TRUNK_D=4.1;
+const NO_SHOOT=10, TRUNK_W=5.4, TRUNK_H=2.85, TRUNK_D=3.55;
 const GRAVITY=22, JUMP_V=19.5, STEP_DIST=3.55;
 const JUMP_GRAVITY=25.5, JUMP_SHOT_RELEASE_BONUS=1.65, JUMP_BLOCK_REACH_BONUS=2.15, JUMP_CATCH_REACH_BONUS=2.0;
 const THROWER_IGNORE=.42, CATCH_SETTLE=.35;
@@ -162,7 +163,7 @@ const FAST_PASS_BASE_SPEED=28, FAST_PASS_BONUS_SPEED=20, FAST_PASS_Y=3.2, FAST_P
 const SHOT_MIN_POWER=.62, SHOT_MAX_POWER=1.12;
 const SHOT_BASE_FLIGHT_TIME=.82, SHOT_MIN_FLIGHT_TIME=.68, SHOT_MAX_FLIGHT_TIME=1.05;
 const SHOT_LOW_ARC_BONUS=-.22, SHOT_MAX_ARC_BONUS=.18, SHOT_JUMP_ARC_BONUS=.16;
-const MAX_SHOT_AIM_ERROR=3.0;
+const MAX_BAD_PASS_AIM_ERROR=4.5, MAX_BAD_SHOT_AIM_ERROR=5.5;
 const SWAT_RADIUS_GROUND=1.05, SWAT_RADIUS_JUMPING=1.35;
 const GROUND_BOUNCE=.28, GROUND_FRICTION=.94, LOOSE_BALL_PICKUP_SPEED=7.5;
 const BALL_RESTITUTION=.42, BALL_SURFACE_FRICTION=.985, CAR_ROOF_ROLL_FORCE=8.5, CAR_EDGE_DROP_FORCE=5.5, BALL_MIN_ROOF_ROLL_SPEED=2.8;
@@ -245,8 +246,8 @@ const passTapTimes={blue:0,red:0};
 const PASS_DOUBLE_TAP_WINDOW=260;
 
 const input={
-  blue:{pass:false,shot:false,start:0,offset:0},
-  red:{pass:false,shot:false,start:0,offset:0}
+  blue:{throwing:false,contextType:"shot",contextReceiver:null,start:0,offset:0},
+  red:{throwing:false,contextType:"shot",contextReceiver:null,start:0,offset:0}
 };
 
 const ball={
@@ -1174,12 +1175,12 @@ function moveClouds(dt){
 
 function controls(dt){
   control(dt,BLUE,controlledBlue,{
-    f:"w",b:"s",l:"a",r:"d",hl:"q",hr:"e",pass:"f",shoot:"space",sprint:"lshift"
+    f:"w",b:"s",l:"a",r:"d",hl:"q",hr:"e",throw:"f",jump:"space",sprint:"lshift"
   });
 
   if(split){
     control(dt,RED,controlledRed,{
-      f:"i",b:"k",l:"j",r:"l",hl:"u",hr:"o",pass:"h",shoot:"rshift",sprint:"enter"
+      f:"i",b:"k",l:"j",r:"l",hl:"u",hr:"o",throw:"h",jump:"rshift",sprint:"enter"
     });
   }
 }
@@ -1232,21 +1233,22 @@ function control(dt,team,p,c){
   const canThrow=has&&(team===BLUE||split);
 
   if(canThrow){
-    if(!inp.pass&&!inp.shot){
+    if(!inp.throwing){
       if(justPressed[c.hl])p.hand=getScreenSideHand(p,"left",team===BLUE?cam1:cam2);
       if(justPressed[c.hr])p.hand=getScreenSideHand(p,"right",team===BLUE?cam1:cam2);
     }
 
-    if(justPressed[c.pass]&&!inp.pass&&!inp.shot)begin(team,"pass");
-    if(inp.pass&&justReleased[c.pass])releasePass(team);
+    if(justPressed[c.jump])jump(p);
+    if(justPressed[c.throw]&&!inp.throwing)beginThrow(team);
+    if(inp.throwing&&justReleased[c.throw])releaseContextThrow(team);
 
-    if(justPressed[c.shoot]&&!inp.shot&&!inp.pass)begin(team,"shot");
-    if(inp.shot&&justReleased[c.shoot])releaseShot(team);
-
-    if(inp.pass||inp.shot){
+    if(inp.throwing){
+      const context=getContextThrowTarget(p);
+      inp.contextType=context.type;
+      inp.contextReceiver=context.receiver||null;
       if(justPressed[c.hl]){
         p.hand=getScreenSideHand(p,"left",team===BLUE?cam1:cam2);
-        const currentTarget=inp.pass?(bestMate(p)?getLeadPassTarget(p,bestMate(p)):null):getTrunkShotTarget(p,oppCar(p.team));
+        const currentTarget=context.type==="pass"&&context.receiver?getLeadPassTarget(p,context.receiver):getTrunkShotTarget(p,oppCar(p.team));
         if(currentTarget){
           const quality=getHandLaneQuality(p,currentTarget);
           setHint(quality>.65?"Outside hand lane!":quality<.35?"Hand blocked!":"Switch hand to change lane",quality>.65?"#8fffab":quality<.35?"#ff9d9d":"#ffe07b");
@@ -1254,7 +1256,7 @@ function control(dt,team,p,c){
       }
       if(justPressed[c.hr]){
         p.hand=getScreenSideHand(p,"right",team===BLUE?cam1:cam2);
-        const currentTarget=inp.pass?(bestMate(p)?getLeadPassTarget(p,bestMate(p)):null):getTrunkShotTarget(p,oppCar(p.team));
+        const currentTarget=context.type==="pass"&&context.receiver?getLeadPassTarget(p,context.receiver):getTrunkShotTarget(p,oppCar(p.team));
         if(currentTarget){
           const quality=getHandLaneQuality(p,currentTarget);
           setHint(quality>.65?"Outside hand lane!":quality<.35?"Hand blocked!":"Switch hand to change lane",quality>.65?"#8fffab":quality<.35?"#ff9d9d":"#ffe07b");
@@ -1265,21 +1267,20 @@ function control(dt,team,p,c){
       inp.offset=THREE.MathUtils.clamp(inp.offset,-.95,.95);
       marker(team).style.left=`${charge(team).marker*100}%`;
       const cState=charge(team);
-      if(inp.shot){
-        const tint=cState.zone==="Perfect"?"#8cff9e":cState.zone==="Good"?"#d5ff9e":cState.zone==="Weak"?"#ff9a9a":"#ffd37e";
-        setHint(cState.zone,tint);
-      }
-      if(inp.pass){
-        const r=bestMate(p);
-        if(r)updatePassPreview(p,r);
+      if(context.type==="pass"&&context.receiver){
+        updatePassPreview(p,context.receiver);
+        const tint=cState.zone==="Perfect Lead"?"#8cff9e":cState.zone==="Building"?"#9fe7ff":"#ffd37e";
+        setHint(`PASS • ${cState.zone}`,tint);
       }else{
         clearPassPreview();
+        const tint=cState.zone==="Perfect"?"#8cff9e":cState.zone==="Good"?"#d5ff9e":cState.zone==="Weak"?"#ff9a9a":"#ffd37e";
+        setHint(`SHOT • ${cState.zone}`,tint);
       }
-      if(inp.shot)clearFriendlyShotLane(p);
+      if(context.type==="shot")clearFriendlyShotLane(p);
     }
   }else{
     clearPassPreview();
-    if(justPressed[c.shoot])jump(p);
+    if(justPressed[c.jump])jump(p);
     if(justPressed[c.hl]){
       const hand=getScreenSideHand(p,"left",team===BLUE?cam1:cam2);
       swat(p,hand);
@@ -1405,25 +1406,23 @@ function shove(p,dir,msg="Shove!"){
   }
 }
 
-function begin(team,type){
+function beginThrow(team){
   const inp=input[team];
-  inp.pass=type==="pass";
-  inp.shot=type==="shot";
+  inp.throwing=true;
+  inp.contextType="shot";
+  inp.contextReceiver=null;
   inp.start=performance.now();
   inp.offset=0;
   bar(team).style.display="block";
-  passLabel(team).style.display=type==="pass"?"block":"none";
-  if(type==="shot"){
-    setHint("Hold Space for power — release green for trunk line","#dfffb1");
-  }else{
-    setHint("Tap = Quick Accurate (risky lane). Hold for Perfect Lead.","#9fe7ff");
-  }
+  passLabel(team).style.display="block";
+  setHint("Hold F/H: red → green → red. Release while facing trunk (shot) or teammate (pass).","#dfffb1");
 }
 
 function clearInput(team){
   const inp=input[team];
-  inp.pass=false;
-  inp.shot=false;
+  inp.throwing=false;
+  inp.contextType="shot";
+  inp.contextReceiver=null;
   inp.start=0;
   inp.offset=0;
   bar(team).style.display="none";
@@ -1433,7 +1432,7 @@ function clearInput(team){
 
 function charge(team){
   const inp=input[team];
-  if(inp.pass){
+  if(inp.contextType==="pass"){
     const holder=team===BLUE?controlledBlue:controlledRed;
     const rate=holder?.stats?.passChargeRate||1;
     const held=((performance.now()-inp.start)/1000)*rate;
@@ -1449,23 +1448,24 @@ function charge(team){
   const t=THREE.MathUtils.clamp((performance.now()-inp.start)/1500,0,1.25);
   const marker=Math.min(t,1);
   const err=Math.abs(marker-.5);
-  let acc=THREE.MathUtils.clamp(1-err*2.8,0,1);
-  if(t>1)acc*=.35;
+  let acc=THREE.MathUtils.clamp(1-err*3.2,0.3,1);
+  if(t>1)acc*=.58;
   let zone="Weak";
   if(marker>.2&&marker<=.42)zone="Risky";
   if(marker>.42&&marker<.58)zone=err<.04?"Perfect":"Good";
   if(marker>=.58&&marker<.8)zone="Too strong";
   if(marker>=.8||t>1)zone="Overcharged";
+  passLabel(team).textContent=zone;
   return{t,marker,accuracy:acc,zone};
 }
 
 function getPassChargeQuality(heldTime){
   const t=THREE.MathUtils.clamp(heldTime/1.1,0,1.35);
   let accuracy,interceptRisk,speedMult,catchBonus;
-  if(t<0.25){accuracy=0.78+t*0.4;interceptRisk=1.05;speedMult=0.9;catchBonus=1;}
-  else if(t<0.75){accuracy=0.88+(t-0.25)*0.18;interceptRisk=0.95;speedMult=1.0+t*0.15;catchBonus=1.04;}
-  else if(t<=1.0){accuracy=0.98;interceptRisk=0.85;speedMult=1.12;catchBonus=1.08;}
-  else{accuracy=0.86;interceptRisk=1.18;speedMult=1.25;catchBonus=0.98;}
+  if(t<0.25){accuracy=0.48+t*0.22;interceptRisk=1.2;speedMult=0.8;catchBonus=0.92;}
+  else if(t<0.75){accuracy=0.72+(t-0.25)*0.34;interceptRisk=1.0;speedMult=0.95+t*0.18;catchBonus=1.0;}
+  else if(t<=1.0){accuracy=0.99;interceptRisk=0.85;speedMult=1.12;catchBonus=1.08;}
+  else{accuracy=0.54;interceptRisk=1.26;speedMult=1.38;catchBonus=0.86;}
   return {t,accuracy,interceptRisk,speedMult,catchBonus};
 }
 
@@ -1477,7 +1477,7 @@ function calculateArcVelocity(start,target,arcHeight,flightTime){
   return new THREE.Vector3(vxz.x,vy+arcHeight,vxz.z);
 }
 
-function releasePass(team){
+function releasePass(team,forcedReceiver=null){
   const p=team===BLUE?controlledBlue:controlledRed;
 
   if(!p||!p.hasBall||p.team!==team){
@@ -1485,7 +1485,7 @@ function releasePass(team){
     return;
   }
 
-  const r=bestMate(p);
+  const r=forcedReceiver||bestMate(p);
 
   if(!r){
     noticeMsg("No teammate in lane!",650);
@@ -1530,6 +1530,20 @@ function releaseShot(team){
   info.stumblePenalty=p.stumbleTimer>0?STUMBLE_ACCURACY_PENALTY:0;
   throwShot(p,info);
   clearInput(team);
+}
+
+function releaseContextThrow(team){
+  const p=team===BLUE?controlledBlue:controlledRed;
+  if(!p||!p.hasBall||p.team!==team){
+    clearInput(team);
+    return;
+  }
+  const target=getContextThrowTarget(p);
+  if(target.type==="pass"&&target.receiver){
+    releasePass(team,target.receiver);
+    return;
+  }
+  releaseShot(team);
 }
 
 function launchBallFromHand(p,velocity,isShot,receiver,passType="fast",target){
@@ -1598,15 +1612,33 @@ function throwHeldPass(passer,receiver,info){
   const start=handPos(passer);
   const target=getLeadPassTarget(passer,receiver);
   const q=info.passQuality||getPassChargeQuality(info.t);
-  const dir=target.clone().sub(start).normalize();
+  const badness=THREE.MathUtils.clamp(1-q.accuracy,0,1);
+  const passDrift=new THREE.Vector3(
+    (Math.random()-.5)*MAX_BAD_PASS_AIM_ERROR*badness,
+    (Math.random()-.5)*1.9*badness,
+    (Math.random()-.5)*(MAX_BAD_PASS_AIM_ERROR-.6)*badness
+  );
+  if(q.t<0.25){
+    passDrift.add(forward(passer).clone().multiplyScalar(-1.35*badness));
+  }else if(q.t>1){
+    passDrift.add(forward(passer).clone().multiplyScalar(1.6*badness));
+    passDrift.y+=1.2*badness;
+  }
+  const errTarget=target.clone().add(passDrift);
+  const dir=errTarget.clone().sub(start).normalize();
   const passMult=passer.stats?.passAccuracyMult||1;
   const pow=THREE.MathUtils.clamp(q.t,.2,1.2);
-  const vel=dir.clone().multiplyScalar((FAST_PASS_BASE_SPEED+pow*FAST_PASS_BONUS_SPEED*q.speedMult)*(passer.stats?.passPowerMult||1));
+  let speed=(FAST_PASS_BASE_SPEED+pow*FAST_PASS_BONUS_SPEED*q.speedMult)*(passer.stats?.passPowerMult||1);
+  if(q.t<0.25)speed*=THREE.MathUtils.lerp(.78,.94,q.t/.25);
+  if(q.t>1)speed*=1+Math.min(.22,(q.t-1)*.34);
+  const vel=dir.clone().multiplyScalar(speed);
   vel.y=THREE.MathUtils.clamp(dir.y*10+FAST_PASS_Y,FAST_PASS_Y,FAST_PASS_MAX_Y);
-  vel.x+=(Math.random()-.5)*(1-q.accuracy)*(2.2-passMult);
-  vel.z+=(Math.random()-.5)*(1-q.accuracy)*(2.2-passMult);
+  vel.x+=(Math.random()-.5)*MAX_BAD_PASS_AIM_ERROR*badness*(2.1-passMult);
+  vel.z+=(Math.random()-.5)*MAX_BAD_PASS_AIM_ERROR*badness*(2.1-passMult);
+  if(q.t>1)vel.y+=badness*1.4;
+  if(q.t<0.25)vel.y-=badness*.65;
   const pType=q.t<=1?(q.t>.75?"green":"held"):"overhold";
-  launchBallFromHand(passer,vel,false,receiver,pType,target);
+  launchBallFromHand(passer,vel,false,receiver,pType,errTarget);
   ball.passAccuracy=q.accuracy*passMult;
   ball.passInterceptRisk=q.interceptRisk*(passer.stats?.passRiskMult||1);
   ball.passCatchBonus=q.catchBonus;
@@ -1616,7 +1648,7 @@ function throwHeldPass(passer,receiver,info){
 function chargeAccuracy(marker){
   const center=.5;
   const distance=Math.abs(marker-center);
-  return THREE.MathUtils.clamp(1-distance*2.6,0,1);
+  return THREE.MathUtils.clamp(1-distance*3.25,0.38,1);
 }
 
 function throwShot(p,info){
@@ -1628,15 +1660,21 @@ function throwShot(p,info){
   const late=Math.max(0,hold-.62);
   const shotStrength=THREE.MathUtils.clamp(THREE.MathUtils.lerp(.45,1.24,hold)-early*.2,SHOT_MIN_POWER*.75,1.28);
   const baseAccuracy=chargeAccuracy(hold*(typeStats.greenWindowMult||1))+(typeStats.greenBoost||0);
-  const finalAccuracy=THREE.MathUtils.clamp((baseAccuracy-(info.stumblePenalty||0)-early*.7-late*.5)*typeStats.shotAccuracyMult,0,1);
+  const qualityAccuracy=typeof info.accuracy==="number"?info.accuracy:baseAccuracy;
+  const finalAccuracy=THREE.MathUtils.clamp((qualityAccuracy-(info.stumblePenalty||0)-early*.9-late*.82)*typeStats.shotAccuracyMult,0,1);
+  const badness=1-finalAccuracy;
   target.y-=.9*(typeStats.lowerTrunkAimBonus||1);
-  const aimError=(1-finalAccuracy)*(MAX_SHOT_AIM_ERROR+(early*4)+(late*2.5));
+  const aimError=badness*(MAX_BAD_SHOT_AIM_ERROR+(early*4.8)+(late*4.2));
   target.x+=(Math.random()-.5)*aimError;
-  target.y+=(Math.random()-.5)*aimError*.03;
-  target.z+=(Math.random()-.5)*aimError;
+  target.y+=(Math.random()-.5)*(2.2*badness);
+  target.z+=(Math.random()-.5)*(aimError+1.6*badness);
+  if(late>.02){
+    target.y+=(Math.random()-.5)*(2.8*late+1.2*badness);
+    target.z+=(Math.random()-.5)*(2.1*late+1.0*badness);
+  }
   const dist=flat(start,target);
   const flightTime=THREE.MathUtils.clamp(dist/(25*shotStrength),SHOT_MIN_FLIGHT_TIME,SHOT_MAX_FLIGHT_TIME);
-  const arcBonus=Math.max(0,THREE.MathUtils.lerp(SHOT_LOW_ARC_BONUS-.09,SHOT_MAX_ARC_BONUS,hold)+((p.isJumping||p.y>.2)?SHOT_JUMP_ARC_BONUS:0)+late*.12);
+  const arcBonus=Math.max(0,THREE.MathUtils.lerp(SHOT_LOW_ARC_BONUS-.09,SHOT_MAX_ARC_BONUS,hold)+((p.isJumping||p.y>.2)?SHOT_JUMP_ARC_BONUS:0)+late*(.12+badness*.24));
   const vel=calculateArcVelocity(start,target,arcBonus,flightTime);
   ball.vel.copy(vel);
   launchBallFromHand(p,ball.vel,true,null,"shot",target);
@@ -3152,6 +3190,52 @@ function bestMate(p){
   return best;
 }
 
+function getContextThrowTarget(p){
+  const fw=forward(p).clone();
+  fw.y=0;
+  if(fw.lengthSq()<.001)fw.set(0,0,p.team===BLUE?-1:1);
+  fw.normalize();
+
+  const trunkTarget=getTrunkShotTarget(p,oppCar(p.team));
+  const toTrunk=trunkTarget.clone().sub(p.group.position);
+  toTrunk.y=0;
+  const trunkDir=toTrunk.lengthSq()>.001?toTrunk.clone().normalize():fw.clone();
+  const trunkDot=fw.dot(trunkDir);
+
+  let bestMateTarget=null;
+  let bestMateDot=-1;
+
+  for(const mate of players){
+    if(mate.team!==p.team||mate===p)continue;
+    const toMate=mate.group.position.clone().sub(p.group.position);
+    toMate.y=0;
+    const dist=toMate.length();
+    if(dist<2||dist>32)continue;
+    const dot=fw.dot(toMate.normalize());
+    if(dot>bestMateDot){
+      bestMateDot=dot;
+      bestMateTarget=mate;
+    }
+  }
+
+  const trunkClearlyAhead=trunkDot>.72;
+  const mateClearlyAhead=bestMateTarget&&bestMateDot>.72;
+
+  if(mateClearlyAhead&&bestMateDot>=trunkDot+.05){
+    return {type:"pass",receiver:bestMateTarget};
+  }
+  if(trunkClearlyAhead){
+    return {type:"shot",receiver:null};
+  }
+  if(mateClearlyAhead){
+    return {type:"pass",receiver:bestMateTarget};
+  }
+  if(bestMateTarget&&bestMateDot>.45&&bestMateDot>trunkDot){
+    return {type:"pass",receiver:bestMateTarget};
+  }
+  return {type:"shot",receiver:null};
+}
+
 function getLeadPassTarget(passer,receiver){
   const receiverVelocity=receiver.frameVel||new THREE.Vector3();
   const distance=flat(passer.group.position,receiver.group.position);
@@ -3991,7 +4075,7 @@ function updateGameplayIndicators(dt){
   if(ballHolder){
     handlerRing.visible=true;
     handlerRing.position.copy(ballHolder.group.position).setY(.07);
-    const charging=input[ballHolder.team].pass||input[ballHolder.team].shot;
+    const charging=input[ballHolder.team].throwing;
     handlerRing.material.color.set(charging?0xffd76b:(ballHolder.team===BLUE?0x66b0ff:0xff7777));
   }else{
     handlerRing.visible=false;
@@ -4042,7 +4126,7 @@ function status(){
     `Hand: <b>${p.hand}</b> | Steps: <b>${p.steps}/3</b> | Shove: <b>${p.shoveCooldown>0?"cooling":"ready"}</b> | Sprint: <b>${Math.round(p.sprint*100)}%</b>${p.isSprinting?" ⚡":""}<br>`+
     `${split&&controlledRed?`P2 controls: <b>${controlledRed.name}</b> (${(PLAYER_TYPES[controlledRed.type]||PLAYER_TYPES.handler).icon} ${TYPE_LABELS[controlledRed.type]})${controlledRed.hasBall?" — ball":""} | Sprint: <b>${Math.round(controlledRed.sprint*100)}%</b>${controlledRed.isSprinting?" ⚡":""}<br>`:""}`+
     `Team Command: <b>${COMMANDS[teamCommand]}</b><br>`+
-    `${p.hasBall&&p.steps>=3?`<span style="color:#fff06a">3 steps used — W shoves, or pass/shoot!</span><br>`:""}`+
+    `${p.hasBall&&p.steps>=3?`<span style="color:#fff06a">3 steps used — W shoves, or throw!</span><br>`:""}`+
     `${p.hasBall&&insideNo(p.group.position,p.team)?`<span style="color:#ff7373">No-shoot box: cannot shoot here</span>`:""}`;
 }
 </script>
