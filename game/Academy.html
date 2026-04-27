@@ -171,7 +171,7 @@ const MIN_TEAMMATE_BALL_DISTANCE=8.5, IDEAL_PASS_DISTANCE=13.5, TEAMMATE_SPACING
 const DEFENDER_PRESSURE_DISTANCE=3.7, DEFENDER_MIN_DISTANCE=2.35, DEFENDER_BACKOFF_DISTANCE=2.8, DEFENDER_SWAT_RANGE=3.2;
 const LANE_PULL_STRENGTH=.72, LANE_MIN_SEPARATION=7.5, LANE_WIDTH=8.5, CUT_DURATION=1.1, CUT_COOLDOWN=2.4;
 const CAR_BASE_Y=.45, ARM_LENGTH=1.65, ARM_RADIUS=.25;
-const TRUNK_SCORE_SETTLE_TIME=.28, TRUNK_INTERIOR_SCORE_GRACE=.18, TRUNK_BOX_MISS_GRACE=.35;
+const TRUNK_SCORE_SETTLE_TIME=.2, TRUNK_INTERIOR_SCORE_GRACE=.45, TRUNK_BOX_MISS_GRACE=.35;
 const TRUNK_PRESSURE_RADIUS=16, DEFENSIVE_PUSH_RANGE=2.15, DEFENSIVE_PUSH_SPEED_MIN=4.5, DEFENSIVE_PUSH_COOLDOWN=.85, DEFENSIVE_PUSH_FORCE=2.2, DEFENSIVE_PUSH_STUMBLE_TIME=.22;
 const STUMBLE_ACCURACY_PENALTY=.18, STUMBLE_MOVE_MULT=.55;
 const AI_TARGET_EPSILON=.45;
@@ -2043,7 +2043,7 @@ function updateTrunkBoxMiss(dt){
   const targetCar=oppCar(ball.owner);
   const stillInsideBox=flat(ball.pos,targetCar.pos)<NO_SHOOT;
   const nowInsideTrunk=getTrunkInteriorState(targetCar).inside;
-  if(ball.trunkScoreArmed||nowInsideTrunk||ball.enteredTrunkMouth){
+  if(ball.trunkScoreArmed||nowInsideTrunk||ball.enteredTrunkMouth||isBallAtOpenTrunkMouth(targetCar)){
     resetTrunkBoxMiss();
     return;
   }
@@ -2107,26 +2107,36 @@ function scoreCheck(dt){
 
   const car=oppCar(ball.owner);
   const state=getTrunkInteriorState(car);
-  if(state.inside&&ball.enteredTrunkMouth&&ball.enteredTrunkMouthTeam===car.team){
+  const inScoreZone=isBallInTrunkScoreZone(car,state.local);
+  const inMouthZone=isBallAtOpenTrunkMouth(car,state.local);
+  const movingInward=isBallMovingIntoTrunk(car,state.local);
+  const now=performance.now()/1000;
+  if((inScoreZone||(inMouthZone&&movingInward))&&ball.enteredTrunkMouthTeam!==car.team){
+    ball.enteredTrunkMouth=true;
+    ball.enteredTrunkMouthTeam=car.team;
+    ball.enteredTrunkRear=true;
+  }
+  const canArmTrunk=inScoreZone||(inMouthZone&&movingInward)||state.inside;
+  if(canArmTrunk&&ball.enteredTrunkMouthTeam===car.team){
     if(!ball.trunkScoreArmed){
       ball.trunkScoreArmed=true;
       ball.trunkScoreCarTeam=car.team;
       ball.trunkScoreTimer=0;
-      ball.trunkLastInsideTime=performance.now()/1000;
+      ball.trunkLastInsideTime=now;
       float("Settling...",ball.pos.clone().add(new THREE.Vector3(0,1.4,0)),"#8be1ff");
       resetTrunkBoxMiss();
     }
     ball.trunkScoreTimer+=dt;
-    ball.trunkLastInsideTime=performance.now()/1000;
-    ball.vel.multiplyScalar(.78);
-    const centerLocal=new THREE.Vector3(0,1.05,3.6);
+    ball.trunkLastInsideTime=now;
+    ball.vel.multiplyScalar(.55);
+    const centerLocal=new THREE.Vector3(0,1.6,3.6);
     const centerWorld=centerLocal.clone();
     car.group.localToWorld(centerWorld);
     const pull=centerWorld.sub(ball.pos);
     if(pull.lengthSq()>.0001){
-      ball.vel.add(pull.multiplyScalar(Math.min(1,1.1*dt)));
+      ball.vel.add(pull.multiplyScalar(Math.min(1.4,2.4*dt)));
     }
-    updateTrunkFeedback(car,ball.trunkScoreTimer/TRUNK_SCORE_SETTLE_TIME,true);
+    updateTrunkFeedback(car,ball.trunkScoreTimer/TRUNK_SCORE_SETTLE_TIME,true,inScoreZone?"Inside Trunk":"Settling");
     if(ball.trunkScoreTimer>=TRUNK_SCORE_SETTLE_TIME&&!ball.trunkScored){
       ball.trunkScored=true;
       float("TRUNK GOAL!",ball.pos.clone().add(new THREE.Vector3(0,1.6,0)),"#9dfbff");
@@ -2140,9 +2150,10 @@ function scoreCheck(dt){
     ball.lastRimMsg=performance.now();
   }
   if(ball.trunkScoreArmed){
-    const now=performance.now()/1000;
     if(now-ball.trunkLastInsideTime<=TRUNK_INTERIOR_SCORE_GRACE){
       ball.trunkScoreTimer+=dt;
+      ball.vel.multiplyScalar(.62);
+      updateTrunkFeedback(car,ball.trunkScoreTimer/TRUNK_SCORE_SETTLE_TIME,true,"Settling");
       if(ball.trunkScoreTimer>=TRUNK_SCORE_SETTLE_TIME&&!ball.trunkScored){
         ball.trunkScored=true;
         float("TRUNK GOAL!",ball.pos.clone().add(new THREE.Vector3(0,1.6,0)),"#9dfbff");
@@ -2150,6 +2161,10 @@ function scoreCheck(dt){
       }
       return;
     }
+  }
+  if(inScoreZone){
+    updateTrunkFeedback(car,0,false,"Inside Trunk");
+    return;
   }
   resetTrunkScoreState();
   updateTrunkFeedback(car,0,false);
@@ -2162,7 +2177,8 @@ function carBallCollision(){
     const local=ball.pos.clone();
     car.group.worldToLocal(local);
     const trunkState=getTrunkInteriorState(car);
-    if(ball.trunkScoreArmed||trunkState.inside)continue;
+    const nearOpenTrunk=isBallInTrunkScoreZone(car,local)||isBallAtOpenTrunkMouth(car,local);
+    if(ball.trunkScoreArmed||trunkState.inside||nearOpenTrunk)continue;
 
     const nearTrunkOpening=
       Math.abs(local.x)<TRUNK_W/2+.62&&
@@ -3636,18 +3652,46 @@ function updateTipRecovery(dt){
 function checkTrunkMouthEntry(car){
   const local=ball.pos.clone();
   car.group.worldToLocal(local);
-  const prevLocal=ball.prevPos.clone();
-  car.group.worldToLocal(prevLocal);
-  const withinOpening=
-    Math.abs(local.x)<TRUNK_W/2-.25&&
-    local.y>.75&&
-    local.y<3.75;
-  const crossedMouth=prevLocal.z<2.05&&local.z>=2.05;
-  if(withinOpening&&crossedMouth){
+  const inMouthZone=isBallAtOpenTrunkMouth(car,local);
+  const inScoreZone=isBallInTrunkScoreZone(car,local);
+  const movingInward=isBallMovingIntoTrunk(car,local);
+  if((inScoreZone||inMouthZone)&&movingInward){
     ball.enteredTrunkMouth=true;
     ball.enteredTrunkMouthTeam=car.team;
     ball.enteredTrunkRear=true;
   }
+}
+
+function isBallInTrunkScoreZone(car,localPos=null){
+  const local=localPos?localPos.clone():ball.pos.clone();
+  if(!localPos)car.group.worldToLocal(local);
+  const margin=ball.radius*.75;
+  const insideX=Math.abs(local.x)<TRUNK_W/2-margin;
+  const insideY=local.y>.65&&local.y<3.9;
+  const insideZ=local.z>2.05&&local.z<5.35;
+  return insideX&&insideY&&insideZ;
+}
+
+function isBallAtOpenTrunkMouth(car,localPos=null){
+  const local=localPos?localPos.clone():ball.pos.clone();
+  if(!localPos)car.group.worldToLocal(local);
+  return (
+    Math.abs(local.x)<TRUNK_W/2-ball.radius*.35&&
+    local.y>.55&&
+    local.y<3.95&&
+    local.z>1.75&&
+    local.z<5.35
+  );
+}
+
+function isBallMovingIntoTrunk(car,localPos=null){
+  const local=localPos?localPos.clone():ball.pos.clone();
+  if(!localPos)car.group.worldToLocal(local);
+  const q=car.group.getWorldQuaternion(new THREE.Quaternion());
+  const localVel=ball.vel.clone().applyQuaternion(q.invert());
+  const toCenter=new THREE.Vector3(0,1.6,3.6).sub(local).normalize();
+  const inwardSpeed=localVel.dot(toCenter);
+  return inwardSpeed>-.45||localVel.z>-.2||ball.vel.length()<4.2;
 }
 
 function getTrunkInteriorState(car){
@@ -3655,12 +3699,12 @@ function getTrunkInteriorState(car){
   car.group.worldToLocal(local);
 
   const insideX=Math.abs(local.x)<TRUNK_W/2-ball.radius*.35;
-  const insideY=local.y>.8&&local.y<3.85;
-  const insideZ=local.z>2.05&&local.z<5.45;
+  const insideY=local.y>.65&&local.y<3.9;
+  const insideZ=local.z>2.05&&local.z<5.35;
   const touchingRim=
-    Math.abs(local.x)>TRUNK_W/2-ball.radius*.55||
-    local.y<.92||local.y>3.78||
-    local.z<2.18;
+    Math.abs(local.x)>TRUNK_W/2-ball.radius*.45||
+    local.y<.7||local.y>3.9||
+    local.z<1.95;
   const inside=insideX&&insideY&&insideZ;
   return {inside,local,touchingRim};
 }
@@ -3733,14 +3777,17 @@ function setTeamCommand(index){
   float(COMMANDS[teamCommand],(ballHolder?ballHolder.group.position:players[1].group.position).clone().add(new THREE.Vector3(0,5.4,0)),"#ffe37c");
 }
 
-function updateTrunkFeedback(car,settleProgress,isSettling){
+function updateTrunkFeedback(car,settleProgress,isSettling,stateText=""){
   const mouth=car.group.localToWorld(new THREE.Vector3(0,2.25,1.28)).project(cam1);
   const sx=(mouth.x*.5+.5)*innerWidth;
   const sy=(-mouth.y*.5+.5)*innerHeight;
   trunkFeedbackEl.style.left=`${Math.round(sx)}px`;
   trunkFeedbackEl.style.top=`${Math.round(sy)}px`;
   if(isSettling){
-    trunkFeedbackEl.textContent=`OPEN TRUNK • Settling ${(THREE.MathUtils.clamp(settleProgress,0,1)*100|0)}%`;
+    const prefix=stateText||"Settling";
+    trunkFeedbackEl.textContent=`OPEN TRUNK • ${prefix} ${(THREE.MathUtils.clamp(settleProgress,0,1)*100|0)}%`;
+  }else if(stateText){
+    trunkFeedbackEl.textContent=`OPEN TRUNK • ${stateText}`;
   }else{
     trunkFeedbackEl.textContent="OPEN TRUNK";
   }
@@ -3931,7 +3978,16 @@ function clearFriendlyShotLane(shooter){
 
 function updateGameplayIndicators(dt){
   const activeCar=oppCar(possession);
-  if(activeCar)updateTrunkFeedback(activeCar,0,false);
+  if(activeCar){
+    const insideTrunk=isBallInTrunkScoreZone(activeCar);
+    if(ball.trunkScoreArmed){
+      updateTrunkFeedback(activeCar,ball.trunkScoreTimer/TRUNK_SCORE_SETTLE_TIME,true,insideTrunk?"Inside Trunk":"Settling");
+    }else if(insideTrunk){
+      updateTrunkFeedback(activeCar,0,false,"Inside Trunk");
+    }else{
+      updateTrunkFeedback(activeCar,0,false);
+    }
+  }
   if(ballHolder){
     handlerRing.visible=true;
     handlerRing.position.copy(ballHolder.group.position).setY(.07);
