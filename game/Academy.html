@@ -393,9 +393,9 @@ document.getElementById("start").onclick=()=>{
   started=true;
   applyArenaTheme();
   startPossession(BLUE,"opening possession");
-  snapCameraToPlayer(cam1,controlledBlue||players[1]);
+  snapCameraToPlayer(cam1,controlledBlue||players.find(p=>p.team===BLUE)||players[0]);
   if(split){
-    snapCameraToPlayer(cam2,controlledRed||players[4]);
+    snapCameraToPlayer(cam2,controlledRed||players.find(p=>p.team===RED)||players[3]);
   }
   setTeamCommand(0);
   console.log("Startup visual check",{
@@ -518,10 +518,16 @@ function init(){
   createPlayers();
   createGuardLines();
   createIndicators();
-  cam1.position.set(0,28,62);
+  cam1.position.set(0,36,68);
   cam1.lookAt(0,0,0);
-  cam2.position.set(0,28,-62);
+  cam1.near=.1;
+  cam1.far=500;
+  cam1.updateProjectionMatrix();
+  cam2.position.set(0,36,-68);
   cam2.lookAt(0,0,0);
+  cam2.near=.1;
+  cam2.far=500;
+  cam2.updateProjectionMatrix();
 
   addEventListener("resize",()=>renderer.setSize(innerWidth,innerHeight));
   addEventListener("keydown",keyDown);
@@ -720,6 +726,19 @@ function keyDown(e){
         tapTimes[k]=n;
       }
     }
+  }
+
+  if(k==="c"){
+    snapCameraToPlayer(cam1,controlledBlue||players.find(p=>p.team===BLUE)||players[0]);
+    if(split){
+      snapCameraToPlayer(cam2,controlledRed||players.find(p=>p.team===RED)||players[3]);
+    }
+    console.log("Camera reset",{
+      cam1Position:cam1?.position,
+      cam1Rotation:cam1?.rotation,
+      controlledBlue:controlledBlue?.group?.position,
+      controlledRed:controlledRed?.group?.position
+    });
   }
 
   keys[k]=true;
@@ -4069,36 +4088,104 @@ function guardLinesUpdate(){
 }
 
 function cameras(dt){
-  camFollow(cam1,controlledBlue||players[1],dt);
-  camFollow(cam2,controlledRed||players[4],dt);
+  camFollow(cam1,controlledBlue||players.find(p=>p.team===BLUE)||players[0],dt);
+  camFollow(cam2,controlledRed||players.find(p=>p.team===RED)||players[3],dt);
+}
+
+function getSafeCameraTarget(p){
+  if(!p||!p.group)return new THREE.Vector3(0,2.5,0);
+  return p.group.position.clone().add(new THREE.Vector3(0,2.4,0));
+}
+
+function getCameraBackDirection(p){
+  if(!p||!p.group)return new THREE.Vector3(0,0,1);
+  if(p.team===BLUE)return new THREE.Vector3(0,0,1);
+  return new THREE.Vector3(0,0,-1);
+}
+
+function keepCameraOutOfObjects(pos){
+  pos.x=THREE.MathUtils.clamp(pos.x,-24,24);
+  pos.z=THREE.MathUtils.clamp(pos.z,-42,42);
+  pos.y=Math.max(pos.y,6.5);
+
+  Object.values(cars||{}).forEach(car=>{
+    if(!car||!car.group)return;
+    const carPos=car.group.position.clone();
+    const flatOffset=pos.clone().sub(carPos);
+    flatOffset.y=0;
+    const minDist=8;
+    const d=flatOffset.length();
+    if(d<minDist&&d>.001){
+      flatOffset.normalize();
+      pos.x=carPos.x+flatOffset.x*minDist;
+      pos.z=carPos.z+flatOffset.z*minDist;
+    }
+  });
+
+  return pos;
 }
 
 function camFollow(cam,p,dt){
-  if(!p)return;
+  if(!cam)return;
 
-  const fw=forward(p);
-  const want=p.group.position.clone().add(fw.clone().multiplyScalar(-10)).add(new THREE.Vector3(0,6.5,0));
+  if(!p||!p.group){
+    cam.position.lerp(new THREE.Vector3(0,30,62),1-Math.pow(.001,dt));
+    cam.lookAt(0,0,0);
+    cam.near=.1;
+    cam.far=500;
+    cam.updateProjectionMatrix();
+    return;
+  }
 
-  cam.position.lerp(want,1-Math.pow(.001,dt));
-  cam.lookAt(p.group.position.clone().add(fw.multiplyScalar(8)).add(new THREE.Vector3(0,2.45,0)));
+  const target=getSafeCameraTarget(p);
+  const back=getCameraBackDirection(p);
+  let desired=target.clone().add(back.multiplyScalar(15)).add(new THREE.Vector3(0,8.5,0));
+
+  desired.y=Math.max(desired.y,6.5);
+  desired.x=THREE.MathUtils.clamp(desired.x,-24,24);
+  desired.z=THREE.MathUtils.clamp(desired.z,-42,42);
+
+  const distToPlayer=desired.distanceTo(p.group.position);
+  if(distToPlayer<8)desired.add(back.clone().multiplyScalar(8-distToPlayer));
+  desired=keepCameraOutOfObjects(desired);
+
+  const lerpSpeed=started?1-Math.pow(.001,dt):1;
+  cam.position.lerp(desired,lerpSpeed);
+
+  const lookTarget=target.clone();
+  lookTarget.z+=p.team===BLUE?-8:8;
+  lookTarget.y=2.6;
+  cam.lookAt(lookTarget);
+  cam.near=.1;
+  cam.far=500;
+  cam.updateProjectionMatrix();
 }
 
 function snapCameraToPlayer(cam,p){
-  if(!cam||!p||!p.group)return;
+  if(!cam)return;
+  if(!p||!p.group){
+    cam.position.set(0,30,62);
+    cam.lookAt(0,0,0);
+    cam.updateProjectionMatrix();
+    return;
+  }
 
-  const fw=forward(p);
-  const want=p.group.position
-    .clone()
-    .add(fw.clone().multiplyScalar(-10))
-    .add(new THREE.Vector3(0,6.5,0));
+  const target=getSafeCameraTarget(p);
+  const back=getCameraBackDirection(p);
+  let desired=target.clone().add(back.multiplyScalar(15)).add(new THREE.Vector3(0,8.5,0));
+  desired.y=Math.max(desired.y,6.5);
+  desired.x=THREE.MathUtils.clamp(desired.x,-24,24);
+  desired.z=THREE.MathUtils.clamp(desired.z,-42,42);
+  desired=keepCameraOutOfObjects(desired);
 
-  cam.position.copy(want);
-  cam.lookAt(
-    p.group.position
-      .clone()
-      .add(fw.clone().multiplyScalar(8))
-      .add(new THREE.Vector3(0,2.45,0))
-  );
+  cam.position.copy(desired);
+
+  const lookTarget=target.clone();
+  lookTarget.z+=p.team===BLUE?-8:8;
+  lookTarget.y=2.6;
+  cam.lookAt(lookTarget);
+  cam.near=.1;
+  cam.far=500;
   cam.updateProjectionMatrix();
 }
 
