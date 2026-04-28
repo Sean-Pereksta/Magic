@@ -504,6 +504,7 @@ canvas{
           <button class="ghost" id="sortPos">Positive</button>
           <button class="ghost" id="sortNeg">Negative</button>
           <button class="ghost" id="sortN">Sample</button>
+          <button class="ghost" id="btnCloseTrees">Close Trees</button>
         </div>
       </div>
 
@@ -2655,6 +2656,20 @@ function toggleTreeNodeAdditive(metricOrChain){
   state.treeExpanded.add(id);
   computeTreeChildrenAdditive(chain).then(()=>renderCorrelations());
 }
+function closeAllTreesAdditive(){
+  if(state.treeExpanded && typeof state.treeExpanded.clear === "function"){
+    state.treeExpanded.clear();
+  }
+  if(state.expandedNodes && typeof state.expandedNodes.clear === "function"){
+    state.expandedNodes.clear();
+  }
+  state.selectedNodeContext = null;
+  renderCorrelations();
+  if($("statusBox")){
+    $("statusBox").className = "hint ok";
+    $("statusBox").innerHTML = "All correlation trees have been collapsed.";
+  }
+}
 function getRowsForChainAdditive(chain){
   let rows = state.mergedRows;
   for(const metric of chain){
@@ -3193,6 +3208,9 @@ function boot(){
   $("sortPos").onclick = () => {state.sortKey="r"; state.sortDir="desc"; renderCorrelations();};
   $("sortNeg").onclick = () => {state.sortKey="r"; state.sortDir="asc"; renderCorrelations();};
   $("sortN").onclick = () => {state.sortKey="n"; state.sortDir="desc"; renderCorrelations();};
+  if($("btnCloseTrees")){
+    $("btnCloseTrees").onclick = closeAllTreesAdditive;
+  }
 
   $("btnExportSaved").onclick = exportSavedCorrelationsAdditive;
   $("btnClearSaved").onclick = () => { state.savedCorrelations = []; persistSavedCorrelationsAdditive(); renderSavedCorrelationsAdditive(); };
