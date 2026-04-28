@@ -401,6 +401,7 @@ canvas{
       <span class="pill"><b id="rowsBadge">0</b> rows</span>
       <span class="pill"><b id="metricBadge">0</b> metrics</span>
       <span class="pill"><b id="dockBadge">0</b> dock reps</span>
+      <span class="pill"><b id="matchBadge">0</b> matches</span>
       <button class="primary" id="btnRun">Run Correlations</button>
       <button id="btnHeaders">Choose Headers</button>
       <button id="btnFilterHeaders">Filter Out Headers</button>
@@ -436,7 +437,10 @@ canvas{
 
     <div>
       <label>Name Match Field</label>
-      <select id="nameField"></select>
+      <div class="row">
+        <select id="nameField"></select>
+        <button id="btnMatchTool">Match Tool</button>
+      </div>
     </div>
 
     <div>
@@ -646,6 +650,98 @@ canvas{
 
 
 
+<div class="drawer" id="matchToolDrawer">
+  <div class="modal">
+    <div class="ph">
+      <div>
+        <b>Match-to-Match Name Tool</b><br>
+        <small>Map names from CSV headers to dock headers when the same person appears under different field names.</small>
+      </div>
+      <div class="row">
+        <button id="btnRunMatchTool" class="primary">Find Matches</button>
+        <button id="btnSaveMatchTool">Save Match Settings</button>
+        <button class="dark" id="btnCloseMatchTool">Close</button>
+      </div>
+    </div>
+    <div class="modalBody">
+      <div class="cardGrid">
+        <div class="kcard">
+          <div class="k">CSV Name Header</div>
+          <select id="matchCsvHeader"></select>
+        </div>
+        <div class="kcard">
+          <div class="k">Dock Name Header</div>
+          <select id="matchDockHeader"></select>
+        </div>
+        <div class="kcard">
+          <div class="k">Matches Found</div>
+          <div class="v" id="matchFoundCount">0</div>
+          <div class="d">CSV names matched to dock names</div>
+        </div>
+        <div class="kcard">
+          <div class="k">Unmatched CSV Names</div>
+          <div class="v" id="matchUnmatchedCsvCount">0</div>
+          <div class="d">Need review</div>
+        </div>
+      </div>
+      <div style="height:10px"></div>
+      <div class="hint" id="matchToolStatus">
+        Select a CSV header and dock header, then click Find Matches.
+      </div>
+      <div style="height:10px"></div>
+      <div class="row">
+        <input id="matchToolSearch" type="text" placeholder="Search names or matches...">
+        <button id="btnAutoPairStrong">Auto-Pair Strong Matches</button>
+        <button id="btnClearManualPairs" class="danger">Clear Manual Pairs</button>
+      </div>
+      <div style="height:10px"></div>
+      <div class="layout" style="grid-template-columns:1fr 1fr">
+        <div class="panel" style="box-shadow:none">
+          <div class="ph">
+            <div>
+              <b>Matched Names</b><br>
+              <small>Detected exact/normalized/fuzzy matches.</small>
+            </div>
+          </div>
+          <div class="tableWrap" style="max-height:45vh">
+            <table>
+              <thead>
+                <tr>
+                  <th>CSV Name</th>
+                  <th>Dock Name</th>
+                  <th>Match Type</th>
+                  <th>Score</th>
+                </tr>
+              </thead>
+              <tbody id="matchResultsBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel" style="box-shadow:none">
+          <div class="ph">
+            <div>
+              <b>Manual Match Review</b><br>
+              <small>Pair unmatched CSV names with dock names.</small>
+            </div>
+          </div>
+          <div class="tableWrap" style="max-height:45vh">
+            <table>
+              <thead>
+                <tr>
+                  <th>CSV Name</th>
+                  <th>Pick Dock Match</th>
+                  <th>Save</th>
+                </tr>
+              </thead>
+              <tbody id="manualMatchBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="drawer" id="filterHeaderDrawer">
   <div class="modal">
     <div class="ph">
@@ -724,10 +820,22 @@ const state = {
   thresholdMode: "median",
   exampleLimit: 250,
   selectedNodeContext: null,
-  currentExamplesExport: null
+  currentExamplesExport: null,
+  matchTool: {
+    csvHeader: "",
+    dockHeader: "Name",
+    manualPairs: [],
+    lastMatchCount: 0,
+    lastCsvUniqueCount: 0,
+    lastDockUniqueCount: 0,
+    unmatchedCsvNames: [],
+    unmatchedDockNames: [],
+    matches: []
+  }
 };
 
 const SAVED_CORR_KEY = "layeredCorrelationFinder.savedCorrelations.v1";
+const MATCH_TOOL_KEY = "layeredCorrelationFinder.matchTool.v1";
 
 function esc(s){
   return String(s ?? "")
@@ -1342,6 +1450,204 @@ async function loadDocks(){
 /* =========================
    Merge / controls
 ========================= */
+function getDockNameCandidateHeadersAdditive(){
+  const set = new Set(["Name"]);
+  for(const row of state.dockRows || []){
+    Object.keys(row || {}).forEach(k => {
+      if(/name|associate|rep|representative|employee|agent|csr/i.test(k)) set.add(k);
+    });
+  }
+  if(state.dockByName && typeof state.dockByName.values === "function") for(const obj of state.dockByName.values()){
+    Object.keys(obj || {}).forEach(k => {
+      if(/name|associate|rep|representative|employee|agent|csr/i.test(k)) set.add(k);
+    });
+  }
+  return Array.from(set);
+}
+
+function hydrateMatchToolDropdownsAdditive(){
+  const csvHeaders = state.csvHeaders && state.csvHeaders.length ? state.csvHeaders : state.headers || [];
+  const dockHeaders = getDockNameCandidateHeadersAdditive();
+  $("matchCsvHeader").innerHTML = csvHeaders.map(h => `<option value="${esc(h)}">${esc(h)}</option>`).join("");
+  $("matchDockHeader").innerHTML = dockHeaders.map(h => `<option value="${esc(h)}">${esc(h)}</option>`).join("");
+  const guessedCsv = state.matchTool.csvHeader || csvHeaders.find(h => /agent.*name|rep.*name|representative|associate|employee|name/i.test(h)) || $("nameField").value || csvHeaders[0] || "";
+  const guessedDock = state.matchTool.dockHeader || dockHeaders.find(h => /^name$/i.test(h)) || dockHeaders[0] || "Name";
+  $("matchCsvHeader").value = guessedCsv;
+  $("matchDockHeader").value = guessedDock;
+}
+
+function simpleNameSimilarityAdditive(a, b){
+  const ak = personKey(a);
+  const bk = personKey(b);
+  if(!ak || !bk) return 0;
+  if(ak === bk) return 1;
+  const at = ak.split(/\s+/).filter(Boolean);
+  const bt = bk.split(/\s+/).filter(Boolean);
+  let overlap = 0;
+  for(const x of at){ if(bt.includes(x)) overlap++; }
+  const tokenScore = overlap / Math.max(at.length, bt.length);
+  const aCompact = ak.replace(/\s+/g, "");
+  const bCompact = bk.replace(/\s+/g, "");
+  let sameChars = 0;
+  const len = Math.min(aCompact.length, bCompact.length);
+  for(let i = 0; i < len; i++){ if(aCompact[i] === bCompact[i]) sameChars++; }
+  const prefixScore = sameChars / Math.max(aCompact.length, bCompact.length);
+  return Math.max(tokenScore, prefixScore);
+}
+
+function getUniqueCsvNamesForHeaderAdditive(header){
+  const map = new Map();
+  for(const row of state.csvRows || []){
+    const raw = row[header];
+    const key = personKey(raw);
+    if(!key) continue;
+    if(!map.has(key)) map.set(key, { key, display: String(raw || "").trim(), count: 0 });
+    map.get(key).count++;
+  }
+  return Array.from(map.values()).sort((a,b) => a.display.localeCompare(b.display));
+}
+
+function getUniqueDockNamesForHeaderAdditive(header){
+  const map = new Map();
+  for(const row of state.dockRows || []){
+    const raw = row[header] ?? row.Name;
+    const key = personKey(raw);
+    if(!key) continue;
+    if(!map.has(key)) map.set(key, { key, display: String(raw || "").trim(), count: 0 });
+    map.get(key).count++;
+  }
+  if(!map.size && state.dockByName){
+    for(const dockObj of state.dockByName.values()){
+      const raw = dockObj[header] ?? dockObj["Dock: Representative"] ?? dockObj.Name;
+      const key = personKey(raw);
+      if(!key) continue;
+      if(!map.has(key)) map.set(key, { key, display: String(raw || "").trim(), count: 0 });
+      map.get(key).count++;
+    }
+  }
+  return Array.from(map.values()).sort((a,b) => a.display.localeCompare(b.display));
+}
+
+function getDockKeyForCsvNameAdditive(csvName){
+  const csvKey = personKey(csvName);
+  if(!csvKey) return "";
+  const manual = (state.matchTool?.manualPairs || []).find(p => personKey(p.csvName) === csvKey);
+  if(manual) return personKey(manual.dockName);
+  const match = (state.matchTool?.matches || []).find(m => personKey(m.csvName) === csvKey);
+  if(match) return personKey(match.dockName);
+  return csvKey;
+}
+
+function applyMatchToolToNameFieldAdditive(){
+  const csvHeader = state.matchTool?.csvHeader;
+  if(csvHeader && state.csvHeaders.includes(csvHeader) && $("nameField").value !== csvHeader){
+    $("nameField").value = csvHeader;
+  }
+}
+
+function renderManualMatchRowsAdditive(){
+  const unmatched = state.matchTool.unmatchedCsvNames || [];
+  const dockNames = getUniqueDockNamesForHeaderAdditive(state.matchTool.dockHeader || "Name");
+  $("manualMatchBody").innerHTML = unmatched.slice(0, 200).map((u, idx) => {
+    const options = dockNames.map(d => `<option value="${esc(d.display)}" ${d.display === u.bestDockName ? "selected" : ""}>${esc(d.display)}${u.bestDockName === d.display ? ` — suggested ${fmt(u.bestScore,2)}` : ""}</option>`).join("");
+    return `<tr><td><b>${esc(u.display)}</b><div class="muted small">Appears ${u.count} time(s)</div></td><td><select id="manualDockPick_${idx}"><option value="">-- choose match --</option>${options}</select></td><td><button onclick="saveManualPairAdditive(${idx})">Pair</button></td></tr>`;
+  }).join("") || `<tr><td colspan="3" class="muted">No unmatched CSV names.</td></tr>`;
+}
+
+function renderMatchToolResultsAdditive(){
+  const q = ($("matchToolSearch")?.value || "").toLowerCase();
+  const matches = (state.matchTool.matches || []).filter(m => !q || String(m.csvName).toLowerCase().includes(q) || String(m.dockName).toLowerCase().includes(q));
+  $("matchFoundCount").textContent = state.matchTool.lastMatchCount || 0;
+  $("matchUnmatchedCsvCount").textContent = (state.matchTool.unmatchedCsvNames || []).length;
+  $("matchResultsBody").innerHTML = matches.length
+    ? matches.map(m => `<tr><td>${esc(m.csvName)}</td><td>${esc(m.dockName)}</td><td><span class="tag ${m.type === "manual" ? "pos" : "high"}">${esc(m.type)}</span></td><td>${fmt(m.score,2)}</td></tr>`).join("")
+    : `<tr><td colspan="4" class="muted">No matches found yet.</td></tr>`;
+  renderManualMatchRowsAdditive();
+}
+
+function saveManualPairAdditive(idx){
+  const unmatched = state.matchTool.unmatchedCsvNames || [];
+  const csv = unmatched[idx];
+  if(!csv) return;
+  const dockName = $(`manualDockPick_${idx}`).value;
+  if(!dockName) return;
+  state.matchTool.manualPairs = state.matchTool.manualPairs || [];
+  state.matchTool.manualPairs = state.matchTool.manualPairs.filter(p => personKey(p.csvName) !== personKey(csv.display));
+  state.matchTool.manualPairs.push({ csvName: csv.display, dockName });
+  persistMatchToolAdditive();
+  runMatchToolAdditive();
+}
+
+function persistMatchToolAdditive(){
+  try{
+    localStorage.setItem(MATCH_TOOL_KEY, JSON.stringify({
+      csvHeader: state.matchTool.csvHeader,
+      dockHeader: state.matchTool.dockHeader,
+      manualPairs: state.matchTool.manualPairs || []
+    }));
+  }catch(e){}
+}
+
+function loadMatchToolAdditive(){
+  try{
+    const raw = localStorage.getItem(MATCH_TOOL_KEY);
+    if(!raw) return;
+    const saved = JSON.parse(raw);
+    state.matchTool = { ...state.matchTool, ...saved, manualPairs: saved.manualPairs || [] };
+  }catch(e){}
+}
+
+function runMatchToolAdditive(){
+  const csvHeader = $("matchCsvHeader").value;
+  const dockHeader = $("matchDockHeader").value;
+  state.matchTool.csvHeader = csvHeader;
+  state.matchTool.dockHeader = dockHeader;
+  const csvNames = getUniqueCsvNamesForHeaderAdditive(csvHeader);
+  const dockNames = getUniqueDockNamesForHeaderAdditive(dockHeader);
+  const dockByKey = new Map(dockNames.map(d => [d.key, d]));
+  const manualMap = new Map((state.matchTool.manualPairs || []).map(p => [personKey(p.csvName), p]));
+  const matches = [];
+  const unmatchedCsv = [];
+  for(const csv of csvNames){
+    const manual = manualMap.get(csv.key);
+    if(manual){ matches.push({ csvName: csv.display, dockName: manual.dockName, type: "manual", score: 1 }); continue; }
+    const exact = dockByKey.get(csv.key);
+    if(exact){ matches.push({ csvName: csv.display, dockName: exact.display, type: "normalized exact", score: 1 }); continue; }
+    let best = null;
+    let bestScore = 0;
+    for(const dock of dockNames){
+      const score = simpleNameSimilarityAdditive(csv.display, dock.display);
+      if(score > bestScore){ best = dock; bestScore = score; }
+    }
+    if(best && bestScore >= .82){
+      matches.push({ csvName: csv.display, dockName: best.display, type: "fuzzy", score: bestScore });
+    }else{
+      unmatchedCsv.push({ ...csv, bestDockName: best?.display || "", bestScore });
+    }
+  }
+  const matchedDockKeys = new Set(matches.map(m => personKey(m.dockName)));
+  const unmatchedDock = dockNames.filter(d => !matchedDockKeys.has(d.key));
+  state.matchTool.lastMatchCount = matches.length;
+  state.matchTool.lastCsvUniqueCount = csvNames.length;
+  state.matchTool.lastDockUniqueCount = dockNames.length;
+  state.matchTool.unmatchedCsvNames = unmatchedCsv;
+  state.matchTool.unmatchedDockNames = unmatchedDock;
+  state.matchTool.matches = matches;
+  renderMatchToolResultsAdditive();
+  applyMatchToolToNameFieldAdditive();
+  persistMatchToolAdditive();
+  clearTreeCacheAdditive?.();
+  rebuildMergedRows();
+  $("matchToolStatus").className = "hint ok";
+  $("matchToolStatus").innerHTML = `
+    <b>Match scan complete.</b><br>
+    CSV unique names: <b>${csvNames.length}</b><br>
+    Dock unique names: <b>${dockNames.length}</b><br>
+    Matches found: <b>${matches.length}</b><br>
+    Unmatched CSV names: <b>${unmatchedCsv.length}</b>
+  `;
+}
+
 function guessNameField(headers){
   return headers.find(h => ["name","associate","rep","representative","employee","agent","csr"].includes(normHdr(h))) ||
     headers.find(h => /name|associate|rep|representative|employee|agent|csr/i.test(h)) ||
@@ -1352,7 +1658,8 @@ function guessNameField(headers){
 function rebuildMergedRows(){
   clearTreeCacheAdditive();
   const csvHasRows = state.csvRows.length > 0;
-  const nameField = $("nameField").value || guessNameField(state.csvHeaders);
+  const toolHeader = state.matchTool?.csvHeader;
+  const nameField = toolHeader || $("nameField").value || guessNameField(state.csvHeaders);
 
   let merged = [];
 
@@ -1360,7 +1667,7 @@ function rebuildMergedRows(){
     merged = state.csvRows.map(r => {
       const out = {...r};
       const name = String(r[nameField] ?? "").trim();
-      const k = personKey(name);
+      const k = getDockKeyForCsvNameAdditive(name);
       const dock = state.dockByName.get(k);
 
       out["Match: Person Key"] = k;
@@ -1436,6 +1743,7 @@ function updateBadges(){
   $("rowsBadge").textContent = state.mergedRows.length;
   $("metricBadge").textContent = state.metrics.length;
   $("dockBadge").textContent = state.dockByName.size;
+  if($("matchBadge")) $("matchBadge").textContent = state.matchTool?.lastMatchCount || 0;
   $("cardMatched").textContent = state.mergedRows.filter(r => r["Match: Dock Found"] === "Yes").length;
   $("cardTarget").textContent = $("targetField").value || "—";
 }
@@ -1460,6 +1768,17 @@ function clearAll(){
   clearTreeCacheAdditive();
   state.selectedNodeContext = null;
   state.currentExamplesExport = null;
+  state.matchTool = {
+    csvHeader: "",
+    dockHeader: "Name",
+    manualPairs: [],
+    lastMatchCount: 0,
+    lastCsvUniqueCount: 0,
+    lastDockUniqueCount: 0,
+    unmatchedCsvNames: [],
+    unmatchedDockNames: [],
+    matches: []
+  };
 
   $("fileLabel").textContent = "Drop CSV or choose file";
   $("corrBody").innerHTML = `<tr><td colspan="7" class="muted">Load data, choose target, then run correlations.</td></tr>`;
@@ -2369,6 +2688,39 @@ function boot(){
   $("btnNumericHeaders").onclick = setNumericHeadersOnly;
 
   $("btnDockKeys").onclick = showDockKeys;
+
+  $("btnMatchTool").onclick = () => {
+    hydrateMatchToolDropdownsAdditive();
+    renderMatchToolResultsAdditive();
+    $("matchToolDrawer").classList.add("show");
+  };
+  $("btnCloseMatchTool").onclick = () => $("matchToolDrawer").classList.remove("show");
+  $("btnRunMatchTool").onclick = runMatchToolAdditive;
+  $("btnSaveMatchTool").onclick = () => {
+    state.matchTool.csvHeader = $("matchCsvHeader").value;
+    state.matchTool.dockHeader = $("matchDockHeader").value;
+    persistMatchToolAdditive();
+    $("matchToolStatus").className = "hint ok";
+    $("matchToolStatus").innerHTML = "Match settings saved.";
+  };
+  $("matchToolSearch").oninput = renderMatchToolResultsAdditive;
+  $("btnClearManualPairs").onclick = () => {
+    state.matchTool.manualPairs = [];
+    persistMatchToolAdditive();
+    runMatchToolAdditive();
+  };
+  $("btnAutoPairStrong").onclick = () => {
+    const strong = (state.matchTool.matches || []).filter(m => m.type === "fuzzy" && m.score >= .9);
+    state.matchTool.manualPairs = state.matchTool.manualPairs || [];
+    for(const m of strong){
+      if(!state.matchTool.manualPairs.some(p => personKey(p.csvName) === personKey(m.csvName))){
+        state.matchTool.manualPairs.push({ csvName: m.csvName, dockName: m.dockName });
+      }
+    }
+    persistMatchToolAdditive();
+    runMatchToolAdditive();
+  };
+
   $("btnCloseDockKeys").onclick = () => $("dockDrawer").classList.remove("show");
 
   $("nameField").onchange = () => { clearTreeCacheAdditive(); rebuildMergedRows(); };
@@ -2406,6 +2758,7 @@ function boot(){
   };
 
   loadSavedCorrelationsAdditive();
+  loadMatchToolAdditive();
   setupTooltip();
   if($("thresholdMode")) $("thresholdMode").value = state.thresholdMode || "median";
   hydrateSelects();
