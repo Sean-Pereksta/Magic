@@ -401,7 +401,7 @@ canvas{
       <span class="pill"><b id="rowsBadge">0</b> rows</span>
       <span class="pill"><b id="metricBadge">0</b> metrics</span>
       <span class="pill"><b id="dockBadge">0</b> dock reps</span>
-      <span class="pill"><b id="matchBadge">0</b> matches</span>
+      <span class="pill"><b id="matchBadge">0</b> matched</span>
       <button class="primary" id="btnRun">Run Correlations</button>
       <button id="btnHeaders">Choose Headers</button>
       <button id="btnFilterHeaders">Filter Out Headers</button>
@@ -439,6 +439,7 @@ canvas{
       <label>Name Match Field</label>
       <div class="row">
         <select id="nameField"></select>
+        <button id="btnMatchHeaders">Match Headers</button>
         <button id="btnMatchTool">Match Tool</button>
       </div>
     </div>
@@ -648,6 +649,57 @@ canvas{
   </div>
 </div>
 
+<div class="drawer" id="matchHeadersDrawer">
+  <div class="modal">
+    <div class="ph">
+      <div>
+        <b>Match Headers</b><br>
+        <small>Select which headers contain the same person names. Correlations will only use matched rows.</small>
+      </div>
+      <div class="row">
+        <button id="btnApplyMatchHeaders" class="primary">Apply Match</button>
+        <button class="dark" id="btnCloseMatchHeaders">Close</button>
+      </div>
+    </div>
+    <div class="modalBody">
+      <div class="cardGrid">
+        <div class="kcard">
+          <div class="k">CSV Name Header</div>
+          <select id="matchCsvNameHeader"></select>
+          <div class="d">Example: Agent Name</div>
+        </div>
+        <div class="kcard">
+          <div class="k">Dock Name Header</div>
+          <select id="matchDockNameHeader"></select>
+          <div class="d">Example: Name</div>
+        </div>
+        <div class="kcard">
+          <div class="k">Matched Rows Used</div>
+          <div class="v" id="simpleMatchedCount">0</div>
+          <div class="d">Unmatched rows are excluded from correlations</div>
+        </div>
+        <div class="kcard">
+          <div class="k">Unique Name Matches</div>
+          <div class="v" id="simpleUniqueMatchedCount">0</div>
+          <div class="d">Normalized names found in both sources</div>
+        </div>
+      </div>
+      <div style="height:10px"></div>
+      <label class="checkItem" style="display:flex">
+        <input id="matchOnlyToggle" type="checkbox" checked>
+        <span>
+          Correlate matched rows only<br>
+          <span class="muted">When enabled, unmatched CSV rows are removed from the correlation dataset.</span>
+        </span>
+      </label>
+      <div style="height:10px"></div>
+      <div class="hint" id="matchHeadersStatus">
+        Choose the two name headers, then click Apply Match. Matching ignores case, spacing, dots, and Last, First format.
+      </div>
+    </div>
+  </div>
+</div>
+
 
 
 <div class="drawer" id="matchToolDrawer">
@@ -821,6 +873,15 @@ const state = {
   exampleLimit: 250,
   selectedNodeContext: null,
   currentExamplesExport: null,
+  matchHeaders: {
+    csvNameHeader: "",
+    dockNameHeader: "Name",
+    matchedOnly: true,
+    matchedCount: 0,
+    csvUniqueCount: 0,
+    dockUniqueCount: 0,
+    uniqueMatchedCount: 0
+  },
   matchTool: {
     csvHeader: "",
     dockHeader: "Name",
@@ -836,6 +897,7 @@ const state = {
 
 const SAVED_CORR_KEY = "layeredCorrelationFinder.savedCorrelations.v1";
 const MATCH_TOOL_KEY = "layeredCorrelationFinder.matchTool.v1";
+const MATCH_HEADERS_KEY = "layeredCorrelationFinder.matchHeaders.v1";
 
 function esc(s){
   return String(s ?? "")
@@ -1476,6 +1538,82 @@ function hydrateMatchToolDropdownsAdditive(){
   $("matchDockHeader").value = guessedDock;
 }
 
+function hydrateMatchHeadersDropdownsAdditive(){
+  const csvHeaders = state.csvHeaders && state.csvHeaders.length ? state.csvHeaders : state.headers || [];
+  const dockHeaders = getDockNameHeadersSimpleAdditive();
+  $("matchCsvNameHeader").innerHTML = csvHeaders.map(h => `<option value="${esc(h)}">${esc(h)}</option>`).join("");
+  $("matchDockNameHeader").innerHTML = dockHeaders.map(h => `<option value="${esc(h)}">${esc(h)}</option>`).join("");
+  const guessedCsv =
+    state.matchHeaders?.csvNameHeader ||
+    $("nameField").value ||
+    csvHeaders.find(h => /agent.*name|rep.*name|representative|associate|employee|name/i.test(h)) ||
+    csvHeaders[0] ||
+    "";
+  const guessedDock =
+    state.matchHeaders?.dockNameHeader ||
+    dockHeaders.find(h => /^name$/i.test(h)) ||
+    dockHeaders[0] ||
+    "Name";
+  if(guessedCsv) $("matchCsvNameHeader").value = guessedCsv;
+  if(guessedDock) $("matchDockNameHeader").value = guessedDock;
+  if($("matchOnlyToggle")) $("matchOnlyToggle").checked = state.matchHeaders?.matchedOnly !== false;
+  if($("simpleMatchedCount")) $("simpleMatchedCount").textContent = state.matchHeaders?.matchedCount || 0;
+  if($("simpleUniqueMatchedCount")) $("simpleUniqueMatchedCount").textContent = state.matchHeaders?.uniqueMatchedCount || 0;
+}
+
+function getDockNameHeadersSimpleAdditive(){
+  const set = new Set(["Name"]);
+  for(const row of state.dockRows || []){
+    Object.keys(row || {}).forEach(k => {
+      if(/name|associate|rep|representative|employee|agent|csr/i.test(k)) set.add(k);
+    });
+  }
+  for(const obj of state.dockByName?.values?.() || []){
+    Object.keys(obj || {}).forEach(k => {
+      if(/name|associate|rep|representative|employee|agent|csr/i.test(k)) set.add(k);
+    });
+  }
+  return Array.from(set);
+}
+
+function buildDockBySelectedHeaderAdditive(){
+  const dockHeader = state.matchHeaders?.dockNameHeader || "Name";
+  const map = new Map();
+  for(const row of state.dockRows || []){
+    const rawName = row[dockHeader] ?? row.Name;
+    const key = personKey(rawName);
+    if(!key) continue;
+    if(!map.has(key)){
+      map.set(key, {
+        "Dock: Representative": String(rawName || "").trim(),
+        "Dock: Rows": 0,
+        __sums: {},
+        __counts: {}
+      });
+    }
+    const acc = map.get(key);
+    acc["Dock: Rows"]++;
+    for(const [field, value] of Object.entries(row)){
+      if(["Source","Name","Sheet","Date","__date","__ymd","__wk","__nameKey"].includes(field)) continue;
+      const n = toNumber(value);
+      if(n === null) continue;
+      const avgLike = /rate|%|pct|percent|available|score/i.test(field);
+      const outField = avgLike ? `Dock Avg: ${field}` : `Dock Total: ${field}`;
+      acc.__sums[outField] = (acc.__sums[outField] || 0) + n;
+      acc.__counts[outField] = (acc.__counts[outField] || 0) + 1;
+    }
+  }
+  for(const obj of map.values()){
+    for(const [field, sum] of Object.entries(obj.__sums || {})){
+      const count = obj.__counts[field] || 1;
+      obj[field] = field.startsWith("Dock Avg:") ? (sum / count) : sum;
+    }
+    delete obj.__sums;
+    delete obj.__counts;
+  }
+  return map;
+}
+
 function simpleNameSimilarityAdditive(a, b){
   const ak = personKey(a);
   const bk = personKey(b);
@@ -1648,6 +1786,64 @@ function runMatchToolAdditive(){
   `;
 }
 
+function applyMatchHeadersAdditive(){
+  state.matchHeaders.csvNameHeader = $("matchCsvNameHeader").value;
+  state.matchHeaders.dockNameHeader = $("matchDockNameHeader").value;
+  state.matchHeaders.matchedOnly = $("matchOnlyToggle") ? $("matchOnlyToggle").checked : true;
+  persistMatchHeadersAdditive();
+  rebuildMergedRows();
+  const dockMap = buildDockBySelectedHeaderAdditive();
+  const allCsvNames = new Set(
+    (state.csvRows || [])
+      .map(r => personKey(r[state.matchHeaders.csvNameHeader]))
+      .filter(Boolean)
+  );
+  const dockNames = new Set(dockMap.keys());
+  let uniqueMatched = 0;
+  for(const name of allCsvNames){
+    if(dockNames.has(name)) uniqueMatched++;
+  }
+  const matchedRows = state.mergedRows.filter(r => r["Match: Dock Found"] === "Yes").length;
+  state.matchHeaders.matchedCount = matchedRows;
+  state.matchHeaders.csvUniqueCount = allCsvNames.size;
+  state.matchHeaders.dockUniqueCount = dockNames.size;
+  state.matchHeaders.uniqueMatchedCount = uniqueMatched;
+  if($("simpleMatchedCount")) $("simpleMatchedCount").textContent = matchedRows;
+  if($("simpleUniqueMatchedCount")) $("simpleUniqueMatchedCount").textContent = uniqueMatched;
+  if($("matchBadge")) $("matchBadge").textContent = matchedRows;
+  $("matchHeadersStatus").className = matchedRows ? "hint ok" : "hint warn";
+  $("matchHeadersStatus").innerHTML = `
+    <b>Match applied.</b><br>
+    CSV header: <b>${esc(state.matchHeaders.csvNameHeader)}</b><br>
+    Dock header: <b>${esc(state.matchHeaders.dockNameHeader)}</b><br>
+    CSV unique names: <b>${allCsvNames.size}</b><br>
+    Dock unique names: <b>${dockNames.size}</b><br>
+    Unique name matches: <b>${uniqueMatched}</b><br>
+    Matched rows used for correlations: <b>${matchedRows}</b><br>
+    ${state.matchHeaders.matchedOnly ? "<b>Unmatched rows are currently excluded.</b>" : "<b>Unmatched rows are currently included.</b>"}
+  `;
+  clearTreeCacheAdditive?.();
+  updateBadges();
+}
+
+function persistMatchHeadersAdditive(){
+  try{
+    localStorage.setItem(MATCH_HEADERS_KEY, JSON.stringify(state.matchHeaders || {}));
+  }catch(e){}
+}
+
+function loadMatchHeadersAdditive(){
+  try{
+    const raw = localStorage.getItem(MATCH_HEADERS_KEY);
+    if(!raw) return;
+    const saved = JSON.parse(raw);
+    state.matchHeaders = {
+      ...(state.matchHeaders || {}),
+      ...saved
+    };
+  }catch(e){}
+}
+
 function guessNameField(headers){
   return headers.find(h => ["name","associate","rep","representative","employee","agent","csr"].includes(normHdr(h))) ||
     headers.find(h => /name|associate|rep|representative|employee|agent|csr/i.test(h)) ||
@@ -1658,17 +1854,20 @@ function guessNameField(headers){
 function rebuildMergedRows(){
   clearTreeCacheAdditive();
   const csvHasRows = state.csvRows.length > 0;
+  const selectedCsvHeader = state.matchHeaders?.csvNameHeader;
   const toolHeader = state.matchTool?.csvHeader;
-  const nameField = toolHeader || $("nameField").value || guessNameField(state.csvHeaders);
+  const nameField = selectedCsvHeader || toolHeader || $("nameField").value || guessNameField(state.csvHeaders);
+  const selectedDockMap = state.matchHeaders?.dockNameHeader ? buildDockBySelectedHeaderAdditive() : state.dockByName;
+  const matchedOnly = state.matchHeaders?.matchedOnly !== false;
 
   let merged = [];
 
   if(csvHasRows){
-    merged = state.csvRows.map(r => {
+    const tempMerged = state.csvRows.map(r => {
       const out = {...r};
       const name = String(r[nameField] ?? "").trim();
-      const k = getDockKeyForCsvNameAdditive(name);
-      const dock = state.dockByName.get(k);
+      const k = personKey(name);
+      const dock = selectedDockMap.get(k);
 
       out["Match: Person Key"] = k;
       out["Match: Dock Found"] = dock ? "Yes" : "No";
@@ -1682,14 +1881,16 @@ function rebuildMergedRows(){
 
       return out;
     });
+    merged = matchedOnly ? tempMerged.filter(r => r["Match: Dock Found"] === "Yes") : tempMerged;
   }else{
-    merged = Array.from(state.dockByName.values()).map(d => ({
+    merged = Array.from(selectedDockMap.values()).map(d => ({
       Name: d["Dock: Representative"],
       "Match: Person Key": personKey(d["Dock: Representative"]),
       "Match: Dock Found": "Yes",
       ...d
     }));
   }
+  state.matchHeaders.matchedCount = merged.filter(r => r["Match: Dock Found"] === "Yes").length;
 
   state.mergedRows = merged;
 
@@ -1743,7 +1944,7 @@ function updateBadges(){
   $("rowsBadge").textContent = state.mergedRows.length;
   $("metricBadge").textContent = state.metrics.length;
   $("dockBadge").textContent = state.dockByName.size;
-  if($("matchBadge")) $("matchBadge").textContent = state.matchTool?.lastMatchCount || 0;
+  if($("matchBadge")) $("matchBadge").textContent = state.mergedRows.filter(r => r["Match: Dock Found"] === "Yes").length || 0;
   $("cardMatched").textContent = state.mergedRows.filter(r => r["Match: Dock Found"] === "Yes").length;
   $("cardTarget").textContent = $("targetField").value || "—";
 }
@@ -1768,6 +1969,15 @@ function clearAll(){
   clearTreeCacheAdditive();
   state.selectedNodeContext = null;
   state.currentExamplesExport = null;
+  state.matchHeaders = {
+    csvNameHeader: "",
+    dockNameHeader: "Name",
+    matchedOnly: true,
+    matchedCount: 0,
+    csvUniqueCount: 0,
+    dockUniqueCount: 0,
+    uniqueMatchedCount: 0
+  };
   state.matchTool = {
     csvHeader: "",
     dockHeader: "Name",
@@ -2688,6 +2898,12 @@ function boot(){
   $("btnNumericHeaders").onclick = setNumericHeadersOnly;
 
   $("btnDockKeys").onclick = showDockKeys;
+  $("btnMatchHeaders").onclick = () => {
+    hydrateMatchHeadersDropdownsAdditive();
+    $("matchHeadersDrawer").classList.add("show");
+  };
+  $("btnCloseMatchHeaders").onclick = () => $("matchHeadersDrawer").classList.remove("show");
+  $("btnApplyMatchHeaders").onclick = applyMatchHeadersAdditive;
 
   $("btnMatchTool").onclick = () => {
     hydrateMatchToolDropdownsAdditive();
@@ -2758,6 +2974,7 @@ function boot(){
   };
 
   loadSavedCorrelationsAdditive();
+  loadMatchHeadersAdditive();
   loadMatchToolAdditive();
   setupTooltip();
   if($("thresholdMode")) $("thresholdMode").value = state.thresholdMode || "median";
@@ -2770,4 +2987,3 @@ boot();
 </script>
 </body>
 </html>
-
