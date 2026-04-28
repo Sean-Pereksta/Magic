@@ -392,6 +392,14 @@ canvas{
 }
 .savedItem b{font-size:12px;}
 .savedItem small{color:var(--muted);}
+.posText{
+  color:#166534;
+  font-weight:950;
+}
+.badText{
+  color:#991b1b;
+  font-weight:950;
+}
 @media(max-width:1200px){
   .layout{grid-template-columns:1fr}
   .controls{grid-template-columns:1fr 1fr}
@@ -515,6 +523,11 @@ canvas{
             <div class="k">Rows Matched</div>
             <div class="v" id="cardMatched">0</div>
             <div class="d">CSV + dock name merge</div>
+          </div>
+          <div class="kcard">
+            <div class="k">Call Center Avg</div>
+            <div class="v" id="cardCallCenterAvg">—</div>
+            <div class="d" id="cardCallCenterAvgSub">Selected KPI average</div>
           </div>
           <div class="kcard">
             <div class="k">Layer</div>
@@ -893,6 +906,8 @@ const state = {
   exampleLimit: 250,
   selectedNodeContext: null,
   currentExamplesExport: null,
+  callCenterKpiAvg: null,
+  callCenterKpiN: 0,
   matchHeaders: {
     csvNameHeader: "",
     dockNameHeader: "Name",
@@ -978,6 +993,21 @@ function fmt(n, d=3){
 function pct(n, d=1){
   if(!Number.isFinite(n)) return "—";
   return (n * 100).toFixed(d) + "%";
+}
+function fmtKpiValueAdditive(value, field){
+  if(!Number.isFinite(value)) return "—";
+  if(/rate|%|pct|percent|available|score|appointment/i.test(String(field || ""))){
+    return pct(value);
+  }
+  return fmt(value, 2);
+}
+function fmtSignedKpiLiftAdditive(value, field){
+  if(!Number.isFinite(value)) return "—";
+  const sign = value > 0 ? "+" : "";
+  if(/rate|%|pct|percent|available|score|appointment/i.test(String(field || ""))){
+    return sign + pct(value);
+  }
+  return sign + fmt(value, 2);
 }
 
 function setProgress(p, text){
@@ -1843,6 +1873,7 @@ function applyMatchHeadersAdditive(){
     ${state.matchHeaders.matchedOnly ? "<b>Unmatched rows are currently excluded.</b>" : "<b>Unmatched rows are currently included.</b>"}
   `;
   clearTreeCacheAdditive?.();
+  calculateCallCenterKpiAverageAdditive();
   updateBadges();
 }
 
@@ -1913,6 +1944,7 @@ function rebuildMergedRows(){
   state.matchHeaders.matchedCount = merged.filter(r => r["Match: Dock Found"] === "Yes").length;
 
   state.mergedRows = merged;
+  calculateCallCenterKpiAverageAdditive();
 
   const allHeaders = Array.from(new Set(merged.flatMap(r => Object.keys(r))));
   state.headers = allHeaders;
@@ -1967,6 +1999,13 @@ function updateBadges(){
   if($("matchBadge")) $("matchBadge").textContent = state.mergedRows.filter(r => r["Match: Dock Found"] === "Yes").length || 0;
   $("cardMatched").textContent = state.mergedRows.filter(r => r["Match: Dock Found"] === "Yes").length;
   $("cardTarget").textContent = $("targetField").value || "—";
+  if($("cardCallCenterAvg")){
+    $("cardCallCenterAvg").textContent =
+      fmtKpiValueAdditive(state.callCenterKpiAvg, $("targetField").value);
+  }
+  if($("cardCallCenterAvgSub")){
+    $("cardCallCenterAvgSub").textContent = `${state.callCenterKpiN || 0} row(s) included`;
+  }
 }
 
 function clearAll(){
@@ -1989,6 +2028,8 @@ function clearAll(){
   clearTreeCacheAdditive();
   state.selectedNodeContext = null;
   state.currentExamplesExport = null;
+  state.callCenterKpiAvg = null;
+  state.callCenterKpiN = 0;
   state.matchHeaders = {
     csvNameHeader: "",
     dockNameHeader: "Name",
@@ -2068,6 +2109,7 @@ async function runCorrelations(){
   const target = $("targetField").value;
   const minN = Math.max(2, Number($("minN").value || 2));
   state.target = target;
+  calculateCallCenterKpiAverageAdditive();
 
   if(!target){
     $("statusBox").className = "hint bad";
@@ -2095,6 +2137,11 @@ async function runCorrelations(){
 
       const abs = Math.abs(r);
       const label = strength(abs);
+      const targetValsForMetric = pairs.map(p => p[1]).filter(Number.isFinite);
+      const metricAvg = mean(targetValsForMetric);
+      const liftVsCallCenter = Number.isFinite(state.callCenterKpiAvg)
+        ? metricAvg - state.callCenterKpiAvg
+        : null;
 
       results.push({
         metric,
@@ -2102,7 +2149,9 @@ async function runCorrelations(){
         abs,
         n:pairs.length,
         label,
-        direction:r >= 0 ? "Positive" : "Negative"
+        direction:r >= 0 ? "Positive" : "Negative",
+        metricAvg,
+        liftVsCallCenter
       });
     }
 
@@ -2172,7 +2221,7 @@ function renderCorrelations(){
       <td>${fmt(c.abs,3)}</td>
       <td>${c.n}</td>
       <td><span class="tag ${c.r >= 0 ? "pos" : "neg"}">${c.direction}</span></td>
-      <td><span class="tag ${c.label.cls}">${c.label.txt}</span></td>
+      <td><span class="tag ${c.label.cls}">${c.label.txt}</span><div class="muted small">Vs Avg: <b class="${(c.liftVsCallCenter ?? 0) >= 0 ? "posText" : "badText"}">${fmtSignedKpiLiftAdditive(c.liftVsCallCenter, $("targetField").value)}</b></div></td>
       <td>
         <div class="row">
           <button onclick="selectMetric(${JSON.stringify(c.metric)}, false)">Plot</button>
@@ -2192,6 +2241,20 @@ function mean(nums){
   const good = nums.filter(Number.isFinite);
   if(!good.length) return null;
   return good.reduce((a,b)=>a+b,0) / good.length;
+}
+function calculateCallCenterKpiAverageAdditive(){
+  const target = $("targetField")?.value || state.target || "";
+  if(!target){
+    state.callCenterKpiAvg = null;
+    state.callCenterKpiN = 0;
+    return null;
+  }
+  const vals = (state.mergedRows || [])
+    .map(r => toNumber(r[target]))
+    .filter(Number.isFinite);
+  state.callCenterKpiAvg = vals.length ? mean(vals) : null;
+  state.callCenterKpiN = vals.length;
+  return state.callCenterKpiAvg;
 }
 
 function quantile(vals, q){
@@ -2647,9 +2710,18 @@ async function computeTreeChildrenAdditive(chain){
       const goodAvg = mean(goodVals);
       const badAvg = mean(badVals);
       const delta = goodAvg - badAvg;
+      const liftVsCallCenter = Number.isFinite(state.callCenterKpiAvg)
+        ? goodAvg - state.callCenterKpiAvg
+        : null;
+      const badLiftVsCallCenter = Number.isFinite(state.callCenterKpiAvg)
+        ? badAvg - state.callCenterKpiAvg
+        : null;
       const abs = Math.abs(r);
       const label = strength(abs);
-      children.push({metric,chain:[...chain, metric],r,abs,n:pairs.length,condition,conditionN:goodRows.length,remainingN:goodRows.length,goodAvg,badAvg,delta,label,influenceScore:Math.abs(delta) * Math.sqrt(pairs.length)});
+      const relativeLift = Math.abs(delta || 0);
+      const absoluteLift = Math.max(0, liftVsCallCenter || 0);
+      const influenceScore = (absoluteLift * 2 + relativeLift) * Math.sqrt(pairs.length);
+      children.push({metric,chain:[...chain, metric],r,abs,n:pairs.length,condition,conditionN:goodRows.length,remainingN:goodRows.length,goodAvg,badAvg,delta,liftVsCallCenter,badLiftVsCallCenter,label,influenceScore});
     }
     setProgress((Math.min(candidates.length, i + chunk) / Math.max(1, candidates.length)) * 100, `Tree children ${Math.min(candidates.length, i + chunk)}/${candidates.length}`);
     await sleepFrame();
@@ -2674,8 +2746,8 @@ function renderTreeChildrenRowsAdditive(parentChain, depth){
           <div class="muted small">Path: ${esc(makeChainLabelAdditive(childChain))}</div>
         </td>
         <td>${fmt(child.r,3)}</td><td>${fmt(Math.abs(child.r || 0),3)}</td><td>${child.n}</td>
-        <td><span class="tag ${child.delta >= 0 ? "pos" : "bad"}">${pct(child.delta)}</span></td>
-        <td><span class="tag ${child.label?.cls || "low"}">${child.label?.txt || "Layer"}</span><div class="muted small">Good ${pct(child.goodAvg)} / Other ${pct(child.badAvg)}</div><div class="muted small">Condition: ${child.conditionN}, Remaining: ${child.remainingN}</div></td>
+        <td><span class="tag ${child.delta >= 0 ? "pos" : "bad"}">${fmtSignedKpiLiftAdditive(child.delta, $("targetField").value)}</span></td>
+        <td><span class="tag ${child.label?.cls || "low"}">${child.label?.txt || "Layer"}</span><div class="muted small">Good ${fmtKpiValueAdditive(child.goodAvg, $("targetField").value)} / Other ${fmtKpiValueAdditive(child.badAvg, $("targetField").value)}</div><div class="muted small">Delta vs Other: <b class="${(child.delta ?? 0) >= 0 ? "posText" : "badText"}">${fmtSignedKpiLiftAdditive(child.delta, $("targetField").value)}</b></div><div class="muted small">Vs Avg: <b class="${(child.liftVsCallCenter ?? 0) >= 0 ? "posText" : "badText"}">${fmtSignedKpiLiftAdditive(child.liftVsCallCenter, $("targetField").value)}</b></div><div class="muted small">Condition: ${child.conditionN}, Remaining: ${child.remainingN}</div></td>
         <td><div class="row"><button onclick='plotTreeNodeAdditive(${JSON.stringify(childChain)})'>Plot</button><button onclick='showExamplesAdditive(${JSON.stringify(childChain)})'>Examples</button><button onclick='saveTreeCorrelationAdditive(${JSON.stringify(childChain)})'>Save</button></div></td>
       </tr>
       ${expanded ? renderTreeChildrenRowsAdditive(childChain, depth + 1) : ""}
@@ -2685,13 +2757,36 @@ function renderTreeChildrenRowsAdditive(parentChain, depth){
 function plotTreeNodeAdditive(chain){
   const rows = getRowsForChainAdditive(chain.slice(0,-1));
   const metric = chain[chain.length - 1];
+  const target = $("targetField").value;
+  const pathRows = getRowsForChainAdditive(chain);
+  const pathVals = pathRows.map(r => toNumber(r[target])).filter(Number.isFinite);
+  const pathAvg = mean(pathVals);
+  const lift = Number.isFinite(state.callCenterKpiAvg)
+    ? pathAvg - state.callCenterKpiAvg
+    : null;
+  const parentId = makeTreeNodeIdAdditive(chain.slice(0,-1));
+  const child = (state.treeChildrenCache.get(parentId) || []).find(c => c.metric === metric);
   state.selectedMetric = metric;
   state.selectedNodeContext = { chain, rows };
-  drawScatterAdditiveContext(rows, metric, $("targetField").value, chain);
+  drawScatterAdditiveContext(rows, metric, target, chain);
+  $("statusBox").className = "hint ok";
+  $("statusBox").innerHTML = `
+    <b>Path selected:</b> ${esc(makeChainLabelAdditive(chain))}<br>
+    Call Center Avg: <b>${fmtKpiValueAdditive(state.callCenterKpiAvg, target)}</b><br>
+    Path Avg: <b>${fmtKpiValueAdditive(pathAvg, target)}</b><br>
+    Vs Call Center Avg: <b class="${(lift ?? 0) >= 0 ? "posText" : "badText"}">${fmtSignedKpiLiftAdditive(lift, target)}</b><br>
+    Delta vs Opposite Group: <b class="${(child?.delta ?? 0) >= 0 ? "posText" : "badText"}">${fmtSignedKpiLiftAdditive(child?.delta, target)}</b><br>
+    Rows in Path: <b>${pathVals.length}</b>
+  `;
 }
 function showExamplesAdditive(chain){
   const rows = getRowsForChainAdditive(chain);
   const target = $("targetField").value;
+  const pathVals = rows.map(r => toNumber(r[target])).filter(Number.isFinite);
+  const pathAvg = mean(pathVals);
+  const lift = Number.isFinite(state.callCenterKpiAvg)
+    ? pathAvg - state.callCenterKpiAvg
+    : null;
   const metric = chain[chain.length - 1];
   const nameField = $("nameField").value;
   const displayRows = rows.filter(r => toNumber(r[target]) !== null).sort((a,b) => (toNumber(b[target]) ?? -Infinity) - (toNumber(a[target]) ?? -Infinity)).slice(0, state.exampleLimit || 250);
@@ -2699,7 +2794,7 @@ function showExamplesAdditive(chain){
   const cols = [nameField,target,metric,...chainFields.filter(x => x !== metric),"CSV Source File","Match: Dock Found"].filter(Boolean);
   const uniqueCols = [...new Set(cols)];
   $("examplesTitle").textContent = `Examples: ${makeChainLabelAdditive(chain)}`;
-  $("examplesSub").textContent = `Showing ${displayRows.length} of ${rows.length} matching rows`;
+  $("examplesSub").textContent = `Call Center Avg: ${fmtKpiValueAdditive(state.callCenterKpiAvg, target)} • Current Path Avg: ${fmtKpiValueAdditive(pathAvg, target)} • Lift: ${fmtSignedKpiLiftAdditive(lift, target)} • Showing ${displayRows.length} of ${rows.length} matching rows`;
   $("examplesHead").innerHTML = `<tr>${uniqueCols.map(c => `<th>${esc(c)}</th>`).join("")}</tr>`;
   $("examplesBody").innerHTML = displayRows.map(r => `<tr>${uniqueCols.map(c => `<td>${esc(r[c] ?? "")}</td>`).join("")}</tr>`).join("");
   state.currentExamplesExport = { cols: uniqueCols, rows: displayRows };
@@ -2726,6 +2821,10 @@ function saveCorrelationAdditive(node){
     r:node.r ?? null,
     abs:node.abs ?? (node.r !== undefined ? Math.abs(node.r) : null),
     delta:node.delta ?? null,
+    callCenterAvg: Number.isFinite(node.callCenterAvg) ? node.callCenterAvg : state.callCenterKpiAvg,
+    pathAvg: node.pathAvg ?? node.metricAvg ?? node.goodAvg ?? null,
+    liftVsCallCenter: node.liftVsCallCenter ?? null,
+    deltaVsOther: node.deltaVsOther ?? node.delta ?? null,
     n:node.n ?? null,
     conditionN:node.conditionN ?? null,
     remainingN:node.remainingN ?? null,
@@ -2737,14 +2836,26 @@ function saveCorrelationAdditive(node){
 }
 function saveTopCorrelationAdditive(metric){
   const c = state.correlations.find(x => x.metric === metric);
-  if(c) saveCorrelationAdditive({metric:c.metric, r:c.r, abs:c.abs, n:c.n, path:c.metric});
+  if(c) saveCorrelationAdditive({metric:c.metric, r:c.r, abs:c.abs, n:c.n, path:c.metric, metricAvg:c.metricAvg, callCenterAvg:state.callCenterKpiAvg, liftVsCallCenter:c.liftVsCallCenter});
 }
 function saveTreeCorrelationAdditive(chain){
   const parentId = makeTreeNodeIdAdditive(chain.slice(0,-1));
   const children = state.treeChildrenCache.get(parentId) || [];
   const metric = chain[chain.length-1];
   const child = children.find(c => c.metric === metric);
-  if(child) saveCorrelationAdditive({...child, path: makeChainLabelAdditive(chain)});
+  if(!child) return;
+  const target = $("targetField").value;
+  const pathRows = getRowsForChainAdditive(chain);
+  const pathVals = pathRows.map(r => toNumber(r[target])).filter(Number.isFinite);
+  const pathAvg = mean(pathVals);
+  saveCorrelationAdditive({
+    ...child,
+    path: makeChainLabelAdditive(chain),
+    pathAvg,
+    callCenterAvg: state.callCenterKpiAvg,
+    liftVsCallCenter: Number.isFinite(state.callCenterKpiAvg) ? pathAvg - state.callCenterKpiAvg : null,
+    deltaVsOther: child.delta
+  });
 }
 function loadSavedCorrelationsAdditive(){
   try{ state.savedCorrelations = JSON.parse(localStorage.getItem(SAVED_CORR_KEY) || "[]"); }catch{ state.savedCorrelations = []; }
@@ -2760,7 +2871,7 @@ function renderSavedCorrelationsAdditive(){
 function exportSavedCorrelationsAdditive(){
   const items = state.savedCorrelations || [];
   if(!items.length) return;
-  const headers = ["id","savedAt","target","path","metric","r","abs","delta","n","conditionN","remainingN","sourceFiles"];
+  const headers = ["id","savedAt","target","path","metric","r","abs","delta","callCenterAvg","pathAvg","liftVsCallCenter","deltaVsOther","n","conditionN","remainingN","sourceFiles"];
   const rows = [headers, ...items.map(i => headers.map(h => h === "sourceFiles" ? (i[h] || []).join(" | ") : (i[h] ?? "")))];
   const csv = rows.map(r => r.map(v => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replaceAll('"','""')}"` : s; }).join(",")).join("\n");
   const blob = new Blob([csv], {type:"text/csv"});
@@ -2947,11 +3058,11 @@ function showDockKeys(){
 ========================= */
 function exportCorrelations(){
   const rows = [
-    ["Metric","r","abs_r","N","Direction","Strength","Target"]
+    ["Metric","r","abs_r","N","Direction","Strength","Target","Metric Avg","Lift vs Call Center Avg","Call Center Avg"]
   ];
 
   for(const c of filteredCorrelations()){
-    rows.push([c.metric,c.r,c.abs,c.n,c.direction,c.label.txt,$("targetField").value]);
+    rows.push([c.metric,c.r,c.abs,c.n,c.direction,c.label.txt,$("targetField").value,c.metricAvg,c.liftVsCallCenter,state.callCenterKpiAvg]);
   }
 
   const csv = rows.map(r => r.map(v => {
@@ -3069,6 +3180,7 @@ function boot(){
   $("nameField").onchange = () => { clearTreeCacheAdditive(); rebuildMergedRows(); };
   $("targetField").onchange = () => {
     state.target = $("targetField").value;
+    calculateCallCenterKpiAverageAdditive();
     clearTreeCacheAdditive();
     updateBadges();
     renderCorrelations();
