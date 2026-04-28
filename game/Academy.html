@@ -367,6 +367,16 @@ canvas{
   font-weight:850;
 }
 .checkItem input{margin-top:2px}
+.lockedHeader{
+  opacity:.58;
+  background:#f1f5f9;
+}
+.lockedHeader input{
+  cursor:not-allowed;
+}
+.lockedHeader span{
+  color:#64748b;
+}
 .treeChildRow td{
   background:#fbfdff;
 }
@@ -809,6 +819,16 @@ canvas{
       </div>
     </div>
     <div class="modalBody">
+      <div class="row" style="margin-bottom:10px">
+        <input id="filterHeaderSearch" type="text" placeholder="Search headers to exclude... example: dock">
+        <button id="btnExcludeShowing" class="danger">Exclude All Showing</button>
+        <button id="btnIncludeShowing">Include All Showing</button>
+        <button id="btnResetExcludedHeaders">Reset Exclusions</button>
+      </div>
+      <div class="hint" id="filterHeaderHint">
+        Search for headers, then exclude all currently showing. Current KPI and current match headers are locked.
+      </div>
+      <div style="height:10px"></div>
       <div class="checkGrid" id="filterHeaderChecks"></div>
     </div>
   </div>
@@ -1903,7 +1923,7 @@ function rebuildMergedRows(){
 
   state.metrics = allHeaders.filter(h => {
     if(!state.activeHeaders.has(h)) return false;
-    if(isHeaderExcludedAdditive(h)) return false;
+    if(!isProtectedHeaderAdditive(h) && isHeaderExcludedAdditive(h)) return false;
     let count = 0;
     for(const r of merged){
       if(toNumber(r[h]) !== null) count++;
@@ -2546,6 +2566,22 @@ function clearTreeCacheAdditive(){
 function isHeaderExcludedAdditive(h){
   return state.excludedHeaders && state.excludedHeaders.has(h);
 }
+function isProtectedHeaderAdditive(h){
+  const target = $("targetField")?.value || state.target || "";
+  const csvMatch = state.matchHeaders?.csvNameHeader || "";
+  const dockMatch = state.matchHeaders?.dockNameHeader || "";
+  const protectedSet = new Set(
+    [target, csvMatch, dockMatch, $("nameField")?.value].filter(Boolean)
+  );
+  return protectedSet.has(h);
+}
+function getVisibleFilterHeadersAdditive(){
+  const q = ($("filterHeaderSearch")?.value || "").trim().toLowerCase();
+  return (state.headers || []).filter(h => {
+    if(!q) return true;
+    return String(h).toLowerCase().includes(q);
+  });
+}
 function makeTreeNodeIdAdditive(chain){ return chain.join(" > "); }
 function makeChainLabelAdditive(chain){ return chain.join(" > "); }
 function isTreeExpandedAdditive(chain){ return state.treeExpanded.has(makeTreeNodeIdAdditive(chain)); }
@@ -2732,15 +2768,90 @@ function exportSavedCorrelationsAdditive(){
   const a = document.createElement("a"); a.href = url; a.download = "saved_correlations.csv"; a.click(); URL.revokeObjectURL(url);
 }
 function renderFilterHeaderChecksAdditive(){
-  const box = $("filterHeaderChecks");
-  if(!state.headers.length){ box.innerHTML = `<div class="muted">No headers loaded.</div>`; return; }
-  box.innerHTML = state.headers.map(h => `<label class="checkItem"><input type="checkbox" ${state.excludedHeaders.has(h) ? "checked" : ""} onchange="toggleExcludedHeaderAdditive(${JSON.stringify(h)}, this.checked)"><span>${esc(h)}</span></label>`).join("");
+  const box = $("filterHeaderChecks") || $("headerChecks");
+  if(!box) return;
+
+  const headers = getVisibleFilterHeadersAdditive();
+  if(!headers.length){
+    box.innerHTML = `<div class="muted">No headers match the current search.</div>`;
+    return;
+  }
+
+  box.innerHTML = headers.map(h => {
+    const locked = isProtectedHeaderAdditive(h);
+    if(locked) state.excludedHeaders?.delete(h);
+    const excluded = !locked && state.excludedHeaders?.has(h);
+    const numericCount = (state.mergedRows || []).reduce((n,r) => {
+      return n + (toNumber(r[h]) !== null ? 1 : 0);
+    }, 0);
+    return `
+      <label class="checkItem ${locked ? "lockedHeader" : ""}">
+        <input
+          type="checkbox"
+          ${excluded ? "checked" : ""}
+          ${locked ? "disabled" : ""}
+          onchange="toggleExcludedHeaderAdditive(${JSON.stringify(h)}, this.checked)"
+        >
+        <span>
+          ${esc(h)}
+          ${locked ? `<span class="tag low">Locked</span>` : ""}
+          <br>
+          <span class="muted">
+            ${excluded ? "Excluded from correlations" : "Included in correlations"}
+            • ${numericCount} numeric values
+          </span>
+        </span>
+      </label>
+    `;
+  }).join("");
 }
-function toggleExcludedHeaderAdditive(h, on){
-  if(on) state.excludedHeaders.add(h); else state.excludedHeaders.delete(h);
+function toggleExcludedHeaderAdditive(h, shouldExclude){
+  if(isProtectedHeaderAdditive(h)){
+    state.excludedHeaders.delete(h);
+    renderFilterHeaderChecksAdditive();
+    return;
+  }
+
+  if(shouldExclude) state.excludedHeaders.add(h);
+  else state.excludedHeaders.delete(h);
+
   clearTreeCacheAdditive();
   rebuildMergedRows();
   renderFilterHeaderChecksAdditive();
+}
+function excludeAllShowingHeadersAdditive(){
+  const visible = getVisibleFilterHeadersAdditive();
+  for(const h of visible){
+    if(isProtectedHeaderAdditive(h)) continue;
+    state.excludedHeaders.add(h);
+  }
+  clearTreeCacheAdditive();
+  rebuildMergedRows();
+  renderFilterHeaderChecksAdditive();
+
+  const lockedCount = visible.filter(isProtectedHeaderAdditive).length;
+  const excludedCount = visible.length - lockedCount;
+  if($("filterHeaderHint")){
+    $("filterHeaderHint").className = "hint ok";
+    $("filterHeaderHint").innerHTML = `
+      Excluded <b>${excludedCount}</b> visible header(s).
+      ${lockedCount ? `<br><b>${lockedCount}</b> protected header(s) were locked and not excluded.` : ""}
+    `;
+  }
+}
+function includeAllShowingHeadersAdditive(){
+  const visible = getVisibleFilterHeadersAdditive();
+  for(const h of visible){
+    if(isProtectedHeaderAdditive(h)) continue;
+    state.excludedHeaders.delete(h);
+  }
+  clearTreeCacheAdditive();
+  rebuildMergedRows();
+  renderFilterHeaderChecksAdditive();
+  if($("filterHeaderHint")){
+    $("filterHeaderHint").className = "hint ok";
+    $("filterHeaderHint").innerHTML = `Included visible headers back into correlations. Protected headers stayed locked.`;
+  }
 }
 function excludeLikelyTextHeadersAdditive(){
   const rx = /name|representative|rep|employee|person key|dock found|date|sheet|source|id|ticket|workorder|phone|email|address/i;
@@ -2760,6 +2871,10 @@ function resetExcludedHeadersAdditive(){
   clearTreeCacheAdditive();
   rebuildMergedRows();
   renderFilterHeaderChecksAdditive();
+  if($("filterHeaderHint")){
+    $("filterHeaderHint").className = "hint ok";
+    $("filterHeaderHint").innerHTML = `All exclusions cleared. Protected headers remain available.`;
+  }
 }
 
 /* =========================
@@ -2894,6 +3009,18 @@ function boot(){
   $("btnExcludeLikelyText").onclick = excludeLikelyTextHeadersAdditive;
   $("btnExcludeNonNumeric").onclick = excludeNonNumericHeadersAdditive;
   $("btnResetExcluded").onclick = resetExcludedHeadersAdditive;
+  if($("filterHeaderSearch")){
+    $("filterHeaderSearch").oninput = renderFilterHeaderChecksAdditive;
+  }
+  if($("btnExcludeShowing")){
+    $("btnExcludeShowing").onclick = excludeAllShowingHeadersAdditive;
+  }
+  if($("btnIncludeShowing")){
+    $("btnIncludeShowing").onclick = includeAllShowingHeadersAdditive;
+  }
+  if($("btnResetExcludedHeaders")){
+    $("btnResetExcludedHeaders").onclick = resetExcludedHeadersAdditive;
+  }
   $("btnAllHeaders").onclick = () => setAllHeaders(true);
   $("btnNumericHeaders").onclick = setNumericHeadersOnly;
 
