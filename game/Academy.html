@@ -367,6 +367,21 @@ canvas{
   font-weight:850;
 }
 .checkItem input{margin-top:2px}
+.treeChildRow td{
+  background:#fbfdff;
+}
+.treeChildRow:hover td{
+  background:#f1f5f9;
+}
+.savedItem{
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:8px;
+  background:#fbfdff;
+  margin-bottom:8px;
+}
+.savedItem b{font-size:12px;}
+.savedItem small{color:var(--muted);}
 @media(max-width:1200px){
   .layout{grid-template-columns:1fr}
   .controls{grid-template-columns:1fr 1fr}
@@ -388,6 +403,7 @@ canvas{
       <span class="pill"><b id="dockBadge">0</b> dock reps</span>
       <button class="primary" id="btnRun">Run Correlations</button>
       <button id="btnHeaders">Choose Headers</button>
+      <button id="btnFilterHeaders">Filter Out Headers</button>
       <button id="btnExport">Export CSV</button>
       <button class="danger" id="btnClear">Clear</button>
     </div>
@@ -403,7 +419,7 @@ canvas{
             <span>Every header will be loaded as a selectable field.</span>
           </div>
           <div>
-            <input id="csvInput" type="file" accept=".csv,text/csv" style="display:none">
+            <input id="csvInput" type="file" accept=".csv,text/csv" multiple style="display:none">
             <button class="primary" id="btnPick">Choose CSV</button>
           </div>
         </div>
@@ -431,6 +447,13 @@ canvas{
     <div>
       <label>Minimum N</label>
       <input id="minN" type="number" value="5" min="2" step="1">
+      <div style="height:6px"></div>
+      <select id="thresholdMode">
+        <option value="median">Median split</option>
+        <option value="average">Above average</option>
+        <option value="topQuartile">Top quartile</option>
+        <option value="nonzero">Non-zero / present</option>
+      </select>
     </div>
 
     <div>
@@ -564,6 +587,24 @@ canvas{
           </div>
         </div>
 
+        <div style="height:10px"></div>
+
+        <div class="panel" style="box-shadow:none">
+          <div class="ph">
+            <div>
+              <b>Saved Correlations</b><br>
+              <small>Keep useful rows for later export.</small>
+            </div>
+            <div class="row">
+              <button id="btnExportSaved">Export Saved</button>
+              <button class="danger" id="btnClearSaved">Clear Saved</button>
+            </div>
+          </div>
+          <div class="pc">
+            <div id="savedList" style="max-height:240px;overflow:auto"></div>
+          </div>
+        </div>
+
       </div>
     </aside>
   </div>
@@ -603,6 +644,53 @@ canvas{
   </div>
 </div>
 
+
+
+<div class="drawer" id="filterHeaderDrawer">
+  <div class="modal">
+    <div class="ph">
+      <div>
+        <b>Filter Out Headers</b><br>
+        <small>Excluded headers are skipped for correlation metrics only.</small>
+      </div>
+      <div class="row">
+        <button id="btnExcludeLikelyText">Exclude likely text/ID headers</button>
+        <button id="btnExcludeNonNumeric">Exclude non-numeric</button>
+        <button id="btnResetExcluded">Reset excluded headers</button>
+        <button class="dark" id="btnCloseFilterHeaders">Done</button>
+      </div>
+    </div>
+    <div class="modalBody">
+      <div class="checkGrid" id="filterHeaderChecks"></div>
+    </div>
+  </div>
+</div>
+
+<div class="drawer" id="examplesDrawer">
+  <div class="modal">
+    <div class="ph">
+      <div>
+        <b id="examplesTitle">Examples</b><br>
+        <small id="examplesSub"></small>
+      </div>
+      <div class="row">
+        <button id="btnExportExamples">Export Examples</button>
+        <button class="dark" id="btnCloseExamples">Close</button>
+      </div>
+    </div>
+    <div class="modalBody">
+      <input id="examplesSearch" type="text" placeholder="Search examples...">
+      <div style="height:10px"></div>
+      <div class="tableWrap" style="max-height:65vh">
+        <table>
+          <thead id="examplesHead"></thead>
+          <tbody id="examplesBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 /* =========================
    General helpers
@@ -626,8 +714,20 @@ const state = {
   sortDir: "desc",
   drillChain: [],
   layerRows: [],
-  plotPoints: []
+  plotPoints: [],
+  uploadedFiles: [],
+  excludedHeaders: new Set(),
+  treeExpanded: new Set(),
+  treeChildrenCache: new Map(),
+  treeNodeCache: new Map(),
+  savedCorrelations: [],
+  thresholdMode: "median",
+  exampleLimit: 250,
+  selectedNodeContext: null,
+  currentExamplesExport: null
 };
+
+const SAVED_CORR_KEY = "layeredCorrelationFinder.savedCorrelations.v1";
 
 function esc(s){
   return String(s ?? "")
@@ -782,9 +882,39 @@ async function loadCSV(file){
 
   state.csvRows = parsed.rows;
   state.csvHeaders = parsed.headers;
+  state.uploadedFiles = [file.name];
+  if(!state.csvHeaders.includes("CSV Source File")) state.csvHeaders.push("CSV Source File");
+  state.csvRows = state.csvRows.map(r => ({...r, "CSV Source File":file.name}));
   $("fileLabel").textContent = file.name;
 
   setProgress(40, "CSV loaded");
+  clearTreeCacheAdditive();
+  rebuildMergedRows();
+}
+
+async function loadMultipleCSVsAdditive(files){
+  const fileList = Array.from(files || []).filter(f => /\.csv$/i.test(f.name) || (f.type || "").includes("csv") || f.type === "text/plain");
+  if(!fileList.length) return;
+  state.uploadedFiles = fileList.map(f => f.name);
+  const allRows = [];
+  const allHeadersSet = new Set();
+  for(let i = 0; i < fileList.length; i++){
+    const file = fileList[i];
+    setProgress((i / fileList.length) * 80, `Reading CSV ${i + 1}/${fileList.length}: ${file.name}`);
+    const text = await file.text();
+    const aoa = parseCSV(text);
+    const parsed = aoaToObjects(aoa);
+    parsed.headers.forEach(h => allHeadersSet.add(h));
+    for(const row of parsed.rows){
+      allRows.push({ ...row, "CSV Source File": file.name });
+    }
+    await sleepFrame();
+  }
+  state.csvRows = allRows;
+  state.csvHeaders = Array.from(allHeadersSet);
+  if(!state.csvHeaders.includes("CSV Source File")) state.csvHeaders.push("CSV Source File");
+  $("fileLabel").textContent = fileList.length === 1 ? fileList[0].name : `${fileList.length} CSV files loaded`;
+  clearTreeCacheAdditive();
   rebuildMergedRows();
 }
 
@@ -1220,6 +1350,7 @@ function guessNameField(headers){
 }
 
 function rebuildMergedRows(){
+  clearTreeCacheAdditive();
   const csvHasRows = state.csvRows.length > 0;
   const nameField = $("nameField").value || guessNameField(state.csvHeaders);
 
@@ -1264,6 +1395,7 @@ function rebuildMergedRows(){
 
   state.metrics = allHeaders.filter(h => {
     if(!state.activeHeaders.has(h)) return false;
+    if(isHeaderExcludedAdditive(h)) return false;
     let count = 0;
     for(const r of merged){
       if(toNumber(r[h]) !== null) count++;
@@ -1272,6 +1404,7 @@ function rebuildMergedRows(){
     return false;
   });
 
+  if($("thresholdMode")) $("thresholdMode").value = state.thresholdMode || "median";
   hydrateSelects();
   renderHeaderChecks();
   updateBadges();
@@ -1321,6 +1454,12 @@ function clearAll(){
   state.drillChain = [];
   state.layerRows = [];
   state.plotPoints = [];
+  state.uploadedFiles = [];
+  state.excludedHeaders = new Set();
+  state.treeExpanded = new Set();
+  clearTreeCacheAdditive();
+  state.selectedNodeContext = null;
+  state.currentExamplesExport = null;
 
   $("fileLabel").textContent = "Drop CSV or choose file";
   $("corrBody").innerHTML = `<tr><td colspan="7" class="muted">Load data, choose target, then run correlations.</td></tr>`;
@@ -1328,6 +1467,7 @@ function clearAll(){
   $("statusBox").className = "hint";
   $("statusBox").innerHTML = "Cleared. Upload a CSV or load docks.";
   setProgress(0, "Ready");
+  if($("thresholdMode")) $("thresholdMode").value = state.thresholdMode || "median";
   hydrateSelects();
   updateBadges();
   drawScatter();
@@ -1374,6 +1514,7 @@ function strength(abs){
 
 async function runCorrelations(){
   rebuildMergedRows();
+  clearTreeCacheAdditive();
 
   const target = $("targetField").value;
   const minN = Math.max(2, Number($("minN").value || 2));
@@ -1475,6 +1616,7 @@ function renderCorrelations(){
   $("corrBody").innerHTML = rows.map(c => `
     <tr>
       <td onclick="selectMetric(${JSON.stringify(c.metric)}, false)" style="cursor:pointer">
+        <button class="ghost" onclick='event.stopPropagation();toggleTreeNodeAdditive(${JSON.stringify([c.metric])})'>${isTreeExpandedAdditive([c.metric]) ? "▾" : "▸"}</button>
         <div class="metricName" title="${esc(c.metric)}">${esc(c.metric)}</div>
       </td>
       <td>${fmt(c.r,3)}</td>
@@ -1486,9 +1628,11 @@ function renderCorrelations(){
         <div class="row">
           <button onclick="selectMetric(${JSON.stringify(c.metric)}, false)">Plot</button>
           <button class="primary" onclick="startDrill(${JSON.stringify(c.metric)})">Drill</button>
+          <button onclick="saveTopCorrelationAdditive(${JSON.stringify(c.metric)})">Save</button>
         </div>
       </td>
     </tr>
+    ${isTreeExpandedAdditive([c.metric]) ? renderTreeChildrenRowsAdditive([c.metric], 1) : ""}
   `).join("");
 }
 
@@ -1675,14 +1819,17 @@ function selectMetric(metric){
 }
 
 function drawScatter(){
+  const metric = state.selectedMetric;
+  const target = $("targetField").value;
+  drawScatterAdditiveContext(state.mergedRows, metric, target, metric ? [metric] : []);
+}
+
+function drawScatterAdditiveContext(rows, metric, target, chain){
   const canvas = $("plot");
   const ctx = canvas.getContext("2d");
   const W = canvas.width;
   const H = canvas.height;
   ctx.clearRect(0,0,W,H);
-
-  const metric = state.selectedMetric;
-  const target = $("targetField").value;
 
   if(!metric || !target){
     ctx.fillStyle = "#64748b";
@@ -1691,7 +1838,7 @@ function drawScatter(){
     return;
   }
 
-  const pts = pairsForMetric(metric, target, state.mergedRows)
+  const pts = pairsForMetric(metric, target, rows)
     .map(([x,y,r]) => ({
       x,
       y,
@@ -1790,6 +1937,10 @@ function drawScatter(){
   ctx.font = "bold 12px system-ui";
   ctx.fillText(metric.slice(0,52), padL, H - 10);
 
+  if(chain && chain.length){
+    $("detailSub").textContent = `Scatter for ${makeChainLabelAdditive(chain)}`;
+  }
+
   ctx.save();
   ctx.translate(15, padT + plotH);
   ctx.rotate(-Math.PI/2);
@@ -1852,6 +2003,234 @@ function setupTooltip(){
   });
 
   canvas.addEventListener("mouseleave", () => tip.style.display = "none");
+}
+
+
+
+/* =========================
+   Additive tree/saved/examples
+========================= */
+function clearTreeCacheAdditive(){
+  if(state.treeChildrenCache) state.treeChildrenCache.clear();
+  if(state.treeNodeCache) state.treeNodeCache.clear();
+}
+function isHeaderExcludedAdditive(h){
+  return state.excludedHeaders && state.excludedHeaders.has(h);
+}
+function makeTreeNodeIdAdditive(chain){ return chain.join(" > "); }
+function makeChainLabelAdditive(chain){ return chain.join(" > "); }
+function isTreeExpandedAdditive(chain){ return state.treeExpanded.has(makeTreeNodeIdAdditive(chain)); }
+function toggleTreeNodeAdditive(metricOrChain){
+  const chain = Array.isArray(metricOrChain) ? metricOrChain : [metricOrChain];
+  const id = makeTreeNodeIdAdditive(chain);
+  if(state.treeExpanded.has(id)){ state.treeExpanded.delete(id); renderCorrelations(); return; }
+  state.treeExpanded.add(id);
+  computeTreeChildrenAdditive(chain).then(()=>renderCorrelations());
+}
+function getRowsForChainAdditive(chain){
+  let rows = state.mergedRows;
+  for(const metric of chain){
+    const rObj = state.correlations.find(c => c.metric === metric);
+    const approxR = rObj ? rObj.r : null;
+    const condition = buildConditionForMetricAdditive(metric, rows, approxR);
+    rows = rows.filter(row => rowMatchesConditionAdditive(row, condition));
+  }
+  return rows;
+}
+function buildConditionForMetricAdditive(metric, rows, r){
+  const vals = rows.map(row => toNumber(row[metric])).filter(Number.isFinite);
+  if(!vals.length) return { metric, type:"numeric", mode:"none", threshold:null, direction:"high" };
+  const sorted = [...vals].sort((a,b)=>a-b);
+  const avg = mean(vals);
+  const med = sorted[Math.floor(sorted.length / 2)];
+  let threshold = med;
+  let direction = r !== null && r < 0 ? "low" : "high";
+  if(state.thresholdMode === "average") threshold = avg;
+  if(state.thresholdMode === "topQuartile"){ threshold = sorted[Math.floor(sorted.length * .75)]; direction = "high"; }
+  if(state.thresholdMode === "nonzero"){ threshold = 0; direction = "nonzero"; }
+  return { metric, type:"numeric", mode:state.thresholdMode || "median", threshold, direction };
+}
+function rowMatchesConditionAdditive(row, condition){
+  const v = toNumber(row[condition.metric]);
+  if(v === null) return false;
+  if(condition.direction === "nonzero") return v !== 0;
+  if(condition.direction === "low") return v <= condition.threshold;
+  return v >= condition.threshold;
+}
+async function computeTreeChildrenAdditive(chain){
+  const id = makeTreeNodeIdAdditive(chain);
+  if(state.treeChildrenCache.has(id)) return state.treeChildrenCache.get(id);
+  const target = $("targetField").value;
+  const minN = Math.max(2, Number($("minN").value || 2));
+  const parentRows = getRowsForChainAdditive(chain);
+  const used = new Set(chain);
+  const candidates = state.metrics.filter(m => m !== target && !used.has(m));
+  const children = [];
+  const chunk = 20;
+  for(let i=0;i<candidates.length;i+=chunk){
+    for(const metric of candidates.slice(i,i+chunk)){
+      const pairs = pairsForMetric(metric, target, parentRows);
+      if(pairs.length < minN) continue;
+      const r = pearsonFromPairs(pairs.map(p => [p[0], p[1]]));
+      if(r === null || !Number.isFinite(r)) continue;
+      const condition = buildConditionForMetricAdditive(metric, parentRows, r);
+      const goodRows = parentRows.filter(row => rowMatchesConditionAdditive(row, condition));
+      const badRows = parentRows.filter(row => !rowMatchesConditionAdditive(row, condition));
+      const goodVals = goodRows.map(row => toNumber(row[target])).filter(Number.isFinite);
+      const badVals = badRows.map(row => toNumber(row[target])).filter(Number.isFinite);
+      if(goodVals.length < minN || badVals.length < minN) continue;
+      const goodAvg = mean(goodVals);
+      const badAvg = mean(badVals);
+      const delta = goodAvg - badAvg;
+      const abs = Math.abs(r);
+      const label = strength(abs);
+      children.push({metric,chain:[...chain, metric],r,abs,n:pairs.length,condition,conditionN:goodRows.length,remainingN:goodRows.length,goodAvg,badAvg,delta,label,influenceScore:Math.abs(delta) * Math.sqrt(pairs.length)});
+    }
+    setProgress((Math.min(candidates.length, i + chunk) / Math.max(1, candidates.length)) * 100, `Tree children ${Math.min(candidates.length, i + chunk)}/${candidates.length}`);
+    await sleepFrame();
+  }
+  children.sort((a,b)=>b.influenceScore-a.influenceScore);
+  state.treeChildrenCache.set(id, children);
+  return children;
+}
+function renderTreeChildrenRowsAdditive(parentChain, depth){
+  const id = makeTreeNodeIdAdditive(parentChain);
+  const children = state.treeChildrenCache.get(id) || [];
+  return children.map(child => {
+    const childChain = [...parentChain, child.metric];
+    const expanded = isTreeExpandedAdditive(childChain);
+    const indent = Math.min(depth * 24, 140);
+    return `
+      <tr class="treeChildRow depth-${depth}">
+        <td style="padding-left:${indent}px">
+          <button class="ghost" onclick='toggleTreeNodeAdditive(${JSON.stringify(childChain)})'>${expanded ? "▾" : "▸"}</button>
+          <span class="muted">${depth === 1 ? "└─" : "├─"}</span>
+          <span class="metricName" title="${esc(child.metric)}">${esc(child.metric)}</span>
+          <div class="muted small">Path: ${esc(makeChainLabelAdditive(childChain))}</div>
+        </td>
+        <td>${fmt(child.r,3)}</td><td>${fmt(Math.abs(child.r || 0),3)}</td><td>${child.n}</td>
+        <td><span class="tag ${child.delta >= 0 ? "pos" : "bad"}">${pct(child.delta)}</span></td>
+        <td><span class="tag ${child.label?.cls || "low"}">${child.label?.txt || "Layer"}</span><div class="muted small">Good ${pct(child.goodAvg)} / Other ${pct(child.badAvg)}</div><div class="muted small">Condition: ${child.conditionN}, Remaining: ${child.remainingN}</div></td>
+        <td><div class="row"><button onclick='plotTreeNodeAdditive(${JSON.stringify(childChain)})'>Plot</button><button onclick='showExamplesAdditive(${JSON.stringify(childChain)})'>Examples</button><button onclick='saveTreeCorrelationAdditive(${JSON.stringify(childChain)})'>Save</button></div></td>
+      </tr>
+      ${expanded ? renderTreeChildrenRowsAdditive(childChain, depth + 1) : ""}
+    `;
+  }).join("");
+}
+function plotTreeNodeAdditive(chain){
+  const rows = getRowsForChainAdditive(chain.slice(0,-1));
+  const metric = chain[chain.length - 1];
+  state.selectedMetric = metric;
+  state.selectedNodeContext = { chain, rows };
+  drawScatterAdditiveContext(rows, metric, $("targetField").value, chain);
+}
+function showExamplesAdditive(chain){
+  const rows = getRowsForChainAdditive(chain);
+  const target = $("targetField").value;
+  const metric = chain[chain.length - 1];
+  const nameField = $("nameField").value;
+  const displayRows = rows.filter(r => toNumber(r[target]) !== null).sort((a,b) => (toNumber(b[target]) ?? -Infinity) - (toNumber(a[target]) ?? -Infinity)).slice(0, state.exampleLimit || 250);
+  const chainFields = [...chain];
+  const cols = [nameField,target,metric,...chainFields.filter(x => x !== metric),"CSV Source File","Match: Dock Found"].filter(Boolean);
+  const uniqueCols = [...new Set(cols)];
+  $("examplesTitle").textContent = `Examples: ${makeChainLabelAdditive(chain)}`;
+  $("examplesSub").textContent = `Showing ${displayRows.length} of ${rows.length} matching rows`;
+  $("examplesHead").innerHTML = `<tr>${uniqueCols.map(c => `<th>${esc(c)}</th>`).join("")}</tr>`;
+  $("examplesBody").innerHTML = displayRows.map(r => `<tr>${uniqueCols.map(c => `<td>${esc(r[c] ?? "")}</td>`).join("")}</tr>`).join("");
+  state.currentExamplesExport = { cols: uniqueCols, rows: displayRows };
+  $("examplesDrawer").classList.add("show");
+}
+function exportExamplesAdditive(){
+  const data = state.currentExamplesExport;
+  if(!data || !data.cols || !data.rows) return;
+  const rows = [data.cols, ...data.rows.map(r => data.cols.map(c => r[c] ?? ""))];
+  const csv = rows.map(r => r.map(v => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replaceAll('"','""')}"` : s; }).join(",")).join("\n");
+  const blob = new Blob([csv], {type:"text/csv"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url; a.download = "layer_examples.csv"; a.click(); URL.revokeObjectURL(url);
+}
+function saveCorrelationAdditive(node){
+  if(!node) return;
+  const sourceFiles = [...new Set(state.mergedRows.map(r => r["CSV Source File"]).filter(Boolean))];
+  const item = {
+    id:`${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
+    savedAt:new Date().toISOString(),
+    target:$("targetField").value,
+    path:node.path || (node.chain ? makeChainLabelAdditive(node.chain) : node.metric),
+    metric:node.metric,
+    r:node.r ?? null,
+    abs:node.abs ?? (node.r !== undefined ? Math.abs(node.r) : null),
+    delta:node.delta ?? null,
+    n:node.n ?? null,
+    conditionN:node.conditionN ?? null,
+    remainingN:node.remainingN ?? null,
+    sourceFiles
+  };
+  state.savedCorrelations = [item, ...(state.savedCorrelations || [])];
+  persistSavedCorrelationsAdditive();
+  renderSavedCorrelationsAdditive();
+}
+function saveTopCorrelationAdditive(metric){
+  const c = state.correlations.find(x => x.metric === metric);
+  if(c) saveCorrelationAdditive({metric:c.metric, r:c.r, abs:c.abs, n:c.n, path:c.metric});
+}
+function saveTreeCorrelationAdditive(chain){
+  const parentId = makeTreeNodeIdAdditive(chain.slice(0,-1));
+  const children = state.treeChildrenCache.get(parentId) || [];
+  const metric = chain[chain.length-1];
+  const child = children.find(c => c.metric === metric);
+  if(child) saveCorrelationAdditive({...child, path: makeChainLabelAdditive(chain)});
+}
+function loadSavedCorrelationsAdditive(){
+  try{ state.savedCorrelations = JSON.parse(localStorage.getItem(SAVED_CORR_KEY) || "[]"); }catch{ state.savedCorrelations = []; }
+  renderSavedCorrelationsAdditive();
+}
+function persistSavedCorrelationsAdditive(){ localStorage.setItem(SAVED_CORR_KEY, JSON.stringify(state.savedCorrelations || [])); }
+function renderSavedCorrelationsAdditive(){
+  const list = $("savedList");
+  const items = state.savedCorrelations || [];
+  if(!items.length){ list.innerHTML = `<div class="muted small">No saved correlations yet.</div>`; return; }
+  list.innerHTML = items.map(i => `<div class="savedItem"><b>${esc(i.path || i.metric || "Metric")}</b><br><small>${esc(i.target || "")}</small><div class="muted small">r ${fmt(i.r,3)} • |r| ${fmt(i.abs,3)} • N ${i.n ?? "—"}</div></div>`).join("");
+}
+function exportSavedCorrelationsAdditive(){
+  const items = state.savedCorrelations || [];
+  if(!items.length) return;
+  const headers = ["id","savedAt","target","path","metric","r","abs","delta","n","conditionN","remainingN","sourceFiles"];
+  const rows = [headers, ...items.map(i => headers.map(h => h === "sourceFiles" ? (i[h] || []).join(" | ") : (i[h] ?? "")))];
+  const csv = rows.map(r => r.map(v => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replaceAll('"','""')}"` : s; }).join(",")).join("\n");
+  const blob = new Blob([csv], {type:"text/csv"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url; a.download = "saved_correlations.csv"; a.click(); URL.revokeObjectURL(url);
+}
+function renderFilterHeaderChecksAdditive(){
+  const box = $("filterHeaderChecks");
+  if(!state.headers.length){ box.innerHTML = `<div class="muted">No headers loaded.</div>`; return; }
+  box.innerHTML = state.headers.map(h => `<label class="checkItem"><input type="checkbox" ${state.excludedHeaders.has(h) ? "checked" : ""} onchange="toggleExcludedHeaderAdditive(${JSON.stringify(h)}, this.checked)"><span>${esc(h)}</span></label>`).join("");
+}
+function toggleExcludedHeaderAdditive(h, on){
+  if(on) state.excludedHeaders.add(h); else state.excludedHeaders.delete(h);
+  clearTreeCacheAdditive();
+  rebuildMergedRows();
+  renderFilterHeaderChecksAdditive();
+}
+function excludeLikelyTextHeadersAdditive(){
+  const rx = /name|representative|rep|employee|person key|dock found|date|sheet|source|id|ticket|workorder|phone|email|address/i;
+  for(const h of state.headers){ if(rx.test(h)) state.excludedHeaders.add(h); }
+  clearTreeCacheAdditive(); rebuildMergedRows(); renderFilterHeaderChecksAdditive();
+}
+function excludeNonNumericHeadersAdditive(){
+  for(const h of state.headers){
+    let count=0;
+    for(const r of state.mergedRows){ if(toNumber(r[h]) !== null) count++; if(count >= 2) break; }
+    if(count < 2) state.excludedHeaders.add(h);
+  }
+  clearTreeCacheAdditive(); rebuildMergedRows(); renderFilterHeaderChecksAdditive();
+}
+function resetExcludedHeadersAdditive(){
+  state.excludedHeaders.clear();
+  clearTreeCacheAdditive();
+  rebuildMergedRows();
+  renderFilterHeaderChecksAdditive();
 }
 
 /* =========================
@@ -1951,8 +2330,9 @@ function exportCorrelations(){
 function boot(){
   $("btnPick").onclick = () => $("csvInput").click();
   $("csvInput").onchange = e => {
-    const f = e.target.files?.[0];
-    if(f) loadCSV(f);
+    const files = e.target.files;
+    if(files && files.length > 1) loadMultipleCSVsAdditive(files);
+    else if(files && files[0]) loadCSV(files[0]);
   };
 
   const dz = $("dropZone");
@@ -1964,8 +2344,9 @@ function boot(){
   dz.addEventListener("drop", e => {
     e.preventDefault();
     dz.classList.remove("drag");
-    const f = e.dataTransfer.files?.[0];
-    if(f) loadCSV(f);
+    const files = e.dataTransfer.files;
+    if(files && files.length > 1) loadMultipleCSVsAdditive(files);
+    else if(files && files[0]) loadCSV(files[0]);
   });
 
   $("btnLoadDocks").onclick = loadDocks;
@@ -1978,24 +2359,44 @@ function boot(){
     $("headerDrawer").classList.add("show");
   };
   $("btnCloseHeaders").onclick = () => $("headerDrawer").classList.remove("show");
+
+  $("btnFilterHeaders").onclick = () => { renderFilterHeaderChecksAdditive(); $("filterHeaderDrawer").classList.add("show"); };
+  $("btnCloseFilterHeaders").onclick = () => $("filterHeaderDrawer").classList.remove("show");
+  $("btnExcludeLikelyText").onclick = excludeLikelyTextHeadersAdditive;
+  $("btnExcludeNonNumeric").onclick = excludeNonNumericHeadersAdditive;
+  $("btnResetExcluded").onclick = resetExcludedHeadersAdditive;
   $("btnAllHeaders").onclick = () => setAllHeaders(true);
   $("btnNumericHeaders").onclick = setNumericHeadersOnly;
 
   $("btnDockKeys").onclick = showDockKeys;
   $("btnCloseDockKeys").onclick = () => $("dockDrawer").classList.remove("show");
 
-  $("nameField").onchange = rebuildMergedRows;
+  $("nameField").onchange = () => { clearTreeCacheAdditive(); rebuildMergedRows(); };
   $("targetField").onchange = () => {
     state.target = $("targetField").value;
+    clearTreeCacheAdditive();
     updateBadges();
+    renderCorrelations();
   };
-  $("minN").onchange = () => {};
+  $("minN").onchange = () => { clearTreeCacheAdditive(); renderCorrelations(); };
+  $("thresholdMode").onchange = () => { state.thresholdMode = $("thresholdMode").value; clearTreeCacheAdditive(); renderCorrelations(); };
   $("searchBox").oninput = renderCorrelations;
 
   $("sortAbs").onclick = () => {state.sortKey="abs"; state.sortDir="desc"; renderCorrelations();};
   $("sortPos").onclick = () => {state.sortKey="r"; state.sortDir="desc"; renderCorrelations();};
   $("sortNeg").onclick = () => {state.sortKey="r"; state.sortDir="asc"; renderCorrelations();};
   $("sortN").onclick = () => {state.sortKey="n"; state.sortDir="desc"; renderCorrelations();};
+
+  $("btnExportSaved").onclick = exportSavedCorrelationsAdditive;
+  $("btnClearSaved").onclick = () => { state.savedCorrelations = []; persistSavedCorrelationsAdditive(); renderSavedCorrelationsAdditive(); };
+  $("btnCloseExamples").onclick = () => $("examplesDrawer").classList.remove("show");
+  $("btnExportExamples").onclick = exportExamplesAdditive;
+  $("examplesSearch").oninput = () => {
+    const q = $("examplesSearch").value.trim().toLowerCase();
+    Array.from($("examplesBody").querySelectorAll("tr")).forEach(tr => {
+      tr.style.display = tr.textContent.toLowerCase().includes(q) ? "" : "none";
+    });
+  };
 
   $("btnResetLayer").onclick = () => {
     state.drillChain = [];
@@ -2004,7 +2405,9 @@ function boot(){
     renderLayerRows();
   };
 
+  loadSavedCorrelationsAdditive();
   setupTooltip();
+  if($("thresholdMode")) $("thresholdMode").value = state.thresholdMode || "median";
   hydrateSelects();
   updateBadges();
   drawScatter();
