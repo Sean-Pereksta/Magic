@@ -3,106 +3,146 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Retail KPI Correlate Explorer — Layered Correlations</title>
+<title>Layered Correlation Finder — CSV + Retail Docks</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
 
 <style>
 :root{
   --bg:#f6f7fb;
-  --panel:#ffffff;
+  --panel:#fff;
   --ink:#0f172a;
   --muted:#64748b;
   --line:#e5e7eb;
-  --accent:#2563eb;
-  --accent2:#1d4ed8;
-  --good:#16a34a;
-  --warn:#eab308;
-  --bad:#dc2626;
+  --blue:#2563eb;
+  --blue2:#1d4ed8;
+  --green:#16a34a;
+  --yellow:#eab308;
+  --red:#dc2626;
   --purple:#7c3aed;
-  --chip:#f8fafc;
-  --shadow:0 14px 38px rgba(2,6,23,.10);
+  --shadow:0 12px 30px rgba(2,6,23,.09);
   --radius:16px;
 }
 *{box-sizing:border-box}
-html,body{
+body{
   margin:0;
-  min-height:100%;
   font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
   background:var(--bg);
   color:var(--ink);
 }
-button,input,select{
-  font:inherit;
-}
+button,input,select{font:inherit}
 button{
   border:1px solid var(--line);
   background:#fff;
-  border-radius:12px;
+  color:var(--ink);
   padding:8px 11px;
+  border-radius:12px;
   font-weight:900;
   font-size:12px;
   cursor:pointer;
-  box-shadow:0 8px 18px rgba(2,6,23,.08);
+  box-shadow:0 6px 16px rgba(2,6,23,.07);
 }
 button:hover{transform:translateY(-1px)}
 button.primary{
-  background:linear-gradient(180deg,var(--accent),var(--accent2));
+  background:linear-gradient(180deg,var(--blue),var(--blue2));
   color:#fff;
   border-color:transparent;
+}
+button.dark{
+  background:#0f172a;
+  color:#fff;
+  border-color:#0f172a;
 }
 button.danger{
   background:linear-gradient(180deg,#ef4444,#dc2626);
   color:#fff;
   border-color:transparent;
 }
-button.ghost{
-  box-shadow:none;
-  background:#f8fafc;
-}
+button.ghost{box-shadow:none;background:#f8fafc}
 select,input[type="text"],input[type="number"]{
   width:100%;
   border:1px solid var(--line);
   border-radius:12px;
-  padding:9px 10px;
+  padding:8px 10px;
   background:#fff;
   outline:none;
 }
 select:focus,input:focus{
   border-color:rgba(37,99,235,.45);
-  box-shadow:0 0 0 3px rgba(37,99,235,.10);
+  box-shadow:0 0 0 3px rgba(37,99,235,.1);
 }
 label{
   display:block;
-  font-size:12px;
+  font-size:11px;
   color:var(--muted);
-  font-weight:900;
-  margin-bottom:5px;
+  font-weight:950;
+  margin-bottom:4px;
 }
 .topbar{
   position:sticky;
   top:0;
-  z-index:20;
-  background:linear-gradient(180deg,rgba(246,247,251,.97),rgba(246,247,251,.9));
+  z-index:30;
+  background:rgba(246,247,251,.96);
   backdrop-filter:blur(10px);
   border-bottom:1px solid var(--line);
-  padding:12px 14px;
+  padding:10px 12px;
+}
+.topRow{
   display:flex;
-  gap:12px;
-  justify-content:space-between;
+  gap:10px;
   align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
 }
 .title b{font-size:15px}
-.title span{display:block;color:var(--muted);font-size:12px;margin-top:2px}
-.actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
+.title span{
+  display:block;
+  color:var(--muted);
+  font-size:12px;
+  margin-top:2px;
+}
+.actions{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+.pill,.badge,.tag{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  border:1px solid var(--line);
+  background:#f8fafc;
+  border-radius:999px;
+  padding:5px 9px;
+  font-size:12px;
+  color:var(--muted);
+  font-weight:850;
+  white-space:nowrap;
+}
+.pill b,.badge b{color:var(--ink)}
+.tag.high{background:rgba(22,163,74,.1);border-color:rgba(22,163,74,.25);color:#166534}
+.tag.med{background:rgba(234,179,8,.13);border-color:rgba(234,179,8,.3);color:#92400e}
+.tag.low{background:rgba(100,116,139,.1);border-color:rgba(100,116,139,.22);color:#334155}
+.tag.pos{background:rgba(37,99,235,.1);border-color:rgba(37,99,235,.25);color:#1d4ed8}
+.tag.neg{background:rgba(124,58,237,.1);border-color:rgba(124,58,237,.25);color:#5b21b6}
+.tag.bad{background:rgba(220,38,38,.1);border-color:rgba(220,38,38,.25);color:#991b1b}
+.controls{
+  margin-top:10px;
+  display:grid;
+  grid-template-columns:1.1fr .9fr .9fr .9fr .7fr .7fr;
+  gap:8px;
+  align-items:end;
+}
 .wrap{
-  max-width:1600px;
+  max-width:1700px;
   margin:0 auto;
   padding:12px;
 }
-.grid{
+.layout{
   display:grid;
-  grid-template-columns:390px 1fr;
+  grid-template-columns:1fr 430px;
   gap:12px;
   align-items:start;
 }
@@ -114,83 +154,153 @@ label{
   overflow:hidden;
 }
 .ph{
-  border-bottom:1px solid var(--line);
   padding:10px 12px;
+  border-bottom:1px solid var(--line);
   display:flex;
-  justify-content:space-between;
   gap:10px;
   align-items:flex-start;
+  justify-content:space-between;
 }
 .ph b{font-size:13px}
-.ph small{color:var(--muted)}
+.ph small{font-size:12px;color:var(--muted)}
 .pc{padding:12px}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.two{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:10px;
-}
-.three{
-  display:grid;
-  grid-template-columns:1fr 1fr 1fr;
-  gap:10px;
-}
-.pill,.badge,.tag{
-  display:inline-flex;
-  align-items:center;
-  gap:6px;
-  border:1px solid var(--line);
-  background:var(--chip);
-  border-radius:999px;
-  padding:5px 9px;
-  font-size:12px;
-  color:var(--muted);
-  font-weight:800;
-  white-space:nowrap;
-}
-.badge b,.pill b{color:var(--ink)}
-.tag.high{background:rgba(22,163,74,.10);border-color:rgba(22,163,74,.25);color:#166534}
-.tag.med{background:rgba(234,179,8,.12);border-color:rgba(234,179,8,.28);color:#92400e}
-.tag.low{background:rgba(239,68,68,.10);border-color:rgba(239,68,68,.25);color:#9f1239}
-.tag.pos{background:rgba(37,99,235,.10);border-color:rgba(37,99,235,.22);color:#1d4ed8}
-.tag.neg{background:rgba(124,58,237,.10);border-color:rgba(124,58,237,.22);color:#5b21b6}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .hint{
-  background:#eef2ff;
-  border:1px solid #c7d2fe;
-  color:#1e3a8a;
-  padding:10px 12px;
+  border:1px solid var(--line);
+  background:#f8fafc;
+  color:#334155;
   border-radius:14px;
+  padding:10px 12px;
   font-size:12px;
   line-height:1.35;
+  font-weight:750;
 }
 .hint.ok{background:#f0fdf4;border-color:#bbf7d0;color:#166534}
 .hint.warn{background:#fffbeb;border-color:#fde68a;color:#92400e}
 .hint.bad{background:#fff1f2;border-color:#fecdd3;color:#9f1239}
 .drop{
   border:2px dashed rgba(37,99,235,.35);
-  border-radius:16px;
-  padding:13px;
+  border-radius:14px;
+  padding:10px;
   background:linear-gradient(180deg,rgba(37,99,235,.06),rgba(37,99,235,.02));
 }
-.drop.drag{border-color:rgba(37,99,235,.75);box-shadow:0 0 0 4px rgba(37,99,235,.12)}
-.drop b{font-size:13px}
-.drop span{display:block;color:var(--muted);font-size:12px;margin-top:4px}
-.tableWrap{max-height:48vh;overflow:auto;border:1px solid var(--line);border-radius:14px}
-table{width:100%;border-collapse:collapse;font-size:12px}
-th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
-th{position:sticky;top:0;background:#fff;z-index:2;white-space:nowrap}
+.drop.drag{
+  border-color:rgba(37,99,235,.8);
+  box-shadow:0 0 0 4px rgba(37,99,235,.12);
+}
+.drop b{font-size:12px}
+.drop span{font-size:11px;color:var(--muted)}
+.tableWrap{
+  max-height:calc(100vh - 245px);
+  overflow:auto;
+}
+table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:12px;
+}
+th,td{
+  border-bottom:1px solid var(--line);
+  padding:9px 9px;
+  text-align:left;
+  vertical-align:top;
+}
+th{
+  position:sticky;
+  top:0;
+  z-index:2;
+  background:#fff;
+  white-space:nowrap;
+}
+th.sort{cursor:pointer}
 tr:hover{background:#f8fafc}
-.clickRow{cursor:pointer}
-.metricName{font-weight:950;max-width:230px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.muted{color:var(--muted)}
+.metricName{
+  font-weight:950;
+  max-width:360px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
 .small{font-size:12px}
+.muted{color:var(--muted)}
+.progressOuter{
+  height:12px;
+  background:#e5e7eb;
+  border-radius:999px;
+  overflow:hidden;
+  border:1px solid #dbe3ee;
+}
+.progressFill{
+  height:100%;
+  width:0%;
+  background:linear-gradient(90deg,var(--blue),var(--green));
+  transition:width .12s ease;
+}
+.cardGrid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(120px,1fr));
+  gap:8px;
+}
+.kcard{
+  border:1px solid var(--line);
+  background:#fbfdff;
+  border-radius:14px;
+  padding:10px;
+}
+.kcard .k{
+  color:var(--muted);
+  font-size:11px;
+  text-transform:uppercase;
+  font-weight:950;
+  letter-spacing:.04em;
+}
+.kcard .v{
+  margin-top:3px;
+  font-size:18px;
+  font-weight:950;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.kcard .d{
+  color:var(--muted);
+  font-size:11px;
+  font-weight:800;
+  margin-top:2px;
+}
+.canvasWrap{
+  border:1px solid var(--line);
+  border-radius:14px;
+  overflow:hidden;
+  position:relative;
+  background:
+    radial-gradient(circle at 25% 20%,rgba(37,99,235,.08),transparent 40%),
+    radial-gradient(circle at 80% 15%,rgba(234,179,8,.12),transparent 38%),
+    #fff;
+}
+canvas{
+  width:100%;
+  height:360px;
+  display:block;
+}
+.tooltip{
+  display:none;
+  position:absolute;
+  pointer-events:none;
+  transform:translate(10px,10px);
+  background:rgba(15,23,42,.94);
+  color:#fff;
+  border-radius:12px;
+  padding:8px 10px;
+  font-size:12px;
+  max-width:330px;
+  line-height:1.3;
+  box-shadow:0 12px 28px rgba(0,0,0,.25);
+}
 .tabs{
   display:flex;
   gap:8px;
   flex-wrap:wrap;
-  padding:10px 12px;
-  border-bottom:1px solid var(--line);
-  background:#fbfdff;
 }
 .tab{
   border:1px solid var(--line);
@@ -198,207 +308,156 @@ tr:hover{background:#f8fafc}
   border-radius:999px;
   padding:7px 10px;
   font-size:12px;
-  font-weight:900;
+  font-weight:950;
   cursor:pointer;
 }
 .tab.on{
-  background:var(--accent);
-  border-color:var(--accent);
+  background:var(--blue);
   color:#fff;
+  border-color:var(--blue);
 }
-.canvasWrap{
-  position:relative;
-  border:1px solid var(--line);
-  border-radius:16px;
-  overflow:hidden;
-  background:
-    radial-gradient(circle at 30% 20%,rgba(37,99,235,.08),transparent 45%),
-    radial-gradient(circle at 80% 10%,rgba(234,179,8,.10),transparent 38%),
-    #fff;
+.layerBox{
+  display:grid;
+  gap:8px;
 }
-canvas{
-  display:block;
-  width:100%;
-  height:470px;
-}
-.tooltip{
-  position:absolute;
-  display:none;
-  pointer-events:none;
-  background:rgba(15,23,42,.94);
-  color:#fff;
-  padding:8px 10px;
-  border-radius:12px;
-  font-size:12px;
-  max-width:330px;
-  box-shadow:0 10px 30px rgba(0,0,0,.25);
-  transform:translate(10px,10px);
-  line-height:1.3;
-}
-.breadcrumb{
-  display:flex;
-  gap:6px;
-  flex-wrap:wrap;
-}
-.crumb{
-  border:1px solid rgba(37,99,235,.22);
+.layerCrumb{
+  display:inline-flex;
+  border:1px solid rgba(37,99,235,.25);
   background:rgba(37,99,235,.08);
   color:#1d4ed8;
   border-radius:999px;
   padding:5px 9px;
   font-size:12px;
-  font-weight:900;
+  font-weight:950;
 }
-.cardGrid{
+.drawer{
+  position:fixed;
+  inset:0;
+  display:none;
+  background:rgba(15,23,42,.45);
+  z-index:1000;
+  padding:18px;
+}
+.drawer.show{display:flex;align-items:center;justify-content:center}
+.modal{
+  width:min(1120px,96vw);
+  max-height:92vh;
+  overflow:hidden;
   display:grid;
-  grid-template-columns:repeat(4,minmax(150px,1fr));
-  gap:10px;
+  grid-template-rows:auto 1fr;
+  background:#fff;
+  border-radius:18px;
+  box-shadow:0 28px 80px rgba(2,6,23,.35);
 }
-.kcard{
+.modalBody{overflow:auto;padding:12px}
+.checkGrid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
+  gap:8px;
+}
+.checkItem{
   border:1px solid var(--line);
-  border-radius:14px;
+  border-radius:12px;
+  padding:8px 10px;
   background:#fbfdff;
-  padding:10px;
+  display:flex;
+  align-items:flex-start;
+  gap:8px;
+  font-size:12px;
+  font-weight:850;
 }
-.kcard .k{font-size:11px;color:var(--muted);font-weight:900;text-transform:uppercase;letter-spacing:.04em}
-.kcard .v{font-size:20px;font-weight:950;margin-top:3px}
-.kcard .d{font-size:12px;color:var(--muted);font-weight:800;margin-top:3px}
-.sectionGrid{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:12px;
-}
-@media(max-width:1100px){
-  .grid{grid-template-columns:1fr}
-  .sectionGrid{grid-template-columns:1fr}
-  .cardGrid{grid-template-columns:repeat(2,1fr)}
-  canvas{height:380px}
+.checkItem input{margin-top:2px}
+@media(max-width:1200px){
+  .layout{grid-template-columns:1fr}
+  .controls{grid-template-columns:1fr 1fr}
+  .tableWrap{max-height:55vh}
 }
 </style>
 </head>
 
 <body>
 <div class="topbar">
-  <div class="title">
-    <b>Retail KPI Correlate Explorer — Layered Correlations</b>
-    <span>Upload a CSV, load Retail Stats from localStorage, match by name, then explore 1st/2nd/3rd-level KPI relationships.</span>
+  <div class="topRow">
+    <div class="title">
+      <b>Layered Correlation Finder</b>
+      <span>CSV headers + Retail/Referral localStorage docks → name-matched KPI correlation table, chunked for large files.</span>
+    </div>
+    <div class="actions">
+      <span class="pill"><b id="rowsBadge">0</b> rows</span>
+      <span class="pill"><b id="metricBadge">0</b> metrics</span>
+      <span class="pill"><b id="dockBadge">0</b> dock reps</span>
+      <button class="primary" id="btnRun">Run Correlations</button>
+      <button id="btnHeaders">Choose Headers</button>
+      <button id="btnExport">Export CSV</button>
+      <button class="danger" id="btnClear">Clear</button>
+    </div>
   </div>
-  <div class="actions">
-    <span class="pill"><b id="rowCount">0</b> rows</span>
-    <span class="pill"><b id="metricCount">0</b> metrics</span>
-    <span class="pill"><b id="retailCount">0</b> Retail reps</span>
-    <button class="primary" id="btnRun">Run Analysis</button>
-    <button id="btnExport">Export Results</button>
-    <button class="danger" id="btnClear">Clear</button>
+
+  <div class="controls">
+    <div>
+      <label>CSV Upload</label>
+      <div class="drop" id="dropZone">
+        <div class="row" style="justify-content:space-between">
+          <div>
+            <b id="fileLabel">Drop CSV or choose file</b><br>
+            <span>Every header will be loaded as a selectable field.</span>
+          </div>
+          <div>
+            <input id="csvInput" type="file" accept=".csv,text/csv" style="display:none">
+            <button class="primary" id="btnPick">Choose CSV</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <label>Dock Data</label>
+      <div class="row">
+        <button class="primary" id="btnLoadDocks">Load Docks</button>
+        <button id="btnDockKeys">Keys</button>
+      </div>
+    </div>
+
+    <div>
+      <label>Name Match Field</label>
+      <select id="nameField"></select>
+    </div>
+
+    <div>
+      <label>Target KPI</label>
+      <select id="targetField"></select>
+    </div>
+
+    <div>
+      <label>Minimum N</label>
+      <input id="minN" type="number" value="5" min="2" step="1">
+    </div>
+
+    <div>
+      <label>Search</label>
+      <input id="searchBox" type="text" placeholder="Search correlations...">
+    </div>
+  </div>
+
+  <div style="margin-top:10px;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center">
+    <div class="progressOuter"><div class="progressFill" id="progressFill"></div></div>
+    <span class="badge" id="progressText">Ready</span>
   </div>
 </div>
 
 <div class="wrap">
-  <div class="grid">
-
-    <aside class="panel">
-      <div class="ph">
-        <div>
-          <b>Data Setup</b><br>
-          <small id="metaLine">Load a CSV and/or Retail Stats dock.</small>
-        </div>
-        <span class="badge" id="statusBadge">Ready</span>
-      </div>
-
-      <div class="pc">
-        <div class="drop" id="dropZone">
-          <b>Drop CSV here</b>
-          <span>This pulls every header from your CSV and makes numeric headers available as possible correlates.</span>
-          <div class="row" style="margin-top:10px">
-            <input id="fileInput" type="file" accept=".csv,text/csv" style="display:none">
-            <button class="primary" id="btnPick">Choose CSV</button>
-            <span class="badge" id="fileBadge">No CSV</span>
-          </div>
-        </div>
-
-        <div style="height:10px"></div>
-
-        <div class="hint">
-          <b>Retail dock merge:</b> Click “Load Retail Stats” to find a localStorage dock with “Retail” in the key.
-          The tool aggregates each rep’s Retail Stats and creates fields like
-          <b>Retail: Consumer Appointment Rate</b>, <b>Retail: Consumer Appointments</b>, and <b>Retail: Consumer Opportunities</b>.
-        </div>
-
-        <div class="row" style="margin-top:10px">
-          <button id="btnRetail" class="primary">Load Retail Stats</button>
-          <button id="btnDebugKeys">Show Dock Keys</button>
-        </div>
-
-        <div id="dockDebug" class="hint warn" style="display:none;margin-top:10px"></div>
-
-        <div style="height:12px"></div>
-
-        <div class="two">
-          <div>
-            <label>Name column in CSV</label>
-            <select id="nameCol"></select>
-          </div>
-          <div>
-            <label>Date column in CSV, optional</label>
-            <select id="dateCol"></select>
-          </div>
-        </div>
-
-        <div style="height:10px"></div>
-
-        <div>
-          <label>Target KPI</label>
-          <select id="targetCol"></select>
-        </div>
-
-        <div style="height:10px"></div>
-
-        <div class="three">
-          <div>
-            <label>Minimum N</label>
-            <input id="minN" type="number" value="5" min="0" step="1">
-          </div>
-          <div>
-            <label>“Good” threshold</label>
-            <select id="thresholdMode">
-              <option value="median" selected>Median split</option>
-              <option value="top33">Top third</option>
-              <option value="top25">Top quarter</option>
-            </select>
-          </div>
-          <div>
-            <label>Search</label>
-            <input id="searchBox" type="text" placeholder="Filter metrics...">
-          </div>
-        </div>
-
-        <div style="height:12px"></div>
-
-        <div class="hint ok">
-          <b>Layer logic:</b> A positive correlate means “higher is better.” A negative correlate means “lower is better.”
-          When you click a correlate, the next layer tests which other stats make that first relationship stronger or weaker.
-        </div>
-      </div>
-
-      <div class="tabs">
-        <button class="tab on" data-tab="corr">1st Correlates</button>
-        <button class="tab" data-tab="pairs">Best Pairs</button>
-        <button class="tab" data-tab="layers">Layer Explorer</button>
-      </div>
-
-      <div class="pc" id="leftContent"></div>
-    </aside>
-
+  <div class="layout">
     <main class="panel">
       <div class="ph">
         <div>
-          <b id="mainTitle">Analysis</b><br>
-          <small id="mainSub">Run analysis to see correlations, combinations, and scatter plots.</small>
+          <b>All Correlations</b><br>
+          <small>Click any row for scatter/details. Use Drill to find second- and third-layer connections.</small>
         </div>
         <div class="row">
-          <span class="tag" id="rTag">r: —</span>
-          <span class="tag" id="nTag">N: —</span>
-          <span class="tag" id="liftTag">Lift: —</span>
+          <button class="ghost" id="sortAbs">Sort |r|</button>
+          <button class="ghost" id="sortPos">Positive</button>
+          <button class="ghost" id="sortNeg">Negative</button>
+          <button class="ghost" id="sortN">Sample</button>
         </div>
       </div>
 
@@ -406,106 +465,171 @@ canvas{
         <div class="cardGrid">
           <div class="kcard">
             <div class="k">Target</div>
-            <div class="v" id="targetCard">—</div>
-            <div class="d">Matched from CSV/Retail</div>
+            <div class="v" id="cardTarget">—</div>
+            <div class="d">Selected KPI</div>
           </div>
           <div class="kcard">
-            <div class="k">Best single</div>
-            <div class="v" id="bestSingleCard">—</div>
-            <div class="d" id="bestSingleSub">—</div>
+            <div class="k">Best Correlate</div>
+            <div class="v" id="cardBest">—</div>
+            <div class="d" id="cardBestSub">—</div>
           </div>
           <div class="kcard">
-            <div class="k">Best pair</div>
-            <div class="v" id="bestPairCard">—</div>
-            <div class="d" id="bestPairSub">—</div>
+            <div class="k">Rows Matched</div>
+            <div class="v" id="cardMatched">0</div>
+            <div class="d">CSV + dock name merge</div>
           </div>
           <div class="kcard">
-            <div class="k">Current layer</div>
-            <div class="v" id="layerCard">0</div>
-            <div class="d">Click rows to drill deeper</div>
+            <div class="k">Layer</div>
+            <div class="v" id="cardLayer">0</div>
+            <div class="d">Drill depth</div>
           </div>
         </div>
 
-        <div style="height:12px"></div>
+        <div style="height:10px"></div>
 
-        <div class="sectionGrid">
-          <div>
-            <div class="ph" style="border:1px solid var(--line);border-radius:14px 14px 0 0">
-              <div>
-                <b>Scatter Plot</b><br>
-                <small id="plotSub">Select a metric to plot against the target.</small>
-              </div>
-              <button id="btnResetPlot">Reset Plot</button>
-            </div>
-            <div class="canvasWrap">
-              <canvas id="plot" width="900" height="470"></canvas>
-              <div class="tooltip" id="tip"></div>
-            </div>
-          </div>
-
-          <div>
-            <div class="ph" style="border:1px solid var(--line);border-radius:14px 14px 0 0">
-              <div>
-                <b>Layer Explanation</b><br>
-                <small>What the selected pattern means.</small>
-              </div>
-            </div>
-            <div class="pc" style="border:1px solid var(--line);border-top:none;border-radius:0 0 14px 14px;background:#fff">
-              <div class="breadcrumb" id="crumbs"></div>
-              <div style="height:10px"></div>
-              <div class="hint" id="explainBox">
-                Load data, run analysis, then click a correlate. Example:
-                “Responds to objections” might correlate positively with Consumer Appointment Rate.
-                Clicking it shows what makes that relationship stronger or weaker, such as “Short Hold Time” strengthening it or “Long Hold Time” weakening it.
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div style="height:12px"></div>
-
-        <div class="panel" style="box-shadow:none">
-          <div class="ph">
-            <div>
-              <b id="detailTitle">Details</b><br>
-              <small id="detailSub">Click any correlate or pair to inspect it.</small>
-            </div>
-          </div>
-          <div class="pc">
-            <div id="detailBody" class="hint">No selection yet.</div>
-          </div>
+        <div class="tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Metric</th>
+                <th>r</th>
+                <th>|r|</th>
+                <th>N</th>
+                <th>Direction</th>
+                <th>Strength</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="corrBody">
+              <tr><td colspan="7" class="muted">Load data, choose target, then run correlations.</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </main>
 
+    <aside class="panel">
+      <div class="ph">
+        <div>
+          <b>Selected Detail</b><br>
+          <small id="detailSub">Scatter plot and layered insight.</small>
+        </div>
+        <button id="btnResetLayer">Reset Drill</button>
+      </div>
+
+      <div class="pc">
+        <div class="hint" id="statusBox">
+          Start by uploading a CSV or loading Retail/Referral docks. Docks can supply representative names and KPI stats such as Consumer Appointment Rate.
+        </div>
+
+        <div style="height:10px"></div>
+
+        <div class="canvasWrap">
+          <canvas id="plot" width="820" height="360"></canvas>
+          <div class="tooltip" id="tip"></div>
+        </div>
+
+        <div style="height:10px"></div>
+
+        <div class="panel" style="box-shadow:none">
+          <div class="ph">
+            <div>
+              <b>Layer Explorer</b><br>
+              <small>Click Drill on a metric, then choose second/third layer.</small>
+            </div>
+          </div>
+          <div class="pc">
+            <div class="row" id="crumbs"></div>
+            <div style="height:8px"></div>
+            <div class="hint" id="layerHint">
+              No drill chain selected yet.
+            </div>
+            <div style="height:8px"></div>
+            <div class="tableWrap" style="max-height:330px">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Next Layer</th>
+                    <th>Good Avg</th>
+                    <th>Bad Avg</th>
+                    <th>Delta</th>
+                    <th>N</th>
+                  </tr>
+                </thead>
+                <tbody id="layerBody">
+                  <tr><td colspan="5" class="muted">Drill into a correlate to populate this.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div class="drawer" id="headerDrawer">
+  <div class="modal">
+    <div class="ph">
+      <div>
+        <b>Choose Active Headers</b><br>
+        <small>Every CSV and dock header is loaded. Uncheck noisy fields to speed up analysis.</small>
+      </div>
+      <div class="row">
+        <button id="btnAllHeaders">All</button>
+        <button id="btnNumericHeaders">Numeric Only</button>
+        <button class="dark" id="btnCloseHeaders">Done</button>
+      </div>
+    </div>
+    <div class="modalBody">
+      <div class="checkGrid" id="headerChecks"></div>
+    </div>
+  </div>
+</div>
+
+<div class="drawer" id="dockDrawer">
+  <div class="modal">
+    <div class="ph">
+      <div>
+        <b>Detected Dock Keys</b><br>
+        <small>Useful for confirming the localStorage dock names.</small>
+      </div>
+      <button class="dark" id="btnCloseDockKeys">Close</button>
+    </div>
+    <div class="modalBody">
+      <div class="hint" id="dockKeyList"></div>
+    </div>
   </div>
 </div>
 
 <script>
+/* =========================
+   General helpers
+========================= */
 const $ = id => document.getElementById(id);
 
 const state = {
   csvRows: [],
   csvHeaders: [],
-  retailRows: [],
-  retailByName: new Map(),
+  dockRows: [],
+  dockByName: new Map(),
   mergedRows: [],
   headers: [],
+  activeHeaders: new Set(),
   metrics: [],
   correlations: [],
-  pairs: [],
+  selectedMetric: "",
+  target: "",
+  nameField: "",
+  sortKey: "abs",
+  sortDir: "desc",
+  drillChain: [],
   layerRows: [],
-  selectedMetric: null,
-  selectedPair: null,
-  activeTab: "corr",
-  chain: [],
-  plotMetric: null,
-  plotPts: [],
-  plotView: null,
-  drag: null
+  plotPoints: []
 };
 
-function escapeHtml(s){
+function esc(s){
   return String(s ?? "")
     .replaceAll("&","&amp;")
     .replaceAll("<","&lt;")
@@ -514,59 +638,70 @@ function escapeHtml(s){
     .replaceAll("'","&#039;");
 }
 
-function norm(s){
+function normHdr(s){
   return String(s ?? "")
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9%]+/g,"");
+    .replace(/\s+/g," ")
+    .replace(/[^a-z0-9% \-_]/g,"")
+    .replace(/[-_]/g,"")
+    .replace(/\s/g,"");
 }
 
-function niceNum(n,d=2){
-  if(!Number.isFinite(n)) return "—";
-  return Number(n).toFixed(d);
-}
+function personKey(name){
+  let s = String(name || "").trim().toLowerCase();
+  s = s.replace(/\./g,"").replace(/\s+/g," ");
+  if(!s) return "";
 
-function pct(n,d=1){
-  if(!Number.isFinite(n)) return "—";
-  return (n*100).toFixed(d) + "%";
+  if(s.includes(",")){
+    const parts = s.split(",");
+    const last = (parts[0] || "").trim();
+    const rest = (parts[1] || "").trim();
+    const first = (rest.split(/\s+/)[0] || "").trim();
+    if(first && last) s = `${first} ${last}`;
+  }
+
+  const toks = s.split(/\s+/).filter(Boolean);
+  if(toks.length >= 2) return `${toks[0]} ${toks[toks.length - 1]}`;
+  return toks[0] || "";
 }
 
 function toNumber(v){
   if(v === null || v === undefined) return null;
   if(typeof v === "number" && Number.isFinite(v)) return v;
+
   let s = String(v).trim();
-  if(!s || s.toLowerCase()==="#n/a" || s.toLowerCase()==="na") return null;
-  const isPct = s.endsWith("%");
+  if(!s || s.toLowerCase() === "na" || s.toLowerCase() === "#n/a") return null;
+
+  const hadPct = s.endsWith("%");
   s = s.replace(/[$,%\s]/g,"").replace(/,/g,"");
   const n = Number(s);
   if(!Number.isFinite(n)) return null;
-  return isPct ? n/100 : n;
+  return hadPct ? n / 100 : n;
 }
 
-function parseDate(v){
-  if(v instanceof Date && !isNaN(v)) return v;
-  if(v === null || v === undefined || v === "") return null;
-  if(typeof v === "number"){
-    const d = new Date(Math.round((v - 25569) * 86400 * 1000));
-    if(!isNaN(d)) return d;
-  }
-  const s = String(v).trim();
-  const d = new Date(s);
-  if(!isNaN(d)) return d;
-  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
-  if(m){
-    const yy = Number(m[3]) < 100 ? 2000 + Number(m[3]) : Number(m[3]);
-    const dd = new Date(yy, Number(m[1])-1, Number(m[2]));
-    if(!isNaN(dd)) return dd;
-  }
-  return null;
+function fmt(n, d=3){
+  if(!Number.isFinite(n)) return "—";
+  return Number(n).toFixed(d);
 }
 
-function ymd(d){
-  if(!(d instanceof Date) || isNaN(d)) return "";
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+function pct(n, d=1){
+  if(!Number.isFinite(n)) return "—";
+  return (n * 100).toFixed(d) + "%";
 }
 
+function setProgress(p, text){
+  $("progressFill").style.width = `${Math.max(0, Math.min(100, p))}%`;
+  $("progressText").textContent = text || `${Math.round(p)}%`;
+}
+
+function sleepFrame(){
+  return new Promise(resolve => setTimeout(resolve, 0));
+}
+
+/* =========================
+   CSV
+========================= */
 function parseCSV(text){
   text = text.replace(/\r\n/g,"\n").replace(/\r/g,"\n");
   const rows = [];
@@ -592,10 +727,10 @@ function parseCSV(text){
     }
 
     if(ch === '"'){ q = true; continue; }
-    if(ch === ","){ row.push(cur.trim()); cur = ""; continue; }
+    if(ch === ","){ row.push(cur); cur = ""; continue; }
     if(ch === "\n"){
-      row.push(cur.trim());
-      if(row.some(x => String(x).trim() !== "")) rows.push(row);
+      row.push(cur);
+      if(row.some(x => String(x).trim() !== "")) rows.push(row.map(x => String(x).trim()));
       row = [];
       cur = "";
       continue;
@@ -603,30 +738,31 @@ function parseCSV(text){
     cur += ch;
   }
 
-  row.push(cur.trim());
-  if(row.some(x => String(x).trim() !== "")) rows.push(row);
+  row.push(cur);
+  if(row.some(x => String(x).trim() !== "")) rows.push(row.map(x => String(x).trim()));
   return rows;
 }
 
 function aoaToObjects(aoa){
   if(!Array.isArray(aoa) || aoa.length < 2) return {headers:[], rows:[]};
+
   let headers = aoa[0].map((h,i)=>String(h || `Column_${i+1}`).trim());
   const seen = new Map();
-  headers = headers.map(h=>{
+
+  headers = headers.map(h => {
     const base = h || "Column";
-    const key = norm(base);
-    const n = seen.get(key) || 0;
-    seen.set(key,n+1);
-    return n ? `${base}_${n+1}` : base;
+    const k = normHdr(base);
+    const n = seen.get(k) || 0;
+    seen.set(k, n + 1);
+    return n ? `${base}_${n + 1}` : base;
   });
 
   const rows = [];
   for(let r=1;r<aoa.length;r++){
-    const line = aoa[r] || [];
     const obj = {};
     let any = false;
     for(let c=0;c<headers.length;c++){
-      const v = line[c] ?? "";
+      const v = aoa[r][c] ?? "";
       if(String(v).trim() !== "") any = true;
       obj[headers[c]] = v;
     }
@@ -635,36 +771,69 @@ function aoaToObjects(aoa){
   return {headers, rows};
 }
 
-function pickDefaultNameCol(headers){
-  const prefs = ["name","rep","representative","associate","associate name","agent","employee","csr"];
-  return headers.find(h => prefs.includes(norm(h))) ||
-         headers.find(h => /name|rep|associate|agent|csr/i.test(h)) ||
-         headers[0] || "";
+async function loadCSV(file){
+  setProgress(5, "Reading CSV...");
+  const text = await file.text();
+  setProgress(18, "Parsing CSV...");
+  await sleepFrame();
+
+  const aoa = parseCSV(text);
+  const parsed = aoaToObjects(aoa);
+
+  state.csvRows = parsed.rows;
+  state.csvHeaders = parsed.headers;
+  $("fileLabel").textContent = file.name;
+
+  setProgress(40, "CSV loaded");
+  rebuildMergedRows();
 }
 
-function pickDefaultDateCol(headers){
-  return headers.find(h => /date|day|week|month/i.test(h)) || "";
+/* =========================
+   Date / dock helpers
+========================= */
+function excelSerialToLocalDate(n){
+  const base = Date.UTC(1899,11,30);
+  const ms = base + Math.round(n * 86400000);
+  const d = new Date(ms);
+  return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 }
 
-function updateStatus(msg, kind=""){
-  $("statusBadge").textContent = msg;
-  $("statusBadge").className = "badge";
-  if(kind) $("statusBadge").classList.add(kind);
-}
+function parseAnyDate(val){
+  if(val === null || val === undefined || val === "") return null;
+  if(val instanceof Date && !isNaN(val)) return new Date(val.getFullYear(), val.getMonth(), val.getDate());
 
-function fillSelect(id, opts, value){
-  const sel = $(id);
-  sel.innerHTML = "";
-  for(const o of opts){
-    const opt = document.createElement("option");
-    opt.value = o.value;
-    opt.textContent = o.label;
-    sel.appendChild(opt);
+  if(typeof val === "number" && Number.isFinite(val)){
+    if(val > 20000 && val < 80000) return excelSerialToLocalDate(val);
   }
-  if(value !== undefined && value !== null) sel.value = value;
+
+  const s = String(val).trim();
+  if(!s) return null;
+
+  if(/^\d+(\.\d+)?$/.test(s)){
+    const n = Number(s);
+    if(Number.isFinite(n) && n > 20000 && n < 80000) return excelSerialToLocalDate(n);
+  }
+
+  const d = new Date(s);
+  if(!isNaN(d)) return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  return null;
 }
 
-function allDockKeys(){
+function isoYmd(d){
+  if(!(d instanceof Date) || isNaN(d)) return "";
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+function isoWeekKey(d){
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(),0,1));
+  const weekNo = Math.ceil((((date - yearStart) / 86400000) + 1)/7);
+  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2,"0")}`;
+}
+
+function allLocalStorageKeys(){
   const keys = [];
   for(let i=0;i<localStorage.length;i++){
     const k = localStorage.key(i);
@@ -673,29 +842,17 @@ function allDockKeys(){
   return keys.sort();
 }
 
-function scoreRetailKey(k){
-  const s = String(k).toLowerCase();
-  let score = 0;
-  if(s.includes("retail")) score += 100;
-  if(s.includes(".dock.")) score += 35;
-  if(s.includes("stats")) score += 20;
-  if(s.includes("myone")) score += 10;
-  if(s.includes("referral")) score -= 80;
-  if(s.includes("coach")) score -= 30;
-  return score;
-}
+function findDockKey(suffix){
+  const want = `.dock.${String(suffix).toLowerCase()}`;
+  for(const k of allLocalStorageKeys()){
+    if(k.toLowerCase().endsWith(want)) return k;
+  }
 
-function findRetailDockKey(){
-  const keys = allDockKeys();
-  const ranked = keys
-    .map(k => ({k, score:scoreRetailKey(k)}))
-    .filter(x => x.score > 0)
-    .sort((a,b)=>b.score-a.score);
-  return ranked[0]?.k || "";
-}
+  const loose = allLocalStorageKeys()
+    .filter(k => k.toLowerCase().includes(".dock.") && k.toLowerCase().includes(String(suffix).toLowerCase()))
+    .sort((a,b)=>a.length-b.length);
 
-function tryParseJson(s){
-  try{return JSON.parse(s)}catch{return null}
+  return loose[0] || null;
 }
 
 function loadDockObjByKey(key){
@@ -703,189 +860,309 @@ function loadDockObjByKey(key){
   const raw = localStorage.getItem(key);
   if(!raw) return null;
 
-  let obj = tryParseJson(raw);
-  if(obj) return obj;
-
   if(window.LZString){
-    const attempts = [
+    const tries = [
       () => LZString.decompressFromUTF16(raw),
       () => LZString.decompressFromBase64(raw),
       () => LZString.decompressFromEncodedURIComponent(raw),
       () => LZString.decompress(raw)
     ];
-    for(const fn of attempts){
+
+    for(const fn of tries){
       try{
         const out = fn();
         if(out){
-          obj = tryParseJson(out);
-          if(obj) return obj;
+          try{return JSON.parse(out)}catch(e){}
         }
       }catch(e){}
     }
   }
 
+  try{return JSON.parse(raw)}catch(e){}
   return null;
 }
 
-function extractRowArrays(x, path="", out=[]){
-  if(!x) return out;
-  if(Array.isArray(x)){
-    if(x.length && x.every(r => r && typeof r === "object" && !Array.isArray(r))){
-      out.push({path, rows:x});
+function aoaToRows(aoa){
+  if(!Array.isArray(aoa) || aoa.length < 2) return [];
+  const header = aoa[0].map(h => String(h ?? "").trim());
+  const out = [];
+
+  for(let r=1;r<aoa.length;r++){
+    const row = aoa[r];
+    if(!row) continue;
+
+    const obj = {};
+    let any = false;
+
+    for(let c=0;c<header.length;c++){
+      const k = header[c];
+      if(!k) continue;
+      const v = row[c];
+      if(v !== null && v !== undefined && String(v).trim() !== "") any = true;
+      obj[k] = v;
     }
-    for(let i=0;i<x.length;i++){
-      if(typeof x[i] === "object") extractRowArrays(x[i], `${path}[${i}]`, out);
-    }
-    return out;
+
+    if(any) out.push(obj);
   }
-  if(typeof x === "object"){
-    for(const [k,v] of Object.entries(x)){
-      if(typeof v === "object") extractRowArrays(v, path ? `${path}.${k}` : k, out);
-    }
-  }
+
   return out;
 }
 
-function pickField(obj, names){
-  const map = new Map(Object.keys(obj).map(k => [norm(k), k]));
-  for(const n of names){
-    const key = map.get(norm(n));
-    if(key !== undefined) return obj[key];
+function extractRowArrays(root, sheetNameFallback){
+  const found = [];
+  const seen = new Set();
+
+  function pushArray(arr, sheetName){
+    if(!Array.isArray(arr) || !arr.length) return;
+
+    const id = `${sheetName}|${arr.length}|${typeof arr[0]}|${Object.keys(arr[0] || {}).slice(0,5).join(",")}`;
+    if(seen.has(id)) return;
+    seen.add(id);
+
+    if(arr[0] && typeof arr[0] === "object" && !Array.isArray(arr[0])){
+      found.push({ rows: arr, sheetName });
+      return;
+    }
+
+    if(Array.isArray(arr[0])){
+      const rows = aoaToRows(arr);
+      if(rows.length) found.push({ rows, sheetName });
+    }
   }
-  for(const k of Object.keys(obj)){
-    const nk = norm(k);
-    if(names.some(n => nk.includes(norm(n)))) return obj[k];
+
+  function walk(node, sheetName){
+    if(node === null || node === undefined) return;
+
+    if(Array.isArray(node)){
+      pushArray(node, sheetName ?? sheetNameFallback ?? "");
+      return;
+    }
+
+    if(typeof node !== "object") return;
+
+    if(Array.isArray(node.rows)) pushArray(node.rows, sheetName ?? sheetNameFallback ?? "");
+    if(Array.isArray(node.data)) pushArray(node.data, sheetName ?? sheetNameFallback ?? "");
+    if(Array.isArray(node.table)) pushArray(node.table, sheetName ?? sheetNameFallback ?? "");
+
+    if(node.sheets && typeof node.sheets === "object" && !Array.isArray(node.sheets)){
+      for(const [sn, sv] of Object.entries(node.sheets)) walk(sv, sn);
+    }
+
+    for(const [k,v] of Object.entries(node)){
+      if(k === "meta" || k === "sheets") continue;
+      if(v && typeof v === "object") walk(v, sheetName);
+    }
   }
+
+  walk(root, sheetNameFallback);
+  return found;
+}
+
+function pickField(row, candidates){
+  const map = {};
+  for(const k of Object.keys(row || {})) map[normHdr(k)] = k;
+
+  for(const cand of candidates){
+    const real = map[normHdr(cand)];
+    if(real !== undefined) return row[real];
+  }
+
+  for(const k of Object.keys(row || {})){
+    const nk = normHdr(k);
+    if(candidates.some(c => nk.includes(normHdr(c)))) return row[k];
+  }
+
   return undefined;
 }
 
-function looksLikeRetailRow(r){
-  if(!r || typeof r !== "object") return false;
-  const keys = Object.keys(r).map(norm).join("|");
-  const hasName = /(^|\|)(name|associate|associatename|rep|representative)(\||$)/.test(keys) || keys.includes("name");
-  const hasConsumer = keys.includes("consumer") || keys.includes("appointment") || keys.includes("opportunit");
-  return hasName && hasConsumer;
+function isTotalName(name){
+  const n = String(name || "").trim().toLowerCase();
+  return /^(total|totals|team totals?|summary)$/.test(n) || n.startsWith("total -") || n.startsWith("totals -");
 }
 
-function canonicalizeRetailRows(dockObj){
-  const packs = extractRowArrays(dockObj);
+function looksLikeStatsRow(obj){
+  if(!obj || typeof obj !== "object") return false;
+  const keys = Object.keys(obj);
+  if(keys.length < 3) return false;
+
+  const nk = keys.map(normHdr);
+  const hasName = nk.includes("name") || nk.includes("associate") || nk.includes("rep") || nk.includes("employee") || nk.includes("associatename");
+  const hasStats = nk.some(k => /appointment|opportunit|consumer|insurance|commercial|wiper|available|rate|calls|acw|qa|score/.test(k));
+  return hasName && hasStats;
+}
+
+function canonicalizeStatsRowsFromDock(dockObj, sourceLabel){
+  if(!dockObj) return [];
+
+  const arrays = extractRowArrays(dockObj, "");
   const out = [];
 
-  for(const pack of packs){
+  for(const pack of arrays){
+    const sheetName = pack.sheetName || "";
+
     for(const r of pack.rows){
-      if(!looksLikeRetailRow(r)) continue;
+      if(!looksLikeStatsRow(r)) continue;
 
-      const name = String(pickField(r, ["Name","Associate","Associate Name","Rep","Representative","CSR"]) ?? "").trim();
-      if(!name) continue;
+      const nameRaw = pickField(r, ["Name","Associate","Rep","Employee","Associate Name"]);
+      const sheetRaw = pickField(r, ["Sheet","Coach","Team","Job Coach"]);
+      const dateRaw = pickField(r, ["Date","Dt","Day","Created On","Created"]);
 
-      const sheet = String(pickField(r, ["Sheet","Team","Coach","Job Coach"]) ?? "").trim();
-      const d = parseDate(pickField(r, ["Date","Day","Week","Created On"]));
+      const name = String(nameRaw ?? "").trim();
+      const sheet = String((sheetRaw ?? sheetName) ?? "").trim();
+      const d = parseAnyDate(dateRaw);
 
-      const row = {
-        Source:"Retail",
-        Name:name,
-        Sheet:sheet,
-        Date:d ? ymd(d) : "",
-        __date:d,
-        __nameKey:norm(name)
+      if(!name || isTotalName(name)) continue;
+
+      const rowOut = {
+        Source: sourceLabel,
+        Name: name,
+        Sheet: sheet,
+        Date: d ? isoYmd(d) : "",
+        __date: d,
+        __ymd: d ? isoYmd(d) : "",
+        __wk: d ? isoWeekKey(d) : "",
+        __nameKey: personKey(name)
       };
 
       for(const [k,v] of Object.entries(r)){
-        if(v === null || v === undefined) continue;
-        const key = String(k).trim();
-        if(!key || key.startsWith("__")) continue;
-        row[key] = v;
+        const nk = normHdr(k);
+        if(["name","associate","rep","employee","associatename"].includes(nk)) continue;
+        if(["sheet","coach","team","jobcoach"].includes(nk)) continue;
+        if(["date","dt","day","createdon","created"].includes(nk)) continue;
+        rowOut[k] = v;
       }
 
-      const cApps = toNumber(pickField(r, [
-        "Consumer Appointments",
-        "Consumer_Appointments",
-        "ConsumerAppointments",
-        "Consumer Appointment",
-        "Appointments"
-      ]));
-
-      const cOpps = toNumber(pickField(r, [
-        "Consumer Opportunities",
-        "Consumer_Opportunities",
-        "ConsumerOpportunities",
-        "Consumer Opportunity",
-        "Opportunities"
-      ]));
-
-      if(cApps !== null) row["Consumer Appointments"] = cApps;
-      if(cOpps !== null) row["Consumer Opportunities"] = cOpps;
-      if(cApps !== null && cOpps !== null && cOpps !== 0){
-        row["Consumer Appointment Rate"] = cApps / cOpps;
-      }else{
-        const existingRate = toNumber(pickField(r, [
-          "Consumer Appointment Rate",
-          "Consumer_Appointment_Rate",
-          "Consumer Appt Rate",
-          "Consumer Rate"
-        ]));
-        if(existingRate !== null) row["Consumer Appointment Rate"] = existingRate;
-      }
-
-      out.push(row);
+      addDerivedKpis(rowOut, sourceLabel);
+      out.push(rowOut);
     }
   }
+
   return out;
 }
 
-function aggregateRetailByName(rows){
+function firstNum(row, names){
+  for(const name of names){
+    const v = pickField(row, [name]);
+    const n = toNumber(v);
+    if(n !== null) return n;
+  }
+  return null;
+}
+
+function addDerivedKpis(row, source){
+  const prefix = source + ":";
+
+  const consumerApps = firstNum(row, [
+    "Consumer Appointments","Consumer_Appointments","ConsumerAppointments",
+    "Consumer Appointment","Consumer Apps","Appointments"
+  ]);
+  const consumerOpps = firstNum(row, [
+    "Consumer Opportunities","Consumer_Opportunities","ConsumerOpportunities",
+    "Consumer Opportunity","Consumer Opps","Opportunities"
+  ]);
+
+  if(consumerApps !== null) row[`${prefix} Consumer Appointments`] = consumerApps;
+  if(consumerOpps !== null) row[`${prefix} Consumer Opportunities`] = consumerOpps;
+  if(consumerApps !== null && consumerOpps !== null && consumerOpps !== 0){
+    row[`${prefix} Consumer Appointment Rate`] = consumerApps / consumerOpps;
+  }
+
+  const insApps = firstNum(row, ["Insurance Appointments","Insurance_Appointments","InsuranceAppointments"]);
+  const insOpps = firstNum(row, ["Insurance Opportunities","Insurance_Opportunities","InsuranceOpportunities"]);
+  if(insApps !== null) row[`${prefix} Insurance Appointments`] = insApps;
+  if(insOpps !== null) row[`${prefix} Insurance Opportunities`] = insOpps;
+  if(insApps !== null && insOpps !== null && insOpps !== 0){
+    row[`${prefix} Insurance Appointment Rate`] = insApps / insOpps;
+  }
+
+  const comApps = firstNum(row, ["Commercial Appointments","Commercial_Appointments","CommercialAppointments"]);
+  const comOpps = firstNum(row, ["Commercial Opportunities","Commercial_Opportunities","CommercialOpportunities"]);
+  if(comApps !== null) row[`${prefix} Commercial Appointments`] = comApps;
+  if(comOpps !== null) row[`${prefix} Commercial Opportunities`] = comOpps;
+  if(comApps !== null && comOpps !== null && comOpps !== 0){
+    row[`${prefix} Commercial Appointment Rate`] = comApps / comOpps;
+  }
+
+  const wCount = firstNum(row, ["Wiper Count","Wiper_Count","Wipers Accept","Wipers_Accept"]);
+  const wJobs = firstNum(row, ["Wiper Jobs","Wiper_Jobs","Wipers Asked","Wipers_Asked"]);
+  if(wCount !== null) row[`${prefix} Wiper Count/Accept`] = wCount;
+  if(wJobs !== null) row[`${prefix} Wiper Jobs/Asked`] = wJobs;
+  if(wCount !== null && wJobs !== null && wJobs !== 0){
+    row[`${prefix} Wiper Rate`] = wCount / wJobs;
+  }
+}
+
+function aggregateDockRowsByName(rows){
   const map = new Map();
 
   for(const r of rows){
-    const name = String(r.Name || "").trim();
-    const key = norm(name);
-    if(!key) continue;
+    const k = r.__nameKey || personKey(r.Name);
+    if(!k) continue;
 
-    if(!map.has(key)){
-      map.set(key, {
-        Name:name,
-        key,
-        count:0,
-        consumerApps:0,
-        consumerOpps:0,
-        sums:{},
-        counts:{}
+    if(!map.has(k)){
+      map.set(k, {
+        Name: r.Name,
+        key: k,
+        rows: 0,
+        sums: {},
+        counts: {},
+        totals: {}
       });
     }
 
-    const a = map.get(key);
-    a.count++;
+    const acc = map.get(k);
+    acc.rows++;
 
-    const apps = toNumber(r["Consumer Appointments"]);
-    const opps = toNumber(r["Consumer Opportunities"]);
-    if(apps !== null) a.consumerApps += apps;
-    if(opps !== null) a.consumerOpps += opps;
+    for(const [field,v] of Object.entries(r)){
+      if(["Source","Name","Sheet","Date","__date","__ymd","__wk","__nameKey"].includes(field)) continue;
 
-    for(const [k,v] of Object.entries(r)){
-      if(["Name","Sheet","Date","Source","__date","__nameKey"].includes(k)) continue;
       const n = toNumber(v);
       if(n === null) continue;
-      a.sums[k] = (a.sums[k] || 0) + n;
-      a.counts[k] = (a.counts[k] || 0) + 1;
+
+      const isAverageMetric = /rate|%|pct|percent|available|score/i.test(field);
+      if(isAverageMetric){
+        acc.sums[field] = (acc.sums[field] || 0) + n;
+        acc.counts[field] = (acc.counts[field] || 0) + 1;
+      }else{
+        acc.totals[field] = (acc.totals[field] || 0) + n;
+      }
     }
   }
 
   const out = new Map();
-  for(const [key,a] of map.entries()){
+
+  for(const [key, acc] of map.entries()){
     const obj = {
-      "Retail: Name":a.Name,
-      "Retail: Rows":a.count,
-      "Retail: Consumer Appointments":a.consumerApps,
-      "Retail: Consumer Opportunities":a.consumerOpps,
-      "Retail: Consumer Appointment Rate":a.consumerOpps ? a.consumerApps / a.consumerOpps : null
+      "Dock: Representative": acc.Name,
+      "Dock: Rows": acc.rows
     };
 
-    for(const [k,sum] of Object.entries(a.sums)){
-      if(["Consumer Appointments","Consumer Opportunities","Consumer Appointment Rate"].includes(k)) continue;
-      const c = a.counts[k] || 0;
-      if(!c) continue;
-      const avg = sum / c;
-      obj[`Retail Avg: ${k}`] = avg;
+    for(const [field,total] of Object.entries(acc.totals)){
+      obj[`Dock Total: ${field}`] = total;
+    }
+
+    for(const [field,sum] of Object.entries(acc.sums)){
+      const count = acc.counts[field] || 0;
+      if(count) obj[`Dock Avg: ${field}`] = sum / count;
+    }
+
+    const cApps =
+      obj["Dock Total: Retail: Consumer Appointments"] ??
+      obj["Dock Total: Consumer Appointments"] ??
+      null;
+
+    const cOpps =
+      obj["Dock Total: Retail: Consumer Opportunities"] ??
+      obj["Dock Total: Consumer Opportunities"] ??
+      null;
+
+    if(Number.isFinite(cApps) && Number.isFinite(cOpps) && cOpps !== 0){
+      obj["Dock KPI: Consumer Appointment Rate"] = cApps / cOpps;
+    }
+
+    const fallbackRetailRate = obj["Dock Avg: Retail: Consumer Appointment Rate"];
+    if(!Number.isFinite(obj["Dock KPI: Consumer Appointment Rate"]) && Number.isFinite(fallbackRetailRate)){
+      obj["Dock KPI: Consumer Appointment Rate"] = fallbackRetailRate;
     }
 
     out.set(key, obj);
@@ -894,604 +1171,507 @@ function aggregateRetailByName(rows){
   return out;
 }
 
+async function loadDocks(){
+  setProgress(5, "Finding dock keys...");
+
+  const retailKey = findDockKey("Retail");
+  const referralKey = findDockKey("Referral");
+
+  const rows = [];
+
+  if(retailKey){
+    setProgress(15, "Loading Retail dock...");
+    await sleepFrame();
+    const obj = loadDockObjByKey(retailKey);
+    rows.push(...canonicalizeStatsRowsFromDock(obj, "Retail"));
+  }
+
+  if(referralKey){
+    setProgress(40, "Loading Referral dock...");
+    await sleepFrame();
+    const obj = loadDockObjByKey(referralKey);
+    rows.push(...canonicalizeStatsRowsFromDock(obj, "Referral"));
+  }
+
+  state.dockRows = rows;
+  state.dockByName = aggregateDockRowsByName(rows);
+
+  setProgress(70, "Merging dock rows...");
+  rebuildMergedRows();
+
+  $("statusBox").className = "hint ok";
+  $("statusBox").innerHTML = `
+    <b>Docks loaded.</b><br>
+    Retail key: <code>${esc(retailKey || "not found")}</code><br>
+    Referral key: <code>${esc(referralKey || "not found")}</code><br>
+    Dock stat rows: <b>${rows.length}</b><br>
+    Dock representatives: <b>${state.dockByName.size}</b>
+  `;
+}
+
+/* =========================
+   Merge / controls
+========================= */
+function guessNameField(headers){
+  return headers.find(h => ["name","associate","rep","representative","employee","agent","csr"].includes(normHdr(h))) ||
+    headers.find(h => /name|associate|rep|representative|employee|agent|csr/i.test(h)) ||
+    headers[0] ||
+    "Name";
+}
+
 function rebuildMergedRows(){
-  const nameCol = $("nameCol").value;
-  const hasCsv = state.csvRows.length > 0;
+  const csvHasRows = state.csvRows.length > 0;
+  const nameField = $("nameField").value || guessNameField(state.csvHeaders);
 
-  let rows = [];
+  let merged = [];
 
-  if(hasCsv){
-    rows = state.csvRows.map(r => {
+  if(csvHasRows){
+    merged = state.csvRows.map(r => {
       const out = {...r};
-      const name = String(r[nameCol] ?? "").trim();
-      const retail = state.retailByName.get(norm(name));
-      if(retail){
-        for(const [k,v] of Object.entries(retail)){
-          if(k === "Retail: Name") continue;
-          out[k] = v;
+      const name = String(r[nameField] ?? "").trim();
+      const k = personKey(name);
+      const dock = state.dockByName.get(k);
+
+      out["Match: Person Key"] = k;
+      out["Match: Dock Found"] = dock ? "Yes" : "No";
+
+      if(dock){
+        for(const [dk,dv] of Object.entries(dock)){
+          if(dk === "Dock: Representative") continue;
+          out[dk] = dv;
         }
-        out["Matched Retail"] = "Yes";
-      }else{
-        out["Matched Retail"] = "No";
       }
+
       return out;
     });
   }else{
-    rows = Array.from(state.retailByName.values()).map(r => ({...r, Name:r["Retail: Name"]}));
+    merged = Array.from(state.dockByName.values()).map(d => ({
+      Name: d["Dock: Representative"],
+      "Match: Person Key": personKey(d["Dock: Representative"]),
+      "Match: Dock Found": "Yes",
+      ...d
+    }));
   }
 
-  state.mergedRows = rows;
-  state.headers = Array.from(new Set(rows.flatMap(r => Object.keys(r))));
-  state.metrics = state.headers.filter(h => {
-    let c = 0;
-    for(const r of rows){
-      if(toNumber(r[h]) !== null) c++;
-      if(c >= 3) return true;
+  state.mergedRows = merged;
+
+  const allHeaders = Array.from(new Set(merged.flatMap(r => Object.keys(r))));
+  state.headers = allHeaders;
+
+  for(const h of allHeaders){
+    if(!state.activeHeaders.has(h)) state.activeHeaders.add(h);
+  }
+
+  state.metrics = allHeaders.filter(h => {
+    if(!state.activeHeaders.has(h)) return false;
+    let count = 0;
+    for(const r of merged){
+      if(toNumber(r[h]) !== null) count++;
+      if(count >= 2) return true;
     }
     return false;
   });
 
-  hydrateControls();
+  hydrateSelects();
+  renderHeaderChecks();
+  updateBadges();
+  setProgress(100, "Ready");
 }
 
-function hydrateControls(){
-  const csvHeaders = state.csvHeaders || [];
-  const nameDefault = $("nameCol").value || pickDefaultNameCol(csvHeaders) || "Name";
-  const dateDefault = $("dateCol").value || pickDefaultDateCol(csvHeaders);
+function hydrateSelects(){
+  const nameOptions = state.csvHeaders.length ? state.csvHeaders : ["Name"];
+  const oldName = $("nameField").value;
+  const nameValue = oldName && nameOptions.includes(oldName) ? oldName : guessNameField(nameOptions);
 
-  const nameOpts = csvHeaders.length
-    ? csvHeaders.map(h => ({value:h,label:h}))
-    : [{value:"Name",label:"Name"}];
+  $("nameField").innerHTML = nameOptions.map(h => `<option value="${esc(h)}">${esc(h)}</option>`).join("");
+  $("nameField").value = nameValue;
 
-  const dateOpts = [{value:"",label:"(none)"}].concat(csvHeaders.map(h => ({value:h,label:h})));
+  const oldTarget = $("targetField").value;
+  const targetValue =
+    oldTarget && state.metrics.includes(oldTarget) ? oldTarget :
+    state.metrics.includes("Dock KPI: Consumer Appointment Rate") ? "Dock KPI: Consumer Appointment Rate" :
+    state.metrics.find(h => /consumer.*appointment.*rate/i.test(h)) ||
+    state.metrics[0] ||
+    "";
 
-  fillSelect("nameCol", nameOpts, nameDefault);
-  fillSelect("dateCol", dateOpts, dateDefault);
-
-  const targetOpts = state.metrics.map(h => ({value:h,label:h}));
-  const defaultTarget =
-    state.metrics.includes("Retail: Consumer Appointment Rate")
-      ? "Retail: Consumer Appointment Rate"
-      : ($("targetCol").value && state.metrics.includes($("targetCol").value) ? $("targetCol").value : state.metrics[0]);
-
-  fillSelect("targetCol", targetOpts, defaultTarget);
-
-  $("rowCount").textContent = state.mergedRows.length;
-  $("metricCount").textContent = state.metrics.length;
-  $("retailCount").textContent = state.retailByName.size;
-
-  $("metaLine").textContent =
-    `${state.csvRows.length} CSV rows • ${state.retailRows.length} Retail stat rows • ${state.mergedRows.length} merged rows`;
+  $("targetField").innerHTML = state.metrics.map(h => `<option value="${esc(h)}">${esc(h)}</option>`).join("");
+  $("targetField").value = targetValue;
+  state.target = targetValue;
 }
 
-function pearson(pairs){
+function updateBadges(){
+  $("rowsBadge").textContent = state.mergedRows.length;
+  $("metricBadge").textContent = state.metrics.length;
+  $("dockBadge").textContent = state.dockByName.size;
+  $("cardMatched").textContent = state.mergedRows.filter(r => r["Match: Dock Found"] === "Yes").length;
+  $("cardTarget").textContent = $("targetField").value || "—";
+}
+
+function clearAll(){
+  state.csvRows = [];
+  state.csvHeaders = [];
+  state.dockRows = [];
+  state.dockByName = new Map();
+  state.mergedRows = [];
+  state.headers = [];
+  state.activeHeaders = new Set();
+  state.metrics = [];
+  state.correlations = [];
+  state.selectedMetric = "";
+  state.drillChain = [];
+  state.layerRows = [];
+  state.plotPoints = [];
+
+  $("fileLabel").textContent = "Drop CSV or choose file";
+  $("corrBody").innerHTML = `<tr><td colspan="7" class="muted">Load data, choose target, then run correlations.</td></tr>`;
+  $("layerBody").innerHTML = `<tr><td colspan="5" class="muted">Drill into a correlate to populate this.</td></tr>`;
+  $("statusBox").className = "hint";
+  $("statusBox").innerHTML = "Cleared. Upload a CSV or load docks.";
+  setProgress(0, "Ready");
+  hydrateSelects();
+  updateBadges();
+  drawScatter();
+}
+
+/* =========================
+   Correlations
+========================= */
+function pearsonFromPairs(pairs){
   const n = pairs.length;
   if(n < 2) return null;
+
   let sx=0, sy=0, sxx=0, syy=0, sxy=0;
   for(const [x,y] of pairs){
-    sx += x; sy += y;
-    sxx += x*x; syy += y*y;
+    sx += x;
+    sy += y;
+    sxx += x*x;
+    syy += y*y;
     sxy += x*y;
   }
+
   const num = n*sxy - sx*sy;
   const den = Math.sqrt((n*sxx - sx*sx) * (n*syy - sy*sy));
   if(!den) return null;
   return num / den;
 }
 
-function getPairsForMetric(metric,target,rows){
-  const pts = [];
+function pairsForMetric(metric, target, rows){
+  const out = [];
   for(const r of rows){
     const x = toNumber(r[metric]);
     const y = toNumber(r[target]);
     if(x === null || y === null) continue;
-    pts.push([x,y,r]);
+    out.push([x,y,r]);
   }
-  return pts;
+  return out;
 }
 
 function strength(abs){
-  if(!Number.isFinite(abs)) return {txt:"—", cls:""};
   if(abs >= .70) return {txt:"High", cls:"high"};
   if(abs >= .40) return {txt:"Medium", cls:"med"};
   return {txt:"Low", cls:"low"};
 }
 
-function mean(arr){
-  const nums = arr.filter(Number.isFinite);
-  if(!nums.length) return null;
-  return nums.reduce((a,b)=>a+b,0)/nums.length;
+async function runCorrelations(){
+  rebuildMergedRows();
+
+  const target = $("targetField").value;
+  const minN = Math.max(2, Number($("minN").value || 2));
+  state.target = target;
+
+  if(!target){
+    $("statusBox").className = "hint bad";
+    $("statusBox").innerHTML = "No target KPI selected.";
+    return;
+  }
+
+  const metrics = state.metrics.filter(m => m !== target);
+  const rows = state.mergedRows;
+  const results = [];
+
+  setProgress(0, "Starting...");
+  $("corrBody").innerHTML = `<tr><td colspan="7" class="muted">Working in chunks...</td></tr>`;
+
+  const chunk = 20;
+  for(let i=0;i<metrics.length;i+=chunk){
+    const slice = metrics.slice(i, i + chunk);
+
+    for(const metric of slice){
+      const pairs = pairsForMetric(metric, target, rows);
+      if(pairs.length < minN) continue;
+
+      const r = pearsonFromPairs(pairs.map(p => [p[0], p[1]]));
+      if(r === null || !Number.isFinite(r)) continue;
+
+      const abs = Math.abs(r);
+      const label = strength(abs);
+
+      results.push({
+        metric,
+        r,
+        abs,
+        n:pairs.length,
+        label,
+        direction:r >= 0 ? "Positive" : "Negative"
+      });
+    }
+
+    const done = Math.min(metrics.length, i + chunk);
+    setProgress((done / Math.max(1, metrics.length)) * 100, `Correlating ${done}/${metrics.length}`);
+    await sleepFrame();
+  }
+
+  results.sort((a,b)=>b.abs-a.abs);
+  state.correlations = results;
+
+  setProgress(100, `Done: ${results.length} correlations`);
+  renderCorrelations();
+
+  if(results[0]) selectMetric(results[0].metric, false);
+
+  $("statusBox").className = "hint ok";
+  $("statusBox").innerHTML = `
+    <b>Correlation run complete.</b><br>
+    Target: <b>${esc(target)}</b><br>
+    Metrics tested: <b>${metrics.length}</b><br>
+    Valid correlations: <b>${results.length}</b>
+  `;
+
+  updateBadges();
+}
+
+function filteredCorrelations(){
+  const q = $("searchBox").value.trim().toLowerCase();
+  let rows = state.correlations.filter(c => !q || c.metric.toLowerCase().includes(q));
+
+  rows = [...rows].sort((a,b)=>{
+    const k = state.sortKey;
+    let va = a[k], vb = b[k];
+    if(k === "metric"){
+      va = String(va).toLowerCase();
+      vb = String(vb).toLowerCase();
+      return state.sortDir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va);
+    }
+    return state.sortDir === "asc" ? va - vb : vb - va;
+  });
+
+  return rows;
+}
+
+function renderCorrelations(){
+  const rows = filteredCorrelations();
+
+  if(!rows.length){
+    $("corrBody").innerHTML = `<tr><td colspan="7" class="muted">No correlations found.</td></tr>`;
+    $("cardBest").textContent = "—";
+    $("cardBestSub").textContent = "—";
+    return;
+  }
+
+  const best = rows[0];
+  $("cardBest").textContent = fmt(best.r,3);
+  $("cardBestSub").textContent = best.metric;
+
+  $("corrBody").innerHTML = rows.map(c => `
+    <tr>
+      <td onclick="selectMetric(${JSON.stringify(c.metric)}, false)" style="cursor:pointer">
+        <div class="metricName" title="${esc(c.metric)}">${esc(c.metric)}</div>
+      </td>
+      <td>${fmt(c.r,3)}</td>
+      <td>${fmt(c.abs,3)}</td>
+      <td>${c.n}</td>
+      <td><span class="tag ${c.r >= 0 ? "pos" : "neg"}">${c.direction}</span></td>
+      <td><span class="tag ${c.label.cls}">${c.label.txt}</span></td>
+      <td>
+        <div class="row">
+          <button onclick="selectMetric(${JSON.stringify(c.metric)}, false)">Plot</button>
+          <button class="primary" onclick="startDrill(${JSON.stringify(c.metric)})">Drill</button>
+        </div>
+      </td>
+    </tr>
+  `).join("");
+}
+
+/* =========================
+   Layer Explorer
+========================= */
+function mean(nums){
+  const good = nums.filter(Number.isFinite);
+  if(!good.length) return null;
+  return good.reduce((a,b)=>a+b,0) / good.length;
 }
 
 function quantile(vals, q){
-  const a = vals.filter(Number.isFinite).sort((x,y)=>x-y);
-  if(!a.length) return null;
-  const idx = Math.max(0, Math.min(a.length-1, Math.floor((a.length-1)*q)));
-  return a[idx];
+  const arr = vals.filter(Number.isFinite).sort((a,b)=>a-b);
+  if(!arr.length) return null;
+  const idx = Math.max(0, Math.min(arr.length - 1, Math.floor((arr.length - 1) * q)));
+  return arr[idx];
 }
 
-function thresholdFor(metric, dir, rows){
+function correlationForMetric(metric){
+  return state.correlations.find(c => c.metric === metric);
+}
+
+function goodThreshold(metric, rows){
+  const c = correlationForMetric(metric);
+  const dir = !c || c.r >= 0 ? 1 : -1;
   const vals = rows.map(r => toNumber(r[metric])).filter(Number.isFinite);
-  if(!vals.length) return null;
-  const mode = $("thresholdMode").value;
-  if(mode === "top25") return dir >= 0 ? quantile(vals,.75) : quantile(vals,.25);
-  if(mode === "top33") return dir >= 0 ? quantile(vals,.67) : quantile(vals,.33);
-  return quantile(vals,.50);
+  const q = dir >= 0 ? .5 : .5;
+  const t = quantile(vals, q);
+  return { threshold:t, dir };
 }
 
-function isGoodValue(v, threshold, dir){
+function rowIsGood(row, metric, basisRows){
+  const {threshold, dir} = goodThreshold(metric, basisRows);
+  const v = toNumber(row[metric]);
   if(v === null || threshold === null) return false;
   return dir >= 0 ? v >= threshold : v <= threshold;
 }
 
-function dirForMetric(metric){
-  const c = state.correlations.find(x => x.metric === metric);
-  if(!c) return 1;
-  return c.r >= 0 ? 1 : -1;
-}
+function rowsForChain(){
+  let rows = state.mergedRows;
 
-function rowPassesChain(row, chain){
-  for(const metric of chain){
-    const dir = dirForMetric(metric);
-    const t = thresholdFor(metric, dir, state.mergedRows);
-    const v = toNumber(row[metric]);
-    if(!isGoodValue(v,t,dir)) return false;
-  }
-  return true;
-}
-
-function computeCorrelations(){
-  const target = $("targetCol").value;
-  const minN = Number($("minN").value || 0);
-  const rows = state.mergedRows;
-
-  const list = [];
-  for(const metric of state.metrics){
-    if(metric === target) continue;
-    if(metric === "Retail: Consumer Opportunities" && target === "Retail: Consumer Appointment Rate") {
-      // still allow it; volume can matter
-    }
-
-    const pts = getPairsForMetric(metric,target,rows);
-    if(pts.length < minN) continue;
-    const r = pearson(pts.map(p => [p[0],p[1]]));
-    if(r === null || !Number.isFinite(r)) continue;
-
-    list.push({
-      metric,
-      r,
-      abs:Math.abs(r),
-      n:pts.length,
-      label:strength(Math.abs(r)),
-      sign:r >= 0 ? "Positive" : "Negative"
-    });
+  for(const metric of state.drillChain){
+    const basis = rows;
+    rows = rows.filter(r => rowIsGood(r, metric, basis));
   }
 
-  list.sort((a,b)=>b.abs-a.abs);
-  state.correlations = list;
+  return rows;
 }
 
-function avgTarget(rows,target){
-  return mean(rows.map(r => toNumber(r[target])));
+async function startDrill(metric){
+  state.drillChain = [metric];
+  $("cardLayer").textContent = state.drillChain.length;
+  selectMetric(metric, false);
+  await computeLayerRows();
 }
 
-function computePairs(){
-  const target = $("targetCol").value;
-  const rows = state.mergedRows;
-  const minN = Number($("minN").value || 0);
-  const baseAvg = avgTarget(rows,target);
+async function addLayer(metric){
+  if(!state.drillChain.includes(metric)) state.drillChain.push(metric);
+  $("cardLayer").textContent = state.drillChain.length;
+  selectMetric(metric, false);
+  await computeLayerRows();
+}
 
-  const top = state.correlations.slice(0,80);
-  const pairs = [];
+async function computeLayerRows(){
+  const target = $("targetField").value;
+  const minN = Math.max(2, Number($("minN").value || 2));
+  const baseRows = rowsForChain();
+  const baseAvg = mean(baseRows.map(r => toNumber(r[target])));
 
-  for(let i=0;i<top.length;i++){
-    for(let j=i+1;j<top.length;j++){
-      const a = top[i].metric;
-      const b = top[j].metric;
-      const dirA = top[i].r >= 0 ? 1 : -1;
-      const dirB = top[j].r >= 0 ? 1 : -1;
-      const tA = thresholdFor(a,dirA,rows);
-      const tB = thresholdFor(b,dirB,rows);
+  const used = new Set(state.drillChain);
+  const candidates = state.correlations.filter(c => !used.has(c.metric));
 
-      const both = [];
-      const onlyA = [];
-      const onlyB = [];
-      const neither = [];
+  const out = [];
+  setProgress(0, "Layer scan...");
 
-      for(const r of rows){
+  const chunk = 25;
+  for(let i=0;i<candidates.length;i+=chunk){
+    for(const c of candidates.slice(i,i+chunk)){
+      const metric = c.metric;
+      const {threshold, dir} = goodThreshold(metric, baseRows);
+      if(threshold === null) continue;
+
+      const good = [];
+      const bad = [];
+
+      for(const r of baseRows){
         const y = toNumber(r[target]);
         if(y === null) continue;
 
-        const ga = isGoodValue(toNumber(r[a]),tA,dirA);
-        const gb = isGoodValue(toNumber(r[b]),tB,dirB);
+        const v = toNumber(r[metric]);
+        if(v === null) continue;
 
-        if(ga && gb) both.push(y);
-        else if(ga) onlyA.push(y);
-        else if(gb) onlyB.push(y);
-        else neither.push(y);
+        const isGood = dir >= 0 ? v >= threshold : v <= threshold;
+        if(isGood) good.push(y);
+        else bad.push(y);
       }
 
-      if(both.length < minN) continue;
+      if(good.length < minN || bad.length < minN) continue;
 
-      const bothAvg = mean(both);
-      const neitherAvg = mean(neither);
-      const onlyAAvg = mean(onlyA);
-      const onlyBAvg = mean(onlyB);
+      const goodAvg = mean(good);
+      const badAvg = mean(bad);
+      const delta = goodAvg - badAvg;
 
-      const lift = bothAvg - baseAvg;
-      const synergy = bothAvg - Math.max(onlyAAvg ?? -Infinity, onlyBAvg ?? -Infinity, baseAvg ?? -Infinity);
-
-      pairs.push({
-        a,b,
-        n:both.length,
-        bothAvg,
+      out.push({
+        metric,
+        threshold,
+        dir,
+        goodAvg,
+        badAvg,
+        delta,
+        goodN:good.length,
+        badN:bad.length,
         baseAvg,
-        lift,
-        synergy,
-        onlyAAvg,
-        onlyBAvg,
-        neitherAvg,
-        score:(Math.abs(lift) + Math.max(0,synergy || 0)) * Math.sqrt(both.length)
+        score:Math.abs(delta) * Math.sqrt(good.length + bad.length)
       });
     }
-  }
 
-  pairs.sort((x,y)=>y.score-x.score);
-  state.pairs = pairs;
-}
-
-function computeLayerRows(){
-  const target = $("targetCol").value;
-  const allRows = state.mergedRows;
-  const minN = Number($("minN").value || 0);
-  const chain = state.chain;
-
-  const baseRows = chain.length
-    ? allRows.filter(r => rowPassesChain(r, chain))
-    : allRows;
-
-  const baseAvg = avgTarget(baseRows,target);
-
-  const used = new Set(chain);
-  const candidates = state.correlations
-    .filter(c => !used.has(c.metric))
-    .slice(0,120);
-
-  const out = [];
-
-  for(const c of candidates){
-    const metric = c.metric;
-    const dir = c.r >= 0 ? 1 : -1;
-    const t = thresholdFor(metric,dir,baseRows);
-    const good = [];
-    const bad = [];
-
-    for(const r of baseRows){
-      const y = toNumber(r[target]);
-      if(y === null) continue;
-      const g = isGoodValue(toNumber(r[metric]),t,dir);
-      if(g) good.push(y);
-      else bad.push(y);
-    }
-
-    if(good.length < minN || bad.length < minN) continue;
-
-    const goodAvg = mean(good);
-    const badAvg = mean(bad);
-    const delta = goodAvg - badAvg;
-    const liftVsLayer = goodAvg - baseAvg;
-
-    out.push({
-      metric,
-      dir,
-      threshold:t,
-      goodN:good.length,
-      badN:bad.length,
-      goodAvg,
-      badAvg,
-      baseAvg,
-      delta,
-      liftVsLayer,
-      originalR:c.r,
-      score:Math.abs(delta) * Math.sqrt(good.length + bad.length)
-    });
+    setProgress((Math.min(candidates.length,i+chunk) / Math.max(1,candidates.length)) * 100, "Layer scan...");
+    await sleepFrame();
   }
 
   out.sort((a,b)=>b.score-a.score);
   state.layerRows = out;
+
+  renderLayerRows();
+  setProgress(100, "Layer ready");
 }
 
-function runAnalysis(){
-  rebuildMergedRows();
-  computeCorrelations();
-  computePairs();
-  computeLayerRows();
-  renderAll();
-  updateStatus("Analyzed","ok");
-}
+function renderLayerRows(){
+  $("crumbs").innerHTML = state.drillChain.length
+    ? state.drillChain.map((c,i)=>`<span class="layerCrumb">${i+1}. ${esc(c)}</span>`).join("")
+    : `<span class="muted small">No drill chain.</span>`;
 
-function renderAll(){
-  $("targetCard").textContent = $("targetCol").value || "—";
-
-  const best = state.correlations[0];
-  $("bestSingleCard").textContent = best ? niceNum(best.r,3) : "—";
-  $("bestSingleSub").textContent = best ? best.metric : "—";
-
-  const pair = state.pairs[0];
-  $("bestPairCard").textContent = pair ? pct(pair.bothAvg) : "—";
-  $("bestPairSub").textContent = pair ? `${pair.a} + ${pair.b}` : "—";
-
-  $("layerCard").textContent = state.chain.length;
-
-  renderLeft();
-  renderCrumbs();
-
-  if(!state.plotMetric && best){
-    selectMetric(best.metric,false);
-  }else{
-    drawScatter();
-  }
-}
-
-function renderLeft(){
-  if(state.activeTab === "corr") renderCorrelationList();
-  if(state.activeTab === "pairs") renderPairsList();
-  if(state.activeTab === "layers") renderLayerList();
-}
-
-function renderCorrelationList(){
-  const q = $("searchBox").value.trim().toLowerCase();
-  const rows = state.correlations.filter(c => !q || c.metric.toLowerCase().includes(q));
-
-  let html = `
-    <div class="tableWrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Metric</th>
-            <th>r</th>
-            <th>|r|</th>
-            <th>N</th>
-            <th>Label</th>
-          </tr>
-        </thead>
-        <tbody>
-  `;
-
-  if(!rows.length){
-    html += `<tr><td colspan="5" class="muted">No correlations yet.</td></tr>`;
-  }
-
-  for(const c of rows){
-    html += `
-      <tr class="clickRow" onclick="selectMetric(${JSON.stringify(c.metric)}, true)">
-        <td><div class="metricName" title="${escapeHtml(c.metric)}">${escapeHtml(c.metric)}</div></td>
-        <td>${niceNum(c.r,3)}</td>
-        <td>${niceNum(c.abs,3)}</td>
-        <td>${c.n}</td>
-        <td><span class="tag ${c.label.cls}">${c.label.txt}</span></td>
-      </tr>
-    `;
-  }
-
-  html += `</tbody></table></div>`;
-  $("leftContent").innerHTML = html;
-}
-
-function renderPairsList(){
-  let html = `
-    <div class="hint">
-      These are the strongest two-stat combinations. “Both Avg” is the average target KPI when both stats are in their good direction.
-      “Synergy” means the pair beats either stat by itself.
-    </div>
-    <div style="height:10px"></div>
-    <div class="tableWrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Pair</th>
-            <th>Both Avg</th>
-            <th>Lift</th>
-            <th>Synergy</th>
-            <th>N</th>
-          </tr>
-        </thead>
-        <tbody>
-  `;
-
-  if(!state.pairs.length){
-    html += `<tr><td colspan="5" class="muted">No pairs yet.</td></tr>`;
-  }
-
-  for(const p of state.pairs.slice(0,250)){
-    const liftCls = p.lift >= 0 ? "pos" : "neg";
-    html += `
-      <tr class="clickRow" onclick="selectPair(${JSON.stringify(p.a)}, ${JSON.stringify(p.b)})">
-        <td>
-          <div class="metricName" title="${escapeHtml(p.a)}">${escapeHtml(p.a)}</div>
-          <div class="metricName" title="${escapeHtml(p.b)}">+ ${escapeHtml(p.b)}</div>
-        </td>
-        <td>${pct(p.bothAvg)}</td>
-        <td><span class="tag ${liftCls}">${pct(p.lift)}</span></td>
-        <td>${pct(p.synergy)}</td>
-        <td>${p.n}</td>
-      </tr>
-    `;
-  }
-
-  html += `</tbody></table></div>`;
-  $("leftContent").innerHTML = html;
-}
-
-function renderLayerList(){
-  const chainLabel = state.chain.length ? state.chain.join(" → ") : "No selected correlate yet";
-  let html = `
-    <div class="hint">
-      <b>Current chain:</b> ${escapeHtml(chainLabel)}<br>
-      Click a row below to add it as the next layer. This lets you inspect 2nd-level and 3rd-level interactions.
-    </div>
-    <div class="row" style="margin:10px 0">
-      <button onclick="clearChain()">Clear Layer Chain</button>
-      <button onclick="backChain()">Back One Layer</button>
-    </div>
-    <div class="tableWrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Next Correlate</th>
-            <th>Good Avg</th>
-            <th>Bad Avg</th>
-            <th>Delta</th>
-            <th>N</th>
-          </tr>
-        </thead>
-        <tbody>
-  `;
-
-  if(!state.layerRows.length){
-    html += `<tr><td colspan="5" class="muted">Select a correlate first, or lower Minimum N.</td></tr>`;
-  }
-
-  for(const r of state.layerRows.slice(0,250)){
-    const cls = r.delta >= 0 ? "pos" : "neg";
-    const dirWord = r.dir >= 0 ? "High" : "Low";
-    html += `
-      <tr class="clickRow" onclick="addLayer(${JSON.stringify(r.metric)})">
-        <td>
-          <div class="metricName" title="${escapeHtml(r.metric)}">${escapeHtml(r.metric)}</div>
-          <div class="muted small">${dirWord} is the “good” side • threshold ${niceNum(r.threshold,3)}</div>
-        </td>
-        <td>${pct(r.goodAvg)} <span class="muted">(${r.goodN})</span></td>
-        <td>${pct(r.badAvg)} <span class="muted">(${r.badN})</span></td>
-        <td><span class="tag ${cls}">${pct(r.delta)}</span></td>
-        <td>${r.goodN + r.badN}</td>
-      </tr>
-    `;
-  }
-
-  html += `</tbody></table></div>`;
-  $("leftContent").innerHTML = html;
-}
-
-function renderCrumbs(){
-  const box = $("crumbs");
-  if(!state.chain.length){
-    box.innerHTML = `<span class="muted small">No layer chain selected.</span>`;
-    $("explainBox").innerHTML =
-      `Click a correlate to start drilling. The tool will show which other stats make that correlate stronger or weaker.`;
+  if(!state.drillChain.length){
+    $("layerHint").innerHTML = "No drill chain selected yet.";
+    $("layerBody").innerHTML = `<tr><td colspan="5" class="muted">Drill into a correlate to populate this.</td></tr>`;
     return;
   }
 
-  box.innerHTML = state.chain.map((c,i)=>`<span class="crumb">${i+1}. ${escapeHtml(c)}</span>`).join("");
-
-  const last = state.chain[state.chain.length-1];
-  const dir = dirForMetric(last);
-  $("explainBox").innerHTML = `
-    You are currently filtering to reps/rows where each selected layer is on its “good” side.
-    For <b>${escapeHtml(last)}</b>, the good side is <b>${dir >= 0 ? "higher" : "lower"}</b>
-    because its first-level relationship with the target is ${dir >= 0 ? "positive" : "negative"}.
-    The next table shows what strengthens or weakens the target KPI inside that selected group.
+  const baseRows = rowsForChain();
+  $("layerHint").innerHTML = `
+    Current drill group has <b>${baseRows.length}</b> rows.
+    The table below shows which next stat makes the target stronger or weaker inside that group.
   `;
+
+  if(!state.layerRows.length){
+    $("layerBody").innerHTML = `<tr><td colspan="5" class="muted">No next-layer results. Try lowering Minimum N.</td></tr>`;
+    return;
+  }
+
+  $("layerBody").innerHTML = state.layerRows.slice(0,150).map(r => `
+    <tr>
+      <td>
+        <div class="metricName" title="${esc(r.metric)}">${esc(r.metric)}</div>
+        <div class="muted small">${r.dir >= 0 ? "High" : "Low"} is good • threshold ${fmt(r.threshold,3)}</div>
+      </td>
+      <td>${pct(r.goodAvg)} <span class="muted">(${r.goodN})</span></td>
+      <td>${pct(r.badAvg)} <span class="muted">(${r.badN})</span></td>
+      <td><span class="tag ${r.delta >= 0 ? "pos" : "bad"}">${pct(r.delta)}</span></td>
+      <td>
+        <button class="primary" onclick="addLayer(${JSON.stringify(r.metric)})">Drill</button>
+      </td>
+    </tr>
+  `).join("");
 }
 
-function selectMetric(metric, setChain){
+/* =========================
+   Scatter
+========================= */
+function selectMetric(metric){
   state.selectedMetric = metric;
-  state.plotMetric = metric;
-  state.selectedPair = null;
+  drawScatter();
 
-  if(setChain){
-    state.chain = [metric];
-    state.activeTab = "layers";
-    setActiveTab("layers");
-    computeLayerRows();
+  const c = correlationForMetric(metric);
+  if(c){
+    $("statusBox").className = "hint";
+    $("statusBox").innerHTML = `
+      <b>${esc(metric)}</b><br>
+      Correlation with <b>${esc($("targetField").value)}</b>: <b>${fmt(c.r,3)}</b><br>
+      Direction: <b>${c.direction}</b> • Strength: <b>${c.label.txt}</b> • N: <b>${c.n}</b>
+    `;
   }
-
-  const c = state.correlations.find(x => x.metric === metric);
-  $("mainTitle").textContent = metric;
-  $("mainSub").textContent = `Plotted against ${$("targetCol").value}`;
-  $("rTag").textContent = c ? `r: ${niceNum(c.r,3)}` : "r: —";
-  $("nTag").textContent = c ? `N: ${c.n}` : "N: —";
-  $("liftTag").textContent = c ? `${c.sign}` : "Lift: —";
-
-  $("detailTitle").textContent = "Single Correlate Detail";
-  $("detailSub").textContent = metric;
-
-  const dir = c?.r >= 0 ? "higher" : "lower";
-  $("detailBody").innerHTML = c ? `
-    <b>${escapeHtml(metric)}</b> has a <b>${c.sign.toLowerCase()}</b> relationship with <b>${escapeHtml($("targetCol").value)}</b>.<br><br>
-    Correlation: <b>${niceNum(c.r,3)}</b> • Strength: <b>${c.label.txt}</b> • Sample: <b>${c.n}</b><br><br>
-    Interpretation: when this metric is <b>${dir}</b>, the target tends to be ${c.r >= 0 ? "higher" : "higher because lower values are better"}.
-    Click layer rows to find which second stat makes this relationship stronger or weaker.
-  ` : "No detail.";
-
-  drawScatter();
-  renderAll();
-}
-
-function selectPair(a,b){
-  const p = state.pairs.find(x => x.a === a && x.b === b);
-  state.selectedPair = p;
-  state.plotMetric = a;
-  state.chain = [a,b];
-  state.activeTab = "layers";
-  setActiveTab("layers");
-  computeLayerRows();
-
-  $("mainTitle").textContent = `${a} + ${b}`;
-  $("mainSub").textContent = `Best-pair view against ${$("targetCol").value}`;
-  $("rTag").textContent = "Pair";
-  $("nTag").textContent = p ? `N: ${p.n}` : "N: —";
-  $("liftTag").textContent = p ? `Lift: ${pct(p.lift)}` : "Lift: —";
-
-  $("detailTitle").textContent = "Pair Detail";
-  $("detailSub").textContent = `${a} + ${b}`;
-  $("detailBody").innerHTML = p ? `
-    <b>${escapeHtml(a)}</b> + <b>${escapeHtml(b)}</b><br><br>
-    When both are on their good side, average target KPI is <b>${pct(p.bothAvg)}</b>.<br>
-    Baseline average is <b>${pct(p.baseAvg)}</b>, so the pair lift is <b>${pct(p.lift)}</b>.<br>
-    Synergy over the stronger single side is <b>${pct(p.synergy)}</b>.<br><br>
-    This is the “what works together” list. The layer explorer now lets you see which third factor strengthens or weakens this pair.
-  ` : "No detail.";
-
-  drawScatter();
-  renderAll();
-}
-
-function addLayer(metric){
-  if(!state.chain.includes(metric)) state.chain.push(metric);
-  state.plotMetric = metric;
-  computeLayerRows();
-  renderAll();
-  drawScatter();
-}
-
-function clearChain(){
-  state.chain = [];
-  computeLayerRows();
-  renderAll();
-}
-
-function backChain(){
-  state.chain.pop();
-  computeLayerRows();
-  renderAll();
-}
-
-function setActiveTab(tab){
-  state.activeTab = tab;
-  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
-  renderLeft();
-}
-
-function getScatterPoints(metric,target){
-  const pts = [];
-  for(const r of state.mergedRows){
-    const x = toNumber(r[metric]);
-    const y = toNumber(r[target]);
-    if(x === null || y === null) continue;
-    pts.push({x,y,row:r,name:String(r[$("nameCol").value] || r.Name || r["Retail: Name"] || "")});
-  }
-  return pts;
 }
 
 function drawScatter(){
@@ -1501,24 +1681,30 @@ function drawScatter(){
   const H = canvas.height;
   ctx.clearRect(0,0,W,H);
 
-  const metric = state.plotMetric;
-  const target = $("targetCol").value;
+  const metric = state.selectedMetric;
+  const target = $("targetField").value;
 
   if(!metric || !target){
     ctx.fillStyle = "#64748b";
     ctx.font = "16px system-ui";
-    ctx.fillText("Select a metric to plot.", 40, 60);
+    ctx.fillText("Select a correlation row to show scatter plot.", 30, 50);
     return;
   }
 
-  const pts = getScatterPoints(metric,target);
-  state.plotPts = pts;
-  $("plotSub").textContent = `${metric} vs ${target} • ${pts.length} points`;
+  const pts = pairsForMetric(metric, target, state.mergedRows)
+    .map(([x,y,r]) => ({
+      x,
+      y,
+      row:r,
+      name:String(r[$("nameField").value] || r.Name || r["Dock: Representative"] || "")
+    }));
+
+  state.plotPoints = pts;
 
   if(pts.length < 2){
     ctx.fillStyle = "#64748b";
     ctx.font = "16px system-ui";
-    ctx.fillText("Not enough numeric points for this scatter plot.", 40, 60);
+    ctx.fillText("Not enough numeric points to plot.", 30, 50);
     return;
   }
 
@@ -1526,26 +1712,22 @@ function drawScatter(){
   const ys = pts.map(p=>p.y);
   let xMin = Math.min(...xs), xMax = Math.max(...xs);
   let yMin = Math.min(...ys), yMax = Math.max(...ys);
+
   if(xMin === xMax){xMin -= 1; xMax += 1}
   if(yMin === yMax){yMin -= 1; yMax += 1}
 
-  const xPad = (xMax-xMin)*.08;
-  const yPad = (yMax-yMin)*.08;
-  xMin -= xPad; xMax += xPad; yMin -= yPad; yMax += yPad;
+  const xp = (xMax - xMin) * .08;
+  const yp = (yMax - yMin) * .08;
+  xMin -= xp; xMax += xp; yMin -= yp; yMax += yp;
 
-  if(!state.plotView || state.plotView.metric !== metric || state.plotView.target !== target){
-    state.plotView = {metric,target,xMin,xMax,yMin,yMax};
-  }
+  const padL=58,padR=20,padT=18,padB=48;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
 
-  const v = state.plotView;
-  const padL=62,padR=22,padT=18,padB=54;
-  const plotW = W-padL-padR;
-  const plotH = H-padT-padB;
+  const sx = x => padL + ((x - xMin) / (xMax - xMin)) * plotW;
+  const sy = y => padT + (1 - ((y - yMin) / (yMax - yMin))) * plotH;
 
-  const sx = x => padL + ((x-v.xMin)/(v.xMax-v.xMin))*plotW;
-  const sy = y => padT + (1-((y-v.yMin)/(v.yMax-v.yMin)))*plotH;
-
-  ctx.fillStyle = "#ffffff";
+  ctx.fillStyle = "#fff";
   ctx.fillRect(0,0,W,H);
 
   ctx.strokeStyle = "#e5e7eb";
@@ -1553,206 +1735,200 @@ function drawScatter(){
   ctx.beginPath();
   for(let i=0;i<=5;i++){
     const x = padL + plotW*i/5;
-    ctx.moveTo(x,padT); ctx.lineTo(x,padT+plotH);
     const y = padT + plotH*i/5;
-    ctx.moveTo(padL,y); ctx.lineTo(padL+plotW,y);
+    ctx.moveTo(x,padT);
+    ctx.lineTo(x,padT+plotH);
+    ctx.moveTo(padL,y);
+    ctx.lineTo(padL+plotW,y);
   }
   ctx.stroke();
 
-  ctx.strokeStyle = "#0f172a";
-  ctx.beginPath();
-  ctx.moveTo(padL,padT);
-  ctx.lineTo(padL,padT+plotH);
-  ctx.lineTo(padL+plotW,padT+plotH);
-  ctx.stroke();
-
-  ctx.fillStyle = "#64748b";
-  ctx.font = "12px system-ui";
-  for(let i=0;i<=5;i++){
-    const xv = v.xMin + (v.xMax-v.xMin)*i/5;
-    const x = padL + plotW*i/5;
-    ctx.fillText(niceNum(xv,2),x-16,H-25);
-
-    const yv = v.yMin + (v.yMax-v.yMin)*i/5;
-    const y = padT + plotH - plotH*i/5;
-    ctx.fillText(niceNum(yv,2),8,y+4);
-  }
-
-  const pairs = pts.map(p=>[p.x,p.y]);
-  const r = pearson(pairs);
-
+  const r = pearsonFromPairs(pts.map(p => [p.x,p.y]));
   if(Number.isFinite(r)){
-    const mx = mean(xs), my = mean(ys);
-    let num=0,den=0;
+    const mx = mean(xs);
+    const my = mean(ys);
+    let num=0, den=0;
     for(const p of pts){
       num += (p.x-mx)*(p.y-my);
       den += (p.x-mx)*(p.x-mx);
     }
+
     if(den){
-      const slope = num/den;
-      const intercept = my - slope*mx;
-      const x1 = v.xMin;
-      const x2 = v.xMax;
+      const slope = num / den;
+      const intercept = my - slope * mx;
+      const x1 = xMin, x2 = xMax;
       const y1 = slope*x1 + intercept;
       const y2 = slope*x2 + intercept;
 
       ctx.strokeStyle = r >= 0 ? "#2563eb" : "#7c3aed";
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.moveTo(sx(x1),sy(y1));
-      ctx.lineTo(sx(x2),sy(y2));
+      ctx.moveTo(sx(x1), sy(y1));
+      ctx.lineTo(sx(x2), sy(y2));
       ctx.stroke();
     }
   }
 
   ctx.fillStyle = "#2563eb";
   for(const p of pts){
-    const x = sx(p.x), y = sy(p.y);
-    if(x<padL || x>padL+plotW || y<padT || y>padT+plotH) continue;
+    const x = sx(p.x);
+    const y = sy(p.y);
     ctx.beginPath();
     ctx.arc(x,y,4,0,Math.PI*2);
     ctx.fill();
   }
 
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(padL,padT);
+  ctx.lineTo(padL,padT+plotH);
+  ctx.lineTo(padL+plotW,padT+plotH);
+  ctx.stroke();
+
   ctx.fillStyle = "#0f172a";
-  ctx.font = "bold 13px system-ui";
-  ctx.fillText(metric, padL, H-7);
+  ctx.font = "bold 12px system-ui";
+  ctx.fillText(metric.slice(0,52), padL, H - 10);
 
   ctx.save();
-  ctx.translate(15, padT+plotH);
+  ctx.translate(15, padT + plotH);
   ctx.rotate(-Math.PI/2);
-  ctx.fillText(target, 0, 0);
+  ctx.fillText(target.slice(0,48), 0, 0);
   ctx.restore();
 }
 
-function resetPlot(){
-  state.plotView = null;
-  drawScatter();
-}
-
-function canvasPointToData(px,py){
-  const canvas = $("plot");
-  const W = canvas.width, H = canvas.height;
-  const padL=62,padR=22,padT=18,padB=54;
-  const plotW = W-padL-padR;
-  const plotH = H-padT-padB;
-  const v = state.plotView;
-  if(!v) return null;
-  return {
-    x:v.xMin + ((px-padL)/plotW)*(v.xMax-v.xMin),
-    y:v.yMin + (1-((py-padT)/plotH))*(v.yMax-v.yMin)
-  };
-}
-
-function setupPlotEvents(){
+function setupTooltip(){
   const canvas = $("plot");
   const tip = $("tip");
 
   canvas.addEventListener("mousemove", e => {
     const rect = canvas.getBoundingClientRect();
-    const px = (e.clientX-rect.left)*(canvas.width/rect.width);
-    const py = (e.clientY-rect.top)*(canvas.height/rect.height);
+    const px = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const py = (e.clientY - rect.top) * (canvas.height / rect.height);
 
-    if(state.drag && state.plotView){
-      const dx = px - state.drag.px;
-      const dy = py - state.drag.py;
-      const v0 = state.drag.view;
-      const padL=62,padR=22,padT=18,padB=54;
-      const plotW = canvas.width-padL-padR;
-      const plotH = canvas.height-padT-padB;
-      const xShift = -dx/plotW*(v0.xMax-v0.xMin);
-      const yShift = dy/plotH*(v0.yMax-v0.yMin);
-      state.plotView = {
-        ...v0,
-        xMin:v0.xMin+xShift,
-        xMax:v0.xMax+xShift,
-        yMin:v0.yMin+yShift,
-        yMax:v0.yMax+yShift
-      };
-      drawScatter();
-      return;
+    const metric = state.selectedMetric;
+    const target = $("targetField").value;
+    const pts = state.plotPoints;
+    if(!metric || !target || !pts.length) return;
+
+    const xs = pts.map(p=>p.x);
+    const ys = pts.map(p=>p.y);
+    let xMin = Math.min(...xs), xMax = Math.max(...xs);
+    let yMin = Math.min(...ys), yMax = Math.max(...ys);
+    if(xMin === xMax){xMin -= 1; xMax += 1}
+    if(yMin === yMax){yMin -= 1; yMax += 1}
+
+    const xp = (xMax - xMin) * .08;
+    const yp = (yMax - yMin) * .08;
+    xMin -= xp; xMax += xp; yMin -= yp; yMax += yp;
+
+    const padL=58,padR=20,padT=18,padB=48;
+    const plotW = canvas.width - padL - padR;
+    const plotH = canvas.height - padT - padB;
+    const sx = x => padL + ((x - xMin) / (xMax - xMin)) * plotW;
+    const sy = y => padT + (1 - ((y - yMin) / (yMax - yMin))) * plotH;
+
+    let best = null;
+    let bestD = 9999;
+    for(const p of pts){
+      const dx = sx(p.x) - px;
+      const dy = sy(p.y) - py;
+      const d = Math.sqrt(dx*dx + dy*dy);
+      if(d < bestD){bestD = d; best = p}
     }
 
-    let nearest = null;
-    let best = 9999;
-    const v = state.plotView;
-    if(!v) return;
-
-    const padL=62,padR=22,padT=18,padB=54;
-    const plotW = canvas.width-padL-padR;
-    const plotH = canvas.height-padT-padB;
-    const sx = x => padL + ((x-v.xMin)/(v.xMax-v.xMin))*plotW;
-    const sy = y => padT + (1-((y-v.yMin)/(v.yMax-v.yMin)))*plotH;
-
-    for(const p of state.plotPts){
-      const dx = sx(p.x)-px, dy = sy(p.y)-py;
-      const d = Math.sqrt(dx*dx+dy*dy);
-      if(d < best){best=d; nearest=p;}
-    }
-
-    if(nearest && best < 12){
+    if(best && bestD < 12){
       tip.style.display = "block";
-      tip.style.left = `${e.clientX-rect.left}px`;
-      tip.style.top = `${e.clientY-rect.top}px`;
+      tip.style.left = `${e.clientX - rect.left}px`;
+      tip.style.top = `${e.clientY - rect.top}px`;
       tip.innerHTML = `
-        <b>${escapeHtml(nearest.name || "Row")}</b><br>
-        ${escapeHtml(state.plotMetric)}: <b>${niceNum(nearest.x,3)}</b><br>
-        ${escapeHtml($("targetCol").value)}: <b>${niceNum(nearest.y,3)}</b>
+        <b>${esc(best.name || "Row")}</b><br>
+        ${esc(metric)}: <b>${fmt(best.x,3)}</b><br>
+        ${esc(target)}: <b>${fmt(best.y,3)}</b>
       `;
     }else{
       tip.style.display = "none";
     }
   });
 
-  canvas.addEventListener("mouseleave",()=>{tip.style.display="none"; state.drag=null;});
-  canvas.addEventListener("mousedown", e => {
-    const rect = canvas.getBoundingClientRect();
-    state.drag = {
-      px:(e.clientX-rect.left)*(canvas.width/rect.width),
-      py:(e.clientY-rect.top)*(canvas.height/rect.height),
-      view:{...state.plotView}
-    };
-  });
-  window.addEventListener("mouseup",()=>{state.drag=null;});
-
-  canvas.addEventListener("wheel", e => {
-    e.preventDefault();
-    if(!state.plotView) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const px = (e.clientX-rect.left)*(canvas.width/rect.width);
-    const py = (e.clientY-rect.top)*(canvas.height/rect.height);
-    const d = canvasPointToData(px,py);
-    if(!d) return;
-
-    const factor = e.deltaY > 0 ? 1.12 : .88;
-    const v = state.plotView;
-    state.plotView = {
-      ...v,
-      xMin:d.x + (v.xMin-d.x)*factor,
-      xMax:d.x + (v.xMax-d.x)*factor,
-      yMin:d.y + (v.yMin-d.y)*factor,
-      yMax:d.y + (v.yMax-d.y)*factor
-    };
-    drawScatter();
-  }, {passive:false});
+  canvas.addEventListener("mouseleave", () => tip.style.display = "none");
 }
 
-function exportCSV(){
-  const rows = [];
-
-  rows.push(["TYPE","Metric A","Metric B","r","abs r","N","Both Avg","Lift","Synergy","Layer Delta"]);
-
-  for(const c of state.correlations){
-    rows.push(["Single",c.metric,"",c.r,c.abs,c.n,"","","",""]);
+/* =========================
+   Header selector / dock keys
+========================= */
+function renderHeaderChecks(){
+  const box = $("headerChecks");
+  if(!state.headers.length){
+    box.innerHTML = `<div class="muted">No headers loaded.</div>`;
+    return;
   }
 
-  for(const p of state.pairs){
-    rows.push(["Pair",p.a,p.b,"","",p.n,p.bothAvg,p.lift,p.synergy,""]);
+  box.innerHTML = state.headers.map(h => {
+    const numericCount = state.mergedRows.reduce((n,r)=>n + (toNumber(r[h]) !== null ? 1 : 0), 0);
+    return `
+      <label class="checkItem">
+        <input type="checkbox" ${state.activeHeaders.has(h) ? "checked" : ""} onchange="toggleHeader(${JSON.stringify(h)}, this.checked)">
+        <span>
+          ${esc(h)}<br>
+          <span class="muted">${numericCount} numeric values</span>
+        </span>
+      </label>
+    `;
+  }).join("");
+}
+
+function toggleHeader(h, on){
+  if(on) state.activeHeaders.add(h);
+  else state.activeHeaders.delete(h);
+  rebuildMergedRows();
+}
+
+function setAllHeaders(on){
+  if(on) state.headers.forEach(h => state.activeHeaders.add(h));
+  else state.activeHeaders.clear();
+  rebuildMergedRows();
+}
+
+function setNumericHeadersOnly(){
+  state.activeHeaders.clear();
+
+  for(const h of state.headers){
+    let count = 0;
+    for(const r of state.mergedRows){
+      if(toNumber(r[h]) !== null) count++;
+    }
+    if(count >= 2) state.activeHeaders.add(h);
   }
 
-  for(const l of state.layerRows){
-    rows.push(["Layer",state.chain.join(" > "),l.metric,l.originalR,Math.abs(l.originalR),l.goodN+l.badN,l.goodAvg,l.liftVsLayer,"",l.delta]);
+  rebuildMergedRows();
+}
+
+function showDockKeys(){
+  const keys = allLocalStorageKeys();
+  const lines = keys
+    .filter(k => k.toLowerCase().includes(".dock.") || k.toLowerCase().includes("retail") || k.toLowerCase().includes("referral"))
+    .map(k => {
+      const isRetail = k === findDockKey("Retail");
+      const isReferral = k === findDockKey("Referral");
+      const badge = isRetail ? " ← selected Retail" : isReferral ? " ← selected Referral" : "";
+      return `<code>${esc(k)}</code>${badge}`;
+    });
+
+  $("dockKeyList").innerHTML = lines.length ? lines.join("<br>") : "No likely dock keys found.";
+  $("dockDrawer").classList.add("show");
+}
+
+/* =========================
+   Export
+========================= */
+function exportCorrelations(){
+  const rows = [
+    ["Metric","r","abs_r","N","Direction","Strength","Target"]
+  ];
+
+  for(const c of filteredCorrelations()){
+    rows.push([c.metric,c.r,c.abs,c.n,c.direction,c.label.txt,$("targetField").value]);
   }
 
   const csv = rows.map(r => r.map(v => {
@@ -1764,128 +1940,78 @@ function exportCSV(){
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "retail_kpi_layered_correlations.csv";
+  a.download = "layered_correlation_results.csv";
   a.click();
   URL.revokeObjectURL(url);
 }
 
-async function loadCSVFile(file){
-  const text = await file.text();
-  const aoa = parseCSV(text);
-  const parsed = aoaToObjects(aoa);
-  state.csvRows = parsed.rows;
-  state.csvHeaders = parsed.headers;
-  $("fileBadge").textContent = file.name;
-  updateStatus("CSV loaded","ok");
-  rebuildMergedRows();
-}
-
-function loadRetailStats(){
-  const key = findRetailDockKey();
-  if(!key){
-    updateStatus("No Retail dock found","bad");
-    $("dockDebug").style.display = "block";
-    $("dockDebug").innerHTML = `<b>No Retail dock found.</b><br>Use “Show Dock Keys” to inspect localStorage keys.`;
-    return;
-  }
-
-  const obj = loadDockObjByKey(key);
-  if(!obj){
-    updateStatus("Retail dock unreadable","bad");
-    $("dockDebug").style.display = "block";
-    $("dockDebug").innerHTML = `<b>Found key but could not read it:</b><br><code>${escapeHtml(key)}</code>`;
-    return;
-  }
-
-  const rows = canonicalizeRetailRows(obj);
-  state.retailRows = rows;
-  state.retailByName = aggregateRetailByName(rows);
-
-  $("dockDebug").style.display = "block";
-  $("dockDebug").className = "hint ok";
-  $("dockDebug").innerHTML = `
-    <b>Loaded Retail Stats.</b><br>
-    Key: <code>${escapeHtml(key)}</code><br>
-    Retail rows: <b>${rows.length}</b> • Matched reps available: <b>${state.retailByName.size}</b>
-  `;
-
-  updateStatus("Retail loaded","ok");
-  rebuildMergedRows();
-}
-
-function showDockKeys(){
-  const keys = allDockKeys();
-  const ranked = keys.map(k => ({k, score:scoreRetailKey(k)})).sort((a,b)=>b.score-a.score);
-  $("dockDebug").style.display = "block";
-  $("dockDebug").className = "hint warn";
-  $("dockDebug").innerHTML = `
-    <b>localStorage keys ranked for Retail:</b><br>
-    ${ranked.slice(0,30).map(x => `<code>${escapeHtml(x.k)}</code> score ${x.score}`).join("<br>")}
-  `;
-}
-
-function clearAll(){
-  state.csvRows = [];
-  state.csvHeaders = [];
-  state.retailRows = [];
-  state.retailByName = new Map();
-  state.mergedRows = [];
-  state.headers = [];
-  state.metrics = [];
-  state.correlations = [];
-  state.pairs = [];
-  state.layerRows = [];
-  state.chain = [];
-  state.plotMetric = null;
-  state.plotView = null;
-  $("fileBadge").textContent = "No CSV";
-  $("dockDebug").style.display = "none";
-  hydrateControls();
-  renderAll();
-  updateStatus("Cleared");
-}
-
+/* =========================
+   Events
+========================= */
 function boot(){
-  $("btnPick").onclick = () => $("fileInput").click();
-  $("fileInput").onchange = e => {
-    const file = e.target.files?.[0];
-    if(file) loadCSVFile(file);
+  $("btnPick").onclick = () => $("csvInput").click();
+  $("csvInput").onchange = e => {
+    const f = e.target.files?.[0];
+    if(f) loadCSV(f);
   };
 
   const dz = $("dropZone");
-  dz.addEventListener("dragover", e => {e.preventDefault(); dz.classList.add("drag");});
+  dz.addEventListener("dragover", e => {
+    e.preventDefault();
+    dz.classList.add("drag");
+  });
   dz.addEventListener("dragleave", () => dz.classList.remove("drag"));
   dz.addEventListener("drop", e => {
     e.preventDefault();
     dz.classList.remove("drag");
-    const file = e.dataTransfer.files?.[0];
-    if(file) loadCSVFile(file);
+    const f = e.dataTransfer.files?.[0];
+    if(f) loadCSV(f);
   });
 
-  $("btnRetail").onclick = loadRetailStats;
-  $("btnDebugKeys").onclick = showDockKeys;
-  $("btnRun").onclick = runAnalysis;
-  $("btnExport").onclick = exportCSV;
+  $("btnLoadDocks").onclick = loadDocks;
+  $("btnRun").onclick = runCorrelations;
+  $("btnExport").onclick = exportCorrelations;
   $("btnClear").onclick = clearAll;
-  $("btnResetPlot").onclick = resetPlot;
 
-  $("nameCol").onchange = () => rebuildMergedRows();
-  $("dateCol").onchange = () => rebuildMergedRows();
-  $("targetCol").onchange = () => runAnalysis();
-  $("minN").onchange = () => runAnalysis();
-  $("thresholdMode").onchange = () => runAnalysis();
-  $("searchBox").oninput = () => renderLeft();
+  $("btnHeaders").onclick = () => {
+    renderHeaderChecks();
+    $("headerDrawer").classList.add("show");
+  };
+  $("btnCloseHeaders").onclick = () => $("headerDrawer").classList.remove("show");
+  $("btnAllHeaders").onclick = () => setAllHeaders(true);
+  $("btnNumericHeaders").onclick = setNumericHeadersOnly;
 
-  document.querySelectorAll(".tab").forEach(b => {
-    b.onclick = () => setActiveTab(b.dataset.tab);
-  });
+  $("btnDockKeys").onclick = showDockKeys;
+  $("btnCloseDockKeys").onclick = () => $("dockDrawer").classList.remove("show");
 
-  setupPlotEvents();
-  hydrateControls();
-  renderAll();
+  $("nameField").onchange = rebuildMergedRows;
+  $("targetField").onchange = () => {
+    state.target = $("targetField").value;
+    updateBadges();
+  };
+  $("minN").onchange = () => {};
+  $("searchBox").oninput = renderCorrelations;
+
+  $("sortAbs").onclick = () => {state.sortKey="abs"; state.sortDir="desc"; renderCorrelations();};
+  $("sortPos").onclick = () => {state.sortKey="r"; state.sortDir="desc"; renderCorrelations();};
+  $("sortNeg").onclick = () => {state.sortKey="r"; state.sortDir="asc"; renderCorrelations();};
+  $("sortN").onclick = () => {state.sortKey="n"; state.sortDir="desc"; renderCorrelations();};
+
+  $("btnResetLayer").onclick = () => {
+    state.drillChain = [];
+    state.layerRows = [];
+    $("cardLayer").textContent = "0";
+    renderLayerRows();
+  };
+
+  setupTooltip();
+  hydrateSelects();
+  updateBadges();
+  drawScatter();
 }
 
 boot();
 </script>
 </body>
 </html>
+
