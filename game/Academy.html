@@ -234,10 +234,14 @@ scene.background = new THREE.Color(0x07101d);
 scene.fog = new THREE.Fog(0x07101d, 65, 240);
 
 const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 650);
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({
+  antialias: false,
+  powerPreference: "high-performance"
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.BasicShadowMap;
 container.appendChild(renderer.domElement);
 
 const clock = new THREE.Clock();
@@ -269,6 +273,30 @@ const STORM_START_RADIUS = 138;
 const STORM_END_RADIUS = 28;
 const STORM_SHRINK_SECONDS = 900;
 
+
+const PERF = {
+  maxPlayerCrabs: 45,
+  maxAICrabsPerWizard: 12,
+  maxTotalAICrabs: 120,
+  maxParticles: 120,
+  maxFireballs: 45,
+  farUpdateDistance: 75,
+  veryFarUpdateDistance: 115,
+  aiFullUpdateInterval: 0.12,
+  aiFarUpdateInterval: 0.35,
+  aiVeryFarUpdateInterval: 0.8,
+  crabSeparationLimit: 8,
+  healthBarUpdateInterval: 0.12,
+  lowDetailDistance: 70,
+  hideTinyHealthBarsDistance: 55,
+  enableFarAnimations: false,
+  enableDynamicFireballLights: false,
+  enableWizardPointLights: false,
+  enableNestPointLights: false
+};
+
+const PERFORMANCE_MODE = true;
+
 const state = {
   started: false,
   hp: 100,
@@ -299,6 +327,15 @@ const state = {
     swarmSpeed: 1
   }
 };
+
+if (PERFORMANCE_MODE) {
+  renderer.setPixelRatio(1);
+  scene.fog.far = 180;
+  PERF.maxPlayerCrabs = 35;
+  PERF.maxAICrabsPerWizard = 8;
+  PERF.maxTotalAICrabs = 80;
+  PERF.maxParticles = 80;
+}
 
 const player = {
   group: new THREE.Group(),
@@ -377,6 +414,12 @@ function makeHealthBar(width = 1.8, height = .16, y = 2.2, alwaysVisible = false
 function updateHealthBar(unit, hp, maxHp) {
   if (!unit.hpBar) return;
 
+  const dist = unit.group.position.distanceTo(camera.position);
+  if (dist > PERF.hideTinyHealthBarsDistance && !unit.hpBar.userData.alwaysVisible) {
+    unit.hpBar.visible = false;
+    return;
+  }
+
   const pct = clamp(hp / maxHp, 0, 1);
   const fill = unit.hpBar.userData.fill;
   const width = unit.hpBar.userData.width;
@@ -399,7 +442,7 @@ function addLights() {
   const sun = new THREE.DirectionalLight(0xfff2d0, 2.25);
   sun.position.set(45, 70, 32);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.camera.left = -170;
   sun.shadow.camera.right = 170;
   sun.shadow.camera.top = 170;
@@ -430,7 +473,7 @@ function buildWorld() {
   centerRing.position.y = 0.012;
   scene.add(centerRing);
 
-  for (let i = 0; i < 180; i++) {
+  for (let i = 0; i < 75; i++) {
     const a = Math.random() * Math.PI * 2;
     const r = rand(70, WORLD_RADIUS * .98);
     const x = Math.cos(a) * r;
@@ -441,14 +484,14 @@ function buildWorld() {
       mat(chance(.55) ? 0x4d321e : 0x3b2a1d)
     );
     trunk.position.set(x, trunk.geometry.parameters.height / 2, z);
-    trunk.castShadow = true;
+    trunk.castShadow = false;
 
     const leaves = new THREE.Mesh(
       new THREE.DodecahedronGeometry(rand(.85,1.75), 0),
       mat(chance(.5) ? 0x245f31 : 0x2d7438)
     );
     leaves.position.set(x, trunk.geometry.parameters.height + .8, z);
-    leaves.castShadow = true;
+    leaves.castShadow = false;
 
     scene.add(trunk, leaves);
   }
@@ -469,11 +512,11 @@ let stormWall;
 
 function createStormVisual() {
   stormMesh = new THREE.Mesh(
-    new THREE.RingGeometry(STORM_START_RADIUS, WORLD_RADIUS * 1.25, 160),
+    new THREE.RingGeometry(1, WORLD_RADIUS * 1.25, 64),
     new THREE.MeshBasicMaterial({
       color: 0x166dff,
       transparent: true,
-      opacity: .26,
+      opacity: .22,
       side: THREE.DoubleSide,
       depthWrite: false
     })
@@ -483,7 +526,7 @@ function createStormVisual() {
   scene.add(stormMesh);
 
   stormWall = new THREE.Mesh(
-    new THREE.CylinderGeometry(STORM_START_RADIUS, STORM_START_RADIUS, 10, 160, 1, true),
+    new THREE.CylinderGeometry(1, 1, 10, 64, 1, true),
     new THREE.MeshBasicMaterial({
       color: 0x42ccff,
       transparent: true,
@@ -497,25 +540,9 @@ function createStormVisual() {
 }
 
 function updateStormVisual() {
-  scene.remove(stormMesh);
   stormMesh.geometry.dispose();
-
-  stormMesh = new THREE.Mesh(
-    new THREE.RingGeometry(state.stormRadius, WORLD_RADIUS * 1.25, 160),
-    new THREE.MeshBasicMaterial({
-      color: 0x166dff,
-      transparent: true,
-      opacity: .26,
-      side: THREE.DoubleSide,
-      depthWrite: false
-    })
-  );
-  stormMesh.rotation.x = -Math.PI / 2;
-  stormMesh.position.y = .035;
-  scene.add(stormMesh);
-
-  stormWall.geometry.dispose();
-  stormWall.geometry = new THREE.CylinderGeometry(state.stormRadius, state.stormRadius, 10, 160, 1, true);
+  stormMesh.geometry = new THREE.RingGeometry(state.stormRadius, WORLD_RADIUS * 1.25, 64);
+  stormWall.scale.set(state.stormRadius, 1, state.stormRadius);
 }
 
 function createNest(x, z, index, tier) {
@@ -543,9 +570,11 @@ function createNest(x, z, index, tier) {
     g.add(rock);
   }
 
-  const glow = new THREE.PointLight(tier === 1 ? 0xff4f91 : tier === 2 ? 0xff8a34 : 0xe73bff, 1.4 + tier * .25, 14 + tier * 3);
-  glow.position.y = 1.7;
-  g.add(glow);
+  if (PERF.enableNestPointLights) {
+    const glow = new THREE.PointLight(tier === 1 ? 0xff4f91 : tier === 2 ? 0xff8a34 : 0xe73bff, 1.4 + tier * .25, 14 + tier * 3);
+    glow.position.y = 1.7;
+    g.add(glow);
+  }
 
   const flag = new THREE.Mesh(
     new THREE.ConeGeometry(.8 + tier * .14, 1.4 + tier * .2, 4),
@@ -624,9 +653,11 @@ function buildWizardModel(color, isPlayer = false) {
   orb.castShadow = true;
   g.add(orb);
 
-  const orbLight = new THREE.PointLight(isPlayer ? 0x37ddff : color, 1.1, 9);
-  orbLight.position.copy(orb.position);
-  g.add(orbLight);
+  if (isPlayer && PERF.enableWizardPointLights) {
+    const orbLight = new THREE.PointLight(0x37ddff, 1.1, 9);
+    orbLight.position.copy(orb.position);
+    g.add(orbLight);
+  }
 
   return g;
 }
@@ -748,6 +779,13 @@ function addCrabArmor(crab) {
 }
 
 function createCrab(pos, owner = player, color = teamColor, bonus = {}) {
+  if (owner === player && crabs.length >= PERF.maxPlayerCrabs) return null;
+  if (owner !== player) {
+    const totalAICrabs = aiWizards.reduce((sum, w) => sum + (w.crabs ? w.crabs.length : 0), 0);
+    if (owner.crabs && owner.crabs.length >= PERF.maxAICrabsPerWizard) return null;
+    if (totalAICrabs >= PERF.maxTotalAICrabs) return null;
+  }
+
   const g = new THREE.Group();
 
   const armorLevel = bonus.armor ?? state.upgrades.crabArmor;
@@ -1010,6 +1048,8 @@ function createAIWizard(index) {
     thinkTimer: rand(.2, 1.5),
     fireCooldown: rand(.2, 1.5),
     attackPlayerBias: rand(.3, .9),
+    updateTimer: rand(0, .3),
+    detailLevel: "full",
     dead: false,
     upgrades: {
       crabArmor: Math.floor(rand(0, 2)),
@@ -1037,6 +1077,7 @@ function createAIWizard(index) {
 }
 
 function createFireball(originOwner, target, color = 0xff6a1f) {
+  if (fireballs.length >= PERF.maxFireballs) return;
   const origin = originOwner.group.position.clone();
   origin.y = 2.5;
 
@@ -1054,8 +1095,10 @@ function createFireball(originOwner, target, color = 0xff6a1f) {
   mesh.position.copy(origin);
   mesh.castShadow = true;
 
-  const light = new THREE.PointLight(color, 2.1, 9);
-  mesh.add(light);
+  if (PERF.enableDynamicFireballLights) {
+    const light = new THREE.PointLight(color, 2.1, 9);
+    mesh.add(light);
+  }
 
   scene.add(mesh);
 
@@ -1073,6 +1116,9 @@ function createFireball(originOwner, target, color = 0xff6a1f) {
 }
 
 function createBurst(pos, color, count = 12) {
+  if (particles.length >= PERF.maxParticles) return;
+  count = Math.min(count, PERF.maxParticles - particles.length);
+  if (count <= 0) return;
   for (let i = 0; i < count; i++) {
     const mesh = new THREE.Mesh(
       new THREE.SphereGeometry(rand(.04, .11), 6, 6),
@@ -1254,10 +1300,10 @@ function updateCrabGroup(owner, list, dt) {
     }
 
     const separation = new THREE.Vector3();
-    const all = allCrabs();
-
-    for (const other of all) {
-      if (other === c) continue;
+    let checked = 0;
+    for (let j = Math.max(0, i - PERF.crabSeparationLimit); j < Math.min(list.length, i + PERF.crabSeparationLimit); j++) {
+      const other = list[j];
+      if (!other || other === c) continue;
       const away = pos.clone().sub(other.group.position);
       const d = away.length();
       const minD = c.radius + other.radius + .32;
@@ -1265,6 +1311,9 @@ function updateCrabGroup(owner, list, dt) {
       if (d > .001 && d < minD) {
         separation.addScaledVector(away.normalize(), (minD - d) * 3.8);
       }
+
+      checked++;
+      if (checked >= PERF.crabSeparationLimit) break;
     }
 
     const awayOwner = pos.clone().sub(ownerPos);
@@ -1292,15 +1341,19 @@ function updateCrabGroup(owner, list, dt) {
       c.group.rotation.y = Math.atan2(c.velocity.x, c.velocity.z);
     }
 
-    for (const leg of c.legs) {
-      const swing = Math.sin(c.anim + leg.phase) * .32;
-      leg.root.rotation.y = swing * leg.side;
-      leg.upper.rotation.x = Math.sin(c.anim * 1.2 + leg.phase) * .18;
-    }
+    const distFromCamera = c.group.position.distanceTo(camera.position);
+    const lowDetail = distFromCamera > PERF.lowDetailDistance;
+    if (!lowDetail || PERF.enableFarAnimations) {
+      for (const leg of c.legs) {
+        const swing = Math.sin(c.anim + leg.phase) * .32;
+        leg.root.rotation.y = swing * leg.side;
+        leg.upper.rotation.x = Math.sin(c.anim * 1.2 + leg.phase) * .18;
+      }
 
-    for (const claw of c.claws) {
-      claw.clawA.rotation.y += ((claw.side * .48) - claw.clawA.rotation.y) * dt * 8;
-      claw.clawB.rotation.y += ((claw.side * -.48) - claw.clawB.rotation.y) * dt * 8;
+      for (const claw of c.claws) {
+        claw.clawA.rotation.y += ((claw.side * .48) - claw.clawA.rotation.y) * dt * 8;
+        claw.clawB.rotation.y += ((claw.side * -.48) - claw.clawB.rotation.y) * dt * 8;
+      }
     }
 
     applyStormDamageToCrab(c, dt);
@@ -1501,8 +1554,23 @@ function updateAIWizards(dt) {
   for (const ai of aiWizards) {
     if (ai.dead) continue;
 
-    ai.thinkTimer -= dt;
-    ai.fireCooldown -= dt;
+    const distToPlayerNow = ai.group.position.distanceTo(player.group.position);
+    let updateInterval = PERF.aiFullUpdateInterval;
+    ai.detailLevel = "full";
+    if (distToPlayerNow > PERF.veryFarUpdateDistance) {
+      updateInterval = PERF.aiVeryFarUpdateInterval;
+      ai.detailLevel = "veryFar";
+    } else if (distToPlayerNow > PERF.farUpdateDistance) {
+      updateInterval = PERF.aiFarUpdateInterval;
+      ai.detailLevel = "far";
+    }
+    ai.updateTimer -= dt;
+    if (ai.updateTimer > 0) continue;
+    const simDt = updateInterval;
+    ai.updateTimer = updateInterval;
+
+    ai.thinkTimer -= simDt;
+    ai.fireCooldown -= simDt;
 
     if (ai.thinkTimer <= 0) {
       ai.thinkTimer = rand(1.0, 2.4);
@@ -1544,9 +1612,9 @@ function updateAIWizards(dt) {
       let diff = targetRot - ai.group.rotation.y;
       while (diff > Math.PI) diff -= Math.PI * 2;
       while (diff < -Math.PI) diff += Math.PI * 2;
-      ai.group.rotation.y += clamp(diff, -ai.turnSpeed * dt, ai.turnSpeed * dt);
+      ai.group.rotation.y += clamp(diff, -ai.turnSpeed * simDt, ai.turnSpeed * simDt);
 
-      ai.group.position.addScaledVector(toDest, ai.speed * dt);
+      ai.group.position.addScaledVector(toDest, ai.speed * simDt);
     }
 
     const safeClamp = WORLD_RADIUS - 8;
@@ -1559,15 +1627,15 @@ function updateAIWizards(dt) {
       createFireball(ai, fireTarget, ai.color);
     }
 
-    updateCrabGroup(ai, ai.crabs, dt);
-    applyStormDamageToWizard(ai, dt);
+    updateCrabGroup(ai, ai.crabs, simDt);
+    applyStormDamageToWizard(ai, simDt);
     updateHealthBar(ai, ai.hp, ai.maxHp);
 
     if (ai.hp <= 0) {
       killUnit(ai, null);
     }
 
-    if (chance(.0009 * dt * 60) && ai.crabs.length < 20) {
+    if (chance(.0009 * simDt * 60) && ai.crabs.length < 20) {
       createCrab(ai.group.position.clone().add(new THREE.Vector3(rand(-2,2),0,rand(-2,2))), ai, ai.color, {
         armor: ai.upgrades.crabArmor,
         spikes: ai.upgrades.crabSpikes,
@@ -1681,7 +1749,9 @@ function updateStorm(dt) {
   const eased = t * t * (3 - 2 * t);
   state.stormRadius = STORM_START_RADIUS + (STORM_END_RADIUS - STORM_START_RADIUS) * eased;
 
-  if (Math.floor(performance.now() / 250) % 2 === 0) {
+  state.stormVisualTimer = (state.stormVisualTimer || 0) - dt;
+  if (state.stormVisualTimer <= 0) {
+    state.stormVisualTimer = 1.0;
     updateStormVisual();
   }
 
