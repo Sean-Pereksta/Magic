@@ -2,2457 +2,2337 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Crabmancer 3D - Storm War</title>
+<title>Gold Rise - Noble Politics Strategy</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <style>
-  html, body {
-    margin: 0;
-    overflow: hidden;
-    background: #06101f;
-    color: white;
-    font-family: Arial, Helvetica, sans-serif;
-  }
-
-  #game {
-    position: fixed;
-    inset: 0;
-  }
-
-  #hud {
-    position: fixed;
-    top: 12px;
-    left: 12px;
-    z-index: 10;
-    background: rgba(5, 10, 20, 0.75);
-    border: 1px solid rgba(120, 220, 255, 0.25);
-    border-radius: 14px;
-    padding: 12px 14px;
-    min-width: 285px;
-    box-shadow: 0 0 24px rgba(0, 200, 255, 0.15);
-    line-height: 1.5;
-    font-size: 14px;
-  }
-
-  #hud b {
-    color: #8feaff;
-  }
-
-  .kbd {
-    display: inline-block;
-    background: rgba(255,255,255,0.13);
-    border: 1px solid rgba(255,255,255,0.18);
-    padding: 2px 7px;
-    border-radius: 6px;
-    color: #ffe88a;
-    font-weight: 900;
-  }
-
-  #upgradePanel {
-    position: fixed;
-    top: 70px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 20;
-    display: none;
-    gap: 42px;
-    pointer-events: none;
-  }
-
-  .upgradeCard {
-    width: 260px;
-    padding: 15px;
-    border-radius: 18px;
-    background: rgba(4, 12, 28, 0.9);
-    border: 2px solid rgba(255,255,255,0.23);
-    text-align: center;
-    box-shadow: 0 0 35px rgba(0,0,0,.45);
-  }
-
-  .upgradeKey {
-    font-size: 34px;
-    font-weight: 900;
-    color: #ffe88a;
-    margin-bottom: 4px;
-  }
-
-  .upgradeIcon {
-    font-size: 42px;
-    margin-bottom: 5px;
-  }
-
-  .upgradeTitle {
-    color: #91ecff;
-    font-size: 18px;
-    font-weight: 900;
-  }
-
-  .upgradeDesc {
-    margin-top: 8px;
-    font-size: 13px;
-    color: #dceeff;
-  }
-
-  #message {
-    position: fixed;
-    top: 24%;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 12;
-    display: none;
-    background: rgba(0,0,0,0.58);
-    border: 1px solid rgba(255,255,255,0.18);
-    border-radius: 999px;
-    padding: 12px 20px;
-    font-size: 22px;
-    font-weight: 900;
-    color: #fff5b5;
-  }
-
-  #stormWarning {
-    position: fixed;
-    left: 50%;
-    bottom: 26px;
-    transform: translateX(-50%);
-    z-index: 13;
-    display: none;
-    background: rgba(20, 110, 255, .35);
-    border: 1px solid rgba(160, 220, 255, .55);
-    box-shadow: 0 0 30px rgba(30, 170, 255, .5);
-    border-radius: 999px;
-    padding: 10px 18px;
-    font-weight: 900;
-    color: #dff6ff;
-  }
-
-  #startScreen {
-    position: fixed;
-    inset: 0;
-    z-index: 50;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background:
-      radial-gradient(circle at center, rgba(48, 146, 190, 0.28), rgba(3, 6, 15, 0.97)),
-      linear-gradient(160deg, rgba(15, 45, 75, 0.5), rgba(2, 4, 12, 0.95));
-  }
-
-  #startCard {
-    width: min(800px, calc(100vw - 32px));
-    background: rgba(4, 11, 26, .86);
-    border: 1px solid rgba(130, 220, 255, .35);
-    border-radius: 24px;
-    padding: 26px;
-    text-align: center;
-    box-shadow: 0 0 55px rgba(0,0,0,.45);
-  }
-
-  h1 {
-    margin: 0 0 10px;
-    color: #91ecff;
-    font-size: 46px;
-    letter-spacing: .5px;
-  }
-
-  #startCard p {
-    color: #e2f4ff;
-    line-height: 1.45;
-    margin: 9px auto;
-    max-width: 720px;
-  }
-
-  button {
-    margin-top: 18px;
-    padding: 14px 26px;
-    border: 0;
-    border-radius: 999px;
-    background: linear-gradient(90deg, #46ddff, #9affb6);
-    color: #031018;
-    font-size: 17px;
-    font-weight: 900;
-    cursor: pointer;
-    box-shadow: 0 8px 25px rgba(50, 220, 255, .24);
-  }
-
-
-  #endScreen {
-    position: fixed;
-    inset: 0;
-    z-index: 55;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    background: rgba(2, 6, 14, 0.86);
-  }
-
-  #endCard {
-    width: min(560px, calc(100vw - 36px));
-    background: rgba(4, 11, 26, .92);
-    border: 1px solid rgba(130, 220, 255, .35);
-    border-radius: 22px;
-    padding: 26px;
-    text-align: center;
-  }
-
-  #endCard h1 { margin: 0 0 8px; color: #9affc9; }
-  #endCard p { color: #d9f0ff; }
-  #endCard button { margin: 10px 6px 0; }
-
+:root{
+  --bg:#08090d;
+  --panel:#141722;
+  --panel2:#1d2233;
+  --gold:#d8b65a;
+  --red:#d85252;
+  --blue:#58a6ff;
+  --green:#65d982;
+  --purple:#b78cff;
+  --gray:#a9b0c3;
+  --bad:#ff6868;
+  --warn:#f7c948;
+  --good:#6ee7a8;
+  --text:#eef2ff;
+  --muted:#9aa3bb;
+  --border:#2b3248;
+}
+*{box-sizing:border-box;}
+body{
+  margin:0;
+  font-family:Georgia,"Times New Roman",serif;
+  background:
+    radial-gradient(circle at top left, rgba(216,182,90,.17), transparent 35%),
+    radial-gradient(circle at bottom right, rgba(88,166,255,.11), transparent 34%),
+    var(--bg);
+  color:var(--text);
+}
+header{
+  padding:16px 20px 10px;
+  border-bottom:1px solid var(--border);
+  background:linear-gradient(90deg,#10131d,#191d2b);
+}
+.header-top{
+  display:flex;
+  justify-content:space-between;
+  gap:14px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+h1{
+  margin:0;
+  color:var(--gold);
+  font-size:30px;
+  letter-spacing:1px;
+}
+.subtitle{
+  color:var(--muted);
+  font-size:13px;
+  margin-top:3px;
+}
+.top-controls{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.month-bar-wrap{
+  margin-top:12px;
+  display:grid;
+  grid-template-columns:120px 1fr 100px;
+  gap:10px;
+  align-items:center;
+}
+.month-bar{
+  height:16px;
+  background:#090b12;
+  border:1px solid #303750;
+  border-radius:99px;
+  overflow:hidden;
+}
+.month-fill{
+  height:100%;
+  width:0%;
+  background:linear-gradient(90deg,#56421c,#d8b65a,#fff0aa);
+  transition:width .15s linear;
+}
+.wrap{
+  display:grid;
+  grid-template-columns:340px 1fr 370px;
+  gap:16px;
+  padding:16px;
+}
+@media(max-width:1150px){
+  .wrap{grid-template-columns:1fr;}
+}
+.panel{
+  background:rgba(20,23,34,.95);
+  border:1px solid var(--border);
+  border-radius:14px;
+  overflow:hidden;
+  box-shadow:0 10px 30px rgba(0,0,0,.25);
+}
+.panel h2{
+  margin:0;
+  padding:12px 14px;
+  background:#1c2131;
+  color:var(--gold);
+  font-size:18px;
+  border-bottom:1px solid var(--border);
+}
+.panel-body{padding:14px;}
+button,select,input{
+  background:#252b40;
+  color:var(--text);
+  border:1px solid #3b4461;
+  padding:8px 10px;
+  border-radius:9px;
+  cursor:pointer;
+  font-family:inherit;
+}
+input{cursor:text;width:100%;}
+button:hover{background:#30384f;}
+button.primary{
+  background:linear-gradient(135deg,#66501f,#b99135);
+  color:#111;
+  font-weight:bold;
+  border-color:#e3c46a;
+}
+button.danger{background:#4a1f29;border-color:#8f3546;}
+button.good{background:#1f4932;border-color:#3d9b67;}
+button:disabled{opacity:.45;cursor:not-allowed;}
+.stat-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+.stat{
+  background:var(--panel2);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:9px;
+}
+.stat .label{
+  color:var(--muted);
+  font-size:12px;
+}
+.stat .value{
+  font-size:19px;
+  font-weight:bold;
+  margin-top:3px;
+}
+.bar-row{margin:8px 0 12px;}
+.bar-top{
+  display:flex;
+  justify-content:space-between;
+  font-size:13px;
+  color:var(--muted);
+  margin-bottom:4px;
+}
+.bar{
+  height:10px;
+  background:#0b0d14;
+  border-radius:99px;
+  overflow:hidden;
+  border:1px solid #303750;
+}
+.fill{
+  height:100%;
+  width:50%;
+  background:linear-gradient(90deg,var(--bad),var(--warn),var(--good));
+}
+.tabs{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-bottom:12px;
+}
+.tabs button.active{
+  background:#d8b65a;
+  color:#111;
+  font-weight:bold;
+}
+.card,.inbox-card,.log-line,.vendor-card{
+  background:#1b2030;
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:12px;
+  margin-bottom:10px;
+}
+.inbox-card.urgent{
+  border-color:#bb3d4b;
+  box-shadow:0 0 0 1px rgba(255,80,80,.15);
+}
+.inbox-card.major{
+  border-color:#d8b65a;
+}
+.title{
+  color:var(--gold);
+  font-weight:bold;
+  font-size:17px;
+}
+.tiny{
+  color:var(--muted);
+  font-size:12px;
+}
+.tag{
+  display:inline-block;
+  padding:2px 7px;
+  border-radius:99px;
+  font-size:12px;
+  margin:3px 4px 3px 0;
+  background:#293048;
+  color:#cbd3ee;
+  border:1px solid #3a435f;
+}
+.tag.red{background:#3c1e25;color:#ff9ca9;}
+.tag.gold{background:#40331a;color:#f2d27b;}
+.tag.blue{background:#1b3149;color:#9fd0ff;}
+.tag.green{background:#173b28;color:#8df0b2;}
+.tag.purple{background:#302246;color:#d8c0ff;}
+.choice{
+  margin-top:8px;
+  display:block;
+  width:100%;
+  text-align:left;
+}
+.choice small{
+  color:var(--muted);
+  display:block;
+  margin-top:3px;
+}
+.story{
+  line-height:1.5;
+  color:#dce3f7;
+}
+.log{
+  max-height:560px;
+  overflow:auto;
+  padding-right:4px;
+}
+.row{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  align-items:center;
+}
+.section-title{
+  color:var(--gold);
+  margin:15px 0 8px;
+  font-weight:bold;
+  border-bottom:1px solid var(--border);
+  padding-bottom:5px;
+}
+.good-text{color:var(--good);}
+.bad{color:var(--bad);}
+.warn{color:var(--warn);}
+.gold{color:var(--gold);}
+.muted{color:var(--muted);}
+.two-col{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+}
+@media(max-width:750px){
+  .two-col{grid-template-columns:1fr;}
+}
+.modal-backdrop{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.68);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  z-index:10;
+  padding:20px;
+}
+.modal{
+  background:#121722;
+  border:1px solid #3a435f;
+  border-radius:16px;
+  max-width:900px;
+  width:100%;
+  max-height:90vh;
+  overflow:auto;
+  box-shadow:0 20px 70px rgba(0,0,0,.6);
+}
+.modal-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:14px 16px;
+  border-bottom:1px solid var(--border);
+  background:#1c2131;
+}
+.modal-header h3{
+  margin:0;
+  color:var(--gold);
+}
+.modal-body{padding:16px;}
+.action-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
+  gap:10px;
+}
 </style>
 </head>
 <body>
 
-<div id="game"></div>
+<header>
+  <div class="header-top">
+    <div>
+      <h1>GOLD RISE</h1>
+      <div class="subtitle">A real-time text strategy game of noble politics, military pressure, debt, Color loyalty, and inbox crises.</div>
+    </div>
+    <div class="top-controls">
+      <button id="startBtn" class="primary" onclick="toggleRun()">Start</button>
+      <button onclick="manualAdvance()">Advance Month</button>
+      <button onclick="saveGame()">Save</button>
+      <button onclick="loadGame()">Load</button>
+      <button class="danger" onclick="newGame()">New Game</button>
+    </div>
+  </div>
 
-<div id="hud">
-  <div><b>Crabmancer Storm War</b></div>
-  <div>Wizard HP: <span id="hp">100</span></div>
-  <div>Crabs Alive: <span id="crabCount">0</span></div>
-  <div>Enemy Wizards Alive: <span id="wizardCount">20</span></div>
-  <div>Alcoves Active: <span id="alcoveCount">0</span></div>
-  <div>Kills: <span id="kills">0</span></div>
-  <div>XP: <span id="xp">0</span> / <span id="nextXp">6</span></div>
-  <div>Level: <span id="level">1</span></div>
-  <div>Safe Ring Radius: <span id="stormRadius">120</span></div>
-  <div>Objective: <span id="objectiveText">Clear alcove squads and survive the storm</span></div>
-  <hr style="border-color:rgba(255,255,255,.12)">
-  <div><span class="kbd">W</span> forward · <span class="kbd">S</span> backward</div>
-  <div><span class="kbd">A</span>/<span class="kbd">D</span> turn wizard</div>
-  <div><span class="kbd">Q</span>/<span class="kbd">E</span> pick upgrades</div>
+  <div class="month-bar-wrap">
+    <div id="monthLabel" class="tiny">Month 1</div>
+    <div class="month-bar"><div class="month-fill" id="monthFill"></div></div>
+    <div id="speedLabel" class="tiny">Paused</div>
+  </div>
+</header>
+
+<div class="wrap">
+  <section class="panel">
+    <h2>House Status</h2>
+    <div class="panel-body" id="leftPanel"></div>
+  </section>
+
+  <section class="panel">
+    <h2 id="mainTitle">Inbox</h2>
+    <div class="panel-body">
+      <div class="tabs">
+        <button id="tabInbox" class="active" onclick="setTab('inbox')">Inbox</button>
+        <button id="tabActions" onclick="setTab('actions')">Actions</button>
+        <button id="tabMilitary" onclick="setTab('military')">Military</button>
+        <button id="tabHouses" onclick="setTab('houses')">Houses</button>
+        <button id="tabVendors" onclick="setTab('vendors')">Vendors</button>
+        <button id="tabLog" onclick="setTab('log')">Chronicle</button>
+      </div>
+      <div id="mainContent"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Court Controls</h2>
+    <div class="panel-body" id="rightPanel"></div>
+  </section>
 </div>
 
-<div id="upgradePanel">
-  <div class="upgradeCard" id="leftUpgrade">
-    <div class="upgradeKey">Q</div>
-    <div class="upgradeIcon"></div>
-    <div class="upgradeTitle"></div>
-    <div class="upgradeDesc"></div>
-  </div>
-  <div class="upgradeCard" id="rightUpgrade">
-    <div class="upgradeKey">E</div>
-    <div class="upgradeIcon"></div>
-    <div class="upgradeTitle"></div>
-    <div class="upgradeDesc"></div>
-  </div>
-</div>
-
-<div id="message"></div>
-<div id="stormWarning">STORM DAMAGE! Follow the blue arrow back into the safe ring.</div>
-
-<div id="startScreen">
-  <div id="startCard">
-    <h1>Crabmancer 3D</h1>
-    <p>You are a wizard leading a leash-bound army of 3D crabs. Alcoves now spawn enemies in squads of 3. Clear the whole squad to earn more crabs.</p>
-    <p>Each alcove has stronger enemies depending on its tier, and squads cannot chase too far away from their alcove.</p>
-    <p>Twenty rival AI wizards roam the giant world, grow their own crab armies, clear alcoves, and eventually try to hunt you down.</p>
-    <p>A glowing blue storm slowly shrinks the safe ring. If you or your crabs enter the storm, you take damage. A blue arrow points you back toward safety.</p>
-    <p><span class="kbd">W</span> is always forward. <span class="kbd">S</span> backs up. <span class="kbd">A</span> and <span class="kbd">D</span> turn. Pick upgrades with <span class="kbd">Q</span> and <span class="kbd">E</span>.</p>
-    <label style="display:flex;align-items:center;gap:8px;justify-content:center;margin:14px 0;color:#cde7ff;font-size:14px;"><input type="checkbox" id="splitScreenToggle"> Split Screen (P2 Wizard uses Arrow Keys)</label>
-    <label style="display:flex;align-items:center;gap:8px;justify-content:center;margin:10px 0;color:#cde7ff;font-size:14px;">Mode:
-      <select id="splitMode" style="background:#081629;color:#dff6ff;border:1px solid rgba(160,220,255,.4);border-radius:8px;padding:4px 8px;">
-        <option value="coop">Co-op (Allies)</option>
-        <option value="versus">Versus (Enemies)</option>
-      </select>
-    </label>
-    <button id="startBtn">Start Game</button>
-  </div>
-</div>
-
-<div id="endScreen">
-  <div id="endCard">
-    <h1 id="endTitle"></h1>
-    <p id="endStats"></p>
-    <button id="restartSameBtn">Restart Same Difficulty</button>
-    <button id="restartHarderBtn">Restart + Increase Difficulty</button>
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">Modal</h3>
+      <button onclick="closeModal()">Close</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
   </div>
 </div>
 
-<script type="module">
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+<script>
+/* ============================================================
+   GOLD RISE - REBUILT REAL-TIME FRAMEWORK
+   ============================================================ */
 
-const container = document.getElementById("game");
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x07101d);
-scene.fog = new THREE.Fog(0x07101d, 95, 320);
+let game;
+let tab = "inbox";
+let running = false;
+let timer = null;
+let lastTick = 0;
 
-const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 980);
-const renderer = new THREE.WebGLRenderer({
-  antialias: false,
-  powerPreference: "high-performance"
-});
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
-renderer.setSize(innerWidth, innerHeight);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.BasicShadowMap;
-container.appendChild(renderer.domElement);
+/*
+  One full month passes when monthProgress reaches 100.
+  Lower this number if you want faster months.
+*/
+const REAL_SECONDS_PER_MONTH = 32;
 
-const clock = new THREE.Clock();
+const COLORS = ["Red","Brown","Gray","Silver","Pink","Blue","Obsidian","Orange"];
 
-const keys = {};
-const teamColor = new THREE.Color(0x35d7ff);
-
-const hud = {
-  hp: document.getElementById("hp"),
-  crabCount: document.getElementById("crabCount"),
-  wizardCount: document.getElementById("wizardCount"),
-  alcoveCount: document.getElementById("alcoveCount"),
-  kills: document.getElementById("kills"),
-  xp: document.getElementById("xp"),
-  nextXp: document.getElementById("nextXp"),
-  level: document.getElementById("level"),
-  stormRadius: document.getElementById("stormRadius"),
-  objectiveText: document.getElementById("objectiveText")
-};
-
-const upgradePanel = document.getElementById("upgradePanel");
-const leftUpgrade = document.getElementById("leftUpgrade");
-const rightUpgrade = document.getElementById("rightUpgrade");
-const messageBox = document.getElementById("message");
-const stormWarning = document.getElementById("stormWarning");
-const endScreen = document.getElementById("endScreen");
-const endTitle = document.getElementById("endTitle");
-const endStats = document.getElementById("endStats");
-
-const WORLD_RADIUS = 315;
-const STORM_START_RADIUS = 285;
-const STORM_END_RADIUS = 28;
-const STORM_SHRINK_SECONDS = 315;
-
-
-const PERF = {
-  maxPlayerCrabs: 45,
-  maxAICrabsPerWizard: 14,
-  maxTotalAICrabs: 136,
-  maxParticles: 120,
-  maxFireballs: 45,
-  farUpdateDistance: 75,
-  veryFarUpdateDistance: 115,
-  aiFullUpdateInterval: 0.12,
-  aiFarUpdateInterval: 0.35,
-  aiVeryFarUpdateInterval: 0.8,
-  crabSeparationLimit: 8,
-  healthBarUpdateInterval: 0.12,
-  lowDetailDistance: 70,
-  hideTinyHealthBarsDistance: 55,
-  enableFarAnimations: false,
-  enableDynamicFireballLights: false,
-  enableWizardPointLights: false,
-  enableNestPointLights: false
-};
-
-const PERFORMANCE_MODE = true;
-let selectedDifficulty = Number(localStorage.getItem("crabmancerDifficulty") || 1);
-const state = {
-  started: false,
-  hp: 100,
-  maxHp: 100,
-  kills: 0,
-  xp: 0,
-  level: 1,
-  nextXp: 6,
-  fireCooldown: 0,
-  messageTimer: 0,
-  upgradeOpen: false,
-  choices: [],
-  stormTime: 0,
-  stormRadius: STORM_START_RADIUS,
-  stormDamage: 7,
-  gameOver: false,
-  victory: false,
-  difficulty: selectedDifficulty,
-  upgrades: {
-    wizardSpeed: 1,
-    fireDamage: 1,
-    fireExplosion: 1,
-    fireRate: 1,
-    fireTracking: 1,
-    fireBounce: 0,
-    crabArmor: 0,
-    crabSpikes: 0,
-    crabLeap: 0,
-    crabCharge: 0,
-    crabRegen: 1,
-    leash: 1,
-    swarmSpeed: 1
+const HOUSE_TEMPLATES = {
+  Veyra:{
+    tier:4,
+    style:"Traditional military tyrants",
+    military:{fleet:62,grays:72,obsidians:58,forts:51,spies:30},
+    traits:["cruel","traditional","military"],
+    openIntel:false
+  },
+  Cindral:{
+    tier:3,
+    style:"Elegant court manipulators",
+    military:{fleet:42,grays:38,obsidians:22,forts:35,spies:67},
+    traits:["social","wealthy","courtly"],
+    openIntel:false
+  },
+  Marros:{
+    tier:3,
+    style:"Reformist legal power",
+    military:{fleet:35,grays:40,obsidians:18,forts:45,spies:54},
+    traits:["reformist","legal","patient"],
+    openIntel:false
+  },
+  Bellor:{
+    tier:3,
+    style:"Aggressive border hawks",
+    military:{fleet:54,grays:55,obsidians:44,forts:42,spies:25},
+    traits:["aggressive","proud","duelist"],
+    openIntel:false
+  },
+  Aurelian:{
+    tier:2,
+    style:"Old mercantile dynasty",
+    military:{fleet:32,grays:35,obsidians:14,forts:40,spies:48},
+    traits:["merchant","careful","silver-linked"],
+    openIntel:false
+  },
+  Thorne:{
+    tier:1,
+    style:"Lesser house hungry for relevance",
+    military:{fleet:16,grays:28,obsidians:8,forts:22,spies:20},
+    traits:["minor","desperate","opportunist"],
+    openIntel:false
+  },
+  Karras:{
+    tier:2,
+    style:"Mining house with hard internal rule",
+    military:{fleet:24,grays:46,obsidians:20,forts:37,spies:18},
+    traits:["mining","strict","resource-rich"],
+    openIntel:false
   }
 };
 
-if (PERFORMANCE_MODE) {
-  renderer.setPixelRatio(1);
-  scene.fog.far = 320;
-  PERF.maxPlayerCrabs = 35;
-  PERF.maxAICrabsPerWizard = 12;
-  PERF.maxTotalAICrabs = 120;
-  PERF.maxParticles = 80;
+function clone(x){ return JSON.parse(JSON.stringify(x)); }
+function clamp(n,min=0,max=100){ return Math.max(min,Math.min(max,n)); }
+function rand(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
+function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+function chance(p){ return Math.random() < p; }
+
+function relationName(v){
+  if(v <= 10) return "Hatred";
+  if(v <= 25) return "Hostile";
+  if(v <= 40) return "Suspicious";
+  if(v <= 60) return "Neutral";
+  if(v <= 75) return "Favorable";
+  if(v <= 90) return "Loyal";
+  return "Devoted";
 }
 
-const player = {
-  group: new THREE.Group(),
-  radius: 0.85,
-  speed: 12,
-  turnSpeed: 2.75,
-  velocity: new THREE.Vector3(),
-  team: "player",
-  color: teamColor,
-  hpBar: null,
-  arrow: null
-};
-
-const coopState = { enabled: false, mode: "coop" };
-const playerTwo = {
-  group: new THREE.Group(),
-  radius: 0.85,
-  speed: 11.4,
-  turnSpeed: 2.75,
-  velocity: new THREE.Vector3(),
-  team: "player",
-  color: new THREE.Color(0xc28bff),
-  hp: 100,
-  maxHp: 100,
-  fireCooldown: 0,
-  hpBar: null
-};
-const cameraTwo = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 980);
-
-const crabs = [];
-const enemies = [];
-const fireballs = [];
-const drops = [];
-const explosions = [];
-const MAX_DROPS = 45;
-const nests = [];
-const particles = [];
-const aiWizards = [];
-const dyingUnits = [];
-const decorations = [];
-let decorationCullTimer = 0;
-
-function clamp(v, min, max) {
-  return Math.max(min, Math.min(max, v));
+function pretty(k){
+  return {
+    treasury:"Treasury",
+    debt:"Debt",
+    baseIncome:"Income",
+    prestige:"Prestige",
+    influence:"Influence",
+    stability:"Stability",
+    fear:"Fear",
+    trust:"Trust",
+    honor:"Honor",
+    rebelStrength:"Rebels",
+    scandalHeat:"Scandal Heat",
+    silverInfluence:"Silver Influence",
+    reformSuspicion:"Reform Suspicion",
+    graySecurity:"Gray Security",
+    fleetPower:"Fleet Power",
+    obsidianForce:"Obsidian Force",
+    houseGuard:"House Guard",
+    fortifications:"Fortifications",
+    intelligence:"Intelligence",
+    warMachines:"War Machines",
+    officerQuality:"Officer Quality",
+    supply:"Supply"
+  }[k] || k;
 }
 
-function rand(min, max) {
-  return min + Math.random() * (max - min);
+function militaryName(k){ return pretty(k); }
+
+function money(n){
+  const sign = n >= 0 ? "+" : "-";
+  return sign + Math.abs(Math.round(n));
 }
 
-function chance(p) {
-  return Math.random() < p;
-}
+function newGame(){
+  if(game && !confirm("Start a new game?")) return;
 
-function mat(color, roughness = 0.72, metalness = 0.04) {
-  return new THREE.MeshStandardMaterial({ color, roughness, metalness });
-}
+  running = false;
+  clearInterval(timer);
+  timer = null;
 
-function showMessage(text, seconds = 2) {
-  state.messageTimer = seconds;
-  messageBox.textContent = text;
-  messageBox.style.display = "block";
-}
+  game = {
+    houseName:"au Varon",
+    month:1,
+    monthProgress:0,
+    rank:1,
+    rankName:"Minor Gold",
+    started:false,
 
-function updateMessage(dt) {
-  if (state.messageTimer > 0) {
-    state.messageTimer -= dt;
-    if (state.messageTimer <= 0) {
-      messageBox.style.display = "none";
-    }
-  }
-}
+    treasury:1300,
+    debt:500,
+    baseIncome:420,
+    tax:"standard",
 
-function makeHealthBar(width = 1.8, height = .16, y = 2.2, alwaysVisible = false) {
-  const group = new THREE.Group();
-  group.position.y = y;
-  group.visible = alwaysVisible;
+    prestige:24,
+    influence:14,
+    stability:62,
+    fear:24,
+    trust:38,
+    honor:48,
+    rebelStrength:10,
+    scandalHeat:8,
+    silverInfluence:15,
+    reformSuspicion:0,
 
-  const bg = new THREE.Mesh(
-    new THREE.PlaneGeometry(width, height),
-    new THREE.MeshBasicMaterial({ color: 0x190606, transparent: true, opacity: .75, side: THREE.DoubleSide })
-  );
-  bg.position.z = -0.002;
-  group.add(bg);
+    colors:{
+      Red:38,
+      Brown:44,
+      Gray:55,
+      Silver:47,
+      Pink:43,
+      Blue:38,
+      Obsidian:42,
+      Orange:40
+    },
 
-  const fill = new THREE.Mesh(
-    new THREE.PlaneGeometry(width, height),
-    new THREE.MeshBasicMaterial({ color: 0x3cff73, side: THREE.DoubleSide })
-  );
-  fill.position.z = 0.001;
-  fill.position.x = 0;
-  group.add(fill);
+    military:{
+      graySecurity:34,
+      fleetPower:8,
+      obsidianForce:15,
+      houseGuard:24,
+      fortifications:18,
+      intelligence:18,
+      warMachines:4,
+      officerQuality:28,
+      supply:42
+    },
 
-  group.userData = { fill, width, alwaysVisible };
-  return group;
-}
+    houses:{},
+    alliances:[],
+    wars:[],
+    tradeDeals:[],
+    knownIntel:{},
 
-function updateHealthBar(unit, hp, maxHp) {
-  if (!unit.hpBar) return;
+    inbox:[],
+    vendors:[],
+    assets:[
+      {name:"Local Gray Barracks",type:"Gray",upkeep:45,effects:{graySecurity:8}},
+      {name:"Small House Guard",type:"House Guard",upkeep:35,effects:{houseGuard:10}},
+      {name:"Old Estate Walls",type:"Fortification",upkeep:20,effects:{fortifications:6}}
+    ],
 
-  const dist = unit.group.position.distanceTo(camera.position);
-  if (dist > PERF.hideTinyHealthBarsDistance && !unit.hpBar.userData.alwaysVisible) {
-    unit.hpBar.visible = false;
-    return;
-  }
+    hidden:{
+      mineSafetyNeglected:0,
+      redHope:0,
+      unpaidGrays:0,
+      ignoredLowColors:0,
+      ignoredHighGolds:0,
+      allianceTension:0,
+      vendorRumors:0
+    },
 
-  const pct = clamp(hp / maxHp, 0, 1);
-  const fill = unit.hpBar.userData.fill;
-  const width = unit.hpBar.userData.width;
-
-  fill.scale.x = Math.max(.001, pct);
-  fill.position.x = -width * (1 - pct) / 2;
-
-  if (pct > .6) fill.material.color.set(0x3cff73);
-  else if (pct > .3) fill.material.color.set(0xffe45e);
-  else fill.material.color.set(0xff4040);
-
-  unit.hpBar.visible = unit.hpBar.userData.alwaysVisible || pct < .999;
-  unit.hpBar.lookAt(camera.position);
-}
-
-function addLights() {
-  const hemi = new THREE.HemisphereLight(0xbbe9ff, 0x1e2518, 1.65);
-  scene.add(hemi);
-
-  const sun = new THREE.DirectionalLight(0xfff2d0, 2.25);
-  sun.position.set(45, 70, 32);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
-  sun.shadow.camera.left = -170;
-  sun.shadow.camera.right = 170;
-  sun.shadow.camera.top = 170;
-  sun.shadow.camera.bottom = -170;
-  sun.shadow.camera.near = 1;
-  sun.shadow.camera.far = 260;
-  scene.add(sun);
-
-  const wizardLight = new THREE.PointLight(0x3edcff, 1.45, 20);
-  wizardLight.position.set(0, 4, 0);
-  player.group.add(wizardLight);
-}
-
-function findOpenWorldPosition(minR, maxR, minDistanceFromExisting = 16, existing = []) {
-  for (let i = 0; i < 50; i++) {
-    const a = rand(0, Math.PI * 2);
-    const r = rand(minR, maxR);
-    const pos = new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r);
-    if (existing.every(e => e.distanceTo(pos) >= minDistanceFromExisting)) return pos;
-  }
-  const a = rand(0, Math.PI * 2);
-  const r = rand(minR, maxR);
-  return new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r);
-}
-
-function buildWorld() {
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(WORLD_RADIUS * 2.3, WORLD_RADIUS * 2.3, 96, 96),
-    mat(0x163d24, 0.95, 0)
-  );
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  scene.add(ground);
-
-  const centerRing = new THREE.Mesh(
-    new THREE.RingGeometry(17, 18.5, 96),
-    mat(0x315832, 0.9, 0)
-  );
-  centerRing.rotation.x = -Math.PI / 2;
-  centerRing.position.y = 0.012;
-  scene.add(centerRing);
-
-  for (let i = 0; i < 110; i++) {
-    const a = Math.random() * Math.PI * 2;
-    const r = rand(70, WORLD_RADIUS * .98);
-    const x = Math.cos(a) * r;
-    const z = Math.sin(a) * r;
-
-    const trunk = new THREE.Mesh(
-      new THREE.CylinderGeometry(rand(.1,.24), rand(.16,.3), rand(1.8,4.2), 7),
-      mat(chance(.55) ? 0x4d321e : 0x3b2a1d)
-    );
-    trunk.position.set(x, trunk.geometry.parameters.height / 2, z);
-    trunk.castShadow = false;
-
-    const leaves = new THREE.Mesh(
-      new THREE.DodecahedronGeometry(rand(.85,1.75), 0),
-      mat(chance(.5) ? 0x245f31 : 0x2d7438)
-    );
-    leaves.position.set(x, trunk.geometry.parameters.height + .8, z);
-    leaves.castShadow = false;
-
-    scene.add(trunk, leaves);
-    decorations.push(trunk, leaves);
-  }
-
-  createStormVisual();
-
-  const alcoveCount = 22;
-  const occupied = [];
-  for (let i = 0; i < alcoveCount; i++) {
-    const tier = i < 8 ? 1 : i < 15 ? 2 : 3;
-    const ringPos = tier === 1 ? findOpenWorldPosition(70, 120, 26, occupied) : tier === 2 ? findOpenWorldPosition(135, 210, 28, occupied) : findOpenWorldPosition(220, 285, 30, occupied);
-    createNest(ringPos.x, ringPos.z, i, tier);
-    occupied.push(ringPos.clone());
-  }
-}
-
-let stormMesh;
-let stormWall;
-
-function createStormVisual() {
-  stormMesh = new THREE.Mesh(
-    new THREE.RingGeometry(1, WORLD_RADIUS * 1.25, 64),
-    new THREE.MeshBasicMaterial({
-      color: 0x166dff,
-      transparent: true,
-      opacity: .22,
-      side: THREE.DoubleSide,
-      depthWrite: false
-    })
-  );
-  stormMesh.rotation.x = -Math.PI / 2;
-  stormMesh.position.y = .035;
-  scene.add(stormMesh);
-
-  stormWall = new THREE.Mesh(
-    new THREE.CylinderGeometry(1, 1, 10, 64, 1, true),
-    new THREE.MeshBasicMaterial({
-      color: 0x42ccff,
-      transparent: true,
-      opacity: .12,
-      side: THREE.DoubleSide,
-      depthWrite: false
-    })
-  );
-  stormWall.position.y = 5;
-  scene.add(stormWall);
-}
-
-function updateStormVisual() {
-  stormMesh.geometry.dispose();
-  stormMesh.geometry = new THREE.RingGeometry(state.stormRadius, WORLD_RADIUS * 1.25, 64);
-  stormWall.scale.set(state.stormRadius, 1, state.stormRadius);
-}
-
-function createNest(x, z, index, tier) {
-  const g = new THREE.Group();
-  g.position.set(x, 0, z);
-
-  const base = new THREE.Mesh(
-    new THREE.CylinderGeometry(4.2 + tier * .4, 5.0 + tier * .55, .45, 16),
-    mat(tier === 1 ? 0x3c2439 : tier === 2 ? 0x4c2b49 : 0x5c2238)
-  );
-  base.position.y = .22;
-  base.receiveShadow = true;
-  base.castShadow = true;
-  g.add(base);
-
-  for (let i = 0; i < 8 + tier * 2; i++) {
-    const a = i / (8 + tier * 2) * Math.PI * 2;
-    const rock = new THREE.Mesh(
-      new THREE.DodecahedronGeometry(rand(.55, 1.3 + tier * .16), 0),
-      mat(tier === 1 ? 0x6a435e : tier === 2 ? 0x79505e : 0x8a3a4a)
-    );
-    rock.position.set(Math.cos(a) * rand(3.1, 4.3 + tier * .35), rand(.55, 1.35 + tier * .35), Math.sin(a) * rand(3.1, 4.3 + tier * .35));
-    rock.scale.y = rand(.8, 2.0);
-    rock.castShadow = true;
-    g.add(rock);
-  }
-
-  if (PERF.enableNestPointLights) {
-    const glow = new THREE.PointLight(tier === 1 ? 0xff4f91 : tier === 2 ? 0xff8a34 : 0xe73bff, 1.4 + tier * .25, 14 + tier * 3);
-    glow.position.y = 1.7;
-    g.add(glow);
-  }
-
-  const flag = new THREE.Mesh(
-    new THREE.ConeGeometry(.8 + tier * .14, 1.4 + tier * .2, 4),
-    mat(tier === 1 ? 0xff4f91 : tier === 2 ? 0xff9b31 : 0xd84dff)
-  );
-  flag.position.y = 2.2 + tier * .25;
-  flag.castShadow = true;
-  g.add(flag);
-
-  scene.add(g);
-
-  const nest = {
-    group: g,
-    x,
-    z,
-    tier,
-    radius: 5.2 + tier * .45,
-    leashRadius: 18 + tier * 4,
-    respawnTimer: rand(1, 4),
-    respawnDelay: 12 + tier * 4,
-    squad: [],
-    rewardReady: false,
-    index
+    log:[]
   };
 
-  nests.push(nest);
-}
-
-function buildWizardModel(color, isPlayer = false) {
-  const g = new THREE.Group();
-
-  const robeMat = mat(color);
-  const trimMat = mat(0x8feaff, .4, .12);
-  const skinMat = mat(0xffcfa8);
-  const hatMat = mat(color.clone ? color.clone().multiplyScalar(.55) : 0x18225c);
-
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(.52, .74, 1.85, 14), robeMat);
-  body.position.y = 1.23;
-  body.castShadow = true;
-  g.add(body);
-
-  const belt = new THREE.Mesh(new THREE.CylinderGeometry(.58, .66, .13, 14), mat(0x5c371b));
-  belt.position.y = 1.18;
-  belt.castShadow = true;
-  g.add(belt);
-
-  const head = new THREE.Mesh(new THREE.SphereGeometry(.42, 18, 12), skinMat);
-  head.position.y = 2.43;
-  head.castShadow = true;
-  g.add(head);
-
-  const beard = new THREE.Mesh(new THREE.ConeGeometry(.34, .85, 12), mat(isPlayer ? 0xf2f2ee : 0x222222));
-  beard.position.set(0, 2.08, .28);
-  beard.rotation.x = Math.PI;
-  beard.castShadow = true;
-  g.add(beard);
-
-  const brim = new THREE.Mesh(new THREE.CylinderGeometry(.78, .78, .1, 20), hatMat);
-  brim.position.y = 2.72;
-  brim.castShadow = true;
-  g.add(brim);
-
-  const hat = new THREE.Mesh(new THREE.ConeGeometry(.58, 1.2, 18), hatMat);
-  hat.position.y = 3.22;
-  hat.castShadow = true;
-  g.add(hat);
-
-  const staff = new THREE.Mesh(new THREE.CylinderGeometry(.045, .06, 2.35, 8), mat(0x71491f));
-  staff.position.set(.76, 1.45, .12);
-  staff.rotation.z = -0.13;
-  staff.castShadow = true;
-  g.add(staff);
-
-  const orb = new THREE.Mesh(new THREE.SphereGeometry(.18, 16, 10), trimMat);
-  orb.position.set(.91, 2.65, .12);
-  orb.castShadow = true;
-  g.add(orb);
-
-  if (isPlayer && PERF.enableWizardPointLights) {
-    const orbLight = new THREE.PointLight(0x37ddff, 1.1, 9);
-    orbLight.position.copy(orb.position);
-    g.add(orbLight);
-  }
-
-  return g;
-}
-
-function buildWizard() {
-  const model = buildWizardModel(teamColor, true);
-  player.group.add(model);
-  scene.add(player.group);
-  player.group.position.set(0, 0, 0);
-
-  player.hpBar = makeHealthBar(1.7, .16, 3.65, true);
-  player.group.add(player.hpBar);
-
-  player.leftIcon = makeFloatingKeyIcon("Q", -1.3);
-  player.rightIcon = makeFloatingKeyIcon("E", 1.3);
-  player.group.add(player.leftIcon, player.rightIcon);
-  player.leftIcon.visible = false;
-  player.rightIcon.visible = false;
-
-  player.arrow = makeStormArrow();
-  player.group.add(player.arrow);
-  player.arrow.visible = false;
-}
-
-
-function buildWizardTwo() {
-  const model = buildWizardModel(playerTwo.color, false);
-  playerTwo.group.add(model);
-  scene.add(playerTwo.group);
-  playerTwo.group.position.set(4, 0, 4);
-  playerTwo.hpBar = makeHealthBar(1.7, .16, 3.65, true);
-  playerTwo.group.add(playerTwo.hpBar);
-}
-
-function makeStormArrow() {
-  const arrow = new THREE.Group();
-
-  const shaft = new THREE.Mesh(
-    new THREE.CylinderGeometry(.045, .07, 1.0, 8),
-    new THREE.MeshBasicMaterial({ color: 0x8cecff })
-  );
-  shaft.rotation.z = Math.PI / 2;
-  shaft.position.x = -.25;
-  arrow.add(shaft);
-
-  const head = new THREE.Mesh(
-    new THREE.ConeGeometry(.22, .55, 16),
-    new THREE.MeshBasicMaterial({ color: 0xdffaff })
-  );
-  head.rotation.z = -Math.PI / 2;
-  head.position.x = .45;
-  arrow.add(head);
-
-  const light = new THREE.PointLight(0x4bdcff, 1.5, 8);
-  arrow.add(light);
-
-  arrow.position.y = 4.6;
-  arrow.scale.set(1.1, 1.1, 1.1);
-  return arrow;
-}
-
-function makeFloatingKeyIcon(text, x) {
-  const canvas = document.createElement("canvas");
-  canvas.width = 128;
-  canvas.height = 128;
-  const ctx = canvas.getContext("2d");
-
-  ctx.fillStyle = "rgba(8, 18, 42, .9)";
-  ctx.beginPath();
-  ctx.arc(64, 64, 55, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.lineWidth = 8;
-  ctx.strokeStyle = "#ffe88a";
-  ctx.stroke();
-
-  ctx.fillStyle = "white";
-  ctx.font = "900 56px Arial";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(text, 64, 66);
-
-  const tex = new THREE.CanvasTexture(canvas);
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
-  sprite.position.set(x, 4.45, 0);
-  sprite.scale.set(1, 1, 1);
-  return sprite;
-}
-
-function addCrabSpikes(crab) {
-  if (crab.spikeGroup) crab.group.remove(crab.spikeGroup);
-
-  const spikeGroup = new THREE.Group();
-  const spikeMat = mat(0xeafcff, .35, .15);
-
-  const count = 3 + crab.spikeLevel;
-  for (let i = 0; i < count; i++) {
-    const spike = new THREE.Mesh(new THREE.ConeGeometry(.07, .28, 8), spikeMat);
-    spike.position.set(
-      -0.35 + i * (0.7 / Math.max(1, count - 1)),
-      .88,
-      rand(-.28, .2)
-    );
-    spike.rotation.x = rand(-.25, .25);
-    spike.castShadow = true;
-    spikeGroup.add(spike);
-  }
-
-  crab.group.add(spikeGroup);
-  crab.spikeGroup = spikeGroup;
-}
-
-function addCrabArmor(crab) {
-  if (crab.armorGroup) crab.group.remove(crab.armorGroup);
-
-  const armorGroup = new THREE.Group();
-  const armorMat = mat(0x9fc4d2, .36, .35);
-
-  for (let i = -1; i <= 1; i++) {
-    const plate = new THREE.Mesh(new THREE.BoxGeometry(.42, .08, .52), armorMat);
-    plate.position.set(i * .36, .82, -.04);
-    plate.rotation.z = i * .08;
-    plate.castShadow = true;
-    armorGroup.add(plate);
-  }
-
-  crab.group.add(armorGroup);
-  crab.armorGroup = armorGroup;
-}
-
-function createCrab(pos, owner = player, color = teamColor, bonus = {}) {
-  if (owner === player && crabs.length >= PERF.maxPlayerCrabs) return null;
-  if (owner !== player) {
-    const totalAICrabs = aiWizards.reduce((sum, w) => sum + (w.crabs ? w.crabs.length : 0), 0);
-    if (owner.crabs && owner.crabs.length >= PERF.maxAICrabsPerWizard) return null;
-    if (totalAICrabs >= PERF.maxTotalAICrabs) return null;
-  }
-
-  const g = new THREE.Group();
-
-  const armorLevel = bonus.armor ?? state.upgrades.crabArmor;
-  const spikeLevel = bonus.spikes ?? state.upgrades.crabSpikes;
-  const regenLevel = bonus.regen ?? state.upgrades.crabRegen;
-  const swarmSpeed = bonus.speed ?? state.upgrades.swarmSpeed;
-
-  const crab = {
-    group: g,
-    owner,
-    team: owner.team || "player",
-    color,
-    velocity: new THREE.Vector3(),
-    radius: .55,
-    hp: 26 + armorLevel * 9,
-    maxHp: 26 + armorLevel * 9,
-    damage: 7 + spikeLevel * 2,
-    speed: 6.2 + swarmSpeed * .35,
-    attackCooldown: rand(.2, .7),
-    growth: 1,
-    kills: 0,
-    target: null,
-    leapCooldown: rand(1, 3),
-    chargeCooldown: rand(2, 5),
-    anim: Math.random() * 50,
-    legs: [],
-    claws: [],
-    armorLevel,
-    spikeLevel,
-    regenLevel,
-    isPlayerCrab: owner === player,
-    attackState: "idle",
-    attackTimer: 0,
-    pendingAttackTarget: null,
-    hasDealtAttackDamage: false,
-    dead: false,
-    dying: false
-  };
-
-  const shellMat = new THREE.MeshStandardMaterial({
-    color: color.clone().offsetHSL(rand(-.03,.03), .12, rand(-.04,.05)),
-    roughness: .48,
-    metalness: .08
+  Object.keys(HOUSE_TEMPLATES).forEach(h=>{
+    const temp = HOUSE_TEMPLATES[h];
+    game.houses[h] = {
+      tier:temp.tier,
+      style:temp.style,
+      opinion: h==="Thorne" ? 54 : rand(34,52),
+      fear:rand(2,12),
+      respect:rand(12,30),
+      rivalry: h==="Bellor" ? 35 : rand(4,22),
+      military:clone(temp.military),
+      traits:clone(temp.traits),
+      openIntel:false,
+      allied:false,
+      atWar:false,
+      trade:false,
+      lastIgnored:0
+    };
+    game.knownIntel[h] = false;
   });
 
-  const darkMat = mat(0x0b1d28);
+  log("Your father is dead. Your House remains Gold, but weak. Your estate is solvent only by the kindness of creditors and the silence of enemies.");
+  log("Press Start when ready. Time will begin moving, inbox requests will arrive, and silence will become a decision.");
 
-  const body = new THREE.Mesh(new THREE.SphereGeometry(.72, 18, 12), shellMat);
-  body.scale.set(1.15, .42, .82);
-  body.position.y = .48;
-  body.castShadow = true;
-  g.add(body);
-  crab.body = body;
-
-  const belly = new THREE.Mesh(new THREE.SphereGeometry(.52, 14, 8), shellMat);
-  belly.scale.set(.95, .22, .52);
-  belly.position.set(0, .34, .08);
-  belly.castShadow = true;
-  g.add(belly);
-
-  for (let side of [-1, 1]) {
-    for (let i = 0; i < 2; i++) {
-      const leg = new THREE.Group();
-      leg.position.set(side * .43, .34, i === 0 ? .34 : -.34);
-
-      const upper = new THREE.Mesh(new THREE.CylinderGeometry(.055, .07, .55, 8), darkMat);
-      upper.rotation.z = side * Math.PI / 2.65;
-      upper.position.x = side * .26;
-      upper.castShadow = true;
-
-      const lower = new THREE.Mesh(new THREE.CylinderGeometry(.045, .06, .52, 8), darkMat);
-      lower.rotation.z = side * Math.PI / 2.15;
-      lower.position.set(side * .57, -.12, 0);
-      lower.castShadow = true;
-
-      leg.add(upper, lower);
-      g.add(leg);
-
-      crab.legs.push({
-        root: leg,
-        side,
-        phase: Math.random() * Math.PI * 2,
-        upper,
-        lower
-      });
-    }
-  }
-
-  for (let side of [-1, 1]) {
-    const arm = new THREE.Group();
-    arm.position.set(side * .48, .52, .58);
-
-    const stalk = new THREE.Mesh(new THREE.CylinderGeometry(.06, .08, .56, 8), darkMat);
-    stalk.position.x = side * .25;
-    stalk.rotation.z = side * Math.PI / 3.25;
-    stalk.castShadow = true;
-    arm.add(stalk);
-
-    const clawA = new THREE.Mesh(new THREE.BoxGeometry(.15, .13, .38), shellMat);
-    const clawB = new THREE.Mesh(new THREE.BoxGeometry(.15, .13, .38), shellMat);
-    clawA.position.set(side * .46, .04, .14);
-    clawB.position.set(side * .46, -.04, -.06);
-    clawA.rotation.y = side * .48;
-    clawB.rotation.y = side * -.48;
-    clawA.castShadow = true;
-    clawB.castShadow = true;
-
-    arm.add(clawA, clawB);
-    g.add(arm);
-
-    crab.claws.push({ arm, clawA, clawB, side });
-  }
-
-  for (let side of [-1, 1]) {
-    const stalk = new THREE.Mesh(new THREE.CylinderGeometry(.025, .032, .34, 6), darkMat);
-    stalk.position.set(side * .24, .78, .45);
-    stalk.rotation.x = -.22;
-    stalk.castShadow = true;
-
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(.085, 8, 8), mat(0xffffff));
-    eye.position.set(side * .24, .94, .56);
-    eye.castShadow = true;
-
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(.035, 8, 8), mat(0x000000));
-    pupil.position.set(side * .24, .94, .63);
-
-    g.add(stalk, eye, pupil);
-  }
-
-  if (spikeLevel > 0) addCrabSpikes(crab);
-  if (armorLevel > 0) addCrabArmor(crab);
-
-  crab.hpBar = makeHealthBar(1.25, .12, 1.45, false);
-  g.add(crab.hpBar);
-
-  g.position.copy(pos || owner.group.position);
-  g.position.y = 0;
-  g.scale.setScalar(crab.growth);
-  scene.add(g);
-
-  if (!owner.crabs) owner.crabs = [];
-  owner.crabs.push(crab);
-
-  if (owner === player) crabs.push(crab);
-  return crab;
+  seedOpeningInbox();
+  render();
 }
 
-function growCrab(crab) {
-  crab.kills++;
-  crab.growth = Math.min(2.45, crab.growth + .09);
-  crab.maxHp += 8;
-  crab.hp = Math.min(crab.maxHp, crab.hp + 15);
-  crab.damage += 1.15;
-  crab.radius = .55 * crab.growth;
-  crab.speed += .08;
-  crab.group.scale.setScalar(crab.growth);
-  createBurst(crab.group.position, crab.color || 0x78f5ff, 18);
+function seedOpeningInbox(){
+  addInbox(makeEvent("welcomeCouncil"));
+  addInbox(makeEvent("taxPetition"));
 }
 
-function createEnemyForNest(nest, slot) {
-  const a = slot / 3 * Math.PI * 2 + rand(-.25, .25);
-  const dist = nest.radius + rand(4, 7);
-  const x = nest.x + Math.cos(a) * dist;
-  const z = nest.z + Math.sin(a) * dist;
-  const tier = nest.tier;
+function log(text){
+  if(!game) return;
+  game.log.unshift({month:game.month,text});
+  if(game.log.length > 200) game.log.pop();
+}
 
-  const type = tier === 3 && chance(.45) ? "brute" : tier >= 2 && chance(.28) ? "brute" : "imp";
+function toggleRun(){
+  running = !running;
+  game.started = true;
+  document.getElementById("startBtn").textContent = running ? "Pause" : "Start";
 
-  const g = new THREE.Group();
-
-  const enemy = {
-    group: g,
-    team: "neutral",
-    type,
-    nest,
-    leashCenter: new THREE.Vector3(nest.x, 0, nest.z),
-    leashRadius: nest.leashRadius,
-    velocity: new THREE.Vector3(),
-    radius: type === "brute" ? .9 : .6,
-    hp: (type === "brute" ? 86 : 38) + tier * 20 + state.level * 2,
-    maxHp: (type === "brute" ? 86 : 38) + tier * 20 + state.level * 2,
-    damage: (type === "brute" ? 15 : 8) + tier * 2,
-    speed: type === "brute" ? 3.4 : 5.2,
-    attackCooldown: rand(.2, 1.0),
-    xp: type === "brute" ? 3 + tier : 1 + tier,
-    crabRewardChance: 0,
-    lastHitBy: null
-  };
-
-  const bodyColor = tier === 1 ? 0xff5555 : tier === 2 ? 0xff8a34 : 0xc840ff;
-
-  const body = new THREE.Mesh(
-    type === "brute" ? new THREE.DodecahedronGeometry(.9, 0) : new THREE.SphereGeometry(.57, 12, 8),
-    mat(bodyColor)
-  );
-  body.position.y = type === "brute" ? .9 : .58;
-  body.castShadow = true;
-  g.add(body);
-
-  const head = new THREE.Mesh(new THREE.SphereGeometry(type === "brute" ? .38 : .26, 10, 8), mat(0xffc18c));
-  head.position.y = type === "brute" ? 1.6 : 1.12;
-  head.castShadow = true;
-  g.add(head);
-
-  for (let side of [-1, 1]) {
-    const horn = new THREE.Mesh(new THREE.ConeGeometry(.08, .35, 8), mat(0xf9e2ba));
-    horn.position.set(side * .25, type === "brute" ? 1.9 : 1.35, 0);
-    horn.rotation.z = side * -.45;
-    horn.castShadow = true;
-    g.add(horn);
+  if(running){
+    lastTick = performance.now();
+    if(!timer) timer = setInterval(tick, 200);
+    log("The court clock begins. Each passing month will bring income, pressure, opportunities, and consequences.");
+  } else {
+    log("You pause the court clock. The inbox waits, but only because time itself obeys the player.");
   }
 
-  if (type === "brute") {
-    const club = new THREE.Mesh(new THREE.CylinderGeometry(.08, .12, 1.3, 8), mat(0x5d371b));
-    club.position.set(.75, .86, .1);
-    club.rotation.z = -.7;
-    club.castShadow = true;
-    g.add(club);
+  render();
+}
+
+function tick(){
+  if(!running || !game) return;
+
+  const now = performance.now();
+  const delta = (now - lastTick) / 1000;
+  lastTick = now;
+
+  const progressGain = (delta / REAL_SECONDS_PER_MONTH) * 100;
+  game.monthProgress += progressGain;
+
+  /*
+    Inbox can slowly receive new messages during a month.
+    This is intentionally gradual.
+  */
+  maybeMidMonthArrival(progressGain);
+
+  if(game.monthProgress >= 100){
+    game.monthProgress = 0;
+    advanceMonth();
   }
 
-  enemy.hpBar = makeHealthBar(type === "brute" ? 1.65 : 1.2, .13, type === "brute" ? 2.25 : 1.65, false);
-  g.add(enemy.hpBar);
-
-  g.position.set(x, 0, z);
-  scene.add(g);
-
-  enemies.push(enemy);
-  nest.squad.push(enemy);
-
-  return enemy;
+  renderTopBar();
 }
 
-function spawnNestSquad(nest) {
-  nest.squad = [];
-  for (let i = 0; i < 3; i++) createEnemyForNest(nest, i);
-  nest.rewardReady = true;
+function manualAdvance(){
+  game.started = true;
+  game.monthProgress = 0;
+  advanceMonth();
 }
 
-function createAIWizard(index) {
-  const palette = [
-    0xff4949, 0xffa23a, 0xf8df4a, 0x6dff71, 0x46b7ff,
-    0x9a62ff, 0xff5de1, 0x98f7ff, 0xbaff69, 0xff7777
-  ];
+function renderTopBar(){
+  if(!game) return;
+  document.getElementById("monthLabel").textContent = `Month ${game.month}`;
+  document.getElementById("monthFill").style.width = `${clamp(game.monthProgress)}%`;
+  document.getElementById("speedLabel").textContent = running ? "Running" : "Paused";
+}
 
-  const color = new THREE.Color(palette[index % palette.length]);
-  const g = buildWizardModel(color, false);
+function inboxPressure(){
+  /*
+    More prestige/influence/rank means more people expect answers.
+    Starts relaxed, then grows.
+  */
+  let pressure = 0.015;
+  pressure += game.rank * 0.006;
+  pressure += game.prestige / 900;
+  pressure += game.influence / 900;
+  pressure += game.alliances.length * 0.006;
+  pressure += game.wars.length * 0.012;
 
-  const pos = findOpenWorldPosition(70, WORLD_RADIUS - 25, 18, aiWizards.map(w => w.group.position));
-  g.position.set(pos.x, 0, pos.z);
-  g.rotation.y = rand(0, Math.PI * 2);
-  scene.add(g);
+  if(game.inbox.length > 8) pressure *= 0.35;
+  if(game.inbox.length > 12) pressure *= 0.15;
 
-  const ai = {
-    group: g,
-    team: "ai" + index,
-    color,
-    hp: 95 + state.difficulty * 15,
-    maxHp: 95 + state.difficulty * 15,
-    radius: .85,
-    speed: rand(7.2, 9.2),
-    turnSpeed: 2,
-    crabs: [],
-    targetNest: null,
-    targetWizard: null,
-    thinkTimer: rand(.2, 1.5) / (1 + state.difficulty * 0.08),
-    fireCooldown: rand(.2, 1.5),
-    attackPlayerBias: clamp(rand(.3, .9) + state.difficulty * 0.03, 0.3, 0.98),
-    wanderDestination: null,
-    wanderTimer: rand(2, 6),
-    roamRadiusPreference: rand(.35, .95),
-    updateTimer: rand(0, .3),
-    detailLevel: "full",
-    dead: false,
-    mode: "grow",
-    retreatUntil: 0,
-    lastArmyStrength: 0,
-    safeDestination: null,
-    targetDrop: null,
-    personalityGrowthBias: rand(0.85, 1.35),
-    personalityAggression: rand(0.65, 1.25) + state.difficulty * 0.04,
-    personalityCaution: rand(0.8, 1.3),
-    upgrades: {
-      crabArmor: Math.floor(rand(0, 2)),
-      crabSpikes: Math.floor(rand(0, 2)),
-      crabRegen: 1,
-      swarmSpeed: rand(.5, 1.6),
-      leash: rand(.85, 1.25)
-    }
-  };
+  return pressure;
+}
 
-  ai.hpBar = makeHealthBar(1.6, .14, 3.6, false);
-  ai.group.add(ai.hpBar);
-
-  const startCount = 3 + Math.floor(rand(0, 4));
-  for (let i = 0; i < startCount; i++) {
-    createCrab(ai.group.position.clone().add(new THREE.Vector3(rand(-2,2), 0, rand(-2,2))), ai, color, {
-      armor: ai.upgrades.crabArmor,
-      spikes: ai.upgrades.crabSpikes,
-      regen: ai.upgrades.crabRegen,
-      speed: ai.upgrades.swarmSpeed
-    });
+function maybeMidMonthArrival(progressGain){
+  if(!game.started) return;
+  if(chance(inboxPressure() * progressGain)){
+    const ev = generateContextEvent();
+    addInbox(ev);
+    log(`New inbox request received: ${ev.title}.`);
+    render();
   }
 
-  aiWizards.push(ai);
-}
-
-function createFireball(originOwner, target, color = 0xff6a1f) {
-  if (fireballs.length >= PERF.maxFireballs) return;
-  const origin = originOwner.group.position.clone();
-  origin.y = 2.5;
-
-  const dir = getUnitAimPoint(target).sub(origin).normalize();
-
-  const explosion = originOwner === player ? state.upgrades.fireExplosion : 1;
-  const tracking = originOwner === player ? state.upgrades.fireTracking : 1 + state.difficulty * 0.22;
-  const damage = originOwner === player ? 21 * state.upgrades.fireDamage : 14 + state.difficulty * 3.5;
-  const speed = originOwner === player ? (24 + state.upgrades.fireTracking * 1.5) : (22 + state.difficulty * 1.2);
-  const life = originOwner === player ? (3 + state.upgrades.fireTracking * .35) : (2.8 + state.difficulty * .2);
-  const turnRate = originOwner === player ? (7.5 + state.upgrades.fireTracking * 2.5) : (6.6 + tracking * 1.4);
-
-  const mesh = new THREE.Mesh(
-    new THREE.SphereGeometry(.18 * explosion, 14, 10),
-    mat(color, .35, .05)
-  );
-  mesh.position.copy(origin);
-  mesh.castShadow = true;
-
-  if (PERF.enableDynamicFireballLights) {
-    const light = new THREE.PointLight(color, 2.1, 9);
-    mesh.add(light);
-  }
-
-  scene.add(mesh);
-
-  fireballs.push({
-    mesh,
-    owner: originOwner,
-    team: originOwner.team,
-    velocity: dir.multiplyScalar(speed),
-    speed,
-    turnRate,
-    target,
-    damage,
-    radius: 2.2 * explosion,
-    hitRadius: 1.1,
-    bounces: originOwner === player ? state.upgrades.fireBounce : 0,
-    life,
-    lastHit: null,
-    exploded: false,
-    lastPosition: origin.clone()
-  });
-}
-
-function createBurst(pos, color, count = 12) {
-  if (particles.length >= PERF.maxParticles) return;
-  count = Math.min(count, PERF.maxParticles - particles.length);
-  if (count <= 0) return;
-  for (let i = 0; i < count; i++) {
-    const mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(rand(.04, .11), 6, 6),
-      new THREE.MeshBasicMaterial({ color })
-    );
-    mesh.position.copy(pos);
-    mesh.position.y += rand(.3, 1.4);
-    scene.add(mesh);
-
-    particles.push({
-      mesh,
-      velocity: new THREE.Vector3(rand(-1,1), rand(.3,2.3), rand(-1,1)).multiplyScalar(rand(1.5, 4.5)),
-      life: rand(.3, .8)
-    });
+  if(chance(0.004 * progressGain) && game.vendors.length < 3){
+    generateVendor();
+    render();
   }
 }
 
-function allCrabs() {
-  const list = [...crabs];
-  for (const ai of aiWizards) {
-    if (!ai.dead && !ai.dying) list.push(...ai.crabs.filter(c => !c.dead && !c.dying));
+function generateContextEvent(){
+  const pool = [];
+
+  pool.push("taxPetition");
+  pool.push("mineStrike");
+
+  if(game.colors.Red < 38 || game.rebelStrength > 22) pool.push("riot");
+  if(game.scandalHeat > 15 || chance(.35)) pool.push("scandal");
+  if(game.colors.Gray < 50 || game.hidden.unpaidGrays > 0) pool.push("grayPay");
+  if(game.debt > 300 && chance(.45)) pool.push("silverDebt");
+
+  if(game.prestige > 28 || game.influence > 25){
+    pool.push("dinnerInvite");
+    pool.push("tradeOffer");
   }
-  return list;
+
+  if(game.prestige > 38 || game.rank >= 2){
+    pool.push("borderDispute");
+    pool.push("allianceRequest");
+  }
+
+  if(game.alliances.length >= 1 && chance(.5)){
+    pool.push("allyDemand");
+  }
+
+  if(game.alliances.length >= 2 && chance(.4)){
+    pool.push("allianceConflict");
+  }
+
+  if(game.wars.length > 0){
+    pool.push("warDemand");
+    pool.push("warRaid");
+  }
+
+  if(game.rank >= 3 || game.prestige > 55){
+    pool.push("minorHousePetition");
+    pool.push("senateRequest");
+  }
+
+  return makeEvent(pick(pool));
 }
 
-function allCombatUnitsExcept(team) {
-  const list = [];
+function senderPriority(ev){
+  /*
+    Sort by who sent it and how dangerous it is to ignore.
+    Higher number appears first.
+  */
+  let score = 0;
+
+  if(ev.senderType === "Higher Gold") score += 100;
+  if(ev.senderType === "Equal Gold") score += 80;
+  if(ev.senderType === "Ally") score += 90;
+  if(ev.senderType === "Creditor") score += 85;
+  if(ev.senderType === "Military") score += 70;
+  if(ev.senderType === "Vendor") score += 55;
+  if(ev.senderType === "Lower House") score += 50;
+  if(ev.senderType === "Color") score += 45;
+
+  score += ev.priority || 0;
+  score += Math.max(0, 8 - ev.deadline) * 8;
 
-  if (player.team !== team) list.push(player);
-  for (const c of crabs) {
-    if (c.team !== team) list.push(c);
-  }
-
-  for (const ai of aiWizards) {
-    if (!ai.dead && !ai.dying && ai.team !== team) list.push(ai);
-    for (const c of ai.crabs) {
-      if (!c.dead && !c.dying && c.team !== team) list.push(c);
-    }
-  }
-
-  for (const e of enemies) {
-    if (!e.dead && !e.dying && e.team !== team) list.push(e);
-  }
-
-  return list;
-}
-
-function nearestTarget(pos, team, range = Infinity, preferPlayer = false) {
-  let best = null;
-  let bestD = range * range;
-
-  const candidates = allCombatUnitsExcept(team);
-
-  for (const u of candidates) {
-    if (u.hp <= 0 || u.dead || u.dying) continue;
-
-    if (u.nest) {
-      const distFromNest = u.group.position.distanceTo(u.leashCenter);
-      if (distFromNest > u.leashRadius + 2) continue;
-    }
-
-    const d = u.group.position.distanceToSquared(pos);
-    const adjusted = preferPlayer && u === player ? d * .45 : d;
-
-    if (adjusted < bestD) {
-      bestD = adjusted;
-      best = u;
-    }
-  }
-
-  return best;
-}
-
-function nearestEnemyForPlayerFire(pos, range) {
-  return nearestTarget(pos, "player", range, false);
-}
-
-function updateCoopPlayer(dt) {
-  if (!coopState.enabled || state.upgradeOpen || playerTwo.dead) return;
-  playerTwo.fireCooldown -= dt;
-  if (keys["arrowleft"]) playerTwo.group.rotation.y += playerTwo.turnSpeed * dt;
-  if (keys["arrowright"]) playerTwo.group.rotation.y -= playerTwo.turnSpeed * dt;
-  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(playerTwo.group.quaternion);
-  const move = new THREE.Vector3();
-  if (keys["arrowup"]) move.add(forward);
-  if (keys["arrowdown"]) move.addScaledVector(forward, -0.65);
-  if (move.lengthSq() > 0) {
-    move.normalize();
-    playerTwo.group.position.addScaledVector(move, playerTwo.speed * dt);
-  }
-  const arenaLimit = WORLD_RADIUS - 6;
-  playerTwo.group.position.x = clamp(playerTwo.group.position.x, -arenaLimit, arenaLimit);
-  playerTwo.group.position.z = clamp(playerTwo.group.position.z, -arenaLimit, arenaLimit);
-  const target = nearestEnemyForPlayerFire(playerTwo.group.position, 25);
-  if (target && playerTwo.fireCooldown <= 0) {
-    playerTwo.fireCooldown = 1.05;
-    createFireball(playerTwo, target, 0xb883ff);
-  }
-}
-
-function updatePlayer(dt) {
-  if (state.upgradeOpen) return;
-
-  if (keys["a"]) player.group.rotation.y += player.turnSpeed * dt;
-  if (keys["d"]) player.group.rotation.y -= player.turnSpeed * dt;
-
-  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.group.quaternion);
-  const move = new THREE.Vector3();
-
-  if (keys["w"]) move.add(forward);
-  if (keys["s"]) move.addScaledVector(forward, -0.65);
-
-  if (move.lengthSq() > 0) {
-    move.normalize();
-    const lowHealthBoost = player.hp / player.maxHp <= 0.25 ? 1.12 : 1;
-    const speed = player.speed * state.upgrades.wizardSpeed * lowHealthBoost;
-    player.group.position.addScaledVector(move, speed * dt);
-  }
-
-  const arenaLimit = WORLD_RADIUS - 6;
-  player.group.position.x = clamp(player.group.position.x, -arenaLimit, arenaLimit);
-  player.group.position.z = clamp(player.group.position.z, -arenaLimit, arenaLimit);
-}
-
-function updateCrabGroup(owner, list, dt) {
-  const ownerPos = owner.group.position;
-  const ownerIsPlayer = owner === player;
-
-  const leashAttack = (ownerIsPlayer ? 14 * state.upgrades.leash : 13 * owner.upgrades.leash);
-  const leashReturn = (ownerIsPlayer ? 20 * state.upgrades.leash : 18 * owner.upgrades.leash);
-
-  for (let i = list.length - 1; i >= 0; i--) {
-    const c = list[i];
-
-    c.anim += dt * 8;
-    c.attackCooldown -= dt;
-    c.leapCooldown -= dt;
-    c.chargeCooldown -= dt;
-
-    c.hp = Math.min(c.maxHp, c.hp + dt * (0.9 + c.growth * 0.55) * c.regenLevel);
-
-    const pos = c.group.position;
-    const distOwner = pos.distanceTo(ownerPos);
-
-    const forceAttackPlayer = !ownerIsPlayer && owner.targetWizard === player;
-    const bestTarget = nearestTarget(ownerPos, c.team, leashAttack, forceAttackPlayer);
-
-    if (!c.target || c.target.hp <= 0 || distOwner > leashReturn) {
-      c.target = bestTarget;
-    } else if (bestTarget && bestTarget !== c.target) {
-      const currentDistFromOwner = c.target.group.position.distanceTo(ownerPos);
-      const bestDistFromOwner = bestTarget.group.position.distanceTo(ownerPos);
-      if (bestDistFromOwner + 1.4 < currentDistFromOwner) {
-        c.target = bestTarget;
-      }
-    }
-
-    let desired = new THREE.Vector3();
-
-    if (c.target && c.target.hp > 0 && distOwner <= leashReturn) {
-      const target = c.target;
-      const toTarget = target.group.position.clone().sub(pos);
-      const distTarget = toTarget.length();
-
-      const enemyIndex = list.indexOf(c);
-      const angle = enemyIndex * 1.618 + c.kills * .45;
-      const ringR = (target.radius || .7) + c.radius + 1.05;
-      const attackSpot = target.group.position.clone().add(new THREE.Vector3(Math.cos(angle) * ringR, 0, Math.sin(angle) * ringR));
-
-      desired.copy(attackSpot).sub(pos);
-
-      if (distTarget < (target.radius || .7) + c.radius + .45) {
-        desired.addScaledVector(toTarget.normalize(), -1.2);
-      }
-
-      if (distTarget < (target.radius || .7) + c.radius + .75 && c.attackCooldown <= 0) {
-        c.attackCooldown = .72 / Math.max(.65, c.growth);
-        damageUnit(target, c.damage, c);
-
-        for (const claw of c.claws) {
-          claw.clawA.rotation.y = claw.side * .9;
-          claw.clawB.rotation.y = claw.side * -.9;
-        }
-      }
-
-      const leapLevel = ownerIsPlayer ? state.upgrades.crabLeap : 1;
-      const chargeLevel = ownerIsPlayer ? state.upgrades.crabCharge : 0;
-
-      if (leapLevel > 0 && c.leapCooldown <= 0 && distTarget > 3.2 && distTarget < 7.5) {
-        c.leapCooldown = rand(2.4, 4.2);
-        desired.copy(toTarget).normalize().multiplyScalar(18);
-        createBurst(pos, c.color || 0x91ecff, 8);
-      }
-
-      if (chargeLevel > 0 && c.chargeCooldown <= 0 && distTarget > 4.5 && distTarget < 9) {
-        c.chargeCooldown = rand(3.8, 6.5);
-        desired.copy(toTarget).normalize().multiplyScalar(22);
-        c.velocity.add(desired.multiplyScalar(dt));
-        createBurst(pos, 0xffe88a, 8);
-      }
-
-    } else {
-      const idx = i;
-      const ring = 2.4 + Math.floor(idx / 8) * 1.25;
-      const angle = idx * 2.399 + performance.now() * 0.00018;
-      const followSpot = ownerPos.clone().add(new THREE.Vector3(Math.cos(angle) * ring, 0, Math.sin(angle) * ring));
-      desired.copy(followSpot).sub(pos);
-
-      if (distOwner > leashReturn) {
-        desired.copy(ownerPos).sub(pos).multiplyScalar(1.8);
-      }
-    }
-
-    const separation = new THREE.Vector3();
-    let checked = 0;
-    for (let j = Math.max(0, i - PERF.crabSeparationLimit); j < Math.min(list.length, i + PERF.crabSeparationLimit); j++) {
-      const other = list[j];
-      if (!other || other === c) continue;
-      const away = pos.clone().sub(other.group.position);
-      const d = away.length();
-      const minD = c.radius + other.radius + .32;
-
-      if (d > .001 && d < minD) {
-        separation.addScaledVector(away.normalize(), (minD - d) * 3.8);
-      }
-
-      checked++;
-      if (checked >= PERF.crabSeparationLimit) break;
-    }
-
-    const awayOwner = pos.clone().sub(ownerPos);
-    const dp = awayOwner.length();
-    if (dp > .001 && dp < (owner.radius || .85) + c.radius + .45) {
-      separation.addScaledVector(awayOwner.normalize(), ((owner.radius || .85) + c.radius + .45 - dp) * 3.5);
-    }
-
-    desired.add(separation);
-
-    if (desired.lengthSq() > .01) {
-      desired.normalize();
-      c.velocity.addScaledVector(desired, c.speed * 5.7 * dt);
-    }
-
-    c.velocity.multiplyScalar(Math.pow(.08, dt));
-
-    const maxSpeed = c.speed + c.growth * .6;
-    if (c.velocity.length() > maxSpeed) c.velocity.setLength(maxSpeed);
-
-    pos.addScaledVector(c.velocity, dt);
-    pos.y = 0;
-
-    if (c.velocity.lengthSq() > .04) {
-      c.group.rotation.y = Math.atan2(c.velocity.x, c.velocity.z);
-    }
-
-    const distFromCamera = c.group.position.distanceTo(camera.position);
-    const lowDetail = distFromCamera > PERF.lowDetailDistance;
-    if (!lowDetail || PERF.enableFarAnimations) {
-      for (const leg of c.legs) {
-        const swing = Math.sin(c.anim + leg.phase) * .32;
-        leg.root.rotation.y = swing * leg.side;
-        leg.upper.rotation.x = Math.sin(c.anim * 1.2 + leg.phase) * .18;
-      }
-
-      for (const claw of c.claws) {
-        claw.clawA.rotation.y += ((claw.side * .48) - claw.clawA.rotation.y) * dt * 8;
-        claw.clawB.rotation.y += ((claw.side * -.48) - claw.clawB.rotation.y) * dt * 8;
-      }
-    }
-
-    applyStormDamageToCrab(c, dt);
-    updateHealthBar(c, c.hp, c.maxHp);
-
-    if (c.hp <= 0 && !c.dying) {
-      list.splice(i, 1);
-      if (c.isPlayerCrab) {
-        const globalIndex = crabs.indexOf(c);
-        if (globalIndex >= 0) crabs.splice(globalIndex, 1);
-      }
-      startDeathAnimation(c, c.color || 0x35d7ff);
-    }
-  }
-}
-
-function damageUnit(unit, amount, source = null) {
-  if (!unit || unit.hp <= 0 || unit.dead || unit.dying) return;
-
-  unit.hp -= amount;
-
-  if (unit.nest) {
-    unit.lastHitBy = source;
-  }
-
-  if (unit.hp <= 0) {
-    killUnit(unit, source);
-  }
-}
-
-function killUnit(unit, source) {
-  const killerOwner = source && source.owner ? source.owner : null;
-  if (unit === player) {
-    state.hp = 0;
-    if (killerOwner) awardWizardKillCrabs(killerOwner, player.group.position);
-    return;
-  }
-
-  if (unit === playerTwo) {
-    playerTwo.hp = 0;
-    playerTwo.dead = true;
-    startDeathAnimation(playerTwo, playerTwo.color);
-    if (killerOwner) awardWizardKillCrabs(killerOwner, playerTwo.group.position);
-    return;
-  }
-
-  if (unit.nest) {
-    const idx = enemies.indexOf(unit);
-    if (idx >= 0) enemies.splice(idx, 1);
-
-    const nestSquadIndex = unit.nest.squad.indexOf(unit);
-    if (nestSquadIndex >= 0) unit.nest.squad.splice(nestSquadIndex, 1);
-
-    startDeathAnimation(unit, 0xff7777);
-    if (chance(.4) && drops.length < MAX_DROPS) {
-      const mesh = new THREE.Mesh(new THREE.SphereGeometry(.28, 8, 8), new THREE.MeshBasicMaterial({ color: 0x66f4ff }));
-      mesh.position.copy(unit.group.position); mesh.position.y = .9; scene.add(mesh);
-      drops.push({ mesh, pos: mesh.position, life: rand(25, 35), value: unit.nest ? unit.nest.tier : 1, bob: rand(0, Math.PI * 2) });
-    }
-
-    if (killerOwner === player) {
-      state.kills++;
-      state.xp += unit.xp;
-      if (source) growCrab(source);
-      checkLevelUp();
-    } else if (killerOwner && killerOwner.crabs) {
-      if (source) growCrab(source);
-      if (chance(.28)) createCrab(unit.group.position.clone(), killerOwner, killerOwner.color, {
-        armor: killerOwner.upgrades.crabArmor,
-        spikes: killerOwner.upgrades.crabSpikes,
-        regen: killerOwner.upgrades.crabRegen,
-        speed: killerOwner.upgrades.swarmSpeed
-      });
-    }
-
-    if (unit.nest.squad.length === 0 && unit.nest.rewardReady) {
-      unit.nest.rewardReady = false;
-      unit.nest.respawnTimer = unit.nest.respawnDelay;
-
-      if (killerOwner === player) {
-        const reward = unit.nest.tier === 1 ? 2 : unit.nest.tier === 2 ? 3 : 5;
-        for (let i = 0; i < reward; i++) {
-          createCrab(unit.group.position.clone().add(new THREE.Vector3(rand(-2,2),0,rand(-2,2))), player, teamColor);
-        }
-        state.xp += unit.nest.tier + 1;
-        showMessage("Alcove squad cleared! +" + reward + " crabs", 1.8);
-        checkLevelUp();
-      } else if (killerOwner && killerOwner.crabs) {
-        const reward = unit.nest.tier === 1 ? 2 : unit.nest.tier === 2 ? 3 : 5;
-        for (let i = 0; i < reward; i++) {
-          createCrab(unit.group.position.clone().add(new THREE.Vector3(rand(-2,2),0,rand(-2,2))), killerOwner, killerOwner.color, {
-            armor: killerOwner.upgrades.crabArmor,
-            spikes: killerOwner.upgrades.crabSpikes,
-            regen: killerOwner.upgrades.crabRegen,
-            speed: killerOwner.upgrades.swarmSpeed
-          });
-        }
-      }
-    }
-
-    return;
-  }
-
-  const ai = aiWizards.find(w => w === unit);
-  if (ai) {
-    ai.dead = true;
-    startDeathAnimation(ai, ai.color);
-    if (killerOwner) awardWizardKillCrabs(killerOwner, ai.group.position);
-
-    for (const c of [...ai.crabs]) {
-      c.hp = 0;
-    }
-
-    if (source && source.owner === player) {
-      state.kills++;
-      state.xp += 6;
-      if (source) growCrab(source);
-      showMessage("Rival wizard defeated!", 2);
-      checkLevelUp();
-    }
-  }
-
-  if (unit.owner && unit.owner.crabs) {
-    const arr = unit.owner.crabs;
-    const idx = arr.indexOf(unit);
-    if (idx >= 0) arr.splice(idx, 1);
-    startDeathAnimation(unit, unit.color || 0x35d7ff);
-  }
-}
-
-function awardWizardKillCrabs(killerOwner, pos) {
-  if (!killerOwner) return;
-  for (let i = 0; i < 5; i++) {
-    createCrab(pos.clone().add(new THREE.Vector3(rand(-2, 2), 0, rand(-2, 2))), killerOwner, killerOwner.color || teamColor, killerOwner.upgrades ? {
-      armor: killerOwner.upgrades.crabArmor,
-      spikes: killerOwner.upgrades.crabSpikes,
-      regen: killerOwner.upgrades.crabRegen,
-      speed: killerOwner.upgrades.swarmSpeed
-    } : {});
-  }
-}
-
-function updateNestSquads(dt) {
-  for (const nest of nests) {
-    if (nest.squad.length === 0) {
-      nest.respawnTimer -= dt;
-      if (nest.respawnTimer <= 0) {
-        spawnNestSquad(nest);
-      }
-    }
-
-    for (const e of [...nest.squad]) {
-      if (!enemies.includes(e)) continue;
-
-      e.attackCooldown -= dt;
-
-      let target = nearestTarget(e.group.position, "neutral", 14 + nest.tier * 3, true);
-
-      const distFromNest = e.group.position.distanceTo(e.leashCenter);
-
-      if (distFromNest > e.leashRadius) {
-        target = null;
-      }
-
-      const desired = new THREE.Vector3();
-
-      if (target) {
-        desired.copy(target.group.position).sub(e.group.position);
-
-        const dist = desired.length();
-        if (dist > .001) desired.normalize();
-
-        if (dist < e.radius + (target.radius || .8) + .55 && e.attackCooldown <= 0) {
-          e.attackCooldown = e.type === "brute" ? 1.15 : .85;
-          damageUnit(target, e.damage, e);
-        }
-      } else {
-        const homeAngle = nest.squad.indexOf(e) / 3 * Math.PI * 2;
-        const home = e.leashCenter.clone().add(new THREE.Vector3(Math.cos(homeAngle), 0, Math.sin(homeAngle)).multiplyScalar(nest.radius + 5));
-        desired.copy(home).sub(e.group.position);
-        if (desired.length() > .001) desired.normalize();
-      }
-
-      if (desired.lengthSq() > 0) {
-        e.velocity.addScaledVector(desired, e.speed * 4.2 * dt);
-      }
-
-      for (const other of enemies) {
-        if (other === e) continue;
-        const away = e.group.position.clone().sub(other.group.position);
-        const d = away.length();
-        const minD = e.radius + other.radius + .35;
-        if (d > .001 && d < minD) {
-          e.velocity.addScaledVector(away.normalize(), (minD - d) * 6 * dt);
-        }
-      }
-
-      e.velocity.multiplyScalar(Math.pow(.16, dt));
-      if (e.velocity.length() > e.speed) e.velocity.setLength(e.speed);
-
-      e.group.position.addScaledVector(e.velocity, dt);
-      e.group.position.y = 0;
-
-      const maxDist = e.leashRadius + 3;
-      const fromNest = e.group.position.clone().sub(e.leashCenter);
-      if (fromNest.length() > maxDist) {
-        fromNest.setLength(maxDist);
-        e.group.position.copy(e.leashCenter.clone().add(fromNest));
-      }
-
-      if (e.velocity.lengthSq() > .04) {
-        e.group.rotation.y = Math.atan2(e.velocity.x, e.velocity.z);
-      }
-
-      updateHealthBar(e, e.hp, e.maxHp);
-    }
-  }
-}
-
-function getUnitAimPoint(unit) {
-  const p = unit.group.position.clone();
-  p.y += (unit === player || aiWizards.includes(unit)) ? 2.0 : 0.8;
-  return p;
-}
-function isPositionInStorm(pos, buffer = 0) { return Math.hypot(pos.x, pos.z) > state.stormRadius - buffer; }
-function getSafePointNear(pos, inwardDistance = 18) {
-  const inward = pos.clone().multiplyScalar(-1); inward.y = 0;
-  if (inward.lengthSq() < .01) inward.set(rand(-1,1),0,rand(-1,1));
-  inward.setLength(inwardDistance);
-  inward.applyAxisAngle(new THREE.Vector3(0,1,0), rand(-.75,.75));
-  return pos.clone().add(inward);
-}
-function getAverageCrabHealth(owner) {
-  if (!owner.crabs || owner.crabs.length === 0) return 1;
-  let s = 0; for (const c of owner.crabs) s += c.hp / c.maxHp;
-  return s / owner.crabs.length;
-}
-function getArmyStrength(owner) {
-  const wiz = ((owner.hp || state.hp) / (owner.maxHp || state.maxHp)) * 28;
-  const list = owner === player ? crabs : owner.crabs;
-  const crabPower = list.reduce((a,c)=>a + (c.hp / c.maxHp) * (1 + c.damage * .05 + c.growth * .3), 0);
-  return wiz + crabPower;
-}
-function scoreObjectiveForAI(ai, type, target) {
-  const pos = type === "drop" ? target.pos : target.group.position;
-  const d = ai.group.position.distanceTo(pos);
-  let score = d;
-  if (isPositionInStorm(pos, 5)) score += 120;
-  if (isPositionInStorm(pos, 16)) score += 55;
-  const c = ai.crabs.length, hpPct = ai.hp / ai.maxHp;
-  if (type === "nest") {
-    if (!target.squad.length) return Infinity;
-    const reward = target.tier === 1 ? 2 : target.tier === 2 ? 3 : 5;
-    score -= reward * 16 * ai.personalityGrowthBias;
-    if (c < 6 && target.tier > 1) score += 40;
-    if (c < 9 && target.tier > 2) score += 60;
-  } else if (type === "drop") {
-    score -= (26 + target.value * 14) * (c < 10 ? 1.6 : 1.1);
-  } else if (type === "attack") {
-    const enemyStrength = getArmyStrength(target);
-    const selfStrength = getArmyStrength(ai);
-    score += 25 + enemyStrength - selfStrength * ai.personalityAggression;
-    if (c < 6 || hpPct < .45) score += 50;
-  }
   return score;
 }
-function findBestCombatTargetForAI(ai, range) {
-  const candidates = allCombatUnitsExcept(ai.team);
-  let best = null, bestScore = Infinity;
-  for (const u of candidates) {
-    const d = ai.group.position.distanceTo(u.group.position);
-    if (d > range || u.dead || u.dying || u.hp <= 0) continue;
-    let s = d + (u.hp / u.maxHp) * 12;
-    if (ai.mode === "attack" && (u === player || aiWizards.includes(u))) s -= 10;
-    if ((ai.mode === "retreat" || ai.mode === "stormEscape") && d > 10) s += 30;
-    if (ai.mode === "grow" && u.nest) s -= 12;
-    if (s < bestScore) { bestScore = s; best = u; }
-  } return best;
+
+function addInbox(ev){
+  ev.id = Date.now() + "_" + Math.random().toString(36).slice(2);
+  game.inbox.push(ev);
 }
 
-function updateAIWizards(dt) {
-  for (const ai of aiWizards) {
-    if (ai.dead) continue;
-
-    const distToPlayerNow = ai.group.position.distanceTo(player.group.position);
-    let updateInterval = PERF.aiFullUpdateInterval;
-    ai.detailLevel = "full";
-    if (distToPlayerNow > PERF.veryFarUpdateDistance) {
-      updateInterval = PERF.aiVeryFarUpdateInterval;
-      ai.detailLevel = "veryFar";
-    } else if (distToPlayerNow > PERF.farUpdateDistance) {
-      updateInterval = PERF.aiFarUpdateInterval;
-      ai.detailLevel = "far";
-    }
-    ai.updateTimer -= dt;
-    if (ai.updateTimer > 0) continue;
-    const simDt = updateInterval;
-    ai.updateTimer = updateInterval;
-
-    ai.thinkTimer -= simDt;
-    ai.fireCooldown -= simDt;
-
-    if (ai.thinkTimer <= 0) {
-      ai.thinkTimer = rand(1.0, 2.4);
-
-      const lowArmy = ai.crabs.length < 6, midArmy = ai.crabs.length < 10;
-      const lowHp = ai.hp / ai.maxHp < .35 || getAverageCrabHealth(ai) < .35;
-      if (isPositionInStorm(ai.group.position, 9)) ai.mode = "stormEscape";
-      else if (lowHp || getArmyStrength(ai) < ai.lastArmyStrength * .74) { ai.mode = "retreat"; ai.retreatUntil = performance.now() + rand(3500,6500); ai.safeDestination = getSafePointNear(ai.group.position, 24); }
-      else if (ai.mode === "retreat" && performance.now() < ai.retreatUntil) {}
-      else ai.mode = "grow";
-      ai.lastArmyStrength = getArmyStrength(ai);
-      if (ai.mode === "retreat" && performance.now() >= ai.retreatUntil) ai.mode = "grow";
-      ai.targetDrop = drops.filter(d => d.life > 0).sort((a,b)=>scoreObjectiveForAI(ai,"drop",a)-scoreObjectiveForAI(ai,"drop",b))[0] || null;
-      ai.targetNest = nests.filter(n=>n.squad.length).sort((a,b)=>scoreObjectiveForAI(ai,"nest",a)-scoreObjectiveForAI(ai,"nest",b))[0] || null;
-      const attackCandidate = [player, ...aiWizards.filter(w=>w!==ai && !w.dead)].sort((a,b)=>scoreObjectiveForAI(ai,"attack",a)-scoreObjectiveForAI(ai,"attack",b))[0];
-      ai.targetWizard = null;
-      if (!lowArmy && (!midArmy || chance(.4)) && attackCandidate && scoreObjectiveForAI(ai,"attack",attackCandidate) < Math.min(80, scoreObjectiveForAI(ai,"nest",ai.targetNest||{group:{position:ai.group.position},tier:1,squad:[1]}) + 6)) ai.mode = "attack", ai.targetWizard = attackCandidate;
-      if (ai.targetDrop && (lowArmy || scoreObjectiveForAI(ai,"drop",ai.targetDrop) + 12 < scoreObjectiveForAI(ai,"nest",ai.targetNest || {group:{position:ai.group.position},tier:1,squad:[1]}))) ai.mode = "harvest";
-    }
-
-    let destination = null;
-
-    if (ai.mode === "stormEscape") destination = getSafePointNear(ai.group.position, 36);
-    else if (ai.mode === "retreat") destination = ai.safeDestination || getSafePointNear(ai.group.position, 20);
-    else if (ai.mode === "attack" && ai.targetWizard && state.hp > 0) {
-      const offsetAngle = aiWizards.indexOf(ai) * .8;
-      destination = player.group.position.clone().add(new THREE.Vector3(Math.cos(offsetAngle) * 9, 0, Math.sin(offsetAngle) * 9));
-    } else if (ai.mode === "harvest" && ai.targetDrop) {
-      destination = ai.targetDrop.pos.clone();
-    } else if (ai.targetNest) {
-      destination = ai.targetNest.group.position.clone().add(new THREE.Vector3(rand(-4,4), 0, rand(-4,4)));
-    } else {
-      const safeR = Math.max(10, state.stormRadius - 12);
-      const a = rand(0, Math.PI * 2);
-      destination = new THREE.Vector3(Math.cos(a) * safeR * rand(.3,.9), 0, Math.sin(a) * safeR * rand(.3,.9));
-    }
-
-    const toDest = destination.clone().sub(ai.group.position);
-    toDest.y = 0;
-    const dist = toDest.length();
-
-    if (dist > 2) {
-      toDest.normalize();
-
-      const targetRot = Math.atan2(toDest.x, toDest.z);
-      let diff = targetRot - ai.group.rotation.y;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      ai.group.rotation.y += clamp(diff, -ai.turnSpeed * simDt, ai.turnSpeed * simDt);
-
-      const lowHealthBoost = ai.hp / ai.maxHp <= 0.25 ? 1.1 : 1;
-      ai.group.position.addScaledVector(toDest, ai.speed * lowHealthBoost * simDt);
-    }
-
-    const safeClamp = WORLD_RADIUS - 8;
-    ai.group.position.x = clamp(ai.group.position.x, -safeClamp, safeClamp);
-    ai.group.position.z = clamp(ai.group.position.z, -safeClamp, safeClamp);
-
-    const fireTarget = findBestCombatTargetForAI(ai, ai.mode === "retreat" || ai.mode === "stormEscape" ? 10 : 18);
-    if (fireTarget && ai.fireCooldown <= 0) {
-      ai.fireCooldown = rand(1.3, 2.4);
-      createFireball(ai, fireTarget, ai.color);
-    }
-
-    updateCrabGroup(ai, ai.crabs, simDt);
-    applyStormDamageToWizard(ai, simDt);
-    updateHealthBar(ai, ai.hp, ai.maxHp);
-
-    if (ai.hp <= 0) {
-      killUnit(ai, null);
-    }
-
-    if (chance(.0009 * simDt * 60) && ai.crabs.length < 20) {
-      createCrab(ai.group.position.clone().add(new THREE.Vector3(rand(-2,2),0,rand(-2,2))), ai, ai.color, {
-        armor: ai.upgrades.crabArmor,
-        spikes: ai.upgrades.crabSpikes,
-        regen: ai.upgrades.crabRegen,
-        speed: ai.upgrades.swarmSpeed
-      });
-    }
-  }
+function makeEvent(type){
+  const ev = eventFactory(type);
+  return ev;
 }
 
-function updateFireballs(dt) {
-  state.fireCooldown -= dt;
+function eventFactory(type){
+  const higher = higherHouse();
+  const equal = equalOrRivalHouse();
+  const lower = lowerHouse();
+  const ally = pick(game.alliances.length ? game.alliances : ["Thorne"]);
 
-  const target = nearestEnemyForPlayerFire(player.group.position, 28);
-  if (target && state.fireCooldown <= 0 && !state.upgradeOpen) {
-    state.fireCooldown = Math.max(.42, 1.25 / state.upgrades.fireRate);
-    createFireball(player, target, 0xff6a1f);
-  }
+  const events = {
+    welcomeCouncil:{
+      title:"First Council of Your Rule",
+      from:"Your Estate Council",
+      senderType:"Military",
+      priority:20,
+      deadline:5,
+      tags:["Council","House"],
+      body:"Your council gathers beneath the faded banners of House au Varon. You must decide what tone your rule will take.",
+      choices:[
+        {
+          text:"Promise order above all.",
+          hint:"Grays and traditional Golds approve.",
+          effects:{fear:5,trust:-2,military:{graySecurity:4},colors:{Gray:5,Red:-2},prestige:2},
+          log:"You promise order. Your Grays stand taller."
+        },
+        {
+          text:"Promise profitable recovery.",
+          hint:"Silvers and merchants approve.",
+          effects:{baseIncome:60,colors:{Silver:5,Orange:3},silverInfluence:3,trust:-1},
+          log:"You promise recovery. The Silvers hear the language of repayment."
+        },
+        {
+          text:"Promise justice and restraint.",
+          hint:"Lower Colors trust you slightly more. Some Golds watch closer.",
+          effects:{trust:7,honor:5,colors:{Red:5,Brown:5},reformSuspicion:3,prestige:-1},
+          log:"You promise justice. Some in the room look inspired. Others look alarmed."
+        }
+      ],
+      expire:{
+        effects:{prestige:-2,trust:-2},
+        log:"You delay your first council. Even your own people wonder what kind of ruler you are."
+      }
+    },
 
-  for (let i = fireballs.length - 1; i >= 0; i--) {
-    const f = fireballs[i];
+    taxPetition:{
+      title:"Brown District Requests Tax Relief",
+      from:"Brown Labor Delegates",
+      senderType:"Color",
+      priority:12,
+      deadline:4,
+      tags:["Brown","Taxes","Trust"],
+      body:"Brown workers request relief from rising food costs and estate levies. Ignoring them will not embarrass you in court, but it will be remembered below stairs.",
+      choices:[
+        {
+          text:"Grant temporary relief.",
+          hint:"Costs money, gains internal trust.",
+          effects:{treasury:-220,trust:9,stability:4,colors:{Brown:12,Red:4,Silver:-2},rebelStrength:-3},
+          log:"You grant temporary relief. The Browns whisper your name with cautious gratitude."
+        },
+        {
+          text:"Deny the petition.",
+          hint:"No immediate cost, but resentment grows.",
+          effects:{trust:-4,colors:{Brown:-7,Red:-2},rebelStrength:2},
+          log:"You deny the petition. The estate books remain clean."
+        },
+        {
+          text:"Offer relief only to loyal districts.",
+          hint:"Divides the lower Colors.",
+          effects:{treasury:-120,trust:1,fear:3,colors:{Brown:3,Red:-3},rebelStrength:2},
+          log:"Relief is granted only where loyalty is proven. Gratitude and bitterness spread together."
+        }
+      ],
+      expire:{
+        effects:{trust:-6,colors:{Brown:-8},rebelStrength:4,hidden:{ignoredLowColors:1}},
+        log:"The Brown petition goes unanswered. Their silence grows heavier."
+      }
+    },
 
-    f.life -= dt;
-    f.lastPosition.copy(f.mesh.position);
-    if (f.target && !f.target.dead && f.target.hp > 0) {
-      const desired = getUnitAimPoint(f.target).sub(f.mesh.position).normalize().multiplyScalar(f.speed);
-      f.velocity.lerp(desired, clamp(f.turnRate * dt, 0, 1));
-    }
-    f.mesh.position.addScaledVector(f.velocity, dt);
+    mineStrike:{
+      title:"Red Crews Refuse the Deep Shaft",
+      from:"Mine Overseer Dama",
+      senderType:"Color",
+      priority:25,
+      deadline:3,
+      tags:["Red","Income","Stability"],
+      body:"Red crews refuse the lower tunnels, claiming the supports are failing. Your overseer demands firmness before discipline spreads.",
+      choices:[
+        {
+          text:"Force them back to work.",
+          hint:"Fast income, dangerous resentment.",
+          effects:{treasury:260,stability:3,fear:7,trust:-8,colors:{Red:-12,Gray:4},hidden:{mineSafetyNeglected:1},rebelStrength:5},
+          log:"You force the Reds back into the shaft. Production resumes under rifles."
+        },
+        {
+          text:"Pay Orange engineers to inspect it.",
+          hint:"Costs money, prevents worse outcomes.",
+          cost:260,
+          effects:{treasury:-260,trust:8,stability:5,colors:{Red:10,Orange:6,Gray:-2},hidden:{redHope:1,mineSafetyNeglected:-1},rebelStrength:-5},
+          log:"Orange engineers inspect the shaft. The Reds were right."
+        },
+        {
+          text:"Execute the strike leaders.",
+          hint:"Fear now, hatred later.",
+          effects:{prestige:3,fear:18,trust:-18,stability:-4,colors:{Red:-24,Brown:-8,Gray:6},rebelStrength:14,houses:{Veyra:{opinion:6,respect:4},Marros:{opinion:-12}}},
+          log:"The strike leaders hang above the mine gate."
+        }
+      ],
+      expire:{
+        effects:{treasury:-450,stability:-10,colors:{Red:-6,Gray:-3},rebelStrength:7,hidden:{ignoredLowColors:1}},
+        log:"You fail to answer the mine crisis. Production halts and anger spreads."
+      }
+    },
 
-    let hit = null;
-    let hitDist = Infinity;
+    silverDebt:{
+      title:"Silver Payment Due",
+      from:"Avarus ag Sylan",
+      senderType:"Creditor",
+      priority:40,
+      deadline:2,
+      tags:["Silver","Debt"],
+      body:"Your Silver creditor demands payment. Credit is oxygen in Gold society. Running out is socially fatal.",
+      choices:[
+        {
+          text:"Pay 400 now.",
+          hint:"Expensive but clean.",
+          cost:400,
+          effects:{treasury:-400,debt:-400,honor:4,colors:{Silver:5},silverInfluence:-3},
+          log:"You pay the Silver on time. His disappointment is almost visible."
+        },
+        {
+          text:"Accept a larger refinancing loan.",
+          hint:"Gain cash now, lose freedom later.",
+          effects:{treasury:1400,debt:1900,silverInfluence:14,prestige:-2,colors:{Silver:7}},
+          log:"You refinance. Your treasury swells. So do your chains."
+        },
+        {
+          text:"Threaten him using Grays.",
+          hint:"Requires strong Gray Security.",
+          condition:()=>game.military.graySecurity>=45,
+          effects:{debt:-200,fear:5,honor:-8,colors:{Silver:-14,Gray:3},scandalHeat:6},
+          log:"Your Grays make the Silver renegotiate. He smiles like a man memorizing a future murder."
+        }
+      ],
+      expire:{
+        effects:{debt:350,prestige:-5,colors:{Silver:-8},silverInfluence:8,scandalHeat:4},
+        log:"You miss the Silver payment. Court learns before lunch."
+      }
+    },
 
-    const candidates = allCombatUnitsExcept(f.team);
+    dinnerInvite:{
+      title:`Invitation from House ${higher}`,
+      from:`House ${higher}`,
+      senderType:"Higher Gold",
+      house:higher,
+      priority:35,
+      deadline:3,
+      tags:["Gold","Diplomacy"],
+      body:`House ${higher} invites you to a private dinner. They outrank you. Declining is possible. Ignoring them is not wise.`,
+      choices:[
+        {
+          text:"Attend with proper gifts.",
+          hint:"Costly but respectful.",
+          cost:260,
+          effects:{treasury:-260,prestige:5,houses:{[higher]:{opinion:8,respect:4}},colors:{Pink:2}},
+          log:`You attend House ${higher}'s dinner bearing gifts and careful words.`
+        },
+        {
+          text:"Attend with hidden spies.",
+          hint:"Requires Intelligence 25+.",
+          condition:()=>game.military.intelligence>=25,
+          effects:{treasury:-140,prestige:2,houses:{[higher]:{opinion:2,fear:3}},colors:{Pink:4},scandalHeat:2},
+          revealHouse:higher,
+          log:`You attend House ${higher}'s dinner with hidden ears among the servants.`
+        },
+        {
+          text:"Decline politely.",
+          hint:"Minor disrespect.",
+          effects:{prestige:-1,houses:{[higher]:{opinion:-5,respect:-2}}},
+          log:`You decline House ${higher}'s invitation with careful excuses.`
+        }
+      ],
+      expire:{
+        effects:{prestige:-4,houses:{[higher]:{opinion:-10,rivalry:5}},hidden:{ignoredHighGolds:1}},
+        log:`You ignore House ${higher}'s invitation. Their silence becomes colder than insult.`
+      }
+    },
 
-    for (const u of candidates) {
-      if (u === f.lastHit || u.hp <= 0) continue;
-      const d = distancePointToSegment(getUnitAimPoint(u), f.lastPosition, f.mesh.position);
-      if (d < (u.radius || .7) + .55 && d < hitDist) {
-        hit = u;
-        hitDist = d;
+    tradeOffer:{
+      title:`Trade Offer from House ${equal}`,
+      from:`House ${equal}`,
+      senderType:"Equal Gold",
+      house:equal,
+      priority:25,
+      deadline:4,
+      tags:["Trade","Gold","Income"],
+      body:`House ${equal} proposes a limited trade arrangement. It could improve income, but trade creates dependence and political expectations.`,
+      choices:[
+        {
+          text:"Accept the trade deal.",
+          hint:"Income rises, relationship improves.",
+          effects:{baseIncome:90,prestige:2,houses:{[equal]:{opinion:7,respect:2}},colors:{Silver:2}},
+          tradeHouse:equal,
+          log:`You sign a trade arrangement with House ${equal}. Coin begins to move.`
+        },
+        {
+          text:"Demand better terms.",
+          hint:"Works better with prestige.",
+          condition:()=>game.prestige>=35,
+          effects:{baseIncome:130,houses:{[equal]:{opinion:-2,respect:5}},prestige:3},
+          tradeHouse:equal,
+          log:`You demand better terms from House ${equal}, and they accept through clenched teeth.`
+        },
+        {
+          text:"Reject it.",
+          hint:"Avoid entanglement.",
+          effects:{houses:{[equal]:{opinion:-3}}},
+          log:`You reject House ${equal}'s trade offer.`
+        }
+      ],
+      expire:{
+        effects:{houses:{[equal]:{opinion:-4}},prestige:-1},
+        log:`House ${equal}'s trade offer expires unanswered. They mark the discourtesy.`
+      }
+    },
+
+    allianceRequest:{
+      title:`Alliance Feelers from House ${lower}`,
+      from:`House ${lower}`,
+      senderType:"Lower House",
+      house:lower,
+      priority:18,
+      deadline:5,
+      tags:["Alliance","Gold"],
+      body:`House ${lower}, weaker than you, sends cautious alliance feelers. Accepting helps your network. Ignoring them matters less socially, but lesser houses remember humiliation.`,
+      choices:[
+        {
+          text:"Accept alliance discussions.",
+          hint:"Gain ally, but inherit their enemies.",
+          effects:{prestige:3,influence:5,houses:{[lower]:{opinion:14,respect:5}}},
+          allyHouse:lower,
+          log:`You accept alliance discussions with House ${lower}. Their banners lean toward yours.`
+        },
+        {
+          text:"Demand tribute before alliance.",
+          hint:"Profitable, arrogant.",
+          effects:{treasury:300,prestige:2,houses:{[lower]:{opinion:-5,fear:6,respect:2}}},
+          log:`You demand tribute from House ${lower}. They pay, but the alliance cools.`
+        },
+        {
+          text:"Reject them.",
+          hint:"No entanglement.",
+          effects:{houses:{[lower]:{opinion:-8,rivalry:3}}},
+          log:`You reject House ${lower}'s alliance feelers.`
+        }
+      ],
+      expire:{
+        effects:{houses:{[lower]:{opinion:-6,rivalry:2}},hidden:{ignoredHighGolds:0}},
+        log:`House ${lower}'s alliance message goes unanswered. They lack power to punish you now, but they remember.`
+      }
+    },
+
+    borderDispute:{
+      title:`Border Pressure from House ${equal}`,
+      from:`House ${equal}`,
+      senderType:"Equal Gold",
+      house:equal,
+      priority:42,
+      deadline:3,
+      tags:["Military","Gold","Border"],
+      body:`House ${equal} moves troops near a disputed station. Your response will signal whether you are prey or peer.`,
+      choices:[
+        {
+          text:"Send diplomats.",
+          hint:"Requires Prestige or Honor.",
+          condition:()=>game.prestige>=35 || game.honor>=55,
+          effects:{prestige:2,houses:{[equal]:{opinion:2,rivalry:-4}},stability:2},
+          log:`Your diplomats cool the border dispute with House ${equal}.`
+        },
+        {
+          text:"Move ships into orbit.",
+          hint:"Requires Fleet Power 25+.",
+          condition:()=>game.military.fleetPower>=25,
+          effects:{prestige:6,houses:{[equal]:{fear:8,respect:5,opinion:-5}}},
+          log:`Your ships burn above the disputed station. House ${equal} hesitates.`
+        },
+        {
+          text:"Deploy Grays to the border.",
+          hint:"Useful, but less prestigious.",
+          effects:{stability:4,prestige:-1,houses:{[equal]:{fear:3,opinion:-3}}},
+          log:`Your Grays fortify the station. It holds, but the message is provincial.`
+        },
+        {
+          text:"Secretly sabotage their supply line.",
+          hint:"Requires Intelligence 35+.",
+          condition:()=>game.military.intelligence>=35,
+          effects:{prestige:2,honor:-5,houses:{[equal]:{opinion:-10,rivalry:8,fear:5}},scandalHeat:4},
+          log:`House ${equal}'s supplies vanish into smoke and rumor.`
+        }
+      ],
+      expire:{
+        effects:{treasury:-500,prestige:-7,houses:{[equal]:{rivalry:8,respect:-5}},stability:-5},
+        log:`You fail to respond to House ${equal}'s border pressure. They take the station.`
+      }
+    },
+
+    grayPay:{
+      title:"Gray Officers Demand Better Pay",
+      from:"Commander Orlan",
+      senderType:"Military",
+      priority:30,
+      deadline:3,
+      tags:["Gray","Security"],
+      body:"Gray officers complain of rising danger and stagnant pay. Underpaid Grays become bribable Grays.",
+      choices:[
+        {
+          text:"Increase Gray pay.",
+          cost:280,
+          hint:"Costs money but improves security.",
+          effects:{treasury:-280,colors:{Gray:10},military:{graySecurity:5,officerQuality:4},hidden:{unpaidGrays:-1}},
+          log:"You raise Gray pay. Discipline sharpens."
+        },
+        {
+          text:"Promise future bonuses.",
+          hint:"Cheap now, riskier later.",
+          effects:{colors:{Gray:3},hidden:{unpaidGrays:1}},
+          log:"You promise future Gray bonuses. The officers accept, but count the months."
+        },
+        {
+          text:"Replace complainers with loyalists.",
+          hint:"Fear, but lower quality.",
+          effects:{fear:5,colors:{Gray:-5},military:{officerQuality:-6,graySecurity:2},honor:-3},
+          log:"You replace loud Gray officers with quiet loyalists."
+        }
+      ],
+      expire:{
+        effects:{colors:{Gray:-8},military:{graySecurity:-4,officerQuality:-3},hidden:{unpaidGrays:2}},
+        log:"You ignore Gray pay complaints. Bribery becomes easier to hide."
+      }
+    },
+
+    riot:{
+      title:"Riot in the Lower District",
+      from:"Gray Commander Orlan",
+      senderType:"Military",
+      priority:55,
+      deadline:2,
+      tags:["Riot","Red","Brown"],
+      body:"A food riot breaks out in the lower district. Grays await orders.",
+      choices:[
+        {
+          text:"Authorize full Gray crackdown.",
+          hint:"Fast order, lasting resentment.",
+          effects:{stability:10,fear:12,trust:-12,colors:{Gray:6,Red:-12,Brown:-8},rebelStrength:8},
+          log:"The Grays end the riot under shields and boots."
+        },
+        {
+          text:"Send food and negotiate.",
+          cost:350,
+          hint:"Expensive but stabilizing.",
+          effects:{treasury:-350,stability:6,trust:10,colors:{Red:8,Brown:8,Gray:-3},rebelStrength:-5},
+          log:"Food carts arrive before rifles. The riot breaks into lines rather than flames."
+        },
+        {
+          text:"Use spies to arrest organizers.",
+          hint:"Requires Intelligence 35+.",
+          condition:()=>game.military.intelligence>=35,
+          effects:{stability:8,fear:4,trust:-2,colors:{Pink:4,Gray:2},rebelStrength:-7},
+          log:"The riot loses its leaders overnight."
+        }
+      ],
+      expire:{
+        effects:{stability:-16,trust:-8,colors:{Red:-8,Brown:-8,Gray:-4},rebelStrength:12,hidden:{ignoredLowColors:1}},
+        log:"The riot spreads before you answer. Fires stain the lower district."
+      }
+    },
+
+    scandal:{
+      title:"Whispers of a Family Scandal",
+      from:"Pink Informant",
+      senderType:"Color",
+      priority:30,
+      deadline:4,
+      tags:["Pink","Scandal"],
+      body:"A Pink claims a rival has evidence of your sibling's disgrace at a private salon.",
+      choices:[
+        {
+          text:"Pay to bury it.",
+          cost:300,
+          hint:"Clean and expensive.",
+          effects:{treasury:-300,scandalHeat:-10,colors:{Pink:6},prestige:1},
+          log:"The scandal dies in silk."
+        },
+        {
+          text:"Blackmail the blackmailer.",
+          hint:"Requires Intelligence 30+.",
+          condition:()=>game.military.intelligence>=30,
+          effects:{scandalHeat:-8,prestige:3,fear:4,colors:{Pink:4},honor:-3},
+          log:"Your spies return with uglier secrets."
+        },
+        {
+          text:"Confess publicly first.",
+          hint:"Embarrassing but honorable.",
+          effects:{prestige:-4,honor:8,trust:3,scandalHeat:-12,houses:{Marros:{opinion:4},Cindral:{opinion:-3}}},
+          log:"You confess first. The court laughs less than expected."
+        }
+      ],
+      expire:{
+        effects:{prestige:-9,scandalHeat:10,houses:{Cindral:{opinion:-6},Bellor:{respect:-3}}},
+        log:"The scandal blooms in court."
+      }
+    },
+
+    allyDemand:{
+      title:`Ally Request from House ${ally}`,
+      from:`House ${ally}`,
+      senderType:"Ally",
+      house:ally,
+      priority:52,
+      deadline:3,
+      tags:["Alliance","Obligation"],
+      body:`Your ally House ${ally} requests support in a dispute. Alliances create power, but they also create obligations.`,
+      choices:[
+        {
+          text:"Send public support.",
+          hint:"Strengthens alliance, angers their rivals.",
+          effects:{prestige:4,influence:4,houses:{[ally]:{opinion:10,respect:4}},treasury:-150},
+          log:`You publicly support House ${ally}. Your alliance strengthens.`
+        },
+        {
+          text:"Send quiet funds only.",
+          cost:250,
+          hint:"Helps without full exposure.",
+          effects:{treasury:-250,houses:{[ally]:{opinion:6}},influence:2},
+          log:`You quietly fund House ${ally}. They notice the restraint.`
+        },
+        {
+          text:"Refuse involvement.",
+          hint:"Avoids risk, weakens alliance.",
+          effects:{houses:{[ally]:{opinion:-10,respect:-3}},influence:-2},
+          log:`You refuse House ${ally}'s request. Alliances dislike empty hands.`
+        }
+      ],
+      expire:{
+        effects:{houses:{[ally]:{opinion:-12,respect:-5}},influence:-4},
+        log:`You ignore your ally House ${ally}. Trust cracks audibly.`
+      }
+    },
+
+    allianceConflict:{
+      title:"Two Allies Demand Opposite Loyalties",
+      from:"Alliance Network",
+      senderType:"Ally",
+      priority:65,
+      deadline:2,
+      tags:["Alliance","Crisis"],
+      body:"Two allied houses are now at odds. Both expect your support. Neutrality may preserve peace, or offend both.",
+      choices:[
+        {
+          text:"Back the stronger ally.",
+          hint:"Gain protection, anger the weaker ally.",
+          effects:{prestige:3,influence:2,hidden:{allianceTension:2}},
+          special:"sideStrong",
+          log:"You back the stronger ally. The weaker ally learns where they stand."
+        },
+        {
+          text:"Back the weaker ally.",
+          hint:"Honorable, but risky.",
+          effects:{honor:6,prestige:2,hidden:{allianceTension:1}},
+          special:"sideWeak",
+          log:"You back the weaker ally. Court calls it noble. Cynics call it foolish."
+        },
+        {
+          text:"Refuse to choose.",
+          hint:"Avoids immediate war, offends both.",
+          effects:{honor:-2,influence:-4,hidden:{allianceTension:3}},
+          log:"You refuse to choose. Both allies hear cowardice in the word balance."
+        },
+        {
+          text:"Host arbitration at your court.",
+          cost:400,
+          hint:"Expensive, but can raise prestige.",
+          effects:{treasury:-400,prestige:7,influence:5,scandalHeat:-2},
+          log:"You host arbitration. The feast is tense, but your court becomes the room where conflicts bend."
+        }
+      ],
+      expire:{
+        effects:{influence:-7,prestige:-3,hidden:{allianceTension:3}},
+        log:"You ignore the alliance crisis. Both sides assume betrayal."
+      }
+    },
+
+    warDemand:{
+      title:"War Council Requests Orders",
+      from:"War Council",
+      senderType:"Military",
+      priority:70,
+      deadline:2,
+      tags:["War","Military"],
+      body:"Your active war demands direction. Supplies, ships, and soldiers require decisions before the enemy acts.",
+      choices:[
+        {
+          text:"Commit fleet pressure.",
+          hint:"Requires Fleet Power 25+.",
+          condition:()=>game.military.fleetPower>=25,
+          effects:{treasury:-250,prestige:4,military:{supply:-4},fear:3},
+          log:"Your fleet pressures enemy routes. The war shifts upward into orbit."
+        },
+        {
+          text:"Commit Gray occupation forces.",
+          hint:"Improves ground control, weakens internal order.",
+          effects:{treasury:-180,stability:-3,fear:4,military:{graySecurity:-2,supply:-3}},
+          log:"Your Grays march outward. The estate feels thinner behind them."
+        },
+        {
+          text:"Seek negotiated settlement.",
+          hint:"Works better with honor or prestige.",
+          condition:()=>game.honor>=50 || game.prestige>=45,
+          effects:{prestige:2,honor:3},
+          special:"endOneWar",
+          log:"You seek settlement. The war may end without glory, but also without ruin."
+        }
+      ],
+      expire:{
+        effects:{treasury:-500,prestige:-5,military:{supply:-8},stability:-5},
+        log:"Your war council receives no answer. The enemy acts first."
+      }
+    },
+
+    warRaid:{
+      title:"Enemy Raid on Trade Route",
+      from:"Blue Navigation Office",
+      senderType:"Military",
+      priority:60,
+      deadline:2,
+      tags:["War","Fleet","Trade"],
+      body:"Enemy-aligned raiders strike a trade route. Ships can intercept, but only if you commit them quickly.",
+      choices:[
+        {
+          text:"Send fleet interceptors.",
+          hint:"Requires Fleet Power 20+.",
+          condition:()=>game.military.fleetPower>=20,
+          effects:{treasury:-140,prestige:3,military:{supply:-2},colors:{Blue:4}},
+          log:"Your ships intercept the raiders before they escape."
+        },
+        {
+          text:"Hire private escorts.",
+          cost:360,
+          hint:"Expensive but safe.",
+          effects:{treasury:-360,stability:3,colors:{Silver:2}},
+          log:"Private escorts secure the route."
+        },
+        {
+          text:"Let the route burn.",
+          hint:"Save money, lose income.",
+          effects:{baseIncome:-60,prestige:-4,colors:{Silver:-4,Blue:-3}},
+          log:"The trade route burns. Merchants begin pricing your weakness."
+        }
+      ],
+      expire:{
+        effects:{baseIncome:-80,treasury:-260,prestige:-5},
+        log:"You ignore the raid. Wreckage drifts along the trade lane."
+      }
+    },
+
+    minorHousePetition:{
+      title:`Petition from Lesser House ${lower}`,
+      from:`House ${lower}`,
+      senderType:"Lower House",
+      house:lower,
+      priority:15,
+      deadline:5,
+      tags:["Lower House","Influence"],
+      body:`House ${lower} asks for recognition in a minor legal dispute. You are now important enough that lesser houses seek your signature.`,
+      choices:[
+        {
+          text:"Support them publicly.",
+          hint:"Gain influence among lesser houses.",
+          effects:{influence:5,prestige:2,houses:{[lower]:{opinion:10,respect:5}}},
+          log:`You support House ${lower}. Smaller houses begin watching your court.`
+        },
+        {
+          text:"Sell your support.",
+          hint:"Profitable, cynical.",
+          effects:{treasury:350,honor:-4,houses:{[lower]:{opinion:2,fear:3}}},
+          log:`You sell support to House ${lower}. They pay, but understand you.`
+        },
+        {
+          text:"Ignore their small problem.",
+          hint:"Minimal short-term cost.",
+          effects:{houses:{[lower]:{opinion:-4}}},
+          log:`You dismiss House ${lower}'s problem as beneath you.`
+        }
+      ],
+      expire:{
+        effects:{houses:{[lower]:{opinion:-5}},influence:-1},
+        log:`House ${lower}'s petition expires. Minor houses remember major slights.`
+      }
+    },
+
+    senateRequest:{
+      title:"Senate Faction Requests Your Position",
+      from:"Gold Senate Bloc",
+      senderType:"Higher Gold",
+      priority:55,
+      deadline:3,
+      tags:["Senate","Prestige","Influence"],
+      body:"A Senate faction requests your public position on resource taxation. Your answer will shape your image among Golds, Silvers, and lower Colors.",
+      choices:[
+        {
+          text:"Support harsher resource levies.",
+          hint:"Silvers and hardliners approve.",
+          effects:{prestige:4,influence:3,trust:-5,colors:{Silver:5,Red:-5},houses:{Veyra:{opinion:4},Marros:{opinion:-6}}},
+          log:"You support harsher resource levies. Hardliners applaud."
+        },
+        {
+          text:"Support controlled relief.",
+          hint:"Reformist, but suspicious.",
+          effects:{trust:6,honor:4,reformSuspicion:5,houses:{Marros:{opinion:6},Veyra:{opinion:-5}},colors:{Red:5,Brown:3}},
+          log:"You support controlled relief. Reformists praise your restraint. Traditionalists take notes."
+        },
+        {
+          text:"Avoid a firm position.",
+          hint:"Safe but unimpressive.",
+          effects:{prestige:-2,influence:-2},
+          log:"You avoid a firm Senate position. No one is offended. No one is impressed."
+        }
+      ],
+      expire:{
+        effects:{prestige:-5,influence:-4,houses:{Veyra:{opinion:-3},Cindral:{opinion:-3},Marros:{opinion:-3}}},
+        log:"You ignore the Senate request. At high levels, silence becomes weakness."
       }
     }
+  };
 
-    if (hit) {
-      explodeFireball(f, hit);
+  return clone(events[type]);
+}
 
-      if (f.bounces > 0) {
-        f.bounces--;
-        f.lastHit = hit;
+function higherHouse(){
+  const candidates = Object.keys(game.houses).filter(h=>game.houses[h].tier > game.rank);
+  return candidates.length ? pick(candidates) : pick(Object.keys(game.houses));
+}
 
-        const next = nearestTarget(hit.group.position, f.team, 18);
-        if (next && next !== hit) {
-          const dir = next.group.position.clone().sub(f.mesh.position);
-          dir.y = .18;
-          dir.normalize();
-          f.velocity.copy(dir.multiplyScalar(18));
-          f.life = 1.4;
-          continue;
+function equalOrRivalHouse(){
+  const candidates = Object.keys(game.houses).filter(h=>game.houses[h].tier >= Math.max(1,game.rank-1) && !game.alliances.includes(h));
+  return candidates.length ? pick(candidates) : pick(Object.keys(game.houses));
+}
+
+function lowerHouse(){
+  const candidates = Object.keys(game.houses).filter(h=>game.houses[h].tier <= game.rank && !game.alliances.includes(h));
+  return candidates.length ? pick(candidates) : pick(Object.keys(game.houses));
+}
+
+function applyEffects(e){
+  if(!e) return;
+
+  for(const [k,v] of Object.entries(e)){
+    if(k==="colors"){
+      for(const [c,x] of Object.entries(v)){
+        game.colors[c] = clamp((game.colors[c] ?? 50) + x);
+      }
+    } else if(k==="military"){
+      for(const [m,x] of Object.entries(v)){
+        game.military[m] = clamp((game.military[m] ?? 0) + x);
+      }
+    } else if(k==="houses"){
+      for(const [h,obj] of Object.entries(v)){
+        if(!game.houses[h]) continue;
+        for(const [stat,x] of Object.entries(obj)){
+          game.houses[h][stat] = clamp((game.houses[h][stat] ?? 0) + x,0,100);
         }
       }
-
-      scene.remove(f.mesh);
-      fireballs.splice(i, 1);
-      continue;
-    }
-
-    if (f.life <= 0 || (f.target && f.mesh.position.distanceTo(getUnitAimPoint(f.target)) < f.hitRadius + 1.1)) {
-      explodeFireball(f, f.target || null);
-      scene.remove(f.mesh);
-      fireballs.splice(i, 1);
+    } else if(k==="hidden"){
+      for(const [h,x] of Object.entries(v)){
+        game.hidden[h] = (game.hidden[h] ?? 0) + x;
+      }
+    } else if(k==="treasury"){
+      game.treasury += v;
+    } else if(k==="debt"){
+      game.debt = Math.max(0, game.debt + v);
+    } else if(k==="baseIncome"){
+      game.baseIncome += v;
+    } else if(k in game){
+      if(typeof game[k] === "number"){
+        if(["prestige","influence","stability","fear","trust","honor","rebelStrength","scandalHeat","silverInfluence","reformSuspicion"].includes(k)){
+          game[k] = clamp(game[k] + v);
+        } else {
+          game[k] += v;
+        }
+      }
     }
   }
 }
 
-function explodeFireball(f, directHit) {
-  const p = f.mesh.position.clone();
-  createBurst(p, f.owner === player ? 0xff8a25 : f.owner.color, 18);
-  if (explosions.length < 28) {
-    const ring = new THREE.Mesh(new THREE.RingGeometry(.7, 1.3, 20), new THREE.MeshBasicMaterial({ color: 0xffaa55, transparent: true, opacity: .75, side: THREE.DoubleSide }));
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.copy(p); ring.position.y += .1; scene.add(ring);
-    explosions.push({ mesh: ring, life: .34, maxLife: .34, scale: f.radius * .7 });
-  }
-
-  const candidates = allCombatUnitsExcept(f.team);
-
-  for (const u of candidates) {
-    const d = u.group.position.distanceTo(p);
-    if (d < f.radius) {
-      const falloff = 1 - d / f.radius;
-      damageUnit(u, f.damage * (.55 + falloff * .65), f);
+function effectText(e){
+  if(!e) return "";
+  let out = [];
+  for(const [k,v] of Object.entries(e)){
+    if(k==="colors"){
+      Object.entries(v).forEach(([c,x])=>out.push(`${c} ${x>=0?"+":""}${x}`));
+    } else if(k==="military"){
+      Object.entries(v).forEach(([m,x])=>out.push(`${militaryName(m)} ${x>=0?"+":""}${x}`));
+    } else if(k==="houses"){
+      Object.entries(v).forEach(([h,obj])=>{
+        Object.entries(obj).forEach(([s,x])=>out.push(`${h} ${s} ${x>=0?"+":""}${x}`));
+      });
+    } else if(k==="hidden"){
+      // hidden effects intentionally not shown
+    } else {
+      out.push(`${pretty(k)} ${v>=0?"+":""}${v}`);
     }
   }
-
-  if (directHit && directHit.hp > 0) {
-    damageUnit(directHit, f.damage * .5, f);
-  }
+  return out.join(", ");
 }
 
-function updateStorm(dt) {
-  state.stormTime += dt;
+function chooseEvent(id,index){
+  const ev = game.inbox.find(x=>x.id===id);
+  if(!ev) return;
+  const ch = ev.choices[index];
 
-  const t = clamp(state.stormTime / STORM_SHRINK_SECONDS, 0, 1);
-  const eased = t * t * (3 - 2 * t);
-  state.stormRadius = STORM_START_RADIUS + (STORM_END_RADIUS - STORM_START_RADIUS) * eased;
-
-  state.stormVisualTimer = (state.stormVisualTimer || 0) - dt;
-  if (state.stormVisualTimer <= 0) {
-    state.stormVisualTimer = 1.0;
-    updateStormVisual();
+  if(ch.condition && !ch.condition()){
+    alert("Requirement not met.");
+    return;
+  }
+  if(ch.cost && game.treasury < ch.cost){
+    alert("Not enough treasury.");
+    return;
   }
 
-  const playerDist = Math.hypot(player.group.position.x, player.group.position.z);
-  const inStorm = playerDist > state.stormRadius;
+  applyEffects(ch.effects);
 
-  stormWarning.style.display = inStorm ? "block" : "none";
-  player.arrow.visible = inStorm;
+  if(ch.revealHouse){
+    game.knownIntel[ch.revealHouse] = true;
+    game.houses[ch.revealHouse].openIntel = true;
+    log(`Spies reveal partial military intelligence on House ${ch.revealHouse}.`);
+  }
 
-  if (inStorm) {
-    state.hp -= state.stormDamage * dt;
+  if(ch.allyHouse){
+    addAlliance(ch.allyHouse);
+  }
 
-    const dirToCenter = player.group.position.clone().multiplyScalar(-1);
-    dirToCenter.y = 0;
-    if (dirToCenter.lengthSq() > .01) {
-      dirToCenter.normalize();
-      const localDir = dirToCenter.clone().applyAxisAngle(new THREE.Vector3(0,1,0), -player.group.rotation.y);
-      player.arrow.rotation.z = Math.atan2(localDir.y, localDir.x);
-      player.arrow.rotation.y = Math.atan2(dirToCenter.x, dirToCenter.z) - player.group.rotation.y + Math.PI / 2;
+  if(ch.tradeHouse){
+    addTrade(ch.tradeHouse);
+  }
+
+  if(ch.special==="endOneWar"){
+    if(game.wars.length){
+      const ended = game.wars.shift();
+      game.houses[ended].atWar = false;
+      applyEffects({prestige:2,stability:4});
+      log(`The war with House ${ended} ends by settlement.`);
     }
+  }
 
-    scene.fog.color.set(0x0d4fff);
-    scene.background.set(0x092c62);
+  if(ch.special==="sideStrong" || ch.special==="sideWeak"){
+    resolveAllianceSide(ch.special);
+  }
+
+  log(ch.log);
+  game.inbox = game.inbox.filter(x=>x.id!==id);
+  render();
+}
+
+function resolveAllianceSide(mode){
+  if(game.alliances.length < 2) return;
+  const allies = game.alliances.slice().sort((a,b)=>game.houses[b].tier-game.houses[a].tier);
+  const strong = allies[0];
+  const weak = allies[allies.length-1];
+
+  if(mode==="sideStrong"){
+    game.houses[strong].opinion = clamp(game.houses[strong].opinion + 8);
+    game.houses[weak].opinion = clamp(game.houses[weak].opinion - 12);
+    game.houses[weak].rivalry = clamp(game.houses[weak].rivalry + 8);
+    log(`House ${strong} approves your loyalty. House ${weak} feels abandoned.`);
   } else {
-    scene.fog.color.lerp(new THREE.Color(0x07101d), .05);
-    scene.background.lerp(new THREE.Color(0x07101d), .05);
+    game.houses[weak].opinion = clamp(game.houses[weak].opinion + 10);
+    game.houses[strong].opinion = clamp(game.houses[strong].opinion - 10);
+    game.houses[strong].rivalry = clamp(game.houses[strong].rivalry + 5);
+    log(`House ${weak} is grateful. House ${strong} questions your judgment.`);
   }
 }
 
-function applyStormDamageToCrab(c, dt) {
-  const d = Math.hypot(c.group.position.x, c.group.position.z);
-  if (d > state.stormRadius) {
-    c.hp -= (state.stormDamage * .65) * dt;
+function addAlliance(house){
+  if(!game.alliances.includes(house)){
+    game.alliances.push(house);
+    game.houses[house].allied = true;
+    game.houses[house].openIntel = true;
+    game.knownIntel[house] = true;
+    log(`Alliance formed with House ${house}. Their basic military strength is now visible.`);
   }
 }
 
-function applyStormDamageToWizard(w, dt) {
-  const d = Math.hypot(w.group.position.x, w.group.position.z);
-  if (d > state.stormRadius) {
-    w.hp -= (state.stormDamage * .9) * dt;
+function addTrade(house){
+  if(!game.tradeDeals.includes(house)){
+    game.tradeDeals.push(house);
+    game.houses[house].trade = true;
+    log(`Trade deal established with House ${house}.`);
   }
 }
 
-function updateWizardRegen(dt) {
-  state.hp = Math.min(state.maxHp, state.hp + dt * 0.9);
-  if (coopState.enabled && !playerTwo.dead) {
-    playerTwo.hp = Math.min(playerTwo.maxHp, playerTwo.hp + dt * 0.9);
-  }
-  for (const ai of aiWizards) {
-    if (ai.dead || ai.dying) continue;
-    ai.hp = Math.min(ai.maxHp, ai.hp + dt * 0.9);
-  }
-}
+function expireInbox(){
+  for(const ev of [...game.inbox]){
+    ev.deadline--;
 
-function updateParticles(dt) {
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const p = particles[i];
+    if(ev.deadline <= 0){
+      applyEffects(ev.expire.effects);
 
-    p.life -= dt;
-    p.velocity.y -= 6 * dt;
-    p.mesh.position.addScaledVector(p.velocity, dt);
-
-    if (p.life <= 0) {
-      scene.remove(p.mesh);
-      particles.splice(i, 1);
-    }
-  }
-  for (let i = drops.length - 1; i >= 0; i--) {
-    const d = drops[i]; d.life -= dt; d.bob += dt * 2.6;
-    d.mesh.position.y = .9 + Math.sin(d.bob) * .2;
-    const collectors = [player, ...aiWizards.filter(w => !w.dead)];
-    for (const w of collectors) {
-      if (w.group.position.distanceToSquared(d.mesh.position) < 6.4) {
-        if (w === player) state.xp += 1;
-        if (chance(.55)) createCrab(w.group.position.clone().add(new THREE.Vector3(rand(-1.1,1.1),0,rand(-1.1,1.1))), w, w.color || teamColor, w.upgrades ? { armor: w.upgrades.crabArmor, spikes: w.upgrades.crabSpikes, regen: w.upgrades.crabRegen, speed: w.upgrades.swarmSpeed } : {});
-        d.life = 0; break;
+      if(ev.house && game.houses[ev.house]){
+        game.houses[ev.house].lastIgnored++;
       }
-    }
-    if (d.life <= 0) { scene.remove(d.mesh); drops.splice(i,1); }
-  }
-  for (let i = explosions.length - 1; i >= 0; i--) {
-    const e = explosions[i]; e.life -= dt;
-    const t = 1 - (e.life / e.maxLife);
-    e.mesh.scale.setScalar(1 + t * e.scale);
-    e.mesh.material.opacity = 0.75 * (1 - t);
-    if (e.life <= 0) { scene.remove(e.mesh); explosions.splice(i,1); }
-  }
-}
 
-function updateCamera(dt) {
-  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.group.quaternion);
-  const desired = player.group.position.clone()
-    .addScaledVector(forward, -12.5)
-    .add(new THREE.Vector3(0, 7.2, 0));
-
-  camera.position.lerp(desired, 1 - Math.pow(.001, dt));
-
-  const look = player.group.position.clone()
-    .add(new THREE.Vector3(0, 1.75, 0))
-    .addScaledVector(forward, 3.0);
-
-  camera.lookAt(look);
-}
-
-function updateCameraTwo(dt) {
-  if (!coopState.enabled) return;
-  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(playerTwo.group.quaternion);
-  const desired = playerTwo.group.position.clone().addScaledVector(forward, -12.5).add(new THREE.Vector3(0, 7.2, 0));
-  cameraTwo.position.lerp(desired, 1 - Math.pow(.001, dt));
-  const look = playerTwo.group.position.clone().add(new THREE.Vector3(0, 1.75, 0)).addScaledVector(forward, 3.0);
-  cameraTwo.lookAt(look);
-}
-
-function updateHud() {
-  hud.hp.textContent = Math.max(0, Math.floor(state.hp));
-  hud.crabCount.textContent = crabs.length;
-  const aliveEnemies = aiWizards.filter(w => !w.dead && !w.dying).length;
-  hud.wizardCount.textContent = aliveEnemies;
-  hud.objectiveText.textContent = aliveEnemies > 0 ? "Defeat every rival wizard. Last wizard standing wins." : "Victory!";
-  hud.alcoveCount.textContent = nests.filter(n => n.squad.length > 0).length;
-  hud.kills.textContent = state.kills;
-  hud.xp.textContent = state.xp;
-  hud.nextXp.textContent = state.nextXp;
-  hud.level.textContent = state.level;
-  hud.stormRadius.textContent = Math.floor(state.stormRadius);
-}
-
-const upgradePool = [
-  {
-    icon: "🧙",
-    title: "Fleet-Foot Wizard",
-    desc: "Your wizard moves faster, helping you control the shrinking storm ring.",
-    apply() {
-      state.upgrades.wizardSpeed += .18;
-    }
-  },
-  {
-    icon: "🦀",
-    title: "Swarm Legs",
-    desc: "All crabs move faster and hold cleaner attack angles.",
-    apply() {
-      state.upgrades.swarmSpeed += .45;
-      for (const c of crabs) c.speed += .55;
-    }
-  },
-  {
-    icon: "🛡️",
-    title: "Armored Plates",
-    desc: "Crabs gain visible armor plates and more max health.",
-    apply() {
-      state.upgrades.crabArmor++;
-      for (const c of crabs) {
-        c.armorLevel++;
-        c.maxHp += 12;
-        c.hp += 12;
-        addCrabArmor(c);
+      /*
+        Disrespect scaling:
+        Higher houses punish ignored messages more.
+        Lower Colors/socially weaker groups hurt internal stability more.
+      */
+      if(ev.senderType==="Higher Gold"){
+        applyEffects({prestige:-2,influence:-2,houses:{[ev.house]:{opinion:-4,rivalry:2}}});
       }
-    }
-  },
-  {
-    icon: "刺",
-    title: "Spiked Plates",
-    desc: "Crabs grow visible spikes and deal more claw damage.",
-    apply() {
-      state.upgrades.crabSpikes++;
-      for (const c of crabs) {
-        c.spikeLevel++;
-        c.damage += 3;
-        addCrabSpikes(c);
+      if(ev.senderType==="Ally"){
+        applyEffects({influence:-3,houses:{[ev.house]:{opinion:-5,respect:-2}}});
       }
-    }
-  },
-  {
-    icon: "🦘",
-    title: "Crab Leap",
-    desc: "Crabs sometimes leap into enemies from medium range.",
-    apply() {
-      state.upgrades.crabLeap++;
-    }
-  },
-  {
-    icon: "💥",
-    title: "Crab Charge",
-    desc: "Crabs sometimes burst forward into targets with a charge.",
-    apply() {
-      state.upgrades.crabCharge++;
-    }
-  },
-  {
-    icon: "💚",
-    title: "Regenerating Shells",
-    desc: "Crabs regenerate health faster when they are on their own.",
-    apply() {
-      state.upgrades.crabRegen += .45;
-      for (const c of crabs) c.regenLevel += .45;
-    }
-  },
-  {
-    icon: "🔗",
-    title: "Longer Leash",
-    desc: "Crabs can keep attacking farther before returning to you.",
-    apply() {
-      state.upgrades.leash += .22;
-    }
-  },
-  {
-    icon: "🔥",
-    title: "Hotter Fireballs",
-    desc: "Your fireballs deal more damage.",
-    apply() {
-      state.upgrades.fireDamage += .35;
-    }
-  },
-  {
-    icon: "☄️",
-    title: "Bigger Explosion",
-    desc: "Fireballs explode in a wider radius and look larger.",
-    apply() {
-      state.upgrades.fireExplosion += .22;
-    }
-  },
-  {
-    icon: "⚡",
-    title: "Rapid Casting",
-    desc: "You automatically fire fireballs more often.",
-    apply() {
-      state.upgrades.fireRate += .28;
-    }
-  },
-  {
-    icon: "🧭",
-    title: "Tracking Fire",
-    desc: "Fireballs steer harder, fly faster, and last longer.",
-    apply() {
-      state.upgrades.fireTracking += .75;
-    }
-  },
-  {
-    icon: "🔁",
-    title: "Bouncing Fire",
-    desc: "Fireballs can bounce to another nearby enemy after impact.",
-    apply() {
-      state.upgrades.fireBounce++;
+      if(ev.senderType==="Lower House"){
+        applyEffects({influence:-1});
+      }
+      if(ev.senderType==="Color"){
+        applyEffects({trust:-2,rebelStrength:2});
+      }
+      if(ev.senderType==="Military"){
+        applyEffects({stability:-2});
+      }
+
+      log(ev.expire.log);
+      game.inbox = game.inbox.filter(x=>x.id!==ev.id);
     }
   }
-];
+}
 
-function checkLevelUp() {
-  if (state.upgradeOpen) return;
+function advanceMonth(){
+  game.month++;
 
-  if (state.xp >= state.nextXp) {
-    state.xp -= state.nextXp;
-    state.level++;
-    state.nextXp = Math.floor(state.nextXp * 1.35 + 4);
-    openUpgradeChoices();
+  const mult = {merciful:.65,standard:1,heavy:1.35,punitive:1.75}[game.tax];
+  const income = Math.round(game.baseIncome * mult);
+  const upkeep = game.assets.reduce((s,a)=>s+(a.upkeep||0),0);
+  const debtPay = game.debt > 0 ? Math.min(game.debt, Math.max(80,Math.round(game.debt*.08))) : 0;
+
+  game.treasury += income;
+  game.treasury -= upkeep;
+  game.treasury -= debtPay;
+  game.debt = Math.max(0, game.debt - Math.round(debtPay*.55));
+
+  applyTaxEffects();
+  expireInbox();
+  tickVendors();
+  passiveWorldEffects();
+  checkRank();
+
+  const guaranteedRequests = monthlyRequestCount();
+  for(let i=0;i<guaranteedRequests;i++){
+    if(game.inbox.length < 12) addInbox(generateContextEvent());
+  }
+
+  if(chance(.38 + game.rank*.05)) generateVendor();
+
+  log(`Month ${game.month} begins. Income ${income}, upkeep ${upkeep}, debt payment ${debtPay}.`);
+  render();
+}
+
+function monthlyRequestCount(){
+  let n = 0;
+
+  if(game.rank <= 1) n = chance(.55) ? 1 : 0;
+  if(game.rank === 2) n = rand(1,2);
+  if(game.rank === 3) n = rand(2,3);
+  if(game.rank >= 4) n = rand(3,4);
+
+  if(game.prestige > 55) n++;
+  if(game.influence > 55) n++;
+  if(game.wars.length) n++;
+  if(game.alliances.length >= 2 && chance(.4)) n++;
+
+  return n;
+}
+
+function applyTaxEffects(){
+  if(game.tax==="merciful"){
+    applyEffects({trust:3,colors:{Red:3,Brown:3,Silver:-2},rebelStrength:-2});
+  }
+  if(game.tax==="standard"){
+    applyEffects({stability:1});
+  }
+  if(game.tax==="heavy"){
+    applyEffects({trust:-4,fear:2,colors:{Red:-4,Brown:-3,Silver:2},rebelStrength:3});
+  }
+  if(game.tax==="punitive"){
+    applyEffects({trust:-9,fear:6,stability:-3,colors:{Red:-9,Brown:-7,Silver:4,Gray:2},rebelStrength:8});
+  }
+
+  if(game.treasury < 0){
+    const shortage = Math.abs(game.treasury);
+    game.debt += shortage + 300;
+    game.treasury = 0;
+    applyEffects({prestige:-4,silverInfluence:7,colors:{Silver:3,Gray:-3}});
+    log("Your treasury runs dry. Emergency debt is taken quietly, but not secretly.");
   }
 }
 
-function openUpgradeChoices() {
-  state.upgradeOpen = true;
-
-  const shuffled = [...upgradePool].sort(() => Math.random() - .5);
-  state.choices = [shuffled[0], shuffled[1]];
-
-  fillUpgradeCard(leftUpgrade, state.choices[0]);
-  fillUpgradeCard(rightUpgrade, state.choices[1]);
-
-  upgradePanel.style.display = "flex";
-  player.leftIcon.visible = true;
-  player.rightIcon.visible = true;
-
-  showMessage("Choose an upgrade: Q or E", 2.2);
+function tickVendors(){
+  for(const v of game.vendors) v.duration--;
+  const leaving = game.vendors.filter(v=>v.duration<=0);
+  leaving.forEach(v=>log(`${v.type} ${v.name} leaves your court. Their unpurchased goods may find rival buyers.`));
+  game.vendors = game.vendors.filter(v=>v.duration>0);
 }
 
-function fillUpgradeCard(card, upgrade) {
-  card.querySelector(".upgradeIcon").textContent = upgrade.icon;
-  card.querySelector(".upgradeTitle").textContent = upgrade.title;
-  card.querySelector(".upgradeDesc").textContent = upgrade.desc;
-}
+function passiveWorldEffects(){
+  let rebelDelta = 0;
 
-function chooseUpgrade(index) {
-  if (!state.upgradeOpen) return;
+  if(game.colors.Red < 30) rebelDelta += 3;
+  if(game.colors.Brown < 30) rebelDelta += 2;
+  if(game.trust < 30) rebelDelta += 2;
+  if(game.stability < 35) rebelDelta += 3;
+  if(game.fear > 65) rebelDelta -= 1;
+  if(game.fear > 75 && game.trust < 30) rebelDelta += 2;
 
-  const upgrade = state.choices[index];
-  upgrade.apply();
+  game.rebelStrength = clamp(game.rebelStrength + rebelDelta);
 
-  state.upgradeOpen = false;
-  state.choices = [];
-  upgradePanel.style.display = "none";
-  player.leftIcon.visible = false;
-  player.rightIcon.visible = false;
+  if(game.hidden.mineSafetyNeglected >= 2 && chance(.28)){
+    applyEffects({treasury:-450,trust:-10,colors:{Red:-12,Orange:-4},stability:-8,rebelStrength:8});
+    game.hidden.mineSafetyNeglected = 0;
+    log("A neglected mine shaft collapses. The dead are Red, but the consequences climb higher.");
+  }
 
-  showMessage("Upgrade chosen: " + upgrade.title, 1.7);
-}
+  if(game.rebelStrength >= 75){
+    rebellionCrisis();
+  }
 
-function showEndScreen(victory) {
-  state.gameOver = true;
-  state.victory = victory;
-  state.started = false;
-  endScreen.style.display = "flex";
-  endTitle.textContent = victory ? "VICTORY! You are the last Crabmancer." : "Defeat! Your crab army has fallen.";
-  endStats.textContent = `Difficulty ${state.difficulty} · Kills ${state.kills} · Level ${state.level}`;
-}
+  if(game.wars.length){
+    const warCost = 180 * game.wars.length;
+    game.treasury -= warCost;
+    game.military.supply = clamp(game.military.supply - 2 * game.wars.length);
+    log(`Active war costs drain ${warCost} treasury this month.`);
+  }
 
-function gameOver() {
-  showEndScreen(false);
-}
+  if(game.tradeDeals.length){
+    const tradeGain = 70 * game.tradeDeals.length;
+    game.treasury += tradeGain;
+  }
 
-
-function distancePointToSegment(point, a, b) {
-  const ab = b.clone().sub(a);
-  const t = clamp(point.clone().sub(a).dot(ab) / Math.max(0.0001, ab.lengthSq()), 0, 1);
-  const proj = a.clone().addScaledVector(ab, t);
-  return proj.distanceTo(point);
-}
-
-function startDeathAnimation(unit, color = 0xff7777) {
-  if (!unit || unit.dying) return;
-  unit.dead = true;
-  unit.dying = true;
-  unit.deathTimer = 0;
-  unit.deathDuration = rand(0.6, 1.0);
-  createBurst(unit.group.position, color, 10);
-  unit.group.traverse(obj => {
-    if (obj.material) {
-      obj.material = obj.material.clone();
-      obj.material.transparent = true;
+  for(const h of game.wars){
+    if(chance(.25)){
+      addInbox(makeEvent("warRaid"));
     }
+  }
+}
+
+function rebellionCrisis(){
+  const suppression = game.military.graySecurity + game.military.intelligence + game.military.obsidianForce + game.stability;
+
+  if(suppression >= 210){
+    applyEffects({stability:-10,trust:-8,fear:8,colors:{Red:-8,Brown:-4,Gray:4},rebelStrength:-30});
+    log("A coordinated rebel rising begins, but your security machine catches it early. Hatred survives.");
+  } else {
+    applyEffects({treasury:-1000,prestige:-12,stability:-22,trust:-10,colors:{Red:-15,Brown:-10,Gray:-6},rebelStrength:-18});
+    log("Rebellion erupts through mines and servant corridors. You survive, but your House bleeds.");
+  }
+}
+
+function checkRank(){
+  const power =
+    game.prestige +
+    game.influence +
+    game.military.fleetPower +
+    game.military.graySecurity/2 +
+    game.military.intelligence/2 +
+    game.treasury/250;
+
+  if(game.rank===1 && power>105){
+    game.rank=2;
+    game.rankName="Recognized House";
+    applyEffects({prestige:5,influence:5});
+    log("Your House is no longer dismissed as provincial. Invitations multiply.");
+  }
+  if(game.rank===2 && power>155){
+    game.rank=3;
+    game.rankName="Regional Power";
+    applyEffects({prestige:8,influence:8});
+    log("Your banners matter beyond your holdings. Lesser houses begin petitioning you.");
+  }
+  if(game.rank===3 && power>220){
+    game.rank=4;
+    game.rankName="High Noble";
+    applyEffects({prestige:10,influence:10});
+    log("You enter the high game. Every silence, alliance, and insult now echoes.");
+  }
+}
+
+function generateVendor(){
+  if(game.vendors.length>=3) return;
+
+  const vendors = [
+    {
+      name:"Lysander ag Kellan",
+      type:"Fleet Broker",
+      reputation:pick(["Trusted","Unknown","Questionable"]),
+      duration:rand(2,3),
+      offers:[
+        item("Used Patrol Corvette","Ship",900,80,{military:{fleetPower:12},prestige:4,colors:{Blue:3}},"A respectable ship. Golds respect metal in orbit."),
+        item("Fighter Wing Contract","Ship",600,70,{military:{fleetPower:8},colors:{Blue:2}},"Strong against raids and trade harassment."),
+        item("Damaged Troop Transport","Ship",420,35,{military:{fleetPower:4,supply:5}},"Can move troops during crisis.")
+      ]
+    },
+    {
+      name:"Marius ti Renn",
+      type:"Gray Arms Dealer",
+      reputation:pick(["Trusted","Unknown","Infamous"]),
+      duration:rand(2,3),
+      offers:[
+        item("Riot Suppression Gear","Gray",400,25,{military:{graySecurity:10},fear:5,trust:-4,colors:{Gray:5,Red:-5,Brown:-3}},"Order in matte-black cases."),
+        item("Pulse Rifle Shipment","Gray",700,45,{military:{graySecurity:14,warMachines:2},fear:3,colors:{Gray:4}},"Authority with a clean trigger."),
+        item("Crowd Surveillance System","Intelligence",550,35,{military:{intelligence:10},stability:5,trust:-5},"Every crowd becomes a ledger.")
+      ]
+    },
+    {
+      name:"Cyra xi Dama",
+      type:"Pink Information Dealer",
+      reputation:pick(["Trusted","Unknown","Questionable"]),
+      duration:rand(2,3),
+      offers:[
+        item("Court Informant Ring","Intelligence",450,30,{military:{intelligence:12},colors:{Pink:7},scandalHeat:-4},"Secrets wearing perfume."),
+        item("Scandal Cleanup","Influence",330,0,{scandalHeat:-12,prestige:2,colors:{Pink:3}},"A reputation bath."),
+        item("Honeytrap Operation","Blackmail",600,25,{military:{intelligence:8},honor:-5,scandalHeat:5},"Power if it works. Disaster if it sings.")
+      ]
+    },
+    {
+      name:"Helios oran Tek",
+      type:"Orange Engineer Guild",
+      reputation:pick(["Trusted","Unknown"]),
+      duration:rand(2,4),
+      offers:[
+        item("Automated Mine Safety Systems","Infrastructure",700,20,{baseIncome:70,trust:6,colors:{Red:8,Orange:8},hidden:{mineSafetyNeglected:-2}},"Mercy disguised as efficiency."),
+        item("Estate Defense Turrets","Fortification",900,55,{military:{fortifications:14,warMachines:4},fear:2},"The walls learn to aim."),
+        item("Shipyard Repair Contract","Fleet Support",500,-20,{military:{supply:8,fleetPower:3},colors:{Blue:3,Orange:4}},"Lower fleet strain and faster repairs.")
+      ]
+    },
+    {
+      name:"Avarus ag Sylan",
+      type:"Silver Financier",
+      reputation:pick(["Trusted","Questionable","Infamous"]),
+      duration:rand(2,3),
+      offers:[
+        item("Emergency War Loan","Finance",-1500,0,{treasury:1500,debt:2100,silverInfluence:12,colors:{Silver:5}},"Money now. Chains later.",true),
+        item("Mine Expansion Investment","Infrastructure",800,0,{baseIncome:130,colors:{Silver:5,Red:-4},hidden:{mineSafetyNeglected:1}},"Profitable, if you do not ask who suffers."),
+        item("Debt Consolidation","Finance",250,0,{debt:-500,silverInfluence:8,prestige:-2},"Lower pressure, higher influence.")
+      ]
+    }
+  ];
+
+  const v = clone(pick(vendors));
+  v.id = Date.now()+"_vendor_"+Math.random().toString(36).slice(2);
+  game.vendors.push(v);
+  log(`${v.type} ${v.name} arrives at court with limited offers.`);
+}
+
+function item(name,type,cost,upkeep,effects,desc,isLoan=false){
+  return {
+    id:Date.now()+"_"+Math.random().toString(36).slice(2),
+    name,type,cost,upkeep,effects,desc,isLoan
+  };
+}
+
+function buyOffer(vendorId,offerId){
+  const vendor = game.vendors.find(v=>v.id===vendorId);
+  if(!vendor) return;
+  const offer = vendor.offers.find(o=>o.id===offerId);
+  if(!offer) return;
+
+  if(!offer.isLoan && offer.cost > game.treasury){
+    alert("Not enough treasury.");
+    return;
+  }
+
+  if(offer.isLoan){
+    applyEffects(offer.effects);
+  } else {
+    applyEffects({treasury:-offer.cost});
+    applyEffects(offer.effects);
+  }
+
+  game.assets.push({
+    name:offer.name,
+    type:offer.type,
+    upkeep:offer.upkeep,
+    effects:offer.effects?.military || {}
   });
-  dyingUnits.push(unit);
-}
 
-function updateDyingUnits(dt) {
-  for (let i = dyingUnits.length - 1; i >= 0; i--) {
-    const u = dyingUnits[i];
-    u.deathTimer += dt;
-    const t = clamp(u.deathTimer / u.deathDuration, 0, 1);
-    u.group.position.y = -0.15 * t;
-    u.group.rotation.z += dt * 2.5;
-    u.group.scale.multiplyScalar(Math.max(0.92, 1 - dt * 0.35));
-    u.group.traverse(obj => { if (obj.material && obj.material.opacity !== undefined) obj.material.opacity = 1 - t; });
-    if (t >= 1) { scene.remove(u.group); dyingUnits.splice(i,1); }
-  }
-}
+  log(`Purchased: ${offer.name}. ${offer.desc}`);
 
-function checkWinLoss() {
-  if (state.gameOver) return;
-  const aliveEnemies = aiWizards.filter(w => !w.dead && !w.dying).length;
-  if (state.hp <= 0) gameOver();
-  else if (aliveEnemies === 0) showEndScreen(true);
-}
-
-function restartGame(difficulty) {
-  localStorage.setItem("crabmancerDifficulty", String(difficulty));
-  location.reload();
-}
-
-function initGame() {
-  addLights();
-  buildWorld();
-  buildWizard();
-  if (coopState.enabled) buildWizardTwo();
-
-  for (let i = 0; i < 7; i++) {
-    createCrab(new THREE.Vector3(rand(-2, 2), 0, rand(-2, 2)), player, teamColor);
+  vendor.offers = vendor.offers.filter(o=>o.id!==offerId);
+  if(vendor.offers.length===0){
+    game.vendors = game.vendors.filter(v=>v.id!==vendorId);
   }
 
-  for (const nest of nests) {
-    spawnNestSquad(nest);
-  }
-
-  for (let i = 0; i < 20; i++) {
-    createAIWizard(i);
-  }
+  render();
 }
 
-function animate() {
-  requestAnimationFrame(animate);
+/* ===========================
+   ACTIVE ACTIONS
+   =========================== */
 
-  const dt = Math.min(.035, clock.getDelta());
-
-  updateMessage(dt);
-  updateDyingUnits(dt);
-  updateParticles(dt);
-
-  if (state.started && !state.gameOver) {
-    updateStorm(dt);
-    updateWizardRegen(dt);
-    updatePlayer(dt);
-    updateCoopPlayer(dt);
-    if (coopState.enabled) applyStormDamageToWizard(playerTwo, dt);
-    updateFireballs(dt);
-    updateCrabGroup(player, crabs, dt);
-    updateNestSquads(dt);
-    updateAIWizards(dt);
-    checkWinLoss();
-    updateHud();
-    updateHealthBar(player, state.hp, state.maxHp);
-    if (coopState.enabled) updateHealthBar(playerTwo, playerTwo.hp, playerTwo.maxHp);
+function initiateTrade(house){
+  if(game.tradeDeals.includes(house)){
+    alert("You already have a trade deal with this house.");
+    return;
   }
 
-  updateCamera(dt);
-  updateCameraTwo(dt);
+  const h = game.houses[house];
+  const chanceScore = game.prestige + game.influence + h.opinion + game.colors.Silver - h.rivalry;
 
-  if (coopState.enabled) {
-    renderer.setScissorTest(true);
-    const halfW = Math.floor(innerWidth / 2);
-    renderer.setViewport(0, 0, halfW, innerHeight);
-    renderer.setScissor(0, 0, halfW, innerHeight);
-    renderer.render(scene, camera);
-    renderer.setViewport(halfW, 0, innerWidth - halfW, innerHeight);
-    renderer.setScissor(halfW, 0, innerWidth - halfW, innerHeight);
-    renderer.render(scene, cameraTwo);
-    renderer.setScissorTest(false);
+  if(chanceScore > 120 || chance(.35)){
+    addTrade(house);
+    h.opinion = clamp(h.opinion + 5);
+    applyEffects({baseIncome:80,influence:3});
+    log(`House ${house} accepts your trade proposal.`);
   } else {
-    renderer.setViewport(0, 0, innerWidth, innerHeight);
-    renderer.render(scene, camera);
+    h.opinion = clamp(h.opinion - 5);
+    applyEffects({prestige:-1});
+    log(`House ${house} rejects your trade proposal. Your approach is noted as premature.`);
   }
+
+  render();
 }
 
-addEventListener("keydown", e => {
-  keys[e.key.toLowerCase()] = true;
-
-  if (e.key.toLowerCase() === "q") chooseUpgrade(0);
-  if (e.key.toLowerCase() === "e") chooseUpgrade(1);
-});
-
-addEventListener("keyup", e => {
-  keys[e.key.toLowerCase()] = false;
-});
-
-addEventListener("resize", () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-  cameraTwo.aspect = innerWidth / innerHeight;
-  cameraTwo.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-});
-
-document.getElementById("restartSameBtn").onclick = () => restartGame(selectedDifficulty);
-document.getElementById("restartHarderBtn").onclick = () => restartGame(selectedDifficulty + 1);
-
-const splitScreenToggle = document.getElementById("splitScreenToggle");
-const splitModeSelect = document.getElementById("splitMode");
-
-document.getElementById("startBtn").onclick = () => {
-  document.getElementById("startScreen").style.display = "none";
-  coopState.enabled = !!splitScreenToggle.checked;
-  coopState.mode = splitModeSelect.value === "versus" ? "versus" : "coop";
-  if (coopState.enabled && coopState.mode === "versus") {
-    playerTwo.team = "player2";
-    playerTwo.color = new THREE.Color(0xff7f7f);
-  } else {
-    playerTwo.team = "player";
-    playerTwo.color = new THREE.Color(0xc28bff);
+function initiateAlliance(house){
+  if(game.alliances.includes(house)){
+    alert("Already allied.");
+    return;
   }
-  if (coopState.enabled && !playerTwo.hpBar) buildWizardTwo();
-  state.started = true;
-  state.difficulty = selectedDifficulty;
-  showMessage("Lead the crab army and survive the storm!", 2);
+
+  const h = game.houses[house];
+  const chanceScore = game.prestige + game.influence + h.opinion + h.respect - h.rivalry - (h.tier-game.rank)*12;
+
+  if(chanceScore > 125 || chance(.28)){
+    addAlliance(house);
+    h.opinion = clamp(h.opinion + 8);
+    applyEffects({prestige:3,influence:6});
+    log(`House ${house} accepts alliance terms.`);
+  } else {
+    h.opinion = clamp(h.opinion - 6);
+    h.rivalry = clamp(h.rivalry + 3);
+    applyEffects({prestige:-2});
+    log(`House ${house} refuses alliance. The refusal travels through court quickly.`);
+  }
+
+  render();
+}
+
+function sendGift(house){
+  if(game.treasury < 300){
+    alert("Not enough treasury.");
+    return;
+  }
+
+  game.treasury -= 300;
+  const h = game.houses[house];
+  h.opinion = clamp(h.opinion + 7);
+  h.respect = clamp(h.respect + 1);
+  applyEffects({prestige:1});
+  log(`You send a tasteful gift to House ${house}.`);
+  render();
+}
+
+function spyOnHouse(house){
+  const h = game.houses[house];
+  const spyPower = game.military.intelligence + game.colors.Pink/2 + game.colors.Brown/3;
+  const defense = h.military.spies + h.tier*10;
+
+  if(spyPower + rand(0,35) > defense){
+    game.knownIntel[house] = true;
+    h.openIntel = true;
+    applyEffects({military:{intelligence:2}});
+    log(`Your spies return with military intelligence on House ${house}.`);
+  } else {
+    h.opinion = clamp(h.opinion - 8);
+    h.rivalry = clamp(h.rivalry + 6);
+    applyEffects({scandalHeat:7,honor:-3});
+    log(`Your spies are nearly caught probing House ${house}. They deny everything poorly.`);
+  }
+
+  render();
+}
+
+function declareWar(house){
+  if(game.wars.includes(house)){
+    alert("You are already at war.");
+    return;
+  }
+
+  if(!confirm(`Declare war on House ${house}? This will create recurring military crises and costs.`)) return;
+
+  game.wars.push(house);
+  const h = game.houses[house];
+  h.atWar = true;
+  h.opinion = clamp(h.opinion - 30);
+  h.rivalry = clamp(h.rivalry + 25);
+
+  applyEffects({prestige:5,fear:6,stability:-4,influence:3});
+  log(`You declare war on House ${house}. The court exhales in horror and admiration.`);
+  addInbox(makeEvent("warDemand"));
+  render();
+}
+
+/* ===========================
+   RENDERING
+   =========================== */
+
+function render(){
+  renderTopBar();
+  renderLeft();
+  renderRight();
+  renderMain();
+}
+
+function renderLeft(){
+  const lp = document.getElementById("leftPanel");
+
+  lp.innerHTML = `
+    <div class="card">
+      <b class="gold">House ${game.houseName}</b><br>
+      <span class="tiny">Month ${game.month} • Rank ${game.rank}: ${game.rankName}</span><br>
+      <span class="tiny">${running ? "Court clock running" : "Court clock paused"}</span>
+    </div>
+
+    <div class="stat-grid">
+      ${stat("Treasury",Math.round(game.treasury))}
+      ${stat("Debt",Math.round(game.debt))}
+      ${stat("Income","+"+Math.round(game.baseIncome)+"/mo")}
+      ${stat("Tax",game.tax)}
+      ${stat("Prestige",game.prestige)}
+      ${stat("Influence",game.influence)}
+      ${stat("Stability",game.stability)}
+      ${stat("Rebels",game.rebelStrength)}
+      ${stat("Fear",game.fear)}
+      ${stat("Trust",game.trust)}
+    </div>
+
+    <div class="section-title">Color Relations</div>
+    ${Object.entries(game.colors).map(([c,v])=>bar(c,v,relationName(v))).join("")}
+
+    <div class="section-title">Military</div>
+    ${Object.entries(game.military).map(([k,v])=>bar(pretty(k),v,v)).join("")}
+  `;
+}
+
+function renderRight(){
+  const rp = document.getElementById("rightPanel");
+
+  rp.innerHTML = `
+    <div class="section-title">Tax Policy</div>
+    <div class="row">
+      <button ${game.tax==="merciful"?"disabled":""} onclick="setTax('merciful')">Merciful</button>
+      <button ${game.tax==="standard"?"disabled":""} onclick="setTax('standard')">Standard</button>
+      <button ${game.tax==="heavy"?"disabled":""} onclick="setTax('heavy')">Heavy</button>
+      <button ${game.tax==="punitive"?"disabled":""} onclick="setTax('punitive')">Punitive</button>
+    </div>
+    <p class="tiny">Taxes affect income, trust, rebellion, Color loyalty, and Silver confidence each month.</p>
+
+    <div class="section-title">Current Entanglements</div>
+    <div class="card">
+      <span class="tag gold">${game.inbox.length} Inbox</span>
+      <span class="tag blue">${game.vendors.length} Vendors</span>
+      <span class="tag green">${game.tradeDeals.length} Trade</span>
+      <span class="tag purple">${game.alliances.length} Alliances</span>
+      <span class="tag red">${game.wars.length} Wars</span>
+      <br><br>
+      <span class="tiny">Scandal Heat: ${game.scandalHeat}</span><br>
+      <span class="tiny">Silver Influence: ${game.silverInfluence}</span><br>
+      <span class="tiny">Reform Suspicion: ${game.reformSuspicion}</span>
+    </div>
+
+    <div class="section-title">Design Logic</div>
+    <p class="tiny">
+      Inbox is sorted by sender priority. Higher Golds, allies, creditors, and war messages rise to the top.
+      Low Color requests may rank lower socially, but ignoring them increases unrest and rebellion.
+    </p>
+  `;
+}
+
+function setTax(t){
+  game.tax = t;
+  log(`Tax policy changed to ${t.toUpperCase()}.`);
+  render();
+}
+
+function setTab(t){
+  tab = t;
+  document.querySelectorAll(".tabs button").forEach(b=>b.classList.remove("active"));
+  document.getElementById("tab"+t[0].toUpperCase()+t.slice(1)).classList.add("active");
+  renderMain();
+}
+
+function renderMain(){
+  const mc = document.getElementById("mainContent");
+  const title = document.getElementById("mainTitle");
+
+  if(tab==="inbox"){title.textContent="Inbox";renderInbox(mc);}
+  if(tab==="actions"){title.textContent="Active Actions";renderActions(mc);}
+  if(tab==="military"){title.textContent="Military";renderMilitary(mc);}
+  if(tab==="houses"){title.textContent="Houses";renderHouses(mc);}
+  if(tab==="vendors"){title.textContent="Vendors";renderVendors(mc);}
+  if(tab==="log"){title.textContent="Chronicle";renderLog(mc);}
+}
+
+function renderInbox(mc){
+  if(game.inbox.length===0){
+    mc.innerHTML = `
+      <div class="card">
+        <b class="gold">Inbox empty.</b>
+        <p class="story">For now, no one demands your attention. As your influence rises, silence will become rarer.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const sorted = [...game.inbox].sort((a,b)=>senderPriority(b)-senderPriority(a));
+
+  mc.innerHTML = `
+    <div class="card">
+      <b class="gold">Priority Sorting</b>
+      <p class="tiny">Messages are sorted by sender power, alliance duty, military urgency, deadline, and political danger. Low Color issues may appear lower but become dangerous if neglected.</p>
+    </div>
+    ${sorted.map(ev=>`
+      <div class="inbox-card ${ev.deadline<=1?"urgent":""} ${senderPriority(ev)>100?"major":""}">
+        <div class="title">${ev.title}</div>
+        <div class="tiny">From: ${ev.from} • Sender: ${ev.senderType} • Deadline: ${ev.deadline} month(s) • Priority ${senderPriority(ev)}</div>
+        <div>${ev.tags.map(t=>`<span class="tag ${tagClass(t)}">${t}</span>`).join("")}</div>
+        <p class="story">${ev.body}</p>
+        ${ev.choices.map((c,i)=>{
+          const blocked = c.condition && !c.condition();
+          const poor = c.cost && game.treasury < c.cost;
+          return `
+            <button class="choice" ${blocked||poor?"disabled":""} onclick="chooseEvent('${ev.id}',${i})">
+              ${i+1}. ${c.text}
+              <small>${c.hint||""} ${c.cost?` Cost: ${c.cost}.`:""} ${blocked?" Requirement not met.":""} ${poor?" Insufficient treasury.":""}</small>
+            </button>
+          `;
+        }).join("")}
+      </div>
+    `).join("")}
+  `;
+}
+
+function tagClass(t){
+  if(["Red","Riot","War"].includes(t)) return "red";
+  if(["Gold","Diplomacy","Senate","Alliance"].includes(t)) return "gold";
+  if(["Fleet","Blue","Military","Border"].includes(t)) return "blue";
+  if(["Trust","Brown","Trade","Income"].includes(t)) return "green";
+  if(["Pink","Scandal","Blackmail","Obligation"].includes(t)) return "purple";
+  return "";
+}
+
+function renderActions(mc){
+  mc.innerHTML = `
+    <div class="card">
+      <b class="gold">Initiate Events</b>
+      <p class="story">
+        You do not only react. You can start trade deals, alliances, espionage, gifts, and wars.
+        These actions change what kinds of inbox requests appear later.
+      </p>
+    </div>
+
+    <div class="action-grid">
+      ${Object.entries(game.houses).map(([h,o])=>`
+        <div class="card">
+          <div class="title">House ${h}</div>
+          <div class="tiny">Tier ${o.tier} • ${o.style}</div>
+          <span class="tag gold">Opinion ${o.opinion}</span>
+          <span class="tag blue">Respect ${o.respect}</span>
+          <span class="tag red">Rivalry ${o.rivalry}</span>
+          <br><br>
+          <div class="row">
+            <button onclick="initiateTrade('${h}')">Trade</button>
+            <button onclick="initiateAlliance('${h}')">Alliance</button>
+            <button onclick="sendGift('${h}')">Gift 300</button>
+            <button onclick="spyOnHouse('${h}')">Spy</button>
+            <button class="danger" onclick="declareWar('${h}')">War</button>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderMilitary(mc){
+  mc.innerHTML = `
+    <div class="card">
+      <b class="gold">Military is not one number.</b>
+      <p class="story">Grays control streets, fleets project noble power, Obsidians terrify, spies reveal secrets, and supply determines how long force can last.</p>
+    </div>
+
+    <div class="two-col">
+      ${Object.entries(game.military).map(([k,v])=>`
+        <div class="card">
+          <b>${pretty(k)}</b>
+          <div class="tiny">Strength: ${v}</div>
+          <div class="bar"><div class="fill" style="width:${v}%"></div></div>
+          <p class="tiny">${militaryDescription(k)}</p>
+        </div>
+      `).join("")}
+    </div>
+
+    <div class="section-title">Assets</div>
+    ${game.assets.map(a=>`
+      <div class="card">
+        <b>${a.name}</b>
+        <div class="tiny">Type: ${a.type} • Upkeep ${a.upkeep}/month</div>
+        ${Object.entries(a.effects||{}).map(([k,v])=>`<span class="tag blue">${pretty(k)} +${v}</span>`).join("")}
+      </div>
+    `).join("")}
+  `;
+}
+
+function militaryDescription(k){
+  return {
+    graySecurity:"Riot control, arrests, tax enforcement, prisons, and internal order.",
+    fleetPower:"Ships, fighters, orbit control, trade protection, and power projection.",
+    obsidianForce:"Elite shock troops, intimidation, bodyguard power, and brutal ground victory.",
+    houseGuard:"Personal forces loyal to your bloodline, useful against coups and assassins.",
+    fortifications:"Estate walls, shield grids, bunkers, and defense against raids.",
+    intelligence:"Spies, informants, Pinks, Browns, intercepted messages, and blackmail.",
+    warMachines:"Grav tanks, drones, siege weapons, and battlefield terror.",
+    officerQuality:"Command competence, discipline, and reduced military failure.",
+    supply:"Fuel, ammunition, food, medicine, repairs, and war endurance."
+  }[k] || "";
+}
+
+function renderHouses(mc){
+  mc.innerHTML = `
+    <div class="card">
+      <b class="gold">House Intelligence</b>
+      <p class="story">
+        Allied houses reveal basic military strength. Other houses require espionage.
+        Spy attempts can reveal military data, but failure can create scandal and rivalry.
+      </p>
+    </div>
+
+    ${Object.entries(game.houses).map(([h,o])=>`
+      <div class="card">
+        <div class="title">House ${h}</div>
+        <div class="tiny">Tier ${o.tier} • ${o.style}</div>
+        <span class="tag gold">Opinion ${o.opinion} — ${relationName(o.opinion)}</span>
+        <span class="tag blue">Respect ${o.respect}</span>
+        <span class="tag red">Rivalry ${o.rivalry}</span>
+        <span class="tag purple">Fear ${o.fear}</span>
+        ${game.alliances.includes(h)?`<span class="tag green">Ally</span>`:""}
+        ${game.tradeDeals.includes(h)?`<span class="tag green">Trade</span>`:""}
+        ${game.wars.includes(h)?`<span class="tag red">War</span>`:""}
+
+        <p class="tiny">Traits: ${o.traits.join(", ")}</p>
+
+        ${game.knownIntel[h] || game.alliances.includes(h) ? `
+          <div class="section-title">Military Intelligence</div>
+          <span class="tag blue">Fleet ${o.military.fleet}</span>
+          <span class="tag blue">Grays ${o.military.grays}</span>
+          <span class="tag blue">Obsidians ${o.military.obsidians}</span>
+          <span class="tag blue">Forts ${o.military.forts}</span>
+          <span class="tag blue">Spies ${o.military.spies}</span>
+        ` : `
+          <p class="tiny bad">Military strength unknown. Use alliance or espionage to learn more.</p>
+        `}
+      </div>
+    `).join("")}
+  `;
+}
+
+function renderVendors(mc){
+  if(game.vendors.length===0){
+    mc.innerHTML = `
+      <div class="card">
+        <b class="gold">No vendors currently at court.</b>
+        <p class="story">Vendors arrive over time. Their limited offers can reshape your military, economy, or spy network.</p>
+      </div>
+    `;
+    return;
+  }
+
+  mc.innerHTML = game.vendors.map(v=>`
+    <div class="vendor-card">
+      <div class="title">${v.name}</div>
+      <div class="tiny">${v.type} • Reputation: ${v.reputation} • Leaves in ${v.duration} month(s)</div>
+      <br>
+      ${v.offers.map(o=>`
+        <div class="card">
+          <b>${o.name}</b>
+          <div class="tiny">Type: ${o.type} • Cost: ${o.isLoan?"loan terms":o.cost} • Upkeep: ${o.upkeep}/month</div>
+          <p>${o.desc}</p>
+          <div class="tiny">${effectText(o.effects)}</div>
+          <button class="primary" onclick="buyOffer('${v.id}','${o.id}')">${o.isLoan?"Accept Deal":"Buy"}</button>
+        </div>
+      `).join("")}
+    </div>
+  `).join("");
+}
+
+function renderLog(mc){
+  mc.innerHTML = `
+    <div class="card">
+      <b class="gold">Chronicle</b>
+      <p class="tiny">The court remembers what the powerful pretend to forget.</p>
+    </div>
+    <div class="log">
+      ${game.log.map(l=>`
+        <div class="log-line">
+          <span class="tag gold">Month ${l.month}</span>
+          ${l.text}
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function stat(label,value){
+  return `<div class="stat"><div class="label">${label}</div><div class="value">${value}</div></div>`;
+}
+
+function bar(label,val,caption){
+  return `
+    <div class="bar-row">
+      <div class="bar-top"><span>${label}</span><span>${caption}</span></div>
+      <div class="bar"><div class="fill" style="width:${clamp(val)}%"></div></div>
+    </div>
+  `;
+}
+
+/* ===========================
+   SAVE / LOAD / MODAL
+   =========================== */
+
+function saveGame(){
+  localStorage.setItem("goldRiseRebuiltSave",JSON.stringify(game));
+  log("Game saved.");
+  render();
+}
+
+function loadGame(){
+  const s = localStorage.getItem("goldRiseRebuiltSave");
+  if(!s){
+    alert("No save found.");
+    return;
+  }
+  running = false;
+  clearInterval(timer);
+  timer = null;
+  game = JSON.parse(s);
+  log("Game loaded.");
+  render();
+}
+
+function openModal(title,body){
+  document.getElementById("modalTitle").innerHTML = title;
+  document.getElementById("modalBody").innerHTML = body;
+  document.getElementById("modalBackdrop").style.display = "flex";
+}
+
+function closeModal(){
+  document.getElementById("modalBackdrop").style.display = "none";
+}
+
+window.onload = ()=>{
+  const s = localStorage.getItem("goldRiseRebuiltSave");
+  if(s){
+    game = JSON.parse(s);
+  } else {
+    newGame();
+  }
+  render();
 };
-
-initGame();
-animate();
 </script>
 </body>
 </html>
