@@ -339,6 +339,9 @@ button:disabled{opacity:.45;cursor:not-allowed;}
         <button id="tabMilitary" onclick="setTab('military')">Military</button>
         <button id="tabHouses" onclick="setTab('houses')">Houses</button>
         <button id="tabVendors" onclick="setTab('vendors')">Vendors</button>
+        <button id="tabCharacters" onclick="setTab('characters')">Characters</button>
+        <button id="tabBlocs" onclick="setTab('blocs')">Blocs</button>
+        <button id="tabWarTrade" onclick="setTab('wartrade')">War/Trade</button>
         <button id="tabLog" onclick="setTab('log')">Chronicle</button>
       </div>
       <div id="mainContent"></div>
@@ -587,8 +590,52 @@ function newGame(){
   log("Press Start when ready. Time will begin moving, inbox requests will arrive, and silence will become a decision.");
 
   seedOpeningInbox();
+  normalizeGameState();
   render();
 }
+
+
+function defaultCharacters(){
+  const c=(id,name,group,role,traits=[])=>({id,name,group,role,opinion:50,trust:50,fear:20,respect:40,ambition:50,loyalty:50,resentment:0,traits,memories:[]});
+  return {
+    caelia_veyra:c('caelia_veyra','Lady Caelia au Veyra','Veyra','leader',['cruel','traditional']),
+    cassian_veyra:c('cassian_veyra','Cassian au Veyra','Veyra','heir',['ambitious','duelist']),
+    malrec_veyra:c('malrec_veyra','Praetor Malrec au Veyra','Veyra','commander',['military','hardline']),
+    seraphina_cindral:c('seraphina_cindral','Lady Seraphina au Cindral','Cindral','leader',['social','courtly']),
+    vexa_cindral:c('vexa_cindral','Vexa au Cindral','Cindral','spymaster',['elegant','dangerous']),
+    evander_marros:c('evander_marros','Lord Evander au Marros','Marros','leader',['reformist','legal']),
+    drusus_bellor:c('drusus_bellor','Lord Drusus au Bellor','Bellor','leader',['aggressive','proud']),
+    nestor_aurelian:c('nestor_aurelian','Lord Nestor au Aurelian','Aurelian','leader',['mercantile','careful']),
+    pallas_thorne:c('pallas_thorne','Lord Pallas au Thorne','Thorne','leader',['desperate','minor']),
+    juno_karras:c('juno_karras','Lady Juno au Karras','Karras','leader',['mining','strict']),
+    eo_red:c('eo_red','Eo Marran','Red','labor speaker',['labor']),
+    talla_brown:c('talla_brown','Talla','Brown','estate steward',['steward']),
+    orlan_gray:c('orlan_gray','Commander Orlan','Gray','security commander',['security']),
+    avarus_silver:c('avarus_silver','Avarus ag Sylan','Silver','creditor',['creditor']),
+    cyra_pink:c('cyra_pink','Cyra xi Dama','Pink','informant',['informant']),
+    pelion_blue:c('pelion_blue','Navarch Pelion','Blue','fleet navigator',['navigator']),
+    svala_obsidian:c('svala_obsidian','Svala of the Ice Blood','Obsidian','war envoy',['war']),
+    helios_orange:c('helios_orange','Helios oran Tek','Orange','engineer',['engineer'])
+  };
+}
+function normalizeGameState(){
+  game.characters ||= {}; game.memories ||= []; game.ignoredHistory ||= {}; game.cooldowns ||= {}; game.blocs ||= {}; game.playerBlocStanding ||= {Traditionalist:50,Reform:50,Mercantile:50,Warhawk:50,Courtly:50,Independent:50};
+  game.intel ||= {}; game.tradeRoutes ||= []; game.detailedWars ||= []; game.vendorRelations ||= {}; game.family ||= {}; game.projects ||= []; game.security ||= {assassinationRisk:10,personalSecurity:25,coupRisk:8,poisonRisk:10,estateInfiltration:12}; game.escalations ||= {}; game.warningFlags ||= {};
+  const d=defaultCharacters(); for(const k in d) if(!game.characters[k]) game.characters[k]=d[k];
+  if(Array.isArray(game.wars)) for(const h of game.wars){ if(!game.detailedWars.find(w=>w.enemyHouse===h)) game.detailedWars.push({id:'war_'+h,enemyHouse:h,warScore:0,playerWarExhaustion:0,enemyWarExhaustion:0,supplyDrain:4,fleetFront:0,groundFront:0,intrigueFront:0,publicSupport:55,alliesCommitted:[],monthsActive:0,status:'active'}); }
+  if(Array.isArray(game.tradeDeals)) for(const h of game.tradeDeals){ if(!game.tradeRoutes.find(r=>r.partnerHouse===h)) game.tradeRoutes.push({id:'route_'+h,partnerHouse:h,routeValue:rand(80,160),routeRisk:rand(12,30),protectedByFleet:false,monthsActive:0,dependence:10,disputeRisk:10,status:'active'}); }
+  if(game.knownIntel) for(const h in game.knownIntel){ game.intel[h] ||= {level:0,lastSpiedMonth:null,suspicion:0,falseIntel:false,knownWeaknesses:[]}; if(game.knownIntel[h]) game.intel[h].level=Math.max(game.intel[h].level,2); }
+}
+function getCharacter(id){ return game.characters[id]; }
+function addMemory(id,type,text,intensity=3,duration=null){ const c=getCharacter(id); if(!c) return; const m={month:game.month,type,text,intensity,expires:duration?game.month+duration:null}; c.memories.unshift(m); c.memories=c.memories.slice(0,20); game.memories.push({characterId:id,...m}); }
+function adjustCharacter(id,changes){ const c=getCharacter(id); if(!c) return; Object.keys(changes).forEach(k=>{ if(typeof c[k]==='number') c[k]=clamp(c[k]+changes[k],-100,100); }); }
+function characterOpinionModifier(id){ const c=getCharacter(id); if(!c) return 0; return Math.round((c.opinion-50)/10 - c.resentment/15 + c.respect/25); }
+function recentMemoryCount(id,type){ const c=getCharacter(id); if(!c) return 0; return c.memories.filter(m=>m.type===type && game.month-m.month<=6).length; }
+function getSenderKey(ev){ if(ev.house) return 'House '+ev.house; if(ev.characterId&&game.characters[ev.characterId]) return game.characters[ev.characterId].name; if(ev.from) return ev.from; return `${ev.senderType||'Unknown'}:${ev.title||'event'}`; }
+function recordIgnoredEvent(ev){ const k=getSenderKey(ev); const o=game.ignoredHistory[k]||{count:0,lastMonth:0,severity:0,sourceType:ev.senderType||'Unknown'}; o.count++; o.lastMonth=game.month; o.severity+=Math.max(1,(ev.priority||0)/10); game.ignoredHistory[k]=o; return o; }
+function tickCooldowns(){ Object.keys(game.cooldowns).forEach(k=>{ game.cooldowns[k]=Math.max(0,game.cooldowns[k]-1); if(game.cooldowns[k]===0) delete game.cooldowns[k]; }); }
+function canUseAction(k){ return !game.cooldowns[k]; }
+function setCooldown(k,m){ game.cooldowns[k]=m; }
 
 function seedOpeningInbox(){
   addInbox(makeEvent("welcomeCouncil"));
@@ -729,27 +776,7 @@ function generateContextEvent(){
   return makeEvent(pick(pool));
 }
 
-function senderPriority(ev){
-  /*
-    Sort by who sent it and how dangerous it is to ignore.
-    Higher number appears first.
-  */
-  let score = 0;
-
-  if(ev.senderType === "Higher Gold") score += 100;
-  if(ev.senderType === "Equal Gold") score += 80;
-  if(ev.senderType === "Ally") score += 90;
-  if(ev.senderType === "Creditor") score += 85;
-  if(ev.senderType === "Military") score += 70;
-  if(ev.senderType === "Vendor") score += 55;
-  if(ev.senderType === "Lower House") score += 50;
-  if(ev.senderType === "Color") score += 45;
-
-  score += ev.priority || 0;
-  score += Math.max(0, 8 - ev.deadline) * 8;
-
-  return score;
-}
+function senderPriority(ev){ let base={"Higher Gold":110,"Equal Gold":85,"Ally":105,"Creditor":92,"Military":82,"Vendor":58,"Lower House":52,"Color":42}[ev.senderType]||40; let score=base+(ev.priority||0)+(ev.politicalWeight||0)+(ev.internalRisk||0)+(ev.militaryRisk||0)+(ev.economicRisk||0)+(ev.scandalRisk||0); score += Math.max(0,8-(ev.deadline||4))*9; const ih=game.ignoredHistory[getSenderKey(ev)]; if(ih) score += ih.count*8; if(ev.house&&game.houses[ev.house]?.allied) score += 24; if(ev.house&&game.houses[ev.house]?.atWar) score += 20; if(ev.tags?.includes('debt')&&game.treasury<500) score+=20; if(ev.tags?.includes('scandal')&&game.scandalHeat>35) score+=16; if(ev.senderType==='Color'&&game.rebelStrength>45) score+=26; if(ev.senderType==='Military'&&game.military.supply<30) score+=18; if(ev.characterId) score += (getCharacter(ev.characterId)?.resentment||0)/2; return Math.round(score); }
 
 function addInbox(ev){
   ev.id = Date.now() + "_" + Math.random().toString(36).slice(2);
@@ -1563,6 +1590,7 @@ function expireInbox(){
 
     if(ev.deadline <= 0){
       applyEffects(ev.expire.effects);
+      const ig=recordIgnoredEvent(ev);
 
       if(ev.house && game.houses[ev.house]){
         game.houses[ev.house].lastIgnored++;
@@ -1573,6 +1601,7 @@ function expireInbox(){
         Higher houses punish ignored messages more.
         Lower Colors/socially weaker groups hurt internal stability more.
       */
+      if(ev.characterId) addMemory(ev.characterId,'ignored',`Ignored request: ${ev.title}`,Math.min(8,2+(ig?.count||1)));
       if(ev.senderType==="Higher Gold"){
         applyEffects({prestige:-2,influence:-2,houses:{[ev.house]:{opinion:-4,rivalry:2}}});
       }
@@ -1608,7 +1637,10 @@ function advanceMonth(){
   game.treasury -= debtPay;
   game.debt = Math.max(0, game.debt - Math.round(debtPay*.55));
 
+  tickCooldowns();
   applyTaxEffects();
+  processTradeRoutes();
+  processWars();
   expireInbox();
   tickVendors();
   passiveWorldEffects();
@@ -1671,6 +1703,8 @@ function tickVendors(){
   game.vendors = game.vendors.filter(v=>v.duration>0);
 }
 
+function processTradeRoutes(){ for(const r of game.tradeRoutes){ if(r.status==='collapsed') continue; game.treasury += r.routeValue; r.monthsActive++; r.dependence=clamp(r.dependence+1,0,100); if(game.military.fleetPower < r.routeRisk && chance(0.15)){ r.status='raided'; game.treasury-=Math.round(r.routeValue*0.5); addInbox(makeEvent('tradeTariffDispute')); } if(game.houses[r.partnerHouse] && game.houses[r.partnerHouse].opinion<35 && chance(0.2)){ r.status='disputed'; addInbox(makeEvent('tradePartnerBetrayal')); } } }
+function processWars(){ for(const w of game.detailedWars.filter(x=>x.status==='active')){ const e=game.houses[w.enemyHouse]; if(!e) continue; const fleet=(game.military.fleetPower-e.military.fleet)/4; const ground=(game.military.graySecurity+game.military.obsidianForce+game.military.warMachines-(e.military.grays+e.military.obsidians))/6; const spy=(game.military.intelligence-e.military.spies)/5; w.warScore=clamp(w.warScore+fleet+ground+spy,-100,100); w.playerWarExhaustion=clamp(w.playerWarExhaustion+4,0,100); w.enemyWarExhaustion=clamp(w.enemyWarExhaustion+3,0,100); w.monthsActive++; game.treasury-=120; game.military.supply=clamp(game.military.supply-3,0,100); if(chance(0.25)) addInbox(makeEvent('fleetBattleOpportunity')); if(w.warScore>70) { addInbox(makeEvent('victoryDemand')); w.status='won'; } if(w.warScore<-70){ addInbox(makeEvent('defeatConcession')); w.status='lost'; } } }
 function passiveWorldEffects(){
   let rebelDelta = 0;
 
@@ -1948,6 +1982,8 @@ function spyOnHouse(house){
   render();
 }
 
+function hostFeast(){ const cost=450+game.rank*150; if(game.treasury<cost||!canUseAction('hostFeast')) return; game.treasury-=cost; game.prestige+=rand(5,10); game.colors.Pink=clamp(game.colors.Pink+4); game.houses.Cindral.opinion=clamp(game.houses.Cindral.opinion+3); setCooldown('hostFeast',6); log('You host a lavish feast. Courtly eyes turn toward your table.');}
+function reliefProgram(){ if(game.treasury<600||!canUseAction('reliefProgram')) return; game.treasury-=600; applyEffects({trust:10,rebelStrength:-10,colors:{Red:8,Brown:8,Silver:-4},houses:{Veyra:{opinion:-3},Marros:{opinion:4}},reformSuspicion:5}); setCooldown('reliefProgram',8); addMemory('eo_red','mercy','Relief reached lower districts.',5,8);}
 function declareWar(house){
   if(game.wars.includes(house)){
     alert("You are already at war.");
@@ -1973,6 +2009,8 @@ function declareWar(house){
    =========================== */
 
 function render(){
+  if(!game) return;
+  normalizeGameState();
   renderTopBar();
   renderLeft();
   renderRight();
@@ -2066,6 +2104,9 @@ function renderMain(){
   if(tab==="military"){title.textContent="Military";renderMilitary(mc);}
   if(tab==="houses"){title.textContent="Houses";renderHouses(mc);}
   if(tab==="vendors"){title.textContent="Vendors";renderVendors(mc);}
+  if(tab==="characters"){title.textContent="Characters";renderCharacters(mc);}
+  if(tab==="blocs"){title.textContent="Blocs";renderBlocs(mc);}
+  if(tab==="wartrade"){title.textContent="War / Trade";renderWarTrade(mc);}
   if(tab==="log"){title.textContent="Chronicle";renderLog(mc);}
 }
 
@@ -2300,6 +2341,11 @@ function saveGame(){
   render();
 }
 
+
+function renderCharacters(mc){ const groups={}; Object.values(game.characters).forEach(c=>{(groups[c.group] ||= []).push(c);}); mc.innerHTML=Object.keys(groups).map(g=>`<div class="card"><div class="title">${g}</div>${groups[g].map(c=>`<div><b>${c.name}</b> <span class="tiny">(${c.role})</span><div class="tiny">Op ${c.opinion} • Tr ${c.trust} • Fear ${c.fear} • Res ${c.respect} • Rsm ${c.resentment}</div><div class="tiny">Traits: ${c.traits.join(', ')}</div><div class="tiny">Memories: ${(c.memories.slice(0,3).map(m=>m.type+': '+m.text).join(' | ')||'None')}</div></div>`).join('<hr style="border-color:#2b3248">')}</div>`).join(''); }
+function renderBlocs(mc){ const map={Traditionalist:['Veyra','Karras'],Reform:['Marros'],Mercantile:['Aurelian','Karras'],Warhawk:['Veyra','Bellor'],Courtly:['Cindral'],Independent:['Thorne']}; mc.innerHTML=Object.keys(game.playerBlocStanding).map(b=>`<div class="card"><div class="title">${b} (${game.playerBlocStanding[b]})</div><div class="bar"><div class="fill" style="width:${clamp(game.playerBlocStanding[b])}%"></div></div><div class="tiny">Houses: ${(map[b]||[]).join(', ')||'None'}</div></div>`).join(''); }
+function renderWarTrade(mc){ const wars=game.detailedWars.map(w=>`<div class="card"><div class="title">War: ${w.enemyHouse}</div><div class="tiny">Score ${Math.round(w.warScore)} • Exhaustion ${w.playerWarExhaustion} • Supply drain ${w.supplyDrain} • ${w.status}</div></div>`).join('')||'<div class="tiny">No active detailed wars.</div>'; const routes=game.tradeRoutes.map(r=>`<div class="card"><div class="title">Route: ${r.partnerHouse}</div><div class="tiny">Value ${r.routeValue} • Risk ${r.routeRisk} • Dependence ${r.dependence} • ${r.status}</div></div>`).join('')||'<div class="tiny">No active routes.</div>'; mc.innerHTML='<div class="section-title">Wars</div>'+wars+'<div class="section-title">Trade Routes</div>'+routes; }
+
 function loadGame(){
   const s = localStorage.getItem("goldRiseRebuiltSave");
   if(!s){
@@ -2310,6 +2356,7 @@ function loadGame(){
   clearInterval(timer);
   timer = null;
   game = JSON.parse(s);
+  normalizeGameState();
   log("Game loaded.");
   render();
 }
