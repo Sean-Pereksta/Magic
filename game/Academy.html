@@ -246,6 +246,7 @@
     <p>Twenty rival AI wizards roam the giant world, grow their own crab armies, clear alcoves, and eventually try to hunt you down.</p>
     <p>A glowing blue storm slowly shrinks the safe ring. If you or your crabs enter the storm, you take damage. A blue arrow points you back toward safety.</p>
     <p><span class="kbd">W</span> is always forward. <span class="kbd">S</span> backs up. <span class="kbd">A</span> and <span class="kbd">D</span> turn. Pick upgrades with <span class="kbd">Q</span> and <span class="kbd">E</span>.</p>
+    <label style="display:flex;align-items:center;gap:8px;justify-content:center;margin:14px 0;color:#cde7ff;font-size:14px;"><input type="checkbox" id="splitScreenToggle"> Split Screen Co-op (P2 Wizard uses Arrow Keys)</label>
     <button id="startBtn">Start Game</button>
   </div>
 </div>
@@ -389,6 +390,22 @@ const player = {
   hpBar: null,
   arrow: null
 };
+
+const coopState = { enabled: false };
+const playerTwo = {
+  group: new THREE.Group(),
+  radius: 0.85,
+  speed: 11.4,
+  turnSpeed: 2.75,
+  velocity: new THREE.Vector3(),
+  team: "player",
+  color: new THREE.Color(0xc28bff),
+  hp: 100,
+  maxHp: 100,
+  fireCooldown: 0,
+  hpBar: null
+};
+const cameraTwo = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 980);
 
 const crabs = [];
 const enemies = [];
@@ -741,6 +758,16 @@ function buildWizard() {
   player.arrow = makeStormArrow();
   player.group.add(player.arrow);
   player.arrow.visible = false;
+}
+
+
+function buildWizardTwo() {
+  const model = buildWizardModel(playerTwo.color, false);
+  playerTwo.group.add(model);
+  scene.add(playerTwo.group);
+  playerTwo.group.position.set(4, 0, 4);
+  playerTwo.hpBar = makeHealthBar(1.7, .16, 3.65, true);
+  playerTwo.group.add(playerTwo.hpBar);
 }
 
 function makeStormArrow() {
@@ -1281,6 +1308,29 @@ function nearestEnemyForPlayerFire(pos, range) {
   return nearestTarget(pos, "player", range, false);
 }
 
+function updateCoopPlayer(dt) {
+  if (!coopState.enabled || state.upgradeOpen || playerTwo.dead) return;
+  playerTwo.fireCooldown -= dt;
+  if (keys["arrowleft"]) playerTwo.group.rotation.y += playerTwo.turnSpeed * dt;
+  if (keys["arrowright"]) playerTwo.group.rotation.y -= playerTwo.turnSpeed * dt;
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(playerTwo.group.quaternion);
+  const move = new THREE.Vector3();
+  if (keys["arrowup"]) move.add(forward);
+  if (keys["arrowdown"]) move.addScaledVector(forward, -0.65);
+  if (move.lengthSq() > 0) {
+    move.normalize();
+    playerTwo.group.position.addScaledVector(move, playerTwo.speed * dt);
+  }
+  const arenaLimit = WORLD_RADIUS - 6;
+  playerTwo.group.position.x = clamp(playerTwo.group.position.x, -arenaLimit, arenaLimit);
+  playerTwo.group.position.z = clamp(playerTwo.group.position.z, -arenaLimit, arenaLimit);
+  const target = nearestEnemyForPlayerFire(playerTwo.group.position, 25);
+  if (target && playerTwo.fireCooldown <= 0) {
+    playerTwo.fireCooldown = 1.05;
+    createFireball(playerTwo, target, 0xb883ff);
+  }
+}
+
 function updatePlayer(dt) {
   if (state.upgradeOpen) return;
 
@@ -1472,6 +1522,13 @@ function damageUnit(unit, amount, source = null) {
 function killUnit(unit, source) {
   if (unit === player) {
     state.hp = 0;
+    return;
+  }
+
+  if (unit === playerTwo) {
+    playerTwo.hp = 0;
+    playerTwo.dead = true;
+    startDeathAnimation(playerTwo, playerTwo.color);
     return;
   }
 
@@ -1994,6 +2051,15 @@ function updateCamera(dt) {
   camera.lookAt(look);
 }
 
+function updateCameraTwo(dt) {
+  if (!coopState.enabled) return;
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(playerTwo.group.quaternion);
+  const desired = playerTwo.group.position.clone().addScaledVector(forward, -12.5).add(new THREE.Vector3(0, 7.2, 0));
+  cameraTwo.position.lerp(desired, 1 - Math.pow(.001, dt));
+  const look = playerTwo.group.position.clone().add(new THREE.Vector3(0, 1.75, 0)).addScaledVector(forward, 3.0);
+  cameraTwo.lookAt(look);
+}
+
 function updateHud() {
   hud.hp.textContent = Math.max(0, Math.floor(state.hp));
   hud.crabCount.textContent = crabs.length;
@@ -2242,6 +2308,7 @@ function initGame() {
   addLights();
   buildWorld();
   buildWizard();
+  if (coopState.enabled) buildWizardTwo();
 
   for (let i = 0; i < 7; i++) {
     createCrab(new THREE.Vector3(rand(-2, 2), 0, rand(-2, 2)), player, teamColor);
@@ -2268,6 +2335,8 @@ function animate() {
   if (state.started && !state.gameOver) {
     updateStorm(dt);
     updatePlayer(dt);
+    updateCoopPlayer(dt);
+    if (coopState.enabled) applyStormDamageToWizard(playerTwo, dt);
     updateFireballs(dt);
     updateCrabGroup(player, crabs, dt);
     updateNestSquads(dt);
@@ -2275,11 +2344,26 @@ function animate() {
     checkWinLoss();
     updateHud();
     updateHealthBar(player, state.hp, state.maxHp);
+    if (coopState.enabled) updateHealthBar(playerTwo, playerTwo.hp, playerTwo.maxHp);
   }
 
   updateCamera(dt);
+  updateCameraTwo(dt);
 
-  renderer.render(scene, camera);
+  if (coopState.enabled) {
+    renderer.setScissorTest(true);
+    const halfW = Math.floor(innerWidth / 2);
+    renderer.setViewport(0, 0, halfW, innerHeight);
+    renderer.setScissor(0, 0, halfW, innerHeight);
+    renderer.render(scene, camera);
+    renderer.setViewport(halfW, 0, innerWidth - halfW, innerHeight);
+    renderer.setScissor(halfW, 0, innerWidth - halfW, innerHeight);
+    renderer.render(scene, cameraTwo);
+    renderer.setScissorTest(false);
+  } else {
+    renderer.setViewport(0, 0, innerWidth, innerHeight);
+    renderer.render(scene, camera);
+  }
 }
 
 addEventListener("keydown", e => {
@@ -2296,14 +2380,19 @@ addEventListener("keyup", e => {
 addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
+  cameraTwo.aspect = innerWidth / innerHeight;
+  cameraTwo.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
 });
 
 document.getElementById("restartSameBtn").onclick = () => restartGame(selectedDifficulty);
 document.getElementById("restartHarderBtn").onclick = () => restartGame(selectedDifficulty + 1);
 
+const splitScreenToggle = document.getElementById("splitScreenToggle");
+
 document.getElementById("startBtn").onclick = () => {
   document.getElementById("startScreen").style.display = "none";
+  coopState.enabled = !!splitScreenToggle.checked;
   state.started = true;
   state.difficulty = selectedDifficulty;
   showMessage("Lead the crab army and survive the storm!", 2);
