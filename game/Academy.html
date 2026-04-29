@@ -1,3246 +1,2011 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Layered Correlation Finder — CSV + Retail Docks</title>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
-
+<meta charset="UTF-8" />
+<title>Crabmancer 3D - Storm War</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <style>
-:root{
-  --bg:#f6f7fb;
-  --panel:#fff;
-  --ink:#0f172a;
-  --muted:#64748b;
-  --line:#e5e7eb;
-  --blue:#2563eb;
-  --blue2:#1d4ed8;
-  --green:#16a34a;
-  --yellow:#eab308;
-  --red:#dc2626;
-  --purple:#7c3aed;
-  --shadow:0 12px 30px rgba(2,6,23,.09);
-  --radius:16px;
-}
-*{box-sizing:border-box}
-body{
-  margin:0;
-  font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-  background:var(--bg);
-  color:var(--ink);
-}
-button,input,select{font:inherit}
-button{
-  border:1px solid var(--line);
-  background:#fff;
-  color:var(--ink);
-  padding:8px 11px;
-  border-radius:12px;
-  font-weight:900;
-  font-size:12px;
-  cursor:pointer;
-  box-shadow:0 6px 16px rgba(2,6,23,.07);
-}
-button:hover{transform:translateY(-1px)}
-button.primary{
-  background:linear-gradient(180deg,var(--blue),var(--blue2));
-  color:#fff;
-  border-color:transparent;
-}
-button.dark{
-  background:#0f172a;
-  color:#fff;
-  border-color:#0f172a;
-}
-button.danger{
-  background:linear-gradient(180deg,#ef4444,#dc2626);
-  color:#fff;
-  border-color:transparent;
-}
-button.ghost{box-shadow:none;background:#f8fafc}
-select,input[type="text"],input[type="number"]{
-  width:100%;
-  border:1px solid var(--line);
-  border-radius:12px;
-  padding:8px 10px;
-  background:#fff;
-  outline:none;
-}
-select:focus,input:focus{
-  border-color:rgba(37,99,235,.45);
-  box-shadow:0 0 0 3px rgba(37,99,235,.1);
-}
-label{
-  display:block;
-  font-size:11px;
-  color:var(--muted);
-  font-weight:950;
-  margin-bottom:4px;
-}
-.topbar{
-  position:sticky;
-  top:0;
-  z-index:30;
-  background:rgba(246,247,251,.96);
-  backdrop-filter:blur(10px);
-  border-bottom:1px solid var(--line);
-  padding:10px 12px;
-}
-.topRow{
-  display:flex;
-  gap:10px;
-  align-items:center;
-  justify-content:space-between;
-  flex-wrap:wrap;
-}
-.title b{font-size:15px}
-.title span{
-  display:block;
-  color:var(--muted);
-  font-size:12px;
-  margin-top:2px;
-}
-.actions{
-  display:flex;
-  gap:8px;
-  align-items:center;
-  flex-wrap:wrap;
-  justify-content:flex-end;
-}
-.pill,.badge,.tag{
-  display:inline-flex;
-  align-items:center;
-  gap:6px;
-  border:1px solid var(--line);
-  background:#f8fafc;
-  border-radius:999px;
-  padding:5px 9px;
-  font-size:12px;
-  color:var(--muted);
-  font-weight:850;
-  white-space:nowrap;
-}
-.pill b,.badge b{color:var(--ink)}
-.tag.high{background:rgba(22,163,74,.1);border-color:rgba(22,163,74,.25);color:#166534}
-.tag.med{background:rgba(234,179,8,.13);border-color:rgba(234,179,8,.3);color:#92400e}
-.tag.low{background:rgba(100,116,139,.1);border-color:rgba(100,116,139,.22);color:#334155}
-.tag.pos{background:rgba(37,99,235,.1);border-color:rgba(37,99,235,.25);color:#1d4ed8}
-.tag.neg{background:rgba(124,58,237,.1);border-color:rgba(124,58,237,.25);color:#5b21b6}
-.tag.bad{background:rgba(220,38,38,.1);border-color:rgba(220,38,38,.25);color:#991b1b}
-.controls{
-  margin-top:10px;
-  display:grid;
-  grid-template-columns:1.1fr .9fr .9fr .9fr .7fr .7fr;
-  gap:8px;
-  align-items:end;
-}
-.wrap{
-  max-width:1700px;
-  margin:0 auto;
-  padding:12px;
-}
-.layout{
-  display:grid;
-  grid-template-columns:1fr 430px;
-  gap:12px;
-  align-items:start;
-}
-.panel{
-  background:var(--panel);
-  border:1px solid var(--line);
-  border-radius:var(--radius);
-  box-shadow:var(--shadow);
-  overflow:hidden;
-}
-.ph{
-  padding:10px 12px;
-  border-bottom:1px solid var(--line);
-  display:flex;
-  gap:10px;
-  align-items:flex-start;
-  justify-content:space-between;
-}
-.ph b{font-size:13px}
-.ph small{font-size:12px;color:var(--muted)}
-.pc{padding:12px}
-.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.hint{
-  border:1px solid var(--line);
-  background:#f8fafc;
-  color:#334155;
-  border-radius:14px;
-  padding:10px 12px;
-  font-size:12px;
-  line-height:1.35;
-  font-weight:750;
-}
-.hint.ok{background:#f0fdf4;border-color:#bbf7d0;color:#166534}
-.hint.warn{background:#fffbeb;border-color:#fde68a;color:#92400e}
-.hint.bad{background:#fff1f2;border-color:#fecdd3;color:#9f1239}
-.drop{
-  border:2px dashed rgba(37,99,235,.35);
-  border-radius:14px;
-  padding:10px;
-  background:linear-gradient(180deg,rgba(37,99,235,.06),rgba(37,99,235,.02));
-}
-.drop.drag{
-  border-color:rgba(37,99,235,.8);
-  box-shadow:0 0 0 4px rgba(37,99,235,.12);
-}
-.drop b{font-size:12px}
-.drop span{font-size:11px;color:var(--muted)}
-.tableWrap{
-  max-height:calc(100vh - 245px);
-  overflow:auto;
-}
-table{
-  width:100%;
-  border-collapse:collapse;
-  font-size:12px;
-}
-th,td{
-  border-bottom:1px solid var(--line);
-  padding:9px 9px;
-  text-align:left;
-  vertical-align:top;
-}
-th{
-  position:sticky;
-  top:0;
-  z-index:2;
-  background:#fff;
-  white-space:nowrap;
-}
-th.sort{cursor:pointer}
-tr:hover{background:#f8fafc}
-.metricName{
-  font-weight:950;
-  max-width:360px;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-.small{font-size:12px}
-.muted{color:var(--muted)}
-.progressOuter{
-  height:12px;
-  background:#e5e7eb;
-  border-radius:999px;
-  overflow:hidden;
-  border:1px solid #dbe3ee;
-}
-.progressFill{
-  height:100%;
-  width:0%;
-  background:linear-gradient(90deg,var(--blue),var(--green));
-  transition:width .12s ease;
-}
-.cardGrid{
-  display:grid;
-  grid-template-columns:repeat(4,minmax(120px,1fr));
-  gap:8px;
-}
-.kcard{
-  border:1px solid var(--line);
-  background:#fbfdff;
-  border-radius:14px;
-  padding:10px;
-}
-.kcard .k{
-  color:var(--muted);
-  font-size:11px;
-  text-transform:uppercase;
-  font-weight:950;
-  letter-spacing:.04em;
-}
-.kcard .v{
-  margin-top:3px;
-  font-size:18px;
-  font-weight:950;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-.kcard .d{
-  color:var(--muted);
-  font-size:11px;
-  font-weight:800;
-  margin-top:2px;
-}
-.canvasWrap{
-  border:1px solid var(--line);
-  border-radius:14px;
-  overflow:hidden;
-  position:relative;
-  background:
-    radial-gradient(circle at 25% 20%,rgba(37,99,235,.08),transparent 40%),
-    radial-gradient(circle at 80% 15%,rgba(234,179,8,.12),transparent 38%),
-    #fff;
-}
-canvas{
-  width:100%;
-  height:360px;
-  display:block;
-}
-.tooltip{
-  display:none;
-  position:absolute;
-  pointer-events:none;
-  transform:translate(10px,10px);
-  background:rgba(15,23,42,.94);
-  color:#fff;
-  border-radius:12px;
-  padding:8px 10px;
-  font-size:12px;
-  max-width:330px;
-  line-height:1.3;
-  box-shadow:0 12px 28px rgba(0,0,0,.25);
-}
-.tabs{
-  display:flex;
-  gap:8px;
-  flex-wrap:wrap;
-}
-.tab{
-  border:1px solid var(--line);
-  background:#fff;
-  border-radius:999px;
-  padding:7px 10px;
-  font-size:12px;
-  font-weight:950;
-  cursor:pointer;
-}
-.tab.on{
-  background:var(--blue);
-  color:#fff;
-  border-color:var(--blue);
-}
-.layerBox{
-  display:grid;
-  gap:8px;
-}
-.layerCrumb{
-  display:inline-flex;
-  border:1px solid rgba(37,99,235,.25);
-  background:rgba(37,99,235,.08);
-  color:#1d4ed8;
-  border-radius:999px;
-  padding:5px 9px;
-  font-size:12px;
-  font-weight:950;
-}
-.drawer{
-  position:fixed;
-  inset:0;
-  display:none;
-  background:rgba(15,23,42,.45);
-  z-index:1000;
-  padding:18px;
-}
-.drawer.show{display:flex;align-items:center;justify-content:center}
-.modal{
-  width:min(1120px,96vw);
-  max-height:92vh;
-  overflow:hidden;
-  display:grid;
-  grid-template-rows:auto 1fr;
-  background:#fff;
-  border-radius:18px;
-  box-shadow:0 28px 80px rgba(2,6,23,.35);
-}
-.modalBody{overflow:auto;padding:12px}
-.checkGrid{
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
-  gap:8px;
-}
-.checkItem{
-  border:1px solid var(--line);
-  border-radius:12px;
-  padding:8px 10px;
-  background:#fbfdff;
-  display:flex;
-  align-items:flex-start;
-  gap:8px;
-  font-size:12px;
-  font-weight:850;
-}
-.checkItem input{margin-top:2px}
-.lockedHeader{
-  opacity:.58;
-  background:#f1f5f9;
-}
-.lockedHeader input{
-  cursor:not-allowed;
-}
-.lockedHeader span{
-  color:#64748b;
-}
-.treeChildRow td{
-  background:#fbfdff;
-}
-.treeChildRow:hover td{
-  background:#f1f5f9;
-}
-.savedItem{
-  border:1px solid var(--line);
-  border-radius:12px;
-  padding:8px;
-  background:#fbfdff;
-  margin-bottom:8px;
-}
-.savedItem b{font-size:12px;}
-.savedItem small{color:var(--muted);}
-.posText{
-  color:#166534;
-  font-weight:950;
-}
-.badText{
-  color:#991b1b;
-  font-weight:950;
-}
-@media(max-width:1200px){
-  .layout{grid-template-columns:1fr}
-  .controls{grid-template-columns:1fr 1fr}
-  .tableWrap{max-height:55vh}
-}
+  html, body {
+    margin: 0;
+    overflow: hidden;
+    background: #06101f;
+    color: white;
+    font-family: Arial, Helvetica, sans-serif;
+  }
+
+  #game {
+    position: fixed;
+    inset: 0;
+  }
+
+  #hud {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 10;
+    background: rgba(5, 10, 20, 0.75);
+    border: 1px solid rgba(120, 220, 255, 0.25);
+    border-radius: 14px;
+    padding: 12px 14px;
+    min-width: 285px;
+    box-shadow: 0 0 24px rgba(0, 200, 255, 0.15);
+    line-height: 1.5;
+    font-size: 14px;
+  }
+
+  #hud b {
+    color: #8feaff;
+  }
+
+  .kbd {
+    display: inline-block;
+    background: rgba(255,255,255,0.13);
+    border: 1px solid rgba(255,255,255,0.18);
+    padding: 2px 7px;
+    border-radius: 6px;
+    color: #ffe88a;
+    font-weight: 900;
+  }
+
+  #upgradePanel {
+    position: fixed;
+    top: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    display: none;
+    gap: 42px;
+    pointer-events: none;
+  }
+
+  .upgradeCard {
+    width: 260px;
+    padding: 15px;
+    border-radius: 18px;
+    background: rgba(4, 12, 28, 0.9);
+    border: 2px solid rgba(255,255,255,0.23);
+    text-align: center;
+    box-shadow: 0 0 35px rgba(0,0,0,.45);
+  }
+
+  .upgradeKey {
+    font-size: 34px;
+    font-weight: 900;
+    color: #ffe88a;
+    margin-bottom: 4px;
+  }
+
+  .upgradeIcon {
+    font-size: 42px;
+    margin-bottom: 5px;
+  }
+
+  .upgradeTitle {
+    color: #91ecff;
+    font-size: 18px;
+    font-weight: 900;
+  }
+
+  .upgradeDesc {
+    margin-top: 8px;
+    font-size: 13px;
+    color: #dceeff;
+  }
+
+  #message {
+    position: fixed;
+    top: 24%;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 12;
+    display: none;
+    background: rgba(0,0,0,0.58);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 999px;
+    padding: 12px 20px;
+    font-size: 22px;
+    font-weight: 900;
+    color: #fff5b5;
+  }
+
+  #stormWarning {
+    position: fixed;
+    left: 50%;
+    bottom: 26px;
+    transform: translateX(-50%);
+    z-index: 13;
+    display: none;
+    background: rgba(20, 110, 255, .35);
+    border: 1px solid rgba(160, 220, 255, .55);
+    box-shadow: 0 0 30px rgba(30, 170, 255, .5);
+    border-radius: 999px;
+    padding: 10px 18px;
+    font-weight: 900;
+    color: #dff6ff;
+  }
+
+  #startScreen {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+      radial-gradient(circle at center, rgba(48, 146, 190, 0.28), rgba(3, 6, 15, 0.97)),
+      linear-gradient(160deg, rgba(15, 45, 75, 0.5), rgba(2, 4, 12, 0.95));
+  }
+
+  #startCard {
+    width: min(800px, calc(100vw - 32px));
+    background: rgba(4, 11, 26, .86);
+    border: 1px solid rgba(130, 220, 255, .35);
+    border-radius: 24px;
+    padding: 26px;
+    text-align: center;
+    box-shadow: 0 0 55px rgba(0,0,0,.45);
+  }
+
+  h1 {
+    margin: 0 0 10px;
+    color: #91ecff;
+    font-size: 46px;
+    letter-spacing: .5px;
+  }
+
+  #startCard p {
+    color: #e2f4ff;
+    line-height: 1.45;
+    margin: 9px auto;
+    max-width: 720px;
+  }
+
+  button {
+    margin-top: 18px;
+    padding: 14px 26px;
+    border: 0;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #46ddff, #9affb6);
+    color: #031018;
+    font-size: 17px;
+    font-weight: 900;
+    cursor: pointer;
+    box-shadow: 0 8px 25px rgba(50, 220, 255, .24);
+  }
 </style>
 </head>
-
 <body>
-<div class="topbar">
-  <div class="topRow">
-    <div class="title">
-      <b>Layered Correlation Finder</b>
-      <span>CSV headers + Retail/Referral localStorage docks → name-matched KPI correlation table, chunked for large files.</span>
-    </div>
-    <div class="actions">
-      <span class="pill"><b id="rowsBadge">0</b> rows</span>
-      <span class="pill"><b id="metricBadge">0</b> metrics</span>
-      <span class="pill"><b id="dockBadge">0</b> dock reps</span>
-      <span class="pill"><b id="matchBadge">0</b> matched</span>
-      <button class="primary" id="btnRun">Run Correlations</button>
-      <button id="btnHeaders">Choose Headers</button>
-      <button id="btnFilterHeaders">Filter Out Headers</button>
-      <button id="btnExport">Export CSV</button>
-      <button class="danger" id="btnClear">Clear</button>
-    </div>
+
+<div id="game"></div>
+
+<div id="hud">
+  <div><b>Crabmancer Storm War</b></div>
+  <div>Wizard HP: <span id="hp">100</span></div>
+  <div>Crabs Alive: <span id="crabCount">0</span></div>
+  <div>Enemy Wizards Alive: <span id="wizardCount">20</span></div>
+  <div>Alcoves Active: <span id="alcoveCount">0</span></div>
+  <div>Kills: <span id="kills">0</span></div>
+  <div>XP: <span id="xp">0</span> / <span id="nextXp">6</span></div>
+  <div>Level: <span id="level">1</span></div>
+  <div>Safe Ring Radius: <span id="stormRadius">120</span></div>
+  <div>Objective: <span id="objectiveText">Clear alcove squads and survive the storm</span></div>
+  <hr style="border-color:rgba(255,255,255,.12)">
+  <div><span class="kbd">W</span> forward · <span class="kbd">S</span> backward</div>
+  <div><span class="kbd">A</span>/<span class="kbd">D</span> turn wizard</div>
+  <div><span class="kbd">Q</span>/<span class="kbd">E</span> pick upgrades</div>
+</div>
+
+<div id="upgradePanel">
+  <div class="upgradeCard" id="leftUpgrade">
+    <div class="upgradeKey">Q</div>
+    <div class="upgradeIcon"></div>
+    <div class="upgradeTitle"></div>
+    <div class="upgradeDesc"></div>
   </div>
-
-  <div class="controls">
-    <div>
-      <label>CSV Upload</label>
-      <div class="drop" id="dropZone">
-        <div class="row" style="justify-content:space-between">
-          <div>
-            <b id="fileLabel">Drop CSV or choose file</b><br>
-            <span>Every header will be loaded as a selectable field.</span>
-          </div>
-          <div>
-            <input id="csvInput" type="file" accept=".csv,text/csv" multiple style="display:none">
-            <button class="primary" id="btnPick">Choose CSV</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div>
-      <label>Dock Data</label>
-      <div class="row">
-        <button class="primary" id="btnLoadDocks">Load Docks</button>
-        <button id="btnDockKeys">Keys</button>
-      </div>
-    </div>
-
-    <div>
-      <label>Name Match Field</label>
-      <div class="row">
-        <select id="nameField"></select>
-        <button id="btnMatchHeaders">Match Headers</button>
-        <button id="btnMatchTool">Match Tool</button>
-      </div>
-    </div>
-
-    <div>
-      <label>Target KPI</label>
-      <select id="targetField"></select>
-    </div>
-
-    <div>
-      <label>Minimum N</label>
-      <input id="minN" type="number" value="5" min="2" step="1">
-      <div style="height:6px"></div>
-      <select id="thresholdMode">
-        <option value="median">Median split</option>
-        <option value="average">Above average</option>
-        <option value="topQuartile">Top quartile</option>
-        <option value="nonzero">Non-zero / present</option>
-      </select>
-    </div>
-
-    <div>
-      <label>Search</label>
-      <input id="searchBox" type="text" placeholder="Search correlations...">
-    </div>
-  </div>
-
-  <div style="margin-top:10px;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center">
-    <div class="progressOuter"><div class="progressFill" id="progressFill"></div></div>
-    <span class="badge" id="progressText">Ready</span>
+  <div class="upgradeCard" id="rightUpgrade">
+    <div class="upgradeKey">E</div>
+    <div class="upgradeIcon"></div>
+    <div class="upgradeTitle"></div>
+    <div class="upgradeDesc"></div>
   </div>
 </div>
 
-<div class="wrap">
-  <div class="layout">
-    <main class="panel">
-      <div class="ph">
-        <div>
-          <b>All Correlations</b><br>
-          <small>Click any row for scatter/details. Use Drill to find second- and third-layer connections.</small>
-        </div>
-        <div class="row">
-          <button class="ghost" id="sortAbs">Sort |r|</button>
-          <button class="ghost" id="sortPos">Positive</button>
-          <button class="ghost" id="sortNeg">Negative</button>
-          <button class="ghost" id="sortN">Sample</button>
-          <button class="ghost" id="btnCloseTrees">Close Trees</button>
-        </div>
-      </div>
+<div id="message"></div>
+<div id="stormWarning">STORM DAMAGE! Follow the blue arrow back into the safe ring.</div>
 
-      <div class="pc">
-        <div class="cardGrid">
-          <div class="kcard">
-            <div class="k">Target</div>
-            <div class="v" id="cardTarget">—</div>
-            <div class="d">Selected KPI</div>
-          </div>
-          <div class="kcard">
-            <div class="k">Best Correlate</div>
-            <div class="v" id="cardBest">—</div>
-            <div class="d" id="cardBestSub">—</div>
-          </div>
-          <div class="kcard">
-            <div class="k">Rows Matched</div>
-            <div class="v" id="cardMatched">0</div>
-            <div class="d">CSV + dock name merge</div>
-          </div>
-          <div class="kcard">
-            <div class="k">Call Center Avg</div>
-            <div class="v" id="cardCallCenterAvg">—</div>
-            <div class="d" id="cardCallCenterAvgSub">Selected KPI average</div>
-          </div>
-          <div class="kcard">
-            <div class="k">Layer</div>
-            <div class="v" id="cardLayer">0</div>
-            <div class="d">Drill depth</div>
-          </div>
-        </div>
-
-        <div style="height:10px"></div>
-
-        <div class="tableWrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Metric</th>
-                <th>r</th>
-                <th>|r|</th>
-                <th>N</th>
-                <th>Direction</th>
-                <th>Strength</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody id="corrBody">
-              <tr><td colspan="7" class="muted">Load data, choose target, then run correlations.</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </main>
-
-    <aside class="panel">
-      <div class="ph">
-        <div>
-          <b>Selected Detail</b><br>
-          <small id="detailSub">Scatter plot and layered insight.</small>
-        </div>
-        <button id="btnResetLayer">Reset Drill</button>
-      </div>
-
-      <div class="pc">
-        <div class="hint" id="statusBox">
-          Start by uploading a CSV or loading Retail/Referral docks. Docks can supply representative names and KPI stats such as Consumer Appointment Rate.
-        </div>
-
-        <div style="height:10px"></div>
-
-        <div class="canvasWrap">
-          <canvas id="plot" width="820" height="360"></canvas>
-          <div class="tooltip" id="tip"></div>
-        </div>
-
-        <div style="height:10px"></div>
-
-        <div class="panel" style="box-shadow:none">
-          <div class="ph">
-            <div>
-              <b>Layer Explorer</b><br>
-              <small>Click Drill on a metric, then choose second/third layer.</small>
-            </div>
-          </div>
-          <div class="pc">
-            <div class="row" id="crumbs"></div>
-            <div style="height:8px"></div>
-            <div class="hint" id="layerHint">
-              No drill chain selected yet.
-            </div>
-            <div style="height:8px"></div>
-            <div class="tableWrap" style="max-height:330px">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Next Layer</th>
-                    <th>Good Avg</th>
-                    <th>Bad Avg</th>
-                    <th>Delta</th>
-                    <th>N</th>
-                  </tr>
-                </thead>
-                <tbody id="layerBody">
-                  <tr><td colspan="5" class="muted">Drill into a correlate to populate this.</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <div style="height:10px"></div>
-
-        <div class="panel" style="box-shadow:none">
-          <div class="ph">
-            <div>
-              <b>Saved Correlations</b><br>
-              <small>Keep useful rows for later export.</small>
-            </div>
-            <div class="row">
-              <button id="btnExportSaved">Export Saved</button>
-              <button class="danger" id="btnClearSaved">Clear Saved</button>
-            </div>
-          </div>
-          <div class="pc">
-            <div id="savedList" style="max-height:240px;overflow:auto"></div>
-          </div>
-        </div>
-
-      </div>
-    </aside>
+<div id="startScreen">
+  <div id="startCard">
+    <h1>Crabmancer 3D</h1>
+    <p>You are a wizard leading a leash-bound army of 3D crabs. Alcoves now spawn enemies in squads of 3. Clear the whole squad to earn more crabs.</p>
+    <p>Each alcove has stronger enemies depending on its tier, and squads cannot chase too far away from their alcove.</p>
+    <p>Twenty rival AI wizards roam the giant world, grow their own crab armies, clear alcoves, and eventually try to hunt you down.</p>
+    <p>A glowing blue storm slowly shrinks the safe ring. If you or your crabs enter the storm, you take damage. A blue arrow points you back toward safety.</p>
+    <p><span class="kbd">W</span> is always forward. <span class="kbd">S</span> backs up. <span class="kbd">A</span> and <span class="kbd">D</span> turn. Pick upgrades with <span class="kbd">Q</span> and <span class="kbd">E</span>.</p>
+    <button id="startBtn">Start Game</button>
   </div>
 </div>
 
-<div class="drawer" id="headerDrawer">
-  <div class="modal">
-    <div class="ph">
-      <div>
-        <b>Choose Active Headers</b><br>
-        <small>Every CSV and dock header is loaded. Uncheck noisy fields to speed up analysis.</small>
-      </div>
-      <div class="row">
-        <button id="btnAllHeaders">All</button>
-        <button id="btnNumericHeaders">Numeric Only</button>
-        <button class="dark" id="btnCloseHeaders">Done</button>
-      </div>
-    </div>
-    <div class="modalBody">
-      <div class="checkGrid" id="headerChecks"></div>
-    </div>
-  </div>
-</div>
+<script type="module">
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 
-<div class="drawer" id="dockDrawer">
-  <div class="modal">
-    <div class="ph">
-      <div>
-        <b>Detected Dock Keys</b><br>
-        <small>Useful for confirming the localStorage dock names.</small>
-      </div>
-      <button class="dark" id="btnCloseDockKeys">Close</button>
-    </div>
-    <div class="modalBody">
-      <div class="hint" id="dockKeyList"></div>
-    </div>
-  </div>
-</div>
+const container = document.getElementById("game");
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x07101d);
+scene.fog = new THREE.Fog(0x07101d, 65, 240);
 
-<div class="drawer" id="matchHeadersDrawer">
-  <div class="modal">
-    <div class="ph">
-      <div>
-        <b>Match Headers</b><br>
-        <small>Select which headers contain the same person names. Correlations will only use matched rows.</small>
-      </div>
-      <div class="row">
-        <button id="btnApplyMatchHeaders" class="primary">Apply Match</button>
-        <button class="dark" id="btnCloseMatchHeaders">Close</button>
-      </div>
-    </div>
-    <div class="modalBody">
-      <div class="cardGrid">
-        <div class="kcard">
-          <div class="k">CSV Name Header</div>
-          <select id="matchCsvNameHeader"></select>
-          <div class="d">Example: Agent Name</div>
-        </div>
-        <div class="kcard">
-          <div class="k">Dock Name Header</div>
-          <select id="matchDockNameHeader"></select>
-          <div class="d">Example: Name</div>
-        </div>
-        <div class="kcard">
-          <div class="k">Matched Rows Used</div>
-          <div class="v" id="simpleMatchedCount">0</div>
-          <div class="d">Unmatched rows are excluded from correlations</div>
-        </div>
-        <div class="kcard">
-          <div class="k">Unique Name Matches</div>
-          <div class="v" id="simpleUniqueMatchedCount">0</div>
-          <div class="d">Normalized names found in both sources</div>
-        </div>
-      </div>
-      <div style="height:10px"></div>
-      <label class="checkItem" style="display:flex">
-        <input id="matchOnlyToggle" type="checkbox" checked>
-        <span>
-          Correlate matched rows only<br>
-          <span class="muted">When enabled, unmatched CSV rows are removed from the correlation dataset.</span>
-        </span>
-      </label>
-      <div style="height:10px"></div>
-      <div class="hint" id="matchHeadersStatus">
-        Choose the two name headers, then click Apply Match. Matching ignores case, spacing, dots, and Last, First format.
-      </div>
-    </div>
-  </div>
-</div>
+const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 650);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+container.appendChild(renderer.domElement);
 
+const clock = new THREE.Clock();
 
+const keys = {};
+const teamColor = new THREE.Color(0x35d7ff);
 
-<div class="drawer" id="matchToolDrawer">
-  <div class="modal">
-    <div class="ph">
-      <div>
-        <b>Match-to-Match Name Tool</b><br>
-        <small>Map names from CSV headers to dock headers when the same person appears under different field names.</small>
-      </div>
-      <div class="row">
-        <button id="btnRunMatchTool" class="primary">Find Matches</button>
-        <button id="btnSaveMatchTool">Save Match Settings</button>
-        <button class="dark" id="btnCloseMatchTool">Close</button>
-      </div>
-    </div>
-    <div class="modalBody">
-      <div class="cardGrid">
-        <div class="kcard">
-          <div class="k">CSV Name Header</div>
-          <select id="matchCsvHeader"></select>
-        </div>
-        <div class="kcard">
-          <div class="k">Dock Name Header</div>
-          <select id="matchDockHeader"></select>
-        </div>
-        <div class="kcard">
-          <div class="k">Matches Found</div>
-          <div class="v" id="matchFoundCount">0</div>
-          <div class="d">CSV names matched to dock names</div>
-        </div>
-        <div class="kcard">
-          <div class="k">Unmatched CSV Names</div>
-          <div class="v" id="matchUnmatchedCsvCount">0</div>
-          <div class="d">Need review</div>
-        </div>
-      </div>
-      <div style="height:10px"></div>
-      <div class="hint" id="matchToolStatus">
-        Select a CSV header and dock header, then click Find Matches.
-      </div>
-      <div style="height:10px"></div>
-      <div class="row">
-        <input id="matchToolSearch" type="text" placeholder="Search names or matches...">
-        <button id="btnAutoPairStrong">Auto-Pair Strong Matches</button>
-        <button id="btnClearManualPairs" class="danger">Clear Manual Pairs</button>
-      </div>
-      <div style="height:10px"></div>
-      <div class="layout" style="grid-template-columns:1fr 1fr">
-        <div class="panel" style="box-shadow:none">
-          <div class="ph">
-            <div>
-              <b>Matched Names</b><br>
-              <small>Detected exact/normalized/fuzzy matches.</small>
-            </div>
-          </div>
-          <div class="tableWrap" style="max-height:45vh">
-            <table>
-              <thead>
-                <tr>
-                  <th>CSV Name</th>
-                  <th>Dock Name</th>
-                  <th>Match Type</th>
-                  <th>Score</th>
-                </tr>
-              </thead>
-              <tbody id="matchResultsBody"></tbody>
-            </table>
-          </div>
-        </div>
-        <div class="panel" style="box-shadow:none">
-          <div class="ph">
-            <div>
-              <b>Manual Match Review</b><br>
-              <small>Pair unmatched CSV names with dock names.</small>
-            </div>
-          </div>
-          <div class="tableWrap" style="max-height:45vh">
-            <table>
-              <thead>
-                <tr>
-                  <th>CSV Name</th>
-                  <th>Pick Dock Match</th>
-                  <th>Save</th>
-                </tr>
-              </thead>
-              <tbody id="manualMatchBody"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+const hud = {
+  hp: document.getElementById("hp"),
+  crabCount: document.getElementById("crabCount"),
+  wizardCount: document.getElementById("wizardCount"),
+  alcoveCount: document.getElementById("alcoveCount"),
+  kills: document.getElementById("kills"),
+  xp: document.getElementById("xp"),
+  nextXp: document.getElementById("nextXp"),
+  level: document.getElementById("level"),
+  stormRadius: document.getElementById("stormRadius"),
+  objectiveText: document.getElementById("objectiveText")
+};
 
-<div class="drawer" id="filterHeaderDrawer">
-  <div class="modal">
-    <div class="ph">
-      <div>
-        <b>Filter Out Headers</b><br>
-        <small>Excluded headers are skipped for correlation metrics only.</small>
-      </div>
-      <div class="row">
-        <button id="btnExcludeLikelyText">Exclude likely text/ID headers</button>
-        <button id="btnExcludeNonNumeric">Exclude non-numeric</button>
-        <button id="btnResetExcluded">Reset excluded headers</button>
-        <button class="dark" id="btnCloseFilterHeaders">Done</button>
-      </div>
-    </div>
-    <div class="modalBody">
-      <div class="row" style="margin-bottom:10px">
-        <input id="filterHeaderSearch" type="text" placeholder="Search headers to exclude... example: dock">
-        <button id="btnExcludeShowing" class="danger">Exclude All Showing</button>
-        <button id="btnIncludeShowing">Include All Showing</button>
-        <button id="btnResetExcludedHeaders">Reset Exclusions</button>
-      </div>
-      <div class="hint" id="filterHeaderHint">
-        Search for headers, then exclude all currently showing. Current KPI and current match headers are locked.
-      </div>
-      <div style="height:10px"></div>
-      <div class="checkGrid" id="filterHeaderChecks"></div>
-    </div>
-  </div>
-</div>
+const upgradePanel = document.getElementById("upgradePanel");
+const leftUpgrade = document.getElementById("leftUpgrade");
+const rightUpgrade = document.getElementById("rightUpgrade");
+const messageBox = document.getElementById("message");
+const stormWarning = document.getElementById("stormWarning");
 
-<div class="drawer" id="examplesDrawer">
-  <div class="modal">
-    <div class="ph">
-      <div>
-        <b id="examplesTitle">Examples</b><br>
-        <small id="examplesSub"></small>
-      </div>
-      <div class="row">
-        <button id="btnExportExamples">Export Examples</button>
-        <button class="dark" id="btnCloseExamples">Close</button>
-      </div>
-    </div>
-    <div class="modalBody">
-      <input id="examplesSearch" type="text" placeholder="Search examples...">
-      <div style="height:10px"></div>
-      <div class="tableWrap" style="max-height:65vh">
-        <table>
-          <thead id="examplesHead"></thead>
-          <tbody id="examplesBody"></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-</div>
-
-<script>
-/* =========================
-   General helpers
-========================= */
-const $ = id => document.getElementById(id);
+const WORLD_RADIUS = 155;
+const STORM_START_RADIUS = 138;
+const STORM_END_RADIUS = 28;
+const STORM_SHRINK_SECONDS = 900;
 
 const state = {
-  csvRows: [],
-  csvHeaders: [],
-  dockRows: [],
-  dockByName: new Map(),
-  mergedRows: [],
-  headers: [],
-  activeHeaders: new Set(),
-  metrics: [],
-  correlations: [],
-  selectedMetric: "",
-  target: "",
-  nameField: "",
-  sortKey: "abs",
-  sortDir: "desc",
-  drillChain: [],
-  layerRows: [],
-  plotPoints: [],
-  uploadedFiles: [],
-  excludedHeaders: new Set(),
-  treeExpanded: new Set(),
-  treeChildrenCache: new Map(),
-  treeNodeCache: new Map(),
-  savedCorrelations: [],
-  thresholdMode: "median",
-  exampleLimit: 250,
-  selectedNodeContext: null,
-  currentExamplesExport: null,
-  callCenterKpiAvg: null,
-  callCenterKpiN: 0,
-  matchHeaders: {
-    csvNameHeader: "",
-    dockNameHeader: "Name",
-    matchedOnly: true,
-    matchedCount: 0,
-    csvUniqueCount: 0,
-    dockUniqueCount: 0,
-    uniqueMatchedCount: 0
-  },
-  matchTool: {
-    csvHeader: "",
-    dockHeader: "Name",
-    manualPairs: [],
-    lastMatchCount: 0,
-    lastCsvUniqueCount: 0,
-    lastDockUniqueCount: 0,
-    unmatchedCsvNames: [],
-    unmatchedDockNames: [],
-    matches: []
+  started: false,
+  hp: 100,
+  maxHp: 100,
+  kills: 0,
+  xp: 0,
+  level: 1,
+  nextXp: 6,
+  fireCooldown: 0,
+  messageTimer: 0,
+  upgradeOpen: false,
+  choices: [],
+  stormTime: 0,
+  stormRadius: STORM_START_RADIUS,
+  stormDamage: 7,
+  upgrades: {
+    wizardSpeed: 1,
+    fireDamage: 1,
+    fireExplosion: 1,
+    fireRate: 1,
+    fireBounce: 0,
+    crabArmor: 0,
+    crabSpikes: 0,
+    crabLeap: 0,
+    crabCharge: 0,
+    crabRegen: 1,
+    leash: 1,
+    swarmSpeed: 1
   }
 };
 
-const SAVED_CORR_KEY = "layeredCorrelationFinder.savedCorrelations.v1";
-const MATCH_TOOL_KEY = "layeredCorrelationFinder.matchTool.v1";
-const MATCH_HEADERS_KEY = "layeredCorrelationFinder.matchHeaders.v1";
+const player = {
+  group: new THREE.Group(),
+  radius: 0.85,
+  speed: 12,
+  turnSpeed: 2.75,
+  velocity: new THREE.Vector3(),
+  team: "player",
+  color: teamColor,
+  hpBar: null,
+  arrow: null
+};
 
-function esc(s){
-  return String(s ?? "")
-    .replaceAll("&","&amp;")
-    .replaceAll("<","&lt;")
-    .replaceAll(">","&gt;")
-    .replaceAll('"',"&quot;")
-    .replaceAll("'","&#039;");
+const crabs = [];
+const enemies = [];
+const fireballs = [];
+const nests = [];
+const particles = [];
+const aiWizards = [];
+
+function clamp(v, min, max) {
+  return Math.max(min, Math.min(max, v));
 }
 
-function normHdr(s){
-  return String(s ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g," ")
-    .replace(/[^a-z0-9% \-_]/g,"")
-    .replace(/[-_]/g,"")
-    .replace(/\s/g,"");
+function rand(min, max) {
+  return min + Math.random() * (max - min);
 }
 
-function personKey(name){
-  let s = String(name || "").trim().toLowerCase();
-  s = s.replace(/\./g,"").replace(/\s+/g," ");
-  if(!s) return "";
-
-  if(s.includes(",")){
-    const parts = s.split(",");
-    const last = (parts[0] || "").trim();
-    const rest = (parts[1] || "").trim();
-    const first = (rest.split(/\s+/)[0] || "").trim();
-    if(first && last) s = `${first} ${last}`;
-  }
-
-  const toks = s.split(/\s+/).filter(Boolean);
-  if(toks.length >= 2) return `${toks[0]} ${toks[toks.length - 1]}`;
-  return toks[0] || "";
+function chance(p) {
+  return Math.random() < p;
 }
 
-function toNumber(v){
-  if(v === null || v === undefined) return null;
-  if(typeof v === "number" && Number.isFinite(v)) return v;
-
-  let s = String(v).trim();
-  if(!s || s.toLowerCase() === "na" || s.toLowerCase() === "#n/a") return null;
-
-  const hadPct = s.endsWith("%");
-  s = s.replace(/[$,%\s]/g,"").replace(/,/g,"");
-  const n = Number(s);
-  if(!Number.isFinite(n)) return null;
-  return hadPct ? n / 100 : n;
+function mat(color, roughness = 0.72, metalness = 0.04) {
+  return new THREE.MeshStandardMaterial({ color, roughness, metalness });
 }
 
-function fmt(n, d=3){
-  if(!Number.isFinite(n)) return "—";
-  return Number(n).toFixed(d);
+function showMessage(text, seconds = 2) {
+  state.messageTimer = seconds;
+  messageBox.textContent = text;
+  messageBox.style.display = "block";
 }
 
-function pct(n, d=1){
-  if(!Number.isFinite(n)) return "—";
-  return (n * 100).toFixed(d) + "%";
-}
-function fmtKpiValueAdditive(value, field){
-  if(!Number.isFinite(value)) return "—";
-  if(/rate|%|pct|percent|available|score|appointment/i.test(String(field || ""))){
-    return pct(value);
-  }
-  return fmt(value, 2);
-}
-function fmtSignedKpiLiftAdditive(value, field){
-  if(!Number.isFinite(value)) return "—";
-  const sign = value > 0 ? "+" : "";
-  if(/rate|%|pct|percent|available|score|appointment/i.test(String(field || ""))){
-    return sign + pct(value);
-  }
-  return sign + fmt(value, 2);
-}
-
-function setProgress(p, text){
-  $("progressFill").style.width = `${Math.max(0, Math.min(100, p))}%`;
-  $("progressText").textContent = text || `${Math.round(p)}%`;
-}
-
-function sleepFrame(){
-  return new Promise(resolve => setTimeout(resolve, 0));
-}
-
-/* =========================
-   CSV
-========================= */
-function parseCSV(text){
-  text = text.replace(/\r\n/g,"\n").replace(/\r/g,"\n");
-  const rows = [];
-  let row = [];
-  let cur = "";
-  let q = false;
-
-  for(let i=0;i<text.length;i++){
-    const ch = text[i];
-
-    if(q){
-      if(ch === '"'){
-        if(text[i+1] === '"'){
-          cur += '"';
-          i++;
-        }else{
-          q = false;
-        }
-      }else{
-        cur += ch;
-      }
-      continue;
-    }
-
-    if(ch === '"'){ q = true; continue; }
-    if(ch === ","){ row.push(cur); cur = ""; continue; }
-    if(ch === "\n"){
-      row.push(cur);
-      if(row.some(x => String(x).trim() !== "")) rows.push(row.map(x => String(x).trim()));
-      row = [];
-      cur = "";
-      continue;
-    }
-    cur += ch;
-  }
-
-  row.push(cur);
-  if(row.some(x => String(x).trim() !== "")) rows.push(row.map(x => String(x).trim()));
-  return rows;
-}
-
-function aoaToObjects(aoa){
-  if(!Array.isArray(aoa) || aoa.length < 2) return {headers:[], rows:[]};
-
-  let headers = aoa[0].map((h,i)=>String(h || `Column_${i+1}`).trim());
-  const seen = new Map();
-
-  headers = headers.map(h => {
-    const base = h || "Column";
-    const k = normHdr(base);
-    const n = seen.get(k) || 0;
-    seen.set(k, n + 1);
-    return n ? `${base}_${n + 1}` : base;
-  });
-
-  const rows = [];
-  for(let r=1;r<aoa.length;r++){
-    const obj = {};
-    let any = false;
-    for(let c=0;c<headers.length;c++){
-      const v = aoa[r][c] ?? "";
-      if(String(v).trim() !== "") any = true;
-      obj[headers[c]] = v;
-    }
-    if(any) rows.push(obj);
-  }
-  return {headers, rows};
-}
-
-async function loadCSV(file){
-  setProgress(5, "Reading CSV...");
-  const text = await file.text();
-  setProgress(18, "Parsing CSV...");
-  await sleepFrame();
-
-  const aoa = parseCSV(text);
-  const parsed = aoaToObjects(aoa);
-
-  state.csvRows = parsed.rows;
-  state.csvHeaders = parsed.headers;
-  state.uploadedFiles = [file.name];
-  if(!state.csvHeaders.includes("CSV Source File")) state.csvHeaders.push("CSV Source File");
-  state.csvRows = state.csvRows.map(r => ({...r, "CSV Source File":file.name}));
-  $("fileLabel").textContent = file.name;
-
-  setProgress(40, "CSV loaded");
-  clearTreeCacheAdditive();
-  rebuildMergedRows();
-}
-
-async function loadMultipleCSVsAdditive(files){
-  const fileList = Array.from(files || []).filter(f => /\.csv$/i.test(f.name) || (f.type || "").includes("csv") || f.type === "text/plain");
-  if(!fileList.length) return;
-  state.uploadedFiles = fileList.map(f => f.name);
-  const allRows = [];
-  const allHeadersSet = new Set();
-  for(let i = 0; i < fileList.length; i++){
-    const file = fileList[i];
-    setProgress((i / fileList.length) * 80, `Reading CSV ${i + 1}/${fileList.length}: ${file.name}`);
-    const text = await file.text();
-    const aoa = parseCSV(text);
-    const parsed = aoaToObjects(aoa);
-    parsed.headers.forEach(h => allHeadersSet.add(h));
-    for(const row of parsed.rows){
-      allRows.push({ ...row, "CSV Source File": file.name });
-    }
-    await sleepFrame();
-  }
-  state.csvRows = allRows;
-  state.csvHeaders = Array.from(allHeadersSet);
-  if(!state.csvHeaders.includes("CSV Source File")) state.csvHeaders.push("CSV Source File");
-  $("fileLabel").textContent = fileList.length === 1 ? fileList[0].name : `${fileList.length} CSV files loaded`;
-  clearTreeCacheAdditive();
-  rebuildMergedRows();
-}
-
-/* =========================
-   Date / dock helpers
-========================= */
-function excelSerialToLocalDate(n){
-  const base = Date.UTC(1899,11,30);
-  const ms = base + Math.round(n * 86400000);
-  const d = new Date(ms);
-  return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-}
-
-function parseAnyDate(val){
-  if(val === null || val === undefined || val === "") return null;
-  if(val instanceof Date && !isNaN(val)) return new Date(val.getFullYear(), val.getMonth(), val.getDate());
-
-  if(typeof val === "number" && Number.isFinite(val)){
-    if(val > 20000 && val < 80000) return excelSerialToLocalDate(val);
-  }
-
-  const s = String(val).trim();
-  if(!s) return null;
-
-  if(/^\d+(\.\d+)?$/.test(s)){
-    const n = Number(s);
-    if(Number.isFinite(n) && n > 20000 && n < 80000) return excelSerialToLocalDate(n);
-  }
-
-  const d = new Date(s);
-  if(!isNaN(d)) return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  return null;
-}
-
-function isoYmd(d){
-  if(!(d instanceof Date) || isNaN(d)) return "";
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-}
-
-function isoWeekKey(d){
-  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const dayNum = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(),0,1));
-  const weekNo = Math.ceil((((date - yearStart) / 86400000) + 1)/7);
-  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2,"0")}`;
-}
-
-function allLocalStorageKeys(){
-  const keys = [];
-  for(let i=0;i<localStorage.length;i++){
-    const k = localStorage.key(i);
-    if(k) keys.push(k);
-  }
-  return keys.sort();
-}
-
-function findDockKey(suffix){
-  const want = `.dock.${String(suffix).toLowerCase()}`;
-  for(const k of allLocalStorageKeys()){
-    if(k.toLowerCase().endsWith(want)) return k;
-  }
-
-  const loose = allLocalStorageKeys()
-    .filter(k => k.toLowerCase().includes(".dock.") && k.toLowerCase().includes(String(suffix).toLowerCase()))
-    .sort((a,b)=>a.length-b.length);
-
-  return loose[0] || null;
-}
-
-function loadDockObjByKey(key){
-  if(!key) return null;
-  const raw = localStorage.getItem(key);
-  if(!raw) return null;
-
-  if(window.LZString){
-    const tries = [
-      () => LZString.decompressFromUTF16(raw),
-      () => LZString.decompressFromBase64(raw),
-      () => LZString.decompressFromEncodedURIComponent(raw),
-      () => LZString.decompress(raw)
-    ];
-
-    for(const fn of tries){
-      try{
-        const out = fn();
-        if(out){
-          try{return JSON.parse(out)}catch(e){}
-        }
-      }catch(e){}
+function updateMessage(dt) {
+  if (state.messageTimer > 0) {
+    state.messageTimer -= dt;
+    if (state.messageTimer <= 0) {
+      messageBox.style.display = "none";
     }
   }
-
-  try{return JSON.parse(raw)}catch(e){}
-  return null;
 }
 
-function aoaToRows(aoa){
-  if(!Array.isArray(aoa) || aoa.length < 2) return [];
-  const header = aoa[0].map(h => String(h ?? "").trim());
-  const out = [];
-
-  for(let r=1;r<aoa.length;r++){
-    const row = aoa[r];
-    if(!row) continue;
-
-    const obj = {};
-    let any = false;
-
-    for(let c=0;c<header.length;c++){
-      const k = header[c];
-      if(!k) continue;
-      const v = row[c];
-      if(v !== null && v !== undefined && String(v).trim() !== "") any = true;
-      obj[k] = v;
-    }
-
-    if(any) out.push(obj);
-  }
-
-  return out;
-}
-
-function extractRowArrays(root, sheetNameFallback){
-  const found = [];
-  const seen = new Set();
-
-  function pushArray(arr, sheetName){
-    if(!Array.isArray(arr) || !arr.length) return;
-
-    const id = `${sheetName}|${arr.length}|${typeof arr[0]}|${Object.keys(arr[0] || {}).slice(0,5).join(",")}`;
-    if(seen.has(id)) return;
-    seen.add(id);
-
-    if(arr[0] && typeof arr[0] === "object" && !Array.isArray(arr[0])){
-      found.push({ rows: arr, sheetName });
-      return;
-    }
-
-    if(Array.isArray(arr[0])){
-      const rows = aoaToRows(arr);
-      if(rows.length) found.push({ rows, sheetName });
-    }
-  }
-
-  function walk(node, sheetName){
-    if(node === null || node === undefined) return;
-
-    if(Array.isArray(node)){
-      pushArray(node, sheetName ?? sheetNameFallback ?? "");
-      return;
-    }
-
-    if(typeof node !== "object") return;
-
-    if(Array.isArray(node.rows)) pushArray(node.rows, sheetName ?? sheetNameFallback ?? "");
-    if(Array.isArray(node.data)) pushArray(node.data, sheetName ?? sheetNameFallback ?? "");
-    if(Array.isArray(node.table)) pushArray(node.table, sheetName ?? sheetNameFallback ?? "");
-
-    if(node.sheets && typeof node.sheets === "object" && !Array.isArray(node.sheets)){
-      for(const [sn, sv] of Object.entries(node.sheets)) walk(sv, sn);
-    }
-
-    for(const [k,v] of Object.entries(node)){
-      if(k === "meta" || k === "sheets") continue;
-      if(v && typeof v === "object") walk(v, sheetName);
-    }
-  }
-
-  walk(root, sheetNameFallback);
-  return found;
-}
-
-function pickField(row, candidates){
-  const map = {};
-  for(const k of Object.keys(row || {})) map[normHdr(k)] = k;
-
-  for(const cand of candidates){
-    const real = map[normHdr(cand)];
-    if(real !== undefined) return row[real];
-  }
-
-  for(const k of Object.keys(row || {})){
-    const nk = normHdr(k);
-    if(candidates.some(c => nk.includes(normHdr(c)))) return row[k];
-  }
-
-  return undefined;
-}
-
-function isTotalName(name){
-  const n = String(name || "").trim().toLowerCase();
-  return /^(total|totals|team totals?|summary)$/.test(n) || n.startsWith("total -") || n.startsWith("totals -");
-}
-
-function looksLikeStatsRow(obj){
-  if(!obj || typeof obj !== "object") return false;
-  const keys = Object.keys(obj);
-  if(keys.length < 3) return false;
-
-  const nk = keys.map(normHdr);
-  const hasName = nk.includes("name") || nk.includes("associate") || nk.includes("rep") || nk.includes("employee") || nk.includes("associatename");
-  const hasStats = nk.some(k => /appointment|opportunit|consumer|insurance|commercial|wiper|available|rate|calls|acw|qa|score/.test(k));
-  return hasName && hasStats;
-}
-
-function canonicalizeStatsRowsFromDock(dockObj, sourceLabel){
-  if(!dockObj) return [];
-
-  const arrays = extractRowArrays(dockObj, "");
-  const out = [];
-
-  for(const pack of arrays){
-    const sheetName = pack.sheetName || "";
-
-    for(const r of pack.rows){
-      if(!looksLikeStatsRow(r)) continue;
-
-      const nameRaw = pickField(r, ["Name","Associate","Rep","Employee","Associate Name"]);
-      const sheetRaw = pickField(r, ["Sheet","Coach","Team","Job Coach"]);
-      const dateRaw = pickField(r, ["Date","Dt","Day","Created On","Created"]);
-
-      const name = String(nameRaw ?? "").trim();
-      const sheet = String((sheetRaw ?? sheetName) ?? "").trim();
-      const d = parseAnyDate(dateRaw);
-
-      if(!name || isTotalName(name)) continue;
-
-      const rowOut = {
-        Source: sourceLabel,
-        Name: name,
-        Sheet: sheet,
-        Date: d ? isoYmd(d) : "",
-        __date: d,
-        __ymd: d ? isoYmd(d) : "",
-        __wk: d ? isoWeekKey(d) : "",
-        __nameKey: personKey(name)
-      };
-
-      for(const [k,v] of Object.entries(r)){
-        const nk = normHdr(k);
-        if(["name","associate","rep","employee","associatename"].includes(nk)) continue;
-        if(["sheet","coach","team","jobcoach"].includes(nk)) continue;
-        if(["date","dt","day","createdon","created"].includes(nk)) continue;
-        rowOut[k] = v;
-      }
-
-      addDerivedKpis(rowOut, sourceLabel);
-      out.push(rowOut);
-    }
-  }
-
-  return out;
-}
-
-function firstNum(row, names){
-  for(const name of names){
-    const v = pickField(row, [name]);
-    const n = toNumber(v);
-    if(n !== null) return n;
-  }
-  return null;
-}
-
-function addDerivedKpis(row, source){
-  const prefix = source + ":";
-
-  const consumerApps = firstNum(row, [
-    "Consumer Appointments","Consumer_Appointments","ConsumerAppointments",
-    "Consumer Appointment","Consumer Apps","Appointments"
-  ]);
-  const consumerOpps = firstNum(row, [
-    "Consumer Opportunities","Consumer_Opportunities","ConsumerOpportunities",
-    "Consumer Opportunity","Consumer Opps","Opportunities"
-  ]);
-
-  if(consumerApps !== null) row[`${prefix} Consumer Appointments`] = consumerApps;
-  if(consumerOpps !== null) row[`${prefix} Consumer Opportunities`] = consumerOpps;
-  if(consumerApps !== null && consumerOpps !== null && consumerOpps !== 0){
-    row[`${prefix} Consumer Appointment Rate`] = consumerApps / consumerOpps;
-  }
-
-  const insApps = firstNum(row, ["Insurance Appointments","Insurance_Appointments","InsuranceAppointments"]);
-  const insOpps = firstNum(row, ["Insurance Opportunities","Insurance_Opportunities","InsuranceOpportunities"]);
-  if(insApps !== null) row[`${prefix} Insurance Appointments`] = insApps;
-  if(insOpps !== null) row[`${prefix} Insurance Opportunities`] = insOpps;
-  if(insApps !== null && insOpps !== null && insOpps !== 0){
-    row[`${prefix} Insurance Appointment Rate`] = insApps / insOpps;
-  }
-
-  const comApps = firstNum(row, ["Commercial Appointments","Commercial_Appointments","CommercialAppointments"]);
-  const comOpps = firstNum(row, ["Commercial Opportunities","Commercial_Opportunities","CommercialOpportunities"]);
-  if(comApps !== null) row[`${prefix} Commercial Appointments`] = comApps;
-  if(comOpps !== null) row[`${prefix} Commercial Opportunities`] = comOpps;
-  if(comApps !== null && comOpps !== null && comOpps !== 0){
-    row[`${prefix} Commercial Appointment Rate`] = comApps / comOpps;
-  }
-
-  const wCount = firstNum(row, ["Wiper Count","Wiper_Count","Wipers Accept","Wipers_Accept"]);
-  const wJobs = firstNum(row, ["Wiper Jobs","Wiper_Jobs","Wipers Asked","Wipers_Asked"]);
-  if(wCount !== null) row[`${prefix} Wiper Count/Accept`] = wCount;
-  if(wJobs !== null) row[`${prefix} Wiper Jobs/Asked`] = wJobs;
-  if(wCount !== null && wJobs !== null && wJobs !== 0){
-    row[`${prefix} Wiper Rate`] = wCount / wJobs;
-  }
-}
-
-function aggregateDockRowsByName(rows){
-  const map = new Map();
-
-  for(const r of rows){
-    const k = r.__nameKey || personKey(r.Name);
-    if(!k) continue;
-
-    if(!map.has(k)){
-      map.set(k, {
-        Name: r.Name,
-        key: k,
-        rows: 0,
-        sums: {},
-        counts: {},
-        totals: {}
-      });
-    }
-
-    const acc = map.get(k);
-    acc.rows++;
-
-    for(const [field,v] of Object.entries(r)){
-      if(["Source","Name","Sheet","Date","__date","__ymd","__wk","__nameKey"].includes(field)) continue;
-
-      const n = toNumber(v);
-      if(n === null) continue;
-
-      const isAverageMetric = /rate|%|pct|percent|available|score/i.test(field);
-      if(isAverageMetric){
-        acc.sums[field] = (acc.sums[field] || 0) + n;
-        acc.counts[field] = (acc.counts[field] || 0) + 1;
-      }else{
-        acc.totals[field] = (acc.totals[field] || 0) + n;
-      }
-    }
-  }
-
-  const out = new Map();
-
-  for(const [key, acc] of map.entries()){
-    const obj = {
-      "Dock: Representative": acc.Name,
-      "Dock: Rows": acc.rows
-    };
-
-    for(const [field,total] of Object.entries(acc.totals)){
-      obj[`Dock Total: ${field}`] = total;
-    }
-
-    for(const [field,sum] of Object.entries(acc.sums)){
-      const count = acc.counts[field] || 0;
-      if(count) obj[`Dock Avg: ${field}`] = sum / count;
-    }
-
-    const cApps =
-      obj["Dock Total: Retail: Consumer Appointments"] ??
-      obj["Dock Total: Consumer Appointments"] ??
-      null;
-
-    const cOpps =
-      obj["Dock Total: Retail: Consumer Opportunities"] ??
-      obj["Dock Total: Consumer Opportunities"] ??
-      null;
-
-    if(Number.isFinite(cApps) && Number.isFinite(cOpps) && cOpps !== 0){
-      obj["Dock KPI: Consumer Appointment Rate"] = cApps / cOpps;
-    }
-
-    const fallbackRetailRate = obj["Dock Avg: Retail: Consumer Appointment Rate"];
-    if(!Number.isFinite(obj["Dock KPI: Consumer Appointment Rate"]) && Number.isFinite(fallbackRetailRate)){
-      obj["Dock KPI: Consumer Appointment Rate"] = fallbackRetailRate;
-    }
-
-    out.set(key, obj);
-  }
-
-  return out;
-}
-
-async function loadDocks(){
-  setProgress(5, "Finding dock keys...");
-
-  const retailKey = findDockKey("Retail");
-  const referralKey = findDockKey("Referral");
-
-  const rows = [];
-
-  if(retailKey){
-    setProgress(15, "Loading Retail dock...");
-    await sleepFrame();
-    const obj = loadDockObjByKey(retailKey);
-    rows.push(...canonicalizeStatsRowsFromDock(obj, "Retail"));
-  }
-
-  if(referralKey){
-    setProgress(40, "Loading Referral dock...");
-    await sleepFrame();
-    const obj = loadDockObjByKey(referralKey);
-    rows.push(...canonicalizeStatsRowsFromDock(obj, "Referral"));
-  }
-
-  state.dockRows = rows;
-  state.dockByName = aggregateDockRowsByName(rows);
-
-  setProgress(70, "Merging dock rows...");
-  rebuildMergedRows();
-
-  $("statusBox").className = "hint ok";
-  $("statusBox").innerHTML = `
-    <b>Docks loaded.</b><br>
-    Retail key: <code>${esc(retailKey || "not found")}</code><br>
-    Referral key: <code>${esc(referralKey || "not found")}</code><br>
-    Dock stat rows: <b>${rows.length}</b><br>
-    Dock representatives: <b>${state.dockByName.size}</b>
-  `;
-}
-
-/* =========================
-   Merge / controls
-========================= */
-function getDockNameCandidateHeadersAdditive(){
-  const set = new Set(["Name"]);
-  for(const row of state.dockRows || []){
-    Object.keys(row || {}).forEach(k => {
-      if(/name|associate|rep|representative|employee|agent|csr/i.test(k)) set.add(k);
-    });
-  }
-  if(state.dockByName && typeof state.dockByName.values === "function") for(const obj of state.dockByName.values()){
-    Object.keys(obj || {}).forEach(k => {
-      if(/name|associate|rep|representative|employee|agent|csr/i.test(k)) set.add(k);
-    });
-  }
-  return Array.from(set);
-}
-
-function hydrateMatchToolDropdownsAdditive(){
-  const csvHeaders = state.csvHeaders && state.csvHeaders.length ? state.csvHeaders : state.headers || [];
-  const dockHeaders = getDockNameCandidateHeadersAdditive();
-  $("matchCsvHeader").innerHTML = csvHeaders.map(h => `<option value="${esc(h)}">${esc(h)}</option>`).join("");
-  $("matchDockHeader").innerHTML = dockHeaders.map(h => `<option value="${esc(h)}">${esc(h)}</option>`).join("");
-  const guessedCsv = state.matchTool.csvHeader || csvHeaders.find(h => /agent.*name|rep.*name|representative|associate|employee|name/i.test(h)) || $("nameField").value || csvHeaders[0] || "";
-  const guessedDock = state.matchTool.dockHeader || dockHeaders.find(h => /^name$/i.test(h)) || dockHeaders[0] || "Name";
-  $("matchCsvHeader").value = guessedCsv;
-  $("matchDockHeader").value = guessedDock;
-}
-
-function hydrateMatchHeadersDropdownsAdditive(){
-  const csvHeaders = state.csvHeaders && state.csvHeaders.length ? state.csvHeaders : state.headers || [];
-  const dockHeaders = getDockNameHeadersSimpleAdditive();
-  $("matchCsvNameHeader").innerHTML = csvHeaders.map(h => `<option value="${esc(h)}">${esc(h)}</option>`).join("");
-  $("matchDockNameHeader").innerHTML = dockHeaders.map(h => `<option value="${esc(h)}">${esc(h)}</option>`).join("");
-  const guessedCsv =
-    state.matchHeaders?.csvNameHeader ||
-    $("nameField").value ||
-    csvHeaders.find(h => /agent.*name|rep.*name|representative|associate|employee|name/i.test(h)) ||
-    csvHeaders[0] ||
-    "";
-  const guessedDock =
-    state.matchHeaders?.dockNameHeader ||
-    dockHeaders.find(h => /^name$/i.test(h)) ||
-    dockHeaders[0] ||
-    "Name";
-  if(guessedCsv) $("matchCsvNameHeader").value = guessedCsv;
-  if(guessedDock) $("matchDockNameHeader").value = guessedDock;
-  if($("matchOnlyToggle")) $("matchOnlyToggle").checked = state.matchHeaders?.matchedOnly !== false;
-  if($("simpleMatchedCount")) $("simpleMatchedCount").textContent = state.matchHeaders?.matchedCount || 0;
-  if($("simpleUniqueMatchedCount")) $("simpleUniqueMatchedCount").textContent = state.matchHeaders?.uniqueMatchedCount || 0;
-}
-
-function getDockNameHeadersSimpleAdditive(){
-  const set = new Set(["Name"]);
-  for(const row of state.dockRows || []){
-    Object.keys(row || {}).forEach(k => {
-      if(/name|associate|rep|representative|employee|agent|csr/i.test(k)) set.add(k);
-    });
-  }
-  for(const obj of state.dockByName?.values?.() || []){
-    Object.keys(obj || {}).forEach(k => {
-      if(/name|associate|rep|representative|employee|agent|csr/i.test(k)) set.add(k);
-    });
-  }
-  return Array.from(set);
-}
-
-function buildDockBySelectedHeaderAdditive(){
-  const dockHeader = state.matchHeaders?.dockNameHeader || "Name";
-  const map = new Map();
-  for(const row of state.dockRows || []){
-    const rawName = row[dockHeader] ?? row.Name;
-    const key = personKey(rawName);
-    if(!key) continue;
-    if(!map.has(key)){
-      map.set(key, {
-        "Dock: Representative": String(rawName || "").trim(),
-        "Dock: Rows": 0,
-        __sums: {},
-        __counts: {}
-      });
-    }
-    const acc = map.get(key);
-    acc["Dock: Rows"]++;
-    for(const [field, value] of Object.entries(row)){
-      if(["Source","Name","Sheet","Date","__date","__ymd","__wk","__nameKey"].includes(field)) continue;
-      const n = toNumber(value);
-      if(n === null) continue;
-      const avgLike = /rate|%|pct|percent|available|score/i.test(field);
-      const outField = avgLike ? `Dock Avg: ${field}` : `Dock Total: ${field}`;
-      acc.__sums[outField] = (acc.__sums[outField] || 0) + n;
-      acc.__counts[outField] = (acc.__counts[outField] || 0) + 1;
-    }
-  }
-  for(const obj of map.values()){
-    for(const [field, sum] of Object.entries(obj.__sums || {})){
-      const count = obj.__counts[field] || 1;
-      obj[field] = field.startsWith("Dock Avg:") ? (sum / count) : sum;
-    }
-    delete obj.__sums;
-    delete obj.__counts;
-  }
-  return map;
-}
-
-function simpleNameSimilarityAdditive(a, b){
-  const ak = personKey(a);
-  const bk = personKey(b);
-  if(!ak || !bk) return 0;
-  if(ak === bk) return 1;
-  const at = ak.split(/\s+/).filter(Boolean);
-  const bt = bk.split(/\s+/).filter(Boolean);
-  let overlap = 0;
-  for(const x of at){ if(bt.includes(x)) overlap++; }
-  const tokenScore = overlap / Math.max(at.length, bt.length);
-  const aCompact = ak.replace(/\s+/g, "");
-  const bCompact = bk.replace(/\s+/g, "");
-  let sameChars = 0;
-  const len = Math.min(aCompact.length, bCompact.length);
-  for(let i = 0; i < len; i++){ if(aCompact[i] === bCompact[i]) sameChars++; }
-  const prefixScore = sameChars / Math.max(aCompact.length, bCompact.length);
-  return Math.max(tokenScore, prefixScore);
-}
-
-function getUniqueCsvNamesForHeaderAdditive(header){
-  const map = new Map();
-  for(const row of state.csvRows || []){
-    const raw = row[header];
-    const key = personKey(raw);
-    if(!key) continue;
-    if(!map.has(key)) map.set(key, { key, display: String(raw || "").trim(), count: 0 });
-    map.get(key).count++;
-  }
-  return Array.from(map.values()).sort((a,b) => a.display.localeCompare(b.display));
-}
-
-function getUniqueDockNamesForHeaderAdditive(header){
-  const map = new Map();
-  for(const row of state.dockRows || []){
-    const raw = row[header] ?? row.Name;
-    const key = personKey(raw);
-    if(!key) continue;
-    if(!map.has(key)) map.set(key, { key, display: String(raw || "").trim(), count: 0 });
-    map.get(key).count++;
-  }
-  if(!map.size && state.dockByName){
-    for(const dockObj of state.dockByName.values()){
-      const raw = dockObj[header] ?? dockObj["Dock: Representative"] ?? dockObj.Name;
-      const key = personKey(raw);
-      if(!key) continue;
-      if(!map.has(key)) map.set(key, { key, display: String(raw || "").trim(), count: 0 });
-      map.get(key).count++;
-    }
-  }
-  return Array.from(map.values()).sort((a,b) => a.display.localeCompare(b.display));
-}
-
-function getDockKeyForCsvNameAdditive(csvName){
-  const csvKey = personKey(csvName);
-  if(!csvKey) return "";
-  const manual = (state.matchTool?.manualPairs || []).find(p => personKey(p.csvName) === csvKey);
-  if(manual) return personKey(manual.dockName);
-  const match = (state.matchTool?.matches || []).find(m => personKey(m.csvName) === csvKey);
-  if(match) return personKey(match.dockName);
-  return csvKey;
-}
-
-function applyMatchToolToNameFieldAdditive(){
-  const csvHeader = state.matchTool?.csvHeader;
-  if(csvHeader && state.csvHeaders.includes(csvHeader) && $("nameField").value !== csvHeader){
-    $("nameField").value = csvHeader;
-  }
-}
-
-function renderManualMatchRowsAdditive(){
-  const unmatched = state.matchTool.unmatchedCsvNames || [];
-  const dockNames = getUniqueDockNamesForHeaderAdditive(state.matchTool.dockHeader || "Name");
-  $("manualMatchBody").innerHTML = unmatched.slice(0, 200).map((u, idx) => {
-    const options = dockNames.map(d => `<option value="${esc(d.display)}" ${d.display === u.bestDockName ? "selected" : ""}>${esc(d.display)}${u.bestDockName === d.display ? ` — suggested ${fmt(u.bestScore,2)}` : ""}</option>`).join("");
-    return `<tr><td><b>${esc(u.display)}</b><div class="muted small">Appears ${u.count} time(s)</div></td><td><select id="manualDockPick_${idx}"><option value="">-- choose match --</option>${options}</select></td><td><button onclick="saveManualPairAdditive(${idx})">Pair</button></td></tr>`;
-  }).join("") || `<tr><td colspan="3" class="muted">No unmatched CSV names.</td></tr>`;
-}
-
-function renderMatchToolResultsAdditive(){
-  const q = ($("matchToolSearch")?.value || "").toLowerCase();
-  const matches = (state.matchTool.matches || []).filter(m => !q || String(m.csvName).toLowerCase().includes(q) || String(m.dockName).toLowerCase().includes(q));
-  $("matchFoundCount").textContent = state.matchTool.lastMatchCount || 0;
-  $("matchUnmatchedCsvCount").textContent = (state.matchTool.unmatchedCsvNames || []).length;
-  $("matchResultsBody").innerHTML = matches.length
-    ? matches.map(m => `<tr><td>${esc(m.csvName)}</td><td>${esc(m.dockName)}</td><td><span class="tag ${m.type === "manual" ? "pos" : "high"}">${esc(m.type)}</span></td><td>${fmt(m.score,2)}</td></tr>`).join("")
-    : `<tr><td colspan="4" class="muted">No matches found yet.</td></tr>`;
-  renderManualMatchRowsAdditive();
-}
-
-function saveManualPairAdditive(idx){
-  const unmatched = state.matchTool.unmatchedCsvNames || [];
-  const csv = unmatched[idx];
-  if(!csv) return;
-  const dockName = $(`manualDockPick_${idx}`).value;
-  if(!dockName) return;
-  state.matchTool.manualPairs = state.matchTool.manualPairs || [];
-  state.matchTool.manualPairs = state.matchTool.manualPairs.filter(p => personKey(p.csvName) !== personKey(csv.display));
-  state.matchTool.manualPairs.push({ csvName: csv.display, dockName });
-  persistMatchToolAdditive();
-  runMatchToolAdditive();
-}
-
-function persistMatchToolAdditive(){
-  try{
-    localStorage.setItem(MATCH_TOOL_KEY, JSON.stringify({
-      csvHeader: state.matchTool.csvHeader,
-      dockHeader: state.matchTool.dockHeader,
-      manualPairs: state.matchTool.manualPairs || []
-    }));
-  }catch(e){}
-}
-
-function loadMatchToolAdditive(){
-  try{
-    const raw = localStorage.getItem(MATCH_TOOL_KEY);
-    if(!raw) return;
-    const saved = JSON.parse(raw);
-    state.matchTool = { ...state.matchTool, ...saved, manualPairs: saved.manualPairs || [] };
-  }catch(e){}
-}
-
-function runMatchToolAdditive(){
-  const csvHeader = $("matchCsvHeader").value;
-  const dockHeader = $("matchDockHeader").value;
-  state.matchTool.csvHeader = csvHeader;
-  state.matchTool.dockHeader = dockHeader;
-  const csvNames = getUniqueCsvNamesForHeaderAdditive(csvHeader);
-  const dockNames = getUniqueDockNamesForHeaderAdditive(dockHeader);
-  const dockByKey = new Map(dockNames.map(d => [d.key, d]));
-  const manualMap = new Map((state.matchTool.manualPairs || []).map(p => [personKey(p.csvName), p]));
-  const matches = [];
-  const unmatchedCsv = [];
-  for(const csv of csvNames){
-    const manual = manualMap.get(csv.key);
-    if(manual){ matches.push({ csvName: csv.display, dockName: manual.dockName, type: "manual", score: 1 }); continue; }
-    const exact = dockByKey.get(csv.key);
-    if(exact){ matches.push({ csvName: csv.display, dockName: exact.display, type: "normalized exact", score: 1 }); continue; }
-    let best = null;
-    let bestScore = 0;
-    for(const dock of dockNames){
-      const score = simpleNameSimilarityAdditive(csv.display, dock.display);
-      if(score > bestScore){ best = dock; bestScore = score; }
-    }
-    if(best && bestScore >= .82){
-      matches.push({ csvName: csv.display, dockName: best.display, type: "fuzzy", score: bestScore });
-    }else{
-      unmatchedCsv.push({ ...csv, bestDockName: best?.display || "", bestScore });
-    }
-  }
-  const matchedDockKeys = new Set(matches.map(m => personKey(m.dockName)));
-  const unmatchedDock = dockNames.filter(d => !matchedDockKeys.has(d.key));
-  state.matchTool.lastMatchCount = matches.length;
-  state.matchTool.lastCsvUniqueCount = csvNames.length;
-  state.matchTool.lastDockUniqueCount = dockNames.length;
-  state.matchTool.unmatchedCsvNames = unmatchedCsv;
-  state.matchTool.unmatchedDockNames = unmatchedDock;
-  state.matchTool.matches = matches;
-  renderMatchToolResultsAdditive();
-  applyMatchToolToNameFieldAdditive();
-  persistMatchToolAdditive();
-  clearTreeCacheAdditive?.();
-  rebuildMergedRows();
-  $("matchToolStatus").className = "hint ok";
-  $("matchToolStatus").innerHTML = `
-    <b>Match scan complete.</b><br>
-    CSV unique names: <b>${csvNames.length}</b><br>
-    Dock unique names: <b>${dockNames.length}</b><br>
-    Matches found: <b>${matches.length}</b><br>
-    Unmatched CSV names: <b>${unmatchedCsv.length}</b>
-  `;
-}
-
-function applyMatchHeadersAdditive(){
-  state.matchHeaders.csvNameHeader = $("matchCsvNameHeader").value;
-  state.matchHeaders.dockNameHeader = $("matchDockNameHeader").value;
-  state.matchHeaders.matchedOnly = $("matchOnlyToggle") ? $("matchOnlyToggle").checked : true;
-  persistMatchHeadersAdditive();
-  rebuildMergedRows();
-  const dockMap = buildDockBySelectedHeaderAdditive();
-  const allCsvNames = new Set(
-    (state.csvRows || [])
-      .map(r => personKey(r[state.matchHeaders.csvNameHeader]))
-      .filter(Boolean)
+function makeHealthBar(width = 1.8, height = .16, y = 2.2, alwaysVisible = false) {
+  const group = new THREE.Group();
+  group.position.y = y;
+  group.visible = alwaysVisible;
+
+  const bg = new THREE.Mesh(
+    new THREE.PlaneGeometry(width, height),
+    new THREE.MeshBasicMaterial({ color: 0x190606, transparent: true, opacity: .75, side: THREE.DoubleSide })
   );
-  const dockNames = new Set(dockMap.keys());
-  let uniqueMatched = 0;
-  for(const name of allCsvNames){
-    if(dockNames.has(name)) uniqueMatched++;
-  }
-  const matchedRows = state.mergedRows.filter(r => r["Match: Dock Found"] === "Yes").length;
-  state.matchHeaders.matchedCount = matchedRows;
-  state.matchHeaders.csvUniqueCount = allCsvNames.size;
-  state.matchHeaders.dockUniqueCount = dockNames.size;
-  state.matchHeaders.uniqueMatchedCount = uniqueMatched;
-  if($("simpleMatchedCount")) $("simpleMatchedCount").textContent = matchedRows;
-  if($("simpleUniqueMatchedCount")) $("simpleUniqueMatchedCount").textContent = uniqueMatched;
-  if($("matchBadge")) $("matchBadge").textContent = matchedRows;
-  $("matchHeadersStatus").className = matchedRows ? "hint ok" : "hint warn";
-  $("matchHeadersStatus").innerHTML = `
-    <b>Match applied.</b><br>
-    CSV header: <b>${esc(state.matchHeaders.csvNameHeader)}</b><br>
-    Dock header: <b>${esc(state.matchHeaders.dockNameHeader)}</b><br>
-    CSV unique names: <b>${allCsvNames.size}</b><br>
-    Dock unique names: <b>${dockNames.size}</b><br>
-    Unique name matches: <b>${uniqueMatched}</b><br>
-    Matched rows used for correlations: <b>${matchedRows}</b><br>
-    ${state.matchHeaders.matchedOnly ? "<b>Unmatched rows are currently excluded.</b>" : "<b>Unmatched rows are currently included.</b>"}
-  `;
-  clearTreeCacheAdditive?.();
-  calculateCallCenterKpiAverageAdditive();
-  updateBadges();
+  bg.position.z = -0.002;
+  group.add(bg);
+
+  const fill = new THREE.Mesh(
+    new THREE.PlaneGeometry(width, height),
+    new THREE.MeshBasicMaterial({ color: 0x3cff73, side: THREE.DoubleSide })
+  );
+  fill.position.z = 0.001;
+  fill.position.x = 0;
+  group.add(fill);
+
+  group.userData = { fill, width, alwaysVisible };
+  return group;
 }
 
-function persistMatchHeadersAdditive(){
-  try{
-    localStorage.setItem(MATCH_HEADERS_KEY, JSON.stringify(state.matchHeaders || {}));
-  }catch(e){}
+function updateHealthBar(unit, hp, maxHp) {
+  if (!unit.hpBar) return;
+
+  const pct = clamp(hp / maxHp, 0, 1);
+  const fill = unit.hpBar.userData.fill;
+  const width = unit.hpBar.userData.width;
+
+  fill.scale.x = Math.max(.001, pct);
+  fill.position.x = -width * (1 - pct) / 2;
+
+  if (pct > .6) fill.material.color.set(0x3cff73);
+  else if (pct > .3) fill.material.color.set(0xffe45e);
+  else fill.material.color.set(0xff4040);
+
+  unit.hpBar.visible = unit.hpBar.userData.alwaysVisible || pct < .999;
+  unit.hpBar.lookAt(camera.position);
 }
 
-function loadMatchHeadersAdditive(){
-  try{
-    const raw = localStorage.getItem(MATCH_HEADERS_KEY);
-    if(!raw) return;
-    const saved = JSON.parse(raw);
-    state.matchHeaders = {
-      ...(state.matchHeaders || {}),
-      ...saved
-    };
-  }catch(e){}
+function addLights() {
+  const hemi = new THREE.HemisphereLight(0xbbe9ff, 0x1e2518, 1.65);
+  scene.add(hemi);
+
+  const sun = new THREE.DirectionalLight(0xfff2d0, 2.25);
+  sun.position.set(45, 70, 32);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.left = -170;
+  sun.shadow.camera.right = 170;
+  sun.shadow.camera.top = 170;
+  sun.shadow.camera.bottom = -170;
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far = 260;
+  scene.add(sun);
+
+  const wizardLight = new THREE.PointLight(0x3edcff, 1.45, 20);
+  wizardLight.position.set(0, 4, 0);
+  player.group.add(wizardLight);
 }
 
-function guessNameField(headers){
-  return headers.find(h => ["name","associate","rep","representative","employee","agent","csr"].includes(normHdr(h))) ||
-    headers.find(h => /name|associate|rep|representative|employee|agent|csr/i.test(h)) ||
-    headers[0] ||
-    "Name";
-}
+function buildWorld() {
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(WORLD_RADIUS * 2.3, WORLD_RADIUS * 2.3, 120, 120),
+    mat(0x163d24, 0.95, 0)
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
 
-function rebuildMergedRows(){
-  clearTreeCacheAdditive();
-  const csvHasRows = state.csvRows.length > 0;
-  const selectedCsvHeader = state.matchHeaders?.csvNameHeader;
-  const toolHeader = state.matchTool?.csvHeader;
-  const nameField = selectedCsvHeader || toolHeader || $("nameField").value || guessNameField(state.csvHeaders);
-  const selectedDockMap = state.matchHeaders?.dockNameHeader ? buildDockBySelectedHeaderAdditive() : state.dockByName;
-  const matchedOnly = state.matchHeaders?.matchedOnly !== false;
+  const centerRing = new THREE.Mesh(
+    new THREE.RingGeometry(17, 18.5, 96),
+    mat(0x315832, 0.9, 0)
+  );
+  centerRing.rotation.x = -Math.PI / 2;
+  centerRing.position.y = 0.012;
+  scene.add(centerRing);
 
-  let merged = [];
+  for (let i = 0; i < 180; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = rand(70, WORLD_RADIUS * .98);
+    const x = Math.cos(a) * r;
+    const z = Math.sin(a) * r;
 
-  if(csvHasRows){
-    const tempMerged = state.csvRows.map(r => {
-      const out = {...r};
-      const name = String(r[nameField] ?? "").trim();
-      const k = personKey(name);
-      const dock = selectedDockMap.get(k);
+    const trunk = new THREE.Mesh(
+      new THREE.CylinderGeometry(rand(.1,.24), rand(.16,.3), rand(1.8,4.2), 7),
+      mat(chance(.55) ? 0x4d321e : 0x3b2a1d)
+    );
+    trunk.position.set(x, trunk.geometry.parameters.height / 2, z);
+    trunk.castShadow = true;
 
-      out["Match: Person Key"] = k;
-      out["Match: Dock Found"] = dock ? "Yes" : "No";
+    const leaves = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(rand(.85,1.75), 0),
+      mat(chance(.5) ? 0x245f31 : 0x2d7438)
+    );
+    leaves.position.set(x, trunk.geometry.parameters.height + .8, z);
+    leaves.castShadow = true;
 
-      if(dock){
-        for(const [dk,dv] of Object.entries(dock)){
-          if(dk === "Dock: Representative") continue;
-          out[dk] = dv;
-        }
-      }
-
-      return out;
-    });
-    merged = matchedOnly ? tempMerged.filter(r => r["Match: Dock Found"] === "Yes") : tempMerged;
-  }else{
-    merged = Array.from(selectedDockMap.values()).map(d => ({
-      Name: d["Dock: Representative"],
-      "Match: Person Key": personKey(d["Dock: Representative"]),
-      "Match: Dock Found": "Yes",
-      ...d
-    }));
-  }
-  state.matchHeaders.matchedCount = merged.filter(r => r["Match: Dock Found"] === "Yes").length;
-
-  state.mergedRows = merged;
-  calculateCallCenterKpiAverageAdditive();
-
-  const allHeaders = Array.from(new Set(merged.flatMap(r => Object.keys(r))));
-  state.headers = allHeaders;
-
-  for(const h of allHeaders){
-    if(!state.activeHeaders.has(h)) state.activeHeaders.add(h);
+    scene.add(trunk, leaves);
   }
 
-  state.metrics = allHeaders.filter(h => {
-    if(!state.activeHeaders.has(h)) return false;
-    if(!isProtectedHeaderAdditive(h) && isHeaderExcludedAdditive(h)) return false;
-    let count = 0;
-    for(const r of merged){
-      if(toNumber(r[h]) !== null) count++;
-      if(count >= 2) return true;
-    }
-    return false;
-  });
+  createStormVisual();
 
-  if($("thresholdMode")) $("thresholdMode").value = state.thresholdMode || "median";
-  hydrateSelects();
-  renderHeaderChecks();
-  updateBadges();
-  setProgress(100, "Ready");
-}
-
-function hydrateSelects(){
-  const nameOptions = state.csvHeaders.length ? state.csvHeaders : ["Name"];
-  const oldName = $("nameField").value;
-  const nameValue = oldName && nameOptions.includes(oldName) ? oldName : guessNameField(nameOptions);
-
-  $("nameField").innerHTML = nameOptions.map(h => `<option value="${esc(h)}">${esc(h)}</option>`).join("");
-  $("nameField").value = nameValue;
-
-  const oldTarget = $("targetField").value;
-  const targetValue =
-    oldTarget && state.metrics.includes(oldTarget) ? oldTarget :
-    state.metrics.includes("Dock KPI: Consumer Appointment Rate") ? "Dock KPI: Consumer Appointment Rate" :
-    state.metrics.find(h => /consumer.*appointment.*rate/i.test(h)) ||
-    state.metrics[0] ||
-    "";
-
-  $("targetField").innerHTML = state.metrics.map(h => `<option value="${esc(h)}">${esc(h)}</option>`).join("");
-  $("targetField").value = targetValue;
-  state.target = targetValue;
-}
-
-function updateBadges(){
-  $("rowsBadge").textContent = state.mergedRows.length;
-  $("metricBadge").textContent = state.metrics.length;
-  $("dockBadge").textContent = state.dockByName.size;
-  if($("matchBadge")) $("matchBadge").textContent = state.mergedRows.filter(r => r["Match: Dock Found"] === "Yes").length || 0;
-  $("cardMatched").textContent = state.mergedRows.filter(r => r["Match: Dock Found"] === "Yes").length;
-  $("cardTarget").textContent = $("targetField").value || "—";
-  if($("cardCallCenterAvg")){
-    $("cardCallCenterAvg").textContent =
-      fmtKpiValueAdditive(state.callCenterKpiAvg, $("targetField").value);
-  }
-  if($("cardCallCenterAvgSub")){
-    $("cardCallCenterAvgSub").textContent = `${state.callCenterKpiN || 0} row(s) included`;
+  const alcoveCount = 16;
+  for (let i = 0; i < alcoveCount; i++) {
+    const ring = i < 5 ? rand(42, 62) : i < 11 ? rand(76, 100) : rand(112, 135);
+    const a = i / alcoveCount * Math.PI * 2 + rand(-.18, .18);
+    const tier = i < 5 ? 1 : i < 11 ? 2 : 3;
+    createNest(Math.cos(a) * ring, Math.sin(a) * ring, i, tier);
   }
 }
 
-function clearAll(){
-  state.csvRows = [];
-  state.csvHeaders = [];
-  state.dockRows = [];
-  state.dockByName = new Map();
-  state.mergedRows = [];
-  state.headers = [];
-  state.activeHeaders = new Set();
-  state.metrics = [];
-  state.correlations = [];
-  state.selectedMetric = "";
-  state.drillChain = [];
-  state.layerRows = [];
-  state.plotPoints = [];
-  state.uploadedFiles = [];
-  state.excludedHeaders = new Set();
-  state.treeExpanded = new Set();
-  clearTreeCacheAdditive();
-  state.selectedNodeContext = null;
-  state.currentExamplesExport = null;
-  state.callCenterKpiAvg = null;
-  state.callCenterKpiN = 0;
-  state.matchHeaders = {
-    csvNameHeader: "",
-    dockNameHeader: "Name",
-    matchedOnly: true,
-    matchedCount: 0,
-    csvUniqueCount: 0,
-    dockUniqueCount: 0,
-    uniqueMatchedCount: 0
+let stormMesh;
+let stormWall;
+
+function createStormVisual() {
+  stormMesh = new THREE.Mesh(
+    new THREE.RingGeometry(STORM_START_RADIUS, WORLD_RADIUS * 1.25, 160),
+    new THREE.MeshBasicMaterial({
+      color: 0x166dff,
+      transparent: true,
+      opacity: .26,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    })
+  );
+  stormMesh.rotation.x = -Math.PI / 2;
+  stormMesh.position.y = .035;
+  scene.add(stormMesh);
+
+  stormWall = new THREE.Mesh(
+    new THREE.CylinderGeometry(STORM_START_RADIUS, STORM_START_RADIUS, 10, 160, 1, true),
+    new THREE.MeshBasicMaterial({
+      color: 0x42ccff,
+      transparent: true,
+      opacity: .12,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    })
+  );
+  stormWall.position.y = 5;
+  scene.add(stormWall);
+}
+
+function updateStormVisual() {
+  scene.remove(stormMesh);
+  stormMesh.geometry.dispose();
+
+  stormMesh = new THREE.Mesh(
+    new THREE.RingGeometry(state.stormRadius, WORLD_RADIUS * 1.25, 160),
+    new THREE.MeshBasicMaterial({
+      color: 0x166dff,
+      transparent: true,
+      opacity: .26,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    })
+  );
+  stormMesh.rotation.x = -Math.PI / 2;
+  stormMesh.position.y = .035;
+  scene.add(stormMesh);
+
+  stormWall.geometry.dispose();
+  stormWall.geometry = new THREE.CylinderGeometry(state.stormRadius, state.stormRadius, 10, 160, 1, true);
+}
+
+function createNest(x, z, index, tier) {
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(4.2 + tier * .4, 5.0 + tier * .55, .45, 16),
+    mat(tier === 1 ? 0x3c2439 : tier === 2 ? 0x4c2b49 : 0x5c2238)
+  );
+  base.position.y = .22;
+  base.receiveShadow = true;
+  base.castShadow = true;
+  g.add(base);
+
+  for (let i = 0; i < 8 + tier * 2; i++) {
+    const a = i / (8 + tier * 2) * Math.PI * 2;
+    const rock = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(rand(.55, 1.3 + tier * .16), 0),
+      mat(tier === 1 ? 0x6a435e : tier === 2 ? 0x79505e : 0x8a3a4a)
+    );
+    rock.position.set(Math.cos(a) * rand(3.1, 4.3 + tier * .35), rand(.55, 1.35 + tier * .35), Math.sin(a) * rand(3.1, 4.3 + tier * .35));
+    rock.scale.y = rand(.8, 2.0);
+    rock.castShadow = true;
+    g.add(rock);
+  }
+
+  const glow = new THREE.PointLight(tier === 1 ? 0xff4f91 : tier === 2 ? 0xff8a34 : 0xe73bff, 1.4 + tier * .25, 14 + tier * 3);
+  glow.position.y = 1.7;
+  g.add(glow);
+
+  const flag = new THREE.Mesh(
+    new THREE.ConeGeometry(.8 + tier * .14, 1.4 + tier * .2, 4),
+    mat(tier === 1 ? 0xff4f91 : tier === 2 ? 0xff9b31 : 0xd84dff)
+  );
+  flag.position.y = 2.2 + tier * .25;
+  flag.castShadow = true;
+  g.add(flag);
+
+  scene.add(g);
+
+  const nest = {
+    group: g,
+    x,
+    z,
+    tier,
+    radius: 5.2 + tier * .45,
+    leashRadius: 18 + tier * 4,
+    respawnTimer: rand(1, 4),
+    respawnDelay: 12 + tier * 4,
+    squad: [],
+    rewardReady: false,
+    index
   };
-  state.matchTool = {
-    csvHeader: "",
-    dockHeader: "Name",
-    manualPairs: [],
-    lastMatchCount: 0,
-    lastCsvUniqueCount: 0,
-    lastDockUniqueCount: 0,
-    unmatchedCsvNames: [],
-    unmatchedDockNames: [],
-    matches: []
-  };
 
-  $("fileLabel").textContent = "Drop CSV or choose file";
-  $("corrBody").innerHTML = `<tr><td colspan="7" class="muted">Load data, choose target, then run correlations.</td></tr>`;
-  $("layerBody").innerHTML = `<tr><td colspan="5" class="muted">Drill into a correlate to populate this.</td></tr>`;
-  $("statusBox").className = "hint";
-  $("statusBox").innerHTML = "Cleared. Upload a CSV or load docks.";
-  setProgress(0, "Ready");
-  if($("thresholdMode")) $("thresholdMode").value = state.thresholdMode || "median";
-  hydrateSelects();
-  updateBadges();
-  drawScatter();
+  nests.push(nest);
 }
 
-/* =========================
-   Correlations
-========================= */
-function pearsonFromPairs(pairs){
-  const n = pairs.length;
-  if(n < 2) return null;
+function buildWizardModel(color, isPlayer = false) {
+  const g = new THREE.Group();
 
-  let sx=0, sy=0, sxx=0, syy=0, sxy=0;
-  for(const [x,y] of pairs){
-    sx += x;
-    sy += y;
-    sxx += x*x;
-    syy += y*y;
-    sxy += x*y;
-  }
+  const robeMat = mat(color);
+  const trimMat = mat(0x8feaff, .4, .12);
+  const skinMat = mat(0xffcfa8);
+  const hatMat = mat(color.clone ? color.clone().multiplyScalar(.55) : 0x18225c);
 
-  const num = n*sxy - sx*sy;
-  const den = Math.sqrt((n*sxx - sx*sx) * (n*syy - sy*sy));
-  if(!den) return null;
-  return num / den;
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(.52, .74, 1.85, 14), robeMat);
+  body.position.y = 1.23;
+  body.castShadow = true;
+  g.add(body);
+
+  const belt = new THREE.Mesh(new THREE.CylinderGeometry(.58, .66, .13, 14), mat(0x5c371b));
+  belt.position.y = 1.18;
+  belt.castShadow = true;
+  g.add(belt);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(.42, 18, 12), skinMat);
+  head.position.y = 2.43;
+  head.castShadow = true;
+  g.add(head);
+
+  const beard = new THREE.Mesh(new THREE.ConeGeometry(.34, .85, 12), mat(isPlayer ? 0xf2f2ee : 0x222222));
+  beard.position.set(0, 2.08, .28);
+  beard.rotation.x = Math.PI;
+  beard.castShadow = true;
+  g.add(beard);
+
+  const brim = new THREE.Mesh(new THREE.CylinderGeometry(.78, .78, .1, 20), hatMat);
+  brim.position.y = 2.72;
+  brim.castShadow = true;
+  g.add(brim);
+
+  const hat = new THREE.Mesh(new THREE.ConeGeometry(.58, 1.2, 18), hatMat);
+  hat.position.y = 3.22;
+  hat.castShadow = true;
+  g.add(hat);
+
+  const staff = new THREE.Mesh(new THREE.CylinderGeometry(.045, .06, 2.35, 8), mat(0x71491f));
+  staff.position.set(.76, 1.45, .12);
+  staff.rotation.z = -0.13;
+  staff.castShadow = true;
+  g.add(staff);
+
+  const orb = new THREE.Mesh(new THREE.SphereGeometry(.18, 16, 10), trimMat);
+  orb.position.set(.91, 2.65, .12);
+  orb.castShadow = true;
+  g.add(orb);
+
+  const orbLight = new THREE.PointLight(isPlayer ? 0x37ddff : color, 1.1, 9);
+  orbLight.position.copy(orb.position);
+  g.add(orbLight);
+
+  return g;
 }
 
-function pairsForMetric(metric, target, rows){
-  const out = [];
-  for(const r of rows){
-    const x = toNumber(r[metric]);
-    const y = toNumber(r[target]);
-    if(x === null || y === null) continue;
-    out.push([x,y,r]);
-  }
-  return out;
+function buildWizard() {
+  const model = buildWizardModel(teamColor, true);
+  player.group.add(model);
+  scene.add(player.group);
+  player.group.position.set(0, 0, 0);
+
+  player.hpBar = makeHealthBar(1.7, .16, 3.65, true);
+  player.group.add(player.hpBar);
+
+  player.leftIcon = makeFloatingKeyIcon("Q", -1.3);
+  player.rightIcon = makeFloatingKeyIcon("E", 1.3);
+  player.group.add(player.leftIcon, player.rightIcon);
+  player.leftIcon.visible = false;
+  player.rightIcon.visible = false;
+
+  player.arrow = makeStormArrow();
+  player.group.add(player.arrow);
+  player.arrow.visible = false;
 }
 
-function strength(abs){
-  if(abs >= .70) return {txt:"High", cls:"high"};
-  if(abs >= .40) return {txt:"Medium", cls:"med"};
-  return {txt:"Low", cls:"low"};
+function makeStormArrow() {
+  const arrow = new THREE.Group();
+
+  const shaft = new THREE.Mesh(
+    new THREE.CylinderGeometry(.045, .07, 1.0, 8),
+    new THREE.MeshBasicMaterial({ color: 0x8cecff })
+  );
+  shaft.rotation.z = Math.PI / 2;
+  shaft.position.x = -.25;
+  arrow.add(shaft);
+
+  const head = new THREE.Mesh(
+    new THREE.ConeGeometry(.22, .55, 16),
+    new THREE.MeshBasicMaterial({ color: 0xdffaff })
+  );
+  head.rotation.z = -Math.PI / 2;
+  head.position.x = .45;
+  arrow.add(head);
+
+  const light = new THREE.PointLight(0x4bdcff, 1.5, 8);
+  arrow.add(light);
+
+  arrow.position.y = 4.6;
+  arrow.scale.set(1.1, 1.1, 1.1);
+  return arrow;
 }
 
-async function runCorrelations(){
-  rebuildMergedRows();
-  clearTreeCacheAdditive();
-
-  const target = $("targetField").value;
-  const minN = Math.max(2, Number($("minN").value || 2));
-  state.target = target;
-  calculateCallCenterKpiAverageAdditive();
-
-  if(!target){
-    $("statusBox").className = "hint bad";
-    $("statusBox").innerHTML = "No target KPI selected.";
-    return;
-  }
-
-  const metrics = state.metrics.filter(m => m !== target);
-  const rows = state.mergedRows;
-  const results = [];
-
-  setProgress(0, "Starting...");
-  $("corrBody").innerHTML = `<tr><td colspan="7" class="muted">Working in chunks...</td></tr>`;
-
-  const chunk = 20;
-  for(let i=0;i<metrics.length;i+=chunk){
-    const slice = metrics.slice(i, i + chunk);
-
-    for(const metric of slice){
-      const pairs = pairsForMetric(metric, target, rows);
-      if(pairs.length < minN) continue;
-
-      const r = pearsonFromPairs(pairs.map(p => [p[0], p[1]]));
-      if(r === null || !Number.isFinite(r)) continue;
-
-      const abs = Math.abs(r);
-      const label = strength(abs);
-      const targetValsForMetric = pairs.map(p => p[1]).filter(Number.isFinite);
-      const metricAvg = mean(targetValsForMetric);
-      const liftVsCallCenter = Number.isFinite(state.callCenterKpiAvg)
-        ? metricAvg - state.callCenterKpiAvg
-        : null;
-
-      results.push({
-        metric,
-        r,
-        abs,
-        n:pairs.length,
-        label,
-        direction:r >= 0 ? "Positive" : "Negative",
-        metricAvg,
-        liftVsCallCenter
-      });
-    }
-
-    const done = Math.min(metrics.length, i + chunk);
-    setProgress((done / Math.max(1, metrics.length)) * 100, `Correlating ${done}/${metrics.length}`);
-    await sleepFrame();
-  }
-
-  results.sort((a,b)=>b.abs-a.abs);
-  state.correlations = results;
-
-  setProgress(100, `Done: ${results.length} correlations`);
-  renderCorrelations();
-
-  if(results[0]) selectMetric(results[0].metric, false);
-
-  $("statusBox").className = "hint ok";
-  $("statusBox").innerHTML = `
-    <b>Correlation run complete.</b><br>
-    Target: <b>${esc(target)}</b><br>
-    Metrics tested: <b>${metrics.length}</b><br>
-    Valid correlations: <b>${results.length}</b>
-  `;
-
-  updateBadges();
-}
-
-function filteredCorrelations(){
-  const q = $("searchBox").value.trim().toLowerCase();
-  let rows = state.correlations.filter(c => !q || c.metric.toLowerCase().includes(q));
-
-  rows = [...rows].sort((a,b)=>{
-    const k = state.sortKey;
-    let va = a[k], vb = b[k];
-    if(k === "metric"){
-      va = String(va).toLowerCase();
-      vb = String(vb).toLowerCase();
-      return state.sortDir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va);
-    }
-    return state.sortDir === "asc" ? va - vb : vb - va;
-  });
-
-  return rows;
-}
-
-function renderCorrelations(){
-  const rows = filteredCorrelations();
-
-  if(!rows.length){
-    $("corrBody").innerHTML = `<tr><td colspan="7" class="muted">No correlations found.</td></tr>`;
-    $("cardBest").textContent = "—";
-    $("cardBestSub").textContent = "—";
-    return;
-  }
-
-  const best = rows[0];
-  $("cardBest").textContent = fmt(best.r,3);
-  $("cardBestSub").textContent = best.metric;
-
-  $("corrBody").innerHTML = rows.map(c => `
-    <tr>
-      <td onclick="selectMetric(${JSON.stringify(c.metric)}, false)" style="cursor:pointer">
-        <button class="ghost" onclick='event.stopPropagation();toggleTreeNodeAdditive(${JSON.stringify([c.metric])})'>${isTreeExpandedAdditive([c.metric]) ? "▾" : "▸"}</button>
-        <div class="metricName" title="${esc(c.metric)}">${esc(c.metric)}</div>
-      </td>
-      <td>${fmt(c.r,3)}</td>
-      <td>${fmt(c.abs,3)}</td>
-      <td>${c.n}</td>
-      <td><span class="tag ${c.r >= 0 ? "pos" : "neg"}">${c.direction}</span></td>
-      <td><span class="tag ${c.label.cls}">${c.label.txt}</span><div class="muted small">Vs Avg: <b class="${(c.liftVsCallCenter ?? 0) >= 0 ? "posText" : "badText"}">${fmtSignedKpiLiftAdditive(c.liftVsCallCenter, $("targetField").value)}</b></div></td>
-      <td>
-        <div class="row">
-          <button onclick="selectMetric(${JSON.stringify(c.metric)}, false)">Plot</button>
-          <button class="primary" onclick="startDrill(${JSON.stringify(c.metric)})">Drill</button>
-          <button onclick="saveTopCorrelationAdditive(${JSON.stringify(c.metric)})">Save</button>
-        </div>
-      </td>
-    </tr>
-    ${isTreeExpandedAdditive([c.metric]) ? renderTreeChildrenRowsAdditive([c.metric], 1) : ""}
-  `).join("");
-}
-
-/* =========================
-   Layer Explorer
-========================= */
-function mean(nums){
-  const good = nums.filter(Number.isFinite);
-  if(!good.length) return null;
-  return good.reduce((a,b)=>a+b,0) / good.length;
-}
-function calculateCallCenterKpiAverageAdditive(){
-  const target = $("targetField")?.value || state.target || "";
-  if(!target){
-    state.callCenterKpiAvg = null;
-    state.callCenterKpiN = 0;
-    return null;
-  }
-  const vals = (state.mergedRows || [])
-    .map(r => toNumber(r[target]))
-    .filter(Number.isFinite);
-  state.callCenterKpiAvg = vals.length ? mean(vals) : null;
-  state.callCenterKpiN = vals.length;
-  return state.callCenterKpiAvg;
-}
-
-function quantile(vals, q){
-  const arr = vals.filter(Number.isFinite).sort((a,b)=>a-b);
-  if(!arr.length) return null;
-  const idx = Math.max(0, Math.min(arr.length - 1, Math.floor((arr.length - 1) * q)));
-  return arr[idx];
-}
-
-function correlationForMetric(metric){
-  return state.correlations.find(c => c.metric === metric);
-}
-
-function goodThreshold(metric, rows){
-  const c = correlationForMetric(metric);
-  const dir = !c || c.r >= 0 ? 1 : -1;
-  const vals = rows.map(r => toNumber(r[metric])).filter(Number.isFinite);
-  const q = dir >= 0 ? .5 : .5;
-  const t = quantile(vals, q);
-  return { threshold:t, dir };
-}
-
-function rowIsGood(row, metric, basisRows){
-  const {threshold, dir} = goodThreshold(metric, basisRows);
-  const v = toNumber(row[metric]);
-  if(v === null || threshold === null) return false;
-  return dir >= 0 ? v >= threshold : v <= threshold;
-}
-
-function rowsForChain(){
-  let rows = state.mergedRows;
-
-  for(const metric of state.drillChain){
-    const basis = rows;
-    rows = rows.filter(r => rowIsGood(r, metric, basis));
-  }
-
-  return rows;
-}
-
-async function startDrill(metric){
-  state.drillChain = [metric];
-  $("cardLayer").textContent = state.drillChain.length;
-  selectMetric(metric, false);
-  await computeLayerRows();
-}
-
-async function addLayer(metric){
-  if(!state.drillChain.includes(metric)) state.drillChain.push(metric);
-  $("cardLayer").textContent = state.drillChain.length;
-  selectMetric(metric, false);
-  await computeLayerRows();
-}
-
-async function computeLayerRows(){
-  const target = $("targetField").value;
-  const minN = Math.max(2, Number($("minN").value || 2));
-  const baseRows = rowsForChain();
-  const baseAvg = mean(baseRows.map(r => toNumber(r[target])));
-
-  const used = new Set(state.drillChain);
-  const candidates = state.correlations.filter(c => !used.has(c.metric));
-
-  const out = [];
-  setProgress(0, "Layer scan...");
-
-  const chunk = 25;
-  for(let i=0;i<candidates.length;i+=chunk){
-    for(const c of candidates.slice(i,i+chunk)){
-      const metric = c.metric;
-      const {threshold, dir} = goodThreshold(metric, baseRows);
-      if(threshold === null) continue;
-
-      const good = [];
-      const bad = [];
-
-      for(const r of baseRows){
-        const y = toNumber(r[target]);
-        if(y === null) continue;
-
-        const v = toNumber(r[metric]);
-        if(v === null) continue;
-
-        const isGood = dir >= 0 ? v >= threshold : v <= threshold;
-        if(isGood) good.push(y);
-        else bad.push(y);
-      }
-
-      if(good.length < minN || bad.length < minN) continue;
-
-      const goodAvg = mean(good);
-      const badAvg = mean(bad);
-      const delta = goodAvg - badAvg;
-
-      out.push({
-        metric,
-        threshold,
-        dir,
-        goodAvg,
-        badAvg,
-        delta,
-        goodN:good.length,
-        badN:bad.length,
-        baseAvg,
-        score:Math.abs(delta) * Math.sqrt(good.length + bad.length)
-      });
-    }
-
-    setProgress((Math.min(candidates.length,i+chunk) / Math.max(1,candidates.length)) * 100, "Layer scan...");
-    await sleepFrame();
-  }
-
-  out.sort((a,b)=>b.score-a.score);
-  state.layerRows = out;
-
-  renderLayerRows();
-  setProgress(100, "Layer ready");
-}
-
-function renderLayerRows(){
-  $("crumbs").innerHTML = state.drillChain.length
-    ? state.drillChain.map((c,i)=>`<span class="layerCrumb">${i+1}. ${esc(c)}</span>`).join("")
-    : `<span class="muted small">No drill chain.</span>`;
-
-  if(!state.drillChain.length){
-    $("layerHint").innerHTML = "No drill chain selected yet.";
-    $("layerBody").innerHTML = `<tr><td colspan="5" class="muted">Drill into a correlate to populate this.</td></tr>`;
-    return;
-  }
-
-  const baseRows = rowsForChain();
-  $("layerHint").innerHTML = `
-    Current drill group has <b>${baseRows.length}</b> rows.
-    The table below shows which next stat makes the target stronger or weaker inside that group.
-  `;
-
-  if(!state.layerRows.length){
-    $("layerBody").innerHTML = `<tr><td colspan="5" class="muted">No next-layer results. Try lowering Minimum N.</td></tr>`;
-    return;
-  }
-
-  $("layerBody").innerHTML = state.layerRows.slice(0,150).map(r => `
-    <tr>
-      <td>
-        <div class="metricName" title="${esc(r.metric)}">${esc(r.metric)}</div>
-        <div class="muted small">${r.dir >= 0 ? "High" : "Low"} is good • threshold ${fmt(r.threshold,3)}</div>
-      </td>
-      <td>${pct(r.goodAvg)} <span class="muted">(${r.goodN})</span></td>
-      <td>${pct(r.badAvg)} <span class="muted">(${r.badN})</span></td>
-      <td><span class="tag ${r.delta >= 0 ? "pos" : "bad"}">${pct(r.delta)}</span></td>
-      <td>
-        <button class="primary" onclick="addLayer(${JSON.stringify(r.metric)})">Drill</button>
-      </td>
-    </tr>
-  `).join("");
-}
-
-/* =========================
-   Scatter
-========================= */
-function selectMetric(metric){
-  state.selectedMetric = metric;
-  drawScatter();
-
-  const c = correlationForMetric(metric);
-  if(c){
-    $("statusBox").className = "hint";
-    $("statusBox").innerHTML = `
-      <b>${esc(metric)}</b><br>
-      Correlation with <b>${esc($("targetField").value)}</b>: <b>${fmt(c.r,3)}</b><br>
-      Direction: <b>${c.direction}</b> • Strength: <b>${c.label.txt}</b> • N: <b>${c.n}</b>
-    `;
-  }
-}
-
-function drawScatter(){
-  const metric = state.selectedMetric;
-  const target = $("targetField").value;
-  drawScatterAdditiveContext(state.mergedRows, metric, target, metric ? [metric] : []);
-}
-
-function drawScatterAdditiveContext(rows, metric, target, chain){
-  const canvas = $("plot");
+function makeFloatingKeyIcon(text, x) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 128;
   const ctx = canvas.getContext("2d");
-  const W = canvas.width;
-  const H = canvas.height;
-  ctx.clearRect(0,0,W,H);
 
-  if(!metric || !target){
-    ctx.fillStyle = "#64748b";
-    ctx.font = "16px system-ui";
-    ctx.fillText("Select a correlation row to show scatter plot.", 30, 50);
-    return;
-  }
-
-  const pts = pairsForMetric(metric, target, rows)
-    .map(([x,y,r]) => ({
-      x,
-      y,
-      row:r,
-      name:String(r[$("nameField").value] || r.Name || r["Dock: Representative"] || "")
-    }));
-
-  state.plotPoints = pts;
-
-  if(pts.length < 2){
-    ctx.fillStyle = "#64748b";
-    ctx.font = "16px system-ui";
-    ctx.fillText("Not enough numeric points to plot.", 30, 50);
-    return;
-  }
-
-  const xs = pts.map(p=>p.x);
-  const ys = pts.map(p=>p.y);
-  let xMin = Math.min(...xs), xMax = Math.max(...xs);
-  let yMin = Math.min(...ys), yMax = Math.max(...ys);
-
-  if(xMin === xMax){xMin -= 1; xMax += 1}
-  if(yMin === yMax){yMin -= 1; yMax += 1}
-
-  const xp = (xMax - xMin) * .08;
-  const yp = (yMax - yMin) * .08;
-  xMin -= xp; xMax += xp; yMin -= yp; yMax += yp;
-
-  const padL=58,padR=20,padT=18,padB=48;
-  const plotW = W - padL - padR;
-  const plotH = H - padT - padB;
-
-  const sx = x => padL + ((x - xMin) / (xMax - xMin)) * plotW;
-  const sy = y => padT + (1 - ((y - yMin) / (yMax - yMin))) * plotH;
-
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(0,0,W,H);
-
-  ctx.strokeStyle = "#e5e7eb";
-  ctx.lineWidth = 1;
+  ctx.fillStyle = "rgba(8, 18, 42, .9)";
   ctx.beginPath();
-  for(let i=0;i<=5;i++){
-    const x = padL + plotW*i/5;
-    const y = padT + plotH*i/5;
-    ctx.moveTo(x,padT);
-    ctx.lineTo(x,padT+plotH);
-    ctx.moveTo(padL,y);
-    ctx.lineTo(padL+plotW,y);
-  }
+  ctx.arc(64, 64, 55, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = "#ffe88a";
   ctx.stroke();
 
-  const r = pearsonFromPairs(pts.map(p => [p.x,p.y]));
-  if(Number.isFinite(r)){
-    const mx = mean(xs);
-    const my = mean(ys);
-    let num=0, den=0;
-    for(const p of pts){
-      num += (p.x-mx)*(p.y-my);
-      den += (p.x-mx)*(p.x-mx);
-    }
+  ctx.fillStyle = "white";
+  ctx.font = "900 56px Arial";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, 64, 66);
 
-    if(den){
-      const slope = num / den;
-      const intercept = my - slope * mx;
-      const x1 = xMin, x2 = xMax;
-      const y1 = slope*x1 + intercept;
-      const y2 = slope*x2 + intercept;
+  const tex = new THREE.CanvasTexture(canvas);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
+  sprite.position.set(x, 4.45, 0);
+  sprite.scale.set(1, 1, 1);
+  return sprite;
+}
 
-      ctx.strokeStyle = r >= 0 ? "#2563eb" : "#7c3aed";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(sx(x1), sy(y1));
-      ctx.lineTo(sx(x2), sy(y2));
-      ctx.stroke();
-    }
+function addCrabSpikes(crab) {
+  if (crab.spikeGroup) crab.group.remove(crab.spikeGroup);
+
+  const spikeGroup = new THREE.Group();
+  const spikeMat = mat(0xeafcff, .35, .15);
+
+  const count = 3 + crab.spikeLevel;
+  for (let i = 0; i < count; i++) {
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(.07, .28, 8), spikeMat);
+    spike.position.set(
+      -0.35 + i * (0.7 / Math.max(1, count - 1)),
+      .88,
+      rand(-.28, .2)
+    );
+    spike.rotation.x = rand(-.25, .25);
+    spike.castShadow = true;
+    spikeGroup.add(spike);
   }
 
-  ctx.fillStyle = "#2563eb";
-  for(const p of pts){
-    const x = sx(p.x);
-    const y = sy(p.y);
-    ctx.beginPath();
-    ctx.arc(x,y,4,0,Math.PI*2);
-    ctx.fill();
+  crab.group.add(spikeGroup);
+  crab.spikeGroup = spikeGroup;
+}
+
+function addCrabArmor(crab) {
+  if (crab.armorGroup) crab.group.remove(crab.armorGroup);
+
+  const armorGroup = new THREE.Group();
+  const armorMat = mat(0x9fc4d2, .36, .35);
+
+  for (let i = -1; i <= 1; i++) {
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(.42, .08, .52), armorMat);
+    plate.position.set(i * .36, .82, -.04);
+    plate.rotation.z = i * .08;
+    plate.castShadow = true;
+    armorGroup.add(plate);
   }
 
-  ctx.strokeStyle = "#0f172a";
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(padL,padT);
-  ctx.lineTo(padL,padT+plotH);
-  ctx.lineTo(padL+plotW,padT+plotH);
-  ctx.stroke();
-
-  ctx.fillStyle = "#0f172a";
-  ctx.font = "bold 12px system-ui";
-  ctx.fillText(metric.slice(0,52), padL, H - 10);
-
-  if(chain && chain.length){
-    $("detailSub").textContent = `Scatter for ${makeChainLabelAdditive(chain)}`;
-  }
-
-  ctx.save();
-  ctx.translate(15, padT + plotH);
-  ctx.rotate(-Math.PI/2);
-  ctx.fillText(target.slice(0,48), 0, 0);
-  ctx.restore();
+  crab.group.add(armorGroup);
+  crab.armorGroup = armorGroup;
 }
 
-function setupTooltip(){
-  const canvas = $("plot");
-  const tip = $("tip");
+function createCrab(pos, owner = player, color = teamColor, bonus = {}) {
+  const g = new THREE.Group();
 
-  canvas.addEventListener("mousemove", e => {
-    const rect = canvas.getBoundingClientRect();
-    const px = (e.clientX - rect.left) * (canvas.width / rect.width);
-    const py = (e.clientY - rect.top) * (canvas.height / rect.height);
+  const armorLevel = bonus.armor ?? state.upgrades.crabArmor;
+  const spikeLevel = bonus.spikes ?? state.upgrades.crabSpikes;
+  const regenLevel = bonus.regen ?? state.upgrades.crabRegen;
+  const swarmSpeed = bonus.speed ?? state.upgrades.swarmSpeed;
 
-    const metric = state.selectedMetric;
-    const target = $("targetField").value;
-    const pts = state.plotPoints;
-    if(!metric || !target || !pts.length) return;
-
-    const xs = pts.map(p=>p.x);
-    const ys = pts.map(p=>p.y);
-    let xMin = Math.min(...xs), xMax = Math.max(...xs);
-    let yMin = Math.min(...ys), yMax = Math.max(...ys);
-    if(xMin === xMax){xMin -= 1; xMax += 1}
-    if(yMin === yMax){yMin -= 1; yMax += 1}
-
-    const xp = (xMax - xMin) * .08;
-    const yp = (yMax - yMin) * .08;
-    xMin -= xp; xMax += xp; yMin -= yp; yMax += yp;
-
-    const padL=58,padR=20,padT=18,padB=48;
-    const plotW = canvas.width - padL - padR;
-    const plotH = canvas.height - padT - padB;
-    const sx = x => padL + ((x - xMin) / (xMax - xMin)) * plotW;
-    const sy = y => padT + (1 - ((y - yMin) / (yMax - yMin))) * plotH;
-
-    let best = null;
-    let bestD = 9999;
-    for(const p of pts){
-      const dx = sx(p.x) - px;
-      const dy = sy(p.y) - py;
-      const d = Math.sqrt(dx*dx + dy*dy);
-      if(d < bestD){bestD = d; best = p}
-    }
-
-    if(best && bestD < 12){
-      tip.style.display = "block";
-      tip.style.left = `${e.clientX - rect.left}px`;
-      tip.style.top = `${e.clientY - rect.top}px`;
-      tip.innerHTML = `
-        <b>${esc(best.name || "Row")}</b><br>
-        ${esc(metric)}: <b>${fmt(best.x,3)}</b><br>
-        ${esc(target)}: <b>${fmt(best.y,3)}</b>
-      `;
-    }else{
-      tip.style.display = "none";
-    }
-  });
-
-  canvas.addEventListener("mouseleave", () => tip.style.display = "none");
-}
-
-
-
-/* =========================
-   Additive tree/saved/examples
-========================= */
-function clearTreeCacheAdditive(){
-  if(state.treeChildrenCache) state.treeChildrenCache.clear();
-  if(state.treeNodeCache) state.treeNodeCache.clear();
-}
-function isHeaderExcludedAdditive(h){
-  return state.excludedHeaders && state.excludedHeaders.has(h);
-}
-function isProtectedHeaderAdditive(h){
-  const target = $("targetField")?.value || state.target || "";
-  const csvMatch = state.matchHeaders?.csvNameHeader || "";
-  const dockMatch = state.matchHeaders?.dockNameHeader || "";
-  const protectedSet = new Set(
-    [target, csvMatch, dockMatch, $("nameField")?.value].filter(Boolean)
-  );
-  return protectedSet.has(h);
-}
-function getVisibleFilterHeadersAdditive(){
-  const q = ($("filterHeaderSearch")?.value || "").trim().toLowerCase();
-  return (state.headers || []).filter(h => {
-    if(!q) return true;
-    return String(h).toLowerCase().includes(q);
-  });
-}
-function makeTreeNodeIdAdditive(chain){ return chain.join(" > "); }
-function makeChainLabelAdditive(chain){ return chain.join(" > "); }
-function isTreeExpandedAdditive(chain){ return state.treeExpanded.has(makeTreeNodeIdAdditive(chain)); }
-function toggleTreeNodeAdditive(metricOrChain){
-  const chain = Array.isArray(metricOrChain) ? metricOrChain : [metricOrChain];
-  const id = makeTreeNodeIdAdditive(chain);
-  if(state.treeExpanded.has(id)){ state.treeExpanded.delete(id); renderCorrelations(); return; }
-  state.treeExpanded.add(id);
-  computeTreeChildrenAdditive(chain).then(()=>renderCorrelations());
-}
-function closeAllTreesAdditive(){
-  if(state.treeExpanded && typeof state.treeExpanded.clear === "function"){
-    state.treeExpanded.clear();
-  }
-  if(state.expandedNodes && typeof state.expandedNodes.clear === "function"){
-    state.expandedNodes.clear();
-  }
-  state.selectedNodeContext = null;
-  renderCorrelations();
-  if($("statusBox")){
-    $("statusBox").className = "hint ok";
-    $("statusBox").innerHTML = "All correlation trees have been collapsed.";
-  }
-}
-function getRowsForChainAdditive(chain){
-  let rows = state.mergedRows;
-  for(const metric of chain){
-    const rObj = state.correlations.find(c => c.metric === metric);
-    const approxR = rObj ? rObj.r : null;
-    const condition = buildConditionForMetricAdditive(metric, rows, approxR);
-    rows = rows.filter(row => rowMatchesConditionAdditive(row, condition));
-  }
-  return rows;
-}
-function buildConditionForMetricAdditive(metric, rows, r){
-  const vals = rows.map(row => toNumber(row[metric])).filter(Number.isFinite);
-  if(!vals.length) return { metric, type:"numeric", mode:"none", threshold:null, direction:"high" };
-  const sorted = [...vals].sort((a,b)=>a-b);
-  const avg = mean(vals);
-  const med = sorted[Math.floor(sorted.length / 2)];
-  let threshold = med;
-  let direction = r !== null && r < 0 ? "low" : "high";
-  if(state.thresholdMode === "average") threshold = avg;
-  if(state.thresholdMode === "topQuartile"){ threshold = sorted[Math.floor(sorted.length * .75)]; direction = "high"; }
-  if(state.thresholdMode === "nonzero"){ threshold = 0; direction = "nonzero"; }
-  return { metric, type:"numeric", mode:state.thresholdMode || "median", threshold, direction };
-}
-function rowMatchesConditionAdditive(row, condition){
-  const v = toNumber(row[condition.metric]);
-  if(v === null) return false;
-  if(condition.direction === "nonzero") return v !== 0;
-  if(condition.direction === "low") return v <= condition.threshold;
-  return v >= condition.threshold;
-}
-async function computeTreeChildrenAdditive(chain){
-  const id = makeTreeNodeIdAdditive(chain);
-  if(state.treeChildrenCache.has(id)) return state.treeChildrenCache.get(id);
-  const target = $("targetField").value;
-  const minN = Math.max(2, Number($("minN").value || 2));
-  const parentRows = getRowsForChainAdditive(chain);
-  const used = new Set(chain);
-  const candidates = state.metrics.filter(m => m !== target && !used.has(m));
-  const children = [];
-  const chunk = 20;
-  for(let i=0;i<candidates.length;i+=chunk){
-    for(const metric of candidates.slice(i,i+chunk)){
-      const pairs = pairsForMetric(metric, target, parentRows);
-      if(pairs.length < minN) continue;
-      const r = pearsonFromPairs(pairs.map(p => [p[0], p[1]]));
-      if(r === null || !Number.isFinite(r)) continue;
-      const condition = buildConditionForMetricAdditive(metric, parentRows, r);
-      const goodRows = parentRows.filter(row => rowMatchesConditionAdditive(row, condition));
-      const badRows = parentRows.filter(row => !rowMatchesConditionAdditive(row, condition));
-      const goodVals = goodRows.map(row => toNumber(row[target])).filter(Number.isFinite);
-      const badVals = badRows.map(row => toNumber(row[target])).filter(Number.isFinite);
-      if(goodVals.length < minN || badVals.length < minN) continue;
-      const goodAvg = mean(goodVals);
-      const badAvg = mean(badVals);
-      const delta = goodAvg - badAvg;
-      const liftVsCallCenter = Number.isFinite(state.callCenterKpiAvg)
-        ? goodAvg - state.callCenterKpiAvg
-        : null;
-      const badLiftVsCallCenter = Number.isFinite(state.callCenterKpiAvg)
-        ? badAvg - state.callCenterKpiAvg
-        : null;
-      const abs = Math.abs(r);
-      const label = strength(abs);
-      const relativeLift = Math.abs(delta || 0);
-      const absoluteLift = Math.max(0, liftVsCallCenter || 0);
-      const influenceScore = (absoluteLift * 2 + relativeLift) * Math.sqrt(pairs.length);
-      children.push({metric,chain:[...chain, metric],r,abs,n:pairs.length,condition,conditionN:goodRows.length,remainingN:goodRows.length,goodAvg,badAvg,delta,liftVsCallCenter,badLiftVsCallCenter,label,influenceScore});
-    }
-    setProgress((Math.min(candidates.length, i + chunk) / Math.max(1, candidates.length)) * 100, `Tree children ${Math.min(candidates.length, i + chunk)}/${candidates.length}`);
-    await sleepFrame();
-  }
-  children.sort((a,b)=>b.influenceScore-a.influenceScore);
-  state.treeChildrenCache.set(id, children);
-  return children;
-}
-function renderTreeChildrenRowsAdditive(parentChain, depth){
-  const id = makeTreeNodeIdAdditive(parentChain);
-  const children = state.treeChildrenCache.get(id) || [];
-  return children.map(child => {
-    const childChain = [...parentChain, child.metric];
-    const expanded = isTreeExpandedAdditive(childChain);
-    const indent = Math.min(depth * 24, 140);
-    return `
-      <tr class="treeChildRow depth-${depth}">
-        <td style="padding-left:${indent}px">
-          <button class="ghost" onclick='toggleTreeNodeAdditive(${JSON.stringify(childChain)})'>${expanded ? "▾" : "▸"}</button>
-          <span class="muted">${depth === 1 ? "└─" : "├─"}</span>
-          <span class="metricName" title="${esc(child.metric)}">${esc(child.metric)}</span>
-          <div class="muted small">Path: ${esc(makeChainLabelAdditive(childChain))}</div>
-        </td>
-        <td>${fmt(child.r,3)}</td><td>${fmt(Math.abs(child.r || 0),3)}</td><td>${child.n}</td>
-        <td><span class="tag ${child.delta >= 0 ? "pos" : "bad"}">${fmtSignedKpiLiftAdditive(child.delta, $("targetField").value)}</span></td>
-        <td><span class="tag ${child.label?.cls || "low"}">${child.label?.txt || "Layer"}</span><div class="muted small">Good ${fmtKpiValueAdditive(child.goodAvg, $("targetField").value)} / Other ${fmtKpiValueAdditive(child.badAvg, $("targetField").value)}</div><div class="muted small">Delta vs Other: <b class="${(child.delta ?? 0) >= 0 ? "posText" : "badText"}">${fmtSignedKpiLiftAdditive(child.delta, $("targetField").value)}</b></div><div class="muted small">Vs Avg: <b class="${(child.liftVsCallCenter ?? 0) >= 0 ? "posText" : "badText"}">${fmtSignedKpiLiftAdditive(child.liftVsCallCenter, $("targetField").value)}</b></div><div class="muted small">Condition: ${child.conditionN}, Remaining: ${child.remainingN}</div></td>
-        <td><div class="row"><button onclick='plotTreeNodeAdditive(${JSON.stringify(childChain)})'>Plot</button><button onclick='showExamplesAdditive(${JSON.stringify(childChain)})'>Examples</button><button onclick='saveTreeCorrelationAdditive(${JSON.stringify(childChain)})'>Save</button></div></td>
-      </tr>
-      ${expanded ? renderTreeChildrenRowsAdditive(childChain, depth + 1) : ""}
-    `;
-  }).join("");
-}
-function plotTreeNodeAdditive(chain){
-  const rows = getRowsForChainAdditive(chain.slice(0,-1));
-  const metric = chain[chain.length - 1];
-  const target = $("targetField").value;
-  const pathRows = getRowsForChainAdditive(chain);
-  const pathVals = pathRows.map(r => toNumber(r[target])).filter(Number.isFinite);
-  const pathAvg = mean(pathVals);
-  const lift = Number.isFinite(state.callCenterKpiAvg)
-    ? pathAvg - state.callCenterKpiAvg
-    : null;
-  const parentId = makeTreeNodeIdAdditive(chain.slice(0,-1));
-  const child = (state.treeChildrenCache.get(parentId) || []).find(c => c.metric === metric);
-  state.selectedMetric = metric;
-  state.selectedNodeContext = { chain, rows };
-  drawScatterAdditiveContext(rows, metric, target, chain);
-  $("statusBox").className = "hint ok";
-  $("statusBox").innerHTML = `
-    <b>Path selected:</b> ${esc(makeChainLabelAdditive(chain))}<br>
-    Call Center Avg: <b>${fmtKpiValueAdditive(state.callCenterKpiAvg, target)}</b><br>
-    Path Avg: <b>${fmtKpiValueAdditive(pathAvg, target)}</b><br>
-    Vs Call Center Avg: <b class="${(lift ?? 0) >= 0 ? "posText" : "badText"}">${fmtSignedKpiLiftAdditive(lift, target)}</b><br>
-    Delta vs Opposite Group: <b class="${(child?.delta ?? 0) >= 0 ? "posText" : "badText"}">${fmtSignedKpiLiftAdditive(child?.delta, target)}</b><br>
-    Rows in Path: <b>${pathVals.length}</b>
-  `;
-}
-function showExamplesAdditive(chain){
-  const rows = getRowsForChainAdditive(chain);
-  const target = $("targetField").value;
-  const pathVals = rows.map(r => toNumber(r[target])).filter(Number.isFinite);
-  const pathAvg = mean(pathVals);
-  const lift = Number.isFinite(state.callCenterKpiAvg)
-    ? pathAvg - state.callCenterKpiAvg
-    : null;
-  const metric = chain[chain.length - 1];
-  const nameField = $("nameField").value;
-  const displayRows = rows.filter(r => toNumber(r[target]) !== null).sort((a,b) => (toNumber(b[target]) ?? -Infinity) - (toNumber(a[target]) ?? -Infinity)).slice(0, state.exampleLimit || 250);
-  const chainFields = [...chain];
-  const cols = [nameField,target,metric,...chainFields.filter(x => x !== metric),"CSV Source File","Match: Dock Found"].filter(Boolean);
-  const uniqueCols = [...new Set(cols)];
-  $("examplesTitle").textContent = `Examples: ${makeChainLabelAdditive(chain)}`;
-  $("examplesSub").textContent = `Call Center Avg: ${fmtKpiValueAdditive(state.callCenterKpiAvg, target)} • Current Path Avg: ${fmtKpiValueAdditive(pathAvg, target)} • Lift: ${fmtSignedKpiLiftAdditive(lift, target)} • Showing ${displayRows.length} of ${rows.length} matching rows`;
-  $("examplesHead").innerHTML = `<tr>${uniqueCols.map(c => `<th>${esc(c)}</th>`).join("")}</tr>`;
-  $("examplesBody").innerHTML = displayRows.map(r => `<tr>${uniqueCols.map(c => `<td>${esc(r[c] ?? "")}</td>`).join("")}</tr>`).join("");
-  state.currentExamplesExport = { cols: uniqueCols, rows: displayRows };
-  $("examplesDrawer").classList.add("show");
-}
-function exportExamplesAdditive(){
-  const data = state.currentExamplesExport;
-  if(!data || !data.cols || !data.rows) return;
-  const rows = [data.cols, ...data.rows.map(r => data.cols.map(c => r[c] ?? ""))];
-  const csv = rows.map(r => r.map(v => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replaceAll('"','""')}"` : s; }).join(",")).join("\n");
-  const blob = new Blob([csv], {type:"text/csv"});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a"); a.href = url; a.download = "layer_examples.csv"; a.click(); URL.revokeObjectURL(url);
-}
-function saveCorrelationAdditive(node){
-  if(!node) return;
-  const sourceFiles = [...new Set(state.mergedRows.map(r => r["CSV Source File"]).filter(Boolean))];
-  const item = {
-    id:`${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
-    savedAt:new Date().toISOString(),
-    target:$("targetField").value,
-    path:node.path || (node.chain ? makeChainLabelAdditive(node.chain) : node.metric),
-    metric:node.metric,
-    r:node.r ?? null,
-    abs:node.abs ?? (node.r !== undefined ? Math.abs(node.r) : null),
-    delta:node.delta ?? null,
-    callCenterAvg: Number.isFinite(node.callCenterAvg) ? node.callCenterAvg : state.callCenterKpiAvg,
-    pathAvg: node.pathAvg ?? node.metricAvg ?? node.goodAvg ?? null,
-    liftVsCallCenter: node.liftVsCallCenter ?? null,
-    deltaVsOther: node.deltaVsOther ?? node.delta ?? null,
-    n:node.n ?? null,
-    conditionN:node.conditionN ?? null,
-    remainingN:node.remainingN ?? null,
-    sourceFiles
+  const crab = {
+    group: g,
+    owner,
+    team: owner.team || "player",
+    color,
+    velocity: new THREE.Vector3(),
+    radius: .55,
+    hp: 26 + armorLevel * 9,
+    maxHp: 26 + armorLevel * 9,
+    damage: 7 + spikeLevel * 2,
+    speed: 6.2 + swarmSpeed * .35,
+    attackCooldown: rand(.2, .7),
+    growth: 1,
+    kills: 0,
+    target: null,
+    leapCooldown: rand(1, 3),
+    chargeCooldown: rand(2, 5),
+    anim: Math.random() * 50,
+    legs: [],
+    claws: [],
+    armorLevel,
+    spikeLevel,
+    regenLevel,
+    isPlayerCrab: owner === player
   };
-  state.savedCorrelations = [item, ...(state.savedCorrelations || [])];
-  persistSavedCorrelationsAdditive();
-  renderSavedCorrelationsAdditive();
-}
-function saveTopCorrelationAdditive(metric){
-  const c = state.correlations.find(x => x.metric === metric);
-  if(c) saveCorrelationAdditive({metric:c.metric, r:c.r, abs:c.abs, n:c.n, path:c.metric, metricAvg:c.metricAvg, callCenterAvg:state.callCenterKpiAvg, liftVsCallCenter:c.liftVsCallCenter});
-}
-function saveTreeCorrelationAdditive(chain){
-  const parentId = makeTreeNodeIdAdditive(chain.slice(0,-1));
-  const children = state.treeChildrenCache.get(parentId) || [];
-  const metric = chain[chain.length-1];
-  const child = children.find(c => c.metric === metric);
-  if(!child) return;
-  const target = $("targetField").value;
-  const pathRows = getRowsForChainAdditive(chain);
-  const pathVals = pathRows.map(r => toNumber(r[target])).filter(Number.isFinite);
-  const pathAvg = mean(pathVals);
-  saveCorrelationAdditive({
-    ...child,
-    path: makeChainLabelAdditive(chain),
-    pathAvg,
-    callCenterAvg: state.callCenterKpiAvg,
-    liftVsCallCenter: Number.isFinite(state.callCenterKpiAvg) ? pathAvg - state.callCenterKpiAvg : null,
-    deltaVsOther: child.delta
+
+  const shellMat = new THREE.MeshStandardMaterial({
+    color: color.clone().offsetHSL(rand(-.03,.03), .12, rand(-.04,.05)),
+    roughness: .48,
+    metalness: .08
   });
-}
-function loadSavedCorrelationsAdditive(){
-  try{ state.savedCorrelations = JSON.parse(localStorage.getItem(SAVED_CORR_KEY) || "[]"); }catch{ state.savedCorrelations = []; }
-  renderSavedCorrelationsAdditive();
-}
-function persistSavedCorrelationsAdditive(){ localStorage.setItem(SAVED_CORR_KEY, JSON.stringify(state.savedCorrelations || [])); }
-function renderSavedCorrelationsAdditive(){
-  const list = $("savedList");
-  const items = state.savedCorrelations || [];
-  if(!items.length){ list.innerHTML = `<div class="muted small">No saved correlations yet.</div>`; return; }
-  list.innerHTML = items.map(i => `<div class="savedItem"><b>${esc(i.path || i.metric || "Metric")}</b><br><small>${esc(i.target || "")}</small><div class="muted small">r ${fmt(i.r,3)} • |r| ${fmt(i.abs,3)} • N ${i.n ?? "—"}</div></div>`).join("");
-}
-function exportSavedCorrelationsAdditive(){
-  const items = state.savedCorrelations || [];
-  if(!items.length) return;
-  const headers = ["id","savedAt","target","path","metric","r","abs","delta","callCenterAvg","pathAvg","liftVsCallCenter","deltaVsOther","n","conditionN","remainingN","sourceFiles"];
-  const rows = [headers, ...items.map(i => headers.map(h => h === "sourceFiles" ? (i[h] || []).join(" | ") : (i[h] ?? "")))];
-  const csv = rows.map(r => r.map(v => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replaceAll('"','""')}"` : s; }).join(",")).join("\n");
-  const blob = new Blob([csv], {type:"text/csv"});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a"); a.href = url; a.download = "saved_correlations.csv"; a.click(); URL.revokeObjectURL(url);
-}
-function renderFilterHeaderChecksAdditive(){
-  const box = $("filterHeaderChecks") || $("headerChecks");
-  if(!box) return;
 
-  const headers = getVisibleFilterHeadersAdditive();
-  if(!headers.length){
-    box.innerHTML = `<div class="muted">No headers match the current search.</div>`;
-    return;
-  }
+  const darkMat = mat(0x0b1d28);
 
-  box.innerHTML = headers.map(h => {
-    const locked = isProtectedHeaderAdditive(h);
-    if(locked) state.excludedHeaders?.delete(h);
-    const excluded = !locked && state.excludedHeaders?.has(h);
-    const numericCount = (state.mergedRows || []).reduce((n,r) => {
-      return n + (toNumber(r[h]) !== null ? 1 : 0);
-    }, 0);
-    return `
-      <label class="checkItem ${locked ? "lockedHeader" : ""}">
-        <input
-          type="checkbox"
-          ${excluded ? "checked" : ""}
-          ${locked ? "disabled" : ""}
-          onchange="toggleExcludedHeaderAdditive(${JSON.stringify(h)}, this.checked)"
-        >
-        <span>
-          ${esc(h)}
-          ${locked ? `<span class="tag low">Locked</span>` : ""}
-          <br>
-          <span class="muted">
-            ${excluded ? "Excluded from correlations" : "Included in correlations"}
-            • ${numericCount} numeric values
-          </span>
-        </span>
-      </label>
-    `;
-  }).join("");
-}
-function toggleExcludedHeaderAdditive(h, shouldExclude){
-  if(isProtectedHeaderAdditive(h)){
-    state.excludedHeaders.delete(h);
-    renderFilterHeaderChecksAdditive();
-    return;
-  }
+  const body = new THREE.Mesh(new THREE.SphereGeometry(.72, 18, 12), shellMat);
+  body.scale.set(1.15, .42, .82);
+  body.position.y = .48;
+  body.castShadow = true;
+  g.add(body);
+  crab.body = body;
 
-  if(shouldExclude) state.excludedHeaders.add(h);
-  else state.excludedHeaders.delete(h);
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(.52, 14, 8), shellMat);
+  belly.scale.set(.95, .22, .52);
+  belly.position.set(0, .34, .08);
+  belly.castShadow = true;
+  g.add(belly);
 
-  clearTreeCacheAdditive();
-  rebuildMergedRows();
-  renderFilterHeaderChecksAdditive();
-}
-function excludeAllShowingHeadersAdditive(){
-  const visible = getVisibleFilterHeadersAdditive();
-  for(const h of visible){
-    if(isProtectedHeaderAdditive(h)) continue;
-    state.excludedHeaders.add(h);
-  }
-  clearTreeCacheAdditive();
-  rebuildMergedRows();
-  renderFilterHeaderChecksAdditive();
+  for (let side of [-1, 1]) {
+    for (let i = 0; i < 2; i++) {
+      const leg = new THREE.Group();
+      leg.position.set(side * .43, .34, i === 0 ? .34 : -.34);
 
-  const lockedCount = visible.filter(isProtectedHeaderAdditive).length;
-  const excludedCount = visible.length - lockedCount;
-  if($("filterHeaderHint")){
-    $("filterHeaderHint").className = "hint ok";
-    $("filterHeaderHint").innerHTML = `
-      Excluded <b>${excludedCount}</b> visible header(s).
-      ${lockedCount ? `<br><b>${lockedCount}</b> protected header(s) were locked and not excluded.` : ""}
-    `;
-  }
-}
-function includeAllShowingHeadersAdditive(){
-  const visible = getVisibleFilterHeadersAdditive();
-  for(const h of visible){
-    if(isProtectedHeaderAdditive(h)) continue;
-    state.excludedHeaders.delete(h);
-  }
-  clearTreeCacheAdditive();
-  rebuildMergedRows();
-  renderFilterHeaderChecksAdditive();
-  if($("filterHeaderHint")){
-    $("filterHeaderHint").className = "hint ok";
-    $("filterHeaderHint").innerHTML = `Included visible headers back into correlations. Protected headers stayed locked.`;
-  }
-}
-function excludeLikelyTextHeadersAdditive(){
-  const rx = /name|representative|rep|employee|person key|dock found|date|sheet|source|id|ticket|workorder|phone|email|address/i;
-  for(const h of state.headers){ if(rx.test(h)) state.excludedHeaders.add(h); }
-  clearTreeCacheAdditive(); rebuildMergedRows(); renderFilterHeaderChecksAdditive();
-}
-function excludeNonNumericHeadersAdditive(){
-  for(const h of state.headers){
-    let count=0;
-    for(const r of state.mergedRows){ if(toNumber(r[h]) !== null) count++; if(count >= 2) break; }
-    if(count < 2) state.excludedHeaders.add(h);
-  }
-  clearTreeCacheAdditive(); rebuildMergedRows(); renderFilterHeaderChecksAdditive();
-}
-function resetExcludedHeadersAdditive(){
-  state.excludedHeaders.clear();
-  clearTreeCacheAdditive();
-  rebuildMergedRows();
-  renderFilterHeaderChecksAdditive();
-  if($("filterHeaderHint")){
-    $("filterHeaderHint").className = "hint ok";
-    $("filterHeaderHint").innerHTML = `All exclusions cleared. Protected headers remain available.`;
-  }
-}
+      const upper = new THREE.Mesh(new THREE.CylinderGeometry(.055, .07, .55, 8), darkMat);
+      upper.rotation.z = side * Math.PI / 2.65;
+      upper.position.x = side * .26;
+      upper.castShadow = true;
 
-/* =========================
-   Header selector / dock keys
-========================= */
-function renderHeaderChecks(){
-  const box = $("headerChecks");
-  if(!state.headers.length){
-    box.innerHTML = `<div class="muted">No headers loaded.</div>`;
-    return;
-  }
+      const lower = new THREE.Mesh(new THREE.CylinderGeometry(.045, .06, .52, 8), darkMat);
+      lower.rotation.z = side * Math.PI / 2.15;
+      lower.position.set(side * .57, -.12, 0);
+      lower.castShadow = true;
 
-  box.innerHTML = state.headers.map(h => {
-    const numericCount = state.mergedRows.reduce((n,r)=>n + (toNumber(r[h]) !== null ? 1 : 0), 0);
-    return `
-      <label class="checkItem">
-        <input type="checkbox" ${state.activeHeaders.has(h) ? "checked" : ""} onchange="toggleHeader(${JSON.stringify(h)}, this.checked)">
-        <span>
-          ${esc(h)}<br>
-          <span class="muted">${numericCount} numeric values</span>
-        </span>
-      </label>
-    `;
-  }).join("");
-}
+      leg.add(upper, lower);
+      g.add(leg);
 
-function toggleHeader(h, on){
-  if(on) state.activeHeaders.add(h);
-  else state.activeHeaders.delete(h);
-  rebuildMergedRows();
-}
-
-function setAllHeaders(on){
-  if(on) state.headers.forEach(h => state.activeHeaders.add(h));
-  else state.activeHeaders.clear();
-  rebuildMergedRows();
-}
-
-function setNumericHeadersOnly(){
-  state.activeHeaders.clear();
-
-  for(const h of state.headers){
-    let count = 0;
-    for(const r of state.mergedRows){
-      if(toNumber(r[h]) !== null) count++;
+      crab.legs.push({
+        root: leg,
+        side,
+        phase: Math.random() * Math.PI * 2,
+        upper,
+        lower
+      });
     }
-    if(count >= 2) state.activeHeaders.add(h);
   }
 
-  rebuildMergedRows();
+  for (let side of [-1, 1]) {
+    const arm = new THREE.Group();
+    arm.position.set(side * .48, .52, .58);
+
+    const stalk = new THREE.Mesh(new THREE.CylinderGeometry(.06, .08, .56, 8), darkMat);
+    stalk.position.x = side * .25;
+    stalk.rotation.z = side * Math.PI / 3.25;
+    stalk.castShadow = true;
+    arm.add(stalk);
+
+    const clawA = new THREE.Mesh(new THREE.BoxGeometry(.15, .13, .38), shellMat);
+    const clawB = new THREE.Mesh(new THREE.BoxGeometry(.15, .13, .38), shellMat);
+    clawA.position.set(side * .46, .04, .14);
+    clawB.position.set(side * .46, -.04, -.06);
+    clawA.rotation.y = side * .48;
+    clawB.rotation.y = side * -.48;
+    clawA.castShadow = true;
+    clawB.castShadow = true;
+
+    arm.add(clawA, clawB);
+    g.add(arm);
+
+    crab.claws.push({ arm, clawA, clawB, side });
+  }
+
+  for (let side of [-1, 1]) {
+    const stalk = new THREE.Mesh(new THREE.CylinderGeometry(.025, .032, .34, 6), darkMat);
+    stalk.position.set(side * .24, .78, .45);
+    stalk.rotation.x = -.22;
+    stalk.castShadow = true;
+
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(.085, 8, 8), mat(0xffffff));
+    eye.position.set(side * .24, .94, .56);
+    eye.castShadow = true;
+
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(.035, 8, 8), mat(0x000000));
+    pupil.position.set(side * .24, .94, .63);
+
+    g.add(stalk, eye, pupil);
+  }
+
+  if (spikeLevel > 0) addCrabSpikes(crab);
+  if (armorLevel > 0) addCrabArmor(crab);
+
+  crab.hpBar = makeHealthBar(1.25, .12, 1.45, false);
+  g.add(crab.hpBar);
+
+  g.position.copy(pos || owner.group.position);
+  g.position.y = 0;
+  g.scale.setScalar(crab.growth);
+  scene.add(g);
+
+  if (!owner.crabs) owner.crabs = [];
+  owner.crabs.push(crab);
+
+  if (owner === player) crabs.push(crab);
+  return crab;
 }
 
-function showDockKeys(){
-  const keys = allLocalStorageKeys();
-  const lines = keys
-    .filter(k => k.toLowerCase().includes(".dock.") || k.toLowerCase().includes("retail") || k.toLowerCase().includes("referral"))
-    .map(k => {
-      const isRetail = k === findDockKey("Retail");
-      const isReferral = k === findDockKey("Referral");
-      const badge = isRetail ? " ← selected Retail" : isReferral ? " ← selected Referral" : "";
-      return `<code>${esc(k)}</code>${badge}`;
-    });
-
-  $("dockKeyList").innerHTML = lines.length ? lines.join("<br>") : "No likely dock keys found.";
-  $("dockDrawer").classList.add("show");
+function growCrab(crab) {
+  crab.kills++;
+  crab.growth = Math.min(2.45, crab.growth + .09);
+  crab.maxHp += 8;
+  crab.hp = Math.min(crab.maxHp, crab.hp + 15);
+  crab.damage += 1.15;
+  crab.radius = .55 * crab.growth;
+  crab.speed += .08;
+  crab.group.scale.setScalar(crab.growth);
+  createBurst(crab.group.position, crab.color || 0x78f5ff, 18);
 }
 
-/* =========================
-   Export
-========================= */
-function exportCorrelations(){
-  const rows = [
-    ["Metric","r","abs_r","N","Direction","Strength","Target","Metric Avg","Lift vs Call Center Avg","Call Center Avg"]
+function createEnemyForNest(nest, slot) {
+  const a = slot / 3 * Math.PI * 2 + rand(-.25, .25);
+  const dist = nest.radius + rand(4, 7);
+  const x = nest.x + Math.cos(a) * dist;
+  const z = nest.z + Math.sin(a) * dist;
+  const tier = nest.tier;
+
+  const type = tier === 3 && chance(.45) ? "brute" : tier >= 2 && chance(.28) ? "brute" : "imp";
+
+  const g = new THREE.Group();
+
+  const enemy = {
+    group: g,
+    team: "neutral",
+    type,
+    nest,
+    leashCenter: new THREE.Vector3(nest.x, 0, nest.z),
+    leashRadius: nest.leashRadius,
+    velocity: new THREE.Vector3(),
+    radius: type === "brute" ? .9 : .6,
+    hp: (type === "brute" ? 86 : 38) + tier * 20 + state.level * 2,
+    maxHp: (type === "brute" ? 86 : 38) + tier * 20 + state.level * 2,
+    damage: (type === "brute" ? 15 : 8) + tier * 2,
+    speed: type === "brute" ? 3.4 : 5.2,
+    attackCooldown: rand(.2, 1.0),
+    xp: type === "brute" ? 3 + tier : 1 + tier,
+    crabRewardChance: 0,
+    lastHitBy: null
+  };
+
+  const bodyColor = tier === 1 ? 0xff5555 : tier === 2 ? 0xff8a34 : 0xc840ff;
+
+  const body = new THREE.Mesh(
+    type === "brute" ? new THREE.DodecahedronGeometry(.9, 0) : new THREE.SphereGeometry(.57, 12, 8),
+    mat(bodyColor)
+  );
+  body.position.y = type === "brute" ? .9 : .58;
+  body.castShadow = true;
+  g.add(body);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(type === "brute" ? .38 : .26, 10, 8), mat(0xffc18c));
+  head.position.y = type === "brute" ? 1.6 : 1.12;
+  head.castShadow = true;
+  g.add(head);
+
+  for (let side of [-1, 1]) {
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(.08, .35, 8), mat(0xf9e2ba));
+    horn.position.set(side * .25, type === "brute" ? 1.9 : 1.35, 0);
+    horn.rotation.z = side * -.45;
+    horn.castShadow = true;
+    g.add(horn);
+  }
+
+  if (type === "brute") {
+    const club = new THREE.Mesh(new THREE.CylinderGeometry(.08, .12, 1.3, 8), mat(0x5d371b));
+    club.position.set(.75, .86, .1);
+    club.rotation.z = -.7;
+    club.castShadow = true;
+    g.add(club);
+  }
+
+  enemy.hpBar = makeHealthBar(type === "brute" ? 1.65 : 1.2, .13, type === "brute" ? 2.25 : 1.65, false);
+  g.add(enemy.hpBar);
+
+  g.position.set(x, 0, z);
+  scene.add(g);
+
+  enemies.push(enemy);
+  nest.squad.push(enemy);
+
+  return enemy;
+}
+
+function spawnNestSquad(nest) {
+  nest.squad = [];
+  for (let i = 0; i < 3; i++) createEnemyForNest(nest, i);
+  nest.rewardReady = true;
+}
+
+function createAIWizard(index) {
+  const palette = [
+    0xff4949, 0xffa23a, 0xf8df4a, 0x6dff71, 0x46b7ff,
+    0x9a62ff, 0xff5de1, 0x98f7ff, 0xbaff69, 0xff7777
   ];
 
-  for(const c of filteredCorrelations()){
-    rows.push([c.metric,c.r,c.abs,c.n,c.direction,c.label.txt,$("targetField").value,c.metricAvg,c.liftVsCallCenter,state.callCenterKpiAvg]);
+  const color = new THREE.Color(palette[index % palette.length]);
+  const g = buildWizardModel(color, false);
+
+  const angle = index / 20 * Math.PI * 2 + rand(-.1, .1);
+  const r = rand(75, 132);
+  g.position.set(Math.cos(angle) * r, 0, Math.sin(angle) * r);
+  g.rotation.y = rand(0, Math.PI * 2);
+  scene.add(g);
+
+  const ai = {
+    group: g,
+    team: "ai" + index,
+    color,
+    hp: 95,
+    maxHp: 95,
+    radius: .85,
+    speed: rand(7.2, 9.2),
+    turnSpeed: 2,
+    crabs: [],
+    targetNest: null,
+    targetWizard: null,
+    thinkTimer: rand(.2, 1.5),
+    fireCooldown: rand(.2, 1.5),
+    attackPlayerBias: rand(.3, .9),
+    dead: false,
+    upgrades: {
+      crabArmor: Math.floor(rand(0, 2)),
+      crabSpikes: Math.floor(rand(0, 2)),
+      crabRegen: 1,
+      swarmSpeed: rand(.5, 1.6),
+      leash: rand(.85, 1.25)
+    }
+  };
+
+  ai.hpBar = makeHealthBar(1.6, .14, 3.6, false);
+  ai.group.add(ai.hpBar);
+
+  const startCount = 3 + Math.floor(rand(0, 4));
+  for (let i = 0; i < startCount; i++) {
+    createCrab(ai.group.position.clone().add(new THREE.Vector3(rand(-2,2), 0, rand(-2,2))), ai, color, {
+      armor: ai.upgrades.crabArmor,
+      spikes: ai.upgrades.crabSpikes,
+      regen: ai.upgrades.crabRegen,
+      speed: ai.upgrades.swarmSpeed
+    });
   }
 
-  const csv = rows.map(r => r.map(v => {
-    const s = String(v ?? "");
-    return /[",\n]/.test(s) ? `"${s.replaceAll('"','""')}"` : s;
-  }).join(",")).join("\n");
-
-  const blob = new Blob([csv], {type:"text/csv"});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "layered_correlation_results.csv";
-  a.click();
-  URL.revokeObjectURL(url);
+  aiWizards.push(ai);
 }
 
-/* =========================
-   Events
-========================= */
-function boot(){
-  $("btnPick").onclick = () => $("csvInput").click();
-  $("csvInput").onchange = e => {
-    const files = e.target.files;
-    if(files && files.length > 1) loadMultipleCSVsAdditive(files);
-    else if(files && files[0]) loadCSV(files[0]);
-  };
+function createFireball(originOwner, target, color = 0xff6a1f) {
+  const origin = originOwner.group.position.clone();
+  origin.y = 2.5;
 
-  const dz = $("dropZone");
-  dz.addEventListener("dragover", e => {
-    e.preventDefault();
-    dz.classList.add("drag");
+  const dir = target.group.position.clone().sub(originOwner.group.position);
+  dir.y = .25;
+  dir.normalize();
+
+  const explosion = originOwner === player ? state.upgrades.fireExplosion : 1;
+  const damage = originOwner === player ? 20 * state.upgrades.fireDamage : 14;
+
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(.18 * explosion, 14, 10),
+    mat(color, .35, .05)
+  );
+  mesh.position.copy(origin);
+  mesh.castShadow = true;
+
+  const light = new THREE.PointLight(color, 2.1, 9);
+  mesh.add(light);
+
+  scene.add(mesh);
+
+  fireballs.push({
+    mesh,
+    owner: originOwner,
+    team: originOwner.team,
+    velocity: dir.multiplyScalar(18),
+    damage,
+    radius: 1.45 * explosion,
+    bounces: originOwner === player ? state.upgrades.fireBounce : 0,
+    life: 2.3,
+    lastHit: null
   });
-  dz.addEventListener("dragleave", () => dz.classList.remove("drag"));
-  dz.addEventListener("drop", e => {
-    e.preventDefault();
-    dz.classList.remove("drag");
-    const files = e.dataTransfer.files;
-    if(files && files.length > 1) loadMultipleCSVsAdditive(files);
-    else if(files && files[0]) loadCSV(files[0]);
-  });
+}
 
-  $("btnLoadDocks").onclick = loadDocks;
-  $("btnRun").onclick = runCorrelations;
-  $("btnExport").onclick = exportCorrelations;
-  $("btnClear").onclick = clearAll;
+function createBurst(pos, color, count = 12) {
+  for (let i = 0; i < count; i++) {
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(rand(.04, .11), 6, 6),
+      new THREE.MeshBasicMaterial({ color })
+    );
+    mesh.position.copy(pos);
+    mesh.position.y += rand(.3, 1.4);
+    scene.add(mesh);
 
-  $("btnHeaders").onclick = () => {
-    renderHeaderChecks();
-    $("headerDrawer").classList.add("show");
-  };
-  $("btnCloseHeaders").onclick = () => $("headerDrawer").classList.remove("show");
-
-  $("btnFilterHeaders").onclick = () => { renderFilterHeaderChecksAdditive(); $("filterHeaderDrawer").classList.add("show"); };
-  $("btnCloseFilterHeaders").onclick = () => $("filterHeaderDrawer").classList.remove("show");
-  $("btnExcludeLikelyText").onclick = excludeLikelyTextHeadersAdditive;
-  $("btnExcludeNonNumeric").onclick = excludeNonNumericHeadersAdditive;
-  $("btnResetExcluded").onclick = resetExcludedHeadersAdditive;
-  if($("filterHeaderSearch")){
-    $("filterHeaderSearch").oninput = renderFilterHeaderChecksAdditive;
+    particles.push({
+      mesh,
+      velocity: new THREE.Vector3(rand(-1,1), rand(.3,2.3), rand(-1,1)).multiplyScalar(rand(1.5, 4.5)),
+      life: rand(.3, .8)
+    });
   }
-  if($("btnExcludeShowing")){
-    $("btnExcludeShowing").onclick = excludeAllShowingHeadersAdditive;
-  }
-  if($("btnIncludeShowing")){
-    $("btnIncludeShowing").onclick = includeAllShowingHeadersAdditive;
-  }
-  if($("btnResetExcludedHeaders")){
-    $("btnResetExcludedHeaders").onclick = resetExcludedHeadersAdditive;
-  }
-  $("btnAllHeaders").onclick = () => setAllHeaders(true);
-  $("btnNumericHeaders").onclick = setNumericHeadersOnly;
+}
 
-  $("btnDockKeys").onclick = showDockKeys;
-  $("btnMatchHeaders").onclick = () => {
-    hydrateMatchHeadersDropdownsAdditive();
-    $("matchHeadersDrawer").classList.add("show");
-  };
-  $("btnCloseMatchHeaders").onclick = () => $("matchHeadersDrawer").classList.remove("show");
-  $("btnApplyMatchHeaders").onclick = applyMatchHeadersAdditive;
+function allCrabs() {
+  const list = [...crabs];
+  for (const ai of aiWizards) {
+    if (!ai.dead) list.push(...ai.crabs);
+  }
+  return list;
+}
 
-  $("btnMatchTool").onclick = () => {
-    hydrateMatchToolDropdownsAdditive();
-    renderMatchToolResultsAdditive();
-    $("matchToolDrawer").classList.add("show");
-  };
-  $("btnCloseMatchTool").onclick = () => $("matchToolDrawer").classList.remove("show");
-  $("btnRunMatchTool").onclick = runMatchToolAdditive;
-  $("btnSaveMatchTool").onclick = () => {
-    state.matchTool.csvHeader = $("matchCsvHeader").value;
-    state.matchTool.dockHeader = $("matchDockHeader").value;
-    persistMatchToolAdditive();
-    $("matchToolStatus").className = "hint ok";
-    $("matchToolStatus").innerHTML = "Match settings saved.";
-  };
-  $("matchToolSearch").oninput = renderMatchToolResultsAdditive;
-  $("btnClearManualPairs").onclick = () => {
-    state.matchTool.manualPairs = [];
-    persistMatchToolAdditive();
-    runMatchToolAdditive();
-  };
-  $("btnAutoPairStrong").onclick = () => {
-    const strong = (state.matchTool.matches || []).filter(m => m.type === "fuzzy" && m.score >= .9);
-    state.matchTool.manualPairs = state.matchTool.manualPairs || [];
-    for(const m of strong){
-      if(!state.matchTool.manualPairs.some(p => personKey(p.csvName) === personKey(m.csvName))){
-        state.matchTool.manualPairs.push({ csvName: m.csvName, dockName: m.dockName });
+function allCombatUnitsExcept(team) {
+  const list = [];
+
+  if (player.team !== team) list.push(player);
+  for (const c of crabs) {
+    if (c.team !== team) list.push(c);
+  }
+
+  for (const ai of aiWizards) {
+    if (!ai.dead && ai.team !== team) list.push(ai);
+    for (const c of ai.crabs) {
+      if (c.team !== team) list.push(c);
+    }
+  }
+
+  for (const e of enemies) {
+    if (e.team !== team) list.push(e);
+  }
+
+  return list;
+}
+
+function nearestTarget(pos, team, range = Infinity, preferPlayer = false) {
+  let best = null;
+  let bestD = range * range;
+
+  const candidates = allCombatUnitsExcept(team);
+
+  for (const u of candidates) {
+    if (u.hp <= 0) continue;
+
+    if (u.nest) {
+      const distFromNest = u.group.position.distanceTo(u.leashCenter);
+      if (distFromNest > u.leashRadius + 2) continue;
+    }
+
+    const d = u.group.position.distanceToSquared(pos);
+    const adjusted = preferPlayer && u === player ? d * .45 : d;
+
+    if (adjusted < bestD) {
+      bestD = adjusted;
+      best = u;
+    }
+  }
+
+  return best;
+}
+
+function nearestEnemyForPlayerFire(pos, range) {
+  return nearestTarget(pos, "player", range, false);
+}
+
+function updatePlayer(dt) {
+  if (state.upgradeOpen) return;
+
+  if (keys["a"]) player.group.rotation.y += player.turnSpeed * dt;
+  if (keys["d"]) player.group.rotation.y -= player.turnSpeed * dt;
+
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.group.quaternion);
+  const move = new THREE.Vector3();
+
+  if (keys["w"]) move.add(forward);
+  if (keys["s"]) move.addScaledVector(forward, -0.65);
+
+  if (move.lengthSq() > 0) {
+    move.normalize();
+    const speed = player.speed * state.upgrades.wizardSpeed;
+    player.group.position.addScaledVector(move, speed * dt);
+  }
+
+  const arenaLimit = WORLD_RADIUS - 6;
+  player.group.position.x = clamp(player.group.position.x, -arenaLimit, arenaLimit);
+  player.group.position.z = clamp(player.group.position.z, -arenaLimit, arenaLimit);
+}
+
+function updateCrabGroup(owner, list, dt) {
+  const ownerPos = owner.group.position;
+  const ownerIsPlayer = owner === player;
+
+  const leashAttack = (ownerIsPlayer ? 14 * state.upgrades.leash : 13 * owner.upgrades.leash);
+  const leashReturn = (ownerIsPlayer ? 20 * state.upgrades.leash : 18 * owner.upgrades.leash);
+
+  for (let i = list.length - 1; i >= 0; i--) {
+    const c = list[i];
+
+    c.anim += dt * 8;
+    c.attackCooldown -= dt;
+    c.leapCooldown -= dt;
+    c.chargeCooldown -= dt;
+
+    c.hp = Math.min(c.maxHp, c.hp + dt * (0.9 + c.growth * 0.55) * c.regenLevel);
+
+    const pos = c.group.position;
+    const distOwner = pos.distanceTo(ownerPos);
+
+    if (!c.target || c.target.hp <= 0 || distOwner > leashReturn) {
+      c.target = nearestTarget(ownerPos, c.team, leashAttack, !ownerIsPlayer && owner.targetWizard === player);
+    }
+
+    let desired = new THREE.Vector3();
+
+    if (c.target && c.target.hp > 0 && distOwner <= leashReturn) {
+      const target = c.target;
+      const toTarget = target.group.position.clone().sub(pos);
+      const distTarget = toTarget.length();
+
+      const enemyIndex = list.indexOf(c);
+      const angle = enemyIndex * 1.618 + c.kills * .45;
+      const ringR = (target.radius || .7) + c.radius + 1.05;
+      const attackSpot = target.group.position.clone().add(new THREE.Vector3(Math.cos(angle) * ringR, 0, Math.sin(angle) * ringR));
+
+      desired.copy(attackSpot).sub(pos);
+
+      if (distTarget < (target.radius || .7) + c.radius + .45) {
+        desired.addScaledVector(toTarget.normalize(), -1.2);
+      }
+
+      if (distTarget < (target.radius || .7) + c.radius + .75 && c.attackCooldown <= 0) {
+        c.attackCooldown = .72 / Math.max(.65, c.growth);
+        damageUnit(target, c.damage, c);
+
+        for (const claw of c.claws) {
+          claw.clawA.rotation.y = claw.side * .9;
+          claw.clawB.rotation.y = claw.side * -.9;
+        }
+      }
+
+      const leapLevel = ownerIsPlayer ? state.upgrades.crabLeap : 1;
+      const chargeLevel = ownerIsPlayer ? state.upgrades.crabCharge : 0;
+
+      if (leapLevel > 0 && c.leapCooldown <= 0 && distTarget > 3.2 && distTarget < 7.5) {
+        c.leapCooldown = rand(2.4, 4.2);
+        desired.copy(toTarget).normalize().multiplyScalar(18);
+        createBurst(pos, c.color || 0x91ecff, 8);
+      }
+
+      if (chargeLevel > 0 && c.chargeCooldown <= 0 && distTarget > 4.5 && distTarget < 9) {
+        c.chargeCooldown = rand(3.8, 6.5);
+        desired.copy(toTarget).normalize().multiplyScalar(22);
+        c.velocity.add(desired.multiplyScalar(dt));
+        createBurst(pos, 0xffe88a, 8);
+      }
+
+    } else {
+      const idx = i;
+      const ring = 2.4 + Math.floor(idx / 8) * 1.25;
+      const angle = idx * 2.399 + performance.now() * 0.00018;
+      const followSpot = ownerPos.clone().add(new THREE.Vector3(Math.cos(angle) * ring, 0, Math.sin(angle) * ring));
+      desired.copy(followSpot).sub(pos);
+
+      if (distOwner > leashReturn) {
+        desired.copy(ownerPos).sub(pos).multiplyScalar(1.8);
       }
     }
-    persistMatchToolAdditive();
-    runMatchToolAdditive();
-  };
 
-  $("btnCloseDockKeys").onclick = () => $("dockDrawer").classList.remove("show");
+    const separation = new THREE.Vector3();
+    const all = allCrabs();
 
-  $("nameField").onchange = () => { clearTreeCacheAdditive(); rebuildMergedRows(); };
-  $("targetField").onchange = () => {
-    state.target = $("targetField").value;
-    calculateCallCenterKpiAverageAdditive();
-    clearTreeCacheAdditive();
-    updateBadges();
-    renderCorrelations();
-  };
-  $("minN").onchange = () => { clearTreeCacheAdditive(); renderCorrelations(); };
-  $("thresholdMode").onchange = () => { state.thresholdMode = $("thresholdMode").value; clearTreeCacheAdditive(); renderCorrelations(); };
-  $("searchBox").oninput = renderCorrelations;
+    for (const other of all) {
+      if (other === c) continue;
+      const away = pos.clone().sub(other.group.position);
+      const d = away.length();
+      const minD = c.radius + other.radius + .32;
 
-  $("sortAbs").onclick = () => {state.sortKey="abs"; state.sortDir="desc"; renderCorrelations();};
-  $("sortPos").onclick = () => {state.sortKey="r"; state.sortDir="desc"; renderCorrelations();};
-  $("sortNeg").onclick = () => {state.sortKey="r"; state.sortDir="asc"; renderCorrelations();};
-  $("sortN").onclick = () => {state.sortKey="n"; state.sortDir="desc"; renderCorrelations();};
-  if($("btnCloseTrees")){
-    $("btnCloseTrees").onclick = closeAllTreesAdditive;
+      if (d > .001 && d < minD) {
+        separation.addScaledVector(away.normalize(), (minD - d) * 3.8);
+      }
+    }
+
+    const awayOwner = pos.clone().sub(ownerPos);
+    const dp = awayOwner.length();
+    if (dp > .001 && dp < (owner.radius || .85) + c.radius + .45) {
+      separation.addScaledVector(awayOwner.normalize(), ((owner.radius || .85) + c.radius + .45 - dp) * 3.5);
+    }
+
+    desired.add(separation);
+
+    if (desired.lengthSq() > .01) {
+      desired.normalize();
+      c.velocity.addScaledVector(desired, c.speed * 5.7 * dt);
+    }
+
+    c.velocity.multiplyScalar(Math.pow(.08, dt));
+
+    const maxSpeed = c.speed + c.growth * .6;
+    if (c.velocity.length() > maxSpeed) c.velocity.setLength(maxSpeed);
+
+    pos.addScaledVector(c.velocity, dt);
+    pos.y = 0;
+
+    if (c.velocity.lengthSq() > .04) {
+      c.group.rotation.y = Math.atan2(c.velocity.x, c.velocity.z);
+    }
+
+    for (const leg of c.legs) {
+      const swing = Math.sin(c.anim + leg.phase) * .32;
+      leg.root.rotation.y = swing * leg.side;
+      leg.upper.rotation.x = Math.sin(c.anim * 1.2 + leg.phase) * .18;
+    }
+
+    for (const claw of c.claws) {
+      claw.clawA.rotation.y += ((claw.side * .48) - claw.clawA.rotation.y) * dt * 8;
+      claw.clawB.rotation.y += ((claw.side * -.48) - claw.clawB.rotation.y) * dt * 8;
+    }
+
+    applyStormDamageToCrab(c, dt);
+    updateHealthBar(c, c.hp, c.maxHp);
+
+    if (c.hp <= 0) {
+      createBurst(c.group.position, c.color || 0x35d7ff, 18);
+      scene.remove(c.group);
+      list.splice(i, 1);
+      if (c.isPlayerCrab) {
+        const globalIndex = crabs.indexOf(c);
+        if (globalIndex >= 0) crabs.splice(globalIndex, 1);
+      }
+    }
   }
-
-  $("btnExportSaved").onclick = exportSavedCorrelationsAdditive;
-  $("btnClearSaved").onclick = () => { state.savedCorrelations = []; persistSavedCorrelationsAdditive(); renderSavedCorrelationsAdditive(); };
-  $("btnCloseExamples").onclick = () => $("examplesDrawer").classList.remove("show");
-  $("btnExportExamples").onclick = exportExamplesAdditive;
-  $("examplesSearch").oninput = () => {
-    const q = $("examplesSearch").value.trim().toLowerCase();
-    Array.from($("examplesBody").querySelectorAll("tr")).forEach(tr => {
-      tr.style.display = tr.textContent.toLowerCase().includes(q) ? "" : "none";
-    });
-  };
-
-  $("btnResetLayer").onclick = () => {
-    state.drillChain = [];
-    state.layerRows = [];
-    $("cardLayer").textContent = "0";
-    renderLayerRows();
-  };
-
-  loadSavedCorrelationsAdditive();
-  loadMatchHeadersAdditive();
-  loadMatchToolAdditive();
-  setupTooltip();
-  if($("thresholdMode")) $("thresholdMode").value = state.thresholdMode || "median";
-  hydrateSelects();
-  updateBadges();
-  drawScatter();
 }
 
-boot();
+function damageUnit(unit, amount, source = null) {
+  if (!unit || unit.hp <= 0) return;
+
+  unit.hp -= amount;
+
+  if (unit.nest) {
+    unit.lastHitBy = source;
+  }
+
+  if (unit.hp <= 0) {
+    killUnit(unit, source);
+  }
+}
+
+function killUnit(unit, source) {
+  if (unit === player) {
+    state.hp = 0;
+    return;
+  }
+
+  if (unit.nest) {
+    const idx = enemies.indexOf(unit);
+    if (idx >= 0) enemies.splice(idx, 1);
+
+    const nestSquadIndex = unit.nest.squad.indexOf(unit);
+    if (nestSquadIndex >= 0) unit.nest.squad.splice(nestSquadIndex, 1);
+
+    scene.remove(unit.group);
+    createBurst(unit.group.position, 0xff7777, unit.type === "brute" ? 26 : 16);
+
+    const killerOwner = source && source.owner ? source.owner : null;
+
+    if (killerOwner === player) {
+      state.kills++;
+      state.xp += unit.xp;
+      if (source) growCrab(source);
+      checkLevelUp();
+    } else if (killerOwner && killerOwner.crabs) {
+      if (source) growCrab(source);
+      if (chance(.28)) createCrab(unit.group.position.clone(), killerOwner, killerOwner.color, {
+        armor: killerOwner.upgrades.crabArmor,
+        spikes: killerOwner.upgrades.crabSpikes,
+        regen: killerOwner.upgrades.crabRegen,
+        speed: killerOwner.upgrades.swarmSpeed
+      });
+    }
+
+    if (unit.nest.squad.length === 0 && unit.nest.rewardReady) {
+      unit.nest.rewardReady = false;
+      unit.nest.respawnTimer = unit.nest.respawnDelay;
+
+      if (killerOwner === player) {
+        const reward = unit.nest.tier + 1;
+        for (let i = 0; i < reward; i++) {
+          createCrab(unit.group.position.clone().add(new THREE.Vector3(rand(-2,2),0,rand(-2,2))), player, teamColor);
+        }
+        state.xp += unit.nest.tier + 1;
+        showMessage("Alcove squad cleared! +" + reward + " crabs", 1.8);
+        checkLevelUp();
+      } else if (killerOwner && killerOwner.crabs) {
+        const reward = unit.nest.tier;
+        for (let i = 0; i < reward; i++) {
+          createCrab(unit.group.position.clone().add(new THREE.Vector3(rand(-2,2),0,rand(-2,2))), killerOwner, killerOwner.color, {
+            armor: killerOwner.upgrades.crabArmor,
+            spikes: killerOwner.upgrades.crabSpikes,
+            regen: killerOwner.upgrades.crabRegen,
+            speed: killerOwner.upgrades.swarmSpeed
+          });
+        }
+      }
+    }
+
+    return;
+  }
+
+  const ai = aiWizards.find(w => w === unit);
+  if (ai) {
+    ai.dead = true;
+    scene.remove(ai.group);
+    createBurst(ai.group.position, ai.color, 40);
+
+    for (const c of [...ai.crabs]) {
+      c.hp = 0;
+    }
+
+    if (source && source.owner === player) {
+      state.kills++;
+      state.xp += 6;
+      if (source) growCrab(source);
+      showMessage("Rival wizard defeated!", 2);
+      checkLevelUp();
+    }
+  }
+
+  if (unit.owner && unit.owner.crabs) {
+    const arr = unit.owner.crabs;
+    const idx = arr.indexOf(unit);
+    if (idx >= 0) arr.splice(idx, 1);
+    scene.remove(unit.group);
+  }
+}
+
+function updateNestSquads(dt) {
+  for (const nest of nests) {
+    if (nest.squad.length === 0) {
+      nest.respawnTimer -= dt;
+      if (nest.respawnTimer <= 0) {
+        spawnNestSquad(nest);
+      }
+    }
+
+    for (const e of [...nest.squad]) {
+      if (!enemies.includes(e)) continue;
+
+      e.attackCooldown -= dt;
+
+      let target = nearestTarget(e.group.position, "neutral", 14 + nest.tier * 3, true);
+
+      const distFromNest = e.group.position.distanceTo(e.leashCenter);
+
+      if (distFromNest > e.leashRadius) {
+        target = null;
+      }
+
+      const desired = new THREE.Vector3();
+
+      if (target) {
+        desired.copy(target.group.position).sub(e.group.position);
+
+        const dist = desired.length();
+        if (dist > .001) desired.normalize();
+
+        if (dist < e.radius + (target.radius || .8) + .55 && e.attackCooldown <= 0) {
+          e.attackCooldown = e.type === "brute" ? 1.15 : .85;
+          damageUnit(target, e.damage, e);
+        }
+      } else {
+        const homeAngle = nest.squad.indexOf(e) / 3 * Math.PI * 2;
+        const home = e.leashCenter.clone().add(new THREE.Vector3(Math.cos(homeAngle), 0, Math.sin(homeAngle)).multiplyScalar(nest.radius + 5));
+        desired.copy(home).sub(e.group.position);
+        if (desired.length() > .001) desired.normalize();
+      }
+
+      if (desired.lengthSq() > 0) {
+        e.velocity.addScaledVector(desired, e.speed * 4.2 * dt);
+      }
+
+      for (const other of enemies) {
+        if (other === e) continue;
+        const away = e.group.position.clone().sub(other.group.position);
+        const d = away.length();
+        const minD = e.radius + other.radius + .35;
+        if (d > .001 && d < minD) {
+          e.velocity.addScaledVector(away.normalize(), (minD - d) * 6 * dt);
+        }
+      }
+
+      e.velocity.multiplyScalar(Math.pow(.16, dt));
+      if (e.velocity.length() > e.speed) e.velocity.setLength(e.speed);
+
+      e.group.position.addScaledVector(e.velocity, dt);
+      e.group.position.y = 0;
+
+      const maxDist = e.leashRadius + 3;
+      const fromNest = e.group.position.clone().sub(e.leashCenter);
+      if (fromNest.length() > maxDist) {
+        fromNest.setLength(maxDist);
+        e.group.position.copy(e.leashCenter.clone().add(fromNest));
+      }
+
+      if (e.velocity.lengthSq() > .04) {
+        e.group.rotation.y = Math.atan2(e.velocity.x, e.velocity.z);
+      }
+
+      updateHealthBar(e, e.hp, e.maxHp);
+    }
+  }
+}
+
+function updateAIWizards(dt) {
+  for (const ai of aiWizards) {
+    if (ai.dead) continue;
+
+    ai.thinkTimer -= dt;
+    ai.fireCooldown -= dt;
+
+    if (ai.thinkTimer <= 0) {
+      ai.thinkTimer = rand(1.0, 2.4);
+
+      const distToPlayer = ai.group.position.distanceTo(player.group.position);
+      const lateStorm = state.stormRadius < 75;
+      const strongEnough = ai.crabs.length >= Math.max(4, crabs.length * .55);
+
+      if (distToPlayer < 38 || lateStorm || strongEnough && chance(ai.attackPlayerBias)) {
+        ai.targetWizard = player;
+        ai.targetNest = null;
+      } else {
+        ai.targetWizard = null;
+        ai.targetNest = findBestNestForAI(ai);
+      }
+    }
+
+    let destination = null;
+
+    if (ai.targetWizard && state.hp > 0) {
+      const offsetAngle = aiWizards.indexOf(ai) * .8;
+      destination = player.group.position.clone().add(new THREE.Vector3(Math.cos(offsetAngle) * 9, 0, Math.sin(offsetAngle) * 9));
+    } else if (ai.targetNest) {
+      destination = ai.targetNest.group.position.clone().add(new THREE.Vector3(rand(-4,4), 0, rand(-4,4)));
+    } else {
+      const safeR = Math.max(10, state.stormRadius - 12);
+      const a = rand(0, Math.PI * 2);
+      destination = new THREE.Vector3(Math.cos(a) * safeR * rand(.3,.9), 0, Math.sin(a) * safeR * rand(.3,.9));
+    }
+
+    const toDest = destination.clone().sub(ai.group.position);
+    toDest.y = 0;
+    const dist = toDest.length();
+
+    if (dist > 2) {
+      toDest.normalize();
+
+      const targetRot = Math.atan2(toDest.x, toDest.z);
+      let diff = targetRot - ai.group.rotation.y;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      ai.group.rotation.y += clamp(diff, -ai.turnSpeed * dt, ai.turnSpeed * dt);
+
+      ai.group.position.addScaledVector(toDest, ai.speed * dt);
+    }
+
+    const safeClamp = WORLD_RADIUS - 8;
+    ai.group.position.x = clamp(ai.group.position.x, -safeClamp, safeClamp);
+    ai.group.position.z = clamp(ai.group.position.z, -safeClamp, safeClamp);
+
+    const fireTarget = nearestTarget(ai.group.position, ai.team, 18, ai.targetWizard === player);
+    if (fireTarget && ai.fireCooldown <= 0) {
+      ai.fireCooldown = rand(1.3, 2.4);
+      createFireball(ai, fireTarget, ai.color);
+    }
+
+    updateCrabGroup(ai, ai.crabs, dt);
+    applyStormDamageToWizard(ai, dt);
+    updateHealthBar(ai, ai.hp, ai.maxHp);
+
+    if (ai.hp <= 0) {
+      killUnit(ai, null);
+    }
+
+    if (chance(.0009 * dt * 60) && ai.crabs.length < 20) {
+      createCrab(ai.group.position.clone().add(new THREE.Vector3(rand(-2,2),0,rand(-2,2))), ai, ai.color, {
+        armor: ai.upgrades.crabArmor,
+        spikes: ai.upgrades.crabSpikes,
+        regen: ai.upgrades.crabRegen,
+        speed: ai.upgrades.swarmSpeed
+      });
+    }
+  }
+}
+
+function findBestNestForAI(ai) {
+  let best = null;
+  let bestScore = Infinity;
+
+  for (const nest of nests) {
+    const d = ai.group.position.distanceTo(nest.group.position);
+    if (nest.squad.length === 0) continue;
+
+    const score = d + nest.tier * 15 - ai.crabs.length * 3;
+    if (score < bestScore) {
+      bestScore = score;
+      best = nest;
+    }
+  }
+
+  return best;
+}
+
+function updateFireballs(dt) {
+  state.fireCooldown -= dt;
+
+  const target = nearestEnemyForPlayerFire(player.group.position, 28);
+  if (target && state.fireCooldown <= 0 && !state.upgradeOpen) {
+    state.fireCooldown = Math.max(.42, 1.25 / state.upgrades.fireRate);
+    createFireball(player, target, 0xff6a1f);
+  }
+
+  for (let i = fireballs.length - 1; i >= 0; i--) {
+    const f = fireballs[i];
+
+    f.life -= dt;
+    f.mesh.position.addScaledVector(f.velocity, dt);
+
+    let hit = null;
+    let hitDist = Infinity;
+
+    const candidates = allCombatUnitsExcept(f.team);
+
+    for (const u of candidates) {
+      if (u === f.lastHit || u.hp <= 0) continue;
+      const d = u.group.position.distanceTo(f.mesh.position);
+      if (d < (u.radius || .7) + .55 && d < hitDist) {
+        hit = u;
+        hitDist = d;
+      }
+    }
+
+    if (hit) {
+      explodeFireball(f, hit);
+
+      if (f.bounces > 0) {
+        f.bounces--;
+        f.lastHit = hit;
+
+        const next = nearestTarget(hit.group.position, f.team, 18);
+        if (next && next !== hit) {
+          const dir = next.group.position.clone().sub(f.mesh.position);
+          dir.y = .18;
+          dir.normalize();
+          f.velocity.copy(dir.multiplyScalar(18));
+          f.life = 1.4;
+          continue;
+        }
+      }
+
+      scene.remove(f.mesh);
+      fireballs.splice(i, 1);
+      continue;
+    }
+
+    if (f.life <= 0) {
+      scene.remove(f.mesh);
+      fireballs.splice(i, 1);
+    }
+  }
+}
+
+function explodeFireball(f, directHit) {
+  const p = f.mesh.position.clone();
+  createBurst(p, f.owner === player ? 0xff8a25 : f.owner.color, 18);
+
+  const candidates = allCombatUnitsExcept(f.team);
+
+  for (const u of candidates) {
+    const d = u.group.position.distanceTo(p);
+    if (d < f.radius) {
+      const falloff = 1 - d / f.radius;
+      damageUnit(u, f.damage * (.55 + falloff * .65), null);
+    }
+  }
+
+  if (directHit && directHit.hp > 0) {
+    damageUnit(directHit, f.damage * .35, null);
+  }
+}
+
+function updateStorm(dt) {
+  state.stormTime += dt;
+
+  const t = clamp(state.stormTime / STORM_SHRINK_SECONDS, 0, 1);
+  const eased = t * t * (3 - 2 * t);
+  state.stormRadius = STORM_START_RADIUS + (STORM_END_RADIUS - STORM_START_RADIUS) * eased;
+
+  if (Math.floor(performance.now() / 250) % 2 === 0) {
+    updateStormVisual();
+  }
+
+  const playerDist = Math.hypot(player.group.position.x, player.group.position.z);
+  const inStorm = playerDist > state.stormRadius;
+
+  stormWarning.style.display = inStorm ? "block" : "none";
+  player.arrow.visible = inStorm;
+
+  if (inStorm) {
+    state.hp -= state.stormDamage * dt;
+
+    const dirToCenter = player.group.position.clone().multiplyScalar(-1);
+    dirToCenter.y = 0;
+    if (dirToCenter.lengthSq() > .01) {
+      dirToCenter.normalize();
+      const localDir = dirToCenter.clone().applyAxisAngle(new THREE.Vector3(0,1,0), -player.group.rotation.y);
+      player.arrow.rotation.z = Math.atan2(localDir.y, localDir.x);
+      player.arrow.rotation.y = Math.atan2(dirToCenter.x, dirToCenter.z) - player.group.rotation.y + Math.PI / 2;
+    }
+
+    scene.fog.color.set(0x0d4fff);
+    scene.background.set(0x092c62);
+  } else {
+    scene.fog.color.lerp(new THREE.Color(0x07101d), .05);
+    scene.background.lerp(new THREE.Color(0x07101d), .05);
+  }
+}
+
+function applyStormDamageToCrab(c, dt) {
+  const d = Math.hypot(c.group.position.x, c.group.position.z);
+  if (d > state.stormRadius) {
+    c.hp -= (state.stormDamage * .65) * dt;
+  }
+}
+
+function applyStormDamageToWizard(w, dt) {
+  const d = Math.hypot(w.group.position.x, w.group.position.z);
+  if (d > state.stormRadius) {
+    w.hp -= (state.stormDamage * .9) * dt;
+  }
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+
+    p.life -= dt;
+    p.velocity.y -= 6 * dt;
+    p.mesh.position.addScaledVector(p.velocity, dt);
+
+    if (p.life <= 0) {
+      scene.remove(p.mesh);
+      particles.splice(i, 1);
+    }
+  }
+}
+
+function updateCamera(dt) {
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.group.quaternion);
+  const desired = player.group.position.clone()
+    .addScaledVector(forward, -12.5)
+    .add(new THREE.Vector3(0, 7.2, 0));
+
+  camera.position.lerp(desired, 1 - Math.pow(.001, dt));
+
+  const look = player.group.position.clone()
+    .add(new THREE.Vector3(0, 1.75, 0))
+    .addScaledVector(forward, 3.0);
+
+  camera.lookAt(look);
+}
+
+function updateHud() {
+  hud.hp.textContent = Math.max(0, Math.floor(state.hp));
+  hud.crabCount.textContent = crabs.length;
+  hud.wizardCount.textContent = aiWizards.filter(w => !w.dead).length;
+  hud.alcoveCount.textContent = nests.filter(n => n.squad.length > 0).length;
+  hud.kills.textContent = state.kills;
+  hud.xp.textContent = state.xp;
+  hud.nextXp.textContent = state.nextXp;
+  hud.level.textContent = state.level;
+  hud.stormRadius.textContent = Math.floor(state.stormRadius);
+}
+
+const upgradePool = [
+  {
+    icon: "🧙",
+    title: "Fleet-Foot Wizard",
+    desc: "Your wizard moves faster, helping you control the shrinking storm ring.",
+    apply() {
+      state.upgrades.wizardSpeed += .18;
+    }
+  },
+  {
+    icon: "🦀",
+    title: "Swarm Legs",
+    desc: "All crabs move faster and hold cleaner attack angles.",
+    apply() {
+      state.upgrades.swarmSpeed += .45;
+      for (const c of crabs) c.speed += .55;
+    }
+  },
+  {
+    icon: "🛡️",
+    title: "Armored Plates",
+    desc: "Crabs gain visible armor plates and more max health.",
+    apply() {
+      state.upgrades.crabArmor++;
+      for (const c of crabs) {
+        c.armorLevel++;
+        c.maxHp += 12;
+        c.hp += 12;
+        addCrabArmor(c);
+      }
+    }
+  },
+  {
+    icon: "刺",
+    title: "Spiked Plates",
+    desc: "Crabs grow visible spikes and deal more claw damage.",
+    apply() {
+      state.upgrades.crabSpikes++;
+      for (const c of crabs) {
+        c.spikeLevel++;
+        c.damage += 3;
+        addCrabSpikes(c);
+      }
+    }
+  },
+  {
+    icon: "🦘",
+    title: "Crab Leap",
+    desc: "Crabs sometimes leap into enemies from medium range.",
+    apply() {
+      state.upgrades.crabLeap++;
+    }
+  },
+  {
+    icon: "💥",
+    title: "Crab Charge",
+    desc: "Crabs sometimes burst forward into targets with a charge.",
+    apply() {
+      state.upgrades.crabCharge++;
+    }
+  },
+  {
+    icon: "💚",
+    title: "Regenerating Shells",
+    desc: "Crabs regenerate health faster when they are on their own.",
+    apply() {
+      state.upgrades.crabRegen += .45;
+      for (const c of crabs) c.regenLevel += .45;
+    }
+  },
+  {
+    icon: "🔗",
+    title: "Longer Leash",
+    desc: "Crabs can keep attacking farther before returning to you.",
+    apply() {
+      state.upgrades.leash += .22;
+    }
+  },
+  {
+    icon: "🔥",
+    title: "Hotter Fireballs",
+    desc: "Your fireballs deal more damage.",
+    apply() {
+      state.upgrades.fireDamage += .35;
+    }
+  },
+  {
+    icon: "☄️",
+    title: "Bigger Explosion",
+    desc: "Fireballs explode in a wider radius and look larger.",
+    apply() {
+      state.upgrades.fireExplosion += .22;
+    }
+  },
+  {
+    icon: "⚡",
+    title: "Rapid Casting",
+    desc: "You automatically fire fireballs more often.",
+    apply() {
+      state.upgrades.fireRate += .28;
+    }
+  },
+  {
+    icon: "🔁",
+    title: "Bouncing Fire",
+    desc: "Fireballs can bounce to another nearby enemy after impact.",
+    apply() {
+      state.upgrades.fireBounce++;
+    }
+  }
+];
+
+function checkLevelUp() {
+  if (state.upgradeOpen) return;
+
+  if (state.xp >= state.nextXp) {
+    state.xp -= state.nextXp;
+    state.level++;
+    state.nextXp = Math.floor(state.nextXp * 1.35 + 4);
+    openUpgradeChoices();
+  }
+}
+
+function openUpgradeChoices() {
+  state.upgradeOpen = true;
+
+  const shuffled = [...upgradePool].sort(() => Math.random() - .5);
+  state.choices = [shuffled[0], shuffled[1]];
+
+  fillUpgradeCard(leftUpgrade, state.choices[0]);
+  fillUpgradeCard(rightUpgrade, state.choices[1]);
+
+  upgradePanel.style.display = "flex";
+  player.leftIcon.visible = true;
+  player.rightIcon.visible = true;
+
+  showMessage("Choose an upgrade: Q or E", 2.2);
+}
+
+function fillUpgradeCard(card, upgrade) {
+  card.querySelector(".upgradeIcon").textContent = upgrade.icon;
+  card.querySelector(".upgradeTitle").textContent = upgrade.title;
+  card.querySelector(".upgradeDesc").textContent = upgrade.desc;
+}
+
+function chooseUpgrade(index) {
+  if (!state.upgradeOpen) return;
+
+  const upgrade = state.choices[index];
+  upgrade.apply();
+
+  state.upgradeOpen = false;
+  state.choices = [];
+  upgradePanel.style.display = "none";
+  player.leftIcon.visible = false;
+  player.rightIcon.visible = false;
+
+  showMessage("Upgrade chosen: " + upgrade.title, 1.7);
+}
+
+function gameOver() {
+  state.started = false;
+  showMessage("Your wizard fell! Refresh to try again.", 99);
+}
+
+function initGame() {
+  addLights();
+  buildWorld();
+  buildWizard();
+
+  for (let i = 0; i < 7; i++) {
+    createCrab(new THREE.Vector3(rand(-2, 2), 0, rand(-2, 2)), player, teamColor);
+  }
+
+  for (const nest of nests) {
+    spawnNestSquad(nest);
+  }
+
+  for (let i = 0; i < 20; i++) {
+    createAIWizard(i);
+  }
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const dt = Math.min(.035, clock.getDelta());
+
+  if (state.started) {
+    updateStorm(dt);
+    updatePlayer(dt);
+    updateCrabGroup(player, crabs, dt);
+    updateNestSquads(dt);
+    updateAIWizards(dt);
+    updateFireballs(dt);
+    updateParticles(dt);
+    updateCamera(dt);
+    updateHud();
+    updateMessage(dt);
+
+    updateHealthBar(player, state.hp, state.maxHp);
+
+    if (state.hp <= 0) {
+      gameOver();
+    }
+  } else {
+    updateParticles(dt);
+    updateCamera(dt);
+    updateMessage(dt);
+  }
+
+  renderer.render(scene, camera);
+}
+
+addEventListener("keydown", e => {
+  keys[e.key.toLowerCase()] = true;
+
+  if (e.key.toLowerCase() === "q") chooseUpgrade(0);
+  if (e.key.toLowerCase() === "e") chooseUpgrade(1);
+});
+
+addEventListener("keyup", e => {
+  keys[e.key.toLowerCase()] = false;
+});
+
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+document.getElementById("startBtn").onclick = () => {
+  document.getElementById("startScreen").style.display = "none";
+  state.started = true;
+  showMessage("Lead the crab army and survive the storm!", 2);
+};
+
+initGame();
+animate();
 </script>
 </body>
 </html>
