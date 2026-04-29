@@ -338,6 +338,10 @@ button:disabled{opacity:.45;cursor:not-allowed;}
         <button id="tabActions" onclick="setTab('actions')">Actions</button>
         <button id="tabMilitary" onclick="setTab('military')">Military</button>
         <button id="tabHouses" onclick="setTab('houses')">Houses</button>
+        <button id="tabCharacters" onclick="setTab('characters')">Characters</button>
+        <button id="tabBlocs" onclick="setTab('blocs')">Blocs</button>
+        <button id="tabWars" onclick="setTab('wars')">Wars</button>
+        <button id="tabTrade" onclick="setTab('trade')">Trade</button>
         <button id="tabVendors" onclick="setTab('vendors')">Vendors</button>
         <button id="tabLog" onclick="setTab('log')">Chronicle</button>
       </div>
@@ -431,6 +435,58 @@ const HOUSE_TEMPLATES = {
     openIntel:false
   }
 };
+
+const HOUSE_CHARACTERS = {
+  Veyra:["Lady Caelia au Veyra","Heir Darius au Veyra","Commander Orlan","Spymaster Nyx"],
+  Cindral:["Lord Ilyan au Cindral","Heir Selene","Marshal Varo","Diplomat Lys"],
+  Marros:["Lady Teren au Marros","Heir Cassian","Commander Hel","Jurist Spymaster Vela"],
+  Bellor:["Lord Gaius Bellor","Heir Rix","Warlord Draeg","Envoy Pell"],
+  Aurelian:["Lady Meris Aurelian","Heir Tor","Captain Aven","Factor Juno"],
+  Thorne:["Lord Tal Thorne","Heir Mira","Captain Rhys","Whisper Sera"],
+  Karras:["Lord Bren Karras","Heir Kael","Commander Sorn","Agent Vex"]
+};
+const COLOR_FIGURES = {
+  Red:"Rhea of the Red Crews",Brown:"Steward Marn",Gray:"Commander Orlan-Gray",
+  Silver:"Avarus ag Sylan",Pink:"Veil-Singer Luma",Blue:"Navigator Corin",
+  Obsidian:"Champion Skoll",Orange:"Engineer Talia"
+};
+
+function baseCharacter(name,house,color){
+  return {name,house:house||null,color:color||null,opinion:50,trust:40,fear:20,respect:30,ambition:rand(20,85),loyalty:40,resentment:0,knownSecrets:[],favorsOwedToPlayer:0,favorsPlayerOwes:0,memories:[]};
+}
+
+function normalizeGameState(){
+  game.characters ||= {};
+  game.ignoredHistory ||= {};
+  game.blocStanding ||= {Traditionalist:50,Reform:40,Mercantile:45,Warhawk:40,Independent:50};
+  game.family ||= {
+    sibling:{name:"Aelia",loyalty:48,ambition:56,competence:44,scandalRisk:20,relationship:"Sibling"},
+    cousin:{name:"Cassor",loyalty:38,ambition:68,competence:40,scandalRisk:32,relationship:"Cousin"},
+    uncle:{name:"Varo",loyalty:34,ambition:71,competence:59,scandalRisk:41,relationship:"Uncle"},
+    steward:{name:"Doran",loyalty:62,ambition:26,competence:63,scandalRisk:18,relationship:"Steward"}
+  };
+  game.security ||= {assassinationRisk:15,personalSecurity:35,coupRisk:12};
+  game.hidden ||= {};
+  game.hidden.escalations ||= {mineSafetyNeglected:0,allianceTension:0,scandalChain:0,debtPressure:0};
+  Object.entries(game.houses||{}).forEach(([h,v])=>{
+    v.bloc ||= pick(["Traditionalist","Reform","Mercantile","Warhawk","Independent"]);
+    v.intelLevel ||= 0;
+    v.secretWeakness ||= pick(["Supply bottlenecks","Officer corruption","Debt exposure","Low public trust"]);
+    v.wealth ||= rand(40,85); v.stability ||= rand(35,80); v.publicTrust ||= rand(30,70);
+    v.currentWars ||= []; v.alliances ||= []; v.tradePartners ||= []; v.militaryDoctrine ||= pick(["Shock assault","Attrition","Defensive","Raid"]);
+  });
+  Object.entries(HOUSE_CHARACTERS).forEach(([h,arr])=>arr.forEach(n=>game.characters[n] ||= baseCharacter(n,h,null)));
+  Object.entries(COLOR_FIGURES).forEach(([c,n])=>game.characters[n] ||= baseCharacter(n,null,c));
+  game.vendors.forEach(v=>{ if(v.relationship===undefined) v.relationship=50; });
+}
+
+function addMemory(characterName,type,text,intensity=3,expires=null){
+  const c = game.characters?.[characterName]; if(!c) return;
+  c.memories.unshift({month:game.month,type,text,intensity,expires});
+  if(c.memories.length>10) c.memories.pop();
+  if(type==="ignored" || type==="betrayal") c.resentment = clamp(c.resentment + intensity,0,100);
+  if(type==="aid" || type==="mercy") c.trust = clamp(c.trust + Math.ceil(intensity/2),0,100);
+}
 
 function clone(x){ return JSON.parse(JSON.stringify(x)); }
 function clamp(n,min=0,max=100){ return Math.max(min,Math.min(max,n)); }
@@ -582,6 +638,7 @@ function newGame(){
     };
     game.knownIntel[h] = false;
   });
+  normalizeGameState();
 
   log("Your father is dead. Your House remains Gold, but weak. Your estate is solvent only by the kindness of creditors and the silence of enemies.");
   log("Press Start when ready. Time will begin moving, inbox requests will arrive, and silence will become a decision.");
@@ -746,6 +803,11 @@ function senderPriority(ev){
   if(ev.senderType === "Color") score += 45;
 
   score += ev.priority || 0;
+  score += (ev.politicalWeight||0) + (ev.internalRisk||0) + (ev.militaryRisk||0) + (ev.economicRisk||0);
+  score += (game.ignoredHistory?.[ev.from]||0) * 6;
+  if(ev.house && game.alliances.includes(ev.house)) score += 15;
+  if(ev.house && game.wars.some(w=> (w.enemyHouse||w)===ev.house)) score += 18;
+  if(ev.senderType==="Creditor" && game.debt>0) score += 12;
   score += Math.max(0, 8 - ev.deadline) * 8;
 
   return score;
@@ -753,6 +815,9 @@ function senderPriority(ev){
 
 function addInbox(ev){
   ev.id = Date.now() + "_" + Math.random().toString(36).slice(2);
+  ev.senderPowerTier ??= ev.house ? game.houses[ev.house]?.tier || 1 : 1;
+  ev.senderCharacter ??= ev.senderCharacter || null;
+  ev.ignoredConsequenceScale ??= ev.senderType==="Higher Gold"?4:ev.senderType==="Ally"?5:2;
   game.inbox.push(ev);
 }
 
@@ -1567,6 +1632,9 @@ function expireInbox(){
       if(ev.house && game.houses[ev.house]){
         game.houses[ev.house].lastIgnored++;
       }
+      game.ignoredHistory[ev.from] = (game.ignoredHistory[ev.from]||0)+1;
+      const ignores = game.ignoredHistory[ev.from];
+      if(ev.senderCharacter) addMemory(ev.senderCharacter,"ignored",`You ignored ${ev.from}.`,Math.min(10,2+ignores*2));
 
       /*
         Disrespect scaling:
@@ -2065,6 +2133,10 @@ function renderMain(){
   if(tab==="actions"){title.textContent="Active Actions";renderActions(mc);}
   if(tab==="military"){title.textContent="Military";renderMilitary(mc);}
   if(tab==="houses"){title.textContent="Houses";renderHouses(mc);}
+  if(tab==="characters"){title.textContent="Characters";renderCharacters(mc);}
+  if(tab==="blocs"){title.textContent="Bloc Standing";renderBlocs(mc);}
+  if(tab==="wars"){title.textContent="War Fronts";renderWars(mc);}
+  if(tab==="trade"){title.textContent="Trade Routes";renderTrade(mc);}
   if(tab==="vendors"){title.textContent="Vendors";renderVendors(mc);}
   if(tab==="log"){title.textContent="Chronicle";renderLog(mc);}
 }
@@ -2090,7 +2162,8 @@ function renderInbox(mc){
     ${sorted.map(ev=>`
       <div class="inbox-card ${ev.deadline<=1?"urgent":""} ${senderPriority(ev)>100?"major":""}">
         <div class="title">${ev.title}</div>
-        <div class="tiny">From: ${ev.from} • Sender: ${ev.senderType} • Deadline: ${ev.deadline} month(s) • Priority ${senderPriority(ev)}</div>
+        <div class="tiny">From: ${ev.from} • Sender: ${ev.senderType} • Tier ${ev.senderPowerTier} • Deadline: ${ev.deadline} month(s) • Priority ${senderPriority(ev)} • Ignored ${game.ignoredHistory[ev.from]||0}</div>
+        <div class="tiny">Risks: Pol ${ev.politicalWeight||0} / Int ${ev.internalRisk||0} / Mil ${ev.militaryRisk||0} / Eco ${ev.economicRisk||0}</div>
         <div>${ev.tags.map(t=>`<span class="tag ${tagClass(t)}">${t}</span>`).join("")}</div>
         <p class="story">${ev.body}</p>
         ${ev.choices.map((c,i)=>{
@@ -2106,6 +2179,24 @@ function renderInbox(mc){
       </div>
     `).join("")}
   `;
+}
+
+function renderCharacters(mc){
+  const chars = Object.values(game.characters);
+  mc.innerHTML = `<div class="card"><b class="gold">Character Memory System</b><p class="tiny">Every relationship remembers. Aid and betrayal memories shift trust, resentment, and event tone.</p></div>` +
+    chars.map(c=>`<div class="card"><div class="title">${c.name}</div><div class="tiny">${c.house?`House ${c.house}`:`Color ${c.color}`}</div>
+    <span class="tag gold">Opinion ${c.opinion}</span><span class="tag blue">Trust ${c.trust}</span><span class="tag red">Fear ${c.fear}</span><span class="tag purple">Resent ${c.resentment}</span>
+    <div class="tiny">Recent memories: ${(c.memories||[]).slice(0,2).map(m=>`${m.type} (M${m.month})`).join(", ") || "none"}</div></div>`).join("");
+}
+function renderBlocs(mc){
+  mc.innerHTML = `<div class="card"><b class="gold">Alliance Blocs</b></div>` + Object.entries(game.blocStanding).map(([b,v])=>bar(b,v,relationName(v))).join("");
+}
+function renderWars(mc){
+  const wars = game.wars.map(w=> typeof w==="string"?{enemyHouse:w,warScore:0,supplyDrain:30,playerWarExhaustion:0,enemyWarExhaustion:0}:w);
+  mc.innerHTML = wars.length?wars.map(w=>`<div class="card"><div class="title">War vs House ${w.enemyHouse}</div><span class="tag red">War score ${w.warScore||0}</span><span class="tag gold">Supply drain ${w.supplyDrain||0}</span><span class="tag purple">Exhaustion ${w.playerWarExhaustion||0}</span></div>`).join(""):`<div class="card">No active wars.</div>`;
+}
+function renderTrade(mc){
+  mc.innerHTML = game.tradeDeals.length?game.tradeDeals.map(t=>{ const o=typeof t==="string"?{partnerHouse:t,routeValue:80,routeRisk:25,dependence:20,monthsActive:0}:t; return `<div class="card"><div class="title">Route: ${o.partnerHouse}</div><span class="tag green">Value ${o.routeValue}</span><span class="tag red">Risk ${o.routeRisk}</span><span class="tag blue">Dependence ${o.dependence}</span></div>`; }).join(""):`<div class="card">No trade routes.</div>`;
 }
 
 function tagClass(t){
@@ -2310,6 +2401,7 @@ function loadGame(){
   clearInterval(timer);
   timer = null;
   game = JSON.parse(s);
+  normalizeGameState();
   log("Game loaded.");
   render();
 }
@@ -2328,6 +2420,7 @@ window.onload = ()=>{
   const s = localStorage.getItem("goldRiseRebuiltSave");
   if(s){
     game = JSON.parse(s);
+    normalizeGameState();
   } else {
     newGame();
   }
@@ -2336,3 +2429,7 @@ window.onload = ()=>{
 </script>
 </body>
 </html>
+      if(ignores>=3){
+        applyEffects({scandalHeat:2,rebelStrength:2,stability:-2});
+        log(`${ev.from} escalates after repeated silence (${ignores} ignores).`);
+      }
