@@ -1351,7 +1351,8 @@ function updatePlayer(dt) {
 
   if (move.lengthSq() > 0) {
     move.normalize();
-    const speed = player.speed * state.upgrades.wizardSpeed;
+    const lowHealthBoost = player.hp / player.maxHp <= 0.25 ? 1.12 : 1;
+    const speed = player.speed * state.upgrades.wizardSpeed * lowHealthBoost;
     player.group.position.addScaledVector(move, speed * dt);
   }
 
@@ -1380,8 +1381,17 @@ function updateCrabGroup(owner, list, dt) {
     const pos = c.group.position;
     const distOwner = pos.distanceTo(ownerPos);
 
+    const forceAttackPlayer = !ownerIsPlayer && owner.targetWizard === player;
+    const bestTarget = nearestTarget(ownerPos, c.team, leashAttack, forceAttackPlayer);
+
     if (!c.target || c.target.hp <= 0 || distOwner > leashReturn) {
-      c.target = nearestTarget(ownerPos, c.team, leashAttack, !ownerIsPlayer && owner.targetWizard === player);
+      c.target = bestTarget;
+    } else if (bestTarget && bestTarget !== c.target) {
+      const currentDistFromOwner = c.target.group.position.distanceTo(ownerPos);
+      const bestDistFromOwner = bestTarget.group.position.distanceTo(ownerPos);
+      if (bestDistFromOwner + 1.4 < currentDistFromOwner) {
+        c.target = bestTarget;
+      }
     }
 
     let desired = new THREE.Vector3();
@@ -1846,7 +1856,8 @@ function updateAIWizards(dt) {
       while (diff < -Math.PI) diff += Math.PI * 2;
       ai.group.rotation.y += clamp(diff, -ai.turnSpeed * simDt, ai.turnSpeed * simDt);
 
-      ai.group.position.addScaledVector(toDest, ai.speed * simDt);
+      const lowHealthBoost = ai.hp / ai.maxHp <= 0.25 ? 1.1 : 1;
+      ai.group.position.addScaledVector(toDest, ai.speed * lowHealthBoost * simDt);
     }
 
     const safeClamp = WORLD_RADIUS - 8;
