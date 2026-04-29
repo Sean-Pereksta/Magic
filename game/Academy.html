@@ -265,9 +265,9 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
 const container = document.getElementById("game");
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x07101d);
-scene.fog = new THREE.Fog(0x07101d, 80, 260);
+scene.fog = new THREE.Fog(0x07101d, 95, 320);
 
-const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 850);
+const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 980);
 const renderer = new THREE.WebGLRenderer({
   antialias: false,
   powerPreference: "high-performance"
@@ -305,16 +305,16 @@ const endScreen = document.getElementById("endScreen");
 const endTitle = document.getElementById("endTitle");
 const endStats = document.getElementById("endStats");
 
-const WORLD_RADIUS = 230;
-const STORM_START_RADIUS = 205;
-const STORM_END_RADIUS = 24;
-const STORM_SHRINK_SECONDS = 420;
+const WORLD_RADIUS = 315;
+const STORM_START_RADIUS = 285;
+const STORM_END_RADIUS = 28;
+const STORM_SHRINK_SECONDS = 315;
 
 
 const PERF = {
   maxPlayerCrabs: 45,
-  maxAICrabsPerWizard: 12,
-  maxTotalAICrabs: 120,
+  maxAICrabsPerWizard: 14,
+  maxTotalAICrabs: 136,
   maxParticles: 120,
   maxFireballs: 45,
   farUpdateDistance: 75,
@@ -357,6 +357,7 @@ const state = {
     fireDamage: 1,
     fireExplosion: 1,
     fireRate: 1,
+    fireTracking: 1,
     fireBounce: 0,
     crabArmor: 0,
     crabSpikes: 0,
@@ -370,10 +371,10 @@ const state = {
 
 if (PERFORMANCE_MODE) {
   renderer.setPixelRatio(1);
-  scene.fog.far = 260;
+  scene.fog.far = 320;
   PERF.maxPlayerCrabs = 35;
-  PERF.maxAICrabsPerWizard = 8;
-  PERF.maxTotalAICrabs = 80;
+  PERF.maxAICrabsPerWizard = 12;
+  PERF.maxTotalAICrabs = 120;
   PERF.maxParticles = 80;
 }
 
@@ -392,6 +393,9 @@ const player = {
 const crabs = [];
 const enemies = [];
 const fireballs = [];
+const drops = [];
+const explosions = [];
+const MAX_DROPS = 45;
 const nests = [];
 const particles = [];
 const aiWizards = [];
@@ -558,7 +562,7 @@ function buildWorld() {
   const occupied = [];
   for (let i = 0; i < alcoveCount; i++) {
     const tier = i < 8 ? 1 : i < 15 ? 2 : 3;
-    const ringPos = tier === 1 ? findOpenWorldPosition(55, 90, 15, occupied) : tier === 2 ? findOpenWorldPosition(105, 155, 15, occupied) : findOpenWorldPosition(165, 205, 15, occupied);
+    const ringPos = tier === 1 ? findOpenWorldPosition(70, 120, 26, occupied) : tier === 2 ? findOpenWorldPosition(135, 210, 28, occupied) : findOpenWorldPosition(220, 285, 30, occupied);
     createNest(ringPos.x, ringPos.z, i, tier);
     occupied.push(ringPos.clone());
   }
@@ -1116,10 +1120,15 @@ function createAIWizard(index) {
     updateTimer: rand(0, .3),
     detailLevel: "full",
     dead: false,
-    gameOver: false,
-  victory: false,
-  difficulty: selectedDifficulty,
-  upgrades: {
+    mode: "grow",
+    retreatUntil: 0,
+    lastArmyStrength: 0,
+    safeDestination: null,
+    targetDrop: null,
+    personalityGrowthBias: rand(0.85, 1.35),
+    personalityAggression: rand(0.65, 1.25) + state.difficulty * 0.04,
+    personalityCaution: rand(0.8, 1.3),
+    upgrades: {
       crabArmor: Math.floor(rand(0, 2)),
       crabSpikes: Math.floor(rand(0, 2)),
       crabRegen: 1,
@@ -1149,12 +1158,14 @@ function createFireball(originOwner, target, color = 0xff6a1f) {
   const origin = originOwner.group.position.clone();
   origin.y = 2.5;
 
-  const dir = target.group.position.clone().sub(originOwner.group.position);
-  dir.y = .25;
-  dir.normalize();
+  const dir = getUnitAimPoint(target).sub(origin).normalize();
 
   const explosion = originOwner === player ? state.upgrades.fireExplosion : 1;
-  const damage = originOwner === player ? 20 * state.upgrades.fireDamage : 14 + state.difficulty * 3;
+  const tracking = originOwner === player ? state.upgrades.fireTracking : 1 + state.difficulty * 0.22;
+  const damage = originOwner === player ? 21 * state.upgrades.fireDamage : 14 + state.difficulty * 3.5;
+  const speed = originOwner === player ? (24 + state.upgrades.fireTracking * 1.5) : (22 + state.difficulty * 1.2);
+  const life = originOwner === player ? (3 + state.upgrades.fireTracking * .35) : (2.8 + state.difficulty * .2);
+  const turnRate = originOwner === player ? (7.5 + state.upgrades.fireTracking * 2.5) : (6.6 + tracking * 1.4);
 
   const mesh = new THREE.Mesh(
     new THREE.SphereGeometry(.18 * explosion, 14, 10),
@@ -1174,15 +1185,15 @@ function createFireball(originOwner, target, color = 0xff6a1f) {
     mesh,
     owner: originOwner,
     team: originOwner.team,
-    velocity: dir.multiplyScalar(24),
-    speed: 24,
-    turnRate: 7.5,
+    velocity: dir.multiplyScalar(speed),
+    speed,
+    turnRate,
     target,
     damage,
     radius: 2.2 * explosion,
     hitRadius: 1.1,
     bounces: originOwner === player ? state.upgrades.fireBounce : 0,
-    life: 3.0,
+    life,
     lastHit: null,
     exploded: false,
     lastPosition: origin.clone()
@@ -1472,6 +1483,11 @@ function killUnit(unit, source) {
     if (nestSquadIndex >= 0) unit.nest.squad.splice(nestSquadIndex, 1);
 
     startDeathAnimation(unit, 0xff7777);
+    if (chance(.4) && drops.length < MAX_DROPS) {
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(.28, 8, 8), new THREE.MeshBasicMaterial({ color: 0x66f4ff }));
+      mesh.position.copy(unit.group.position); mesh.position.y = .9; scene.add(mesh);
+      drops.push({ mesh, pos: mesh.position, life: rand(25, 35), value: unit.nest ? unit.nest.tier : 1, bob: rand(0, Math.PI * 2) });
+    }
 
     const killerOwner = source && source.owner ? source.owner : null;
 
@@ -1495,7 +1511,7 @@ function killUnit(unit, source) {
       unit.nest.respawnTimer = unit.nest.respawnDelay;
 
       if (killerOwner === player) {
-        const reward = unit.nest.tier + 1;
+        const reward = unit.nest.tier === 1 ? 2 : unit.nest.tier === 2 ? 3 : 5;
         for (let i = 0; i < reward; i++) {
           createCrab(unit.group.position.clone().add(new THREE.Vector3(rand(-2,2),0,rand(-2,2))), player, teamColor);
         }
@@ -1503,7 +1519,7 @@ function killUnit(unit, source) {
         showMessage("Alcove squad cleared! +" + reward + " crabs", 1.8);
         checkLevelUp();
       } else if (killerOwner && killerOwner.crabs) {
-        const reward = unit.nest.tier;
+        const reward = unit.nest.tier === 1 ? 2 : unit.nest.tier === 2 ? 3 : 5;
         for (let i = 0; i < reward; i++) {
           createCrab(unit.group.position.clone().add(new THREE.Vector3(rand(-2,2),0,rand(-2,2))), killerOwner, killerOwner.color, {
             armor: killerOwner.upgrades.crabArmor,
@@ -1621,6 +1637,67 @@ function updateNestSquads(dt) {
   }
 }
 
+function getUnitAimPoint(unit) {
+  const p = unit.group.position.clone();
+  p.y += (unit === player || aiWizards.includes(unit)) ? 2.0 : 0.8;
+  return p;
+}
+function isPositionInStorm(pos, buffer = 0) { return Math.hypot(pos.x, pos.z) > state.stormRadius - buffer; }
+function getSafePointNear(pos, inwardDistance = 18) {
+  const inward = pos.clone().multiplyScalar(-1); inward.y = 0;
+  if (inward.lengthSq() < .01) inward.set(rand(-1,1),0,rand(-1,1));
+  inward.setLength(inwardDistance);
+  inward.applyAxisAngle(new THREE.Vector3(0,1,0), rand(-.75,.75));
+  return pos.clone().add(inward);
+}
+function getAverageCrabHealth(owner) {
+  if (!owner.crabs || owner.crabs.length === 0) return 1;
+  let s = 0; for (const c of owner.crabs) s += c.hp / c.maxHp;
+  return s / owner.crabs.length;
+}
+function getArmyStrength(owner) {
+  const wiz = ((owner.hp || state.hp) / (owner.maxHp || state.maxHp)) * 28;
+  const list = owner === player ? crabs : owner.crabs;
+  const crabPower = list.reduce((a,c)=>a + (c.hp / c.maxHp) * (1 + c.damage * .05 + c.growth * .3), 0);
+  return wiz + crabPower;
+}
+function scoreObjectiveForAI(ai, type, target) {
+  const pos = type === "drop" ? target.pos : target.group.position;
+  const d = ai.group.position.distanceTo(pos);
+  let score = d;
+  if (isPositionInStorm(pos, 5)) score += 120;
+  if (isPositionInStorm(pos, 16)) score += 55;
+  const c = ai.crabs.length, hpPct = ai.hp / ai.maxHp;
+  if (type === "nest") {
+    if (!target.squad.length) return Infinity;
+    const reward = target.tier === 1 ? 2 : target.tier === 2 ? 3 : 5;
+    score -= reward * 16 * ai.personalityGrowthBias;
+    if (c < 6 && target.tier > 1) score += 40;
+    if (c < 9 && target.tier > 2) score += 60;
+  } else if (type === "drop") {
+    score -= (26 + target.value * 14) * (c < 10 ? 1.6 : 1.1);
+  } else if (type === "attack") {
+    const enemyStrength = getArmyStrength(target);
+    const selfStrength = getArmyStrength(ai);
+    score += 25 + enemyStrength - selfStrength * ai.personalityAggression;
+    if (c < 6 || hpPct < .45) score += 50;
+  }
+  return score;
+}
+function findBestCombatTargetForAI(ai, range) {
+  const candidates = allCombatUnitsExcept(ai.team);
+  let best = null, bestScore = Infinity;
+  for (const u of candidates) {
+    const d = ai.group.position.distanceTo(u.group.position);
+    if (d > range || u.dead || u.dying || u.hp <= 0) continue;
+    let s = d + (u.hp / u.maxHp) * 12;
+    if (ai.mode === "attack" && (u === player || aiWizards.includes(u))) s -= 10;
+    if ((ai.mode === "retreat" || ai.mode === "stormEscape") && d > 10) s += 30;
+    if (ai.mode === "grow" && u.nest) s -= 12;
+    if (s < bestScore) { bestScore = s; best = u; }
+  } return best;
+}
+
 function updateAIWizards(dt) {
   for (const ai of aiWizards) {
     if (ai.dead) continue;
@@ -1646,24 +1723,31 @@ function updateAIWizards(dt) {
     if (ai.thinkTimer <= 0) {
       ai.thinkTimer = rand(1.0, 2.4);
 
-      const distToPlayer = ai.group.position.distanceTo(player.group.position);
-      const lateStorm = state.stormRadius < 75;
-      const strongEnough = ai.crabs.length >= Math.max(4, crabs.length * .55);
-
-      if (distToPlayer < 38 || lateStorm || strongEnough && chance(ai.attackPlayerBias)) {
-        ai.targetWizard = player;
-        ai.targetNest = null;
-      } else {
-        ai.targetWizard = null;
-        ai.targetNest = findBestNestForAI(ai);
-      }
+      const lowArmy = ai.crabs.length < 6, midArmy = ai.crabs.length < 10;
+      const lowHp = ai.hp / ai.maxHp < .35 || getAverageCrabHealth(ai) < .35;
+      if (isPositionInStorm(ai.group.position, 9)) ai.mode = "stormEscape";
+      else if (lowHp || getArmyStrength(ai) < ai.lastArmyStrength * .74) { ai.mode = "retreat"; ai.retreatUntil = performance.now() + rand(3500,6500); ai.safeDestination = getSafePointNear(ai.group.position, 24); }
+      else if (ai.mode === "retreat" && performance.now() < ai.retreatUntil) {}
+      else ai.mode = "grow";
+      ai.lastArmyStrength = getArmyStrength(ai);
+      if (ai.mode === "retreat" && performance.now() >= ai.retreatUntil) ai.mode = "grow";
+      ai.targetDrop = drops.filter(d => d.life > 0).sort((a,b)=>scoreObjectiveForAI(ai,"drop",a)-scoreObjectiveForAI(ai,"drop",b))[0] || null;
+      ai.targetNest = nests.filter(n=>n.squad.length).sort((a,b)=>scoreObjectiveForAI(ai,"nest",a)-scoreObjectiveForAI(ai,"nest",b))[0] || null;
+      const attackCandidate = [player, ...aiWizards.filter(w=>w!==ai && !w.dead)].sort((a,b)=>scoreObjectiveForAI(ai,"attack",a)-scoreObjectiveForAI(ai,"attack",b))[0];
+      ai.targetWizard = null;
+      if (!lowArmy && (!midArmy || chance(.4)) && attackCandidate && scoreObjectiveForAI(ai,"attack",attackCandidate) < Math.min(80, scoreObjectiveForAI(ai,"nest",ai.targetNest||{group:{position:ai.group.position},tier:1,squad:[1]}) + 6)) ai.mode = "attack", ai.targetWizard = attackCandidate;
+      if (ai.targetDrop && (lowArmy || scoreObjectiveForAI(ai,"drop",ai.targetDrop) + 12 < scoreObjectiveForAI(ai,"nest",ai.targetNest || {group:{position:ai.group.position},tier:1,squad:[1]}))) ai.mode = "harvest";
     }
 
     let destination = null;
 
-    if (ai.targetWizard && state.hp > 0) {
+    if (ai.mode === "stormEscape") destination = getSafePointNear(ai.group.position, 36);
+    else if (ai.mode === "retreat") destination = ai.safeDestination || getSafePointNear(ai.group.position, 20);
+    else if (ai.mode === "attack" && ai.targetWizard && state.hp > 0) {
       const offsetAngle = aiWizards.indexOf(ai) * .8;
       destination = player.group.position.clone().add(new THREE.Vector3(Math.cos(offsetAngle) * 9, 0, Math.sin(offsetAngle) * 9));
+    } else if (ai.mode === "harvest" && ai.targetDrop) {
+      destination = ai.targetDrop.pos.clone();
     } else if (ai.targetNest) {
       destination = ai.targetNest.group.position.clone().add(new THREE.Vector3(rand(-4,4), 0, rand(-4,4)));
     } else {
@@ -1692,7 +1776,7 @@ function updateAIWizards(dt) {
     ai.group.position.x = clamp(ai.group.position.x, -safeClamp, safeClamp);
     ai.group.position.z = clamp(ai.group.position.z, -safeClamp, safeClamp);
 
-    const fireTarget = nearestTarget(ai.group.position, ai.team, 18, ai.targetWizard === player);
+    const fireTarget = findBestCombatTargetForAI(ai, ai.mode === "retreat" || ai.mode === "stormEscape" ? 10 : 18);
     if (fireTarget && ai.fireCooldown <= 0) {
       ai.fireCooldown = rand(1.3, 2.4);
       createFireball(ai, fireTarget, ai.color);
@@ -1717,24 +1801,6 @@ function updateAIWizards(dt) {
   }
 }
 
-function findBestNestForAI(ai) {
-  let best = null;
-  let bestScore = Infinity;
-
-  for (const nest of nests) {
-    const d = ai.group.position.distanceTo(nest.group.position);
-    if (nest.squad.length === 0) continue;
-
-    const score = d + nest.tier * 15 - ai.crabs.length * 3;
-    if (score < bestScore) {
-      bestScore = score;
-      best = nest;
-    }
-  }
-
-  return best;
-}
-
 function updateFireballs(dt) {
   state.fireCooldown -= dt;
 
@@ -1748,6 +1814,11 @@ function updateFireballs(dt) {
     const f = fireballs[i];
 
     f.life -= dt;
+    f.lastPosition.copy(f.mesh.position);
+    if (f.target && !f.target.dead && f.target.hp > 0) {
+      const desired = getUnitAimPoint(f.target).sub(f.mesh.position).normalize().multiplyScalar(f.speed);
+      f.velocity.lerp(desired, clamp(f.turnRate * dt, 0, 1));
+    }
     f.mesh.position.addScaledVector(f.velocity, dt);
 
     let hit = null;
@@ -1757,7 +1828,7 @@ function updateFireballs(dt) {
 
     for (const u of candidates) {
       if (u === f.lastHit || u.hp <= 0) continue;
-      const d = u.group.position.distanceTo(f.mesh.position);
+      const d = distancePointToSegment(getUnitAimPoint(u), f.lastPosition, f.mesh.position);
       if (d < (u.radius || .7) + .55 && d < hitDist) {
         hit = u;
         hitDist = d;
@@ -1787,7 +1858,8 @@ function updateFireballs(dt) {
       continue;
     }
 
-    if (f.life <= 0) {
+    if (f.life <= 0 || (f.target && f.mesh.position.distanceTo(getUnitAimPoint(f.target)) < f.hitRadius + 1.1)) {
+      explodeFireball(f, f.target || null);
       scene.remove(f.mesh);
       fireballs.splice(i, 1);
     }
@@ -1797,6 +1869,12 @@ function updateFireballs(dt) {
 function explodeFireball(f, directHit) {
   const p = f.mesh.position.clone();
   createBurst(p, f.owner === player ? 0xff8a25 : f.owner.color, 18);
+  if (explosions.length < 28) {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(.7, 1.3, 20), new THREE.MeshBasicMaterial({ color: 0xffaa55, transparent: true, opacity: .75, side: THREE.DoubleSide }));
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.copy(p); ring.position.y += .1; scene.add(ring);
+    explosions.push({ mesh: ring, life: .34, maxLife: .34, scale: f.radius * .7 });
+  }
 
   const candidates = allCombatUnitsExcept(f.team);
 
@@ -1804,12 +1882,12 @@ function explodeFireball(f, directHit) {
     const d = u.group.position.distanceTo(p);
     if (d < f.radius) {
       const falloff = 1 - d / f.radius;
-      damageUnit(u, f.damage * (.55 + falloff * .65), null);
+      damageUnit(u, f.damage * (.55 + falloff * .65), f);
     }
   }
 
   if (directHit && directHit.hp > 0) {
-    damageUnit(directHit, f.damage * .35, null);
+    damageUnit(directHit, f.damage * .5, f);
   }
 }
 
@@ -1878,6 +1956,26 @@ function updateParticles(dt) {
       scene.remove(p.mesh);
       particles.splice(i, 1);
     }
+  }
+  for (let i = drops.length - 1; i >= 0; i--) {
+    const d = drops[i]; d.life -= dt; d.bob += dt * 2.6;
+    d.mesh.position.y = .9 + Math.sin(d.bob) * .2;
+    const collectors = [player, ...aiWizards.filter(w => !w.dead)];
+    for (const w of collectors) {
+      if (w.group.position.distanceToSquared(d.mesh.position) < 6.4) {
+        if (w === player) state.xp += 1;
+        if (chance(.55)) createCrab(w.group.position.clone().add(new THREE.Vector3(rand(-1.1,1.1),0,rand(-1.1,1.1))), w, w.color || teamColor, w.upgrades ? { armor: w.upgrades.crabArmor, spikes: w.upgrades.crabSpikes, regen: w.upgrades.crabRegen, speed: w.upgrades.swarmSpeed } : {});
+        d.life = 0; break;
+      }
+    }
+    if (d.life <= 0) { scene.remove(d.mesh); drops.splice(i,1); }
+  }
+  for (let i = explosions.length - 1; i >= 0; i--) {
+    const e = explosions[i]; e.life -= dt;
+    const t = 1 - (e.life / e.maxLife);
+    e.mesh.scale.setScalar(1 + t * e.scale);
+    e.mesh.material.opacity = 0.75 * (1 - t);
+    if (e.life <= 0) { scene.remove(e.mesh); explosions.splice(i,1); }
   }
 }
 
@@ -2010,6 +2108,14 @@ const upgradePool = [
     desc: "You automatically fire fireballs more often.",
     apply() {
       state.upgrades.fireRate += .28;
+    }
+  },
+  {
+    icon: "🧭",
+    title: "Tracking Fire",
+    desc: "Fireballs steer harder, fly faster, and last longer.",
+    apply() {
+      state.upgrades.fireTracking += .75;
     }
   },
   {
