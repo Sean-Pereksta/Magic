@@ -172,6 +172,31 @@
     cursor: pointer;
     box-shadow: 0 8px 25px rgba(50, 220, 255, .24);
   }
+
+
+  #endScreen {
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(2, 6, 14, 0.86);
+  }
+
+  #endCard {
+    width: min(560px, calc(100vw - 36px));
+    background: rgba(4, 11, 26, .92);
+    border: 1px solid rgba(130, 220, 255, .35);
+    border-radius: 22px;
+    padding: 26px;
+    text-align: center;
+  }
+
+  #endCard h1 { margin: 0 0 8px; color: #9affc9; }
+  #endCard p { color: #d9f0ff; }
+  #endCard button { margin: 10px 6px 0; }
+
 </style>
 </head>
 <body>
@@ -225,15 +250,24 @@
   </div>
 </div>
 
+<div id="endScreen">
+  <div id="endCard">
+    <h1 id="endTitle"></h1>
+    <p id="endStats"></p>
+    <button id="restartSameBtn">Restart Same Difficulty</button>
+    <button id="restartHarderBtn">Restart + Increase Difficulty</button>
+  </div>
+</div>
+
 <script type="module">
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 
 const container = document.getElementById("game");
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x07101d);
-scene.fog = new THREE.Fog(0x07101d, 65, 240);
+scene.fog = new THREE.Fog(0x07101d, 80, 260);
 
-const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 650);
+const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.1, 850);
 const renderer = new THREE.WebGLRenderer({
   antialias: false,
   powerPreference: "high-performance"
@@ -267,11 +301,14 @@ const leftUpgrade = document.getElementById("leftUpgrade");
 const rightUpgrade = document.getElementById("rightUpgrade");
 const messageBox = document.getElementById("message");
 const stormWarning = document.getElementById("stormWarning");
+const endScreen = document.getElementById("endScreen");
+const endTitle = document.getElementById("endTitle");
+const endStats = document.getElementById("endStats");
 
-const WORLD_RADIUS = 155;
-const STORM_START_RADIUS = 138;
-const STORM_END_RADIUS = 28;
-const STORM_SHRINK_SECONDS = 900;
+const WORLD_RADIUS = 230;
+const STORM_START_RADIUS = 205;
+const STORM_END_RADIUS = 24;
+const STORM_SHRINK_SECONDS = 420;
 
 
 const PERF = {
@@ -312,6 +349,9 @@ const state = {
   stormTime: 0,
   stormRadius: STORM_START_RADIUS,
   stormDamage: 7,
+  gameOver: false,
+  victory: false,
+  difficulty: selectedDifficulty,
   upgrades: {
     wizardSpeed: 1,
     fireDamage: 1,
@@ -330,7 +370,7 @@ const state = {
 
 if (PERFORMANCE_MODE) {
   renderer.setPixelRatio(1);
-  scene.fog.far = 180;
+  scene.fog.far = 260;
   PERF.maxPlayerCrabs = 35;
   PERF.maxAICrabsPerWizard = 8;
   PERF.maxTotalAICrabs = 80;
@@ -355,6 +395,10 @@ const fireballs = [];
 const nests = [];
 const particles = [];
 const aiWizards = [];
+const dyingUnits = [];
+const decorations = [];
+let decorationCullTimer = 0;
+let selectedDifficulty = Number(localStorage.getItem("crabmancerDifficulty") || 1);
 
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
@@ -456,9 +500,21 @@ function addLights() {
   player.group.add(wizardLight);
 }
 
+function findOpenWorldPosition(minR, maxR, minDistanceFromExisting = 16, existing = []) {
+  for (let i = 0; i < 50; i++) {
+    const a = rand(0, Math.PI * 2);
+    const r = rand(minR, maxR);
+    const pos = new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r);
+    if (existing.every(e => e.distanceTo(pos) >= minDistanceFromExisting)) return pos;
+  }
+  const a = rand(0, Math.PI * 2);
+  const r = rand(minR, maxR);
+  return new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r);
+}
+
 function buildWorld() {
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(WORLD_RADIUS * 2.3, WORLD_RADIUS * 2.3, 120, 120),
+    new THREE.PlaneGeometry(WORLD_RADIUS * 2.3, WORLD_RADIUS * 2.3, 96, 96),
     mat(0x163d24, 0.95, 0)
   );
   ground.rotation.x = -Math.PI / 2;
@@ -473,7 +529,7 @@ function buildWorld() {
   centerRing.position.y = 0.012;
   scene.add(centerRing);
 
-  for (let i = 0; i < 75; i++) {
+  for (let i = 0; i < 110; i++) {
     const a = Math.random() * Math.PI * 2;
     const r = rand(70, WORLD_RADIUS * .98);
     const x = Math.cos(a) * r;
@@ -494,16 +550,18 @@ function buildWorld() {
     leaves.castShadow = false;
 
     scene.add(trunk, leaves);
+    decorations.push(trunk, leaves);
   }
 
   createStormVisual();
 
-  const alcoveCount = 16;
+  const alcoveCount = 22;
+  const occupied = [];
   for (let i = 0; i < alcoveCount; i++) {
-    const ring = i < 5 ? rand(42, 62) : i < 11 ? rand(76, 100) : rand(112, 135);
-    const a = i / alcoveCount * Math.PI * 2 + rand(-.18, .18);
-    const tier = i < 5 ? 1 : i < 11 ? 2 : 3;
-    createNest(Math.cos(a) * ring, Math.sin(a) * ring, i, tier);
+    const tier = i < 8 ? 1 : i < 15 ? 2 : 3;
+    const ringPos = tier === 1 ? findOpenWorldPosition(55, 90, 15, occupied) : tier === 2 ? findOpenWorldPosition(105, 155, 15, occupied) : findOpenWorldPosition(165, 205, 15, occupied);
+    createNest(ringPos.x, ringPos.z, i, tier);
+    occupied.push(ringPos.clone());
   }
 }
 
@@ -816,7 +874,13 @@ function createCrab(pos, owner = player, color = teamColor, bonus = {}) {
     armorLevel,
     spikeLevel,
     regenLevel,
-    isPlayerCrab: owner === player
+    isPlayerCrab: owner === player,
+    attackState: "idle",
+    attackTimer: 0,
+    pendingAttackTarget: null,
+    hasDealtAttackDamage: false,
+    dead: false,
+    dying: false
   };
 
   const shellMat = new THREE.MeshStandardMaterial({
@@ -1027,9 +1091,8 @@ function createAIWizard(index) {
   const color = new THREE.Color(palette[index % palette.length]);
   const g = buildWizardModel(color, false);
 
-  const angle = index / 20 * Math.PI * 2 + rand(-.1, .1);
-  const r = rand(75, 132);
-  g.position.set(Math.cos(angle) * r, 0, Math.sin(angle) * r);
+  const pos = findOpenWorldPosition(70, WORLD_RADIUS - 25, 18, aiWizards.map(w => w.group.position));
+  g.position.set(pos.x, 0, pos.z);
   g.rotation.y = rand(0, Math.PI * 2);
   scene.add(g);
 
@@ -1037,21 +1100,27 @@ function createAIWizard(index) {
     group: g,
     team: "ai" + index,
     color,
-    hp: 95,
-    maxHp: 95,
+    hp: 95 + state.difficulty * 15,
+    maxHp: 95 + state.difficulty * 15,
     radius: .85,
     speed: rand(7.2, 9.2),
     turnSpeed: 2,
     crabs: [],
     targetNest: null,
     targetWizard: null,
-    thinkTimer: rand(.2, 1.5),
+    thinkTimer: rand(.2, 1.5) / (1 + state.difficulty * 0.08),
     fireCooldown: rand(.2, 1.5),
-    attackPlayerBias: rand(.3, .9),
+    attackPlayerBias: clamp(rand(.3, .9) + state.difficulty * 0.03, 0.3, 0.98),
+    wanderDestination: null,
+    wanderTimer: rand(2, 6),
+    roamRadiusPreference: rand(.35, .95),
     updateTimer: rand(0, .3),
     detailLevel: "full",
     dead: false,
-    upgrades: {
+    gameOver: false,
+  victory: false,
+  difficulty: selectedDifficulty,
+  upgrades: {
       crabArmor: Math.floor(rand(0, 2)),
       crabSpikes: Math.floor(rand(0, 2)),
       crabRegen: 1,
@@ -1086,7 +1155,7 @@ function createFireball(originOwner, target, color = 0xff6a1f) {
   dir.normalize();
 
   const explosion = originOwner === player ? state.upgrades.fireExplosion : 1;
-  const damage = originOwner === player ? 20 * state.upgrades.fireDamage : 14;
+  const damage = originOwner === player ? 20 * state.upgrades.fireDamage : 14 + state.difficulty * 3;
 
   const mesh = new THREE.Mesh(
     new THREE.SphereGeometry(.18 * explosion, 14, 10),
@@ -1106,12 +1175,18 @@ function createFireball(originOwner, target, color = 0xff6a1f) {
     mesh,
     owner: originOwner,
     team: originOwner.team,
-    velocity: dir.multiplyScalar(18),
+    velocity: dir.multiplyScalar(24),
+    speed: 24,
+    turnRate: 7.5,
+    target,
     damage,
-    radius: 1.45 * explosion,
+    radius: 2.2 * explosion,
+    hitRadius: 1.1,
     bounces: originOwner === player ? state.upgrades.fireBounce : 0,
-    life: 2.3,
-    lastHit: null
+    life: 3.0,
+    lastHit: null,
+    exploded: false,
+    lastPosition: origin.clone()
   });
 }
 
@@ -1139,7 +1214,7 @@ function createBurst(pos, color, count = 12) {
 function allCrabs() {
   const list = [...crabs];
   for (const ai of aiWizards) {
-    if (!ai.dead) list.push(...ai.crabs);
+    if (!ai.dead && !ai.dying) list.push(...ai.crabs.filter(c => !c.dead && !c.dying));
   }
   return list;
 }
@@ -1153,14 +1228,14 @@ function allCombatUnitsExcept(team) {
   }
 
   for (const ai of aiWizards) {
-    if (!ai.dead && ai.team !== team) list.push(ai);
+    if (!ai.dead && !ai.dying && ai.team !== team) list.push(ai);
     for (const c of ai.crabs) {
-      if (c.team !== team) list.push(c);
+      if (!c.dead && !c.dying && c.team !== team) list.push(c);
     }
   }
 
   for (const e of enemies) {
-    if (e.team !== team) list.push(e);
+    if (!e.dead && !e.dying && e.team !== team) list.push(e);
   }
 
   return list;
@@ -1173,7 +1248,7 @@ function nearestTarget(pos, team, range = Infinity, preferPlayer = false) {
   const candidates = allCombatUnitsExcept(team);
 
   for (const u of candidates) {
-    if (u.hp <= 0) continue;
+    if (u.hp <= 0 || u.dead || u.dying) continue;
 
     if (u.nest) {
       const distFromNest = u.group.position.distanceTo(u.leashCenter);
@@ -1359,20 +1434,19 @@ function updateCrabGroup(owner, list, dt) {
     applyStormDamageToCrab(c, dt);
     updateHealthBar(c, c.hp, c.maxHp);
 
-    if (c.hp <= 0) {
-      createBurst(c.group.position, c.color || 0x35d7ff, 18);
-      scene.remove(c.group);
+    if (c.hp <= 0 && !c.dying) {
       list.splice(i, 1);
       if (c.isPlayerCrab) {
         const globalIndex = crabs.indexOf(c);
         if (globalIndex >= 0) crabs.splice(globalIndex, 1);
       }
+      startDeathAnimation(c, c.color || 0x35d7ff);
     }
   }
 }
 
 function damageUnit(unit, amount, source = null) {
-  if (!unit || unit.hp <= 0) return;
+  if (!unit || unit.hp <= 0 || unit.dead || unit.dying) return;
 
   unit.hp -= amount;
 
@@ -1398,8 +1472,7 @@ function killUnit(unit, source) {
     const nestSquadIndex = unit.nest.squad.indexOf(unit);
     if (nestSquadIndex >= 0) unit.nest.squad.splice(nestSquadIndex, 1);
 
-    scene.remove(unit.group);
-    createBurst(unit.group.position, 0xff7777, unit.type === "brute" ? 26 : 16);
+    startDeathAnimation(unit, 0xff7777);
 
     const killerOwner = source && source.owner ? source.owner : null;
 
@@ -1449,8 +1522,7 @@ function killUnit(unit, source) {
   const ai = aiWizards.find(w => w === unit);
   if (ai) {
     ai.dead = true;
-    scene.remove(ai.group);
-    createBurst(ai.group.position, ai.color, 40);
+    startDeathAnimation(ai, ai.color);
 
     for (const c of [...ai.crabs]) {
       c.hp = 0;
@@ -1469,7 +1541,7 @@ function killUnit(unit, source) {
     const arr = unit.owner.crabs;
     const idx = arr.indexOf(unit);
     if (idx >= 0) arr.splice(idx, 1);
-    scene.remove(unit.group);
+    startDeathAnimation(unit, unit.color || 0x35d7ff);
   }
 }
 
@@ -1828,7 +1900,9 @@ function updateCamera(dt) {
 function updateHud() {
   hud.hp.textContent = Math.max(0, Math.floor(state.hp));
   hud.crabCount.textContent = crabs.length;
-  hud.wizardCount.textContent = aiWizards.filter(w => !w.dead).length;
+  const aliveEnemies = aiWizards.filter(w => !w.dead && !w.dying).length;
+  hud.wizardCount.textContent = aliveEnemies;
+  hud.objectiveText.textContent = aliveEnemies > 0 ? "Defeat every rival wizard. Last wizard standing wins." : "Victory!";
   hud.alcoveCount.textContent = nests.filter(n => n.squad.length > 0).length;
   hud.kills.textContent = state.kills;
   hud.xp.textContent = state.xp;
@@ -1997,9 +2071,66 @@ function chooseUpgrade(index) {
   showMessage("Upgrade chosen: " + upgrade.title, 1.7);
 }
 
-function gameOver() {
+function showEndScreen(victory) {
+  state.gameOver = true;
+  state.victory = victory;
   state.started = false;
-  showMessage("Your wizard fell! Refresh to try again.", 99);
+  endScreen.style.display = "flex";
+  endTitle.textContent = victory ? "VICTORY! You are the last Crabmancer." : "Defeat! Your crab army has fallen.";
+  endStats.textContent = `Difficulty ${state.difficulty} · Kills ${state.kills} · Level ${state.level}`;
+}
+
+function gameOver() {
+  showEndScreen(false);
+}
+
+
+function distancePointToSegment(point, a, b) {
+  const ab = b.clone().sub(a);
+  const t = clamp(point.clone().sub(a).dot(ab) / Math.max(0.0001, ab.lengthSq()), 0, 1);
+  const proj = a.clone().addScaledVector(ab, t);
+  return proj.distanceTo(point);
+}
+
+function startDeathAnimation(unit, color = 0xff7777) {
+  if (!unit || unit.dying) return;
+  unit.dead = true;
+  unit.dying = true;
+  unit.deathTimer = 0;
+  unit.deathDuration = rand(0.6, 1.0);
+  createBurst(unit.group.position, color, 10);
+  unit.group.traverse(obj => {
+    if (obj.material) {
+      obj.material = obj.material.clone();
+      obj.material.transparent = true;
+    }
+  });
+  dyingUnits.push(unit);
+}
+
+function updateDyingUnits(dt) {
+  for (let i = dyingUnits.length - 1; i >= 0; i--) {
+    const u = dyingUnits[i];
+    u.deathTimer += dt;
+    const t = clamp(u.deathTimer / u.deathDuration, 0, 1);
+    u.group.position.y = -0.15 * t;
+    u.group.rotation.z += dt * 2.5;
+    u.group.scale.multiplyScalar(Math.max(0.92, 1 - dt * 0.35));
+    u.group.traverse(obj => { if (obj.material && obj.material.opacity !== undefined) obj.material.opacity = 1 - t; });
+    if (t >= 1) { scene.remove(u.group); dyingUnits.splice(i,1); }
+  }
+}
+
+function checkWinLoss() {
+  if (state.gameOver) return;
+  const aliveEnemies = aiWizards.filter(w => !w.dead && !w.dying).length;
+  if (state.hp <= 0) gameOver();
+  else if (aliveEnemies === 0) showEndScreen(true);
+}
+
+function restartGame(difficulty) {
+  localStorage.setItem("crabmancerDifficulty", String(difficulty));
+  location.reload();
 }
 
 function initGame() {
@@ -2025,28 +2156,23 @@ function animate() {
 
   const dt = Math.min(.035, clock.getDelta());
 
-  if (state.started) {
+  updateMessage(dt);
+  updateDyingUnits(dt);
+  updateParticles(dt);
+
+  if (state.started && !state.gameOver) {
     updateStorm(dt);
     updatePlayer(dt);
+    updateFireballs(dt);
     updateCrabGroup(player, crabs, dt);
     updateNestSquads(dt);
     updateAIWizards(dt);
-    updateFireballs(dt);
-    updateParticles(dt);
-    updateCamera(dt);
+    checkWinLoss();
     updateHud();
-    updateMessage(dt);
-
     updateHealthBar(player, state.hp, state.maxHp);
-
-    if (state.hp <= 0) {
-      gameOver();
-    }
-  } else {
-    updateParticles(dt);
-    updateCamera(dt);
-    updateMessage(dt);
   }
+
+  updateCamera(dt);
 
   renderer.render(scene, camera);
 }
@@ -2068,9 +2194,13 @@ addEventListener("resize", () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
+document.getElementById("restartSameBtn").onclick = () => restartGame(selectedDifficulty);
+document.getElementById("restartHarderBtn").onclick = () => restartGame(selectedDifficulty + 1);
+
 document.getElementById("startBtn").onclick = () => {
   document.getElementById("startScreen").style.display = "none";
   state.started = true;
+  state.difficulty = selectedDifficulty;
   showMessage("Lead the crab army and survive the storm!", 2);
 };
 
