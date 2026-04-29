@@ -624,6 +624,10 @@ function normalizeGameState(){
   const d=defaultCharacters(); for(const k in d) if(!game.characters[k]) game.characters[k]=d[k];
   if(Array.isArray(game.wars)) for(const h of game.wars){ if(!game.detailedWars.find(w=>w.enemyHouse===h)) game.detailedWars.push({id:'war_'+h,enemyHouse:h,warScore:0,playerWarExhaustion:0,enemyWarExhaustion:0,supplyDrain:4,fleetFront:0,groundFront:0,intrigueFront:0,publicSupport:55,alliesCommitted:[],monthsActive:0,status:'active'}); }
   if(Array.isArray(game.tradeDeals)) for(const h of game.tradeDeals){ if(!game.tradeRoutes.find(r=>r.partnerHouse===h)) game.tradeRoutes.push({id:'route_'+h,partnerHouse:h,routeValue:rand(80,160),routeRisk:rand(12,30),protectedByFleet:false,monthsActive:0,dependence:10,disputeRisk:10,status:'active'}); }
+  game.alliancePacts ||= []; game.houseRelations ||= {}; game.protectorates ||= []; game.neutralityProfile ||= {reputation:50,trustedByNeutrals:50,seenAsCowardly:0,seenAsMediator:0,ignoredConflicts:0,balancedTrade:0};
+  const relDefault={stance:'neutral',trust:50,obligation:0,resentment:0,dependence:0,suspicion:0,envy:0,ideologicalConflict:0,lastMajorInteractionMonth:null,favorsOwedToPlayer:0,favorsPlayerOwes:0,allianceHealth:0,neutralityPressure:0,leaning:'trueNeutral'};
+  Object.values(game.houses||{}).forEach(h=>{ h.relationship = Object.assign({}, relDefault, h.relationship||{}); if(h.allied) h.relationship.stance='allied'; if(h.atWar) h.relationship.stance='war'; });
+  game.vendors=(game.vendors||[]).map(v=>Object.assign({factionLean:'Independent',favoredPolicies:[],dislikedPolicies:[],favoredHouses:[],dislikedHouses:[],relation:50,trust:50,greed:50,riskTolerance:50,rareOfferThreshold:72,blackmailRisk:10},v));
   if(game.knownIntel) for(const h in game.knownIntel){ game.intel[h] ||= {level:0,lastSpiedMonth:null,suspicion:0,falseIntel:false,knownWeaknesses:[]}; if(game.knownIntel[h]) game.intel[h].level=Math.max(game.intel[h].level,2); }
 }
 function getCharacter(id){ return game.characters[id]; }
@@ -2133,7 +2137,7 @@ function renderInbox(mc){
         <div class="title">${ev.title}</div>
         <div class="tiny">From: ${ev.from} • Sender: ${ev.senderType} • Deadline: ${ev.deadline} month(s) • Priority ${senderPriority(ev)}</div>
         <div>${ev.tags.map(t=>`<span class="tag ${tagClass(t)}">${t}</span>`).join("")}</div>
-        <p class="story">${ev.body}</p>
+        <p class="story">${ev.body}</p>${ev.causeText?`<div class="tiny"><b>Cause:</b> ${ev.causeText}</div>`:''}${ev.causeTags?.length?`<div class="tiny">Risk: ${ev.causeTags.map(t=>`<span class='tag'>${t}</span>`).join(' ')}</div>`:''}
         ${ev.choices.map((c,i)=>{
           const blocked = c.condition && !c.condition();
           const poor = c.cost && game.treasury < c.cost;
@@ -2172,7 +2176,7 @@ function renderActions(mc){
       ${Object.entries(game.houses).map(([h,o])=>`
         <div class="card">
           <div class="title">House ${h}</div>
-          <div class="tiny">Tier ${o.tier} • ${o.style}</div>
+          <div class="tiny">Tier ${o.tier} • ${o.style} • Stance ${o.relationship?.stance||'neutral'} • Bloc ${o.bloc}</div><div class='tiny'>Trust ${o.relationship?.trust||50} • Resent ${o.relationship?.resentment||0} • Suspicion ${o.relationship?.suspicion||0} • Leaning ${o.relationship?.leaning||'trueNeutral'}</div>
           <span class="tag gold">Opinion ${o.opinion}</span>
           <span class="tag blue">Respect ${o.respect}</span>
           <span class="tag red">Rivalry ${o.rivalry}</span>
@@ -2246,7 +2250,7 @@ function renderHouses(mc){
     ${Object.entries(game.houses).map(([h,o])=>`
       <div class="card">
         <div class="title">House ${h}</div>
-        <div class="tiny">Tier ${o.tier} • ${o.style}</div>
+        <div class="tiny">Tier ${o.tier} • ${o.style} • Stance ${o.relationship?.stance||'neutral'} • Bloc ${o.bloc}</div><div class='tiny'>Trust ${o.relationship?.trust||50} • Resent ${o.relationship?.resentment||0} • Suspicion ${o.relationship?.suspicion||0} • Leaning ${o.relationship?.leaning||'trueNeutral'}</div>
         <span class="tag gold">Opinion ${o.opinion} — ${relationName(o.opinion)}</span>
         <span class="tag blue">Respect ${o.respect}</span>
         <span class="tag red">Rivalry ${o.rivalry}</span>
@@ -2286,7 +2290,7 @@ function renderVendors(mc){
   mc.innerHTML = game.vendors.map(v=>`
     <div class="vendor-card">
       <div class="title">${v.name}</div>
-      <div class="tiny">${v.type} • Reputation: ${v.reputation} • Leaves in ${v.duration} month(s)</div>
+      <div class="tiny">${v.type} • Reputation: ${v.reputation} • Relation ${v.relation||50} • Trust ${v.trust||50} • Lean ${v.factionLean||'Independent'} • Leaves in ${v.duration} month(s)</div><div class='tiny'>Likes: ${(v.favoredPolicies||[]).join(', ')||'None'} • Dislikes: ${(v.dislikedPolicies||[]).join(', ')||'None'}</div>
       <br>
       ${v.offers.map(o=>`
         <div class="card">
@@ -2371,6 +2375,33 @@ function closeModal(){
   document.getElementById("modalBackdrop").style.display = "none";
 }
 
+
+
+/* ===== Deep political simulation overrides ===== */
+function makeCause(text,tags=[]){ return {text, tags}; }
+function pairKey(a,b){ return [a,b].sort().join('|'); }
+function getHousePairRelation(a,b){ game.houseRelations ||= {}; const k=pairKey(a,b); game.houseRelations[k] ||= {tension:20,history:[],status:'neutral'}; return game.houseRelations[k]; }
+function adjustHousePairTension(a,b,amount,reason){ const p=getHousePairRelation(a,b); p.tension=clamp((p.tension||0)+amount,0,100); p.history.unshift(`M${game.month}: ${reason} (${amount>0?'+':''}${amount})`); p.history=p.history.slice(0,8); if(p.tension>85) p.status='feud'; else if(p.tension>65) p.status='rivalry'; else if(p.tension<35) p.status='friendly'; else p.status='neutral'; }
+function getHouseStance(h){ return h?.relationship?.stance || (h?.atWar?'war':h?.allied?'allied':'neutral'); }
+function setHouseStance(h,stance,reason=''){ if(!h) return; h.relationship ||= {}; const prev=h.relationship.stance||'neutral'; h.relationship.stance=stance; h.allied=stance==='allied'||stance==='protectorate'; h.atWar=stance==='war'; if(prev!==stance) log(`${h.name||'House'} stance changed: ${prev} → ${stance}${reason?` (${reason})`:''}.`); }
+function adjustHouseRel(h,changes,reason=''){ if(!h) return; h.relationship ||= {}; Object.entries(changes).forEach(([k,v])=>{ if(typeof h.relationship[k]!=='number') h.relationship[k]=0; h.relationship[k]=clamp(h.relationship[k]+v,-100,100); }); if(reason) h.relationship.lastMajorInteractionMonth=game.month; }
+function houseTotalMilitary(h){ return (h?.military?.fleet||0)+(h?.military?.grays||0)+(h?.military?.obsidians||0)+(h?.military?.spies||0); }
+function playerTotalMilitary(){ return (game.military.fleetPower||0)+(game.military.graySecurity||0)+(game.military.obsidianForce||0)+(game.military.intelligence||0); }
+function relativePowerToHouse(h){ return Math.round((playerTotalMilitary()+1)/(houseTotalMilitary(h)+1)*100); }
+function houseIdeologyFit(h){ const b=h?.bloc||'Independent'; return (game.playerBlocStanding[b]||50)-50; }
+function adjustVendorRelation(name,amount,reason=''){ const v=game.vendors.find(x=>x.name===name||x.id===name); if(!v) return; v.relation=clamp((v.relation||50)+amount,0,100); if(reason) log(`${v.name} relation ${amount>0?'+':''}${amount}: ${reason}.`); }
+function broadcastAction(actionKey,context={}){ game.lastActions ||= []; game.lastActions.unshift({month:game.month,actionKey,context}); game.lastActions=game.lastActions.slice(0,25); if(actionKey==='executedRedLeaders'){ adjustHouseRel(game.houses.Veyra,{trust:4,resentment:-2},'approved crackdown'); adjustHouseRel(game.houses.Marros,{resentment:7,trust:-5},'opposed executions'); game.playerBlocStanding.Traditionalist=clamp(game.playerBlocStanding.Traditionalist+5,0,100); game.playerBlocStanding.Reform=clamp(game.playerBlocStanding.Reform-6,0,100);} if(actionKey==='fundedRelief'){ game.playerBlocStanding.Reform=clamp(game.playerBlocStanding.Reform+5,0,100); game.playerBlocStanding.Traditionalist=clamp(game.playerBlocStanding.Traditionalist-3,0,100); adjustVendorRelation('Orange Engineer Guild',4,'approved relief investment'); }
+ if(actionKey==='remainedNeutral'){ game.neutralityProfile.reputation=clamp(game.neutralityProfile.reputation+5,0,100); game.neutralityProfile.ignoredConflicts++; game.playerBlocStanding.Warhawk=clamp(game.playerBlocStanding.Warhawk-3,0,100);} }
+function processAlliances(){ for(const p of game.alliancePacts){ const h=game.houses[p.house]; if(!h) continue; p.monthsActive++; let delta=0; if(h.trade) delta+=1; if(game.ignoredHistory['House '+p.house]?.count>0) delta-=1; if(relativePowerToHouse(h)>180) delta-=1; if(relativePowerToHouse(h)<70) delta-=1; p.health=clamp(p.health+delta,0,100); h.relationship.allianceHealth=p.health; if(p.health<35 && chance(0.22)) addInbox(makeEvent('allianceReassurance',makeCause('Alliance health has become fragile.',['allianceLow']))); if(p.health<20 && chance(0.28)) addInbox(makeEvent('allianceUltimatum',makeCause('Ally fears collapse and demands action.',['allianceCritical']))); if(p.health<10 && chance(0.18)){ setHouseStance(h,'rival','alliance collapsed'); }} }
+function processAllianceConflicts(){ const allies=Object.values(game.houses).filter(h=>getHouseStance(h)==='allied'); for(let i=0;i<allies.length;i++) for(let j=i+1;j<allies.length;j++){ const a=allies[i],b=allies[j]; let up=0; if(a.bloc!==b.bloc) up+=4; if((a.traits||[]).includes('traditional')&&(b.traits||[]).includes('reformist')) up+=5; if(Math.abs(houseTotalMilitary(a)-houseTotalMilitary(b))>25) up+=2; adjustHousePairTension(a.name,b.name,up,'allied friction'); const pr=getHousePairRelation(a.name,b.name); if(pr.tension>80 && chance(.18)) addInbox(makeEvent('forcedSideChoice',makeCause('Two allies demand incompatible support.',['allyConflict']))); else if(pr.tension>65 && chance(.2)) addInbox(makeEvent('allyDispute',makeCause('Allied houses are feuding.',['allyDispute']))); }}
+function processNeutralHouses(){ Object.values(game.houses).forEach(h=>{ if(getHouseStance(h)!=='neutral') return; const lean=h.relationship.leaning; if(lean==='friendlyNeutral' && chance(.1)) addInbox(makeEvent('friendlyNeutralTrade',makeCause('Friendly neutral seeks limited cooperation.',['neutralFriendly']))); if(lean==='hostileNeutral' && chance(.1)) addInbox(makeEvent('hostileNeutralUnderminesTrade',makeCause('Hostile neutral quietly undermines your route.',['neutralHostile']))); }); }
+function processHostilities(){ Object.values(game.houses).forEach(h=>{ const s=getHouseStance(h); if(s!=='rival'&&s!=='hostile') return; if(chance(.12)) addInbox(makeEvent('rivalInsult',makeCause('Rivalry has intensified into open insults.',['rivalry']))); if(chance(.1)) addInbox(makeEvent('rivalOutbidsVendor',makeCause('A rival has stronger vendor ties this month.',['vendor','rival']))); }); }
+function weightedEventPool(){ const pool=[]; const add=(type,w,cond,cause,tags)=>{ if(cond) pool.push({type,weight:w,causeText:cause,causeTags:tags}); };
+ add('taxPetition',8,true,'Routine fiscal pressure from lower districts.',['tax']); add('mineStrike',7,true,'Mine safety and labor pressure remain unresolved.',['labor']); add('allianceReassurance',6,game.alliancePacts.some(p=>p.health<35),'An ally questions your commitment.',['alliance']); add('neutralityTest',5,game.neutralityProfile.reputation>45,'Your neutrality is being tested by rivals.',['neutrality']); add('rivalCourtsAlly',6,Object.values(game.houses).some(h=>getHouseStance(h)==='rival') && game.alliancePacts.length>0,'A rival is courting one of your allies.',['rival','alliance']); add('vendorRareOffer',4,game.vendors.some(v=>(v.relation||50)>70),'A trusted vendor offers something exceptional.',['vendor']); add('tradeRouteRaid',6,game.tradeRoutes.some(r=>r.routeRisk>game.military.fleetPower),'Trade routes are under-protected.',['trade']); add('warExhaustionProtests',6,game.detailedWars.some(w=>w.playerWarExhaustion>45),'War strain is spilling into unrest.',['war']); return pool; }
+function chooseWeighted(pool){ const total=pool.reduce((a,b)=>a+b.weight,0); let r=Math.random()*total; for(const e of pool){ r-=e.weight; if(r<=0) return e; } return pool[0]; }
+const _oldMakeEvent=makeEvent; makeEvent=function(type,causeData=null){ const ev=eventFactory(type)||eventFactory('taxPetition'); if(causeData){ ev.causeText=causeData.text||causeData.causeText; ev.causeTags=causeData.tags||causeData.causeTags||[]; } return ev; }
+generateContextEvent=function(){ const pool=weightedEventPool(); const pick=chooseWeighted(pool); return makeEvent(pick.type,pick); }
+const _oldAdvanceMonth=advanceMonth; advanceMonth=function(){ _oldAdvanceMonth(); processAlliances(); processAllianceConflicts(); processNeutralHouses(); processHostilities(); }
 window.onload = ()=>{
   const s = localStorage.getItem("goldRiseRebuiltSave");
   if(s){
