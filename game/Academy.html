@@ -246,7 +246,13 @@
     <p>Twenty rival AI wizards roam the giant world, grow their own crab armies, clear alcoves, and eventually try to hunt you down.</p>
     <p>A glowing blue storm slowly shrinks the safe ring. If you or your crabs enter the storm, you take damage. A blue arrow points you back toward safety.</p>
     <p><span class="kbd">W</span> is always forward. <span class="kbd">S</span> backs up. <span class="kbd">A</span> and <span class="kbd">D</span> turn. Pick upgrades with <span class="kbd">Q</span> and <span class="kbd">E</span>.</p>
-    <label style="display:flex;align-items:center;gap:8px;justify-content:center;margin:14px 0;color:#cde7ff;font-size:14px;"><input type="checkbox" id="splitScreenToggle"> Split Screen Co-op (P2 Wizard uses Arrow Keys)</label>
+    <label style="display:flex;align-items:center;gap:8px;justify-content:center;margin:14px 0;color:#cde7ff;font-size:14px;"><input type="checkbox" id="splitScreenToggle"> Split Screen (P2 Wizard uses Arrow Keys)</label>
+    <label style="display:flex;align-items:center;gap:8px;justify-content:center;margin:10px 0;color:#cde7ff;font-size:14px;">Mode:
+      <select id="splitMode" style="background:#081629;color:#dff6ff;border:1px solid rgba(160,220,255,.4);border-radius:8px;padding:4px 8px;">
+        <option value="coop">Co-op (Allies)</option>
+        <option value="versus">Versus (Enemies)</option>
+      </select>
+    </label>
     <button id="startBtn">Start Game</button>
   </div>
 </div>
@@ -391,7 +397,7 @@ const player = {
   arrow: null
 };
 
-const coopState = { enabled: false };
+const coopState = { enabled: false, mode: "coop" };
 const playerTwo = {
   group: new THREE.Group(),
   radius: 0.85,
@@ -1520,8 +1526,10 @@ function damageUnit(unit, amount, source = null) {
 }
 
 function killUnit(unit, source) {
+  const killerOwner = source && source.owner ? source.owner : null;
   if (unit === player) {
     state.hp = 0;
+    if (killerOwner) awardWizardKillCrabs(killerOwner, player.group.position);
     return;
   }
 
@@ -1529,6 +1537,7 @@ function killUnit(unit, source) {
     playerTwo.hp = 0;
     playerTwo.dead = true;
     startDeathAnimation(playerTwo, playerTwo.color);
+    if (killerOwner) awardWizardKillCrabs(killerOwner, playerTwo.group.position);
     return;
   }
 
@@ -1545,8 +1554,6 @@ function killUnit(unit, source) {
       mesh.position.copy(unit.group.position); mesh.position.y = .9; scene.add(mesh);
       drops.push({ mesh, pos: mesh.position, life: rand(25, 35), value: unit.nest ? unit.nest.tier : 1, bob: rand(0, Math.PI * 2) });
     }
-
-    const killerOwner = source && source.owner ? source.owner : null;
 
     if (killerOwner === player) {
       state.kills++;
@@ -1595,6 +1602,7 @@ function killUnit(unit, source) {
   if (ai) {
     ai.dead = true;
     startDeathAnimation(ai, ai.color);
+    if (killerOwner) awardWizardKillCrabs(killerOwner, ai.group.position);
 
     for (const c of [...ai.crabs]) {
       c.hp = 0;
@@ -1614,6 +1622,18 @@ function killUnit(unit, source) {
     const idx = arr.indexOf(unit);
     if (idx >= 0) arr.splice(idx, 1);
     startDeathAnimation(unit, unit.color || 0x35d7ff);
+  }
+}
+
+function awardWizardKillCrabs(killerOwner, pos) {
+  if (!killerOwner) return;
+  for (let i = 0; i < 5; i++) {
+    createCrab(pos.clone().add(new THREE.Vector3(rand(-2, 2), 0, rand(-2, 2))), killerOwner, killerOwner.color || teamColor, killerOwner.upgrades ? {
+      armor: killerOwner.upgrades.crabArmor,
+      spikes: killerOwner.upgrades.crabSpikes,
+      regen: killerOwner.upgrades.crabRegen,
+      speed: killerOwner.upgrades.swarmSpeed
+    } : {});
   }
 }
 
@@ -2001,6 +2021,17 @@ function applyStormDamageToWizard(w, dt) {
   }
 }
 
+function updateWizardRegen(dt) {
+  state.hp = Math.min(state.maxHp, state.hp + dt * 0.9);
+  if (coopState.enabled && !playerTwo.dead) {
+    playerTwo.hp = Math.min(playerTwo.maxHp, playerTwo.hp + dt * 0.9);
+  }
+  for (const ai of aiWizards) {
+    if (ai.dead || ai.dying) continue;
+    ai.hp = Math.min(ai.maxHp, ai.hp + dt * 0.9);
+  }
+}
+
 function updateParticles(dt) {
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
@@ -2334,6 +2365,7 @@ function animate() {
 
   if (state.started && !state.gameOver) {
     updateStorm(dt);
+    updateWizardRegen(dt);
     updatePlayer(dt);
     updateCoopPlayer(dt);
     if (coopState.enabled) applyStormDamageToWizard(playerTwo, dt);
@@ -2389,10 +2421,20 @@ document.getElementById("restartSameBtn").onclick = () => restartGame(selectedDi
 document.getElementById("restartHarderBtn").onclick = () => restartGame(selectedDifficulty + 1);
 
 const splitScreenToggle = document.getElementById("splitScreenToggle");
+const splitModeSelect = document.getElementById("splitMode");
 
 document.getElementById("startBtn").onclick = () => {
   document.getElementById("startScreen").style.display = "none";
   coopState.enabled = !!splitScreenToggle.checked;
+  coopState.mode = splitModeSelect.value === "versus" ? "versus" : "coop";
+  if (coopState.enabled && coopState.mode === "versus") {
+    playerTwo.team = "player2";
+    playerTwo.color = new THREE.Color(0xff7f7f);
+  } else {
+    playerTwo.team = "player";
+    playerTwo.color = new THREE.Color(0xc28bff);
+  }
+  if (coopState.enabled && !playerTwo.hpBar) buildWizardTwo();
   state.started = true;
   state.difficulty = selectedDifficulty;
   showMessage("Lead the crab army and survive the storm!", 2);
