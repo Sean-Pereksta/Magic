@@ -147,7 +147,7 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 
 let scene, camera, renderer, clock;
-let court, net, ball, aimLine, paddleRangeGuide;
+let court, net, ball, aimLine, paddleRangeGuide, ballGroundShadow, ballDropLine;
 let player, enemy;
 
 let keys = {};
@@ -226,8 +226,8 @@ const SWING = {
 
   softDeflectSpeed: 6.2,
 
-  minSwingDuration: 0.20,
-  maxSwingDuration: 0.42
+  minSwingDuration: 0.24,
+  maxSwingDuration: 0.50
 };
 
 const ballState = {
@@ -291,6 +291,22 @@ function init() {
   );
   ball.castShadow = true;
   scene.add(ball);
+
+  ballGroundShadow = new THREE.Mesh(
+    new THREE.CircleGeometry(0.38, 32),
+    new THREE.MeshBasicMaterial({
+      color: 0x000000,
+      transparent: true,
+      opacity: 0.42,
+      depthWrite: false
+    })
+  );
+  ballGroundShadow.rotation.x = -Math.PI / 2;
+  ballGroundShadow.position.y = 0.105;
+  ballGroundShadow.renderOrder = 5;
+  scene.add(ballGroundShadow);
+
+  createBallDropLine();
 
   resetPoint("Click Start to begin.");
 
@@ -430,6 +446,13 @@ function createPlayer(opts) {
     );
     mark.position.set(0, 0.12, 0.055);
     paddle.add(mark);
+
+    const faceStripe = new THREE.Mesh(
+      new THREE.BoxGeometry(0.5, 0.05, 0.012),
+      new THREE.MeshStandardMaterial({ color: 0xffff66, emissive: 0x333300 })
+    );
+    faceStripe.position.set(0, 0.24, 0.052);
+    paddle.add(faceStripe);
 
     return paddle;
   };
@@ -721,6 +744,8 @@ function updatePaddleFacing(pose) {
   const control = player.parts.paddleControl;
   const paddle = player.parts.activePaddle;
 
+  control.rotation.set(0, 0, 0);
+
   const sideSign = pose.sideSign;
   const shoulder = new THREE.Vector3(sideSign * 0.48, ARM.shoulderHeight, ARM.paddlePlaneZ);
   const target = control.position.clone();
@@ -731,16 +756,26 @@ function updatePaddleFacing(pose) {
   const outward01 = clamp(Math.abs(dx) / ARM.sideRadius, 0, 1);
   const vertical01 = clamp(dy / ARM.verticalReach, -1, 1);
 
-  const yawTowardMouse = -sideSign * THREE.MathUtils.lerp(0.05, 0.55, outward01);
-  const pitchTowardMouse = THREE.MathUtils.lerp(0.35, -0.35, (vertical01 + 1) / 2);
+  const yaw = -sideSign * THREE.MathUtils.lerp(0.0, 0.95, outward01);
+  const pitch = THREE.MathUtils.lerp(0.55, -0.55, (vertical01 + 1) / 2);
 
-  control.rotation.y = yawTowardMouse;
-  control.rotation.x = pitchTowardMouse * 0.35;
-  control.rotation.z = HOLD_MODES[holdMode].wrist * 0.45;
+  let swingYaw = 0;
+  let swingPitch = 0;
+  let swingRoll = 0;
 
-  paddle.rotation.x = 0;
-  paddle.rotation.y = 0;
-  paddle.rotation.z = HOLD_MODES[holdMode].wrist * 0.5;
+  if (activePlayerSwing) {
+    const progress = getPlayerSwingProgress();
+    const swingArc = Math.sin(progress * Math.PI);
+    const follow = THREE.MathUtils.smoothstep(progress, 0.05, 1.0);
+
+    swingYaw = pose.sideSign * THREE.MathUtils.lerp(-0.65, 0.85, follow);
+    swingPitch = -0.25 * swingArc;
+    swingRoll = pose.sideSign * 0.35 * swingArc;
+  }
+
+  paddle.rotation.x = pitch + swingPitch;
+  paddle.rotation.y = yaw + swingYaw;
+  paddle.rotation.z = HOLD_MODES[holdMode].wrist * 0.65 + swingRoll;
 }
 
 function updateActivePaddleAnchor(pose) {
@@ -751,11 +786,11 @@ function updateActivePaddleAnchor(pose) {
     const progress = getPlayerSwingProgress();
 
     const swingArc = Math.sin(progress * Math.PI);
-    const followThrough = THREE.MathUtils.smoothstep(progress, 0.15, 1.0);
+    const followThrough = THREE.MathUtils.smoothstep(progress, 0.05, 1.0);
 
-    const sideSweep = THREE.MathUtils.lerp(-0.34, 0.46, followThrough) * pose.sideSign;
-    const netPunch = swingArc * 0.28;
-    const verticalSweep = swingArc * 0.18 - progress * 0.08;
+    const sideSweep = THREE.MathUtils.lerp(-0.58, 0.72, followThrough) * pose.sideSign;
+    const netPunch = swingArc * 0.38;
+    const verticalSweep = swingArc * 0.30 - progress * 0.14;
 
     target.x += sideSweep;
     target.y += verticalSweep;
@@ -1006,15 +1041,18 @@ function updateConnectedPlayerArm(pose) {
   const mid = shoulder.clone().add(paddle).multiplyScalar(0.5);
 
   let swingBend = 0;
+  let swingReach = 0;
+
   if (activePlayerSwing) {
     const progress = getPlayerSwingProgress();
-    swingBend = Math.sin(progress * Math.PI) * 0.22;
+    swingBend = Math.sin(progress * Math.PI) * 0.38;
+    swingReach = THREE.MathUtils.smoothstep(progress, 0.05, 1.0) * 0.22;
   }
 
   const elbow = mid.add(new THREE.Vector3(
-    sideSign * (0.24 + swingBend),
-    -0.24 - swingBend * 0.35,
-    0.04 - swingBend * 0.1
+    sideSign * (0.30 + swingBend + swingReach),
+    -0.30 - swingBend * 0.45,
+    0.03 - swingBend * 0.16
   ));
 
   const upper = activeRight ? parts.rightUpperVisualArm : parts.leftUpperVisualArm;
@@ -1596,6 +1634,52 @@ function updateEnemyServeHoldBall(dt) {
   }
 }
 
+function createBallDropLine() {
+  const mat = new THREE.LineBasicMaterial({
+    color: 0x000000,
+    transparent: true,
+    opacity: 0.25
+  });
+  const geo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(0, 1, 0)
+  ]);
+  ballDropLine = new THREE.Line(geo, mat);
+  scene.add(ballDropLine);
+}
+
+function updateBallGroundShadow() {
+  if (!ballGroundShadow || !ball) return;
+
+  ballGroundShadow.position.x = ball.position.x;
+  ballGroundShadow.position.z = ball.position.z;
+  ballGroundShadow.position.y = 0.115;
+
+  const height = clamp(ball.position.y, 0.28, 6.0);
+  const height01 = clamp((height - 0.28) / 5.72, 0, 1);
+
+  const scale = THREE.MathUtils.lerp(0.85, 1.9, height01);
+  ballGroundShadow.scale.set(scale, scale, scale);
+  ballGroundShadow.material.opacity = THREE.MathUtils.lerp(0.55, 0.16, height01);
+  ballGroundShadow.visible = gameStarted && (ballState.inPlay || serveReady);
+}
+
+function updateBallDropLine() {
+  if (!ballDropLine || !ball) return;
+
+  const points = [
+    new THREE.Vector3(ball.position.x, 0.12, ball.position.z),
+    new THREE.Vector3(ball.position.x, ball.position.y, ball.position.z)
+  ];
+  ballDropLine.geometry.dispose();
+  ballDropLine.geometry = new THREE.BufferGeometry().setFromPoints(points);
+
+  const height = clamp(ball.position.y, 0.28, 6.0);
+  const height01 = clamp((height - 0.28) / 5.72, 0, 1);
+  ballDropLine.material.opacity = THREE.MathUtils.lerp(0.12, 0.28, height01);
+  ballDropLine.visible = gameStarted && (ballState.inPlay || serveReady);
+}
+
 function updateCamera(dt) {
   const target = player.group.position.clone();
   const desired = target.clone().add(new THREE.Vector3(0, 6.5, 10.7));
@@ -1623,6 +1707,8 @@ function animate() {
     updatePaddleRangeGuide();
     updateBall(dt);
     updateCamera(dt);
+    updateBallGroundShadow();
+    updateBallDropLine();
   } else {
     if (paddleRangeGuide) paddleRangeGuide.visible = false;
     camera.position.set(0, 10, 21);
