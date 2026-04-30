@@ -2,2423 +2,1492 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Gold Rise - Noble Politics Strategy</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Responsive 3D Pickleball</title>
 <style>
-:root{
-  --bg:#08090d;
-  --panel:#141722;
-  --panel2:#1d2233;
-  --gold:#d8b65a;
-  --red:#d85252;
-  --blue:#58a6ff;
-  --green:#65d982;
-  --purple:#b78cff;
-  --gray:#a9b0c3;
-  --bad:#ff6868;
-  --warn:#f7c948;
-  --good:#6ee7a8;
-  --text:#eef2ff;
-  --muted:#9aa3bb;
-  --border:#2b3248;
-}
-*{box-sizing:border-box;}
-body{
-  margin:0;
-  font-family:Georgia,"Times New Roman",serif;
-  background:
-    radial-gradient(circle at top left, rgba(216,182,90,.17), transparent 35%),
-    radial-gradient(circle at bottom right, rgba(88,166,255,.11), transparent 34%),
-    var(--bg);
-  color:var(--text);
-}
-header{
-  padding:16px 20px 10px;
-  border-bottom:1px solid var(--border);
-  background:linear-gradient(90deg,#10131d,#191d2b);
-}
-.header-top{
-  display:flex;
-  justify-content:space-between;
-  gap:14px;
-  align-items:center;
-  flex-wrap:wrap;
-}
-h1{
-  margin:0;
-  color:var(--gold);
-  font-size:30px;
-  letter-spacing:1px;
-}
-.subtitle{
-  color:var(--muted);
-  font-size:13px;
-  margin-top:3px;
-}
-.top-controls{
-  display:flex;
-  gap:8px;
-  flex-wrap:wrap;
-}
-.month-bar-wrap{
-  margin-top:12px;
-  display:grid;
-  grid-template-columns:120px 1fr 100px;
-  gap:10px;
-  align-items:center;
-}
-.month-bar{
-  height:16px;
-  background:#090b12;
-  border:1px solid #303750;
-  border-radius:99px;
-  overflow:hidden;
-}
-.month-fill{
-  height:100%;
-  width:0%;
-  background:linear-gradient(90deg,#56421c,#d8b65a,#fff0aa);
-  transition:width .15s linear;
-}
-.wrap{
-  display:grid;
-  grid-template-columns:340px 1fr 370px;
-  gap:16px;
-  padding:16px;
-}
-@media(max-width:1150px){
-  .wrap{grid-template-columns:1fr;}
-}
-.panel{
-  background:rgba(20,23,34,.95);
-  border:1px solid var(--border);
-  border-radius:14px;
-  overflow:hidden;
-  box-shadow:0 10px 30px rgba(0,0,0,.25);
-}
-.panel h2{
-  margin:0;
-  padding:12px 14px;
-  background:#1c2131;
-  color:var(--gold);
-  font-size:18px;
-  border-bottom:1px solid var(--border);
-}
-.panel-body{padding:14px;}
-button,select,input{
-  background:#252b40;
-  color:var(--text);
-  border:1px solid #3b4461;
-  padding:8px 10px;
-  border-radius:9px;
-  cursor:pointer;
-  font-family:inherit;
-}
-input{cursor:text;width:100%;}
-button:hover{background:#30384f;}
-button.primary{
-  background:linear-gradient(135deg,#66501f,#b99135);
-  color:#111;
-  font-weight:bold;
-  border-color:#e3c46a;
-}
-button.danger{background:#4a1f29;border-color:#8f3546;}
-button.good{background:#1f4932;border-color:#3d9b67;}
-button:disabled{opacity:.45;cursor:not-allowed;}
-.stat-grid{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:8px;
-}
-.stat{
-  background:var(--panel2);
-  border:1px solid var(--border);
-  border-radius:10px;
-  padding:9px;
-}
-.stat .label{
-  color:var(--muted);
-  font-size:12px;
-}
-.stat .value{
-  font-size:19px;
-  font-weight:bold;
-  margin-top:3px;
-}
-.bar-row{margin:8px 0 12px;}
-.bar-top{
-  display:flex;
-  justify-content:space-between;
-  font-size:13px;
-  color:var(--muted);
-  margin-bottom:4px;
-}
-.bar{
-  height:10px;
-  background:#0b0d14;
-  border-radius:99px;
-  overflow:hidden;
-  border:1px solid #303750;
-}
-.fill{
-  height:100%;
-  width:50%;
-  background:linear-gradient(90deg,var(--bad),var(--warn),var(--good));
-}
-.tabs{
-  display:flex;
-  gap:8px;
-  flex-wrap:wrap;
-  margin-bottom:12px;
-}
-.tabs button.active{
-  background:#d8b65a;
-  color:#111;
-  font-weight:bold;
-}
-.card,.inbox-card,.log-line,.vendor-card{
-  background:#1b2030;
-  border:1px solid var(--border);
-  border-radius:12px;
-  padding:12px;
-  margin-bottom:10px;
-}
-.inbox-card.urgent{
-  border-color:#bb3d4b;
-  box-shadow:0 0 0 1px rgba(255,80,80,.15);
-}
-.inbox-card.major{
-  border-color:#d8b65a;
-}
-.title{
-  color:var(--gold);
-  font-weight:bold;
-  font-size:17px;
-}
-.tiny{
-  color:var(--muted);
-  font-size:12px;
-}
-.tag{
-  display:inline-block;
-  padding:2px 7px;
-  border-radius:99px;
-  font-size:12px;
-  margin:3px 4px 3px 0;
-  background:#293048;
-  color:#cbd3ee;
-  border:1px solid #3a435f;
-}
-.tag.red{background:#3c1e25;color:#ff9ca9;}
-.tag.gold{background:#40331a;color:#f2d27b;}
-.tag.blue{background:#1b3149;color:#9fd0ff;}
-.tag.green{background:#173b28;color:#8df0b2;}
-.tag.purple{background:#302246;color:#d8c0ff;}
-.choice{
-  margin-top:8px;
-  display:block;
-  width:100%;
-  text-align:left;
-}
-.choice small{
-  color:var(--muted);
-  display:block;
-  margin-top:3px;
-}
-.story{
-  line-height:1.5;
-  color:#dce3f7;
-}
-.log{
-  max-height:560px;
-  overflow:auto;
-  padding-right:4px;
-}
-.row{
-  display:flex;
-  gap:8px;
-  flex-wrap:wrap;
-  align-items:center;
-}
-.section-title{
-  color:var(--gold);
-  margin:15px 0 8px;
-  font-weight:bold;
-  border-bottom:1px solid var(--border);
-  padding-bottom:5px;
-}
-.good-text{color:var(--good);}
-.bad{color:var(--bad);}
-.warn{color:var(--warn);}
-.gold{color:var(--gold);}
-.muted{color:var(--muted);}
-.two-col{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:10px;
-}
-@media(max-width:750px){
-  .two-col{grid-template-columns:1fr;}
-}
-.modal-backdrop{
-  position:fixed;
-  inset:0;
-  background:rgba(0,0,0,.68);
-  display:none;
-  align-items:center;
-  justify-content:center;
-  z-index:10;
-  padding:20px;
-}
-.modal{
-  background:#121722;
-  border:1px solid #3a435f;
-  border-radius:16px;
-  max-width:900px;
-  width:100%;
-  max-height:90vh;
-  overflow:auto;
-  box-shadow:0 20px 70px rgba(0,0,0,.6);
-}
-.modal-header{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  padding:14px 16px;
-  border-bottom:1px solid var(--border);
-  background:#1c2131;
-}
-.modal-header h3{
-  margin:0;
-  color:var(--gold);
-}
-.modal-body{padding:16px;}
-.action-grid{
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
-  gap:10px;
-}
+  html, body {
+    margin: 0;
+    overflow: hidden;
+    background: #8fd3ff;
+    font-family: Arial, sans-serif;
+    user-select: none;
+  }
+
+  #hud {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    color: white;
+    background: rgba(0,0,0,0.58);
+    padding: 12px 16px;
+    border-radius: 12px;
+    font-size: 15px;
+    z-index: 10;
+    line-height: 1.45;
+    min-width: 285px;
+  }
+
+  #centerMsg {
+    position: fixed;
+    top: 43%;
+    width: 100%;
+    text-align: center;
+    color: white;
+    font-size: 34px;
+    font-weight: bold;
+    text-shadow: 0 3px 10px black;
+    pointer-events: none;
+    z-index: 12;
+  }
+
+  #startOverlay {
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(#1669b7, #8fd3ff);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+    text-align: center;
+  }
+
+  #startBox {
+    width: 720px;
+    max-width: 92vw;
+    background: rgba(0,0,0,0.58);
+    padding: 30px;
+    border-radius: 20px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+  }
+
+  button {
+    padding: 13px 24px;
+    border: none;
+    border-radius: 12px;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    background: #ffe36e;
+  }
+
+  #powerBarOuter {
+    position: fixed;
+    left: 50%;
+    bottom: 45px;
+    transform: translateX(-50%);
+    width: 320px;
+    height: 24px;
+    border: 2px solid white;
+    border-radius: 14px;
+    background: rgba(0,0,0,0.48);
+    overflow: hidden;
+    display: none;
+    z-index: 15;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.35);
+  }
+
+  #powerBarInner {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #ff4444, #ffe066, #44ff66, #ffe066, #ff4444);
+    transition: width 0.025s linear;
+  }
+
+  #crosshair {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    width: 14px;
+    height: 14px;
+    margin-left: -7px;
+    margin-top: -7px;
+    border: 2px solid rgba(255,255,255,0.78);
+    border-radius: 50%;
+    z-index: 8;
+    pointer-events: none;
+  }
 </style>
 </head>
 <body>
 
-<header>
-  <div class="header-top">
-    <div>
-      <h1>GOLD RISE</h1>
-      <div class="subtitle">A real-time text strategy game of noble politics, military pressure, debt, Color loyalty, and inbox crises.</div>
-    </div>
-    <div class="top-controls">
-      <button id="startBtn" class="primary" onclick="toggleRun()">Start</button>
-      <button onclick="manualAdvance()">Advance Month</button>
-      <button onclick="saveGame()">Save</button>
-      <button onclick="loadGame()">Load</button>
-      <button class="danger" onclick="newGame()">New Game</button>
-    </div>
-  </div>
-
-  <div class="month-bar-wrap">
-    <div id="monthLabel" class="tiny">Month 1</div>
-    <div class="month-bar"><div class="month-fill" id="monthFill"></div></div>
-    <div id="speedLabel" class="tiny">Paused</div>
-  </div>
-</header>
-
-<div class="wrap">
-  <section class="panel">
-    <h2>House Status</h2>
-    <div class="panel-body" id="leftPanel"></div>
-  </section>
-
-  <section class="panel">
-    <h2 id="mainTitle">Inbox</h2>
-    <div class="panel-body">
-      <div class="tabs">
-        <button id="tabInbox" class="active" onclick="setTab('inbox')">Inbox</button>
-        <button id="tabActions" onclick="setTab('actions')">Actions</button>
-        <button id="tabMilitary" onclick="setTab('military')">Military</button>
-        <button id="tabHouses" onclick="setTab('houses')">Houses</button>
-        <button id="tabVendors" onclick="setTab('vendors')">Vendors</button>
-        <button id="tabCharacters" onclick="setTab('characters')">Characters</button>
-        <button id="tabBlocs" onclick="setTab('blocs')">Blocs</button>
-        <button id="tabWarTrade" onclick="setTab('wartrade')">War/Trade</button>
-        <button id="tabLog" onclick="setTab('log')">Chronicle</button>
-      </div>
-      <div id="mainContent"></div>
-    </div>
-  </section>
-
-  <section class="panel">
-    <h2>Court Controls</h2>
-    <div class="panel-body" id="rightPanel"></div>
-  </section>
+<div id="hud">
+  <div><b>Responsive 3D Pickleball</b></div>
+  <div>Player: <span id="pScore">0</span> | Enemy: <span id="eScore">0</span></div>
+  <div>Round: <span id="round">1</span></div>
+  <div>Paddle Hand: <span id="hand">Right</span></div>
+  <div>Grip: <span id="angleMode">Neutral</span></div>
+  <div>Charge: <span id="chargeText">0%</span></div>
+  <div>Swing Timing: <span id="timingText">Ready</span></div>
+  <hr>
+  <div>A/D: move left/right</div>
+  <div>W/S: move closer/farther from net</div>
+  <div>Mouse: direct paddle movement</div>
+  <div>Hold Click: charge swing / serve</div>
+  <div>Release Click: start swing</div>
+  <div>Space: jump | F: switch hand</div>
+  <div>Q/E: grip angle</div>
 </div>
 
-<div class="modal-backdrop" id="modalBackdrop">
-  <div class="modal">
-    <div class="modal-header">
-      <h3 id="modalTitle">Modal</h3>
-      <button onclick="closeModal()">Close</button>
-    </div>
-    <div class="modal-body" id="modalBody"></div>
-  </div>
-</div>
-
-<script>
-/* ============================================================
-   GOLD RISE - REBUILT REAL-TIME FRAMEWORK
-   ============================================================ */
-
-let game;
-let tab = "inbox";
-let running = false;
-let timer = null;
-let lastTick = 0;
-
-/*
-  One full month passes when monthProgress reaches 100.
-  Lower this number if you want faster months.
-*/
-const REAL_SECONDS_PER_MONTH = 32;
-
-const COLORS = ["Red","Brown","Gray","Silver","Pink","Blue","Obsidian","Orange"];
-
-const HOUSE_TEMPLATES = {
-  Veyra:{
-    tier:4,
-    style:"Traditional military tyrants",
-    military:{fleet:62,grays:72,obsidians:58,forts:51,spies:30},
-    traits:["cruel","traditional","military"],
-    openIntel:false
-  },
-  Cindral:{
-    tier:3,
-    style:"Elegant court manipulators",
-    military:{fleet:42,grays:38,obsidians:22,forts:35,spies:67},
-    traits:["social","wealthy","courtly"],
-    openIntel:false
-  },
-  Marros:{
-    tier:3,
-    style:"Reformist legal power",
-    military:{fleet:35,grays:40,obsidians:18,forts:45,spies:54},
-    traits:["reformist","legal","patient"],
-    openIntel:false
-  },
-  Bellor:{
-    tier:3,
-    style:"Aggressive border hawks",
-    military:{fleet:54,grays:55,obsidians:44,forts:42,spies:25},
-    traits:["aggressive","proud","duelist"],
-    openIntel:false
-  },
-  Aurelian:{
-    tier:2,
-    style:"Old mercantile dynasty",
-    military:{fleet:32,grays:35,obsidians:14,forts:40,spies:48},
-    traits:["merchant","careful","silver-linked"],
-    openIntel:false
-  },
-  Thorne:{
-    tier:1,
-    style:"Lesser house hungry for relevance",
-    military:{fleet:16,grays:28,obsidians:8,forts:22,spies:20},
-    traits:["minor","desperate","opportunist"],
-    openIntel:false
-  },
-  Karras:{
-    tier:2,
-    style:"Mining house with hard internal rule",
-    military:{fleet:24,grays:46,obsidians:20,forts:37,spies:18},
-    traits:["mining","strict","resource-rich"],
-    openIntel:false
-  }
-};
-
-function clone(x){ return JSON.parse(JSON.stringify(x)); }
-function clamp(n,min=0,max=100){ return Math.max(min,Math.min(max,n)); }
-function rand(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
-function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
-function chance(p){ return Math.random() < p; }
-
-function relationName(v){
-  if(v <= 10) return "Hatred";
-  if(v <= 25) return "Hostile";
-  if(v <= 40) return "Suspicious";
-  if(v <= 60) return "Neutral";
-  if(v <= 75) return "Favorable";
-  if(v <= 90) return "Loyal";
-  return "Devoted";
-}
-
-function pretty(k){
-  return {
-    treasury:"Treasury",
-    debt:"Debt",
-    baseIncome:"Income",
-    prestige:"Prestige",
-    influence:"Influence",
-    stability:"Stability",
-    fear:"Fear",
-    trust:"Trust",
-    honor:"Honor",
-    rebelStrength:"Rebels",
-    scandalHeat:"Scandal Heat",
-    silverInfluence:"Silver Influence",
-    reformSuspicion:"Reform Suspicion",
-    graySecurity:"Gray Security",
-    fleetPower:"Fleet Power",
-    obsidianForce:"Obsidian Force",
-    houseGuard:"House Guard",
-    fortifications:"Fortifications",
-    intelligence:"Intelligence",
-    warMachines:"War Machines",
-    officerQuality:"Officer Quality",
-    supply:"Supply"
-  }[k] || k;
-}
-
-function militaryName(k){ return pretty(k); }
-
-function money(n){
-  const sign = n >= 0 ? "+" : "-";
-  return sign + Math.abs(Math.round(n));
-}
-
-function newGame(){
-  if(game && !confirm("Start a new game?")) return;
-
-  running = false;
-  clearInterval(timer);
-  timer = null;
-
-  game = {
-    houseName:"au Varon",
-    month:1,
-    monthProgress:0,
-    rank:1,
-    rankName:"Minor Gold",
-    started:false,
-
-    treasury:1300,
-    debt:500,
-    baseIncome:420,
-    tax:"standard",
-
-    prestige:24,
-    influence:14,
-    stability:62,
-    fear:24,
-    trust:38,
-    honor:48,
-    rebelStrength:10,
-    scandalHeat:8,
-    silverInfluence:15,
-    reformSuspicion:0,
-
-    colors:{
-      Red:38,
-      Brown:44,
-      Gray:55,
-      Silver:47,
-      Pink:43,
-      Blue:38,
-      Obsidian:42,
-      Orange:40
-    },
-
-    military:{
-      graySecurity:34,
-      fleetPower:8,
-      obsidianForce:15,
-      houseGuard:24,
-      fortifications:18,
-      intelligence:18,
-      warMachines:4,
-      officerQuality:28,
-      supply:42
-    },
-
-    houses:{},
-    alliances:[],
-    wars:[],
-    tradeDeals:[],
-    knownIntel:{},
-
-    inbox:[],
-    vendors:[],
-    assets:[
-      {name:"Local Gray Barracks",type:"Gray",upkeep:45,effects:{graySecurity:8}},
-      {name:"Small House Guard",type:"House Guard",upkeep:35,effects:{houseGuard:10}},
-      {name:"Old Estate Walls",type:"Fortification",upkeep:20,effects:{fortifications:6}}
-    ],
-
-    hidden:{
-      mineSafetyNeglected:0,
-      redHope:0,
-      unpaidGrays:0,
-      ignoredLowColors:0,
-      ignoredHighGolds:0,
-      allianceTension:0,
-      vendorRumors:0
-    },
-
-    log:[]
-  };
-
-  Object.keys(HOUSE_TEMPLATES).forEach(h=>{
-    const temp = HOUSE_TEMPLATES[h];
-    game.houses[h] = {
-      tier:temp.tier,
-      style:temp.style,
-      opinion: h==="Thorne" ? 54 : rand(34,52),
-      fear:rand(2,12),
-      respect:rand(12,30),
-      rivalry: h==="Bellor" ? 35 : rand(4,22),
-      military:clone(temp.military),
-      traits:clone(temp.traits),
-      openIntel:false,
-      allied:false,
-      atWar:false,
-      trade:false,
-      lastIgnored:0
-    };
-    game.knownIntel[h] = false;
-  });
-
-  log("Your father is dead. Your House remains Gold, but weak. Your estate is solvent only by the kindness of creditors and the silence of enemies.");
-  log("Press Start when ready. Time will begin moving, inbox requests will arrive, and silence will become a decision.");
-
-  seedOpeningInbox();
-  normalizeGameState();
-  render();
-}
-
-
-function defaultCharacters(){
-  const c=(id,name,group,role,traits=[])=>({id,name,group,role,opinion:50,trust:50,fear:20,respect:40,ambition:50,loyalty:50,resentment:0,traits,memories:[]});
-  return {
-    caelia_veyra:c('caelia_veyra','Lady Caelia au Veyra','Veyra','leader',['cruel','traditional']),
-    cassian_veyra:c('cassian_veyra','Cassian au Veyra','Veyra','heir',['ambitious','duelist']),
-    malrec_veyra:c('malrec_veyra','Praetor Malrec au Veyra','Veyra','commander',['military','hardline']),
-    seraphina_cindral:c('seraphina_cindral','Lady Seraphina au Cindral','Cindral','leader',['social','courtly']),
-    vexa_cindral:c('vexa_cindral','Vexa au Cindral','Cindral','spymaster',['elegant','dangerous']),
-    evander_marros:c('evander_marros','Lord Evander au Marros','Marros','leader',['reformist','legal']),
-    drusus_bellor:c('drusus_bellor','Lord Drusus au Bellor','Bellor','leader',['aggressive','proud']),
-    nestor_aurelian:c('nestor_aurelian','Lord Nestor au Aurelian','Aurelian','leader',['mercantile','careful']),
-    pallas_thorne:c('pallas_thorne','Lord Pallas au Thorne','Thorne','leader',['desperate','minor']),
-    juno_karras:c('juno_karras','Lady Juno au Karras','Karras','leader',['mining','strict']),
-    eo_red:c('eo_red','Eo Marran','Red','labor speaker',['labor']),
-    talla_brown:c('talla_brown','Talla','Brown','estate steward',['steward']),
-    orlan_gray:c('orlan_gray','Commander Orlan','Gray','security commander',['security']),
-    avarus_silver:c('avarus_silver','Avarus ag Sylan','Silver','creditor',['creditor']),
-    cyra_pink:c('cyra_pink','Cyra xi Dama','Pink','informant',['informant']),
-    pelion_blue:c('pelion_blue','Navarch Pelion','Blue','fleet navigator',['navigator']),
-    svala_obsidian:c('svala_obsidian','Svala of the Ice Blood','Obsidian','war envoy',['war']),
-    helios_orange:c('helios_orange','Helios oran Tek','Orange','engineer',['engineer'])
-  };
-}
-function normalizeGameState(){
-  game.characters ||= {}; game.memories ||= []; game.ignoredHistory ||= {}; game.cooldowns ||= {}; game.blocs ||= {}; game.playerBlocStanding ||= {Traditionalist:50,Reform:50,Mercantile:50,Warhawk:50,Courtly:50,Independent:50};
-  game.intel ||= {}; game.tradeRoutes ||= []; game.detailedWars ||= []; game.vendorRelations ||= {}; game.family ||= {}; game.projects ||= []; game.security ||= {assassinationRisk:10,personalSecurity:25,coupRisk:8,poisonRisk:10,estateInfiltration:12}; game.escalations ||= {}; game.warningFlags ||= {};
-  const d=defaultCharacters(); for(const k in d) if(!game.characters[k]) game.characters[k]=d[k];
-  if(Array.isArray(game.wars)) for(const h of game.wars){ if(!game.detailedWars.find(w=>w.enemyHouse===h)) game.detailedWars.push({id:'war_'+h,enemyHouse:h,warScore:0,playerWarExhaustion:0,enemyWarExhaustion:0,supplyDrain:4,fleetFront:0,groundFront:0,intrigueFront:0,publicSupport:55,alliesCommitted:[],monthsActive:0,status:'active'}); }
-  if(Array.isArray(game.tradeDeals)) for(const h of game.tradeDeals){ if(!game.tradeRoutes.find(r=>r.partnerHouse===h)) game.tradeRoutes.push({id:'route_'+h,partnerHouse:h,routeValue:rand(80,160),routeRisk:rand(12,30),protectedByFleet:false,monthsActive:0,dependence:10,disputeRisk:10,status:'active'}); }
-  game.alliancePacts ||= []; game.houseRelations ||= {}; game.protectorates ||= []; game.neutralityProfile ||= {reputation:50,trustedByNeutrals:50,seenAsCowardly:0,seenAsMediator:0,ignoredConflicts:0,balancedTrade:0};
-  const relDefault={stance:'neutral',trust:50,obligation:0,resentment:0,dependence:0,suspicion:0,envy:0,ideologicalConflict:0,lastMajorInteractionMonth:null,favorsOwedToPlayer:0,favorsPlayerOwes:0,allianceHealth:0,neutralityPressure:0,leaning:'trueNeutral'};
-  Object.values(game.houses||{}).forEach(h=>{ h.relationship = Object.assign({}, relDefault, h.relationship||{}); if(h.allied) h.relationship.stance='allied'; if(h.atWar) h.relationship.stance='war'; });
-  game.vendors=(game.vendors||[]).map(v=>Object.assign({factionLean:'Independent',favoredPolicies:[],dislikedPolicies:[],favoredHouses:[],dislikedHouses:[],relation:50,trust:50,greed:50,riskTolerance:50,rareOfferThreshold:72,blackmailRisk:10},v));
-  if(game.knownIntel) for(const h in game.knownIntel){ game.intel[h] ||= {level:0,lastSpiedMonth:null,suspicion:0,falseIntel:false,knownWeaknesses:[]}; if(game.knownIntel[h]) game.intel[h].level=Math.max(game.intel[h].level,2); }
-}
-function getCharacter(id){ return game.characters[id]; }
-function addMemory(id,type,text,intensity=3,duration=null){ const c=getCharacter(id); if(!c) return; const m={month:game.month,type,text,intensity,expires:duration?game.month+duration:null}; c.memories.unshift(m); c.memories=c.memories.slice(0,20); game.memories.push({characterId:id,...m}); }
-function adjustCharacter(id,changes){ const c=getCharacter(id); if(!c) return; Object.keys(changes).forEach(k=>{ if(typeof c[k]==='number') c[k]=clamp(c[k]+changes[k],-100,100); }); }
-function characterOpinionModifier(id){ const c=getCharacter(id); if(!c) return 0; return Math.round((c.opinion-50)/10 - c.resentment/15 + c.respect/25); }
-function recentMemoryCount(id,type){ const c=getCharacter(id); if(!c) return 0; return c.memories.filter(m=>m.type===type && game.month-m.month<=6).length; }
-function getSenderKey(ev){ if(ev.house) return 'House '+ev.house; if(ev.characterId&&game.characters[ev.characterId]) return game.characters[ev.characterId].name; if(ev.from) return ev.from; return `${ev.senderType||'Unknown'}:${ev.title||'event'}`; }
-function recordIgnoredEvent(ev){ const k=getSenderKey(ev); const o=game.ignoredHistory[k]||{count:0,lastMonth:0,severity:0,sourceType:ev.senderType||'Unknown'}; o.count++; o.lastMonth=game.month; o.severity+=Math.max(1,(ev.priority||0)/10); game.ignoredHistory[k]=o; return o; }
-function tickCooldowns(){ Object.keys(game.cooldowns).forEach(k=>{ game.cooldowns[k]=Math.max(0,game.cooldowns[k]-1); if(game.cooldowns[k]===0) delete game.cooldowns[k]; }); }
-function canUseAction(k){ return !game.cooldowns[k]; }
-function setCooldown(k,m){ game.cooldowns[k]=m; }
-
-function seedOpeningInbox(){
-  addInbox(makeEvent("welcomeCouncil"));
-  addInbox(makeEvent("taxPetition"));
-}
-
-function log(text){
-  if(!game) return;
-  game.log.unshift({month:game.month,text});
-  if(game.log.length > 200) game.log.pop();
-}
-
-function toggleRun(){
-  running = !running;
-  game.started = true;
-  document.getElementById("startBtn").textContent = running ? "Pause" : "Start";
-
-  if(running){
-    lastTick = performance.now();
-    if(!timer) timer = setInterval(tick, 200);
-    log("The court clock begins. Each passing month will bring income, pressure, opportunities, and consequences.");
-  } else {
-    log("You pause the court clock. The inbox waits, but only because time itself obeys the player.");
-  }
-
-  render();
-}
-
-function tick(){
-  if(!running || !game) return;
-
-  const now = performance.now();
-  const delta = (now - lastTick) / 1000;
-  lastTick = now;
-
-  const progressGain = (delta / REAL_SECONDS_PER_MONTH) * 100;
-  game.monthProgress += progressGain;
-
-  /*
-    Inbox can slowly receive new messages during a month.
-    This is intentionally gradual.
-  */
-  maybeMidMonthArrival(progressGain);
-
-  if(game.monthProgress >= 100){
-    game.monthProgress = 0;
-    advanceMonth();
-  }
-
-  renderTopBar();
-}
-
-function manualAdvance(){
-  game.started = true;
-  game.monthProgress = 0;
-  advanceMonth();
-}
-
-function renderTopBar(){
-  if(!game) return;
-  document.getElementById("monthLabel").textContent = `Month ${game.month}`;
-  document.getElementById("monthFill").style.width = `${clamp(game.monthProgress)}%`;
-  document.getElementById("speedLabel").textContent = running ? "Running" : "Paused";
-}
-
-function inboxPressure(){
-  /*
-    More prestige/influence/rank means more people expect answers.
-    Starts relaxed, then grows.
-  */
-  let pressure = 0.015;
-  pressure += game.rank * 0.006;
-  pressure += game.prestige / 900;
-  pressure += game.influence / 900;
-  pressure += game.alliances.length * 0.006;
-  pressure += game.wars.length * 0.012;
-
-  if(game.inbox.length > 8) pressure *= 0.35;
-  if(game.inbox.length > 12) pressure *= 0.15;
-
-  return pressure;
-}
-
-function maybeMidMonthArrival(progressGain){
-  if(!game.started) return;
-  if(chance(inboxPressure() * progressGain)){
-    const ev = generateContextEvent();
-    addInbox(ev);
-    log(`New inbox request received: ${ev.title}.`);
-    render();
-  }
-
-  if(chance(0.004 * progressGain) && game.vendors.length < 3){
-    generateVendor();
-    render();
-  }
-}
-
-function generateContextEvent(){
-  const pool = [];
-
-  pool.push("taxPetition");
-  pool.push("mineStrike");
-
-  if(game.colors.Red < 38 || game.rebelStrength > 22) pool.push("riot");
-  if(game.scandalHeat > 15 || chance(.35)) pool.push("scandal");
-  if(game.colors.Gray < 50 || game.hidden.unpaidGrays > 0) pool.push("grayPay");
-  if(game.debt > 300 && chance(.45)) pool.push("silverDebt");
-
-  if(game.prestige > 28 || game.influence > 25){
-    pool.push("dinnerInvite");
-    pool.push("tradeOffer");
-  }
-
-  if(game.prestige > 38 || game.rank >= 2){
-    pool.push("borderDispute");
-    pool.push("allianceRequest");
-  }
-
-  if(game.alliances.length >= 1 && chance(.5)){
-    pool.push("allyDemand");
-  }
-
-  if(game.alliances.length >= 2 && chance(.4)){
-    pool.push("allianceConflict");
-  }
-
-  if(game.wars.length > 0){
-    pool.push("warDemand");
-    pool.push("warRaid");
-  }
-
-  if(game.rank >= 3 || game.prestige > 55){
-    pool.push("minorHousePetition");
-    pool.push("senateRequest");
-  }
-
-  return makeEvent(pick(pool));
-}
-
-function senderPriority(ev){ let base={"Higher Gold":110,"Equal Gold":85,"Ally":105,"Creditor":92,"Military":82,"Vendor":58,"Lower House":52,"Color":42}[ev.senderType]||40; let score=base+(ev.priority||0)+(ev.politicalWeight||0)+(ev.internalRisk||0)+(ev.militaryRisk||0)+(ev.economicRisk||0)+(ev.scandalRisk||0); score += Math.max(0,8-(ev.deadline||4))*9; const ih=game.ignoredHistory[getSenderKey(ev)]; if(ih) score += ih.count*8; if(ev.house&&game.houses[ev.house]?.allied) score += 24; if(ev.house&&game.houses[ev.house]?.atWar) score += 20; if(ev.tags?.includes('debt')&&game.treasury<500) score+=20; if(ev.tags?.includes('scandal')&&game.scandalHeat>35) score+=16; if(ev.senderType==='Color'&&game.rebelStrength>45) score+=26; if(ev.senderType==='Military'&&game.military.supply<30) score+=18; if(ev.characterId) score += (getCharacter(ev.characterId)?.resentment||0)/2; return Math.round(score); }
-
-function addInbox(ev){
-  ev.id = Date.now() + "_" + Math.random().toString(36).slice(2);
-  game.inbox.push(ev);
-}
-
-function makeEvent(type){
-  const ev = eventFactory(type);
-  return ev;
-}
-
-function eventFactory(type){
-  const higher = higherHouse();
-  const equal = equalOrRivalHouse();
-  const lower = lowerHouse();
-  const ally = pick(game.alliances.length ? game.alliances : ["Thorne"]);
-
-  const events = {
-    welcomeCouncil:{
-      title:"First Council of Your Rule",
-      from:"Your Estate Council",
-      senderType:"Military",
-      priority:20,
-      deadline:5,
-      tags:["Council","House"],
-      body:"Your council gathers beneath the faded banners of House au Varon. You must decide what tone your rule will take.",
-      choices:[
-        {
-          text:"Promise order above all.",
-          hint:"Grays and traditional Golds approve.",
-          effects:{fear:5,trust:-2,military:{graySecurity:4},colors:{Gray:5,Red:-2},prestige:2},
-          log:"You promise order. Your Grays stand taller."
-        },
-        {
-          text:"Promise profitable recovery.",
-          hint:"Silvers and merchants approve.",
-          effects:{baseIncome:60,colors:{Silver:5,Orange:3},silverInfluence:3,trust:-1},
-          log:"You promise recovery. The Silvers hear the language of repayment."
-        },
-        {
-          text:"Promise justice and restraint.",
-          hint:"Lower Colors trust you slightly more. Some Golds watch closer.",
-          effects:{trust:7,honor:5,colors:{Red:5,Brown:5},reformSuspicion:3,prestige:-1},
-          log:"You promise justice. Some in the room look inspired. Others look alarmed."
-        }
-      ],
-      expire:{
-        effects:{prestige:-2,trust:-2},
-        log:"You delay your first council. Even your own people wonder what kind of ruler you are."
-      }
-    },
-
-    taxPetition:{
-      title:"Brown District Requests Tax Relief",
-      from:"Brown Labor Delegates",
-      senderType:"Color",
-      priority:12,
-      deadline:4,
-      tags:["Brown","Taxes","Trust"],
-      body:"Brown workers request relief from rising food costs and estate levies. Ignoring them will not embarrass you in court, but it will be remembered below stairs.",
-      choices:[
-        {
-          text:"Grant temporary relief.",
-          hint:"Costs money, gains internal trust.",
-          effects:{treasury:-220,trust:9,stability:4,colors:{Brown:12,Red:4,Silver:-2},rebelStrength:-3},
-          log:"You grant temporary relief. The Browns whisper your name with cautious gratitude."
-        },
-        {
-          text:"Deny the petition.",
-          hint:"No immediate cost, but resentment grows.",
-          effects:{trust:-4,colors:{Brown:-7,Red:-2},rebelStrength:2},
-          log:"You deny the petition. The estate books remain clean."
-        },
-        {
-          text:"Offer relief only to loyal districts.",
-          hint:"Divides the lower Colors.",
-          effects:{treasury:-120,trust:1,fear:3,colors:{Brown:3,Red:-3},rebelStrength:2},
-          log:"Relief is granted only where loyalty is proven. Gratitude and bitterness spread together."
-        }
-      ],
-      expire:{
-        effects:{trust:-6,colors:{Brown:-8},rebelStrength:4,hidden:{ignoredLowColors:1}},
-        log:"The Brown petition goes unanswered. Their silence grows heavier."
-      }
-    },
-
-    mineStrike:{
-      title:"Red Crews Refuse the Deep Shaft",
-      from:"Mine Overseer Dama",
-      senderType:"Color",
-      priority:25,
-      deadline:3,
-      tags:["Red","Income","Stability"],
-      body:"Red crews refuse the lower tunnels, claiming the supports are failing. Your overseer demands firmness before discipline spreads.",
-      choices:[
-        {
-          text:"Force them back to work.",
-          hint:"Fast income, dangerous resentment.",
-          effects:{treasury:260,stability:3,fear:7,trust:-8,colors:{Red:-12,Gray:4},hidden:{mineSafetyNeglected:1},rebelStrength:5},
-          log:"You force the Reds back into the shaft. Production resumes under rifles."
-        },
-        {
-          text:"Pay Orange engineers to inspect it.",
-          hint:"Costs money, prevents worse outcomes.",
-          cost:260,
-          effects:{treasury:-260,trust:8,stability:5,colors:{Red:10,Orange:6,Gray:-2},hidden:{redHope:1,mineSafetyNeglected:-1},rebelStrength:-5},
-          log:"Orange engineers inspect the shaft. The Reds were right."
-        },
-        {
-          text:"Execute the strike leaders.",
-          hint:"Fear now, hatred later.",
-          effects:{prestige:3,fear:18,trust:-18,stability:-4,colors:{Red:-24,Brown:-8,Gray:6},rebelStrength:14,houses:{Veyra:{opinion:6,respect:4},Marros:{opinion:-12}}},
-          log:"The strike leaders hang above the mine gate."
-        }
-      ],
-      expire:{
-        effects:{treasury:-450,stability:-10,colors:{Red:-6,Gray:-3},rebelStrength:7,hidden:{ignoredLowColors:1}},
-        log:"You fail to answer the mine crisis. Production halts and anger spreads."
-      }
-    },
-
-    silverDebt:{
-      title:"Silver Payment Due",
-      from:"Avarus ag Sylan",
-      senderType:"Creditor",
-      priority:40,
-      deadline:2,
-      tags:["Silver","Debt"],
-      body:"Your Silver creditor demands payment. Credit is oxygen in Gold society. Running out is socially fatal.",
-      choices:[
-        {
-          text:"Pay 400 now.",
-          hint:"Expensive but clean.",
-          cost:400,
-          effects:{treasury:-400,debt:-400,honor:4,colors:{Silver:5},silverInfluence:-3},
-          log:"You pay the Silver on time. His disappointment is almost visible."
-        },
-        {
-          text:"Accept a larger refinancing loan.",
-          hint:"Gain cash now, lose freedom later.",
-          effects:{treasury:1400,debt:1900,silverInfluence:14,prestige:-2,colors:{Silver:7}},
-          log:"You refinance. Your treasury swells. So do your chains."
-        },
-        {
-          text:"Threaten him using Grays.",
-          hint:"Requires strong Gray Security.",
-          condition:()=>game.military.graySecurity>=45,
-          effects:{debt:-200,fear:5,honor:-8,colors:{Silver:-14,Gray:3},scandalHeat:6},
-          log:"Your Grays make the Silver renegotiate. He smiles like a man memorizing a future murder."
-        }
-      ],
-      expire:{
-        effects:{debt:350,prestige:-5,colors:{Silver:-8},silverInfluence:8,scandalHeat:4},
-        log:"You miss the Silver payment. Court learns before lunch."
-      }
-    },
-
-    dinnerInvite:{
-      title:`Invitation from House ${higher}`,
-      from:`House ${higher}`,
-      senderType:"Higher Gold",
-      house:higher,
-      priority:35,
-      deadline:3,
-      tags:["Gold","Diplomacy"],
-      body:`House ${higher} invites you to a private dinner. They outrank you. Declining is possible. Ignoring them is not wise.`,
-      choices:[
-        {
-          text:"Attend with proper gifts.",
-          hint:"Costly but respectful.",
-          cost:260,
-          effects:{treasury:-260,prestige:5,houses:{[higher]:{opinion:8,respect:4}},colors:{Pink:2}},
-          log:`You attend House ${higher}'s dinner bearing gifts and careful words.`
-        },
-        {
-          text:"Attend with hidden spies.",
-          hint:"Requires Intelligence 25+.",
-          condition:()=>game.military.intelligence>=25,
-          effects:{treasury:-140,prestige:2,houses:{[higher]:{opinion:2,fear:3}},colors:{Pink:4},scandalHeat:2},
-          revealHouse:higher,
-          log:`You attend House ${higher}'s dinner with hidden ears among the servants.`
-        },
-        {
-          text:"Decline politely.",
-          hint:"Minor disrespect.",
-          effects:{prestige:-1,houses:{[higher]:{opinion:-5,respect:-2}}},
-          log:`You decline House ${higher}'s invitation with careful excuses.`
-        }
-      ],
-      expire:{
-        effects:{prestige:-4,houses:{[higher]:{opinion:-10,rivalry:5}},hidden:{ignoredHighGolds:1}},
-        log:`You ignore House ${higher}'s invitation. Their silence becomes colder than insult.`
-      }
-    },
-
-    tradeOffer:{
-      title:`Trade Offer from House ${equal}`,
-      from:`House ${equal}`,
-      senderType:"Equal Gold",
-      house:equal,
-      priority:25,
-      deadline:4,
-      tags:["Trade","Gold","Income"],
-      body:`House ${equal} proposes a limited trade arrangement. It could improve income, but trade creates dependence and political expectations.`,
-      choices:[
-        {
-          text:"Accept the trade deal.",
-          hint:"Income rises, relationship improves.",
-          effects:{baseIncome:90,prestige:2,houses:{[equal]:{opinion:7,respect:2}},colors:{Silver:2}},
-          tradeHouse:equal,
-          log:`You sign a trade arrangement with House ${equal}. Coin begins to move.`
-        },
-        {
-          text:"Demand better terms.",
-          hint:"Works better with prestige.",
-          condition:()=>game.prestige>=35,
-          effects:{baseIncome:130,houses:{[equal]:{opinion:-2,respect:5}},prestige:3},
-          tradeHouse:equal,
-          log:`You demand better terms from House ${equal}, and they accept through clenched teeth.`
-        },
-        {
-          text:"Reject it.",
-          hint:"Avoid entanglement.",
-          effects:{houses:{[equal]:{opinion:-3}}},
-          log:`You reject House ${equal}'s trade offer.`
-        }
-      ],
-      expire:{
-        effects:{houses:{[equal]:{opinion:-4}},prestige:-1},
-        log:`House ${equal}'s trade offer expires unanswered. They mark the discourtesy.`
-      }
-    },
-
-    allianceRequest:{
-      title:`Alliance Feelers from House ${lower}`,
-      from:`House ${lower}`,
-      senderType:"Lower House",
-      house:lower,
-      priority:18,
-      deadline:5,
-      tags:["Alliance","Gold"],
-      body:`House ${lower}, weaker than you, sends cautious alliance feelers. Accepting helps your network. Ignoring them matters less socially, but lesser houses remember humiliation.`,
-      choices:[
-        {
-          text:"Accept alliance discussions.",
-          hint:"Gain ally, but inherit their enemies.",
-          effects:{prestige:3,influence:5,houses:{[lower]:{opinion:14,respect:5}}},
-          allyHouse:lower,
-          log:`You accept alliance discussions with House ${lower}. Their banners lean toward yours.`
-        },
-        {
-          text:"Demand tribute before alliance.",
-          hint:"Profitable, arrogant.",
-          effects:{treasury:300,prestige:2,houses:{[lower]:{opinion:-5,fear:6,respect:2}}},
-          log:`You demand tribute from House ${lower}. They pay, but the alliance cools.`
-        },
-        {
-          text:"Reject them.",
-          hint:"No entanglement.",
-          effects:{houses:{[lower]:{opinion:-8,rivalry:3}}},
-          log:`You reject House ${lower}'s alliance feelers.`
-        }
-      ],
-      expire:{
-        effects:{houses:{[lower]:{opinion:-6,rivalry:2}},hidden:{ignoredHighGolds:0}},
-        log:`House ${lower}'s alliance message goes unanswered. They lack power to punish you now, but they remember.`
-      }
-    },
-
-    borderDispute:{
-      title:`Border Pressure from House ${equal}`,
-      from:`House ${equal}`,
-      senderType:"Equal Gold",
-      house:equal,
-      priority:42,
-      deadline:3,
-      tags:["Military","Gold","Border"],
-      body:`House ${equal} moves troops near a disputed station. Your response will signal whether you are prey or peer.`,
-      choices:[
-        {
-          text:"Send diplomats.",
-          hint:"Requires Prestige or Honor.",
-          condition:()=>game.prestige>=35 || game.honor>=55,
-          effects:{prestige:2,houses:{[equal]:{opinion:2,rivalry:-4}},stability:2},
-          log:`Your diplomats cool the border dispute with House ${equal}.`
-        },
-        {
-          text:"Move ships into orbit.",
-          hint:"Requires Fleet Power 25+.",
-          condition:()=>game.military.fleetPower>=25,
-          effects:{prestige:6,houses:{[equal]:{fear:8,respect:5,opinion:-5}}},
-          log:`Your ships burn above the disputed station. House ${equal} hesitates.`
-        },
-        {
-          text:"Deploy Grays to the border.",
-          hint:"Useful, but less prestigious.",
-          effects:{stability:4,prestige:-1,houses:{[equal]:{fear:3,opinion:-3}}},
-          log:`Your Grays fortify the station. It holds, but the message is provincial.`
-        },
-        {
-          text:"Secretly sabotage their supply line.",
-          hint:"Requires Intelligence 35+.",
-          condition:()=>game.military.intelligence>=35,
-          effects:{prestige:2,honor:-5,houses:{[equal]:{opinion:-10,rivalry:8,fear:5}},scandalHeat:4},
-          log:`House ${equal}'s supplies vanish into smoke and rumor.`
-        }
-      ],
-      expire:{
-        effects:{treasury:-500,prestige:-7,houses:{[equal]:{rivalry:8,respect:-5}},stability:-5},
-        log:`You fail to respond to House ${equal}'s border pressure. They take the station.`
-      }
-    },
-
-    grayPay:{
-      title:"Gray Officers Demand Better Pay",
-      from:"Commander Orlan",
-      senderType:"Military",
-      priority:30,
-      deadline:3,
-      tags:["Gray","Security"],
-      body:"Gray officers complain of rising danger and stagnant pay. Underpaid Grays become bribable Grays.",
-      choices:[
-        {
-          text:"Increase Gray pay.",
-          cost:280,
-          hint:"Costs money but improves security.",
-          effects:{treasury:-280,colors:{Gray:10},military:{graySecurity:5,officerQuality:4},hidden:{unpaidGrays:-1}},
-          log:"You raise Gray pay. Discipline sharpens."
-        },
-        {
-          text:"Promise future bonuses.",
-          hint:"Cheap now, riskier later.",
-          effects:{colors:{Gray:3},hidden:{unpaidGrays:1}},
-          log:"You promise future Gray bonuses. The officers accept, but count the months."
-        },
-        {
-          text:"Replace complainers with loyalists.",
-          hint:"Fear, but lower quality.",
-          effects:{fear:5,colors:{Gray:-5},military:{officerQuality:-6,graySecurity:2},honor:-3},
-          log:"You replace loud Gray officers with quiet loyalists."
-        }
-      ],
-      expire:{
-        effects:{colors:{Gray:-8},military:{graySecurity:-4,officerQuality:-3},hidden:{unpaidGrays:2}},
-        log:"You ignore Gray pay complaints. Bribery becomes easier to hide."
-      }
-    },
-
-    riot:{
-      title:"Riot in the Lower District",
-      from:"Gray Commander Orlan",
-      senderType:"Military",
-      priority:55,
-      deadline:2,
-      tags:["Riot","Red","Brown"],
-      body:"A food riot breaks out in the lower district. Grays await orders.",
-      choices:[
-        {
-          text:"Authorize full Gray crackdown.",
-          hint:"Fast order, lasting resentment.",
-          effects:{stability:10,fear:12,trust:-12,colors:{Gray:6,Red:-12,Brown:-8},rebelStrength:8},
-          log:"The Grays end the riot under shields and boots."
-        },
-        {
-          text:"Send food and negotiate.",
-          cost:350,
-          hint:"Expensive but stabilizing.",
-          effects:{treasury:-350,stability:6,trust:10,colors:{Red:8,Brown:8,Gray:-3},rebelStrength:-5},
-          log:"Food carts arrive before rifles. The riot breaks into lines rather than flames."
-        },
-        {
-          text:"Use spies to arrest organizers.",
-          hint:"Requires Intelligence 35+.",
-          condition:()=>game.military.intelligence>=35,
-          effects:{stability:8,fear:4,trust:-2,colors:{Pink:4,Gray:2},rebelStrength:-7},
-          log:"The riot loses its leaders overnight."
-        }
-      ],
-      expire:{
-        effects:{stability:-16,trust:-8,colors:{Red:-8,Brown:-8,Gray:-4},rebelStrength:12,hidden:{ignoredLowColors:1}},
-        log:"The riot spreads before you answer. Fires stain the lower district."
-      }
-    },
-
-    scandal:{
-      title:"Whispers of a Family Scandal",
-      from:"Pink Informant",
-      senderType:"Color",
-      priority:30,
-      deadline:4,
-      tags:["Pink","Scandal"],
-      body:"A Pink claims a rival has evidence of your sibling's disgrace at a private salon.",
-      choices:[
-        {
-          text:"Pay to bury it.",
-          cost:300,
-          hint:"Clean and expensive.",
-          effects:{treasury:-300,scandalHeat:-10,colors:{Pink:6},prestige:1},
-          log:"The scandal dies in silk."
-        },
-        {
-          text:"Blackmail the blackmailer.",
-          hint:"Requires Intelligence 30+.",
-          condition:()=>game.military.intelligence>=30,
-          effects:{scandalHeat:-8,prestige:3,fear:4,colors:{Pink:4},honor:-3},
-          log:"Your spies return with uglier secrets."
-        },
-        {
-          text:"Confess publicly first.",
-          hint:"Embarrassing but honorable.",
-          effects:{prestige:-4,honor:8,trust:3,scandalHeat:-12,houses:{Marros:{opinion:4},Cindral:{opinion:-3}}},
-          log:"You confess first. The court laughs less than expected."
-        }
-      ],
-      expire:{
-        effects:{prestige:-9,scandalHeat:10,houses:{Cindral:{opinion:-6},Bellor:{respect:-3}}},
-        log:"The scandal blooms in court."
-      }
-    },
-
-    allyDemand:{
-      title:`Ally Request from House ${ally}`,
-      from:`House ${ally}`,
-      senderType:"Ally",
-      house:ally,
-      priority:52,
-      deadline:3,
-      tags:["Alliance","Obligation"],
-      body:`Your ally House ${ally} requests support in a dispute. Alliances create power, but they also create obligations.`,
-      choices:[
-        {
-          text:"Send public support.",
-          hint:"Strengthens alliance, angers their rivals.",
-          effects:{prestige:4,influence:4,houses:{[ally]:{opinion:10,respect:4}},treasury:-150},
-          log:`You publicly support House ${ally}. Your alliance strengthens.`
-        },
-        {
-          text:"Send quiet funds only.",
-          cost:250,
-          hint:"Helps without full exposure.",
-          effects:{treasury:-250,houses:{[ally]:{opinion:6}},influence:2},
-          log:`You quietly fund House ${ally}. They notice the restraint.`
-        },
-        {
-          text:"Refuse involvement.",
-          hint:"Avoids risk, weakens alliance.",
-          effects:{houses:{[ally]:{opinion:-10,respect:-3}},influence:-2},
-          log:`You refuse House ${ally}'s request. Alliances dislike empty hands.`
-        }
-      ],
-      expire:{
-        effects:{houses:{[ally]:{opinion:-12,respect:-5}},influence:-4},
-        log:`You ignore your ally House ${ally}. Trust cracks audibly.`
-      }
-    },
-
-    allianceConflict:{
-      title:"Two Allies Demand Opposite Loyalties",
-      from:"Alliance Network",
-      senderType:"Ally",
-      priority:65,
-      deadline:2,
-      tags:["Alliance","Crisis"],
-      body:"Two allied houses are now at odds. Both expect your support. Neutrality may preserve peace, or offend both.",
-      choices:[
-        {
-          text:"Back the stronger ally.",
-          hint:"Gain protection, anger the weaker ally.",
-          effects:{prestige:3,influence:2,hidden:{allianceTension:2}},
-          special:"sideStrong",
-          log:"You back the stronger ally. The weaker ally learns where they stand."
-        },
-        {
-          text:"Back the weaker ally.",
-          hint:"Honorable, but risky.",
-          effects:{honor:6,prestige:2,hidden:{allianceTension:1}},
-          special:"sideWeak",
-          log:"You back the weaker ally. Court calls it noble. Cynics call it foolish."
-        },
-        {
-          text:"Refuse to choose.",
-          hint:"Avoids immediate war, offends both.",
-          effects:{honor:-2,influence:-4,hidden:{allianceTension:3}},
-          log:"You refuse to choose. Both allies hear cowardice in the word balance."
-        },
-        {
-          text:"Host arbitration at your court.",
-          cost:400,
-          hint:"Expensive, but can raise prestige.",
-          effects:{treasury:-400,prestige:7,influence:5,scandalHeat:-2},
-          log:"You host arbitration. The feast is tense, but your court becomes the room where conflicts bend."
-        }
-      ],
-      expire:{
-        effects:{influence:-7,prestige:-3,hidden:{allianceTension:3}},
-        log:"You ignore the alliance crisis. Both sides assume betrayal."
-      }
-    },
-
-    warDemand:{
-      title:"War Council Requests Orders",
-      from:"War Council",
-      senderType:"Military",
-      priority:70,
-      deadline:2,
-      tags:["War","Military"],
-      body:"Your active war demands direction. Supplies, ships, and soldiers require decisions before the enemy acts.",
-      choices:[
-        {
-          text:"Commit fleet pressure.",
-          hint:"Requires Fleet Power 25+.",
-          condition:()=>game.military.fleetPower>=25,
-          effects:{treasury:-250,prestige:4,military:{supply:-4},fear:3},
-          log:"Your fleet pressures enemy routes. The war shifts upward into orbit."
-        },
-        {
-          text:"Commit Gray occupation forces.",
-          hint:"Improves ground control, weakens internal order.",
-          effects:{treasury:-180,stability:-3,fear:4,military:{graySecurity:-2,supply:-3}},
-          log:"Your Grays march outward. The estate feels thinner behind them."
-        },
-        {
-          text:"Seek negotiated settlement.",
-          hint:"Works better with honor or prestige.",
-          condition:()=>game.honor>=50 || game.prestige>=45,
-          effects:{prestige:2,honor:3},
-          special:"endOneWar",
-          log:"You seek settlement. The war may end without glory, but also without ruin."
-        }
-      ],
-      expire:{
-        effects:{treasury:-500,prestige:-5,military:{supply:-8},stability:-5},
-        log:"Your war council receives no answer. The enemy acts first."
-      }
-    },
-
-    warRaid:{
-      title:"Enemy Raid on Trade Route",
-      from:"Blue Navigation Office",
-      senderType:"Military",
-      priority:60,
-      deadline:2,
-      tags:["War","Fleet","Trade"],
-      body:"Enemy-aligned raiders strike a trade route. Ships can intercept, but only if you commit them quickly.",
-      choices:[
-        {
-          text:"Send fleet interceptors.",
-          hint:"Requires Fleet Power 20+.",
-          condition:()=>game.military.fleetPower>=20,
-          effects:{treasury:-140,prestige:3,military:{supply:-2},colors:{Blue:4}},
-          log:"Your ships intercept the raiders before they escape."
-        },
-        {
-          text:"Hire private escorts.",
-          cost:360,
-          hint:"Expensive but safe.",
-          effects:{treasury:-360,stability:3,colors:{Silver:2}},
-          log:"Private escorts secure the route."
-        },
-        {
-          text:"Let the route burn.",
-          hint:"Save money, lose income.",
-          effects:{baseIncome:-60,prestige:-4,colors:{Silver:-4,Blue:-3}},
-          log:"The trade route burns. Merchants begin pricing your weakness."
-        }
-      ],
-      expire:{
-        effects:{baseIncome:-80,treasury:-260,prestige:-5},
-        log:"You ignore the raid. Wreckage drifts along the trade lane."
-      }
-    },
-
-    minorHousePetition:{
-      title:`Petition from Lesser House ${lower}`,
-      from:`House ${lower}`,
-      senderType:"Lower House",
-      house:lower,
-      priority:15,
-      deadline:5,
-      tags:["Lower House","Influence"],
-      body:`House ${lower} asks for recognition in a minor legal dispute. You are now important enough that lesser houses seek your signature.`,
-      choices:[
-        {
-          text:"Support them publicly.",
-          hint:"Gain influence among lesser houses.",
-          effects:{influence:5,prestige:2,houses:{[lower]:{opinion:10,respect:5}}},
-          log:`You support House ${lower}. Smaller houses begin watching your court.`
-        },
-        {
-          text:"Sell your support.",
-          hint:"Profitable, cynical.",
-          effects:{treasury:350,honor:-4,houses:{[lower]:{opinion:2,fear:3}}},
-          log:`You sell support to House ${lower}. They pay, but understand you.`
-        },
-        {
-          text:"Ignore their small problem.",
-          hint:"Minimal short-term cost.",
-          effects:{houses:{[lower]:{opinion:-4}}},
-          log:`You dismiss House ${lower}'s problem as beneath you.`
-        }
-      ],
-      expire:{
-        effects:{houses:{[lower]:{opinion:-5}},influence:-1},
-        log:`House ${lower}'s petition expires. Minor houses remember major slights.`
-      }
-    },
-
-    senateRequest:{
-      title:"Senate Faction Requests Your Position",
-      from:"Gold Senate Bloc",
-      senderType:"Higher Gold",
-      priority:55,
-      deadline:3,
-      tags:["Senate","Prestige","Influence"],
-      body:"A Senate faction requests your public position on resource taxation. Your answer will shape your image among Golds, Silvers, and lower Colors.",
-      choices:[
-        {
-          text:"Support harsher resource levies.",
-          hint:"Silvers and hardliners approve.",
-          effects:{prestige:4,influence:3,trust:-5,colors:{Silver:5,Red:-5},houses:{Veyra:{opinion:4},Marros:{opinion:-6}}},
-          log:"You support harsher resource levies. Hardliners applaud."
-        },
-        {
-          text:"Support controlled relief.",
-          hint:"Reformist, but suspicious.",
-          effects:{trust:6,honor:4,reformSuspicion:5,houses:{Marros:{opinion:6},Veyra:{opinion:-5}},colors:{Red:5,Brown:3}},
-          log:"You support controlled relief. Reformists praise your restraint. Traditionalists take notes."
-        },
-        {
-          text:"Avoid a firm position.",
-          hint:"Safe but unimpressive.",
-          effects:{prestige:-2,influence:-2},
-          log:"You avoid a firm Senate position. No one is offended. No one is impressed."
-        }
-      ],
-      expire:{
-        effects:{prestige:-5,influence:-4,houses:{Veyra:{opinion:-3},Cindral:{opinion:-3},Marros:{opinion:-3}}},
-        log:"You ignore the Senate request. At high levels, silence becomes weakness."
-      }
-,
-
-    redMartyrFuneral:{title:"Red Martyr Funeral Request",from:"Eo Marran, Red Labor Speaker",senderType:"Color",priority:58,deadline:3,tags:["Red","Unrest","Mercy","Rebellion"],causeText:"Triggered if Red loyalty is low, rebelStrength is rising, or recent executions/disaster neglect occurred.",body:"A dead Red strike leader has become a symbol in the lower tunnels. Families ask to hold a funeral while Grays warn it could become a rebel rally.",choices:[{text:"Allow funeral under watch.",effects:{trust:4,fear:-1,rebelStrength:-2,colors:{Red:6,Gray:-2}},log:"The funeral passes beneath Gray eyes. Grief speaks, but rebellion does not ignite."},{text:"Forbid gathering.",effects:{fear:4,rebelStrength:6,stability:-2,colors:{Red:-8}},log:"You ban the funeral. The mourning goes underground."},{text:"Send food and compensation.",cost:300,effects:{treasury:-300,trust:7,rebelStrength:-6,colors:{Red:10,Brown:3},houses:{Marros:{opinion:3},Veyra:{opinion:-2}}},log:"Bread and coin arrive before anger can harden fully."},{text:"Arrest speakers.",effects:{fear:8,rebelStrength:10,colors:{Red:-14,Gray:4},blocs:{Traditionalist:3,Reform:-5}},log:"The speakers vanish before the funeral begins."}],expire:{effects:{trust:-3,rebelStrength:5,colors:{Red:-5}},log:"You ignore the funeral request. The Reds hold it without permission."}},
-
-    brownPoisonWarning:{title:"Poison Warning from the Kitchens",from:"Talla, Estate Steward",senderType:"Color",priority:61,deadline:2,tags:["Brown","Security","Assassination"],characterId:"talla_steward",causeText:"Triggered if Brown loyalty is high while assassinationRisk or scandalHeat is high.",body:"Talla warns that unfamiliar hands were seen near your wine. She has no proof, only risk.",choices:[{text:"Trust Talla and investigate.",effects:{treasury:-120,colors:{Brown:5},assassinationRisk:-10,military:{intelligence:3}},log:"You quietly investigate the kitchens. A servant disappears before dawn.",after:()=>addMemory('talla_steward','trust','You trusted Talla's warning.',4,6)},{text:"Reward servant network.",cost:250,effects:{treasury:-250,trust:3,assassinationRisk:-8,colors:{Brown:9,Pink:2}},log:"Brown servants begin watching your back as if it were their own."},{text:"Dismiss warning.",effects:{assassinationRisk:8,colors:{Brown:-6}},log:"You dismiss the warning. Talla bows, but her eyes harden."},{text:"Publicly accuse rival.",effects:{scandalHeat:6,fear:3,prestige:2,houses:{Bellor:{opinion:-8}}},log:"You turn suspicion into a public weapon."}],expire:{effects:{assassinationRisk:10,colors:{Brown:-4}},log:"You ignore Talla's warning. The kitchens grow quiet."}},
-
-    grayCommanderOverreach:{title:"Gray Commander Overreach",from:"Civil Petitioners",senderType:"Color",priority:54,deadline:3,tags:["Gray","Trust","Brutality"],causeText:"Triggered if Gray security is high but trust is low, or after repeated crackdowns.",body:"Petitioners accuse Commander Orlan's Grays of beating civilians during tax collection.",choices:[{text:"Support Orlan publicly.",effects:{fear:6,trust:-6,colors:{Gray:8,Red:-5,Brown:-5},houses:{Veyra:{opinion:2}}},log:"You support Orlan. The streets obey, but do not forgive."},{text:"Discipline officers.",effects:{trust:7,colors:{Gray:-6,Red:4,Brown:5},houses:{Marros:{opinion:3}}},log:"You discipline the officers. The lower districts notice restraint."},{text:"Cover it up.",effects:{scandalHeat:5,trust:-3,colors:{Gray:2,Pink:2}},log:"The complaint vanishes into paperwork."},{text:"Pay compensation.",cost:280,effects:{treasury:-280,trust:5,colors:{Brown:4,Red:3,Gray:-2}},log:"Coin cannot unbreak bones, but it changes the rumor."}],expire:{effects:{trust:-6,rebelStrength:3,colors:{Gray:2}},log:"The complaint expires unanswered. Orlan takes that as permission."}}
-
-    }
-  };
-
-  return clone(events[type]);
-}
-
-function higherHouse(){
-  const candidates = Object.keys(game.houses).filter(h=>game.houses[h].tier > game.rank);
-  return candidates.length ? pick(candidates) : pick(Object.keys(game.houses));
-}
-
-function equalOrRivalHouse(){
-  const candidates = Object.keys(game.houses).filter(h=>game.houses[h].tier >= Math.max(1,game.rank-1) && !game.alliances.includes(h));
-  return candidates.length ? pick(candidates) : pick(Object.keys(game.houses));
-}
-
-function lowerHouse(){
-  const candidates = Object.keys(game.houses).filter(h=>game.houses[h].tier <= game.rank && !game.alliances.includes(h));
-  return candidates.length ? pick(candidates) : pick(Object.keys(game.houses));
-}
-
-function applyEffects(e){
-  if(!e) return;
-
-  for(const [k,v] of Object.entries(e)){
-    if(k==="colors"){
-      for(const [c,x] of Object.entries(v)){
-        game.colors[c] = clamp((game.colors[c] ?? 50) + x);
-      }
-    } else if(k==="military"){
-      for(const [m,x] of Object.entries(v)){
-        game.military[m] = clamp((game.military[m] ?? 0) + x);
-      }
-    } else if(k==="houses"){
-      for(const [h,obj] of Object.entries(v)){
-        if(!game.houses[h]) continue;
-        for(const [stat,x] of Object.entries(obj)){
-          game.houses[h][stat] = clamp((game.houses[h][stat] ?? 0) + x,0,100);
-        }
-      }
-    } else if(k==="hidden"){
-      for(const [h,x] of Object.entries(v)){
-        game.hidden[h] = (game.hidden[h] ?? 0) + x;
-      }
-    } else if(k==="treasury"){
-      game.treasury += v;
-    } else if(k==="debt"){
-      game.debt = Math.max(0, game.debt + v);
-    } else if(k==="baseIncome"){
-      game.baseIncome += v;
-    } else if(k in game){
-      if(typeof game[k] === "number"){
-        if(["prestige","influence","stability","fear","trust","honor","rebelStrength","scandalHeat","silverInfluence","reformSuspicion"].includes(k)){
-          game[k] = clamp(game[k] + v);
-        } else {
-          game[k] += v;
-        }
-      }
-    }
-  }
-}
-
-function effectText(e){
-  if(!e) return "";
-  let out = [];
-  for(const [k,v] of Object.entries(e)){
-    if(k==="colors"){
-      Object.entries(v).forEach(([c,x])=>out.push(`${c} ${x>=0?"+":""}${x}`));
-    } else if(k==="military"){
-      Object.entries(v).forEach(([m,x])=>out.push(`${militaryName(m)} ${x>=0?"+":""}${x}`));
-    } else if(k==="houses"){
-      Object.entries(v).forEach(([h,obj])=>{
-        Object.entries(obj).forEach(([s,x])=>out.push(`${h} ${s} ${x>=0?"+":""}${x}`));
-      });
-    } else if(k==="hidden"){
-      // hidden effects intentionally not shown
-    } else {
-      out.push(`${pretty(k)} ${v>=0?"+":""}${v}`);
-    }
-  }
-  return out.join(", ");
-}
-
-function chooseEvent(id,index){
-  const ev = game.inbox.find(x=>x.id===id);
-  if(!ev) return;
-  const ch = ev.choices[index];
-
-  if(ch.condition && !ch.condition()){
-    alert("Requirement not met.");
-    return;
-  }
-  if(ch.cost && game.treasury < ch.cost){
-    alert("Not enough treasury.");
-    return;
-  }
-
-  applyEffects(ch.effects);
-
-  if(ch.revealHouse){
-    game.knownIntel[ch.revealHouse] = true;
-    game.houses[ch.revealHouse].openIntel = true;
-    log(`Spies reveal partial military intelligence on House ${ch.revealHouse}.`);
-  }
-
-  if(ch.allyHouse){
-    addAlliance(ch.allyHouse);
-  }
-
-  if(ch.tradeHouse){
-    addTrade(ch.tradeHouse);
-  }
-
-  if(ch.special==="endOneWar"){
-    if(game.wars.length){
-      const ended = game.wars.shift();
-      game.houses[ended].atWar = false;
-      applyEffects({prestige:2,stability:4});
-      log(`The war with House ${ended} ends by settlement.`);
-    }
-  }
-
-  if(ch.special==="sideStrong" || ch.special==="sideWeak"){
-    resolveAllianceSide(ch.special);
-  }
-
-  log(ch.log);
-  game.inbox = game.inbox.filter(x=>x.id!==id);
-  render();
-}
-
-function resolveAllianceSide(mode){
-  if(game.alliances.length < 2) return;
-  const allies = game.alliances.slice().sort((a,b)=>game.houses[b].tier-game.houses[a].tier);
-  const strong = allies[0];
-  const weak = allies[allies.length-1];
-
-  if(mode==="sideStrong"){
-    game.houses[strong].opinion = clamp(game.houses[strong].opinion + 8);
-    game.houses[weak].opinion = clamp(game.houses[weak].opinion - 12);
-    game.houses[weak].rivalry = clamp(game.houses[weak].rivalry + 8);
-    log(`House ${strong} approves your loyalty. House ${weak} feels abandoned.`);
-  } else {
-    game.houses[weak].opinion = clamp(game.houses[weak].opinion + 10);
-    game.houses[strong].opinion = clamp(game.houses[strong].opinion - 10);
-    game.houses[strong].rivalry = clamp(game.houses[strong].rivalry + 5);
-    log(`House ${weak} is grateful. House ${strong} questions your judgment.`);
-  }
-}
-
-function addAlliance(house){
-  if(!game.alliances.includes(house)){
-    game.alliances.push(house);
-    game.houses[house].allied = true;
-    game.houses[house].openIntel = true;
-    game.knownIntel[house] = true;
-    log(`Alliance formed with House ${house}. Their basic military strength is now visible.`);
-  }
-}
-
-function addTrade(house){
-  if(!game.tradeDeals.includes(house)){
-    game.tradeDeals.push(house);
-    game.houses[house].trade = true;
-    log(`Trade deal established with House ${house}.`);
-  }
-}
-
-function expireInbox(){
-  for(const ev of [...game.inbox]){
-    ev.deadline--;
-
-    if(ev.deadline <= 0){
-      applyEffects(ev.expire.effects);
-      const ig=recordIgnoredEvent(ev);
-
-      if(ev.house && game.houses[ev.house]){
-        game.houses[ev.house].lastIgnored++;
-      }
-
-      /*
-        Disrespect scaling:
-        Higher houses punish ignored messages more.
-        Lower Colors/socially weaker groups hurt internal stability more.
-      */
-      if(ev.characterId) addMemory(ev.characterId,'ignored',`Ignored request: ${ev.title}`,Math.min(8,2+(ig?.count||1)));
-      if(ev.senderType==="Higher Gold"){
-        applyEffects({prestige:-2,influence:-2,houses:{[ev.house]:{opinion:-4,rivalry:2}}});
-      }
-      if(ev.senderType==="Ally"){
-        applyEffects({influence:-3,houses:{[ev.house]:{opinion:-5,respect:-2}}});
-      }
-      if(ev.senderType==="Lower House"){
-        applyEffects({influence:-1});
-      }
-      if(ev.senderType==="Color"){
-        applyEffects({trust:-2,rebelStrength:2});
-      }
-      if(ev.senderType==="Military"){
-        applyEffects({stability:-2});
-      }
-
-      log(ev.expire.log);
-      game.inbox = game.inbox.filter(x=>x.id!==ev.id);
-    }
-  }
-}
-
-function advanceMonth(){
-  game.month++;
-
-  const mult = {merciful:.65,standard:1,heavy:1.35,punitive:1.75}[game.tax];
-  const income = Math.round(game.baseIncome * mult);
-  const upkeep = game.assets.reduce((s,a)=>s+(a.upkeep||0),0);
-  const debtPay = game.debt > 0 ? Math.min(game.debt, Math.max(80,Math.round(game.debt*.08))) : 0;
-
-  game.treasury += income;
-  game.treasury -= upkeep;
-  game.treasury -= debtPay;
-  game.debt = Math.max(0, game.debt - Math.round(debtPay*.55));
-
-  tickCooldowns();
-  applyTaxEffects();
-  processTradeRoutes();
-  processWars();
-  expireInbox();
-  tickVendors();
-  passiveWorldEffects();
-  checkRank();
-
-  const guaranteedRequests = monthlyRequestCount();
-  for(let i=0;i<guaranteedRequests;i++){
-    if(game.inbox.length < 12) addInbox(generateContextEvent());
-  }
-
-  if(chance(.38 + game.rank*.05)) generateVendor();
-
-  log(`Month ${game.month} begins. Income ${income}, upkeep ${upkeep}, debt payment ${debtPay}.`);
-  render();
-}
-
-function monthlyRequestCount(){
-  let n = 0;
-
-  if(game.rank <= 1) n = chance(.55) ? 1 : 0;
-  if(game.rank === 2) n = rand(1,2);
-  if(game.rank === 3) n = rand(2,3);
-  if(game.rank >= 4) n = rand(3,4);
-
-  if(game.prestige > 55) n++;
-  if(game.influence > 55) n++;
-  if(game.wars.length) n++;
-  if(game.alliances.length >= 2 && chance(.4)) n++;
-
-  return n;
-}
-
-function applyTaxEffects(){
-  if(game.tax==="merciful"){
-    applyEffects({trust:3,colors:{Red:3,Brown:3,Silver:-2},rebelStrength:-2});
-  }
-  if(game.tax==="standard"){
-    applyEffects({stability:1});
-  }
-  if(game.tax==="heavy"){
-    applyEffects({trust:-4,fear:2,colors:{Red:-4,Brown:-3,Silver:2},rebelStrength:3});
-  }
-  if(game.tax==="punitive"){
-    applyEffects({trust:-9,fear:6,stability:-3,colors:{Red:-9,Brown:-7,Silver:4,Gray:2},rebelStrength:8});
-  }
-
-  if(game.treasury < 0){
-    const shortage = Math.abs(game.treasury);
-    game.debt += shortage + 300;
-    game.treasury = 0;
-    applyEffects({prestige:-4,silverInfluence:7,colors:{Silver:3,Gray:-3}});
-    log("Your treasury runs dry. Emergency debt is taken quietly, but not secretly.");
-  }
-}
-
-function tickVendors(){
-  for(const v of game.vendors) v.duration--;
-  const leaving = game.vendors.filter(v=>v.duration<=0);
-  leaving.forEach(v=>log(`${v.type} ${v.name} leaves your court. Their unpurchased goods may find rival buyers.`));
-  game.vendors = game.vendors.filter(v=>v.duration>0);
-}
-
-function processTradeRoutes(){ for(const r of game.tradeRoutes){ if(r.status==='collapsed') continue; game.treasury += r.routeValue; r.monthsActive++; r.dependence=clamp(r.dependence+1,0,100); if(game.military.fleetPower < r.routeRisk && chance(0.15)){ r.status='raided'; game.treasury-=Math.round(r.routeValue*0.5); addInbox(makeEvent('tradeTariffDispute')); } if(game.houses[r.partnerHouse] && game.houses[r.partnerHouse].opinion<35 && chance(0.2)){ r.status='disputed'; addInbox(makeEvent('tradePartnerBetrayal')); } } }
-function processWars(){ for(const w of game.detailedWars.filter(x=>x.status==='active')){ const e=game.houses[w.enemyHouse]; if(!e) continue; const fleet=(game.military.fleetPower-e.military.fleet)/4; const ground=(game.military.graySecurity+game.military.obsidianForce+game.military.warMachines-(e.military.grays+e.military.obsidians))/6; const spy=(game.military.intelligence-e.military.spies)/5; w.warScore=clamp(w.warScore+fleet+ground+spy,-100,100); w.playerWarExhaustion=clamp(w.playerWarExhaustion+4,0,100); w.enemyWarExhaustion=clamp(w.enemyWarExhaustion+3,0,100); w.monthsActive++; game.treasury-=120; game.military.supply=clamp(game.military.supply-3,0,100); if(chance(0.25)) addInbox(makeEvent('fleetBattleOpportunity')); if(w.warScore>70) { addInbox(makeEvent('victoryDemand')); w.status='won'; } if(w.warScore<-70){ addInbox(makeEvent('defeatConcession')); w.status='lost'; } } }
-function passiveWorldEffects(){
-  let rebelDelta = 0;
-
-  if(game.colors.Red < 30) rebelDelta += 3;
-  if(game.colors.Brown < 30) rebelDelta += 2;
-  if(game.trust < 30) rebelDelta += 2;
-  if(game.stability < 35) rebelDelta += 3;
-  if(game.fear > 65) rebelDelta -= 1;
-  if(game.fear > 75 && game.trust < 30) rebelDelta += 2;
-
-  game.rebelStrength = clamp(game.rebelStrength + rebelDelta);
-
-  if(game.hidden.mineSafetyNeglected >= 2 && chance(.28)){
-    applyEffects({treasury:-450,trust:-10,colors:{Red:-12,Orange:-4},stability:-8,rebelStrength:8});
-    game.hidden.mineSafetyNeglected = 0;
-    log("A neglected mine shaft collapses. The dead are Red, but the consequences climb higher.");
-  }
-
-  if(game.rebelStrength >= 75){
-    rebellionCrisis();
-  }
-
-  if(game.wars.length){
-    const warCost = 180 * game.wars.length;
-    game.treasury -= warCost;
-    game.military.supply = clamp(game.military.supply - 2 * game.wars.length);
-    log(`Active war costs drain ${warCost} treasury this month.`);
-  }
-
-  if(game.tradeDeals.length){
-    const tradeGain = 70 * game.tradeDeals.length;
-    game.treasury += tradeGain;
-  }
-
-  for(const h of game.wars){
-    if(chance(.25)){
-      addInbox(makeEvent("warRaid"));
-    }
-  }
-}
-
-function rebellionCrisis(){
-  const suppression = game.military.graySecurity + game.military.intelligence + game.military.obsidianForce + game.stability;
-
-  if(suppression >= 210){
-    applyEffects({stability:-10,trust:-8,fear:8,colors:{Red:-8,Brown:-4,Gray:4},rebelStrength:-30});
-    log("A coordinated rebel rising begins, but your security machine catches it early. Hatred survives.");
-  } else {
-    applyEffects({treasury:-1000,prestige:-12,stability:-22,trust:-10,colors:{Red:-15,Brown:-10,Gray:-6},rebelStrength:-18});
-    log("Rebellion erupts through mines and servant corridors. You survive, but your House bleeds.");
-  }
-}
-
-function checkRank(){
-  const power =
-    game.prestige +
-    game.influence +
-    game.military.fleetPower +
-    game.military.graySecurity/2 +
-    game.military.intelligence/2 +
-    game.treasury/250;
-
-  if(game.rank===1 && power>105){
-    game.rank=2;
-    game.rankName="Recognized House";
-    applyEffects({prestige:5,influence:5});
-    log("Your House is no longer dismissed as provincial. Invitations multiply.");
-  }
-  if(game.rank===2 && power>155){
-    game.rank=3;
-    game.rankName="Regional Power";
-    applyEffects({prestige:8,influence:8});
-    log("Your banners matter beyond your holdings. Lesser houses begin petitioning you.");
-  }
-  if(game.rank===3 && power>220){
-    game.rank=4;
-    game.rankName="High Noble";
-    applyEffects({prestige:10,influence:10});
-    log("You enter the high game. Every silence, alliance, and insult now echoes.");
-  }
-}
-
-function generateVendor(){
-  if(game.vendors.length>=3) return;
-
-  const vendors = [
-    {
-      name:"Lysander ag Kellan",
-      type:"Fleet Broker",
-      reputation:pick(["Trusted","Unknown","Questionable"]),
-      duration:rand(2,3),
-      offers:[
-        item("Used Patrol Corvette","Ship",900,80,{military:{fleetPower:12},prestige:4,colors:{Blue:3}},"A respectable ship. Golds respect metal in orbit."),
-        item("Fighter Wing Contract","Ship",600,70,{military:{fleetPower:8},colors:{Blue:2}},"Strong against raids and trade harassment."),
-        item("Damaged Troop Transport","Ship",420,35,{military:{fleetPower:4,supply:5}},"Can move troops during crisis.")
-      ]
-    },
-    {
-      name:"Marius ti Renn",
-      type:"Gray Arms Dealer",
-      reputation:pick(["Trusted","Unknown","Infamous"]),
-      duration:rand(2,3),
-      offers:[
-        item("Riot Suppression Gear","Gray",400,25,{military:{graySecurity:10},fear:5,trust:-4,colors:{Gray:5,Red:-5,Brown:-3}},"Order in matte-black cases."),
-        item("Pulse Rifle Shipment","Gray",700,45,{military:{graySecurity:14,warMachines:2},fear:3,colors:{Gray:4}},"Authority with a clean trigger."),
-        item("Crowd Surveillance System","Intelligence",550,35,{military:{intelligence:10},stability:5,trust:-5},"Every crowd becomes a ledger.")
-      ]
-    },
-    {
-      name:"Cyra xi Dama",
-      type:"Pink Information Dealer",
-      reputation:pick(["Trusted","Unknown","Questionable"]),
-      duration:rand(2,3),
-      offers:[
-        item("Court Informant Ring","Intelligence",450,30,{military:{intelligence:12},colors:{Pink:7},scandalHeat:-4},"Secrets wearing perfume."),
-        item("Scandal Cleanup","Influence",330,0,{scandalHeat:-12,prestige:2,colors:{Pink:3}},"A reputation bath."),
-        item("Honeytrap Operation","Blackmail",600,25,{military:{intelligence:8},honor:-5,scandalHeat:5},"Power if it works. Disaster if it sings.")
-      ]
-    },
-    {
-      name:"Helios oran Tek",
-      type:"Orange Engineer Guild",
-      reputation:pick(["Trusted","Unknown"]),
-      duration:rand(2,4),
-      offers:[
-        item("Automated Mine Safety Systems","Infrastructure",700,20,{baseIncome:70,trust:6,colors:{Red:8,Orange:8},hidden:{mineSafetyNeglected:-2}},"Mercy disguised as efficiency."),
-        item("Estate Defense Turrets","Fortification",900,55,{military:{fortifications:14,warMachines:4},fear:2},"The walls learn to aim."),
-        item("Shipyard Repair Contract","Fleet Support",500,-20,{military:{supply:8,fleetPower:3},colors:{Blue:3,Orange:4}},"Lower fleet strain and faster repairs.")
-      ]
-    },
-    {
-      name:"Avarus ag Sylan",
-      type:"Silver Financier",
-      reputation:pick(["Trusted","Questionable","Infamous"]),
-      duration:rand(2,3),
-      offers:[
-        item("Emergency War Loan","Finance",-1500,0,{treasury:1500,debt:2100,silverInfluence:12,colors:{Silver:5}},"Money now. Chains later.",true),
-        item("Mine Expansion Investment","Infrastructure",800,0,{baseIncome:130,colors:{Silver:5,Red:-4},hidden:{mineSafetyNeglected:1}},"Profitable, if you do not ask who suffers."),
-        item("Debt Consolidation","Finance",250,0,{debt:-500,silverInfluence:8,prestige:-2},"Lower pressure, higher influence.")
-      ]
-    }
-  ];
-
-  const v = clone(pick(vendors));
-  v.id = Date.now()+"_vendor_"+Math.random().toString(36).slice(2);
-  game.vendors.push(v);
-  log(`${v.type} ${v.name} arrives at court with limited offers.`);
-}
-
-function item(name,type,cost,upkeep,effects,desc,isLoan=false){
-  return {
-    id:Date.now()+"_"+Math.random().toString(36).slice(2),
-    name,type,cost,upkeep,effects,desc,isLoan
-  };
-}
-
-function buyOffer(vendorId,offerId){
-  const vendor = game.vendors.find(v=>v.id===vendorId);
-  if(!vendor) return;
-  const offer = vendor.offers.find(o=>o.id===offerId);
-  if(!offer) return;
-
-  if(!offer.isLoan && offer.cost > game.treasury){
-    alert("Not enough treasury.");
-    return;
-  }
-
-  if(offer.isLoan){
-    applyEffects(offer.effects);
-  } else {
-    applyEffects({treasury:-offer.cost});
-    applyEffects(offer.effects);
-  }
-
-  game.assets.push({
-    name:offer.name,
-    type:offer.type,
-    upkeep:offer.upkeep,
-    effects:offer.effects?.military || {}
-  });
-
-  log(`Purchased: ${offer.name}. ${offer.desc}`);
-
-  vendor.offers = vendor.offers.filter(o=>o.id!==offerId);
-  if(vendor.offers.length===0){
-    game.vendors = game.vendors.filter(v=>v.id!==vendorId);
-  }
-
-  render();
-}
-
-/* ===========================
-   ACTIVE ACTIONS
-   =========================== */
-
-function initiateTrade(house){
-  if(game.tradeDeals.includes(house)){
-    alert("You already have a trade deal with this house.");
-    return;
-  }
-
-  const h = game.houses[house];
-  const chanceScore = game.prestige + game.influence + h.opinion + game.colors.Silver - h.rivalry;
-
-  if(chanceScore > 120 || chance(.35)){
-    addTrade(house);
-    h.opinion = clamp(h.opinion + 5);
-    applyEffects({baseIncome:80,influence:3});
-    log(`House ${house} accepts your trade proposal.`);
-  } else {
-    h.opinion = clamp(h.opinion - 5);
-    applyEffects({prestige:-1});
-    log(`House ${house} rejects your trade proposal. Your approach is noted as premature.`);
-  }
-
-  render();
-}
-
-function initiateAlliance(house){
-  if(game.alliances.includes(house)){
-    alert("Already allied.");
-    return;
-  }
-
-  const h = game.houses[house];
-  const chanceScore = game.prestige + game.influence + h.opinion + h.respect - h.rivalry - (h.tier-game.rank)*12;
-
-  if(chanceScore > 125 || chance(.28)){
-    addAlliance(house);
-    h.opinion = clamp(h.opinion + 8);
-    applyEffects({prestige:3,influence:6});
-    log(`House ${house} accepts alliance terms.`);
-  } else {
-    h.opinion = clamp(h.opinion - 6);
-    h.rivalry = clamp(h.rivalry + 3);
-    applyEffects({prestige:-2});
-    log(`House ${house} refuses alliance. The refusal travels through court quickly.`);
-  }
-
-  render();
-}
-
-function sendGift(house){
-  if(game.treasury < 300){
-    alert("Not enough treasury.");
-    return;
-  }
-
-  game.treasury -= 300;
-  const h = game.houses[house];
-  h.opinion = clamp(h.opinion + 7);
-  h.respect = clamp(h.respect + 1);
-  applyEffects({prestige:1});
-  log(`You send a tasteful gift to House ${house}.`);
-  render();
-}
-
-function spyOnHouse(house){
-  const h = game.houses[house];
-  const spyPower = game.military.intelligence + game.colors.Pink/2 + game.colors.Brown/3;
-  const defense = h.military.spies + h.tier*10;
-
-  if(spyPower + rand(0,35) > defense){
-    game.knownIntel[house] = true;
-    h.openIntel = true;
-    applyEffects({military:{intelligence:2}});
-    log(`Your spies return with military intelligence on House ${house}.`);
-  } else {
-    h.opinion = clamp(h.opinion - 8);
-    h.rivalry = clamp(h.rivalry + 6);
-    applyEffects({scandalHeat:7,honor:-3});
-    log(`Your spies are nearly caught probing House ${house}. They deny everything poorly.`);
-  }
-
-  render();
-}
-
-function hostFeast(){ const cost=450+game.rank*150; if(game.treasury<cost||!canUseAction('hostFeast')) return; game.treasury-=cost; game.prestige+=rand(5,10); game.colors.Pink=clamp(game.colors.Pink+4); game.houses.Cindral.opinion=clamp(game.houses.Cindral.opinion+3); setCooldown('hostFeast',6); log('You host a lavish feast. Courtly eyes turn toward your table.');}
-function reliefProgram(){ if(game.treasury<600||!canUseAction('reliefProgram')) return; game.treasury-=600; applyEffects({trust:10,rebelStrength:-10,colors:{Red:8,Brown:8,Silver:-4},houses:{Veyra:{opinion:-3},Marros:{opinion:4}},reformSuspicion:5}); setCooldown('reliefProgram',8); addMemory('eo_red','mercy','Relief reached lower districts.',5,8);}
-function declareWar(house){
-  if(game.wars.includes(house)){
-    alert("You are already at war.");
-    return;
-  }
-
-  if(!confirm(`Declare war on House ${house}? This will create recurring military crises and costs.`)) return;
-
-  game.wars.push(house);
-  const h = game.houses[house];
-  h.atWar = true;
-  h.opinion = clamp(h.opinion - 30);
-  h.rivalry = clamp(h.rivalry + 25);
-
-  applyEffects({prestige:5,fear:6,stability:-4,influence:3});
-  log(`You declare war on House ${house}. The court exhales in horror and admiration.`);
-  addInbox(makeEvent("warDemand"));
-  render();
-}
-
-/* ===========================
-   RENDERING
-   =========================== */
-
-function render(){
-  if(!game) return;
-  normalizeGameState();
-  renderTopBar();
-  renderLeft();
-  renderRight();
-  renderMain();
-}
-
-function renderLeft(){
-  const lp = document.getElementById("leftPanel");
-
-  lp.innerHTML = `
-    <div class="card">
-      <b class="gold">House ${game.houseName}</b><br>
-      <span class="tiny">Month ${game.month} • Rank ${game.rank}: ${game.rankName}</span><br>
-      <span class="tiny">${running ? "Court clock running" : "Court clock paused"}</span>
-    </div>
-
-    <div class="stat-grid">
-      ${stat("Treasury",Math.round(game.treasury))}
-      ${stat("Debt",Math.round(game.debt))}
-      ${stat("Income","+"+Math.round(game.baseIncome)+"/mo")}
-      ${stat("Tax",game.tax)}
-      ${stat("Prestige",game.prestige)}
-      ${stat("Influence",game.influence)}
-      ${stat("Stability",game.stability)}
-      ${stat("Rebels",game.rebelStrength)}
-      ${stat("Fear",game.fear)}
-      ${stat("Trust",game.trust)}
-    </div>
-
-    <div class="section-title">Color Relations</div>
-    ${Object.entries(game.colors).map(([c,v])=>bar(c,v,relationName(v))).join("")}
-
-    <div class="section-title">Military</div>
-    ${Object.entries(game.military).map(([k,v])=>bar(pretty(k),v,v)).join("")}
-  `;
-}
-
-function renderRight(){
-  const rp = document.getElementById("rightPanel");
-
-  rp.innerHTML = `
-    <div class="section-title">Tax Policy</div>
-    <div class="row">
-      <button ${game.tax==="merciful"?"disabled":""} onclick="setTax('merciful')">Merciful</button>
-      <button ${game.tax==="standard"?"disabled":""} onclick="setTax('standard')">Standard</button>
-      <button ${game.tax==="heavy"?"disabled":""} onclick="setTax('heavy')">Heavy</button>
-      <button ${game.tax==="punitive"?"disabled":""} onclick="setTax('punitive')">Punitive</button>
-    </div>
-    <p class="tiny">Taxes affect income, trust, rebellion, Color loyalty, and Silver confidence each month.</p>
-
-    <div class="section-title">Current Entanglements</div>
-    <div class="card">
-      <span class="tag gold">${game.inbox.length} Inbox</span>
-      <span class="tag blue">${game.vendors.length} Vendors</span>
-      <span class="tag green">${game.tradeDeals.length} Trade</span>
-      <span class="tag purple">${game.alliances.length} Alliances</span>
-      <span class="tag red">${game.wars.length} Wars</span>
-      <br><br>
-      <span class="tiny">Scandal Heat: ${game.scandalHeat}</span><br>
-      <span class="tiny">Silver Influence: ${game.silverInfluence}</span><br>
-      <span class="tiny">Reform Suspicion: ${game.reformSuspicion}</span>
-    </div>
-
-    <div class="section-title">Design Logic</div>
-    <p class="tiny">
-      Inbox is sorted by sender priority. Higher Golds, allies, creditors, and war messages rise to the top.
-      Low Color requests may rank lower socially, but ignoring them increases unrest and rebellion.
+<div id="centerMsg"></div>
+<div id="powerBarOuter"><div id="powerBarInner"></div></div>
+<div id="crosshair"></div>
+
+<div id="startOverlay">
+  <div id="startBox">
+    <h1>Responsive 3D Pickleball</h1>
+    <p>
+      The paddle now follows the mouse directly and quickly:
+      right goes right, left goes left, up goes up, and down goes down.
     </p>
-  `;
-}
+    <p>
+      The arm is still restricted to a reachable semicircle, but it should feel much faster and more natural.
+    </p>
+    <button id="startBtn">Start Game</button>
+  </div>
+</div>
 
-function setTax(t){
-  game.tax = t;
-  log(`Tax policy changed to ${t.toUpperCase()}.`);
-  render();
-}
+<script type="module">
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 
-function setTab(t){
-  tab = t;
-  document.querySelectorAll(".tabs button").forEach(b=>b.classList.remove("active"));
-  document.getElementById("tab"+t[0].toUpperCase()+t.slice(1)).classList.add("active");
-  renderMain();
-}
+let scene, camera, renderer, clock;
+let court, net, ball, aimLine;
+let player, enemy;
 
-function renderMain(){
-  const mc = document.getElementById("mainContent");
-  const title = document.getElementById("mainTitle");
+let keys = {};
+let mouse = { x: 0, y: 0 };
+let frameDt = 0.016;
 
-  if(tab==="inbox"){title.textContent="Inbox";renderInbox(mc);}
-  if(tab==="actions"){title.textContent="Active Actions";renderActions(mc);}
-  if(tab==="military"){title.textContent="Military";renderMilitary(mc);}
-  if(tab==="houses"){title.textContent="Houses";renderHouses(mc);}
-  if(tab==="vendors"){title.textContent="Vendors";renderVendors(mc);}
-  if(tab==="characters"){title.textContent="Characters";renderCharacters(mc);}
-  if(tab==="blocs"){title.textContent="Blocs";renderBlocs(mc);}
-  if(tab==="wartrade"){title.textContent="War / Trade";renderWarTrade(mc);}
-  if(tab==="log"){title.textContent="Chronicle";renderLog(mc);}
-}
+let gameStarted = false;
+let playerScore = 0;
+let enemyScore = 0;
+let round = 1;
+let rallyActive = false;
+let serveReady = false;
+let messageTimer = 0;
 
-function renderInbox(mc){
-  if(game.inbox.length===0){
-    mc.innerHTML = `
-      <div class="card">
-        <b class="gold">Inbox empty.</b>
-        <p class="story">For now, no one demands your attention. As your influence rises, silence will become rarer.</p>
-      </div>
-    `;
-    return;
-  }
+let paddleHand = "right";
+let handSwitchAnim = 1;
+let handSwitchFrom = "right";
+let handSwitchTo = "right";
 
-  const sorted = [...game.inbox].sort((a,b)=>senderPriority(b)-senderPriority(a));
+let holdMode = 0;
 
-  mc.innerHTML = `
-    <div class="card">
-      <b class="gold">Priority Sorting</b>
-      <p class="tiny">Messages are sorted by sender power, alliance duty, military urgency, deadline, and political danger. Low Color issues may appear lower but become dangerous if neglected.</p>
-    </div>
-    ${sorted.map(ev=>`
-      <div class="inbox-card ${ev.deadline<=1?"urgent":""} ${senderPriority(ev)>100?"major":""}">
-        <div class="title">${ev.title}</div>
-        <div class="tiny">From: ${ev.from} • Sender: ${ev.senderType} • Deadline: ${ev.deadline} month(s) • Priority ${senderPriority(ev)}</div>
-        <div>${ev.tags.map(t=>`<span class="tag ${tagClass(t)}">${t}</span>`).join("")}</div>
-        <p class="story">${ev.body}</p>${ev.causeText?`<div class="tiny"><b>Cause:</b> ${ev.causeText}</div>`:''}${ev.causeTags?.length?`<div class="tiny">Risk: ${ev.causeTags.map(t=>`<span class='tag'>${t}</span>`).join(' ')}</div>`:''}
-        ${ev.choices.map((c,i)=>{
-          const blocked = c.condition && !c.condition();
-          const poor = c.cost && game.treasury < c.cost;
-          return `
-            <button class="choice" ${blocked||poor?"disabled":""} onclick="chooseEvent('${ev.id}',${i})">
-              ${i+1}. ${c.text}
-              <small>${c.hint||""} ${c.cost?` Cost: ${c.cost}.`:""} ${blocked?" Requirement not met.":""} ${poor?" Insufficient treasury.":""}</small>
-            </button>
-          `;
-        }).join("")}
-      </div>
-    `).join("")}
-  `;
-}
+let isChargingSwing = false;
+let swingCharge = 0;
+let swingStartTime = 0;
 
-function tagClass(t){
-  if(["Red","Riot","War"].includes(t)) return "red";
-  if(["Gold","Diplomacy","Senate","Alliance"].includes(t)) return "gold";
-  if(["Fleet","Blue","Military","Border"].includes(t)) return "blue";
-  if(["Trust","Brown","Trade","Income"].includes(t)) return "green";
-  if(["Pink","Scandal","Blackmail","Obligation"].includes(t)) return "purple";
-  return "";
-}
+let activePlayerSwing = null;
+let activeEnemySwing = null;
 
-function renderActions(mc){
-  mc.innerHTML = `
-    <div class="card">
-      <b class="gold">Initiate Events</b>
-      <p class="story">
-        You do not only react. You can start trade deals, alliances, espionage, gifts, and wars.
-        These actions change what kinds of inbox requests appear later.
-      </p>
-    </div>
+let smoothedPaddleTarget = new THREE.Vector3(0.85, 1.6, -0.7);
 
-    <div class="action-grid">
-      ${Object.entries(game.houses).map(([h,o])=>`
-        <div class="card">
-          <div class="title">House ${h}</div>
-          <div class="tiny">Tier ${o.tier} • ${o.style} • Stance ${o.relationship?.stance||'neutral'} • Bloc ${o.bloc}</div><div class='tiny'>Trust ${o.relationship?.trust||50} • Resent ${o.relationship?.resentment||0} • Suspicion ${o.relationship?.suspicion||0} • Leaning ${o.relationship?.leaning||'trueNeutral'}</div>
-          <span class="tag gold">Opinion ${o.opinion}</span>
-          <span class="tag blue">Respect ${o.respect}</span>
-          <span class="tag red">Rivalry ${o.rivalry}</span>
-          <br><br>
-          <div class="row">
-            <button onclick="initiateTrade('${h}')">Trade</button>
-            <button onclick="initiateAlliance('${h}')">Alliance</button>
-            <button onclick="sendGift('${h}')">Gift 300</button>
-            <button onclick="spyOnHouse('${h}')">Spy</button>
-            <button class="danger" onclick="declareWar('${h}')">War</button>
-          </div>
-        </div>
-      `).join("")}
-    </div>
-  `;
-}
+const HOLD_MODES = [
+  { name: "Neutral", wrist: 0 },
+  { name: "Forehand Tilt", wrist: -0.45 },
+  { name: "Backhand Tilt", wrist: 0.45 },
+  { name: "Flat Block", wrist: 0.15 }
+];
 
-function renderMilitary(mc){
-  mc.innerHTML = `
-    <div class="card">
-      <b class="gold">Military is not one number.</b>
-      <p class="story">Grays control streets, fleets project noble power, Obsidians terrify, spies reveal secrets, and supply determines how long force can last.</p>
-    </div>
-
-    <div class="two-col">
-      ${Object.entries(game.military).map(([k,v])=>`
-        <div class="card">
-          <b>${pretty(k)}</b>
-          <div class="tiny">Strength: ${v}</div>
-          <div class="bar"><div class="fill" style="width:${v}%"></div></div>
-          <p class="tiny">${militaryDescription(k)}</p>
-        </div>
-      `).join("")}
-    </div>
-
-    <div class="section-title">Assets</div>
-    ${game.assets.map(a=>`
-      <div class="card">
-        <b>${a.name}</b>
-        <div class="tiny">Type: ${a.type} • Upkeep ${a.upkeep}/month</div>
-        ${Object.entries(a.effects||{}).map(([k,v])=>`<span class="tag blue">${pretty(k)} +${v}</span>`).join("")}
-      </div>
-    `).join("")}
-  `;
-}
-
-function militaryDescription(k){
-  return {
-    graySecurity:"Riot control, arrests, tax enforcement, prisons, and internal order.",
-    fleetPower:"Ships, fighters, orbit control, trade protection, and power projection.",
-    obsidianForce:"Elite shock troops, intimidation, bodyguard power, and brutal ground victory.",
-    houseGuard:"Personal forces loyal to your bloodline, useful against coups and assassins.",
-    fortifications:"Estate walls, shield grids, bunkers, and defense against raids.",
-    intelligence:"Spies, informants, Pinks, Browns, intercepted messages, and blackmail.",
-    warMachines:"Grav tanks, drones, siege weapons, and battlefield terror.",
-    officerQuality:"Command competence, discipline, and reduced military failure.",
-    supply:"Fuel, ammunition, food, medicine, repairs, and war endurance."
-  }[k] || "";
-}
-
-function renderHouses(mc){
-  mc.innerHTML = `
-    <div class="card">
-      <b class="gold">House Intelligence</b>
-      <p class="story">
-        Allied houses reveal basic military strength. Other houses require espionage.
-        Spy attempts can reveal military data, but failure can create scandal and rivalry.
-      </p>
-    </div>
-
-    ${Object.entries(game.houses).map(([h,o])=>`
-      <div class="card">
-        <div class="title">House ${h}</div>
-        <div class="tiny">Tier ${o.tier} • ${o.style} • Stance ${o.relationship?.stance||'neutral'} • Bloc ${o.bloc}</div><div class='tiny'>Trust ${o.relationship?.trust||50} • Resent ${o.relationship?.resentment||0} • Suspicion ${o.relationship?.suspicion||0} • Leaning ${o.relationship?.leaning||'trueNeutral'}</div>
-        <span class="tag gold">Opinion ${o.opinion} — ${relationName(o.opinion)}</span>
-        <span class="tag blue">Respect ${o.respect}</span>
-        <span class="tag red">Rivalry ${o.rivalry}</span>
-        <span class="tag purple">Fear ${o.fear}</span>
-        ${game.alliances.includes(h)?`<span class="tag green">Ally</span>`:""}
-        ${game.tradeDeals.includes(h)?`<span class="tag green">Trade</span>`:""}
-        ${game.wars.includes(h)?`<span class="tag red">War</span>`:""}
-
-        <p class="tiny">Traits: ${o.traits.join(", ")}</p>
-
-        ${game.knownIntel[h] || game.alliances.includes(h) ? `
-          <div class="section-title">Military Intelligence</div>
-          <span class="tag blue">Fleet ${o.military.fleet}</span>
-          <span class="tag blue">Grays ${o.military.grays}</span>
-          <span class="tag blue">Obsidians ${o.military.obsidians}</span>
-          <span class="tag blue">Forts ${o.military.forts}</span>
-          <span class="tag blue">Spies ${o.military.spies}</span>
-        ` : `
-          <p class="tiny bad">Military strength unknown. Use alliance or espionage to learn more.</p>
-        `}
-      </div>
-    `).join("")}
-  `;
-}
-
-function renderVendors(mc){
-  if(game.vendors.length===0){
-    mc.innerHTML = `
-      <div class="card">
-        <b class="gold">No vendors currently at court.</b>
-        <p class="story">Vendors arrive over time. Their limited offers can reshape your military, economy, or spy network.</p>
-      </div>
-    `;
-    return;
-  }
-
-  mc.innerHTML = game.vendors.map(v=>`
-    <div class="vendor-card">
-      <div class="title">${v.name}</div>
-      <div class="tiny">${v.type} • Reputation: ${v.reputation} • Relation ${v.relation||50} • Trust ${v.trust||50} • Lean ${v.factionLean||'Independent'} • Leaves in ${v.duration} month(s)</div><div class='tiny'>Likes: ${(v.favoredPolicies||[]).join(', ')||'None'} • Dislikes: ${(v.dislikedPolicies||[]).join(', ')||'None'}</div>
-      <br>
-      ${v.offers.map(o=>`
-        <div class="card">
-          <b>${o.name}</b>
-          <div class="tiny">Type: ${o.type} • Cost: ${o.isLoan?"loan terms":o.cost} • Upkeep: ${o.upkeep}/month</div>
-          <p>${o.desc}</p>
-          <div class="tiny">${effectText(o.effects)}</div>
-          <button class="primary" onclick="buyOffer('${v.id}','${o.id}')">${o.isLoan?"Accept Deal":"Buy"}</button>
-        </div>
-      `).join("")}
-    </div>
-  `).join("");
-}
-
-function renderLog(mc){
-  mc.innerHTML = `
-    <div class="card">
-      <b class="gold">Chronicle</b>
-      <p class="tiny">The court remembers what the powerful pretend to forget.</p>
-    </div>
-    <div class="log">
-      ${game.log.map(l=>`
-        <div class="log-line">
-          <span class="tag gold">Month ${l.month}</span>
-          ${l.text}
-        </div>
-      `).join("")}
-    </div>
-  `;
-}
-
-function stat(label,value){
-  return `<div class="stat"><div class="label">${label}</div><div class="value">${value}</div></div>`;
-}
-
-function bar(label,val,caption){
-  return `
-    <div class="bar-row">
-      <div class="bar-top"><span>${label}</span><span>${caption}</span></div>
-      <div class="bar"><div class="fill" style="width:${clamp(val)}%"></div></div>
-    </div>
-  `;
-}
-
-/* ===========================
-   SAVE / LOAD / MODAL
-   =========================== */
-
-function saveGame(){
-  localStorage.setItem("goldRiseRebuiltSave",JSON.stringify(game));
-  log("Game saved.");
-  render();
-}
-
-
-function renderCharacters(mc){ const groups={}; Object.values(game.characters).forEach(c=>{(groups[c.group] ||= []).push(c);}); mc.innerHTML=Object.keys(groups).map(g=>`<div class="card"><div class="title">${g}</div>${groups[g].map(c=>`<div><b>${c.name}</b> <span class="tiny">(${c.role})</span><div class="tiny">Op ${c.opinion} • Tr ${c.trust} • Fear ${c.fear} • Res ${c.respect} • Rsm ${c.resentment}</div><div class="tiny">Traits: ${c.traits.join(', ')}</div><div class="tiny">Memories: ${(c.memories.slice(0,3).map(m=>m.type+': '+m.text).join(' | ')||'None')}</div></div>`).join('<hr style="border-color:#2b3248">')}</div>`).join(''); }
-function renderBlocs(mc){ const map={Traditionalist:['Veyra','Karras'],Reform:['Marros'],Mercantile:['Aurelian','Karras'],Warhawk:['Veyra','Bellor'],Courtly:['Cindral'],Independent:['Thorne']}; mc.innerHTML=Object.keys(game.playerBlocStanding).map(b=>`<div class="card"><div class="title">${b} (${game.playerBlocStanding[b]})</div><div class="bar"><div class="fill" style="width:${clamp(game.playerBlocStanding[b])}%"></div></div><div class="tiny">Houses: ${(map[b]||[]).join(', ')||'None'}</div></div>`).join(''); }
-function renderWarTrade(mc){ const wars=game.detailedWars.map(w=>`<div class="card"><div class="title">War: ${w.enemyHouse}</div><div class="tiny">Score ${Math.round(w.warScore)} • Exhaustion ${w.playerWarExhaustion} • Supply drain ${w.supplyDrain} • ${w.status}</div></div>`).join('')||'<div class="tiny">No active detailed wars.</div>'; const routes=game.tradeRoutes.map(r=>`<div class="card"><div class="title">Route: ${r.partnerHouse}</div><div class="tiny">Value ${r.routeValue} • Risk ${r.routeRisk} • Dependence ${r.dependence} • ${r.status}</div></div>`).join('')||'<div class="tiny">No active routes.</div>'; mc.innerHTML='<div class="section-title">Wars</div>'+wars+'<div class="section-title">Trade Routes</div>'+routes; }
-
-function loadGame(){
-  const s = localStorage.getItem("goldRiseRebuiltSave");
-  if(!s){
-    alert("No save found.");
-    return;
-  }
-  running = false;
-  clearInterval(timer);
-  timer = null;
-  game = JSON.parse(s);
-  normalizeGameState();
-  log("Game loaded.");
-  render();
-}
-
-function openModal(title,body){
-  document.getElementById("modalTitle").innerHTML = title;
-  document.getElementById("modalBody").innerHTML = body;
-  document.getElementById("modalBackdrop").style.display = "flex";
-}
-
-function closeModal(){
-  document.getElementById("modalBackdrop").style.display = "none";
-}
-
-
-
-/* ===== Deep political simulation overrides ===== */
-function makeCause(text,tags=[]){ return {text, tags}; }
-function pairKey(a,b){ return [a,b].sort().join('|'); }
-function getHousePairRelation(a,b){ game.houseRelations ||= {}; const k=pairKey(a,b); game.houseRelations[k] ||= {tension:20,history:[],status:'neutral'}; return game.houseRelations[k]; }
-function adjustHousePairTension(a,b,amount,reason){ const p=getHousePairRelation(a,b); p.tension=clamp((p.tension||0)+amount,0,100); p.history.unshift(`M${game.month}: ${reason} (${amount>0?'+':''}${amount})`); p.history=p.history.slice(0,8); if(p.tension>85) p.status='feud'; else if(p.tension>65) p.status='rivalry'; else if(p.tension<35) p.status='friendly'; else p.status='neutral'; }
-function getHouseStance(h){ return h?.relationship?.stance || (h?.atWar?'war':h?.allied?'allied':'neutral'); }
-function setHouseStance(h,stance,reason=''){ if(!h) return; h.relationship ||= {}; const prev=h.relationship.stance||'neutral'; h.relationship.stance=stance; h.allied=stance==='allied'||stance==='protectorate'; h.atWar=stance==='war'; if(prev!==stance) log(`${h.name||'House'} stance changed: ${prev} → ${stance}${reason?` (${reason})`:''}.`); }
-function adjustHouseRel(h,changes,reason=''){ if(!h) return; h.relationship ||= {}; Object.entries(changes).forEach(([k,v])=>{ if(typeof h.relationship[k]!=='number') h.relationship[k]=0; h.relationship[k]=clamp(h.relationship[k]+v,-100,100); }); if(reason) h.relationship.lastMajorInteractionMonth=game.month; }
-function houseTotalMilitary(h){ return (h?.military?.fleet||0)+(h?.military?.grays||0)+(h?.military?.obsidians||0)+(h?.military?.spies||0); }
-function playerTotalMilitary(){ return (game.military.fleetPower||0)+(game.military.graySecurity||0)+(game.military.obsidianForce||0)+(game.military.intelligence||0); }
-function relativePowerToHouse(h){ return Math.round((playerTotalMilitary()+1)/(houseTotalMilitary(h)+1)*100); }
-function houseIdeologyFit(h){ const b=h?.bloc||'Independent'; return (game.playerBlocStanding[b]||50)-50; }
-function adjustVendorRelation(name,amount,reason=''){ const v=game.vendors.find(x=>x.name===name||x.id===name); if(!v) return; v.relation=clamp((v.relation||50)+amount,0,100); if(reason) log(`${v.name} relation ${amount>0?'+':''}${amount}: ${reason}.`); }
-function broadcastAction(actionKey,context={}){ game.lastActions ||= []; game.lastActions.unshift({month:game.month,actionKey,context}); game.lastActions=game.lastActions.slice(0,25); if(actionKey==='executedRedLeaders'){ adjustHouseRel(game.houses.Veyra,{trust:4,resentment:-2},'approved crackdown'); adjustHouseRel(game.houses.Marros,{resentment:7,trust:-5},'opposed executions'); game.playerBlocStanding.Traditionalist=clamp(game.playerBlocStanding.Traditionalist+5,0,100); game.playerBlocStanding.Reform=clamp(game.playerBlocStanding.Reform-6,0,100);} if(actionKey==='fundedRelief'){ game.playerBlocStanding.Reform=clamp(game.playerBlocStanding.Reform+5,0,100); game.playerBlocStanding.Traditionalist=clamp(game.playerBlocStanding.Traditionalist-3,0,100); adjustVendorRelation('Orange Engineer Guild',4,'approved relief investment'); }
- if(actionKey==='remainedNeutral'){ game.neutralityProfile.reputation=clamp(game.neutralityProfile.reputation+5,0,100); game.neutralityProfile.ignoredConflicts++; game.playerBlocStanding.Warhawk=clamp(game.playerBlocStanding.Warhawk-3,0,100);} }
-function processAlliances(){ for(const p of game.alliancePacts){ const h=game.houses[p.house]; if(!h) continue; p.monthsActive++; let delta=0; if(h.trade) delta+=1; if(game.ignoredHistory['House '+p.house]?.count>0) delta-=1; if(relativePowerToHouse(h)>180) delta-=1; if(relativePowerToHouse(h)<70) delta-=1; p.health=clamp(p.health+delta,0,100); h.relationship.allianceHealth=p.health; if(p.health<35 && chance(0.22)) addInbox(makeEvent('allianceReassurance',makeCause('Alliance health has become fragile.',['allianceLow']))); if(p.health<20 && chance(0.28)) addInbox(makeEvent('allianceUltimatum',makeCause('Ally fears collapse and demands action.',['allianceCritical']))); if(p.health<10 && chance(0.18)){ setHouseStance(h,'rival','alliance collapsed'); }} }
-function processAllianceConflicts(){ const allies=Object.values(game.houses).filter(h=>getHouseStance(h)==='allied'); for(let i=0;i<allies.length;i++) for(let j=i+1;j<allies.length;j++){ const a=allies[i],b=allies[j]; let up=0; if(a.bloc!==b.bloc) up+=4; if((a.traits||[]).includes('traditional')&&(b.traits||[]).includes('reformist')) up+=5; if(Math.abs(houseTotalMilitary(a)-houseTotalMilitary(b))>25) up+=2; adjustHousePairTension(a.name,b.name,up,'allied friction'); const pr=getHousePairRelation(a.name,b.name); if(pr.tension>80 && chance(.18)) addInbox(makeEvent('forcedSideChoice',makeCause('Two allies demand incompatible support.',['allyConflict']))); else if(pr.tension>65 && chance(.2)) addInbox(makeEvent('allyDispute',makeCause('Allied houses are feuding.',['allyDispute']))); }}
-function processNeutralHouses(){ Object.values(game.houses).forEach(h=>{ if(getHouseStance(h)!=='neutral') return; const lean=h.relationship.leaning; if(lean==='friendlyNeutral' && chance(.1)) addInbox(makeEvent('friendlyNeutralTrade',makeCause('Friendly neutral seeks limited cooperation.',['neutralFriendly']))); if(lean==='hostileNeutral' && chance(.1)) addInbox(makeEvent('hostileNeutralUnderminesTrade',makeCause('Hostile neutral quietly undermines your route.',['neutralHostile']))); }); }
-function processHostilities(){ Object.values(game.houses).forEach(h=>{ const s=getHouseStance(h); if(s!=='rival'&&s!=='hostile') return; if(chance(.12)) addInbox(makeEvent('rivalInsult',makeCause('Rivalry has intensified into open insults.',['rivalry']))); if(chance(.1)) addInbox(makeEvent('rivalOutbidsVendor',makeCause('A rival has stronger vendor ties this month.',['vendor','rival']))); }); }
-function weightedEventPool(){ const pool=[]; const add=(type,w,cond,cause,tags)=>{ if(cond) pool.push({type,weight:w,causeText:cause,causeTags:tags}); };
- add('taxPetition',8,true,'Routine fiscal pressure from lower districts.',['tax']); add('mineStrike',7,true,'Mine safety and labor pressure remain unresolved.',['labor']); add('allianceReassurance',6,game.alliancePacts.some(p=>p.health<35),'An ally questions your commitment.',['alliance']); add('neutralityTest',5,game.neutralityProfile.reputation>45,'Your neutrality is being tested by rivals.',['neutrality']); add('rivalCourtsAlly',6,Object.values(game.houses).some(h=>getHouseStance(h)==='rival') && game.alliancePacts.length>0,'A rival is courting one of your allies.',['rival','alliance']); add('vendorRareOffer',4,game.vendors.some(v=>(v.relation||50)>70),'A trusted vendor offers something exceptional.',['vendor']); add('tradeRouteRaid',6,game.tradeRoutes.some(r=>r.routeRisk>game.military.fleetPower),'Trade routes are under-protected.',['trade']); add('warExhaustionProtests',6,game.detailedWars.some(w=>w.playerWarExhaustion>45),'War strain is spilling into unrest.',['war']); return pool; }
-function chooseWeighted(pool){ const total=pool.reduce((a,b)=>a+b.weight,0); let r=Math.random()*total; for(const e of pool){ r-=e.weight; if(r<=0) return e; } return pool[0]; }
-const _oldMakeEvent=makeEvent; makeEvent=function(type,causeData=null){ const ev=eventFactory(type)||eventFactory('taxPetition'); if(causeData){ ev.causeText=causeData.text||causeData.causeText; ev.causeTags=causeData.tags||causeData.causeTags||[]; } return ev; }
-generateContextEvent=function(){ const pool=weightedEventPool(); const pick=chooseWeighted(pool); return makeEvent(pick.type,pick); }
-const _oldAdvanceMonth=advanceMonth; advanceMonth=function(){ _oldAdvanceMonth(); processAlliances(); processAllianceConflicts(); processNeutralHouses(); processHostilities(); }
-window.onload = ()=>{
-  const s = localStorage.getItem("goldRiseRebuiltSave");
-  if(s){
-    game = JSON.parse(s);
-  } else {
-    newGame();
-  }
-  render();
+const COURT = {
+  width: 16,
+  length: 30
 };
+
+const ARM = {
+  shoulderHeight: 2.1,
+
+  // Bigger mouse range.
+  horizontalReach: 2.7,
+  verticalReach: 2.0,
+
+  // Active arm range.
+  crossBodyLimit: 0.75,
+  outsideLimit: 2.45,
+  maxRadius: 2.45,
+
+  minY: 0.35,
+  maxY: 3.05,
+
+  closeZ: -0.28,
+  farZ: -1.35,
+
+  // Higher = snappier paddle response.
+  response: 42
+};
+
+const SWING = {
+  maxChargeTime: 1.05,
+
+  minPower: 0.45,
+  maxPower: 1.9,
+
+  perfectStart: 0.42,
+  perfectEnd: 0.8,
+
+  hardHitRadius: 0.95,
+  softHitRadius: 0.72,
+
+  serveMinSpeed: 8.5,
+  serveMaxSpeed: 15.2,
+
+  hitMinSpeed: 8.7,
+  hitMaxSpeed: 17.8,
+
+  softDeflectSpeed: 6.2,
+
+  minSwingDuration: 0.16,
+  maxSwingDuration: 0.34
+};
+
+const ballState = {
+  velocity: new THREE.Vector3(),
+  lastHitBy: null,
+  inPlay: false,
+  cooldown: 0,
+  bouncesOnSide: { player: 0, enemy: 0 },
+  landedInSideAfterHit: { player: false, enemy: false }
+};
+
+init();
+animate();
+
+function init() {
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x8fd3ff);
+  scene.fog = new THREE.Fog(0x8fd3ff, 45, 115);
+
+  camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  document.body.appendChild(renderer.domElement);
+
+  clock = new THREE.Clock();
+
+  addLights();
+  buildWorld();
+  createAimLine();
+
+  player = createPlayer({
+    color: 0x246bff,
+    shirt: 0x184bca,
+    x: 0,
+    z: 10,
+    isEnemy: false
+  });
+
+  enemy = createPlayer({
+    color: 0xff3333,
+    shirt: 0xb91515,
+    x: 0,
+    z: -10,
+    isEnemy: true
+  });
+
+  scene.add(player.group);
+  scene.add(enemy.group);
+
+  ball = new THREE.Mesh(
+    new THREE.SphereGeometry(0.28, 28, 28),
+    new THREE.MeshStandardMaterial({
+      color: 0xffff55,
+      roughness: 0.36,
+      emissive: 0x252500
+    })
+  );
+  ball.castShadow = true;
+  scene.add(ball);
+
+  resetPoint("Click Start to begin.");
+
+  window.addEventListener("resize", onResize);
+  document.addEventListener("keydown", e => handleKey(e, true));
+  document.addEventListener("keyup", e => handleKey(e, false));
+  document.addEventListener("mousemove", onMouseMove);
+  document.addEventListener("mousedown", onMouseDown);
+  document.addEventListener("mouseup", onMouseUp);
+
+  document.getElementById("startBtn").onclick = () => {
+    document.getElementById("startOverlay").style.display = "none";
+    gameStarted = true;
+    resetPoint("Hold click to aim. Release to serve.");
+  };
+}
+
+function addLights() {
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.25));
+
+  const sun = new THREE.DirectionalLight(0xffffff, 1.45);
+  sun.position.set(9, 22, 11);
+  sun.castShadow = true;
+  sun.shadow.camera.left = -35;
+  sun.shadow.camera.right = 35;
+  sun.shadow.camera.top = 35;
+  sun.shadow.camera.bottom = -35;
+  sun.shadow.mapSize.width = 2048;
+  sun.shadow.mapSize.height = 2048;
+  scene.add(sun);
+}
+
+function buildWorld() {
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(95, 95),
+    new THREE.MeshStandardMaterial({ color: 0x3da35d, roughness: 0.9 })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  court = new THREE.Mesh(
+    new THREE.BoxGeometry(COURT.width, 0.08, COURT.length),
+    new THREE.MeshStandardMaterial({ color: 0x3077d4, roughness: 0.65 })
+  );
+  court.position.y = 0.02;
+  court.receiveShadow = true;
+  scene.add(court);
+
+  addLine(0, 0.09, 0, COURT.width, 0.08, 0.08);
+  addLine(0, 0.09, 7, COURT.width, 0.08, 0.08);
+  addLine(0, 0.09, -7, COURT.width, 0.08, 0.08);
+  addLine(0, 0.09, COURT.length / 2, COURT.width, 0.08, 0.08);
+  addLine(0, 0.09, -COURT.length / 2, COURT.width, 0.08, 0.08);
+  addLine(-COURT.width / 2, 0.09, 0, 0.08, 0.08, COURT.length);
+  addLine(COURT.width / 2, 0.09, 0, 0.08, 0.08, COURT.length);
+  addLine(0, 0.09, 0, 0.08, 0.08, COURT.length);
+
+  net = new THREE.Group();
+
+  const netMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(COURT.width + 1, 1.25, 0.12),
+    new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.44,
+      roughness: 0.5
+    })
+  );
+  netMesh.position.set(0, 0.72, 0);
+  net.add(netMesh);
+
+  const band = new THREE.Mesh(
+    new THREE.BoxGeometry(COURT.width + 1, 0.12, 0.18),
+    new THREE.MeshStandardMaterial({ color: 0xf4f4f4 })
+  );
+  band.position.set(0, 1.36, 0);
+  net.add(band);
+
+  const postGeo = new THREE.CylinderGeometry(0.08, 0.08, 1.6, 12);
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+  const p1 = new THREE.Mesh(postGeo, postMat);
+  const p2 = new THREE.Mesh(postGeo, postMat);
+  p1.position.set(-COURT.width / 2 - 0.5, 0.8, 0);
+  p2.position.set(COURT.width / 2 + 0.5, 0.8, 0);
+  net.add(p1, p2);
+  scene.add(net);
+}
+
+function addLine(x, y, z, w, h, d) {
+  const line = new THREE.Mesh(
+    new THREE.BoxGeometry(w, h, d),
+    new THREE.MeshStandardMaterial({ color: 0xffffff })
+  );
+  line.position.set(x, y, z);
+  scene.add(line);
+}
+
+function createAimLine() {
+  const mat = new THREE.LineBasicMaterial({ color: 0xffff66 });
+  const geo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(0, 0, -1)
+  ]);
+
+  aimLine = new THREE.Line(geo, mat);
+  aimLine.visible = false;
+  scene.add(aimLine);
+}
+
+function createPlayer(opts) {
+  const group = new THREE.Group();
+  group.position.set(opts.x, 0, opts.z);
+
+  const parts = {};
+  const skin = new THREE.MeshStandardMaterial({ color: 0xffc28b, roughness: 0.55 });
+  const shirt = new THREE.MeshStandardMaterial({ color: opts.shirt, roughness: 0.55 });
+  const shorts = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.55 });
+  const shoeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
+  const paddleMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.35 });
+  const handleMat = new THREE.MeshStandardMaterial({ color: 0x7b4a22, roughness: 0.5 });
+
+  const hips = new THREE.Group();
+  hips.position.y = 1.05;
+  group.add(hips);
+  parts.hips = hips;
+
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.42, 0.85, 8, 18), shirt);
+  torso.position.y = 0.65;
+  torso.castShadow = true;
+  hips.add(torso);
+  parts.torso = torso;
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.28, 24, 24), skin);
+  head.position.y = 1.43;
+  head.castShadow = true;
+  hips.add(head);
+  parts.head = head;
+
+  const cap = new THREE.Mesh(
+    new THREE.SphereGeometry(0.292, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: opts.color })
+  );
+  cap.position.y = 1.50;
+  hips.add(cap);
+
+  createLeg("left", -0.22);
+  createLeg("right", 0.22);
+  createArm("left", -0.48);
+  createArm("right", 0.48);
+
+  function createLeg(side, x) {
+    const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.52, 8, 12), shorts);
+    upper.position.set(x, 0.05, 0);
+    upper.castShadow = true;
+    hips.add(upper);
+
+    const lower = new THREE.Mesh(new THREE.CapsuleGeometry(0.105, 0.55, 8, 12), skin);
+    lower.position.set(x, -0.5, 0.03);
+    lower.castShadow = true;
+    hips.add(lower);
+
+    const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.42), shoeMat);
+    shoe.position.set(x, -0.86, 0.08);
+    shoe.castShadow = true;
+    hips.add(shoe);
+
+    parts[side + "UpperLeg"] = upper;
+    parts[side + "LowerLeg"] = lower;
+    parts[side + "Shoe"] = shoe;
+  }
+
+  function createArm(side, x) {
+    const shoulder = new THREE.Group();
+    shoulder.position.set(x, 1.05, 0);
+    hips.add(shoulder);
+
+    const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.52, 8, 12), skin);
+    upper.position.y = -0.26;
+    upper.castShadow = true;
+    shoulder.add(upper);
+
+    const elbow = new THREE.Group();
+    elbow.position.y = -0.55;
+    shoulder.add(elbow);
+
+    const lower = new THREE.Mesh(new THREE.CapsuleGeometry(0.075, 0.48, 8, 12), skin);
+    lower.position.y = -0.25;
+    lower.castShadow = true;
+    elbow.add(lower);
+
+    const hand = new THREE.Group();
+    hand.position.y = -0.52;
+    elbow.add(hand);
+
+    const palm = new THREE.Mesh(new THREE.SphereGeometry(0.105, 16, 16), skin);
+    palm.castShadow = true;
+    hand.add(palm);
+
+    const paddle = new THREE.Group();
+
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.42, 12), handleMat);
+    handle.rotation.x = Math.PI / 2;
+    handle.position.z = -0.18;
+    paddle.add(handle);
+
+    const face = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.08, 0.62), paddleMat);
+    face.position.z = -0.52;
+    face.castShadow = true;
+    paddle.add(face);
+
+    const mark = new THREE.Mesh(
+      new THREE.BoxGeometry(0.32, 0.085, 0.06),
+      new THREE.MeshStandardMaterial({ color: opts.color })
+    );
+    mark.position.z = -0.52;
+    mark.position.y = 0.004;
+    paddle.add(mark);
+
+    paddle.position.set(0, -0.02, -0.1);
+    hand.add(paddle);
+
+    parts[side + "Shoulder"] = shoulder;
+    parts[side + "Elbow"] = elbow;
+    parts[side + "Hand"] = hand;
+    parts[side + "Paddle"] = paddle;
+  }
+
+  return {
+    group,
+    parts,
+    velocityY: 0,
+    grounded: true,
+    isEnemy: opts.isEnemy,
+    speed: opts.isEnemy ? 5 : 7,
+    lastX: opts.x,
+    targetX: opts.x,
+    targetZ: opts.z,
+    softContactCooldown: 0,
+    enemySwingCooldown: 0
+  };
+}
+
+function handleKey(e, down) {
+  keys[e.key.toLowerCase()] = down;
+
+  if (down && e.code === "Space") jumpPlayer(player);
+
+  if (down && e.key.toLowerCase() === "f") {
+    startHandSwitch();
+  }
+
+  if (down && e.key.toLowerCase() === "q") {
+    holdMode = (holdMode + HOLD_MODES.length - 1) % HOLD_MODES.length;
+    updateAngleHud();
+  }
+
+  if (down && e.key.toLowerCase() === "e") {
+    holdMode = (holdMode + 1) % HOLD_MODES.length;
+    updateAngleHud();
+  }
+}
+
+function startHandSwitch() {
+  if (handSwitchAnim < 1) return;
+
+  handSwitchFrom = paddleHand;
+  paddleHand = paddleHand === "right" ? "left" : "right";
+  handSwitchTo = paddleHand;
+  handSwitchAnim = 0;
+
+  const sideSign = paddleHand === "right" ? 1 : -1;
+  smoothedPaddleTarget.set(sideSign * 0.9, 1.6, -0.7);
+
+  document.getElementById("hand").textContent = paddleHand === "right" ? "Right" : "Left";
+}
+
+function updateAngleHud() {
+  document.getElementById("angleMode").textContent = HOLD_MODES[holdMode].name;
+}
+
+function onMouseMove(e) {
+  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+}
+
+function onMouseDown(e) {
+  if (!gameStarted || e.button !== 0) return;
+
+  isChargingSwing = true;
+  swingStartTime = performance.now();
+  swingCharge = 0;
+}
+
+function onMouseUp(e) {
+  if (!gameStarted || e.button !== 0 || !isChargingSwing) return;
+
+  updateSwingCharge();
+  isChargingSwing = false;
+
+  if (serveReady) {
+    releaseServe();
+    return;
+  }
+
+  beginPlayerSwing();
+}
+
+function updateSwingCharge() {
+  if (!isChargingSwing) return;
+  const held = (performance.now() - swingStartTime) / 1000;
+  swingCharge = clamp(held / SWING.maxChargeTime, 0, 1);
+}
+
+function updatePowerBar() {
+  const outer = document.getElementById("powerBarOuter");
+  const inner = document.getElementById("powerBarInner");
+  const chargeText = document.getElementById("chargeText");
+
+  chargeText.textContent = `${Math.round(swingCharge * 100)}%`;
+
+  if (!isChargingSwing) {
+    outer.style.display = "none";
+    inner.style.width = "0%";
+    return;
+  }
+
+  outer.style.display = "block";
+  inner.style.width = `${Math.round(swingCharge * 100)}%`;
+}
+
+function getSwingPower() {
+  return SWING.minPower + swingCharge * (SWING.maxPower - SWING.minPower);
+}
+
+function isPerfectCharge() {
+  return swingCharge >= SWING.perfectStart && swingCharge <= SWING.perfectEnd;
+}
+
+function getPaddlePoseFromMouse() {
+  /*
+    DIRECT MOUSE MAPPING:
+    mouse right = paddle right
+    mouse left  = paddle left
+    mouse up    = paddle up
+    mouse down  = paddle down
+
+    Restrictions are applied only after direct target mapping.
+  */
+
+  const side = paddleHand;
+  const sideSign = side === "right" ? 1 : -1;
+
+  const shoulderX = sideSign * 0.48;
+  const shoulderY = ARM.shoulderHeight;
+
+  let targetX = mouse.x * ARM.horizontalReach;
+  let targetY = shoulderY + mouse.y * ARM.verticalReach;
+
+  targetY = clamp(targetY, ARM.minY, ARM.maxY);
+
+  // Keep the paddle mostly on the hand side, but allow some cross-body reach.
+  if (side === "right") {
+    targetX = clamp(targetX, shoulderX - ARM.crossBodyLimit, shoulderX + ARM.outsideLimit);
+  } else {
+    targetX = clamp(targetX, shoulderX - ARM.outsideLimit, shoulderX + ARM.crossBodyLimit);
+  }
+
+  // Semicircle restriction around active shoulder.
+  let dx = targetX - shoulderX;
+  let dy = targetY - shoulderY;
+  let radius = Math.sqrt(dx * dx + dy * dy);
+
+  if (radius > ARM.maxRadius) {
+    const scale = ARM.maxRadius / radius;
+    targetX = shoulderX + dx * scale;
+    targetY = shoulderY + dy * scale;
+    dx = targetX - shoulderX;
+    dy = targetY - shoulderY;
+    radius = ARM.maxRadius;
+  }
+
+  const extension01 = clamp(radius / ARM.maxRadius, 0, 1);
+  const targetZ = THREE.MathUtils.lerp(ARM.closeZ, ARM.farZ, extension01);
+
+  const rawTarget = new THREE.Vector3(targetX, targetY, targetZ);
+
+  // Very responsive smoothing.
+  const alpha = 1 - Math.exp(-ARM.response * frameDt);
+  smoothedPaddleTarget.lerp(rawTarget, alpha);
+
+  return {
+    side,
+    sideSign,
+    localTarget: smoothedPaddleTarget.clone(),
+    shoulderX,
+    shoulderY,
+    extension01
+  };
+}
+
+function getPlayerPaddleWorld() {
+  const v = new THREE.Vector3();
+  player.parts[paddleHand + "Paddle"].getWorldPosition(v);
+  return v;
+}
+
+function beginPlayerSwing() {
+  const power = getSwingPower();
+  const duration = THREE.MathUtils.lerp(
+    SWING.maxSwingDuration,
+    SWING.minSwingDuration,
+    clamp(power / SWING.maxPower, 0, 1)
+  );
+
+  activePlayerSwing = {
+    start: performance.now(),
+    duration,
+    power,
+    pose: getPaddlePoseFromMouse(),
+    contacted: false
+  };
+}
+
+function getPlayerSwingProgress() {
+  if (!activePlayerSwing) return 0;
+  const elapsed = (performance.now() - activePlayerSwing.start) / 1000;
+  return clamp(elapsed / activePlayerSwing.duration, 0, 1);
+}
+
+function jumpPlayer(p) {
+  if (!p.grounded) return;
+  p.velocityY = 8.2;
+  p.grounded = false;
+}
+
+function resetPoint(msg) {
+  serveReady = true;
+  rallyActive = false;
+  ballState.inPlay = false;
+  ballState.velocity.set(0, 0, 0);
+  ballState.lastHitBy = null;
+  ballState.cooldown = 0;
+  resetBounceMemory();
+
+  activePlayerSwing = null;
+  activeEnemySwing = null;
+  isChargingSwing = false;
+  swingCharge = 0;
+
+  player.group.position.set(0, 0, 10);
+  enemy.group.position.set(0, 0, -10);
+
+  ball.position.set(
+    player.group.position.x + (paddleHand === "right" ? 0.75 : -0.75),
+    1.15,
+    player.group.position.z - 1.25
+  );
+
+  showMessage(msg, 2.0);
+}
+
+function releaseServe() {
+  serveReady = false;
+  rallyActive = true;
+  ballState.inPlay = true;
+  resetBounceMemory();
+
+  const power = getSwingPower();
+  const perfect = isPerfectCharge();
+  const speed = THREE.MathUtils.lerp(
+    SWING.serveMinSpeed,
+    SWING.serveMaxSpeed,
+    clamp(power / SWING.maxPower, 0, 1)
+  );
+
+  const aim = getPlayerShotVector(0.5);
+  const error = perfect ? 0.1 : 0.42 + swingCharge * 0.22;
+
+  ballState.velocity.set(
+    aim.x * speed + THREE.MathUtils.randFloatSpread(error),
+    4.5 + power * 2.0 + aim.y * 1.4,
+    aim.z * speed
+  );
+
+  ballState.lastHitBy = "player";
+  ballState.cooldown = 0.18;
+
+  showMessage(perfect ? "Clean serve!" : "Serve!", 0.7);
+}
+
+function getPlayerShotVector(timing) {
+  const paddleWorld = getPlayerPaddleWorld();
+  const sideSign = paddleHand === "right" ? 1 : -1;
+
+  const paddleOffsetX = clamp((paddleWorld.x - player.group.position.x) / 2.5, -1, 1);
+
+  const early = clamp(0.5 - timing, 0, 0.5) * 2;
+  const late = clamp(timing - 0.5, 0, 0.5) * 2;
+
+  let x = paddleOffsetX * 0.48;
+
+  // Early contact pulls inward; late contact pushes outward.
+  x += -sideSign * early * 0.42;
+  x += sideSign * late * 0.48;
+
+  const y = clamp(0.24 + mouse.y * 0.28, 0.08, 0.78);
+
+  return new THREE.Vector3(x, y, -1).normalize();
+}
+
+function updatePlayer(dt) {
+  const move = new THREE.Vector3();
+
+  if (keys["a"]) move.x -= 1;
+  if (keys["d"]) move.x += 1;
+  if (keys["w"]) move.z -= 1;
+  if (keys["s"]) move.z += 1;
+
+  if (move.lengthSq() > 0) move.normalize();
+
+  player.group.position.x += move.x * player.speed * dt;
+  player.group.position.z += move.z * player.speed * dt;
+
+  player.group.position.x = clamp(player.group.position.x, -COURT.width / 2 + 0.7, COURT.width / 2 - 0.7);
+  player.group.position.z = clamp(player.group.position.z, 1.45, COURT.length / 2 - 1);
+
+  updateVerticalPhysics(player, dt);
+  animateHuman(player, dt);
+  updateHandSwitch(dt);
+  updatePlayerArmIK();
+
+  player.softContactCooldown = Math.max(0, player.softContactCooldown - dt);
+}
+
+function updateVerticalPhysics(p, dt) {
+  p.velocityY -= 20 * dt;
+  p.group.position.y += p.velocityY * dt;
+
+  if (p.group.position.y <= 0) {
+    p.group.position.y = 0;
+    p.velocityY = 0;
+    p.grounded = true;
+  }
+}
+
+function animateHuman(p, dt) {
+  const speedAmount = Math.min(1, Math.abs(p.group.position.x - p.lastX) / Math.max(dt, 0.001));
+  const t = performance.now() * 0.008;
+  const walk = Math.sin(t) * 0.45 * Math.min(speedAmount, 1);
+
+  p.parts.leftUpperLeg.rotation.x = walk;
+  p.parts.rightUpperLeg.rotation.x = -walk;
+  p.parts.leftLowerLeg.rotation.x = -Math.abs(walk) * 0.45;
+  p.parts.rightLowerLeg.rotation.x = -Math.abs(walk) * 0.45;
+
+  p.lastX = p.group.position.x;
+}
+
+function updateHandSwitch(dt) {
+  if (handSwitchAnim < 1) {
+    handSwitchAnim = Math.min(1, handSwitchAnim + dt * 5.5);
+  }
+}
+
+function updatePlayerArmIK() {
+  const pose = getPaddlePoseFromMouse();
+
+  const leftPaddle = player.parts.leftPaddle;
+  const rightPaddle = player.parts.rightPaddle;
+
+  if (handSwitchAnim < 1) {
+    leftPaddle.visible = true;
+    rightPaddle.visible = true;
+
+    const fromPaddle = player.parts[handSwitchFrom + "Paddle"];
+    const toPaddle = player.parts[handSwitchTo + "Paddle"];
+
+    fromPaddle.scale.setScalar(1 - handSwitchAnim * 0.75);
+    toPaddle.scale.setScalar(0.25 + handSwitchAnim * 0.75);
+  } else {
+    leftPaddle.visible = paddleHand === "left";
+    rightPaddle.visible = paddleHand === "right";
+    leftPaddle.scale.setScalar(1);
+    rightPaddle.scale.setScalar(1);
+  }
+
+  applyArmPose(player, "left", pose, paddleHand === "left");
+  applyArmPose(player, "right", pose, paddleHand === "right");
+
+  if (activePlayerSwing) {
+    const progress = getPlayerSwingProgress();
+
+    const timingText =
+      progress < 0.38 ? "Early" :
+      progress > 0.66 ? "Late" :
+      "Clean";
+
+    document.getElementById("timingText").textContent = timingText;
+
+    if (progress >= 1) {
+      activePlayerSwing = null;
+      document.getElementById("timingText").textContent = "Ready";
+    }
+  } else if (!isChargingSwing) {
+    document.getElementById("timingText").textContent = "Ready";
+  }
+}
+
+function applyArmPose(actor, side, desiredPose, active) {
+  const shoulder = actor.parts[side + "Shoulder"];
+  const elbow = actor.parts[side + "Elbow"];
+  const hand = actor.parts[side + "Hand"];
+  const paddle = actor.parts[side + "Paddle"];
+
+  const sideSign = side === "right" ? 1 : -1;
+
+  if (!active) {
+    shoulder.rotation.x = -0.18;
+    shoulder.rotation.y = 0;
+    shoulder.rotation.z = side === "left" ? 0.35 : -0.35;
+    elbow.rotation.x = -0.55;
+    elbow.rotation.y = 0;
+    elbow.rotation.z = 0;
+    hand.rotation.set(0, 0, 0);
+    return;
+  }
+
+  let target = desiredPose.localTarget.clone();
+
+  if (activePlayerSwing) {
+    const progress = getPlayerSwingProgress();
+
+    const backswingAmount = Math.sin((1 - progress) * Math.PI) * 0.35;
+    const forwardAmount = (progress - 0.5) * 0.95;
+
+    target.z += backswingAmount;
+    target.x += sideSign * forwardAmount;
+  } else if (isChargingSwing) {
+    target.z += 0.28 * swingCharge;
+    target.x += sideSign * 0.1 * swingCharge;
+  }
+
+  const shoulderX = sideSign * 0.48;
+  const shoulderY = ARM.shoulderHeight;
+
+  const dx = target.x - shoulderX;
+  const dy = target.y - shoulderY;
+  const dz = target.z;
+
+  const horizontalAngle = clamp(dx / 2.3, -1, 1);
+  const verticalAngle = clamp(dy / 1.85, -1, 1);
+  const forwardAmount = clamp(-dz / Math.abs(ARM.farZ), 0, 1);
+
+  // Up/down.
+  shoulder.rotation.x = THREE.MathUtils.lerp(
+    0.78,
+    -1.75,
+    (verticalAngle + 1) / 2
+  ) - forwardAmount * 0.22;
+
+  // Direct left/right sweep.
+  shoulder.rotation.y = -horizontalAngle * 1.2;
+
+  // Outward roll.
+  shoulder.rotation.z = -sideSign * THREE.MathUtils.lerp(
+    0.12,
+    1.22,
+    Math.abs(horizontalAngle)
+  );
+
+  const reachDistance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  const extension = clamp(reachDistance / 2.55, 0, 1);
+
+  elbow.rotation.x = THREE.MathUtils.lerp(-1.38, -0.06, extension);
+  elbow.rotation.y = clamp(horizontalAngle * 0.25, -0.35, 0.35);
+  elbow.rotation.z = 0;
+
+  hand.rotation.x = clamp(-verticalAngle * 0.48, -0.68, 0.68);
+  hand.rotation.y = clamp(horizontalAngle * 0.5, -0.78, 0.78);
+  hand.rotation.z = HOLD_MODES[holdMode].wrist;
+
+  paddle.rotation.x = 0;
+  paddle.rotation.y = clamp(horizontalAngle * 0.35, -0.5, 0.5);
+  paddle.rotation.z = HOLD_MODES[holdMode].wrist * 0.5;
+}
+
+function updateEnemy(dt) {
+  const skill = getEnemySkill();
+  const difficulty = 0.85 + round * 0.24;
+
+  const predicted = predictBallPositionForZ(-8.5);
+  const desiredXRaw = predicted ? predicted.x : ball.position.x;
+
+  const mistake = THREE.MathUtils.randFloatSpread((1 - skill) * 0.06);
+  const desiredX = clamp(desiredXRaw + mistake, -COURT.width / 2 + 0.8, COURT.width / 2 - 0.8);
+
+  let desiredZ = -9.7;
+  if (ball.position.z < 0) {
+    desiredZ = clamp(ball.position.z - 1.0, -COURT.length / 2 + 1.2, -1.35);
+  }
+
+  const intelligence = clamp(0.35 + skill * 0.6, 0.35, 0.98);
+  enemy.targetX = enemy.group.position.x + (desiredX - enemy.group.position.x) * intelligence;
+  enemy.targetZ = enemy.group.position.z + (desiredZ - enemy.group.position.z) * intelligence;
+
+  const move = new THREE.Vector3(enemy.targetX - enemy.group.position.x, 0, enemy.targetZ - enemy.group.position.z);
+  if (move.lengthSq() > 0.05) move.normalize();
+
+  enemy.group.position.x += move.x * enemy.speed * difficulty * dt;
+  enemy.group.position.z += move.z * enemy.speed * difficulty * dt;
+
+  enemy.group.position.x = clamp(enemy.group.position.x, -COURT.width / 2 + 0.7, COURT.width / 2 - 0.7);
+  enemy.group.position.z = clamp(enemy.group.position.z, -COURT.length / 2 + 1, -1.35);
+
+  updateVerticalPhysics(enemy, dt);
+  animateHuman(enemy, dt);
+  updateEnemySwing(dt);
+  updateEnemyArm();
+}
+
+function getEnemySkill() {
+  return clamp(0.38 + round * 0.1, 0.38, 0.97);
+}
+
+function predictBallPositionForZ(targetZ) {
+  if (!ballState.inPlay) return null;
+  if (Math.abs(ballState.velocity.z) < 0.01) return null;
+
+  const t = (targetZ - ball.position.z) / ballState.velocity.z;
+  if (t < 0 || t > 2.2) return null;
+
+  return new THREE.Vector3(
+    ball.position.x + ballState.velocity.x * t,
+    ball.position.y + ballState.velocity.y * t - 0.5 * 13.5 * t * t,
+    targetZ
+  );
+}
+
+function updateEnemySwing(dt) {
+  enemy.enemySwingCooldown = Math.max(0, enemy.enemySwingCooldown - dt);
+
+  if (!ballState.inPlay || ball.position.z > 0 || enemy.enemySwingCooldown > 0) return;
+
+  const skill = getEnemySkill();
+  const distToBall = getEnemyPaddleWorld().distanceTo(ball.position);
+
+  const valuable = ball.position.z < -1 && ball.position.y > 0.45 && ball.position.y < 2.75;
+  const shouldSwing = valuable && distToBall < 1.65;
+
+  if (shouldSwing && !activeEnemySwing) {
+    const timingMistake = THREE.MathUtils.randFloatSpread((1 - skill) * 0.2);
+    const intendedTiming = clamp(0.5 + timingMistake, 0.2, 0.8);
+
+    activeEnemySwing = {
+      start: performance.now(),
+      duration: THREE.MathUtils.lerp(0.34, 0.19, skill),
+      power: THREE.MathUtils.lerp(0.7, 1.6, skill),
+      desiredTiming: intendedTiming,
+      contacted: false
+    };
+
+    enemy.enemySwingCooldown = 0.35;
+  }
+
+  if (activeEnemySwing) {
+    const progress = getEnemySwingProgress();
+    if (progress >= 1) activeEnemySwing = null;
+  }
+}
+
+function getEnemySwingProgress() {
+  if (!activeEnemySwing) return 0;
+  const elapsed = (performance.now() - activeEnemySwing.start) / 1000;
+  return clamp(elapsed / activeEnemySwing.duration, 0, 1);
+}
+
+function updateEnemyArm() {
+  const shoulder = enemy.parts.rightShoulder;
+  const elbow = enemy.parts.rightElbow;
+  const paddle = enemy.parts.rightPaddle;
+
+  enemy.parts.leftPaddle.visible = false;
+  paddle.visible = true;
+
+  const toBallX = clamp(ball.position.x - enemy.group.position.x, -2.2, 2.2);
+  const ballHeight = clamp(ball.position.y, 0.45, 2.55);
+
+  const progress = activeEnemySwing ? getEnemySwingProgress() : 0;
+  const swingForward = activeEnemySwing ? (progress - 0.5) * 1.15 : 0;
+
+  shoulder.rotation.x = clamp(-0.45 - (ballHeight - 1.1) * 0.5 - swingForward * 0.45, -1.65, 0.35);
+  shoulder.rotation.y = clamp(-toBallX * 0.36 + swingForward * 0.25, -1.05, 1.05);
+  shoulder.rotation.z = -0.55 - Math.abs(toBallX) * 0.18;
+
+  elbow.rotation.x = clamp(-0.85 + progress * 0.55, -1.1, -0.12);
+  elbow.rotation.y = 0;
+  elbow.rotation.z = 0;
+}
+
+function getEnemyPaddleWorld() {
+  const v = new THREE.Vector3();
+  enemy.parts.rightPaddle.getWorldPosition(v);
+  return v;
+}
+
+function updateBall(dt) {
+  if (!ballState.inPlay) return;
+
+  ballState.cooldown = Math.max(0, ballState.cooldown - dt);
+  ballState.velocity.y -= 13.5 * dt;
+
+  ball.position.x += ballState.velocity.x * dt;
+  ball.position.y += ballState.velocity.y * dt;
+  ball.position.z += ballState.velocity.z * dt;
+
+  if (handleOutOfBounds()) return;
+
+  if (ball.position.y < 0.28) {
+    ball.position.y = 0.28;
+
+    if (!isBallInsideCourt()) {
+      if (ballState.lastHitBy === "player") scoreEnemy("Your shot landed out!");
+      else scorePlayer("Enemy shot landed out!");
+      return;
+    }
+
+    const side = ball.position.z > 0 ? "player" : "enemy";
+    ballState.bouncesOnSide[side]++;
+    ballState.landedInSideAfterHit[side] = true;
+
+    if (ballState.bouncesOnSide[side] >= 2) {
+      if (side === "player") scoreEnemy("Double bounce!");
+      else scorePlayer("Enemy double bounce!");
+      return;
+    }
+
+    ballState.velocity.y *= -0.56;
+    ballState.velocity.x *= 0.91;
+    ballState.velocity.z *= 0.91;
+  }
+
+  if (ball.position.y < 1.4 && Math.abs(ball.position.z) < 0.22) {
+    if (ballState.lastHitBy === "player") scoreEnemy("Hit the net!");
+    else scorePlayer("Enemy hit the net!");
+    return;
+  }
+
+  checkPlayerHit();
+  checkEnemyHit();
+}
+
+function handleOutOfBounds() {
+  const outSide = Math.abs(ball.position.x) > COURT.width / 2 + 0.35;
+  const outBackPlayer = ball.position.z > COURT.length / 2 + 0.35;
+  const outBackEnemy = ball.position.z < -COURT.length / 2 - 0.35;
+
+  if (!outSide && !outBackPlayer && !outBackEnemy) return false;
+
+  if (ballState.lastHitBy === "player") {
+    if (ballState.landedInSideAfterHit.enemy) {
+      scorePlayer("Winner! It bounced in then went out.");
+    } else {
+      scoreEnemy("Your shot went out!");
+    }
+  } else if (ballState.lastHitBy === "enemy") {
+    if (ballState.landedInSideAfterHit.player) {
+      scoreEnemy("Enemy winner. It bounced in then went out.");
+    } else {
+      scorePlayer("Enemy hit out!");
+    }
+  }
+
+  return true;
+}
+
+function isBallInsideCourt() {
+  return (
+    Math.abs(ball.position.x) <= COURT.width / 2 &&
+    Math.abs(ball.position.z) <= COURT.length / 2
+  );
+}
+
+function checkBodyFault() {
+  if (!ballState.inPlay || ball.position.z < 0.15) return false;
+
+  const torsoCenter = player.group.position.clone();
+  torsoCenter.y += 1.55;
+
+  const headCenter = player.group.position.clone();
+  headCenter.y += 2.42;
+
+  const torsoDist = ball.position.distanceTo(torsoCenter);
+  const headDist = ball.position.distanceTo(headCenter);
+  const paddleDist = ball.position.distanceTo(getPlayerPaddleWorld());
+
+  if ((torsoDist < 0.58 || headDist < 0.36) && paddleDist > 0.65) {
+    scoreEnemy("Body fault!");
+    return true;
+  }
+
+  return false;
+}
+
+function checkPlayerHit() {
+  if (ballState.cooldown > 0 || !ballState.inPlay || ball.position.z < 0.15) return;
+  if (checkBodyFault()) return;
+
+  const distToPaddle = getPlayerPaddleWorld().distanceTo(ball.position);
+
+  if (activePlayerSwing && !activePlayerSwing.contacted && distToPaddle < SWING.hardHitRadius) {
+    hardPlayerHit();
+    activePlayerSwing.contacted = true;
+    return;
+  }
+
+  if (!activePlayerSwing && distToPaddle < SWING.softHitRadius && player.softContactCooldown <= 0) {
+    softPlayerDeflect();
+    player.softContactCooldown = 0.45;
+  }
+}
+
+function hardPlayerHit() {
+  const progress = getPlayerSwingProgress();
+  const power = activePlayerSwing ? activePlayerSwing.power : getSwingPower();
+  const perfectCharge = isPerfectCharge();
+  const cleanTiming = 1 - Math.abs(progress - 0.5) * 2;
+
+  const aim = getPlayerShotVector(progress);
+  const speed = THREE.MathUtils.lerp(
+    SWING.hitMinSpeed,
+    SWING.hitMaxSpeed,
+    clamp(power / SWING.maxPower, 0, 1)
+  );
+
+  const error = perfectCharge ? 0.1 : 0.35 + (1 - cleanTiming) * 0.42;
+
+  ballState.velocity.set(
+    aim.x * speed + THREE.MathUtils.randFloatSpread(error),
+    4.15 + aim.y * 3.4 + power * 1.28,
+    aim.z * speed
+  );
+
+  ballState.lastHitBy = "player";
+  ballState.cooldown = 0.2;
+  resetBounceMemory();
+
+  if (progress < 0.38) showMessage("Early swing — pulled inward!", 0.6);
+  else if (progress > 0.66) showMessage("Late swing — pushed outward!", 0.6);
+  else showMessage(perfectCharge ? "Perfect clean swing!" : "Clean swing!", 0.55);
+}
+
+function softPlayerDeflect() {
+  const paddleWorld = getPlayerPaddleWorld();
+  const sideBias = clamp((paddleWorld.x - player.group.position.x) / 2.3, -0.75, 0.75);
+
+  const towardEnemy = new THREE.Vector3(
+    sideBias * 0.42 + THREE.MathUtils.randFloatSpread(0.32),
+    0.32,
+    -1
+  ).normalize();
+
+  ballState.velocity.set(
+    towardEnemy.x * SWING.softDeflectSpeed,
+    3.2 + THREE.MathUtils.randFloat(0.2, 0.9),
+    towardEnemy.z * SWING.softDeflectSpeed
+  );
+
+  ballState.lastHitBy = "player";
+  ballState.cooldown = 0.24;
+  resetBounceMemory();
+
+  showMessage("Light deflection", 0.35);
+}
+
+function checkEnemyHit() {
+  if (ballState.cooldown > 0 || !ballState.inPlay || ball.position.z > -0.15) return;
+
+  const dist = getEnemyPaddleWorld().distanceTo(ball.position);
+  const skill = getEnemySkill();
+  const hitRadius = 0.85 + skill * 0.32;
+
+  if (activeEnemySwing && !activeEnemySwing.contacted && dist < hitRadius) {
+    enemyHardHit();
+    activeEnemySwing.contacted = true;
+  } else if (!activeEnemySwing && dist < 0.68 && skill > 0.62) {
+    enemyHardHit(true);
+  }
+}
+
+function enemyHardHit(panic = false) {
+  const skill = getEnemySkill();
+
+  const openSide = player.group.position.x > 0 ? -1 : 1;
+  const desiredTargetX = clamp(
+    player.group.position.x + openSide * THREE.MathUtils.lerp(0.8, 2.5, skill),
+    -COURT.width / 2 + 1,
+    COURT.width / 2 - 1
+  );
+
+  const xAim = clamp((desiredTargetX - ball.position.x) / 8, -0.65, 0.65);
+  const error = THREE.MathUtils.randFloatSpread((1 - skill) * 1.0);
+
+  const speed = THREE.MathUtils.lerp(8.2, 14.4, skill) + (panic ? -1.0 : 0);
+  const lift = THREE.MathUtils.lerp(4.9, 6.0, skill);
+
+  ballState.velocity.set(
+    xAim * speed + error,
+    lift,
+    speed
+  );
+
+  ballState.lastHitBy = "enemy";
+  ballState.cooldown = 0.22;
+  resetBounceMemory();
+}
+
+function resetBounceMemory() {
+  ballState.bouncesOnSide.player = 0;
+  ballState.bouncesOnSide.enemy = 0;
+  ballState.landedInSideAfterHit.player = false;
+  ballState.landedInSideAfterHit.enemy = false;
+}
+
+function scorePlayer(msg) {
+  if (!rallyActive && !ballState.inPlay) return;
+
+  rallyActive = false;
+  ballState.inPlay = false;
+  serveReady = false;
+
+  playerScore++;
+  updateHud();
+
+  if (playerScore >= 5) {
+    round++;
+    playerScore = 0;
+    enemyScore = 0;
+    updateHud();
+    showMessage("You win the round! Round " + round + " begins.", 2);
+    setTimeout(() => resetPoint("Hold click to aim. Release to serve."), 1700);
+  } else {
+    showMessage(msg, 1.2);
+    setTimeout(() => resetPoint("Hold click to aim. Release to serve."), 1100);
+  }
+}
+
+function scoreEnemy(msg) {
+  if (!rallyActive && !ballState.inPlay) return;
+
+  rallyActive = false;
+  ballState.inPlay = false;
+  serveReady = false;
+
+  enemyScore++;
+  updateHud();
+
+  if (enemyScore >= 5) {
+    showMessage("Enemy wins! Restarting at Round 1.", 2);
+    round = 1;
+    playerScore = 0;
+    enemyScore = 0;
+    updateHud();
+    setTimeout(() => resetPoint("Hold click to aim. Release to serve."), 1700);
+  } else {
+    showMessage(msg, 1.2);
+    setTimeout(() => resetPoint("Hold click to aim. Release to serve."), 1100);
+  }
+}
+
+function showMessage(text, seconds) {
+  document.getElementById("centerMsg").textContent = text;
+  messageTimer = seconds;
+}
+
+function updateHud() {
+  document.getElementById("pScore").textContent = playerScore;
+  document.getElementById("eScore").textContent = enemyScore;
+  document.getElementById("round").textContent = round;
+}
+
+function updateServeAimLine() {
+  if (!aimLine) return;
+
+  if (!serveReady) {
+    aimLine.visible = false;
+    return;
+  }
+
+  aimLine.visible = true;
+
+  const start = ball.position.clone();
+  const power = getSwingPower();
+  const aim = getPlayerShotVector(0.5);
+  const gravity = 13.5;
+
+  const speed = THREE.MathUtils.lerp(
+    SWING.serveMinSpeed,
+    SWING.serveMaxSpeed,
+    clamp(power / SWING.maxPower, 0, 1)
+  );
+
+  const velocity = new THREE.Vector3(
+    aim.x * speed,
+    4.5 + power * 2.0 + aim.y * 1.4,
+    aim.z * speed
+  );
+
+  const points = [];
+
+  for (let i = 0; i < 26; i++) {
+    const t = i * 0.075;
+    const p = new THREE.Vector3(
+      start.x + velocity.x * t,
+      start.y + velocity.y * t - 0.5 * gravity * t * t,
+      start.z + velocity.z * t
+    );
+    if (p.y < 0.05) break;
+    points.push(p);
+  }
+
+  if (points.length < 2) {
+    points.push(start.clone(), start.clone().add(new THREE.Vector3(0, 0, -1)));
+  }
+
+  aimLine.geometry.dispose();
+  aimLine.geometry = new THREE.BufferGeometry().setFromPoints(points);
+}
+
+function updateServeHoldBall() {
+  if (!serveReady || ballState.inPlay) return;
+
+  ball.position.set(
+    player.group.position.x + (paddleHand === "right" ? 0.75 : -0.75),
+    1.15 + Math.sin(performance.now() * 0.004) * 0.06,
+    player.group.position.z - 1.25
+  );
+}
+
+function updateCamera(dt) {
+  const target = player.group.position.clone();
+  const desired = target.clone().add(new THREE.Vector3(0, 6.5, 10.7));
+  desired.x += player.group.position.x * 0.12;
+
+  camera.position.lerp(desired, 1 - Math.pow(0.001, dt));
+  camera.lookAt(target.x, target.y + 1.35, target.z - 4.6);
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const dt = Math.min(clock.getDelta(), 0.033);
+  frameDt = dt;
+
+  if (gameStarted) {
+    updateSwingCharge();
+    updatePowerBar();
+
+    updatePlayer(dt);
+    updateEnemy(dt);
+    updateServeHoldBall();
+    updateServeAimLine();
+    updateBall(dt);
+    updateCamera(dt);
+  } else {
+    camera.position.set(0, 10, 21);
+    camera.lookAt(0, 0, 0);
+  }
+
+  if (messageTimer > 0) {
+    messageTimer -= dt;
+    if (messageTimer <= 0) {
+      document.getElementById("centerMsg").textContent = "";
+    }
+  }
+
+  renderer.render(scene, camera);
+}
+
+function onResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function clamp(v, min, max) {
+  return Math.max(min, Math.min(max, v));
+}
 </script>
+
 </body>
 </html>
