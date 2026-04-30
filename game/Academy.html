@@ -192,7 +192,7 @@ const COURT = {
 
 const ARM = {
   shoulderHeight: 2.1,
-  horizontalReach: 2.85,
+  horizontalReach: 3.25,
   verticalReach: 2.35,
 
   sideRadius: 2.45,
@@ -413,22 +413,20 @@ function createPlayer(opts) {
   const buildPaddleModel = (color) => {
     const paddle = new THREE.Group();
 
-    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.42, 12), handleMat);
-    handle.rotation.x = Math.PI / 2;
-    handle.position.z = 0.18;
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.48, 12), handleMat);
+    handle.position.set(0, -0.55, 0);
     paddle.add(handle);
 
-    const face = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.08, 0.62), paddleMat);
-    face.position.z = -0.12;
+    const face = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.72, 0.08), paddleMat);
+    face.position.set(0, 0, 0);
     face.castShadow = true;
     paddle.add(face);
 
     const mark = new THREE.Mesh(
-      new THREE.BoxGeometry(0.32, 0.085, 0.06),
+      new THREE.BoxGeometry(0.46, 0.08, 0.09),
       new THREE.MeshStandardMaterial({ color })
     );
-    mark.position.z = -0.12;
-    mark.position.y = 0.004;
+    mark.position.set(0, 0.12, 0.055);
     paddle.add(mark);
 
     return paddle;
@@ -478,6 +476,26 @@ function createPlayer(opts) {
   );
   paddleControl.add(paddleDebugDot);
   parts.paddleDebugDot = paddleDebugDot;
+
+  function makeLimbSegment(radius, material) {
+    const mesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(radius, radius, 1, 12),
+      material
+    );
+    mesh.castShadow = true;
+    mesh.visible = false;
+    return mesh;
+  }
+
+  const leftUpperVisualArm = makeLimbSegment(0.085, skin);
+  const leftLowerVisualArm = makeLimbSegment(0.075, skin);
+  const rightUpperVisualArm = makeLimbSegment(0.085, skin);
+  const rightLowerVisualArm = makeLimbSegment(0.075, skin);
+  group.add(leftUpperVisualArm, leftLowerVisualArm, rightUpperVisualArm, rightLowerVisualArm);
+  parts.leftUpperVisualArm = leftUpperVisualArm;
+  parts.leftLowerVisualArm = leftLowerVisualArm;
+  parts.rightUpperVisualArm = rightUpperVisualArm;
+  parts.rightLowerVisualArm = rightLowerVisualArm;
 
   function createLeg(side, x) {
     const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.52, 8, 12), shorts);
@@ -529,13 +547,16 @@ function createPlayer(opts) {
 
     const paddle = buildPaddleModel(opts.color);
 
-    paddle.position.set(0, -0.02, -0.1);
+    paddle.position.set(0, -0.02, 0);
     hand.add(paddle);
 
     parts[side + "Shoulder"] = shoulder;
     parts[side + "Elbow"] = elbow;
     parts[side + "Hand"] = hand;
     parts[side + "Paddle"] = paddle;
+    parts[side + "UpperArmMesh"] = upper;
+    parts[side + "LowerArmMesh"] = lower;
+    parts[side + "PalmMesh"] = palm;
   }
 
   return {
@@ -695,9 +716,9 @@ function updateActivePaddleAnchor(pose) {
 
   if (activePlayerSwing) {
     const progress = getPlayerSwingProgress();
-    const swingForward = Math.sin(progress * Math.PI) * 0.42;
+    const swingForward = Math.sin(progress * Math.PI) * 0.16;
     target.z = ARM.paddlePlaneZ - swingForward;
-    target.x += pose.sideSign * (progress - 0.5) * 0.32;
+    target.x += pose.sideSign * (progress - 0.5) * 0.12;
     target.y += Math.sin(progress * Math.PI) * 0.08;
   } else {
     target.z = ARM.paddlePlaneZ;
@@ -872,6 +893,47 @@ function updateHandSwitch(dt) {
   }
 }
 
+
+function placeCylinderBetween(mesh, start, end) {
+  const mid = start.clone().add(end).multiplyScalar(0.5);
+  const dir = end.clone().sub(start);
+  const len = dir.length();
+
+  mesh.position.copy(mid);
+  mesh.scale.set(1, Math.max(len, 0.0001), 1);
+
+  const quat = new THREE.Quaternion();
+  const axis = len > 0.0001 ? dir.clone().normalize() : new THREE.Vector3(0, 1, 0);
+  quat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), axis);
+  mesh.quaternion.copy(quat);
+}
+
+function updateConnectedPlayerArm(pose) {
+  const parts = player.parts;
+  const activeRight = pose.side === "right";
+
+  parts.leftUpperArmMesh.visible = false;
+  parts.leftLowerArmMesh.visible = false;
+  parts.rightUpperArmMesh.visible = false;
+  parts.rightLowerArmMesh.visible = false;
+
+  parts.leftUpperVisualArm.visible = !activeRight;
+  parts.leftLowerVisualArm.visible = !activeRight;
+  parts.rightUpperVisualArm.visible = activeRight;
+  parts.rightLowerVisualArm.visible = activeRight;
+
+  const sideSign = activeRight ? 1 : -1;
+  const shoulder = new THREE.Vector3(sideSign * 0.48, ARM.shoulderHeight, 0);
+  const paddle = parts.paddleControl.position.clone();
+  const mid = shoulder.clone().add(paddle).multiplyScalar(0.5);
+  const elbow = mid.add(new THREE.Vector3(sideSign * 0.18, -0.22, 0.04));
+
+  const upper = activeRight ? parts.rightUpperVisualArm : parts.leftUpperVisualArm;
+  const lower = activeRight ? parts.rightLowerVisualArm : parts.leftLowerVisualArm;
+  placeCylinderBetween(upper, shoulder, elbow);
+  placeCylinderBetween(lower, elbow, paddle);
+}
+
 function updatePlayerArmIK() {
   const pose = getPaddlePoseFromMouse();
   updateActivePaddleAnchor(pose);
@@ -879,9 +941,11 @@ function updatePlayerArmIK() {
   player.parts.leftPaddle.visible = false;
   player.parts.rightPaddle.visible = false;
   player.parts.paddleControl.visible = true;
+  player.parts.paddleDebugDot.visible = false;
 
-  applyArmPose(player, "left", pose, paddleHand === "left");
-  applyArmPose(player, "right", pose, paddleHand === "right");
+  applyArmPose(player, "left", pose, false);
+  applyArmPose(player, "right", pose, false);
+  updateConnectedPlayerArm(pose);
 
   if (activePlayerSwing) {
     const progress = getPlayerSwingProgress();
