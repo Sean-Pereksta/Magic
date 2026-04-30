@@ -136,11 +136,8 @@
   <div id="startBox">
     <h1>Responsive 3D Pickleball</h1>
     <p>
-      The paddle now follows the mouse directly and quickly:
-      right goes right, left goes left, up goes up, and down goes down.
-    </p>
-    <p>
-      The arm is still restricted to a reachable semicircle, but it should feel much faster and more natural.
+      The mouse now moves the paddle on a vertical side-plane: left/right and up/down only.
+      Right hand is restricted to the right-side semicircle; left hand is restricted to the left-side semicircle.
     </p>
     <button id="startBtn">Start Game</button>
   </div>
@@ -150,7 +147,7 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 
 let scene, camera, renderer, clock;
-let court, net, ball, aimLine;
+let court, net, ball, aimLine, paddleRangeGuide;
 let player, enemy;
 
 let keys = {};
@@ -195,24 +192,16 @@ const COURT = {
 
 const ARM = {
   shoulderHeight: 2.1,
+  horizontalReach: 2.85,
+  verticalReach: 2.35,
 
-  // Bigger mouse range.
-  horizontalReach: 2.7,
-  verticalReach: 2.0,
-
-  // Active arm range.
-  crossBodyLimit: 0.75,
-  outsideLimit: 2.45,
-  maxRadius: 2.45,
-
+  sideRadius: 2.45,
   minY: 0.35,
-  maxY: 3.05,
+  maxY: 3.15,
 
-  closeZ: -0.28,
-  farZ: -1.35,
+  paddlePlaneZ: -0.65,
 
-  // Higher = snappier paddle response.
-  response: 42
+  response: 55
 };
 
 const SWING = {
@@ -224,8 +213,8 @@ const SWING = {
   perfectStart: 0.42,
   perfectEnd: 0.8,
 
-  hardHitRadius: 0.95,
-  softHitRadius: 0.72,
+  hardHitRadius: 1.05,
+  softHitRadius: 0.82,
 
   serveMinSpeed: 8.5,
   serveMaxSpeed: 15.2,
@@ -269,6 +258,7 @@ function init() {
   addLights();
   buildWorld();
   createAimLine();
+  createPaddleRangeGuide();
 
   player = createPlayer({
     color: 0x246bff,
@@ -639,65 +629,37 @@ function isPerfectCharge() {
 }
 
 function getPaddlePoseFromMouse() {
-  /*
-    DIRECT MOUSE MAPPING:
-    mouse right = paddle right
-    mouse left  = paddle left
-    mouse up    = paddle up
-    mouse down  = paddle down
-
-    Restrictions are applied only after direct target mapping.
-  */
-
   const side = paddleHand;
   const sideSign = side === "right" ? 1 : -1;
-
   const shoulderX = sideSign * 0.48;
   const shoulderY = ARM.shoulderHeight;
+  const overlap = 0.08;
 
   let targetX = mouse.x * ARM.horizontalReach;
   let targetY = shoulderY + mouse.y * ARM.verticalReach;
 
   targetY = clamp(targetY, ARM.minY, ARM.maxY);
 
-  // Keep the paddle mostly on the hand side, but allow some cross-body reach.
-  if (side === "right") {
-    targetX = clamp(targetX, shoulderX - ARM.crossBodyLimit, shoulderX + ARM.outsideLimit);
-  } else {
-    targetX = clamp(targetX, shoulderX - ARM.outsideLimit, shoulderX + ARM.crossBodyLimit);
-  }
+  if (side === "right") targetX = clamp(targetX, shoulderX - overlap, shoulderX + ARM.sideRadius);
+  else targetX = clamp(targetX, shoulderX - ARM.sideRadius, shoulderX + overlap);
 
-  // Semicircle restriction around active shoulder.
   let dx = targetX - shoulderX;
   let dy = targetY - shoulderY;
-  let radius = Math.sqrt(dx * dx + dy * dy);
-
-  if (radius > ARM.maxRadius) {
-    const scale = ARM.maxRadius / radius;
+  const radius = Math.sqrt(dx * dx + dy * dy);
+  if (radius > ARM.sideRadius) {
+    const scale = ARM.sideRadius / radius;
     targetX = shoulderX + dx * scale;
     targetY = shoulderY + dy * scale;
-    dx = targetX - shoulderX;
-    dy = targetY - shoulderY;
-    radius = ARM.maxRadius;
   }
 
-  const extension01 = clamp(radius / ARM.maxRadius, 0, 1);
-  const targetZ = THREE.MathUtils.lerp(ARM.closeZ, ARM.farZ, extension01);
+  if (side === "right") targetX = Math.max(targetX, shoulderX - overlap);
+  else targetX = Math.min(targetX, shoulderX + overlap);
 
-  const rawTarget = new THREE.Vector3(targetX, targetY, targetZ);
-
-  // Very responsive smoothing.
+  const rawTarget = new THREE.Vector3(targetX, targetY, ARM.paddlePlaneZ);
   const alpha = 1 - Math.exp(-ARM.response * frameDt);
   smoothedPaddleTarget.lerp(rawTarget, alpha);
 
-  return {
-    side,
-    sideSign,
-    localTarget: smoothedPaddleTarget.clone(),
-    shoulderX,
-    shoulderY,
-    extension01
-  };
+  return { side, sideSign, localTarget: smoothedPaddleTarget.clone(), shoulderX, shoulderY };
 }
 
 function getPlayerPaddleWorld() {
@@ -913,7 +875,6 @@ function applyArmPose(actor, side, desiredPose, active) {
   const elbow = actor.parts[side + "Elbow"];
   const hand = actor.parts[side + "Hand"];
   const paddle = actor.parts[side + "Paddle"];
-
   const sideSign = side === "right" ? 1 : -1;
 
   if (!active) {
@@ -928,61 +889,37 @@ function applyArmPose(actor, side, desiredPose, active) {
   }
 
   let target = desiredPose.localTarget.clone();
-
   if (activePlayerSwing) {
     const progress = getPlayerSwingProgress();
-
-    const backswingAmount = Math.sin((1 - progress) * Math.PI) * 0.35;
-    const forwardAmount = (progress - 0.5) * 0.95;
-
-    target.z += backswingAmount;
-    target.x += sideSign * forwardAmount;
+    const swingArc = Math.sin(progress * Math.PI);
+    const forwardSideSnap = (progress - 0.5) * 0.45;
+    target.x += sideSign * forwardSideSnap;
+    target.y += swingArc * 0.12;
   } else if (isChargingSwing) {
-    target.z += 0.28 * swingCharge;
-    target.x += sideSign * 0.1 * swingCharge;
+    target.x += sideSign * 0.08 * swingCharge;
+    target.y += 0.04 * swingCharge;
   }
 
   const shoulderX = sideSign * 0.48;
   const shoulderY = ARM.shoulderHeight;
-
   const dx = target.x - shoulderX;
   const dy = target.y - shoulderY;
-  const dz = target.z;
+  const horizontal01 = clamp(Math.abs(dx) / ARM.sideRadius, 0, 1);
+  const verticalAngle = clamp(dy / ARM.verticalReach, -1, 1);
+  const reachDistance = Math.sqrt(dx * dx + dy * dy);
+  const extension = clamp(reachDistance / ARM.sideRadius, 0, 1);
 
-  const horizontalAngle = clamp(dx / 2.3, -1, 1);
-  const verticalAngle = clamp(dy / 1.85, -1, 1);
-  const forwardAmount = clamp(-dz / Math.abs(ARM.farZ), 0, 1);
-
-  // Up/down.
-  shoulder.rotation.x = THREE.MathUtils.lerp(
-    0.78,
-    -1.75,
-    (verticalAngle + 1) / 2
-  ) - forwardAmount * 0.22;
-
-  // Direct left/right sweep.
-  shoulder.rotation.y = -horizontalAngle * 1.2;
-
-  // Outward roll.
-  shoulder.rotation.z = -sideSign * THREE.MathUtils.lerp(
-    0.12,
-    1.22,
-    Math.abs(horizontalAngle)
-  );
-
-  const reachDistance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-  const extension = clamp(reachDistance / 2.55, 0, 1);
-
-  elbow.rotation.x = THREE.MathUtils.lerp(-1.38, -0.06, extension);
-  elbow.rotation.y = clamp(horizontalAngle * 0.25, -0.35, 0.35);
+  shoulder.rotation.x = THREE.MathUtils.lerp(0.85, -1.65, (verticalAngle + 1) / 2);
+  shoulder.rotation.y = sideSign * 0.12 * horizontal01;
+  shoulder.rotation.z = -sideSign * THREE.MathUtils.lerp(0.2, 1.35, horizontal01);
+  elbow.rotation.x = THREE.MathUtils.lerp(-1.35, -0.08, extension);
+  elbow.rotation.y = 0;
   elbow.rotation.z = 0;
-
-  hand.rotation.x = clamp(-verticalAngle * 0.48, -0.68, 0.68);
-  hand.rotation.y = clamp(horizontalAngle * 0.5, -0.78, 0.78);
+  hand.rotation.x = clamp(-verticalAngle * 0.45, -0.65, 0.65);
+  hand.rotation.y = sideSign * horizontal01 * 0.2;
   hand.rotation.z = HOLD_MODES[holdMode].wrist;
-
   paddle.rotation.x = 0;
-  paddle.rotation.y = clamp(horizontalAngle * 0.35, -0.5, 0.5);
+  paddle.rotation.y = 0;
   paddle.rotation.z = HOLD_MODES[holdMode].wrist * 0.5;
 }
 
@@ -1428,6 +1365,37 @@ function updateServeAimLine() {
   aimLine.geometry = new THREE.BufferGeometry().setFromPoints(points);
 }
 
+
+function createPaddleRangeGuide() {
+  paddleRangeGuide = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 1, 0)]),
+    new THREE.LineBasicMaterial({ color: 0xffffcc, transparent: true, opacity: 0.3 })
+  );
+  paddleRangeGuide.visible = false;
+  scene.add(paddleRangeGuide);
+}
+
+function updatePaddleRangeGuide() {
+  if (!paddleRangeGuide || !gameStarted) return;
+  const side = paddleHand;
+  const sideSign = side === "right" ? 1 : -1;
+  const shoulderX = player.group.position.x + sideSign * 0.48;
+  const shoulderY = ARM.shoulderHeight;
+  const z = player.group.position.z + ARM.paddlePlaneZ;
+  const points = [];
+
+  for (let i = 0; i <= 32; i++) {
+    const angle = -Math.PI / 2 + (i / 32) * Math.PI;
+    const x = shoulderX + Math.cos(angle) * ARM.sideRadius * sideSign;
+    const y = shoulderY + Math.sin(angle) * ARM.sideRadius;
+    if ((side === "right" && x >= shoulderX) || (side === "left" && x <= shoulderX)) points.push(new THREE.Vector3(x, y, z));
+  }
+
+  paddleRangeGuide.geometry.dispose();
+  paddleRangeGuide.geometry = new THREE.BufferGeometry().setFromPoints(points);
+  paddleRangeGuide.visible = true;
+}
+
 function updateServeHoldBall() {
   if (!serveReady || ballState.inPlay) return;
 
@@ -1461,9 +1429,11 @@ function animate() {
     updateEnemy(dt);
     updateServeHoldBall();
     updateServeAimLine();
+    updatePaddleRangeGuide();
     updateBall(dt);
     updateCamera(dt);
   } else {
+    if (paddleRangeGuide) paddleRangeGuide.visible = false;
     camera.position.set(0, 10, 21);
     camera.lookAt(0, 0, 0);
   }
