@@ -222,12 +222,12 @@ const SWING = {
   serveMaxSpeed: 15.2,
 
   hitMinSpeed: 8.7,
-  hitMaxSpeed: 17.8,
+  hitMaxSpeed: 19.0,
 
   softDeflectSpeed: 6.2,
 
-  minSwingDuration: 0.24,
-  maxSwingDuration: 0.50
+  minSwingDuration: 0.38,
+  maxSwingDuration: 0.72
 };
 
 const ballState = {
@@ -432,11 +432,11 @@ function createPlayer(opts) {
     const paddle = new THREE.Group();
 
     const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.48, 12), handleMat);
-    handle.position.set(0, -0.55, 0);
+    handle.position.set(0, 0.24, 0);
     paddle.add(handle);
 
     const face = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.72, 0.08), paddleMat);
-    face.position.set(0, 0, 0);
+    face.position.set(0, 0.88, 0);
     face.castShadow = true;
     paddle.add(face);
 
@@ -444,14 +444,14 @@ function createPlayer(opts) {
       new THREE.BoxGeometry(0.46, 0.08, 0.09),
       new THREE.MeshStandardMaterial({ color })
     );
-    mark.position.set(0, 0.12, 0.055);
+    mark.position.set(0, 0.96, 0.055);
     paddle.add(mark);
 
     const faceStripe = new THREE.Mesh(
       new THREE.BoxGeometry(0.5, 0.05, 0.012),
       new THREE.MeshStandardMaterial({ color: 0xffff66, emissive: 0x333300 })
     );
-    faceStripe.position.set(0, 0.24, 0.052);
+    faceStripe.position.set(0, 1.1, 0.052);
     paddle.add(faceStripe);
 
     return paddle;
@@ -746,18 +746,14 @@ function updatePaddleFacing(pose) {
 
   control.rotation.set(0, 0, 0);
 
-  const sideSign = pose.sideSign;
-  const shoulder = new THREE.Vector3(sideSign * 0.48, ARM.shoulderHeight, ARM.paddlePlaneZ);
-  const target = control.position.clone();
+  const gripWorld = control.position.clone().add(player.group.position);
+  const aimPoint = player.group.position.clone().add(
+    new THREE.Vector3(mouse.x * ARM.horizontalReach * 1.45, ARM.shoulderHeight + mouse.y * ARM.verticalReach, -8.5)
+  );
+  const toAim = aimPoint.sub(gripWorld).normalize();
 
-  const dx = target.x - shoulder.x;
-  const dy = target.y - shoulder.y;
-
-  const outward01 = clamp(Math.abs(dx) / ARM.sideRadius, 0, 1);
-  const vertical01 = clamp(dy / ARM.verticalReach, -1, 1);
-
-  const yaw = -sideSign * THREE.MathUtils.lerp(0.0, 0.95, outward01);
-  const pitch = THREE.MathUtils.lerp(0.55, -0.55, (vertical01 + 1) / 2);
+  const yaw = Math.atan2(toAim.x, -toAim.z);
+  const pitch = Math.atan2(toAim.y, Math.max(0.001, Math.sqrt(toAim.x * toAim.x + toAim.z * toAim.z)));
 
   let swingYaw = 0;
   let swingPitch = 0;
@@ -766,14 +762,14 @@ function updatePaddleFacing(pose) {
   if (activePlayerSwing) {
     const progress = getPlayerSwingProgress();
     const swingArc = Math.sin(progress * Math.PI);
-    const follow = THREE.MathUtils.smoothstep(progress, 0.05, 1.0);
+    const follow = THREE.MathUtils.smoothstep(progress, 0.1, 1.0);
 
-    swingYaw = pose.sideSign * THREE.MathUtils.lerp(-0.65, 0.85, follow);
-    swingPitch = -0.25 * swingArc;
-    swingRoll = pose.sideSign * 0.35 * swingArc;
+    swingYaw = pose.sideSign * THREE.MathUtils.lerp(-0.24, 0.34, follow);
+    swingPitch = -0.15 * swingArc;
+    swingRoll = pose.sideSign * 0.42 * swingArc;
   }
 
-  paddle.rotation.x = pitch + swingPitch;
+  paddle.rotation.x = pitch + Math.PI * 0.5 + swingPitch;
   paddle.rotation.y = yaw + swingYaw;
   paddle.rotation.z = HOLD_MODES[holdMode].wrist * 0.65 + swingRoll;
 }
@@ -788,9 +784,9 @@ function updateActivePaddleAnchor(pose) {
     const swingArc = Math.sin(progress * Math.PI);
     const followThrough = THREE.MathUtils.smoothstep(progress, 0.05, 1.0);
 
-    const sideSweep = THREE.MathUtils.lerp(-0.58, 0.72, followThrough) * pose.sideSign;
-    const netPunch = swingArc * 0.38;
-    const verticalSweep = swingArc * 0.30 - progress * 0.14;
+    const sideSweep = THREE.MathUtils.lerp(-0.76, 0.94, followThrough) * pose.sideSign;
+    const netPunch = swingArc * 0.48;
+    const verticalSweep = swingArc * 0.38 - progress * 0.17;
 
     target.x += sideSweep;
     target.y += verticalSweep;
@@ -1078,8 +1074,8 @@ function updatePlayerArmIK() {
     const progress = getPlayerSwingProgress();
 
     const timingText =
-      progress < 0.38 ? "Early" :
-      progress > 0.66 ? "Late" :
+      progress < 0.32 ? "Early" :
+      progress > 0.72 ? "Late" :
       "Clean";
 
     document.getElementById("timingText").textContent = timingText;
@@ -1356,9 +1352,12 @@ function checkPlayerHit() {
   const distToPaddle = getPlayerPaddleWorld().distanceTo(ball.position);
 
   if (activePlayerSwing && !activePlayerSwing.contacted && distToPaddle < SWING.hardHitRadius) {
-    hardPlayerHit();
-    activePlayerSwing.contacted = true;
-    return;
+    const progress = getPlayerSwingProgress();
+    if (progress >= 0.22 && progress <= 0.82) {
+      hardPlayerHit();
+      activePlayerSwing.contacted = true;
+      return;
+    }
   }
 
   if (!activePlayerSwing && distToPaddle < SWING.softHitRadius && player.softContactCooldown <= 0) {
@@ -1384,7 +1383,7 @@ function hardPlayerHit() {
 
   ballState.velocity.set(
     aim.x * speed + THREE.MathUtils.randFloatSpread(error),
-    4.15 + aim.y * 3.4 + power * 1.28,
+    4.25 + aim.y * 3.5 + power * 1.45,
     aim.z * speed
   );
 
@@ -1392,8 +1391,9 @@ function hardPlayerHit() {
   ballState.cooldown = 0.2;
   resetBounceMemory();
 
-  if (progress < 0.38) showMessage("Early swing — pulled inward!", 0.6);
-  else if (progress > 0.66) showMessage("Late swing — pushed outward!", 0.6);
+  if (progress < 0.32) showMessage("Early swing — pulled inward!", 0.6);
+  else if (progress > 0.72) showMessage("Late swing — pushed outward!", 0.6);
+  else if (power > SWING.maxPower * 0.8 && cleanTiming > 0.78) showMessage("Power Swing!", 0.65);
   else showMessage(perfectCharge ? "Perfect clean swing!" : "Clean swing!", 0.55);
 }
 
