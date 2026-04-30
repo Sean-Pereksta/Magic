@@ -160,6 +160,8 @@ let enemyScore = 0;
 let round = 1;
 let rallyActive = false;
 let serveReady = false;
+let nextServer = "player";
+let enemyServeTimer = 0;
 let messageTimer = 0;
 
 let paddleHand = "right";
@@ -224,8 +226,8 @@ const SWING = {
 
   softDeflectSpeed: 6.2,
 
-  minSwingDuration: 0.16,
-  maxSwingDuration: 0.34
+  minSwingDuration: 0.20,
+  maxSwingDuration: 0.42
 };
 
 const ballState = {
@@ -619,6 +621,7 @@ function onMouseMove(e) {
 
 function onMouseDown(e) {
   if (!gameStarted || e.button !== 0) return;
+  if (serveReady && nextServer !== "player") return;
 
   isChargingSwing = true;
   swingStartTime = performance.now();
@@ -627,6 +630,10 @@ function onMouseDown(e) {
 
 function onMouseUp(e) {
   if (!gameStarted || e.button !== 0 || !isChargingSwing) return;
+  if (serveReady && nextServer !== "player") {
+    isChargingSwing = false;
+    return;
+  }
 
   updateSwingCharge();
   isChargingSwing = false;
@@ -710,16 +717,49 @@ function getPlayerPaddleWorld() {
   return v;
 }
 
+function updatePaddleFacing(pose) {
+  const control = player.parts.paddleControl;
+  const paddle = player.parts.activePaddle;
+
+  const sideSign = pose.sideSign;
+  const shoulder = new THREE.Vector3(sideSign * 0.48, ARM.shoulderHeight, ARM.paddlePlaneZ);
+  const target = control.position.clone();
+
+  const dx = target.x - shoulder.x;
+  const dy = target.y - shoulder.y;
+
+  const outward01 = clamp(Math.abs(dx) / ARM.sideRadius, 0, 1);
+  const vertical01 = clamp(dy / ARM.verticalReach, -1, 1);
+
+  const yawTowardMouse = -sideSign * THREE.MathUtils.lerp(0.05, 0.55, outward01);
+  const pitchTowardMouse = THREE.MathUtils.lerp(0.35, -0.35, (vertical01 + 1) / 2);
+
+  control.rotation.y = yawTowardMouse;
+  control.rotation.x = pitchTowardMouse * 0.35;
+  control.rotation.z = HOLD_MODES[holdMode].wrist * 0.45;
+
+  paddle.rotation.x = 0;
+  paddle.rotation.y = 0;
+  paddle.rotation.z = HOLD_MODES[holdMode].wrist * 0.5;
+}
+
 function updateActivePaddleAnchor(pose) {
   const control = player.parts.paddleControl;
   let target = pose.localTarget.clone();
 
   if (activePlayerSwing) {
     const progress = getPlayerSwingProgress();
-    const swingForward = Math.sin(progress * Math.PI) * 0.16;
-    target.z = ARM.paddlePlaneZ - swingForward;
-    target.x += pose.sideSign * (progress - 0.5) * 0.12;
-    target.y += Math.sin(progress * Math.PI) * 0.08;
+
+    const swingArc = Math.sin(progress * Math.PI);
+    const followThrough = THREE.MathUtils.smoothstep(progress, 0.15, 1.0);
+
+    const sideSweep = THREE.MathUtils.lerp(-0.34, 0.46, followThrough) * pose.sideSign;
+    const netPunch = swingArc * 0.28;
+    const verticalSweep = swingArc * 0.18 - progress * 0.08;
+
+    target.x += sideSweep;
+    target.y += verticalSweep;
+    target.z = ARM.paddlePlaneZ - netPunch;
   } else {
     target.z = ARM.paddlePlaneZ;
   }
@@ -731,8 +771,7 @@ function updateActivePaddleAnchor(pose) {
   }
 
   control.position.copy(target);
-  control.rotation.set(0, 0, HOLD_MODES[holdMode].wrist * 0.45);
-  player.parts.activePaddle.rotation.set(0, 0, HOLD_MODES[holdMode].wrist * 0.5);
+  updatePaddleFacing(pose);
 }
 
 function beginPlayerSwing() {
@@ -781,13 +820,23 @@ function resetPoint(msg) {
   player.group.position.set(0, 0, 10);
   enemy.group.position.set(0, 0, -10);
 
-  ball.position.set(
-    player.group.position.x + (paddleHand === "right" ? 0.75 : -0.75),
-    1.15,
-    player.group.position.z - 1.25
-  );
-
-  showMessage(msg, 2.0);
+  if (nextServer === "player") {
+    enemyServeTimer = 0;
+    ball.position.set(
+      player.group.position.x + (paddleHand === "right" ? 0.75 : -0.75),
+      1.15,
+      player.group.position.z - 1.25
+    );
+    showMessage(msg || "Your serve. Hold click and release.", 2.0);
+  } else {
+    enemyServeTimer = 1.15;
+    ball.position.set(
+      enemy.group.position.x + 0.75,
+      1.15,
+      enemy.group.position.z + 1.25
+    );
+    showMessage("Enemy serve...", 1.2);
+  }
 }
 
 function releaseServe() {
@@ -817,6 +866,35 @@ function releaseServe() {
   ballState.cooldown = 0.18;
 
   showMessage(perfect ? "Clean serve!" : "Serve!", 0.7);
+}
+
+
+function releaseEnemyServe() {
+  serveReady = false;
+  rallyActive = true;
+  ballState.inPlay = true;
+  resetBounceMemory();
+
+  const skill = getEnemySkill();
+  const speed = THREE.MathUtils.lerp(8.5, 14.0, skill);
+  const targetX = clamp(
+    player.group.position.x + THREE.MathUtils.randFloatSpread(1.8 * (1 - skill)),
+    -COURT.width / 2 + 1,
+    COURT.width / 2 - 1
+  );
+
+  const xAim = clamp((targetX - ball.position.x) / 9, -0.45, 0.45);
+
+  ballState.velocity.set(
+    xAim * speed,
+    5.2 + skill * 0.8,
+    speed
+  );
+
+  ballState.lastHitBy = "enemy";
+  ballState.cooldown = 0.2;
+
+  showMessage("Enemy served!", 0.7);
 }
 
 function getPlayerShotVector(timing) {
@@ -926,7 +1004,18 @@ function updateConnectedPlayerArm(pose) {
   const shoulder = new THREE.Vector3(sideSign * 0.48, ARM.shoulderHeight, 0);
   const paddle = parts.paddleControl.position.clone();
   const mid = shoulder.clone().add(paddle).multiplyScalar(0.5);
-  const elbow = mid.add(new THREE.Vector3(sideSign * 0.18, -0.22, 0.04));
+
+  let swingBend = 0;
+  if (activePlayerSwing) {
+    const progress = getPlayerSwingProgress();
+    swingBend = Math.sin(progress * Math.PI) * 0.22;
+  }
+
+  const elbow = mid.add(new THREE.Vector3(
+    sideSign * (0.24 + swingBend),
+    -0.24 - swingBend * 0.35,
+    0.04 - swingBend * 0.1
+  ));
 
   const upper = activeRight ? parts.rightUpperVisualArm : parts.leftUpperVisualArm;
   const lower = activeRight ? parts.rightLowerVisualArm : parts.leftLowerVisualArm;
@@ -1350,6 +1439,7 @@ function scorePlayer(msg) {
   serveReady = false;
 
   playerScore++;
+  nextServer = "player";
   updateHud();
 
   if (playerScore >= 5) {
@@ -1373,6 +1463,7 @@ function scoreEnemy(msg) {
   serveReady = false;
 
   enemyScore++;
+  nextServer = "enemy";
   updateHud();
 
   if (enemyScore >= 5) {
@@ -1402,7 +1493,7 @@ function updateHud() {
 function updateServeAimLine() {
   if (!aimLine) return;
 
-  if (!serveReady) {
+  if (!serveReady || nextServer !== "player") {
     aimLine.visible = false;
     return;
   }
@@ -1479,13 +1570,30 @@ function updatePaddleRangeGuide() {
 }
 
 function updateServeHoldBall() {
-  if (!serveReady || ballState.inPlay) return;
+  if (!serveReady || ballState.inPlay || nextServer !== "player") return;
 
   ball.position.set(
     player.group.position.x + (paddleHand === "right" ? 0.75 : -0.75),
     1.15 + Math.sin(performance.now() * 0.004) * 0.06,
     player.group.position.z - 1.25
   );
+}
+
+
+function updateEnemyServeHoldBall(dt) {
+  if (!serveReady || nextServer !== "enemy" || ballState.inPlay) return;
+
+  enemyServeTimer -= dt;
+
+  ball.position.set(
+    enemy.group.position.x + 0.75,
+    1.15 + Math.sin(performance.now() * 0.004) * 0.06,
+    enemy.group.position.z + 1.25
+  );
+
+  if (enemyServeTimer <= 0) {
+    releaseEnemyServe();
+  }
 }
 
 function updateCamera(dt) {
@@ -1510,6 +1618,7 @@ function animate() {
     updatePlayer(dt);
     updateEnemy(dt);
     updateServeHoldBall();
+    updateEnemyServeHoldBall(dt);
     updateServeAimLine();
     updatePaddleRangeGuide();
     updateBall(dt);
