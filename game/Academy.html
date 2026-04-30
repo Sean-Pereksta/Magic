@@ -410,6 +410,29 @@ function createPlayer(opts) {
   const shoeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
   const paddleMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.35 });
   const handleMat = new THREE.MeshStandardMaterial({ color: 0x7b4a22, roughness: 0.5 });
+  const buildPaddleModel = (color) => {
+    const paddle = new THREE.Group();
+
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.42, 12), handleMat);
+    handle.rotation.x = Math.PI / 2;
+    handle.position.z = 0.18;
+    paddle.add(handle);
+
+    const face = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.08, 0.62), paddleMat);
+    face.position.z = -0.12;
+    face.castShadow = true;
+    paddle.add(face);
+
+    const mark = new THREE.Mesh(
+      new THREE.BoxGeometry(0.32, 0.085, 0.06),
+      new THREE.MeshStandardMaterial({ color })
+    );
+    mark.position.z = -0.12;
+    mark.position.y = 0.004;
+    paddle.add(mark);
+
+    return paddle;
+  };
 
   const hips = new THREE.Group();
   hips.position.y = 1.05;
@@ -439,6 +462,22 @@ function createPlayer(opts) {
   createLeg("right", 0.22);
   createArm("left", -0.48);
   createArm("right", 0.48);
+
+  const paddleControl = new THREE.Group();
+  paddleControl.visible = false;
+  group.add(paddleControl);
+  parts.paddleControl = paddleControl;
+
+  const activePaddle = buildPaddleModel(opts.color);
+  paddleControl.add(activePaddle);
+  parts.activePaddle = activePaddle;
+
+  const paddleDebugDot = new THREE.Mesh(
+    new THREE.SphereGeometry(0.08, 12, 12),
+    new THREE.MeshBasicMaterial({ color: 0xffff00 })
+  );
+  paddleControl.add(paddleDebugDot);
+  parts.paddleDebugDot = paddleDebugDot;
 
   function createLeg(side, x) {
     const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.52, 8, 12), shorts);
@@ -488,25 +527,7 @@ function createPlayer(opts) {
     palm.castShadow = true;
     hand.add(palm);
 
-    const paddle = new THREE.Group();
-
-    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.42, 12), handleMat);
-    handle.rotation.x = Math.PI / 2;
-    handle.position.z = -0.18;
-    paddle.add(handle);
-
-    const face = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.08, 0.62), paddleMat);
-    face.position.z = -0.52;
-    face.castShadow = true;
-    paddle.add(face);
-
-    const mark = new THREE.Mesh(
-      new THREE.BoxGeometry(0.32, 0.085, 0.06),
-      new THREE.MeshStandardMaterial({ color: opts.color })
-    );
-    mark.position.z = -0.52;
-    mark.position.y = 0.004;
-    paddle.add(mark);
+    const paddle = buildPaddleModel(opts.color);
 
     paddle.position.set(0, -0.02, -0.1);
     hand.add(paddle);
@@ -561,7 +582,7 @@ function startHandSwitch() {
   handSwitchAnim = 0;
 
   const sideSign = paddleHand === "right" ? 1 : -1;
-  smoothedPaddleTarget.set(sideSign * 0.9, 1.6, -0.7);
+  smoothedPaddleTarget.set(sideSign * 1.15, 1.65, ARM.paddlePlaneZ);
 
   document.getElementById("hand").textContent = paddleHand === "right" ? "Right" : "Left";
 }
@@ -664,8 +685,33 @@ function getPaddlePoseFromMouse() {
 
 function getPlayerPaddleWorld() {
   const v = new THREE.Vector3();
-  player.parts[paddleHand + "Paddle"].getWorldPosition(v);
+  player.parts.paddleControl.getWorldPosition(v);
   return v;
+}
+
+function updateActivePaddleAnchor(pose) {
+  const control = player.parts.paddleControl;
+  let target = pose.localTarget.clone();
+
+  if (activePlayerSwing) {
+    const progress = getPlayerSwingProgress();
+    const swingForward = Math.sin(progress * Math.PI) * 0.42;
+    target.z = ARM.paddlePlaneZ - swingForward;
+    target.x += pose.sideSign * (progress - 0.5) * 0.32;
+    target.y += Math.sin(progress * Math.PI) * 0.08;
+  } else {
+    target.z = ARM.paddlePlaneZ;
+  }
+
+  if (isChargingSwing && !activePlayerSwing) {
+    target.x += pose.sideSign * 0.04 * swingCharge;
+    target.y += 0.03 * swingCharge;
+    target.z = ARM.paddlePlaneZ;
+  }
+
+  control.position.copy(target);
+  control.rotation.set(0, 0, HOLD_MODES[holdMode].wrist * 0.45);
+  player.parts.activePaddle.rotation.set(0, 0, HOLD_MODES[holdMode].wrist * 0.5);
 }
 
 function beginPlayerSwing() {
@@ -828,25 +874,11 @@ function updateHandSwitch(dt) {
 
 function updatePlayerArmIK() {
   const pose = getPaddlePoseFromMouse();
+  updateActivePaddleAnchor(pose);
 
-  const leftPaddle = player.parts.leftPaddle;
-  const rightPaddle = player.parts.rightPaddle;
-
-  if (handSwitchAnim < 1) {
-    leftPaddle.visible = true;
-    rightPaddle.visible = true;
-
-    const fromPaddle = player.parts[handSwitchFrom + "Paddle"];
-    const toPaddle = player.parts[handSwitchTo + "Paddle"];
-
-    fromPaddle.scale.setScalar(1 - handSwitchAnim * 0.75);
-    toPaddle.scale.setScalar(0.25 + handSwitchAnim * 0.75);
-  } else {
-    leftPaddle.visible = paddleHand === "left";
-    rightPaddle.visible = paddleHand === "right";
-    leftPaddle.scale.setScalar(1);
-    rightPaddle.scale.setScalar(1);
-  }
+  player.parts.leftPaddle.visible = false;
+  player.parts.rightPaddle.visible = false;
+  player.parts.paddleControl.visible = true;
 
   applyArmPose(player, "left", pose, paddleHand === "left");
   applyArmPose(player, "right", pose, paddleHand === "right");
@@ -874,7 +906,6 @@ function applyArmPose(actor, side, desiredPose, active) {
   const shoulder = actor.parts[side + "Shoulder"];
   const elbow = actor.parts[side + "Elbow"];
   const hand = actor.parts[side + "Hand"];
-  const paddle = actor.parts[side + "Paddle"];
   const sideSign = side === "right" ? 1 : -1;
 
   if (!active) {
@@ -888,39 +919,26 @@ function applyArmPose(actor, side, desiredPose, active) {
     return;
   }
 
-  let target = desiredPose.localTarget.clone();
-  if (activePlayerSwing) {
-    const progress = getPlayerSwingProgress();
-    const swingArc = Math.sin(progress * Math.PI);
-    const forwardSideSnap = (progress - 0.5) * 0.45;
-    target.x += sideSign * forwardSideSnap;
-    target.y += swingArc * 0.12;
-  } else if (isChargingSwing) {
-    target.x += sideSign * 0.08 * swingCharge;
-    target.y += 0.04 * swingCharge;
-  }
+  const target = actor.parts.paddleControl.position.clone();
 
   const shoulderX = sideSign * 0.48;
   const shoulderY = ARM.shoulderHeight;
   const dx = target.x - shoulderX;
   const dy = target.y - shoulderY;
-  const horizontal01 = clamp(Math.abs(dx) / ARM.sideRadius, 0, 1);
-  const verticalAngle = clamp(dy / ARM.verticalReach, -1, 1);
-  const reachDistance = Math.sqrt(dx * dx + dy * dy);
-  const extension = clamp(reachDistance / ARM.sideRadius, 0, 1);
+  const outward = clamp(Math.abs(dx) / ARM.sideRadius, 0, 1);
+  const vertical = clamp(dy / ARM.verticalReach, -1, 1);
 
-  shoulder.rotation.x = THREE.MathUtils.lerp(0.85, -1.65, (verticalAngle + 1) / 2);
-  shoulder.rotation.y = sideSign * 0.12 * horizontal01;
-  shoulder.rotation.z = -sideSign * THREE.MathUtils.lerp(0.2, 1.35, horizontal01);
-  elbow.rotation.x = THREE.MathUtils.lerp(-1.35, -0.08, extension);
+  shoulder.rotation.x = THREE.MathUtils.lerp(0.75, -1.55, (vertical + 1) / 2);
+  shoulder.rotation.y = 0;
+  shoulder.rotation.z = side === "right"
+    ? -THREE.MathUtils.lerp(0.15, 1.25, outward)
+    : THREE.MathUtils.lerp(0.15, 1.25, outward);
+  elbow.rotation.x = THREE.MathUtils.lerp(-1.2, -0.12, outward);
   elbow.rotation.y = 0;
   elbow.rotation.z = 0;
-  hand.rotation.x = clamp(-verticalAngle * 0.45, -0.65, 0.65);
-  hand.rotation.y = sideSign * horizontal01 * 0.2;
+  hand.rotation.x = clamp(-vertical * 0.45, -0.65, 0.65);
+  hand.rotation.y = sideSign * outward * 0.2;
   hand.rotation.z = HOLD_MODES[holdMode].wrist;
-  paddle.rotation.x = 0;
-  paddle.rotation.y = 0;
-  paddle.rotation.z = HOLD_MODES[holdMode].wrist * 0.5;
 }
 
 function updateEnemy(dt) {
