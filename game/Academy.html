@@ -677,6 +677,7 @@ let hazardShimmers = [];
 let runtimeHazards = [];
 const DEBUG_AI_HAZARDS = false;
 const DEBUG_TRACK_ALIGNMENT = false;
+const DEBUG_ROAD_MESH = false;
 const DEBUG_HAZARD_COLLISIONS = false;
 const TRACK_RIBBON_STEPS = 900;
 let skidMarks = [];
@@ -775,9 +776,9 @@ function buildWorld(map) {
   runtimeHazards = buildRuntimeHazards(map);
   sanitizeHazardsForMap(runtimeHazards);
 
-  createTrackSurface();
-  createRoadLaneShading();
-  createTrackEdges();
+  createAccurateRoadSurface();
+  createAccurateRoadEdges();
+  createOptionalRoadDetails();
   createTrackAlignmentDebug();
   createStartLineAndBanner(map);
   createItemBoxes();
@@ -879,68 +880,165 @@ function getTerrainAtPosition(pos) {
   return (roadInfo.onVisualRoad || roadInfo.onSafeRoad) && !roadInfo.offroad ? "road" : "offroad";
 }
 
-function createTrackSurface() {
-  const shoulderColor = new THREE.Color(currentMap.road).lerp(new THREE.Color(0xffffff), 0.08);
-  const centerColor = new THREE.Color(currentMap.road).lerp(new THREE.Color(0x000000), 0.06);
-  createTrackRibbonMesh({
-    halfWidth: trackWidth,
-    y: 0.1,
-    steps: TRACK_RIBBON_STEPS,
-    material: new THREE.MeshStandardMaterial({ color: shoulderColor, roughness: 0.9, metalness: 0.02, transparent: false, opacity: 1 })
-  });
-  createTrackRibbonMesh({
-    halfWidth: trackWidth * 0.88,
-    y: 0.105,
-    steps: TRACK_RIBBON_STEPS,
-    material: new THREE.MeshStandardMaterial({ color: centerColor, roughness: 0.78, metalness: 0.03, transparent: false, opacity: 1 })
-  });
-}
+function createAccurateRoadSurface() {
+  const steps = TRACK_RIBBON_STEPS;
+  const y = 0.09;
+  const vertices = [];
+  const uvs = [];
+  const indices = [];
 
-function createTrackEdges() {
-  for (const side of [-1, 1]) {
-    const center = trackWidth * 0.965 * side;
-    createTrackRibbonMesh({
-      halfWidth: Math.abs(center) + trackWidth * 0.014,
-      innerHalfWidth: Math.abs(center) - trackWidth * 0.014,
-      y: 0.112,
-      steps: TRACK_RIBBON_STEPS,
-      material: new THREE.MeshStandardMaterial({ color: currentMap.edge, roughness: 0.6, metalness: 0.06 })
-    });
-  }
-}
-
-function createRoadLaneShading() {
-  // Intentionally disabled during alignment pass to avoid overlays obscuring the road.
-}
-
-function createTrackRibbonMesh({ halfWidth, innerHalfWidth = 0, y, material, steps = TRACK_RIBBON_STEPS, receiveShadow = true }) {
-  const vertices = [], indices = [], uvs = [];
-  for (let i = 0; i <= steps; i++) {
+  for (let i = 0; i < steps; i++) {
     const t = i / steps;
-    const p = getTrackPoint(t);
-    const n = getTrackNormal(t);
-    vertices.push(p.x + n.x * halfWidth, y, p.z + n.z * halfWidth);
-    vertices.push(p.x + n.x * innerHalfWidth, y, p.z + n.z * innerHalfWidth);
-    vertices.push(p.x - n.x * innerHalfWidth, y, p.z - n.z * innerHalfWidth);
-    vertices.push(p.x - n.x * halfWidth, y, p.z - n.z * halfWidth);
-    uvs.push(0, i / steps, 0.33, i / steps, 0.67, i / steps, 1, i / steps);
-    if (i < steps) {
-      const a = i * 4, b = a + 1, c = a + 2, d = a + 3;
-      const e = a + 4, f = a + 5, g = a + 6, h = a + 7;
-      indices.push(a, b, e, b, f, e);
-      indices.push(b, c, f, c, g, f);
-      indices.push(c, d, g, d, h, g);
-    }
+    const center = getTrackPoint(t);
+    const normal = getTrackNormal(t);
+
+    vertices.push(center.x + normal.x * trackWidth, y, center.z + normal.z * trackWidth);
+    vertices.push(center.x - normal.x * trackWidth, y, center.z - normal.z * trackWidth);
+
+    uvs.push(0, i / steps);
+    uvs.push(1, i / steps);
   }
+
+  for (let i = 0; i < steps; i++) {
+    const next = (i + 1) % steps;
+    const a = i * 2;
+    const b = a + 1;
+    const c = next * 2;
+    const d = c + 1;
+
+    indices.push(a, b, c);
+    indices.push(b, d, c);
+  }
+
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
   geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
   geo.setIndex(indices);
   geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, material);
-  mesh.receiveShadow = receiveShadow;
-  scene.add(mesh);
-  return mesh;
+
+  const material = new THREE.MeshStandardMaterial({
+    color: currentMap.road,
+    roughness: 0.86,
+    metalness: 0.02
+  });
+
+  const road = new THREE.Mesh(geo, material);
+  road.receiveShadow = true;
+  scene.add(road);
+
+  if (DEBUG_ROAD_MESH) createRoadMeshDebugDots(steps);
+  return road;
+}
+
+function createAccurateRoadEdges() {
+  createRoadEdgeStrip(1);
+  createRoadEdgeStrip(-1);
+}
+
+function createRoadEdgeStrip(side) {
+  const steps = TRACK_RIBBON_STEPS;
+  const y = 0.105;
+  const inner = trackWidth * 0.92;
+  const outer = trackWidth * 0.99;
+  const vertices = [];
+  const uvs = [];
+  const indices = [];
+
+  for (let i = 0; i < steps; i++) {
+    const t = i / steps;
+    const center = getTrackPoint(t);
+    const normal = getTrackNormal(t);
+
+    vertices.push(center.x + normal.x * inner * side, y, center.z + normal.z * inner * side);
+    vertices.push(center.x + normal.x * outer * side, y, center.z + normal.z * outer * side);
+
+    uvs.push(0, i / steps);
+    uvs.push(1, i / steps);
+  }
+
+  for (let i = 0; i < steps; i++) {
+    const next = (i + 1) % steps;
+    const a = i * 2;
+    const b = a + 1;
+    const c = next * 2;
+    const d = c + 1;
+
+    if (side > 0) {
+      indices.push(a, b, c);
+      indices.push(b, d, c);
+    } else {
+      indices.push(a, c, b);
+      indices.push(b, c, d);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+  geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+
+  const edge = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+    color: currentMap.edge,
+    roughness: 0.65,
+    metalness: 0.04
+  }));
+  edge.receiveShadow = true;
+  scene.add(edge);
+  return edge;
+}
+
+function createOptionalRoadDetails() {
+  const steps = TRACK_RIBBON_STEPS;
+  const y = 0.101;
+  const halfWidth = trackWidth * 0.52;
+  const vertices = [];
+  const indices = [];
+
+  for (let i = 0; i < steps; i++) {
+    const t = i / steps;
+    const center = getTrackPoint(t);
+    const normal = getTrackNormal(t);
+
+    vertices.push(center.x + normal.x * halfWidth, y, center.z + normal.z * halfWidth);
+    vertices.push(center.x - normal.x * halfWidth, y, center.z - normal.z * halfWidth);
+  }
+
+  for (let i = 0; i < steps; i++) {
+    const next = (i + 1) % steps;
+    const a = i * 2;
+    const b = a + 1;
+    const c = next * 2;
+    const d = c + 1;
+    indices.push(a, b, c);
+    indices.push(b, d, c);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+
+  const color = new THREE.Color(currentMap.road).lerp(new THREE.Color(0x000000), 0.08);
+  const detail = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+    color,
+    roughness: 0.84,
+    metalness: 0.02
+  }));
+  detail.receiveShadow = true;
+  scene.add(detail);
+}
+
+function createRoadMeshDebugDots(steps = 180) {
+  const dotCount = Math.max(60, Math.floor(steps / 10));
+  for (let i = 0; i < dotCount; i++) {
+    const t = i / dotCount;
+    const center = getTrackPoint(t);
+    const normal = getTrackNormal(t);
+    addDebugDot(center.x, 0.35, center.z, 0xffff00);
+    addDebugDot(center.x + normal.x * trackWidth, 0.35, center.z + normal.z * trackWidth, 0x00ff00);
+    addDebugDot(center.x - normal.x * trackWidth, 0.35, center.z - normal.z * trackWidth, 0xff0000);
+  }
 }
 
 function createTrackAlignmentDebug() {
