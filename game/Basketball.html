@@ -642,6 +642,7 @@ let layupBlockWindow = 0;
 let loosePickupDelay = 0;
 let ballCollisionCooldown = 0;
 let rimCollisionCooldown = 0;
+let backboardCollisionCooldown = 0;
 let rimTouchCount = 0;
 let shotHasHitRimOrBoard = false;
 let debugDirections = false;
@@ -3348,6 +3349,7 @@ function animate(){
         updateDunk(dt);
         loosePickupDelay = Math.max(0,loosePickupDelay - dt);
         ballCollisionCooldown = Math.max(0,ballCollisionCooldown - dt);
+        backboardCollisionCooldown = Math.max(0,backboardCollisionCooldown - dt);
         checkSteals();
         checkBlocksAndCatches();
         checkFouls(dt);
@@ -4632,6 +4634,7 @@ function updateBall(dt){
       playDribbleSound();
     }
 
+    resolveBackboardBallCollision(dt);
     handleBackboardAndRim();
     checkBallPlayerBodyCollision(p1);
     checkBallPlayerBodyCollision(p2);
@@ -4645,6 +4648,34 @@ function updateBall(dt){
   ball.rotation.x += dt * 5;
   ball.rotation.z += dt * 3;
   ball.scale.lerp(new THREE.Vector3(1,1,1),dt*12);
+}
+
+function resolveBackboardBallCollision(dt){
+  if(backboardCollisionCooldown > 0 || !backboard) return;
+
+  const boardWidth = 3.4;
+  const boardHeight = 2.05;
+  const boardThickness = 0.12;
+  const halfW = boardWidth * 0.5;
+  const halfH = boardHeight * 0.5;
+  const frontFaceZ = backboard.position.z + boardThickness * 0.5;
+  const prevZ = ball.position.z - ballVelocity.z * dt;
+
+  const withinX = Math.abs(ball.position.x - backboard.position.x) <= halfW + BALL_RADIUS;
+  const withinY = Math.abs(ball.position.y - backboard.position.y) <= halfH + BALL_RADIUS;
+  const crossesFrontFace = prevZ > frontFaceZ + BALL_RADIUS && ball.position.z <= frontFaceZ + BALL_RADIUS;
+  if(!withinX || !withinY || !crossesFrontFace) return;
+
+  ball.position.z = frontFaceZ + BALL_RADIUS + 0.02;
+  ballVelocity.z = Math.abs(ballVelocity.z) * (0.55 + Math.random() * 0.2);
+  ballVelocity.x = ballVelocity.x * 0.95 + (Math.random() - 0.5) * 0.18;
+  ballVelocity.y *= 0.92;
+
+  shotHasHitRimOrBoard = true;
+  backboardCollisionCooldown = 0.08;
+  handleBankShot();
+  spawnParticle(ball.position,0x88d7ff);
+  playRimSound();
 }
 
 function keepBallInBounds(){
@@ -4672,22 +4703,6 @@ function keepBallInBounds(){
 }
 
 function handleBackboardAndRim(){
-  if(
-    ball.position.z < -11.12 &&
-    ball.position.z > -11.5 &&
-    Math.abs(ball.position.x) < 1.85 &&
-    ball.position.y > 2.35 &&
-    ball.position.y < 4.55
-  ){
-    ball.position.z = -11.1;
-    ballVelocity.copy(reflectVelocity(new THREE.Vector3(0,0,1),.62,.88));
-    ballVelocity.y *= .9;
-    shotHasHitRimOrBoard = true;
-    handleBankShot();
-    spawnParticle(ball.position,0x88d7ff);
-    playRimSound();
-  }
-
   const rimFlat = new THREE.Vector3(ball.position.x-HOOP_POS.x,0,ball.position.z-HOOP_POS.z);
   const rimDist = rimFlat.length();
   const yDiff = Math.abs(ball.position.y-HOOP_POS.y);
@@ -5093,6 +5108,7 @@ function releaseShot(shooter,shotType,options={}){
   hasShotThisPossession = true;
   loosePickupDelay = 0.18;
   ballCollisionCooldown = 0.08;
+  backboardCollisionCooldown = 0;
   rimTouchCount = 0;
   shotHasHitRimOrBoard = false;
   rimCollisionCooldown = 0;
@@ -5252,6 +5268,7 @@ function startDunk(char){
   char.onGround = false;
   rimTouchCount = 0;
   rimCollisionCooldown = 0;
+  backboardCollisionCooldown = 0;
   shotHasHitRimOrBoard = false;
   char.moveMeta.gatherType = "dunk";
   flash(`${char.id.toUpperCase()} dunk!`);
@@ -5476,6 +5493,7 @@ function checkScore(){
     lastScored = true;
     rimTouchCount = 0;
     rimCollisionCooldown = 0;
+    backboardCollisionCooldown = 0;
 
     const shooterId = ballState === "layup" ? layupOwner : (dunkActive ? dunkOwner : lastShotShooter);
     const points = shotValueFor(shooterId);
@@ -5568,6 +5586,7 @@ function gainPossession(who){
   loosePickupDelay = .12;
   ballCollisionCooldown = 0;
   rimCollisionCooldown = 0;
+  backboardCollisionCooldown = 0;
   rimTouchCount = 0;
   shotHasHitRimOrBoard = false;
   crossover.active = false;
@@ -5611,6 +5630,7 @@ function resetPossession(who,reposition){
   loosePickupDelay = 0;
   ballCollisionCooldown = 0;
   rimCollisionCooldown = 0;
+  backboardCollisionCooldown = 0;
   rimTouchCount = 0;
   shotHasHitRimOrBoard = false;
   crossover.active = false;
