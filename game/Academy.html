@@ -234,6 +234,13 @@
     text-shadow: 0 2px 10px rgba(0,0,0,.8);
   }
 
+  #resultsOverlay { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.78); color: #fff; display: none; align-items: center; justify-content: center; }
+  #resultsCard { width: min(760px, 92vw); max-height: 85vh; overflow: auto; background: rgba(20,20,26,.95); border: 1px solid rgba(255,255,255,.2); border-radius: 16px; padding: 20px; }
+  #resultsList { margin: 14px 0; }
+  .resultRow { display: grid; grid-template-columns: 70px 1fr 140px; gap: 8px; padding: 10px 12px; border-radius: 10px; margin-bottom: 8px; background: rgba(255,255,255,.08); }
+  .resultButtons { display: flex; gap: 10px; }
+  .resultButtons button { border: 0; border-radius: 10px; padding: 10px 14px; font-weight: 700; cursor: pointer; }
+
   @media (max-width: 900px) {
     .menuGrid {
       grid-template-columns: 1fr;
@@ -341,6 +348,16 @@
 <div id="help">
   <b>P1:</b> W accelerate • S brake/reverse • A/D steer, double-tap/hold to drift • E item<br>
   <b>P2:</b> ↑ accelerate • ↓ brake/reverse • ←/→ steer, double-tap/hold to drift • Right Shift item
+</div>
+<div id="resultsOverlay">
+  <div id="resultsCard">
+    <h2>Race Results</h2>
+    <div id="resultsList"></div>
+    <div class="resultButtons">
+      <button id="raceAgainBtn">Race Again</button>
+      <button id="backToMenuBtn">Back to Menu</button>
+    </div>
+  </div>
 </div>
 
 <script type="module">
@@ -734,6 +751,9 @@ let trackSamples = [];
 let trackSampleCount = 0;
 let checkpointCount = 96;
 let startT = 0.02;
+const finishZoneDepth = 10;
+const finishCheckpointRequirement = 0.85;
+let finishLine = null;
 
 let racers = [];
 let players = [];
@@ -820,6 +840,7 @@ function buildWorld(map) {
   trackPoints = map.points.map(p => new THREE.Vector3(p[0], p[1], p[2]));
   trackCurve = new THREE.CatmullRomCurve3(trackPoints, true, "catmullrom", 0.45);
   buildTrackSamples();
+  buildFinishLineData();
 
   createTrackSurface();
   createTrackEdges();
@@ -859,6 +880,19 @@ function buildTrackSamples() {
       point: getTrackPoint(t)
     });
   }
+}
+
+function buildFinishLineData() {
+  const point = getTrackPoint(startT);
+  const tangent = getTrackTangent(startT);
+  const normal = getTrackNormal(startT);
+  finishLine = {
+    point,
+    tangent,
+    normal,
+    halfWidth: trackWidth + 5,
+    halfDepth: finishZoneDepth * 0.5
+  };
 }
 
 function getClosestTrackInfo(pos) {
@@ -970,14 +1004,14 @@ function createStartLineAndBanner(map) {
   const tan = getTrackTangent(startT);
   const n = getTrackNormal(startT);
 
-  for (let i = -7; i <= 7; i++) {
+  for (let i = -10; i <= 10; i++) {
     const square = new THREE.Mesh(
-      new THREE.BoxGeometry(4.1, 0.14, 4.1),
+      new THREE.BoxGeometry(4.3, 0.14, 4.3),
       i % 2 === 0 ? mats.white : mats.black
     );
 
     square.position.set(
-      p.x + n.x * i * 3.8,
+      p.x + n.x * i * 3.9,
       0.18,
       p.z + n.z * i * 3.8
     );
@@ -1022,6 +1056,16 @@ function createStartLineAndBanner(map) {
   banner.rotation.y = Math.atan2(tan.x, tan.z);
 
   scene.add(banner);
+
+  const triggerDebug = new THREE.Mesh(
+    new THREE.PlaneGeometry(finishLine.halfWidth * 2, finishZoneDepth),
+    new THREE.MeshBasicMaterial({ color: 0x00ff99, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false })
+  );
+  triggerDebug.rotation.x = -Math.PI / 2;
+  triggerDebug.position.set(p.x, 0.14, p.z);
+  triggerDebug.rotation.z = Math.atan2(tan.z, tan.x);
+  triggerDebug.visible = false;
+  scene.add(triggerDebug);
 }
 
 function createItemBoxes() {
@@ -1344,6 +1388,8 @@ function createRacer(name, character, kart, isPlayer, playerIndex, aiIndex) {
     lap: 1,
     finished: false,
     checkpointIndex: 2,
+    checkpointCountLap: 0,
+    prevFinishSide: 0,
     progress: 0,
     drift: {
       active: false,
@@ -1648,8 +1694,11 @@ function placeRacersAtStart() {
     r.lap = 1;
     r.finished = false;
     r.checkpointIndex = 2;
+    r.checkpointCountLap = 0;
     r.ai.targetIndex = 2;
     r.item = null;
+    const toRacer = r.position.clone().sub(finishLine.point);
+    r.prevFinishSide = finishLine.tangent.dot(toRacer);
   });
 }
 
@@ -2064,26 +2113,34 @@ function updateRaceProgress(racer) {
 
   if (racer.position.distanceTo(target) < trackWidth * 0.72) {
     racer.checkpointIndex++;
-
-    if (racer.checkpointIndex % checkpointCount === 0) {
-      racer.lap++;
-
-      if (racer.isPlayer && racer.lap <= totalLaps) {
-        showCenterMessage(`${racer.name}: Lap ${racer.lap}!`, 1100);
-      }
-
-      if (racer.lap > totalLaps && !racer.finished) {
-        racer.finished = true;
-
-        if (racer.isPlayer) {
-          showCenterMessage(`${racer.name} FINISHED!`, 1800);
-        }
-      }
-    }
+    racer.checkpointCountLap++;
   }
 
+  const toRacer = racer.position.clone().sub(finishLine.point);
+  const signed = finishLine.tangent.dot(toRacer);
+  const along = finishLine.tangent.dot(toRacer);
+  const lateral = Math.abs(finishLine.normal.dot(toRacer));
+  const inZone = Math.abs(along) <= finishLine.halfDepth && lateral <= finishLine.halfWidth;
+  const crossedForward = racer.prevFinishSide < 0 && signed >= 0;
+  const checkpointsReady = racer.checkpointCountLap >= Math.floor(checkpointCount * finishCheckpointRequirement);
+
+  if (inZone && crossedForward && checkpointsReady) {
+    racer.lap++;
+    racer.checkpointCountLap = 0;
+
+    if (racer.isPlayer && racer.lap <= totalLaps) showCenterMessage(`${racer.name}: Lap ${racer.lap}!`, 1100);
+
+    if (racer.lap > totalLaps && !racer.finished) {
+      racer.finished = true;
+      racer.finishTime = performance.now();
+      racer.progress = Number.MAX_SAFE_INTEGER - racer.finishTime;
+      if (racer.isPlayer && !resultsShown) showResultsOverlay();
+    }
+  }
+  racer.prevFinishSide = signed;
+
   const closest = getClosestTrackInfo(racer.position);
-  racer.progress = (racer.lap - 1) * 100000 + racer.checkpointIndex * 1000 + closest.t;
+  if (!racer.finished) racer.progress = (racer.lap - 1) * 100000 + racer.checkpointCountLap * 1000 + closest.t;
 }
 
 /* =========================================================
@@ -2671,6 +2728,37 @@ const centerMsg = document.getElementById("centerMsg");
 const respawnFade = document.getElementById("respawnFade");
 let msgTimeout = null;
 let respawnFadeTimer = 0;
+let resultsShown = false;
+
+function formatPlace(i) {
+  if (i === 1) return "1st";
+  if (i === 2) return "2nd";
+  if (i === 3) return "3rd";
+  return `${i}th`;
+}
+
+function showResultsOverlay() {
+  raceStarted = false;
+  resultsShown = true;
+  const list = document.getElementById("resultsList");
+  list.innerHTML = "";
+  getPlacings().forEach((r, idx) => {
+    const row = document.createElement("div");
+    row.className = "resultRow";
+    row.innerHTML = `<div><b>${formatPlace(idx + 1)}</b></div><div>${r.character.emoji || ""} ${r.name}</div><div>${r.kart.name}</div>`;
+    list.appendChild(row);
+  });
+  document.getElementById("resultsOverlay").style.display = "flex";
+}
+
+function resetRaceUIForMenu() {
+  document.getElementById("hud").style.display = "none";
+  document.getElementById("hud2").style.display = "none";
+  document.getElementById("help").style.display = "none";
+  document.getElementById("minimap").style.display = "none";
+  document.getElementById("resultsOverlay").style.display = "none";
+  centerMsg.style.display = "none";
+}
 
 function showCenterMessage(text, duration) {
   centerMsg.innerHTML = text;
@@ -2740,8 +2828,28 @@ document.getElementById("startBtn").onclick = () => {
 
   gameStarted = true;
   raceStarted = false;
+  resultsShown = false;
   countdown = 3.6;
 
+  showCenterMessage("3", 1000);
+};
+
+document.getElementById("backToMenuBtn").onclick = () => {
+  resetRaceUIForMenu();
+  gameStarted = false;
+  raceStarted = false;
+  clearScene();
+  document.getElementById("menu").style.display = "block";
+};
+
+document.getElementById("raceAgainBtn").onclick = () => {
+  document.getElementById("resultsOverlay").style.display = "none";
+  buildWorld(currentMap);
+  setupRacers();
+  gameStarted = true;
+  raceStarted = false;
+  resultsShown = false;
+  countdown = 3.6;
   showCenterMessage("3", 1000);
 };
 
