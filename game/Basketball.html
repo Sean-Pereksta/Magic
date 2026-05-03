@@ -574,7 +574,7 @@ button.small{
 <script>
 let scene, renderer, clock;
 let camMain, camP1, camP2;
-let p1, p2, ball, rim, backboard;
+let p1, p2, ball, ballShadow, rim, backboard;
 let netLines = [];
 let scoreboardPlane, scoreboardTexture, scoreboardCtx;
 let arcLine;
@@ -2394,8 +2394,23 @@ function buildBall(){
     new THREE.MeshStandardMaterial({color:0xd06a24,roughness:.78,metalness:.03})
   );
   ball.castShadow = true;
-  scene.add(ball);
-  const pebble = new THREE.Mesh(new THREE.SphereGeometry(BALL_RADIUS*1.004,24,24),pebbleMat);
+scene.add(ball);
+
+// Ground shadow under the ball
+ballShadow = new THREE.Mesh(
+  new THREE.CircleGeometry(BALL_RADIUS * 2.15, 32),
+  new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    transparent: true,
+    opacity: 0.36,
+    depthWrite: false
+  })
+);
+ballShadow.rotation.x = -Math.PI / 2;
+ballShadow.position.set(0, 0.018, 0);
+scene.add(ballShadow);
+
+const pebble = new THREE.Mesh(new THREE.SphereGeometry(BALL_RADIUS*1.004,24,24),pebbleMat);
   pebble.material.transparent = true; pebble.material.opacity = 0.22; ball.add(pebble);
 
   const seamMat = new THREE.LineBasicMaterial({color:0x141414});
@@ -5106,27 +5121,51 @@ function getDribbleFlavor(char){
 }
 
 function updateBall(dt){
-  rimCollisionCooldown = Math.max(0,rimCollisionCooldown - dt);
-  reboundPredictionTimer = Math.max(0,reboundPredictionTimer - dt);
-  boxOutFeedbackTimer = Math.max(0,boxOutFeedbackTimer - dt);
-  tipFeedbackTimer = Math.max(0,tipFeedbackTimer - dt);
-  scrambleState.timer = Math.max(0,scrambleState.timer - dt);
+  rimCollisionCooldown = Math.max(0, rimCollisionCooldown - dt);
+  reboundPredictionTimer = Math.max(0, reboundPredictionTimer - dt);
+  boxOutFeedbackTimer = Math.max(0, boxOutFeedbackTimer - dt);
+  tipFeedbackTimer = Math.max(0, tipFeedbackTimer - dt);
+  scrambleState.timer = Math.max(0, scrambleState.timer - dt);
+
+  // Safety fix: create ballShadow if this version of the file never created it in buildBall().
+  // You should still declare `let ballShadow;` near the top with your other globals.
+  if (typeof ballShadow === "undefined") {
+    window.ballShadow = null;
+  }
+
+  if (!ballShadow && scene && ball) {
+    ballShadow = new THREE.Mesh(
+      new THREE.CircleGeometry(BALL_RADIUS * 2.15, 32),
+      new THREE.MeshBasicMaterial({
+        color: 0x000000,
+        transparent: true,
+        opacity: 0.34,
+        depthWrite: false
+      })
+    );
+    ballShadow.rotation.x = -Math.PI / 2;
+    ballShadow.position.set(ball.position.x, 0.022, ball.position.z);
+    scene.add(ballShadow);
+  }
+
   if(ballState === "dribble"){
     const owner = getOwner();
+    if (!owner) return;
+
     const forward = getForward(owner.angle);
-    const right = new THREE.Vector3(forward.z,0,-forward.x);
+    const right = new THREE.Vector3(forward.z, 0, -forward.x);
 
     let sideValue = ballSideValue;
     let diagonalPush = 0;
 
     if(crossover.active && crossover.player === owner){
-      const handleTightness = THREE.MathUtils.clamp((owner.profile.handle - 0.86) * 0.85,0,0.55);
-      crossover.progress += dt * (2.35 + handleTightness*2.6) * owner.profile.handle;
-      crossover.riskWindow = Math.max(0,crossover.riskWindow - dt);
+      const handleTightness = THREE.MathUtils.clamp((owner.profile.handle - 0.86) * 0.85, 0, 0.55);
+      crossover.progress += dt * (2.35 + handleTightness * 2.6) * owner.profile.handle;
+      crossover.riskWindow = Math.max(0, crossover.riskWindow - dt);
 
-      const eased = smoothstep(THREE.MathUtils.clamp(crossover.progress,0,1));
-      sideValue = THREE.MathUtils.lerp(crossover.from,crossover.to,eased);
-      diagonalPush = Math.sin(eased*Math.PI) * .62;
+      const eased = smoothstep(THREE.MathUtils.clamp(crossover.progress, 0, 1));
+      sideValue = THREE.MathUtils.lerp(crossover.from, crossover.to, eased);
+      diagonalPush = Math.sin(eased * Math.PI) * 0.62;
 
       if(crossover.progress >= 1){
         ballSideValue = crossover.to;
@@ -5142,34 +5181,97 @@ function updateBall(dt){
     const backpedal = owner.inputZ < -0.2;
     const sideHop = owner.moveState === "sidehop" || owner.moveState === "sidejump";
     const speedMode = speed < 1.2 ? "idle" : sprinting ? "sprint" : backpedal ? "backpedal" : "walk";
-    const handleQuality = THREE.MathUtils.clamp((owner.profile.handle - 0.8) / 0.45,0,1);
+
+    const handleQuality = THREE.MathUtils.clamp((owner.profile.handle - 0.8) / 0.45, 0, 1);
     const handleLoose = 1 - handleQuality;
     const flavor = getDribbleFlavor(owner);
-    const bouncePhase = owner.dribbleBounce * (speedMode === "idle" ? 0.82 : speedMode === "sprint" ? 1.24 : speedMode === "backpedal" ? 0.96 : 1.05) * flavor.bounceSpeed;
+
+    const bouncePhase =
+      owner.dribbleBounce *
+      (speedMode === "idle" ? 0.82 :
+       speedMode === "sprint" ? 1.24 :
+       speedMode === "backpedal" ? 0.96 : 1.05) *
+      flavor.bounceSpeed;
+
     const bounceWave = Math.sin(bouncePhase);
     const bounce = Math.abs(bounceWave);
-    const sprintPush = speedMode === "sprint" ? 0.26 : speedMode === "walk" ? 0.13 : speedMode === "idle" ? 0.06 : 0.08;
-    const crossSnap = crossover.active && crossover.player === owner ? Math.sin(THREE.MathUtils.clamp(crossover.progress,0,1) * Math.PI) : 0;
-    const lateralBase = (0.11 + handleLoose*0.08 + (speedMode === "sprint" ? 0.05 : 0)) * owner.profile.width;
-    const wobble = Math.sin(owner.dribbleBounce*1.8 + speed*0.45) * (0.018 + handleLoose*0.045) * (sprinting ? 1.35 : 1) * flavor.wobble;
-    const lateral = lateralBase * sideValue + wobble + crossSnap*0.06*crossover.to*flavor.cross;
-    const forwardPush = (0.08 + sprintPush + diagonalPush*0.52 + crossSnap*0.08 + (owner.profile.height-1)*0.03) * flavor.forward;
+
+    const sprintPush =
+      speedMode === "sprint" ? 0.26 :
+      speedMode === "walk" ? 0.13 :
+      speedMode === "idle" ? 0.06 : 0.08;
+
+    const crossSnap =
+      crossover.active && crossover.player === owner
+        ? Math.sin(THREE.MathUtils.clamp(crossover.progress, 0, 1) * Math.PI)
+        : 0;
+
+    const lateralBase =
+      (0.11 + handleLoose * 0.08 + (speedMode === "sprint" ? 0.05 : 0)) *
+      owner.profile.width;
+
+    const wobble =
+      Math.sin(owner.dribbleBounce * 1.8 + speed * 0.45) *
+      (0.018 + handleLoose * 0.045) *
+      (sprinting ? 1.35 : 1) *
+      flavor.wobble;
+
+    const lateral =
+      lateralBase * sideValue +
+      wobble +
+      crossSnap * 0.06 * crossover.to * flavor.cross;
+
+    const forwardPush =
+      (0.08 + sprintPush + diagonalPush * 0.52 + crossSnap * 0.08 + (owner.profile.height - 1) * 0.03) *
+      flavor.forward;
+
     const handName = sideValue < 0 ? "left" : "right";
-    const dribbleOffset = right.clone().multiplyScalar(lateral).add(forward.clone().multiplyScalar(forwardPush));
-    attachBallToHand(owner,handName,dribbleOffset);
-    const floorTouch = .12 + owner.group.position.y;
-    const baseCarry = 0.68*owner.profile.height - (speedMode === "sprint" ? 0.06 : speedMode === "idle" ? 0.02 : 0) - handleQuality*0.04;
-    const bounceAmp = (speedMode === "idle" ? 0.42 : speedMode === "walk" ? 0.5 : speedMode === "sprint" ? 0.56 : 0.46) * (0.92 + (owner.profile.height-1)*0.22) * (0.9 + handleLoose*0.18) * flavor.bounceAmp;
-    const targetY = floorTouch + Math.max(0.01, baseCarry - bounce*bounceAmp + (sideHop ? 0.05 : 0));
-    ball.position.y = THREE.MathUtils.lerp(ball.position.y,targetY,THREE.MathUtils.clamp(dt*(16 + handleQuality*10),0,1));
-    ball.position.y = Math.max(floorTouch,ball.position.y);
-    owner.anim.crossLean = crossSnap * crossover.to * (0.14 + handleLoose*0.07);
-    owner.anim.crossPlant = crossSnap * (0.18 + handleLoose*0.08);
-    owner.anim.crossFake = crossSnap * (-crossover.to) * (0.08 + flavor.cross*0.02);
+
+    const dribbleOffset = right
+      .clone()
+      .multiplyScalar(lateral)
+      .add(forward.clone().multiplyScalar(forwardPush));
+
+    attachBallToHand(owner, handName, dribbleOffset);
+
+    const floorTouch = 0.12 + owner.group.position.y;
+
+    const baseCarry =
+      0.68 * owner.profile.height -
+      (speedMode === "sprint" ? 0.06 : speedMode === "idle" ? 0.02 : 0) -
+      handleQuality * 0.04;
+
+    const bounceAmp =
+      (speedMode === "idle" ? 0.42 :
+       speedMode === "walk" ? 0.5 :
+       speedMode === "sprint" ? 0.56 : 0.46) *
+      (0.92 + (owner.profile.height - 1) * 0.22) *
+      (0.9 + handleLoose * 0.18) *
+      flavor.bounceAmp;
+
+    const targetY = floorTouch + Math.max(
+      0.01,
+      baseCarry - bounce * bounceAmp + (sideHop ? 0.05 : 0)
+    );
+
+    ball.position.y = THREE.MathUtils.lerp(
+      ball.position.y,
+      targetY,
+      THREE.MathUtils.clamp(dt * (16 + handleQuality * 10), 0, 1)
+    );
+
+    ball.position.y = Math.max(floorTouch, ball.position.y);
+
+    owner.anim.crossLean = crossSnap * crossover.to * (0.14 + handleLoose * 0.07);
+    owner.anim.crossPlant = crossSnap * (0.18 + handleLoose * 0.08);
+    owner.anim.crossFake = crossSnap * (-crossover.to) * (0.08 + flavor.cross * 0.02);
   }
 
   if(ballState === "shot" || ballState === "loose"){
-    if(ballState === "shot" && ballVelocity.length() > 7.6 && Math.random() < dt*18) createShotTrail(lastShotWasHook ? "hook" : "shot");
+    if(ballState === "shot" && ballVelocity.length() > 7.6 && Math.random() < dt * 18){
+      createShotTrail(lastShotWasHook ? "hook" : "shot");
+    }
+
     ballVelocity.y += GRAVITY * dt;
     ball.position.add(ballVelocity.clone().multiplyScalar(dt));
 
@@ -5177,9 +5279,13 @@ function updateBall(dt){
 
     if(ball.position.y < BALL_RADIUS){
       ball.position.y = BALL_RADIUS;
-      ballVelocity.copy(reflectVelocity(new THREE.Vector3(0,1,0),.58,.76));
-      if(Math.abs(ballVelocity.y) < 1.2 && ballState === "shot") ballState = "loose";
-      ball.scale.set(1.08,.92,1.08);
+      ballVelocity.copy(reflectVelocity(new THREE.Vector3(0, 1, 0), 0.58, 0.76));
+
+      if(Math.abs(ballVelocity.y) < 1.2 && ballState === "shot"){
+        ballState = "loose";
+      }
+
+      ball.scale.set(1.08, 0.92, 1.08);
       playDribbleSound();
       updatePredictedReboundPoint(true);
     }
@@ -5190,17 +5296,45 @@ function updateBall(dt){
     checkBallPlayerBodyCollision(p2);
     checkScore();
     handleLooseBallPickup();
-    if(ballState === "loose" && flatDistance(ball.position,HOOP_POS) > 2.8){
+
+    if(ballState === "loose" && flatDistance(ball.position, HOOP_POS) > 2.8){
       rimTouchCount = 0;
     }
   }
 
-  const spinBoost = ballState === "shot" ? THREE.MathUtils.clamp(ballVelocity.length()*0.22,1,2.8) : 1;
+  const spinBoost =
+    ballState === "shot"
+      ? THREE.MathUtils.clamp(ballVelocity.length() * 0.22, 1, 2.8)
+      : 1;
+
   ball.rotation.x += dt * 5.2 * spinBoost;
   ball.rotation.z += dt * 3.4 * spinBoost;
   ball.rotation.y += dt * 2.3 * spinBoost;
-  if(ballShadow){ ballShadow.material.opacity = THREE.MathUtils.lerp(ballShadow.material.opacity, ballState === "shot" ? 0.48 : 0.36, dt*5); }
-  ball.scale.lerp(new THREE.Vector3(1,1,1),dt*12);
+
+  // Strong visible ground shadow for judging ball height/distance.
+  if(ballShadow){
+    ballShadow.position.x = ball.position.x;
+    ballShadow.position.z = ball.position.z;
+    ballShadow.position.y = 0.022;
+
+    const height = Math.max(0, ball.position.y - BALL_RADIUS);
+    const shadowScale = THREE.MathUtils.clamp(1.35 - height * 0.12, 0.38, 1.25);
+    ballShadow.scale.set(shadowScale, shadowScale, shadowScale);
+
+    const targetOpacity = THREE.MathUtils.clamp(
+      (ballState === "shot" ? 0.48 : 0.36) - height * 0.055,
+      0.08,
+      0.48
+    );
+
+    ballShadow.material.opacity = THREE.MathUtils.lerp(
+      ballShadow.material.opacity,
+      targetOpacity,
+      dt * 5
+    );
+  }
+
+  ball.scale.lerp(new THREE.Vector3(1, 1, 1), dt * 12);
 }
 
 function resolveBackboardBallCollision(dt){
