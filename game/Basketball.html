@@ -3374,7 +3374,12 @@ function attemptCrossover(char,screenSide){
   if(crossover.active && crossover.player === char){
     const unsafe = crossover.progress < .72 || crossover.riskWindow > 0;
     if(unsafe){
-      const risk = .42 - (char.profile.handle - 1) * .24 + (char.velocity.length() > 5 ? .14 : 0);
+      const chainPenalty = THREE.MathUtils.clamp((.74 - crossover.progress) * .35 + crossover.riskWindow*.4,0,.35);
+      const speedPenalty = char.velocity.length() > 5 ? .14 : 0;
+      const risk = .36 - (char.profile.handle - 1) * .22 + speedPenalty + chainPenalty;
+      if(Math.random() < Math.max(0,chainPenalty - (char.profile.handle-1)*.12)){
+        char.anim.crossStumble = .32;
+      }
       if(Math.random() < risk){
         loseBallOnCrossover(char);
         return;
@@ -4621,6 +4626,19 @@ function animateShotTimeline(char,pct,type){
   }
 }
 function animateDribble(char,dt){
+  char.anim.crossStumble = Math.max(0,(char.anim.crossStumble || 0) - dt*1.8);
+  const crossLean = char.anim.crossLean || 0;
+  const crossPlant = char.anim.crossPlant || 0;
+  const crossFake = char.anim.crossFake || 0;
+  char.group.rotation.z += crossLean;
+  char.group.rotation.y += crossFake;
+  char.leftLeg.rotation.x -= crossPlant;
+  char.rightLeg.rotation.x -= crossPlant*0.78;
+  if(char.anim.crossStumble > 0){
+    const s = Math.sin((1-char.anim.crossStumble/0.32)*Math.PI);
+    char.group.rotation.z += (ballSideValue < 0 ? -1 : 1) * 0.18 * s;
+    char.group.rotation.x -= 0.08 * s;
+  }
   const handPos = getDribbleHandPosition(char);
   if(ballSideValue < 0){
     char.leftForearm.rotation.x = Math.sin(char.dribbleBounce)*.45;
@@ -4771,6 +4789,19 @@ function animateBackJump(char,pct){
   char.group.rotation.x = -hang * 0.18;
 }
 function animatePumpFake(char,pct){ poseShotArms(char,Math.min(.45,pct*.9)); }
+
+function getDribbleFlavor(char){
+  const name = (char.profile.name || "").toLowerCase();
+  const flavor = {bounceSpeed:1,bounceAmp:1,forward:1,cross:1,wobble:1,gather:1};
+  if(name.includes("flash guard")){ flavor.bounceSpeed=1.16; flavor.bounceAmp=.82; flavor.cross=1.26; flavor.gather=.9; }
+  else if(name.includes("deep range")){ flavor.forward=.9; flavor.bounceAmp=.88; flavor.cross=1.08; flavor.gather=.86; }
+  else if(name.includes("rim reaper") || name.includes("paint bruiser") || name.includes("glass tower")){ flavor.forward=1.12; flavor.bounceAmp=1.14; flavor.wobble=1.22; flavor.gather=1.12; }
+  else if(name.includes("smooth shooter")){ flavor.bounceAmp=.9; flavor.cross=1.02; flavor.gather=.84; }
+  else if(name.includes("the claw")){ flavor.forward=1.03; flavor.cross=1.06; flavor.wobble=.82; }
+  else if(name.includes("crafty lefty")){ flavor.cross=1.34; flavor.wobble=.92; flavor.forward=1.02; }
+  return flavor;
+}
+
 function updateBall(dt){
   rimCollisionCooldown = Math.max(0,rimCollisionCooldown - dt);
   if(ballState === "dribble"){
@@ -4782,7 +4813,8 @@ function updateBall(dt){
     let diagonalPush = 0;
 
     if(crossover.active && crossover.player === owner){
-      crossover.progress += dt * 2.85 * owner.profile.handle;
+      const handleTightness = THREE.MathUtils.clamp((owner.profile.handle - 0.86) * 0.85,0,0.55);
+      crossover.progress += dt * (2.35 + handleTightness*2.6) * owner.profile.handle;
       crossover.riskWindow = Math.max(0,crossover.riskWindow - dt);
 
       const eased = smoothstep(THREE.MathUtils.clamp(crossover.progress,0,1));
@@ -4798,11 +4830,35 @@ function updateBall(dt){
       }
     }
 
-    const bounce = Math.abs(Math.sin(owner.dribbleBounce));
+    const speed = owner.velocity.length();
+    const sprinting = owner.sprintMul > 1.18 || speed > 4.65;
+    const backpedal = owner.inputZ < -0.2;
+    const sideHop = owner.moveState === "sidehop" || owner.moveState === "sidejump";
+    const speedMode = speed < 1.2 ? "idle" : sprinting ? "sprint" : backpedal ? "backpedal" : "walk";
+    const handleQuality = THREE.MathUtils.clamp((owner.profile.handle - 0.8) / 0.45,0,1);
+    const handleLoose = 1 - handleQuality;
+    const flavor = getDribbleFlavor(owner);
+    const bouncePhase = owner.dribbleBounce * (speedMode === "idle" ? 0.82 : speedMode === "sprint" ? 1.24 : speedMode === "backpedal" ? 0.96 : 1.05) * flavor.bounceSpeed;
+    const bounceWave = Math.sin(bouncePhase);
+    const bounce = Math.abs(bounceWave);
+    const sprintPush = speedMode === "sprint" ? 0.26 : speedMode === "walk" ? 0.13 : speedMode === "idle" ? 0.06 : 0.08;
+    const crossSnap = crossover.active && crossover.player === owner ? Math.sin(THREE.MathUtils.clamp(crossover.progress,0,1) * Math.PI) : 0;
+    const lateralBase = (0.11 + handleLoose*0.08 + (speedMode === "sprint" ? 0.05 : 0)) * owner.profile.width;
+    const wobble = Math.sin(owner.dribbleBounce*1.8 + speed*0.45) * (0.018 + handleLoose*0.045) * (sprinting ? 1.35 : 1) * flavor.wobble;
+    const lateral = lateralBase * sideValue + wobble + crossSnap*0.06*crossover.to*flavor.cross;
+    const forwardPush = (0.08 + sprintPush + diagonalPush*0.52 + crossSnap*0.08 + (owner.profile.height-1)*0.03) * flavor.forward;
     const handName = sideValue < 0 ? "left" : "right";
-    const dribbleOffset = right.clone().multiplyScalar(0.16*sideValue*owner.profile.width).add(forward.clone().multiplyScalar(.12+diagonalPush*0.55));
+    const dribbleOffset = right.clone().multiplyScalar(lateral).add(forward.clone().multiplyScalar(forwardPush));
     attachBallToHand(owner,handName,dribbleOffset);
-    ball.position.y = Math.max(.24 + owner.group.position.y, ball.position.y - .72 + bounce*.84);
+    const floorTouch = .12 + owner.group.position.y;
+    const baseCarry = 0.68*owner.profile.height - (speedMode === "sprint" ? 0.06 : speedMode === "idle" ? 0.02 : 0) - handleQuality*0.04;
+    const bounceAmp = (speedMode === "idle" ? 0.42 : speedMode === "walk" ? 0.5 : speedMode === "sprint" ? 0.56 : 0.46) * (0.92 + (owner.profile.height-1)*0.22) * (0.9 + handleLoose*0.18) * flavor.bounceAmp;
+    const targetY = floorTouch + Math.max(0.01, baseCarry - bounce*bounceAmp + (sideHop ? 0.05 : 0));
+    ball.position.y = THREE.MathUtils.lerp(ball.position.y,targetY,THREE.MathUtils.clamp(dt*(16 + handleQuality*10),0,1));
+    ball.position.y = Math.max(floorTouch,ball.position.y);
+    owner.anim.crossLean = crossSnap * crossover.to * (0.14 + handleLoose*0.07);
+    owner.anim.crossPlant = crossSnap * (0.18 + handleLoose*0.08);
+    owner.anim.crossFake = crossSnap * (-crossover.to) * (0.08 + flavor.cross*0.02);
   }
 
   if(ballState === "shot" || ballState === "loose"){
@@ -5399,11 +5455,19 @@ function shootBall(char,shotType="setshot"){
     showMoveFeedback("FADEAWAY!");
   }
   const options = {};
+  const flavor = getDribbleFlavor(char);
   if(shotType === "hook"){
     options.releasePoint = getHookReleasePoint(char);
     options.arcBonus = 0.86;
     options.blockResistance = 0.25;
     options.accuracyPenalty = 0.16;
+  }
+  if(shotType === "jumper" || shotType === "setshot" || shotType === "pullup" || shotType === "stepback") {
+    const gatherSpeed = THREE.MathUtils.clamp((0.96 + (char.profile.handle-1)*0.14) / flavor.gather,0.74,1.28);
+    const gatherBlend = THREE.MathUtils.clamp(0.58 + gatherSpeed*0.25,0.52,0.9);
+    const handPoint = getWorldHand(char,(ballSideValue < 0 ? "left" : "right"));
+    const pocket = getShotReleasePoint(char,"jumper").clone().add(new THREE.Vector3(0,-0.1 + char.profile.height*0.04,0.08));
+    options.releasePoint = handPoint.clone().lerp(pocket,gatherBlend);
   }
   if(shotType === "fadeaway"){
     options.releasePoint = getShotReleasePoint(char,"jumper").clone().add(new THREE.Vector3(0,0.25 + char.profile.height * 0.18,0));
