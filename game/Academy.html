@@ -667,6 +667,7 @@ let players = [];
 let pickups = [];
 let shells = [];
 let bananas = [];
+let bombs = [];
 let solidObstacles = [];
 let particles = [];
 let floatingTexts = [];
@@ -718,6 +719,7 @@ function clearScene() {
   pickups = [];
   shells = [];
   bananas = [];
+  bombs = [];
   solidObstacles = [];
   particles = [];
   floatingTexts = [];
@@ -1561,6 +1563,9 @@ function createRacer(name, character, kart, isPlayer, playerIndex, aiIndex) {
     isHoldingItemButton: false,
     itemCooldown: 0,
     boostTimer: 0,
+    goldenMushroomTimer: 0,
+    goldenMushroomUsesLeft: 0,
+    hitShakeTimer: 0,
     spinTimer: 0,
     invulnTimer: 0,
     respawnTimer: 0,
@@ -2367,6 +2372,13 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
 
   if (racer.invulnTimer > 0) racer.invulnTimer -= dt;
   if (racer.itemCooldown > 0) racer.itemCooldown -= dt;
+  if (racer.goldenMushroomTimer > 0) {
+    racer.goldenMushroomTimer -= dt;
+    if (racer.goldenMushroomTimer <= 0 || racer.goldenMushroomUsesLeft <= 0) {
+      racer.goldenMushroomTimer = 0; racer.goldenMushroomUsesLeft = 0;
+    }
+  }
+  if (racer.hitShakeTimer > 0) racer.hitShakeTimer -= dt;
 
   const maxSpeed = racer.maxSpeed * currentCC.speedMultiplier * terrainFactor * (racer.boostTimer > 0 ? 1.5 : 1);
   racer.speed = THREE.MathUtils.clamp(racer.speed, -18, maxSpeed);
@@ -2653,7 +2665,7 @@ function updateRaceProgress(racer, dt) {
    ITEMS
 ========================================================= */
 
-const itemTypes = ["GREEN_SHELL", "RED_SHELL", "BANANA", "MUSHROOM"];
+const itemTypes = ["GREEN_SHELL", "RED_SHELL", "BANANA", "MUSHROOM", "BOMB", "GOLDEN_MUSHROOM"];
 
 function itemName(item) {
   if (!item) return "None";
@@ -2661,17 +2673,61 @@ function itemName(item) {
   if (item === "RED_SHELL") return "Red Shell";
   if (item === "BANANA") return "Banana";
   if (item === "MUSHROOM") return "Mushroom";
+  if (item === "BOMB") return "Bomb";
+  if (item === "GOLDEN_MUSHROOM") return "Golden Mushroom";
   return item;
 }
 
+function weightedPick(entries) {
+  const total = entries.reduce((sum, entry) => sum + entry[1], 0);
+  let roll = Math.random() * total;
+  for (const [item, weight] of entries) {
+    roll -= weight;
+    if (roll <= 0) return item;
+  }
+  return entries[entries.length - 1][0];
+}
+
+function chooseItemForRacer(racer) {
+  const placings = getPlacings();
+  const place = placings.indexOf(racer) + 1;
+  const total = racers.length;
+
+  if (place >= total - 1) {
+    return weightedPick([["GOLDEN_MUSHROOM",35],["BOMB",20],["RED_SHELL",20],["MUSHROOM",15],["GREEN_SHELL",10]]);
+  }
+  if (place <= 2) {
+    return weightedPick([["BANANA",35],["GREEN_SHELL",30],["MUSHROOM",20],["BOMB",10],["RED_SHELL",5]]);
+  }
+  return weightedPick([["RED_SHELL",25],["MUSHROOM",25],["GREEN_SHELL",20],["BANANA",15],["BOMB",15]]);
+}
+
 function giveItemFromBox(racer) {
-  racer.item = itemTypes[Math.floor(Math.random() * itemTypes.length)];
+  racer.item = chooseItemForRacer(racer);
   spawnItemPickupBurst(racer, racer.item);
 }
 
-function useItem(racer) {
-  if (!racer || !racer.item || racer.itemCooldown > 0 || racer.finished) return;
+function applyGoldenBoost(racer) {
+  racer.boostTimer = Math.max(racer.boostTimer, 0.78 * racer.boostStrength);
+  racer.speed = Math.max(racer.speed, racer.maxSpeed * 0.52);
+  racer.velocity.add(getForwardVector(racer).multiplyScalar(10.5));
+  burstParticles(racer.position, 0xffc34d, 22, 1.6, { gravity: 8, life: [0.28, 0.58], size: [0.13, 0.28] });
+  burstParticles(racer.position, 0xff7f2a, 12, 1.1, { gravity: 10, life: [0.2, 0.42], size: [0.1, 0.22] });
+  showFloatingText(racer, "GOLD BOOST!");
+}
 
+function useItem(racer) {
+  if (!racer || racer.itemCooldown > 0 || racer.finished) return;
+
+  if (racer.goldenMushroomTimer > 0 && racer.goldenMushroomUsesLeft > 0) {
+    racer.goldenMushroomUsesLeft--;
+    applyGoldenBoost(racer);
+    racer.itemCooldown = 0.14;
+    if (racer.goldenMushroomUsesLeft <= 0) racer.goldenMushroomTimer = 0;
+    return;
+  }
+
+  if (!racer.item) return;
   const item = racer.item;
   racer.item = null;
   racer.itemCooldown = 0.4;
@@ -2682,24 +2738,21 @@ function useItem(racer) {
     racer.velocity.add(getForwardVector(racer).multiplyScalar(12));
     showFloatingText(racer, "MUSHROOM!");
   }
-
-  if (item === "BANANA") {
-    dropBanana(racer);
-    showFloatingText(racer, "BANANA!");
+  if (item === "GOLDEN_MUSHROOM") {
+    racer.goldenMushroomTimer = 8;
+    racer.goldenMushroomUsesLeft = 6;
+    racer.goldenMushroomUsesLeft--;
+    applyGoldenBoost(racer);
+    racer.itemCooldown = 0.14;
   }
-
-  if (item === "GREEN_SHELL") {
-    fireShell(racer, false);
-    showFloatingText(racer, "GREEN SHELL!");
+  if (item === "BOMB") {
+    dropBomb(racer);
+    showFloatingText(racer, "BOMB!");
   }
-
-  if (item === "RED_SHELL") {
-    fireShell(racer, true);
-    showFloatingText(racer, "RED SHELL!");
-  }
+  if (item === "BANANA") { dropBanana(racer); showFloatingText(racer, "BANANA!"); }
+  if (item === "GREEN_SHELL") { fireShell(racer, false); showFloatingText(racer, "GREEN SHELL!"); }
+  if (item === "RED_SHELL") { fireShell(racer, true); showFloatingText(racer, "RED SHELL!"); }
 }
-
-
 
 function createHeldItemVisual(itemType) {
   const group = new THREE.Group();
@@ -2850,6 +2903,46 @@ function dropBanana(racer) {
   });
 }
 
+
+function dropBomb(racer) {
+  const group = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1.55, 14, 14), mats.black);
+  const fuse = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.8, 6), mats.white);
+  fuse.position.y = 1.1;
+  group.add(body, fuse);
+  const back = getForwardVector(racer).multiplyScalar(-6.2);
+  group.position.copy(racer.position).add(back); group.position.y = 1.5;
+  scene.add(group);
+  bombs.push({ group, owner: racer, fuse: 2, ownerImmunity: 0.8, wobble: Math.random()*10 });
+}
+
+function explodeBomb(bomb) {
+  const center = bomb.group.position.clone();
+  const radius = 19;
+  burstParticles(center, 0xff9322, 58, 2.5, { gravity: 12, life: [0.35, 0.8], size: [0.18, 0.36] });
+  burstParticles(center, 0xffef88, 30, 2.0, { gravity: 8, life: [0.25, 0.62], size: [0.15, 0.32] });
+  burstParticles(center, 0x555555, 26, 1.25, { gravity: 4, life: [0.5, 1.1], size: [0.2, 0.46] });
+  racers.forEach(r => {
+    if (r.finished) return;
+    if (r === bomb.owner && bomb.ownerImmunity > 0) return;
+    const d = r.position.distanceTo(center);
+    if (d <= radius) hitRacer(r, bomb.owner, 1.9, center, true);
+  });
+}
+
+function updateBombs(dt) {
+  for (let i=bombs.length-1;i>=0;i--) {
+    const bomb=bombs[i];
+    bomb.fuse -= dt;
+    bomb.ownerImmunity = Math.max(0, bomb.ownerImmunity - dt);
+    bomb.group.rotation.x += dt * 2.2;
+    bomb.group.rotation.z = Math.sin(performance.now()*0.015 + bomb.wobble) * 0.12;
+    bomb.group.position.y = 1.5 + Math.sin(performance.now()*0.01 + bomb.wobble) * 0.2;
+    burstParticles(bomb.group.position.clone().add(new THREE.Vector3(0,1.3,0)), 0xffaa33, 1, 0.2, { gravity: 1, life: [0.08,0.15], size:[0.06,0.12] });
+    if (bomb.fuse <= 0) { explodeBomb(bomb); scene.remove(bomb.group); bombs.splice(i,1); }
+  }
+}
+
 function updateShells(dt) {
   for (let i = shells.length - 1; i >= 0; i--) {
     const shell = shells[i];
@@ -2896,7 +2989,7 @@ function updateShells(dt) {
       if (racer.heldItemGroup && racer.position.distanceTo(shell.group.position) < 10) {
         const heldDist = racer.heldItemGroup.position.distanceTo(shell.group.position);
         if (heldDist < 3.4) {
-          burstParticles(shell.group.position, 0xffffff, 24, 1.6);
+          burstParticles(shell.group.position, 0xffffff, 40, 2.1);
           showFloatingText(racer, "BLOCKED!");
           clearHeldItem(racer);
           remove = true;
@@ -2911,7 +3004,7 @@ function updateShells(dt) {
     });
 
     if (remove) {
-      burstParticles(shell.group.position, shell.homing ? 0xff3333 : 0x33dd55, 18, 1.3);
+      burstParticles(shell.group.position, shell.homing ? 0xff3333 : 0x33dd55, 28, 1.7);
       scene.remove(shell.group);
       shells.splice(i, 1);
     }
@@ -2937,7 +3030,7 @@ function updateBananas(dt) {
     });
 
     if (remove) {
-      burstParticles(banana.group.position, 0xffdd22, 15, 1.1);
+      burstParticles(banana.group.position, 0xffdd22, 34, 1.6);
       scene.remove(banana.group);
       bananas.splice(i, 1);
     }
@@ -2973,21 +3066,24 @@ function findShellTarget(shell) {
   return best;
 }
 
-function hitRacer(target, attacker, force) {
+function hitRacer(target, attacker, force, impactPoint = null, isBombHit = false) {
   if (target.invulnTimer > 0) return;
 
-  target.spinTimer = 1.1;
-  target.invulnTimer = 1.25;
-  target.speed *= -0.2;
+  target.spinTimer = isBombHit ? 1.45 : 1.1;
+  target.invulnTimer = isBombHit ? 1.55 : 1.25;
+  target.hitShakeTimer = Math.max(target.hitShakeTimer || 0, isBombHit ? 0.45 : 0.25);
+  target.speed *= isBombHit ? -0.45 : -0.2;
 
-  const push = target.position.clone().sub(attacker.position).setY(0);
+  const pushSource = impactPoint || attacker.position;
+  const push = target.position.clone().sub(pushSource).setY(0);
 
   if (push.lengthSq() > 0.01) {
     push.normalize();
     target.position.add(push.multiplyScalar(4.8 * force));
   }
 
-  burstParticles(target.position, 0xfff0aa, 22, 1.5);
+  burstParticles(target.position, 0xfff0aa, isBombHit ? 46 : 30, isBombHit ? 2.2 : 1.8);
+  burstParticles(target.position, 0xffffff, isBombHit ? 16 : 10, 1.2, { gravity: 6, life: [0.2, 0.45], size: [0.1, 0.22] });
   burstParticles(target.position, 0xfff6cc, 8, 0.55, { gravity: 7, size: [0.12, 0.22], life: [0.35, 0.65] });
   showFloatingText(target, "SPIN!");
   addRecoveryEffects(target, false);
@@ -3216,6 +3312,13 @@ function updateCamera(camera, racer, dt) {
   const behind = getForwardVector(racer).multiplyScalar(-camPullback);
   const desired = racer.position.clone().add(behind).add(new THREE.Vector3(0, 18 + speedNorm * 1.4, 0));
   const shake = speedNorm > 0.9 ? (speedNorm - 0.9) * 0.18 : 0;
+  if (racer.hitShakeTimer > 0) {
+    const h = racer.hitShakeTimer * 0.95;
+    const t2 = performance.now() * 0.08;
+    desired.x += (Math.random()-0.5) * h * 2.4;
+    desired.y += (Math.random()-0.5) * h * 1.4;
+    desired.z += Math.sin(t2) * h * 0.8;
+  }
   if (shake > 0) {
     const t = performance.now() * 0.02 + racer.playerIndex * 13;
     desired.x += Math.sin(t) * shake;
@@ -3305,7 +3408,8 @@ function updateSingleHUD(racer, placings, els) {
   els.lap.textContent = `Lap: ${Math.min(racer.lap, totalLaps)} / ${totalLaps}`;
   els.place.textContent = `Place: ${place} / ${racers.length}`;
   els.speed.textContent = `Speed: ${Math.round(Math.abs(racer.speed))}`;
-  els.item.textContent = `Item: ${itemName(racer.item)}`;
+  const itemText = racer.goldenMushroomTimer > 0 && racer.goldenMushroomUsesLeft > 0 ? `Golden Mushroom x${racer.goldenMushroomUsesLeft}` : itemName(racer.item);
+  els.item.textContent = `Item: ${itemText}`;
 
   if (racer.drift.active) {
     if (racer.drift.sparkLevel === 2) els.drift.textContent = "Drift: Super sparks";
@@ -3584,6 +3688,7 @@ function animate() {
   racers.forEach(racer => updateHeldItemVisual(racer, dt));
   updateShells(dt);
   updateBananas(dt);
+  updateBombs(dt);
   updateParticles(dt);
   updateFloatingTexts(dt);
 
