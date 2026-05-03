@@ -449,54 +449,16 @@ const characters = [
 ];
 
 const karts = [
-  {
-    id: "speedster",
-    name: "Speedster",
-    emoji: "🏎️",
-    color: 0xff3333,
-    maxSpeed: 69,
-    accel: 42,
-    handling: 2.15,
-    weight: 0.9,
-    drift: 1.0,
-    desc: "Long, low, fast. Weak handling."
-  },
-  {
-    id: "balanced",
-    name: "Balanced Kart",
-    emoji: "🚗",
-    color: 0x3366ff,
-    maxSpeed: 61,
-    accel: 48,
-    handling: 2.55,
-    weight: 1.0,
-    drift: 1.08,
-    desc: "Classic shape with balanced stats."
-  },
-  {
-    id: "buggy",
-    name: "Grippy Buggy",
-    emoji: "🛺",
-    color: 0x33cc66,
-    maxSpeed: 54,
-    accel: 50,
-    handling: 3.15,
-    weight: 1.02,
-    drift: 1.25,
-    desc: "Big tires, roll cage, excellent turning."
-  },
-  {
-    id: "cruiser",
-    name: "Heavy Cruiser",
-    emoji: "🚙",
-    color: 0x9b4dff,
-    maxSpeed: 58,
-    accel: 39,
-    handling: 2.05,
-    weight: 1.38,
-    drift: 0.95,
-    desc: "Wide, heavy, strong in contact."
-  }
+  { id: "speedster", name: "Speedster", emoji: "🏎️", color: 0xff3333, trim: 0xfff3a1, maxSpeed: 71, accel: 43, handling: 2.0, weight: 0.88, drift: 1.0, traction: 0.9, boostStrength: 1.18, desc: "Long race nose and spoiler. Top speed king, loose in turns." },
+  { id: "balanced", name: "Balanced Kart", emoji: "🚗", color: 0x3366ff, trim: 0xc7d8ff, maxSpeed: 62, accel: 49, handling: 2.55, weight: 1.0, drift: 1.08, traction: 1.0, boostStrength: 1.15, desc: "Classic compact kart. Reliable at everything, master of nothing." },
+  { id: "buggy", name: "Grippy Buggy", emoji: "🛺", color: 0x33cc66, trim: 0xb5ffd2, maxSpeed: 55, accel: 50, handling: 3.1, weight: 1.05, drift: 1.18, traction: 1.18, boostStrength: 1.1, desc: "Lifted with roll cage and huge tires. Great grip, slower on straights." },
+  { id: "cruiser", name: "Heavy Cruiser", emoji: "🚙", color: 0x9b4dff, trim: 0xe1c7ff, maxSpeed: 59, accel: 38, handling: 1.95, weight: 1.38, drift: 0.92, traction: 1.08, boostStrength: 1.08, desc: "Wide SUV-like bruiser with bumpers. Tanks hits but turns slowly." },
+  { id: "rocket", name: "Rocket Racer", emoji: "🚀", color: 0xff5d2f, trim: 0xffd3b8, maxSpeed: 75, accel: 41, handling: 1.76, weight: 0.92, drift: 0.86, traction: 0.86, boostStrength: 1.24, desc: "Ultra-long low rocket body with rear flames. Fastest, hardest to control." },
+  { id: "mudbuggy", name: "Mud Buggy", emoji: "🛻", color: 0x8b5a2b, trim: 0xe0c39f, maxSpeed: 53, accel: 44, handling: 2.45, weight: 1.2, drift: 0.9, traction: 1.35, boostStrength: 1.06, desc: "Raised suspension and giant mud tires. Best offroad recovery, low top speed." },
+  { id: "comet", name: "Mini Comet", emoji: "☄️", color: 0x27d9ff, trim: 0xe7fbff, maxSpeed: 60, accel: 57, handling: 3.3, weight: 0.72, drift: 1.28, traction: 0.88, boostStrength: 1.12, desc: "Tiny featherweight kart. Blazing launch, twitchy and easy to slide." },
+  { id: "tank", name: "Tank Treader", emoji: "🛡️", color: 0x55606f, trim: 0xb6bec9, maxSpeed: 56, accel: 33, handling: 1.75, weight: 1.66, drift: 0.72, traction: 1.2, boostStrength: 1.02, desc: "Bulky armored kart with tread-style stance. Massive collision strength, sluggish pickup." },
+  { id: "driftcoupe", name: "Drift Coupe", emoji: "🏁", color: 0xff2dc2, trim: 0xffc6f0, maxSpeed: 64, accel: 47, handling: 2.75, weight: 0.96, drift: 1.45, traction: 0.95, boostStrength: 1.22, desc: "Sleek curved coupe. Builds drift boost fastest with medium straight-line speed." },
+  { id: "jungle", name: "Jungle Kart", emoji: "🌿", color: 0x3d9f48, trim: 0xb1a07a, maxSpeed: 63, accel: 52, handling: 2.72, weight: 1.02, drift: 1.14, traction: 1.08, boostStrength: 1.16, desc: "Wood-and-rope themed kart. Balanced steering with strong acceleration." }
 ];
 
 const maps = [
@@ -692,7 +654,7 @@ function renderMenus() {
     karts,
     () => selectedP1Kart,
     item => selectedP1Kart = item,
-    item => `<div class="stat">Speed: ${item.maxSpeed} • Handling: ${item.handling.toFixed(2)}</div>`
+    item => `<div class="stat">Top Speed: ${item.maxSpeed} • Accel: ${item.accel}</div><div class="stat">Handling: ${item.handling.toFixed(2)} • Drift: ${item.drift.toFixed(2)}</div><div class="stat">Weight: ${item.weight.toFixed(2)} • Traction: ${item.traction.toFixed(2)}</div>`
   );
 
   renderCardGroup(
@@ -708,7 +670,7 @@ function renderMenus() {
     karts,
     () => selectedP2Kart,
     item => selectedP2Kart = item,
-    item => `<div class="stat">Speed: ${item.maxSpeed} • Handling: ${item.handling.toFixed(2)}</div>`
+    item => `<div class="stat">Top Speed: ${item.maxSpeed} • Accel: ${item.accel}</div><div class="stat">Handling: ${item.handling.toFixed(2)} • Drift: ${item.drift.toFixed(2)}</div><div class="stat">Weight: ${item.weight.toFixed(2)} • Traction: ${item.traction.toFixed(2)}</div>`
   );
 }
 
@@ -1378,6 +1340,8 @@ function createRacer(name, character, kart, isPlayer, playerIndex, aiIndex) {
     accel: kart.accel + character.accelBonus,
     handling: kart.handling + character.handlingBonus,
     driftPower: kart.drift,
+    traction: kart.traction,
+    boostStrength: kart.boostStrength,
     weight: character.weight * kart.weight,
     item: null,
     itemCooldown: 0,
@@ -1418,9 +1382,10 @@ function createKartVisual(character, kart) {
   });
 
   const darkMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
-  const trimMat = new THREE.MeshStandardMaterial({ color: character.color, roughness: 0.5 });
+  const trimMat = new THREE.MeshStandardMaterial({ color: kart.trim || character.color, roughness: 0.5 });
 
   if (kart.id === "speedster") {
+    addBox(root, 0, 1.2, -5.5, 2.2, 0.7, 2.5, bodyMat);
     addBox(root, 0, 1.45, 0, 4.6, 1.25, 9.8, bodyMat);
     addBox(root, 0, 2.15, 1.7, 3.6, 1.1, 3.0, bodyMat);
     addBox(root, 0, 1.95, -4.9, 3.2, 0.7, 1.1, mats.yellow);
@@ -1447,17 +1412,63 @@ function createKartVisual(character, kart) {
   }
 
   if (kart.id === "cruiser") {
-    addBox(root, 0, 1.65, 0, 6.7, 2.0, 8.5, bodyMat);
+    addBox(root, 0, 1.65, 0, 7.4, 2.1, 8.9, bodyMat);
     addBox(root, 0, 2.9, -1.5, 5.1, 1.5, 3.5, bodyMat);
     addBox(root, 0, 3.25, 2.2, 4.1, 1.6, 2.3, darkMat);
     addBox(root, 0, 1.65, -4.9, 6.8, 1.0, 0.8, mats.metal);
     addBox(root, 0, 1.65, 4.9, 6.8, 1.0, 0.8, mats.metal);
   }
 
-  const wheelRadius = kart.id === "buggy" ? 1.35 : kart.id === "cruiser" ? 1.25 : 1.05;
-  const wheelWidth = kart.id === "cruiser" ? 1.35 : 1.1;
-  const wheelZ = kart.id === "speedster" ? 3.7 : 3.05;
-  const wheelX = kart.id === "cruiser" ? 3.65 : 3.15;
+  
+  if (kart.id === "rocket") {
+    addBox(root, 0, 1.25, 0.2, 4.1, 1.0, 12.4, bodyMat);
+    addBox(root, 0, 1.05, -6.2, 1.9, 0.5, 2.8, mats.yellow);
+    addBox(root, 0, 2.05, 2.5, 3.0, 1.0, 4.0, darkMat);
+    addBox(root, 0, 2.8, 5.7, 5.2, 0.3, 1.1, trimMat);
+  }
+
+  if (kart.id === "mudbuggy") {
+    addBox(root, 0, 2.0, 0, 6.0, 1.5, 7.6, bodyMat);
+    addBox(root, 0, 3.2, 0.6, 4.6, 1.1, 2.6, darkMat);
+    addBox(root, 0, 1.2, -4.3, 5.8, 0.5, 0.9, mats.metal);
+    addBox(root, 0, 4.3, 1.0, 6.0, 0.24, 0.24, mats.metal);
+  }
+
+  if (kart.id === "comet") {
+    addBox(root, 0, 1.25, 0.2, 4.0, 1.1, 5.8, bodyMat);
+    addBox(root, 0, 2.0, -0.4, 2.2, 0.8, 2.2, darkMat);
+    addBox(root, 0, 1.5, -3.0, 2.8, 0.45, 0.5, mats.yellow);
+  }
+
+  if (kart.id === "tank") {
+    addBox(root, 0, 1.9, 0.4, 7.3, 2.25, 9.4, bodyMat);
+    addBox(root, 0, 3.35, 0.6, 4.5, 1.5, 3.4, darkMat);
+    addBox(root, 0, 2.0, -5.1, 7.8, 1.1, 0.9, mats.metal);
+    addBox(root, 0, 2.0, 5.2, 7.8, 1.1, 0.9, mats.metal);
+  }
+
+  if (kart.id === "driftcoupe") {
+    addBox(root, 0, 1.45, 0, 5.3, 1.25, 8.3, bodyMat);
+    addBox(root, 0, 2.2, -0.6, 3.3, 1.8, 1.0, darkMat);
+    addBox(root, 0, 2.0, 4.5, 4.2, 0.24, 1.2, trimMat);
+  }
+
+  if (kart.id === "jungle") {
+    addBox(root, 0, 1.55, 0, 5.6, 1.45, 7.8, bodyMat);
+    addBox(root, 0, 2.35, -0.8, 3.6, 3.6, 0.95, 2.6, darkMat);
+    addBox(root, 0, 1.75, -4.2, 5.0, 0.55, 0.75, trimMat);
+  }
+
+  const wheelProfiles = {
+    speedster: { radius: 0.95, width: 0.92, x: 2.9, z: 4.2 }, balanced: { radius: 1.05, width: 1.1, x: 3.15, z: 3.05 }, buggy: { radius: 1.35, width: 1.12, x: 3.3, z: 3.0 }, cruiser: { radius: 1.25, width: 1.35, x: 3.75, z: 3.2 },
+    rocket: { radius: 0.9, width: 0.95, x: 2.8, z: 4.8 }, mudbuggy: { radius: 1.55, width: 1.2, x: 3.5, z: 3.15 }, comet: { radius: 0.82, width: 0.9, x: 2.35, z: 2.35 }, tank: { radius: 1.45, width: 1.45, x: 3.95, z: 3.25 },
+    driftcoupe: { radius: 1.0, width: 1.0, x: 3.0, z: 3.35 }, jungle: { radius: 1.14, width: 1.08, x: 3.25, z: 3.15 }
+  };
+  const profile = wheelProfiles[kart.id] || wheelProfiles.balanced;
+  const wheelRadius = profile.radius;
+  const wheelWidth = profile.width;
+  const wheelZ = profile.z;
+  const wheelX = profile.x;
 
   [
     [-wheelX, 1.0, -wheelZ],
@@ -1924,7 +1935,8 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
   const speedAbs = Math.abs(racer.speed);
   const hardTurn = Math.abs(turn) > 0.55;
   const canSkid = onTrack && !racer.drift.active && racer.spinTimer <= 0 && speedAbs > 24 && hardTurn;
-  const slipStrength = canSkid ? THREE.MathUtils.clamp((speedAbs - 22) / 45, 0.08, 0.3) : 0.03;
+  const traction = racer.traction || 1;
+  const slipStrength = canSkid ? THREE.MathUtils.clamp(((speedAbs - 22) / 45) / traction, 0.06, 0.34) : 0.028 / traction;
   const followRate = Math.max(0.08, 1 - slipStrength);
   racer.velocity.lerp(targetVelocity, followRate);
   racer.lateralSlip = THREE.MathUtils.lerp(racer.lateralSlip, canSkid ? turn * slipStrength * speedAbs * 0.09 : 0, 0.15);
@@ -1935,7 +1947,8 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
   racer.group.rotation.y = racer.rotationY;
 
   racer.wheels.forEach(wheel => {
-    wheel.rotation.x += racer.speed * dt * 0.75;
+    const spinScale = 0.56 + (1 / Math.max(0.7, racer.kart.weight)) * 0.27;
+    wheel.rotation.x += racer.speed * dt * spinScale;
   });
 
   animateRider(racer, turn);
@@ -2073,12 +2086,12 @@ function updateDrift(racer, dt, driftInput, turn, brake) {
 
   if (!holdingDriftDirection) {
     if (racer.drift.sparkLevel === 1) {
-      racer.boostTimer = Math.max(racer.boostTimer, 0.45);
+      racer.boostTimer = Math.max(racer.boostTimer, 0.45 * racer.boostStrength);
       showFloatingText(racer, "MINI BOOST!");
     }
 
     if (racer.drift.sparkLevel === 2) {
-      racer.boostTimer = Math.max(racer.boostTimer, 0.86);
+      racer.boostTimer = Math.max(racer.boostTimer, 0.86 * racer.boostStrength);
       showFloatingText(racer, "SUPER BOOST!");
     }
 
@@ -2171,7 +2184,7 @@ function useItem(racer) {
   racer.itemCooldown = 0.4;
 
   if (item === "MUSHROOM") {
-    racer.boostTimer = Math.max(racer.boostTimer, 1.25);
+    racer.boostTimer = Math.max(racer.boostTimer, 1.25 * racer.boostStrength);
     showFloatingText(racer, "MUSHROOM!");
   }
 
@@ -2515,10 +2528,11 @@ function updateParticles(dt) {
       burstParticles(pos, color, 1, 0.42);
     }
 
-    if (racer.boostTimer > 0 && Math.random() < 0.35) {
-      const pos = racer.position.clone().add(getForwardVector(racer).multiplyScalar(-4.4));
+    if (racer.boostTimer > 0 && Math.random() < 0.45) {
+      const flameScale = THREE.MathUtils.clamp((racer.boostTimer * 0.65) + (racer.boostStrength - 1), 0.8, 1.9);
+      const pos = racer.position.clone().add(getForwardVector(racer).multiplyScalar(-4.6 - flameScale));
       pos.y = 1;
-      burstParticles(pos, 0xff8844, 1, 0.5);
+      burstParticles(pos, 0xff8844, Math.ceil(flameScale * 2), 0.62 * flameScale);
     }
   });
 }
