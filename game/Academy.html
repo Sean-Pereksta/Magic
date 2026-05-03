@@ -1354,6 +1354,20 @@ function createHazards(hazards) {
     }
     return group;
   };
+  const createDarkPitCap = (hazard) => {
+    const radiusX = hazard.radiusX || hazard.radius || 10;
+    const radiusZ = hazard.radiusZ || hazard.radius || 10;
+    const cap = new THREE.Mesh(
+      new THREE.CircleGeometry(1, 64),
+      new THREE.MeshStandardMaterial({ color: 0x020202, roughness: 1, metalness: 0, depthWrite: true })
+    );
+    cap.rotation.x = -Math.PI / 2;
+    cap.scale.set(radiusX * 0.82, radiusZ * 0.82, 1);
+    cap.position.y = 0.24;
+    cap.renderOrder = 5;
+    return cap;
+  };
+
   const createBubbleCluster = (hazard, color = 0xb6ffc0, count = 7, kind = 'bubble') => {
     const group = new THREE.Group();
     const radiusX = (hazard.radiusX || hazard.radius || 10) * 0.65;
@@ -1392,12 +1406,14 @@ function createHazards(hazards) {
     fluid.rotation.x = -Math.PI / 2;
     fluid.scale.set(radiusX * 0.8, radiusZ * 0.8, 1);
     fluid.position.y = 0.26;
+    fluid.renderOrder = 4;
     grp.add(fluid);
     hazardShimmers.push({ mesh: fluid, baseScaleX: fluid.scale.x, baseScaleZ: fluid.scale.z, opacityBase: fluid.material.opacity, kind: type });
 
     const rim = new THREE.Mesh(new THREE.RingGeometry(1.0, 1.13, 48), new THREE.MeshStandardMaterial({ color: visual.rim, roughness: 0.94 }));
     rim.rotation.x = -Math.PI / 2;
     rim.position.y = 0.29;
+    rim.renderOrder = 4;
     rim.scale.set(radiusX, radiusZ, 1);
     grp.add(rim);
 
@@ -1438,17 +1454,15 @@ function createHazards(hazards) {
     const group = new THREE.Group();
     const radiusX = hazard.radiusX || hazard.radius || 10;
     const radiusZ = hazard.radiusZ || hazard.radius || 10;
-    const center = new THREE.Mesh(new THREE.CircleGeometry(1, 50), new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 1, metalness: 0 }));
-    center.rotation.x = -Math.PI / 2;
-    center.position.y = 0.03;
-    center.scale.set(radiusX * 0.68, radiusZ * 0.68, 1);
+    const center = createDarkPitCap(hazard);
     group.add(center);
-    const innerWall = new THREE.Mesh(new THREE.RingGeometry(0.7, 1.0, 44), new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 1 }));
+    const innerWall = new THREE.Mesh(new THREE.RingGeometry(0.78, 1.06, 54), new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 1 }));
     innerWall.rotation.x = -Math.PI / 2;
-    innerWall.position.y = 0.18;
-    innerWall.scale.set(radiusX * 0.9, radiusZ * 0.9, 1);
+    innerWall.position.y = 0.275;
+    innerWall.renderOrder = 4;
+    innerWall.scale.set(radiusX * 0.94, radiusZ * 0.94, 1);
     group.add(innerWall);
-    group.add(createJaggedHazardRim(hazard, 0x463a33, 2.1, 20));
+    group.add(createJaggedHazardRim(hazard, 0x352b24, 2.5, 28));
     group.add(createWarningMarkers(hazard, 0xff4422, 4));
     for (let i = 0; i < 4; i++) {
       const wisp = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 8), new THREE.MeshStandardMaterial({ color: 0x101010, transparent: true, opacity: 0.33, depthWrite: false }));
@@ -2492,19 +2506,23 @@ function getSafeAITarget(racer, baseTargetIndex) {
   const lookAheadT = wrap01(baseTargetIndex / checkpointCount);
   const center = getTrackPoint(lookAheadT);
   const normal = getTrackNormal(lookAheadT);
-  const laneCandidates = [-0.46, -0.32, -0.18, 0, 0.18, 0.32, 0.46].map(v => v * trackWidth);
-  let bestPoint = null, bestOffset = 0, bestScore = Infinity;
+  const tangent = getTrackTangent(lookAheadT);
+  const laneCandidates = [-0.48, -0.24, 0, 0.24, 0.48].map(v => v * trackWidth);
+  let bestPoint = center, bestOffset = 0, bestScore = Infinity;
   for (const offset of laneCandidates) {
     const candidate = center.clone().add(normal.clone().multiplyScalar(offset));
-    const ahead = candidate.clone().add(getTrackTangent(lookAheadT).multiplyScalar(12));
-    const deadlyPenalty = (runtimeHazards || []).some(h => (h.type === "pit" || h.type === "water" || h.type === "lava") && isPointInsideHazard(candidate, h, 4)) ? 380 : 0;
-    const roadPenalty = Math.abs(offset) > trackWidth * 0.94 ? 200 : 0;
-    const turnPenalty = Math.abs(offset - (racer.ai.laneOffset || 0)) * 0.45;
-    const score = scorePointHazardRisk(candidate, 8) + scorePointHazardRisk(ahead, 6) * 0.65 + deadlyPenalty + roadPenalty + turnPenalty;
+    const aheadNear = candidate.clone().add(tangent.clone().multiplyScalar(14));
+    const aheadFar = candidate.clone().add(tangent.clone().multiplyScalar(28));
+    const deadlyCollision = (runtimeHazards || []).some(h => (h.type === "pit" || h.type === "water" || h.type === "lava") && (isPointInsideHazard(candidate, h, 4) || isPointInsideHazard(aheadNear, h, 5) || isPointInsideHazard(aheadFar, h, 6)));
+    if (deadlyCollision) continue;
+    const risk = scorePointHazardRisk(candidate, 8) + scorePointHazardRisk(aheadNear, 8) * 0.9 + scorePointHazardRisk(aheadFar, 8) * 0.65;
+    const centerPenalty = Math.abs(offset) / Math.max(1, trackWidth) * 22;
+    const turnPenalty = Math.abs(offset - (racer.ai.laneOffset || 0)) * 1.6;
+    const score = risk + centerPenalty + turnPenalty;
     if (score < bestScore) { bestScore = score; bestPoint = candidate; bestOffset = offset; }
   }
-  racer.ai.laneOffset = THREE.MathUtils.lerp(racer.ai.laneOffset || 0, bestOffset, 0.04);
-  return bestPoint || center;
+  racer.ai.laneOffset = THREE.MathUtils.lerp(racer.ai.laneOffset || 0, bestOffset, 0.12);
+  return bestPoint;
 }
 
 function getUpcomingHazardRiskForAI(racer) {
@@ -2551,7 +2569,8 @@ function recoverStuckAI(racer) {
   const safeT = wrap01(info.t + 0.015);
   const p = getTrackPoint(safeT);
   const tan = getTrackTangent(safeT);
-  racer.position.set(p.x, 0, p.z);
+  const safePoint = getSafeAITarget(racer, Math.floor(safeT * checkpointCount));
+  racer.position.set(safePoint.x, 0, safePoint.z);
   racer.group.position.copy(racer.position);
   racer.rotationY = Math.atan2(tan.x, tan.z);
   racer.speed = Math.min(racer.speed, racer.maxSpeed * 0.35);
@@ -2572,11 +2591,13 @@ function updateAI(racer, dt) {
   racer.aiStuckTimer = racer.aiNoProgressTimer > 2.5 ? racer.aiStuckTimer + dt : 0;
   racer.aiLastProgressT = closest.t;
   if (racer.aiStuckTimer > 5) { recoverStuckAI(racer); return; }
-  if (racer.aiNoProgressTimer > 2.5) lookAhead += 0.03;
+  if (racer.aiNoProgressTimer > 2.3) {
+    lookAhead += 0.04;
+    racer.ai.laneOffset = THREE.MathUtils.lerp(racer.ai.laneOffset || 0, 0, 0.18);
+  }
   let targetT = wrap01(closest.t + lookAhead);
-  const target = getTrackPoint(targetT);
-  const normal = getTrackNormal(targetT);
-  target.addScaledVector(normal, getHazardAvoidanceOffset(racer, targetT));
+  let target = getSafeAITarget(racer, Math.floor(targetT * checkpointCount));
+  target.addScaledVector(getTrackNormal(targetT), getHazardAvoidanceOffset(racer, targetT) * 0.35);
   const upcomingRisk = getUpcomingHazardRiskForAI(racer);
   if (DEBUG_AI_HAZARDS && upcomingRisk > 60) console.debug(`[AI Hazard] ${racer.name} risk=${upcomingRisk.toFixed(1)}`);
 
@@ -2589,7 +2610,7 @@ function updateAI(racer, dt) {
   const toTarget = target.clone().sub(racer.position).normalize();
   if (forward.dot(toTarget) < 0.15) {
     targetT = wrap01(targetT + 0.04);
-    target.copy(getTrackPoint(targetT));
+    target = getSafeAITarget(racer, Math.floor(targetT * checkpointCount));
   }
   const speedTurnDampen = THREE.MathUtils.lerp(1.0, 0.55, speedFactor);
   let turn = THREE.MathUtils.clamp(diff * 1.35, -1, 1) * speedTurnDampen;
@@ -2608,6 +2629,7 @@ function updateAI(racer, dt) {
   const threat = getForwardHazardThreat(racer);
   if (threat) {
     turn += threat.recommendedAvoidDirection * threat.strength;
+    if (threat.distance < 60 && threat.danger >= 100) throttle *= 0.7;
     if (threat.distance < 44) throttle *= 0.55;
     if (threat.distance < 24) brake = Math.max(brake, 0.35);
   }
