@@ -655,6 +655,11 @@ let netWobbleStrength = 0;
 let rimWobbleStrength = 0;
 let rimTouchCount = 0;
 let shotHasHitRimOrBoard = false;
+let predictedReboundPoint = null;
+let reboundPredictionTimer = 0;
+let scrambleState = {active:false,timer:0,lastText:0};
+let boxOutFeedbackTimer = 0;
+let tipFeedbackTimer = 0;
 let debugDirections = false;
 let debugDirHelpers = null;
 let shotMeter = null;
@@ -4909,6 +4914,10 @@ function getDribbleFlavor(char){
 
 function updateBall(dt){
   rimCollisionCooldown = Math.max(0,rimCollisionCooldown - dt);
+  reboundPredictionTimer = Math.max(0,reboundPredictionTimer - dt);
+  boxOutFeedbackTimer = Math.max(0,boxOutFeedbackTimer - dt);
+  tipFeedbackTimer = Math.max(0,tipFeedbackTimer - dt);
+  scrambleState.timer = Math.max(0,scrambleState.timer - dt);
   if(ballState === "dribble"){
     const owner = getOwner();
     const forward = getForward(owner.angle);
@@ -4979,6 +4988,7 @@ function updateBall(dt){
       if(Math.abs(ballVelocity.y) < 1.2 && ballState === "shot") ballState = "loose";
       ball.scale.set(1.08,.92,1.08);
       playDribbleSound();
+      updatePredictedReboundPoint(true);
     }
 
     resolveBackboardBallCollision(dt);
@@ -5020,6 +5030,7 @@ function resolveBackboardBallCollision(dt){
 
   shotHasHitRimOrBoard = true;
   backboardCollisionCooldown = 0.08;
+  updatePredictedReboundPoint(true);
   handleBankShot();
   spawnParticle(ball.position,0x88d7ff);
   playRimSound();
@@ -5064,6 +5075,7 @@ function handleBackboardAndRim(){
     ball.position.add(n.clone().multiplyScalar(.08));
     ballVelocity.copy(reflectVelocity(new THREE.Vector3(n.x,0,n.z),.68,.9));
     ballVelocity.y = Math.max(Math.abs(ballVelocity.y)*.45 + .8,.9);
+    updatePredictedReboundPoint(true);
     handleRimRattle();
     triggerNetWobble(0.45);
     spawnParticle(ball.position,0xff9f5a);
@@ -5078,7 +5090,34 @@ function handleBackboardAndRim(){
     ballVelocity.copy(away.multiplyScalar(2.2));
     ballVelocity.y = 1.4;
     rimTouchCount = 0;
+    updatePredictedReboundPoint(true);
   }
+}
+
+function updatePredictedReboundPoint(force=false){
+  if(!force && reboundPredictionTimer > 0) return;
+  if(ballState !== "shot" && ballState !== "loose") return;
+  const simPos = ball.position.clone();
+  const simVel = ballVelocity.clone();
+  const dt = 0.06;
+  const minX = -COURT_W/2 + BALL_RADIUS + .18;
+  const maxX = COURT_W/2 - BALL_RADIUS - .18;
+  const minZ = -COURT_L/2 + BALL_RADIUS + .18;
+  const maxZ = COURT_L/2 - BALL_RADIUS - .18;
+  for(let i=0;i<54;i++){
+    simVel.y += GRAVITY * dt;
+    simPos.addScaledVector(simVel,dt);
+    if(simPos.y <= BALL_RADIUS){
+      simPos.y = BALL_RADIUS;
+      break;
+    }
+    if(simPos.x < minX || simPos.x > maxX) simVel.x *= -0.72;
+    if(simPos.z < minZ || simPos.z > maxZ) simVel.z *= -0.74;
+    simPos.x = THREE.MathUtils.clamp(simPos.x,minX,maxX);
+    simPos.z = THREE.MathUtils.clamp(simPos.z,minZ,maxZ);
+  }
+  predictedReboundPoint = simPos.clone();
+  reboundPredictionTimer = 0.14;
 }
 
 function reflectVelocity(normal,bounce=.65,friction=.88){
@@ -5128,9 +5167,13 @@ function canPickupLooseBall(char){
   const height = char.profile.height;
   const width = char.profile.width;
 
-  const groundPickupRange = 0.95 * width;
+  const name = (char.profile.name || "").toLowerCase();
+  const longBoard = name.includes("flash guard") || name.includes("deep range");
+  const paintBoard = name.includes("glass tower") || name.includes("paint bruiser");
+  const claw = name.includes("the claw");
+  const groundPickupRange = (0.9 + (longBoard ? 0.16 : 0) - (paintBoard ? 0.04 : 0)) * width;
   const bodyCatchRange = 1.05 * width;
-  const handCatchRange = 0.62 + char.profile.steal * 0.10 + char.profile.handle * 0.10;
+  const handCatchRange = 0.62 + char.profile.steal * 0.10 + char.profile.handle * 0.10 + (longBoard ? 0.08 : 0);
   const ballY = ball.position.y;
 
   if(ballY <= 0.9 && flatDist <= groundPickupRange) return true;
@@ -5142,7 +5185,7 @@ function canPickupLooseBall(char){
   if(rightHand.distanceTo(ball.position) <= handCatchRange) return true;
 
   const reachCenter = char.group.position.clone().add(new THREE.Vector3(0,1.55 * height,0));
-  const reachRadius = 0.72 * width + char.profile.block * 0.20 + char.profile.jump * 0.12;
+  const reachRadius = 0.72 * width + char.profile.block * 0.20 + char.profile.jump * 0.12 + (paintBoard ? 0.18 : 0) + (claw ? 0.1 : 0);
   if(ballY <= 2.45 * height && reachCenter.distanceTo(ball.position) <= reachRadius) return true;
 
   return false;
@@ -5158,6 +5201,8 @@ function getLooseBallPickupQuality(char){
   quality += (char.profile.handle - 1) * 0.22;
   quality += (char.profile.jump - 1) * 0.08;
   quality += (char.profile.block - 1) * 0.06;
+  quality += (char.profile.steal - 1) * 0.14;
+  quality -= Math.max(0,char.profile.width - 1) * 0.08;
   if(char.velocity && char.velocity.length() > 5.5) quality -= 0.12;
   return THREE.MathUtils.clamp(quality,0.15,0.98);
 }
@@ -5198,6 +5243,18 @@ function bobbleLooseBall(char){
 function attemptLooseBallGather(char){
   const gatherType = ball.position.y > 1.0 ? "catch" : "pickup";
   const quality = getLooseBallPickupQuality(char);
+  const contested = flatDistance(p1.group.position,p2.group.position) < 1.45 && ball.position.y < 1.22;
+  if(contested){
+    scrambleState.active = true;
+    scrambleState.timer = 0.28;
+    if(scrambleState.lastText <= 0){ flash("LOOSE BALL"); scrambleState.lastText = 0.55; }
+    scrambleState.lastText = Math.max(0,scrambleState.lastText - 0.08);
+    char.moveState = "gather";
+    char.moveTimer = 0;
+    char.moveDuration = 0.26;
+    char.moveMeta = char.moveMeta || {};
+    char.moveMeta.gatherType = "pickup";
+  }
   if(Math.random() <= quality){
     gainPossession(char.id);
     char.moveState = "gather";
@@ -5206,6 +5263,21 @@ function attemptLooseBallGather(char){
     char.moveMeta = char.moveMeta || {};
     char.moveMeta.gatherType = gatherType;
     flash(gatherType === "catch" ? `${char.id.toUpperCase()} catches it!` : `${char.id.toUpperCase()} picks it up!`);
+    if(ball.position.y > 1.05 && tipFeedbackTimer <= 0){
+      flash("REBOUND");
+      tipFeedbackTimer = 0.45;
+    }
+    return;
+  }
+  if(ball.position.y > 1.15 && char.profile.jump + char.profile.block > 2.22 && Math.random() < 0.55){
+    const tipDir = getForward(char.angle).multiplyScalar(1.1 + Math.random()*1.7);
+    tipDir.x += (Math.random() - 0.5) * 1.4;
+    tipDir.z += (Math.random() - 0.5) * 1.4;
+    ballVelocity.copy(tipDir);
+    ballVelocity.y = 1.6 + Math.random()*1.5;
+    ballState = "loose";
+    loosePickupDelay = 0.14;
+    if(tipFeedbackTimer <= 0){ flash("TIP"); tipFeedbackTimer = 0.55; }
     return;
   }
   bobbleLooseBall(char);
@@ -6483,8 +6555,30 @@ function setGraphicsQuality(level){ graphicsQuality = level in qualitySettings ?
 
 function calculateReboundVector(){ return new THREE.Vector3((Math.random()-.5)*4,2.2,Math.random()*3.8); }
 function updateReboundAI(dt){
-  if(!gameStarted || twoPlayerMode || ballState !== "loose") return;
-  moveBotToward(p2,ball.position.clone(),difficultySettings[selectedDifficulty].speed*1.1,dt);
+  if(!gameStarted || twoPlayerMode) return;
+  if(ballState !== "loose" && ballState !== "shot") return;
+  updatePredictedReboundPoint();
+  const targetBase = predictedReboundPoint ? predictedReboundPoint.clone() : ball.position.clone();
+  const opponent = p1;
+  const iq = p2.profile.shot || 1;
+  const name = (p2.profile.name || "").toLowerCase();
+  const longBoard = name.includes("flash guard") || name.includes("deep range");
+  const paintBoard = name.includes("glass tower") || name.includes("paint bruiser");
+  if(paintBoard) targetBase.lerp(HOOP_POS,0.28);
+  if(longBoard && ballVelocity.length() > 3.5) targetBase.add(ballVelocity.clone().setY(0).multiplyScalar(0.26));
+  const toSpot = targetBase.clone().sub(opponent.group.position).setY(0);
+  const toOpp = p2.group.position.clone().sub(opponent.group.position).setY(0);
+  const between = toSpot.lengthSq() > 0.01 && toOpp.lengthSq() > 0.01 && toSpot.normalize().dot(toOpp.normalize()) > 0.65;
+  if(iq > 0.9 && between && flatDistance(p2.group.position,targetBase) < 2.3){
+    const boxPos = opponent.group.position.clone().add(toSpot.clone().multiplyScalar(0.65));
+    moveBotToward(p2,boxPos,difficultySettings[selectedDifficulty].speed*0.95,dt);
+    p2.group.rotation.z = THREE.MathUtils.lerp(p2.group.rotation.z,0.06,dt*8);
+    p2.leftArm.rotation.z = THREE.MathUtils.lerp(p2.leftArm.rotation.z,-0.22,dt*10);
+    p2.rightArm.rotation.z = THREE.MathUtils.lerp(p2.rightArm.rotation.z,0.22,dt*10);
+    if(boxOutFeedbackTimer <= 0){ flash("BOX OUT"); boxOutFeedbackTimer = 0.8; }
+  }else{
+    moveBotToward(p2,targetBase,difficultySettings[selectedDifficulty].speed*(longBoard ? 1.14 : 1.03),dt);
+  }
 }
 function handleRimRattle(){ ballVelocity.multiplyScalar(.92); ballVelocity.y += .25; }
 function handleBankShot(){ ballVelocity.z *= -.7; }
