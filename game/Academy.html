@@ -673,8 +673,14 @@ let particles = [];
 let floatingTexts = [];
 let hazardMeshes = [];
 let hazardShimmers = [];
+let runtimeHazards = [];
 const DEBUG_AI_HAZARDS = false;
+const DEBUG_TRACK_ALIGNMENT = false;
+const TRACK_RIBBON_STEPS = 900;
 let skidMarks = [];
+let raceElapsedTime = 0;
+let raceEndGraceTimer = null;
+let resultsPending = false;
 
 const MAX_PARTICLES = 320;
 const MAX_SKID_MARKS = 170;
@@ -764,14 +770,16 @@ function buildWorld(map) {
   trackCurve = new THREE.CatmullRomCurve3(trackPoints, true, "catmullrom", 0.45);
   buildTrackSamples();
   buildFinishLineData();
-  sanitizeHazardsForMap(map);
+  runtimeHazards = buildRuntimeHazards(map);
+  sanitizeHazardsForMap(runtimeHazards);
 
   createTrackSurface();
   createRoadLaneShading();
   createTrackEdges();
+  createTrackAlignmentDebug();
   createStartLineAndBanner(map);
   createItemBoxes();
-  createHazards(map);
+  createHazards(runtimeHazards);
   createDecorations(map);
 }
 
@@ -870,62 +878,21 @@ function getTerrainAtPosition(pos) {
 }
 
 function createTrackSurface() {
-  const shape = new THREE.Shape();
-  const outer = [];
-  const inner = [];
-  const steps = 420;
-
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const p = getTrackPoint(t);
-    const n = getTrackNormal(t);
-
-    outer.push(new THREE.Vector2(
-      p.x + n.x * trackWidth,
-      p.z + n.z * trackWidth
-    ));
-
-    inner.push(new THREE.Vector2(
-      p.x - n.x * trackWidth,
-      p.z - n.z * trackWidth
-    ));
-  }
-
-  shape.moveTo(outer[0].x, outer[0].y);
-
-  outer.forEach(p => {
-    shape.lineTo(p.x, p.y);
-  });
-
-  const hole = new THREE.Path();
-  hole.moveTo(inner[inner.length - 1].x, inner[inner.length - 1].y);
-
-  for (let i = inner.length - 1; i >= 0; i--) {
-    hole.lineTo(inner[i].x, inner[i].y);
-  }
-
-  shape.holes.push(hole);
-
-  const geo = new THREE.ShapeGeometry(shape);
-  const mesh = new THREE.Mesh(geo, mats.road);
-  mesh.rotation.x = -Math.PI / 2;
-  mesh.position.y = 0.045;
-  mesh.receiveShadow = true;
-  scene.add(mesh);
+  createTrackRibbonMesh({ halfWidth: trackWidth, y: 0.045, material: mats.road, steps: TRACK_RIBBON_STEPS });
 }
 
 function createTrackEdges() {
   for (const side of [-1, 1]) {
     const pts = [];
 
-    for (let i = 0; i <= 420; i++) {
-      const t = i / 420;
+    for (let i = 0; i <= TRACK_RIBBON_STEPS; i++) {
+      const t = i / TRACK_RIBBON_STEPS;
       const p = getTrackPoint(t);
       const n = getTrackNormal(t);
 
       pts.push(new THREE.Vector3(
         p.x + n.x * trackWidth * side,
-        0.16,
+        0.14,
         p.z + n.z * trackWidth * side
       ));
     }
@@ -940,42 +907,57 @@ function createTrackEdges() {
 }
 
 function createRoadLaneShading() {
-  const makeRibbon = (halfWidth, color, y, opacity = 1) => {
-    const shape = new THREE.Shape();
-    const outer = [];
-    const inner = [];
-    const steps = 420;
-    for (let i = 0; i <= steps; i++) {
-      const t = i / steps;
-      const p = getTrackPoint(t);
-      const n = getTrackNormal(t);
-      outer.push(new THREE.Vector2(p.x + n.x * halfWidth, p.z + n.z * halfWidth));
-      inner.push(new THREE.Vector2(p.x - n.x * halfWidth, p.z - n.z * halfWidth));
-    }
-    shape.moveTo(outer[0].x, outer[0].y);
-    outer.forEach(p => shape.lineTo(p.x, p.y));
-    const hole = new THREE.Path();
-    hole.moveTo(inner[inner.length - 1].x, inner[inner.length - 1].y);
-    for (let i = inner.length - 1; i >= 0; i--) hole.lineTo(inner[i].x, inner[i].y);
-    shape.holes.push(hole);
-    const mesh = new THREE.Mesh(
-      new THREE.ShapeGeometry(shape),
-      new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.12, transparent: opacity < 1, opacity })
-    );
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.y = y;
-    mesh.receiveShadow = true;
-    scene.add(mesh);
-  };
-
-  makeRibbon(trackWidth * 0.58, 0x5b5f65, 0.055, 0.95);
-  makeRibbon(trackWidth * 0.98, currentMap.edge, 0.07, 0.9);
+  createTrackRibbonMesh({
+    halfWidth: trackWidth * 0.58, y: 0.06, steps: TRACK_RIBBON_STEPS,
+    material: new THREE.MeshStandardMaterial({ color: 0x5b5f65, roughness: 0.5, metalness: 0.08, transparent: true, opacity: 0.9 })
+  });
+  createTrackRibbonMesh({
+    halfWidth: trackWidth * 0.98, y: 0.07, steps: TRACK_RIBBON_STEPS,
+    material: new THREE.MeshStandardMaterial({ color: currentMap.edge, roughness: 0.6, metalness: 0.05, transparent: true, opacity: 0.6 })
+  });
 }
 
-function sanitizeHazardsForMap(map) {
-  if (!map.hazards || !map.hazards.length) return;
+function createTrackRibbonMesh({ halfWidth, y, material, steps = TRACK_RIBBON_STEPS, receiveShadow = true }) {
+  const vertices = [], indices = [], uvs = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const p = getTrackPoint(t);
+    const n = getTrackNormal(t);
+    vertices.push(p.x + n.x * halfWidth, y, p.z + n.z * halfWidth);
+    vertices.push(p.x - n.x * halfWidth, y, p.z - n.z * halfWidth);
+    uvs.push(0, i / steps, 1, i / steps);
+    if (i < steps) {
+      const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+      indices.push(a, b, c, b, d, c);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+  geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.receiveShadow = receiveShadow;
+  scene.add(mesh);
+  return mesh;
+}
+
+function createTrackAlignmentDebug() {
+  if (!DEBUG_TRACK_ALIGNMENT) return;
+  for (let i = 0; i < 180; i++) {
+    const t = i / 180, p = getTrackPoint(t), n = getTrackNormal(t);
+    addDebugDot(p.x, 0.35, p.z, 0xffff00);
+    addDebugDot(p.x + n.x * trackWidth, 0.35, p.z + n.z * trackWidth, 0x00ff00);
+    addDebugDot(p.x - n.x * trackWidth, 0.35, p.z - n.z * trackWidth, 0xff0000);
+  }
+}
+function addDebugDot(x, y, z, color) { const dot = new THREE.Mesh(new THREE.SphereGeometry(0.7, 8, 8), new THREE.MeshBasicMaterial({ color })); dot.position.set(x, y, z); scene.add(dot); }
+
+function buildRuntimeHazards(map) { return (map.hazards || []).map(h => ({ ...h })); }
+function sanitizeHazardsForMap(hazards) {
+  if (!hazards || !hazards.length) return;
   const deadlyTypes = new Set(["pit", "water", "lava"]);
-  for (const hazard of map.hazards) {
+  for (const hazard of hazards) {
     const closest = getClosestTrackInfo(new THREE.Vector3(hazard.x, 0, hazard.z));
     const normal = getTrackNormal(closest.t);
     const radiusX = hazard.radiusX || hazard.radius || 10;
@@ -988,7 +970,7 @@ function sanitizeHazardsForMap(map) {
     if (centerTooClose || overlapsCenter) {
       const sideDot = ((hazard.x - closest.point.x) * normal.x + (hazard.z - closest.point.z) * normal.z);
       const side = Math.sign(sideDot) || 1;
-      const targetFactor = isDeadly ? 0.72 : 0.56;
+      const targetFactor = isDeadly ? 0.78 : 0.56;
       hazard.x = closest.point.x + normal.x * side * trackWidth * targetFactor;
       hazard.z = closest.point.z + normal.z * side * trackWidth * targetFactor;
     }
@@ -1011,7 +993,7 @@ function isInsideFinishWidth(pos) { const { p, n } = getFinishLineInfo(); const 
 function isInsideFinishDepth(pos) { const { p, tan } = getFinishLineInfo(); const dx = pos.x - p.x; const dz = pos.z - p.z; return Math.abs(dx * tan.x + dz * tan.z) <= 12; }
 function isInsideFinishZone(pos) { return isInsideFinishWidth(pos) && isInsideFinishDepth(pos); }
 function updateLapCheckpointProgress(racer) { const closest = getClosestTrackInfo(racer.position); const currentT = closest.t; if (racer.lastClosestT == null) { racer.lastClosestT = currentT; return; } let delta = currentT - racer.lastClosestT; if (delta < -0.5) delta += 1; if (delta > 0.5) delta -= 1; if (delta > 0) racer.lapCheckpointProgress += delta; racer.lastClosestT = currentT; }
-function updateFinishLineLap(racer, dt) { if (racer.finished) return; if (racer.finishCooldown > 0) racer.finishCooldown -= dt; updateLapCheckpointProgress(racer); const side = getSignedFinishSide(racer.position); if (racer.lastFinishSide == null) { racer.lastFinishSide = side; return; } const crossedLine = racer.lastFinishSide < 0 && side >= 0; const insideZone = isInsideFinishZone(racer.position); const completedEnoughLap = racer.lapCheckpointProgress >= 0.82; if (crossedLine && insideZone && completedEnoughLap && racer.finishCooldown <= 0) { racer.lap++; racer.lapCheckpointProgress = 0; racer.finishCooldown = 1.2; racer.crossedFinishThisLap = true; if (racer.isPlayer && racer.lap <= totalLaps) showCenterMessage(`${racer.name}: Lap ${racer.lap}!`, 1100); if (racer.lap > totalLaps && !racer.finished) { racer.finished = true; racer.finishOrder = finishOrder.length + 1; finishOrder.push(racer); if (racer.isPlayer && !resultsShown) showResultsOverlay(); } } racer.lastFinishSide = side; }
+function updateFinishLineLap(racer, dt) { if (racer.finished) return; if (racer.finishCooldown > 0) racer.finishCooldown -= dt; updateLapCheckpointProgress(racer); const side = getSignedFinishSide(racer.position); if (racer.lastFinishSide == null) { racer.lastFinishSide = side; return; } const crossedLine = racer.lastFinishSide < 0 && side >= 0; const insideZone = isInsideFinishZone(racer.position); const completedEnoughLap = racer.lapCheckpointProgress >= 0.82; if (crossedLine && insideZone && completedEnoughLap && racer.finishCooldown <= 0) { racer.lap++; racer.lapCheckpointProgress = 0; racer.finishCooldown = 1.2; racer.crossedFinishThisLap = true; if (racer.isPlayer && racer.lap <= totalLaps) showCenterMessage(`${racer.name}: Lap ${racer.lap}!`, 1100); if (racer.lap > totalLaps && !racer.finished) { racer.finished = true; racer.finishTime = raceElapsedTime; racer.finishOrder = finishOrder.length + 1; finishOrder.push(racer); if (racer.isPlayer && !resultsShown) { resultsPending = true; raceEndGraceTimer = 6.0; } } } racer.lastFinishSide = side; }
 
 function createStartLineAndBanner(map) {
   const p = getTrackPoint(startT);
@@ -1171,10 +1153,10 @@ function createItemBoxes() {
       );
       box.position.set(p.x + n.x * offset, 3.2, p.z + n.z * offset);
       const trackCenter = getTrackPoint(t).clone();
-      if ((currentMap.hazards || []).some(h => isPointInsideHazard(box.position, h, 2))) {
+      if ((runtimeHazards || []).some(h => isPointInsideHazard(box.position, h, 2))) {
         box.position.set(trackCenter.x - n.x * offset, 3.2, trackCenter.z - n.z * offset);
       }
-      if ((currentMap.hazards || []).some(h => isPointInsideHazard(box.position, h, 2))) return;
+      if ((runtimeHazards || []).some(h => isPointInsideHazard(box.position, h, 2))) return;
       scene.add(box);
 
       pickups.push({
@@ -1188,8 +1170,7 @@ function createItemBoxes() {
 }
 
 
-function createHazards(map) {
-  const hazards = map.hazards || [];
+function createHazards(hazards) {
 
   hazards.forEach(h => {
     const hazardRoot = new THREE.Group();
@@ -1210,12 +1191,12 @@ function createHazards(map) {
       );
       water.rotation.x = -Math.PI / 2;
       water.scale.set(h.radiusX, h.radiusZ, 1);
-      water.position.y = 0.02;
+      water.position.y = h.type === "water" ? 0.08 : 0.1;
       hazardRoot.add(water);
       hazardShimmers.push(water);
       const ring = new THREE.Mesh(new THREE.RingGeometry(0.95, 1.08, 48), new THREE.MeshBasicMaterial({ color: h.type === "lava" ? 0xff8844 : 0x9fe6ff, transparent: true, opacity: 0.9, side: THREE.DoubleSide }));
       ring.rotation.x = -Math.PI / 2;
-      ring.position.y = 0.07;
+      ring.position.y = 0.14;
       ring.scale.set(h.radiusX, h.radiusZ, 1);
       hazardRoot.add(ring);
       hazardShimmers.push(ring);
@@ -1226,7 +1207,7 @@ function createHazards(map) {
       );
       rim.rotation.x = -Math.PI / 2;
       rim.scale.set(h.radiusX, h.radiusZ, 1);
-      rim.position.y = 0.04;
+      rim.position.y = 0.1;
       hazardRoot.add(rim);
 
       const hole = new THREE.Mesh(
@@ -1235,7 +1216,7 @@ function createHazards(map) {
       );
       hole.rotation.x = -Math.PI / 2;
       hole.scale.set(h.radiusX * 0.72, h.radiusZ * 0.72, 1);
-      hole.position.y = -0.22;
+      hole.position.y = -0.08;
       hazardRoot.add(hole);
       if (h.type === "steam") {
         for (let i = 0; i < 3; i++) {
@@ -2205,7 +2186,7 @@ function getSafeAITarget(racer, baseTargetIndex) {
   for (const offset of laneCandidates) {
     const candidate = center.clone().add(normal.clone().multiplyScalar(offset));
     const ahead = candidate.clone().add(getTrackTangent(lookAheadT).multiplyScalar(12));
-    const deadlyPenalty = (currentMap.hazards || []).some(h => (h.type === "pit" || h.type === "water" || h.type === "lava") && isPointInsideHazard(candidate, h, 4)) ? 380 : 0;
+    const deadlyPenalty = (runtimeHazards || []).some(h => (h.type === "pit" || h.type === "water" || h.type === "lava") && isPointInsideHazard(candidate, h, 4)) ? 380 : 0;
     const roadPenalty = Math.abs(offset) > trackWidth * 0.94 ? 200 : 0;
     const turnPenalty = Math.abs(offset - (racer.ai.laneOffset || 0)) * 0.45;
     const score = scorePointHazardRisk(candidate, 8) + scorePointHazardRisk(ahead, 6) * 0.65 + deadlyPenalty + roadPenalty + turnPenalty;
@@ -2238,11 +2219,53 @@ function getNearestDangerousHazard(pos) {
   return best;
 }
 
+function getHazardAvoidanceOffset(racer, baseT) {
+  let offset = 0;
+  const p = getTrackPoint(baseT);
+  const n = getTrackNormal(baseT);
+  for (const hazard of runtimeHazards || []) {
+    const hz = new THREE.Vector3(hazard.x, 0, hazard.z);
+    const dist = hz.distanceTo(p);
+    const dangerRadius = Math.max(hazard.radiusX || 10, hazard.radiusZ || 10) + 8;
+    if (dist < dangerRadius) {
+      const side = Math.sign((hz.x - p.x) * n.x + (hz.z - p.z) * n.z) || 1;
+      offset -= side * Math.min(trackWidth * 0.45, dangerRadius);
+    }
+  }
+  return THREE.MathUtils.clamp(offset, -trackWidth * 0.55, trackWidth * 0.55);
+}
+
+function recoverStuckAI(racer) {
+  const info = getClosestTrackInfo(racer.position);
+  const safeT = wrap01(info.t + 0.015);
+  const p = getTrackPoint(safeT);
+  const tan = getTrackTangent(safeT);
+  racer.position.set(p.x, 0, p.z);
+  racer.group.position.copy(racer.position);
+  racer.rotationY = Math.atan2(tan.x, tan.z);
+  racer.speed = Math.min(racer.speed, racer.maxSpeed * 0.35);
+  racer.aiNoProgressTimer = 0;
+  racer.aiStuckTimer = 0;
+}
+
 function updateAI(racer, dt) {
   if (racer.finished) return;
-
-  const targetIndex = racer.ai.targetIndex + currentDifficulty.aiLookAhead;
-  const target = getSafeAITarget(racer, targetIndex);
+  const closest = getClosestTrackInfo(racer.position);
+  const speedFactor = THREE.MathUtils.clamp(Math.abs(racer.speed) / Math.max(1, racer.maxSpeed), 0, 1);
+  let lookAhead = THREE.MathUtils.lerp(0.025, 0.075, speedFactor);
+  racer.aiLastProgressT = racer.aiLastProgressT ?? closest.t;
+  racer.aiNoProgressTimer = racer.aiNoProgressTimer || 0;
+  racer.aiStuckTimer = racer.aiStuckTimer || 0;
+  let delta = closest.t - racer.aiLastProgressT; if (delta < -0.5) delta += 1; if (delta > 0.5) delta -= 1;
+  if (delta > 0.0007) racer.aiNoProgressTimer = 0; else racer.aiNoProgressTimer += dt;
+  racer.aiStuckTimer = racer.aiNoProgressTimer > 2.5 ? racer.aiStuckTimer + dt : 0;
+  racer.aiLastProgressT = closest.t;
+  if (racer.aiStuckTimer > 5) { recoverStuckAI(racer); return; }
+  if (racer.aiNoProgressTimer > 2.5) lookAhead += 0.03;
+  let targetT = wrap01(closest.t + lookAhead);
+  const target = getTrackPoint(targetT);
+  const normal = getTrackNormal(targetT);
+  target.addScaledVector(normal, getHazardAvoidanceOffset(racer, targetT));
   const upcomingRisk = getUpcomingHazardRiskForAI(racer);
   if (DEBUG_AI_HAZARDS && upcomingRisk > 60) console.debug(`[AI Hazard] ${racer.name} risk=${upcomingRisk.toFixed(1)}`);
 
@@ -2251,7 +2274,14 @@ function updateAI(racer, dt) {
   const desiredAngle = Math.atan2(dx, dz);
   const diff = normalizeAngle(desiredAngle - racer.rotationY);
 
-  let turn = THREE.MathUtils.clamp(diff * 1.75, -1, 1);
+  const forward = new THREE.Vector3(Math.sin(racer.rotationY), 0, Math.cos(racer.rotationY));
+  const toTarget = target.clone().sub(racer.position).normalize();
+  if (forward.dot(toTarget) < 0.15) {
+    targetT = wrap01(targetT + 0.04);
+    target.copy(getTrackPoint(targetT));
+  }
+  const speedTurnDampen = THREE.MathUtils.lerp(1.0, 0.55, speedFactor);
+  let turn = THREE.MathUtils.clamp(diff * 1.35, -1, 1) * speedTurnDampen;
   let throttle = 1;
   const speedRatio = THREE.MathUtils.clamp(Math.abs(racer.speed) / Math.max(30, racer.maxSpeed * currentCC.speedMultiplier), 0, 1.35);
   let brake = Math.abs(diff) > 0.72 ? THREE.MathUtils.clamp(Math.abs(diff) * (0.3 + speedRatio * 0.25), 0.18, 0.72) : 0;
@@ -2973,7 +3003,7 @@ function updateShells(dt) {
     if (!shell.homing && !isOnTrack(shell.group.position)) {
       remove = true;
     }
-    if (!remove && (currentMap.hazards || []).some(h => (h.type === "pit" || h.type === "water" || h.type === "lava") && isPointInsideHazard(shell.group.position, h, 1.5))) {
+    if (!remove && (runtimeHazards || []).some(h => (h.type === "pit" || h.type === "water" || h.type === "lava") && isPointInsideHazard(shell.group.position, h, 1.5))) {
       remove = true;
     }
     if (!remove) {
@@ -3466,7 +3496,7 @@ function drawMinimap() {
 
   ctx.stroke();
 
-  (currentMap.hazards || []).forEach(h => {
+  (runtimeHazards || []).forEach(h => {
     ctx.fillStyle = h.type === "pit" ? "#111" : h.type === "mud" ? "#7a4d2d" : h.type === "sludge" ? "#62a830" : h.type === "ghost" ? "#9bc7ff" : h.type === "wind" ? "#d9f7ff" : h.type === "steam" ? "#999" : "#49a7ff";
     ctx.beginPath();
     ctx.arc(h.x * scale, h.z * scale, 2.4, 0, Math.PI * 2);
@@ -3502,16 +3532,31 @@ function formatPlace(i) {
   if (i === 3) return "3rd";
   return `${i}th`;
 }
+function formatTime(seconds) { const s = Math.max(0, seconds || 0); const m = Math.floor(s / 60); const rem = s - m * 60; return `${String(m).padStart(2, "0")}:${rem.toFixed(2).padStart(5, "0")}`; }
+
+function getRacerRaceProgress(racer) {
+  const info = getClosestTrackInfo(racer.position);
+  const lapBase = Math.min(racer.lap, totalLaps + 1) - 1;
+  return lapBase + info.t;
+}
+
+function getFinalRaceResults() {
+  const finished = racers.filter(r => r.finished).sort((a, b) => a.finishOrder - b.finishOrder);
+  const unfinished = racers.filter(r => !r.finished).sort((a, b) => getRacerRaceProgress(b) - getRacerRaceProgress(a));
+  return [...finished, ...unfinished];
+}
 
 function showResultsOverlay() {
   raceStarted = false;
   resultsShown = true;
   const list = document.getElementById("resultsList");
   list.innerHTML = "";
-  getPlacings().forEach((r, idx) => {
+  getFinalRaceResults().forEach((r, idx) => {
+    const progress = Math.max(0, Math.min(100, Math.round((getRacerRaceProgress(r) / totalLaps) * 100)));
+    const status = r.finished ? `Finished ${formatTime(r.finishTime || raceElapsedTime)}` : `Lap ${Math.min(r.lap, totalLaps)} / ${totalLaps} | ${progress}%`;
     const row = document.createElement("div");
     row.className = "resultRow";
-    row.innerHTML = `<div><b>${formatPlace(idx + 1)}</b></div><div>${r.character.emoji || ""} ${r.name}</div><div>${r.kart.name}</div>`;
+    row.innerHTML = `<div><b>${formatPlace(idx + 1)}</b></div><div>${r.character.emoji || ""} ${r.name}<br><small>${status}</small></div><div>${r.kart.name}</div>`;
     list.appendChild(row);
   });
   document.getElementById("resultsOverlay").style.display = "flex";
@@ -3606,6 +3651,9 @@ document.getElementById("startBtn").onclick = () => {
   raceStarted = false;
   resultsShown = false;
   countdown = 3.6;
+  raceElapsedTime = 0;
+  resultsPending = false;
+  raceEndGraceTimer = null;
 
   showCenterMessage("3", 1000);
 };
@@ -3670,6 +3718,7 @@ function animate() {
     renderScene();
     return;
   }
+  raceElapsedTime += dt;
 
   players.forEach(player => {
     updatePlayer(player, dt);
@@ -3680,6 +3729,14 @@ function animate() {
       updateAI(racer, dt);
     }
   });
+  if (resultsPending) {
+    raceEndGraceTimer -= dt;
+    if (racers.every(r => r.finished) || raceEndGraceTimer <= 0) {
+      showResultsOverlay();
+      resultsPending = false;
+      raceEndGraceTimer = null;
+    }
+  }
 
   updateRacerCollisions();
   updateHazardVisuals(dt);
