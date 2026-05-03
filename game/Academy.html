@@ -216,6 +216,24 @@
     display: none;
   }
 
+
+
+  #respawnFade {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 35;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 32px;
+    font-weight: 900;
+    text-shadow: 0 2px 10px rgba(0,0,0,.8);
+  }
+
   @media (max-width: 900px) {
     .menuGrid {
       grid-template-columns: 1fr;
@@ -316,6 +334,7 @@
 </div>
 
 <div id="centerMsg"></div>
+<div id="respawnFade">Recovered!</div>
 
 <canvas id="minimap" width="210" height="160"></canvas>
 
@@ -476,6 +495,11 @@ const maps = [
     road: 0x3c3c3c,
     edge: 0xffffff,
     trackWidth: 29,
+    hazards: [
+      { type: "water", x: -210, z: -62, radiusX: 24, radiusZ: 14, rotation: 0.25 },
+      { type: "pit", x: 70, z: -152, radiusX: 16, radiusZ: 11, rotation: -0.35 },
+      { type: "water", x: 208, z: 45, radiusX: 19, radiusZ: 12, rotation: 0.55 }
+    ],
     points: [
       [-125, 0, 78],
       [-175, 0, 30],
@@ -505,6 +529,11 @@ const maps = [
     road: 0x8b5a2b,
     edge: 0xffe5ad,
     trackWidth: 33,
+    hazards: [
+      { type: "pit", x: -214, z: -55, radiusX: 18, radiusZ: 13, rotation: -0.6 },
+      { type: "water", x: -2, z: -187, radiusX: 25, radiusZ: 15, rotation: 0.15 },
+      { type: "pit", x: 220, z: 62, radiusX: 17, radiusZ: 12, rotation: 0.4 }
+    ],
     points: [
       [-145, 0, 85],
       [-205, 0, 18],
@@ -534,6 +563,11 @@ const maps = [
     road: 0x6d8790,
     edge: 0xffffff,
     trackWidth: 28,
+    hazards: [
+      { type: "water", x: -170, z: -86, radiusX: 23, radiusZ: 14, rotation: -0.2 },
+      { type: "pit", x: 58, z: -28, radiusX: 14, radiusZ: 10, rotation: 0.45 },
+      { type: "water", x: 175, z: 132, radiusX: 18, radiusZ: 12, rotation: -0.5 }
+    ],
     points: [
       [-105, 0, 95],
       [-185, 0, 52],
@@ -708,6 +742,8 @@ let shells = [];
 let bananas = [];
 let particles = [];
 let floatingTexts = [];
+let hazardMeshes = [];
+let hazardShimmers = [];
 
 /* =========================================================
    MATERIALS
@@ -747,6 +783,8 @@ function clearScene() {
   bananas = [];
   particles = [];
   floatingTexts = [];
+  hazardMeshes = [];
+  hazardShimmers = [];
 }
 
 function buildWorld(map) {
@@ -787,6 +825,7 @@ function buildWorld(map) {
   createTrackEdges();
   createStartLineAndBanner(map);
   createItemBoxes();
+  createHazards(map);
   createDecorations(map);
 }
 
@@ -1017,6 +1056,56 @@ function createItemBoxes() {
         cooldown: 0
       });
     });
+  });
+}
+
+function createHazards(map) {
+  const hazards = map.hazards || [];
+
+  hazards.forEach(h => {
+    const hazardRoot = new THREE.Group();
+    hazardRoot.position.set(h.x, 0, h.z);
+    hazardRoot.rotation.y = h.rotation || 0;
+
+    if (h.type === "water") {
+      const water = new THREE.Mesh(
+        new THREE.CircleGeometry(1, 36),
+        new THREE.MeshStandardMaterial({
+          color: 0x3ca6ff,
+          emissive: 0x123b7a,
+          transparent: true,
+          opacity: 0.62,
+          roughness: 0.12,
+          metalness: 0.15
+        })
+      );
+      water.rotation.x = -Math.PI / 2;
+      water.scale.set(h.radiusX, h.radiusZ, 1);
+      water.position.y = 0.02;
+      hazardRoot.add(water);
+      hazardShimmers.push(water);
+    } else {
+      const rim = new THREE.Mesh(
+        new THREE.RingGeometry(0.72, 1, 36),
+        new THREE.MeshStandardMaterial({ color: 0x2f2723, roughness: 1 })
+      );
+      rim.rotation.x = -Math.PI / 2;
+      rim.scale.set(h.radiusX, h.radiusZ, 1);
+      rim.position.y = 0.04;
+      hazardRoot.add(rim);
+
+      const hole = new THREE.Mesh(
+        new THREE.CircleGeometry(1, 36),
+        new THREE.MeshStandardMaterial({ color: 0x080808, roughness: 1 })
+      );
+      hole.rotation.x = -Math.PI / 2;
+      hole.scale.set(h.radiusX * 0.72, h.radiusZ * 0.72, 1);
+      hole.position.y = -0.22;
+      hazardRoot.add(hole);
+    }
+
+    scene.add(hazardRoot);
+    hazardMeshes.push({ root: hazardRoot, data: h });
   });
 }
 
@@ -1251,6 +1340,7 @@ function createRacer(name, character, kart, isPlayer, playerIndex, aiIndex) {
     boostTimer: 0,
     spinTimer: 0,
     invulnTimer: 0,
+    respawnTimer: 0,
     lap: 1,
     finished: false,
     checkpointIndex: 2,
@@ -1725,6 +1815,16 @@ function updateAI(racer, dt) {
 }
 
 function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
+  if (racer.respawnTimer > 0) {
+    racer.respawnTimer -= dt;
+    racer.speed = 0;
+    racer.velocity.set(0, 0, 0);
+    racer.group.rotation.y += dt * 6;
+    racer.group.visible = Math.floor(performance.now() * 0.03) % 2 === 0;
+    if (racer.respawnTimer <= 0) performRespawn(racer);
+    return;
+  }
+
   const terrain = getTerrainAtPosition(racer.position);
   const onTrack = terrain === "road";
   let terrainFactor = onTrack ? 1 : currentMap.theme === "snow" ? 0.64 : currentMap.theme === "desert" ? 0.55 : 0.5;
@@ -1790,8 +1890,66 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
   });
 
   animateRider(racer, turn);
+  checkHazards(racer);
+  if (racer.respawnTimer > 0) return;
   updateRaceProgress(racer);
   updateSkidMarks(racer, dt, canSkid);
+  updateBlinkState(racer);
+}
+
+function updateBlinkState(racer) {
+  if (racer.invulnTimer > 0) racer.group.visible = Math.floor(performance.now() * 0.03) % 2 === 0;
+  else racer.group.visible = true;
+}
+
+function checkHazards(racer) {
+  if (racer.respawnTimer > 0 || racer.finished) return;
+  const hazards = currentMap.hazards || [];
+
+  for (const hazard of hazards) {
+    const dx = racer.position.x - hazard.x;
+    const dz = racer.position.z - hazard.z;
+    const c = Math.cos(-(hazard.rotation || 0));
+    const s = Math.sin(-(hazard.rotation || 0));
+    const rx = dx * c - dz * s;
+    const rz = dx * s + dz * c;
+    const inside = (rx * rx) / (hazard.radiusX * hazard.radiusX) + (rz * rz) / (hazard.radiusZ * hazard.radiusZ) <= 1;
+    if (inside) {
+      startHazardRespawn(racer);
+      return;
+    }
+  }
+}
+
+function startHazardRespawn(racer) {
+  racer.respawnTimer = 0.62;
+  racer.spinTimer = 0;
+  racer.drift.active = false;
+  racer.drift.charge = 0;
+  racer.drift.sparkLevel = 0;
+  racer.velocity.set(0, 0, 0);
+  racer.speed = 0;
+  if (racer.isPlayer) showRespawnFade();
+}
+
+function performRespawn(racer) {
+  const closest = getClosestTrackInfo(racer.position);
+  const respawnT = wrap01(closest.t - 0.01);
+  const roadCenter = getTrackPoint(respawnT);
+  const tan = getTrackTangent(respawnT);
+  const angle = Math.atan2(tan.x, tan.z);
+
+  racer.position.set(roadCenter.x, 0, roadCenter.z);
+  racer.rotationY = angle;
+  racer.group.rotation.y = angle;
+  racer.speed = 6;
+  racer.velocity.copy(tan.clone().multiplyScalar(6));
+  racer.spinTimer = 0;
+  racer.drift.active = false;
+  racer.drift.charge = 0;
+  racer.drift.sparkLevel = 0;
+  racer.invulnTimer = Math.max(racer.invulnTimer, 1.8);
+  racer.group.visible = true;
 }
 
 function updateSkidMarks(racer, dt, canSkid) {
@@ -2510,7 +2668,9 @@ function drawMinimap() {
 ========================================================= */
 
 const centerMsg = document.getElementById("centerMsg");
+const respawnFade = document.getElementById("respawnFade");
 let msgTimeout = null;
+let respawnFadeTimer = 0;
 
 function showCenterMessage(text, duration) {
   centerMsg.innerHTML = text;
@@ -2527,6 +2687,31 @@ function normalizeAngle(a) {
   while (a > Math.PI) a -= Math.PI * 2;
   while (a < -Math.PI) a += Math.PI * 2;
   return a;
+}
+
+function showRespawnFade() {
+  respawnFade.style.display = "flex";
+  respawnFade.style.opacity = "0.88";
+  respawnFadeTimer = 0.5;
+}
+
+function updateHazardVisuals(dt) {
+  const t = performance.now() * 0.001;
+  hazardShimmers.forEach((mesh, i) => {
+    mesh.material.opacity = 0.48 + Math.sin(t * 2.5 + i) * 0.14;
+  });
+}
+
+function updateRespawnFade(dt) {
+  if (respawnFadeTimer > 0) {
+    respawnFadeTimer -= dt;
+    return;
+  }
+
+  const opacity = Number(respawnFade.style.opacity || 0);
+  const next = Math.max(0, opacity - dt * 2.7);
+  respawnFade.style.opacity = String(next);
+  if (next <= 0.01) respawnFade.style.display = "none";
 }
 
 /* =========================================================
@@ -2612,6 +2797,8 @@ function animate() {
   });
 
   updateRacerCollisions();
+  updateHazardVisuals(dt);
+  updateRespawnFade(dt);
   updatePickups(dt);
   updateShells(dt);
   updateBananas(dt);
