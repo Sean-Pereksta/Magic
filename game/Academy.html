@@ -2,1739 +2,2498 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Responsive 3D Pickleball</title>
+<title>Mini Kart 3D Rebuilt</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
 <style>
   html, body {
     margin: 0;
     overflow: hidden;
-    background: #8fd3ff;
+    background: #111;
     font-family: Arial, sans-serif;
     user-select: none;
   }
 
-  #hud {
+  canvas {
+    display: block;
+  }
+
+  #menu {
     position: fixed;
-    top: 10px;
-    left: 10px;
+    inset: 0;
+    z-index: 100;
     color: white;
-    background: rgba(0,0,0,0.58);
-    padding: 12px 16px;
+    overflow-y: auto;
+    padding: 26px;
+    box-sizing: border-box;
+    background:
+      radial-gradient(circle at top left, rgba(255,255,255,.18), transparent 32%),
+      radial-gradient(circle at bottom right, rgba(255,210,60,.14), transparent 35%),
+      linear-gradient(135deg, #155cc9, #6328bf 55%, #101020);
+  }
+
+  #menuInner {
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: 48px;
+    text-shadow: 0 5px 20px rgba(0,0,0,.45);
+  }
+
+  .subtitle {
+    margin: 8px 0 22px;
+    opacity: .9;
+    line-height: 1.4;
+  }
+
+  .topOptions {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+  }
+
+  .optionBox {
+    background: rgba(0,0,0,.35);
+    border: 1px solid rgba(255,255,255,.16);
+    border-radius: 14px;
+    padding: 12px 14px;
+  }
+
+  .optionBox label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 8px;
+  }
+
+  select {
+    border: 0;
+    border-radius: 9px;
+    padding: 8px 10px;
+    min-width: 160px;
+    font-weight: bold;
+  }
+
+  .panel {
+    background: rgba(0,0,0,.38);
+    border: 1px solid rgba(255,255,255,.16);
+    border-radius: 18px;
+    padding: 18px;
+    margin-bottom: 18px;
+    box-shadow: 0 12px 28px rgba(0,0,0,.25);
+  }
+
+  .panel h2 {
+    margin: 0 0 12px;
+  }
+
+  .menuGrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+  }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+    gap: 12px;
+  }
+
+  .card {
+    min-height: 132px;
+    border-radius: 15px;
+    padding: 12px;
+    cursor: pointer;
+    background: rgba(255,255,255,.1);
+    border: 2px solid rgba(255,255,255,.14);
+    transition: .15s;
+  }
+
+  .card:hover {
+    transform: translateY(-2px);
+    background: rgba(255,255,255,.16);
+  }
+
+  .card.selected {
+    border-color: #ffe24a;
+    background: rgba(255,226,74,.23);
+    box-shadow: 0 0 0 2px rgba(255,226,74,.22);
+  }
+
+  .emoji {
+    display: block;
+    font-size: 42px;
+    margin-bottom: 6px;
+  }
+
+  .stat {
+    font-size: 13px;
+    opacity: .9;
+    margin-top: 4px;
+  }
+
+  #startBtn {
+    width: 100%;
+    border: 0;
+    border-radius: 18px;
+    padding: 18px;
+    font-size: 27px;
+    font-weight: 900;
+    cursor: pointer;
+    background: linear-gradient(135deg, #ffe14a, #ff8a2a);
+    color: #241200;
+    box-shadow: 0 10px 26px rgba(0,0,0,.35);
+  }
+
+  #startBtn:hover {
+    filter: brightness(1.08);
+  }
+
+  #hud, #hud2 {
+    position: fixed;
+    top: 12px;
+    z-index: 30;
+    color: white;
+    background: rgba(0,0,0,.52);
+    padding: 12px 14px;
     border-radius: 12px;
-    font-size: 15px;
-    z-index: 10;
     line-height: 1.45;
-    min-width: 285px;
+    min-width: 255px;
+    display: none;
+    box-shadow: 0 5px 18px rgba(0,0,0,.3);
+  }
+
+  #hud {
+    left: 12px;
+  }
+
+  #hud2 {
+    right: 12px;
   }
 
   #centerMsg {
     position: fixed;
-    top: 43%;
-    width: 100%;
-    text-align: center;
-    color: white;
-    font-size: 34px;
-    font-weight: bold;
-    text-shadow: 0 3px 10px black;
-    pointer-events: none;
-    z-index: 12;
-  }
-
-  #startOverlay {
-    position: fixed;
-    inset: 0;
-    background: linear-gradient(#1669b7, #8fd3ff);
-    color: white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 20;
-    text-align: center;
-  }
-
-  #startBox {
-    width: 720px;
-    max-width: 92vw;
-    background: rgba(0,0,0,0.58);
-    padding: 30px;
-    border-radius: 20px;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.35);
-  }
-
-  button {
-    padding: 13px 24px;
-    border: none;
-    border-radius: 12px;
-    font-size: 18px;
-    font-weight: bold;
-    cursor: pointer;
-    background: #ffe36e;
-  }
-
-  #powerBarOuter {
-    position: fixed;
+    top: 42%;
     left: 50%;
-    bottom: 45px;
-    transform: translateX(-50%);
-    width: 320px;
-    height: 24px;
-    border: 2px solid white;
-    border-radius: 14px;
-    background: rgba(0,0,0,0.48);
-    overflow: hidden;
+    transform: translate(-50%, -50%);
+    z-index: 40;
+    color: white;
+    background: rgba(0,0,0,.68);
+    padding: 20px 34px;
+    border-radius: 18px;
+    font-size: 38px;
+    font-weight: 900;
+    text-align: center;
     display: none;
-    z-index: 15;
-    box-shadow: 0 3px 10px rgba(0,0,0,0.35);
   }
 
-  #powerBarInner {
-    height: 100%;
-    width: 0%;
-    background: linear-gradient(90deg, #ff4444, #ffe066, #44ff66, #ffe066, #ff4444);
-    transition: width 0.025s linear;
-  }
-
-  #crosshair {
+  #help {
     position: fixed;
-    left: 50%;
-    top: 50%;
-    width: 14px;
-    height: 14px;
-    margin-left: -7px;
-    margin-top: -7px;
-    border: 2px solid rgba(255,255,255,0.78);
-    border-radius: 50%;
-    z-index: 8;
-    pointer-events: none;
+    bottom: 12px;
+    left: 12px;
+    z-index: 30;
+    color: white;
+    background: rgba(0,0,0,.46);
+    padding: 10px 12px;
+    border-radius: 12px;
+    font-size: 14px;
+    display: none;
+  }
+
+  #minimap {
+    position: fixed;
+    right: 12px;
+    bottom: 12px;
+    z-index: 30;
+    width: 210px;
+    height: 160px;
+    background: rgba(0,0,0,.38);
+    border: 2px solid rgba(255,255,255,.75);
+    border-radius: 12px;
+    display: none;
+  }
+
+  @media (max-width: 900px) {
+    .menuGrid {
+      grid-template-columns: 1fr;
+    }
+
+    h1 {
+      font-size: 34px;
+    }
   }
 </style>
 </head>
+
 <body>
 
-<div id="hud">
-  <div><b>Responsive 3D Pickleball</b></div>
-  <div>Player: <span id="pScore">0</span> | Enemy: <span id="eScore">0</span></div>
-  <div>Round: <span id="round">1</span></div>
-  <div>Paddle Hand: <span id="hand">Right</span></div>
-  <div>Grip: <span id="angleMode">Neutral</span></div>
-  <div>Charge: <span id="chargeText">0%</span></div>
-  <div>Swing Timing: <span id="timingText">Ready</span></div>
-  <hr>
-  <div>A/D: move left/right</div>
-  <div>W/S: move closer/farther from net</div>
-  <div>Mouse: direct paddle movement</div>
-  <div>Hold Click: charge swing / serve</div>
-  <div>Release Click: start swing</div>
-  <div>Space: jump | F: switch hand</div>
-  <div>Q/E: grip angle</div>
-</div>
+<div id="menu">
+  <div id="menuInner">
+    <h1>Mini Kart 3D Rebuilt</h1>
+    <div class="subtitle">
+      Bigger tracks, better kart shapes, character weight classes, green/red shells, bananas, mushrooms, drifting, AI racers, and optional split-screen.
+    </div>
 
-<div id="centerMsg"></div>
-<div id="powerBarOuter"><div id="powerBarInner"></div></div>
-<div id="crosshair"></div>
+    <div class="topOptions">
+      <div class="optionBox">
+        <label>Difficulty</label>
+        <select id="difficultySelect">
+          <option value="easy">Easy</option>
+          <option value="normal" selected>Normal</option>
+          <option value="hard">Hard</option>
+          <option value="insane">Insane</option>
+        </select>
+      </div>
 
-<div id="startOverlay">
-  <div id="startBox">
-    <h1>Responsive 3D Pickleball</h1>
-    <p>
-      The mouse now moves the paddle on a vertical side-plane: left/right and up/down only.
-      Right hand is restricted to the right-side semicircle; left hand is restricted to the left-side semicircle.
-    </p>
-    <button id="startBtn">Start Game</button>
+      <div class="optionBox">
+        <label>Laps</label>
+        <select id="lapSelect">
+          <option value="2">2 Laps</option>
+          <option value="3" selected>3 Laps</option>
+          <option value="5">5 Laps</option>
+        </select>
+      </div>
+
+      <div class="optionBox">
+        <label>Split Screen</label>
+        <div>
+          <input type="checkbox" id="splitToggle" />
+          <b>Enable Player 2</b>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>1. Choose Map</h2>
+      <div class="cards" id="mapCards"></div>
+    </div>
+
+    <div class="menuGrid">
+      <div class="panel">
+        <h2>2. Player 1 Character</h2>
+        <div class="cards" id="p1CharCards"></div>
+      </div>
+
+      <div class="panel">
+        <h2>3. Player 1 Kart</h2>
+        <div class="cards" id="p1KartCards"></div>
+      </div>
+
+      <div class="panel">
+        <h2>4. Player 2 Character</h2>
+        <div class="cards" id="p2CharCards"></div>
+      </div>
+
+      <div class="panel">
+        <h2>5. Player 2 Kart</h2>
+        <div class="cards" id="p2KartCards"></div>
+      </div>
+    </div>
+
+    <button id="startBtn">START RACE</button>
   </div>
 </div>
 
+<div id="hud">
+  <div><b>Player 1</b></div>
+  <div id="lapText">Lap: 1 / 3</div>
+  <div id="placeText">Place: 1 / 8</div>
+  <div id="speedText">Speed: 0</div>
+  <div id="itemText">Item: None</div>
+  <div id="driftText">Drift: Ready</div>
+</div>
+
+<div id="hud2">
+  <div><b>Player 2</b></div>
+  <div id="lapText2">Lap: 1 / 3</div>
+  <div id="placeText2">Place: 1 / 8</div>
+  <div id="speedText2">Speed: 0</div>
+  <div id="itemText2">Item: None</div>
+  <div id="driftText2">Drift: Ready</div>
+</div>
+
+<div id="centerMsg"></div>
+
+<canvas id="minimap" width="210" height="160"></canvas>
+
+<div id="help">
+  <b>P1:</b> W accelerate • S brake/reverse • A/D turn • Q drift • E item<br>
+  <b>P2:</b> ↑ accelerate • ↓ brake/reverse • ←/→ turn • / drift • Right Shift item
+</div>
+
 <script type="module">
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 
-let scene, camera, renderer, clock;
-let court, net, ball, aimLine, paddleRangeGuide, ballGroundShadow, ballDropLine;
-let player, enemy;
+/* =========================================================
+   MENU DATA
+========================================================= */
 
-let keys = {};
-let mouse = { x: 0, y: 0 };
-let frameDt = 0.016;
-
-let gameStarted = false;
-let playerScore = 0;
-let enemyScore = 0;
-let round = 1;
-let rallyActive = false;
-let serveReady = false;
-let nextServer = "player";
-let enemyServeTimer = 0;
-let messageTimer = 0;
-
-let paddleHand = "right";
-let handSwitchAnim = 1;
-let handSwitchFrom = "right";
-let handSwitchTo = "right";
-
-let holdMode = 0;
-
-let isChargingSwing = false;
-let swingCharge = 0;
-let swingStartTime = 0;
-
-let activePlayerSwing = null;
-let activeEnemySwing = null;
-
-let smoothedPaddleTarget = new THREE.Vector3(0.85, 1.6, -0.7);
-
-const HOLD_MODES = [
-  { name: "Neutral", wrist: 0 },
-  { name: "Forehand Tilt", wrist: -0.45 },
-  { name: "Backhand Tilt", wrist: 0.45 },
-  { name: "Flat Block", wrist: 0.15 }
+const characters = [
+  {
+    id: "rhino",
+    name: "Rhino Rex",
+    emoji: "🦏",
+    color: 0x777777,
+    belly: 0xb8b8a8,
+    size: 1.65,
+    weight: 1.9,
+    speedBonus: -3.5,
+    accelBonus: -3.2,
+    handlingBonus: -0.35,
+    desc: "Huge heavyweight. Slow start, massive collision power."
+  },
+  {
+    id: "monkey",
+    name: "Turbo Monkey",
+    emoji: "🐵",
+    color: 0x9b5a2e,
+    belly: 0xe7bb82,
+    size: 0.72,
+    weight: 0.72,
+    speedBonus: 1.5,
+    accelBonus: 4.2,
+    handlingBonus: 0.38,
+    desc: "Tiny, light, fast acceleration, gets shoved around."
+  },
+  {
+    id: "wolf",
+    name: "Wolf Ryder",
+    emoji: "🐺",
+    color: 0x536170,
+    belly: 0xd8d8d8,
+    size: 1.0,
+    weight: 1.08,
+    speedBonus: 0.7,
+    accelBonus: 1.0,
+    handlingBonus: 0.18,
+    desc: "Balanced middleweight with steady handling."
+  },
+  {
+    id: "fox",
+    name: "Flash Fox",
+    emoji: "🦊",
+    color: 0xff7b22,
+    belly: 0xffdfb2,
+    size: 0.82,
+    weight: 0.78,
+    speedBonus: 2.3,
+    accelBonus: 2.2,
+    handlingBonus: 0.05,
+    desc: "Small speed character. Quick but light."
+  },
+  {
+    id: "turtle",
+    name: "Tank Turtle",
+    emoji: "🐢",
+    color: 0x2eaa55,
+    belly: 0xd2c27a,
+    size: 1.15,
+    weight: 1.42,
+    speedBonus: -1.1,
+    accelBonus: -0.8,
+    handlingBonus: 0.45,
+    desc: "Heavy, stable, and easy to steer."
+  },
+  {
+    id: "penguin",
+    name: "Pip Penguin",
+    emoji: "🐧",
+    color: 0x223344,
+    belly: 0xffffff,
+    size: 0.78,
+    weight: 0.76,
+    speedBonus: 0.8,
+    accelBonus: 4.0,
+    handlingBonus: 0.6,
+    desc: "Tiny and slippery-fast through turns."
+  }
 ];
 
-const COURT = {
-  width: 16,
-  length: 30
-};
-
-const ARM = {
-  shoulderHeight: 2.1,
-  horizontalReach: 3.25,
-  verticalReach: 2.35,
-
-  sideRadius: 2.45,
-  minY: 0.35,
-  maxY: 3.15,
-
-  paddlePlaneZ: -0.65,
-
-  response: 55
-};
-
-const SWING = {
-  maxChargeTime: 1.05,
-
-  minPower: 0.45,
-  maxPower: 1.9,
-
-  perfectStart: 0.42,
-  perfectEnd: 0.8,
-
-  hardHitRadius: 1.05,
-  softHitRadius: 0.82,
-
-  serveMinSpeed: 8.5,
-  serveMaxSpeed: 15.2,
-
-  hitMinSpeed: 8.7,
-  hitMaxSpeed: 19.0,
-
-  softDeflectSpeed: 6.2,
-
-  minSwingDuration: 0.38,
-  maxSwingDuration: 0.72
-};
-
-const ballState = {
-  velocity: new THREE.Vector3(),
-  lastHitBy: null,
-  inPlay: false,
-  cooldown: 0,
-  bouncesOnSide: { player: 0, enemy: 0 },
-  landedInSideAfterHit: { player: false, enemy: false }
-};
-
-init();
-animate();
-
-function init() {
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x8fd3ff);
-  scene.fog = new THREE.Fog(0x8fd3ff, 45, 115);
-
-  camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
-
-  renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  document.body.appendChild(renderer.domElement);
-
-  clock = new THREE.Clock();
-
-  addLights();
-  buildWorld();
-  createAimLine();
-  createPaddleRangeGuide();
-
-  player = createPlayer({
-    color: 0x246bff,
-    shirt: 0x184bca,
-    x: 0,
-    z: 10,
-    isEnemy: false
-  });
-
-  enemy = createPlayer({
+const karts = [
+  {
+    id: "speedster",
+    name: "Speedster",
+    emoji: "🏎️",
     color: 0xff3333,
-    shirt: 0xb91515,
-    x: 0,
-    z: -10,
-    isEnemy: true
+    maxSpeed: 60,
+    accel: 38,
+    handling: 2.15,
+    weight: 0.9,
+    drift: 1.0,
+    desc: "Long, low, fast. Weak handling."
+  },
+  {
+    id: "balanced",
+    name: "Balanced Kart",
+    emoji: "🚗",
+    color: 0x3366ff,
+    maxSpeed: 53,
+    accel: 43,
+    handling: 2.55,
+    weight: 1.0,
+    drift: 1.08,
+    desc: "Classic shape with balanced stats."
+  },
+  {
+    id: "buggy",
+    name: "Grippy Buggy",
+    emoji: "🛺",
+    color: 0x33cc66,
+    maxSpeed: 47,
+    accel: 46,
+    handling: 3.15,
+    weight: 1.02,
+    drift: 1.25,
+    desc: "Big tires, roll cage, excellent turning."
+  },
+  {
+    id: "cruiser",
+    name: "Heavy Cruiser",
+    emoji: "🚙",
+    color: 0x9b4dff,
+    maxSpeed: 50,
+    accel: 35,
+    handling: 2.05,
+    weight: 1.38,
+    drift: 0.95,
+    desc: "Wide, heavy, strong in contact."
+  }
+];
+
+const maps = [
+  {
+    id: "meadow",
+    name: "Mushroom Meadow",
+    emoji: "🍄",
+    theme: "grass",
+    desc: "Large garden track with S-curves, loops, mushrooms, trees, and fences.",
+    bg: 0x91dfff,
+    fog: 0x91dfff,
+    ground: 0x5fba4a,
+    road: 0x3c3c3c,
+    edge: 0xffffff,
+    trackWidth: 29,
+    points: [
+      [-125, 0, 78],
+      [-175, 0, 30],
+      [-160, 0, -50],
+      [-95, 0, -93],
+      [-22, 0, -55],
+      [38, 0, -118],
+      [120, 0, -105],
+      [174, 0, -42],
+      [135, 0, 20],
+      [180, 0, 92],
+      [95, 0, 135],
+      [32, 0, 88],
+      [-22, 0, 132],
+      [-78, 0, 112]
+    ]
+  },
+  {
+    id: "desert",
+    name: "Desert Dash",
+    emoji: "🏜️",
+    theme: "desert",
+    desc: "Wide sandy track with big sweepers, ruins, cactus fields, and long curves.",
+    bg: 0xffc877,
+    fog: 0xffc877,
+    ground: 0xd9a441,
+    road: 0x8b5a2b,
+    edge: 0xffe5ad,
+    trackWidth: 33,
+    points: [
+      [-145, 0, 85],
+      [-205, 0, 18],
+      [-165, 0, -62],
+      [-82, 0, -38],
+      [-45, 0, -128],
+      [45, 0, -150],
+      [128, 0, -102],
+      [188, 0, -35],
+      [138, 0, 35],
+      [205, 0, 103],
+      [112, 0, 152],
+      [28, 0, 108],
+      [-42, 0, 158],
+      [-115, 0, 130]
+    ]
+  },
+  {
+    id: "snow",
+    name: "Snowy Summit",
+    emoji: "❄️",
+    theme: "snow",
+    desc: "Bigger icy mountain course with sharp bends, snowbanks, crystals, and slippery exits.",
+    bg: 0xc4efff,
+    fog: 0xddf7ff,
+    ground: 0xe9fbff,
+    road: 0x6d8790,
+    edge: 0xffffff,
+    trackWidth: 28,
+    points: [
+      [-105, 0, 95],
+      [-185, 0, 52],
+      [-172, 0, -32],
+      [-102, 0, -18],
+      [-130, 0, -112],
+      [-40, 0, -158],
+      [42, 0, -110],
+      [10, 0, -38],
+      [108, 0, -48],
+      [178, 0, 18],
+      [150, 0, 95],
+      [68, 0, 145],
+      [5, 0, 82],
+      [-58, 0, 145]
+    ]
+  }
+];
+
+const difficulties = {
+  easy: {
+    label: "Easy",
+    aiSpeed: 0.84,
+    aiAccel: 0.85,
+    aiTurn: 0.82,
+    aiLookAhead: 1,
+    aiItemChance: 0.35
+  },
+  normal: {
+    label: "Normal",
+    aiSpeed: 1.0,
+    aiAccel: 1.0,
+    aiTurn: 1.0,
+    aiLookAhead: 2,
+    aiItemChance: 0.52
+  },
+  hard: {
+    label: "Hard",
+    aiSpeed: 1.14,
+    aiAccel: 1.08,
+    aiTurn: 1.18,
+    aiLookAhead: 3,
+    aiItemChance: 0.68
+  },
+  insane: {
+    label: "Insane",
+    aiSpeed: 1.28,
+    aiAccel: 1.18,
+    aiTurn: 1.35,
+    aiLookAhead: 4,
+    aiItemChance: 0.84
+  }
+};
+
+let selectedMap = maps[0];
+let selectedP1Character = characters[2];
+let selectedP1Kart = karts[1];
+let selectedP2Character = characters[1];
+let selectedP2Kart = karts[2];
+
+function cardHTML(item, extra) {
+  return `
+    <span class="emoji">${item.emoji}</span>
+    <b>${item.name}</b>
+    <div class="stat">${item.desc}</div>
+    ${extra || ""}
+  `;
+}
+
+function renderCardGroup(containerId, list, selectedGetter, selectedSetter, extraBuilder) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = "";
+
+  list.forEach(item => {
+    const div = document.createElement("div");
+    div.className = "card" + (selectedGetter().id === item.id ? " selected" : "");
+    div.innerHTML = cardHTML(item, extraBuilder ? extraBuilder(item) : "");
+    div.onclick = () => {
+      selectedSetter(item);
+      renderMenus();
+    };
+    container.appendChild(div);
   });
+}
 
-  scene.add(player.group);
-  scene.add(enemy.group);
-
-  ball = new THREE.Mesh(
-    new THREE.SphereGeometry(0.28, 28, 28),
-    new THREE.MeshStandardMaterial({
-      color: 0xffff55,
-      roughness: 0.36,
-      emissive: 0x252500
-    })
+function renderMenus() {
+  renderCardGroup(
+    "mapCards",
+    maps,
+    () => selectedMap,
+    item => selectedMap = item,
+    item => `<div class="stat">Terrain: ${item.theme} • Track Width: ${item.trackWidth}</div>`
   );
-  ball.castShadow = true;
-  scene.add(ball);
 
-  ballGroundShadow = new THREE.Mesh(
-    new THREE.CircleGeometry(0.38, 32),
-    new THREE.MeshBasicMaterial({
-      color: 0x000000,
-      transparent: true,
-      opacity: 0.42,
-      depthWrite: false
-    })
+  renderCardGroup(
+    "p1CharCards",
+    characters,
+    () => selectedP1Character,
+    item => selectedP1Character = item,
+    item => `<div class="stat">Weight: ${item.weight.toFixed(2)} • Size: ${item.size.toFixed(2)}</div>`
   );
-  ballGroundShadow.rotation.x = -Math.PI / 2;
-  ballGroundShadow.position.y = 0.105;
-  ballGroundShadow.renderOrder = 5;
-  scene.add(ballGroundShadow);
 
-  createBallDropLine();
+  renderCardGroup(
+    "p1KartCards",
+    karts,
+    () => selectedP1Kart,
+    item => selectedP1Kart = item,
+    item => `<div class="stat">Speed: ${item.maxSpeed} • Handling: ${item.handling.toFixed(2)}</div>`
+  );
 
-  resetPoint("Click Start to begin.");
+  renderCardGroup(
+    "p2CharCards",
+    characters,
+    () => selectedP2Character,
+    item => selectedP2Character = item,
+    item => `<div class="stat">Weight: ${item.weight.toFixed(2)} • Size: ${item.size.toFixed(2)}</div>`
+  );
 
-  window.addEventListener("resize", onResize);
-  document.addEventListener("keydown", e => handleKey(e, true));
-  document.addEventListener("keyup", e => handleKey(e, false));
-  document.addEventListener("mousemove", onMouseMove);
-  document.addEventListener("mousedown", onMouseDown);
-  document.addEventListener("mouseup", onMouseUp);
+  renderCardGroup(
+    "p2KartCards",
+    karts,
+    () => selectedP2Kart,
+    item => selectedP2Kart = item,
+    item => `<div class="stat">Speed: ${item.maxSpeed} • Handling: ${item.handling.toFixed(2)}</div>`
+  );
+}
 
-  document.getElementById("startBtn").onclick = () => {
-    document.getElementById("startOverlay").style.display = "none";
-    gameStarted = true;
-    resetPoint("Hold click to aim. Release to serve.");
+renderMenus();
+
+/* =========================================================
+   THREE SETUP
+========================================================= */
+
+const scene = new THREE.Scene();
+
+const renderer = new THREE.WebGLRenderer({
+  antialias: true
+});
+
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.autoClear = false;
+document.body.appendChild(renderer.domElement);
+
+const camera1 = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+const camera2 = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+const clock = new THREE.Clock();
+
+let mats = {};
+let currentMap = selectedMap;
+let currentDifficulty = difficulties.normal;
+let totalLaps = 3;
+let splitScreen = false;
+let gameStarted = false;
+let raceStarted = false;
+let countdown = 3.6;
+
+let trackCurve = null;
+let trackPoints = [];
+let trackWidth = 30;
+let checkpointCount = 96;
+let startT = 0.02;
+
+let racers = [];
+let players = [];
+let pickups = [];
+let shells = [];
+let bananas = [];
+let particles = [];
+let floatingTexts = [];
+
+/* =========================================================
+   MATERIALS
+========================================================= */
+
+function buildMaterials(map) {
+  mats = {
+    ground: new THREE.MeshStandardMaterial({ color: map.ground, roughness: 1 }),
+    road: new THREE.MeshStandardMaterial({ color: map.road, roughness: 0.92 }),
+    edge: new THREE.MeshStandardMaterial({ color: map.edge, roughness: 0.7 }),
+    black: new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 }),
+    white: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 }),
+    yellow: new THREE.MeshStandardMaterial({ color: 0xffdd33, roughness: 0.5 }),
+    item: new THREE.MeshStandardMaterial({ color: 0x00d9ff, emissive: 0x006677, roughness: 0.25 }),
+    redShell: new THREE.MeshStandardMaterial({ color: 0xdd2222, roughness: 0.45 }),
+    greenShell: new THREE.MeshStandardMaterial({ color: 0x18bb45, roughness: 0.45 }),
+    banana: new THREE.MeshStandardMaterial({ color: 0xffdd22, emissive: 0x332900, roughness: 0.55 }),
+    mushroom: new THREE.MeshStandardMaterial({ color: 0xff4444, emissive: 0x441111, roughness: 0.4 }),
+    metal: new THREE.MeshStandardMaterial({ color: 0xbbbbbb, roughness: 0.45, metalness: 0.25 }),
+    glass: new THREE.MeshStandardMaterial({ color: 0x88ddff, transparent: true, opacity: 0.62, roughness: 0.15 })
   };
 }
 
-function addLights() {
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.25));
+/* =========================================================
+   WORLD
+========================================================= */
 
-  const sun = new THREE.DirectionalLight(0xffffff, 1.45);
-  sun.position.set(9, 22, 11);
-  sun.castShadow = true;
-  sun.shadow.camera.left = -35;
-  sun.shadow.camera.right = 35;
-  sun.shadow.camera.top = 35;
-  sun.shadow.camera.bottom = -35;
-  sun.shadow.mapSize.width = 2048;
-  sun.shadow.mapSize.height = 2048;
-  scene.add(sun);
+function clearScene() {
+  while (scene.children.length > 0) {
+    scene.remove(scene.children[0]);
+  }
+
+  racers = [];
+  players = [];
+  pickups = [];
+  shells = [];
+  bananas = [];
+  particles = [];
+  floatingTexts = [];
 }
 
-function buildWorld() {
+function buildWorld(map) {
+  clearScene();
+  buildMaterials(map);
+
+  scene.background = new THREE.Color(map.bg);
+  scene.fog = new THREE.Fog(map.fog, 135, 460);
+
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x375037, 1.15);
+  scene.add(hemi);
+
+  const sun = new THREE.DirectionalLight(0xffffff, 2.25);
+  sun.position.set(95, 145, 85);
+  sun.castShadow = true;
+  sun.shadow.mapSize.width = 2048;
+  sun.shadow.mapSize.height = 2048;
+  sun.shadow.camera.left = -260;
+  sun.shadow.camera.right = 260;
+  sun.shadow.camera.top = 240;
+  sun.shadow.camera.bottom = -240;
+  scene.add(sun);
+
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(95, 95),
-    new THREE.MeshStandardMaterial({ color: 0x3da35d, roughness: 0.9 })
+    new THREE.PlaneGeometry(620, 500),
+    mats.ground
   );
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   scene.add(ground);
 
-  court = new THREE.Mesh(
-    new THREE.BoxGeometry(COURT.width, 0.08, COURT.length),
-    new THREE.MeshStandardMaterial({ color: 0x3077d4, roughness: 0.65 })
-  );
-  court.position.y = 0.02;
-  court.receiveShadow = true;
-  scene.add(court);
+  trackWidth = map.trackWidth;
+  trackPoints = map.points.map(p => new THREE.Vector3(p[0], p[1], p[2]));
+  trackCurve = new THREE.CatmullRomCurve3(trackPoints, true, "catmullrom", 0.45);
 
-  addLine(0, 0.09, 0, COURT.width, 0.08, 0.08);
-  addLine(0, 0.09, 7, COURT.width, 0.08, 0.08);
-  addLine(0, 0.09, -7, COURT.width, 0.08, 0.08);
-  addLine(0, 0.09, COURT.length / 2, COURT.width, 0.08, 0.08);
-  addLine(0, 0.09, -COURT.length / 2, COURT.width, 0.08, 0.08);
-  addLine(-COURT.width / 2, 0.09, 0, 0.08, 0.08, COURT.length);
-  addLine(COURT.width / 2, 0.09, 0, 0.08, 0.08, COURT.length);
-  addLine(0, 0.09, 0, 0.08, 0.08, COURT.length);
-
-  net = new THREE.Group();
-
-  const netMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(COURT.width + 1, 1.25, 0.12),
-    new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.44,
-      roughness: 0.5
-    })
-  );
-  netMesh.position.set(0, 0.72, 0);
-  net.add(netMesh);
-
-  const band = new THREE.Mesh(
-    new THREE.BoxGeometry(COURT.width + 1, 0.12, 0.18),
-    new THREE.MeshStandardMaterial({ color: 0xf4f4f4 })
-  );
-  band.position.set(0, 1.36, 0);
-  net.add(band);
-
-  const postGeo = new THREE.CylinderGeometry(0.08, 0.08, 1.6, 12);
-  const postMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
-  const p1 = new THREE.Mesh(postGeo, postMat);
-  const p2 = new THREE.Mesh(postGeo, postMat);
-  p1.position.set(-COURT.width / 2 - 0.5, 0.8, 0);
-  p2.position.set(COURT.width / 2 + 0.5, 0.8, 0);
-  net.add(p1, p2);
-  scene.add(net);
+  createTrackSurface();
+  createTrackEdges();
+  createStartLineAndBanner(map);
+  createItemBoxes();
+  createDecorations(map);
 }
 
-function addLine(x, y, z, w, h, d) {
-  const line = new THREE.Mesh(
-    new THREE.BoxGeometry(w, h, d),
-    new THREE.MeshStandardMaterial({ color: 0xffffff })
-  );
-  line.position.set(x, y, z);
-  scene.add(line);
+function wrap01(v) {
+  v = v % 1;
+  if (v < 0) v += 1;
+  return v;
 }
 
-function createAimLine() {
-  const mat = new THREE.LineBasicMaterial({ color: 0xffff66 });
-  const geo = new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(0, 0, 0),
-    new THREE.Vector3(0, 0, -1)
-  ]);
-
-  aimLine = new THREE.Line(geo, mat);
-  aimLine.visible = false;
-  scene.add(aimLine);
+function getTrackPoint(t) {
+  return trackCurve.getPointAt(wrap01(t));
 }
 
-function createPlayer(opts) {
-  const group = new THREE.Group();
-  group.position.set(opts.x, 0, opts.z);
+function getTrackTangent(t) {
+  return trackCurve.getTangentAt(wrap01(t)).normalize();
+}
 
-  const parts = {};
-  const skin = new THREE.MeshStandardMaterial({ color: 0xffc28b, roughness: 0.55 });
-  const shirt = new THREE.MeshStandardMaterial({ color: opts.shirt, roughness: 0.55 });
-  const shorts = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.55 });
-  const shoeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
-  const paddleMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.35 });
-  const handleMat = new THREE.MeshStandardMaterial({ color: 0x7b4a22, roughness: 0.5 });
-  const buildPaddleModel = (color) => {
-    const paddle = new THREE.Group();
+function getTrackNormal(t) {
+  const tan = getTrackTangent(t);
+  return new THREE.Vector3(-tan.z, 0, tan.x).normalize();
+}
 
-    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.48, 12), handleMat);
-    handle.position.set(0, 0.24, 0);
-    paddle.add(handle);
+function getClosestTrackInfo(pos) {
+  let bestDistance = Infinity;
+  let bestT = 0;
+  let bestPoint = null;
 
-    const face = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.72, 0.08), paddleMat);
-    face.position.set(0, 0.88, 0);
-    face.castShadow = true;
-    paddle.add(face);
+  for (let i = 0; i < checkpointCount; i++) {
+    const t = i / checkpointCount;
+    const p = getTrackPoint(t);
+    const d = Math.hypot(pos.x - p.x, pos.z - p.z);
 
-    const mark = new THREE.Mesh(
-      new THREE.BoxGeometry(0.46, 0.08, 0.09),
-      new THREE.MeshStandardMaterial({ color })
-    );
-    mark.position.set(0, 0.96, 0.055);
-    paddle.add(mark);
-
-    const faceStripe = new THREE.Mesh(
-      new THREE.BoxGeometry(0.5, 0.05, 0.012),
-      new THREE.MeshStandardMaterial({ color: 0xffff66, emissive: 0x333300 })
-    );
-    faceStripe.position.set(0, 1.1, 0.052);
-    paddle.add(faceStripe);
-
-    return paddle;
-  };
-
-  const hips = new THREE.Group();
-  hips.position.y = 1.05;
-  group.add(hips);
-  parts.hips = hips;
-
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.42, 0.85, 8, 18), shirt);
-  torso.position.y = 0.65;
-  torso.castShadow = true;
-  hips.add(torso);
-  parts.torso = torso;
-
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.28, 24, 24), skin);
-  head.position.y = 1.43;
-  head.castShadow = true;
-  hips.add(head);
-  parts.head = head;
-
-  const cap = new THREE.Mesh(
-    new THREE.SphereGeometry(0.292, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2),
-    new THREE.MeshStandardMaterial({ color: opts.color })
-  );
-  cap.position.y = 1.50;
-  hips.add(cap);
-
-  createLeg("left", -0.22);
-  createLeg("right", 0.22);
-  createArm("left", -0.48);
-  createArm("right", 0.48);
-
-  const paddleControl = new THREE.Group();
-  paddleControl.visible = false;
-  group.add(paddleControl);
-  parts.paddleControl = paddleControl;
-
-  const activePaddle = buildPaddleModel(opts.color);
-  paddleControl.add(activePaddle);
-  parts.activePaddle = activePaddle;
-
-  const paddleDebugDot = new THREE.Mesh(
-    new THREE.SphereGeometry(0.08, 12, 12),
-    new THREE.MeshBasicMaterial({ color: 0xffff00 })
-  );
-  paddleControl.add(paddleDebugDot);
-  parts.paddleDebugDot = paddleDebugDot;
-
-  function makeLimbSegment(radius, material) {
-    const mesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(radius, radius, 1, 12),
-      material
-    );
-    mesh.castShadow = true;
-    mesh.visible = false;
-    return mesh;
-  }
-
-  const leftUpperVisualArm = makeLimbSegment(0.085, skin);
-  const leftLowerVisualArm = makeLimbSegment(0.075, skin);
-  const rightUpperVisualArm = makeLimbSegment(0.085, skin);
-  const rightLowerVisualArm = makeLimbSegment(0.075, skin);
-  group.add(leftUpperVisualArm, leftLowerVisualArm, rightUpperVisualArm, rightLowerVisualArm);
-  parts.leftUpperVisualArm = leftUpperVisualArm;
-  parts.leftLowerVisualArm = leftLowerVisualArm;
-  parts.rightUpperVisualArm = rightUpperVisualArm;
-  parts.rightLowerVisualArm = rightLowerVisualArm;
-
-  function createLeg(side, x) {
-    const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.52, 8, 12), shorts);
-    upper.position.set(x, 0.05, 0);
-    upper.castShadow = true;
-    hips.add(upper);
-
-    const lower = new THREE.Mesh(new THREE.CapsuleGeometry(0.105, 0.55, 8, 12), skin);
-    lower.position.set(x, -0.5, 0.03);
-    lower.castShadow = true;
-    hips.add(lower);
-
-    const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.42), shoeMat);
-    shoe.position.set(x, -0.86, 0.08);
-    shoe.castShadow = true;
-    hips.add(shoe);
-
-    parts[side + "UpperLeg"] = upper;
-    parts[side + "LowerLeg"] = lower;
-    parts[side + "Shoe"] = shoe;
-  }
-
-  function createArm(side, x) {
-    const shoulder = new THREE.Group();
-    shoulder.position.set(x, 1.05, 0);
-    hips.add(shoulder);
-
-    const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.52, 8, 12), skin);
-    upper.position.y = -0.26;
-    upper.castShadow = true;
-    shoulder.add(upper);
-
-    const elbow = new THREE.Group();
-    elbow.position.y = -0.55;
-    shoulder.add(elbow);
-
-    const lower = new THREE.Mesh(new THREE.CapsuleGeometry(0.075, 0.48, 8, 12), skin);
-    lower.position.y = -0.25;
-    lower.castShadow = true;
-    elbow.add(lower);
-
-    const hand = new THREE.Group();
-    hand.position.y = -0.52;
-    elbow.add(hand);
-
-    const palm = new THREE.Mesh(new THREE.SphereGeometry(0.105, 16, 16), skin);
-    palm.castShadow = true;
-    hand.add(palm);
-
-    const paddle = buildPaddleModel(opts.color);
-
-    paddle.position.set(0, -0.02, 0);
-    hand.add(paddle);
-
-    parts[side + "Shoulder"] = shoulder;
-    parts[side + "Elbow"] = elbow;
-    parts[side + "Hand"] = hand;
-    parts[side + "Paddle"] = paddle;
-    parts[side + "UpperArmMesh"] = upper;
-    parts[side + "LowerArmMesh"] = lower;
-    parts[side + "PalmMesh"] = palm;
+    if (d < bestDistance) {
+      bestDistance = d;
+      bestT = t;
+      bestPoint = p;
+    }
   }
 
   return {
-    group,
-    parts,
-    velocityY: 0,
-    grounded: true,
-    isEnemy: opts.isEnemy,
-    speed: opts.isEnemy ? 5 : 7,
-    lastX: opts.x,
-    targetX: opts.x,
-    targetZ: opts.z,
-    softContactCooldown: 0,
-    enemySwingCooldown: 0
+    distance: bestDistance,
+    t: bestT,
+    point: bestPoint
   };
 }
 
-function handleKey(e, down) {
-  keys[e.key.toLowerCase()] = down;
+function isOnTrack(pos) {
+  return getClosestTrackInfo(pos).distance <= trackWidth * 0.55;
+}
 
-  if (down && e.code === "Space") jumpPlayer(player);
+function createTrackSurface() {
+  const shape = new THREE.Shape();
+  const outer = [];
+  const inner = [];
+  const steps = 420;
 
-  if (down && e.key.toLowerCase() === "f") {
-    startHandSwitch();
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const p = getTrackPoint(t);
+    const n = getTrackNormal(t);
+
+    outer.push(new THREE.Vector2(
+      p.x + n.x * trackWidth,
+      p.z + n.z * trackWidth
+    ));
+
+    inner.push(new THREE.Vector2(
+      p.x - n.x * trackWidth,
+      p.z - n.z * trackWidth
+    ));
   }
 
-  if (down && e.key.toLowerCase() === "q") {
-    holdMode = (holdMode + HOLD_MODES.length - 1) % HOLD_MODES.length;
-    updateAngleHud();
-  }
+  shape.moveTo(outer[0].x, outer[0].y);
 
-  if (down && e.key.toLowerCase() === "e") {
-    holdMode = (holdMode + 1) % HOLD_MODES.length;
-    updateAngleHud();
-  }
-}
-
-function startHandSwitch() {
-  if (handSwitchAnim < 1) return;
-
-  handSwitchFrom = paddleHand;
-  paddleHand = paddleHand === "right" ? "left" : "right";
-  handSwitchTo = paddleHand;
-  handSwitchAnim = 0;
-
-  const sideSign = paddleHand === "right" ? 1 : -1;
-  smoothedPaddleTarget.set(sideSign * 1.15, 1.65, ARM.paddlePlaneZ);
-
-  document.getElementById("hand").textContent = paddleHand === "right" ? "Right" : "Left";
-}
-
-function updateAngleHud() {
-  document.getElementById("angleMode").textContent = HOLD_MODES[holdMode].name;
-}
-
-function onMouseMove(e) {
-  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-}
-
-function onMouseDown(e) {
-  if (!gameStarted || e.button !== 0) return;
-  if (serveReady && nextServer !== "player") return;
-
-  isChargingSwing = true;
-  swingStartTime = performance.now();
-  swingCharge = 0;
-}
-
-function onMouseUp(e) {
-  if (!gameStarted || e.button !== 0 || !isChargingSwing) return;
-  if (serveReady && nextServer !== "player") {
-    isChargingSwing = false;
-    return;
-  }
-
-  updateSwingCharge();
-  isChargingSwing = false;
-
-  if (serveReady) {
-    releaseServe();
-    return;
-  }
-
-  beginPlayerSwing();
-}
-
-function updateSwingCharge() {
-  if (!isChargingSwing) return;
-  const held = (performance.now() - swingStartTime) / 1000;
-  swingCharge = clamp(held / SWING.maxChargeTime, 0, 1);
-}
-
-function updatePowerBar() {
-  const outer = document.getElementById("powerBarOuter");
-  const inner = document.getElementById("powerBarInner");
-  const chargeText = document.getElementById("chargeText");
-
-  chargeText.textContent = `${Math.round(swingCharge * 100)}%`;
-
-  if (!isChargingSwing) {
-    outer.style.display = "none";
-    inner.style.width = "0%";
-    return;
-  }
-
-  outer.style.display = "block";
-  inner.style.width = `${Math.round(swingCharge * 100)}%`;
-}
-
-function getSwingPower() {
-  return SWING.minPower + swingCharge * (SWING.maxPower - SWING.minPower);
-}
-
-function isPerfectCharge() {
-  return swingCharge >= SWING.perfectStart && swingCharge <= SWING.perfectEnd;
-}
-
-function getPaddlePoseFromMouse() {
-  const side = paddleHand;
-  const sideSign = side === "right" ? 1 : -1;
-  const shoulderX = sideSign * 0.48;
-  const shoulderY = ARM.shoulderHeight;
-  const overlap = 0.08;
-
-  let targetX = mouse.x * ARM.horizontalReach;
-  let targetY = shoulderY + mouse.y * ARM.verticalReach;
-
-  targetY = clamp(targetY, ARM.minY, ARM.maxY);
-
-  if (side === "right") targetX = clamp(targetX, shoulderX - overlap, shoulderX + ARM.sideRadius);
-  else targetX = clamp(targetX, shoulderX - ARM.sideRadius, shoulderX + overlap);
-
-  let dx = targetX - shoulderX;
-  let dy = targetY - shoulderY;
-  const radius = Math.sqrt(dx * dx + dy * dy);
-  if (radius > ARM.sideRadius) {
-    const scale = ARM.sideRadius / radius;
-    targetX = shoulderX + dx * scale;
-    targetY = shoulderY + dy * scale;
-  }
-
-  if (side === "right") targetX = Math.max(targetX, shoulderX - overlap);
-  else targetX = Math.min(targetX, shoulderX + overlap);
-
-  const rawTarget = new THREE.Vector3(targetX, targetY, ARM.paddlePlaneZ);
-  const alpha = 1 - Math.exp(-ARM.response * frameDt);
-  smoothedPaddleTarget.lerp(rawTarget, alpha);
-
-  return { side, sideSign, localTarget: smoothedPaddleTarget.clone(), shoulderX, shoulderY };
-}
-
-function getPlayerPaddleWorld() {
-  const v = new THREE.Vector3();
-  player.parts.paddleControl.getWorldPosition(v);
-  return v;
-}
-
-function updatePaddleFacing(pose) {
-  const control = player.parts.paddleControl;
-  const paddle = player.parts.activePaddle;
-
-  control.rotation.set(0, 0, 0);
-
-  const gripWorld = control.position.clone().add(player.group.position);
-  const aimPoint = player.group.position.clone().add(
-    new THREE.Vector3(mouse.x * ARM.horizontalReach * 1.45, ARM.shoulderHeight + mouse.y * ARM.verticalReach, -8.5)
-  );
-  const toAim = aimPoint.sub(gripWorld).normalize();
-
-  const yaw = Math.atan2(toAim.x, -toAim.z);
-  const pitch = Math.atan2(toAim.y, Math.max(0.001, Math.sqrt(toAim.x * toAim.x + toAim.z * toAim.z)));
-
-  let swingYaw = 0;
-  let swingPitch = 0;
-  let swingRoll = 0;
-
-  if (activePlayerSwing) {
-    const progress = getPlayerSwingProgress();
-    const swingArc = Math.sin(progress * Math.PI);
-    const follow = THREE.MathUtils.smoothstep(progress, 0.1, 1.0);
-
-    swingYaw = pose.sideSign * THREE.MathUtils.lerp(-0.24, 0.34, follow);
-    swingPitch = -0.15 * swingArc;
-    swingRoll = pose.sideSign * 0.42 * swingArc;
-  }
-
-  paddle.rotation.x = pitch + Math.PI * 0.5 + swingPitch;
-  paddle.rotation.y = yaw + swingYaw;
-  paddle.rotation.z = HOLD_MODES[holdMode].wrist * 0.65 + swingRoll;
-}
-
-function updateActivePaddleAnchor(pose) {
-  const control = player.parts.paddleControl;
-  let target = pose.localTarget.clone();
-
-  if (activePlayerSwing) {
-    const progress = getPlayerSwingProgress();
-
-    const swingArc = Math.sin(progress * Math.PI);
-    const followThrough = THREE.MathUtils.smoothstep(progress, 0.05, 1.0);
-
-    const sideSweep = THREE.MathUtils.lerp(-0.76, 0.94, followThrough) * pose.sideSign;
-    const netPunch = swingArc * 0.48;
-    const verticalSweep = swingArc * 0.38 - progress * 0.17;
-
-    target.x += sideSweep;
-    target.y += verticalSweep;
-    target.z = ARM.paddlePlaneZ - netPunch;
-  } else {
-    target.z = ARM.paddlePlaneZ;
-  }
-
-  if (isChargingSwing && !activePlayerSwing) {
-    target.x += pose.sideSign * 0.04 * swingCharge;
-    target.y += 0.03 * swingCharge;
-    target.z = ARM.paddlePlaneZ;
-  }
-
-  control.position.copy(target);
-  updatePaddleFacing(pose);
-}
-
-function beginPlayerSwing() {
-  const power = getSwingPower();
-  const duration = THREE.MathUtils.lerp(
-    SWING.maxSwingDuration,
-    SWING.minSwingDuration,
-    clamp(power / SWING.maxPower, 0, 1)
-  );
-
-  activePlayerSwing = {
-    start: performance.now(),
-    duration,
-    power,
-    pose: getPaddlePoseFromMouse(),
-    contacted: false
-  };
-}
-
-function getPlayerSwingProgress() {
-  if (!activePlayerSwing) return 0;
-  const elapsed = (performance.now() - activePlayerSwing.start) / 1000;
-  return clamp(elapsed / activePlayerSwing.duration, 0, 1);
-}
-
-function jumpPlayer(p) {
-  if (!p.grounded) return;
-  p.velocityY = 8.2;
-  p.grounded = false;
-}
-
-function resetPoint(msg) {
-  serveReady = true;
-  rallyActive = false;
-  ballState.inPlay = false;
-  ballState.velocity.set(0, 0, 0);
-  ballState.lastHitBy = null;
-  ballState.cooldown = 0;
-  resetBounceMemory();
-
-  activePlayerSwing = null;
-  activeEnemySwing = null;
-  isChargingSwing = false;
-  swingCharge = 0;
-
-  player.group.position.set(0, 0, 10);
-  enemy.group.position.set(0, 0, -10);
-
-  if (nextServer === "player") {
-    enemyServeTimer = 0;
-    ball.position.set(
-      player.group.position.x + (paddleHand === "right" ? 0.75 : -0.75),
-      1.15,
-      player.group.position.z - 1.25
-    );
-    showMessage(msg || "Your serve. Hold click and release.", 2.0);
-  } else {
-    enemyServeTimer = 1.15;
-    ball.position.set(
-      enemy.group.position.x + 0.75,
-      1.15,
-      enemy.group.position.z + 1.25
-    );
-    showMessage("Enemy serve...", 1.2);
-  }
-}
-
-function releaseServe() {
-  serveReady = false;
-  rallyActive = true;
-  ballState.inPlay = true;
-  resetBounceMemory();
-
-  const power = getSwingPower();
-  const perfect = isPerfectCharge();
-  const speed = THREE.MathUtils.lerp(
-    SWING.serveMinSpeed,
-    SWING.serveMaxSpeed,
-    clamp(power / SWING.maxPower, 0, 1)
-  );
-
-  const aim = getPlayerShotVector(0.5);
-  const error = perfect ? 0.1 : 0.42 + swingCharge * 0.22;
-
-  ballState.velocity.set(
-    aim.x * speed + THREE.MathUtils.randFloatSpread(error),
-    4.5 + power * 2.0 + aim.y * 1.4,
-    aim.z * speed
-  );
-
-  ballState.lastHitBy = "player";
-  ballState.cooldown = 0.18;
-
-  showMessage(perfect ? "Clean serve!" : "Serve!", 0.7);
-}
-
-
-function releaseEnemyServe() {
-  serveReady = false;
-  rallyActive = true;
-  ballState.inPlay = true;
-  resetBounceMemory();
-
-  const skill = getEnemySkill();
-  const speed = THREE.MathUtils.lerp(8.5, 14.0, skill);
-  const targetX = clamp(
-    player.group.position.x + THREE.MathUtils.randFloatSpread(1.8 * (1 - skill)),
-    -COURT.width / 2 + 1,
-    COURT.width / 2 - 1
-  );
-
-  const xAim = clamp((targetX - ball.position.x) / 9, -0.45, 0.45);
-
-  ballState.velocity.set(
-    xAim * speed,
-    5.2 + skill * 0.8,
-    speed
-  );
-
-  ballState.lastHitBy = "enemy";
-  ballState.cooldown = 0.2;
-
-  showMessage("Enemy served!", 0.7);
-}
-
-function getPlayerShotVector(timing) {
-  const paddleWorld = getPlayerPaddleWorld();
-  const sideSign = paddleHand === "right" ? 1 : -1;
-
-  const paddleOffsetX = clamp((paddleWorld.x - player.group.position.x) / 2.5, -1, 1);
-
-  const early = clamp(0.5 - timing, 0, 0.5) * 2;
-  const late = clamp(timing - 0.5, 0, 0.5) * 2;
-
-  let x = paddleOffsetX * 0.48;
-
-  // Early contact pulls inward; late contact pushes outward.
-  x += -sideSign * early * 0.42;
-  x += sideSign * late * 0.48;
-
-  const y = clamp(0.24 + mouse.y * 0.28, 0.08, 0.78);
-
-  return new THREE.Vector3(x, y, -1).normalize();
-}
-
-function updatePlayer(dt) {
-  const move = new THREE.Vector3();
-
-  if (keys["a"]) move.x -= 1;
-  if (keys["d"]) move.x += 1;
-  if (keys["w"]) move.z -= 1;
-  if (keys["s"]) move.z += 1;
-
-  if (move.lengthSq() > 0) move.normalize();
-
-  player.group.position.x += move.x * player.speed * dt;
-  player.group.position.z += move.z * player.speed * dt;
-
-  player.group.position.x = clamp(player.group.position.x, -COURT.width / 2 + 0.7, COURT.width / 2 - 0.7);
-  player.group.position.z = clamp(player.group.position.z, 1.45, COURT.length / 2 - 1);
-
-  updateVerticalPhysics(player, dt);
-  animateHuman(player, dt);
-  updateHandSwitch(dt);
-  updatePlayerArmIK();
-
-  player.softContactCooldown = Math.max(0, player.softContactCooldown - dt);
-}
-
-function updateVerticalPhysics(p, dt) {
-  p.velocityY -= 20 * dt;
-  p.group.position.y += p.velocityY * dt;
-
-  if (p.group.position.y <= 0) {
-    p.group.position.y = 0;
-    p.velocityY = 0;
-    p.grounded = true;
-  }
-}
-
-function animateHuman(p, dt) {
-  const speedAmount = Math.min(1, Math.abs(p.group.position.x - p.lastX) / Math.max(dt, 0.001));
-  const t = performance.now() * 0.008;
-  const walk = Math.sin(t) * 0.45 * Math.min(speedAmount, 1);
-
-  p.parts.leftUpperLeg.rotation.x = walk;
-  p.parts.rightUpperLeg.rotation.x = -walk;
-  p.parts.leftLowerLeg.rotation.x = -Math.abs(walk) * 0.45;
-  p.parts.rightLowerLeg.rotation.x = -Math.abs(walk) * 0.45;
-
-  p.lastX = p.group.position.x;
-}
-
-function updateHandSwitch(dt) {
-  if (handSwitchAnim < 1) {
-    handSwitchAnim = Math.min(1, handSwitchAnim + dt * 5.5);
-  }
-}
-
-
-function placeCylinderBetween(mesh, start, end) {
-  const mid = start.clone().add(end).multiplyScalar(0.5);
-  const dir = end.clone().sub(start);
-  const len = dir.length();
-
-  mesh.position.copy(mid);
-  mesh.scale.set(1, Math.max(len, 0.0001), 1);
-
-  const quat = new THREE.Quaternion();
-  const axis = len > 0.0001 ? dir.clone().normalize() : new THREE.Vector3(0, 1, 0);
-  quat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), axis);
-  mesh.quaternion.copy(quat);
-}
-
-function updateConnectedPlayerArm(pose) {
-  const parts = player.parts;
-  const activeRight = pose.side === "right";
-
-  parts.leftUpperArmMesh.visible = false;
-  parts.leftLowerArmMesh.visible = false;
-  parts.rightUpperArmMesh.visible = false;
-  parts.rightLowerArmMesh.visible = false;
-
-  parts.leftUpperVisualArm.visible = !activeRight;
-  parts.leftLowerVisualArm.visible = !activeRight;
-  parts.rightUpperVisualArm.visible = activeRight;
-  parts.rightLowerVisualArm.visible = activeRight;
-
-  const sideSign = activeRight ? 1 : -1;
-  const shoulder = new THREE.Vector3(sideSign * 0.48, ARM.shoulderHeight, 0);
-  const paddle = parts.paddleControl.position.clone();
-  const mid = shoulder.clone().add(paddle).multiplyScalar(0.5);
-
-  let swingBend = 0;
-  let swingReach = 0;
-
-  if (activePlayerSwing) {
-    const progress = getPlayerSwingProgress();
-    swingBend = Math.sin(progress * Math.PI) * 0.38;
-    swingReach = THREE.MathUtils.smoothstep(progress, 0.05, 1.0) * 0.22;
-  }
-
-  const elbow = mid.add(new THREE.Vector3(
-    sideSign * (0.30 + swingBend + swingReach),
-    -0.30 - swingBend * 0.45,
-    0.03 - swingBend * 0.16
-  ));
-
-  const upper = activeRight ? parts.rightUpperVisualArm : parts.leftUpperVisualArm;
-  const lower = activeRight ? parts.rightLowerVisualArm : parts.leftLowerVisualArm;
-  placeCylinderBetween(upper, shoulder, elbow);
-  placeCylinderBetween(lower, elbow, paddle);
-}
-
-function updatePlayerArmIK() {
-  const pose = getPaddlePoseFromMouse();
-  updateActivePaddleAnchor(pose);
-
-  player.parts.leftPaddle.visible = false;
-  player.parts.rightPaddle.visible = false;
-  player.parts.paddleControl.visible = true;
-  player.parts.paddleDebugDot.visible = false;
-
-  applyArmPose(player, "left", pose, false);
-  applyArmPose(player, "right", pose, false);
-  updateConnectedPlayerArm(pose);
-
-  if (activePlayerSwing) {
-    const progress = getPlayerSwingProgress();
-
-    const timingText =
-      progress < 0.32 ? "Early" :
-      progress > 0.72 ? "Late" :
-      "Clean";
-
-    document.getElementById("timingText").textContent = timingText;
-
-    if (progress >= 1) {
-      activePlayerSwing = null;
-      document.getElementById("timingText").textContent = "Ready";
-    }
-  } else if (!isChargingSwing) {
-    document.getElementById("timingText").textContent = "Ready";
-  }
-}
-
-function applyArmPose(actor, side, desiredPose, active) {
-  const shoulder = actor.parts[side + "Shoulder"];
-  const elbow = actor.parts[side + "Elbow"];
-  const hand = actor.parts[side + "Hand"];
-  const sideSign = side === "right" ? 1 : -1;
-
-  if (!active) {
-    shoulder.rotation.x = -0.18;
-    shoulder.rotation.y = 0;
-    shoulder.rotation.z = side === "left" ? 0.35 : -0.35;
-    elbow.rotation.x = -0.55;
-    elbow.rotation.y = 0;
-    elbow.rotation.z = 0;
-    hand.rotation.set(0, 0, 0);
-    return;
-  }
-
-  const target = actor.parts.paddleControl.position.clone();
-
-  const shoulderX = sideSign * 0.48;
-  const shoulderY = ARM.shoulderHeight;
-  const dx = target.x - shoulderX;
-  const dy = target.y - shoulderY;
-  const outward = clamp(Math.abs(dx) / ARM.sideRadius, 0, 1);
-  const vertical = clamp(dy / ARM.verticalReach, -1, 1);
-
-  shoulder.rotation.x = THREE.MathUtils.lerp(0.75, -1.55, (vertical + 1) / 2);
-  shoulder.rotation.y = 0;
-  shoulder.rotation.z = side === "right"
-    ? -THREE.MathUtils.lerp(0.15, 1.25, outward)
-    : THREE.MathUtils.lerp(0.15, 1.25, outward);
-  elbow.rotation.x = THREE.MathUtils.lerp(-1.2, -0.12, outward);
-  elbow.rotation.y = 0;
-  elbow.rotation.z = 0;
-  hand.rotation.x = clamp(-vertical * 0.45, -0.65, 0.65);
-  hand.rotation.y = sideSign * outward * 0.2;
-  hand.rotation.z = HOLD_MODES[holdMode].wrist;
-}
-
-function updateEnemy(dt) {
-  const skill = getEnemySkill();
-  const difficulty = 0.85 + round * 0.24;
-
-  const predicted = predictBallPositionForZ(-8.5);
-  const desiredXRaw = predicted ? predicted.x : ball.position.x;
-
-  const mistake = THREE.MathUtils.randFloatSpread((1 - skill) * 0.06);
-  const desiredX = clamp(desiredXRaw + mistake, -COURT.width / 2 + 0.8, COURT.width / 2 - 0.8);
-
-  let desiredZ = -9.7;
-  if (ball.position.z < 0) {
-    desiredZ = clamp(ball.position.z - 1.0, -COURT.length / 2 + 1.2, -1.35);
-  }
-
-  const intelligence = clamp(0.35 + skill * 0.6, 0.35, 0.98);
-  enemy.targetX = enemy.group.position.x + (desiredX - enemy.group.position.x) * intelligence;
-  enemy.targetZ = enemy.group.position.z + (desiredZ - enemy.group.position.z) * intelligence;
-
-  const move = new THREE.Vector3(enemy.targetX - enemy.group.position.x, 0, enemy.targetZ - enemy.group.position.z);
-  if (move.lengthSq() > 0.05) move.normalize();
-
-  enemy.group.position.x += move.x * enemy.speed * difficulty * dt;
-  enemy.group.position.z += move.z * enemy.speed * difficulty * dt;
-
-  enemy.group.position.x = clamp(enemy.group.position.x, -COURT.width / 2 + 0.7, COURT.width / 2 - 0.7);
-  enemy.group.position.z = clamp(enemy.group.position.z, -COURT.length / 2 + 1, -1.35);
-
-  updateVerticalPhysics(enemy, dt);
-  animateHuman(enemy, dt);
-  updateEnemySwing(dt);
-  updateEnemyArm();
-}
-
-function getEnemySkill() {
-  return clamp(0.38 + round * 0.1, 0.38, 0.97);
-}
-
-function predictBallPositionForZ(targetZ) {
-  if (!ballState.inPlay) return null;
-  if (Math.abs(ballState.velocity.z) < 0.01) return null;
-
-  const t = (targetZ - ball.position.z) / ballState.velocity.z;
-  if (t < 0 || t > 2.2) return null;
-
-  return new THREE.Vector3(
-    ball.position.x + ballState.velocity.x * t,
-    ball.position.y + ballState.velocity.y * t - 0.5 * 13.5 * t * t,
-    targetZ
-  );
-}
-
-function updateEnemySwing(dt) {
-  enemy.enemySwingCooldown = Math.max(0, enemy.enemySwingCooldown - dt);
-
-  if (!ballState.inPlay || ball.position.z > 0 || enemy.enemySwingCooldown > 0) return;
-
-  const skill = getEnemySkill();
-  const distToBall = getEnemyPaddleWorld().distanceTo(ball.position);
-
-  const valuable = ball.position.z < -1 && ball.position.y > 0.45 && ball.position.y < 2.75;
-  const shouldSwing = valuable && distToBall < 1.65;
-
-  if (shouldSwing && !activeEnemySwing) {
-    const timingMistake = THREE.MathUtils.randFloatSpread((1 - skill) * 0.2);
-    const intendedTiming = clamp(0.5 + timingMistake, 0.2, 0.8);
-
-    activeEnemySwing = {
-      start: performance.now(),
-      duration: THREE.MathUtils.lerp(0.34, 0.19, skill),
-      power: THREE.MathUtils.lerp(0.7, 1.6, skill),
-      desiredTiming: intendedTiming,
-      contacted: false
-    };
-
-    enemy.enemySwingCooldown = 0.35;
-  }
-
-  if (activeEnemySwing) {
-    const progress = getEnemySwingProgress();
-    if (progress >= 1) activeEnemySwing = null;
-  }
-}
-
-function getEnemySwingProgress() {
-  if (!activeEnemySwing) return 0;
-  const elapsed = (performance.now() - activeEnemySwing.start) / 1000;
-  return clamp(elapsed / activeEnemySwing.duration, 0, 1);
-}
-
-function updateEnemyArm() {
-  const shoulder = enemy.parts.rightShoulder;
-  const elbow = enemy.parts.rightElbow;
-  const paddle = enemy.parts.rightPaddle;
-
-  enemy.parts.leftPaddle.visible = false;
-  paddle.visible = true;
-
-  const toBallX = clamp(ball.position.x - enemy.group.position.x, -2.2, 2.2);
-  const ballHeight = clamp(ball.position.y, 0.45, 2.55);
-
-  const progress = activeEnemySwing ? getEnemySwingProgress() : 0;
-  const swingForward = activeEnemySwing ? (progress - 0.5) * 1.15 : 0;
-
-  shoulder.rotation.x = clamp(-0.45 - (ballHeight - 1.1) * 0.5 - swingForward * 0.45, -1.65, 0.35);
-  shoulder.rotation.y = clamp(-toBallX * 0.36 + swingForward * 0.25, -1.05, 1.05);
-  shoulder.rotation.z = -0.55 - Math.abs(toBallX) * 0.18;
-
-  elbow.rotation.x = clamp(-0.85 + progress * 0.55, -1.1, -0.12);
-  elbow.rotation.y = 0;
-  elbow.rotation.z = 0;
-}
-
-function getEnemyPaddleWorld() {
-  const v = new THREE.Vector3();
-  enemy.parts.rightPaddle.getWorldPosition(v);
-  return v;
-}
-
-function updateBall(dt) {
-  if (!ballState.inPlay) return;
-
-  ballState.cooldown = Math.max(0, ballState.cooldown - dt);
-  ballState.velocity.y -= 13.5 * dt;
-
-  ball.position.x += ballState.velocity.x * dt;
-  ball.position.y += ballState.velocity.y * dt;
-  ball.position.z += ballState.velocity.z * dt;
-
-  if (handleOutOfBounds()) return;
-
-  if (ball.position.y < 0.28) {
-    ball.position.y = 0.28;
-
-    if (!isBallInsideCourt()) {
-      if (ballState.lastHitBy === "player") scoreEnemy("Your shot landed out!");
-      else scorePlayer("Enemy shot landed out!");
-      return;
-    }
-
-    const side = ball.position.z > 0 ? "player" : "enemy";
-    ballState.bouncesOnSide[side]++;
-    ballState.landedInSideAfterHit[side] = true;
-
-    if (ballState.bouncesOnSide[side] >= 2) {
-      if (side === "player") scoreEnemy("Double bounce!");
-      else scorePlayer("Enemy double bounce!");
-      return;
-    }
-
-    ballState.velocity.y *= -0.56;
-    ballState.velocity.x *= 0.91;
-    ballState.velocity.z *= 0.91;
-  }
-
-  if (ball.position.y < 1.4 && Math.abs(ball.position.z) < 0.22) {
-    if (ballState.lastHitBy === "player") scoreEnemy("Hit the net!");
-    else scorePlayer("Enemy hit the net!");
-    return;
-  }
-
-  checkPlayerHit();
-  checkEnemyHit();
-}
-
-function handleOutOfBounds() {
-  const outSide = Math.abs(ball.position.x) > COURT.width / 2 + 0.35;
-  const outBackPlayer = ball.position.z > COURT.length / 2 + 0.35;
-  const outBackEnemy = ball.position.z < -COURT.length / 2 - 0.35;
-
-  if (!outSide && !outBackPlayer && !outBackEnemy) return false;
-
-  if (ballState.lastHitBy === "player") {
-    if (ballState.landedInSideAfterHit.enemy) {
-      scorePlayer("Winner! It bounced in then went out.");
-    } else {
-      scoreEnemy("Your shot went out!");
-    }
-  } else if (ballState.lastHitBy === "enemy") {
-    if (ballState.landedInSideAfterHit.player) {
-      scoreEnemy("Enemy winner. It bounced in then went out.");
-    } else {
-      scorePlayer("Enemy hit out!");
-    }
-  }
-
-  return true;
-}
-
-function isBallInsideCourt() {
-  return (
-    Math.abs(ball.position.x) <= COURT.width / 2 &&
-    Math.abs(ball.position.z) <= COURT.length / 2
-  );
-}
-
-function checkBodyFault() {
-  if (!ballState.inPlay || ball.position.z < 0.15) return false;
-
-  const torsoCenter = player.group.position.clone();
-  torsoCenter.y += 1.55;
-
-  const headCenter = player.group.position.clone();
-  headCenter.y += 2.42;
-
-  const torsoDist = ball.position.distanceTo(torsoCenter);
-  const headDist = ball.position.distanceTo(headCenter);
-  const paddleDist = ball.position.distanceTo(getPlayerPaddleWorld());
-
-  if ((torsoDist < 0.58 || headDist < 0.36) && paddleDist > 0.65) {
-    scoreEnemy("Body fault!");
-    return true;
-  }
-
-  return false;
-}
-
-function checkPlayerHit() {
-  if (ballState.cooldown > 0 || !ballState.inPlay || ball.position.z < 0.15) return;
-  if (checkBodyFault()) return;
-
-  const distToPaddle = getPlayerPaddleWorld().distanceTo(ball.position);
-
-  if (activePlayerSwing && !activePlayerSwing.contacted && distToPaddle < SWING.hardHitRadius) {
-    const progress = getPlayerSwingProgress();
-    if (progress >= 0.22 && progress <= 0.82) {
-      hardPlayerHit();
-      activePlayerSwing.contacted = true;
-      return;
-    }
-  }
-
-  if (!activePlayerSwing && distToPaddle < SWING.softHitRadius && player.softContactCooldown <= 0) {
-    softPlayerDeflect();
-    player.softContactCooldown = 0.45;
-  }
-}
-
-function hardPlayerHit() {
-  const progress = getPlayerSwingProgress();
-  const power = activePlayerSwing ? activePlayerSwing.power : getSwingPower();
-  const perfectCharge = isPerfectCharge();
-  const cleanTiming = 1 - Math.abs(progress - 0.5) * 2;
-
-  const aim = getPlayerShotVector(progress);
-  const speed = THREE.MathUtils.lerp(
-    SWING.hitMinSpeed,
-    SWING.hitMaxSpeed,
-    clamp(power / SWING.maxPower, 0, 1)
-  );
-
-  const error = perfectCharge ? 0.1 : 0.35 + (1 - cleanTiming) * 0.42;
-
-  ballState.velocity.set(
-    aim.x * speed + THREE.MathUtils.randFloatSpread(error),
-    4.25 + aim.y * 3.5 + power * 1.45,
-    aim.z * speed
-  );
-
-  ballState.lastHitBy = "player";
-  ballState.cooldown = 0.2;
-  resetBounceMemory();
-
-  if (progress < 0.32) showMessage("Early swing — pulled inward!", 0.6);
-  else if (progress > 0.72) showMessage("Late swing — pushed outward!", 0.6);
-  else if (power > SWING.maxPower * 0.8 && cleanTiming > 0.78) showMessage("Power Swing!", 0.65);
-  else showMessage(perfectCharge ? "Perfect clean swing!" : "Clean swing!", 0.55);
-}
-
-function softPlayerDeflect() {
-  const paddleWorld = getPlayerPaddleWorld();
-  const sideBias = clamp((paddleWorld.x - player.group.position.x) / 2.3, -0.75, 0.75);
-
-  const towardEnemy = new THREE.Vector3(
-    sideBias * 0.42 + THREE.MathUtils.randFloatSpread(0.32),
-    0.32,
-    -1
-  ).normalize();
-
-  ballState.velocity.set(
-    towardEnemy.x * SWING.softDeflectSpeed,
-    3.2 + THREE.MathUtils.randFloat(0.2, 0.9),
-    towardEnemy.z * SWING.softDeflectSpeed
-  );
-
-  ballState.lastHitBy = "player";
-  ballState.cooldown = 0.24;
-  resetBounceMemory();
-
-  showMessage("Light deflection", 0.35);
-}
-
-function checkEnemyHit() {
-  if (ballState.cooldown > 0 || !ballState.inPlay || ball.position.z > -0.15) return;
-
-  const dist = getEnemyPaddleWorld().distanceTo(ball.position);
-  const skill = getEnemySkill();
-  const hitRadius = 0.85 + skill * 0.32;
-
-  if (activeEnemySwing && !activeEnemySwing.contacted && dist < hitRadius) {
-    enemyHardHit();
-    activeEnemySwing.contacted = true;
-  } else if (!activeEnemySwing && dist < 0.68 && skill > 0.62) {
-    enemyHardHit(true);
-  }
-}
-
-function enemyHardHit(panic = false) {
-  const skill = getEnemySkill();
-
-  const openSide = player.group.position.x > 0 ? -1 : 1;
-  const desiredTargetX = clamp(
-    player.group.position.x + openSide * THREE.MathUtils.lerp(0.8, 2.5, skill),
-    -COURT.width / 2 + 1,
-    COURT.width / 2 - 1
-  );
-
-  const xAim = clamp((desiredTargetX - ball.position.x) / 8, -0.65, 0.65);
-  const error = THREE.MathUtils.randFloatSpread((1 - skill) * 1.0);
-
-  const speed = THREE.MathUtils.lerp(8.2, 14.4, skill) + (panic ? -1.0 : 0);
-  const lift = THREE.MathUtils.lerp(4.9, 6.0, skill);
-
-  ballState.velocity.set(
-    xAim * speed + error,
-    lift,
-    speed
-  );
-
-  ballState.lastHitBy = "enemy";
-  ballState.cooldown = 0.22;
-  resetBounceMemory();
-}
-
-function resetBounceMemory() {
-  ballState.bouncesOnSide.player = 0;
-  ballState.bouncesOnSide.enemy = 0;
-  ballState.landedInSideAfterHit.player = false;
-  ballState.landedInSideAfterHit.enemy = false;
-}
-
-function scorePlayer(msg) {
-  if (!rallyActive && !ballState.inPlay) return;
-
-  rallyActive = false;
-  ballState.inPlay = false;
-  serveReady = false;
-
-  playerScore++;
-  nextServer = "player";
-  updateHud();
-
-  if (playerScore >= 5) {
-    round++;
-    playerScore = 0;
-    enemyScore = 0;
-    updateHud();
-    showMessage("You win the round! Round " + round + " begins.", 2);
-    setTimeout(() => resetPoint("Hold click to aim. Release to serve."), 1700);
-  } else {
-    showMessage(msg, 1.2);
-    setTimeout(() => resetPoint("Hold click to aim. Release to serve."), 1100);
-  }
-}
-
-function scoreEnemy(msg) {
-  if (!rallyActive && !ballState.inPlay) return;
-
-  rallyActive = false;
-  ballState.inPlay = false;
-  serveReady = false;
-
-  enemyScore++;
-  nextServer = "enemy";
-  updateHud();
-
-  if (enemyScore >= 5) {
-    showMessage("Enemy wins! Restarting at Round 1.", 2);
-    round = 1;
-    playerScore = 0;
-    enemyScore = 0;
-    updateHud();
-    setTimeout(() => resetPoint("Hold click to aim. Release to serve."), 1700);
-  } else {
-    showMessage(msg, 1.2);
-    setTimeout(() => resetPoint("Hold click to aim. Release to serve."), 1100);
-  }
-}
-
-function showMessage(text, seconds) {
-  document.getElementById("centerMsg").textContent = text;
-  messageTimer = seconds;
-}
-
-function updateHud() {
-  document.getElementById("pScore").textContent = playerScore;
-  document.getElementById("eScore").textContent = enemyScore;
-  document.getElementById("round").textContent = round;
-}
-
-function updateServeAimLine() {
-  if (!aimLine) return;
-
-  if (!serveReady || nextServer !== "player") {
-    aimLine.visible = false;
-    return;
-  }
-
-  aimLine.visible = true;
-
-  const start = ball.position.clone();
-  const power = getSwingPower();
-  const aim = getPlayerShotVector(0.5);
-  const gravity = 13.5;
-
-  const speed = THREE.MathUtils.lerp(
-    SWING.serveMinSpeed,
-    SWING.serveMaxSpeed,
-    clamp(power / SWING.maxPower, 0, 1)
-  );
-
-  const velocity = new THREE.Vector3(
-    aim.x * speed,
-    4.5 + power * 2.0 + aim.y * 1.4,
-    aim.z * speed
-  );
-
-  const points = [];
-
-  for (let i = 0; i < 26; i++) {
-    const t = i * 0.075;
-    const p = new THREE.Vector3(
-      start.x + velocity.x * t,
-      start.y + velocity.y * t - 0.5 * gravity * t * t,
-      start.z + velocity.z * t
-    );
-    if (p.y < 0.05) break;
-    points.push(p);
-  }
-
-  if (points.length < 2) {
-    points.push(start.clone(), start.clone().add(new THREE.Vector3(0, 0, -1)));
-  }
-
-  aimLine.geometry.dispose();
-  aimLine.geometry = new THREE.BufferGeometry().setFromPoints(points);
-}
-
-
-function createPaddleRangeGuide() {
-  paddleRangeGuide = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 1, 0)]),
-    new THREE.LineBasicMaterial({ color: 0xffffcc, transparent: true, opacity: 0.3 })
-  );
-  paddleRangeGuide.visible = false;
-  scene.add(paddleRangeGuide);
-}
-
-function updatePaddleRangeGuide() {
-  if (!paddleRangeGuide || !gameStarted) return;
-  const side = paddleHand;
-  const sideSign = side === "right" ? 1 : -1;
-  const shoulderX = player.group.position.x + sideSign * 0.48;
-  const shoulderY = ARM.shoulderHeight;
-  const z = player.group.position.z + ARM.paddlePlaneZ;
-  const points = [];
-
-  for (let i = 0; i <= 32; i++) {
-    const angle = -Math.PI / 2 + (i / 32) * Math.PI;
-    const x = shoulderX + Math.cos(angle) * ARM.sideRadius * sideSign;
-    const y = shoulderY + Math.sin(angle) * ARM.sideRadius;
-    if ((side === "right" && x >= shoulderX) || (side === "left" && x <= shoulderX)) points.push(new THREE.Vector3(x, y, z));
-  }
-
-  paddleRangeGuide.geometry.dispose();
-  paddleRangeGuide.geometry = new THREE.BufferGeometry().setFromPoints(points);
-  paddleRangeGuide.visible = true;
-}
-
-function updateServeHoldBall() {
-  if (!serveReady || ballState.inPlay || nextServer !== "player") return;
-
-  ball.position.set(
-    player.group.position.x + (paddleHand === "right" ? 0.75 : -0.75),
-    1.15 + Math.sin(performance.now() * 0.004) * 0.06,
-    player.group.position.z - 1.25
-  );
-}
-
-
-function updateEnemyServeHoldBall(dt) {
-  if (!serveReady || nextServer !== "enemy" || ballState.inPlay) return;
-
-  enemyServeTimer -= dt;
-
-  ball.position.set(
-    enemy.group.position.x + 0.75,
-    1.15 + Math.sin(performance.now() * 0.004) * 0.06,
-    enemy.group.position.z + 1.25
-  );
-
-  if (enemyServeTimer <= 0) {
-    releaseEnemyServe();
-  }
-}
-
-function createBallDropLine() {
-  const mat = new THREE.LineBasicMaterial({
-    color: 0x000000,
-    transparent: true,
-    opacity: 0.25
+  outer.forEach(p => {
+    shape.lineTo(p.x, p.y);
   });
-  const geo = new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(0, 0, 0),
-    new THREE.Vector3(0, 1, 0)
-  ]);
-  ballDropLine = new THREE.Line(geo, mat);
-  scene.add(ballDropLine);
+
+  const hole = new THREE.Path();
+  hole.moveTo(inner[inner.length - 1].x, inner[inner.length - 1].y);
+
+  for (let i = inner.length - 1; i >= 0; i--) {
+    hole.lineTo(inner[i].x, inner[i].y);
+  }
+
+  shape.holes.push(hole);
+
+  const geo = new THREE.ShapeGeometry(shape);
+  const mesh = new THREE.Mesh(geo, mats.road);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = 0.045;
+  mesh.receiveShadow = true;
+  scene.add(mesh);
 }
 
-function updateBallGroundShadow() {
-  if (!ballGroundShadow || !ball) return;
+function createTrackEdges() {
+  for (const side of [-1, 1]) {
+    const pts = [];
 
-  ballGroundShadow.position.x = ball.position.x;
-  ballGroundShadow.position.z = ball.position.z;
-  ballGroundShadow.position.y = 0.115;
+    for (let i = 0; i <= 420; i++) {
+      const t = i / 420;
+      const p = getTrackPoint(t);
+      const n = getTrackNormal(t);
 
-  const height = clamp(ball.position.y, 0.28, 6.0);
-  const height01 = clamp((height - 0.28) / 5.72, 0, 1);
+      pts.push(new THREE.Vector3(
+        p.x + n.x * trackWidth * side,
+        0.16,
+        p.z + n.z * trackWidth * side
+      ));
+    }
 
-  const scale = THREE.MathUtils.lerp(0.85, 1.9, height01);
-  ballGroundShadow.scale.set(scale, scale, scale);
-  ballGroundShadow.material.opacity = THREE.MathUtils.lerp(0.55, 0.16, height01);
-  ballGroundShadow.visible = gameStarted && (ballState.inPlay || serveReady);
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({ color: currentMap.edge })
+    );
+
+    scene.add(line);
+  }
 }
 
-function updateBallDropLine() {
-  if (!ballDropLine || !ball) return;
+function createStartLineAndBanner(map) {
+  const p = getTrackPoint(startT);
+  const tan = getTrackTangent(startT);
+  const n = getTrackNormal(startT);
 
-  const points = [
-    new THREE.Vector3(ball.position.x, 0.12, ball.position.z),
-    new THREE.Vector3(ball.position.x, ball.position.y, ball.position.z)
-  ];
-  ballDropLine.geometry.dispose();
-  ballDropLine.geometry = new THREE.BufferGeometry().setFromPoints(points);
+  for (let i = -7; i <= 7; i++) {
+    const square = new THREE.Mesh(
+      new THREE.BoxGeometry(4.1, 0.14, 4.1),
+      i % 2 === 0 ? mats.white : mats.black
+    );
 
-  const height = clamp(ball.position.y, 0.28, 6.0);
-  const height01 = clamp((height - 0.28) / 5.72, 0, 1);
-  ballDropLine.material.opacity = THREE.MathUtils.lerp(0.12, 0.28, height01);
-  ballDropLine.visible = gameStarted && (ballState.inPlay || serveReady);
+    square.position.set(
+      p.x + n.x * i * 3.8,
+      0.18,
+      p.z + n.z * i * 3.8
+    );
+
+    square.receiveShadow = true;
+    scene.add(square);
+  }
+
+  const banner = new THREE.Group();
+
+  const poleHeight = 18;
+  const span = trackWidth * 2.25;
+
+  const pole1 = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, poleHeight, 10), mats.black);
+  const pole2 = pole1.clone();
+
+  pole1.position.set(-span / 2, poleHeight / 2, 0);
+  pole2.position.set(span / 2, poleHeight / 2, 0);
+
+  const sign = new THREE.Mesh(
+    new THREE.BoxGeometry(span + 8, 5.8, 0.8),
+    new THREE.MeshStandardMaterial({
+      color: map.theme === "desert" ? 0xffcc44 : map.theme === "snow" ? 0x55ccff : 0xff4444,
+      roughness: 0.45
+    })
+  );
+
+  sign.position.set(0, poleHeight + 0.5, 0);
+  sign.castShadow = true;
+
+  banner.add(pole1, pole2, sign);
+
+  banner.position.set(p.x, 0, p.z);
+
+  /*
+    Important fix:
+    The kart's forward direction is local +Z.
+    The banner's long side is local X.
+    This rotation makes local X span across the track width,
+    so the banner crosses the finish line instead of pointing down the track.
+  */
+  banner.rotation.y = Math.atan2(tan.x, tan.z);
+
+  scene.add(banner);
 }
 
-function updateCamera(dt) {
-  const target = player.group.position.clone();
-  const desired = target.clone().add(new THREE.Vector3(0, 6.5, 10.7));
-  desired.x += player.group.position.x * 0.12;
+function createItemBoxes() {
+  const zones = [0.08, 0.17, 0.29, 0.42, 0.54, 0.68, 0.79, 0.91];
+
+  zones.forEach(t => {
+    const p = getTrackPoint(t);
+    const n = getTrackNormal(t);
+
+    [-11, 0, 11].forEach(offset => {
+      const box = new THREE.Group();
+
+      const cube = new THREE.Mesh(
+        new THREE.BoxGeometry(4.7, 4.7, 4.7),
+        mats.item
+      );
+
+      cube.castShadow = true;
+
+      const wire = new THREE.LineSegments(
+        new THREE.EdgesGeometry(cube.geometry),
+        new THREE.LineBasicMaterial({ color: 0xffffff })
+      );
+
+      box.add(cube, wire);
+      box.position.set(p.x + n.x * offset, 3.2, p.z + n.z * offset);
+      scene.add(box);
+
+      pickups.push({
+        group: box,
+        active: true,
+        cooldown: 0
+      });
+    });
+  });
+}
+
+function createDecorations(map) {
+  const count = 95;
+
+  for (let i = 0; i < count; i++) {
+    const x = -285 + Math.random() * 570;
+    const z = -220 + Math.random() * 440;
+    const pos = new THREE.Vector3(x, 0, z);
+
+    if (isOnTrack(pos)) continue;
+
+    if (map.theme === "grass") {
+      if (Math.random() < 0.52) addTree(x, z, 0.75 + Math.random() * 0.8);
+      else if (Math.random() < 0.78) addMushroom(x, z, 0.75 + Math.random() * 0.9);
+      else addFence(x, z);
+    }
+
+    if (map.theme === "desert") {
+      if (Math.random() < 0.58) addCactus(x, z, 0.8 + Math.random() * 0.8);
+      else if (Math.random() < 0.85) addRock(x, z, 0.8 + Math.random() * 1.2);
+      else addRuin(x, z);
+    }
+
+    if (map.theme === "snow") {
+      if (Math.random() < 0.52) addPine(x, z, 0.8 + Math.random() * 0.8);
+      else if (Math.random() < 0.84) addCrystal(x, z, 0.75 + Math.random() * 1.1);
+      else addSnowman(x, z);
+    }
+  }
+}
+
+function addTree(x, z, s) {
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.8 * s, 1 * s, 5 * s, 8),
+    new THREE.MeshStandardMaterial({ color: 0x75451f })
+  );
+  trunk.position.set(x, 2.5 * s, z);
+  trunk.castShadow = true;
+  scene.add(trunk);
+
+  const leaves = new THREE.Mesh(
+    new THREE.ConeGeometry(4.5 * s, 9 * s, 12),
+    new THREE.MeshStandardMaterial({ color: 0x167431 })
+  );
+  leaves.position.set(x, 8 * s, z);
+  leaves.castShadow = true;
+  scene.add(leaves);
+}
+
+function addPine(x, z, s) {
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.55 * s, 0.7 * s, 4 * s, 8),
+    new THREE.MeshStandardMaterial({ color: 0x6c441e })
+  );
+  trunk.position.set(x, 2 * s, z);
+  trunk.castShadow = true;
+  scene.add(trunk);
+
+  for (let i = 0; i < 3; i++) {
+    const cone = new THREE.Mesh(
+      new THREE.ConeGeometry((4.5 - i * 0.75) * s, 6 * s, 12),
+      new THREE.MeshStandardMaterial({ color: 0x145c36 })
+    );
+    cone.position.set(x, (5.4 + i * 2.3) * s, z);
+    cone.castShadow = true;
+    scene.add(cone);
+  }
+}
+
+function addMushroom(x, z, s) {
+  const stem = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.7 * s, 1 * s, 3 * s, 10),
+    new THREE.MeshStandardMaterial({ color: 0xffefd8 })
+  );
+  stem.position.set(x, 1.5 * s, z);
+  stem.castShadow = true;
+  scene.add(stem);
+
+  const cap = new THREE.Mesh(
+    new THREE.SphereGeometry(3.2 * s, 16, 8),
+    new THREE.MeshStandardMaterial({ color: Math.random() < 0.5 ? 0xdd3333 : 0xffaa33 })
+  );
+  cap.scale.y = 0.55;
+  cap.position.set(x, 3.5 * s, z);
+  cap.castShadow = true;
+  scene.add(cap);
+}
+
+function addCactus(x, z, s) {
+  const mat = new THREE.MeshStandardMaterial({ color: 0x27964a, roughness: 1 });
+
+  const main = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.9 * s, 1.05 * s, 8 * s, 10),
+    mat
+  );
+  main.position.set(x, 4 * s, z);
+  main.castShadow = true;
+  scene.add(main);
+
+  const armA = new THREE.Mesh(new THREE.CylinderGeometry(0.45 * s, 0.55 * s, 4 * s, 8), mat);
+  armA.rotation.z = Math.PI / 2;
+  armA.position.set(x + 2 * s, 5.4 * s, z);
+  armA.castShadow = true;
+  scene.add(armA);
+
+  const armB = new THREE.Mesh(new THREE.CylinderGeometry(0.45 * s, 0.55 * s, 3 * s, 8), mat);
+  armB.rotation.z = Math.PI / 2;
+  armB.position.set(x - 1.7 * s, 4.3 * s, z);
+  armB.castShadow = true;
+  scene.add(armB);
+}
+
+function addRock(x, z, s) {
+  const rock = new THREE.Mesh(
+    new THREE.DodecahedronGeometry(3 * s, 0),
+    new THREE.MeshStandardMaterial({ color: 0x777777, roughness: 1 })
+  );
+  rock.position.set(x, 1.8 * s, z);
+  rock.rotation.set(Math.random(), Math.random(), Math.random());
+  rock.castShadow = true;
+  rock.receiveShadow = true;
+  scene.add(rock);
+}
+
+function addCrystal(x, z, s) {
+  const crystal = new THREE.Mesh(
+    new THREE.ConeGeometry(2.1 * s, 8 * s, 6),
+    new THREE.MeshStandardMaterial({
+      color: 0x8defff,
+      emissive: 0x155566,
+      roughness: 0.2
+    })
+  );
+  crystal.position.set(x, 4 * s, z);
+  crystal.rotation.y = Math.random() * Math.PI;
+  crystal.castShadow = true;
+  scene.add(crystal);
+}
+
+function addFence(x, z) {
+  const group = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: 0x8a5526, roughness: 0.8 });
+
+  for (let i = -1; i <= 1; i++) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.6, 4, 0.6), mat);
+    post.position.set(i * 3, 2, 0);
+    post.castShadow = true;
+    group.add(post);
+  }
+
+  const rail1 = new THREE.Mesh(new THREE.BoxGeometry(7.2, 0.5, 0.5), mat);
+  rail1.position.set(0, 2.8, 0);
+  group.add(rail1);
+
+  const rail2 = rail1.clone();
+  rail2.position.y = 1.5;
+  group.add(rail2);
+
+  group.position.set(x, 0, z);
+  group.rotation.y = Math.random() * Math.PI;
+  scene.add(group);
+}
+
+function addRuin(x, z) {
+  const mat = new THREE.MeshStandardMaterial({ color: 0xb88a54, roughness: 1 });
+  const group = new THREE.Group();
+
+  for (let i = 0; i < 3; i++) {
+    const block = new THREE.Mesh(new THREE.BoxGeometry(4, 3 + i * 1.2, 4), mat);
+    block.position.set(i * 4.5, (3 + i * 1.2) / 2, 0);
+    block.castShadow = true;
+    group.add(block);
+  }
+
+  group.position.set(x, 0, z);
+  group.rotation.y = Math.random() * Math.PI;
+  scene.add(group);
+}
+
+function addSnowman(x, z) {
+  const white = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 });
+
+  const group = new THREE.Group();
+
+  const bottom = new THREE.Mesh(new THREE.SphereGeometry(2.1, 14, 14), white);
+  bottom.position.y = 2;
+  bottom.castShadow = true;
+
+  const top = new THREE.Mesh(new THREE.SphereGeometry(1.35, 14, 14), white);
+  top.position.y = 4.6;
+  top.castShadow = true;
+
+  group.add(bottom, top);
+  group.position.set(x, 0, z);
+  scene.add(group);
+}
+
+/* =========================================================
+   KART AND CHARACTER MODELS
+========================================================= */
+
+function createRacer(name, character, kart, isPlayer, playerIndex, aiIndex) {
+  const visual = createKartVisual(character, kart);
+
+  scene.add(visual.root);
+
+  const racer = {
+    name,
+    character,
+    kart,
+    isPlayer,
+    playerIndex,
+    aiIndex,
+    group: visual.root,
+    wheels: visual.wheels,
+    rider: visual.rider,
+    position: visual.root.position,
+    rotationY: 0,
+    speed: 0,
+    maxSpeed: kart.maxSpeed + character.speedBonus,
+    accel: kart.accel + character.accelBonus,
+    handling: kart.handling + character.handlingBonus,
+    driftPower: kart.drift,
+    weight: character.weight * kart.weight,
+    item: null,
+    itemCooldown: 0,
+    boostTimer: 0,
+    spinTimer: 0,
+    invulnTimer: 0,
+    lap: 1,
+    finished: false,
+    checkpointIndex: 2,
+    progress: 0,
+    drift: {
+      active: false,
+      direction: 0,
+      charge: 0,
+      sparkLevel: 0
+    },
+    ai: {
+      targetIndex: 2,
+      laneOffset: ((aiIndex || 0) % 3 - 1) * 8,
+      itemThink: 1 + Math.random() * 2
+    }
+  };
+
+  return racer;
+}
+
+function createKartVisual(character, kart) {
+  const root = new THREE.Group();
+  const wheels = [];
+
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: kart.color,
+    roughness: 0.42,
+    metalness: 0.08
+  });
+
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
+  const trimMat = new THREE.MeshStandardMaterial({ color: character.color, roughness: 0.5 });
+
+  if (kart.id === "speedster") {
+    addBox(root, 0, 1.45, 0, 4.6, 1.25, 9.8, bodyMat);
+    addBox(root, 0, 2.15, 1.7, 3.6, 1.1, 3.0, bodyMat);
+    addBox(root, 0, 1.95, -4.9, 3.2, 0.7, 1.1, mats.yellow);
+    addBox(root, 0, 3.2, 4.8, 6.8, 0.35, 1.0, trimMat);
+  }
+
+  if (kart.id === "balanced") {
+    addBox(root, 0, 1.55, 0, 5.4, 1.65, 7.6, bodyMat);
+    addBox(root, 0, 2.45, -1.7, 4.2, 1.15, 3.2, bodyMat);
+    addBox(root, 0, 2.75, 1.8, 3.3, 1.25, 2.4, darkMat);
+    addBox(root, 0, 1.85, -4.05, 5.2, 0.75, 0.8, mats.yellow);
+  }
+
+  if (kart.id === "buggy") {
+    addBox(root, 0, 1.55, 0, 5.8, 1.55, 7.2, bodyMat);
+    addBox(root, 0, 2.6, 1.2, 3.4, 1.3, 2.5, darkMat);
+
+    const cage = new THREE.Group();
+    const cageMat = mats.metal;
+    addBox(cage, -2.3, 3.8, 0.8, 0.32, 3.8, 0.32, cageMat);
+    addBox(cage, 2.3, 3.8, 0.8, 0.32, 3.8, 0.32, cageMat);
+    addBox(cage, 0, 5.5, 0.8, 5.0, 0.32, 0.32, cageMat);
+    root.add(cage);
+  }
+
+  if (kart.id === "cruiser") {
+    addBox(root, 0, 1.65, 0, 6.7, 2.0, 8.5, bodyMat);
+    addBox(root, 0, 2.9, -1.5, 5.1, 1.5, 3.5, bodyMat);
+    addBox(root, 0, 3.25, 2.2, 4.1, 1.6, 2.3, darkMat);
+    addBox(root, 0, 1.65, -4.9, 6.8, 1.0, 0.8, mats.metal);
+    addBox(root, 0, 1.65, 4.9, 6.8, 1.0, 0.8, mats.metal);
+  }
+
+  const wheelRadius = kart.id === "buggy" ? 1.35 : kart.id === "cruiser" ? 1.25 : 1.05;
+  const wheelWidth = kart.id === "cruiser" ? 1.35 : 1.1;
+  const wheelZ = kart.id === "speedster" ? 3.7 : 3.05;
+  const wheelX = kart.id === "cruiser" ? 3.65 : 3.15;
+
+  [
+    [-wheelX, 1.0, -wheelZ],
+    [wheelX, 1.0, -wheelZ],
+    [-wheelX, 1.0, wheelZ],
+    [wheelX, 1.0, wheelZ]
+  ].forEach(pos => {
+    const wheel = new THREE.Group();
+
+    const tire = new THREE.Mesh(
+      new THREE.CylinderGeometry(wheelRadius, wheelRadius, wheelWidth, 16),
+      darkMat
+    );
+    tire.rotation.z = Math.PI / 2;
+    tire.castShadow = true;
+
+    const hub = new THREE.Mesh(
+      new THREE.CylinderGeometry(wheelRadius * 0.42, wheelRadius * 0.42, wheelWidth + 0.08, 16),
+      mats.metal
+    );
+    hub.rotation.z = Math.PI / 2;
+    hub.castShadow = true;
+
+    wheel.add(tire, hub);
+    wheel.position.set(pos[0], pos[1], pos[2]);
+    root.add(wheel);
+    wheels.push(wheel);
+  });
+
+  const rider = createCharacterModel(character);
+  rider.position.set(0, 3.05, 1.15);
+  root.add(rider);
+
+  const flagPole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 4.2, 6), darkMat);
+  flagPole.position.set(2.8, 4.2, 2.9);
+  flagPole.castShadow = true;
+  root.add(flagPole);
+
+  const flag = new THREE.Mesh(new THREE.BoxGeometry(2.3, 1.1, 0.12), trimMat);
+  flag.position.set(3.75, 5.9, 2.9);
+  flag.castShadow = true;
+  root.add(flag);
+
+  return {
+    root,
+    wheels,
+    rider
+  };
+}
+
+function addBox(parent, x, y, z, sx, sy, sz, mat) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
+  mesh.position.set(x, y, z);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  parent.add(mesh);
+  return mesh;
+}
+
+function createCharacterModel(character) {
+  const s = character.size;
+  const root = new THREE.Group();
+
+  const mainMat = new THREE.MeshStandardMaterial({ color: character.color, roughness: 0.55 });
+  const bellyMat = new THREE.MeshStandardMaterial({ color: character.belly, roughness: 0.65 });
+  const blackMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.6 });
+  const whiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
+
+  /*
+    Important direction fix:
+    The kart drives toward local +Z.
+    The face, eyes, snout, and horn are placed on +Z.
+    Since the camera follows from behind the kart at local -Z,
+    you mostly see the back of the rider, not their face.
+  */
+
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1.0 * s, 16, 16), mainMat);
+  body.scale.set(0.9, 1.25, 0.75);
+  body.position.y = 1.05 * s;
+  body.castShadow = true;
+  root.add(body);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.86 * s, 16, 16), mainMat);
+  head.position.set(0, 2.45 * s, 0.1 * s);
+  head.castShadow = true;
+  root.add(head);
+
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.54 * s, 12, 12), bellyMat);
+  belly.scale.set(1, 1.1, 0.25);
+  belly.position.set(0, 1.08 * s, 0.62 * s);
+  belly.castShadow = true;
+  root.add(belly);
+
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.16 * s, 8, 8), whiteMat);
+    eye.position.set(side * 0.28 * s, 2.62 * s, 0.78 * s);
+    root.add(eye);
+
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.075 * s, 8, 8), blackMat);
+    pupil.position.set(side * 0.28 * s, 2.60 * s, 0.91 * s);
+    root.add(pupil);
+  }
+
+  const snout = new THREE.Mesh(new THREE.SphereGeometry(0.34 * s, 12, 12), bellyMat);
+  snout.scale.set(0.8, 0.55, 1.25);
+  snout.position.set(0, 2.36 * s, 0.88 * s);
+  snout.castShadow = true;
+  root.add(snout);
+
+  if (character.id === "rhino") {
+    const horn = new THREE.Mesh(
+      new THREE.ConeGeometry(0.18 * s, 0.85 * s, 12),
+      new THREE.MeshStandardMaterial({ color: 0xf2f2d2, roughness: 0.5 })
+    );
+    horn.rotation.x = Math.PI / 2;
+    horn.position.set(0, 2.58 * s, 1.34 * s);
+    horn.castShadow = true;
+    root.add(horn);
+
+    const shoulder = new THREE.Mesh(new THREE.SphereGeometry(1.1 * s, 16, 16), mainMat);
+    shoulder.scale.set(1.2, 0.7, 0.8);
+    shoulder.position.set(0, 1.65 * s, -0.15 * s);
+    shoulder.castShadow = true;
+    root.add(shoulder);
+  }
+
+  if (character.id === "monkey") {
+    for (const side of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.SphereGeometry(0.34 * s, 12, 12), mainMat);
+      ear.position.set(side * 0.82 * s, 2.45 * s, 0.05 * s);
+      ear.castShadow = true;
+      root.add(ear);
+    }
+  }
+
+  if (character.id === "wolf" || character.id === "fox") {
+    for (const side of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.25 * s, 0.75 * s, 10), mainMat);
+      ear.position.set(side * 0.45 * s, 3.12 * s, 0.05 * s);
+      ear.castShadow = true;
+      root.add(ear);
+    }
+  }
+
+  if (character.id === "turtle") {
+    const shell = new THREE.Mesh(
+      new THREE.SphereGeometry(0.95 * s, 16, 16),
+      new THREE.MeshStandardMaterial({ color: 0x155f2c, roughness: 0.8 })
+    );
+    shell.scale.set(1.05, 0.85, 0.45);
+    shell.position.set(0, 1.1 * s, -0.55 * s);
+    shell.castShadow = true;
+    root.add(shell);
+  }
+
+  for (const side of [-1, 1]) {
+    const arm = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.17 * s, 0.9 * s, 6, 10),
+      mainMat
+    );
+    arm.position.set(side * 0.82 * s, 1.45 * s, 0.28 * s);
+    arm.rotation.z = side * 0.25;
+    arm.rotation.x = -0.8;
+    arm.castShadow = true;
+    root.add(arm);
+
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.18 * s, 10, 10), mainMat);
+    hand.position.set(side * 0.94 * s, 1.06 * s, 0.78 * s);
+    hand.castShadow = true;
+    root.add(hand);
+  }
+
+  return root;
+}
+
+/* =========================================================
+   RACE SETUP
+========================================================= */
+
+function setupRacers() {
+  racers = [];
+  players = [];
+
+  const p1 = createRacer("Player 1", selectedP1Character, selectedP1Kart, true, 1, 0);
+  racers.push(p1);
+  players.push(p1);
+
+  if (splitScreen) {
+    const p2 = createRacer("Player 2", selectedP2Character, selectedP2Kart, true, 2, 0);
+    racers.push(p2);
+    players.push(p2);
+  }
+
+  const aiNames = ["Bolt", "Dash", "Crank", "Zippy", "Sprocket", "Turbo", "Fang", "Pebble"];
+  const aiCount = splitScreen ? 6 : 7;
+
+  for (let i = 0; i < aiCount; i++) {
+    const character = characters[(i + 1) % characters.length];
+    const kart = karts[(i + 2) % karts.length];
+    const ai = createRacer(aiNames[i], character, kart, false, 0, i + 1);
+
+    ai.maxSpeed *= currentDifficulty.aiSpeed;
+    ai.accel *= currentDifficulty.aiAccel;
+    ai.handling *= currentDifficulty.aiTurn;
+
+    racers.push(ai);
+  }
+
+  placeRacersAtStart();
+}
+
+function placeRacersAtStart() {
+  const p = getTrackPoint(startT);
+  const tan = getTrackTangent(startT);
+  const n = getTrackNormal(startT);
+  const angle = Math.atan2(tan.x, tan.z);
+
+  racers.forEach((r, i) => {
+    const row = Math.floor(i / 4);
+    const col = i % 4;
+
+    const sideOffset = (col - 1.5) * 8.5;
+    const backOffset = row * -11;
+
+    r.position.set(
+      p.x + n.x * sideOffset - tan.x * backOffset,
+      0,
+      p.z + n.z * sideOffset - tan.z * backOffset
+    );
+
+    r.rotationY = angle;
+    r.group.rotation.y = angle;
+    r.speed = 0;
+    r.lap = 1;
+    r.finished = false;
+    r.checkpointIndex = 2;
+    r.ai.targetIndex = 2;
+    r.item = null;
+  });
+}
+
+/* =========================================================
+   INPUT
+========================================================= */
+
+const keys = {};
+
+window.addEventListener("keydown", event => {
+  keys[event.key.toLowerCase()] = true;
+
+  if (event.code === "ShiftRight") {
+    keys.rightshift = true;
+  }
+
+  if (!gameStarted || !raceStarted) return;
+
+  if (event.key.toLowerCase() === "e") {
+    useItem(players[0]);
+  }
+
+  if (splitScreen && event.code === "ShiftRight") {
+    useItem(players[1]);
+  }
+});
+
+window.addEventListener("keyup", event => {
+  keys[event.key.toLowerCase()] = false;
+
+  if (event.code === "ShiftRight") {
+    keys.rightshift = false;
+  }
+});
+
+/* =========================================================
+   DRIVING
+========================================================= */
+
+function updatePlayer(racer, dt) {
+  if (racer.finished) return;
+
+  let throttle = 0;
+  let brake = 0;
+  let turn = 0;
+  let drift = false;
+
+  if (racer.playerIndex === 1) {
+    throttle = keys.w ? 1 : 0;
+    brake = keys.s ? 1 : 0;
+    if (keys.a) turn -= 1;
+    if (keys.d) turn += 1;
+    drift = keys.q;
+  } else {
+    throttle = keys.arrowup ? 1 : 0;
+    brake = keys.arrowdown ? 1 : 0;
+    if (keys.arrowleft) turn -= 1;
+    if (keys.arrowright) turn += 1;
+    drift = keys["/"];
+  }
+
+  driveRacer(racer, dt, throttle, brake, turn, drift, false);
+}
+
+function updateAI(racer, dt) {
+  if (racer.finished) return;
+
+  const targetIndex = racer.ai.targetIndex + currentDifficulty.aiLookAhead;
+  const t = wrap01(targetIndex / checkpointCount);
+  const target = getTrackPoint(t);
+  const n = getTrackNormal(t);
+  target.add(n.multiplyScalar(racer.ai.laneOffset));
+
+  const dx = target.x - racer.position.x;
+  const dz = target.z - racer.position.z;
+  const desiredAngle = Math.atan2(dx, dz);
+  const diff = normalizeAngle(desiredAngle - racer.rotationY);
+
+  let turn = THREE.MathUtils.clamp(diff * 1.75, -1, 1);
+  let throttle = 1;
+  let brake = Math.abs(diff) > 1.15 ? 0.3 : 0;
+
+  if (!isOnTrack(racer.position)) {
+    const closest = getClosestTrackInfo(racer.position);
+    const backAngle = Math.atan2(
+      closest.point.x - racer.position.x,
+      closest.point.z - racer.position.z
+    );
+
+    const backDiff = normalizeAngle(backAngle - racer.rotationY);
+    turn = THREE.MathUtils.clamp(backDiff * 2.1, -1, 1);
+    brake = 0.12;
+  }
+
+  if (racer.position.distanceTo(target) < trackWidth * 0.72) {
+    racer.ai.targetIndex++;
+  }
+
+  driveRacer(racer, dt, throttle, brake, turn, false, true);
+
+  racer.ai.itemThink -= dt;
+
+  if (racer.ai.itemThink <= 0) {
+    racer.ai.itemThink = 0.8 + Math.random() * 1.5;
+
+    if (racer.item && Math.random() < currentDifficulty.aiItemChance) {
+      useItem(racer);
+    }
+  }
+}
+
+function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
+  const onTrack = isOnTrack(racer.position);
+
+  let terrainFactor = onTrack ? 1 : currentMap.theme === "snow" ? 0.64 : currentMap.theme === "desert" ? 0.55 : 0.5;
+
+  if (racer.boostTimer > 0) {
+    racer.boostTimer -= dt;
+    terrainFactor = Math.max(terrainFactor, 0.9);
+  }
+
+  if (racer.spinTimer > 0) {
+    racer.spinTimer -= dt;
+    racer.rotationY += 10.5 * dt;
+    racer.speed *= 0.985;
+  } else {
+    if (throttle) {
+      racer.speed += racer.accel * dt;
+    } else {
+      racer.speed -= Math.sign(racer.speed) * 18 * dt;
+    }
+
+    if (brake) {
+      racer.speed -= racer.accel * 1.6 * brake * dt;
+    }
+  }
+
+  if (racer.invulnTimer > 0) racer.invulnTimer -= dt;
+  if (racer.itemCooldown > 0) racer.itemCooldown -= dt;
+
+  const maxSpeed = racer.maxSpeed * terrainFactor * (racer.boostTimer > 0 ? 1.36 : 1);
+  racer.speed = THREE.MathUtils.clamp(racer.speed, -18, maxSpeed);
+
+  if (Math.abs(racer.speed) < 0.2) {
+    racer.speed = 0;
+  }
+
+  if (!isAI) {
+    updateDrift(racer, dt, driftInput, turn);
+  }
+
+  if (!racer.drift.active && racer.spinTimer <= 0) {
+    const speedTurnScale = THREE.MathUtils.clamp(Math.abs(racer.speed) / 25, 0.25, 1);
+    const turnAmount = turn * racer.handling * speedTurnScale * dt * Math.sign(racer.speed || 1);
+    racer.rotationY += turnAmount;
+  }
+
+  const forward = getForwardVector(racer);
+  racer.position.add(forward.multiplyScalar(racer.speed * dt));
+  racer.group.rotation.y = racer.rotationY;
+
+  racer.wheels.forEach(wheel => {
+    wheel.rotation.x += racer.speed * dt * 0.75;
+  });
+
+  animateRider(racer, turn);
+  updateRaceProgress(racer);
+}
+
+function updateDrift(racer, dt, driftInput, turn) {
+  if (driftInput && !racer.drift.active && Math.abs(racer.speed) > 13 && turn !== 0) {
+    racer.drift.active = true;
+    racer.drift.direction = turn;
+    racer.drift.charge = 0;
+    racer.drift.sparkLevel = 0;
+  }
+
+  if (!racer.drift.active) return;
+
+  racer.drift.charge += dt;
+
+  if (racer.drift.charge > 0.6) racer.drift.sparkLevel = 1;
+  if (racer.drift.charge > 1.3) racer.drift.sparkLevel = 2;
+
+  racer.rotationY += racer.drift.direction * racer.handling * racer.driftPower * 1.42 * dt;
+  racer.speed *= 0.998;
+
+  if (!driftInput) {
+    if (racer.drift.sparkLevel === 1) {
+      racer.boostTimer = Math.max(racer.boostTimer, 0.55);
+      showFloatingText(racer, "MINI BOOST!");
+    }
+
+    if (racer.drift.sparkLevel === 2) {
+      racer.boostTimer = Math.max(racer.boostTimer, 1.08);
+      showFloatingText(racer, "SUPER BOOST!");
+    }
+
+    racer.drift.active = false;
+    racer.drift.charge = 0;
+    racer.drift.sparkLevel = 0;
+  }
+}
+
+function animateRider(racer, turn) {
+  if (!racer.rider) return;
+
+  const lean = -turn * 0.18;
+  racer.rider.rotation.z = THREE.MathUtils.lerp(racer.rider.rotation.z, lean, 0.16);
+
+  const speedBob = Math.min(Math.abs(racer.speed) / 45, 1);
+  racer.rider.position.y = 3.05 + Math.sin(performance.now() * 0.012 + racer.playerIndex) * 0.04 * speedBob;
+}
+
+function getForwardVector(racer) {
+  return new THREE.Vector3(
+    Math.sin(racer.rotationY),
+    0,
+    Math.cos(racer.rotationY)
+  );
+}
+
+function updateRaceProgress(racer) {
+  const targetIndex = racer.checkpointIndex % checkpointCount;
+  const targetT = targetIndex / checkpointCount;
+  const target = getTrackPoint(targetT);
+
+  if (racer.position.distanceTo(target) < trackWidth * 0.72) {
+    racer.checkpointIndex++;
+
+    if (racer.checkpointIndex % checkpointCount === 0) {
+      racer.lap++;
+
+      if (racer.isPlayer && racer.lap <= totalLaps) {
+        showCenterMessage(`${racer.name}: Lap ${racer.lap}!`, 1100);
+      }
+
+      if (racer.lap > totalLaps && !racer.finished) {
+        racer.finished = true;
+
+        if (racer.isPlayer) {
+          showCenterMessage(`${racer.name} FINISHED!`, 1800);
+        }
+      }
+    }
+  }
+
+  const closest = getClosestTrackInfo(racer.position);
+  racer.progress = (racer.lap - 1) * 100000 + racer.checkpointIndex * 1000 + closest.t;
+}
+
+/* =========================================================
+   ITEMS
+========================================================= */
+
+const itemTypes = ["GREEN_SHELL", "RED_SHELL", "BANANA", "MUSHROOM"];
+
+function itemName(item) {
+  if (!item) return "None";
+  if (item === "GREEN_SHELL") return "Green Shell";
+  if (item === "RED_SHELL") return "Red Shell";
+  if (item === "BANANA") return "Banana";
+  if (item === "MUSHROOM") return "Mushroom";
+  return item;
+}
+
+function giveItemFromBox(racer) {
+  racer.item = itemTypes[Math.floor(Math.random() * itemTypes.length)];
+  showFloatingText(racer, itemName(racer.item));
+}
+
+function useItem(racer) {
+  if (!racer || !racer.item || racer.itemCooldown > 0 || racer.finished) return;
+
+  const item = racer.item;
+  racer.item = null;
+  racer.itemCooldown = 0.4;
+
+  if (item === "MUSHROOM") {
+    racer.boostTimer = Math.max(racer.boostTimer, 1.25);
+    showFloatingText(racer, "MUSHROOM!");
+  }
+
+  if (item === "BANANA") {
+    dropBanana(racer);
+    showFloatingText(racer, "BANANA!");
+  }
+
+  if (item === "GREEN_SHELL") {
+    fireShell(racer, false);
+    showFloatingText(racer, "GREEN SHELL!");
+  }
+
+  if (item === "RED_SHELL") {
+    fireShell(racer, true);
+    showFloatingText(racer, "RED SHELL!");
+  }
+}
+
+function updatePickups(dt) {
+  pickups.forEach(pickup => {
+    pickup.group.rotation.y += dt * 1.55;
+    pickup.group.position.y = 3.2 + Math.sin(performance.now() * 0.004 + pickup.group.position.x) * 0.38;
+
+    if (!pickup.active) {
+      pickup.cooldown -= dt;
+      pickup.group.visible = false;
+
+      if (pickup.cooldown <= 0) {
+        pickup.active = true;
+        pickup.group.visible = true;
+      }
+
+      return;
+    }
+
+    racers.forEach(racer => {
+      if (racer.finished || !pickup.active) return;
+
+      if (racer.position.distanceTo(pickup.group.position) < 6.4) {
+        if (!racer.item) {
+          giveItemFromBox(racer);
+        }
+
+        pickup.active = false;
+        pickup.cooldown = 5.5;
+      }
+    });
+  });
+}
+
+function fireShell(racer, homing) {
+  const forward = getForwardVector(racer);
+
+  const shell = new THREE.Group();
+
+  const body = new THREE.Mesh(
+    new THREE.SphereGeometry(1.55, 18, 18),
+    homing ? mats.redShell : mats.greenShell
+  );
+  body.scale.y = 0.72;
+  body.castShadow = true;
+
+  const rim = new THREE.Mesh(
+    new THREE.TorusGeometry(1.08, 0.14, 8, 18),
+    mats.white
+  );
+  rim.rotation.x = Math.PI / 2;
+
+  shell.add(body, rim);
+  shell.position.copy(racer.position).add(forward.clone().multiplyScalar(8));
+  shell.position.y = 1.7;
+  scene.add(shell);
+
+  shells.push({
+    group: shell,
+    owner: racer,
+    homing,
+    target: null,
+    velocity: forward.clone().multiplyScalar(homing ? 68 : 78),
+    life: homing ? 4.2 : 3.0
+  });
+}
+
+function dropBanana(racer) {
+  const back = getForwardVector(racer).multiplyScalar(-7);
+  const banana = new THREE.Group();
+
+  const stem = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.2, 0.25, 2.8, 8),
+    mats.banana
+  );
+  stem.rotation.z = 0.55;
+  stem.castShadow = true;
+
+  const peel1 = new THREE.Mesh(new THREE.ConeGeometry(0.48, 2.2, 8), mats.banana);
+  peel1.rotation.z = Math.PI;
+  peel1.position.set(0.48, -0.7, 0);
+
+  const peel2 = peel1.clone();
+  peel2.position.set(-0.48, -0.7, 0);
+  peel2.rotation.z = -Math.PI * 0.78;
+
+  banana.add(stem, peel1, peel2);
+  banana.position.copy(racer.position).add(back);
+  banana.position.y = 1.4;
+  banana.rotation.y = Math.random() * Math.PI;
+  scene.add(banana);
+
+  bananas.push({
+    group: banana,
+    owner: racer,
+    life: 18
+  });
+}
+
+function updateShells(dt) {
+  for (let i = shells.length - 1; i >= 0; i--) {
+    const shell = shells[i];
+    shell.life -= dt;
+
+    if (shell.homing) {
+      if (!shell.target || shell.target.finished) {
+        shell.target = findShellTarget(shell);
+      }
+
+      if (shell.target) {
+        const desired = shell.target.position.clone().sub(shell.group.position).setY(0).normalize();
+        const current = shell.velocity.clone().setY(0).normalize();
+        const steered = current.lerp(desired, 0.045).normalize();
+        shell.velocity.copy(steered.multiplyScalar(72));
+      }
+    }
+
+    shell.group.position.add(shell.velocity.clone().multiplyScalar(dt));
+    shell.group.position.y = 1.7;
+    shell.group.rotation.x += dt * 11;
+    shell.group.rotation.y += dt * 8;
+
+    let remove = shell.life <= 0;
+
+    if (!shell.homing && !isOnTrack(shell.group.position)) {
+      remove = true;
+    }
+
+    racers.forEach(racer => {
+      if (remove) return;
+      if (racer === shell.owner || racer.finished) return;
+
+      if (racer.position.distanceTo(shell.group.position) < 5.6) {
+        hitRacer(racer, shell.owner, 1.25);
+        remove = true;
+      }
+    });
+
+    if (remove) {
+      burstParticles(shell.group.position, shell.homing ? 0xff3333 : 0x33dd55, 18, 1.3);
+      scene.remove(shell.group);
+      shells.splice(i, 1);
+    }
+  }
+}
+
+function updateBananas(dt) {
+  for (let i = bananas.length - 1; i >= 0; i--) {
+    const banana = bananas[i];
+    banana.life -= dt;
+    banana.group.rotation.y += dt * 0.75;
+
+    let remove = banana.life <= 0;
+
+    racers.forEach(racer => {
+      if (remove) return;
+      if (racer === banana.owner || racer.finished) return;
+
+      if (racer.position.distanceTo(banana.group.position) < 4.8) {
+        hitRacer(racer, banana.owner, 0.85);
+        remove = true;
+      }
+    });
+
+    if (remove) {
+      burstParticles(banana.group.position, 0xffdd22, 15, 1.1);
+      scene.remove(banana.group);
+      bananas.splice(i, 1);
+    }
+  }
+}
+
+function findShellTarget(shell) {
+  const placing = getPlacings();
+  const ownerPlace = placing.indexOf(shell.owner);
+
+  let best = null;
+  let bestScore = Infinity;
+
+  racers.forEach(racer => {
+    if (racer === shell.owner || racer.finished) return;
+
+    const racerPlace = placing.indexOf(racer);
+    const distance = racer.position.distanceTo(shell.group.position);
+    let score = distance;
+
+    if (racerPlace < ownerPlace) {
+      score *= 0.62;
+    } else {
+      score *= 1.35;
+    }
+
+    if (score < bestScore) {
+      bestScore = score;
+      best = racer;
+    }
+  });
+
+  return best;
+}
+
+function hitRacer(target, attacker, force) {
+  if (target.invulnTimer > 0) return;
+
+  target.spinTimer = 1.1;
+  target.invulnTimer = 1.25;
+  target.speed *= -0.2;
+
+  const push = target.position.clone().sub(attacker.position).setY(0);
+
+  if (push.lengthSq() > 0.01) {
+    push.normalize();
+    target.position.add(push.multiplyScalar(4.8 * force));
+  }
+
+  burstParticles(target.position, 0xfff0aa, 22, 1.5);
+  showFloatingText(target, "SPIN!");
+}
+
+/* =========================================================
+   COLLISIONS
+========================================================= */
+
+function updateRacerCollisions() {
+  for (let i = 0; i < racers.length; i++) {
+    for (let j = i + 1; j < racers.length; j++) {
+      const a = racers[i];
+      const b = racers[j];
+
+      if (a.finished || b.finished) continue;
+
+      const delta = b.position.clone().sub(a.position).setY(0);
+      const dist = delta.length();
+
+      if (dist > 0.01 && dist < 6.4) {
+        const dir = delta.normalize();
+        const overlap = 6.4 - dist;
+        const totalWeight = a.weight + b.weight;
+
+        const aMovedBy = b.weight / totalWeight;
+        const bMovedBy = a.weight / totalWeight;
+
+        a.position.add(dir.clone().multiplyScalar(-overlap * aMovedBy * 0.75));
+        b.position.add(dir.clone().multiplyScalar(overlap * bMovedBy * 0.75));
+
+        const impact = Math.abs(a.speed - b.speed) * 0.025;
+
+        a.speed -= impact * b.weight;
+        b.speed -= impact * a.weight;
+
+        burstParticles(a.position.clone().lerp(b.position, 0.5), 0xffffff, 7, 0.55);
+      }
+    }
+  }
+}
+
+/* =========================================================
+   PARTICLES AND FLOATING TEXT
+========================================================= */
+
+function burstParticles(pos, color, count, power) {
+  for (let i = 0; i < count; i++) {
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.25 + Math.random() * 0.25, 8, 8),
+      new THREE.MeshStandardMaterial({
+        color,
+        emissive: color,
+        roughness: 0.45
+      })
+    );
+
+    mesh.position.copy(pos);
+    mesh.position.y += 1.4 + Math.random() * 2;
+
+    const velocity = new THREE.Vector3(
+      (Math.random() - 0.5) * power * 9,
+      Math.random() * power * 7,
+      (Math.random() - 0.5) * power * 9
+    );
+
+    scene.add(mesh);
+
+    particles.push({
+      mesh,
+      velocity,
+      life: 0.45 + Math.random() * 0.45
+    });
+  }
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const particle = particles[i];
+
+    particle.life -= dt;
+    particle.velocity.y -= 18 * dt;
+    particle.mesh.position.add(particle.velocity.clone().multiplyScalar(dt));
+    particle.mesh.scale.multiplyScalar(0.96);
+
+    if (particle.life <= 0) {
+      scene.remove(particle.mesh);
+      particles.splice(i, 1);
+    }
+  }
+
+  racers.forEach(racer => {
+    if (racer.drift.active && Math.random() < 0.38) {
+      const color = racer.drift.sparkLevel === 2
+        ? 0xffaa22
+        : racer.drift.sparkLevel === 1
+          ? 0x22ccff
+          : 0xffffff;
+
+      const side = new THREE.Vector3(
+        Math.cos(racer.rotationY),
+        0,
+        -Math.sin(racer.rotationY)
+      ).multiplyScalar(racer.drift.direction * 3.4);
+
+      const back = getForwardVector(racer).multiplyScalar(-3.8);
+      const pos = racer.position.clone().add(side).add(back);
+      pos.y = 0.8;
+
+      burstParticles(pos, color, 1, 0.42);
+    }
+
+    if (racer.boostTimer > 0 && Math.random() < 0.35) {
+      const pos = racer.position.clone().add(getForwardVector(racer).multiplyScalar(-4.4));
+      pos.y = 1;
+      burstParticles(pos, 0xff8844, 1, 0.5);
+    }
+  });
+}
+
+function showFloatingText(racer, text) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 320;
+  canvas.height = 72;
+
+  const ctx = canvas.getContext("2d");
+  ctx.font = "bold 32px Arial";
+  ctx.textAlign = "center";
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = "black";
+  ctx.fillStyle = "white";
+  ctx.strokeText(text, 160, 46);
+  ctx.fillText(text, 160, 46);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  const mat = new THREE.SpriteMaterial({
+    map: tex,
+    transparent: true
+  });
+
+  const sprite = new THREE.Sprite(mat);
+  sprite.position.copy(racer.position);
+  sprite.position.y = 9;
+  sprite.scale.set(14, 3.2, 1);
+  scene.add(sprite);
+
+  floatingTexts.push({
+    sprite,
+    life: 1
+  });
+}
+
+function updateFloatingTexts(dt) {
+  for (let i = floatingTexts.length - 1; i >= 0; i--) {
+    const text = floatingTexts[i];
+
+    text.life -= dt;
+    text.sprite.position.y += dt * 7;
+    text.sprite.material.opacity = Math.max(0, text.life);
+
+    if (text.life <= 0) {
+      scene.remove(text.sprite);
+      floatingTexts.splice(i, 1);
+    }
+  }
+}
+
+/* =========================================================
+   CAMERA AND RENDER
+========================================================= */
+
+function updateCamera(camera, racer, dt) {
+  if (!racer) return;
+
+  const behind = getForwardVector(racer).multiplyScalar(-31);
+  const desired = racer.position.clone().add(behind).add(new THREE.Vector3(0, 18, 0));
 
   camera.position.lerp(desired, 1 - Math.pow(0.001, dt));
-  camera.lookAt(target.x, target.y + 1.35, target.z - 4.6);
+  camera.lookAt(racer.position.x, racer.position.y + 4.3, racer.position.z);
 }
+
+function renderScene() {
+  renderer.clear();
+
+  if (!splitScreen || players.length < 2) {
+    renderer.setScissorTest(false);
+    renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+    camera1.aspect = window.innerWidth / window.innerHeight;
+    camera1.updateProjectionMatrix();
+    renderer.render(scene, camera1);
+    return;
+  }
+
+  renderer.setScissorTest(true);
+
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  const half = Math.floor(width / 2);
+
+  camera1.aspect = half / height;
+  camera2.aspect = half / height;
+  camera1.updateProjectionMatrix();
+  camera2.updateProjectionMatrix();
+
+  renderer.setViewport(0, 0, half, height);
+  renderer.setScissor(0, 0, half, height);
+  renderer.render(scene, camera1);
+
+  renderer.setViewport(half, 0, half, height);
+  renderer.setScissor(half, 0, half, height);
+  renderer.render(scene, camera2);
+
+  renderer.setScissorTest(false);
+}
+
+/* =========================================================
+   HUD AND MINIMAP
+========================================================= */
+
+function getPlacings() {
+  return [...racers].sort((a, b) => {
+    if (a.finished && !b.finished) return -1;
+    if (!a.finished && b.finished) return 1;
+    return b.progress - a.progress;
+  });
+}
+
+function updateHUD() {
+  const placings = getPlacings();
+
+  updateSingleHUD(players[0], placings, {
+    lap: document.getElementById("lapText"),
+    place: document.getElementById("placeText"),
+    speed: document.getElementById("speedText"),
+    item: document.getElementById("itemText"),
+    drift: document.getElementById("driftText")
+  });
+
+  if (splitScreen && players[1]) {
+    updateSingleHUD(players[1], placings, {
+      lap: document.getElementById("lapText2"),
+      place: document.getElementById("placeText2"),
+      speed: document.getElementById("speedText2"),
+      item: document.getElementById("itemText2"),
+      drift: document.getElementById("driftText2")
+    });
+  }
+}
+
+function updateSingleHUD(racer, placings, els) {
+  if (!racer) return;
+
+  const place = placings.indexOf(racer) + 1;
+
+  els.lap.textContent = `Lap: ${Math.min(racer.lap, totalLaps)} / ${totalLaps}`;
+  els.place.textContent = `Place: ${place} / ${racers.length}`;
+  els.speed.textContent = `Speed: ${Math.round(Math.abs(racer.speed))}`;
+  els.item.textContent = `Item: ${itemName(racer.item)}`;
+
+  if (racer.drift.active) {
+    if (racer.drift.sparkLevel === 2) els.drift.textContent = "Drift: SUPER sparks";
+    else if (racer.drift.sparkLevel === 1) els.drift.textContent = "Drift: Mini sparks";
+    else els.drift.textContent = "Drift: Charging";
+  } else if (racer.boostTimer > 0) {
+    els.drift.textContent = "Drift: BOOSTING";
+  } else {
+    els.drift.textContent = "Drift: Ready";
+  }
+}
+
+function drawMinimap() {
+  const canvas = document.getElementById("minimap");
+  const ctx = canvas.getContext("2d");
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+
+  const scale = 0.48;
+
+  ctx.lineWidth = currentMap.trackWidth * scale;
+  ctx.strokeStyle = "rgba(255,255,255,.75)";
+  ctx.beginPath();
+
+  for (let i = 0; i <= 220; i++) {
+    const p = getTrackPoint(i / 220);
+    if (i === 0) ctx.moveTo(p.x * scale, p.z * scale);
+    else ctx.lineTo(p.x * scale, p.z * scale);
+  }
+
+  ctx.stroke();
+
+  ctx.lineWidth = Math.max(2, currentMap.trackWidth * scale - 6);
+  ctx.strokeStyle = "rgba(35,35,35,.9)";
+  ctx.beginPath();
+
+  for (let i = 0; i <= 220; i++) {
+    const p = getTrackPoint(i / 220);
+    if (i === 0) ctx.moveTo(p.x * scale, p.z * scale);
+    else ctx.lineTo(p.x * scale, p.z * scale);
+  }
+
+  ctx.stroke();
+
+  racers.forEach(racer => {
+    ctx.fillStyle = racer.isPlayer
+      ? racer.playerIndex === 1 ? "#ff3333" : "#33aaff"
+      : "#ffffff";
+
+    ctx.beginPath();
+    ctx.arc(racer.position.x * scale, racer.position.z * scale, racer.isPlayer ? 4 : 3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.restore();
+}
+
+/* =========================================================
+   MESSAGES AND UTILS
+========================================================= */
+
+const centerMsg = document.getElementById("centerMsg");
+let msgTimeout = null;
+
+function showCenterMessage(text, duration) {
+  centerMsg.innerHTML = text;
+  centerMsg.style.display = "block";
+
+  clearTimeout(msgTimeout);
+
+  msgTimeout = setTimeout(() => {
+    centerMsg.style.display = "none";
+  }, duration || 1300);
+}
+
+function normalizeAngle(a) {
+  while (a > Math.PI) a -= Math.PI * 2;
+  while (a < -Math.PI) a += Math.PI * 2;
+  return a;
+}
+
+/* =========================================================
+   START
+========================================================= */
+
+document.getElementById("startBtn").onclick = () => {
+  currentMap = selectedMap;
+  currentDifficulty = difficulties[document.getElementById("difficultySelect").value];
+  totalLaps = Number(document.getElementById("lapSelect").value);
+  splitScreen = document.getElementById("splitToggle").checked;
+
+  document.getElementById("menu").style.display = "none";
+  document.getElementById("hud").style.display = "block";
+  document.getElementById("help").style.display = "block";
+  document.getElementById("minimap").style.display = "block";
+
+  if (splitScreen) {
+    document.getElementById("hud2").style.display = "block";
+  } else {
+    document.getElementById("hud2").style.display = "none";
+  }
+
+  buildWorld(currentMap);
+  setupRacers();
+
+  gameStarted = true;
+  raceStarted = false;
+  countdown = 3.6;
+
+  showCenterMessage("3", 1000);
+};
+
+/* =========================================================
+   MAIN LOOP
+========================================================= */
 
 function animate() {
   requestAnimationFrame(animate);
 
-  const dt = Math.min(clock.getDelta(), 0.033);
-  frameDt = dt;
+  let dt = clock.getDelta();
+  dt = Math.min(dt, 0.033);
 
-  if (gameStarted) {
-    updateSwingCharge();
-    updatePowerBar();
-
-    updatePlayer(dt);
-    updateEnemy(dt);
-    updateServeHoldBall();
-    updateEnemyServeHoldBall(dt);
-    updateServeAimLine();
-    updatePaddleRangeGuide();
-    updateBall(dt);
-    updateCamera(dt);
-    updateBallGroundShadow();
-    updateBallDropLine();
-  } else {
-    if (paddleRangeGuide) paddleRangeGuide.visible = false;
-    camera.position.set(0, 10, 21);
-    camera.lookAt(0, 0, 0);
+  if (!gameStarted) {
+    renderer.clear();
+    return;
   }
 
-  if (messageTimer > 0) {
-    messageTimer -= dt;
-    if (messageTimer <= 0) {
-      document.getElementById("centerMsg").textContent = "";
+  if (!raceStarted) {
+    countdown -= dt;
+
+    if (countdown > 2.4) {
+      centerMsg.innerHTML = "3";
+      centerMsg.style.display = "block";
+    } else if (countdown > 1.4) {
+      centerMsg.innerHTML = "2";
+      centerMsg.style.display = "block";
+    } else if (countdown > 0.4) {
+      centerMsg.innerHTML = "1";
+      centerMsg.style.display = "block";
+    } else if (countdown > -0.55) {
+      centerMsg.innerHTML = "GO!";
+      centerMsg.style.display = "block";
+    } else {
+      raceStarted = true;
+      centerMsg.style.display = "none";
     }
+
+    updateCamera(camera1, players[0], dt);
+    if (splitScreen) updateCamera(camera2, players[1], dt);
+    renderScene();
+    return;
   }
 
-  renderer.render(scene, camera);
+  players.forEach(player => {
+    updatePlayer(player, dt);
+  });
+
+  racers.forEach(racer => {
+    if (!racer.isPlayer) {
+      updateAI(racer, dt);
+    }
+  });
+
+  updateRacerCollisions();
+  updatePickups(dt);
+  updateShells(dt);
+  updateBananas(dt);
+  updateParticles(dt);
+  updateFloatingTexts(dt);
+
+  updateCamera(camera1, players[0], dt);
+  if (splitScreen) updateCamera(camera2, players[1], dt);
+
+  updateHUD();
+  drawMinimap();
+
+  renderScene();
 }
 
-function onResize() {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
+animate();
+
+/* =========================================================
+   RESIZE
+========================================================= */
+
+window.addEventListener("resize", () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
-}
-
-function clamp(v, min, max) {
-  return Math.max(min, Math.min(max, v));
-}
+});
 </script>
-
 </body>
 </html>
