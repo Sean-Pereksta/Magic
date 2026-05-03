@@ -671,6 +671,7 @@ let particles = [];
 let floatingTexts = [];
 let hazardMeshes = [];
 let hazardShimmers = [];
+const DEBUG_AI_HAZARDS = false;
 let skidMarks = [];
 
 const MAX_PARTICLES = 320;
@@ -917,6 +918,14 @@ function createTrackEdges() {
   }
 }
 
+function getFinishLineInfo() { const p = getTrackPoint(startT); const tan = getTrackTangent(startT); const n = getTrackNormal(startT); return { p, tan, n }; }
+function getSignedFinishSide(pos) { const { p, tan } = getFinishLineInfo(); const dx = pos.x - p.x; const dz = pos.z - p.z; return dx * tan.x + dz * tan.z; }
+function isInsideFinishWidth(pos) { const { p, n } = getFinishLineInfo(); const dx = pos.x - p.x; const dz = pos.z - p.z; return Math.abs(dx * n.x + dz * n.z) <= trackWidth * 1.15; }
+function isInsideFinishDepth(pos) { const { p, tan } = getFinishLineInfo(); const dx = pos.x - p.x; const dz = pos.z - p.z; return Math.abs(dx * tan.x + dz * tan.z) <= 12; }
+function isInsideFinishZone(pos) { return isInsideFinishWidth(pos) && isInsideFinishDepth(pos); }
+function updateLapCheckpointProgress(racer) { const closest = getClosestTrackInfo(racer.position); const currentT = closest.t; if (racer.lastClosestT == null) { racer.lastClosestT = currentT; return; } let delta = currentT - racer.lastClosestT; if (delta < -0.5) delta += 1; if (delta > 0.5) delta -= 1; if (delta > 0) racer.lapCheckpointProgress += delta; racer.lastClosestT = currentT; }
+function updateFinishLineLap(racer, dt) { if (racer.finished) return; if (racer.finishCooldown > 0) racer.finishCooldown -= dt; updateLapCheckpointProgress(racer); const side = getSignedFinishSide(racer.position); if (racer.lastFinishSide == null) { racer.lastFinishSide = side; return; } const crossedLine = racer.lastFinishSide < 0 && side >= 0; const insideZone = isInsideFinishZone(racer.position); const completedEnoughLap = racer.lapCheckpointProgress >= 0.82; if (crossedLine && insideZone && completedEnoughLap && racer.finishCooldown <= 0) { racer.lap++; racer.lapCheckpointProgress = 0; racer.finishCooldown = 1.2; racer.crossedFinishThisLap = true; if (racer.isPlayer && racer.lap <= totalLaps) showCenterMessage(`${racer.name}: Lap ${racer.lap}!`, 1100); if (racer.lap > totalLaps && !racer.finished) { racer.finished = true; racer.finishOrder = finishOrder.length + 1; finishOrder.push(racer); if (racer.isPlayer && !resultsShown) showResultsOverlay(); } } racer.lastFinishSide = side; }
+
 function createStartLineAndBanner(map) {
   const p = getTrackPoint(startT);
   const tan = getTrackTangent(startT);
@@ -1010,6 +1019,11 @@ function createItemBoxes() {
 
       box.add(cube, wire);
       box.position.set(p.x + n.x * offset, 3.2, p.z + n.z * offset);
+      const trackCenter = getTrackPoint(t).clone();
+      if (isPointInsideHazard(box.position, (currentMap.hazards || []).find(h => isPointInsideHazard(box.position, h, 1)), 0)) {
+        box.position.set(trackCenter.x + n.x * (offset * 0.45), 3.2, trackCenter.z + n.z * (offset * 0.45));
+      }
+      if ((currentMap.hazards || []).some(h => isPointInsideHazard(box.position, h, 1))) return;
       scene.add(box);
 
       pickups.push({
@@ -1092,6 +1106,7 @@ function createDecorations(map) {
     const dist = getClosestTrackInfo(pos).distance;
 
     if (dist < trackWidth * 1.45) continue;
+    if ((map.hazards || []).some(h => isPointInsideHazard(pos, h, 6))) continue;
 
     if (map.theme === "grass") {
       if (Math.random() < 0.5) addTree(x, z, 0.75 + Math.random() * 0.8);
@@ -1386,6 +1401,11 @@ function createRacer(name, character, kart, isPlayer, playerIndex, aiIndex) {
     finished: false,
     checkpointIndex: 2,
     checkpointCountLap: 0,
+    lapCheckpointProgress: 0,
+    lastClosestT: startT,
+    lastFinishSide: null,
+    crossedFinishThisLap: false,
+    finishCooldown: 0,
     prevFinishSide: 0,
     progress: 0,
     drift: {
@@ -1769,6 +1789,7 @@ function createCharacterModel(character) {
 function setupRacers() {
   racers = [];
   players = [];
+  finishOrder = [];
 
   const p1 = createRacer("Player 1", characters[selectedP1CharacterIndex], karts[selectedP1KartIndex], true, 1, 0);
   racers.push(p1);
@@ -1824,10 +1845,14 @@ function placeRacersAtStart() {
     r.finished = false;
     r.checkpointIndex = 2;
     r.checkpointCountLap = 0;
+    r.lapCheckpointProgress = 0;
+    r.lastClosestT = startT;
+    r.crossedFinishThisLap = false;
+    r.finishCooldown = 2.0;
     r.ai.targetIndex = 2;
     r.item = null;
-    const toRacer = r.position.clone().sub(finishLine.point);
-    r.prevFinishSide = finishLine.tangent.dot(toRacer);
+    r.lastFinishSide = getSignedFinishSide(r.position);
+    r.prevFinishSide = r.lastFinishSide;
   });
 }
 
@@ -1945,16 +1970,91 @@ function updatePlayer(racer, dt) {
   driveRacer(racer, dt, throttle, brake, turn, driftState, false);
 }
 
+
+function getHazardDanger(hazard) {
+  if (!hazard) return 0;
+  if (hazard.type === "pit" || hazard.type === "water" || hazard.type === "lava") return 100;
+  if (hazard.type === "sludge") return 45;
+  if (hazard.type === "mud") return 40;
+  if (hazard.type === "steam") return 55;
+  if (hazard.type === "ghost") return 35;
+  if (hazard.type === "wind") return 25;
+  return 20;
+}
+
+function isPointInsideHazard(pos, hazard, margin = 0) {
+  if (!hazard) return false;
+  const hx = hazard.x || 0, hz = hazard.z || 0;
+  const rx = (hazard.radiusX || hazard.radius || 10) + margin;
+  const rz = (hazard.radiusZ || hazard.radius || 10) + margin;
+  const rot = hazard.rotation || 0;
+  const dx = pos.x - hx, dz = pos.z - hz;
+  const c = Math.cos(-rot), si = Math.sin(-rot);
+  const lx = dx * c - dz * si;
+  const lz = dx * si + dz * c;
+  return (lx * lx) / (rx * rx) + (lz * lz) / (rz * rz) <= 1;
+}
+
+function scorePointHazardRisk(pos, margin = 6) {
+  if (!currentMap.hazards || !currentMap.hazards.length) return 0;
+  let risk = 0;
+  for (const hazard of currentMap.hazards) {
+    if (isPointInsideHazard(pos, hazard, margin)) { risk += getHazardDanger(hazard); continue; }
+    const dx = pos.x - hazard.x, dz = pos.z - hazard.z;
+    const dist = Math.hypot(dx, dz);
+    const approxRadius = Math.max(hazard.radiusX || hazard.radius || 10, hazard.radiusZ || hazard.radius || 10);
+    const dangerZone = approxRadius + margin + 18;
+    if (dist < dangerZone) risk += getHazardDanger(hazard) * (1 - dist / dangerZone) * 0.35;
+  }
+  return risk;
+}
+
+function getSafeAITarget(racer, baseTargetIndex) {
+  const lookAheadT = wrap01(baseTargetIndex / checkpointCount);
+  const center = getTrackPoint(lookAheadT);
+  const normal = getTrackNormal(lookAheadT);
+  const laneCandidates = [racer.ai.laneOffset || 0, 0, -trackWidth * 0.28, trackWidth * 0.28, -trackWidth * 0.42, trackWidth * 0.42];
+  let bestPoint = null, bestOffset = 0, bestScore = Infinity;
+  for (const offset of laneCandidates) {
+    const candidate = center.clone().add(normal.clone().multiplyScalar(offset));
+    const roadPenalty = Math.abs(offset) > trackWidth * 0.48 ? 100 : 0;
+    const score = scorePointHazardRisk(candidate, 8) + roadPenalty + Math.abs(offset - (racer.ai.laneOffset || 0)) * 0.25;
+    if (score < bestScore) { bestScore = score; bestPoint = candidate; bestOffset = offset; }
+  }
+  racer.ai.laneOffset = THREE.MathUtils.lerp(racer.ai.laneOffset || 0, bestOffset, 0.04);
+  return bestPoint || center;
+}
+
+function getUpcomingHazardRiskForAI(racer) {
+  let totalRisk = 0;
+  for (const step of [1,2,3,4,5]) {
+    const t = wrap01((racer.ai.targetIndex + step) / checkpointCount);
+    const center = getTrackPoint(t);
+    const normal = getTrackNormal(t);
+    const pos = center.clone().add(normal.multiplyScalar(racer.ai.laneOffset || 0));
+    totalRisk += scorePointHazardRisk(pos, 8) * (1 / step);
+  }
+  return totalRisk;
+}
+
+function getNearestDangerousHazard(pos) {
+  if (!currentMap.hazards) return null;
+  let best = null, bestDist = Infinity;
+  for (const hazard of currentMap.hazards) {
+    if (getHazardDanger(hazard) < 80) continue;
+    const dist = Math.hypot(pos.x - hazard.x, pos.z - hazard.z);
+    if (dist < bestDist) { bestDist = dist; best = hazard; }
+  }
+  return best;
+}
+
 function updateAI(racer, dt) {
   if (racer.finished) return;
 
   const targetIndex = racer.ai.targetIndex + currentDifficulty.aiLookAhead;
-  const t = wrap01(targetIndex / checkpointCount);
-  const target = getTrackPoint(t);
-  const nearbyHazard = (currentMap.hazards || []).find(h => Math.hypot(target.x - h.x, target.z - h.z) < trackWidth * 0.9);
-  if (nearbyHazard) racer.ai.laneOffset *= 0.86;
-  const n = getTrackNormal(t);
-  target.add(n.multiplyScalar(racer.ai.laneOffset));
+  const target = getSafeAITarget(racer, targetIndex);
+  const upcomingRisk = getUpcomingHazardRiskForAI(racer);
+  if (DEBUG_AI_HAZARDS && upcomingRisk > 60) console.debug(`[AI Hazard] ${racer.name} risk=${upcomingRisk.toFixed(1)}`);
 
   const dx = target.x - racer.position.x;
   const dz = target.z - racer.position.z;
@@ -1964,6 +2064,15 @@ function updateAI(racer, dt) {
   let turn = THREE.MathUtils.clamp(diff * 1.75, -1, 1);
   let throttle = 1;
   let brake = Math.abs(diff) > 0.82 ? THREE.MathUtils.clamp(Math.abs(diff) * 0.34, 0.16, 0.46) : 0;
+
+  if (upcomingRisk > 80) {
+    throttle = Math.min(throttle, 0.72);
+    brake = Math.max(brake, 0.25);
+  }
+  if (upcomingRisk > 150) {
+    throttle = Math.min(throttle, 0.45);
+    brake = Math.max(brake, 0.45);
+  }
 
   if (!isOnTrack(racer.position)) {
     const closest = getClosestTrackInfo(racer.position);
@@ -1975,6 +2084,17 @@ function updateAI(racer, dt) {
     const backDiff = normalizeAngle(backAngle - racer.rotationY);
     turn = THREE.MathUtils.clamp(backDiff * 2.1, -1, 1);
     brake = 0.12;
+  }
+
+  const nearestDeadly = getNearestDangerousHazard(racer.position);
+  if (nearestDeadly && isPointInsideHazard(racer.position, nearestDeadly, 12)) {
+    const closest = getClosestTrackInfo(racer.position);
+    const safeAngle = Math.atan2(closest.point.x - racer.position.x, closest.point.z - racer.position.z);
+    const safeDiff = normalizeAngle(safeAngle - racer.rotationY);
+    turn = THREE.MathUtils.clamp(safeDiff * 2.5, -1, 1);
+    throttle = 0.4;
+    brake = Math.max(brake, 0.5);
+    racer.ai.laneOffset = THREE.MathUtils.lerp(racer.ai.laneOffset || 0, 0, 0.18);
   }
 
   if (racer.position.distanceTo(target) < trackWidth * 0.72) {
@@ -2076,7 +2196,7 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
   animateRider(racer, turn);
   checkHazards(racer);
   if (racer.respawnTimer > 0) return;
-  updateRaceProgress(racer);
+  updateRaceProgress(racer, dt);
   updateSkidMarks(racer, dt, canSkid);
   updateBlinkState(racer);
 }
@@ -2273,7 +2393,7 @@ function getForwardVector(racer) {
   );
 }
 
-function updateRaceProgress(racer) {
+function updateRaceProgress(racer, dt) {
   const targetIndex = racer.checkpointIndex % checkpointCount;
   const targetT = targetIndex / checkpointCount;
   const target = getTrackPoint(targetT);
@@ -2283,31 +2403,10 @@ function updateRaceProgress(racer) {
     racer.checkpointCountLap++;
   }
 
-  const toRacer = racer.position.clone().sub(finishLine.point);
-  const signed = finishLine.tangent.dot(toRacer);
-  const along = finishLine.tangent.dot(toRacer);
-  const lateral = Math.abs(finishLine.normal.dot(toRacer));
-  const inZone = Math.abs(along) <= finishLine.halfDepth && lateral <= finishLine.halfWidth;
-  const crossedForward = racer.prevFinishSide < 0 && signed >= 0;
-  const checkpointsReady = racer.checkpointCountLap >= Math.floor(checkpointCount * finishCheckpointRequirement);
-
-  if (inZone && crossedForward && checkpointsReady) {
-    racer.lap++;
-    racer.checkpointCountLap = 0;
-
-    if (racer.isPlayer && racer.lap <= totalLaps) showCenterMessage(`${racer.name}: Lap ${racer.lap}!`, 1100);
-
-    if (racer.lap > totalLaps && !racer.finished) {
-      racer.finished = true;
-      racer.finishTime = performance.now();
-      racer.progress = Number.MAX_SAFE_INTEGER - racer.finishTime;
-      if (racer.isPlayer && !resultsShown) showResultsOverlay();
-    }
-  }
-  racer.prevFinishSide = signed;
+  updateFinishLineLap(racer, dt);
 
   const closest = getClosestTrackInfo(racer.position);
-  if (!racer.finished) racer.progress = (racer.lap - 1) * 100000 + racer.checkpointCountLap * 1000 + closest.t;
+  if (!racer.finished) racer.progress = (racer.lap - 1) * 100000 + racer.lapCheckpointProgress * 1000 + closest.t;
 }
 
 /* =========================================================
