@@ -572,6 +572,7 @@ button.small{
 let scene, renderer, clock;
 let camMain, camP1, camP2;
 let p1, p2, ball, rim, backboard;
+let netLines = [];
 let scoreboardPlane, scoreboardTexture, scoreboardCtx;
 let arcLine;
 let arenaWalls = [];
@@ -644,6 +645,11 @@ let loosePickupDelay = 0;
 let ballCollisionCooldown = 0;
 let rimCollisionCooldown = 0;
 let backboardCollisionCooldown = 0;
+let netWobbleTimer = 0;
+let rimWobbleTimer = 0;
+let rimBasePosition = null;
+let netWobbleStrength = 0;
+let rimWobbleStrength = 0;
 let rimTouchCount = 0;
 let shotHasHitRimOrBoard = false;
 let debugDirections = false;
@@ -2191,20 +2197,28 @@ function buildHoop(){
   );
   rim.rotation.x = Math.PI/2;
   rim.position.copy(HOOP_POS);
+  rimBasePosition = rim.position.clone();
   scene.add(rim);
 
+  netLines = [];
   const netMat = new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:.75});
   for(let i=0;i<16;i++){
     const a = (i/16)*Math.PI*2;
     const x = Math.cos(a)*RIM_RADIUS;
     const z = Math.sin(a)*RIM_RADIUS;
-    scene.add(new THREE.Line(
+    const top = new THREE.Vector3(x,HOOP_POS.y-.05,HOOP_POS.z+z);
+    const bottom = new THREE.Vector3(x*.5,HOOP_POS.y-.95,HOOP_POS.z+z*.5);
+    const line = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(x,HOOP_POS.y-.05,HOOP_POS.z+z),
-        new THREE.Vector3(x*.5,HOOP_POS.y-.95,HOOP_POS.z+z*.5)
+        top.clone(),
+        bottom.clone()
       ]),
       netMat
-    ));
+    );
+    line.userData.netBaseTop = top.clone();
+    line.userData.netBaseBottom = bottom.clone();
+    netLines.push(line);
+    scene.add(line);
   }
 
   buildScoreboard();
@@ -3381,6 +3395,7 @@ function animate(){
         updateBall(dt);
         updateLayup(dt);
         updateDunk(dt);
+        updateHoopReaction(dt);
         loosePickupDelay = Math.max(0,loosePickupDelay - dt);
         ballCollisionCooldown = Math.max(0,ballCollisionCooldown - dt);
         backboardCollisionCooldown = Math.max(0,backboardCollisionCooldown - dt);
@@ -4808,6 +4823,7 @@ function handleBackboardAndRim(){
     ballVelocity.copy(reflectVelocity(new THREE.Vector3(n.x,0,n.z),.68,.9));
     ballVelocity.y = Math.max(Math.abs(ballVelocity.y)*.45 + .8,.9);
     handleRimRattle();
+    triggerNetWobble(0.45);
     spawnParticle(ball.position,0xff9f5a);
     playRimSound();
   }
@@ -5080,6 +5096,7 @@ function updateLayup(dt){
         setTimeout(() => resetPossession(nextPossessionAfterScore("p2"),true),650);
       }
       updateScoreboard();
+      triggerNetWobble(0.9);
       triggerCrowdReaction("make",0.62);
       spawnCourtThemedParticle(HOOP_POS.clone(),"make");
       checkGameWinner();
@@ -5449,6 +5466,7 @@ function updateDunk(dt){
     }
     updateScoreboard();
     animateNetSwish();
+    triggerNetWobble(1.45);
     playCrowdPulse();
     triggerShotSplash(HOOP_POS.clone(),"orange");
     showMoveFeedback(Math.random() < 0.5 ? "POSTER DUNK!" : "SLAM!",0.9);
@@ -5649,6 +5667,7 @@ function checkScore(){
       const shotKind = p1.moveMeta.lastShotType === "hook" ? "Hook Shot" : (points===3?"Jumper":"Layup");
       showShotBreakdown("Good",shotKind,p1.lastContestLabel,"Made");
       animateNetSwish();
+      triggerNetWobble(points===3 ? 1.1 : 0.95);
       playSwishSound();
       playCrowdPulse();
       triggerShotSplash(HOOP_POS.clone(),points===3?"gold":(p1.moveMeta.lastShotType==="hook"?"blue":"green"));
@@ -5664,6 +5683,7 @@ function checkScore(){
       const shotKind = p2.moveMeta.lastShotType === "hook" ? "Hook Shot" : (points===3?"Jumper":"Layup");
       showShotBreakdown("Good",shotKind,p2.lastContestLabel,"Made");
       animateNetSwish();
+      triggerNetWobble(points===3 ? 1.1 : 0.95);
       playSwishSound();
       playCrowdPulse();
       triggerShotSplash(HOOP_POS.clone(),points===3?"gold":(p2.moveMeta.lastShotType==="hook"?"blue":"green"));
@@ -5683,6 +5703,65 @@ function checkGameWinner(){
   if(scoreP1 >= targetScore || scoreP2 >= targetScore){
     if(Math.abs(scoreP1 - scoreP2) >= winBy){
       endGame(scoreP1 > scoreP2 ? "p1" : "p2");
+    }
+  }
+}
+
+function triggerNetWobble(strength = 1){
+  const s = Math.max(0.2,strength);
+  netWobbleStrength = Math.max(netWobbleStrength,s);
+  rimWobbleStrength = Math.max(rimWobbleStrength,s);
+  netWobbleTimer = Math.max(netWobbleTimer,0.28 + s*0.32);
+  rimWobbleTimer = Math.max(rimWobbleTimer,0.2 + s*0.24);
+}
+
+function updateHoopReaction(dt){
+  if(rim && rimBasePosition){
+    if(rimWobbleTimer > 0){
+      rimWobbleTimer = Math.max(0,rimWobbleTimer - dt);
+      const t = performance.now()*0.015;
+      const amp = 0.015 * rimWobbleStrength * (rimWobbleTimer/(0.2 + rimWobbleStrength*0.24));
+      rim.position.set(
+        rimBasePosition.x + Math.sin(t*1.7)*amp*0.7,
+        rimBasePosition.y + Math.cos(t*2.1)*amp*0.35,
+        rimBasePosition.z
+      );
+      rim.rotation.z = Math.sin(t*2.4) * amp * 2.6;
+    }else{
+      rim.position.copy(rimBasePosition);
+      rim.rotation.z *= Math.max(0,1 - dt*14);
+      rimWobbleStrength = 0;
+    }
+  }
+
+  if(netLines.length){
+    if(netWobbleTimer > 0){
+      netWobbleTimer = Math.max(0,netWobbleTimer - dt);
+      const t = performance.now()*0.02;
+      const life = netWobbleTimer/(0.28 + Math.max(netWobbleStrength,0.2)*0.32);
+      const amp = 0.09 * netWobbleStrength * life;
+      for(let i=0;i<netLines.length;i++){
+        const line = netLines[i];
+        const pos = line.geometry.attributes.position;
+        const baseTop = line.userData.netBaseTop;
+        const baseBottom = line.userData.netBaseBottom;
+        const phase = i*0.7;
+        const swayX = Math.sin(t + phase) * amp;
+        const swayZ = Math.cos(t*1.15 + phase) * amp * 0.45;
+        pos.setXYZ(0,baseTop.x,baseTop.y,baseTop.z);
+        pos.setXYZ(1,baseBottom.x + swayX,baseBottom.y,baseBottom.z + swayZ);
+        pos.needsUpdate = true;
+      }
+    }else{
+      for(const line of netLines){
+        const pos = line.geometry.attributes.position;
+        const baseTop = line.userData.netBaseTop;
+        const baseBottom = line.userData.netBaseBottom;
+        pos.setXYZ(0,baseTop.x,baseTop.y,baseTop.z);
+        pos.setXYZ(1,baseBottom.x,baseBottom.y,baseBottom.z);
+        pos.needsUpdate = true;
+      }
+      netWobbleStrength = 0;
     }
   }
 }
