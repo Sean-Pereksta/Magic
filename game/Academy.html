@@ -669,6 +669,7 @@ let pickups = [];
 let shells = [];
 let bananas = [];
 let bombs = [];
+let activeExplosions = [];
 let solidObstacles = [];
 let particles = [];
 let floatingTexts = [];
@@ -2024,7 +2025,27 @@ function createKartVisual(character, kart) {
     hub.rotation.z = Math.PI / 2;
     hub.castShadow = true;
 
-    wheel.add(tire, hub);
+    const tireStripe = new THREE.Mesh(
+      new THREE.BoxGeometry(wheelWidth * 0.2, wheelRadius * 1.52, wheelRadius * 0.24),
+      new THREE.MeshStandardMaterial({ color: 0xe9e9e9, roughness: 0.38, metalness: 0.08 })
+    );
+    tireStripe.position.set(0, 0, wheelRadius * 0.76);
+
+    const spokeMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.3, metalness: 0.7 });
+    for (let si = 0; si < 4; si++) {
+      const spoke = new THREE.Mesh(new THREE.BoxGeometry(wheelWidth * 0.24, wheelRadius * 0.58, 0.12), spokeMat);
+      spoke.rotation.x = (Math.PI * 0.5 * si);
+      spoke.position.set(0, Math.cos(spoke.rotation.x) * wheelRadius * 0.28, Math.sin(spoke.rotation.x) * wheelRadius * 0.28);
+      wheel.add(spoke);
+    }
+
+    const hubMarker = new THREE.Mesh(
+      new THREE.BoxGeometry(wheelWidth * 0.22, 0.2, 0.26),
+      new THREE.MeshStandardMaterial({ color: 0xffcc44, roughness: 0.32, metalness: 0.22 })
+    );
+    hubMarker.position.set(0, wheelRadius * 0.16, wheelRadius * 0.12);
+
+    wheel.add(tire, hub, tireStripe, hubMarker);
     wheel.position.set(pos[0], pos[1], pos[2]);
     root.add(wheel);
     wheels.push(wheel);
@@ -2738,6 +2759,7 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
   if (racer.itemCooldown > 0) racer.itemCooldown -= dt;
   if (racer.goldenMushroomTimer > 0) {
     racer.goldenMushroomTimer -= dt;
+    if (Math.random() < 0.65) spawnMushroomBoostEffects(racer, true);
     if (racer.goldenMushroomTimer <= 0 || racer.goldenMushroomUsesLeft <= 0) {
       racer.goldenMushroomTimer = 0; racer.goldenMushroomUsesLeft = 0;
     }
@@ -3087,12 +3109,42 @@ function giveItemFromBox(racer) {
   spawnItemPickupBurst(racer, racer.item);
 }
 
+
+function spawnMushroomBoostEffects(racer, golden = false) {
+  const forward = getForwardVector(racer);
+  const back = forward.clone().multiplyScalar(golden ? -5.8 : -4.8);
+  const pos = racer.position.clone().add(back);
+  pos.y = 1.2;
+
+  if (golden) {
+    burstParticles(pos, 0xffc545, 16, 1.1, { gravity: 5, life: [0.18, 0.4], size: [0.12, 0.26] });
+    burstParticles(pos, 0xffef93, 10, 0.9, { gravity: 4, life: [0.16, 0.32], size: [0.1, 0.2] });
+  } else {
+    burstParticles(pos, 0xff5030, 11, 0.92, { gravity: 8, life: [0.16, 0.36], size: [0.1, 0.24] });
+    burstParticles(pos, 0xff9a2c, 9, 0.74, { gravity: 7, life: [0.15, 0.34], size: [0.1, 0.2] });
+    burstParticles(pos, 0xffdf66, 7, 0.58, { gravity: 6, life: [0.14, 0.3], size: [0.09, 0.18] });
+  }
+
+  const streakBase = pos.clone().add(forward.clone().multiplyScalar(-0.8));
+  for (let i = 0; i < (golden ? 4 : 3); i++) {
+    const streak = streakBase.clone().add(new THREE.Vector3((Math.random() - 0.5) * 2.8, Math.random() * 0.9, (Math.random() - 0.5) * 2.8));
+    burstParticles(streak, golden ? 0xfff0b0 : 0xffe1a3, 1, golden ? 0.9 : 0.75, { gravity: 2, life: [0.09, 0.22], size: [0.15, 0.32] });
+  }
+
+  const axleOffset = 2.5;
+  for (const side of [-1, 1]) {
+    const wheelGlow = racer.position.clone().add(forward.clone().multiplyScalar(-2.4)).add(new THREE.Vector3(side * axleOffset, 0.85, 0));
+    burstParticles(wheelGlow, golden ? 0xffdf7a : 0xffb766, golden ? 2 : 1, golden ? 0.36 : 0.28, { gravity: 1, life: [0.08, 0.18], size: [0.18, 0.3] });
+  }
+}
+
 function applyGoldenBoost(racer) {
   racer.boostTimer = Math.max(racer.boostTimer, 0.78 * racer.boostStrength);
   racer.speed = Math.max(racer.speed, racer.maxSpeed * 0.52);
   racer.velocity.add(getForwardVector(racer).multiplyScalar(10.5));
   burstParticles(racer.position, 0xffc34d, 22, 1.6, { gravity: 8, life: [0.28, 0.58], size: [0.13, 0.28] });
   burstParticles(racer.position, 0xff7f2a, 12, 1.1, { gravity: 10, life: [0.2, 0.42], size: [0.1, 0.22] });
+  spawnMushroomBoostEffects(racer, true);
   showFloatingText(racer, "GOLD BOOST!");
 }
 
@@ -3116,6 +3168,7 @@ function useItem(racer) {
     racer.boostTimer = Math.max(racer.boostTimer, 1.25 * racer.boostStrength);
     racer.speed = Math.max(racer.speed, racer.maxSpeed * 0.55);
     racer.velocity.add(getForwardVector(racer).multiplyScalar(12));
+    spawnMushroomBoostEffects(racer, false);
     showFloatingText(racer, "MUSHROOM!");
   }
   if (item === "GOLDEN_MUSHROOM") {
@@ -3290,24 +3343,45 @@ function dropBomb(racer) {
   const fuse = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.8, 6), mats.white);
   fuse.position.y = 1.1;
   group.add(body, fuse);
-  const back = getForwardVector(racer).multiplyScalar(-6.2);
-  group.position.copy(racer.position).add(back); group.position.y = 1.5;
+
+  const forward = getForwardVector(racer);
+  const launchPos = racer.position.clone().add(forward.clone().multiplyScalar(5.4));
+  launchPos.y = 2.45;
+  group.position.copy(launchPos);
   scene.add(group);
-  bombs.push({ group, owner: racer, fuse: 2, ownerImmunity: 0.8, wobble: Math.random()*10 });
+
+  bombs.push({
+    group,
+    owner: racer,
+    fuse: 1.6 + Math.random() * 0.6,
+    ownerImmunity: 0.5,
+    wobble: Math.random() * 10,
+    velocity: forward.clone().multiplyScalar(45 + Math.random() * 20),
+    verticalVelocity: 12 + Math.random() * 6,
+    gravity: 36,
+    bounce: 0.42
+  });
 }
 
 function explodeBomb(bomb) {
   const center = bomb.group.position.clone();
-  const radius = 19;
   burstParticles(center, 0xff9322, 58, 2.5, { gravity: 12, life: [0.35, 0.8], size: [0.18, 0.36] });
   burstParticles(center, 0xffef88, 30, 2.0, { gravity: 8, life: [0.25, 0.62], size: [0.15, 0.32] });
   burstParticles(center, 0x555555, 26, 1.25, { gravity: 4, life: [0.5, 1.1], size: [0.2, 0.46] });
-  racers.forEach(r => {
-    if (r.finished) return;
-    if (r === bomb.owner && bomb.ownerImmunity > 0) return;
-    const d = r.position.distanceTo(center);
-    if (d <= radius) hitRacer(r, bomb.owner, 1.9, center, true);
-  });
+
+  const sphereMat = new THREE.MeshBasicMaterial({ color: 0xff8b2a, transparent: true, opacity: 0.32, side: THREE.DoubleSide, depthWrite: false });
+  const sphere = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 3), sphereMat);
+  sphere.position.copy(center);
+  sphere.scale.setScalar(0.001);
+
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false });
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.95, 32), ringMat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.copy(center);
+  ring.position.y = 0.15;
+
+  scene.add(sphere, ring);
+  activeExplosions.push({ mesh: sphere, ring, center, radius: 0, maxRadius: 22, life: 0.45, totalLife: 0.45, hitRacers: new Set(), owner: bomb.owner, ownerImmunity: 0.14 });
 }
 
 function updateBombs(dt) {
@@ -3315,11 +3389,63 @@ function updateBombs(dt) {
     const bomb=bombs[i];
     bomb.fuse -= dt;
     bomb.ownerImmunity = Math.max(0, bomb.ownerImmunity - dt);
-    bomb.group.rotation.x += dt * 2.2;
-    bomb.group.rotation.z = Math.sin(performance.now()*0.015 + bomb.wobble) * 0.12;
-    bomb.group.position.y = 1.5 + Math.sin(performance.now()*0.01 + bomb.wobble) * 0.2;
+    bomb.verticalVelocity -= bomb.gravity * dt;
+    bomb.group.position.add(bomb.velocity.clone().multiplyScalar(dt));
+    bomb.group.position.y += bomb.verticalVelocity * dt;
+
+    if (bomb.group.position.y <= 1.5) {
+      bomb.group.position.y = 1.5;
+      if (Math.abs(bomb.verticalVelocity) > 3.5) {
+        bomb.verticalVelocity *= -bomb.bounce;
+        bomb.velocity.multiplyScalar(0.76);
+      } else {
+        bomb.verticalVelocity = 0;
+        bomb.velocity.multiplyScalar(0.84);
+      }
+    }
+
+    bomb.group.rotation.x += dt * (7 + bomb.velocity.length() * 0.05);
+    bomb.group.rotation.z += dt * 2.3 + Math.sin(performance.now()*0.015 + bomb.wobble) * 0.01;
     burstParticles(bomb.group.position.clone().add(new THREE.Vector3(0,1.3,0)), 0xffaa33, 1, 0.2, { gravity: 1, life: [0.08,0.15], size:[0.06,0.12] });
     if (bomb.fuse <= 0) { explodeBomb(bomb); scene.remove(bomb.group); bombs.splice(i,1); }
+  }
+}
+
+function updateExplosions(dt) {
+  for (let i = activeExplosions.length - 1; i >= 0; i--) {
+    const explosion = activeExplosions[i];
+    explosion.life -= dt;
+    explosion.ownerImmunity = Math.max(0, explosion.ownerImmunity - dt);
+    const progress = THREE.MathUtils.clamp(1 - (explosion.life / explosion.totalLife), 0, 1);
+    explosion.radius = explosion.maxRadius * progress;
+    explosion.mesh.scale.setScalar(Math.max(0.001, explosion.radius));
+    explosion.mesh.material.opacity = 0.32 * (1 - progress);
+    explosion.mesh.rotation.y += dt * 5.4;
+    explosion.mesh.rotation.x += dt * 3.2;
+
+    if (explosion.ring) {
+      explosion.ring.scale.setScalar(0.85 + progress * explosion.maxRadius * 0.65);
+      explosion.ring.material.opacity = 0.35 * (1 - progress);
+      explosion.ring.rotation.z += dt * 1.6;
+    }
+
+    racers.forEach(racer => {
+      if (racer.finished || explosion.hitRacers.has(racer)) return;
+      if (racer === explosion.owner && explosion.ownerImmunity > 0) return;
+      if (racer.position.distanceTo(explosion.center) <= explosion.radius) {
+        hitRacer(racer, explosion.owner, 1.9, explosion.center, true);
+        explosion.hitRacers.add(racer);
+      }
+    });
+
+    if (explosion.life <= 0) {
+      scene.remove(explosion.mesh);
+      scene.remove(explosion.ring);
+      explosion.mesh.geometry.dispose();
+      explosion.mesh.material.dispose();
+      if (explosion.ring) { explosion.ring.geometry.dispose(); explosion.ring.material.dispose(); }
+      activeExplosions.splice(i, 1);
+    }
   }
 }
 
@@ -4109,6 +4235,7 @@ function animate() {
   updateShells(dt);
   updateBananas(dt);
   updateBombs(dt);
+  updateExplosions(dt);
   updateParticles(dt);
   updateFloatingTexts(dt);
 
