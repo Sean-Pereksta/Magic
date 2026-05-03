@@ -738,6 +738,14 @@ let particles = [];
 let floatingTexts = [];
 let hazardMeshes = [];
 let hazardShimmers = [];
+let skidMarks = [];
+
+const MAX_PARTICLES = 320;
+const MAX_SKID_MARKS = 170;
+const MAX_SPEED_STREAKS = 130;
+const BOOST_FOV_ADD = 10;
+const SPEED_FOV_ADD = 6;
+const BASE_CAMERA_FOV = 65;
 
 /* =========================================================
    MATERIALS
@@ -779,6 +787,9 @@ function clearScene() {
   floatingTexts = [];
   hazardMeshes = [];
   hazardShimmers = [];
+  skidMarks = [];
+  camera1.fov = BASE_CAMERA_FOV;
+  camera2.fov = BASE_CAMERA_FOV;
 }
 
 function buildWorld(map) {
@@ -2006,6 +2017,7 @@ function updateAI(racer, dt) {
 }
 
 function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
+  racer.turnInput = turn || 0;
   if (racer.respawnTimer > 0) {
     racer.respawnTimer -= dt;
     racer.speed = 0;
@@ -2078,7 +2090,8 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
   racer.group.rotation.y = racer.rotationY;
 
   racer.wheels.forEach(wheel => {
-    const spinScale = 0.56 + (1 / Math.max(0.7, racer.kart.weight)) * 0.27;
+    const speedFactor = 0.8 + THREE.MathUtils.clamp(Math.abs(racer.speed) / 42, 0, 1.4);
+    const spinScale = (0.56 + (1 / Math.max(0.7, racer.kart.weight)) * 0.27) * speedFactor;
     wheel.rotation.x += racer.speed * dt * spinScale;
   });
 
@@ -2143,34 +2156,46 @@ function performRespawn(racer) {
   racer.drift.sparkLevel = 0;
   racer.invulnTimer = Math.max(racer.invulnTimer, 1.8);
   racer.group.visible = true;
+  addRecoveryEffects(racer, true);
 }
 
 function updateSkidMarks(racer, dt, canSkid) {
-  if (!canSkid || !isOnTrack(racer.position)) return;
+  const hardTurnAtSpeed = canSkid;
+  const fromDrift = racer.drift.active && Math.abs(racer.speed) > 18;
+  const shouldSkid = (hardTurnAtSpeed || fromDrift) && isOnTrack(racer.position);
+  if (!shouldSkid) return;
   racer.skidMarkTimer -= dt;
   if (racer.skidMarkTimer > 0) return;
-  racer.skidMarkTimer = 0.06;
+  racer.skidMarkTimer = racer.drift.active ? 0.035 : 0.06;
   const left = new THREE.Vector3(Math.cos(racer.rotationY), 0, -Math.sin(racer.rotationY)).multiplyScalar(-2.2);
   const right = left.clone().multiplyScalar(-1);
-  spawnSkidMark(racer.position.clone().add(left));
-  spawnSkidMark(racer.position.clone().add(right));
+  spawnSkidMark(racer.position.clone().add(left), racer.rotationY, racer.drift.active ? 0.95 : 0.8);
+  spawnSkidMark(racer.position.clone().add(right), racer.rotationY, racer.drift.active ? 0.95 : 0.8);
 }
 
-function spawnSkidMark(pos) {
+function spawnSkidMark(pos, rotationY = 0, life = 0.8) {
   const mark = new THREE.Mesh(
     new THREE.PlaneGeometry(0.9, 2.1),
     new THREE.MeshBasicMaterial({ color: 0x1a1a1a, transparent: true, opacity: 0.35, depthWrite: false })
   );
   mark.rotation.x = -Math.PI / 2;
-  mark.rotation.z = Math.random() * Math.PI;
+  mark.rotation.z = rotationY + (Math.random() - 0.5) * 0.28;
   mark.position.set(pos.x, 0.07, pos.z);
   scene.add(mark);
 
-  particles.push({
+  skidMarks.push({
     mesh: mark,
-    velocity: new THREE.Vector3(0, 0, 0),
-    life: 0.65
+    life,
+    maxLife: life
   });
+  if (skidMarks.length > MAX_SKID_MARKS) {
+    const removed = skidMarks.shift();
+    if (removed) {
+      scene.remove(removed.mesh);
+      removed.mesh.geometry.dispose();
+      removed.mesh.material.dispose();
+    }
+  }
 }
 
 function updateDrift(racer, dt, driftInput, turn, brake) {
@@ -2563,7 +2588,17 @@ function hitRacer(target, attacker, force) {
   }
 
   burstParticles(target.position, 0xfff0aa, 22, 1.5);
+  burstParticles(target.position, 0xfff6cc, 8, 0.55, { gravity: 7, size: [0.12, 0.22], life: [0.35, 0.65] });
   showFloatingText(target, "SPIN!");
+  addRecoveryEffects(target, false);
+}
+
+function addRecoveryEffects(racer, fromRespawn) {
+  const base = racer.position.clone();
+  burstParticles(base, 0xffe983, fromRespawn ? 16 : 13, fromRespawn ? 1.1 : 0.95, { gravity: 10, life: [0.35, 0.7] });
+  burstParticles(base, 0xffffff, fromRespawn ? 8 : 6, 0.62, { gravity: 5, life: [0.2, 0.4], size: [0.08, 0.16] });
+  spawnSkidMark(base.clone().add(new THREE.Vector3(-2.1, 0, -2.1)), racer.rotationY, 1.1);
+  spawnSkidMark(base.clone().add(new THREE.Vector3(2.1, 0, -2.1)), racer.rotationY, 1.1);
 }
 
 /* =========================================================
@@ -2586,18 +2621,21 @@ function updateRacerCollisions() {
         const overlap = 6.4 - dist;
         const totalWeight = a.weight + b.weight;
 
-        const aMovedBy = b.weight / totalWeight;
-        const bMovedBy = a.weight / totalWeight;
+        const weightDelta = THREE.MathUtils.clamp((a.weight - b.weight) / Math.max(0.2, totalWeight), -0.45, 0.45);
+        const aMovedBy = THREE.MathUtils.clamp((b.weight / totalWeight) - weightDelta * 0.45, 0.18, 0.88);
+        const bMovedBy = THREE.MathUtils.clamp((a.weight / totalWeight) + weightDelta * 0.45, 0.18, 0.88);
 
         a.position.add(dir.clone().multiplyScalar(-overlap * aMovedBy * 0.75));
         b.position.add(dir.clone().multiplyScalar(overlap * bMovedBy * 0.75));
 
-        const impact = Math.abs(a.speed - b.speed) * 0.025;
+        const impact = Math.abs(a.speed - b.speed) * 0.022;
 
         a.speed -= impact * b.weight;
         b.speed -= impact * a.weight;
 
-        burstParticles(a.position.clone().lerp(b.position, 0.5), 0xffffff, 7, 0.55);
+        const hitPos = a.position.clone().lerp(b.position, 0.5);
+        burstParticles(hitPos, 0xffffff, 5, 0.45, { gravity: 14, life: [0.15, 0.3], size: [0.08, 0.16] });
+        burstParticles(hitPos, 0xffd38a, 4, 0.52, { gravity: 16, life: [0.2, 0.38], size: [0.1, 0.2] });
       }
     }
   }
@@ -2607,10 +2645,16 @@ function updateRacerCollisions() {
    PARTICLES AND FLOATING TEXT
 ========================================================= */
 
-function burstParticles(pos, color, count, power) {
+function burstParticles(pos, color, count, power, opts = {}) {
+  const gravity = opts.gravity ?? 18;
+  const lifeMin = opts.life?.[0] ?? 0.45;
+  const lifeMax = opts.life?.[1] ?? 0.9;
+  const sizeMin = opts.size?.[0] ?? 0.25;
+  const sizeMax = opts.size?.[1] ?? 0.5;
   for (let i = 0; i < count; i++) {
+    if (particles.length >= MAX_PARTICLES) return;
     const mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.25 + Math.random() * 0.25, 8, 8),
+      new THREE.SphereGeometry(sizeMin + Math.random() * (sizeMax - sizeMin), 8, 8),
       new THREE.MeshStandardMaterial({
         color,
         emissive: color,
@@ -2632,27 +2676,50 @@ function burstParticles(pos, color, count, power) {
     particles.push({
       mesh,
       velocity,
-      life: 0.45 + Math.random() * 0.45
+      life: lifeMin + Math.random() * Math.max(0.01, lifeMax - lifeMin),
+      gravity
     });
   }
 }
 
 function updateParticles(dt) {
+  for (let i = skidMarks.length - 1; i >= 0; i--) {
+    const skid = skidMarks[i];
+    skid.life -= dt;
+    skid.mesh.material.opacity = Math.max(0, 0.42 * (skid.life / skid.maxLife));
+    if (skid.life <= 0) {
+      scene.remove(skid.mesh);
+      skid.mesh.geometry.dispose();
+      skid.mesh.material.dispose();
+      skidMarks.splice(i, 1);
+    }
+  }
+
   for (let i = particles.length - 1; i >= 0; i--) {
     const particle = particles[i];
 
     particle.life -= dt;
-    particle.velocity.y -= 18 * dt;
+    particle.velocity.y -= (particle.gravity || 18) * dt;
     particle.mesh.position.add(particle.velocity.clone().multiplyScalar(dt));
     particle.mesh.scale.multiplyScalar(0.96);
 
     if (particle.life <= 0) {
       scene.remove(particle.mesh);
+      particle.mesh.geometry.dispose();
+      particle.mesh.material.dispose();
       particles.splice(i, 1);
     }
   }
 
   racers.forEach(racer => {
+    const speedRatio = THREE.MathUtils.clamp(Math.abs(racer.speed) / Math.max(1, racer.maxSpeed), 0, 1.45);
+    const hardTurn = Math.abs(racer.turnInput || 0) > 0.6 && Math.abs(racer.speed) > 22;
+    if ((racer.drift.active || hardTurn) && Math.random() < 0.35) {
+      const tirePos = racer.position.clone().add(getForwardVector(racer).multiplyScalar(-3.4));
+      tirePos.y = 1.1;
+      burstParticles(tirePos, 0xd8d8d8, 1, 0.34, { gravity: 4, life: [0.28, 0.55], size: [0.16, 0.3] });
+    }
+
     if (racer.drift.active && Math.random() < 0.38) {
       const color = racer.drift.sparkLevel === 2
         ? 0xffaa22
@@ -2678,6 +2745,13 @@ function updateParticles(dt) {
       const pos = racer.position.clone().add(getForwardVector(racer).multiplyScalar(-4.6 - flameScale));
       pos.y = 1;
       burstParticles(pos, 0xff8844, Math.ceil(flameScale * 2), 0.62 * flameScale);
+      burstParticles(pos.clone().add(new THREE.Vector3(0, 0.3, 0)), 0xffdd66, 1, 0.35, { gravity: 6, life: [0.12, 0.24], size: [0.18, 0.28] });
+    }
+
+    if (speedRatio > 0.88 && Math.random() < 0.35 && particles.length < MAX_SPEED_STREAKS) {
+      const streakPos = racer.position.clone().add(getForwardVector(racer).multiplyScalar(-8 - speedRatio * 3));
+      streakPos.y = 1.8 + Math.random() * 1.4;
+      burstParticles(streakPos, 0xc6e9ff, 1, 0.18 + speedRatio * 0.22, { gravity: 1, life: [0.09, 0.2], size: [0.08, 0.16] });
     }
   });
 }
@@ -2736,11 +2810,23 @@ function updateFloatingTexts(dt) {
 function updateCamera(camera, racer, dt) {
   if (!racer) return;
 
-  const behind = getForwardVector(racer).multiplyScalar(-31);
-  const desired = racer.position.clone().add(behind).add(new THREE.Vector3(0, 18, 0));
+  const speedNorm = THREE.MathUtils.clamp(Math.abs(racer.speed) / Math.max(1, racer.maxSpeed), 0, 1.35);
+  const boostNorm = racer.boostTimer > 0 ? THREE.MathUtils.clamp(racer.boostTimer * 0.9, 0, 1) : 0;
+  const camPullback = 31 + speedNorm * 4 + boostNorm * 6;
+  const behind = getForwardVector(racer).multiplyScalar(-camPullback);
+  const desired = racer.position.clone().add(behind).add(new THREE.Vector3(0, 18 + speedNorm * 1.4, 0));
+  const shake = speedNorm > 0.9 ? (speedNorm - 0.9) * 0.18 : 0;
+  if (shake > 0) {
+    const t = performance.now() * 0.02 + racer.playerIndex * 13;
+    desired.x += Math.sin(t) * shake;
+    desired.y += Math.cos(t * 1.2) * shake * 0.45;
+  }
 
   camera.position.lerp(desired, 1 - Math.pow(0.001, dt));
   camera.lookAt(racer.position.x, racer.position.y + 4.3, racer.position.z);
+  const targetFov = BASE_CAMERA_FOV + speedNorm * SPEED_FOV_ADD + boostNorm * BOOST_FOV_ADD;
+  camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 0.12);
+  camera.updateProjectionMatrix();
 }
 
 function renderScene() {
