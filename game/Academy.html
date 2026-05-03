@@ -693,7 +693,7 @@ function buildMaterials(map) {
     black: new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 }),
     white: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 }),
     yellow: new THREE.MeshStandardMaterial({ color: 0xffdd33, roughness: 0.5 }),
-    item: new THREE.MeshStandardMaterial({ color: 0x00d9ff, emissive: 0x006677, roughness: 0.25 }),
+    item: new THREE.MeshStandardMaterial({ color: 0x59ecff, emissive: 0x0d9ac2, emissiveIntensity: 1.05, roughness: 0.2, metalness: 0.05 }),
     redShell: new THREE.MeshStandardMaterial({ color: 0xdd2222, roughness: 0.45 }),
     greenShell: new THREE.MeshStandardMaterial({ color: 0x18bb45, roughness: 0.45 }),
     banana: new THREE.MeshStandardMaterial({ color: 0xffdd22, emissive: 0x332900, roughness: 0.55 }),
@@ -1078,8 +1078,50 @@ function createStartLineAndBanner(map) {
   scene.add(triggerDebug);
 }
 
+
+function createQuestionMarkTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, 128, 128);
+  ctx.font = "bold 96px Arial";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.lineWidth = 10;
+  ctx.strokeStyle = "rgba(0,0,0,0.85)";
+  ctx.fillStyle = "#fff06a";
+  ctx.strokeText("?", 64, 68);
+  ctx.fillText("?", 64, 68);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function spawnItemPickupBurst(racer, item) {
+  const burstPos = racer.position.clone();
+  burstPos.y += 2.8;
+  burstParticles(burstPos, 0xe8ffff, 16, 0.82, { gravity: 7, life: [0.2, 0.45], size: [0.16, 0.3] });
+  burstParticles(burstPos, 0x7cf3ff, 12, 0.9, { gravity: 8, life: [0.22, 0.5], size: [0.14, 0.28] });
+
+  const sparkleOffsets = [
+    new THREE.Vector3(3, 2, 0),
+    new THREE.Vector3(-3, 2, 0),
+    new THREE.Vector3(0, 2, 3),
+    new THREE.Vector3(0, 2, -3)
+  ];
+
+  sparkleOffsets.forEach(offset => {
+    const pos = racer.position.clone().add(offset);
+    burstParticles(pos, 0xffffff, 4, 0.46, { gravity: 6, life: [0.14, 0.32], size: [0.12, 0.22] });
+  });
+
+  showFloatingText(racer, `ITEM: ${itemName(item).toUpperCase()}!`);
+}
+
 function createItemBoxes() {
   const zones = [0.08, 0.17, 0.29, 0.42, 0.54, 0.68, 0.79, 0.91];
+  const questionTex = createQuestionMarkTexture();
 
   zones.forEach(t => {
     const p = getTrackPoint(t);
@@ -1100,7 +1142,29 @@ function createItemBoxes() {
         new THREE.LineBasicMaterial({ color: 0xffffff })
       );
 
-      box.add(cube, wire);
+      const questionMat = new THREE.MeshBasicMaterial({
+        map: questionTex,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        color: 0xffffff
+      });
+
+      const makeQuestionPlane = (x, z, rotY = 0) => {
+        const plane = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.4), questionMat);
+        plane.position.set(x, 0, z);
+        plane.rotation.y = rotY;
+        return plane;
+      };
+
+      box.add(
+        cube,
+        wire,
+        makeQuestionPlane(0, 2.38, 0),
+        makeQuestionPlane(0, -2.38, Math.PI),
+        makeQuestionPlane(2.38, 0, Math.PI / 2),
+        makeQuestionPlane(-2.38, 0, -Math.PI / 2)
+      );
       box.position.set(p.x + n.x * offset, 3.2, p.z + n.z * offset);
       const trackCenter = getTrackPoint(t).clone();
       if ((currentMap.hazards || []).some(h => isPointInsideHazard(box.position, h, 2))) {
@@ -1112,11 +1176,13 @@ function createItemBoxes() {
       pickups.push({
         group: box,
         active: true,
-        cooldown: 0
+        cooldown: 0,
+        phase: Math.random() * Math.PI * 2
       });
     });
   });
 }
+
 
 function createHazards(map) {
   const hazards = map.hazards || [];
@@ -2576,7 +2642,7 @@ function itemName(item) {
 
 function giveItemFromBox(racer) {
   racer.item = itemTypes[Math.floor(Math.random() * itemTypes.length)];
-  showFloatingText(racer, itemName(racer.item));
+  spawnItemPickupBurst(racer, racer.item);
 }
 
 function useItem(racer) {
@@ -2612,7 +2678,11 @@ function useItem(racer) {
 function updatePickups(dt) {
   pickups.forEach(pickup => {
     pickup.group.rotation.y += dt * 1.55;
-    pickup.group.position.y = 3.2 + Math.sin(performance.now() * 0.004 + pickup.group.position.x) * 0.38;
+    const t = performance.now() * 0.003 + pickup.phase;
+    pickup.group.position.y = 3.2 + Math.sin(t) * 0.38;
+    if (pickup.group.children[0]?.material) {
+      pickup.group.children[0].material.emissiveIntensity = 0.85 + Math.sin(t * 1.9) * 0.35;
+    }
 
     if (!pickup.active) {
       pickup.cooldown -= dt;
