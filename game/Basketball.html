@@ -601,7 +601,7 @@ let currentTournamentEnemy = null;
 let isChampionshipGame = false;
 const TOURNAMENT_SAVE_KEY = "basketballTournamentSave";
 const TOURNAMENT_PLAYER_ID = "player";
-const tournamentDifficultyStrength = {rookie:1,easy:2,normal:3,hard:4,elite:5,nightmare:6,legend:7};
+const tournamentDifficultyStrength = {rookie:1,easy:2,normal:3,hard:4,elite:5,nightmare:6,legend:7,pro:8,superstar:9,hallOfFame:10,impossible:11};
 let confettiPool = [];
 let confettiActive = [];
 
@@ -886,7 +886,11 @@ const difficultySettings = {
   hard:{reactionMin:.18,reactionMax:.28,steal:1.5,block:1.15,speed:3.8,sprint:.66,attack:.78,aggression:.68,patience:.62,mistakeChance:.12,fakeBiteChance:.22,shotDiscipline:.68,defensiveIQ:.72,crossoverUse:.4,pumpFakeUse:.38,stepBackUse:.26,sideHopUse:.34,contestTiming:.68,stealDiscipline:.68,staminaManagement:.66,spacingIQ:.72,composure:.68},
   elite:{reactionMin:.12,reactionMax:.2,steal:1.95,block:1.55,speed:4.1,sprint:.8,attack:.94,aggression:.74,patience:.72,mistakeChance:.1,fakeBiteChance:.16,shotDiscipline:.78,defensiveIQ:.82,crossoverUse:.46,pumpFakeUse:.45,stepBackUse:.34,sideHopUse:.4,contestTiming:.78,stealDiscipline:.78,staminaManagement:.74,spacingIQ:.82,composure:.8},
   nightmare:{reactionMin:.09,reactionMax:.16,steal:2.4,block:2,speed:4.45,sprint:.9,attack:1.08,aggression:.84,patience:.68,mistakeChance:.09,fakeBiteChance:.12,shotDiscipline:.86,defensiveIQ:.9,crossoverUse:.5,pumpFakeUse:.52,stepBackUse:.42,sideHopUse:.45,contestTiming:.86,stealDiscipline:.86,staminaManagement:.8,spacingIQ:.9,composure:.86},
-  legend:{reactionMin:.06,reactionMax:.12,steal:3,block:2.6,speed:4.8,sprint:1,attack:1.22,aggression:.9,patience:.82,mistakeChance:.08,fakeBiteChance:.08,shotDiscipline:.92,defensiveIQ:.95,crossoverUse:.62,pumpFakeUse:.58,stepBackUse:.5,sideHopUse:.55,contestTiming:.92,stealDiscipline:.92,staminaManagement:.9,spacingIQ:.94,composure:.94}
+  legend:{reactionMin:.06,reactionMax:.12,steal:3,block:2.6,speed:4.8,sprint:1,attack:1.22,aggression:.9,patience:.82,mistakeChance:.08,fakeBiteChance:.08,shotDiscipline:.92,defensiveIQ:.95,crossoverUse:.62,pumpFakeUse:.58,stepBackUse:.5,sideHopUse:.55,contestTiming:.92,stealDiscipline:.92,staminaManagement:.9,spacingIQ:.94,composure:.94},
+  pro:{reactionMin:.10,reactionMax:.18,steal:2.2,block:1.9,speed:4.35,sprint:.86,attack:1.0,aggression:.76,patience:.78,mistakeChance:.075,fakeBiteChance:.11,shotDiscipline:.84,defensiveIQ:.88,crossoverUse:.54,pumpFakeUse:.48,stepBackUse:.42,sideHopUse:.45,contestTiming:.86,stealDiscipline:.84,staminaManagement:.84,spacingIQ:.88,composure:.86},
+  superstar:{reactionMin:.075,reactionMax:.13,steal:2.55,block:2.25,speed:4.5,sprint:.92,attack:1.12,aggression:.82,patience:.84,mistakeChance:.055,fakeBiteChance:.08,shotDiscipline:.90,defensiveIQ:.93,crossoverUse:.62,pumpFakeUse:.55,stepBackUse:.50,sideHopUse:.52,contestTiming:.91,stealDiscipline:.90,staminaManagement:.90,spacingIQ:.92,composure:.92},
+  hallOfFame:{reactionMin:.055,reactionMax:.10,steal:2.85,block:2.55,speed:4.65,sprint:.97,attack:1.2,aggression:.86,patience:.90,mistakeChance:.035,fakeBiteChance:.055,shotDiscipline:.95,defensiveIQ:.97,crossoverUse:.68,pumpFakeUse:.62,stepBackUse:.58,sideHopUse:.58,contestTiming:.96,stealDiscipline:.95,staminaManagement:.95,spacingIQ:.96,composure:.96},
+  impossible:{reactionMin:.035,reactionMax:.075,steal:3.1,block:2.8,speed:4.75,sprint:1.0,attack:1.28,aggression:.90,patience:.94,mistakeChance:.02,fakeBiteChance:.035,shotDiscipline:.98,defensiveIQ:1.0,crossoverUse:.74,pumpFakeUse:.68,stepBackUse:.65,sideHopUse:.64,contestTiming:1.0,stealDiscipline:.98,staminaManagement:.98,spacingIQ:1.0,composure:1.0}
 };
 
 const botPersonalities = {
@@ -3797,9 +3801,27 @@ function chooseBotIntent(){
   const w = {...getBotPersonality()};
   const dist = flatDistance(p2.group.position,HOOP_POS);
   const defDist = flatDistance(p2.group.position,p1.group.position);
-  if(dist < 2.9){ w.attack_rim = .38; w.layup = (w.layup || .2) + .25; }
-  if(defDist < 1.3){ w.step_back = (w.stepBack || 0) + s.stepBackUse*.5; w.pull_up = (w.pullUp || 0) + s.pumpFakeUse*.45; }
-  if(p1.stumbledTimer > 0){ w.pull_up = (w.pullUp || 0) + .22; }
+  if(dist < 2.9){
+    const rimPressure = flatDistance(p1.group.position,HOOP_POS);
+    const profileFinisher = (p2.profile.layup || 1) > (p2.profile.shot || 1) * 1.08;
+    w.attack_rim = (w.attack_rim || w.drive || .22) + (profileFinisher ? .42 : .24);
+    w.layup = (w.layup || .2) + (profileFinisher ? .32 : .12);
+    if(rimPressure < 1.5 && s.defensiveIQ > .84){
+      w.step_back = (w.step_back || w.stepBack || 0) + s.stepBackUse * .8;
+      w.pull_up = (w.pull_up || w.pullUp || 0) + s.shotDiscipline * .55;
+      w.attack_rim *= .62;
+    }
+  }
+  if(defDist < 1.3){ w.step_back = (w.step_back || w.stepBack || 0) + s.stepBackUse*.5; w.pull_up = (w.pull_up || w.pullUp || 0) + s.pumpFakeUse*.45; }
+  if(defDist > 1.7 && s.shotDiscipline > .78 && (p2.profile.shot || 1) > (p2.profile.layup || 1)*.95){
+    w.pull_up = (w.pull_up || w.pullUp || 0) + .24 + s.shotDiscipline * .35;
+    w.step_back = (w.step_back || w.stepBack || 0) + s.stepBackUse * .38;
+  }
+  if((p2.stamina || 1) < (1 - s.staminaManagement * .55)){
+    w.reset_dribble = (w.reset_dribble || w.reset || 0) + .34;
+    w.attack_rim = (w.attack_rim || w.drive || .2) * .72;
+  }
+  if(p1.stumbledTimer > 0){ w.attack_rim = (w.attack_rim || w.drive || .2) + .28; w.pull_up = (w.pull_up || w.pullUp || 0) + .22; }
   const recentPenalty = new Set(botBrain.recentMoves.slice(-3));
   Object.keys(w).forEach(k=>{ if(recentPenalty.has(k)) w[k] *= (selectedDifficulty==="rookie"?.9:.45); });
   const entries = Object.entries(w).map(([k,v])=>[k,Math.max(0.01,v)]);
@@ -3821,9 +3843,17 @@ function executeBotIntent(dt){
     const toRim = HOOP_POS.clone().sub(bot.group.position); toRim.y=0; toRim.normalize();
     const sideV = new THREE.Vector3(toRim.z,0,-toRim.x).multiplyScalar(side*1.3);
     moveBotToward(bot, bot.group.position.clone().add(toRim.multiplyScalar(2.2)).add(sideV), difficultySettings[selectedDifficulty].speed, dt);
-    if(isCloseLayupRange(bot) && Math.random()<dt*1.3) startLayup(bot);
+    const rimProtecting = flatDistance(p1.group.position,HOOP_POS) < 1.5;
+    if(isCloseLayupRange(bot) && Math.random()<dt*1.3){
+      if(rimProtecting && difficultySettings[selectedDifficulty].defensiveIQ > .84 && Math.random() < difficultySettings[selectedDifficulty].stepBackUse){
+        startStepBack(bot);
+      }else startLayup(bot);
+    }
   }else if(intent==="step_back"){ startStepBack(bot); }
-  else if(intent==="pump_fake"){ botBrain.intent = "pull_up"; }
+  else if(intent==="pump_fake"){
+    if(!p1.onGround && difficultySettings[selectedDifficulty].shotDiscipline > .75) botBrain.intent = "attack_rim";
+    else botBrain.intent = "pull_up";
+  }
   else if(intent.includes("side_hop")){ startSideHop(bot,intent.includes("left")?"left":"right"); }
   else if(intent.includes("crossover")){ attemptCrossover(bot,intent.includes("left")?"left":"right"); }
   else if(intent==="pull_up" && flatDistance(bot.group.position,HOOP_POS)<8.4){ shotPower = .58 + Math.random()*.24; shootBall(bot,"pullup"); }
@@ -3847,11 +3877,13 @@ function updateBotDefense(dt){
     botBrain.defenseIntent = chooseBotDefensiveIntent();
     botBrain.defenseIntentTimer = THREE.MathUtils.randFloat(.35,1.05);
   }
-  const target = getDefensiveTarget(p2,p1,botBrain.defenseIntent);
+  const laneAnchor = getBetweenPlayerAndRimTarget(p2,p1,1.02 - s.spacingIQ * 0.18);
+  const intentTarget = getDefensiveTarget(p2,p1,botBrain.defenseIntent);
+  const target = laneAnchor.lerp(intentTarget,THREE.MathUtils.clamp(.25 + s.spacingIQ * .65,.3,.9));
   moveBotToward(p2,target,s.speed*(.9+s.defensiveIQ*.2),dt);
   if(ballState === "dribble" && flatDistance(p2.group.position,p1.group.position) < (1.25 + p2.movement.defensiveWidth*.4) && botBrain.stealCooldown <= 0){
     const disciplined = Math.random() < s.stealDiscipline;
-    if(disciplined && Math.random() < dt*s.steal){ p2.swipeSide = Math.random()<.5?"left":"right"; p2.swipeTime = .34; botBrain.stealCooldown = .55; }
+    if(disciplined && (flatDistance(p2.group.position,p1.group.position) < (1.05 + s.stealDiscipline*.45)) && Math.random() < dt*s.steal){ p2.swipeSide = Math.random()<.5?"left":"right"; p2.swipeTime = .34; botBrain.stealCooldown = .55; }
   }
   const contestedType = dunkActive ? "dunk" : layupActive ? "layup" : getRequestedShotType(p1);
   const timingPct = shotCharging ? THREE.MathUtils.clamp((p1.moveMeta.chargeHeld || 0) / 1.2,0,1) : .2;
@@ -3907,7 +3939,7 @@ function chooseBotDefensiveIntent(){
   if(selectedDifficulty === "rookie" || selectedDifficulty === "easy"){
     weights.paint_wall -= .06; weights.bait_jumper += .06;
   }
-  if(selectedDifficulty === "hard" || selectedDifficulty === "elite" || selectedDifficulty === "legend"){
+  if(selectedDifficulty === "hard" || selectedDifficulty === "elite" || selectedDifficulty === "legend" || selectedDifficulty === "pro" || selectedDifficulty === "superstar" || selectedDifficulty === "hallOfFame" || selectedDifficulty === "impossible"){
     weights.cutoff_drive += .07; weights.paint_wall += .06;
   }
   let r = Math.random() * options.reduce((a,k)=>a+weights[k],0);
@@ -3916,6 +3948,11 @@ function chooseBotDefensiveIntent(){
 }
 function shouldBotJumpContest(defender, shooter, shotType, timingPct){
   const s = difficultySettings[selectedDifficulty];
+  if((shotType === "layup" || shotType === "dunk") && s.contestTiming > .9){
+    const ideal = shotType === "dunk" ? .72 : .64;
+    const window = THREE.MathUtils.lerp(.18,.06,s.contestTiming);
+    if(Math.abs(timingPct - ideal) > window) return false;
+  }
   const dist = flatDistance(defender.group.position, shooter.group.position);
   const between = isDefenderBetweenBallAndRim(defender, ball.position);
   let chance = 0;
@@ -3932,7 +3969,7 @@ function shouldBotJumpContest(defender, shooter, shotType, timingPct){
 function adjustBotPersonalityByDifficulty(){
   if(!botBrain) return;
   const d = selectedDifficulty;
-  botBrain.adaptiveness = d === "legend" ? .95 : d === "elite" ? .78 : d === "hard" ? .58 : .35;
+  botBrain.adaptiveness = d === "impossible" ? .99 : d === "hallOfFame" ? .97 : d === "superstar" ? .96 : d === "pro" ? .95 : d === "legend" ? .95 : d === "elite" ? .78 : d === "hard" ? .58 : .35;
 }
 function getDefensiveTarget(defender,ballHandler,intent="balanced_defense"){
   const spacing = intent === "pressure_steal" ? .7 : intent === "sag_contest" ? 1.95 : 1.28;
