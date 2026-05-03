@@ -2485,7 +2485,7 @@ function createCharacter(profile,pos,id){
     contactFinishBonusOrPenalty:0,
     bodyUpTimer:0,
     lastContestLabel:"Open",
-    anim:{runCycle:0,lean:0,targetLean:0,armBlend:0,legBlend:0,walkBlend:0,sprintBlend:0,backpedalBlend:0,turnLean:0,verticalBob:0,landingTimer:0,strideStrength:0,torsoTwist:0,landingSquash:0,contactReact:0,shotFollowThrough:0,sideLean:0,legKick:0,fadeLean:0,hookWindup:0,hookRelease:0},
+    anim:{runCycle:0,lean:0,targetLean:0,armBlend:0,legBlend:0,walkBlend:0,sprintBlend:0,backpedalBlend:0,turnLean:0,verticalBob:0,landingTimer:0,strideStrength:0,torsoTwist:0,landingSquash:0,contactReact:0,shotFollowThrough:0,sideLean:0,legKick:0,fadeLean:0,hookWindup:0,hookRelease:0,defenseStanceBlend:0,shuffleCycle:0,cutoffLean:0},
     takeover:0,takeoverActive:false,takeoverTimer:0,stamina:1,dribbleStyle:"normal",stats:{fga:0,fgm:0,tpa:0,tpm:0,blocks:0,steals:0,turnovers:0,ankle:0,perfect:0},
     movement:{
       acceleration:5.2 * (1 + (profile.speed-1)*.7),
@@ -3074,7 +3074,14 @@ function updateAnimationBlend(char,dt){
   char.anim.turnLean = smoothAnimValue(char.anim.turnLean || 0,turnPressed * THREE.MathUtils.clamp(speed/5.5,0,1),8,dt);
   char.anim.strideStrength = smoothAnimValue(char.anim.strideStrength || 0,THREE.MathUtils.clamp(speed/5.8,0,1.2),8,dt);
   char.anim.verticalBob = smoothAnimValue(char.anim.verticalBob || 0,moving ? THREE.MathUtils.clamp(speed/6.5,0,1) : 0,7,dt);
-  char.anim.targetLean = char.anim.sprintBlend * 0.25 + char.anim.walkBlend * 0.08 - char.anim.backpedalBlend * 0.08;
+  const defending = possession !== char.id && ballState === "dribble" && flatDistance(char.group.position,(char.id==="p1"?p2:p1).group.position) < (2 + char.movement.defensiveWidth*.45);
+  const strafeDot = moving ? Math.abs(moveDir.dot(new THREE.Vector3(forward.z,0,-forward.x))) : 0;
+  const stanceTarget = defending ? THREE.MathUtils.clamp((1.95-flatDistance(char.group.position,(char.id==="p1"?p2:p1).group.position))/1.95,0,1) : 0;
+  char.anim.defenseStanceBlend = smoothAnimValue(char.anim.defenseStanceBlend||0,stanceTarget,10,dt);
+  const shuffleTarget = defending ? THREE.MathUtils.clamp(strafeDot * (1-sprintTarget) * walkTarget,0,1) : 0;
+  char.anim.shuffleCycle = (char.anim.shuffleCycle||0) + dt * THREE.MathUtils.lerp(2.2,7.2,shuffleTarget);
+  char.anim.cutoffLean = smoothAnimValue(char.anim.cutoffLean||0,defending ? (char.defensiveShadeSide==="left"?-1:char.defensiveShadeSide==="right"?1:0) : 0,7,dt);
+  char.anim.targetLean = char.anim.sprintBlend * 0.25 + char.anim.walkBlend * 0.08 - char.anim.backpedalBlend * 0.08 - char.anim.defenseStanceBlend*0.06;
   char.anim.lean = smoothAnimValue(char.anim.lean,char.anim.targetLean,8,dt);
   const cycleRate = THREE.MathUtils.lerp(2.1,8.6,char.anim.walkBlend * 0.58 + char.anim.sprintBlend * 0.9 + char.anim.backpedalBlend * 0.3);
   char.anim.runCycle = (char.anim.runCycle || 0) + dt * cycleRate * (moving ? 1 : .65);
@@ -3909,6 +3916,20 @@ function executeBotIntent(dt){
   }
   else { moveBotToward(bot,new THREE.Vector3(2.2*Math.sin(performance.now()*.0017),0,-7.4),difficultySettings[selectedDifficulty].speed*.72,dt); }
 }
+function getDefenderRecoveryTarget(defender,ballHandler,s){
+  const handlerRimDist = flatDistance(ballHandler.group.position,HOOP_POS);
+  const beaten = flatDistance(defender.group.position,ballHandler.group.position) > (1.65 + (1-s.defensiveIQ)*0.45);
+  const rimProtectBias = THREE.MathUtils.clamp((defender.profile.block - 1) * 0.45 + (1-handlerRimDist/8) * 0.35,0,1);
+  const pressureBias = THREE.MathUtils.clamp((defender.profile.steal - 1) * 0.4 + s.stealDiscipline * 0.35,0,1);
+  if(handlerRimDist < 2.2 || (beaten && rimProtectBias > pressureBias + 0.08)){
+    const toBall = ballHandler.group.position.clone().sub(HOOP_POS).setY(0);
+    if(toBall.lengthSq() < .0001) return HOOP_POS.clone();
+    toBall.normalize();
+    return HOOP_POS.clone().add(toBall.multiplyScalar(0.7 + (1-rimProtectBias)*0.35));
+  }
+  return getDefensiveTarget(defender,ballHandler,"cutoff_drive");
+}
+
 function updateBotDefense(dt){
   const s = difficultySettings[selectedDifficulty];
   botBrain.defenseIntentTimer = (botBrain.defenseIntentTimer || 0) - dt;
@@ -3916,14 +3937,29 @@ function updateBotDefense(dt){
     botBrain.defenseIntent = chooseBotDefensiveIntent();
     botBrain.defenseIntentTimer = THREE.MathUtils.randFloat(.35,1.05);
   }
-  const laneAnchor = getBetweenPlayerAndRimTarget(p2,p1,1.02 - s.spacingIQ * 0.18);
+  const laneAnchor = getBetweenPlayerAndRimTarget(p2,p1,1.04 - s.spacingIQ * 0.22);
   const intentTarget = getDefensiveTarget(p2,p1,botBrain.defenseIntent);
-  const target = laneAnchor.lerp(intentTarget,THREE.MathUtils.clamp(.25 + s.spacingIQ * .65,.3,.9));
-  moveBotToward(p2,target,s.speed*(.9+s.defensiveIQ*.2),dt);
-  if(ballState === "dribble" && flatDistance(p2.group.position,p1.group.position) < (1.25 + p2.movement.defensiveWidth*.4) && botBrain.stealCooldown <= 0){
-    const disciplined = Math.random() < s.stealDiscipline;
-    if(disciplined && (flatDistance(p2.group.position,p1.group.position) < (1.05 + s.stealDiscipline*.45)) && Math.random() < dt*s.steal){ p2.swipeSide = Math.random()<.5?"left":"right"; p2.swipeTime = .34; botBrain.stealCooldown = .55; }
+  const recoveryTarget = getDefenderRecoveryTarget(p2,p1,s);
+  const beaten = flatDistance(p2.group.position,p1.group.position) > (1.8 + (1-s.defensiveIQ)*0.45);
+  const recoverBlend = beaten ? THREE.MathUtils.clamp(.45 + p2.profile.block*0.18,0.38,0.9) : 0;
+  const containTarget = laneAnchor.clone().lerp(intentTarget,THREE.MathUtils.clamp(.28 + s.spacingIQ * .62,.3,.9)).lerp(recoveryTarget,recoverBlend);
+  moveBotToward(p2,containTarget,s.speed*(.86+s.defensiveIQ*.18),dt);
+
+  if(ballState === "dribble" && flatDistance(p2.group.position,p1.group.position) < (1.35 + p2.movement.defensiveWidth*.42) && botBrain.stealCooldown <= 0){
+    const dist = flatDistance(p2.group.position,p1.group.position);
+    const badHandle = (p1.profile.handle || 1) < 0.96;
+    const sprintExpose = p1.velocity.length() > 4.9 && badHandle;
+    const looseWindow = p1.dribbleStyle === "sprint" || p1.dribbleStyle === "crossover" || p1.moveState === "sidehop";
+    const exposed = looseWindow || sprintExpose || (p1.bodyUpTimer > 0.03 && dist < 1.15);
+    const discipline = THREE.MathUtils.clamp(s.stealDiscipline * 0.75 + s.composure * 0.35,0.1,1);
+    const reachyMistake = Math.random() < dt * (1-discipline) * 1.2;
+    if((exposed && Math.random() < dt*s.steal*THREE.MathUtils.lerp(.6,1.2,discipline)) || reachyMistake){
+      p2.swipeSide = Math.random()<.5?"left":"right"; p2.swipeTime = .34;
+      botBrain.stealCooldown = THREE.MathUtils.lerp(.38,.8,discipline);
+      if(reachyMistake) punishBadReach(p2);
+    }
   }
+
   const contestedType = dunkActive ? "dunk" : layupActive ? "layup" : getRequestedShotType(p1);
   const timingPct = shotCharging ? THREE.MathUtils.clamp((p1.moveMeta.chargeHeld || 0) / 1.2,0,1) : .2;
   if((shotCharging || layupActive || dunkActive) && flatDistance(p2.group.position,p1.group.position) < 3.8 && botBrain.blockCooldown <= 0){
@@ -3987,11 +4023,10 @@ function chooseBotDefensiveIntent(){
 }
 function shouldBotJumpContest(defender, shooter, shotType, timingPct){
   const s = difficultySettings[selectedDifficulty];
-  if((shotType === "layup" || shotType === "dunk") && s.contestTiming > .9){
-    const ideal = shotType === "dunk" ? .72 : .64;
-    const window = THREE.MathUtils.lerp(.18,.06,s.contestTiming);
-    if(Math.abs(timingPct - ideal) > window) return false;
-  }
+  const ideal = shotType === "dunk" ? .74 : shotType === "layup" ? .63 : .58;
+  const timingWindow = THREE.MathUtils.lerp(.22,.05,s.contestTiming);
+  const timingError = Math.abs(timingPct - ideal);
+  if((shotType === "layup" || shotType === "dunk" || shotType === "jumper") && timingError > timingWindow && Math.random() < s.composure) return false;
   const dist = flatDistance(defender.group.position, shooter.group.position);
   const between = isDefenderBetweenBallAndRim(defender, ball.position);
   let chance = 0;
@@ -4000,8 +4035,10 @@ function shouldBotJumpContest(defender, shooter, shotType, timingPct){
   if(between) chance += .18;
   chance += s.contestTiming * .35;
   chance += (defender.profile.block - 1) * .18;
-  chance += timingPct * .15;
-  if(shotType === "jumper") chance -= .12;
+  chance += (1 - Math.min(1,timingError*1.8)) * .16;
+  if(shotType === "jumper") chance -= .1 + s.fakeBiteChance*0.1;
+  if(shotType === "pump_fake" && s.contestTiming > .72) chance *= (1 - s.composure*0.45);
+  chance -= THREE.MathUtils.clamp(timingError - timingWindow,0,0.35) * (0.3 + s.fakeBiteChance*0.2);
   if(shotType === "dunk" || shotType === "layup") chance += .22;
   return Math.random() < THREE.MathUtils.clamp(chance, .05, .88);
 }
@@ -4504,7 +4541,12 @@ function punishBadReach(defender){ defender.stumbledTimer = .45; defender.stamin
 function calculateShotContest(shooter){
   const defender = shooter.id === "p1" ? p2 : p1;
   const d = flatDistance(shooter.group.position,defender.group.position);
-  let value = THREE.MathUtils.clamp((2.8 - d) / 2.8,0,1) * THREE.MathUtils.clamp(defender.profile.block*.55 + defender.profile.steal*.35, .35,1.8);
+  const between = isDefenderBetweenBallAndRim(defender, shooter.group.position);
+  const toShooter = shooter.group.position.clone().sub(defender.group.position).setY(0).normalize();
+  const faceDot = Math.max(0,getForward(defender.angle).dot(toShooter));
+  let value = THREE.MathUtils.clamp((2.9 - d) / 2.9,0,1) * THREE.MathUtils.clamp(defender.profile.block*.55 + defender.profile.steal*.35, .35,1.8);
+  value *= 0.82 + faceDot*0.28;
+  if(between) value *= 1.14;
   if(shooter.moveMeta && shooter.moveMeta.lastShotType === "stepback") value *= .82;
   if(shooter.moveMeta && shooter.moveMeta.lastShotType === "fadeaway") value *= .72;
   if(shooter.contactTimer > 0.02) value *= 1.08 + Math.max(0,shooter.contactStrength||0)*0.12;
@@ -4765,13 +4807,26 @@ function animateBobble(char,pct){
   char.rightForearm.rotation.z += 0.25;
 }
 function animateDefensiveStance(char,dt){
-  char.group.position.y = Math.max(0,char.group.position.y - dt*.2);
+  const stance = char.anim.defenseStanceBlend || 0;
+  const shuffle = char.anim.shuffleCycle || 0;
+  const cutoffLean = char.anim.cutoffLean || 0;
+  char.group.position.y = Math.max(0,char.group.position.y - dt*(.18 + stance*.16));
+  char.group.scale.y = Math.max(.9,1 - stance*.06);
+  char.group.rotation.x += 0.04 + stance*0.08;
   const shadeDir = char.defensiveShadeSide === "left" ? -1 : char.defensiveShadeSide === "right" ? 1 : 0;
-  char.leftLeg.rotation.z = -.18; char.rightLeg.rotation.z = .18;
+  char.leftLeg.rotation.z = -.18 - stance*0.12; char.rightLeg.rotation.z = .18 + stance*0.12;
+  char.leftShoe.position.x = (char.leftShoe.userData.base?.x || char.leftShoe.position.x) - stance*0.02;
+  char.rightShoe.position.x = (char.rightShoe.userData.base?.x || char.rightShoe.position.x) + stance*0.02;
+  if(stance > .08){
+    const slide = Math.sin(shuffle) * 0.08 * char.profile.width;
+    char.leftShoe.position.z += slide;
+    char.rightShoe.position.z -= slide;
+  }
   if(shadeDir){
     char.leftArm.rotation.z = -0.58 - shadeDir*0.08;
     char.rightArm.rotation.z = 0.58 - shadeDir*0.08;
-    char.group.rotation.x = Math.max(char.group.rotation.x,0.06 + char.defensiveShadeTime*0.05);
+    char.group.rotation.x = Math.max(char.group.rotation.x,0.06 + char.defensiveShadeTime*0.05 + stance*0.06);
+    char.group.rotation.z += cutoffLean * 0.04;
   }
 }
 function animateRunCycle(char,dt){
@@ -5795,8 +5850,12 @@ function checkBlocksAndCatches(){
   const handL = getWorldHand(blocker,"left");
   const handR = getWorldHand(blocker,"right");
   const near = Math.min(handL.distanceTo(ball.position),handR.distanceTo(ball.position));
-  let threshold = (ballState === "layup" ? .68 : .62) * blocker.profile.block + (blocker.blockBoost ? .24 : 0);
   const shooter = shooterId === "p1" ? p1 : p2;
+  let threshold = (ballState === "layup" ? .68 : .62) * blocker.profile.block + (blocker.blockBoost ? .24 : 0);
+  const shotTiming = shooter && shooter.moveMeta && shooter.moveMeta.chargeHeld ? THREE.MathUtils.clamp(shooter.moveMeta.chargeHeld/1.2,0,1):.55;
+  const sDiff = difficultySettings[selectedDifficulty];
+  const timingError = Math.abs(shotTiming - (ballState === "layup" ? .62 : .58));
+  threshold *= THREE.MathUtils.clamp(1.06 - timingError * (0.35 + (1-sDiff.contestTiming)*0.22),0.82,1.08);
   if(ballState === "shot" && shooter && shooter.moveMeta && shooter.moveMeta.lastShotType === "jumper") threshold *= .86;
 
   if(ballState === "layup"){
