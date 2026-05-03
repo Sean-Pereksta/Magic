@@ -90,38 +90,17 @@
     margin: 0 0 12px;
   }
 
-  .menuGrid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 18px;
-  }
-
-  .cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
-    gap: 12px;
-  }
-
-  .card {
-    min-height: 132px;
-    border-radius: 15px;
-    padding: 12px;
-    cursor: pointer;
-    background: rgba(255,255,255,.1);
-    border: 2px solid rgba(255,255,255,.14);
-    transition: .15s;
-  }
-
-  .card:hover {
-    transform: translateY(-2px);
-    background: rgba(255,255,255,.16);
-  }
-
-  .card.selected {
-    border-color: #ffe24a;
-    background: rgba(255,226,74,.23);
-    box-shadow: 0 0 0 2px rgba(255,226,74,.22);
-  }
+  .menuGrid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .selectorBox { display:grid; grid-template-columns:52px 1fr 52px; gap:10px; align-items:center; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.16); border-radius:14px; padding:12px; }
+  .arrowBtn { border:0; height:44px; border-radius:12px; cursor:pointer; font-size:24px; font-weight:900; color:#fff; background:rgba(0,0,0,.35); }
+  .previewCard { border:1px solid rgba(255,255,255,.14); border-radius:12px; padding:10px; background:rgba(0,0,0,.25); }
+  .previewTop { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+  .previewEmoji { font-size:40px; width:52px; text-align:center; }
+  .previewDesc { font-size:13px; opacity:.92; margin-top:4px; }
+  .statRow { font-size:12px; margin-top:6px; display:grid; grid-template-columns:110px 1fr auto; gap:8px; align-items:center; }
+  .bar { height:8px; background:rgba(255,255,255,.18); border-radius:999px; overflow:hidden; }
+  .fill { height:100%; background:linear-gradient(90deg,#42e9ff,#ffd24a); }
+  #player2Panel { display:none; }
 
   .emoji {
     display: block;
@@ -286,36 +265,23 @@
         <label>Split Screen</label>
         <div>
           <input type="checkbox" id="splitToggle" />
-          <b>Enable Player 2</b>
+          <b>Add Player 2</b>
         </div>
       </div>
+      <div class="optionBox">
+        <label>Race Speed (CC)</label>
+        <select id="ccSelect"><option value="50cc">50cc</option><option value="100cc" selected>100cc</option><option value="150cc">150cc</option><option value="200cc">200cc</option><option value="mirror150">Mirror 150cc</option></select>
+      </div>
     </div>
 
-    <div class="panel">
-      <h2>1. Choose Map</h2>
-      <div class="cards" id="mapCards"></div>
-    </div>
-
+    <div class="panel"><h2>1. Map Selection</h2><div id="mapSelector"></div></div>
     <div class="menuGrid">
-      <div class="panel">
-        <h2>2. Player 1 Character</h2>
-        <div class="cards" id="p1CharCards"></div>
-      </div>
-
-      <div class="panel">
-        <h2>3. Player 1 Kart</h2>
-        <div class="cards" id="p1KartCards"></div>
-      </div>
-
-      <div class="panel">
-        <h2>4. Player 2 Character</h2>
-        <div class="cards" id="p2CharCards"></div>
-      </div>
-
-      <div class="panel">
-        <h2>5. Player 2 Kart</h2>
-        <div class="cards" id="p2KartCards"></div>
-      </div>
+      <div class="panel"><h2>2. Player 1 Character</h2><div id="p1CharSelector"></div></div>
+      <div class="panel"><h2>3. Player 1 Kart</h2><div id="p1KartSelector"></div></div>
+    </div>
+    <div class="menuGrid" id="player2Panel">
+      <div class="panel"><h2>4. Player 2 Character</h2><div id="p2CharSelector"></div></div>
+      <div class="panel"><h2>5. Player 2 Kart</h2><div id="p2KartSelector"></div></div>
     </div>
 
     <button id="startBtn">START RACE</button>
@@ -613,79 +579,16 @@ const difficulties = {
   }
 };
 
-let selectedMap = maps[0];
-let selectedP1Character = characters[2];
-let selectedP1Kart = karts[1];
-let selectedP2Character = characters[1];
-let selectedP2Kart = karts[2];
-
-function cardHTML(item, extra) {
-  return `
-    <span class="emoji">${item.emoji}</span>
-    <b>${item.name}</b>
-    <div class="stat">${item.desc}</div>
-    ${extra || ""}
-  `;
-}
-
-function renderCardGroup(containerId, list, selectedGetter, selectedSetter, extraBuilder) {
-  const container = document.getElementById(containerId);
-  container.innerHTML = "";
-
-  list.forEach(item => {
-    const div = document.createElement("div");
-    div.className = "card" + (selectedGetter().id === item.id ? " selected" : "");
-    div.innerHTML = cardHTML(item, extraBuilder ? extraBuilder(item) : "");
-    div.onclick = () => {
-      selectedSetter(item);
-      renderMenus();
-    };
-    container.appendChild(div);
-  });
-}
-
-function renderMenus() {
-  renderCardGroup(
-    "mapCards",
-    maps,
-    () => selectedMap,
-    item => selectedMap = item,
-    item => `<div class="stat">Terrain: ${item.theme} • Track Width: ${item.trackWidth}</div>`
-  );
-
-  renderCardGroup(
-    "p1CharCards",
-    characters,
-    () => selectedP1Character,
-    item => selectedP1Character = item,
-    item => `<div class="stat">Weight: ${item.weight.toFixed(2)} • Size: ${item.size.toFixed(2)}</div>`
-  );
-
-  renderCardGroup(
-    "p1KartCards",
-    karts,
-    () => selectedP1Kart,
-    item => selectedP1Kart = item,
-    item => `<div class="stat">Top Speed: ${item.maxSpeed} • Accel: ${item.accel}</div><div class="stat">Handling: ${item.handling.toFixed(2)} • Drift: ${item.drift.toFixed(2)}</div><div class="stat">Weight: ${item.weight.toFixed(2)} • Traction: ${item.traction.toFixed(2)}</div>`
-  );
-
-  renderCardGroup(
-    "p2CharCards",
-    characters,
-    () => selectedP2Character,
-    item => selectedP2Character = item,
-    item => `<div class="stat">Weight: ${item.weight.toFixed(2)} • Size: ${item.size.toFixed(2)}</div>`
-  );
-
-  renderCardGroup(
-    "p2KartCards",
-    karts,
-    () => selectedP2Kart,
-    item => selectedP2Kart = item,
-    item => `<div class="stat">Top Speed: ${item.maxSpeed} • Accel: ${item.accel}</div><div class="stat">Handling: ${item.handling.toFixed(2)} • Drift: ${item.drift.toFixed(2)}</div><div class="stat">Weight: ${item.weight.toFixed(2)} • Traction: ${item.traction.toFixed(2)}</div>`
-  );
-}
-
+let selectedMapIndex = 0;
+let selectedP1CharacterIndex = 2;
+let selectedP1KartIndex = 1;
+let selectedP2CharacterIndex = 1;
+let selectedP2KartIndex = 2;
+const ccSettings={"50cc":{speedMultiplier:0.78,accelMultiplier:0.85,handlingMultiplier:1.12,skidMultiplier:0.78,aiSpeedMultiplier:0.82,aiTurnMultiplier:0.9,mirror:false},"100cc":{speedMultiplier:1,accelMultiplier:1,handlingMultiplier:1,skidMultiplier:1,aiSpeedMultiplier:1,aiTurnMultiplier:1,mirror:false},"150cc":{speedMultiplier:1.16,accelMultiplier:1.12,handlingMultiplier:0.95,skidMultiplier:1.12,aiSpeedMultiplier:1.14,aiTurnMultiplier:1.06,mirror:false},"200cc":{speedMultiplier:1.34,accelMultiplier:1.2,handlingMultiplier:0.9,skidMultiplier:1.28,aiSpeedMultiplier:1.24,aiTurnMultiplier:1.14,mirror:false},mirror150:{speedMultiplier:1.16,accelMultiplier:1.12,handlingMultiplier:0.95,skidMultiplier:1.12,aiSpeedMultiplier:1.14,aiTurnMultiplier:1.06,mirror:true}};
+let currentCC=ccSettings["100cc"];
+function mkStat(label,value,max=100){const pct=THREE.MathUtils.clamp((value/max)*100,0,100);return `<div class="statRow"><div>${label}</div><div class="bar"><div class="fill" style="width:${pct}%"></div></div><div>${Math.round(value)}</div></div>`;}
+function renderSelector(containerId,list,idx,setIdx,statsHTML){const item=list[idx];document.getElementById(containerId).innerHTML=`<div class="selectorBox"><button class="arrowBtn" data-dir="-1">◀</button><div class="previewCard"><div class="previewTop"><div class="previewEmoji">${item.emoji||"🏁"}</div><div><b>${item.name}</b><div class="previewDesc">${item.desc||""}</div></div></div>${statsHTML(item)}</div><button class="arrowBtn" data-dir="1">▶</button></div>`;document.querySelectorAll(`#${containerId} .arrowBtn`).forEach(btn=>btn.onclick=()=>setIdx((idx+Number(btn.dataset.dir)+list.length)%list.length));}
+function renderMenus(){renderSelector("mapSelector",maps,selectedMapIndex,i=>{selectedMapIndex=i;renderMenus();},item=>mkStat("Track width",item.trackWidth,40)+mkStat("Length",item.points.length*2.4,80)+mkStat("Hazards",(item.hazards?.length||0)*20,100)+mkStat("Difficulty",Math.max(25,item.points.length),70));renderSelector("p1CharSelector",characters,selectedP1CharacterIndex,i=>{selectedP1CharacterIndex=i;renderMenus();},item=>mkStat("Speed bonus",item.speedBonus+10,20)+mkStat("Acceleration",item.accelBonus+10,20)+mkStat("Handling",(item.handlingBonus+1)*50,100)+mkStat("Weight",item.weight*50,100)+mkStat("Size",item.size*50,100));renderSelector("p1KartSelector",karts,selectedP1KartIndex,i=>{selectedP1KartIndex=i;renderMenus();},item=>mkStat("Top speed",item.maxSpeed,90)+mkStat("Acceleration",item.accel,70)+mkStat("Handling",item.handling*24,100)+mkStat("Drift",item.drift*65,100)+mkStat("Weight",item.weight*50,100));renderSelector("p2CharSelector",characters,selectedP2CharacterIndex,i=>{selectedP2CharacterIndex=i;renderMenus();},item=>mkStat("Speed bonus",item.speedBonus+10,20)+mkStat("Acceleration",item.accelBonus+10,20)+mkStat("Handling",(item.handlingBonus+1)*50,100)+mkStat("Weight",item.weight*50,100)+mkStat("Size",item.size*50,100));renderSelector("p2KartSelector",karts,selectedP2KartIndex,i=>{selectedP2KartIndex=i;renderMenus();},item=>mkStat("Top speed",item.maxSpeed,90)+mkStat("Acceleration",item.accel,70)+mkStat("Handling",item.handling*24,100)+mkStat("Drift",item.drift*65,100)+mkStat("Weight",item.weight*50,100));document.getElementById("player2Panel").style.display=document.getElementById("splitToggle").checked?"grid":"none";}
 renderMenus();
 
 /* =========================================================
@@ -710,7 +613,7 @@ const camera2 = new THREE.PerspectiveCamera(65, window.innerWidth / window.inner
 const clock = new THREE.Clock();
 
 let mats = {};
-let currentMap = selectedMap;
+let currentMap = maps[selectedMapIndex];
 let currentDifficulty = difficulties.normal;
 let totalLaps = 3;
 let splitScreen = false;
@@ -1794,12 +1697,12 @@ function setupRacers() {
   racers = [];
   players = [];
 
-  const p1 = createRacer("Player 1", selectedP1Character, selectedP1Kart, true, 1, 0);
+  const p1 = createRacer("Player 1", characters[selectedP1CharacterIndex], karts[selectedP1KartIndex], true, 1, 0);
   racers.push(p1);
   players.push(p1);
 
   if (splitScreen) {
-    const p2 = createRacer("Player 2", selectedP2Character, selectedP2Kart, true, 2, 0);
+    const p2 = createRacer("Player 2", characters[selectedP2CharacterIndex], karts[selectedP2KartIndex], true, 2, 0);
     racers.push(p2);
     players.push(p2);
   }
@@ -1812,9 +1715,9 @@ function setupRacers() {
     const kart = karts[(i + 2) % karts.length];
     const ai = createRacer(aiNames[i], character, kart, false, 0, i + 1);
 
-    ai.maxSpeed *= currentDifficulty.aiSpeed;
+    ai.maxSpeed *= currentDifficulty.aiSpeed * currentCC.aiSpeedMultiplier;
     ai.accel *= currentDifficulty.aiAccel;
-    ai.handling *= currentDifficulty.aiTurn;
+    ai.handling *= currentDifficulty.aiTurn * currentCC.aiTurnMultiplier;
 
     racers.push(ai);
   }
@@ -2043,7 +1946,7 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
     racer.speed *= 0.985;
   } else {
     if (throttle) {
-      racer.speed += racer.accel * dt;
+      racer.speed += racer.accel * currentCC.accelMultiplier * dt;
     } else {
       racer.speed -= Math.sign(racer.speed) * 18 * dt;
     }
@@ -2056,7 +1959,7 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
   if (racer.invulnTimer > 0) racer.invulnTimer -= dt;
   if (racer.itemCooldown > 0) racer.itemCooldown -= dt;
 
-  const maxSpeed = racer.maxSpeed * terrainFactor * (racer.boostTimer > 0 ? 1.44 : 1);
+  const maxSpeed = racer.maxSpeed * currentCC.speedMultiplier * terrainFactor * (racer.boostTimer > 0 ? 1.44 : 1);
   racer.speed = THREE.MathUtils.clamp(racer.speed, -18, maxSpeed);
 
   if (Math.abs(racer.speed) < 0.2) {
@@ -2069,7 +1972,7 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
 
   if (!racer.drift.active && racer.spinTimer <= 0) {
     const speedTurnScale = THREE.MathUtils.clamp(Math.abs(racer.speed) / 25, 0.25, 1);
-    const turnAmount = turn * racer.handling * speedTurnScale * dt * Math.sign(racer.speed || 1);
+    const turnAmount = turn * racer.handling * currentCC.handlingMultiplier * speedTurnScale * dt * Math.sign(racer.speed || 1);
     racer.rotationY += turnAmount;
   }
 
@@ -2079,7 +1982,7 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
   const hardTurn = Math.abs(turn) > 0.55;
   const canSkid = onTrack && !racer.drift.active && racer.spinTimer <= 0 && speedAbs > 24 && hardTurn;
   const traction = racer.traction || 1;
-  const slipStrength = canSkid ? THREE.MathUtils.clamp(((speedAbs - 22) / 45) / traction, 0.06, 0.34) : 0.028 / traction;
+  const slipStrength = canSkid ? THREE.MathUtils.clamp((((speedAbs - 22) / 45) * currentCC.skidMultiplier) / traction, 0.06, 0.4) : (0.028 * currentCC.skidMultiplier) / traction;
   const followRate = Math.max(0.08, 1 - slipStrength);
   racer.velocity.lerp(targetVelocity, followRate);
   racer.lateralSlip = THREE.MathUtils.lerp(racer.lateralSlip, canSkid ? turn * slipStrength * speedAbs * 0.09 : 0, 0.15);
@@ -3061,15 +2964,19 @@ function updateRespawnFade(dt) {
    START
 ========================================================= */
 
+document.getElementById("splitToggle").addEventListener("change", renderMenus);
+
 document.getElementById("startBtn").onclick = () => {
-  currentMap = selectedMap;
+  currentMap = maps[selectedMapIndex];
   currentDifficulty = difficulties[document.getElementById("difficultySelect").value];
   totalLaps = Number(document.getElementById("lapSelect").value);
   splitScreen = document.getElementById("splitToggle").checked;
+  currentCC = ccSettings[document.getElementById("ccSelect").value] || ccSettings["100cc"];
 
   document.getElementById("menu").style.display = "none";
   document.getElementById("hud").style.display = "block";
   document.getElementById("help").style.display = "block";
+  document.getElementById("help").innerHTML = splitScreen ? `<b>P1:</b> W accelerate • S brake/reverse • A/D steer, double-tap/hold to drift • E item<br><b>P2:</b> ↑ accelerate • ↓ brake/reverse • ←/→ steer, double-tap/hold to drift • Right Shift item` : `<b>P1:</b> W accelerate • S brake/reverse • A/D steer, double-tap/hold to drift • E item`;
   document.getElementById("minimap").style.display = "block";
 
   if (splitScreen) {
@@ -3079,6 +2986,7 @@ document.getElementById("startBtn").onclick = () => {
   }
 
   buildWorld(currentMap);
+  if (currentCC.mirror) { trackPoints.reverse(); trackCurve = new THREE.CatmullRomCurve3(trackPoints, true, "centripetal"); buildTrackSamples(); }
   setupRacers();
 
   gameStarted = true;
@@ -3100,6 +3008,7 @@ document.getElementById("backToMenuBtn").onclick = () => {
 document.getElementById("raceAgainBtn").onclick = () => {
   document.getElementById("resultsOverlay").style.display = "none";
   buildWorld(currentMap);
+  if (currentCC.mirror) { trackPoints.reverse(); trackCurve = new THREE.CatmullRomCurve3(trackPoints, true, "centripetal"); buildTrackSamples(); }
   setupRacers();
   gameStarted = true;
   raceStarted = false;
