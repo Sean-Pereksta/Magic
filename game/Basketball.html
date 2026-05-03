@@ -1645,6 +1645,7 @@ function startGame(){
   document.getElementById("p1Label").style.display = twoPlayerMode ? "block" : "none";
   document.getElementById("p2Label").style.display = twoPlayerMode ? "block" : "none";
   document.getElementById("modeText").textContent = twoPlayerMode ? "2P Split Screen" : "1P vs Bot";
+  console.log("2P Mode Active:", twoPlayerMode);
 
   gameStarted = true;
   gameOver = false;
@@ -3318,15 +3319,24 @@ function onKeyDown(e){
   }
   if(e.code === "Enter" || e.code === "Numpad0"){
     if((keys["ShiftRight"] || keys["NumpadAdd"]) && p2 && p2.takeover >= 100) activateTakeover(p2);
-    if(twoPlayerMode) handleActionButton(p2);
+    if(twoPlayerMode){
+      console.log("P2 input:", e.code);
+      handleActionButton(p2);
+    }
   }
 
   if(e.code === "KeyQ" || e.key.toLowerCase() === "q") queueHandAction(p1,"left","KeyQ");
   if(e.code === "KeyE" || e.key.toLowerCase() === "e") queueHandAction(p1,"right","KeyE");
 
   if(twoPlayerMode){
-    if(e.code === "Numpad4" || e.code === "KeyU" || e.key.toLowerCase() === "u") queueHandAction(p2,"left", e.code === "Numpad4" ? "Numpad4" : "KeyU");
-    if(e.code === "Numpad6" || e.code === "KeyO" || e.key.toLowerCase() === "o") queueHandAction(p2,"right", e.code === "Numpad6" ? "Numpad6" : "KeyO");
+    if(e.code === "KeyU" || e.code === "Numpad4"){
+      console.log("P2 input:", e.code);
+      queueHandAction(p2,"left", e.code);
+    }
+    if(e.code === "KeyO" || e.code === "Numpad6"){
+      console.log("P2 input:", e.code);
+      queueHandAction(p2,"right", e.code);
+    }
   }
 }
 
@@ -3606,7 +3616,7 @@ function updateHumanControls(dt){
 
   if(twoPlayerMode){
     updatePlayerControl(p2, {
-      left:"KeyJ", right:"KeyL", forward:"KeyI", back:"KeyK", sprint:"ShiftRight", handLeft:(keys["Numpad4"] ? "Numpad4" : "KeyU"), handRight:(keys["Numpad6"] ? "Numpad6" : "KeyO")
+      left:"KeyJ", right:"KeyL", forward:"KeyI", back:"KeyK", sprint:"ShiftRight", handLeft:["KeyU","Numpad4"], handRight:["KeyO","Numpad6"]
     }, dt);
   }
 
@@ -3680,6 +3690,11 @@ function updateShotMeterVisuals(dt){
   }
 }
 
+function isKeyDown(codeOrCodes){
+  if(Array.isArray(codeOrCodes)) return codeOrCodes.some(code => !!keys[code]);
+  return !!keys[codeOrCodes];
+}
+
 function updatePlayerControl(char,ctrl,dt){
   const p = char.profile;
   if(char.stumbledTimer > 0){
@@ -3716,24 +3731,24 @@ function updatePlayerControl(char,ctrl,dt){
     return;
   }
 
-  if(keys[ctrl.left]) char.angle += turnSpeed * dt;
-  if(keys[ctrl.right]) char.angle -= turnSpeed * dt;
+  if(isKeyDown(ctrl.left)) char.angle += turnSpeed * dt;
+  if(isKeyDown(ctrl.right)) char.angle -= turnSpeed * dt;
 
   char.velocity.set(0,0,0);
   const forward = getForward(char.angle);
 
-  const wantsSprint = keys[ctrl.sprint] && keys[ctrl.forward];
+  const wantsSprint = isKeyDown(ctrl.sprint) && isKeyDown(ctrl.forward);
   if(wantsSprint && char.sprint > SPRINT_MIN){
     char.velocity.add(forward.clone().multiplyScalar(sprintSpeed));
     char.sprint = Math.max(0,char.sprint - SPRINT_DRAIN * dt);
     char.stamina = Math.max(0,char.stamina - (.32 + (1-char.profile.width)*.08)*dt);
   }else{
-    if(keys[ctrl.forward]) char.velocity.add(forward.clone().multiplyScalar(baseSpeed));
+    if(isKeyDown(ctrl.forward)) char.velocity.add(forward.clone().multiplyScalar(baseSpeed));
     char.sprint = Math.min(1,char.sprint + SPRINT_RECOVER * dt);
-    char.stamina = Math.min(1,char.stamina + (keys[ctrl.forward] ? .12 : .24)*dt*(char.profile.width>1.1?.8:1.05));
+    char.stamina = Math.min(1,char.stamina + (isKeyDown(ctrl.forward) ? .12 : .24)*dt*(char.profile.width>1.1?.8:1.05));
   }
 
-  if(keys[ctrl.back]) char.velocity.add(forward.clone().multiplyScalar(-backSpeed));
+  if(isKeyDown(ctrl.back)) char.velocity.add(forward.clone().multiplyScalar(-backSpeed));
   if(char.defensiveShadeSide && possession !== char.id && ballState === "dribble"){
     const screenVec = getScreenSideVectorForChar(char,char.defensiveShadeSide);
     const shadeSlide = screenVec.multiplyScalar((0.36 + char.movement.defensiveWidth*0.1) * dt);
@@ -3748,7 +3763,7 @@ function updatePlayerControl(char,ctrl,dt){
       }
     }
   }
-  setAnimationState(char, keys[ctrl.back] ? "backpedal" : (keys[ctrl.forward] ? "run" : "idle"));
+  setAnimationState(char, isKeyDown(ctrl.back) ? "backpedal" : (isKeyDown(ctrl.forward) ? "run" : "idle"));
   if(char.stumbledTimer > 0) char.velocity.multiplyScalar(.45);
   if(char.stamina < .2) char.velocity.multiplyScalar(.82);
   if(char.hasBall && ballState === "dribble"){
