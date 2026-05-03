@@ -1139,7 +1139,7 @@ function isInsideFinishWidth(pos) { const { p, n } = getFinishLineInfo(); const 
 function isInsideFinishDepth(pos) { const { p, tan } = getFinishLineInfo(); const dx = pos.x - p.x; const dz = pos.z - p.z; return Math.abs(dx * tan.x + dz * tan.z) <= 12; }
 function isInsideFinishZone(pos) { return isInsideFinishWidth(pos) && isInsideFinishDepth(pos); }
 function updateLapCheckpointProgress(racer) { const closest = getClosestTrackInfo(racer.position); const currentT = closest.t; if (racer.lastClosestT == null) { racer.lastClosestT = currentT; return; } let delta = currentT - racer.lastClosestT; if (delta < -0.5) delta += 1; if (delta > 0.5) delta -= 1; if (delta > 0) racer.lapCheckpointProgress += delta; racer.lastClosestT = currentT; }
-function updateFinishLineLap(racer, dt) { if (racer.finished) return; if (racer.finishCooldown > 0) racer.finishCooldown -= dt; updateLapCheckpointProgress(racer); const side = getSignedFinishSide(racer.position); if (racer.lastFinishSide == null) { racer.lastFinishSide = side; return; } const crossedLine = racer.lastFinishSide < 0 && side >= 0; const insideZone = isInsideFinishZone(racer.position); const completedEnoughLap = racer.lapCheckpointProgress >= 0.82; if (crossedLine && insideZone && completedEnoughLap && racer.finishCooldown <= 0) { racer.lap++; racer.lapCheckpointProgress = 0; racer.finishCooldown = 1.2; racer.crossedFinishThisLap = true; if (racer.isPlayer && racer.lap <= totalLaps) showCenterMessage(`${racer.name}: Lap ${racer.lap}!`, 1100); if (racer.lap > totalLaps && !racer.finished) { racer.finished = true; racer.finishTime = raceElapsedTime; racer.finishOrder = finishOrder.length + 1; finishOrder.push(racer); if (racer.isPlayer && !resultsShown) { resultsPending = true; raceEndGraceTimer = 6.0; } } } racer.lastFinishSide = side; }
+function updateFinishLineLap(racer, dt) { if (racer.finished) return; if (racer.finishCooldown > 0) racer.finishCooldown -= dt; updateLapCheckpointProgress(racer); const side = getSignedFinishSide(racer.position); if (racer.lastFinishSide == null) { racer.lastFinishSide = side; return; } const crossedLine = racer.lastFinishSide < 0 && side >= 0; const insideZone = isInsideFinishZone(racer.position); const completedEnoughLap = racer.lapCheckpointProgress >= 0.82; if (crossedLine && insideZone && completedEnoughLap && racer.finishCooldown <= 0) { racer.lap++; racer.lapCheckpointProgress = 0; racer.finishCooldown = 1.2; racer.crossedFinishThisLap = true; if (racer.isPlayer && racer.lap <= totalLaps) showCenterMessage(`${racer.name}: Lap ${racer.lap}!`, 1100); if (racer.lap > totalLaps && !racer.finished) { racer.finished = true; resetDriftState(racer, true); racer.finishTime = raceElapsedTime; racer.finishOrder = finishOrder.length + 1; finishOrder.push(racer); if (racer.isPlayer && !resultsShown) { resultsPending = true; raceEndGraceTimer = 6.0; } } } racer.lastFinishSide = side; }
 
 function createStartLineAndBanner(map) {
   const p = getTrackPoint(startT);
@@ -2367,8 +2367,8 @@ const DRIFT_MIN_SPEED = 11;
 
 function makeDriftTapState() {
   return {
-    left: { lastDown: -999, armed: false, held: false },
-    right: { lastDown: -999, armed: false, held: false }
+    left: { lastDown: -999, armed: false, held: false, doubleTapHoldStarted: false },
+    right: { lastDown: -999, armed: false, held: false, doubleTapHoldStarted: false }
   };
 }
 
@@ -2396,6 +2396,7 @@ function handleDriftTapDown(playerIndex, key, now) {
   const dt = now - side.lastDown;
   side.held = true;
   side.armed = dt > 0 && dt <= DOUBLE_TAP_WINDOW;
+  side.doubleTapHoldStarted = side.armed;
   side.lastDown = now;
 }
 
@@ -2405,6 +2406,19 @@ function handleDriftTapUp(playerIndex, key) {
   const side = playerDriftInput[playerIndex][dir];
   side.held = false;
   side.armed = false;
+  side.doubleTapHoldStarted = false;
+  const racer = players.find(p => p.playerIndex === playerIndex);
+  if (racer?.drift?.active && racer.drift.inputSide === dir) releaseDrift(racer);
+}
+
+function clearDriftInputForPlayer(playerIndex) {
+  const input = playerDriftInput[playerIndex];
+  if (!input) return;
+  for (const side of [input.left, input.right]) {
+    side.armed = false;
+    side.doubleTapHoldStarted = false;
+    side.held = false;
+  }
 }
 
 window.addEventListener("keydown", event => {
@@ -2866,9 +2880,7 @@ function checkHazards(racer) {
 function startHazardRespawn(racer) {
   racer.respawnTimer = 0.62;
   racer.spinTimer = 0;
-  racer.drift.active = false;
-  racer.drift.charge = 0;
-  racer.drift.sparkLevel = 0;
+  resetDriftState(racer, true);
   racer.velocity.set(0, 0, 0);
   racer.speed = 0;
   if (racer.isPlayer) showRespawnFade();
@@ -2887,9 +2899,7 @@ function performRespawn(racer) {
   racer.speed = 6;
   racer.velocity.copy(tan.clone().multiplyScalar(6));
   racer.spinTimer = 0;
-  racer.drift.active = false;
-  racer.drift.charge = 0;
-  racer.drift.sparkLevel = 0;
+  resetDriftState(racer, true);
   racer.invulnTimer = Math.max(racer.invulnTimer, 1.8);
   racer.group.visible = true;
   addRecoveryEffects(racer, true);
@@ -2942,18 +2952,20 @@ function startDrift(racer, direction) {
   racer.drift.direction = direction;
   racer.drift.charge = 0;
   racer.drift.sparkLevel = 0;
+  racer.drift.inputSide = direction < 0 ? "left" : "right";
 
   const side = new THREE.Vector3(Math.cos(racer.rotationY), 0, -Math.sin(racer.rotationY));
   racer.driftHopTimer = 0.22;
-  racer.velocity.add(side.multiplyScalar(direction * 9.5));
-  racer.lateralSlip += direction * 0.52;
-  racer.rotationY += direction * 0.12;
+  racer.velocity.add(side.multiplyScalar(direction * 8.5));
+  racer.lateralSlip += direction * 0.48;
+  racer.rotationY += direction * 0.10;
   racer.speed *= 0.995;
   addRecoveryEffects(racer, false);
   burstParticles(racer.position.clone().add(new THREE.Vector3(0, 1.1, 0)), 0xdedede, 8, 0.52, { gravity: 7, life: [0.2, 0.46], size: [0.14, 0.34] });
 }
 
 function releaseDrift(racer) {
+  if (!racer.drift.active) return;
   const forward = getForwardVector(racer);
 
   if (racer.drift.sparkLevel === 1) {
@@ -2978,51 +2990,66 @@ function releaseDrift(racer) {
   }
 
   racer.lateralSlip *= 0.45;
+  resetDriftState(racer, false);
+}
+
+function resetDriftState(racer, clearInput = false) {
   racer.drift.active = false;
   racer.drift.charge = 0;
   racer.drift.sparkLevel = 0;
+  racer.drift.inputSide = null;
+  if (clearInput && racer.playerIndex) clearDriftInputForPlayer(racer.playerIndex);
 }
 
 function updateDrift(racer, dt, driftInput, turn, brake) {
   const movingForward = racer.speed > 0;
   const speedAbs = Math.abs(racer.speed);
   const canStart = speedAbs > DRIFT_MIN_SPEED && movingForward && racer.spinTimer <= 0 && !brake;
+  const now = performance.now() * 0.001;
+
+  if (driftInput && !racer.drift.active) {
+    for (const side of [driftInput.left, driftInput.right]) {
+      if (!side.held || now - side.lastDown > (DOUBLE_TAP_WINDOW + 0.14)) {
+        side.armed = false;
+        side.doubleTapHoldStarted = false;
+      }
+    }
+  }
 
   if (!racer.drift.active && driftInput && canStart) {
-    const wantsLeft = driftInput.left.armed && driftInput.left.held;
-    const wantsRight = driftInput.right.armed && driftInput.right.held;
+    const wantsLeft = driftInput.left.held && driftInput.left.armed && driftInput.left.doubleTapHoldStarted;
+    const wantsRight = driftInput.right.held && driftInput.right.armed && driftInput.right.doubleTapHoldStarted;
     if (wantsLeft || wantsRight) {
       startDrift(racer, wantsLeft ? -1 : 1);
-      driftInput.left.armed = false;
-      driftInput.right.armed = false;
+      const chosen = wantsLeft ? driftInput.left : driftInput.right;
+      chosen.armed = false;
+      chosen.doubleTapHoldStarted = false;
     }
   }
 
   if (!racer.drift.active) return;
 
   if (racer.spinTimer > 0 || brake || speedAbs < DRIFT_MIN_SPEED * 0.72) {
-    racer.drift.active = false;
-    racer.drift.charge = 0;
-    racer.drift.sparkLevel = 0;
+    resetDriftState(racer, true);
     return;
   }
 
-  const holdingDriftDirection = racer.drift.direction < 0 ? driftInput.left.held : driftInput.right.held;
-  const steerAssist = turn * racer.handling * racer.driftPower * 0.42;
-  const driftTurn = racer.drift.direction * racer.handling * racer.driftPower * 0.68;
+  const holdingOriginalDrift = racer.drift.inputSide === "left" ? driftInput.left.held : driftInput.right.held;
+  const steerAssist = turn * racer.handling * racer.driftPower * 0.38;
+  const driftTurn = racer.drift.direction * racer.handling * racer.driftPower * 0.62;
 
   racer.drift.charge += dt;
 
-  if (racer.drift.charge > 0.36) racer.drift.sparkLevel = 1;
-  if (racer.drift.charge > 0.82) racer.drift.sparkLevel = 2;
+  if (racer.drift.charge > 0.45) racer.drift.sparkLevel = 1;
+  if (racer.drift.charge > 1.05) racer.drift.sparkLevel = 2;
 
   racer.rotationY += (driftTurn + steerAssist) * dt;
-  racer.lateralSlip = THREE.MathUtils.lerp(racer.lateralSlip, racer.drift.direction * 0.68, 0.18);
-  racer.speed *= 0.9985;
+  racer.lateralSlip = THREE.MathUtils.lerp(racer.lateralSlip, racer.drift.direction * 0.62, 0.18);
+  racer.speed *= 0.998;
 
   updateSkidMarks(racer, dt, true);
 
-  if (!holdingDriftDirection) releaseDrift(racer);
+  if (!holdingOriginalDrift) releaseDrift(racer);
 }
 
 function animateRider(racer, turn) {
