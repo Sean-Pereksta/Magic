@@ -1530,6 +1530,7 @@ function addBox(parent, x, y, z, sx, sy, sz, mat) {
 
 function createCharacterModel(character) {
   const s = character.size;
+  const bulk = THREE.MathUtils.clamp(character.weight, 0.72, 1.95);
   const root = new THREE.Group();
 
   const mainMat = new THREE.MeshStandardMaterial({ color: character.color, roughness: 0.55 });
@@ -1545,104 +1546,188 @@ function createCharacterModel(character) {
     you mostly see the back of the rider, not their face.
   */
 
-  const body = new THREE.Mesh(new THREE.SphereGeometry(1.0 * s, 16, 16), mainMat);
-  body.scale.set(0.9, 1.25, 0.75);
-  body.position.y = 1.05 * s;
-  body.castShadow = true;
-  root.add(body);
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.58 * s, 1.3 * s, 8, 12), mainMat);
+  torso.scale.set(0.88 + bulk * 0.26, 0.86 + bulk * 0.14, 0.68 + bulk * 0.14);
+  torso.position.set(0, 1.52 * s, -0.03 * s);
+  torso.castShadow = true;
+  root.add(torso);
 
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.86 * s, 16, 16), mainMat);
-  head.position.set(0, 2.45 * s, 0.1 * s);
+  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.52 * s, 12, 12), bellyMat);
+  chest.scale.set(1.05, 1.0, 0.56);
+  chest.position.set(0, 1.48 * s, 0.5 * s);
+  chest.castShadow = true;
+  root.add(chest);
+
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.2 * s, 0.26 * s, 0.36 * s, 8), mainMat);
+  neck.position.set(0, 2.26 * s, 0.24 * s);
+  neck.castShadow = true;
+  root.add(neck);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.62 * s, 14, 14), mainMat);
+  head.scale.set(1.0, 0.92, 1.02);
+  head.position.set(0, 2.62 * s, 0.36 * s);
   head.castShadow = true;
   root.add(head);
 
-  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.54 * s, 12, 12), bellyMat);
-  belly.scale.set(1, 1.1, 0.25);
-  belly.position.set(0, 1.08 * s, 0.62 * s);
-  belly.castShadow = true;
-  root.add(belly);
+  const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.28 * s, 10, 10), bellyMat);
+  muzzle.scale.set(0.98, 0.68, 1.5);
+  muzzle.position.set(0, 2.48 * s, 0.92 * s);
+  muzzle.castShadow = true;
+  root.add(muzzle);
 
   for (const side of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.16 * s, 8, 8), whiteMat);
-    eye.position.set(side * 0.28 * s, 2.62 * s, 0.78 * s);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.11 * s, 8, 8), whiteMat);
+    eye.position.set(side * 0.23 * s, 2.72 * s, 0.82 * s);
     root.add(eye);
 
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.075 * s, 8, 8), blackMat);
-    pupil.position.set(side * 0.28 * s, 2.60 * s, 0.91 * s);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.053 * s, 8, 8), blackMat);
+    pupil.position.set(side * 0.23 * s, 2.71 * s, 0.91 * s);
     root.add(pupil);
   }
 
-  const snout = new THREE.Mesh(new THREE.SphereGeometry(0.34 * s, 12, 12), bellyMat);
-  snout.scale.set(0.8, 0.55, 1.25);
-  snout.position.set(0, 2.36 * s, 0.88 * s);
-  snout.castShadow = true;
-  root.add(snout);
-
-  if (character.id === "rhino") {
-    const horn = new THREE.Mesh(
-      new THREE.ConeGeometry(0.18 * s, 0.85 * s, 12),
-      new THREE.MeshStandardMaterial({ color: 0xf2f2d2, roughness: 0.5 })
-    );
-    horn.rotation.x = Math.PI / 2;
-    horn.position.set(0, 2.58 * s, 1.34 * s);
-    horn.castShadow = true;
-    root.add(horn);
-
-    const shoulder = new THREE.Mesh(new THREE.SphereGeometry(1.1 * s, 16, 16), mainMat);
-    shoulder.scale.set(1.2, 0.7, 0.8);
-    shoulder.position.set(0, 1.65 * s, -0.15 * s);
-    shoulder.castShadow = true;
-    root.add(shoulder);
-  }
-
-  if (character.id === "monkey") {
-    for (const side of [-1, 1]) {
-      const ear = new THREE.Mesh(new THREE.SphereGeometry(0.34 * s, 12, 12), mainMat);
-      ear.position.set(side * 0.82 * s, 2.45 * s, 0.05 * s);
-      ear.castShadow = true;
-      root.add(ear);
-    }
-  }
-
-  if (character.id === "wolf" || character.id === "fox") {
-    for (const side of [-1, 1]) {
-      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.25 * s, 0.75 * s, 10), mainMat);
-      ear.position.set(side * 0.45 * s, 3.12 * s, 0.05 * s);
-      ear.castShadow = true;
-      root.add(ear);
-    }
-  }
-
-  if (character.id === "turtle") {
-    const shell = new THREE.Mesh(
-      new THREE.SphereGeometry(0.95 * s, 16, 16),
-      new THREE.MeshStandardMaterial({ color: 0x155f2c, roughness: 0.8 })
-    );
-    shell.scale.set(1.05, 0.85, 0.45);
-    shell.position.set(0, 1.1 * s, -0.55 * s);
-    shell.castShadow = true;
-    root.add(shell);
-  }
-
   for (const side of [-1, 1]) {
-    const arm = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.17 * s, 0.9 * s, 6, 10),
-      mainMat
-    );
-    arm.position.set(side * 0.82 * s, 1.45 * s, 0.28 * s);
-    arm.rotation.z = side * 0.25;
-    arm.rotation.x = -0.8;
+    const arm = new THREE.Mesh(new THREE.CapsuleGeometry((0.12 + 0.05 * bulk) * s, (0.65 + 0.18 * bulk) * s, 6, 9), mainMat);
+    arm.position.set(side * (0.5 + 0.11 * bulk) * s, 1.56 * s, 0.42 * s);
+    arm.rotation.x = -1.05;
+    arm.rotation.z = side * 0.34;
     arm.castShadow = true;
     root.add(arm);
 
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.18 * s, 10, 10), mainMat);
-    hand.position.set(side * 0.94 * s, 1.06 * s, 0.78 * s);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry((0.12 + 0.03 * bulk) * s, 10, 10), mainMat);
+    hand.position.set(side * (0.62 + 0.13 * bulk) * s, 1.16 * s, 0.78 * s);
     hand.castShadow = true;
     root.add(hand);
+
+    const leg = new THREE.Mesh(new THREE.CapsuleGeometry((0.13 + 0.06 * bulk) * s, (0.52 + 0.18 * bulk) * s, 5, 8), mainMat);
+    leg.position.set(side * 0.48 * s, 0.72 * s, -0.08 * s);
+    leg.rotation.x = 1.36;
+    leg.castShadow = true;
+    root.add(leg);
+
+    const foot = new THREE.Mesh(new THREE.SphereGeometry((0.14 + 0.04 * bulk) * s, 8, 8), bellyMat);
+    foot.scale.set(1.08, 0.55, 1.3);
+    foot.position.set(side * 0.67 * s, 0.46 * s, 0.44 * s);
+    foot.castShadow = true;
+    root.add(foot);
+  }
+
+  if (character.id === "rhino") {
+    torso.scale.set(1.36, 1.12, 1.04);
+    head.scale.set(1.22, 0.96, 1.2);
+
+    const shoulder = new THREE.Mesh(new THREE.SphereGeometry(0.88 * s, 14, 14), mainMat);
+    shoulder.scale.set(1.32, 0.72, 0.86);
+    shoulder.position.set(0, 1.9 * s, -0.16 * s);
+    shoulder.castShadow = true;
+    root.add(shoulder);
+
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.15 * s, 0.9 * s, 10), new THREE.MeshStandardMaterial({ color: 0xf1ecd0, roughness: 0.42 }));
+    horn.rotation.x = Math.PI / 2;
+    horn.position.set(0, 2.57 * s, 1.34 * s);
+    horn.castShadow = true;
+    root.add(horn);
+
+    for (const side of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.SphereGeometry(0.19 * s, 10, 10), mainMat);
+      ear.scale.set(1.0, 0.75, 0.55);
+      ear.position.set(side * 0.45 * s, 2.78 * s, 0.28 * s);
+      root.add(ear);
+    }
+  }
+
+  if (character.id === "monkey") {
+    torso.scale.set(0.84, 0.82, 0.66);
+    head.scale.set(0.92, 0.92, 0.9);
+    muzzle.scale.set(0.82, 0.62, 1.04);
+    for (const side of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.SphereGeometry(0.25 * s, 10, 10), bellyMat);
+      ear.position.set(side * 0.56 * s, 2.72 * s, 0.26 * s);
+      ear.castShadow = true;
+      root.add(ear);
+    }
+
+    const tail = new THREE.Mesh(new THREE.TorusGeometry(0.42 * s, 0.08 * s, 7, 16, Math.PI * 1.45), mainMat);
+    tail.rotation.x = 1.35;
+    tail.rotation.z = -0.35;
+    tail.position.set(0.05 * s, 1.08 * s, -0.58 * s);
+    tail.castShadow = true;
+    root.add(tail);
+  }
+
+  if (character.id === "wolf" || character.id === "fox") {
+    head.scale.set(1.0, 0.88, 1.12);
+    muzzle.scale.set(0.84, 0.6, 1.95);
+
+    for (const side of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.16 * s, 0.52 * s, 8), mainMat);
+      ear.position.set(side * 0.3 * s, 3.03 * s, 0.2 * s);
+      ear.castShadow = true;
+      root.add(ear);
+    }
+  }
+
+  if (character.id === "wolf") {
+    const cheek = new THREE.Mesh(new THREE.SphereGeometry(0.2 * s, 8, 8), whiteMat);
+    cheek.scale.set(1.35, 0.82, 0.7);
+    cheek.position.set(0, 2.42 * s, 0.58 * s);
+    root.add(cheek);
+  }
+
+  if (character.id === "fox") {
+    torso.scale.set(0.9, 0.84, 0.66);
+    const chestFluff = new THREE.Mesh(new THREE.SphereGeometry(0.24 * s, 8, 8), whiteMat);
+    chestFluff.scale.set(1.2, 1.0, 0.7);
+    chestFluff.position.set(0, 1.9 * s, 0.54 * s);
+    root.add(chestFluff);
+
+    const tail = new THREE.Mesh(new THREE.CapsuleGeometry(0.17 * s, 0.74 * s, 6, 10), mainMat);
+    tail.position.set(0.08 * s, 1.15 * s, -0.72 * s);
+    tail.rotation.x = 1.08;
+    tail.rotation.y = -0.3;
+    tail.castShadow = true;
+    root.add(tail);
+
+    const tailTip = new THREE.Mesh(new THREE.SphereGeometry(0.17 * s, 8, 8), whiteMat);
+    tailTip.position.set(0.22 * s, 0.82 * s, -0.36 * s);
+    root.add(tailTip);
+  }
+
+  if (character.id === "turtle") {
+    const shell = new THREE.Mesh(new THREE.SphereGeometry(0.75 * s, 14, 14), new THREE.MeshStandardMaterial({ color: 0x2f7331, roughness: 0.84 }));
+    shell.scale.set(1.22, 0.82, 1.0);
+    shell.position.set(0, 1.58 * s, -0.52 * s);
+    shell.castShadow = true;
+    root.add(shell);
+
+    head.scale.set(0.85, 0.78, 0.88);
+  }
+
+  if (character.id === "penguin") {
+    torso.scale.set(0.72, 0.86, 0.7);
+    head.scale.set(0.86, 0.84, 0.84);
+
+    const beak = new THREE.Mesh(new THREE.ConeGeometry(0.12 * s, 0.32 * s, 8), new THREE.MeshStandardMaterial({ color: 0xffad32, roughness: 0.42 }));
+    beak.rotation.x = Math.PI / 2;
+    beak.position.set(0, 2.5 * s, 0.98 * s);
+    root.add(beak);
+
+    for (const side of [-1, 1]) {
+      const flipper = new THREE.Mesh(new THREE.CapsuleGeometry(0.1 * s, 0.54 * s, 5, 8), blackMat);
+      flipper.position.set(side * 0.48 * s, 1.5 * s, 0.35 * s);
+      flipper.rotation.x = -0.86;
+      flipper.rotation.z = side * 0.74;
+      root.add(flipper);
+
+      const foot = new THREE.Mesh(new THREE.SphereGeometry(0.15 * s, 8, 8), new THREE.MeshStandardMaterial({ color: 0xffad32, roughness: 0.5 }));
+      foot.scale.set(1.22, 0.55, 1.42);
+      foot.position.set(side * 0.55 * s, 0.41 * s, 0.38 * s);
+      root.add(foot);
+    }
   }
 
   return root;
 }
+
 
 /* =========================================================
    RACE SETUP
@@ -2104,11 +2189,25 @@ function updateDrift(racer, dt, driftInput, turn, brake) {
 function animateRider(racer, turn) {
   if (!racer.rider) return;
 
-  const lean = -turn * 0.18;
-  racer.rider.rotation.z = THREE.MathUtils.lerp(racer.rider.rotation.z, lean, 0.16);
+  const now = performance.now() * 0.001;
+  const speedNorm = THREE.MathUtils.clamp(Math.abs(racer.speed) / 58, 0, 1);
+  const driftLean = racer.drift.active ? racer.drift.direction * 0.24 : 0;
+  const turnLean = -turn * 0.28;
+  const spinWobble = racer.spinTimer > 0 ? Math.sin(now * 22 + racer.playerIndex * 0.6) * 0.2 : 0;
+  const targetLean = turnLean + driftLean + spinWobble;
 
-  const speedBob = Math.min(Math.abs(racer.speed) / 45, 1);
-  racer.rider.position.y = 3.05 + Math.sin(performance.now() * 0.012 + racer.playerIndex) * 0.04 * speedBob;
+  racer.rider.rotation.z = THREE.MathUtils.lerp(racer.rider.rotation.z, targetLean, 0.2);
+
+  const boostLean = racer.boostTimer > 0 ? -0.24 : 0;
+  const driftPitch = racer.drift.active ? -0.14 : 0;
+  racer.rider.rotation.x = THREE.MathUtils.lerp(racer.rider.rotation.x, boostLean + driftPitch, 0.14);
+
+  const sway = Math.sin(now * (9 + speedNorm * 5) + racer.playerIndex) * 0.04 * speedNorm;
+  racer.rider.rotation.y = THREE.MathUtils.lerp(racer.rider.rotation.y, (racer.drift.active ? racer.drift.direction * 0.08 : 0) + sway, 0.12);
+
+  const bobBase = 0.05 + speedNorm * 0.05;
+  const bob = Math.sin(now * (14 + speedNorm * 7) + racer.playerIndex * 0.9) * bobBase;
+  racer.rider.position.y = 3.05 + bob;
 }
 
 function getForwardVector(racer) {
