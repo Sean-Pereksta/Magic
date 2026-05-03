@@ -2780,26 +2780,38 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
   racer.driftHopTimer = Math.max(0, (racer.driftHopTimer || 0) - dt);
 
   if (!racer.drift.active && racer.spinTimer <= 0) {
-    const speedTurnScale = THREE.MathUtils.clamp(Math.abs(racer.speed) / 25, 0.25, 1);
-    const turnAmount = turn * racer.handling * currentCC.handlingMultiplier * speedTurnScale * dt * Math.sign(racer.speed || 1);
+    const speedTurnScale = THREE.MathUtils.clamp(Math.abs(racer.speed) / 32, 0.22, 0.82);
+    const normalTurnDampen = 0.72;
+    const turnAmount = turn * racer.handling * currentCC.handlingMultiplier * speedTurnScale * normalTurnDampen * dt * Math.sign(racer.speed || 1);
     racer.rotationY += turnAmount;
   }
 
   const forward = getForwardVector(racer);
   const targetVelocity = forward.clone().multiplyScalar(racer.speed);
   const speedAbs = Math.abs(racer.speed);
-  const hardTurn = Math.abs(turn) > 0.55;
-  const canSkid = onTrack && !racer.drift.active && racer.spinTimer <= 0 && speedAbs > 20 && hardTurn;
+  const hardTurn = Math.abs(turn) > 0.72;
+  const canSkid = onTrack && !racer.drift.active && racer.spinTimer <= 0 && speedAbs > 28 && hardTurn;
   const traction = racer.traction || 1;
-  const ccSkidBias = THREE.MathUtils.clamp(currentCC.skidMultiplier, 0.8, 1.5);
-  const skidSeverity = canSkid ? THREE.MathUtils.clamp(((speedAbs - 20) / 35) * ((Math.abs(turn) - 0.52) / 0.48) * (1.48 / traction) * (ccSkidBias * 1.12), 0.14, 1.35) : 0;
-  const slipStrength = canSkid ? THREE.MathUtils.clamp(0.2 + skidSeverity * 0.72, 0.2, 0.95) : (0.04 * currentCC.skidMultiplier) / traction;
+  const ccSkidBias = THREE.MathUtils.clamp(currentCC.skidMultiplier, 0.75, 1.25);
+  const skidSeverity = canSkid
+    ? THREE.MathUtils.clamp(
+      ((speedAbs - 28) / 45) *
+      ((Math.abs(turn) - 0.72) / 0.28) *
+      (1.05 / traction) *
+      ccSkidBias,
+      0.06,
+      0.75
+    )
+    : 0;
+  const slipStrength = canSkid
+    ? THREE.MathUtils.clamp(0.12 + skidSeverity * 0.42, 0.12, 0.55)
+    : (0.025 * currentCC.skidMultiplier) / traction;
   const followRate = Math.max(0.04, 1 - slipStrength);
   racer.velocity.lerp(targetVelocity, followRate);
   racer.lateralSlip = THREE.MathUtils.lerp(racer.lateralSlip, canSkid ? turn * slipStrength * speedAbs * 0.12 : 0, canSkid ? 0.24 : 0.12);
-  if (canSkid) racer.speed *= (1 - skidSeverity * dt * 0.82);
+  if (canSkid) racer.speed *= (1 - skidSeverity * dt * 0.45);
   const side = new THREE.Vector3(Math.cos(racer.rotationY), 0, -Math.sin(racer.rotationY));
-  const outwardSlide = canSkid ? -Math.sign(turn) * (3.4 + skidSeverity * 10.8) : 0;
+  const outwardSlide = canSkid ? -Math.sign(turn) * (1.2 + skidSeverity * 4.2) : 0;
   racer.velocity.add(side.multiplyScalar(racer.lateralSlip + outwardSlide));
   racer.position.add(racer.velocity.clone().multiplyScalar(dt));
   racer.speed = racer.velocity.length() * Math.sign(racer.speed || 1);
@@ -2890,11 +2902,11 @@ function updateSkidMarks(racer, dt, canSkid) {
   if (!shouldSkid) return;
   racer.skidMarkTimer -= dt;
   if (racer.skidMarkTimer > 0) return;
-  racer.skidMarkTimer = racer.drift.active ? 0.02 : 0.032;
+  racer.skidMarkTimer = racer.drift.active ? 0.025 : 0.06;
   const left = new THREE.Vector3(Math.cos(racer.rotationY), 0, -Math.sin(racer.rotationY)).multiplyScalar(-2.2);
   const right = left.clone().multiplyScalar(-1);
   const slideYaw = Math.atan2(racer.velocity.x || Math.sin(racer.rotationY), racer.velocity.z || Math.cos(racer.rotationY));
-  const markLife = racer.drift.active ? 1.35 : (canSkid ? 1.12 : 0.95);
+  const markLife = racer.drift.active ? 1.3 : 0.75;
   spawnSkidMark(racer.position.clone().add(left), slideYaw, markLife);
   spawnSkidMark(racer.position.clone().add(right), slideYaw, markLife);
 }
@@ -2933,9 +2945,9 @@ function startDrift(racer, direction) {
 
   const side = new THREE.Vector3(Math.cos(racer.rotationY), 0, -Math.sin(racer.rotationY));
   racer.driftHopTimer = 0.22;
-  racer.velocity.add(side.multiplyScalar(direction * 12));
-  racer.lateralSlip += direction * 0.7;
-  racer.rotationY += direction * 0.24;
+  racer.velocity.add(side.multiplyScalar(direction * 9.5));
+  racer.lateralSlip += direction * 0.52;
+  racer.rotationY += direction * 0.12;
   racer.speed *= 0.995;
   addRecoveryEffects(racer, false);
   burstParticles(racer.position.clone().add(new THREE.Vector3(0, 1.1, 0)), 0xdedede, 8, 0.52, { gravity: 7, life: [0.2, 0.46], size: [0.14, 0.34] });
@@ -2946,14 +2958,14 @@ function releaseDrift(racer) {
 
   if (racer.drift.sparkLevel === 1) {
     racer.boostTimer = Math.max(racer.boostTimer, 0.78 * racer.boostStrength);
-    racer.velocity.add(forward.clone().multiplyScalar(14));
+    racer.velocity.add(forward.clone().multiplyScalar(12));
     racer.speed = Math.max(racer.speed, racer.maxSpeed * 0.66);
     showFloatingText(racer, "DRIFT BOOST!");
   }
 
   if (racer.drift.sparkLevel >= 2) {
     racer.boostTimer = Math.max(racer.boostTimer, 1.28 * racer.boostStrength);
-    racer.velocity.add(forward.clone().multiplyScalar(22));
+    racer.velocity.add(forward.clone().multiplyScalar(19));
     racer.speed = Math.max(racer.speed, racer.maxSpeed * 0.74);
     showFloatingText(racer, "SUPER DRIFT!");
   }
@@ -2996,8 +3008,8 @@ function updateDrift(racer, dt, driftInput, turn, brake) {
   }
 
   const holdingDriftDirection = racer.drift.direction < 0 ? driftInput.left.held : driftInput.right.held;
-  const steerAssist = turn * racer.handling * racer.driftPower * 0.66;
-  const driftTurn = racer.drift.direction * racer.handling * racer.driftPower * 1.02;
+  const steerAssist = turn * racer.handling * racer.driftPower * 0.42;
+  const driftTurn = racer.drift.direction * racer.handling * racer.driftPower * 0.68;
 
   racer.drift.charge += dt;
 
@@ -3005,7 +3017,7 @@ function updateDrift(racer, dt, driftInput, turn, brake) {
   if (racer.drift.charge > 0.82) racer.drift.sparkLevel = 2;
 
   racer.rotationY += (driftTurn + steerAssist) * dt;
-  racer.lateralSlip = THREE.MathUtils.lerp(racer.lateralSlip, racer.drift.direction * 0.9, 0.24);
+  racer.lateralSlip = THREE.MathUtils.lerp(racer.lateralSlip, racer.drift.direction * 0.68, 0.18);
   racer.speed *= 0.9985;
 
   updateSkidMarks(racer, dt, true);
@@ -3715,8 +3727,12 @@ function updateParticles(dt) {
 
   racers.forEach(racer => {
     const speedRatio = THREE.MathUtils.clamp(Math.abs(racer.speed) / Math.max(1, racer.maxSpeed), 0, 1.45);
-    const hardTurn = Math.abs(racer.turnInput || 0) > 0.55 && Math.abs(racer.speed) > 19;
-    if ((racer.drift.active || hardTurn) && Math.random() < 0.52) {
+    const hardTurn = Math.abs(racer.turnInput || 0) > 0.72 && Math.abs(racer.speed) > 28;
+    if (racer.drift.active && Math.random() < 0.55) {
+      const tirePos = racer.position.clone().add(getForwardVector(racer).multiplyScalar(-3.4));
+      tirePos.y = 1.1;
+      burstParticles(tirePos, 0xd8d8d8, 1, 0.34, { gravity: 4, life: [0.28, 0.55], size: [0.16, 0.3] });
+    } else if (hardTurn && Math.random() < 0.22) {
       const tirePos = racer.position.clone().add(getForwardVector(racer).multiplyScalar(-3.4));
       tirePos.y = 1.1;
       burstParticles(tirePos, 0xd8d8d8, 1, 0.34, { gravity: 4, life: [0.28, 0.55], size: [0.16, 0.3] });
