@@ -677,6 +677,7 @@ let hazardShimmers = [];
 let runtimeHazards = [];
 const DEBUG_AI_HAZARDS = false;
 const DEBUG_TRACK_ALIGNMENT = false;
+const DEBUG_HAZARD_COLLISIONS = false;
 const TRACK_RIBBON_STEPS = 900;
 let skidMarks = [];
 let raceElapsedTime = 0;
@@ -879,29 +880,29 @@ function getTerrainAtPosition(pos) {
 }
 
 function createTrackSurface() {
-  const shoulderColor = new THREE.Color(currentMap.road).lerp(new THREE.Color(currentMap.edge), 0.22);
-  const centerColor = new THREE.Color(currentMap.road).lerp(new THREE.Color(0x101010), 0.24);
+  const shoulderColor = new THREE.Color(currentMap.road).lerp(new THREE.Color(0xffffff), 0.08);
+  const centerColor = new THREE.Color(currentMap.road).lerp(new THREE.Color(0x000000), 0.06);
   createTrackRibbonMesh({
-    halfWidth: trackWidth * 1.02,
-    y: 0.056,
+    halfWidth: trackWidth,
+    y: 0.1,
     steps: TRACK_RIBBON_STEPS,
-    material: new THREE.MeshStandardMaterial({ color: shoulderColor, roughness: 0.92, metalness: 0.03 })
+    material: new THREE.MeshStandardMaterial({ color: shoulderColor, roughness: 0.9, metalness: 0.02, transparent: false, opacity: 1 })
   });
   createTrackRibbonMesh({
-    halfWidth: trackWidth * 0.82,
-    y: 0.061,
+    halfWidth: trackWidth * 0.88,
+    y: 0.105,
     steps: TRACK_RIBBON_STEPS,
-    material: new THREE.MeshStandardMaterial({ color: centerColor, roughness: 0.78, metalness: 0.04 })
+    material: new THREE.MeshStandardMaterial({ color: centerColor, roughness: 0.78, metalness: 0.03, transparent: false, opacity: 1 })
   });
 }
 
 function createTrackEdges() {
   for (const side of [-1, 1]) {
-    const center = trackWidth * 0.96 * side;
+    const center = trackWidth * 0.965 * side;
     createTrackRibbonMesh({
-      halfWidth: Math.abs(center) + trackWidth * 0.035,
-      innerHalfWidth: Math.abs(center) - trackWidth * 0.035,
-      y: 0.086,
+      halfWidth: Math.abs(center) + trackWidth * 0.014,
+      innerHalfWidth: Math.abs(center) - trackWidth * 0.014,
+      y: 0.112,
       steps: TRACK_RIBBON_STEPS,
       material: new THREE.MeshStandardMaterial({ color: currentMap.edge, roughness: 0.6, metalness: 0.06 })
     });
@@ -909,14 +910,7 @@ function createTrackEdges() {
 }
 
 function createRoadLaneShading() {
-  createTrackRibbonMesh({
-    halfWidth: trackWidth * 0.34, y: 0.07, steps: TRACK_RIBBON_STEPS,
-    material: new THREE.MeshStandardMaterial({ color: 0x2d2f33, roughness: 0.6, metalness: 0.04, transparent: true, opacity: 0.42 })
-  });
-  createTrackRibbonMesh({
-    halfWidth: trackWidth * 0.05, y: 0.093, steps: TRACK_RIBBON_STEPS,
-    material: new THREE.MeshStandardMaterial({ color: 0xf3f3d0, roughness: 0.52, metalness: 0.04, transparent: true, opacity: 0.78 })
-  });
+  // Intentionally disabled during alignment pass to avoid overlays obscuring the road.
 }
 
 function createTrackRibbonMesh({ halfWidth, innerHalfWidth = 0, y, material, steps = TRACK_RIBBON_STEPS, receiveShadow = true }) {
@@ -1214,6 +1208,8 @@ function createHazards(hazards) {
   };
 
   hazards.forEach(h => {
+    const radiusX = h.radiusX || h.radius || 10;
+    const radiusZ = h.radiusZ || h.radius || 10;
     const hazardRoot = new THREE.Group();
     hazardRoot.position.set(h.x, 0, h.z);
     hazardRoot.rotation.y = h.rotation || 0;
@@ -1224,9 +1220,14 @@ function createHazards(hazards) {
       hazardRoot.add(pit.rim, pit.wall, pit.bottom);
       const fluid = new THREE.Mesh(new THREE.CircleGeometry(1, 56), new THREE.MeshStandardMaterial({ color: visual.liquid, emissive: visual.emissive, emissiveIntensity: h.type === "lava" ? 0.9 : 0.35, transparent: true, opacity: visual.opacity, roughness: 0.22, metalness: 0.08 }));
       fluid.rotation.x = -Math.PI / 2;
-      fluid.scale.set((h.radiusX || h.radius || 10) * 0.72, (h.radiusZ || h.radius || 10) * 0.72, 1);
+      fluid.scale.set(radiusX, radiusZ, 1);
       fluid.position.y = -0.48;
       hazardRoot.add(fluid);
+      const rim = new THREE.Mesh(new THREE.RingGeometry(1, 1.12, 56), new THREE.MeshStandardMaterial({ color: visual.rim, roughness: 0.9, metalness: 0.02 }));
+      rim.rotation.x = -Math.PI / 2;
+      rim.position.y = -0.44;
+      rim.scale.set(radiusX, radiusZ, 1);
+      hazardRoot.add(rim);
       hazardShimmers.push({ mesh: fluid, baseScaleX: fluid.scale.x, baseScaleZ: fluid.scale.z, opacityBase: fluid.material.opacity, kind: h.type });
     } else if (h.type === "ghost" || h.type === "wind") {
       const pit = createDepressedHazardPit(h, { rimColor: h.type === "ghost" ? 0x4a3d5f : 0x6c8b96, wallColor: h.type === "ghost" ? 0x2c2340 : 0x415e66, bottomColor: h.type === "ghost" ? 0x140f1f : 0x1d2f35, bottomY: -0.5 });
@@ -1249,6 +1250,16 @@ function createHazards(hazards) {
         }
       }
     }
+    if (DEBUG_AI_HAZARDS || DEBUG_HAZARD_COLLISIONS) {
+      const debugCollision = new THREE.Mesh(
+        new THREE.CircleGeometry(1, 48),
+        new THREE.MeshBasicMaterial({ color: 0xff3333, transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide })
+      );
+      debugCollision.rotation.x = -Math.PI / 2;
+      debugCollision.position.y = 0.2;
+      debugCollision.scale.set(radiusX, radiusZ, 1);
+      hazardRoot.add(debugCollision);
+    }
 
     scene.add(hazardRoot);
     hazardMeshes.push({ root: hazardRoot, data: h });
@@ -1268,7 +1279,8 @@ function createDecorations(map) {
     const dist = getClosestTrackInfo(pos).distance;
 
     if (dist < trackWidth * 1.45) continue;
-    if ((map.hazards || []).some(h => isPointInsideHazard(pos, h, 6))) continue;
+    const hazardList = (runtimeHazards && runtimeHazards.length) ? runtimeHazards : (map.hazards || []);
+    if (hazardList.some(h => isPointInsideHazard(pos, h, 6))) continue;
 
     if (map.theme === "grass") {
       if (Math.random() < 0.5) addTree(x, z, 0.75 + Math.random() * 0.8);
@@ -2186,9 +2198,9 @@ function isPointInsideHazard(pos, hazard, margin = 0) {
 }
 
 function scorePointHazardRisk(pos, margin = 6) {
-  if (!currentMap.hazards || !currentMap.hazards.length) return 0;
+  if (!runtimeHazards || !runtimeHazards.length) return 0;
   let risk = 0;
-  for (const hazard of currentMap.hazards) {
+  for (const hazard of runtimeHazards) {
     if (isPointInsideHazard(pos, hazard, margin)) { risk += getHazardDanger(hazard); continue; }
     const dx = pos.x - hazard.x, dz = pos.z - hazard.z;
     const dist = Math.hypot(dx, dz);
@@ -2231,9 +2243,9 @@ function getUpcomingHazardRiskForAI(racer) {
 }
 
 function getNearestDangerousHazard(pos) {
-  if (!currentMap.hazards) return null;
+  if (!runtimeHazards) return null;
   let best = null, bestDist = Infinity;
-  for (const hazard of currentMap.hazards) {
+  for (const hazard of runtimeHazards) {
     if (getHazardDanger(hazard) < 80) continue;
     const dist = Math.hypot(pos.x - hazard.x, pos.z - hazard.z);
     if (dist < bestDist) { bestDist = dist; best = hazard; }
@@ -2366,10 +2378,10 @@ function updateAI(racer, dt) {
 }
 
 function getForwardHazardThreat(racer) {
-  if (!currentMap.hazards || !currentMap.hazards.length) return null;
+  if (!runtimeHazards || !runtimeHazards.length) return null;
   const forward = new THREE.Vector3(Math.sin(racer.rotationY), 0, Math.cos(racer.rotationY)).normalize();
   let best = null;
-  for (const hazard of currentMap.hazards) {
+  for (const hazard of runtimeHazards) {
     const to = new THREE.Vector3(hazard.x - racer.position.x, 0, hazard.z - racer.position.z);
     const dist = to.length();
     if (dist > 60 || dist < 0.1) continue;
@@ -2490,7 +2502,7 @@ function updateBlinkState(racer) {
 
 function checkHazards(racer) {
   if (racer.respawnTimer > 0 || racer.finished) return;
-  const hazards = currentMap.hazards || [];
+  const hazards = runtimeHazards || [];
   const now = performance.now() * 0.001;
   racer.hazardCooldowns = racer.hazardCooldowns || {};
   racer.traction = racer.kart.traction;
@@ -2503,7 +2515,9 @@ function checkHazards(racer) {
     const s = Math.sin(-(hazard.rotation || 0));
     const rx = dx * c - dz * s;
     const rz = dx * s + dz * c;
-    const inside = (rx * rx) / (hazard.radiusX * hazard.radiusX) + (rz * rz) / (hazard.radiusZ * hazard.radiusZ) <= 1;
+    const radiusX = hazard.radiusX || hazard.radius || 10;
+    const radiusZ = hazard.radiusZ || hazard.radius || 10;
+    const inside = (rx * rx) / (radiusX * radiusX) + (rz * rz) / (radiusZ * radiusZ) <= 1;
     if (!inside) continue;
     if (hazard.type === "pit" || hazard.type === "water" || hazard.type === "lava") { startHazardRespawn(racer); return; }
     if (hazard.type === "sludge" || hazard.type === "mud") { const slow = hazard.slow || 0.65; racer.speed *= slow; racer.velocity.multiplyScalar(Math.max(0.55, slow)); }
