@@ -541,6 +541,36 @@ const maps = [
       { type: "pit", x: 212, z: 120, radiusX: 17, radiusZ: 10, rotation: 0.4 }
     ],
     points: [[-168,0,118],[-252,0,54],[-286,0,-30],[-244,0,-114],[-174,0,-166],[-84,0,-144],[-10,0,-220],[88,0,-248],[176,0,-208],[250,0,-132],[286,0,-44],[242,0,40],[168,0,106],[236,0,188],[176,0,258],[86,0,278],[-8,0,232],[-94,0,268],[-174,0,224],[-236,0,176]]
+  },
+  {
+    id: "skytemple",
+    name: "Sky Temple Dropway",
+    emoji: "☁️",
+    theme: "skytemple",
+    desc: "A floating temple course with narrow bridges, cloud pits, wind gusts, broken platforms, and dangerous drop-offs.",
+    bg: 0x9fdcff, fog: 0xdff7ff, ground: 0xd8d0ad, road: 0x9d9273, edge: 0xfff1a8, trackWidth: 27,
+    points: [[-150,0,100],[-225,0,45],[-210,0,-45],[-145,0,-95],[-70,0,-75],[-35,0,-155],[55,0,-175],[125,0,-115],[95,0,-35],[190,0,-20],[230,0,70],[160,0,140],[70,0,115],[15,0,185],[-90,0,165]],
+    hazards: [{ type:"pit",x:-180,z:75,radiusX:28,radiusZ:18,rotation:0.4 },{ type:"pit",x:-185,z:-75,radiusX:24,radiusZ:20,rotation:-0.2 },{ type:"pit",x:-20,z:-130,radiusX:32,radiusZ:18,rotation:0.7 },{ type:"pit",x:105,z:-75,radiusX:30,radiusZ:22,rotation:0.1 },{ type:"pit",x:185,z:35,radiusX:36,radiusZ:20,rotation:-0.5 },{ type:"wind",x:45,z:-150,radiusX:36,radiusZ:12,rotation:0.25,push:1.25 },{ type:"wind",x:135,z:120,radiusX:32,radiusZ:12,rotation:-0.35,push:1.15 }]
+  },
+  {
+    id: "sewer",
+    name: "Toxic Sewer Slalom",
+    emoji: "☣️",
+    theme: "sewer",
+    desc: "A grimy sewer course with toxic sludge, steam vents, drain pits, tight tunnels, and slippery slime corners.",
+    bg: 0x263522, fog: 0x40502d, ground: 0x30352d, road: 0x1d211c, edge: 0x77ff22, trackWidth: 29,
+    points: [[-140,0,95],[-215,0,70],[-235,0,-10],[-175,0,-65],[-215,0,-135],[-120,0,-175],[-35,0,-120],[20,0,-175],[115,0,-145],[175,0,-75],[130,0,-15],[220,0,45],[185,0,130],[95,0,160],[25,0,105],[-65,0,165]],
+    hazards: [{ type:"sludge",x:-200,z:25,radiusX:26,radiusZ:18,rotation:0.15,slow:0.55 },{ type:"sludge",x:-175,z:-115,radiusX:34,radiusZ:18,rotation:-0.3,slow:0.5 },{ type:"sludge",x:0,z:-145,radiusX:30,radiusZ:16,rotation:0.45,slow:0.55 },{ type:"sludge",x:165,z:-45,radiusX:28,radiusZ:18,rotation:0.2,slow:0.6 },{ type:"pit",x:200,z:90,radiusX:24,radiusZ:22,rotation:0.4 },{ type:"pit",x:55,z:135,radiusX:24,radiusZ:18,rotation:-0.4 },{ type:"steam",x:-90,z:-155,radiusX:18,radiusZ:12,rotation:0,spin:0.55 },{ type:"steam",x:120,z:-120,radiusX:18,radiusZ:12,rotation:0,spin:0.55 },{ type:"steam",x:160,z:120,radiusX:18,radiusZ:12,rotation:0,spin:0.55 }]
+  },
+  {
+    id: "graveyard",
+    name: "Haunted Graveyard Rally",
+    emoji: "👻",
+    theme: "graveyard",
+    desc: "A spooky night course with ghost zones, mud traps, grave pits, crooked fences, pumpkins, and thick haunted fog.",
+    bg: 0x171126, fog: 0x30234f, ground: 0x182415, road: 0x3a332d, edge: 0x98dfff, trackWidth: 30,
+    points: [[-155,0,105],[-230,0,65],[-210,0,-35],[-130,0,-15],[-170,0,-120],[-70,0,-165],[15,0,-115],[75,0,-175],[165,0,-135],[215,0,-55],[150,0,15],[225,0,95],[135,0,165],[55,0,105],[-10,0,175],[-95,0,150]],
+    hazards: [{ type:"mud",x:-190,z:25,radiusX:30,radiusZ:18,rotation:0.25,slow:0.62 },{ type:"mud",x:-140,z:-95,radiusX:28,radiusZ:18,rotation:-0.35,slow:0.58 },{ type:"mud",x:95,z:-150,radiusX:34,radiusZ:18,rotation:0.1,slow:0.62 },{ type:"ghost",x:175,z:-20,radiusX:34,radiusZ:22,rotation:0.5,traction:0.45 },{ type:"ghost",x:180,z:120,radiusX:36,radiusZ:20,rotation:-0.4,traction:0.45 },{ type:"ghost",x:10,z:145,radiusX:32,radiusZ:18,rotation:0.15,traction:0.45 },{ type:"pit",x:-55,z:-140,radiusX:22,radiusZ:18,rotation:0 },{ type:"pit",x:115,z:145,radiusX:24,radiusZ:18,rotation:-0.2 }]
   }
 ];
 
@@ -999,14 +1029,14 @@ function createHazards(map) {
     hazardRoot.position.set(h.x, 0, h.z);
     hazardRoot.rotation.y = h.rotation || 0;
 
-    if (h.type === "water" || h.type === "lava") {
+    if (h.type === "water" || h.type === "lava" || h.type === "sludge" || h.type === "mud" || h.type === "ghost" || h.type === "wind") {
       const water = new THREE.Mesh(
         new THREE.CircleGeometry(1, 36),
         new THREE.MeshStandardMaterial({
-          color: h.type === "lava" ? 0xff5f1f : 0x3ca6ff,
-          emissive: h.type === "lava" ? 0x8f2200 : 0x123b7a,
+          color: h.type === "lava" ? 0xff5f1f : h.type === "sludge" ? 0x4f7a1f : h.type === "mud" ? 0x6f4a32 : h.type === "ghost" ? 0xa8c7ff : h.type === "wind" ? 0xd9f4ff : 0x3ca6ff,
+          emissive: h.type === "lava" ? 0x8f2200 : h.type === "ghost" ? 0x3a4f8f : h.type === "sludge" ? 0x1f3f12 : h.type === "wind" ? 0x3f7a9a : 0x123b7a,
           transparent: true,
-          opacity: 0.62,
+          opacity: h.type === "ghost" ? 0.48 : h.type === "wind" ? 0.4 : 0.62,
           roughness: 0.12,
           metalness: 0.15
         })
@@ -1016,7 +1046,7 @@ function createHazards(map) {
       water.position.y = 0.02;
       hazardRoot.add(water);
       hazardShimmers.push(water);
-    } else {
+    } else if (h.type === "steam" || h.type === "pit") {
       const rim = new THREE.Mesh(
         new THREE.RingGeometry(0.72, 1, 36),
         new THREE.MeshStandardMaterial({ color: 0x2f2723, roughness: 1 })
@@ -1028,12 +1058,20 @@ function createHazards(map) {
 
       const hole = new THREE.Mesh(
         new THREE.CircleGeometry(1, 36),
-        new THREE.MeshStandardMaterial({ color: 0x080808, roughness: 1 })
+        new THREE.MeshStandardMaterial({ color: h.type === "steam" ? 0x636363 : 0x080808, roughness: 1, transparent: h.type === "steam", opacity: h.type === "steam" ? 0.45 : 1 })
       );
       hole.rotation.x = -Math.PI / 2;
       hole.scale.set(h.radiusX * 0.72, h.radiusZ * 0.72, 1);
       hole.position.y = -0.22;
       hazardRoot.add(hole);
+      if (h.type === "steam") {
+        for (let i = 0; i < 3; i++) {
+          const puff = new THREE.Mesh(new THREE.SphereGeometry(0.5 + i * 0.25, 10, 10), new THREE.MeshStandardMaterial({ color: 0xb7b7b7, transparent: true, opacity: 0.35 - i * 0.08 }));
+          puff.position.set((Math.random() - 0.5) * 2, 0.8 + i * 0.9, (Math.random() - 0.5) * 2);
+          hazardRoot.add(puff);
+          hazardShimmers.push(puff);
+        }
+      }
     }
 
     scene.add(hazardRoot);
@@ -1053,7 +1091,7 @@ function createDecorations(map) {
     const pos = new THREE.Vector3(x, 0, z);
     const dist = getClosestTrackInfo(pos).distance;
 
-    if (dist < trackWidth * 1.2) continue;
+    if (dist < trackWidth * 1.45) continue;
 
     if (map.theme === "grass") {
       if (Math.random() < 0.5) addTree(x, z, 0.75 + Math.random() * 0.8);
@@ -1079,6 +1117,25 @@ function createDecorations(map) {
       if (Math.random() < 0.6) addNeonBuilding(x, z, 0.8 + Math.random() * 1.4);
       else if (Math.random() < 0.82) addNeonSign(x, z);
       else addFence(x, z);
+    } else if (map.theme === "skytemple") {
+      if (Math.random() < 0.28) addTempleColumn(x, z, 0.8 + Math.random());
+      else if (Math.random() < 0.5) addBrokenRuin(x, z, 0.7 + Math.random());
+      else if (Math.random() < 0.7) addCloudBank(x, z, 0.8 + Math.random() * 1.2);
+      else if (Math.random() < 0.9) addFloatingRock(x, z, 0.7 + Math.random());
+      else addGoldenWarningFlag(x, z, 0.9 + Math.random() * 0.5);
+    } else if (map.theme === "sewer") {
+      if (Math.random() < 0.34) addSewerPipe(x, z, 0.8 + Math.random());
+      else if (Math.random() < 0.56) addToxicBarrel(x, z, 0.8 + Math.random() * 0.4);
+      else if (Math.random() < 0.74) addMetalGrate(x, z, 0.8 + Math.random() * 0.5);
+      else if (Math.random() < 0.9) addTunnelArch(x, z, 0.8 + Math.random());
+      else addSlimeDripColumn(x, z, 0.8 + Math.random());
+    } else if (map.theme === "graveyard") {
+      if (Math.random() < 0.28) addGravestone(x, z, 0.8 + Math.random());
+      else if (Math.random() < 0.46) addDeadTree(x, z, 0.8 + Math.random());
+      else if (Math.random() < 0.62) addCrookedFence(x, z, 0.8 + Math.random() * 0.4);
+      else if (Math.random() < 0.76) addPumpkin(x, z, 0.8 + Math.random() * 0.5);
+      else if (Math.random() < 0.9) addMausoleum(x, z, 0.8 + Math.random());
+      else addGhostWisp(x, z, 0.8 + Math.random() * 0.5);
     }
   }
 }
@@ -1270,6 +1327,22 @@ function addNeonSign(x, z) {
   sign.position.set(x, 6.2, z);
   scene.add(pole, sign);
 }
+function addTempleColumn(x, z, s) { const c = new THREE.Mesh(new THREE.CylinderGeometry(1 * s, 1.2 * s, 10 * s, 10), new THREE.MeshStandardMaterial({ color: 0xe9e0bf, roughness: 0.9 })); c.position.set(x, 5 * s, z); scene.add(c); }
+function addBrokenRuin(x, z) { addRuin(x, z); }
+function addCloudBank(x, z, s) { const c = new THREE.Mesh(new THREE.SphereGeometry(5 * s, 12, 10), new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.65 })); c.scale.set(1.6, 0.6, 1.1); c.position.set(x, 3 + Math.random() * 2, z); scene.add(c); }
+function addFloatingRock(x, z, s) { addRock(x, z, s); }
+function addGoldenWarningFlag(x, z, s) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 5 * s, 6), mats.metal); p.position.set(x, 2.5 * s, z); const f = new THREE.Mesh(new THREE.PlaneGeometry(2 * s, 1.2 * s), new THREE.MeshStandardMaterial({ color: 0xffd84c, side: THREE.DoubleSide, emissive: 0x553300 })); f.position.set(x + 1.1 * s, 3.2 * s, z); scene.add(p, f); }
+function addSewerPipe(x, z, s) { const p = new THREE.Mesh(new THREE.TorusGeometry(3 * s, 0.9 * s, 10, 18), new THREE.MeshStandardMaterial({ color: 0x5f6658, roughness: 0.7 })); p.rotation.x = Math.PI / 2; p.position.set(x, 3 * s, z); scene.add(p); }
+function addToxicBarrel(x, z, s) { const b = new THREE.Mesh(new THREE.CylinderGeometry(1.1 * s, 1.1 * s, 2.2 * s, 12), new THREE.MeshStandardMaterial({ color: 0x4d5c24, emissive: 0x2f5a18 })); b.position.set(x, 1.1 * s, z); scene.add(b); }
+function addMetalGrate(x, z, s) { const g = new THREE.Mesh(new THREE.BoxGeometry(4 * s, 0.2, 3 * s), new THREE.MeshStandardMaterial({ color: 0x737373, metalness: 0.7, roughness: 0.4 })); g.position.set(x, 0.12, z); g.rotation.y = Math.random() * Math.PI; scene.add(g); }
+function addTunnelArch(x, z, s) { const a = new THREE.Mesh(new THREE.TorusGeometry(4 * s, 0.6 * s, 8, 14, Math.PI), new THREE.MeshStandardMaterial({ color: 0x4f5650 })); a.rotation.z = Math.PI; a.position.set(x, 4 * s, z); scene.add(a); }
+function addSlimeDripColumn(x, z, s) { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.8 * s, 1.2 * s, 7 * s, 8), new THREE.MeshStandardMaterial({ color: 0x3d4b32, emissive: 0x1f3a14 })); c.position.set(x, 3.5 * s, z); scene.add(c); }
+function addGravestone(x, z, s) { const g = new THREE.Mesh(new THREE.BoxGeometry(2.2 * s, 3.4 * s, 0.8 * s), new THREE.MeshStandardMaterial({ color: 0x7d7d89 })); g.position.set(x, 1.7 * s, z); scene.add(g); }
+function addDeadTree(x, z, s) { const t = new THREE.Mesh(new THREE.CylinderGeometry(0.6 * s, 1 * s, 8 * s, 7), new THREE.MeshStandardMaterial({ color: 0x4a3428 })); t.position.set(x, 4 * s, z); scene.add(t); }
+function addCrookedFence(x, z) { addFence(x, z); }
+function addPumpkin(x, z, s) { const p = new THREE.Mesh(new THREE.SphereGeometry(1.4 * s, 12, 10), new THREE.MeshStandardMaterial({ color: 0xff8a22, emissive: 0x552200 })); p.scale.y = 0.8; p.position.set(x, 1.1 * s, z); scene.add(p); }
+function addMausoleum(x, z, s) { const m = new THREE.Mesh(new THREE.BoxGeometry(6 * s, 4 * s, 5 * s), new THREE.MeshStandardMaterial({ color: 0x5e6072 })); m.position.set(x, 2 * s, z); scene.add(m); }
+function addGhostWisp(x, z, s) { const w = new THREE.Mesh(new THREE.SphereGeometry(1.1 * s, 10, 10), new THREE.MeshStandardMaterial({ color: 0xb4d9ff, emissive: 0x4466aa, transparent: true, opacity: 0.72 })); w.position.set(x, 3.2 * s, z); scene.add(w); }
 
 /* =========================================================
    KART AND CHARACTER MODELS
@@ -1878,6 +1951,8 @@ function updateAI(racer, dt) {
   const targetIndex = racer.ai.targetIndex + currentDifficulty.aiLookAhead;
   const t = wrap01(targetIndex / checkpointCount);
   const target = getTrackPoint(t);
+  const nearbyHazard = (currentMap.hazards || []).find(h => Math.hypot(target.x - h.x, target.z - h.z) < trackWidth * 0.9);
+  if (nearbyHazard) racer.ai.laneOffset *= 0.86;
   const n = getTrackNormal(t);
   target.add(n.multiplyScalar(racer.ai.laneOffset));
 
@@ -2014,8 +2089,12 @@ function updateBlinkState(racer) {
 function checkHazards(racer) {
   if (racer.respawnTimer > 0 || racer.finished) return;
   const hazards = currentMap.hazards || [];
+  const now = performance.now() * 0.001;
+  racer.hazardCooldowns = racer.hazardCooldowns || {};
+  racer.traction = racer.kart.traction;
 
-  for (const hazard of hazards) {
+  for (let i = 0; i < hazards.length; i++) {
+    const hazard = hazards[i];
     const dx = racer.position.x - hazard.x;
     const dz = racer.position.z - hazard.z;
     const c = Math.cos(-(hazard.rotation || 0));
@@ -2023,10 +2102,12 @@ function checkHazards(racer) {
     const rx = dx * c - dz * s;
     const rz = dx * s + dz * c;
     const inside = (rx * rx) / (hazard.radiusX * hazard.radiusX) + (rz * rz) / (hazard.radiusZ * hazard.radiusZ) <= 1;
-    if (inside) {
-      startHazardRespawn(racer);
-      return;
-    }
+    if (!inside) continue;
+    if (hazard.type === "pit" || hazard.type === "water" || hazard.type === "lava") { startHazardRespawn(racer); return; }
+    if (hazard.type === "sludge" || hazard.type === "mud") { const slow = hazard.slow || 0.65; racer.speed *= slow; racer.velocity.multiplyScalar(Math.max(0.55, slow)); }
+    if (hazard.type === "ghost") { racer.traction = racer.kart.traction * (hazard.traction || 0.5); racer.spinTimer = Math.max(racer.spinTimer, 0.05); }
+    if (hazard.type === "wind") { const p = (hazard.push || 1) * 0.75; racer.velocity.x += Math.sin(hazard.rotation || 0) * p; racer.velocity.z += Math.cos(hazard.rotation || 0) * p; }
+    if (hazard.type === "steam") { const key = `steam-${i}`; if ((racer.hazardCooldowns[key] || 0) < now) { racer.spinTimer = Math.max(racer.spinTimer, hazard.spin || 0.55); racer.hazardCooldowns[key] = now + 1.2; } }
   }
 }
 
@@ -2864,6 +2945,13 @@ function drawMinimap() {
   }
 
   ctx.stroke();
+
+  (currentMap.hazards || []).forEach(h => {
+    ctx.fillStyle = h.type === "pit" ? "#111" : h.type === "mud" ? "#7a4d2d" : h.type === "sludge" ? "#62a830" : h.type === "ghost" ? "#9bc7ff" : h.type === "wind" ? "#d9f7ff" : h.type === "steam" ? "#999" : "#49a7ff";
+    ctx.beginPath();
+    ctx.arc(h.x * scale, h.z * scale, 2.4, 0, Math.PI * 2);
+    ctx.fill();
+  });
 
   racers.forEach(racer => {
     ctx.fillStyle = racer.isPlayer
