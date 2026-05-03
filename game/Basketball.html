@@ -654,6 +654,9 @@ let rimBasePosition = null;
 let netWobbleStrength = 0;
 let rimWobbleStrength = 0;
 let rimTouchCount = 0;
+let netContactPoint = new THREE.Vector3();
+let netImpactDirection = new THREE.Vector3(0,0,1);
+let netVelocity = new THREE.Vector3();
 let shotHasHitRimOrBoard = false;
 let predictedReboundPoint = null;
 let reboundPredictionTimer = 0;
@@ -1492,35 +1495,43 @@ function makeShortsTexture(jerseyDef){
   const tex = new THREE.CanvasTexture(c); tex.needsUpdate=true; return tex;
 }
 function makeShoeTexture(shoeDef){
-  const c = document.createElement("canvas"); c.width=256; c.height=128; const ctx=c.getContext("2d");
-  const g = ctx.createLinearGradient(0,0,256,0); g.addColorStop(0,toHex(shoeDef.primary)); g.addColorStop(.78,toHex(shoeDef.accent)); g.addColorStop(1,toHex(shoeDef.sole));
-  ctx.fillStyle = g; ctx.fillRect(0,0,256,128);
-  drawPattern(ctx,shoeDef.pattern||"geo",{primary:shoeDef.primary,secondary:shoeDef.accent,trim:shoeDef.sole,accent:shoeDef.accent},{x:10,y:14,w:236,h:90});
-  ctx.fillStyle = toHex(shoeDef.sole); ctx.fillRect(0,105,256,23);
-  ctx.fillStyle = "rgba(255,255,255,.55)";
-  ctx.fillRect(14,28,210,5); ctx.fillRect(16,46,168,4);
-  ctx.fillStyle = toHex(shoeDef.accent);
-  ctx.fillRect(20,20,30,10); // heel accent
-  ctx.fillRect(188,74,44,16); // toe cap
-  ctx.fillRect(80,102,92,6); // mid sole stripe
+  const c = document.createElement("canvas"); c.width=320; c.height=160; const ctx=c.getContext("2d");
+  const bodyGrad = ctx.createLinearGradient(0,0,320,0);
+  bodyGrad.addColorStop(0,toHex(shoeDef.primary)); bodyGrad.addColorStop(.62,toHex(shoeDef.accent)); bodyGrad.addColorStop(1,toHex(shoeDef.primary));
+  ctx.fillStyle = bodyGrad; ctx.fillRect(0,0,320,160);
+  drawPattern(ctx,shoeDef.pattern||"geo",{primary:shoeDef.primary,secondary:shoeDef.accent,trim:shoeDef.sole,accent:shoeDef.accent},{x:16,y:20,w:288,h:104});
+  ctx.fillStyle = toHex(shoeDef.sole); ctx.fillRect(0,126,320,34);
+  ctx.fillStyle = "rgba(255,255,255,.48)"; ctx.fillRect(10,114,300,3);
+  ctx.fillStyle = "rgba(0,0,0,.22)"; ctx.fillRect(0,141,320,5);
+  ctx.fillStyle = "#f6f6f6";
+  for(let i=0;i<6;i++) ctx.fillRect(108 + i*21,72 + (i%2)*2,10,4);
+  ctx.fillStyle = toHex(shoeDef.accent); ctx.fillRect(18,46,26,42); ctx.fillRect(250,84,58,18); ctx.fillRect(120,102,80,8);
+  if(shoeDef.type === "high" || shoeDef.type === "boost") ctx.fillRect(34,28,44,32);
+  if(shoeDef.type === "boost") ctx.fillRect(72,132,40,11);
+  if(shoeDef.type === "glow") { ctx.fillStyle = "rgba(120,244,255,.62)"; ctx.fillRect(224,126,72,13); }
   const tex = new THREE.CanvasTexture(c); tex.needsUpdate=true; return tex;
 }
 
 function drawSneakerPreview(canvas,sneaker,time=0){
   const ctx = canvas.getContext("2d"); const w = canvas.width, h = canvas.height;
-  ctx.clearRect(0,0,w,h); ctx.fillStyle = "rgba(8,14,26,.8)"; ctx.fillRect(0,0,w,h);
-  const tex = makeShoeTexture(sneaker);
-  ctx.drawImage(tex.image,12,10,w-24,h-20);
-  const swing = Math.sin(time*2.1)*7; const x = w*.52 + swing; const y = h*.56;
-  ctx.save(); ctx.translate(x,y); ctx.rotate(-0.08);
-  ctx.fillStyle = toHex(sneaker.sole); ctx.fillRect(-58,4,118,13 + (sneaker.type==="boost"?4:0));
-  ctx.fillStyle = toHex(sneaker.primary); ctx.beginPath(); ctx.moveTo(-58,8); ctx.lineTo(34,-17); ctx.lineTo(60,5); ctx.lineTo(16,12); ctx.lineTo(-52,15); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = toHex(sneaker.accent); ctx.fillRect(-16,-3,38,5); ctx.fillRect(-40,-7,18,10); ctx.fillRect(26,2,16,8);
-  ctx.fillStyle = "rgba(255,255,255,.45)"; ctx.fillRect(-44,-2,62,3);
-  if(sneaker.type==="high") ctx.fillRect(-48,-13,22,14);
-  if(sneaker.type==="glow"||sneaker.type==="boost"){ ctx.fillStyle = "rgba(120,240,255,.7)"; ctx.fillRect(24,8,18,6); }
+  ctx.clearRect(0,0,w,h); ctx.fillStyle = "rgba(8,14,26,.86)"; ctx.fillRect(0,0,w,h);
+  const swing = Math.sin(time*2.1)*6; const x = w*.52 + swing; const y = h*.58;
+  ctx.save(); ctx.translate(x,y); ctx.rotate(-0.07);
+  const soleH = sneaker.type==="boost"?18:14;
+  ctx.fillStyle = toHex(sneaker.sole); ctx.fillRect(-68,6,136,soleH);
+  ctx.fillStyle = "rgba(255,255,255,.36)"; ctx.fillRect(-64,8,124,3);
+  ctx.fillStyle = toHex(sneaker.primary);
+  ctx.beginPath(); ctx.moveTo(-66,11); ctx.quadraticCurveTo(-18,-31,46,-19); ctx.lineTo(66,2); ctx.lineTo(58,12); ctx.lineTo(-56,20); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = toHex(sneaker.accent); ctx.fillRect(-50,-6,18,18); ctx.fillRect(-8,-10,44,6); ctx.fillRect(30,4,22,9);
+  ctx.fillStyle = "#f2f2f2";
+  for(let i=0;i<5;i++){ ctx.fillRect(-18 + i*12,-5 + (i%2),7,3); }
+  ctx.fillStyle = "rgba(255,255,255,.3)"; ctx.fillRect(-14,-8,30,2);
+  if(sneaker.type==="high" || sneaker.type==="boost"){ ctx.fillStyle = toHex(sneaker.accent); ctx.fillRect(-60,-20,28,17); }
+  if(sneaker.type==="boost"){ ctx.fillStyle = "rgba(165,248,255,.82)"; ctx.fillRect(10,12,34,6); }
+  if(sneaker.type==="glow"){ ctx.fillStyle = "rgba(120,240,255,.65)"; ctx.fillRect(22,10,28,7); ctx.fillRect(-4,10,16,6); }
   ctx.restore();
 }
+
 function drawJerseyPreview(canvas,jersey){
   const ctx = canvas.getContext("2d"); const w = canvas.width, h = canvas.height;
   ctx.clearRect(0,0,w,h); ctx.fillStyle="rgba(8,14,26,.8)"; ctx.fillRect(0,0,w,h);
@@ -2258,50 +2269,64 @@ function buildHoop(){
   const poleMat = new THREE.MeshStandardMaterial({color:0x555b63,metalness:.55,roughness:.28});
   const hoopBaseZ = HOOP_POS.z - 1.65;
 
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(.12,.12,4.4,24),poleMat);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(.13,.145,4.4,24),poleMat);
   pole.position.set(HOOP_POS.x,2.2,hoopBaseZ);
   pole.castShadow = true;
   scene.add(pole);
 
-  const arm = new THREE.Mesh(new THREE.BoxGeometry(.2,.2,1.35),poleMat);
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(.24,.22,1.5),poleMat);
   arm.position.set(HOOP_POS.x,HOOP_POS.y + 0.6,HOOP_POS.z - 1.05);
   arm.castShadow = true;
   scene.add(arm);
 
   backboard = new THREE.Mesh(
-    new THREE.BoxGeometry(3.4,2.05,.12),
-    new THREE.MeshStandardMaterial({color:0xeef8ff,transparent:true,opacity:.72,roughness:.18})
+    new THREE.BoxGeometry(3.4,2.05,.1),
+    new THREE.MeshPhysicalMaterial({color:0xf4fbff,transparent:true,opacity:.5,roughness:.06,metalness:.08,clearcoat:.45,clearcoatRoughness:.18})
   );
   backboard.position.set(HOOP_POS.x,HOOP_POS.y + 0.22,HOOP_POS.z - 0.43);
   backboard.castShadow = true;
   scene.add(backboard);
 
   rim = new THREE.Mesh(
-    new THREE.TorusGeometry(RIM_RADIUS,.045,12,64),
-    new THREE.MeshStandardMaterial({color:0xff6500,metalness:.35,roughness:.25})
+    new THREE.TorusGeometry(RIM_RADIUS,.06,16,72),
+    new THREE.MeshStandardMaterial({color:0xff6f1a,metalness:.72,roughness:.22})
   );
   rim.rotation.x = Math.PI/2;
   rim.position.copy(HOOP_POS);
   rimBasePosition = rim.position.clone();
   scene.add(rim);
 
+  const rimBracket = new THREE.Mesh(new THREE.BoxGeometry(.28,.1,.42),new THREE.MeshStandardMaterial({color:0xb1bbc7,metalness:.62,roughness:.24}));
+  rimBracket.position.set(HOOP_POS.x,HOOP_POS.y-0.02,HOOP_POS.z-0.24); scene.add(rimBracket);
+  const boardFrame = new THREE.Mesh(new THREE.BoxGeometry(3.56,2.2,.08),new THREE.MeshStandardMaterial({color:0xf8fbff,metalness:.28,roughness:.32}));
+  boardFrame.position.copy(backboard.position); boardFrame.position.z -= 0.08; scene.add(boardFrame);
+  const targetSq = new THREE.Mesh(new THREE.PlaneGeometry(.62,.48),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.92}));
+  targetSq.position.set(HOOP_POS.x,HOOP_POS.y + 0.16,backboard.position.z + 0.056); scene.add(targetSq);
+  const polePad = new THREE.Mesh(new THREE.BoxGeometry(.48,1.05,.44),new THREE.MeshStandardMaterial({color:0x263d5f,roughness:.58}));
+  polePad.position.set(HOOP_POS.x,.56,hoopBaseZ + 0.02); scene.add(polePad);
+  const basePad = new THREE.Mesh(new THREE.BoxGeometry(1.15,.46,1.08),new THREE.MeshStandardMaterial({color:0x1a2e4a,roughness:.62}));
+  basePad.position.set(HOOP_POS.x,.23,hoopBaseZ - 0.28); scene.add(basePad);
+
   netLines = [];
   const netMat = new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:.75});
-  for(let i=0;i<16;i++){
-    const a = (i/16)*Math.PI*2;
-    const x = Math.cos(a)*RIM_RADIUS;
-    const z = Math.sin(a)*RIM_RADIUS;
-    const top = new THREE.Vector3(x,HOOP_POS.y-.05,HOOP_POS.z+z);
-    const bottom = new THREE.Vector3(x*.5,HOOP_POS.y-.95,HOOP_POS.z+z*.5);
-    const line = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints([
-        top.clone(),
-        bottom.clone()
-      ]),
-      netMat
-    );
-    line.userData.netBaseTop = top.clone();
-    line.userData.netBaseBottom = bottom.clone();
+  const netSegments = graphicsQuality === "high" ? 4 : graphicsQuality === "medium" ? 3 : 2;
+  const netStrands = graphicsQuality === "low" ? 14 : 20;
+  for(let i=0;i<netStrands;i++){
+    const a = (i/netStrands)*Math.PI*2;
+    const topR = RIM_RADIUS*1.01;
+    const midR = RIM_RADIUS*0.72;
+    const botR = RIM_RADIUS*0.5;
+    const points = [];
+    for(let j=0;j<=netSegments;j++){
+      const t = j/netSegments;
+      const rr = THREE.MathUtils.lerp(topR,botR,t);
+      const y = HOOP_POS.y - 0.05 - t*(0.9 + 0.05*Math.sin(a*2));
+      const x = Math.cos(a)*THREE.MathUtils.lerp(topR,midR,Math.min(1,t*1.3));
+      const z = HOOP_POS.z + Math.sin(a)*rr;
+      points.push(new THREE.Vector3(x,y,z));
+    }
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),netMat);
+    line.userData.netBasePoints = points.map(p=>p.clone());
     netLines.push(line);
     scene.add(line);
   }
@@ -2363,14 +2388,17 @@ function updateScoreboard(){
 }
 
 function buildBall(){
+  const pebbleMat = new THREE.MeshStandardMaterial({color:0xc76528,roughness:.92,metalness:0});
   ball = new THREE.Mesh(
     new THREE.SphereGeometry(BALL_RADIUS,32,32),
-    new THREE.MeshStandardMaterial({color:0xd46b21,roughness:.72})
+    new THREE.MeshStandardMaterial({color:0xd06a24,roughness:.78,metalness:.03})
   );
   ball.castShadow = true;
   scene.add(ball);
+  const pebble = new THREE.Mesh(new THREE.SphereGeometry(BALL_RADIUS*1.004,24,24),pebbleMat);
+  pebble.material.transparent = true; pebble.material.opacity = 0.22; ball.add(pebble);
 
-  const seamMat = new THREE.LineBasicMaterial({color:0x111111});
+  const seamMat = new THREE.LineBasicMaterial({color:0x141414});
   for(let i=0;i<3;i++){
     const ring = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints(makeCirclePoints(BALL_RADIUS+.006,80)),
@@ -5137,7 +5165,7 @@ function updateBall(dt){
   }
 
   if(ballState === "shot" || ballState === "loose"){
-    if(ballState === "shot" && Math.random() < dt*24) createShotTrail(lastShotWasHook ? "hook" : "shot");
+    if(ballState === "shot" && ballVelocity.length() > 7.6 && Math.random() < dt*18) createShotTrail(lastShotWasHook ? "hook" : "shot");
     ballVelocity.y += GRAVITY * dt;
     ball.position.add(ballVelocity.clone().multiplyScalar(dt));
 
@@ -5163,8 +5191,11 @@ function updateBall(dt){
     }
   }
 
-  ball.rotation.x += dt * 5;
-  ball.rotation.z += dt * 3;
+  const spinBoost = ballState === "shot" ? THREE.MathUtils.clamp(ballVelocity.length()*0.22,1,2.8) : 1;
+  ball.rotation.x += dt * 5.2 * spinBoost;
+  ball.rotation.z += dt * 3.4 * spinBoost;
+  ball.rotation.y += dt * 2.3 * spinBoost;
+  if(ballShadow){ ballShadow.material.opacity = THREE.MathUtils.lerp(ballShadow.material.opacity, ballState === "shot" ? 0.48 : 0.36, dt*5); }
   ball.scale.lerp(new THREE.Vector3(1,1,1),dt*12);
 }
 
@@ -5238,7 +5269,7 @@ function handleBackboardAndRim(){
     ballVelocity.y = Math.max(Math.abs(ballVelocity.y)*.45 + .8,.9);
     updatePredictedReboundPoint(true);
     handleRimRattle();
-    triggerNetWobble(0.45);
+    triggerNetWobble(0.45,ball.position,ballVelocity);
     spawnParticle(ball.position,0xff9f5a);
     playRimSound();
   }
@@ -6200,12 +6231,15 @@ function checkGameWinner(){
   }
 }
 
-function triggerNetWobble(strength = 1){
+function triggerNetWobble(strength = 1,contactPoint=null,impactDir=null){
   const s = Math.max(0.2,strength);
   netWobbleStrength = Math.max(netWobbleStrength,s);
   rimWobbleStrength = Math.max(rimWobbleStrength,s);
   netWobbleTimer = Math.max(netWobbleTimer,0.28 + s*0.32);
   rimWobbleTimer = Math.max(rimWobbleTimer,0.2 + s*0.24);
+  if(contactPoint) netContactPoint.copy(contactPoint);
+  if(impactDir && impactDir.lengthSq() > 0.0001) netImpactDirection.copy(impactDir).normalize();
+  netVelocity.addScaledVector(netImpactDirection,0.5*s);
 }
 
 function updateHoopReaction(dt){
@@ -6236,27 +6270,39 @@ function updateHoopReaction(dt){
       for(let i=0;i<netLines.length;i++){
         const line = netLines[i];
         const pos = line.geometry.attributes.position;
-        const baseTop = line.userData.netBaseTop;
-        const baseBottom = line.userData.netBaseBottom;
-        const phase = i*0.7;
-        const swayX = Math.sin(t + phase) * amp;
-        const swayZ = Math.cos(t*1.15 + phase) * amp * 0.45;
-        pos.setXYZ(0,baseTop.x,baseTop.y,baseTop.z);
-        pos.setXYZ(1,baseBottom.x + swayX,baseBottom.y,baseBottom.z + swayZ);
+        const basePoints = line.userData.netBasePoints;
+        const phase = i*0.55;
+        const impact = netImpactDirection.clone().multiplyScalar(amp*0.7);
+        for(let j=0;j<basePoints.length;j++){
+          const bp = basePoints[j];
+          const tSeg = j/(basePoints.length-1);
+          const distInfluence = THREE.MathUtils.clamp(1 - bp.distanceTo(netContactPoint)*1.4,0,1);
+          const swayX = Math.sin(t + phase + j*0.4) * amp * tSeg;
+          const swayZ = Math.cos(t*1.15 + phase + j*0.35) * amp * 0.6 * tSeg;
+          const drop = amp * 0.32 * distInfluence * (0.3 + tSeg);
+          pos.setXYZ(j,bp.x + swayX + impact.x*distInfluence*tSeg,bp.y - drop,bp.z + swayZ + impact.z*distInfluence*tSeg);
+        }
         pos.needsUpdate = true;
       }
     }else{
       for(const line of netLines){
         const pos = line.geometry.attributes.position;
-        const baseTop = line.userData.netBaseTop;
-        const baseBottom = line.userData.netBaseBottom;
-        pos.setXYZ(0,baseTop.x,baseTop.y,baseTop.z);
-        pos.setXYZ(1,baseBottom.x,baseBottom.y,baseBottom.z);
+        const basePoints = line.userData.netBasePoints;
+        for(let j=0;j<basePoints.length;j++){ const bp = basePoints[j]; pos.setXYZ(j,bp.x,bp.y,bp.z); }
         pos.needsUpdate = true;
       }
       netWobbleStrength = 0;
     }
   }
+  [p1,p2].forEach(pl=>{
+    if(!pl) return;
+    const hand = pl.group.localToWorld(new THREE.Vector3(pl.w*0.36,1.46*pl.h,0));
+    const d = hand.distanceTo(HOOP_POS);
+    if(d < 0.55 && pl.velocity.y > -0.2){
+      const dunkBoost = (pl.dunking || ballState === "dunk") ? 0.62 : 0.28;
+      triggerNetWobble(dunkBoost,hand,pl.velocity.clone().setY(0.08));
+    }
+  });
 }
 function nextPossessionAfterScore(scorer){
   if(gameMode.makeItTakeIt) return scorer;
