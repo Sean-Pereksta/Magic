@@ -1739,10 +1739,13 @@ function createShotMeter(){
 }
 
 function addSpotLight(x,y,z){
-  const s = new THREE.SpotLight(0xffffff,1.05,55,Math.PI/6,.35);
+  const s = new THREE.SpotLight(0xfff0d8,1.22,62,Math.PI/5.8,.4);
   s.position.set(x,y,z);
   s.target.position.set(0,0,-3);
   s.castShadow = true;
+  s.shadow.mapSize.set(graphicsQuality === "high" ? 1024 : 512, graphicsQuality === "high" ? 1024 : 512);
+  s.shadow.bias = -0.00018;
+  s.shadow.radius = graphicsQuality === "high" ? 4 : 2;
   scene.add(s);
   scene.add(s.target);
 }
@@ -1752,7 +1755,7 @@ function buildArena(){
   const theme = courts[selectedCourt] || courts.classicArena;
   const court = new THREE.Mesh(
     new THREE.BoxGeometry(COURT_W,.18,COURT_L),
-    new THREE.MeshStandardMaterial({map:makeImprovedCourtTexture(theme),roughness:.34,metalness:.16,emissive:0x0f0a04,emissiveIntensity:.08})
+    new THREE.MeshStandardMaterial({map:makeImprovedCourtTexture(theme),roughness:.28,metalness:.2,emissive:0x0f0a04,emissiveIntensity:.08})
   );
   court.position.y = -.09;
   court.receiveShadow = true;
@@ -1795,7 +1798,7 @@ function buildArena(){
 
   const key = new THREE.Mesh(
     new THREE.BoxGeometry(5.2,.025,5.7),
-    new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.12})
+    new THREE.MeshBasicMaterial({color:theme.lineColor,transparent:true,opacity:.2})
   );
   key.position.set(0,.04,-9.6);
   scene.add(key);
@@ -1855,6 +1858,25 @@ function buildArena(){
     strip.position.set(-COURT_W/2-.6+(i+.5)*((COURT_W+1.2)/20),.15,COURT_L/2+.45);
     scene.add(strip);
     arenaLightStrips.push(strip);
+  }
+
+  const benchMat = new THREE.MeshStandardMaterial({color:0x1e2735,roughness:.72});
+  const railMat = new THREE.MeshStandardMaterial({color:0x9fb0c4,metalness:.45,roughness:.35});
+  for(let side of [-1,1]){
+    const sidelineX = side*(COURT_W/2+1.65);
+    const bench = new THREE.Mesh(new THREE.BoxGeometry(1.1,.35,5.2),benchMat);
+    bench.position.set(sidelineX,.22,2.8); bench.castShadow = true; scene.add(bench);
+    const cooler = new THREE.Mesh(new THREE.BoxGeometry(.45,.58,.45),new THREE.MeshStandardMaterial({color:0x3f93ff,roughness:.5}));
+    cooler.position.set(sidelineX+side*0.05,.31,5.9); cooler.castShadow = true; scene.add(cooler);
+    const camBox = new THREE.Mesh(new THREE.BoxGeometry(.5,.36,.4),new THREE.MeshStandardMaterial({color:0x141922,roughness:.62}));
+    camBox.position.set(sidelineX,.2,-5.7); scene.add(camBox);
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(.1,1.1,COURT_L*.92),railMat);
+    rail.position.set(side*(COURT_W/2+3.35),.74,0); rail.castShadow = true; scene.add(rail);
+  }
+  for(let i=0;i<6;i++){
+    const stair = new THREE.Mesh(new THREE.BoxGeometry(1.2,.18,1.6),new THREE.MeshStandardMaterial({color:0x232f40,roughness:.85}));
+    stair.position.set(0,.1+i*.13,-13.6+i*.86);
+    scene.add(stair);
   }
 }
 
@@ -2097,8 +2119,12 @@ function makeImprovedCourtTexture(theme=courts[selectedCourt]){
   ctx.fillStyle = grad;
   ctx.fillRect(0,0,1024,1024);
   for(let i=0;i<28;i++){
-    ctx.fillStyle = i%2 ? "rgba(255,255,255,.04)" : "rgba(0,0,0,.05)";
+    ctx.fillStyle = i%2 ? "rgba(255,255,255,.055)" : "rgba(0,0,0,.065)";
     ctx.fillRect(i*37,0,37,1024);
+    ctx.fillStyle = i%2 ? "rgba(255,240,210,.025)" : "rgba(75,42,18,.03)";
+    for(let y=0;y<1024;y+=24){
+      ctx.fillRect(i*37,y+Math.random()*6,37,2);
+    }
   }
   ctx.strokeStyle = "rgba(70,35,10,.35)";
   ctx.lineWidth = 2;
@@ -2108,9 +2134,27 @@ function makeImprovedCourtTexture(theme=courts[selectedCourt]){
     ctx.lineTo(x,1024);
     ctx.stroke();
   }
-  ctx.fillStyle = "rgba(255,213,106,.08)";
+  ctx.fillStyle = "rgba(255,213,106,.11)";
   ctx.fillRect(0,0,1024,18);
   ctx.fillRect(0,1006,1024,18);
+  const varnish = ctx.createRadialGradient(512,560,220,512,560,700);
+  varnish.addColorStop(0,"rgba(255,255,255,.08)");
+  varnish.addColorStop(1,"rgba(255,255,255,0)");
+  ctx.fillStyle = varnish;
+  ctx.fillRect(0,0,1024,1024);
+  const traffic = [[510,695,240,120],[510,420,280,130],[510,530,150,90]];
+  traffic.forEach(([x,y,w,h])=>{
+    ctx.fillStyle = "rgba(44,27,15,.08)";
+    ctx.fillRect(x-w/2,y-h/2,w,h);
+    for(let i=0;i<44;i++){
+      ctx.strokeStyle = `rgba(25,18,14,${0.02+Math.random()*0.05})`;
+      ctx.lineWidth = 1+Math.random()*2;
+      ctx.beginPath();
+      ctx.moveTo(x-w/2+Math.random()*w,y-h/2+Math.random()*h);
+      ctx.lineTo(x-w/2+Math.random()*w,y-h/2+Math.random()*h);
+      ctx.stroke();
+    }
+  });
   drawPattern(ctx,theme.theme || "wave",{primary:parseInt(theme.woodA.replace('#',''),16),secondary:parseInt(theme.woodB.replace('#',''),16),trim:theme.trimColor},{x:190,y:188,w:644,h:644});
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
@@ -2124,7 +2168,7 @@ function addCourtLogos(theme=courts[selectedCourt]){
   logoCanvas.width = 512; logoCanvas.height = 512;
   const ctx = logoCanvas.getContext("2d");
   ctx.clearRect(0,0,512,512);
-  ctx.fillStyle = "rgba(16,34,64,.82)";
+  ctx.fillStyle = "rgba(16,34,64,.9)";
   ctx.beginPath(); ctx.arc(256,256,160,0,Math.PI*2); ctx.fill();
   drawPattern(ctx,theme.theme,{primary:parseInt(theme.woodA.replace('#',''),16),secondary:parseInt(theme.woodB.replace('#',''),16),trim:theme.trimColor},{x:120,y:120,w:272,h:272});
   ctx.strokeStyle = toHex(theme.trimColor);
@@ -2139,7 +2183,7 @@ function addCourtLogos(theme=courts[selectedCourt]){
   const logoTex = new THREE.CanvasTexture(logoCanvas);
   const logo = new THREE.Mesh(
     new THREE.PlaneGeometry(3.8,3.8),
-    new THREE.MeshStandardMaterial({map:logoTex,transparent:true,opacity:.92,emissive:theme.trimColor,emissiveIntensity:.12})
+    new THREE.MeshStandardMaterial({map:logoTex,transparent:true,opacity:.96,emissive:theme.trimColor,emissiveIntensity:.18})
   );
   logo.rotation.x = -Math.PI/2;
   logo.position.set(0,.03,.2);
@@ -2148,7 +2192,7 @@ function addCourtLogos(theme=courts[selectedCourt]){
 
 function addFloorScuffs(){
   const scuffGeo = new THREE.PlaneGeometry(1.2,1.2);
-  for(let i=0;i<18;i++){
+  for(let i=0;i<26;i++){
     const dark = i%3===0;
     const m = new THREE.Mesh(
       scuffGeo,
@@ -2156,8 +2200,8 @@ function addFloorScuffs(){
     );
     m.rotation.x = -Math.PI/2;
     m.rotation.z = Math.random()*Math.PI;
-    const nearRimBias = i < 10 ? -9.8 + Math.random()*2.6 : -2 + Math.random()*4;
-    m.position.set((Math.random()-.5)*10,.026,nearRimBias);
+    const nearRimBias = i < 12 ? -9.9 + Math.random()*3.1 : i<20 ? -6.8 + Math.random()*4.8 : -1.5 + Math.random()*3.8;
+    m.position.set((Math.random()-.5)*10.4,.026,nearRimBias);
     scene.add(m);
   }
 }
@@ -2181,6 +2225,19 @@ function applyCourtTheme(courtKey){
   const theme = courts[courtKey] || courts.classicArena;
   if(arenaThemeRefs.court && arenaThemeRefs.court.material){
     arenaThemeRefs.court.material.map = makeImprovedCourtTexture(theme);
+    const glossy = graphicsQuality === "high" ? {roughness:.2,metalness:.24} : graphicsQuality === "medium" ? {roughness:.26,metalness:.18} : {roughness:.4,metalness:.1};
+    arenaThemeRefs.court.material.roughness = glossy.roughness;
+    arenaThemeRefs.court.material.metalness = glossy.metalness;
+    if(theme.theme === "neon" || theme.theme === "cyber" || theme.theme === "galaxy"){
+      arenaThemeRefs.court.material.emissiveIntensity = .14;
+    }else if(theme.theme === "blacktop"){
+      arenaThemeRefs.court.material.roughness = Math.min(.45,arenaThemeRefs.court.material.roughness+.1);
+    }else if(theme.theme === "beach"){
+      arenaThemeRefs.court.material.color = new THREE.Color(0xfff1d3);
+    }else{
+      arenaThemeRefs.court.material.color = new THREE.Color(0xffffff);
+      arenaThemeRefs.court.material.emissiveIntensity = .08;
+    }
     arenaThemeRefs.court.material.needsUpdate = true;
   }
   arenaThemeRefs.lineMats.forEach(m=>m.color.setHex(theme.lineColor));
@@ -2192,7 +2249,7 @@ function applyCourtTheme(courtKey){
   if(scene && scene.background) scene.background.setHex(theme.fog || 0x08111c);
   if(arenaMoodLight){
     arenaMoodLight.color.setHex(theme.mood || theme.trimColor || 0x65d9ff);
-    arenaMoodLight.intensity = .18 + arenaExcitement*.35;
+    arenaMoodLight.intensity = .22 + arenaExcitement*.38;
   }
   updateLEDBoards(`${theme.logoText} • ${theme.style || theme.theme || "ARENA"}`);
 }
@@ -6697,7 +6754,20 @@ function updateParticles(dt){
     if(p.userData.life<=0){ p.material.opacity=0; particlesActive.splice(i,1); particlePool.push(p); }
   }
 }
-function setGraphicsQuality(level){ graphicsQuality = level in qualitySettings ? level : "medium"; }
+function setGraphicsQuality(level){
+  graphicsQuality = level in qualitySettings ? level : "medium";
+  if(!renderer) return;
+  renderer.shadowMap.enabled = graphicsQuality !== "low";
+  renderer.shadowMap.type = graphicsQuality === "high" ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+  [p1,p2,ball,rim,backboard].forEach(obj=>{
+    if(obj && obj.group){
+      obj.group.traverse(n=>{ if(n.isMesh){ n.castShadow = graphicsQuality !== "low"; n.receiveShadow = graphicsQuality !== "low"; }});
+    }else if(obj && obj.isMesh){
+      obj.castShadow = graphicsQuality !== "low";
+      obj.receiveShadow = graphicsQuality === "high";
+    }
+  });
+}
 
 function calculateReboundVector(){ return new THREE.Vector3((Math.random()-.5)*4,2.2,Math.random()*3.8); }
 function updateReboundAI(dt){
