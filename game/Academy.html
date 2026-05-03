@@ -418,8 +418,8 @@ const karts = [
     name: "Speedster",
     emoji: "🏎️",
     color: 0xff3333,
-    maxSpeed: 60,
-    accel: 38,
+    maxSpeed: 69,
+    accel: 42,
     handling: 2.15,
     weight: 0.9,
     drift: 1.0,
@@ -430,8 +430,8 @@ const karts = [
     name: "Balanced Kart",
     emoji: "🚗",
     color: 0x3366ff,
-    maxSpeed: 53,
-    accel: 43,
+    maxSpeed: 61,
+    accel: 48,
     handling: 2.55,
     weight: 1.0,
     drift: 1.08,
@@ -442,8 +442,8 @@ const karts = [
     name: "Grippy Buggy",
     emoji: "🛺",
     color: 0x33cc66,
-    maxSpeed: 47,
-    accel: 46,
+    maxSpeed: 54,
+    accel: 50,
     handling: 3.15,
     weight: 1.02,
     drift: 1.25,
@@ -454,8 +454,8 @@ const karts = [
     name: "Heavy Cruiser",
     emoji: "🚙",
     color: 0x9b4dff,
-    maxSpeed: 50,
-    accel: 35,
+    maxSpeed: 58,
+    accel: 39,
     handling: 2.05,
     weight: 1.38,
     drift: 0.95,
@@ -696,6 +696,8 @@ let countdown = 3.6;
 let trackCurve = null;
 let trackPoints = [];
 let trackWidth = 30;
+let trackSamples = [];
+let trackSampleCount = 0;
 let checkpointCount = 96;
 let startT = 0.02;
 
@@ -779,6 +781,7 @@ function buildWorld(map) {
   trackWidth = map.trackWidth;
   trackPoints = map.points.map(p => new THREE.Vector3(p[0], p[1], p[2]));
   trackCurve = new THREE.CatmullRomCurve3(trackPoints, true, "catmullrom", 0.45);
+  buildTrackSamples();
 
   createTrackSurface();
   createTrackEdges();
@@ -806,14 +809,29 @@ function getTrackNormal(t) {
   return new THREE.Vector3(-tan.z, 0, tan.x).normalize();
 }
 
+function buildTrackSamples() {
+  trackSampleCount = Math.max(1400, checkpointCount * 10);
+  trackSamples = [];
+
+  for (let i = 0; i < trackSampleCount; i++) {
+    const t = i / trackSampleCount;
+    trackSamples.push({
+      t,
+      point: getTrackPoint(t)
+    });
+  }
+}
+
 function getClosestTrackInfo(pos) {
   let bestDistance = Infinity;
   let bestT = 0;
   let bestPoint = null;
+  const samples = trackSamples.length ? trackSamples : null;
+  const count = samples ? samples.length : checkpointCount;
 
-  for (let i = 0; i < checkpointCount; i++) {
-    const t = i / checkpointCount;
-    const p = getTrackPoint(t);
+  for (let i = 0; i < count; i++) {
+    const t = samples ? samples[i].t : i / checkpointCount;
+    const p = samples ? samples[i].point : getTrackPoint(t);
     const d = Math.hypot(pos.x - p.x, pos.z - p.z);
 
     if (d < bestDistance) {
@@ -831,7 +849,11 @@ function getClosestTrackInfo(pos) {
 }
 
 function isOnTrack(pos) {
-  return getClosestTrackInfo(pos).distance <= trackWidth * 0.55;
+  return getClosestTrackInfo(pos).distance <= trackWidth * 0.64;
+}
+
+function getTerrainAtPosition(pos) {
+  return isOnTrack(pos) ? "road" : "offroad";
 }
 
 function createTrackSurface() {
@@ -1216,6 +1238,9 @@ function createRacer(name, character, kart, isPlayer, playerIndex, aiIndex) {
     position: visual.root.position,
     rotationY: 0,
     speed: 0,
+    velocity: new THREE.Vector3(0, 0, 0),
+    lateralSlip: 0,
+    skidMarkTimer: 0,
     maxSpeed: kart.maxSpeed + character.speedBonus,
     accel: kart.accel + character.accelBonus,
     handling: kart.handling + character.handlingBonus,
@@ -1647,8 +1672,8 @@ function updateAI(racer, dt) {
 }
 
 function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
-  const onTrack = isOnTrack(racer.position);
-
+  const terrain = getTerrainAtPosition(racer.position);
+  const onTrack = terrain === "road";
   let terrainFactor = onTrack ? 1 : currentMap.theme === "snow" ? 0.64 : currentMap.theme === "desert" ? 0.55 : 0.5;
 
   if (racer.boostTimer > 0) {
@@ -1675,7 +1700,7 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
   if (racer.invulnTimer > 0) racer.invulnTimer -= dt;
   if (racer.itemCooldown > 0) racer.itemCooldown -= dt;
 
-  const maxSpeed = racer.maxSpeed * terrainFactor * (racer.boostTimer > 0 ? 1.36 : 1);
+  const maxSpeed = racer.maxSpeed * terrainFactor * (racer.boostTimer > 0 ? 1.44 : 1);
   racer.speed = THREE.MathUtils.clamp(racer.speed, -18, maxSpeed);
 
   if (Math.abs(racer.speed) < 0.2) {
@@ -1693,7 +1718,18 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
   }
 
   const forward = getForwardVector(racer);
-  racer.position.add(forward.multiplyScalar(racer.speed * dt));
+  const targetVelocity = forward.clone().multiplyScalar(racer.speed);
+  const speedAbs = Math.abs(racer.speed);
+  const hardTurn = Math.abs(turn) > 0.55;
+  const canSkid = onTrack && !racer.drift.active && racer.spinTimer <= 0 && speedAbs > 24 && hardTurn;
+  const slipStrength = canSkid ? THREE.MathUtils.clamp((speedAbs - 22) / 45, 0.08, 0.3) : 0.03;
+  const followRate = Math.max(0.08, 1 - slipStrength);
+  racer.velocity.lerp(targetVelocity, followRate);
+  racer.lateralSlip = THREE.MathUtils.lerp(racer.lateralSlip, canSkid ? turn * slipStrength * speedAbs * 0.09 : 0, 0.15);
+  const side = new THREE.Vector3(Math.cos(racer.rotationY), 0, -Math.sin(racer.rotationY));
+  racer.velocity.add(side.multiplyScalar(racer.lateralSlip));
+  racer.position.add(racer.velocity.clone().multiplyScalar(dt));
+  racer.speed = racer.velocity.length() * Math.sign(racer.speed || 1);
   racer.group.rotation.y = racer.rotationY;
 
   racer.wheels.forEach(wheel => {
@@ -1702,6 +1738,35 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
 
   animateRider(racer, turn);
   updateRaceProgress(racer);
+  updateSkidMarks(racer, dt, canSkid);
+}
+
+function updateSkidMarks(racer, dt, canSkid) {
+  if (!canSkid || !isOnTrack(racer.position)) return;
+  racer.skidMarkTimer -= dt;
+  if (racer.skidMarkTimer > 0) return;
+  racer.skidMarkTimer = 0.06;
+  const left = new THREE.Vector3(Math.cos(racer.rotationY), 0, -Math.sin(racer.rotationY)).multiplyScalar(-2.2);
+  const right = left.clone().multiplyScalar(-1);
+  spawnSkidMark(racer.position.clone().add(left));
+  spawnSkidMark(racer.position.clone().add(right));
+}
+
+function spawnSkidMark(pos) {
+  const mark = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.9, 2.1),
+    new THREE.MeshBasicMaterial({ color: 0x1a1a1a, transparent: true, opacity: 0.35, depthWrite: false })
+  );
+  mark.rotation.x = -Math.PI / 2;
+  mark.rotation.z = Math.random() * Math.PI;
+  mark.position.set(pos.x, 0.07, pos.z);
+  scene.add(mark);
+
+  particles.push({
+    mesh: mark,
+    velocity: new THREE.Vector3(0, 0, 0),
+    life: 0.65
+  });
 }
 
 function updateDrift(racer, dt, driftInput, turn) {
