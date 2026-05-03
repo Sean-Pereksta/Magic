@@ -653,7 +653,7 @@ let shotMeter = null;
 let dunkActive = false;
 let dunkOwner = null;
 let dunkTimer = 0;
-let dunkDuration = 0.55;
+let dunkDuration = 0.8;
 let dunkScored = false;
 let rimHangActive = false;
 let rimHangTimer = 0;
@@ -3100,6 +3100,37 @@ function poseShotArms(char,pct){
   char.rightForearm.rotation.set(-.65-lift*.9-follow*.35,0,.05);
 }
 
+
+function poseDunkArms(char,progress){
+  const w = char.profile.width;
+  const h = char.profile.height;
+  const meta = (char.moveMeta && char.moveMeta.dunk) || {};
+  const side = meta.side === "left" ? -1 : 1;
+  const gather = THREE.MathUtils.clamp(progress / 0.22,0,1);
+  const flight = THREE.MathUtils.clamp((progress - 0.22) / 0.5,0,1);
+  const slam = THREE.MathUtils.clamp((progress - 0.72) / 0.28,0,1);
+  const dip = Math.sin(gather*Math.PI) * (1-flight);
+  char.leftArm.position.set(-.28*w,1.5*h,-.12);
+  char.rightArm.position.set(.28*w,1.5*h,-.12);
+  if(meta.style === "twohand"){
+    const rise = smoothstep(flight);
+    const chop = smoothstep(slam);
+    char.leftArm.rotation.set(-0.8 - rise*0.9 - chop*0.25,0,-0.12);
+    char.rightArm.rotation.set(-0.8 - rise*0.9 - chop*0.25,0,0.12);
+    char.leftForearm.rotation.set(-0.7 - rise*0.9 - chop*0.4,0,-0.06);
+    char.rightForearm.rotation.set(-0.7 - rise*0.9 - chop*0.4,0,0.06);
+  }else{
+    const attackArm = side > 0 ? char.rightArm : char.leftArm;
+    const attackForearm = side > 0 ? char.rightForearm : char.leftForearm;
+    const guideArm = side > 0 ? char.leftArm : char.rightArm;
+    const guideForearm = side > 0 ? char.leftForearm : char.rightForearm;
+    attackArm.rotation.set(-0.75 - flight*1.05 - slam*0.22,0,side*0.08);
+    attackForearm.rotation.set(-0.8 - flight*0.95 - slam*0.42,0,side*0.03);
+    guideArm.rotation.set(-0.5 - dip*0.4 - flight*0.35,0,-side*0.22);
+    guideForearm.rotation.set(-0.4 - flight*0.35,0,-side*0.08);
+  }
+}
+
 function onKeyDown(e){
   const controlledTapKeys = ["KeyQ","KeyE","KeyS","KeyU","KeyO","KeyK","Numpad4","Numpad6"];
   if(e.repeat && controlledTapKeys.includes(e.code)) return;
@@ -4406,6 +4437,11 @@ function animateCharacter(char,dt){
     animateShotTimeline(char,pct,char.moveMeta.lastShotType || "jumper");
     return;
   }
+  if(dunkActive && dunkOwner === char.id){
+    const pct = THREE.MathUtils.clamp(dunkTimer/Math.max(0.001,dunkDuration),0,1);
+    poseDunkArms(char,pct);
+    return;
+  }
 
   if(char.blockTime > 0 || char.handsUpTime > 0){
     char.blockTime = Math.max(0,char.blockTime - dt);
@@ -5329,6 +5365,26 @@ function startDunk(char){
   backboardCollisionCooldown = 0;
   shotHasHitRimOrBoard = false;
   char.moveMeta.gatherType = "dunk";
+  const toRim = HOOP_POS.clone().sub(char.group.position).setY(0);
+  const toRimDir = toRim.lengthSq() > 0.0001 ? toRim.clone().normalize() : getForward(char.angle).clone().normalize();
+  const right = getBodyRightVector(char).normalize();
+  const sideSign = right.dot(toRimDir) > 0 ? 1 : -1;
+  const style = char.profile.width > 1.08 ? "twohand" : char.profile.sprint > 1.15 ? "tomahawk" : "quick";
+  const rimFront = HOOP_POS.clone().add(new THREE.Vector3(0,0,RIM_RADIUS + char.bodyRadius + 0.09));
+  const takeoff = char.group.position.clone().add(toRimDir.clone().multiplyScalar(Math.min(1.25,toRim.length()*0.45)));
+  const peak = rimFront.clone().add(new THREE.Vector3(sideSign*0.12,0.92,0.05));
+  const attack = rimFront.clone().add(new THREE.Vector3(sideSign*0.04,0.42,-0.02));
+  const landing = rimFront.clone().add(new THREE.Vector3(-sideSign*0.14,0,-0.42));
+  char.moveMeta.dunk = {
+    start: char.group.position.clone(),
+    takeoff,
+    peak,
+    attack,
+    landing,
+    side: sideSign > 0 ? "right" : "left",
+    startFacing: char.angle,
+    style
+  };
   flash(`${char.id.toUpperCase()} dunk!`);
 }
 
@@ -5337,26 +5393,48 @@ function updateDunk(dt){
   const owner = dunkOwner === "p1" ? p1 : p2;
   dunkTimer += dt;
   const t = THREE.MathUtils.clamp(dunkTimer / dunkDuration,0,1);
-  owner.group.position.add(getForward(owner.angle).multiplyScalar(1.45*dt));
+  const meta = owner.moveMeta && owner.moveMeta.dunk ? owner.moveMeta.dunk : null;
+  if(!meta) return;
+  const gather = THREE.MathUtils.clamp(t/0.22,0,1);
+  const flight = THREE.MathUtils.clamp((t-0.22)/0.5,0,1);
+  const slam = THREE.MathUtils.clamp((t-0.72)/0.28,0,1);
+  const gatherPos = meta.start.clone().lerp(meta.takeoff,smoothstep(gather));
+  const flightPos = meta.takeoff.clone().lerp(meta.peak,smoothstep(flight));
+  const slamPos = meta.peak.clone().lerp(meta.landing,smoothstep(slam));
+  if(t < 0.22) owner.group.position.copy(gatherPos);
+  else if(t < 0.72) owner.group.position.copy(flightPos);
+  else owner.group.position.copy(slamPos);
+  owner.group.position.z = Math.max(owner.group.position.z, HOOP_POS.z + RIM_RADIUS + owner.bodyRadius + 0.04);
+  owner.group.rotation.x = -0.12 * Math.sin(gather*Math.PI) - 0.08 * Math.sin(flight*Math.PI);
+  owner.group.rotation.y = THREE.MathUtils.lerp(owner.group.rotation.y,meta.startFacing,0.18);
+  const knee = Math.sin(flight*Math.PI);
+  owner.leftLeg.rotation.x = -0.24;
+  owner.rightLeg.rotation.x = -0.24;
+  if(t < 0.22){
+    owner.leftLeg.rotation.x -= 0.25 * Math.sin(gather*Math.PI);
+    owner.rightLeg.rotation.x -= 0.25 * Math.sin(gather*Math.PI);
+  }else if(t < 0.72){
+    if(meta.side === "right"){
+      owner.rightLeg.rotation.x = 0.36 * knee;
+      owner.leftLeg.rotation.x = -0.34 - 0.24 * knee;
+    }else{
+      owner.leftLeg.rotation.x = 0.36 * knee;
+      owner.rightLeg.rotation.x = -0.34 - 0.24 * knee;
+    }
+  }else{
+    owner.leftLeg.rotation.x = 0.22 * Math.sin(slam*Math.PI);
+    owner.rightLeg.rotation.x = 0.22 * Math.sin(slam*Math.PI);
+  }
   keepInCourt(owner.group.position);
-  const style = owner.profile.width > 1.08 ? "twohand" : owner.profile.sprint > 1.15 ? "tomahawk" : "quick";
-  const start = getHandWorldPosition(owner,style === "tomahawk" ? "right" : "left").add(new THREE.Vector3(0,0.42,0));
-  const apex = HOOP_POS.clone().add(new THREE.Vector3(style === "tomahawk" ? 0.2:0,.72,.14));
-  const finish = HOOP_POS.clone().add(new THREE.Vector3(0,-.42,.02));
-  const phase = t < .52 ? smoothstep(t/.52) : smoothstep((t-.52)/.48);
-  owner.group.rotation.x = -Math.sin(Math.min(1,t/.45)*Math.PI)*0.18;
-  owner.leftLeg.rotation.x = -0.2 + Math.sin(t*Math.PI)*0.42;
-  owner.rightLeg.rotation.x = -0.2 + Math.sin(t*Math.PI)*0.42;
-  const target = t < .52 ? start.clone().lerp(apex,phase) : apex.clone().lerp(finish,phase);
-  const dunkFrontZ = HOOP_POS.z + RIM_RADIUS + owner.bodyRadius + 0.06;
-  owner.group.position.z = Math.max(owner.group.position.z,dunkFrontZ);
-  if(t < .8){
-    if(style === "twohand") attachBallBetweenHands(owner,new THREE.Vector3(0,0.36 + Math.sin(t*Math.PI)*0.2,-0.22));
-    else attachBallToHand(owner, style === "tomahawk" ? "right" : "left", new THREE.Vector3(0,0.42 + Math.sin(t*Math.PI)*0.2,-0.24));
-    ball.position.lerp(target,0.45);
-  }else ball.position.copy(target);
-  ballVelocity.set(0,-1.2,0);
-  if(t > .56 && !dunkScored){
+  if(t < 0.72){
+    if(meta.style === "twohand") attachBallBetweenHands(owner,new THREE.Vector3(0,0.42,-0.2));
+    else attachBallToHand(owner,meta.side,new THREE.Vector3(0,0.44,-0.23));
+    ballVelocity.set(0,0,0);
+  }else{
+    if(!dunkScored) ball.position.copy(HOOP_POS.clone().add(new THREE.Vector3(0,0.24,0)));
+    ballVelocity.set(0,-3.6,-0.16);
+  }
+  if(t >= .74 && !dunkScored){
     dunkScored = true;
     shotHasHitRimOrBoard = true;
     const points = 2;
@@ -5373,12 +5451,14 @@ function updateDunk(dt){
     animateNetSwish();
     playCrowdPulse();
     triggerShotSplash(HOOP_POS.clone(),"orange");
-    showMoveFeedback("DUNK!",0.7);
+    showMoveFeedback(Math.random() < 0.5 ? "POSTER DUNK!" : "SLAM!",0.9);
     crowdWave = Math.max(crowdWave,1.1);
     triggerCrowdReaction("dunk",1.05);
-    applyCameraShake(.23);
+    applyCameraShake(.3);
     pulseCourtTheme("dunk");
     spawnCourtThemedParticle(HOOP_POS.clone(),"dunk");
+    spawnCourtThemedParticle(HOOP_POS.clone().add(new THREE.Vector3(0.15,0.12,0)),"dunk");
+    spawnCourtThemedParticle(HOOP_POS.clone().add(new THREE.Vector3(-0.15,0.12,0)),"dunk");
     const hangChance =
       0.15 +
       owner.profile.height * 0.1 +
