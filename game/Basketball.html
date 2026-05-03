@@ -2304,8 +2304,8 @@ function buildHoop(){
   targetSq.position.set(HOOP_POS.x,HOOP_POS.y + 0.16,backboard.position.z + 0.056); scene.add(targetSq);
   const polePad = new THREE.Mesh(new THREE.BoxGeometry(.48,1.05,.44),new THREE.MeshStandardMaterial({color:0x263d5f,roughness:.58}));
   polePad.position.set(HOOP_POS.x,.56,hoopBaseZ + 0.02); scene.add(polePad);
-  const basePad = new THREE.Mesh(new THREE.BoxGeometry(1.15,.46,1.08),new THREE.MeshStandardMaterial({color:0x1a2e4a,roughness:.62}));
-  basePad.position.set(HOOP_POS.x,.23,hoopBaseZ - 0.28); scene.add(basePad);
+  const basePad = new THREE.Mesh(new THREE.BoxGeometry(.8,.34,.62),new THREE.MeshStandardMaterial({color:0x16263d,roughness:.64}));
+  basePad.position.set(HOOP_POS.x,.17,hoopBaseZ - 0.06); scene.add(basePad);
 
   netLines = [];
   const netMat = new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:.75});
@@ -5234,25 +5234,28 @@ function updateBall(dt){
 
     attachBallToHand(owner, handName, dribbleOffset);
 
-    const floorTouch = 0.12 + owner.group.position.y;
+    const lowY = BALL_RADIUS + 0.03 + owner.group.position.y;
+    const minSafeY = BALL_RADIUS + 0.025 + owner.group.position.y;
+    const highY =
+      owner.group.position.y +
+      THREE.MathUtils.clamp(
+        1.0 + (owner.profile.height - 1) * 0.15 + (speedMode === "sprint" ? 0.08 : speedMode === "idle" ? -0.03 : 0),
+        0.95,
+        1.15
+      );
 
-    const baseCarry =
-      0.68 * owner.profile.height -
-      (speedMode === "sprint" ? 0.06 : speedMode === "idle" ? 0.02 : 0) -
-      handleQuality * 0.04;
-
-    const bounceAmp =
-      (speedMode === "idle" ? 0.42 :
-       speedMode === "walk" ? 0.5 :
-       speedMode === "sprint" ? 0.56 : 0.46) *
-      (0.92 + (owner.profile.height - 1) * 0.22) *
-      (0.9 + handleLoose * 0.18) *
-      flavor.bounceAmp;
-
-    const targetY = floorTouch + Math.max(
-      0.01,
-      baseCarry - bounce * bounceAmp + (sideHop ? 0.05 : 0)
+    const bounceY = THREE.MathUtils.lerp(lowY, highY, bounce);
+    const handCarryY = ball.position.y;
+    const blendToHand = THREE.MathUtils.clamp(
+      0.18 +
+      bounce * 0.72 +
+      (speedMode === "sprint" ? 0.06 : 0) +
+      (sideHop ? 0.06 : 0),
+      0.14,
+      0.94
     );
+
+    const targetY = THREE.MathUtils.lerp(bounceY, handCarryY, blendToHand);
 
     ball.position.y = THREE.MathUtils.lerp(
       ball.position.y,
@@ -5260,7 +5263,7 @@ function updateBall(dt){
       THREE.MathUtils.clamp(dt * (16 + handleQuality * 10), 0, 1)
     );
 
-    ball.position.y = Math.max(floorTouch, ball.position.y);
+    ball.position.y = Math.max(minSafeY, ball.position.y);
 
     owner.anim.crossLean = crossSnap * crossover.to * (0.14 + handleLoose * 0.07);
     owner.anim.crossPlant = crossSnap * (0.18 + handleLoose * 0.08);
@@ -5318,13 +5321,15 @@ function updateBall(dt){
     ballShadow.position.y = 0.022;
 
     const height = Math.max(0, ball.position.y - BALL_RADIUS);
-    const shadowScale = THREE.MathUtils.clamp(1.35 - height * 0.12, 0.38, 1.25);
+    const closeToFloor = THREE.MathUtils.clamp(1 - height / 1.25, 0, 1);
+    const shadowScale = THREE.MathUtils.clamp(1.22 - height * 0.16, 0.35, 1.2);
     ballShadow.scale.set(shadowScale, shadowScale, shadowScale);
 
+    const baseOpacity = ballState === "shot" ? 0.5 : 0.42;
     const targetOpacity = THREE.MathUtils.clamp(
-      (ballState === "shot" ? 0.48 : 0.36) - height * 0.055,
+      0.08 + closeToFloor * baseOpacity,
       0.08,
-      0.48
+      0.52
     );
 
     ballShadow.material.opacity = THREE.MathUtils.lerp(
