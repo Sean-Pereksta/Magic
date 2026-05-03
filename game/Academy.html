@@ -777,6 +777,7 @@ function buildWorld(map) {
   sanitizeHazardsForMap(runtimeHazards);
 
   createAccurateRoadSurface();
+  createThickFallbackRoadLine();
   createAccurateRoadEdges();
   createOptionalRoadDetails();
   createTrackAlignmentDebug();
@@ -882,7 +883,8 @@ function getTerrainAtPosition(pos) {
 
 function createAccurateRoadSurface() {
   const steps = TRACK_RIBBON_STEPS;
-  const y = 0.09;
+  const y = 0.115;
+  const roadHalfWidth = trackWidth * 0.92;
   const vertices = [];
   const uvs = [];
   const indices = [];
@@ -892,8 +894,13 @@ function createAccurateRoadSurface() {
     const center = getTrackPoint(t);
     const normal = getTrackNormal(t);
 
-    vertices.push(center.x + normal.x * trackWidth, y, center.z + normal.z * trackWidth);
-    vertices.push(center.x - normal.x * trackWidth, y, center.z - normal.z * trackWidth);
+    const leftX = center.x + normal.x * roadHalfWidth;
+    const leftZ = center.z + normal.z * roadHalfWidth;
+    const rightX = center.x - normal.x * roadHalfWidth;
+    const rightZ = center.z - normal.z * roadHalfWidth;
+
+    vertices.push(leftX, y, leftZ);
+    vertices.push(rightX, y, rightZ);
 
     uvs.push(0, i / steps);
     uvs.push(1, i / steps);
@@ -908,6 +915,9 @@ function createAccurateRoadSurface() {
 
     indices.push(a, b, c);
     indices.push(b, d, c);
+
+    indices.push(a, c, b);
+    indices.push(b, c, d);
   }
 
   const geo = new THREE.BufferGeometry();
@@ -916,14 +926,22 @@ function createAccurateRoadSurface() {
   geo.setIndex(indices);
   geo.computeVertexNormals();
 
+  const roadColor = new THREE.Color(currentMap.road || 0x222222).lerp(
+    new THREE.Color(0x000000),
+    0.22
+  );
+
   const material = new THREE.MeshStandardMaterial({
-    color: currentMap.road,
-    roughness: 0.86,
-    metalness: 0.02
+    color: roadColor,
+    roughness: 0.88,
+    metalness: 0.01,
+    side: THREE.DoubleSide
   });
 
   const road = new THREE.Mesh(geo, material);
+  road.name = "MainFilledRoadSurface";
   road.receiveShadow = true;
+  road.renderOrder = 1;
   scene.add(road);
 
   if (DEBUG_ROAD_MESH) createRoadMeshDebugDots(steps);
@@ -937,7 +955,7 @@ function createAccurateRoadEdges() {
 
 function createRoadEdgeStrip(side) {
   const steps = TRACK_RIBBON_STEPS;
-  const y = 0.105;
+  const y = 0.145;
   const inner = trackWidth * 0.92;
   const outer = trackWidth * 0.99;
   const vertices = [];
@@ -981,7 +999,8 @@ function createRoadEdgeStrip(side) {
   const edge = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
     color: currentMap.edge,
     roughness: 0.65,
-    metalness: 0.04
+    metalness: 0.04,
+    side: THREE.DoubleSide
   }));
   edge.receiveShadow = true;
   scene.add(edge);
@@ -989,9 +1008,13 @@ function createRoadEdgeStrip(side) {
 }
 
 function createOptionalRoadDetails() {
+  createCenterLaneLine();
+}
+
+function createCenterLaneLine() {
   const steps = TRACK_RIBBON_STEPS;
-  const y = 0.101;
-  const halfWidth = trackWidth * 0.52;
+  const y = 0.135;
+  const lineHalfWidth = Math.max(1.1, trackWidth * 0.035);
   const vertices = [];
   const indices = [];
 
@@ -1000,8 +1023,8 @@ function createOptionalRoadDetails() {
     const center = getTrackPoint(t);
     const normal = getTrackNormal(t);
 
-    vertices.push(center.x + normal.x * halfWidth, y, center.z + normal.z * halfWidth);
-    vertices.push(center.x - normal.x * halfWidth, y, center.z - normal.z * halfWidth);
+    vertices.push(center.x + normal.x * lineHalfWidth, y, center.z + normal.z * lineHalfWidth);
+    vertices.push(center.x - normal.x * lineHalfWidth, y, center.z - normal.z * lineHalfWidth);
   }
 
   for (let i = 0; i < steps; i++) {
@@ -1019,14 +1042,37 @@ function createOptionalRoadDetails() {
   geo.setIndex(indices);
   geo.computeVertexNormals();
 
-  const color = new THREE.Color(currentMap.road).lerp(new THREE.Color(0x000000), 0.08);
-  const detail = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
-    color,
-    roughness: 0.84,
-    metalness: 0.02
+  const line = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+    color: 0xffffcc,
+    roughness: 0.65,
+    metalness: 0.02,
+    side: THREE.DoubleSide
   }));
-  detail.receiveShadow = true;
-  scene.add(detail);
+  line.name = "RoadCenterLine";
+  line.receiveShadow = false;
+  line.renderOrder = 3;
+  scene.add(line);
+}
+
+function createThickFallbackRoadLine() {
+  const points = [];
+
+  for (let i = 0; i <= TRACK_RIBBON_STEPS; i++) {
+    const t = i / TRACK_RIBBON_STEPS;
+    const p = getTrackPoint(t);
+    points.push(new THREE.Vector3(p.x, 0.16, p.z));
+  }
+
+  const geo = new THREE.BufferGeometry().setFromPoints(points);
+  const mat = new THREE.LineBasicMaterial({
+    color: currentMap.road || 0x111111,
+    linewidth: Math.max(20, trackWidth)
+  });
+
+  const line = new THREE.LineLoop(geo, mat);
+  line.name = "FallbackThickRoadLine";
+  line.renderOrder = 2;
+  scene.add(line);
 }
 
 function createRoadMeshDebugDots(steps = 180) {
