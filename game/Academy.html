@@ -760,8 +760,10 @@ function buildWorld(map) {
   trackCurve = new THREE.CatmullRomCurve3(trackPoints, true, "catmullrom", 0.45);
   buildTrackSamples();
   buildFinishLineData();
+  sanitizeHazardsForMap(map);
 
   createTrackSurface();
+  createRoadLaneShading();
   createTrackEdges();
   createStartLineAndBanner(map);
   createItemBoxes();
@@ -841,11 +843,26 @@ function getClosestTrackInfo(pos) {
 }
 
 function isOnTrack(pos) {
-  return getClosestTrackInfo(pos).distance <= trackWidth * 0.58;
+  return getRoadInfoAtPosition(pos).onVisualRoad;
+}
+
+function getRoadInfoAtPosition(pos) {
+  const closest = getClosestTrackInfo(pos);
+  const roadHalfWidth = trackWidth;
+  const safeRoadHalfWidth = trackWidth * 0.96;
+  const offroadThreshold = trackWidth * 1.02;
+  return {
+    closest,
+    distanceFromCenter: closest.distance,
+    onVisualRoad: closest.distance <= roadHalfWidth,
+    onSafeRoad: closest.distance <= safeRoadHalfWidth,
+    offroad: closest.distance > offroadThreshold
+  };
 }
 
 function getTerrainAtPosition(pos) {
-  return isOnTrack(pos) ? "road" : "offroad";
+  const roadInfo = getRoadInfoAtPosition(pos);
+  return (roadInfo.onVisualRoad || roadInfo.onSafeRoad) && !roadInfo.offroad ? "road" : "offroad";
 }
 
 function createTrackSurface() {
@@ -915,6 +932,72 @@ function createTrackEdges() {
     );
 
     scene.add(line);
+  }
+}
+
+function createRoadLaneShading() {
+  const makeRibbon = (halfWidth, color, y, opacity = 1) => {
+    const shape = new THREE.Shape();
+    const outer = [];
+    const inner = [];
+    const steps = 420;
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const p = getTrackPoint(t);
+      const n = getTrackNormal(t);
+      outer.push(new THREE.Vector2(p.x + n.x * halfWidth, p.z + n.z * halfWidth));
+      inner.push(new THREE.Vector2(p.x - n.x * halfWidth, p.z - n.z * halfWidth));
+    }
+    shape.moveTo(outer[0].x, outer[0].y);
+    outer.forEach(p => shape.lineTo(p.x, p.y));
+    const hole = new THREE.Path();
+    hole.moveTo(inner[inner.length - 1].x, inner[inner.length - 1].y);
+    for (let i = inner.length - 1; i >= 0; i--) hole.lineTo(inner[i].x, inner[i].y);
+    shape.holes.push(hole);
+    const mesh = new THREE.Mesh(
+      new THREE.ShapeGeometry(shape),
+      new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.12, transparent: opacity < 1, opacity })
+    );
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.y = y;
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+  };
+
+  makeRibbon(trackWidth * 0.58, 0x5b5f65, 0.055, 0.95);
+  makeRibbon(trackWidth * 0.98, currentMap.edge, 0.07, 0.9);
+}
+
+function sanitizeHazardsForMap(map) {
+  if (!map.hazards || !map.hazards.length) return;
+  const deadlyTypes = new Set(["pit", "water", "lava"]);
+  for (const hazard of map.hazards) {
+    const closest = getClosestTrackInfo(new THREE.Vector3(hazard.x, 0, hazard.z));
+    const normal = getTrackNormal(closest.t);
+    const radiusX = hazard.radiusX || hazard.radius || 10;
+    const radiusZ = hazard.radiusZ || hazard.radius || 10;
+    const maxRadius = Math.max(radiusX, radiusZ);
+    const isDeadly = deadlyTypes.has(hazard.type);
+    const centerTooClose = closest.distance < (isDeadly ? trackWidth * 0.38 : trackWidth * 0.2);
+    const overlapsCenter = closest.distance + maxRadius > trackWidth * 0.6;
+
+    if (centerTooClose || overlapsCenter) {
+      const sideDot = ((hazard.x - closest.point.x) * normal.x + (hazard.z - closest.point.z) * normal.z);
+      const side = Math.sign(sideDot) || 1;
+      const targetFactor = isDeadly ? 0.72 : 0.56;
+      hazard.x = closest.point.x + normal.x * side * trackWidth * targetFactor;
+      hazard.z = closest.point.z + normal.z * side * trackWidth * targetFactor;
+    }
+
+    if (isDeadly) {
+      const movedInfo = getClosestTrackInfo(new THREE.Vector3(hazard.x, 0, hazard.z));
+      const onRoad = movedInfo.distance < trackWidth * 1.02;
+      if (onRoad) {
+        const capped = trackWidth * 0.28;
+        hazard.radiusX = Math.min(hazard.radiusX || hazard.radius || capped, capped);
+        hazard.radiusZ = Math.min(hazard.radiusZ || hazard.radius || capped, capped);
+      }
+    }
   }
 }
 
@@ -1020,10 +1103,10 @@ function createItemBoxes() {
       box.add(cube, wire);
       box.position.set(p.x + n.x * offset, 3.2, p.z + n.z * offset);
       const trackCenter = getTrackPoint(t).clone();
-      if (isPointInsideHazard(box.position, (currentMap.hazards || []).find(h => isPointInsideHazard(box.position, h, 1)), 0)) {
-        box.position.set(trackCenter.x + n.x * (offset * 0.45), 3.2, trackCenter.z + n.z * (offset * 0.45));
+      if ((currentMap.hazards || []).some(h => isPointInsideHazard(box.position, h, 2))) {
+        box.position.set(trackCenter.x - n.x * offset, 3.2, trackCenter.z - n.z * offset);
       }
-      if ((currentMap.hazards || []).some(h => isPointInsideHazard(box.position, h, 1))) return;
+      if ((currentMap.hazards || []).some(h => isPointInsideHazard(box.position, h, 2))) return;
       scene.add(box);
 
       pickups.push({
@@ -1047,8 +1130,8 @@ function createHazards(map) {
       const water = new THREE.Mesh(
         new THREE.CircleGeometry(1, 36),
         new THREE.MeshStandardMaterial({
-          color: h.type === "lava" ? 0xff5f1f : h.type === "sludge" ? 0x4f7a1f : h.type === "mud" ? 0x6f4a32 : h.type === "ghost" ? 0xa8c7ff : h.type === "wind" ? 0xd9f4ff : 0x3ca6ff,
-          emissive: h.type === "lava" ? 0x8f2200 : h.type === "ghost" ? 0x3a4f8f : h.type === "sludge" ? 0x1f3f12 : h.type === "wind" ? 0x3f7a9a : 0x123b7a,
+          color: h.type === "lava" ? 0xff5a1a : h.type === "sludge" ? 0x5cff4d : h.type === "mud" ? 0x7f5338 : h.type === "ghost" ? 0xb088ff : h.type === "wind" ? 0xd9f4ff : 0x35cfff,
+          emissive: h.type === "lava" ? 0xcc3300 : h.type === "ghost" ? 0x553399 : h.type === "sludge" ? 0x1f5f18 : h.type === "wind" ? 0x66b7cf : 0x1e6fbf,
           transparent: true,
           opacity: h.type === "ghost" ? 0.48 : h.type === "wind" ? 0.4 : 0.62,
           roughness: 0.12,
@@ -1060,6 +1143,12 @@ function createHazards(map) {
       water.position.y = 0.02;
       hazardRoot.add(water);
       hazardShimmers.push(water);
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.95, 1.08, 48), new THREE.MeshBasicMaterial({ color: h.type === "lava" ? 0xff8844 : 0x9fe6ff, transparent: true, opacity: 0.9, side: THREE.DoubleSide }));
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.07;
+      ring.scale.set(h.radiusX, h.radiusZ, 1);
+      hazardRoot.add(ring);
+      hazardShimmers.push(ring);
     } else if (h.type === "steam" || h.type === "pit") {
       const rim = new THREE.Mesh(
         new THREE.RingGeometry(0.72, 1, 36),
@@ -2013,12 +2102,15 @@ function getSafeAITarget(racer, baseTargetIndex) {
   const lookAheadT = wrap01(baseTargetIndex / checkpointCount);
   const center = getTrackPoint(lookAheadT);
   const normal = getTrackNormal(lookAheadT);
-  const laneCandidates = [racer.ai.laneOffset || 0, 0, -trackWidth * 0.28, trackWidth * 0.28, -trackWidth * 0.42, trackWidth * 0.42];
+  const laneCandidates = [-0.46, -0.32, -0.18, 0, 0.18, 0.32, 0.46].map(v => v * trackWidth);
   let bestPoint = null, bestOffset = 0, bestScore = Infinity;
   for (const offset of laneCandidates) {
     const candidate = center.clone().add(normal.clone().multiplyScalar(offset));
-    const roadPenalty = Math.abs(offset) > trackWidth * 0.48 ? 100 : 0;
-    const score = scorePointHazardRisk(candidate, 8) + roadPenalty + Math.abs(offset - (racer.ai.laneOffset || 0)) * 0.25;
+    const ahead = candidate.clone().add(getTrackTangent(lookAheadT).multiplyScalar(12));
+    const deadlyPenalty = (currentMap.hazards || []).some(h => (h.type === "pit" || h.type === "water" || h.type === "lava") && isPointInsideHazard(candidate, h, 4)) ? 380 : 0;
+    const roadPenalty = Math.abs(offset) > trackWidth * 0.94 ? 200 : 0;
+    const turnPenalty = Math.abs(offset - (racer.ai.laneOffset || 0)) * 0.45;
+    const score = scorePointHazardRisk(candidate, 8) + scorePointHazardRisk(ahead, 6) * 0.65 + deadlyPenalty + roadPenalty + turnPenalty;
     if (score < bestScore) { bestScore = score; bestPoint = candidate; bestOffset = offset; }
   }
   racer.ai.laneOffset = THREE.MathUtils.lerp(racer.ai.laneOffset || 0, bestOffset, 0.04);
@@ -2073,6 +2165,13 @@ function updateAI(racer, dt) {
     throttle = Math.min(throttle, 0.45);
     brake = Math.max(brake, 0.45);
   }
+  const threat = getForwardHazardThreat(racer);
+  if (threat) {
+    turn += threat.recommendedAvoidDirection * threat.strength;
+    if (threat.distance < 44) throttle *= 0.55;
+    if (threat.distance < 24) brake = Math.max(brake, 0.35);
+  }
+  turn = THREE.MathUtils.clamp(turn, -1, 1);
 
   if (!isOnTrack(racer.position)) {
     const closest = getClosestTrackInfo(racer.position);
@@ -2112,6 +2211,26 @@ function updateAI(racer, dt) {
       useItem(racer);
     }
   }
+}
+
+function getForwardHazardThreat(racer) {
+  if (!currentMap.hazards || !currentMap.hazards.length) return null;
+  const forward = new THREE.Vector3(Math.sin(racer.rotationY), 0, Math.cos(racer.rotationY)).normalize();
+  let best = null;
+  for (const hazard of currentMap.hazards) {
+    const to = new THREE.Vector3(hazard.x - racer.position.x, 0, hazard.z - racer.position.z);
+    const dist = to.length();
+    if (dist > 60 || dist < 0.1) continue;
+    const dir = to.clone().normalize();
+    const dot = forward.dot(dir);
+    if (dot < 0.45) continue;
+    const crossY = forward.x * dir.z - forward.z * dir.x;
+    const side = crossY >= 0 ? 1 : -1;
+    const danger = getHazardDanger(hazard);
+    const strength = THREE.MathUtils.clamp((danger / 120) * (1 - dist / 60), 0.08, 0.9);
+    if (!best || dist < best.distance) best = { hazard, distance: dist, side, danger, recommendedAvoidDirection: -side, strength };
+  }
+  return best;
 }
 
 function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
@@ -3131,7 +3250,12 @@ function showRespawnFade() {
 function updateHazardVisuals(dt) {
   const t = performance.now() * 0.001;
   hazardShimmers.forEach((mesh, i) => {
-    mesh.material.opacity = 0.48 + Math.sin(t * 2.5 + i) * 0.14;
+    if (mesh.material) mesh.material.opacity = 0.52 + Math.sin(t * 2.5 + i) * 0.2;
+    const wave = 1 + Math.sin(t * 2 + i * 1.7) * 0.08;
+    mesh.scale.x *= 0.999;
+    mesh.scale.z *= 0.999;
+    mesh.scale.x = THREE.MathUtils.lerp(mesh.scale.x, mesh.scale.x * wave, 0.03);
+    mesh.scale.z = THREE.MathUtils.lerp(mesh.scale.z, mesh.scale.z * wave, 0.03);
   });
 }
 
