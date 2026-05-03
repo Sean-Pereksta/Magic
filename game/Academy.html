@@ -879,57 +879,63 @@ function getTerrainAtPosition(pos) {
 }
 
 function createTrackSurface() {
-  createTrackRibbonMesh({ halfWidth: trackWidth, y: 0.045, material: mats.road, steps: TRACK_RIBBON_STEPS });
+  const shoulderColor = new THREE.Color(currentMap.road).lerp(new THREE.Color(currentMap.edge), 0.22);
+  const centerColor = new THREE.Color(currentMap.road).lerp(new THREE.Color(0x101010), 0.24);
+  createTrackRibbonMesh({
+    halfWidth: trackWidth * 1.02,
+    y: 0.056,
+    steps: TRACK_RIBBON_STEPS,
+    material: new THREE.MeshStandardMaterial({ color: shoulderColor, roughness: 0.92, metalness: 0.03 })
+  });
+  createTrackRibbonMesh({
+    halfWidth: trackWidth * 0.82,
+    y: 0.061,
+    steps: TRACK_RIBBON_STEPS,
+    material: new THREE.MeshStandardMaterial({ color: centerColor, roughness: 0.78, metalness: 0.04 })
+  });
 }
 
 function createTrackEdges() {
   for (const side of [-1, 1]) {
-    const pts = [];
-
-    for (let i = 0; i <= TRACK_RIBBON_STEPS; i++) {
-      const t = i / TRACK_RIBBON_STEPS;
-      const p = getTrackPoint(t);
-      const n = getTrackNormal(t);
-
-      pts.push(new THREE.Vector3(
-        p.x + n.x * trackWidth * side,
-        0.14,
-        p.z + n.z * trackWidth * side
-      ));
-    }
-
-    const line = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(pts),
-      new THREE.LineBasicMaterial({ color: currentMap.edge })
-    );
-
-    scene.add(line);
+    const center = trackWidth * 0.96 * side;
+    createTrackRibbonMesh({
+      halfWidth: Math.abs(center) + trackWidth * 0.035,
+      innerHalfWidth: Math.abs(center) - trackWidth * 0.035,
+      y: 0.086,
+      steps: TRACK_RIBBON_STEPS,
+      material: new THREE.MeshStandardMaterial({ color: currentMap.edge, roughness: 0.6, metalness: 0.06 })
+    });
   }
 }
 
 function createRoadLaneShading() {
   createTrackRibbonMesh({
-    halfWidth: trackWidth * 0.58, y: 0.06, steps: TRACK_RIBBON_STEPS,
-    material: new THREE.MeshStandardMaterial({ color: 0x5b5f65, roughness: 0.5, metalness: 0.08, transparent: true, opacity: 0.9 })
+    halfWidth: trackWidth * 0.34, y: 0.07, steps: TRACK_RIBBON_STEPS,
+    material: new THREE.MeshStandardMaterial({ color: 0x2d2f33, roughness: 0.6, metalness: 0.04, transparent: true, opacity: 0.42 })
   });
   createTrackRibbonMesh({
-    halfWidth: trackWidth * 0.98, y: 0.07, steps: TRACK_RIBBON_STEPS,
-    material: new THREE.MeshStandardMaterial({ color: currentMap.edge, roughness: 0.6, metalness: 0.05, transparent: true, opacity: 0.6 })
+    halfWidth: trackWidth * 0.05, y: 0.093, steps: TRACK_RIBBON_STEPS,
+    material: new THREE.MeshStandardMaterial({ color: 0xf3f3d0, roughness: 0.52, metalness: 0.04, transparent: true, opacity: 0.78 })
   });
 }
 
-function createTrackRibbonMesh({ halfWidth, y, material, steps = TRACK_RIBBON_STEPS, receiveShadow = true }) {
+function createTrackRibbonMesh({ halfWidth, innerHalfWidth = 0, y, material, steps = TRACK_RIBBON_STEPS, receiveShadow = true }) {
   const vertices = [], indices = [], uvs = [];
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
     const p = getTrackPoint(t);
     const n = getTrackNormal(t);
     vertices.push(p.x + n.x * halfWidth, y, p.z + n.z * halfWidth);
+    vertices.push(p.x + n.x * innerHalfWidth, y, p.z + n.z * innerHalfWidth);
+    vertices.push(p.x - n.x * innerHalfWidth, y, p.z - n.z * innerHalfWidth);
     vertices.push(p.x - n.x * halfWidth, y, p.z - n.z * halfWidth);
-    uvs.push(0, i / steps, 1, i / steps);
+    uvs.push(0, i / steps, 0.33, i / steps, 0.67, i / steps, 1, i / steps);
     if (i < steps) {
-      const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
-      indices.push(a, b, c, b, d, c);
+      const a = i * 4, b = a + 1, c = a + 2, d = a + 3;
+      const e = a + 4, f = a + 5, g = a + 6, h = a + 7;
+      indices.push(a, b, e, b, f, e);
+      indices.push(b, c, f, c, g, f);
+      indices.push(c, d, g, d, h, g);
     }
   }
   const geo = new THREE.BufferGeometry();
@@ -1172,59 +1178,74 @@ function createItemBoxes() {
 
 
 function createHazards(hazards) {
+  const hazardTypeVisual = {
+    water: { liquid: 0x2ca8e8, deep: 0x0f3f89, rim: 0x6d624e, opacity: 0.78, emissive: 0x124d73 },
+    lava: { liquid: 0xff6922, deep: 0x4e1000, rim: 0x4a2b20, opacity: 0.9, emissive: 0xb02b00 },
+    sludge: { liquid: 0x4b9140, deep: 0x1c3d15, rim: 0x4b3a2a, opacity: 0.8, emissive: 0x163212 },
+    mud: { liquid: 0x6f4b2f, deep: 0x2d1d14, rim: 0x5e4936, opacity: 0.85, emissive: 0x1b0f07 }
+  };
+  const createIrregularHazardShape = (hazard, pointsCount = 42, noiseAmount = 0.14) => {
+    const pts = [];
+    const baseX = hazard.radiusX || hazard.radius || 10;
+    const baseZ = hazard.radiusZ || hazard.radius || 10;
+    for (let i = 0; i < pointsCount; i++) {
+      const a = (i / pointsCount) * Math.PI * 2;
+      const wav = 1 + Math.sin(a * 2.7 + baseX * 0.1) * noiseAmount * 0.55 + Math.cos(a * 4.1 + baseZ * 0.08) * noiseAmount * 0.45;
+      pts.push(new THREE.Vector2(Math.cos(a) * baseX * wav, Math.sin(a) * baseZ * wav));
+    }
+    return pts;
+  };
+  const createDepressedHazardPit = (hazard, options = {}) => {
+    const shapePts = createIrregularHazardShape(hazard, options.pointsCount || 46, options.noiseAmount || 0.16);
+    const rimShape = new THREE.Shape(shapePts);
+    const innerPts = shapePts.map(v => v.clone().multiplyScalar(options.innerScale || 0.72));
+    const innerShape = new THREE.Shape(innerPts);
+    const rimGeo = new THREE.ShapeGeometry(rimShape, 2);
+    const wallGeo = new THREE.RingGeometry(0.58, 1.0, 56);
+    const rim = new THREE.Mesh(rimGeo, new THREE.MeshStandardMaterial({ color: options.rimColor || 0x5e4d3a, roughness: 0.97 }));
+    rim.rotation.x = -Math.PI / 2; rim.position.y = 0.09;
+    const wall = new THREE.Mesh(wallGeo, new THREE.MeshStandardMaterial({ color: options.wallColor || 0x3f3124, roughness: 1 }));
+    wall.rotation.x = -Math.PI / 2;
+    wall.scale.set((hazard.radiusX || hazard.radius || 10) * 0.95, (hazard.radiusZ || hazard.radius || 10) * 0.95, 1);
+    wall.position.y = -0.24;
+    const bottom = new THREE.Mesh(new THREE.ShapeGeometry(innerShape, 2), new THREE.MeshStandardMaterial({ color: options.bottomColor || 0x080808, roughness: 1 }));
+    bottom.rotation.x = -Math.PI / 2; bottom.position.y = options.bottomY || -0.58;
+    return { rim, wall, bottom };
+  };
 
   hazards.forEach(h => {
     const hazardRoot = new THREE.Group();
     hazardRoot.position.set(h.x, 0, h.z);
     hazardRoot.rotation.y = h.rotation || 0;
 
-    if (h.type === "water" || h.type === "lava" || h.type === "sludge" || h.type === "mud" || h.type === "ghost" || h.type === "wind") {
-      const water = new THREE.Mesh(
-        new THREE.CircleGeometry(1, 36),
-        new THREE.MeshStandardMaterial({
-          color: h.type === "lava" ? 0xff5a1a : h.type === "sludge" ? 0x5cff4d : h.type === "mud" ? 0x7f5338 : h.type === "ghost" ? 0xb088ff : h.type === "wind" ? 0xd9f4ff : 0x35cfff,
-          emissive: h.type === "lava" ? 0xcc3300 : h.type === "ghost" ? 0x553399 : h.type === "sludge" ? 0x1f5f18 : h.type === "wind" ? 0x66b7cf : 0x1e6fbf,
-          transparent: true,
-          opacity: h.type === "ghost" ? 0.48 : h.type === "wind" ? 0.4 : 0.62,
-          roughness: 0.12,
-          metalness: 0.15
-        })
-      );
-      water.rotation.x = -Math.PI / 2;
-      water.scale.set(h.radiusX, h.radiusZ, 1);
-      water.position.y = h.type === "water" ? 0.08 : 0.1;
-      hazardRoot.add(water);
-      hazardShimmers.push(water);
-      const ring = new THREE.Mesh(new THREE.RingGeometry(0.95, 1.08, 48), new THREE.MeshBasicMaterial({ color: h.type === "lava" ? 0xff8844 : 0x9fe6ff, transparent: true, opacity: 0.9, side: THREE.DoubleSide }));
-      ring.rotation.x = -Math.PI / 2;
-      ring.position.y = 0.14;
-      ring.scale.set(h.radiusX, h.radiusZ, 1);
-      hazardRoot.add(ring);
-      hazardShimmers.push(ring);
+    if (h.type === "water" || h.type === "lava" || h.type === "sludge" || h.type === "mud") {
+      const visual = hazardTypeVisual[h.type];
+      const pit = createDepressedHazardPit(h, { rimColor: visual.rim, wallColor: new THREE.Color(visual.rim).multiplyScalar(0.7), bottomColor: visual.deep, bottomY: -0.66 });
+      hazardRoot.add(pit.rim, pit.wall, pit.bottom);
+      const fluid = new THREE.Mesh(new THREE.CircleGeometry(1, 56), new THREE.MeshStandardMaterial({ color: visual.liquid, emissive: visual.emissive, emissiveIntensity: h.type === "lava" ? 0.9 : 0.35, transparent: true, opacity: visual.opacity, roughness: 0.22, metalness: 0.08 }));
+      fluid.rotation.x = -Math.PI / 2;
+      fluid.scale.set((h.radiusX || h.radius || 10) * 0.72, (h.radiusZ || h.radius || 10) * 0.72, 1);
+      fluid.position.y = -0.48;
+      hazardRoot.add(fluid);
+      hazardShimmers.push({ mesh: fluid, baseScaleX: fluid.scale.x, baseScaleZ: fluid.scale.z, opacityBase: fluid.material.opacity, kind: h.type });
+    } else if (h.type === "ghost" || h.type === "wind") {
+      const pit = createDepressedHazardPit(h, { rimColor: h.type === "ghost" ? 0x4a3d5f : 0x6c8b96, wallColor: h.type === "ghost" ? 0x2c2340 : 0x415e66, bottomColor: h.type === "ghost" ? 0x140f1f : 0x1d2f35, bottomY: -0.5 });
+      hazardRoot.add(pit.rim, pit.wall, pit.bottom);
+      const zone = new THREE.Mesh(new THREE.CircleGeometry(1, 52), new THREE.MeshStandardMaterial({ color: h.type === "ghost" ? 0xc79bff : 0xbdefff, emissive: h.type === "ghost" ? 0x542c8a : 0x3e99b2, transparent: true, opacity: h.type === "ghost" ? 0.5 : 0.42 }));
+      zone.rotation.x = -Math.PI / 2;
+      zone.scale.set((h.radiusX || h.radius || 10) * 0.76, (h.radiusZ || h.radius || 10) * 0.76, 1);
+      zone.position.y = -0.31;
+      hazardRoot.add(zone);
+      hazardShimmers.push({ mesh: zone, baseScaleX: zone.scale.x, baseScaleZ: zone.scale.z, opacityBase: zone.material.opacity, kind: h.type });
     } else if (h.type === "steam" || h.type === "pit") {
-      const rim = new THREE.Mesh(
-        new THREE.RingGeometry(0.72, 1, 36),
-        new THREE.MeshStandardMaterial({ color: 0x2f2723, roughness: 1 })
-      );
-      rim.rotation.x = -Math.PI / 2;
-      rim.scale.set(h.radiusX, h.radiusZ, 1);
-      rim.position.y = 0.1;
-      hazardRoot.add(rim);
-
-      const hole = new THREE.Mesh(
-        new THREE.CircleGeometry(1, 36),
-        new THREE.MeshStandardMaterial({ color: h.type === "steam" ? 0x636363 : 0x080808, roughness: 1, transparent: h.type === "steam", opacity: h.type === "steam" ? 0.45 : 1 })
-      );
-      hole.rotation.x = -Math.PI / 2;
-      hole.scale.set(h.radiusX * 0.72, h.radiusZ * 0.72, 1);
-      hole.position.y = -0.08;
-      hazardRoot.add(hole);
+      const pit = createDepressedHazardPit(h, { rimColor: h.type === "steam" ? 0x6a6358 : 0x54463a, wallColor: 0x3b3028, bottomColor: h.type === "steam" ? 0x343434 : 0x050505, bottomY: -0.62 });
+      hazardRoot.add(pit.rim, pit.wall, pit.bottom);
       if (h.type === "steam") {
         for (let i = 0; i < 3; i++) {
           const puff = new THREE.Mesh(new THREE.SphereGeometry(0.5 + i * 0.25, 10, 10), new THREE.MeshStandardMaterial({ color: 0xb7b7b7, transparent: true, opacity: 0.35 - i * 0.08 }));
           puff.position.set((Math.random() - 0.5) * 2, 0.8 + i * 0.9, (Math.random() - 0.5) * 2);
           hazardRoot.add(puff);
-          hazardShimmers.push(puff);
+          hazardShimmers.push({ mesh: puff, baseScaleX: puff.scale.x, baseScaleZ: puff.scale.z, opacityBase: puff.material.opacity, kind: "steamPuff" });
         }
       }
     }
@@ -3597,13 +3618,18 @@ function showRespawnFade() {
 
 function updateHazardVisuals(dt) {
   const t = performance.now() * 0.001;
-  hazardShimmers.forEach((mesh, i) => {
-    if (mesh.material) mesh.material.opacity = 0.52 + Math.sin(t * 2.5 + i) * 0.2;
-    const wave = 1 + Math.sin(t * 2 + i * 1.7) * 0.08;
-    mesh.scale.x *= 0.999;
-    mesh.scale.z *= 0.999;
-    mesh.scale.x = THREE.MathUtils.lerp(mesh.scale.x, mesh.scale.x * wave, 0.03);
-    mesh.scale.z = THREE.MathUtils.lerp(mesh.scale.z, mesh.scale.z * wave, 0.03);
+  hazardShimmers.forEach((entry, i) => {
+    const shimmer = entry?.mesh ? entry : { mesh: entry, baseScaleX: entry.scale.x, baseScaleZ: entry.scale.z, opacityBase: entry.material?.opacity ?? 0.6, kind: "generic" };
+    const mesh = shimmer.mesh;
+    if (!mesh) return;
+    const amp = shimmer.kind === "lava" ? 0.085 : shimmer.kind === "steamPuff" ? 0.12 : 0.055;
+    const wave = 1 + Math.sin(t * (shimmer.kind === "steamPuff" ? 3.7 : 2.1) + i * 1.5) * amp;
+    mesh.scale.x = shimmer.baseScaleX * wave;
+    mesh.scale.z = shimmer.baseScaleZ * wave;
+    if (mesh.material) {
+      const opacityWave = shimmer.kind === "ghost" ? 0.17 : shimmer.kind === "wind" ? 0.12 : 0.1;
+      mesh.material.opacity = THREE.MathUtils.clamp(shimmer.opacityBase + Math.sin(t * 2.8 + i * 0.8) * opacityWave, 0.2, 0.95);
+    }
   });
 }
 
