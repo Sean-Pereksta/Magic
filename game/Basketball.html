@@ -693,7 +693,12 @@ let botBrain = null;
 const moveFeedbackTimers = [];
 let ledBoardTimer = 0;
 let activeSlowMo = {timer:0, scale:1};
-let cameraEffects = {shake:0, zoomPulse:0};
+let cameraEffects = {shake:0, zoomPulse:0, shakeVel:0, impulse:0};
+const cameraState = {
+  main:{look:new THREE.Vector3(), zoom:0, lead:new THREE.Vector3(), lastOwner:null},
+  p1:{look:new THREE.Vector3(), zoom:0, lead:new THREE.Vector3(), lastOwner:null},
+  p2:{look:new THREE.Vector3(), zoom:0, lead:new THREE.Vector3(), lastOwner:null}
+};
 let crowdReactionState = "normal";
 let crowdReactionTimer = 0;
 let courtThemePulse = 0;
@@ -5353,7 +5358,7 @@ function deflectLayupBall(owner,defender,hit){
   ballVelocity.copy(away.multiplyScalar(force).add(ownerForward.multiplyScalar(1.2)).add(randomness));
   ballVelocity.y = hit.type === "hand" ? 2.6 + Math.random()*1.2 : 1.8 + Math.random()*0.8;
   flash(hit.type === "hand" ? "LAYUP BLOCKED!" : "LAYUP DEFLECTED!");
-  applyCameraShake(hit.type === "hand" ? .35 : .22);
+  applyCameraShake(hit.type === "hand" ? .2 : .13,"rim");
   if(hit.type === "hand") addBlockStat(defender);
   if(hit.type === "body" && defender.blockTime <= 0 && defender.handsUpTime <= 0){
     foulMeter = Math.min(1,foulMeter + 0.12);
@@ -5799,7 +5804,7 @@ function updateDunk(dt){
     showMoveFeedback(Math.random() < 0.5 ? "POSTER DUNK!" : "SLAM!",0.9);
     crowdWave = Math.max(crowdWave,1.1);
     triggerCrowdReaction("dunk",1.05);
-    applyCameraShake(.3);
+    applyCameraShake(.3,"dunk");
     pulseCourtTheme("dunk");
     spawnCourtThemedParticle(HOOP_POS.clone(),"dunk");
     spawnCourtThemedParticle(HOOP_POS.clone().add(new THREE.Vector3(0.15,0.12,0)),"dunk");
@@ -5908,7 +5913,7 @@ function checkSteals(){
     defender.confidence = Math.min(1,defender.confidence + .08);
     defender.stats.steals += 1;
     addTakeover(10,defender);
-    screenShake = Math.min(.22,screenShake + .08); applyCameraShake(.09);
+    screenShake = Math.min(.22,screenShake + .08); applyCameraShake(.09,"block");
   }
 }
 
@@ -5944,7 +5949,7 @@ function checkBlocksAndCatches(){
       addBlockStat(blocker,12);
       triggerCrowdReaction("block",0.95);
       playBlockSound();
-      screenShake = Math.min(.3,screenShake + .14); applyCameraShake(.16);
+      screenShake = Math.min(.3,screenShake + .14); applyCameraShake(.16,"block");
     }
     return;
   }
@@ -5961,7 +5966,7 @@ function checkBlocksAndCatches(){
       addBlockStat(blocker,10);
       triggerCrowdReaction("block",0.88);
       playBlockSound();
-      screenShake = Math.min(.28,screenShake + .12); applyCameraShake(.13);
+      screenShake = Math.min(.28,screenShake + .12); applyCameraShake(.13,"block");
     }
   }
 }
@@ -6110,7 +6115,7 @@ function endGame(winner){
     return;
   }
   showWinnerOverlay(winner);
-  screenShake = .28; applyCameraShake(.22); triggerSlowMo(.45,.55);
+  screenShake = .28; applyCameraShake(.22,"block"); triggerSlowMo(.45,.55);
 }
 
 function shotValueFor(ownerId){
@@ -6293,33 +6298,66 @@ function updateCameras(dt){
     return;
   }
 
-  updateFollowCamera(camP1,p1,dt);
-  updateFollowCamera(camP2,p2,dt);
-  updateFollowCamera(camMain,p1,dt);
+  updateFollowCamera(camP1,p1,dt,"p1",true);
+  updateFollowCamera(camP2,p2,dt,"p2",true);
+  updateFollowCamera(camMain,p1,dt,"main",false);
+  screenShake = Math.max(0,screenShake - dt*.75);
 }
 
-function updateFollowCamera(cam,char,dt){
+function updateFollowCamera(cam,char,dt,cameraKey="main",isSplit=false){
+  if(!char) return;
+  const cState = cameraState[cameraKey] || cameraState.main;
   const forward = getForward(char.angle);
-  const target = char.group.position.clone()
-    .add(forward.clone().multiplyScalar(-5.4 - cameraEffects.zoomPulse*2.2))
-    .add(new THREE.Vector3(0,3.35,0));
+  const speed = char.velocity ? Math.min(1.45,char.velocity.length()/6.5) : 0;
+  const ballPos = ball.position.clone();
+  const toHoop = HOOP_POS.clone().sub(char.group.position);
+  const nearRim = flatDistance(char.group.position,HOOP_POS) < 5.2;
+  const driveLeadAmt = 0.45 + speed*1.55;
+  const driveLead = forward.clone().multiplyScalar(driveLeadAmt * (isSprinting(char) ? 1 : 0.55));
+  cState.lead.lerp(driveLead,THREE.MathUtils.clamp(dt*4.8,0,1));
 
-  cam.position.lerp(target,dt*8);
-  if(screenShake > 0){
-    cam.position.x += (Math.random()-.5)*screenShake;
-    cam.position.y += (Math.random()-.5)*screenShake*.4;
+  let zoomTarget = 0;
+  if(speed > 0.62) zoomTarget -= 0.14;
+  if(ballState === "loose") zoomTarget -= 0.12;
+  if(shotCharging && ballOwner === char.id) zoomTarget += 0.1;
+  if(ballState === "shot") zoomTarget -= 0.04;
+  if(dunkActive && dunkOwner === char.id) zoomTarget -= 0.28;
+  if(isSplit) zoomTarget = THREE.MathUtils.clamp(zoomTarget,-0.14,0.08);
+  cState.zoom = THREE.MathUtils.lerp(cState.zoom,zoomTarget,THREE.MathUtils.clamp(dt*3.2,0,1));
+
+  const backDist = (5.4 + cameraEffects.zoomPulse*2.2) * (1-cState.zoom);
+  const height = 3.35 + (ballState === "shot" ? 0.4 : 0) + (nearRim ? 0.15 : 0);
+  const target = char.group.position.clone().add(cState.lead).add(forward.clone().multiplyScalar(-backDist)).add(new THREE.Vector3(0,height,0));
+
+  if(nearRim) target.add(toHoop.normalize().multiplyScalar(0.8));
+  if(ballState === "shot" || ballState === "loose" || dunkActive) target.add(ballPos.clone().sub(char.group.position).multiplyScalar(0.12));
+
+  target.x = THREE.MathUtils.clamp(target.x,-8.8,8.8);
+  target.z = THREE.MathUtils.clamp(target.z,-13.2,12.8);
+  target.y = THREE.MathUtils.clamp(target.y,2.2,6.3);
+  if(Math.abs(target.z - HOOP_POS.z) < 1.35 && Math.abs(target.x) < 1.95){
+    target.z += target.z > HOOP_POS.z ? 0.9 : -0.9;
+    target.y += 0.35;
   }
-  if(cameraEffects.shake > 0){
-    cam.position.x += (Math.random()-.5)*cameraEffects.shake;
-    cam.position.y += (Math.random()-.5)*cameraEffects.shake*.45;
+
+  cam.position.lerp(target,THREE.MathUtils.clamp(dt*5.2,0,1));
+
+  const look = char.group.position.clone().add(forward.clone().multiplyScalar(3.1)).add(new THREE.Vector3(0,1.35,0));
+  if(nearRim) look.lerp(HOOP_POS.clone().add(new THREE.Vector3(0,0.25,0)),0.34);
+  if(ballState === "shot" || ballState === "loose") look.lerp(ballPos,0.4);
+  if(dunkActive && dunkOwner === char.id){
+    look.lerp(HOOP_POS.clone().add(new THREE.Vector3(0,0.42,0)),0.55);
+    look.lerp(ballPos,0.42);
+  }
+  cState.look.lerp(look,THREE.MathUtils.clamp(dt*6.8,0,1));
+
+  if(screenShake > 0 || cameraEffects.shake > 0){
+    const shakeAmt = screenShake*0.6 + cameraEffects.shake;
+    cam.position.x += (Math.random()-.5)*shakeAmt;
+    cam.position.y += (Math.random()-.5)*shakeAmt*0.45;
   }
 
-  const look = char.group.position.clone()
-    .add(forward.clone().multiplyScalar(3.8))
-    .add(new THREE.Vector3(0,1.35,0));
-
-  cam.lookAt(look);
-  screenShake = Math.max(0,screenShake - dt*.75);
+  cam.lookAt(cState.look);
 }
 
 function renderScene(){
@@ -6478,10 +6516,19 @@ function updateTakeover(dt){
 }
 function drawTakeoverUI(){}
 
-function applyCameraShake(amount){ cameraEffects.shake = Math.min(.4,cameraEffects.shake + amount*(gameMode.arcade?1.3:1)); }
-function applyCameraZoomPulse(amount){ cameraEffects.zoomPulse = Math.min(.3,cameraEffects.zoomPulse + amount); }
+function applyCameraShake(amount,type="generic"){
+  const scale = type === "rim" ? 0.45 : type === "block" ? 0.72 : type === "dunk" ? 1.15 : 1;
+  const boosted = amount*scale*(gameMode.arcade?1.3:1);
+  cameraEffects.impulse = Math.min(1.4,cameraEffects.impulse + boosted*2.4);
+}
+function applyCameraZoomPulse(amount){ cameraEffects.zoomPulse = Math.min(.36,cameraEffects.zoomPulse + amount); }
 function updateCameraEffects(dt){
-  cameraEffects.shake = Math.max(0,cameraEffects.shake - dt*.8);
+  const k = 10;
+  cameraEffects.shakeVel += (cameraEffects.impulse - cameraEffects.shake)*k*dt;
+  cameraEffects.shakeVel *= Math.max(0,1-dt*5.5);
+  cameraEffects.shake += cameraEffects.shakeVel*dt;
+  cameraEffects.impulse = Math.max(0,cameraEffects.impulse - dt*2.8);
+  cameraEffects.shake = Math.max(0,Math.min(.5,cameraEffects.shake));
   cameraEffects.zoomPulse = Math.max(0,cameraEffects.zoomPulse - dt*.9);
   if(activeSlowMo.timer > 0){
     activeSlowMo.timer -= dt;
