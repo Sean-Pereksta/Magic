@@ -1317,12 +1317,12 @@ function createItemBoxes() {
 
 function createHazards(hazards) {
   const hazardTypeVisual = {
-    water: { liquid: 0x2ca8e8, deep: 0x0f3f89, rim: 0x6d624e, opacity: 0.78, emissive: 0x124d73 },
-    lava: { liquid: 0xff6922, deep: 0x4e1000, rim: 0x4a2b20, opacity: 0.9, emissive: 0xb02b00 },
-    sludge: { liquid: 0x4b9140, deep: 0x1c3d15, rim: 0x4b3a2a, opacity: 0.8, emissive: 0x163212 },
-    mud: { liquid: 0x6f4b2f, deep: 0x2d1d14, rim: 0x5e4936, opacity: 0.85, emissive: 0x1b0f07 }
+    water: { liquid: 0x3dbdff, deep: 0x0f3f89, rim: 0x6d624e, opacity: 0.82, emissive: 0x1860a8 },
+    lava: { liquid: 0xff6922, deep: 0x4e1000, rim: 0x3b2c24, opacity: 0.92, emissive: 0xff4a00 },
+    sludge: { liquid: 0x58b34a, deep: 0x1c3d15, rim: 0x4b3a2a, opacity: 0.84, emissive: 0x1f4a1d },
+    mud: { liquid: 0x7d5538, deep: 0x2d1d14, rim: 0x5e4936, opacity: 0.9, emissive: 0x2b1910 }
   };
-  const createIrregularHazardShape = (hazard, pointsCount = 42, noiseAmount = 0.14) => {
+  const createIrregularHazardShape = (hazard, pointsCount = 40, noiseAmount = 0.14) => {
     const pts = [];
     const baseX = hazard.radiusX || hazard.radius || 10;
     const baseZ = hazard.radiusZ || hazard.radius || 10;
@@ -1333,22 +1333,180 @@ function createHazards(hazards) {
     }
     return pts;
   };
-  const createDepressedHazardPit = (hazard, options = {}) => {
-    const shapePts = createIrregularHazardShape(hazard, options.pointsCount || 46, options.noiseAmount || 0.16);
-    const rimShape = new THREE.Shape(shapePts);
-    const innerPts = shapePts.map(v => v.clone().multiplyScalar(options.innerScale || 0.72));
-    const innerShape = new THREE.Shape(innerPts);
-    const rimGeo = new THREE.ShapeGeometry(rimShape, 2);
-    const wallGeo = new THREE.RingGeometry(0.58, 1.0, 56);
-    const rim = new THREE.Mesh(rimGeo, new THREE.MeshStandardMaterial({ color: options.rimColor || 0x5e4d3a, roughness: 0.97 }));
-    rim.rotation.x = -Math.PI / 2; rim.position.y = 0.09;
-    const wall = new THREE.Mesh(wallGeo, new THREE.MeshStandardMaterial({ color: options.wallColor || 0x3f3124, roughness: 1 }));
-    wall.rotation.x = -Math.PI / 2;
-    wall.scale.set((hazard.radiusX || hazard.radius || 10) * 0.95, (hazard.radiusZ || hazard.radius || 10) * 0.95, 1);
-    wall.position.y = -0.24;
-    const bottom = new THREE.Mesh(new THREE.ShapeGeometry(innerShape, 2), new THREE.MeshStandardMaterial({ color: options.bottomColor || 0x080808, roughness: 1 }));
-    bottom.rotation.x = -Math.PI / 2; bottom.position.y = options.bottomY || -0.58;
-    return { rim, wall, bottom };
+  const createJaggedHazardRim = (hazard, color = 0x5e4d3a, height = 1.2, count = 16) => {
+    const group = new THREE.Group();
+    const radiusX = hazard.radiusX || hazard.radius || 10;
+    const radiusZ = hazard.radiusZ || hazard.radius || 10;
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.25;
+      const distMul = 1.02 + Math.random() * 0.18;
+      const x = Math.cos(a) * radiusX * distMul;
+      const z = Math.sin(a) * radiusZ * distMul;
+      const geomKind = i % 3;
+      let geo = geomKind === 0 ? new THREE.DodecahedronGeometry(0.35 + Math.random() * 0.45, 0) : geomKind === 1 ? new THREE.ConeGeometry(0.2 + Math.random() * 0.2, 0.7 + Math.random() * 1.2, 7) : new THREE.BoxGeometry(0.35 + Math.random() * 0.45, 0.5 + Math.random() * 1.1, 0.35 + Math.random() * 0.45);
+      const rock = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 0.95, metalness: 0.03 }));
+      rock.position.set(x, 0.35 + Math.random() * Math.max(0.25, height), z);
+      rock.rotation.set(Math.random() * 0.5, Math.random() * Math.PI, Math.random() * 0.5);
+      rock.scale.y = 0.8 + Math.random() * 1.4;
+      rock.castShadow = true;
+      rock.receiveShadow = true;
+      group.add(rock);
+    }
+    return group;
+  };
+  const createBubbleCluster = (hazard, color = 0xb6ffc0, count = 7, kind = 'bubble') => {
+    const group = new THREE.Group();
+    const radiusX = (hazard.radiusX || hazard.radius || 10) * 0.65;
+    const radiusZ = (hazard.radiusZ || hazard.radius || 10) * 0.65;
+    for (let i = 0; i < count; i++) {
+      const bubble = new THREE.Mesh(new THREE.SphereGeometry(0.2 + Math.random() * 0.28, 10, 10), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.2, transparent: true, opacity: 0.62, roughness: 0.15, metalness: 0.05 }));
+      bubble.position.set((Math.random() - 0.5) * radiusX * 1.4, 0.24 + Math.random() * 0.2, (Math.random() - 0.5) * radiusZ * 1.4);
+      group.add(bubble);
+      hazardShimmers.push({ mesh: bubble, baseScaleX: bubble.scale.x, baseScaleZ: bubble.scale.z, opacityBase: bubble.material.opacity, kind });
+    }
+    return group;
+  };
+  const createWarningMarkers = (hazard, color = 0xff5838, count = 5) => {
+    const group = new THREE.Group();
+    const radiusX = hazard.radiusX || hazard.radius || 10;
+    const radiusZ = hazard.radiusZ || hazard.radius || 10;
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2 + Math.random() * 0.3;
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.16, 1.2, 7), new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.88 }));
+      post.position.set(Math.cos(a) * radiusX * 1.18, 0.7, Math.sin(a) * radiusZ * 1.18);
+      post.castShadow = true;
+      group.add(post);
+      const warn = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.45, 3), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.55 }));
+      warn.position.set(post.position.x, 1.35, post.position.z);
+      warn.rotation.y = a;
+      group.add(warn);
+      hazardShimmers.push({ mesh: warn, baseScaleX: warn.scale.x, baseScaleZ: warn.scale.z, opacityBase: 0.95, kind: 'warning' });
+    }
+    return group;
+  };
+  const createRaisedLiquidHazard = (hazard, visual, type) => {
+    const grp = new THREE.Group();
+    const radiusX = hazard.radiusX || hazard.radius || 10;
+    const radiusZ = hazard.radiusZ || hazard.radius || 10;
+    const fluid = new THREE.Mesh(new THREE.CircleGeometry(1, 52), new THREE.MeshStandardMaterial({ color: visual.liquid, emissive: visual.emissive, emissiveIntensity: type === 'lava' ? 1.1 : type === 'sludge' ? 0.45 : 0.32, transparent: true, opacity: visual.opacity, roughness: type === 'mud' ? 0.35 : 0.18, metalness: 0.08 }));
+    fluid.rotation.x = -Math.PI / 2;
+    fluid.scale.set(radiusX * 0.8, radiusZ * 0.8, 1);
+    fluid.position.y = 0.26;
+    grp.add(fluid);
+    hazardShimmers.push({ mesh: fluid, baseScaleX: fluid.scale.x, baseScaleZ: fluid.scale.z, opacityBase: fluid.material.opacity, kind: type });
+
+    const rim = new THREE.Mesh(new THREE.RingGeometry(1.0, 1.13, 48), new THREE.MeshStandardMaterial({ color: visual.rim, roughness: 0.94 }));
+    rim.rotation.x = -Math.PI / 2;
+    rim.position.y = 0.29;
+    rim.scale.set(radiusX, radiusZ, 1);
+    grp.add(rim);
+
+    const lip = new THREE.Mesh(new THREE.TorusGeometry(1.05, 0.08, 8, 44), new THREE.MeshStandardMaterial({ color: new THREE.Color(visual.rim).multiplyScalar(0.85), roughness: 0.96 }));
+    lip.rotation.x = Math.PI / 2;
+    lip.position.y = 0.36;
+    lip.scale.set(radiusX, radiusZ, 1);
+    grp.add(lip);
+
+    const jagged = createJaggedHazardRim(hazard, type === 'lava' ? 0x2f2926 : visual.rim, type === 'lava' ? 1.9 : 1.3, 14);
+    grp.add(jagged);
+
+    if (type === 'water') {
+      for (let i = 0; i < 3; i++) {
+        const ripple = new THREE.Mesh(new THREE.TorusGeometry(1, 0.03, 6, 34), new THREE.MeshBasicMaterial({ color: 0xbdefff, transparent: true, opacity: 0.35, depthWrite: false }));
+        ripple.rotation.x = Math.PI / 2;
+        ripple.scale.set(radiusX * (0.32 + i * 0.18), radiusZ * (0.32 + i * 0.18), 1);
+        ripple.position.y = 0.31 + i * 0.015;
+        grp.add(ripple);
+        hazardShimmers.push({ mesh: ripple, baseScaleX: ripple.scale.x, baseScaleZ: ripple.scale.z, opacityBase: ripple.material.opacity, kind: 'waterRipple' });
+      }
+      grp.add(createBubbleCluster(hazard, 0xd9f7ff, 5, 'splash'));
+    } else if (type === 'lava') {
+      for (let i = 0; i < 6; i++) {
+        const flame = new THREE.Mesh(new THREE.ConeGeometry(0.16 + Math.random() * 0.12, 0.7 + Math.random() * 0.6, 7), new THREE.MeshStandardMaterial({ color: 0xff8833, emissive: 0xff3a00, emissiveIntensity: 1.05, transparent: true, opacity: 0.86 }));
+        flame.position.set((Math.random() - 0.5) * radiusX * 1.1, 0.6 + Math.random() * 0.65, (Math.random() - 0.5) * radiusZ * 1.1);
+        grp.add(flame);
+        hazardShimmers.push({ mesh: flame, baseScaleX: flame.scale.x, baseScaleZ: flame.scale.z, opacityBase: flame.material.opacity, kind: 'lavaFlame' });
+      }
+    } else if (type === 'sludge') {
+      grp.add(createBubbleCluster(hazard, 0x9fff89, 8, 'sludgeBubble'));
+    } else if (type === 'mud') {
+      grp.add(createBubbleCluster(hazard, 0xc08d64, 6, 'mudBubble'));
+    }
+    return grp;
+  };
+  const createPitHazardVisual = (hazard) => {
+    const group = new THREE.Group();
+    const radiusX = hazard.radiusX || hazard.radius || 10;
+    const radiusZ = hazard.radiusZ || hazard.radius || 10;
+    const center = new THREE.Mesh(new THREE.CircleGeometry(1, 50), new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 1, metalness: 0 }));
+    center.rotation.x = -Math.PI / 2;
+    center.position.y = 0.03;
+    center.scale.set(radiusX * 0.68, radiusZ * 0.68, 1);
+    group.add(center);
+    const innerWall = new THREE.Mesh(new THREE.RingGeometry(0.7, 1.0, 44), new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 1 }));
+    innerWall.rotation.x = -Math.PI / 2;
+    innerWall.position.y = 0.18;
+    innerWall.scale.set(radiusX * 0.9, radiusZ * 0.9, 1);
+    group.add(innerWall);
+    group.add(createJaggedHazardRim(hazard, 0x463a33, 2.1, 20));
+    group.add(createWarningMarkers(hazard, 0xff4422, 4));
+    for (let i = 0; i < 4; i++) {
+      const wisp = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 8), new THREE.MeshStandardMaterial({ color: 0x101010, transparent: true, opacity: 0.33, depthWrite: false }));
+      wisp.position.set((Math.random() - 0.5) * radiusX * 0.8, 1 + i * 0.6, (Math.random() - 0.5) * radiusZ * 0.8);
+      group.add(wisp);
+      hazardShimmers.push({ mesh: wisp, baseScaleX: wisp.scale.x, baseScaleZ: wisp.scale.z, opacityBase: wisp.material.opacity, kind: 'pitWisp' });
+    }
+    return group;
+  };
+  const createSteamHazardVisual = (hazard) => {
+    const group = createJaggedHazardRim(hazard, 0x5a554f, 1.0, 12);
+    for (let i = 0; i < 5; i++) {
+      const puff = new THREE.Mesh(new THREE.SphereGeometry(0.45 + i * 0.12, 10, 10), new THREE.MeshStandardMaterial({ color: 0xd8d8d8, transparent: true, opacity: 0.35 - i * 0.04, depthWrite: false }));
+      puff.position.set((Math.random() - 0.5) * 2.8, 0.7 + i * 0.65, (Math.random() - 0.5) * 2.8);
+      group.add(puff);
+      hazardShimmers.push({ mesh: puff, baseScaleX: puff.scale.x, baseScaleZ: puff.scale.z, opacityBase: puff.material.opacity, kind: 'steamPuff' });
+    }
+    return group;
+  };
+  const createGhostHazardVisual = (hazard) => {
+    const group = new THREE.Group();
+    const radiusX = hazard.radiusX || hazard.radius || 10;
+    const radiusZ = hazard.radiusZ || hazard.radius || 10;
+    const zone = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshStandardMaterial({ color: 0xd8b6ff, emissive: 0x5d3391, emissiveIntensity: 0.5, transparent: true, opacity: 0.52 }));
+    zone.rotation.x = -Math.PI / 2;
+    zone.scale.set(radiusX * 0.76, radiusZ * 0.76, 1);
+    zone.position.y = 0.24;
+    group.add(zone);
+    hazardShimmers.push({ mesh: zone, baseScaleX: zone.scale.x, baseScaleZ: zone.scale.z, opacityBase: zone.material.opacity, kind: 'ghost' });
+    for (let i = 0; i < 6; i++) {
+      const wisp = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.32, 1.8 + Math.random() * 1.8, 8, 1, true), new THREE.MeshStandardMaterial({ color: 0xeed7ff, emissive: 0x6d3ea5, emissiveIntensity: 0.35, transparent: true, opacity: 0.36, side: THREE.DoubleSide, depthWrite: false }));
+      wisp.position.set((Math.random() - 0.5) * radiusX * 1.1, 1.4 + Math.random() * 1.6, (Math.random() - 0.5) * radiusZ * 1.1);
+      group.add(wisp);
+      hazardShimmers.push({ mesh: wisp, baseScaleX: wisp.scale.x, baseScaleZ: wisp.scale.z, opacityBase: wisp.material.opacity, kind: 'ghostWisp' });
+    }
+    group.add(createJaggedHazardRim(hazard, 0x4a3d5f, 1.2, 12));
+    return group;
+  };
+  const createWindHazardVisual = (hazard) => {
+    const group = new THREE.Group();
+    const radiusX = hazard.radiusX || hazard.radius || 10;
+    const radiusZ = hazard.radiusZ || hazard.radius || 10;
+    const zone = new THREE.Mesh(new THREE.CircleGeometry(1, 38), new THREE.MeshStandardMaterial({ color: 0xbdefff, emissive: 0x3e99b2, emissiveIntensity: 0.35, transparent: true, opacity: 0.45 }));
+    zone.rotation.x = -Math.PI / 2;
+    zone.scale.set(radiusX * 0.75, radiusZ * 0.75, 1);
+    zone.position.y = 0.23;
+    group.add(zone);
+    hazardShimmers.push({ mesh: zone, baseScaleX: zone.scale.x, baseScaleZ: zone.scale.z, opacityBase: zone.material.opacity, kind: 'wind' });
+    for (let i = 0; i < 4; i++) {
+      const arc = new THREE.Mesh(new THREE.TorusGeometry(1, 0.05, 5, 28, Math.PI * 1.3), new THREE.MeshBasicMaterial({ color: 0xdff9ff, transparent: true, opacity: 0.4, depthWrite: false }));
+      arc.rotation.set(Math.PI / 2 + Math.random() * 0.22, Math.random() * Math.PI, 0);
+      arc.scale.set(radiusX * (0.36 + i * 0.14), radiusZ * (0.36 + i * 0.14), 1);
+      arc.position.y = 0.55 + i * 0.3;
+      group.add(arc);
+      hazardShimmers.push({ mesh: arc, baseScaleX: arc.scale.x, baseScaleZ: arc.scale.z, opacityBase: arc.material.opacity, kind: 'windArc' });
+    }
+    group.add(createJaggedHazardRim(hazard, 0x5f7c84, 0.9, 10));
+    return group;
   };
 
   hazards.forEach(h => {
@@ -1358,47 +1516,22 @@ function createHazards(hazards) {
     hazardRoot.position.set(h.x, 0, h.z);
     hazardRoot.rotation.y = h.rotation || 0;
 
-    if (h.type === "water" || h.type === "lava" || h.type === "sludge" || h.type === "mud") {
+    if (h.type === 'water' || h.type === 'lava' || h.type === 'sludge' || h.type === 'mud') {
       const visual = hazardTypeVisual[h.type];
-      const pit = createDepressedHazardPit(h, { rimColor: visual.rim, wallColor: new THREE.Color(visual.rim).multiplyScalar(0.7), bottomColor: visual.deep, bottomY: -0.66 });
-      hazardRoot.add(pit.rim, pit.wall, pit.bottom);
-      const fluid = new THREE.Mesh(new THREE.CircleGeometry(1, 56), new THREE.MeshStandardMaterial({ color: visual.liquid, emissive: visual.emissive, emissiveIntensity: h.type === "lava" ? 0.9 : 0.35, transparent: true, opacity: visual.opacity, roughness: 0.22, metalness: 0.08 }));
-      fluid.rotation.x = -Math.PI / 2;
-      fluid.scale.set(radiusX, radiusZ, 1);
-      fluid.position.y = -0.48;
-      hazardRoot.add(fluid);
-      const rim = new THREE.Mesh(new THREE.RingGeometry(1, 1.12, 56), new THREE.MeshStandardMaterial({ color: visual.rim, roughness: 0.9, metalness: 0.02 }));
-      rim.rotation.x = -Math.PI / 2;
-      rim.position.y = -0.44;
-      rim.scale.set(radiusX, radiusZ, 1);
-      hazardRoot.add(rim);
-      hazardShimmers.push({ mesh: fluid, baseScaleX: fluid.scale.x, baseScaleZ: fluid.scale.z, opacityBase: fluid.material.opacity, kind: h.type });
-    } else if (h.type === "ghost" || h.type === "wind") {
-      const pit = createDepressedHazardPit(h, { rimColor: h.type === "ghost" ? 0x4a3d5f : 0x6c8b96, wallColor: h.type === "ghost" ? 0x2c2340 : 0x415e66, bottomColor: h.type === "ghost" ? 0x140f1f : 0x1d2f35, bottomY: -0.5 });
-      hazardRoot.add(pit.rim, pit.wall, pit.bottom);
-      const zone = new THREE.Mesh(new THREE.CircleGeometry(1, 52), new THREE.MeshStandardMaterial({ color: h.type === "ghost" ? 0xc79bff : 0xbdefff, emissive: h.type === "ghost" ? 0x542c8a : 0x3e99b2, transparent: true, opacity: h.type === "ghost" ? 0.5 : 0.42 }));
-      zone.rotation.x = -Math.PI / 2;
-      zone.scale.set((h.radiusX || h.radius || 10) * 0.76, (h.radiusZ || h.radius || 10) * 0.76, 1);
-      zone.position.y = -0.31;
-      hazardRoot.add(zone);
-      hazardShimmers.push({ mesh: zone, baseScaleX: zone.scale.x, baseScaleZ: zone.scale.z, opacityBase: zone.material.opacity, kind: h.type });
-    } else if (h.type === "steam" || h.type === "pit") {
-      const pit = createDepressedHazardPit(h, { rimColor: h.type === "steam" ? 0x6a6358 : 0x54463a, wallColor: 0x3b3028, bottomColor: h.type === "steam" ? 0x343434 : 0x050505, bottomY: -0.62 });
-      hazardRoot.add(pit.rim, pit.wall, pit.bottom);
-      if (h.type === "steam") {
-        for (let i = 0; i < 3; i++) {
-          const puff = new THREE.Mesh(new THREE.SphereGeometry(0.5 + i * 0.25, 10, 10), new THREE.MeshStandardMaterial({ color: 0xb7b7b7, transparent: true, opacity: 0.35 - i * 0.08 }));
-          puff.position.set((Math.random() - 0.5) * 2, 0.8 + i * 0.9, (Math.random() - 0.5) * 2);
-          hazardRoot.add(puff);
-          hazardShimmers.push({ mesh: puff, baseScaleX: puff.scale.x, baseScaleZ: puff.scale.z, opacityBase: puff.material.opacity, kind: "steamPuff" });
-        }
-      }
+      hazardRoot.add(createRaisedLiquidHazard(h, visual, h.type));
+      if (h.type === 'water' || h.type === 'lava') hazardRoot.add(createWarningMarkers(h, h.type === 'lava' ? 0xff6a00 : 0x52d9ff, 4));
+    } else if (h.type === 'pit') {
+      hazardRoot.add(createPitHazardVisual(h));
+    } else if (h.type === 'steam') {
+      hazardRoot.add(createSteamHazardVisual(h));
+    } else if (h.type === 'ghost') {
+      hazardRoot.add(createGhostHazardVisual(h));
+    } else if (h.type === 'wind') {
+      hazardRoot.add(createWindHazardVisual(h));
     }
+
     if (DEBUG_AI_HAZARDS || DEBUG_HAZARD_COLLISIONS) {
-      const debugCollision = new THREE.Mesh(
-        new THREE.CircleGeometry(1, 48),
-        new THREE.MeshBasicMaterial({ color: 0xff3333, transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide })
-      );
+      const debugCollision = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ color: 0xff3333, transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide }));
       debugCollision.rotation.x = -Math.PI / 2;
       debugCollision.position.y = 0.2;
       debugCollision.scale.set(radiusX, radiusZ, 1);
@@ -3780,13 +3913,21 @@ function updateHazardVisuals(dt) {
     const shimmer = entry?.mesh ? entry : { mesh: entry, baseScaleX: entry.scale.x, baseScaleZ: entry.scale.z, opacityBase: entry.material?.opacity ?? 0.6, kind: "generic" };
     const mesh = shimmer.mesh;
     if (!mesh) return;
-    const amp = shimmer.kind === "lava" ? 0.085 : shimmer.kind === "steamPuff" ? 0.12 : 0.055;
-    const wave = 1 + Math.sin(t * (shimmer.kind === "steamPuff" ? 3.7 : 2.1) + i * 1.5) * amp;
+    const amp = shimmer.kind === "lava" ? 0.09 : shimmer.kind === "lavaFlame" ? 0.2 : shimmer.kind === "steamPuff" ? 0.14 : shimmer.kind === "pitWisp" ? 0.11 : shimmer.kind.includes("Bubble") ? 0.12 : 0.06;
+    const speed = shimmer.kind === "steamPuff" ? 3.7 : shimmer.kind === "windArc" ? 1.8 : shimmer.kind === "lavaFlame" ? 4.2 : 2.1;
+    const wave = 1 + Math.sin(t * speed + i * 1.5) * amp;
     mesh.scale.x = shimmer.baseScaleX * wave;
     mesh.scale.z = shimmer.baseScaleZ * wave;
+    if (shimmer.kind === "steamPuff" || shimmer.kind === "pitWisp" || shimmer.kind === "ghostWisp" || shimmer.kind === "lavaFlame" || shimmer.kind.includes("Bubble")) {
+      mesh.position.y += Math.sin(t * 2.6 + i) * dt * 0.55;
+    }
+    if (shimmer.kind === "windArc") mesh.rotation.y += dt * (0.35 + i * 0.03);
     if (mesh.material) {
-      const opacityWave = shimmer.kind === "ghost" ? 0.17 : shimmer.kind === "wind" ? 0.12 : 0.1;
-      mesh.material.opacity = THREE.MathUtils.clamp(shimmer.opacityBase + Math.sin(t * 2.8 + i * 0.8) * opacityWave, 0.2, 0.95);
+      const opacityWave = shimmer.kind === "ghost" || shimmer.kind === "ghostWisp" ? 0.2 : shimmer.kind === "wind" || shimmer.kind === "windArc" ? 0.14 : shimmer.kind === "warning" ? 0.18 : 0.11;
+      mesh.material.opacity = THREE.MathUtils.clamp(shimmer.opacityBase + Math.sin(t * 2.8 + i * 0.8) * opacityWave, 0.16, 0.98);
+      if (mesh.material.emissiveIntensity !== undefined && (shimmer.kind === "lava" || shimmer.kind === "lavaFlame" || shimmer.kind === "warning")) {
+        mesh.material.emissiveIntensity = THREE.MathUtils.clamp((mesh.material.emissiveIntensity || 0.4) * 0.7 + (0.55 + Math.sin(t * 4.5 + i) * 0.35) * 0.3, 0.25, 1.4);
+      }
     }
   });
 }
