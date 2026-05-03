@@ -670,11 +670,11 @@ let shotMeter = null;
 let dunkActive = false;
 let dunkOwner = null;
 let dunkTimer = 0;
-let dunkDuration = 0.8;
+let dunkDuration = 0.86;
 let dunkScored = false;
 let rimHangActive = false;
 let rimHangTimer = 0;
-let rimHangDuration = 0.28;
+let rimHangDuration = 0.24;
 let lastDunkReadyFlash = {p1:0,p2:0};
 
 let foulMeter = 0;
@@ -3364,28 +3364,32 @@ function poseDunkArms(char,progress){
   const h = char.profile.height;
   const meta = (char.moveMeta && char.moveMeta.dunk) || {};
   const side = meta.side === "left" ? -1 : 1;
-  const gather = THREE.MathUtils.clamp(progress / 0.22,0,1);
-  const flight = THREE.MathUtils.clamp((progress - 0.22) / 0.5,0,1);
-  const slam = THREE.MathUtils.clamp((progress - 0.72) / 0.28,0,1);
-  const dip = Math.sin(gather*Math.PI) * (1-flight);
+  const gather = THREE.MathUtils.clamp(progress / 0.2,0,1);
+  const lift = THREE.MathUtils.clamp((progress - 0.2) / 0.34,0,1);
+  const rimPhase = THREE.MathUtils.clamp((progress - 0.54) / 0.22,0,1);
+  const finish = THREE.MathUtils.clamp((progress - 0.76) / 0.24,0,1);
+  const gatherDip = Math.sin(gather*Math.PI) * (1-lift);
   char.leftArm.position.set(-.28*w,1.5*h,-.12);
   char.rightArm.position.set(.28*w,1.5*h,-.12);
   if(meta.style === "twohand"){
-    const rise = smoothstep(flight);
-    const chop = smoothstep(slam);
-    char.leftArm.rotation.set(-0.8 - rise*0.9 - chop*0.25,0,-0.12);
-    char.rightArm.rotation.set(-0.8 - rise*0.9 - chop*0.25,0,0.12);
-    char.leftForearm.rotation.set(-0.7 - rise*0.9 - chop*0.4,0,-0.06);
-    char.rightForearm.rotation.set(-0.7 - rise*0.9 - chop*0.4,0,0.06);
+    const gatherCurl = smoothstep(gather);
+    const rise = smoothstep(lift);
+    const punch = smoothstep(finish);
+    char.leftArm.rotation.set(-0.42 - gatherCurl*0.4 - rise*0.98 - punch*0.36,0,-0.1);
+    char.rightArm.rotation.set(-0.42 - gatherCurl*0.4 - rise*0.98 - punch*0.36,0,0.1);
+    char.leftForearm.rotation.set(-0.55 - gatherCurl*0.52 - rise*0.84 - punch*0.5,0,-0.08);
+    char.rightForearm.rotation.set(-0.55 - gatherCurl*0.52 - rise*0.84 - punch*0.5,0,0.08);
   }else{
     const attackArm = side > 0 ? char.rightArm : char.leftArm;
     const attackForearm = side > 0 ? char.rightForearm : char.leftForearm;
     const guideArm = side > 0 ? char.leftArm : char.rightArm;
     const guideForearm = side > 0 ? char.leftForearm : char.rightForearm;
-    attackArm.rotation.set(-0.75 - flight*1.05 - slam*0.22,0,side*0.08);
-    attackForearm.rotation.set(-0.8 - flight*0.95 - slam*0.42,0,side*0.03);
-    guideArm.rotation.set(-0.5 - dip*0.4 - flight*0.35,0,-side*0.22);
-    guideForearm.rotation.set(-0.4 - flight*0.35,0,-side*0.08);
+    const tomahawk = meta.style === "tomahawk" ? 1 : 0;
+    const quick = meta.style === "quick" ? 1 : 0;
+    attackArm.rotation.set(-0.52 - smoothstep(gather)*0.42 - smoothstep(lift)*(1.08 + tomahawk*0.16 - quick*0.1) - smoothstep(finish)*(0.3 + tomahawk*0.12),0,side*(0.06 + tomahawk*0.04));
+    attackForearm.rotation.set(-0.62 - smoothstep(gather)*0.46 - smoothstep(rimPhase)*(0.92 + quick*0.12) - smoothstep(finish)*(0.52 + tomahawk*0.12),0,side*0.04);
+    guideArm.rotation.set(-0.4 - gatherDip*0.45 - smoothstep(lift)*(0.38 + quick*0.12),0,-side*(0.22 + tomahawk*0.04));
+    guideForearm.rotation.set(-0.35 - smoothstep(lift)*0.4,0,-side*0.08);
   }
 }
 
@@ -5905,12 +5909,16 @@ function startDunk(char){
   const toRimDir = toRim.lengthSq() > 0.0001 ? toRim.clone().normalize() : getForward(char.angle).clone().normalize();
   const right = getBodyRightVector(char).normalize();
   const sideSign = right.dot(toRimDir) > 0 ? 1 : -1;
-  const style = char.profile.width > 1.08 ? "twohand" : char.profile.sprint > 1.15 ? "tomahawk" : "quick";
-  const rimFront = HOOP_POS.clone().add(new THREE.Vector3(0,0,RIM_RADIUS + char.bodyRadius + 0.09));
-  const takeoff = char.group.position.clone().add(toRimDir.clone().multiplyScalar(Math.min(1.25,toRim.length()*0.45)));
-  const peak = rimFront.clone().add(new THREE.Vector3(sideSign*0.12,0.92,0.05));
-  const attack = rimFront.clone().add(new THREE.Vector3(sideSign*0.04,0.42,-0.02));
-  const landing = rimFront.clone().add(new THREE.Vector3(-sideSign*0.14,0,-0.42));
+  const style =
+    (char.profile.width > 1.1 || char.profile.height > 1.07) ? "twohand" :
+    (char.profile.jump > 1.08 || char.profile.sprint > 1.13) ? "tomahawk" : "quick";
+  const rimFront = HOOP_POS.clone().add(new THREE.Vector3(0,0,RIM_RADIUS + char.bodyRadius + 0.1));
+  const takeoff = char.group.position.clone().add(toRimDir.clone().multiplyScalar(Math.min(1.05,toRim.length()*0.38)));
+  const jumpBoost = THREE.MathUtils.clamp((char.profile.jump - 1) * 0.5,0,0.24);
+  const profileLift = style === "twohand" ? 0.76 : style === "tomahawk" ? 0.84 : 0.68;
+  const peak = rimFront.clone().add(new THREE.Vector3(sideSign*0.1,profileLift + jumpBoost,0.03));
+  const attack = rimFront.clone().add(new THREE.Vector3(sideSign*0.03,0.36 + jumpBoost*0.35,-0.01));
+  const landing = rimFront.clone().add(new THREE.Vector3(-sideSign*0.1,0,-0.36));
   char.moveMeta.dunk = {
     start: char.group.position.clone(),
     takeoff,
@@ -5919,7 +5927,11 @@ function startDunk(char){
     landing,
     side: sideSign > 0 ? "right" : "left",
     startFacing: char.angle,
-    style
+    style,
+    baseY: char.group.position.y,
+    rootMaxY: HOOP_POS.y - (0.6 + 0.08*char.profile.height),
+    gatherSink: 0.1 + (style === "twohand" ? 0.03 : 0),
+    forwardBlend: style === "quick" ? 0.3 : 0.24
   };
   flash(`${char.id.toUpperCase()} dunk!`);
 }
@@ -5931,25 +5943,30 @@ function updateDunk(dt){
   const t = THREE.MathUtils.clamp(dunkTimer / dunkDuration,0,1);
   const meta = owner.moveMeta && owner.moveMeta.dunk ? owner.moveMeta.dunk : null;
   if(!meta) return;
-  const gather = THREE.MathUtils.clamp(t/0.22,0,1);
-  const flight = THREE.MathUtils.clamp((t-0.22)/0.5,0,1);
-  const slam = THREE.MathUtils.clamp((t-0.72)/0.28,0,1);
+  const gather = THREE.MathUtils.clamp(t/0.2,0,1);
+  const flight = THREE.MathUtils.clamp((t-0.2)/0.34,0,1);
+  const rimPhase = THREE.MathUtils.clamp((t-0.54)/0.22,0,1);
+  const slam = THREE.MathUtils.clamp((t-0.76)/0.24,0,1);
   const gatherPos = meta.start.clone().lerp(meta.takeoff,smoothstep(gather));
+  gatherPos.y = meta.baseY - Math.sin(gather*Math.PI) * meta.gatherSink;
   const flightPos = meta.takeoff.clone().lerp(meta.peak,smoothstep(flight));
-  const slamPos = meta.peak.clone().lerp(meta.landing,smoothstep(slam));
-  if(t < 0.22) owner.group.position.copy(gatherPos);
-  else if(t < 0.72) owner.group.position.copy(flightPos);
+  const rimPos = meta.peak.clone().lerp(meta.attack,smoothstep(rimPhase));
+  const slamPos = meta.attack.clone().lerp(meta.landing,smoothstep(slam));
+  if(t < 0.2) owner.group.position.copy(gatherPos);
+  else if(t < 0.54) owner.group.position.copy(flightPos);
+  else if(t < 0.76) owner.group.position.copy(rimPos);
   else owner.group.position.copy(slamPos);
+  owner.group.position.y = THREE.MathUtils.clamp(owner.group.position.y,meta.baseY-0.12,meta.rootMaxY);
   owner.group.position.z = Math.max(owner.group.position.z, HOOP_POS.z + RIM_RADIUS + owner.bodyRadius + 0.04);
-  owner.group.rotation.x = -0.12 * Math.sin(gather*Math.PI) - 0.08 * Math.sin(flight*Math.PI);
+  owner.group.rotation.x = -0.16 * Math.sin(gather*Math.PI) - 0.06 * Math.sin(flight*Math.PI) + 0.05 * Math.sin(slam*Math.PI);
   owner.group.rotation.y = THREE.MathUtils.lerp(owner.group.rotation.y,meta.startFacing,0.18);
-  const knee = Math.sin(flight*Math.PI);
+  const knee = Math.sin((flight+rimPhase*0.5)*Math.PI);
   owner.leftLeg.rotation.x = -0.24;
   owner.rightLeg.rotation.x = -0.24;
-  if(t < 0.22){
+  if(t < 0.2){
     owner.leftLeg.rotation.x -= 0.25 * Math.sin(gather*Math.PI);
     owner.rightLeg.rotation.x -= 0.25 * Math.sin(gather*Math.PI);
-  }else if(t < 0.72){
+  }else if(t < 0.76){
     if(meta.side === "right"){
       owner.rightLeg.rotation.x = 0.36 * knee;
       owner.leftLeg.rotation.x = -0.34 - 0.24 * knee;
@@ -5962,15 +5979,22 @@ function updateDunk(dt){
     owner.rightLeg.rotation.x = 0.22 * Math.sin(slam*Math.PI);
   }
   keepInCourt(owner.group.position);
-  if(t < 0.72){
-    if(meta.style === "twohand") attachBallBetweenHands(owner,new THREE.Vector3(0,0.42,-0.2));
-    else attachBallToHand(owner,meta.side,new THREE.Vector3(0,0.44,-0.23));
+  if(t < 0.54){
+    if(meta.style === "twohand") attachBallBetweenHands(owner,new THREE.Vector3(0,0.36,-0.2));
+    else attachBallToHand(owner,meta.side,new THREE.Vector3(0,0.4,-0.2));
     ballVelocity.set(0,0,0);
+  }else if(t < 0.76){
+    const handBias = meta.side === "right" ? "right" : "left";
+    const rimHand = getWorldHand(owner,handBias);
+    const targetAboveRim = HOOP_POS.clone().add(new THREE.Vector3(0,0.2,0));
+    ball.position.copy(rimHand.lerp(targetAboveRim,0.58));
+    ballVelocity.set(0,-0.25,-0.05);
   }else{
-    if(!dunkScored) ball.position.copy(HOOP_POS.clone().add(new THREE.Vector3(0,0.24,0)));
-    ballVelocity.set(0,-3.6,-0.16);
+    const punch = smoothstep(slam);
+    ball.position.copy(HOOP_POS.clone().add(new THREE.Vector3(0,0.2 - punch*0.62,0)));
+    ballVelocity.set(0,-4.4 - punch*0.5,-0.08);
   }
-  if(t >= .74 && !dunkScored){
+  if(t >= .79 && !dunkScored){
     dunkScored = true;
     shotHasHitRimOrBoard = true;
     const points = 2;
@@ -5985,25 +6009,25 @@ function updateDunk(dt){
     }
     updateScoreboard();
     animateNetSwish();
-    triggerNetWobble(1.45);
+    triggerNetWobble(meta.style === "twohand" ? 1.55 : 1.35,HOOP_POS.clone().add(new THREE.Vector3(0,-0.1,0)),new THREE.Vector3(0.02,-1,-0.06));
     playCrowdPulse();
     triggerShotSplash(HOOP_POS.clone(),"orange");
     showMoveFeedback(Math.random() < 0.5 ? "POSTER DUNK!" : "SLAM!",0.9);
     crowdWave = Math.max(crowdWave,1.1);
     triggerCrowdReaction("dunk",1.05);
-    applyCameraShake(.3,"dunk");
+    if(meta.style !== "quick") applyCameraShake(.24,"dunk");
     pulseCourtTheme("dunk");
     spawnCourtThemedParticle(HOOP_POS.clone(),"dunk");
     spawnCourtThemedParticle(HOOP_POS.clone().add(new THREE.Vector3(0.15,0.12,0)),"dunk");
     spawnCourtThemedParticle(HOOP_POS.clone().add(new THREE.Vector3(-0.15,0.12,0)),"dunk");
     const hangChance =
-      0.15 +
+      0.1 +
       owner.profile.height * 0.1 +
       owner.profile.layup * 0.08 +
       owner.velocity.length() * 0.03;
     if(Math.random() < hangChance){
       rimHangActive = true;
-      rimHangTimer = rimHangDuration;
+      rimHangTimer = rimHangDuration * (meta.style === "twohand" ? 1 : 0.85);
       triggerCrowdReaction("rim_hang",1.15);
     }
     checkGameWinner();
@@ -6011,7 +6035,7 @@ function updateDunk(dt){
   }
   if(rimHangActive){
     rimHangTimer -= dt;
-    owner.group.position.y = Math.max(owner.group.position.y,HOOP_POS.y - 0.55);
+    owner.group.position.y = Math.min(meta.rootMaxY - 0.04,Math.max(owner.group.position.y,HOOP_POS.y - 0.62));
     if(rimHangTimer <= 0) rimHangActive = false;
   }
   if(t >= 1 && !rimHangActive){
