@@ -3343,6 +3343,8 @@ function animate(){
         updateJumpPhysics(p1,dt);
         updateJumpPhysics(p2,dt);
         resolveBodyCollisions();
+        resolveHoopPlayerCollision(p1);
+        resolveHoopPlayerCollision(p2);
         updateCharacters(dt);
         updateBall(dt);
         updateLayup(dt);
@@ -3912,6 +3914,57 @@ function resolveBodyCollisions(){
     const hard = offense.contactType === "hard_bump" || offense.contactType === "stonewall";
     screenShake = Math.min(.22,screenShake + (hard ? .07 : .03));
     applyCameraShake(hard ? .1 : .05);
+  }
+}
+function resolveHoopPlayerCollision(char){
+  if(!char || !char.group) return;
+  if(dunkActive && dunkOwner === char.id) return;
+
+  const pos = char.group.position;
+  const rimRadius = RIM_RADIUS + 0.35;
+  const rimBottom = HOOP_POS.y - 1.05;
+  const rimTop = HOOP_POS.y + 0.35;
+  const bodyRadius = (char.bodyRadius || 0.55) * 0.92;
+
+  if(pos.y + char.profile.height > rimBottom && pos.y < rimTop){
+    const dx = pos.x - HOOP_POS.x;
+    const dz = pos.z - HOOP_POS.z;
+    let dist = Math.hypot(dx,dz);
+    if(dist < 0.0001) dist = 0.0001;
+    const overlap = rimRadius + bodyRadius - dist;
+    if(overlap > 0){
+      const pushStrength = THREE.MathUtils.clamp(0.6 + overlap * 0.5,0.55,1.05);
+      pos.x += (dx / dist) * overlap * pushStrength;
+      pos.z += (dz / dist) * overlap * pushStrength;
+
+      if(!char.onGround && char.yVel > 0 && pos.y + char.profile.height * 0.58 > HOOP_POS.y - 0.12){
+        char.yVel = Math.min(char.yVel,0.15);
+      }
+      if(!char.onGround) pos.y -= Math.min(0.02 + overlap * 0.035,0.08);
+      keepInCourt(pos);
+    }
+  }
+
+  if(!backboard) return;
+  const boardHalfW = 3.4 * 0.5;
+  const boardHalfH = 2.05 * 0.5;
+  const boardHalfT = 0.25 * 0.5;
+  const boardX = backboard.position.x;
+  const boardY = backboard.position.y;
+  const boardZ = backboard.position.z;
+  const dx = pos.x - boardX;
+  const dy = pos.y + char.profile.height * 0.5 - boardY;
+  const dz = pos.z - boardZ;
+  const overlapX = boardHalfW + bodyRadius - Math.abs(dx);
+  const overlapY = boardHalfH + char.profile.height * 0.46 - Math.abs(dy);
+  const overlapZ = boardHalfT + bodyRadius - Math.abs(dz);
+
+  if(overlapX > 0 && overlapY > 0 && overlapZ > 0){
+    const pushDir = dz >= 0 ? 1 : -1;
+    const zPush = overlapZ * THREE.MathUtils.clamp(0.72 + overlapZ * 0.25,0.72,1.08);
+    pos.z += pushDir * zPush;
+    if(char.yVel < 0 && Math.abs(dy) < boardHalfH * 0.9) char.yVel *= 0.75;
+    keepInCourt(pos);
   }
 }
 
@@ -5290,6 +5343,8 @@ function updateDunk(dt){
   owner.leftLeg.rotation.x = -0.2 + Math.sin(t*Math.PI)*0.42;
   owner.rightLeg.rotation.x = -0.2 + Math.sin(t*Math.PI)*0.42;
   const target = t < .52 ? start.clone().lerp(apex,phase) : apex.clone().lerp(finish,phase);
+  const dunkFrontZ = HOOP_POS.z + RIM_RADIUS + owner.bodyRadius + 0.06;
+  owner.group.position.z = Math.max(owner.group.position.z,dunkFrontZ);
   if(t < .8){
     if(style === "twohand") attachBallBetweenHands(owner,new THREE.Vector3(0,0.36 + Math.sin(t*Math.PI)*0.2,-0.22));
     else attachBallToHand(owner, style === "tomahawk" ? "right" : "left", new THREE.Vector3(0,0.42 + Math.sin(t*Math.PI)*0.2,-0.24));
