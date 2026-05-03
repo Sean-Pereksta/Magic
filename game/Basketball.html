@@ -2492,7 +2492,7 @@ function createCharacter(profile,pos,id){
     jumpCooldown:0,
     sprint:1,
     bodyRadius:.55*w,
-    leftArm,rightArm,leftForearm,rightForearm,leftHand,rightHand,leftLeg,rightLeg,leftShoe,rightShoe,
+    leftArm,rightArm,leftForearm,rightForearm,leftHand,rightHand,leftLeg,rightLeg,leftShoe,rightShoe,torso,
     hasBall:id==="p1",
     dribbleBounce:0,
     swipeSide:null,
@@ -2534,7 +2534,7 @@ function createCharacter(profile,pos,id){
     contactFinishBonusOrPenalty:0,
     bodyUpTimer:0,
     lastContestLabel:"Open",
-    anim:{runCycle:0,lean:0,targetLean:0,armBlend:0,legBlend:0,walkBlend:0,sprintBlend:0,backpedalBlend:0,turnLean:0,verticalBob:0,landingTimer:0,strideStrength:0,torsoTwist:0,landingSquash:0,contactReact:0,shotFollowThrough:0,sideLean:0,legKick:0,fadeLean:0,hookWindup:0,hookRelease:0,defenseStanceBlend:0,shuffleCycle:0,cutoffLean:0},
+    anim:{runCycle:0,lean:0,targetLean:0,armBlend:0,legBlend:0,walkBlend:0,sprintBlend:0,backpedalBlend:0,turnLean:0,verticalBob:0,landingTimer:0,strideStrength:0,torsoTwist:0,landingSquash:0,contactReact:0,shotFollowThrough:0,sideLean:0,legKick:0,fadeLean:0,hookWindup:0,hookRelease:0,defenseStanceBlend:0,shuffleCycle:0,cutoffLean:0,cutPlant:0,cutDir:0},
     takeover:0,takeoverActive:false,takeoverTimer:0,stamina:1,dribbleStyle:"normal",stats:{fga:0,fgm:0,tpa:0,tpm:0,blocks:0,steals:0,turnovers:0,ankle:0,perfect:0},
     movement:{
       acceleration:5.2 * (1 + (profile.speed-1)*.7),
@@ -2993,6 +2993,9 @@ function getBestHandForScreenSide(char,screenSide){
 function smoothAnimValue(value,target,speed,dt){
   return value + (target - value) * (1 - Math.exp(-speed * dt));
 }
+function clampLean(value,min,max){
+  return THREE.MathUtils.clamp(value,min,max);
+}
 
 function getShotTimingQuality(held,shotType="setshot",shooter=null,contest=null){
   return THREE.MathUtils.clamp(calculateShotTiming(held,shotType,shooter,contest).accuracyMultiplier,0.45,1.28);
@@ -3117,6 +3120,7 @@ function updateAnimationBlend(char,dt){
   const moving = speed > .12;
   const moveDir = moving ? char.velocity.clone().normalize() : forward;
   const forwardDot = moving ? moveDir.dot(forward) : 0;
+  const lateralDot = moving ? moveDir.dot(new THREE.Vector3(forward.z,0,-forward.x)) : 0;
   const sprintKey = keys[char.id === "p1" ? "ShiftLeft" : "ShiftRight"];
   const sprinting = moving && (sprintKey || speed > 5.45);
   const backpedal = moving && forwardDot < -0.2;
@@ -3135,7 +3139,7 @@ function updateAnimationBlend(char,dt){
   char.anim.strideStrength = smoothAnimValue(char.anim.strideStrength || 0,THREE.MathUtils.clamp(speed/5.8,0,1.2),8,dt);
   char.anim.verticalBob = smoothAnimValue(char.anim.verticalBob || 0,moving ? THREE.MathUtils.clamp(speed/6.5,0,1) : 0,7,dt);
   const defending = possession !== char.id && ballState === "dribble" && flatDistance(char.group.position,(char.id==="p1"?p2:p1).group.position) < (2 + char.movement.defensiveWidth*.45);
-  const strafeDot = moving ? Math.abs(moveDir.dot(new THREE.Vector3(forward.z,0,-forward.x))) : 0;
+  const strafeDot = Math.abs(lateralDot);
   const stanceTarget = defending ? THREE.MathUtils.clamp((1.95-flatDistance(char.group.position,(char.id==="p1"?p2:p1).group.position))/1.95,0,1) : 0;
   char.anim.defenseStanceBlend = smoothAnimValue(char.anim.defenseStanceBlend||0,stanceTarget,10,dt);
   const shuffleTarget = defending ? THREE.MathUtils.clamp(strafeDot * (1-sprintTarget) * walkTarget,0,1) : 0;
@@ -3143,16 +3147,32 @@ function updateAnimationBlend(char,dt){
   char.anim.cutoffLean = smoothAnimValue(char.anim.cutoffLean||0,defending ? (char.defensiveShadeSide==="left"?-1:char.defensiveShadeSide==="right"?1:0) : 0,7,dt);
   char.anim.targetLean = char.anim.sprintBlend * 0.25 + char.anim.walkBlend * 0.08 - char.anim.backpedalBlend * 0.08 - char.anim.defenseStanceBlend*0.06;
   char.anim.lean = smoothAnimValue(char.anim.lean,char.anim.targetLean,8,dt);
+  const sharpTurn = moving ? THREE.MathUtils.clamp((strafeDot - 0.35) / 0.5,0,1) * THREE.MathUtils.clamp(speed/5,0,1) : 0;
+  const cutDir = sharpTurn > 0.08 ? (lateralDot < 0 ? -1 : 1) : 0;
+  char.anim.cutPlant = smoothAnimValue(char.anim.cutPlant || 0,sharpTurn,12,dt);
+  char.anim.cutDir = cutDir || char.anim.cutDir || 0;
+  if(sharpTurn > 0.2) char.velocity.multiplyScalar(1 - Math.min(0.11,dt*2.8));
   const cycleRate = THREE.MathUtils.lerp(2.1,8.6,char.anim.walkBlend * 0.58 + char.anim.sprintBlend * 0.9 + char.anim.backpedalBlend * 0.3);
   char.anim.runCycle = (char.anim.runCycle || 0) + dt * cycleRate * (moving ? 1 : .65);
   char.anim.contactReact = smoothAnimValue(char.anim.contactReact,0,6,dt);
 }
 
 function animateTorsoLean(char,dt){
-  const sideLean = (char.anim.sideLean || 0) * -0.16 + (char.anim.fadeLean || 0) * -0.08 + (char.anim.turnLean || 0) * -0.06;
-  const forwardLean = -char.anim.lean + char.anim.contactReact*.06;
-  char.group.rotation.x = smoothAnimValue(char.group.rotation.x,forwardLean,9,dt);
-  char.group.rotation.z = smoothAnimValue(char.group.rotation.z,sideLean,10,dt);
+  const fadeLean = char.anim.fadeLean || 0;
+  const cutPlant = char.anim.cutPlant || 0;
+  const sideLeanRaw = (char.anim.sideLean || 0) * -0.13 + fadeLean * -0.05 + (char.anim.turnLean || 0) * -0.05 + (char.anim.cutDir || 0) * cutPlant * -0.035;
+  const forwardLeanRaw = -char.anim.lean + char.anim.contactReact*.05 + cutPlant*0.02;
+  const fadeForwardCap = Math.abs(fadeLean) > 0.08 ? 0.18 : 0.16;
+  const clampedForwardLean = clampLean(forwardLeanRaw,-0.14,fadeForwardCap);
+  const clampedSideLean = clampLean(sideLeanRaw,-0.12,0.12);
+  char.group.rotation.x = smoothAnimValue(char.group.rotation.x,clampedForwardLean,11,dt);
+  char.group.rotation.z = smoothAnimValue(char.group.rotation.z,clampedSideLean,12,dt);
+  if(char.torso){
+    const torsoSide = (char.anim.turnLean || 0) * -0.05 + (char.anim.cutDir || 0) * cutPlant * -0.04;
+    const torsoForward = clampLean((char.anim.sprintBlend || 0)*0.05 - (char.anim.backpedalBlend || 0)*0.03,-0.06,0.08);
+    char.torso.rotation.z = smoothAnimValue(char.torso.rotation.z,torsoSide,10,dt);
+    char.torso.rotation.x = smoothAnimValue(char.torso.rotation.x,torsoForward,9,dt);
+  }
 }
 
 function animateLanding(char,dt){
@@ -3174,16 +3194,16 @@ function animateLanding(char,dt){
 
 function animateContactReaction(char,dt){
   const react = char.anim.contactReact;
-  char.group.rotation.z += react * dt * 0.12;
+  char.group.rotation.z = clampLean(char.group.rotation.z + react * dt * 0.05,-0.12,0.12);
   if(char.contactSlide > 0){
     const slideVec = getPlayerForward(char).multiplyScalar(-0.18 * char.contactSlide * dt);
     char.group.position.add(slideVec);
     char.contactSlide = Math.max(0,char.contactSlide - dt*3.8);
   }
   if(char.contactType === "stonewall"){
-    char.group.rotation.x = smoothAnimValue(char.group.rotation.x,0.12,8,dt);
+    char.group.rotation.x = smoothAnimValue(char.group.rotation.x,0.09,8,dt);
   }else if(char.contactType === "blow_by"){
-    char.group.rotation.x = smoothAnimValue(char.group.rotation.x,-0.08,8,dt);
+    char.group.rotation.x = smoothAnimValue(char.group.rotation.x,-0.06,8,dt);
   }
 }
 
@@ -4886,7 +4906,7 @@ function animateDefensiveStance(char,dt){
   const cutoffLean = char.anim.cutoffLean || 0;
   char.group.position.y = Math.max(0,char.group.position.y - dt*(.18 + stance*.16));
   char.group.scale.y = Math.max(.9,1 - stance*.06);
-  char.group.rotation.x += 0.04 + stance*0.08;
+  char.group.rotation.x = clampLean(char.group.rotation.x + 0.03 + stance*0.05,-0.14,0.16);
   const shadeDir = char.defensiveShadeSide === "left" ? -1 : char.defensiveShadeSide === "right" ? 1 : 0;
   char.leftLeg.rotation.z = -.18 - stance*0.12; char.rightLeg.rotation.z = .18 + stance*0.12;
   char.leftShoe.position.x = (char.leftShoe.userData.base?.x || char.leftShoe.position.x) - stance*0.02;
@@ -4899,8 +4919,8 @@ function animateDefensiveStance(char,dt){
   if(shadeDir){
     char.leftArm.rotation.z = -0.58 - shadeDir*0.08;
     char.rightArm.rotation.z = 0.58 - shadeDir*0.08;
-    char.group.rotation.x = Math.max(char.group.rotation.x,0.06 + char.defensiveShadeTime*0.05 + stance*0.06);
-    char.group.rotation.z += cutoffLean * 0.04;
+    char.group.rotation.x = clampLean(Math.max(char.group.rotation.x,0.05 + char.defensiveShadeTime*0.04 + stance*0.05),-0.14,0.16);
+    char.group.rotation.z = clampLean(char.group.rotation.z + cutoffLean * 0.03,-0.12,0.12);
   }
 }
 function animateRunCycle(char,dt){
@@ -4916,11 +4936,14 @@ function animateRunCycle(char,dt){
   const leftBase = char.leftShoe.userData.base || (char.leftShoe.userData.base = char.leftShoe.position.clone());
   const rightBase = char.rightShoe.userData.base || (char.rightShoe.userData.base = char.rightShoe.position.clone());
 
-  const walkStride = 0.2 + walkBlend * 0.22;
-  const sprintStride = sprintBlend * (0.34 + strideStrength*0.18);
-  const backStride = backBlend * 0.16;
+  const walkStride = 0.16 + walkBlend * 0.17;
+  const sprintStride = sprintBlend * (0.29 + strideStrength*0.13);
+  const backStride = backBlend * 0.12;
   const stride = walkStride + sprintStride + backStride;
-  const kneeLift = 0.03 + walkBlend*0.03 + sprintBlend*0.06;
+  const cutPlant = char.anim.cutPlant || 0;
+  const cutDir = char.anim.cutDir || 0;
+  const outsideLeft = cutDir > 0;
+  const kneeLift = 0.024 + walkBlend*0.024 + sprintBlend*0.052;
   const footTravel = (0.028 + walkBlend*0.026 + sprintBlend*0.048 - backBlend*0.01) * char.profile.width;
 
   char.leftLeg.rotation.x = legWave * (stride - backStride*0.45);
@@ -4933,13 +4956,25 @@ function animateRunCycle(char,dt){
   char.rightShoe.position.y = rightBase.y + Math.max(0,-legWave) * kneeLift;
   char.leftShoe.rotation.x = char.leftLeg.rotation.x * 0.78;
   char.rightShoe.rotation.x = char.rightLeg.rotation.x * 0.78;
+  if(cutPlant > 0.05){
+    const bend = cutPlant * 0.2;
+    char.leftLeg.rotation.x += bend;
+    char.rightLeg.rotation.x += bend;
+    if(outsideLeft){
+      char.leftShoe.position.z = leftBase.z + legWave * footTravel * 0.25;
+      char.leftShoe.position.y = leftBase.y + Math.max(0,legWave) * kneeLift * 0.35;
+    }else{
+      char.rightShoe.position.z = rightBase.z - legWave * footTravel * 0.25;
+      char.rightShoe.position.y = rightBase.y + Math.max(0,-legWave) * kneeLift * 0.35;
+    }
+  }
 
   if(!moving || specialActive){
     char.leftShoe.position.lerp(leftBase,dt*8);
     char.rightShoe.position.lerp(rightBase,dt*8);
   }
   if(!shotCharging && char.blockTime <= 0 && char.swipeTime <= 0){
-    const armDrive = 0.05 + walkBlend*0.04 + sprintBlend*0.12 - backBlend*0.01;
+    const armDrive = 0.03 + walkBlend*0.03 + sprintBlend*0.11 - backBlend*0.005;
     const ballSide = char.hasBall ? ((char.dribbleHand || "right") === "right" ? 1 : -1) : 0;
     char.leftArm.rotation.z += Math.sin(cyc + Math.PI) * armDrive + (ballSide > 0 ? 0.03 : 0);
     char.rightArm.rotation.z += Math.sin(cyc) * armDrive - (ballSide < 0 ? 0.03 : 0);
