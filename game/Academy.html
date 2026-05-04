@@ -969,7 +969,12 @@ function findCorrectiveDockCandidates(){
     const k = localStorage.key(i);
     if(!k) continue;
     const lk = k.toLowerCase();
-    if(lk.includes('.dock.corrective') || lk.includes('.dock.correctives') || lk.includes('corrective')) out.push(k);
+    if(
+      lk.includes('.dock.corrective') ||
+      lk.includes('.dock.correctives') ||
+      lk.includes('corrective') ||
+      lk.includes('correctives')
+    ) out.push(k);
   }
   return Array.from(new Set(out)).sort((a,b)=>a.localeCompare(b));
 }
@@ -1006,7 +1011,8 @@ function populateDockSelects(){
   else if(checkCands.length){ checkDockKey = checkCands[0]; els.checkDockSel.value = checkDockKey; }
 
 
-  const correctiveCands = Array.from(new Set([pickBestKey('corrective'), ...findCorrectiveDockCandidates()].filter(Boolean)));
+  const correctivePreferred = [`${APP_NS}.dock.correctives`, `${APP_NS}.dock.corrective`].find(k=>localStorage.getItem(k));
+  const correctiveCands = Array.from(new Set([correctivePreferred || pickBestKey('corrective'), ...findCorrectiveDockCandidates()].filter(Boolean)));
   els.correctiveDockSel.innerHTML = correctiveCands.map(k=>`<option value="${esc(k)}">${esc(k)}</option>`).join('');
   correctiveDockKey = correctiveDockKey || pickBestKey('corrective');
   if(correctiveCands.includes(correctiveDockKey)) els.correctiveDockSel.value = correctiveDockKey;
@@ -1142,23 +1148,50 @@ function canonicalizeCorrectiveRows(dockObj){
   if(!dockObj) return [];
   const arrays = extractRowArrays(dockObj, '');
   const out = [];
+
   for(const pack of arrays){
-    const keys = Array.from(new Set((pack.rows || []).flatMap(r => Object.keys(r||{}))));
-    const repField = findFieldName(keys, [/^associatename$/, /^associate$/, /^name$/, /^rep$/, /^representative$/, /^employee$/, /^csr$/, /^agent$/]);
-    const dateField = findFieldName(keys, [/^date$/, /^correctivedate$/, /^incidentdate$/, /^createddate$/, /^actiondate$/]);
     for(const r of pack.rows){
-      const repRaw = repField ? r[repField] : pickFieldFromRow(r, ['associatename','associate','name','rep','representative','employee','csr','agent']);
-      const dateRaw = dateField ? r[dateField] : pickFieldFromRow(r, ['date','correctivedate','incidentdate','createddate','actiondate']);
+      if(!r || typeof r !== 'object') continue;
+
+      const repRaw = pickFieldFromRow(r, [
+        'associatename','associate','name','rep','representative','employee','csr','agent','agentname'
+      ]);
+
+      const dateRaw = pickFieldFromRow(r, [
+        'correctivedate','incidentdate','createddate','actiondate','date','dt','day'
+      ]);
+
       const rep = displayNameFromRaw(repRaw || '');
       const repKey = personKey(rep || repRaw);
       const date = parseDate(dateRaw);
-      const searchableText = Object.values(r||{}).map(v=>String(v ?? '')).join(' | ');
-      const m = searchableText.match(/\b(verbal|written|final)\b/i);
-      const correctiveType = m ? m[1][0].toUpperCase()+m[1].slice(1).toLowerCase() : '';
-      if(!repKey || !date || !correctiveType) continue;
-      out.push({ ...r, rep, repKey, date, correctiveType, searchableText });
+      if(!rep || !repKey || !date) continue;
+
+      const preferredStatusRaw = pickFieldFromRow(r, [
+        'actiontaken','action','corrective','correctivetype','status','discipline','coachingtype','type','category','incident','incidenttype','incidentcategory'
+      ]);
+
+      let searchableText = '';
+      if(preferredStatusRaw !== undefined && preferredStatusRaw !== null && String(preferredStatusRaw).trim() !== ''){
+        searchableText = String(preferredStatusRaw);
+      } else {
+        searchableText = Object.values(r).map(v => String(v ?? '')).join(' ');
+      }
+
+      const correctiveMatch = searchableText.match(/\b(verbal|written|final)\b/i);
+      if(!correctiveMatch) continue;
+
+      out.push({
+        ...r,
+        rep,
+        repKey,
+        date,
+        correctiveType: correctiveMatch[1],
+        searchableText,
+        teamHint: String(pickFieldFromRow(r, ['team','sheet','coach','jobcoach','coachassigned']) ?? pack.sheetName ?? '').trim()
+      });
     }
   }
+
   return out;
 }
 
@@ -1187,7 +1220,6 @@ function loadQA(){
 }
 function loadChecklist(){
   checkDockKey = els.checkDockSel.value || checkDockKey || pickBestKey('checklist');
-  correctiveDockKey = els.correctiveDockSel.value || correctiveDockKey || pickBestKey('corrective');
   const obj = loadDockObjByKey(checkDockKey);
   checklistRows = canonicalizeChecklistRows(obj);
 }
@@ -1238,7 +1270,7 @@ function buildSectionData(rows, fieldMap, type){
     const qaTeamRows = qaWindow.filter(r => repKeySet.has(r.repKey) || String(r.team||'').trim() === teamName);
     const checklistTeamRows = checklistWindow.filter(r => repKeySet.has(r.repKey) || String(r.teamHint||'').trim() === teamName);
     const complimentTeamRows = complimentWindow.filter(r => repKeySet.has(r.repKey) || String(r.team||'').trim() === teamName);
-    const correctiveTeamRows = correctiveWindow.filter(r => repKeySet.has(r.repKey));
+    const correctiveTeamRows = correctiveWindow.filter(r => repKeySet.has(r.repKey) || String(r.teamHint||'').trim() === teamName);
 
     const consumerApps = sumField(teamRows, fieldMap.consumerApps);
     const consumerOpps = sumField(teamRows, fieldMap.consumerOpps);
@@ -1263,6 +1295,9 @@ function buildSectionData(rows, fieldMap, type){
       const repQaRows = qaTeamRows.filter(r => r.repKey === repKey);
       const repChecklist = checklistTeamRows.filter(r => r.repKey === repKey);
       const repCompliments = complimentTeamRows.filter(r => r.repKey === repKey);
+      const repCorrectives = correctiveTeamRows.filter(r => r.repKey === repKey);
+      const correctiveCount = repCorrectives.length;
+      const correctivePenalty = correctiveCount > 0 ? 10 : 0;
 
       const repConsumerApps = sumField(repRows, fieldMap.consumerApps);
       const repConsumerOpps = sumField(repRows, fieldMap.consumerOpps);
@@ -1290,8 +1325,8 @@ function buildSectionData(rows, fieldMap, type){
         acwAvg: repACW,
         itacAvg: repITAC,
         complimentCount: repCompliments.length,
-        correctiveCount: correctiveTeamRows.filter(r => r.repKey === repKey).length,
-        correctivePenalty: correctiveTeamRows.some(r => r.repKey === repKey) ? 10 : 0
+        correctiveCount,
+        correctivePenalty
       };
     });
 
@@ -1685,6 +1720,7 @@ function fullLoad(){
   loadQA();
   loadChecklist();
   loadCorrectives();
+  els.dockHint.textContent = `Retail rows: ${retailRows.length} • Referral rows: ${referralRows.length} • QA rows: ${qaRows.length} • Checklist rows: ${checklistRows.length} • Correctives rows: ${correctiveRows.length}`;
   initDates();
   savePrefs();
   setActiveTab(activeTab);
