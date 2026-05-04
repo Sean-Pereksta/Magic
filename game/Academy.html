@@ -1158,7 +1158,10 @@ function canonicalizeCorrectiveRows(dockObj){
       ]);
 
       const dateRaw = pickFieldFromRow(r, [
-        'correctivedate','incidentdate','createddate','actiondate','date','dt','day'
+        'dateserved','serveddate','correctivedateserved','correctivedate'
+      ]);
+      const correctiveRaw = pickFieldFromRow(r, [
+        'corrective','correctivetype','correctiveaction','action','actiontaken','status'
       ]);
 
       const rep = displayNameFromRaw(repRaw || '');
@@ -1166,18 +1169,8 @@ function canonicalizeCorrectiveRows(dockObj){
       const date = parseDate(dateRaw);
       if(!rep || !repKey || !date) continue;
 
-      const preferredStatusRaw = pickFieldFromRow(r, [
-        'actiontaken','action','corrective','correctivetype','status','discipline','coachingtype','type','category','incident','incidenttype','incidentcategory'
-      ]);
-
-      let searchableText = '';
-      if(preferredStatusRaw !== undefined && preferredStatusRaw !== null && String(preferredStatusRaw).trim() !== ''){
-        searchableText = String(preferredStatusRaw);
-      } else {
-        searchableText = Object.values(r).map(v => String(v ?? '')).join(' ');
-      }
-
-      const correctiveMatch = searchableText.match(/\b(verbal|written|final)\b/i);
+      const correctiveText = String(correctiveRaw ?? '').trim();
+      const correctiveMatch = correctiveText.match(/\b(verbal|written|final)\b/i);
       if(!correctiveMatch) continue;
 
       out.push({
@@ -1185,8 +1178,8 @@ function canonicalizeCorrectiveRows(dockObj){
         rep,
         repKey,
         date,
+        corrective: correctiveText,
         correctiveType: correctiveMatch[1],
-        searchableText,
         teamHint: String(pickFieldFromRow(r, ['team','sheet','coach','jobcoach','coachassigned']) ?? pack.sheetName ?? '').trim()
       });
     }
@@ -1196,7 +1189,7 @@ function canonicalizeCorrectiveRows(dockObj){
 }
 
 function loadCorrectives(){
-  correctiveDockKey = els.correctiveDockSel.value || correctiveDockKey || pickBestKey('corrective');
+  correctiveDockKey = els.correctiveDockSel?.value || correctiveDockKey || '';
   const obj = loadDockObjByKey(correctiveDockKey);
   correctiveRows = canonicalizeCorrectiveRows(obj);
 }
@@ -1610,8 +1603,8 @@ function renderTeamCards(teams, mountEl, section){
                   ${t.type === 'referral' ? `<td class="right">${esc(String(r.acwRank ?? '—'))}</td><td class="right">${esc(String(r.itacRank ?? '—'))}</td>` : ``}
                   <td class="right">${esc(String(r.rankTotal ?? '—'))}</td>
                   <td class="right" style="font-weight:1000">${r.complimentCount || 0}</td>
-                  <td class="right ${r.correctiveCount>0 ? 'warnTxt' : ''}">${r.correctiveCount || 0}</td>
-                  <td class="right ${r.correctivePenalty>0 ? 'warnTxt' : ''}">${r.correctivePenalty>0 ? '+10' : '0'}</td>
+                  <td class="right ${r.correctiveCount>0 ? 'warnTxt' : 'goodTxt'}">${r.correctiveCount || 0}</td>
+                  <td class="right ${r.correctivePenalty>0 ? 'warnTxt' : 'goodTxt'}">${r.correctivePenalty>0 ? '+10' : '0'}</td>
                   <td class="right"><strong>${esc(String(r.overallScore))}</strong></td>
                   ${t.type === 'retail' ? `<td class="right">${fmtPct1(r.consumerRate)}</td>` : ``}
                   <td class="right">${fmtPct1(r.wiperRate)}</td>
@@ -1713,7 +1706,7 @@ function fullLoad(){
   referralDockKey = els.referralDockSel.value || referralDockKey || pickBestKey('referral');
   qaDockKey = els.qaDockSel.value || qaDockKey || pickBestKey('qa');
   checkDockKey = els.checkDockSel.value || checkDockKey || pickBestKey('checklist');
-  correctiveDockKey = els.correctiveDockSel.value || correctiveDockKey || pickBestKey('corrective');
+  correctiveDockKey = els.correctiveDockSel?.value || correctiveDockKey || '';
 
   loadRetail();
   loadReferral();
