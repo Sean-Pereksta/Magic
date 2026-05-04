@@ -648,6 +648,7 @@ let loosePickupDelay = 0;
 let ballCollisionCooldown = 0;
 let rimCollisionCooldown = 0;
 let backboardCollisionCooldown = 0;
+const previousBallPosition = new THREE.Vector3();
 let netWobbleTimer = 0;
 let rimWobbleTimer = 0;
 let rimBasePosition = null;
@@ -2276,7 +2277,7 @@ function buildHoop(){
 
   backboard = new THREE.Mesh(
     new THREE.BoxGeometry(3.4,2.05,.1),
-    new THREE.MeshPhysicalMaterial({color:0xf4fbff,transparent:true,opacity:.5,roughness:.06,metalness:.08,clearcoat:.45,clearcoatRoughness:.18})
+    new THREE.MeshPhysicalMaterial({color:0xdff3ff,transparent:true,opacity:.4,roughness:.04,metalness:.12,clearcoat:.6,clearcoatRoughness:.14,transmission:.08})
   );
   backboard.position.set(HOOP_POS.x,HOOP_POS.y + 0.22,HOOP_POS.z - 0.43);
   backboard.castShadow = true;
@@ -2291,7 +2292,7 @@ function buildHoop(){
   rimBasePosition = rim.position.clone();
   scene.add(rim);
 
-  const rimBracket = new THREE.Mesh(new THREE.BoxGeometry(.28,.1,.42),new THREE.MeshStandardMaterial({color:0xb1bbc7,metalness:.62,roughness:.24}));
+  const rimBracket = new THREE.Mesh(new THREE.BoxGeometry(.34,.14,.5),new THREE.MeshStandardMaterial({color:0x3f4650,metalness:.74,roughness:.3}));
   rimBracket.position.set(HOOP_POS.x,HOOP_POS.y-0.02,HOOP_POS.z-0.24); scene.add(rimBracket);
   const boardFrame = new THREE.Mesh(new THREE.BoxGeometry(3.56,2.2,.08),new THREE.MeshStandardMaterial({color:0xf8fbff,metalness:.28,roughness:.32}));
   boardFrame.position.copy(backboard.position); boardFrame.position.z -= 0.08; scene.add(boardFrame);
@@ -5191,6 +5192,7 @@ function updateBall(dt){
 
     const bounceWave = Math.sin(bouncePhase);
     const bounce = Math.abs(bounceWave);
+    const bounceCurve = Math.pow(bounce, speedMode === "sprint" ? 0.74 : speedMode === "backpedal" ? 1.1 : 0.9);
 
     const sprintPush =
       speedMode === "sprint" ? 0.26 :
@@ -5230,21 +5232,21 @@ function updateBall(dt){
 
     attachBallToHand(owner, handName, dribbleOffset);
 
-    const lowY = BALL_RADIUS + 0.03 + owner.group.position.y;
-    const minSafeY = BALL_RADIUS + 0.025 + owner.group.position.y;
+    const lowY = owner.group.position.y + BALL_RADIUS + 0.05;
+    const minSafeY = owner.group.position.y + BALL_RADIUS + 0.03;
     const highY =
       owner.group.position.y +
       THREE.MathUtils.clamp(
-        1.0 + (owner.profile.height - 1) * 0.15 + (speedMode === "sprint" ? 0.08 : speedMode === "idle" ? -0.03 : 0),
-        0.95,
-        1.15
+        1.02 + (owner.profile.height - 1) * 0.16 + (speedMode === "sprint" ? 0.1 : speedMode === "idle" ? -0.04 : 0),
+        0.94,
+        1.2
       );
 
-    const bounceY = THREE.MathUtils.lerp(lowY, highY, bounce);
+    const bounceY = THREE.MathUtils.lerp(lowY, highY, bounceCurve);
     const handCarryY = ball.position.y;
     const blendToHand = THREE.MathUtils.clamp(
       0.18 +
-      bounce * 0.72 +
+      bounceCurve * 0.72 +
       (speedMode === "sprint" ? 0.06 : 0) +
       (sideHop ? 0.06 : 0),
       0.14,
@@ -5261,12 +5263,19 @@ function updateBall(dt){
 
     ball.position.y = Math.max(minSafeY, ball.position.y);
 
+    const dribbleNearFloor = ball.position.y <= (owner.group.position.y + BALL_RADIUS + 0.08);
+    if(dribbleNearFloor){
+      ball.scale.set(1.055,0.945,1.055);
+      // Hook for future bounce SFX at dribble impact.
+    }
+
     owner.anim.crossLean = crossSnap * crossover.to * (0.14 + handleLoose * 0.07);
     owner.anim.crossPlant = crossSnap * (0.18 + handleLoose * 0.08);
     owner.anim.crossFake = crossSnap * (-crossover.to) * (0.08 + flavor.cross * 0.02);
   }
 
   if(ballState === "shot" || ballState === "loose"){
+    previousBallPosition.copy(ball.position);
     if(ballState === "shot" && ballVelocity.length() > 7.6 && Math.random() < dt * 18){
       createShotTrail(lastShotWasHook ? "hook" : "shot");
     }
@@ -5310,54 +5319,57 @@ function updateBall(dt){
   ball.rotation.z += dt * 3.4 * spinBoost;
   ball.rotation.y += dt * 2.3 * spinBoost;
 
-  // Strong visible ground shadow for judging ball height/distance.
+    // Strong visible ground shadow for judging ball height/distance.
   if(ballShadow){
-    ballShadow.position.x = ball.position.x;
-    ballShadow.position.z = ball.position.z;
-    ballShadow.position.y = 0.022;
+    ballShadow.position.set(ball.position.x, 0.012, ball.position.z);
 
     const height = Math.max(0, ball.position.y - BALL_RADIUS);
-    const closeToFloor = THREE.MathUtils.clamp(1 - height / 1.25, 0, 1);
-    const shadowScale = THREE.MathUtils.clamp(1.22 - height * 0.16, 0.35, 1.2);
-    ballShadow.scale.set(shadowScale, shadowScale, shadowScale);
+    const shadowScale = THREE.MathUtils.clamp(0.58 + height * 0.22, 0.58, 1.24);
+    const targetOpacity = THREE.MathUtils.clamp(0.5 - height * 0.1, 0.13, 0.5);
 
-    const baseOpacity = ballState === "shot" ? 0.5 : 0.42;
-    const targetOpacity = THREE.MathUtils.clamp(
-      0.08 + closeToFloor * baseOpacity,
-      0.08,
-      0.52
-    );
-
-    ballShadow.material.opacity = THREE.MathUtils.lerp(
-      ballShadow.material.opacity,
-      targetOpacity,
-      dt * 5
-    );
+    ballShadow.scale.set(shadowScale, shadowScale * 0.72, shadowScale);
+    ballShadow.material.opacity = THREE.MathUtils.lerp(ballShadow.material.opacity, targetOpacity, dt * 8);
   }
 
   ball.scale.lerp(new THREE.Vector3(1, 1, 1), dt * 12);
 }
 
 function resolveBackboardBallCollision(dt){
-  if(backboardCollisionCooldown > 0 || !backboard) return;
+  if(!backboard) return;
+  if(backboardCollisionCooldown > 0) return;
 
-  const boardWidth = 3.4;
-  const boardHeight = 2.05;
-  const boardThickness = 0.12;
-  const halfW = boardWidth * 0.5;
-  const halfH = boardHeight * 0.5;
-  const frontFaceZ = backboard.position.z + boardThickness * 0.5;
-  const prevZ = ball.position.z - ballVelocity.z * dt;
+  const boardBox = new THREE.Box3().setFromObject(backboard);
+  const min = boardBox.min;
+  const max = boardBox.max;
+  const boardCenterZ = (min.z + max.z) * 0.5;
+  const thickness = Math.max(0.04, max.z - min.z);
+  const frontPlaneZ = boardCenterZ + thickness * 0.5;
+  const backPlaneZ = boardCenterZ - thickness * 0.5;
 
-  const withinX = Math.abs(ball.position.x - backboard.position.x) <= halfW + BALL_RADIUS;
-  const withinY = Math.abs(ball.position.y - backboard.position.y) <= halfH + BALL_RADIUS;
-  const crossesFrontFace = prevZ > frontFaceZ + BALL_RADIUS && ball.position.z <= frontFaceZ + BALL_RADIUS;
-  if(!withinX || !withinY || !crossesFrontFace) return;
+  const prevPos = previousBallPosition;
+  const currPos = ball.position;
 
-  ball.position.z = frontFaceZ + BALL_RADIUS + 0.02;
-  ballVelocity.z = Math.abs(ballVelocity.z) * (0.55 + Math.random() * 0.2);
-  ballVelocity.x = ballVelocity.x * 0.95 + (Math.random() - 0.5) * 0.18;
-  ballVelocity.y *= 0.92;
+  const withinX = currPos.x >= min.x - BALL_RADIUS && currPos.x <= max.x + BALL_RADIUS;
+  const withinY = currPos.y >= min.y - BALL_RADIUS && currPos.y <= max.y + BALL_RADIUS;
+  if(!withinX || !withinY) return;
+
+  const crossedFront = prevPos.z > frontPlaneZ + BALL_RADIUS && currPos.z <= frontPlaneZ + BALL_RADIUS;
+  const crossedBack = prevPos.z < backPlaneZ - BALL_RADIUS && currPos.z >= backPlaneZ - BALL_RADIUS;
+  const embedded = currPos.z <= frontPlaneZ + BALL_RADIUS && currPos.z >= backPlaneZ - BALL_RADIUS;
+
+  if(!crossedFront && !crossedBack && !embedded) return;
+
+  const normalZ = crossedFront ? 1 : crossedBack ? -1 : (ballVelocity.z >= 0 ? -1 : 1);
+  const planeZ = normalZ > 0 ? frontPlaneZ : backPlaneZ;
+
+  ball.position.z = planeZ + normalZ * (BALL_RADIUS + 0.02);
+  ballVelocity.z = Math.abs(ballVelocity.z || 0.01) * normalZ * 0.72;
+  ballVelocity.x *= 0.92;
+  ballVelocity.y *= 0.88;
+
+  if(!Number.isFinite(ballVelocity.x) || !Number.isFinite(ballVelocity.y) || !Number.isFinite(ballVelocity.z)){
+    ballVelocity.set(0,0,0);
+  }
 
   shotHasHitRimOrBoard = true;
   backboardCollisionCooldown = 0.08;
