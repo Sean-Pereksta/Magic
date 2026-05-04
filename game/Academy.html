@@ -1906,6 +1906,8 @@ function createRacer(name, character, kart, isPlayer, playerIndex, aiIndex) {
 
 function createKartVisual(character, kart) {
   const root = new THREE.Group();
+  const visualRoot = new THREE.Group();
+  root.add(visualRoot);
   const wheels = [];
 
   const bodyMat = new THREE.MeshStandardMaterial({
@@ -1918,78 +1920,78 @@ function createKartVisual(character, kart) {
   const trimMat = new THREE.MeshStandardMaterial({ color: kart.trim || character.color, roughness: 0.5 });
 
   if (kart.id === "speedster") {
-    addBox(root, 0, 1.2, -5.5, 2.2, 0.7, 2.5, bodyMat);
-    addBox(root, 0, 1.45, 0, 4.6, 1.25, 9.8, bodyMat);
-    addBox(root, 0, 2.15, 1.7, 3.6, 1.1, 3.0, bodyMat);
-    addBox(root, 0, 1.95, -4.9, 3.2, 0.7, 1.1, mats.yellow);
-    addBox(root, 0, 3.2, 4.8, 6.8, 0.35, 1.0, trimMat);
+    addBox(visualRoot, 0, 1.2, -5.5, 2.2, 0.7, 2.5, bodyMat);
+    addBox(visualRoot, 0, 1.45, 0, 4.6, 1.25, 9.8, bodyMat);
+    addBox(visualRoot, 0, 2.15, 1.7, 3.6, 1.1, 3.0, bodyMat);
+    addBox(visualRoot, 0, 1.95, -4.9, 3.2, 0.7, 1.1, mats.yellow);
+    addBox(visualRoot, 0, 3.2, 4.8, 6.8, 0.35, 1.0, trimMat);
   }
 
   if (kart.id === "balanced") {
-    addBox(root, 0, 1.55, 0, 5.4, 1.65, 7.6, bodyMat);
-    addBox(root, 0, 2.45, -1.7, 4.2, 1.15, 3.2, bodyMat);
-    addBox(root, 0, 2.75, 1.8, 3.3, 1.25, 2.4, darkMat);
-    addBox(root, 0, 1.85, -4.05, 5.2, 0.75, 0.8, mats.yellow);
+    addBox(visualRoot, 0, 1.55, 0, 5.4, 1.65, 7.6, bodyMat);
+    addBox(visualRoot, 0, 2.45, -1.7, 4.2, 1.15, 3.2, bodyMat);
+    addBox(visualRoot, 0, 2.75, 1.8, 3.3, 1.25, 2.4, darkMat);
+    addBox(visualRoot, 0, 1.85, -4.05, 5.2, 0.75, 0.8, mats.yellow);
   }
 
   if (kart.id === "buggy") {
-    addBox(root, 0, 1.55, 0, 5.8, 1.55, 7.2, bodyMat);
-    addBox(root, 0, 2.6, 1.2, 3.4, 1.3, 2.5, darkMat);
+    addBox(visualRoot, 0, 1.55, 0, 5.8, 1.55, 7.2, bodyMat);
+    addBox(visualRoot, 0, 2.6, 1.2, 3.4, 1.3, 2.5, darkMat);
 
     const cage = new THREE.Group();
     const cageMat = mats.metal;
     addBox(cage, -2.3, 3.8, 0.8, 0.32, 3.8, 0.32, cageMat);
     addBox(cage, 2.3, 3.8, 0.8, 0.32, 3.8, 0.32, cageMat);
     addBox(cage, 0, 5.5, 0.8, 5.0, 0.32, 0.32, cageMat);
-    root.add(cage);
+    visualRoot.add(cage);
   }
 
   if (kart.id === "cruiser") {
-    addBox(root, 0, 1.65, 0, 7.4, 2.1, 8.9, bodyMat);
-    addBox(root, 0, 2.9, -1.5, 5.1, 1.5, 3.5, bodyMat);
-    addBox(root, 0, 3.25, 2.2, 4.1, 1.6, 2.3, darkMat);
-    addBox(root, 0, 1.65, -4.9, 6.8, 1.0, 0.8, mats.metal);
-    addBox(root, 0, 1.65, 4.9, 6.8, 1.0, 0.8, mats.metal);
+    addBox(visualRoot, 0, 1.65, 0, 7.4, 2.1, 8.9, bodyMat);
+    addBox(visualRoot, 0, 2.9, -1.5, 5.1, 1.5, 3.5, bodyMat);
+    addBox(visualRoot, 0, 3.25, 2.2, 4.1, 1.6, 2.3, darkMat);
+    addBox(visualRoot, 0, 1.65, -4.9, 6.8, 1.0, 0.8, mats.metal);
+    addBox(visualRoot, 0, 1.65, 4.9, 6.8, 1.0, 0.8, mats.metal);
   }
 
   
   if (kart.id === "rocket") {
-    addBox(root, 0, 1.25, 0.2, 4.1, 1.0, 12.4, bodyMat);
-    addBox(root, 0, 1.05, -6.2, 1.9, 0.5, 2.8, mats.yellow);
-    addBox(root, 0, 2.05, 2.5, 3.0, 1.0, 4.0, darkMat);
-    addBox(root, 0, 2.8, 5.7, 5.2, 0.3, 1.1, trimMat);
+    addBox(visualRoot, 0, 1.25, 0.2, 4.1, 1.0, 12.4, bodyMat);
+    addBox(visualRoot, 0, 1.05, -6.2, 1.9, 0.5, 2.8, mats.yellow);
+    addBox(visualRoot, 0, 2.05, 2.5, 3.0, 1.0, 4.0, darkMat);
+    addBox(visualRoot, 0, 2.8, 5.7, 5.2, 0.3, 1.1, trimMat);
   }
 
   if (kart.id === "mudbuggy") {
-    addBox(root, 0, 2.0, 0, 6.0, 1.5, 7.6, bodyMat);
-    addBox(root, 0, 3.2, 0.6, 4.6, 1.1, 2.6, darkMat);
-    addBox(root, 0, 1.2, -4.3, 5.8, 0.5, 0.9, mats.metal);
-    addBox(root, 0, 4.3, 1.0, 6.0, 0.24, 0.24, mats.metal);
+    addBox(visualRoot, 0, 2.0, 0, 6.0, 1.5, 7.6, bodyMat);
+    addBox(visualRoot, 0, 3.2, 0.6, 4.6, 1.1, 2.6, darkMat);
+    addBox(visualRoot, 0, 1.2, -4.3, 5.8, 0.5, 0.9, mats.metal);
+    addBox(visualRoot, 0, 4.3, 1.0, 6.0, 0.24, 0.24, mats.metal);
   }
 
   if (kart.id === "comet") {
-    addBox(root, 0, 1.25, 0.2, 4.0, 1.1, 5.8, bodyMat);
-    addBox(root, 0, 2.0, -0.4, 2.2, 0.8, 2.2, darkMat);
-    addBox(root, 0, 1.5, -3.0, 2.8, 0.45, 0.5, mats.yellow);
+    addBox(visualRoot, 0, 1.25, 0.2, 4.0, 1.1, 5.8, bodyMat);
+    addBox(visualRoot, 0, 2.0, -0.4, 2.2, 0.8, 2.2, darkMat);
+    addBox(visualRoot, 0, 1.5, -3.0, 2.8, 0.45, 0.5, mats.yellow);
   }
 
   if (kart.id === "tank") {
-    addBox(root, 0, 1.9, 0.4, 7.3, 2.25, 9.4, bodyMat);
-    addBox(root, 0, 3.35, 0.6, 4.5, 1.5, 3.4, darkMat);
-    addBox(root, 0, 2.0, -5.1, 7.8, 1.1, 0.9, mats.metal);
-    addBox(root, 0, 2.0, 5.2, 7.8, 1.1, 0.9, mats.metal);
+    addBox(visualRoot, 0, 1.9, 0.4, 7.3, 2.25, 9.4, bodyMat);
+    addBox(visualRoot, 0, 3.35, 0.6, 4.5, 1.5, 3.4, darkMat);
+    addBox(visualRoot, 0, 2.0, -5.1, 7.8, 1.1, 0.9, mats.metal);
+    addBox(visualRoot, 0, 2.0, 5.2, 7.8, 1.1, 0.9, mats.metal);
   }
 
   if (kart.id === "driftcoupe") {
-    addBox(root, 0, 1.45, 0, 5.3, 1.25, 8.3, bodyMat);
-    addBox(root, 0, 2.2, -0.6, 3.3, 1.8, 1.0, darkMat);
-    addBox(root, 0, 2.0, 4.5, 4.2, 0.24, 1.2, trimMat);
+    addBox(visualRoot, 0, 1.45, 0, 5.3, 1.25, 8.3, bodyMat);
+    addBox(visualRoot, 0, 2.2, -0.6, 3.3, 1.8, 1.0, darkMat);
+    addBox(visualRoot, 0, 2.0, 4.5, 4.2, 0.24, 1.2, trimMat);
   }
 
   if (kart.id === "jungle") {
-    addBox(root, 0, 1.55, 0, 5.6, 1.45, 7.8, bodyMat);
-    addBox(root, 0, 2.35, -0.8, 3.6, 3.6, 0.95, 2.6, darkMat);
-    addBox(root, 0, 1.75, -4.2, 5.0, 0.55, 0.75, trimMat);
+    addBox(visualRoot, 0, 1.55, 0, 5.6, 1.45, 7.8, bodyMat);
+    addBox(visualRoot, 0, 2.35, -0.8, 3.6, 3.6, 0.95, 2.6, darkMat);
+    addBox(visualRoot, 0, 1.75, -4.2, 5.0, 0.55, 0.75, trimMat);
   }
 
   const wheelProfiles = {
@@ -2047,23 +2049,28 @@ function createKartVisual(character, kart) {
 
     wheel.add(tire, hub, tireStripe, hubMarker);
     wheel.position.set(pos[0], pos[1], pos[2]);
-    root.add(wheel);
+    visualRoot.add(wheel);
     wheels.push(wheel);
   });
 
   const rider = createCharacterModel(character);
   rider.position.set(0, 3.05, 1.15);
-  root.add(rider);
+  visualRoot.add(rider);
 
   const flagPole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 4.2, 6), darkMat);
   flagPole.position.set(2.8, 4.2, 2.9);
   flagPole.castShadow = true;
-  root.add(flagPole);
+  visualRoot.add(flagPole);
 
   const flag = new THREE.Mesh(new THREE.BoxGeometry(2.3, 1.1, 0.12), trimMat);
   flag.position.set(3.75, 5.9, 2.9);
   flag.castShadow = true;
-  root.add(flag);
+  visualRoot.add(flag);
+
+  // Visual-only orientation fix:
+  // Physics/gameplay forward is still local +Z on `root`.
+  // We only rotate the rendered kart/rider mesh so visuals match travel direction.
+  visualRoot.rotation.y = Math.PI;
 
   return {
     root,
@@ -2626,7 +2633,7 @@ function updateAI(racer, dt) {
   if (delta > 0.0007) racer.aiNoProgressTimer = 0; else racer.aiNoProgressTimer += dt;
   racer.aiStuckTimer = racer.aiNoProgressTimer > 2.5 ? racer.aiStuckTimer + dt : 0;
   racer.aiLastProgressT = closest.t;
-  if (racer.aiStuckTimer > 5) { recoverStuckAI(racer); return; }
+  if (racer.aiStuckTimer > 4.2) { recoverStuckAI(racer); return; }
   if (racer.aiNoProgressTimer > 2.3) {
     lookAhead += 0.04;
     racer.ai.laneOffset = THREE.MathUtils.lerp(racer.ai.laneOffset || 0, 0, 0.18);
@@ -2706,10 +2713,23 @@ function updateAI(racer, dt) {
   if (racer.ai.itemThink <= 0) {
     racer.ai.itemThink = 0.8 + Math.random() * 1.5;
 
-    if (racer.item && Math.random() < currentDifficulty.aiItemChance) {
-      useItem(racer);
-    }
+    if (racer.item && shouldAIUseItemNow(racer, upcomingRisk, speedRatio)) useItem(racer);
   }
+}
+
+function shouldAIUseItemNow(racer, upcomingRisk, speedRatio) {
+  if (Math.random() >= currentDifficulty.aiItemChance) return false;
+  const standings = getRaceStandings();
+  const myIndex = standings.indexOf(racer);
+  const ahead = myIndex > 0 ? standings[myIndex - 1] : null;
+  const behind = myIndex >= 0 && myIndex < standings.length - 1 ? standings[myIndex + 1] : null;
+  const aheadDist = ahead ? racer.position.distanceTo(ahead.position) : Infinity;
+  const behindDist = behind ? racer.position.distanceTo(behind.position) : Infinity;
+  if (racer.item === "RED_SHELL") return !!ahead && aheadDist < 85;
+  if (racer.item === "BANANA") return behindDist < 42;
+  if (racer.item === "MUSHROOM" || racer.item === "GOLDEN_MUSHROOM") return (upcomingRisk < 45 && Math.abs(racer.turnInput || 0) < 0.42) || racer.aiNoProgressTimer > 1.5 || !isOnTrack(racer.position);
+  if (racer.item === "BOMB") return standings.filter(o => o !== racer && racer.position.distanceTo(o.position) < 45).length >= 2;
+  return Math.random() < 0.55;
 }
 
 function getForwardHazardThreat(racer) {
@@ -3117,6 +3137,15 @@ function itemName(item) {
   if (item === "BOMB") return "Bomb";
   if (item === "GOLDEN_MUSHROOM") return "Golden Mushroom";
   return item;
+}
+function itemEmoji(item) {
+  if (item === "GREEN_SHELL") return "🟢🐚";
+  if (item === "RED_SHELL") return "🔴🐚";
+  if (item === "BANANA") return "🍌";
+  if (item === "MUSHROOM") return "🍄";
+  if (item === "BOMB") return "💣";
+  if (item === "GOLDEN_MUSHROOM") return "🌟🍄";
+  return "🎁";
 }
 
 function weightedPick(entries) {
@@ -3957,7 +3986,9 @@ function updateSingleHUD(racer, placings, els) {
   els.lap.textContent = `Lap: ${Math.min(racer.lap, totalLaps)} / ${totalLaps}`;
   els.place.textContent = `Place: ${place} / ${racers.length}`;
   els.speed.textContent = `Speed: ${Math.round(Math.abs(racer.speed))}`;
-  const itemText = racer.goldenMushroomTimer > 0 && racer.goldenMushroomUsesLeft > 0 ? `Golden Mushroom x${racer.goldenMushroomUsesLeft}` : itemName(racer.item);
+  const itemText = racer.goldenMushroomTimer > 0 && racer.goldenMushroomUsesLeft > 0
+    ? `${itemEmoji("GOLDEN_MUSHROOM")} Golden Mushroom x${racer.goldenMushroomUsesLeft}`
+    : racer.item ? `${itemEmoji(racer.item)} ${itemName(racer.item)}` : "None";
   els.item.textContent = `Item: ${itemText}`;
 
   if (racer.drift.active) {
