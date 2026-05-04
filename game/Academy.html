@@ -243,6 +243,16 @@
 
     <div class="topOptions">
       <div class="optionBox">
+        <label>Race Mode</label>
+        <select id="raceModeSelect">
+          <option value="single" selected>Single Race</option>
+          <option value="mushroomCup">Mushroom Cup</option>
+          <option value="chaosCup">Chaos Cup</option>
+          <option value="skyCup">Sky Cup</option>
+          <option value="allStarCup">All-Star Cup</option>
+        </select>
+      </div>
+      <div class="optionBox">
         <label>Difficulty</label>
         <select id="difficultySelect">
           <option value="easy">Easy</option>
@@ -275,6 +285,7 @@
     </div>
 
     <div class="panel"><h2>1. Map Selection</h2><div id="mapSelector"></div></div>
+    <div class="panel"><h2>Cup / Unlocks</h2><div id="cupInfo"></div></div>
     <div class="menuGrid">
       <div class="panel"><h2>2. Player 1 Character</h2><div id="p1CharSelector"></div></div>
       <div class="panel"><h2>3. Player 1 Kart</h2><div id="p1KartSelector"></div></div>
@@ -609,6 +620,36 @@ const difficulties = {
   }
 };
 
+const SAVE_KEY = "miniKart3DUnlocks_v1";
+const CUP_POINTS = [15,12,10,8,6,4,2,1];
+const CUP_DEFS = {
+  mushroomCup:{ id:"mushroomCup", name:"Mushroom Cup", mapIds:["meadow","coastal","snow"] },
+  chaosCup:{ id:"chaosCup", name:"Chaos Cup", mapIds:["volcano","sewer","graveyard"] },
+  skyCup:{ id:"skyCup", name:"Sky Cup", mapIds:["skytemple","neon","desert"] },
+  allStarCup:{ id:"allStarCup", name:"All-Star Cup", mapIds:["meadow","volcano","skytemple","neon","graveyard"] }
+};
+const BASE_UNLOCKS = { unlockedCharacters: characters.map(c=>c.id), unlockedKarts: karts.map(k=>k.id), unlockedMaps: maps.map(m=>m.id) };
+const unlockDataDefault = { ...BASE_UNLOCKS, completedCups:{}, bestCupScores:{}, bestRaceTimes:{}, trophies:0 };
+let unlockData = { ...unlockDataDefault };
+let activeCupState = null;
+let selectedRaceMode = "single";
+const bonusCharacters = [
+  { id:"skeleton",name:"Skeleton Racer",emoji:"💀",color:0xdedede,belly:0x999999,size:0.9,weight:0.7,speedBonus:1.2,accelBonus:2.4,handlingBonus:0.55,desc:"Spooky lightweight with excellent handling.",unlock:"Win Chaos Cup on Normal+"},
+  { id:"goldenRhino",name:"Golden Rhino",emoji:"🥇",color:0xd9b236,belly:0xf8e7aa,size:1.75,weight:2.1,speedBonus:-3.8,accelBonus:-2.7,handlingBonus:-0.25,desc:"Massive heavyweight with huge bump power.",unlock:"Win All-Star Cup on Hard+"},
+  { id:"cloudHare",name:"Cloud Hare",emoji:"🐇",color:0xe0f2ff,belly:0xffffff,size:0.82,weight:0.68,speedBonus:1.8,accelBonus:4.8,handlingBonus:0.48,desc:"Fast acceleration and trick-focused air boosts.",unlock:"Win Sky Cup on Normal+"}
+];
+const bonusKarts = [
+  { id:"goldenKart",name:"Golden Kart",emoji:"✨",color:0xd4af37,trim:0xfff0b0,maxSpeed:65,accel:50,handling:2.45,weight:1.05,drift:1.1,traction:1.0,boostStrength:1.32,desc:"Balanced kart with premium boost strength.",unlock:"Win Mushroom Cup on Normal+"},
+  { id:"boneBuggy",name:"Bone Buggy",emoji:"🦴",color:0xdfdfdf,trim:0x706060,maxSpeed:54,accel:48,handling:3.35,weight:0.95,drift:1.28,traction:1.2,boostStrength:1.08,desc:"High handling but modest top speed.",unlock:"Win Chaos Cup on Normal+"},
+  { id:"cloudGlider",name:"Cloud Glider Kart",emoji:"🌤️",color:0xb3ebff,trim:0xffffff,maxSpeed:61,accel:55,handling:2.9,weight:0.9,drift:1.25,traction:0.95,boostStrength:1.25,desc:"Air-trick focused kart with strong ramp boosts.",unlock:"Win Sky Cup on Normal+"}
+];
+characters.push(...bonusCharacters); karts.push(...bonusKarts);
+function loadUnlockData(){try{const raw=localStorage.getItem(SAVE_KEY);if(raw){const parsed=JSON.parse(raw);unlockData={...unlockDataDefault,...parsed};}}catch(e){unlockData={...unlockDataDefault};}}
+function saveUnlockData(){localStorage.setItem(SAVE_KEY,JSON.stringify(unlockData));}
+function unlockThing(type,id){const key=type==="character"?"unlockedCharacters":type==="kart"?"unlockedKarts":"unlockedMaps";if(!unlockData[key].includes(id)){unlockData[key].push(id);saveUnlockData();return true;}return false;}
+function isUnlocked(type,id){const key=type==="character"?"unlockedCharacters":type==="kart"?"unlockedKarts":"unlockedMaps";return (unlockData[key]||[]).includes(id);}
+window.resetUnlocksForTesting=()=>{unlockData={...unlockDataDefault};saveUnlockData();renderMenus();};
+
 let selectedMapIndex = 0;
 let selectedP1CharacterIndex = 2;
 let selectedP1KartIndex = 1;
@@ -617,9 +658,10 @@ let selectedP2KartIndex = 2;
 const ccSettings={"50cc":{speedMultiplier:0.88,accelMultiplier:0.93,handlingMultiplier:1.1,skidMultiplier:0.9,aiSpeedMultiplier:0.9,aiTurnMultiplier:0.92,mirror:false},"100cc":{speedMultiplier:1.22,accelMultiplier:1.18,handlingMultiplier:0.98,skidMultiplier:1.2,aiSpeedMultiplier:1.16,aiTurnMultiplier:1.04,mirror:false},"150cc":{speedMultiplier:1.42,accelMultiplier:1.3,handlingMultiplier:0.93,skidMultiplier:1.36,aiSpeedMultiplier:1.29,aiTurnMultiplier:1.08,mirror:false},"200cc":{speedMultiplier:1.64,accelMultiplier:1.42,handlingMultiplier:0.88,skidMultiplier:1.52,aiSpeedMultiplier:1.4,aiTurnMultiplier:1.14,mirror:false},mirror150:{speedMultiplier:1.42,accelMultiplier:1.3,handlingMultiplier:0.93,skidMultiplier:1.36,aiSpeedMultiplier:1.29,aiTurnMultiplier:1.08,mirror:true}};
 let currentCC=ccSettings["100cc"];
 function mkStat(label,value,max=100){const pct=THREE.MathUtils.clamp((value/max)*100,0,100);return `<div class="statRow"><div>${label}</div><div class="bar"><div class="fill" style="width:${pct}%"></div></div><div>${Math.round(value)}</div></div>`;}
-function renderSelector(containerId,list,idx,setIdx,statsHTML){const item=list[idx];document.getElementById(containerId).innerHTML=`<div class="selectorBox"><button class="arrowBtn" data-dir="-1">◀</button><div class="previewCard"><div class="previewTop"><div class="previewEmoji">${item.emoji||"🏁"}</div><div><b>${item.name}</b><div class="previewDesc">${item.desc||""}</div></div></div>${statsHTML(item)}</div><button class="arrowBtn" data-dir="1">▶</button></div>`;document.querySelectorAll(`#${containerId} .arrowBtn`).forEach(btn=>btn.onclick=()=>setIdx((idx+Number(btn.dataset.dir)+list.length)%list.length));}
-function renderMenus(){renderSelector("mapSelector",maps,selectedMapIndex,i=>{selectedMapIndex=i;renderMenus();},item=>mkStat("Track width",item.trackWidth,40)+mkStat("Length",item.points.length*2.4,80)+mkStat("Hazards",(item.hazards?.length||0)*20,100)+mkStat("Difficulty",Math.max(25,item.points.length),70));renderSelector("p1CharSelector",characters,selectedP1CharacterIndex,i=>{selectedP1CharacterIndex=i;renderMenus();},item=>mkStat("Speed bonus",item.speedBonus+10,20)+mkStat("Acceleration",item.accelBonus+10,20)+mkStat("Handling",(item.handlingBonus+1)*50,100)+mkStat("Weight",item.weight*50,100)+mkStat("Size",item.size*50,100));renderSelector("p1KartSelector",karts,selectedP1KartIndex,i=>{selectedP1KartIndex=i;renderMenus();},item=>mkStat("Top speed",item.maxSpeed,90)+mkStat("Acceleration",item.accel,70)+mkStat("Handling",item.handling*24,100)+mkStat("Drift",item.drift*65,100)+mkStat("Weight",item.weight*50,100));renderSelector("p2CharSelector",characters,selectedP2CharacterIndex,i=>{selectedP2CharacterIndex=i;renderMenus();},item=>mkStat("Speed bonus",item.speedBonus+10,20)+mkStat("Acceleration",item.accelBonus+10,20)+mkStat("Handling",(item.handlingBonus+1)*50,100)+mkStat("Weight",item.weight*50,100)+mkStat("Size",item.size*50,100));renderSelector("p2KartSelector",karts,selectedP2KartIndex,i=>{selectedP2KartIndex=i;renderMenus();},item=>mkStat("Top speed",item.maxSpeed,90)+mkStat("Acceleration",item.accel,70)+mkStat("Handling",item.handling*24,100)+mkStat("Drift",item.drift*65,100)+mkStat("Weight",item.weight*50,100));document.getElementById("player2Panel").style.display=document.getElementById("splitToggle").checked?"grid":"none";}
-renderMenus();
+function renderSelector(containerId,list,idx,setIdx,statsHTML,type){const item=list[idx];const locked=type?!isUnlocked(type,item.id):false;document.getElementById(containerId).innerHTML=`<div class="selectorBox"><button class="arrowBtn" data-dir="-1">◀</button><div class="previewCard"><div class="previewTop"><div class="previewEmoji">${item.emoji||"🏁"}</div><div><b>${item.name}</b>${locked?` <span style="color:#ffcc66">🔒 Locked</span>`:""}<div class="previewDesc">${item.desc||""}${locked?`<br><small>${item.unlock||"Win cups to unlock"}</small>`:""}</div></div></div>${statsHTML(item)}</div><button class="arrowBtn" data-dir="1">▶</button></div>`;document.querySelectorAll(`#${containerId} .arrowBtn`).forEach(btn=>btn.onclick=()=>setIdx((idx+Number(btn.dataset.dir)+list.length)%list.length));}
+function ensureUnlockedSelection(){if(!isUnlocked("map",maps[selectedMapIndex].id)) selectedMapIndex=maps.findIndex(m=>isUnlocked("map",m.id));if(!isUnlocked("character",characters[selectedP1CharacterIndex].id)) selectedP1CharacterIndex=characters.findIndex(c=>isUnlocked("character",c.id));if(!isUnlocked("kart",karts[selectedP1KartIndex].id)) selectedP1KartIndex=karts.findIndex(k=>isUnlocked("kart",k.id));if(!isUnlocked("character",characters[selectedP2CharacterIndex].id)) selectedP2CharacterIndex=characters.findIndex(c=>isUnlocked("character",c.id));if(!isUnlocked("kart",karts[selectedP2KartIndex].id)) selectedP2KartIndex=karts.findIndex(k=>isUnlocked("kart",k.id));}
+function renderMenus(){ensureUnlockedSelection();const cupMode=selectedRaceMode!=="single";renderSelector("mapSelector",maps,selectedMapIndex,i=>{selectedMapIndex=i;renderMenus();},item=>mkStat("Track width",item.trackWidth,40)+mkStat("Length",item.points.length*2.4,80)+mkStat("Hazards",(item.hazards?.length||0)*20,100)+mkStat("Difficulty",Math.max(25,item.points.length),70),"map");renderSelector("p1CharSelector",characters,selectedP1CharacterIndex,i=>{selectedP1CharacterIndex=i;renderMenus();},item=>mkStat("Speed bonus",item.speedBonus+10,20)+mkStat("Acceleration",item.accelBonus+10,20)+mkStat("Handling",(item.handlingBonus+1)*50,100)+mkStat("Weight",item.weight*50,100)+mkStat("Size",item.size*50,100),"character");renderSelector("p1KartSelector",karts,selectedP1KartIndex,i=>{selectedP1KartIndex=i;renderMenus();},item=>mkStat("Top speed",item.maxSpeed,90)+mkStat("Acceleration",item.accel,70)+mkStat("Handling",item.handling*24,100)+mkStat("Drift",item.drift*65,100)+mkStat("Weight",item.weight*50,100),"kart");renderSelector("p2CharSelector",characters,selectedP2CharacterIndex,i=>{selectedP2CharacterIndex=i;renderMenus();},item=>mkStat("Speed bonus",item.speedBonus+10,20)+mkStat("Acceleration",item.accelBonus+10,20)+mkStat("Handling",(item.handlingBonus+1)*50,100)+mkStat("Weight",item.weight*50,100)+mkStat("Size",item.size*50,100),"character");renderSelector("p2KartSelector",karts,selectedP2KartIndex,i=>{selectedP2KartIndex=i;renderMenus();},item=>mkStat("Top speed",item.maxSpeed,90)+mkStat("Acceleration",item.accel,70)+mkStat("Handling",item.handling*24,100)+mkStat("Drift",item.drift*65,100)+mkStat("Weight",item.weight*50,100),"kart");document.getElementById("player2Panel").style.display=document.getElementById("splitToggle").checked?"grid":"none";document.getElementById("mapSelector").style.opacity=cupMode?"0.45":"1";document.getElementById("cupInfo").innerHTML=cupMode?`<b>${CUP_DEFS[selectedRaceMode].name}</b><br>${CUP_DEFS[selectedRaceMode].mapIds.map(id=>maps.find(m=>m.id===id)?.name).join(" → ")}`:`Single Race selected`; }
+loadUnlockData(); renderMenus();
 
 /* =========================================================
    THREE SETUP
@@ -4337,7 +4379,8 @@ function showResultsOverlay() {
   resultsShown = true;
   const list = document.getElementById("resultsList");
   list.innerHTML = "";
-  getFinalRaceResults().forEach((r, idx) => {
+  const finalResults = getFinalRaceResults();
+  finalResults.forEach((r, idx) => {
     const progress = Math.max(0, Math.min(100, Math.round((getRacerRaceProgress(r) / totalLaps) * 100)));
     const status = r.finished ? `Finished ${formatTime(r.finishTime || raceElapsedTime)}` : `Lap ${Math.min(r.lap, totalLaps)} / ${totalLaps} | ${progress}%`;
     const row = document.createElement("div");
@@ -4345,6 +4388,36 @@ function showResultsOverlay() {
     row.innerHTML = `<div><b>${formatPlace(idx + 1)}</b></div><div>${r.character.emoji || ""} ${r.name}<br><small>${status}</small></div><div>${r.kart.name}</div>`;
     list.appendChild(row);
   });
+  if (activeCupState) {
+    const racePoints = finalResults.map((r, idx) => ({name:r.name, pts:CUP_POINTS[idx]||0}));
+    racePoints.forEach(row=>activeCupState.cupStandings[row.name]=(activeCupState.cupStandings[row.name]||0)+row.pts);
+    const standings = Object.entries(activeCupState.cupStandings).sort((a,b)=>b[1]-a[1]);
+    const section = document.createElement("div");
+    section.innerHTML = `<h3>${CUP_DEFS[activeCupState.activeCupId].name} Standings</h3>` + standings.map((s,i)=>`<div>${formatPlace(i+1)} ${s[0]} - ${s[1]} pts</div>`).join("");
+    list.appendChild(section);
+    const isFinal = activeCupState.cupRaceIndex >= CUP_DEFS[activeCupState.activeCupId].mapIds.length - 1;
+    document.getElementById("raceAgainBtn").textContent = isFinal ? "Race Again" : "Continue Cup";
+    if (isFinal) {
+      unlockData.completedCups[activeCupState.activeCupId] = true;
+      const p1Total = activeCupState.cupStandings["Player 1"] || 0;
+      unlockData.bestCupScores[activeCupState.activeCupId] = Math.max(unlockData.bestCupScores[activeCupState.activeCupId]||0,p1Total);
+      const diff = document.getElementById("difficultySelect").value;
+      const p1Place = standings.findIndex(s=>s[0]==="Player 1")+1;
+      const unlocked=[]; const normalPlus = ["normal","hard","insane"].includes(diff);
+      if (p1Place===1 && normalPlus && activeCupState.activeCupId==="mushroomCup" && unlockThing("kart","goldenKart")) unlocked.push("Golden Kart");
+      if (p1Place===1 && normalPlus && activeCupState.activeCupId==="chaosCup") { if (unlockThing("kart","boneBuggy")) unlocked.push("Bone Buggy"); if (unlockThing("character","skeleton")) unlocked.push("Skeleton Racer"); }
+      if (p1Place===1 && normalPlus && activeCupState.activeCupId==="skyCup") { if (unlockThing("kart","cloudGlider")) unlocked.push("Cloud Glider Kart"); if (unlockThing("character","cloudHare")) unlocked.push("Cloud Hare"); }
+      if (p1Place===1 && ["hard","insane"].includes(diff) && activeCupState.activeCupId==="allStarCup" && unlockThing("character","goldenRhino")) unlocked.push("Golden Rhino");
+      saveUnlockData();
+      if (unlocked.length) list.innerHTML += `<h3>Unlocked Rewards</h3><div>${unlocked.join(", ")}</div>`;
+      activeCupState = null;
+    } else {
+      document.getElementById("backToMenuBtn").textContent = "Quit to Menu";
+    }
+  } else {
+    document.getElementById("raceAgainBtn").textContent = "Race Again";
+    document.getElementById("backToMenuBtn").textContent = "Back to Menu";
+  }
   document.getElementById("resultsOverlay").style.display = "flex";
 }
 
@@ -4422,9 +4495,18 @@ function updateRespawnFade(dt) {
 ========================================================= */
 
 document.getElementById("splitToggle").addEventListener("change", renderMenus);
+document.getElementById("raceModeSelect").addEventListener("change", (e)=>{selectedRaceMode=e.target.value; renderMenus();});
 
 document.getElementById("startBtn").onclick = () => {
-  currentMap = maps[selectedMapIndex];
+  if (!isUnlocked("character", characters[selectedP1CharacterIndex].id) || !isUnlocked("kart", karts[selectedP1KartIndex].id)) { alert("Selected Player 1 content is locked."); renderMenus(); return; }
+  if (document.getElementById("splitToggle").checked && (!isUnlocked("character", characters[selectedP2CharacterIndex].id) || !isUnlocked("kart", karts[selectedP2KartIndex].id))) { alert("Selected Player 2 content is locked."); renderMenus(); return; }
+  selectedRaceMode = document.getElementById("raceModeSelect").value;
+  if (selectedRaceMode === "single") currentMap = maps[selectedMapIndex];
+  else {
+    const firstMapId = CUP_DEFS[selectedRaceMode].mapIds[0];
+    currentMap = maps.find(m=>m.id===firstMapId) || maps[0];
+    activeCupState = { activeCupId:selectedRaceMode, cupRaceIndex:0, cupStandings:{} };
+  }
   currentDifficulty = difficulties[document.getElementById("difficultySelect").value];
   totalLaps = Number(document.getElementById("lapSelect").value);
   splitScreen = document.getElementById("splitToggle").checked;
@@ -4466,6 +4548,15 @@ document.getElementById("backToMenuBtn").onclick = () => {
 };
 
 document.getElementById("raceAgainBtn").onclick = () => {
+  if (activeCupState) {
+    const cup = CUP_DEFS[activeCupState.activeCupId];
+    if (activeCupState.cupRaceIndex < cup.mapIds.length - 1) {
+      activeCupState.cupRaceIndex++;
+      currentMap = maps.find(m=>m.id===cup.mapIds[activeCupState.cupRaceIndex]) || maps[0];
+    } else {
+      activeCupState = null;
+    }
+  }
   document.getElementById("resultsOverlay").style.display = "none";
   buildWorld(currentMap);
   if (currentCC.mirror) { trackPoints.reverse(); trackCurve = new THREE.CatmullRomCurve3(trackPoints, true, "centripetal"); buildTrackSamples(); }
