@@ -709,6 +709,7 @@ const cameraState = {
 };
 let crowdReactionState = "normal";
 let crowdReactionTimer = 0;
+let crowdReactionStrength = 0;
 let courtThemePulse = 0;
 const DEFENSIVE_SHADE_HOLD = 0.16;
 let gameMode = {targetScore:11, winBy2:true, makeItTakeIt:false, losersBall:false, arcade:false};
@@ -1767,6 +1768,12 @@ function addSpotLight(x,y,z){
 }
 
 function buildArena(){
+  crowdMembers.length = 0;
+  arenaWalls.length = 0;
+  arenaLightStrips.length = 0;
+  ledBoardMesh = null;
+  ledBoardTexture = null;
+  ledBoardCtx = null;
   arenaThemeRefs = {court:null,lineMats:[],trimMats:[],logoCanvases:[],crowdMats:[]};
   const theme = courts[selectedCourt] || courts.classicArena;
   const court = new THREE.Mesh(
@@ -1847,9 +1854,11 @@ function buildArena(){
     scene.add(m);
   });
 
-  buildCrowdSection("back",theme);
-  buildCrowdSection("left",theme);
-  buildCrowdSection("right",theme);
+  if(graphicsQuality !== "low"){
+    buildCrowdSection("back",theme);
+    buildCrowdSection("left",theme);
+    buildCrowdSection("right",theme);
+  }
   buildArenaBanners();
 
   // Side bleacher hints so the world feels less empty.
@@ -1886,6 +1895,10 @@ function buildArena(){
     cooler.position.set(sidelineX+side*0.05,.31,5.9); cooler.castShadow = true; scene.add(cooler);
     const camBox = new THREE.Mesh(new THREE.BoxGeometry(.5,.36,.4),new THREE.MeshStandardMaterial({color:0x141922,roughness:.62}));
     camBox.position.set(sidelineX,.2,-5.7); scene.add(camBox);
+    if(graphicsQuality !== "low"){
+      const tripod = new THREE.Mesh(new THREE.CylinderGeometry(.03,.03,.9,7),new THREE.MeshStandardMaterial({color:0x404958,roughness:.5}));
+      tripod.position.set(sidelineX+side*0.18,.45,-6.3); tripod.castShadow = true; scene.add(tripod);
+    }
     const rail = new THREE.Mesh(new THREE.BoxGeometry(.1,1.1,COURT_L*.92),railMat);
     rail.position.set(side*(COURT_W/2+3.35),.74,0); rail.castShadow = true; scene.add(rail);
   }
@@ -1996,8 +2009,11 @@ function createCrowdSection(side,rowCount,colCount){
 }
 
 function buildCrowdSection(side,theme=courts[selectedCourt]){
-  const rows = side === "back" ? 6 : 4;
-  const cols = side === "back" ? 28 : 22;
+  const density = graphicsQuality === "high" ? 1 : graphicsQuality === "medium" ? 0.72 : 0;
+  const baseRows = side === "back" ? 6 : 4;
+  const baseCols = side === "back" ? 28 : 22;
+  const rows = Math.max(1,Math.floor(baseRows * density));
+  const cols = Math.max(6,Math.floor(baseCols * density));
   createCrowdSection(side,rows,cols);
 }
 
@@ -2012,7 +2028,8 @@ function animateCrowdPerson(person,dt,excitement){
   const bob = Math.sin(t*(2.1+react*1.6))*0.02*poseMul;
   const sway = Math.sin(t*1.7)*0.05 + excitement*0.1*Math.sin(t*5 + person.userData.col*.3);
   const standLift = react > .48 && person.userData.pose === "seated" && person.userData.standMix > 0.62 ? THREE.MathUtils.clamp((react-0.48)*0.3,0,0.11) : 0;
-  person.position.y = person.userData.baseY + bob + crowdWave*0.04 + standLift;
+  const reactionLift = crowdReactionTimer > 0 ? Math.max(0,crowdReactionTimer) * 0.055 * crowdReactionStrength : 0;
+  person.position.y = person.userData.baseY + bob + crowdWave*0.04 + standLift + reactionLift;
   person.rotation.y = sway*0.4;
   if(person.userData.armL && person.userData.armR){
     const clap = Math.sin(t*8 + person.userData.row)*0.5 + 0.5;
@@ -2026,6 +2043,7 @@ function animateCrowdPerson(person,dt,excitement){
 function updateCrowd(dt){
   if(!qualitySettings[graphicsQuality].crowd) return;
   crowdReactionTimer = Math.max(0,crowdReactionTimer - dt);
+  crowdReactionStrength = Math.max(0,crowdReactionStrength - dt*0.9);
   if(crowdReactionTimer <= 0 && crowdReactionState !== "normal") crowdReactionState = "normal";
   crowdWave = Math.max(0,crowdWave - dt*.62);
   arenaExcitement = Math.max(0,arenaExcitement - dt*.22);
@@ -2037,13 +2055,23 @@ function updateCrowd(dt){
 }
 
 function buildArenaBanners(){
-  const txtTex = makeBannerTexture("STREET COURT • FIRST TO 11 • NO EASY BUCKETS");
-  const banner = new THREE.Mesh(
-    new THREE.PlaneGeometry(10.5,1.3),
-    new THREE.MeshStandardMaterial({map:txtTex,transparent:true,emissive:0x102034,emissiveIntensity:.5})
-  );
-  banner.position.set(0,5.3,-14.72);
-  scene.add(banner);
+  const theme = courts[selectedCourt] || courts.classicArena;
+  const banners = [
+    {text:"1V1 ARENA",x:0,y:5.3,z:-14.72,w:6.1,h:1.15,ry:0},
+    {text:"HOME COURT",x:-10.2,y:4.5,z:-3.2,w:4.6,h:1.0,ry:Math.PI/2},
+    {text:"DEFENSE",x:10.2,y:4.5,z:2.6,w:4.2,h:1.0,ry:-Math.PI/2},
+    {text:"DUNK CAM",x:0,y:4.2,z:14.6,w:4.8,h:0.95,ry:Math.PI},
+    {text:theme.name.toUpperCase(),x:0,y:6.6,z:-13.9,w:7.2,h:1.05,ry:0}
+  ];
+  banners.forEach(({text,x,y,z,w,h,ry})=>{
+    const banner = new THREE.Mesh(
+      new THREE.PlaneGeometry(w,h),
+      new THREE.MeshStandardMaterial({map:makeBannerTexture(text),transparent:true,emissive:0x102034,emissiveIntensity:.5,side:THREE.DoubleSide})
+    );
+    banner.position.set(x,y,z);
+    banner.rotation.y = ry;
+    scene.add(banner);
+  });
 
   const ledCanvas = document.createElement("canvas");
   ledCanvas.width = 1024; ledCanvas.height = 128;
@@ -2074,11 +2102,18 @@ function updateLEDBoards(text){
   const fx = getCourtEffectTheme();
   ledBoardCtx.fillStyle = "#03050a";
   ledBoardCtx.fillRect(0,0,1024,128);
-  ledBoardCtx.fillStyle = fx === "urban" ? "#ff7a45" : fx === "gold" ? "#ffd56a" : fx === "ice" ? "#9fe9ff" : "#38ff9a";
+  const accent = fx === "urban" ? "#ff7a45" : fx === "gold" ? "#ffd56a" : fx === "ice" ? "#9fe9ff" : "#38ff9a";
+  const pulse = 0.3 + arenaExcitement*0.45 + (crowdReactionTimer > 0 ? 0.3 : 0);
+  ledBoardCtx.fillStyle = `rgba(255,255,255,${Math.min(0.34,pulse).toFixed(3)})`;
+  ledBoardCtx.fillRect(0,0,1024,6);
+  ledBoardCtx.fillStyle = accent;
   ledBoardCtx.font = "bold 58px 'Courier New', monospace";
   ledBoardCtx.textAlign = "center";
   ledBoardCtx.textBaseline = "middle";
-  ledBoardCtx.fillText(text,512,64);
+  ledBoardCtx.fillText(text,512,44);
+  ledBoardCtx.font = "bold 28px 'Courier New', monospace";
+  ledBoardCtx.fillStyle = "#dce9ff";
+  ledBoardCtx.fillText(`${scoreP1} - ${scoreP2}  •  POS: ${possessionOwner === "p1" ? "P1" : "P2"}`,512,95);
   ledBoardTexture.needsUpdate = true;
 }
 
@@ -5955,6 +5990,7 @@ function triggerCrowdReaction(type,intensity=1){
   }[type] || 0.12;
   crowdReactionState = type === "game_point" ? "gamePoint" : type === "dunk" || type === "green" ? "hype" : type === "miss" ? "stunned" : "cheering";
   crowdReactionTimer = Math.max(crowdReactionTimer,type === "game_point" ? 3.4 : type === "dunk" ? 2.1 : 1.4);
+  crowdReactionStrength = Math.max(crowdReactionStrength, type === "dunk" ? 1 : type === "block" || type === "game_point" ? 0.9 : type === "steal" ? 0.7 : 0.55);
   arenaExcitement = THREE.MathUtils.clamp(arenaExcitement + typeBoost + finalIntensity*0.1,0,1);
   crowdWave = Math.max(crowdWave,finalIntensity + arenaExcitement*0.35);
   cameraEffects.shake = Math.max(cameraEffects.shake,finalIntensity * 0.2 + arenaExcitement*0.08);
@@ -5964,7 +6000,7 @@ function triggerCrowdReaction(type,intensity=1){
   pulseCourtTheme(type);
   if(type === "dunk" || type === "block" || type === "green" || type === "steal" || type === "game_point" || type === "miss") spawnCourtThemedParticle(HOOP_POS.clone(),type);
   if(ledBoardCtx && Math.random() < 0.25 + arenaExcitement*0.35){
-    const msg = type === "dunk" ? "DUNK ALERT" : type === "block" ? "REJECTION" : type === "three" ? "FROM DEEP" : type === "green" ? "GREEN!" : type === "steal" ? "STRIPPED" : type === "game_point" ? "GAME POINT" : type === "miss" ? "OOF" : "CROWD NOISE";
+    const msg = type === "dunk" ? "SLAM!" : type === "block" ? "BIG BLOCK" : type === "three" ? "BANK SHOT" : type === "green" ? "GREEN RELEASE" : type === "steal" ? "ANKLE BREAKER" : type === "game_point" ? "GAME POINT" : type === "miss" ? "DEFENSE" : "HOME COURT";
     updateLEDBoards(msg);
   }
 }
