@@ -630,6 +630,7 @@ let lastShotWasHook = false;
 let ballSide = "right";
 let ballSideValue = 1;
 let ballVelocity = new THREE.Vector3();
+let lastBallVisualPos = new THREE.Vector3();
 
 let shotCharging = false;
 let chargingPlayer = null;
@@ -2385,13 +2386,21 @@ function updateScoreboard(){
 }
 
 function buildBall(){
-  const pebbleMat = new THREE.MeshStandardMaterial({color:0xc76528,roughness:.92,metalness:0});
+  const ballMat = new THREE.MeshStandardMaterial({
+    color:0xc96522,
+    roughness:0.78,
+    metalness:0.03,
+    emissive:0x2a1308,
+    emissiveIntensity:0.06
+  });
+  const pebbleMat = new THREE.MeshStandardMaterial({color:0x8b4920,roughness:.9,metalness:0,transparent:true,opacity:.2});
   ball = new THREE.Mesh(
-    new THREE.SphereGeometry(BALL_RADIUS,32,32),
-    new THREE.MeshStandardMaterial({color:0xd06a24,roughness:.78,metalness:.03})
+    new THREE.SphereGeometry(BALL_RADIUS,40,40),
+    ballMat
   );
   ball.castShadow = true;
-scene.add(ball);
+  ball.receiveShadow = true;
+  scene.add(ball);
 
 // Ground shadow under the ball
 ballShadow = new THREE.Mesh(
@@ -2407,19 +2416,34 @@ ballShadow.rotation.x = -Math.PI / 2;
 ballShadow.position.set(0, 0.018, 0);
 scene.add(ballShadow);
 
-const pebble = new THREE.Mesh(new THREE.SphereGeometry(BALL_RADIUS*1.004,24,24),pebbleMat);
-  pebble.material.transparent = true; pebble.material.opacity = 0.22; ball.add(pebble);
+  const pebble = new THREE.Mesh(new THREE.SphereGeometry(BALL_RADIUS*1.004,28,28),pebbleMat);
+  ball.add(pebble);
 
-  const seamMat = new THREE.LineBasicMaterial({color:0x141414});
-  for(let i=0;i<3;i++){
-    const ring = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(makeCirclePoints(BALL_RADIUS+.006,80)),
+  addBasketballSeams(ball);
+  lastBallVisualPos.copy(ball.position);
+}
+
+function addBasketballSeams(ballMesh){
+  const seamMat = new THREE.MeshStandardMaterial({color:0x1a120d,roughness:0.68,metalness:0.02});
+  const tubeRadius = Math.max(0.0055, BALL_RADIUS * 0.028);
+  const ringRadius = BALL_RADIUS * 1.004;
+
+  const makeRing = (rx, ry, rz) => {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(ringRadius, tubeRadius, 10, 128),
       seamMat
     );
-    ring.rotation.x = i===0 ? Math.PI/2 : 0;
-    ring.rotation.y = i===1 ? Math.PI/2 : 0;
-    ball.add(ring);
-  }
+    ring.rotation.set(rx, ry, rz);
+    ring.castShadow = false;
+    ring.receiveShadow = true;
+    ballMesh.add(ring);
+    return ring;
+  };
+
+  makeRing(Math.PI / 2, 0, 0);
+  makeRing(0, Math.PI / 2, 0);
+  makeRing(Math.PI / 2, Math.PI / 4, 0);
+  makeRing(Math.PI / 2, -Math.PI / 4, 0);
 }
 
 function makeCirclePoints(r,count){
@@ -5310,14 +5334,34 @@ function updateBall(dt){
     }
   }
 
-  const spinBoost =
-    ballState === "shot"
-      ? THREE.MathUtils.clamp(ballVelocity.length() * 0.22, 1, 2.8)
-      : 1;
+  if(ballState === "dribble"){
+    const owner = getOwner();
+    const floorY = owner ? owner.group.position.y + BALL_RADIUS : BALL_RADIUS;
+    const floorGap = ball.position.y - floorY;
+    if(floorGap < 0.085){
+      const compress = THREE.MathUtils.clamp((0.085 - floorGap) / 0.085, 0, 1);
+      const xzStretch = 1 + compress * 0.065;
+      const ySquash = 1 - compress * 0.06;
+      ball.scale.set(xzStretch, ySquash, xzStretch);
+    }
+  }
 
-  ball.rotation.x += dt * 5.2 * spinBoost;
-  ball.rotation.z += dt * 3.4 * spinBoost;
-  ball.rotation.y += dt * 2.3 * spinBoost;
+  const moveDelta = ball.position.clone().sub(lastBallVisualPos);
+  const moveLen = moveDelta.length();
+  if(Number.isFinite(moveLen) && moveLen > 0.0001){
+    const rollAmount = moveLen / BALL_RADIUS;
+    ball.rotation.x += THREE.MathUtils.clamp(moveDelta.z / BALL_RADIUS, -0.38, 0.38) * (1.25 + rollAmount * 0.24);
+    ball.rotation.z -= THREE.MathUtils.clamp(moveDelta.x / BALL_RADIUS, -0.38, 0.38) * (1.25 + rollAmount * 0.24);
+
+    const spinFromY = THREE.MathUtils.clamp(ballVelocity.y * 0.015, -0.12, 0.12);
+    const spinFromLateral = THREE.MathUtils.clamp((ballVelocity.x + ballVelocity.z) * 0.008, -0.1, 0.1);
+    ball.rotation.y += spinFromY + spinFromLateral;
+
+    if(!Number.isFinite(ball.rotation.x) || !Number.isFinite(ball.rotation.y) || !Number.isFinite(ball.rotation.z)){
+      ball.rotation.set(0,0,0);
+    }
+  }
+  lastBallVisualPos.copy(ball.position);
 
     // Strong visible ground shadow for judging ball height/distance.
   if(ballShadow){
