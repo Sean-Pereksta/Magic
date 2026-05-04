@@ -1229,7 +1229,7 @@ function buildSectionData(rows, fieldMap, type){
       const repCompliments = complimentTeamRows.filter(r => r.repKey === repKey);
       const repCorrectives = correctiveTeamRows.filter(r => r.repKey === repKey);
       const correctiveCount = repCorrectives.length;
-      const correctivePenalty = correctiveCount > 0 ? 10 : 0;
+      const correctivePenalty = correctiveCount * 10;
 
       const repConsumerApps = sumField(repRows, fieldMap.consumerApps);
       const repConsumerOpps = sumField(repRows, fieldMap.consumerOpps);
@@ -1323,7 +1323,7 @@ function buildSectionData(rows, fieldMap, type){
         r.cqRank = cqRank.get(r.name) || null;
         r.attendanceRank = attendanceRank.get(r.name) || null;
         r.rankTotal = [r.consumerRank, r.wiperRank, r.cqRank, r.attendanceRank].filter(Number.isFinite).reduce((s,n)=>s+n,0);
-        r.overallScore = r.rankTotal + r.correctivePenalty - (r.complimentCount * 2);
+        r.overallScore = r.rankTotal + (r.correctivePenalty || 0) - (r.complimentCount * 2);
       }
     } else {
       const wiperRank = rankMapDescending(team.reps, 'wiperRate');
@@ -1338,7 +1338,7 @@ function buildSectionData(rows, fieldMap, type){
         r.acwRank = acwRank.get(r.name) || null;
         r.itacRank = itacRank.get(r.name) || null;
         r.rankTotal = [r.wiperRank, r.cqRank, r.attendanceRank, r.itacRank].filter(Number.isFinite).reduce((s,n)=>s+n,0);
-        r.overallScore = r.rankTotal + r.correctivePenalty - (r.complimentCount * 2);
+        r.overallScore = r.rankTotal + (r.correctivePenalty || 0) - (r.complimentCount * 2);
       }
     }
 
@@ -1543,7 +1543,7 @@ function renderTeamCards(teams, mountEl, section){
                   <td class="right">${esc(String(r.rankTotal ?? '—'))}</td>
                   <td class="right" style="font-weight:1000">${r.complimentCount || 0}</td>
                   <td class="right ${r.correctiveCount>0 ? 'warnTxt' : 'goodTxt'}">${r.correctiveCount || 0}</td>
-                  <td class="right ${r.correctivePenalty>0 ? 'warnTxt' : 'goodTxt'}">${r.correctivePenalty>0 ? '+10' : '0'}</td>
+                  <td class="right ${r.correctivePenalty>0 ? 'warnTxt' : 'goodTxt'}">${r.correctivePenalty>0 ? '+' + r.correctivePenalty : '0'}</td>
                   <td class="right"><strong>${esc(String(r.overallScore))}</strong></td>
                   ${t.type === 'retail' ? `<td class="right">${fmtPct1(r.consumerRate)}</td>` : ``}
                   <td class="right">${fmtPct1(r.wiperRate)}</td>
