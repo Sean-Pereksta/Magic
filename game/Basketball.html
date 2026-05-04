@@ -656,6 +656,9 @@ let rimBasePosition = null;
 let netWobbleStrength = 0;
 let rimWobbleStrength = 0;
 let rimTouchCount = 0;
+let backboardImpactTimer = 0;
+let backboardImpactStrength = 0;
+const backboardBasePosition = new THREE.Vector3();
 let netContactPoint = new THREE.Vector3();
 let netImpactDirection = new THREE.Vector3(0,0,1);
 let netVelocity = new THREE.Vector3();
@@ -2278,10 +2281,14 @@ function buildHoop(){
 
   backboard = new THREE.Mesh(
     new THREE.BoxGeometry(3.4,2.05,.1),
-    new THREE.MeshPhysicalMaterial({color:0xdff3ff,transparent:true,opacity:.4,roughness:.04,metalness:.12,clearcoat:.6,clearcoatRoughness:.14,transmission:.08})
+    new THREE.MeshPhysicalMaterial({
+      color:0xdff6ff,transparent:true,opacity:.34,roughness:.12,metalness:0,
+      transmission:.15,clearcoat:.75,clearcoatRoughness:.08
+    })
   );
   backboard.position.set(HOOP_POS.x,HOOP_POS.y + 0.22,HOOP_POS.z - 0.43);
   backboard.castShadow = true;
+  backboardBasePosition.copy(backboard.position);
   scene.add(backboard);
 
   rim = new THREE.Mesh(
@@ -2297,8 +2304,29 @@ function buildHoop(){
   rimBracket.position.set(HOOP_POS.x,HOOP_POS.y-0.02,HOOP_POS.z-0.24); scene.add(rimBracket);
   const boardFrame = new THREE.Mesh(new THREE.BoxGeometry(3.56,2.2,.08),new THREE.MeshStandardMaterial({color:0xf8fbff,metalness:.28,roughness:.32}));
   boardFrame.position.copy(backboard.position); boardFrame.position.z -= 0.08; scene.add(boardFrame);
-  const targetSq = new THREE.Mesh(new THREE.PlaneGeometry(.62,.48),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.92}));
-  targetSq.position.set(HOOP_POS.x,HOOP_POS.y + 0.16,backboard.position.z + 0.056); scene.add(targetSq);
+
+  const squareMat = new THREE.MeshBasicMaterial({color:0xffffff});
+  const barThickness = 0.035;
+  const squareW = 1.15;
+  const squareH = 0.85;
+  const squareZOffset = 0.055;
+  const bars = [
+    [squareW,barThickness,0,squareH*0.5,0],
+    [squareW,barThickness,0,-squareH*0.5,0],
+    [barThickness,squareH,-squareW*0.5,0,0],
+    [barThickness,squareH,squareW*0.5,0,0]
+  ];
+  bars.forEach(([w,h,x,y,z])=>{
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(w,h,0.01),squareMat);
+    bar.position.set(x,y,squareZOffset + z);
+    backboard.add(bar);
+  });
+  const rimMount = new THREE.Mesh(
+    new THREE.BoxGeometry(0.55,0.35,0.08),
+    new THREE.MeshStandardMaterial({color:0x222222,roughness:0.45,metalness:0.25})
+  );
+  rimMount.position.set(0,-0.24,0.09);
+  backboard.add(rimMount);
   const polePad = new THREE.Mesh(new THREE.BoxGeometry(.48,1.05,.44),new THREE.MeshStandardMaterial({color:0x263d5f,roughness:.58}));
   polePad.position.set(HOOP_POS.x,.56,hoopBaseZ + 0.02); scene.add(polePad);
   // Clean single-piece hoop base; replaces old stacked step blocks.
@@ -5385,10 +5413,8 @@ function resolveBackboardBallCollision(dt){
   const boardBox = new THREE.Box3().setFromObject(backboard);
   const min = boardBox.min;
   const max = boardBox.max;
-  const boardCenterZ = (min.z + max.z) * 0.5;
-  const thickness = Math.max(0.04, max.z - min.z);
-  const frontPlaneZ = boardCenterZ + thickness * 0.5;
-  const backPlaneZ = boardCenterZ - thickness * 0.5;
+  const frontPlaneZ = max.z + BALL_RADIUS;
+  const backPlaneZ = min.z - BALL_RADIUS;
 
   const prevPos = previousBallPosition;
   const currPos = ball.position;
@@ -5397,19 +5423,20 @@ function resolveBackboardBallCollision(dt){
   const withinY = currPos.y >= min.y - BALL_RADIUS && currPos.y <= max.y + BALL_RADIUS;
   if(!withinX || !withinY) return;
 
-  const crossedFront = prevPos.z > frontPlaneZ + BALL_RADIUS && currPos.z <= frontPlaneZ + BALL_RADIUS;
-  const crossedBack = prevPos.z < backPlaneZ - BALL_RADIUS && currPos.z >= backPlaneZ - BALL_RADIUS;
-  const embedded = currPos.z <= frontPlaneZ + BALL_RADIUS && currPos.z >= backPlaneZ - BALL_RADIUS;
+  const crossedFront = prevPos.z > frontPlaneZ && currPos.z <= frontPlaneZ;
+  const crossedBack = prevPos.z < backPlaneZ && currPos.z >= backPlaneZ;
+  if(!crossedFront && !crossedBack){
+    const expanded = boardBox.clone().expandByScalar(BALL_RADIUS);
+    if(!expanded.containsPoint(currPos)) return;
+  }
 
-  if(!crossedFront && !crossedBack && !embedded) return;
+  const hitFromFront = prevPos.z > max.z;
+  const normalZ = hitFromFront ? 1 : -1;
 
-  const normalZ = crossedFront ? 1 : crossedBack ? -1 : (ballVelocity.z >= 0 ? -1 : 1);
-  const planeZ = normalZ > 0 ? frontPlaneZ : backPlaneZ;
-
-  ball.position.z = planeZ + normalZ * (BALL_RADIUS + 0.02);
+  ball.position.z = hitFromFront ? max.z + BALL_RADIUS + 0.025 : min.z - BALL_RADIUS - 0.025;
   ballVelocity.z = Math.abs(ballVelocity.z || 0.01) * normalZ * 0.72;
   ballVelocity.x *= 0.92;
-  ballVelocity.y *= 0.88;
+  ballVelocity.y *= 0.82;
 
   if(!Number.isFinite(ballVelocity.x) || !Number.isFinite(ballVelocity.y) || !Number.isFinite(ballVelocity.z)){
     ballVelocity.set(0,0,0);
@@ -5417,10 +5444,16 @@ function resolveBackboardBallCollision(dt){
 
   shotHasHitRimOrBoard = true;
   backboardCollisionCooldown = 0.08;
+  triggerBackboardImpact(0.035,0.16);
   updatePredictedReboundPoint(true);
   handleBankShot();
   spawnParticle(ball.position,0x88d7ff);
   playRimSound();
+}
+
+function triggerBackboardImpact(strength = 0.035,duration = 0.16){
+  backboardImpactTimer = Math.max(backboardImpactTimer,duration);
+  backboardImpactStrength = Math.max(backboardImpactStrength,strength);
 }
 
 function keepBallInBounds(){
@@ -6458,6 +6491,19 @@ function triggerNetWobble(strength = 1,contactPoint=null,impactDir=null){
 }
 
 function updateHoopReaction(dt){
+  if(backboard){
+    if(backboardImpactTimer > 0){
+      backboardImpactTimer = Math.max(0,backboardImpactTimer - dt);
+      const life = backboardImpactTimer / 0.16;
+      const shake = Math.sin(backboardImpactTimer * 80) * backboardImpactStrength * life;
+      backboard.position.copy(backboardBasePosition);
+      backboard.position.z += shake;
+    }else{
+      backboard.position.copy(backboardBasePosition);
+      backboardImpactStrength = 0;
+    }
+  }
+
   if(rim && rimBasePosition){
     if(rimWobbleTimer > 0){
       rimWobbleTimer = Math.max(0,rimWobbleTimer - dt);
