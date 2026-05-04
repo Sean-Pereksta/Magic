@@ -358,6 +358,9 @@
           <label>Checklist dock
             <select id="checkDockSel" style="min-width:320px"></select>
           </label>
+          <label>Correctives dock
+            <select id="correctiveDockSel" style="min-width:320px"></select>
+          </label>
           <button id="loadDocksBtn">Load docks</button>
         </div>
         <div class="row" style="margin-top:10px">
@@ -525,6 +528,7 @@ const els = {
   referralDockSel: document.getElementById('referralDockSel'),
   qaDockSel: document.getElementById('qaDockSel'),
   checkDockSel: document.getElementById('checkDockSel'),
+  correctiveDockSel: document.getElementById('correctiveDockSel'),
   loadDocksBtn: document.getElementById('loadDocksBtn'),
   complimentFile: document.getElementById('complimentFile'),
   complimentFileHint: document.getElementById('complimentFileHint'),
@@ -549,6 +553,7 @@ let retailDockKey = '';
 let referralDockKey = '';
 let qaDockKey = '';
 let checkDockKey = '';
+let correctiveDockKey = '';
 
 let retailRows = [];
 let referralRows = [];
@@ -557,6 +562,7 @@ let checklistRows = [];
 let complimentWorkbook = null;
 let complimentSheetName = '';
 let complimentRows = [];
+let correctiveRows = [];
 
 let retailFieldMap = null;
 let referralFieldMap = null;
@@ -956,10 +962,22 @@ function findQADockCandidates(){
   }
   return Array.from(new Set([...preferred, ...fallback])).sort((a,b)=>a.localeCompare(b));
 }
+
+function findCorrectiveDockCandidates(){
+  const out = [];
+  for(let i=0;i<localStorage.length;i++){
+    const k = localStorage.key(i);
+    if(!k) continue;
+    const lk = k.toLowerCase();
+    if(lk.includes('.dock.corrective') || lk.includes('.dock.correctives') || lk.includes('corrective')) out.push(k);
+  }
+  return Array.from(new Set(out)).sort((a,b)=>a.localeCompare(b));
+}
+
 function pickBestKey(kind){
   const preferred = `${APP_NS}.dock.${kind}`;
   if(localStorage.getItem(preferred)) return preferred;
-  const cands = kind === 'qa' ? findQADockCandidates() : findDockCandidates(kind);
+  const cands = kind === 'qa' ? findQADockCandidates() : (kind === 'corrective' ? findCorrectiveDockCandidates() : findDockCandidates(kind));
   return cands[0] || preferred || '';
 }
 function populateDockSelects(){
@@ -986,6 +1004,13 @@ function populateDockSelects(){
   checkDockKey = checkDockKey || pickBestKey('checklist');
   if(checkCands.includes(checkDockKey)) els.checkDockSel.value = checkDockKey;
   else if(checkCands.length){ checkDockKey = checkCands[0]; els.checkDockSel.value = checkDockKey; }
+
+
+  const correctiveCands = Array.from(new Set([pickBestKey('corrective'), ...findCorrectiveDockCandidates()].filter(Boolean)));
+  els.correctiveDockSel.innerHTML = correctiveCands.map(k=>`<option value="${esc(k)}">${esc(k)}</option>`).join('');
+  correctiveDockKey = correctiveDockKey || pickBestKey('corrective');
+  if(correctiveCands.includes(correctiveDockKey)) els.correctiveDockSel.value = correctiveDockKey;
+  else if(correctiveCands.length){ correctiveDockKey = correctiveCands[0]; els.correctiveDockSel.value = correctiveDockKey; }
 
   els.dockHint.textContent = `APP_NS: ${APP_NS}`;
 }
@@ -1112,6 +1137,37 @@ function canonicalizeChecklistRows(dockObj){
   return out;
 }
 
+
+function canonicalizeCorrectiveRows(dockObj){
+  if(!dockObj) return [];
+  const arrays = extractRowArrays(dockObj, '');
+  const out = [];
+  for(const pack of arrays){
+    const keys = Array.from(new Set((pack.rows || []).flatMap(r => Object.keys(r||{}))));
+    const repField = findFieldName(keys, [/^associatename$/, /^associate$/, /^name$/, /^rep$/, /^representative$/, /^employee$/, /^csr$/, /^agent$/]);
+    const dateField = findFieldName(keys, [/^date$/, /^correctivedate$/, /^incidentdate$/, /^createddate$/, /^actiondate$/]);
+    for(const r of pack.rows){
+      const repRaw = repField ? r[repField] : pickFieldFromRow(r, ['associatename','associate','name','rep','representative','employee','csr','agent']);
+      const dateRaw = dateField ? r[dateField] : pickFieldFromRow(r, ['date','correctivedate','incidentdate','createddate','actiondate']);
+      const rep = displayNameFromRaw(repRaw || '');
+      const repKey = personKey(rep || repRaw);
+      const date = parseDate(dateRaw);
+      const searchableText = Object.values(r||{}).map(v=>String(v ?? '')).join(' | ');
+      const m = searchableText.match(/\b(verbal|written|final)\b/i);
+      const correctiveType = m ? m[1][0].toUpperCase()+m[1].slice(1).toLowerCase() : '';
+      if(!repKey || !date || !correctiveType) continue;
+      out.push({ ...r, rep, repKey, date, correctiveType, searchableText });
+    }
+  }
+  return out;
+}
+
+function loadCorrectives(){
+  correctiveDockKey = els.correctiveDockSel.value || correctiveDockKey || pickBestKey('corrective');
+  const obj = loadDockObjByKey(correctiveDockKey);
+  correctiveRows = canonicalizeCorrectiveRows(obj);
+}
+
 function loadRetail(){
   retailDockKey = els.retailDockSel.value || retailDockKey || pickBestKey('retail');
   const obj = loadDockObjByKey(retailDockKey);
@@ -1131,6 +1187,7 @@ function loadQA(){
 }
 function loadChecklist(){
   checkDockKey = els.checkDockSel.value || checkDockKey || pickBestKey('checklist');
+  correctiveDockKey = els.correctiveDockSel.value || correctiveDockKey || pickBestKey('corrective');
   const obj = loadDockObjByKey(checkDockKey);
   checklistRows = canonicalizeChecklistRows(obj);
 }
@@ -1140,7 +1197,8 @@ function initDates(){
     ...referralRows.map(r=>r._d),
     ...qaRows.map(r=>r.startDate),
     ...checklistRows.map(r=>r.date),
-    ...complimentRows.map(r=>r.callDate)
+    ...complimentRows.map(r=>r.callDate),
+    ...correctiveRows.map(r=>r.date)
   ].filter(d => d instanceof Date && !isNaN(d));
   const today = new Date();
   const end = dates.length ? new Date(Math.max(...dates.map(d=>d.getTime()))) : today;
@@ -1169,6 +1227,7 @@ function buildSectionData(rows, fieldMap, type){
   const qaWindow = qaRows.filter(r => inRange(r.startDate, sd, ed));
   const checklistWindow = checklistRows.filter(r => inRange(r.date, sd, ed));
   const complimentWindow = complimentRows.filter(r => inRange(r.callDate, sd, ed));
+  const correctiveWindow = correctiveRows.filter(r => inRange(r.date, sd, ed));
 
   const teamNames = Array.from(new Set(statRows.map(r => String(r.Team||'').trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
   const teams = [];
@@ -1179,6 +1238,7 @@ function buildSectionData(rows, fieldMap, type){
     const qaTeamRows = qaWindow.filter(r => repKeySet.has(r.repKey) || String(r.team||'').trim() === teamName);
     const checklistTeamRows = checklistWindow.filter(r => repKeySet.has(r.repKey) || String(r.teamHint||'').trim() === teamName);
     const complimentTeamRows = complimentWindow.filter(r => repKeySet.has(r.repKey) || String(r.team||'').trim() === teamName);
+    const correctiveTeamRows = correctiveWindow.filter(r => repKeySet.has(r.repKey));
 
     const consumerApps = sumField(teamRows, fieldMap.consumerApps);
     const consumerOpps = sumField(teamRows, fieldMap.consumerOpps);
@@ -1229,7 +1289,9 @@ function buildSectionData(rows, fieldMap, type){
         attendanceHits: repAttendance,
         acwAvg: repACW,
         itacAvg: repITAC,
-        complimentCount: repCompliments.length
+        complimentCount: repCompliments.length,
+        correctiveCount: correctiveTeamRows.filter(r => r.repKey === repKey).length,
+        correctivePenalty: correctiveTeamRows.some(r => r.repKey === repKey) ? 10 : 0
       };
     });
 
@@ -1294,7 +1356,7 @@ function buildSectionData(rows, fieldMap, type){
         r.cqRank = cqRank.get(r.name) || null;
         r.attendanceRank = attendanceRank.get(r.name) || null;
         r.rankTotal = [r.consumerRank, r.wiperRank, r.cqRank, r.attendanceRank].filter(Number.isFinite).reduce((s,n)=>s+n,0);
-        r.overallScore = r.rankTotal - (r.complimentCount * 2);
+        r.overallScore = r.rankTotal + r.correctivePenalty - (r.complimentCount * 2);
       }
     } else {
       const wiperRank = rankMapDescending(team.reps, 'wiperRate');
@@ -1308,8 +1370,8 @@ function buildSectionData(rows, fieldMap, type){
         r.attendanceRank = attendanceRank.get(r.name) || null;
         r.acwRank = acwRank.get(r.name) || null;
         r.itacRank = itacRank.get(r.name) || null;
-        r.rankTotal = [r.wiperRank, r.cqRank, r.attendanceRank, r.acwRank, r.itacRank].filter(Number.isFinite).reduce((s,n)=>s+n,0);
-        r.overallScore = r.rankTotal - (r.complimentCount * 2);
+        r.rankTotal = [r.wiperRank, r.cqRank, r.attendanceRank, r.itacRank].filter(Number.isFinite).reduce((s,n)=>s+n,0);
+        r.overallScore = r.rankTotal + r.correctivePenalty - (r.complimentCount * 2);
       }
     }
 
@@ -1347,6 +1409,7 @@ function topThreeHtml(team){
             <span class="pill">CQ ${fmtPct1(r.cqAvg)}</span>
             <span class="pill ${r.attendanceHits>0 ? 'warn' : 'good'}">Attendance ${r.attendanceHits}</span>
             <span class="pill">Compliments ${r.complimentCount || 0}</span>
+            <span class="pill ${r.correctiveCount>0 ? 'warn' : ''}">Correctives ${r.correctiveCount || 0}</span>
             ${team.type === 'referral' ? `<span class="pill">ACW ${fmtPct1(r.acwAvg)}</span><span class="pill">ITAC ${fmtPct1(r.itacAvg)}</span>` : ``}
           </div>
         </div>
@@ -1490,6 +1553,8 @@ function renderTeamCards(teams, mountEl, section){
                 ${t.type === 'referral' ? `<th class="right">ACW Rank</th><th class="right">ITAC Rank</th>` : ``}
                 <th class="right">Rank Total</th>
                 <th class="right">Compliments</th>
+                <th class="right">Correctives</th>
+                <th class="right">Corrective Penalty</th>
                 <th class="right">Overall Score</th>
                 ${t.type === 'retail' ? `<th class="right">Consumer Rate</th>` : ``}
                 <th class="right">Wiper Rate</th>
@@ -1510,6 +1575,8 @@ function renderTeamCards(teams, mountEl, section){
                   ${t.type === 'referral' ? `<td class="right">${esc(String(r.acwRank ?? '—'))}</td><td class="right">${esc(String(r.itacRank ?? '—'))}</td>` : ``}
                   <td class="right">${esc(String(r.rankTotal ?? '—'))}</td>
                   <td class="right" style="font-weight:1000">${r.complimentCount || 0}</td>
+                  <td class="right ${r.correctiveCount>0 ? 'warnTxt' : ''}">${r.correctiveCount || 0}</td>
+                  <td class="right ${r.correctivePenalty>0 ? 'warnTxt' : ''}">${r.correctivePenalty>0 ? '+10' : '0'}</td>
                   <td class="right"><strong>${esc(String(r.overallScore))}</strong></td>
                   ${t.type === 'retail' ? `<td class="right">${fmtPct1(r.consumerRate)}</td>` : ``}
                   <td class="right">${fmtPct1(r.wiperRate)}</td>
@@ -1581,6 +1648,7 @@ function savePrefs(){
       referralDockKey,
       qaDockKey,
       checkDockKey,
+      correctiveDockKey,
       complimentSheetName,
       startDate: els.startDate.value || '',
       endDate: els.endDate.value || '',
@@ -1597,6 +1665,7 @@ function loadPrefs(){
     if(typeof p.referralDockKey === 'string') referralDockKey = p.referralDockKey;
     if(typeof p.qaDockKey === 'string') qaDockKey = p.qaDockKey;
     if(typeof p.checkDockKey === 'string') checkDockKey = p.checkDockKey;
+    if(typeof p.correctiveDockKey === 'string') correctiveDockKey = p.correctiveDockKey;
     if(typeof p.complimentSheetName === 'string') complimentSheetName = p.complimentSheetName;
     if(typeof p.startDate === 'string') els.startDate.value = p.startDate;
     if(typeof p.endDate === 'string') els.endDate.value = p.endDate;
@@ -1609,11 +1678,13 @@ function fullLoad(){
   referralDockKey = els.referralDockSel.value || referralDockKey || pickBestKey('referral');
   qaDockKey = els.qaDockSel.value || qaDockKey || pickBestKey('qa');
   checkDockKey = els.checkDockSel.value || checkDockKey || pickBestKey('checklist');
+  correctiveDockKey = els.correctiveDockSel.value || correctiveDockKey || pickBestKey('corrective');
 
   loadRetail();
   loadReferral();
   loadQA();
   loadChecklist();
+  loadCorrectives();
   initDates();
   savePrefs();
   setActiveTab(activeTab);
@@ -1683,7 +1754,7 @@ els.retailDockSel.addEventListener('change', ()=>{ retailDockKey = els.retailDoc
 els.referralDockSel.addEventListener('change', ()=>{ referralDockKey = els.referralDockSel.value; savePrefs(); });
 els.qaDockSel.addEventListener('change', ()=>{ qaDockKey = els.qaDockSel.value; savePrefs(); });
 els.checkDockSel.addEventListener('change', ()=>{ checkDockKey = els.checkDockSel.value; savePrefs(); });
+els.correctiveDockSel.addEventListener('change', ()=>{ correctiveDockKey = els.correctiveDockSel.value; savePrefs(); });
 </script>
 </body>
 </html>
-
