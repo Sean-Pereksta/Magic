@@ -1884,11 +1884,6 @@ function buildArena(){
     const rail = new THREE.Mesh(new THREE.BoxGeometry(.1,1.1,COURT_L*.92),railMat);
     rail.position.set(side*(COURT_W/2+3.35),.74,0); rail.castShadow = true; scene.add(rail);
   }
-  for(let i=0;i<6;i++){
-    const stair = new THREE.Mesh(new THREE.BoxGeometry(1.2,.18,1.6),new THREE.MeshStandardMaterial({color:0x232f40,roughness:.85}));
-    stair.position.set(0,.1+i*.13,-13.6+i*.86);
-    scene.add(stair);
-  }
 }
 
 function buildArenaWalls(){
@@ -2304,6 +2299,7 @@ function buildHoop(){
   targetSq.position.set(HOOP_POS.x,HOOP_POS.y + 0.16,backboard.position.z + 0.056); scene.add(targetSq);
   const polePad = new THREE.Mesh(new THREE.BoxGeometry(.48,1.05,.44),new THREE.MeshStandardMaterial({color:0x263d5f,roughness:.58}));
   polePad.position.set(HOOP_POS.x,.56,hoopBaseZ + 0.02); scene.add(polePad);
+  // Clean single-piece hoop base; replaces old stacked step blocks.
   const basePad = new THREE.Mesh(new THREE.BoxGeometry(.8,.34,.62),new THREE.MeshStandardMaterial({color:0x16263d,roughness:.64}));
   basePad.position.set(HOOP_POS.x,.17,hoopBaseZ - 0.06); scene.add(basePad);
 
