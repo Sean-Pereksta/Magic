@@ -2562,25 +2562,25 @@ function createCharacter(profile,pos,id){
   num.scale.set(.45,.22,.22);
   group.add(num);
 
-  const leftArm = makeLimb(.125*w,.58*h*limbLong,skin,.1*w*shoulderScale);
-  leftArm.position.set(-.44*w*shoulderScale,1.45*h,0);
+  const leftArm = makeLimb(.118*w,.52*h*limbLong,skin,.095*w*shoulderScale);
+  leftArm.position.set(-.42*w*shoulderScale,1.52*h,-.01);
   leftArm.rotation.z = -.35;
   group.add(leftArm);
   const leftShoulder = new THREE.Mesh(new THREE.SphereGeometry(.09*w,10,10),jersey);
   leftShoulder.position.set(-.35*w*shoulderScale,1.57*h,0); leftShoulder.scale.set(1.2,.9,1); group.add(leftShoulder);
 
-  const rightArm = makeLimb(.125*w,.58*h*limbLong,skin,.1*w*shoulderScale);
-  rightArm.position.set(.44*w*shoulderScale,1.45*h,0);
+  const rightArm = makeLimb(.118*w,.52*h*limbLong,skin,.095*w*shoulderScale);
+  rightArm.position.set(.42*w*shoulderScale,1.52*h,-.01);
   rightArm.rotation.z = .35;
   group.add(rightArm);
   const rightShoulder = leftShoulder.clone(); rightShoulder.position.x = .35*w*shoulderScale; group.add(rightShoulder);
 
-  const leftForearm = makeLimb(.094*w,.5*h*limbLong,skin,.074*w);
-  leftForearm.position.set(-.64*w,1*h,.05);
+  const leftForearm = makeLimb(.088*w,.46*h*limbLong,skin,.07*w);
+  leftForearm.position.set(-.56*w,1.12*h,.02);
   group.add(leftForearm);
 
-  const rightForearm = makeLimb(.094*w,.5*h*limbLong,skin,.074*w);
-  rightForearm.position.set(.64*w,1*h,.05);
+  const rightForearm = makeLimb(.088*w,.46*h*limbLong,skin,.07*w);
+  rightForearm.position.set(.56*w,1.12*h,.02);
   group.add(rightForearm);
 
   const leftHand = new THREE.Mesh(new THREE.SphereGeometry(.11*w,14,14),skin);
@@ -2596,26 +2596,26 @@ function createCharacter(profile,pos,id){
   group.add(rightHand);
   const rightThumb = leftThumb.clone(); rightThumb.position.x = .71*w; rightThumb.rotation.z = -.7; group.add(rightThumb);
 
-  const leftLeg = makeLimb(.145*w,.38*h*legSpring,shorts,.108*w);
-  leftLeg.position.set(-.18*w,.62*h,0);
+  const leftLeg = makeLimb(.14*w,.42*h*legSpring,shorts,.102*w);
+  leftLeg.position.set(-.19*w,.66*h,0);
   group.add(leftLeg);
   const leftKnee = new THREE.Mesh(new THREE.SphereGeometry(.075*w,10,10),new THREE.MeshStandardMaterial({color:profile.skin,roughness:.62}));
   leftKnee.position.set(-.18*w,.41*h,.02); leftKnee.scale.set(1,.75,1); group.add(leftKnee);
-  const leftCalf = makeLimb(.108*w,.36*h*legSpring,new THREE.MeshStandardMaterial({color:profile.skin,roughness:.62}),.085*w);
-  leftCalf.position.set(-.18*w,.28*h,.01); group.add(leftCalf);
+  const leftCalf = makeLimb(.102*w,.4*h*legSpring,new THREE.MeshStandardMaterial({color:profile.skin,roughness:.62}),.08*w);
+  leftCalf.position.set(-.19*w,.29*h,.02); group.add(leftCalf);
 
-  const rightLeg = makeLimb(.145*w,.38*h*legSpring,shorts,.108*w);
-  rightLeg.position.set(.18*w,.62*h,0);
+  const rightLeg = makeLimb(.14*w,.42*h*legSpring,shorts,.102*w);
+  rightLeg.position.set(.19*w,.66*h,0);
   group.add(rightLeg);
-  const rightKnee = leftKnee.clone(); rightKnee.position.x = .18*w; group.add(rightKnee);
-  const rightCalf = leftCalf.clone(); rightCalf.position.x = .18*w; group.add(rightCalf);
+  const rightKnee = leftKnee.clone(); rightKnee.position.x = .19*w; group.add(rightKnee);
+  const rightCalf = leftCalf.clone(); rightCalf.position.x = .19*w; group.add(rightCalf);
 
-  const leftShoe = new THREE.Mesh(new THREE.BoxGeometry(.32*w,.12,.48*w),shoeMat);
-  leftShoe.position.set(-.18*w,.08,.12*w);
+  const leftShoe = new THREE.Mesh(new THREE.BoxGeometry(.36*w,.14,.54*w),shoeMat);
+  leftShoe.position.set(-.19*w,.085,.14*w);
   group.add(leftShoe);
 
   const rightShoe = leftShoe.clone();
-  rightShoe.position.x = .18*w;
+  rightShoe.position.x = .19*w;
   group.add(rightShoe);
   const hookIndicator = createHookIndicator();
   group.add(hookIndicator);
@@ -2625,8 +2625,8 @@ function createCharacter(profile,pos,id){
   addPlayerAccessories({profile,group,w,h,leftArm,rightArm,leftLeg,rightLeg});
 
   const shadow = new THREE.Mesh(
-    new THREE.CircleGeometry(.72*w,32),
-    new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:.22})
+    new THREE.CircleGeometry(.82*w,36),
+    new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:.34,depthWrite:false})
   );
   shadow.rotation.x = -Math.PI/2;
   shadow.position.y = .012;
@@ -2641,7 +2641,7 @@ function createCharacter(profile,pos,id){
     jumpCooldown:0,
     sprint:1,
     bodyRadius:.55*w,
-    leftArm,rightArm,leftForearm,rightForearm,leftHand,rightHand,leftLeg,rightLeg,leftShoe,rightShoe,torso,
+    leftArm,rightArm,leftForearm,rightForearm,leftHand,rightHand,leftLeg,rightLeg,leftShoe,rightShoe,torso,head,shadow,
     hasBall:id==="p1",
     dribbleBounce:0,
     swipeSide:null,
@@ -2683,7 +2683,7 @@ function createCharacter(profile,pos,id){
     contactFinishBonusOrPenalty:0,
     bodyUpTimer:0,
     lastContestLabel:"Open",
-    anim:{runCycle:0,lean:0,targetLean:0,armBlend:0,legBlend:0,walkBlend:0,sprintBlend:0,backpedalBlend:0,turnLean:0,verticalBob:0,landingTimer:0,strideStrength:0,torsoTwist:0,landingSquash:0,contactReact:0,shotFollowThrough:0,sideLean:0,legKick:0,fadeLean:0,hookWindup:0,hookRelease:0,defenseStanceBlend:0,shuffleCycle:0,cutoffLean:0,cutPlant:0,cutDir:0},
+    anim:{runCycle:0,lean:0,targetLean:0,armBlend:0,legBlend:0,walkBlend:0,sprintBlend:0,backpedalBlend:0,turnLean:0,verticalBob:0,landingTimer:0,strideStrength:0,torsoTwist:0,landingSquash:0,contactReact:0,shotFollowThrough:0,sideLean:0,legKick:0,fadeLean:0,hookWindup:0,hookRelease:0,defenseStanceBlend:0,shuffleCycle:0,cutoffLean:0,cutPlant:0,cutDir:0,lookYaw:0,headYaw:0},
     takeover:0,takeoverActive:false,takeoverTimer:0,stamina:1,dribbleStyle:"normal",stats:{fga:0,fgm:0,tpa:0,tpm:0,blocks:0,steals:0,turnovers:0,ankle:0,perfect:0},
     movement:{
       acceleration:5.2 * (1 + (profile.speed-1)*.7),
@@ -3262,6 +3262,9 @@ function canStartDunk(player){ return canDunk(player); }
 function setAnimationState(char,state){
   char.anim.targetLean = state === "backpedal" ? -.12 : state === "run" ? .12 : 0;
 }
+const maxForwardLean = 0.22;
+const maxSideLean = 0.18;
+const maxBackLean = 0.12;
 
 function updateAnimationBlend(char,dt){
   const speed = char.velocity.length();
@@ -3294,7 +3297,7 @@ function updateAnimationBlend(char,dt){
   const shuffleTarget = defending ? THREE.MathUtils.clamp(strafeDot * (1-sprintTarget) * walkTarget,0,1) : 0;
   char.anim.shuffleCycle = (char.anim.shuffleCycle||0) + dt * THREE.MathUtils.lerp(2.2,7.2,shuffleTarget);
   char.anim.cutoffLean = smoothAnimValue(char.anim.cutoffLean||0,defending ? (char.defensiveShadeSide==="left"?-1:char.defensiveShadeSide==="right"?1:0) : 0,7,dt);
-  char.anim.targetLean = char.anim.sprintBlend * 0.25 + char.anim.walkBlend * 0.08 - char.anim.backpedalBlend * 0.08 - char.anim.defenseStanceBlend*0.06;
+  char.anim.targetLean = THREE.MathUtils.clamp(char.anim.sprintBlend * 0.2 + char.anim.walkBlend * 0.06 - char.anim.backpedalBlend * 0.06 - char.anim.defenseStanceBlend*0.04,-maxBackLean,maxForwardLean);
   char.anim.lean = smoothAnimValue(char.anim.lean,char.anim.targetLean,8,dt);
   const sharpTurn = moving ? THREE.MathUtils.clamp((strafeDot - 0.35) / 0.5,0,1) * THREE.MathUtils.clamp(speed/5,0,1) : 0;
   const cutDir = sharpTurn > 0.08 ? (lateralDot < 0 ? -1 : 1) : 0;
@@ -3309,16 +3312,15 @@ function updateAnimationBlend(char,dt){
 function animateTorsoLean(char,dt){
   const fadeLean = char.anim.fadeLean || 0;
   const cutPlant = char.anim.cutPlant || 0;
-  const sideLeanRaw = (char.anim.sideLean || 0) * -0.13 + fadeLean * -0.05 + (char.anim.turnLean || 0) * -0.05 + (char.anim.cutDir || 0) * cutPlant * -0.035;
+  const sideLeanRaw = (char.anim.sideLean || 0) * -0.1 + fadeLean * -0.04 + (char.anim.turnLean || 0) * -0.04 + (char.anim.cutDir || 0) * cutPlant * -0.03;
   const forwardLeanRaw = -char.anim.lean + char.anim.contactReact*.05 + cutPlant*0.02;
-  const fadeForwardCap = Math.abs(fadeLean) > 0.08 ? 0.18 : 0.16;
-  const clampedForwardLean = clampLean(forwardLeanRaw,-0.14,fadeForwardCap);
-  const clampedSideLean = clampLean(sideLeanRaw,-0.12,0.12);
+  const clampedForwardLean = THREE.MathUtils.clamp(forwardLeanRaw,-maxBackLean,maxForwardLean);
+  const clampedSideLean = THREE.MathUtils.clamp(sideLeanRaw,-maxSideLean,maxSideLean);
   char.group.rotation.x = smoothAnimValue(char.group.rotation.x,clampedForwardLean,11,dt);
   char.group.rotation.z = smoothAnimValue(char.group.rotation.z,clampedSideLean,12,dt);
   if(char.torso){
-    const torsoSide = (char.anim.turnLean || 0) * -0.05 + (char.anim.cutDir || 0) * cutPlant * -0.04;
-    const torsoForward = clampLean((char.anim.sprintBlend || 0)*0.05 - (char.anim.backpedalBlend || 0)*0.03,-0.06,0.08);
+    const torsoSide = THREE.MathUtils.clamp((char.anim.turnLean || 0) * -0.04 + (char.anim.cutDir || 0) * cutPlant * -0.03,-0.12,0.12);
+    const torsoForward = THREE.MathUtils.clamp((char.anim.sprintBlend || 0)*0.04 - (char.anim.backpedalBlend || 0)*0.02,-0.06,0.08);
     char.torso.rotation.z = smoothAnimValue(char.torso.rotation.z,torsoSide,10,dt);
     char.torso.rotation.x = smoothAnimValue(char.torso.rotation.x,torsoForward,9,dt);
   }
@@ -3359,12 +3361,12 @@ function animateContactReaction(char,dt){
 function resetArmDefaults(char){
   const w = char.profile.width;
   const h = char.profile.height;
-  char.leftArm.position.set(-.46*w,1.45*h,0);
-  char.rightArm.position.set(.46*w,1.45*h,0);
-  char.leftForearm.position.set(-.64*w,1*h,.05);
-  char.rightForearm.position.set(.64*w,1*h,.05);
-  char.leftHand.position.set(-.65*w,.72*h,.07);
-  char.rightHand.position.set(.65*w,.72*h,.07);
+  char.leftArm.position.set(-.42*w,1.52*h,-.01);
+  char.rightArm.position.set(.42*w,1.52*h,-.01);
+  char.leftForearm.position.set(-.56*w,1.12*h,.02);
+  char.rightForearm.position.set(.56*w,1.12*h,.02);
+  char.leftHand.position.set(-.57*w,.84*h,.06);
+  char.rightHand.position.set(.57*w,.84*h,.06);
   char.leftArm.rotation.set(0,0,-.35);
   char.rightArm.rotation.set(0,0,.35);
   char.leftForearm.rotation.set(0,0,-.1);
@@ -4870,6 +4872,7 @@ function animateCharacter(char,dt){
   updateDribbleStyle(char,dt);
 
   animateRunCycle(char,dt);
+  updatePlayerLookAndShadow(char,dt);
 
   resetArmDefaults(char);
   if(char.onGround) char.group.position.y = Math.max(0,char.visualJumpY || 0);
@@ -5010,6 +5013,23 @@ function getDribbleHandPosition(char){
   return {x:width + beat*.02,z:depth + Math.max(0,-beat)*-.12};
 }
 function animateProtectDribble(char,dt){ char.rightArm.rotation.y = .3; }
+function updatePlayerLookAndShadow(char,dt){
+  const defender = char.id === "p1" ? p2 : p1;
+  const lookTarget = possession === char.id
+    ? (char.velocity.length() > 0.45 ? char.group.position.clone().add(char.velocity.clone().setY(0)) : HOOP_POS.clone())
+    : (defender && defender.hasBall ? defender.group.position.clone() : ball.position.clone());
+  const dx = lookTarget.x - char.group.position.x;
+  const dz = lookTarget.z - char.group.position.z;
+  const lookYaw = Math.atan2(dx,dz) - char.angle;
+  const targetHeadYaw = THREE.MathUtils.clamp(lookYaw,-0.5,0.5);
+  char.anim.headYaw = smoothAnimValue(char.anim.headYaw || 0,targetHeadYaw,5,dt);
+  if(char.head) char.head.rotation.y = char.anim.headYaw;
+  if(char.shadow){
+    const airborne = char.group.position.y > 0.2;
+    char.shadow.scale.set(airborne ? 0.9 : 1.15,airborne ? 0.65 : 0.82,airborne ? 0.9 : 1.15);
+    char.shadow.material.opacity = airborne ? 0.18 : 0.34;
+  }
+}
 function animateHesitationDribble(char,dt){ char.anim.targetLean = Math.sin(char.dribbleBounce)>0 ? -.04 : .18; }
 function animateLowCrossover(char,dt){ char.leftHand.position.y = Math.min(char.leftHand.position.y,.58*char.profile.height); char.rightHand.position.y = Math.min(char.rightHand.position.y,.58*char.profile.height); }
 function animateGatherBall(char,pct,type){
@@ -5061,7 +5081,9 @@ function animateDefensiveStance(char,dt){
   char.group.scale.y = Math.max(.9,1 - stance*.06);
   char.group.rotation.x = clampLean(char.group.rotation.x + 0.03 + stance*0.05,-0.14,0.16);
   const shadeDir = char.defensiveShadeSide === "left" ? -1 : char.defensiveShadeSide === "right" ? 1 : 0;
-  char.leftLeg.rotation.z = -.18 - stance*0.12; char.rightLeg.rotation.z = .18 + stance*0.12;
+  char.leftLeg.rotation.z = -.16 - stance*0.1; char.rightLeg.rotation.z = .16 + stance*0.1;
+  char.leftLeg.rotation.x += stance*0.12;
+  char.rightLeg.rotation.x += stance*0.12;
   char.leftShoe.position.x = (char.leftShoe.userData.base?.x || char.leftShoe.position.x) - stance*0.02;
   char.rightShoe.position.x = (char.rightShoe.userData.base?.x || char.rightShoe.position.x) + stance*0.02;
   if(stance > .08){
@@ -5070,8 +5092,8 @@ function animateDefensiveStance(char,dt){
     char.rightShoe.position.z -= slide;
   }
   if(shadeDir){
-    char.leftArm.rotation.z = -0.58 - shadeDir*0.08;
-    char.rightArm.rotation.z = 0.58 - shadeDir*0.08;
+    char.leftArm.rotation.z = -0.5 - shadeDir*0.08;
+    char.rightArm.rotation.z = 0.5 - shadeDir*0.08;
     char.group.rotation.x = clampLean(Math.max(char.group.rotation.x,0.05 + char.defensiveShadeTime*0.04 + stance*0.05),-0.14,0.16);
     char.group.rotation.z = clampLean(char.group.rotation.z + cutoffLean * 0.03,-0.12,0.12);
   }
