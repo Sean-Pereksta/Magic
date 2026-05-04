@@ -358,9 +358,6 @@
           <label>Checklist dock
             <select id="checkDockSel" style="min-width:320px"></select>
           </label>
-          <label>Correctives dock
-            <select id="correctiveDockSel" style="min-width:320px"></select>
-          </label>
           <button id="loadDocksBtn">Load docks</button>
         </div>
         <div class="row" style="margin-top:10px">
@@ -528,7 +525,6 @@ const els = {
   referralDockSel: document.getElementById('referralDockSel'),
   qaDockSel: document.getElementById('qaDockSel'),
   checkDockSel: document.getElementById('checkDockSel'),
-  correctiveDockSel: document.getElementById('correctiveDockSel'),
   loadDocksBtn: document.getElementById('loadDocksBtn'),
   complimentFile: document.getElementById('complimentFile'),
   complimentFileHint: document.getElementById('complimentFileHint'),
@@ -553,7 +549,6 @@ let retailDockKey = '';
 let referralDockKey = '';
 let qaDockKey = '';
 let checkDockKey = '';
-let correctiveDockKey = '';
 
 let retailRows = [];
 let referralRows = [];
@@ -562,7 +557,6 @@ let checklistRows = [];
 let complimentWorkbook = null;
 let complimentSheetName = '';
 let complimentRows = [];
-let correctiveRows = [];
 
 let retailFieldMap = null;
 let referralFieldMap = null;
@@ -963,26 +957,10 @@ function findQADockCandidates(){
   return Array.from(new Set([...preferred, ...fallback])).sort((a,b)=>a.localeCompare(b));
 }
 
-function findCorrectiveDockCandidates(){
-  const out = [];
-  for(let i=0;i<localStorage.length;i++){
-    const k = localStorage.key(i);
-    if(!k) continue;
-    const lk = k.toLowerCase();
-    if(
-      lk.includes('.dock.corrective') ||
-      lk.includes('.dock.correctives') ||
-      lk.includes('corrective') ||
-      lk.includes('correctives')
-    ) out.push(k);
-  }
-  return Array.from(new Set(out)).sort((a,b)=>a.localeCompare(b));
-}
-
 function pickBestKey(kind){
   const preferred = `${APP_NS}.dock.${kind}`;
   if(localStorage.getItem(preferred)) return preferred;
-  const cands = kind === 'qa' ? findQADockCandidates() : (kind === 'corrective' ? findCorrectiveDockCandidates() : findDockCandidates(kind));
+  const cands = kind === 'qa' ? findQADockCandidates() : findDockCandidates(kind);
   return cands[0] || preferred || '';
 }
 function populateDockSelects(){
@@ -1011,12 +989,6 @@ function populateDockSelects(){
   else if(checkCands.length){ checkDockKey = checkCands[0]; els.checkDockSel.value = checkDockKey; }
 
 
-  const correctivePreferred = [`${APP_NS}.dock.correctives`, `${APP_NS}.dock.corrective`].find(k=>localStorage.getItem(k));
-  const correctiveCands = Array.from(new Set([correctivePreferred || pickBestKey('corrective'), ...findCorrectiveDockCandidates()].filter(Boolean)));
-  els.correctiveDockSel.innerHTML = correctiveCands.map(k=>`<option value="${esc(k)}">${esc(k)}</option>`).join('');
-  correctiveDockKey = correctiveDockKey || pickBestKey('corrective');
-  if(correctiveCands.includes(correctiveDockKey)) els.correctiveDockSel.value = correctiveDockKey;
-  else if(correctiveCands.length){ correctiveDockKey = correctiveCands[0]; els.correctiveDockSel.value = correctiveDockKey; }
 
   els.dockHint.textContent = `APP_NS: ${APP_NS}`;
 }
@@ -1108,10 +1080,12 @@ function canonicalizeQA(dockObj){
 function looksLikeChecklistRow(obj){
   if(!obj || typeof obj !== 'object') return false;
   const nk = Object.keys(obj).map(normHdr);
-  const hasRep = nk.includes('associatename') || nk.includes('associate') || nk.includes('name') || nk.includes('rep');
+  const hasRep = nk.includes('associatename') || nk.includes('associate') || nk.includes('name') || nk.includes('rep') || nk.includes('agentname') || nk.includes('agent');
   const hasIncident = nk.includes('incident') || nk.includes('incidenttype') || nk.includes('incidentcategory');
-  const hasDate = nk.includes('incidentdate') || nk.includes('date') || nk.includes('dt') || nk.includes('day');
-  return hasRep && hasIncident && hasDate;
+  const hasIncidentDate = nk.includes('incidentdate') || nk.includes('date') || nk.includes('dt') || nk.includes('day');
+  const hasCorrective = nk.includes('corrective') || nk.includes('correctivetype') || nk.includes('correctiveaction') || nk.includes('discipline') || nk.includes('status');
+  const hasDateServed = nk.includes('dateserved') || nk.includes('serveddate') || nk.includes('correctivedateserved') || nk.includes('correctivedate') || nk.includes('datecorrectiveserved');
+  return hasRep && ((hasIncident && hasIncidentDate) || (hasCorrective && hasDateServed));
 }
 function canonicalizeChecklistRows(dockObj){
   if(!dockObj) return [];
@@ -1120,22 +1094,32 @@ function canonicalizeChecklistRows(dockObj){
   for(const pack of arrays){
     for(const r of pack.rows){
       if(!looksLikeChecklistRow(r)) continue;
-      const repRaw = pickFieldFromRow(r, ['associatename','associate','name','rep']);
+      const repRaw = pickFieldFromRow(r, ['associatename','associate','name','rep','agentname','agent']);
       const incidentRaw = pickFieldFromRow(r, ['incident','incidenttype','incidentcategory','type']);
       const dateRaw = pickFieldFromRow(r, ['incidentdate','date','dt','day']);
-      const actionRaw = pickFieldFromRow(r, ['actiontaken','action','resolution','status']);
+      const actionRaw = pickFieldFromRow(r, ['actiontaken','action','resolution']);
+      const dateServedRaw = pickFieldFromRow(r, ['dateserved','serveddate','correctivedateserved','correctivedate','datecorrectiveserved']);
+      const correctiveRaw = pickFieldFromRow(r, ['corrective','correctivetype','correctiveaction','discipline','status']);
       const teamRaw = pickFieldFromRow(r, ['team','sheet','coach','jobcoach','coachassigned']);
       const rep = displayNameFromRaw(repRaw || '');
       const repKey = personKey(rep || repRaw);
-      const date = parseDate(dateRaw);
-      if(!rep || !repKey || !date || !incidentRaw) continue;
+      const incidentDate = parseDate(dateRaw);
+      const dateServed = parseDate(dateServedRaw);
+      const incident = String(incidentRaw ?? '').trim();
+      const corrective = String(correctiveRaw ?? '').trim();
+      const hasAttendanceFields = incidentDate && incident;
+      const hasCorrectiveFields = dateServed && corrective;
+      if(!rep || !repKey) continue;
+      if(!hasAttendanceFields && !hasCorrectiveFields) continue;
       out.push({
         ...r,
         rep,
         repKey,
-        date,
-        incident:String(incidentRaw ?? '').trim(),
+        date: incidentDate,
+        dateServed,
+        incident,
         actionTaken:String(actionRaw ?? '').trim(),
+        corrective,
         teamHint:String(teamRaw ?? '').trim()
       });
     }
@@ -1144,55 +1128,6 @@ function canonicalizeChecklistRows(dockObj){
 }
 
 
-function canonicalizeCorrectiveRows(dockObj){
-  if(!dockObj) return [];
-  const arrays = extractRowArrays(dockObj, '');
-  const out = [];
-
-  for(const pack of arrays){
-    for(const r of pack.rows){
-      if(!r || typeof r !== 'object') continue;
-
-      const repRaw = pickFieldFromRow(r, [
-        'associatename','associate','name','rep','representative','employee','csr','agent','agentname'
-      ]);
-
-      const dateRaw = pickFieldFromRow(r, [
-        'dateserved','serveddate','correctivedateserved','correctivedate'
-      ]);
-      const correctiveRaw = pickFieldFromRow(r, [
-        'corrective','correctivetype','correctiveaction','action','actiontaken','status'
-      ]);
-
-      const rep = displayNameFromRaw(repRaw || '');
-      const repKey = personKey(rep || repRaw);
-      const date = parseDate(dateRaw);
-      if(!rep || !repKey || !date) continue;
-
-      const correctiveText = String(correctiveRaw ?? '').trim();
-      const correctiveMatch = correctiveText.match(/\b(verbal|written|final)\b/i);
-      if(!correctiveMatch) continue;
-
-      out.push({
-        ...r,
-        rep,
-        repKey,
-        date,
-        corrective: correctiveText,
-        correctiveType: correctiveMatch[1],
-        teamHint: String(pickFieldFromRow(r, ['team','sheet','coach','jobcoach','coachassigned']) ?? pack.sheetName ?? '').trim()
-      });
-    }
-  }
-
-  return out;
-}
-
-function loadCorrectives(){
-  correctiveDockKey = els.correctiveDockSel?.value || correctiveDockKey || '';
-  const obj = loadDockObjByKey(correctiveDockKey);
-  correctiveRows = canonicalizeCorrectiveRows(obj);
-}
 
 function loadRetail(){
   retailDockKey = els.retailDockSel.value || retailDockKey || pickBestKey('retail');
@@ -1222,8 +1157,8 @@ function initDates(){
     ...referralRows.map(r=>r._d),
     ...qaRows.map(r=>r.startDate),
     ...checklistRows.map(r=>r.date),
-    ...complimentRows.map(r=>r.callDate),
-    ...correctiveRows.map(r=>r.date)
+    ...checklistRows.map(r=>r.dateServed),
+    ...complimentRows.map(r=>r.callDate)
   ].filter(d => d instanceof Date && !isNaN(d));
   const today = new Date();
   const end = dates.length ? new Date(Math.max(...dates.map(d=>d.getTime()))) : today;
@@ -1245,6 +1180,10 @@ function isAttendanceHit(item){
   const act = String(item.actionTaken || '').toLowerCase();
   return (inc.includes('absent') || inc.includes('tardy')) && act.includes('addressed');
 }
+function isCorrectiveHit(item){
+  const corrective = String(item.corrective || '').trim();
+  return /\b(verbal|written|final)\b/i.test(corrective);
+}
 
 function buildSectionData(rows, fieldMap, type){
   const { sd, ed } = getWindow();
@@ -1252,7 +1191,7 @@ function buildSectionData(rows, fieldMap, type){
   const qaWindow = qaRows.filter(r => inRange(r.startDate, sd, ed));
   const checklistWindow = checklistRows.filter(r => inRange(r.date, sd, ed));
   const complimentWindow = complimentRows.filter(r => inRange(r.callDate, sd, ed));
-  const correctiveWindow = correctiveRows.filter(r => inRange(r.date, sd, ed));
+  const correctiveWindow = checklistRows.filter(r => inRange(r.dateServed, sd, ed) && isCorrectiveHit(r));
 
   const teamNames = Array.from(new Set(statRows.map(r => String(r.Team||'').trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
   const teams = [];
@@ -1676,7 +1615,6 @@ function savePrefs(){
       referralDockKey,
       qaDockKey,
       checkDockKey,
-      correctiveDockKey,
       complimentSheetName,
       startDate: els.startDate.value || '',
       endDate: els.endDate.value || '',
@@ -1693,7 +1631,6 @@ function loadPrefs(){
     if(typeof p.referralDockKey === 'string') referralDockKey = p.referralDockKey;
     if(typeof p.qaDockKey === 'string') qaDockKey = p.qaDockKey;
     if(typeof p.checkDockKey === 'string') checkDockKey = p.checkDockKey;
-    if(typeof p.correctiveDockKey === 'string') correctiveDockKey = p.correctiveDockKey;
     if(typeof p.complimentSheetName === 'string') complimentSheetName = p.complimentSheetName;
     if(typeof p.startDate === 'string') els.startDate.value = p.startDate;
     if(typeof p.endDate === 'string') els.endDate.value = p.endDate;
@@ -1706,14 +1643,13 @@ function fullLoad(){
   referralDockKey = els.referralDockSel.value || referralDockKey || pickBestKey('referral');
   qaDockKey = els.qaDockSel.value || qaDockKey || pickBestKey('qa');
   checkDockKey = els.checkDockSel.value || checkDockKey || pickBestKey('checklist');
-  correctiveDockKey = els.correctiveDockSel?.value || correctiveDockKey || '';
 
   loadRetail();
   loadReferral();
   loadQA();
   loadChecklist();
-  loadCorrectives();
-  els.dockHint.textContent = `Retail rows: ${retailRows.length} • Referral rows: ${referralRows.length} • QA rows: ${qaRows.length} • Checklist rows: ${checklistRows.length} • Correctives rows: ${correctiveRows.length}`;
+  const correctiveChecklistCount = checklistRows.filter(isCorrectiveHit).length;
+  els.dockHint.textContent = `Retail rows: ${retailRows.length} • Referral rows: ${referralRows.length} • QA rows: ${qaRows.length} • Checklist rows: ${checklistRows.length} • Corrective hits in checklist: ${correctiveChecklistCount}`;
   initDates();
   savePrefs();
   setActiveTab(activeTab);
@@ -1783,7 +1719,6 @@ els.retailDockSel.addEventListener('change', ()=>{ retailDockKey = els.retailDoc
 els.referralDockSel.addEventListener('change', ()=>{ referralDockKey = els.referralDockSel.value; savePrefs(); });
 els.qaDockSel.addEventListener('change', ()=>{ qaDockKey = els.qaDockSel.value; savePrefs(); });
 els.checkDockSel.addEventListener('change', ()=>{ checkDockKey = els.checkDockSel.value; savePrefs(); });
-els.correctiveDockSel.addEventListener('change', ()=>{ correctiveDockKey = els.correctiveDockSel.value; savePrefs(); });
 </script>
 </body>
 </html>
