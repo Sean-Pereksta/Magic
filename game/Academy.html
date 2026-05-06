@@ -2681,56 +2681,98 @@ function createBoostPads(map){
   });
 }
 function generateRampsForMap(map){
-  if(map.ramps?.length) return map.ramps;
-  return [0.24,0.58,0.81].map((t,i)=>({t,laneOffset:(i-1)*trackWidth*0.2,width:12,length:14,height:3.8,boost:0.4}));
+  const normalizeRampDef = (def = {}) => ({
+    ...def,
+    width: Math.max(def.width || 14, 12),
+    length: Math.max(def.length || 24, 18),
+    height: Math.max(def.height || 7, 5),
+    boost: def.boost ?? 0.65,
+    launchPower: def.launchPower ?? 1.15
+  });
+  if(map.ramps?.length) return map.ramps.map(normalizeRampDef);
+  return [0.24,0.58,0.81].map((t,i)=>normalizeRampDef({
+    t,
+    laneOffset:(i-1)*trackWidth*0.2,
+    width:14+Math.random()*6,
+    length:22+Math.random()*12,
+    height:6+Math.random()*6,
+    boost:0.55+Math.random()*0.45,
+    launchPower:1.0+Math.random()*0.8
+  }));
 }
 function createRamps(map){
   ramps = generateRampsForMap(map).map((def,idx)=>{
     const placed = getTrackPlacedObject(def); const g=new THREE.Group();
-    const base=new THREE.Mesh(new THREE.BoxGeometry(def.width||12,0.6,def.length||14),new THREE.MeshStandardMaterial({color:0x595959,roughness:0.8})); base.position.y=0.25; g.add(base);
-    const slope=new THREE.Mesh(new THREE.BoxGeometry((def.width||12)-1.4,0.4,def.length||14),new THREE.MeshStandardMaterial({color:0x8e8e8e,emissive:0x303030,emissiveIntensity:0.5})); slope.rotation.x=-0.22; slope.position.set(0,1.0,-1.2); g.add(slope);
-    for(const side of [-1,1]){const rail=new THREE.Mesh(new THREE.BoxGeometry(0.4,1.1,def.length||14),new THREE.MeshStandardMaterial({color:0xffcc44,emissive:0x553300})); rail.position.set(side*((def.width||12)*0.5),0.8,0); g.add(rail);}
-    g.position.copy(placed.center); g.rotation.y=placed.angle; scene.add(g);
-    return {...def,group:g,triggerRadius:(def.width||12)*0.52};
+    const width = def.width || 14;
+    const length = def.length || 24;
+    const height = def.height || 7;
+    const base=new THREE.Mesh(new THREE.BoxGeometry(width,0.85,length),new THREE.MeshStandardMaterial({color:0x595959,roughness:0.78})); base.position.y=0.35; g.add(base);
+    const slope=new THREE.Mesh(new THREE.BoxGeometry(Math.max(8,width-1.6),0.58,length),new THREE.MeshStandardMaterial({color:0x9a9a9a,emissive:0x383838,emissiveIntensity:0.55})); slope.rotation.x=-0.3; slope.position.set(0,1.4 + height*0.05,-0.8); g.add(slope);
+    for(let i=0;i<4;i++){ const ch = new THREE.Mesh(new THREE.BoxGeometry(width*0.18,0.06,2.2), new THREE.MeshStandardMaterial({color:0xffffff,emissive:0xffe7a0,emissiveIntensity:0.82})); ch.position.set(0,2 + i*0.12,length*0.42-i*3.3); ch.rotation.x=-0.3; g.add(ch); }
+    for(const side of [-1,1]){const rail=new THREE.Mesh(new THREE.BoxGeometry(0.48,1.45,length),new THREE.MeshStandardMaterial({color:0xffcc44,emissive:0x664000,emissiveIntensity:0.5})); rail.position.set(side*(width*0.5),1.1,0); g.add(rail);}
+    const lip = new THREE.Mesh(new THREE.BoxGeometry(width*0.9,0.16,0.52), new THREE.MeshStandardMaterial({color:0xfff2b0,emissive:0xffb950,emissiveIntensity:1.15}));
+    lip.position.set(0,2.2 + height*0.07,length*0.48); lip.rotation.x=-0.3; g.add(lip);
+    g.position.copy(placed.center); g.position.y = getRoadHeightAtT(placed.t); g.rotation.y=placed.angle; scene.add(g);
+    return {...def,group:g,triggerRadius:Math.max(width*0.65,length*0.42)};
   });
 }
-function updateBoostPads(dt){
-  const t = performance.now()*0.004;
-  boostPads.forEach((pad,idx)=>{
-    if(!pad.group) return;
-    pad.group.children.forEach((c,i)=>{ if(i>0) c.position.y = 0.22 + Math.sin(t + idx + i)*0.03; });
-    racers.forEach(r=>{
-      const last=pad.cooldowns.get(r)||0; if(last>0){ pad.cooldowns.set(r,last-dt); return; }
-      if(r.position.distanceTo(pad.group.position)<pad.triggerRadius){
-        const f=getForwardVector(r);
-        r.boostTimer=Math.max(r.boostTimer,pad.duration||0.9);
-        r.velocity.add(f.multiplyScalar((pad.strength||1.15)*8.5));
-        const maxBumped = r.maxSpeed * currentCC.speedMultiplier * 1.85;
-        r.speed = THREE.MathUtils.clamp(r.speed + (pad.strength||1.1)*9,-18,maxBumped);
-        burstParticles(r.position.clone().add(getForwardVector(r).multiplyScalar(-4)),0x88ddff,8,0.55,{gravity:5,life:[0.15,0.4],size:[0.1,0.2]});
-        if(r.isPlayer) r.hitShakeTimer=Math.max(r.hitShakeTimer,0.08);
-        pad.cooldowns.set(r,0.55);
-      }
-    });
-  });
+function landRacerFromJump(racer) {
+  const jumpHeight = racer.maxAirHeightThisJump || 0;
+  racer.airborneTimer = 0;
+  racer.airHeight = 0;
+  racer.verticalVelocity = 0;
+  const bigJump = jumpHeight > 8;
+  const hugeJump = jumpHeight > 14;
+  burstParticles(racer.position,bigJump ? 0xf0e0c0 : 0xd8d8d8,hugeJump ? 24 : bigJump ? 16 : 10,bigJump ? 0.75 : 0.4,{gravity:8,life:[0.2,0.55],size:[0.14,bigJump ? 0.42 : 0.24]});
+  if (racer.airTrickReady) {
+    const trickBoost = bigJump ? 0.78 : 0.45;
+    racer.boostTimer = Math.max(racer.boostTimer, trickBoost * racer.boostStrength);
+    racer.speed += bigJump ? 5 : 2.5;
+    racer.airTrickReady = false;
+  } else if (bigJump) racer.speed *= 0.965;
+  if (bigJump && Math.abs(racer.lastTurnInput || 0) > 0.38) {
+    racer.speed *= 0.985;
+    racer.spinTimer = Math.max(racer.spinTimer, hugeJump ? 0.08 : 0.04);
+  }
+  if (bigJump && racer.isPlayer) racer.hitShakeTimer=Math.max(racer.hitShakeTimer,hugeJump ? 0.22 : 0.14);
+  racer.maxAirHeightThisJump = 0;
+  racer.lastRampLaunchPower = 0;
 }
 function updateRamps(dt){
   racers.forEach(r=>{
     r.rampCooldown=Math.max(0,(r.rampCooldown||0)-dt);
     if(r.airborneTimer>0){
-      r.airborneTimer-=dt; r.airHeight=Math.max(0,r.airHeight + r.verticalVelocity*dt); r.verticalVelocity-=22*dt;
-      if(r.airborneTimer<=0 || r.airHeight<=0){
-        r.airborneTimer=0; r.airHeight=0; r.verticalVelocity=0;
-        if(r.airTrickReady){ r.boostTimer=Math.max(r.boostTimer,0.45*r.boostStrength); r.airTrickReady=false; }
-        burstParticles(r.position,0xd8d8d8,10,0.4,{gravity:8,life:[0.2,0.45],size:[0.12,0.24]});
-        if(r.isPlayer) r.hitShakeTimer=Math.max(r.hitShakeTimer,0.14);
+      r.airborneTimer-=dt;
+      r.airHeight=Math.max(0,r.airHeight + r.verticalVelocity*dt);
+      r.verticalVelocity-=24*dt;
+      r.maxAirHeightThisJump = Math.max(r.maxAirHeightThisJump || 0, r.airHeight || 0);
+      if(r.speed>30 && Math.random() < dt*5){
+        burstParticles(r.position.clone().add(getForwardVector(r).multiplyScalar(-3)),r.boostTimer>0?0xffeaa0:0xd9ecff,1,r.boostTimer>0?0.28:0.2,{gravity:1.8,life:[0.1,0.22],size:[0.05,0.14]});
       }
+      if(r.airborneTimer<=0 || (r.airHeight<=0 && r.verticalVelocity<=0)) landRacerFromJump(r);
     }
     for(const ramp of ramps){
       if(r.rampCooldown>0 || r.airborneTimer>0) continue;
       if(r.position.distanceTo(ramp.group.position)<(ramp.triggerRadius||6.2)){
-        r.airborneTimer = THREE.MathUtils.clamp(0.58 + (ramp.height||4)*0.05,0.5,1.0); r.verticalVelocity=8.5+(ramp.boost||0.4)*5; r.airHeight=0.01; r.rampCooldown=1.1;
-        r.speed += (ramp.boost||0.35)*6;
+        const rampForward = getTrackTangent(ramp.t || 0).normalize();
+        const approachDot = getForwardVector(r).dot(rampForward);
+        const minSpeed = 10;
+        if (approachDot > 0.2 && r.speed > minSpeed) {
+          const speedFactor = THREE.MathUtils.clamp(r.speed / 70, 0.45, 1.75);
+          const ccFactor = THREE.MathUtils.clamp(currentCC.speedMultiplier, 0.85, 1.7);
+          const boostFactor = r.boostTimer > 0 ? 1.18 : 1.0;
+          const launchPower = (ramp.launchPower || 1.15) * speedFactor * ccFactor * boostFactor;
+          r.airborneTimer = THREE.MathUtils.clamp(0.85 + launchPower * 0.48, 0.85, 2.2);
+          r.verticalVelocity = 12 + (ramp.height || 7) * 1.45 + launchPower * 4.5;
+          r.airHeight = Math.max(r.airHeight || 0, 0.08);
+          r.velocity.add(rampForward.multiplyScalar(8 + launchPower * 13));
+          r.speed = Math.max(r.speed, r.velocity.length() * 0.82);
+          r.rampCooldown = 1.15;
+          r.maxAirHeightThisJump = 0;
+          r.lastRampLaunchPower = launchPower;
+          burstParticles(r.position.clone().add(rampForward.clone().multiplyScalar(-2.2)),r.boostTimer>0?0xffdf92:0xd7d7d7,r.boostTimer>0?14:10,r.boostTimer>0?0.72:0.52,{gravity:6,life:[0.16,0.4],size:[0.1,0.28]});
+          burstParticles(r.position.clone().add(rampForward.clone().multiplyScalar(-4.5)),r.boostTimer>0?0xb7f2ff:0xcddfff,r.boostTimer>0?8:5,0.28,{gravity:0.2,life:[0.12,0.25],size:[0.06,0.18]});
+        }
         break;
       }
     }
@@ -3373,7 +3415,11 @@ function checkHazards(racer) {
     const radiusZ = hazard.radiusZ || hazard.radius || 10;
     const inside = (rx * rx) / (radiusX * radiusX) + (rz * rz) / (radiusZ * radiusZ) <= 1;
     if (!inside) continue;
-    if (hazard.type === "pit" || hazard.type === "water" || hazard.type === "lava") { if ((racer.airborneTimer||0)<=0.02) { startHazardRespawn(racer); return; } }
+    if (hazard.type === "pit" || hazard.type === "water" || hazard.type === "lava") {
+      const clearHeight = hazard.clearHeight ?? (hazard.type === "lava" ? 3.6 : hazard.type === "pit" ? 3.2 : 2.6);
+      if ((racer.airHeight || 0) > clearHeight) continue;
+      if ((racer.airborneTimer||0)<=0.02) { startHazardRespawn(racer); return; }
+    }
     if (hazard.type === "sludge" || hazard.type === "mud") { const slow = hazard.slow || 0.65; racer.speed *= slow; racer.velocity.multiplyScalar(Math.max(0.55, slow)); }
     if (hazard.type === "ghost") { racer.traction = racer.kart.traction * (hazard.traction || 0.5); racer.spinTimer = Math.max(racer.spinTimer, 0.05); }
     if (hazard.type === "wind") { const p = (hazard.push || 1) * 0.75; racer.velocity.x += Math.sin(hazard.rotation || 0) * p; racer.velocity.z += Math.cos(hazard.rotation || 0) * p; }
