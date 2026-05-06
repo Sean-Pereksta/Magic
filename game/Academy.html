@@ -3212,14 +3212,18 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
     )
     : 0;
   const slipStrength = canSkid
-    ? THREE.MathUtils.clamp(0.12 + skidSeverity * 0.42, 0.12, 0.55)
-    : (0.025 * currentCC.skidMultiplier) / traction;
+    ? THREE.MathUtils.clamp(0.2 + skidSeverity * 0.58, 0.18, 0.78)
+    : (0.03 * currentCC.skidMultiplier) / traction;
   const followRate = Math.max(0.04, 1 - slipStrength);
   racer.velocity.lerp(targetVelocity, followRate);
-  racer.lateralSlip = THREE.MathUtils.lerp(racer.lateralSlip, canSkid ? turn * slipStrength * speedAbs * 0.12 : 0, canSkid ? 0.24 : 0.12);
-  if (canSkid) racer.speed *= (1 - skidSeverity * dt * 0.45);
+  const highSpeedSkid = !racer.drift.active && onTrack && racer.spinTimer <= 0 && speedAbs > 22 && Math.abs(turn) > 0.5;
+  const skidTurnFactor = highSpeedSkid
+    ? THREE.MathUtils.clamp(((Math.abs(turn) - 0.5) / 0.5) * ((speedAbs - 22) / 38) * (1.06 / traction) * ccSkidBias, 0, 1)
+    : 0;
+  racer.lateralSlip = THREE.MathUtils.lerp(racer.lateralSlip, highSpeedSkid ? turn * speedAbs * (0.11 + skidTurnFactor * 0.2) : 0, highSpeedSkid ? 0.28 : 0.12);
+  if (canSkid) racer.speed *= (1 - skidSeverity * dt * 0.3);
   const side = new THREE.Vector3(Math.cos(racer.rotationY), 0, -Math.sin(racer.rotationY));
-  const outwardSlide = canSkid ? -Math.sign(turn) * (1.2 + skidSeverity * 4.2) : 0;
+  const outwardSlide = highSpeedSkid ? -Math.sign(turn) * (0.7 + skidTurnFactor * (2.8 + currentCC.skidMultiplier * 1.25)) : 0;
   racer.velocity.add(side.multiplyScalar(racer.lateralSlip + outwardSlide));
   racer.position.add(racer.velocity.clone().multiplyScalar(dt));
   racer.speed = racer.velocity.length() * Math.sign(racer.speed || 1);
@@ -3349,13 +3353,21 @@ function startDrift(racer, direction) {
   racer.drift.charge = 0;
   racer.drift.sparkLevel = 0;
   racer.drift.inputSide = direction < 0 ? "left" : "right";
+  const speedAbs = Math.abs(racer.speed);
+  const hasVelocity = racer.velocity && racer.velocity.lengthSq() > 0.08;
+  racer.drift.entryVelocity = hasVelocity
+    ? racer.velocity.clone()
+    : getForwardVector(racer).multiplyScalar(speedAbs);
+  racer.drift.entryForward = hasVelocity
+    ? racer.velocity.clone().normalize()
+    : getForwardVector(racer).normalize();
 
   const side = new THREE.Vector3(Math.cos(racer.rotationY), 0, -Math.sin(racer.rotationY));
   racer.driftHopTimer = 0.22;
-  racer.velocity.add(side.multiplyScalar(direction * 8.5));
-  racer.lateralSlip += direction * 0.48;
-  racer.rotationY += direction * 0.10;
-  racer.speed *= 0.995;
+  racer.velocity.add(side.multiplyScalar(direction * 11.8));
+  racer.lateralSlip += direction * 0.72;
+  racer.rotationY += direction * 0.115;
+  racer.speed *= 0.999;
   addRecoveryEffects(racer, false);
   burstParticles(racer.position.clone().add(new THREE.Vector3(0, 1.1, 0)), 0xdedede, 8, 0.52, { gravity: 7, life: [0.2, 0.46], size: [0.14, 0.34] });
 }
@@ -3394,6 +3406,8 @@ function resetDriftState(racer, clearInput = false) {
   racer.drift.charge = 0;
   racer.drift.sparkLevel = 0;
   racer.drift.inputSide = null;
+  racer.drift.entryVelocity = null;
+  racer.drift.entryForward = null;
   if (clearInput && racer.playerIndex) clearDriftInputForPlayer(racer.playerIndex);
 }
 
@@ -3433,6 +3447,17 @@ function updateDrift(racer, dt, driftInput, turn, brake) {
   const holdingOriginalDrift = racer.drift.inputSide === "left" ? driftInput.left.held : driftInput.right.held;
   const steerAssist = turn * racer.handling * racer.driftPower * 0.38;
   const driftTurn = racer.drift.direction * racer.handling * racer.driftPower * 0.62;
+  const traction = racer.traction || 1;
+  const ccSkidBias = THREE.MathUtils.clamp(currentCC.skidMultiplier, 0.75, 1.3);
+  const speedNorm = THREE.MathUtils.clamp(speedAbs / Math.max(26, racer.maxSpeed * currentCC.speedMultiplier), 0, 1.45);
+  const entryForward = racer.drift.entryForward && racer.drift.entryForward.lengthSq() > 0
+    ? racer.drift.entryForward.clone()
+    : getForwardVector(racer).normalize();
+  const forward = getForwardVector(racer);
+  const preserveEntry = THREE.MathUtils.clamp((0.58 + speedNorm * 0.34) * (1.05 / traction) * ccSkidBias, 0.3, 0.9);
+  const driftHeading = entryForward.multiplyScalar(preserveEntry).add(forward.clone().multiplyScalar(1 - preserveEntry)).normalize();
+  const driftVelocityTarget = driftHeading.multiplyScalar(speedAbs * Math.sign(racer.speed || 1));
+  const driftFollow = THREE.MathUtils.clamp(0.06 + (1 - preserveEntry) * 0.22, 0.06, 0.26);
 
   racer.drift.charge += dt;
 
@@ -3440,8 +3465,13 @@ function updateDrift(racer, dt, driftInput, turn, brake) {
   if (racer.drift.charge > 1.05) racer.drift.sparkLevel = 2;
 
   racer.rotationY += (driftTurn + steerAssist) * dt;
-  racer.lateralSlip = THREE.MathUtils.lerp(racer.lateralSlip, racer.drift.direction * 0.62, 0.18);
-  racer.speed *= 0.998;
+  racer.velocity.lerp(driftVelocityTarget, driftFollow);
+  const steerPressure = THREE.MathUtils.clamp(Math.abs(turn), 0, 1);
+  const sideDrift = (1.15 + steerPressure * 2.6 + speedNorm * 1.2) * (1.04 / traction) * ccSkidBias;
+  racer.lateralSlip = THREE.MathUtils.lerp(racer.lateralSlip, racer.drift.direction * sideDrift, 0.24);
+  const side = new THREE.Vector3(Math.cos(racer.rotationY), 0, -Math.sin(racer.rotationY));
+  racer.velocity.add(side.multiplyScalar(racer.lateralSlip * (0.06 + speedNorm * 0.04)));
+  racer.speed *= 0.9992;
 
   updateSkidMarks(racer, dt, true);
 
