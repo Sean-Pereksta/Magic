@@ -901,6 +901,8 @@ function buildWorld(map) {
   buildFinishLineData();
   runtimeHazards = buildRuntimeHazards(map);
   sanitizeHazardsForMap(runtimeHazards);
+  const strategicFeatures = buildStrategicTrackFeatures(map);
+  for (const pair of strategicFeatures.jumpableHazards || []) if (pair?.hazard) pair.hazard.jumpableWithRamp = true;
 
   createAccurateRoadSurface();
   createThickFallbackRoadLine();
@@ -1428,7 +1430,16 @@ function createTrackAlignmentDebug() {
 }
 function addDebugDot(x, y, z, color) { const dot = new THREE.Mesh(new THREE.SphereGeometry(0.7, 8, 8), new THREE.MeshBasicMaterial({ color })); dot.position.set(x, y, z); scene.add(dot); }
 
-function buildRuntimeHazards(map) { return (map.hazards || []).map(h => ({ ...h })); }
+function buildRuntimeHazards(map) {
+  return (map.hazards || []).map(h => {
+    const copy = { ...h };
+    const sizeBonus = Math.max(copy.radiusX || copy.radius || 0, copy.radiusZ || copy.radius || 0) > 22 ? 0.5 : 0;
+    if (copy.type === "pit") copy.clearHeight = (copy.clearHeight ?? 3.2) + sizeBonus;
+    if (copy.type === "water") copy.clearHeight = (copy.clearHeight ?? 2.6) + sizeBonus;
+    if (copy.type === "lava") copy.clearHeight = (copy.clearHeight ?? 3.6) + sizeBonus;
+    return copy;
+  });
+}
 function sanitizeHazardsForMap(hazards) {
   if (!hazards || !hazards.length) return;
   const deadlyTypes = new Set(["pit", "water", "lava"]);
@@ -1857,7 +1868,14 @@ function createHazards(hazards) {
     const radiusX = h.radiusX || h.radius || 10;
     const radiusZ = h.radiusZ || h.radius || 10;
     const hazardRoot = new THREE.Group();
-    hazardRoot.position.set(h.x, 0, h.z);
+    const hazardY = getRoadHeightAtPosition(new THREE.Vector3(h.x, 0, h.z));
+    let yOffset = 0;
+    if (h.type === "water") yOffset = -0.08;
+    else if (h.type === "lava") yOffset = -0.05;
+    else if (h.type === "sludge" || h.type === "mud") yOffset = -0.04;
+    else if (h.type === "pit") yOffset = -0.08;
+    else if (h.type === "steam" || h.type === "wind" || h.type === "ghost") yOffset = 0.08;
+    hazardRoot.position.set(h.x, hazardY + yOffset, h.z);
     hazardRoot.rotation.y = h.rotation || 0;
 
     if (h.type === 'water' || h.type === 'lava' || h.type === 'sludge' || h.type === 'mud') {
@@ -2664,20 +2682,79 @@ function getTrackPlacedObject(def) {
   return { t, center: placedCenter, tangent, angle: Math.atan2(tangent.x, tangent.z) };
 }
 
+function circularTDistance(a, b) {
+  const d = Math.abs(wrap01(a) - wrap01(b));
+  return Math.min(d, 1 - d);
+}
+function isFeatureNear(existing, t, threshold = 0.035) {
+  return (existing || []).some(f => circularTDistance(f.t || 0, t) <= threshold);
+}
+function buildStrategicTrackFeatures(map) {
+  const out = { ramps: [], boostPads: [], jumpableHazards: [] };
+  const baseRamps = (map.ramps || []).slice();
+  const baseBoosts = (map.boostPads || []).slice();
+  const hazards = runtimeHazards?.length ? runtimeHazards : (map.hazards || []);
+  const hills = map.hills?.length ? map.hills : getDefaultHillsForMap(map);
+  const deadlyTypes = new Set(["pit", "water", "lava"]);
+
+  for (const hazard of hazards) {
+    if (!deadlyTypes.has(hazard.type)) continue;
+    const info = getClosestTrackInfo(new THREE.Vector3(hazard.x, 0, hazard.z));
+    const onRoadish = info.distance < trackWidth * 0.95 || isPointInsideHazard(info.point, hazard, 2);
+    if (!onRoadish) continue;
+    if (circularTDistance(info.t, startT) < 0.04) continue;
+    const tangentA = getTrackTangent(info.t);
+    const tangentB = getTrackTangent(wrap01(info.t + 0.02));
+    if (tangentA.dot(tangentB) < 0.84) continue;
+    const sideOffset = (hazard.x - info.point.x) * info.normal.x + (hazard.z - info.point.z) * info.normal.z;
+    const rampT = wrap01(info.t - 0.025);
+    const boostT = wrap01(info.t - 0.05);
+    if (!isFeatureNear(baseRamps.concat(out.ramps), rampT, 0.03) && !isPointInsideHazard(getTrackPoint(rampT), hazard, 3)) {
+      out.ramps.push({ t: rampT, laneOffset: sideOffset * 0.25, width: 16, length: 26, height: 8, boost: 0.8, launchPower: 1.35, strategic: true, purpose: "hazardJump", hazardId: hazard.id || `${hazard.type}:${hazard.x.toFixed(1)}:${hazard.z.toFixed(1)}` });
+      out.jumpableHazards.push({ hazard, rampT });
+    }
+    if (!isFeatureNear(baseBoosts.concat(out.boostPads), boostT, 0.032)) out.boostPads.push({ t: boostT, laneOffset: 0, strength: 1.22, duration: 1.05, strategic: true, purpose: "rampSetup" });
+  }
+
+  for (const hill of hills || []) {
+    if ((hill.height || 0) <= 6) continue;
+    const t = wrap01((hill.t || 0) - (hill.length || 0.08) * 0.45);
+    if (isFeatureNear(baseBoosts.concat(out.boostPads), t, 0.03)) continue;
+    out.boostPads.push({ t, laneOffset: 0, strength: hill.shape === "crest" ? 1.24 : 1.16, duration: hill.shape === "crest" ? 1.1 : 0.95, strategic: true, purpose: "hillClimb" });
+  }
+
+  for (const ramp of baseRamps.concat(out.ramps)) {
+    if ((ramp.height || 0) < 6 && (ramp.launchPower || 0) < 1.2) continue;
+    const t = wrap01((ramp.t || 0) - 0.035);
+    if (isFeatureNear(baseBoosts.concat(out.boostPads), t, 0.03)) continue;
+    out.boostPads.push({ t, laneOffset: 0, strength: 1.18, duration: 1.0, strategic: true, purpose: "rampApproach" });
+  }
+  return out;
+}
+
 function generateBoostPadsForMap(map) {
-  if (map.boostPads?.length) return map.boostPads;
-  return [0.14,0.31,0.52,0.73].map((t,i)=>({t,laneOffset:(i%2?1:-1)*(trackWidth*0.18),strength:1.1+Math.random()*0.15,duration:0.85+Math.random()*0.35}));
+  const base = map.boostPads?.length ? map.boostPads.slice() : [0.14,0.31,0.52,0.73].map((t,i)=>({t,laneOffset:(i%2?1:-1)*(trackWidth*0.18),strength:1.1+Math.random()*0.15,duration:0.85+Math.random()*0.35}));
+  const strategic = buildStrategicTrackFeatures(map).boostPads || [];
+  const merged = base.concat(strategic).sort((a, b) => ((b.strategic ? 1 : 0) - (a.strategic ? 1 : 0)));
+  const deduped = [];
+  for (const pad of merged) if (!deduped.some(p => circularTDistance(p.t || 0, pad.t || 0) < 0.022 && Math.abs((p.laneOffset || 0) - (pad.laneOffset || 0)) < trackWidth * 0.22)) deduped.push(pad);
+  return deduped.slice(0, 12);
 }
 function createBoostPads(map){
   boostPads = generateBoostPadsForMap(map).map((def,idx)=>{
     const placed = getTrackPlacedObject(def);
     const group = new THREE.Group();
     const color = [0x4ecbff,0xffd84a,0x7cf5ff][idx%3];
-    const pad = new THREE.Mesh(new THREE.BoxGeometry(9,0.28,14),new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:0.8,transparent:true,opacity:0.95}));
+    const strategic = !!def.strategic;
+    const padLength = strategic ? 16 : 14;
+    const padWidth = strategic ? 10 : 9;
+    const emissiveIntensity = strategic ? 1.1 : 0.8;
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(padWidth,0.28,padLength),new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity,transparent:true,opacity:0.95}));
     group.add(pad);
-    for(let i=0;i<3;i++){ const ch = new THREE.Mesh(new THREE.BoxGeometry(1.6,0.12,2.3), new THREE.MeshStandardMaterial({color:0xffffff,emissive:0xbbe8ff,emissiveIntensity:0.75})); ch.position.set(0,0.26,-3.6+i*3.6); ch.rotation.y=Math.PI/4; group.add(ch); }
+    const chevrons = strategic ? 5 : 3;
+    for(let i=0;i<chevrons;i++){ const ch = new THREE.Mesh(new THREE.BoxGeometry(1.6,0.12,2.3), new THREE.MeshStandardMaterial({color:0xffffff,emissive:0xbbe8ff,emissiveIntensity:strategic ? 0.95 : 0.75})); ch.position.set(0,0.26,-(padLength*0.34)+i*(padLength/(chevrons+0.4))); ch.rotation.y=Math.PI/4; group.add(ch); }
     group.position.copy(placed.center); group.position.y = placed.center.y + 0.18; group.rotation.y = placed.angle; scene.add(group);
-    return {...def,group,triggerRadius:7.2,cooldowns:new Map()};
+    return {...def,group,triggerRadius:strategic ? 7.8 : 7.2,cooldowns:new Map(),pulseSpeed: strategic ? 1.8 : 1.2};
   });
 }
 function generateRampsForMap(map){
@@ -2689,8 +2766,7 @@ function generateRampsForMap(map){
     boost: def.boost ?? 0.65,
     launchPower: def.launchPower ?? 1.15
   });
-  if(map.ramps?.length) return map.ramps.map(normalizeRampDef);
-  return [0.24,0.58,0.81].map((t,i)=>normalizeRampDef({
+  const base = map.ramps?.length ? map.ramps.slice() : [0.24,0.58,0.81].map((t,i)=>({
     t,
     laneOffset:(i-1)*trackWidth*0.2,
     width:14+Math.random()*6,
@@ -2699,6 +2775,11 @@ function generateRampsForMap(map){
     boost:0.55+Math.random()*0.45,
     launchPower:1.0+Math.random()*0.8
   }));
+  const strategic = buildStrategicTrackFeatures(map).ramps || [];
+  const merged = base.concat(strategic).map(normalizeRampDef).sort((a, b) => ((b.strategic ? 1 : 0) - (a.strategic ? 1 : 0)));
+  const deduped = [];
+  for (const ramp of merged) if (!deduped.some(r => circularTDistance(r.t || 0, ramp.t || 0) < 0.024 && Math.abs((r.laneOffset || 0) - (ramp.laneOffset || 0)) < trackWidth * 0.3)) deduped.push(ramp);
+  return deduped.slice(0, 10);
 }
 function createRamps(map){
   ramps = generateRampsForMap(map).map((def,idx)=>{
@@ -3040,12 +3121,14 @@ function scorePointHazardRisk(pos, margin = 6) {
   if (!runtimeHazards || !runtimeHazards.length) return 0;
   let risk = 0;
   for (const hazard of runtimeHazards) {
-    if (isPointInsideHazard(pos, hazard, margin)) { risk += getHazardDanger(hazard); continue; }
+    let hazardRisk = getHazardDanger(hazard);
+    if (hazard.jumpableWithRamp) hazardRisk *= 0.7;
+    if (isPointInsideHazard(pos, hazard, margin)) { risk += hazardRisk; continue; }
     const dx = pos.x - hazard.x, dz = pos.z - hazard.z;
     const dist = Math.hypot(dx, dz);
     const approxRadius = Math.max(hazard.radiusX || hazard.radius || 10, hazard.radiusZ || hazard.radius || 10);
     const dangerZone = approxRadius + margin + 18;
-    if (dist < dangerZone) risk += getHazardDanger(hazard) * (1 - dist / dangerZone) * 0.35;
+    if (dist < dangerZone) risk += hazardRisk * (1 - dist / dangerZone) * 0.35;
   }
   return risk;
 }
@@ -3063,8 +3146,10 @@ function getSafeAITarget(racer, baseTargetIndex) {
     const aheadFar = candidate.clone().add(tangent.clone().multiplyScalar(28));
     const deadlyCollision = (runtimeHazards || []).some(h => (h.type === "pit" || h.type === "water" || h.type === "lava") && (isPointInsideHazard(candidate, h, 4) || isPointInsideHazard(aheadNear, h, 5) || isPointInsideHazard(aheadFar, h, 6)));
     if (deadlyCollision) continue;
-    const risk = scorePointHazardRisk(candidate, 8) + scorePointHazardRisk(aheadNear, 8) * 0.9 + scorePointHazardRisk(aheadFar, 8) * 0.65
+    let risk = scorePointHazardRisk(candidate, 8) + scorePointHazardRisk(aheadNear, 8) * 0.9 + scorePointHazardRisk(aheadFar, 8) * 0.65
       + scorePointEventRisk(candidate, 8) + scorePointEventRisk(aheadNear, 8) * 0.8 + scorePointEventRisk(aheadFar, 8) * 0.65;
+    const jumpableAhead = (runtimeHazards || []).some(h => h.jumpableWithRamp && (isPointInsideHazard(aheadNear, h, 7) || isPointInsideHazard(aheadFar, h, 8)));
+    if (jumpableAhead && racer.speed > 22) risk *= 0.45;
     const centerPenalty = Math.abs(offset) / Math.max(1, trackWidth) * 22;
     const turnPenalty = Math.abs(offset - (racer.ai.laneOffset || 0)) * 1.6;
     const score = risk + centerPenalty + turnPenalty;
@@ -4953,4 +5038,3 @@ window.addEventListener("resize", () => {
 </script>
 </body>
 </html>
-
