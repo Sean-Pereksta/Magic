@@ -1046,6 +1046,91 @@ function getTrackNormal(t) {
   return new THREE.Vector3(-tan.z, 0, tan.x).normalize();
 }
 
+
+function getDefaultHillsForMap(map) {
+  if (map?.hills?.length) return map.hills;
+  const theme = map?.theme || "grass";
+  if (theme === "snow") return [
+    { t: 0.18, length: 0.14, height: 8.8, shape: "hill" },
+    { t: 0.47, length: 0.1, height: 7, shape: "crest" },
+    { t: 0.72, length: 0.15, height: -4.2, shape: "dip" }
+  ];
+  if (theme === "desert") return [
+    { t: 0.12, length: 0.18, height: 5.4, shape: "rolling" },
+    { t: 0.42, length: 0.2, height: 6.2, shape: "hill" },
+    { t: 0.75, length: 0.16, height: 4.6, shape: "rolling" }
+  ];
+  if (theme === "volcano") return [
+    { t: 0.2, length: 0.12, height: 8.5, shape: "crest" },
+    { t: 0.52, length: 0.1, height: -6.1, shape: "dip" },
+    { t: 0.79, length: 0.11, height: 7.9, shape: "crest" }
+  ];
+  if (theme === "skytemple" || theme === "rainbow" || theme === "moon") return [
+    { t: 0.16, length: 0.12, height: 7.5, shape: "crest" },
+    { t: 0.44, length: 0.14, height: 9.2, shape: "crest" },
+    { t: 0.74, length: 0.13, height: 8.4, shape: "hill" }
+  ];
+  if (theme === "sewer" || theme === "graveyard") return [
+    { t: 0.14, length: 0.1, height: 3.2, shape: "rolling" },
+    { t: 0.5, length: 0.11, height: -2.5, shape: "dip" },
+    { t: 0.81, length: 0.09, height: 3.5, shape: "hill" }
+  ];
+  if (theme === "jungle") return [
+    { t: 0.2, length: 0.14, height: 5.6, shape: "rolling" },
+    { t: 0.57, length: 0.12, height: 6.5, shape: "crest" },
+    { t: 0.83, length: 0.1, height: -3.2, shape: "dip" }
+  ];
+  if (theme === "neon") return [
+    { t: 0.24, length: 0.14, height: 5.1, shape: "hill" },
+    { t: 0.53, length: 0.13, height: 5.8, shape: "rolling" },
+    { t: 0.79, length: 0.12, height: 5.4, shape: "hill" }
+  ];
+  return [
+    { t: 0.17, length: 0.13, height: 4.5, shape: "rolling" },
+    { t: 0.48, length: 0.14, height: 5.3, shape: "hill" },
+    { t: 0.77, length: 0.11, height: 4.2, shape: "rolling" }
+  ];
+}
+
+function getElevationAtTrackT(t) {
+  const map = currentMap || {};
+  const hills = getDefaultHillsForMap(map);
+  const tt = wrap01(t);
+  let elevation = 0;
+  for (const h of hills) {
+    const centerT = wrap01(h.t || 0);
+    const length = Math.max(0.02, Math.abs(h.length || 0.1));
+    let d = Math.abs(tt - centerT);
+    if (d > 0.5) d = 1 - d;
+    const half = length * 0.5;
+    if (d > half) continue;
+    const phase = THREE.MathUtils.clamp((d / half), 0, 1);
+    const sign = h.shape === "dip" ? -1 : 1;
+    const baseHeight = Math.abs(h.height || 0) * sign;
+    let shapeAmp = 0;
+    if (h.shape === "crest") shapeAmp = Math.sin((1 - phase) * Math.PI);
+    else if (h.shape === "rolling") shapeAmp = 0.6 + 0.4 * Math.cos(phase * Math.PI);
+    else shapeAmp = 0.5 + 0.5 * Math.cos(phase * Math.PI);
+    elevation += baseHeight * shapeAmp;
+  }
+  return elevation;
+}
+
+function getRoadHeightAtT(t) {
+  return getElevationAtTrackT(wrap01(t));
+}
+
+function getRoadHeightAtPosition(pos) {
+  const closest = getClosestTrackInfo(pos);
+  return getRoadHeightAtT(closest.t);
+}
+
+function getTrackSlopeAtT(t) {
+  const ahead = getRoadHeightAtT(wrap01(t + 0.006));
+  const behind = getRoadHeightAtT(wrap01(t - 0.006));
+  return ahead - behind;
+}
+
 function buildTrackSamples() {
   trackSampleCount = Math.max(1400, checkpointCount * 10);
   trackSamples = [];
@@ -1139,8 +1224,9 @@ function createAccurateRoadSurface() {
     const rightX = center.x - normal.x * roadHalfWidth;
     const rightZ = center.z - normal.z * roadHalfWidth;
 
-    vertices.push(leftX, y, leftZ);
-    vertices.push(rightX, y, rightZ);
+    const roadY = getRoadHeightAtT(t);
+    vertices.push(leftX, roadY + y, leftZ);
+    vertices.push(rightX, roadY + y, rightZ);
 
     uvs.push(0, i / steps);
     uvs.push(1, i / steps);
@@ -1207,8 +1293,9 @@ function createRoadEdgeStrip(side) {
     const center = getTrackPoint(t);
     const normal = getTrackNormal(t);
 
-    vertices.push(center.x + normal.x * inner * side, y, center.z + normal.z * inner * side);
-    vertices.push(center.x + normal.x * outer * side, y, center.z + normal.z * outer * side);
+    const roadY = getRoadHeightAtT(t);
+    vertices.push(center.x + normal.x * inner * side, roadY + y, center.z + normal.z * inner * side);
+    vertices.push(center.x + normal.x * outer * side, roadY + y, center.z + normal.z * outer * side);
 
     uvs.push(0, i / steps);
     uvs.push(1, i / steps);
@@ -1263,8 +1350,9 @@ function createCenterLaneLine() {
     const center = getTrackPoint(t);
     const normal = getTrackNormal(t);
 
-    vertices.push(center.x + normal.x * lineHalfWidth, y, center.z + normal.z * lineHalfWidth);
-    vertices.push(center.x - normal.x * lineHalfWidth, y, center.z - normal.z * lineHalfWidth);
+    const roadY = getRoadHeightAtT(t);
+    vertices.push(center.x + normal.x * lineHalfWidth, roadY + y, center.z + normal.z * lineHalfWidth);
+    vertices.push(center.x - normal.x * lineHalfWidth, roadY + y, center.z - normal.z * lineHalfWidth);
   }
 
   for (let i = 0; i < steps; i++) {
@@ -1300,7 +1388,7 @@ function createThickFallbackRoadLine() {
   for (let i = 0; i <= TRACK_RIBBON_STEPS; i++) {
     const t = i / TRACK_RIBBON_STEPS;
     const p = getTrackPoint(t);
-    points.push(new THREE.Vector3(p.x, 0.16, p.z));
+    points.push(new THREE.Vector3(p.x, getRoadHeightAtT(t) + 0.16, p.z));
   }
 
   const geo = new THREE.BufferGeometry().setFromPoints(points);
@@ -1321,9 +1409,10 @@ function createRoadMeshDebugDots(steps = 180) {
     const t = i / dotCount;
     const center = getTrackPoint(t);
     const normal = getTrackNormal(t);
-    addDebugDot(center.x, 0.35, center.z, 0xffff00);
-    addDebugDot(center.x + normal.x * trackWidth, 0.35, center.z + normal.z * trackWidth, 0x00ff00);
-    addDebugDot(center.x - normal.x * trackWidth, 0.35, center.z - normal.z * trackWidth, 0xff0000);
+    const roadY = getRoadHeightAtT(t);
+    addDebugDot(center.x, roadY + 0.35, center.z, 0xffff00);
+    addDebugDot(center.x + normal.x * trackWidth, roadY + 0.35, center.z + normal.z * trackWidth, 0x00ff00);
+    addDebugDot(center.x - normal.x * trackWidth, roadY + 0.35, center.z - normal.z * trackWidth, 0xff0000);
   }
 }
 
@@ -1331,9 +1420,10 @@ function createTrackAlignmentDebug() {
   if (!DEBUG_TRACK_ALIGNMENT) return;
   for (let i = 0; i < 180; i++) {
     const t = i / 180, p = getTrackPoint(t), n = getTrackNormal(t);
-    addDebugDot(p.x, 0.35, p.z, 0xffff00);
-    addDebugDot(p.x + n.x * trackWidth, 0.35, p.z + n.z * trackWidth, 0x00ff00);
-    addDebugDot(p.x - n.x * trackWidth, 0.35, p.z - n.z * trackWidth, 0xff0000);
+    const roadY = getRoadHeightAtT(t);
+    addDebugDot(p.x, roadY + 0.35, p.z, 0xffff00);
+    addDebugDot(p.x + n.x * trackWidth, roadY + 0.35, p.z + n.z * trackWidth, 0x00ff00);
+    addDebugDot(p.x - n.x * trackWidth, roadY + 0.35, p.z - n.z * trackWidth, 0xff0000);
   }
 }
 function addDebugDot(x, y, z, color) { const dot = new THREE.Mesh(new THREE.SphereGeometry(0.7, 8, 8), new THREE.MeshBasicMaterial({ color })); dot.position.set(x, y, z); scene.add(dot); }
@@ -2569,7 +2659,9 @@ function getTrackPlacedObject(def) {
   const normal = getTrackNormal(t);
   const tangent = getTrackTangent(t);
   const laneOffset = def.laneOffset || 0;
-  return { t, center: center.clone().add(normal.multiplyScalar(laneOffset)), tangent, angle: Math.atan2(tangent.x, tangent.z) };
+  const placedCenter = center.clone().add(normal.multiplyScalar(laneOffset));
+  placedCenter.y = getRoadHeightAtT(t);
+  return { t, center: placedCenter, tangent, angle: Math.atan2(tangent.x, tangent.z) };
 }
 
 function generateBoostPadsForMap(map) {
@@ -2584,7 +2676,7 @@ function createBoostPads(map){
     const pad = new THREE.Mesh(new THREE.BoxGeometry(9,0.28,14),new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:0.8,transparent:true,opacity:0.95}));
     group.add(pad);
     for(let i=0;i<3;i++){ const ch = new THREE.Mesh(new THREE.BoxGeometry(1.6,0.12,2.3), new THREE.MeshStandardMaterial({color:0xffffff,emissive:0xbbe8ff,emissiveIntensity:0.75})); ch.position.set(0,0.26,-3.6+i*3.6); ch.rotation.y=Math.PI/4; group.add(ch); }
-    group.position.copy(placed.center); group.position.y = 0.18; group.rotation.y = placed.angle; scene.add(group);
+    group.position.copy(placed.center); group.position.y = placed.center.y + 0.18; group.rotation.y = placed.angle; scene.add(group);
     return {...def,group,triggerRadius:7.2,cooldowns:new Map()};
   });
 }
@@ -2986,7 +3078,7 @@ function recoverStuckAI(racer) {
   const tan = getTrackTangent(safeT);
   const safePoint = getSafeAITarget(racer, Math.floor(safeT * checkpointCount));
   racer.position.set(safePoint.x, 0, safePoint.z);
-  racer.group.position.copy(racer.position);
+  racer.group.position.set(racer.position.x, getRoadHeightAtPosition(racer.position), racer.position.z);
   racer.rotationY = Math.atan2(tan.x, tan.z);
   racer.speed = Math.min(racer.speed, racer.maxSpeed * 0.35);
   racer.aiNoProgressTimer = 0;
@@ -3146,13 +3238,24 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
     terrainFactor = Math.max(terrainFactor, 0.9);
   }
 
+  const closestInfo = getClosestTrackInfo(racer.position);
+  const slope = getTrackSlopeAtT(closestInfo.t);
+  const uphill = Math.max(0, slope);
+  const downhill = Math.max(0, -slope);
+  const hillWeightPenalty = THREE.MathUtils.clamp(racer.weight * 0.08, 0.05, 0.18);
+  let uphillPenalty = THREE.MathUtils.clamp(uphill * (0.8 + hillWeightPenalty), 0, 0.22);
+  const downhillBonus = THREE.MathUtils.clamp(downhill * 0.9, 0, 0.18);
+  if (racer.boostTimer > 0) uphillPenalty *= 0.28;
+  const hillAccelMultiplier = THREE.MathUtils.clamp(1 - uphillPenalty + downhillBonus * 0.35, 0.72, 1.2);
+  const hillMaxSpeedMultiplier = THREE.MathUtils.clamp(1 - uphillPenalty * 0.75 + downhillBonus, 0.78, 1.25);
+
   if (racer.spinTimer > 0) {
     racer.spinTimer -= dt;
     racer.rotationY += 10.5 * dt;
     racer.speed *= 0.985;
   } else {
     if (throttle) {
-      racer.speed += racer.accel * currentCC.accelMultiplier * dt;
+      racer.speed += racer.accel * currentCC.accelMultiplier * hillAccelMultiplier * dt;
     } else {
       racer.speed -= Math.sign(racer.speed) * 18 * dt;
     }
@@ -3173,7 +3276,7 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
   }
   if (racer.hitShakeTimer > 0) racer.hitShakeTimer -= dt;
 
-  const maxSpeed = racer.maxSpeed * currentCC.speedMultiplier * terrainFactor * (racer.boostTimer > 0 ? 1.5 : 1);
+  const maxSpeed = racer.maxSpeed * currentCC.speedMultiplier * terrainFactor * hillMaxSpeedMultiplier * (racer.boostTimer > 0 ? 1.5 : 1);
   racer.speed = THREE.MathUtils.clamp(racer.speed, -18, maxSpeed);
 
   if (Math.abs(racer.speed) < 0.2) {
@@ -3228,7 +3331,8 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
   racer.position.add(racer.velocity.clone().multiplyScalar(dt));
   racer.speed = racer.velocity.length() * Math.sign(racer.speed || 1);
   racer.group.rotation.y = racer.rotationY;
-  racer.group.position.y = racer.airHeight || 0;
+  const roadHeight = getRoadHeightAtPosition(racer.position);
+  racer.group.position.y = roadHeight + (racer.airHeight || 0);
 
   racer.wheels.forEach(wheel => {
     const speedFactor = 0.8 + THREE.MathUtils.clamp(Math.abs(racer.speed) / 42, 0, 1.4);
