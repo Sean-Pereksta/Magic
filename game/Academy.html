@@ -777,6 +777,7 @@ let boostPads = [];
 let ramps = [];
 let currentMapBounds = null;
 const DEBUG_AI_HAZARDS = false;
+const DEBUG_AI_PLANNING = false;
 const DEBUG_TRACK_ALIGNMENT = false;
 const DEBUG_ROAD_MESH = false;
 const DEBUG_HAZARD_COLLISIONS = false;
@@ -3133,42 +3134,135 @@ function scorePointHazardRisk(pos, margin = 6) {
   return risk;
 }
 
-function getSafeAITarget(racer, baseTargetIndex) {
-  const lookAheadT = wrap01(baseTargetIndex / checkpointCount);
-  const center = getTrackPoint(lookAheadT);
-  const normal = getTrackNormal(lookAheadT);
-  const tangent = getTrackTangent(lookAheadT);
-  const laneCandidates = [-0.48, -0.24, 0, 0.24, 0.48].map(v => v * trackWidth);
-  let bestPoint = center, bestOffset = 0, bestScore = Infinity;
-  for (const offset of laneCandidates) {
-    const candidate = center.clone().add(normal.clone().multiplyScalar(offset));
-    const aheadNear = candidate.clone().add(tangent.clone().multiplyScalar(14));
-    const aheadFar = candidate.clone().add(tangent.clone().multiplyScalar(28));
-    const deadlyCollision = (runtimeHazards || []).some(h => (h.type === "pit" || h.type === "water" || h.type === "lava") && (isPointInsideHazard(candidate, h, 4) || isPointInsideHazard(aheadNear, h, 5) || isPointInsideHazard(aheadFar, h, 6)));
-    if (deadlyCollision) continue;
-    let risk = scorePointHazardRisk(candidate, 8) + scorePointHazardRisk(aheadNear, 8) * 0.9 + scorePointHazardRisk(aheadFar, 8) * 0.65
-      + scorePointEventRisk(candidate, 8) + scorePointEventRisk(aheadNear, 8) * 0.8 + scorePointEventRisk(aheadFar, 8) * 0.65;
-    const jumpableAhead = (runtimeHazards || []).some(h => h.jumpableWithRamp && (isPointInsideHazard(aheadNear, h, 7) || isPointInsideHazard(aheadFar, h, 8)));
-    if (jumpableAhead && racer.speed > 22) risk *= 0.45;
-    const centerPenalty = Math.abs(offset) / Math.max(1, trackWidth) * 22;
-    const turnPenalty = Math.abs(offset - (racer.ai.laneOffset || 0)) * 1.6;
-    const score = risk + centerPenalty + turnPenalty;
-    if (score < bestScore) { bestScore = score; bestPoint = candidate; bestOffset = offset; }
+function circularTDistance(a, b) {
+  const d = Math.abs(wrap01(a) - wrap01(b));
+  return Math.min(d, 1 - d);
+}
+
+function getAIPlanningProfile() {
+  const key = Object.keys(difficulties).find(k => difficulties[k] === currentDifficulty) || "normal";
+  const profiles = { easy:{lookAheadSteps:3,laneSamples:5,hazardAvoidance:1.25,boostDesire:0.45,rampDesire:0.35,riskTolerance:0.25,brakingDiscipline:0.65,lineSharpness:0.6,mistakeChance:0.16,reactionLag:0.16}, normal:{lookAheadSteps:5,laneSamples:7,hazardAvoidance:1.0,boostDesire:0.75,rampDesire:0.7,riskTolerance:0.48,brakingDiscipline:0.82,lineSharpness:0.82,mistakeChance:0.08,reactionLag:0.08}, hard:{lookAheadSteps:7,laneSamples:9,hazardAvoidance:0.88,boostDesire:1.05,rampDesire:1.05,riskTolerance:0.68,brakingDiscipline:1.0,lineSharpness:1.05,mistakeChance:0.035,reactionLag:0.035}, insane:{lookAheadSteps:9,laneSamples:11,hazardAvoidance:0.72,boostDesire:1.35,rampDesire:1.35,riskTolerance:0.86,brakingDiscipline:1.15,lineSharpness:1.25,mistakeChance:0.01,reactionLag:0.01} };
+  return profiles[key] || profiles.normal;
+}
+
+function getUpcomingTurnDirection(t) {
+  const tangentNow = getTrackTangent(t); const tangentAhead = getTrackTangent(wrap01(t + 0.04));
+  const cross = tangentNow.x * tangentAhead.z - tangentNow.z * tangentAhead.x;
+  return THREE.MathUtils.clamp(cross * 8, -1, 1);
+}
+function getAIBoostRewardAt(candidate, t, profile, recoveryMode = false) {
+  let reward = 0;
+  for (const pad of boostPads || []) {
+    if (!pad.group) continue;
+    const d = candidate.distanceTo(pad.group.position); if (d > 18) continue;
+    const tDist = pad.t != null ? circularTDistance(t, pad.t) : 0.05;
+    const strategicBonus = pad.strategic ? 1.5 : 1.0;
+    reward += (28 * profile.boostDesire * strategicBonus) * (1 - Math.min(d / 18, 1)) * (1 - Math.min(tDist / 0.07, 1));
   }
-  racer.ai.laneOffset = THREE.MathUtils.lerp(racer.ai.laneOffset || 0, bestOffset, 0.12);
-  return bestPoint;
+  return recoveryMode ? reward * 0.2 : reward;
+}
+function getAIRampRewardAt(racer, candidate, t, profile, recoveryMode = false) {
+  let reward = 0;
+  const speedOk = Math.abs(racer.speed) > 20;
+  for (const ramp of ramps || []) {
+    if (!ramp.group) continue;
+    const d = candidate.distanceTo(ramp.group.position); if (d > 20) continue;
+    const tDist = ramp.t != null ? circularTDistance(t, ramp.t) : 0.06;
+    const strategicBonus = ramp.strategic || ramp.purpose === 'hazardJump' ? 1.55 : 1.0;
+    const launchBonus = 1 + Math.max(0, (ramp.launchPower || ramp.boost || 0.35) - 0.45);
+    let approach = 1;
+    const toRamp = ramp.group.position.clone().sub(racer.position).normalize();
+    const forward = new THREE.Vector3(Math.sin(racer.rotationY),0,Math.cos(racer.rotationY));
+    approach = THREE.MathUtils.clamp((forward.dot(toRamp) - 0.2) / 0.8, 0, 1);
+    const speedFactor = speedOk ? 1 : 0.45;
+    reward += 26 * profile.rampDesire * strategicBonus * launchBonus * speedFactor * approach * (1 - Math.min(d/20,1)) * (1 - Math.min(tDist/0.08,1));
+  }
+  return recoveryMode ? reward * 0.15 : reward;
+}
+function getAIHillRewardAt(racer, t, profile) {
+  const slopeNow = Math.abs(typeof getHeightSlopeAtT === "function" ? getHeightSlopeAtT(t) : 0);
+  const slopeAhead = Math.abs(typeof getHeightSlopeAtT === "function" ? getHeightSlopeAtT(wrap01(t + 0.03)) : 0);
+  return (slopeNow + slopeAhead) * 24 * profile.boostDesire * (0.6 + profile.rampDesire * 0.4);
+}
+function getAITurnDifficultyPenalty(racer, t, laneOffset, profile) {
+  const speedRatio = THREE.MathUtils.clamp(Math.abs(racer.speed) / Math.max(30, racer.maxSpeed * currentCC.speedMultiplier), 0, 1.35);
+  const turnDir = getUpcomingTurnDirection(t);
+  const sharpness = Math.abs(turnDir);
+  const wrongSide = Math.sign(turnDir || 0.0001) === Math.sign(laneOffset || 0) ? 1 : 0;
+  const setupReward = (1 - wrongSide) * sharpness * THREE.MathUtils.clamp(profile.lineSharpness - 0.7, 0, 0.6) * 12;
+  return sharpness * speedRatio * (7.5 - profile.riskTolerance * 2.8) + wrongSide * sharpness * 9 - setupReward;
+}
+function scoreAIRouteCandidate(racer, candidate, t, laneOffset, profile) {
+  let score = 0;
+  score += scorePointHazardRisk(candidate, 8) * profile.hazardAvoidance;
+  score += scorePointEventRisk(candidate, 8) * profile.hazardAvoidance;
+  const roadInfo = getRoadInfoAtPosition(candidate); if (!roadInfo.onVisualRoad) score += 120;
+  score += Math.abs(laneOffset - (racer.ai.laneOffset || 0)) * 0.8;
+  const edgePenalty = Math.abs(laneOffset) / Math.max(1, trackWidth); score += edgePenalty * THREE.MathUtils.lerp(28, 8, profile.riskTolerance);
+  score -= getAIBoostRewardAt(candidate, t, profile, racer.ai.recoveryMode);
+  score -= getAIRampRewardAt(racer, candidate, t, profile, racer.ai.recoveryMode);
+  score -= getAIHillRewardAt(racer, t, profile);
+  score += getAITurnDifficultyPenalty(racer, t, laneOffset, profile);
+  if (racer.ai.recoveryMode) score += Math.abs(laneOffset) * 2.3;
+  return score;
+}
+
+function getSafeAITarget(racer, baseTargetIndex) {
+  const profile = getAIPlanningProfile();
+  racer.ai.planTimer = racer.ai.planTimer || 0; racer.ai.currentPlan = racer.ai.currentPlan || null;
+  if (racer.ai.planTimer > 0 && racer.ai.currentPlan) {
+    racer.ai.planTimer -= 1 / 60;
+    const t = wrap01(baseTargetIndex / checkpointCount); const center = getTrackPoint(t); const normal = getTrackNormal(t);
+    return center.clone().add(normal.multiplyScalar(racer.ai.currentPlan.laneOffset || 0));
+  }
+  const laneOffsets=[]; const maxLane=trackWidth*0.52; const samples=profile.laneSamples;
+  for (let i=0;i<samples;i++) { const pct = samples===1?0:(i/(samples-1))*2-1; laneOffsets.push(pct*maxLane); }
+  let bestScore=Infinity,bestOffset=racer.ai.laneOffset||0;
+  for (const offset of laneOffsets) {
+    let totalScore=0;
+    for (let step=0;step<profile.lookAheadSteps;step++) {
+      const lookT=wrap01((baseTargetIndex + step * 1.25)/checkpointCount); const center=getTrackPoint(lookT); const normal=getTrackNormal(lookT);
+      const candidate=center.clone().add(normal.multiplyScalar(offset));
+      const stepWeight=1/(1+step*0.45);
+      totalScore += scoreAIRouteCandidate(racer, candidate, lookT, offset, profile) * stepWeight;
+    }
+    if (Math.random() < profile.mistakeChance) totalScore += 25 + Math.random() * 55;
+    if (totalScore < bestScore) { bestScore = totalScore; bestOffset = offset; }
+  }
+  racer.ai.laneOffset = THREE.MathUtils.lerp(racer.ai.laneOffset || 0, bestOffset, THREE.MathUtils.clamp(0.08 * profile.lineSharpness, 0.06, 0.18));
+  racer.ai.currentPlan = { laneOffset: racer.ai.laneOffset, score: bestScore };
+  racer.ai.planTimer = THREE.MathUtils.lerp(0.28, 0.08, THREE.MathUtils.clamp(profile.lineSharpness, 0, 1));
+  if (DEBUG_AI_PLANNING && Math.random() < 0.01) console.debug(`[AI Plan] ${racer.name} lane=${racer.ai.laneOffset.toFixed(2)} score=${bestScore.toFixed(1)}`);
+  const targetT = wrap01(baseTargetIndex / checkpointCount); const center=getTrackPoint(targetT); const normal=getTrackNormal(targetT);
+  return center.clone().add(normal.multiplyScalar(racer.ai.laneOffset || 0));
 }
 
 function getUpcomingHazardRiskForAI(racer) {
+  const profile = getAIPlanningProfile();
   let totalRisk = 0;
-  for (const step of [1,2,3,4,5]) {
+  for (let step = 1; step <= Math.max(4, profile.lookAheadSteps); step++) {
     const t = wrap01((racer.ai.targetIndex + step) / checkpointCount);
-    const center = getTrackPoint(t);
-    const normal = getTrackNormal(t);
+    const center = getTrackPoint(t); const normal = getTrackNormal(t);
     const pos = center.clone().add(normal.multiplyScalar(racer.ai.laneOffset || 0));
-    totalRisk += (scorePointHazardRisk(pos, 8) + scorePointEventRisk(pos, 8)) * (1 / step);
+    let stepRisk = scorePointHazardRisk(pos, 8) + scorePointEventRisk(pos, 8);
+    for (const hazard of runtimeHazards || []) {
+      if (!isPointInsideHazard(pos, hazard, 10)) continue;
+      if (hazard.jumpableWithRamp) stepRisk *= (Math.abs(racer.speed) > 28 && profile.rampDesire > 0.9) ? 0.45 : 1.25;
+    }
+    const roadInfo = getRoadInfoAtPosition(pos); if (!roadInfo.onVisualRoad) stepRisk += 24;
+    totalRisk += stepRisk * (1 / step) * THREE.MathUtils.lerp(1.2, 0.9, profile.riskTolerance);
   }
   return totalRisk;
+}
+function getForwardBoostOpportunity(racer) {
+  const forward = new THREE.Vector3(Math.sin(racer.rotationY),0,Math.cos(racer.rotationY));
+  let best=null; for (const pad of boostPads||[]) { if (!pad.group) continue; const to=pad.group.position.clone().sub(racer.position); const dist=to.length(); if (dist>42||dist<1) continue; const align=forward.dot(to.normalize()); if (align<0.52) continue; if(!best||dist<best.distance) best={pad,distance:dist,alignment:align}; }
+  return best;
+}
+function getForwardRampOpportunity(racer) {
+  const forward = new THREE.Vector3(Math.sin(racer.rotationY),0,Math.cos(racer.rotationY));
+  let best=null; for (const ramp of ramps||[]) { if (!ramp.group) continue; const to=ramp.group.position.clone().sub(racer.position); const dist=to.length(); if (dist>50||dist<1) continue; const align=forward.dot(to.normalize()); if (align<0.5) continue; if(!best||dist<best.distance) best={ramp,distance:dist,alignment:align}; }
+  return best;
 }
 
 function getNearestDangerousHazard(pos) {
@@ -3214,9 +3308,10 @@ function recoverStuckAI(racer) {
 
 function updateAI(racer, dt) {
   if (racer.finished) return;
+  const profile = getAIPlanningProfile();
   const closest = getClosestTrackInfo(racer.position);
   const speedFactor = THREE.MathUtils.clamp(Math.abs(racer.speed) / Math.max(1, racer.maxSpeed), 0, 1);
-  let lookAhead = THREE.MathUtils.lerp(0.025, 0.075, speedFactor);
+  let lookAhead = THREE.MathUtils.lerp(0.02, 0.085, speedFactor) * THREE.MathUtils.lerp(0.9, 1.16, profile.lineSharpness);
   racer.aiLastProgressT = racer.aiLastProgressT ?? closest.t;
   racer.aiNoProgressTimer = racer.aiNoProgressTimer || 0;
   racer.aiStuckTimer = racer.aiStuckTimer || 0;
@@ -3224,42 +3319,42 @@ function updateAI(racer, dt) {
   if (delta > 0.0007) racer.aiNoProgressTimer = 0; else racer.aiNoProgressTimer += dt;
   racer.aiStuckTimer = racer.aiNoProgressTimer > 2.5 ? racer.aiStuckTimer + dt : 0;
   racer.aiLastProgressT = closest.t;
+  racer.ai.recoveryMode = !isOnTrack(racer.position) || racer.aiNoProgressTimer > 1.6;
   if (racer.aiStuckTimer > 4.2) { recoverStuckAI(racer); return; }
-  if (racer.aiNoProgressTimer > 2.3) {
-    lookAhead += 0.04;
-    racer.ai.laneOffset = THREE.MathUtils.lerp(racer.ai.laneOffset || 0, 0, 0.18);
-  }
+  if (racer.aiNoProgressTimer > 2.3) { lookAhead += 0.04; racer.ai.laneOffset = THREE.MathUtils.lerp(racer.ai.laneOffset || 0, 0, 0.18); }
+
   let targetT = wrap01(closest.t + lookAhead);
   let target = getSafeAITarget(racer, Math.floor(targetT * checkpointCount));
   target.addScaledVector(getTrackNormal(targetT), getHazardAvoidanceOffset(racer, targetT) * 0.35);
   const upcomingRisk = getUpcomingHazardRiskForAI(racer);
-  if (DEBUG_AI_HAZARDS && upcomingRisk > 60) console.debug(`[AI Hazard] ${racer.name} risk=${upcomingRisk.toFixed(1)}`);
+  const boostOpportunity = getForwardBoostOpportunity(racer);
+  const rampOpportunity = getForwardRampOpportunity(racer);
 
-  const dx = target.x - racer.position.x;
-  const dz = target.z - racer.position.z;
+  const dx = target.x - racer.position.x, dz = target.z - racer.position.z;
   const desiredAngle = Math.atan2(dx, dz);
   const diff = normalizeAngle(desiredAngle - racer.rotationY);
+  const turnSharpness = Math.abs(diff);
 
   const forward = new THREE.Vector3(Math.sin(racer.rotationY), 0, Math.cos(racer.rotationY));
   const toTarget = target.clone().sub(racer.position).normalize();
-  if (forward.dot(toTarget) < 0.15) {
-    targetT = wrap01(targetT + 0.04);
-    target = getSafeAITarget(racer, Math.floor(targetT * checkpointCount));
-  }
+  if (forward.dot(toTarget) < 0.15) { targetT = wrap01(targetT + 0.04); target = getSafeAITarget(racer, Math.floor(targetT * checkpointCount)); }
+
   const speedTurnDampen = THREE.MathUtils.lerp(1.0, 0.55, speedFactor);
   let turn = THREE.MathUtils.clamp(diff * 1.35, -1, 1) * speedTurnDampen;
-  let throttle = 1;
+  let throttle = racer.ai.recoveryMode ? 0.62 : 1;
   const speedRatio = THREE.MathUtils.clamp(Math.abs(racer.speed) / Math.max(30, racer.maxSpeed * currentCC.speedMultiplier), 0, 1.35);
-  let brake = Math.abs(diff) > 0.72 ? THREE.MathUtils.clamp(Math.abs(diff) * (0.3 + speedRatio * 0.25), 0.18, 0.72) : 0;
+  let brake = 0;
+  const brakeThreshold = THREE.MathUtils.lerp(0.52, 0.86, THREE.MathUtils.clamp(profile.brakingDiscipline, 0, 1));
+  if (turnSharpness > brakeThreshold) {
+    brake = THREE.MathUtils.clamp((turnSharpness - brakeThreshold) * (0.75 - profile.riskTolerance * 0.35) + speedRatio * 0.14, 0.08, 0.72);
+  }
 
-  if (upcomingRisk > 80) {
-    throttle = Math.min(throttle, 0.65);
-    brake = Math.max(brake, 0.35 + speedRatio * 0.08);
-  }
-  if (upcomingRisk > 150) {
-    throttle = Math.min(throttle, 0.4);
-    brake = Math.max(brake, 0.5 + speedRatio * 0.1);
-  }
+  if (boostOpportunity && !racer.ai.recoveryMode) { throttle = Math.max(throttle, 0.85); brake *= THREE.MathUtils.lerp(0.65, 0.2, Math.min(1.4, profile.boostDesire)); }
+  if (rampOpportunity && !racer.ai.recoveryMode) { throttle = Math.max(throttle, 0.9); brake *= THREE.MathUtils.lerp(0.75, 0.15, Math.min(1.4, profile.rampDesire)); }
+
+  if (upcomingRisk > 80) { throttle = Math.min(throttle, 0.65); brake = Math.max(brake, 0.35 + speedRatio * 0.08); }
+  if (upcomingRisk > 150) { throttle = Math.min(throttle, 0.4); brake = Math.max(brake, 0.5 + speedRatio * 0.1); }
+
   const threat = getForwardHazardThreat(racer);
   if (threat) {
     turn += threat.recommendedAvoidDirection * threat.strength;
@@ -3269,42 +3364,28 @@ function updateAI(racer, dt) {
   }
   turn = THREE.MathUtils.clamp(turn, -1, 1);
 
-  if (!isOnTrack(racer.position)) {
-    const closest = getClosestTrackInfo(racer.position);
-    const backAngle = Math.atan2(
-      closest.point.x - racer.position.x,
-      closest.point.z - racer.position.z
-    );
-
+  if (racer.ai.recoveryMode) {
+    const backAngle = Math.atan2(closest.point.x - racer.position.x, closest.point.z - racer.position.z);
     const backDiff = normalizeAngle(backAngle - racer.rotationY);
     turn = THREE.MathUtils.clamp(backDiff * 2.1, -1, 1);
     throttle = Math.min(throttle, 0.55);
-    brake = 0.2 + speedRatio * 0.08;
+    brake = Math.abs(backDiff) > 1.2 ? Math.max(brake, 0.18 + speedRatio * 0.05) : Math.min(brake, 0.1);
+    racer.ai.laneOffset = THREE.MathUtils.lerp(racer.ai.laneOffset || 0, 0, 0.2);
   }
 
   const nearestDeadly = getNearestDangerousHazard(racer.position);
   if (nearestDeadly && isPointInsideHazard(racer.position, nearestDeadly, 12)) {
-    const closest = getClosestTrackInfo(racer.position);
     const safeAngle = Math.atan2(closest.point.x - racer.position.x, closest.point.z - racer.position.z);
     const safeDiff = normalizeAngle(safeAngle - racer.rotationY);
-    turn = THREE.MathUtils.clamp(safeDiff * 2.5, -1, 1);
-    throttle = 0.4;
-    brake = Math.max(brake, 0.5);
+    turn = THREE.MathUtils.clamp(safeDiff * 2.5, -1, 1); throttle = 0.4; brake = Math.max(brake, 0.5);
     racer.ai.laneOffset = THREE.MathUtils.lerp(racer.ai.laneOffset || 0, 0, 0.18);
   }
-
-  if (racer.position.distanceTo(target) < trackWidth * 0.72) {
-    racer.ai.targetIndex++;
-  }
-
+  if (racer.position.distanceTo(target) < trackWidth * 0.72) racer.ai.targetIndex++;
   driveRacer(racer, dt, throttle, brake, turn, false, true);
   if (racer.airborneTimer > 0 && !racer.airTrickReady && Math.random() < (0.2 + (currentDifficulty.aiSpeed-0.9)*0.4) * dt) racer.airTrickReady = true;
-
   racer.ai.itemThink -= dt;
-
   if (racer.ai.itemThink <= 0) {
     racer.ai.itemThink = 0.8 + Math.random() * 1.5;
-
     if (racer.item && shouldAIUseItemNow(racer, upcomingRisk, speedRatio)) useItem(racer);
   }
 }
