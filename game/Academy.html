@@ -850,6 +850,15 @@ const OIL_TUNING = { lifetime: 16, radius: 12, spinTime: 0.75, tractionPenalty: 
 const LIGHTNING_TUNING = { slowTime: 4, speedMultiplier: 0.55, spinTime: 0.8, shrinkScale: 0.65 };
 const SHIELD_TUNING = { duration: 10, radius: 7.5 };
 const KART_GROUND_CLEARANCE = 1.05;
+const PROJECTILE_GROUND_CLEARANCE = 0.75;
+const SHELL_GROUND_CLEARANCE = 0.8;
+const BOMB_GROUND_CLEARANCE = 0.9;
+const BANANA_GROUND_CLEARANCE = 0.25;
+const TRAP_GROUND_CLEARANCE = 0.18;
+const ITEM_VISUAL_FLOAT_HEIGHT = 4.2;
+const RAMP_GRAVITY_MULTIPLIER = 1.55;
+const RAMP_FALL_GRAVITY_MULTIPLIER = 1.85;
+const MAX_FALL_SPEED = -95;
 const ITEM_BOX_FLOAT_HEIGHT = 4.2;
 const ITEM_BOX_BOB_AMOUNT = 0.45;
 const ITEM_BOX_BOB_SPEED = 2.4;
@@ -1235,10 +1244,35 @@ function getItemBoxGroundY(itemBox) {
   return 0;
 }
 
+function getTerrainYForObject(obj) {
+  if (!obj) return 0;
+  const worldPos = obj.position || obj.mesh?.position || obj.group?.position;
+  if (!worldPos) return 0;
+  if (typeof obj.t === "number" && typeof getRoadHeightAtT === "function") return getRoadHeightAtT(obj.t);
+  if (typeof getRoadHeightAtWorldPosition === "function") return getRoadHeightAtWorldPosition(worldPos);
+  if (typeof getClosestTrackInfo === "function" && typeof getRoadHeightAtT === "function") {
+    const info = getClosestTrackInfo(new THREE.Vector3(worldPos.x, 0, worldPos.z));
+    if (info && typeof info.t === "number") return getRoadHeightAtT(info.t);
+  }
+  return 0;
+}
+function getVisualObject(item) { return item?.group || item?.mesh || item?.object || item; }
+function keepObjectAboveTerrain(item, clearance = 0.5, options = {}) {
+  const obj = getVisualObject(item);
+  if (!obj || !obj.position) return;
+  const groundY = getTerrainYForObject(item);
+  const minY = groundY + clearance;
+  if (options.snap) { obj.position.y = minY; return; }
+  if (obj.position.y < minY) obj.position.y = minY;
+}
 function getHorizontalDistance(a, b) {
   const dx = a.x - b.x;
   const dz = a.z - b.z;
   return Math.sqrt(dx * dx + dz * dz);
+}
+function horizontalDistance(a, b) {
+  if (!a || !b) return Infinity;
+  return getHorizontalDistance(a, b);
 }
 
 function getTrackSlopeAtT(t) {
@@ -2938,6 +2972,15 @@ function landRacerFromJump(racer) {
   racer.maxAirHeightThisJump = 0;
   racer.lastRampLaunchPower = 0;
 }
+function getEffectiveGravityForRacer(racer) {
+  const baseGravity = racer.gravity || 34;
+  if (racer.airborneTimer > 0 || racer.airborne || racer.jumpTimer > 0) {
+    const vy = racer.verticalVelocity || racer.velocity?.y || 0;
+    if (vy < 0) return baseGravity * RAMP_FALL_GRAVITY_MULTIPLIER;
+    return baseGravity * RAMP_GRAVITY_MULTIPLIER;
+  }
+  return baseGravity;
+}
 function updateBoostPads(dt) {
   if (!boostPads || !boostPads.length || !racers || !racers.length) return;
 
@@ -3007,7 +3050,8 @@ function updateRamps(dt){
     if(r.airborneTimer>0){
       r.airborneTimer-=dt;
       r.airHeight=Math.max(0,r.airHeight + r.verticalVelocity*dt);
-      r.verticalVelocity-=24*dt;
+      r.verticalVelocity -= getEffectiveGravityForRacer(r) * dt;
+      r.verticalVelocity = Math.max(r.verticalVelocity, MAX_FALL_SPEED);
       r.maxAirHeightThisJump = Math.max(r.maxAirHeightThisJump || 0, r.airHeight || 0);
       if(r.speed>30 && Math.random() < dt*5){
         burstParticles(r.position.clone().add(getForwardVector(r).multiplyScalar(-3)),r.boostTimer>0?0xffeaa0:0xd9ecff,1,r.boostTimer>0?0.28:0.2,{gravity:1.8,life:[0.1,0.22],size:[0.05,0.14]});
@@ -3026,10 +3070,11 @@ function updateRamps(dt){
           const boostFactor = r.boostTimer > 0 ? 1.18 : 1.0;
           const launchPower = (ramp.launchPower || 1.15) * speedFactor * ccFactor * boostFactor;
           r.airborneTimer = THREE.MathUtils.clamp(0.85 + launchPower * 0.48, 0.85, 2.2);
-          r.verticalVelocity = 12 + (ramp.height || 7) * 1.45 + launchPower * 4.5;
+          r.verticalVelocity = Math.max(r.verticalVelocity || 0, 22 + launchPower * 14);
           r.airHeight = Math.max(r.airHeight || 0, 0.08);
+          r.position.add(rampForward.clone().multiplyScalar(0.8));
           r.velocity.add(rampForward.multiplyScalar(8 + launchPower * 13));
-          r.speed = Math.max(r.speed, r.velocity.length() * 0.82);
+          r.speed = Math.max(r.speed || 0, (r.maxSpeed || 60) * (1.04 + launchPower * 0.08), r.velocity.length() * 0.82);
           r.rampCooldown = 1.15;
           r.maxAirHeightThisJump = 0;
           r.lastRampLaunchPower = launchPower;
@@ -3040,6 +3085,19 @@ function updateRamps(dt){
       }
     }
   });
+}
+function enforceTerrainForItems(dt) {
+  for (const shell of shells || []) keepObjectAboveTerrain(shell, SHELL_GROUND_CLEARANCE);
+  for (const bomb of bombs || []) keepObjectAboveTerrain(bomb, BOMB_GROUND_CLEARANCE);
+  for (const banana of bananas || []) keepObjectAboveTerrain(banana, BANANA_GROUND_CLEARANCE);
+  for (const trap of activeTraps || []) applyTrapTerrainFollow(trap, dt);
+  for (const pickup of pickups || []) {
+    const obj = getVisualObject(pickup);
+    if (!obj || !obj.position) continue;
+    const groundY = getTerrainYForObject(pickup);
+    const bob = Math.sin(performance.now() * 0.0024 + (pickup.t || 0) * 20) * 0.45;
+    obj.position.y = groundY + ITEM_VISUAL_FLOAT_HEIGHT + bob;
+  }
 }
 function updateSlipstream(dt){
   racers.forEach(r=>{
@@ -4336,7 +4394,7 @@ function updatePickups(dt) {
     const groundY = getItemBoxGroundY(pickup);
     const bob = Math.sin(now * ITEM_BOX_BOB_SPEED + (pickup.t || 0) * 20) * ITEM_BOX_BOB_AMOUNT;
 
-    obj.position.y = groundY + ITEM_BOX_FLOAT_HEIGHT + bob;
+    obj.position.y = groundY + ITEM_VISUAL_FLOAT_HEIGHT + bob;
     obj.rotation.y += dt * 1.8;
     obj.rotation.x = Math.sin(now * 1.8 + (pickup.t || 0) * 10) * 0.12;
 
@@ -4352,7 +4410,7 @@ function updatePickups(dt) {
         pickup.active = true;
         obj.visible = true;
         const respawnGroundY = getItemBoxGroundY(pickup);
-        obj.position.y = respawnGroundY + ITEM_BOX_FLOAT_HEIGHT;
+        obj.position.y = respawnGroundY + ITEM_VISUAL_FLOAT_HEIGHT;
       }
 
       return;
@@ -4394,7 +4452,7 @@ function fireShell(racer, homing, direction = null, homingDelay = 0) {
 
   shell.add(body, rim);
   shell.position.copy(racer.position).add(forward.clone().multiplyScalar(8));
-  shell.position.y = 1.7;
+  shell.position.y = getRoadHeightAtWorldPosition(shell.position) + SHELL_GROUND_CLEARANCE;
   scene.add(shell);
 
   shells.push({
@@ -4430,7 +4488,7 @@ function dropBanana(racer) {
 
   banana.add(stem, peel1, peel2);
   banana.position.copy(racer.position).add(back);
-  banana.position.y = 1.4;
+  banana.position.y = getRoadHeightAtWorldPosition(banana.position) + BANANA_GROUND_CLEARANCE;
   banana.rotation.y = Math.random() * Math.PI;
   scene.add(banana);
 
@@ -4445,14 +4503,15 @@ function dropFakeItemBox(racer) {
   const back = getForwardVector(racer).multiplyScalar(-10);
   const group = new THREE.Mesh(new THREE.BoxGeometry(3, 3, 3), new THREE.MeshStandardMaterial({ color: 0x8020aa, emissive: 0x220022, transparent: true, opacity: 0.9 }));
   group.position.copy(racer.position).add(back);
-  group.position.y = 1.6;
+  group.position.y = getRoadHeightAtWorldPosition(group.position) + ITEM_VISUAL_FLOAT_HEIGHT;
   scene.add(group);
   activeTraps.push({ type: "FAKE_ITEM_BOX", group, owner: racer, life: FAKE_BOX_TUNING.lifetime, radius: FAKE_BOX_TUNING.hitRadius });
 }
 function dropOilSlick(racer) {
   const back = getForwardVector(racer).multiplyScalar(-9);
   const oil = new THREE.Mesh(new THREE.CylinderGeometry(OIL_TUNING.radius, OIL_TUNING.radius, 0.12, 28), new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.35, metalness: 0.25 }));
-  oil.position.copy(racer.position).add(back); oil.position.y = 0.12;
+  oil.position.copy(racer.position).add(back);
+  oil.position.y = getRoadHeightAtWorldPosition(oil.position) + 0.08;
   scene.add(oil);
   activeTraps.push({ type: "OIL_SLICK", group: oil, owner: racer, life: OIL_TUNING.lifetime, radius: OIL_TUNING.radius });
 }
@@ -4478,7 +4537,7 @@ function dropBomb(racer) {
 
   const forward = getForwardVector(racer);
   const launchPos = racer.position.clone().add(forward.clone().multiplyScalar(5.4));
-  launchPos.y = 2.45;
+  launchPos.y = getRoadHeightAtWorldPosition(launchPos) + BOMB_GROUND_CLEARANCE + 1.55;
   group.position.copy(launchPos);
   scene.add(group);
 
@@ -4518,26 +4577,56 @@ function explodeBomb(bomb) {
   activeExplosions.push({ mesh: sphere, ring, center, radius: 0, maxRadius: BOMB_TUNING.explosionRadius, life: 0.45, totalLife: 0.45, hitRacers: new Set(), owner: bomb.owner, ownerImmunity: 0.14 });
 }
 
+function applyShellTerrainFollow(shell, dt) {
+  const obj = getVisualObject(shell);
+  if (!obj || !obj.position) return;
+  const groundY = getTerrainYForObject(shell);
+  const targetY = groundY + SHELL_GROUND_CLEARANCE;
+  obj.position.y = THREE.MathUtils.lerp(obj.position.y, targetY, Math.min(1, dt * 22));
+  if (typeof getClosestTrackInfo === "function" && typeof getTrackTangent === "function") {
+    const info = getClosestTrackInfo(new THREE.Vector3(obj.position.x, 0, obj.position.z));
+    if (info && typeof info.t === "number") shell.t = info.t;
+  }
+}
+function applyBombTerrainPhysics(bomb, dt) {
+  const obj = getVisualObject(bomb);
+  if (!obj || !obj.position) return;
+  if (!bomb.velocity) bomb.velocity = new THREE.Vector3();
+  const groundY = getTerrainYForObject(bomb);
+  const minY = groundY + BOMB_GROUND_CLEARANCE;
+  bomb.verticalVelocity -= 46 * dt;
+  obj.position.y += bomb.verticalVelocity * dt;
+  if (obj.position.y <= minY) {
+    obj.position.y = minY;
+    if (bomb.verticalVelocity < -12) bomb.verticalVelocity = Math.abs(bomb.verticalVelocity) * 0.22;
+    else bomb.verticalVelocity = 0;
+    bomb.onGround = true;
+  } else bomb.onGround = false;
+  if (typeof getClosestTrackInfo === "function") {
+    const info = getClosestTrackInfo(new THREE.Vector3(obj.position.x, 0, obj.position.z));
+    if (info && typeof info.t === "number") bomb.t = info.t;
+  }
+}
+function applyTrapTerrainFollow(trap, dt) {
+  const obj = getVisualObject(trap);
+  if (!obj || !obj.position) return;
+  let clearance = TRAP_GROUND_CLEARANCE;
+  const type = trap.type || trap.itemType || trap.kind;
+  if (type === "BANANA" || type === "banana") clearance = BANANA_GROUND_CLEARANCE;
+  if (type === "FAKE_ITEM_BOX" || type === "fakeItemBox") clearance = ITEM_VISUAL_FLOAT_HEIGHT;
+  if (type === "OIL_SLICK" || type === "oilSlick") clearance = 0.08;
+  const groundY = getTerrainYForObject(trap);
+  const targetY = groundY + clearance;
+  obj.position.y = THREE.MathUtils.lerp(obj.position.y, targetY, Math.min(1, dt * 18));
+}
 function updateBombs(dt) {
   for (let i=bombs.length-1;i>=0;i--) {
     const bomb=bombs[i];
     bomb.fuse -= dt;
     bomb.ownerImmunity = Math.max(0, bomb.ownerImmunity - dt);
-    bomb.verticalVelocity -= bomb.gravity * dt;
     bomb.group.position.add(bomb.velocity.clone().multiplyScalar(dt));
     bomb.velocity.multiplyScalar(BOMB_TUNING.friction);
-    bomb.group.position.y += bomb.verticalVelocity * dt;
-
-    if (bomb.group.position.y <= 1.5) {
-      bomb.group.position.y = 1.5;
-      if (Math.abs(bomb.verticalVelocity) > 3.5) {
-        bomb.verticalVelocity *= -bomb.bounce;
-        bomb.velocity.multiplyScalar(0.76);
-      } else {
-        bomb.verticalVelocity = 0;
-        bomb.velocity.multiplyScalar(0.84);
-      }
-    }
+    applyBombTerrainPhysics(bomb, dt);
 
     bomb.group.rotation.x += dt * (7 + bomb.velocity.length() * 0.05);
     bomb.group.rotation.z += dt * 2.3 + Math.sin(performance.now()*0.015 + bomb.wobble) * 0.01;
@@ -4577,7 +4666,7 @@ function updateExplosions(dt) {
     racers.forEach(racer => {
       if (racer.finished || explosion.hitRacers.has(racer)) return;
       if (racer === explosion.owner && explosion.ownerImmunity > 0) return;
-      if (racer.position.distanceTo(explosion.center) <= explosion.radius) {
+      if (horizontalDistance(racer.position, explosion.center) <= explosion.radius) {
         if (tryBlockWithShield(racer, explosion)) return;
         hitRacer(racer, explosion.owner, BOMB_TUNING.explosionKnockback / 38, explosion.center, true);
         explosion.hitRacers.add(racer);
@@ -4616,7 +4705,7 @@ function updateShells(dt) {
     }
 
     shell.group.position.add(shell.velocity.clone().multiplyScalar(dt));
-    shell.group.position.y = 1.7;
+    applyShellTerrainFollow(shell, dt);
     shell.group.rotation.x += dt * 11;
     shell.group.rotation.y += dt * 8;
 
@@ -4638,8 +4727,8 @@ function updateShells(dt) {
       if (remove) return;
       if (racer.finished) return;
       if (racer === shell.owner && shell.ownerImmunity > 0) return;
-      if (racer.heldItemGroup && racer.position.distanceTo(shell.group.position) < 10) {
-        const heldDist = racer.heldItemGroup.position.distanceTo(shell.group.position);
+      if (racer.heldItemGroup && horizontalDistance(racer.position, shell.group.position) < 10) {
+        const heldDist = horizontalDistance(racer.heldItemGroup.position, shell.group.position);
         if (heldDist < 3.4) {
           burstParticles(shell.group.position, 0xffffff, 40, 2.1);
           showFloatingText(racer, "BLOCKED!");
@@ -4649,7 +4738,7 @@ function updateShells(dt) {
         }
       }
 
-      if (racer.position.distanceTo(shell.group.position) < 5.6) {
+      if (horizontalDistance(racer.position, shell.group.position) < 5.6) {
         if (tryBlockWithShield(racer, shell)) { remove = true; return; }
         hitRacer(racer, shell.owner, 1.25);
         racer.spinTimer = Math.max(racer.spinTimer || 0, 1.15);
@@ -4670,6 +4759,7 @@ function updateBananas(dt) {
   for (let i = bananas.length - 1; i >= 0; i--) {
     const banana = bananas[i];
     banana.life -= dt;
+    applyTrapTerrainFollow({ ...banana, type: "BANANA" }, dt);
     banana.group.rotation.y += dt * 0.75;
 
     let remove = banana.life <= 0;
@@ -4678,7 +4768,7 @@ function updateBananas(dt) {
       if (remove) return;
       if (racer === banana.owner || racer.finished) return;
 
-      if (racer.position.distanceTo(banana.group.position) < 4.8) {
+      if (horizontalDistance(racer.position, banana.group.position) < 4.8) {
         if (tryBlockWithShield(racer, banana)) { remove = true; return; }
         hitRacer(racer, banana.owner, 0.85);
         remove = true;
@@ -4727,10 +4817,11 @@ function updateTraps(dt) {
   for (let i = activeTraps.length - 1; i >= 0; i--) {
     const trap = activeTraps[i];
     trap.life -= dt;
+    applyTrapTerrainFollow(trap, dt);
     let remove = trap.life <= 0;
     racers.forEach(racer => {
       if (remove || racer === trap.owner || racer.finished) return;
-      if (racer.position.distanceTo(trap.group.position) <= trap.radius) {
+      if (horizontalDistance(racer.position, trap.group.position) <= trap.radius) {
         if (tryBlockWithShield(racer, trap)) { remove = true; return; }
         if (trap.type === "FAKE_ITEM_BOX") hitRacer(racer, trap.owner, 1.1);
         if (trap.type === "OIL_SLICK") {
@@ -5479,6 +5570,7 @@ function animate() {
   updateBananas(dt);
   updateTraps(dt);
   updateBombs(dt);
+  enforceTerrainForItems(dt);
   updateExplosions(dt);
   updateParticles(dt);
   updateFloatingTexts(dt);
