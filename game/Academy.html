@@ -850,6 +850,10 @@ const OIL_TUNING = { lifetime: 16, radius: 12, spinTime: 0.75, tractionPenalty: 
 const LIGHTNING_TUNING = { slowTime: 4, speedMultiplier: 0.55, spinTime: 0.8, shrinkScale: 0.65 };
 const SHIELD_TUNING = { duration: 10, radius: 7.5 };
 const KART_GROUND_CLEARANCE = 1.05;
+const ITEM_BOX_FLOAT_HEIGHT = 4.2;
+const ITEM_BOX_BOB_AMOUNT = 0.45;
+const ITEM_BOX_BOB_SPEED = 2.4;
+const ITEM_BOX_PICKUP_RADIUS = 8.5;
 const DEBUG_TRACK_ALIGNMENT = false;
 const DEBUG_ROAD_MESH = false;
 const DEBUG_HAZARD_COLLISIONS = false;
@@ -1211,6 +1215,30 @@ function getRoadHeightAtWorldPosition(pos) {
 
 function getRoadHeightAtPosition(pos) {
   return getRoadHeightAtWorldPosition(pos);
+}
+
+function getItemBoxGroundY(itemBox) {
+  if (!itemBox) return 0;
+
+  if (typeof itemBox.t === "number" && typeof getRoadHeightAtT === "function") {
+    return getRoadHeightAtT(itemBox.t);
+  }
+
+  if (itemBox.position && typeof getRoadHeightAtWorldPosition === "function") {
+    return getRoadHeightAtWorldPosition(itemBox.position);
+  }
+
+  if (itemBox.mesh?.position && typeof getRoadHeightAtWorldPosition === "function") {
+    return getRoadHeightAtWorldPosition(itemBox.mesh.position);
+  }
+
+  return 0;
+}
+
+function getHorizontalDistance(a, b) {
+  const dx = a.x - b.x;
+  const dz = a.z - b.z;
+  return Math.sqrt(dx * dx + dz * dz);
 }
 
 function getTrackSlopeAtT(t) {
@@ -1723,20 +1751,26 @@ function createItemBoxes() {
         makeQuestionPlane(2.38, 0, Math.PI / 2),
         makeQuestionPlane(-2.38, 0, -Math.PI / 2)
       );
-      box.position.set(p.x + n.x * offset, 3.2, p.z + n.z * offset);
+      box.position.set(p.x + n.x * offset, 0, p.z + n.z * offset);
       const trackCenter = getTrackPoint(t).clone();
       if ((runtimeHazards || []).some(h => isPointInsideHazard(box.position, h, 2))) {
-        box.position.set(trackCenter.x - n.x * offset, 3.2, trackCenter.z - n.z * offset);
+        box.position.set(trackCenter.x - n.x * offset, 0, trackCenter.z - n.z * offset);
       }
       if ((runtimeHazards || []).some(h => isPointInsideHazard(box.position, h, 2))) return;
       scene.add(box);
 
-      pickups.push({
+      const itemBox = {
         group: box,
         active: true,
         cooldown: 0,
-        phase: Math.random() * Math.PI * 2
-      });
+        phase: Math.random() * Math.PI * 2,
+        t
+      };
+      itemBox.t = t ?? itemBox.t ?? 0;
+      const groundY = getItemBoxGroundY(itemBox);
+      itemBox.group.position.y = groundY + ITEM_BOX_FLOAT_HEIGHT;
+
+      pickups.push(itemBox);
     });
   });
 }
@@ -4290,21 +4324,35 @@ function updateHeldItemVisual(racer, dt) {
 }
 
 function updatePickups(dt) {
+  if (!pickups || !pickups.length) return;
+
+  const now = performance.now() * 0.001;
+
   pickups.forEach(pickup => {
-    pickup.group.rotation.y += dt * 1.55;
-    const t = performance.now() * 0.003 + pickup.phase;
-    pickup.group.position.y = 3.2 + Math.sin(t) * 0.38;
-    if (pickup.group.children[0]?.material) {
-      pickup.group.children[0].material.emissiveIntensity = 0.85 + Math.sin(t * 1.9) * 0.35;
+    if (!pickup) return;
+    const obj = pickup.group || pickup.mesh || pickup;
+    if (!obj || !obj.position) return;
+
+    const groundY = getItemBoxGroundY(pickup);
+    const bob = Math.sin(now * ITEM_BOX_BOB_SPEED + (pickup.t || 0) * 20) * ITEM_BOX_BOB_AMOUNT;
+
+    obj.position.y = groundY + ITEM_BOX_FLOAT_HEIGHT + bob;
+    obj.rotation.y += dt * 1.8;
+    obj.rotation.x = Math.sin(now * 1.8 + (pickup.t || 0) * 10) * 0.12;
+
+    if (obj.children[0]?.material) {
+      obj.children[0].material.emissiveIntensity = 0.85 + Math.sin(now * 3.8 + (pickup.t || 0) * 8) * 0.35;
     }
 
     if (!pickup.active) {
       pickup.cooldown -= dt;
-      pickup.group.visible = false;
+      obj.visible = false;
 
       if (pickup.cooldown <= 0) {
         pickup.active = true;
-        pickup.group.visible = true;
+        obj.visible = true;
+        const respawnGroundY = getItemBoxGroundY(pickup);
+        obj.position.y = respawnGroundY + ITEM_BOX_FLOAT_HEIGHT;
       }
 
       return;
@@ -4312,17 +4360,18 @@ function updatePickups(dt) {
 
     racers.forEach(racer => {
       if (racer.finished || !pickup.active) return;
-
-      if (racer.position.distanceTo(pickup.group.position) < 6.4) {
-        if (!racer.item) {
-          giveItemFromBox(racer);
-        }
-
+      const dist = getHorizontalDistance(racer.position, obj.position);
+      if (dist < ITEM_BOX_PICKUP_RADIUS) {
+        if (!racer.item) giveItemFromBox(racer);
         pickup.active = false;
         pickup.cooldown = 5.5;
       }
     });
   });
+}
+
+function updateItemBoxes(dt) {
+  updatePickups(dt);
 }
 
 function fireShell(racer, homing, direction = null, homingDelay = 0) {
@@ -5422,7 +5471,9 @@ function animate() {
   updateHazardVisuals(dt);
   updateMapEvents(dt);
   updateRespawnFade(dt);
-  updatePickups(dt);
+  if (typeof updateItemBoxes === "function") {
+    updateItemBoxes(dt);
+  }
   racers.forEach(racer => updateHeldItemVisual(racer, dt));
   updateShells(dt);
   updateBananas(dt);
