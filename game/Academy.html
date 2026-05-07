@@ -894,7 +894,7 @@ const BASE_CAMERA_FOV = 65;
 function buildMaterials(map) {
   mats = {
     ground: new THREE.MeshStandardMaterial({ color: map.ground, roughness: 1 }),
-    road: new THREE.MeshStandardMaterial({ color: map.road, roughness: 0.92 }),
+    road: makeRoadMaterial(map),
     edge: new THREE.MeshStandardMaterial({ color: map.edge, roughness: 0.7 }),
     black: new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 }),
     white: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 }),
@@ -907,6 +907,45 @@ function buildMaterials(map) {
     metal: new THREE.MeshStandardMaterial({ color: 0xbbbbbb, roughness: 0.45, metalness: 0.25 }),
     glass: new THREE.MeshStandardMaterial({ color: 0x88ddff, transparent: true, opacity: 0.62, roughness: 0.15 })
   };
+}
+
+function makeRoadMaterial(map) {
+  const theme = map.theme || "grass";
+  const tintByTheme = {
+    grass: 0x6f5e45, coast: 0x5a5a58, desert: 0xa77444, snow: 0x7f9bb3,
+    volcano: 0x1a1a1a, neon: 0x2b3042, sewer: 0x2a3426, rainbow: 0x616681
+  };
+  const style = {
+    roughness: theme === "neon" || theme === "rainbow" ? 0.52 : theme === "snow" ? 0.58 : 0.9,
+    metalness: theme === "neon" || theme === "rainbow" || theme === "sewer" ? 0.1 : 0.02
+  };
+  const base = new THREE.Color(map.road || 0x3a3a3a).lerp(new THREE.Color(tintByTheme[theme] || 0x3a3a3a), 0.4);
+  const canvas = document.createElement("canvas");
+  canvas.width = 512; canvas.height = 512;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = `#${base.getHexString()}`;
+  ctx.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 2200; i++) {
+    const g = 45 + Math.floor(Math.random() * 80);
+    ctx.fillStyle = `rgba(${g},${g},${g},${0.03 + Math.random() * 0.05})`;
+    ctx.fillRect(Math.random() * 512, Math.random() * 512, 2 + Math.random() * 4, 2 + Math.random() * 4);
+  }
+  for (let i = 0; i < 80; i++) {
+    const x = 170 + Math.random() * 170;
+    ctx.strokeStyle = `rgba(20,20,20,${0.04 + Math.random() * 0.04})`;
+    ctx.lineWidth = 1 + Math.random() * 2;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.bezierCurveTo(x + 8, 160, x - 8, 340, x + 5, 512); ctx.stroke();
+  }
+  const edgeShade = ctx.createLinearGradient(0, 0, 512, 0);
+  edgeShade.addColorStop(0, "rgba(0,0,0,0.28)");
+  edgeShade.addColorStop(0.12, "rgba(0,0,0,0.06)");
+  edgeShade.addColorStop(0.88, "rgba(0,0,0,0.06)");
+  edgeShade.addColorStop(1, "rgba(0,0,0,0.28)");
+  ctx.fillStyle = edgeShade; ctx.fillRect(0, 0, 512, 512);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1.8, 28);
+  return new THREE.MeshStandardMaterial({ color: 0xffffff, map: tex, roughness: style.roughness, metalness: style.metalness, side: THREE.DoubleSide });
 }
 
 /* =========================================================
@@ -1498,17 +1537,7 @@ function createAccurateRoadSurface() {
   geo.setIndex(indices);
   geo.computeVertexNormals();
 
-  const roadColor = new THREE.Color(currentMap.road || 0x222222).lerp(
-    new THREE.Color(0x000000),
-    0.22
-  );
-
-  const material = new THREE.MeshStandardMaterial({
-    color: roadColor,
-    roughness: 0.88,
-    metalness: 0.01,
-    side: THREE.DoubleSide
-  });
+  const material = mats.road;
 
   const road = new THREE.Mesh(geo, material);
   road.name = "MainFilledRoadSurface";
@@ -1582,6 +1611,47 @@ function createRoadEdgeStrip(side) {
 
 function createOptionalRoadDetails() {
   createCenterLaneLine();
+  createThemeCurbBlocks();
+  createRoadShoulders();
+}
+
+function createThemeCurbBlocks() {
+  const colorsByTheme = {
+    grass: [0xff4040, 0xffffff], coast: [0xff4040, 0xffffff],
+    volcano: [0xff7c29, 0x1b1b1b], neon: [0x33ffff, 0x8e3cff], skytemple: [0xf4cf57, 0x8f8778]
+  };
+  const colors = colorsByTheme[currentMap.theme];
+  if (!colors) return;
+  [1, -1].forEach(side => {
+    for (let i = 0; i < 120; i++) {
+      const t = i / 120, c = getTrackPoint(t), n = getTrackNormal(t), y = getRoadHeightAtT(t);
+      const block = new THREE.Mesh(new THREE.BoxGeometry(trackWidth * 0.055, 0.25, 2.6), new THREE.MeshStandardMaterial({ color: colors[i % 2], roughness: 0.62 }));
+      block.position.set(c.x + n.x * trackWidth * 0.965 * side, y + 0.22, c.z + n.z * trackWidth * 0.965 * side);
+      const tan = getTrackTangent(t);
+      block.rotation.y = Math.atan2(tan.x, tan.z);
+      block.receiveShadow = true;
+      scene.add(block);
+    }
+  });
+}
+
+function createRoadShoulders() {
+  [1, -1].forEach(side => {
+    const steps = TRACK_RIBBON_STEPS, vertices = [], indices = [];
+    for (let i = 0; i < steps; i++) {
+      const t = i / steps, c = getTrackPoint(t), n = getTrackNormal(t), y = getRoadHeightAtT(t);
+      vertices.push(c.x + n.x * trackWidth * 0.995 * side, y + 0.1, c.z + n.z * trackWidth * 0.995 * side);
+      vertices.push(c.x + n.x * trackWidth * 1.26 * side, 0.03, c.z + n.z * trackWidth * 1.26 * side);
+    }
+    for (let i = 0; i < steps; i++) { const ni = (i + 1) % steps, a = i * 2, b = a + 1, c = ni * 2, d = c + 1; indices.push(a, b, c, b, d, c); }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: currentMap.ground, roughness: 0.95, side: THREE.DoubleSide }));
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+  });
 }
 
 function createCenterLaneLine() {
@@ -2216,6 +2286,23 @@ function createDecorations(map) {
       else if (Math.random() < 0.75) addSatelliteDish(x, z, 0.8 + Math.random() * 0.8);
       else addSpaceModule(x, z, 0.8 + Math.random() * 0.8);
     }
+  }
+  createTerrainDetailScatter(map, bounds);
+}
+
+function createTerrainDetailScatter(map, bounds) {
+  const spots = Math.floor(90 * (map.decorationDensity || 1));
+  const palette = map.theme === "snow" ? [0xdff6ff, 0xc9e8f2] : map.theme === "desert" ? [0xbf8f55, 0x9f7444] : map.theme === "volcano" ? [0x3b2a27, 0x7a2d23] : map.theme === "grass" || map.theme === "coast" ? [0x5ba24d, 0x6db859] : [0x4a4a4a, 0x676767];
+  for (let i = 0; i < spots; i++) {
+    const x = THREE.MathUtils.lerp(bounds.minX, bounds.maxX, Math.random());
+    const z = THREE.MathUtils.lerp(bounds.minZ, bounds.maxZ, Math.random());
+    const dist = getClosestTrackInfo(new THREE.Vector3(x, 0, z)).distance;
+    if (dist < trackWidth * 1.4) continue;
+    const r = 0.9 + Math.random() * 2.6;
+    const patch = new THREE.Mesh(new THREE.CircleGeometry(r, 10), new THREE.MeshStandardMaterial({ color: palette[i % palette.length], roughness: 1, transparent: true, opacity: 0.45 }));
+    patch.rotation.x = -Math.PI / 2;
+    patch.position.set(x, 0.04 + Math.random() * 0.08, z);
+    scene.add(patch);
   }
 }
 
