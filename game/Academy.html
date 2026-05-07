@@ -27,9 +27,36 @@
     padding: 26px;
     box-sizing: border-box;
     background:
-      radial-gradient(circle at top left, rgba(255,255,255,.18), transparent 32%),
-      radial-gradient(circle at bottom right, rgba(255,210,60,.14), transparent 35%),
-      linear-gradient(135deg, #155cc9, #6328bf 55%, #101020);
+      linear-gradient(125deg, #0840aa, #6b23b2 50%, #0d1030);
+    animation: menuGradientShift 12s ease-in-out infinite alternate;
+  }
+  #menu::before,
+  #menu::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+  }
+  #menu::before {
+    background:
+      radial-gradient(circle at 18% 14%, rgba(255,255,255,.2), transparent 30%),
+      radial-gradient(circle at 88% 78%, rgba(255,196,84,.2), transparent 26%),
+      radial-gradient(circle at 72% 22%, rgba(104,222,255,.16), transparent 30%);
+    animation: floatGlow 16s linear infinite alternate;
+  }
+  #menu::after {
+    opacity: .12;
+    background:
+      conic-gradient(from 45deg, #fff 0 25%, transparent 0 50%, #fff 0 75%, transparent 0) 0 0/28px 28px;
+    mask-image: linear-gradient(to bottom, rgba(0,0,0,.55), transparent 60%);
+  }
+  @keyframes menuGradientShift {
+    0% { filter: hue-rotate(0deg) saturate(1); }
+    100% { filter: hue-rotate(14deg) saturate(1.15); }
+  }
+  @keyframes floatGlow {
+    0% { transform: translate3d(0,0,0) scale(1); }
+    100% { transform: translate3d(-2%,1%,0) scale(1.04); }
   }
 
   #menuInner {
@@ -40,7 +67,9 @@
   h1 {
     margin: 0;
     font-size: 48px;
-    text-shadow: 0 5px 20px rgba(0,0,0,.45);
+    text-shadow: 0 6px 22px rgba(0,0,0,.65), 0 0 20px rgba(118,214,255,.45);
+    letter-spacing: 1px;
+    text-transform: uppercase;
   }
 
   .subtitle {
@@ -57,8 +86,9 @@
   }
 
   .optionBox {
-    background: rgba(0,0,0,.35);
-    border: 1px solid rgba(255,255,255,.16);
+    background: linear-gradient(160deg, rgba(255,255,255,.2), rgba(255,255,255,.06));
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,.3);
     border-radius: 14px;
     padding: 12px 14px;
   }
@@ -78,8 +108,9 @@
   }
 
   .panel {
-    background: rgba(0,0,0,.38);
-    border: 1px solid rgba(255,255,255,.16);
+    background: linear-gradient(160deg, rgba(255,255,255,.18), rgba(255,255,255,.06));
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,.3);
     border-radius: 18px;
     padding: 18px;
     margin-bottom: 18px;
@@ -91,15 +122,18 @@
   }
 
   .menuGrid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-  .selectorBox { display:grid; grid-template-columns:52px 1fr 52px; gap:10px; align-items:center; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.16); border-radius:14px; padding:12px; }
-  .arrowBtn { border:0; height:44px; border-radius:12px; cursor:pointer; font-size:24px; font-weight:900; color:#fff; background:rgba(0,0,0,.35); }
-  .previewCard { border:1px solid rgba(255,255,255,.14); border-radius:12px; padding:10px; background:rgba(0,0,0,.25); }
+  .selectorBox { display:grid; grid-template-columns:52px 1fr 52px; gap:10px; align-items:center; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.16); border-radius:14px; padding:12px; transition: transform .2s ease, box-shadow .2s ease; }
+  .selectorBox:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(0,0,0,.25); }
+  .arrowBtn { border:0; height:44px; border-radius:12px; cursor:pointer; font-size:24px; font-weight:900; color:#fff; background:linear-gradient(180deg, rgba(255,255,255,.24), rgba(0,0,0,.36)); }
+  .previewCard { border:1px solid rgba(255,255,255,.2); border-radius:14px; padding:12px; background:linear-gradient(170deg, rgba(255,255,255,.18), rgba(0,0,0,.2)); }
   .previewTop { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
-  .previewEmoji { font-size:40px; width:52px; text-align:center; }
+  .previewEmoji { font-size:54px; width:70px; text-align:center; filter: drop-shadow(0 3px 6px rgba(0,0,0,.35)); }
   .previewDesc { font-size:13px; opacity:.92; margin-top:4px; }
   .statRow { font-size:12px; margin-top:6px; display:grid; grid-template-columns:110px 1fr auto; gap:8px; align-items:center; }
-  .bar { height:8px; background:rgba(255,255,255,.18); border-radius:999px; overflow:hidden; }
-  .fill { height:100%; background:linear-gradient(90deg,#42e9ff,#ffd24a); }
+  .bar { height:10px; background:rgba(13,18,36,.62); border:1px solid rgba(255,255,255,.15); border-radius:999px; overflow:hidden; }
+  .fill { height:100%; background:linear-gradient(90deg,#35f6ff,#6ec5ff 40%,#ffd24a); box-shadow: 0 0 10px rgba(110,222,255,.6); }
+  .locked { filter: grayscale(0.8) brightness(0.8); }
+  .locked .previewCard { border-style: dashed; border-color: rgba(255,132,132,.65); }
   #player2Panel { display:none; }
 
   .emoji {
@@ -136,14 +170,20 @@
     top: 12px;
     z-index: 30;
     color: white;
-    background: rgba(0,0,0,.52);
+    background: linear-gradient(165deg, rgba(5,10,25,.82), rgba(20,27,50,.75));
     padding: 12px 14px;
-    border-radius: 12px;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,.22);
     line-height: 1.45;
     min-width: 255px;
     display: none;
     box-shadow: 0 5px 18px rgba(0,0,0,.3);
   }
+  #hud > div, #hud2 > div { margin: 3px 0; }
+  #speedText, #speedText2 { font-size: 28px; font-weight: 900; color: #ffe974; text-shadow: 0 0 14px rgba(255,206,62,.65); line-height: 1.1; }
+  #lapText, #lapText2, #placeText, #placeText2 { font-weight: 800; letter-spacing: .2px; }
+  #itemText, #itemText2 { background: rgba(255,255,255,.09); border: 1px solid rgba(255,255,255,.2); border-radius: 10px; padding: 4px 8px; }
+  #driftText, #driftText2 { color: #8ef7ff; font-weight: 800; text-transform: uppercase; }
 
   #hud {
     left: 12px;
@@ -202,11 +242,13 @@
     z-index: 30;
     width: 210px;
     height: 160px;
-    background: rgba(0,0,0,.38);
-    border: 2px solid rgba(255,255,255,.75);
-    border-radius: 12px;
+    background: linear-gradient(160deg, rgba(7,11,20,.85), rgba(15,28,48,.72));
+    border: 2px solid rgba(152,234,255,.8);
+    border-radius: 14px;
+    box-shadow: 0 10px 24px rgba(0,0,0,.35), inset 0 0 0 2px rgba(255,255,255,.1);
     display: none;
   }
+  #minimapLegend { position: fixed; right: 16px; bottom: 180px; z-index: 30; display: none; color: #e8fbff; font-size: 11px; padding: 6px 8px; border-radius: 10px; border: 1px solid rgba(255,255,255,.2); background: rgba(3,10,20,.7); }
 
 
 
@@ -228,8 +270,15 @@
 
   #resultsOverlay { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.78); color: #fff; display: none; align-items: center; justify-content: center; }
   #resultsCard { width: min(760px, 92vw); max-height: 85vh; overflow: auto; background: linear-gradient(180deg, rgba(31,36,54,.97), rgba(17,18,24,.94)); border: 1px solid rgba(255,255,255,.26); border-radius: 16px; padding: 20px; box-shadow: 0 0 40px rgba(141,238,255,.2); }
+  #resultsCard h2::before { content: "🏆 "; }
   #resultsList { margin: 14px 0; }
-  .resultRow { display: grid; grid-template-columns: 70px 1fr 140px; gap: 8px; padding: 10px 12px; border-radius: 10px; margin-bottom: 8px; background: linear-gradient(120deg, rgba(255,255,255,.16), rgba(255,255,255,.04)); }
+  .resultRow { display: grid; grid-template-columns: 82px 1fr 140px; gap: 8px; padding: 10px 12px; border-radius: 10px; margin-bottom: 8px; background: linear-gradient(120deg, rgba(255,255,255,.16), rgba(255,255,255,.04)); border: 1px solid rgba(255,255,255,.16); }
+  .resultRow:nth-child(1) { border-color: rgba(255,220,105,.9); box-shadow: 0 0 18px rgba(255,223,129,.32); }
+  .resultRow:nth-child(2) { border-color: rgba(215,226,244,.8); }
+  .resultRow:nth-child(3) { border-color: rgba(229,174,122,.78); }
+  .resultRow:nth-child(1) > div:first-child::before { content: "🥇 "; }
+  .resultRow:nth-child(2) > div:first-child::before { content: "🥈 "; }
+  .resultRow:nth-child(3) > div:first-child::before { content: "🥉 "; }
   .resultButtons { display: flex; gap: 10px; }
   .resultButtons button { border: 0; border-radius: 10px; padding: 10px 14px; font-weight: 700; cursor: pointer; }
 
@@ -335,6 +384,7 @@
 <div id="respawnFade">Recovered!</div>
 
 <canvas id="minimap" width="210" height="160"></canvas>
+<div id="minimapLegend">● You&nbsp;&nbsp;● Rivals</div>
 
 <div id="help">
   <b>P1:</b> W accelerate • S brake/reverse • A/D steer, double-tap/hold to drift • E item<br>
@@ -5784,6 +5834,7 @@ function resetRaceUIForMenu() {
   document.getElementById("hud2").style.display = "none";
   document.getElementById("help").style.display = "none";
   document.getElementById("minimap").style.display = "none";
+  document.getElementById("minimapLegend").style.display = "none";
   document.getElementById("resultsOverlay").style.display = "none";
   centerMsg.style.display = "none";
 }
@@ -5892,6 +5943,7 @@ document.getElementById("startBtn").onclick = () => {
   document.getElementById("help").style.display = "block";
   document.getElementById("help").innerHTML = splitScreen ? `<b>P1:</b> W accelerate • S brake/reverse • A/D steer, double-tap/hold to drift • E item<br><b>P2:</b> ↑ accelerate • ↓ brake/reverse • ←/→ steer, double-tap/hold to drift • Right Shift item` : `<b>P1:</b> W accelerate • S brake/reverse • A/D steer, double-tap/hold to drift • E item`;
   document.getElementById("minimap").style.display = "block";
+  document.getElementById("minimapLegend").style.display = "block";
 
   if (splitScreen) {
     document.getElementById("hud2").style.display = "block";
