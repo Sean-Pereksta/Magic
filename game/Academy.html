@@ -2710,6 +2710,7 @@ function createKartVisual(character, kart) {
 
   const rider = createCharacterModel(character);
   rider.position.set(0, 3.05, 1.15);
+  rider.rotation.y = Math.PI;
   visualRoot.add(rider);
 
   const flagPole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 4.2, 6), darkMat);
@@ -2825,7 +2826,7 @@ function createCharacterModel(character) {
     root.add(foot);
   }
 
-  if (character.id === "rhino") {
+  if (character.id === "rhino" || character.id === "goldenRhino") {
     torso.scale.set(1.36, 1.12, 1.04);
     head.scale.set(1.22, 0.96, 1.2);
 
@@ -2913,6 +2914,11 @@ function createCharacterModel(character) {
     shell.castShadow = true;
     root.add(shell);
 
+    const shellPlate = new THREE.Mesh(new THREE.SphereGeometry(0.58 * s, 10, 10), new THREE.MeshStandardMaterial({ color: 0x355f24, roughness: 0.9 }));
+    shellPlate.scale.set(1.2, 0.38, 0.92);
+    shellPlate.position.set(0, 1.84 * s, -0.5 * s);
+    root.add(shellPlate);
+
     head.scale.set(0.85, 0.78, 0.88);
   }
 
@@ -2937,6 +2943,58 @@ function createCharacterModel(character) {
       foot.position.set(side * 0.55 * s, 0.41 * s, 0.38 * s);
       root.add(foot);
     }
+  }
+
+
+  if (character.id === "skeleton") {
+    torso.material = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.45 });
+    head.material = torso.material;
+    muzzle.visible = false;
+    const rib = new THREE.Mesh(new THREE.BoxGeometry(0.7 * s, 0.62 * s, 0.28 * s), new THREE.MeshStandardMaterial({ color: 0xbdbdbd, roughness: 0.6 }));
+    rib.position.set(0, 1.56 * s, 0.32 * s);
+    root.add(rib);
+    for (const side of [-1, 1]) {
+      const eyeSocket = new THREE.Mesh(new THREE.SphereGeometry(0.11 * s, 8, 8), blackMat);
+      eyeSocket.position.set(side * 0.22 * s, 2.68 * s, 0.86 * s);
+      root.add(eyeSocket);
+    }
+  }
+
+  if (character.id === "goldenRhino") {
+    const goldMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.25, metalness: 0.75, emissive: 0x3a2a06, emissiveIntensity: 0.2 });
+    torso.material = goldMat;
+    head.material = goldMat;
+    chest.material = new THREE.MeshStandardMaterial({ color: 0xf2d98b, roughness: 0.35, metalness: 0.45 });
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.18 * s, 0.98 * s, 10), new THREE.MeshStandardMaterial({ color: 0xffe39c, roughness: 0.24, metalness: 0.7 }));
+    horn.rotation.x = Math.PI / 2;
+    horn.position.set(0, 2.6 * s, 1.42 * s);
+    root.add(horn);
+  }
+
+  if (character.id === "cloudHare") {
+    head.scale.set(0.92, 0.9, 0.96);
+    for (const side of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.CapsuleGeometry(0.08 * s, 0.82 * s, 5, 8), new THREE.MeshStandardMaterial({ color: 0xf6fbff, roughness: 0.25 }));
+      ear.position.set(side * 0.21 * s, 3.38 * s, 0.08 * s);
+      ear.rotation.z = side * -0.12;
+      root.add(ear);
+    }
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(0.25 * s, 8, 8), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 }));
+    puff.scale.set(1.35, 0.9, 1.0);
+    puff.position.set(0, 1.92 * s, -0.36 * s);
+    root.add(puff);
+  }
+
+  if (character.id === "astralFox") {
+    const cosmic = new THREE.MeshStandardMaterial({ color: 0x2c296f, roughness: 0.4, metalness: 0.2, emissive: 0x11162f, emissiveIntensity: 0.35 });
+    torso.material = cosmic;
+    head.material = cosmic;
+    const starMat = new THREE.MeshStandardMaterial({ color: 0xfff1a8, emissive: 0xffe88a, emissiveIntensity: 0.65, roughness: 0.2 });
+    [[0.2,2.26,0.62],[-0.18,1.88,0.4],[0.05,1.55,0.52]].forEach(([x,y,z])=>{
+      const star = new THREE.Mesh(new THREE.SphereGeometry(0.045 * s, 6, 6), starMat);
+      star.position.set(x * s, y * s, z * s);
+      root.add(star);
+    });
   }
 
   return root;
@@ -4243,8 +4301,8 @@ function animateRider(racer, turn) {
 
   const now = performance.now() * 0.001;
   const speedNorm = THREE.MathUtils.clamp(Math.abs(racer.speed) / 58, 0, 1);
-  const driftLean = racer.drift.active ? racer.drift.direction * 0.3 : 0;
-  const turnLean = -turn * 0.28;
+  const driftLean = racer.drift.active ? racer.drift.direction * (0.34 + speedNorm * 0.2 + racer.drift.sparkLevel * 0.05) : 0;
+  const turnLean = -turn * (0.24 + speedNorm * 0.16);
   const spinWobble = racer.spinTimer > 0 ? Math.sin(now * 22 + racer.playerIndex * 0.6) * 0.2 : 0;
   const targetLean = turnLean + driftLean + spinWobble;
 
@@ -4257,7 +4315,7 @@ function animateRider(racer, turn) {
   const sway = Math.sin(now * (9 + speedNorm * 5) + racer.playerIndex) * 0.04 * speedNorm;
   racer.rider.rotation.y = THREE.MathUtils.lerp(racer.rider.rotation.y, (racer.drift.active ? racer.drift.direction * 0.08 : 0) + sway, 0.12);
 
-  const bobBase = 0.05 + speedNorm * 0.05;
+  const bobBase = 0.06 + speedNorm * 0.07 + (racer.drift.active ? 0.012 : 0);
   const bob = Math.sin(now * (14 + speedNorm * 7) + racer.playerIndex * 0.9) * bobBase;
   const hopLift = racer.driftHopTimer > 0 ? Math.sin((1 - racer.driftHopTimer / 0.22) * Math.PI) * 1.15 : 0;
   racer.rider.position.y = 3.05 + bob + hopLift * 0.16;
