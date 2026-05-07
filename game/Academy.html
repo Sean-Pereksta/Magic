@@ -2278,81 +2278,60 @@ function createHazards(hazards) {
 }
 
 function createDecorations(map) {
-  const density = map.decorationDensity || 1;
-  const count = Math.floor(130 + 90 * density);
+  addThemeDecorations(map);
   const bounds = currentMapBounds || calculateMapBounds(map);
-
-  for (let i = 0; i < count; i++) {
-    const x = THREE.MathUtils.lerp(bounds.minX, bounds.maxX, Math.random());
-    const z = THREE.MathUtils.lerp(bounds.minZ, bounds.maxZ, Math.random());
-    const pos = new THREE.Vector3(x, 0, z);
-    const dist = getClosestTrackInfo(pos).distance;
-
-    if (dist < trackWidth * 1.45) continue;
-    const hazardList = (runtimeHazards && runtimeHazards.length) ? runtimeHazards : (map.hazards || []);
-    if (hazardList.some(h => isPointInsideHazard(pos, h, 6))) continue;
-
-    if (map.theme === "grass") {
-      if (Math.random() < 0.5) addTree(x, z, 0.75 + Math.random() * 0.8);
-      else if (Math.random() < 0.8) addMushroom(x, z, 0.8 + Math.random() * 0.9);
-      else addFence(x, z);
-    } else if (map.theme === "desert") {
-      if (Math.random() < 0.56) addCactus(x, z, 0.8 + Math.random() * 0.8);
-      else if (Math.random() < 0.82) addRock(x, z, 0.8 + Math.random() * 1.2);
-      else addRuin(x, z);
-    } else if (map.theme === "snow") {
-      if (Math.random() < 0.52) addPine(x, z, 0.8 + Math.random() * 0.8);
-      else if (Math.random() < 0.82) addCrystal(x, z, 0.8 + Math.random() * 1.1);
-      else addSnowman(x, z);
-    } else if (map.theme === "volcano") {
-      if (Math.random() < 0.5) addRock(x, z, 1 + Math.random() * 1.4);
-      else if (Math.random() < 0.8) addCrystal(x, z, 0.7 + Math.random() * 1.2);
-      else addRuin(x, z);
-    } else if (map.theme === "coast") {
-      if (Math.random() < 0.45) addTree(x, z, 0.7 + Math.random() * 0.8);
-      else if (Math.random() < 0.75) addRock(x, z, 0.8 + Math.random() * 1.1);
-      else addFence(x, z);
-    } else if (map.theme === "neon") {
-      if (Math.random() < 0.6) addNeonBuilding(x, z, 0.8 + Math.random() * 1.4);
-      else if (Math.random() < 0.82) addNeonSign(x, z);
-      else addFence(x, z);
-    } else if (map.theme === "skytemple") {
-      if (Math.random() < 0.28) addTempleColumn(x, z, 0.8 + Math.random());
-      else if (Math.random() < 0.5) addBrokenRuin(x, z, 0.7 + Math.random());
-      else if (Math.random() < 0.7) addCloudBank(x, z, 0.8 + Math.random() * 1.2);
-      else if (Math.random() < 0.9) addFloatingRock(x, z, 0.7 + Math.random());
-      else addGoldenWarningFlag(x, z, 0.9 + Math.random() * 0.5);
-    } else if (map.theme === "sewer") {
-      if (Math.random() < 0.34) addSewerPipe(x, z, 0.8 + Math.random());
-      else if (Math.random() < 0.56) addToxicBarrel(x, z, 0.8 + Math.random() * 0.4);
-      else if (Math.random() < 0.74) addMetalGrate(x, z, 0.8 + Math.random() * 0.5);
-      else if (Math.random() < 0.9) addTunnelArch(x, z, 0.8 + Math.random());
-      else addSlimeDripColumn(x, z, 0.8 + Math.random());
-    } else if (map.theme === "graveyard") {
-      if (Math.random() < 0.28) addGravestone(x, z, 0.8 + Math.random());
-      else if (Math.random() < 0.46) addDeadTree(x, z, 0.8 + Math.random());
-      else if (Math.random() < 0.62) addCrookedFence(x, z, 0.8 + Math.random() * 0.4);
-      else if (Math.random() < 0.76) addPumpkin(x, z, 0.8 + Math.random() * 0.5);
-      else if (Math.random() < 0.9) addMausoleum(x, z, 0.8 + Math.random());
-      else addGhostWisp(x, z, 0.8 + Math.random() * 0.5);
-    } else if (map.theme === "rainbow") {
-      if (Math.random() < 0.28) addRainbowArch(x, z, 0.9 + Math.random() * 0.8);
-      else if (Math.random() < 0.56) addCloudCluster(x, z, 0.8 + Math.random() * 0.9);
-      else if (Math.random() < 0.8) addStarMarker(x, z, 0.8 + Math.random() * 0.6);
-      else addNeonSign(x, z);
-    } else if (map.theme === "jungle") {
-      if (Math.random() < 0.35) addJungleTree(x, z, 0.8 + Math.random());
-      else if (Math.random() < 0.62) addVineColumn(x, z, 0.8 + Math.random() * 0.7);
-      else if (Math.random() < 0.86) addTempleBlock(x, z, 0.8 + Math.random() * 0.8);
-      else addRock(x, z, 0.8 + Math.random() * 0.8);
-    } else if (map.theme === "moon") {
-      if (Math.random() < 0.34) addMoonRock(x, z, 0.8 + Math.random());
-      else if (Math.random() < 0.56) addCrater(x, z, 0.8 + Math.random() * 0.9);
-      else if (Math.random() < 0.75) addSatelliteDish(x, z, 0.8 + Math.random() * 0.8);
-      else addSpaceModule(x, z, 0.8 + Math.random() * 0.8);
-    }
-  }
   createTerrainDetailScatter(map, bounds);
+}
+
+function addThemeDecorations(map) {
+  const density = map.decorationDensity || 1;
+  const bounds = currentMapBounds || calculateMapBounds(map);
+  const hazardList = (runtimeHazards && runtimeHazards.length) ? runtimeHazards : (map.hazards || []);
+  const nearCount = Math.floor((70 + 55 * density));
+  const farCount = Math.floor((38 + 28 * density));
+  const minNearDist = trackWidth * 1.6;
+  const minFarDist = trackWidth * 2.4;
+  const nearScale = [0.58, 1.08];
+  const farScale = [1.25, 2.1];
+
+  const pickSpot = (minTrackDist) => {
+    for (let tries = 0; tries < 24; tries++) {
+      const x = THREE.MathUtils.lerp(bounds.minX, bounds.maxX, Math.random());
+      const z = THREE.MathUtils.lerp(bounds.minZ, bounds.maxZ, Math.random());
+      const pos = new THREE.Vector3(x, 0, z);
+      if (getClosestTrackInfo(pos).distance < minTrackDist) continue;
+      if (hazardList.some(h => isPointInsideHazard(pos, h, 8))) continue;
+      return { x, z };
+    }
+    return null;
+  };
+
+  const themeSets = {
+    jungle: { near: [addTempleBlock, addVineColumn, addPalmTree, addMossyRuin], far: [addJungleTree, addStonePillar, addTempleBlock] },
+    moon: { near: [addGlowingMoonRock, addCrater, addSatelliteDish], far: [addSpaceModule, addCrater, addMoonRock] },
+    rainbow: { near: [addStarMarker, addCloudCluster, addRainbowArch], far: [addRainbowArch, addCloudCluster, addGlowingRoadRail] },
+    grass: { near: [addFlowerPatch, addGrassClump, addMushroom, addSmallFence], far: [addTree, addMushroom] },
+    desert: { near: [addCactus, addBonePile, addDune], far: [addRock, addStoneRuin, addDune] },
+    snow: { near: [addCrystal, addSnowbank, addSnowman], far: [addPine, addSnowbank, addCrystal] },
+    volcano: { near: [addLavaCrack, addBasaltRock, addEmberParticle], far: [addBasaltRock, addSmokeVent, addRock] },
+    coast: { near: [addPalmTree, addBeachRock, addShell], far: [addDock, addPalmTree, addRock] },
+    neon: { near: [addNeonSign, addLightPole, addBillboard], far: [addNeonBuilding, addBillboard, addCityBlock] },
+    skytemple: { near: [addBrokenRuin, addCloudBank, addGoldenOrnament], far: [addFloatingColumn, addCloudBank, addTempleColumn] },
+    sewer: { near: [addSewerPipe, addGreenLight, addMetalGrate, addToxicBarrel], far: [addTunnelArch, addSewerPipe] },
+    graveyard: { near: [addGravestone, addGhostLight, addCrookedFence], far: [addDeadTree, addMausoleum, addCrookedFence] }
+  };
+  const theme = themeSets[map.theme] || themeSets.grass;
+  const placeSet = (list, count, minDist, range) => {
+    for (let i = 0; i < count; i++) {
+      const spot = pickSpot(minDist);
+      if (!spot) continue;
+      const fn = list[Math.floor(Math.random() * list.length)];
+      const s = range[0] + Math.random() * (range[1] - range[0]);
+      fn(spot.x, spot.z, s);
+    }
+  };
+  placeSet(theme.near, nearCount, minNearDist, nearScale);
+  placeSet(theme.far, farCount, minFarDist, farScale);
 }
 
 function createTerrainDetailScatter(map, bounds) {
@@ -2381,6 +2360,32 @@ const addMoonRock = (x,z,s)=>addRock(x,z,s);
 const addCrater = (x,z,s)=>addRock(x,z,s);
 const addSatelliteDish = (x,z,s)=>addNeonBuilding(x,z,s);
 const addSpaceModule = (x,z,s)=>addRuin(x,z,s);
+const addStonePillar = (x,z,s)=>addTempleColumn(x,z,s);
+const addPalmTree = (x,z,s)=>addTree(x,z,s);
+const addMossyRuin = (x,z,s)=>addBrokenRuin(x,z,s);
+const addGlowingMoonRock = (x,z,s)=>addCrystal(x,z,s);
+const addGlowingRoadRail = (x,z,s)=>addNeonSign(x,z,s);
+const addFlowerPatch = (x,z,s)=>addMushroom(x,z,s*0.7);
+const addGrassClump = (x,z,s)=>addMushroom(x,z,s*0.5);
+const addSmallFence = (x,z,s)=>addFence(x,z,s);
+const addBonePile = (x,z,s)=>addRuin(x,z,s*0.7);
+const addStoneRuin = (x,z,s)=>addRuin(x,z,s);
+const addDune = (x,z,s)=>addRock(x,z,s*1.2);
+const addSnowbank = (x,z,s)=>addRock(x,z,s*0.9);
+const addLavaCrack = (x,z,s)=>addCrystal(x,z,s*0.6);
+const addBasaltRock = (x,z,s)=>addRock(x,z,s);
+const addSmokeVent = (x,z,s)=>addSlimeDripColumn(x,z,s);
+const addEmberParticle = (x,z,s)=>addGhostWisp(x,z,s*0.7);
+const addDock = (x,z,s)=>addFence(x,z,s*1.2);
+const addBeachRock = (x,z,s)=>addRock(x,z,s*0.8);
+const addShell = (x,z,s)=>addCrystal(x,z,s*0.5);
+const addBillboard = (x,z,s)=>addNeonSign(x,z,s*1.1);
+const addCityBlock = (x,z,s)=>addNeonBuilding(x,z,s*1.1);
+const addLightPole = (x,z,s)=>addGoldenWarningFlag(x,z,s);
+const addFloatingColumn = (x,z,s)=>addFloatingRock(x,z,s);
+const addGoldenOrnament = (x,z,s)=>addGoldenWarningFlag(x,z,s);
+const addGreenLight = (x,z,s)=>addGhostWisp(x,z,s);
+const addGhostLight = (x,z,s)=>addGhostWisp(x,z,s);
 
 function addTree(x, z, s) {
   const trunk = new THREE.Mesh(
