@@ -2386,8 +2386,10 @@ function createRacer(name, character, kart, isPlayer, playerIndex, aiIndex) {
     itemCooldown: 0,
     boostTimer: 0,
     airborneTimer: 0,
+    velocityY: 0,
     verticalVelocity: 0,
     airHeight: 0,
+    isAirborne: false,
     airTrickReady: false,
     rampCooldown: 0,
     slipstreamCharge: 0,
@@ -2594,7 +2596,7 @@ function createKartVisual(character, kart) {
   // Visual-only orientation fix:
   // Physics/gameplay forward is still local +Z on `root`.
   // We only rotate the rendered kart/rider mesh so visuals match travel direction.
-  visualRoot.rotation.y = Math.PI;
+  visualRoot.rotation.y = 0;
 
   return { root, wheels, rider, visualRoot };
 }
@@ -2941,7 +2943,9 @@ function landRacerFromJump(racer) {
   const jumpHeight = racer.maxAirHeightThisJump || 0;
   racer.airborneTimer = 0;
   racer.airHeight = 0;
+  racer.velocityY = 0;
   racer.verticalVelocity = 0;
+  racer.isAirborne = false;
   const bigJump = jumpHeight > 8;
   const hugeJump = jumpHeight > 14;
   burstParticles(racer.position,bigJump ? 0xf0e0c0 : 0xd8d8d8,hugeJump ? 24 : bigJump ? 16 : 10,bigJump ? 0.75 : 0.4,{gravity:8,life:[0.2,0.55],size:[0.14,bigJump ? 0.42 : 0.24]});
@@ -2960,7 +2964,7 @@ function landRacerFromJump(racer) {
   racer.lastRampLaunchPower = 0;
 }
 function getEffectiveGravityForRacer(racer) {
-  const baseGravity = racer.gravity || 34;
+  const baseGravity = racer.gravity || 42;
   if (racer.airborneTimer > 0 || racer.airborne || racer.jumpTimer > 0) {
     const vy = racer.verticalVelocity || racer.velocity?.y || 0;
     if (vy < 0) return baseGravity * RAMP_FALL_GRAVITY_MULTIPLIER;
@@ -3034,19 +3038,11 @@ function updateBoostPads(dt) {
 function updateRamps(dt){
   racers.forEach(r=>{
     r.rampCooldown=Math.max(0,(r.rampCooldown||0)-dt);
-    if(r.airborneTimer>0){
-      r.airborneTimer-=dt;
-      r.airHeight=Math.max(0,r.airHeight + r.verticalVelocity*dt);
-      r.verticalVelocity -= getEffectiveGravityForRacer(r) * dt;
-      r.verticalVelocity = Math.max(r.verticalVelocity, MAX_FALL_SPEED);
-      r.maxAirHeightThisJump = Math.max(r.maxAirHeightThisJump || 0, r.airHeight || 0);
-      if(r.speed>30 && Math.random() < dt*5){
-        burstParticles(r.position.clone().add(getForwardVector(r).multiplyScalar(-3)),r.boostTimer>0?0xffeaa0:0xd9ecff,1,r.boostTimer>0?0.28:0.2,{gravity:1.8,life:[0.1,0.22],size:[0.05,0.14]});
-      }
-      if(r.airborneTimer<=0 || (r.airHeight<=0 && r.verticalVelocity<=0)) landRacerFromJump(r);
+    if((r.isAirborne || r.airborneTimer>0) && r.speed>30 && Math.random() < dt*5){
+      burstParticles(r.position.clone().add(getForwardVector(r).multiplyScalar(-3)),r.boostTimer>0?0xffeaa0:0xd9ecff,1,r.boostTimer>0?0.28:0.2,{gravity:1.8,life:[0.1,0.22],size:[0.05,0.14]});
     }
     for(const ramp of ramps){
-      if(r.rampCooldown>0 || r.airborneTimer>0) continue;
+      if(r.rampCooldown>0 || r.isAirborne) continue;
       if(r.position.distanceTo(ramp.group.position)<(ramp.triggerRadius||6.2)){
         const rampForward = getTrackTangent(ramp.t || 0).normalize();
         const approachDot = getForwardVector(r).dot(rampForward);
@@ -3057,8 +3053,10 @@ function updateRamps(dt){
           const boostFactor = r.boostTimer > 0 ? 1.18 : 1.0;
           const launchPower = (ramp.launchPower || 1.15) * speedFactor * ccFactor * boostFactor;
           r.airborneTimer = THREE.MathUtils.clamp(0.85 + launchPower * 0.48, 0.85, 2.2);
-          r.verticalVelocity = Math.max(r.verticalVelocity || 0, 22 + launchPower * 14);
+          r.velocityY = Math.max(r.velocityY || 0, 24 + launchPower * 15);
+          r.verticalVelocity = r.velocityY;
           r.airHeight = Math.max(r.airHeight || 0, 0.08);
+          r.isAirborne = true;
           r.position.add(rampForward.clone().multiplyScalar(0.8));
           r.velocity.add(rampForward.multiplyScalar(8 + launchPower * 13));
           r.speed = Math.max(r.speed || 0, (r.maxSpeed || 60) * (1.04 + launchPower * 0.08), r.velocity.length() * 0.82);
@@ -3665,10 +3663,31 @@ function getForwardHazardThreat(racer) {
 function applyTerrainFollow(racer, dt) {
   if (!racer || !racer.position) return;
   const clearance = racer.groundClearance || KART_GROUND_CLEARANCE;
-  const roadY = getRoadHeightAtWorldPosition(racer.position);
-  const targetY = roadY + clearance + (racer.airHeight || 0);
-  racer.position.y = THREE.MathUtils.lerp(racer.position.y, targetY, Math.min(1, dt * 18));
-  racer.onGround = (racer.airborneTimer || 0) <= 0.02 && (racer.airHeight || 0) <= 0.02;
+  const groundY = getRoadHeightAtPosition(racer.group.position) + clearance;
+
+  racer.velocityY = racer.velocityY ?? racer.verticalVelocity ?? 0;
+  racer.velocityY -= getEffectiveGravityForRacer(racer) * dt;
+  racer.velocityY = Math.max(racer.velocityY, MAX_FALL_SPEED);
+  racer.group.position.y += racer.velocityY * dt;
+
+  if (racer.group.position.y <= groundY) {
+    const landingVelocity = racer.velocityY;
+    racer.group.position.y = groundY;
+    racer.velocityY = 0;
+    racer.verticalVelocity = 0;
+    racer.airHeight = 0;
+    racer.isAirborne = false;
+    racer.onGround = true;
+    racer.airborneTimer = 0;
+    if (landingVelocity < -0.1) landRacerFromJump(racer);
+  } else {
+    racer.airHeight = racer.group.position.y - groundY;
+    racer.verticalVelocity = racer.velocityY;
+    racer.isAirborne = true;
+    racer.onGround = false;
+    racer.airborneTimer = Math.max(racer.airborneTimer || 0, dt);
+    racer.maxAirHeightThisJump = Math.max(racer.maxAirHeightThisJump || 0, racer.airHeight || 0);
+  }
 }
 
 function getRoadSlopeAtRacer(racer) {
@@ -3869,7 +3888,11 @@ function checkHazards(racer) {
       if ((racer.airHeight || 0) > clearHeight) continue;
       if ((racer.airborneTimer||0)<=0.02) { startHazardRespawn(racer); return; }
     }
-    if (hazard.type === "sludge" || hazard.type === "mud") { const slow = hazard.slow || 0.65; racer.speed *= slow; racer.velocity.multiplyScalar(Math.max(0.55, slow)); }
+    if (["sludge", "mud", "snow", "snowdrift", "acid"].includes(hazard.type)) {
+      const slow = Math.max(hazard.slow ?? 0.75, 0.75);
+      racer.speed *= slow;
+      racer.velocity.multiplyScalar(slow);
+    }
     if (hazard.type === "ghost") { racer.traction = racer.kart.traction * (hazard.traction || 0.5); racer.spinTimer = Math.max(racer.spinTimer, 0.05); }
     if (hazard.type === "wind") { const p = (hazard.push || 1) * 0.75; racer.velocity.x += Math.sin(hazard.rotation || 0) * p; racer.velocity.z += Math.cos(hazard.rotation || 0) * p; }
     if (hazard.type === "steam") { const key = `steam-${i}`; if ((racer.hazardCooldowns[key] || 0) < now) { racer.spinTimer = Math.max(racer.spinTimer, hazard.spin || 0.55); racer.hazardCooldowns[key] = now + 1.2; } }
@@ -3898,6 +3921,9 @@ function performRespawn(racer) {
   racer.group.rotation.y = angle;
   racer.speed = 6;
   racer.velocity.copy(tan.clone().multiplyScalar(6));
+  racer.velocityY = 0;
+  racer.verticalVelocity = 0;
+  racer.isAirborne = false;
   racer.spinTimer = 0;
   resetDriftState(racer, true);
   racer.invulnTimer = Math.max(racer.invulnTimer, 1.8);
