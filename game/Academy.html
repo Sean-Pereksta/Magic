@@ -163,10 +163,23 @@
     background: rgba(0,0,0,.68);
     padding: 20px 34px;
     border-radius: 18px;
-    font-size: 38px;
+    font-size: 56px;
     font-weight: 900;
     text-align: center;
     display: none;
+    letter-spacing: 1px;
+    text-shadow: 0 0 14px rgba(255,255,255,.9), 0 0 32px rgba(108,216,255,.65);
+    animation: countdownPop .28s ease-out;
+  }
+  #centerMsg.goFlash {
+    background: radial-gradient(circle at center, rgba(255,255,255,.25), rgba(0,0,0,.7));
+    box-shadow: 0 0 42px rgba(120,235,255,.9);
+    color: #e9ffff;
+  }
+  @keyframes countdownPop {
+    0% { transform: translate(-50%, -50%) scale(0.72); opacity: .2; }
+    60% { transform: translate(-50%, -50%) scale(1.14); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
   }
 
   #help {
@@ -214,9 +227,9 @@
   }
 
   #resultsOverlay { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.78); color: #fff; display: none; align-items: center; justify-content: center; }
-  #resultsCard { width: min(760px, 92vw); max-height: 85vh; overflow: auto; background: rgba(20,20,26,.95); border: 1px solid rgba(255,255,255,.2); border-radius: 16px; padding: 20px; }
+  #resultsCard { width: min(760px, 92vw); max-height: 85vh; overflow: auto; background: linear-gradient(180deg, rgba(31,36,54,.97), rgba(17,18,24,.94)); border: 1px solid rgba(255,255,255,.26); border-radius: 16px; padding: 20px; box-shadow: 0 0 40px rgba(141,238,255,.2); }
   #resultsList { margin: 14px 0; }
-  .resultRow { display: grid; grid-template-columns: 70px 1fr 140px; gap: 8px; padding: 10px 12px; border-radius: 10px; margin-bottom: 8px; background: rgba(255,255,255,.08); }
+  .resultRow { display: grid; grid-template-columns: 70px 1fr 140px; gap: 8px; padding: 10px 12px; border-radius: 10px; margin-bottom: 8px; background: linear-gradient(120deg, rgba(255,255,255,.16), rgba(255,255,255,.04)); }
   .resultButtons { display: flex; gap: 10px; }
   .resultButtons button { border: 0; border-radius: 10px; padding: 10px 14px; font-weight: 700; cursor: pointer; }
 
@@ -1840,7 +1853,13 @@ function createStartLineAndBanner(map) {
   sign.position.set(0, poleHeight + 0.5, 0);
   sign.castShadow = true;
 
-  banner.add(pole1, pole2, sign);
+  const arch = new THREE.Mesh(
+    new THREE.TorusGeometry(span * 0.5, 0.35, 10, 48, Math.PI),
+    new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x7fe8ff, emissiveIntensity: 0.55, roughness: 0.2, metalness: 0.35 })
+  );
+  arch.position.set(0, poleHeight - 2.2, 0);
+  arch.rotation.z = Math.PI;
+  banner.add(pole1, pole2, sign, arch);
 
   banner.position.set(p.x, 0, p.z);
 
@@ -3241,7 +3260,11 @@ function landRacerFromJump(racer) {
     racer.speed *= 0.985;
     racer.spinTimer = Math.max(racer.spinTimer, hugeJump ? 0.08 : 0.04);
   }
-  if (bigJump && racer.isPlayer) racer.hitShakeTimer=Math.max(racer.hitShakeTimer,hugeJump ? 0.22 : 0.14);
+  if (bigJump && racer.isPlayer) {
+    racer.hitShakeTimer=Math.max(racer.hitShakeTimer,hugeJump ? 0.22 : 0.14);
+    if (!racer.cameraRig) racer.cameraRig = { lookAt: racer.position.clone(), landingShake: 0 };
+    racer.cameraRig.landingShake = Math.max(racer.cameraRig.landingShake || 0, hugeJump ? 0.38 : 0.22);
+  }
   racer.maxAirHeightThisJump = 0;
   racer.lastRampLaunchPower = 0;
 }
@@ -3392,6 +3415,7 @@ function setupRacers() {
   racers = [];
   players = [];
   finishOrder = [];
+  finishCelebrationDone = false;
 
   const p1 = createRacer("Player 1", characters[selectedP1CharacterIndex], karts[selectedP1KartIndex], true, 1, 0);
   racers.push(p1);
@@ -5465,8 +5489,11 @@ function updateFloatingTexts(dt) {
 function updateCamera(camera, racer, dt) {
   if (!racer) return;
 
+  if (!racer.cameraRig) racer.cameraRig = { lookAt: racer.position.clone(), landingShake: 0 };
+  racer.cameraRig.landingShake = Math.max(0, (racer.cameraRig.landingShake || 0) - dt * 3.5);
+
   const speedNorm = THREE.MathUtils.clamp(Math.abs(racer.speed) / Math.max(1, racer.maxSpeed), 0, 1.35);
-  const boostNorm = racer.boostTimer > 0 ? THREE.MathUtils.clamp(racer.boostTimer * 0.9, 0, 1) : 0;
+  const boostNorm = (racer.boostTimer > 0 || racer.goldenMushroomTimer > 0) ? 1 : 0;
   const camPullback = 31 + speedNorm * 4 + boostNorm * 6;
   const behind = getForwardVector(racer).multiplyScalar(-camPullback);
   const desired = racer.position.clone().add(behind).add(new THREE.Vector3(0, 18 + speedNorm * 1.4, 0));
@@ -5483,11 +5510,20 @@ function updateCamera(camera, racer, dt) {
     desired.x += Math.sin(t) * shake;
     desired.y += Math.cos(t * 1.2) * shake * 0.45;
   }
+  if (racer.cameraRig.landingShake > 0) {
+    const l = racer.cameraRig.landingShake;
+    const t3 = performance.now() * 0.05;
+    desired.x += Math.sin(t3 * 1.3) * l * 0.5;
+    desired.y += Math.cos(t3 * 1.8) * l * 0.35;
+  }
 
-  camera.position.lerp(desired, 1 - Math.pow(0.001, dt));
-  camera.lookAt(racer.position.x, racer.position.y + 4.3, racer.position.z);
-  const targetFov = BASE_CAMERA_FOV + speedNorm * SPEED_FOV_ADD + boostNorm * BOOST_FOV_ADD;
-  camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 0.12);
+  const followLerp = 1 - Math.pow(0.00022, dt);
+  camera.position.lerp(desired, followLerp);
+  const lookTarget = new THREE.Vector3(racer.position.x, racer.position.y + 4.3 + speedNorm * 0.25, racer.position.z);
+  racer.cameraRig.lookAt.lerp(lookTarget, 1 - Math.pow(0.00055, dt));
+  camera.lookAt(racer.cameraRig.lookAt);
+  const targetFov = BASE_CAMERA_FOV + speedNorm * (SPEED_FOV_ADD + 0.8) + boostNorm * (BOOST_FOV_ADD + 1.2);
+  camera.fov += (targetFov - camera.fov) * dt * 4;
   camera.updateProjectionMatrix();
 }
 
@@ -5657,6 +5693,8 @@ const respawnFade = document.getElementById("respawnFade");
 let msgTimeout = null;
 let respawnFadeTimer = 0;
 let resultsShown = false;
+let lastCountdownText = "";
+let finishCelebrationDone = false;
 
 function formatPlace(i) {
   if (i === 1) return "1st";
@@ -5726,6 +5764,19 @@ function showResultsOverlay() {
     document.getElementById("backToMenuBtn").textContent = "Back to Menu";
   }
   document.getElementById("resultsOverlay").style.display = "flex";
+}
+
+function playFinishCelebration() {
+  if (finishCelebrationDone || !finishLine) return;
+  finishCelebrationDone = true;
+  const bursts = 18;
+  for (let i = 0; i < bursts; i++) {
+    const side = (i / (bursts - 1)) * 2 - 1;
+    const lanePos = finishLine.p.clone().add(finishLine.n.clone().multiplyScalar(side * finishLine.halfWidth * 0.9));
+    lanePos.y += 7.5 + Math.random() * 2.5;
+    const colors = [0xff5577, 0x6de8ff, 0xffdf5a, 0x8dff9e];
+    burstParticles(lanePos, colors[i % colors.length], 9 + (i % 4), 1.8, { gravity: 4 + Math.random() * 2, life: [0.5, 1.15], size: [0.15, 0.28] });
+  }
 }
 
 function resetRaceUIForMenu() {
@@ -5856,6 +5907,8 @@ document.getElementById("startBtn").onclick = () => {
   raceStarted = false;
   resultsShown = false;
   countdown = 3.6;
+  finishCelebrationDone = false;
+  lastCountdownText = "";
   raceElapsedTime = 0;
   resultsPending = false;
   raceEndGraceTimer = null;
@@ -5889,6 +5942,8 @@ document.getElementById("raceAgainBtn").onclick = () => {
   raceStarted = false;
   resultsShown = false;
   countdown = 3.6;
+  finishCelebrationDone = false;
+  lastCountdownText = "";
   showCenterMessage("3", 1000);
 };
 
@@ -5909,22 +5964,29 @@ function animate() {
 
   if (!raceStarted) {
     countdown -= dt;
+    let nextText = "";
 
     if (countdown > 2.4) {
-      centerMsg.innerHTML = "3";
-      centerMsg.style.display = "block";
+      nextText = "3";
     } else if (countdown > 1.4) {
-      centerMsg.innerHTML = "2";
-      centerMsg.style.display = "block";
+      nextText = "2";
     } else if (countdown > 0.4) {
-      centerMsg.innerHTML = "1";
-      centerMsg.style.display = "block";
+      nextText = "1";
     } else if (countdown > -0.55) {
-      centerMsg.innerHTML = "GO!";
-      centerMsg.style.display = "block";
+      nextText = "GO!";
     } else {
       raceStarted = true;
       centerMsg.style.display = "none";
+    }
+    if (nextText) {
+      if (nextText !== lastCountdownText) {
+        centerMsg.classList.remove("goFlash");
+        void centerMsg.offsetWidth;
+        centerMsg.innerHTML = nextText;
+        centerMsg.style.display = "block";
+        if (nextText === "GO!") centerMsg.classList.add("goFlash");
+        lastCountdownText = nextText;
+      } else centerMsg.style.display = "block";
     }
 
     updateCamera(camera1, players[0], dt);
@@ -5946,6 +6008,7 @@ function animate() {
   if (resultsPending) {
     raceEndGraceTimer -= dt;
     if (racers.every(r => r.finished) || raceEndGraceTimer <= 0) {
+      playFinishCelebration();
       showResultsOverlay();
       resultsPending = false;
       raceEndGraceTimer = null;
