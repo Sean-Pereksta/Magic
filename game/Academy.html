@@ -849,6 +849,7 @@ const FAKE_BOX_TUNING = { lifetime: 18, hitRadius: 8, spinTime: 1.25 };
 const OIL_TUNING = { lifetime: 16, radius: 12, spinTime: 0.75, tractionPenalty: 0.35 };
 const LIGHTNING_TUNING = { slowTime: 4, speedMultiplier: 0.55, spinTime: 0.8, shrinkScale: 0.65 };
 const SHIELD_TUNING = { duration: 10, radius: 7.5 };
+const KART_GROUND_CLEARANCE = 1.05;
 const DEBUG_TRACK_ALIGNMENT = false;
 const DEBUG_ROAD_MESH = false;
 const DEBUG_HAZARD_COLLISIONS = false;
@@ -1123,7 +1124,14 @@ function getTrackNormal(t) {
 
 
 function getDefaultHillsForMap(map) {
-  if (map?.hills?.length) return map.hills;
+  if (map?.hills?.length >= 3) return map.hills;
+  const defaults = [
+    { t: 0.18, length: 0.13, height: 5.5, shape: "rolling" },
+    { t: 0.44, length: 0.16, height: 8.5, shape: "hill" },
+    { t: 0.62, length: 0.08, height: 6.5, shape: "crest" },
+    { t: 0.78, length: 0.14, height: -4.5, shape: "dip" }
+  ];
+  if (map?.hills?.length) return map.hills.concat(defaults.slice(0, Math.max(0, 3 - map.hills.length)));
   const theme = map?.theme || "grass";
   if (theme === "snow") return [
     { t: 0.18, length: 0.14, height: 8.8, shape: "hill" },
@@ -1167,37 +1175,42 @@ function getDefaultHillsForMap(map) {
   ];
 }
 
-function getElevationAtTrackT(t) {
-  const map = currentMap || {};
-  const hills = getDefaultHillsForMap(map);
-  const tt = wrap01(t);
-  let elevation = 0;
-  for (const h of hills) {
-    const centerT = wrap01(h.t || 0);
-    const length = Math.max(0.02, Math.abs(h.length || 0.1));
-    let d = Math.abs(tt - centerT);
-    if (d > 0.5) d = 1 - d;
-    const half = length * 0.5;
-    if (d > half) continue;
-    const phase = THREE.MathUtils.clamp((d / half), 0, 1);
-    const sign = h.shape === "dip" ? -1 : 1;
-    const baseHeight = Math.abs(h.height || 0) * sign;
-    let shapeAmp = 0;
-    if (h.shape === "crest") shapeAmp = Math.sin((1 - phase) * Math.PI);
-    else if (h.shape === "rolling") shapeAmp = 0.6 + 0.4 * Math.cos(phase * Math.PI);
-    else shapeAmp = 0.5 + 0.5 * Math.cos(phase * Math.PI);
-    elevation += baseHeight * shapeAmp;
+function getHillContribution(hill, t) {
+  const center = wrap01(hill?.t || 0);
+  const length = Math.max(0.001, hill?.length || 0.1);
+  const dist = circularTDistance(t, center);
+  if (dist > length) return 0;
+  const x = dist / length;
+  const base = 1 - x;
+  let curve;
+  switch (hill?.shape) {
+    case "crest": curve = Math.pow(Math.cos(x * Math.PI * 0.5), 0.65); break;
+    case "dip": curve = -Math.pow(Math.cos(x * Math.PI * 0.5), 1.1); break;
+    case "rolling": curve = Math.sin((1 - x) * Math.PI * 0.5) * Math.sin((1 - x) * Math.PI); break;
+    default: curve = Math.pow(base, 1.35); break;
   }
-  return elevation;
+  return (hill?.height || 0) * curve;
 }
 
 function getRoadHeightAtT(t) {
-  return getElevationAtTrackT(wrap01(t));
+  const tt = wrap01(t || 0);
+  const p = getTrackPoint(tt);
+  let y = p && typeof p.y === "number" ? p.y : 0;
+  const hills = getDefaultHillsForMap(currentMap || {});
+  for (const hill of hills) y += getHillContribution(hill, tt);
+  return y;
+}
+
+function getRoadHeightAtWorldPosition(pos) {
+  if (!pos) return 0;
+  const info = typeof getClosestTrackInfo === "function" ? getClosestTrackInfo(new THREE.Vector3(pos.x, 0, pos.z)) : null;
+  if (info && typeof info.t === "number" && typeof getRoadHeightAtT === "function") return getRoadHeightAtT(info.t);
+  if (info && info.point && typeof info.point.y === "number") return info.point.y;
+  return 0;
 }
 
 function getRoadHeightAtPosition(pos) {
-  const closest = getClosestTrackInfo(pos);
-  return getRoadHeightAtT(closest.t);
+  return getRoadHeightAtWorldPosition(pos);
 }
 
 function getTrackSlopeAtT(t) {
@@ -2293,6 +2306,7 @@ function createRacer(name, character, kart, isPlayer, playerIndex, aiIndex) {
     playerIndex,
     aiIndex,
     group: visual.root,
+    mesh: visual.visualRoot || visual.root,
     wheels: visual.wheels,
     rider: visual.rider,
     position: visual.root.position,
@@ -2307,6 +2321,7 @@ function createRacer(name, character, kart, isPlayer, playerIndex, aiIndex) {
     driftPower: kart.drift,
     traction: kart.traction,
     boostStrength: kart.boostStrength,
+    groundClearance: KART_GROUND_CLEARANCE,
     weight: character.weight * kart.weight,
     item: null,
     heldItem: null,
@@ -2526,11 +2541,7 @@ function createKartVisual(character, kart) {
   // We only rotate the rendered kart/rider mesh so visuals match travel direction.
   visualRoot.rotation.y = Math.PI;
 
-  return {
-    root,
-    wheels,
-    rider
-  };
+  return { root, wheels, rider, visualRoot };
 }
 
 function addBox(parent, x, y, z, sx, sy, sz, mat) {
@@ -3059,9 +3070,10 @@ function placeRacersAtStart() {
     const sideOffset = (col - 1.5) * 8.5;
     const backOffset = row * -11;
 
+    r.groundClearance = r.groundClearance || KART_GROUND_CLEARANCE;
     r.position.set(
       p.x + n.x * sideOffset - tan.x * backOffset,
-      0,
+      getRoadHeightAtT(startT) + r.groundClearance,
       p.z + n.z * sideOffset - tan.z * backOffset
     );
 
@@ -3429,8 +3441,8 @@ function recoverStuckAI(racer) {
   const p = getTrackPoint(safeT);
   const tan = getTrackTangent(safeT);
   const safePoint = getSafeAITarget(racer, Math.floor(safeT * checkpointCount));
-  racer.position.set(safePoint.x, 0, safePoint.z);
-  racer.group.position.set(racer.position.x, getRoadHeightAtPosition(racer.position), racer.position.z);
+  const clearance = racer.groundClearance || KART_GROUND_CLEARANCE;
+  racer.position.set(safePoint.x, getRoadHeightAtWorldPosition(safePoint) + clearance, safePoint.z);
   racer.rotationY = Math.atan2(tan.x, tan.z);
   racer.speed = Math.min(racer.speed, racer.maxSpeed * 0.35);
   racer.aiNoProgressTimer = 0;
@@ -3561,6 +3573,48 @@ function getForwardHazardThreat(racer) {
   return best;
 }
 
+function applyTerrainFollow(racer, dt) {
+  if (!racer || !racer.position) return;
+  const clearance = racer.groundClearance || KART_GROUND_CLEARANCE;
+  const roadY = getRoadHeightAtWorldPosition(racer.position);
+  const targetY = roadY + clearance + (racer.airHeight || 0);
+  racer.position.y = THREE.MathUtils.lerp(racer.position.y, targetY, Math.min(1, dt * 18));
+  racer.onGround = (racer.airborneTimer || 0) <= 0.02 && (racer.airHeight || 0) <= 0.02;
+}
+
+function getRoadSlopeAtRacer(racer) {
+  if (!racer || !racer.position) return 0;
+  const heading = racer.rotationY ?? racer.heading ?? racer.mesh?.rotation?.y ?? 0;
+  const forward = new THREE.Vector3(Math.sin(heading), 0, Math.cos(heading)).normalize();
+  const sampleDist = 8;
+  const front = racer.position.clone().add(forward.clone().multiplyScalar(sampleDist));
+  const back = racer.position.clone().add(forward.clone().multiplyScalar(-sampleDist));
+  const frontY = getRoadHeightAtWorldPosition(front);
+  const backY = getRoadHeightAtWorldPosition(back);
+  return THREE.MathUtils.clamp((frontY - backY) / (sampleDist * 2), -0.45, 0.45);
+}
+
+function applyKartSlopeTilt(racer, dt) {
+  if (!racer || !racer.mesh || !racer.position) return;
+  const heading = racer.rotationY ?? racer.heading ?? racer.mesh.rotation.y ?? 0;
+  const forward = new THREE.Vector3(Math.sin(heading), 0, Math.cos(heading)).normalize();
+  const right = new THREE.Vector3(Math.cos(heading), 0, -Math.sin(heading)).normalize();
+  const sampleDist = 5.5;
+  const center = racer.position.clone();
+  const front = center.clone().add(forward.clone().multiplyScalar(sampleDist));
+  const back = center.clone().add(forward.clone().multiplyScalar(-sampleDist));
+  const left = center.clone().add(right.clone().multiplyScalar(-sampleDist));
+  const rightPos = center.clone().add(right.clone().multiplyScalar(sampleDist));
+  const frontY = getRoadHeightAtWorldPosition(front);
+  const backY = getRoadHeightAtWorldPosition(back);
+  const leftY = getRoadHeightAtWorldPosition(left);
+  const rightY = getRoadHeightAtWorldPosition(rightPos);
+  const pitch = THREE.MathUtils.clamp(Math.atan2(frontY - backY, sampleDist * 2), -0.45, 0.45);
+  const roll = THREE.MathUtils.clamp(Math.atan2(leftY - rightY, sampleDist * 2), -0.32, 0.32);
+  racer.mesh.rotation.x = THREE.MathUtils.lerp(racer.mesh.rotation.x, pitch, Math.min(1, dt * 8));
+  racer.mesh.rotation.z = THREE.MathUtils.lerp(racer.mesh.rotation.z, roll, Math.min(1, dt * 8));
+}
+
 function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
   racer.turnInput = turn || 0;
   if (racer.respawnTimer > 0) {
@@ -3595,8 +3649,7 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
     terrainFactor = Math.max(terrainFactor, 0.9);
   }
 
-  const closestInfo = getClosestTrackInfo(racer.position);
-  const slope = getTrackSlopeAtT(closestInfo.t);
+  const slope = getRoadSlopeAtRacer(racer);
   const uphill = Math.max(0, slope);
   const downhill = Math.max(0, -slope);
   const hillWeightPenalty = THREE.MathUtils.clamp(racer.weight * 0.08, 0.05, 0.18);
@@ -3633,7 +3686,8 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
   }
   if (racer.hitShakeTimer > 0) racer.hitShakeTimer -= dt;
 
-  const maxSpeed = racer.maxSpeed * currentCC.speedMultiplier * terrainFactor * hillMaxSpeedMultiplier * (racer.boostTimer > 0 ? 1.5 : 1);
+  racer.slopeSpeedMultiplier = THREE.MathUtils.clamp(hillMaxSpeedMultiplier, 0.78, 1.25);
+  const maxSpeed = racer.maxSpeed * currentCC.speedMultiplier * terrainFactor * (racer.slopeSpeedMultiplier || 1) * (racer.boostTimer > 0 ? 1.5 : 1);
   racer.speed = THREE.MathUtils.clamp(racer.speed, -18, maxSpeed);
 
   if (Math.abs(racer.speed) < 0.2) {
@@ -3688,8 +3742,8 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
   racer.position.add(racer.velocity.clone().multiplyScalar(dt));
   racer.speed = racer.velocity.length() * Math.sign(racer.speed || 1);
   racer.group.rotation.y = racer.rotationY;
-  const roadHeight = getRoadHeightAtPosition(racer.position);
-  racer.group.position.y = roadHeight + (racer.airHeight || 0);
+  applyTerrainFollow(racer, dt);
+  applyKartSlopeTilt(racer, dt);
 
   racer.wheels.forEach(wheel => {
     const speedFactor = 0.8 + THREE.MathUtils.clamp(Math.abs(racer.speed) / 42, 0, 1.4);
@@ -3758,7 +3812,8 @@ function performRespawn(racer) {
   const tan = getTrackTangent(respawnT);
   const angle = Math.atan2(tan.x, tan.z);
 
-  racer.position.set(roadCenter.x, 0, roadCenter.z);
+  const clearance = racer.groundClearance || KART_GROUND_CLEARANCE;
+  racer.position.set(roadCenter.x, getRoadHeightAtT(respawnT) + clearance, roadCenter.z);
   racer.rotationY = angle;
   racer.group.rotation.y = angle;
   racer.speed = 6;
@@ -3966,7 +4021,7 @@ function animateRider(racer, turn) {
   const bob = Math.sin(now * (14 + speedNorm * 7) + racer.playerIndex * 0.9) * bobBase;
   const hopLift = racer.driftHopTimer > 0 ? Math.sin((1 - racer.driftHopTimer / 0.22) * Math.PI) * 1.15 : 0;
   racer.rider.position.y = 3.05 + bob + hopLift * 0.16;
-  racer.group.position.y = hopLift;
+  racer.mesh.position.y = hopLift;
 }
 
 function getForwardVector(racer) {
