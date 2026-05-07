@@ -2756,7 +2756,8 @@ function buildStrategicTrackFeatures(map) {
     const tangentA = getTrackTangent(info.t);
     const tangentB = getTrackTangent(wrap01(info.t + 0.02));
     if (tangentA.dot(tangentB) < 0.84) continue;
-    const sideOffset = (hazard.x - info.point.x) * info.normal.x + (hazard.z - info.point.z) * info.normal.z;
+    const normal = getTrackNormal(info.t);
+const sideOffset = (hazard.x - info.point.x) * normal.x + (hazard.z - info.point.z) * normal.z;
     const rampT = wrap01(info.t - 0.025);
     const boostT = wrap01(info.t - 0.05);
     if (!isFeatureNear(baseRamps.concat(out.ramps), rampT, 0.03) && !isPointInsideHazard(getTrackPoint(rampT), hazard, 3)) {
@@ -2868,6 +2869,69 @@ function landRacerFromJump(racer) {
   if (bigJump && racer.isPlayer) racer.hitShakeTimer=Math.max(racer.hitShakeTimer,hugeJump ? 0.22 : 0.14);
   racer.maxAirHeightThisJump = 0;
   racer.lastRampLaunchPower = 0;
+}
+function updateBoostPads(dt) {
+  if (!boostPads || !boostPads.length || !racers || !racers.length) return;
+
+  boostPads.forEach(pad => {
+    if (!pad || !pad.group) return;
+
+    pad.cooldown = Math.max(0, (pad.cooldown || 0) - dt);
+
+    // Simple animated glow / bob so boost pads feel alive
+    const pulse = 0.75 + Math.sin(performance.now() * 0.008 + (pad.t || 0) * 20) * 0.25;
+    pad.group.scale.y = 1 + pulse * 0.08;
+
+    pad.group.traverse(obj => {
+      if (!obj.isMesh || !obj.material) return;
+
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      mats.forEach(mat => {
+        if ("emissiveIntensity" in mat) {
+          mat.emissiveIntensity = 0.75 + pulse * 0.75;
+        }
+      });
+    });
+
+    for (const racer of racers) {
+      if (!racer || racer.finished || pad.cooldown > 0) continue;
+      if (!racer.position || !pad.group.position) continue;
+
+      const dist = racer.position.distanceTo(pad.group.position);
+      const triggerRadius = pad.triggerRadius || 8.5;
+
+      if (dist > triggerRadius) continue;
+
+      const forward = getTrackTangent(pad.t || racer.t || 0).normalize();
+      const strength = pad.strength || 1.15;
+      const duration = pad.duration || 0.9;
+
+      racer.boostTimer = Math.max(racer.boostTimer || 0, duration);
+      racer.speed = Math.max(racer.speed || 0, (racer.maxSpeed || 60) * strength * 0.85);
+
+      if (racer.velocity) {
+        racer.velocity.add(forward.multiplyScalar(16 * strength));
+      }
+
+      pad.cooldown = 0.65;
+
+      if (typeof burstParticles === "function") {
+        burstParticles(
+          racer.position.clone().add(new THREE.Vector3(0, 1.4, 0)),
+          0x7cf5ff,
+          12,
+          0.65,
+          { gravity: 5, life: [0.16, 0.38], size: [0.1, 0.28] }
+        );
+      }
+
+      if (typeof floatingText === "function") {
+        floatingText("BOOST!", racer.position.clone().add(new THREE.Vector3(0, 4, 0)), 0x7cf5ff);
+      }
+
+      break;
+    }
+  });
 }
 function updateRamps(dt){
   racers.forEach(r=>{
@@ -3181,11 +3245,6 @@ function scorePointHazardRisk(pos, margin = 6) {
     if (dist < dangerZone) risk += hazardRisk * (1 - dist / dangerZone) * 0.35;
   }
   return risk;
-}
-
-function circularTDistance(a, b) {
-  const d = Math.abs(wrap01(a) - wrap01(b));
-  return Math.min(d, 1 - d);
 }
 
 function getAIPlanningProfile() {
