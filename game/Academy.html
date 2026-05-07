@@ -814,6 +814,7 @@ let pickups = [];
 let shells = [];
 let bananas = [];
 let bombs = [];
+let activeTraps = [];
 let activeExplosions = [];
 let solidObstacles = [];
 let particles = [];
@@ -827,6 +828,27 @@ let ramps = [];
 let currentMapBounds = null;
 const DEBUG_AI_HAZARDS = false;
 const DEBUG_AI_PLANNING = false;
+
+const ITEM_TUNING = {
+  greenShellSpeed: 95,
+  redShellSpeed: 88,
+  shellLifetime: 5.5,
+  redShellTurnStrength: 4.2,
+  redShellSeekRange: 180
+};
+
+const BOMB_TUNING = {
+  launchSpeed: 70,
+  friction: 0.94,
+  fuseTime: 3.0,
+  explosionRadius: 34,
+  explosionKnockback: 72
+};
+
+const FAKE_BOX_TUNING = { lifetime: 18, hitRadius: 8, spinTime: 1.25 };
+const OIL_TUNING = { lifetime: 16, radius: 12, spinTime: 0.75, tractionPenalty: 0.35 };
+const LIGHTNING_TUNING = { slowTime: 4, speedMultiplier: 0.55, spinTime: 0.8, shrinkScale: 0.65 };
+const SHIELD_TUNING = { duration: 10, radius: 7.5 };
 const DEBUG_TRACK_ALIGNMENT = false;
 const DEBUG_ROAD_MESH = false;
 const DEBUG_HAZARD_COLLISIONS = false;
@@ -880,6 +902,7 @@ function clearScene() {
   shells = [];
   bananas = [];
   bombs = [];
+  activeTraps = [];
   solidObstacles = [];
   particles = [];
   floatingTexts = [];
@@ -3506,10 +3529,15 @@ function shouldAIUseItemNow(racer, upcomingRisk, speedRatio) {
   const behind = myIndex >= 0 && myIndex < standings.length - 1 ? standings[myIndex + 1] : null;
   const aheadDist = ahead ? racer.position.distanceTo(ahead.position) : Infinity;
   const behindDist = behind ? racer.position.distanceTo(behind.position) : Infinity;
-  if (racer.item === "RED_SHELL") return !!ahead && aheadDist < 85;
-  if (racer.item === "BANANA") return behindDist < 42;
-  if (racer.item === "MUSHROOM" || racer.item === "GOLDEN_MUSHROOM") return (upcomingRisk < 45 && Math.abs(racer.turnInput || 0) < 0.42) || racer.aiNoProgressTimer > 1.5 || !isOnTrack(racer.position);
-  if (racer.item === "BOMB") return standings.filter(o => o !== racer && racer.position.distanceTo(o.position) < 45).length >= 2;
+  const itemType = typeof racer.item === "string" ? racer.item : racer.item.type;
+  if (itemType === "RED_SHELL") return !!ahead && aheadDist < 160;
+  if (itemType === "GREEN_SHELL") return !!ahead && aheadDist < 90;
+  if (itemType === "TRIPLE_GREEN_SHELL") return !!ahead && aheadDist < 120;
+  if (itemType === "BANANA" || itemType === "FAKE_ITEM_BOX" || itemType === "OIL_SLICK") return behindDist < 85;
+  if (itemType === "MUSHROOM" || itemType === "TRIPLE_MUSHROOM" || itemType === "GOLDEN_MUSHROOM") return (upcomingRisk < 45 && Math.abs(racer.turnInput || 0) < 0.42) || speedRatio < 0.75;
+  if (itemType === "BOMB") return behindDist < 110;
+  if (itemType === "LIGHTNING") return myIndex >= 4;
+  if (itemType === "SHIELD") return behindDist < 90;
   return Math.random() < 0.55;
 }
 
@@ -3548,6 +3576,19 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
   const terrain = getTerrainAtPosition(racer.position);
   const onTrack = terrain === "road";
   let terrainFactor = onTrack ? 1 : currentMap.theme === "snow" ? 0.64 : currentMap.theme === "desert" ? 0.55 : 0.5;
+  if ((racer.tractionPenaltyTimer || 0) > 0) {
+    racer.tractionPenaltyTimer = Math.max(0, racer.tractionPenaltyTimer - dt);
+    terrainFactor *= (1 - OIL_TUNING.tractionPenalty);
+  }
+  if ((racer.lightningTimer || 0) > 0) {
+    racer.lightningTimer = Math.max(0, racer.lightningTimer - dt);
+    terrainFactor *= LIGHTNING_TUNING.speedMultiplier;
+    if (racer.lightningTimer <= 0 && racer.group && racer.originalScale) racer.group.scale.copy(racer.originalScale);
+  }
+  if ((racer.shieldTimer || 0) > 0) {
+    racer.shieldTimer = Math.max(0, racer.shieldTimer - dt);
+    if (racer.shieldTimer <= 0) { racer.hasShield = false; removeShieldVisual(racer); }
+  }
 
   if (racer.boostTimer > 0) {
     racer.boostTimer -= dt;
@@ -3960,12 +4001,23 @@ const itemTypes = ["GREEN_SHELL", "RED_SHELL", "BANANA", "MUSHROOM", "BOMB", "GO
 
 function itemName(item) {
   if (!item) return "None";
+  if (typeof item === "object") {
+    if (item.type === "TRIPLE_GREEN_SHELL") return `Triple Green Shell x${item.count}`;
+    if (item.type === "TRIPLE_MUSHROOM") return `Triple Mushroom x${item.count}`;
+    return itemName(item.type);
+  }
   if (item === "GREEN_SHELL") return "Green Shell";
   if (item === "RED_SHELL") return "Red Shell";
   if (item === "BANANA") return "Banana";
   if (item === "MUSHROOM") return "Mushroom";
   if (item === "BOMB") return "Bomb";
   if (item === "GOLDEN_MUSHROOM") return "Golden Mushroom";
+  if (item === "TRIPLE_GREEN_SHELL") return "Triple Green Shell";
+  if (item === "TRIPLE_MUSHROOM") return "Triple Mushroom";
+  if (item === "FAKE_ITEM_BOX") return "Fake Item Box";
+  if (item === "OIL_SLICK") return "Oil Slick";
+  if (item === "LIGHTNING") return "Lightning";
+  if (item === "SHIELD") return "Shield";
   return item;
 }
 function itemEmoji(item) {
@@ -3975,6 +4027,12 @@ function itemEmoji(item) {
   if (item === "MUSHROOM") return "🍄";
   if (item === "BOMB") return "💣";
   if (item === "GOLDEN_MUSHROOM") return "🌟🍄";
+  if (item === "TRIPLE_GREEN_SHELL") return "🟢🐚x3";
+  if (item === "TRIPLE_MUSHROOM") return "🍄x3";
+  if (item === "FAKE_ITEM_BOX") return "🟥📦";
+  if (item === "OIL_SLICK") return "🛢️";
+  if (item === "LIGHTNING") return "⚡";
+  if (item === "SHIELD") return "🛡️";
   return "🎁";
 }
 
@@ -3994,16 +4052,19 @@ function chooseItemForRacer(racer) {
   const total = racers.length;
 
   if (place >= total - 1) {
-    return weightedPick([["GOLDEN_MUSHROOM",35],["BOMB",20],["RED_SHELL",20],["MUSHROOM",15],["GREEN_SHELL",10]]);
+    return weightedPick([["GOLDEN_MUSHROOM",20],["BOMB",16],["RED_SHELL",18],["MUSHROOM",12],["GREEN_SHELL",8],["TRIPLE_GREEN_SHELL",12],["TRIPLE_MUSHROOM",10],["LIGHTNING",8],["SHIELD",9],["OIL_SLICK",6]]);
   }
   if (place <= 2) {
-    return weightedPick([["BANANA",35],["GREEN_SHELL",30],["MUSHROOM",20],["BOMB",10],["RED_SHELL",5]]);
+    return weightedPick([["BANANA",28],["GREEN_SHELL",26],["MUSHROOM",18],["BOMB",8],["RED_SHELL",6],["FAKE_ITEM_BOX",7],["OIL_SLICK",8],["SHIELD",12]]);
   }
-  return weightedPick([["RED_SHELL",25],["MUSHROOM",25],["GREEN_SHELL",20],["BANANA",15],["BOMB",15]]);
+  return weightedPick([["RED_SHELL",18],["MUSHROOM",16],["GREEN_SHELL",14],["BANANA",10],["BOMB",12],["TRIPLE_GREEN_SHELL",10],["TRIPLE_MUSHROOM",8],["FAKE_ITEM_BOX",6],["OIL_SLICK",8],["SHIELD",8]]);
 }
 
 function giveItemFromBox(racer) {
-  racer.item = chooseItemForRacer(racer);
+  const rolled = chooseItemForRacer(racer);
+  if (rolled === "TRIPLE_GREEN_SHELL") racer.item = { type: "TRIPLE_GREEN_SHELL", count: 3 };
+  else if (rolled === "TRIPLE_MUSHROOM") racer.item = { type: "TRIPLE_MUSHROOM", count: 3 };
+  else racer.item = rolled;
   spawnItemPickupBurst(racer, racer.item);
 }
 
@@ -4045,6 +4106,35 @@ function applyGoldenBoost(racer) {
   spawnMushroomBoostEffects(racer, true);
   showFloatingText(racer, "GOLD BOOST!");
 }
+function applyMushroomBoost(racer) {
+  racer.boostTimer = Math.max(racer.boostTimer, 1.25 * racer.boostStrength);
+  racer.speed = Math.max(racer.speed, racer.maxSpeed * 0.55);
+  racer.velocity.add(getForwardVector(racer).multiplyScalar(12));
+  spawnMushroomBoostEffects(racer, false);
+  showFloatingText(racer, "MUSHROOM!");
+}
+
+function createShieldVisual(racer) {
+  if (racer.shieldMesh || !racer.group) return;
+  const shield = new THREE.Mesh(new THREE.SphereGeometry(SHIELD_TUNING.radius, 24, 16), new THREE.MeshStandardMaterial({ color: 0x66ccff, transparent: true, opacity: 0.28, roughness: 0.2, metalness: 0.1 }));
+  shield.name = "ShieldBubble";
+  racer.group.add(shield);
+  racer.shieldMesh = shield;
+}
+function removeShieldVisual(racer) {
+  if (!racer?.shieldMesh) return;
+  racer.shieldMesh.parent?.remove(racer.shieldMesh);
+  racer.shieldMesh.geometry?.dispose?.();
+  racer.shieldMesh.material?.dispose?.();
+  racer.shieldMesh = null;
+}
+function tryBlockWithShield(target, incomingItem) {
+  if (!target || !target.hasShield) return false;
+  target.hasShield = false; target.shieldTimer = 0; removeShieldVisual(target);
+  if (incomingItem) { incomingItem.dead = true; incomingItem.remove = true; }
+  showFloatingText(target, "SHIELD!");
+  return true;
+}
 
 function useItem(racer) {
   if (!racer || racer.itemCooldown > 0 || racer.finished) return;
@@ -4058,17 +4148,26 @@ function useItem(racer) {
   }
 
   if (!racer.item) return;
+  const itemType = typeof racer.item === "string" ? racer.item : racer.item.type;
+  if (itemType === "TRIPLE_GREEN_SHELL") {
+    fireShell(racer, false);
+    racer.item.count--;
+    if (racer.item.count <= 0) racer.item = null;
+    racer.itemCooldown = 0.26;
+    return;
+  }
+  if (itemType === "TRIPLE_MUSHROOM") {
+    applyMushroomBoost(racer);
+    racer.item.count--;
+    if (racer.item.count <= 0) racer.item = null;
+    racer.itemCooldown = 0.2;
+    return;
+  }
   const item = racer.item;
   racer.item = null;
   racer.itemCooldown = 0.4;
 
-  if (item === "MUSHROOM") {
-    racer.boostTimer = Math.max(racer.boostTimer, 1.25 * racer.boostStrength);
-    racer.speed = Math.max(racer.speed, racer.maxSpeed * 0.55);
-    racer.velocity.add(getForwardVector(racer).multiplyScalar(12));
-    spawnMushroomBoostEffects(racer, false);
-    showFloatingText(racer, "MUSHROOM!");
-  }
+  if (item === "MUSHROOM") applyMushroomBoost(racer);
   if (item === "GOLDEN_MUSHROOM") {
     racer.goldenMushroomTimer = 8;
     racer.goldenMushroomUsesLeft = 6;
@@ -4083,6 +4182,10 @@ function useItem(racer) {
   if (item === "BANANA") { dropBanana(racer); showFloatingText(racer, "BANANA!"); }
   if (item === "GREEN_SHELL") { fireShell(racer, false); showFloatingText(racer, "GREEN SHELL!"); }
   if (item === "RED_SHELL") { fireShell(racer, true); showFloatingText(racer, "RED SHELL!"); }
+  if (item === "FAKE_ITEM_BOX") { dropFakeItemBox(racer); showFloatingText(racer, "FAKE BOX!"); }
+  if (item === "OIL_SLICK") { dropOilSlick(racer); showFloatingText(racer, "OIL SLICK!"); }
+  if (item === "LIGHTNING") { useLightning(racer); showFloatingText(racer, "LIGHTNING!"); }
+  if (item === "SHIELD") { racer.hasShield = true; racer.shieldTimer = SHIELD_TUNING.duration; createShieldVisual(racer); showFloatingText(racer, "SHIELD!"); }
 }
 
 function createHeldItemVisual(itemType) {
@@ -4195,8 +4298,8 @@ function fireShell(racer, homing, direction = null, homingDelay = 0) {
     owner: racer,
     homing,
     target: null,
-    velocity: forward.clone().multiplyScalar(homing ? 68 : 78),
-    life: homing ? 4.2 : 3.0,
+    velocity: forward.clone().multiplyScalar(homing ? ITEM_TUNING.redShellSpeed : ITEM_TUNING.greenShellSpeed),
+    life: ITEM_TUNING.shellLifetime,
     ownerImmunity: 0.45,
     homingDelay
   });
@@ -4234,6 +4337,33 @@ function dropBanana(racer) {
   });
 }
 
+function dropFakeItemBox(racer) {
+  const back = getForwardVector(racer).multiplyScalar(-10);
+  const group = new THREE.Mesh(new THREE.BoxGeometry(3, 3, 3), new THREE.MeshStandardMaterial({ color: 0x8020aa, emissive: 0x220022, transparent: true, opacity: 0.9 }));
+  group.position.copy(racer.position).add(back);
+  group.position.y = 1.6;
+  scene.add(group);
+  activeTraps.push({ type: "FAKE_ITEM_BOX", group, owner: racer, life: FAKE_BOX_TUNING.lifetime, radius: FAKE_BOX_TUNING.hitRadius });
+}
+function dropOilSlick(racer) {
+  const back = getForwardVector(racer).multiplyScalar(-9);
+  const oil = new THREE.Mesh(new THREE.CylinderGeometry(OIL_TUNING.radius, OIL_TUNING.radius, 0.12, 28), new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.35, metalness: 0.25 }));
+  oil.position.copy(racer.position).add(back); oil.position.y = 0.12;
+  scene.add(oil);
+  activeTraps.push({ type: "OIL_SLICK", group: oil, owner: racer, life: OIL_TUNING.lifetime, radius: OIL_TUNING.radius });
+}
+function useLightning(user) {
+  for (const target of racers) {
+    if (target === user) continue;
+    target.lightningTimer = LIGHTNING_TUNING.slowTime;
+    target.spinTimer = Math.max(target.spinTimer || 0, LIGHTNING_TUNING.spinTime);
+    if (target.group) {
+      if (!target.originalScale) target.originalScale = target.group.scale.clone();
+      target.group.scale.copy(target.originalScale.clone().multiplyScalar(LIGHTNING_TUNING.shrinkScale));
+    }
+  }
+}
+
 
 function dropBomb(racer) {
   const group = new THREE.Group();
@@ -4251,11 +4381,13 @@ function dropBomb(racer) {
   bombs.push({
     group,
     owner: racer,
-    fuse: 1.6 + Math.random() * 0.6,
+    fuse: BOMB_TUNING.fuseTime,
+    totalFuse: BOMB_TUNING.fuseTime,
+    elapsedFuse: 0,
     ownerImmunity: 0.5,
     wobble: Math.random() * 10,
-    velocity: forward.clone().multiplyScalar(45 + Math.random() * 20),
-    verticalVelocity: 12 + Math.random() * 6,
+    velocity: forward.clone().multiplyScalar(BOMB_TUNING.launchSpeed),
+    verticalVelocity: 8,
     gravity: 36,
     bounce: 0.42
   });
@@ -4279,7 +4411,7 @@ function explodeBomb(bomb) {
   ring.position.y = 0.15;
 
   scene.add(sphere, ring);
-  activeExplosions.push({ mesh: sphere, ring, center, radius: 0, maxRadius: 22, life: 0.45, totalLife: 0.45, hitRacers: new Set(), owner: bomb.owner, ownerImmunity: 0.14 });
+  activeExplosions.push({ mesh: sphere, ring, center, radius: 0, maxRadius: BOMB_TUNING.explosionRadius, life: 0.45, totalLife: 0.45, hitRacers: new Set(), owner: bomb.owner, ownerImmunity: 0.14 });
 }
 
 function updateBombs(dt) {
@@ -4289,6 +4421,7 @@ function updateBombs(dt) {
     bomb.ownerImmunity = Math.max(0, bomb.ownerImmunity - dt);
     bomb.verticalVelocity -= bomb.gravity * dt;
     bomb.group.position.add(bomb.velocity.clone().multiplyScalar(dt));
+    bomb.velocity.multiplyScalar(BOMB_TUNING.friction);
     bomb.group.position.y += bomb.verticalVelocity * dt;
 
     if (bomb.group.position.y <= 1.5) {
@@ -4304,6 +4437,16 @@ function updateBombs(dt) {
 
     bomb.group.rotation.x += dt * (7 + bomb.velocity.length() * 0.05);
     bomb.group.rotation.z += dt * 2.3 + Math.sin(performance.now()*0.015 + bomb.wobble) * 0.01;
+    bomb.elapsedFuse += dt;
+    const ratio = THREE.MathUtils.clamp(bomb.fuse / Math.max(0.01, bomb.totalFuse || BOMB_TUNING.fuseTime), 0, 1);
+    const blinkRate = THREE.MathUtils.lerp(18, 3, ratio);
+    const blinkOn = Math.floor((bomb.elapsedFuse || 0) * blinkRate) % 2 === 0;
+    bomb.group.traverse(obj => {
+      if (obj.isMesh && obj.material) {
+        obj.material.emissive = new THREE.Color(blinkOn ? 0xff3300 : 0x000000);
+        obj.material.emissiveIntensity = blinkOn ? 1.8 : 0.15;
+      }
+    });
     burstParticles(bomb.group.position.clone().add(new THREE.Vector3(0,1.3,0)), 0xffaa33, 1, 0.2, { gravity: 1, life: [0.08,0.15], size:[0.06,0.12] });
     if (bomb.fuse <= 0) { explodeBomb(bomb); scene.remove(bomb.group); bombs.splice(i,1); }
   }
@@ -4331,7 +4474,8 @@ function updateExplosions(dt) {
       if (racer.finished || explosion.hitRacers.has(racer)) return;
       if (racer === explosion.owner && explosion.ownerImmunity > 0) return;
       if (racer.position.distanceTo(explosion.center) <= explosion.radius) {
-        hitRacer(racer, explosion.owner, 1.9, explosion.center, true);
+        if (tryBlockWithShield(racer, explosion)) return;
+        hitRacer(racer, explosion.owner, BOMB_TUNING.explosionKnockback / 38, explosion.center, true);
         explosion.hitRacers.add(racer);
       }
     });
@@ -4362,8 +4506,8 @@ function updateShells(dt) {
       if (shell.target) {
         const desired = shell.target.position.clone().sub(shell.group.position).setY(0).normalize();
         const current = shell.velocity.clone().setY(0).normalize();
-        const steered = current.lerp(desired, 0.045).normalize();
-        shell.velocity.copy(steered.multiplyScalar(72));
+        const steered = current.lerp(desired, ITEM_TUNING.redShellTurnStrength * dt).normalize();
+        shell.velocity.copy(steered.multiplyScalar(ITEM_TUNING.redShellSpeed));
       }
     }
 
@@ -4402,7 +4546,10 @@ function updateShells(dt) {
       }
 
       if (racer.position.distanceTo(shell.group.position) < 5.6) {
+        if (tryBlockWithShield(racer, shell)) { remove = true; return; }
         hitRacer(racer, shell.owner, 1.25);
+        racer.spinTimer = Math.max(racer.spinTimer || 0, 1.15);
+        racer.hitStun = Math.max(racer.hitStun || 0, 0.45);
         remove = true;
       }
     });
@@ -4428,6 +4575,7 @@ function updateBananas(dt) {
       if (racer === banana.owner || racer.finished) return;
 
       if (racer.position.distanceTo(banana.group.position) < 4.8) {
+        if (tryBlockWithShield(racer, banana)) { remove = true; return; }
         hitRacer(racer, banana.owner, 0.85);
         remove = true;
       }
@@ -4453,6 +4601,7 @@ function findShellTarget(shell) {
 
     const racerPlace = placing.indexOf(racer);
     const distance = racer.position.distanceTo(shell.group.position);
+    if (distance > ITEM_TUNING.redShellSeekRange) return;
     let score = distance;
 
     if (racerPlace < ownerPlace) {
@@ -4468,6 +4617,27 @@ function findShellTarget(shell) {
   });
 
   return best;
+}
+
+function updateTraps(dt) {
+  for (let i = activeTraps.length - 1; i >= 0; i--) {
+    const trap = activeTraps[i];
+    trap.life -= dt;
+    let remove = trap.life <= 0;
+    racers.forEach(racer => {
+      if (remove || racer === trap.owner || racer.finished) return;
+      if (racer.position.distanceTo(trap.group.position) <= trap.radius) {
+        if (tryBlockWithShield(racer, trap)) { remove = true; return; }
+        if (trap.type === "FAKE_ITEM_BOX") hitRacer(racer, trap.owner, 1.1);
+        if (trap.type === "OIL_SLICK") {
+          racer.spinTimer = Math.max(racer.spinTimer || 0, OIL_TUNING.spinTime);
+          racer.tractionPenaltyTimer = Math.max(racer.tractionPenaltyTimer || 0, 1.2);
+        }
+        remove = true;
+      }
+    });
+    if (remove) { scene.remove(trap.group); activeTraps.splice(i, 1); }
+  }
 }
 
 function hitRacer(target, attacker, force, impactPoint = null, isBombHit = false) {
@@ -4824,7 +4994,7 @@ function updateSingleHUD(racer, placings, els) {
   els.speed.textContent = `Speed: ${Math.round(Math.abs(racer.speed))}`;
   const itemText = racer.goldenMushroomTimer > 0 && racer.goldenMushroomUsesLeft > 0
     ? `${itemEmoji("GOLDEN_MUSHROOM")} Golden Mushroom x${racer.goldenMushroomUsesLeft}`
-    : racer.item ? `${itemEmoji(racer.item)} ${itemName(racer.item)}` : "None";
+    : racer.item ? `${itemEmoji(typeof racer.item === "string" ? racer.item : racer.item.type)} ${itemName(racer.item)}` : "None";
   els.item.textContent = `Item: ${itemText}`;
 
   if (racer.drift.active) {
@@ -5201,6 +5371,7 @@ function animate() {
   racers.forEach(racer => updateHeldItemVisual(racer, dt));
   updateShells(dt);
   updateBananas(dt);
+  updateTraps(dt);
   updateBombs(dt);
   updateExplosions(dt);
   updateParticles(dt);
