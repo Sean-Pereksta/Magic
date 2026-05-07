@@ -902,8 +902,8 @@ const DEBUG_AI_HAZARDS = false;
 const DEBUG_AI_PLANNING = false;
 
 const ITEM_TUNING = {
-  greenShellSpeed: 95,
-  redShellSpeed: 88,
+  greenShellSpeed: 135,
+  redShellSpeed: 125,
   shellLifetime: 5.5,
   redShellTurnStrength: 4.2,
   redShellSeekRange: 180
@@ -931,6 +931,8 @@ const ITEM_VISUAL_FLOAT_HEIGHT = 4.2;
 const RAMP_GRAVITY_MULTIPLIER = 1.55;
 const RAMP_FALL_GRAVITY_MULTIPLIER = 1.85;
 const MAX_FALL_SPEED = -95;
+const FALL_RECOVERY_DROP = 28;
+const FALL_RECOVERY_DELAY = 0.85;
 const ITEM_BOX_FLOAT_HEIGHT = 4.2;
 const ITEM_BOX_BOB_AMOUNT = 0.45;
 const ITEM_BOX_BOB_SPEED = 2.4;
@@ -2690,6 +2692,7 @@ function createRacer(name, character, kart, isPlayer, playerIndex, aiIndex) {
     exhaustHeight: visual.exhaustHeight || 1.0,
     hitFxTimer: 0,
     rider: visual.rider,
+    riderBaseYaw: visual.riderBaseYaw ?? Math.PI,
     position: visual.root.position,
     rotationY: 0,
     speed: 0,
@@ -2849,7 +2852,8 @@ function createKartVisual(character, kart) {
 
   const rider = createCharacterModel(character);
   rider.position.set(0, 3.05, 1.15);
-  rider.rotation.y = Math.PI;
+  const riderBaseYaw = Math.PI;
+  rider.rotation.y = riderBaseYaw;
   visualRoot.add(rider);
 
   const flagPole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 4.2, 6), darkMat);
@@ -2870,7 +2874,7 @@ function createKartVisual(character, kart) {
   const frontWheels = [wheels[0], wheels[1]].filter(Boolean);
   const exhaustOffset = kart.id === "rocket" || kart.id === "meteor" ? -7.6 : -5.2;
   const exhaustHeight = kart.id === "mudbuggy" ? 1.5 : 1.1;
-  return { root, wheels, rider, visualRoot, frontWheels, exhaustOffset, exhaustHeight };
+  return { root, wheels, rider, riderBaseYaw, visualRoot, frontWheels, exhaustOffset, exhaustHeight };
 }
 
 function addBox(parent, x, y, z, sx, sy, sz, mat) {
@@ -4051,6 +4055,63 @@ function applyTerrainFollow(racer, dt) {
   }
 }
 
+function getExpectedTrackHeightForRacer(racer) {
+  if (!racer || !racer.position) return 0;
+  const closest = typeof getClosestTrackInfo === "function" ? getClosestTrackInfo(racer.position) : null;
+  if (closest && typeof closest.t === "number") return getRoadHeightAtT(closest.t);
+  return getRoadHeightAtPosition(racer.position);
+}
+
+function resetRacerToTrackCenter(racer) {
+  if (!racer || !racer.position) return;
+  const closest = typeof getClosestTrackInfo === "function" ? getClosestTrackInfo(racer.position) : null;
+  const t = closest && typeof closest.t === "number" ? closest.t : 0;
+  const centerPos = getTrackPoint(t);
+  const tangent = getTrackTangent(t);
+  const heading = Math.atan2(tangent.x, tangent.z);
+  const clearance = racer.groundClearance || KART_GROUND_CLEARANCE;
+  racer.position.set(centerPos.x, getRoadHeightAtT(t) + clearance + 2.1, centerPos.z);
+  racer.rotationY = heading;
+  racer.group.rotation.y = heading;
+  racer.speed = 0;
+  racer.velocity.set(0, 0, 0);
+  racer.boostTimer = 0;
+  racer.velocityY = 0;
+  racer.verticalVelocity = 0;
+  racer.airHeight = 0;
+  racer.isAirborne = false;
+  racer.onGround = true;
+}
+
+function updateFallRecovery(racer, dt) {
+  if (!racer || !racer.group) return false;
+  racer.fallRecoverTimer = racer.fallRecoverTimer || 0;
+  racer.isFallRecovering = racer.isFallRecovering || false;
+
+  const expectedY = getExpectedTrackHeightForRacer(racer);
+  const racerY = racer.group.position.y;
+
+  if (!racer.isFallRecovering && racerY < expectedY - FALL_RECOVERY_DROP) {
+    racer.isFallRecovering = true;
+    racer.fallRecoverTimer = FALL_RECOVERY_DELAY;
+  }
+
+  if (!racer.isFallRecovering) return false;
+
+  racer.speed = 0;
+  racer.velocity.set(0, 0, 0);
+  racer.velocityY = 0;
+  racer.verticalVelocity = 0;
+
+  racer.fallRecoverTimer -= dt;
+  if (racer.fallRecoverTimer <= 0) {
+    resetRacerToTrackCenter(racer);
+    racer.isFallRecovering = false;
+    racer.fallRecoverTimer = 0;
+  }
+  return true;
+}
+
 function getRoadSlopeAtRacer(racer) {
   if (!racer || !racer.position) return 0;
   const heading = racer.rotationY ?? racer.heading ?? racer.mesh?.rotation?.y ?? 0;
@@ -4212,7 +4273,9 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
   racer.speed = racer.velocity.length() * Math.sign(racer.speed || 1);
   racer.group.rotation.y = racer.rotationY;
   applyTerrainFollow(racer, dt);
+  const recoveringFromFall = updateFallRecovery(racer, dt);
   applyKartSlopeTilt(racer, dt);
+  if (recoveringFromFall) return;
 
   racer.wheels.forEach(wheel => {
     const speedFactor = 0.8 + THREE.MathUtils.clamp(Math.abs(racer.speed) / 42, 0, 1.4);
@@ -4484,7 +4547,8 @@ function animateRider(racer, turn) {
   racer.rider.rotation.x = THREE.MathUtils.lerp(racer.rider.rotation.x, boostLean + driftPitch, 0.14);
 
   const sway = Math.sin(now * (9 + speedNorm * 5) + racer.playerIndex) * 0.04 * speedNorm;
-  racer.rider.rotation.y = THREE.MathUtils.lerp(racer.rider.rotation.y, (racer.drift.active ? racer.drift.direction * 0.08 : 0) + sway, 0.12);
+  const riderBaseYaw = racer.riderBaseYaw ?? Math.PI;
+  racer.rider.rotation.y = THREE.MathUtils.lerp(racer.rider.rotation.y, riderBaseYaw + (racer.drift.active ? racer.drift.direction * 0.08 : 0) + sway, 0.12);
 
   const bobBase = 0.06 + speedNorm * 0.07 + (racer.drift.active ? 0.012 : 0);
   const bob = Math.sin(now * (14 + speedNorm * 7) + racer.playerIndex * 0.9) * bobBase;
@@ -4841,7 +4905,7 @@ function fireShell(racer, homing, direction = null, homingDelay = 0) {
   rim.rotation.x = Math.PI / 2;
 
   shell.add(body, rim);
-  shell.position.copy(racer.position).add(forward.clone().multiplyScalar(5));
+  shell.position.copy(racer.position).add(forward.clone().multiplyScalar(4.2));
   shell.position.y = racer.position.y + 3.5;
   scene.add(shell);
 
