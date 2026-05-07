@@ -2546,6 +2546,10 @@ function createRacer(name, character, kart, isPlayer, playerIndex, aiIndex) {
     group: visual.root,
     mesh: visual.visualRoot || visual.root,
     wheels: visual.wheels,
+    frontWheels: visual.frontWheels || [],
+    exhaustOffset: visual.exhaustOffset || -5.2,
+    exhaustHeight: visual.exhaustHeight || 1.0,
+    hitFxTimer: 0,
     rider: visual.rider,
     position: visual.root.position,
     rotationY: 0,
@@ -2613,100 +2617,42 @@ function createRacer(name, character, kart, isPlayer, playerIndex, aiIndex) {
   return racer;
 }
 
+function createKartModel(kart, character) {
+  const modelRoot = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color: kart.color, roughness: 0.42, metalness: 0.08 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
+  const trimMat = new THREE.MeshStandardMaterial({ color: kart.trim || character.color, roughness: 0.45, metalness: 0.2 });
+  const premium = ["goldenKart", "meteor", "rainbowRoadster"].includes(kart.id);
+
+  const addPod = (x,y,z,sx,sy,sz,mat=bodyMat)=>{ const m=new THREE.Mesh(new THREE.CapsuleGeometry(sx, sz, 8, 12), mat); m.scale.set(1, sy/sx, 1); m.position.set(x,y,z); m.castShadow=true; modelRoot.add(m); return m; };
+
+  if (kart.id === "speedster") { addBox(modelRoot,0,1.2,-5.8,1.6,0.6,3.2,bodyMat); addBox(modelRoot,0,1.45,0.2,4.8,1.0,10.6,bodyMat); addBox(modelRoot,0,1.8,3.8,3.6,0.85,3.0,darkMat); addBox(modelRoot,0,3.0,6.2,7.2,0.26,1.0,trimMat); }
+  else if (kart.id === "buggy" || kart.id === "boneBuggy") { addBox(modelRoot,0,1.9,0.2,5.6,1.3,7.2,bodyMat); addBox(modelRoot,0,3.0,1.4,3.2,1.2,2.6,darkMat); [-2.3,2.3].forEach(x=>addBox(modelRoot,x,4.1,0.8,0.3,3.8,0.3,mats.metal)); addBox(modelRoot,0,5.9,0.8,5.0,0.28,0.28,mats.metal); }
+  else if (kart.id === "cruiser") { addBox(modelRoot,0,1.7,0.3,8.2,2.2,9.4,bodyMat); addBox(modelRoot,0,3.1,-1.2,5.5,1.5,3.6,bodyMat); addBox(modelRoot,0,3.4,2.3,4.5,1.8,2.6,darkMat); addBox(modelRoot,0,1.6,-5.5,7.3,1.0,0.7,mats.metal); addBox(modelRoot,0,1.6,5.7,7.3,1.0,0.7,mats.metal); }
+  else if (kart.id === "rocket" || kart.id === "meteor") { addBox(modelRoot,0,1.25,0.3,4.0,1.0,13.2,bodyMat); addBox(modelRoot,0,2.1,2.5,2.8,1.0,4.2,darkMat); addBox(modelRoot,0,1.0,-6.6,1.7,0.5,3.4,trimMat); addBox(modelRoot,0,1.15,6.8,1.7,0.8,1.3,mats.metal); }
+  else if (kart.id === "mudbuggy") { addBox(modelRoot,0,2.2,0.1,6.0,1.4,7.8,bodyMat); addBox(modelRoot,0,3.4,1.0,4.6,1.1,2.7,darkMat); [-3,3].forEach(x=>addBox(modelRoot,x,1.45,0,0.26,0.75,6.0,mats.metal)); }
+  else if (kart.id === "tank") { addBox(modelRoot,0,2.1,0.7,7.8,2.3,9.8,bodyMat); addBox(modelRoot,0,3.6,0.8,4.9,1.6,3.4,darkMat); [-2.5,0,2.5].forEach(x=>addBox(modelRoot,x,2.8,-3.2,1.2,0.45,0.35,mats.metal)); }
+  else if (kart.id === "driftcoupe") { addPod(0,1.7,0.8,1.4,0.8,3.6,bodyMat); addPod(0,1.65,-2.8,1.2,0.7,2.4,bodyMat); addBox(modelRoot,0,2.5,1.8,2.8,0.95,3.0,darkMat); }
+  else if (kart.id === "jungle") { addBox(modelRoot,0,1.7,0,5.8,1.3,8.0,bodyMat); addBox(modelRoot,0,2.35,-0.8,3.8,3.7,0.95,2.8,darkMat); addBox(modelRoot,-2.3,2.6,1.5,0.2,0.2,5.0,trimMat); addBox(modelRoot,2.3,2.6,1.5,0.2,0.2,5.0,trimMat); addBox(modelRoot,0,3.15,3.9,2.0,0.16,1.1,new THREE.MeshStandardMaterial({color:0x5da441,emissive:0x163814,emissiveIntensity:0.35})); }
+  else { addBox(modelRoot,0,1.55,0,5.4,1.65,7.6,bodyMat); addBox(modelRoot,0,2.45,-1.7,4.2,1.15,3.2,bodyMat); addBox(modelRoot,0,2.75,1.8,3.3,1.25,2.4,darkMat); }
+
+  if (premium) { addBox(modelRoot,0,2.95,0.5,5.2,0.18,9.0,new THREE.MeshStandardMaterial({color:kart.trim||0xffd966,emissive:kart.trim||0xffd966,emissiveIntensity:0.45,metalness:0.7,roughness:0.25})); }
+  return modelRoot;
+}
+
 function createKartVisual(character, kart) {
   const root = new THREE.Group();
   const visualRoot = new THREE.Group();
   root.add(visualRoot);
   const wheels = [];
-
-  const bodyMat = new THREE.MeshStandardMaterial({
-    color: kart.color,
-    roughness: 0.42,
-    metalness: 0.08
-  });
-
   const darkMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
   const trimMat = new THREE.MeshStandardMaterial({ color: kart.trim || character.color, roughness: 0.5 });
 
-  if (kart.id === "speedster") {
-    addBox(visualRoot, 0, 1.2, -5.5, 2.2, 0.7, 2.5, bodyMat);
-    addBox(visualRoot, 0, 1.45, 0, 4.6, 1.25, 9.8, bodyMat);
-    addBox(visualRoot, 0, 2.15, 1.7, 3.6, 1.1, 3.0, bodyMat);
-    addBox(visualRoot, 0, 1.95, -4.9, 3.2, 0.7, 1.1, mats.yellow);
-    addBox(visualRoot, 0, 3.2, 4.8, 6.8, 0.35, 1.0, trimMat);
-  }
-
-  if (kart.id === "balanced") {
-    addBox(visualRoot, 0, 1.55, 0, 5.4, 1.65, 7.6, bodyMat);
-    addBox(visualRoot, 0, 2.45, -1.7, 4.2, 1.15, 3.2, bodyMat);
-    addBox(visualRoot, 0, 2.75, 1.8, 3.3, 1.25, 2.4, darkMat);
-    addBox(visualRoot, 0, 1.85, -4.05, 5.2, 0.75, 0.8, mats.yellow);
-  }
-
-  if (kart.id === "buggy") {
-    addBox(visualRoot, 0, 1.55, 0, 5.8, 1.55, 7.2, bodyMat);
-    addBox(visualRoot, 0, 2.6, 1.2, 3.4, 1.3, 2.5, darkMat);
-
-    const cage = new THREE.Group();
-    const cageMat = mats.metal;
-    addBox(cage, -2.3, 3.8, 0.8, 0.32, 3.8, 0.32, cageMat);
-    addBox(cage, 2.3, 3.8, 0.8, 0.32, 3.8, 0.32, cageMat);
-    addBox(cage, 0, 5.5, 0.8, 5.0, 0.32, 0.32, cageMat);
-    visualRoot.add(cage);
-  }
-
-  if (kart.id === "cruiser") {
-    addBox(visualRoot, 0, 1.65, 0, 7.4, 2.1, 8.9, bodyMat);
-    addBox(visualRoot, 0, 2.9, -1.5, 5.1, 1.5, 3.5, bodyMat);
-    addBox(visualRoot, 0, 3.25, 2.2, 4.1, 1.6, 2.3, darkMat);
-    addBox(visualRoot, 0, 1.65, -4.9, 6.8, 1.0, 0.8, mats.metal);
-    addBox(visualRoot, 0, 1.65, 4.9, 6.8, 1.0, 0.8, mats.metal);
-  }
-
-  
-  if (kart.id === "rocket") {
-    addBox(visualRoot, 0, 1.25, 0.2, 4.1, 1.0, 12.4, bodyMat);
-    addBox(visualRoot, 0, 1.05, -6.2, 1.9, 0.5, 2.8, mats.yellow);
-    addBox(visualRoot, 0, 2.05, 2.5, 3.0, 1.0, 4.0, darkMat);
-    addBox(visualRoot, 0, 2.8, 5.7, 5.2, 0.3, 1.1, trimMat);
-  }
-
-  if (kart.id === "mudbuggy") {
-    addBox(visualRoot, 0, 2.0, 0, 6.0, 1.5, 7.6, bodyMat);
-    addBox(visualRoot, 0, 3.2, 0.6, 4.6, 1.1, 2.6, darkMat);
-    addBox(visualRoot, 0, 1.2, -4.3, 5.8, 0.5, 0.9, mats.metal);
-    addBox(visualRoot, 0, 4.3, 1.0, 6.0, 0.24, 0.24, mats.metal);
-  }
-
-  if (kart.id === "comet") {
-    addBox(visualRoot, 0, 1.25, 0.2, 4.0, 1.1, 5.8, bodyMat);
-    addBox(visualRoot, 0, 2.0, -0.4, 2.2, 0.8, 2.2, darkMat);
-    addBox(visualRoot, 0, 1.5, -3.0, 2.8, 0.45, 0.5, mats.yellow);
-  }
-
-  if (kart.id === "tank") {
-    addBox(visualRoot, 0, 1.9, 0.4, 7.3, 2.25, 9.4, bodyMat);
-    addBox(visualRoot, 0, 3.35, 0.6, 4.5, 1.5, 3.4, darkMat);
-    addBox(visualRoot, 0, 2.0, -5.1, 7.8, 1.1, 0.9, mats.metal);
-    addBox(visualRoot, 0, 2.0, 5.2, 7.8, 1.1, 0.9, mats.metal);
-  }
-
-  if (kart.id === "driftcoupe") {
-    addBox(visualRoot, 0, 1.45, 0, 5.3, 1.25, 8.3, bodyMat);
-    addBox(visualRoot, 0, 2.2, -0.6, 3.3, 1.8, 1.0, darkMat);
-    addBox(visualRoot, 0, 2.0, 4.5, 4.2, 0.24, 1.2, trimMat);
-  }
-
-  if (kart.id === "jungle") {
-    addBox(visualRoot, 0, 1.55, 0, 5.6, 1.45, 7.8, bodyMat);
-    addBox(visualRoot, 0, 2.35, -0.8, 3.6, 3.6, 0.95, 2.6, darkMat);
-    addBox(visualRoot, 0, 1.75, -4.2, 5.0, 0.55, 0.75, trimMat);
-  }
-
+  visualRoot.add(createKartModel(kart, character));
   const wheelProfiles = {
     speedster: { radius: 0.95, width: 0.92, x: 2.9, z: 4.2 }, balanced: { radius: 1.05, width: 1.1, x: 3.15, z: 3.05 }, buggy: { radius: 1.35, width: 1.12, x: 3.3, z: 3.0 }, cruiser: { radius: 1.25, width: 1.35, x: 3.75, z: 3.2 },
     rocket: { radius: 0.9, width: 0.95, x: 2.8, z: 4.8 }, mudbuggy: { radius: 1.55, width: 1.2, x: 3.5, z: 3.15 }, comet: { radius: 0.82, width: 0.9, x: 2.35, z: 2.35 }, tank: { radius: 1.45, width: 1.45, x: 3.95, z: 3.25 },
-    driftcoupe: { radius: 1.0, width: 1.0, x: 3.0, z: 3.35 }, jungle: { radius: 1.14, width: 1.08, x: 3.25, z: 3.15 }
+    driftcoupe: { radius: 1.0, width: 1.0, x: 3.0, z: 3.35 }, jungle: { radius: 1.14, width: 1.08, x: 3.25, z: 3.15 }, goldenKart:{ radius:1.08,width:1.08,x:3.15,z:3.2 }, meteor:{ radius:0.92,width:0.95,x:2.9,z:4.9 }, rainbowRoadster:{ radius:1.04,width:1.0,x:3.05,z:3.4 }, boneBuggy:{ radius:1.34,width:1.15,x:3.35,z:3.0 }, cloudGlider:{ radius:0.96,width:0.94,x:2.9,z:3.0 }
   };
   const profile = wheelProfiles[kart.id] || wheelProfiles.balanced;
   const wheelRadius = profile.radius;
@@ -2779,9 +2725,12 @@ function createKartVisual(character, kart) {
   // Visual-only orientation fix:
   // Physics/gameplay forward is still local +Z on `root`.
   // We only rotate the rendered kart/rider mesh so visuals match travel direction.
-  visualRoot.rotation.y = 0;
+  visualRoot.rotation.y = Math.PI;
 
-  return { root, wheels, rider, visualRoot };
+  const frontWheels = [wheels[0], wheels[1]].filter(Boolean);
+  const exhaustOffset = kart.id === "rocket" || kart.id === "meteor" ? -7.6 : -5.2;
+  const exhaustHeight = kart.id === "mudbuggy" ? 1.5 : 1.1;
+  return { root, wheels, rider, visualRoot, frontWheels, exhaustOffset, exhaustHeight };
 }
 
 function addBox(parent, x, y, z, sx, sy, sz, mat) {
@@ -4041,6 +3990,8 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
     const spinScale = (0.56 + (1 / Math.max(0.7, racer.kart.weight)) * 0.27) * speedFactor;
     wheel.rotation.x += racer.speed * dt * spinScale;
   });
+  const steerAngle = THREE.MathUtils.clamp((racer.turnInput || 0) * 0.4, -0.4, 0.4);
+  (racer.frontWheels || []).forEach(w => { w.rotation.y = THREE.MathUtils.lerp(w.rotation.y, steerAngle, 0.25); });
 
   animateRider(racer, turn);
   checkMapEventInteractions(racer);
@@ -5038,6 +4989,7 @@ function hitRacer(target, attacker, force, impactPoint = null, isBombHit = false
   target.spinTimer = isBombHit ? 1.45 : 1.1;
   target.invulnTimer = isBombHit ? 1.55 : 1.25;
   target.hitShakeTimer = Math.max(target.hitShakeTimer || 0, isBombHit ? 0.45 : 0.25);
+  target.hitFxTimer = Math.max(target.hitFxTimer || 0, isBombHit ? 0.65 : 0.42);
   target.speed *= isBombHit ? -0.45 : -0.2;
 
   const pushSource = impactPoint || attacker.position;
@@ -5212,18 +5164,32 @@ function updateParticles(dt) {
       burstParticles(pos, color, 1, 0.42);
     }
 
-    if (racer.boostTimer > 0 && Math.random() < 0.45) {
+    const accelerating = (racer.throttleInput || 0) > 0.5 && racer.speed > 4;
+    if (accelerating && Math.random() < 0.22) {
+      const puff = racer.position.clone().add(getForwardVector(racer).multiplyScalar(racer.exhaustOffset || -5.2));
+      puff.y = racer.exhaustHeight || 1.0;
+      burstParticles(puff, 0xbfc6cf, 1, 0.2, { gravity: 1.8, life: [0.2, 0.4], size: [0.12, 0.24] });
+    }
+
+    if (racer.boostTimer > 0 && Math.random() < 0.62) {
       const flameScale = THREE.MathUtils.clamp((racer.boostTimer * 0.65) + (racer.boostStrength - 1), 0.8, 1.9);
       const pos = racer.position.clone().add(getForwardVector(racer).multiplyScalar(-4.6 - flameScale));
       pos.y = 1;
-      burstParticles(pos, 0xff8844, Math.ceil(flameScale * 2), 0.62 * flameScale);
+      const flameColor = (racer.kart.id === "rocket" || racer.kart.id === "meteor") ? 0xff5a18 : 0xff8844;
+      burstParticles(pos, flameColor, Math.ceil(flameScale * 3), 0.72 * flameScale);
       burstParticles(pos.clone().add(new THREE.Vector3(0, 0.3, 0)), 0xffdd66, 1, 0.35, { gravity: 6, life: [0.12, 0.24], size: [0.18, 0.28] });
     }
 
-    if (speedRatio > 0.88 && Math.random() < 0.35 && particles.length < MAX_SPEED_STREAKS) {
+    if (speedRatio > 0.82 && Math.random() < (racer.boostTimer > 0 ? 0.65 : 0.35) && particles.length < MAX_SPEED_STREAKS) {
       const streakPos = racer.position.clone().add(getForwardVector(racer).multiplyScalar(-8 - speedRatio * 3));
       streakPos.y = 1.8 + Math.random() * 1.4;
-      burstParticles(streakPos, 0xc6e9ff, 1, 0.18 + speedRatio * 0.22, { gravity: 1, life: [0.09, 0.2], size: [0.08, 0.16] });
+      burstParticles(streakPos, racer.boostTimer > 0 ? 0x9fe8ff : 0xc6e9ff, racer.boostTimer > 0 ? 2 : 1, 0.18 + speedRatio * 0.28, { gravity: 1, life: [0.09, racer.boostTimer > 0 ? 0.28 : 0.2], size: [0.08, 0.18] });
+    }
+
+    if ((racer.hitFxTimer || 0) > 0 && Math.random() < 0.75) {
+      racer.hitFxTimer = Math.max(0, racer.hitFxTimer - dt);
+      const starPos = racer.position.clone().add(new THREE.Vector3((Math.random() - 0.5) * 3.2, 3.3 + Math.random() * 1.1, (Math.random() - 0.5) * 3.2));
+      burstParticles(starPos, 0xfff18a, 1, 0.2, { gravity: 0.2, life: [0.12, 0.24], size: [0.1, 0.18] });
     }
   });
 }
