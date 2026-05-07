@@ -776,7 +776,11 @@ const renderer = new THREE.WebGLRenderer({
   antialias: true
 });
 
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.autoClear = false;
@@ -826,6 +830,10 @@ let runtimeHazards = [];
 let boostPads = [];
 let ramps = [];
 let currentMapBounds = null;
+let mapAmbientLight = null;
+let mapHemisphereLight = null;
+let mapDirectionalLight = null;
+let mapFillLight = null;
 const DEBUG_AI_HAZARDS = false;
 const DEBUG_AI_PLANNING = false;
 
@@ -949,28 +957,116 @@ function calculateMapBounds(map) {
   return { centerX: (minX + maxX) / 2, centerZ: (minZ + maxZ) / 2, width: maxX - minX, depth: maxZ - minZ, minX, maxX, minZ, maxZ };
 }
 
+function applyMapAtmosphere(map) {
+  const theme = map.theme || "grass";
+  const warmThemes = new Set(["grass", "desert", "coast", "jungle"]);
+  const coolThemes = new Set(["moon", "snow", "graveyard"]);
+  const emberThemes = new Set(["volcano", "sewer"]);
+  const neonThemes = new Set(["neon", "rainbow"]);
+
+  const bg = new THREE.Color(map.bg || 0x101820);
+  const fogBase = new THREE.Color(map.fog || map.bg || 0x1c2538);
+  const bounds = currentMapBounds || calculateMapBounds(map);
+  const span = Math.max(bounds.width, bounds.depth);
+
+  let fogNear = Math.max(120, span * 0.26);
+  let fogFar = Math.max(470, span * 1.15);
+  let ambientIntensity = 0.55;
+  let hemiIntensity = 0.7;
+  let dirIntensity = 1.85;
+  let dirColor = new THREE.Color(0xffefcc);
+  let fillColor = new THREE.Color(0xffddb0);
+  let fillIntensity = 0.2;
+
+  if (coolThemes.has(theme)) {
+    dirColor.set(0xb9d7ff);
+    fillColor.set(0x8ec8ff);
+    ambientIntensity = 0.48;
+    hemiIntensity = 0.62;
+    dirIntensity = 1.62;
+    fogNear *= 0.92;
+    fogFar *= 0.95;
+  } else if (emberThemes.has(theme)) {
+    dirColor.set(0xff8f4c);
+    fillColor.set(0xff4b1f);
+    ambientIntensity = 0.5;
+    hemiIntensity = 0.64;
+    dirIntensity = 2.0;
+    fogNear *= 0.88;
+    fogFar *= 0.9;
+  } else if (neonThemes.has(theme)) {
+    dirColor.set(0x8cf9ff);
+    fillColor.set(0x37d4ff);
+    ambientIntensity = 0.46;
+    hemiIntensity = 0.68;
+    dirIntensity = 1.95;
+    fogNear *= 0.84;
+    fogFar *= 0.86;
+  } else if (warmThemes.has(theme)) {
+    dirColor.set(theme === "desert" ? 0xffdf9f : 0xffefc9);
+    fillColor.set(theme === "jungle" ? 0x8cff94 : 0xffc78f);
+    ambientIntensity = 0.58;
+    hemiIntensity = 0.75;
+    dirIntensity = 1.9;
+  }
+
+  const vignetteFog = fogBase.clone().lerp(new THREE.Color(0x05070a), 0.22);
+  scene.background = bg;
+  scene.fog = new THREE.Fog(vignetteFog, fogNear, fogFar);
+
+  if (mapAmbientLight) {
+    mapAmbientLight.color.copy(dirColor).lerp(new THREE.Color(0xffffff), 0.55);
+    mapAmbientLight.intensity = ambientIntensity;
+  }
+  if (mapHemisphereLight) {
+    mapHemisphereLight.color.copy(bg).lerp(new THREE.Color(0xffffff), 0.45);
+    mapHemisphereLight.groundColor.set(theme === "snow" ? 0x2f4a66 : theme === "jungle" ? 0x1f4226 : 0x2c2f35);
+    mapHemisphereLight.intensity = hemiIntensity;
+  }
+  if (mapDirectionalLight) {
+    mapDirectionalLight.color.copy(dirColor);
+    mapDirectionalLight.intensity = dirIntensity;
+  }
+  if (mapFillLight) {
+    mapFillLight.color.copy(fillColor);
+    mapFillLight.intensity = fillIntensity;
+    mapFillLight.visible = emberThemes.has(theme) || neonThemes.has(theme) || theme === "jungle";
+  }
+}
+
 function buildWorld(map) {
   clearScene();
   buildMaterials(map);
 
-  scene.background = new THREE.Color(map.bg);
   currentMapBounds = calculateMapBounds(map);
-  const mapSpan = Math.max(currentMapBounds.width, currentMapBounds.depth);
-  scene.fog = new THREE.Fog(map.fog, Math.max(150, mapSpan * 0.35), Math.max(500, mapSpan * 1.35));
 
-  const hemi = new THREE.HemisphereLight(0xffffff, 0x375037, 1.15);
-  scene.add(hemi);
+  mapAmbientLight = new THREE.AmbientLight(0xffffff, 0.55);
+  scene.add(mapAmbientLight);
 
-  const sun = new THREE.DirectionalLight(0xffffff, 2.25);
-  sun.position.set(95, 145, 85);
-  sun.castShadow = true;
-  sun.shadow.mapSize.width = 2048;
-  sun.shadow.mapSize.height = 2048;
-  sun.shadow.camera.left = -currentMapBounds.width * 0.58;
-  sun.shadow.camera.right = currentMapBounds.width * 0.58;
-  sun.shadow.camera.top = currentMapBounds.depth * 0.58;
-  sun.shadow.camera.bottom = -currentMapBounds.depth * 0.58;
-  scene.add(sun);
+  mapHemisphereLight = new THREE.HemisphereLight(0xffffff, 0x2a2f2f, 0.7);
+  scene.add(mapHemisphereLight);
+
+  mapDirectionalLight = new THREE.DirectionalLight(0xffefcc, 1.85);
+  mapDirectionalLight.position.set(95, 150, 90);
+  mapDirectionalLight.castShadow = true;
+  mapDirectionalLight.shadow.mapSize.width = 2048;
+  mapDirectionalLight.shadow.mapSize.height = 2048;
+  mapDirectionalLight.shadow.camera.left = -currentMapBounds.width * 0.62;
+  mapDirectionalLight.shadow.camera.right = currentMapBounds.width * 0.62;
+  mapDirectionalLight.shadow.camera.top = currentMapBounds.depth * 0.62;
+  mapDirectionalLight.shadow.camera.bottom = -currentMapBounds.depth * 0.62;
+  mapDirectionalLight.shadow.camera.near = 30;
+  mapDirectionalLight.shadow.camera.far = 520;
+  mapDirectionalLight.shadow.radius = 5;
+  mapDirectionalLight.shadow.bias = -0.00015;
+  mapDirectionalLight.shadow.normalBias = 0.012;
+  scene.add(mapDirectionalLight);
+
+  mapFillLight = new THREE.DirectionalLight(0xffddb0, 0.2);
+  mapFillLight.position.set(-85, 60, -90);
+  scene.add(mapFillLight);
+
+  applyMapAtmosphere(map);
 
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(currentMapBounds.width, currentMapBounds.depth),
@@ -5605,6 +5701,7 @@ animate();
 ========================================================= */
 
 window.addEventListener("resize", () => {
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 </script>
