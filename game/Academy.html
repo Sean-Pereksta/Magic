@@ -3076,17 +3076,25 @@ function createBoostPads(map){
   boostPads = generateBoostPadsForMap(map).map((def,idx)=>{
     const placed = getTrackPlacedObject(def);
     const group = new THREE.Group();
-    const color = [0x4ecbff,0xffd84a,0x7cf5ff][idx%3];
+    const mapTheme = (map?.theme || map?.id || "").toLowerCase();
+    const isVolcano = mapTheme.includes("volcano") || mapTheme.includes("lava");
+    const isNeon = mapTheme.includes("neon") || mapTheme.includes("rainbow") || mapTheme.includes("cyber");
+    const theme = isVolcano ? { base: 0xff6a1a, glow: 0xff2200, arrowA: 0xffb347, arrowB: 0xff4d00 } : isNeon ? { base: 0x3ce9ff, glow: 0xff52d8, arrowA: 0xd7ffff, arrowB: 0xff84ed } : { base: 0xffc24a, glow: 0xff7f1a, arrowA: 0xfff5ab, arrowB: 0xffce73 };
     const strategic = !!def.strategic;
     const padLength = strategic ? 16 : 14;
     const padWidth = strategic ? 10 : 9;
-    const emissiveIntensity = strategic ? 1.1 : 0.8;
-    const pad = new THREE.Mesh(new THREE.BoxGeometry(padWidth,0.28,padLength),new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity,transparent:true,opacity:0.95}));
-    group.add(pad);
-    const chevrons = strategic ? 5 : 3;
-    for(let i=0;i<chevrons;i++){ const ch = new THREE.Mesh(new THREE.BoxGeometry(1.6,0.12,2.3), new THREE.MeshStandardMaterial({color:0xffffff,emissive:0xbbe8ff,emissiveIntensity:strategic ? 0.95 : 0.75})); ch.position.set(0,0.26,-(padLength*0.34)+i*(padLength/(chevrons+0.4))); ch.rotation.y=Math.PI/4; group.add(ch); }
-    group.position.copy(placed.center); group.position.y = placed.center.y + 0.18; group.rotation.y = placed.angle; scene.add(group);
-    return {...def,group,triggerRadius:strategic ? 7.8 : 7.2,cooldowns:new Map(),pulseSpeed: strategic ? 1.8 : 1.2};
+    const base = new THREE.Mesh(new THREE.BoxGeometry(padWidth,0.24,padLength),new THREE.MeshStandardMaterial({color:theme.base,emissive:theme.glow,emissiveIntensity:1.05,transparent:true,opacity:0.92,metalness:0.22,roughness:0.32}));
+    const trim = new THREE.Mesh(new THREE.BoxGeometry(padWidth*0.96,0.05,padLength*0.96), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: theme.arrowA, emissiveIntensity: 0.75, transparent: true, opacity: 0.72 }));
+    trim.position.y = 0.13;
+    group.add(base, trim);
+    const arrows = [];
+    const chevrons = strategic ? 6 : 4;
+    for(let i=0;i<chevrons;i++){
+      const arrow = new THREE.Mesh(new THREE.BoxGeometry(1.5,0.06,2.6), new THREE.MeshStandardMaterial({color:i%2?theme.arrowA:theme.arrowB,emissive:i%2?theme.arrowA:theme.arrowB,emissiveIntensity:1.1,transparent:true,opacity:0.95}));
+      arrow.position.set(0,0.18,-(padLength*0.45)+i*(padLength/(chevrons+0.2))); arrow.rotation.y=Math.PI/4; group.add(arrow); arrows.push(arrow);
+    }
+    group.position.copy(placed.center); group.position.y = getRoadHeightAtPosition(placed.center) + 0.14; group.rotation.y = placed.angle; scene.add(group);
+    return {...def,group,triggerRadius:strategic ? 7.8 : 7.2,cooldowns:new Map(),pulseSpeed: strategic ? 1.8 : 1.2,arrowMeshes:arrows,arrowPhase:Math.random()*Math.PI*2,padLength,theme};
   });
 }
 function generateRampsForMap(map){
@@ -3119,13 +3127,17 @@ function createRamps(map){
     const width = def.width || 14;
     const length = def.length || 24;
     const height = def.height || 7;
-    const base=new THREE.Mesh(new THREE.BoxGeometry(width,0.85,length),new THREE.MeshStandardMaterial({color:0x595959,roughness:0.78})); base.position.y=0.35; g.add(base);
-    const slope=new THREE.Mesh(new THREE.BoxGeometry(Math.max(8,width-1.6),0.58,length),new THREE.MeshStandardMaterial({color:0x9a9a9a,emissive:0x383838,emissiveIntensity:0.55})); slope.rotation.x=-0.3; slope.position.set(0,1.4 + height*0.05,-0.8); g.add(slope);
-    for(let i=0;i<4;i++){ const ch = new THREE.Mesh(new THREE.BoxGeometry(width*0.18,0.06,2.2), new THREE.MeshStandardMaterial({color:0xffffff,emissive:0xffe7a0,emissiveIntensity:0.82})); ch.position.set(0,2 + i*0.12,length*0.42-i*3.3); ch.rotation.x=-0.3; g.add(ch); }
+    const mapTheme = (map?.theme || map?.id || "").toLowerCase();
+    const rampColor = mapTheme.includes("volcano") ? 0x663322 : mapTheme.includes("neon") || mapTheme.includes("rainbow") ? 0x2d2e46 : 0x5a5a5a;
+    const glowColor = mapTheme.includes("volcano") ? 0xff6e2e : mapTheme.includes("neon") || mapTheme.includes("rainbow") ? 0x6cf7ff : 0xffd27c;
+    const base=new THREE.Mesh(new THREE.BoxGeometry(width,1.6,length),new THREE.MeshStandardMaterial({color:rampColor,roughness:0.76,metalness:0.18})); base.position.y=0.75; g.add(base);
+    const slope=new THREE.Mesh(new THREE.BoxGeometry(Math.max(8,width-1.6),0.78,length),new THREE.MeshStandardMaterial({color:0xa7a7a7,emissive:0x2f2f2f,emissiveIntensity:0.64})); slope.rotation.x=-0.34; slope.position.set(0,1.75 + height*0.07,-0.9); g.add(slope);
+    for(let i=0;i<5;i++){ const ch = new THREE.Mesh(new THREE.BoxGeometry(width*0.16,0.08,2.4), new THREE.MeshStandardMaterial({color:0xffffff,emissive:glowColor,emissiveIntensity:1.0})); ch.position.set(0,2.15 + i*0.14,length*0.43-i*3.15); ch.rotation.x=-0.34; g.add(ch); }
     for(const side of [-1,1]){const rail=new THREE.Mesh(new THREE.BoxGeometry(0.48,1.45,length),new THREE.MeshStandardMaterial({color:0xffcc44,emissive:0x664000,emissiveIntensity:0.5})); rail.position.set(side*(width*0.5),1.1,0); g.add(rail);}
+    for (const side of [-1, 1]) for (let i = -2; i <= 2; i++) { const support = new THREE.Mesh(new THREE.BoxGeometry(0.26,1.2,0.36), new THREE.MeshStandardMaterial({ color: 0x2f2f2f, roughness: 0.85 })); support.position.set(side * (width * 0.42), 0.62, i * (length * 0.18)); g.add(support); }
     const lip = new THREE.Mesh(new THREE.BoxGeometry(width*0.9,0.16,0.52), new THREE.MeshStandardMaterial({color:0xfff2b0,emissive:0xffb950,emissiveIntensity:1.15}));
     lip.position.set(0,2.2 + height*0.07,length*0.48); lip.rotation.x=-0.3; g.add(lip);
-    g.position.copy(placed.center); g.position.y = getRoadHeightAtT(placed.t); g.rotation.y=placed.angle; scene.add(g);
+    g.position.copy(placed.center); g.position.y = getRoadHeightAtPosition(placed.center) + 0.04; g.rotation.y=placed.angle; scene.add(g);
     return {...def,group:g,triggerRadius:Math.max(width*0.65,length*0.42)};
   });
 }
@@ -3172,7 +3184,8 @@ function updateBoostPads(dt) {
 
     // Simple animated glow / bob so boost pads feel alive
     const pulse = 0.75 + Math.sin(performance.now() * 0.008 + (pad.t || 0) * 20) * 0.25;
-    pad.group.scale.y = 1 + pulse * 0.08;
+    const groundY = getRoadHeightAtPosition(pad.group.position);
+    pad.group.position.y = groundY + 0.14;
 
     pad.group.traverse(obj => {
       if (!obj.isMesh || !obj.material) return;
@@ -3183,6 +3196,10 @@ function updateBoostPads(dt) {
           mat.emissiveIntensity = 0.75 + pulse * 0.75;
         }
       });
+    });
+    (pad.arrowMeshes || []).forEach((arrow, i) => {
+      const shift = (((performance.now() * 0.004) + pad.arrowPhase + i * 0.9) % 1);
+      arrow.position.z = -pad.padLength * 0.46 + shift * pad.padLength;
     });
 
     for (const racer of racers) {
@@ -4627,6 +4644,7 @@ function updatePickups(dt) {
       const dist = getHorizontalDistance(racer.position, obj.position);
       if (dist < ITEM_BOX_PICKUP_RADIUS) {
         if (!racer.item) giveItemFromBox(racer);
+        spawnPickupSparkles(obj.position, 0xfff285);
         pickup.active = false;
         pickup.cooldown = 5.5;
       }
@@ -4636,6 +4654,18 @@ function updatePickups(dt) {
 
 function updateItemBoxes(dt) {
   updatePickups(dt);
+}
+const ITEM_GRAVITY = 42;
+function spawnPickupSparkles(position, color = 0xffff66) {
+  burstParticles(position.clone().add(new THREE.Vector3(0, 1.2, 0)), color, 20, 1.2, { gravity: 8, life: [0.12, 0.35], size: [0.08, 0.2] });
+}
+function itemTouchesRacer3D(item, racer, verticalRange = 2.5, horizontalPad = 0) {
+  const pos = item.position || item.group?.position;
+  if (!pos || !racer?.group?.position) return false;
+  const dx = pos.x - racer.group.position.x, dz = pos.z - racer.group.position.z;
+  const horizontalDist = Math.sqrt(dx * dx + dz * dz);
+  const dy = Math.abs(pos.y - racer.group.position.y);
+  return horizontalDist <= (item.radius || 1.4) + (racer.collisionRadius || 3.8) + horizontalPad && dy <= verticalRange;
 }
 
 function fireShell(racer, homing, direction = null, homingDelay = 0) {
@@ -4657,8 +4687,8 @@ function fireShell(racer, homing, direction = null, homingDelay = 0) {
   rim.rotation.x = Math.PI / 2;
 
   shell.add(body, rim);
-  shell.position.copy(racer.position).add(forward.clone().multiplyScalar(8));
-  shell.position.y = getRoadHeightAtWorldPosition(shell.position) + SHELL_GROUND_CLEARANCE;
+  shell.position.copy(racer.position).add(forward.clone().multiplyScalar(5));
+  shell.position.y = racer.position.y + 3.5;
   scene.add(shell);
 
   shells.push({
@@ -4666,7 +4696,13 @@ function fireShell(racer, homing, direction = null, homingDelay = 0) {
     owner: racer,
     homing,
     target: null,
+    position: shell.position.clone(),
     velocity: forward.clone().multiplyScalar(homing ? ITEM_TUNING.redShellSpeed : ITEM_TUNING.greenShellSpeed),
+    velocityY: 8,
+    gravityEnabled: true,
+    isGrounded: false,
+    groundOffset: SHELL_GROUND_CLEARANCE,
+    radius: 1.3,
     life: ITEM_TUNING.shellLifetime,
     ownerImmunity: 0.45,
     homingDelay
@@ -4693,15 +4729,24 @@ function dropBanana(racer) {
   peel2.rotation.z = -Math.PI * 0.78;
 
   banana.add(stem, peel1, peel2);
-  banana.position.copy(racer.position).add(back);
-  banana.position.y = getRoadHeightAtWorldPosition(banana.position) + BANANA_GROUND_CLEARANCE;
+  banana.position.copy(racer.position).add(back.multiplyScalar(0.72));
+  banana.position.y = racer.position.y + 3;
   banana.rotation.y = Math.random() * Math.PI;
   scene.add(banana);
 
   bananas.push({
     group: banana,
     owner: racer,
-    life: 18
+    life: 18,
+    position: banana.position.clone(),
+    velocity: getForwardVector(racer).multiplyScalar(-4),
+    velocityY: 2,
+    gravityEnabled: true,
+    isGrounded: false,
+    groundOffset: BANANA_GROUND_CLEARANCE,
+    radius: 1.4,
+    spinSpeed: 8.5,
+    tumbleSpeed: 6.5
   });
 }
 
@@ -4743,7 +4788,7 @@ function dropBomb(racer) {
 
   const forward = getForwardVector(racer);
   const launchPos = racer.position.clone().add(forward.clone().multiplyScalar(5.4));
-  launchPos.y = getRoadHeightAtWorldPosition(launchPos) + BOMB_GROUND_CLEARANCE + 1.55;
+  launchPos.y = racer.position.y + 4;
   group.position.copy(launchPos);
   scene.add(group);
 
@@ -4755,10 +4800,15 @@ function dropBomb(racer) {
     elapsedFuse: 0,
     ownerImmunity: 0.5,
     wobble: Math.random() * 10,
+    position: launchPos.clone(),
     velocity: forward.clone().multiplyScalar(BOMB_TUNING.launchSpeed),
-    verticalVelocity: 8,
+    velocityY: 10,
     gravity: 36,
-    bounce: 0.42
+    bounce: 0.42,
+    gravityEnabled: true,
+    isGrounded: false,
+    groundOffset: BOMB_GROUND_CLEARANCE,
+    radius: 2
   });
 }
 
@@ -4830,9 +4880,11 @@ function updateBombs(dt) {
     const bomb=bombs[i];
     bomb.fuse -= dt;
     bomb.ownerImmunity = Math.max(0, bomb.ownerImmunity - dt);
-    bomb.group.position.add(bomb.velocity.clone().multiplyScalar(dt));
+    bomb.position.add(bomb.velocity.clone().multiplyScalar(dt));
+    bomb.group.position.copy(bomb.position);
     bomb.velocity.multiplyScalar(BOMB_TUNING.friction);
     applyBombTerrainPhysics(bomb, dt);
+    bomb.position.copy(bomb.group.position);
 
     bomb.group.rotation.x += dt * (7 + bomb.velocity.length() * 0.05);
     bomb.group.rotation.z += dt * 2.3 + Math.sin(performance.now()*0.015 + bomb.wobble) * 0.01;
@@ -4910,8 +4962,18 @@ function updateShells(dt) {
       }
     }
 
-    shell.group.position.add(shell.velocity.clone().multiplyScalar(dt));
-    applyShellTerrainFollow(shell, dt);
+    shell.position.add(shell.velocity.clone().multiplyScalar(dt));
+    if (shell.gravityEnabled && !shell.isGrounded) {
+      shell.velocityY -= ITEM_GRAVITY * dt;
+      shell.position.y += shell.velocityY * dt;
+      const groundY = getRoadHeightAtPosition(shell.position);
+      if (shell.position.y <= groundY + shell.groundOffset) {
+        shell.position.y = groundY + shell.groundOffset;
+        shell.velocityY = 0;
+        shell.isGrounded = true;
+      }
+    } else if (shell.isGrounded) shell.position.y = getRoadHeightAtPosition(shell.position) + shell.groundOffset;
+    shell.group.position.copy(shell.position);
     shell.group.rotation.x += dt * 11;
     shell.group.rotation.y += dt * 8;
 
@@ -4944,7 +5006,7 @@ function updateShells(dt) {
         }
       }
 
-      if (horizontalDistance(racer.position, shell.group.position) < 5.6) {
+      if (itemTouchesRacer3D(shell, racer, 2.6, 0.35)) {
         if (tryBlockWithShield(racer, shell)) { remove = true; return; }
         hitRacer(racer, shell.owner, 1.25);
         racer.spinTimer = Math.max(racer.spinTimer || 0, 1.15);
@@ -4965,8 +5027,20 @@ function updateBananas(dt) {
   for (let i = bananas.length - 1; i >= 0; i--) {
     const banana = bananas[i];
     banana.life -= dt;
-    applyTrapTerrainFollow({ ...banana, type: "BANANA" }, dt);
+    banana.position.add(banana.velocity.clone().multiplyScalar(dt));
+    if (banana.gravityEnabled && !banana.isGrounded) {
+      banana.velocityY -= ITEM_GRAVITY * dt;
+      banana.position.y += banana.velocityY * dt;
+      const groundY = getRoadHeightAtPosition(banana.position);
+      if (banana.position.y <= groundY + banana.groundOffset) {
+        banana.position.y = groundY + banana.groundOffset;
+        banana.velocityY = 0;
+        banana.isGrounded = true;
+      }
+    } else banana.position.y = getRoadHeightAtPosition(banana.position) + banana.groundOffset;
+    banana.group.position.copy(banana.position);
     banana.group.rotation.y += dt * 0.75;
+    if (!banana.isGrounded) { banana.group.rotation.x += dt * banana.spinSpeed; banana.group.rotation.z += dt * banana.tumbleSpeed; }
 
     let remove = banana.life <= 0;
 
@@ -4974,7 +5048,7 @@ function updateBananas(dt) {
       if (remove) return;
       if (racer === banana.owner || racer.finished) return;
 
-      if (horizontalDistance(racer.position, banana.group.position) < 4.8) {
+      if ((banana.isGrounded || Math.abs(banana.velocityY || 0) < 4) && itemTouchesRacer3D(banana, racer, 2.5)) {
         if (tryBlockWithShield(racer, banana)) { remove = true; return; }
         hitRacer(racer, banana.owner, 0.85);
         remove = true;
