@@ -3206,6 +3206,14 @@ function createRamps(map){
     return {...def,group:g,triggerRadius:Math.max(width*0.65,length*0.42)};
   });
 }
+function getLandingFxProfile() {
+  const theme = ((selectedMap?.theme || selectedMap?.id || "") + "").toLowerCase();
+  if (theme.includes("volcano") || theme.includes("lava")) return { color: 0xff8a3d, accent: 0xffde8a, gravity: 11, life: [0.14, 0.35] };
+  if (theme.includes("snow") || theme.includes("ice") || theme.includes("blizzard")) return { color: 0xdfeeff, accent: 0xffffff, gravity: 6, life: [0.22, 0.5] };
+  if (theme.includes("desert") || theme.includes("dune") || theme.includes("canyon")) return { color: 0xcf9d63, accent: 0xe8c58d, gravity: 8, life: [0.2, 0.48] };
+  return { color: 0xd8d8d8, accent: 0xf0e0c0, gravity: 8, life: [0.2, 0.45] };
+}
+
 function landRacerFromJump(racer) {
   const jumpHeight = racer.maxAirHeightThisJump || 0;
   racer.airborneTimer = 0;
@@ -3215,7 +3223,9 @@ function landRacerFromJump(racer) {
   racer.isAirborne = false;
   const bigJump = jumpHeight > 8;
   const hugeJump = jumpHeight > 14;
-  burstParticles(racer.position,bigJump ? 0xf0e0c0 : 0xd8d8d8,hugeJump ? 24 : bigJump ? 16 : 10,bigJump ? 0.75 : 0.4,{gravity:8,life:[0.2,0.55],size:[0.14,bigJump ? 0.42 : 0.24]});
+  const landingFx = getLandingFxProfile();
+  burstParticles(racer.position,bigJump ? landingFx.accent : landingFx.color,hugeJump ? 24 : bigJump ? 16 : 10,bigJump ? 0.75 : 0.4,{gravity:landingFx.gravity,life:landingFx.life,size:[0.14,bigJump ? 0.42 : 0.24]});
+  if (hugeJump) burstParticles(racer.position.clone().add(new THREE.Vector3(0, 0.5, 0)), landingFx.color, 10, 0.46, { gravity: Math.max(2, landingFx.gravity * 0.75), life: [landingFx.life[0], landingFx.life[1] + 0.12], size: [0.1, 0.3] });
   if (racer.airTrickReady) {
     const trickBoost = bigJump ? 0.78 : 0.45;
     racer.boostTimer = Math.max(racer.boostTimer, trickBoost * racer.boostStrength);
@@ -5331,22 +5341,25 @@ function updateParticles(dt) {
   racers.forEach(racer => {
     const speedRatio = THREE.MathUtils.clamp(Math.abs(racer.speed) / Math.max(1, racer.maxSpeed), 0, 1.45);
     const hardTurn = Math.abs(racer.turnInput || 0) > 0.72 && Math.abs(racer.speed) > 28;
-    if (racer.drift.active && Math.random() < 0.55) {
+    if (racer.drift.active && Math.random() < 0.58) {
+      const side = new THREE.Vector3(Math.cos(racer.rotationY), 0, -Math.sin(racer.rotationY));
+      for (const dir of [-1, 1]) {
+        const tirePos = racer.position.clone().add(getForwardVector(racer).multiplyScalar(-3.5)).add(side.clone().multiplyScalar(2.3 * dir));
+        tirePos.y = 0.92;
+        burstParticles(tirePos, 0xd8d8d8, 1, 0.3, { gravity: 2.8, life: [0.34, 0.62], size: [0.16, 0.34] });
+      }
+    } else if (hardTurn && Math.random() < 0.24) {
       const tirePos = racer.position.clone().add(getForwardVector(racer).multiplyScalar(-3.4));
-      tirePos.y = 1.1;
-      burstParticles(tirePos, 0xd8d8d8, 1, 0.34, { gravity: 4, life: [0.28, 0.55], size: [0.16, 0.3] });
-    } else if (hardTurn && Math.random() < 0.22) {
-      const tirePos = racer.position.clone().add(getForwardVector(racer).multiplyScalar(-3.4));
-      tirePos.y = 1.1;
-      burstParticles(tirePos, 0xd8d8d8, 1, 0.34, { gravity: 4, life: [0.28, 0.55], size: [0.16, 0.3] });
+      tirePos.y = 0.95;
+      burstParticles(tirePos, 0xd8d8d8, 1, 0.28, { gravity: 3.6, life: [0.28, 0.55], size: [0.14, 0.28] });
     }
 
     if (racer.drift.active && Math.random() < 0.62) {
       const color = racer.drift.sparkLevel === 2
-        ? 0xffaa22
+        ? 0x7a5cff
         : racer.drift.sparkLevel === 1
-          ? 0x22ccff
-          : 0xffffff;
+          ? 0xff8a2f
+          : 0xfff2a8;
 
       const side = new THREE.Vector3(
         Math.cos(racer.rotationY),
@@ -5377,10 +5390,12 @@ function updateParticles(dt) {
       burstParticles(pos.clone().add(new THREE.Vector3(0, 0.3, 0)), 0xffdd66, 1, 0.35, { gravity: 6, life: [0.12, 0.24], size: [0.18, 0.28] });
     }
 
-    if (speedRatio > 0.82 && Math.random() < (racer.boostTimer > 0 ? 0.65 : 0.35) && particles.length < MAX_SPEED_STREAKS) {
+    const strongBoost = racer.boostTimer > 0 || racer.goldenMushroomTimer > 0;
+    const highSpeed = speedRatio > 0.86;
+    if (highSpeed && Math.random() < (strongBoost ? 0.7 : 0.2) && particles.length < MAX_SPEED_STREAKS) {
       const streakPos = racer.position.clone().add(getForwardVector(racer).multiplyScalar(-8 - speedRatio * 3));
       streakPos.y = 1.8 + Math.random() * 1.4;
-      burstParticles(streakPos, racer.boostTimer > 0 ? 0x9fe8ff : 0xc6e9ff, racer.boostTimer > 0 ? 2 : 1, 0.18 + speedRatio * 0.28, { gravity: 1, life: [0.09, racer.boostTimer > 0 ? 0.28 : 0.2], size: [0.08, 0.18] });
+      burstParticles(streakPos, strongBoost ? 0x9fe8ff : 0xc6e9ff, strongBoost ? 2 : 1, 0.12 + speedRatio * (strongBoost ? 0.3 : 0.16), { gravity: 1, life: [0.08, strongBoost ? 0.28 : 0.16], size: [0.07, strongBoost ? 0.19 : 0.14] });
     }
 
     if ((racer.hitFxTimer || 0) > 0 && Math.random() < 0.75) {
