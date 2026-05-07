@@ -2014,6 +2014,7 @@ function createHazards(hazards) {
     const radiusZ = h.radiusZ || h.radius || 10;
     const hazardRoot = new THREE.Group();
     const hazardY = getRoadHeightAtPosition(new THREE.Vector3(h.x, 0, h.z));
+    h.groundY = hazardY;
     let yOffset = 0;
     if (h.type === "fire" || h.type === "lava" || h.type === "sludge" || h.type === "mud") yOffset = 0.08;
     else if (h.type === "steam" || h.type === "wind" || h.type === "ghost") yOffset = 0.08;
@@ -3344,6 +3345,16 @@ function isPointInsideHazard(pos, hazard, margin = 0) {
   return (lx * lx) / (rx * rx) + (lz * lz) / (rz * rz) <= 1;
 }
 
+function isRacerTouchingHazard3D(racer, hazard, margin = 0) {
+  if (!racer || !hazard) return false;
+  if (!isPointInsideHazard(racer.position, hazard, margin)) return false;
+  const verticalTouchRange = hazard.verticalTouchRange ?? 2.0;
+  const hazardY = hazard.groundY ?? getRoadHeightAtPosition(new THREE.Vector3(hazard.x || 0, 0, hazard.z || 0));
+  const racerY = racer.group?.position?.y ?? racer.position?.y ?? 0;
+  const yDiff = Math.abs(racerY - hazardY);
+  return yDiff <= verticalTouchRange;
+}
+
 function scorePointHazardRisk(pos, margin = 6) {
   if (!runtimeHazards || !runtimeHazards.length) return 0;
   let risk = 0;
@@ -3852,16 +3863,7 @@ function checkHazards(racer) {
 
   for (let i = 0; i < hazards.length; i++) {
     const hazard = hazards[i];
-    const dx = racer.position.x - hazard.x;
-    const dz = racer.position.z - hazard.z;
-    const c = Math.cos(-(hazard.rotation || 0));
-    const s = Math.sin(-(hazard.rotation || 0));
-    const rx = dx * c - dz * s;
-    const rz = dx * s + dz * c;
-    const radiusX = hazard.radiusX || hazard.radius || 10;
-    const radiusZ = hazard.radiusZ || hazard.radius || 10;
-    const inside = (rx * rx) / (radiusX * radiusX) + (rz * rz) / (radiusZ * radiusZ) <= 1;
-    if (!inside) continue;
+    if (!isRacerTouchingHazard3D(racer, hazard)) continue;
     if (hazard.type === "fire" || hazard.type === "lava") {
       const clearHeight = hazard.clearHeight ?? (hazard.type === "lava" ? 3.6 : 3.2);
       if ((racer.airHeight || 0) > clearHeight) continue;
