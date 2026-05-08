@@ -537,15 +537,15 @@ const maps = [
     name: "Rainbow Skyway",
     emoji: "🌈",
     theme: "rainbow",
-    desc: "A split-level figure-8 skyway with a dramatic bridge crossover, lower underpass, climb boosts, and risky aerial exits.",
-    bg: 0x92d9ff, fog: 0xe4f7ff, ground: 0xdde5f0, road: 0x4a4f63, edge: 0xfff0ff, trackWidth: 29,
+    desc: "A high-altitude rainbow sky track with huge elevation swings, launch-gap jumps, and dangerous dropoffs far above the world.",
+    bg: 0x86d4ff, fog: 0xf2fbff, ground: 0xdde5f0, road: 0x7a4dff, edge: 0xffffff, trackWidth: 23,
     decorationDensity: 0.92, terrainPadding: 440,
-    hills:[{t:0.17,length:0.12,height:6.5,shape:"crest"},{t:0.46,length:0.1,height:12.5,shape:"hill"},{t:0.78,length:0.12,height:8.2,shape:"crest"}],
-    boostPads:[{t:0.14,laneOffset:3,strength:1.19,duration:1.0},{t:0.28,laneOffset:-2,strength:1.2,duration:1.02},{t:0.44,laneOffset:2,strength:1.23,duration:1.06},{t:0.57,laneOffset:-4,strength:1.21,duration:1.03},{t:0.76,laneOffset:5,strength:1.2,duration:1.0},{t:0.92,laneOffset:-2,strength:1.18,duration:0.98}],
-    ramps:[{t:0.21,laneOffset:1,width:11,length:14,height:4.2,boost:0.44},{t:0.49,laneOffset:0,width:12,length:18,height:5.4,boost:0.58},{t:0.63,laneOffset:-7,width:10,length:12,height:4.1,boost:0.42}],
-    highgroundZones:[{name:"figure8Bridge",center:{x:0,z:0},radiusX:120,radiusZ:96,minSafeY:10,respawnT:0.5,fallThreshold:7}],
+    hills:[{t:0.12,length:0.1,height:12.5,shape:"crest"},{t:0.41,length:0.12,height:17.8,shape:"hill"},{t:0.74,length:0.12,height:14.6,shape:"crest"}],
+    boostPads:[{t:0.08,laneOffset:2,strength:1.2,duration:1.02},{t:0.19,laneOffset:-3,strength:1.22,duration:1.05},{t:0.34,laneOffset:0,strength:1.25,duration:1.08},{t:0.52,laneOffset:4,strength:1.24,duration:1.06},{t:0.67,laneOffset:-5,strength:1.23,duration:1.04},{t:0.82,laneOffset:2,strength:1.22,duration:1.03},{t:0.93,laneOffset:-1,strength:1.2,duration:1.0}],
+    ramps:[{t:0.17,laneOffset:0,width:10,length:16,height:5.8,boost:0.62,launchPower:1.24},{t:0.36,laneOffset:-2,width:11,length:18,height:6.6,boost:0.7,launchPower:1.34},{t:0.58,laneOffset:2,width:11,length:19,height:7.1,boost:0.74,launchPower:1.38},{t:0.78,laneOffset:0,width:10,length:16,height:5.9,boost:0.64,launchPower:1.27}],
+    highgroundZones:[{name:"skyLoop",center:{x:-15,z:5},radiusX:390,radiusZ:330,minSafeY:42,respawnT:0.34,fallThreshold:10}],
     hazards:[{type:"fire",x:-302,z:76,radiusX:24,radiusZ:14,rotation:-0.2},{type:"fire",x:-154,z:-168,radiusX:20,radiusZ:12,rotation:0.25},{type:"wind",x:106,z:10,radiusX:34,radiusZ:11,rotation:-0.5,push:1.18},{type:"fire",x:218,z:124,radiusX:18,radiusZ:10,rotation:0.24}],
-    points: [[-340,2,4],[-282,4,96],[-176,7,154],[-56,11,136],[38,16,74],[18,22,8],[-76,24,-70],[-190,17,-144],[-304,8,-98],[-340,2,-10],[-270,1,-96],[-154,1,-158],[-34,2,-132],[64,3,-64],[18,3,8],[-80,2,70],[-194,2,136],[-304,1,98]]
+    points: [[-330,54,120],[-250,58,210],[-120,64,230],[20,70,165],[130,76,70],[260,72,120],[355,66,20],[300,62,-85],[190,69,-170],[45,78,-248],[-110,73,-210],[-245,67,-95],[-360,60,-30],[-320,57,-150],[-190,63,-235],[-45,74,-195],[85,79,-102],[165,75,18],[80,71,130],[-35,67,212],[-185,61,192],[-300,56,130]]
   },
   {
     id: "meadow",
@@ -1212,8 +1212,8 @@ function buildWorld(map) {
 function addBridgeSupportsForFigure8(map) {
   if (map.id !== "rainbowSkyway") return;
   const supportMat = new THREE.MeshStandardMaterial({ color: 0x777777, roughness: 0.65 });
-  [[-38,7,-28],[38,7,-28],[-38,7,28],[38,7,28]].forEach(([x,y,z]) => {
-    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(3, 4, 14, 12), supportMat);
+  [[-92,31,-46],[-28,37,-118],[72,43,-8],[136,35,78],[-168,28,124]].forEach(([x,y,z]) => {
+    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 3.6, 66, 12), supportMat);
     pillar.position.set(x, y, z);
     pillar.castShadow = true;
     pillar.receiveShadow = true;
