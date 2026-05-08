@@ -542,7 +542,8 @@ const maps = [
     decorationDensity: 0.92, terrainPadding: 440,
     hills:[{t:0.12,length:0.1,height:12.5,shape:"crest"},{t:0.41,length:0.12,height:17.8,shape:"hill"},{t:0.74,length:0.12,height:14.6,shape:"crest"}],
     boostPads:[{t:0.08,laneOffset:2,strength:1.2,duration:1.02},{t:0.19,laneOffset:-3,strength:1.22,duration:1.05},{t:0.34,laneOffset:0,strength:1.25,duration:1.08},{t:0.52,laneOffset:4,strength:1.24,duration:1.06},{t:0.67,laneOffset:-5,strength:1.23,duration:1.04},{t:0.82,laneOffset:2,strength:1.22,duration:1.03},{t:0.93,laneOffset:-1,strength:1.2,duration:1.0}],
-    ramps:[{t:0.17,laneOffset:0,width:10,length:16,height:5.8,boost:0.62,launchPower:1.24},{t:0.36,laneOffset:-2,width:11,length:18,height:6.6,boost:0.7,launchPower:1.34},{t:0.58,laneOffset:2,width:11,length:19,height:7.1,boost:0.74,launchPower:1.38},{t:0.78,laneOffset:0,width:10,length:16,height:5.9,boost:0.64,launchPower:1.27}],
+    ramps:[{t:0.17,laneOffset:0,width:10,length:16,height:5.8,boost:0.62,launchPower:1.24,landingT:0.205},{t:0.36,laneOffset:-2,width:11,length:18,height:6.6,boost:0.7,launchPower:1.34,landingT:0.402},{t:0.58,laneOffset:2,width:11,length:19,height:7.1,boost:0.74,launchPower:1.38,landingT:0.624},{t:0.78,laneOffset:0,width:10,length:16,height:5.9,boost:0.64,launchPower:1.27,landingT:0.822}],
+    branches:[],
     highgroundZones:[{name:"skyLoop",center:{x:-15,z:5},radiusX:390,radiusZ:330,minSafeY:42,respawnT:0.34,fallThreshold:10}],
     hazards:[{type:"fire",x:-302,z:76,radiusX:24,radiusZ:14,rotation:-0.2},{type:"fire",x:-154,z:-168,radiusX:20,radiusZ:12,rotation:0.25},{type:"wind",x:106,z:10,radiusX:34,radiusZ:11,rotation:-0.5,push:1.18},{type:"fire",x:218,z:124,radiusX:18,radiusZ:10,rotation:0.24}],
     points: [[-330,54,120],[-250,58,210],[-120,64,230],[20,70,165],[130,76,70],[260,72,120],[355,66,20],[300,62,-85],[190,69,-170],[45,78,-248],[-110,73,-210],[-245,67,-95],[-360,60,-30],[-320,57,-150],[-190,63,-235],[-45,74,-195],[85,79,-102],[165,75,18],[80,71,130],[-35,67,212],[-185,61,192],[-300,56,130]]
@@ -1380,6 +1381,16 @@ function getTrackTangent(t) {
 function getTrackNormal(t) {
   const tan = getTrackTangent(t);
   return new THREE.Vector3(-tan.z, 0, tan.x).normalize();
+}
+
+function getTrackAnchorAtT(t, laneOffset = 0) {
+  const center = getTrackPoint(t);
+  const right = getTrackNormal(t);
+  return new THREE.Vector3(
+    center.x + right.x * laneOffset,
+    getRoadHeightAtT(t),
+    center.z + right.z * laneOffset
+  );
 }
 
 
@@ -3304,12 +3315,9 @@ function createCharacterModel(character) {
 
 function getTrackPlacedObject(def) {
   const t = wrap01(def.t || 0);
-  const center = getTrackPoint(t);
-  const normal = getTrackNormal(t);
   const tangent = getTrackTangent(t);
   const laneOffset = def.laneOffset || 0;
-  const placedCenter = center.clone().add(normal.multiplyScalar(laneOffset));
-  placedCenter.y = getRoadHeightAtT(t);
+  const placedCenter = getTrackAnchorAtT(t, laneOffset);
   return { t, center: placedCenter, tangent, angle: Math.atan2(tangent.x, tangent.z) };
 }
 
@@ -3421,6 +3429,24 @@ function generateRampsForMap(map){
   for (const ramp of merged) if (!deduped.some(r => circularTDistance(r.t || 0, ramp.t || 0) < 0.024 && Math.abs((r.laneOffset || 0) - (ramp.laneOffset || 0)) < trackWidth * 0.3)) deduped.push(ramp);
   return deduped.slice(0, 10);
 }
+
+function isBranchReconnectValid(branch, map = currentMap) {
+  if (!branch?.generatedPoints?.length || !map || map.id !== "rainbowSkyway") return false;
+  const endAnchor = getTrackAnchorAtT(branch.endT, branch.laneOffsetEnd || 0);
+  const final = branch.generatedPoints[branch.generatedPoints.length - 1];
+  return Math.abs(final[0] - endAnchor.x) < 0.35 && Math.abs(final[1] - endAnchor.y) < 0.35 && Math.abs(final[2] - endAnchor.z) < 0.35;
+}
+function validateRainbowReconnects(map = currentMap) {
+  if (!map || map.id !== "rainbowSkyway") return;
+  for (const branch of map.branches || []) {
+    const endAnchor = getTrackAnchorAtT(branch.endT, branch.laneOffsetEnd || 0);
+    const final = branch.generatedPoints?.[branch.generatedPoints.length - 1];
+    if (!final) continue;
+    const dx = Math.abs(final[0] - endAnchor.x), dy = Math.abs(final[1] - endAnchor.y), dz = Math.abs(final[2] - endAnchor.z);
+    if (dx > 0.25 || dy > 0.25 || dz > 0.25) console.warn("Rainbow branch reconnect mismatch:", branch.id, { dx, dy, dz, final, endAnchor });
+  }
+}
+
 function createRamps(map){
   ramps = generateRampsForMap(map).map((def,idx)=>{
     const placed = getTrackPlacedObject(def); const g=new THREE.Group();
@@ -3438,8 +3464,20 @@ function createRamps(map){
     const lip = new THREE.Mesh(new THREE.BoxGeometry(width*0.9,0.16,0.52), new THREE.MeshStandardMaterial({color:0xfff2b0,emissive:0xffb950,emissiveIntensity:1.15}));
     lip.position.set(0,2.2 + height*0.07,length*0.48); lip.rotation.x=-0.3; g.add(lip);
     g.position.copy(placed.center); g.position.y = getRoadHeightAtPosition(placed.center) + 0.04; g.rotation.y=placed.angle; scene.add(g);
+    if (map?.id === "rainbowSkyway" && typeof def.landingT === "number") {
+      const landing = getTrackAnchorAtT(def.landingT, def.laneOffset || 0);
+      const landingPlatform = new THREE.Mesh(
+        new THREE.BoxGeometry(Math.max(12, width * 1.1), 0.7, Math.max(16, length * 0.95)),
+        new THREE.MeshStandardMaterial({ color: 0xf3f8ff, emissive: 0x67ceff, emissiveIntensity: 0.45, roughness: 0.5, metalness: 0.15 })
+      );
+      landingPlatform.position.set(landing.x, landing.y + 0.05, landing.z);
+      landingPlatform.rotation.y = Math.atan2(getTrackTangent(def.landingT).x, getTrackTangent(def.landingT).z);
+      scene.add(landingPlatform);
+      g.userData.landingPlatform = landingPlatform;
+    }
     return {...def,group:g,triggerRadius:Math.max(width*0.65,length*0.42)};
   });
+  validateRainbowReconnects(map);
 }
 function getLandingFxProfile() {
   const theme = ((currentMap?.theme || currentMap?.id || currentMap?.name || "") + "").toLowerCase();
@@ -4671,6 +4709,10 @@ function startHazardRespawn(racer) {
   resetDriftState(racer, true);
   racer.velocity.set(0, 0, 0);
   racer.speed = 0;
+  if (currentMap?.id === "rainbowSkyway") {
+    racer.aiTargetBranch = null;
+    racer.branchT = null;
+  }
   if (racer.isPlayer) showRespawnFade();
 }
 function updateHighgroundFallRespawn(racer, dt) {
@@ -4717,6 +4759,10 @@ function performRespawn(racer) {
   racer.spinTimer = 0;
   resetDriftState(racer, true);
   racer.invulnTimer = Math.max(racer.invulnTimer, 1.8);
+  if (currentMap?.id === "rainbowSkyway") {
+    racer.aiTargetBranch = null;
+    racer.branchT = null;
+  }
   racer.group.visible = true;
   addRecoveryEffects(racer, true);
 }
