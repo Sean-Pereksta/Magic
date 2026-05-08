@@ -490,15 +490,15 @@ const characters = [
 ];
 
 const karts = [
-  { id: "speedster", name: "Speedster", emoji: "🏎️", color: 0xff3333, trim: 0xfff3a1, maxSpeed: 71, accel: 43, handling: 2.0, weight: 0.88, drift: 1.0, traction: 0.9, boostStrength: 1.18, desc: "Long race nose and spoiler. Top speed king, loose in turns." },
+  { id: "speedster", name: "Speedster", emoji: "🏎️", color: 0xff3333, trim: 0xfff3a1, maxSpeed: 71, accel: 43, handling: 2.0, weight: 0.88, drift: 1.0, traction: 0.9, boostStrength: 1.18, desc: "Very fast on straights, but loses speed in sharp turns." },
   { id: "balanced", name: "Balanced Kart", emoji: "🚗", color: 0x3366ff, trim: 0xc7d8ff, maxSpeed: 62, accel: 49, handling: 2.55, weight: 1.0, drift: 1.08, traction: 1.0, boostStrength: 1.15, desc: "Classic compact kart. Reliable at everything, master of nothing." },
   { id: "buggy", name: "Grippy Buggy", emoji: "🛺", color: 0x33cc66, trim: 0xb5ffd2, maxSpeed: 55, accel: 50, handling: 3.1, weight: 1.05, drift: 1.18, traction: 1.18, boostStrength: 1.1, desc: "Lifted with roll cage and huge tires. Great grip, slower on straights." },
   { id: "cruiser", name: "Heavy Cruiser", emoji: "🚙", color: 0x9b4dff, trim: 0xe1c7ff, maxSpeed: 59, accel: 38, handling: 1.95, weight: 1.38, drift: 0.92, traction: 1.08, boostStrength: 1.08, desc: "Wide SUV-like bruiser with bumpers. Tanks hits but turns slowly." },
-  { id: "rocket", name: "Rocket Racer", emoji: "🚀", color: 0xff5d2f, trim: 0xffd3b8, maxSpeed: 75, accel: 41, handling: 1.76, weight: 0.92, drift: 0.86, traction: 0.86, boostStrength: 1.24, desc: "Ultra-long low rocket body with rear flames. Fastest, hardest to control." },
-  { id: "mudbuggy", name: "Mud Buggy", emoji: "🛻", color: 0x8b5a2b, trim: 0xe0c39f, maxSpeed: 53, accel: 44, handling: 2.45, weight: 1.2, drift: 0.9, traction: 1.35, boostStrength: 1.06, desc: "Raised suspension and giant mud tires. Best offroad recovery, low top speed." },
-  { id: "comet", name: "Mini Comet", emoji: "☄️", color: 0x27d9ff, trim: 0xe7fbff, maxSpeed: 60, accel: 57, handling: 3.3, weight: 0.72, drift: 1.28, traction: 0.88, boostStrength: 1.12, desc: "Tiny featherweight kart. Blazing launch, twitchy and easy to slide." },
-  { id: "tank", name: "Tank Treader", emoji: "🛡️", color: 0x55606f, trim: 0xb6bec9, maxSpeed: 56, accel: 33, handling: 1.75, weight: 1.66, drift: 0.72, traction: 1.2, boostStrength: 1.02, desc: "Bulky armored kart with tread-style stance. Massive collision strength, sluggish pickup." },
-  { id: "driftcoupe", name: "Drift Coupe", emoji: "🏁", color: 0xff2dc2, trim: 0xffc6f0, maxSpeed: 64, accel: 47, handling: 2.75, weight: 0.96, drift: 1.45, traction: 0.95, boostStrength: 1.22, desc: "Sleek curved coupe. Builds drift boost fastest with medium straight-line speed." },
+  { id: "rocket", name: "Rocket Racer", emoji: "🚀", color: 0xff5d2f, trim: 0xffd3b8, maxSpeed: 75, accel: 41, handling: 1.76, weight: 0.92, drift: 0.86, traction: 0.86, boostStrength: 1.24, desc: "Fastest top speed, but poor high-speed turning and slow mistake recovery." },
+  { id: "mudbuggy", name: "Mud Buggy", emoji: "🛻", color: 0x8b5a2b, trim: 0xe0c39f, maxSpeed: 53, accel: 44, handling: 2.45, weight: 1.2, drift: 0.9, traction: 1.35, boostStrength: 1.06, desc: "Lower top speed, excellent grip, strong offroad recovery." },
+  { id: "comet", name: "Mini Comet", emoji: "☄️", color: 0x27d9ff, trim: 0xe7fbff, maxSpeed: 60, accel: 57, handling: 3.3, weight: 0.72, drift: 1.28, traction: 0.88, boostStrength: 1.12, desc: "Fast launch and sharp handling, but light and twitchy." },
+  { id: "tank", name: "Tank Treader", emoji: "🛡️", color: 0x55606f, trim: 0xb6bec9, maxSpeed: 56, accel: 33, handling: 1.75, weight: 1.66, drift: 0.72, traction: 1.2, boostStrength: 1.02, desc: "Slow acceleration and turning, but extremely stable and hard to knock around." },
+  { id: "driftcoupe", name: "Drift Coupe", emoji: "🏁", color: 0xff2dc2, trim: 0xffc6f0, maxSpeed: 64, accel: 47, handling: 2.75, weight: 0.96, drift: 1.45, traction: 0.95, boostStrength: 1.22, desc: "Best drift boosts and controlled sliding, but requires skill." },
   { id: "jungle", name: "Jungle Kart", emoji: "🌿", color: 0x3d9f48, trim: 0xb1a07a, maxSpeed: 63, accel: 52, handling: 2.72, weight: 1.02, drift: 1.14, traction: 1.08, boostStrength: 1.16, desc: "Wood-and-rope themed kart. Balanced steering with strong acceleration." }
 ];
 
@@ -2686,8 +2686,12 @@ function createRacer(name, character, kart, isPlayer, playerIndex, aiIndex) {
     aiIndex,
     group: visual.root,
     mesh: visual.visualRoot || visual.root,
+    visualRoot: visual.visualRoot || visual.root,
     wheels: visual.wheels,
     frontWheels: visual.frontWheels || [],
+    frontWheelPivots: visual.frontWheelPivots || [],
+    rearWheels: visual.rearWheels || [],
+    allWheels: visual.allWheels || visual.wheels || [],
     exhaustOffset: visual.exhaustOffset || -5.2,
     exhaustHeight: visual.exhaustHeight || 1.0,
     hitFxTimer: 0,
@@ -2707,6 +2711,14 @@ function createRacer(name, character, kart, isPlayer, playerIndex, aiIndex) {
     boostStrength: kart.boostStrength,
     groundClearance: KART_GROUND_CLEARANCE,
     weight: character.weight * kart.weight,
+    turnResponsiveness: 1,
+    turnGrip: 1,
+    stability: 1,
+    speedTurnPenalty: 0.28,
+    driftEase: 1,
+    offroadResistance: 1,
+    bumpResistance: 1,
+    turnDrag: 0.24,
     item: null,
     heldItem: null,
     heldItemGroup: null,
@@ -2756,7 +2768,28 @@ function createRacer(name, character, kart, isPlayer, playerIndex, aiIndex) {
     }
   };
 
+  applyDerivedKartHandling(racer);
   return racer;
+}
+
+function applyDerivedKartHandling(racer) {
+  const clamp = THREE.MathUtils.clamp;
+  const k = racer.kart || {};
+  const topSpeedNorm = clamp((racer.maxSpeed - 54) / 24, 0, 1);
+  const handlingNorm = clamp((racer.handling - 1.6) / 1.9, 0, 1);
+  const accelNorm = clamp((racer.accel - 32) / 28, 0, 1);
+  const tractionNorm = clamp((racer.traction - 0.82) / 0.58, 0, 1.3);
+  const driftNorm = clamp((racer.driftPower - 0.7) / 0.8, 0, 1.35);
+  const heavyNorm = clamp((racer.weight - 0.72) / 1.0, 0, 1.2);
+  racer.turnResponsiveness = clamp(0.72 + handlingNorm * 0.6 - topSpeedNorm * 0.2 - heavyNorm * 0.15, 0.58, 1.32);
+  racer.turnGrip = clamp(0.78 + tractionNorm * 0.42 - driftNorm * 0.18, 0.62, 1.38);
+  racer.stability = clamp(0.7 + heavyNorm * 0.5 + tractionNorm * 0.2, 0.62, 1.42);
+  racer.driftEase = clamp(0.74 + driftNorm * 0.62 - heavyNorm * 0.14, 0.62, 1.5);
+  racer.offroadResistance = clamp(0.72 + tractionNorm * 0.55 + (k.id==='mudbuggy'||k.id==='buggy'?0.12:0), 0.68, 1.5);
+  racer.bumpResistance = clamp(0.68 + heavyNorm * 0.62, 0.6, 1.58);
+  racer.speedTurnPenalty = clamp(0.18 + topSpeedNorm * 0.28 - handlingNorm * 0.1 + (k.id==='rocket'||k.id==='meteor'?0.1:0), 0.12, 0.55);
+  racer.turnDrag = clamp(0.16 + topSpeedNorm * 0.2 + (1-tractionNorm) * 0.08, 0.12, 0.5);
+  if (k.id==='driftcoupe') { racer.turnDrag = 0.24; racer.driftEase = clamp(racer.driftEase + 0.2, 0.7, 1.6); }
 }
 
 function createKartModel(kart, character) {
@@ -2787,6 +2820,8 @@ function createKartVisual(character, kart) {
   const visualRoot = new THREE.Group();
   root.add(visualRoot);
   const wheels = [];
+  const frontWheelPivots = [];
+  const rearWheels = [];
   const darkMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
   const trimMat = new THREE.MeshStandardMaterial({ color: kart.trim || character.color, roughness: 0.5 });
 
@@ -2807,7 +2842,7 @@ function createKartVisual(character, kart) {
     [wheelX, 1.0, -wheelZ],
     [-wheelX, 1.0, wheelZ],
     [wheelX, 1.0, wheelZ]
-  ].forEach(pos => {
+  ].forEach((pos, idx) => {
     const wheel = new THREE.Group();
 
     const tire = new THREE.Mesh(
@@ -2845,9 +2880,14 @@ function createKartVisual(character, kart) {
     hubMarker.position.set(0, wheelRadius * 0.16, wheelRadius * 0.12);
 
     wheel.add(tire, hub, tireStripe, hubMarker);
-    wheel.position.set(pos[0], pos[1], pos[2]);
-    visualRoot.add(wheel);
+    wheel.position.set(0, 0, 0);
+    const mount = new THREE.Group();
+    mount.position.set(pos[0], pos[1], pos[2]);
+    mount.add(wheel);
+    visualRoot.add(mount);
     wheels.push(wheel);
+    if (idx < 2) frontWheelPivots.push(mount);
+    else rearWheels.push(wheel);
   });
 
   const rider = createCharacterModel(character);
@@ -2872,9 +2912,10 @@ function createKartVisual(character, kart) {
   visualRoot.rotation.y = Math.PI;
 
   const frontWheels = [wheels[0], wheels[1]].filter(Boolean);
+  const allWheels = wheels.filter(Boolean);
   const exhaustOffset = kart.id === "rocket" || kart.id === "meteor" ? -7.6 : -5.2;
   const exhaustHeight = kart.id === "mudbuggy" ? 1.5 : 1.1;
-  return { root, wheels, rider, riderBaseYaw, visualRoot, frontWheels, exhaustOffset, exhaustHeight };
+  return { root, wheels, rider, riderBaseYaw, visualRoot, frontWheels, frontWheelPivots, rearWheels, allWheels, exhaustOffset, exhaustHeight };
 }
 
 function addBox(parent, x, y, z, sx, sy, sz, mat) {
@@ -3804,6 +3845,7 @@ function scoreAIRouteCandidate(racer, candidate, t, laneOffset, profile) {
 
 function getSafeAITarget(racer, baseTargetIndex) {
   const profile = getAIPlanningProfile();
+  const handlingSafety = THREE.MathUtils.clamp((racer.handling * (racer.turnGrip || 1)) / 3, 0.5, 1.3);
   racer.ai.planTimer = racer.ai.planTimer || 0; racer.ai.currentPlan = racer.ai.currentPlan || null;
   if (racer.ai.planTimer > 0 && racer.ai.currentPlan) {
     racer.ai.planTimer -= 1 / 60;
@@ -3939,9 +3981,13 @@ function updateAI(racer, dt) {
   let throttle = racer.ai.recoveryMode ? 0.62 : 1;
   const speedRatio = THREE.MathUtils.clamp(Math.abs(racer.speed) / Math.max(30, racer.maxSpeed * currentCC.speedMultiplier), 0, 1.35);
   let brake = 0;
-  const brakeThreshold = THREE.MathUtils.lerp(0.52, 0.86, THREE.MathUtils.clamp(profile.brakingDiscipline, 0, 1));
-  if (turnSharpness > brakeThreshold) {
-    brake = THREE.MathUtils.clamp((turnSharpness - brakeThreshold) * (0.75 - profile.riskTolerance * 0.35) + speedRatio * 0.14, 0.08, 0.72);
+  const curveSeverity = THREE.MathUtils.clamp(turnSharpness / 1.25, 0, 1);
+  const targetCurveSpeed = racer.maxSpeed * (1 - curveSeverity * (0.55 / handlingSafety));
+  const brakeThreshold = THREE.MathUtils.lerp(0.52, 0.86, THREE.MathUtils.clamp(profile.brakingDiscipline * handlingSafety, 0, 1));
+  if (turnSharpness > brakeThreshold || Math.abs(racer.speed) > targetCurveSpeed) {
+    const overspeed = Math.max(0, Math.abs(racer.speed) - targetCurveSpeed) / Math.max(8, racer.maxSpeed);
+    brake = THREE.MathUtils.clamp((turnSharpness - brakeThreshold) * (0.75 - profile.riskTolerance * 0.35) + speedRatio * 0.14 + overspeed * (0.35 + (racer.speedTurnPenalty || 0.25)), 0.08, 0.82);
+    throttle *= THREE.MathUtils.clamp(1 - overspeed * 0.9, 0.35, 1);
   }
 
   if (boostOpportunity && !racer.ai.recoveryMode) { throttle = Math.max(throttle, 0.85); brake *= THREE.MathUtils.lerp(0.65, 0.2, Math.min(1.4, profile.boostDesire)); }
@@ -4194,8 +4240,10 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
     racer.rotationY += 10.5 * dt;
     racer.speed *= 0.985;
   } else {
+    const speedRatio = THREE.MathUtils.clamp(Math.abs(racer.speed) / Math.max(1, racer.maxSpeed), 0, 1);
     if (throttle) {
-      racer.speed += racer.accel * currentCC.accelMultiplier * hillAccelMultiplier * dt;
+      const lowSpeedBoost = 1 + (1 - speedRatio) * 0.35;
+      racer.speed += racer.accel * currentCC.accelMultiplier * hillAccelMultiplier * lowSpeedBoost * dt;
     } else {
       racer.speed -= Math.sign(racer.speed) * 18 * dt;
     }
@@ -4232,9 +4280,13 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
 
   if (!racer.drift.active && racer.spinTimer <= 0) {
     if (racer.airborneTimer > 0) turn *= 0.75;
+    const speedRatio = THREE.MathUtils.clamp(Math.abs(racer.speed) / Math.max(1, racer.maxSpeed), 0, 1);
+    const highSpeedTurnLoss = speedRatio * speedRatio * (racer.speedTurnPenalty || 0.28);
+    const effectiveHandling = racer.handling * (1 - highSpeedTurnLoss) * (racer.turnResponsiveness || 1);
     const speedTurnScale = THREE.MathUtils.clamp(Math.abs(racer.speed) / 32, 0.22, 0.82);
-    const normalTurnDampen = 0.72;
-    const turnAmount = turn * racer.handling * currentCC.handlingMultiplier * speedTurnScale * normalTurnDampen * dt * Math.sign(racer.speed || 1);
+    const normalTurnDampen = 0.72 * (racer.stability || 1) / Math.max(0.7, racer.turnGrip || 1);
+    const turnAmount = turn * effectiveHandling * currentCC.handlingMultiplier * speedTurnScale * normalTurnDampen * dt * Math.sign(racer.speed || 1);
+    racer.currentSteer = THREE.MathUtils.clamp(turn, -1, 1);
     racer.rotationY += turnAmount;
   }
 
@@ -4258,7 +4310,9 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
   const slipStrength = canSkid
     ? THREE.MathUtils.clamp(0.2 + skidSeverity * 0.58, 0.18, 0.78)
     : (0.03 * currentCC.skidMultiplier) / traction;
-  const followRate = Math.max(0.04, 1 - slipStrength);
+  const tractionRecovery = Math.pow(0.94 + (racer.traction || 1) * 0.025, dt * 60);
+  racer.lateralSlip *= tractionRecovery;
+  const followRate = Math.max(0.04, 1 - slipStrength / Math.max(0.7, racer.turnGrip || 1));
   racer.velocity.lerp(targetVelocity, followRate);
   const highSpeedSkid = !racer.drift.active && onTrack && racer.spinTimer <= 0 && speedAbs > 22 && Math.abs(turn) > 0.5;
   const skidTurnFactor = highSpeedSkid
@@ -4277,13 +4331,29 @@ function driveRacer(racer, dt, throttle, brake, turn, driftInput, isAI) {
   applyKartSlopeTilt(racer, dt);
   if (recoveringFromFall) return;
 
-  racer.wheels.forEach(wheel => {
-    const speedFactor = 0.8 + THREE.MathUtils.clamp(Math.abs(racer.speed) / 42, 0, 1.4);
-    const spinScale = (0.56 + (1 / Math.max(0.7, racer.kart.weight)) * 0.27) * speedFactor;
-    wheel.rotation.x += racer.speed * dt * spinScale;
-  });
-  const steerAngle = THREE.MathUtils.clamp((racer.turnInput || 0) * 0.4, -0.4, 0.4);
-  (racer.frontWheels || []).forEach(w => { w.rotation.y = THREE.MathUtils.lerp(w.rotation.y, steerAngle, 0.25); });
+  const speedRatioNow = THREE.MathUtils.clamp(Math.abs(racer.speed) / Math.max(1, racer.maxSpeed), 0, 1);
+  const turnIntensity = Math.abs(racer.currentSteer || racer.turnInput || 0);
+  const driftTurnDrag = racer.drift.active ? (racer.kart.id === "driftcoupe" ? 0.4 : 0.72) : 1;
+  const turnDrag = turnIntensity * speedRatioNow * (racer.turnDrag || 0.24) * driftTurnDrag;
+  racer.speed -= racer.speed * turnDrag * dt;
+
+  const wheelSpin = racer.speed * dt * 2.5;
+  (racer.allWheels || racer.wheels || []).forEach(wheel => { if (wheel) wheel.rotation.x -= wheelSpin; });
+  let visualSteer = THREE.MathUtils.clamp(racer.currentSteer || racer.turnInput || 0, -1, 1);
+  if (racer.drift.active) visualSteer *= -0.65;
+  const targetWheelAngle = visualSteer * 0.48;
+  (racer.frontWheelPivots || []).forEach(pivot => { if (pivot) pivot.rotation.y = THREE.MathUtils.lerp(pivot.rotation.y, targetWheelAngle, Math.min(1, dt * 10)); });
+
+  if (racer.visualRoot) {
+    const speedFactor = THREE.MathUtils.clamp(Math.abs(racer.speed) / Math.max(1, racer.maxSpeed), 0, 1);
+    const turnAmount = THREE.MathUtils.clamp(racer.currentSteer || racer.turnInput || 0, -1, 1);
+    const driftLeanBoost = racer.drift.active ? 1.45 : 1;
+    const targetRoll = THREE.MathUtils.clamp(-turnAmount * speedFactor * 0.16 * driftLeanBoost, -0.22, 0.22);
+    const targetYawLean = THREE.MathUtils.clamp(-turnAmount * speedFactor * (racer.drift.active ? 0.12 : 0.08), -0.18, 0.18);
+    const baseVisualYaw = Math.PI;
+    racer.visualRoot.rotation.z = THREE.MathUtils.lerp(racer.visualRoot.rotation.z, targetRoll, Math.min(1, dt * 7));
+    racer.visualRoot.rotation.y = THREE.MathUtils.lerp(racer.visualRoot.rotation.y, baseVisualYaw + targetYawLean, Math.min(1, dt * 7));
+  }
 
   animateRider(racer, turn);
   checkMapEventInteractions(racer);
