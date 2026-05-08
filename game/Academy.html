@@ -4846,22 +4846,94 @@ function useItem(racer) {
   if (item === "SHIELD") { racer.hasShield = true; racer.shieldTimer = SHIELD_TUNING.duration; createShieldVisual(racer); showFloatingText(racer, "SHIELD!"); }
 }
 
+function createShellVisual(shellColor = 0x22cc44) {
+  const group = new THREE.Group();
+
+  const top = new THREE.Mesh(
+    new THREE.SphereGeometry(1.38, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.58),
+    new THREE.MeshStandardMaterial({ color: shellColor, roughness: 0.45, metalness: 0.05, emissive: shellColor, emissiveIntensity: 0.08 })
+  );
+  top.scale.set(1.05, 0.72, 1.2);
+  top.position.y = 0.36;
+  top.castShadow = true;
+  top.receiveShadow = true;
+
+  const rim = new THREE.Mesh(
+    new THREE.TorusGeometry(1.16, 0.2, 12, 28),
+    new THREE.MeshStandardMaterial({ color: 0xf2ead0, roughness: 0.55, metalness: 0.02 })
+  );
+  rim.rotation.x = Math.PI / 2;
+  rim.scale.set(1.08, 1.2, 1);
+  rim.position.y = 0.02;
+  rim.castShadow = true;
+  rim.receiveShadow = true;
+
+  const underside = new THREE.Mesh(
+    new THREE.SphereGeometry(0.98, 18, 12, 0, Math.PI * 2, Math.PI * 0.52, Math.PI * 0.48),
+    new THREE.MeshStandardMaterial({ color: 0x31261d, roughness: 0.7 })
+  );
+  underside.scale.set(1, 0.36, 1.12);
+  underside.position.y = -0.34;
+  underside.castShadow = true;
+
+  const spotMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
+  const spotPositions = [[0, 0.95, 0.24], [0.48, 0.75, 0.32], [-0.48, 0.75, 0.32], [0.3, 0.62, -0.42], [-0.3, 0.62, -0.42]];
+  for (const [x, y, z] of spotPositions) {
+    const spot = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 8), spotMat);
+    spot.scale.set(1, 0.26, 0.82);
+    spot.position.set(x, y, z);
+    spot.castShadow = true;
+    group.add(spot);
+  }
+
+  group.add(top, rim, underside);
+  group.rotation.z = -0.12;
+  group.userData.isShellVisual = true;
+  return group;
+}
+
+function createBananaVisual() {
+  const group = new THREE.Group();
+  const bananaMat = new THREE.MeshStandardMaterial({ color: 0xffe135, roughness: 0.48, metalness: 0.02, emissive: 0x7a6200, emissiveIntensity: 0.06 });
+  const sideMat = new THREE.MeshStandardMaterial({ color: 0xf4c430, roughness: 0.52, emissive: 0x665300, emissiveIntensity: 0.04 });
+  const tipMat = new THREE.MeshStandardMaterial({ color: 0x5a341b, roughness: 0.75 });
+
+  const segmentCount = 7;
+  for (let i = 0; i < segmentCount; i++) {
+    const t = i / (segmentCount - 1);
+    const seg = new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 12), i % 2 === 0 ? bananaMat : sideMat);
+    seg.scale.set(1.18, 0.72, 0.58);
+    seg.position.set((t - 0.5) * 1.25, Math.sin(t * Math.PI) * 0.36, 0);
+    seg.rotation.z = (t - 0.5) * -0.85;
+    seg.castShadow = true;
+    seg.receiveShadow = true;
+    group.add(seg);
+  }
+
+  const leftTip = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 8), tipMat);
+  leftTip.scale.set(0.8, 0.55, 0.55);
+  leftTip.position.set(-0.72, -0.02, 0);
+  leftTip.castShadow = true;
+  group.add(leftTip);
+
+  const rightTip = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 8), tipMat);
+  rightTip.scale.set(0.8, 0.55, 0.55);
+  rightTip.position.set(0.72, -0.02, 0);
+  rightTip.castShadow = true;
+  group.add(rightTip);
+
+  group.rotation.z = -0.25;
+  group.scale.set(1.35, 1.35, 1.35);
+  group.userData.isBananaVisual = true;
+  return group;
+}
+
 function createHeldItemVisual(itemType) {
   const group = new THREE.Group();
   if (itemType === "GREEN_SHELL" || itemType === "RED_SHELL") {
-    const body = new THREE.Mesh(new THREE.SphereGeometry(1.35, 16, 16), itemType === "RED_SHELL" ? mats.redShell : mats.greenShell);
-    body.scale.y = 0.72;
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.12, 8, 16), mats.white);
-    rim.rotation.x = Math.PI / 2;
-    group.add(body, rim);
-  } else if (itemType === "BANANA") {
-    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 2.5, 8), mats.banana);
-    stem.rotation.z = 0.5;
-    const peel = new THREE.Mesh(new THREE.ConeGeometry(0.42, 1.8, 8), mats.banana);
-    peel.rotation.z = Math.PI; peel.position.set(0.44, -0.6, 0);
-    const peel2 = peel.clone(); peel2.position.set(-0.44, -0.6, 0); peel2.rotation.z = -Math.PI * 0.78;
-    group.add(stem, peel, peel2);
-  }
+    const color = itemType === "RED_SHELL" ? 0xdd3333 : 0x22cc44;
+    group.add(createShellVisual(color));
+  } else if (itemType === "BANANA") group.add(createBananaVisual());
   return group;
 }
 function clearHeldItem(racer) { if (racer?.heldItemGroup) scene.remove(racer.heldItemGroup); racer.heldItem = null; racer.heldItemGroup = null; racer.heldItemType = null; }
@@ -4960,21 +5032,8 @@ function fireShell(racer, homing, direction = null, homingDelay = 0) {
   const forward = direction ? direction.clone().normalize() : getForwardVector(racer);
 
   const shell = new THREE.Group();
-
-  const body = new THREE.Mesh(
-    new THREE.SphereGeometry(1.55, 18, 18),
-    homing ? mats.redShell : mats.greenShell
-  );
-  body.scale.y = 0.72;
-  body.castShadow = true;
-
-  const rim = new THREE.Mesh(
-    new THREE.TorusGeometry(1.08, 0.14, 8, 18),
-    mats.white
-  );
-  rim.rotation.x = Math.PI / 2;
-
-  shell.add(body, rim);
+  const shellVisual = createShellVisual(homing ? 0xdd3333 : 0x22cc44);
+  shell.add(shellVisual);
   shell.position.copy(racer.position).add(forward.clone().multiplyScalar(4.2));
   shell.position.y = racer.position.y + 3.5;
   scene.add(shell);
@@ -4993,30 +5052,16 @@ function fireShell(racer, homing, direction = null, homingDelay = 0) {
     radius: 1.3,
     life: ITEM_TUNING.shellLifetime,
     ownerImmunity: 0.45,
-    homingDelay
+    homingDelay,
+    visual: shellVisual
   });
 }
 
 function dropBanana(racer) {
   const back = getForwardVector(racer).multiplyScalar(-7);
   const banana = new THREE.Group();
-
-  const stem = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.2, 0.25, 2.8, 8),
-    mats.banana
-  );
-  stem.rotation.z = 0.55;
-  stem.castShadow = true;
-
-  const peel1 = new THREE.Mesh(new THREE.ConeGeometry(0.48, 2.2, 8), mats.banana);
-  peel1.rotation.z = Math.PI;
-  peel1.position.set(0.48, -0.7, 0);
-
-  const peel2 = peel1.clone();
-  peel2.position.set(-0.48, -0.7, 0);
-  peel2.rotation.z = -Math.PI * 0.78;
-
-  banana.add(stem, peel1, peel2);
+  const bananaVisual = createBananaVisual();
+  banana.add(bananaVisual);
   banana.position.copy(racer.position).add(back.multiplyScalar(0.72));
   banana.position.y = racer.position.y + 3;
   banana.rotation.y = Math.random() * Math.PI;
@@ -5034,7 +5079,8 @@ function dropBanana(racer) {
     groundOffset: BANANA_GROUND_CLEARANCE,
     radius: 1.4,
     spinSpeed: 8.5,
-    tumbleSpeed: 6.5
+    tumbleSpeed: 6.5,
+    visual: bananaVisual
   });
 }
 
@@ -5262,8 +5308,8 @@ function updateShells(dt) {
       }
     } else if (shell.isGrounded) shell.position.y = getRoadHeightAtPosition(shell.position) + shell.groundOffset;
     shell.group.position.copy(shell.position);
-    shell.group.rotation.x += dt * 11;
-    shell.group.rotation.y += dt * 8;
+    shell.group.rotation.y = Math.atan2(shell.velocity.x, shell.velocity.z);
+    if (shell.visual) shell.visual.rotation.x += dt * shell.velocity.length() * 0.08;
 
     let remove = shell.life <= 0;
 
@@ -5328,7 +5374,14 @@ function updateBananas(dt) {
     } else banana.position.y = getRoadHeightAtPosition(banana.position) + banana.groundOffset;
     banana.group.position.copy(banana.position);
     banana.group.rotation.y += dt * 0.75;
-    if (!banana.isGrounded) { banana.group.rotation.x += dt * banana.spinSpeed; banana.group.rotation.z += dt * banana.tumbleSpeed; }
+    if (!banana.isGrounded) {
+      banana.group.rotation.x += dt * banana.spinSpeed;
+      banana.group.rotation.z += dt * banana.tumbleSpeed;
+    } else {
+      banana.group.rotation.x = THREE.MathUtils.lerp(banana.group.rotation.x, -Math.PI / 2, dt * 8);
+      banana.position.y = getRoadHeightAtPosition(banana.position) + 0.3;
+      banana.group.position.y = banana.position.y;
+    }
 
     let remove = banana.life <= 0;
 
