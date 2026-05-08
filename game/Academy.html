@@ -4076,7 +4076,12 @@ function recoverStuckAI(racer) {
 
 function updateAI(racer, dt) {
   if (racer.finished) return;
-  const profile = getAIPlanningProfile();
+  let profile = getAIPlanningProfile();
+  profile = profile || {};
+  const brakingDiscipline = profile.brakingDiscipline ?? 0.75;
+  const riskTolerance = profile.riskTolerance ?? 0.45;
+  const boostDesire = profile.boostDesire ?? 1.0;
+  const rampDesire = profile.rampDesire ?? 1.0;
   const closest = getClosestTrackInfo(racer.position);
   const speedFactor = THREE.MathUtils.clamp(Math.abs(racer.speed) / Math.max(1, racer.maxSpeed), 0, 1);
   let lookAhead = THREE.MathUtils.lerp(0.02, 0.085, speedFactor) * THREE.MathUtils.lerp(0.9, 1.16, profile.lineSharpness);
@@ -4110,19 +4115,57 @@ function updateAI(racer, dt) {
   const speedTurnDampen = THREE.MathUtils.lerp(1.0, 0.55, speedFactor);
   let turn = THREE.MathUtils.clamp(diff * 1.35, -1, 1) * speedTurnDampen;
   let throttle = racer.ai.recoveryMode ? 0.62 : 1;
-  const speedRatio = THREE.MathUtils.clamp(Math.abs(racer.speed) / Math.max(30, racer.maxSpeed * currentCC.speedMultiplier), 0, 1.35);
+  const speedRatio = THREE.MathUtils.clamp(
+    Math.abs(racer.speed) / Math.max(30, (racer.maxSpeed || 60) * (currentCC?.speedMultiplier || 1)),
+    0,
+    1.35
+  );
+
   let brake = 0;
+
   const curveSeverity = THREE.MathUtils.clamp(turnSharpness / 1.25, 0, 1);
-  const targetCurveSpeed = racer.maxSpeed * (1 - curveSeverity * (0.55 / handlingSafety));
-  const brakeThreshold = THREE.MathUtils.lerp(0.52, 0.86, THREE.MathUtils.clamp(profile.brakingDiscipline * handlingSafety, 0, 1));
+
+  // Higher handling / traction vehicles can safely carry more speed through curves.
+  // Fast low-handling vehicles should brake earlier.
+  const handlingSafety = THREE.MathUtils.clamp(
+    ((racer.handling || 2.3) * 0.32) +
+    ((racer.traction || 1.0) * 0.28) +
+    ((racer.turnGrip || 1.0) * 0.22) -
+    ((racer.speedTurnPenalty || 0.25) * 0.25),
+    0.45,
+    1.35
+  );
+
+  const targetCurveSpeed = (racer.maxSpeed || 60) * (
+    1 - curveSeverity * (0.55 / handlingSafety)
+  );
+
+  const brakeThreshold = THREE.MathUtils.lerp(
+    0.52,
+    0.86,
+    THREE.MathUtils.clamp(brakingDiscipline * handlingSafety, 0, 1)
+  );
   if (turnSharpness > brakeThreshold || Math.abs(racer.speed) > targetCurveSpeed) {
     const overspeed = Math.max(0, Math.abs(racer.speed) - targetCurveSpeed) / Math.max(8, racer.maxSpeed);
-    brake = THREE.MathUtils.clamp((turnSharpness - brakeThreshold) * (0.75 - profile.riskTolerance * 0.35) + speedRatio * 0.14 + overspeed * (0.35 + (racer.speedTurnPenalty || 0.25)), 0.08, 0.82);
+    brake = THREE.MathUtils.clamp(
+      (turnSharpness - brakeThreshold) * (0.75 - riskTolerance * 0.35) +
+      speedRatio * 0.14 +
+      overspeed * (0.35 + (racer.speedTurnPenalty || 0.25)),
+      0.08,
+      0.82
+    );
     throttle *= THREE.MathUtils.clamp(1 - overspeed * 0.9, 0.35, 1);
   }
 
-  if (boostOpportunity && !racer.ai.recoveryMode) { throttle = Math.max(throttle, 0.85); brake *= THREE.MathUtils.lerp(0.65, 0.2, Math.min(1.4, profile.boostDesire)); }
-  if (rampOpportunity && !racer.ai.recoveryMode) { throttle = Math.max(throttle, 0.9); brake *= THREE.MathUtils.lerp(0.75, 0.15, Math.min(1.4, profile.rampDesire)); }
+  if (boostOpportunity && !racer.ai.recoveryMode) {
+    throttle = Math.max(throttle, 0.85);
+    brake *= THREE.MathUtils.lerp(0.65, 0.2, Math.min(1.4, boostDesire));
+  }
+
+  if (rampOpportunity && !racer.ai.recoveryMode) {
+    throttle = Math.max(throttle, 0.9);
+    brake *= THREE.MathUtils.lerp(0.75, 0.15, Math.min(1.4, rampDesire));
+  }
 
   if (upcomingRisk > 80) { throttle = Math.min(throttle, 0.65); brake = Math.max(brake, 0.35 + speedRatio * 0.08); }
   if (upcomingRisk > 150) { throttle = Math.min(throttle, 0.4); brake = Math.max(brake, 0.5 + speedRatio * 0.1); }
