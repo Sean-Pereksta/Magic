@@ -735,6 +735,10 @@ let players = [];
 let attacks = [];
 let projectiles = [];
 let particles = [];
+let telegraphs = [];
+let ultFlash = 0;
+let ultFlashColor = "#ffffff";
+let eclipseTimer = 0;
 let currentMap = MAPS.temple;
 
 const MAP_DESCRIPTIONS = {
@@ -932,8 +936,11 @@ function startGame() {
   attacks = [];
   projectiles = [];
   particles = [];
+  telegraphs = [];
   matchTime = 0;
   shake = 0;
+  ultFlash = 0;
+  eclipseTimer = 0;
 
   const humanSpawn = currentMap.spawnPoints[0];
   players.push(createFighter({
@@ -1024,6 +1031,7 @@ function createFighter(config) {
     ultimateState: null,
     ultimateTimer: 0,
     ultimateDir: 1,
+    ultimateData: null,
     ultimateHit: new Set(),
     redFlashTimer: 0,
     parryTimer: 0,
@@ -1165,6 +1173,7 @@ function updateGame() {
   });
 
   players.forEach(updateFighter);
+  updateTelegraphs();
   updateAttacks();
   updateProjectiles();
   updateParticles();
@@ -2002,6 +2011,43 @@ function spawnProjectile(p) {
   p.hit = new Set();
   p.dir = p.dir || getFacingDir(p.owner);
   projectiles.push(p);
+}
+
+function addTelegraph(config) {
+  telegraphs.push({
+    type: config.type || "circle",
+    owner: config.owner || null,
+    x: config.x || 0,
+    y: config.y || 0,
+    w: config.w || 100,
+    h: config.h || 100,
+    dir: config.dir || 1,
+    color: config.color || "#ff3333",
+    label: config.label || "",
+    icon: config.icon || "",
+    life: config.life || 30,
+    maxLife: config.life || 30,
+    followOwner: !!config.followOwner,
+    offsetX: config.offsetX || 0,
+    offsetY: config.offsetY || 0
+  });
+}
+
+function updateTelegraphs() {
+  for (let i = telegraphs.length - 1; i >= 0; i--) {
+    const t = telegraphs[i];
+
+    if (t.followOwner && t.owner && !t.owner.dead) {
+      t.x = t.owner.x + t.dir * t.offsetX;
+      t.y = t.owner.y + t.offsetY;
+    }
+
+    t.life--;
+    if (t.life <= 0) telegraphs.splice(i, 1);
+  }
+
+  if (ultFlash > 0) ultFlash--;
+  if (eclipseTimer > 0) eclipseTimer--;
 }
 
 function startHorusUltimate(p) {
@@ -2968,11 +3014,156 @@ function drawGame() {
 
   drawBackground();
   drawMap();
+  telegraphs.forEach(drawTelegraph);
 
   projectiles.forEach(drawProjectile);
   attacks.forEach(drawAttack);
   players.forEach(drawFighter);
   particles.forEach(drawParticle);
+
+  ctx.restore();
+  drawUltimateScreenFlash();
+  drawEclipseOverlay();
+}
+
+function drawTelegraph(t) {
+  const x = worldToScreenX(t.x);
+  const y = worldToScreenY(t.y);
+  const w = screenScale(t.w);
+  const h = screenScale(t.h);
+  const progress = 1 - t.life / Math.max(1, t.maxLife);
+  const pulse = 0.55 + Math.sin(matchTime * 0.35) * 0.2;
+
+  ctx.save();
+  ctx.globalAlpha = 0.18 + pulse * 0.22;
+  ctx.fillStyle = t.color;
+  ctx.strokeStyle = t.color;
+  ctx.lineWidth = screenScale(3 + progress * 5);
+
+  if (t.type === "circle") {
+    ctx.beginPath();
+    ctx.ellipse(x, y, w / 2, h / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.9;
+    ctx.stroke();
+
+    ctx.globalAlpha = 0.65;
+    ctx.beginPath();
+    ctx.ellipse(x, y, (w / 2) * progress, (h / 2) * progress, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  else if (t.type === "rect") {
+    ctx.fillRect(x - w / 2, y - h / 2, w, h);
+
+    ctx.globalAlpha = 0.9;
+    ctx.strokeRect(x - w / 2, y - h / 2, w, h);
+
+    ctx.globalAlpha = 0.6;
+    ctx.strokeRect(
+      x - (w / 2) * progress,
+      y - (h / 2) * progress,
+      w * progress,
+      h * progress
+    );
+  }
+  else if (t.type === "line") {
+    ctx.globalAlpha = 0.4;
+    ctx.lineWidth = screenScale(18 + progress * 28);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + t.dir * w, y);
+    ctx.stroke();
+
+    ctx.globalAlpha = 0.95;
+    ctx.lineWidth = screenScale(3 + progress * 4);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + t.dir * w, y);
+    ctx.stroke();
+  }
+  else if (t.type === "cloneMarker") {
+    ctx.globalAlpha = 0.25 + Math.abs(Math.sin(matchTime * 0.25)) * 0.3;
+    ctx.beginPath();
+    ctx.arc(x, y, w / 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = screenScale(2);
+    ctx.beginPath();
+    ctx.arc(x, y, w / 2, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.globalAlpha = 0.75;
+    ctx.strokeStyle = t.color;
+    ctx.beginPath();
+    ctx.moveTo(x - w * 0.25, y);
+    ctx.lineTo(x + w * 0.25, y);
+    ctx.moveTo(x, y - w * 0.25);
+    ctx.lineTo(x, y + w * 0.25);
+    ctx.stroke();
+  }
+
+  if (t.label === "IMPACT") {
+    ctx.globalAlpha = 0.85;
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = screenScale(2);
+
+    for (let i = -3; i <= 3; i++) {
+      ctx.beginPath();
+      ctx.moveTo(x + i * w * 0.08, y);
+      ctx.lineTo(x + i * w * 0.14, y + h * 0.35);
+      ctx.stroke();
+    }
+  }
+
+  if (t.icon || t.label) {
+    ctx.globalAlpha = 1;
+    ctx.font = `${Math.max(13, 17 * camera.zoom)}px Arial`;
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(`${t.icon || ""} ${t.label || ""}`, x, y - h / 2 - screenScale(8));
+  }
+
+  ctx.restore();
+}
+
+function drawUltimateScreenFlash() {
+  if (ultFlash <= 0) return;
+
+  ctx.save();
+  ctx.globalAlpha = Math.min(0.28, ultFlash / 55);
+  ctx.fillStyle = ultFlashColor;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.globalAlpha = Math.min(0.75, ultFlash / 18);
+  ctx.strokeStyle = ultFlashColor;
+  ctx.lineWidth = 10;
+  ctx.strokeRect(5, 5, W - 10, H - 10);
+
+  ctx.restore();
+}
+
+function drawEclipseOverlay() {
+  if (eclipseTimer <= 0) return;
+
+  ctx.save();
+  ctx.globalAlpha = Math.min(0.42, eclipseTimer / 80);
+  ctx.fillStyle = "#05020a";
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.globalAlpha = Math.min(0.35, eclipseTimer / 90);
+  ctx.fillStyle = "#ffea00";
+  ctx.beginPath();
+  ctx.arc(W * 0.78, H * 0.18, 75, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.globalAlpha = Math.min(0.55, eclipseTimer / 70);
+  ctx.fillStyle = "#05020a";
+  ctx.beginPath();
+  ctx.arc(W * 0.78 - 20, H * 0.18, 72, 0, Math.PI * 2);
+  ctx.fill();
 
   ctx.restore();
 }
