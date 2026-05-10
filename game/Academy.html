@@ -76,8 +76,23 @@
   .select-layout {
     display: grid;
     grid-template-columns: 1fr 300px;
-    gap: 14px;
+    gap: 12px;
     align-items: start;
+  }
+
+  .hero-main-box {
+    border: 4px solid #354066;
+    background: #0f1730;
+    padding: 10px;
+    max-height: min(560px, 78vh);
+    overflow-y: auto;
+  }
+
+  .top-settings {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
   }
 
   .god-grid {
@@ -146,18 +161,20 @@
   .side-box {
     border: 4px solid #354066;
     background: #0f1730;
-    padding: 12px;
+    padding: 10px;
+    max-height: min(560px, 78vh);
+    overflow-y: auto;
   }
 
   .side-title {
-    font-size: 25px;
+    font-size: 22px;
     color: #ffd166;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
     text-shadow: 3px 3px 0 #000;
   }
 
   .setting-row {
-    margin: 9px 0;
+    margin: 6px 0;
   }
 
   .move-style {
@@ -198,8 +215,8 @@
     background: #202b57;
     color: white;
     border: 3px solid #5c6bc0;
-    padding: 10px;
-    font-size: 17px;
+    padding: 8px;
+    font-size: 15px;
     font-weight: bold;
     cursor: pointer;
   }
@@ -316,7 +333,27 @@
       <div class="subtitle">Cartoon pixel gods. 3 lives. One arena. Absolute mythological chaos.</div>
 
       <div class="select-layout">
-        <div>
+        <div class="hero-main-box">
+          <div class="top-settings">
+            <div class="setting-row">
+              <label for="gameMode">Game Mode</label>
+              <select id="gameMode">
+                <option value="stock" selected>Stock Battle</option>
+                <option value="timed">Timed Battle</option>
+                <option value="score">Score Battle</option>
+                <option value="king">King of the Hill</option>
+                <option value="boss">Boss Hunt</option>
+              </select>
+            </div>
+            <div class="setting-row">
+              <label for="modeLength">Mode Length</label>
+              <select id="modeLength">
+                <option value="short">Short</option>
+                <option value="normal" selected>Normal</option>
+                <option value="long">Long</option>
+              </select>
+            </div>
+          </div>
           <div class="god-grid" id="godGrid"></div>
         </div>
 
@@ -329,26 +366,6 @@
           </div>
 
           <div id="moveStylePanel" class="move-style"></div>
-
-          <div class="setting-row">
-            <label for="gameMode">Game Mode</label>
-            <select id="gameMode">
-              <option value="stock" selected>Stock Battle</option>
-              <option value="timed">Timed Battle</option>
-              <option value="score">Score Battle</option>
-              <option value="king">King of the Hill</option>
-              <option value="boss">Boss Hunt</option>
-            </select>
-          </div>
-
-          <div class="setting-row">
-            <label for="modeLength">Mode Length</label>
-            <select id="modeLength">
-              <option value="short">Short</option>
-              <option value="normal" selected>Normal</option>
-              <option value="long">Long</option>
-            </select>
-          </div>
 
           <div class="setting-row">
             <label for="botCount">Number of Bots</label>
@@ -1761,10 +1778,18 @@ function useSpecial(p) {
       const markY = p.grounded ? p.y + 34 : p.y + 74;
       spawnProjectile({owner:p,type:"eyeMark",x:p.x + dir * 46,y:markY,vx:0,vy:0,w:70,h:50,life:90,damage:7,knock:9,color:"#ffd166",trap:true});
     } else {
-      const gliding = !p.grounded;
-      p.vx = dir * 14; if (gliding) p.vy = Math.max(p.vy, 2.8);
-      createAttack({owner:p,x:p.x + p.facing * 26,y:p.y-6,w:98,h:34,damage:9,knock:8.8,angle:-0.15,frames:11,color:"#2ec4ff",label:"falcon_dive",visualType:"falconDive",attachToOwner:true,offsetX:26,offsetY:-6});
-      p.moveVisuals.push({type:"falconDive",frames:12,length:92,thickness:15});
+      const sideDash = p.moveVariant === "neutral" && (keys["a"] || keys["d"]);
+      if (sideDash) {
+        p.invincible = Math.max(p.invincible, 10);
+        p.vy = Math.min(p.vy, 1.6);
+        p.vx = dir * 18.5;
+        createAttack({owner:p,x:p.x + p.facing * 34,y:p.y-8,w:118,h:36,damage:10,knock:12.8,angle:-0.09,frames:10,color:"#2ec4ff",label:"falcon_dash",visualType:"falconDive",attachToOwner:true,offsetX:34,offsetY:-8});
+      } else {
+        const gliding = !p.grounded;
+        p.vx = dir * 14; if (gliding) p.vy = Math.max(p.vy, 2.8);
+        createAttack({owner:p,x:p.x + p.facing * 26,y:p.y-6,w:98,h:34,damage:9,knock:8.8,angle:-0.15,frames:11,color:"#2ec4ff",label:"falcon_dive",visualType:"falconDive",attachToOwner:true,offsetX:26,offsetY:-6});
+      }
+      p.moveVisuals.push({type:"falconDive",frames:12,length:102,thickness:15});
     }
   }
 
@@ -1801,10 +1826,10 @@ function useSpecial(p) {
       spawnProjectile({owner:p,type:"mudTrap",x:p.x + dir * 46,y:trapY,vx:0,vy:0,w:90,h:24,life:150,damage:2,knock:1,color:"#5c4a2e",trap:true,slow:true});
       p.moveVisuals.push({type:"mudShockwave",frames:18,length:66,thickness:12});
     } else {
-      p.invincible = Math.max(p.invincible, 8);
-      p.vx = dir * 12.8;
-      createAttack({owner:p,x:p.x + p.facing * 28,y:p.y-4,w:102,h:42,damage:11,knock:13.6,angle:-0.08,frames:10,color:"#2a9d8f",label:"nile_lunge",visualType:"nileLunge",attachToOwner:true,offsetX:28,offsetY:-4});
-      p.moveVisuals.push({type:"nileLunge",frames:12,length:96,thickness:16});
+      p.invincible = Math.max(p.invincible, 9);
+      p.vx = dir * 11.2;
+      createAttack({owner:p,x:p.x + p.facing * 30,y:p.y-6,w:108,h:46,damage:6,knock:4.6,angle:-0.04,frames:12,color:"#2a9d8f",label:"nile_grab",visualType:"nileLunge",attachToOwner:true,offsetX:30,offsetY:-6});
+      p.moveVisuals.push({type:"nileLunge",frames:14,length:98,thickness:16});
     }
   }
 
@@ -2154,6 +2179,10 @@ function updateFighter(p) {
     p.x = p.grabbedBy.x + p.grabbedBy.facing * 26;
     p.y = p.grabbedBy.y - 4;
     p.vx = 0; p.vy = 0;
+    if (p.grabbedBy.godId === "sobek" && p.grabTimer % 24 === 0) {
+      p.damage += 0.65;
+      spawnParticles(p.x, p.y, "#7be0d5", 3, 1.8);
+    }
     if (p.grabTimer <= 0) {
       p.grabImmunityTimer = 36;
       p.grabbedBy = null;
@@ -2473,7 +2502,7 @@ function updateAttacks() {
         if (a.owner.godId === "anubis" && a.visualType === "graveSweep") p.vx -= a.owner.facing * 2.2;
         if (a.owner.godId === "sobek" && ["jawSnap","nileLunge"].includes(a.visualType) && p.grabImmunityTimer <= 0 && !p.grabbedBy && Math.abs(p.x - a.owner.x) < 60) {
           p.grabbedBy = a.owner;
-          p.grabTimer = 20;
+          p.grabTimer = 180;
           p.throwDir = a.owner.facing;
         }
         if (a.owner.godId === "anubis" && a.visualType === "soulMarkBurst") {
