@@ -845,14 +845,14 @@ const GODS = {
     id: "bastet",
     name: "Bastet",
     pantheon: "Egyptian",
-    role: "Feline Duelist",
-    desc: "A fast cat-headed goddess with claw strings, charm effects, moon pounces, and evasive pressure.",
+    role: "Feline Assassin",
+    desc: "A sleek cat-headed goddess with pounces, claw flurries, charm magic, and purple spirit cats.",
     moveStyle: {
-      role: "Evasive feline duelist",
-      neutral: "Fast claw strings, dash slashes, and pressure resets.",
-      up: "Leaping claw anti-airs and moonlit aerial movement.",
-      down: "Low sweeps, trip attacks, and charm traps.",
-      special: "Moon Pounce / Cat Step / Charming Gaze."
+      role: "Feline assassin",
+      neutral: "Fast claw strings, pounces, and evasive pressure.",
+      up: "Leaping cat strikes and moonlit aerial slashes.",
+      down: "Low prowls, tail sweeps, and charm traps.",
+      special: "Moon Pounce / Cat Step / Charming Gaze / Spirit Cat Swarm."
     },
     color: "#d4af37",
     dark: "#111111",
@@ -970,6 +970,7 @@ let particles = [];
 let telegraphs = [];
 let lightningStrikes = [];
 let raSunBursts = [];
+let bastetSpiritCats = [];
 let ultFlash = 0;
 let ultFlashColor = "#ffffff";
 let eclipseTimer = 0;
@@ -1134,22 +1135,36 @@ function drawAvatar(c, god, x, y, scale) {
     c.fillRect(x - 15*s, y + 7*s, 2*s, 2*s);
   }
   if (god.id === "bastet") {
-    c.fillStyle = "#111111";
-    c.fillRect(x - 9*s, y - 14*s, 18*s, 10*s);
-    c.fillRect(x - 10*s, y - 19*s, 5*s, 7*s);
-    c.fillRect(x + 5*s, y - 19*s, 5*s, 7*s);
+    c.fillStyle = "#050505";
+    c.fillRect(x - 9*s, y - 15*s, 18*s, 12*s);
+    c.fillRect(x - 11*s, y - 21*s, 5*s, 8*s);
+    c.fillRect(x + 6*s, y - 21*s, 5*s, 8*s);
+    c.fillStyle = "#b66dff";
+    c.fillRect(x - 9*s, y - 18*s, 2*s, 4*s);
+    c.fillRect(x + 7*s, y - 18*s, 2*s, 4*s);
     c.fillStyle = "#ffd166";
     c.fillRect(x - 5*s, y - 10*s, 3*s, 2*s);
     c.fillRect(x + 2*s, y - 10*s, 3*s, 2*s);
     c.fillStyle = "#d4af37";
+    c.fillRect(x - 1*s, y - 7*s, 2*s, 2*s);
+    c.fillStyle = "#090909";
+    c.fillRect(x - 6*s, y - 3*s, 12*s, 15*s);
+    c.fillStyle = "#d4af37";
     c.fillRect(x - 8*s, y - 3*s, 16*s, 3*s);
     c.fillStyle = "#b66dff";
-    c.fillRect(x - 5*s, y + 1*s, 10*s, 8*s);
-    c.fillStyle = "#111111";
-    c.fillRect(x - 14*s, y + 6*s, 4*s, 9*s);
-    c.fillRect(x - 17*s, y + 4*s, 4*s, 4*s);
+    c.fillRect(x - 5*s, y + 1*s, 10*s, 7*s);
+    c.fillStyle = "#050505";
+    c.fillRect(x - 13*s, y + 1*s, 5*s, 11*s);
+    c.fillRect(x + 8*s, y + 1*s, 5*s, 11*s);
     c.fillStyle = "#ffd166";
-    c.fillRect(x + 7*s, y - 1*s, 3*s, 3*s);
+    c.fillRect(x - 15*s, y + 10*s, 5*s, 2*s);
+    c.fillRect(x + 10*s, y + 10*s, 5*s, 2*s);
+    c.fillStyle = "#050505";
+    c.fillRect(x + 9*s, y + 8*s, 4*s, 10*s);
+    c.fillRect(x + 12*s, y + 14*s, 6*s, 4*s);
+    c.fillRect(x + 16*s, y + 10*s, 4*s, 4*s);
+    c.fillStyle = "#b66dff";
+    c.fillRect(x - 2*s, y + 4*s, 4*s, 4*s);
   }
 }
 
@@ -1489,6 +1504,7 @@ function updateGame() {
   players.forEach(updateFighter);
   updateTelegraphs();
   if (raSunBursts && raSunBursts.length > 0) updateRaSunBursts();
+  if (bastetSpiritCats && bastetSpiritCats.length > 0) updateBastetSpiritCats();
   updateAttacks();
   if (lightningStrikes && lightningStrikes.length > 0) updateLightningStrikes();
   updateProjectiles();
@@ -1751,8 +1767,8 @@ function chooseBotAttackVariant(bot, target, inputType) {
       return Math.random() < .7 ? "neutral" : "up";
     }
     if (bot.godId === "bastet") {
-      if (!bot.grounded || targetAbove) return "up";
-      if (absDx < 115 && Math.random() < 0.45) return "down";
+      if (recoveringFromBelowStage || targetAbove) return "up";
+      if (absDx < 135 && bot.grounded && Math.random() < 0.42) return "down";
       return "neutral";
     }
     if (targetAbove) return "up";
@@ -1773,6 +1789,19 @@ function chooseBotAttackVariant(bot, target, inputType) {
     if (targetAbove || (Math.abs(dx) < 75 && dy < -35)) return "up";
     if (bot.grounded && absDx < 130 && Math.random() < 0.45) return "down";
     return "neutral";
+  }
+
+  if (bot.godId === "bastet") {
+    if (inputType === "heavy") {
+      if (targetAbove) return "up";
+      if (absDx < 80 && bot.grounded && Math.random() < 0.45) return "down";
+      return "neutral";
+    }
+    if (inputType === "light") {
+      if (targetAbove) return "up";
+      if (absDx < 70 && Math.random() < 0.35) return "down";
+      return "neutral";
+    }
   }
 
   if (jumpingAbove) return "up";
@@ -1969,8 +1998,8 @@ const ATTACK_DEFS = {
     heavy:{neutral:{id:"sobek_heavy_n",directionVariant:"neutral",startup:10,active:7,recovery:16,damage:15,knock:15.2,angle:-0.18,hitbox:{x:40,y:-12,w:90,h:46},effects:{visualType:"jawSnap"}},up:{id:"sobek_heavy_u",directionVariant:"up",startup:9,active:7,recovery:16,damage:14,knock:14.6,angle:-1.2,hitbox:{x:16,y:-100,w:86,h:104},effects:{visualType:"waterBurst"}},down:{id:"sobek_heavy_d",directionVariant:"down",startup:9,active:8,recovery:17,damage:15,knock:14.8,angle:-0.86,hitbox:{x:-30,y:16,w:112,h:74},effects:{visualType:"deathRoll"}}}
   },
   bastet: {
-    light: { neutral:{id:"bastet_light_n",godId:"bastet",inputType:"light",directionVariant:"neutral",startup:2,active:5,recovery:6,damage:5.5,knock:5.8,angle:-0.08,hitbox:{x:34,y:-8,w:54,h:30},effects:{visualType:"goldClawSlash"},selfImpulse:{x:1.2,y:0}}, up:{id:"bastet_light_u",directionVariant:"up",startup:3,active:6,recovery:8,damage:6.5,knock:7.2,angle:-1.18,hitbox:{x:24,y:-64,w:64,h:64},effects:{visualType:"risingCatClaw"}}, down:{id:"bastet_light_d",directionVariant:"down",startup:3,active:6,recovery:8,damage:5,knock:4.8,angle:0.05,hitbox:{x:28,y:24,w:78,h:22},effects:{visualType:"tailTrip"}}},
-    heavy:{neutral:{id:"bastet_heavy_n",directionVariant:"neutral",startup:7,active:7,recovery:13,damage:11,knock:12.4,angle:-0.35,hitbox:{x:42,y:-18,w:94,h:56},effects:{visualType:"lionessRend"},selfImpulse:{x:3.2,y:0}},up:{id:"bastet_heavy_u",directionVariant:"up",startup:7,active:7,recovery:14,damage:11.5,knock:13.2,angle:-1.28,hitbox:{x:12,y:-102,w:82,h:104},effects:{visualType:"moonUppercut"},selfImpulse:{x:0,y:-4.5}},down:{id:"bastet_heavy_d",directionVariant:"down",startup:8,active:9,recovery:16,damage:12,knock:11.8,angle:-0.55,hitbox:{x:-72,y:4,w:144,h:52},effects:{visualType:"sacredCatSpin"}}}
+    light: { neutral:{id:"bastet_light_n",godId:"bastet",inputType:"light",directionVariant:"neutral",startup:2,active:5,recovery:6,damage:5.5,knock:5.8,angle:-0.08,hitbox:{x:34,y:-10,w:66,h:34},effects:{visualType:"bastetClawSwipe"}}, up:{id:"bastet_light_u",godId:"bastet",inputType:"light",directionVariant:"up",startup:3,active:6,recovery:8,damage:6.5,knock:7.2,angle:-1.12,hitbox:{x:18,y:-58,w:58,h:64},effects:{visualType:"bastetRisingClaw"},selfImpulse:{x:0,y:-2.4}}, down:{id:"bastet_light_d",godId:"bastet",inputType:"light",directionVariant:"down",startup:3,active:6,recovery:8,damage:5.8,knock:6.6,angle:0.08,hitbox:{x:24,y:22,w:78,h:24},effects:{visualType:"bastetLowSweep"},selfImpulse:{x:2.6,y:0}}},
+    heavy:{neutral:{id:"bastet_heavy_n",godId:"bastet",inputType:"heavy",directionVariant:"neutral",startup:6,active:7,recovery:12,damage:11,knock:12,angle:-0.25,hitbox:{x:42,y:-14,w:92,h:46},effects:{visualType:"bastetPouncingMaul"},selfImpulse:{x:6.5,y:-1.2}},up:{id:"bastet_heavy_u",godId:"bastet",inputType:"heavy",directionVariant:"up",startup:5,active:8,recovery:13,damage:10,knock:12.8,angle:-1.22,hitbox:{x:16,y:-88,w:78,h:96},effects:{visualType:"bastetMoonLauncher"},selfImpulse:{x:0,y:-5.5}},down:{id:"bastet_heavy_d",godId:"bastet",inputType:"heavy",directionVariant:"down",startup:6,active:8,recovery:13,damage:9,knock:10,angle:-0.15,hitbox:{x:-54,y:16,w:150,h:34},effects:{visualType:"bastetTailTrip"},selfImpulse:{x:-1.8,y:0}}}
   },
   loki: {
     light: { neutral:{id:"loki_light_n",godId:"loki",inputType:"light",directionVariant:"neutral",startup:1,active:4,recovery:6,damage:5,knock:4.2,angle:-0.03,hitbox:{x:30,y:-10,w:44,h:22},effects:{visualType:"daggerFlurry"}}, up:{id:"loki_light_u",directionVariant:"up",startup:2,active:5,recovery:7,damage:6,knock:7.2,angle:-1.18,hitbox:{x:22,y:-58,w:52,h:60},effects:{visualType:"soulRake"},selfImpulse:{x:0,y:-1.4}}, down:{id:"loki_light_d",directionVariant:"down",startup:1,active:4,recovery:6,damage:5,knock:5.1,angle:-0.01,hitbox:{x:28,y:20,w:62,h:18},effects:{visualType:"graveSweep"}}},
@@ -2414,33 +2443,42 @@ function useSpecial(p) {
     }
   }
   else if (id === "bastet") {
-    const variant = p.moveVariant;
-    if (variant === "neutral") {
-      p.vx = p.facing * 18;
-      p.vy = Math.min(p.vy, -3);
-      p.action = "special";
-      p.attackKind = "moon_pounce";
-      p.attackFrame = 18;
-      createAttack({owner:p,x:p.x + p.facing * 52,y:p.y,w:86,h:48,damage:10,knock:11,angle:-0.35,frames:10,color:"#d4af37",label:"moon_pounce",visualType:"moonPounce"});
-      spawnParticles(p.x, p.y, "#ffd166", 22, 7);
-      spawnParticles(p.x, p.y, "#b66dff", 12, 5);
-    } else if (variant === "up") {
-      spawnParticles(p.x, p.y, "#b66dff", 28, 7);
-      p.invincible = Math.max(p.invincible, 18);
-      p.x += p.facing * 90;
-      p.y -= 95;
-      p.vy = -5;
-      p.action = "special";
-      p.attackKind = "cat_step";
-      p.attackFrame = 20;
-      createAttack({owner:p,x:p.x,y:p.y,w:78,h:70,damage:7,knock:8,angle:-0.9,frames:8,color:"#b66dff",label:"cat_step_burst",visualType:"catStepBurst"});
-      spawnParticles(p.x, p.y, "#ffd166", 24, 7);
-    } else if (variant === "down") {
-      p.action = "special";
-      p.attackKind = "charming_gaze";
-      p.attackFrame = 22;
-      createAttack({owner:p,x:p.x + p.facing * 58,y:p.y - 2,w:112,h:64,damage:3,knock:2.5,angle:-0.05,frames:12,color:"#ffd166",label:"charming_gaze",visualType:"charmingGaze",status:{type:"charm",frames:90}});
-      spawnParticles(p.x + p.facing * 45, p.y - 15, "#ffd166", 26, 5);
+    const v = p.moveVariant;
+    if (v === "neutral") {
+      p.specialCooldown = p.god.specialCooldown || 46;
+      p.vx = dir * 16;
+      p.vy = Math.min(p.vy, -7);
+      p.grounded = false;
+      p.attackKind = "bastet_moon_pounce";
+      p.attackFrame = Math.max(p.attackFrame, 24);
+      p.invincible = Math.max(p.invincible, 4);
+      createAttack({owner:p,x:p.x + dir * 48,y:p.y - 6,w:92,h:58,damage:9,knock:10,angle:-0.32,frames:14,color:"#b66dff",label:"bastet_moon_pounce",visualType:"bastetMoonPounce",attachToOwner:true,offsetX:dir * 48,offsetY:-6});
+      spawnParticles(p.x - dir * 18, p.y + 10, "#b66dff", 18, 5);
+      spawnParticles(p.x - dir * 12, p.y + 16, "#ffd166", 12, 4);
+      return;
+    }
+    if (v === "up") {
+      p.specialCooldown = (p.god.specialCooldown || 46) + 6;
+      p.vy = Math.min(p.vy, -18);
+      p.vx += dir * 5;
+      p.grounded = false;
+      p.attackKind = "bastet_moonlit_leap";
+      p.attackFrame = Math.max(p.attackFrame, 28);
+      p.invincible = Math.max(p.invincible, 6);
+      createAttack({owner:p,x:p.x + dir * 16,y:p.y - 54,w:82,h:104,damage:8,knock:10.5,angle:-1.12,frames:12,color:"#b66dff",label:"bastet_moonlit_leap",visualType:"bastetMoonlitLeap",attachToOwner:true,offsetX:dir * 16,offsetY:-54});
+      spawnParticles(p.x, p.y + 20, "#b66dff", 24, 6);
+      spawnParticles(p.x, p.y + 20, "#ffd166", 12, 4);
+      return;
+    }
+    if (v === "down") {
+      p.specialCooldown = (p.god.specialCooldown || 46) + 12;
+      p.vx *= 0.35;
+      p.attackKind = "bastet_charming_gaze";
+      p.attackFrame = Math.max(p.attackFrame, 30);
+      createAttack({owner:p,x:p.x + dir * 58,y:p.y - 8,w:128,h:76,damage:3,knock:3,angle:-0.08,frames:10,color:"#b66dff",label:"bastet_charming_gaze",visualType:"bastetCharmingGaze",charm:true});
+      spawnParticles(p.x + dir * 35, p.y - 15, "#b66dff", 22, 5);
+      spawnParticles(p.x + dir * 45, p.y - 15, "#ffd166", 10, 3);
+      return;
     }
   }
 
@@ -2508,25 +2546,21 @@ function useUltimate(p) {
   const dir = getFacingDir(p);
   if (p.godId === "bastet") {
     p.meter = 0;
-    p.invincible = Math.max(p.invincible, 80);
-    p.vy = -12;
-    p.attackKind = "bastet_ult";
-    p.attackFrame = 90;
-    ultFlash = 35;
+    p.ultimateTimer = 180;
+    p.attackKind = "bastet_spirit_cat_swarm";
+    p.attackFrame = Math.max(p.attackFrame, 50);
+    const catCount = 10;
+    for (let i = 0; i < catCount; i++) {
+      const angle = (Math.PI * 2 * i) / catCount;
+      bastetSpiritCats.push({ owner:p, x:p.x + Math.cos(angle) * 40, y:p.y + Math.sin(angle) * 26, vx:Math.cos(angle) * 5, vy:Math.sin(angle) * 4, life:210, phase:Math.random() * Math.PI * 2, target:null, hitIds:new Set(), size:18 + Math.random() * 6, color:"#b66dff" });
+    }
+    if (bastetSpiritCats.length > 24) bastetSpiritCats.splice(0, bastetSpiritCats.length - 24);
+    spawnParticles(p.x, p.y, "#b66dff", 60, 9);
+    spawnParticles(p.x, p.y, "#ffd166", 26, 6);
+    ultFlash = 18;
     ultFlashColor = "#b66dff";
-    shake = Math.max(shake, 10);
-    const enemies = players.filter(t => t !== p && !t.dead && t.lives > 0).sort((a, b) => b.damage - a.damage);
-    for (let i = 0; i < 3; i++) {
-      const y = p.y - 120 + i * 75;
-      createAttack({owner:p,x:p.x + p.facing * (120 + i * 70),y,w:520,h:42,damage:8,knock:8,angle:-0.25,frames:14,color:"#ffd166",label:"bastet_spirit_cat",visualType:"spiritCatDash"});
-    }
-    const target = enemies[0];
-    if (target) {
-      const finalDamage = target.damage >= 100 ? 22 : 18;
-      createAttack({owner:p,x:target.x,y:target.y,w:150,h:120,damage:finalDamage,knock:target.damage >= 100 ? 20 : 16,angle:-1.05,frames:22,color:"#b66dff",label:"bastet_final_pounce",visualType:"sacredCatPaw"});
-      spawnParticles(target.x, target.y, "#ffd166", 45, 9);
-    }
-    showMessage("WRATH OF THE SACRED CAT!", 90);
+    shake = Math.max(shake, 8);
+    showMessage("SPIRIT CAT SWARM!", 80);
     return;
   }
 
@@ -3558,6 +3592,11 @@ function updateAttacks() {
           p.vx *= 0.45;
           p.attackCooldown += 12;
         }
+        if (a.charm && a.owner && a.owner.godId === "bastet") {
+          p.charmTimer = Math.max(p.charmTimer || 0, 130);
+          p.confusedTimer = Math.max(p.confusedTimer || 0, 70);
+          spawnParticles(p.x, p.y - 20, "#b66dff", 18, 4);
+        }
       }
     });
 
@@ -3571,6 +3610,46 @@ function updateLightningStrikes() {
     if (s.timer > 0 && s.timer % 5 === 0) { spawnParticles(s.x, s.y - 90, "#cce3ff", 4, 3); spawnParticles(s.x, s.y + 25, "#ffd166", 3, 2); }
     if (s.timer <= 0 && !s.didStrike) { s.didStrike = true; createAttack({owner:s.owner,x:s.x,y:s.y - 170,w:82,h:360,damage:14,knock:15,angle:-1.1,frames:7,color:"#cce3ff",label:"thor_up_k_lightning_strike",visualType:"thorVerticalLightning"}); spawnParticles(s.x, s.y - 80, "#cce3ff", 38, 9); spawnParticles(s.x, s.y + 30, "#ffd166", 22, 6); shake = Math.max(shake, 8); hitStop = Math.max(hitStop, 4);}
     if (s.didStrike && s.timer <= -8) lightningStrikes.splice(i, 1);
+  }
+}
+
+function findSpiritCatTarget(cat) {
+  let best = null;
+  let bestD = Infinity;
+  players.forEach(p => {
+    if (!p || p.dead || p.lives <= 0 || p === cat.owner) return;
+    if (cat.owner && p.team === cat.owner.team && selectedGameMode !== "stock") return;
+    const d = Math.hypot(p.x - cat.x, p.y - cat.y);
+    if (d < bestD && d < 620) { best = p; bestD = d; }
+  });
+  return best;
+}
+function updateBastetSpiritCats() {
+  for (let i = bastetSpiritCats.length - 1; i >= 0; i--) {
+    const c = bastetSpiritCats[i];
+    c.life--; c.phase += 0.18;
+    if (!c.owner || c.owner.dead || c.owner.lives <= 0) c.life = Math.min(c.life, 30);
+    if (!c.target || c.target.dead || c.target.lives <= 0 || Math.random() < 0.025) c.target = findSpiritCatTarget(c);
+    if (c.target) {
+      const dx = c.target.x - c.x, dy = (c.target.y - 12) - c.y, d = Math.max(1, Math.hypot(dx, dy));
+      c.vx += (dx / d) * 0.55; c.vy += (dy / d) * 0.55;
+      const maxSpeed = 6.5 + Math.sin(c.phase) * 1.2, vmag = Math.max(1, Math.hypot(c.vx, c.vy));
+      if (vmag > maxSpeed) { c.vx = (c.vx / vmag) * maxSpeed; c.vy = (c.vy / vmag) * maxSpeed; }
+      if (d < 34 && !c.hitIds.has(c.target.id)) {
+        c.hitIds.add(c.target.id);
+        applyHit(c.target, c.owner, 5.5, 6.5, -0.25, Math.sign(dx || 1), "#b66dff");
+        c.target.vx += Math.sign(dx || 1) * 5; c.target.vy = Math.min(c.target.vy, -4); c.target.hitstun = Math.max(c.target.hitstun || 0, 14);
+        spawnParticles(c.target.x, c.target.y, "#b66dff", 16, 4); spawnParticles(c.target.x, c.target.y, "#ffd166", 8, 3);
+        c.vx *= -0.55; c.vy = -Math.abs(c.vy) - 2;
+        if (c.hitIds.size > 2) c.life = Math.min(c.life, 25);
+      }
+    } else if (c.owner) {
+      const ox = c.owner.x + Math.cos(c.phase) * 90, oy = c.owner.y + Math.sin(c.phase * 1.3) * 50;
+      c.vx += (ox - c.x) * 0.025; c.vy += (oy - c.y) * 0.025;
+    }
+    c.x += c.vx; c.y += c.vy; c.vx *= 0.96; c.vy *= 0.96;
+    if (c.life % 6 === 0) spawnParticles(c.x, c.y, "#b66dff", 2, 2);
+    if (c.life <= 0) { spawnParticles(c.x, c.y, "#b66dff", 10, 3); bastetSpiritCats.splice(i, 1); }
   }
 }
 
@@ -4204,6 +4283,7 @@ function drawGame() {
   telegraphs.forEach(drawTelegraph);
   if (lightningStrikes && lightningStrikes.length > 0) drawLightningStrikes();
   if (raSunBursts && raSunBursts.length > 0) drawRaSunBursts();
+  if (bastetSpiritCats && bastetSpiritCats.length > 0) drawBastetSpiritCats();
 
   projectiles.forEach(drawProjectile);
   attacks.forEach(drawAttack);
@@ -4246,6 +4326,22 @@ function drawRaSunBursts() {
       ctx.lineWidth = screenScale(5);
       ctx.beginPath(); ctx.arc(sx, sy, screenScale(b.radius * 0.8), 0, Math.PI * 2); ctx.stroke();
     }
+    ctx.restore();
+  });
+}
+
+function drawBastetSpiritCats() {
+  bastetSpiritCats.forEach(c => {
+    const sx = worldToScreenX(c.x), sy = worldToScreenY(c.y), s = screenScale(c.size || 20);
+    const dir = c.vx >= 0 ? 1 : -1, pulse = 0.75 + Math.sin(matchTime * 0.25 + c.phase) * 0.25;
+    ctx.save(); ctx.translate(sx, sy); ctx.scale(dir, 1);
+    ctx.globalAlpha = 0.22 * pulse; ctx.fillStyle = "#b66dff"; ctx.beginPath(); ctx.arc(0, 0, s * 1.15, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.78; ctx.fillStyle = "#7b2cbf"; ctx.beginPath(); ctx.ellipse(0, 4, s * 0.55, s * 0.32, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#b66dff"; ctx.beginPath(); ctx.arc(s * 0.45, -2, s * 0.28, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(s * 0.30, -s * 0.20); ctx.lineTo(s * 0.38, -s * 0.52); ctx.lineTo(s * 0.48, -s * 0.18); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(s * 0.52, -s * 0.18); ctx.lineTo(s * 0.68, -s * 0.48); ctx.lineTo(s * 0.66, -s * 0.10); ctx.fill();
+    ctx.strokeStyle = "#b66dff"; ctx.lineWidth = Math.max(2, s * 0.12); ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(-s * 0.45, 3); ctx.quadraticCurveTo(-s * 0.95, -s * 0.45, -s * 0.40, -s * 0.65); ctx.stroke();
+    ctx.globalAlpha = 0.95; ctx.fillStyle = "#ffd166"; ctx.fillRect(s * 0.47, -s * 0.08, s * 0.08, s * 0.05); ctx.fillRect(s * 0.60, -s * 0.08, s * 0.08, s * 0.05);
     ctx.restore();
   });
 }
@@ -4688,6 +4784,13 @@ function drawPixelGod(c, p, x, y, s) {
 
   c.fillStyle = g.accent;
   c.fillRect(px(x + sc(23) + hitLean + bodyLean + (pose.shieldX || 0)), px(y + sc(8) + bob + crouch + (pose.shieldY || 0)), sc(14), sc(10));
+  if (p.godId === "bastet") {
+    c.fillStyle = "#050505";
+    c.fillRect(px(x + dir * sc(18)), px(y - sc(3) + bob + crouch), sc(6), sc(16));
+    c.fillRect(px(x + dir * sc(24)), px(y + sc(8) + bob + crouch), sc(10), sc(5));
+    c.fillStyle = "#b66dff";
+    if (p.dodgeTimer > 0 || String(p.attackKind || "").includes("bastet_moon")) c.fillRect(px(x - sc(20)), px(y + sc(24) + bob + crouch), sc(40), sc(4));
+  }
 
   drawGodWeapon(c, p, x + hitLean + bodyLean, y + bob + crouch, s, dir, pose);
 }
@@ -5013,6 +5116,22 @@ function drawDirectionalSwing(a, owner) {
   else { ctx.scale(dir,1); ctx.beginPath(); ctx.arc(-sw*0.18,0, sw*0.55*arcSize,-0.75,0.72,false); ctx.stroke(); }
   ctx.restore();
 }
+function drawBastetClawMarks(x, y, w, h, variant = "neutral") {
+  ctx.save();
+  ctx.strokeStyle = "#ffd166";
+  ctx.lineWidth = screenScale(4);
+  ctx.lineCap = "round";
+  ctx.globalAlpha = 0.85;
+  for (let i = 0; i < 3; i++) {
+    const off = (i - 1) * screenScale(10);
+    ctx.beginPath();
+    if (variant === "up") { ctx.moveTo(x - screenScale(20) + off, y + screenScale(25)); ctx.quadraticCurveTo(x + off, y - screenScale(30), x + screenScale(24) + off, y - screenScale(52)); }
+    else if (variant === "down") { ctx.moveTo(x - screenScale(35), y + off); ctx.quadraticCurveTo(x, y + screenScale(30) + off, x + screenScale(42), y + off); }
+    else { ctx.moveTo(x - screenScale(35), y - screenScale(20) + off); ctx.quadraticCurveTo(x, y + off, x + screenScale(42), y + screenScale(14) + off); }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
 
 function drawAttack(a) {
   const x = worldToScreenX(a.x);
@@ -5047,6 +5166,18 @@ function drawAttack(a) {
     }
     ctx.globalAlpha = 1;
   };
+  if (["bastetClawSwipe","bastetRisingClaw","bastetLowSweep","bastetPouncingMaul","bastetMoonLauncher","bastetTailTrip","bastetMoonPounce","bastetMoonlitLeap","bastetCharmingGaze"].includes(type)) {
+    const v = (type.includes("Rising") || type.includes("MoonLauncher") || type.includes("Moonlit")) ? "up" : (type.includes("Low") || type.includes("TailTrip") ? "down" : "neutral");
+    if (type === "bastetCharmingGaze") {
+      ctx.globalAlpha = 0.25; ctx.fillStyle = "#b66dff"; ctx.beginPath(); ctx.moveTo(cx - dir * w * .3, cy); ctx.lineTo(cx + dir * w * .6, cy - h * .35); ctx.lineTo(cx + dir * w * .6, cy + h * .35); ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = 0.95; ctx.fillStyle = "#ffd166"; ctx.fillRect(cx + dir * w * .18, cy - h * .12, screenScale(8), screenScale(4)); ctx.fillRect(cx + dir * w * .28, cy - h * .12, screenScale(8), screenScale(4));
+    } else {
+      drawBastetClawMarks(cx, cy, w, h, v);
+      if (type.includes("Pounce") || type.includes("Moonlit")) { ctx.globalAlpha = 0.25; ctx.strokeStyle = "#b66dff"; ctx.lineWidth = screenScale(8); ctx.beginPath(); ctx.moveTo(cx - dir * w * .65, cy + h * .1); ctx.lineTo(cx - dir * w * .05, cy); ctx.stroke(); }
+    }
+    ctx.globalAlpha = 1;
+    return;
+  }
 
   if (["genericSwing","slashArc","jackalClaw","judgmentCleave","daggerFlurry"].includes(type)) {
     drawDirectionalSwing(a, a.owner);
