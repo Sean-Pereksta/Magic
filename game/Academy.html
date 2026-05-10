@@ -1306,6 +1306,9 @@ function enforcePerfCaps() {
   if (projectiles.length > PERF.maxProjectiles) projectiles.splice(0, projectiles.length - PERF.maxProjectiles);
   if (attacks.length > PERF.maxAttacks) attacks.splice(0, attacks.length - PERF.maxAttacks);
   if (telegraphs.length > PERF.maxTelegraphs) telegraphs.splice(0, telegraphs.length - PERF.maxTelegraphs);
+  if (mudTraps.length > 3) {
+    mudTraps.splice(0, mudTraps.length - 3);
+  }
 }
 
 function updateHuman(p) {
@@ -3650,18 +3653,39 @@ function spawnStatusText(x, y, text, color) {
 }
 
 function updateMudTraps() {
+  if (!mudTraps || mudTraps.length === 0) return;
+
   for (let i = mudTraps.length - 1; i >= 0; i--) {
-    const m = mudTraps[i]; m.life--;
-    players.forEach(t => {
-      if (!t || t.dead || t === m.owner) return;
-      const d = Math.hypot(t.x - m.x, t.y - m.y);
-      if (d < m.radius) {
+    const m = mudTraps[i];
+
+    if (!m || !m.owner || m.owner.dead) {
+      mudTraps.splice(i, 1);
+      continue;
+    }
+
+    m.life--;
+
+    const r = m.radius || 0;
+    const r2 = r * r;
+
+    for (let j = 0; j < players.length; j++) {
+      const t = players[j];
+      if (!t || t.dead || t === m.owner) continue;
+
+      const dx = t.x - m.x;
+      const dy = t.y - m.y;
+
+      // Avoid Math.hypot for performance.
+      if ((dx * dx + dy * dy) < r2) {
         t.mudSlowTimer = Math.max(t.mudSlowTimer || 0, 10);
         t.sobekMudSource = m.owner ? m.owner.id : null;
         t.sobekJumpDebuffTimer = Math.max(t.sobekJumpDebuffTimer || 0, 10);
       }
-    });
-    if (m.life <= 0 || !m.owner || m.owner.dead) mudTraps.splice(i, 1);
+    }
+
+    if (m.life <= 0) {
+      mudTraps.splice(i, 1);
+    }
   }
 }
 
@@ -3866,6 +3890,7 @@ function drawGame() {
   drawCachedBackground();
   drawMap();
   players.forEach(drawAnubisCircleUltimate);
+  if (mudTraps && mudTraps.length > 0) drawMudTraps();
   telegraphs.forEach(drawTelegraph);
   drawLightningStrikes();
 
@@ -3877,6 +3902,17 @@ function drawGame() {
   ctx.restore();
   drawUltimateScreenFlash();
   drawEclipseOverlay();
+
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.font = "14px monospace";
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(
+    `FPS objects - particles:${particles.length} attacks:${attacks.length} projectiles:${projectiles.length} mud:${mudTraps.length}`,
+    12,
+    H - 18
+  );
+  ctx.restore();
 }
 
 function drawAnubisCircleUltimate(p) {
@@ -4844,12 +4880,30 @@ function drawAttack(a) {
 }
 
 function drawMudTraps() {
+  if (!mudTraps || mudTraps.length === 0) return;
+
   mudTraps.forEach(m => {
-    const sx = worldToScreenX(m.x), sy = worldToScreenY(m.y), r = screenScale(m.radius);
-    ctx.save(); ctx.globalAlpha = Math.min(0.42, m.life / 50); ctx.fillStyle = "#6b4f2a";
-    ctx.beginPath(); ctx.ellipse(sx, sy, r, r * 0.32, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = Math.min(0.55, m.life / 60); ctx.strokeStyle = "#2a9d8f"; ctx.lineWidth = screenScale(3);
-    ctx.beginPath(); ctx.ellipse(sx, sy, r, r * 0.32, 0, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+    if (!m) return;
+
+    const sx = worldToScreenX(m.x);
+    const sy = worldToScreenY(m.y);
+    const r = screenScale(m.radius || 0);
+
+    ctx.save();
+    ctx.globalAlpha = Math.min(0.42, m.life / 50);
+    ctx.fillStyle = "#6b4f2a";
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, r, r * 0.32, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalAlpha = Math.min(0.55, m.life / 60);
+    ctx.strokeStyle = "#2a9d8f";
+    ctx.lineWidth = screenScale(3);
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, r, r * 0.32, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.restore();
   });
 }
 function drawProjectile(pr) {
