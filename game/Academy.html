@@ -43,8 +43,9 @@
   }
 
   .panel {
-    width: min(1100px, 94vw);
-    min-height: 620px;
+    width: min(1020px, 94vw);
+    min-height: min(620px, 94vh);
+    max-height: 94vh;
     background:
       linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.02)),
       #131a35;
@@ -52,15 +53,15 @@
     box-shadow:
       0 0 0 6px #3d2d70,
       0 0 35px rgba(244, 211, 94, .45);
-    padding: 26px;
+    padding: 18px 20px;
     position: relative;
   }
 
   .title {
-    font-size: 54px;
+    font-size: clamp(34px, 4vw, 48px);
     text-align: center;
     letter-spacing: 3px;
-    margin: 0 0 6px;
+    margin: 0 0 4px;
     text-shadow: 5px 5px 0 #000;
     color: #ffd166;
   }
@@ -68,27 +69,31 @@
   .subtitle {
     text-align: center;
     color: #b8c0ff;
-    margin-bottom: 22px;
-    font-size: 18px;
+    margin-bottom: 12px;
+    font-size: 15px;
   }
 
   .select-layout {
     display: grid;
-    grid-template-columns: 1fr 310px;
-    gap: 24px;
+    grid-template-columns: 1fr 300px;
+    gap: 14px;
+    align-items: start;
   }
 
   .god-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 14px;
+    gap: 10px;
+    max-height: min(560px, 74vh);
+    overflow-y: auto;
+    padding-right: 6px;
   }
 
   .god-card {
-    min-height: 145px;
+    min-height: 118px;
     border: 4px solid #354066;
     background: #1a2448;
-    padding: 12px;
+    padding: 10px;
     cursor: pointer;
     transition: transform .08s, border-color .08s, background .08s;
     position: relative;
@@ -107,41 +112,41 @@
   }
 
   .god-name {
-    font-size: 24px;
+    font-size: 20px;
     font-weight: bold;
     margin-bottom: 2px;
   }
 
   .god-pantheon {
-    font-size: 13px;
+    font-size: 12px;
     color: #b8c0ff;
     margin-bottom: 8px;
   }
 
   .god-role {
-    font-size: 14px;
+    font-size: 13px;
     color: #fff1a8;
     margin-bottom: 7px;
   }
 
   .god-desc {
-    font-size: 12px;
+    font-size: 11px;
     color: #d4ddff;
     line-height: 1.3;
   }
 
   .pixel-avatar {
     position: absolute;
-    right: 12px;
-    bottom: 10px;
-    width: 52px;
-    height: 52px;
+    right: 8px;
+    bottom: 7px;
+    width: 46px;
+    height: 46px;
   }
 
   .side-box {
     border: 4px solid #354066;
     background: #0f1730;
-    padding: 16px;
+    padding: 12px;
   }
 
   .side-title {
@@ -152,12 +157,12 @@
   }
 
   .setting-row {
-    margin: 18px 0;
+    margin: 9px 0;
   }
 
   .move-style {
-    margin: 8px 0 14px;
-    padding: 10px;
+    margin: 6px 0 10px;
+    padding: 8px;
     border: 2px solid #40508b;
     background: #131f42;
     font-size: 12px;
@@ -183,7 +188,7 @@
 
   label {
     display: block;
-    font-size: 15px;
+    font-size: 13px;
     color: #b8c0ff;
     margin-bottom: 8px;
   }
@@ -193,7 +198,7 @@
     background: #202b57;
     color: white;
     border: 3px solid #5c6bc0;
-    padding: 12px;
+    padding: 10px;
     font-size: 17px;
     font-weight: bold;
     cursor: pointer;
@@ -207,8 +212,8 @@
   #startBtn {
     background: #12664f;
     border-color: #06d6a0;
-    margin-top: 14px;
-    font-size: 22px;
+    margin-top: 8px;
+    font-size: 18px;
   }
 
   #startBtn:hover {
@@ -216,10 +221,10 @@
   }
 
   .controls {
-    margin-top: 20px;
-    font-size: 13px;
+    margin-top: 10px;
+    font-size: 12px;
     color: #d4ddff;
-    line-height: 1.55;
+    line-height: 1.35;
   }
 
   .hud {
@@ -1772,7 +1777,7 @@ function useSpecial(p) {
     } else {
       p.invincible = Math.max(p.invincible, 8);
       p.vx = dir * 12.8;
-      createAttack({owner:p,x:p.x + p.facing * 28,y:p.y-4,w:102,h:42,damage:11,knock:10.5,angle:-0.08,frames:10,color:"#2a9d8f",label:"nile_lunge",visualType:"nileLunge",attachToOwner:true,offsetX:28,offsetY:-4});
+      createAttack({owner:p,x:p.x + p.facing * 28,y:p.y-4,w:102,h:42,damage:11,knock:13.6,angle:-0.08,frames:10,color:"#2a9d8f",label:"nile_lunge",visualType:"nileLunge",attachToOwner:true,offsetX:28,offsetY:-4});
       p.moveVisuals.push({type:"nileLunge",frames:12,length:96,thickness:16});
     }
   }
@@ -2010,7 +2015,7 @@ function fireHorusBladeFan(p) {
     const vy = Math.sin(angle) * baseSpeed;
     spawnProjectile({
       owner: p, type: "horusBlade", dir, x: p.x + spread * 8, y: p.y + 12, vx, vy, w: 14, h: 34,
-      life: 90, damage: 9, knock: 8.5, color: "#ffd166", gravity: 0.08, blade: true, pierce: false,
+      life: 90, damage: 10.8, knock: 9.8, color: "#ffd166", gravity: 0.08, blade: true, pierce: false,
       platformDestroy: true, rotation: angle, spin: 0.04 * spread
     });
   }
@@ -2161,7 +2166,7 @@ function updateFighter(p) {
           t,
           p,
           30,
-          24,
+          28,
           -0.28,
           p.ultimateDir,
           "#ff3333",
