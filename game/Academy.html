@@ -345,6 +345,16 @@
             </select>
           </div>
 
+          <div class="setting-row">
+            <label for="mapSelect">Arena</label>
+            <select id="mapSelect">
+              <option value="temple" selected>Temple of the Three Skies</option>
+              <option value="nile">Nile Ruins</option>
+              <option value="stormforge">Stormforge Peaks</option>
+            </select>
+            <div id="mapDesc" class="small-note"></div>
+          </div>
+
           <button id="startBtn">START BRAWL</button>
 
           <div class="controls">
@@ -631,21 +641,66 @@ const GOD_ORDER = ["zeus", "athena", "ra", "anubis", "thor", "loki", "horus", "s
 
 const MAPS = {
   temple: {
+    id: "temple",
     name: "Temple of the Three Skies",
-    blastPadding: 260,
+    backgroundType: "temple",
+    worldWidth: 1700,
+    worldHeight: 900,
+    blastPadding: 300,
     platforms: [
-      { x: 230, y: 560, w: 860, h: 38, type: "main" },
-      { x: 360, y: 420, w: 190, h: 24, type: "cloud" },
-      { x: 770, y: 420, w: 190, h: 24, type: "cloud" },
-      { x: 565, y: 310, w: 190, h: 24, type: "cloud" }
+      { x: 260, y: 620, w: 1180, h: 42, type: "main" },
+      { x: 360, y: 470, w: 260, h: 26, type: "cloud" },
+      { x: 1080, y: 470, w: 260, h: 26, type: "cloud" },
+      { x: 720, y: 350, w: 260, h: 26, type: "cloud" },
+      { x: 160, y: 720, w: 230, h: 26, type: "stone" },
+      { x: 1310, y: 720, w: 230, h: 26, type: "stone" }
     ],
     spawnPoints: [
-      { x: 380, y: 500 },
-      { x: 930, y: 500 },
-      { x: 470, y: 360 },
-      { x: 850, y: 360 },
-      { x: 660, y: 260 },
-      { x: 650, y: 500 }
+      { x: 480, y: 560 }, { x: 1220, y: 560 }, { x: 520, y: 410 }, { x: 1180, y: 410 },
+      { x: 850, y: 300 }, { x: 850, y: 560 }, { x: 260, y: 670 }, { x: 1440, y: 670 }
+    ]
+  },
+  nile: {
+    id: "nile",
+    name: "Nile Ruins",
+    backgroundType: "nile",
+    worldWidth: 1850,
+    worldHeight: 950,
+    blastPadding: 320,
+    platforms: [
+      { x: 250, y: 650, w: 1320, h: 44, type: "sandstone" },
+      { x: 380, y: 500, w: 280, h: 28, type: "ruin" },
+      { x: 1180, y: 500, w: 280, h: 28, type: "ruin" },
+      { x: 780, y: 390, w: 290, h: 28, type: "ruin" },
+      { x: 690, y: 760, w: 470, h: 30, type: "boat" },
+      { x: 95, y: 585, w: 240, h: 26, type: "ruin" },
+      { x: 1515, y: 585, w: 240, h: 26, type: "ruin" }
+    ],
+    spawnPoints: [
+      { x: 450, y: 590 }, { x: 1380, y: 590 }, { x: 520, y: 440 }, { x: 1320, y: 440 },
+      { x: 925, y: 330 }, { x: 925, y: 590 }, { x: 760, y: 710 }, { x: 1090, y: 710 }
+    ]
+  },
+  stormforge: {
+    id: "stormforge",
+    name: "Stormforge Peaks",
+    backgroundType: "stormforge",
+    worldWidth: 1750,
+    worldHeight: 980,
+    blastPadding: 340,
+    platforms: [
+      { x: 390, y: 670, w: 970, h: 48, type: "forge" },
+      { x: 190, y: 520, w: 330, h: 34, type: "ice" },
+      { x: 1230, y: 520, w: 330, h: 34, type: "ice" },
+      { x: 700, y: 390, w: 350, h: 30, type: "metal" },
+      { x: 470, y: 810, w: 270, h: 30, type: "rock" },
+      { x: 1010, y: 810, w: 270, h: 30, type: "rock" },
+      { x: 70, y: 720, w: 240, h: 28, type: "rock" },
+      { x: 1440, y: 720, w: 240, h: 28, type: "rock" }
+    ],
+    spawnPoints: [
+      { x: 520, y: 610 }, { x: 1230, y: 610 }, { x: 330, y: 460 }, { x: 1420, y: 460 },
+      { x: 875, y: 330 }, { x: 875, y: 610 }, { x: 610, y: 760 }, { x: 1140, y: 760 }
     ]
   }
 };
@@ -656,6 +711,12 @@ let attacks = [];
 let projectiles = [];
 let particles = [];
 let currentMap = MAPS.temple;
+
+const MAP_DESCRIPTIONS = {
+  temple: "Balanced floating temple with mid platforms and cosmic sightlines.",
+  nile: "Wide sandstone bridge, ruin platforms, river backdrop, and strong horizontal fights.",
+  stormforge: "Vertical mountain forge with icy ledges, metal bridges, and stormy skies."
+};
 let camera = { x: 0, y: 0, zoom: 1 };
 let gameState = "select";
 let matchTime = 0;
@@ -804,8 +865,21 @@ function drawAvatar(c, god, x, y, scale) {
   }
 }
 
+function mapCenterX() {
+  return (currentMap.worldWidth || 1320) / 2;
+}
+
+function updateMapDescription() {
+  const mapSelect = document.getElementById("mapSelect");
+  const mapDesc = document.getElementById("mapDesc");
+  mapDesc.textContent = MAP_DESCRIPTIONS[mapSelect.value] || "";
+}
+
+document.getElementById("mapSelect").addEventListener("change", updateMapDescription);
+
 buildGodGrid();
 updateMoveStylePanel();
+updateMapDescription();
 
 document.getElementById("startBtn").onclick = startGame;
 document.getElementById("returnBtn").onclick = () => {
@@ -817,6 +891,8 @@ document.getElementById("returnBtn").onclick = () => {
 function startGame() {
   const botCount = parseInt(document.getElementById("botCount").value, 10);
   const difficulty = document.getElementById("difficulty").value;
+  const selectedMapId = document.getElementById("mapSelect").value;
+  currentMap = MAPS[selectedMapId] || MAPS.temple;
 
   players = [];
   attacks = [];
@@ -1078,8 +1154,11 @@ function updateBot(p) {
   if (Math.abs(dx) > 70) move = Math.sign(dx);
   else if (Math.random() < .03) move = -Math.sign(dx);
 
-  if (p.x < 170) move = 1;
-  if (p.x > 1140) move = -1;
+  const worldW = currentMap.worldWidth || 1320;
+  if (p.x < 130) move = 1;
+  if (p.x > worldW - 130) move = -1;
+  if (Math.abs(dx) > worldW * 0.55) move = Math.sign(dx);
+  if (Math.abs(p.x - mapCenterX()) > worldW * 0.4 && Math.random() < 0.08) move = Math.sign(mapCenterX() - p.x);
 
   applyMoveInput(p, move);
 
@@ -1758,11 +1837,13 @@ function updateFighter(p) {
   }
   p.vy = clamp(p.vy, -30, 26);
 
-  const pad = currentMap.blastPadding;
+  const pad = currentMap.blastPadding || 260;
+  const worldW = currentMap.worldWidth || 1320;
+  const worldH = currentMap.worldHeight || 850;
   if (
     p.x < -pad ||
-    p.x > 1320 + pad ||
-    p.y > 850 + pad ||
+    p.x > worldW + pad ||
+    p.y > worldH + pad ||
     p.y < -520
   ) {
     loseLife(p);
@@ -1820,8 +1901,8 @@ function loseLife(p) {
 }
 
 function respawn(p) {
-  const living = players.filter(o => !o.dead);
-  const spawn = currentMap.spawnPoints[Math.floor(Math.random() * currentMap.spawnPoints.length)];
+  const points = currentMap.spawnPoints || MAPS.temple.spawnPoints;
+  const spawn = points[Math.floor(Math.random() * points.length)];
 
   p.x = spawn.x;
   p.y = spawn.y - 40;
@@ -2173,123 +2254,73 @@ function drawGame() {
 }
 
 function drawBackground() {
-  const sky = ctx.createLinearGradient(0, 0, 0, H);
-  sky.addColorStop(0, "#111936");
-  sky.addColorStop(.45, "#202b57");
-  sky.addColorStop(1, "#3d2d70");
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, W, H);
-
-  // Pixel stars
-  for (let i = 0; i < 90; i++) {
-    const x = (i * 137 + matchTime * .12) % W;
-    const y = (i * 71) % Math.max(1, H * .55);
-    ctx.fillStyle = i % 3 === 0 ? "#ffd166" : "#b8c0ff";
-    ctx.fillRect(Math.floor(x), Math.floor(y), i % 4 === 0 ? 3 : 2, i % 4 === 0 ? 3 : 2);
-  }
-
-  // Three pantheon silhouettes
-  drawTempleSilhouette(worldToScreenX(170), worldToScreenY(610), "#0b1022", 1.4, "greek");
-  drawTempleSilhouette(worldToScreenX(660), worldToScreenY(640), "#0b1022", 1.7, "egypt");
-  drawTempleSilhouette(worldToScreenX(1130), worldToScreenY(620), "#0b1022", 1.4, "norse");
-
-  // Clouds
-  for (let i = 0; i < 8; i++) {
-    const x = ((i * 250 - matchTime * .25) % (W + 300)) - 150;
-    const y = 100 + (i % 4) * 55;
-    ctx.fillStyle = "rgba(255,255,255,.08)";
-    pixelCloud(x, y, 1 + (i % 3) * .3);
-  }
+  const type = currentMap.backgroundType || "temple";
+  if (type === "nile") drawNileBackground();
+  else if (type === "stormforge") drawStormforgeBackground();
+  else drawTempleBackground();
 }
 
-function pixelCloud(x, y, s) {
-  ctx.fillRect(x, y, 80*s, 18*s);
-  ctx.fillRect(x + 18*s, y - 14*s, 50*s, 18*s);
-  ctx.fillRect(x + 50*s, y - 6*s, 56*s, 18*s);
+function drawTempleBackground() {
+  const sky = ctx.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, "#140f2e"); sky.addColorStop(.5, "#223168"); sky.addColorStop(1, "#48256f");
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+  for (let i=0;i<90;i++){ const x=(i*137+matchTime*.12)%W, y=(i*71)%Math.max(1,H*.55); ctx.fillStyle=i%3===0?"#ffd166":"#b8c0ff"; ctx.fillRect(Math.floor(x),Math.floor(y),2,2);}  
+  drawTempleSilhouette(worldToScreenX(220), worldToScreenY(700), "#0b1022", 1.8, "greek");
+  drawTempleSilhouette(worldToScreenX(mapCenterX()), worldToScreenY(735), "#101631", 2.0, "egypt");
+  drawTempleSilhouette(worldToScreenX((currentMap.worldWidth||1700)-220), worldToScreenY(700), "#0b1022", 1.8, "norse");
 }
 
-function drawTempleSilhouette(x, y, color, scale, type) {
-  ctx.fillStyle = color;
-  const s = scale;
-
-  if (type === "greek") {
-    ctx.fillRect(x - 70*s, y, 140*s, 20*s);
-    for (let i = -2; i <= 2; i++) {
-      ctx.fillRect(x + i*28*s - 6*s, y - 80*s, 12*s, 80*s);
-    }
-    ctx.beginPath();
-    ctx.moveTo(x - 86*s, y - 80*s);
-    ctx.lineTo(x, y - 135*s);
-    ctx.lineTo(x + 86*s, y - 80*s);
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  if (type === "egypt") {
-    ctx.beginPath();
-    ctx.moveTo(x - 95*s, y);
-    ctx.lineTo(x, y - 160*s);
-    ctx.lineTo(x + 95*s, y);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillRect(x - 12*s, y - 190*s, 24*s, 42*s);
-    ctx.fillRect(x - 34*s, y - 153*s, 68*s, 13*s);
-  }
-
-  if (type === "norse") {
-    ctx.fillRect(x - 88*s, y - 26*s, 176*s, 26*s);
-    ctx.fillRect(x - 70*s, y - 80*s, 28*s, 80*s);
-    ctx.fillRect(x + 42*s, y - 80*s, 28*s, 80*s);
-    ctx.beginPath();
-    ctx.moveTo(x - 100*s, y - 80*s);
-    ctx.lineTo(x, y - 145*s);
-    ctx.lineTo(x + 100*s, y - 80*s);
-    ctx.closePath();
-    ctx.fill();
-  }
+function drawNileBackground() {
+  const sky = ctx.createLinearGradient(0,0,0,H); sky.addColorStop(0,"#4b2a47"); sky.addColorStop(.55,"#7d4c4a"); sky.addColorStop(1,"#2f2a40");
+  ctx.fillStyle=sky; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle="rgba(255,210,120,.35)"; ctx.beginPath(); ctx.arc(worldToScreenX(mapCenterX()+120), worldToScreenY(430), screenScale(90), 0, Math.PI*2); ctx.fill();
+  drawTempleSilhouette(worldToScreenX(420), worldToScreenY(760), "#3b2d2e", 1.5, "egypt");
+  drawTempleSilhouette(worldToScreenX(1320), worldToScreenY(770), "#352b2f", 1.2, "egypt");
+  ctx.fillStyle="rgba(43,72,99,.65)"; ctx.fillRect(0,H*0.72,W,H*0.28);
 }
+function drawStormforgeBackground() {
+  const sky = ctx.createLinearGradient(0,0,0,H); sky.addColorStop(0,"#0a1326"); sky.addColorStop(.6,"#1b2d43"); sky.addColorStop(1,"#1a1f2d");
+  ctx.fillStyle=sky; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle="#111b2e";
+  for (let i=0;i<8;i++){ const px = worldToScreenX(i*260); ctx.beginPath(); ctx.moveTo(px, H*.75); ctx.lineTo(px+screenScale(130), H*.45); ctx.lineTo(px+screenScale(260), H*.75); ctx.fill(); }
+  if (Math.floor(matchTime/120)%2===0){ ctx.strokeStyle="rgba(190,220,255,.25)"; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(W*.7,0); ctx.lineTo(W*.62,H*.24); ctx.lineTo(W*.66,H*.24); ctx.stroke(); }
+  for (let i=0;i<40;i++){ ctx.fillStyle="rgba(220,230,255,.3)"; ctx.fillRect((i*91+matchTime*1.2)%W,(i*47+matchTime*0.5)%H,2,2);}  
+}
+function pixelCloud(x,y,s){ctx.fillRect(x,y,80*s,18*s);ctx.fillRect(x+18*s,y-14*s,50*s,18*s);ctx.fillRect(x+50*s,y-6*s,56*s,18*s);} 
+function drawTempleSilhouette(x,y,color,scale,type){ctx.fillStyle=color;const s=scale; if(type==="greek"){ctx.fillRect(x-70*s,y,140*s,20*s);for(let i=-2;i<=2;i++)ctx.fillRect(x+i*28*s-6*s,y-80*s,12*s,80*s);ctx.beginPath();ctx.moveTo(x-86*s,y-80*s);ctx.lineTo(x,y-135*s);ctx.lineTo(x+86*s,y-80*s);ctx.closePath();ctx.fill();} if(type==="egypt"){ctx.beginPath();ctx.moveTo(x-95*s,y);ctx.lineTo(x,y-160*s);ctx.lineTo(x+95*s,y);ctx.closePath();ctx.fill();ctx.fillRect(x-12*s,y-190*s,24*s,42*s);ctx.fillRect(x-34*s,y-153*s,68*s,13*s);} if(type==="norse"){ctx.fillRect(x-88*s,y-26*s,176*s,26*s);ctx.fillRect(x-70*s,y-80*s,28*s,80*s);ctx.fillRect(x+42*s,y-80*s,28*s,80*s);ctx.beginPath();ctx.moveTo(x-100*s,y-80*s);ctx.lineTo(x,y-145*s);ctx.lineTo(x+100*s,y-80*s);ctx.closePath();ctx.fill();}}
 
 function drawMap() {
-  currentMap.platforms.forEach(plat => {
-    const x = worldToScreenX(plat.x);
-    const y = worldToScreenY(plat.y);
-    const w = screenScale(plat.w);
-    const h = screenScale(plat.h);
-
-    if (plat.type === "main") {
-      ctx.fillStyle = "#2b1d42";
-      ctx.fillRect(x, y, w, h);
-
-      ctx.fillStyle = "#5c6bc0";
-      ctx.fillRect(x, y, w, screenScale(8));
-
-      ctx.fillStyle = "#ffd166";
-      for (let i = 0; i < plat.w; i += 48) {
-        ctx.fillRect(worldToScreenX(plat.x + i), y, screenScale(22), screenScale(8));
-      }
-
-      ctx.fillStyle = "#151a30";
-      for (let i = 20; i < plat.w; i += 120) {
-        ctx.fillRect(worldToScreenX(plat.x + i), y + h, screenScale(28), screenScale(95));
-      }
-    } else {
-      ctx.fillStyle = "rgba(255,255,255,.18)";
-      ctx.fillRect(x, y, w, h);
-      ctx.fillStyle = "#b8c0ff";
-      ctx.fillRect(x, y, w, screenScale(5));
-      ctx.fillStyle = "rgba(255,209,102,.35)";
-      ctx.fillRect(x + screenScale(8), y + screenScale(8), w - screenScale(16), screenScale(5));
-    }
-  });
-
-  // Center divine symbol
-  const cx = worldToScreenX(660);
-  const cy = worldToScreenY(540);
-  ctx.strokeStyle = "rgba(255,209,102,.35)";
-  ctx.lineWidth = screenScale(4);
+  currentMap.platforms.forEach(drawPlatform);
+  const cx = worldToScreenX(mapCenterX());
+  const cy = worldToScreenY(600);
+  ctx.strokeStyle = "rgba(255,209,102,.35)"; ctx.lineWidth = screenScale(4);
   ctx.strokeRect(cx - screenScale(32), cy - screenScale(32), screenScale(64), screenScale(64));
   ctx.strokeRect(cx - screenScale(22), cy - screenScale(22), screenScale(44), screenScale(44));
 }
+
+function drawPlatform(plat){
+  const x=worldToScreenX(plat.x),y=worldToScreenY(plat.y),w=screenScale(plat.w),h=screenScale(plat.h);
+  if (plat.type === "main") return drawTempleMainPlatform(x,y,w,h);
+  if (plat.type === "cloud") return drawCloudPlatform(x,y,w,h);
+  if (plat.type === "stone") return drawStonePlatform(x,y,w,h);
+  if (plat.type === "sandstone") return drawSandstonePlatform(x,y,w,h);
+  if (plat.type === "ruin") return drawRuinPlatform(x,y,w,h);
+  if (plat.type === "boat") return drawBoatPlatform(x,y,w,h);
+  if (plat.type === "forge") return drawForgePlatform(x,y,w,h);
+  if (plat.type === "ice") return drawIcePlatform(x,y,w,h);
+  if (plat.type === "metal") return drawMetalPlatform(x,y,w,h);
+  return drawRockPlatform(x,y,w,h);
+}
+function drawTempleMainPlatform(x,y,w,h){ctx.fillStyle="#2b1d42";ctx.fillRect(x,y,w,h);ctx.fillStyle="#ffd166";ctx.fillRect(x,y,w,screenScale(8));}
+function drawCloudPlatform(x,y,w,h){ctx.fillStyle="rgba(215,225,255,.35)";ctx.fillRect(x,y,w,h);ctx.fillStyle="#dfe9ff";ctx.fillRect(x,y,w,screenScale(5));}
+function drawStonePlatform(x,y,w,h){ctx.fillStyle="#5a6077";ctx.fillRect(x,y,w,h);ctx.fillStyle="#8d95ac";ctx.fillRect(x,y,w,screenScale(5));}
+function drawSandstonePlatform(x,y,w,h){ctx.fillStyle="#9f7b54";ctx.fillRect(x,y,w,h);ctx.fillStyle="#d2b080";ctx.fillRect(x,y,w,screenScale(6));}
+function drawRuinPlatform(x,y,w,h){ctx.fillStyle="#68625a";ctx.fillRect(x,y,w,h);ctx.fillStyle="#a49b8c";ctx.fillRect(x,y,w,screenScale(5));}
+function drawBoatPlatform(x,y,w,h){ctx.fillStyle="#4a301d";ctx.fillRect(x,y,w,h);ctx.fillStyle="#7a522e";ctx.fillRect(x,y,w,screenScale(5));ctx.fillRect(x+screenScale(20),y+h-screenScale(4),w-screenScale(40),screenScale(4));}
+function drawForgePlatform(x,y,w,h){ctx.fillStyle="#2d2f39";ctx.fillRect(x,y,w,h);ctx.fillStyle="#ff8d3a";for(let i=0;i<w;i+=screenScale(38))ctx.fillRect(x+i,y+screenScale(10),screenScale(8),screenScale(4));}
+function drawIcePlatform(x,y,w,h){ctx.fillStyle="#8fb9d6";ctx.fillRect(x,y,w,h);ctx.fillStyle="#e3f4ff";ctx.fillRect(x,y,w,screenScale(7));}
+function drawMetalPlatform(x,y,w,h){ctx.fillStyle="#4e586a";ctx.fillRect(x,y,w,h);ctx.fillStyle="#9ba8c7";ctx.fillRect(x,y,w,screenScale(5));}
+function drawRockPlatform(x,y,w,h){ctx.fillStyle="#444754";ctx.fillRect(x,y,w,h);ctx.fillStyle="#747b8a";ctx.fillRect(x,y,w,screenScale(5));}
+
 
 function drawFighter(p) {
   if (p.dead || p.lives <= 0) return;
