@@ -244,41 +244,6 @@
     line-height: 1.35;
   }
 
-  .controls-panel {
-    width: min(780px, 94vw);
-    min-height: 0;
-  }
-
-  .control-bind-list {
-    margin: 12px 0;
-    display: grid;
-    gap: 8px;
-  }
-
-  .bind-row {
-    display: grid;
-    grid-template-columns: minmax(180px, 1.5fr) 1fr 1fr;
-    gap: 8px;
-    align-items: center;
-  }
-
-  .bind-label {
-    font-size: 13px;
-    color: #d9e1ff;
-  }
-
-  .bind-button {
-    padding: 7px;
-    font-size: 13px;
-    border-width: 2px;
-  }
-
-  .bind-button.listening {
-    border-color: #06d6a0;
-    background: #12664f;
-    box-shadow: 0 0 10px rgba(6,214,160,.5);
-  }
-
   .hud {
     position: absolute;
     top: 12px;
@@ -433,27 +398,22 @@
           </div>
 
           <button id="startBtn">START BRAWL</button>
-          <button id="controlsBtn" type="button">CONTROLLER / CONTROL SETTINGS</button>
 
-          <div class="controls" id="controlsSummary"></div>
+          <div class="controls">
+            <b>Controls</b><br>
+            Move: A / D<br>
+            Jump: W<br>
+            Drop: S<br>
+            Dodge: Shift<br>
+            Light Attack: J<br>
+            Heavy Attack: K<br>
+            Special: L<br>
+            Ultimate: I<br><br>
+            First build mode: <b>Pantheon Brawl</b><br>
+            Everyone has <b>3 lives</b>.
+          </div>
         </div>
       </div>
-    </div>
-  </div>
-
-  <div id="controlsScreen" class="screen">
-    <div class="panel controls-panel">
-      <h1 class="title">CONTROL SETTINGS</h1>
-      <div class="subtitle">Rebind keyboard controls or use a connected controller.</div>
-      <div id="gamepadStatus" class="small-note">Controller: Not detected</div>
-      <div class="control-bind-list" id="controlBindList"></div>
-      <div class="setting-row">
-        <button id="resetControlsBtn" type="button">RESET TO DEFAULT CONTROLS</button>
-      </div>
-      <div class="setting-row">
-        <button id="closeControlsBtn" type="button">BACK</button>
-      </div>
-      <p class="small-note">Click a control, then press a keyboard key or controller button/stick direction.</p>
     </div>
   </div>
 
@@ -489,236 +449,32 @@ ctx.imageSmoothingEnabled = false;
 
 let W = window.innerWidth;
 let H = window.innerHeight;
+canvas.width = W;
+canvas.height = H;
 
-function resizeCanvas() {
+window.addEventListener("resize", () => {
   W = window.innerWidth;
   H = window.innerHeight;
-
-  canvas.style.width = W + "px";
-  canvas.style.height = H + "px";
-
-  canvas.width = Math.floor(W * RENDER_SCALE);
-  canvas.height = Math.floor(H * RENDER_SCALE);
-
-  ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
+  canvas.width = W;
+  canvas.height = H;
   ctx.imageSmoothingEnabled = false;
-
-  bgCacheMapId = "";
-}
-
-window.addEventListener("resize", resizeCanvas);
-resizeCanvas();
+});
 
 const selectScreen = document.getElementById("selectScreen");
 const gameOverScreen = document.getElementById("gameOverScreen");
-const controlsScreen = document.getElementById("controlsScreen");
 const gameHud = document.getElementById("gameHud");
 const messageEl = document.getElementById("message");
 
 const keys = {};
-const CONTROL_ACTIONS = [
-  { id: "left", label: "Move Left" },
-  { id: "right", label: "Move Right" },
-  { id: "up", label: "Jump / Up Variant" },
-  { id: "down", label: "Drop / Down Variant" },
-  { id: "dodge", label: "Dodge" },
-  { id: "light", label: "Light Attack" },
-  { id: "heavy", label: "Heavy Attack" },
-  { id: "special", label: "Special" },
-  { id: "ultimate", label: "Ultimate" }
-];
-const DEFAULT_KEYBOARD_BINDINGS = { left: "a", right: "d", up: "w", down: "s", dodge: "shift", light: "j", heavy: "k", special: "l", ultimate: "i" };
-const DEFAULT_GAMEPAD_BINDINGS = {
-  left: { type: "axis", axis: 0, dir: -1 },
-  right: { type: "axis", axis: 0, dir: 1 },
-  up: { type: "button", button: 0 },
-  down: { type: "axis", axis: 1, dir: 1 },
-  dodge: { type: "button", button: 4 },
-  light: { type: "button", button: 2 },
-  heavy: { type: "button", button: 3 },
-  special: { type: "button", button: 1 },
-  ultimate: { type: "button", button: 5 }
-};
-let controlBindings = { keyboard: { ...DEFAULT_KEYBOARD_BINDINGS }, gamepad: JSON.parse(JSON.stringify(DEFAULT_GAMEPAD_BINDINGS)) };
-const CONTROL_SAVE_KEY = "pantheonBrawlControlsV1";
-let listeningForBinding = null;
-let activeGamepadIndex = null;
-const GAMEPAD_AXIS_THRESHOLD = 0.45;
-
 window.addEventListener("keydown", e => {
-  const key = e.key.toLowerCase();
-  if (listeningForBinding && listeningForBinding.device === "keyboard") {
-    e.preventDefault();
-    finishRebind(key);
-    return;
-  }
-  keys[key] = true;
-  if ([" ", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) {
+  keys[e.key.toLowerCase()] = true;
+  if ([" ", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(e.key.toLowerCase())) {
     e.preventDefault();
   }
 });
 window.addEventListener("keyup", e => {
   keys[e.key.toLowerCase()] = false;
 });
-window.addEventListener("gamepadconnected", e => {
-  activeGamepadIndex = e.gamepad.index;
-  updateGamepadStatus();
-});
-window.addEventListener("gamepaddisconnected", e => {
-  if (activeGamepadIndex === e.gamepad.index) activeGamepadIndex = null;
-  updateGamepadStatus();
-});
-
-function saveControlBindings() {
-  localStorage.setItem(CONTROL_SAVE_KEY, JSON.stringify(controlBindings));
-}
-function loadControlBindings() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(CONTROL_SAVE_KEY) || "null");
-    if (saved && saved.keyboard && saved.gamepad) {
-      controlBindings.keyboard = { ...DEFAULT_KEYBOARD_BINDINGS, ...saved.keyboard };
-      controlBindings.gamepad = { ...DEFAULT_GAMEPAD_BINDINGS, ...saved.gamepad };
-    }
-  } catch (err) {
-    controlBindings = { keyboard: { ...DEFAULT_KEYBOARD_BINDINGS }, gamepad: JSON.parse(JSON.stringify(DEFAULT_GAMEPAD_BINDINGS)) };
-  }
-}
-function resetControlBindings() {
-  controlBindings = { keyboard: { ...DEFAULT_KEYBOARD_BINDINGS }, gamepad: JSON.parse(JSON.stringify(DEFAULT_GAMEPAD_BINDINGS)) };
-  saveControlBindings();
-  updateControlsText();
-}
-function formatKeyName(key) {
-  if (!key) return "Unbound";
-  if (key === " ") return "Space";
-  if (key === "shift") return "Shift";
-  return key.length === 1 ? key.toUpperCase() : key;
-}
-function updateControlsText() {
-  const el = document.getElementById("controlsSummary");
-  if (!el) return;
-  el.innerHTML = `<b>Controls</b><br>
-    Move: ${formatKeyName(controlBindings.keyboard.left)} / ${formatKeyName(controlBindings.keyboard.right)}<br>
-    Jump: ${formatKeyName(controlBindings.keyboard.up)}<br>
-    Drop: ${formatKeyName(controlBindings.keyboard.down)}<br>
-    Dodge: ${formatKeyName(controlBindings.keyboard.dodge)}<br>
-    Light Attack: ${formatKeyName(controlBindings.keyboard.light)}<br>
-    Heavy Attack: ${formatKeyName(controlBindings.keyboard.heavy)}<br>
-    Special: ${formatKeyName(controlBindings.keyboard.special)}<br>
-    Ultimate: ${formatKeyName(controlBindings.keyboard.ultimate)}<br><br>
-    Controller: Auto-detected if plugged in<br><br>
-    First build mode: <b>Pantheon Brawl</b><br>
-    Everyone has <b>3 lives</b>.`;
-}
-function getActiveGamepad() {
-  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-  if (activeGamepadIndex !== null && pads[activeGamepadIndex]) return pads[activeGamepadIndex];
-  for (const pad of pads) {
-    if (pad) {
-      activeGamepadIndex = pad.index;
-      return pad;
-    }
-  }
-  return null;
-}
-function isGamepadActionDown(action) {
-  const pad = getActiveGamepad();
-  if (!pad) return false;
-  const bind = controlBindings.gamepad[action];
-  if (!bind) return false;
-  if (bind.type === "button") return !!pad.buttons[bind.button]?.pressed;
-  if (bind.type === "axis") {
-    const value = pad.axes[bind.axis] || 0;
-    return bind.dir < 0 ? value < -GAMEPAD_AXIS_THRESHOLD : value > GAMEPAD_AXIS_THRESHOLD;
-  }
-  return false;
-}
-function isActionDown(action) {
-  const key = controlBindings.keyboard[action];
-  if (key && keys[key]) return true;
-  return isGamepadActionDown(action);
-}
-function gamepadBindingToText(bind) {
-  if (!bind) return "Unbound";
-  if (bind.type === "button") return "Button " + bind.button;
-  if (bind.type === "axis") return "Axis " + bind.axis + (bind.dir < 0 ? " -" : " +");
-  return "Unbound";
-}
-function updateGamepadStatus() {
-  const el = document.getElementById("gamepadStatus");
-  if (!el) return;
-  const pad = getActiveGamepad();
-  el.textContent = pad ? "Controller: " + pad.id : "Controller: Not detected";
-}
-function assignKeyboardBinding(action, key) {
-  Object.keys(controlBindings.keyboard).forEach(a => {
-    if (a !== action && controlBindings.keyboard[a] === key) controlBindings.keyboard[a] = "";
-  });
-  controlBindings.keyboard[action] = key;
-}
-function assignGamepadBinding(action, bind) {
-  const str = JSON.stringify(bind);
-  Object.keys(controlBindings.gamepad).forEach(a => {
-    if (a !== action && JSON.stringify(controlBindings.gamepad[a]) === str) controlBindings.gamepad[a] = null;
-  });
-  controlBindings.gamepad[action] = bind;
-}
-function beginRebind(device, action, buttonEl) {
-  listeningForBinding = { device, action };
-  document.querySelectorAll(".bind-button").forEach(btn => btn.classList.remove("listening"));
-  if (buttonEl) {
-    buttonEl.classList.add("listening");
-    buttonEl.textContent = "Press input...";
-  }
-}
-function finishRebind(value) {
-  if (!listeningForBinding) return;
-  const { device, action } = listeningForBinding;
-  if (device === "keyboard") assignKeyboardBinding(action, value);
-  else assignGamepadBinding(action, value);
-  listeningForBinding = null;
-  saveControlBindings();
-  renderControlBindList();
-}
-function cancelRebind() {
-  listeningForBinding = null;
-  renderControlBindList();
-}
-function renderControlBindList() {
-  const list = document.getElementById("controlBindList");
-  if (!list) return;
-  list.innerHTML = "";
-  CONTROL_ACTIONS.forEach(action => {
-    const row = document.createElement("div");
-    row.className = "bind-row";
-    const label = document.createElement("div");
-    label.className = "bind-label";
-    label.textContent = action.label;
-    const keyBtn = document.createElement("button");
-    keyBtn.className = "bind-button";
-    keyBtn.textContent = formatKeyName(controlBindings.keyboard[action.id]);
-    keyBtn.onclick = () => beginRebind("keyboard", action.id, keyBtn);
-    const padBtn = document.createElement("button");
-    padBtn.className = "bind-button";
-    padBtn.textContent = gamepadBindingToText(controlBindings.gamepad[action.id]);
-    padBtn.onclick = () => beginRebind("gamepad", action.id, padBtn);
-    row.append(label, keyBtn, padBtn);
-    list.appendChild(row);
-  });
-  updateControlsText();
-}
-function pollGamepadRebind() {
-  if (!listeningForBinding || listeningForBinding.device !== "gamepad") return;
-  const pad = getActiveGamepad();
-  if (!pad) return;
-  for (let i = 0; i < pad.buttons.length; i++) {
-    if (pad.buttons[i]?.pressed) return finishRebind({ type: "button", button: i });
-  }
-  for (let i = 0; i < pad.axes.length; i++) {
-    const value = pad.axes[i] || 0;
-    if (Math.abs(value) > 0.65) return finishRebind({ type: "axis", axis: i, dir: value < 0 ? -1 : 1 });
-  }
-}
 
 const GODS = {
   zeus: {
@@ -1019,9 +775,7 @@ const MAPS = {
 let selectedGod = "zeus";
 let players = [];
 let attacks = [];
-let mudTraps = [];
 let projectiles = [];
-let lightningStrikes = [];
 let tacticalSeals = [];
 let particles = [];
 let telegraphs = [];
@@ -1048,30 +802,6 @@ let hillZone = null;
 let bossWave = 1;
 let bossKills = 0;
 const DEBUG_HITBOXES = false;
-const SHOW_PERF_DEBUG = false;
-const PERFORMANCE_MODE = true;
-const RENDER_SCALE = PERFORMANCE_MODE ? 0.72 : 1;
-const SHOW_FLOATING_NAMES = !PERFORMANCE_MODE;
-const SHOW_STATUS_ICONS = !PERFORMANCE_MODE;
-const DRAW_EVERY_PARTICLE = !PERFORMANCE_MODE;
-const SIMPLE_FIGHTER_RENDER = PERFORMANCE_MODE;
-const PERF = {
-  maxParticles: PERFORMANCE_MODE ? 70 : 180,
-  maxProjectiles: PERFORMANCE_MODE ? 35 : 80,
-  maxAttacks: PERFORMANCE_MODE ? 35 : 60,
-  maxTelegraphs: PERFORMANCE_MODE ? 20 : 40,
-  maxMudTraps: 3,
-  maxLightningStrikes: 3,
-  particleScale: PERFORMANCE_MODE ? 0.22 : 0.65,
-  trailChance: PERFORMANCE_MODE ? 0.03 : 0.18,
-  lowPerfMode: PERFORMANCE_MODE
-};
-
-let bgCacheCanvas = document.createElement("canvas");
-let bgCacheCtx = bgCacheCanvas.getContext("2d");
-let bgCacheMapId = "";
-let bgCacheW = 0;
-let bgCacheH = 0;
 
 function buildGodGrid() {
   const grid = document.getElementById("godGrid");
@@ -1247,23 +977,8 @@ document.getElementById("mapSelect").addEventListener("change", updateMapDescrip
 buildGodGrid();
 updateMoveStylePanel();
 updateMapDescription();
-loadControlBindings();
-updateControlsText();
 
 document.getElementById("startBtn").onclick = startGame;
-document.getElementById("controlsBtn").onclick = () => {
-  controlsScreen.classList.add("active");
-  renderControlBindList();
-  updateGamepadStatus();
-};
-document.getElementById("closeControlsBtn").onclick = () => {
-  cancelRebind();
-  controlsScreen.classList.remove("active");
-};
-document.getElementById("resetControlsBtn").onclick = () => {
-  resetControlBindings();
-  renderControlBindList();
-};
 document.getElementById("returnBtn").onclick = () => {
   gameOverScreen.classList.remove("active");
   selectScreen.classList.add("active");
@@ -1271,8 +986,7 @@ document.getElementById("returnBtn").onclick = () => {
 };
 
 function startGame() {
-  let botCount = parseInt(document.getElementById("botCount").value, 10);
-  if (PERFORMANCE_MODE) botCount = Math.min(botCount, 3);
+  const botCount = parseInt(document.getElementById("botCount").value, 10);
   const difficulty = document.getElementById("difficulty").value;
   const selectedMapId = document.getElementById("mapSelect").value;
   currentMap = MAPS[selectedMapId] || MAPS.temple;
@@ -1284,7 +998,6 @@ function startGame() {
   projectiles = [];
   particles = [];
   telegraphs = [];
-  mudTraps = [];
   matchTime = 0;
   shake = 0;
   ultFlash = 0;
@@ -1372,10 +1085,6 @@ function createFighter(config) {
     thorHeavyArmorTimer: 0,
     armorTimer: 0,
     lokiDodgeCloneTimer: 0,
-    lokiPlatformTeleportCooldown: 0,
-    thorHammerSlamTimer: 0,
-    thorHammerSlamMax: 0,
-    thorHammerSlamDidHit: false,
     confusedTimer: 0,
     grabbedBy: null,
     grabTimer: 0,
@@ -1408,14 +1117,6 @@ function createFighter(config) {
     conductiveTimer: 0,
     scorchTimer: 0,
     mudSlowTimer: 0,
-    sobekMudSource: null,
-    sobekJumpDebuffTimer: 0,
-    sobekBreachLandingTimer: 0,
-    sobekDeathRollTimer: 0,
-    sobekDeathRollHitIds: null,
-    sobekLungeTimer: 0,
-    sobekLungeDir: 1,
-    sobekLungeHitIds: null,
     charmTimer: 0,
     soulMarkSource: null,
     athenaGuardBonus: 0,
@@ -1534,15 +1235,12 @@ function tickMessage() {
 
 function gameLoop() {
   requestAnimationFrame(gameLoop);
-  pollGamepadRebind();
-  if (matchTime % 60 === 0) updateGamepadStatus();
 
   if (gameState === "play") {
     updateGame();
-    drawGame();
-  } else {
-    ctx.clearRect(0, 0, W, H);
   }
+
+  drawGame();
 }
 
 requestAnimationFrame(gameLoop);
@@ -1559,45 +1257,31 @@ function updateGame() {
   players.forEach(updateFighter);
   updateTelegraphs();
   updateAttacks();
-  if (mudTraps && mudTraps.length > 0) updateMudTraps();
-  if (lightningStrikes && lightningStrikes.length > 0) updateLightningStrikes();
   updateProjectiles();
   updateParticles();
-  if (matchTime % 10 === 0) enforcePerfCaps();
   updateCamera();
 
-  if (matchTime % 30 === 0) updateHud();
+  if (matchTime % 15 === 0) updateHud();
 
   checkWin();
-}
-
-function enforcePerfCaps() {
-  if (particles && particles.length > PERF.maxParticles) particles.splice(0, particles.length - PERF.maxParticles);
-  if (projectiles && projectiles.length > PERF.maxProjectiles) projectiles.splice(0, projectiles.length - PERF.maxProjectiles);
-  if (attacks && attacks.length > PERF.maxAttacks) attacks.splice(0, attacks.length - PERF.maxAttacks);
-  if (telegraphs && telegraphs.length > PERF.maxTelegraphs) telegraphs.splice(0, telegraphs.length - PERF.maxTelegraphs);
-  if (mudTraps && mudTraps.length > PERF.maxMudTraps) mudTraps.splice(0, mudTraps.length - PERF.maxMudTraps);
-  if (lightningStrikes && lightningStrikes.length > PERF.maxLightningStrikes) {
-    lightningStrikes.splice(0, lightningStrikes.length - PERF.maxLightningStrikes);
-  }
 }
 
 function updateHuman(p) {
   if (p.dead || p.hitstun > 0) return;
 
   let move = 0;
-  if (isActionDown("left")) move -= 1;
-  if (isActionDown("right")) move += 1;
+  if (keys["a"]) move -= 1;
+  if (keys["d"]) move += 1;
 
   applyMoveInput(p, move);
 
-  if (wasActionPressed("up", p.id)) jump(p);
-  if (wasActionPressed("dodge", p.id)) dodge(p);
+  if (pressed("w", p, "jump")) jump(p);
+  if (pressed("shift", p, "dodge")) dodge(p);
 
-  if (wasActionPressed("light", p.id)) lightAttack(p);
-  if (wasActionPressed("heavy", p.id)) heavyAttack(p);
-  if (wasActionPressed("special", p.id)) useSpecial(p);
-  if (wasActionPressed("ultimate", p.id)) useUltimate(p);
+  if (pressed("j", p, "light")) lightAttack(p);
+  if (pressed("k", p, "heavy")) heavyAttack(p);
+  if (pressed("l", p, "special")) useSpecial(p);
+  if (pressed("i", p, "ultimate")) useUltimate(p);
 }
 
 const pressLocks = {};
@@ -1610,16 +1294,6 @@ function pressed(key, p, action) {
   if (!keys[key]) {
     pressLocks[lockKey] = false;
   }
-  return false;
-}
-function wasActionPressed(action, playerId = "p1") {
-  const lockKey = playerId + "_action_" + action;
-  const down = isActionDown(action);
-  if (down && !pressLocks[lockKey]) {
-    pressLocks[lockKey] = true;
-    return true;
-  }
-  if (!down) pressLocks[lockKey] = false;
   return false;
 }
 
@@ -1753,16 +1427,12 @@ function chooseBotAttackVariant(bot, target, inputType) {
       if (absDx < 115) return Math.random() < .55 ? "down" : "neutral";
       return Math.random() < .52 ? "neutral" : "up";
     }
-    if (bot.godId === "thor") {
-    if (targetAbove || (Math.abs(dx) < 75 && dy < -35)) return "up";
-    if (bot.grounded && absDx < 130 && Math.random() < 0.45) return "down";
-    return "neutral";
-  }
-  if (bot.godId === "sobek") {
-      if (recoveringFromBelowStage || targetAbove) return "up";
-      if (bot.grounded && absDx < 230 && Math.random() < 0.38) return "down";
-      if (absDx > 95 && absDx < 340) return "neutral";
-      return Math.random() < 0.65 ? "neutral" : "down";
+    if (bot.godId === "sobek") {
+      if (recoveringFromBelowStage) return "up";
+      if (targetAbove) return Math.random() < .48 ? "up" : "neutral";
+      if (bot.grounded && absDx < 110 && Math.abs(dy) < 42 && Math.random() < .45) return "down";
+      if (absDx > 120) return "neutral";
+      return Math.random() < .7 ? "neutral" : "up";
     }
     if (bot.godId === "bastet") {
       if (!bot.grounded || targetAbove) return "up";
@@ -1776,12 +1446,6 @@ function chooseBotAttackVariant(bot, target, inputType) {
     return "neutral";
   }
 
-  if (bot.godId === "thor" && inputType === "heavy") { if (targetAbove || (Math.abs(dx) < 75 && dy < -35)) return "up"; if (bot.grounded && absDx < 130 && Math.random() < 0.45) return "down"; return "neutral"; }
-  if (bot.godId === "sobek") {
-    if (targetAbove) return "up";
-    if (absDx < 82 && Math.random() < 0.55) return "down";
-    return "neutral";
-  }
   if (jumpingAbove) return "up";
   if (targetAbove) return "up";
   if (targetBelow) return "down";
@@ -1842,7 +1506,7 @@ function applyMoveInput(p, move) {
     max *= 0.7;
     accel *= 0.7;
   }
-  const mudSlow = p.mudSlowTimer > 0 ? (p.grounded ? .58 : .74) : 1;
+  const mudSlow = p.mudSlowTimer > 0 ? .62 : 1;
   const charmSlow = p.charmTimer > 0 ? .72 : 1;
   const athenaSealSlow = p.athenaSealSlowTimer > 0 ? .68 : 1;
   const confusionDir = p.confusedTimer > 0 ? -1 : 1;
@@ -1857,7 +1521,7 @@ function applyMoveInput(p, move) {
     p.action = "idle";
   }
 
-  if (p.horusRushTimer > 0 || p.anubisGrapplePullTimer > 0 || p.sobekLungeTimer > 0) return;
+  if (p.horusRushTimer > 0 || p.anubisGrapplePullTimer > 0) return;
   if (p.godId === "horus" && !p.grounded) p.vx = clamp(p.vx, -max * 1.18 * mudSlow * charmSlow * athenaSealSlow, max * 1.18 * mudSlow * charmSlow * athenaSealSlow);
   else p.vx = clamp(p.vx, -max * mudSlow * charmSlow * athenaSealSlow, max * mudSlow * charmSlow * athenaSealSlow);
 }
@@ -1866,9 +1530,7 @@ function jump(p) {
   if (p.dead) return;
 
   if (p.grounded || p.jumps > 0) {
-    let jumpPow = p.god.jump;
-    if (p.jumpDebuffTimer > 0) jumpPow *= 0.76;
-    if (p.sobekJumpDebuffTimer > 0) jumpPow *= 0.72;
+    const jumpPow = p.jumpDebuffTimer > 0 ? p.god.jump * 0.76 : p.god.jump;
     p.vy = -jumpPow;
     p.grounded = false;
     p.jumps--;
@@ -1975,7 +1637,7 @@ const ATTACK_DEFS = {
   },
   sobek: {
     light: { neutral:{id:"sobek_light_n",godId:"sobek",inputType:"light",directionVariant:"neutral",startup:4,active:6,recovery:9,damage:7,knock:7.4,angle:-0.06,hitbox:{x:34,y:-4,w:62,h:34},effects:{visualType:"crocClaw"}}, up:{id:"sobek_light_u",directionVariant:"up",startup:4,active:6,recovery:9,damage:8,knock:8.5,angle:-1.12,hitbox:{x:30,y:-60,w:68,h:62},effects:{visualType:"jawSnap"}}, down:{id:"sobek_light_d",directionVariant:"down",startup:4,active:7,recovery:10,damage:6,knock:7.1,angle:-0.02,hitbox:{x:-42,y:22,w:132,h:22},effects:{visualType:"tailSweep"}}},
-    heavy:{neutral:{id:"sobek_heavy_n",directionVariant:"neutral",startup:8,active:8,recovery:16,damage:15,knock:17,angle:-0.22,hitbox:{x:42,y:-18,w:106,h:62},effects:{visualType:"crushingJaws"},selfImpulse:{x:5.5,y:0},startupArmor:12,biteClamp:true},up:{id:"sobek_heavy_u",directionVariant:"up",startup:7,active:9,recovery:17,damage:13,knock:15,angle:-1.25,hitbox:{x:8,y:-110,w:88,h:118},effects:{visualType:"riverBreach"},selfImpulse:{x:0,y:-13},startupArmor:8},down:{id:"sobek_heavy_d",directionVariant:"down",startup:7,active:18,recovery:18,damage:3,knock:3,angle:-0.05,hitbox:{x:-58,y:-2,w:158,h:58},effects:{visualType:"deathRoll"},startupArmor:10,multiHit:true,finalHit:{damage:9,knock:15,angle:-0.35}}}
+    heavy:{neutral:{id:"sobek_heavy_n",directionVariant:"neutral",startup:10,active:7,recovery:16,damage:15,knock:15.2,angle:-0.18,hitbox:{x:40,y:-12,w:90,h:46},effects:{visualType:"jawSnap"}},up:{id:"sobek_heavy_u",directionVariant:"up",startup:9,active:7,recovery:16,damage:14,knock:14.6,angle:-1.2,hitbox:{x:16,y:-100,w:86,h:104},effects:{visualType:"waterBurst"}},down:{id:"sobek_heavy_d",directionVariant:"down",startup:9,active:8,recovery:17,damage:15,knock:14.8,angle:-0.86,hitbox:{x:-30,y:16,w:112,h:74},effects:{visualType:"deathRoll"}}}
   },
   bastet: {
     light: { neutral:{id:"bastet_light_n",godId:"bastet",inputType:"light",directionVariant:"neutral",startup:2,active:5,recovery:6,damage:5.5,knock:5.8,angle:-0.08,hitbox:{x:34,y:-8,w:54,h:30},effects:{visualType:"goldClawSlash"},selfImpulse:{x:1.2,y:0}}, up:{id:"bastet_light_u",directionVariant:"up",startup:3,active:6,recovery:8,damage:6.5,knock:7.2,angle:-1.18,hitbox:{x:24,y:-64,w:64,h:64},effects:{visualType:"risingCatClaw"}}, down:{id:"bastet_light_d",directionVariant:"down",startup:3,active:6,recovery:8,damage:5,knock:4.8,angle:0.05,hitbox:{x:28,y:24,w:78,h:22},effects:{visualType:"tailTrip"}}},
@@ -2007,7 +1669,7 @@ Object.entries(ATTACK_DEFS).forEach(([godId, godMoves]) => {
   });
 });
 function cloneMove(base, p, variant, inputType){ const m=JSON.parse(JSON.stringify(base)); m.godId=p.godId; m.inputType=inputType; m.directionVariant=variant; return m;}
-function getAttackVariant(player, inputType){ if(player.human){ if(isActionDown("up")) return "up"; if(isActionDown("down")) return "down"; return "neutral";} if(inputType==="special" && player.ai.specialVariant) return player.ai.specialVariant; return chooseBotAttackVariant(player, player.ai.target||nearestEnemy(player), inputType);}
+function getAttackVariant(player, inputType){ if(player.human){ if(keys["w"]) return "up"; if(keys["s"]) return "down"; return "neutral";} if(inputType==="special" && player.ai.specialVariant) return player.ai.specialVariant; return chooseBotAttackVariant(player, player.ai.target||nearestEnemy(player), inputType);}
 function moveToAttackKind(type){ return type; }
 function getMoveProgress(p) {
   if (!p.currentMove || !p.currentMove.totalFrames) return { t:0, phase:"none", phaseT:0 };
@@ -2050,65 +1712,18 @@ function heavyAttack(p) {
   const v = getAttackVariant(p, "heavy");
   const defs = ATTACK_DEFS[p.godId] || ATTACK_DEFS.zeus;
   const move = cloneMove(defs.heavy[v] || defs.heavy.neutral, p, v, "heavy");
-  if (p.godId === "thor" && v === "down") {
-    p.thorHammerSlamTimer = 48;
-    p.thorHammerSlamMax = 48;
-    p.thorHammerSlamDidHit = false;
-    p.attackCooldown = 72;
-    p.vx *= 0.2;
-    p.armorTimer = Math.max(p.armorTimer || 0, 42);
-    p.attackKind = "thor_hammer_slam_windup";
-    p.attackFrame = 70;
-    p.action = "attack";
-    spawnParticles(p.x, p.y - 35, "#cce3ff", 18, 5);
-    spawnParticles(p.x, p.y + p.h / 2, "#e63946", 10, 4);
-    return;
-  }
-  if (p.godId === "thor" && v === "up") {
-    const strikeX = p.x + getFacingDir(p) * 28;
-    lightningStrikes.push({ owner: p, x: strikeX, y: p.y, timer: 45, maxTimer: 45, didStrike: false, radius: 42 });
-    p.attackCooldown = 58;
-    p.vx *= 0.55;
-    p.attackKind = "thor_call_lightning";
-    p.attackFrame = 50;
-    p.armorTimer = Math.max(p.armorTimer || 0, 10);
-    spawnParticles(strikeX, p.y - 80, "#cce3ff", 14, 5);
-    spawnParticles(p.x, p.y - 35, "#ffd166", 10, 4);
-    return;
-  }
   if (p.godId === "horus" && v === "up") {
-    p.vy = Math.min(p.vy, -20.5);
-    p.vx *= 0.6;
+    p.vy = Math.min(p.vy, -31);
+    p.vx *= 0.55;
     p.grounded = false;
     p.action = "jump";
     p.attackKind = "horus_up_twirl";
-    p.attackFrame = Math.max(p.attackFrame, 18);
+    p.attackFrame = Math.max(p.attackFrame, 22);
     p.jumps = Math.max(p.jumps, 1);
     p.horusTwirlTimer = Math.max(p.horusTwirlTimer || 0, 22);
     p.moveVisuals.push({ type: "horusAirTwirl", frames: 22, length: 86, thickness: 16 });
-    spawnParticles(p.x, p.y + 12, "#2ec4ff", 18, 5);
-    spawnParticles(p.x, p.y - 18, "#ffd166", 10, 4);
-  }
-  if (p.godId === "sobek" && v === "up") {
-    p.vy = Math.min(p.vy, -19);
-    p.vx *= 0.65;
-    p.grounded = false;
-    p.attackKind = "sobek_river_breach";
-    p.attackFrame = Math.max(p.attackFrame, 24);
-    p.sobekBreachLandingTimer = 45;
-    spawnParticles(p.x, p.y + 18, "#2a9d8f", 24, 7);
-    spawnParticles(p.x, p.y + 22, "#8ecae6", 18, 6);
-    spawnParticles(p.x, p.y + 28, "#6b4f2a", 14, 5);
-  }
-  if (p.godId === "sobek" && v === "down") {
-    p.sobekDeathRollTimer = 24;
-    p.sobekDeathRollHitIds = new Set();
-    p.vx *= 0.35;
-    p.armorTimer = Math.max(p.armorTimer || 0, 12);
-    p.attackKind = "sobek_death_roll";
-    p.attackFrame = Math.max(p.attackFrame, 30);
-    spawnParticles(p.x, p.y + p.h / 2, "#6b4f2a", 24, 6);
-    spawnParticles(p.x, p.y + p.h / 2, "#2a9d8f", 18, 5);
+    spawnParticles(p.x, p.y + 12, "#2ec4ff", 26, 7);
+    spawnParticles(p.x, p.y - 18, "#ffd166", 16, 5);
   }
   if (startMove(p, move)) shake = Math.max(shake, move.directionVariant === "up" ? 5 : 4);
 }
@@ -2296,57 +1911,43 @@ function useSpecial(p) {
   }
 
   else if (id === "loki") {
-    if (p.moveVariant === "down") {
-      if (p.lokiPlatformTeleportCooldown > 0) { spawnParticles(p.x, p.y, "#064e3b", 6, 2); return; }
-      const platform = findPlatformForLokiTeleport(p);
-      if (!platform) { spawnParticles(p.x, p.y, "#064e3b", 8, 2); return; }
-      teleportLokiAcrossPlatform(p, platform);
-      p.lokiPlatformTeleportCooldown = 240;
-      p.specialCooldown = Math.max(p.specialCooldown, 240);
-      return;
+    if (p.moveVariant === "up") {
+      const leaveX = p.x;
+      const leaveY = p.y;
+      p.vy = -15;
+      p.vx = p.facing * 8;
+      p.invincible = Math.max(p.invincible, 12);
+      createAttack({owner:p,x:p.x + p.facing * 30,y:p.y - 34,w:70,h:46,damage:6,knock:7,angle:-1.0,frames:8,color:"#caffbf",label:"blink_slash",visualType:"afterlifeStep"});
+      spawnProjectile({owner:p,type:"clone",x:leaveX,y:leaveY,vx:0,vy:-.2,w:34,h:52,life:26,damage:0,knock:0,color:"#caffbf",fakeGod:p.god,alpha:.45,flicker:true,ghost:true});
+      spawnParticles(leaveX, leaveY, "#bbf7d0", 15, 4);
+    } else if (p.moveVariant === "down") {
+      const trapX = p.x + dir * 46;
+      const trapY = p.grounded ? p.y + 34 : p.y + 72;
+      spawnProjectile({owner:p,type:"mirrorTrap",x:trapX,y:trapY,vx:0,vy:0,w:42,h:18,life:180,damage:7,knock:7.2,color:"#34d399",fakeGod:p.god,armed:true,confuse:90});
+      p.moveVisuals.push({type:"sunBrandMark",frames:20,length:40,thickness:9});
+    } else {
+      spawnProjectile({owner:p,dir,type:"clone",x:p.x + dir * 12,y:p.y,vx:dir * 8.2,vy:0,w:36,h:54,life:90,damage:4,knock:4.8,color:"#06d6a0",fakeGod:p.god,flicker:true,seek:true,realClone:true});
+      spawnProjectile({owner:p,dir,type:"clone",x:p.x + dir * 10,y:p.y+6,vx:dir * 7.7,vy:-.3,w:36,h:54,life:65,damage:0,knock:0,color:"#9debcf",fakeGod:p.god,flicker:true,seek:false,ghost:true});
+      p.vx -= dir * 4;
+      spawnParticles(p.x, p.y, "#caffbf", 18, 5);
     }
-    const knifeVy = p.moveVariant === "up" ? -4 : 0;
-    spawnProjectile({owner:p,type:"lokiKnife",x:p.x + dir * 34,y:p.y - 8,vx:dir * 14,vy:knifeVy,w:30,h:12,life:46,damage:6,knock:6.5,color:"#06d6a0"});
-    spawnProjectile({owner:p,type:"lokiKnife",x:p.x + dir * 28,y:p.y + 7,vx:dir * 13,vy:knifeVy * 0.7,w:26,h:10,life:42,damage:4,knock:4.5,color:"#8cffc1"});
-    p.vx *= 0.75;
-    p.attackKind = "loki_throw_knives";
-    p.attackFrame = Math.max(p.attackFrame, 18);
-    spawnParticles(p.x + dir * 18, p.y, "#06d6a0", 14, 4);
-    return;
   }
   else if (id === "sobek") {
-    const v = p.moveVariant;
-    if (v === "neutral") {
-      p.sobekLungeTimer = 20;
-      p.sobekLungeDir = dir;
-      p.sobekLungeHitIds = new Set();
-      p.vx = dir * 18;
-      p.vy *= 0.45;
-      p.armorTimer = Math.max(p.armorTimer || 0, 18);
-      p.attackKind = "sobek_nile_lunge";
-      p.attackFrame = Math.max(p.attackFrame, 26);
-      createAttack({owner:p,x:p.x+dir*58,y:p.y+4,w:112,h:62,damage:11,knock:14,angle:-0.2,frames:18,color:"#2a9d8f",label:"sobek_nile_lunge",visualType:"nileLunge",attachToOwner:true,offsetX:dir*58,offsetY:4});
-      spawnParticles(p.x-dir*30, p.y+18, "#6b4f2a", 26, 7);
-      spawnParticles(p.x-dir*24, p.y+8, "#2a9d8f", 20, 5);
-      shake = Math.max(shake, 4);
-      return;
+    if (p.moveVariant === "up") {
+      p.vy = -14.2; p.vx *= .62; p.invincible = Math.max(p.invincible, 10);
+      createAttack({owner:p,x:p.x,y:p.y-20,w:88,h:92,damage:9,knock:8.8,angle:-1.05,frames:10,color:"#7be0d5",label:"river_breach",visualType:"riverBreach",attachToOwner:true,offsetX:0,offsetY:-20});
+      p.moveVisuals.push({type:"riverBreach",frames:14,length:90,thickness:16});
+      spawnParticles(p.x, p.y + 12, "#7be0d5", 24, 6);
+    } else if (p.moveVariant === "down") {
+      const trapY = p.grounded ? p.y + 34 : p.y + 72;
+      spawnProjectile({owner:p,type:"mudTrap",x:p.x + dir * 46,y:trapY,vx:0,vy:0,w:90,h:24,life:150,damage:2,knock:1,color:"#5c4a2e",trap:true,slow:true});
+      p.moveVisuals.push({type:"mudShockwave",frames:18,length:66,thickness:12});
+    } else {
+      p.invincible = Math.max(p.invincible, 9);
+      p.vx = dir * 11.2;
+      createAttack({owner:p,x:p.x + p.facing * 30,y:p.y-6,w:108,h:46,damage:6,knock:4.6,angle:-0.04,frames:12,color:"#2a9d8f",label:"nile_grab",visualType:"nileLunge",attachToOwner:true,offsetX:30,offsetY:-6});
+      p.moveVisuals.push({type:"nileLunge",frames:14,length:98,thickness:16});
     }
-    if (v === "up") {
-      p.specialCooldown = p.god.specialCooldown + 8;
-      p.vy = -24; p.vx += dir * 3.5; p.grounded = false;
-      p.armorTimer = Math.max(p.armorTimer || 0, 10); p.invincible = Math.max(p.invincible, 5);
-      p.attackKind = "sobek_crocodile_breach"; p.attackFrame = Math.max(p.attackFrame, 34); p.sobekBreachLandingTimer = 55;
-      createAttack({owner:p,x:p.x,y:p.y-44,w:142,h:132,damage:10,knock:13,angle:-1.12,frames:18,color:"#8ecae6",label:"sobek_crocodile_breach",visualType:"crocodileBreach",attachToOwner:true,offsetX:0,offsetY:-44});
-      spawnParticles(p.x,p.y+30,"#8ecae6",34,8); spawnParticles(p.x,p.y+34,"#2a9d8f",24,6); spawnParticles(p.x,p.y+38,"#6b4f2a",18,5); shake = Math.max(shake, 5);
-      return;
-    }
-    p.specialCooldown = p.god.specialCooldown + 12;
-    mudTraps = mudTraps.filter(m => m.owner !== p);
-    mudTraps.push({owner:p,x:p.x,y:p.y+p.h/2,radius:145,life:260,color:"#6b4f2a"});
-    p.vx *= 0.25; p.attackKind = "sobek_mud_trap"; p.attackFrame = Math.max(p.attackFrame, 30);
-    createAttack({owner:p,x:p.x,y:p.y+p.h/2,w:170,h:46,damage:4,knock:5,angle:-0.15,frames:8,color:"#6b4f2a",label:"sobek_mud_slam",visualType:"mudSlam"});
-    spawnParticles(p.x,p.y+p.h/2,"#6b4f2a",36,8); spawnParticles(p.x,p.y+p.h/2,"#2a9d8f",18,5); shake = Math.max(shake, 5);
-    return;
   }
   else if (id === "bastet") {
     const variant = p.moveVariant;
@@ -2796,14 +2397,14 @@ function updateAnubisCircleUltimate(p) {
   if (Math.random() < 0.85) {
     const a = Math.random() * Math.PI * 2;
     const r = p.anubisUltRadius * (0.86 + Math.random() * 0.18);
-    pushParticleSafe({ x: p.x + Math.cos(a) * r, y: p.y + Math.sin(a) * r, vx: -Math.cos(a) * (0.6 + Math.random() * 1.2), vy: -Math.sin(a) * (0.6 + Math.random() * 1.2), life: 24 + Math.random() * 20, size: 4 + Math.random() * 7, color: Math.random() < 0.72 ? "#7b2cbf" : "#c77dff" });
+    particles.push({ x: p.x + Math.cos(a) * r, y: p.y + Math.sin(a) * r, vx: -Math.cos(a) * (0.6 + Math.random() * 1.2), vy: -Math.sin(a) * (0.6 + Math.random() * 1.2), life: 24 + Math.random() * 20, size: 4 + Math.random() * 7, color: Math.random() < 0.72 ? "#7b2cbf" : "#c77dff" });
   }
 
   if (Math.random() < 0.45) {
     const progress = 1 - p.anubisUltTimer / Math.max(1, p.anubisUltMaxTimer);
     const r = p.anubisUltRadius * progress * Math.sqrt(Math.random());
     const a = Math.random() * Math.PI * 2;
-    pushParticleSafe({ x: p.x + Math.cos(a) * r, y: p.y + Math.sin(a) * r, vx: (Math.random() - 0.5) * 1.5, vy: (Math.random() - 0.5) * 1.5, life: 18 + Math.random() * 18, size: 4 + Math.random() * 8, color: "#ff1744" });
+    particles.push({ x: p.x + Math.cos(a) * r, y: p.y + Math.sin(a) * r, vx: (Math.random() - 0.5) * 1.5, vy: (Math.random() - 0.5) * 1.5, life: 18 + Math.random() * 18, size: 4 + Math.random() * 8, color: "#ff1744" });
   }
 
   if (p.anubisUltTimer <= 0) detonateAnubisCircleUltimate(p);
@@ -2870,19 +2471,16 @@ function createAttack(a) {
   a.offsetY = a.offsetY || 0;
   a.visualType = a.visualType || "slashArc";
   a.dir = a.dir || getFacingDir(a.owner);
-  if (attacks.length >= PERF.maxAttacks) attacks.shift();
   attacks.push(a);
 }
 
 function spawnProjectile(p) {
   p.hit = new Set();
   p.dir = p.dir || getFacingDir(p.owner);
-  if (projectiles.length >= PERF.maxProjectiles) projectiles.shift();
   projectiles.push(p);
 }
 
 function addTelegraph(config) {
-  if (telegraphs.length >= PERF.maxTelegraphs) telegraphs.shift();
   telegraphs.push({
     type: config.type || "circle",
     owner: config.owner || null,
@@ -3049,22 +2647,11 @@ function updateFighter(p) {
       p.hitstun = Math.max(p.hitstun, 14);
     }
   }
-  if (p.lokiPlatformTeleportCooldown > 0) p.lokiPlatformTeleportCooldown--;
-  if (p.thorHammerSlamTimer > 0) {
-    p.thorHammerSlamTimer--; p.vx *= 0.82; p.action = "attack";
-    if (p.thorHammerSlamTimer > 12) { p.attackKind = "thor_hammer_raised"; if (p.thorHammerSlamTimer % 5 === 0) { spawnParticles(p.x, p.y - 55, "#cce3ff", 5, 3); spawnParticles(p.x, p.y - 35, "#ffd166", 3, 2); } }
-    if (p.thorHammerSlamTimer <= 12 && !p.thorHammerSlamDidHit) { p.thorHammerSlamDidHit = true; p.attackKind = "thor_hammer_slam";
-      createAttack({owner:p,x:p.x,y:p.y + p.h / 2,w:230,h:88,damage:22,knock:24,angle:-0.72,frames:8,color:"#cce3ff",label:"thor_down_k_hammer_slam",visualType:"thorHammerSlam"});
-      createAttack({owner:p,x:p.x,y:p.y,w:90,h:150,damage:18,knock:21,angle:-1.05,frames:6,color:"#e63946",label:"thor_down_k_center_blast",visualType:"thorHammerCenterBlast"});
-      spawnParticles(p.x, p.y + p.h / 2, "#cce3ff", 42, 10); spawnParticles(p.x, p.y + p.h / 2, "#e63946", 28, 8); spawnParticles(p.x, p.y + p.h / 2, "#6d1a22", 24, 7); shake = Math.max(shake, 13); hitStop = Math.max(hitStop, 7); }
-    if (p.thorHammerSlamTimer <= 0) p.attackKind = "";
-  }
   if (p.lokiDodgeCloneTimer > 0) {
     p.lokiDodgeCloneTimer--;
     if (p.lokiDodgeCloneTimer % 6 === 0) spawnProjectile({owner:p,type:"clone",x:p.x-p.dodgeDir*22,y:p.y,vx:0,vy:0,w:34,h:52,life:6,damage:0,knock:0,color:"#a8f5c8",fakeGod:p.god,alpha:.35,flicker:true,ghost:true});
   }
   if (p.mudSlowTimer > 0) p.mudSlowTimer--;
-  if (p.sobekJumpDebuffTimer > 0) p.sobekJumpDebuffTimer--;
   if (p.charmTimer > 0) p.charmTimer--;
   if (p.jumpDebuffTimer > 0) p.jumpDebuffTimer--;
 
@@ -3244,23 +2831,6 @@ function updateFighter(p) {
     p.grounded = false;
   }
 
-  if (p.sobekLungeTimer > 0) {
-    p.sobekLungeTimer--;
-    const dir = p.sobekLungeDir || getFacingDir(p);
-    p.vx = dir * 18;
-    p.vy = p.grounded ? Math.min(p.vy, -1.5) : Math.min(p.vy, 4);
-    p.action = "dash";
-    p.attackKind = "sobek_nile_lunge";
-    if (p.sobekLungeTimer % 2 === 0) { spawnParticles(p.x-dir*34,p.y+22,"#6b4f2a",8,4); spawnParticles(p.x-dir*42,p.y+12,"#2a9d8f",6,3); }
-  }
-  if (p.sobekDeathRollTimer > 0) {
-    p.sobekDeathRollTimer--; p.vx *= 0.82; p.action = "attack"; p.attackKind = "sobek_death_roll";
-    if (p.sobekDeathRollTimer % 4 === 0) {
-      const fin = p.sobekDeathRollTimer <= 5;
-      createAttack({owner:p,x:p.x,y:p.y+8,w:150,h:66,damage:fin?9:3,knock:fin?15:3.5,angle:fin?-0.38:-0.05,frames:4,color:"#2a9d8f",label:fin?"sobek_death_roll_finish":"sobek_death_roll_tick",visualType:"deathRoll"});
-    }
-  }
-
   p.vy += (p.godId === "horus" && p.horusGlideTimer > 0 && !p.grounded ? 0.28 : 0.78);
   if (p.godId === "horus" && p.horusGlideTimer > 0 && !p.grounded) p.vx *= 0.996;
 
@@ -3293,14 +2863,9 @@ function updateFighter(p) {
   p.x += p.vx;
   p.y += p.vy;
 
-  const wasGrounded = p.grounded;
   handlePlatformCollision(p);
-  if (!wasGrounded && p.grounded && p.sobekBreachLandingTimer > 0) {
-    createAttack({owner:p,x:p.x,y:p.y+p.h/2,w:150,h:42,damage:5,knock:8,angle:-0.2,frames:7,color:"#2a9d8f",label:"sobek_landing_splash",visualType:"sobekLandingSplash"});
-    p.sobekBreachLandingTimer = 0;
-  }
 
-  if (p.dodgeTimer <= 0 && p.horusRushTimer <= 0 && p.anubisGrapplePullTimer <= 0 && p.sobekLungeTimer <= 0 && p.sobekDeathRollTimer <= 0) {
+  if (p.dodgeTimer <= 0 && p.horusRushTimer <= 0 && p.anubisGrapplePullTimer <= 0) {
     p.vx *= p.grounded ? .91 : .985;
   } else if (p.dodgeTimer > 0) {
     p.vx *= .985;
@@ -3336,7 +2901,7 @@ function handlePlatformCollision(p) {
       prevBottom <= plat.y + 8 &&
       p.vy >= 0
     ) {
-      if (p.human && isActionDown("down") && plat.type !== "main") {
+      if (keys["s"] && p.human && plat.type !== "main") {
         continue;
       }
 
@@ -3422,12 +2987,10 @@ function updateAttacks() {
       if (overlaps) {
         a.hit.add(p.id);
         let knock = a.knock;
-        let damage = a.damage;
-        if (a.owner && a.owner.godId === "sobek" && p.sobekMudSource === a.owner.id && p.mudSlowTimer > 0) { knock *= 1.18; damage += 1; }
         if (a.label === "heavy" && a.owner.godId === "anubis" && p.soulMarkTimer > 0 && p.soulMarkSource === a.owner.id) knock *= 1.16;
         const impactX = clamp(Math.max(ax1, Math.min(p.x, ax2)), ax1, ax2);
         const impactY = clamp(Math.max(ay1, Math.min(p.y, ay2)), ay1, ay2);
-        applyHit(p, a.owner, damage, knock, a.angle, Math.sign(p.x - a.owner.x) || a.owner.facing, a.color, {
+        applyHit(p, a.owner, a.damage, knock, a.angle, Math.sign(p.x - a.owner.x) || a.owner.facing, a.color, {
           x: impactX,
           y: impactY,
           impactType: (a.visualType || "").includes("dagger") ? "lightSlash" : (a.visualType || "").includes("shield") || (a.visualType || "").includes("aegis") ? "shield" : undefined
@@ -3474,9 +3037,7 @@ function updateAttacks() {
           spawnParticles(p.x, p.y, "#ff9f1c", 24, 5);
         }
         if (a.owner.godId === "anubis" && a.visualType === "graveSweep") p.vx -= a.owner.facing * 2.2;
-        if (a.id === "sobek_heavy_n" && a.owner) { const d = Math.hypot(p.x-a.owner.x,p.y-a.owner.y); if (d < 82) { p.hitstun = Math.max(p.hitstun||0,18); p.vx = a.owner.facing*6; p.vy = Math.min(p.vy,-4); } }
-        if (a.label === "sobek_nile_lunge" && a.owner) { p.vx = a.owner.facing * 16; p.vy = Math.min(p.vy,-6); p.hitstun = Math.max(p.hitstun||0,18); }
-        if (a.owner.godId === "sobek" && ["jawSnap","nileLunge","crushingJaws"].includes(a.visualType) && p.grabImmunityTimer <= 0 && !p.grabbedBy && Math.abs(p.x - a.owner.x) < 60) {
+        if (a.owner.godId === "sobek" && ["jawSnap","nileLunge"].includes(a.visualType) && p.grabImmunityTimer <= 0 && !p.grabbedBy && Math.abs(p.x - a.owner.x) < 60) {
           p.grabbedBy = a.owner;
           p.grabTimer = 180;
           p.throwDir = a.owner.facing;
@@ -3497,46 +3058,6 @@ function updateAttacks() {
     if (a.frames <= 0) attacks.splice(i, 1);
   }
 }
-
-
-function findPlatformForLokiTeleport(p) {
-  let best = null; let bestScore = Infinity;
-  currentMap.platforms.forEach(pl => {
-    const withinX = p.x >= pl.x - 30 && p.x <= pl.x + pl.w + 30;
-    const feetY = p.y + p.h / 2;
-    const closeY = Math.abs(feetY - pl.y) < 38;
-    if (withinX && closeY) { const score = Math.abs(feetY - pl.y); if (score < bestScore) { best = pl; bestScore = score; } }
-  });
-  if (best) return best;
-  currentMap.platforms.forEach(pl => {
-    const withinX = p.x >= pl.x - 80 && p.x <= pl.x + pl.w + 80;
-    const dy = pl.y - (p.y + p.h / 2);
-    if (withinX && dy > -40 && dy < 180) { const score = Math.abs(dy); if (score < bestScore) { best = pl; bestScore = score; } }
-  });
-  return best;
-}
-function teleportLokiAcrossPlatform(p, pl) {
-  const margin = 56, leftX = pl.x + margin, rightX = pl.x + pl.w - margin, platformCenter = pl.x + pl.w / 2;
-  let targetX;
-  if (Math.abs(p.x - platformCenter) < pl.w * 0.16) targetX = p.facing >= 0 ? leftX : rightX;
-  else if (p.x < platformCenter) targetX = rightX; else targetX = leftX;
-  const targetY = pl.y - p.h / 2 - 2;
-  spawnParticles(p.x, p.y, "#06d6a0", 30, 8); spawnParticles(p.x, p.y, "#064e3b", 26, 7);
-  p.x = clamp(targetX, pl.x + margin, pl.x + pl.w - margin); p.y = targetY; p.vx = 0; p.vy = -2; p.grounded = true; p.jumps = 2;
-  p.invincible = Math.max(p.invincible, 18); p.attackKind = "loki_platform_teleport"; p.attackFrame = Math.max(p.attackFrame, 24);
-  spawnParticles(p.x, p.y, "#06d6a0", 34, 8); spawnParticles(p.x, p.y, "#caffbf", 18, 5); shake = Math.max(shake, 3);
-}
-function updateLightningStrikes() {
-  for (let i = lightningStrikes.length - 1; i >= 0; i--) { const s = lightningStrikes[i]; s.timer--;
-    if (s.timer > 0 && s.timer % 5 === 0) { spawnParticles(s.x, s.y - 90, "#cce3ff", 4, 3); spawnParticles(s.x, s.y + 25, "#ffd166", 3, 2); }
-    if (s.timer <= 0 && !s.didStrike) { s.didStrike = true; createAttack({owner:s.owner,x:s.x,y:s.y - 170,w:82,h:360,damage:14,knock:15,angle:-1.1,frames:7,color:"#cce3ff",label:"thor_up_k_lightning_strike",visualType:"thorVerticalLightning"}); spawnParticles(s.x, s.y - 80, "#cce3ff", 38, 9); spawnParticles(s.x, s.y + 30, "#ffd166", 22, 6); shake = Math.max(shake, 8); hitStop = Math.max(hitStop, 4); }
-    if (s.didStrike && s.timer <= -8) lightningStrikes.splice(i, 1);
-  }
-}
-function drawLightningStrikes() { lightningStrikes.forEach(s => { const sx = worldToScreenX(s.x), sy = worldToScreenY(s.y); const progress = 1 - Math.max(0, s.timer) / s.maxTimer; ctx.save();
-  if (!s.didStrike) { ctx.globalAlpha = 0.25 + Math.sin(matchTime * 0.45) * 0.15; ctx.strokeStyle = "#cce3ff"; ctx.lineWidth = screenScale(4); ctx.beginPath(); ctx.moveTo(sx, sy - screenScale(300)); ctx.lineTo(sx, sy + screenScale(80)); ctx.stroke(); ctx.globalAlpha = 0.28 + progress * 0.45; ctx.strokeStyle = "#ffd166"; ctx.lineWidth = screenScale(2); ctx.beginPath(); ctx.arc(sx, sy + screenScale(30), screenScale(30 + progress * 22), 0, Math.PI * 2); ctx.stroke(); }
-  else { ctx.globalAlpha = 0.85; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = screenScale(9); ctx.beginPath(); ctx.moveTo(sx, sy - screenScale(320)); ctx.lineTo(sx + screenScale(8), sy - screenScale(200)); ctx.lineTo(sx - screenScale(6), sy - screenScale(80)); ctx.lineTo(sx, sy + screenScale(90)); ctx.stroke(); ctx.globalAlpha = 0.65; ctx.strokeStyle = "#cce3ff"; ctx.lineWidth = screenScale(18); ctx.beginPath(); ctx.moveTo(sx, sy - screenScale(320)); ctx.lineTo(sx, sy + screenScale(90)); ctx.stroke(); }
-  ctx.restore(); }); }
 
 function updateProjectiles() {
   for (let i = projectiles.length - 1; i >= 0; i--) {
@@ -3726,7 +3247,7 @@ function updateProjectiles() {
           const hitDir = pr.type === "horusBlade"
             ? Math.sign(pr.vx) || pr.dir || getFacingDir(pr.owner)
             : pr.dir || Math.sign(p.x - pr.owner.x) || getFacingDir(pr.owner);
-          applyHit(p, pr.owner, pr.damage, pr.knock, pr.type === "hook" ? -0.18 : bladeAngle, hitDir, pr.color, {x: pr.x, y: pr.y, impactType: pr.type === "bolt" ? "lightning" : pr.type === "sun" ? "solar" : pr.type === "horusBlade" ? "blade" : pr.type === "lokiKnife" ? "blade" : undefined});
+          applyHit(p, pr.owner, pr.damage, pr.knock, pr.type === "hook" ? -0.18 : bladeAngle, hitDir, pr.color, {x: pr.x, y: pr.y, impactType: pr.type === "bolt" ? "lightning" : pr.type === "sun" ? "solar" : pr.type === "horusBlade" ? "blade" : undefined});
           if (pr.type === "bolt") p.conductiveTimer = Math.max(p.conductiveTimer || 0, 180);
           if (pr.type === "sun") p.scorchTimer = Math.max(p.scorchTimer || 0, 150);
           if (pr.type === "horusBlade") pr.life = 0;
@@ -3788,16 +3309,16 @@ function updateProjectiles() {
       });
     }
 
-    if (Math.random() < PERF.trailChance && particles.length < PERF.maxParticles) {
+    if (Math.random() < .45) {
       const pvx = pr.vx || 0;
       const pvy = pr.vy || 0;
-      pushParticleSafe({
+      particles.push({
         x: pr.x,
         y: pr.y,
         vx: -pvx * 0.15 + (Math.random() - .5) * 1.2,
         vy: -pvy * 0.15 + (Math.random() - .5) * 1.2,
-        life: 12,
-        size: 2 + Math.random() * 4,
+        life: 18,
+        size: 3 + Math.random() * 5,
         color: pr.color
       });
     }
@@ -3820,7 +3341,7 @@ function spawnImpactSparks(x, y, impactType, impactColor, strength = 1) {
   if (impactType === "shield") {
     for (let i = 0; i < burst; i++) {
       const spread = (i / Math.max(1, burst - 1) - 0.5) * 2.2;
-      pushParticleSafe({x: x + spread * 20, y: y + (Math.random() - 0.5) * 6, vx: spread * 1.6, vy: (Math.random() - 0.5) * 0.9, life: 12 + Math.random() * 8, size: 4 + Math.random() * 5, color});
+      particles.push({x: x + spread * 20, y: y + (Math.random() - 0.5) * 6, vx: spread * 1.6, vy: (Math.random() - 0.5) * 0.9, life: 12 + Math.random() * 8, size: 4 + Math.random() * 5, color});
     }
     return;
   }
@@ -3829,7 +3350,7 @@ function spawnImpactSparks(x, y, impactType, impactColor, strength = 1) {
   } else if (impactType === "solar") {
     spawnParticles(x, y, color, burst + 10, 4 + strength * 2);
   } else if (impactType === "soul") {
-    for (let i = 0; i < burst; i++) pushParticleSafe({x:x+(Math.random()-.5)*18,y:y+(Math.random()-.5)*14,vx:(Math.random()-.5)*1.2,vy:-0.6-Math.random()*1.6,life:24+Math.random()*20,size:2+Math.random()*4,color});
+    for (let i = 0; i < burst; i++) particles.push({x:x+(Math.random()-.5)*18,y:y+(Math.random()-.5)*14,vx:(Math.random()-.5)*1.2,vy:-0.6-Math.random()*1.6,life:24+Math.random()*20,size:2+Math.random()*4,color});
   } else {
     spawnParticles(x, y, color, burst, 3 + strength * 2.2);
   }
@@ -3897,25 +3418,12 @@ function applyHit(target, source, damage, knock, angle, dir, color, impact = {})
   if (meta.impactType !== "soul") spawnParticles(impactX, impactY, meta.impactColor || color, 7 + Math.floor(strength * 5), 3 + strength * 1.5);
   shake = Math.max(shake, Math.min(16, knock / 1.5 + meta.extraShake));
   playHitCue(meta.cue);
-}
 
-function pushParticleSafe(particle) {
-  if (!particle) return;
-  if (particles.length >= PERF.maxParticles) particles.shift();
-  particles.push(particle);
+  updateHud();
 }
 
 function spawnParticles(x, y, color, count, speed) {
-  if (PERFORMANCE_MODE) {
-    count = Math.min(count, 6);
-    speed *= 0.75;
-  }
-
-  count = Math.max(1, Math.floor(count * (PERF.particleScale || 1)));
-
   for (let i = 0; i < count; i++) {
-    if (particles.length >= PERF.maxParticles) particles.shift();
-
     const a = Math.random() * Math.PI * 2;
     const s = Math.random() * speed;
     particles.push({
@@ -3923,8 +3431,8 @@ function spawnParticles(x, y, color, count, speed) {
       y,
       vx: Math.cos(a) * s,
       vy: Math.sin(a) * s,
-      life: PERFORMANCE_MODE ? 14 + Math.random() * 10 : 20 + Math.random() * 24,
-      size: (PERFORMANCE_MODE ? 2 : 3) + Math.random() * (PERFORMANCE_MODE ? 3 : 7),
+      life: 20 + Math.random() * 24,
+      size: 3 + Math.random() * 7,
       color
     });
   }
@@ -3932,56 +3440,16 @@ function spawnParticles(x, y, color, count, speed) {
 
 
 function spawnStatusText(x, y, text, color) {
-  if (PERFORMANCE_MODE && particles.length > PERF.maxParticles * 0.75) return;
-  if (particles.length >= PERF.maxParticles) particles.shift();
-
   particles.push({
     x,
     y,
     vx: 0,
     vy: -1.2,
-    life: PERFORMANCE_MODE ? 28 : 45,
-    size: PERFORMANCE_MODE ? 10 : 12,
+    life: 45,
+    size: 12,
     color,
     text
   });
-}
-
-function updateMudTraps() {
-  if (!mudTraps || mudTraps.length === 0) return;
-
-  for (let i = mudTraps.length - 1; i >= 0; i--) {
-    const m = mudTraps[i];
-
-    if (!m || !m.owner || m.owner.dead) {
-      mudTraps.splice(i, 1);
-      continue;
-    }
-
-    m.life--;
-
-    const r = m.radius || 0;
-    const r2 = r * r;
-
-    for (let j = 0; j < players.length; j++) {
-      const t = players[j];
-      if (!t || t.dead || t === m.owner) continue;
-
-      const dx = t.x - m.x;
-      const dy = t.y - m.y;
-
-      // Avoid Math.hypot for performance.
-      if ((dx * dx + dy * dy) < r2) {
-        t.mudSlowTimer = Math.max(t.mudSlowTimer || 0, 10);
-        t.sobekMudSource = m.owner ? m.owner.id : null;
-        t.sobekJumpDebuffTimer = Math.max(t.sobekJumpDebuffTimer || 0, 10);
-      }
-    }
-
-    if (m.life <= 0) {
-      mudTraps.splice(i, 1);
-    }
-  }
 }
 
 function updateParticles() {
@@ -4170,20 +3638,6 @@ function spawnBossWave() {
   updateHud();
 }
 
-function isOnScreenWorld(x, y, pad = 160) {
-  const sx = worldToScreenX(x);
-  const sy = worldToScreenY(y);
-  return sx > -pad && sx < W + pad && sy > -pad && sy < H + pad;
-}
-
-function isRectOnScreenWorld(x, y, w, h, pad = 160) {
-  const sx = worldToScreenX(x);
-  const sy = worldToScreenY(y);
-  const sw = screenScale(w);
-  const sh = screenScale(h);
-  return sx + sw > -pad && sx - sw < W + pad && sy + sh > -pad && sy - sh < H + pad;
-}
-
 function drawGame() {
   ctx.clearRect(0, 0, W, H);
 
@@ -4196,43 +3650,19 @@ function drawGame() {
   ctx.save();
   ctx.translate(sx, sy);
 
-  drawCachedBackground();
+  drawBackground();
   drawMap();
   players.forEach(drawAnubisCircleUltimate);
-  if (mudTraps && mudTraps.length > 0) drawMudTraps();
   telegraphs.forEach(drawTelegraph);
-  if (lightningStrikes && lightningStrikes.length > 0) drawLightningStrikes();
 
-  projectiles.forEach(pr => {
-    if (isOnScreenWorld(pr.x, pr.y, 120)) drawProjectile(pr);
-  });
-  attacks.forEach(a => {
-    if (isRectOnScreenWorld(a.x, a.y, a.w, a.h, 180)) drawAttack(a);
-  });
-  players.forEach(p => {
-    if (isOnScreenWorld(p.x, p.y, 220)) drawFighter(p);
-  });
-  particles.forEach((p, i) => {
-    if (!DRAW_EVERY_PARTICLE && i % 2 !== 0) return;
-    if (isOnScreenWorld(p.x, p.y, 80)) drawParticle(p);
-  });
+  projectiles.forEach(drawProjectile);
+  attacks.forEach(drawAttack);
+  players.forEach(drawFighter);
+  particles.forEach(drawParticle);
 
   ctx.restore();
   drawUltimateScreenFlash();
   drawEclipseOverlay();
-
-  if (SHOW_PERF_DEBUG) {
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.font = "14px monospace";
-    ctx.fillStyle = "#ffffff";
-    ctx.fillText(
-      `FPS objects - particles:${particles.length} attacks:${attacks.length} projectiles:${projectiles.length} mud:${mudTraps ? mudTraps.length : 0}`,
-      12,
-      H - 18
-    );
-    ctx.restore();
-  }
 }
 
 function drawAnubisCircleUltimate(p) {
@@ -4243,30 +3673,6 @@ function drawAnubisCircleUltimate(p) {
   const progress = 1 - p.anubisUltTimer / Math.max(1, p.anubisUltMaxTimer);
   const redRadius = radius * clamp(progress, 0, 1);
   const pulse = 1 + Math.sin(matchTime * 0.25) * 0.035;
-
-  if (PERFORMANCE_MODE) {
-    ctx.save();
-    ctx.globalAlpha = 0.45;
-    ctx.fillStyle = "#02010a";
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.globalAlpha = 0.6;
-    ctx.fillStyle = "#b00020";
-    ctx.beginPath();
-    ctx.arc(x, y, redRadius, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.globalAlpha = 0.8;
-    ctx.strokeStyle = "#7b2cbf";
-    ctx.lineWidth = screenScale(4);
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
-    return;
-  }
 
   ctx.save();
   ctx.globalAlpha = 0.62;
@@ -4285,16 +3691,11 @@ function drawAnubisCircleUltimate(p) {
   ctx.globalAlpha = 0.9;
   ctx.strokeStyle = "#c77dff";
   ctx.lineWidth = screenScale(2.5);
-  const arcCount = PERF.lowPerfMode ? 8 : 18;
-  for (let i = 0; i < arcCount; i++) {
-    const seed = matchTime * 0.05 + i * 1.73;
-    const a1 = (Math.PI * 2 * i) / arcCount + Math.sin(seed) * 0.08;
-    const a2 = a1 + 0.12 + (Math.sin(seed * 1.37) * 0.5 + 0.5) * 0.08;
-    const ox = Math.sin(seed * 2.1) * screenScale(2);
-    const oy = Math.cos(seed * 1.9) * screenScale(2);
-    const rr = radius * (0.96 + (Math.sin(seed * 2.7) * 0.5 + 0.5) * 0.06);
+  for (let i = 0; i < 18; i++) {
+    const a1 = (Math.PI * 2 * i) / 18 + Math.sin(matchTime * 0.05 + i) * 0.08;
+    const a2 = a1 + 0.12 + Math.random() * 0.08;
     ctx.beginPath();
-    ctx.arc(x + ox, y + oy, rr, a1, a2);
+    ctx.arc(x + (Math.random() - 0.5) * screenScale(4), y + (Math.random() - 0.5) * screenScale(4), radius * (0.96 + Math.random() * 0.06), a1, a2);
     ctx.stroke();
   }
 
@@ -4467,56 +3868,11 @@ function drawEclipseOverlay() {
   ctx.restore();
 }
 
-function rebuildBackgroundCache() {
-  bgCacheCanvas.width = W;
-  bgCacheCanvas.height = H;
-  bgCacheCtx.imageSmoothingEnabled = false;
-
+function drawBackground() {
   const type = currentMap.backgroundType || "temple";
-  const sky = bgCacheCtx.createLinearGradient(0, 0, 0, H);
-
-  if (type === "nile") {
-    sky.addColorStop(0, "#4b2a47");
-    sky.addColorStop(.55, "#7d4c4a");
-    sky.addColorStop(1, "#2f2a40");
-  } else if (type === "stormforge") {
-    sky.addColorStop(0, "#0b1022");
-    sky.addColorStop(.55, "#1f2f55");
-    sky.addColorStop(1, "#2d1b3d");
-  } else {
-    sky.addColorStop(0, "#140f2e");
-    sky.addColorStop(.5, "#223168");
-    sky.addColorStop(1, "#48256f");
-  }
-
-  bgCacheCtx.fillStyle = sky;
-  bgCacheCtx.fillRect(0, 0, W, H);
-
-  for (let i = 0; i < 70; i++) {
-    const x = (i * 137) % W;
-    const y = (i * 71) % Math.max(1, H * .55);
-    bgCacheCtx.fillStyle = i % 3 === 0 ? "#ffd166" : "#b8c0ff";
-    bgCacheCtx.fillRect(Math.floor(x), Math.floor(y), 2, 2);
-  }
-
-  bgCacheMapId = currentMap.id;
-  bgCacheW = W;
-  bgCacheH = H;
-}
-
-function drawCachedBackground() {
-  if (bgCacheMapId !== currentMap.id || bgCacheW !== W || bgCacheH !== H) rebuildBackgroundCache();
-
-  ctx.drawImage(bgCacheCanvas, 0, 0);
-
-  if (!PERF.lowPerfMode) {
-    for (let i = 0; i < 25; i++) {
-      const x = (i * 137 + matchTime * .12) % W;
-      const y = (i * 71) % Math.max(1, H * .55);
-      ctx.fillStyle = i % 3 === 0 ? "#ffd166" : "#b8c0ff";
-      ctx.fillRect(Math.floor(x), Math.floor(y), 2, 2);
-    }
-  }
+  if (type === "nile") drawNileBackground();
+  else if (type === "stormforge") drawStormforgeBackground();
+  else drawTempleBackground();
 }
 
 function drawTempleBackground() {
@@ -4610,11 +3966,6 @@ function drawFighter(p) {
   const y = worldToScreenY(p.y);
   const s = camera.zoom;
 
-  if (SIMPLE_FIGHTER_RENDER) {
-    drawSimpleFighter(p, x, y, s);
-    return;
-  }
-
   const blink = p.invincible > 0 && Math.floor(p.invincible / 5) % 2 === 0;
   if (blink) ctx.globalAlpha = .45;
 
@@ -4637,17 +3988,17 @@ function drawFighter(p) {
     ctx.globalAlpha = 1;
   }
 
-  if (SHOW_FLOATING_NAMES) {
-    ctx.globalAlpha = 1;
-    ctx.font = `${Math.max(12, 14 * s)}px Arial`;
-    ctx.textAlign = "center";
-    ctx.fillStyle = p.human ? "#ffffff" : "#d4ddff";
-    ctx.fillText(p.name, x, y - screenScale(52));
+  // Player name
+  ctx.globalAlpha = 1;
+  ctx.font = `${Math.max(12, 14 * s)}px Arial`;
+  ctx.textAlign = "center";
+  ctx.fillStyle = p.human ? "#ffffff" : "#d4ddff";
+  ctx.fillText(p.name, x, y - screenScale(52));
 
-    ctx.font = `${Math.max(12, 13 * s)}px Arial`;
-    ctx.fillStyle = p.god.color;
-    ctx.fillText(Math.round(p.damage) + "%", x, y - screenScale(36));
-  }
+  // Damage mini number
+  ctx.font = `${Math.max(12, 13 * s)}px Arial`;
+  ctx.fillStyle = p.god.color;
+  ctx.fillText(Math.round(p.damage) + "%", x, y - screenScale(36));
   if (p.soulMarkTimer > 0) {
     const pulse = 1 + Math.sin(matchTime / 5) * .2;
     ctx.strokeStyle = "#62ffe4";
@@ -4664,49 +4015,11 @@ function drawFighter(p) {
     ctx.stroke();
   }
 
-  if (SHOW_STATUS_ICONS) drawStatusIcons(p, x, y, s);
+  drawStatusIcons(p, x, y, s);
 
   ctx.globalAlpha = 1;
 }
 
-
-function drawSimpleFighter(p, x, y, s) {
-  if (p.dead || p.lives <= 0) return;
-
-  const blink = p.invincible > 0 && Math.floor(p.invincible / 5) % 2 === 0;
-
-  ctx.save();
-  if (blink) ctx.globalAlpha = 0.45;
-
-  const bodyW = screenScale(30);
-  const bodyH = screenScale(44);
-  const head = screenScale(18);
-
-  ctx.fillStyle = p.god.dark || "#222";
-  ctx.fillRect(x - bodyW / 2, y - bodyH / 2, bodyW, bodyH);
-
-  ctx.fillStyle = p.god.color || "#fff";
-  ctx.fillRect(x - head / 2, y - bodyH / 2 - head, head, head);
-
-  ctx.fillStyle = p.god.accent || "#fff";
-  ctx.fillRect(x + p.facing * screenScale(16), y - screenScale(12), screenScale(12), screenScale(8));
-
-  if (p.dodgeTimer > 0) {
-    ctx.globalAlpha = 0.22;
-    ctx.fillStyle = p.god.accent || "#ffffff";
-    ctx.fillRect(x - screenScale(36), y - screenScale(38), screenScale(72), screenScale(76));
-  }
-
-  if (p.soulMarkTimer > 0 && !PERFORMANCE_MODE) {
-    ctx.strokeStyle = "#62ffe4";
-    ctx.lineWidth = screenScale(2);
-    ctx.beginPath();
-    ctx.arc(x, y - screenScale(58), screenScale(9), 0, Math.PI * 2);
-    ctx.stroke();
-  }
-
-  ctx.restore();
-}
 
 function drawStatusIcons(p, x, y, s) {
   const icons = [];
@@ -5130,11 +4443,6 @@ function drawAttack(a) {
     ctx.closePath();
     ctx.fill();
     ctx.globalAlpha = 1;
-  } else if (["thorHammerSlam","thorHammerCenterBlast","thorVerticalLightning"].includes(type)) {
-    ctx.globalAlpha = 0.35; ctx.fillStyle = type === "thorHammerCenterBlast" ? "#e63946" : "#cce3ff"; ctx.beginPath(); ctx.ellipse(cx, cy, w * 0.5, h * 0.28, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = 0.9; ctx.strokeStyle = type === "thorVerticalLightning" ? "#ffffff" : "#ffd166"; ctx.lineWidth = screenScale(type === "thorVerticalLightning" ? 8 : 4);
-    ctx.beginPath(); ctx.moveTo(cx, y - h * 0.45); ctx.lineTo(cx + dir * w * 0.08, y + h * 0.2); ctx.lineTo(cx - dir * w * 0.06, y + h * 0.6); ctx.stroke();
-    spark(10, "rgba(210,235,255,.95)"); ctx.globalAlpha = 1;
   } else if (type === "redBiteWarning") {
     ctx.globalAlpha = 0.35 + Math.sin(matchTime * 0.5) * 0.15;
     ctx.fillStyle = "#ff2222";
@@ -5271,33 +4579,7 @@ function drawAttack(a) {
   }
 }
 
-function drawMudTraps() {
-  if (!mudTraps || mudTraps.length === 0) return;
 
-  mudTraps.forEach(m => {
-    if (!m) return;
-
-    const sx = worldToScreenX(m.x);
-    const sy = worldToScreenY(m.y);
-    const r = screenScale(m.radius || 0);
-
-    ctx.save();
-    ctx.globalAlpha = Math.min(0.42, m.life / 50);
-    ctx.fillStyle = "#6b4f2a";
-    ctx.beginPath();
-    ctx.ellipse(sx, sy, r, r * 0.32, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.globalAlpha = Math.min(0.55, m.life / 60);
-    ctx.strokeStyle = "#2a9d8f";
-    ctx.lineWidth = screenScale(3);
-    ctx.beginPath();
-    ctx.ellipse(sx, sy, r, r * 0.32, 0, 0, Math.PI * 2);
-    ctx.stroke();
-
-    ctx.restore();
-  });
-}
 function drawProjectile(pr) {
   const x = worldToScreenX(pr.x);
   const y = worldToScreenY(pr.y);
@@ -5348,13 +4630,6 @@ function drawProjectile(pr) {
     ctx.fillRect(-w * 0.12, h * 0.15, w * 0.24, h * 0.8);
     ctx.restore();
     ctx.globalAlpha = 1;
-    return;
-  }
-
-  if (pr.type === "lokiKnife") {
-    ctx.save(); ctx.translate(x, y); ctx.rotate(Math.atan2(pr.vy, pr.vx));
-    ctx.fillStyle = "#06d6a0"; ctx.fillRect(-screenScale(14), -screenScale(3), screenScale(28), screenScale(6));
-    ctx.fillStyle = "#caffbf"; ctx.fillRect(screenScale(6), -screenScale(5), screenScale(8), screenScale(10)); ctx.restore();
     return;
   }
 
