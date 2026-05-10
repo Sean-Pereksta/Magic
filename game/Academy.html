@@ -722,6 +722,9 @@ function createFighter(config) {
     movePhase: "none",
     moveVariant: "neutral",
     moveVisuals: [],
+    parryTimer: 0,
+    parryActive: false,
+    parryRecovery: 0,
     hitstun: 0,
     action: "idle",
     anim: 0,
@@ -990,13 +993,17 @@ const ATTACK_DEFS = {
   zeus: {
     light: { neutral:{id:"zeus_light_n",godId:"zeus",inputType:"light",directionVariant:"neutral",startup:3,active:6,recovery:7,damage:6.8,knock:7.1,angle:-0.1,hitbox:{x:36,y:-4,w:56,h:34},animation:"jab",effects:{visualType:"lightningJab"}}, up:{id:"zeus_light_u",directionVariant:"up",startup:3,active:6,recovery:7,damage:7,knock:7.8,angle:-1.05,hitbox:{x:30,y:-44,w:56,h:52},effects:{visualType:"uppercutSpark"}}, down:{id:"zeus_light_d",directionVariant:"down",startup:3,active:6,recovery:8,damage:6,knock:7.2,angle:0.08,hitbox:{x:34,y:20,w:62,h:24},effects:{visualType:"staticSweep"}}},
     heavy:{neutral:{id:"zeus_heavy_n",directionVariant:"neutral",startup:8,active:7,recovery:13,damage:13,knock:13.2,angle:-0.55,hitbox:{x:46,y:-8,w:92,h:44},effects:{visualType:"boltSpear"}},up:{id:"zeus_heavy_u",directionVariant:"up",startup:7,active:7,recovery:13,damage:12,knock:12.5,angle:-1.2,hitbox:{x:28,y:-92,w:44,h:108},effects:{visualType:"stormPillar"}},down:{id:"zeus_heavy_d",directionVariant:"down",startup:6,active:7,recovery:14,damage:14,knock:13.3,angle:-0.75,hitbox:{x:24,y:16,w:110,h:40},effects:{visualType:"thunderStomp"}}}
+  },
+  athena: {
+    light: { neutral:{id:"athena_light_n",godId:"athena",inputType:"light",directionVariant:"neutral",startup:2,active:5,recovery:8,damage:6,knock:6.2,angle:-0.05,hitbox:{x:58,y:-8,w:88,h:16},effects:{visualType:"spearThrust"}}, up:{id:"athena_light_u",directionVariant:"up",startup:3,active:5,recovery:8,damage:7,knock:7.6,angle:-1.15,hitbox:{x:40,y:-54,w:56,h:56},effects:{visualType:"spearLift"}}, down:{id:"athena_light_d",directionVariant:"down",startup:3,active:5,recovery:10,damage:6,knock:6.8,angle:0.08,hitbox:{x:28,y:26,w:62,h:22},effects:{visualType:"shieldCheck"},selfImpulse:{x:-1.9,y:0}}},
+    heavy:{neutral:{id:"athena_heavy_n",directionVariant:"neutral",startup:7,active:7,recovery:14,damage:12,knock:14.2,angle:-0.08,hitbox:{x:34,y:-18,w:90,h:66},effects:{visualType:"aegisBash"},selfImpulse:{x:2.8,y:0}},up:{id:"athena_heavy_u",directionVariant:"up",startup:7,active:7,recovery:15,damage:11,knock:12.8,angle:-1.2,hitbox:{x:8,y:-102,w:76,h:104},effects:{visualType:"guardianUpper"},startupArmor:8},down:{id:"athena_heavy_d",directionVariant:"down",startup:7,active:7,recovery:16,damage:13,knock:13.4,angle:-0.7,hitbox:{x:36,y:16,w:52,h:88},effects:{visualType:"spearPin"}}}
   }
 };
 function cloneMove(base, p, variant, inputType){ const m=JSON.parse(JSON.stringify(base)); m.godId=p.godId; m.inputType=inputType; m.directionVariant=variant; return m;}
 function getAttackVariant(player, inputType){ if(player.human){ if(keys["w"]) return "up"; if(keys["s"]) return "down"; return "neutral";} const t=player.ai.target||nearestEnemy(player); if(!t) return "neutral"; const dy=t.y-player.y; if(dy<-45) return "up"; if(dy>45) return "down"; return "neutral";}
 function moveToAttackKind(type){ return type; }
-function startMove(player, moveDef){ if (!moveDef || player.attackCooldown > 0 || player.dead) return false; const total=moveDef.startup+moveDef.active+moveDef.recovery; player.currentMove=moveDef; player.moveTimer=total; player.movePhase="startup"; player.moveVariant=moveDef.directionVariant||"neutral"; player.moveVisuals=[]; player.action=moveToAttackKind(moveDef.inputType); player.attackKind=moveDef.inputType; player.attackFrame=total; player.attackCooldown=Math.max(player.attackCooldown,total); if(moveDef.inputType==="heavy") player.vx*=.55; return true;}
-function spawnMoveHitbox(player, moveDef){ const hb=moveDef.hitbox; createAttack({owner:player,x:player.x+player.facing*hb.x,y:player.y+hb.y,w:hb.w,h:hb.h,damage:moveDef.damage*player.god.attackPower,knock:moveDef.knock,angle:moveDef.angle,frames:moveDef.active,color:player.god.accent||player.god.color,label:moveDef.inputType,visualType:(moveDef.effects||{}).visualType||"slashArc",visualAngle:moveDef.angle,visualLength:Math.max(hb.w,hb.h),visualThickness:Math.max(8,Math.min(hb.h,hb.w)/3),attachToOwner:true,offsetX:hb.x,offsetY:hb.y}); player.moveVisuals.push({type:(moveDef.effects||{}).visualType||"slashArc",frames:moveDef.active+3,angle:moveDef.angle,length:Math.max(hb.w,hb.h),thickness:14}); }
+function startMove(player, moveDef){ if (!moveDef || player.attackCooldown > 0 || player.dead) return false; const total=moveDef.startup+moveDef.active+moveDef.recovery; player.currentMove=moveDef; player.moveTimer=total; player.movePhase="startup"; player.moveVariant=moveDef.directionVariant||"neutral"; player.moveVisuals=[]; player.action=moveToAttackKind(moveDef.inputType); player.attackKind=moveDef.inputType; player.attackFrame=total; player.attackCooldown=Math.max(player.attackCooldown,total); if(moveDef.inputType==="heavy") player.vx*=.55; if(moveDef.selfImpulse){ player.vx += player.facing * (moveDef.selfImpulse.x||0); player.vy += moveDef.selfImpulse.y||0; } if(moveDef.startupArmor) player.invincible = Math.max(player.invincible, moveDef.startupArmor); return true;}
+function spawnMoveHitbox(player, moveDef){ const hb=moveDef.hitbox; let moveAngle=moveDef.angle; if(moveDef.id==="athena_heavy_d" && player.grounded) moveAngle=-0.12; if(moveDef.id==="athena_heavy_d" && !player.grounded) moveAngle=1.2; createAttack({owner:player,x:player.x+player.facing*hb.x,y:player.y+hb.y,w:hb.w,h:hb.h,damage:moveDef.damage*player.god.attackPower,knock:moveDef.knock,angle:moveAngle,frames:moveDef.active,color:player.god.accent||player.god.color,label:moveDef.inputType,visualType:(moveDef.effects||{}).visualType||"slashArc",visualAngle:moveDef.angle,visualLength:Math.max(hb.w,hb.h),visualThickness:Math.max(8,Math.min(hb.h,hb.w)/3),attachToOwner:true,offsetX:hb.x,offsetY:hb.y}); if(moveDef.id==="athena_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*56,y:player.y+30,w:80,h:14,damage:4*player.god.attackPower,knock:6.2,angle:-0.05,frames:5,color:"#eff8ff",label:"ground_line",visualType:"spearThrust"}); } player.moveVisuals.push({type:(moveDef.effects||{}).visualType||"slashArc",frames:moveDef.active+3,angle:moveDef.angle,length:Math.max(hb.w,hb.h),thickness:14}); }
 function lightAttack(p) {
   const v = getAttackVariant(p, "light");
   const defs = ATTACK_DEFS[p.godId] || ATTACK_DEFS.zeus;
@@ -1042,20 +1049,21 @@ function useSpecial(p) {
   }
 
   else if (id === "athena") {
-    createAttack({
-      owner: p,
-      x: p.x + p.facing * 45,
-      y: p.y,
-      w: 86,
-      h: 70,
-      damage: 8,
-      knock: 15,
-      angle: -0.1,
-      frames: 13,
-      color: "#f8f7ff",
-      label: "aegis"
-    });
-    p.vx -= p.facing * 3;
+    if (p.moveVariant === "up") {
+      p.vy = Math.min(p.vy, -12);
+      p.vx *= .65;
+      createAttack({owner:p,x:p.x,y:p.y-20,w:82,h:88,damage:5,knock:6.5,angle:-1.0,frames:10,color:"#e8f1ff",label:"owl_wing_rise",visualType:"owlWing"});
+      p.moveVisuals.push({type:"owlWing",frames:12,length:78,thickness:12});
+    } else if (p.moveVariant === "down") {
+      p.parryTimer = 16;
+      p.parryActive = true;
+      p.parryRecovery = 28;
+      p.moveVisuals.push({type:"parryField",frames:18,length:56,thickness:16});
+    } else {
+      createAttack({owner:p,x:p.x + p.facing * 58,y:p.y,w:106,h:64,damage:4,knock:18,angle:-0.08,frames:12,color:"#f2f7ff",label:"aegis_push",visualType:"aegisWall"});
+      p.moveVisuals.push({type:"aegisWall",frames:14,length:90,thickness:20});
+      p.vx -= p.facing * 1.5;
+    }
   }
 
   else if (id === "ra") {
@@ -1313,6 +1321,11 @@ function updateFighter(p) {
     else p.movePhase = "recovery";
     if (p.moveTimer <= 0) { p.currentMove = null; p.movePhase = "none"; }
   }
+  if (p.parryTimer > 0) p.parryTimer--;
+  else if (p.parryActive) {
+    p.parryActive = false;
+    p.attackCooldown = Math.max(p.attackCooldown, p.parryRecovery || 20);
+  }
   if (p.attackFrame > 0) {
     p.attackFrame--;
   } else if (["light", "heavy", "special", "ultimate", "dodge"].includes(p.action)) {
@@ -1520,6 +1533,16 @@ function updateProjectiles() {
 }
 
 function applyHit(target, source, damage, knock, angle, dir, color) {
+  if (target.parryActive) {
+    target.parryActive = false;
+    target.parryTimer = 0;
+    target.damage += damage * .35;
+    target.vx = dir * knock * .2;
+    target.vy = -2;
+    createAttack({owner:target,x:target.x,y:target.y,w:120,h:90,damage:7,knock:10,angle:-0.25,frames:5,color:"#e8f1ff",label:"parry_counter",visualType:"shockwave"});
+    spawnParticles(target.x, target.y, "#eef6ff", 18, 6);
+    return;
+  }
   target.damage += damage;
 
   const scale = 1 + target.damage / 95;
@@ -1972,12 +1995,12 @@ function drawActiveMoveVisual(ctx, player) {
     v.frames--;
     const color = player.god.accent || player.god.color;
     const type=v.type;
-    if (["slashArc","hammerSwing","solarSweep","jackalClaw","daggerFlurry","groundSlam","staticSweep","thunderStomp"].includes(type)) {
+    if (["slashArc","hammerSwing","solarSweep","jackalClaw","daggerFlurry","groundSlam","staticSweep","thunderStomp","spearLift","guardianUpper","owlWing"].includes(type)) {
       drawAttackArc(ctx,{x:handX,y:handY,color,length:v.length||52,thickness:v.thickness||14,startA:(player.facing===1?-1.4:Math.PI+0.2),endA:(player.facing===1?.4:Math.PI-1.2)});
-    } else if (["stabLine","beam","lightningJab","shieldBash","shockwave","uppercut","boltSpear","uppercutSpark","stormPillar"].includes(type)) {
+    } else if (["stabLine","beam","lightningJab","shieldBash","shockwave","uppercut","boltSpear","uppercutSpark","stormPillar","spearThrust","shieldCheck","aegisBash","spearPin","aegisWall","parryField"].includes(type)) {
       ctx.strokeStyle=color; ctx.lineWidth=screenScale(v.thickness||10); ctx.globalAlpha=.8; ctx.beginPath();
       ctx.moveTo(worldToScreenX(handX), worldToScreenY(handY));
-      const tx=handX + player.facing*(v.length||65); const ty=handY + ((type==="uppercut"||type==="uppercutSpark")?-55:(type==="stormPillar"?-95:0));
+      const tx=handX + player.facing*(v.length||65); const ty=handY + ((type==="uppercut"||type==="uppercutSpark"||type==="guardianUpper")?-55:(type==="stormPillar"?-95:(type==="spearPin"?48:0)));
       ctx.lineTo(worldToScreenX(tx), worldToScreenY(ty)); ctx.stroke(); ctx.globalAlpha=1;
     }
     if (v.frames<=0) player.moveVisuals.splice(i,1);
