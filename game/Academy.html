@@ -2316,11 +2316,13 @@ function updateProjectiles() {
     }
 
     if (Math.random() < .45) {
+      const pvx = pr.vx || 0;
+      const pvy = pr.vy || 0;
       particles.push({
         x: pr.x,
         y: pr.y,
-        vx: (Math.random() - .5) * 2,
-        vy: (Math.random() - .5) * 2,
+        vx: -pvx * 0.15 + (Math.random() - .5) * 1.2,
+        vy: -pvy * 0.15 + (Math.random() - .5) * 1.2,
         life: 18,
         size: 3 + Math.random() * 5,
         color: pr.color
@@ -2364,8 +2366,8 @@ function resolveImpactMeta(source, impact = {}, knock = 8) {
   const baseType = impact.impactType || (source?.godId === "zeus" ? "lightning" : source?.godId === "athena" ? "shield" : source?.godId === "ra" ? "solar" : source?.godId === "anubis" ? "soul" : "heavyImpact");
   const heavy = knock >= 11;
   const light = knock <= 6.2;
-  const hitPause = impact.hitPause ?? clamp(Math.round(knock / 2.6), 3, 8);
-  let extraShake = impact.extraShake ?? (heavy ? 3 : light ? 0.6 : 1.5);
+  const hitPause = impact.hitPause ?? (heavy ? 6 : light ? 2 : 4);
+  let extraShake = impact.extraShake ?? (heavy ? 5 : light ? 1.2 : 2.2);
   if (source?.godId === "thor" && heavy) extraShake += 3.5;
   if (source?.godId === "loki" && light) extraShake = Math.min(extraShake, 0.8);
   const impactColor = impact.impactColor || source?.god?.accent || source?.god?.color || "#ffffff";
@@ -2437,6 +2439,20 @@ function spawnParticles(x, y, color, count, speed) {
       color
     });
   }
+}
+
+
+function spawnStatusText(x, y, text, color) {
+  particles.push({
+    x,
+    y,
+    vx: 0,
+    vy: -1.2,
+    life: 45,
+    size: 12,
+    color,
+    text
+  });
 }
 
 function updateParticles() {
@@ -2613,7 +2629,35 @@ function drawFighter(p) {
     ctx.stroke();
   }
 
+  drawStatusIcons(p, x, y, s);
+
   ctx.globalAlpha = 1;
+}
+
+
+function drawStatusIcons(p, x, y, s) {
+  const icons = [];
+  if (p.conductiveTimer > 0) icons.push({t:"⚡", c:"#a5f3fc"});
+  if (p.parryActive || (p.athenaGuardBonus||0) > 4) icons.push({t:"🛡", c:"#dbeafe"});
+  if (p.scorchTimer > 0) icons.push({t:"🔥", c:"#fb923c"});
+  if (p.soulMarkTimer > 0) icons.push({t:"☥", c:"#5eead4"});
+  if (p.armorTimer > 0) icons.push({t:"⛨", c:"#bfdbfe"});
+  if (p.confusedTimer > 0) icons.push({t:"❖", c:"#86efac"});
+  if (p.horusGlideTimer > 0) icons.push({t:"🪽", c:"#7dd3fc"});
+  if (p.mudSlowTimer > 0 || p.jumpDebuffTimer > 0) icons.push({t:"🟤", c:"#b08968"});
+  const startX = x - ((icons.length - 1) * screenScale(10));
+  icons.forEach((ic, i) => {
+    const ix = startX + i * screenScale(20);
+    const iy = y - screenScale(90);
+    ctx.globalAlpha = .85;
+    ctx.fillStyle = "rgba(10,15,28,.75)";
+    ctx.fillRect(ix - screenScale(9), iy - screenScale(9), screenScale(18), screenScale(18));
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = ic.c;
+    ctx.font = `${Math.max(10, 14 * s)}px Arial`;
+    ctx.textAlign = "center";
+    ctx.fillText(ic.t, ix, iy + screenScale(5));
+  });
 }
 
 function drawPixelGod(c, p, x, y, s) {
@@ -3130,6 +3174,7 @@ function drawProjectile(pr) {
   }
 
   if (pr.type === "eyeMark") {
+    if (pr.life % 30 === 0) spawnStatusText(pr.x, pr.y - 20, "EYE", "#ffd166");
     const pulse = .45 + Math.abs(Math.sin(matchTime / 8 + pr.life * .1)) * .4;
     ctx.globalAlpha = pulse;
     ctx.fillStyle = "rgba(255,209,102,.35)";
@@ -3144,6 +3189,7 @@ function drawProjectile(pr) {
   }
 
   if (pr.type === "mirrorTrap") {
+    if (pr.life % 45 === 0) spawnStatusText(pr.x, pr.y - 22, "TRAP", "#86efac");
     const pulse = 1 + Math.sin(matchTime / 7) * .16;
     ctx.globalAlpha = .52;
     ctx.strokeStyle = "#86efac";
@@ -3240,6 +3286,14 @@ function drawProjectile(pr) {
 
 function drawParticle(p) {
   ctx.globalAlpha = Math.max(0, Math.min(1, p.life / 30));
+  if (p.text) {
+    ctx.fillStyle = p.color || "#fff";
+    ctx.font = `${Math.max(10, screenScale(p.size || 12))}px Arial`;
+    ctx.textAlign = "center";
+    ctx.fillText(p.text, worldToScreenX(p.x), worldToScreenY(p.y));
+    ctx.globalAlpha = 1;
+    return;
+  }
   ctx.fillStyle = p.color;
   ctx.fillRect(
     worldToScreenX(p.x),
@@ -3247,6 +3301,7 @@ function drawParticle(p) {
     screenScale(p.size),
     screenScale(p.size)
   );
+
   ctx.globalAlpha = 1;
 }
 
