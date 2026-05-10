@@ -1872,15 +1872,7 @@ function useUltimate(p) {
   }
 
   else if (p.godId === "horus") {
-    p.vy = -8;
-    for (let i = 0; i < 6; i++) {
-      const dir = i % 2 === 0 ? 1 : -1;
-      const sx = 250 + Math.random() * 840;
-      const sy = 300 + Math.random() * 240;
-      createAttack({owner:p,x:sx,y:sy,w:170,h:42,damage:16,knock:14,angle:-0.85,frames:10,color:"#2ec4ff",label:"ult",visualType:"falconStorm"});
-      spawnParticles(sx + dir * 12, sy - 8, "#ffd166", 18, 6);
-      shake = Math.max(shake, 13);
-    }
+    startHorusUltimate(p);
   }
 
   else if (p.godId === "loki") {
@@ -1940,6 +1932,43 @@ function spawnProjectile(p) {
   p.hit = new Set();
   p.dir = p.dir || getFacingDir(p.owner);
   projectiles.push(p);
+}
+
+function startHorusUltimate(p) {
+  const dir = getFacingDir(p);
+  p.ultimateState = "horusRise";
+  p.ultimateTimer = 24;
+  p.ultimateDir = dir;
+  p.vy = -24;
+  p.vx = dir * 3;
+  p.invincible = Math.max(p.invincible, 36);
+  p.attackCooldown = 90;
+  p.action = "ultimate";
+  p.attackKind = "ultimate";
+  p.attackFrame = 70;
+  spawnParticles(p.x, p.y, "#2ec4ff", 36, 8);
+  spawnParticles(p.x, p.y, "#ffd166", 24, 6);
+  shake = Math.max(shake, 10);
+}
+
+function fireHorusBladeFan(p) {
+  const dir = p.ultimateDir || getFacingDir(p);
+  const bladeCount = 11;
+  const baseSpeed = 12.5;
+  for (let i = 0; i < bladeCount; i++) {
+    const spread = i - Math.floor(bladeCount / 2);
+    const angle = Math.PI / 2 + spread * 0.12 - dir * 0.28;
+    const vx = Math.cos(angle) * baseSpeed;
+    const vy = Math.sin(angle) * baseSpeed;
+    spawnProjectile({
+      owner: p, type: "horusBlade", dir, x: p.x + spread * 8, y: p.y + 12, vx, vy, w: 14, h: 34,
+      life: 90, damage: 9, knock: 8.5, color: "#ffd166", gravity: 0.08, blade: true, pierce: false,
+      platformDestroy: true, rotation: angle, spin: 0.04 * spread
+    });
+  }
+  spawnParticles(p.x, p.y + 16, "#2ec4ff", 38, 7);
+  spawnParticles(p.x, p.y + 16, "#ffd166", 32, 7);
+  shake = Math.max(shake, 12);
 }
 
 function updateFighter(p) {
@@ -2122,6 +2151,41 @@ function updateFighter(p) {
     }
   }
 
+  if (p.ultimateState === "horusRise") {
+    p.ultimateTimer--;
+    p.action = "ultimate";
+    p.attackKind = "ultimate";
+    p.attackFrame = Math.max(p.attackFrame, 20);
+    if (p.ultimateTimer <= 0) {
+      p.ultimateState = "horusHover";
+      p.ultimateTimer = 28;
+      p.vx *= 0.2;
+      p.vy = -1;
+      p.invincible = Math.max(p.invincible, 30);
+      spawnParticles(p.x, p.y, "#ffd166", 32, 5);
+    }
+  }
+
+  if (p.ultimateState === "horusHover") {
+    p.ultimateTimer--;
+    p.action = "ultimate";
+    p.attackKind = "ultimate";
+    p.attackFrame = Math.max(p.attackFrame, 16);
+    p.vx *= 0.86;
+    p.vy *= 0.5;
+    if (p.ultimateTimer === 18) fireHorusBladeFan(p);
+    if (p.ultimateTimer <= 0) {
+      p.ultimateState = "horusRecover";
+      p.ultimateTimer = 20;
+    }
+  }
+
+  if (p.ultimateState === "horusRecover") {
+    p.ultimateTimer--;
+    p.action = "air";
+    if (p.ultimateTimer <= 0) p.ultimateState = null;
+  }
+
   p.vy += (p.godId === "horus" && p.horusGlideTimer > 0 && !p.grounded ? 0.28 : 0.78);
   if (p.godId === "horus" && p.horusGlideTimer > 0 && !p.grounded) p.vx *= 0.996;
 
@@ -2302,6 +2366,24 @@ function updateProjectiles() {
     pr.x += pr.vx;
     pr.y += pr.vy;
 
+    if (pr.type === "horusBlade") {
+      pr.rotation = (pr.rotation || Math.atan2(pr.vy, pr.vx)) + (pr.spin || 0);
+    }
+
+    if (pr.type === "horusBlade" && pr.platformDestroy) {
+      for (const plat of currentMap.platforms) {
+        const px1 = pr.x - pr.w / 2;
+        const px2 = pr.x + pr.w / 2;
+        const py1 = pr.y - pr.h / 2;
+        const py2 = pr.y + pr.h / 2;
+        if (px2 > plat.x && px1 < plat.x + plat.w && py2 > plat.y && py1 < plat.y + plat.h) {
+          spawnParticles(pr.x, pr.y, "#ffd166", 12, 4);
+          pr.life = 0;
+          break;
+        }
+      }
+    }
+
     if (pr.type === "hammer") {
       pr.spin = (pr.spin || 0) + 0.34 * (Math.sign(pr.vx) || 1);
       if (pr.boomerang && pr.life < 34 && pr.owner && !pr.owner.dead) {
@@ -2405,10 +2487,14 @@ function updateProjectiles() {
         if (overlaps) {
           pr.hit.add(p.id);
           if (pr.type === "hammer" && pr.phase === "return") { if (!pr.returnHits) pr.returnHits = new Set(); pr.returnHits.add(p.id); }
-          const dir = pr.dir || getFacingDir(pr.owner);
-          applyHit(p, pr.owner, pr.damage, pr.knock, pr.type === "hook" ? -0.18 : -.3, dir, pr.color, {x: pr.x, y: pr.y, impactType: pr.type === "bolt" ? "lightning" : pr.type === "sun" ? "solar" : undefined});
+          const bladeAngle = pr.type === "horusBlade" ? Math.max(-1.15, Math.min(0.2, -Math.abs(pr.vy) / 10)) : -.3;
+          const hitDir = pr.type === "horusBlade"
+            ? Math.sign(pr.vx) || pr.dir || getFacingDir(pr.owner)
+            : pr.dir || Math.sign(p.x - pr.owner.x) || getFacingDir(pr.owner);
+          applyHit(p, pr.owner, pr.damage, pr.knock, pr.type === "hook" ? -0.18 : bladeAngle, hitDir, pr.color, {x: pr.x, y: pr.y, impactType: pr.type === "bolt" ? "lightning" : pr.type === "sun" ? "solar" : pr.type === "horusBlade" ? "blade" : undefined});
           if (pr.type === "bolt") p.conductiveTimer = Math.max(p.conductiveTimer || 0, 180);
           if (pr.type === "sun") p.scorchTimer = Math.max(p.scorchTimer || 0, 150);
+          if (pr.type === "horusBlade") pr.life = 0;
 
           if (pr.pull) {
             const markedHook = pr.type === "hook" && p.soulMarkTimer > 0 && p.soulMarkSource === pr.owner.id;
@@ -3047,6 +3133,8 @@ function getPoseForMove(p) {
   const t = progress.t;
   const phase = progress.phase;
   const phaseT = progress.phaseT;
+  if (p.godId === "horus" && p.ultimateState === "horusRise") return { ...base, frontArmY: -20, backArmY: -20, stretch: 1.12, headTilt: -0.08 };
+  if (p.godId === "horus" && p.ultimateState === "horusHover") return { ...base, frontArmX: p.facing * 22, frontArmY: -24, backArmX: -p.facing * 20, backArmY: -24, stretch: 1.08 };
   if (m.id === "athena_light_n") return { ...base, bodyLean: p.facing * (4 + 13 * t), frontArmX: p.facing * (20 * t), frontArmY: -6 * t, backArmX: -p.facing * 5, shieldX: p.facing * (4 + 8 * t), shieldY: -3 * t, weaponReach: 18 * t, weaponAngle: -0.12 };
   if (m.id === "thor_heavy_n") return { ...base, bodyLean: p.facing * 10, crouch: 8 * (1 - t), frontArmX: p.facing * 14, frontArmY: -18 * t, backArmY: 6, weaponAngle: -1.6 + t * 2.2, headTilt: .12, squash: 1.1, stretch: .92 };
   if (m.id && m.id.startsWith("anubis_light")) return { ...base, bodyLean: p.facing * (3 + 6 * t), frontArmX: p.facing * (Math.cos(t * Math.PI) * 14), frontArmY: -Math.sin(t * Math.PI) * 16, backArmY: -2, weaponAngle: -0.6 + Math.sin(t * Math.PI) * 1.1, headTilt: -0.08 };
@@ -3314,6 +3402,31 @@ function drawProjectile(pr) {
   const s = camera.zoom;
   const w = screenScale(pr.w);
   const h = screenScale(pr.h);
+
+  if (pr.type === "horusBlade") {
+    ctx.save();
+    ctx.translate(x, y);
+    const rot = pr.rotation || Math.atan2(pr.vy, pr.vx) - Math.PI / 2;
+    ctx.rotate(rot + Math.PI / 2);
+    ctx.globalAlpha = 0.92;
+    ctx.fillStyle = "#ffd166";
+    ctx.beginPath();
+    ctx.moveTo(0, -h * 0.55);
+    ctx.lineTo(w * 0.45, h * 0.25);
+    ctx.lineTo(0, h * 0.55);
+    ctx.lineTo(-w * 0.45, h * 0.25);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#2ec4ff";
+    ctx.lineWidth = screenScale(2);
+    ctx.stroke();
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = "#2ec4ff";
+    ctx.fillRect(-w * 0.12, h * 0.15, w * 0.24, h * 0.8);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    return;
+  }
 
   if (pr.type === "clone") {
     const flicker = pr.flicker ? (.34 + Math.abs(Math.sin(matchTime * .33 + pr.life * .25)) * .34) : .65;
