@@ -1694,6 +1694,12 @@ function heavyAttack(p) {
   const v = getAttackVariant(p, "heavy");
   const defs = ATTACK_DEFS[p.godId] || ATTACK_DEFS.zeus;
   const move = cloneMove(defs.heavy[v] || defs.heavy.neutral, p, v, "heavy");
+  if (p.godId === "horus" && v === "up") {
+    p.vy = Math.min(p.vy, -23);
+    p.vx *= 0.42;
+    p.horusTwirlTimer = Math.max(p.horusTwirlTimer || 0, 22);
+    spawnParticles(p.x, p.y + 8, "#4cc9f0", 20, 5);
+  }
   if (startMove(p, move)) shake = Math.max(shake, move.directionVariant === "up" ? 5 : 4);
 }
 
@@ -1789,12 +1795,22 @@ function useSpecial(p) {
 
   else if (id === "anubis") {
     if (p.moveVariant === "up") {
-      p.invincible = Math.max(p.invincible, 9);
-      p.vy = -15;
-      p.vx = p.facing * 6.2;
-      createAttack({owner:p,x:p.x + p.facing * 18,y:p.y-30,w:64,h:46,damage:5,knock:6.2,angle:-0.88,frames:7,color:"#8ffcff",label:"afterlife_step",visualType:"afterlifeStep"});
-      p.moveVisuals.push({type:"afterlifeStep",frames:10,length:70,thickness:14});
-      spawnParticles(p.x - p.facing * 12, p.y + 10, "#5c2a9d", 20, 5);
+      spawnProjectile({
+        owner: p,
+        type: "anubisGrapple",
+        x: p.x + p.facing * 18,
+        y: p.y - 20,
+        vx: p.facing * 12.8,
+        vy: -5.2,
+        w: 48,
+        h: 20,
+        life: 34,
+        damage: 11,
+        knock: 7,
+        color: "#8ffcff"
+      });
+      p.moveVisuals.push({type:"afterlifeStep",frames:12,length:80,thickness:12});
+      spawnParticles(p.x, p.y, "#8ffcff", 16, 5);
     } else if (p.moveVariant === "down") {
       createAttack({owner:p,x:p.x + p.facing * 46,y:p.y+4,w:84,h:70,damage:2,knock:2.4,angle:-0.08,frames:10,color:"#62ffe4",label:"soul_mark",visualType:"soulMarkBurst"});
       p.moveVisuals.push({type:"soulMarkBurst",frames:11,length:62,thickness:11});
@@ -1855,7 +1871,8 @@ function useSpecial(p) {
       if (sideDash) {
         p.invincible = Math.max(p.invincible, 10);
         p.vy = Math.min(p.vy, 1.6);
-        p.vx = dir * 18.5;
+        p.vx = dir * 27.5;
+        p.horusDashTrailTimer = Math.max(p.horusDashTrailTimer || 0, 18);
         createAttack({owner:p,x:p.x + p.facing * 34,y:p.y-8,w:118,h:36,damage:10,knock:12.8,angle:-0.09,frames:10,color:"#2ec4ff",label:"falcon_dash",visualType:"falconDive",attachToOwner:true,offsetX:34,offsetY:-8});
       } else {
         const gliding = !p.grounded;
@@ -2380,8 +2397,9 @@ function detonateAnubisCircleUltimate(p) {
     if (dist <= radius) {
       p.anubisUltHit.add(t.id);
       const dir = Math.sign(dx) || getFacingDir(p);
+      const outAngle = Math.atan2(dy, dx);
       const centerBonus = 1 - clamp(dist / radius, 0, 1);
-      applyHit(t, p, 26 + centerBonus * 8, 23 + centerBonus * 8, -0.95, dir, "#ff1744", { x: t.x, y: t.y - 12, impactType: "soul", impactColor: "#ff1744", hitPause: 10, extraShake: 8, cueType: "soul" });
+      applyHit(t, p, 26 + centerBonus * 8, 23 + centerBonus * 8, outAngle, dir, "#ff1744", { x: t.x, y: t.y - 12, impactType: "soul", impactColor: "#ff1744", hitPause: 10, extraShake: 8, cueType: "soul" });
       t.soulMarkTimer = Math.max(t.soulMarkTimer || 0, 180);
       t.soulMarkSource = p.id;
       spawnParticles(t.x, t.y, "#ff1744", 34, 8);
@@ -2566,6 +2584,14 @@ function updateFighter(p) {
   if (p.perfectDodgeTimer > 0) p.perfectDodgeTimer--;
   if (p.thorHeavyArmorTimer > 0) p.thorHeavyArmorTimer--;
   if (p.horusGlideTimer > 0) p.horusGlideTimer--;
+  if (p.horusDashTrailTimer > 0) {
+    p.horusDashTrailTimer--;
+    if (Math.random() < 0.9) spawnParticles(p.x - p.facing * 20, p.y, "#2ec4ff", 3, 1.8);
+  }
+  if (p.horusTwirlTimer > 0) {
+    p.horusTwirlTimer--;
+    if (Math.random() < 0.8) spawnParticles(p.x + (Math.random() - 0.5) * 18, p.y - 24, "#4cc9f0", 2, 1.2);
+  }
   if (p.armorTimer > 0) p.armorTimer--;
   if (p.confusedTimer > 0) p.confusedTimer--;
   if (p.grabImmunityTimer > 0) p.grabImmunityTimer--;
@@ -3058,6 +3084,44 @@ function updateProjectiles() {
       });
       if (triggered && Math.random() < .5) spawnParticles(pr.x + (Math.random()-.5)*pr.w, pr.y, "#5c4a2e", 4, 1.8);
     } else {
+      if (pr.type === "anubisGrapple") {
+        let latched = false;
+        players.forEach(t => {
+          if (latched || t === pr.owner || t.dead || t.invincible > 0) return;
+          const overlaps =
+            pr.x - pr.w/2 < t.x + t.w/2 &&
+            pr.x + pr.w/2 > t.x - t.w/2 &&
+            pr.y - pr.h/2 < t.y + t.h/2 &&
+            pr.y + pr.h/2 > t.y - t.h/2;
+          if (!overlaps) return;
+          latched = true;
+          applyHit(t, pr.owner, pr.damage, pr.knock, -1.15, Math.sign(t.x - pr.x) || getFacingDir(pr.owner), pr.color, {x: pr.x, y: pr.y, impactType: "soul"});
+          if (pr.owner && !pr.owner.dead) {
+            const tx = t.x - pr.owner.x;
+            const ty = (t.y - 20) - pr.owner.y;
+            const d = Math.max(1, Math.hypot(tx, ty));
+            pr.owner.vx += (tx / d) * 20;
+            pr.owner.vy += (ty / d) * 20;
+          }
+          pr.life = 0;
+        });
+        for (const plat of currentMap.platforms) {
+          if (latched) break;
+          if (pr.x > plat.x && pr.x < plat.x + plat.w && pr.y > plat.y - 20 && pr.y < plat.y + plat.h + 10) {
+            latched = true;
+            if (pr.owner && !pr.owner.dead) {
+              const tx = pr.x - pr.owner.x;
+              const ty = (pr.y - 20) - pr.owner.y;
+              const d = Math.max(1, Math.hypot(tx, ty));
+              pr.owner.vx += (tx / d) * 22;
+              pr.owner.vy += (ty / d) * 22;
+              pr.owner.invincible = Math.max(pr.owner.invincible, 6);
+            }
+            spawnParticles(pr.x, pr.y, "#8ffcff", 12, 4);
+            pr.life = 0;
+          }
+        }
+      }
       if (pr.type === "clone" && pr.seek && pr.owner && !pr.owner.dead) {
         const target = nearestEnemy(pr.owner);
         if (target) {
@@ -3101,9 +3165,10 @@ function updateProjectiles() {
 
           if (pr.pull) {
             const markedHook = pr.type === "hook" && p.soulMarkTimer > 0 && p.soulMarkSource === pr.owner.id;
-            p.vx += -dir * (markedHook ? 12.5 : 9);
-            p.vy -= markedHook ? 4 : 3;
-            if (markedHook && pr.owner && !pr.owner.dead) pr.owner.vx += dir * 3.8;
+            const pullDir = pr.owner ? Math.sign(pr.owner.x - p.x) || getFacingDir(pr.owner) : -1;
+            p.vx += pullDir * (markedHook ? 14.5 : 11.5);
+            if (pr.owner) p.vy += Math.sign(pr.owner.y - p.y) * (markedHook ? 4.8 : 3.5);
+            if (markedHook && pr.owner && !pr.owner.dead) pr.owner.vx -= pullDir * 2.2;
           }
 
           if (pr.chain) {
