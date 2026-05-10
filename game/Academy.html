@@ -1937,20 +1937,71 @@ function useUltimate(p) {
   }
 
   else if (p.godId === "athena") {
-    createAttack({
+    const dir = getFacingDir(p);
+
+    ultFlash = 12;
+    ultFlashColor = "#d8e2ff";
+
+    p.invincible = Math.max(p.invincible, 80);
+    p.vx *= 0.2;
+    p.attackCooldown = Math.max(p.attackCooldown, 70);
+
+    addTelegraph({
+      type: "rect",
       owner: p,
-      x: p.x,
+      x: p.x + dir * 150,
       y: p.y,
-      w: 310,
-      h: 130,
-      damage: 14,
-      knock: 22,
-      angle: -0.5,
-      frames: 28,
-      color: "#f8f7ff",
-      label: "ult"
+      w: 300,
+      h: 125,
+      dir,
+      color: "#d8e2ff",
+      label: "AEGIS",
+      icon: "🛡️",
+      life: 24
     });
-    p.invincible = 80;
+
+    spawnParticles(p.x, p.y, "#d8e2ff", 34, 5);
+    spawnParticles(p.x, p.y - 30, "#ffffff", 20, 4);
+
+    setTimeout(() => {
+      createAttack({
+        owner: p,
+        x: p.x + dir * 145,
+        y: p.y,
+        w: 300,
+        h: 135,
+        damage: 9,
+        knock: 20,
+        angle: -0.22,
+        frames: 18,
+        color: "#f8f7ff",
+        label: "athena_ult_aegis_wall",
+        visualType: "aegisWall"
+      });
+
+      spawnParticles(p.x + dir * 145, p.y, "#f8f7ff", 38, 7);
+      shake = Math.max(shake, 9);
+    }, 260);
+
+    setTimeout(() => {
+      createAttack({
+        owner: p,
+        x: p.x + dir * 260,
+        y: p.y - 8,
+        w: 330,
+        h: 38,
+        damage: 12,
+        knock: 17,
+        angle: -0.35,
+        frames: 11,
+        color: "#ffffff",
+        label: "athena_ult_spear_judgment",
+        visualType: "spearThrust"
+      });
+
+      spawnParticles(p.x + dir * 250, p.y - 8, "#ffffff", 28, 6);
+      shake = Math.max(shake, 12);
+    }, 430);
   }
 
   else if (p.godId === "ra") {
