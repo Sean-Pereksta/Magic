@@ -155,6 +155,32 @@
     margin: 18px 0;
   }
 
+  .move-style {
+    margin: 8px 0 14px;
+    padding: 10px;
+    border: 2px solid #40508b;
+    background: #131f42;
+    font-size: 12px;
+    line-height: 1.35;
+    color: #d9e1ff;
+  }
+
+  .move-style-title {
+    color: #ffd166;
+    font-size: 13px;
+    font-weight: bold;
+    margin-bottom: 6px;
+    letter-spacing: .4px;
+  }
+
+  .move-style-row {
+    margin: 2px 0;
+  }
+
+  .move-style-key {
+    color: #b8c0ff;
+  }
+
   label {
     display: block;
     font-size: 15px;
@@ -297,6 +323,8 @@
             <div id="selectedGodText" style="font-size:24px;color:#06d6a0;font-weight:bold;">Zeus</div>
           </div>
 
+          <div id="moveStylePanel" class="move-style"></div>
+
           <div class="setting-row">
             <label for="botCount">Number of Bots</label>
             <select id="botCount">
@@ -403,6 +431,13 @@ const GODS = {
     pantheon: "Greek",
     role: "Ranged Bruiser",
     desc: "Lightning bolts, chain sparks, strong aerial control.",
+    moveStyle: {
+      role: "Lightning bruiser",
+      neutral: "Bolts and forward pressure.",
+      up: "Storm anti-air and recovery.",
+      down: "Thunder stomps and judgment strikes.",
+      special: "Chain Lightning / Storm Ascent / Sky Judgment."
+    },
     color: "#f4d35e",
     dark: "#8a6f10",
     accent: "#ffffff",
@@ -421,6 +456,13 @@ const GODS = {
     pantheon: "Greek",
     role: "Shield Strategist",
     desc: "Balanced fighter with defensive shield bursts.",
+    moveStyle: {
+      role: "Defensive tactician",
+      neutral: "Shield pokes, spear confirms, spacing control.",
+      up: "Aegis lift anti-air into aerial resets.",
+      down: "Guarded ground checks and counter stance pressure.",
+      special: "Aegis Push / Spear Vault / Owl Guard."
+    },
     color: "#71d6ff",
     dark: "#2d5d83",
     accent: "#f8f7ff",
@@ -439,6 +481,13 @@ const GODS = {
     pantheon: "Egyptian",
     role: "Solar Zoner",
     desc: "Sun disks and beams control the stage.",
+    moveStyle: {
+      role: "Solar zoner",
+      neutral: "Sun disks and beam lanes lock space.",
+      up: "Radiant pillar anti-air and float recovery.",
+      down: "Ground flare traps and scorch denial.",
+      special: "Solar Orb / Dawn Beam / Sunfall Rite."
+    },
     color: "#ff9f1c",
     dark: "#a9500a",
     accent: "#ffea00",
@@ -457,6 +506,13 @@ const GODS = {
     pantheon: "Egyptian",
     role: "Soul Assassin",
     desc: "Marks enemies and punishes damaged targets.",
+    moveStyle: {
+      role: "Mark-and-burst assassin",
+      neutral: "Fast confirms that apply soul marks.",
+      up: "Soul hook snatch and rising punish routes.",
+      down: "Burial slashes that cash out marked damage.",
+      special: "Soul Hook / Tomb Rise / Reaper Seal."
+    },
     color: "#7b2cbf",
     dark: "#231942",
     accent: "#80ffdb",
@@ -475,6 +531,13 @@ const GODS = {
     pantheon: "Norse",
     role: "Heavy Hammer",
     desc: "Slow, heavy, huge knockback, thunder hammer.",
+    moveStyle: {
+      role: "Armor-heavy juggernaut",
+      neutral: "Hammer swings with high knockback threat.",
+      up: "Thunder uppercut and hammer lift recovery.",
+      down: "Earthshaker slams and armor-crush pressure.",
+      special: "Mjolnir Throw / Storm Lift / Worldbreaker."
+    },
     color: "#e63946",
     dark: "#6d1a22",
     accent: "#cce3ff",
@@ -493,6 +556,13 @@ const GODS = {
     pantheon: "Norse",
     role: "Trickster",
     desc: "Fast daggers, clones, slippery movement.",
+    moveStyle: {
+      role: "Mobility trickster",
+      neutral: "Dagger strings, feints, and sidestep pressure.",
+      up: "Clone-assisted anti-air and evasive rise.",
+      down: "Low fake-outs into backstab conversions.",
+      special: "Trick Clone / Shadow Step / Mirage Bind."
+    },
     color: "#06d6a0",
     dark: "#064e3b",
     accent: "#caffbf",
@@ -561,6 +631,7 @@ function buildGodGrid() {
     card.onclick = () => {
       selectedGod = id;
       document.getElementById("selectedGodText").textContent = god.name;
+      updateMoveStylePanel();
       buildGodGrid();
     };
     grid.appendChild(card);
@@ -568,6 +639,20 @@ function buildGodGrid() {
     const avatar = card.querySelector("canvas");
     drawAvatar(avatar.getContext("2d"), god, 26, 28, 2.2);
   });
+}
+
+function updateMoveStylePanel() {
+  const god = GODS[selectedGod];
+  const move = god.moveStyle;
+  const panel = document.getElementById("moveStylePanel");
+  panel.innerHTML = `
+    <div class="move-style-title">Move Style</div>
+    <div class="move-style-row"><span class="move-style-key">Role:</span> ${move.role}</div>
+    <div class="move-style-row"><span class="move-style-key">Neutral:</span> ${move.neutral}</div>
+    <div class="move-style-row"><span class="move-style-key">Up:</span> ${move.up}</div>
+    <div class="move-style-row"><span class="move-style-key">Down:</span> ${move.down}</div>
+    <div class="move-style-row"><span class="move-style-key">Special:</span> ${move.special}</div>
+  `;
 }
 
 function drawAvatar(c, god, x, y, scale) {
@@ -636,6 +721,7 @@ function drawAvatar(c, god, x, y, scale) {
 }
 
 buildGodGrid();
+updateMoveStylePanel();
 
 document.getElementById("startBtn").onclick = startGame;
 document.getElementById("returnBtn").onclick = () => {
