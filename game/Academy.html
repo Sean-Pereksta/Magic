@@ -652,6 +652,31 @@ const GODS = {
     specialCooldown: 68,
     specialName: "Nile Lunge"
   },
+  bastet: {
+    id: "bastet",
+    name: "Bastet",
+    pantheon: "Egyptian",
+    role: "Feline Duelist",
+    desc: "A fast cat-headed goddess with claw strings, charm effects, moon pounces, and evasive pressure.",
+    moveStyle: {
+      role: "Evasive feline duelist",
+      neutral: "Fast claw strings, dash slashes, and pressure resets.",
+      up: "Leaping claw anti-airs and moonlit aerial movement.",
+      down: "Low sweeps, trip attacks, and charm traps.",
+      special: "Moon Pounce / Cat Step / Charming Gaze."
+    },
+    color: "#d4af37",
+    dark: "#111111",
+    accent: "#b66dff",
+    skin: "#151515",
+    hpColor: "#ffd166",
+    speed: 6.1,
+    jump: 16.8,
+    weight: .86,
+    attackPower: .9,
+    specialCooldown: 46,
+    specialName: "Moon Pounce"
+  },
   loki: {
     id: "loki",
     name: "Loki",
@@ -679,7 +704,7 @@ const GODS = {
   }
 };
 
-const GOD_ORDER = ["zeus", "athena", "ra", "anubis", "thor", "loki", "horus", "sobek"];
+const GOD_ORDER = ["zeus", "athena", "ra", "anubis", "thor", "loki", "horus", "sobek", "bastet"];
 
 const MAPS = {
   temple: {
@@ -916,6 +941,24 @@ function drawAvatar(c, god, x, y, scale) {
     c.fillRect(x - 13*s, y + 8*s, 4*s, 3*s);
     c.fillRect(x - 15*s, y + 7*s, 2*s, 2*s);
   }
+  if (god.id === "bastet") {
+    c.fillStyle = "#111111";
+    c.fillRect(x - 9*s, y - 14*s, 18*s, 10*s);
+    c.fillRect(x - 10*s, y - 19*s, 5*s, 7*s);
+    c.fillRect(x + 5*s, y - 19*s, 5*s, 7*s);
+    c.fillStyle = "#ffd166";
+    c.fillRect(x - 5*s, y - 10*s, 3*s, 2*s);
+    c.fillRect(x + 2*s, y - 10*s, 3*s, 2*s);
+    c.fillStyle = "#d4af37";
+    c.fillRect(x - 8*s, y - 3*s, 16*s, 3*s);
+    c.fillStyle = "#b66dff";
+    c.fillRect(x - 5*s, y + 1*s, 10*s, 8*s);
+    c.fillStyle = "#111111";
+    c.fillRect(x - 14*s, y + 6*s, 4*s, 9*s);
+    c.fillRect(x - 17*s, y + 4*s, 4*s, 4*s);
+    c.fillStyle = "#ffd166";
+    c.fillRect(x + 7*s, y - 1*s, 3*s, 3*s);
+  }
 }
 
 function mapCenterX() {
@@ -1065,6 +1108,7 @@ function createFighter(config) {
     conductiveTimer: 0,
     scorchTimer: 0,
     mudSlowTimer: 0,
+    charmTimer: 0,
     soulMarkSource: null,
     athenaGuardBonus: 0,
     action: "idle",
@@ -1325,6 +1369,7 @@ function updateBot(p) {
   if (p.godId === "anubis" && dist < 230) specialChance *= 1.3;
   if (p.godId === "horus") specialChance *= 1.7;
   if (p.godId === "sobek") specialChance *= dist > 130 ? 1.25 : .85;
+  if (p.godId === "bastet") specialChance *= 1.75;
   if (dist < 330 && Math.random() < specialChance) {
     botUseAttack(p, "special");
   }
@@ -1372,6 +1417,11 @@ function chooseBotAttackVariant(bot, target, inputType) {
       if (bot.grounded && absDx < 110 && Math.abs(dy) < 42 && Math.random() < .45) return "down";
       if (absDx > 120) return "neutral";
       return Math.random() < .7 ? "neutral" : "up";
+    }
+    if (bot.godId === "bastet") {
+      if (!bot.grounded || targetAbove) return "up";
+      if (absDx < 115 && Math.random() < 0.45) return "down";
+      return "neutral";
     }
     if (targetAbove) return "up";
     if (targetBelow) return "down";
@@ -1441,10 +1491,11 @@ function applyMoveInput(p, move) {
     accel *= 0.7;
   }
   const mudSlow = p.mudSlowTimer > 0 ? .62 : 1;
+  const charmSlow = p.charmTimer > 0 ? .72 : 1;
   const confusionDir = p.confusedTimer > 0 ? -1 : 1;
 
   if (move !== 0) {
-    p.vx += move * confusionDir * accel * mudSlow;
+    p.vx += move * confusionDir * accel * mudSlow * charmSlow;
     p.facing = move;
     p.action = p.grounded ? "run" : "air";
   } else if (p.grounded) {
@@ -1453,8 +1504,8 @@ function applyMoveInput(p, move) {
     p.action = "idle";
   }
 
-  if (p.godId === "horus" && !p.grounded) p.vx = clamp(p.vx, -max * 1.18 * mudSlow, max * 1.18 * mudSlow);
-  else p.vx = clamp(p.vx, -max * mudSlow, max * mudSlow);
+  if (p.godId === "horus" && !p.grounded) p.vx = clamp(p.vx, -max * 1.18 * mudSlow * charmSlow, max * 1.18 * mudSlow * charmSlow);
+  else p.vx = clamp(p.vx, -max * mudSlow * charmSlow, max * mudSlow * charmSlow);
 }
 
 function jump(p) {
@@ -1480,7 +1531,8 @@ function dodge(p) {
     thor: { speed: 20, cooldown: 104 },
     loki: { speed: 32, cooldown: 88 },
     horus: { speed: 28, cooldown: 90 },
-    sobek: { speed: 21, cooldown: 100 }
+    sobek: { speed: 21, cooldown: 100 },
+    bastet: { speed: 33, cooldown: 86 }
   }[p.godId] || { speed: 26, cooldown: 94 };
   p.dodgeCooldown = style.cooldown;
   p.dodgeTimer = 30;
@@ -1497,6 +1549,11 @@ function dodge(p) {
   p.attackFrame = 30;
   if (p.godId === "loki") p.lokiDodgeCloneTimer = 20;
   if (p.godId === "horus" && !p.grounded) p.vy = Math.min(p.vy, -4.5);
+  if (p.godId === "bastet") {
+    p.invincible = Math.max(p.invincible, 10);
+    spawnParticles(p.x, p.y, "#ffd166", 18, 6);
+    spawnParticles(p.x - p.facing * 18, p.y + 8, "#b66dff", 10, 4);
+  }
   spawnParticles(p.x - p.facing * 22, p.y, p.god.accent || "#ffffff", 24, 7);
   spawnParticles(p.x, p.y, p.god.color, 16, 5);
   shake = Math.max(shake, 5);
@@ -1563,6 +1620,10 @@ const ATTACK_DEFS = {
   sobek: {
     light: { neutral:{id:"sobek_light_n",godId:"sobek",inputType:"light",directionVariant:"neutral",startup:4,active:6,recovery:9,damage:7,knock:7.4,angle:-0.06,hitbox:{x:34,y:-4,w:62,h:34},effects:{visualType:"crocClaw"}}, up:{id:"sobek_light_u",directionVariant:"up",startup:4,active:6,recovery:9,damage:8,knock:8.5,angle:-1.12,hitbox:{x:30,y:-60,w:68,h:62},effects:{visualType:"jawSnap"}}, down:{id:"sobek_light_d",directionVariant:"down",startup:4,active:7,recovery:10,damage:6,knock:7.1,angle:-0.02,hitbox:{x:-42,y:22,w:132,h:22},effects:{visualType:"tailSweep"}}},
     heavy:{neutral:{id:"sobek_heavy_n",directionVariant:"neutral",startup:10,active:7,recovery:16,damage:15,knock:15.2,angle:-0.18,hitbox:{x:40,y:-12,w:90,h:46},effects:{visualType:"jawSnap"}},up:{id:"sobek_heavy_u",directionVariant:"up",startup:9,active:7,recovery:16,damage:14,knock:14.6,angle:-1.2,hitbox:{x:16,y:-100,w:86,h:104},effects:{visualType:"waterBurst"}},down:{id:"sobek_heavy_d",directionVariant:"down",startup:9,active:8,recovery:17,damage:15,knock:14.8,angle:-0.86,hitbox:{x:-30,y:16,w:112,h:74},effects:{visualType:"deathRoll"}}}
+  },
+  bastet: {
+    light: { neutral:{id:"bastet_light_n",godId:"bastet",inputType:"light",directionVariant:"neutral",startup:2,active:5,recovery:6,damage:5.5,knock:5.8,angle:-0.08,hitbox:{x:34,y:-8,w:54,h:30},effects:{visualType:"goldClawSlash"},selfImpulse:{x:1.2,y:0}}, up:{id:"bastet_light_u",directionVariant:"up",startup:3,active:6,recovery:8,damage:6.5,knock:7.2,angle:-1.18,hitbox:{x:24,y:-64,w:64,h:64},effects:{visualType:"risingCatClaw"}}, down:{id:"bastet_light_d",directionVariant:"down",startup:3,active:6,recovery:8,damage:5,knock:4.8,angle:0.05,hitbox:{x:28,y:24,w:78,h:22},effects:{visualType:"tailTrip"}}},
+    heavy:{neutral:{id:"bastet_heavy_n",directionVariant:"neutral",startup:7,active:7,recovery:13,damage:11,knock:12.4,angle:-0.35,hitbox:{x:42,y:-18,w:94,h:56},effects:{visualType:"lionessRend"},selfImpulse:{x:3.2,y:0}},up:{id:"bastet_heavy_u",directionVariant:"up",startup:7,active:7,recovery:14,damage:11.5,knock:13.2,angle:-1.28,hitbox:{x:12,y:-102,w:82,h:104},effects:{visualType:"moonUppercut"},selfImpulse:{x:0,y:-4.5}},down:{id:"bastet_heavy_d",directionVariant:"down",startup:8,active:9,recovery:16,damage:12,knock:11.8,angle:-0.55,hitbox:{x:-72,y:4,w:144,h:52},effects:{visualType:"sacredCatSpin"}}}
   },
   loki: {
     light: { neutral:{id:"loki_light_n",godId:"loki",inputType:"light",directionVariant:"neutral",startup:1,active:4,recovery:6,damage:5,knock:4.2,angle:-0.03,hitbox:{x:30,y:-10,w:44,h:22},effects:{visualType:"daggerFlurry"}}, up:{id:"loki_light_u",directionVariant:"up",startup:2,active:5,recovery:7,damage:6,knock:7.2,angle:-1.18,hitbox:{x:22,y:-58,w:52,h:60},effects:{visualType:"soulRake"},selfImpulse:{x:0,y:-1.4}}, down:{id:"loki_light_d",directionVariant:"down",startup:1,active:4,recovery:6,damage:5,knock:5.1,angle:-0.01,hitbox:{x:28,y:20,w:62,h:18},effects:{visualType:"graveSweep"}}},
@@ -1844,6 +1905,36 @@ function useSpecial(p) {
       p.moveVisuals.push({type:"nileLunge",frames:14,length:98,thickness:16});
     }
   }
+  else if (id === "bastet") {
+    const variant = p.moveVariant;
+    if (variant === "neutral") {
+      p.vx = p.facing * 18;
+      p.vy = Math.min(p.vy, -3);
+      p.action = "special";
+      p.attackKind = "moon_pounce";
+      p.attackFrame = 18;
+      createAttack({owner:p,x:p.x + p.facing * 52,y:p.y,w:86,h:48,damage:10,knock:11,angle:-0.35,frames:10,color:"#d4af37",label:"moon_pounce",visualType:"moonPounce"});
+      spawnParticles(p.x, p.y, "#ffd166", 22, 7);
+      spawnParticles(p.x, p.y, "#b66dff", 12, 5);
+    } else if (variant === "up") {
+      spawnParticles(p.x, p.y, "#b66dff", 28, 7);
+      p.invincible = Math.max(p.invincible, 18);
+      p.x += p.facing * 90;
+      p.y -= 95;
+      p.vy = -5;
+      p.action = "special";
+      p.attackKind = "cat_step";
+      p.attackFrame = 20;
+      createAttack({owner:p,x:p.x,y:p.y,w:78,h:70,damage:7,knock:8,angle:-0.9,frames:8,color:"#b66dff",label:"cat_step_burst",visualType:"catStepBurst"});
+      spawnParticles(p.x, p.y, "#ffd166", 24, 7);
+    } else if (variant === "down") {
+      p.action = "special";
+      p.attackKind = "charming_gaze";
+      p.attackFrame = 22;
+      createAttack({owner:p,x:p.x + p.facing * 58,y:p.y - 2,w:112,h:64,damage:3,knock:2.5,angle:-0.05,frames:12,color:"#ffd166",label:"charming_gaze",visualType:"charmingGaze",status:{type:"charm",frames:90}});
+      spawnParticles(p.x + p.facing * 45, p.y - 15, "#ffd166", 26, 5);
+    }
+  }
 
   p.meter = clamp(p.meter + 3, 0, 100);
 }
@@ -1907,6 +1998,29 @@ function useUltimate(p) {
   showMessage(p.god.name.toUpperCase() + " UNLEASHES " + ultimateName(p.godId) + "!", 90);
 
   const dir = getFacingDir(p);
+  if (p.godId === "bastet") {
+    p.meter = 0;
+    p.invincible = Math.max(p.invincible, 80);
+    p.vy = -12;
+    p.attackKind = "bastet_ult";
+    p.attackFrame = 90;
+    ultFlash = 35;
+    ultFlashColor = "#b66dff";
+    shake = Math.max(shake, 10);
+    const enemies = players.filter(t => t !== p && !t.dead && t.lives > 0).sort((a, b) => b.damage - a.damage);
+    for (let i = 0; i < 3; i++) {
+      const y = p.y - 120 + i * 75;
+      createAttack({owner:p,x:p.x + p.facing * (120 + i * 70),y,w:520,h:42,damage:8,knock:8,angle:-0.25,frames:14,color:"#ffd166",label:"bastet_spirit_cat",visualType:"spiritCatDash"});
+    }
+    const target = enemies[0];
+    if (target) {
+      const finalDamage = target.damage >= 100 ? 22 : 18;
+      createAttack({owner:p,x:target.x,y:target.y,w:150,h:120,damage:finalDamage,knock:target.damage >= 100 ? 20 : 16,angle:-1.05,frames:22,color:"#b66dff",label:"bastet_final_pounce",visualType:"sacredCatPaw"});
+      spawnParticles(target.x, target.y, "#ffd166", 45, 9);
+    }
+    showMessage("WRATH OF THE SACRED CAT!", 90);
+    return;
+  }
 
   if (p.godId === "zeus") {
     ultFlash = 16;
@@ -2478,6 +2592,7 @@ function updateFighter(p) {
     if (p.lokiDodgeCloneTimer % 6 === 0) spawnProjectile({owner:p,type:"clone",x:p.x-p.dodgeDir*22,y:p.y,vx:0,vy:0,w:34,h:52,life:6,damage:0,knock:0,color:"#a8f5c8",fakeGod:p.god,alpha:.35,flicker:true,ghost:true});
   }
   if (p.mudSlowTimer > 0) p.mudSlowTimer--;
+  if (p.charmTimer > 0) p.charmTimer--;
   if (p.jumpDebuffTimer > 0) p.jumpDebuffTimer--;
 
   if (p.ultimateState === "sobekTell") {
@@ -2829,6 +2944,11 @@ function updateAttacks() {
           p.soulMarkTimer = 330;
           p.soulMarkSource = a.owner.id;
           spawnParticles(p.x, p.y - 24, "#62ffe4", 12, 3);
+        }
+        if (a.status && a.status.type === "charm") {
+          p.charmTimer = Math.max(p.charmTimer || 0, a.status.frames || 90);
+          p.vx *= 0.45;
+          p.attackCooldown += 12;
         }
       }
     });
