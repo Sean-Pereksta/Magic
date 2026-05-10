@@ -1050,6 +1050,11 @@ function createFighter(config) {
     ultimateDir: 1,
     ultimateData: null,
     ultimateHit: new Set(),
+    anubisUltActive: false,
+    anubisUltTimer: 0,
+    anubisUltMaxTimer: 0,
+    anubisUltRadius: 0,
+    anubisUltHit: new Set(),
     redFlashTimer: 0,
     parryTimer: 0,
     parryActive: false,
@@ -1429,8 +1434,12 @@ function nearestEnemy(p) {
 
 function applyMoveInput(p, move) {
   if (p.grabTimer > 0 && p.grabbedBy) return;
-  const accel = p.grounded ? .85 : .42;
-  const max = p.god.speed;
+  let accel = p.grounded ? .85 : .42;
+  let max = p.god.speed;
+  if (p.godId === "anubis" && p.anubisUltActive) {
+    max *= 0.7;
+    accel *= 0.7;
+  }
   const mudSlow = p.mudSlowTimer > 0 ? .62 : 1;
   const confusionDir = p.confusedTimer > 0 ? -1 : 1;
 
@@ -1610,6 +1619,7 @@ function getMoveProgress(p) {
 function startMove(player, moveDef){ if (!moveDef || player.attackCooldown > 0 || player.dead) return false; const total=moveDef.startup+moveDef.active+moveDef.recovery; moveDef.totalFrames=total; player.currentMove=moveDef; player.moveTimer=total; player.movePhase="startup"; player.moveVariant=moveDef.directionVariant||"neutral"; player.moveVisuals=[]; player.action=moveToAttackKind(moveDef.inputType); player.attackKind=moveDef.inputType; player.attackFrame=total; const pdBoost = player.perfectDodgeTimer > 0 ? 8 : 0; player.attackCooldown=Math.max(player.attackCooldown,Math.max(8,total-pdBoost)); if(player.perfectDodgeTimer > 0) player.perfectDodgeTimer = 0; if(moveDef.inputType==="heavy") player.vx*=.55; if(moveDef.selfImpulse){ player.vx += player.facing * (moveDef.selfImpulse.x||0); player.vy += moveDef.selfImpulse.y||0; } if(moveDef.startupArmor) player.invincible = Math.max(player.invincible, moveDef.startupArmor); if(player.godId==="thor" && moveDef.inputType==="heavy"){ player.armorTimer = Math.max(player.armorTimer, Math.min(12, Math.max(6, moveDef.startup - 1))); if(player.thorHeavyArmorTimer>0){ player.armorTimer = Math.max(player.armorTimer, 14); player.thorHeavyArmorTimer = 0; } } if(player.godId==="sobek" && player.perfectDodgeMud && (moveDef.id||"").includes("sobek_heavy")){ moveDef.knock += 1.8; player.perfectDodgeMud = 0; } return true;}
 function spawnMoveHitbox(player, moveDef){ const hb=moveDef.hitbox; const power=(player.attackPowerBonus||1); let moveAngle=moveDef.angle; if(moveDef.id==="athena_heavy_d" && player.grounded) moveAngle=-0.12; if(moveDef.id==="athena_heavy_d" && !player.grounded) moveAngle=1.2; createAttack({owner:player,x:player.x+player.facing*hb.x,y:player.y+hb.y,w:hb.w,h:hb.h,damage:moveDef.damage*player.god.attackPower*power,knock:moveDef.knock,angle:moveAngle,frames:moveDef.active,color:player.god.accent||player.god.color,label:moveDef.inputType,visualType:(moveDef.effects||{}).visualType||"slashArc",visualAngle:moveDef.angle,visualLength:Math.max(hb.w,hb.h),visualThickness:Math.max(8,Math.min(hb.h,hb.w)/3),attachToOwner:true,offsetX:hb.x,offsetY:hb.y}); if(moveDef.id==="athena_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*56,y:player.y+30,w:80,h:14,damage:4*player.god.attackPower*power,knock:6.2,angle:-0.05,frames:5,color:"#eff8ff",label:"ground_line",visualType:"spearThrust"}); } if(moveDef.id==="ra_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*74,y:player.y+30,w:96,h:14,damage:2.2*player.god.attackPower*power,knock:3.8,angle:-0.03,frames:10,color:"#ff8c42",label:"burn_line",visualType:"desertBurn"}); } if(moveDef.id==="thor_heavy_d"){ createAttack({owner:player,x:player.x-player.facing*76,y:player.y+30,w:96,h:22,damage:4.5*player.god.attackPower*power,knock:8.8,angle:-0.92,frames:6,color:"#d4e8ff",label:"ground_quake",visualType:"thunderLanding"}); } player.moveVisuals.push({type:(moveDef.effects||{}).visualType||"slashArc",phase:"active",frames:moveDef.active+Math.max(3,Math.floor(moveDef.recovery*0.4)),angle:moveDef.angle,length:Math.max(hb.w,hb.h),thickness:14,recoveryFrames:Math.max(3,Math.floor(moveDef.recovery*0.45))}); if(moveDef.id && moveDef.id.startsWith("thor_heavy")){ shake = Math.max(shake, moveDef.id==="thor_heavy_d"?12:9); hitStop = Math.max(hitStop, moveDef.id==="thor_heavy_n"?4:3); } }
 function lightAttack(p) {
+  if (p.godId === "anubis" && p.anubisUltActive) return;
   if (p.dodgeTimer > 0 && p.dodgePhase === "recovery" && p.perfectDodgeTimer <= 0) return;
   const v = getAttackVariant(p, "light");
   const defs = ATTACK_DEFS[p.godId] || ATTACK_DEFS.zeus;
@@ -1618,6 +1628,7 @@ function lightAttack(p) {
 }
 
 function heavyAttack(p) {
+  if (p.godId === "anubis" && p.anubisUltActive) return;
   if (p.dodgeTimer > 0 && p.dodgePhase === "recovery" && p.perfectDodgeTimer <= 0) return;
   const v = getAttackVariant(p, "heavy");
   const defs = ATTACK_DEFS[p.godId] || ATTACK_DEFS.zeus;
@@ -1630,6 +1641,7 @@ function getFacingDir(p) {
 }
 
 function useSpecial(p) {
+  if (p.godId === "anubis" && p.anubisUltActive) return;
   if (p.dodgeTimer > 0 && p.dodgePhase === "recovery" && p.perfectDodgeTimer <= 0) return;
   if (p.specialCooldown > 0 || p.dead) return;
   p.specialCooldown = p.god.specialCooldown;
@@ -2058,19 +2070,7 @@ function useUltimate(p) {
   }
 
   else if (p.godId === "anubis") {
-    createAttack({
-      owner: p,
-      x: p.x,
-      y: p.y - 30,
-      w: 390,
-      h: 210,
-      damage: 18,
-      knock: 20,
-      angle: -0.8,
-      frames: 34,
-      color: "#80ffdb",
-      label: "ult"
-    });
+    startAnubisCircleUltimate(p);
   }
 
   else if (p.godId === "thor") {
@@ -2126,12 +2126,89 @@ function useUltimate(p) {
   }
 }
 
+function startAnubisCircleUltimate(p) {
+  p.anubisUltActive = true;
+  p.anubisUltTimer = 120;
+  p.anubisUltMaxTimer = 120;
+  p.anubisUltRadius = 260;
+  p.anubisUltHit = new Set();
+
+  p.attackCooldown = Math.max(p.attackCooldown, 135);
+  p.invincible = Math.max(p.invincible, 18);
+  p.action = "ultimate";
+  p.attackKind = "ultimate";
+  p.attackFrame = 135;
+
+  ultFlash = 14;
+  ultFlashColor = "#7b2cbf";
+
+  spawnParticles(p.x, p.y - 20, "#7b2cbf", 44, 7);
+  spawnParticles(p.x, p.y - 20, "#ff1744", 20, 4);
+
+  showMessage("ANUBIS OPENS THE CIRCLE OF THE DUAT!", 80);
+  shake = Math.max(shake, 8);
+}
+
+function updateAnubisCircleUltimate(p) {
+  if (!p.anubisUltActive) return;
+  p.anubisUltTimer--;
+  p.action = "ultimate";
+  p.attackKind = "ultimate";
+  p.attackFrame = Math.max(p.attackFrame, 8);
+
+  if (Math.random() < 0.85) {
+    const a = Math.random() * Math.PI * 2;
+    const r = p.anubisUltRadius * (0.86 + Math.random() * 0.18);
+    particles.push({ x: p.x + Math.cos(a) * r, y: p.y + Math.sin(a) * r, vx: -Math.cos(a) * (0.6 + Math.random() * 1.2), vy: -Math.sin(a) * (0.6 + Math.random() * 1.2), life: 24 + Math.random() * 20, size: 4 + Math.random() * 7, color: Math.random() < 0.72 ? "#7b2cbf" : "#c77dff" });
+  }
+
+  if (Math.random() < 0.45) {
+    const progress = 1 - p.anubisUltTimer / Math.max(1, p.anubisUltMaxTimer);
+    const r = p.anubisUltRadius * progress * Math.sqrt(Math.random());
+    const a = Math.random() * Math.PI * 2;
+    particles.push({ x: p.x + Math.cos(a) * r, y: p.y + Math.sin(a) * r, vx: (Math.random() - 0.5) * 1.5, vy: (Math.random() - 0.5) * 1.5, life: 18 + Math.random() * 18, size: 4 + Math.random() * 8, color: "#ff1744" });
+  }
+
+  if (p.anubisUltTimer <= 0) detonateAnubisCircleUltimate(p);
+}
+
+function detonateAnubisCircleUltimate(p) {
+  if (!p.anubisUltActive) return;
+  p.anubisUltActive = false;
+  const radius = p.anubisUltRadius || 260;
+
+  players.forEach(t => {
+    if (t === p || t.dead || t.lives <= 0 || t.invincible > 0) return;
+    if (p.anubisUltHit && p.anubisUltHit.has(t.id)) return;
+    const dx = t.x - p.x;
+    const dy = t.y - p.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist <= radius) {
+      p.anubisUltHit.add(t.id);
+      const dir = Math.sign(dx) || getFacingDir(p);
+      const centerBonus = 1 - clamp(dist / radius, 0, 1);
+      applyHit(t, p, 26 + centerBonus * 8, 23 + centerBonus * 8, -0.95, dir, "#ff1744", { x: t.x, y: t.y - 12, impactType: "soul", impactColor: "#ff1744", hitPause: 10, extraShake: 8, cueType: "soul" });
+      t.soulMarkTimer = Math.max(t.soulMarkTimer || 0, 180);
+      t.soulMarkSource = p.id;
+      spawnParticles(t.x, t.y, "#ff1744", 34, 8);
+      spawnParticles(t.x, t.y - 20, "#7b2cbf", 24, 6);
+    }
+  });
+
+  createAttack({ owner: p, x: p.x, y: p.y, w: radius * 2, h: radius * 2, damage: 0, knock: 0, angle: -1, frames: 14, color: "#ff1744", label: "anubis_duat_detonation_visual", visualType: "duatDetonation" });
+  spawnParticles(p.x, p.y, "#ff1744", 70, 12);
+  spawnParticles(p.x, p.y, "#7b2cbf", 55, 10);
+  shake = Math.max(shake, 20);
+  p.anubisUltTimer = 0;
+  p.anubisUltHit = new Set();
+}
+
 function ultimateName(id) {
   return {
     zeus: "WRATH OF OLYMPUS",
     athena: "AEGIS WALL",
     ra: "EYE OF RA",
-    anubis: "JUDGMENT GATE",
+    anubis: "CIRCLE OF THE DUAT",
     thor: "RAGNAROK STRIKE",
     loki: "TRICKSTER STORM",
     horus: "DIVINE FALCON STORM",
@@ -2247,6 +2324,10 @@ function updateFighter(p) {
       respawn(p);
     }
     return;
+  }
+
+  if (p.anubisUltActive) {
+    updateAnubisCircleUltimate(p);
   }
 
   if (p.attackCooldown > 0) p.attackCooldown--;
@@ -3202,6 +3283,7 @@ function drawGame() {
 
   drawBackground();
   drawMap();
+  players.forEach(drawAnubisCircleUltimate);
   telegraphs.forEach(drawTelegraph);
 
   projectiles.forEach(drawProjectile);
@@ -3212,6 +3294,67 @@ function drawGame() {
   ctx.restore();
   drawUltimateScreenFlash();
   drawEclipseOverlay();
+}
+
+function drawAnubisCircleUltimate(p) {
+  if (!p || !p.anubisUltActive) return;
+  const x = worldToScreenX(p.x);
+  const y = worldToScreenY(p.y);
+  const radius = screenScale(p.anubisUltRadius || 260);
+  const progress = 1 - p.anubisUltTimer / Math.max(1, p.anubisUltMaxTimer);
+  const redRadius = radius * clamp(progress, 0, 1);
+  const pulse = 1 + Math.sin(matchTime * 0.25) * 0.035;
+
+  ctx.save();
+  ctx.globalAlpha = 0.62;
+  ctx.fillStyle = "#02010a";
+  ctx.beginPath();
+  ctx.arc(x, y, radius * pulse, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.globalAlpha = 0.82;
+  ctx.strokeStyle = "#7b2cbf";
+  ctx.lineWidth = screenScale(7);
+  ctx.beginPath();
+  ctx.arc(x, y, radius * pulse, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.globalAlpha = 0.9;
+  ctx.strokeStyle = "#c77dff";
+  ctx.lineWidth = screenScale(2.5);
+  for (let i = 0; i < 18; i++) {
+    const a1 = (Math.PI * 2 * i) / 18 + Math.sin(matchTime * 0.05 + i) * 0.08;
+    const a2 = a1 + 0.12 + Math.random() * 0.08;
+    ctx.beginPath();
+    ctx.arc(x + (Math.random() - 0.5) * screenScale(4), y + (Math.random() - 0.5) * screenScale(4), radius * (0.96 + Math.random() * 0.06), a1, a2);
+    ctx.stroke();
+  }
+
+  ctx.globalAlpha = 0.38 + progress * 0.28;
+  ctx.fillStyle = "#ff1744";
+  ctx.beginPath();
+  ctx.arc(x, y, redRadius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.globalAlpha = 0.85;
+  ctx.fillStyle = "#ff0033";
+  ctx.beginPath();
+  ctx.arc(x, y, Math.max(screenScale(12), redRadius * 0.08), 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.globalAlpha = 0.95;
+  ctx.strokeStyle = "#ff5a76";
+  ctx.lineWidth = screenScale(3);
+  ctx.beginPath();
+  ctx.arc(x, y, redRadius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.globalAlpha = 1;
+  ctx.font = `${Math.max(14, 20 * camera.zoom)}px Arial`;
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText("☥ DUAT", x, y - radius - screenScale(12));
+  ctx.restore();
 }
 
 function drawTelegraph(t) {
@@ -3959,6 +4102,31 @@ function drawAttack(a) {
     ctx.ellipse(cx, cy, w * .48, h * .42, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    ctx.globalAlpha = 1;
+  } else if (type === "duatDetonation") {
+    ctx.globalAlpha = 0.38;
+    ctx.fillStyle = "#ff1744";
+    ctx.beginPath();
+    ctx.arc(cx, cy, Math.max(w, h) * 0.48, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = "#c77dff";
+    ctx.lineWidth = screenScale(8);
+    ctx.beginPath();
+    ctx.arc(cx, cy, Math.max(w, h) * 0.48, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.globalAlpha = 0.8;
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = screenScale(2);
+    for (let i = 0; i < 12; i++) {
+      const a1 = (Math.PI * 2 * i) / 12 + matchTime * 0.03;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(a1) * Math.max(w, h) * 0.48, cy + Math.sin(a1) * Math.max(w, h) * 0.48);
+      ctx.stroke();
+    }
     ctx.globalAlpha = 1;
   } else if (["mjolnirCrush","thunderUpperSwing","hammerLift","earthbreakerSlam","thunderLanding","hammerSweep"].includes(type)) {
     ctx.globalAlpha = .32;
