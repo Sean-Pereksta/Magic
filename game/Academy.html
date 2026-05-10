@@ -985,6 +985,11 @@ function createFighter(config) {
     movePhase: "none",
     moveVariant: "neutral",
     moveVisuals: [],
+    ultimateState: null,
+    ultimateTimer: 0,
+    ultimateDir: 1,
+    ultimateHit: new Set(),
+    redFlashTimer: 0,
     parryTimer: 0,
     parryActive: false,
     parryRecovery: 0,
@@ -1727,6 +1732,40 @@ function useSpecial(p) {
   p.meter = clamp(p.meter + 3, 0, 100);
 }
 
+
+function startSobekUltimate(p) {
+  const dir = getFacingDir(p);
+
+  p.ultimateState = "sobekTell";
+  p.ultimateTimer = 26;
+  p.ultimateDir = dir;
+  p.ultimateHit = new Set();
+
+  p.vx = 0;
+  p.vy *= 0.25;
+  p.attackCooldown = 80;
+  p.invincible = Math.max(p.invincible, 18);
+  p.redFlashTimer = 26;
+
+  spawnParticles(p.x, p.y, "#ff3333", 32, 6);
+  shake = Math.max(shake, 8);
+
+  createAttack({
+    owner: p,
+    x: p.x + dir * 95,
+    y: p.y - 4,
+    w: 170,
+    h: 90,
+    damage: 0,
+    knock: 0,
+    angle: -0.1,
+    frames: 18,
+    color: "#ff3333",
+    label: "sobek_ult_warning",
+    visualType: "redBiteWarning"
+  });
+}
+
 function useUltimate(p) {
   if (p.meter < 100 || p.dead) return;
   p.meter = 0;
@@ -1868,9 +1907,7 @@ function useUltimate(p) {
     }
   }
   else if (p.godId === "sobek") {
-    createAttack({owner:p,x:p.x + dir * 170,y:p.y-14,w:360,h:170,damage:24,knock:23,angle:-0.44,frames:24,color:"#6de2d0",label:"ult",visualType:"spectralCroc"});
-    spawnParticles(p.x + dir * 120, p.y, "#7be0d5", 42, 9);
-    shake = Math.max(shake, 18);
+    startSobekUltimate(p);
   }
 }
 
@@ -1985,6 +2022,105 @@ function updateFighter(p) {
   }
   if (p.mudSlowTimer > 0) p.mudSlowTimer--;
   if (p.jumpDebuffTimer > 0) p.jumpDebuffTimer--;
+
+  if (p.ultimateState === "sobekTell") {
+    p.ultimateTimer--;
+    p.vx = 0;
+    p.vy *= 0.85;
+    p.action = "ultimate";
+    p.attackKind = "ultimate";
+    p.attackFrame = Math.max(p.attackFrame, 12);
+
+    if (p.ultimateTimer <= 0) {
+      p.ultimateState = "sobekCharge";
+      p.ultimateTimer = 34;
+      p.invincible = Math.max(p.invincible, 20);
+      p.vx = p.ultimateDir * 24;
+      p.vy = Math.min(p.vy, -2);
+      spawnParticles(p.x, p.y, "#ff4d4d", 42, 8);
+      shake = Math.max(shake, 14);
+    }
+  }
+
+  if (p.ultimateState === "sobekCharge") {
+    p.ultimateTimer--;
+    p.action = "ultimate";
+    p.attackKind = "ultimate";
+    p.attackFrame = Math.max(p.attackFrame, 8);
+    p.vx = p.ultimateDir * 24;
+
+    createAttack({
+      owner: p,
+      x: p.x + p.ultimateDir * 62,
+      y: p.y - 4,
+      w: 124,
+      h: 74,
+      damage: 0,
+      knock: 0,
+      angle: -0.18,
+      frames: 2,
+      color: "#ff3333",
+      label: "sobek_ult_bite_visual",
+      visualType: "redCrocBite",
+      attachToOwner: true,
+      offsetX: 62,
+      offsetY: -4
+    });
+
+    players.forEach(t => {
+      if (t === p || t.dead || t.lives <= 0 || t.invincible > 0) return;
+      if (p.ultimateHit && p.ultimateHit.has(t.id)) return;
+
+      const hit =
+        Math.abs(t.x - (p.x + p.ultimateDir * 58)) < 82 &&
+        Math.abs(t.y - p.y) < 62;
+
+      if (hit) {
+        p.ultimateHit.add(t.id);
+
+        applyHit(
+          t,
+          p,
+          30,
+          24,
+          -0.28,
+          p.ultimateDir,
+          "#ff3333",
+          {
+            x: t.x,
+            y: t.y - 8,
+            impactType: "heavyImpact",
+            impactColor: "#ff3333",
+            hitPause: 10,
+            extraShake: 8,
+            cueType: "bite"
+          }
+        );
+
+        spawnParticles(t.x, t.y, "#ff3333", 36, 9);
+        spawnParticles(t.x, t.y - 12, "#7be0d5", 20, 6);
+        shake = Math.max(shake, 18);
+      }
+    });
+
+    if (p.ultimateTimer <= 0) {
+      p.ultimateState = "sobekRecovery";
+      p.ultimateTimer = 22;
+      p.vx *= 0.35;
+      p.attackCooldown = Math.max(p.attackCooldown, 28);
+    }
+  }
+
+  if (p.ultimateState === "sobekRecovery") {
+    p.ultimateTimer--;
+    p.vx *= 0.82;
+    p.action = "ultimate";
+
+    if (p.ultimateTimer <= 0) {
+      p.ultimateState = null;
+      p.ultimateHit = new Set();
+    }
+  }
 
   p.vy += (p.godId === "horus" && p.horusGlideTimer > 0 && !p.grounded ? 0.28 : 0.78);
   if (p.godId === "horus" && p.horusGlideTimer > 0 && !p.grounded) p.vx *= 0.996;
@@ -2588,6 +2724,11 @@ function drawFighter(p) {
   const blink = p.invincible > 0 && Math.floor(p.invincible / 5) % 2 === 0;
   if (blink) ctx.globalAlpha = .45;
 
+  const oldComposite = ctx.globalCompositeOperation;
+  if (p.redFlashTimer > 0) {
+    p.redFlashTimer--;
+  }
+
   drawPixelGod(ctx, p, x, y, s);
   drawActiveMoveVisual(ctx, p);
   if (p.dodgeTimer > 0) {
@@ -3054,6 +3195,35 @@ function drawAttack(a) {
     ctx.lineTo(cx - dir * w * .2, cy + h * .16);
     ctx.closePath();
     ctx.fill();
+    ctx.globalAlpha = 1;
+  } else if (type === "redBiteWarning") {
+    ctx.globalAlpha = 0.35 + Math.sin(matchTime * 0.5) * 0.15;
+    ctx.fillStyle = "#ff2222";
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, w * 0.48, h * 0.38, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = "#ffcccc";
+    ctx.lineWidth = screenScale(3);
+    ctx.strokeRect(x, y, w, h);
+    ctx.globalAlpha = 1;
+  } else if (type === "redCrocBite") {
+    ctx.globalAlpha = 0.78;
+    ctx.strokeStyle = "#ff3333";
+    ctx.lineWidth = screenScale(8);
+
+    ctx.beginPath();
+    ctx.moveTo(cx - dir * w * 0.35, cy - h * 0.32);
+    ctx.lineTo(cx + dir * w * 0.45, cy);
+    ctx.lineTo(cx - dir * w * 0.35, cy + h * 0.32);
+    ctx.stroke();
+
+    ctx.fillStyle = "rgba(255, 40, 40, .25)";
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, w * .48, h * .42, 0, 0, Math.PI * 2);
+    ctx.fill();
+
     ctx.globalAlpha = 1;
   } else if (["mjolnirCrush","thunderUpperSwing","hammerLift","earthbreakerSlam","thunderLanding","hammerSweep"].includes(type)) {
     ctx.globalAlpha = .32;
