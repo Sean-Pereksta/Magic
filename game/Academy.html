@@ -997,13 +997,17 @@ const ATTACK_DEFS = {
   athena: {
     light: { neutral:{id:"athena_light_n",godId:"athena",inputType:"light",directionVariant:"neutral",startup:2,active:5,recovery:8,damage:6,knock:6.2,angle:-0.05,hitbox:{x:58,y:-8,w:88,h:16},effects:{visualType:"spearThrust"}}, up:{id:"athena_light_u",directionVariant:"up",startup:3,active:5,recovery:8,damage:7,knock:7.6,angle:-1.15,hitbox:{x:40,y:-54,w:56,h:56},effects:{visualType:"spearLift"}}, down:{id:"athena_light_d",directionVariant:"down",startup:3,active:5,recovery:10,damage:6,knock:6.8,angle:0.08,hitbox:{x:28,y:26,w:62,h:22},effects:{visualType:"shieldCheck"},selfImpulse:{x:-1.9,y:0}}},
     heavy:{neutral:{id:"athena_heavy_n",directionVariant:"neutral",startup:7,active:7,recovery:14,damage:12,knock:14.2,angle:-0.08,hitbox:{x:34,y:-18,w:90,h:66},effects:{visualType:"aegisBash"},selfImpulse:{x:2.8,y:0}},up:{id:"athena_heavy_u",directionVariant:"up",startup:7,active:7,recovery:15,damage:11,knock:12.8,angle:-1.2,hitbox:{x:8,y:-102,w:76,h:104},effects:{visualType:"guardianUpper"},startupArmor:8},down:{id:"athena_heavy_d",directionVariant:"down",startup:7,active:7,recovery:16,damage:13,knock:13.4,angle:-0.7,hitbox:{x:36,y:16,w:52,h:88},effects:{visualType:"spearPin"}}}
+  },
+  ra: {
+    light: { neutral:{id:"ra_light_n",godId:"ra",inputType:"light",directionVariant:"neutral",startup:3,active:5,recovery:8,damage:6,knock:6.4,angle:-0.08,hitbox:{x:34,y:-8,w:66,h:28},effects:{visualType:"solarStaffTap"}}, up:{id:"ra_light_u",directionVariant:"up",startup:3,active:6,recovery:8,damage:7,knock:7.5,angle:-1.08,hitbox:{x:32,y:-56,w:64,h:58},effects:{visualType:"sunriseArc"}}, down:{id:"ra_light_d",directionVariant:"down",startup:3,active:6,recovery:9,damage:6,knock:6.9,angle:0.06,hitbox:{x:24,y:24,w:94,h:24},effects:{visualType:"horizonSweep"}}},
+    heavy:{neutral:{id:"ra_heavy_n",directionVariant:"neutral",startup:8,active:7,recovery:14,damage:13,knock:13.8,angle:-0.22,hitbox:{x:44,y:-18,w:98,h:64},effects:{visualType:"solarDiscSmash"}},up:{id:"ra_heavy_u",directionVariant:"up",startup:7,active:7,recovery:15,damage:12,knock:12.7,angle:-1.15,hitbox:{x:8,y:-94,w:90,h:94},effects:{visualType:"noonFlare"}},down:{id:"ra_heavy_d",directionVariant:"down",startup:7,active:7,recovery:16,damage:11,knock:6.2,angle:-0.03,hitbox:{x:32,y:24,w:114,h:20},effects:{visualType:"desertBurn"}}}
   }
 };
 function cloneMove(base, p, variant, inputType){ const m=JSON.parse(JSON.stringify(base)); m.godId=p.godId; m.inputType=inputType; m.directionVariant=variant; return m;}
 function getAttackVariant(player, inputType){ if(player.human){ if(keys["w"]) return "up"; if(keys["s"]) return "down"; return "neutral";} const t=player.ai.target||nearestEnemy(player); if(!t) return "neutral"; const dy=t.y-player.y; if(dy<-45) return "up"; if(dy>45) return "down"; return "neutral";}
 function moveToAttackKind(type){ return type; }
 function startMove(player, moveDef){ if (!moveDef || player.attackCooldown > 0 || player.dead) return false; const total=moveDef.startup+moveDef.active+moveDef.recovery; player.currentMove=moveDef; player.moveTimer=total; player.movePhase="startup"; player.moveVariant=moveDef.directionVariant||"neutral"; player.moveVisuals=[]; player.action=moveToAttackKind(moveDef.inputType); player.attackKind=moveDef.inputType; player.attackFrame=total; player.attackCooldown=Math.max(player.attackCooldown,total); if(moveDef.inputType==="heavy") player.vx*=.55; if(moveDef.selfImpulse){ player.vx += player.facing * (moveDef.selfImpulse.x||0); player.vy += moveDef.selfImpulse.y||0; } if(moveDef.startupArmor) player.invincible = Math.max(player.invincible, moveDef.startupArmor); return true;}
-function spawnMoveHitbox(player, moveDef){ const hb=moveDef.hitbox; let moveAngle=moveDef.angle; if(moveDef.id==="athena_heavy_d" && player.grounded) moveAngle=-0.12; if(moveDef.id==="athena_heavy_d" && !player.grounded) moveAngle=1.2; createAttack({owner:player,x:player.x+player.facing*hb.x,y:player.y+hb.y,w:hb.w,h:hb.h,damage:moveDef.damage*player.god.attackPower,knock:moveDef.knock,angle:moveAngle,frames:moveDef.active,color:player.god.accent||player.god.color,label:moveDef.inputType,visualType:(moveDef.effects||{}).visualType||"slashArc",visualAngle:moveDef.angle,visualLength:Math.max(hb.w,hb.h),visualThickness:Math.max(8,Math.min(hb.h,hb.w)/3),attachToOwner:true,offsetX:hb.x,offsetY:hb.y}); if(moveDef.id==="athena_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*56,y:player.y+30,w:80,h:14,damage:4*player.god.attackPower,knock:6.2,angle:-0.05,frames:5,color:"#eff8ff",label:"ground_line",visualType:"spearThrust"}); } player.moveVisuals.push({type:(moveDef.effects||{}).visualType||"slashArc",frames:moveDef.active+3,angle:moveDef.angle,length:Math.max(hb.w,hb.h),thickness:14}); }
+function spawnMoveHitbox(player, moveDef){ const hb=moveDef.hitbox; let moveAngle=moveDef.angle; if(moveDef.id==="athena_heavy_d" && player.grounded) moveAngle=-0.12; if(moveDef.id==="athena_heavy_d" && !player.grounded) moveAngle=1.2; createAttack({owner:player,x:player.x+player.facing*hb.x,y:player.y+hb.y,w:hb.w,h:hb.h,damage:moveDef.damage*player.god.attackPower,knock:moveDef.knock,angle:moveAngle,frames:moveDef.active,color:player.god.accent||player.god.color,label:moveDef.inputType,visualType:(moveDef.effects||{}).visualType||"slashArc",visualAngle:moveDef.angle,visualLength:Math.max(hb.w,hb.h),visualThickness:Math.max(8,Math.min(hb.h,hb.w)/3),attachToOwner:true,offsetX:hb.x,offsetY:hb.y}); if(moveDef.id==="athena_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*56,y:player.y+30,w:80,h:14,damage:4*player.god.attackPower,knock:6.2,angle:-0.05,frames:5,color:"#eff8ff",label:"ground_line",visualType:"spearThrust"}); } if(moveDef.id==="ra_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*74,y:player.y+30,w:96,h:14,damage:2.2*player.god.attackPower,knock:3.8,angle:-0.03,frames:10,color:"#ff8c42",label:"burn_line",visualType:"desertBurn"}); } player.moveVisuals.push({type:(moveDef.effects||{}).visualType||"slashArc",frames:moveDef.active+3,angle:moveDef.angle,length:Math.max(hb.w,hb.h),thickness:14}); }
 function lightAttack(p) {
   const v = getAttackVariant(p, "light");
   const defs = ATTACK_DEFS[p.godId] || ATTACK_DEFS.zeus;
@@ -1067,21 +1071,38 @@ function useSpecial(p) {
   }
 
   else if (id === "ra") {
-    spawnProjectile({
-      owner: p,
-      type: "sun",
-      x: p.x + p.facing * 24,
-      y: p.y - 24,
-      vx: p.facing * 5,
-      vy: -3,
-      w: 36,
-      h: 36,
-      life: 120,
-      damage: 4,
-      knock: 4,
-      color: "#ffea00",
-      aura: true
-    });
+    if (p.moveVariant === "up") {
+      p.vy = -17;
+      p.vx = p.facing * 6.5;
+      p.invincible = Math.max(p.invincible, 8);
+      createAttack({owner:p,x:p.x + p.facing * 22,y:p.y-28,w:92,h:64,damage:5,knock:6.5,angle:-0.95,frames:10,color:"#ffe082",label:"falcon_flight",visualType:"falconWing"});
+      p.moveVisuals.push({type:"falconWing",frames:14,length:86,thickness:16});
+      spawnParticles(p.x, p.y + 6, "#ffd166", 20, 6);
+    } else if (p.moveVariant === "down") {
+      const brandX = p.x + p.facing * 58;
+      const brandY = p.grounded ? p.y + 34 : p.y + 80;
+      createAttack({owner:p,x:brandX,y:brandY,w:86,h:18,damage:2.5,knock:2.5,angle:0.02,frames:16,color:"#ffcb47",label:"sun_brand_mark",visualType:"sunBrandMark"});
+      setTimeout(() => {
+        createAttack({owner:p,x:brandX,y:brandY-64,w:42,h:140,damage:10,knock:9.5,angle:-1.02,frames:9,color:"#ff9f1c",label:"sun_brand_burst",visualType:"sunBrandBurst"});
+      }, 220);
+      p.moveVisuals.push({type:"sunBrandMark",frames:16,length:62,thickness:11});
+    } else {
+      spawnProjectile({
+        owner: p,
+        type: "sun",
+        x: p.x + p.facing * 24,
+        y: p.y - 24,
+        vx: p.facing * 3.8,
+        vy: -1.4,
+        w: 40,
+        h: 40,
+        life: 130,
+        damage: 4,
+        knock: 4,
+        color: "#ffea00",
+        aura: true
+      });
+    }
   }
 
   else if (id === "anubis") {
@@ -1995,13 +2016,21 @@ function drawActiveMoveVisual(ctx, player) {
     v.frames--;
     const color = player.god.accent || player.god.color;
     const type=v.type;
-    if (["slashArc","hammerSwing","solarSweep","jackalClaw","daggerFlurry","groundSlam","staticSweep","thunderStomp","spearLift","guardianUpper","owlWing"].includes(type)) {
+    if (["slashArc","hammerSwing","solarSweep","jackalClaw","daggerFlurry","groundSlam","staticSweep","thunderStomp","spearLift","guardianUpper","owlWing","solarStaffTap","sunriseArc","horizonSweep","falconWing"].includes(type)) {
       drawAttackArc(ctx,{x:handX,y:handY,color,length:v.length||52,thickness:v.thickness||14,startA:(player.facing===1?-1.4:Math.PI+0.2),endA:(player.facing===1?.4:Math.PI-1.2)});
-    } else if (["stabLine","beam","lightningJab","shieldBash","shockwave","uppercut","boltSpear","uppercutSpark","stormPillar","spearThrust","shieldCheck","aegisBash","spearPin","aegisWall","parryField"].includes(type)) {
+    } else if (["stabLine","beam","lightningJab","shieldBash","shockwave","uppercut","boltSpear","uppercutSpark","stormPillar","spearThrust","shieldCheck","aegisBash","spearPin","aegisWall","parryField","desertBurn","sunBrandBurst"].includes(type)) {
       ctx.strokeStyle=color; ctx.lineWidth=screenScale(v.thickness||10); ctx.globalAlpha=.8; ctx.beginPath();
       ctx.moveTo(worldToScreenX(handX), worldToScreenY(handY));
-      const tx=handX + player.facing*(v.length||65); const ty=handY + ((type==="uppercut"||type==="uppercutSpark"||type==="guardianUpper")?-55:(type==="stormPillar"?-95:(type==="spearPin"?48:0)));
+      const tx=handX + player.facing*(v.length||65); const ty=handY + ((type==="uppercut"||type==="uppercutSpark"||type==="guardianUpper")?-55:(type==="stormPillar"||type==="sunBrandBurst"?-95:(type==="spearPin"?48:(type==="desertBurn"?16:0))));
       ctx.lineTo(worldToScreenX(tx), worldToScreenY(ty)); ctx.stroke(); ctx.globalAlpha=1;
+    } else if (["solarDiscSmash","noonFlare","sunBrandMark"].includes(type)) {
+      ctx.globalAlpha = .5;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = screenScale(v.thickness || 8);
+      ctx.beginPath();
+      ctx.arc(worldToScreenX(handX + player.facing * 26), worldToScreenY(handY - (type==="noonFlare"?36:0)), screenScale(v.length ? v.length * .45 : 24), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
     }
     if (v.frames<=0) player.moveVisuals.splice(i,1);
   }
@@ -2064,9 +2093,19 @@ function drawProjectile(pr) {
     ctx.fill();
     ctx.stroke();
   } else if (pr.type === "sun") {
-    ctx.fillRect(x - w/2, y - h/2, w, h);
-    ctx.fillStyle = "rgba(255,234,0,.2)";
-    ctx.fillRect(x - screenScale(70), y - screenScale(70), screenScale(140), screenScale(140));
+    const pulse = 1 + Math.sin(matchTime / 6 + pr.life * .15) * .18;
+    const coreR = (w * 0.34) * pulse;
+    const ringR = screenScale(36 + Math.sin(matchTime / 5) * 5);
+    const glowR = screenScale(62);
+    ctx.fillStyle = "rgba(255,210,90,.24)";
+    ctx.beginPath(); ctx.arc(x, y, glowR, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "rgba(255,235,120,.55)";
+    ctx.lineWidth = screenScale(3);
+    ctx.beginPath(); ctx.arc(x, y, ringR, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = pr.color;
+    ctx.beginPath(); ctx.arc(x, y, coreR, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(255,245,185,.75)";
+    ctx.beginPath(); ctx.arc(x, y, coreR * .45, 0, Math.PI * 2); ctx.fill();
   } else if (pr.type === "hook") {
     ctx.fillRect(x - w/2, y - h/2, w, h);
     ctx.fillRect(x + Math.sign(pr.vx) * w/3, y - h, screenScale(8), screenScale(22));
