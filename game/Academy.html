@@ -804,12 +804,15 @@ let hillZone = null;
 let bossWave = 1;
 let bossKills = 0;
 const DEBUG_HITBOXES = false;
+const SHOW_PERF_DEBUG = false;
 const LOW_EFFECTS = true;
 const PERF = {
-  maxParticles: LOW_EFFECTS ? 180 : 380,
-  maxProjectiles: 80,
-  maxAttacks: 60,
-  maxTelegraphs: 40,
+  maxParticles: 120,
+  maxProjectiles: 50,
+  maxAttacks: 45,
+  maxTelegraphs: 25,
+  maxMudTraps: 3,
+  maxLightningStrikes: 3,
   particleScale: LOW_EFFECTS ? 0.35 : 0.65,
   trailChance: LOW_EFFECTS ? 0.08 : 0.18,
   lowPerfMode: LOW_EFFECTS
@@ -1289,11 +1292,11 @@ function updateGame() {
   players.forEach(updateFighter);
   updateTelegraphs();
   updateAttacks();
-  updateMudTraps();
-  updateLightningStrikes();
+  if (mudTraps && mudTraps.length > 0) updateMudTraps();
+  if (lightningStrikes && lightningStrikes.length > 0) updateLightningStrikes();
   updateProjectiles();
   updateParticles();
-  enforcePerfCaps();
+  if (matchTime % 10 === 0) enforcePerfCaps();
   updateCamera();
 
   if (matchTime % 15 === 0) updateHud();
@@ -1302,12 +1305,13 @@ function updateGame() {
 }
 
 function enforcePerfCaps() {
-  if (particles.length > PERF.maxParticles) particles.splice(0, particles.length - PERF.maxParticles);
-  if (projectiles.length > PERF.maxProjectiles) projectiles.splice(0, projectiles.length - PERF.maxProjectiles);
-  if (attacks.length > PERF.maxAttacks) attacks.splice(0, attacks.length - PERF.maxAttacks);
-  if (telegraphs.length > PERF.maxTelegraphs) telegraphs.splice(0, telegraphs.length - PERF.maxTelegraphs);
-  if (mudTraps.length > 3) {
-    mudTraps.splice(0, mudTraps.length - 3);
+  if (particles && particles.length > PERF.maxParticles) particles.splice(0, particles.length - PERF.maxParticles);
+  if (projectiles && projectiles.length > PERF.maxProjectiles) projectiles.splice(0, projectiles.length - PERF.maxProjectiles);
+  if (attacks && attacks.length > PERF.maxAttacks) attacks.splice(0, attacks.length - PERF.maxAttacks);
+  if (telegraphs && telegraphs.length > PERF.maxTelegraphs) telegraphs.splice(0, telegraphs.length - PERF.maxTelegraphs);
+  if (mudTraps && mudTraps.length > PERF.maxMudTraps) mudTraps.splice(0, mudTraps.length - PERF.maxMudTraps);
+  if (lightningStrikes && lightningStrikes.length > PERF.maxLightningStrikes) {
+    lightningStrikes.splice(0, lightningStrikes.length - PERF.maxLightningStrikes);
   }
 }
 
@@ -2515,14 +2519,14 @@ function updateAnubisCircleUltimate(p) {
   if (Math.random() < 0.85) {
     const a = Math.random() * Math.PI * 2;
     const r = p.anubisUltRadius * (0.86 + Math.random() * 0.18);
-    particles.push({ x: p.x + Math.cos(a) * r, y: p.y + Math.sin(a) * r, vx: -Math.cos(a) * (0.6 + Math.random() * 1.2), vy: -Math.sin(a) * (0.6 + Math.random() * 1.2), life: 24 + Math.random() * 20, size: 4 + Math.random() * 7, color: Math.random() < 0.72 ? "#7b2cbf" : "#c77dff" });
+    pushParticleSafe({ x: p.x + Math.cos(a) * r, y: p.y + Math.sin(a) * r, vx: -Math.cos(a) * (0.6 + Math.random() * 1.2), vy: -Math.sin(a) * (0.6 + Math.random() * 1.2), life: 24 + Math.random() * 20, size: 4 + Math.random() * 7, color: Math.random() < 0.72 ? "#7b2cbf" : "#c77dff" });
   }
 
   if (Math.random() < 0.45) {
     const progress = 1 - p.anubisUltTimer / Math.max(1, p.anubisUltMaxTimer);
     const r = p.anubisUltRadius * progress * Math.sqrt(Math.random());
     const a = Math.random() * Math.PI * 2;
-    particles.push({ x: p.x + Math.cos(a) * r, y: p.y + Math.sin(a) * r, vx: (Math.random() - 0.5) * 1.5, vy: (Math.random() - 0.5) * 1.5, life: 18 + Math.random() * 18, size: 4 + Math.random() * 8, color: "#ff1744" });
+    pushParticleSafe({ x: p.x + Math.cos(a) * r, y: p.y + Math.sin(a) * r, vx: (Math.random() - 0.5) * 1.5, vy: (Math.random() - 0.5) * 1.5, life: 18 + Math.random() * 18, size: 4 + Math.random() * 8, color: "#ff1744" });
   }
 
   if (p.anubisUltTimer <= 0) detonateAnubisCircleUltimate(p);
@@ -3507,7 +3511,7 @@ function updateProjectiles() {
     if (Math.random() < PERF.trailChance && particles.length < PERF.maxParticles) {
       const pvx = pr.vx || 0;
       const pvy = pr.vy || 0;
-      particles.push({
+      pushParticleSafe({
         x: pr.x,
         y: pr.y,
         vx: -pvx * 0.15 + (Math.random() - .5) * 1.2,
@@ -3536,7 +3540,7 @@ function spawnImpactSparks(x, y, impactType, impactColor, strength = 1) {
   if (impactType === "shield") {
     for (let i = 0; i < burst; i++) {
       const spread = (i / Math.max(1, burst - 1) - 0.5) * 2.2;
-      particles.push({x: x + spread * 20, y: y + (Math.random() - 0.5) * 6, vx: spread * 1.6, vy: (Math.random() - 0.5) * 0.9, life: 12 + Math.random() * 8, size: 4 + Math.random() * 5, color});
+      pushParticleSafe({x: x + spread * 20, y: y + (Math.random() - 0.5) * 6, vx: spread * 1.6, vy: (Math.random() - 0.5) * 0.9, life: 12 + Math.random() * 8, size: 4 + Math.random() * 5, color});
     }
     return;
   }
@@ -3545,7 +3549,7 @@ function spawnImpactSparks(x, y, impactType, impactColor, strength = 1) {
   } else if (impactType === "solar") {
     spawnParticles(x, y, color, burst + 10, 4 + strength * 2);
   } else if (impactType === "soul") {
-    for (let i = 0; i < burst; i++) particles.push({x:x+(Math.random()-.5)*18,y:y+(Math.random()-.5)*14,vx:(Math.random()-.5)*1.2,vy:-0.6-Math.random()*1.6,life:24+Math.random()*20,size:2+Math.random()*4,color});
+    for (let i = 0; i < burst; i++) pushParticleSafe({x:x+(Math.random()-.5)*18,y:y+(Math.random()-.5)*14,vx:(Math.random()-.5)*1.2,vy:-0.6-Math.random()*1.6,life:24+Math.random()*20,size:2+Math.random()*4,color});
   } else {
     spawnParticles(x, y, color, burst, 3 + strength * 2.2);
   }
@@ -3615,6 +3619,12 @@ function applyHit(target, source, damage, knock, angle, dir, color, impact = {})
   playHitCue(meta.cue);
 }
 
+function pushParticleSafe(particle) {
+  if (!particle) return;
+  if (particles.length >= PERF.maxParticles) particles.shift();
+  particles.push(particle);
+}
+
 function spawnParticles(x, y, color, count, speed) {
   count = Math.max(1, Math.floor(count * (PERF.particleScale || 1)));
 
@@ -3626,7 +3636,7 @@ function spawnParticles(x, y, color, count, speed) {
   for (let i = 0; i < count; i++) {
     const a = Math.random() * Math.PI * 2;
     const s = Math.random() * speed;
-    particles.push({
+    pushParticleSafe({
       x,
       y,
       vx: Math.cos(a) * s,
@@ -3640,7 +3650,7 @@ function spawnParticles(x, y, color, count, speed) {
 
 
 function spawnStatusText(x, y, text, color) {
-  particles.push({
+  pushParticleSafe({
     x,
     y,
     vx: 0,
@@ -3892,7 +3902,7 @@ function drawGame() {
   players.forEach(drawAnubisCircleUltimate);
   if (mudTraps && mudTraps.length > 0) drawMudTraps();
   telegraphs.forEach(drawTelegraph);
-  drawLightningStrikes();
+  if (lightningStrikes && lightningStrikes.length > 0) drawLightningStrikes();
 
   projectiles.forEach(drawProjectile);
   attacks.forEach(drawAttack);
@@ -3903,16 +3913,18 @@ function drawGame() {
   drawUltimateScreenFlash();
   drawEclipseOverlay();
 
-  ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.font = "14px monospace";
-  ctx.fillStyle = "#ffffff";
-  ctx.fillText(
-    `FPS objects - particles:${particles.length} attacks:${attacks.length} projectiles:${projectiles.length} mud:${mudTraps.length}`,
-    12,
-    H - 18
-  );
-  ctx.restore();
+  if (SHOW_PERF_DEBUG) {
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.font = "14px monospace";
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(
+      `FPS objects - particles:${particles.length} attacks:${attacks.length} projectiles:${projectiles.length} mud:${mudTraps ? mudTraps.length : 0}`,
+      12,
+      H - 18
+    );
+    ctx.restore();
+  }
 }
 
 function drawAnubisCircleUltimate(p) {
@@ -3941,11 +3953,16 @@ function drawAnubisCircleUltimate(p) {
   ctx.globalAlpha = 0.9;
   ctx.strokeStyle = "#c77dff";
   ctx.lineWidth = screenScale(2.5);
-  for (let i = 0; i < 18; i++) {
-    const a1 = (Math.PI * 2 * i) / 18 + Math.sin(matchTime * 0.05 + i) * 0.08;
-    const a2 = a1 + 0.12 + Math.random() * 0.08;
+  const arcCount = PERF.lowPerfMode ? 8 : 18;
+  for (let i = 0; i < arcCount; i++) {
+    const seed = matchTime * 0.05 + i * 1.73;
+    const a1 = (Math.PI * 2 * i) / arcCount + Math.sin(seed) * 0.08;
+    const a2 = a1 + 0.12 + (Math.sin(seed * 1.37) * 0.5 + 0.5) * 0.08;
+    const ox = Math.sin(seed * 2.1) * screenScale(2);
+    const oy = Math.cos(seed * 1.9) * screenScale(2);
+    const rr = radius * (0.96 + (Math.sin(seed * 2.7) * 0.5 + 0.5) * 0.06);
     ctx.beginPath();
-    ctx.arc(x + (Math.random() - 0.5) * screenScale(4), y + (Math.random() - 0.5) * screenScale(4), radius * (0.96 + Math.random() * 0.06), a1, a2);
+    ctx.arc(x + ox, y + oy, rr, a1, a2);
     ctx.stroke();
   }
 
@@ -5132,5 +5149,4 @@ function clamp(v, min, max) {
 </script>
 </body>
 </html>
-
 
