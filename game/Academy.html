@@ -988,8 +988,8 @@ function dodge(p) {
 
 const ATTACK_DEFS = {
   zeus: {
-    light: { neutral:{id:"zeus_light_n",godId:"zeus",inputType:"light",directionVariant:"neutral",startup:3,active:6,recovery:7,damage:7,knock:7.5,angle:-0.35,hitbox:{x:38,y:-2,w:58,h:46},animation:"jab",effects:{visualType:"lightningJab"}}, up:{id:"zeus_light_u",directionVariant:"up",startup:3,active:6,recovery:7,damage:7,knock:7.2,angle:-0.9,hitbox:{x:34,y:-30,w:52,h:42},effects:{visualType:"uppercut"}}, down:{id:"zeus_light_d",directionVariant:"down",startup:2,active:6,recovery:8,damage:8,knock:8,angle:0.2,hitbox:{x:36,y:18,w:56,h:38},effects:{visualType:"solarSweep"}}},
-    heavy:{neutral:{id:"zeus_heavy_n",directionVariant:"neutral",startup:6,active:7,recovery:13,damage:13,knock:12.5,angle:-0.25,hitbox:{x:48,y:-6,w:76,h:58},effects:{visualType:"slashArc"}},up:{id:"zeus_heavy_u",directionVariant:"up",startup:6,active:7,recovery:13,damage:12,knock:12,angle:-1.0,hitbox:{x:34,y:-54,w:68,h:64},effects:{visualType:"beam"}},down:{id:"zeus_heavy_d",directionVariant:"down",startup:5,active:7,recovery:14,damage:14,knock:13,angle:0.35,hitbox:{x:40,y:20,w:74,h:46},effects:{visualType:"groundSlam"}}}
+    light: { neutral:{id:"zeus_light_n",godId:"zeus",inputType:"light",directionVariant:"neutral",startup:3,active:6,recovery:7,damage:6.8,knock:7.1,angle:-0.1,hitbox:{x:36,y:-4,w:56,h:34},animation:"jab",effects:{visualType:"lightningJab"}}, up:{id:"zeus_light_u",directionVariant:"up",startup:3,active:6,recovery:7,damage:7,knock:7.8,angle:-1.05,hitbox:{x:30,y:-44,w:56,h:52},effects:{visualType:"uppercutSpark"}}, down:{id:"zeus_light_d",directionVariant:"down",startup:3,active:6,recovery:8,damage:6,knock:7.2,angle:0.08,hitbox:{x:34,y:20,w:62,h:24},effects:{visualType:"staticSweep"}}},
+    heavy:{neutral:{id:"zeus_heavy_n",directionVariant:"neutral",startup:8,active:7,recovery:13,damage:13,knock:13.2,angle:-0.55,hitbox:{x:46,y:-8,w:92,h:44},effects:{visualType:"boltSpear"}},up:{id:"zeus_heavy_u",directionVariant:"up",startup:7,active:7,recovery:13,damage:12,knock:12.5,angle:-1.2,hitbox:{x:28,y:-92,w:44,h:108},effects:{visualType:"stormPillar"}},down:{id:"zeus_heavy_d",directionVariant:"down",startup:6,active:7,recovery:14,damage:14,knock:13.3,angle:-0.75,hitbox:{x:24,y:16,w:110,h:40},effects:{visualType:"thunderStomp"}}}
   }
 };
 function cloneMove(base, p, variant, inputType){ const m=JSON.parse(JSON.stringify(base)); m.godId=p.godId; m.inputType=inputType; m.directionVariant=variant; return m;}
@@ -1008,7 +1008,7 @@ function heavyAttack(p) {
   const v = getAttackVariant(p, "heavy");
   const defs = ATTACK_DEFS[p.godId] || ATTACK_DEFS.zeus;
   const move = cloneMove(defs.heavy[v] || defs.heavy.neutral, p, v, "heavy");
-  if (startMove(p, move)) shake = Math.max(shake, 4);
+  if (startMove(p, move)) shake = Math.max(shake, move.directionVariant === "up" ? 5 : 4);
 }
 
 function useSpecial(p) {
@@ -1023,20 +1023,22 @@ function useSpecial(p) {
   p.moveVariant = getAttackVariant(p, "special");
 
   if (id === "zeus") {
-    spawnProjectile({
-      owner: p,
-      type: "bolt",
-      x: p.x + p.facing * 28,
-      y: p.y - 10,
-      vx: p.facing * 12,
-      vy: -1,
-      w: 32,
-      h: 16,
-      life: 55,
-      damage: 10,
-      knock: 10,
-      color: "#ffe66d"
-    });
+    if (p.moveVariant === "up") {
+      p.specialCooldown = p.god.specialCooldown + 12;
+      p.vy = -16;
+      p.vx *= 0.55;
+      p.invincible = Math.max(p.invincible, 10);
+      createAttack({owner:p,x:p.x,y:p.y-24,w:48,h:92,damage:5,knock:7,angle:-1.05,frames:10,color:"#fff4a3",label:"storm_ascent",visualType:"stormPillar"});
+      spawnParticles(p.x, p.y + 12, "#ffe66d", 20, 6);
+    } else if (p.moveVariant === "down") {
+      const strikeX = p.grounded ? p.x + p.facing * 42 : p.x;
+      const strikeY = p.grounded ? p.y + 6 : p.y + 78;
+      createAttack({owner:p,x:strikeX,y:strikeY,w:54,h:140,damage:9,knock:10,angle:-1.0,frames:12,color:"#ffe66d",label:"sky_judgment",visualType:"stormPillar"});
+      spawnParticles(strikeX, strikeY - 56, "#fff4a3", 24, 7);
+      shake = Math.max(shake, 4);
+    } else {
+      spawnProjectile({owner:p,type:"bolt",x:p.x + p.facing * 28,y:p.y - 10,vx:p.facing * 12,vy:-1,w:34,h:18,life:55,damage:10,knock:10,color:"#ffe66d",chain:true});
+    }
   }
 
   else if (id === "athena") {
@@ -1477,6 +1479,18 @@ function updateProjectiles() {
           if (pr.pull) {
             p.vx += -dir * 9;
             p.vy -= 3;
+          }
+
+          if (pr.chain) {
+            players.forEach(other => {
+              if (other === pr.owner || other === p || other.dead || other.invincible > 0) return;
+              const d = Math.hypot(other.x - p.x, other.y - p.y);
+              if (d < 130) {
+                const cdir = Math.sign(other.x - p.x) || dir;
+                applyHit(other, pr.owner, Math.max(3, pr.damage * 0.45), Math.max(5, pr.knock * 0.6), -0.7, cdir, "#fff7bf");
+                spawnParticles((other.x + p.x) / 2, (other.y + p.y) / 2, "#fff7bf", 8, 3);
+              }
+            });
           }
 
           if (pr.type !== "clone") {
@@ -1958,12 +1972,12 @@ function drawActiveMoveVisual(ctx, player) {
     v.frames--;
     const color = player.god.accent || player.god.color;
     const type=v.type;
-    if (["slashArc","hammerSwing","solarSweep","jackalClaw","daggerFlurry","groundSlam"].includes(type)) {
+    if (["slashArc","hammerSwing","solarSweep","jackalClaw","daggerFlurry","groundSlam","staticSweep","thunderStomp"].includes(type)) {
       drawAttackArc(ctx,{x:handX,y:handY,color,length:v.length||52,thickness:v.thickness||14,startA:(player.facing===1?-1.4:Math.PI+0.2),endA:(player.facing===1?.4:Math.PI-1.2)});
-    } else if (["stabLine","beam","lightningJab","shieldBash","shockwave","uppercut"].includes(type)) {
+    } else if (["stabLine","beam","lightningJab","shieldBash","shockwave","uppercut","boltSpear","uppercutSpark","stormPillar"].includes(type)) {
       ctx.strokeStyle=color; ctx.lineWidth=screenScale(v.thickness||10); ctx.globalAlpha=.8; ctx.beginPath();
       ctx.moveTo(worldToScreenX(handX), worldToScreenY(handY));
-      const tx=handX + player.facing*(v.length||65); const ty=handY + (type==="uppercut"?-55:0);
+      const tx=handX + player.facing*(v.length||65); const ty=handY + ((type==="uppercut"||type==="uppercutSpark")?-55:(type==="stormPillar"?-95:0));
       ctx.lineTo(worldToScreenX(tx), worldToScreenY(ty)); ctx.stroke(); ctx.globalAlpha=1;
     }
     if (v.frames<=0) player.moveVisuals.splice(i,1);
@@ -2015,8 +2029,17 @@ function drawProjectile(pr) {
   ctx.lineWidth = screenScale(2);
 
   if (pr.type === "bolt") {
-    ctx.fillRect(x - w/2, y - h/2, w, h);
-    ctx.fillRect(x - w/4, y - h, w/2, h * 2);
+    ctx.beginPath();
+    ctx.moveTo(x - w * 0.55, y - h * 0.15);
+    ctx.lineTo(x - w * 0.1, y - h * 0.55);
+    ctx.lineTo(x + w * 0.05, y - h * 0.2);
+    ctx.lineTo(x + w * 0.5, y - h * 0.5);
+    ctx.lineTo(x + w * 0.12, y + h * 0.05);
+    ctx.lineTo(x + w * 0.25, y + h * 0.5);
+    ctx.lineTo(x - w * 0.25, y + h * 0.1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
   } else if (pr.type === "sun") {
     ctx.fillRect(x - w/2, y - h/2, w, h);
     ctx.fillStyle = "rgba(255,234,0,.2)";
