@@ -830,6 +830,7 @@ const GODS = {
     specialCooldown: 54,
     specialName: "Falcon Dive"
   },
+
   sobek: {
     id: "sobek",
     name: "Sobek",
@@ -887,6 +888,36 @@ const GODS = {
     attackPower: .88,
     specialCooldown: 42,
     specialName: "Moon Pounce"
+  },
+
+  quetzalcoatl: {
+    id: "quetzalcoatl",
+    name: "Quetzalcoatl",
+    pantheon: "Aztec",
+    role: "Feathered Storm",
+    desc: "A feathered serpent god who glides, dives, and controls the air with wind and emerald storm magic.",
+    moveStyle: {
+      role: "Aerial wind controller",
+      neutral: "Feather slashes and wind pokes keep enemies away.",
+      up: "Gliding rises and wind lifts dominate airspace.",
+      down: "Serpent dives and gust traps punish grounded enemies.",
+      special: "Gale Coil / Sky Serpent Rise / Wind Shear."
+    },
+    color: "#22c55e",
+    dark: "#064e3b",
+    accent: "#67e8f9",
+    skin: "#0f766e",
+    hpColor: "#67e8f9",
+    speed: 5.55,
+    jump: 16.8,
+    weight: 0.9,
+    attackPower: 0.94,
+    specialCooldown: 52,
+    specialName: "Gale Coil",
+    bodyScale: 0.98,
+    widthScale: 0.96,
+    heightScale: 1.02,
+    knockbackTaken: 1.08
   },
   hades: {
     id: "hades",
@@ -949,7 +980,7 @@ const GODS = {
 
 };
 
-const GOD_ORDER = ["zeus", "athena", "ra", "anubis", "thor", "loki", "horus", "sobek", "bastet", "hades"];
+const GOD_ORDER = ["zeus", "athena", "ra", "anubis", "thor", "loki", "horus", "quetzalcoatl", "sobek", "bastet", "hades"];
 
 const MAPS = {
   temple: {
@@ -1221,6 +1252,20 @@ function drawAvatar(c, god, x, y, scale) {
     c.fillRect(x - 14*s, y - 2*s, 4*s, 8*s);
     c.fillRect(x + 10*s, y - 2*s, 4*s, 8*s);
   }
+  if (god.id === "quetzalcoatl") {
+    c.fillStyle = "#0f766e";
+    c.fillRect(x - 9*s, y - 14*s, 18*s, 10*s);
+    c.fillStyle = "#67e8f9";
+    c.fillRect(x - 11*s, y - 18*s, 22*s, 4*s);
+    c.fillStyle = "#d4af37";
+    c.fillRect(x + 8*s, y - 10*s, 6*s, 3*s);
+    c.fillStyle = "#22c55e";
+    c.fillRect(x - 12*s, y - 2*s, 24*s, 5*s);
+    c.fillRect(x + 8*s, y + 4*s, 8*s, 4*s);
+    c.fillStyle = "#064e3b";
+    c.fillRect(x - 5*s, y + 3*s, 10*s, 12*s);
+  }
+
   if (god.id === "sobek") {
     c.fillStyle = "#16443f";
     c.fillRect(x - 10*s, y - 14*s, 20*s, 10*s);
@@ -1444,6 +1489,7 @@ function createFighter(config) {
     perfectDodgeUsed: false,
     dodgeCancelable: false,
     horusGlideTimer: 0,
+    quetzGlideTimer: 0,
     horusRushTimer: 0,
     horusRushDir: 1,
     horusRushTrailTimer: 0,
@@ -2221,6 +2267,10 @@ const ATTACK_DEFS = {
     light: { neutral:{id:"horus_light_n",godId:"horus",inputType:"light",directionVariant:"neutral",startup:2,active:5,recovery:7,damage:6,knock:6.1,angle:-0.08,hitbox:{x:34,y:-6,w:52,h:28},effects:{visualType:"wingSlash"},selfImpulse:{x:1.2,y:0}}, up:{id:"horus_light_u",directionVariant:"up",startup:3,active:5,recovery:8,damage:7,knock:7.2,angle:-1.15,hitbox:{x:28,y:-62,w:62,h:58},effects:{visualType:"wingLift"}}, down:{id:"horus_light_d",directionVariant:"down",startup:3,active:5,recovery:8,damage:6,knock:6.6,angle:-0.03,hitbox:{x:32,y:24,w:64,h:22},effects:{visualType:"talonRake"}}},
     heavy:{neutral:{id:"horus_heavy_n",directionVariant:"neutral",startup:7,active:6,recovery:13,damage:12,knock:12.4,angle:-0.72,hitbox:{x:50,y:-10,w:108,h:30},effects:{visualType:"royalSpear"},selfImpulse:{x:3.6,y:0}},up:{id:"horus_heavy_u",directionVariant:"up",startup:7,active:7,recovery:14,damage:12,knock:12.6,angle:-1.25,hitbox:{x:20,y:-96,w:78,h:96},effects:{visualType:"skyJudgment"}},down:{id:"horus_heavy_d",directionVariant:"down",startup:8,active:7,recovery:14,damage:13,knock:11.6,angle:-0.96,hitbox:{x:8,y:20,w:82,h:66},effects:{visualType:"talonDrop"}}}
   },
+  quetzalcoatl: {
+    light: { neutral:{id:"quetz_light_n",godId:"quetzalcoatl",inputType:"light",directionVariant:"neutral",startup:2,active:5,recovery:7,damage:5.8,knock:5.9,angle:-0.08,hitbox:{x:36,y:-8,w:62,h:30},effects:{visualType:"quetzFeatherFangSwipe"}}, up:{id:"quetz_light_u",directionVariant:"up",startup:3,active:5,recovery:8,damage:6.4,knock:7.6,angle:-1.15,hitbox:{x:24,y:-66,w:64,h:64},effects:{visualType:"quetzSkyPlumeFlick"}}, down:{id:"quetz_light_d",directionVariant:"down",startup:3,active:6,recovery:8,damage:6,knock:6.8,angle:0.04,hitbox:{x:24,y:22,w:82,h:24},effects:{visualType:"quetzCoilSweep"}}},
+    heavy:{neutral:{id:"quetz_heavy_n",directionVariant:"neutral",startup:7,active:7,recovery:13,damage:12,knock:13.2,angle:-0.3,hitbox:{x:38,y:-14,w:106,h:50},effects:{visualType:"quetzEmeraldWingCleave"}},up:{id:"quetz_heavy_u",directionVariant:"up",startup:7,active:7,recovery:14,damage:11,knock:13.5,angle:-1.22,hitbox:{x:16,y:-98,w:84,h:104},effects:{visualType:"quetzTempestCrown"}},down:{id:"quetz_heavy_d",directionVariant:"down",startup:8,active:8,recovery:16,damage:12.5,knock:12,angle:-0.75,hitbox:{x:10,y:18,w:92,h:68},effects:{visualType:"quetzSerpentDive"}}}
+  },
   sobek: {
     light: { neutral:{id:"sobek_light_n",godId:"sobek",inputType:"light",directionVariant:"neutral",startup:4,active:6,recovery:9,damage:7,knock:7.4,angle:-0.06,hitbox:{x:34,y:-4,w:62,h:34},effects:{visualType:"crocClaw"}}, up:{id:"sobek_light_u",directionVariant:"up",startup:4,active:6,recovery:9,damage:8,knock:8.5,angle:-1.12,hitbox:{x:30,y:-60,w:68,h:62},effects:{visualType:"jawSnap"}}, down:{id:"sobek_light_d",directionVariant:"down",startup:4,active:7,recovery:10,damage:6,knock:7.1,angle:-0.02,hitbox:{x:-42,y:22,w:132,h:22},effects:{visualType:"tailSweep"}}},
     heavy:{neutral:{id:"sobek_heavy_n",directionVariant:"neutral",startup:10,active:7,recovery:16,damage:15,knock:15.2,angle:-0.18,hitbox:{x:40,y:-12,w:90,h:46},effects:{visualType:"jawSnap"}},up:{id:"sobek_heavy_u",directionVariant:"up",startup:9,active:7,recovery:16,damage:14,knock:14.6,angle:-1.2,hitbox:{x:16,y:-100,w:86,h:104},effects:{visualType:"waterBurst"}},down:{id:"sobek_heavy_d",directionVariant:"down",startup:9,active:8,recovery:17,damage:15,knock:14.8,angle:-0.86,hitbox:{x:-30,y:16,w:112,h:74},effects:{visualType:"deathRoll"}}}
@@ -2246,7 +2296,8 @@ const GOD_ANIM_FAMILIES = {
   thor:{light:"hammerOverShoulder",heavy:"heavyFollowThrough",special:"groundSlamCrouch",ultimate:"lightningImpact"},
   loki:{light:"doubleStab",heavy:"smearFrames",special:"flickerAfterimages",ultimate:"lowFakeout"},
   horus:{light:"wingExtension",heavy:"airborneLean",special:"talonDive",ultimate:"spearGlide"},
-  sobek:{light:"crocCrouch",heavy:"jawOpenClose",special:"tailSweep",ultimate:"deathRollSpin"}
+  sobek:{light:"crocCrouch",heavy:"jawOpenClose",special:"tailSweep",ultimate:"deathRollSpin"},
+  quetzalcoatl:{light:"wingExtension",heavy:"airborneLean",special:"talonDive",ultimate:"stormPillar"}
 };
 Object.entries(ATTACK_DEFS).forEach(([godId, godMoves]) => {
   Object.entries(godMoves).forEach(([inputType, variants]) => {
@@ -3486,6 +3537,7 @@ function updateFighter(p) {
   if (p.thorHeavyArmorTimer > 0) p.thorHeavyArmorTimer--;
   if (p.lokiPlatformTeleportCooldown > 0) p.lokiPlatformTeleportCooldown--;
   if (p.horusGlideTimer > 0) p.horusGlideTimer--;
+  if (p.quetzGlideTimer > 0) p.quetzGlideTimer--;
   if (p.horusDashTrailTimer > 0) {
     p.horusDashTrailTimer--;
     if (Math.random() < 0.9) spawnParticles(p.x - p.facing * 20, p.y, "#2ec4ff", 3, 1.8);
@@ -3696,8 +3748,8 @@ function updateFighter(p) {
     p.grounded = false;
   }
 
-  p.vy += (p.godId === "horus" && p.horusGlideTimer > 0 && !p.grounded ? 0.28 : 0.78);
-  if (p.godId === "horus" && p.horusGlideTimer > 0 && !p.grounded) p.vx *= 0.996;
+  p.vy += ((p.godId === "horus" && p.horusGlideTimer > 0 && !p.grounded) || (p.godId === "quetzalcoatl" && p.quetzGlideTimer > 0 && !p.grounded) ? 0.28 : 0.78);
+  if ((p.godId === "horus" && p.horusGlideTimer > 0 && !p.grounded) || (p.godId === "quetzalcoatl" && p.quetzGlideTimer > 0 && !p.grounded)) p.vx *= 0.996;
 
   if (p.dodgeTimer > 0) {
     if (p.dodgeTimer > 26) p.dodgePhase = "startup";
@@ -5114,6 +5166,7 @@ function drawStatusIcons(p, x, y, s) {
   if (p.armorTimer > 0) icons.push({t:"⛨", c:"#bfdbfe"});
   if (p.confusedTimer > 0) icons.push({t:"❖", c:"#86efac"});
   if (p.horusGlideTimer > 0) icons.push({t:"🪽", c:"#7dd3fc"});
+  if (p.quetzGlideTimer > 0) icons.push({t:"🌬️", c:"#67e8f9"});
   if (p.mudSlowTimer > 0 || p.jumpDebuffTimer > 0) icons.push({t:"🟤", c:"#b08968"});
   const startX = x - ((icons.length - 1) * screenScale(10));
   icons.forEach((ic, i) => {
