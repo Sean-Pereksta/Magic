@@ -1617,21 +1617,6 @@ function updateBot(p) {
   const aliveEnemies = players.filter(o => o !== p && !o.dead && o.lives > 0);
   if (!aliveEnemies.length) return;
 
-  p.ai.think--;
-  if (p.ai.think <= 0 || !p.ai.target || p.ai.target.dead) {
-    p.ai.target = nearestEnemy(p);
-    p.ai.think = profile.thinkMin + Math.random() * profile.thinkRand;
-  }
-  if (p.confusedTimer > 0 && Math.random() < 0.35) {
-    const fake = projectiles.find(pr => pr.type === "clone" && pr.owner && pr.owner.godId === "loki" && !pr.owner.dead);
-    if (fake) p.ai.target = { x: fake.x, y: fake.y, grounded: false, dead: false };
-  }
-
-  const target = p.ai.target;
-  const dx = target.x - p.x;
-  const dy = target.y - p.y;
-  const dist = Math.hypot(dx, dy);
-
   const difficultyProfile = {
     easy:   { aggression: 0.42, jumpSkill: 0.25, thinkMin: 25, thinkRand: 30, recoverySkill: 0.25, platformSkill: 0.25 },
     normal: { aggression: 0.65, jumpSkill: 0.45, thinkMin: 20, thinkRand: 25, recoverySkill: 0.45, platformSkill: 0.45 },
@@ -1639,90 +1624,171 @@ function updateBot(p) {
     expert: { aggression: 1.05, jumpSkill: 0.88, thinkMin: 9, thinkRand: 14, recoverySkill: 0.88, platformSkill: 0.82 },
     mythic: { aggression: 1.18, jumpSkill: 0.96, thinkMin: 5, thinkRand: 10, recoverySkill: 0.97, platformSkill: 0.94 }
   };
+
   const profile = difficultyProfile[p.difficulty] || difficultyProfile.normal;
   const aggression = profile.aggression * (p.bossAggression || 1);
   const jumpSkill = profile.jumpSkill;
+
+  p.ai.think--;
+  if (p.ai.think <= 0 || !p.ai.target || p.ai.target.dead || p.ai.target.lives <= 0) {
+    p.ai.target = nearestEnemy(p);
+    p.ai.think = profile.thinkMin + Math.random() * profile.thinkRand;
+  }
+
+  if (!p.ai.target) return;
+
+  if (p.confusedTimer > 0 && Math.random() < 0.35) {
+    const fake = projectiles.find(pr =>
+      pr.type === "clone" &&
+      pr.owner &&
+      pr.owner.godId === "loki" &&
+      !pr.owner.dead
+    );
+
+    if (fake) {
+      p.ai.target = {
+        x: fake.x,
+        y: fake.y,
+        grounded: false,
+        dead: false,
+        lives: 1
+      };
+    }
+  }
+
+  const target = p.ai.target;
+  const dx = target.x - p.x;
+  const dy = target.y - p.y;
+  const dist = Math.hypot(dx, dy);
+
   if (botRecoveryBehavior(p, profile)) return;
 
   let move = 0;
 
-  if (Math.abs(dx) > 70) move = Math.sign(dx);
-  else if (Math.random() < .03) move = -Math.sign(dx);
+  if (Math.abs(dx) > 70) {
+    move = Math.sign(dx);
+  } else if (Math.random() < 0.03) {
+    move = -Math.sign(dx || p.facing || 1);
+  }
 
   const worldW = currentMap.worldWidth || 1320;
+
   if (p.x < 130) move = 1;
   if (p.x > worldW - 130) move = -1;
-  if (Math.abs(dx) > worldW * 0.55) move = Math.sign(dx);
-  if (Math.abs(p.x - mapCenterX()) > worldW * 0.4 && Math.random() < 0.08) move = Math.sign(mapCenterX() - p.x);
+
+  if (Math.abs(dx) > worldW * 0.55) {
+    move = Math.sign(dx);
+  }
+
+  if (Math.abs(p.x - mapCenterX()) > worldW * 0.4 && Math.random() < 0.08) {
+    move = Math.sign(mapCenterX() - p.x);
+  }
 
   if (selectedGameMode === "king" && hillZone) {
     const dxHill = hillZone.x - p.x;
     const dyHill = hillZone.y - p.y;
-    const nearHill = Math.abs(dxHill) < hillZone.w * 0.6 && Math.abs(dyHill) < hillZone.h;
+    const nearHill =
+      Math.abs(dxHill) < hillZone.w * 0.6 &&
+      Math.abs(dyHill) < hillZone.h;
+
     const targetDist = Math.abs(dx);
 
     if (!nearHill && (targetDist > Math.abs(dxHill) || Math.random() < 0.7)) {
       move = Math.sign(dxHill);
-      if (dyHill < -70 && p.grounded && Math.random() < jumpSkill) jump(p);
+
+      if (dyHill < -70 && p.grounded && Math.random() < jumpSkill) {
+        jump(p);
+      }
     } else if (nearHill && Math.random() < 0.45) {
-      move = -Math.sign(dx);
+      move = -Math.sign(dx || p.facing || 1);
     }
   }
 
-  if (p.grounded && move !== 0 && profile.platformSkill > 0.65 && isNearPlatformEdge(p, move)) {
-    const targetClose = target && Math.abs(target.x - p.x) < 120 && Math.abs(target.y - p.y) < 80;
-    if (!targetClose || Math.random() < profile.platformSkill) move = 0;
+  if (
+    p.grounded &&
+    move !== 0 &&
+    profile.platformSkill > 0.65 &&
+    isNearPlatformEdge(p, move)
+  ) {
+    const targetClose =
+      target &&
+      Math.abs(target.x - p.x) < 120 &&
+      Math.abs(target.y - p.y) < 80;
+
+    if (!targetClose || Math.random() < profile.platformSkill) {
+      move = 0;
+    }
   }
-  if (dy < -120 && profile.platformSkill > 0.8 && p.grounded && Math.random() < profile.jumpSkill) jump(p);
-  if (dy > 110 && profile.platformSkill > 0.8 && Math.abs(dx) > 60) move = Math.sign(dx);
 
-  applyMoveInput(p, move);
-
-  if (dy < -80 && p.grounded && Math.random() < jumpSkill) jump(p);
-
-  if (!p.grounded && p.y > 540 && Math.random() < .015) {
+  if (
+    dy < -120 &&
+    profile.platformSkill > 0.8 &&
+    p.grounded &&
+    Math.random() < jumpSkill
+  ) {
     jump(p);
   }
 
-  if (dist < 75 && Math.random() < aggression * .08) {
+  if (
+    dy > 110 &&
+    profile.platformSkill > 0.8 &&
+    Math.abs(dx) > 60
+  ) {
+    move = Math.sign(dx);
+  }
+
+  applyMoveInput(p, move);
+
+  if (dy < -80 && p.grounded && Math.random() < jumpSkill) {
+    jump(p);
+  }
+
+  if (!p.grounded && p.y > 540 && Math.random() < 0.015) {
+    jump(p);
+  }
+
+  if (dist < 75 && Math.random() < aggression * 0.08) {
     const closeRoll = Math.random();
+
     if (p.godId === "thor") {
-      if (closeRoll < .74) botUseAttack(p, "heavy");
+      if (closeRoll < 0.74) botUseAttack(p, "heavy");
       else botUseAttack(p, "light");
     } else if (p.godId === "loki") {
-      if (closeRoll < .8) botUseAttack(p, "light");
+      if (closeRoll < 0.8) botUseAttack(p, "light");
       else botUseAttack(p, "heavy");
     } else if (p.godId === "horus") {
-      if (closeRoll < .72) botUseAttack(p, "light");
+      if (closeRoll < 0.72) botUseAttack(p, "light");
       else botUseAttack(p, "heavy");
     } else if (p.godId === "sobek") {
-      if (closeRoll < .42) botUseAttack(p, "light");
+      if (closeRoll < 0.42) botUseAttack(p, "light");
       else botUseAttack(p, "heavy");
     } else {
-      if (closeRoll < .68) botUseAttack(p, "light");
+      if (closeRoll < 0.68) botUseAttack(p, "light");
       else botUseAttack(p, "heavy");
     }
   }
 
-  let specialChance = aggression * .025;
+  let specialChance = aggression * 0.025;
+
   if (p.godId === "zeus" && dist > 120 && dist < 310) specialChance *= 2.1;
   if (p.godId === "ra" && dist > 95) specialChance *= 1.55;
   if (p.godId === "loki") specialChance *= 1.5;
-  if (p.godId === "thor") specialChance *= .78;
+  if (p.godId === "thor") specialChance *= 0.78;
   if (p.godId === "athena" && dist < 90) specialChance *= 1.35;
   if (p.godId === "anubis" && dist < 230) specialChance *= 1.3;
   if (p.godId === "horus") specialChance *= 1.7;
-  if (p.godId === "sobek") specialChance *= dist > 130 ? 1.25 : .85;
+  if (p.godId === "sobek") specialChance *= dist > 130 ? 1.25 : 0.85;
   if (p.godId === "bastet") specialChance *= 1.75;
+
   if (dist < 330 && Math.random() < specialChance) {
     botUseAttack(p, "special");
   }
 
-  if (p.meter >= 100 && dist < 320 && Math.random() < aggression * .018) {
+  if (p.meter >= 100 && dist < 320 && Math.random() < aggression * 0.018) {
     botUseAttack(p, "ultimate");
   }
 
-  if (Math.abs(dx) < 95 && Math.random() < .008) {
+  if (Math.abs(dx) < 95 && Math.random() < 0.008) {
     dodge(p);
   }
 }
