@@ -425,6 +425,8 @@
               <option value="easy">Easy</option>
               <option value="normal" selected>Normal</option>
               <option value="hard">Hard</option>
+              <option value="expert">Expert</option>
+              <option value="mythic">Mythic</option>
             </select>
           </div>
 
@@ -439,6 +441,7 @@
           </div>
 
           <button id="startBtn">START BRAWL</button>
+          <button id="fullscreenBtn" type="button">FULL SCREEN</button>
           <button id="controlsBtn" type="button">CONTROLLER / CONTROL SETTINGS</button>
 
           <div class="controls" id="controlsSummary"></div>
@@ -1128,6 +1131,11 @@ function drawAvatar(c, god, x, y, scale) {
   }
 }
 
+function isFullscreenActive() { return document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement; }
+function enterFullscreen() { const el = document.documentElement; if (el.requestFullscreen) el.requestFullscreen(); else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen(); else if (el.msRequestFullscreen) el.msRequestFullscreen(); }
+function exitFullscreen() { if (document.exitFullscreen) document.exitFullscreen(); else if (document.webkitExitFullscreen) document.webkitExitFullscreen(); else if (document.msExitFullscreen) document.msExitFullscreen(); }
+function updateFullscreenButtonText() { const btn = document.getElementById("fullscreenBtn"); if (btn) btn.textContent = isFullscreenActive() ? "EXIT FULL SCREEN" : "FULL SCREEN"; }
+
 function mapCenterX() {
   return (currentMap.worldWidth || 1320) / 2;
 }
@@ -1147,6 +1155,18 @@ loadControlBindings();
 updateControlsText();
 
 document.getElementById("startBtn").onclick = startGame;
+document.getElementById("fullscreenBtn").onclick = () => {
+  if (isFullscreenActive()) exitFullscreen(); else enterFullscreen();
+  setTimeout(() => {
+    updateFullscreenButtonText();
+    if (typeof resizeCanvas === "function") resizeCanvas();
+    else { W = window.innerWidth; H = window.innerHeight; canvas.width = W; canvas.height = H; ctx.imageSmoothingEnabled = false; }
+  }, 120);
+};
+document.addEventListener("fullscreenchange", updateFullscreenButtonText);
+document.addEventListener("webkitfullscreenchange", updateFullscreenButtonText);
+document.addEventListener("msfullscreenchange", updateFullscreenButtonText);
+updateFullscreenButtonText();
 document.getElementById("controlsBtn").onclick = () => {
   controlsScreen.classList.add("active");
   renderControlBindList();
@@ -1489,6 +1509,68 @@ function pressed(key, p, action) {
   return false;
 }
 
+
+function getBestRecoveryPlatform(p) {
+  let best = null;
+  let bestScore = Infinity;
+  (currentMap.platforms || []).forEach(pl => {
+    const centerX = pl.x + pl.w / 2;
+    const topY = pl.y;
+    const dx = centerX - p.x;
+    const dy = topY - (p.y + p.h / 2);
+    const verticalPenalty = dy < -260 ? 500 : Math.abs(dy);
+    const horizontalPenalty = Math.abs(dx);
+    const mainBonus = pl.type === "main" ? -160 : 0;
+    const score = horizontalPenalty * 0.8 + verticalPenalty * 1.2 + mainBonus;
+    if (score < bestScore) { best = pl; bestScore = score; }
+  });
+  return best;
+}
+
+function isBotInRecoveryDanger(p) {
+  const feetY = p.y + p.h / 2;
+  const worldH = currentMap.worldHeight || 900;
+  const worldW = currentMap.worldWidth || 1700;
+  const mainPlat = (currentMap.platforms || []).find(pl => pl.type === "main") || (currentMap.platforms || [])[0];
+  const mainY = mainPlat ? mainPlat.y : worldH * 0.65;
+  if (feetY > mainY + 90) return true;
+  if (p.x < 80 || p.x > worldW - 80) return true;
+  if (!p.grounded && p.vy > 5 && feetY > mainY - 20) return true;
+  return false;
+}
+
+function isNearPlatformEdge(p, dir) {
+  const feetY = p.y + p.h / 2;
+  const checkX = p.x + dir * 42;
+  let onPlat = false;
+  (currentMap.platforms || []).forEach(pl => {
+    const withinX = checkX >= pl.x && checkX <= pl.x + pl.w;
+    const closeY = Math.abs(feetY - pl.y) < 42;
+    if (withinX && closeY) onPlat = true;
+  });
+  return !onPlat;
+}
+
+function botRecoveryBehavior(p, profile) {
+  if (!isBotInRecoveryDanger(p)) return false;
+  const pl = getBestRecoveryPlatform(p);
+  if (!pl) return false;
+  const platformCenter = pl.x + pl.w / 2;
+  let desiredX = clamp(p.x, pl.x + 60, pl.x + pl.w - 60);
+  if (p.x < pl.x + 40) desiredX = pl.x + 80;
+  else if (p.x > pl.x + pl.w - 40) desiredX = pl.x + pl.w - 80;
+  else desiredX = platformCenter;
+  const dx = desiredX - p.x;
+  const dy = pl.y - (p.y + p.h / 2);
+  applyMoveInput(p, Math.sign(dx));
+  if ((dy < -30 || p.vy > 4) && p.jumps > 0 && Math.random() < profile.recoverySkill) jump(p);
+  if (Math.random() < profile.recoverySkill * 0.08) {
+    if (["horus","sobek","ra","athena","anubis"].includes(p.godId)) botUseAttack(p, "special", "up");
+    else if (p.godId === "loki") { if (p.grounded && Math.random() < 0.45) botUseAttack(p, "special", "down"); else botUseAttack(p, "special", "up"); }
+  }
+  return true;
+}
+
 function updateBot(p) {
   if (p.dead || p.hitstun > 0) return;
 
@@ -1498,7 +1580,7 @@ function updateBot(p) {
   p.ai.think--;
   if (p.ai.think <= 0 || !p.ai.target || p.ai.target.dead) {
     p.ai.target = nearestEnemy(p);
-    p.ai.think = 25 + Math.random() * 30;
+    p.ai.think = profile.thinkMin + Math.random() * profile.thinkRand;
   }
   if (p.confusedTimer > 0 && Math.random() < 0.35) {
     const fake = projectiles.find(pr => pr.type === "clone" && pr.owner && pr.owner.godId === "loki" && !pr.owner.dead);
@@ -1510,10 +1592,17 @@ function updateBot(p) {
   const dy = target.y - p.y;
   const dist = Math.hypot(dx, dy);
 
-  const difficulty = p.difficulty;
-  const aggressionBase = difficulty === "hard" ? .9 : difficulty === "normal" ? .65 : .42;
-  const aggression = aggressionBase * (p.bossAggression || 1);
-  const jumpSkill = difficulty === "hard" ? .75 : difficulty === "normal" ? .45 : .25;
+  const difficultyProfile = {
+    easy:   { aggression: 0.42, jumpSkill: 0.25, thinkMin: 25, thinkRand: 30, recoverySkill: 0.25, platformSkill: 0.25 },
+    normal: { aggression: 0.65, jumpSkill: 0.45, thinkMin: 20, thinkRand: 25, recoverySkill: 0.45, platformSkill: 0.45 },
+    hard:   { aggression: 0.90, jumpSkill: 0.75, thinkMin: 14, thinkRand: 20, recoverySkill: 0.70, platformSkill: 0.65 },
+    expert: { aggression: 1.05, jumpSkill: 0.88, thinkMin: 9, thinkRand: 14, recoverySkill: 0.88, platformSkill: 0.82 },
+    mythic: { aggression: 1.18, jumpSkill: 0.96, thinkMin: 5, thinkRand: 10, recoverySkill: 0.97, platformSkill: 0.94 }
+  };
+  const profile = difficultyProfile[p.difficulty] || difficultyProfile.normal;
+  const aggression = profile.aggression * (p.bossAggression || 1);
+  const jumpSkill = profile.jumpSkill;
+  if (botRecoveryBehavior(p, profile)) return;
 
   let move = 0;
 
@@ -1539,6 +1628,13 @@ function updateBot(p) {
       move = -Math.sign(dx);
     }
   }
+
+  if (p.grounded && move !== 0 && profile.platformSkill > 0.65 && isNearPlatformEdge(p, move)) {
+    const targetClose = target && Math.abs(target.x - p.x) < 120 && Math.abs(target.y - p.y) < 80;
+    if (!targetClose || Math.random() < profile.platformSkill) move = 0;
+  }
+  if (dy < -120 && profile.platformSkill > 0.8 && p.grounded && Math.random() < profile.jumpSkill) jump(p);
+  if (dy > 110 && profile.platformSkill > 0.8 && Math.abs(dx) > 60) move = Math.sign(dx);
 
   applyMoveInput(p, move);
 
@@ -1905,7 +2001,7 @@ function getMoveProgress(p) {
   };
 }
 function startMove(player, moveDef){ if (!moveDef || player.attackCooldown > 0 || player.dead) return false; const total=moveDef.startup+moveDef.active+moveDef.recovery; moveDef.totalFrames=total; player.currentMove=moveDef; player.moveTimer=total; player.movePhase="startup"; player.moveVariant=moveDef.directionVariant||"neutral"; player.moveVisuals=[]; player.action=moveToAttackKind(moveDef.inputType); player.attackKind=moveDef.inputType; player.attackFrame=total; const pdBoost = player.perfectDodgeTimer > 0 ? 8 : 0; player.attackCooldown=Math.max(player.attackCooldown,Math.max(8,total-pdBoost)); if(player.perfectDodgeTimer > 0) player.perfectDodgeTimer = 0; if(moveDef.inputType==="heavy") player.vx*=.55; if(moveDef.selfImpulse){ player.vx += player.facing * (moveDef.selfImpulse.x||0); player.vy += moveDef.selfImpulse.y||0; } if(moveDef.startupArmor) player.armorTimer = Math.max(player.armorTimer, moveDef.startupArmor); if(player.godId==="thor" && moveDef.inputType==="heavy"){ player.armorTimer = Math.max(player.armorTimer, Math.min(12, Math.max(6, moveDef.startup - 1))); if(player.thorHeavyArmorTimer>0){ player.armorTimer = Math.max(player.armorTimer, 14); player.thorHeavyArmorTimer = 0; } } if(player.godId==="sobek" && player.perfectDodgeMud && (moveDef.id||"").includes("sobek_heavy")){ moveDef.knock += 1.8; player.perfectDodgeMud = 0; } return true;}
-function spawnMoveHitbox(player, moveDef){ const hb=moveDef.hitbox; const power=(player.attackPowerBonus||1); let moveAngle=moveDef.angle; if(moveDef.id==="athena_heavy_d" && player.grounded) moveAngle=-0.12; if(moveDef.id==="athena_heavy_d" && !player.grounded) moveAngle=1.2; createAttack({owner:player,x:player.x+player.facing*hb.x,y:player.y+hb.y,w:hb.w,h:hb.h,damage:moveDef.damage*player.god.attackPower*power,knock:moveDef.knock,angle:moveAngle,frames:moveDef.active,color:player.god.accent||player.god.color,label:moveDef.inputType,visualType:(moveDef.effects||{}).visualType||"slashArc",visualAngle:moveDef.angle,visualLength:Math.max(hb.w,hb.h),visualThickness:Math.max(8,Math.min(hb.h,hb.w)/3),attachToOwner:true,offsetX:hb.x,offsetY:hb.y}); if(moveDef.id==="athena_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*56,y:player.y+30,w:80,h:14,damage:4*player.god.attackPower*power,knock:6.2,angle:-0.05,frames:5,color:"#eff8ff",label:"ground_line",visualType:"spearThrust"}); } if(moveDef.id==="ra_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*74,y:player.y+30,w:96,h:14,damage:2.2*player.god.attackPower*power,knock:3.8,angle:-0.03,frames:10,color:"#ff8c42",label:"burn_line",visualType:"desertBurn"}); } if(moveDef.id==="thor_heavy_d"){ createAttack({owner:player,x:player.x-player.facing*76,y:player.y+30,w:96,h:22,damage:4.5*player.god.attackPower*power,knock:8.8,angle:-0.92,frames:6,color:"#d4e8ff",label:"ground_quake",visualType:"thunderLanding"}); } player.moveVisuals.push({type:(moveDef.effects||{}).visualType||"slashArc",phase:"active",frames:moveDef.active+Math.max(3,Math.floor(moveDef.recovery*0.4)),angle:moveDef.angle,length:Math.max(hb.w,hb.h),thickness:14,recoveryFrames:Math.max(3,Math.floor(moveDef.recovery*0.45))}); if(moveDef.id && moveDef.id.startsWith("thor_heavy")){ shake = Math.max(shake, moveDef.id==="thor_heavy_d"?12:9); hitStop = Math.max(hitStop, moveDef.id==="thor_heavy_n"?4:3); } }
+function spawnMoveHitbox(player, moveDef){ const hb=moveDef.hitbox; const power=(player.attackPowerBonus||1); let moveAngle=moveDef.angle; if(moveDef.id==="athena_heavy_d" && player.grounded) moveAngle=-0.12; if(moveDef.id==="athena_heavy_d" && !player.grounded) moveAngle=1.2; createAttack({owner:player,x:player.x+player.facing*hb.x,y:player.y+hb.y,w:hb.w,h:hb.h,damage:moveDef.damage*player.god.attackPower*power,knock:moveDef.knock,angle:moveAngle,frames:moveDef.active,color:player.god.accent||player.god.color,label:moveDef.inputType,visualType:(moveDef.effects||{}).visualType||"slashArc",visualAngle:moveDef.angle,visualLength:Math.max(hb.w,hb.h),visualThickness:Math.max(8,Math.min(hb.h,hb.w)/3),attachToOwner:true,offsetX:hb.x,offsetY:hb.y,directionVariant:moveDef.directionVariant||"neutral",inputType:moveDef.inputType||"",label:moveDef.id||moveDef.inputType||"move"}); if(moveDef.id==="athena_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*56,y:player.y+30,w:80,h:14,damage:4*player.god.attackPower*power,knock:6.2,angle:-0.05,frames:5,color:"#eff8ff",label:"ground_line",visualType:"spearThrust"}); } if(moveDef.id==="ra_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*74,y:player.y+30,w:96,h:14,damage:2.2*player.god.attackPower*power,knock:3.8,angle:-0.03,frames:10,color:"#ff8c42",label:"burn_line",visualType:"desertBurn"}); } if(moveDef.id==="thor_heavy_d"){ createAttack({owner:player,x:player.x-player.facing*76,y:player.y+30,w:96,h:22,damage:4.5*player.god.attackPower*power,knock:8.8,angle:-0.92,frames:6,color:"#d4e8ff",label:"ground_quake",visualType:"thunderLanding"}); } player.moveVisuals.push({type:(moveDef.effects||{}).visualType||"slashArc",phase:"active",frames:moveDef.active+Math.max(3,Math.floor(moveDef.recovery*0.4)),angle:moveDef.angle,length:Math.max(hb.w,hb.h),thickness:14,recoveryFrames:Math.max(3,Math.floor(moveDef.recovery*0.45))}); if(moveDef.id && moveDef.id.startsWith("thor_heavy")){ shake = Math.max(shake, moveDef.id==="thor_heavy_d"?12:9); hitStop = Math.max(hitStop, moveDef.id==="thor_heavy_n"?4:3); } }
 function lightAttack(p) {
   if (p.godId === "anubis" && p.anubisUltActive) return;
   if (p.dodgeTimer > 0 && p.dodgePhase === "recovery" && p.perfectDodgeTimer <= 0) return;
@@ -2813,7 +2909,10 @@ function createAttack(a) {
   a.attachToOwner = !!a.attachToOwner;
   a.offsetX = a.offsetX || 0;
   a.offsetY = a.offsetY || 0;
-  a.visualType = a.visualType || "slashArc";
+  a.directionVariant = a.directionVariant || a.variant || (a.owner && a.owner.moveVariant) || "neutral";
+  a.inputType = a.inputType || (a.owner && a.owner.currentMove && a.owner.currentMove.inputType) || "";
+  a.visualType = a.visualType || (a.effects && a.effects.visualType) || "genericSwing";
+  a.label = a.label || a.inputType || "attack";
   a.dir = a.dir || getFacingDir(a.owner);
   attacks.push(a);
 }
@@ -4514,6 +4613,12 @@ function drawPixelGod(c, p, x, y, s) {
   const bob = Math.sin(p.anim * 6) * (p.grounded && p.action === "run" ? 3 : 1);
   const hitLean = p.hitstun > 0 ? -dir * 7 : 0;
   const pose = getPoseForMove(p);
+  const atkPose = getAttackPose(p);
+  pose.bodyLean += atkPose.lean * 18;
+  pose.crouch += atkPose.crouch;
+  pose.stretch *= atkPose.stretch;
+  pose.weaponAngle += atkPose.armAngle * 0.28;
+  pose.weaponReach += (Math.abs(atkPose.lean) > 0.01 ? 7 : 0);
 
   const px = v => Math.round(v);
   const sc = v => Math.round(v * s);
@@ -4745,6 +4850,16 @@ function drawGodWeapon(c, p, x, y, s, dir, pose) {
   c.restore();
 }
 
+function getAttackPose(p) {
+  const variant = p.moveVariant || (p.currentMove && p.currentMove.directionVariant) || "neutral";
+  const kind = p.attackKind || "";
+  const attacking = p.attackFrame > 0 || p.moveTimer > 0 || !!kind;
+  if (!attacking) return { lean: 0, armAngle: 0, crouch: 0, stretch: 1 };
+  if (variant === "up" || kind.includes("_up") || kind.includes("breach") || kind.includes("lightning")) return { lean: 0, armAngle: -1.25, crouch: 0, stretch: 1.08 };
+  if (variant === "down" || kind.includes("_down") || kind.includes("slam") || kind.includes("tail") || kind.includes("death_roll")) return { lean: 0.15 * (p.facing || 1), armAngle: 0.95, crouch: 7, stretch: 0.92 };
+  return { lean: 0.28 * (p.facing || 1), armAngle: 0.1, crouch: 0, stretch: 1.04 };
+}
+
 function getPoseForMove(p) {
   const f = p.attackFrame || 0;
   const m = p.currentMove;
@@ -4853,6 +4968,28 @@ function drawActiveMoveVisual(ctx, player) {
     if (v.frames<=0) player.moveVisuals.splice(i,1);
   }
 }
+function drawDirectionalSwing(a, owner) {
+  if (!a || !owner) return;
+  const dir = owner.facing || 1;
+  const sx = worldToScreenX(a.x + a.w/2);
+  const sy = worldToScreenY(a.y + a.h/2);
+  const sw = screenScale(a.w || 80);
+  const sh = screenScale(a.h || 50);
+  const variant = a.directionVariant || a.variant || owner.moveVariant || "neutral";
+  const inputType = a.inputType || (owner.currentMove && owner.currentMove.inputType) || "";
+  const heavy = inputType === "heavy" || String(a.label || "").includes("heavy");
+  const arcSize = heavy ? 1.25 : 1;
+  const alpha = heavy ? 0.75 : 0.55;
+  const palettes={zeus:["#e0f2fe","#ffe66d"],athena:["#d6f3ff","#9ec5ff"],ra:["#ffea00","#ff9f1c"],anubis:["#80ffdb","#c77dff"],thor:["#bfe7ff","#d4e8ff"],horus:["#2ec4ff","#ffd166"],sobek:["#7be0d5","#2a9d8f"],bastet:["#ffd166","#b66dff"],loki:["#bbf7d0","#34d399"]};
+  const pal=palettes[owner.godId]||[owner.god?.accent||a.color||"#fff",owner.god?.color||a.color||"#fff"];
+  ctx.save(); ctx.globalAlpha=alpha; ctx.lineCap="round"; ctx.lineJoin="round"; ctx.lineWidth=screenScale(heavy?9:6);
+  ctx.strokeStyle=pal[0]; ctx.fillStyle=pal[1]; ctx.translate(sx, sy);
+  if (variant === "up") { ctx.beginPath(); ctx.arc(0, sh*0.2, sw*0.45*arcSize, Math.PI*1.05, Math.PI*1.95, false); ctx.stroke(); }
+  else if (variant === "down") { ctx.beginPath(); ctx.arc(0, -sh*0.15, sw*0.5*arcSize, 0.1, Math.PI-0.1, false); ctx.stroke(); }
+  else { ctx.scale(dir,1); ctx.beginPath(); ctx.arc(-sw*0.18,0, sw*0.55*arcSize,-0.75,0.72,false); ctx.stroke(); }
+  ctx.restore();
+}
+
 function drawAttack(a) {
   const x = worldToScreenX(a.x);
   const y = worldToScreenY(a.y);
@@ -4887,7 +5024,8 @@ function drawAttack(a) {
     ctx.globalAlpha = 1;
   };
 
-  if (["slashArc","jackalClaw","judgmentCleave","daggerFlurry"].includes(type)) {
+  if (["genericSwing","slashArc","jackalClaw","judgmentCleave","daggerFlurry"].includes(type)) {
+    drawDirectionalSwing(a, a.owner);
     ctx.globalAlpha = .35;
     ctx.strokeStyle = a.color;
     ctx.lineWidth = screenScale(10);
