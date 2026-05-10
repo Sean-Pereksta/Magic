@@ -800,9 +800,9 @@ const GODS = {
     moveStyle: {
       role: "Heavy grappler",
       neutral: "Claw swipes, crushing bites, and armored lunges.",
-      up: "Jaw snaps, water bursts, and river recovery.",
-      down: "Tail trips, death rolls, and mud traps.",
-      special: "Nile Lunge / River Breach / Mud Trap."
+      up: "Jaw snaps, water breaches, and river recovery.",
+      down: "Tail crashes, death rolls, and close-range punishment.",
+      special: "Nile Lunge grab / Crocodile Breach / Tail Crash."
     },
     color: "#2a9d8f",
     dark: "#16443f",
@@ -1296,6 +1296,9 @@ function createFighter(config) {
     conductiveTimer: 0,
     scorchTimer: 0,
     mudSlowTimer: 0,
+    sobekGrabTarget: null,
+    sobekGrabTimer: 0,
+    sobekGrabReleaseQueued: false,
     charmTimer: 0,
     soulMarkSource: null,
     athenaGuardBonus: 0,
@@ -1608,6 +1611,10 @@ function chooseBotAttackVariant(bot, target, inputType) {
       if (absDx < 115) return Math.random() < .55 ? "down" : "neutral";
       return Math.random() < .52 ? "neutral" : "up";
     }
+    if (bot.godId === "sobek" && bot.sobekGrabTarget) {
+      if (bot.sobekGrabTimer < 80 && Math.random() < 0.04) bot.sobekGrabReleaseQueued = true;
+      return;
+    }
     if (bot.godId === "sobek") {
       if (recoveringFromBelowStage) return "up";
       if (targetAbove) return Math.random() < .48 ? "up" : "neutral";
@@ -1913,6 +1920,63 @@ function getFacingDir(p) {
   return p && p.facing < 0 ? -1 : 1;
 }
 
+function clearSobekGrab(p) {
+  if (!p) return;
+  const target = p.sobekGrabTarget;
+  if (target && target.grabbedBy === p) {
+    target.grabbedBy = null;
+    target.grabTimer = 0;
+  }
+  p.sobekGrabTarget = null;
+  p.sobekGrabTimer = 0;
+  p.sobekGrabReleaseQueued = false;
+}
+
+function releaseSobekGrab(p) {
+  const target = p && p.sobekGrabTarget;
+  if (!target) {
+    clearSobekGrab(p);
+    return;
+  }
+  const dir = getFacingDir(p);
+  target.grabbedBy = null;
+  target.grabTimer = 0;
+  target.hitstun = Math.max(target.hitstun || 0, 18);
+  target.vx = dir * 10;
+  target.vy = -4;
+  target.damage += 5;
+  spawnParticles(target.x, target.y, "#f4d35e", 12, 4);
+  spawnParticles(target.x, target.y, "#2a9d8f", 10, 3);
+  shake = Math.max(shake, 3);
+  p.sobekGrabTarget = null;
+  p.sobekGrabTimer = 0;
+  p.sobekGrabReleaseQueued = false;
+}
+
+function updateSobekGrab(p) {
+  if (!p || p.godId !== "sobek") return;
+  const target = p.sobekGrabTarget;
+  if (!target || target.dead || target.lives <= 0 || p.dead || p.lives <= 0) {
+    clearSobekGrab(p);
+    return;
+  }
+  p.sobekGrabTimer--;
+  const dir = getFacingDir(p);
+  target.grabbedBy = p;
+  target.grabTimer = Math.max(target.grabTimer || 0, 2);
+  target.hitstun = Math.max(target.hitstun || 0, 2);
+  target.x = p.x + dir * 46;
+  target.y = p.y + 4;
+  target.vx = 0;
+  target.vy = 0;
+  target.facing = -dir;
+  if (Math.abs(target.x - p.x) > 220 || Math.abs(target.y - p.y) > 180) {
+    clearSobekGrab(p);
+    return;
+  }
+  if (p.sobekGrabTimer <= 0 || p.sobekGrabReleaseQueued) releaseSobekGrab(p);
+}
+
 function useSpecial(p) {
   if (p.godId === "anubis" && p.anubisUltActive) return;
   if (p.dodgeTimer > 0 && p.dodgePhase === "recovery" && p.perfectDodgeTimer <= 0) return;
@@ -1926,6 +1990,11 @@ function useSpecial(p) {
   const id = p.godId;
   const dir = getFacingDir(p);
   p.moveVariant = getAttackVariant(p, "special");
+  if (id === "sobek" && p.sobekGrabTarget) {
+    p.sobekGrabReleaseQueued = true;
+    p.specialCooldown = Math.min(p.specialCooldown || 0, 10);
+    return;
+  }
 
   if (id === "zeus") {
     if (p.moveVariant === "up") {
@@ -2120,13 +2189,19 @@ function useSpecial(p) {
       p.moveVisuals.push({type:"riverBreach",frames:14,length:90,thickness:16});
       spawnParticles(p.x, p.y + 12, "#7be0d5", 24, 6);
     } else if (p.moveVariant === "down") {
-      const trapY = p.grounded ? p.y + 34 : p.y + 72;
-      spawnProjectile({owner:p,type:"mudTrap",x:p.x + dir * 46,y:trapY,vx:0,vy:0,w:90,h:24,life:150,damage:2,knock:1,color:"#5c4a2e",trap:true,slow:true});
-      p.moveVisuals.push({type:"mudShockwave",frames:18,length:66,thickness:12});
+      p.specialCooldown = (p.god.specialCooldown || 68) + 8;
+      p.vx *= 0.25;
+      p.armorTimer = Math.max(p.armorTimer || 0, 14);
+      p.attackKind = "sobek_tail_crash";
+      p.attackFrame = Math.max(p.attackFrame, 30);
+      createAttack({owner:p,x:p.x - dir * 24,y:p.y + 10,w:178,h:72,damage:12,knock:14,angle:-0.28,frames:9,color:"#2a9d8f",label:"sobek_tail_crash",visualType:"sobekTailCrash",attachToOwner:true,offsetX:-dir * 24,offsetY:10});
+      spawnParticles(p.x - dir * 34, p.y + p.h / 2, "#6b4f2a", 18, 5);
+      spawnParticles(p.x - dir * 44, p.y + p.h / 2, "#2a9d8f", 14, 4);
+      shake = Math.max(shake, 5);
     } else {
       p.invincible = Math.max(p.invincible, 9);
       p.vx = dir * 11.2;
-      createAttack({owner:p,x:p.x + p.facing * 30,y:p.y-6,w:108,h:46,damage:6,knock:4.6,angle:-0.04,frames:12,color:"#2a9d8f",label:"nile_grab",visualType:"nileLunge",attachToOwner:true,offsetX:30,offsetY:-6});
+      createAttack({owner:p,x:p.x + p.facing * 30,y:p.y-6,w:108,h:46,damage:0,knock:0,angle:-0.04,frames:12,color:"#2a9d8f",label:"sobek_nile_lunge",visualType:"nileLunge",attachToOwner:true,offsetX:30,offsetY:-6});
       p.moveVisuals.push({type:"nileLunge",frames:14,length:98,thickness:16});
     }
   }
@@ -2815,10 +2890,6 @@ function updateFighter(p) {
     p.x = p.grabbedBy.x + p.grabbedBy.facing * 26;
     p.y = p.grabbedBy.y - 4;
     p.vx = 0; p.vy = 0;
-    if (p.grabbedBy.godId === "sobek" && p.grabTimer % 24 === 0) {
-      p.damage += 0.65;
-      spawnParticles(p.x, p.y, "#7be0d5", 3, 1.8);
-    }
     if (p.grabTimer <= 0) {
       p.grabImmunityTimer = 36;
       p.grabbedBy = null;
@@ -2835,6 +2906,7 @@ function updateFighter(p) {
   if (p.mudSlowTimer > 0) p.mudSlowTimer--;
   if (p.charmTimer > 0) p.charmTimer--;
   if (p.jumpDebuffTimer > 0) p.jumpDebuffTimer--;
+  if (p.godId === "sobek") updateSobekGrab(p);
 
   if (p.ultimateState === "sobekTell") {
     p.ultimateTimer--;
@@ -3119,6 +3191,8 @@ function loseLife(p) {
   p.vx = 0;
   p.vy = 0;
   p.invincible = 0;
+  clearSobekGrab(p);
+  players.forEach(o => { if (o && o.godId === "sobek" && o.sobekGrabTarget === p) clearSobekGrab(o); });
 
   spawnParticles(p.x, p.y, p.god.color, 35, 9);
   shake = Math.max(shake, 10);
@@ -3144,6 +3218,7 @@ function respawn(p) {
   p.invincible = 150;
   p.hitstun = 0;
   p.attackCooldown = 30;
+  clearSobekGrab(p);
 }
 
 function updateAttacks() {
@@ -3218,10 +3293,22 @@ function updateAttacks() {
           spawnParticles(p.x, p.y, "#ff9f1c", 24, 5);
         }
         if (a.owner.godId === "anubis" && a.visualType === "graveSweep") p.vx -= a.owner.facing * 2.2;
-        if (a.owner.godId === "sobek" && ["jawSnap","nileLunge"].includes(a.visualType) && p.grabImmunityTimer <= 0 && !p.grabbedBy && Math.abs(p.x - a.owner.x) < 60) {
-          p.grabbedBy = a.owner;
-          p.grabTimer = 180;
-          p.throwDir = a.owner.facing;
+        if (a.label === "sobek_nile_lunge" && a.owner) {
+          const owner = a.owner;
+          if (!owner.sobekGrabTarget && p.grabImmunityTimer <= 0 && !p.grabbedBy && !p.dead && p.lives > 0) {
+            owner.sobekGrabTarget = p;
+            owner.sobekGrabTimer = 120;
+            owner.sobekGrabReleaseQueued = false;
+            p.grabbedBy = owner;
+            p.grabTimer = 120;
+            p.hitstun = Math.max(p.hitstun || 0, 12);
+            p.vx = 0;
+            p.vy = 0;
+            spawnParticles(p.x, p.y, "#f4d35e", 10, 4);
+            spawnParticles(p.x, p.y, "#2a9d8f", 12, 4);
+            shake = Math.max(shake, 4);
+          }
+          return;
         }
         if (a.owner.godId === "anubis" && a.visualType === "soulMarkBurst") {
           p.soulMarkTimer = 330;
@@ -3322,24 +3409,6 @@ function updateProjectiles() {
         }
       });
       if (triggered) pr.life = 0;
-    } else if (pr.type === "mudTrap") {
-      pr.vx = 0; pr.vy = 0;
-      let triggered = false;
-      players.forEach(t => {
-        if (t === pr.owner || t.dead || t.invincible > 0) return;
-        if (Math.abs(t.x - pr.x) < pr.w * .5 && Math.abs(t.y - pr.y) < pr.h * .8) {
-          const tick = t.id + "_" + Math.floor(pr.life / 18);
-          if (!pr.hit.has(tick)) {
-            pr.hit.add(tick);
-            applyHit(t, pr.owner, pr.damage, pr.knock, -0.02, Math.sign(t.x - pr.x) || 1, pr.color, {x:pr.x,y:pr.y,impactType:"heavyImpact"});
-            t.mudSlowTimer = Math.max(t.mudSlowTimer || 0, 75);
-            t.jumpDebuffTimer = Math.max(t.jumpDebuffTimer || 0, 75);
-            spawnParticles(t.x, t.y + 18, "#6b5a3a", 8, 2.8);
-          }
-          triggered = true;
-        }
-      });
-      if (triggered && Math.random() < .5) spawnParticles(pr.x + (Math.random()-.5)*pr.w, pr.y, "#5c4a2e", 4, 1.8);
     } else {
       if (pr.type === "anubisGrapple") {
         let latched = false;
@@ -3691,6 +3760,7 @@ function checkWin() {
 }
 
 function endMatch(winner) {
+  players.forEach(p => { if (p.godId === "sobek") clearSobekGrab(p); });
   gameState = "gameover";
   document.getElementById("winnerText").textContent = winner.god.name.toUpperCase() + " WINS!";
   gameOverScreen.classList.add("active");
@@ -4552,7 +4622,7 @@ function drawActiveMoveVisual(ctx, player) {
     v.frames--;
     if (isRecovery) ctx.globalAlpha = Math.max(0.12, v.frames / Math.max(1, (v.recoveryFrames || 1)));
     const type=v.type;
-    if (["slashArc","hammerSwing","solarSweep","jackalClaw","daggerFlurry","groundSlam","staticSweep","thunderStomp","spearLift","guardianUpper","owlWing","solarStaffTap","sunriseArc","horizonSweep","falconWing","soulRake","graveSweep","judgmentCleave","weighingHook","tombDrop","hammerSweep","mjolnirCrush","mjolnirTap","thunderUpperSwing","wingSlash","wingLift","talonRake","skyJudgment","talonDrop","crocClaw","tailSweep","deathRoll","mudShockwave"].includes(type)) {
+    if (["slashArc","hammerSwing","solarSweep","jackalClaw","daggerFlurry","groundSlam","staticSweep","thunderStomp","spearLift","guardianUpper","owlWing","solarStaffTap","sunriseArc","horizonSweep","falconWing","soulRake","graveSweep","judgmentCleave","weighingHook","tombDrop","hammerSweep","mjolnirCrush","mjolnirTap","thunderUpperSwing","wingSlash","wingLift","talonRake","skyJudgment","talonDrop","crocClaw","tailSweep","deathRoll"].includes(type)) {
       drawAttackArc(ctx,{x:handX,y:handY,color,length:v.length||52,thickness:v.thickness||14,startA:(player.facing===1?-1.4:Math.PI+0.2),endA:(player.facing===1?.4:Math.PI-1.2)});
     } else if (["stabLine","beam","lightningJab","royalSpear","falconDive","falconStorm","shieldBash","shockwave","uppercut","boltSpear","uppercutSpark","stormPillar","spearThrust","shieldCheck","aegisBash","spearPin","aegisWall","parryField","desertBurn","sunBrandBurst","afterlifeStep","soulMarkBurst","hammerJab","earthbreakerSlam","hammerLift","thunderLanding","nileLunge","riverBreach","jawSnap","waterBurst","spectralCroc"].includes(type)) {
       ctx.strokeStyle=color; ctx.lineWidth=screenScale(v.thickness||10); ctx.globalAlpha=.8; ctx.beginPath();
@@ -4614,6 +4684,30 @@ function drawAttack(a) {
     ctx.arc(cx - dir * w * .2, cy, Math.max(w, h) * .55, dir === 1 ? -1.15 : Math.PI + .1, dir === 1 ? .35 : Math.PI - 1.25);
     ctx.stroke();
     spark(6, "rgba(255,245,220,.85)");
+  } else if (type === "sobekTailCrash") {
+    ctx.globalAlpha = .45;
+    ctx.strokeStyle = "#2a9d8f";
+    ctx.lineWidth = screenScale(12);
+    ctx.beginPath();
+    ctx.arc(cx + dir * w * 0.12, cy + h * 0.12, Math.max(w, h) * 0.5, dir === 1 ? Math.PI * 0.55 : -0.1, dir === 1 ? Math.PI * 1.75 : Math.PI * 0.95);
+    ctx.stroke();
+    ctx.strokeStyle = "#6b4f2a";
+    ctx.lineWidth = screenScale(7);
+    ctx.beginPath();
+    ctx.arc(cx + dir * w * 0.04, cy + h * 0.14, Math.max(w, h) * 0.4, dir === 1 ? Math.PI * 0.62 : -0.04, dir === 1 ? Math.PI * 1.68 : Math.PI * 0.9);
+    ctx.stroke();
+    for (let i = 0; i < 4; i++) {
+      ctx.globalAlpha = .55;
+      ctx.strokeStyle = i % 2 ? "#2a9d8f" : "#8d6e63";
+      ctx.lineWidth = screenScale(3);
+      const sx = cx - dir * w * (0.1 + i * 0.08);
+      const sy = cy + h * (0.05 + i * 0.08);
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx - dir * w * 0.12, sy - h * 0.08);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
   } else if (["stabLine","spearThrust","spearPin","boltSpear","hammerJab"].includes(type)) {
     ctx.globalAlpha = .75;
     ctx.fillStyle = a.color;
@@ -4870,20 +4964,6 @@ function drawProjectile(pr) {
     ctx.globalAlpha = 1;
     return;
   }
-  if (pr.type === "mudTrap") {
-    const pulse = .45 + Math.abs(Math.sin(matchTime * .12)) * .35;
-    ctx.globalAlpha = pulse;
-    ctx.fillStyle = "#5c4a2e";
-    ctx.beginPath(); ctx.ellipse(x, y, w * .5, h * .42, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "#3f5d36";
-    ctx.beginPath(); ctx.ellipse(x + w * .06, y - h * .05, w * .32, h * .24, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = .8;
-    ctx.fillStyle = "#7a6a45";
-    for (let i=0;i<4;i++) ctx.fillRect(x - w*.35 + i*w*.2, y - h*.28 + Math.sin(matchTime*.2 + i)*2, screenScale(3), screenScale(3));
-    ctx.globalAlpha = 1;
-    return;
-  }
-
   ctx.fillStyle = pr.color;
   ctx.strokeStyle = "#ffffff";
   ctx.lineWidth = screenScale(2);
