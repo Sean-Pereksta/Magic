@@ -919,20 +919,102 @@ function updateBot(p) {
   }
 
   if (dist < 75 && Math.random() < aggression * .08) {
-    if (Math.random() < .68) lightAttack(p);
-    else heavyAttack(p);
+    const closeRoll = Math.random();
+    if (p.godId === "thor") {
+      if (closeRoll < .74) botUseAttack(p, "heavy");
+      else botUseAttack(p, "light");
+    } else if (p.godId === "loki") {
+      if (closeRoll < .8) botUseAttack(p, "light");
+      else botUseAttack(p, "heavy");
+    } else {
+      if (closeRoll < .68) botUseAttack(p, "light");
+      else botUseAttack(p, "heavy");
+    }
   }
 
-  if (dist < 260 && Math.random() < aggression * .025) {
-    useSpecial(p);
+  let specialChance = aggression * .025;
+  if (p.godId === "zeus" && dist > 120 && dist < 310) specialChance *= 2.1;
+  if (p.godId === "ra" && dist > 95) specialChance *= 1.55;
+  if (p.godId === "loki") specialChance *= 1.5;
+  if (p.godId === "thor") specialChance *= .78;
+  if (p.godId === "athena" && dist < 90) specialChance *= 1.35;
+  if (p.godId === "anubis" && dist < 230) specialChance *= 1.3;
+  if (dist < 330 && Math.random() < specialChance) {
+    botUseAttack(p, "special");
   }
 
   if (p.meter >= 100 && dist < 320 && Math.random() < aggression * .018) {
-    useUltimate(p);
+    botUseAttack(p, "ultimate");
   }
 
   if (Math.abs(dx) < 95 && Math.random() < .008) {
     dodge(p);
+  }
+}
+
+function chooseBotAttackVariant(bot, target, inputType) {
+  if (!target) return "neutral";
+  const dx = target.x - bot.x;
+  const dy = target.y - bot.y;
+  const absDx = Math.abs(dx);
+  const targetAbove = dy < -45;
+  const targetBelow = dy > 45;
+  const closeGrounded = absDx < 95 && bot.grounded;
+  const jumpingAbove = !target.grounded && targetAbove;
+  const far = absDx > 220;
+  const recoveringFromBelowStage = !bot.grounded && bot.y > 560;
+
+  if (inputType === "special") {
+    if (recoveringFromBelowStage) return "up";
+    if (bot.godId === "athena" && absDx < 95) return "down";
+    if (bot.godId === "ra" && absDx > 120) return Math.random() < .66 ? "neutral" : "down";
+    if (bot.godId === "loki") {
+      if (targetAbove) return "up";
+      if (absDx < 115) return Math.random() < .55 ? "down" : "neutral";
+      return Math.random() < .52 ? "neutral" : "up";
+    }
+    if (targetAbove) return "up";
+    if (targetBelow) return "down";
+    if (far) return "neutral";
+    if (closeGrounded) return Math.random() < .45 ? "down" : "neutral";
+    return "neutral";
+  }
+
+  if (jumpingAbove) return "up";
+  if (targetAbove) return "up";
+  if (targetBelow) return "down";
+  if (closeGrounded) return Math.random() < .38 ? "down" : "neutral";
+  return "neutral";
+}
+
+function botUseAttack(bot, inputType, variant) {
+  if (!bot || bot.dead || bot.hitstun > 0) return;
+  const target = bot.ai.target || nearestEnemy(bot);
+  const chosenVariant = variant || chooseBotAttackVariant(bot, target, inputType);
+
+  if (inputType === "light") {
+    const defs = ATTACK_DEFS[bot.godId] || ATTACK_DEFS.zeus;
+    const move = cloneMove(defs.light[chosenVariant] || defs.light.neutral, bot, chosenVariant, "light");
+    startMove(bot, move);
+    return;
+  }
+
+  if (inputType === "heavy") {
+    const defs = ATTACK_DEFS[bot.godId] || ATTACK_DEFS.zeus;
+    const move = cloneMove(defs.heavy[chosenVariant] || defs.heavy.neutral, bot, chosenVariant, "heavy");
+    if (startMove(bot, move)) shake = Math.max(shake, move.directionVariant === "up" ? 5 : 4);
+    return;
+  }
+
+  if (inputType === "special") {
+    bot.ai.specialVariant = chosenVariant;
+    useSpecial(bot);
+    bot.ai.specialVariant = null;
+    return;
+  }
+
+  if (inputType === "ultimate") {
+    useUltimate(bot);
   }
 }
 
@@ -1021,7 +1103,7 @@ const ATTACK_DEFS = {
   }
 };
 function cloneMove(base, p, variant, inputType){ const m=JSON.parse(JSON.stringify(base)); m.godId=p.godId; m.inputType=inputType; m.directionVariant=variant; return m;}
-function getAttackVariant(player, inputType){ if(player.human){ if(keys["w"]) return "up"; if(keys["s"]) return "down"; return "neutral";} const t=player.ai.target||nearestEnemy(player); if(!t) return "neutral"; const dy=t.y-player.y; if(dy<-45) return "up"; if(dy>45) return "down"; return "neutral";}
+function getAttackVariant(player, inputType){ if(player.human){ if(keys["w"]) return "up"; if(keys["s"]) return "down"; return "neutral";} if(inputType==="special" && player.ai.specialVariant) return player.ai.specialVariant; return chooseBotAttackVariant(player, player.ai.target||nearestEnemy(player), inputType);}
 function moveToAttackKind(type){ return type; }
 function startMove(player, moveDef){ if (!moveDef || player.attackCooldown > 0 || player.dead) return false; const total=moveDef.startup+moveDef.active+moveDef.recovery; moveDef.totalFrames=total; player.currentMove=moveDef; player.moveTimer=total; player.movePhase="startup"; player.moveVariant=moveDef.directionVariant||"neutral"; player.moveVisuals=[]; player.action=moveToAttackKind(moveDef.inputType); player.attackKind=moveDef.inputType; player.attackFrame=total; player.attackCooldown=Math.max(player.attackCooldown,total); if(moveDef.inputType==="heavy") player.vx*=.55; if(moveDef.selfImpulse){ player.vx += player.facing * (moveDef.selfImpulse.x||0); player.vy += moveDef.selfImpulse.y||0; } if(moveDef.startupArmor) player.invincible = Math.max(player.invincible, moveDef.startupArmor); return true;}
 function spawnMoveHitbox(player, moveDef){ const hb=moveDef.hitbox; let moveAngle=moveDef.angle; if(moveDef.id==="athena_heavy_d" && player.grounded) moveAngle=-0.12; if(moveDef.id==="athena_heavy_d" && !player.grounded) moveAngle=1.2; createAttack({owner:player,x:player.x+player.facing*hb.x,y:player.y+hb.y,w:hb.w,h:hb.h,damage:moveDef.damage*player.god.attackPower,knock:moveDef.knock,angle:moveAngle,frames:moveDef.active,color:player.god.accent||player.god.color,label:moveDef.inputType,visualType:(moveDef.effects||{}).visualType||"slashArc",visualAngle:moveDef.angle,visualLength:Math.max(hb.w,hb.h),visualThickness:Math.max(8,Math.min(hb.h,hb.w)/3),attachToOwner:true,offsetX:hb.x,offsetY:hb.y}); if(moveDef.id==="athena_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*56,y:player.y+30,w:80,h:14,damage:4*player.god.attackPower,knock:6.2,angle:-0.05,frames:5,color:"#eff8ff",label:"ground_line",visualType:"spearThrust"}); } if(moveDef.id==="ra_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*74,y:player.y+30,w:96,h:14,damage:2.2*player.god.attackPower,knock:3.8,angle:-0.03,frames:10,color:"#ff8c42",label:"burn_line",visualType:"desertBurn"}); } if(moveDef.id==="thor_heavy_d"){ createAttack({owner:player,x:player.x-player.facing*76,y:player.y+30,w:96,h:22,damage:4.5*player.god.attackPower,knock:8.8,angle:-0.92,frames:6,color:"#d4e8ff",label:"ground_quake",visualType:"thunderLanding"}); } player.moveVisuals.push({type:(moveDef.effects||{}).visualType||"slashArc",frames:moveDef.active+3,angle:moveDef.angle,length:Math.max(hb.w,hb.h),thickness:14}); if(moveDef.id && moveDef.id.startsWith("thor_heavy")){ shake = Math.max(shake, moveDef.id==="thor_heavy_d"?12:9); hitStop = Math.max(hitStop, moveDef.id==="thor_heavy_n"?4:3); } }
