@@ -1442,11 +1442,55 @@ const ATTACK_DEFS = {
     heavy:{neutral:{id:"loki_heavy_n",directionVariant:"neutral",startup:6,active:6,recovery:11,damage:11,knock:10.6,angle:-0.62,hitbox:{x:28,y:-20,w:84,h:52},effects:{visualType:"judgmentCleave"}},up:{id:"loki_heavy_u",directionVariant:"up",startup:6,active:6,recovery:11,damage:11,knock:11.4,angle:-1.3,hitbox:{x:18,y:-96,w:58,h:100},effects:{visualType:"weighingHook"}},down:{id:"loki_heavy_d",directionVariant:"down",startup:5,active:6,recovery:12,damage:10,knock:10.1,angle:-0.32,hitbox:{x:-56,y:18,w:78,h:30},effects:{visualType:"afterlifeStep"},selfImpulse:{x:8,y:0}}}
   }
 };
+const GOD_ANIM_FAMILIES = {
+  zeus:{light:"cracklingArmWindup",heavy:"lightningSpearThrust",special:"overheadStormRaise",ultimate:"lightningGroundBranch"},
+  athena:{light:"shieldFirst",heavy:"spearThrust",special:"shieldBash",ultimate:"guardParry"},
+  ra:{light:"solarDiskCharge",heavy:"solarDiscRelease",special:"sunBeam",ultimate:"heatWaveRecovery"},
+  anubis:{light:"jackalStalk",heavy:"clawRake",special:"hookCast",ultimate:"soulMarkRitual"},
+  thor:{light:"hammerOverShoulder",heavy:"heavyFollowThrough",special:"groundSlamCrouch",ultimate:"lightningImpact"},
+  loki:{light:"doubleStab",heavy:"smearFrames",special:"flickerAfterimages",ultimate:"lowFakeout"},
+  horus:{light:"wingExtension",heavy:"airborneLean",special:"talonDive",ultimate:"spearGlide"},
+  sobek:{light:"crocCrouch",heavy:"jawOpenClose",special:"tailSweep",ultimate:"deathRollSpin"}
+};
+Object.entries(ATTACK_DEFS).forEach(([godId, godMoves]) => {
+  Object.entries(godMoves).forEach(([inputType, variants]) => {
+    Object.values(variants).forEach((move) => {
+      if (!move.animFamily) move.animFamily = GOD_ANIM_FAMILIES[godId]?.[inputType] || "strike";
+      move.startupVisual = move.startupVisual || `${move.animFamily}_charge`;
+      move.activeVisual = move.activeVisual || (move.effects && move.effects.visualType) || `${move.animFamily}_active`;
+      move.recoveryVisual = move.recoveryVisual || `${move.animFamily}_recover`;
+    });
+  });
+});
 function cloneMove(base, p, variant, inputType){ const m=JSON.parse(JSON.stringify(base)); m.godId=p.godId; m.inputType=inputType; m.directionVariant=variant; return m;}
 function getAttackVariant(player, inputType){ if(player.human){ if(keys["w"]) return "up"; if(keys["s"]) return "down"; return "neutral";} if(inputType==="special" && player.ai.specialVariant) return player.ai.specialVariant; return chooseBotAttackVariant(player, player.ai.target||nearestEnemy(player), inputType);}
 function moveToAttackKind(type){ return type; }
+function getMoveProgress(p) {
+  if (!p.currentMove || !p.currentMove.totalFrames) return { t:0, phase:"none", phaseT:0 };
+  const m = p.currentMove;
+  const elapsed = m.totalFrames - p.moveTimer;
+  let phase = "startup";
+  let phaseStart = 0;
+  let phaseLength = m.startup;
+
+  if (elapsed >= m.startup + m.active) {
+    phase = "recovery";
+    phaseStart = m.startup + m.active;
+    phaseLength = m.recovery;
+  } else if (elapsed >= m.startup) {
+    phase = "active";
+    phaseStart = m.startup;
+    phaseLength = m.active;
+  }
+
+  return {
+    t: elapsed / m.totalFrames,
+    phase,
+    phaseT: clamp((elapsed - phaseStart) / Math.max(1, phaseLength), 0, 1)
+  };
+}
 function startMove(player, moveDef){ if (!moveDef || player.attackCooldown > 0 || player.dead) return false; const total=moveDef.startup+moveDef.active+moveDef.recovery; moveDef.totalFrames=total; player.currentMove=moveDef; player.moveTimer=total; player.movePhase="startup"; player.moveVariant=moveDef.directionVariant||"neutral"; player.moveVisuals=[]; player.action=moveToAttackKind(moveDef.inputType); player.attackKind=moveDef.inputType; player.attackFrame=total; const pdBoost = player.perfectDodgeTimer > 0 ? 8 : 0; player.attackCooldown=Math.max(player.attackCooldown,Math.max(8,total-pdBoost)); if(player.perfectDodgeTimer > 0) player.perfectDodgeTimer = 0; if(moveDef.inputType==="heavy") player.vx*=.55; if(moveDef.selfImpulse){ player.vx += player.facing * (moveDef.selfImpulse.x||0); player.vy += moveDef.selfImpulse.y||0; } if(moveDef.startupArmor) player.invincible = Math.max(player.invincible, moveDef.startupArmor); if(player.godId==="thor" && moveDef.inputType==="heavy" && player.thorHeavyArmorTimer>0){ player.invincible = Math.max(player.invincible, 10); player.thorHeavyArmorTimer = 0; } if(player.godId==="sobek" && player.perfectDodgeMud && (moveDef.id||"").includes("sobek_heavy")){ moveDef.knock += 1.8; player.perfectDodgeMud = 0; } return true;}
-function spawnMoveHitbox(player, moveDef){ const hb=moveDef.hitbox; let moveAngle=moveDef.angle; if(moveDef.id==="athena_heavy_d" && player.grounded) moveAngle=-0.12; if(moveDef.id==="athena_heavy_d" && !player.grounded) moveAngle=1.2; createAttack({owner:player,x:player.x+player.facing*hb.x,y:player.y+hb.y,w:hb.w,h:hb.h,damage:moveDef.damage*player.god.attackPower,knock:moveDef.knock,angle:moveAngle,frames:moveDef.active,color:player.god.accent||player.god.color,label:moveDef.inputType,visualType:(moveDef.effects||{}).visualType||"slashArc",visualAngle:moveDef.angle,visualLength:Math.max(hb.w,hb.h),visualThickness:Math.max(8,Math.min(hb.h,hb.w)/3),attachToOwner:true,offsetX:hb.x,offsetY:hb.y}); if(moveDef.id==="athena_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*56,y:player.y+30,w:80,h:14,damage:4*player.god.attackPower,knock:6.2,angle:-0.05,frames:5,color:"#eff8ff",label:"ground_line",visualType:"spearThrust"}); } if(moveDef.id==="ra_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*74,y:player.y+30,w:96,h:14,damage:2.2*player.god.attackPower,knock:3.8,angle:-0.03,frames:10,color:"#ff8c42",label:"burn_line",visualType:"desertBurn"}); } if(moveDef.id==="thor_heavy_d"){ createAttack({owner:player,x:player.x-player.facing*76,y:player.y+30,w:96,h:22,damage:4.5*player.god.attackPower,knock:8.8,angle:-0.92,frames:6,color:"#d4e8ff",label:"ground_quake",visualType:"thunderLanding"}); } player.moveVisuals.push({type:(moveDef.effects||{}).visualType||"slashArc",frames:moveDef.active+3,angle:moveDef.angle,length:Math.max(hb.w,hb.h),thickness:14}); if(moveDef.id && moveDef.id.startsWith("thor_heavy")){ shake = Math.max(shake, moveDef.id==="thor_heavy_d"?12:9); hitStop = Math.max(hitStop, moveDef.id==="thor_heavy_n"?4:3); } }
+function spawnMoveHitbox(player, moveDef){ const hb=moveDef.hitbox; let moveAngle=moveDef.angle; if(moveDef.id==="athena_heavy_d" && player.grounded) moveAngle=-0.12; if(moveDef.id==="athena_heavy_d" && !player.grounded) moveAngle=1.2; createAttack({owner:player,x:player.x+player.facing*hb.x,y:player.y+hb.y,w:hb.w,h:hb.h,damage:moveDef.damage*player.god.attackPower,knock:moveDef.knock,angle:moveAngle,frames:moveDef.active,color:player.god.accent||player.god.color,label:moveDef.inputType,visualType:(moveDef.effects||{}).visualType||"slashArc",visualAngle:moveDef.angle,visualLength:Math.max(hb.w,hb.h),visualThickness:Math.max(8,Math.min(hb.h,hb.w)/3),attachToOwner:true,offsetX:hb.x,offsetY:hb.y}); if(moveDef.id==="athena_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*56,y:player.y+30,w:80,h:14,damage:4*player.god.attackPower,knock:6.2,angle:-0.05,frames:5,color:"#eff8ff",label:"ground_line",visualType:"spearThrust"}); } if(moveDef.id==="ra_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*74,y:player.y+30,w:96,h:14,damage:2.2*player.god.attackPower,knock:3.8,angle:-0.03,frames:10,color:"#ff8c42",label:"burn_line",visualType:"desertBurn"}); } if(moveDef.id==="thor_heavy_d"){ createAttack({owner:player,x:player.x-player.facing*76,y:player.y+30,w:96,h:22,damage:4.5*player.god.attackPower,knock:8.8,angle:-0.92,frames:6,color:"#d4e8ff",label:"ground_quake",visualType:"thunderLanding"}); } player.moveVisuals.push({type:(moveDef.effects||{}).visualType||"slashArc",phase:"active",frames:moveDef.active+Math.max(3,Math.floor(moveDef.recovery*0.4)),angle:moveDef.angle,length:Math.max(hb.w,hb.h),thickness:14,recoveryFrames:Math.max(3,Math.floor(moveDef.recovery*0.45))}); if(moveDef.id && moveDef.id.startsWith("thor_heavy")){ shake = Math.max(shake, moveDef.id==="thor_heavy_d"?12:9); hitStop = Math.max(hitStop, moveDef.id==="thor_heavy_n"?4:3); } }
 function lightAttack(p) {
   if (p.dodgeTimer > 0 && p.dodgePhase === "recovery" && p.perfectDodgeTimer <= 0) return;
   const v = getAttackVariant(p, "light");
@@ -1865,10 +1909,9 @@ function updateFighter(p) {
   if (p.currentMove && p.moveTimer > 0) {
     p.moveTimer--;
     const m=p.currentMove;
-    const elapsed = (m.startup + m.active + m.recovery) - p.moveTimer;
-    if (elapsed < m.startup) p.movePhase = "startup";
-    else if (elapsed < m.startup + m.active) { if (p.movePhase !== "active") spawnMoveHitbox(p,m); p.movePhase = "active"; }
-    else p.movePhase = "recovery";
+    const progress = getMoveProgress(p);
+    if (progress.phase === "active") { if (p.movePhase !== "active") spawnMoveHitbox(p,m); p.movePhase = "active"; }
+    else if (progress.phase === "startup" || progress.phase === "recovery") p.movePhase = progress.phase;
     if (p.moveTimer <= 0) { p.currentMove = null; p.movePhase = "none"; }
   }
   if (p.parryTimer > 0) p.parryTimer--;
@@ -2727,7 +2770,10 @@ function getPoseForMove(p) {
   const m = p.currentMove;
   const base = { bodyLean:0, crouch:0, frontArmX:0, frontArmY:0, backArmX:0, backArmY:0, weaponAngle:0, weaponReach:0, shieldX:0, shieldY:0, headTilt:0, squash:1, stretch:1, legSpread:0 };
   if (!m || !m.totalFrames) return base;
-  const t = 1 - p.moveTimer / m.totalFrames;
+  const progress = getMoveProgress(p);
+  const t = progress.t;
+  const phase = progress.phase;
+  const phaseT = progress.phaseT;
   if (m.id === "athena_light_n") return { ...base, bodyLean: p.facing * (4 + 13 * t), frontArmX: p.facing * (20 * t), frontArmY: -6 * t, backArmX: -p.facing * 5, shieldX: p.facing * (4 + 8 * t), shieldY: -3 * t, weaponReach: 18 * t, weaponAngle: -0.12 };
   if (m.id === "thor_heavy_n") return { ...base, bodyLean: p.facing * 10, crouch: 8 * (1 - t), frontArmX: p.facing * 14, frontArmY: -18 * t, backArmY: 6, weaponAngle: -1.6 + t * 2.2, headTilt: .12, squash: 1.1, stretch: .92 };
   if (m.id && m.id.startsWith("anubis_light")) return { ...base, bodyLean: p.facing * (3 + 6 * t), frontArmX: p.facing * (Math.cos(t * Math.PI) * 14), frontArmY: -Math.sin(t * Math.PI) * 16, backArmY: -2, weaponAngle: -0.6 + Math.sin(t * Math.PI) * 1.1, headTilt: -0.08 };
@@ -2742,10 +2788,21 @@ function getPoseForMove(p) {
   if (m.id === "sobek_heavy_u") return { ...base, crouch:4, frontArmY:-18, backArmY:-16, stretch:1.1, headTilt:-0.1 };
   if (m.id === "sobek_heavy_d") return { ...base, crouch:10, bodyLean:p.facing*Math.sin(t*Math.PI)*6, legSpread:10, squash:1.16 };
   if (p.action === "dodge") return { ...base, bodyLean: p.facing * 16, frontArmX: -p.facing * 8, crouch: 2, headTilt: -0.12, squash: 1.1 };
-  if (p.action === "light") return { ...base, bodyLean: p.facing * 3, frontArmX: p.facing * (18 + Math.sin(f * .45) * 8), frontArmY: -4, backArmX: -p.facing * 2 };
-  if (p.action === "heavy") return { ...base, bodyLean: p.facing * 7, frontArmX: p.facing * (28 + Math.sin(f * .32) * 18), frontArmY: -10 - Math.sin(f * .25) * 8, backArmX: p.facing * 8, legSpread: 4 };
-  if (p.action === "special") return { ...base, bodyLean: -p.facing * 4, frontArmX: p.facing * (36 + Math.sin(f * .35) * 15), frontArmY: -17, backArmX: p.facing * 12, headTilt: -0.08 };
-  if (p.action === "ultimate") return { ...base, bodyLean: p.facing * Math.sin(f * .25) * 8, frontArmX: p.facing * (44 + Math.sin(f * .28) * 22), frontArmY: -24, backArmX: p.facing * 18, weaponAngle: Math.sin(f * .2) * .5 };
+  if (p.action === "light") {
+    if (phase === "startup") return { ...base, bodyLean: -p.facing * (2 + phaseT*2), frontArmX: -p.facing * (4 + phaseT*8), frontArmY: 2, backArmX: -p.facing*3, legSpread:2 };
+    if (phase === "active") return { ...base, bodyLean: p.facing * (6 + phaseT*3), frontArmX: p.facing * (20 + phaseT*14), frontArmY: -5 - phaseT*4, weaponReach:8+phaseT*12 };
+    return { ...base, bodyLean: p.facing * (4 - phaseT*3), frontArmX: p.facing * (26 - phaseT*10), frontArmY: -6 + phaseT*4, backArmX:-p.facing*2 };
+  }
+  if (p.action === "heavy") {
+    if (phase === "startup") return { ...base, bodyLean: -p.facing * (6 + phaseT*5), crouch:4+phaseT*6, frontArmX:-p.facing*(6+phaseT*10), frontArmY:-6, legSpread:4+phaseT*4, squash:1.08 };
+    if (phase === "active") return { ...base, bodyLean: p.facing * (8 + phaseT*6), crouch:6-phaseT*4, frontArmX:p.facing*(18+phaseT*22), frontArmY:-10-phaseT*10, backArmX:p.facing*8, weaponAngle:-0.5+phaseT*0.9, stretch:1.06 };
+    return { ...base, bodyLean: p.facing*(9-phaseT*7), crouch:2+phaseT*3, frontArmX:p.facing*(40-phaseT*18), frontArmY:-20+phaseT*9, legSpread:7-phaseT*4, squash:1.05 };
+  }
+  if (p.action === "special" || p.action === "ultimate") {
+    if (phase === "startup") return { ...base, bodyLean:-p.facing*(5+phaseT*3), crouch:2+phaseT*2, frontArmX:p.facing*(10+phaseT*10), frontArmY:-10-phaseT*6, backArmX:p.facing*7, headTilt:-0.12 };
+    if (phase === "active") return { ...base, bodyLean:p.facing*(2+phaseT*8), frontArmX:p.facing*(24+phaseT*18), frontArmY:-16-phaseT*8, backArmX:p.facing*(10+phaseT*8), weaponAngle:-0.2+phaseT*0.6, stretch:1.05 };
+    return { ...base, bodyLean:p.facing*(8-phaseT*6), frontArmX:p.facing*(42-phaseT*12), frontArmY:-24+phaseT*10, backArmX:p.facing*14, squash:1.04 };
+  }
   return base;
 }
 
@@ -2760,13 +2817,39 @@ function drawAttackArc(ctx, visual) {
   ctx.restore();
 }
 function drawActiveMoveVisual(ctx, player) {
-  if (!player.moveVisuals || !player.moveVisuals.length) return;
+  const move = player.currentMove;
+  const progress = getMoveProgress(player);
   const handX = player.x + player.facing * 24;
   const handY = player.y - 12;
+  const color = player.god.accent || player.god.color;
+  if (move && progress.phase !== "none") {
+    if (progress.phase === "startup") {
+      const r = 10 + progress.phaseT * 16;
+      ctx.globalAlpha = 0.25 + progress.phaseT * 0.35;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = screenScale(3);
+      ctx.beginPath();
+      ctx.arc(worldToScreenX(handX), worldToScreenY(handY), screenScale(r), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    if (progress.phase === "recovery") {
+      ctx.globalAlpha = Math.max(0.15, 0.8 * (1 - progress.phaseT));
+      ctx.strokeStyle = color;
+      ctx.lineWidth = screenScale(6);
+      ctx.beginPath();
+      ctx.moveTo(worldToScreenX(handX), worldToScreenY(handY));
+      ctx.lineTo(worldToScreenX(handX + player.facing * 30), worldToScreenY(handY - 8));
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+  if (!player.moveVisuals || !player.moveVisuals.length) return;
   for (let i = player.moveVisuals.length - 1; i >= 0; i--) {
     const v = player.moveVisuals[i];
+    const isRecovery = v.frames <= (v.recoveryFrames || 0);
     v.frames--;
-    const color = player.god.accent || player.god.color;
+    if (isRecovery) ctx.globalAlpha = Math.max(0.12, v.frames / Math.max(1, (v.recoveryFrames || 1)));
     const type=v.type;
     if (["slashArc","hammerSwing","solarSweep","jackalClaw","daggerFlurry","groundSlam","staticSweep","thunderStomp","spearLift","guardianUpper","owlWing","solarStaffTap","sunriseArc","horizonSweep","falconWing","soulRake","graveSweep","judgmentCleave","weighingHook","tombDrop","hammerSweep","mjolnirCrush","mjolnirTap","thunderUpperSwing","wingSlash","wingLift","talonRake","skyJudgment","talonDrop","crocClaw","tailSweep","deathRoll","mudShockwave"].includes(type)) {
       drawAttackArc(ctx,{x:handX,y:handY,color,length:v.length||52,thickness:v.thickness||14,startA:(player.facing===1?-1.4:Math.PI+0.2),endA:(player.facing===1?.4:Math.PI-1.2)});
@@ -2784,6 +2867,7 @@ function drawActiveMoveVisual(ctx, player) {
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
+    ctx.globalAlpha = 1;
     if (v.frames<=0) player.moveVisuals.splice(i,1);
   }
 }
