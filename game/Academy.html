@@ -717,6 +717,11 @@ function createFighter(config) {
     dodgeTimer: 0,
     attackFrame: 0,
     attackKind: "",
+    currentMove: null,
+    moveTimer: 0,
+    movePhase: "none",
+    moveVariant: "neutral",
+    moveVisuals: [],
     hitstun: 0,
     action: "idle",
     anim: 0,
@@ -981,53 +986,29 @@ function dodge(p) {
   shake = Math.max(shake, 5);
 }
 
+const ATTACK_DEFS = {
+  zeus: {
+    light: { neutral:{id:"zeus_light_n",godId:"zeus",inputType:"light",directionVariant:"neutral",startup:3,active:6,recovery:7,damage:7,knock:7.5,angle:-0.35,hitbox:{x:38,y:-2,w:58,h:46},animation:"jab",effects:{visualType:"lightningJab"}}, up:{id:"zeus_light_u",directionVariant:"up",startup:3,active:6,recovery:7,damage:7,knock:7.2,angle:-0.9,hitbox:{x:34,y:-30,w:52,h:42},effects:{visualType:"uppercut"}}, down:{id:"zeus_light_d",directionVariant:"down",startup:2,active:6,recovery:8,damage:8,knock:8,angle:0.2,hitbox:{x:36,y:18,w:56,h:38},effects:{visualType:"solarSweep"}}},
+    heavy:{neutral:{id:"zeus_heavy_n",directionVariant:"neutral",startup:6,active:7,recovery:13,damage:13,knock:12.5,angle:-0.25,hitbox:{x:48,y:-6,w:76,h:58},effects:{visualType:"slashArc"}},up:{id:"zeus_heavy_u",directionVariant:"up",startup:6,active:7,recovery:13,damage:12,knock:12,angle:-1.0,hitbox:{x:34,y:-54,w:68,h:64},effects:{visualType:"beam"}},down:{id:"zeus_heavy_d",directionVariant:"down",startup:5,active:7,recovery:14,damage:14,knock:13,angle:0.35,hitbox:{x:40,y:20,w:74,h:46},effects:{visualType:"groundSlam"}}}
+  }
+};
+function cloneMove(base, p, variant, inputType){ const m=JSON.parse(JSON.stringify(base)); m.godId=p.godId; m.inputType=inputType; m.directionVariant=variant; return m;}
+function getAttackVariant(player, inputType){ if(player.human){ if(keys["w"]) return "up"; if(keys["s"]) return "down"; return "neutral";} const t=player.ai.target||nearestEnemy(player); if(!t) return "neutral"; const dy=t.y-player.y; if(dy<-45) return "up"; if(dy>45) return "down"; return "neutral";}
+function moveToAttackKind(type){ return type; }
+function startMove(player, moveDef){ if (!moveDef || player.attackCooldown > 0 || player.dead) return false; const total=moveDef.startup+moveDef.active+moveDef.recovery; player.currentMove=moveDef; player.moveTimer=total; player.movePhase="startup"; player.moveVariant=moveDef.directionVariant||"neutral"; player.moveVisuals=[]; player.action=moveToAttackKind(moveDef.inputType); player.attackKind=moveDef.inputType; player.attackFrame=total; player.attackCooldown=Math.max(player.attackCooldown,total); if(moveDef.inputType==="heavy") player.vx*=.55; return true;}
+function spawnMoveHitbox(player, moveDef){ const hb=moveDef.hitbox; createAttack({owner:player,x:player.x+player.facing*hb.x,y:player.y+hb.y,w:hb.w,h:hb.h,damage:moveDef.damage*player.god.attackPower,knock:moveDef.knock,angle:moveDef.angle,frames:moveDef.active,color:player.god.accent||player.god.color,label:moveDef.inputType,visualType:(moveDef.effects||{}).visualType||"slashArc",visualAngle:moveDef.angle,visualLength:Math.max(hb.w,hb.h),visualThickness:Math.max(8,Math.min(hb.h,hb.w)/3),attachToOwner:true,offsetX:hb.x,offsetY:hb.y}); player.moveVisuals.push({type:(moveDef.effects||{}).visualType||"slashArc",frames:moveDef.active+3,angle:moveDef.angle,length:Math.max(hb.w,hb.h),thickness:14}); }
 function lightAttack(p) {
-  if (p.attackCooldown > 0 || p.dead) return;
-
-  p.attackCooldown = 18;
-  p.action = "light";
-  p.attackKind = "light";
-  p.attackFrame = 16;
-
-  createAttack({
-    owner: p,
-    x: p.x + p.facing * 38,
-    y: p.y - 2,
-    w: 58,
-    h: 46,
-    damage: 7 * p.god.attackPower,
-    knock: 7.5,
-    angle: -0.35,
-    frames: 7,
-    color: p.god.color,
-    label: "light"
-  });
+  const v = getAttackVariant(p, "light");
+  const defs = ATTACK_DEFS[p.godId] || ATTACK_DEFS.zeus;
+  const move = cloneMove(defs.light[v] || defs.light.neutral, p, v, "light");
+  startMove(p, move);
 }
 
 function heavyAttack(p) {
-  if (p.attackCooldown > 0 || p.dead) return;
-
-  p.attackCooldown = 36;
-  p.vx *= .55;
-  p.action = "heavy";
-  p.attackKind = "heavy";
-  p.attackFrame = 26;
-
-  createAttack({
-    owner: p,
-    x: p.x + p.facing * 48,
-    y: p.y - 6,
-    w: 76,
-    h: 58,
-    damage: 13 * p.god.attackPower,
-    knock: 12.5,
-    angle: -0.25,
-    frames: 11,
-    color: p.god.accent,
-    label: "heavy"
-  });
-
-  shake = Math.max(shake, 4);
+  const v = getAttackVariant(p, "heavy");
+  const defs = ATTACK_DEFS[p.godId] || ATTACK_DEFS.zeus;
+  const move = cloneMove(defs.heavy[v] || defs.heavy.neutral, p, v, "heavy");
+  if (startMove(p, move)) shake = Math.max(shake, 4);
 }
 
 function useSpecial(p) {
@@ -1039,6 +1020,7 @@ function useSpecial(p) {
   p.attackFrame = 30;
 
   const id = p.godId;
+  p.moveVariant = getAttackVariant(p, "special");
 
   if (id === "zeus") {
     spawnProjectile({
@@ -1293,6 +1275,10 @@ function createAttack(a) {
   a.x -= a.w / 2;
   a.y -= a.h / 2;
   a.hit = new Set();
+  a.attachToOwner = !!a.attachToOwner;
+  a.offsetX = a.offsetX || 0;
+  a.offsetY = a.offsetY || 0;
+  a.visualType = a.visualType || "slashArc";
   attacks.push(a);
 }
 
@@ -1316,6 +1302,15 @@ function updateFighter(p) {
   if (p.specialCooldown > 0) p.specialCooldown--;
   if (p.dodgeCooldown > 0) p.dodgeCooldown--;
   if (p.dodgeTimer > 0) p.dodgeTimer--;
+  if (p.currentMove && p.moveTimer > 0) {
+    p.moveTimer--;
+    const m=p.currentMove;
+    const elapsed = (m.startup + m.active + m.recovery) - p.moveTimer;
+    if (elapsed < m.startup) p.movePhase = "startup";
+    else if (elapsed < m.startup + m.active) { if (p.movePhase !== "active") spawnMoveHitbox(p,m); p.movePhase = "active"; }
+    else p.movePhase = "recovery";
+    if (p.moveTimer <= 0) { p.currentMove = null; p.movePhase = "none"; }
+  }
   if (p.attackFrame > 0) {
     p.attackFrame--;
   } else if (["light", "heavy", "special", "ultimate", "dodge"].includes(p.action)) {
@@ -1422,6 +1417,7 @@ function updateAttacks() {
   for (let i = attacks.length - 1; i >= 0; i--) {
     const a = attacks[i];
     a.frames--;
+    if (a.attachToOwner && a.owner && !a.owner.dead) { a.x = a.owner.x + a.owner.facing * a.offsetX - a.w/2; a.y = a.owner.y + a.offsetY - a.h/2; }
 
     players.forEach(p => {
       if (p === a.owner || p.dead || p.invincible > 0 || a.hit.has(p.id)) return;
@@ -1726,6 +1722,7 @@ function drawFighter(p) {
   if (blink) ctx.globalAlpha = .45;
 
   drawPixelGod(ctx, p, x, y, s);
+  drawActiveMoveVisual(ctx, p);
   if (p.dodgeTimer > 0) {
     ctx.globalAlpha = 0.28;
     ctx.fillStyle = p.god.accent || "#ffffff";
@@ -1942,6 +1939,36 @@ function drawGodWeapon(c, p, x, y, s, dir, strike, raise, wide) {
   }
 }
 
+function drawAttackArc(ctx, visual) {
+  ctx.save();
+  ctx.strokeStyle = visual.color;
+  ctx.lineWidth = screenScale(visual.thickness || 10);
+  ctx.globalAlpha = .85;
+  ctx.beginPath();
+  ctx.arc(worldToScreenX(visual.x), worldToScreenY(visual.y), screenScale(visual.length || 40), visual.startA, visual.endA);
+  ctx.stroke();
+  ctx.restore();
+}
+function drawActiveMoveVisual(ctx, player) {
+  if (!player.moveVisuals || !player.moveVisuals.length) return;
+  const handX = player.x + player.facing * 24;
+  const handY = player.y - 12;
+  for (let i = player.moveVisuals.length - 1; i >= 0; i--) {
+    const v = player.moveVisuals[i];
+    v.frames--;
+    const color = player.god.accent || player.god.color;
+    const type=v.type;
+    if (["slashArc","hammerSwing","solarSweep","jackalClaw","daggerFlurry","groundSlam"].includes(type)) {
+      drawAttackArc(ctx,{x:handX,y:handY,color,length:v.length||52,thickness:v.thickness||14,startA:(player.facing===1?-1.4:Math.PI+0.2),endA:(player.facing===1?.4:Math.PI-1.2)});
+    } else if (["stabLine","beam","lightningJab","shieldBash","shockwave","uppercut"].includes(type)) {
+      ctx.strokeStyle=color; ctx.lineWidth=screenScale(v.thickness||10); ctx.globalAlpha=.8; ctx.beginPath();
+      ctx.moveTo(worldToScreenX(handX), worldToScreenY(handY));
+      const tx=handX + player.facing*(v.length||65); const ty=handY + (type==="uppercut"?-55:0);
+      ctx.lineTo(worldToScreenX(tx), worldToScreenY(ty)); ctx.stroke(); ctx.globalAlpha=1;
+    }
+    if (v.frames<=0) player.moveVisuals.splice(i,1);
+  }
+}
 function drawAttack(a) {
   const x = worldToScreenX(a.x);
   const y = worldToScreenY(a.y);
