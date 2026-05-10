@@ -539,6 +539,9 @@ let listeningForBinding = null;
 let activeGamepadIndex = null;
 let gamepadButtonsPrev = {};
 const GAMEPAD_AXIS_THRESHOLD = 0.45;
+const downTapState = {};
+const DROP_DOUBLE_TAP_WINDOW = 18;
+const DROP_THROUGH_ACTIVE_FRAMES = 10;
 
 function deepCopyGamepadDefaults() { return JSON.parse(JSON.stringify(DEFAULT_GAMEPAD_BINDINGS)); }
 function saveControlBindings() { localStorage.setItem(CONTROL_SAVE_KEY, JSON.stringify(controlBindings)); }
@@ -585,6 +588,25 @@ function wasActionPressed(action, playerId = "p1") {
   if (!down) pressLocks[lockKey] = false;
   return false;
 }
+function registerDownTap(p) {
+  const id = p.id || "p1";
+  if (!downTapState[id]) downTapState[id] = { lastTap: -999, requestFrame: -999 };
+
+  const state = downTapState[id];
+  if (matchTime - state.lastTap <= DROP_DOUBLE_TAP_WINDOW) {
+    state.requestFrame = matchTime;
+    state.lastTap = -999;
+  } else {
+    state.lastTap = matchTime;
+  }
+}
+
+function wantsPlatformDropThrough(p) {
+  if (!p || !p.human) return false;
+  const state = downTapState[p.id || "p1"];
+  return !!state && matchTime - state.requestFrame <= DROP_THROUGH_ACTIVE_FRAMES;
+}
+
 function gamepadBindingToText(bind) { if (!bind) return "Unbound"; if (bind.type === "button") return "Button " + bind.button; if (bind.type === "axis") return "Axis " + bind.axis + (bind.dir < 0 ? " -" : " +"); return "Unbound"; }
 function formatKeyName(key) { if (!key) return "Unbound"; if (key === " ") return "Space"; if (key === "shift") return "Shift"; return key.length === 1 ? key.toUpperCase() : key; }
 function updateControlsText() {
@@ -1486,6 +1508,8 @@ function updateHuman(p) {
   if (isActionDown("right")) move += 1;
 
   applyMoveInput(p, move);
+
+  if (p.human && wasActionPressed("down", p.id + "_dropTap")) registerDownTap(p);
 
   if (wasActionPressed("up", p.id)) jump(p);
   if (wasActionPressed("dodge", p.id)) dodge(p);
@@ -3368,7 +3392,7 @@ function handlePlatformCollision(p) {
       prevBottom <= plat.y + 8 &&
       p.vy >= 0
     ) {
-    if (p.human && isActionDown("down") && plat.type !== "main") {
+    if (p.human && wantsPlatformDropThrough(p) && plat.type !== "main") {
       continue;
     }
 
