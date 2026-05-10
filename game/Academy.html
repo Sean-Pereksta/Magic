@@ -1101,6 +1101,11 @@ let projectiles = [];
 let tacticalSeals = [];
 let particles = [];
 let quetzMotionFeathers = [];
+let quetzFeathers = [];
+let quetzWindRings = [];
+let quetzSerpentTrails = [];
+let quetzGustLines = [];
+let quetzImpactBursts = [];
 let quetzWindDashes = [];
 let quetzSkyCurrents = [];
 let quetzCoils = [];
@@ -1417,6 +1422,11 @@ function startGame() {
   projectiles = [];
   particles = [];
   quetzMotionFeathers = [];
+  quetzFeathers = [];
+  quetzWindRings = [];
+  quetzSerpentTrails = [];
+  quetzGustLines = [];
+  quetzImpactBursts = [];
   quetzWindDashes = [];
   quetzSkyCurrents = [];
   quetzCoils = [];
@@ -1741,6 +1751,7 @@ function updateGame() {
   updateProjectiles();
   updateParticles();
   updateQuetzMotionFeathers();
+  updateQuetzVisuals();
   updateQuetzAbilityMechanics();
   updateCamera();
 
@@ -2596,23 +2607,23 @@ function updateSobekGrab(p) {
 function createQuetzWindDash(owner) {
   const dir = getFacingDir(owner);
   const dash = { owner, dir, timer: 14, hitCd: new Map() };
-  quetzWindDashes.push(dash);
+  quetzWindDashes.push(dash); spawnQuetzSerpentTrail(owner.x, owner.y - 6, owner.facing || 1, 22, { type:"dash" }); spawnQuetzWindRing(owner.x, owner.y, 36, 20); spawnQuetzFeathers(owner.x, owner.y - 14, 8, { vx: -(owner.facing||1)*1.4 });
   owner.vx = dir * 20; owner.vy *= 0.4;
   owner.attackKind = "quetz_wind_dash";
   owner.attackFrame = Math.max(owner.attackFrame, 20);
   owner.specialCooldown = Math.max(owner.specialCooldown, 52);
 }
 function createQuetzSkyCurrent(owner) {
-  quetzSkyCurrents.push({ owner, x: owner.x, y: owner.y + 12, radius: 62, timer: 58, hitCd: new Map() });
+  quetzSkyCurrents.push({ owner, x: owner.x, y: owner.y + 12, radius: 62, timer: 58, hitCd: new Map() }); spawnQuetzWindRing(owner.x, owner.y + 12, 46, 30, {mode:"column"}); spawnQuetzFeathers(owner.x, owner.y - 6, 10, {vy:-2.2});
   owner.vy = Math.min(owner.vy, -16); owner.grounded = false; owner.jumps = Math.max(owner.jumps, 1);
 }
 function createQuetzCoil(owner) {
   const y = owner.grounded ? findPlatformBelowPoint(owner.x, owner.y-20, 220) - 6 : owner.y + 36;
-  quetzCoils.push({ owner, x: owner.x, y, radius: 78, timer: 90, maxTimer: 90, hitCd: new Map(), popped:false });
+  quetzCoils.push({ owner, x: owner.x, y, radius: 78, timer: 90, maxTimer: 90, hitCd: new Map(), popped:false }); spawnQuetzSerpentTrail(owner.x, y, owner.facing||1, 32, {type:"coil",len:68}); spawnQuetzWindRing(owner.x, y, 56, 36);
   owner.specialCooldown = Math.max(owner.specialCooldown, 76);
 }
 function createQuetzTempest(owner) {
-  quetzTempests.push({ owner, x: owner.x, y: owner.y - 8, timer: 96, pullFrames: 75, finalHit: new Set(), done:false });
+  quetzTempests.push({ owner, x: owner.x, y: owner.y - 8, timer: 96, pullFrames: 75, finalHit: new Set(), done:false }); spawnQuetzWindRing(owner.x, owner.y - 8, 92, 50); spawnQuetzFeathers(owner.x, owner.y - 20, 24, {vy:-1.8});
   owner.attackKind = "quetz_sky_serpent_tempest"; owner.attackFrame = Math.max(owner.attackFrame, 96);
   owner.vy = Math.min(owner.vy, -7); owner.attackCooldown = Math.max(owner.attackCooldown, 96);
 }
@@ -4658,6 +4669,7 @@ function applyHit(target, source, damage, knock, angle, dir, color, impact = {})
 
   const strength = clamp(finalKnock / 12, 0.6, 2.2);
   spawnImpactSparks(impactX, impactY, meta.impactType, meta.impactColor || color, strength);
+  if (source && source.godId === "quetz") { spawnQuetzImpactBurst(impactX, impactY, strength); spawnQuetzFeathers(impactX, impactY, Math.min(16, 4 + Math.floor(strength * 5)), { vy: -1.4 }); }
   if (meta.impactType !== "soul") spawnParticles(impactX, impactY, meta.impactColor || color, 7 + Math.floor(strength * 5), 3 + strength * 1.5);
   shake = Math.max(shake, Math.min(16, finalKnock / 1.5 + meta.extraShake));
   playHitCue(meta.cue);
@@ -4703,15 +4715,20 @@ function spawnQuetzMotionFeathers(p, amount, mode = "feather") {
 function updateQuetzMotionFeathers() {
   for (let i = quetzMotionFeathers.length - 1; i >= 0; i--) {
     const q = quetzMotionFeathers[i];
-    q.life--;
-    q.x += q.vx;
-    q.y += q.vy;
-    q.vx *= 0.97;
-    q.vy += q.mode === "ring" ? 0.04 : 0.07;
-    q.size *= 0.985;
+    q.life--; q.x += q.vx; q.y += q.vy; q.vx *= 0.97; q.vy += q.mode === "ring" ? 0.04 : 0.07; q.size *= 0.985;
     if (q.life <= 0 || q.size < 0.5) quetzMotionFeathers.splice(i, 1);
   }
 }
+const QUETZ_CAPS = { feathers: 170, gust: 60, rings: 40, trails: 30, bursts: 30 };
+function capArray(arr, cap){ if(arr.length>cap) arr.splice(0, arr.length-cap); }
+function spawnQuetzFeathers(x,y,count,o={}){ const pal=["#14b8a6","#67e8f9","#d4af37","#ecfeff"]; for(let i=0;i<count;i++){ quetzFeathers.push({x,y,vx:(o.vx||0)+(Math.random()-0.5)*2.2,vy:(o.vy||0)-1.2+Math.random()*1.8,life:o.life||24+Math.random()*24,size:o.size||3+Math.random()*4,rot:Math.random()*6.28,spin:(Math.random()-0.5)*0.18,color:o.color||pal[(Math.random()*pal.length)|0]}); } capArray(quetzFeathers,QUETZ_CAPS.feathers); }
+function spawnQuetzWindRing(x,y,radius,duration,o={}){ quetzWindRings.push({x,y,radius,base:radius,life:duration,max:duration,rot:Math.random()*6.28,color:o.color||"#67e8f9",mode:o.mode||"ring"}); capArray(quetzWindRings,QUETZ_CAPS.rings); }
+function spawnQuetzSerpentTrail(x,y,dir,duration,o={}){ quetzSerpentTrails.push({x,y,dir,life:duration,max:duration,len:o.len||52,type:o.type||"sweep"}); capArray(quetzSerpentTrails,QUETZ_CAPS.trails); }
+function spawnQuetzGustLine(x1,y1,x2,y2,duration,o={}){ quetzGustLines.push({x1,y1,x2,y2,life:duration,max:duration,color:o.color||"#67e8f9"}); capArray(quetzGustLines,QUETZ_CAPS.gust); }
+function spawnQuetzImpactBurst(x,y,strength,o={}){ quetzImpactBursts.push({x,y,s:strength,life:o.life||18,max:o.life||18}); capArray(quetzImpactBursts,QUETZ_CAPS.bursts); }
+function updateQuetzVisuals(){ [quetzFeathers,quetzWindRings,quetzSerpentTrails,quetzGustLines,quetzImpactBursts].forEach((arr)=>{ for(let i=arr.length-1;i>=0;i--){ const v=arr[i]; v.life--; if(v.vx!=null){v.x+=v.vx;v.y+=v.vy;v.vy+=0.04;v.rot+=v.spin;v.vx*=0.99;} if(v.radius!=null){v.radius+=0.7;v.rot+=0.04;} if(v.life<=0) arr.splice(i,1);} }); }
+function drawQuetzVisualsBehindPlayers(ctx){ quetzWindRings.forEach(r=>{ const t=r.life/r.max,sx=worldToScreenX(r.x),sy=worldToScreenY(r.y),rr=screenScale(r.radius); ctx.save(); ctx.globalAlpha=0.12+0.28*t; ctx.strokeStyle=r.color; ctx.lineWidth=screenScale(2+4*t); ctx.setLineDash([screenScale(10),screenScale(8)]); ctx.lineDashOffset=-matchTime*0.7; ctx.beginPath(); ctx.arc(sx,sy,rr,0,Math.PI*2); ctx.stroke(); ctx.restore(); }); }
+function drawQuetzVisualsInFrontOfPlayers(ctx){ drawQuetzMotionFeathers(ctx); quetzSerpentTrails.forEach(s=>{ const t=s.life/s.max,sx=worldToScreenX(s.x),sy=worldToScreenY(s.y); ctx.save(); ctx.globalAlpha=0.2+0.45*t; ctx.strokeStyle="#14b8a6"; ctx.lineWidth=screenScale(10*t+2); ctx.beginPath(); ctx.moveTo(sx-s.dir*screenScale(s.len),sy+screenScale(12)); ctx.quadraticCurveTo(sx-s.dir*screenScale(s.len*0.3),sy-screenScale(16),sx+s.dir*screenScale(s.len*0.2),sy+screenScale(4)); ctx.stroke(); ctx.strokeStyle="#d4af37"; ctx.lineWidth=screenScale(2); ctx.stroke(); ctx.restore(); }); quetzGustLines.forEach(g=>{ const t=g.life/g.max; ctx.save(); ctx.globalAlpha=0.2+0.6*t; ctx.strokeStyle=g.color; ctx.lineWidth=screenScale(1+3*t); ctx.beginPath(); ctx.moveTo(worldToScreenX(g.x1),worldToScreenY(g.y1)); ctx.quadraticCurveTo((worldToScreenX(g.x1)+worldToScreenX(g.x2))/2,worldToScreenY((g.y1+g.y2)/2)-screenScale(10),worldToScreenX(g.x2),worldToScreenY(g.y2)); ctx.stroke(); ctx.restore(); }); quetzImpactBursts.forEach(b=>{ const t=b.life/b.max,sx=worldToScreenX(b.x),sy=worldToScreenY(b.y),r=screenScale(22*b.s*(1-t)); ctx.save(); ctx.globalAlpha=0.15+0.6*t; ctx.strokeStyle="#d4af37"; ctx.lineWidth=screenScale(3); ctx.beginPath(); ctx.arc(sx,sy,r,0,Math.PI*2); ctx.stroke(); ctx.restore(); }); quetzFeathers.forEach(f=>{ const t=f.life/48,sx=worldToScreenX(f.x),sy=worldToScreenY(f.y),sz=screenScale(f.size); ctx.save(); ctx.translate(sx,sy); ctx.rotate(f.rot); ctx.globalAlpha=Math.max(0,Math.min(0.9,t)); ctx.fillStyle=f.color; ctx.beginPath(); ctx.moveTo(0,-sz); ctx.quadraticCurveTo(sz*0.9,-sz*0.2,0,sz); ctx.quadraticCurveTo(-sz*0.8,-sz*0.1,0,-sz); ctx.fill(); ctx.restore(); }); }
 
 
 function spawnStatusText(x, y, text, color) {
@@ -4970,9 +4987,10 @@ function drawGame() {
   if (bastetSpiritCats && bastetSpiritCats.length > 0) drawBastetSpiritCats();
 
   projectiles.forEach(drawProjectile);
+  drawQuetzVisualsBehindPlayers(ctx);
   attacks.forEach(drawAttack);
   players.forEach(drawFighter);
-  drawQuetzMotionFeathers(ctx);
+  drawQuetzVisualsInFrontOfPlayers(ctx);
   particles.forEach(drawParticle);
 
   ctx.restore();
