@@ -326,6 +326,26 @@
           <div id="moveStylePanel" class="move-style"></div>
 
           <div class="setting-row">
+            <label for="gameMode">Game Mode</label>
+            <select id="gameMode">
+              <option value="stock" selected>Stock Battle</option>
+              <option value="timed">Timed Battle</option>
+              <option value="score">Score Battle</option>
+              <option value="king">King of the Hill</option>
+              <option value="boss">Boss Hunt</option>
+            </select>
+          </div>
+
+          <div class="setting-row">
+            <label for="modeLength">Mode Length</label>
+            <select id="modeLength">
+              <option value="short">Short</option>
+              <option value="normal" selected>Normal</option>
+              <option value="long">Long</option>
+            </select>
+          </div>
+
+          <div class="setting-row">
             <label for="botCount">Number of Bots</label>
             <select id="botCount">
               <option value="1">1 Bot</option>
@@ -722,6 +742,11 @@ let gameState = "select";
 let matchTime = 0;
 let shake = 0;
 let hitStop = 0;
+let selectedGameMode = "stock";
+let selectedModeLength = "normal";
+let modeTimer = 0;
+let scoreLimit = 8;
+let hillZone = null;
 const DEBUG_HITBOXES = false;
 
 function buildGodGrid() {
@@ -893,6 +918,8 @@ function startGame() {
   const difficulty = document.getElementById("difficulty").value;
   const selectedMapId = document.getElementById("mapSelect").value;
   currentMap = MAPS[selectedMapId] || MAPS.temple;
+  selectedGameMode = document.getElementById("gameMode").value;
+  selectedModeLength = document.getElementById("modeLength").value;
 
   players = [];
   attacks = [];
@@ -928,6 +955,8 @@ function startGame() {
       difficulty
     }));
   }
+
+  setupGameMode();
 
   selectScreen.classList.remove("active");
   gameOverScreen.classList.remove("active");
@@ -1011,6 +1040,10 @@ function createFighter(config) {
       jumpDesire: 0,
       attackDesire: 0
     },
+    lastHitBy: null,
+    lastHitTimer: 0,
+    score: 0,
+    isBossMinion: false,
     stats: {
       kos: 0,
       falls: 0
@@ -1064,6 +1097,7 @@ function updateHud() {
       <div class="hud-name" style="color:${p.god.color}">${p.name}</div>
       <div class="hud-stats">
         <span>Lives: ${p.lives}</span>
+        <span>Score: ${p.score || 0}</span>
         <span>${Math.round(p.damage)}%</span>
       </div>
       <div class="meter"><div class="meter-fill" style="background:${p.god.color};width:${Math.floor(p.meter)}%"></div></div>
@@ -1973,6 +2007,8 @@ function fireHorusBladeFan(p) {
 
 function updateFighter(p) {
   p.anim += .18;
+  if (p.lastHitTimer > 0) p.lastHitTimer--;
+  else p.lastHitBy = null;
 
   if (p.freezeFrames > 0) {
     p.freezeFrames--;
@@ -2270,6 +2306,15 @@ function handlePlatformCollision(p) {
 
 function loseLife(p) {
   p.lives--;
+
+  if (p.lastHitBy) {
+    const scorer = players.find(o => o.id === p.lastHitBy);
+    if (scorer && scorer !== p) {
+      scorer.score = (scorer.score || 0) + 1;
+    }
+  }
+
+  if (selectedGameMode !== "stock") p.lives = Math.max(1, p.lives);
   p.stats.falls++;
   p.dead = true;
   p.respawnTimer = 90;
@@ -2628,6 +2673,9 @@ function applyHit(target, source, damage, knock, angle, dir, color, impact = {})
   target.hitstun = Math.min(44, 12 + target.damage / 8);
   target.grounded = false;
 
+  target.lastHitBy = source.id;
+  target.lastHitTimer = 240;
+
   source.meter = clamp(source.meter + damage * .9, 0, 100);
   target.meter = clamp(target.meter + damage * .45, 0, 100);
 
@@ -2699,12 +2747,112 @@ function updateParticles() {
 }
 
 function checkWin() {
-  const alive = players.filter(p => p.lives > 0);
-  if (alive.length === 1 && gameState === "play") {
-    gameState = "gameover";
-    document.getElementById("winnerText").textContent = alive[0].god.name.toUpperCase() + " WINS!";
-    gameOverScreen.classList.add("active");
-    updateHud();
+  if (selectedGameMode === "stock") {
+    const alive = players.filter(p => p.lives > 0);
+    if (alive.length === 1 && gameState === "play") {
+      endMatch(alive[0]);
+    }
+    return;
+  }
+
+  if (selectedGameMode === "timed") {
+    modeTimer--;
+    if (modeTimer <= 0) {
+      const winner = [...players].sort((a, b) => (b.score || 0) - (a.score || 0))[0];
+      endMatch(winner);
+    }
+    return;
+  }
+
+  if (selectedGameMode === "score") {
+    const winner = players.find(p => (p.score || 0) >= scoreLimit);
+    if (winner) endMatch(winner);
+    return;
+  }
+
+  if (selectedGameMode === "king") {
+    updateKingMode();
+    const winner = players.find(p => (p.score || 0) >= scoreLimit);
+    if (winner) endMatch(winner);
+    return;
+  }
+
+  if (selectedGameMode === "boss") {
+    checkBossModeWin();
+  }
+}
+
+function endMatch(winner) {
+  gameState = "gameover";
+  document.getElementById("winnerText").textContent = winner.god.name.toUpperCase() + " WINS!";
+  gameOverScreen.classList.add("active");
+  updateHud();
+}
+
+function setupGameMode() {
+  hillZone = null;
+  if (selectedGameMode === "stock") {
+    const lives = selectedModeLength === "short" ? 2 : selectedModeLength === "long" ? 5 : 3;
+    players.forEach(p => p.lives = lives);
+    modeTimer = 0;
+  }
+
+  if (selectedGameMode === "timed") {
+    players.forEach(p => {
+      p.lives = 999;
+      p.score = 0;
+    });
+    modeTimer = selectedModeLength === "short" ? 60 * 60 : selectedModeLength === "long" ? 60 * 240 : 60 * 120;
+  }
+
+  if (selectedGameMode === "score") {
+    players.forEach(p => {
+      p.lives = 999;
+      p.score = 0;
+    });
+    scoreLimit = selectedModeLength === "short" ? 5 : selectedModeLength === "long" ? 15 : 10;
+    modeTimer = 0;
+  }
+
+  if (selectedGameMode === "king") {
+    players.forEach(p => {
+      p.lives = 999;
+      p.score = 0;
+    });
+    scoreLimit = selectedModeLength === "short" ? 100 : selectedModeLength === "long" ? 300 : 200;
+    hillZone = { x: mapCenterX(), y: 520, w: 260, h: 150 };
+  }
+
+  if (selectedGameMode === "boss") {
+    players.forEach((p, index) => {
+      if (index === 0) {
+        p.lives = 3;
+        p.score = 0;
+      } else {
+        p.lives = 1;
+        p.damage = 0;
+        p.isBossMinion = true;
+      }
+    });
+  }
+}
+
+function updateKingMode() {
+  if (!hillZone) return;
+  players.forEach(p => {
+    if (p.dead) return;
+    const inside = p.x > hillZone.x - hillZone.w / 2 && p.x < hillZone.x + hillZone.w / 2 && p.y > hillZone.y - hillZone.h / 2 && p.y < hillZone.y + hillZone.h / 2;
+    if (inside) p.score = (p.score || 0) + 1;
+  });
+}
+
+function checkBossModeWin() {
+  const boss = players[0];
+  const minionsAlive = players.slice(1).some(p => p.lives > 0);
+  if (boss && boss.lives <= 0) {
+    endMatch(players.slice(1).find(p => p.lives > 0) || players[1] || boss);
+  } else if (!minionsAlive && boss) {
+    endMatch(boss);
   }
 }
 
