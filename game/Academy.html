@@ -1402,6 +1402,10 @@ function heavyAttack(p) {
   if (startMove(p, move)) shake = Math.max(shake, move.directionVariant === "up" ? 5 : 4);
 }
 
+function getFacingDir(p) {
+  return p && p.facing < 0 ? -1 : 1;
+}
+
 function useSpecial(p) {
   if (p.specialCooldown > 0 || p.dead) return;
   p.specialCooldown = p.god.specialCooldown;
@@ -1411,6 +1415,7 @@ function useSpecial(p) {
   p.attackFrame = 30;
 
   const id = p.godId;
+  const dir = getFacingDir(p);
   p.moveVariant = getAttackVariant(p, "special");
 
   if (id === "zeus") {
@@ -1422,13 +1427,13 @@ function useSpecial(p) {
       createAttack({owner:p,x:p.x,y:p.y-24,w:48,h:92,damage:5,knock:7,angle:-1.05,frames:10,color:"#fff4a3",label:"storm_ascent",visualType:"stormPillar"});
       spawnParticles(p.x, p.y + 12, "#ffe66d", 20, 6);
     } else if (p.moveVariant === "down") {
-      const strikeX = p.grounded ? p.x + p.facing * 42 : p.x;
+      const strikeX = p.grounded ? p.x + dir * 42 : p.x;
       const strikeY = p.grounded ? p.y + 6 : p.y + 78;
       createAttack({owner:p,x:strikeX,y:strikeY,w:54,h:140,damage:9,knock:10,angle:-1.0,frames:12,color:"#ffe66d",label:"sky_judgment",visualType:"stormPillar"});
       spawnParticles(strikeX, strikeY - 56, "#fff4a3", 24, 7);
       shake = Math.max(shake, 4);
     } else {
-      spawnProjectile({owner:p,type:"bolt",x:p.x + p.facing * 28,y:p.y - 10,vx:p.facing * 12,vy:-1,w:34,h:18,life:55,damage:10,knock:10,color:"#ffe66d",chain:true});
+      spawnProjectile({owner:p,dir,type:"bolt",x:p.x + dir * 28,y:p.y - 10,vx:dir * 12,vy:-1,w:34,h:18,life:55,damage:10,knock:10,color:"#ffe66d",chain:true});
     }
   }
 
@@ -1546,10 +1551,10 @@ function useSpecial(p) {
       p.moveVisuals.push({type:"wingSlash",frames:13,length:86,thickness:16});
     } else if (p.moveVariant === "down") {
       const markY = p.grounded ? p.y + 34 : p.y + 74;
-      spawnProjectile({owner:p,type:"eyeMark",x:p.x + (p.grounded ? p.facing * 46 : 0),y:markY,vx:0,vy:0,w:70,h:50,life:90,damage:7,knock:9,color:"#ffd166",trap:true});
+      spawnProjectile({owner:p,type:"eyeMark",x:p.x + dir * 46,y:markY,vx:0,vy:0,w:70,h:50,life:90,damage:7,knock:9,color:"#ffd166",trap:true});
     } else {
       const gliding = !p.grounded;
-      p.vx = p.facing * 14; if (gliding) p.vy = Math.max(p.vy, 2.8);
+      p.vx = dir * 14; if (gliding) p.vy = Math.max(p.vy, 2.8);
       createAttack({owner:p,x:p.x + p.facing * 26,y:p.y-6,w:98,h:34,damage:9,knock:8.8,angle:-0.15,frames:11,color:"#2ec4ff",label:"falcon_dive",visualType:"falconDive",attachToOwner:true,offsetX:26,offsetY:-6});
       p.moveVisuals.push({type:"falconDive",frames:12,length:92,thickness:15});
     }
@@ -1566,13 +1571,13 @@ function useSpecial(p) {
       spawnProjectile({owner:p,type:"clone",x:leaveX,y:leaveY,vx:0,vy:-.2,w:34,h:52,life:26,damage:0,knock:0,color:"#caffbf",fakeGod:p.god,alpha:.45,flicker:true,ghost:true});
       spawnParticles(leaveX, leaveY, "#bbf7d0", 15, 4);
     } else if (p.moveVariant === "down") {
-      const trapX = p.x + p.facing * 32;
+      const trapX = p.x + dir * 46;
       const trapY = p.grounded ? p.y + 34 : p.y + 72;
       spawnProjectile({owner:p,type:"mirrorTrap",x:trapX,y:trapY,vx:0,vy:0,w:42,h:18,life:180,damage:9,knock:8,color:"#34d399",fakeGod:p.god,armed:true});
       p.moveVisuals.push({type:"sunBrandMark",frames:20,length:40,thickness:9});
     } else {
-      spawnProjectile({owner:p,type:"clone",x:p.x,y:p.y,vx:p.facing * 8.2,vy:0,w:36,h:54,life:90,damage:6,knock:5.8,color:"#06d6a0",fakeGod:p.god,flicker:true,seek:true});
-      p.vx -= p.facing * 4;
+      spawnProjectile({owner:p,dir,type:"clone",x:p.x + dir * 12,y:p.y,vx:dir * 8.2,vy:0,w:36,h:54,life:90,damage:6,knock:5.8,color:"#06d6a0",fakeGod:p.god,flicker:true,seek:true});
+      p.vx -= dir * 4;
       spawnParticles(p.x, p.y, "#caffbf", 18, 5);
     }
   }
@@ -1584,11 +1589,11 @@ function useSpecial(p) {
       spawnParticles(p.x, p.y + 12, "#7be0d5", 24, 6);
     } else if (p.moveVariant === "down") {
       const trapY = p.grounded ? p.y + 34 : p.y + 72;
-      spawnProjectile({owner:p,type:"mudTrap",x:p.x + (p.grounded ? p.facing * 24 : 0),y:trapY,vx:0,vy:0,w:90,h:24,life:150,damage:2,knock:1,color:"#5c4a2e",trap:true,slow:true});
+      spawnProjectile({owner:p,type:"mudTrap",x:p.x + dir * 46,y:trapY,vx:0,vy:0,w:90,h:24,life:150,damage:2,knock:1,color:"#5c4a2e",trap:true,slow:true});
       p.moveVisuals.push({type:"mudShockwave",frames:18,length:66,thickness:12});
     } else {
       p.invincible = Math.max(p.invincible, 8);
-      p.vx = p.facing * 12.8;
+      p.vx = dir * 12.8;
       createAttack({owner:p,x:p.x + p.facing * 28,y:p.y-4,w:102,h:42,damage:11,knock:10.5,angle:-0.08,frames:10,color:"#2a9d8f",label:"nile_lunge",visualType:"nileLunge",attachToOwner:true,offsetX:28,offsetY:-4});
       p.moveVisuals.push({type:"nileLunge",frames:12,length:96,thickness:16});
     }
@@ -1607,6 +1612,8 @@ function useUltimate(p) {
   shake = Math.max(shake, 12);
 
   showMessage(p.god.name.toUpperCase() + " UNLEASHES " + ultimateName(p.godId) + "!", 90);
+
+  const dir = getFacingDir(p);
 
   if (p.godId === "zeus") {
     for (let i = 0; i < 7; i++) {
@@ -1650,7 +1657,7 @@ function useUltimate(p) {
   else if (p.godId === "ra") {
     createAttack({
       owner: p,
-      x: p.x + p.facing * 310,
+      x: p.x + dir * 310,
       y: p.y - 30,
       w: 620,
       h: 92,
@@ -1736,8 +1743,8 @@ function useUltimate(p) {
     }
   }
   else if (p.godId === "sobek") {
-    createAttack({owner:p,x:p.x + p.facing * 170,y:p.y-14,w:360,h:170,damage:24,knock:23,angle:-0.44,frames:24,color:"#6de2d0",label:"ult",visualType:"spectralCroc"});
-    spawnParticles(p.x + p.facing * 120, p.y, "#7be0d5", 42, 9);
+    createAttack({owner:p,x:p.x + dir * 170,y:p.y-14,w:360,h:170,damage:24,knock:23,angle:-0.44,frames:24,color:"#6de2d0",label:"ult",visualType:"spectralCroc"});
+    spawnParticles(p.x + dir * 120, p.y, "#7be0d5", 42, 9);
     shake = Math.max(shake, 18);
   }
 }
@@ -1763,11 +1770,13 @@ function createAttack(a) {
   a.offsetX = a.offsetX || 0;
   a.offsetY = a.offsetY || 0;
   a.visualType = a.visualType || "slashArc";
+  a.dir = a.dir || getFacingDir(a.owner);
   attacks.push(a);
 }
 
 function spawnProjectile(p) {
   p.hit = new Set();
+  p.dir = p.dir || getFacingDir(p.owner);
   projectiles.push(p);
 }
 
@@ -2057,7 +2066,7 @@ function updateProjectiles() {
           pr.y + pr.h/2 > p.y - p.h/2
         ) {
           pr.hit.add(p.id);
-          const dir = Math.sign(p.x - pr.owner.x) || pr.owner.facing;
+          const dir = pr.dir || getFacingDir(pr.owner);
           applyHit(p, pr.owner, pr.damage, pr.knock, pr.type === "hook" ? -0.18 : -.3, dir, pr.color, {x: pr.x, y: pr.y, impactType: pr.type === "bolt" ? "lightning" : pr.type === "sun" ? "solar" : undefined});
 
           if (pr.pull) {
@@ -2826,7 +2835,7 @@ function drawProjectile(pr) {
     const fake = {
       god: pr.fakeGod,
       godId: pr.fakeGod.id,
-      facing: Math.sign(pr.vx) || 1,
+      facing: pr.dir || Math.sign(pr.vx) || 1,
       action: "run",
       anim: matchTime / 10,
       grounded: true,
@@ -2920,7 +2929,7 @@ function drawProjectile(pr) {
     ctx.fillStyle = "rgba(255,245,185,.75)";
     ctx.beginPath(); ctx.arc(x, y, coreR * .45, 0, Math.PI * 2); ctx.fill();
   } else if (pr.type === "hook") {
-    const dir = Math.sign(pr.vx) || pr.owner.facing || 1;
+    const dir = pr.dir || Math.sign(pr.vx) || getFacingDir(pr.owner);
     const ox = worldToScreenX(pr.owner.x + dir * 16);
     const oy = worldToScreenY(pr.owner.y - 10);
     ctx.strokeStyle = "rgba(182,255,241,.85)";
