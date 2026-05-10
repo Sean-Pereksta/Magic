@@ -575,6 +575,31 @@ const GODS = {
     specialCooldown: 54,
     specialName: "Falcon Dive"
   },
+  sobek: {
+    id: "sobek",
+    name: "Sobek",
+    pantheon: "Egyptian",
+    role: "Crocodile Grappler",
+    desc: "A heavy river god with crushing bites, tail sweeps, armor, and water-control attacks.",
+    moveStyle: {
+      role: "Heavy grappler",
+      neutral: "Claw swipes, crushing bites, and armored lunges.",
+      up: "Jaw snaps, water bursts, and river recovery.",
+      down: "Tail trips, death rolls, and mud traps.",
+      special: "Nile Lunge / River Breach / Mud Trap."
+    },
+    color: "#2a9d8f",
+    dark: "#16443f",
+    accent: "#f4d35e",
+    skin: "#3f7f48",
+    hpColor: "#2a9d8f",
+    speed: 4.15,
+    jump: 13.8,
+    weight: 1.32,
+    attackPower: 1.18,
+    specialCooldown: 68,
+    specialName: "Nile Lunge"
+  },
   loki: {
     id: "loki",
     name: "Loki",
@@ -602,7 +627,7 @@ const GODS = {
   }
 };
 
-const GOD_ORDER = ["zeus", "athena", "ra", "anubis", "thor", "loki", "horus"];
+const GOD_ORDER = ["zeus", "athena", "ra", "anubis", "thor", "loki", "horus", "sobek"];
 
 const MAPS = {
   temple: {
@@ -760,6 +785,23 @@ function drawAvatar(c, god, x, y, scale) {
     c.fillRect(x - 14*s, y - 2*s, 4*s, 8*s);
     c.fillRect(x + 10*s, y - 2*s, 4*s, 8*s);
   }
+  if (god.id === "sobek") {
+    c.fillStyle = "#16443f";
+    c.fillRect(x - 10*s, y - 14*s, 20*s, 10*s);
+    c.fillRect(x + 8*s, y - 11*s, 9*s, 5*s);
+    c.fillStyle = "#ffffff";
+    c.fillRect(x + 13*s, y - 9*s, 2*s, 1*s);
+    c.fillRect(x + 11*s, y - 7*s, 2*s, 1*s);
+    c.fillStyle = "#f4d35e";
+    c.fillRect(x + 3*s, y - 10*s, 2*s, 2*s);
+    c.fillStyle = "#2a9d8f";
+    c.fillRect(x - 11*s, y - 2*s, 22*s, 4*s);
+    c.fillStyle = "#f4d35e";
+    c.fillRect(x - 8*s, y - 1*s, 16*s, 2*s);
+    c.fillStyle = "#16443f";
+    c.fillRect(x - 13*s, y + 8*s, 4*s, 3*s);
+    c.fillRect(x - 15*s, y + 7*s, 2*s, 2*s);
+  }
 }
 
 buildGodGrid();
@@ -858,6 +900,7 @@ function createFighter(config) {
     hitstun: 0,
     freezeFrames: 0,
     soulMarkTimer: 0,
+    mudSlowTimer: 0,
     soulMarkSource: null,
     action: "idle",
     anim: 0,
@@ -1057,6 +1100,9 @@ function updateBot(p) {
     } else if (p.godId === "horus") {
       if (closeRoll < .72) botUseAttack(p, "light");
       else botUseAttack(p, "heavy");
+    } else if (p.godId === "sobek") {
+      if (closeRoll < .42) botUseAttack(p, "light");
+      else botUseAttack(p, "heavy");
     } else {
       if (closeRoll < .68) botUseAttack(p, "light");
       else botUseAttack(p, "heavy");
@@ -1071,6 +1117,7 @@ function updateBot(p) {
   if (p.godId === "athena" && dist < 90) specialChance *= 1.35;
   if (p.godId === "anubis" && dist < 230) specialChance *= 1.3;
   if (p.godId === "horus") specialChance *= 1.7;
+  if (p.godId === "sobek") specialChance *= dist > 130 ? 1.25 : .85;
   if (dist < 330 && Math.random() < specialChance) {
     botUseAttack(p, "special");
   }
@@ -1111,6 +1158,13 @@ function chooseBotAttackVariant(bot, target, inputType) {
       if (targetAbove) return "up";
       if (absDx < 115) return Math.random() < .55 ? "down" : "neutral";
       return Math.random() < .52 ? "neutral" : "up";
+    }
+    if (bot.godId === "sobek") {
+      if (recoveringFromBelowStage) return "up";
+      if (targetAbove) return Math.random() < .48 ? "up" : "neutral";
+      if (bot.grounded && absDx < 110 && Math.abs(dy) < 42 && Math.random() < .45) return "down";
+      if (absDx > 120) return "neutral";
+      return Math.random() < .7 ? "neutral" : "up";
     }
     if (targetAbove) return "up";
     if (targetBelow) return "down";
@@ -1174,9 +1228,10 @@ function nearestEnemy(p) {
 function applyMoveInput(p, move) {
   const accel = p.grounded ? .85 : .42;
   const max = p.god.speed;
+  const mudSlow = p.mudSlowTimer > 0 ? .62 : 1;
 
   if (move !== 0) {
-    p.vx += move * accel;
+    p.vx += move * accel * mudSlow;
     p.facing = move;
     p.action = p.grounded ? "run" : "air";
   } else if (p.grounded) {
@@ -1185,7 +1240,7 @@ function applyMoveInput(p, move) {
     p.action = "idle";
   }
 
-  p.vx = clamp(p.vx, -max, max);
+  p.vx = clamp(p.vx, -max * mudSlow, max * mudSlow);
 }
 
 function jump(p) {
@@ -1239,6 +1294,10 @@ const ATTACK_DEFS = {
   horus: {
     light: { neutral:{id:"horus_light_n",godId:"horus",inputType:"light",directionVariant:"neutral",startup:2,active:5,recovery:7,damage:6,knock:6.1,angle:-0.08,hitbox:{x:34,y:-6,w:52,h:28},effects:{visualType:"wingSlash"},selfImpulse:{x:1.2,y:0}}, up:{id:"horus_light_u",directionVariant:"up",startup:3,active:5,recovery:8,damage:7,knock:7.2,angle:-1.15,hitbox:{x:28,y:-62,w:62,h:58},effects:{visualType:"wingLift"}}, down:{id:"horus_light_d",directionVariant:"down",startup:3,active:5,recovery:8,damage:6,knock:6.6,angle:-0.03,hitbox:{x:32,y:24,w:64,h:22},effects:{visualType:"talonRake"}}},
     heavy:{neutral:{id:"horus_heavy_n",directionVariant:"neutral",startup:7,active:6,recovery:13,damage:12,knock:12.4,angle:-0.72,hitbox:{x:50,y:-10,w:108,h:30},effects:{visualType:"royalSpear"},selfImpulse:{x:3.6,y:0}},up:{id:"horus_heavy_u",directionVariant:"up",startup:7,active:7,recovery:14,damage:12,knock:12.6,angle:-1.25,hitbox:{x:20,y:-96,w:78,h:96},effects:{visualType:"skyJudgment"}},down:{id:"horus_heavy_d",directionVariant:"down",startup:8,active:7,recovery:14,damage:13,knock:11.6,angle:-0.96,hitbox:{x:8,y:20,w:82,h:66},effects:{visualType:"talonDrop"}}}
+  },
+  sobek: {
+    light: { neutral:{id:"sobek_light_n",godId:"sobek",inputType:"light",directionVariant:"neutral",startup:4,active:6,recovery:9,damage:7,knock:7.4,angle:-0.06,hitbox:{x:34,y:-4,w:62,h:34},effects:{visualType:"crocClaw"}}, up:{id:"sobek_light_u",directionVariant:"up",startup:4,active:6,recovery:9,damage:8,knock:8.5,angle:-1.12,hitbox:{x:30,y:-60,w:68,h:62},effects:{visualType:"jawSnap"}}, down:{id:"sobek_light_d",directionVariant:"down",startup:4,active:7,recovery:10,damage:6,knock:7.1,angle:-0.02,hitbox:{x:-42,y:22,w:132,h:22},effects:{visualType:"tailSweep"}}},
+    heavy:{neutral:{id:"sobek_heavy_n",directionVariant:"neutral",startup:10,active:7,recovery:16,damage:15,knock:15.2,angle:-0.18,hitbox:{x:40,y:-12,w:90,h:46},effects:{visualType:"jawSnap"}},up:{id:"sobek_heavy_u",directionVariant:"up",startup:9,active:7,recovery:16,damage:14,knock:14.6,angle:-1.2,hitbox:{x:16,y:-100,w:86,h:104},effects:{visualType:"waterBurst"}},down:{id:"sobek_heavy_d",directionVariant:"down",startup:9,active:8,recovery:17,damage:15,knock:14.8,angle:-0.86,hitbox:{x:-30,y:16,w:112,h:74},effects:{visualType:"deathRoll"}}}
   },
   loki: {
     light: { neutral:{id:"loki_light_n",godId:"loki",inputType:"light",directionVariant:"neutral",startup:1,active:4,recovery:6,damage:5,knock:4.2,angle:-0.03,hitbox:{x:30,y:-10,w:44,h:22},effects:{visualType:"daggerFlurry"}}, up:{id:"loki_light_u",directionVariant:"up",startup:2,active:5,recovery:7,damage:6,knock:7.2,angle:-1.18,hitbox:{x:22,y:-58,w:52,h:60},effects:{visualType:"soulRake"},selfImpulse:{x:0,y:-1.4}}, down:{id:"loki_light_d",directionVariant:"down",startup:1,active:4,recovery:6,damage:5,knock:5.1,angle:-0.01,hitbox:{x:28,y:20,w:62,h:18},effects:{visualType:"graveSweep"}}},
@@ -1438,6 +1497,23 @@ function useSpecial(p) {
       spawnParticles(p.x, p.y, "#caffbf", 18, 5);
     }
   }
+  else if (id === "sobek") {
+    if (p.moveVariant === "up") {
+      p.vy = -14.2; p.vx *= .62; p.invincible = Math.max(p.invincible, 10);
+      createAttack({owner:p,x:p.x,y:p.y-20,w:88,h:92,damage:9,knock:8.8,angle:-1.05,frames:10,color:"#7be0d5",label:"river_breach",visualType:"riverBreach",attachToOwner:true,offsetX:0,offsetY:-20});
+      p.moveVisuals.push({type:"riverBreach",frames:14,length:90,thickness:16});
+      spawnParticles(p.x, p.y + 12, "#7be0d5", 24, 6);
+    } else if (p.moveVariant === "down") {
+      const trapY = p.grounded ? p.y + 34 : p.y + 72;
+      spawnProjectile({owner:p,type:"mudTrap",x:p.x + (p.grounded ? p.facing * 24 : 0),y:trapY,vx:0,vy:0,w:90,h:24,life:150,damage:2,knock:1,color:"#5c4a2e",trap:true,slow:true});
+      p.moveVisuals.push({type:"mudShockwave",frames:18,length:66,thickness:12});
+    } else {
+      p.invincible = Math.max(p.invincible, 8);
+      p.vx = p.facing * 12.8;
+      createAttack({owner:p,x:p.x + p.facing * 28,y:p.y-4,w:102,h:42,damage:11,knock:10.5,angle:-0.08,frames:10,color:"#2a9d8f",label:"nile_lunge",visualType:"nileLunge",attachToOwner:true,offsetX:28,offsetY:-4});
+      p.moveVisuals.push({type:"nileLunge",frames:12,length:96,thickness:16});
+    }
+  }
 
   p.meter = clamp(p.meter + 3, 0, 100);
 }
@@ -1580,6 +1656,11 @@ function useUltimate(p) {
       });
     }
   }
+  else if (p.godId === "sobek") {
+    createAttack({owner:p,x:p.x + p.facing * 170,y:p.y-14,w:360,h:170,damage:24,knock:23,angle:-0.44,frames:24,color:"#6de2d0",label:"ult",visualType:"spectralCroc"});
+    spawnParticles(p.x + p.facing * 120, p.y, "#7be0d5", 42, 9);
+    shake = Math.max(shake, 18);
+  }
 }
 
 function ultimateName(id) {
@@ -1590,7 +1671,8 @@ function ultimateName(id) {
     anubis: "JUDGMENT GATE",
     thor: "RAGNAROK STRIKE",
     loki: "TRICKSTER STORM",
-    horus: "DIVINE FALCON STORM"
+    horus: "DIVINE FALCON STORM",
+    sobek: "DEVOURER OF THE NILE"
   }[id] || "DIVINE FURY";
 }
 
@@ -1656,6 +1738,7 @@ function updateFighter(p) {
     if (p.soulMarkTimer <= 0) p.soulMarkSource = null;
   }
   if (p.invincible > 0) p.invincible--;
+  if (p.mudSlowTimer > 0) p.mudSlowTimer--;
 
   p.vy += 0.78;
 
@@ -1849,6 +1932,23 @@ function updateProjectiles() {
         }
       });
       if (triggered) pr.life = 0;
+    } else if (pr.type === "mudTrap") {
+      pr.vx = 0; pr.vy = 0;
+      let triggered = false;
+      players.forEach(t => {
+        if (t === pr.owner || t.dead || t.invincible > 0) return;
+        if (Math.abs(t.x - pr.x) < pr.w * .5 && Math.abs(t.y - pr.y) < pr.h * .8) {
+          const tick = t.id + "_" + Math.floor(pr.life / 18);
+          if (!pr.hit.has(tick)) {
+            pr.hit.add(tick);
+            applyHit(t, pr.owner, pr.damage, pr.knock, -0.02, Math.sign(t.x - pr.x) || 1, pr.color, {x:pr.x,y:pr.y,impactType:"heavyImpact"});
+            t.mudSlowTimer = Math.max(t.mudSlowTimer || 0, 45);
+            spawnParticles(t.x, t.y + 18, "#6b5a3a", 8, 2.8);
+          }
+          triggered = true;
+        }
+      });
+      if (triggered && Math.random() < .5) spawnParticles(pr.x + (Math.random()-.5)*pr.w, pr.y, "#5c4a2e", 4, 1.8);
     } else {
       if (pr.type === "clone" && pr.seek && pr.owner && !pr.owner.dead) {
         const target = nearestEnemy(pr.owner);
@@ -2270,7 +2370,8 @@ function drawPixelGod(c, p, x, y, s) {
   c.fillRect(px(x + sc(2 + legSpread)), px(y + sc(12 - bob + crouch)), sc(11), sc(26));
 
   // Body
-  const bodyW = Math.max(24, Math.round(38 * (pose.squash || 1)));
+  const isSobek = p.godId === "sobek";
+  const bodyW = Math.max(24, Math.round((isSobek ? 46 : 38) * (pose.squash || 1)));
   const bodyH = Math.max(28, Math.round(39 * (pose.stretch || 1)));
   const bodyInnerW = Math.max(20, Math.round(32 * (pose.squash || 1)));
   const bodyInnerH = Math.max(24, Math.round(34 * (pose.stretch || 1)));
@@ -2279,6 +2380,13 @@ function drawPixelGod(c, p, x, y, s) {
 
   c.fillStyle = g.color;
   c.fillRect(px(x - sc(16) + hitLean + bodyLean), px(y - sc(26) + bob + crouch), sc(bodyInnerW), sc(bodyInnerH));
+  if (isSobek) {
+    c.fillStyle = "#1b5e3a";
+    c.fillRect(px(x - dir * sc(38)), px(y - sc(4) + bob + crouch), sc(28), sc(8));
+    c.fillRect(px(x - dir * sc(48)), px(y - sc(2) + bob + crouch), sc(12), sc(6));
+    c.fillStyle = "#2f7a46";
+    c.fillRect(px(x - sc(3)), px(y - sc(28) + bob + crouch), sc(6), sc(4));
+  }
   drawGodHead(c, p, x + hitLean + bodyLean, y + bob + crouch, s, dir, pose.headTilt || 0);
 
   // Arms
@@ -2397,6 +2505,19 @@ function drawGodHead(c, p, x, y, s, dir, headTilt) {
     c.fillStyle = "#10131f";
     c.fillRect(px(x - sc(8) + dir * sc(3)), px(y - sc(43)), sc(5), sc(4));
     c.fillRect(px(x + sc(4) + dir * sc(3)), px(y - sc(43)), sc(5), sc(4));
+  } else if (id === "sobek") {
+    c.fillStyle = "#16443f";
+    c.fillRect(px(x - sc(16)), px(y - sc(56)), sc(32), sc(28));
+    c.fillRect(px(x + dir * sc(10)), px(y - sc(50)), sc(24), sc(11));
+    c.fillRect(px(x + dir * sc(24)), px(y - sc(46)), sc(10), sc(6));
+    c.fillStyle = "#ffffff";
+    c.fillRect(px(x + dir * sc(24)), px(y - sc(44)), sc(2), sc(2));
+    c.fillRect(px(x + dir * sc(20)), px(y - sc(43)), sc(2), sc(2));
+    c.fillStyle = "#f4d35e";
+    c.fillRect(px(x + dir * sc(4)), px(y - sc(45)), sc(4), sc(4));
+    c.fillRect(px(x - sc(15)), px(y - sc(32)), sc(30), sc(5));
+    c.fillStyle = "#0f332f";
+    c.fillRect(px(x - dir * sc(19)), px(y - sc(54)), sc(4), sc(4));
   } else {
     c.fillStyle = g.color;
     c.fillRect(px(x - sc(18)), px(y - sc(55)), sc(36), sc(30));
@@ -2452,6 +2573,11 @@ function drawGodWeapon(c, p, x, y, s, dir, pose) {
     c.fillStyle = "#ecfdf5";
     c.fillRect(px(x + dir * sc(33) + strike), px(y + sc(3) + raise), sc(22), sc(5));
     c.fillRect(px(x + dir * sc(18) + strike), px(y - sc(20) + raise), sc(18), sc(4));
+  } else if (p.godId === "sobek") {
+    c.fillStyle = "#f4d35e";
+    c.fillRect(px(x + dir * sc(34) + strike), px(y - sc(10) + raise), sc(18 + reach * .4), sc(8));
+    c.fillStyle = "#2a9d8f";
+    c.fillRect(px(x - dir * sc(34) - wide), px(y - sc(12) - raise * .2), sc(24), sc(6));
   }
   c.restore();
 }
@@ -2469,6 +2595,12 @@ function getPoseForMove(p) {
   if (m.id === "zeus_light_n") return { ...base, bodyLean: p.facing * 5, frontArmX: p.facing * (24 * Math.min(1, t * 1.6)), frontArmY: -5, weaponReach: 8 + Math.sin(f * 2.5) * 4, weaponAngle: -0.2, headTilt: .08, stretch: 1.04 };
   if (m.id === "ra_heavy_n") return { ...base, bodyLean: -p.facing * 2 + p.facing * 8 * t, crouch: 4 * (1 - t), frontArmX: p.facing * 6, frontArmY: -8, weaponAngle: -0.9 + t * 1.6, weaponReach: 10 * Math.min(1, t * 2), headTilt: -0.06, squash: 1 + Math.min(.14, t * .2) };
   if (m.id === "loki_light_n") { const phase = t < .5 ? 0 : 1; return { ...base, bodyLean: p.facing * (phase ? 7 : 3), crouch: phase ? 4 : 1, frontArmX: p.facing * (phase ? 22 : 12), frontArmY: phase ? -8 : 2, backArmX: -p.facing * (phase ? 3 : 8), weaponAngle: phase ? 0.75 : -0.55, legSpread: phase ? 6 : 2, headTilt: phase ? 0.14 : -0.08 }; }
+  if (m.id === "sobek_light_n") return { ...base, bodyLean:p.facing*7, frontArmX:p.facing*(20*t), frontArmY:-3, crouch:2, weaponAngle:-0.2, squash:1.08 };
+  if (m.id === "sobek_light_u") return { ...base, bodyLean:p.facing*3, frontArmY:-12, backArmY:-8, headTilt:-0.24, stretch:1.06 };
+  if (m.id === "sobek_light_d") return { ...base, crouch:9, bodyLean:-p.facing*5, legSpread:8, backArmX:-p.facing*10 };
+  if (m.id === "sobek_heavy_n") return { ...base, crouch:6*(1-t), bodyLean:p.facing*(10*t), frontArmX:p.facing*18, headTilt:0.14, squash:1.14 };
+  if (m.id === "sobek_heavy_u") return { ...base, crouch:4, frontArmY:-18, backArmY:-16, stretch:1.1, headTilt:-0.1 };
+  if (m.id === "sobek_heavy_d") return { ...base, crouch:10, bodyLean:p.facing*Math.sin(t*Math.PI)*6, legSpread:10, squash:1.16 };
   if (p.action === "dodge") return { ...base, bodyLean: p.facing * 16, frontArmX: -p.facing * 8, crouch: 2, headTilt: -0.12, squash: 1.1 };
   if (p.action === "light") return { ...base, bodyLean: p.facing * 3, frontArmX: p.facing * (18 + Math.sin(f * .45) * 8), frontArmY: -4, backArmX: -p.facing * 2 };
   if (p.action === "heavy") return { ...base, bodyLean: p.facing * 7, frontArmX: p.facing * (28 + Math.sin(f * .32) * 18), frontArmY: -10 - Math.sin(f * .25) * 8, backArmX: p.facing * 8, legSpread: 4 };
@@ -2496,9 +2628,9 @@ function drawActiveMoveVisual(ctx, player) {
     v.frames--;
     const color = player.god.accent || player.god.color;
     const type=v.type;
-    if (["slashArc","hammerSwing","solarSweep","jackalClaw","daggerFlurry","groundSlam","staticSweep","thunderStomp","spearLift","guardianUpper","owlWing","solarStaffTap","sunriseArc","horizonSweep","falconWing","soulRake","graveSweep","judgmentCleave","weighingHook","tombDrop","hammerSweep","mjolnirCrush","mjolnirTap","thunderUpperSwing","wingSlash","wingLift","talonRake","skyJudgment","talonDrop"].includes(type)) {
+    if (["slashArc","hammerSwing","solarSweep","jackalClaw","daggerFlurry","groundSlam","staticSweep","thunderStomp","spearLift","guardianUpper","owlWing","solarStaffTap","sunriseArc","horizonSweep","falconWing","soulRake","graveSweep","judgmentCleave","weighingHook","tombDrop","hammerSweep","mjolnirCrush","mjolnirTap","thunderUpperSwing","wingSlash","wingLift","talonRake","skyJudgment","talonDrop","crocClaw","tailSweep","deathRoll","mudShockwave"].includes(type)) {
       drawAttackArc(ctx,{x:handX,y:handY,color,length:v.length||52,thickness:v.thickness||14,startA:(player.facing===1?-1.4:Math.PI+0.2),endA:(player.facing===1?.4:Math.PI-1.2)});
-    } else if (["stabLine","beam","lightningJab","royalSpear","falconDive","falconStorm","shieldBash","shockwave","uppercut","boltSpear","uppercutSpark","stormPillar","spearThrust","shieldCheck","aegisBash","spearPin","aegisWall","parryField","desertBurn","sunBrandBurst","afterlifeStep","soulMarkBurst","hammerJab","earthbreakerSlam","hammerLift","thunderLanding"].includes(type)) {
+    } else if (["stabLine","beam","lightningJab","royalSpear","falconDive","falconStorm","shieldBash","shockwave","uppercut","boltSpear","uppercutSpark","stormPillar","spearThrust","shieldCheck","aegisBash","spearPin","aegisWall","parryField","desertBurn","sunBrandBurst","afterlifeStep","soulMarkBurst","hammerJab","earthbreakerSlam","hammerLift","thunderLanding","nileLunge","riverBreach","jawSnap","waterBurst","spectralCroc"].includes(type)) {
       ctx.strokeStyle=color; ctx.lineWidth=screenScale(v.thickness||10); ctx.globalAlpha=.8; ctx.beginPath();
       ctx.moveTo(worldToScreenX(handX), worldToScreenY(handY));
       const tx=handX + player.facing*(v.length||65); const ty=handY + ((type==="uppercut"||type==="uppercutSpark"||type==="guardianUpper")?-55:(type==="stormPillar"||type==="sunBrandBurst"?-95:(type==="spearPin"?48:(type==="desertBurn"?16:0))));
@@ -2708,6 +2840,19 @@ function drawProjectile(pr) {
     ctx.globalAlpha = .28;
     ctx.fillStyle = "#34d399";
     ctx.fillRect(x - w/2, y - h/2, w, h);
+    ctx.globalAlpha = 1;
+    return;
+  }
+  if (pr.type === "mudTrap") {
+    const pulse = .45 + Math.abs(Math.sin(matchTime * .12)) * .35;
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = "#5c4a2e";
+    ctx.beginPath(); ctx.ellipse(x, y, w * .5, h * .42, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#3f5d36";
+    ctx.beginPath(); ctx.ellipse(x + w * .06, y - h * .05, w * .32, h * .24, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = .8;
+    ctx.fillStyle = "#7a6a45";
+    for (let i=0;i<4;i++) ctx.fillRect(x - w*.35 + i*w*.2, y - h*.28 + Math.sin(matchTime*.2 + i)*2, screenScale(3), screenScale(3));
     ctx.globalAlpha = 1;
     return;
   }
