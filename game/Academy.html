@@ -1021,7 +1021,7 @@ const ATTACK_DEFS = {
 function cloneMove(base, p, variant, inputType){ const m=JSON.parse(JSON.stringify(base)); m.godId=p.godId; m.inputType=inputType; m.directionVariant=variant; return m;}
 function getAttackVariant(player, inputType){ if(player.human){ if(keys["w"]) return "up"; if(keys["s"]) return "down"; return "neutral";} const t=player.ai.target||nearestEnemy(player); if(!t) return "neutral"; const dy=t.y-player.y; if(dy<-45) return "up"; if(dy>45) return "down"; return "neutral";}
 function moveToAttackKind(type){ return type; }
-function startMove(player, moveDef){ if (!moveDef || player.attackCooldown > 0 || player.dead) return false; const total=moveDef.startup+moveDef.active+moveDef.recovery; player.currentMove=moveDef; player.moveTimer=total; player.movePhase="startup"; player.moveVariant=moveDef.directionVariant||"neutral"; player.moveVisuals=[]; player.action=moveToAttackKind(moveDef.inputType); player.attackKind=moveDef.inputType; player.attackFrame=total; player.attackCooldown=Math.max(player.attackCooldown,total); if(moveDef.inputType==="heavy") player.vx*=.55; if(moveDef.selfImpulse){ player.vx += player.facing * (moveDef.selfImpulse.x||0); player.vy += moveDef.selfImpulse.y||0; } if(moveDef.startupArmor) player.invincible = Math.max(player.invincible, moveDef.startupArmor); return true;}
+function startMove(player, moveDef){ if (!moveDef || player.attackCooldown > 0 || player.dead) return false; const total=moveDef.startup+moveDef.active+moveDef.recovery; moveDef.totalFrames=total; player.currentMove=moveDef; player.moveTimer=total; player.movePhase="startup"; player.moveVariant=moveDef.directionVariant||"neutral"; player.moveVisuals=[]; player.action=moveToAttackKind(moveDef.inputType); player.attackKind=moveDef.inputType; player.attackFrame=total; player.attackCooldown=Math.max(player.attackCooldown,total); if(moveDef.inputType==="heavy") player.vx*=.55; if(moveDef.selfImpulse){ player.vx += player.facing * (moveDef.selfImpulse.x||0); player.vy += moveDef.selfImpulse.y||0; } if(moveDef.startupArmor) player.invincible = Math.max(player.invincible, moveDef.startupArmor); return true;}
 function spawnMoveHitbox(player, moveDef){ const hb=moveDef.hitbox; let moveAngle=moveDef.angle; if(moveDef.id==="athena_heavy_d" && player.grounded) moveAngle=-0.12; if(moveDef.id==="athena_heavy_d" && !player.grounded) moveAngle=1.2; createAttack({owner:player,x:player.x+player.facing*hb.x,y:player.y+hb.y,w:hb.w,h:hb.h,damage:moveDef.damage*player.god.attackPower,knock:moveDef.knock,angle:moveAngle,frames:moveDef.active,color:player.god.accent||player.god.color,label:moveDef.inputType,visualType:(moveDef.effects||{}).visualType||"slashArc",visualAngle:moveDef.angle,visualLength:Math.max(hb.w,hb.h),visualThickness:Math.max(8,Math.min(hb.h,hb.w)/3),attachToOwner:true,offsetX:hb.x,offsetY:hb.y}); if(moveDef.id==="athena_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*56,y:player.y+30,w:80,h:14,damage:4*player.god.attackPower,knock:6.2,angle:-0.05,frames:5,color:"#eff8ff",label:"ground_line",visualType:"spearThrust"}); } if(moveDef.id==="ra_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*74,y:player.y+30,w:96,h:14,damage:2.2*player.god.attackPower,knock:3.8,angle:-0.03,frames:10,color:"#ff8c42",label:"burn_line",visualType:"desertBurn"}); } if(moveDef.id==="thor_heavy_d"){ createAttack({owner:player,x:player.x-player.facing*76,y:player.y+30,w:96,h:22,damage:4.5*player.god.attackPower,knock:8.8,angle:-0.92,frames:6,color:"#d4e8ff",label:"ground_quake",visualType:"thunderLanding"}); } player.moveVisuals.push({type:(moveDef.effects||{}).visualType||"slashArc",frames:moveDef.active+3,angle:moveDef.angle,length:Math.max(hb.w,hb.h),thickness:14}); if(moveDef.id && moveDef.id.startsWith("thor_heavy")){ shake = Math.max(shake, moveDef.id==="thor_heavy_d"?12:9); hitStop = Math.max(hitStop, moveDef.id==="thor_heavy_n"?4:3); } }
 function lightAttack(p) {
   const v = getAttackVariant(p, "light");
@@ -1921,35 +1921,7 @@ function drawPixelGod(c, p, x, y, s) {
   const dir = p.facing;
   const bob = Math.sin(p.anim * 6) * (p.grounded && p.action === "run" ? 3 : 1);
   const hitLean = p.hitstun > 0 ? -dir * 7 : 0;
-  const f = p.attackFrame || 0;
-  let strike = 0;
-  let raise = 0;
-  let wide = 0;
-  let bodyLean = 0;
-
-  if (p.action === "light") {
-    strike = dir * (18 + Math.sin(f * .45) * 8);
-    raise = -4;
-    bodyLean = dir * 3;
-  } else if (p.action === "heavy") {
-    strike = dir * (28 + Math.sin(f * .32) * 18);
-    raise = -10 - Math.sin(f * .25) * 8;
-    wide = 8;
-    bodyLean = dir * 7;
-  } else if (p.action === "special") {
-    strike = dir * (36 + Math.sin(f * .35) * 15);
-    raise = -17;
-    wide = 12;
-    bodyLean = -dir * 4;
-  } else if (p.action === "ultimate") {
-    strike = dir * (44 + Math.sin(f * .28) * 22);
-    raise = -24;
-    wide = 18;
-    bodyLean = dir * Math.sin(f * .25) * 8;
-  } else if (p.action === "dodge") {
-    bodyLean = dir * 16;
-    strike = -dir * 8;
-  }
+  const pose = getPoseForMove(p);
 
   const px = v => Math.round(v);
   const sc = v => Math.round(v * s);
@@ -1961,35 +1933,46 @@ function drawPixelGod(c, p, x, y, s) {
   // Legs
   c.fillStyle = g.dark;
   let legSpread = p.action === "run" ? Math.sin(p.anim * 10) * 7 : 3;
+  legSpread += pose.legSpread || 0;
+  const crouch = pose.crouch || 0;
+  const bodyLean = pose.bodyLean || 0;
 
-  c.fillRect(px(x - sc(12 + legSpread)), px(y + sc(12 + bob)), sc(11), sc(26));
-  c.fillRect(px(x + sc(2 + legSpread)), px(y + sc(12 - bob)), sc(11), sc(26));
+  c.fillRect(px(x - sc(12 + legSpread)), px(y + sc(12 + bob + crouch)), sc(11), sc(26));
+  c.fillRect(px(x + sc(2 + legSpread)), px(y + sc(12 - bob + crouch)), sc(11), sc(26));
 
   // Body
+  const bodyW = Math.max(24, Math.round(38 * (pose.squash || 1)));
+  const bodyH = Math.max(28, Math.round(39 * (pose.stretch || 1)));
+  const bodyInnerW = Math.max(20, Math.round(32 * (pose.squash || 1)));
+  const bodyInnerH = Math.max(24, Math.round(34 * (pose.stretch || 1)));
   c.fillStyle = g.dark;
-  c.fillRect(px(x - sc(19) + hitLean + bodyLean), px(y - sc(20) + bob), sc(38), sc(39));
+  c.fillRect(px(x - sc(19) + hitLean + bodyLean), px(y - sc(20) + bob + crouch), sc(bodyW), sc(bodyH));
 
   c.fillStyle = g.color;
-  c.fillRect(px(x - sc(16) + hitLean + bodyLean), px(y - sc(26) + bob), sc(32), sc(34));
-  drawGodHead(c, p, x + hitLean + bodyLean, y + bob, s, dir);
+  c.fillRect(px(x - sc(16) + hitLean + bodyLean), px(y - sc(26) + bob + crouch), sc(bodyInnerW), sc(bodyInnerH));
+  drawGodHead(c, p, x + hitLean + bodyLean, y + bob + crouch, s, dir, pose.headTilt || 0);
 
   // Arms
   c.fillStyle = g.color;
-  c.fillRect(px(x - sc(30) + hitLean + bodyLean - wide), px(y - sc(16) + bob + raise * .25), sc(13), sc(31));
-  c.fillRect(px(x + sc(17) + hitLean + bodyLean + strike + wide), px(y - sc(16) + bob + raise), sc(13), sc(31));
+  c.fillRect(px(x - sc(30) + hitLean + bodyLean + (pose.backArmX || 0)), px(y - sc(16) + bob + crouch + (pose.backArmY || 0)), sc(13), sc(31));
+  c.fillRect(px(x + sc(17) + hitLean + bodyLean + (pose.frontArmX || 0)), px(y - sc(16) + bob + crouch + (pose.frontArmY || 0)), sc(13), sc(31));
 
   c.fillStyle = g.accent;
-  c.fillRect(px(x + sc(23) + hitLean + bodyLean + strike + wide), px(y + sc(8) + bob + raise), sc(14), sc(10));
+  c.fillRect(px(x + sc(23) + hitLean + bodyLean + (pose.shieldX || 0)), px(y + sc(8) + bob + crouch + (pose.shieldY || 0)), sc(14), sc(10));
 
-  drawGodWeapon(c, p, x + hitLean + bodyLean, y + bob, s, dir, strike, raise, wide);
+  drawGodWeapon(c, p, x + hitLean + bodyLean, y + bob + crouch, s, dir, pose);
 }
 
-function drawGodHead(c, p, x, y, s, dir) {
+function drawGodHead(c, p, x, y, s, dir, headTilt) {
   const g = p.god;
   const id = p.godId;
   const sc = v => Math.round(v * s);
   const px = v => Math.round(v);
   const skin = g.skin || "#d9a06f";
+  c.save();
+  c.translate(px(x), px(y - sc(44)));
+  c.rotate((headTilt || 0) * dir);
+  c.translate(px(-x), px(-y + sc(44)));
 
   if (id === "zeus") {
     c.fillStyle = skin;
@@ -2071,18 +2054,28 @@ function drawGodHead(c, p, x, y, s, dir) {
     c.fillStyle = g.color;
     c.fillRect(px(x - sc(18)), px(y - sc(55)), sc(36), sc(30));
   }
+  c.restore();
 }
 
-function drawGodWeapon(c, p, x, y, s, dir, strike, raise, wide) {
+function drawGodWeapon(c, p, x, y, s, dir, pose) {
   const sc = v => Math.round(v * s);
   const px = v => Math.round(v);
+  const strike = pose.frontArmX || 0;
+  const raise = pose.frontArmY || 0;
+  const wide = pose.backArmX || 0;
+  const reach = pose.weaponReach || 0;
+  const rot = pose.weaponAngle || 0;
+  c.save();
+  c.translate(px(x + dir * sc(26) + strike), px(y - sc(18) + raise));
+  c.rotate(rot * dir);
+  c.translate(px(-(x + dir * sc(26) + strike)), px(-(y - sc(18) + raise)));
   if (p.godId === "zeus") {
     c.fillStyle = "#ffe66d";
-    c.fillRect(px(x + dir * sc(28) + strike), px(y - sc(34) + raise), sc(8), sc(42));
-    c.fillRect(px(x + dir * sc(20) + strike), px(y - sc(15) + raise), sc(23), sc(8));
+    c.fillRect(px(x + dir * sc(28) + strike), px(y - sc(34) + raise), sc(8 + reach), sc(42));
+    c.fillRect(px(x + dir * sc(20) + strike), px(y - sc(15) + raise), sc(23 + reach * .5), sc(8));
   } else if (p.godId === "athena") {
     c.fillStyle = "#d6f3ff";
-    c.fillRect(px(x + dir * sc(30) + strike), px(y - sc(18) + raise), sc(10), sc(44));
+    c.fillRect(px(x + dir * sc(30) + strike), px(y - sc(18) + raise), sc(10 + reach), sc(44));
     c.fillStyle = "#354066";
     c.fillRect(px(x - dir * sc(45) - wide), px(y - sc(19) - raise * .2), sc(18), sc(40));
   } else if (p.godId === "ra") {
@@ -2103,6 +2096,28 @@ function drawGodWeapon(c, p, x, y, s, dir, strike, raise, wide) {
     c.fillRect(px(x + dir * sc(33) + strike), px(y + sc(3) + raise), sc(22), sc(5));
     c.fillRect(px(x + dir * sc(18) + strike), px(y - sc(20) + raise), sc(18), sc(4));
   }
+  c.restore();
+}
+
+function getPoseForMove(p) {
+  const f = p.attackFrame || 0;
+  const m = p.currentMove;
+  const base = { bodyLean:0, crouch:0, frontArmX:0, frontArmY:0, backArmX:0, backArmY:0, weaponAngle:0, weaponReach:0, shieldX:0, shieldY:0, headTilt:0, squash:1, stretch:1, legSpread:0 };
+  if (!m || !m.totalFrames) return base;
+  const t = 1 - p.moveTimer / m.totalFrames;
+  if (m.id === "athena_light_n") return { ...base, bodyLean: p.facing * (4 + 13 * t), frontArmX: p.facing * (20 * t), frontArmY: -6 * t, backArmX: -p.facing * 5, shieldX: p.facing * (4 + 8 * t), shieldY: -3 * t, weaponReach: 18 * t, weaponAngle: -0.12 };
+  if (m.id === "thor_heavy_n") return { ...base, bodyLean: p.facing * 10, crouch: 8 * (1 - t), frontArmX: p.facing * 14, frontArmY: -18 * t, backArmY: 6, weaponAngle: -1.6 + t * 2.2, headTilt: .12, squash: 1.1, stretch: .92 };
+  if (m.id && m.id.startsWith("anubis_light")) return { ...base, bodyLean: p.facing * (3 + 6 * t), frontArmX: p.facing * (Math.cos(t * Math.PI) * 14), frontArmY: -Math.sin(t * Math.PI) * 16, backArmY: -2, weaponAngle: -0.6 + Math.sin(t * Math.PI) * 1.1, headTilt: -0.08 };
+  if (m.id === "athena_heavy_n") return { ...base, bodyLean: -p.facing * 3 + p.facing * 8 * t, crouch: 2, frontArmX: p.facing * (12 + 18 * t), shieldX: p.facing * (10 + 22 * t), shieldY: -4, backArmX: -p.facing * 8, headTilt: 0.05, squash: 1.08 };
+  if (m.id === "zeus_light_n") return { ...base, bodyLean: p.facing * 5, frontArmX: p.facing * (24 * Math.min(1, t * 1.6)), frontArmY: -5, weaponReach: 8 + Math.sin(f * 2.5) * 4, weaponAngle: -0.2, headTilt: .08, stretch: 1.04 };
+  if (m.id === "ra_heavy_n") return { ...base, bodyLean: -p.facing * 2 + p.facing * 8 * t, crouch: 4 * (1 - t), frontArmX: p.facing * 6, frontArmY: -8, weaponAngle: -0.9 + t * 1.6, weaponReach: 10 * Math.min(1, t * 2), headTilt: -0.06, squash: 1 + Math.min(.14, t * .2) };
+  if (m.id === "loki_light_n") { const phase = t < .5 ? 0 : 1; return { ...base, bodyLean: p.facing * (phase ? 7 : 3), crouch: phase ? 4 : 1, frontArmX: p.facing * (phase ? 22 : 12), frontArmY: phase ? -8 : 2, backArmX: -p.facing * (phase ? 3 : 8), weaponAngle: phase ? 0.75 : -0.55, legSpread: phase ? 6 : 2, headTilt: phase ? 0.14 : -0.08 }; }
+  if (p.action === "dodge") return { ...base, bodyLean: p.facing * 16, frontArmX: -p.facing * 8, crouch: 2, headTilt: -0.12, squash: 1.1 };
+  if (p.action === "light") return { ...base, bodyLean: p.facing * 3, frontArmX: p.facing * (18 + Math.sin(f * .45) * 8), frontArmY: -4, backArmX: -p.facing * 2 };
+  if (p.action === "heavy") return { ...base, bodyLean: p.facing * 7, frontArmX: p.facing * (28 + Math.sin(f * .32) * 18), frontArmY: -10 - Math.sin(f * .25) * 8, backArmX: p.facing * 8, legSpread: 4 };
+  if (p.action === "special") return { ...base, bodyLean: -p.facing * 4, frontArmX: p.facing * (36 + Math.sin(f * .35) * 15), frontArmY: -17, backArmX: p.facing * 12, headTilt: -0.08 };
+  if (p.action === "ultimate") return { ...base, bodyLean: p.facing * Math.sin(f * .25) * 8, frontArmX: p.facing * (44 + Math.sin(f * .28) * 22), frontArmY: -24, backArmX: p.facing * 18, weaponAngle: Math.sin(f * .2) * .5 };
+  return base;
 }
 
 function drawAttackArc(ctx, visual) {
