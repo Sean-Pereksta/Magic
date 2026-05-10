@@ -694,7 +694,7 @@ const GODS = {
     jump: 16,
     weight: 1.16,
     attackPower: 1.0,
-    specialCooldown: 52,
+    specialCooldown: 48,
     specialName: "Chain Bolt"
   },
   athena: {
@@ -895,28 +895,28 @@ const GODS = {
     name: "Quetzalcoatl",
     pantheon: "Aztec",
     role: "Feathered Storm",
-    desc: "A feathered serpent god who glides, dives, and controls the air with wind and emerald storm magic.",
+    desc: "A feathered serpent god who glides, dives, summons wind, and controls the air with emerald storm magic.",
     moveStyle: {
       role: "Aerial wind controller",
-      neutral: "Feather slashes and wind pokes keep enemies away.",
-      up: "Gliding rises and wind lifts dominate airspace.",
-      down: "Serpent dives and gust traps punish grounded enemies.",
-      special: "Gale Coil / Sky Serpent Rise / Wind Shear."
+      neutral: "Feather-fang slashes and wind pokes keep enemies out.",
+      up: "Sky lifts, glides, and serpent ascents dominate airspace.",
+      down: "Dive strikes, coil sweeps, and grounded gust traps punish landings.",
+      special: "Gale Coil / Sky Serpent Rise / Wind Shear / World-Wind Serpent."
     },
     color: "#22c55e",
     dark: "#064e3b",
     accent: "#67e8f9",
     skin: "#0f766e",
     hpColor: "#67e8f9",
-    speed: 5.55,
-    jump: 16.8,
-    weight: 0.9,
-    attackPower: 0.94,
-    specialCooldown: 52,
+    speed: 5.75,
+    jump: 17.2,
+    weight: 0.88,
+    attackPower: 0.96,
+    specialCooldown: 48,
     specialName: "Gale Coil",
     bodyScale: 0.98,
     widthScale: 0.96,
-    heightScale: 1.02,
+    heightScale: 1.04,
     knockbackTaken: 1.08
   },
   hades: {
@@ -1494,6 +1494,13 @@ function createFighter(config) {
     dodgeCancelable: false,
     horusGlideTimer: 0,
     quetzGlideTimer: 0,
+    quetzWindShearTimer: 0,
+    quetzWindShearDir: 1,
+    quetzSerpentDashTimer: 0,
+    quetzSerpentDashDir: 1,
+    quetzStormAuraTimer: 0,
+    quetzUltimateStormTimer: 0,
+    quetzUltimateHit: new Set(),
     horusRushTimer: 0,
     horusRushDir: 1,
     horusRushTrailTimer: 0,
@@ -2200,7 +2207,8 @@ function dodge(p) {
   loki: { speed: 32, cooldown: 88 },
     horus: { speed: 28, cooldown: 90 },
     sobek: { speed: 21, cooldown: 100 },
-    bastet: { speed: 33, cooldown: 86 }
+    bastet: { speed: 33, cooldown: 86 },
+    quetzalcoatl: { speed: 30, cooldown: 88 }
   }[p.godId] || { speed: 26, cooldown: 94 };
   p.dodgeCooldown = style.cooldown;
   p.dodgeTimer = 30;
@@ -2217,6 +2225,11 @@ function dodge(p) {
   p.attackFrame = 30;
   if (p.godId === "loki") p.lokiDodgeCloneTimer = 20;
   if (p.godId === "horus" && !p.grounded) p.vy = Math.min(p.vy, -4.5);
+  if (p.godId === "quetzalcoatl") {
+    p.quetzGlideTimer = Math.max(p.quetzGlideTimer || 0, 28);
+    spawnParticles(p.x, p.y, "#67e8f9", 18, 6);
+    spawnParticles(p.x - p.facing * 18, p.y + 8, "#22c55e", 12, 4);
+  }
   if (p.godId === "bastet") {
     p.invincible = Math.max(p.invincible, 10);
     spawnParticles(p.x, p.y, "#ffd166", 18, 6);
@@ -2257,6 +2270,12 @@ function triggerPerfectDodge(p, threat) {
     p.perfectDodgeMud = 1;
   } else if (p.godId === "zeus") {
     p.perfectDodgeChain = 1;
+  } else if (p.godId === "quetzalcoatl") {
+    p.quetzGlideTimer = Math.max(p.quetzGlideTimer || 0, 80);
+    p.vy = Math.min(p.vy, -6);
+    p.vx += getFacingDir(p) * 4;
+    spawnParticles(p.x, p.y, "#67e8f9", 26, 7);
+    spawnParticles(p.x, p.y, "#22c55e", 18, 5);
   }
 }
 
@@ -2315,7 +2334,7 @@ const GOD_ANIM_FAMILIES = {
   loki:{light:"doubleStab",heavy:"smearFrames",special:"flickerAfterimages",ultimate:"lowFakeout"},
   horus:{light:"wingExtension",heavy:"airborneLean",special:"talonDive",ultimate:"spearGlide"},
   sobek:{light:"crocCrouch",heavy:"jawOpenClose",special:"tailSweep",ultimate:"deathRollSpin"},
-  quetzalcoatl:{light:"wingExtension",heavy:"airborneLean",special:"talonDive",ultimate:"stormPillar"}
+  quetzalcoatl:{light:"featherSerpentSwipe",heavy:"emeraldWingCleave",special:"windSerpentCast",ultimate:"worldWindSerpent"}
 };
 Object.entries(ATTACK_DEFS).forEach(([godId, godMoves]) => {
   Object.entries(godMoves).forEach(([inputType, variants]) => {
@@ -3329,6 +3348,7 @@ function ultimateName(id) {
     loki: "TRICKSTER STORM",
     horus: "DIVINE FALCON STORM",
     sobek: "DEVOURER OF THE NILE",
+    quetzalcoatl: "WORLD-WIND SERPENT",
     hades: "LORD OF THE UNDERWORLD"
   }[id] || "DIVINE FURY";
 }
