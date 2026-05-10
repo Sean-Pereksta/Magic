@@ -1882,6 +1882,19 @@ function startSobekUltimate(p) {
   });
 }
 
+function findGroundYBelow(x, fallbackY) {
+  let bestY = Infinity;
+
+  for (const plat of currentMap.platforms) {
+    if (x >= plat.x && x <= plat.x + plat.w && plat.y >= fallbackY - 120) {
+      bestY = Math.min(bestY, plat.y);
+    }
+  }
+
+  if (bestY !== Infinity) return bestY;
+  return fallbackY + 150;
+}
+
 function useUltimate(p) {
   if (p.meter < 100 || p.dead) return;
   p.meter = 0;
@@ -2074,24 +2087,91 @@ function useUltimate(p) {
   }
 
   else if (p.godId === "thor") {
-    p.vy = -22;
+    const dir = getFacingDir(p);
+    const impactX = p.x + dir * 80;
+    const impactY = findGroundYBelow(impactX, p.y);
+
+    ultFlash = 14;
+    ultFlashColor = "#cce3ff";
+
+    p.vy = -24;
+    p.vx = dir * 3;
+    p.invincible = Math.max(p.invincible, 44);
+    p.attackCooldown = Math.max(p.attackCooldown, 90);
+
+    spawnParticles(p.x, p.y, "#cce3ff", 40, 8);
+    spawnParticles(p.x, p.y, "#ffffff", 20, 5);
+
     setTimeout(() => {
+      addTelegraph({
+        type: "circle",
+        owner: p,
+        x: impactX,
+        y: impactY,
+        w: 390,
+        h: 150,
+        color: "#cce3ff",
+        label: "IMPACT",
+        icon: "🔨",
+        life: 36
+      });
+    }, 180);
+
+    setTimeout(() => {
+      p.x = impactX;
+      p.y = impactY - p.h / 2;
+      p.vx = 0;
+      p.vy = 0;
+
       createAttack({
         owner: p,
-        x: p.x,
-        y: p.y + 50,
-        w: 420,
-        h: 150,
-        damage: 24,
-        knock: 26,
-        angle: -0.9,
+        x: impactX,
+        y: impactY - 20,
+        w: 430,
+        h: 165,
+        damage: 26,
+        knock: 28,
+        angle: -0.95,
         frames: 22,
         color: "#cce3ff",
-        label: "ult"
+        label: "thor_ult_main_impact",
+        visualType: "thunderLanding"
       });
-      shake = 18;
-      spawnParticles(p.x, p.y + 50, "#cce3ff", 40, 9);
-    }, 450);
+
+      createAttack({
+        owner: p,
+        x: impactX - 170,
+        y: impactY - 8,
+        w: 190,
+        h: 44,
+        damage: 10,
+        knock: 13,
+        angle: -0.65,
+        frames: 14,
+        color: "#d8ecff",
+        label: "thor_ult_left_shockwave",
+        visualType: "earthbreakerSlam"
+      });
+
+      createAttack({
+        owner: p,
+        x: impactX + 170,
+        y: impactY - 8,
+        w: 190,
+        h: 44,
+        damage: 10,
+        knock: 13,
+        angle: -0.65,
+        frames: 14,
+        color: "#d8ecff",
+        label: "thor_ult_right_shockwave",
+        visualType: "earthbreakerSlam"
+      });
+
+      shake = 22;
+      spawnParticles(impactX, impactY, "#cce3ff", 55, 10);
+      spawnParticles(impactX, impactY, "#ffffff", 28, 7);
+    }, 620);
   }
 
   else if (p.godId === "horus") {
