@@ -752,6 +752,8 @@ let selectedModeLength = "normal";
 let modeTimer = 0;
 let scoreLimit = 8;
 let hillZone = null;
+let bossWave = 1;
+let bossKills = 0;
 const DEBUG_HITBOXES = false;
 
 function buildGodGrid() {
@@ -1109,6 +1111,20 @@ function updateHud() {
     `;
     gameHud.appendChild(card);
   });
+  if (selectedGameMode === "boss") {
+    const bossCard = document.createElement("div");
+    bossCard.className = "hud-card";
+    bossCard.style.flex = "0 0 auto";
+    bossCard.style.minWidth = "220px";
+    bossCard.innerHTML = `
+      <div class="hud-name" style="color:#ffd166">Boss Hunt</div>
+      <div class="hud-stats">
+        <span>Wave: ${bossWave}</span>
+        <span>Kills: ${bossKills}</span>
+      </div>
+    `;
+    gameHud.appendChild(bossCard);
+  }
 }
 
 function showMessage(text, frames) {
@@ -1212,7 +1228,8 @@ function updateBot(p) {
   const dist = Math.hypot(dx, dy);
 
   const difficulty = p.difficulty;
-  const aggression = difficulty === "hard" ? .9 : difficulty === "normal" ? .65 : .42;
+  const aggressionBase = difficulty === "hard" ? .9 : difficulty === "normal" ? .65 : .42;
+  const aggression = aggressionBase * (p.bossAggression || 1);
   const jumpSkill = difficulty === "hard" ? .75 : difficulty === "normal" ? .45 : .25;
 
   let move = 0;
@@ -1565,7 +1582,7 @@ function getMoveProgress(p) {
   };
 }
 function startMove(player, moveDef){ if (!moveDef || player.attackCooldown > 0 || player.dead) return false; const total=moveDef.startup+moveDef.active+moveDef.recovery; moveDef.totalFrames=total; player.currentMove=moveDef; player.moveTimer=total; player.movePhase="startup"; player.moveVariant=moveDef.directionVariant||"neutral"; player.moveVisuals=[]; player.action=moveToAttackKind(moveDef.inputType); player.attackKind=moveDef.inputType; player.attackFrame=total; const pdBoost = player.perfectDodgeTimer > 0 ? 8 : 0; player.attackCooldown=Math.max(player.attackCooldown,Math.max(8,total-pdBoost)); if(player.perfectDodgeTimer > 0) player.perfectDodgeTimer = 0; if(moveDef.inputType==="heavy") player.vx*=.55; if(moveDef.selfImpulse){ player.vx += player.facing * (moveDef.selfImpulse.x||0); player.vy += moveDef.selfImpulse.y||0; } if(moveDef.startupArmor) player.invincible = Math.max(player.invincible, moveDef.startupArmor); if(player.godId==="thor" && moveDef.inputType==="heavy"){ player.armorTimer = Math.max(player.armorTimer, Math.min(12, Math.max(6, moveDef.startup - 1))); if(player.thorHeavyArmorTimer>0){ player.armorTimer = Math.max(player.armorTimer, 14); player.thorHeavyArmorTimer = 0; } } if(player.godId==="sobek" && player.perfectDodgeMud && (moveDef.id||"").includes("sobek_heavy")){ moveDef.knock += 1.8; player.perfectDodgeMud = 0; } return true;}
-function spawnMoveHitbox(player, moveDef){ const hb=moveDef.hitbox; let moveAngle=moveDef.angle; if(moveDef.id==="athena_heavy_d" && player.grounded) moveAngle=-0.12; if(moveDef.id==="athena_heavy_d" && !player.grounded) moveAngle=1.2; createAttack({owner:player,x:player.x+player.facing*hb.x,y:player.y+hb.y,w:hb.w,h:hb.h,damage:moveDef.damage*player.god.attackPower,knock:moveDef.knock,angle:moveAngle,frames:moveDef.active,color:player.god.accent||player.god.color,label:moveDef.inputType,visualType:(moveDef.effects||{}).visualType||"slashArc",visualAngle:moveDef.angle,visualLength:Math.max(hb.w,hb.h),visualThickness:Math.max(8,Math.min(hb.h,hb.w)/3),attachToOwner:true,offsetX:hb.x,offsetY:hb.y}); if(moveDef.id==="athena_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*56,y:player.y+30,w:80,h:14,damage:4*player.god.attackPower,knock:6.2,angle:-0.05,frames:5,color:"#eff8ff",label:"ground_line",visualType:"spearThrust"}); } if(moveDef.id==="ra_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*74,y:player.y+30,w:96,h:14,damage:2.2*player.god.attackPower,knock:3.8,angle:-0.03,frames:10,color:"#ff8c42",label:"burn_line",visualType:"desertBurn"}); } if(moveDef.id==="thor_heavy_d"){ createAttack({owner:player,x:player.x-player.facing*76,y:player.y+30,w:96,h:22,damage:4.5*player.god.attackPower,knock:8.8,angle:-0.92,frames:6,color:"#d4e8ff",label:"ground_quake",visualType:"thunderLanding"}); } player.moveVisuals.push({type:(moveDef.effects||{}).visualType||"slashArc",phase:"active",frames:moveDef.active+Math.max(3,Math.floor(moveDef.recovery*0.4)),angle:moveDef.angle,length:Math.max(hb.w,hb.h),thickness:14,recoveryFrames:Math.max(3,Math.floor(moveDef.recovery*0.45))}); if(moveDef.id && moveDef.id.startsWith("thor_heavy")){ shake = Math.max(shake, moveDef.id==="thor_heavy_d"?12:9); hitStop = Math.max(hitStop, moveDef.id==="thor_heavy_n"?4:3); } }
+function spawnMoveHitbox(player, moveDef){ const hb=moveDef.hitbox; const power=(player.attackPowerBonus||1); let moveAngle=moveDef.angle; if(moveDef.id==="athena_heavy_d" && player.grounded) moveAngle=-0.12; if(moveDef.id==="athena_heavy_d" && !player.grounded) moveAngle=1.2; createAttack({owner:player,x:player.x+player.facing*hb.x,y:player.y+hb.y,w:hb.w,h:hb.h,damage:moveDef.damage*player.god.attackPower*power,knock:moveDef.knock,angle:moveAngle,frames:moveDef.active,color:player.god.accent||player.god.color,label:moveDef.inputType,visualType:(moveDef.effects||{}).visualType||"slashArc",visualAngle:moveDef.angle,visualLength:Math.max(hb.w,hb.h),visualThickness:Math.max(8,Math.min(hb.h,hb.w)/3),attachToOwner:true,offsetX:hb.x,offsetY:hb.y}); if(moveDef.id==="athena_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*56,y:player.y+30,w:80,h:14,damage:4*player.god.attackPower*power,knock:6.2,angle:-0.05,frames:5,color:"#eff8ff",label:"ground_line",visualType:"spearThrust"}); } if(moveDef.id==="ra_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*74,y:player.y+30,w:96,h:14,damage:2.2*player.god.attackPower*power,knock:3.8,angle:-0.03,frames:10,color:"#ff8c42",label:"burn_line",visualType:"desertBurn"}); } if(moveDef.id==="thor_heavy_d"){ createAttack({owner:player,x:player.x-player.facing*76,y:player.y+30,w:96,h:22,damage:4.5*player.god.attackPower*power,knock:8.8,angle:-0.92,frames:6,color:"#d4e8ff",label:"ground_quake",visualType:"thunderLanding"}); } player.moveVisuals.push({type:(moveDef.effects||{}).visualType||"slashArc",phase:"active",frames:moveDef.active+Math.max(3,Math.floor(moveDef.recovery*0.4)),angle:moveDef.angle,length:Math.max(hb.w,hb.h),thickness:14,recoveryFrames:Math.max(3,Math.floor(moveDef.recovery*0.45))}); if(moveDef.id && moveDef.id.startsWith("thor_heavy")){ shake = Math.max(shake, moveDef.id==="thor_heavy_d"?12:9); hitStop = Math.max(hitStop, moveDef.id==="thor_heavy_n"?4:3); } }
 function lightAttack(p) {
   if (p.dodgeTimer > 0 && p.dodgePhase === "recovery" && p.perfectDodgeTimer <= 0) return;
   const v = getAttackVariant(p, "light");
@@ -2333,7 +2350,14 @@ function loseLife(p) {
     }
   }
 
-  if (selectedGameMode !== "stock") p.lives = Math.max(1, p.lives);
+  if (selectedGameMode !== "stock" && selectedGameMode !== "boss") p.lives = Math.max(1, p.lives);
+  if (selectedGameMode === "boss" && !p.human && p.lives <= 0) {
+    const human = players.find(o => o.human);
+    if (human) {
+      human.score = (human.score || 0) + 1;
+      bossKills++;
+    }
+  }
   p.stats.falls++;
   p.dead = true;
   p.respawnTimer = 90;
@@ -2843,17 +2867,29 @@ function setupGameMode() {
   }
 
   if (selectedGameMode === "boss") {
-    players.forEach((p, index) => {
-      if (index === 0) {
+    bossWave = 1;
+    bossKills = 0;
+    players.forEach(p => {
+      if (p.human) {
         p.lives = 3;
         p.score = 0;
       } else {
-        p.lives = 1;
-        p.damage = 0;
-        p.isBossMinion = true;
+        makeBossEnemy(p, bossWave);
       }
     });
   }
+}
+
+function makeBossEnemy(p, wave) {
+  p.isBossEnemy = true;
+  p.isBossMinion = true;
+  p.lives = 1;
+  p.damage = 0;
+  p.attackPowerBonus = 1 + wave * 0.12;
+  p.w = 42 + Math.min(18, wave * 2);
+  p.h = 58 + Math.min(22, wave * 2);
+  p.invincible = 80;
+  p.bossAggression = 1 + wave * 0.16;
 }
 
 function updateKingMode() {
@@ -2878,13 +2914,44 @@ function updateKingMode() {
 }
 
 function checkBossModeWin() {
-  const boss = players[0];
-  const minionsAlive = players.slice(1).some(p => p.lives > 0);
-  if (boss && boss.lives <= 0) {
-    endMatch(players.slice(1).find(p => p.lives > 0) || players[1] || boss);
-  } else if (!minionsAlive && boss) {
-    endMatch(boss);
+  const human = players.find(p => p.human);
+  if (!human || human.lives <= 0) {
+    endMatch(players.find(p => !p.human) || human);
+    return;
   }
+
+  const livingBosses = players.filter(p => !p.human && p.lives > 0);
+  if (livingBosses.length === 0) {
+    bossWave++;
+    spawnBossWave();
+  }
+}
+
+function spawnBossWave() {
+  const count = Math.min(2 + Math.floor(bossWave / 2), 5);
+  const availableGods = GOD_ORDER.filter(id => id !== selectedGod);
+
+  for (let i = 0; i < count; i++) {
+    const godId = availableGods[(bossWave + i) % availableGods.length];
+    const spawn = currentMap.spawnPoints[(i + 1) % currentMap.spawnPoints.length];
+
+    const bot = createFighter({
+      id: "boss" + bossWave + "_" + i,
+      godId,
+      x: spawn.x,
+      y: spawn.y,
+      human: false,
+      team: i + 1,
+      namePrefix: "WAVE " + bossWave,
+      difficulty: bossWave >= 4 ? "hard" : "normal"
+    });
+
+    makeBossEnemy(bot, bossWave);
+    players.push(bot);
+  }
+
+  showMessage("BOSS WAVE " + bossWave + "!", 90);
+  updateHud();
 }
 
 function drawGame() {
