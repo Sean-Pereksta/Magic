@@ -1221,6 +1221,20 @@ function updateBot(p) {
   if (Math.abs(dx) > worldW * 0.55) move = Math.sign(dx);
   if (Math.abs(p.x - mapCenterX()) > worldW * 0.4 && Math.random() < 0.08) move = Math.sign(mapCenterX() - p.x);
 
+  if (selectedGameMode === "king" && hillZone) {
+    const dxHill = hillZone.x - p.x;
+    const dyHill = hillZone.y - p.y;
+    const nearHill = Math.abs(dxHill) < hillZone.w * 0.6 && Math.abs(dyHill) < hillZone.h;
+    const targetDist = Math.abs(dx);
+
+    if (!nearHill && (targetDist > Math.abs(dxHill) || Math.random() < 0.7)) {
+      move = Math.sign(dxHill);
+      if (dyHill < -70 && p.grounded && Math.random() < jumpSkill) jump(p);
+    } else if (nearHill && Math.random() < 0.45) {
+      move = -Math.sign(dx);
+    }
+  }
+
   applyMoveInput(p, move);
 
   if (dy < -80 && p.grounded && Math.random() < jumpSkill) jump(p);
@@ -2839,11 +2853,23 @@ function setupGameMode() {
 
 function updateKingMode() {
   if (!hillZone) return;
-  players.forEach(p => {
-    if (p.dead) return;
-    const inside = p.x > hillZone.x - hillZone.w / 2 && p.x < hillZone.x + hillZone.w / 2 && p.y > hillZone.y - hillZone.h / 2 && p.y < hillZone.y + hillZone.h / 2;
-    if (inside) p.score = (p.score || 0) + 1;
+
+  const contenders = players.filter(p => {
+    if (p.dead || p.lives <= 0) return false;
+    return (
+      p.x > hillZone.x - hillZone.w / 2 &&
+      p.x < hillZone.x + hillZone.w / 2 &&
+      p.y > hillZone.y - hillZone.h / 2 &&
+      p.y < hillZone.y + hillZone.h / 2
+    );
   });
+
+  if (contenders.length === 1) {
+    contenders[0].score = (contenders[0].score || 0) + 1;
+    if (matchTime % 20 === 0) {
+      spawnParticles(contenders[0].x, contenders[0].y - 20, contenders[0].god.color, 8, 3);
+    }
+  }
 }
 
 function checkBossModeWin() {
@@ -2916,11 +2942,33 @@ function drawTempleSilhouette(x,y,color,scale,type){ctx.fillStyle=color;const s=
 
 function drawMap() {
   currentMap.platforms.forEach(drawPlatform);
+  if (selectedGameMode === "king" && hillZone) {
+    drawHillZone();
+  }
   const cx = worldToScreenX(mapCenterX());
   const cy = worldToScreenY(600);
   ctx.strokeStyle = "rgba(255,209,102,.35)"; ctx.lineWidth = screenScale(4);
   ctx.strokeRect(cx - screenScale(32), cy - screenScale(32), screenScale(64), screenScale(64));
   ctx.strokeRect(cx - screenScale(22), cy - screenScale(22), screenScale(44), screenScale(44));
+}
+
+function drawHillZone() {
+  const x = worldToScreenX(hillZone.x);
+  const y = worldToScreenY(hillZone.y);
+  const w = screenScale(hillZone.w);
+  const h = screenScale(hillZone.h);
+  const pulse = 1 + Math.sin(matchTime / 15) * 0.08;
+
+  ctx.globalAlpha = 0.25;
+  ctx.fillStyle = "#ffd166";
+  ctx.fillRect(x - w * 0.5 * pulse, y - h * 0.5 * pulse, w * pulse, h * pulse);
+
+  ctx.globalAlpha = 0.75;
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = screenScale(3);
+  ctx.strokeRect(x - w / 2, y - h / 2, w, h);
+
+  ctx.globalAlpha = 1;
 }
 
 function drawPlatform(plat){
