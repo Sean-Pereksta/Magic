@@ -540,6 +540,7 @@ let camera = { x: 0, y: 0, zoom: 1 };
 let gameState = "select";
 let matchTime = 0;
 let shake = 0;
+let hitStop = 0;
 
 function buildGodGrid() {
   const grid = document.getElementById("godGrid");
@@ -1007,13 +1008,18 @@ const ATTACK_DEFS = {
   anubis: {
     light: { neutral:{id:"anubis_light_n",godId:"anubis",inputType:"light",directionVariant:"neutral",startup:3,active:6,recovery:8,damage:6,knock:6.4,angle:-0.08,hitbox:{x:36,y:-12,w:62,h:34},effects:{visualType:"jackalClaw"}}, up:{id:"anubis_light_u",directionVariant:"up",startup:3,active:6,recovery:8,damage:7,knock:7.4,angle:-1.1,hitbox:{x:24,y:-58,w:66,h:60},effects:{visualType:"soulRake"}}, down:{id:"anubis_light_d",directionVariant:"down",startup:3,active:6,recovery:9,damage:6,knock:6.3,angle:-0.03,hitbox:{x:30,y:22,w:76,h:22},effects:{visualType:"graveSweep"}}},
     heavy:{neutral:{id:"anubis_heavy_n",directionVariant:"neutral",startup:8,active:7,recovery:14,damage:13,knock:13.6,angle:-0.4,hitbox:{x:38,y:-20,w:102,h:62},effects:{visualType:"judgmentCleave"}},up:{id:"anubis_heavy_u",directionVariant:"up",startup:7,active:7,recovery:14,damage:12,knock:12.8,angle:-1.22,hitbox:{x:10,y:-98,w:80,h:106},effects:{visualType:"weighingHook"}},down:{id:"anubis_heavy_d",directionVariant:"down",startup:7,active:7,recovery:15,damage:13,knock:12.7,angle:-1.0,hitbox:{x:0,y:16,w:88,h:70},effects:{visualType:"tombDrop"}}}
+  },
+  thor: {
+    light: { neutral:{id:"thor_light_n",godId:"thor",inputType:"light",directionVariant:"neutral",startup:4,active:6,recovery:9,damage:7,knock:7.8,angle:-0.12,hitbox:{x:34,y:-6,w:64,h:30},effects:{visualType:"hammerJab"}}, up:{id:"thor_light_u",directionVariant:"up",startup:4,active:6,recovery:9,damage:8,knock:8.8,angle:-1.18,hitbox:{x:22,y:-66,w:62,h:68},effects:{visualType:"mjolnirTap"}}, down:{id:"thor_light_d",directionVariant:"down",startup:4,active:7,recovery:10,damage:7,knock:8.1,angle:-0.02,hitbox:{x:26,y:22,w:94,h:24},effects:{visualType:"hammerSweep"}}},
+    heavy:{neutral:{id:"thor_heavy_n",directionVariant:"neutral",startup:11,active:7,recovery:18,damage:16,knock:17.8,angle:-0.48,hitbox:{x:38,y:-22,w:108,h:76},effects:{visualType:"mjolnirCrush"}},up:{id:"thor_heavy_u",directionVariant:"up",startup:10,active:7,recovery:17,damage:15,knock:16.4,angle:-1.36,hitbox:{x:4,y:-116,w:88,h:118},effects:{visualType:"thunderUpperSwing"}},down:{id:"thor_heavy_d",directionVariant:"down",startup:10,active:7,recovery:18,damage:15,knock:15.6,angle:-0.92,hitbox:{x:-62,y:18,w:124,h:42},effects:{visualType:"earthbreakerSlam"}}}
+  
   }
 };
 function cloneMove(base, p, variant, inputType){ const m=JSON.parse(JSON.stringify(base)); m.godId=p.godId; m.inputType=inputType; m.directionVariant=variant; return m;}
 function getAttackVariant(player, inputType){ if(player.human){ if(keys["w"]) return "up"; if(keys["s"]) return "down"; return "neutral";} const t=player.ai.target||nearestEnemy(player); if(!t) return "neutral"; const dy=t.y-player.y; if(dy<-45) return "up"; if(dy>45) return "down"; return "neutral";}
 function moveToAttackKind(type){ return type; }
 function startMove(player, moveDef){ if (!moveDef || player.attackCooldown > 0 || player.dead) return false; const total=moveDef.startup+moveDef.active+moveDef.recovery; player.currentMove=moveDef; player.moveTimer=total; player.movePhase="startup"; player.moveVariant=moveDef.directionVariant||"neutral"; player.moveVisuals=[]; player.action=moveToAttackKind(moveDef.inputType); player.attackKind=moveDef.inputType; player.attackFrame=total; player.attackCooldown=Math.max(player.attackCooldown,total); if(moveDef.inputType==="heavy") player.vx*=.55; if(moveDef.selfImpulse){ player.vx += player.facing * (moveDef.selfImpulse.x||0); player.vy += moveDef.selfImpulse.y||0; } if(moveDef.startupArmor) player.invincible = Math.max(player.invincible, moveDef.startupArmor); return true;}
-function spawnMoveHitbox(player, moveDef){ const hb=moveDef.hitbox; let moveAngle=moveDef.angle; if(moveDef.id==="athena_heavy_d" && player.grounded) moveAngle=-0.12; if(moveDef.id==="athena_heavy_d" && !player.grounded) moveAngle=1.2; createAttack({owner:player,x:player.x+player.facing*hb.x,y:player.y+hb.y,w:hb.w,h:hb.h,damage:moveDef.damage*player.god.attackPower,knock:moveDef.knock,angle:moveAngle,frames:moveDef.active,color:player.god.accent||player.god.color,label:moveDef.inputType,visualType:(moveDef.effects||{}).visualType||"slashArc",visualAngle:moveDef.angle,visualLength:Math.max(hb.w,hb.h),visualThickness:Math.max(8,Math.min(hb.h,hb.w)/3),attachToOwner:true,offsetX:hb.x,offsetY:hb.y}); if(moveDef.id==="athena_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*56,y:player.y+30,w:80,h:14,damage:4*player.god.attackPower,knock:6.2,angle:-0.05,frames:5,color:"#eff8ff",label:"ground_line",visualType:"spearThrust"}); } if(moveDef.id==="ra_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*74,y:player.y+30,w:96,h:14,damage:2.2*player.god.attackPower,knock:3.8,angle:-0.03,frames:10,color:"#ff8c42",label:"burn_line",visualType:"desertBurn"}); } player.moveVisuals.push({type:(moveDef.effects||{}).visualType||"slashArc",frames:moveDef.active+3,angle:moveDef.angle,length:Math.max(hb.w,hb.h),thickness:14}); }
+function spawnMoveHitbox(player, moveDef){ const hb=moveDef.hitbox; let moveAngle=moveDef.angle; if(moveDef.id==="athena_heavy_d" && player.grounded) moveAngle=-0.12; if(moveDef.id==="athena_heavy_d" && !player.grounded) moveAngle=1.2; createAttack({owner:player,x:player.x+player.facing*hb.x,y:player.y+hb.y,w:hb.w,h:hb.h,damage:moveDef.damage*player.god.attackPower,knock:moveDef.knock,angle:moveAngle,frames:moveDef.active,color:player.god.accent||player.god.color,label:moveDef.inputType,visualType:(moveDef.effects||{}).visualType||"slashArc",visualAngle:moveDef.angle,visualLength:Math.max(hb.w,hb.h),visualThickness:Math.max(8,Math.min(hb.h,hb.w)/3),attachToOwner:true,offsetX:hb.x,offsetY:hb.y}); if(moveDef.id==="athena_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*56,y:player.y+30,w:80,h:14,damage:4*player.god.attackPower,knock:6.2,angle:-0.05,frames:5,color:"#eff8ff",label:"ground_line",visualType:"spearThrust"}); } if(moveDef.id==="ra_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*74,y:player.y+30,w:96,h:14,damage:2.2*player.god.attackPower,knock:3.8,angle:-0.03,frames:10,color:"#ff8c42",label:"burn_line",visualType:"desertBurn"}); } if(moveDef.id==="thor_heavy_d"){ createAttack({owner:player,x:player.x-player.facing*76,y:player.y+30,w:96,h:22,damage:4.5*player.god.attackPower,knock:8.8,angle:-0.92,frames:6,color:"#d4e8ff",label:"ground_quake",visualType:"thunderLanding"}); } player.moveVisuals.push({type:(moveDef.effects||{}).visualType||"slashArc",frames:moveDef.active+3,angle:moveDef.angle,length:Math.max(hb.w,hb.h),thickness:14}); if(moveDef.id && moveDef.id.startsWith("thor_heavy")){ shake = Math.max(shake, moveDef.id==="thor_heavy_d"?12:9); hitStop = Math.max(hitStop, moveDef.id==="thor_heavy_n"?4:3); } }
 function lightAttack(p) {
   const v = getAttackVariant(p, "light");
   const defs = ATTACK_DEFS[p.godId] || ATTACK_DEFS.zeus;
@@ -1142,21 +1148,27 @@ function useSpecial(p) {
   }
 
   else if (id === "thor") {
-    spawnProjectile({
-      owner: p,
-      type: "hammer",
-      x: p.x + p.facing * 30,
-      y: p.y - 8,
-      vx: p.facing * 10,
-      vy: -4,
-      w: 42,
-      h: 28,
-      life: 70,
-      damage: 13,
-      knock: 14,
-      gravity: .25,
-      color: "#cce3ff"
-    });
+    if (p.moveVariant === "up") {
+      p.vy = Math.min(p.vy, -10.5);
+      p.vx *= .62;
+      p.invincible = Math.max(p.invincible, 7);
+      createAttack({owner:p,x:p.x + p.facing * 8,y:p.y-88,w:68,h:108,damage:10,knock:10.8,angle:-1.2,frames:11,color:"#bfe7ff",label:"hammer_lift",visualType:"hammerLift"});
+      p.moveVisuals.push({type:"hammerLift",frames:14,length:92,thickness:14});
+      spawnParticles(p.x, p.y - 18, "#d9f2ff", 20, 6);
+    } else if (p.moveVariant === "down") {
+      const airSlam = !p.grounded;
+      if (airSlam) {
+        p.vy = Math.max(p.vy, 18);
+      }
+      const slamY = airSlam ? p.y + 74 : p.y + 30;
+      createAttack({owner:p,x:p.x-72,y:slamY,w:144,h:34,damage:airSlam?16:14,knock:airSlam?16.2:14.3,angle:-0.85,frames:10,color:"#d8ecff",label:"thunder_landing",visualType:"thunderLanding"});
+      p.moveVisuals.push({type:"thunderLanding",frames:15,length:94,thickness:18});
+      spawnParticles(p.x - 30, slamY + 2, "#c5ddff", 16, 6);
+      spawnParticles(p.x + 30, slamY + 2, "#c5ddff", 16, 6);
+      shake = Math.max(shake, airSlam ? 11 : 8);
+    } else {
+      spawnProjectile({owner:p,type:"hammer",x:p.x + p.facing * 30,y:p.y - 8,vx:p.facing * 11.5,vy:-2,w:42,h:28,life:74,damage:13,knock:14,gravity:.2,color:"#cce3ff",boomerang:true,spin:0});
+    }
   }
 
   else if (id === "loki") {
@@ -1514,6 +1526,18 @@ function updateProjectiles() {
     pr.x += pr.vx;
     pr.y += pr.vy;
 
+    if (pr.type === "hammer") {
+      pr.spin = (pr.spin || 0) + 0.34 * (Math.sign(pr.vx) || 1);
+      if (pr.boomerang && pr.life < 34 && pr.owner && !pr.owner.dead) {
+        const tx = pr.owner.x - pr.x;
+        const ty = (pr.owner.y - 12) - pr.y;
+        const d = Math.max(1, Math.hypot(tx, ty));
+        pr.vx += (tx / d) * 1.55;
+        pr.vy += (ty / d) * 1.25;
+        if (d < 34) pr.life = 0;
+      }
+    }
+
     if (pr.type === "sun") {
       pr.vx *= .98;
       pr.vy *= .98;
@@ -1644,6 +1668,10 @@ function updateParticles() {
     }
   }
 
+  if (hitStop > 0) {
+    hitStop--;
+    return;
+  }
   if (shake > 0) shake *= .86;
 }
 
@@ -2061,9 +2089,9 @@ function drawActiveMoveVisual(ctx, player) {
     v.frames--;
     const color = player.god.accent || player.god.color;
     const type=v.type;
-    if (["slashArc","hammerSwing","solarSweep","jackalClaw","daggerFlurry","groundSlam","staticSweep","thunderStomp","spearLift","guardianUpper","owlWing","solarStaffTap","sunriseArc","horizonSweep","falconWing","soulRake","graveSweep","judgmentCleave","weighingHook","tombDrop"].includes(type)) {
+    if (["slashArc","hammerSwing","solarSweep","jackalClaw","daggerFlurry","groundSlam","staticSweep","thunderStomp","spearLift","guardianUpper","owlWing","solarStaffTap","sunriseArc","horizonSweep","falconWing","soulRake","graveSweep","judgmentCleave","weighingHook","tombDrop","hammerSweep","mjolnirCrush","mjolnirTap","thunderUpperSwing"].includes(type)) {
       drawAttackArc(ctx,{x:handX,y:handY,color,length:v.length||52,thickness:v.thickness||14,startA:(player.facing===1?-1.4:Math.PI+0.2),endA:(player.facing===1?.4:Math.PI-1.2)});
-    } else if (["stabLine","beam","lightningJab","shieldBash","shockwave","uppercut","boltSpear","uppercutSpark","stormPillar","spearThrust","shieldCheck","aegisBash","spearPin","aegisWall","parryField","desertBurn","sunBrandBurst","afterlifeStep","soulMarkBurst"].includes(type)) {
+    } else if (["stabLine","beam","lightningJab","shieldBash","shockwave","uppercut","boltSpear","uppercutSpark","stormPillar","spearThrust","shieldCheck","aegisBash","spearPin","aegisWall","parryField","desertBurn","sunBrandBurst","afterlifeStep","soulMarkBurst","hammerJab","earthbreakerSlam","hammerLift","thunderLanding"].includes(type)) {
       ctx.strokeStyle=color; ctx.lineWidth=screenScale(v.thickness||10); ctx.globalAlpha=.8; ctx.beginPath();
       ctx.moveTo(worldToScreenX(handX), worldToScreenY(handY));
       const tx=handX + player.facing*(v.length||65); const ty=handY + ((type==="uppercut"||type==="uppercutSpark"||type==="guardianUpper")?-55:(type==="stormPillar"||type==="sunBrandBurst"?-95:(type==="spearPin"?48:(type==="desertBurn"?16:0))));
@@ -2166,9 +2194,14 @@ function drawProjectile(pr) {
     ctx.fillRect(x + dir * w/3, y - h, screenScale(8), screenScale(22));
     ctx.fillRect(x + dir * w/2, y - screenScale(3), screenScale(14), screenScale(6));
   } else if (pr.type === "hammer") {
-    ctx.fillRect(x - w/2, y - h/2, w, h);
+    ctx.save();
+    const rot = pr.spin || 0;
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.fillRect(-w/2, -h/2, w, h);
     ctx.fillStyle = "#704214";
-    ctx.fillRect(x - screenScale(5), y, screenScale(10), screenScale(34));
+    ctx.fillRect(-screenScale(5), screenScale(6), screenScale(10), screenScale(34));
+    ctx.restore();
   } else {
     ctx.fillRect(x - w/2, y - h/2, w, h);
   }
