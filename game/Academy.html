@@ -775,6 +775,7 @@ const MAPS = {
 let selectedGod = "zeus";
 let players = [];
 let attacks = [];
+let mudTraps = [];
 let projectiles = [];
 let lightningStrikes = [];
 let tacticalSeals = [];
@@ -999,6 +1000,7 @@ function startGame() {
   projectiles = [];
   particles = [];
   telegraphs = [];
+  mudTraps = [];
   matchTime = 0;
   shake = 0;
   ultFlash = 0;
@@ -4766,7 +4768,15 @@ function drawAttack(a) {
   }
 }
 
-
+function drawMudTraps() {
+  mudTraps.forEach(m => {
+    const sx = worldToScreenX(m.x), sy = worldToScreenY(m.y), r = screenScale(m.radius);
+    ctx.save(); ctx.globalAlpha = Math.min(0.42, m.life / 50); ctx.fillStyle = "#6b4f2a";
+    ctx.beginPath(); ctx.ellipse(sx, sy, r, r * 0.32, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = Math.min(0.55, m.life / 60); ctx.strokeStyle = "#2a9d8f"; ctx.lineWidth = screenScale(3);
+    ctx.beginPath(); ctx.ellipse(sx, sy, r, r * 0.32, 0, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+  });
+}
 function drawProjectile(pr) {
   const x = worldToScreenX(pr.x);
   const y = worldToScreenY(pr.y);
@@ -4992,14 +5002,6 @@ function clamp(v, min, max) {
 }
 </script>
 </body>
-</html>function drawMudTraps() {
-  mudTraps.forEach(m => {
-    const sx = worldToScreenX(m.x), sy = worldToScreenY(m.y), r = screenScale(m.radius);
-    ctx.save(); ctx.globalAlpha = Math.min(0.42, m.life / 50); ctx.fillStyle = "#6b4f2a";
-    ctx.beginPath(); ctx.ellipse(sx, sy, r, r * 0.32, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = Math.min(0.55, m.life / 60); ctx.strokeStyle = "#2a9d8f"; ctx.lineWidth = screenScale(3);
-    ctx.beginPath(); ctx.ellipse(sx, sy, r, r * 0.32, 0, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
-  });
-}
+</html>
 
 
