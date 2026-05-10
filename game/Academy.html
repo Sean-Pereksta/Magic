@@ -1103,6 +1103,8 @@ let hadesSoulPrisons = [];
 let lightningStrikes = [];
 let raSunBursts = [];
 let bastetSpiritCats = [];
+let zeusThunderCages = [];
+let anubisWeighingSeals = [];
 let ultFlash = 0;
 let ultFlashColor = "#ffffff";
 let eclipseTimer = 0;
@@ -1409,6 +1411,8 @@ function startGame() {
   particles = [];
   telegraphs = [];
   hadesSoulPrisons = [];
+  zeusThunderCages = [];
+  anubisWeighingSeals = [];
   matchTime = 0;
   shake = 0;
   ultFlash = 0;
@@ -1688,8 +1692,22 @@ function updateGame() {
   players.forEach(updateFighter);
   updateTelegraphs();
   if (raSunBursts && raSunBursts.length > 0) updateRaSunBursts();
-  if (zeusThunderCages && zeusThunderCages.length > 0) updateZeusThunderCages();
-  if (anubisWeighingSeals && anubisWeighingSeals.length > 0) updateAnubisWeighingSeals();
+  if (
+    typeof zeusThunderCages !== "undefined" &&
+    Array.isArray(zeusThunderCages) &&
+    zeusThunderCages.length > 0 &&
+    typeof updateZeusThunderCages === "function"
+  ) {
+    updateZeusThunderCages();
+  }
+  if (
+    typeof anubisWeighingSeals !== "undefined" &&
+    Array.isArray(anubisWeighingSeals) &&
+    anubisWeighingSeals.length > 0 &&
+    typeof updateAnubisWeighingSeals === "function"
+  ) {
+    updateAnubisWeighingSeals();
+  }
   if (bastetSpiritCats && bastetSpiritCats.length > 0) updateBastetSpiritCats();
   updateAttacks();
   if (lightningStrikes && lightningStrikes.length > 0) updateLightningStrikes();
@@ -2573,7 +2591,7 @@ function useSpecial(p) {
       p.invincible = Math.max(p.invincible, 10);
       createAttack({owner:p,x:p.x,y:p.y-24,w:48,h:92,damage:5,knock:7,angle:-1.05,frames:10,color:"#fff4a3",label:"storm_ascent",visualType:"stormPillar"});
       spawnParticles(p.x, p.y + 12, "#ffe66d", 20, 6);
-    } else if (p.moveVariant === "down") { p.specialCooldown = Math.floor((p.god.specialCooldown + 10) / (typeof GAME_PACE_MULT !== "undefined" ? GAME_PACE_MULT : 1)); p.vx *= 0.35; p.attackKind = "zeus_thunder_cage"; p.attackFrame = Math.max(p.attackFrame, 36); p.armorTimer = Math.max(p.armorTimer || 0, 8); spawnZeusThunderCage(p); createAttack({owner:p,x:p.x,y:p.y + p.h / 2,w:120,h:44,damage:5,knock:8,angle:-0.55,frames:7,color:"#ffe66d",label:"zeus_thunder_cage_slam",visualType:"zeusThunderCageSlam"}); } else {
+    } else if (p.moveVariant === "down") { p.specialCooldown = Math.floor((p.god.specialCooldown + 10) / (typeof GAME_PACE_MULT !== "undefined" ? GAME_PACE_MULT : 1)); p.vx *= 0.35; p.attackKind = "zeus_thunder_cage"; p.attackFrame = Math.max(p.attackFrame, 36); p.armorTimer = Math.max(p.armorTimer || 0, 8); if (typeof spawnZeusThunderCage === "function") { spawnZeusThunderCage(p); } createAttack({owner:p,x:p.x,y:p.y + p.h / 2,w:120,h:44,damage:5,knock:8,angle:-0.55,frames:7,color:"#ffe66d",label:"zeus_thunder_cage_slam",visualType:"zeusThunderCageSlam"}); } else {
       spawnProjectile({owner:p,dir,type:"bolt",x:p.x + dir * 28,y:p.y - 10,vx:dir * 12,vy:-1,w:34,h:18,life:55,damage:10,knock:10,color:"#ffe66d",chain:true});
     }
   }
@@ -2648,7 +2666,7 @@ function useSpecial(p) {
       p.anubisGrapplePullMode = "seeking";
       p.moveVisuals.push({type:"afterlifeStep",frames:12,length:80,thickness:12});
       spawnParticles(p.x, p.y, "#8ffcff", 16, 5);
-    } else if (p.moveVariant === "down") { p.specialCooldown = Math.floor((p.god.specialCooldown + 8) / (typeof GAME_PACE_MULT !== "undefined" ? GAME_PACE_MULT : 1)); p.vx *= 0.4; p.attackKind = "anubis_weighing_seal"; p.attackFrame = Math.max(p.attackFrame, 32); spawnAnubisWeighingSeal(p); createAttack({owner:p,x:p.x + dir * 48,y:p.y + 6,w:88,h:54,damage:2,knock:3,angle:-0.2,frames:7,color:"#62ffe4",label:"anubis_weighing_seal_cast",visualType:"anubisWeighingSealCast"}); } else {
+    } else if (p.moveVariant === "down") { p.specialCooldown = Math.floor((p.god.specialCooldown + 8) / (typeof GAME_PACE_MULT !== "undefined" ? GAME_PACE_MULT : 1)); p.vx *= 0.4; p.attackKind = "anubis_weighing_seal"; p.attackFrame = Math.max(p.attackFrame, 32); if (typeof spawnAnubisWeighingSeal === "function") { spawnAnubisWeighingSeal(p); } createAttack({owner:p,x:p.x + dir * 48,y:p.y + 6,w:88,h:54,damage:2,knock:3,angle:-0.2,frames:7,color:"#62ffe4",label:"anubis_weighing_seal_cast",visualType:"anubisWeighingSealCast"}); } else {
       spawnProjectile({
         owner: p,
         type: "hook",
@@ -4352,6 +4370,14 @@ function updateProjectiles() {
     }
 
     if (pr.life <= 0) {
+      if (
+        pr.type === "hammer" &&
+        pr.owner &&
+        pr.owner.thorHammerProjectile === pr
+      ) {
+        pr.owner.thorHammerProjectile = null;
+        pr.owner.thorHammerRecallReady = false;
+      }
       spawnParticles(pr.x, pr.y, pr.color, 10, 4);
       projectiles.splice(i, 1);
     }
@@ -4697,8 +4723,22 @@ function drawGame() {
   if (hadesSoulPrisons.length > 0) drawHadesSoulPrisons();
   if (lightningStrikes && lightningStrikes.length > 0) drawLightningStrikes();
   if (raSunBursts && raSunBursts.length > 0) drawRaSunBursts();
-  if (zeusThunderCages && zeusThunderCages.length > 0) drawZeusThunderCages();
-  if (anubisWeighingSeals && anubisWeighingSeals.length > 0) drawAnubisWeighingSeals();
+  if (
+    typeof zeusThunderCages !== "undefined" &&
+    Array.isArray(zeusThunderCages) &&
+    zeusThunderCages.length > 0 &&
+    typeof drawZeusThunderCages === "function"
+  ) {
+    drawZeusThunderCages();
+  }
+  if (
+    typeof anubisWeighingSeals !== "undefined" &&
+    Array.isArray(anubisWeighingSeals) &&
+    anubisWeighingSeals.length > 0 &&
+    typeof drawAnubisWeighingSeals === "function"
+  ) {
+    drawAnubisWeighingSeals();
+  }
   if (bastetSpiritCats && bastetSpiritCats.length > 0) drawBastetSpiritCats();
 
   projectiles.forEach(drawProjectile);
@@ -4712,10 +4752,10 @@ function drawGame() {
 }
 
 
-function spawnZeusThunderCage(owner) { zeusThunderCages.push({ owner, x: owner.x, y: owner.y + owner.h / 2 - 8, radius: 145, timer: 120, maxTimer: 120, tick: 0 }); if (zeusThunderCages.length > 4) zeusThunderCages.splice(0, zeusThunderCages.length - 4); spawnParticles(owner.x, owner.y + owner.h / 2, "#ffe66d", 30, 7); spawnParticles(owner.x, owner.y + owner.h / 2, "#ffffff", 16, 5); shake = Math.max(shake, 5); }
-function updateZeusThunderCages() { for (let i = zeusThunderCages.length - 1; i >= 0; i--) { const cage = zeusThunderCages[i]; cage.timer--; cage.tick++; if (!cage.owner || cage.owner.dead || cage.owner.lives <= 0) { zeusThunderCages.splice(i, 1); continue; } if (cage.tick % 8 === 0) players.forEach(t => { if (t === cage.owner || t.dead || t.lives <= 0 || t.invincible > 0) return; const d = Math.hypot(t.x - cage.x, t.y - cage.y); if (d <= cage.radius) { const dir = Math.sign(t.x - cage.x) || getFacingDir(cage.owner); applyHit(t, cage.owner, 1.4, 2.4, -0.2, dir, "#ffe66d", {x:t.x,y:t.y,impactType:"lightning",impactColor:"#fff7bf",hitPause:1,extraShake:1,cueType:"lightning"}); t.conductiveTimer = Math.max(t.conductiveTimer || 0, 210); }}); if (cage.timer <= 0) zeusThunderCages.splice(i, 1);} }
-function spawnAnubisWeighingSeal(owner) { const dir = getFacingDir(owner); const sealX = owner.x + dir * 74; const groundY = findPlatformBelowPoint(sealX, owner.y - 20, 260); const sealY = Math.min(owner.y + owner.h / 2, groundY - 8); anubisWeighingSeals.push({owner,x:sealX,y:sealY,radius:82,timer:210,maxTimer:210,triggered:false}); }
-function updateAnubisWeighingSeals() { for (let i = anubisWeighingSeals.length - 1; i >= 0; i--) { const seal = anubisWeighingSeals[i]; seal.timer--; players.forEach(t=>{ if (seal.triggered || t===seal.owner || t.dead || t.invincible>0) return; if (Math.hypot(t.x-seal.x,t.y-seal.y)<=seal.radius){ seal.triggered=true; t.soulMarkTimer=Math.max(t.soulMarkTimer||0,360); t.soulMarkSource=seal.owner.id; }}); if ((seal.triggered && seal.timer < seal.maxTimer - 18) || seal.timer<=0) anubisWeighingSeals.splice(i,1); } }
+function spawnZeusThunderCage(owner) { if (!Array.isArray(zeusThunderCages)) zeusThunderCages = []; zeusThunderCages.push({ owner, x: owner.x, y: owner.y + owner.h / 2 - 8, radius: 145, timer: 120, maxTimer: 120, tick: 0 }); if (zeusThunderCages.length > 4) zeusThunderCages.splice(0, zeusThunderCages.length - 4); if (typeof spawnParticles === "function") { spawnParticles(owner.x, owner.y + owner.h / 2, "#ffe66d", 30, 7); spawnParticles(owner.x, owner.y + owner.h / 2, "#ffffff", 16, 5); } shake = Math.max(shake, 5); }
+function updateZeusThunderCages() { if (!Array.isArray(zeusThunderCages)) return; for (let i = zeusThunderCages.length - 1; i >= 0; i--) { const cage = zeusThunderCages[i]; if (!cage) { zeusThunderCages.splice(i, 1); continue; } cage.timer--; cage.tick = (cage.tick || 0) + 1; if (!cage.owner || cage.owner.dead || cage.owner.lives <= 0) { zeusThunderCages.splice(i, 1); continue; } if (cage.tick % 8 === 0 && Array.isArray(players)) players.forEach(t => { if (!t || t === cage.owner || t.dead || t.lives <= 0 || t.invincible > 0) return; const d = Math.hypot(t.x - cage.x, t.y - cage.y); if (d <= cage.radius) { const dir = Math.sign(t.x - cage.x) || getFacingDir(cage.owner); applyHit(t, cage.owner, 1.4, 2.4, -0.2, dir, "#ffe66d", {x:t.x,y:t.y,impactType:"lightning",impactColor:"#fff7bf",hitPause:1,extraShake:1,cueType:"lightning"}); t.conductiveTimer = Math.max(t.conductiveTimer || 0, 210); if (typeof spawnParticles === "function") spawnParticles(t.x, t.y - 10, "#ffe66d", 6, 2.5); }}); if (cage.timer <= 0) zeusThunderCages.splice(i, 1);} }
+function spawnAnubisWeighingSeal(owner) { if (!Array.isArray(anubisWeighingSeals)) anubisWeighingSeals = []; const dir = getFacingDir(owner); const sealX = owner.x + dir * 74; const groundY = findPlatformBelowPoint(sealX, owner.y - 20, 260); const sealY = Math.min(owner.y + owner.h / 2, groundY - 8); anubisWeighingSeals.push({owner,x:sealX,y:sealY,radius:82,timer:210,maxTimer:210,triggered:false}); }
+function updateAnubisWeighingSeals() { if (!Array.isArray(anubisWeighingSeals)) return; for (let i = anubisWeighingSeals.length - 1; i >= 0; i--) { const seal = anubisWeighingSeals[i]; if (!seal) { anubisWeighingSeals.splice(i, 1); continue; } seal.timer--; players.forEach(t=>{ if (seal.triggered || !t || t===seal.owner || t.dead || t.invincible>0) return; if (Math.hypot(t.x-seal.x,t.y-seal.y)<=seal.radius){ seal.triggered=true; t.soulMarkTimer=Math.max(t.soulMarkTimer||0,360); t.soulMarkSource=seal.owner.id; }}); if ((seal.triggered && seal.timer < seal.maxTimer - 18) || seal.timer<=0) anubisWeighingSeals.splice(i,1); } }
 function drawZeusThunderCages(){ zeusThunderCages.forEach(cage=>{ const sx=worldToScreenX(cage.x), sy=worldToScreenY(cage.y), r=screenScale(cage.radius); ctx.save(); ctx.globalAlpha=.25; ctx.strokeStyle="#ffe66d"; ctx.beginPath(); ctx.ellipse(sx,sy,r,r*.42,0,0,Math.PI*2); ctx.stroke(); ctx.restore(); }); }
 function drawAnubisWeighingSeals(){ anubisWeighingSeals.forEach(seal=>{ const sx=worldToScreenX(seal.x), sy=worldToScreenY(seal.y), r=screenScale(seal.radius); ctx.save(); ctx.globalAlpha=.25; ctx.strokeStyle="#62ffe4"; ctx.beginPath(); ctx.ellipse(sx,sy,r,r*.32,0,0,Math.PI*2); ctx.stroke(); ctx.restore(); }); }
 function drawLightningStrikes() {
