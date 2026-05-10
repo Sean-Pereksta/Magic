@@ -406,6 +406,7 @@ const GODS = {
     color: "#f4d35e",
     dark: "#8a6f10",
     accent: "#ffffff",
+    skin: "#f0c49b",
     hpColor: "#ffe66d",
     speed: 5.2,
     jump: 16,
@@ -423,6 +424,7 @@ const GODS = {
     color: "#71d6ff",
     dark: "#2d5d83",
     accent: "#f8f7ff",
+    skin: "#d9b08c",
     hpColor: "#73d2de",
     speed: 4.9,
     jump: 15.5,
@@ -440,6 +442,7 @@ const GODS = {
     color: "#ff9f1c",
     dark: "#a9500a",
     accent: "#ffea00",
+    skin: "#c97a2c",
     hpColor: "#ff9f1c",
     speed: 4.6,
     jump: 15,
@@ -457,6 +460,7 @@ const GODS = {
     color: "#7b2cbf",
     dark: "#231942",
     accent: "#80ffdb",
+    skin: "#161616",
     hpColor: "#80ffdb",
     speed: 5.0,
     jump: 15.8,
@@ -474,6 +478,7 @@ const GODS = {
     color: "#e63946",
     dark: "#6d1a22",
     accent: "#cce3ff",
+    skin: "#e0a06d",
     hpColor: "#e63946",
     speed: 4.1,
     jump: 14.3,
@@ -491,6 +496,7 @@ const GODS = {
     color: "#06d6a0",
     dark: "#064e3b",
     accent: "#caffbf",
+    skin: "#c8a27b",
     hpColor: "#06d6a0",
     speed: 5.8,
     jump: 16.5,
@@ -709,6 +715,8 @@ function createFighter(config) {
     specialCooldown: 0,
     dodgeCooldown: 0,
     dodgeTimer: 0,
+    attackFrame: 0,
+    attackKind: "",
     hitstun: 0,
     action: "idle",
     anim: 0,
@@ -960,12 +968,17 @@ function jump(p) {
 
 function dodge(p) {
   if (p.dodgeCooldown > 0 || p.dead) return;
-  p.dodgeCooldown = 70;
-  p.dodgeTimer = 14;
-  p.invincible = Math.max(p.invincible, 14);
-  p.vx += p.facing * 10;
+  p.dodgeCooldown = 95;
+  p.dodgeTimer = 28;
+  p.invincible = Math.max(p.invincible, 42);
+  p.vx = p.facing * 30;
+  p.vy *= .35;
   p.action = "dodge";
-  spawnParticles(p.x, p.y, "#ffffff", 12, 4);
+  p.attackKind = "dodge";
+  p.attackFrame = 28;
+  spawnParticles(p.x - p.facing * 22, p.y, p.god.accent || "#ffffff", 24, 7);
+  spawnParticles(p.x, p.y, p.god.color, 16, 5);
+  shake = Math.max(shake, 5);
 }
 
 function lightAttack(p) {
@@ -973,6 +986,8 @@ function lightAttack(p) {
 
   p.attackCooldown = 18;
   p.action = "light";
+  p.attackKind = "light";
+  p.attackFrame = 16;
 
   createAttack({
     owner: p,
@@ -995,6 +1010,8 @@ function heavyAttack(p) {
   p.attackCooldown = 36;
   p.vx *= .55;
   p.action = "heavy";
+  p.attackKind = "heavy";
+  p.attackFrame = 26;
 
   createAttack({
     owner: p,
@@ -1018,6 +1035,8 @@ function useSpecial(p) {
   p.specialCooldown = p.god.specialCooldown;
   p.attackCooldown = Math.max(p.attackCooldown, 20);
   p.action = "special";
+  p.attackKind = "special";
+  p.attackFrame = 30;
 
   const id = p.godId;
 
@@ -1138,6 +1157,8 @@ function useUltimate(p) {
   p.meter = 0;
   p.attackCooldown = 60;
   p.action = "ultimate";
+  p.attackKind = "ultimate";
+  p.attackFrame = 55;
   shake = Math.max(shake, 12);
 
   showMessage(p.god.name.toUpperCase() + " UNLEASHES " + ultimateName(p.godId) + "!", 90);
@@ -1295,13 +1316,19 @@ function updateFighter(p) {
   if (p.specialCooldown > 0) p.specialCooldown--;
   if (p.dodgeCooldown > 0) p.dodgeCooldown--;
   if (p.dodgeTimer > 0) p.dodgeTimer--;
+  if (p.attackFrame > 0) {
+    p.attackFrame--;
+  } else if (["light", "heavy", "special", "ultimate", "dodge"].includes(p.action)) {
+    p.action = p.grounded ? "idle" : "air";
+    p.attackKind = "";
+  }
   if (p.hitstun > 0) p.hitstun--;
   if (p.invincible > 0) p.invincible--;
 
   p.vy += 0.78;
 
   if (p.dodgeTimer > 0) {
-    p.vx *= .98;
+    p.vx *= .985;
   }
 
   p.x += p.vx;
@@ -1309,7 +1336,11 @@ function updateFighter(p) {
 
   handlePlatformCollision(p);
 
-  p.vx *= p.grounded ? .91 : .985;
+  if (p.dodgeTimer <= 0) {
+    p.vx *= p.grounded ? .91 : .985;
+  } else {
+    p.vx *= .985;
+  }
   p.vy = clamp(p.vy, -30, 26);
 
   const pad = currentMap.blastPadding;
@@ -1695,6 +1726,17 @@ function drawFighter(p) {
   if (blink) ctx.globalAlpha = .45;
 
   drawPixelGod(ctx, p, x, y, s);
+  if (p.dodgeTimer > 0) {
+    ctx.globalAlpha = 0.28;
+    ctx.fillStyle = p.god.accent || "#ffffff";
+    ctx.fillRect(
+      x - screenScale(42),
+      y - screenScale(40),
+      screenScale(84),
+      screenScale(88)
+    );
+    ctx.globalAlpha = 1;
+  }
 
   // Player name
   ctx.globalAlpha = 1;
@@ -1716,6 +1758,35 @@ function drawPixelGod(c, p, x, y, s) {
   const dir = p.facing;
   const bob = Math.sin(p.anim * 6) * (p.grounded && p.action === "run" ? 3 : 1);
   const hitLean = p.hitstun > 0 ? -dir * 7 : 0;
+  const f = p.attackFrame || 0;
+  let strike = 0;
+  let raise = 0;
+  let wide = 0;
+  let bodyLean = 0;
+
+  if (p.action === "light") {
+    strike = dir * (18 + Math.sin(f * .45) * 8);
+    raise = -4;
+    bodyLean = dir * 3;
+  } else if (p.action === "heavy") {
+    strike = dir * (28 + Math.sin(f * .32) * 18);
+    raise = -10 - Math.sin(f * .25) * 8;
+    wide = 8;
+    bodyLean = dir * 7;
+  } else if (p.action === "special") {
+    strike = dir * (36 + Math.sin(f * .35) * 15);
+    raise = -17;
+    wide = 12;
+    bodyLean = -dir * 4;
+  } else if (p.action === "ultimate") {
+    strike = dir * (44 + Math.sin(f * .28) * 22);
+    raise = -24;
+    wide = 18;
+    bodyLean = dir * Math.sin(f * .25) * 8;
+  } else if (p.action === "dodge") {
+    bodyLean = dir * 16;
+    strike = -dir * 8;
+  }
 
   const px = v => Math.round(v);
   const sc = v => Math.round(v * s);
@@ -1733,103 +1804,141 @@ function drawPixelGod(c, p, x, y, s) {
 
   // Body
   c.fillStyle = g.dark;
-  c.fillRect(px(x - sc(19) + hitLean), px(y - sc(20) + bob), sc(38), sc(39));
+  c.fillRect(px(x - sc(19) + hitLean + bodyLean), px(y - sc(20) + bob), sc(38), sc(39));
 
   c.fillStyle = g.color;
-  c.fillRect(px(x - sc(16) + hitLean), px(y - sc(26) + bob), sc(32), sc(34));
-
-  // Head
-  c.fillStyle = g.color;
-  c.fillRect(px(x - sc(18) + hitLean), px(y - sc(55) + bob), sc(36), sc(30));
-
-  // Face / eyes
-  c.fillStyle = "#10131f";
-  c.fillRect(px(x - sc(9) + hitLean + dir * sc(3)), px(y - sc(44) + bob), sc(6), sc(5));
-  c.fillRect(px(x + sc(4) + hitLean + dir * sc(3)), px(y - sc(44) + bob), sc(6), sc(5));
-
-  c.fillStyle = g.accent;
-  c.fillRect(px(x - sc(8) + hitLean + dir * sc(3)), px(y - sc(43) + bob), sc(3), sc(2));
-  c.fillRect(px(x + sc(5) + hitLean + dir * sc(3)), px(y - sc(43) + bob), sc(3), sc(2));
+  c.fillRect(px(x - sc(16) + hitLean + bodyLean), px(y - sc(26) + bob), sc(32), sc(34));
+  drawGodHead(c, p, x + hitLean + bodyLean, y + bob, s, dir);
 
   // Arms
-  let armSwing = 0;
-  if (p.action === "light") armSwing = dir * 18;
-  if (p.action === "heavy") armSwing = dir * 28;
-  if (p.action === "special" || p.action === "ultimate") armSwing = dir * 34;
-
   c.fillStyle = g.color;
-  c.fillRect(px(x - sc(30) + hitLean), px(y - sc(16) + bob), sc(13), sc(31));
-  c.fillRect(px(x + sc(17) + hitLean + armSwing), px(y - sc(16) + bob), sc(13), sc(31));
+  c.fillRect(px(x - sc(30) + hitLean + bodyLean - wide), px(y - sc(16) + bob + raise * .25), sc(13), sc(31));
+  c.fillRect(px(x + sc(17) + hitLean + bodyLean + strike + wide), px(y - sc(16) + bob + raise), sc(13), sc(31));
 
   c.fillStyle = g.accent;
-  c.fillRect(px(x + sc(23) + hitLean + armSwing), px(y + sc(8) + bob), sc(14), sc(10));
+  c.fillRect(px(x + sc(23) + hitLean + bodyLean + strike + wide), px(y + sc(8) + bob + raise), sc(14), sc(10));
 
-  drawGodDetails(c, p, x + hitLean, y + bob, s, dir);
+  drawGodWeapon(c, p, x + hitLean + bodyLean, y + bob, s, dir, strike, raise, wide);
 }
 
-function drawGodDetails(c, p, x, y, s, dir) {
+function drawGodHead(c, p, x, y, s, dir) {
   const g = p.god;
+  const id = p.godId;
   const sc = v => Math.round(v * s);
   const px = v => Math.round(v);
+  const skin = g.skin || "#d9a06f";
 
-  if (p.godId === "zeus") {
+  if (id === "zeus") {
+    c.fillStyle = skin;
+    c.fillRect(px(x - sc(16)), px(y - sc(55)), sc(32), sc(27));
     c.fillStyle = "#ffffff";
-    c.fillRect(px(x - sc(17)), px(y - sc(31)), sc(34), sc(8));
-    c.fillRect(px(x - sc(13)), px(y - sc(26)), sc(26), sc(7));
-
+    c.fillRect(px(x - sc(21)), px(y - sc(62)), sc(42), sc(12));
+    c.fillRect(px(x - sc(18)), px(y - sc(52)), sc(36), sc(8));
+    c.fillRect(px(x - sc(15)), px(y - sc(35)), sc(30), sc(18));
+    c.fillRect(px(x - sc(9)), px(y - sc(24)), sc(18), sc(8));
+    c.fillStyle = "#10131f";
+    c.fillRect(px(x - sc(8) + dir * sc(3)), px(y - sc(44)), sc(5), sc(4));
+    c.fillRect(px(x + sc(4) + dir * sc(3)), px(y - sc(44)), sc(5), sc(4));
     c.fillStyle = "#ffe66d";
-    c.fillRect(px(x + dir * sc(34)), px(y - sc(34)), sc(8), sc(42));
-    c.fillRect(px(x + dir * sc(25)), px(y - sc(15)), sc(25), sc(8));
-  }
-
-  if (p.godId === "athena") {
-    c.fillStyle = "#f8f7ff";
-    c.fillRect(px(x - sc(23)), px(y - sc(61)), sc(46), sc(7));
-    c.fillRect(px(x - sc(5)), px(y - sc(72)), sc(10), sc(15));
-
-    c.fillStyle = "#d6f3ff";
-    c.fillRect(px(x + dir * sc(33)), px(y - sc(18)), sc(12), sc(42));
-    c.fillStyle = "#354066";
-    c.fillRect(px(x - dir * sc(43)), px(y - sc(17)), sc(18), sc(38));
-  }
-
-  if (p.godId === "ra") {
-    c.fillStyle = "#ffea00";
-    c.fillRect(px(x - sc(12)), px(y - sc(72)), sc(24), sc(24));
-    c.fillStyle = "#ff9f1c";
-    c.fillRect(px(x - sc(5)), px(y - sc(84)), sc(10), sc(12));
-    c.fillRect(px(x - sc(5)), px(y - sc(48)), sc(10), sc(12));
-    c.fillRect(px(x - sc(24)), px(y - sc(65)), sc(12), sc(10));
-    c.fillRect(px(x + sc(12)), px(y - sc(65)), sc(12), sc(10));
-  }
-
-  if (p.godId === "anubis") {
-    c.fillStyle = "#111827";
-    c.fillRect(px(x - sc(28)), px(y - sc(66)), sc(15), sc(18));
-    c.fillRect(px(x + sc(13)), px(y - sc(66)), sc(15), sc(18));
-
-    c.fillStyle = "#80ffdb";
-    c.fillRect(px(x + dir * sc(34)), px(y - sc(9)), sc(26), sc(7));
-    c.fillRect(px(x + dir * sc(54)), px(y - sc(19)), sc(7), sc(17));
-  }
-
-  if (p.godId === "thor") {
+    c.fillRect(px(x - sc(4)), px(y - sc(67)), sc(8), sc(5));
+  } else if (id === "athena") {
+    c.fillStyle = skin;
+    c.fillRect(px(x - sc(15)), px(y - sc(53)), sc(30), sc(25));
+    c.fillStyle = "#d8e2ff";
+    c.fillRect(px(x - sc(20)), px(y - sc(62)), sc(40), sc(12));
+    c.fillRect(px(x - sc(17)), px(y - sc(56)), sc(34), sc(8));
+    c.fillStyle = "#ff5f7e";
+    c.fillRect(px(x - sc(4)), px(y - sc(78)), sc(8), sc(18));
+    c.fillRect(px(x - sc(9)), px(y - sc(73)), sc(18), sc(5));
+    c.fillStyle = "#10131f";
+    c.fillRect(px(x - sc(8) + dir * sc(3)), px(y - sc(43)), sc(5), sc(4));
+    c.fillRect(px(x + sc(4) + dir * sc(3)), px(y - sc(43)), sc(5), sc(4));
+  } else if (id === "ra") {
+    c.fillStyle = "#d27a1e";
+    c.fillRect(px(x - sc(14)), px(y - sc(55)), sc(28), sc(27));
     c.fillStyle = "#ffb703";
-    c.fillRect(px(x - sc(13)), px(y - sc(31)), sc(26), sc(8));
-
+    c.fillRect(px(x + dir * sc(10)), px(y - sc(48)), sc(18), sc(9));
+    c.fillRect(px(x + dir * sc(22)), px(y - sc(44)), sc(10), sc(5));
+    c.fillStyle = "#fff3a3";
+    c.fillRect(px(x - sc(16)), px(y - sc(62)), sc(32), sc(7));
+    c.fillRect(px(x - sc(5)), px(y - sc(75)), sc(10), sc(13));
+    c.fillStyle = "#ffea00";
+    c.fillRect(px(x - sc(17)), px(y - sc(78)), sc(34), sc(4));
+    c.fillStyle = "#10131f";
+    c.fillRect(px(x + dir * sc(5)), px(y - sc(45)), sc(5), sc(4));
+  } else if (id === "anubis") {
+    c.fillStyle = "#090909";
+    c.fillRect(px(x - sc(14)), px(y - sc(55)), sc(28), sc(28));
+    c.fillStyle = "#050505";
+    c.fillRect(px(x + dir * sc(8)), px(y - sc(49)), sc(26), sc(10));
+    c.fillRect(px(x + dir * sc(26)), px(y - sc(45)), sc(9), sc(6));
+    c.fillRect(px(x - sc(25)), px(y - sc(68)), sc(10), sc(24));
+    c.fillRect(px(x + sc(15)), px(y - sc(68)), sc(10), sc(24));
+    c.fillStyle = "#80ffdb";
+    c.fillRect(px(x + dir * sc(4)), px(y - sc(45)), sc(5), sc(4));
+    c.fillRect(px(x + dir * sc(22)), px(y - sc(41)), sc(5), sc(3));
+  } else if (id === "thor") {
+    c.fillStyle = skin;
+    c.fillRect(px(x - sc(16)), px(y - sc(54)), sc(32), sc(26));
+    c.fillStyle = "#d97706";
+    c.fillRect(px(x - sc(15)), px(y - sc(34)), sc(30), sc(16));
+    c.fillRect(px(x - sc(9)), px(y - sc(22)), sc(18), sc(7));
     c.fillStyle = "#cce3ff";
-    c.fillRect(px(x + dir * sc(35)), px(y - sc(30)), sc(28), sc(23));
-    c.fillStyle = "#704214";
-    c.fillRect(px(x + dir * sc(27)), px(y - sc(10)), sc(39), sc(8));
-  }
-
-  if (p.godId === "loki") {
+    c.fillRect(px(x - sc(21)), px(y - sc(62)), sc(42), sc(9));
+    c.fillRect(px(x - sc(13)), px(y - sc(69)), sc(9), sc(9));
+    c.fillRect(px(x + sc(4)), px(y - sc(69)), sc(9), sc(9));
+    c.fillStyle = "#10131f";
+    c.fillRect(px(x - sc(8) + dir * sc(3)), px(y - sc(43)), sc(5), sc(4));
+    c.fillRect(px(x + sc(4) + dir * sc(3)), px(y - sc(43)), sc(5), sc(4));
+  } else if (id === "loki") {
+    c.fillStyle = skin;
+    c.fillRect(px(x - sc(15)), px(y - sc(53)), sc(30), sc(25));
+    c.fillStyle = "#064e3b";
+    c.fillRect(px(x - sc(19)), px(y - sc(61)), sc(38), sc(11));
+    c.fillRect(px(x - sc(6)), px(y - sc(68)), sc(12), sc(8));
     c.fillStyle = "#caffbf";
-    c.fillRect(px(x - sc(18)), px(y - sc(72)), sc(7), sc(21));
-    c.fillRect(px(x + sc(11)), px(y - sc(72)), sc(7), sc(21));
+    c.fillRect(px(x - sc(23)), px(y - sc(75)), sc(8), sc(22));
+    c.fillRect(px(x + sc(15)), px(y - sc(75)), sc(8), sc(22));
+    c.fillRect(px(x - sc(28)), px(y - sc(79)), sc(10), sc(6));
+    c.fillRect(px(x + sc(18)), px(y - sc(79)), sc(10), sc(6));
+    c.fillStyle = "#10131f";
+    c.fillRect(px(x - sc(8) + dir * sc(3)), px(y - sc(43)), sc(5), sc(4));
+    c.fillRect(px(x + sc(4) + dir * sc(3)), px(y - sc(43)), sc(5), sc(4));
+  } else {
+    c.fillStyle = g.color;
+    c.fillRect(px(x - sc(18)), px(y - sc(55)), sc(36), sc(30));
+  }
+}
 
+function drawGodWeapon(c, p, x, y, s, dir, strike, raise, wide) {
+  const sc = v => Math.round(v * s);
+  const px = v => Math.round(v);
+  if (p.godId === "zeus") {
+    c.fillStyle = "#ffe66d";
+    c.fillRect(px(x + dir * sc(28) + strike), px(y - sc(34) + raise), sc(8), sc(42));
+    c.fillRect(px(x + dir * sc(20) + strike), px(y - sc(15) + raise), sc(23), sc(8));
+  } else if (p.godId === "athena") {
+    c.fillStyle = "#d6f3ff";
+    c.fillRect(px(x + dir * sc(30) + strike), px(y - sc(18) + raise), sc(10), sc(44));
+    c.fillStyle = "#354066";
+    c.fillRect(px(x - dir * sc(45) - wide), px(y - sc(19) - raise * .2), sc(18), sc(40));
+  } else if (p.godId === "ra") {
+    c.fillStyle = "#ffea00";
+    c.fillRect(px(x + dir * sc(30) + strike), px(y - sc(22) + raise), sc(9), sc(39));
+    c.fillRect(px(x + dir * sc(22) + strike), px(y - sc(33) + raise), sc(25), sc(11));
+  } else if (p.godId === "anubis") {
+    c.fillStyle = "#80ffdb";
+    c.fillRect(px(x + dir * sc(31) + strike), px(y - sc(10) + raise), sc(25), sc(7));
+    c.fillRect(px(x + dir * sc(52) + strike), px(y - sc(20) + raise), sc(7), sc(16));
+  } else if (p.godId === "thor") {
+    c.fillStyle = "#cce3ff";
+    c.fillRect(px(x + dir * sc(33) + strike), px(y - sc(30) + raise), sc(30), sc(24));
+    c.fillStyle = "#704214";
+    c.fillRect(px(x + dir * sc(24) + strike), px(y - sc(10) + raise), sc(40), sc(8));
+  } else if (p.godId === "loki") {
     c.fillStyle = "#ecfdf5";
-    c.fillRect(px(x + dir * sc(34)), px(y + sc(3)), sc(22), sc(5));
+    c.fillRect(px(x + dir * sc(33) + strike), px(y + sc(3) + raise), sc(22), sc(5));
+    c.fillRect(px(x + dir * sc(18) + strike), px(y - sc(20) + raise), sc(18), sc(4));
   }
 }
 
