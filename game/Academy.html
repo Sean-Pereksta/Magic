@@ -1101,6 +1101,10 @@ let projectiles = [];
 let tacticalSeals = [];
 let particles = [];
 let quetzMotionFeathers = [];
+let quetzWindDashes = [];
+let quetzSkyCurrents = [];
+let quetzCoils = [];
+let quetzTempests = [];
 let telegraphs = [];
 let hadesSoulPrisons = [];
 let lightningStrikes = [];
@@ -1413,6 +1417,10 @@ function startGame() {
   projectiles = [];
   particles = [];
   quetzMotionFeathers = [];
+  quetzWindDashes = [];
+  quetzSkyCurrents = [];
+  quetzCoils = [];
+  quetzTempests = [];
   telegraphs = [];
   hadesSoulPrisons = [];
   zeusThunderCages = [];
@@ -1733,6 +1741,7 @@ function updateGame() {
   updateProjectiles();
   updateParticles();
   updateQuetzMotionFeathers();
+  updateQuetzAbilityMechanics();
   updateCamera();
 
   if (matchTime % 15 === 0) updateHud();
@@ -2074,7 +2083,14 @@ function chooseBotAttackVariant(bot, target, inputType) {
     return "neutral";
   }
 
-  if (bot.godId === "hades") {
+  if (bot.godId === "quetz") {
+    if (inputType === "special") {
+      if (recoveringFromBelowStage || bot.vy > 8) return "up";
+      if (absDx < 120) return "down";
+      if (absDx > 110 && absDx < 300) return "neutral";
+    }
+  }
+    if (bot.godId === "hades") {
     if (inputType === "special") {
       if (recoveringFromBelowStage || targetAbove) return "up";
       if (bot.grounded && absDx < 190 && Math.random() < 0.48) return "down";
@@ -2577,6 +2593,51 @@ function updateSobekGrab(p) {
 }
 
 
+function createQuetzWindDash(owner) {
+  const dir = getFacingDir(owner);
+  const dash = { owner, dir, timer: 14, hitCd: new Map() };
+  quetzWindDashes.push(dash);
+  owner.vx = dir * 20; owner.vy *= 0.4;
+  owner.attackKind = "quetz_wind_dash";
+  owner.attackFrame = Math.max(owner.attackFrame, 20);
+  owner.specialCooldown = Math.max(owner.specialCooldown, 52);
+}
+function createQuetzSkyCurrent(owner) {
+  quetzSkyCurrents.push({ owner, x: owner.x, y: owner.y + 12, radius: 62, timer: 58, hitCd: new Map() });
+  owner.vy = Math.min(owner.vy, -16); owner.grounded = false; owner.jumps = Math.max(owner.jumps, 1);
+}
+function createQuetzCoil(owner) {
+  const y = owner.grounded ? findPlatformBelowPoint(owner.x, owner.y-20, 220) - 6 : owner.y + 36;
+  quetzCoils.push({ owner, x: owner.x, y, radius: 78, timer: 90, maxTimer: 90, hitCd: new Map(), popped:false });
+  owner.specialCooldown = Math.max(owner.specialCooldown, 76);
+}
+function createQuetzTempest(owner) {
+  quetzTempests.push({ owner, x: owner.x, y: owner.y - 8, timer: 96, pullFrames: 75, finalHit: new Set(), done:false });
+  owner.attackKind = "quetz_sky_serpent_tempest"; owner.attackFrame = Math.max(owner.attackFrame, 96);
+  owner.vy = Math.min(owner.vy, -7); owner.attackCooldown = Math.max(owner.attackCooldown, 96);
+}
+function updateQuetzAbilityMechanics() {
+  const now = matchTime || 0;
+  for (let i = quetzWindDashes.length - 1; i >= 0; i--) { const d = quetzWindDashes[i]; d.timer--; if (!d.owner || d.owner.dead) { quetzWindDashes.splice(i,1); continue; }
+    players.forEach(t=>{ if(t===d.owner||t.dead||t.lives<=0||t.invincible>0) return; const dx=Math.abs(t.x-d.owner.x), dy=Math.abs(t.y-d.owner.y); if(dx<72&&dy<46){ const last=d.hitCd.get(t.id)||-999; if(now-last<12) return; d.hitCd.set(t.id,now); t.damage += 4.2; t.vx += d.dir*7.2; t.vy -= 3.1; t.hitstun=Math.max(t.hitstun||0,10);} });
+    if (d.timer<=0) quetzWindDashes.splice(i,1);
+  }
+  for (let i = quetzSkyCurrents.length - 1; i >= 0; i--) { const c = quetzSkyCurrents[i]; c.timer--; if (!c.owner||c.owner.dead) { quetzSkyCurrents.splice(i,1); continue; } c.x = c.owner.x; c.y = c.owner.y + 12;
+    players.forEach(t=>{ if(t===c.owner||t.dead||t.lives<=0||t.invincible>0) return; const dist=Math.hypot(t.x-c.x,t.y-c.y); if(dist<c.radius){ const last=c.hitCd.get(t.id)||-999; if(now-last<20) return; c.hitCd.set(t.id,now); t.damage += 2.6; t.vy -= 5.6; t.vx *=0.92; t.hitstun=Math.max(t.hitstun||0,8);} });
+    if (c.timer<=0) quetzSkyCurrents.splice(i,1);
+  }
+  for (let i = quetzCoils.length - 1; i >= 0; i--) { const c = quetzCoils[i]; c.timer--; if (!c.owner||c.owner.dead) { quetzCoils.splice(i,1); continue; }
+    players.forEach(t=>{ if(t===c.owner||t.dead||t.lives<=0||t.invincible>0) return; const dx=c.x-t.x, dy=c.y-t.y, dist=Math.hypot(dx,dy); if(dist<c.radius){ t.vx += (dx/Math.max(1,dist))*0.45; t.vx*=0.94; const last=c.hitCd.get(t.id)||-999; if(now-last>=22){ c.hitCd.set(t.id,now); t.damage += 1.2; t.hitstun=Math.max(t.hitstun||0,5);} }});
+    if(c.timer<=0 && !c.popped){ c.popped=true; players.forEach(t=>{ if(t===c.owner||t.dead||t.lives<=0||t.invincible>0) return; if(Math.hypot(t.x-c.x,t.y-c.y)<c.radius+20){ t.damage += 6; t.vy -= 10; t.hitstun=Math.max(t.hitstun||0,14);} }); }
+    if (c.timer<=-8) quetzCoils.splice(i,1);
+  }
+  for (let i = quetzTempests.length - 1; i >= 0; i--) { const t = quetzTempests[i]; t.timer--; if (!t.owner||t.owner.dead) { quetzTempests.splice(i,1); continue; } t.x=t.owner.x; t.y=t.owner.y-8;
+    players.forEach(e=>{ if(e===t.owner||e.dead||e.lives<=0||e.invincible>0) return; const dx=t.x-e.x, dy=t.y-e.y, dist=Math.hypot(dx,dy); if(t.timer>t.timer-t.pullFrames && t.timer>20 && dist<220){ const force=dist<1?0:clamp((220-dist)/220,0,1)*0.9; e.vx += (dx/dist)*force; e.vy += (dy/dist)*force*0.8; }
+      if(t.timer===20 && dist<170 && !t.finalHit.has(e.id)){ t.finalHit.add(e.id); e.damage += 17; const nx=(e.x-t.x)/Math.max(1,dist); e.vx += nx*13; e.vy -= 13; e.hitstun=Math.max(e.hitstun||0,22);} });
+    if(t.timer<=0) quetzTempests.splice(i,1);
+  }
+}
+
 function spawnHadesSoulPrison(owner) {
   const dir = getFacingDir(owner);
   const trapX = owner.x + dir * 72;
@@ -2735,6 +2796,21 @@ function useSpecial(p) {
         color: "#80ffdb"
       });
     }
+  }
+
+  else if (id === "quetz") {
+    if (p.moveVariant === "up") {
+      p.specialCooldown = Math.max(p.specialCooldown, 54);
+      createQuetzSkyCurrent(p);
+      return;
+    }
+    if (p.moveVariant === "down") {
+      createQuetzCoil(p);
+      p.attackKind = "quetz_serpent_coil"; p.attackFrame = Math.max(p.attackFrame, 30);
+      return;
+    }
+    createQuetzWindDash(p);
+    return;
   }
 
     else if (id === "hades") {
@@ -3161,6 +3237,11 @@ function useUltimate(p) {
     startAnubisCircleUltimate(p);
   }
 
+  else if (p.godId === "quetz") {
+    createQuetzTempest(p);
+    return;
+  }
+
   else if (p.godId === "hades") {
     startHadesUltimate(p);
     return;
@@ -3381,7 +3462,7 @@ function ultimateName(id) {
     loki: "TRICKSTER STORM",
     horus: "DIVINE FALCON STORM",
     sobek: "DEVOURER OF THE NILE",
-    quetz: "WORLD-WIND SERPENT",
+    quetz: "SKY SERPENT TEMPEST",
     hades: "LORD OF THE UNDERWORLD"
   }[id] || "DIVINE FURY";
 }
