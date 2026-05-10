@@ -436,6 +436,8 @@
               <option value="temple" selected>Temple of the Three Skies</option>
               <option value="nile">Nile Ruins</option>
               <option value="stormforge">Stormforge Peaks</option>
+              <option value="underworld">Underworld Crossing</option>
+              <option value="olympus">Olympus Summit</option>
             </select>
             <div id="mapDesc" class="small-note"></div>
           </div>
@@ -684,9 +686,13 @@ const GODS = {
     accent: "#ffffff",
     skin: "#f0c49b",
     hpColor: "#ffe66d",
-    speed: 5.2,
+    bodyScale: 1.10,
+    widthScale: 1.10,
+    heightScale: 1.08,
+    knockbackTaken: 0.92,
+    speed: 4.85,
     jump: 16,
-    weight: 1.0,
+    weight: 1.16,
     attackPower: 1.0,
     specialCooldown: 52,
     specialName: "Chain Bolt"
@@ -784,6 +790,10 @@ const GODS = {
     accent: "#cce3ff",
     skin: "#e0a06d",
     hpColor: "#e63946",
+    bodyScale: 1.16,
+    widthScale: 1.15,
+    heightScale: 1.12,
+    knockbackTaken: 0.84,
     speed: 4.1,
     jump: 14.3,
     weight: 1.28,
@@ -809,9 +819,13 @@ const GODS = {
     accent: "#ffd166",
     skin: "#c98f4a",
     hpColor: "#2ec4ff",
-    speed: 5.5,
+    bodyScale: 0.92,
+    widthScale: 0.90,
+    heightScale: 0.93,
+    knockbackTaken: 1.12,
+    speed: 5.95,
     jump: 17,
-    weight: .92,
+    weight: 0.84,
     attackPower: .95,
     specialCooldown: 54,
     specialName: "Falcon Dive"
@@ -834,9 +848,13 @@ const GODS = {
     accent: "#f4d35e",
     skin: "#3f7f48",
     hpColor: "#2a9d8f",
-    speed: 4.15,
+    bodyScale: 1.18,
+    widthScale: 1.18,
+    heightScale: 1.12,
+    knockbackTaken: 0.86,
+    speed: 3.95,
     jump: 13.8,
-    weight: 1.32,
+    weight: 1.42,
     attackPower: 1.18,
     specialCooldown: 68,
     specialName: "Nile Lunge"
@@ -859,9 +877,13 @@ const GODS = {
     accent: "#b66dff",
     skin: "#151515",
     hpColor: "#ffd166",
-    speed: 6.1,
+    bodyScale: 0.88,
+    widthScale: 0.86,
+    heightScale: 0.90,
+    knockbackTaken: 1.18,
+    speed: 6.55,
     jump: 16.8,
-    weight: .86,
+    weight: 0.78,
     attackPower: .9,
     specialCooldown: 46,
     specialName: "Moon Pounce"
@@ -884,13 +906,18 @@ const GODS = {
     accent: "#caffbf",
     skin: "#c8a27b",
     hpColor: "#06d6a0",
+    bodyScale: 0.94,
+    widthScale: 0.92,
+    heightScale: 0.95,
+    knockbackTaken: 1.08,
     speed: 5.8,
     jump: 16.5,
     weight: .88,
     attackPower: .88,
     specialCooldown: 48,
     specialName: "Trick Clone"
-  }
+  },
+
 };
 
 const GOD_ORDER = ["zeus", "athena", "ra", "anubis", "thor", "loki", "horus", "sobek", "bastet"];
@@ -958,6 +985,50 @@ const MAPS = {
       { x: 520, y: 610 }, { x: 1230, y: 610 }, { x: 330, y: 460 }, { x: 1420, y: 460 },
       { x: 875, y: 330 }, { x: 875, y: 610 }, { x: 610, y: 760 }, { x: 1140, y: 760 }
     ]
+  },
+  underworld: {
+    id: "underworld",
+    name: "Underworld Crossing",
+    backgroundType: "underworld",
+    worldWidth: 1900,
+    worldHeight: 1000,
+    blastPadding: 360,
+    platforms: [
+      { x: 250, y: 690, w: 430, h: 44, type: "obsidian" },
+      { x: 1220, y: 690, w: 430, h: 44, type: "obsidian" },
+      { x: 760, y: 610, w: 380, h: 36, type: "bonebridge" },
+      { x: 430, y: 500, w: 260, h: 28, type: "bone" },
+      { x: 1210, y: 500, w: 260, h: 28, type: "bone" },
+      { x: 800, y: 380, w: 300, h: 30, type: "spirit" },
+      { x: 70, y: 805, w: 260, h: 28, type: "obsidian" },
+      { x: 1570, y: 805, w: 260, h: 28, type: "obsidian" }
+    ],
+    spawnPoints: [
+      { x: 450, y: 630 }, { x: 1450, y: 630 }, { x: 560, y: 440 }, { x: 1340, y: 440 },
+      { x: 950, y: 550 }, { x: 950, y: 320 }, { x: 190, y: 755 }, { x: 1710, y: 755 }
+    ]
+  },
+  olympus: {
+    id: "olympus",
+    name: "Olympus Summit",
+    backgroundType: "olympus",
+    worldWidth: 1800,
+    worldHeight: 930,
+    blastPadding: 330,
+    platforms: [
+      { x: 340, y: 655, w: 1120, h: 48, type: "marble" },
+      { x: 190, y: 545, w: 280, h: 30, type: "cloud" },
+      { x: 1330, y: 545, w: 280, h: 30, type: "cloud" },
+      { x: 575, y: 455, w: 250, h: 28, type: "marble" },
+      { x: 975, y: 455, w: 250, h: 28, type: "marble" },
+      { x: 775, y: 335, w: 250, h: 28, type: "gold" },
+      { x: 90, y: 745, w: 250, h: 26, type: "cloud" },
+      { x: 1460, y: 745, w: 250, h: 26, type: "cloud" }
+    ],
+    spawnPoints: [
+      { x: 500, y: 595 }, { x: 1300, y: 595 }, { x: 680, y: 395 }, { x: 1120, y: 395 },
+      { x: 900, y: 275 }, { x: 900, y: 595 }, { x: 210, y: 695 }, { x: 1590, y: 695 }
+    ]
   }
 };
 
@@ -979,7 +1050,9 @@ let currentMap = MAPS.temple;
 const MAP_DESCRIPTIONS = {
   temple: "Balanced floating temple with mid platforms and cosmic sightlines.",
   nile: "Wide sandstone bridge, ruin platforms, river backdrop, and strong horizontal fights.",
-  stormforge: "Vertical mountain forge with icy ledges, metal bridges, and stormy skies."
+  stormforge: "Vertical mountain forge with icy ledges, metal bridges, and stormy skies.",
+  underworld: "Broken underworld bridges, dark gaps, spirit platforms, and dangerous center control.",
+  olympus: "Bright mountaintop arena with marble platforms, cloud recoveries, and heroic vertical fights."
 };
 let camera = { x: 0, y: 0, zoom: 1 };
 let gameState = "select";
@@ -994,6 +1067,7 @@ let hillZone = null;
 let bossWave = 1;
 let bossKills = 0;
 const DEBUG_HITBOXES = false;
+const GAME_PACE_MULT = 1.15;
 
 function buildGodGrid() {
   const grid = document.getElementById("godGrid");
@@ -1280,6 +1354,8 @@ function startGame() {
 
 function createFighter(config) {
   const god = GODS[config.godId];
+  const widthScale = god.widthScale || god.bodyScale || 1;
+  const heightScale = god.heightScale || god.bodyScale || 1;
 
   return {
     id: config.id,
@@ -1290,8 +1366,10 @@ function createFighter(config) {
     y: config.y,
     vx: 0,
     vy: 0,
-    w: 42,
-    h: 58,
+    w: Math.round(42 * widthScale),
+    h: Math.round(58 * heightScale),
+    bodyScale: god.bodyScale || 1,
+    knockbackTaken: god.knockbackTaken || 1,
     facing: Math.random() > .5 ? 1 : -1,
     grounded: false,
     jumps: 2,
@@ -1632,7 +1710,7 @@ function updateBot(p) {
   p.ai.think--;
   if (p.ai.think <= 0 || !p.ai.target || p.ai.target.dead || p.ai.target.lives <= 0) {
     p.ai.target = nearestEnemy(p);
-    p.ai.think = profile.thinkMin + Math.random() * profile.thinkRand;
+    p.ai.think = Math.max(4, Math.floor((profile.thinkMin + Math.random() * profile.thinkRand) / GAME_PACE_MULT));
   }
 
   if (!p.ai.target) return;
@@ -1925,7 +2003,7 @@ function nearestEnemy(p) {
 function applyMoveInput(p, move) {
   if (p.grabTimer > 0 && p.grabbedBy) return;
   let accel = p.grounded ? .85 : .42;
-  let max = p.god.speed;
+  let max = p.god.speed * GAME_PACE_MULT;
   if (p.godId === "anubis" && p.anubisUltActive) {
     max *= 0.7;
     accel *= 0.7;
@@ -1954,7 +2032,7 @@ function jump(p) {
   if (p.dead) return;
 
   if (p.grounded || p.jumps > 0) {
-    const jumpPow = p.jumpDebuffTimer > 0 ? p.god.jump * 0.76 : p.god.jump;
+    const jumpPow = (p.jumpDebuffTimer > 0 ? p.god.jump * 0.76 : p.god.jump) * 1.08;
     p.vy = -jumpPow;
     p.grounded = false;
     p.jumps--;
@@ -2119,7 +2197,7 @@ function getMoveProgress(p) {
     phaseT: clamp((elapsed - phaseStart) / Math.max(1, phaseLength), 0, 1)
   };
 }
-function startMove(player, moveDef){ if (!moveDef || player.attackCooldown > 0 || player.dead) return false; const total=moveDef.startup+moveDef.active+moveDef.recovery; moveDef.totalFrames=total; player.currentMove=moveDef; player.moveTimer=total; player.movePhase="startup"; player.moveVariant=moveDef.directionVariant||"neutral"; player.moveVisuals=[]; player.action=moveToAttackKind(moveDef.inputType); player.attackKind=moveDef.inputType; player.attackFrame=total; const pdBoost = player.perfectDodgeTimer > 0 ? 8 : 0; player.attackCooldown=Math.max(player.attackCooldown,Math.max(8,total-pdBoost)); if(player.perfectDodgeTimer > 0) player.perfectDodgeTimer = 0; if(moveDef.inputType==="heavy") player.vx*=.55; if(moveDef.selfImpulse){ player.vx += player.facing * (moveDef.selfImpulse.x||0); player.vy += moveDef.selfImpulse.y||0; } if(moveDef.startupArmor) player.armorTimer = Math.max(player.armorTimer, moveDef.startupArmor); if(player.godId==="thor" && moveDef.inputType==="heavy"){ player.armorTimer = Math.max(player.armorTimer, Math.min(12, Math.max(6, moveDef.startup - 1))); if(player.thorHeavyArmorTimer>0){ player.armorTimer = Math.max(player.armorTimer, 14); player.thorHeavyArmorTimer = 0; } } if(player.godId==="sobek" && player.perfectDodgeMud && (moveDef.id||"").includes("sobek_heavy")){ moveDef.knock += 1.8; player.perfectDodgeMud = 0; } return true;}
+function startMove(player, moveDef){ if (!moveDef || player.attackCooldown > 0 || player.dead) return false; const total=moveDef.startup+moveDef.active+moveDef.recovery; moveDef.totalFrames=total; player.currentMove=moveDef; player.moveTimer=total; player.movePhase="startup"; player.moveVariant=moveDef.directionVariant||"neutral"; player.moveVisuals=[]; player.action=moveToAttackKind(moveDef.inputType); player.attackKind=moveDef.inputType; player.attackFrame=total; const pdBoost = player.perfectDodgeTimer > 0 ? 8 : 0; player.attackCooldown=Math.max(player.attackCooldown,Math.max(6,Math.floor((total-pdBoost)/GAME_PACE_MULT))); if(player.perfectDodgeTimer > 0) player.perfectDodgeTimer = 0; if(moveDef.inputType==="heavy") player.vx*=.55; if(moveDef.selfImpulse){ player.vx += player.facing * (moveDef.selfImpulse.x||0); player.vy += moveDef.selfImpulse.y||0; } if(moveDef.startupArmor) player.armorTimer = Math.max(player.armorTimer, moveDef.startupArmor); if(player.godId==="thor" && moveDef.inputType==="heavy"){ player.armorTimer = Math.max(player.armorTimer, Math.min(12, Math.max(6, moveDef.startup - 1))); if(player.thorHeavyArmorTimer>0){ player.armorTimer = Math.max(player.armorTimer, 14); player.thorHeavyArmorTimer = 0; } } if(player.godId==="sobek" && player.perfectDodgeMud && (moveDef.id||"").includes("sobek_heavy")){ moveDef.knock += 1.8; player.perfectDodgeMud = 0; } return true;}
 function spawnMoveHitbox(player, moveDef){ const hb=moveDef.hitbox; const power=(player.attackPowerBonus||1); let moveAngle=moveDef.angle; if(moveDef.id==="athena_heavy_d" && player.grounded) moveAngle=-0.12; if(moveDef.id==="athena_heavy_d" && !player.grounded) moveAngle=1.2; createAttack({owner:player,x:player.x+player.facing*hb.x,y:player.y+hb.y,w:hb.w,h:hb.h,damage:moveDef.damage*player.god.attackPower*power,knock:moveDef.knock,angle:moveAngle,frames:moveDef.active,color:player.god.accent||player.god.color,label:moveDef.inputType,visualType:(moveDef.effects||{}).visualType||"slashArc",visualAngle:moveDef.angle,visualLength:Math.max(hb.w,hb.h),visualThickness:Math.max(8,Math.min(hb.h,hb.w)/3),attachToOwner:true,offsetX:hb.x,offsetY:hb.y,directionVariant:moveDef.directionVariant||"neutral",inputType:moveDef.inputType||"",label:moveDef.id||moveDef.inputType||"move"}); if(moveDef.id==="athena_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*56,y:player.y+30,w:80,h:14,damage:4*player.god.attackPower*power,knock:6.2,angle:-0.05,frames:5,color:"#eff8ff",label:"ground_line",visualType:"spearThrust"}); } if(moveDef.id==="ra_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*74,y:player.y+30,w:96,h:14,damage:2.2*player.god.attackPower*power,knock:3.8,angle:-0.03,frames:10,color:"#ff8c42",label:"burn_line",visualType:"desertBurn"}); } if(moveDef.id==="thor_heavy_d"){ createAttack({owner:player,x:player.x-player.facing*76,y:player.y+30,w:96,h:22,damage:4.5*player.god.attackPower*power,knock:8.8,angle:-0.92,frames:6,color:"#d4e8ff",label:"ground_quake",visualType:"thunderLanding"}); } player.moveVisuals.push({type:(moveDef.effects||{}).visualType||"slashArc",phase:"active",frames:moveDef.active+Math.max(3,Math.floor(moveDef.recovery*0.4)),angle:moveDef.angle,length:Math.max(hb.w,hb.h),thickness:14,recoveryFrames:Math.max(3,Math.floor(moveDef.recovery*0.45))}); if(moveDef.id && moveDef.id.startsWith("thor_heavy")){ shake = Math.max(shake, moveDef.id==="thor_heavy_d"?12:9); hitStop = Math.max(hitStop, moveDef.id==="thor_heavy_n"?4:3); } }
 function lightAttack(p) {
   if (p.godId === "anubis" && p.anubisUltActive) return;
@@ -2287,7 +2365,7 @@ function useSpecial(p) {
   if (p.godId === "anubis" && p.anubisUltActive) return;
   if (p.dodgeTimer > 0 && p.dodgePhase === "recovery" && p.perfectDodgeTimer <= 0) return;
   if (p.specialCooldown > 0 || p.dead) return;
-  p.specialCooldown = p.god.specialCooldown;
+  p.specialCooldown = Math.floor(p.god.specialCooldown / GAME_PACE_MULT);
   p.attackCooldown = Math.max(p.attackCooldown, 20);
   p.action = "special";
   p.attackKind = "special";
@@ -2304,7 +2382,7 @@ function useSpecial(p) {
 
   if (id === "zeus") {
     if (p.moveVariant === "up") {
-      p.specialCooldown = p.god.specialCooldown + 12;
+      p.specialCooldown = Math.floor(p.god.specialCooldown / GAME_PACE_MULT) + 12;
       p.vy = -16;
       p.vx *= 0.55;
       p.invincible = Math.max(p.invincible, 10);
@@ -3044,6 +3122,11 @@ function createAttack(a) {
 function spawnProjectile(p) {
   p.hit = new Set();
   p.dir = p.dir || getFacingDir(p.owner);
+  if (!p.paceAdjusted) {
+    p.vx *= GAME_PACE_MULT;
+    p.vy *= GAME_PACE_MULT;
+    p.paceAdjusted = true;
+  }
   projectiles.push(p);
 }
 
@@ -4085,9 +4168,11 @@ function applyHit(target, source, damage, knock, angle, dir, color, impact = {})
 
   const scale = 1 + target.damage / 95;
   const weight = target.god.weight;
+  const defenderKnockScale = target.knockbackTaken || target.god.knockbackTaken || 1;
+  const finalKnock = knock * defenderKnockScale;
 
-  target.vx = dir * knock * scale / weight;
-  target.vy = angle * knock * scale - 3;
+  target.vx = dir * finalKnock * scale / weight;
+  target.vy = angle * finalKnock * scale - 3;
 
   target.hitstun = Math.min(44, 12 + target.damage / 8);
   target.grounded = false;
@@ -4105,10 +4190,10 @@ function applyHit(target, source, damage, knock, angle, dir, color, impact = {})
   source.freezeFrames = Math.max(source.freezeFrames || 0, meta.hitPause);
   target.freezeFrames = Math.max(target.freezeFrames || 0, meta.hitPause);
 
-  const strength = clamp(knock / 12, 0.6, 2.2);
+  const strength = clamp(finalKnock / 12, 0.6, 2.2);
   spawnImpactSparks(impactX, impactY, meta.impactType, meta.impactColor || color, strength);
   if (meta.impactType !== "soul") spawnParticles(impactX, impactY, meta.impactColor || color, 7 + Math.floor(strength * 5), 3 + strength * 1.5);
-  shake = Math.max(shake, Math.min(16, knock / 1.5 + meta.extraShake));
+  shake = Math.max(shake, Math.min(16, finalKnock / 1.5 + meta.extraShake));
   playHitCue(meta.cue);
 
   updateHud();
@@ -4619,6 +4704,8 @@ function drawBackground() {
   const type = currentMap.backgroundType || "temple";
   if (type === "nile") drawNileBackground();
   else if (type === "stormforge") drawStormforgeBackground();
+  else if (type === "underworld") drawUnderworldBackground();
+  else if (type === "olympus") drawOlympusBackground();
   else drawTempleBackground();
 }
 
@@ -4647,6 +4734,23 @@ function drawStormforgeBackground() {
   if (Math.floor(matchTime/120)%2===0){ ctx.strokeStyle="rgba(190,220,255,.25)"; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(W*.7,0); ctx.lineTo(W*.62,H*.24); ctx.lineTo(W*.66,H*.24); ctx.stroke(); }
   for (let i=0;i<40;i++){ ctx.fillStyle="rgba(220,230,255,.3)"; ctx.fillRect((i*91+matchTime*1.2)%W,(i*47+matchTime*0.5)%H,2,2);}  
 }
+
+function drawUnderworldBackground() {
+  const sky = ctx.createLinearGradient(0,0,0,H); sky.addColorStop(0,"#09030f"); sky.addColorStop(.5,"#1a0b28"); sky.addColorStop(1,"#2b1220");
+  ctx.fillStyle=sky; ctx.fillRect(0,0,W,H);
+  const lava = ctx.createLinearGradient(0,H*0.72,0,H); lava.addColorStop(0,"rgba(255,80,30,.18)"); lava.addColorStop(1,"rgba(255,140,40,.45)");
+  ctx.fillStyle=lava; ctx.fillRect(0,H*0.72,W,H*0.28);
+  ctx.fillStyle="#130919"; for (let i=0;i<10;i++){const px=worldToScreenX(i*220);ctx.beginPath();ctx.moveTo(px,H*.8);ctx.lineTo(px+screenScale(70),H*.62);ctx.lineTo(px+screenScale(150),H*.8);ctx.fill();}
+  for(let i=0;i<24;i++){ctx.fillStyle=i%2?"rgba(147,51,234,.35)":"rgba(74,222,128,.18)";ctx.beginPath();ctx.arc((i*103+matchTime*.7)%W, H*0.2+((i*37)%Math.max(80,H*0.45)), screenScale(4+(i%3)), 0, Math.PI*2);ctx.fill();}
+}
+function drawOlympusBackground() {
+  const sky = ctx.createLinearGradient(0,0,0,H); sky.addColorStop(0,"#9fd6ff"); sky.addColorStop(.45,"#78b7ff"); sky.addColorStop(1,"#e9f6ff");
+  ctx.fillStyle=sky; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle="rgba(255,230,150,.35)"; ctx.beginPath(); ctx.arc(W*0.2,H*0.12,screenScale(110),0,Math.PI*2); ctx.fill();
+  ctx.fillStyle="rgba(255,255,255,.55)"; for (let i=0;i<6;i++) pixelCloud((i*220+matchTime*.25)%W, H*0.22 + (i%3)*screenScale(38), screenScale(.013));
+  ctx.fillStyle="rgba(245,248,255,.38)"; for(let i=0;i<7;i++){const px=worldToScreenX(130+i*240);ctx.fillRect(px,H*.5,screenScale(36),H*.5);ctx.fillStyle="rgba(227,197,88,.25)";ctx.fillRect(px,H*.5,screenScale(36),screenScale(6));ctx.fillStyle="rgba(245,248,255,.38)";}
+}
+
 function pixelCloud(x,y,s){ctx.fillRect(x,y,80*s,18*s);ctx.fillRect(x+18*s,y-14*s,50*s,18*s);ctx.fillRect(x+50*s,y-6*s,56*s,18*s);} 
 function drawTempleSilhouette(x,y,color,scale,type){ctx.fillStyle=color;const s=scale; if(type==="greek"){ctx.fillRect(x-70*s,y,140*s,20*s);for(let i=-2;i<=2;i++)ctx.fillRect(x+i*28*s-6*s,y-80*s,12*s,80*s);ctx.beginPath();ctx.moveTo(x-86*s,y-80*s);ctx.lineTo(x,y-135*s);ctx.lineTo(x+86*s,y-80*s);ctx.closePath();ctx.fill();} if(type==="egypt"){ctx.beginPath();ctx.moveTo(x-95*s,y);ctx.lineTo(x,y-160*s);ctx.lineTo(x+95*s,y);ctx.closePath();ctx.fill();ctx.fillRect(x-12*s,y-190*s,24*s,42*s);ctx.fillRect(x-34*s,y-153*s,68*s,13*s);} if(type==="norse"){ctx.fillRect(x-88*s,y-26*s,176*s,26*s);ctx.fillRect(x-70*s,y-80*s,28*s,80*s);ctx.fillRect(x+42*s,y-80*s,28*s,80*s);ctx.beginPath();ctx.moveTo(x-100*s,y-80*s);ctx.lineTo(x,y-145*s);ctx.lineTo(x+100*s,y-80*s);ctx.closePath();ctx.fill();}}
 
@@ -4692,6 +4796,12 @@ function drawPlatform(plat){
   if (plat.type === "forge") return drawForgePlatform(x,y,w,h);
   if (plat.type === "ice") return drawIcePlatform(x,y,w,h);
   if (plat.type === "metal") return drawMetalPlatform(x,y,w,h);
+  if (plat.type === "obsidian") return drawObsidianPlatform(x,y,w,h);
+  if (plat.type === "bonebridge") return drawBoneBridgePlatform(x,y,w,h);
+  if (plat.type === "bone") return drawBonePlatform(x,y,w,h);
+  if (plat.type === "spirit") return drawSpiritPlatform(x,y,w,h);
+  if (plat.type === "marble") return drawMarblePlatform(x,y,w,h);
+  if (plat.type === "gold") return drawGoldPlatform(x,y,w,h);
   return drawRockPlatform(x,y,w,h);
 }
 function drawTempleMainPlatform(x,y,w,h){ctx.fillStyle="#2b1d42";ctx.fillRect(x,y,w,h);ctx.fillStyle="#ffd166";ctx.fillRect(x,y,w,screenScale(8));}
@@ -4704,6 +4814,12 @@ function drawForgePlatform(x,y,w,h){ctx.fillStyle="#2d2f39";ctx.fillRect(x,y,w,h
 function drawIcePlatform(x,y,w,h){ctx.fillStyle="#8fb9d6";ctx.fillRect(x,y,w,h);ctx.fillStyle="#e3f4ff";ctx.fillRect(x,y,w,screenScale(7));}
 function drawMetalPlatform(x,y,w,h){ctx.fillStyle="#4e586a";ctx.fillRect(x,y,w,h);ctx.fillStyle="#9ba8c7";ctx.fillRect(x,y,w,screenScale(5));}
 function drawRockPlatform(x,y,w,h){ctx.fillStyle="#444754";ctx.fillRect(x,y,w,h);ctx.fillStyle="#747b8a";ctx.fillRect(x,y,w,screenScale(5));}
+function drawObsidianPlatform(x,y,w,h){ctx.fillStyle="#1a1022";ctx.fillRect(x,y,w,h);ctx.fillStyle="#7f1d1d";for(let i=0;i<w;i+=screenScale(30))ctx.fillRect(x+i,y+screenScale(12),screenScale(8),screenScale(3));ctx.fillStyle="#5b2a86";ctx.fillRect(x,y,w,screenScale(5));}
+function drawBoneBridgePlatform(x,y,w,h){ctx.fillStyle="#cfc3ad";ctx.fillRect(x,y,w,h);ctx.fillStyle="#9b8f7b";for(let i=screenScale(14);i<w;i+=screenScale(46))ctx.fillRect(x+i,y,screenScale(6),h);}
+function drawBonePlatform(x,y,w,h){ctx.fillStyle="#e8ddc8";ctx.fillRect(x,y,w,h);ctx.fillStyle="#8d8170";ctx.fillRect(x,y,w,screenScale(4));ctx.fillRect(x+screenScale(18),y+screenScale(10),screenScale(8),screenScale(8));}
+function drawSpiritPlatform(x,y,w,h){ctx.globalAlpha=.55;ctx.fillStyle="#7c3aed";ctx.fillRect(x,y,w,h);ctx.globalAlpha=1;ctx.fillStyle="#93c5fd";ctx.fillRect(x,y,w,screenScale(4));}
+function drawMarblePlatform(x,y,w,h){ctx.fillStyle="#dfe5ef";ctx.fillRect(x,y,w,h);ctx.fillStyle="#f8fafc";ctx.fillRect(x,y,w,screenScale(6));ctx.fillStyle="#d4af37";ctx.fillRect(x,y+h-screenScale(3),w,screenScale(3));}
+function drawGoldPlatform(x,y,w,h){ctx.fillStyle="#b8860b";ctx.fillRect(x,y,w,h);ctx.fillStyle="#ffd166";ctx.fillRect(x,y,w,screenScale(6));}
 
 
 function drawFighter(p) {
@@ -4712,6 +4828,7 @@ function drawFighter(p) {
   const x = worldToScreenX(p.x);
   const y = worldToScreenY(p.y);
   const s = camera.zoom;
+  const bodyScale = p.bodyScale || 1;
 
   const blink = p.invincible > 0 && Math.floor(p.invincible / 5) % 2 === 0;
   if (blink) ctx.globalAlpha = .45;
@@ -4721,7 +4838,7 @@ function drawFighter(p) {
     p.redFlashTimer--;
   }
 
-  drawPixelGod(ctx, p, x, y, s);
+  drawPixelGod(ctx, p, x, y, s * bodyScale);
   drawActiveMoveVisual(ctx, p);
   if (p.dodgeTimer > 0) {
     ctx.globalAlpha = 0.28;
