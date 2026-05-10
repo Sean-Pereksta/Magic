@@ -971,7 +971,13 @@ function createFighter(config) {
     dodgeCancelable: false,
     horusGlideTimer: 0,
     thorHeavyArmorTimer: 0,
+    armorTimer: 0,
     lokiDodgeCloneTimer: 0,
+    confusedTimer: 0,
+    grabbedBy: null,
+    grabTimer: 0,
+    throwDir: 1,
+    grabImmunityTimer: 0,
     attackFrame: 0,
     attackKind: "",
     currentMove: null,
@@ -1151,6 +1157,10 @@ function updateBot(p) {
     p.ai.target = nearestEnemy(p);
     p.ai.think = 25 + Math.random() * 30;
   }
+  if (p.confusedTimer > 0 && Math.random() < 0.35) {
+    const fake = projectiles.find(pr => pr.type === "clone" && pr.owner && pr.owner.godId === "loki" && !pr.owner.dead);
+    if (fake) p.ai.target = { x: fake.x, y: fake.y, grounded: false, dead: false };
+  }
 
   const target = p.ai.target;
   const dx = target.x - p.x;
@@ -1317,12 +1327,14 @@ function nearestEnemy(p) {
 }
 
 function applyMoveInput(p, move) {
+  if (p.grabTimer > 0 && p.grabbedBy) return;
   const accel = p.grounded ? .85 : .42;
   const max = p.god.speed;
   const mudSlow = p.mudSlowTimer > 0 ? .62 : 1;
+  const confusionDir = p.confusedTimer > 0 ? -1 : 1;
 
   if (move !== 0) {
-    p.vx += move * accel * mudSlow;
+    p.vx += move * confusionDir * accel * mudSlow;
     p.facing = move;
     p.action = p.grounded ? "run" : "air";
   } else if (p.grounded) {
@@ -1331,14 +1343,16 @@ function applyMoveInput(p, move) {
     p.action = "idle";
   }
 
-  p.vx = clamp(p.vx, -max * mudSlow, max * mudSlow);
+  if (p.godId === "horus" && !p.grounded) p.vx = clamp(p.vx, -max * 1.18 * mudSlow, max * 1.18 * mudSlow);
+  else p.vx = clamp(p.vx, -max * mudSlow, max * mudSlow);
 }
 
 function jump(p) {
   if (p.dead) return;
 
   if (p.grounded || p.jumps > 0) {
-    p.vy = -p.god.jump;
+    const jumpPow = p.jumpDebuffTimer > 0 ? p.god.jump * 0.76 : p.god.jump;
+    p.vy = -jumpPow;
     p.grounded = false;
     p.jumps--;
     p.action = "jump";
@@ -1492,7 +1506,7 @@ function getMoveProgress(p) {
     phaseT: clamp((elapsed - phaseStart) / Math.max(1, phaseLength), 0, 1)
   };
 }
-function startMove(player, moveDef){ if (!moveDef || player.attackCooldown > 0 || player.dead) return false; const total=moveDef.startup+moveDef.active+moveDef.recovery; moveDef.totalFrames=total; player.currentMove=moveDef; player.moveTimer=total; player.movePhase="startup"; player.moveVariant=moveDef.directionVariant||"neutral"; player.moveVisuals=[]; player.action=moveToAttackKind(moveDef.inputType); player.attackKind=moveDef.inputType; player.attackFrame=total; const pdBoost = player.perfectDodgeTimer > 0 ? 8 : 0; player.attackCooldown=Math.max(player.attackCooldown,Math.max(8,total-pdBoost)); if(player.perfectDodgeTimer > 0) player.perfectDodgeTimer = 0; if(moveDef.inputType==="heavy") player.vx*=.55; if(moveDef.selfImpulse){ player.vx += player.facing * (moveDef.selfImpulse.x||0); player.vy += moveDef.selfImpulse.y||0; } if(moveDef.startupArmor) player.invincible = Math.max(player.invincible, moveDef.startupArmor); if(player.godId==="thor" && moveDef.inputType==="heavy" && player.thorHeavyArmorTimer>0){ player.invincible = Math.max(player.invincible, 10); player.thorHeavyArmorTimer = 0; } if(player.godId==="sobek" && player.perfectDodgeMud && (moveDef.id||"").includes("sobek_heavy")){ moveDef.knock += 1.8; player.perfectDodgeMud = 0; } return true;}
+function startMove(player, moveDef){ if (!moveDef || player.attackCooldown > 0 || player.dead) return false; const total=moveDef.startup+moveDef.active+moveDef.recovery; moveDef.totalFrames=total; player.currentMove=moveDef; player.moveTimer=total; player.movePhase="startup"; player.moveVariant=moveDef.directionVariant||"neutral"; player.moveVisuals=[]; player.action=moveToAttackKind(moveDef.inputType); player.attackKind=moveDef.inputType; player.attackFrame=total; const pdBoost = player.perfectDodgeTimer > 0 ? 8 : 0; player.attackCooldown=Math.max(player.attackCooldown,Math.max(8,total-pdBoost)); if(player.perfectDodgeTimer > 0) player.perfectDodgeTimer = 0; if(moveDef.inputType==="heavy") player.vx*=.55; if(moveDef.selfImpulse){ player.vx += player.facing * (moveDef.selfImpulse.x||0); player.vy += moveDef.selfImpulse.y||0; } if(moveDef.startupArmor) player.invincible = Math.max(player.invincible, moveDef.startupArmor); if(player.godId==="thor" && moveDef.inputType==="heavy"){ player.armorTimer = Math.max(player.armorTimer, Math.min(12, Math.max(6, moveDef.startup - 1))); if(player.thorHeavyArmorTimer>0){ player.armorTimer = Math.max(player.armorTimer, 14); player.thorHeavyArmorTimer = 0; } } if(player.godId==="sobek" && player.perfectDodgeMud && (moveDef.id||"").includes("sobek_heavy")){ moveDef.knock += 1.8; player.perfectDodgeMud = 0; } return true;}
 function spawnMoveHitbox(player, moveDef){ const hb=moveDef.hitbox; let moveAngle=moveDef.angle; if(moveDef.id==="athena_heavy_d" && player.grounded) moveAngle=-0.12; if(moveDef.id==="athena_heavy_d" && !player.grounded) moveAngle=1.2; createAttack({owner:player,x:player.x+player.facing*hb.x,y:player.y+hb.y,w:hb.w,h:hb.h,damage:moveDef.damage*player.god.attackPower,knock:moveDef.knock,angle:moveAngle,frames:moveDef.active,color:player.god.accent||player.god.color,label:moveDef.inputType,visualType:(moveDef.effects||{}).visualType||"slashArc",visualAngle:moveDef.angle,visualLength:Math.max(hb.w,hb.h),visualThickness:Math.max(8,Math.min(hb.h,hb.w)/3),attachToOwner:true,offsetX:hb.x,offsetY:hb.y}); if(moveDef.id==="athena_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*56,y:player.y+30,w:80,h:14,damage:4*player.god.attackPower,knock:6.2,angle:-0.05,frames:5,color:"#eff8ff",label:"ground_line",visualType:"spearThrust"}); } if(moveDef.id==="ra_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*74,y:player.y+30,w:96,h:14,damage:2.2*player.god.attackPower,knock:3.8,angle:-0.03,frames:10,color:"#ff8c42",label:"burn_line",visualType:"desertBurn"}); } if(moveDef.id==="thor_heavy_d"){ createAttack({owner:player,x:player.x-player.facing*76,y:player.y+30,w:96,h:22,damage:4.5*player.god.attackPower,knock:8.8,angle:-0.92,frames:6,color:"#d4e8ff",label:"ground_quake",visualType:"thunderLanding"}); } player.moveVisuals.push({type:(moveDef.effects||{}).visualType||"slashArc",phase:"active",frames:moveDef.active+Math.max(3,Math.floor(moveDef.recovery*0.4)),angle:moveDef.angle,length:Math.max(hb.w,hb.h),thickness:14,recoveryFrames:Math.max(3,Math.floor(moveDef.recovery*0.45))}); if(moveDef.id && moveDef.id.startsWith("thor_heavy")){ shake = Math.max(shake, moveDef.id==="thor_heavy_d"?12:9); hitStop = Math.max(hitStop, moveDef.id==="thor_heavy_n"?4:3); } }
 function lightAttack(p) {
   if (p.dodgeTimer > 0 && p.dodgePhase === "recovery" && p.perfectDodgeTimer <= 0) return;
@@ -1644,18 +1658,19 @@ function useSpecial(p) {
       }
       const slamY = airSlam ? p.y + 74 : p.y + 30;
       createAttack({owner:p,x:p.x-72,y:slamY,w:144,h:34,damage:airSlam?16:14,knock:airSlam?16.2:14.3,angle:-0.85,frames:10,color:"#d8ecff",label:"thunder_landing",visualType:"thunderLanding"});
+      if (slamY >= p.y + 26 || p.grounded || p.y > 520) createAttack({owner:p,x:p.x,y:slamY+8,w:180,h:20,damage:4.5,knock:7.2,angle:-0.1,frames:7,color:"#d4e8ff",label:"ground_shockwave",visualType:"thunderLanding"});
       p.moveVisuals.push({type:"thunderLanding",frames:15,length:94,thickness:18});
       spawnParticles(p.x - 30, slamY + 2, "#c5ddff", 16, 6);
       spawnParticles(p.x + 30, slamY + 2, "#c5ddff", 16, 6);
       shake = Math.max(shake, airSlam ? 11 : 8);
     } else {
-      spawnProjectile({owner:p,type:"hammer",x:p.x + p.facing * 30,y:p.y - 8,vx:p.facing * 11.5,vy:-2,w:42,h:28,life:74,damage:13,knock:14,gravity:.2,color:"#cce3ff",boomerang:true,spin:0});
+      spawnProjectile({owner:p,type:"hammer",x:p.x + p.facing * 30,y:p.y - 8,vx:p.facing * 11.5,vy:-2,w:42,h:28,life:74,damage:13,knock:14,gravity:.2,color:"#cce3ff",boomerang:true,spin:0,phase:"out",returnHits:new Set()});
     }
   }
 
   else if (id === "horus") {
     if (p.moveVariant === "up") {
-      p.vy = -18; p.vx *= .58; p.invincible = Math.max(p.invincible, 8);
+      p.vy = -18; p.vx *= .58; p.invincible = Math.max(p.invincible, 8); p.horusGlideTimer = Math.max(p.horusGlideTimer, 75);
       createAttack({owner:p,x:p.x + p.facing * 12,y:p.y-42,w:84,h:106,damage:8,knock:8.8,angle:-1.1,frames:10,color:"#2ec4ff",label:"ascending_wings",visualType:"wingSlash"});
       p.moveVisuals.push({type:"wingSlash",frames:13,length:86,thickness:16});
     } else if (p.moveVariant === "down") {
@@ -1682,10 +1697,11 @@ function useSpecial(p) {
     } else if (p.moveVariant === "down") {
       const trapX = p.x + dir * 46;
       const trapY = p.grounded ? p.y + 34 : p.y + 72;
-      spawnProjectile({owner:p,type:"mirrorTrap",x:trapX,y:trapY,vx:0,vy:0,w:42,h:18,life:180,damage:9,knock:8,color:"#34d399",fakeGod:p.god,armed:true});
+      spawnProjectile({owner:p,type:"mirrorTrap",x:trapX,y:trapY,vx:0,vy:0,w:42,h:18,life:180,damage:7,knock:7.2,color:"#34d399",fakeGod:p.god,armed:true,confuse:90});
       p.moveVisuals.push({type:"sunBrandMark",frames:20,length:40,thickness:9});
     } else {
-      spawnProjectile({owner:p,dir,type:"clone",x:p.x + dir * 12,y:p.y,vx:dir * 8.2,vy:0,w:36,h:54,life:90,damage:6,knock:5.8,color:"#06d6a0",fakeGod:p.god,flicker:true,seek:true});
+      spawnProjectile({owner:p,dir,type:"clone",x:p.x + dir * 12,y:p.y,vx:dir * 8.2,vy:0,w:36,h:54,life:90,damage:4,knock:4.8,color:"#06d6a0",fakeGod:p.god,flicker:true,seek:true,realClone:true});
+      spawnProjectile({owner:p,dir,type:"clone",x:p.x + dir * 10,y:p.y+6,vx:dir * 7.7,vy:-.3,w:36,h:54,life:65,damage:0,knock:0,color:"#9debcf",fakeGod:p.god,flicker:true,seek:false,ghost:true});
       p.vx -= dir * 4;
       spawnParticles(p.x, p.y, "#caffbf", 18, 5);
     }
@@ -1946,13 +1962,32 @@ function updateFighter(p) {
   if (p.perfectDodgeTimer > 0) p.perfectDodgeTimer--;
   if (p.thorHeavyArmorTimer > 0) p.thorHeavyArmorTimer--;
   if (p.horusGlideTimer > 0) p.horusGlideTimer--;
+  if (p.armorTimer > 0) p.armorTimer--;
+  if (p.confusedTimer > 0) p.confusedTimer--;
+  if (p.grabImmunityTimer > 0) p.grabImmunityTimer--;
+  if (p.grabTimer > 0 && p.grabbedBy && !p.grabbedBy.dead) {
+    p.grabTimer--;
+    p.x = p.grabbedBy.x + p.grabbedBy.facing * 26;
+    p.y = p.grabbedBy.y - 4;
+    p.vx = 0; p.vy = 0;
+    if (p.grabTimer <= 0) {
+      p.grabImmunityTimer = 36;
+      p.grabbedBy = null;
+      const tDir = p.throwDir || 1;
+      p.vx = tDir * 10.5 / p.god.weight;
+      p.vy = -6.2;
+      p.hitstun = Math.max(p.hitstun, 14);
+    }
+  }
   if (p.lokiDodgeCloneTimer > 0) {
     p.lokiDodgeCloneTimer--;
     if (p.lokiDodgeCloneTimer % 6 === 0) spawnProjectile({owner:p,type:"clone",x:p.x-p.dodgeDir*22,y:p.y,vx:0,vy:0,w:34,h:52,life:6,damage:0,knock:0,color:"#a8f5c8",fakeGod:p.god,alpha:.35,flicker:true,ghost:true});
   }
   if (p.mudSlowTimer > 0) p.mudSlowTimer--;
+  if (p.jumpDebuffTimer > 0) p.jumpDebuffTimer--;
 
-  p.vy += 0.78;
+  p.vy += (p.godId === "horus" && p.horusGlideTimer > 0 && !p.grounded ? 0.28 : 0.78);
+  if (p.godId === "horus" && p.horusGlideTimer > 0 && !p.grounded) p.vx *= 0.996;
 
   if (p.dodgeTimer > 0) {
     if (p.dodgeTimer > 26) p.dodgePhase = "startup";
@@ -2102,6 +2137,11 @@ function updateAttacks() {
         if (a.owner.godId === "zeus" && ["lightningJab","uppercutSpark","staticSweep","boltSpear","stormPillar","thunderStomp"].includes(a.visualType)) p.conductiveTimer = Math.max(p.conductiveTimer || 0, 180);
         if (a.owner.godId === "ra" && ["desertBurn","sunBrandBurst"].includes(a.visualType)) p.scorchTimer = Math.max(p.scorchTimer || 0, 150);
         if (a.owner.godId === "anubis" && a.visualType === "graveSweep") p.vx -= a.owner.facing * 2.2;
+        if (a.owner.godId === "sobek" && ["jawSnap","nileLunge"].includes(a.visualType) && p.grabImmunityTimer <= 0 && !p.grabbedBy && Math.abs(p.x - a.owner.x) < 60) {
+          p.grabbedBy = a.owner;
+          p.grabTimer = 20;
+          p.throwDir = a.owner.facing;
+        }
         if (a.owner.godId === "anubis" && a.visualType === "soulMarkBurst") {
           p.soulMarkTimer = 330;
           p.soulMarkSource = a.owner.id;
@@ -2129,6 +2169,7 @@ function updateProjectiles() {
     if (pr.type === "hammer") {
       pr.spin = (pr.spin || 0) + 0.34 * (Math.sign(pr.vx) || 1);
       if (pr.boomerang && pr.life < 34 && pr.owner && !pr.owner.dead) {
+        pr.phase = "return";
         const tx = pr.owner.x - pr.x;
         const ty = (pr.owner.y - 12) - pr.y;
         const d = Math.max(1, Math.hypot(tx, ty));
@@ -2170,6 +2211,7 @@ function updateProjectiles() {
         if (Math.abs(p.x - pr.x) < 36 && Math.abs(p.y - pr.y) < 42) {
           const dir = Math.sign(p.x - pr.x) || (pr.owner ? pr.owner.facing : 1);
           applyHit(p, pr.owner, pr.damage, pr.knock, -0.2, dir, pr.color, {x: pr.x, y: pr.y, impactType: "trick"});
+          p.confusedTimer = Math.max(p.confusedTimer || 0, pr.confuse || 80);
           createAttack({owner:pr.owner,x:pr.x + dir * 4,y:pr.y - 14,w:84,h:50,damage:2.5,knock:4.5,angle:-0.3,frames:5,color:"#a7f3d0",label:"mirror_trap_slash",visualType:"daggerFlurry"});
           spawnParticles(pr.x, pr.y - 8, "#bbf7d0", 20, 5);
           triggered = true;
@@ -2186,7 +2228,8 @@ function updateProjectiles() {
           if (!pr.hit.has(tick)) {
             pr.hit.add(tick);
             applyHit(t, pr.owner, pr.damage, pr.knock, -0.02, Math.sign(t.x - pr.x) || 1, pr.color, {x:pr.x,y:pr.y,impactType:"heavyImpact"});
-            t.mudSlowTimer = Math.max(t.mudSlowTimer || 0, 45);
+            t.mudSlowTimer = Math.max(t.mudSlowTimer || 0, 75);
+            t.jumpDebuffTimer = Math.max(t.jumpDebuffTimer || 0, 75);
             spawnParticles(t.x, t.y + 18, "#6b5a3a", 8, 2.8);
           }
           triggered = true;
@@ -2211,7 +2254,10 @@ function updateProjectiles() {
         }
       }
       players.forEach(p => {
-        if (p === pr.owner || p.dead || pr.hit.has(p.id)) return;
+        if (p === pr.owner || p.dead) return;
+        if (pr.type === "hammer" && pr.phase === "return") {
+          if (pr.returnHits && pr.returnHits.has(p.id)) return;
+        } else if (pr.hit.has(p.id)) return;
         const overlaps =
           pr.x - pr.w/2 < p.x + p.w/2 &&
           pr.x + pr.w/2 > p.x - p.w/2 &&
@@ -2222,6 +2268,7 @@ function updateProjectiles() {
 
         if (overlaps) {
           pr.hit.add(p.id);
+          if (pr.type === "hammer" && pr.phase === "return") { if (!pr.returnHits) pr.returnHits = new Set(); pr.returnHits.add(p.id); }
           const dir = pr.dir || getFacingDir(pr.owner);
           applyHit(p, pr.owner, pr.damage, pr.knock, pr.type === "hook" ? -0.18 : -.3, dir, pr.color, {x: pr.x, y: pr.y, impactType: pr.type === "bolt" ? "lightning" : pr.type === "sun" ? "solar" : undefined});
           if (pr.type === "bolt") p.conductiveTimer = Math.max(p.conductiveTimer || 0, 180);
@@ -2341,6 +2388,12 @@ function applyHit(target, source, damage, knock, angle, dir, color, impact = {})
     return;
   }
   target.damage += damage;
+  if (target.armorTimer > 0 && knock < 10.5) {
+    target.vx *= 0.45;
+    target.vy = Math.min(target.vy, -1.8);
+    target.hitstun = Math.min(target.hitstun, 6);
+    return;
+  }
 
   const scale = 1 + target.damage / 95;
   const weight = target.god.weight;
