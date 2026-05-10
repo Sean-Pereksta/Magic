@@ -1884,24 +1884,55 @@ function useUltimate(p) {
   const dir = getFacingDir(p);
 
   if (p.godId === "zeus") {
-    for (let i = 0; i < 7; i++) {
+    ultFlash = 16;
+    ultFlashColor = "#ffe66d";
+
+    spawnParticles(p.x, p.y - 40, "#ffe66d", 42, 8);
+    spawnParticles(p.x, p.y - 40, "#ffffff", 24, 6);
+
+    const strikeCount = 7;
+    const strikeDelay = 420;
+    const worldW = currentMap.worldWidth || 1320;
+
+    for (let i = 0; i < strikeCount; i++) {
+      const strikeX = 240 + Math.random() * Math.max(600, worldW - 480);
+      const strikeY = 360 + Math.random() * 190;
+
       setTimeout(() => {
-        const x = 250 + Math.random() * 850;
+        addTelegraph({
+          type: "circle",
+          owner: p,
+          x: strikeX,
+          y: strikeY + 130,
+          w: 120,
+          h: 78,
+          color: "#ffe66d",
+          label: "STRIKE",
+          icon: "⚡",
+          life: 28
+        });
+      }, i * 90);
+
+      setTimeout(() => {
         createAttack({
           owner: p,
-          x,
-          y: 360 + Math.random() * 130,
-          w: 70,
-          h: 280,
+          x: strikeX,
+          y: strikeY,
+          w: 76,
+          h: 310,
           damage: 16,
           knock: 18,
           angle: -1.2,
           frames: 12,
           color: "#ffe66d",
-          label: "ult"
+          label: "zeus_ult_strike",
+          visualType: "stormPillar"
         });
-        spawnParticles(x, 260, "#ffe66d", 22, 8);
-      }, i * 90);
+
+        spawnParticles(strikeX, strikeY - 110, "#ffe66d", 28, 8);
+        spawnParticles(strikeX, strikeY - 40, "#ffffff", 18, 6);
+        shake = Math.max(shake, 12);
+      }, strikeDelay + i * 90);
     }
   }
 
@@ -2497,6 +2528,41 @@ function updateAttacks() {
           y: impactY,
           impactType: (a.visualType || "").includes("dagger") ? "lightSlash" : (a.visualType || "").includes("shield") || (a.visualType || "").includes("aegis") ? "shield" : undefined
         });
+        if (a.label === "zeus_ult_strike") {
+          let chained = false;
+
+          players.forEach(other => {
+            if (chained) return;
+            if (other === a.owner || other === p || other.dead || other.invincible > 0) return;
+
+            const d = Math.hypot(other.x - p.x, other.y - p.y);
+            if (d < 180) {
+              chained = true;
+              const cdir = Math.sign(other.x - p.x) || getFacingDir(a.owner);
+
+              applyHit(
+                other,
+                a.owner,
+                7,
+                9,
+                -0.75,
+                cdir,
+                "#fff7bf",
+                {
+                  x: (other.x + p.x) / 2,
+                  y: (other.y + p.y) / 2,
+                  impactType: "lightning",
+                  impactColor: "#fff7bf",
+                  hitPause: 5,
+                  extraShake: 3,
+                  cueType: "lightning"
+                }
+              );
+
+              spawnParticles((other.x + p.x) / 2, (other.y + p.y) / 2, "#fff7bf", 18, 5);
+            }
+          });
+        }
         if (a.owner.godId === "zeus" && ["lightningJab","uppercutSpark","staticSweep","boltSpear","stormPillar","thunderStomp"].includes(a.visualType)) p.conductiveTimer = Math.max(p.conductiveTimer || 0, 180);
         if (a.owner.godId === "ra" && ["desertBurn","sunBrandBurst"].includes(a.visualType)) p.scorchTimer = Math.max(p.scorchTimer || 0, 150);
         if (a.owner.godId === "anubis" && a.visualType === "graveSweep") p.vx -= a.owner.facing * 2.2;
