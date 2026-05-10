@@ -237,11 +237,52 @@
     background: #168b6d;
   }
 
+  #controlsBtn {
+    margin-top: 8px;
+    font-size: 13px;
+  }
+
   .controls {
     margin-top: 10px;
     font-size: 12px;
     color: #d4ddff;
     line-height: 1.35;
+  }
+
+  .controls-panel {
+    width: min(780px, 94vw);
+    min-height: 420px;
+  }
+
+  .control-bind-list {
+    margin-top: 16px;
+    display: grid;
+    gap: 8px;
+  }
+
+  .bind-row {
+    display: grid;
+    grid-template-columns: minmax(200px, 1.2fr) 1fr 1fr;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .bind-label {
+    color: #d4ddff;
+    font-size: 13px;
+    font-weight: bold;
+  }
+
+  .bind-button {
+    padding: 7px;
+    font-size: 13px;
+    border-width: 2px;
+  }
+
+  .bind-button.listening {
+    border-color: #ffd166;
+    background: #36468f;
+    color: #ffd166;
   }
 
   .hud {
@@ -398,20 +439,9 @@
           </div>
 
           <button id="startBtn">START BRAWL</button>
+          <button id="controlsBtn" type="button">CONTROLLER / CONTROL SETTINGS</button>
 
-          <div class="controls">
-            <b>Controls</b><br>
-            Move: A / D<br>
-            Jump: W<br>
-            Drop: S<br>
-            Dodge: Shift<br>
-            Light Attack: J<br>
-            Heavy Attack: K<br>
-            Special: L<br>
-            Ultimate: I<br><br>
-            First build mode: <b>Pantheon Brawl</b><br>
-            Everyone has <b>3 lives</b>.
-          </div>
+          <div class="controls" id="controlsSummary"></div>
         </div>
       </div>
     </div>
@@ -426,6 +456,22 @@
       <div class="winner" id="winnerText">ZEUS WINS</div>
       <button id="returnBtn">RETURN TO CHARACTER SELECT</button>
       <p class="small-note">The framework is ready for more maps, gods, items, teams, and boss modes.</p>
+    </div>
+  </div>
+
+  <div id="controlsScreen" class="screen">
+    <div class="panel controls-panel">
+      <h1 class="title">CONTROL SETTINGS</h1>
+      <div class="subtitle">Rebind keyboard controls or use a connected controller.</div>
+      <div id="gamepadStatus" class="small-note">Controller: Not detected</div>
+      <div class="control-bind-list" id="controlBindList"></div>
+      <div class="setting-row">
+        <button id="resetControlsBtn" type="button">RESET TO DEFAULT CONTROLS</button>
+      </div>
+      <div class="setting-row">
+        <button id="closeControlsBtn" type="button">BACK</button>
+      </div>
+      <p class="small-note">Click a control, then press a keyboard key or controller button/stick direction.</p>
     </div>
   </div>
 </div>
@@ -462,19 +508,137 @@ window.addEventListener("resize", () => {
 
 const selectScreen = document.getElementById("selectScreen");
 const gameOverScreen = document.getElementById("gameOverScreen");
+const controlsScreen = document.getElementById("controlsScreen");
 const gameHud = document.getElementById("gameHud");
 const messageEl = document.getElementById("message");
 
 const keys = {};
+const CONTROL_ACTIONS = [
+  { id: "left", label: "Move Left" },
+  { id: "right", label: "Move Right" },
+  { id: "up", label: "Jump / Up Variant" },
+  { id: "down", label: "Drop / Down Variant" },
+  { id: "dodge", label: "Dodge" },
+  { id: "light", label: "Light Attack" },
+  { id: "heavy", label: "Heavy Attack" },
+  { id: "special", label: "Special" },
+  { id: "ultimate", label: "Ultimate" }
+];
+const DEFAULT_KEYBOARD_BINDINGS = { left: "a", right: "d", up: "w", down: "s", dodge: "shift", light: "j", heavy: "k", special: "l", ultimate: "i" };
+const DEFAULT_GAMEPAD_BINDINGS = {
+  left: { type: "axis", axis: 0, dir: -1 }, right: { type: "axis", axis: 0, dir: 1 }, up: { type: "button", button: 0 },
+  down: { type: "axis", axis: 1, dir: 1 }, dodge: { type: "button", button: 4 }, light: { type: "button", button: 2 },
+  heavy: { type: "button", button: 3 }, special: { type: "button", button: 1 }, ultimate: { type: "button", button: 5 }
+};
+let controlBindings = { keyboard: { ...DEFAULT_KEYBOARD_BINDINGS }, gamepad: JSON.parse(JSON.stringify(DEFAULT_GAMEPAD_BINDINGS)) };
+const CONTROL_SAVE_KEY = "pantheonBrawlControlsV1";
+let listeningForBinding = null;
+let activeGamepadIndex = null;
+let gamepadButtonsPrev = {};
+const GAMEPAD_AXIS_THRESHOLD = 0.45;
+
+function deepCopyGamepadDefaults() { return JSON.parse(JSON.stringify(DEFAULT_GAMEPAD_BINDINGS)); }
+function saveControlBindings() { localStorage.setItem(CONTROL_SAVE_KEY, JSON.stringify(controlBindings)); }
+function loadControlBindings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CONTROL_SAVE_KEY) || "null");
+    if (saved && saved.keyboard && saved.gamepad) {
+      controlBindings.keyboard = { ...DEFAULT_KEYBOARD_BINDINGS, ...saved.keyboard };
+      controlBindings.gamepad = { ...deepCopyGamepadDefaults(), ...saved.gamepad };
+    }
+  } catch (err) {
+    controlBindings = { keyboard: { ...DEFAULT_KEYBOARD_BINDINGS }, gamepad: deepCopyGamepadDefaults() };
+  }
+}
+function resetControlBindings() {
+  controlBindings = { keyboard: { ...DEFAULT_KEYBOARD_BINDINGS }, gamepad: deepCopyGamepadDefaults() };
+  saveControlBindings();
+  updateControlsText();
+}
+function getActiveGamepad() {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  if (activeGamepadIndex !== null && pads[activeGamepadIndex]) return pads[activeGamepadIndex];
+  for (const pad of pads) if (pad) { activeGamepadIndex = pad.index; return pad; }
+  return null;
+}
+function isGamepadActionDown(action) {
+  const pad = getActiveGamepad();
+  if (!pad) return false;
+  const bind = controlBindings.gamepad[action];
+  if (!bind) return false;
+  if (bind.type === "button") return !!pad.buttons[bind.button]?.pressed;
+  if (bind.type === "axis") { const value = pad.axes[bind.axis] || 0; return bind.dir < 0 ? value < -GAMEPAD_AXIS_THRESHOLD : value > GAMEPAD_AXIS_THRESHOLD; }
+  return false;
+}
+function isActionDown(action) {
+  const key = controlBindings.keyboard[action];
+  if (key && keys[key]) return true;
+  return isGamepadActionDown(action);
+}
+function wasActionPressed(action, playerId = "p1") {
+  const lockKey = playerId + "_action_" + action;
+  const down = isActionDown(action);
+  if (down && !pressLocks[lockKey]) { pressLocks[lockKey] = true; return true; }
+  if (!down) pressLocks[lockKey] = false;
+  return false;
+}
+function gamepadBindingToText(bind) { if (!bind) return "Unbound"; if (bind.type === "button") return "Button " + bind.button; if (bind.type === "axis") return "Axis " + bind.axis + (bind.dir < 0 ? " -" : " +"); return "Unbound"; }
+function formatKeyName(key) { if (!key) return "Unbound"; if (key === " ") return "Space"; if (key === "shift") return "Shift"; return key.length === 1 ? key.toUpperCase() : key; }
+function updateControlsText() {
+  const el = document.getElementById("controlsSummary");
+  if (!el) return;
+  el.innerHTML = `<b>Controls</b><br>Move: ${formatKeyName(controlBindings.keyboard.left)} / ${formatKeyName(controlBindings.keyboard.right)}<br>Jump: ${formatKeyName(controlBindings.keyboard.up)}<br>Drop: ${formatKeyName(controlBindings.keyboard.down)}<br>Dodge: ${formatKeyName(controlBindings.keyboard.dodge)}<br>Light Attack: ${formatKeyName(controlBindings.keyboard.light)}<br>Heavy Attack: ${formatKeyName(controlBindings.keyboard.heavy)}<br>Special: ${formatKeyName(controlBindings.keyboard.special)}<br>Ultimate: ${formatKeyName(controlBindings.keyboard.ultimate)}<br><br>Controller: Auto-detected if plugged in<br><br>First build mode: <b>Pantheon Brawl</b><br>Everyone has <b>3 lives</b>.`;
+}
+function updateGamepadStatus() {
+  const el = document.getElementById("gamepadStatus");
+  if (!el) return;
+  const pad = getActiveGamepad();
+  el.textContent = pad ? "Controller: " + pad.id : "Controller: Not detected";
+}
+function assignKeyboardBinding(action, key) { Object.keys(controlBindings.keyboard).forEach(a => { if (a !== action && controlBindings.keyboard[a] === key) controlBindings.keyboard[a] = ""; }); controlBindings.keyboard[action] = key; }
+function assignGamepadBinding(action, bind) { const target = JSON.stringify(bind); Object.keys(controlBindings.gamepad).forEach(a => { if (a !== action && JSON.stringify(controlBindings.gamepad[a]) === target) controlBindings.gamepad[a] = null; }); controlBindings.gamepad[action] = bind; }
+function beginRebind(device, action, buttonEl) { listeningForBinding = { device, action }; document.querySelectorAll(".bind-button").forEach(btn => btn.classList.remove("listening")); if (buttonEl) { buttonEl.classList.add("listening"); buttonEl.textContent = "Press input..."; } }
+function finishRebind(value) { if (!listeningForBinding) return; const { device, action } = listeningForBinding; if (device === "keyboard") assignKeyboardBinding(action, value); else assignGamepadBinding(action, value); listeningForBinding = null; saveControlBindings(); renderControlBindList(); }
+function cancelRebind() { listeningForBinding = null; renderControlBindList(); }
+function renderControlBindList() {
+  const list = document.getElementById("controlBindList");
+  if (!list) return;
+  list.innerHTML = "";
+  CONTROL_ACTIONS.forEach(action => {
+    const row = document.createElement("div"); row.className = "bind-row";
+    const label = document.createElement("div"); label.className = "bind-label"; label.textContent = action.label;
+    const keyBtn = document.createElement("button"); keyBtn.className = "bind-button"; keyBtn.textContent = formatKeyName(controlBindings.keyboard[action.id]); keyBtn.onclick = () => beginRebind("keyboard", action.id, keyBtn);
+    const padBtn = document.createElement("button"); padBtn.className = "bind-button"; padBtn.textContent = gamepadBindingToText(controlBindings.gamepad[action.id]); padBtn.onclick = () => beginRebind("gamepad", action.id, padBtn);
+    row.appendChild(label); row.appendChild(keyBtn); row.appendChild(padBtn); list.appendChild(row);
+  });
+  updateControlsText();
+}
+function pollGamepadRebind() {
+  if (!listeningForBinding || listeningForBinding.device !== "gamepad") return;
+  const pad = getActiveGamepad();
+  if (!pad) return;
+  for (let i = 0; i < pad.buttons.length; i++) if (pad.buttons[i]?.pressed && !gamepadButtonsPrev[i]) { finishRebind({ type: "button", button: i }); return; }
+  for (let i = 0; i < pad.axes.length; i++) { const value = pad.axes[i] || 0; if (Math.abs(value) > 0.65) { finishRebind({ type: "axis", axis: i, dir: value < 0 ? -1 : 1 }); return; } }
+  for (let i = 0; i < pad.buttons.length; i++) gamepadButtonsPrev[i] = !!pad.buttons[i]?.pressed;
+}
+
 window.addEventListener("keydown", e => {
-  keys[e.key.toLowerCase()] = true;
-  if ([" ", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(e.key.toLowerCase())) {
+  const key = e.key.toLowerCase();
+  if (listeningForBinding && listeningForBinding.device === "keyboard") {
+    e.preventDefault();
+    finishRebind(key);
+    return;
+  }
+  keys[key] = true;
+  if ([" ", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) {
     e.preventDefault();
   }
 });
 window.addEventListener("keyup", e => {
   keys[e.key.toLowerCase()] = false;
 });
+window.addEventListener("gamepadconnected", e => { activeGamepadIndex = e.gamepad.index; updateGamepadStatus(); });
+window.addEventListener("gamepaddisconnected", e => { if (activeGamepadIndex === e.gamepad.index) activeGamepadIndex = null; updateGamepadStatus(); });
 
 const GODS = {
   zeus: {
@@ -977,8 +1141,23 @@ document.getElementById("mapSelect").addEventListener("change", updateMapDescrip
 buildGodGrid();
 updateMoveStylePanel();
 updateMapDescription();
+loadControlBindings();
+updateControlsText();
 
 document.getElementById("startBtn").onclick = startGame;
+document.getElementById("controlsBtn").onclick = () => {
+  controlsScreen.classList.add("active");
+  renderControlBindList();
+  updateGamepadStatus();
+};
+document.getElementById("closeControlsBtn").onclick = () => {
+  cancelRebind();
+  controlsScreen.classList.remove("active");
+};
+document.getElementById("resetControlsBtn").onclick = () => {
+  resetControlBindings();
+  renderControlBindList();
+};
 document.getElementById("returnBtn").onclick = () => {
   gameOverScreen.classList.remove("active");
   selectScreen.classList.add("active");
@@ -1235,6 +1414,8 @@ function tickMessage() {
 
 function gameLoop() {
   requestAnimationFrame(gameLoop);
+  pollGamepadRebind();
+  if (matchTime % 60 === 0) updateGamepadStatus();
 
   if (gameState === "play") {
     updateGame();
@@ -1270,18 +1451,18 @@ function updateHuman(p) {
   if (p.dead || p.hitstun > 0) return;
 
   let move = 0;
-  if (keys["a"]) move -= 1;
-  if (keys["d"]) move += 1;
+  if (isActionDown("left")) move -= 1;
+  if (isActionDown("right")) move += 1;
 
   applyMoveInput(p, move);
 
-  if (pressed("w", p, "jump")) jump(p);
-  if (pressed("shift", p, "dodge")) dodge(p);
+  if (wasActionPressed("up", p.id)) jump(p);
+  if (wasActionPressed("dodge", p.id)) dodge(p);
 
-  if (pressed("j", p, "light")) lightAttack(p);
-  if (pressed("k", p, "heavy")) heavyAttack(p);
-  if (pressed("l", p, "special")) useSpecial(p);
-  if (pressed("i", p, "ultimate")) useUltimate(p);
+  if (wasActionPressed("light", p.id)) lightAttack(p);
+  if (wasActionPressed("heavy", p.id)) heavyAttack(p);
+  if (wasActionPressed("special", p.id)) useSpecial(p);
+  if (wasActionPressed("ultimate", p.id)) useUltimate(p);
 }
 
 const pressLocks = {};
@@ -1669,7 +1850,7 @@ Object.entries(ATTACK_DEFS).forEach(([godId, godMoves]) => {
   });
 });
 function cloneMove(base, p, variant, inputType){ const m=JSON.parse(JSON.stringify(base)); m.godId=p.godId; m.inputType=inputType; m.directionVariant=variant; return m;}
-function getAttackVariant(player, inputType){ if(player.human){ if(keys["w"]) return "up"; if(keys["s"]) return "down"; return "neutral";} if(inputType==="special" && player.ai.specialVariant) return player.ai.specialVariant; return chooseBotAttackVariant(player, player.ai.target||nearestEnemy(player), inputType);}
+function getAttackVariant(player, inputType){ if(player.human){ if(isActionDown("up")) return "up"; if(isActionDown("down")) return "down"; return "neutral";} if(inputType==="special" && player.ai.specialVariant) return player.ai.specialVariant; return chooseBotAttackVariant(player, player.ai.target||nearestEnemy(player), inputType);}
 function moveToAttackKind(type){ return type; }
 function getMoveProgress(p) {
   if (!p.currentMove || !p.currentMove.totalFrames) return { t:0, phase:"none", phaseT:0 };
@@ -2901,9 +3082,9 @@ function handlePlatformCollision(p) {
       prevBottom <= plat.y + 8 &&
       p.vy >= 0
     ) {
-      if (keys["s"] && p.human && plat.type !== "main") {
-        continue;
-      }
+    if (p.human && isActionDown("down") && plat.type !== "main") {
+      continue;
+    }
 
       p.y = plat.y - p.h / 2;
       p.vy = 0;
