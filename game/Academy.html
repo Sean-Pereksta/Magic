@@ -944,6 +944,7 @@ let tacticalSeals = [];
 let particles = [];
 let telegraphs = [];
 let lightningStrikes = [];
+let raSunBursts = [];
 let ultFlash = 0;
 let ultFlashColor = "#ffffff";
 let eclipseTimer = 0;
@@ -1445,6 +1446,7 @@ function updateGame() {
 
   players.forEach(updateFighter);
   updateTelegraphs();
+  if (raSunBursts && raSunBursts.length > 0) updateRaSunBursts();
   updateAttacks();
   if (lightningStrikes && lightningStrikes.length > 0) updateLightningStrikes();
   updateProjectiles();
@@ -1637,6 +1639,13 @@ function chooseBotAttackVariant(bot, target, inputType) {
     if (targetBelow) return "down";
     if (far) return "neutral";
     if (closeGrounded) return Math.random() < .45 ? "down" : "neutral";
+    return "neutral";
+  }
+
+  if (bot.godId === "ra" && inputType === "heavy") {
+    if (!bot.grounded && targetBelow && Math.random() < 0.55) return "up";
+    if (bot.grounded && absDx < 150 && Math.random() < 0.45) return "down";
+    if (targetAbove) return "up";
     return "neutral";
   }
 
@@ -1910,6 +1919,44 @@ function heavyAttack(p) {
   if (p.godId === "anubis" && p.anubisUltActive) return;
   if (p.dodgeTimer > 0 && p.dodgePhase === "recovery" && p.perfectDodgeTimer <= 0) return;
   const v = getAttackVariant(p, "heavy");
+
+  if (p.godId === "ra" && v === "up") {
+    if (p.attackCooldown > 0) return;
+    const beamTopY = p.y + 8;
+    const beamBottomY = findPlatformBelowPoint(p.x, beamTopY, 440);
+    const beamHeight = Math.max(80, beamBottomY - beamTopY);
+    const beamCenterY = beamTopY + beamHeight / 2;
+    p.attackCooldown = 54;
+    p.vy = Math.min(p.vy, -18);
+    p.vx *= 0.75;
+    p.grounded = false;
+    p.action = "jump";
+    p.attackKind = "ra_solar_ascent_beam";
+    p.attackFrame = Math.max(p.attackFrame, 28);
+    createAttack({ owner: p, x: p.x, y: beamCenterY, w: 72, h: beamHeight, damage: 12, knock: 16, angle: -1.25, frames: 10, color: "#ffea00", label: "ra_up_k_solar_ascent_beam", visualType: "raSolarAscentBeam" });
+    spawnParticles(p.x, p.y + p.h / 2, "#ffea00", 26, 7);
+    spawnParticles(p.x, beamBottomY, "#ff9f1c", 22, 6);
+    spawnParticles(p.x, beamBottomY, "#ffffff", 10, 4);
+    shake = Math.max(shake, 5);
+    return;
+  }
+
+  if (p.godId === "ra" && v === "down") {
+    if (p.attackCooldown > 0) return;
+    const dir = getFacingDir(p);
+    const burstX = p.x + dir * 72;
+    const groundY = findPlatformBelowPoint(burstX, p.y - 20, 260);
+    const burstY = Math.min(p.y + p.h / 2, groundY - 12);
+    raSunBursts.push({ owner: p, x: burstX, y: burstY, radius: 125, timer: 42, maxTimer: 42, exploded: false });
+    if (raSunBursts.length > 4) raSunBursts.splice(0, raSunBursts.length - 4);
+    p.attackCooldown = 60;
+    p.vx *= 0.45;
+    p.attackKind = "ra_charging_sun_burst";
+    p.attackFrame = Math.max(p.attackFrame, 34);
+    spawnParticles(burstX, burstY, "#ffea00", 16, 4);
+    spawnParticles(burstX, burstY, "#ff9f1c", 10, 3);
+    return;
+  }
 
   if (p.godId === "thor" && v === "down") {
     if (p.attackCooldown > 0) return;
@@ -3404,6 +3451,39 @@ function updateLightningStrikes() {
   }
 }
 
+
+function updateRaSunBursts() {
+  for (let i = raSunBursts.length - 1; i >= 0; i--) {
+    const b = raSunBursts[i];
+    b.timer--;
+    if (b.timer > 0 && b.timer % 6 === 0) {
+      spawnParticles(b.x, b.y, "#ffea00", 5, 3);
+      spawnParticles(b.x, b.y, "#ff9f1c", 4, 2);
+    }
+    if (b.timer <= 0 && !b.exploded) {
+      b.exploded = true;
+      createAttack({ owner: b.owner, x: b.x, y: b.y, w: b.radius * 2, h: b.radius * 2, damage: 10, knock: 7, angle: -0.35, frames: 8, color: "#ff9f1c", label: "ra_down_k_sun_burst_explosion", visualType: "raSunBurstExplosion" });
+      spawnParticles(b.x, b.y, "#ffea00", 36, 8);
+      spawnParticles(b.x, b.y, "#ff9f1c", 30, 7);
+      spawnParticles(b.x, b.y, "#ffffff", 14, 5);
+      shake = Math.max(shake, 5);
+      hitStop = Math.max(hitStop, 3);
+    }
+    if (b.exploded && b.timer <= -10) raSunBursts.splice(i, 1);
+  }
+}
+
+function findPlatformBelowPoint(x, y, maxDist = 420) {
+  let bestY = y + maxDist;
+  currentMap.platforms.forEach(pl => {
+    const withinX = x >= pl.x && x <= pl.x + pl.w;
+    const below = pl.y > y;
+    const closeEnough = pl.y <= y + maxDist;
+    if (withinX && below && closeEnough && pl.y < bestY) bestY = pl.y;
+  });
+  return bestY;
+}
+
 function findPlatformForLokiTeleport(p) {
   let best = null, bestScore = Infinity;
   currentMap.platforms.forEach(pl => { const withinX = p.x >= pl.x - 30 && p.x <= pl.x + pl.w + 30; const feetY = p.y + p.h / 2; const closeY = Math.abs(feetY - pl.y) < 38; if (withinX && closeY) { const score = Math.abs(feetY - pl.y); if (score < bestScore) { best = pl; bestScore = score; } }});
@@ -4000,6 +4080,7 @@ function drawGame() {
   players.forEach(drawAnubisCircleUltimate);
   telegraphs.forEach(drawTelegraph);
   if (lightningStrikes && lightningStrikes.length > 0) drawLightningStrikes();
+  if (raSunBursts && raSunBursts.length > 0) drawRaSunBursts();
 
   projectiles.forEach(drawProjectile);
   attacks.forEach(drawAttack);
@@ -4013,6 +4094,37 @@ function drawGame() {
 
 function drawLightningStrikes() {
   lightningStrikes.forEach(s => { const sx = worldToScreenX(s.x); const sy = worldToScreenY(s.y); const progress = 1 - Math.max(0, s.timer) / s.maxTimer; ctx.save(); if (!s.didStrike) { ctx.globalAlpha = 0.25 + Math.sin(matchTime * 0.45) * 0.15; ctx.strokeStyle = "#cce3ff"; ctx.lineWidth = screenScale(4); ctx.beginPath(); ctx.moveTo(sx, sy - screenScale(300)); ctx.lineTo(sx, sy + screenScale(80)); ctx.stroke(); ctx.globalAlpha = 0.28 + progress * 0.45; ctx.strokeStyle = "#ffd166"; ctx.lineWidth = screenScale(2); ctx.beginPath(); ctx.arc(sx, sy + screenScale(30), screenScale(30 + progress * 22), 0, Math.PI * 2); ctx.stroke(); } else { ctx.globalAlpha = 0.85; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = screenScale(9); ctx.beginPath(); ctx.moveTo(sx, sy - screenScale(320)); ctx.lineTo(sx + screenScale(8), sy - screenScale(200)); ctx.lineTo(sx - screenScale(6), sy - screenScale(80)); ctx.lineTo(sx, sy + screenScale(90)); ctx.stroke(); ctx.globalAlpha = 0.65; ctx.strokeStyle = "#cce3ff"; ctx.lineWidth = screenScale(18); ctx.beginPath(); ctx.moveTo(sx, sy - screenScale(320)); ctx.lineTo(sx, sy + screenScale(90)); ctx.stroke(); } ctx.restore(); });
+}
+
+function drawRaSunBursts() {
+  raSunBursts.forEach(b => {
+    const sx = worldToScreenX(b.x);
+    const sy = worldToScreenY(b.y);
+    const progress = 1 - Math.max(0, b.timer) / b.maxTimer;
+    const r = screenScale(b.radius * (0.25 + progress * 0.75));
+    ctx.save();
+    if (!b.exploded) {
+      ctx.globalAlpha = 0.3 + progress * 0.45;
+      ctx.fillStyle = "#ffea00";
+      ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.55;
+      ctx.strokeStyle = "#ff9f1c";
+      ctx.lineWidth = screenScale(4);
+      ctx.beginPath(); ctx.arc(sx, sy, screenScale(b.radius), 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath(); ctx.arc(sx, sy, Math.max(2, r * 0.22), 0, Math.PI * 2); ctx.fill();
+    } else {
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = "#ff9f1c";
+      ctx.beginPath(); ctx.arc(sx, sy, screenScale(b.radius), 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.85;
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = screenScale(5);
+      ctx.beginPath(); ctx.arc(sx, sy, screenScale(b.radius * 0.8), 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.restore();
+  });
 }
 
 function drawAnubisCircleUltimate(p) {
@@ -4921,6 +5033,36 @@ function drawAttack(a) {
     ctx.lineWidth = screenScale(3);
     ctx.beginPath(); ctx.arc(cx, cy, Math.max(w, h) * .52 * pulse, 0, Math.PI * 2); ctx.stroke();
     for (let i = 0; i < 8; i++) { const ang = (Math.PI * 2 * i) / 8 + matchTime * .03; ctx.beginPath(); ctx.moveTo(cx + Math.cos(ang) * w * .2, cy + Math.sin(ang) * h * .2); ctx.lineTo(cx + Math.cos(ang) * w * .55, cy + Math.sin(ang) * h * .55); ctx.stroke(); }
+    ctx.globalAlpha = 1;
+  } else if (type === "raSolarAscentBeam") {
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = "#ff9f1c";
+    ctx.fillRect(cx - w * 0.65, y, w * 1.3, h);
+    ctx.globalAlpha = 0.65;
+    ctx.fillStyle = "#ffea00";
+    ctx.fillRect(cx - w * 0.38, y, w * 0.76, h);
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(cx - w * 0.13, y, w * 0.26, h);
+    ctx.globalAlpha = 0.75;
+    ctx.fillStyle = "#ffea00";
+    ctx.beginPath(); ctx.arc(cx, y + h, w * 0.7, 0, Math.PI * 2); ctx.fill();
+    spark(8, "rgba(255,234,0,.85)");
+    ctx.globalAlpha = 1;
+  } else if (type === "raSunBurstExplosion") {
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = "#ff9f1c";
+    ctx.beginPath(); ctx.arc(cx, cy, Math.max(w, h) * 0.48, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.88;
+    ctx.fillStyle = "#ffea00";
+    ctx.beginPath(); ctx.arc(cx, cy, Math.max(w, h) * 0.34, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath(); ctx.arc(cx, cy, Math.max(w, h) * 0.15, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.85;
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = screenScale(5);
+    ctx.beginPath(); ctx.arc(cx, cy, Math.max(w, h) * 0.42, 0, Math.PI * 2); ctx.stroke();
     ctx.globalAlpha = 1;
   } else if (["soulRake","graveSweep","soulMarkBurst","tombDrop","weighingHook"].includes(type)) {
     ctx.globalAlpha = .35;
