@@ -985,8 +985,11 @@ function createFighter(config) {
     hitstun: 0,
     freezeFrames: 0,
     soulMarkTimer: 0,
+    conductiveTimer: 0,
+    scorchTimer: 0,
     mudSlowTimer: 0,
     soulMarkSource: null,
+    athenaGuardBonus: 0,
     action: "idle",
     anim: 0,
     human: config.human,
@@ -1550,10 +1553,10 @@ function useSpecial(p) {
       createAttack({owner:p,x:p.x,y:p.y-20,w:82,h:88,damage:5,knock:6.5,angle:-1.0,frames:10,color:"#e8f1ff",label:"owl_wing_rise",visualType:"owlWing"});
       p.moveVisuals.push({type:"owlWing",frames:12,length:78,thickness:12});
     } else if (p.moveVariant === "down") {
-      p.parryTimer = 16;
+      p.parryTimer = 14;
       p.parryActive = true;
-      p.parryRecovery = 28;
-      p.moveVisuals.push({type:"parryField",frames:18,length:56,thickness:16});
+      p.parryRecovery = 24;
+      p.moveVisuals.push({type:"parryField",frames:16,length:72,thickness:20});
     } else {
       createAttack({owner:p,x:p.x + p.facing * 58,y:p.y,w:106,h:64,damage:4,knock:18,angle:-0.08,frames:12,color:"#f2f7ff",label:"aegis_push",visualType:"aegisWall"});
       p.moveVisuals.push({type:"aegisWall",frames:14,length:90,thickness:20});
@@ -1566,17 +1569,17 @@ function useSpecial(p) {
       p.vy = -17;
       p.vx = p.facing * 6.5;
       p.invincible = Math.max(p.invincible, 8);
-      createAttack({owner:p,x:p.x + p.facing * 22,y:p.y-28,w:92,h:64,damage:5,knock:6.5,angle:-0.95,frames:10,color:"#ffe082",label:"falcon_flight",visualType:"falconWing"});
+      createAttack({owner:p,x:p.x + p.facing * 22,y:p.y-28,w:92,h:64,damage:5,knock:6.5,angle:-0.95,frames:10,color:"#ffe082",label:"radiant_flight",visualType:"falconWing"});
       p.moveVisuals.push({type:"falconWing",frames:14,length:86,thickness:16});
       spawnParticles(p.x, p.y + 6, "#ffd166", 20, 6);
     } else if (p.moveVariant === "down") {
       const brandX = p.x + p.facing * 58;
       const brandY = p.grounded ? p.y + 34 : p.y + 80;
-      createAttack({owner:p,x:brandX,y:brandY,w:86,h:18,damage:2.5,knock:2.5,angle:0.02,frames:16,color:"#ffcb47",label:"sun_brand_mark",visualType:"sunBrandMark"});
+      createAttack({owner:p,x:brandX,y:brandY,w:86,h:18,damage:2.5,knock:2.5,angle:0.02,frames:22,color:"#ffcb47",label:"sun_brand_mark",visualType:"sunBrandMark"});
       setTimeout(() => {
         createAttack({owner:p,x:brandX,y:brandY-64,w:42,h:140,damage:10,knock:9.5,angle:-1.02,frames:9,color:"#ff9f1c",label:"sun_brand_burst",visualType:"sunBrandBurst"});
-      }, 220);
-      p.moveVisuals.push({type:"sunBrandMark",frames:16,length:62,thickness:11});
+      }, 320);
+      p.moveVisuals.push({type:"sunBrandMark",frames:22,length:68,thickness:12});
     } else {
       spawnProjectile({
         owner: p,
@@ -1930,6 +1933,15 @@ function updateFighter(p) {
     p.soulMarkTimer--;
     if (p.soulMarkTimer <= 0) p.soulMarkSource = null;
   }
+  if (p.conductiveTimer > 0) p.conductiveTimer--;
+  if (p.scorchTimer > 0) {
+    p.scorchTimer--;
+    if (p.scorchTimer % 26 === 0) {
+      p.damage += 0.45;
+      spawnParticles(p.x, p.y + 20, "#ff9f1c", 2, 1.4);
+    }
+  }
+  if (p.godId === "athena") p.athenaGuardBonus = clamp((p.athenaGuardBonus || 0) - 0.05, 0, 30);
   if (p.invincible > 0) p.invincible--;
   if (p.perfectDodgeTimer > 0) p.perfectDodgeTimer--;
   if (p.thorHeavyArmorTimer > 0) p.thorHeavyArmorTimer--;
@@ -2070,6 +2082,10 @@ function updateAttacks() {
       if (p === a.owner || p.dead || a.hit.has(p.id)) return;
       const overlaps = ax1 < px2 && ax2 > px1 && ay1 < py2 && ay2 > py1;
       if (overlaps && p.perfectDodgeReady && p.dodgePhase === "active") triggerPerfectDodge(p, a);
+      if (p.godId === "athena" && p !== a.owner && !p.dead && !overlaps) {
+        const near = Math.abs((ax1 + ax2) * 0.5 - p.x) < 95 && Math.abs((ay1 + ay2) * 0.5 - p.y) < 74;
+        if (near) p.athenaGuardBonus = clamp((p.athenaGuardBonus || 0) + 0.06, 0, 30);
+      }
       if (p.invincible > 0) return;
 
       if (overlaps) {
@@ -2083,6 +2099,8 @@ function updateAttacks() {
           y: impactY,
           impactType: (a.visualType || "").includes("dagger") ? "lightSlash" : (a.visualType || "").includes("shield") || (a.visualType || "").includes("aegis") ? "shield" : undefined
         });
+        if (a.owner.godId === "zeus" && ["lightningJab","uppercutSpark","staticSweep","boltSpear","stormPillar","thunderStomp"].includes(a.visualType)) p.conductiveTimer = Math.max(p.conductiveTimer || 0, 180);
+        if (a.owner.godId === "ra" && ["desertBurn","sunBrandBurst"].includes(a.visualType)) p.scorchTimer = Math.max(p.scorchTimer || 0, 150);
         if (a.owner.godId === "anubis" && a.visualType === "graveSweep") p.vx -= a.owner.facing * 2.2;
         if (a.owner.godId === "anubis" && a.visualType === "soulMarkBurst") {
           p.soulMarkTimer = 330;
@@ -2206,10 +2224,14 @@ function updateProjectiles() {
           pr.hit.add(p.id);
           const dir = pr.dir || getFacingDir(pr.owner);
           applyHit(p, pr.owner, pr.damage, pr.knock, pr.type === "hook" ? -0.18 : -.3, dir, pr.color, {x: pr.x, y: pr.y, impactType: pr.type === "bolt" ? "lightning" : pr.type === "sun" ? "solar" : undefined});
+          if (pr.type === "bolt") p.conductiveTimer = Math.max(p.conductiveTimer || 0, 180);
+          if (pr.type === "sun") p.scorchTimer = Math.max(p.scorchTimer || 0, 150);
 
           if (pr.pull) {
-            p.vx += -dir * 9;
-            p.vy -= 3;
+            const markedHook = pr.type === "hook" && p.soulMarkTimer > 0 && p.soulMarkSource === pr.owner.id;
+            p.vx += -dir * (markedHook ? 12.5 : 9);
+            p.vy -= markedHook ? 4 : 3;
+            if (markedHook && pr.owner && !pr.owner.dead) pr.owner.vx += dir * 3.8;
           }
 
           if (pr.chain) {
@@ -2218,15 +2240,25 @@ function updateProjectiles() {
               chains = 2;
               pr.owner.perfectDodgeChain = 0;
             }
-            for (let c = 0; c < chains; c++) players.forEach(other => {
-              if (other === pr.owner || other === p || other.dead || other.invincible > 0) return;
-              const d = Math.hypot(other.x - p.x, other.y - p.y);
-              if (d < (130 + c * 40)) {
-                const cdir = Math.sign(other.x - p.x) || dir;
-                applyHit(other, pr.owner, Math.max(3, pr.damage * (0.45 + c * 0.08)), Math.max(5, pr.knock * 0.6), -0.7, cdir, "#fff7bf", {x: (other.x + p.x) / 2, y: (other.y + p.y) / 2, impactType: "lightning"});
-                spawnParticles((other.x + p.x) / 2, (other.y + p.y) / 2, "#fff7bf", 8, 3);
+            for (let c = 0; c < chains; c++) {
+              const baseRange = 130 + c * 40;
+              const candidates = players.filter(other => other !== pr.owner && other !== p && !other.dead && other.invincible <= 0);
+              candidates.sort((a,b)=>{
+                const aCond = a.conductiveTimer > 0 ? 0 : 1;
+                const bCond = b.conductiveTimer > 0 ? 0 : 1;
+                if (aCond !== bCond) return aCond - bCond;
+                return Math.hypot(a.x-p.x,a.y-p.y) - Math.hypot(b.x-p.x,b.y-p.y);
+              });
+              const target = candidates.find(other => {
+                const boost = other.conductiveTimer > 0 ? 54 : 0;
+                return Math.hypot(other.x - p.x, other.y - p.y) < (baseRange + boost);
+              });
+              if (target) {
+                const cdir = Math.sign(target.x - p.x) || dir;
+                applyHit(target, pr.owner, Math.max(3, pr.damage * (0.45 + c * 0.08)), Math.max(5, pr.knock * 0.6), -0.7, cdir, "#fff7bf", {x: (target.x + p.x) / 2, y: (target.y + p.y) / 2, impactType: "lightning"});
+                spawnParticles((target.x + p.x) / 2, (target.y + p.y) / 2, "#fff7bf", 8, 3);
               }
-            });
+            }
           }
 
           if (pr.type !== "clone") {
@@ -2298,11 +2330,14 @@ function applyHit(target, source, damage, knock, angle, dir, color, impact = {})
   if (target.parryActive) {
     target.parryActive = false;
     target.parryTimer = 0;
-    target.damage += damage * .35;
-    target.vx = dir * knock * .2;
+    target.damage += damage * .28;
+    target.vx = dir * knock * .16;
     target.vy = -2;
-    createAttack({owner:target,x:target.x,y:target.y,w:120,h:90,damage:7,knock:10,angle:-0.25,frames:5,color:"#e8f1ff",label:"parry_counter",visualType:"shockwave"});
-    spawnParticles(target.x, target.y, "#eef6ff", 18, 6);
+    target.specialCooldown = Math.max(0, target.specialCooldown - 8);
+    target.attackCooldown = Math.max(0, target.attackCooldown - 5);
+    target.athenaGuardBonus = clamp((target.athenaGuardBonus || 0) + 4.5, 0, 30);
+    createAttack({owner:target,x:target.x,y:target.y,w:146,h:104,damage:8.5,knock:12,angle:-0.25,frames:6,color:"#e8f1ff",label:"parry_counter",visualType:"shockwave"});
+    spawnParticles(target.x, target.y, "#eef6ff", 22, 6);
     return;
   }
   target.damage += damage;
