@@ -2005,19 +2005,56 @@ function useUltimate(p) {
   }
 
   else if (p.godId === "ra") {
-    createAttack({
+    const dir = getFacingDir(p);
+
+    eclipseTimer = 52;
+    ultFlash = 10;
+    ultFlashColor = "#ffea00";
+
+    p.vx *= 0.1;
+    p.vy *= 0.35;
+    p.attackCooldown = Math.max(p.attackCooldown, 75);
+
+    addTelegraph({
+      type: "line",
       owner: p,
-      x: p.x + dir * 310,
+      x: p.x,
       y: p.y - 30,
-      w: 620,
-      h: 92,
-      damage: 20,
-      knock: 21,
-      angle: -0.22,
-      frames: 32,
+      w: 700,
+      h: 96,
+      dir,
       color: "#ffea00",
-      label: "ult"
+      label: "SOLAR BEAM",
+      icon: "☀️",
+      life: 34,
+      followOwner: true,
+      offsetX: 0,
+      offsetY: -30
     });
+
+    spawnParticles(p.x, p.y - 50, "#ffea00", 42, 5);
+    spawnParticles(p.x, p.y - 50, "#ffffff", 20, 3);
+
+    setTimeout(() => {
+      createAttack({
+        owner: p,
+        x: p.x + dir * 350,
+        y: p.y - 30,
+        w: 700,
+        h: 102,
+        damage: 24,
+        knock: 23,
+        angle: -0.18,
+        frames: 30,
+        color: "#ffea00",
+        label: "ra_ult_eclipse_beam",
+        visualType: "sunBrandBurst"
+      });
+
+      spawnParticles(p.x + dir * 90, p.y - 30, "#ffea00", 50, 8);
+      spawnParticles(p.x + dir * 260, p.y - 30, "#fff3a3", 40, 7);
+      shake = Math.max(shake, 16);
+    }, 380);
   }
 
   else if (p.godId === "anubis") {
@@ -2243,9 +2280,10 @@ function updateFighter(p) {
   if (p.conductiveTimer > 0) p.conductiveTimer--;
   if (p.scorchTimer > 0) {
     p.scorchTimer--;
-    if (p.scorchTimer % 26 === 0) {
-      p.damage += 0.45;
-      spawnParticles(p.x, p.y + 20, "#ff9f1c", 2, 1.4);
+
+    if (p.scorchTimer % 30 === 0) {
+      p.damage += 1.5;
+      spawnParticles(p.x, p.y - 12, "#ff9f1c", 6, 2.4);
     }
   }
   if (p.godId === "athena") p.athenaGuardBonus = clamp((p.athenaGuardBonus || 0) - 0.05, 0, 30);
@@ -2616,6 +2654,10 @@ function updateAttacks() {
         }
         if (a.owner.godId === "zeus" && ["lightningJab","uppercutSpark","staticSweep","boltSpear","stormPillar","thunderStomp"].includes(a.visualType)) p.conductiveTimer = Math.max(p.conductiveTimer || 0, 180);
         if (a.owner.godId === "ra" && ["desertBurn","sunBrandBurst"].includes(a.visualType)) p.scorchTimer = Math.max(p.scorchTimer || 0, 150);
+        if (a.label === "ra_ult_eclipse_beam") {
+          p.scorchTimer = Math.max(p.scorchTimer || 0, 180);
+          spawnParticles(p.x, p.y, "#ff9f1c", 24, 5);
+        }
         if (a.owner.godId === "anubis" && a.visualType === "graveSweep") p.vx -= a.owner.facing * 2.2;
         if (a.owner.godId === "sobek" && ["jawSnap","nileLunge"].includes(a.visualType) && p.grabImmunityTimer <= 0 && !p.grabbedBy && Math.abs(p.x - a.owner.x) < 60) {
           p.grabbedBy = a.owner;
