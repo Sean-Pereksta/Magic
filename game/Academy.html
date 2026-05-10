@@ -1073,6 +1073,14 @@ function createFighter(config) {
     perfectDodgeUsed: false,
     dodgeCancelable: false,
     horusGlideTimer: 0,
+    horusRushTimer: 0,
+    horusRushDir: 1,
+    horusRushTrailTimer: 0,
+    anubisGrapplePullTimer: 0,
+    anubisGrapplePullTargetX: 0,
+    anubisGrapplePullTargetY: 0,
+    anubisGrapplePullMode: "none",
+    chainPullLockTimer: 0,
     thorHeavyArmorTimer: 0,
     armorTimer: 0,
     lokiDodgeCloneTimer: 0,
@@ -1504,6 +1512,7 @@ function applyMoveInput(p, move) {
     p.action = "idle";
   }
 
+  if (p.horusRushTimer > 0 || p.anubisGrapplePullTimer > 0) return;
   if (p.godId === "horus" && !p.grounded) p.vx = clamp(p.vx, -max * 1.18 * mudSlow * charmSlow, max * 1.18 * mudSlow * charmSlow);
   else p.vx = clamp(p.vx, -max * mudSlow * charmSlow, max * mudSlow * charmSlow);
 }
@@ -1695,10 +1704,17 @@ function heavyAttack(p) {
   const defs = ATTACK_DEFS[p.godId] || ATTACK_DEFS.zeus;
   const move = cloneMove(defs.heavy[v] || defs.heavy.neutral, p, v, "heavy");
   if (p.godId === "horus" && v === "up") {
-    p.vy = Math.min(p.vy, -23);
-    p.vx *= 0.42;
+    p.vy = Math.min(p.vy, -31);
+    p.vx *= 0.55;
+    p.grounded = false;
+    p.action = "jump";
+    p.attackKind = "horus_up_twirl";
+    p.attackFrame = Math.max(p.attackFrame, 22);
+    p.jumps = Math.max(p.jumps, 1);
     p.horusTwirlTimer = Math.max(p.horusTwirlTimer || 0, 22);
-    spawnParticles(p.x, p.y + 8, "#4cc9f0", 20, 5);
+    p.moveVisuals.push({ type: "horusAirTwirl", frames: 22, length: 86, thickness: 16 });
+    spawnParticles(p.x, p.y + 12, "#2ec4ff", 26, 7);
+    spawnParticles(p.x, p.y - 18, "#ffd166", 16, 5);
   }
   if (startMove(p, move)) shake = Math.max(shake, move.directionVariant === "up" ? 5 : 4);
 }
@@ -1798,17 +1814,21 @@ function useSpecial(p) {
       spawnProjectile({
         owner: p,
         type: "anubisGrapple",
-        x: p.x + p.facing * 18,
-        y: p.y - 20,
-        vx: p.facing * 12.8,
-        vy: -5.2,
-        w: 48,
-        h: 20,
+        x: p.x,
+        y: p.y - 34,
+        vx: 0,
+        vy: -18,
+        w: 24,
+        h: 58,
         life: 34,
         damage: 11,
-        knock: 7,
-        color: "#8ffcff"
+        knock: 8,
+        color: "#8ffcff",
+        grapplePullOwner: true
       });
+      p.vx *= 0.35;
+      p.vy = Math.min(p.vy, -7);
+      p.anubisGrapplePullMode = "seeking";
       p.moveVisuals.push({type:"afterlifeStep",frames:12,length:80,thickness:12});
       spawnParticles(p.x, p.y, "#8ffcff", 16, 5);
     } else if (p.moveVariant === "down") {
@@ -1867,18 +1887,16 @@ function useSpecial(p) {
       const markY = p.grounded ? p.y + 34 : p.y + 74;
       spawnProjectile({owner:p,type:"eyeMark",x:p.x + dir * 46,y:markY,vx:0,vy:0,w:70,h:50,life:90,damage:7,knock:9,color:"#ffd166",trap:true});
     } else {
-      const sideDash = p.moveVariant === "neutral" && (keys["a"] || keys["d"]);
-      if (sideDash) {
-        p.invincible = Math.max(p.invincible, 10);
-        p.vy = Math.min(p.vy, 1.6);
-        p.vx = dir * 27.5;
-        p.horusDashTrailTimer = Math.max(p.horusDashTrailTimer || 0, 18);
-        createAttack({owner:p,x:p.x + p.facing * 34,y:p.y-8,w:118,h:36,damage:10,knock:12.8,angle:-0.09,frames:10,color:"#2ec4ff",label:"falcon_dash",visualType:"falconDive",attachToOwner:true,offsetX:34,offsetY:-8});
-      } else {
-        const gliding = !p.grounded;
-        p.vx = dir * 14; if (gliding) p.vy = Math.max(p.vy, 2.8);
-        createAttack({owner:p,x:p.x + p.facing * 26,y:p.y-6,w:98,h:34,damage:9,knock:8.8,angle:-0.15,frames:11,color:"#2ec4ff",label:"falcon_dive",visualType:"falconDive",attachToOwner:true,offsetX:26,offsetY:-6});
-      }
+      p.horusRushTimer = 16;
+      p.horusRushDir = dir;
+      p.horusRushTrailTimer = 16;
+      p.invincible = Math.max(p.invincible, 5);
+      p.attackCooldown = Math.max(p.attackCooldown, 8);
+      p.vx = dir * 22;
+      p.vy *= 0.45;
+      spawnParticles(p.x - dir * 20, p.y + 4, "#2ec4ff", 14, 5);
+      spawnParticles(p.x - dir * 34, p.y + 8, "#b8f7ff", 8, 4);
+      createAttack({owner:p,x:p.x + p.facing * 48,y:p.y,w:96,h:54,damage:9,knock:11,angle:-0.18,frames:12,color:"#2ec4ff",label:"horus_rush_dash",visualType:"falconRush",attachToOwner:true,offsetX:p.facing * 48,offsetY:0});
       p.moveVisuals.push({type:"falconDive",frames:12,length:102,thickness:15});
     }
   }
@@ -2396,12 +2414,19 @@ function detonateAnubisCircleUltimate(p) {
     const dist = Math.hypot(dx, dy);
     if (dist <= radius) {
       p.anubisUltHit.add(t.id);
-      const dir = Math.sign(dx) || getFacingDir(p);
-      const outAngle = Math.atan2(dy, dx);
-      const centerBonus = 1 - clamp(dist / radius, 0, 1);
-      applyHit(t, p, 26 + centerBonus * 8, 23 + centerBonus * 8, outAngle, dir, "#ff1744", { x: t.x, y: t.y - 12, impactType: "soul", impactColor: "#ff1744", hitPause: 10, extraShake: 8, cueType: "soul" });
-      t.soulMarkTimer = Math.max(t.soulMarkTimer || 0, 180);
-      t.soulMarkSource = p.id;
+      const fallbackDir = t.x >= p.x ? 1 : -1;
+      const safeDist = Math.max(1, dist);
+      const nx = dist < 0.001 ? fallbackDir : dx / safeDist;
+      const ny = dist < 0.001 ? -0.2 : dy / safeDist;
+      const damageAmount = 22 + Math.min(18, t.damage * 0.08);
+      const knockPower = 18 + Math.min(18, t.damage * 0.10);
+      t.damage += damageAmount;
+      t.vx += nx * knockPower;
+      t.vy += ny * knockPower - 10;
+      t.hitstun = Math.max(t.hitstun || 0, 26);
+      t.invincible = 0;
+      if (typeof markLastHit === "function") markLastHit(t, p);
+      else { t.lastHitBy = p.id; t.lastHitTimer = 180; }
       spawnParticles(t.x, t.y, "#ff1744", 34, 8);
       spawnParticles(t.x, t.y - 20, "#7b2cbf", 24, 6);
     }
@@ -2755,6 +2780,48 @@ function updateFighter(p) {
     if (p.ultimateTimer <= 0) p.ultimateState = null;
   }
 
+  if (p.horusRushTimer > 0) {
+    p.horusRushTimer--;
+    const dir = p.horusRushDir || getFacingDir(p);
+    p.vx = dir * 22;
+    if (!p.grounded) p.vy = Math.min(p.vy, 3.5);
+    else p.vy = Math.min(p.vy, -2.5);
+    p.action = "dash";
+    p.attackKind = "horus_rush";
+    if (p.horusRushTimer % 2 === 0) {
+      spawnParticles(p.x - dir * 30, p.y + 4, "#2ec4ff", 8, 4);
+      spawnParticles(p.x - dir * 44, p.y + 10, "#b8f7ff", 4, 3);
+    }
+    if (p.horusRushTimer <= 0) p.vx *= 0.72;
+  }
+
+  if (p.anubisGrapplePullTimer > 0) {
+    p.anubisGrapplePullTimer--;
+    const tx = p.anubisGrapplePullTargetX;
+    const ty = p.anubisGrapplePullTargetY;
+    const dx = tx - p.x;
+    const dy = ty - p.y;
+    p.vx += dx * 0.055;
+    p.vy += dy * 0.045;
+    if (p.anubisGrapplePullTimer > 8) p.vy = Math.min(p.vy, -22);
+    p.vx = clamp(p.vx, -18, 18);
+    p.vy = clamp(p.vy, -32, 12);
+    p.grounded = false;
+    p.action = "grapple";
+    p.attackKind = "anubis_grapple_pull";
+    if (p.anubisGrapplePullTimer % 2 === 0) {
+      spawnParticles(p.x, p.y, "#8ffcff", 7, 4);
+      spawnParticles((p.x + tx) * 0.5, (p.y + ty) * 0.5, "#80ffdb", 3, 2.4);
+    }
+  }
+
+  if (p.chainPullLockTimer > 0) {
+    p.chainPullLockTimer--;
+    p.vx *= 0.98;
+    p.vy *= 0.98;
+    p.grounded = false;
+  }
+
   p.vy += (p.godId === "horus" && p.horusGlideTimer > 0 && !p.grounded ? 0.28 : 0.78);
   if (p.godId === "horus" && p.horusGlideTimer > 0 && !p.grounded) p.vx *= 0.996;
 
@@ -2789,9 +2856,9 @@ function updateFighter(p) {
 
   handlePlatformCollision(p);
 
-  if (p.dodgeTimer <= 0) {
+  if (p.dodgeTimer <= 0 && p.horusRushTimer <= 0 && p.anubisGrapplePullTimer <= 0) {
     p.vx *= p.grounded ? .91 : .985;
-  } else {
+  } else if (p.dodgeTimer > 0) {
     p.vx *= .985;
   }
   p.vy = clamp(p.vy, -30, 26);
@@ -3097,12 +3164,21 @@ function updateProjectiles() {
           latched = true;
           applyHit(t, pr.owner, pr.damage, pr.knock, -1.15, Math.sign(t.x - pr.x) || getFacingDir(pr.owner), pr.color, {x: pr.x, y: pr.y, impactType: "soul"});
           if (pr.owner && !pr.owner.dead) {
-            const tx = t.x - pr.owner.x;
-            const ty = (t.y - 20) - pr.owner.y;
-            const d = Math.max(1, Math.hypot(tx, ty));
-            pr.owner.vx += (tx / d) * 20;
-            pr.owner.vy += (ty / d) * 20;
+            pr.owner.anubisGrapplePullTimer = 16;
+            pr.owner.anubisGrapplePullTargetX = pr.x;
+            pr.owner.anubisGrapplePullTargetY = pr.y;
+            pr.owner.anubisGrapplePullMode = "upward";
+            pr.owner.vx += (pr.x - pr.owner.x) * 0.08;
+            pr.owner.vy = -26;
+            pr.owner.grounded = false;
+            pr.owner.invincible = Math.max(pr.owner.invincible, 4);
+            spawnParticles(pr.owner.x, pr.owner.y, "#8ffcff", 28, 8);
+            spawnParticles(pr.x, pr.y, "#80ffdb", 24, 7);
+            shake = Math.max(shake, 7);
           }
+          t.vx += Math.sign(t.x - pr.owner.x || pr.owner.facing) * 4;
+          t.vy = Math.min(t.vy, -8);
+          t.hitstun = Math.max(t.hitstun || 0, 12);
           pr.life = 0;
         });
         for (const plat of currentMap.platforms) {
@@ -3110,14 +3186,18 @@ function updateProjectiles() {
           if (pr.x > plat.x && pr.x < plat.x + plat.w && pr.y > plat.y - 20 && pr.y < plat.y + plat.h + 10) {
             latched = true;
             if (pr.owner && !pr.owner.dead) {
-              const tx = pr.x - pr.owner.x;
-              const ty = (pr.y - 20) - pr.owner.y;
-              const d = Math.max(1, Math.hypot(tx, ty));
-              pr.owner.vx += (tx / d) * 22;
-              pr.owner.vy += (ty / d) * 22;
-              pr.owner.invincible = Math.max(pr.owner.invincible, 6);
+              pr.owner.anubisGrapplePullTimer = 16;
+              pr.owner.anubisGrapplePullTargetX = pr.x;
+              pr.owner.anubisGrapplePullTargetY = pr.y;
+              pr.owner.anubisGrapplePullMode = "upward";
+              pr.owner.vx += (pr.x - pr.owner.x) * 0.08;
+              pr.owner.vy = -26;
+              pr.owner.grounded = false;
+              pr.owner.invincible = Math.max(pr.owner.invincible, 4);
+              spawnParticles(pr.owner.x, pr.owner.y, "#8ffcff", 28, 8);
+              spawnParticles(pr.x, pr.y, "#80ffdb", 24, 7);
+              shake = Math.max(shake, 7);
             }
-            spawnParticles(pr.x, pr.y, "#8ffcff", 12, 4);
             pr.life = 0;
           }
         }
@@ -3164,11 +3244,26 @@ function updateProjectiles() {
           if (pr.type === "horusBlade") pr.life = 0;
 
           if (pr.pull) {
-            const markedHook = pr.type === "hook" && p.soulMarkTimer > 0 && p.soulMarkSource === pr.owner.id;
-            const pullDir = pr.owner ? Math.sign(pr.owner.x - p.x) || getFacingDir(pr.owner) : -1;
-            p.vx += pullDir * (markedHook ? 14.5 : 11.5);
-            if (pr.owner) p.vy += Math.sign(pr.owner.y - p.y) * (markedHook ? 4.8 : 3.5);
-            if (markedHook && pr.owner && !pr.owner.dead) pr.owner.vx -= pullDir * 2.2;
+            const owner = pr.owner;
+            if (owner && p !== owner) {
+              const dx = owner.x - p.x;
+              const dy = owner.y - p.y;
+              const dist = Math.max(1, Math.hypot(dx, dy));
+              const nx = dx / dist;
+              const ny = dy / dist;
+              p.vx = nx * 18;
+              p.vy = ny * 12 - 4;
+              if (dist > 130) {
+                p.vx = nx * 24;
+                p.vy = ny * 16 - 5;
+              }
+              p.hitstun = Math.max(p.hitstun || 0, 18);
+              p.chainPullLockTimer = 14;
+              p.grabImmunityTimer = Math.max(p.grabImmunityTimer || 0, 8);
+              spawnParticles(p.x, p.y, "#80ffdb", 24, 7);
+              spawnParticles(owner.x, owner.y, "#7b2cbf", 16, 5);
+              shake = Math.max(shake, 5);
+            }
           }
 
           if (pr.chain) {
@@ -4482,6 +4577,27 @@ function drawProjectile(pr) {
   const s = camera.zoom;
   const w = screenScale(pr.w);
   const h = screenScale(pr.h);
+  if (pr.type === "anubisGrapple") {
+    const owner = pr.owner;
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    ctx.strokeStyle = "#8ffcff";
+    ctx.lineWidth = screenScale(3);
+    if (owner && !owner.dead) {
+      ctx.beginPath();
+      ctx.moveTo(worldToScreenX(owner.x), worldToScreenY(owner.y - 18));
+      ctx.lineTo(x, y);
+      ctx.stroke();
+    }
+    for (let i = 0; i < 5; i++) {
+      ctx.fillStyle = i % 2 === 0 ? "#8ffcff" : "#80ffdb";
+      ctx.fillRect(x - screenScale(2), y - h * 0.45 + i * (h * 0.2), screenScale(4), screenScale(6));
+    }
+    ctx.fillStyle = "#c0ffff";
+    ctx.fillRect(x - w * 0.2, y - h * 0.52, w * 0.4, h * 0.2);
+    ctx.restore();
+    return;
+  }
 
   if (pr.type === "horusBlade") {
     ctx.save();
