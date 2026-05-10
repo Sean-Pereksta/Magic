@@ -880,12 +880,12 @@ const GODS = {
     bodyScale: 0.88,
     widthScale: 0.86,
     heightScale: 0.90,
-    knockbackTaken: 1.18,
-    speed: 6.55,
-    jump: 16.8,
-    weight: 0.78,
-    attackPower: .9,
-    specialCooldown: 46,
+    knockbackTaken: 1.2,
+    speed: 6.65,
+    jump: 17.8,
+    weight: 0.76,
+    attackPower: .88,
+    specialCooldown: 42,
     specialName: "Moon Pounce"
   },
   loki: {
@@ -1210,35 +1210,33 @@ function drawAvatar(c, god, x, y, scale) {
   }
   if (god.id === "bastet") {
     c.fillStyle = "#050505";
-    c.fillRect(x - 9*s, y - 15*s, 18*s, 12*s);
-    c.fillRect(x - 11*s, y - 21*s, 5*s, 8*s);
-    c.fillRect(x + 6*s, y - 21*s, 5*s, 8*s);
+    c.fillRect(x - 9*s, y - 16*s, 18*s, 13*s);
+    c.fillRect(x - 12*s, y - 23*s, 6*s, 10*s);
+    c.fillRect(x + 6*s, y - 23*s, 6*s, 10*s);
     c.fillStyle = "#b66dff";
-    c.fillRect(x - 9*s, y - 18*s, 2*s, 4*s);
-    c.fillRect(x + 7*s, y - 18*s, 2*s, 4*s);
+    c.fillRect(x - 10*s, y - 20*s, 2*s, 5*s);
+    c.fillRect(x + 8*s, y - 20*s, 2*s, 5*s);
     c.fillStyle = "#ffd166";
-    c.fillRect(x - 5*s, y - 10*s, 3*s, 2*s);
-    c.fillRect(x + 2*s, y - 10*s, 3*s, 2*s);
+    c.fillRect(x - 6*s, y - 11*s, 4*s, 2*s);
+    c.fillRect(x + 2*s, y - 11*s, 4*s, 2*s);
     c.fillStyle = "#d4af37";
-    c.fillRect(x - 1*s, y - 7*s, 2*s, 2*s);
+    c.fillRect(x - 2*s, y - 7*s, 4*s, 2*s);
+    c.fillStyle = "#b66dff";
+    c.fillRect(x - 1*s, y - 6*s, 2*s, 2*s);
+    c.fillStyle = "#ffd166";
+    c.fillRect(x - 12*s, y - 7*s, 7*s, 1*s);
+    c.fillRect(x - 12*s, y - 4*s, 7*s, 1*s);
+    c.fillRect(x + 5*s, y - 7*s, 7*s, 1*s);
+    c.fillRect(x + 5*s, y - 4*s, 7*s, 1*s);
+    c.fillStyle = "#d4af37";
+    c.fillRect(x - 7*s, y - 2*s, 14*s, 3*s);
     c.fillStyle = "#090909";
-    c.fillRect(x - 6*s, y - 3*s, 12*s, 15*s);
-    c.fillStyle = "#d4af37";
-    c.fillRect(x - 8*s, y - 3*s, 16*s, 3*s);
+    c.fillRect(x - 6*s, y + 1*s, 12*s, 11*s);
     c.fillStyle = "#b66dff";
-    c.fillRect(x - 5*s, y + 1*s, 10*s, 7*s);
+    c.fillRect(x - 4*s, y + 3*s, 8*s, 5*s);
     c.fillStyle = "#050505";
-    c.fillRect(x - 13*s, y + 1*s, 5*s, 11*s);
-    c.fillRect(x + 8*s, y + 1*s, 5*s, 11*s);
-    c.fillStyle = "#ffd166";
-    c.fillRect(x - 15*s, y + 10*s, 5*s, 2*s);
-    c.fillRect(x + 10*s, y + 10*s, 5*s, 2*s);
-    c.fillStyle = "#050505";
-    c.fillRect(x + 9*s, y + 8*s, 4*s, 10*s);
-    c.fillRect(x + 12*s, y + 14*s, 6*s, 4*s);
-    c.fillRect(x + 16*s, y + 10*s, 4*s, 4*s);
-    c.fillStyle = "#b66dff";
-    c.fillRect(x - 2*s, y + 4*s, 4*s, 4*s);
+    c.fillRect(x + 8*s, y + 5*s, 4*s, 12*s);
+    c.fillRect(x + 12*s, y + 12*s, 6*s, 4*s);
   }
 }
 
@@ -1405,6 +1403,10 @@ function createFighter(config) {
     armorTimer: 0,
     lokiDodgeCloneTimer: 0,
     lokiPlatformTeleportCooldown: 0,
+    bastetScratchTimer: 0,
+    bastetScratchHit: false,
+    bastetScratchMissStun: 0,
+    bastetScratchDir: 1,
     confusedTimer: 0,
     grabbedBy: null,
     grabTimer: 0,
@@ -1595,7 +1597,7 @@ function updateGame() {
 }
 
 function updateHuman(p) {
-  if (p.dead || p.hitstun > 0) return;
+  if (p.dead || p.hitstun > 0 || p.bastetScratchMissStun > 0) return;
 
   let move = 0;
   if (isActionDown("left")) move -= 1;
@@ -1690,7 +1692,7 @@ function botRecoveryBehavior(p, profile) {
 }
 
 function updateBot(p) {
-  if (p.dead || p.hitstun > 0) return;
+  if (p.dead || p.hitstun > 0 || p.bastetScratchMissStun > 0) return;
 
   const aliveEnemies = players.filter(o => o !== p && !o.dead && o.lives > 0);
   if (!aliveEnemies.length) return;
@@ -1912,7 +1914,9 @@ function chooseBotAttackVariant(bot, target, inputType) {
     }
     if (bot.godId === "bastet") {
       if (recoveringFromBelowStage || targetAbove) return "up";
-      if (absDx < 135 && bot.grounded && Math.random() < 0.42) return "down";
+      if (absDx < 115 && bot.grounded && Math.random() < 0.42) return "down";
+      if (absDx > 95 && absDx < 260) return "neutral";
+      if (absDx < 90 && Math.random() < 0.35) return "down";
       return "neutral";
     }
     if (targetAbove) return "up";
@@ -2593,7 +2597,7 @@ function useSpecial(p) {
       p.vx = dir * 16;
       p.vy = Math.min(p.vy, -7);
       p.grounded = false;
-      p.attackKind = "bastet_moon_pounce";
+      p.attackKind = "bastet_scratch_rebound";
       p.attackFrame = Math.max(p.attackFrame, 24);
       p.invincible = Math.max(p.invincible, 4);
       createAttack({owner:p,x:p.x + dir * 48,y:p.y - 6,w:92,h:58,damage:9,knock:10,angle:-0.32,frames:14,color:"#b66dff",label:"bastet_moon_pounce",visualType:"bastetMoonPounce",attachToOwner:true,offsetX:dir * 48,offsetY:-6});
@@ -2603,8 +2607,8 @@ function useSpecial(p) {
     }
     if (v === "up") {
       p.specialCooldown = (p.god.specialCooldown || 46) + 6;
-      p.vy = Math.min(p.vy, -18);
-      p.vx += dir * 5;
+      p.vy = Math.min(p.vy, -20);
+      p.vx += dir * 6;
       p.grounded = false;
       p.attackKind = "bastet_moonlit_leap";
       p.attackFrame = Math.max(p.attackFrame, 28);
@@ -2696,7 +2700,7 @@ function useUltimate(p) {
     const catCount = 10;
     for (let i = 0; i < catCount; i++) {
       const angle = (Math.PI * 2 * i) / catCount;
-      bastetSpiritCats.push({ owner:p, x:p.x + Math.cos(angle) * 40, y:p.y + Math.sin(angle) * 26, vx:Math.cos(angle) * 5, vy:Math.sin(angle) * 4, life:210, phase:Math.random() * Math.PI * 2, target:null, hitIds:new Set(), size:18 + Math.random() * 6, color:"#b66dff" });
+      bastetSpiritCats.push({ owner:p, x:p.x + Math.cos(angle) * 40, y:p.y + Math.sin(angle) * 26, vx:Math.cos(angle) * 5, vy:Math.sin(angle) * 4, life:210, phase:Math.random() * Math.PI * 2, target:null, size:18 + Math.random() * 6, color:"#b66dff" });
     }
     if (bastetSpiritCats.length > 24) bastetSpiritCats.splice(0, bastetSpiritCats.length - 24);
     spawnParticles(p.x, p.y, "#b66dff", 60, 9);
@@ -3205,6 +3209,36 @@ function fireHorusBladeFan(p) {
 }
 
 function updateFighter(p) {
+  if (p.bastetScratchMissStun > 0) {
+    p.bastetScratchMissStun--;
+    p.vx *= 0.82;
+    p.action = "stunned";
+    p.attackKind = "bastet_stumble";
+    p.attackFrame = Math.max(p.attackFrame, 4);
+    if (p.bastetScratchMissStun % 4 === 0) spawnParticles(p.x, p.y + p.h / 2, "#b66dff", 3, 1.5);
+  }
+  if (p.bastetScratchTimer > 0) {
+    p.bastetScratchTimer--;
+    const dir = p.bastetScratchDir || getFacingDir(p);
+    p.vx = dir * 19;
+    p.vy *= 0.72;
+    p.grounded = false;
+    p.action = "dash";
+    p.attackKind = "bastet_scratch_rebound";
+    p.attackFrame = Math.max(p.attackFrame, 6);
+    if (p.bastetScratchTimer % 2 === 0) {
+      spawnParticles(p.x - dir * 20, p.y + 5, "#b66dff", 4, 2.2);
+      spawnParticles(p.x - dir * 30, p.y + 10, "#ffd166", 2, 1.5);
+    }
+    createAttack({ owner:p, x:p.x + dir * 44, y:p.y - 4, w:86, h:56, damage:8.5, knock:9.8, angle:-0.22, frames:2, color:"#b66dff", label:"bastet_scratch_rebound", visualType:"bastetScratchRebound", attachToOwner:true, offsetX:dir * 44, offsetY:-4, onHitEffect:"bastetScratchBounce" });
+    if (p.bastetScratchTimer <= 0 && !p.bastetScratchHit) {
+      p.bastetScratchMissStun = 15;
+      p.attackCooldown = Math.max(p.attackCooldown, 15);
+      p.vx *= 0.25;
+      p.vy = Math.min(p.vy + 4, 8);
+      spawnParticles(p.x, p.y + p.h / 2, "#ffd166", 8, 2.5);
+    }
+  }
   p.anim += .18;
   if (p.lastHitTimer > 0) p.lastHitTimer--;
   else p.lastHitBy = null;
@@ -3746,6 +3780,23 @@ function updateAttacks() {
           p.confusedTimer = Math.max(p.confusedTimer || 0, 70);
           spawnParticles(p.x, p.y - 20, "#b66dff", 18, 4);
         }
+        if (a.label === "bastet_scratch_rebound" && a.owner && a.owner.godId === "bastet" && !a.owner.bastetScratchHit) {
+          const owner = a.owner;
+          owner.bastetScratchHit = true;
+          owner.bastetScratchTimer = 0;
+          const bounceDir = -getFacingDir(owner);
+          owner.vx = bounceDir * 9;
+          owner.vy = -15;
+          owner.grounded = false;
+          owner.jumps = Math.max(owner.jumps, 1);
+          owner.invincible = Math.max(owner.invincible, 5);
+          owner.attackCooldown = Math.max(owner.attackCooldown, 8);
+          owner.attackKind = "bastet_rebound_flip";
+          owner.attackFrame = Math.max(owner.attackFrame, 18);
+          spawnParticles(owner.x, owner.y, "#b66dff", 22, 5);
+          spawnParticles(owner.x, owner.y, "#ffd166", 12, 4);
+          shake = Math.max(shake, 4);
+        }
       }
     });
 
@@ -3784,13 +3835,13 @@ function updateBastetSpiritCats() {
       c.vx += (dx / d) * 0.55; c.vy += (dy / d) * 0.55;
       const maxSpeed = 6.5 + Math.sin(c.phase) * 1.2, vmag = Math.max(1, Math.hypot(c.vx, c.vy));
       if (vmag > maxSpeed) { c.vx = (c.vx / vmag) * maxSpeed; c.vy = (c.vy / vmag) * maxSpeed; }
-      if (d < 34 && !c.hitIds.has(c.target.id)) {
-        c.hitIds.add(c.target.id);
-        applyHit(c.target, c.owner, 5.5, 6.5, -0.25, Math.sign(dx || 1), "#b66dff");
-        c.target.vx += Math.sign(dx || 1) * 5; c.target.vy = Math.min(c.target.vy, -4); c.target.hitstun = Math.max(c.target.hitstun || 0, 14);
-        spawnParticles(c.target.x, c.target.y, "#b66dff", 16, 4); spawnParticles(c.target.x, c.target.y, "#ffd166", 8, 3);
-        c.vx *= -0.55; c.vy = -Math.abs(c.vy) - 2;
-        if (c.hitIds.size > 2) c.life = Math.min(c.life, 25);
+      if (d < 34) {
+        createAttack({ owner: c.owner, x: c.x, y: c.y, w: 92, h: 92, damage: 6.5, knock: 7.5, angle: -0.45, frames: 5, color: "#b66dff", label: "bastet_spirit_cat_explosion", visualType: "bastetSpiritCatExplosion" });
+        spawnParticles(c.x, c.y, "#b66dff", 24, 6);
+        spawnParticles(c.x, c.y, "#ffd166", 10, 4);
+        shake = Math.max(shake, 3);
+        bastetSpiritCats.splice(i, 1);
+        continue;
       }
     } else if (c.owner) {
       const ox = c.owner.x + Math.cos(c.phase) * 90, oy = c.owner.y + Math.sin(c.phase * 1.3) * 50;
@@ -4968,11 +5019,14 @@ function drawPixelGod(c, p, x, y, s) {
   c.fillStyle = g.accent;
   c.fillRect(px(x + sc(23) + hitLean + bodyLean + (pose.shieldX || 0)), px(y + sc(8) + bob + crouch + (pose.shieldY || 0)), sc(14), sc(10));
   if (p.godId === "bastet") {
+    const leapPose = ["bastet_scratch_rebound","bastet_low_pounce","bastet_moonlit_leap"].includes(p.attackKind);
+    const reboundPose = p.attackKind === "bastet_rebound_flip";
+    const stumblePose = p.attackKind === "bastet_stumble";
     c.fillStyle = "#050505";
-    c.fillRect(px(x + dir * sc(18)), px(y - sc(3) + bob + crouch), sc(6), sc(16));
-    c.fillRect(px(x + dir * sc(24)), px(y + sc(8) + bob + crouch), sc(10), sc(5));
+    c.fillRect(px(x + dir * sc(leapPose ? 22 : 18)), px(y - sc(reboundPose ? 7 : 3) + bob + crouch + (stumblePose ? sc(5) : 0)), sc(6), sc(16));
+    c.fillRect(px(x + dir * sc(leapPose ? 28 : 24)), px(y + sc(leapPose ? 6 : 8) + bob + crouch + (stumblePose ? sc(4) : 0)), sc(10), sc(5));
     c.fillStyle = "#b66dff";
-    if (p.dodgeTimer > 0 || String(p.attackKind || "").includes("bastet_moon")) c.fillRect(px(x - sc(20)), px(y + sc(24) + bob + crouch), sc(40), sc(4));
+    if (p.dodgeTimer > 0 || leapPose || reboundPose) c.fillRect(px(x - sc(24)), px(y + sc(stumblePose ? 28 : 23) + bob + crouch), sc(44), sc(4));
   }
 
   drawGodWeapon(c, p, x + hitLean + bodyLean, y + bob + crouch, s, dir, pose);
@@ -5096,6 +5150,28 @@ function drawGodHead(c, p, x, y, s, dir, headTilt) {
     c.fillRect(px(x - sc(15)), px(y - sc(32)), sc(30), sc(5));
     c.fillStyle = "#0f332f";
     c.fillRect(px(x - dir * sc(19)), px(y - sc(54)), sc(4), sc(4));
+  } else if (id === "bastet") {
+    c.fillStyle = "#050505";
+    c.fillRect(px(x - sc(16)), px(y - sc(56)), sc(32), sc(26));
+    c.fillRect(px(x - sc(20)), px(y - sc(74)), sc(9), sc(18));
+    c.fillRect(px(x + sc(11)), px(y - sc(74)), sc(9), sc(18));
+    c.fillStyle = "#b66dff";
+    c.fillRect(px(x - sc(17)), px(y - sc(68)), sc(3), sc(8));
+    c.fillRect(px(x + sc(14)), px(y - sc(68)), sc(3), sc(8));
+    c.fillStyle = "#ffd166";
+    c.fillRect(px(x - sc(9)), px(y - sc(46)), sc(6), sc(3));
+    c.fillRect(px(x + sc(3)), px(y - sc(46)), sc(6), sc(3));
+    c.fillStyle = "#d4af37";
+    c.fillRect(px(x - sc(3)), px(y - sc(41)), sc(6), sc(3));
+    c.fillStyle = "#b66dff";
+    c.fillRect(px(x - sc(1)), px(y - sc(39)), sc(2), sc(2));
+    c.fillStyle = "#ffd166";
+    c.fillRect(px(x - sc(20)), px(y - sc(41)), sc(10), sc(1));
+    c.fillRect(px(x - sc(20)), px(y - sc(37)), sc(10), sc(1));
+    c.fillRect(px(x + sc(10)), px(y - sc(41)), sc(10), sc(1));
+    c.fillRect(px(x + sc(10)), px(y - sc(37)), sc(10), sc(1));
+    c.fillStyle = "#d4af37";
+    c.fillRect(px(x - sc(10)), px(y - sc(31)), sc(20), sc(4));
   } else {
     c.fillStyle = g.color;
     c.fillRect(px(x - sc(18)), px(y - sc(55)), sc(36), sc(30));
@@ -5349,13 +5425,26 @@ function drawAttack(a) {
     }
     ctx.globalAlpha = 1;
   };
-  if (["bastetClawSwipe","bastetRisingClaw","bastetLowSweep","bastetPouncingMaul","bastetMoonLauncher","bastetTailTrip","bastetMoonPounce","bastetMoonlitLeap","bastetCharmingGaze"].includes(type)) {
+  if (["bastetClawSwipe","bastetQuickClaws","bastetRisingClaw","bastetLowSweep","bastetLowProwlSwipe","bastetPouncingMaul","bastetMoonLauncher","bastetTailTrip","bastetMoonPounce","bastetMoonlitLeap","bastetScratchRebound","bastetLowPounce","bastetSpiritCatExplosion","bastetCharmingGaze"].includes(type)) {
     const v = (type.includes("Rising") || type.includes("MoonLauncher") || type.includes("Moonlit")) ? "up" : (type.includes("Low") || type.includes("TailTrip") ? "down" : "neutral");
     if (type === "bastetCharmingGaze") {
       ctx.globalAlpha = 0.25; ctx.fillStyle = "#b66dff"; ctx.beginPath(); ctx.moveTo(cx - dir * w * .3, cy); ctx.lineTo(cx + dir * w * .6, cy - h * .35); ctx.lineTo(cx + dir * w * .6, cy + h * .35); ctx.closePath(); ctx.fill();
       ctx.globalAlpha = 0.95; ctx.fillStyle = "#ffd166"; ctx.fillRect(cx + dir * w * .18, cy - h * .12, screenScale(8), screenScale(4)); ctx.fillRect(cx + dir * w * .28, cy - h * .12, screenScale(8), screenScale(4));
+    } else if (type === "bastetSpiritCatExplosion") {
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = "#b66dff";
+      ctx.beginPath(); ctx.arc(cx, cy, Math.max(w, h) * 0.35 * pulse, 0, Math.PI * 2); ctx.fill();
+      ctx.fillRect(cx - w * 0.18, cy - h * 0.38, w * 0.12, h * 0.2);
+      ctx.fillRect(cx + w * 0.06, cy - h * 0.38, w * 0.12, h * 0.2);
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = "#ffd166";
+      ctx.fillRect(cx - w * 0.08, cy - h * 0.06, w * 0.06, h * 0.04);
+      ctx.fillRect(cx + w * 0.02, cy - h * 0.06, w * 0.06, h * 0.04);
+      spark(8, "rgba(255,209,102,.95)");
     } else {
       drawBastetClawMarks(cx, cy, w, h, v);
+      if (type === "bastetScratchRebound") { ctx.globalAlpha = 0.35; ctx.strokeStyle = "#b66dff"; ctx.lineWidth = screenScale(9); ctx.beginPath(); ctx.moveTo(cx - dir * w * .72, cy + h * .22); ctx.lineTo(cx + dir * w * .22, cy - h * .28); ctx.stroke(); spark(7, "rgba(255,209,102,.95)"); }
+      if (type === "bastetLowPounce" || type === "bastetLowProwlSwipe") { ctx.globalAlpha = 0.3; ctx.fillStyle = "#b66dff"; ctx.fillRect(cx - w * 0.35, cy + h * 0.05, w * 0.7, h * 0.22); }
       if (type.includes("Pounce") || type.includes("Moonlit")) { ctx.globalAlpha = 0.25; ctx.strokeStyle = "#b66dff"; ctx.lineWidth = screenScale(8); ctx.beginPath(); ctx.moveTo(cx - dir * w * .65, cy + h * .1); ctx.lineTo(cx - dir * w * .05, cy); ctx.stroke(); }
     }
     ctx.globalAlpha = 1;
