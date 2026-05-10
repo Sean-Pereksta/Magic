@@ -776,6 +776,7 @@ let selectedGod = "zeus";
 let players = [];
 let attacks = [];
 let projectiles = [];
+let tacticalSeals = [];
 let particles = [];
 let telegraphs = [];
 let ultFlash = 0;
@@ -1119,6 +1120,13 @@ function createFighter(config) {
     charmTimer: 0,
     soulMarkSource: null,
     athenaGuardBonus: 0,
+    athenaCounterTimer: 0,
+    athenaCounterReady: false,
+    athenaCounterUsed: false,
+    athenaAegisTimer: 0,
+    athenaAegisDir: 1,
+    athenaSealSlowTimer: 0,
+    athenaSealSource: null,
     action: "idle",
     anim: 0,
     human: config.human,
@@ -1500,10 +1508,11 @@ function applyMoveInput(p, move) {
   }
   const mudSlow = p.mudSlowTimer > 0 ? .62 : 1;
   const charmSlow = p.charmTimer > 0 ? .72 : 1;
+  const athenaSealSlow = p.athenaSealSlowTimer > 0 ? .68 : 1;
   const confusionDir = p.confusedTimer > 0 ? -1 : 1;
 
   if (move !== 0) {
-    p.vx += move * confusionDir * accel * mudSlow * charmSlow;
+    p.vx += move * confusionDir * accel * mudSlow * charmSlow * athenaSealSlow;
     p.facing = move;
     p.action = p.grounded ? "run" : "air";
   } else if (p.grounded) {
@@ -1513,8 +1522,8 @@ function applyMoveInput(p, move) {
   }
 
   if (p.horusRushTimer > 0 || p.anubisGrapplePullTimer > 0) return;
-  if (p.godId === "horus" && !p.grounded) p.vx = clamp(p.vx, -max * 1.18 * mudSlow * charmSlow, max * 1.18 * mudSlow * charmSlow);
-  else p.vx = clamp(p.vx, -max * mudSlow * charmSlow, max * mudSlow * charmSlow);
+  if (p.godId === "horus" && !p.grounded) p.vx = clamp(p.vx, -max * 1.18 * mudSlow * charmSlow * athenaSealSlow, max * 1.18 * mudSlow * charmSlow * athenaSealSlow);
+  else p.vx = clamp(p.vx, -max * mudSlow * charmSlow * athenaSealSlow, max * mudSlow * charmSlow * athenaSealSlow);
 }
 
 function jump(p) {
@@ -1608,7 +1617,7 @@ const ATTACK_DEFS = {
   },
   athena: {
     light: { neutral:{id:"athena_light_n",godId:"athena",inputType:"light",directionVariant:"neutral",startup:2,active:5,recovery:8,damage:6,knock:6.2,angle:-0.05,hitbox:{x:58,y:-8,w:88,h:16},effects:{visualType:"spearThrust"}}, up:{id:"athena_light_u",directionVariant:"up",startup:3,active:5,recovery:8,damage:7,knock:7.6,angle:-1.15,hitbox:{x:40,y:-54,w:56,h:56},effects:{visualType:"spearLift"}}, down:{id:"athena_light_d",directionVariant:"down",startup:3,active:5,recovery:10,damage:6,knock:6.8,angle:0.08,hitbox:{x:28,y:26,w:62,h:22},effects:{visualType:"shieldCheck"},selfImpulse:{x:-1.9,y:0}}},
-    heavy:{neutral:{id:"athena_heavy_n",directionVariant:"neutral",startup:7,active:7,recovery:14,damage:12,knock:14.2,angle:-0.08,hitbox:{x:34,y:-18,w:90,h:66},effects:{visualType:"aegisBash"},selfImpulse:{x:2.8,y:0}},up:{id:"athena_heavy_u",directionVariant:"up",startup:7,active:7,recovery:15,damage:11,knock:12.8,angle:-1.2,hitbox:{x:8,y:-102,w:76,h:104},effects:{visualType:"guardianUpper"},startupArmor:8},down:{id:"athena_heavy_d",directionVariant:"down",startup:7,active:7,recovery:16,damage:13,knock:13.4,angle:-0.7,hitbox:{x:36,y:16,w:52,h:88},effects:{visualType:"spearPin"}}}
+    heavy:{neutral:{id:"athena_heavy_n",godId:"athena",inputType:"heavy",directionVariant:"neutral",startup:6,active:8,recovery:13,damage:12,knock:15,angle:-0.12,hitbox:{x:44,y:-14,w:94,h:58},effects:{visualType:"aegisBash"},selfImpulse:{x:5.2,y:0},startupArmor:9},up:{id:"athena_heavy_u",godId:"athena",inputType:"heavy",directionVariant:"up",startup:5,active:8,recovery:14,damage:11,knock:13,angle:-1.28,hitbox:{x:12,y:-104,w:74,h:112},effects:{visualType:"spearOfOlympus"},selfImpulse:{x:0,y:-12},startupArmor:4},down:{id:"athena_heavy_d",godId:"athena",inputType:"heavy",directionVariant:"down",startup:3,active:20,recovery:16,damage:0,knock:0,angle:-0.7,hitbox:{x:0,y:0,w:20,h:20},effects:{visualType:"shieldPlantCounter"},startupArmor:24}}
   },
   ra: {
     light: { neutral:{id:"ra_light_n",godId:"ra",inputType:"light",directionVariant:"neutral",startup:3,active:5,recovery:8,damage:6,knock:6.4,angle:-0.08,hitbox:{x:34,y:-8,w:66,h:28},effects:{visualType:"solarStaffTap"}}, up:{id:"ra_light_u",directionVariant:"up",startup:3,active:6,recovery:8,damage:7,knock:7.5,angle:-1.08,hitbox:{x:32,y:-56,w:64,h:58},effects:{visualType:"sunriseArc"}}, down:{id:"ra_light_d",directionVariant:"down",startup:3,active:6,recovery:9,damage:6,knock:6.9,angle:0.06,hitbox:{x:24,y:24,w:94,h:24},effects:{visualType:"horizonSweep"}}},
@@ -1686,7 +1695,7 @@ function getMoveProgress(p) {
     phaseT: clamp((elapsed - phaseStart) / Math.max(1, phaseLength), 0, 1)
   };
 }
-function startMove(player, moveDef){ if (!moveDef || player.attackCooldown > 0 || player.dead) return false; const total=moveDef.startup+moveDef.active+moveDef.recovery; moveDef.totalFrames=total; player.currentMove=moveDef; player.moveTimer=total; player.movePhase="startup"; player.moveVariant=moveDef.directionVariant||"neutral"; player.moveVisuals=[]; player.action=moveToAttackKind(moveDef.inputType); player.attackKind=moveDef.inputType; player.attackFrame=total; const pdBoost = player.perfectDodgeTimer > 0 ? 8 : 0; player.attackCooldown=Math.max(player.attackCooldown,Math.max(8,total-pdBoost)); if(player.perfectDodgeTimer > 0) player.perfectDodgeTimer = 0; if(moveDef.inputType==="heavy") player.vx*=.55; if(moveDef.selfImpulse){ player.vx += player.facing * (moveDef.selfImpulse.x||0); player.vy += moveDef.selfImpulse.y||0; } if(moveDef.startupArmor) player.invincible = Math.max(player.invincible, moveDef.startupArmor); if(player.godId==="thor" && moveDef.inputType==="heavy"){ player.armorTimer = Math.max(player.armorTimer, Math.min(12, Math.max(6, moveDef.startup - 1))); if(player.thorHeavyArmorTimer>0){ player.armorTimer = Math.max(player.armorTimer, 14); player.thorHeavyArmorTimer = 0; } } if(player.godId==="sobek" && player.perfectDodgeMud && (moveDef.id||"").includes("sobek_heavy")){ moveDef.knock += 1.8; player.perfectDodgeMud = 0; } return true;}
+function startMove(player, moveDef){ if (!moveDef || player.attackCooldown > 0 || player.dead) return false; const total=moveDef.startup+moveDef.active+moveDef.recovery; moveDef.totalFrames=total; player.currentMove=moveDef; player.moveTimer=total; player.movePhase="startup"; player.moveVariant=moveDef.directionVariant||"neutral"; player.moveVisuals=[]; player.action=moveToAttackKind(moveDef.inputType); player.attackKind=moveDef.inputType; player.attackFrame=total; const pdBoost = player.perfectDodgeTimer > 0 ? 8 : 0; player.attackCooldown=Math.max(player.attackCooldown,Math.max(8,total-pdBoost)); if(player.perfectDodgeTimer > 0) player.perfectDodgeTimer = 0; if(moveDef.inputType==="heavy") player.vx*=.55; if(moveDef.selfImpulse){ player.vx += player.facing * (moveDef.selfImpulse.x||0); player.vy += moveDef.selfImpulse.y||0; } if(moveDef.startupArmor) player.armorTimer = Math.max(player.armorTimer, moveDef.startupArmor); if(player.godId==="thor" && moveDef.inputType==="heavy"){ player.armorTimer = Math.max(player.armorTimer, Math.min(12, Math.max(6, moveDef.startup - 1))); if(player.thorHeavyArmorTimer>0){ player.armorTimer = Math.max(player.armorTimer, 14); player.thorHeavyArmorTimer = 0; } } if(player.godId==="sobek" && player.perfectDodgeMud && (moveDef.id||"").includes("sobek_heavy")){ moveDef.knock += 1.8; player.perfectDodgeMud = 0; } return true;}
 function spawnMoveHitbox(player, moveDef){ const hb=moveDef.hitbox; const power=(player.attackPowerBonus||1); let moveAngle=moveDef.angle; if(moveDef.id==="athena_heavy_d" && player.grounded) moveAngle=-0.12; if(moveDef.id==="athena_heavy_d" && !player.grounded) moveAngle=1.2; createAttack({owner:player,x:player.x+player.facing*hb.x,y:player.y+hb.y,w:hb.w,h:hb.h,damage:moveDef.damage*player.god.attackPower*power,knock:moveDef.knock,angle:moveAngle,frames:moveDef.active,color:player.god.accent||player.god.color,label:moveDef.inputType,visualType:(moveDef.effects||{}).visualType||"slashArc",visualAngle:moveDef.angle,visualLength:Math.max(hb.w,hb.h),visualThickness:Math.max(8,Math.min(hb.h,hb.w)/3),attachToOwner:true,offsetX:hb.x,offsetY:hb.y}); if(moveDef.id==="athena_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*56,y:player.y+30,w:80,h:14,damage:4*player.god.attackPower*power,knock:6.2,angle:-0.05,frames:5,color:"#eff8ff",label:"ground_line",visualType:"spearThrust"}); } if(moveDef.id==="ra_heavy_d" && player.grounded){ createAttack({owner:player,x:player.x+player.facing*74,y:player.y+30,w:96,h:14,damage:2.2*player.god.attackPower*power,knock:3.8,angle:-0.03,frames:10,color:"#ff8c42",label:"burn_line",visualType:"desertBurn"}); } if(moveDef.id==="thor_heavy_d"){ createAttack({owner:player,x:player.x-player.facing*76,y:player.y+30,w:96,h:22,damage:4.5*player.god.attackPower*power,knock:8.8,angle:-0.92,frames:6,color:"#d4e8ff",label:"ground_quake",visualType:"thunderLanding"}); } player.moveVisuals.push({type:(moveDef.effects||{}).visualType||"slashArc",phase:"active",frames:moveDef.active+Math.max(3,Math.floor(moveDef.recovery*0.4)),angle:moveDef.angle,length:Math.max(hb.w,hb.h),thickness:14,recoveryFrames:Math.max(3,Math.floor(moveDef.recovery*0.45))}); if(moveDef.id && moveDef.id.startsWith("thor_heavy")){ shake = Math.max(shake, moveDef.id==="thor_heavy_d"?12:9); hitStop = Math.max(hitStop, moveDef.id==="thor_heavy_n"?4:3); } }
 function lightAttack(p) {
   if (p.godId === "anubis" && p.anubisUltActive) return;
