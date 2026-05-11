@@ -1115,6 +1115,11 @@ let quetzTempests = [];
 let telegraphs = [];
 let hadesSoulPrisons = [];
 let hadesMotionWisps = [];
+let hadesChains = [];
+let hadesGates = [];
+let hadesCursePits = [];
+let hadesRealmFields = [];
+let hadesCurses = [];
 let lightningStrikes = [];
 let raSunBursts = [];
 let bastetSpiritCats = [];
@@ -1437,6 +1442,11 @@ function startGame() {
   telegraphs = [];
   hadesSoulPrisons = [];
   hadesMotionWisps = [];
+  hadesChains = [];
+  hadesGates = [];
+  hadesCursePits = [];
+  hadesRealmFields = [];
+  hadesCurses = [];
   zeusThunderCages = [];
   anubisWeighingSeals = [];
   matchTime = 0;
@@ -1753,6 +1763,7 @@ function updateGame() {
   if (lightningStrikes && lightningStrikes.length > 0) updateLightningStrikes();
   if (hadesSoulPrisons.length > 0) updateHadesSoulPrisons();
   if (hadesMotionWisps.length > 0) updateHadesMotionWisps();
+  if (hadesChains.length > 0 || hadesGates.length > 0 || hadesCursePits.length > 0 || hadesRealmFields.length > 0) updateHadesAbilityMechanics();
   updateProjectiles();
   updateParticles();
   updateQuetzMotionFeathers();
@@ -2388,8 +2399,8 @@ const ATTACK_DEFS = {
     heavy:{neutral:{id:"bastet_heavy_n",godId:"bastet",inputType:"heavy",directionVariant:"neutral",startup:6,active:7,recovery:12,damage:11,knock:12,angle:-0.25,hitbox:{x:42,y:-14,w:92,h:46},effects:{visualType:"bastetPouncingMaul"},selfImpulse:{x:6.5,y:-1.2}},up:{id:"bastet_heavy_u",godId:"bastet",inputType:"heavy",directionVariant:"up",startup:5,active:8,recovery:13,damage:10,knock:12.8,angle:-1.22,hitbox:{x:16,y:-88,w:78,h:96},effects:{visualType:"bastetMoonLauncher"},selfImpulse:{x:0,y:-5.5}},down:{id:"bastet_heavy_d",godId:"bastet",inputType:"heavy",directionVariant:"down",startup:6,active:8,recovery:13,damage:9,knock:10,angle:-0.15,hitbox:{x:-54,y:16,w:150,h:34},effects:{visualType:"bastetTailTrip"},selfImpulse:{x:-1.8,y:0}}}
   },
   hades: {
-    light: { neutral:{id:"hades_light_n",godId:"hades",inputType:"light",directionVariant:"neutral",startup:3,active:6,recovery:8,damage:6.4,knock:6.9,angle:-0.08,hitbox:{x:42,y:-8,w:78,h:32},effects:{visualType:"hadesBidentJab"}}, up:{id:"hades_light_u",godId:"hades",inputType:"light",directionVariant:"up",startup:4,active:6,recovery:9,damage:7,knock:8.6,angle:-1.16,hitbox:{x:22,y:-74,w:70,h:82},effects:{visualType:"hadesBoneUpper"}}, down:{id:"hades_light_d",godId:"hades",inputType:"light",directionVariant:"down",startup:4,active:7,recovery:10,damage:6.2,knock:7.2,angle:-0.04,hitbox:{x:30,y:24,w:100,h:24},effects:{visualType:"hadesShadeSweep"}}},
-    heavy:{neutral:{id:"hades_heavy_n",godId:"hades",inputType:"heavy",directionVariant:"neutral",startup:8,active:8,recovery:15,damage:13.5,knock:14.8,angle:-0.36,hitbox:{x:48,y:-16,w:118,h:60},effects:{visualType:"hadesBidentCleave"},startupArmor:5},up:{id:"hades_heavy_u",godId:"hades",inputType:"heavy",directionVariant:"up",startup:8,active:8,recovery:15,damage:12.5,knock:14.5,angle:-1.24,hitbox:{x:10,y:-112,w:96,h:122},effects:{visualType:"hadesBonePillar"}},down:{id:"hades_heavy_d",godId:"hades",inputType:"heavy",directionVariant:"down",startup:9,active:8,recovery:16,damage:13,knock:14,angle:-0.85,hitbox:{x:-48,y:18,w:150,h:52},effects:{visualType:"hadesUnderworldBurst"},startupArmor:4}}
+    light: { neutral:{id:"hades_light_n",godId:"hades",inputType:"light",directionVariant:"neutral",startup:2,active:6,recovery:8,damage:5.9,knock:5.8,angle:-0.02,hitbox:{x:40,y:-8,w:84,h:34},effects:{visualType:"hadesBidentSlash"}}, up:{id:"hades_light_u",godId:"hades",inputType:"light",directionVariant:"up",startup:3,active:6,recovery:9,damage:6.8,knock:7.4,angle:-1.2,hitbox:{x:20,y:-78,w:76,h:86},effects:{visualType:"hadesSoulRake"}}, down:{id:"hades_light_d",godId:"hades",inputType:"light",directionVariant:"down",startup:3,active:7,recovery:10,damage:6,knock:6.1,angle:-0.03,hitbox:{x:24,y:24,w:108,h:24},effects:{visualType:"hadesGraveSweep"}}},
+    heavy:{neutral:{id:"hades_heavy_n",godId:"hades",inputType:"heavy",directionVariant:"neutral",startup:10,active:8,recovery:16,damage:14.2,knock:15.6,angle:-0.35,hitbox:{x:44,y:-14,w:128,h:58},effects:{visualType:"hadesBidentThrust"},startupArmor:5},up:{id:"hades_heavy_u",godId:"hades",inputType:"heavy",directionVariant:"up",startup:9,active:8,recovery:15,damage:13.2,knock:15.8,angle:-1.28,hitbox:{x:8,y:-116,w:100,h:126},effects:{visualType:"hadesRisingDead"}},down:{id:"hades_heavy_d",godId:"hades",inputType:"heavy",directionVariant:"down",startup:9,active:8,recovery:17,damage:13.4,knock:14.5,angle:-0.82,hitbox:{x:-52,y:18,w:156,h:56},effects:{visualType:"hadesGravebreakerSlam"},startupArmor:4}}
   },
   loki: {
     light: { neutral:{id:"loki_light_n",godId:"loki",inputType:"light",directionVariant:"neutral",startup:1,active:4,recovery:6,damage:5,knock:4.2,angle:-0.03,hitbox:{x:30,y:-10,w:44,h:22},effects:{visualType:"daggerFlurry"}}, up:{id:"loki_light_u",directionVariant:"up",startup:2,active:5,recovery:7,damage:6,knock:7.2,angle:-1.18,hitbox:{x:22,y:-58,w:52,h:60},effects:{visualType:"soulRake"},selfImpulse:{x:0,y:-1.4}}, down:{id:"loki_light_d",directionVariant:"down",startup:1,active:4,recovery:6,damage:5,knock:5.1,angle:-0.01,hitbox:{x:28,y:20,w:62,h:18},effects:{visualType:"graveSweep"}}},
@@ -2534,6 +2545,13 @@ function heavyAttack(p) {
     spawnParticles(p.x, p.y - 35, "#ffd166", 10, 4);
     return;
   }
+  if (p.godId === "hades" && v === "down" && !p.grounded) {
+    p.vy = Math.max(p.vy, 19);
+    p.attackCooldown = Math.max(p.attackCooldown, 18);
+  }
+  if (p.godId === "hades" && v === "up" && !p.grounded) {
+    p.vy = Math.min(p.vy, -11.5);
+  }
 
   const defs = ATTACK_DEFS[p.godId] || ATTACK_DEFS.zeus;
   const move = cloneMove(defs.heavy[v] || defs.heavy.neutral, p, v, "heavy");
@@ -2551,6 +2569,7 @@ function heavyAttack(p) {
     spawnParticles(p.x, p.y - 18, "#ffd166", 16, 5);
   }
   if (startMove(p, move)) shake = Math.max(shake, move.directionVariant === "up" ? 5 : 4);
+  if (p.godId === "hades" && v === "down" && !p.grounded) p.attackCooldown = Math.max(p.attackCooldown, 15);
 }
 
 function getFacingDir(p) {
@@ -2699,6 +2718,50 @@ function drawHadesSoulPrisons() {
   });
 }
 
+function applyHadesCurse(target, duration, sourceId = null) {
+  if (!target || target.dead || target.lives <= 0) return;
+  target.hadesCurseTimer = Math.max(target.hadesCurseTimer || 0, duration || 0);
+  if (sourceId) target.hadesCurseSource = sourceId;
+  hadesCurses = hadesCurses.filter(c => c.targetId !== target.id);
+  hadesCurses.push({ targetId: target.id, sourceId: sourceId || target.hadesCurseSource || null, timer: target.hadesCurseTimer });
+}
+function isHadesCursed(target) { return !!(target && target.hadesCurseTimer > 0); }
+function createHadesSoulChain(owner) { hadesChains.push({ owner, x: owner.x + getFacingDir(owner) * 26, y: owner.y - 8, vx: getFacingDir(owner) * 14, life: 24, maxDist: 280, traveled: 0, hit:false }); }
+function createHadesGate(owner) { hadesGates.push({ owner, x: owner.x, y: owner.y + 18, timer: 24, radius: 86, hitCd: new Map() }); }
+function createHadesCursePit(owner) {
+  const pitY = owner.grounded ? findPlatformBelowPoint(owner.x, owner.y - 20, 240) - 8 : owner.y + 42;
+  hadesCursePits.push({ owner, x: owner.x, y: pitY, radius: 98, timer: 126, tickCd: new Map(), linger: new Map() });
+  const pits = hadesCursePits.filter(p => p.owner === owner);
+  if (pits.length > 2) hadesCursePits.splice(hadesCursePits.indexOf(pits[0]), 1);
+}
+function createHadesRealm(owner) { hadesRealmFields.push({ owner, x: owner.x, y: owner.y, radius: 250, timer: 180, lashCd:new Map(), finalHit:new Set(), collapsed:false }); }
+function updateHadesAbilityMechanics() {
+  const now = matchTime || 0;
+  for (let i = hadesChains.length - 1; i >= 0; i--) { const c = hadesChains[i]; if (!c.owner || c.owner.dead) { hadesChains.splice(i,1); continue; } c.life--; c.x += c.vx; c.traveled += Math.abs(c.vx); c.y = c.owner.y - 8;
+    players.forEach(t => { if (c.hit || t === c.owner || t.dead || t.lives <= 0 || t.invincible > 0) return; if (Math.abs(t.x - c.x) < 42 && Math.abs(t.y - c.y) < 34) { c.hit = true; t.damage += 4.5; t.hitstun = Math.max(t.hitstun || 0, 16); const pull = clamp(c.owner.x - t.x, -70, 70); t.vx += pull * 0.18; t.vy += clamp((c.owner.y - t.y) * 0.03, -2.5, 2.5); applyHadesCurse(t, 170, c.owner.id); }});
+    if (c.hit || c.life <= 0 || c.traveled >= c.maxDist) hadesChains.splice(i,1);
+  }
+  for (let i = hadesGates.length - 1; i >= 0; i--) { const g = hadesGates[i]; g.timer--; if (!g.owner || g.owner.dead) { hadesGates.splice(i,1); continue; }
+    players.forEach(t => { if (t === g.owner || t.dead || t.lives <= 0 || t.invincible > 0) return; const d = Math.hypot(t.x-g.x, t.y-g.y); if (d < g.radius) { const last = g.hitCd.get(t.id) || -999; if (now - last < 14) return; g.hitCd.set(t.id, now); t.damage += 2.8; t.hitstun = Math.max(t.hitstun || 0, 8); t.vx += ((t.x-g.x)/Math.max(1,d))*5.5; t.vy -= 2; }});
+    if (g.timer <= 0) hadesGates.splice(i,1);
+  }
+  for (let i = hadesCursePits.length - 1; i >= 0; i--) { const z = hadesCursePits[i]; z.timer--; if (!z.owner || z.owner.dead) { hadesCursePits.splice(i,1); continue; }
+    players.forEach(t => { if (t === z.owner || t.dead || t.lives <= 0 || t.invincible > 0) return; const inside = Math.hypot(t.x-z.x, t.y-z.y) < z.radius && t.y + t.h / 2 >= z.y - 100;
+      if (!inside) return;
+      t.vx *= 0.93; t.mudSlowTimer = Math.max(t.mudSlowTimer || 0, 2);
+      const last = z.tickCd.get(t.id) || -999; if (now - last >= 26) { z.tickCd.set(t.id, now); t.damage += 1.1; t.hitstun = Math.max(t.hitstun || 0, 5); }
+      const linger = (z.linger.get(t.id) || 0) + 1; z.linger.set(t.id, linger); if (linger >= 44) applyHadesCurse(t, 220, z.owner.id);
+    });
+    if (z.timer <= 0) hadesCursePits.splice(i,1);
+  }
+  for (let i = hadesRealmFields.length - 1; i >= 0; i--) { const r = hadesRealmFields[i]; r.timer--; if (!r.owner || r.owner.dead) { hadesRealmFields.splice(i,1); continue; } r.x = r.owner.x; r.y = r.owner.y;
+    players.forEach(t => { if (t===r.owner||t.dead||t.lives<=0||t.invincible>0) return; const dx=r.x-t.x, dy=r.y-t.y, dist=Math.hypot(dx,dy); if (dist < r.radius && r.timer > 20) { t.vx += (dx/Math.max(1,dist))*0.45; t.vy += (dy/Math.max(1,dist))*0.18; t.vx *= 0.95;
+      const last = r.lashCd.get(t.id) || -999; if (now - last >= 30) { r.lashCd.set(t.id, now); t.damage += 2.2; t.hitstun = Math.max(t.hitstun || 0, 8); } }
+      if (r.timer === 18 && dist < r.radius + 20 && !r.finalHit.has(t.id)) { r.finalHit.add(t.id); t.damage += 16; const nx=(t.x-r.x)/Math.max(1,dist); t.vx += nx*11; t.vy -= 11; t.hitstun = Math.max(t.hitstun || 0, isHadesCursed(t) ? 28 : 22); }});
+    if (r.timer <= 0) hadesRealmFields.splice(i,1);
+  }
+}
+
 function useSpecial(p) {
   if (p.godId === "anubis" && p.anubisUltActive) return;
   if (p.dodgeTimer > 0 && p.dodgePhase === "recovery" && p.perfectDodgeTimer <= 0) return;
@@ -2835,17 +2898,11 @@ function useSpecial(p) {
     return;
   }
 
-    else if (id === "hades") {
-    if (p.moveVariant === "neutral") {
-      p.specialCooldown = p.god.specialCooldown; p.vx *= 0.45; p.attackKind = "hades_shadow_gate"; p.attackFrame = Math.max(p.attackFrame, 36);
-      const gateX = p.x + dir * 95; const groundY = findPlatformBelowPoint(gateX, p.y - 20, 300); const gateY = Math.min(p.y + p.h / 2, groundY - 8);
-      addTelegraph({type:"circle",owner:p,x:gateX,y:gateY,w:120,h:46,color:"#5b2cff",label:"GATE",icon:"☠",life:24});
-      setTimeout(()=>{ createAttack({owner:p,x:gateX,y:gateY-60,w:120,h:145,damage:10,knock:11,angle:-1.05,frames:10,color:"#5b2cff",label:"hades_shadow_gate_erupt",visualType:"hadesShadowGate"}); players.forEach(t=>{ if(t!==p && !t.dead && t.lives>0 && t.invincible<=0 && Math.hypot(t.x-gateX,t.y-gateY)<180){ t.vx += Math.sign(gateX-t.x)*4.5; t.vy -= 2; }}); },280); return;
-    }
-    if (p.moveVariant === "up") { p.specialCooldown = p.god.specialCooldown + 8; p.vy = Math.min(p.vy, -16.5); p.vx *= 0.75; p.grounded = false; p.jumps = Math.max(p.jumps, 1); p.invincible = Math.max(p.invincible, 6); p.attackKind = "hades_bone_rise"; p.attackFrame = Math.max(p.attackFrame, 34); createAttack({owner:p,x:p.x,y:p.y-52,w:96,h:128,damage:8.5,knock:11,angle:-1.15,frames:12,color:"#9dffef",label:"hades_bone_rise",visualType:"hadesBoneRise",attachToOwner:true,offsetX:0,offsetY:-52}); return; }
-    p.specialCooldown = p.god.specialCooldown + 10; p.vx *= 0.35; p.attackKind = "hades_soul_prison_cast"; p.attackFrame = Math.max(p.attackFrame, 32); spawnHadesSoulPrison(p);
-    createAttack({owner:p,x:p.x+dir*44,y:p.y+8,w:88,h:52,damage:2,knock:3,angle:-0.2,frames:7,color:"#5b2cff",label:"hades_soul_prison_cast",visualType:"hadesSoulPrisonCast"});
-    return;
+  else if (id === "hades") {
+    if (p.moveVariant === "up") { p.specialCooldown = 72; p.vy = Math.min(p.vy, -15.8); p.vx *= 0.7; p.grounded = false; p.jumps = Math.max(p.jumps, 1); p.invincible = Math.max(p.invincible, 6); p.attackKind = "hades_underworld_gate"; p.attackFrame = Math.max(p.attackFrame, 30); createHadesGate(p); return; }
+    if (p.moveVariant === "down") { p.specialCooldown = 78; p.vx *= 0.45; p.attackKind = "hades_curse_pit"; p.attackFrame = Math.max(p.attackFrame, 32); createHadesCursePit(p); return; }
+    if (Math.abs(p.vx) > 3.8) { p.specialCooldown = 70; p.attackKind = "hades_shadow_step"; p.attackFrame = Math.max(p.attackFrame, 24); p.x += dir * 130; p.vx = dir * 5; players.forEach(t=>{ if(t!==p && !t.dead && t.lives>0 && Math.hypot(t.x-p.x,t.y-p.y)<95){ t.vx += dir*4.5; t.hitstun=Math.max(t.hitstun||0,7); }}); return; }
+    p.specialCooldown = 62; p.vx *= 0.4; p.attackKind = "hades_soul_chain"; p.attackFrame = Math.max(p.attackFrame, 28); createHadesSoulChain(p); return;
   }
 
   else if (id === "thor") {
@@ -3057,11 +3114,12 @@ function useUltimate(p) {
 
   const dir = getFacingDir(p);
   if (p.godId === "hades") {
-    p.hadesUltFieldTimer = 320;
+    p.hadesUltFieldTimer = 190;
     p.hadesUltHit = new Set();
     p.hadesShadowArmorTimer = Math.max(p.hadesShadowArmorTimer, 120);
-    p.invincible = Math.max(p.invincible, 24);
-    addTelegraph({type:"rect",owner:p,x:(currentMap.worldWidth||1700)/2,y:(currentMap.worldHeight||900)-210,w:Math.max(700,(currentMap.worldWidth||1700)-220),h:300,color:"#5b2cff",label:"REALM OF THE DEAD",icon:"☠",life:52});
+    p.invincible = Math.max(p.invincible, 26);
+    addTelegraph({type:"circle",owner:p,x:p.x,y:p.y,w:430,h:200,color:"#5b2cff",label:"REALM OF THE DEAD",icon:"☠",life:58});
+    createHadesRealm(p);
     spawnParticles(p.x, p.y, "#5b2cff", 50, 11);
     spawnParticles(p.x, p.y-20, "#9dffef", 28, 8);
     shake = Math.max(shake, 16);
@@ -4657,6 +4715,13 @@ function applyHit(target, source, damage, knock, angle, dir, color, impact = {})
   if (source && source.godId === "hades" && target && target !== source && impact && impact.attackObj && ["light","special"].includes(impact.attackObj.inputType)) {
     target.hadesCurseTimer = Math.max(target.hadesCurseTimer || 0, 220);
     target.hadesCurseSource = source.id;
+    const attackId = impact.attackObj.label || "";
+    if (attackId.includes("hades_light_n") || attackId.includes("hades_light_u")) {
+      const pullDir = Math.sign(source.x - target.x) || source.facing || 1;
+      target.vx += pullDir * 2.4;
+      if (attackId.includes("hades_light_u")) target.vy -= 2.2;
+    }
+    if (attackId.includes("hades_light_d")) target.mudSlowTimer = Math.max(target.mudSlowTimer || 0, 38);
   }
   if (source && source.godId === "hades" && target && target.hadesCurseTimer > 0 && target.hadesCurseSource === source.id && impact && impact.attackObj && impact.attackObj.inputType === "heavy") {
     knock *= 1.18;
