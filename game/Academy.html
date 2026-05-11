@@ -897,11 +897,11 @@ const GODS = {
     role: "Aerial Wind Serpent",
     desc: "A fast feathered-serpent god who controls wind, glides through the air, and overwhelms enemies with graceful sky movement.",
     moveStyle: {
-      role: "Aerial wind serpent",
-      neutral: "Feather slashes and serpent-body swipes.",
-      up: "Wind lift, aerial recovery, and sky pressure.",
-      down: "Diving serpent movement and grounded wind control.",
-      special: "Wind Dash / Sky Current / Serpent Coil.",
+      role: "Aerial flying wind serpent",
+      neutral: "Fast feather slashes, serpent swipes, and short wind-burst movement.",
+      up: "Strong rising attacks, sky lifts, air resets, and vertical recovery.",
+      down: "Diving serpent strikes, coil traps, and grounded wind control.",
+      special: "Side Wind Dash / Sky Current Lift / Serpent Coil.",
       ultimate: "Sky Serpent Tempest."
     },
     color: "#14b8a6",
@@ -1878,7 +1878,7 @@ function botRecoveryBehavior(p, profile) {
   applyMoveInput(p, Math.sign(dx));
   if ((dy < -30 || p.vy > 4) && p.jumps > 0 && Math.random() < profile.recoverySkill) jump(p);
   if (Math.random() < profile.recoverySkill * 0.08) {
-    if (["horus","sobek","ra","athena","anubis"].includes(p.godId)) botUseAttack(p, "special", "up");
+    if (["horus","sobek","ra","athena","anubis","quetz"].includes(p.godId)) botUseAttack(p, "special", "up");
     else if (p.godId === "loki") { if (p.grounded && Math.random() < 0.45) botUseAttack(p, "special", "down"); else botUseAttack(p, "special", "up"); }
   }
   return true;
@@ -2124,9 +2124,21 @@ function chooseBotAttackVariant(bot, target, inputType) {
 
   if (bot.godId === "quetz") {
     if (inputType === "special") {
-      if (recoveringFromBelowStage || bot.vy > 8) return "up";
-      if (absDx < 120) return "down";
-      if (absDx > 110 && absDx < 300) return "neutral";
+      if (recoveringFromBelowStage || bot.vy > 8 || targetAbove) return "up";
+      if (bot.grounded && absDx < 115 && Math.random() < 0.34) return "down";
+      if (absDx > 95 && absDx < 340) return "neutral";
+      return Math.random() < 0.55 ? "neutral" : "up";
+    }
+    if (inputType === "heavy") {
+      if (recoveringFromBelowStage || targetAbove) return "up";
+      if (!bot.grounded && targetBelow) return "down";
+      if (absDx > 80 && absDx < 250) return "neutral";
+      return Math.random() < 0.45 ? "up" : "neutral";
+    }
+    if (inputType === "light") {
+      if (targetAbove || (!bot.grounded && Math.random() < 0.35)) return "up";
+      if (bot.grounded && absDx < 85 && Math.random() < 0.25) return "down";
+      return "neutral";
     }
   }
     if (bot.godId === "hades") {
@@ -2399,8 +2411,8 @@ const ATTACK_DEFS = {
     heavy:{neutral:{id:"horus_heavy_n",directionVariant:"neutral",startup:7,active:6,recovery:13,damage:12,knock:12.4,angle:-0.72,hitbox:{x:50,y:-10,w:108,h:30},effects:{visualType:"royalSpear"},selfImpulse:{x:3.6,y:0}},up:{id:"horus_heavy_u",directionVariant:"up",startup:7,active:7,recovery:14,damage:12,knock:12.6,angle:-1.25,hitbox:{x:20,y:-96,w:78,h:96},effects:{visualType:"skyJudgment"}},down:{id:"horus_heavy_d",directionVariant:"down",startup:8,active:7,recovery:14,damage:13,knock:11.6,angle:-0.96,hitbox:{x:8,y:20,w:82,h:66},effects:{visualType:"talonDrop"}}}
   },
   quetz: {
-    light: { neutral:{id:"quetz_light_n",godId:"quetz",inputType:"light",directionVariant:"neutral",startup:2,active:5,recovery:7,damage:5.8,knock:5.9,angle:-0.08,hitbox:{x:36,y:-8,w:62,h:30},effects:{visualType:"quetzFeatherFangSwipe"}}, up:{id:"quetz_light_u",directionVariant:"up",startup:3,active:5,recovery:8,damage:6.4,knock:7.6,angle:-1.15,hitbox:{x:24,y:-66,w:64,h:64},effects:{visualType:"quetzSkyPlumeFlick"}}, down:{id:"quetz_light_d",directionVariant:"down",startup:3,active:6,recovery:8,damage:6,knock:6.8,angle:0.04,hitbox:{x:24,y:22,w:82,h:24},effects:{visualType:"quetzCoilSweep"}}},
-    heavy:{neutral:{id:"quetz_heavy_n",directionVariant:"neutral",startup:7,active:7,recovery:13,damage:12,knock:13.2,angle:-0.3,hitbox:{x:38,y:-14,w:106,h:50},effects:{visualType:"quetzEmeraldWingCleave"}},up:{id:"quetz_heavy_u",directionVariant:"up",startup:7,active:7,recovery:14,damage:11,knock:13.5,angle:-1.22,hitbox:{x:16,y:-98,w:84,h:104},effects:{visualType:"quetzTempestCrown"}},down:{id:"quetz_heavy_d",directionVariant:"down",startup:8,active:8,recovery:16,damage:12.5,knock:12,angle:-0.75,hitbox:{x:10,y:18,w:92,h:68},effects:{visualType:"quetzSerpentDive"}}}
+    light: { neutral:{id:"quetz_light_n",godId:"quetz",inputType:"light",directionVariant:"neutral",startup:2,active:5,recovery:7,damage:5.8,knock:6.1,angle:-0.12,hitbox:{x:42,y:-8,w:72,h:32},effects:{visualType:"quetzFeatherDashSwipe"},selfImpulse:{x:2.2,y:-0.4}}, up:{id:"quetz_light_u",godId:"quetz",inputType:"light",directionVariant:"up",startup:2,active:6,recovery:8,damage:6.4,knock:8.4,angle:-1.25,hitbox:{x:18,y:-74,w:72,h:82},effects:{visualType:"quetzRisingFeatherLift"},selfImpulse:{x:0,y:-3.8}}, down:{id:"quetz_light_d",godId:"quetz",inputType:"light",directionVariant:"down",startup:3,active:6,recovery:8,damage:6,knock:6.8,angle:0.04,hitbox:{x:24,y:22,w:88,h:24},effects:{visualType:"quetzLowCoilSweep"}}},
+    heavy:{neutral:{id:"quetz_heavy_n",godId:"quetz",inputType:"heavy",directionVariant:"neutral",startup:6,active:8,recovery:13,damage:11.6,knock:13.4,angle:-0.34,hitbox:{x:46,y:-14,w:118,h:54},effects:{visualType:"quetzSidewindCleave"},selfImpulse:{x:6.8,y:-1.2}},up:{id:"quetz_heavy_u",godId:"quetz",inputType:"heavy",directionVariant:"up",startup:6,active:8,recovery:14,damage:11.2,knock:14.4,angle:-1.32,hitbox:{x:10,y:-116,w:92,h:124},effects:{visualType:"quetzSkySerpentLauncher"},selfImpulse:{x:0,y:-8.5}},down:{id:"quetz_heavy_d",godId:"quetz",inputType:"heavy",directionVariant:"down",startup:7,active:9,recovery:16,damage:12.5,knock:12.6,angle:-0.82,hitbox:{x:12,y:24,w:96,h:78},effects:{visualType:"quetzSerpentDive"},selfImpulse:{x:2.2,y:4.5}}}
   },
   sobek: {
     light: { neutral:{id:"sobek_light_n",godId:"sobek",inputType:"light",directionVariant:"neutral",startup:4,active:6,recovery:9,damage:7,knock:7.4,angle:-0.06,hitbox:{x:34,y:-4,w:62,h:34},effects:{visualType:"crocClaw"}}, up:{id:"sobek_light_u",directionVariant:"up",startup:4,active:6,recovery:9,damage:8,knock:8.5,angle:-1.12,hitbox:{x:30,y:-60,w:68,h:62},effects:{visualType:"jawSnap"}}, down:{id:"sobek_light_d",directionVariant:"down",startup:4,active:7,recovery:10,damage:6,knock:7.1,angle:-0.02,hitbox:{x:-42,y:22,w:132,h:22},effects:{visualType:"tailSweep"}}},
@@ -2564,6 +2576,44 @@ function heavyAttack(p) {
   if (p.godId === "hades" && v === "up" && !p.grounded) {
     p.vy = Math.min(p.vy, -11.5);
   }
+  if (p.godId === "quetz" && v === "up") {
+    if (p.attackCooldown > 0) return;
+    const defs = ATTACK_DEFS[p.godId] || ATTACK_DEFS.zeus;
+    const move = cloneMove(defs.heavy.up, p, "up", "heavy");
+    p.vy = Math.min(p.vy, -19.5);
+    p.vx *= 0.72;
+    p.grounded = false;
+    p.jumps = Math.max(p.jumps, 1);
+    p.quetzGlideTimer = Math.max(p.quetzGlideTimer || 0, 70);
+    p.attackKind = "quetz_sky_serpent_launcher";
+    p.attackFrame = Math.max(p.attackFrame, 34);
+    spawnQuetzWindRing(p.x, p.y + 10, 52, 28, { mode: "column" });
+    spawnQuetzFeathers(p.x, p.y + 18, 18, { vy: -2.8 });
+    spawnQuetzMotionFeathers(p, 16, "feather");
+    if (startMove(p, move)) shake = Math.max(shake, 5);
+    return;
+  }
+  if (p.godId === "quetz" && v === "neutral") {
+    const defs = ATTACK_DEFS[p.godId] || ATTACK_DEFS.zeus;
+    const move = cloneMove(defs.heavy.neutral, p, "neutral", "heavy");
+    p.vx += getFacingDir(p) * 7.5;
+    p.vy = Math.min(p.vy, -3.5);
+    p.grounded = false;
+    p.quetzGlideTimer = Math.max(p.quetzGlideTimer || 0, 38);
+    p.attackKind = "quetz_sidewind_cleave";
+    p.attackFrame = Math.max(p.attackFrame, 28);
+    spawnQuetzSerpentTrail(p.x, p.y - 4, getFacingDir(p), 24, { type: "dash", len: 82 });
+    spawnQuetzFeathers(p.x - getFacingDir(p) * 20, p.y - 8, 14, { vx: -getFacingDir(p) * 1.4 });
+    if (startMove(p, move)) shake = Math.max(shake, 4);
+    return;
+  }
+  if (p.godId === "quetz" && v === "down" && !p.grounded) {
+    p.vy = Math.max(p.vy, 17);
+    p.vx += getFacingDir(p) * 2.5;
+    p.quetzGlideTimer = 0;
+    p.attackKind = "quetz_serpent_dive";
+    p.attackFrame = Math.max(p.attackFrame, 30);
+  }
 
   const defs = ATTACK_DEFS[p.godId] || ATTACK_DEFS.zeus;
   const move = cloneMove(defs.heavy[v] || defs.heavy.neutral, p, v, "heavy");
@@ -2648,16 +2698,28 @@ function updateSobekGrab(p) {
 
 function createQuetzWindDash(owner) {
   const dir = getFacingDir(owner);
-  const dash = { owner, dir, timer: 14, hitCd: new Map() };
-  quetzWindDashes.push(dash); spawnQuetzSerpentTrail(owner.x, owner.y - 6, owner.facing || 1, 22, { type:"dash" }); spawnQuetzWindRing(owner.x, owner.y, 36, 20); spawnQuetzFeathers(owner.x, owner.y - 14, 8, { vx: -(owner.facing||1)*1.4 });
-  owner.vx = dir * 20; owner.vy *= 0.4;
-  owner.attackKind = "quetz_wind_dash";
-  owner.attackFrame = Math.max(owner.attackFrame, 20);
-  owner.specialCooldown = Math.max(owner.specialCooldown, 52);
+  const dash = { owner, dir, timer: 18, hitCd: new Map() };
+  quetzWindDashes.push(dash);
+  spawnQuetzSerpentTrail(owner.x, owner.y - 6, dir, 28, { type: "dash", len: 100 });
+  spawnQuetzWindRing(owner.x, owner.y, 42, 22);
+  spawnQuetzFeathers(owner.x - dir * 22, owner.y - 14, 18, { vx: -dir * 2.2 });
+  owner.vx = dir * 25;
+  owner.vy = owner.grounded ? -4.5 : Math.min(owner.vy, -2.5);
+  owner.grounded = false;
+  owner.jumps = Math.max(owner.jumps, 1);
+  owner.quetzGlideTimer = Math.max(owner.quetzGlideTimer || 0, 60);
+  owner.attackKind = "quetz_side_wind_dash";
+  owner.attackFrame = Math.max(owner.attackFrame, 24);
 }
 function createQuetzSkyCurrent(owner) {
-  quetzSkyCurrents.push({ owner, x: owner.x, y: owner.y + 12, radius: 62, timer: 58, hitCd: new Map() }); spawnQuetzWindRing(owner.x, owner.y + 12, 46, 30, {mode:"column"}); spawnQuetzFeathers(owner.x, owner.y - 6, 10, {vy:-2.2});
-  owner.vy = Math.min(owner.vy, -16); owner.grounded = false; owner.jumps = Math.max(owner.jumps, 1);
+  quetzSkyCurrents.push({ owner, x: owner.x, y: owner.y + 12, radius: 72, timer: 66, hitCd: new Map() });
+  spawnQuetzWindRing(owner.x, owner.y + 12, 58, 34, { mode: "column" });
+  spawnQuetzFeathers(owner.x, owner.y - 6, 18, { vy: -3.0 });
+  owner.vy = Math.min(owner.vy, -20.5);
+  owner.vx += getFacingDir(owner) * 2.5;
+  owner.grounded = false;
+  owner.jumps = Math.max(owner.jumps, 1);
+  owner.quetzGlideTimer = Math.max(owner.quetzGlideTimer || 0, 95);
 }
 function createQuetzCoil(owner) {
   const y = owner.grounded ? findPlatformBelowPoint(owner.x, owner.y-20, 220) - 6 : owner.y + 36;
@@ -2672,11 +2734,11 @@ function createQuetzTempest(owner) {
 function updateQuetzAbilityMechanics() {
   const now = matchTime || 0;
   for (let i = quetzWindDashes.length - 1; i >= 0; i--) { const d = quetzWindDashes[i]; d.timer--; if (!d.owner || d.owner.dead) { quetzWindDashes.splice(i,1); continue; }
-    players.forEach(t=>{ if(t===d.owner||t.dead||t.lives<=0||t.invincible>0) return; const dx=Math.abs(t.x-d.owner.x), dy=Math.abs(t.y-d.owner.y); if(dx<72&&dy<46){ const last=d.hitCd.get(t.id)||-999; if(now-last<12) return; d.hitCd.set(t.id,now); t.damage += 4.2; t.vx += d.dir*7.2; t.vy -= 3.1; t.hitstun=Math.max(t.hitstun||0,10);} });
+    players.forEach(t=>{ if(t===d.owner||t.dead||t.lives<=0||t.invincible>0) return; const dx=Math.abs(t.x-d.owner.x), dy=Math.abs(t.y-d.owner.y); if(dx<88&&dy<54){ const last=d.hitCd.get(t.id)||-999; if(now-last<14) return; d.hitCd.set(t.id,now); t.damage += 5.2; t.vx += d.dir*8.4; t.vy -= 3.8; t.hitstun=Math.max(t.hitstun||0,11); spawnQuetzImpactBurst(t.x, t.y - 8, 1.1); spawnQuetzFeathers(t.x, t.y - 10, 8, { vy: -1.5 });} });
     if (d.timer<=0) quetzWindDashes.splice(i,1);
   }
   for (let i = quetzSkyCurrents.length - 1; i >= 0; i--) { const c = quetzSkyCurrents[i]; c.timer--; if (!c.owner||c.owner.dead) { quetzSkyCurrents.splice(i,1); continue; } c.x = c.owner.x; c.y = c.owner.y + 12;
-    players.forEach(t=>{ if(t===c.owner||t.dead||t.lives<=0||t.invincible>0) return; const dist=Math.hypot(t.x-c.x,t.y-c.y); if(dist<c.radius){ const last=c.hitCd.get(t.id)||-999; if(now-last<20) return; c.hitCd.set(t.id,now); t.damage += 2.6; t.vy -= 5.6; t.vx *=0.92; t.hitstun=Math.max(t.hitstun||0,8);} });
+    players.forEach(t=>{ if(t===c.owner||t.dead||t.lives<=0||t.invincible>0) return; const dist=Math.hypot(t.x-c.x,t.y-c.y); if(dist<c.radius){ const last=c.hitCd.get(t.id)||-999; if(now-last<20) return; c.hitCd.set(t.id,now); t.damage += 3.1; t.vy -= 6.8; t.vx *=0.9; t.hitstun=Math.max(t.hitstun||0,9); spawnQuetzFeathers(t.x, t.y, 6, { vy: -2.2 });} });
     if (c.timer<=0) quetzSkyCurrents.splice(i,1);
   }
   for (let i = quetzCoils.length - 1; i >= 0; i--) { const c = quetzCoils[i]; c.timer--; if (!c.owner||c.owner.dead) { quetzCoils.splice(i,1); continue; }
@@ -2928,27 +2990,63 @@ function useSpecial(p) {
   }
 
   else if (id === "quetz") {
+    const holdingSide =
+      (p.human && (isActionDown("left") || isActionDown("right"))) ||
+      (!p.human && p.moveVariant === "neutral");
+
     if (p.moveVariant === "up") {
-      p.specialCooldown = Math.max(p.specialCooldown, 54);
+      p.specialCooldown = Math.max(p.specialCooldown, 48);
+      p.attackKind = "quetz_sky_current_lift";
+      p.attackFrame = Math.max(p.attackFrame, 34);
+
       createQuetzSkyCurrent(p);
+
+      p.vy = Math.min(p.vy, -20.5);
+      p.vx += dir * 3.5;
+      p.grounded = false;
+      p.jumps = Math.max(p.jumps, 1);
+      p.quetzGlideTimer = Math.max(p.quetzGlideTimer || 0, 95);
+      p.invincible = Math.max(p.invincible || 0, 5);
+
+      createAttack({owner:p,x:p.x + dir * 16,y:p.y - 54,w:104,h:126,damage:7.5,knock:10.5,angle:-1.15,frames:12,color:"#67e8f9",label:"quetz_up_l_sky_current_lift",visualType:"quetzSkyCurrentLift",attachToOwner:true,offsetX:dir * 16,offsetY:-54});
+
+      spawnQuetzWindRing(p.x, p.y + 18, 58, 34, { mode: "column" });
+      spawnQuetzFeathers(p.x, p.y + 18, 24, { vy: -3.1 });
+      spawnQuetzMotionFeathers(p, 20, "feather");
+      spawnParticles(p.x, p.y + 20, "#67e8f9", 24, 7);
       return;
     }
+
     if (p.moveVariant === "down") {
+      p.specialCooldown = Math.max(p.specialCooldown, 70);
       createQuetzCoil(p);
-      p.attackKind = "quetz_serpent_coil"; p.attackFrame = Math.max(p.attackFrame, 30);
+      p.vx *= 0.45;
+      p.attackKind = "quetz_serpent_coil";
+      p.attackFrame = Math.max(p.attackFrame, 30);
+      spawnQuetzMotionFeathers(p, 10, "ring");
       return;
     }
+
+    p.specialCooldown = Math.max(p.specialCooldown, 42);
     createQuetzWindDash(p);
+
+    p.vx = dir * 25;
+    p.vy = p.grounded ? -4.5 : Math.min(p.vy, -2.5);
+    p.grounded = false;
+    p.jumps = Math.max(p.jumps, 1);
+    p.quetzGlideTimer = Math.max(p.quetzGlideTimer || 0, 60);
+    p.invincible = Math.max(p.invincible || 0, 4);
+    p.attackKind = "quetz_side_wind_dash";
+    p.attackFrame = Math.max(p.attackFrame, 24);
+
+    createAttack({owner:p,x:p.x + dir * 58,y:p.y - 4,w:132,h:64,damage:8.5,knock:11.2,angle:-0.22,frames:12,color:"#67e8f9",label:"quetz_side_l_wind_dash",visualType:"quetzSideWindDash",attachToOwner:true,offsetX:dir * 58,offsetY:-4});
+
+    spawnQuetzSerpentTrail(p.x, p.y - 6, dir, 28, { type: "dash", len: 100 });
+    spawnQuetzWindRing(p.x, p.y, 42, 22);
+    spawnQuetzFeathers(p.x - dir * 28, p.y - 10, 20, { vx: -dir * 2.4 });
+    spawnParticles(p.x - dir * 22, p.y + 2, "#67e8f9", 22, 7);
     return;
   }
-
-  else if (id === "hades") {
-    if (p.moveVariant === "up") { p.specialCooldown = 72; p.vy = Math.min(p.vy, -15.8); p.vx *= 0.7; p.grounded = false; p.jumps = Math.max(p.jumps, 1); p.invincible = Math.max(p.invincible, 6); p.attackKind = "hades_underworld_gate"; p.attackFrame = Math.max(p.attackFrame, 30); createHadesGate(p); return; }
-    if (p.moveVariant === "down") { p.specialCooldown = 78; p.vx *= 0.45; p.attackKind = "hades_curse_pit"; p.attackFrame = Math.max(p.attackFrame, 32); createHadesCursePit(p); return; }
-    if (Math.abs(p.vx) > 3.8) { p.specialCooldown = 70; p.attackKind = "hades_shadow_step"; p.attackFrame = Math.max(p.attackFrame, 24); p.x += dir * 130; p.vx = dir * 5; players.forEach(t=>{ if(t!==p && !t.dead && t.lives>0 && Math.hypot(t.x-p.x,t.y-p.y)<95){ t.vx += dir*4.5; t.hitstun=Math.max(t.hitstun||0,7); }}); return; }
-    p.specialCooldown = 62; p.vx *= 0.4; p.attackKind = "hades_soul_chain"; p.attackFrame = Math.max(p.attackFrame, 28); createHadesSoulChain(p); return;
-  }
-
   else if (id === "thor") {
     if (p.moveVariant === "neutral" && p.thorHammerProjectile && projectiles.includes(p.thorHammerProjectile)) { p.thorHammerProjectile.phase = "return"; p.thorHammerProjectile.life = Math.max(p.thorHammerProjectile.life, 34); p.thorHammerProjectile.recallBoost = true; p.specialCooldown = Math.min(p.specialCooldown || 0, 12); p.attackKind = "thor_hammer_recall"; p.attackFrame = Math.max(p.attackFrame, 22); spawnParticles(p.x, p.y - 10, "#cce3ff", 16, 4); return; }
     if (p.moveVariant === "up") {
@@ -4051,8 +4149,16 @@ function updateFighter(p) {
     if (p.grounded && Math.abs(p.vx) < 0.25 && p.action === "idle" && Math.random() < 0.08) spawnHadesMotionWisps(p, "idle", 1);
   }
   const quetzAir = p.godId === "quetz" && !p.grounded;
-  p.vy += ((p.godId === "horus" && p.horusGlideTimer > 0 && !p.grounded) || (quetzAir && p.quetzGlideTimer > 0) ? 0.28 : (quetzAir ? 0.62 : 0.78));
-  if ((p.godId === "horus" && p.horusGlideTimer > 0 && !p.grounded) || (quetzAir && p.quetzGlideTimer > 0)) p.vx *= 0.996;
+  const quetzGliding = quetzAir && p.quetzGlideTimer > 0;
+  p.vy += (
+    (p.godId === "horus" && p.horusGlideTimer > 0 && !p.grounded) ||
+    quetzGliding
+      ? 0.24
+      : (quetzAir ? 0.54 : 0.78)
+  );
+  if ((p.godId === "horus" && p.horusGlideTimer > 0 && !p.grounded) || quetzGliding) {
+    p.vx *= 0.997;
+  }
 
   if (p.dodgeTimer > 0) {
     if (p.dodgeTimer > 26) p.dodgePhase = "startup";
@@ -4096,7 +4202,8 @@ function updateFighter(p) {
   handlePlatformCollision(p);
   if (p.godId === "quetz") {
     if (Math.abs(p.vx) > 4.7 && p.grounded && Math.random() < 0.45) spawnQuetzMotionFeathers(p, 2, "feather");
-    if (!p.grounded && Math.abs(p.vx) > 2.2 && Math.random() < 0.35) spawnQuetzMotionFeathers(p, 1, "feather");
+    if (!p.grounded && Math.abs(p.vx) > 2.2 && Math.random() < 0.5) spawnQuetzMotionFeathers(p, 1, "feather");
+    if (!p.grounded && p.vy < -5 && Math.random() < 0.55) spawnQuetzMotionFeathers(p, 2, "spark");
     if (Math.abs(p.vx) > 1.2 && !p.grounded && Math.sign(p.vx) !== Math.sign(p.facing) && Math.random() < 0.5) spawnQuetzMotionFeathers(p, 2, "ring");
     if (p.hitstun > 0 && Math.random() < 0.22) spawnQuetzMotionFeathers(p, 2, "spark");
   }
@@ -6310,7 +6417,7 @@ function drawAttack(a) {
   const cx = x + w * .5;
   const cy = y + h * .5;
   let type = a.visualType || "slashArc";
-  const hadesVisualFallback = {hadesBidentJab:"spearThrust",hadesBoneUpper:"hadesBonePillar",hadesShadeSweep:"graveSweep",hadesBidentCleave:"judgmentCleave",hadesBonePillar:"stormPillar",hadesUnderworldBurst:"duatDetonation",hadesShadowGate:"shadowGate",hadesBoneRise:"hadesBonePillar",hadesSoulPrisonCast:"soulMarkBurst",hadesSoulPrisonTrigger:"soulMarkBurst",hadesUnderworldGate:"hadesShadowGate",hadesSoulWave:"duatDetonation",hadesLordAura:"shadowGate",zeusRisingBoltUppercut:"uppercutSpark",zeusThunderCageSlam:"thunderStomp",raSolarBrandSwipe:"desertBurn",raSolarBrandBurst:"sunBrandBurst",raSunbeamLift:"noonFlare",anubisWeighingSealCast:"soulMarkBurst",anubisWeighingSealTrigger:"soulMarkBurst"};
+  const hadesVisualFallback = {hadesBidentJab:"spearThrust",hadesBoneUpper:"hadesBonePillar",hadesShadeSweep:"graveSweep",hadesBidentCleave:"judgmentCleave",hadesBonePillar:"stormPillar",hadesUnderworldBurst:"duatDetonation",hadesShadowGate:"shadowGate",hadesBoneRise:"hadesBonePillar",hadesSoulPrisonCast:"soulMarkBurst",hadesSoulPrisonTrigger:"soulMarkBurst",hadesUnderworldGate:"hadesShadowGate",hadesSoulWave:"duatDetonation",hadesLordAura:"shadowGate",zeusRisingBoltUppercut:"uppercutSpark",zeusThunderCageSlam:"thunderStomp",raSolarBrandSwipe:"desertBurn",raSolarBrandBurst:"sunBrandBurst",raSunbeamLift:"noonFlare",anubisWeighingSealCast:"soulMarkBurst",anubisWeighingSealTrigger:"soulMarkBurst",quetzRisingFeatherLift:"quetzTempestCrown",quetzFeatherDashSwipe:"quetzFeatherFangSwipe",quetzLowCoilSweep:"quetzCoilSweep",quetzSidewindCleave:"quetzEmeraldWingCleave",quetzSkySerpentLauncher:"quetzTempestCrown",quetzSkyCurrentLift:"quetzTempestCrown",quetzSideWindDash:"quetzEmeraldWingCleave",quetzSerpentDive:"quetzSerpentDive"};
   const rawType = type;
   type = hadesVisualFallback[type] || type;
   const dir = (a.owner && a.owner.facing) || 1;
