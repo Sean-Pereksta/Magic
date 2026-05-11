@@ -1120,6 +1120,12 @@ let hadesGates = [];
 let hadesCursePits = [];
 let hadesRealmFields = [];
 let hadesCurses = [];
+let hadesWisps = [];
+let hadesShadowRings = [];
+let hadesGateVisuals = [];
+let hadesChainVisuals = [];
+let hadesSoulHands = [];
+let hadesImpactBursts = [];
 let lightningStrikes = [];
 let raSunBursts = [];
 let bastetSpiritCats = [];
@@ -1447,6 +1453,12 @@ function startGame() {
   hadesCursePits = [];
   hadesRealmFields = [];
   hadesCurses = [];
+  hadesWisps = [];
+  hadesShadowRings = [];
+  hadesGateVisuals = [];
+  hadesChainVisuals = [];
+  hadesSoulHands = [];
+  hadesImpactBursts = [];
   zeusThunderCages = [];
   anubisWeighingSeals = [];
   matchTime = 0;
@@ -1764,6 +1776,7 @@ function updateGame() {
   if (hadesSoulPrisons.length > 0) updateHadesSoulPrisons();
   if (hadesMotionWisps.length > 0) updateHadesMotionWisps();
   if (hadesChains.length > 0 || hadesGates.length > 0 || hadesCursePits.length > 0 || hadesRealmFields.length > 0) updateHadesAbilityMechanics();
+  if (hadesWisps.length > 0 || hadesShadowRings.length > 0 || hadesGateVisuals.length > 0 || hadesChainVisuals.length > 0 || hadesSoulHands.length > 0 || hadesImpactBursts.length > 0) updateHadesVisuals();
   updateProjectiles();
   updateParticles();
   updateQuetzMotionFeathers();
@@ -2726,8 +2739,40 @@ function applyHadesCurse(target, duration, sourceId = null) {
   hadesCurses.push({ targetId: target.id, sourceId: sourceId || target.hadesCurseSource || null, timer: target.hadesCurseTimer });
 }
 function isHadesCursed(target) { return !!(target && target.hadesCurseTimer > 0); }
+function capHadesVisualArray(arr, max) { if (arr.length > max) arr.splice(0, arr.length - max); }
+function spawnHadesWisps(x, y, count = 3, options = {}) {
+  const n = Math.max(1, Math.min(20, count|0));
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, sp = (options.speed || 0.3) + Math.random() * 1.2;
+    hadesWisps.push({ x:x + (Math.random()-0.5)*(options.spread||28), y:y + (Math.random()-0.5)*(options.spread||20), vx:Math.cos(a)*sp*0.35, vy:-0.45-Math.random()*0.9, life:options.life|| (26 + Math.floor(Math.random()*28)), max:options.life||52, size:2.2+Math.random()*4.2, color:(options.color || ["#9dffef","#b4a2ff","#9cffcc"])[Math.floor(Math.random()*3)], tail:Math.random()<0.35, spin:(Math.random()-0.5)*0.2 });
+  }
+  capHadesVisualArray(hadesWisps, 150);
+}
+function spawnHadesShadowRing(x, y, radius, duration = 24, options = {}) { hadesShadowRings.push({ x, y, radius, life:duration, max:duration, rot:Math.random()*Math.PI*2, growth:options.growth||0.8, jag:options.jag||0.2 }); capHadesVisualArray(hadesShadowRings, 40); }
+function spawnHadesGateVisual(x, y, radius, duration = 30, options = {}) { hadesGateVisuals.push({ x, y, radius, life:duration, max:duration, pulse:options.pulse||1, type:options.type||"gate" }); capHadesVisualArray(hadesGateVisuals, 20); }
+function spawnHadesChainVisual(x1, y1, x2, y2, duration = 16, options = {}) { hadesChainVisuals.push({ x1,y1,x2,y2,life:duration,max:duration,wrap:!!options.wrap }); capHadesVisualArray(hadesChainVisuals, 30); }
+function spawnHadesSoulHands(x, y, count = 2, options = {}) { for (let i=0;i<count;i++) hadesSoulHands.push({x:x+(Math.random()-0.5)*(options.spread||40),y:y+Math.random()*(options.riseFrom||20),life:options.life||32,max:options.life||32,size:8+Math.random()*12}); capHadesVisualArray(hadesSoulHands, 50); }
+function spawnHadesImpactBurst(x, y, strength = 1, options = {}) { hadesImpactBursts.push({x,y,s:strength,life:18,max:18,cursed:!!options.cursed}); capHadesVisualArray(hadesImpactBursts, 30); }
+function updateHadesVisuals() {
+  for (let i=hadesWisps.length-1;i>=0;i--){const w=hadesWisps[i];w.life--;w.x+=w.vx;w.y+=w.vy;w.vx+=Math.sin(matchTime*0.08+w.y*0.01)*0.015;w.vy-=0.005;if(w.life<=0)hadesWisps.splice(i,1);}
+  for (let i=hadesShadowRings.length-1;i>=0;i--){const r=hadesShadowRings[i];r.life--;r.radius+=r.growth;r.rot+=0.03;if(r.life<=0)hadesShadowRings.splice(i,1);}
+  for (let i=hadesGateVisuals.length-1;i>=0;i--){const g=hadesGateVisuals[i];g.life--;if(g.life%8===0)spawnHadesWisps(g.x,g.y-10,2,{spread:g.radius*0.4,life:26});if(g.life<=0)hadesGateVisuals.splice(i,1);}
+  for (let i=hadesChainVisuals.length-1;i>=0;i--){if(--hadesChainVisuals[i].life<=0)hadesChainVisuals.splice(i,1);}
+  for (let i=hadesSoulHands.length-1;i>=0;i--){const h=hadesSoulHands[i];h.life--;h.y-=0.5; if(h.life<=0)hadesSoulHands.splice(i,1);}
+  for (let i=hadesImpactBursts.length-1;i>=0;i--){if(--hadesImpactBursts[i].life<=0)hadesImpactBursts.splice(i,1);}
+}
+function drawHadesVisualsBehindPlayers(ctx) {
+  hadesShadowRings.forEach(r=>{const t=r.life/r.max,sx=worldToScreenX(r.x),sy=worldToScreenY(r.y),rr=screenScale(r.radius);ctx.save();ctx.translate(sx,sy);ctx.rotate(r.rot);ctx.globalAlpha=0.08+0.3*t;ctx.fillStyle="#130919";ctx.beginPath();ctx.ellipse(0,0,rr,rr*0.35,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#5b2cff";ctx.lineWidth=screenScale(2+2*t);ctx.setLineDash([screenScale(7),screenScale(6)]);ctx.beginPath();ctx.ellipse(0,0,rr*0.95,rr*0.28,0,0,Math.PI*2);ctx.stroke();ctx.restore();});
+  hadesGateVisuals.forEach(g=>{const t=g.life/g.max,sx=worldToScreenX(g.x),sy=worldToScreenY(g.y),rr=screenScale(g.radius);ctx.save();ctx.globalAlpha=0.2+0.35*t;const grd=ctx.createRadialGradient(sx,sy,rr*0.1,sx,sy,rr);grd.addColorStop(0,"rgba(8,4,12,0.95)");grd.addColorStop(1,"rgba(91,44,255,0.1)");ctx.fillStyle=grd;ctx.beginPath();ctx.ellipse(sx,sy,rr,rr*0.35,0,0,Math.PI*2);ctx.fill();ctx.restore();});
+}
+function drawHadesVisualsInFrontOfPlayers(ctx) {
+  hadesChainVisuals.forEach(c=>{const t=c.life/c.max;ctx.save();ctx.globalAlpha=0.3+0.6*t;ctx.strokeStyle="#6a2fb3";ctx.lineWidth=screenScale(5);ctx.beginPath();ctx.moveTo(worldToScreenX(c.x1),worldToScreenY(c.y1));ctx.lineTo(worldToScreenX(c.x2),worldToScreenY(c.y2));ctx.stroke();for(let i=0;i<11;i++){const u=i/10,x=c.x1+(c.x2-c.x1)*u,y=c.y1+(c.y2-c.y1)*u;ctx.fillStyle=i%2?"#9dffef":"#2b1342";ctx.fillRect(worldToScreenX(x)-screenScale(2),worldToScreenY(y)-screenScale(2),screenScale(5),screenScale(4));}ctx.restore();});
+  hadesSoulHands.forEach(h=>{const t=h.life/h.max,sx=worldToScreenX(h.x),sy=worldToScreenY(h.y),sz=screenScale(h.size*(0.3+0.7*t));ctx.save();ctx.globalAlpha=0.2+0.45*t;ctx.fillStyle="#9dffef";ctx.beginPath();ctx.moveTo(sx,sy);ctx.quadraticCurveTo(sx-sz*0.6,sy-sz*0.9,sx,sy-sz*1.6);ctx.quadraticCurveTo(sx+sz*0.6,sy-sz*0.9,sx,sy);ctx.fill();ctx.restore();});
+  hadesImpactBursts.forEach(b=>{const t=b.life/b.max,sx=worldToScreenX(b.x),sy=worldToScreenY(b.y),r=screenScale((16+24*b.s)*(1-t));ctx.save();ctx.globalAlpha=0.2+0.75*t;ctx.strokeStyle=b.cursed?"#9cffcc":"#b28cff";ctx.lineWidth=screenScale(3);ctx.beginPath();ctx.arc(sx,sy,r,0,Math.PI*2);ctx.stroke();ctx.restore();});
+  hadesWisps.forEach(w=>{const t=w.life/w.max,sx=worldToScreenX(w.x),sy=worldToScreenY(w.y),r=screenScale(w.size*(0.5+0.5*t));ctx.save();ctx.globalAlpha=0.2+0.65*t;ctx.fillStyle=w.color;ctx.beginPath();ctx.arc(sx,sy,r,0,Math.PI*2);ctx.fill();if(w.tail){ctx.strokeStyle=w.color;ctx.lineWidth=screenScale(1.2);ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(sx-worldToScreenX(w.vx*10)+worldToScreenX(0),sy+screenScale(5));ctx.stroke();}ctx.restore();});
+}
 function createHadesSoulChain(owner) { hadesChains.push({ owner, x: owner.x + getFacingDir(owner) * 26, y: owner.y - 8, vx: getFacingDir(owner) * 14, life: 24, maxDist: 280, traveled: 0, hit:false }); }
-function createHadesGate(owner) { hadesGates.push({ owner, x: owner.x, y: owner.y + 18, timer: 24, radius: 86, hitCd: new Map() }); }
+function createHadesGate(owner) { hadesGates.push({ owner, x: owner.x, y: owner.y + 18, timer: 24, radius: 86, hitCd: new Map() }); spawnHadesGateVisual(owner.x, owner.y + 18, 88, 34); spawnHadesShadowRing(owner.x, owner.y + 22, 62, 24); }
 function createHadesCursePit(owner) {
   const pitY = owner.grounded ? findPlatformBelowPoint(owner.x, owner.y - 20, 240) - 8 : owner.y + 42;
   hadesCursePits.push({ owner, x: owner.x, y: pitY, radius: 98, timer: 126, tickCd: new Map(), linger: new Map() });
@@ -2737,27 +2782,27 @@ function createHadesCursePit(owner) {
 function createHadesRealm(owner) { hadesRealmFields.push({ owner, x: owner.x, y: owner.y, radius: 250, timer: 180, lashCd:new Map(), finalHit:new Set(), collapsed:false }); }
 function updateHadesAbilityMechanics() {
   const now = matchTime || 0;
-  for (let i = hadesChains.length - 1; i >= 0; i--) { const c = hadesChains[i]; if (!c.owner || c.owner.dead) { hadesChains.splice(i,1); continue; } c.life--; c.x += c.vx; c.traveled += Math.abs(c.vx); c.y = c.owner.y - 8;
-    players.forEach(t => { if (c.hit || t === c.owner || t.dead || t.lives <= 0 || t.invincible > 0) return; if (Math.abs(t.x - c.x) < 42 && Math.abs(t.y - c.y) < 34) { c.hit = true; t.damage += 4.5; t.hitstun = Math.max(t.hitstun || 0, 16); const pull = clamp(c.owner.x - t.x, -70, 70); t.vx += pull * 0.18; t.vy += clamp((c.owner.y - t.y) * 0.03, -2.5, 2.5); applyHadesCurse(t, 170, c.owner.id); }});
+  for (let i = hadesChains.length - 1; i >= 0; i--) { const c = hadesChains[i]; if (!c.owner || c.owner.dead) { hadesChains.splice(i,1); continue; } c.life--; c.x += c.vx; c.traveled += Math.abs(c.vx); c.y = c.owner.y - 8; if (c.life % 3 === 0) spawnHadesChainVisual(c.owner.x + getFacingDir(c.owner)*24, c.owner.y - 8, c.x, c.y, 8); if (c.life % 4 === 0) spawnHadesWisps(c.x, c.y, 1, {spread:12,life:18});
+    players.forEach(t => { if (c.hit || t === c.owner || t.dead || t.lives <= 0 || t.invincible > 0) return; if (Math.abs(t.x - c.x) < 42 && Math.abs(t.y - c.y) < 34) { c.hit = true; t.damage += 4.5; t.hitstun = Math.max(t.hitstun || 0, 16); const pull = clamp(c.owner.x - t.x, -70, 70); t.vx += pull * 0.18; t.vy += clamp((c.owner.y - t.y) * 0.03, -2.5, 2.5); applyHadesCurse(t, 170, c.owner.id); spawnHadesImpactBurst(t.x, t.y - 16, 1.2, {cursed:true}); spawnHadesSoulHands(t.x, t.y + 10, 2); }});
     if (c.hit || c.life <= 0 || c.traveled >= c.maxDist) hadesChains.splice(i,1);
   }
-  for (let i = hadesGates.length - 1; i >= 0; i--) { const g = hadesGates[i]; g.timer--; if (!g.owner || g.owner.dead) { hadesGates.splice(i,1); continue; }
-    players.forEach(t => { if (t === g.owner || t.dead || t.lives <= 0 || t.invincible > 0) return; const d = Math.hypot(t.x-g.x, t.y-g.y); if (d < g.radius) { const last = g.hitCd.get(t.id) || -999; if (now - last < 14) return; g.hitCd.set(t.id, now); t.damage += 2.8; t.hitstun = Math.max(t.hitstun || 0, 8); t.vx += ((t.x-g.x)/Math.max(1,d))*5.5; t.vy -= 2; }});
+  for (let i = hadesGates.length - 1; i >= 0; i--) { const g = hadesGates[i]; g.timer--; if (!g.owner || g.owner.dead) { hadesGates.splice(i,1); continue; } if(g.timer%5===0) spawnHadesWisps(g.x,g.y-8,2,{spread:40});
+    players.forEach(t => { if (t === g.owner || t.dead || t.lives <= 0 || t.invincible > 0) return; const d = Math.hypot(t.x-g.x, t.y-g.y); if (d < g.radius) { const last = g.hitCd.get(t.id) || -999; if (now - last < 14) return; g.hitCd.set(t.id, now); t.damage += 2.8; t.hitstun = Math.max(t.hitstun || 0, 8); t.vx += ((t.x-g.x)/Math.max(1,d))*5.5; t.vy -= 2; spawnHadesImpactBurst(t.x,t.y,0.9); }});
     if (g.timer <= 0) hadesGates.splice(i,1);
   }
-  for (let i = hadesCursePits.length - 1; i >= 0; i--) { const z = hadesCursePits[i]; z.timer--; if (!z.owner || z.owner.dead) { hadesCursePits.splice(i,1); continue; }
+  for (let i = hadesCursePits.length - 1; i >= 0; i--) { const z = hadesCursePits[i]; z.timer--; if (!z.owner || z.owner.dead) { hadesCursePits.splice(i,1); continue; } if(z.timer%8===0){spawnHadesShadowRing(z.x,z.y,z.radius*0.8,18,{growth:0.25});spawnHadesWisps(z.x,z.y-6,2,{spread:z.radius*0.6}); if(Math.random()<0.25)spawnHadesSoulHands(z.x,z.y+8,1,{spread:z.radius*0.7,life:22});}
     players.forEach(t => { if (t === z.owner || t.dead || t.lives <= 0 || t.invincible > 0) return; const inside = Math.hypot(t.x-z.x, t.y-z.y) < z.radius && t.y + t.h / 2 >= z.y - 100;
       if (!inside) return;
       t.vx *= 0.93; t.mudSlowTimer = Math.max(t.mudSlowTimer || 0, 2);
       const last = z.tickCd.get(t.id) || -999; if (now - last >= 26) { z.tickCd.set(t.id, now); t.damage += 1.1; t.hitstun = Math.max(t.hitstun || 0, 5); }
-      const linger = (z.linger.get(t.id) || 0) + 1; z.linger.set(t.id, linger); if (linger >= 44) applyHadesCurse(t, 220, z.owner.id);
+      const linger = (z.linger.get(t.id) || 0) + 1; z.linger.set(t.id, linger); if (linger >= 44) { applyHadesCurse(t, 220, z.owner.id); if (linger === 44) spawnHadesImpactBurst(t.x, t.y - 28, 0.85, {cursed:true}); }
     });
     if (z.timer <= 0) hadesCursePits.splice(i,1);
   }
-  for (let i = hadesRealmFields.length - 1; i >= 0; i--) { const r = hadesRealmFields[i]; r.timer--; if (!r.owner || r.owner.dead) { hadesRealmFields.splice(i,1); continue; } r.x = r.owner.x; r.y = r.owner.y;
+  for (let i = hadesRealmFields.length - 1; i >= 0; i--) { const r = hadesRealmFields[i]; r.timer--; if (!r.owner || r.owner.dead) { hadesRealmFields.splice(i,1); continue; } r.x = r.owner.x; r.y = r.owner.y; if(r.timer%5===0) spawnHadesWisps(r.x,r.y-24,r.timer>130?4:2,{spread:r.radius*0.7,life:34}); if(r.timer%16===0) spawnHadesShadowRing(r.x,r.y+24,r.radius*(r.timer>24?1:0.6),18,{growth:r.timer>24?0.4:-2});
     players.forEach(t => { if (t===r.owner||t.dead||t.lives<=0||t.invincible>0) return; const dx=r.x-t.x, dy=r.y-t.y, dist=Math.hypot(dx,dy); if (dist < r.radius && r.timer > 20) { t.vx += (dx/Math.max(1,dist))*0.45; t.vy += (dy/Math.max(1,dist))*0.18; t.vx *= 0.95;
-      const last = r.lashCd.get(t.id) || -999; if (now - last >= 30) { r.lashCd.set(t.id, now); t.damage += 2.2; t.hitstun = Math.max(t.hitstun || 0, 8); } }
-      if (r.timer === 18 && dist < r.radius + 20 && !r.finalHit.has(t.id)) { r.finalHit.add(t.id); t.damage += 16; const nx=(t.x-r.x)/Math.max(1,dist); t.vx += nx*11; t.vy -= 11; t.hitstun = Math.max(t.hitstun || 0, isHadesCursed(t) ? 28 : 22); }});
+      const last = r.lashCd.get(t.id) || -999; if (now - last >= 30) { r.lashCd.set(t.id, now); t.damage += 2.2; t.hitstun = Math.max(t.hitstun || 0, 8); spawnHadesChainVisual(r.x, r.y + 10, t.x, t.y - 10, 10); spawnHadesSoulHands(t.x, t.y + 10, 1, {life:20}); } }
+      if (r.timer === 18 && dist < r.radius + 20 && !r.finalHit.has(t.id)) { r.finalHit.add(t.id); t.damage += 16; const nx=(t.x-r.x)/Math.max(1,dist); t.vx += nx*11; t.vy -= 11; t.hitstun = Math.max(t.hitstun || 0, isHadesCursed(t) ? 28 : 22); spawnHadesImpactBurst(t.x,t.y,1.8,{cursed:isHadesCursed(t)}); }});
     if (r.timer <= 0) hadesRealmFields.splice(i,1);
   }
 }
@@ -4720,14 +4765,17 @@ function applyHit(target, source, damage, knock, angle, dir, color, impact = {})
       const pullDir = Math.sign(source.x - target.x) || source.facing || 1;
       target.vx += pullDir * 2.4;
       if (attackId.includes("hades_light_u")) target.vy -= 2.2;
+      spawnHadesWisps(target.x, target.y - 16, attackId.includes("hades_light_u") ? 6 : 4, { spread: 30 });
+      if (attackId.includes("hades_light_u")) spawnHadesSoulHands(target.x, target.y + 8, 1, { life: 20 });
     }
-    if (attackId.includes("hades_light_d")) target.mudSlowTimer = Math.max(target.mudSlowTimer || 0, 38);
+    if (attackId.includes("hades_light_d")) { target.mudSlowTimer = Math.max(target.mudSlowTimer || 0, 38); spawnHadesShadowRing(target.x, target.y + 22, 44, 14, { growth: 0.2 }); }
   }
   if (source && source.godId === "hades" && target && target.hadesCurseTimer > 0 && target.hadesCurseSource === source.id && impact && impact.attackObj && impact.attackObj.inputType === "heavy") {
     knock *= 1.18;
     damage *= 1.08;
     spawnParticles(target.x, target.y - 18, "#5b2cff", 18, 5);
     spawnParticles(target.x, target.y - 20, "#9dffef", 10, 3);
+    spawnHadesImpactBurst(target.x, target.y - 10, 1.4, { cursed: true });
   }
   if (source && source.godId === "hades" && target && target.hadesCurseTimer > 0 && target.hadesCurseSource === source.id) {
     addMeter(source, 1.5);
@@ -5102,9 +5150,11 @@ function drawGame() {
 
   projectiles.forEach(drawProjectile);
   drawQuetzVisualsBehindPlayers(ctx);
+  drawHadesVisualsBehindPlayers(ctx);
   if (hadesMotionWisps.length > 0) drawHadesMotionWisps(ctx);
   attacks.forEach(drawAttack);
   players.forEach(drawFighter);
+  drawHadesVisualsInFrontOfPlayers(ctx);
   drawQuetzVisualsInFrontOfPlayers(ctx);
   particles.forEach(drawParticle);
 
@@ -6089,6 +6139,7 @@ function drawAttack(a) {
   const cy = y + h * .5;
   let type = a.visualType || "slashArc";
   const hadesVisualFallback = {hadesBidentJab:"spearThrust",hadesBoneUpper:"hadesBonePillar",hadesShadeSweep:"graveSweep",hadesBidentCleave:"judgmentCleave",hadesBonePillar:"stormPillar",hadesUnderworldBurst:"duatDetonation",hadesShadowGate:"shadowGate",hadesBoneRise:"hadesBonePillar",hadesSoulPrisonCast:"soulMarkBurst",hadesSoulPrisonTrigger:"soulMarkBurst",hadesUnderworldGate:"hadesShadowGate",hadesSoulWave:"duatDetonation",hadesLordAura:"shadowGate"};
+  const rawType = type;
   type = hadesVisualFallback[type] || type;
   const dir = (a.owner && a.owner.facing) || 1;
   const pulse = 1 + Math.sin(matchTime / 5 + a.frames * .45) * .12;
@@ -6141,7 +6192,13 @@ function drawAttack(a) {
     return;
   }
 
-  if (["genericSwing","slashArc","jackalClaw","judgmentCleave","daggerFlurry"].includes(type)) {
+  if (["hadesBidentSlash","hadesSoulRake","hadesGraveSweep","hadesBidentThrust","hadesRisingDead","hadesGravebreakerSlam"].includes(rawType)) {
+    ctx.save(); ctx.globalAlpha = 0.72;
+    if (rawType === "hadesSoulRake" || rawType === "hadesRisingDead") { ctx.strokeStyle = "#9dffef"; ctx.lineWidth = screenScale(4); for (let i=0;i<3;i++){ctx.beginPath();ctx.moveTo(cx - dir*w*0.2 + i*screenScale(7), cy + h*0.2);ctx.lineTo(cx + dir*w*0.15 + i*screenScale(4), cy - h*0.7);ctx.stroke();}}
+    else if (rawType === "hadesGraveSweep") { ctx.fillStyle = "rgba(43,19,66,0.45)"; ctx.beginPath(); ctx.ellipse(cx, cy + h*0.25, w*0.55, h*0.2, 0, 0, Math.PI*2); ctx.fill(); ctx.strokeStyle="#9dffef"; ctx.lineWidth=screenScale(2); ctx.beginPath(); ctx.arc(cx-dir*w*0.16, cy+h*0.1, w*0.48, dir===1?-0.05:Math.PI+0.05, dir===1?Math.PI*0.95:Math.PI*2-0.95); ctx.stroke(); }
+    else { ctx.strokeStyle = "#6a2fb3"; ctx.lineWidth = screenScale(8); ctx.beginPath(); ctx.arc(cx - dir * w * .15, cy, Math.max(w, h) * .52, dir === 1 ? -0.9 : Math.PI + 0.15, dir === 1 ? 0.62 : Math.PI - 1.15); ctx.stroke(); ctx.strokeStyle = "#9dffef"; ctx.lineWidth = screenScale(2.5); ctx.stroke(); }
+    ctx.restore();
+  } else if (["genericSwing","slashArc","jackalClaw","judgmentCleave","daggerFlurry"].includes(type)) {
     drawDirectionalSwing(a, a.owner);
     ctx.globalAlpha = .35;
     ctx.strokeStyle = a.color;
