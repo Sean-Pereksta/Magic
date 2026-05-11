@@ -493,6 +493,20 @@
         <div id="referralCards" style="margin-top:14px; display:grid; gap:14px;"></div>
       </div>
     </div>
+
+    <div class="card" id="winnersSummaryCard">
+      <div class="sectionHeader">
+        <div class="subTitle">Winners Summary</div>
+        <div class="chipRow">
+          <span class="pill">Top team</span>
+          <span class="pill">Top performer per team</span>
+          <span class="pill good">Overall top representative</span>
+        </div>
+      </div>
+      <div id="winnersSummaryBody">
+        <div class="mutedTxt">No winner data yet.</div>
+      </div>
+    </div>
   </div>
 
 <script>
@@ -540,7 +554,8 @@ const els = {
   retailRankBody: document.getElementById('retailRankBody'),
   referralRankBody: document.getElementById('referralRankBody'),
   retailCards: document.getElementById('retailCards'),
-  referralCards: document.getElementById('referralCards')
+  referralCards: document.getElementById('referralCards'),
+  winnersSummaryBody: document.getElementById('winnersSummaryBody')
 };
 
 let activeTab = 'retail';
@@ -1356,6 +1371,29 @@ function buildSectionData(rows, fieldMap, type){
   return teams;
 }
 
+function getTopRepFromTeam(team){
+  if(!team || !Array.isArray(team.reps) || !team.reps.length) return null;
+
+  const topRep = team.reps[0];
+
+  return {
+    section: team.type,
+    teamName: team.name,
+    teamRank: team.overallRank,
+    teamScore: team.overallScore,
+    repName: topRep.name,
+    repScore: topRep.overallScore,
+    consumerRate: topRep.consumerRate,
+    wiperRate: topRep.wiperRate,
+    cqAvg: topRep.cqAvg,
+    acwAvg: topRep.acwAvg,
+    itacAvg: topRep.itacAvg,
+    attendanceHits: topRep.attendanceHits || 0,
+    complimentCount: topRep.complimentCount || 0,
+    correctiveCount: topRep.correctiveCount || 0
+  };
+}
+
 function topThreeHtml(team){
   const top = team.reps.slice(0,3);
   if(!top.length) return `<div class="mutedTxt">No reps in window.</div>`;
@@ -1405,6 +1443,114 @@ function renderOverallWinner(sectionTeams){
       <span class="pill warn">Attendance shown only, not in team rank</span>
       <span class="pill">Attendance hits <strong>${t.attendanceHits}</strong></span>
       <span class="pill">Active reps <strong>${t.activeRepCount}</strong></span>
+    </div>
+  `;
+}
+
+function renderWinnersSummary(retailTeams, referralTeams){
+  const allTeams = [
+    ...(Array.isArray(retailTeams) ? retailTeams : []),
+    ...(Array.isArray(referralTeams) ? referralTeams : [])
+  ];
+
+  if(!allTeams.length){
+    els.winnersSummaryBody.innerHTML = `<div class="mutedTxt">No winner data in the selected window.</div>`;
+    return;
+  }
+
+  const validTeams = allTeams.filter(t => Number.isFinite(t.overallScore));
+  const topTeam = validTeams.length ? validTeams.slice().sort((a,b)=>{
+    if(a.overallScore !== b.overallScore) return a.overallScore - b.overallScore;
+    return String(a.name || '').localeCompare(String(b.name || ''));
+  })[0] : null;
+
+  const teamWinners = allTeams
+    .map(getTopRepFromTeam)
+    .filter(Boolean)
+    .filter(w => Number.isFinite(w.repScore))
+    .sort((a,b)=>{
+      if(a.repScore !== b.repScore) return a.repScore - b.repScore;
+      return String(a.repName || '').localeCompare(String(b.repName || ''));
+    });
+
+  const overallRep = teamWinners[0] || null;
+  const sectionLabel = (type) => type === 'retail' ? 'Retail' : 'Referral';
+
+  els.winnersSummaryBody.innerHTML = `
+    <div class="overallBanner">
+      <h2>Overall Winners</h2>
+      <div class="statGrid" style="margin-top:10px">
+        <div class="stat">
+          <div class="k">Top Team</div>
+          <div class="v">${topTeam ? esc(topTeam.name) : '—'}</div>
+          <div class="hint">
+            ${topTeam ? `${sectionLabel(topTeam.type)} • Score ${esc(String(topTeam.overallScore))}` : 'No team winner'}
+          </div>
+        </div>
+        <div class="stat">
+          <div class="k">Overall Top Representative</div>
+          <div class="v">${overallRep ? esc(overallRep.repName) : '—'}</div>
+          <div class="hint">
+            ${overallRep ? `${esc(overallRep.teamName)} • ${sectionLabel(overallRep.section)} • Score ${esc(String(overallRep.repScore))}` : 'No rep winner'}
+          </div>
+        </div>
+        <div class="stat">
+          <div class="k">Retail Top Team</div>
+          <div class="v">${retailTeams?.[0] ? esc(retailTeams[0].name) : '—'}</div>
+          <div class="hint">${retailTeams?.[0] ? `Score ${esc(String(retailTeams[0].overallScore))}` : 'No retail data'}</div>
+        </div>
+        <div class="stat">
+          <div class="k">Referral Top Team</div>
+          <div class="v">${referralTeams?.[0] ? esc(referralTeams[0].name) : '—'}</div>
+          <div class="hint">${referralTeams?.[0] ? `Score ${esc(String(referralTeams[0].overallScore))}` : 'No referral data'}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subTitle" style="margin-top:14px">Top Performer Per Team</div>
+    <div class="tblWrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Winner Rank</th>
+            <th>Representative</th>
+            <th>Team</th>
+            <th>Section</th>
+            <th class="right">Rep Score</th>
+            <th class="right">Team Rank</th>
+            <th class="right">Team Score</th>
+            <th class="right">Consumer</th>
+            <th class="right">Wipers</th>
+            <th class="right">CQ</th>
+            <th class="right">ACW</th>
+            <th class="right">ITAC</th>
+            <th class="right">Attendance</th>
+            <th class="right">Compliments</th>
+            <th class="right">Correctives</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${teamWinners.map((w,i)=>`
+            <tr>
+              <td>${medalHtml(i)}</td>
+              <td><strong>${esc(w.repName)}</strong></td>
+              <td>${esc(w.teamName)}</td>
+              <td>${sectionLabel(w.section)}</td>
+              <td class="right"><strong>${esc(String(w.repScore))}</strong></td>
+              <td class="right">${esc(String(w.teamRank ?? '—'))}</td>
+              <td class="right">${esc(String(w.teamScore ?? '—'))}</td>
+              <td class="right">${fmtPct1(w.consumerRate)}</td>
+              <td class="right">${fmtPct1(w.wiperRate)}</td>
+              <td class="right">${fmtPct1(w.cqAvg)}</td>
+              <td class="right">${fmtPct1(w.acwAvg)}</td>
+              <td class="right">${fmtPct1(w.itacAvg)}</td>
+              <td class="right ${w.attendanceHits > 0 ? 'warnTxt' : 'goodTxt'}">${w.attendanceHits}</td>
+              <td class="right">${w.complimentCount}</td>
+              <td class="right ${w.correctiveCount > 0 ? 'warnTxt' : 'goodTxt'}">${w.correctiveCount}</td>
+            </tr>
+          `).join('') || `<tr><td colspan="15" class="mutedTxt">No team winners found.</td></tr>`}
+        </tbody>
+      </table>
     </div>
   `;
 }
@@ -1602,6 +1748,7 @@ function renderAll(){
   renderTeamCards(referralTeams, els.referralCards, 'referral');
 
   renderOverallWinner(activeTab === 'retail' ? retailTeams : referralTeams);
+  renderWinnersSummary(retailTeams, referralTeams);
   bindOpenTeamLinks();
 
   const { sd, ed } = getWindow();
