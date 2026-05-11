@@ -2084,7 +2084,6 @@ function chooseBotAttackVariant(bot, target, inputType) {
   if (bot.godId === "thor" && inputType === "special") { if (bot.thorHammerProjectile && projectiles.includes(bot.thorHammerProjectile) && Math.random() < 0.55) return "neutral"; if (recoveringFromBelowStage || targetAbove) return "up"; if (bot.grounded && absDx < 115 && Math.random() < 0.4) return "down"; return "neutral"; }
   if (inputType === "special") {
     if (recoveringFromBelowStage) return "up";
-    if (bot.godId === "athena" && absDx < 95) return "down";
     if (bot.godId === "ra" && absDx > 120) return Math.random() < .66 ? "neutral" : "down";
     if (bot.godId === "horus") {
       if (recoveringFromBelowStage || targetAbove) return "up";
@@ -6144,9 +6143,9 @@ function drawActiveMoveVisual(ctx, player) {
     v.frames--;
     if (isRecovery) ctx.globalAlpha = Math.max(0.12, v.frames / Math.max(1, (v.recoveryFrames || 1)));
     const type=v.type;
-    if (["slashArc","hammerSwing","solarSweep","jackalClaw","daggerFlurry","groundSlam","staticSweep","thunderStomp","spearLift","guardianUpper","owlWing","solarStaffTap","sunriseArc","horizonSweep","falconWing","soulRake","graveSweep","judgmentCleave","weighingHook","tombDrop","hammerSweep","mjolnirCrush","mjolnirTap","thunderUpperSwing","wingSlash","wingLift","talonRake","skyJudgment","talonDrop","crocClaw","tailSweep","deathRoll"].includes(type)) {
+    if (["slashArc","hammerSwing","solarSweep","jackalClaw","daggerFlurry","groundSlam","staticSweep","thunderStomp","spearLift","guardianUpper","owlWing","solarStaffTap","sunriseArc","horizonSweep","falconWing","soulRake","graveSweep","judgmentCleave","weighingHook","tombDrop","hammerSweep","mjolnirCrush","mjolnirTap","thunderUpperSwing","wingSlash","wingLift","talonRake","skyJudgment","talonDrop","crocClaw","tailSweep","deathRoll","athenaOwlsAscent"].includes(type)) {
       drawAttackArc(ctx,{x:handX,y:handY,color,length:v.length||52,thickness:v.thickness||14,startA:(player.facing===1?-1.4:Math.PI+0.2),endA:(player.facing===1?.4:Math.PI-1.2)});
-    } else if (["stabLine","beam","lightningJab","royalSpear","falconDive","falconStorm","shieldBash","shockwave","uppercut","boltSpear","uppercutSpark","stormPillar","spearThrust","shieldCheck","aegisBash","spearPin","aegisWall","parryField","desertBurn","sunBrandBurst","afterlifeStep","soulMarkBurst","hammerJab","earthbreakerSlam","hammerLift","thunderLanding","nileLunge","riverBreach","jawSnap","waterBurst","spectralCroc"].includes(type)) {
+    } else if (["stabLine","beam","lightningJab","royalSpear","falconDive","falconStorm","shieldBash","shockwave","uppercut","boltSpear","uppercutSpark","stormPillar","spearThrust","shieldCheck","aegisBash","spearPin","aegisWall","parryField","athenaAegisCounterStance","athenaAegisCounterBash","desertBurn","sunBrandBurst","afterlifeStep","soulMarkBurst","hammerJab","earthbreakerSlam","hammerLift","thunderLanding","nileLunge","riverBreach","jawSnap","waterBurst","spectralCroc"].includes(type)) {
       ctx.strokeStyle=color; ctx.lineWidth=screenScale(v.thickness||10); ctx.globalAlpha=.8; ctx.beginPath();
       ctx.moveTo(worldToScreenX(handX), worldToScreenY(handY));
       const tx=handX + player.facing*(v.length||65); const ty=handY + ((type==="uppercut"||type==="uppercutSpark"||type==="guardianUpper")?-55:(type==="stormPillar"||type==="sunBrandBurst"?-95:(type==="spearPin"?48:(type==="desertBurn"?16:0))));
