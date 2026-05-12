@@ -1494,6 +1494,8 @@ function addGoblinGroundMarker(enemy) {
 
 function spawnEnemy(typeKey = "green") {
   const win = windows[Math.floor(Math.random() * windows.length)];
+  const outsideStand = getWindowOutsideStandPosition(win);
+  const insideStand = getWindowInsideStandPosition(win);
   const mesh = createGoblinMesh(typeKey);
   const outsideSpawn = getOutsideWindowSpawn(win);
   mesh.position.copy(outsideSpawn);
@@ -1512,6 +1514,8 @@ function spawnEnemy(typeKey = "green") {
     reward: type.reward,
     state: "walking_to_window",
     targetWindow: win,
+    outsideStand,
+    insideStand,
     attackCooldown: 0,
     throwCooldown: 2 + Math.random() * 2,
     animTime: Math.random() * 10,
@@ -2046,19 +2050,25 @@ function animateGoblinClimb(enemy, dt) {
 function updateGoblinClimbThroughWindow(enemy, win, dt) {
   if (!enemy.climbData) {
     enemy.climbData = {
-      duration: 1.2,
+      duration: 1.15,
       t: 0,
-      start: getWindowOutsideStandPosition(win).clone(),
-      end: getWindowInsideStandPosition(win).clone()
+      start: (enemy.outsideStand || getWindowOutsideStandPosition(win)).clone(),
+      middle: new THREE.Vector3(win.x, 0.75, win.z),
+      end: (enemy.insideStand || getWindowInsideStandPosition(win)).clone()
     };
   }
   const cd = enemy.climbData;
   cd.t += dt;
   const alpha = Math.min(1, cd.t / cd.duration);
   const smooth = alpha * alpha * (3 - 2 * alpha);
-  enemy.mesh.position.lerpVectors(cd.start, cd.end, smooth);
-  enemy.mesh.position.y = Math.sin(alpha * Math.PI) * 0.75;
-  enemy.mesh.rotation.x = Math.sin(alpha * Math.PI) * 0.55;
+  if (smooth < 0.5) {
+    const a = smooth / 0.5;
+    enemy.mesh.position.lerpVectors(cd.start, cd.middle, a);
+  } else {
+    const a = (smooth - 0.5) / 0.5;
+    enemy.mesh.position.lerpVectors(cd.middle, cd.end, a);
+  }
+  enemy.mesh.rotation.x = Math.sin(alpha * Math.PI) * 0.5;
   faceGoblinToward(enemy, cd.end);
   animateGoblinClimb(enemy, dt);
   if (alpha >= 1) {
@@ -2070,6 +2080,10 @@ function updateGoblinClimbThroughWindow(enemy, win, dt) {
   }
 }
 
+function isEnemyStillOutside(enemy) {
+  return enemy.state === "walking_to_window" || enemy.state === "tearing_boards" || enemy.state === "climbing_in";
+}
+
 function updateEnemies(dt) {
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
@@ -2079,26 +2093,53 @@ function updateEnemies(dt) {
 
     e.attackCooldown -= dt;
 
+    if (!e.targetWindow || !windows.includes(e.targetWindow)) {
+      e.targetWindow = windows[Math.floor(Math.random() * windows.length)];
+      e.outsideStand = getWindowOutsideStandPosition(e.targetWindow);
+      e.insideStand = getWindowInsideStandPosition(e.targetWindow);
+    }
+
+    if ((e.state === "walking_to_window" || e.state === "tearing_boards") && e.targetWindow) {
+      const inward = getWindowInwardVector(e.targetWindow);
+      const dx = e.mesh.position.x - e.targetWindow.x;
+      const dz = e.mesh.position.z - e.targetWindow.z;
+      const dot = dx * inward.x + dz * inward.z;
+
+      if (dot > 0.15) {
+        const stand = e.outsideStand || getWindowOutsideStandPosition(e.targetWindow);
+        e.mesh.position.x = stand.x;
+        e.mesh.position.z = stand.z;
+        e.mesh.position.y = 0;
+      }
+    }
+
     if (e.state === "walking_to_window") {
       const w = e.targetWindow;
-      const target = getWindowOutsideStandPosition(w);
+      const target = e.outsideStand || getWindowOutsideStandPosition(w);
       const distToTarget = enemyDistance2D(e.mesh.position, target);
-      if (distToTarget > 0.45) {
+      if (distToTarget > 0.12) {
         moved = moveGoblinToward(e, target, dt);
-        faceGoblinToward(e, target);
-      } else {
-        e.mesh.position.copy(target);
-        e.state = "tearing_boards";
-        e.tearAnim = 0.4;
-      }
-      if (distToTarget <= 0.45) {
         faceGoblinToward(e, new THREE.Vector3(w.x, 0, w.z));
+      } else {
+        e.mesh.position.x = target.x;
+        e.mesh.position.z = target.z;
+        e.mesh.position.y = 0;
+        faceGoblinToward(e, new THREE.Vector3(w.x, 0, w.z));
+
+        if (w.boards > 0) {
+          e.state = "tearing_boards";
+          e.tearAnim = 0.4;
+        } else {
+          e.state = "climbing_in";
+          e.climbData = null;
+        }
       }
+      animateGoblinWalk(e, moved);
       continue;
     }
     if (e.state === "tearing_boards") {
       const w = e.targetWindow;
-      const stand = getWindowOutsideStandPosition(w);
+      const stand = e.outsideStand || getWindowOutsideStandPosition(w);
       e.mesh.position.x = stand.x;
       e.mesh.position.z = stand.z;
       e.mesh.position.y = 0;
