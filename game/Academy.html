@@ -205,8 +205,8 @@
 ========================================================= */
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x090908);
-scene.fog = new THREE.Fog(0x090908, 35, 130);
+scene.background = new THREE.Color(0x9fc7df);
+scene.fog = new THREE.Fog(0xbfd6e6, 65, 210);
 
 const camera = new THREE.PerspectiveCamera(
   75,
@@ -594,9 +594,9 @@ addCeilingLightFixture(-4, -4);
 addCeilingLightFixture(4, 4);
 
 const outsideGround = new THREE.Mesh(
-  new THREE.PlaneGeometry(260, 260),
+  new THREE.PlaneGeometry(280, 280),
   new THREE.MeshStandardMaterial({
-    color: 0x38552c,
+    color: 0x8f8a78,
     roughness: 1
   })
 );
@@ -604,14 +604,15 @@ outsideGround.rotation.x = -Math.PI / 2;
 outsideGround.position.y = -0.22;
 scene.add(outsideGround);
 
-const outsideSun = new THREE.DirectionalLight(0xe8f6ff, 1.15);
-outsideSun.position.set(-35, 65, -25);
+const outsideSun = new THREE.DirectionalLight(0xfff1c2, 1.35);
+outsideSun.position.set(-35, 70, -30);
+outsideSun.castShadow = true;
 scene.add(outsideSun);
 
 function addDeadTree(x, z, scale = 1) {
   const trunk = new THREE.Mesh(
     new THREE.CylinderGeometry(0.12 * scale, 0.2 * scale, 2.4 * scale, 8),
-    new THREE.MeshStandardMaterial({ color: 0x332414, roughness: 1 })
+    new THREE.MeshStandardMaterial({ color: 0x5a4935, roughness: 1 })
   );
   trunk.position.set(x, 1.1 * scale, z);
   trunk.rotation.z = (Math.random() - 0.5) * 0.25;
@@ -660,6 +661,63 @@ function addGrassPatch(x, z, count = 10) {
   }
 }
 
+function addStoneSlab(x, z, scale = 1, rot = 0) {
+  const slab = new THREE.Mesh(
+    new THREE.BoxGeometry(1.6 * scale, 0.12 * scale, 1.0 * scale),
+    new THREE.MeshStandardMaterial({ color: 0x777364, roughness: 1 })
+  );
+
+  slab.position.set(x, -0.13, z);
+  slab.rotation.y = rot;
+  slab.receiveShadow = true;
+
+  scene.add(slab);
+}
+
+function addBrokenStoneColumn(x, z, height = 2.2) {
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x8a8778,
+    roughness: 1
+  });
+
+  const col = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.28, 0.34, height, 10),
+    mat
+  );
+
+  col.position.set(x, height / 2 - 0.15, z);
+  col.rotation.z = (Math.random() - 0.5) * 0.12;
+  col.castShadow = true;
+  col.receiveShadow = true;
+  scene.add(col);
+
+  const cap = new THREE.Mesh(
+    new THREE.BoxGeometry(0.9, 0.22, 0.9),
+    mat
+  );
+
+  cap.position.set(x, height - 0.05, z);
+  cap.rotation.y = Math.random() * Math.PI;
+  cap.castShadow = true;
+  scene.add(cap);
+}
+
+function addDirtPatch(x, z, w = 3, d = 5, rotY = 0) {
+  const patch = new THREE.Mesh(
+    new THREE.PlaneGeometry(w, d),
+    new THREE.MeshStandardMaterial({
+      color: 0x5b442e,
+      roughness: 1
+    })
+  );
+
+  patch.rotation.x = -Math.PI / 2;
+  patch.rotation.z = rotY;
+  patch.position.set(x, -0.205, z);
+
+  scene.add(patch);
+}
+
 [
   [-17, -8], [-19, 3], [13, -18], [37, -6],
   [-18, 25], [28, 38], [-42, -7], [-44, 20],
@@ -673,9 +731,32 @@ function addGrassPatch(x, z, count = 10) {
   [-14, -8], [-14, 6], [8, -14], [23, -14],
   [39, 0], [-38, -4], [-38, 22], [48, -14],
   [62, 24], [0, 38]
-].forEach(([x, z]) => addGrassPatch(x, z, 14));
+].forEach(([x, z]) => addGrassPatch(x, z, 6));
 
-const outsideFill = new THREE.HemisphereLight(0xbfdcff, 0x355030, 0.85);
+[
+  [-15, -8, 1.1], [-18, 4, 0.8], [9, -14, 1.0], [22, -15, 1.2],
+  [38, 1, 0.9], [-41, -5, 1.3], [-41, 21, 1.0], [49, -16, 1.1],
+  [66, 24, 1.3], [0, 38, 1.4], [16, 47, 0.9], [-18, 47, 1.0],
+  [55, 30, 1.2], [30, 37, 0.95]
+].forEach(([x, z, s]) => addStoneSlab(x, z, s, Math.random() * Math.PI));
+
+[
+  [-20, -10], [14, -20], [35, -10], [-45, 8],
+  [-36, 28], [20, 40], [62, 14], [58, 34]
+].forEach(([x, z]) => {
+  addBrokenStoneColumn(x, z, 1.4 + Math.random() * 1.8);
+});
+
+addDirtPatch(-14, -4, 3, 8, 0);
+addDirtPatch(-14, 5, 3, 8, 0);
+addDirtPatch(8, -13, 3, 8, Math.PI / 2);
+addDirtPatch(23, -13, 3, 8, Math.PI / 2);
+addDirtPatch(25, 35, 3, 8, Math.PI / 2);
+addDirtPatch(-24, 36, 3, 8, Math.PI / 2);
+addDirtPatch(48, -15, 3, 8, Math.PI / 2);
+addDirtPatch(66, 24, 3, 8, 0);
+
+const outsideFill = new THREE.HemisphereLight(0xdceeff, 0x887b5c, 0.95);
 scene.add(outsideFill);
 
 addTable(-2, -5);
