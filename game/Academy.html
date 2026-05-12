@@ -314,10 +314,33 @@ document.addEventListener("pointerlockchange", () => {
   pointerLocked = document.pointerLockElement === renderer.domElement;
 });
 
-startBtn.onclick = () => {
+function startSoloGame() {
   startScreen.style.display = "none";
   renderer.domElement.requestPointerLock();
-};
+}
+
+if (soloBtn) {
+  soloBtn.onclick = startSoloGame;
+}
+
+if (twoPlayerBtn) {
+  twoPlayerBtn.onclick = () => {
+    alert("2-player mode is not fully wired yet. Starting solo for now.");
+    startSoloGame();
+  };
+}
+
+if (controlsBtn) {
+  controlsBtn.onclick = () => {
+    if (controlsPanel) controlsPanel.style.display = "block";
+  };
+}
+
+if (backToMenuBtn) {
+  backToMenuBtn.onclick = () => {
+    if (controlsPanel) controlsPanel.style.display = "none";
+  };
+}
 
 renderer.domElement.addEventListener("click", () => {
   if (!pointerLocked && player.alive) {
