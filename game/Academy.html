@@ -442,6 +442,20 @@
       max-height: 420px;
     }
   }
+
+  .compare-wrap { padding: 10px; }
+  .compare-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .compare-card { border:1px solid #e5e7eb; border-radius:9px; padding:10px; background:#fffafa; }
+  .compare-card h3 { margin:0 0 8px; color:#7f1d1d; }
+  .compare-good { background:#dcfce7; border-left:5px solid #15803d; }
+  .compare-warning { background:#fef9c3; border-left:5px solid #ca8a04; }
+  .compare-bad { background:#fee2e2; border-left:5px solid #b91c1c; }
+  .compare-section { margin-top:12px; border:1px solid #e5e7eb; border-radius:9px; overflow:hidden; }
+  .compare-section h3 { margin:0; padding:9px 10px; background:#fff1f2; color:#7f1d1d; border-bottom:1px solid #e5e7eb; }
+  .diff-cell { background:#fee2e2 !important; color:#7f1d1d; font-weight:bold; }
+  .match-cell { background:#dcfce7 !important; }
+  .partial-cell { background:#fef9c3 !important; }
+
 </style>
 </head>
 
@@ -543,6 +557,7 @@
         <button id="orgViewBtn" class="view-tab active" onclick="setViewMode('org')">Org View</button>
         <button id="usersViewBtn" class="view-tab" onclick="setViewMode('users')">Users View</button>
         <button id="filtersViewBtn" class="view-tab" onclick="setViewMode('filters')">Filters View</button>
+        <button id="compareViewBtn" class="view-tab" onclick="setViewMode('compare')">Compare Files</button>
       </div>
 
       <div class="view-actions">
@@ -599,6 +614,11 @@ let columns = {
 let org = [];
 let currentViewMode = "org";
 let filledReportEmails = {};
+let compareRawRows = [];
+let comparePeople = [];
+let compareColumns = { first: null, last: null, supervisor: null, email: null };
+let compareResults = null;
+let lastBlueprintLoadSummary = null;
 
 const possibleFirstNames = [
   "first",
@@ -1490,17 +1510,50 @@ function getOrgPathRows() {
   });
 }
 
+function buildOrgBlueprint() {
+  return {
+    savedAt: new Date().toISOString(),
+    columnsUsed: { first: columns.first, last: columns.last, supervisor: columns.supervisor, email: columns.email },
+    hierarchy: org.map(director => ({
+      directorName: director.name,
+      directorKey: normalizeName(director.name),
+      managers: director.managers.map(manager => ({
+        managerName: manager.name,
+        managerKey: normalizeName(manager.name),
+        coaches: manager.coaches.map(coach => ({ coachName: coach, coachKey: normalizeName(coach) }))
+      }))
+    }))
+  };
+}
+
+function findCurrentPersonBySavedKey(savedKey, savedName) { const key = normalizeName(savedKey || savedName); let match = people.find(p => p.nameKey === key); if (match) return match; const flippedKey = normalizeName(flipName(savedName)); match = people.find(p => p.nameKey === flippedKey); return match || null; }
+function showBlueprintLoadSummary(missing, rebuiltOrg) { const directorCount = rebuiltOrg.length; const managerCount = rebuiltOrg.reduce((sum, d) => sum + d.managers.length, 0); const coachCount = rebuiltOrg.reduce((sum, d) => sum + d.managers.reduce((mSum, m) => mSum + m.coaches.length, 0), 0); lastBlueprintLoadSummary = { loadedAt: new Date().toISOString(), missing, directorCount, managerCount, coachCount }; let message = `Org blueprint loaded from current file.
+
+Directors loaded: ${directorCount}
+Managers loaded: ${managerCount}
+Coaches loaded: ${coachCount}
+Missing names: ${missing.length}`; if (missing.length) message += `
+
+Missing names were not added because they were not found in the current uploaded file.`; alert(message); }
+function rebuildOrgFromBlueprint(blueprint) { const rebuiltOrg = []; const missing = []; if (!blueprint || !Array.isArray(blueprint.hierarchy)) { alert("No org blueprint found in the local save."); return; } blueprint.hierarchy.forEach(savedDirector => { const directorPerson = findCurrentPersonBySavedKey(savedDirector.directorKey, savedDirector.directorName); if (!directorPerson) { missing.push({ level: "Director", name: savedDirector.directorName }); return; } const directorNode = { name: directorPerson.name, managers: [] }; (savedDirector.managers || []).forEach(savedManager => { const managerPerson = findCurrentPersonBySavedKey(savedManager.managerKey, savedManager.managerName); if (!managerPerson) { missing.push({ level: "Manager", name: savedManager.managerName, director: savedDirector.directorName }); return; } const managerNode = { name: managerPerson.name, coaches: [] }; (savedManager.coaches || []).forEach(savedCoach => { const coachPerson = findCurrentPersonBySavedKey(savedCoach.coachKey, savedCoach.coachName); if (!coachPerson) { missing.push({ level: "Coach", name: savedCoach.coachName, director: savedDirector.directorName, manager: savedManager.managerName }); return; } managerNode.coaches.push(coachPerson.name); }); directorNode.managers.push(managerNode); }); rebuiltOrg.push(directorNode); }); org = rebuiltOrg; selectedPerson = null; renderAll(); showBlueprintLoadSummary(missing, rebuiltOrg); }
+
 function setViewMode(mode) {
   currentViewMode = mode;
 
   document.getElementById("orgViewBtn").classList.toggle("active", mode === "org");
   document.getElementById("usersViewBtn").classList.toggle("active", mode === "users");
   document.getElementById("filtersViewBtn").classList.toggle("active", mode === "filters");
+  document.getElementById("compareViewBtn").classList.toggle("active", mode === "compare");
 
   renderOutputTable();
 }
 
 function renderOutputTable() {
+  if (currentViewMode === "compare") {
+    renderCompareView();
+    return;
+  }
+
   if (currentViewMode === "org") {
     renderOrgOutputTable();
     return;
@@ -1797,7 +1850,8 @@ function saveLocal() {
     org,
     includeEmail: document.getElementById("includeEmailToggle").checked,
     currentViewMode,
-    filledReportEmails
+    filledReportEmails,
+    orgBlueprint: buildOrgBlueprint()
   };
 
   localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
@@ -1815,6 +1869,14 @@ function loadLocal() {
 
   try {
     const payload = JSON.parse(text);
+    const hasCurrentFileLoaded = rawRows.length > 0 && people.length > 0;
+    const hasBlueprint = payload.orgBlueprint && Array.isArray(payload.orgBlueprint.hierarchy);
+
+    if (hasCurrentFileLoaded && hasBlueprint) {
+      rebuildOrgFromBlueprint(payload.orgBlueprint);
+      setStatus("Loaded org blueprint onto current uploaded file");
+      return;
+    }
 
     rawRows = payload.rawRows || [];
     people = payload.people || [];
@@ -1905,6 +1967,19 @@ function jsEscape(value) {
     .replace(/\\/g, "\\\\")
     .replace(/'/g, "\\'");
 }
+
+
+function renderCompareView() { const header = document.getElementById("outputTableHeader"); const tbody = document.querySelector("#outputTable tbody"); header.innerHTML = `<th>Compare Files</th>`; tbody.innerHTML = `<tr><td><div class="compare-wrap"><div class="notice">Upload a second file to compare its format and names against the currently loaded file.</div>${lastBlueprintLoadSummary ? `<div class="notice compare-warning">Last blueprint load (${new Date(lastBlueprintLoadSummary.loadedAt).toLocaleString()}): Directors ${lastBlueprintLoadSummary.directorCount}, Managers ${lastBlueprintLoadSummary.managerCount}, Coaches ${lastBlueprintLoadSummary.coachCount}, Missing ${lastBlueprintLoadSummary.missing.length}.</div>` : ""}<div class="compare-grid"><div class="compare-card"><h3>Current File</h3><div id="currentFileSummary"></div></div><div class="compare-card"><h3>Comparison File</h3><input type="file" id="compareFileInput" accept=".xlsx,.xls,.csv" /><div id="compareFileSummary" class="small" style="margin-top:8px;">No comparison file loaded.</div></div></div><div id="compareResultsBox" style="margin-top:12px;"></div></div></td></tr>`; renderCurrentFileSummary(); const compareInput = document.getElementById("compareFileInput"); if (compareInput) compareInput.addEventListener("change", handleCompareFileUpload); if (compareResults) renderCompareResults(); }
+function handleCompareFileUpload(event) { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = function(e) { try { const data = new Uint8Array(e.target.result); const workbook = XLSX.read(data, { type: "array" }); const sheetName = workbook.SheetNames[0]; const sheet = workbook.Sheets[sheetName]; compareRawRows = XLSX.utils.sheet_to_json(sheet, { defval: "" }); if (!compareRawRows.length) { alert("No rows found in comparison file."); return; } setupCompareColumns(); processComparePeople(); compareResults = compareFiles(); renderCompareView(); setStatus(`Compared current file to ${file.name}`); } catch (error) { console.error(error); alert("There was an issue reading the comparison file."); } }; reader.readAsArrayBuffer(file); }
+function setupCompareColumns() { const headers = Object.keys(compareRawRows[0] || {}); compareColumns.first = findBestHeader(headers, possibleFirstNames); compareColumns.last = findBestHeader(headers, possibleLastNames); compareColumns.supervisor = findBestHeader(headers, possibleSupervisorNames); compareColumns.email = findBestHeader(headers, possibleEmailNames); }
+function processComparePeople() { comparePeople = []; compareRawRows.forEach((row, index) => { const first = row[compareColumns.first]; const last = row[compareColumns.last]; const name = makeDisplayName(first, last); if (!name) return; comparePeople.push({ id: `compare_person_${index}`, first: String(first || "").trim(), last: String(last || "").trim(), name, nameKey: normalizeName(name), email: String(row[compareColumns.email] || "").trim(), supervisorRaw: titleName(row[compareColumns.supervisor]), supervisorKey: normalizeName(row[compareColumns.supervisor]), raw: row }); }); comparePeople.sort((a, b) => a.name.localeCompare(b.name)); }
+function compareFiles() { const currentHeaders = Object.keys(rawRows[0] || {}); const compareHeaders = Object.keys(compareRawRows[0] || {}); const currentNormalizedHeaders = currentHeaders.map(normalizeHeader); const compareNormalizedHeaders = compareHeaders.map(normalizeHeader); const missingFromCompare = currentHeaders.filter(header => !compareNormalizedHeaders.includes(normalizeHeader(header))); const extraInCompare = compareHeaders.filter(header => !currentNormalizedHeaders.includes(normalizeHeader(header))); const sameHeaderOrder = currentHeaders.length === compareHeaders.length && currentHeaders.every((header, index) => normalizeHeader(header) === normalizeHeader(compareHeaders[index])); const requiredMappings = [{ label: "First Name", current: columns.first, compare: compareColumns.first }, { label: "Last Name", current: columns.last, compare: compareColumns.last }, { label: "Supervisor", current: columns.supervisor, compare: compareColumns.supervisor }, { label: "Username / Email", current: columns.email, compare: compareColumns.email }]; const currentNameKeys = new Set(people.map(p => p.nameKey)); const compareNameKeys = new Set(comparePeople.map(p => p.nameKey)); const matchedNames = people.filter(p => compareNameKeys.has(p.nameKey)); const missingNames = people.filter(p => !compareNameKeys.has(p.nameKey)); const newNames = comparePeople.filter(p => !currentNameKeys.has(p.nameKey)); const supervisorDifferences = []; matchedNames.forEach(currentPerson => { const comparePerson = comparePeople.find(p => p.nameKey === currentPerson.nameKey); if (!comparePerson) return; if (currentPerson.supervisorKey !== comparePerson.supervisorKey) supervisorDifferences.push({ name: currentPerson.name, currentSupervisor: currentPerson.supervisorRaw || "", compareSupervisor: comparePerson.supervisorRaw || "" }); }); return { currentHeaders, compareHeaders, sameHeaderOrder, missingFromCompare, extraInCompare, requiredMappings, currentCount: people.length, compareCount: comparePeople.length, matchedNames, missingNames, newNames, supervisorDifferences }; }
+function renderCurrentFileSummary() { const box = document.getElementById("currentFileSummary"); if (!box) return; if (!rawRows.length) { box.innerHTML = `<div class="notice">No current file loaded.</div>`; return; } box.innerHTML = `<div><strong>Rows:</strong> ${rawRows.length.toLocaleString()}</div><div><strong>People:</strong> ${people.length.toLocaleString()}</div><div><strong>First:</strong> ${escapeHTML(columns.first || "—")}</div><div><strong>Last:</strong> ${escapeHTML(columns.last || "—")}</div><div><strong>Supervisor:</strong> ${escapeHTML(columns.supervisor || "—")}</div><div><strong>Email:</strong> ${escapeHTML(columns.email || "—")}</div>`; }
+function renderCompareResults() { const box = document.getElementById("compareResultsBox"); const summaryBox = document.getElementById("compareFileSummary"); if (!box || !compareResults) return; if (summaryBox) summaryBox.innerHTML = `Rows: ${compareRawRows.length.toLocaleString()}<br>People: ${comparePeople.length.toLocaleString()}<br>First: ${escapeHTML(compareColumns.first || "—")}<br>Last: ${escapeHTML(compareColumns.last || "—")}<br>Supervisor: ${escapeHTML(compareColumns.supervisor || "—")}<br>Email: ${escapeHTML(compareColumns.email || "—")}`; const formatClass = compareResults.missingFromCompare.length === 0 && compareResults.extraInCompare.length === 0 ? "compare-good" : "compare-warning"; const orderText = compareResults.sameHeaderOrder ? "Headers match in the same order." : "Headers do not perfectly match in the same order."; box.innerHTML = `<div class="compare-section"><h3>Format Equivalency Summary</h3><div class="notice ${formatClass}"><strong>${orderText}</strong><br>Missing columns in comparison file: ${compareResults.missingFromCompare.length}<br>Extra columns in comparison file: ${compareResults.extraInCompare.length}</div>${renderRequiredMappingTable()}${renderHeaderComparisonTable()}</div><div class="compare-section"><h3>Name Match Summary</h3><div class="notice ${compareResults.missingNames.length === 0 ? "compare-good" : "compare-warning"}">Current people: ${compareResults.currentCount}<br>Comparison people: ${compareResults.compareCount}<br>Matched names: ${compareResults.matchedNames.length}<br>Missing from comparison file: ${compareResults.missingNames.length}<br>New names in comparison file: ${compareResults.newNames.length}</div>${renderNameDifferenceTable()}</div><div class="compare-section"><h3>Supervisor / Row Relationship Differences</h3><div class="notice ${compareResults.supervisorDifferences.length === 0 ? "compare-good" : "compare-warning"}">Supervisor differences found: ${compareResults.supervisorDifferences.length}</div>${renderSupervisorDifferenceTable()}</div>`; }
+function renderRequiredMappingTable() { return `<table><thead><tr><th>Required Field</th><th>Current File Column</th><th>Comparison File Column</th><th>Status</th></tr></thead><tbody>${compareResults.requiredMappings.map(item => { const same = normalizeHeader(item.current) === normalizeHeader(item.compare); return `<tr><td>${escapeHTML(item.label)}</td><td>${escapeHTML(item.current || "—")}</td><td>${escapeHTML(item.compare || "—")}</td><td class="${same ? "match-cell" : "partial-cell"}">${same ? "Equivalent" : "Different column name / mapping"}</td></tr>`; }).join("")}</tbody></table>`; }
+function renderHeaderComparisonTable() { const max = Math.max(compareResults.currentHeaders.length, compareResults.compareHeaders.length); let rows = ""; for (let i = 0; i < max; i++) { const currentHeader = compareResults.currentHeaders[i] || ""; const compareHeader = compareResults.compareHeaders[i] || ""; const same = normalizeHeader(currentHeader) === normalizeHeader(compareHeader); rows += `<tr><td>${i + 1}</td><td class="${same ? "match-cell" : "diff-cell"}">${escapeHTML(currentHeader || "—")}</td><td class="${same ? "match-cell" : "diff-cell"}">${escapeHTML(compareHeader || "—")}</td><td>${same ? "Same position" : "Different"}</td></tr>`; } return `<table><thead><tr><th>#</th><th>Current Header</th><th>Comparison Header</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`; }
+function renderNameDifferenceTable() { const missing = compareResults.missingNames.slice(0, 150); const added = compareResults.newNames.slice(0, 150); return `<table><thead><tr><th>Difference Type</th><th>Name</th><th>Supervisor</th><th>Email</th></tr></thead><tbody>${missing.map(p => `<tr><td class="diff-cell">Missing from comparison</td><td>${escapeHTML(p.name)}</td><td>${escapeHTML(p.supervisorRaw || "—")}</td><td>${escapeHTML(p.email || "—")}</td></tr>`).join("")}${added.map(p => `<tr><td class="partial-cell">New in comparison</td><td>${escapeHTML(p.name)}</td><td>${escapeHTML(p.supervisorRaw || "—")}</td><td>${escapeHTML(p.email || "—")}</td></tr>`).join("")}</tbody></table>`; }
+function renderSupervisorDifferenceTable() { if (!compareResults.supervisorDifferences.length) return `<div class="notice compare-good">No supervisor differences found for matched names.</div>`; return `<table><thead><tr><th>Name</th><th>Current Supervisor</th><th>Comparison Supervisor</th></tr></thead><tbody>${compareResults.supervisorDifferences.slice(0, 200).map(item => `<tr><td>${escapeHTML(item.name)}</td><td class="diff-cell">${escapeHTML(item.currentSupervisor || "—")}</td><td class="diff-cell">${escapeHTML(item.compareSupervisor || "—")}</td></tr>`).join("")}</tbody></table>`; }
 
 function setStatus(text) {
   document.getElementById("statusPill").textContent = text;
