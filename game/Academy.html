@@ -2497,8 +2497,11 @@ function updateEnemies(dt) {
     if (e.state === "walking_to_window") {
       const w = e.targetWindow;
       const target = e.outsideStand || getWindowOutsideStandPosition(w);
+      const ARRIVED_AT_WINDOW_DIST = 0.65;
       const distToTarget = enemyDistance2D(e.mesh.position, target);
-      if (distToTarget > 0.18) {
+      const hasArrivedAtWindow = distToTarget <= ARRIVED_AT_WINDOW_DIST;
+
+      if (!hasArrivedAtWindow) {
         moved = moveGoblinAlongPath(e, target, dt);
         faceGoblinToward(e, new THREE.Vector3(w.x, 0, w.z));
       } else {
@@ -2509,7 +2512,8 @@ function updateEnemies(dt) {
         e.pathIndex = 0;
         faceGoblinToward(e, new THREE.Vector3(w.x, 0, w.z));
 
-        if (w.boards > 0) {
+        const windowBoards = Math.max(0, w.boards || 0);
+        if (windowBoards > 0) {
           e.state = "tearing_boards";
           e.tearAnim = 0.4;
         } else {
