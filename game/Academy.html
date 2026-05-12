@@ -118,22 +118,11 @@
   }
 
   #startBox {
-    background: linear-gradient(180deg, rgba(0,0,0,0.88), rgba(20,14,8,0.82));
-    border: 3px solid #c49b55;
-    padding: 34px;
-    border-radius: 14px;
-    max-width: 760px;
-    box-shadow: 0 0 35px rgba(0,0,0,0.85), inset 0 0 18px rgba(255,190,90,0.08);
-  }
-
-  #startBox h1 {
-    letter-spacing: 2px;
-    text-shadow: 0 0 12px rgba(255,210,120,0.55);
-  }
-
-  #startBox button {
-    margin: 6px;
-    min-width: 210px;
+    background: rgba(0,0,0,0.75);
+    border: 3px solid #78945a;
+    padding: 30px;
+    border-radius: 12px;
+    max-width: 700px;
   }
 
   button {
@@ -180,9 +169,6 @@
 <div id="startScreen">
   <div id="startBox">
     <h1>Goblin Zombies 3D</h1>
-    <p style="opacity:.85; font-size:15px;">
-      Board the windows. Buy better weapons. Survive the goblin siege.
-    </p>
     <p>
       Survive waves of goblins. Board windows, buy doors, purchase wall guns, and keep your ammo stocked.
     </p>
@@ -192,7 +178,6 @@
     <button id="soloBtn">Start Solo</button>
     <button id="twoPlayerBtn">Start 2 Player Split Screen</button>
     <button id="controlsBtn">Controls / Controller Mapping</button>
-    <button id="fullscreenBtn">Fullscreen</button>
     <div id="controlsPanel" style="display:none; margin-top: 12px; text-align:left;">
       <h2>Controller Mapping</h2>
       <div>
@@ -220,8 +205,8 @@
 ========================================================= */
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x3b5268);
-scene.fog = new THREE.Fog(0x4d647a, 42, 180);
+scene.background = new THREE.Color(0x090908);
+scene.fog = new THREE.Fog(0x090908, 35, 130);
 
 const camera = new THREE.PerspectiveCamera(
   75,
@@ -246,7 +231,6 @@ const startScreen = document.getElementById("startScreen");
 const soloBtn = document.getElementById("soloBtn");
 const twoPlayerBtn = document.getElementById("twoPlayerBtn");
 const controlsBtn = document.getElementById("controlsBtn");
-const fullscreenBtn = document.getElementById("fullscreenBtn");
 const controlsPanel = document.getElementById("controlsPanel");
 const backToMenuBtn = document.getElementById("backToMenuBtn");
 
@@ -351,33 +335,6 @@ if (controlsBtn) {
     if (controlsPanel) controlsPanel.style.display = "block";
   };
 }
-
-
-if (fullscreenBtn) {
-  fullscreenBtn.onclick = async () => {
-    try {
-      if (!document.fullscreenElement) {
-        await document.documentElement.requestFullscreen();
-        fullscreenBtn.textContent = "Exit Fullscreen";
-      } else {
-        await document.exitFullscreen();
-        fullscreenBtn.textContent = "Fullscreen";
-      }
-    } catch (err) {
-      console.warn("Fullscreen failed:", err);
-    }
-  };
-}
-
-document.addEventListener("fullscreenchange", () => {
-  if (fullscreenBtn) {
-    fullscreenBtn.textContent = document.fullscreenElement ? "Exit Fullscreen" : "Fullscreen";
-  }
-
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
 
 if (backToMenuBtn) {
   backToMenuBtn.onclick = () => {
@@ -616,15 +573,6 @@ addLamp(-6, 3.5, -5, 0xffd29a, 1.7);
 addLamp(6, 3.5, -5, 0xffd29a, 1.7);
 addLamp(-6, 3.5, 5, 0xffc477, 1.6);
 addLamp(6, 3.5, 5, 0xffc477, 1.6);
-addLamp(-24, 3.6, 0, 0xffaa66, 1.9);
-addLamp(25, 3.7, 21, 0x99ccff, 2.0);
-addLamp(48, 3.8, 24, 0x66ccff, 2.3);
-addWallCrack(-10.82, 2.1, -1.5, Math.PI / 2);
-addBloodStain(10.82, 1.1, 4.5, -Math.PI / 2);
-addFloorDebris(0, 0, 12);
-addWallPanel(-4, 1.6, -8.82, 2.8, 1.8, 0);
-addFencePost(-14, -8); addFencePost(-12, -8); addFencePost(64, 22); addFencePost(64, 26);
-addDirtPatch(-14, -4, 3, 8, 0); addDirtPatch(8, -13, 3, 8, Math.PI / 2); addDirtPatch(25, 35, 3, 8, Math.PI / 2); addDirtPatch(66, 24, 3, 8, 0);
 
 function addCeilingLightFixture(x, z) {
   const fixture = new THREE.Mesh(
@@ -780,17 +728,6 @@ addBuyDoor(48, 12, 5, 0.7, "tower", 2600, "Unlock Tower Room");
 ========================================================= */
 
 const windows = [];
-const impactPuffs = [];
-let screenShake = 0;
-
-function addWallPanel(x, y, z, w, h, rotY = 0) { const panel = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.08), new THREE.MeshStandardMaterial({ color: 0x5e5042, roughness: 0.95 })); panel.position.set(x, y, z); panel.rotation.y = rotY; scene.add(panel); }
-function addWallCrack(x, y, z, rotY = 0) { const crack = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.2), new THREE.MeshBasicMaterial({ color: 0x231d18, transparent: true, opacity: 0.75 })); crack.position.set(x, y, z); crack.rotation.y = rotY; scene.add(crack); }
-function addBloodStain(x, y, z, rotY = 0) { const stain = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.45), new THREE.MeshBasicMaterial({ color: 0x4a120f, transparent: true, opacity: 0.55 })); stain.position.set(x, y, z); stain.rotation.y = rotY; scene.add(stain); }
-function addFloorDebris(x, z, count = 8) { for (let i = 0; i < count; i++) { const d = new THREE.Mesh(new THREE.BoxGeometry(0.12 + Math.random()*0.22, 0.04 + Math.random()*0.06, 0.1 + Math.random()*0.2), new THREE.MeshStandardMaterial({ color: 0x5e4d3a, roughness: 1 })); d.position.set(x + (Math.random()-0.5)*2.3, 0.03, z + (Math.random()-0.5)*2.3); d.rotation.y = Math.random()*Math.PI; scene.add(d);} }
-function addFencePost(x, z) { const post = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.4, 0.18), new THREE.MeshStandardMaterial({ color: 0x4a2f18, roughness: 1 })); post.position.set(x, 0.7, z); post.castShadow = true; scene.add(post);}
-function addDirtPatch(x, z, w = 3, d = 5, rotY = 0) { const patch = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshStandardMaterial({ color: 0x4b3420, roughness: 1 })); patch.rotation.x = -Math.PI / 2; patch.rotation.z = rotY; patch.position.set(x, -0.205, z); scene.add(patch);}
-function addWindowGlow(win) { const glow = new THREE.PointLight(0xffe0aa, 0.45, 5); glow.position.set(win.x, 1.5, win.z); scene.add(glow); win.windowGlow = glow; }
-function addScreenShake(amount) { screenShake = Math.max(screenShake, amount);}
 
 function addWindow(x, z, rotation, spawnX, spawnZ) {
   const frame = new THREE.Group();
@@ -835,7 +772,6 @@ function addWindow(x, z, rotation, spawnX, spawnZ) {
   interactables.push(win);
   rebuildWindowBoards(win);
   addWindowOpening(win);
-  addWindowGlow(win);
 }
 
 function addWindowOpening(win) {
@@ -872,12 +808,6 @@ function rebuildWindowBoards(win) {
     board.castShadow = true;
     board.receiveShadow = true;
 
-    const nailMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
-    for (let n = 0; n < 2; n++) {
-      const nail = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), nailMat);
-      nail.position.set(n === 0 ? -0.95 : 0.95, 0.03, 0.18);
-      board.add(nail);
-    }
     win.group.add(board);
     win.boardMeshes.push(board);
   }
@@ -972,10 +902,6 @@ const guns = {
     color: 0x222222,
     size: 1.25
   },
-  nailSpitter: { name:"Nail Spitter", cost:1150, ammoCost:375, damage:14, fireRate:0.075, bulletSpeed:90, spread:0.03, pellets:1, clipSize:45, reserveMax:270, reloadTime:1.35, automatic:true, burst:1, color:0x777766, size:0.95 },
-  goblinGrinder: { name:"Goblin Grinder", cost:2800, ammoCost:825, damage:11, fireRate:0.18, bulletSpeed:62, spread:0.085, pellets:5, clipSize:20, reserveMax:120, reloadTime:2.25, automatic:true, burst:1, color:0x442222, size:1.35 },
-  royalRepeater: { name:"Royal Repeater", cost:2400, ammoCost:650, damage:42, fireRate:0.32, bulletSpeed:115, spread:0.006, pellets:1, clipSize:12, reserveMax:84, reloadTime:1.65, automatic:false, burst:1, color:0x6b4b20, size:1.18 },
-  arcCaster: { name:"Arc Caster", cost:5200, ammoCost:1350, damage:85, fireRate:0.62, bulletSpeed:105, spread:0.012, pellets:1, clipSize:10, reserveMax:60, reloadTime:2.4, automatic:false, burst:1, color:0x3355aa, laser:true, electric:true, size:1.45 },
   laserLance: {
     name: "Laser Lance",
     cost: 4200,
@@ -1048,20 +974,6 @@ function addWallGun(key, x, y, z, rotY) {
     body.material = new THREE.MeshStandardMaterial({ color: 0x0f2732, metalness: 0.7, roughness: 0.2, emissive: 0x113344 });
     const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.4, 14), new THREE.MeshStandardMaterial({ color: 0x66f3ff, emissive: 0x2288aa }));
     tube.rotation.z = Math.PI / 2; tube.position.set(0.9, 0.02, 0.2); group.add(tube);
-  } else if (key === "nailSpitter") {
-    body.material = new THREE.MeshStandardMaterial({ color: 0x777766, metalness: 0.5, roughness: 0.35 });
-    const topMag = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.16, 0.18), mats.darkMetal); topMag.position.set(-0.05, 0.22, 0.2); group.add(topMag);
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.7, 10), mats.darkMetal); barrel.rotation.z = Math.PI / 2; barrel.position.set(0.62, 0.02, 0.2); group.add(barrel);
-  } else if (key === "goblinGrinder") {
-    body.material = new THREE.MeshStandardMaterial({ color: 0x442222, metalness: 0.65, roughness: 0.28 });
-    for (let i = 0; i < 3; i++) { const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.1, 10), mats.darkMetal); barrel.rotation.z = Math.PI / 2; barrel.position.set(0.82, -0.05 + i * 0.06, 0.2); group.add(barrel); }
-  } else if (key === "royalRepeater") {
-    body.material = new THREE.MeshStandardMaterial({ color: 0x6b4b20, metalness: 0.25, roughness: 0.45 });
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 1.55, 12), mats.darkMetal); barrel.rotation.z = Math.PI / 2; barrel.position.set(0.95, 0.02, 0.2); group.add(barrel);
-    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.22, 0.2), new THREE.MeshStandardMaterial({ color: 0x4b2d16 })); stock.position.set(-0.72, -0.02, 0.2); group.add(stock);
-  } else if (key === "arcCaster") {
-    body.material = new THREE.MeshStandardMaterial({ color: 0x1c2c66, metalness: 0.75, roughness: 0.22, emissive: 0x111a55 });
-    const coil = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.035, 8, 18), new THREE.MeshBasicMaterial({ color: 0x77ddff })); coil.rotation.y = Math.PI / 2; coil.position.set(0.55, 0.03, 0.2); group.add(coil);
   }
   scene.add(group);
 
@@ -1091,10 +1003,6 @@ addWallGun("burstCarbine", -30, 1.5, 7.5, 0);
 addWallGun("trenchShotgun", -28, 1.5, 28.5, Math.PI);
 addWallGun("autoRifle", 52, 1.5, -7.5, 0);
 addWallGun("laserLance", 52, 1.5, 30.5, Math.PI);
-addWallGun("nailSpitter", 7.5, 1.5, -8.4, 0);
-addWallGun("royalRepeater", -30.5, 1.5, -3, Math.PI / 2);
-addWallGun("goblinGrinder", 48, 1.5, 8.5, Math.PI);
-addWallGun("arcCaster", 44, 1.5, 24, -Math.PI / 2);
 
 const ammoStations = [];
 
@@ -1127,10 +1035,6 @@ addAmmoStation(-19, 5, "burstCarbine");
 addAmmoStation(-19, 26, "trenchShotgun");
 addAmmoStation(44, -5, "autoRifle");
 addAmmoStation(44, 28, "laserLance");
-addAmmoStation(7, -6.5, "nailSpitter");
-addAmmoStation(-28, -2, "royalRepeater");
-addAmmoStation(51, 6, "goblinGrinder");
-addAmmoStation(51, 24, "arcCaster");
 
 /* =========================================================
    FIRST-PERSON GUN MODEL
@@ -1214,15 +1118,6 @@ function rebuildGunView() {
   flash.name = "muzzleFlash";
   flash.visible = false;
   gunView.add(flash);
-
-  function addGunDetailBox(group, w, h, d, x, y, z, mat) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); group.add(m); return m; }
-  if (currentGunKey === "trenchShotgun") { addGunDetailBox(gunView, 0.38, 0.16, 0.55, 0.35, -0.48, -1.18, new THREE.MeshStandardMaterial({ color: 0x6f4c2e })); const secondBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 1.2, 12), mats.darkMetal); secondBarrel.rotation.x = Math.PI / 2; secondBarrel.position.set(0.28, -0.29, -1.63); gunView.add(secondBarrel); }
-  if (currentGunKey === "autoRifle") { addGunDetailBox(gunView, 0.18, 0.55, 0.28, 0.35, -0.58, -0.8, mats.darkMetal); addGunDetailBox(gunView, 0.5, 0.18, 0.35, 0.35, -0.32, -0.2, mats.darkMetal); }
-  if (currentGunKey === "laserLance") { const core = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 12), new THREE.MeshBasicMaterial({ color: 0x55ddff })); core.position.set(0.35, -0.29, -1.25); gunView.add(core); }
-  if (currentGunKey === "nailSpitter") addGunDetailBox(gunView, 0.42, 0.2, 0.4, 0.35, -0.46, -1.02, mats.darkMetal);
-  if (currentGunKey === "royalRepeater") addGunDetailBox(gunView, 0.6, 0.2, 0.3, 0.35, -0.43, -0.32, new THREE.MeshStandardMaterial({ color: 0x6b4b20 }));
-  if (currentGunKey === "goblinGrinder") { for (let i = 0; i < 3; i++) { const b = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.0, 10), mats.darkMetal); b.rotation.x = Math.PI / 2; b.position.set(0.25 + i * 0.1, -0.3, -1.58); gunView.add(b); } }
-  if (currentGunKey === "arcCaster") { const coil = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.03, 8, 16), new THREE.MeshBasicMaterial({ color: 0x77ddff })); coil.position.set(0.35, -0.29, -1.15); coil.rotation.x = Math.PI / 2; gunView.add(coil); }
 
   camera.add(gunView);
 }
@@ -1316,16 +1211,8 @@ function fireBurst(count) {
         flash.scale.setScalar(0.8 + Math.random() * 0.7);
         flash.rotation.z = Math.random() * Math.PI;
       }
-      let recoilRot = 0.08; let recoilPush = 0.04;
-      if (currentGunKey === "trenchShotgun") { recoilRot = 0.16; recoilPush = 0.09; }
-      if (currentGunKey === "goblinGrinder") { recoilRot = 0.12; recoilPush = 0.07; }
-      if (currentGunKey === "royalRepeater") { recoilRot = 0.105; recoilPush = 0.055; }
-      if (currentGunKey === "arcCaster") { recoilRot = 0.18; recoilPush = 0.11; }
-      if (currentGunKey === "nailSpitter") { recoilRot = 0.045; recoilPush = 0.025; }
-      gunView.rotation.x -= recoilRot; gunView.position.z += recoilPush;
-      if (currentGunKey === "trenchShotgun") addScreenShake(0.055);
-      if (currentGunKey === "goblinGrinder") addScreenShake(0.04);
-      if (currentGunKey === "arcCaster") addScreenShake(0.065);
+      gunView.rotation.x -= 0.08;
+      gunView.position.z += 0.04;
       setTimeout(() => {
         if (muzzle) muzzle.visible = false;
         if (flash) flash.visible = false;
@@ -1347,16 +1234,10 @@ function spawnBullet() {
   dir.z += (Math.random() - 0.5) * currentGun.spread;
   dir.normalize();
 
-  let bulletColor = currentGun.laser ? 0x55ddff : 0xffe08a;
-  let bulletRadius = currentGun.laser ? 0.065 : 0.045;
-  if (currentGun.electric) { bulletColor = 0x99eeff; bulletRadius = 0.095; }
-  if (currentGunKey === "nailSpitter") { bulletColor = 0xd6d6c2; bulletRadius = 0.032; }
-  if (currentGunKey === "goblinGrinder") { bulletColor = 0xff9966; bulletRadius = 0.052; }
   const bulletMesh = new THREE.Mesh(
-    new THREE.SphereGeometry(bulletRadius, 8, 8),
-    new THREE.MeshBasicMaterial({ color: bulletColor })
+    new THREE.SphereGeometry(currentGun.laser ? 0.065 : 0.045, 8, 8),
+    new THREE.MeshBasicMaterial({ color: currentGun.laser ? 0x55ddff : 0xffe08a })
   );
-  if (currentGun.electric) { const light = new THREE.PointLight(0x99eeff, 0.5, 3); bulletMesh.add(light); }
 
   bulletMesh.position.copy(camera.position);
   bulletMesh.position.add(dir.clone().multiplyScalar(0.8));
@@ -1533,10 +1414,6 @@ function createGoblinMesh(typeKey) {
     }
   });
 
-  if (typeKey === "blue") { const shoulderMat = new THREE.MeshStandardMaterial({ color: 0x2b2b2b, metalness: 0.3, roughness: 0.6 }); const leftPad = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.18, 0.28), shoulderMat); leftPad.position.set(-0.48, 1.15, -0.02); group.add(leftPad); const rightPad = leftPad.clone(); rightPad.position.x = 0.48; group.add(rightPad); }
-  if (typeKey === "red") { eye1.material = new THREE.MeshBasicMaterial({ color: 0xff3333 }); eye2.material = eye1.material; }
-  if (typeKey === "yellow") { const pouch = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), new THREE.MeshStandardMaterial({ color: 0x5c3b21, roughness: 1 })); pouch.position.set(0.35, 0.75, 0.15); group.add(pouch); }
-  if (typeKey === "green") { const claw = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.22, 6), mats.darkMetal); claw.position.set(0.38, 0.98, -0.3); claw.rotation.x = -0.5; group.add(claw); }
   return group;
 }
 
@@ -1861,12 +1738,6 @@ function updatePlayer(dt) {
   camera.rotation.order = "YXZ";
   camera.rotation.y = player.yaw;
   camera.rotation.x = player.pitch;
-  if (screenShake > 0) {
-    camera.position.x += (Math.random() - 0.5) * screenShake;
-    camera.position.y += (Math.random() - 0.5) * screenShake;
-    screenShake *= Math.pow(0.001, dt);
-    if (screenShake < 0.002) screenShake = 0;
-  }
 
   if (player.hurtCooldown > 0) player.hurtCooldown -= dt;
   if (player.interactCooldown > 0) player.interactCooldown -= dt;
@@ -2004,18 +1875,6 @@ function showGoblinHit(enemy, hitZone, damage) {
   sprite.position.y += hitZone === "head" ? 2.2 : 1.5;
   scene.add(sprite);
   floatingTexts.push({ sprite, life: 0.65, vel: new THREE.Vector3((Math.random()-0.5)*0.5,1.2,(Math.random()-0.5)*0.5) });
-  const puffPos = enemy.mesh.position.clone();
-  puffPos.y += hitZone === "head" ? 1.55 : 0.95;
-  spawnImpactPuff(puffPos, hitZone === "head" ? 0x773311 : 0x552211);
-}
-
-function spawnImpactPuff(pos, color = 0x552211) {
-  const puff = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.65 }));
-  puff.position.copy(pos); scene.add(puff);
-  impactPuffs.push({ mesh: puff, life: 0.28, maxLife: 0.28, vel: new THREE.Vector3((Math.random()-0.5)*0.8, Math.random()*0.8, (Math.random()-0.5)*0.8) });
-}
-function updateImpactPuffs(dt) {
-  for (let i = impactPuffs.length - 1; i >= 0; i--) { const p = impactPuffs[i]; p.life -= dt; p.mesh.position.add(p.vel.clone().multiplyScalar(dt)); const alpha = Math.max(0, p.life / p.maxLife); p.mesh.material.opacity = alpha * 0.65; p.mesh.scale.setScalar(1 + (1 - alpha) * 2.5); if (p.life <= 0) { scene.remove(p.mesh); if (p.mesh.geometry) p.mesh.geometry.dispose(); if (p.mesh.material) p.mesh.material.dispose(); impactPuffs.splice(i, 1);} }
 }
 
 function updateFloatingTexts(dt) {
@@ -2470,7 +2329,6 @@ function animate() {
     player.health = Math.max(0, Math.min(player.maxHealth, player.health));
     updatePickups(dt);
     updateFloatingTexts(dt);
-    updateImpactPuffs(dt);
     checkGameOver();
   }
 
