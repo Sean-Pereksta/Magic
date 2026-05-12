@@ -52,6 +52,45 @@
     background: white;
     box-shadow: 0 0 4px black;
   }
+  #playerHealthWrap {
+    position: fixed;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 380px;
+    height: 28px;
+    border: 3px solid white;
+    background: rgba(40, 0, 0, 0.75);
+    z-index: 12;
+    box-shadow: 0 0 8px black;
+  }
+
+  #playerHealthFill {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #b60000, #ff3333);
+    transition: width 0.15s linear;
+  }
+
+  #playerHealthText {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    text-shadow: 2px 2px 4px black;
+    pointer-events: none;
+  }
+
+  #damageTint {
+    position: fixed;
+    inset: 0;
+    background: rgba(180, 0, 0, 0);
+    pointer-events: none;
+    z-index: 9;
+    transition: background 0.2s linear;
+  }
 
   #crosshair:before {
     left: 8px;
@@ -104,8 +143,13 @@
 <body>
 
 <div id="hud"></div>
+<div id="playerHealthWrap">
+  <div id="playerHealthFill"></div>
+  <div id="playerHealthText">100 / 100</div>
+</div>
 <div id="centerText"></div>
 <div id="crosshair"></div>
+<div id="damageTint"></div>
 
 <div id="startScreen">
   <div id="startBox">
@@ -147,6 +191,9 @@ const clock = new THREE.Clock();
 
 const hud = document.getElementById("hud");
 const centerText = document.getElementById("centerText");
+const playerHealthFill = document.getElementById("playerHealthFill");
+const playerHealthText = document.getElementById("playerHealthText");
+const damageTint = document.getElementById("damageTint");
 const startScreen = document.getElementById("startScreen");
 const startBtn = document.getElementById("startBtn");
 
@@ -210,12 +257,16 @@ const player = {
   speed: 7,
   sprintSpeed: 11,
   health: 100,
+  maxHealth: 100,
   coins: 500,
   score: 0,
   wave: 1,
   alive: true,
   interactCooldown: 0,
-  hurtCooldown: 0
+  hurtCooldown: 0,
+  regenDelay: 4.0,
+  regenTimer: 0,
+  regenRate: 7.5
 };
 
 camera.position.copy(player.pos);
@@ -314,6 +365,63 @@ function addCrateStack(x, z) {
   box(1, 0.8, 1, x, 0.4, z, mats.trim);
   box(0.9, 0.7, 0.9, x + 0.5, 1.15, z + 0.2, mats.trim);
 }
+function addChair(x, z, rotY = 0) {
+  const group = new THREE.Group();
+  group.position.set(x, 0, z);
+  group.rotation.y = rotY;
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.18, 0.7), mats.trim);
+  seat.position.y = 0.55;
+  const back = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.9, 0.14), mats.trim);
+  back.position.set(0, 0.95, 0.35);
+  group.add(seat, back);
+  [[-0.25, 0.25, -0.25], [0.25, 0.25, -0.25], [-0.25, 0.25, 0.25], [0.25, 0.25, 0.25]].forEach(p => {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.5, 0.08), mats.darkMetal);
+    leg.position.set(p[0], p[1], p[2]);
+    group.add(leg);
+  });
+  scene.add(group);
+}
+function addCouch(x, z, rotY = 0) {
+  const group = new THREE.Group();
+  group.position.set(x, 0, z);
+  group.rotation.y = rotY;
+  const couchMat = new THREE.MeshStandardMaterial({ color: 0x4a2323, roughness: 0.9 });
+  const base = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.45, 0.8), couchMat);
+  base.position.y = 0.45;
+  const back = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.9, 0.22), couchMat);
+  back.position.set(0, 0.85, 0.4);
+  const arm1 = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.7, 0.9), couchMat);
+  arm1.position.set(-1.2, 0.65, 0);
+  const arm2 = arm1.clone();
+  arm2.position.x = 1.2;
+  group.add(base, back, arm1, arm2);
+  scene.add(group);
+}
+function addRubble(x, z, count = 8) {
+  for (let i = 0; i < count; i++) {
+    const rock = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2 + Math.random() * 0.35, 0.08 + Math.random() * 0.18, 0.2 + Math.random() * 0.35),
+      new THREE.MeshStandardMaterial({ color: 0x55504a, roughness: 1 })
+    );
+    rock.position.set(x + (Math.random() - 0.5) * 2.5, 0.08, z + (Math.random() - 0.5) * 2.5);
+    rock.rotation.set(Math.random(), Math.random(), Math.random());
+    scene.add(rock);
+  }
+}
+function addWallTorch(x, y, z, rotY = 0) {
+  const group = new THREE.Group();
+  group.position.set(x, y, z);
+  group.rotation.y = rotY;
+  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.75, 8), mats.darkMetal);
+  handle.rotation.x = Math.PI / 2;
+  const flame = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 12), new THREE.MeshBasicMaterial({ color: 0xffaa33 }));
+  flame.position.z = -0.45;
+  group.add(handle, flame);
+  scene.add(group);
+  const light = new THREE.PointLight(0xffaa55, 0.9, 9);
+  light.position.set(x, y, z);
+  scene.add(light);
+}
 function addCollider(x, z, w, d) {
   colliders.push({ x, z, w, d });
 }
@@ -354,6 +462,19 @@ addRoom(-24, 22, 18, 16, "kitchen");
 addRoom(0, 46, 28, 22, "courtyard");
 addRoom(48, 0, 20, 18, "workshop");
 addRoom(48, 24, 18, 18, "tower");
+addCouch(-5, 3, Math.PI / 2); addChair(4, 4, -0.6); addChair(5, 3, 0.4); addRubble(7, -5, 5); addWallTorch(-10.7, 2.4, 0, Math.PI / 2);
+addCouch(21, 4, 0); addChair(28, -3, 1.2); addRubble(29, 5, 8); addWallTorch(24, 2.4, -7.7, 0);
+addRubble(-4, 23, 10); addRubble(5, 18, 6); addWallTorch(-8.7, 2.4, 22, Math.PI / 2);
+addCrateStack(22, 18); addCrateStack(29, 25); addTable(25, 21); addWallTorch(25, 2.4, 29.7, Math.PI);
+addShelf(-30, -5, 0); addShelf(-18, 5, Math.PI); addTable(-24, 0); addChair(-22.5, 1, 0.7);
+addTable(-24, 22); addChair(-25.5, 23, 0.3); addChair(-22.5, 23, -0.3); box(4, 0.8, 0.8, -29, 0.4, 17, mats.metal); box(3, 0.8, 0.8, -19, 0.4, 27, mats.metal);
+box(3, 0.35, 3, 0, 0.2, 46, new THREE.MeshStandardMaterial({ color: 0x555f66 }));
+const fountainWater = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 0.08, 32), new THREE.MeshStandardMaterial({ color: 0x225577, transparent: true, opacity: 0.75 }));
+fountainWater.position.set(0, 0.43, 46); scene.add(fountainWater);
+addCrateStack(44, -4); addCrateStack(51, 5); addTable(48, 0);
+const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.5, 0.8, 24), new THREE.MeshStandardMaterial({ color: 0x252a44, emissive: 0x050818 }));
+pedestal.position.set(48, 0.4, 24); scene.add(pedestal);
+const pedestalGlow = new THREE.PointLight(0x55ccff, 1.4, 14); pedestalGlow.position.set(48, 2.2, 24); scene.add(pedestalGlow);
 
 // remove doorway blockers so buy doors control passage
 const doorCutouts = [
@@ -1098,7 +1219,8 @@ function createGoblinMesh(typeKey) {
 function spawnEnemy(typeKey = "green") {
   const win = windows[Math.floor(Math.random() * windows.length)];
   const mesh = createGoblinMesh(typeKey);
-  mesh.position.set(win.spawnX, 0, win.spawnZ);
+  const outsideSpawn = getOutsideWindowSpawn(win);
+  mesh.position.copy(outsideSpawn);
   scene.add(mesh);
 
   const type = enemyTypes[typeKey];
@@ -1112,13 +1234,14 @@ function spawnEnemy(typeKey = "green") {
     speed: type.speed + player.wave * 0.05,
     damage: type.damage,
     reward: type.reward,
-    state: "outside",
+    state: "walking_to_window",
     targetWindow: win,
     attackCooldown: 0,
     throwCooldown: 2 + Math.random() * 2,
     animTime: Math.random() * 10,
     attackAnim: 0,
     tearAnim: 0,
+    climbTimer: 0,
     hitFlashTimer: 0,
     hitboxes: [
       { name: "head", offset: new THREE.Vector3(0, 1.45 * type.scale, -0.05), radius: 0.42 * type.scale, multiplier: 1.8 },
@@ -1126,6 +1249,10 @@ function spawnEnemy(typeKey = "green") {
       { name: "legs", offset: new THREE.Vector3(0, 0.35 * type.scale, 0), radius: 0.35 * type.scale, multiplier: 0.75 }
     ]
   });
+}
+function getOutsideWindowSpawn(win) {
+  const outward = new THREE.Vector3(-Math.sin(win.rotation), 0, -Math.cos(win.rotation));
+  return new THREE.Vector3(win.x + outward.x * 7.5, 0, win.z + outward.z * 7.5);
 }
 
 function startWave() {
@@ -1209,6 +1336,7 @@ function interact() {
   if (obj.type === "window") {
     if (obj.boards < obj.maxBoards) {
       obj.boards++;
+      obj.breakTimer = Math.max(0, obj.breakTimer - 0.6);
       rebuildWindowBoards(obj);
       player.coins += 10;
     }
@@ -1414,6 +1542,7 @@ function updateRocks(dt) {
 
     if (dist < 0.75 && player.hurtCooldown <= 0) {
       player.health -= r.damage;
+      player.regenTimer = player.regenDelay;
       player.hurtCooldown = 0.5;
       scene.remove(r.mesh);
       rocks.splice(i, 1);
@@ -1440,11 +1569,17 @@ function killEnemy(index) {
     scene.remove(e.healthBar);
     e.healthBar.traverse(o => {
       if (o.geometry) o.geometry.dispose();
-      if (o.material) o.material.dispose();
+      if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); }
     });
   }
   scene.remove(e.mesh);
-  e.mesh.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+  e.mesh.traverse(o => {
+    if (o.geometry) o.geometry.dispose();
+    if (o.material) {
+      if (Array.isArray(o.material)) o.material.forEach(m => { if (m.map) m.map.dispose(); m.dispose(); });
+      else { if (o.material.map) o.material.map.dispose(); o.material.dispose(); }
+    }
+  });
   enemies.splice(index, 1);
 }
 
@@ -1518,6 +1653,18 @@ function animateGoblinTearing(enemy, dt) {
   if (leftArm) { leftArm.rotation.x = -0.9 + claw * 0.4; leftArm.rotation.z = 0.9; }
   if (rightArm) { rightArm.rotation.x = -0.9 - claw * 0.4; rightArm.rotation.z = -0.9; }
 }
+function animateGoblinClimb(enemy) {
+  if (enemy.state !== "climbing_in") return;
+  const leftArm = enemy.mesh.getObjectByName("leftArm");
+  const rightArm = enemy.mesh.getObjectByName("rightArm");
+  const leftLeg = enemy.mesh.getObjectByName("leftLeg");
+  const rightLeg = enemy.mesh.getObjectByName("rightLeg");
+  const t = performance.now() * 0.012;
+  if (leftArm) leftArm.rotation.x = -1.3 + Math.sin(t) * 0.25;
+  if (rightArm) rightArm.rotation.x = -1.3 - Math.sin(t) * 0.25;
+  if (leftLeg) leftLeg.rotation.x = 0.9;
+  if (rightLeg) rightLeg.rotation.x = -0.9;
+}
 
 function updateEnemies(dt) {
   for (let i = enemies.length - 1; i >= 0; i--) {
@@ -1533,30 +1680,49 @@ function updateEnemies(dt) {
     const dz = player.pos.z - e.mesh.position.z;
     e.mesh.rotation.y = Math.atan2(dx, dz);
 
-    if (e.state === "outside") {
+    if (e.state === "walking_to_window") {
       const w = e.targetWindow;
       const target = new THREE.Vector3(w.x, 0, w.z);
       const dir = target.clone().sub(e.mesh.position);
       dir.y = 0;
-
-      if (dir.length() > 0.6) {
+      if (dir.length() > 0.85) {
         dir.normalize();
         e.mesh.position.add(dir.multiplyScalar(e.speed * dt)); moved = true;
       } else {
-        if (w.boards > 0) {
-          e.tearAnim = 0.4;
-          shakeWindowBoards(w);
-          w.breakTimer += dt;
-          if (w.breakTimer > 0.9) {
-            w.breakTimer = 0;
-            w.boards--;
-            rebuildWindowBoards(w);
-          }
-        } else {
-          e.state = "inside";
-        }
+        e.state = "tearing_boards";
+        e.tearAnim = 0.4;
       }
-    } else {
+    }
+    if (e.state === "tearing_boards") {
+      const w = e.targetWindow;
+      const dxw = w.x - e.mesh.position.x;
+      const bzw = w.z - e.mesh.position.z;
+      e.mesh.rotation.y = Math.atan2(dxw, bzw);
+      e.tearAnim = 0.4;
+      shakeWindowBoards(w, dt);
+      w.breakTimer += dt;
+      if (w.breakTimer >= 1.15) {
+        w.breakTimer = 0;
+        if (w.boards > 0) { w.boards--; rebuildWindowBoards(w); }
+        if (w.boards <= 0) { e.state = "climbing_in"; e.climbTimer = 1.1; }
+      }
+    }
+    if (e.state === "climbing_in") {
+      const w = e.targetWindow;
+      e.climbTimer -= dt;
+      const inward = new THREE.Vector3(Math.sin(w.rotation), 0, Math.cos(w.rotation));
+      const climbProgress = 1 - Math.max(0, e.climbTimer / 1.1);
+      e.mesh.position.x = w.x + inward.x * (0.5 + climbProgress * 1.8);
+      e.mesh.position.z = w.z + inward.z * (0.5 + climbProgress * 1.8);
+      e.mesh.position.y = Math.sin(climbProgress * Math.PI) * 0.8;
+      e.mesh.rotation.x = Math.sin(climbProgress * Math.PI) * 0.45;
+      if (e.climbTimer <= 0) {
+        e.mesh.rotation.x = 0;
+        e.mesh.position.y = 0;
+        e.state = "inside";
+      }
+    }
+    if (e.state === "inside") {
       const dir = player.pos.clone().sub(e.mesh.position);
       dir.y = 0;
 
@@ -1576,6 +1742,7 @@ function updateEnemies(dt) {
       } else {
         if (e.attackCooldown <= 0 && player.hurtCooldown <= 0) {
           player.health -= e.damage;
+          player.regenTimer = player.regenDelay;
           player.hurtCooldown = 0.45;
           e.attackCooldown = 0.75;
           e.attackAnim = 0.35;
@@ -1585,6 +1752,7 @@ function updateEnemies(dt) {
     animateGoblinWalk(e, moved);
     animateGoblinAttack(e, dt);
     animateGoblinTearing(e, dt);
+    animateGoblinClimb(e, dt);
     if (e.hitFlashTimer > 0) {
       e.hitFlashTimer -= dt;
       e.mesh.traverse(o => { if (o.isMesh && o.material && o.material.emissive) o.material.emissive.setHex(0x661111); });
@@ -1595,27 +1763,33 @@ function updateEnemies(dt) {
     // health bar
     if (!e.healthBar) {
       const bg = new THREE.Mesh(
-        new THREE.BoxGeometry(1.1, 0.08, 0.04),
-        new THREE.MeshBasicMaterial({ color: 0x220000 })
+        new THREE.PlaneGeometry(1.25, 0.12),
+        new THREE.MeshBasicMaterial({ color: 0x220000, side: THREE.DoubleSide })
       );
       const fg = new THREE.Mesh(
-        new THREE.BoxGeometry(1.1, 0.08, 0.05),
-        new THREE.MeshBasicMaterial({ color: 0xff3333 })
+        new THREE.PlaneGeometry(1.2, 0.08),
+        new THREE.MeshBasicMaterial({ color: 0xff3333, side: THREE.DoubleSide })
       );
+      fg.name = "healthFill";
       e.healthBar = new THREE.Group();
-      bg.position.z = 0;
-      fg.position.z = -0.03;
+      fg.position.z = -0.01;
       e.healthBar.add(bg, fg);
       scene.add(e.healthBar);
     }
 
     e.healthBar.position.copy(e.mesh.position);
-    e.healthBar.position.y += 2.2 * type.scale;
+    e.healthBar.position.y += 2.25 * type.scale;
     e.healthBar.lookAt(camera.position);
-
-    const pct = Math.max(0, e.health / e.maxHealth);
-    e.healthBar.children[1].scale.x = pct;
-    e.healthBar.children[1].position.x = -0.55 * (1 - pct);
+    const pct = Math.max(0, Math.min(1, e.health / e.maxHealth));
+    const fill = e.healthBar.getObjectByName("healthFill");
+    if (fill) { fill.scale.x = pct; fill.position.x = -0.6 * (1 - pct); }
+  }
+}
+function updateHealthRegen(dt) {
+  if (!player.alive) return;
+  if (player.regenTimer > 0) { player.regenTimer -= dt; return; }
+  if (player.health > 0 && player.health < player.maxHealth) {
+    player.health = Math.min(player.maxHealth, player.health + player.regenRate * dt);
   }
 }
 
@@ -1766,6 +1940,15 @@ function updateHud() {
     Gun: ${currentGun.name}<br>
     Ammo: ${currentGun.clip}/${currentGun.reserve}${currentGun.reloading ? " — Reloading..." : ""}
   `;
+  const hpPct = Math.max(0, Math.min(1, player.health / player.maxHealth));
+  playerHealthFill.style.width = `${hpPct * 100}%`;
+  playerHealthText.textContent = `${Math.ceil(player.health)} / ${player.maxHealth}`;
+  if (player.health < 25) {
+    const pulse = 0.18 + Math.sin(performance.now() * 0.008) * 0.07;
+    damageTint.style.background = `rgba(180, 0, 0, ${pulse})`;
+  } else {
+    damageTint.style.background = "rgba(180, 0, 0, 0)";
+  }
 }
 
 /* =========================================================
@@ -1796,6 +1979,8 @@ function animate() {
     updateEnemies(dt);
     updateBullets(dt);
     updateRocks(dt);
+    updateHealthRegen(dt);
+    player.health = Math.max(0, Math.min(player.maxHealth, player.health));
     updatePickups(dt);
     updateFloatingTexts(dt);
     checkGameOver();
