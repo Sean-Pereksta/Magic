@@ -543,6 +543,58 @@ addLamp(0, 4.2, 46, 0xffd28a, 1.8);
 addLamp(48, 3.8, 0, 0xffc07a, 1.65);
 addLamp(48, 4.0, 24, 0x8fc8ff, 2.1);
 
+const outsideGround = new THREE.Mesh(
+  new THREE.PlaneGeometry(220, 220),
+  new THREE.MeshStandardMaterial({ color: 0x1f2a1b, roughness: 1 })
+);
+outsideGround.rotation.x = -Math.PI / 2;
+outsideGround.position.y = -0.13;
+scene.add(outsideGround);
+
+function addDeadTree(x, z, scale = 1) {
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.12 * scale, 0.2 * scale, 2.4 * scale, 8),
+    new THREE.MeshStandardMaterial({ color: 0x332414, roughness: 1 })
+  );
+  trunk.position.set(x, 1.1 * scale, z);
+  trunk.rotation.z = (Math.random() - 0.5) * 0.25;
+  scene.add(trunk);
+
+  for (let i = 0; i < 4; i++) {
+    const branch = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.035 * scale, 0.06 * scale, 1.2 * scale, 6),
+      trunk.material
+    );
+    branch.position.set(x, 1.7 * scale + Math.random() * 0.5, z);
+    branch.rotation.z = Math.random() * Math.PI;
+    branch.rotation.x = Math.random() * Math.PI;
+    scene.add(branch);
+  }
+}
+
+function addOutsideRock(x, z, scale = 1) {
+  const rock = new THREE.Mesh(
+    new THREE.DodecahedronGeometry(0.5 * scale),
+    new THREE.MeshStandardMaterial({ color: 0x44413a, roughness: 1 })
+  );
+  rock.position.set(x, 0.25 * scale, z);
+  rock.scale.y = 0.55;
+  rock.rotation.set(Math.random(), Math.random(), Math.random());
+  scene.add(rock);
+}
+
+[
+  [-17, -8], [-19, 3], [13, -18], [37, -6],
+  [-18, 25], [28, 38], [-42, -7], [-44, 20],
+  [67, 19], [48, -20]
+].forEach(([x, z]) => {
+  addDeadTree(x, z, 0.8 + Math.random() * 0.7);
+  addOutsideRock(x + 2, z - 1, 0.7);
+});
+
+const outsideMoonFill = new THREE.HemisphereLight(0x7189aa, 0x182011, 0.45);
+scene.add(outsideMoonFill);
+
 addTable(-2, -5);
 addTable(4, 4);
 addShelf(-30, -3, Math.PI / 2);
@@ -603,8 +655,18 @@ function addWindow(x, z, rotation, spawnX, spawnZ) {
   const bottom = box(2.4, 0.2, 0.2, 0, -1.0, 0, mats.trim);
   const left = box(0.2, 2.2, 0.2, -1.2, 0, 0, mats.trim);
   const right = box(0.2, 2.2, 0.2, 1.2, 0, 0, mats.trim);
+  const opening = new THREE.Mesh(
+    new THREE.PlaneGeometry(2.25, 2.0),
+    new THREE.MeshBasicMaterial({
+      color: 0x050806,
+      transparent: true,
+      opacity: 0.15,
+      side: THREE.DoubleSide
+    })
+  );
+  opening.position.set(0, 0, -0.03);
 
-  frame.add(top, bottom, left, right);
+  frame.add(top, bottom, left, right, opening);
   scene.add(frame);
 
   const win = {
@@ -625,6 +687,14 @@ function addWindow(x, z, rotation, spawnX, spawnZ) {
   windows.push(win);
   interactables.push(win);
   rebuildWindowBoards(win);
+  addWindowOpening(win);
+}
+
+function addWindowOpening(win) {
+  win.openingWidth = 2.8;
+  win.openingHeight = 2.4;
+  win.openingCenterY = 1.5;
+  win.isPassableWhenUnboarded = true;
 }
 
 function rebuildWindowBoards(win) {
@@ -635,11 +705,11 @@ function rebuildWindowBoards(win) {
 
   for (let i = 0; i < win.boards; i++) {
     const board = new THREE.Mesh(
-      new THREE.BoxGeometry(2.2, 0.18, 0.16),
+      new THREE.BoxGeometry(2.3, 0.16, 0.12),
       mats.board
     );
-    board.position.set(0, -0.7 + i * 0.35, 0);
-    board.rotation.z = (i % 2 === 0 ? 0.14 : -0.12);
+    board.position.set(0, -0.75 + i * 0.36, -0.08);
+    board.rotation.z = (i % 2 === 0 ? 0.12 : -0.1);
     board.castShadow = true;
     win.group.add(board);
     win.boardMeshes.push(board);
@@ -1448,16 +1518,63 @@ function equipGun(key, fresh) {
 function wouldCollide(x, z) {
   const radius = 0.42;
   for (const c of colliders) {
-    if (
+    const inside =
       x + radius > c.x - c.w / 2 &&
       x - radius < c.x + c.w / 2 &&
       z + radius > c.z - c.d / 2 &&
-      z - radius < c.z + c.d / 2
-    ) {
-      return true;
+      z - radius < c.z + c.d / 2;
+    if (!inside) continue;
+    let throughOpenWindow = false;
+    for (const win of windows) {
+      if (win.boards <= 0 && isPointInWindowOpening(x, z, win, 0.35)) {
+        throughOpenWindow = true;
+        break;
+      }
     }
+    if (throughOpenWindow) continue;
+    return true;
   }
   return false;
+}
+
+function worldToWindowLocal(x, z, win) {
+  const dx = x - win.x;
+  const dz = z - win.z;
+  const cos = Math.cos(-win.rotation);
+  const sin = Math.sin(-win.rotation);
+  return { x: dx * cos - dz * sin, z: dx * sin + dz * cos };
+}
+
+function isPointInWindowOpening(x, z, win, padding = 0.55) {
+  const local = worldToWindowLocal(x, z, win);
+  return Math.abs(local.x) <= (win.openingWidth || 2.8) / 2 + padding && Math.abs(local.z) <= 0.9;
+}
+
+function isBulletPassingThroughWindowOpening(pos) {
+  for (const win of windows) {
+    if (isPointInWindowOpening(pos.x, pos.z, win, 0.15)) return true;
+  }
+  return false;
+}
+
+function getWindowOutwardVector(win) {
+  return new THREE.Vector3(-Math.sin(win.rotation), 0, -Math.cos(win.rotation)).normalize();
+}
+function getWindowInwardVector(win) {
+  return getWindowOutwardVector(win).multiplyScalar(-1);
+}
+function getWindowOutsideStandPosition(win) {
+  const outward = getWindowOutwardVector(win);
+  return new THREE.Vector3(win.x + outward.x * 1.25, 0, win.z + outward.z * 1.25);
+}
+function getWindowInsideStandPosition(win) {
+  const inward = getWindowInwardVector(win);
+  return new THREE.Vector3(win.x + inward.x * 1.65, 0, win.z + inward.z * 1.65);
+}
+function faceGoblinToward(enemy, targetPosition) {
+  const dx = targetPosition.x - enemy.mesh.position.x;
+  const dz = targetPosition.z - enemy.mesh.position.z;
+  enemy.mesh.rotation.y = Math.atan2(dx, dz);
 }
 
 function updatePlayer(dt) {
@@ -1686,17 +1803,46 @@ function animateGoblinTearing(enemy, dt) {
   if (leftArm) { leftArm.rotation.x = -0.9 + claw * 0.4; leftArm.rotation.z = 0.9; }
   if (rightArm) { rightArm.rotation.x = -0.9 - claw * 0.4; rightArm.rotation.z = -0.9; }
 }
-function animateGoblinClimb(enemy) {
-  if (enemy.state !== "climbing_in") return;
+function animateGoblinClimb(enemy, dt) {
   const leftArm = enemy.mesh.getObjectByName("leftArm");
   const rightArm = enemy.mesh.getObjectByName("rightArm");
   const leftLeg = enemy.mesh.getObjectByName("leftLeg");
   const rightLeg = enemy.mesh.getObjectByName("rightLeg");
-  const t = performance.now() * 0.012;
-  if (leftArm) leftArm.rotation.x = -1.3 + Math.sin(t) * 0.25;
-  if (rightArm) rightArm.rotation.x = -1.3 - Math.sin(t) * 0.25;
-  if (leftLeg) leftLeg.rotation.x = 0.9;
-  if (rightLeg) rightLeg.rotation.x = -0.9;
+  const head = enemy.mesh.getObjectByName("head");
+  const t = performance.now() * 0.018;
+  const pull = Math.sin(t);
+  if (leftArm) { leftArm.rotation.x = -1.35 + pull * 0.35; leftArm.rotation.z = 0.85; }
+  if (rightArm) { rightArm.rotation.x = -1.35 - pull * 0.35; rightArm.rotation.z = -0.85; }
+  if (leftLeg) leftLeg.rotation.x = 0.95 - pull * 0.25;
+  if (rightLeg) rightLeg.rotation.x = -0.95 + pull * 0.25;
+  if (head) { head.rotation.x = -0.25; head.rotation.z = pull * 0.08; }
+}
+
+function updateGoblinClimbThroughWindow(enemy, win, dt) {
+  if (!enemy.climbData) {
+    enemy.climbData = {
+      duration: 1.2,
+      t: 0,
+      start: getWindowOutsideStandPosition(win).clone(),
+      end: getWindowInsideStandPosition(win).clone()
+    };
+  }
+  const cd = enemy.climbData;
+  cd.t += dt;
+  const alpha = Math.min(1, cd.t / cd.duration);
+  const smooth = alpha * alpha * (3 - 2 * alpha);
+  enemy.mesh.position.lerpVectors(cd.start, cd.end, smooth);
+  enemy.mesh.position.y = Math.sin(alpha * Math.PI) * 0.75;
+  enemy.mesh.rotation.x = Math.sin(alpha * Math.PI) * 0.55;
+  faceGoblinToward(enemy, cd.end);
+  animateGoblinClimb(enemy, dt);
+  if (alpha >= 1) {
+    enemy.mesh.position.copy(cd.end);
+    enemy.mesh.position.y = 0;
+    enemy.mesh.rotation.x = 0;
+    enemy.climbData = null;
+    enemy.state = "inside";
+  }
 }
 
 function updateEnemies(dt) {
@@ -1708,54 +1854,48 @@ function updateEnemies(dt) {
 
     e.attackCooldown -= dt;
 
-    // face player
-    const dx = player.pos.x - e.mesh.position.x;
-    const dz = player.pos.z - e.mesh.position.z;
-    e.mesh.rotation.y = Math.atan2(dx, dz);
-
     if (e.state === "walking_to_window") {
       const w = e.targetWindow;
-      const target = new THREE.Vector3(w.x, 0, w.z);
+      const target = getWindowOutsideStandPosition(w);
       const dir = target.clone().sub(e.mesh.position);
       dir.y = 0;
-      if (dir.length() > 0.85) {
+      if (dir.length() > 0.35) {
         dir.normalize();
         e.mesh.position.add(dir.multiplyScalar(e.speed * dt)); moved = true;
       } else {
+        e.mesh.position.copy(target);
         e.state = "tearing_boards";
         e.tearAnim = 0.4;
       }
+      faceGoblinToward(e, new THREE.Vector3(w.x, 0, w.z));
+      continue;
     }
     if (e.state === "tearing_boards") {
       const w = e.targetWindow;
-      const dxw = w.x - e.mesh.position.x;
-      const bzw = w.z - e.mesh.position.z;
-      e.mesh.rotation.y = Math.atan2(dxw, bzw);
+      const stand = getWindowOutsideStandPosition(w);
+      e.mesh.position.x = stand.x;
+      e.mesh.position.z = stand.z;
+      e.mesh.position.y = 0;
+      faceGoblinToward(e, new THREE.Vector3(w.x, 0, w.z));
       e.tearAnim = 0.4;
+      animateGoblinTearing(e, dt);
       shakeWindowBoards(w, dt);
       w.breakTimer += dt;
       if (w.breakTimer >= 1.15) {
         w.breakTimer = 0;
         if (w.boards > 0) { w.boards--; rebuildWindowBoards(w); }
-        if (w.boards <= 0) { e.state = "climbing_in"; e.climbTimer = 1.1; }
+        if (w.boards <= 0) { e.state = "climbing_in"; e.climbData = null; }
       }
+      continue;
     }
     if (e.state === "climbing_in") {
-      const w = e.targetWindow;
-      e.climbTimer -= dt;
-      const inward = new THREE.Vector3(Math.sin(w.rotation), 0, Math.cos(w.rotation));
-      const climbProgress = 1 - Math.max(0, e.climbTimer / 1.1);
-      e.mesh.position.x = w.x + inward.x * (0.5 + climbProgress * 1.8);
-      e.mesh.position.z = w.z + inward.z * (0.5 + climbProgress * 1.8);
-      e.mesh.position.y = Math.sin(climbProgress * Math.PI) * 0.8;
-      e.mesh.rotation.x = Math.sin(climbProgress * Math.PI) * 0.45;
-      if (e.climbTimer <= 0) {
-        e.mesh.rotation.x = 0;
-        e.mesh.position.y = 0;
-        e.state = "inside";
-      }
+      updateGoblinClimbThroughWindow(e, e.targetWindow, dt);
+      continue;
     }
     if (e.state === "inside") {
+      const dx = player.pos.x - e.mesh.position.x;
+      const dz = player.pos.z - e.mesh.position.z;
+      e.mesh.rotation.y = Math.atan2(dx, dz);
       const dir = player.pos.clone().sub(e.mesh.position);
       dir.y = 0;
 
@@ -1785,7 +1925,6 @@ function updateEnemies(dt) {
     animateGoblinWalk(e, moved);
     animateGoblinAttack(e, dt);
     animateGoblinTearing(e, dt);
-    animateGoblinClimb(e, dt);
     if (e.hitFlashTimer > 0) {
       e.hitFlashTimer -= dt;
       e.mesh.traverse(o => { if (o.isMesh && o.material && o.material.emissive) o.material.emissive.setHex(0x661111); });
