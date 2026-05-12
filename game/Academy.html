@@ -308,6 +308,74 @@ const player = {
 
 camera.position.copy(player.pos);
 
+
+const DEFAULT_CONTROL_MAPPINGS = {
+  p1: {
+    gamepadIndex: 0,
+    keyboard: { moveForward: "w", moveBackward: "s", moveLeft: "a", moveRight: "d", sprint: "shift", reload: "r", interact: "e", shoot: "mouse0", pause: "escape", jump: " ", crouch: "control", swapWeapon: "q", useEquipment: "g" },
+    gamepad: {
+      moveX: { type: "axis", index: 0, invert: false, deadzone: 0.18 },
+      moveY: { type: "axis", index: 1, invert: false, deadzone: 0.18 },
+      lookX: { type: "axis", index: 2, invert: false, deadzone: 0.15 },
+      lookY: { type: "axis", index: 3, invert: false, deadzone: 0.15 },
+      shoot: { type: "button", index: 7 }, reload: { type: "button", index: 2 }, interact: { type: "button", index: 0 }, sprint: { type: "button", index: 10 }, pause: { type: "button", index: 9 }, jump: { type: "button", index: 1 }, crouch: { type: "button", index: 11 }, swapWeapon: { type: "button", index: 5 }, useEquipment: { type: "button", index: 3 }
+    },
+    lookSensitivity: 2.4,
+    invertLookY: false
+  },
+  p2: {
+    gamepadIndex: 1,
+    keyboard: { moveForward: "arrowup", moveBackward: "arrowdown", moveLeft: "arrowleft", moveRight: "arrowright", sprint: "/", reload: ".", interact: ",", shoot: "mouse0", pause: "escape", jump: "0", crouch: "1", swapWeapon: "2", useEquipment: "3" },
+    gamepad: {
+      moveX: { type: "axis", index: 0, invert: false, deadzone: 0.18 },
+      moveY: { type: "axis", index: 1, invert: false, deadzone: 0.18 },
+      lookX: { type: "axis", index: 2, invert: false, deadzone: 0.15 },
+      lookY: { type: "axis", index: 3, invert: false, deadzone: 0.15 },
+      shoot: { type: "button", index: 7 }, reload: { type: "button", index: 2 }, interact: { type: "button", index: 0 }, sprint: { type: "button", index: 10 }, pause: { type: "button", index: 9 }, jump: { type: "button", index: 1 }, crouch: { type: "button", index: 11 }, swapWeapon: { type: "button", index: 5 }, useEquipment: { type: "button", index: 3 }
+    },
+    lookSensitivity: 2.4,
+    invertLookY: false
+  }
+};
+function cloneDefaultMappings() { return JSON.parse(JSON.stringify(DEFAULT_CONTROL_MAPPINGS)); }
+function loadControlMappings() {
+  try {
+    const raw = localStorage.getItem("goblinZombiesControlMappings");
+    if (!raw) return cloneDefaultMappings();
+    const parsed = JSON.parse(raw);
+    const defaults = cloneDefaultMappings();
+    return {
+      ...defaults, ...parsed,
+      p1: { ...defaults.p1, ...(parsed.p1||{}), keyboard: { ...defaults.p1.keyboard, ...((parsed.p1&&parsed.p1.keyboard)||{}) }, gamepad: { ...defaults.p1.gamepad, ...((parsed.p1&&parsed.p1.gamepad)||{}) } },
+      p2: { ...defaults.p2, ...(parsed.p2||{}), keyboard: { ...defaults.p2.keyboard, ...((parsed.p2&&parsed.p2.keyboard)||{}) }, gamepad: { ...defaults.p2.gamepad, ...((parsed.p2&&parsed.p2.gamepad)||{}) } }
+    };
+  } catch (err) { console.warn("Failed to load control mappings. Using defaults.", err); return cloneDefaultMappings(); }
+}
+let controlMappings = loadControlMappings();
+function saveControlMappings() { localStorage.setItem("goblinZombiesControlMappings", JSON.stringify(controlMappings)); }
+let pendingMapping = null;
+const previousGamepadButtons = { p1: {}, p2: {} };
+function updateMappingStatus(playerKey, message){ const el=document.getElementById(`${playerKey}MappingStatus`); if(el) el.textContent=message; }
+function resetControlMappings(){ controlMappings = cloneDefaultMappings(); saveControlMappings(); refreshGamepadSelects(); renderControlsMappingUI(); }
+function getMappedGamepad(playerKey){ const m=controlMappings[playerKey]; if(!navigator.getGamepads) return null; return navigator.getGamepads()[m.gamepadIndex]||null; }
+function readAxisBinding(pad,b){ if(!pad||!b||b.type!=="axis") return 0; let v=pad.axes[b.index]||0; if(Math.abs(v)<(b.deadzone||0.15)) return 0; if(b.invert) v*=-1; return v; }
+function isGamepadActionPressed(playerKey,action){ const pad=getMappedGamepad(playerKey); const b=controlMappings[playerKey].gamepad[action]; if(!pad||!b) return false; if(b.type==="button") return !!pad.buttons[b.index]?.pressed; if(b.type==="axis") return Math.abs(readAxisBinding(pad,b))>(b.deadzone||0.2); return false; }
+function wasGamepadActionJustPressed(playerKey, actionName){ const now=isGamepadActionPressed(playerKey,actionName); const was=previousGamepadButtons[playerKey][actionName]||false; previousGamepadButtons[playerKey][actionName]=now; return now&&!was; }
+function getGamepadMoveVector(playerKey){ const pad=getMappedGamepad(playerKey), map=controlMappings[playerKey].gamepad; return {x: readAxisBinding(pad,map.moveX), y: readAxisBinding(pad,map.moveY)}; }
+function getGamepadLookVector(playerKey){ const pad=getMappedGamepad(playerKey), map=controlMappings[playerKey].gamepad; return {x: readAxisBinding(pad,map.lookX), y: readAxisBinding(pad,map.lookY)}; }
+function beginKeyboardMapping(playerKey, actionName){ pendingMapping={mode:"keyboard",playerKey,actionName}; updateMappingStatus(playerKey,`Press a keyboard key for ${actionName}...`); }
+function beginGamepadButtonMapping(playerKey, actionName){ pendingMapping={mode:"gamepadButton",playerKey,actionName,startedAt:performance.now()}; updateMappingStatus(playerKey,`Press a controller button for ${actionName}...`); }
+function beginGamepadAxisMapping(playerKey, actionName){ pendingMapping={mode:"gamepadAxis",playerKey,actionName,startedAt:performance.now()}; updateMappingStatus(playerKey,`Move the analog stick/axis for ${actionName}...`); }
+function beginMapping(playerNum){ updateMappingStatus(`p${playerNum}`,"Use the mapping buttons below each action."); }
+function refreshGamepadSelects(){ const pads=navigator.getGamepads?navigator.getGamepads():[]; [["p1GamepadSelect","p1"],["p2GamepadSelect","p2"]].forEach(([id,pk])=>{ const sel=document.getElementById(id); if(!sel) return; sel.innerHTML=""; for(let i=0;i<pads.length;i++){ const pad=pads[i]; if(!pad) continue; const o=document.createElement('option'); o.value=i; o.textContent=`Gamepad ${i}: ${pad.id}`; sel.appendChild(o);} if(!sel.children.length){ const o=document.createElement('option'); o.value=controlMappings[pk].gamepadIndex; o.textContent=`Gamepad ${controlMappings[pk].gamepadIndex} (not connected)`; sel.appendChild(o);} sel.value=String(controlMappings[pk].gamepadIndex); sel.onchange=()=>{ controlMappings[pk].gamepadIndex=Number(sel.value); saveControlMappings(); }; }); }
+function renderControlsMappingUI(){ if(!controlsPanel) return; let root=document.getElementById('mappingRowsRoot'); if(!root){ root=document.createElement('div'); root.id='mappingRowsRoot'; controlsPanel.appendChild(root);} const actions=[['moveForward','Move Forward'],['moveBackward','Move Backward'],['moveLeft','Move Left'],['moveRight','Move Right'],['sprint','Sprint'],['lookX','Look X Axis'],['lookY','Look Y Axis'],['shoot','Shoot'],['reload','Reload'],['interact','Interact'],['pause','Pause/Menu'],['jump','Jump'],['crouch','Crouch'],['swapWeapon','Swap Weapon'],['useEquipment','Use Equipment']];
+  root.innerHTML=''; ['p1','p2'].forEach(pk=>{ const sec=document.createElement('div'); sec.style.margin='8px 0'; sec.innerHTML=`<h4>${pk.toUpperCase()}</h4>`; actions.forEach(([action,label])=>{ const row=document.createElement('div'); row.style.margin='4px 0'; const kb=controlMappings[pk].keyboard[action]||'-'; const gp=controlMappings[pk].gamepad[action]; const gpTxt=gp?`${gp.type} ${gp.index}${gp.invert?' (inv)':''}`:'-'; row.innerHTML=`<strong>${label}</strong> | K: ${kb} | G: ${gpTxt} `; const b1=document.createElement('button'); b1.textContent='Map Keyboard'; b1.onclick=()=>beginKeyboardMapping(pk,action); const b2=document.createElement('button'); b2.textContent='Map Gamepad Button'; b2.onclick=()=>beginGamepadButtonMapping(pk,action); const b3=document.createElement('button'); b3.textContent='Map Gamepad Axis'; b3.onclick=()=>beginGamepadAxisMapping(pk,action); row.append(b1,b2,b3); if(gp&&gp.type==='axis'){ const inv=document.createElement('button'); inv.textContent='Invert Axis'; inv.onclick=()=>{ gp.invert=!gp.invert; saveControlMappings(); renderControlsMappingUI(); }; row.appendChild(inv);} sec.appendChild(row); }); const sens=document.createElement('div'); sens.innerHTML=`Look sensitivity: <input type='range' min='0.5' max='6' step='0.1' value='${controlMappings[pk].lookSensitivity}'><span> ${controlMappings[pk].lookSensitivity.toFixed(1)}</span> <label><input type='checkbox' ${controlMappings[pk].invertLookY?'checked':''}> Invert Y</label>`; const slider=sens.querySelector('input[type="range"]'); const span=sens.querySelector('span'); const chk=sens.querySelector('input[type="checkbox"]'); slider.oninput=()=>{ controlMappings[pk].lookSensitivity=Number(slider.value); span.textContent=` ${slider.value}`;}; chk.onchange=()=>{controlMappings[pk].invertLookY=chk.checked;}; sec.appendChild(sens); root.appendChild(sec); });
+  let resetBtn=document.getElementById('resetControlsBtn'); if(!resetBtn){ resetBtn=document.createElement('button'); resetBtn.id='resetControlsBtn'; resetBtn.textContent='Reset Controls to Defaults'; controlsPanel.appendChild(resetBtn);} resetBtn.onclick=resetControlMappings;
+  let saveBtn=document.getElementById('saveControlsBtn'); if(!saveBtn){ saveBtn=document.createElement('button'); saveBtn.id='saveControlsBtn'; saveBtn.textContent='Save Controls'; controlsPanel.appendChild(saveBtn);} saveBtn.onclick=()=>{ saveControlMappings(); alert('Controls saved.'); };
+}
+function updatePendingGamepadMapping(){ if(!pendingMapping) return; if(!['gamepadButton','gamepadAxis'].includes(pendingMapping.mode)) return; const pk=pendingMapping.playerKey; const pad=getMappedGamepad(pk); if(!pad) return; if(performance.now()-pendingMapping.startedAt<300) return; if(pendingMapping.mode==='gamepadButton'){ for(let i=0;i<pad.buttons.length;i++){ if(pad.buttons[i]?.pressed){ controlMappings[pk].gamepad[pendingMapping.actionName]={type:'button',index:i}; updateMappingStatus(pk,`Mapped ${pendingMapping.actionName} to button ${i}`); pendingMapping=null; saveControlMappings(); renderControlsMappingUI(); return; } } } else { for(let i=0;i<pad.axes.length;i++){ const v=pad.axes[i]||0; if(Math.abs(v)>0.5){ controlMappings[pk].gamepad[pendingMapping.actionName]={type:'axis',index:i,invert:v<0,deadzone:0.15}; updateMappingStatus(pk,`Mapped ${pendingMapping.actionName} to axis ${i}`); pendingMapping=null; saveControlMappings(); renderControlsMappingUI(); return; } } } }
+window.addEventListener("gamepadconnected", refreshGamepadSelects);
+window.addEventListener("gamepaddisconnected", refreshGamepadSelects);
 let pointerLocked = false;
 
 document.addEventListener("pointerlockchange", () => {
@@ -342,6 +410,9 @@ if (backToMenuBtn) {
   };
 }
 
+refreshGamepadSelects();
+renderControlsMappingUI();
+
 renderer.domElement.addEventListener("click", () => {
   if (!pointerLocked && player.alive) {
     renderer.domElement.requestPointerLock();
@@ -359,15 +430,23 @@ document.addEventListener("mousemove", e => {
 
 const keys = {};
 document.addEventListener("keydown", e => {
-  keys[e.key.toLowerCase()] = true;
-
-  if (e.key.toLowerCase() === "r") reload();
-  if (e.key.toLowerCase() === "e") interact();
+  const key = e.key.toLowerCase();
+  if (pendingMapping && pendingMapping.mode === "keyboard") {
+    const { playerKey, actionName } = pendingMapping;
+    controlMappings[playerKey].keyboard[actionName] = key;
+    pendingMapping = null;
+    saveControlMappings();
+    renderControlsMappingUI();
+    updateMappingStatus(playerKey, `Mapped ${actionName} to ${key}`);
+    e.preventDefault();
+    return;
+  }
+  keys[key] = true;
+  if (key === controlMappings.p1.keyboard.reload) reload();
+  if (key === controlMappings.p1.keyboard.interact) interact();
 });
 
-document.addEventListener("keyup", e => {
-  keys[e.key.toLowerCase()] = false;
-});
+document.addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
 
 /* =========================================================
    WORLD BUILDING
@@ -1980,7 +2059,9 @@ function faceGoblinToward(enemy, targetPosition) {
 }
 
 function updatePlayer(dt) {
-  const speed = keys["shift"] ? player.sprintSpeed : player.speed;
+  const pMap = controlMappings.p1;
+  const sprintHeld = keys[pMap.keyboard.sprint] || isGamepadActionPressed("p1", "sprint");
+  const speed = sprintHeld ? player.sprintSpeed : player.speed;
 
   const forward = new THREE.Vector3(
     -Math.sin(player.yaw),
@@ -1996,10 +2077,19 @@ function updatePlayer(dt) {
 
   const move = new THREE.Vector3();
 
-  if (keys["w"]) move.add(forward);
-  if (keys["s"]) move.sub(forward);
-  if (keys["d"]) move.add(right);
-  if (keys["a"]) move.sub(right);
+  let moveX = 0;
+  let moveY = 0;
+  if (keys[pMap.keyboard.moveForward]) moveY -= 1;
+  if (keys[pMap.keyboard.moveBackward]) moveY += 1;
+  if (keys[pMap.keyboard.moveLeft]) moveX -= 1;
+  if (keys[pMap.keyboard.moveRight]) moveX += 1;
+  const gpMove = getGamepadMoveVector("p1");
+  moveX += gpMove.x;
+  moveY += gpMove.y;
+  if (moveY < 0) move.add(forward.clone().multiplyScalar(-moveY));
+  if (moveY > 0) move.sub(forward.clone().multiplyScalar(moveY));
+  if (moveX > 0) move.add(right.clone().multiplyScalar(moveX));
+  if (moveX < 0) move.sub(right.clone().multiplyScalar(-moveX));
 
   if (move.lengthSq() > 0) {
     move.normalize().multiplyScalar(speed * dt);
@@ -2011,6 +2101,18 @@ function updatePlayer(dt) {
   if (!wouldCollide(nx, player.pos.z)) player.pos.x = nx;
   if (!wouldCollide(player.pos.x, nz)) player.pos.z = nz;
 
+  const look = getGamepadLookVector("p1");
+  if (Math.abs(look.x) > 0 || Math.abs(look.y) > 0) {
+    const sensitivity = pMap.lookSensitivity || 2.4;
+    const invertY = pMap.invertLookY ? -1 : 1;
+    player.yaw -= look.x * sensitivity * dt;
+    player.pitch -= look.y * sensitivity * invertY * dt;
+    player.pitch = Math.max(-1.25, Math.min(1.25, player.pitch));
+  }
+  if (wasGamepadActionJustPressed("p1", "shoot")) shoot();
+  if (wasGamepadActionJustPressed("p1", "reload")) reload();
+  if (wasGamepadActionJustPressed("p1", "interact")) interact();
+  if (currentGun.automatic && isGamepadActionPressed("p1", "shoot")) shoot();
   camera.position.copy(player.pos);
   camera.rotation.order = "YXZ";
   camera.rotation.y = player.yaw;
@@ -2812,6 +2914,7 @@ function animate() {
 
   const dt = Math.min(clock.getDelta(), 0.05);
 
+  updatePendingGamepadMapping();
   if (player.alive) {
     updatePlayer(dt);
     updateGun(dt);
