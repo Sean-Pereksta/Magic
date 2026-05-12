@@ -2,1993 +2,1558 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Safelite Org Structure Builder</title>
-
-<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-
+<title>Goblin Zombies 3D</title>
 <style>
-  * {
-    box-sizing: border-box;
-  }
-
-  body {
+  html, body {
     margin: 0;
+    overflow: hidden;
+    background: #000;
     font-family: Arial, sans-serif;
-    background: #f9fafb;
-    color: #1f2933;
-  }
-
-  header {
-    background: linear-gradient(135deg, #7f1d1d, #dc2626);
     color: white;
-    padding: 18px 24px;
-    box-shadow: 0 3px 10px rgba(0,0,0,.25);
   }
 
-  header h1 {
-    margin: 0;
-    font-size: 25px;
+  #hud {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 10;
+    font-size: 18px;
+    text-shadow: 2px 2px 4px black;
+    pointer-events: none;
   }
 
-  header p {
-    margin: 6px 0 0;
-    opacity: .92;
+  #centerText {
+    position: fixed;
+    bottom: 90px;
+    width: 100%;
+    text-align: center;
+    font-size: 22px;
+    z-index: 10;
+    text-shadow: 2px 2px 5px black;
+    pointer-events: none;
   }
 
-  .toolbar {
+  #crosshair {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    width: 18px;
+    height: 18px;
+    margin-left: -9px;
+    margin-top: -9px;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  #crosshair:before,
+  #crosshair:after {
+    content: "";
+    position: absolute;
+    background: white;
+    box-shadow: 0 0 4px black;
+  }
+
+  #crosshair:before {
+    left: 8px;
+    top: 0;
+    width: 2px;
+    height: 18px;
+  }
+
+  #crosshair:after {
+    left: 0;
+    top: 8px;
+    width: 18px;
+    height: 2px;
+  }
+
+  #startScreen {
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(circle at center, #243018, #050705);
     display: flex;
-    gap: 10px;
     align-items: center;
-    flex-wrap: wrap;
-    padding: 12px 16px;
-    background: white;
-    border-bottom: 1px solid #e5e7eb;
-    box-shadow: 0 2px 6px rgba(0,0,0,.05);
+    justify-content: center;
+    z-index: 20;
+    text-align: center;
   }
 
-  input,
-  select,
-  button {
-    font-size: 14px;
-  }
-
-  input[type="file"],
-  input[type="text"],
-  select {
-    padding: 8px;
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    background: white;
+  #startBox {
+    background: rgba(0,0,0,0.75);
+    border: 3px solid #78945a;
+    padding: 30px;
+    border-radius: 12px;
+    max-width: 700px;
   }
 
   button {
-    border: none;
-    border-radius: 6px;
-    padding: 9px 12px;
-    cursor: pointer;
-    font-weight: bold;
-    background: #b91c1c;
+    padding: 12px 20px;
+    font-size: 18px;
+    background: #5f7d37;
     color: white;
+    border: 2px solid white;
+    border-radius: 8px;
+    cursor: pointer;
   }
 
   button:hover {
-    filter: brightness(.92);
+    background: #7da849;
   }
-
-  button.secondary {
-    background: #6b7280;
-  }
-
-  button.green {
-    background: #15803d;
-  }
-
-  button.orange {
-    background: #c2410c;
-  }
-
-  button.danger {
-    background: #991b1b;
-  }
-
-  .primary-add-btn {
-    background: #b91c1c;
-    padding: 8px 11px;
-    font-size: 13px;
-    font-weight: bold;
-  }
-
-  .secondary-add-btn {
-    background: #6b7280;
-    padding: 5px 8px;
-    font-size: 11px;
-  }
-
-  .toggle-label {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-weight: bold;
-    font-size: 13px;
-  }
-
-  #progressWrap {
-    display: none;
-    padding: 8px 16px;
-    background: white;
-    border-bottom: 1px solid #e5e7eb;
-  }
-
-  .progress-top {
-    display: flex;
-    justify-content: space-between;
-    font-size: 12px;
-    font-weight: bold;
-    margin-bottom: 4px;
-  }
-
-  .progress-track {
-    height: 12px;
-    background: #fee2e2;
-    border-radius: 999px;
-    overflow: hidden;
-  }
-
-  #progressBar {
-    height: 100%;
-    width: 0%;
-    background: #dc2626;
-    transition: width .15s;
-  }
-
-  .layout {
-    display: grid;
-    grid-template-columns: 310px 1fr 360px;
-    gap: 14px;
-    padding: 14px;
-    height: calc(100vh - 175px);
-  }
-
-  .panel {
-    background: white;
-    border: 1px solid #e5e7eb;
-    border-radius: 11px;
-    box-shadow: 0 3px 10px rgba(0,0,0,.07);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-  }
-
-  .panel h2 {
-    margin: 0;
-    padding: 12px 14px;
-    background: #fff1f2;
-    border-bottom: 1px solid #e5e7eb;
-    font-size: 16px;
-    color: #7f1d1d;
-  }
-
-  .panel-body {
-    padding: 12px;
-    overflow: auto;
-    min-height: 0;
-  }
-
-  .notice {
-    background: #fff8dc;
-    border: 1px solid #e5d28b;
-    padding: 9px;
-    border-radius: 7px;
-    font-size: 13px;
-    margin-bottom: 10px;
-  }
-
-  .person-list {
-    display: flex;
-    flex-direction: column;
-    gap: 7px;
-  }
-
-  .person-card {
-    padding: 9px;
-    background: #fffafa;
-    border: 1px solid #fecaca;
-    border-radius: 8px;
-    cursor: grab;
-    user-select: none;
-  }
-
-  .person-card:hover {
-    background: #fee2e2;
-    border-color: #ef4444;
-  }
-
-  .person-card.selected {
-    background: #fecaca;
-    border-color: #b91c1c;
-    box-shadow: 0 0 0 2px rgba(185,28,28,.15);
-  }
-
-  .small {
-    font-size: 12px;
-    color: #6b7280;
-    margin-top: 3px;
-  }
-
-  .drop-zone {
-    padding: 12px;
-    border: 2px dashed #fca5a5;
-    background: #fff7f7;
-    color: #7f1d1d;
-    border-radius: 10px;
-    text-align: center;
-    margin-bottom: 12px;
-    font-weight: bold;
-  }
-
-  .drop-zone.drag-over,
-  .drop-target.drag-over {
-    background: #fee2e2 !important;
-    outline: 3px solid #dc2626;
-    outline-offset: -3px;
-  }
-
-  .org-tree {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .director-block {
-    border: 2px solid #7f1d1d;
-    border-radius: 11px;
-    overflow: hidden;
-    background: #fff7f7;
-  }
-
-  .director-header {
-    background: #7f1d1d;
-    color: white;
-    padding: 10px;
-    font-weight: bold;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px;
-    cursor: grab;
-  }
-
-  .manager-block {
-    margin: 10px;
-    border: 1px solid #fca5a5;
-    border-radius: 9px;
-    background: white;
-    overflow: hidden;
-  }
-
-  .manager-header {
-    background: #fee2e2;
-    color: #7f1d1d;
-    padding: 9px;
-    font-weight: bold;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    cursor: grab;
-  }
-
-  .coach-row {
-    margin: 8px 10px;
-    padding: 8px;
-    border: 1px solid #fecaca;
-    background: #fffafa;
-    border-radius: 7px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    cursor: grab;
-  }
-
-  .name-click {
-    cursor: pointer;
-    color: #7f1d1d;
-    font-weight: bold;
-  }
-
-  .name-click:hover {
-    text-decoration: underline;
-  }
-
-  .director-header .name-click {
-    color: white;
-  }
-
-  .mini-btn {
-    padding: 4px 7px;
-    font-size: 11px;
-    border-radius: 4px;
-  }
-
-  .remove-btn {
-    background: #991b1b;
-  }
-
-  .role-actions {
-    display: flex;
-    gap: 5px;
-    flex-wrap: wrap;
-  }
-
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-    background: white;
-  }
-
-  th {
-    background: #7f1d1d;
-    color: white;
-    padding: 8px;
-    border: 1px solid #450a0a;
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    text-align: left;
-  }
-
-  td {
-    padding: 7px;
-    border: 1px solid #e5e7eb;
-    vertical-align: top;
-  }
-
-  tr:nth-child(even) td {
-    background: #fff7f7;
-  }
-
-  .output-preview-wrap {
-    height: 360px;
-    max-height: 45vh;
-    overflow: auto;
-    border: 1px solid #e5e7eb;
-    border-radius: 0 0 8px 8px;
-    background: white;
-  }
-
-  .direct-report {
-    border: 1px solid #fecaca;
-    background: #fffafa;
-    border-radius: 8px;
-    padding: 9px;
-    margin-bottom: 8px;
-    cursor: grab;
-  }
-
-  .direct-report-title {
-    font-weight: bold;
-    margin-bottom: 4px;
-  }
-
-  .mapping-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-
-  .mapping-row label {
-    font-weight: bold;
-    font-size: 13px;
-  }
-
-  .status-pill {
-    background: #fff1f2;
-    border: 1px solid #fecaca;
-    border-radius: 999px;
-    padding: 6px 9px;
-    font-size: 12px;
-    font-weight: bold;
-    color: #7f1d1d;
-  }
-
-  .view-tabs {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-    margin-bottom: 10px;
-  }
-
-  .view-tab {
-    background: #6b7280;
-  }
-
-  .view-tab.active {
-    background: #7f1d1d;
-  }
-
-  .view-actions {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin-bottom: 10px;
-  }
-
-  .path-cell {
-    font-weight: bold;
-    color: #7f1d1d;
-    min-width: 420px;
-    white-space: nowrap;
-  }
-
-  .email-list {
-    font-size: 12px;
-    line-height: 1.45;
-    min-width: 360px;
-  }
-
-  @media (max-width: 1150px) {
-    .layout {
-      grid-template-columns: 1fr;
-      height: auto;
-    }
-
-    .panel {
-      min-height: 340px;
-    }
-
-    .output-preview-wrap {
-      max-height: 420px;
-    }
-  }
-
-  .compare-wrap { padding: 10px; }
-  .compare-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-  .compare-card { border:1px solid #e5e7eb; border-radius:9px; padding:10px; background:#fffafa; }
-  .compare-card h3 { margin:0 0 8px; color:#7f1d1d; }
-  .compare-good { background:#dcfce7; border-left:5px solid #15803d; }
-  .compare-warning { background:#fef9c3; border-left:5px solid #ca8a04; }
-  .compare-bad { background:#fee2e2; border-left:5px solid #b91c1c; }
-  .compare-section { margin-top:12px; border:1px solid #e5e7eb; border-radius:9px; overflow:hidden; }
-  .compare-section h3 { margin:0; padding:9px 10px; background:#fff1f2; color:#7f1d1d; border-bottom:1px solid #e5e7eb; }
-  .diff-cell { background:#fee2e2 !important; color:#7f1d1d; font-weight:bold; }
-  .match-cell { background:#dcfce7 !important; }
-  .partial-cell { background:#fef9c3 !important; }
-
 </style>
 </head>
-
 <body>
 
-<header>
-  <h1>Safelite Org Structure Builder</h1>
-  <p>Upload Excel, combine Last/First names, build the Director → Manager → Coach structure, save locally, and export Org, Users, or Filters views.</p>
-</header>
+<div id="hud"></div>
+<div id="centerText"></div>
+<div id="crosshair"></div>
 
-<div class="toolbar">
-  <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" />
-
-  <div class="mapping-row">
-    <label>First:</label>
-    <select id="firstNameSelect"></select>
-
-    <label>Last:</label>
-    <select id="lastNameSelect"></select>
-
-    <label>Supervisor:</label>
-    <select id="supervisorSelect"></select>
-
-    <label>Username / Studio Email:</label>
-    <select id="emailSelect"></select>
-
-    <button onclick="applyColumnMapping()">Apply Mapping</button>
-  </div>
-
-  <label class="toggle-label">
-    <input type="checkbox" id="includeEmailToggle" checked onchange="renderAll()" />
-    Include Username/Email Column
-  </label>
-
-  <button class="green" onclick="saveLocal()">Local Save</button>
-  <button class="orange" onclick="loadLocal()">Local Load</button>
-  <button onclick="exportCSV()">Export CSV</button>
-  <button onclick="exportExcel()">Export Excel</button>
-  <button class="danger" onclick="clearOrg()">Clear Org</button>
-
-  <span id="statusPill" class="status-pill">No file loaded</span>
-</div>
-
-<div id="progressWrap">
-  <div class="progress-top">
-    <span id="progressText">Processing...</span>
-    <span id="progressPercent">0%</span>
-  </div>
-  <div class="progress-track">
-    <div id="progressBar"></div>
+<div id="startScreen">
+  <div id="startBox">
+    <h1>Goblin Zombies 3D</h1>
+    <p>
+      Survive waves of goblins. Board windows, buy doors, purchase wall guns, and keep your ammo stocked.
+    </p>
+    <p>
+      WASD move · Mouse look · Click shoot · R reload · E interact · Shift sprint
+    </p>
+    <button id="startBtn">Click to Start</button>
   </div>
 </div>
 
-<div class="layout">
-
-  <section class="panel">
-    <h2>People Search</h2>
-    <div class="panel-body">
-      <input
-        id="searchInput"
-        type="text"
-        placeholder="Search names or usernames..."
-        style="width:100%; margin-bottom:10px;"
-        oninput="renderPeopleList()"
-      />
-
-      <div class="notice">
-        Drag a person into the org builder. Click a person anywhere to show their available direct reports on the right.
-      </div>
-
-      <div id="peopleList" class="person-list"></div>
-    </div>
-  </section>
-
-  <section class="panel">
-    <h2>Org Builder</h2>
-    <div class="panel-body">
-
-      <div
-        id="directorDropZone"
-        class="drop-zone"
-        ondragover="allowDrop(event)"
-        ondragleave="removeDragOver(event)"
-        ondrop="dropAsDirector(event)"
-      >
-        Drop a person here to add them as a Director
-      </div>
-
-      <div class="notice">
-        Drag a name onto a Director to make them a Manager. Drag a name onto a Manager to make them a Coach.
-        Existing Directors, Managers, and Coaches can be dragged to change their placement.
-      </div>
-
-      <div id="orgTree" class="org-tree"></div>
-
-      <h2 style="margin:15px 0 0; border-radius:8px 8px 0 0;">Output Preview</h2>
-
-      <div class="view-tabs">
-        <button id="orgViewBtn" class="view-tab active" onclick="setViewMode('org')">Org View</button>
-        <button id="usersViewBtn" class="view-tab" onclick="setViewMode('users')">Users View</button>
-        <button id="filtersViewBtn" class="view-tab" onclick="setViewMode('filters')">Filters View</button>
-        <button id="compareViewBtn" class="view-tab" onclick="setViewMode('compare')">Compare Files</button>
-      </div>
-
-      <div class="view-actions">
-        <button class="green" onclick="autoFillCoaches()">Auto Fill Coaches</button>
-        <button class="secondary" onclick="autoFillAllLeaders()">Auto Fill All Leaders</button>
-        <button class="secondary" onclick="clearFilledEmails()">Clear Filled Emails</button>
-      </div>
-
-      <div class="output-preview-wrap">
-        <table id="outputTable">
-          <thead>
-            <tr id="outputTableHeader"></tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-    </div>
-  </section>
-
-  <section class="panel">
-    <h2>Selected Person / Direct Reports</h2>
-    <div class="panel-body">
-      <div id="selectedBox" class="notice">
-        Click a person to show everyone who has that person listed under the Supervisor column.
-      </div>
-
-      <div class="role-actions" style="margin-bottom:10px;">
-        <button class="primary-add-btn" onclick="autoAddAllDirectReports()">Add All Direct Reports Under Selected</button>
-        <button class="secondary-add-btn" onclick="addSelectedAsDirector()">Add Selected as Director</button>
-      </div>
-
-      <div id="directReportsBox"></div>
-    </div>
-  </section>
-
-</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 
 <script>
-const STORAGE_KEY = "safeliteOrgStructureBuilder_v7";
+/* =========================================================
+   BASIC THREE SETUP
+========================================================= */
 
-let rawRows = [];
-let people = [];
-let selectedPerson = null;
-let draggedItem = null;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x090908);
+scene.fog = new THREE.Fog(0x090908, 20, 90);
 
-let columns = {
-  first: null,
-  last: null,
-  supervisor: null,
-  email: null
+const camera = new THREE.PerspectiveCamera(
+  75,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  500
+);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+const clock = new THREE.Clock();
+
+const hud = document.getElementById("hud");
+const centerText = document.getElementById("centerText");
+const startScreen = document.getElementById("startScreen");
+const startBtn = document.getElementById("startBtn");
+
+/* =========================================================
+   LIGHTING
+========================================================= */
+
+const ambient = new THREE.AmbientLight(0x888877, 0.45);
+scene.add(ambient);
+
+const moon = new THREE.DirectionalLight(0xbecfff, 0.75);
+moon.position.set(30, 60, -25);
+moon.castShadow = true;
+scene.add(moon);
+
+function addLamp(x, y, z, color = 0xffc46b, intensity = 1.5) {
+  const light = new THREE.PointLight(color, intensity, 18);
+  light.position.set(x, y, z);
+  light.castShadow = true;
+  scene.add(light);
+
+  const bulb = new THREE.Mesh(
+    new THREE.SphereGeometry(0.18, 12, 12),
+    new THREE.MeshBasicMaterial({ color })
+  );
+  bulb.position.copy(light.position);
+  scene.add(bulb);
+}
+
+/* =========================================================
+   MATERIALS
+========================================================= */
+
+const mats = {
+  floor: new THREE.MeshStandardMaterial({ color: 0x2b2720, roughness: 0.9 }),
+  wall: new THREE.MeshStandardMaterial({ color: 0x3b382f, roughness: 0.95 }),
+  trim: new THREE.MeshStandardMaterial({ color: 0x5c4a33, roughness: 0.9 }),
+  board: new THREE.MeshStandardMaterial({ color: 0x8a5a2b, roughness: 0.8 }),
+  door: new THREE.MeshStandardMaterial({ color: 0x55331c, roughness: 0.8 }),
+  metal: new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.5, roughness: 0.35 }),
+  darkMetal: new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.6, roughness: 0.3 }),
+  muzzle: new THREE.MeshBasicMaterial({ color: 0xffe48a }),
+  coin: new THREE.MeshStandardMaterial({ color: 0xffcc33, metalness: 0.7, roughness: 0.2 }),
+  ammo: new THREE.MeshStandardMaterial({ color: 0x38e85f, emissive: 0x0a4414 }),
+  health: new THREE.MeshStandardMaterial({ color: 0xff3333, emissive: 0x441010 }),
 };
 
-let org = [];
-let currentViewMode = "org";
-let filledReportEmails = {};
-let compareRawRows = [];
-let comparePeople = [];
-let compareColumns = { first: null, last: null, supervisor: null, email: null };
-let compareResults = null;
-let lastBlueprintLoadSummary = null;
+/* =========================================================
+   PLAYER
+========================================================= */
 
-const possibleFirstNames = [
-  "first",
-  "firstname",
-  "first name",
-  "given name",
-  "employee first name",
-  "associate first name"
-];
+const player = {
+  pos: new THREE.Vector3(0, 1.7, 0),
+  vel: new THREE.Vector3(),
+  yaw: 0,
+  pitch: 0,
+  speed: 7,
+  sprintSpeed: 11,
+  health: 100,
+  coins: 500,
+  score: 0,
+  wave: 1,
+  alive: true,
+  interactCooldown: 0,
+  hurtCooldown: 0
+};
 
-const possibleLastNames = [
-  "last",
-  "lastname",
-  "last name",
-  "surname",
-  "employee last name",
-  "associate last name"
-];
+camera.position.copy(player.pos);
 
-const possibleSupervisorNames = [
-  "supervisor",
-  "supervisor name",
-  "manager",
-  "manager name",
-  "reports to",
-  "leader",
-  "coach",
-  "direct supervisor"
-];
+let pointerLocked = false;
 
-const possibleEmailNames = [
-  "username",
-  "user name",
-  "studio username",
-  "network username",
-  "login",
-  "login id",
-  "user id",
-  "userid",
-  "studio email address",
-  "studio email",
-  "email",
-  "email address",
-  "work email",
-  "business email",
-  "employee email",
-  "associate email",
-  "e-mail",
-  "mail"
-];
+document.addEventListener("pointerlockchange", () => {
+  pointerLocked = document.pointerLockElement === renderer.domElement;
+});
 
-document.getElementById("fileInput").addEventListener("change", handleFileUpload);
+startBtn.onclick = () => {
+  startScreen.style.display = "none";
+  renderer.domElement.requestPointerLock();
+};
 
-function normalizeHeader(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[_\-]+/g, " ")
-    .replace(/\s+/g, " ");
+renderer.domElement.addEventListener("click", () => {
+  if (!pointerLocked && player.alive) {
+    renderer.domElement.requestPointerLock();
+  } else {
+    shoot();
+  }
+});
+
+document.addEventListener("mousemove", e => {
+  if (!pointerLocked || !player.alive) return;
+  player.yaw -= e.movementX * 0.0022;
+  player.pitch -= e.movementY * 0.0022;
+  player.pitch = Math.max(-1.25, Math.min(1.25, player.pitch));
+});
+
+const keys = {};
+document.addEventListener("keydown", e => {
+  keys[e.key.toLowerCase()] = true;
+
+  if (e.key.toLowerCase() === "r") reload();
+  if (e.key.toLowerCase() === "e") interact();
+});
+
+document.addEventListener("keyup", e => {
+  keys[e.key.toLowerCase()] = false;
+});
+
+/* =========================================================
+   WORLD BUILDING
+========================================================= */
+
+const colliders = [];
+const interactables = [];
+const roomsUnlocked = {
+  spawn: true,
+  east: false,
+  basement: false,
+  armory: false
+};
+
+function box(w, h, d, x, y, z, mat, cast = true, receive = true) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  mesh.position.set(x, y, z);
+  mesh.castShadow = cast;
+  mesh.receiveShadow = receive;
+  scene.add(mesh);
+  return mesh;
 }
 
-function normalizeName(value) {
-  return String(value || "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(/\s*,\s*/g, ", ")
-    .toLowerCase();
+function addCollider(x, z, w, d) {
+  colliders.push({ x, z, w, d });
 }
 
-function titleName(value) {
-  return String(value || "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(/\s*,\s*/g, ", ");
+function addRoom(cx, cz, w, d, name) {
+  box(w, 0.25, d, cx, -0.1, cz, mats.floor, false, true);
+
+  // ceiling
+  box(w, 0.25, d, cx, 4.2, cz, new THREE.MeshStandardMaterial({ color: 0x1c1b18 }), false, true);
+
+  // decorative rug
+  box(w * 0.42, 0.03, d * 0.25, cx, 0.02, cz, new THREE.MeshStandardMaterial({ color: 0x442222 }), false, true);
+
+  // corner clutter
+  box(1.2, 0.7, 0.8, cx - w/2 + 2, 0.35, cz - d/2 + 2, mats.trim);
+  box(1.4, 0.5, 0.7, cx + w/2 - 2.4, 0.25, cz + d/2 - 2.4, mats.trim);
+
+  // outer walls
+  box(w, 3.8, 0.35, cx, 1.9, cz - d/2, mats.wall);
+  addCollider(cx, cz - d/2, w, 0.35);
+
+  box(w, 3.8, 0.35, cx, 1.9, cz + d/2, mats.wall);
+  addCollider(cx, cz + d/2, w, 0.35);
+
+  box(0.35, 3.8, d, cx - w/2, 1.9, cz, mats.wall);
+  addCollider(cx - w/2, cz, 0.35, d);
+
+  box(0.35, 3.8, d, cx + w/2, 1.9, cz, mats.wall);
+  addCollider(cx + w/2, cz, 0.35, d);
 }
 
-function makeDisplayName(first, last) {
-  first = String(first || "").trim();
-  last = String(last || "").trim();
+addRoom(0, 0, 22, 18, "spawn");
+addRoom(24, 0, 20, 16, "east");
+addRoom(0, 22, 18, 18, "basement");
+addRoom(25, 21, 22, 18, "armory");
 
-  if (!first && !last) return "";
-  if (!last) return first;
-  if (!first) return last;
+// remove visual openings by placing dark hallway floors
+box(7, 0.12, 5, 12, -0.03, 0, mats.floor);
+box(5, 0.12, 7, 0, -0.03, 11, mats.floor);
+box(8, 0.12, 6, 14, -0.03, 15, mats.floor);
 
-  return `${last}, ${first}`;
+// hall wall hints
+box(8, 3.8, 0.35, 12, 1.9, -3, mats.wall);
+box(8, 3.8, 0.35, 12, 1.9, 3, mats.wall);
+box(0.35, 3.8, 8, -3, 1.9, 11, mats.wall);
+box(0.35, 3.8, 8, 3, 1.9, 11, mats.wall);
+
+addLamp(0, 3.8, 0);
+addLamp(24, 3.8, 0);
+addLamp(0, 3.8, 22);
+addLamp(25, 3.8, 21, 0x9fd6ff, 1.8);
+
+/* =========================================================
+   DOORS
+========================================================= */
+
+const doors = [];
+
+function addBuyDoor(x, z, w, d, roomName, cost, label) {
+  const door = box(w, 3.4, d, x, 1.7, z, mats.door);
+  door.userData = { roomName, cost, label };
+  const obj = {
+    type: "door",
+    mesh: door,
+    x,
+    z,
+    w,
+    d,
+    roomName,
+    cost,
+    label,
+    active: true
+  };
+  doors.push(obj);
+  interactables.push(obj);
+  addCollider(x, z, w, d);
 }
 
-function showProgress(text, percent) {
-  const wrap = document.getElementById("progressWrap");
-  const bar = document.getElementById("progressBar");
-  const label = document.getElementById("progressText");
-  const pct = document.getElementById("progressPercent");
+addBuyDoor(11, 0, 0.7, 5, "east", 900, "Unlock East Hall");
+addBuyDoor(0, 9, 5, 0.7, "basement", 1200, "Unlock Basement");
+addBuyDoor(14, 16, 5, 0.7, "armory", 2000, "Unlock Armory");
 
-  wrap.style.display = "block";
-  label.textContent = text;
-  pct.textContent = `${Math.round(percent)}%`;
-  bar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
-}
+/* =========================================================
+   WINDOWS AND BOARDING
+========================================================= */
 
-function hideProgress() {
-  document.getElementById("progressWrap").style.display = "none";
-  document.getElementById("progressBar").style.width = "0%";
-  document.getElementById("progressPercent").textContent = "0%";
-}
+const windows = [];
 
-function handleFileUpload(event) {
-  const file = event.target.files[0];
-  if (!file) return;
+function addWindow(x, z, rotation, spawnX, spawnZ) {
+  const frame = new THREE.Group();
+  frame.position.set(x, 1.5, z);
+  frame.rotation.y = rotation;
 
-  showProgress("Reading Excel file...", 5);
+  const top = box(2.4, 0.2, 0.2, 0, 1.0, 0, mats.trim);
+  const bottom = box(2.4, 0.2, 0.2, 0, -1.0, 0, mats.trim);
+  const left = box(0.2, 2.2, 0.2, -1.2, 0, 0, mats.trim);
+  const right = box(0.2, 2.2, 0.2, 1.2, 0, 0, mats.trim);
 
-  const reader = new FileReader();
+  frame.add(top, bottom, left, right);
+  scene.add(frame);
 
-  reader.onload = function(e) {
-    showProgress("Parsing workbook...", 15);
-
-    setTimeout(() => {
-      try {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: "array" });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-
-        showProgress("Converting sheet to rows...", 30);
-
-        rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-
-        if (!rawRows.length) {
-          hideProgress();
-          alert("No rows found in this file.");
-          return;
-        }
-
-        setupColumnSelectors();
-
-        showProgress("Preparing Last, First names and usernames...", 40);
-
-        processPeopleInChunks(() => {
-          selectedPerson = null;
-          renderAll();
-          showProgress("Complete", 100);
-          setTimeout(hideProgress, 600);
-          setStatus(`${people.length} people loaded from ${file.name}`);
-        });
-
-      } catch (error) {
-        console.error(error);
-        hideProgress();
-        alert("There was an issue reading this file.");
-      }
-    }, 50);
+  const win = {
+    type: "window",
+    group: frame,
+    x,
+    z,
+    rotation,
+    spawnX,
+    spawnZ,
+    boards: 5,
+    maxBoards: 5,
+    breakTimer: 0,
+    active: true,
+    boardMeshes: []
   };
 
-  reader.readAsArrayBuffer(file);
+  windows.push(win);
+  interactables.push(win);
+  rebuildWindowBoards(win);
 }
 
-function setupColumnSelectors() {
-  const headers = Object.keys(rawRows[0] || {});
-
-  columns.first = findBestHeader(headers, possibleFirstNames);
-  columns.last = findBestHeader(headers, possibleLastNames);
-  columns.supervisor = findBestHeader(headers, possibleSupervisorNames);
-  columns.email = findBestHeader(headers, possibleEmailNames);
-
-  fillSelect("firstNameSelect", headers, columns.first);
-  fillSelect("lastNameSelect", headers, columns.last);
-  fillSelect("supervisorSelect", headers, columns.supervisor);
-  fillSelect("emailSelect", headers, columns.email);
-}
-
-function findBestHeader(headers, possibleNames) {
-  for (const header of headers) {
-    const normalized = normalizeHeader(header);
-    if (possibleNames.includes(normalized)) {
-      return header;
-    }
+function rebuildWindowBoards(win) {
+  for (const b of win.boardMeshes) {
+    win.group.remove(b);
   }
+  win.boardMeshes = [];
 
-  for (const header of headers) {
-    const normalized = normalizeHeader(header);
-    if (possibleNames.some(p => normalized.includes(p))) {
-      return header;
-    }
+  for (let i = 0; i < win.boards; i++) {
+    const board = new THREE.Mesh(
+      new THREE.BoxGeometry(2.2, 0.18, 0.16),
+      mats.board
+    );
+    board.position.set(0, -0.7 + i * 0.35, 0);
+    board.rotation.z = (i % 2 === 0 ? 0.14 : -0.12);
+    board.castShadow = true;
+    win.group.add(board);
+    win.boardMeshes.push(board);
   }
-
-  return headers[0] || null;
 }
 
-function fillSelect(id, headers, selectedHeader) {
-  const select = document.getElementById(id);
-  select.innerHTML = "";
+addWindow(-10.9, -4, Math.PI / 2, -16, -4);
+addWindow(-10.9, 5, Math.PI / 2, -16, 5);
+addWindow(8, -8.9, 0, 8, -15);
+addWindow(23, -7.9, 0, 23, -15);
+addWindow(33.9, 0, Math.PI / 2, 40, 0);
+addWindow(-8, 22, Math.PI / 2, -15, 22);
+addWindow(25, 29.9, 0, 25, 37);
 
-  headers.forEach(header => {
-    const option = document.createElement("option");
-    option.value = header;
-    option.textContent = header;
-    if (header === selectedHeader) option.selected = true;
-    select.appendChild(option);
+/* =========================================================
+   GUNS
+========================================================= */
+
+const guns = {
+  rustyPistol: {
+    name: "Rusty Pistol",
+    cost: 0,
+    ammoCost: 150,
+    damage: 22,
+    fireRate: 0.34,
+    bulletSpeed: 75,
+    spread: 0.012,
+    pellets: 1,
+    clipSize: 10,
+    reserveMax: 80,
+    reloadTime: 1.1,
+    automatic: false,
+    burst: 1,
+    color: 0x333333,
+    size: 1
+  },
+  trenchShotgun: {
+    name: "Trench Shotgun",
+    cost: 900,
+    ammoCost: 350,
+    damage: 18,
+    fireRate: 0.9,
+    bulletSpeed: 55,
+    spread: 0.105,
+    pellets: 8,
+    clipSize: 6,
+    reserveMax: 48,
+    reloadTime: 1.65,
+    automatic: false,
+    burst: 1,
+    color: 0x55351d,
+    size: 1.25
+  },
+  burstCarbine: {
+    name: "Burst Carbine",
+    cost: 1400,
+    ammoCost: 500,
+    damage: 25,
+    fireRate: 0.45,
+    bulletSpeed: 85,
+    spread: 0.025,
+    pellets: 1,
+    clipSize: 24,
+    reserveMax: 144,
+    reloadTime: 1.45,
+    automatic: false,
+    burst: 3,
+    color: 0x1b3755,
+    size: 1.1
+  },
+  autoRifle: {
+    name: "Auto Rifle",
+    cost: 2200,
+    ammoCost: 700,
+    damage: 20,
+    fireRate: 0.105,
+    bulletSpeed: 95,
+    spread: 0.035,
+    pellets: 1,
+    clipSize: 36,
+    reserveMax: 216,
+    reloadTime: 1.9,
+    automatic: true,
+    burst: 1,
+    color: 0x222222,
+    size: 1.25
+  },
+  laserLance: {
+    name: "Laser Lance",
+    cost: 4200,
+    ammoCost: 1100,
+    damage: 65,
+    fireRate: 0.42,
+    bulletSpeed: 130,
+    spread: 0.002,
+    pellets: 1,
+    clipSize: 18,
+    reserveMax: 90,
+    reloadTime: 2.2,
+    automatic: false,
+    burst: 1,
+    color: 0x22ccff,
+    laser: true,
+    size: 1.4
+  }
+};
+
+let currentGunKey = "rustyPistol";
+let currentGun = JSON.parse(JSON.stringify(guns[currentGunKey]));
+currentGun.clip = currentGun.clipSize;
+currentGun.reserve = 50;
+currentGun.cooldown = 0;
+currentGun.reloading = false;
+currentGun.reloadTimer = 0;
+
+const ownedGuns = { rustyPistol: true };
+
+const wallGuns = [];
+
+function addWallGun(key, x, y, z, rotY) {
+  const data = guns[key];
+
+  const group = new THREE.Group();
+  group.position.set(x, y, z);
+  group.rotation.y = rotY;
+
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(1.3, 0.28, 0.32),
+    new THREE.MeshStandardMaterial({ color: data.color, metalness: 0.4, roughness: 0.35 })
+  );
+  const barrel = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.06, 0.06, 0.9, 12),
+    mats.darkMetal
+  );
+  barrel.rotation.z = Math.PI / 2;
+  barrel.position.x = 0.85;
+
+  const stock = new THREE.Mesh(
+    new THREE.BoxGeometry(0.4, 0.35, 0.36),
+    mats.trim
+  );
+  stock.position.x = -0.85;
+
+  group.add(body, barrel, stock);
+  scene.add(group);
+
+  const sign = createTextSprite(`${data.name}\n$${data.cost}`);
+  sign.position.set(x, y + 0.8, z);
+  scene.add(sign);
+
+  const obj = {
+    type: "wallGun",
+    key,
+    x,
+    z,
+    y,
+    cost: data.cost,
+    name: data.name,
+    mesh: group
+  };
+  wallGuns.push(obj);
+  interactables.push(obj);
+}
+
+addWallGun("trenchShotgun", -8, 1.5, 8.4, 0);
+addWallGun("burstCarbine", 22, 1.5, -7.4, 0);
+addWallGun("autoRifle", 32.5, 1.5, 4, Math.PI / 2);
+addWallGun("laserLance", 18, 1.5, 28.4, Math.PI);
+
+const ammoStations = [];
+
+function addAmmoStation(x, z, key) {
+  const group = new THREE.Group();
+  group.position.set(x, 0.8, z);
+
+  const crate = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.7, 1), mats.ammo);
+  group.add(crate);
+
+  const lid = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.1, 1.05), mats.darkMetal);
+  lid.position.y = 0.42;
+  group.add(lid);
+
+  scene.add(group);
+
+  const sign = createTextSprite(`Ammo\n${guns[key].name}\n$${guns[key].ammoCost}`);
+  sign.position.set(x, 2, z);
+  scene.add(sign);
+
+  const obj = { type: "ammo", key, x, z };
+  ammoStations.push(obj);
+  interactables.push(obj);
+}
+
+addAmmoStation(5, 6, "rustyPistol");
+addAmmoStation(27, -4, "burstCarbine");
+addAmmoStation(28, 25, "laserLance");
+
+/* =========================================================
+   FIRST-PERSON GUN MODEL
+========================================================= */
+
+let gunView = new THREE.Group();
+camera.add(gunView);
+scene.add(camera);
+
+function rebuildGunView() {
+  camera.remove(gunView);
+  gunView = new THREE.Group();
+
+  const g = guns[currentGunKey];
+
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: g.color,
+    metalness: g.laser ? 0.75 : 0.45,
+    roughness: 0.25,
+    emissive: g.laser ? 0x006688 : 0x000000
   });
+
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(0.45 * g.size, 0.22 * g.size, 1.35 * g.size),
+    bodyMat
+  );
+  body.position.set(0.35, -0.32, -0.85);
+  gunView.add(body);
+
+  const barrel = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.055 * g.size, 0.055 * g.size, 1.15 * g.size, 14),
+    mats.darkMetal
+  );
+  barrel.rotation.x = Math.PI / 2;
+  barrel.position.set(0.35, -0.29, -1.65);
+  gunView.add(barrel);
+
+  const grip = new THREE.Mesh(
+    new THREE.BoxGeometry(0.22, 0.55, 0.22),
+    mats.darkMetal
+  );
+  grip.position.set(0.35, -0.7, -0.55);
+  grip.rotation.x = -0.35;
+  gunView.add(grip);
+
+  const handMat = new THREE.MeshStandardMaterial({ color: 0xc99061, roughness: 0.7 });
+
+  const leftHand = new THREE.Mesh(
+    new THREE.SphereGeometry(0.13, 12, 12),
+    handMat
+  );
+  leftHand.position.set(0.05, -0.44, -1.05);
+  gunView.add(leftHand);
+
+  const rightHand = new THREE.Mesh(
+    new THREE.SphereGeometry(0.13, 12, 12),
+    handMat
+  );
+  rightHand.position.set(0.55, -0.55, -0.55);
+  gunView.add(rightHand);
+
+  const muzzle = new THREE.Mesh(
+    new THREE.SphereGeometry(0.05, 8, 8),
+    mats.muzzle
+  );
+  muzzle.position.set(0.35, -0.29, -2.25);
+  muzzle.name = "muzzle";
+  muzzle.visible = false;
+  gunView.add(muzzle);
+
+  camera.add(gunView);
 }
 
-function applyColumnMapping() {
-  if (!rawRows.length) {
-    alert("Upload a file first.");
+rebuildGunView();
+
+/* =========================================================
+   TEXT SPRITES
+========================================================= */
+
+function createTextSprite(text) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 256;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "rgba(0,0,0,0.65)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = "white";
+  ctx.lineWidth = 6;
+  ctx.strokeRect(8, 8, canvas.width - 16, canvas.height - 16);
+  ctx.fillStyle = "white";
+  ctx.font = "bold 42px Arial";
+  ctx.textAlign = "center";
+  const lines = text.split("\n");
+  lines.forEach((line, i) => {
+    ctx.fillText(line, canvas.width / 2, 70 + i * 55);
+  });
+
+  const tex = new THREE.CanvasTexture(canvas);
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(3, 1.5, 1);
+  return sprite;
+}
+
+/* =========================================================
+   PROJECTILES
+========================================================= */
+
+const bullets = [];
+const rocks = [];
+const pickups = [];
+
+function shoot() {
+  if (!player.alive) return;
+  if (currentGun.reloading) return;
+  if (currentGun.cooldown > 0) return;
+
+  if (currentGun.clip <= 0) {
+    reload();
     return;
   }
 
-  columns.first = document.getElementById("firstNameSelect").value;
-  columns.last = document.getElementById("lastNameSelect").value;
-  columns.supervisor = document.getElementById("supervisorSelect").value;
-  columns.email = document.getElementById("emailSelect").value;
+  fireBurst(currentGun.burst || 1);
+  currentGun.cooldown = currentGun.fireRate;
+}
 
-  showProgress("Processing names in chunks...", 0);
+function fireBurst(count) {
+  for (let i = 0; i < count; i++) {
+    setTimeout(() => {
+      if (currentGun.clip <= 0 || currentGun.reloading) return;
 
-  processPeopleInChunks(() => {
-    selectedPerson = null;
-    renderAll();
-    showProgress("Complete", 100);
-    setTimeout(hideProgress, 500);
-    setStatus(`${people.length} people mapped`);
+      currentGun.clip--;
+
+      const muzzle = gunView.getObjectByName("muzzle");
+      if (muzzle) {
+        muzzle.visible = true;
+        setTimeout(() => muzzle.visible = false, 40);
+      }
+
+      for (let p = 0; p < currentGun.pellets; p++) {
+        spawnBullet();
+      }
+    }, i * 80);
+  }
+}
+
+function spawnBullet() {
+  const dir = new THREE.Vector3(0, 0, -1);
+  dir.applyEuler(camera.rotation);
+
+  dir.x += (Math.random() - 0.5) * currentGun.spread;
+  dir.y += (Math.random() - 0.5) * currentGun.spread;
+  dir.z += (Math.random() - 0.5) * currentGun.spread;
+  dir.normalize();
+
+  const bulletMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(currentGun.laser ? 0.065 : 0.045, 8, 8),
+    new THREE.MeshBasicMaterial({ color: currentGun.laser ? 0x55ddff : 0xffe08a })
+  );
+
+  bulletMesh.position.copy(camera.position);
+  bulletMesh.position.add(dir.clone().multiplyScalar(0.8));
+  scene.add(bulletMesh);
+
+  bullets.push({
+    mesh: bulletMesh,
+    pos: bulletMesh.position.clone(),
+    vel: dir.multiplyScalar(currentGun.bulletSpeed),
+    damage: currentGun.damage,
+    life: 2.2,
+    drop: currentGun.laser ? 0.4 : 1.5
   });
 }
 
-function processPeopleInChunks(doneCallback) {
-  people = [];
+function reload() {
+  if (currentGun.reloading) return;
+  if (currentGun.clip >= currentGun.clipSize) return;
+  if (currentGun.reserve <= 0) return;
 
-  const total = rawRows.length;
-  const chunkSize = 500;
-  let index = 0;
+  currentGun.reloading = true;
+  currentGun.reloadTimer = currentGun.reloadTime;
+}
 
-  function processChunk() {
-    const end = Math.min(index + chunkSize, total);
+/* =========================================================
+   ENEMIES
+========================================================= */
 
-    for (; index < end; index++) {
-      const row = rawRows[index];
+const enemies = [];
+let waveInProgress = false;
+let waveSpawnLeft = 0;
+let waveSpawnTimer = 0;
 
-      const first = row[columns.first];
-      const last = row[columns.last];
-      const name = makeDisplayName(first, last);
+const enemyTypes = {
+  green: {
+    name: "Goblin",
+    color: 0x2ea043,
+    health: 70,
+    speed: 2.3,
+    damage: 8,
+    reward: 80,
+    scale: 1,
+    thrower: false
+  },
+  blue: {
+    name: "Brute Goblin",
+    color: 0x2468e8,
+    health: 260,
+    speed: 1.25,
+    damage: 18,
+    reward: 180,
+    scale: 1.75,
+    thrower: false
+  },
+  red: {
+    name: "Skitter Goblin",
+    color: 0xd73322,
+    health: 42,
+    speed: 4.2,
+    damage: 6,
+    reward: 90,
+    scale: 0.72,
+    thrower: false
+  },
+  yellow: {
+    name: "Rock Thrower",
+    color: 0xded53a,
+    health: 85,
+    speed: 1.9,
+    damage: 7,
+    reward: 130,
+    scale: 1.05,
+    thrower: true
+  }
+};
 
-      if (!name) continue;
+function createGoblinMesh(typeKey) {
+  const type = enemyTypes[typeKey];
+  const group = new THREE.Group();
 
-      people.push({
-        id: `person_${index}`,
-        first: String(first || "").trim(),
-        last: String(last || "").trim(),
-        name,
-        nameKey: normalizeName(name),
-        email: String(row[columns.email] || "").trim(),
-        supervisorRaw: titleName(row[columns.supervisor]),
-        supervisorKey: normalizeName(row[columns.supervisor]),
-        raw: row
-      });
+  const skin = new THREE.MeshStandardMaterial({
+    color: type.color,
+    roughness: 0.75
+  });
+
+  const pants = new THREE.MeshStandardMaterial({
+    color: 0x5b3a1f,
+    roughness: 0.95
+  });
+
+  const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffee });
+  const pupilMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+  const toothMat = new THREE.MeshBasicMaterial({ color: 0xffffcc });
+
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.45, 18, 14), skin);
+  body.position.y = 0.85;
+  body.scale.set(0.8, 1.1, 0.55);
+  group.add(body);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.42, 18, 14), skin);
+  head.position.y = 1.45;
+  head.scale.set(1, 0.85, 0.85);
+  group.add(head);
+
+  const leftEar = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.65, 10), skin);
+  leftEar.position.set(-0.45, 1.48, 0);
+  leftEar.rotation.z = Math.PI / 2.7;
+  group.add(leftEar);
+
+  const rightEar = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.65, 10), skin);
+  rightEar.position.set(0.45, 1.48, 0);
+  rightEar.rotation.z = -Math.PI / 2.7;
+  group.add(rightEar);
+
+  const eye1 = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 12), eyeMat);
+  eye1.position.set(-0.15, 1.52, -0.33);
+  group.add(eye1);
+
+  const eye2 = eye1.clone();
+  eye2.position.x = 0.15;
+  group.add(eye2);
+
+  const pupil1 = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), pupilMat);
+  pupil1.position.set(-0.15, 1.52, -0.42);
+  group.add(pupil1);
+
+  const pupil2 = pupil1.clone();
+  pupil2.position.x = 0.15;
+  group.add(pupil2);
+
+  for (let i = 0; i < 4; i++) {
+    const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.16, 6), toothMat);
+    tooth.position.set(-0.16 + i * 0.105, 1.25, -0.38);
+    tooth.rotation.x = Math.PI;
+    group.add(tooth);
+  }
+
+  const pantsMesh = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.45, 0.38), pants);
+  pantsMesh.position.y = 0.45;
+  group.add(pantsMesh);
+
+  const leg1 = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 0.55, 8), pants);
+  leg1.position.set(-0.18, 0.05, 0);
+  group.add(leg1);
+
+  const leg2 = leg1.clone();
+  leg2.position.x = 0.18;
+  group.add(leg2);
+
+  const arm1 = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.75, 8), skin);
+  arm1.position.set(-0.5, 0.95, 0);
+  arm1.rotation.z = 0.55;
+  group.add(arm1);
+
+  const arm2 = arm1.clone();
+  arm2.position.x = 0.5;
+  arm2.rotation.z = -0.55;
+  group.add(arm2);
+
+  group.scale.setScalar(type.scale);
+
+  group.traverse(o => {
+    if (o.isMesh) {
+      o.castShadow = true;
+      o.receiveShadow = true;
     }
+  });
 
-    const percent = total ? 40 + ((index / total) * 55) : 95;
-    showProgress(`Processing rows ${index.toLocaleString()} of ${total.toLocaleString()}...`, percent);
+  return group;
+}
 
-    if (index < total) {
-      setTimeout(processChunk, 0);
-    } else {
-      people.sort((a, b) => a.name.localeCompare(b.name));
-      doneCallback();
+function spawnEnemy(typeKey = "green") {
+  const win = windows[Math.floor(Math.random() * windows.length)];
+  const mesh = createGoblinMesh(typeKey);
+  mesh.position.set(win.spawnX, 0, win.spawnZ);
+  scene.add(mesh);
+
+  const type = enemyTypes[typeKey];
+
+  enemies.push({
+    typeKey,
+    mesh,
+    pos: mesh.position,
+    health: type.health + player.wave * 10,
+    maxHealth: type.health + player.wave * 10,
+    speed: type.speed + player.wave * 0.05,
+    damage: type.damage,
+    reward: type.reward,
+    state: "outside",
+    targetWindow: win,
+    attackCooldown: 0,
+    throwCooldown: 2 + Math.random() * 2
+  });
+}
+
+function startWave() {
+  waveInProgress = true;
+  waveSpawnLeft = 6 + player.wave * 4;
+  waveSpawnTimer = 1;
+}
+
+function chooseEnemyType() {
+  const w = player.wave;
+  const r = Math.random();
+
+  if (w >= 4 && r < 0.12) return "blue";
+  if (w >= 2 && r < 0.32) return "red";
+  if (w >= 3 && r < 0.50) return "yellow";
+  return "green";
+}
+
+/* =========================================================
+   PICKUPS
+========================================================= */
+
+function dropPickup(x, z) {
+  const r = Math.random();
+  if (r > 0.22) return;
+
+  const isAmmo = r < 0.17;
+  const mesh = new THREE.Mesh(
+    isAmmo ? new THREE.BoxGeometry(0.45, 0.25, 0.45) : new THREE.SphereGeometry(0.22, 12, 12),
+    isAmmo ? mats.ammo : mats.coin
+  );
+  mesh.position.set(x, 0.35, z);
+  scene.add(mesh);
+
+  pickups.push({
+    mesh,
+    type: isAmmo ? "ammo" : "coins",
+    life: 12
+  });
+}
+
+/* =========================================================
+   INTERACTION
+========================================================= */
+
+function distance2D(a, b) {
+  const dx = a.x - b.x;
+  const dz = a.z - b.z;
+  return Math.sqrt(dx * dx + dz * dz);
+}
+
+function getNearestInteractable() {
+  let best = null;
+  let bestDist = 2.6;
+
+  const p = { x: player.pos.x, z: player.pos.z };
+
+  for (const obj of interactables) {
+    if (obj.active === false) continue;
+
+    let ox = obj.x;
+    let oz = obj.z;
+
+    const dist = distance2D(p, { x: ox, z: oz });
+    if (dist < bestDist) {
+      best = obj;
+      bestDist = dist;
     }
   }
 
-  processChunk();
+  return best;
 }
 
-function renderAll() {
-  renderPeopleList();
-  renderSelectedPerson();
-  renderOrg();
-  renderOutputTable();
-}
+function interact() {
+  if (player.interactCooldown > 0 || !player.alive) return;
+  player.interactCooldown = 0.25;
 
-function renderPeopleList() {
-  const box = document.getElementById("peopleList");
-  const search = normalizeName(document.getElementById("searchInput").value);
+  const obj = getNearestInteractable();
+  if (!obj) return;
 
-  box.innerHTML = "";
-
-  if (!people.length) {
-    box.innerHTML = `<div class="notice">Upload an Excel file to begin.</div>`;
-    return;
-  }
-
-  const filtered = people
-    .filter(p => !search || p.nameKey.includes(search) || normalizeName(p.email).includes(search))
-    .slice(0, 500);
-
-  filtered.forEach(person => {
-    const div = document.createElement("div");
-    div.className = "person-card";
-
-    if (selectedPerson && selectedPerson.nameKey === person.nameKey) {
-      div.classList.add("selected");
+  if (obj.type === "window") {
+    if (obj.boards < obj.maxBoards) {
+      obj.boards++;
+      rebuildWindowBoards(obj);
+      player.coins += 10;
     }
-
-    div.draggable = true;
-
-    div.innerHTML = `
-      <div><strong>${escapeHTML(person.name)}</strong></div>
-      <div class="small">Supervisor: ${escapeHTML(person.supervisorRaw || "—")}</div>
-      <div class="small">Username/Email: ${escapeHTML(person.email || "—")}</div>
-    `;
-
-    div.onclick = () => selectPerson(person);
-    div.ondragstart = () => {
-      draggedItem = {
-        type: "person",
-        name: person.name
-      };
-    };
-
-    box.appendChild(div);
-  });
-
-  if (!filtered.length) {
-    box.innerHTML = `<div class="notice">No matching names found.</div>`;
-  }
-}
-
-function selectPerson(person) {
-  selectedPerson = person;
-  renderPeopleList();
-  renderSelectedPerson();
-}
-
-function renderSelectedPerson() {
-  const selectedBox = document.getElementById("selectedBox");
-  const reportsBox = document.getElementById("directReportsBox");
-
-  if (!selectedPerson) {
-    selectedBox.innerHTML = "Click a person to show everyone who has that person listed under the Supervisor column.";
-    reportsBox.innerHTML = "";
-    return;
   }
 
-  const allReports = getDirectReports(selectedPerson.name);
-  const reports = allReports.filter(report => !isPersonInOrg(report.name));
+  if (obj.type === "door") {
+    if (!obj.active) return;
 
-  selectedBox.innerHTML = `
-    <strong>Selected:</strong> ${escapeHTML(selectedPerson.name)}<br>
-    <span class="small">Username/Email: ${escapeHTML(selectedPerson.email || getEmailByName(selectedPerson.name) || "—")}</span><br>
-    <span class="small">Direct Reports Found: ${allReports.length}</span><br>
-    <span class="small">Available to Add: ${reports.length}</span>
-  `;
+    if (player.coins >= obj.cost) {
+      player.coins -= obj.cost;
+      obj.active = false;
+      roomsUnlocked[obj.roomName] = true;
+      scene.remove(obj.mesh);
 
-  reportsBox.innerHTML = "";
-
-  if (!reports.length) {
-    reportsBox.innerHTML = `<div class="notice">No available direct reports found. Anyone already in the org table is hidden here.</div>`;
-    return;
-  }
-
-  reports.forEach(report => {
-    const div = document.createElement("div");
-    div.className = "direct-report";
-    div.draggable = true;
-
-    div.ondragstart = () => {
-      draggedItem = {
-        type: "person",
-        name: report.name
-      };
-    };
-
-    div.innerHTML = `
-      <div class="direct-report-title">${escapeHTML(report.name)}</div>
-      <div class="small">Supervisor: ${escapeHTML(report.supervisorRaw || "—")}</div>
-      <div class="small">Username/Email: ${escapeHTML(report.email || "—")}</div>
-      <div class="role-actions" style="margin-top:7px;">
-        <button class="primary-add-btn" onclick="autoAddDirectReport('${jsEscape(report.name)}')">Add Under Selected</button>
-        <button class="secondary-add-btn" onclick="addDirector('${jsEscape(report.name)}')">Add Director</button>
-      </div>
-    `;
-
-    reportsBox.appendChild(div);
-  });
-}
-
-function getDirectReports(supervisorName) {
-  const supervisorKey = normalizeName(supervisorName);
-  const flipped = normalizeName(flipName(supervisorName));
-
-  return people.filter(p => {
-    if (!p.supervisorKey) return false;
-    return p.supervisorKey === supervisorKey || p.supervisorKey === flipped;
-  });
-}
-
-function getAllReportsUnderSupervisor(supervisorName) {
-  const result = [];
-  const visited = new Set();
-
-  function walk(name) {
-    const directReports = getDirectReports(name);
-
-    directReports.forEach(person => {
-      const key = normalizeName(person.name);
-
-      if (visited.has(key)) return;
-
-      visited.add(key);
-      result.push(person);
-
-      walk(person.name);
-    });
-  }
-
-  walk(supervisorName);
-
-  return result;
-}
-
-function getAllReportEmailsForSupervisor(supervisorName) {
-  return getAllReportsUnderSupervisor(supervisorName)
-    .map(person => person.email)
-    .filter(email => email && String(email).trim())
-    .filter((email, index, arr) => arr.indexOf(email) === index);
-}
-
-function getReportEmailsForSupervisor(supervisorName) {
-  return getAllReportEmailsForSupervisor(supervisorName);
-}
-
-function flipName(name) {
-  const text = String(name || "").trim();
-
-  if (text.includes(",")) {
-    const parts = text.split(",");
-    const last = parts[0]?.trim() || "";
-    const first = parts.slice(1).join(",").trim();
-    return `${first} ${last}`.trim();
-  }
-
-  const pieces = text.split(/\s+/);
-  if (pieces.length >= 2) {
-    const first = pieces[0];
-    const last = pieces.slice(1).join(" ");
-    return `${last}, ${first}`;
-  }
-
-  return text;
-}
-
-function isPersonInOrg(name) {
-  const key = normalizeName(name);
-
-  for (const director of org) {
-    if (normalizeName(director.name) === key) return true;
-
-    for (const manager of director.managers) {
-      if (normalizeName(manager.name) === key) return true;
-
-      for (const coach of manager.coaches) {
-        if (normalizeName(coach) === key) return true;
+      // remove matching collider
+      for (let i = colliders.length - 1; i >= 0; i--) {
+        const c = colliders[i];
+        if (Math.abs(c.x - obj.x) < 0.01 && Math.abs(c.z - obj.z) < 0.01) {
+          colliders.splice(i, 1);
+        }
       }
     }
   }
 
+  if (obj.type === "wallGun") {
+    const g = guns[obj.key];
+
+    if (!ownedGuns[obj.key]) {
+      if (player.coins >= g.cost) {
+        player.coins -= g.cost;
+        ownedGuns[obj.key] = true;
+        equipGun(obj.key, true);
+      }
+    } else {
+      equipGun(obj.key, false);
+    }
+  }
+
+  if (obj.type === "ammo") {
+    if (currentGunKey === obj.key) {
+      const cost = guns[obj.key].ammoCost;
+      if (player.coins >= cost) {
+        player.coins -= cost;
+        currentGun.reserve = currentGun.reserveMax;
+      }
+    }
+  }
+}
+
+function equipGun(key, fresh) {
+  const oldClip = currentGun.clip;
+  const oldReserve = currentGun.reserve;
+
+  currentGunKey = key;
+  currentGun = JSON.parse(JSON.stringify(guns[key]));
+
+  if (fresh) {
+    currentGun.clip = currentGun.clipSize;
+    currentGun.reserve = Math.floor(currentGun.reserveMax * 0.6);
+  } else {
+    currentGun.clip = Math.min(currentGun.clipSize, oldClip);
+    currentGun.reserve = Math.min(currentGun.reserveMax, oldReserve);
+  }
+
+  currentGun.cooldown = 0;
+  currentGun.reloading = false;
+  currentGun.reloadTimer = 0;
+
+  rebuildGunView();
+}
+
+/* =========================================================
+   MOVEMENT AND COLLISION
+========================================================= */
+
+function wouldCollide(x, z) {
+  const radius = 0.42;
+  for (const c of colliders) {
+    if (
+      x + radius > c.x - c.w / 2 &&
+      x - radius < c.x + c.w / 2 &&
+      z + radius > c.z - c.d / 2 &&
+      z - radius < c.z + c.d / 2
+    ) {
+      return true;
+    }
+  }
   return false;
 }
 
-function addSelectedAsDirector() {
-  if (!selectedPerson) {
-    alert("Select a person first.");
-    return;
+function updatePlayer(dt) {
+  const speed = keys["shift"] ? player.sprintSpeed : player.speed;
+
+  const forward = new THREE.Vector3(
+    -Math.sin(player.yaw),
+    0,
+    -Math.cos(player.yaw)
+  );
+
+  const right = new THREE.Vector3(
+    Math.cos(player.yaw),
+    0,
+    -Math.sin(player.yaw)
+  );
+
+  const move = new THREE.Vector3();
+
+  if (keys["w"]) move.add(forward);
+  if (keys["s"]) move.sub(forward);
+  if (keys["d"]) move.add(right);
+  if (keys["a"]) move.sub(right);
+
+  if (move.lengthSq() > 0) {
+    move.normalize().multiplyScalar(speed * dt);
   }
 
-  addDirector(selectedPerson.name);
+  const nx = player.pos.x + move.x;
+  const nz = player.pos.z + move.z;
+
+  if (!wouldCollide(nx, player.pos.z)) player.pos.x = nx;
+  if (!wouldCollide(player.pos.x, nz)) player.pos.z = nz;
+
+  camera.position.copy(player.pos);
+  camera.rotation.order = "YXZ";
+  camera.rotation.y = player.yaw;
+  camera.rotation.x = player.pitch;
+
+  if (player.hurtCooldown > 0) player.hurtCooldown -= dt;
+  if (player.interactCooldown > 0) player.interactCooldown -= dt;
 }
 
-function addDirector(name) {
-  name = titleName(name);
-  if (!name) return;
+/* =========================================================
+   UPDATE BULLETS / ROCKS
+========================================================= */
 
-  removePersonFromOrg(name);
+function updateBullets(dt) {
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    b.life -= dt;
+    b.vel.y -= b.drop * dt;
+    b.pos.add(b.vel.clone().multiplyScalar(dt));
+    b.mesh.position.copy(b.pos);
 
-  org.push({
-    name,
-    managers: []
-  });
+    let hit = false;
 
-  renderAll();
-}
+    for (let j = enemies.length - 1; j >= 0; j--) {
+      const e = enemies[j];
+      const dist = b.pos.distanceTo(e.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)));
 
-function addManager(directorName, managerName) {
-  directorName = titleName(directorName);
-  managerName = titleName(managerName);
+      if (dist < 0.65 * enemyTypes[e.typeKey].scale) {
+        e.health -= b.damage;
+        hit = true;
 
-  if (normalizeName(directorName) === normalizeName(managerName)) {
-    alert("A person cannot report to themselves.");
-    return;
-  }
-
-  removePersonFromOrg(managerName);
-
-  const director = org.find(d => normalizeName(d.name) === normalizeName(directorName));
-  if (!director) return;
-
-  director.managers.push({
-    name: managerName,
-    coaches: []
-  });
-
-  renderAll();
-}
-
-function addCoach(directorName, managerName, coachName) {
-  directorName = titleName(directorName);
-  managerName = titleName(managerName);
-  coachName = titleName(coachName);
-
-  if (
-    normalizeName(coachName) === normalizeName(directorName) ||
-    normalizeName(coachName) === normalizeName(managerName)
-  ) {
-    alert("A person cannot report to themselves.");
-    return;
-  }
-
-  removePersonFromOrg(coachName);
-
-  const director = org.find(d => normalizeName(d.name) === normalizeName(directorName));
-  if (!director) return;
-
-  const manager = director.managers.find(m => normalizeName(m.name) === normalizeName(managerName));
-  if (!manager) return;
-
-  manager.coaches.push(coachName);
-
-  renderAll();
-}
-
-function autoAddDirectReport(reportName) {
-  if (!selectedPerson) return;
-
-  const selectedName = selectedPerson.name;
-
-  const director = org.find(d => normalizeName(d.name) === normalizeName(selectedName));
-  if (director) {
-    addManager(director.name, reportName);
-    return;
-  }
-
-  for (const d of org) {
-    const manager = d.managers.find(m => normalizeName(m.name) === normalizeName(selectedName));
-    if (manager) {
-      addCoach(d.name, manager.name, reportName);
-      return;
-    }
-  }
-
-  alert("Selected person is not currently a Director or Manager. Add them to the org first.");
-}
-
-function autoAddAllDirectReports() {
-  if (!selectedPerson) {
-    alert("Select someone first.");
-    return;
-  }
-
-  const reports = getDirectReports(selectedPerson.name).filter(report => !isPersonInOrg(report.name));
-
-  if (!reports.length) {
-    alert("No available direct reports found.");
-    return;
-  }
-
-  const selectedName = selectedPerson.name;
-  const director = org.find(d => normalizeName(d.name) === normalizeName(selectedName));
-
-  if (director) {
-    reports.forEach(r => {
-      if (normalizeName(r.name) !== normalizeName(selectedName)) {
-        removePersonFromOrg(r.name);
-        director.managers.push({
-          name: r.name,
-          coaches: []
-        });
-      }
-    });
-
-    renderAll();
-    return;
-  }
-
-  for (const d of org) {
-    const manager = d.managers.find(m => normalizeName(m.name) === normalizeName(selectedName));
-    if (manager) {
-      reports.forEach(r => {
-        if (normalizeName(r.name) !== normalizeName(selectedName)) {
-          removePersonFromOrg(r.name);
-          manager.coaches.push(r.name);
+        if (e.health <= 0) {
+          killEnemy(j);
         }
-      });
+        break;
+      }
+    }
 
-      renderAll();
-      return;
+    if (hit || b.life <= 0 || b.pos.y < -2) {
+      scene.remove(b.mesh);
+      bullets.splice(i, 1);
     }
   }
-
-  alert("Selected person must already be a Director or Manager before adding all direct reports under them.");
 }
 
-function removePersonFromOrg(name) {
-  const key = normalizeName(name);
+function spawnRock(enemy) {
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.18, 10, 10),
+    new THREE.MeshStandardMaterial({ color: 0x777066, roughness: 1 })
+  );
 
-  for (let dIndex = org.length - 1; dIndex >= 0; dIndex--) {
-    const director = org[dIndex];
+  mesh.position.copy(enemy.mesh.position);
+  mesh.position.y += 1.5;
+  scene.add(mesh);
 
-    if (normalizeName(director.name) === key) {
-      org.splice(dIndex, 1);
+  const target = camera.position.clone();
+  const dir = target.sub(mesh.position);
+  const horizontal = new THREE.Vector3(dir.x, 0, dir.z).normalize();
+
+  rocks.push({
+    mesh,
+    pos: mesh.position.clone(),
+    vel: new THREE.Vector3(horizontal.x * 8, 8, horizontal.z * 8),
+    life: 4,
+    damage: 14
+  });
+}
+
+function updateRocks(dt) {
+  for (let i = rocks.length - 1; i >= 0; i--) {
+    const r = rocks[i];
+    r.life -= dt;
+    r.vel.y -= 12 * dt;
+    r.pos.add(r.vel.clone().multiplyScalar(dt));
+    r.mesh.position.copy(r.pos);
+
+    const dist = r.pos.distanceTo(camera.position);
+
+    if (dist < 0.75 && player.hurtCooldown <= 0) {
+      player.health -= r.damage;
+      player.hurtCooldown = 0.5;
+      scene.remove(r.mesh);
+      rocks.splice(i, 1);
       continue;
     }
 
-    for (let mIndex = director.managers.length - 1; mIndex >= 0; mIndex--) {
-      const manager = director.managers[mIndex];
-
-      if (normalizeName(manager.name) === key) {
-        director.managers.splice(mIndex, 1);
-        continue;
-      }
-
-      manager.coaches = manager.coaches.filter(c => normalizeName(c) !== key);
+    if (r.life <= 0 || r.pos.y < 0) {
+      scene.remove(r.mesh);
+      rocks.splice(i, 1);
     }
   }
 }
 
-function renderOrg() {
-  const tree = document.getElementById("orgTree");
-  tree.innerHTML = "";
+/* =========================================================
+   UPDATE ENEMIES
+========================================================= */
 
-  if (!org.length) {
-    tree.innerHTML = `<div class="notice">No Directors added yet. Search or drag names to begin.</div>`;
-    return;
-  }
+function killEnemy(index) {
+  const e = enemies[index];
+  player.coins += e.reward;
+  player.score += e.reward;
+  dropPickup(e.mesh.position.x, e.mesh.position.z);
+  scene.remove(e.mesh);
+  enemies.splice(index, 1);
+}
 
-  org.forEach((director, directorIndex) => {
-    const directorBlock = document.createElement("div");
-    directorBlock.className = "director-block drop-target";
+function updateEnemies(dt) {
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    const type = enemyTypes[e.typeKey];
 
-    directorBlock.ondragover = allowDrop;
-    directorBlock.ondragleave = removeDragOver;
-    directorBlock.ondrop = event => {
-      event.preventDefault();
-      event.stopPropagation();
-      removeDragOver(event);
+    e.attackCooldown -= dt;
 
-      if (!draggedItem) return;
+    // face player
+    const dx = player.pos.x - e.mesh.position.x;
+    const dz = player.pos.z - e.mesh.position.z;
+    e.mesh.rotation.y = Math.atan2(dx, dz);
 
-      const draggedName = draggedItem.name;
+    if (e.state === "outside") {
+      const w = e.targetWindow;
+      const target = new THREE.Vector3(w.x, 0, w.z);
+      const dir = target.clone().sub(e.mesh.position);
+      dir.y = 0;
 
-      if (normalizeName(draggedName) === normalizeName(director.name)) {
-        draggedItem = null;
-        return;
-      }
-
-      addManager(director.name, draggedName);
-      draggedItem = null;
-    };
-
-    const directorHeader = document.createElement("div");
-    directorHeader.className = "director-header";
-    directorHeader.draggable = true;
-
-    directorHeader.ondragstart = event => {
-      event.stopPropagation();
-      draggedItem = {
-        type: "director",
-        name: director.name
-      };
-    };
-
-    directorHeader.innerHTML = `
-      <span class="name-click" onclick="selectPersonByName('${jsEscape(director.name)}')">
-        Director: ${escapeHTML(director.name)}
-        <span class="small" style="color:#fee2e2;">Username/Email: ${escapeHTML(getEmailByName(director.name) || "—")}</span>
-      </span>
-      <button class="mini-btn remove-btn" onclick="event.stopPropagation(); removeDirector(${directorIndex})">Remove</button>
-    `;
-
-    directorBlock.appendChild(directorHeader);
-
-    if (!director.managers.length) {
-      const empty = document.createElement("div");
-      empty.className = "notice";
-      empty.style.margin = "10px";
-      empty.textContent = "No managers yet. Drag someone onto this Director.";
-      directorBlock.appendChild(empty);
-    }
-
-    director.managers.forEach((manager, managerIndex) => {
-      const managerBlock = document.createElement("div");
-      managerBlock.className = "manager-block drop-target";
-
-      managerBlock.ondragover = allowDrop;
-      managerBlock.ondragleave = removeDragOver;
-      managerBlock.ondrop = event => {
-        event.preventDefault();
-        event.stopPropagation();
-        removeDragOver(event);
-
-        if (!draggedItem) return;
-
-        const draggedName = draggedItem.name;
-
-        if (
-          normalizeName(draggedName) === normalizeName(director.name) ||
-          normalizeName(draggedName) === normalizeName(manager.name)
-        ) {
-          draggedItem = null;
-          return;
+      if (dir.length() > 0.6) {
+        dir.normalize();
+        e.mesh.position.add(dir.multiplyScalar(e.speed * dt));
+      } else {
+        if (w.boards > 0) {
+          w.breakTimer += dt;
+          if (w.breakTimer > 0.9) {
+            w.breakTimer = 0;
+            w.boards--;
+            rebuildWindowBoards(w);
+          }
+        } else {
+          e.state = "inside";
         }
-
-        addCoach(director.name, manager.name, draggedName);
-        draggedItem = null;
-      };
-
-      const managerHeader = document.createElement("div");
-      managerHeader.className = "manager-header";
-      managerHeader.draggable = true;
-
-      managerHeader.ondragstart = event => {
-        event.stopPropagation();
-        draggedItem = {
-          type: "manager",
-          name: manager.name
-        };
-      };
-
-      managerHeader.innerHTML = `
-        <span class="name-click" onclick="selectPersonByName('${jsEscape(manager.name)}')">
-          Manager: ${escapeHTML(manager.name)}
-          <span class="small">Username/Email: ${escapeHTML(getEmailByName(manager.name) || "—")}</span>
-        </span>
-        <button class="mini-btn remove-btn" onclick="event.stopPropagation(); removeManager(${directorIndex}, ${managerIndex})">Remove</button>
-      `;
-
-      managerBlock.appendChild(managerHeader);
-
-      if (!manager.coaches.length) {
-        const emptyCoach = document.createElement("div");
-        emptyCoach.className = "small";
-        emptyCoach.style.padding = "8px 10px";
-        emptyCoach.textContent = "No coaches yet. Drag someone onto this Manager.";
-        managerBlock.appendChild(emptyCoach);
       }
-
-      manager.coaches.forEach((coach, coachIndex) => {
-        const coachRow = document.createElement("div");
-        coachRow.className = "coach-row";
-        coachRow.draggable = true;
-
-        coachRow.ondragstart = event => {
-          event.stopPropagation();
-          draggedItem = {
-            type: "coach",
-            name: coach
-          };
-        };
-
-        coachRow.innerHTML = `
-          <span class="name-click" onclick="selectPersonByName('${jsEscape(coach)}')">
-            Coach: ${escapeHTML(coach)}
-            <span class="small">Username/Email: ${escapeHTML(getEmailByName(coach) || "—")}</span>
-          </span>
-          <button class="mini-btn remove-btn" onclick="event.stopPropagation(); removeCoach(${directorIndex}, ${managerIndex}, ${coachIndex})">Remove</button>
-        `;
-
-        managerBlock.appendChild(coachRow);
-      });
-
-      directorBlock.appendChild(managerBlock);
-    });
-
-    tree.appendChild(directorBlock);
-  });
-}
-
-function removeDirector(index) {
-  org.splice(index, 1);
-  renderAll();
-}
-
-function removeManager(directorIndex, managerIndex) {
-  org[directorIndex].managers.splice(managerIndex, 1);
-  renderAll();
-}
-
-function removeCoach(directorIndex, managerIndex, coachIndex) {
-  org[directorIndex].managers[managerIndex].coaches.splice(coachIndex, 1);
-  renderAll();
-}
-
-function clearOrg() {
-  if (!confirm("Clear the current org structure?")) return;
-  org = [];
-  filledReportEmails = {};
-  renderAll();
-}
-
-function selectPersonByName(name) {
-  const person = people.find(p => normalizeName(p.name) === normalizeName(name));
-
-  if (person) {
-    selectPerson(person);
-    return;
-  }
-
-  selectedPerson = {
-    name,
-    nameKey: normalizeName(name),
-    email: "",
-    supervisorRaw: "",
-    supervisorKey: ""
-  };
-
-  renderPeopleList();
-  renderSelectedPerson();
-}
-
-function getEmailByName(name) {
-  const person = people.find(p => normalizeName(p.name) === normalizeName(name));
-  return person ? person.email || "" : "";
-}
-
-function getExportRows() {
-  const rows = [];
-
-  org.forEach(director => {
-    rows.push({
-      company: "Safelite",
-      director: director.name,
-      manager: "",
-      coach: "",
-      email: getEmailByName(director.name),
-      personName: director.name,
-      level: "Director"
-    });
-
-    director.managers.forEach(manager => {
-      rows.push({
-        company: "Safelite",
-        director: director.name,
-        manager: manager.name,
-        coach: "",
-        email: getEmailByName(manager.name),
-        personName: manager.name,
-        level: "Manager"
-      });
-
-      manager.coaches.forEach(coach => {
-        rows.push({
-          company: "Safelite",
-          director: director.name,
-          manager: manager.name,
-          coach,
-          email: getEmailByName(coach),
-          personName: coach,
-          level: "Coach"
-        });
-      });
-    });
-  });
-
-  return rows;
-}
-
-function getOrgPathRows() {
-  return getExportRows().map(row => {
-    let path = "Safelite";
-
-    if (row.director) path += ` --> ${row.director}`;
-    if (row.manager) path += ` --> ${row.manager}`;
-    if (row.coach) path += ` --> ${row.coach}`;
-
-    return {
-      path,
-      personName: row.personName,
-      level: row.level,
-      director: row.director,
-      manager: row.manager,
-      coach: row.coach,
-      email: row.email || ""
-    };
-  });
-}
-
-function buildOrgBlueprint() {
-  return {
-    savedAt: new Date().toISOString(),
-    columnsUsed: { first: columns.first, last: columns.last, supervisor: columns.supervisor, email: columns.email },
-    hierarchy: org.map(director => ({
-      directorName: director.name,
-      directorKey: normalizeName(director.name),
-      managers: director.managers.map(manager => ({
-        managerName: manager.name,
-        managerKey: normalizeName(manager.name),
-        coaches: manager.coaches.map(coach => ({ coachName: coach, coachKey: normalizeName(coach) }))
-      }))
-    }))
-  };
-}
-
-function findCurrentPersonBySavedKey(savedKey, savedName) { const key = normalizeName(savedKey || savedName); let match = people.find(p => p.nameKey === key); if (match) return match; const flippedKey = normalizeName(flipName(savedName)); match = people.find(p => p.nameKey === flippedKey); return match || null; }
-function showBlueprintLoadSummary(missing, rebuiltOrg) { const directorCount = rebuiltOrg.length; const managerCount = rebuiltOrg.reduce((sum, d) => sum + d.managers.length, 0); const coachCount = rebuiltOrg.reduce((sum, d) => sum + d.managers.reduce((mSum, m) => mSum + m.coaches.length, 0), 0); lastBlueprintLoadSummary = { loadedAt: new Date().toISOString(), missing, directorCount, managerCount, coachCount }; let message = `Org blueprint loaded from current file.
-
-Directors loaded: ${directorCount}
-Managers loaded: ${managerCount}
-Coaches loaded: ${coachCount}
-Missing names: ${missing.length}`; if (missing.length) message += `
-
-Missing names were not added because they were not found in the current uploaded file.`; alert(message); }
-function rebuildOrgFromBlueprint(blueprint) { const rebuiltOrg = []; const missing = []; if (!blueprint || !Array.isArray(blueprint.hierarchy)) { alert("No org blueprint found in the local save."); return; } blueprint.hierarchy.forEach(savedDirector => { const directorPerson = findCurrentPersonBySavedKey(savedDirector.directorKey, savedDirector.directorName); if (!directorPerson) { missing.push({ level: "Director", name: savedDirector.directorName }); return; } const directorNode = { name: directorPerson.name, managers: [] }; (savedDirector.managers || []).forEach(savedManager => { const managerPerson = findCurrentPersonBySavedKey(savedManager.managerKey, savedManager.managerName); if (!managerPerson) { missing.push({ level: "Manager", name: savedManager.managerName, director: savedDirector.directorName }); return; } const managerNode = { name: managerPerson.name, coaches: [] }; (savedManager.coaches || []).forEach(savedCoach => { const coachPerson = findCurrentPersonBySavedKey(savedCoach.coachKey, savedCoach.coachName); if (!coachPerson) { missing.push({ level: "Coach", name: savedCoach.coachName, director: savedDirector.directorName, manager: savedManager.managerName }); return; } managerNode.coaches.push(coachPerson.name); }); directorNode.managers.push(managerNode); }); rebuiltOrg.push(directorNode); }); org = rebuiltOrg; selectedPerson = null; renderAll(); showBlueprintLoadSummary(missing, rebuiltOrg); }
-
-function setViewMode(mode) {
-  currentViewMode = mode;
-
-  document.getElementById("orgViewBtn").classList.toggle("active", mode === "org");
-  document.getElementById("usersViewBtn").classList.toggle("active", mode === "users");
-  document.getElementById("filtersViewBtn").classList.toggle("active", mode === "filters");
-  document.getElementById("compareViewBtn").classList.toggle("active", mode === "compare");
-
-  renderOutputTable();
-}
-
-function renderOutputTable() {
-  if (currentViewMode === "compare") {
-    renderCompareView();
-    return;
-  }
-
-  if (currentViewMode === "org") {
-    renderOrgOutputTable();
-    return;
-  }
-
-  if (currentViewMode === "users") {
-    renderUsersOutputTable();
-    return;
-  }
-
-  if (currentViewMode === "filters") {
-    renderFiltersOutputTable();
-    return;
-  }
-}
-
-function renderOrgOutputTable() {
-  const tbody = document.querySelector("#outputTable tbody");
-  const header = document.getElementById("outputTableHeader");
-  const includeEmail = document.getElementById("includeEmailToggle").checked;
-
-  header.innerHTML = `
-    <th>Company Name</th>
-    <th>Director</th>
-    <th>Manager</th>
-    <th>Coach</th>
-    ${includeEmail ? "<th>Username / Studio Email Address</th>" : ""}
-  `;
-
-  tbody.innerHTML = "";
-
-  getExportRows().forEach(row => {
-    const tr = document.createElement("tr");
-
-    tr.innerHTML = `
-      <td>${escapeHTML(row.company)}</td>
-      <td>${row.director ? clickableName(row.director) : ""}</td>
-      <td>${row.manager ? clickableName(row.manager) : ""}</td>
-      <td>${row.coach ? clickableName(row.coach) : ""}</td>
-      ${includeEmail ? `<td>${escapeHTML(row.email || "")}</td>` : ""}
-    `;
-
-    tbody.appendChild(tr);
-  });
-}
-
-function renderUsersOutputTable() {
-  const tbody = document.querySelector("#outputTable tbody");
-  const header = document.getElementById("outputTableHeader");
-
-  header.innerHTML = `
-    <th>Users</th>
-    <th>Studio Email Address</th>
-  `;
-
-  tbody.innerHTML = "";
-
-  getOrgPathRows().forEach(row => {
-    const tr = document.createElement("tr");
-
-    tr.innerHTML = `
-      <td class="path-cell">${makeClickablePath(row.path)}</td>
-      <td>${escapeHTML(row.email || "")}</td>
-    `;
-
-    tbody.appendChild(tr);
-  });
-}
-
-function renderFiltersOutputTable() {
-  const tbody = document.querySelector("#outputTable tbody");
-  const header = document.getElementById("outputTableHeader");
-
-  header.innerHTML = `
-    <th>Users</th>
-    <th>Studio Email Address</th>
-  `;
-
-  tbody.innerHTML = "";
-
-  getOrgPathRows().forEach(row => {
-    const emails = filledReportEmails[row.personName] || getReportEmailsForSupervisor(row.personName);
-    const formattedEmails = formatFilterEmails(emails);
-
-    const tr = document.createElement("tr");
-
-    tr.innerHTML = `
-      <td class="path-cell">${makeClickablePath(row.path)}</td>
-      <td class="email-list">${formattedEmails}</td>
-    `;
-
-    tbody.appendChild(tr);
-  });
-}
-
-function clickableName(name) {
-  return `<span class="name-click" onclick="selectPersonByName('${jsEscape(name)}')">${escapeHTML(name)}</span>`;
-}
-
-function makeClickablePath(path) {
-  return path
-    .split(" --> ")
-    .map(part => {
-      if (part === "Safelite") {
-        return escapeHTML(part);
-      }
-
-      return clickableName(part);
-    })
-    .join(" --> ");
-}
-
-function fillReportsForPerson(personName) {
-  const emails = getReportEmailsForSupervisor(personName);
-  filledReportEmails[personName] = emails;
-
-  if (!emails.length) {
-    alert(`No reporting usernames/emails found for ${personName}.`);
-  }
-
-  renderOutputTable();
-}
-
-function autoFillCoaches() {
-  let filledCount = 0;
-
-  getOrgPathRows().forEach(row => {
-    if (row.level === "Coach") {
-      const emails = getReportEmailsForSupervisor(row.personName);
-      filledReportEmails[row.personName] = emails;
-
-      if (emails.length) {
-        filledCount++;
-      }
-    }
-  });
-
-  alert(`Auto-filled reporting usernames/emails for ${filledCount} coach rows.`);
-  renderOutputTable();
-}
-
-function autoFillAllLeaders() {
-  let filledCount = 0;
-
-  getOrgPathRows().forEach(row => {
-    const emails = getReportEmailsForSupervisor(row.personName);
-    filledReportEmails[row.personName] = emails;
-
-    if (emails.length) {
-      filledCount++;
-    }
-  });
-
-  alert(`Auto-filled reporting usernames/emails for ${filledCount} rows.`);
-  renderOutputTable();
-}
-
-function clearFilledEmails() {
-  if (!confirm("Clear all filled reporting username/email lists?")) return;
-
-  filledReportEmails = {};
-  renderOutputTable();
-}
-
-function formatFilterEmails(emails) {
-  if (!emails || !emails.length) {
-    return `Username:`;
-  }
-
-  const quotedEmails = emails
-    .map(email => `"${escapeHTML(email)}"`)
-    .join(", ");
-
-  return `Username: ${quotedEmails}`;
-}
-
-function getCurrentViewExportRows() {
-  if (currentViewMode === "org") {
-    const includeEmail = document.getElementById("includeEmailToggle").checked;
-
-    return getExportRows().map(row => {
-      const output = {
-        "Company Name": row.company,
-        "Director": row.director,
-        "Manager": row.manager,
-        "Coach": row.coach
-      };
-
-      if (includeEmail) {
-        output["Username / Studio Email Address"] = row.email || "";
-      }
-
-      return output;
-    });
-  }
-
-  if (currentViewMode === "users") {
-    return getOrgPathRows().map(row => ({
-      "Users": row.path,
-      "Studio Email Address": row.email || ""
-    }));
-  }
-
-  if (currentViewMode === "filters") {
-    return getOrgPathRows().map(row => {
-      const emails = filledReportEmails[row.personName] || getReportEmailsForSupervisor(row.personName);
-
-      return {
-        "Users": row.path,
-        "Studio Email Address": `Username: ${emails.map(email => `"${email}"`).join(", ")}`
-      };
-    });
-  }
-
-  return [];
-}
-
-function getExportFileName(extension) {
-  const label =
-    currentViewMode === "org"
-      ? "org_view"
-      : currentViewMode === "users"
-        ? "users_view"
-        : "filters_view";
-
-  return `safelite_${label}_export.${extension}`;
-}
-
-function exportCSV() {
-  const exportRows = getCurrentViewExportRows();
-
-  if (!exportRows.length) {
-    alert("No rows to export.");
-    return;
-  }
-
-  const headers = Object.keys(exportRows[0]);
-
-  const csvRows = [
-    headers.map(csvEscape).join(","),
-    ...exportRows.map(row => headers.map(header => csvEscape(row[header])).join(","))
-  ];
-
-  downloadBlob(csvRows.join("\n"), getExportFileName("csv"), "text/csv;charset=utf-8;");
-}
-
-function exportExcel() {
-  const exportRows = getCurrentViewExportRows();
-
-  if (!exportRows.length) {
-    alert("No rows to export.");
-    return;
-  }
-
-  const worksheet = XLSX.utils.json_to_sheet(exportRows);
-  const workbook = XLSX.utils.book_new();
-
-  const sheetName =
-    currentViewMode === "org"
-      ? "Org View"
-      : currentViewMode === "users"
-        ? "Users View"
-        : "Filters View";
-
-  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
-
-  if (worksheet["!ref"]) {
-    const range = XLSX.utils.decode_range(worksheet["!ref"]);
-    worksheet["!cols"] = [];
-
-    for (let C = range.s.c; C <= range.e.c; ++C) {
-      let maxWidth = 14;
-
-      for (let R = range.s.r; R <= range.e.r; ++R) {
-        const cell = worksheet[XLSX.utils.encode_cell({ r: R, c: C })];
-        if (cell && cell.v) {
-          maxWidth = Math.max(maxWidth, String(cell.v).length + 2);
+    } else {
+      const dir = player.pos.clone().sub(e.mesh.position);
+      dir.y = 0;
+
+      const dist = dir.length();
+
+      if (type.thrower && dist < 16 && dist > 5) {
+        e.throwCooldown -= dt;
+        if (e.throwCooldown <= 0) {
+          spawnRock(e);
+          e.throwCooldown = 3.2 + Math.random() * 2;
         }
       }
 
-      worksheet["!cols"].push({ wch: Math.min(maxWidth, 100) });
-    }
-  }
-
-  XLSX.writeFile(workbook, getExportFileName("xlsx"));
-}
-
-function saveLocal() {
-  const payload = {
-    savedAt: new Date().toISOString(),
-    rawRows,
-    people,
-    columns,
-    org,
-    includeEmail: document.getElementById("includeEmailToggle").checked,
-    currentViewMode,
-    filledReportEmails,
-    orgBlueprint: buildOrgBlueprint()
-  };
-
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  setStatus("Saved locally");
-  alert("Saved locally in this browser.");
-}
-
-function loadLocal() {
-  const text = localStorage.getItem(STORAGE_KEY);
-
-  if (!text) {
-    alert("No local save found.");
-    return;
-  }
-
-  try {
-    const payload = JSON.parse(text);
-    const hasCurrentFileLoaded = rawRows.length > 0 && people.length > 0;
-    const hasBlueprint = payload.orgBlueprint && Array.isArray(payload.orgBlueprint.hierarchy);
-
-    if (hasCurrentFileLoaded && hasBlueprint) {
-      rebuildOrgFromBlueprint(payload.orgBlueprint);
-      setStatus("Loaded org blueprint onto current uploaded file");
-      return;
+      if (dist > 1.1) {
+        dir.normalize();
+        e.mesh.position.add(dir.multiplyScalar(e.speed * dt));
+      } else {
+        if (e.attackCooldown <= 0 && player.hurtCooldown <= 0) {
+          player.health -= e.damage;
+          player.hurtCooldown = 0.45;
+          e.attackCooldown = 0.75;
+        }
+      }
     }
 
-    rawRows = payload.rawRows || [];
-    people = payload.people || [];
-    columns = payload.columns || columns;
-    org = payload.org || [];
-    filledReportEmails = payload.filledReportEmails || {};
-    currentViewMode = payload.currentViewMode || "org";
+    // walking bob
+    e.mesh.position.y = Math.sin(performance.now() * 0.006 + i) * 0.04;
 
-    if (typeof payload.includeEmail === "boolean") {
-      document.getElementById("includeEmailToggle").checked = payload.includeEmail;
+    // health bar
+    if (!e.healthBar) {
+      const bg = new THREE.Mesh(
+        new THREE.BoxGeometry(1.1, 0.08, 0.04),
+        new THREE.MeshBasicMaterial({ color: 0x220000 })
+      );
+      const fg = new THREE.Mesh(
+        new THREE.BoxGeometry(1.1, 0.08, 0.05),
+        new THREE.MeshBasicMaterial({ color: 0xff3333 })
+      );
+      e.healthBar = new THREE.Group();
+      bg.position.z = 0;
+      fg.position.z = -0.03;
+      e.healthBar.add(bg, fg);
+      scene.add(e.healthBar);
     }
 
-    if (rawRows.length) {
-      setupColumnSelectors();
+    e.healthBar.position.copy(e.mesh.position);
+    e.healthBar.position.y += 2.2 * type.scale;
+    e.healthBar.lookAt(camera.position);
 
-      if (columns.first) document.getElementById("firstNameSelect").value = columns.first;
-      if (columns.last) document.getElementById("lastNameSelect").value = columns.last;
-      if (columns.supervisor) document.getElementById("supervisorSelect").value = columns.supervisor;
-      if (columns.email) document.getElementById("emailSelect").value = columns.email;
-    }
-
-    selectedPerson = null;
-    renderAll();
-    setViewMode(currentViewMode);
-
-    const savedDate = payload.savedAt ? new Date(payload.savedAt).toLocaleString() : "unknown time";
-    setStatus(`Loaded local save from ${savedDate}`);
-  } catch (error) {
-    console.error(error);
-    alert("Local save could not be loaded.");
+    const pct = Math.max(0, e.health / e.maxHealth);
+    e.healthBar.children[1].scale.x = pct;
+    e.healthBar.children[1].position.x = -0.55 * (1 - pct);
   }
 }
 
-function allowDrop(event) {
-  event.preventDefault();
-  event.currentTarget.classList.add("drag-over");
+/* =========================================================
+   PICKUP UPDATE
+========================================================= */
+
+function updatePickups(dt) {
+  for (let i = pickups.length - 1; i >= 0; i--) {
+    const p = pickups[i];
+    p.life -= dt;
+    p.mesh.rotation.y += dt * 2.2;
+    p.mesh.position.y = 0.35 + Math.sin(performance.now() * 0.004 + i) * 0.08;
+
+    if (p.mesh.position.distanceTo(camera.position) < 1.4) {
+      if (p.type === "ammo") {
+        currentGun.reserve = Math.min(currentGun.reserveMax, currentGun.reserve + Math.floor(currentGun.clipSize * 1.5));
+      } else {
+        player.coins += 150;
+      }
+
+      scene.remove(p.mesh);
+      pickups.splice(i, 1);
+      continue;
+    }
+
+    if (p.life <= 0) {
+      scene.remove(p.mesh);
+      pickups.splice(i, 1);
+    }
+  }
 }
 
-function removeDragOver(event) {
-  event.currentTarget.classList.remove("drag-over");
-}
+/* =========================================================
+   WAVE SYSTEM
+========================================================= */
 
-function dropAsDirector(event) {
-  event.preventDefault();
-  event.currentTarget.classList.remove("drag-over");
-
-  if (!draggedItem) return;
-
-  addDirector(draggedItem.name);
-  draggedItem = null;
-}
-
-function downloadBlob(content, filename, type) {
-  const blob = new Blob([content], { type });
-  const url = URL.createObjectURL(blob);
-
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-
-  URL.revokeObjectURL(url);
-}
-
-function csvEscape(value) {
-  const text = String(value || "");
-
-  if (text.includes(",") || text.includes('"') || text.includes("\n")) {
-    return `"${text.replace(/"/g, '""')}"`;
+function updateWave(dt) {
+  if (!waveInProgress && enemies.length === 0) {
+    startWave();
   }
 
-  return text;
+  if (waveInProgress) {
+    waveSpawnTimer -= dt;
+
+    if (waveSpawnTimer <= 0 && waveSpawnLeft > 0) {
+      spawnEnemy(chooseEnemyType());
+      waveSpawnLeft--;
+      waveSpawnTimer = Math.max(0.35, 1.25 - player.wave * 0.04);
+    }
+
+    if (waveSpawnLeft <= 0 && enemies.length === 0) {
+      waveInProgress = false;
+      player.wave++;
+      player.coins += 400 + player.wave * 50;
+    }
+  }
 }
 
-function escapeHTML(value) {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+/* =========================================================
+   GUN UPDATE
+========================================================= */
+
+function updateGun(dt) {
+  if (currentGun.cooldown > 0) currentGun.cooldown -= dt;
+
+  if (currentGun.reloading) {
+    currentGun.reloadTimer -= dt;
+
+    // reload animation
+    gunView.rotation.x = Math.sin(currentGun.reloadTimer * 12) * 0.12;
+    gunView.position.y = -0.05;
+
+    if (currentGun.reloadTimer <= 0) {
+      const need = currentGun.clipSize - currentGun.clip;
+      const taken = Math.min(need, currentGun.reserve);
+      currentGun.clip += taken;
+      currentGun.reserve -= taken;
+      currentGun.reloading = false;
+      gunView.rotation.x = 0;
+      gunView.position.y = 0;
+    }
+  } else {
+    gunView.rotation.x *= 0.85;
+    gunView.position.y *= 0.85;
+  }
+
+  if (currentGun.automatic && keys["mouse"]) {
+    shoot();
+  }
 }
 
-function jsEscape(value) {
-  return String(value || "")
-    .replace(/\\/g, "\\\\")
-    .replace(/'/g, "\\'");
+document.addEventListener("mousedown", () => {
+  keys["mouse"] = true;
+});
+
+document.addEventListener("mouseup", () => {
+  keys["mouse"] = false;
+});
+
+/* =========================================================
+   HUD
+========================================================= */
+
+function updateHud() {
+  const nearest = getNearestInteractable();
+  let msg = "";
+
+  if (nearest) {
+    if (nearest.type === "window") {
+      if (nearest.boards < nearest.maxBoards) {
+        msg = "Press E to board window +$10";
+      } else {
+        msg = "Window fully boarded";
+      }
+    }
+
+    if (nearest.type === "door") {
+      msg = `Press E to ${nearest.label} - $${nearest.cost}`;
+      if (player.coins < nearest.cost) msg += " | Not enough coins";
+    }
+
+    if (nearest.type === "wallGun") {
+      if (ownedGuns[nearest.key]) {
+        msg = `Press E to equip ${nearest.name}`;
+      } else {
+        msg = `Press E to buy ${nearest.name} - $${nearest.cost}`;
+        if (player.coins < nearest.cost) msg += " | Not enough coins";
+      }
+    }
+
+    if (nearest.type === "ammo") {
+      if (nearest.key === currentGunKey) {
+        msg = `Press E to buy ammo - $${guns[nearest.key].ammoCost}`;
+      } else {
+        msg = `Ammo station for ${guns[nearest.key].name}`;
+      }
+    }
+  }
+
+  centerText.textContent = msg;
+
+  hud.innerHTML = `
+    Health: ${Math.max(0, Math.floor(player.health))}<br>
+    Coins: $${player.coins}<br>
+    Score: ${player.score}<br>
+    Wave: ${player.wave}<br>
+    Gun: ${currentGun.name}<br>
+    Ammo: ${currentGun.clip}/${currentGun.reserve}${currentGun.reloading ? " — Reloading..." : ""}
+  `;
 }
 
+/* =========================================================
+   GAME OVER
+========================================================= */
 
-function renderCompareView() { const header = document.getElementById("outputTableHeader"); const tbody = document.querySelector("#outputTable tbody"); header.innerHTML = `<th>Compare Files</th>`; tbody.innerHTML = `<tr><td><div class="compare-wrap"><div class="notice">Upload a second file to compare its format and names against the currently loaded file.</div>${lastBlueprintLoadSummary ? `<div class="notice compare-warning">Last blueprint load (${new Date(lastBlueprintLoadSummary.loadedAt).toLocaleString()}): Directors ${lastBlueprintLoadSummary.directorCount}, Managers ${lastBlueprintLoadSummary.managerCount}, Coaches ${lastBlueprintLoadSummary.coachCount}, Missing ${lastBlueprintLoadSummary.missing.length}.</div>` : ""}<div class="compare-grid"><div class="compare-card"><h3>Current File</h3><div id="currentFileSummary"></div></div><div class="compare-card"><h3>Comparison File</h3><input type="file" id="compareFileInput" accept=".xlsx,.xls,.csv" /><div id="compareFileSummary" class="small" style="margin-top:8px;">No comparison file loaded.</div></div></div><div id="compareResultsBox" style="margin-top:12px;"></div></div></td></tr>`; renderCurrentFileSummary(); const compareInput = document.getElementById("compareFileInput"); if (compareInput) compareInput.addEventListener("change", handleCompareFileUpload); if (compareResults) renderCompareResults(); }
-function handleCompareFileUpload(event) { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = function(e) { try { const data = new Uint8Array(e.target.result); const workbook = XLSX.read(data, { type: "array" }); const sheetName = workbook.SheetNames[0]; const sheet = workbook.Sheets[sheetName]; compareRawRows = XLSX.utils.sheet_to_json(sheet, { defval: "" }); if (!compareRawRows.length) { alert("No rows found in comparison file."); return; } setupCompareColumns(); processComparePeople(); compareResults = compareFiles(); renderCompareView(); setStatus(`Compared current file to ${file.name}`); } catch (error) { console.error(error); alert("There was an issue reading the comparison file."); } }; reader.readAsArrayBuffer(file); }
-function setupCompareColumns() { const headers = Object.keys(compareRawRows[0] || {}); compareColumns.first = findBestHeader(headers, possibleFirstNames); compareColumns.last = findBestHeader(headers, possibleLastNames); compareColumns.supervisor = findBestHeader(headers, possibleSupervisorNames); compareColumns.email = findBestHeader(headers, possibleEmailNames); }
-function processComparePeople() { comparePeople = []; compareRawRows.forEach((row, index) => { const first = row[compareColumns.first]; const last = row[compareColumns.last]; const name = makeDisplayName(first, last); if (!name) return; comparePeople.push({ id: `compare_person_${index}`, first: String(first || "").trim(), last: String(last || "").trim(), name, nameKey: normalizeName(name), email: String(row[compareColumns.email] || "").trim(), supervisorRaw: titleName(row[compareColumns.supervisor]), supervisorKey: normalizeName(row[compareColumns.supervisor]), raw: row }); }); comparePeople.sort((a, b) => a.name.localeCompare(b.name)); }
-function compareFiles() { const currentHeaders = Object.keys(rawRows[0] || {}); const compareHeaders = Object.keys(compareRawRows[0] || {}); const currentNormalizedHeaders = currentHeaders.map(normalizeHeader); const compareNormalizedHeaders = compareHeaders.map(normalizeHeader); const missingFromCompare = currentHeaders.filter(header => !compareNormalizedHeaders.includes(normalizeHeader(header))); const extraInCompare = compareHeaders.filter(header => !currentNormalizedHeaders.includes(normalizeHeader(header))); const sameHeaderOrder = currentHeaders.length === compareHeaders.length && currentHeaders.every((header, index) => normalizeHeader(header) === normalizeHeader(compareHeaders[index])); const requiredMappings = [{ label: "First Name", current: columns.first, compare: compareColumns.first }, { label: "Last Name", current: columns.last, compare: compareColumns.last }, { label: "Supervisor", current: columns.supervisor, compare: compareColumns.supervisor }, { label: "Username / Email", current: columns.email, compare: compareColumns.email }]; const currentNameKeys = new Set(people.map(p => p.nameKey)); const compareNameKeys = new Set(comparePeople.map(p => p.nameKey)); const matchedNames = people.filter(p => compareNameKeys.has(p.nameKey)); const missingNames = people.filter(p => !compareNameKeys.has(p.nameKey)); const newNames = comparePeople.filter(p => !currentNameKeys.has(p.nameKey)); const supervisorDifferences = []; matchedNames.forEach(currentPerson => { const comparePerson = comparePeople.find(p => p.nameKey === currentPerson.nameKey); if (!comparePerson) return; if (currentPerson.supervisorKey !== comparePerson.supervisorKey) supervisorDifferences.push({ name: currentPerson.name, currentSupervisor: currentPerson.supervisorRaw || "", compareSupervisor: comparePerson.supervisorRaw || "" }); }); return { currentHeaders, compareHeaders, sameHeaderOrder, missingFromCompare, extraInCompare, requiredMappings, currentCount: people.length, compareCount: comparePeople.length, matchedNames, missingNames, newNames, supervisorDifferences }; }
-function renderCurrentFileSummary() { const box = document.getElementById("currentFileSummary"); if (!box) return; if (!rawRows.length) { box.innerHTML = `<div class="notice">No current file loaded.</div>`; return; } box.innerHTML = `<div><strong>Rows:</strong> ${rawRows.length.toLocaleString()}</div><div><strong>People:</strong> ${people.length.toLocaleString()}</div><div><strong>First:</strong> ${escapeHTML(columns.first || "—")}</div><div><strong>Last:</strong> ${escapeHTML(columns.last || "—")}</div><div><strong>Supervisor:</strong> ${escapeHTML(columns.supervisor || "—")}</div><div><strong>Email:</strong> ${escapeHTML(columns.email || "—")}</div>`; }
-function renderCompareResults() { const box = document.getElementById("compareResultsBox"); const summaryBox = document.getElementById("compareFileSummary"); if (!box || !compareResults) return; if (summaryBox) summaryBox.innerHTML = `Rows: ${compareRawRows.length.toLocaleString()}<br>People: ${comparePeople.length.toLocaleString()}<br>First: ${escapeHTML(compareColumns.first || "—")}<br>Last: ${escapeHTML(compareColumns.last || "—")}<br>Supervisor: ${escapeHTML(compareColumns.supervisor || "—")}<br>Email: ${escapeHTML(compareColumns.email || "—")}`; const formatClass = compareResults.missingFromCompare.length === 0 && compareResults.extraInCompare.length === 0 ? "compare-good" : "compare-warning"; const orderText = compareResults.sameHeaderOrder ? "Headers match in the same order." : "Headers do not perfectly match in the same order."; box.innerHTML = `<div class="compare-section"><h3>Format Equivalency Summary</h3><div class="notice ${formatClass}"><strong>${orderText}</strong><br>Missing columns in comparison file: ${compareResults.missingFromCompare.length}<br>Extra columns in comparison file: ${compareResults.extraInCompare.length}</div>${renderRequiredMappingTable()}${renderHeaderComparisonTable()}</div><div class="compare-section"><h3>Name Match Summary</h3><div class="notice ${compareResults.missingNames.length === 0 ? "compare-good" : "compare-warning"}">Current people: ${compareResults.currentCount}<br>Comparison people: ${compareResults.compareCount}<br>Matched names: ${compareResults.matchedNames.length}<br>Missing from comparison file: ${compareResults.missingNames.length}<br>New names in comparison file: ${compareResults.newNames.length}</div>${renderNameDifferenceTable()}</div><div class="compare-section"><h3>Supervisor / Row Relationship Differences</h3><div class="notice ${compareResults.supervisorDifferences.length === 0 ? "compare-good" : "compare-warning"}">Supervisor differences found: ${compareResults.supervisorDifferences.length}</div>${renderSupervisorDifferenceTable()}</div>`; }
-function renderRequiredMappingTable() { return `<table><thead><tr><th>Required Field</th><th>Current File Column</th><th>Comparison File Column</th><th>Status</th></tr></thead><tbody>${compareResults.requiredMappings.map(item => { const same = normalizeHeader(item.current) === normalizeHeader(item.compare); return `<tr><td>${escapeHTML(item.label)}</td><td>${escapeHTML(item.current || "—")}</td><td>${escapeHTML(item.compare || "—")}</td><td class="${same ? "match-cell" : "partial-cell"}">${same ? "Equivalent" : "Different column name / mapping"}</td></tr>`; }).join("")}</tbody></table>`; }
-function renderHeaderComparisonTable() { const max = Math.max(compareResults.currentHeaders.length, compareResults.compareHeaders.length); let rows = ""; for (let i = 0; i < max; i++) { const currentHeader = compareResults.currentHeaders[i] || ""; const compareHeader = compareResults.compareHeaders[i] || ""; const same = normalizeHeader(currentHeader) === normalizeHeader(compareHeader); rows += `<tr><td>${i + 1}</td><td class="${same ? "match-cell" : "diff-cell"}">${escapeHTML(currentHeader || "—")}</td><td class="${same ? "match-cell" : "diff-cell"}">${escapeHTML(compareHeader || "—")}</td><td>${same ? "Same position" : "Different"}</td></tr>`; } return `<table><thead><tr><th>#</th><th>Current Header</th><th>Comparison Header</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`; }
-function renderNameDifferenceTable() { const missing = compareResults.missingNames.slice(0, 150); const added = compareResults.newNames.slice(0, 150); return `<table><thead><tr><th>Difference Type</th><th>Name</th><th>Supervisor</th><th>Email</th></tr></thead><tbody>${missing.map(p => `<tr><td class="diff-cell">Missing from comparison</td><td>${escapeHTML(p.name)}</td><td>${escapeHTML(p.supervisorRaw || "—")}</td><td>${escapeHTML(p.email || "—")}</td></tr>`).join("")}${added.map(p => `<tr><td class="partial-cell">New in comparison</td><td>${escapeHTML(p.name)}</td><td>${escapeHTML(p.supervisorRaw || "—")}</td><td>${escapeHTML(p.email || "—")}</td></tr>`).join("")}</tbody></table>`; }
-function renderSupervisorDifferenceTable() { if (!compareResults.supervisorDifferences.length) return `<div class="notice compare-good">No supervisor differences found for matched names.</div>`; return `<table><thead><tr><th>Name</th><th>Current Supervisor</th><th>Comparison Supervisor</th></tr></thead><tbody>${compareResults.supervisorDifferences.slice(0, 200).map(item => `<tr><td>${escapeHTML(item.name)}</td><td class="diff-cell">${escapeHTML(item.currentSupervisor || "—")}</td><td class="diff-cell">${escapeHTML(item.compareSupervisor || "—")}</td></tr>`).join("")}</tbody></table>`; }
-
-function setStatus(text) {
-  document.getElementById("statusPill").textContent = text;
+function checkGameOver() {
+  if (player.health <= 0 && player.alive) {
+    player.alive = false;
+    centerText.innerHTML = "You were eaten by goblins. Refresh to restart.";
+    document.exitPointerLock();
+  }
 }
 
-renderAll();
+/* =========================================================
+   MAIN LOOP
+========================================================= */
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  if (player.alive) {
+    updatePlayer(dt);
+    updateGun(dt);
+    updateWave(dt);
+    updateEnemies(dt);
+    updateBullets(dt);
+    updateRocks(dt);
+    updatePickups(dt);
+    checkGameOver();
+  }
+
+  updateHud();
+  renderer.render(scene, camera);
+}
+
+animate();
+
+/* =========================================================
+   RESIZE
+========================================================= */
+
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
 </script>
-
 </body>
 </html>
-
-
