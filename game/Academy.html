@@ -384,7 +384,10 @@ const roomsUnlocked = {
   kitchen: false,
   courtyard: false,
   workshop: false,
-  tower: false
+  tower: false,
+  chapel: false,
+  crypt: false,
+  forge: false
 };
 
 function box(w, h, d, x, y, z, mat, cast = true, receive = true) {
@@ -929,6 +932,16 @@ addBuyDoor(48, 12, 5, 0.7, "tower", 2600, "Unlock Tower Room");
 
 const windows = [];
 
+function getUnlockedWindows() {
+  return windows.filter(w => {
+    if (!w.roomName) return false;
+    return roomsUnlocked[w.roomName] === true;
+  });
+}
+
+const ENEMY_PATH_GRID_SIZE = 1.5;
+const ENEMY_PATH_MAX_SEARCH = 3500;
+
 function addWindowGlow(win) {
   const glow = new THREE.PointLight(0xffe0aa, 0.35, 5);
   glow.position.set(win.x, 1.55, win.z);
@@ -936,7 +949,7 @@ function addWindowGlow(win) {
   win.windowGlow = glow;
 }
 
-function addWindow(x, z, rotation, spawnX, spawnZ) {
+function addWindow(x, z, rotation, spawnX, spawnZ, roomName = "spawn") {
   const frame = new THREE.Group();
   frame.position.set(x, 1.55, z);
   frame.rotation.y = rotation;
@@ -949,6 +962,7 @@ function addWindow(x, z, rotation, spawnX, spawnZ) {
     rotation,
     spawnX,
     spawnZ,
+    roomName,
     boards: 8,
     maxBoards: 8,
     breakTimer: 0,
@@ -1070,21 +1084,21 @@ function rebuildWindowBoards(win) {
   }
 }
 
-addWindow(-10.9, -4, Math.PI / 2, -16, -4);
-addWindow(-10.9, 5, Math.PI / 2, -16, 5);
-addWindow(8, -8.9, 0, 8, -15);
-addWindow(23, -7.9, 0, 23, -15);
-addWindow(33.9, 0, Math.PI / 2, 40, 0);
-addWindow(-8, 22, Math.PI / 2, -15, 22);
-addWindow(25, 29.9, 0, 25, 37);
-addWindow(-34, -4, Math.PI / 2, -42, -4);
-addWindow(-24, -8.9, 0, -24, -16);
-addWindow(-34, 22, Math.PI / 2, -42, 22);
-addWindow(-24, 29.9, 0, -24, 38);
-addWindow(-8, 46, Math.PI / 2, -17, 46);
-addWindow(8, 46, Math.PI / 2, 17, 46);
-addWindow(48, -8.9, 0, 48, -17);
-addWindow(57.9, 24, Math.PI / 2, 66, 24);
+addWindow(-10.9, -4, Math.PI / 2, -16, -4, "spawn");
+addWindow(-10.9, 5, Math.PI / 2, -16, 5, "spawn");
+addWindow(8, -8.9, 0, 8, -15, "spawn");
+addWindow(23, -7.9, 0, 23, -15, "east");
+addWindow(33.9, 0, Math.PI / 2, 40, 0, "east");
+addWindow(-8, 22, Math.PI / 2, -15, 22, "basement");
+addWindow(25, 29.9, 0, 25, 37, "armory");
+addWindow(-34, -4, Math.PI / 2, -42, -4, "library");
+addWindow(-24, -8.9, 0, -24, -16, "library");
+addWindow(-34, 22, Math.PI / 2, -42, 22, "kitchen");
+addWindow(-24, 29.9, 0, -24, 38, "kitchen");
+addWindow(-8, 46, Math.PI / 2, -17, 46, "courtyard");
+addWindow(8, 46, Math.PI / 2, 17, 46, "courtyard");
+addWindow(48, -8.9, 0, 48, -17, "workshop");
+addWindow(57.9, 24, Math.PI / 2, 66, 24, "tower");
 
 /* =========================================================
    GUNS
@@ -1693,7 +1707,12 @@ function addGoblinGroundMarker(enemy) {
 }
 
 function spawnEnemy(typeKey = "green") {
-  const win = windows[Math.floor(Math.random() * windows.length)];
+  const validWindows = getUnlockedWindows();
+  if (!validWindows.length) {
+    console.warn("No unlocked windows available for spawning enemies.");
+    return;
+  }
+  const win = validWindows[Math.floor(Math.random() * validWindows.length)];
   const outsideStand = getWindowOutsideStandPosition(win);
   const insideStand = getWindowInsideStandPosition(win);
   const mesh = createGoblinMesh(typeKey);
@@ -1716,6 +1735,9 @@ function spawnEnemy(typeKey = "green") {
     targetWindow: win,
     outsideStand,
     insideStand,
+    path: [],
+    pathIndex: 0,
+    pathRefreshTimer: 0,
     attackCooldown: 0,
     throwCooldown: 2 + Math.random() * 2,
     animTime: Math.random() * 10,
@@ -1910,14 +1932,8 @@ function wouldCollide(x, z) {
       z + radius > c.z - c.d / 2 &&
       z - radius < c.z + c.d / 2;
     if (!inside) continue;
-    let throughOpenWindow = false;
-    for (const win of windows) {
-      if (win.boards <= 0 && isPointInWindowOpening(x, z, win, 0.35)) {
-        throughOpenWindow = true;
-        break;
-      }
-    }
-    if (throughOpenWindow) continue;
+    // Player should never walk through window openings.
+    // Windows are enemy entry points only.
     return true;
   }
   return false;
@@ -2159,6 +2175,156 @@ function enemyDistance2D(a, b) {
   return Math.sqrt(dx * dx + dz * dz);
 }
 
+
+function gridKey(gx, gz) {
+  return `${gx},${gz}`;
+}
+
+function worldToGrid(v) {
+  return {
+    gx: Math.round(v.x / ENEMY_PATH_GRID_SIZE),
+    gz: Math.round(v.z / ENEMY_PATH_GRID_SIZE)
+  };
+}
+
+function gridToWorld(gx, gz) {
+  return new THREE.Vector3(gx * ENEMY_PATH_GRID_SIZE, 0, gz * ENEMY_PATH_GRID_SIZE);
+}
+
+function isEnemyPathBlockedAt(x, z, enemy) {
+  if (enemy && enemy.state === "climbing_in") return false;
+  const type = enemyTypes[enemy.typeKey] || enemyTypes.green;
+  const radius = 0.42 * (type.scale || 1);
+  const nearAssignedWindow = enemy && enemy.targetWindow && enemy.outsideStand && enemyDistance2D({ x, z }, enemy.outsideStand) < 1.4;
+
+  for (const c of colliders) {
+    const inside = x + radius > c.x - c.w / 2 && x - radius < c.x + c.w / 2 && z + radius > c.z - c.d / 2 && z - radius < c.z + c.d / 2;
+    if (!inside) continue;
+    if (nearAssignedWindow && isPointInWindowOpening(x, z, enemy.targetWindow, 0.35)) continue;
+    return true;
+  }
+
+  if (typeof obstacleColliders !== "undefined") {
+    for (const c of obstacleColliders) {
+      const inside = x + radius > c.x - c.w / 2 && x - radius < c.x + c.w / 2 && z + radius > c.z - c.d / 2 && z - radius < c.z + c.d / 2;
+      if (inside) return true;
+    }
+  }
+
+  return false;
+}
+
+function hasClearEnemyLine(enemy, a, b) {
+  const steps = Math.ceil(a.distanceTo(b) / 0.6);
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const x = a.x + (b.x - a.x) * t;
+    const z = a.z + (b.z - a.z) * t;
+    if (isEnemyPathBlockedAt(x, z, enemy)) return false;
+  }
+  return true;
+}
+
+function smoothEnemyPath(path, enemy) {
+  if (!path || path.length <= 2) return path || [];
+  const result = [];
+  let i = 0;
+  while (i < path.length) {
+    result.push(path[i]);
+    let next = i + 1;
+    for (let j = path.length - 1; j > i + 1; j--) {
+      if (hasClearEnemyLine(enemy, path[i], path[j])) { next = j; break; }
+    }
+    i = next;
+  }
+  return result;
+}
+
+function findEnemyPath(enemy, startWorld, targetWorld) {
+  const start = worldToGrid(startWorld);
+  const goal = worldToGrid(targetWorld);
+  const open = [start];
+  const cameFrom = new Map();
+  const gScore = new Map();
+  const fScore = new Map();
+  const closed = new Set();
+  const startKey = gridKey(start.gx, start.gz);
+  const goalKey = gridKey(goal.gx, goal.gz);
+  const heuristic = (a, b) => Math.abs(a.gx - b.gx) + Math.abs(a.gz - b.gz);
+  gScore.set(startKey, 0);
+  fScore.set(startKey, heuristic(start, goal));
+  const dirs = [{ gx: 1, gz: 0 }, { gx: -1, gz: 0 }, { gx: 0, gz: 1 }, { gx: 0, gz: -1 }, { gx: 1, gz: 1 }, { gx: 1, gz: -1 }, { gx: -1, gz: 1 }, { gx: -1, gz: -1 }];
+  let searched = 0;
+  while (open.length && searched < ENEMY_PATH_MAX_SEARCH) {
+    searched++;
+    open.sort((a, b) => (fScore.get(gridKey(a.gx, a.gz)) ?? Infinity) - (fScore.get(gridKey(b.gx, b.gz)) ?? Infinity));
+    const current = open.shift();
+    const currentKey = gridKey(current.gx, current.gz);
+    if (currentKey === goalKey) {
+      const path = [];
+      let traceKey = currentKey;
+      let trace = current;
+      while (traceKey !== startKey) {
+        path.push(gridToWorld(trace.gx, trace.gz));
+        const prev = cameFrom.get(traceKey);
+        if (!prev) break;
+        trace = prev;
+        traceKey = gridKey(trace.gx, trace.gz);
+      }
+      path.reverse();
+      path.push(targetWorld.clone());
+      return smoothEnemyPath(path, enemy);
+    }
+    closed.add(currentKey);
+    for (const d of dirs) {
+      const neighbor = { gx: current.gx + d.gx, gz: current.gz + d.gz };
+      const neighborKey = gridKey(neighbor.gx, neighbor.gz);
+      if (closed.has(neighborKey)) continue;
+      const world = gridToWorld(neighbor.gx, neighbor.gz);
+      if (isEnemyPathBlockedAt(world.x, world.z, enemy)) continue;
+      const tentativeG = (gScore.get(currentKey) ?? Infinity) + (d.gx !== 0 && d.gz !== 0 ? 1.4 : 1);
+      if (tentativeG < (gScore.get(neighborKey) ?? Infinity)) {
+        cameFrom.set(neighborKey, current);
+        gScore.set(neighborKey, tentativeG);
+        fScore.set(neighborKey, tentativeG + heuristic(neighbor, goal));
+        if (!open.some(n => n.gx === neighbor.gx && n.gz === neighbor.gz)) open.push(neighbor);
+      }
+    }
+  }
+  return [];
+}
+
+function moveGoblinAlongPath(enemy, target, dt) {
+  enemy.pathRefreshTimer -= dt;
+  const needsPath = !enemy.path || enemy.path.length === 0 || enemy.pathIndex >= enemy.path.length || enemy.pathRefreshTimer <= 0;
+  if (needsPath) {
+    enemy.path = findEnemyPath(enemy, enemy.mesh.position.clone(), target.clone());
+    enemy.pathIndex = 0;
+    enemy.pathRefreshTimer = 1.0 + Math.random() * 0.4;
+  }
+  if (!enemy.path || enemy.path.length === 0) return moveGoblinToward(enemy, target, dt);
+  const point = enemy.path[enemy.pathIndex];
+  if (!point) return false;
+  if (enemyDistance2D(enemy.mesh.position, point) < 0.35) {
+    enemy.pathIndex++;
+    if (enemy.pathIndex >= enemy.path.length) return false;
+  }
+  const nextPoint = enemy.path[enemy.pathIndex];
+  if (!nextPoint) return false;
+  const pos = enemy.mesh.position;
+  const dir = nextPoint.clone().sub(pos); dir.y = 0;
+  if (dir.lengthSq() < 0.001) return false;
+  dir.normalize();
+  const step = enemy.speed * dt;
+  const nx = pos.x + dir.x * step;
+  const nz = pos.z + dir.z * step;
+  if (!isEnemyPathBlockedAt(nx, nz, enemy)) {
+    pos.x = nx; pos.z = nz; faceGoblinToward(enemy, nextPoint); return true;
+  }
+  enemy.path = []; enemy.pathIndex = 0; enemy.pathRefreshTimer = 0;
+  return false;
+}
+
 function moveGoblinToward(enemy, target, dt) {
   const pos = enemy.mesh.position;
   const desired = target.clone().sub(pos);
@@ -2293,8 +2459,23 @@ function updateEnemies(dt) {
 
     e.attackCooldown -= dt;
 
+    if (e.targetWindow && !roomsUnlocked[e.targetWindow.roomName]) {
+      const validWindows = getUnlockedWindows();
+      if (validWindows.length) {
+        e.targetWindow = validWindows[Math.floor(Math.random() * validWindows.length)];
+        e.outsideStand = getWindowOutsideStandPosition(e.targetWindow);
+        e.insideStand = getWindowInsideStandPosition(e.targetWindow);
+        e.path = [];
+        e.pathIndex = 0;
+        e.pathRefreshTimer = 0;
+        e.state = "walking_to_window";
+      }
+    }
+
     if (!e.targetWindow || !windows.includes(e.targetWindow)) {
-      e.targetWindow = windows[Math.floor(Math.random() * windows.length)];
+      const validWindows = getUnlockedWindows();
+      if (!validWindows.length) continue;
+      e.targetWindow = validWindows[Math.floor(Math.random() * validWindows.length)];
       e.outsideStand = getWindowOutsideStandPosition(e.targetWindow);
       e.insideStand = getWindowInsideStandPosition(e.targetWindow);
     }
@@ -2317,13 +2498,15 @@ function updateEnemies(dt) {
       const w = e.targetWindow;
       const target = e.outsideStand || getWindowOutsideStandPosition(w);
       const distToTarget = enemyDistance2D(e.mesh.position, target);
-      if (distToTarget > 0.12) {
-        moved = moveGoblinToward(e, target, dt);
+      if (distToTarget > 0.18) {
+        moved = moveGoblinAlongPath(e, target, dt);
         faceGoblinToward(e, new THREE.Vector3(w.x, 0, w.z));
       } else {
         e.mesh.position.x = target.x;
         e.mesh.position.z = target.z;
         e.mesh.position.y = 0;
+        e.path = [];
+        e.pathIndex = 0;
         faceGoblinToward(e, new THREE.Vector3(w.x, 0, w.z));
 
         if (w.boards > 0) {
@@ -2378,7 +2561,16 @@ function updateEnemies(dt) {
 
       if (dist > 1.1) {
         dir.normalize();
-        e.mesh.position.add(dir.multiplyScalar(e.speed * dt)); moved = true;
+        const step = e.speed * dt;
+        const nx = e.mesh.position.x + dir.x * step;
+        const nz = e.mesh.position.z + dir.z * step;
+        if (!isEnemyPathBlockedAt(nx, nz, e)) {
+          e.mesh.position.x = nx;
+          e.mesh.position.z = nz;
+          moved = true;
+        } else {
+          moved = moveGoblinToward(e, player.pos, dt);
+        }
       } else {
         if (e.attackCooldown <= 0 && player.hurtCooldown <= 0) {
           player.health -= e.damage;
