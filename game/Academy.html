@@ -129,7 +129,7 @@
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x090908);
-scene.fog = new THREE.Fog(0x090908, 20, 90);
+scene.fog = new THREE.Fog(0x090908, 35, 130);
 
 const camera = new THREE.PerspectiveCamera(
   75,
@@ -154,9 +154,13 @@ const startBtn = document.getElementById("startBtn");
    LIGHTING
 ========================================================= */
 
-const ambient = new THREE.AmbientLight(0x888877, 0.45);
+const ambient = new THREE.AmbientLight(0x888877, 0.72);
 scene.add(ambient);
 
+const hemi = new THREE.HemisphereLight(0xdde8ff, 0x2d2418, 0.55);
+scene.add(hemi);
+
+const floatingTexts = [];
 const moon = new THREE.DirectionalLight(0xbecfff, 0.75);
 moon.position.set(30, 60, -25);
 moon.castShadow = true;
@@ -264,7 +268,12 @@ const roomsUnlocked = {
   spawn: true,
   east: false,
   basement: false,
-  armory: false
+  armory: false,
+  library: false,
+  kitchen: false,
+  courtyard: false,
+  workshop: false,
+  tower: false
 };
 
 function box(w, h, d, x, y, z, mat, cast = true, receive = true) {
@@ -276,6 +285,35 @@ function box(w, h, d, x, y, z, mat, cast = true, receive = true) {
   return mesh;
 }
 
+function addTable(x, z) {
+  box(2.2, 0.2, 1.2, x, 0.85, z, mats.trim);
+  box(0.18, 0.8, 0.18, x - 0.9, 0.4, z - 0.45, mats.trim);
+  box(0.18, 0.8, 0.18, x + 0.9, 0.4, z - 0.45, mats.trim);
+  box(0.18, 0.8, 0.18, x - 0.9, 0.4, z + 0.45, mats.trim);
+  box(0.18, 0.8, 0.18, x + 0.9, 0.4, z + 0.45, mats.trim);
+}
+
+function addShelf(x, z, rotY = 0) {
+  const group = new THREE.Group();
+  group.position.set(x, 1.1, z);
+  group.rotation.y = rotY;
+  const shelf = new THREE.Mesh(new THREE.BoxGeometry(2.8, 2.2, 0.35), mats.trim);
+  group.add(shelf);
+  for (let i = 0; i < 10; i++) {
+    const book = new THREE.Mesh(
+      new THREE.BoxGeometry(0.16, 0.5, 0.12),
+      new THREE.MeshStandardMaterial({ color: [0x663333, 0x333366, 0x335533, 0x666633][i % 4] })
+    );
+    book.position.set(-1.1 + i * 0.24, 0.3 + (i % 3) * 0.45, -0.25);
+    group.add(book);
+  }
+  scene.add(group);
+}
+
+function addCrateStack(x, z) {
+  box(1, 0.8, 1, x, 0.4, z, mats.trim);
+  box(0.9, 0.7, 0.9, x + 0.5, 1.15, z + 0.2, mats.trim);
+}
 function addCollider(x, z, w, d) {
   colliders.push({ x, z, w, d });
 }
@@ -311,6 +349,24 @@ addRoom(0, 0, 22, 18, "spawn");
 addRoom(24, 0, 20, 16, "east");
 addRoom(0, 22, 18, 18, "basement");
 addRoom(25, 21, 22, 18, "armory");
+addRoom(-24, 0, 20, 18, "library");
+addRoom(-24, 22, 18, 16, "kitchen");
+addRoom(0, 46, 28, 22, "courtyard");
+addRoom(48, 0, 20, 18, "workshop");
+addRoom(48, 24, 18, 18, "tower");
+
+// remove doorway blockers so buy doors control passage
+const doorCutouts = [
+  { x: 11, z: 0, w: 0.8, d: 5.2 }, { x: 0, z: 9, w: 5.2, d: 0.8 }, { x: 14, z: 16, w: 5.2, d: 0.8 },
+  { x: -11, z: 0, w: 0.8, d: 5.2 }, { x: -24, z: 11, w: 5.2, d: 0.8 }, { x: 0, z: 33, w: 5.2, d: 0.8 },
+  { x: 35, z: 0, w: 0.8, d: 5.2 }, { x: 48, z: 12, w: 5.2, d: 0.8 }
+];
+for (let i = colliders.length - 1; i >= 0; i--) {
+  const c = colliders[i];
+  if (doorCutouts.some(dc => Math.abs(c.x - dc.x) < 0.4 && Math.abs(c.z - dc.z) < 0.4 && c.w >= dc.w - 0.3 && c.d >= dc.d - 0.3)) {
+    colliders.splice(i, 1);
+  }
+}
 
 // remove visual openings by placing dark hallway floors
 box(7, 0.12, 5, 12, -0.03, 0, mats.floor);
@@ -327,6 +383,21 @@ addLamp(0, 3.8, 0);
 addLamp(24, 3.8, 0);
 addLamp(0, 3.8, 22);
 addLamp(25, 3.8, 21, 0x9fd6ff, 1.8);
+addLamp(-24, 3.8, 0, 0xffc07a, 1.65);
+addLamp(-24, 3.8, 22, 0xffb36b, 1.7);
+addLamp(0, 4.2, 46, 0xffd28a, 1.8);
+addLamp(48, 3.8, 0, 0xffc07a, 1.65);
+addLamp(48, 4.0, 24, 0x8fc8ff, 2.1);
+
+addTable(-2, -5);
+addTable(4, 4);
+addShelf(-30, -3, Math.PI / 2);
+addShelf(-30, 4, Math.PI / 2);
+addTable(-23, 23);
+addCrateStack(44, -4);
+addCrateStack(51, 3);
+box(3.2, 0.4, 3.2, 0, 0.2, 46, mats.trim);
+box(2.2, 0.8, 2.2, 48, 0.5, 24, new THREE.MeshStandardMaterial({ color: 0x335577, emissive: 0x112244 }));
 
 /* =========================================================
    DOORS
@@ -357,6 +428,11 @@ function addBuyDoor(x, z, w, d, roomName, cost, label) {
 addBuyDoor(11, 0, 0.7, 5, "east", 900, "Unlock East Hall");
 addBuyDoor(0, 9, 5, 0.7, "basement", 1200, "Unlock Basement");
 addBuyDoor(14, 16, 5, 0.7, "armory", 2000, "Unlock Armory");
+addBuyDoor(-11, 0, 0.7, 5, "library", 1000, "Unlock Library");
+addBuyDoor(-24, 11, 5, 0.7, "kitchen", 1300, "Unlock Kitchen");
+addBuyDoor(0, 33, 5, 0.7, "courtyard", 1800, "Unlock Courtyard");
+addBuyDoor(35, 0, 0.7, 5, "workshop", 1600, "Unlock Workshop");
+addBuyDoor(48, 12, 5, 0.7, "tower", 2600, "Unlock Tower Room");
 
 /* =========================================================
    WINDOWS AND BOARDING
@@ -423,6 +499,14 @@ addWindow(23, -7.9, 0, 23, -15);
 addWindow(33.9, 0, Math.PI / 2, 40, 0);
 addWindow(-8, 22, Math.PI / 2, -15, 22);
 addWindow(25, 29.9, 0, 25, 37);
+addWindow(-34, -4, Math.PI / 2, -42, -4);
+addWindow(-24, -8.9, 0, -24, -16);
+addWindow(-34, 22, Math.PI / 2, -42, 22);
+addWindow(-24, 29.9, 0, -24, 38);
+addWindow(-8, 46, Math.PI / 2, -17, 46);
+addWindow(8, 46, Math.PI / 2, 17, 46);
+addWindow(48, -8.9, 0, 48, -17);
+addWindow(57.9, 24, Math.PI / 2, 66, 24);
 
 /* =========================================================
    GUNS
@@ -536,24 +620,40 @@ function addWallGun(key, x, y, z, rotY) {
   group.position.set(x, y, z);
   group.rotation.y = rotY;
 
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(1.3, 0.28, 0.32),
-    new THREE.MeshStandardMaterial({ color: data.color, metalness: 0.4, roughness: 0.35 })
+  const mount = new THREE.Mesh(
+    new THREE.BoxGeometry(2.2, 1.1, 0.12),
+    new THREE.MeshStandardMaterial({ color: 0x1b1511, roughness: 0.8, emissive: 0x1a120f })
   );
-  const barrel = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.06, 0.06, 0.9, 12),
-    mats.darkMetal
-  );
-  barrel.rotation.z = Math.PI / 2;
-  barrel.position.x = 0.85;
+  mount.position.z = 0.12;
+  group.add(mount);
 
-  const stock = new THREE.Mesh(
-    new THREE.BoxGeometry(0.4, 0.35, 0.36),
-    mats.trim
-  );
-  stock.position.x = -0.85;
-
-  group.add(body, barrel, stock);
+  const bodyMat = new THREE.MeshStandardMaterial({ color: data.color, metalness: 0.45, roughness: 0.35 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.24, 0.26), bodyMat);
+  body.position.z = 0.2;
+  group.add(body);
+  if (key === "rustyPistol") {
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.55, 10), mats.darkMetal);
+    barrel.rotation.z = Math.PI / 2; barrel.position.set(0.55, 0.02, 0.2); group.add(barrel);
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.45, 0.2), mats.darkMetal);
+    grip.position.set(-0.25, -0.28, 0.2); grip.rotation.z = -0.35; group.add(grip);
+  } else if (key === "trenchShotgun") {
+    group.add(new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.18, 0.24), new THREE.MeshStandardMaterial({ color: 0x6f4c2e })));
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 1.4, 12), mats.darkMetal);
+    barrel.rotation.z = Math.PI / 2; barrel.position.set(0.9, 0.03, 0.2); group.add(barrel);
+  } else if (key === "burstCarbine") {
+    body.material = new THREE.MeshStandardMaterial({ color: 0x1c2530, metalness: 0.5, roughness: 0.3 });
+    group.add(new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.35, 0.16), new THREE.MeshStandardMaterial({ color: 0x3a6da3 })));
+    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.46, 0.12), mats.darkMetal); mag.position.set(-0.1, -0.28, 0.2); group.add(mag);
+  } else if (key === "autoRifle") {
+    body.material = new THREE.MeshStandardMaterial({ color: 0x121212, metalness: 0.6, roughness: 0.28 });
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.5, 12), mats.darkMetal);
+    barrel.rotation.z = Math.PI / 2; barrel.position.set(0.95, 0.02, 0.2); group.add(barrel);
+    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.5, 0.12), mats.darkMetal); mag.position.set(-0.1, -0.28, 0.2); mag.rotation.z = 0.22; group.add(mag);
+  } else if (key === "laserLance") {
+    body.material = new THREE.MeshStandardMaterial({ color: 0x0f2732, metalness: 0.7, roughness: 0.2, emissive: 0x113344 });
+    const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.4, 14), new THREE.MeshStandardMaterial({ color: 0x66f3ff, emissive: 0x2288aa }));
+    tube.rotation.z = Math.PI / 2; tube.position.set(0.9, 0.02, 0.2); group.add(tube);
+  }
   scene.add(group);
 
   const sign = createTextSprite(`${data.name}\n$${data.cost}`);
@@ -578,6 +678,10 @@ addWallGun("trenchShotgun", -8, 1.5, 8.4, 0);
 addWallGun("burstCarbine", 22, 1.5, -7.4, 0);
 addWallGun("autoRifle", 32.5, 1.5, 4, Math.PI / 2);
 addWallGun("laserLance", 18, 1.5, 28.4, Math.PI);
+addWallGun("burstCarbine", -30, 1.5, 7.5, 0);
+addWallGun("trenchShotgun", -28, 1.5, 28.5, Math.PI);
+addWallGun("autoRifle", 52, 1.5, -7.5, 0);
+addWallGun("laserLance", 52, 1.5, 30.5, Math.PI);
 
 const ammoStations = [];
 
@@ -606,6 +710,10 @@ function addAmmoStation(x, z, key) {
 addAmmoStation(5, 6, "rustyPistol");
 addAmmoStation(27, -4, "burstCarbine");
 addAmmoStation(28, 25, "laserLance");
+addAmmoStation(-19, 5, "burstCarbine");
+addAmmoStation(-19, 26, "trenchShotgun");
+addAmmoStation(44, -5, "autoRifle");
+addAmmoStation(44, 28, "laserLance");
 
 /* =========================================================
    FIRST-PERSON GUN MODEL
@@ -676,6 +784,20 @@ function rebuildGunView() {
   muzzle.visible = false;
   gunView.add(muzzle);
 
+  const flash = new THREE.Mesh(
+    new THREE.ConeGeometry(0.18 * g.size, 0.55 * g.size, 16),
+    new THREE.MeshBasicMaterial({
+      color: g.laser ? 0x55ddff : 0xffdd66,
+      transparent: true,
+      opacity: 0.9
+    })
+  );
+  flash.rotation.x = Math.PI / 2;
+  flash.position.set(0.35, -0.29, -2.55);
+  flash.name = "muzzleFlash";
+  flash.visible = false;
+  gunView.add(flash);
+
   camera.add(gunView);
 }
 
@@ -710,6 +832,27 @@ function createTextSprite(text) {
   return sprite;
 }
 
+function createDamageSprite(text, color = 0xffffff) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.font = "bold 54px Arial";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = "black";
+  ctx.strokeText(text, 128, 64);
+  ctx.fillStyle = "#" + color.toString(16).padStart(6, "0");
+  ctx.fillText(text, 128, 64);
+  const tex = new THREE.CanvasTexture(canvas);
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(1.4, 0.7, 1);
+  return sprite;
+}
+
 /* =========================================================
    PROJECTILES
 ========================================================= */
@@ -740,10 +883,19 @@ function fireBurst(count) {
       currentGun.clip--;
 
       const muzzle = gunView.getObjectByName("muzzle");
-      if (muzzle) {
-        muzzle.visible = true;
-        setTimeout(() => muzzle.visible = false, 40);
+      const flash = gunView.getObjectByName("muzzleFlash");
+      if (muzzle) muzzle.visible = true;
+      if (flash) {
+        flash.visible = true;
+        flash.scale.setScalar(0.8 + Math.random() * 0.7);
+        flash.rotation.z = Math.random() * Math.PI;
       }
+      gunView.rotation.x -= 0.08;
+      gunView.position.z += 0.04;
+      setTimeout(() => {
+        if (muzzle) muzzle.visible = false;
+        if (flash) flash.visible = false;
+      }, 45);
 
       for (let p = 0; p < currentGun.pellets; p++) {
         spawnBullet();
@@ -847,7 +999,8 @@ function createGoblinMesh(typeKey) {
 
   const skin = new THREE.MeshStandardMaterial({
     color: type.color,
-    roughness: 0.75
+    roughness: 0.75,
+    emissive: 0x000000
   });
 
   const pants = new THREE.MeshStandardMaterial({
@@ -861,11 +1014,13 @@ function createGoblinMesh(typeKey) {
 
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.45, 18, 14), skin);
   body.position.y = 0.85;
+  body.name = "body";
   body.scale.set(0.8, 1.1, 0.55);
   group.add(body);
 
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.42, 18, 14), skin);
   head.position.y = 1.45;
+  head.name = "head";
   head.scale.set(1, 0.85, 0.85);
   group.add(head);
 
@@ -908,20 +1063,24 @@ function createGoblinMesh(typeKey) {
 
   const leg1 = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 0.55, 8), pants);
   leg1.position.set(-0.18, 0.05, 0);
+  leg1.name = "leftLeg";
   group.add(leg1);
 
   const leg2 = leg1.clone();
   leg2.position.x = 0.18;
+  leg2.name = "rightLeg";
   group.add(leg2);
 
   const arm1 = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.75, 8), skin);
   arm1.position.set(-0.5, 0.95, 0);
   arm1.rotation.z = 0.55;
+  arm1.name = "leftArm";
   group.add(arm1);
 
   const arm2 = arm1.clone();
   arm2.position.x = 0.5;
   arm2.rotation.z = -0.55;
+  arm2.name = "rightArm";
   group.add(arm2);
 
   group.scale.setScalar(type.scale);
@@ -956,7 +1115,16 @@ function spawnEnemy(typeKey = "green") {
     state: "outside",
     targetWindow: win,
     attackCooldown: 0,
-    throwCooldown: 2 + Math.random() * 2
+    throwCooldown: 2 + Math.random() * 2,
+    animTime: Math.random() * 10,
+    attackAnim: 0,
+    tearAnim: 0,
+    hitFlashTimer: 0,
+    hitboxes: [
+      { name: "head", offset: new THREE.Vector3(0, 1.45 * type.scale, -0.05), radius: 0.42 * type.scale, multiplier: 1.8 },
+      { name: "body", offset: new THREE.Vector3(0, 0.85 * type.scale, 0), radius: 0.48 * type.scale, multiplier: 1.0 },
+      { name: "legs", offset: new THREE.Vector3(0, 0.35 * type.scale, 0), radius: 0.35 * type.scale, multiplier: 0.75 }
+    ]
   });
 }
 
@@ -1188,15 +1356,18 @@ function updateBullets(dt) {
 
     for (let j = enemies.length - 1; j >= 0; j--) {
       const e = enemies[j];
-      const dist = b.pos.distanceTo(e.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)));
-
-      if (dist < 0.65 * enemyTypes[e.typeKey].scale) {
-        e.health -= b.damage;
+      let bestHit = null;
+      for (const hb of e.hitboxes) {
+        const center = e.mesh.position.clone().add(hb.offset);
+        const dist = b.pos.distanceTo(center);
+        if (dist < hb.radius) { bestHit = hb; break; }
+      }
+      if (bestHit) {
+        const damageDone = b.damage * bestHit.multiplier;
+        e.health -= damageDone;
+        showGoblinHit(e, bestHit.name, damageDone);
         hit = true;
-
-        if (e.health <= 0) {
-          killEnemy(j);
-        }
+        if (e.health <= 0) killEnemy(j);
         break;
       }
     }
@@ -1265,14 +1436,95 @@ function killEnemy(index) {
   player.coins += e.reward;
   player.score += e.reward;
   dropPickup(e.mesh.position.x, e.mesh.position.z);
+  if (e.healthBar) {
+    scene.remove(e.healthBar);
+    e.healthBar.traverse(o => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) o.material.dispose();
+    });
+  }
   scene.remove(e.mesh);
+  e.mesh.traverse(o => { if (o.geometry) o.geometry.dispose(); });
   enemies.splice(index, 1);
+}
+
+function showGoblinHit(enemy, hitZone, damage) {
+  enemy.hitFlashTimer = 0.12;
+  const color = hitZone === "head" ? 0xffff66 : hitZone === "body" ? 0xff5555 : 0xffaa33;
+  const sprite = createDamageSprite(Math.floor(damage), color);
+  sprite.position.copy(enemy.mesh.position);
+  sprite.position.y += hitZone === "head" ? 2.2 : 1.5;
+  scene.add(sprite);
+  floatingTexts.push({ sprite, life: 0.65, vel: new THREE.Vector3((Math.random()-0.5)*0.5,1.2,(Math.random()-0.5)*0.5) });
+}
+
+function updateFloatingTexts(dt) {
+  for (let i = floatingTexts.length - 1; i >= 0; i--) {
+    const f = floatingTexts[i];
+    f.life -= dt;
+    f.sprite.position.add(f.vel.clone().multiplyScalar(dt));
+    f.sprite.material.opacity = Math.max(0, f.life / 0.65);
+    if (f.life <= 0) {
+      scene.remove(f.sprite);
+      if (f.sprite.material.map) f.sprite.material.map.dispose();
+      f.sprite.material.dispose();
+      floatingTexts.splice(i, 1);
+    }
+  }
+}
+
+function animateGoblinWalk(enemy, moving) {
+  const mesh = enemy.mesh;
+  const leftLeg = mesh.getObjectByName("leftLeg");
+  const rightLeg = mesh.getObjectByName("rightLeg");
+  const leftArm = mesh.getObjectByName("leftArm");
+  const rightArm = mesh.getObjectByName("rightArm");
+  const head = mesh.getObjectByName("head");
+  const body = mesh.getObjectByName("body");
+  const swing = moving ? Math.sin(enemy.animTime) : 0;
+  const bob = moving ? Math.abs(Math.sin(enemy.animTime)) * 0.07 : 0;
+  if (leftLeg) leftLeg.rotation.x = swing * 0.55;
+  if (rightLeg) rightLeg.rotation.x = -swing * 0.55;
+  if (leftArm) leftArm.rotation.x = -swing * 0.45;
+  if (rightArm) rightArm.rotation.x = swing * 0.45;
+  if (body) body.position.y = 0.95 + bob;
+  if (head) { head.position.y = 1.45 + bob; head.rotation.z = Math.sin(enemy.animTime * 0.5) * 0.08; }
+}
+
+function animateGoblinAttack(enemy, dt) {
+  if (enemy.attackAnim <= 0) return;
+  enemy.attackAnim -= dt;
+  const t = enemy.attackAnim / 0.35;
+  const punch = Math.sin((1 - t) * Math.PI);
+  const leftArm = enemy.mesh.getObjectByName("leftArm");
+  const rightArm = enemy.mesh.getObjectByName("rightArm");
+  if (leftArm) { leftArm.rotation.x = -1.2 * punch; leftArm.rotation.z = 0.7; }
+  if (rightArm) { rightArm.rotation.x = -1.2 * punch; rightArm.rotation.z = -0.7; }
+  enemy.mesh.position.y += punch * 0.035;
+}
+function shakeWindowBoards(win) {
+  for (let i = 0; i < win.boardMeshes.length; i++) {
+    const b = win.boardMeshes[i];
+    b.position.x = Math.sin(performance.now() * 0.03 + i) * 0.04;
+    b.rotation.z += Math.sin(performance.now() * 0.02 + i) * 0.002;
+  }
+}
+function animateGoblinTearing(enemy, dt) {
+  if (enemy.tearAnim <= 0) return;
+  enemy.tearAnim -= dt;
+  const claw = Math.sin(performance.now() * 0.035);
+  const leftArm = enemy.mesh.getObjectByName("leftArm");
+  const rightArm = enemy.mesh.getObjectByName("rightArm");
+  if (leftArm) { leftArm.rotation.x = -0.9 + claw * 0.4; leftArm.rotation.z = 0.9; }
+  if (rightArm) { rightArm.rotation.x = -0.9 - claw * 0.4; rightArm.rotation.z = -0.9; }
 }
 
 function updateEnemies(dt) {
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
     const type = enemyTypes[e.typeKey];
+    let moved = false;
+    e.animTime += dt * e.speed * 4;
 
     e.attackCooldown -= dt;
 
@@ -1289,9 +1541,11 @@ function updateEnemies(dt) {
 
       if (dir.length() > 0.6) {
         dir.normalize();
-        e.mesh.position.add(dir.multiplyScalar(e.speed * dt));
+        e.mesh.position.add(dir.multiplyScalar(e.speed * dt)); moved = true;
       } else {
         if (w.boards > 0) {
+          e.tearAnim = 0.4;
+          shakeWindowBoards(w);
           w.breakTimer += dt;
           if (w.breakTimer > 0.9) {
             w.breakTimer = 0;
@@ -1318,18 +1572,25 @@ function updateEnemies(dt) {
 
       if (dist > 1.1) {
         dir.normalize();
-        e.mesh.position.add(dir.multiplyScalar(e.speed * dt));
+        e.mesh.position.add(dir.multiplyScalar(e.speed * dt)); moved = true;
       } else {
         if (e.attackCooldown <= 0 && player.hurtCooldown <= 0) {
           player.health -= e.damage;
           player.hurtCooldown = 0.45;
           e.attackCooldown = 0.75;
+          e.attackAnim = 0.35;
         }
       }
     }
-
-    // walking bob
-    e.mesh.position.y = Math.sin(performance.now() * 0.006 + i) * 0.04;
+    animateGoblinWalk(e, moved);
+    animateGoblinAttack(e, dt);
+    animateGoblinTearing(e, dt);
+    if (e.hitFlashTimer > 0) {
+      e.hitFlashTimer -= dt;
+      e.mesh.traverse(o => { if (o.isMesh && o.material && o.material.emissive) o.material.emissive.setHex(0x661111); });
+    } else {
+      e.mesh.traverse(o => { if (o.isMesh && o.material && o.material.emissive) o.material.emissive.setHex(0x000000); });
+    }
 
     // health bar
     if (!e.healthBar) {
@@ -1536,6 +1797,7 @@ function animate() {
     updateBullets(dt);
     updateRocks(dt);
     updatePickups(dt);
+    updateFloatingTexts(dt);
     checkGameOver();
   }
 
