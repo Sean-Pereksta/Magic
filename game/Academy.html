@@ -486,7 +486,80 @@ function addCollider(x, z, w, d) {
   colliders.push({ x, z, w, d });
 }
 
-function addRoom(cx, cz, w, d, name) {
+function addWallSegment(x, z, w, d, mat = mats.wall) {
+  box(w, 3.8, d, x, 1.9, z, mat);
+  addCollider(x, z, w, d);
+}
+
+function addHorizontalWallWithWindows(cx, z, totalW, wallD, windowsOnSide) {
+  const wallLeftEdge = cx - totalW / 2;
+  const wallRightEdge = cx + totalW / 2;
+
+  const sorted = windowsOnSide
+    .map(ws => ({
+      x: ws.x,
+      width: ws.width || 3.0,
+      left: ws.x - (ws.width || 3.0) / 2,
+      right: ws.x + (ws.width || 3.0) / 2
+    }))
+    .sort((a, b) => a.left - b.left);
+
+  let cursor = wallLeftEdge;
+
+  for (const gap of sorted) {
+    const segmentW = gap.left - cursor;
+
+    if (segmentW > 0.05) {
+      addWallSegment(cursor + segmentW / 2, z, segmentW, wallD);
+    }
+
+    box(gap.width, 0.85, wallD, gap.x, 0.425, z, mats.wall);
+    box(gap.width, 1.05, wallD, gap.x, 3.275, z, mats.wall);
+
+    cursor = gap.right;
+  }
+
+  const finalW = wallRightEdge - cursor;
+  if (finalW > 0.05) {
+    addWallSegment(cursor + finalW / 2, z, finalW, wallD);
+  }
+}
+
+function addVerticalWallWithWindows(x, cz, totalD, wallW, windowsOnSide) {
+  const wallTopEdge = cz - totalD / 2;
+  const wallBottomEdge = cz + totalD / 2;
+
+  const sorted = windowsOnSide
+    .map(ws => ({
+      z: ws.z,
+      width: ws.width || 3.0,
+      top: ws.z - (ws.width || 3.0) / 2,
+      bottom: ws.z + (ws.width || 3.0) / 2
+    }))
+    .sort((a, b) => a.top - b.top);
+
+  let cursor = wallTopEdge;
+
+  for (const gap of sorted) {
+    const segmentD = gap.top - cursor;
+
+    if (segmentD > 0.05) {
+      addWallSegment(x, cursor + segmentD / 2, wallW, segmentD);
+    }
+
+    box(wallW, 0.85, gap.width, x, 0.425, gap.z, mats.wall);
+    box(wallW, 1.05, gap.width, x, 3.275, gap.z, mats.wall);
+
+    cursor = gap.bottom;
+  }
+
+  const finalD = wallBottomEdge - cursor;
+  if (finalD > 0.05) {
+    addWallSegment(x, cursor + finalD / 2, wallW, finalD);
+  }
+}
+
+function addRoom(cx, cz, w, d, name, windowSlots = []) {
   box(w, 0.25, d, cx, -0.1, cz, mats.floor, false, true);
 
   // ceiling
@@ -499,29 +572,75 @@ function addRoom(cx, cz, w, d, name) {
   box(1.2, 0.7, 0.8, cx - w/2 + 2, 0.35, cz - d/2 + 2, mats.trim);
   box(1.4, 0.5, 0.7, cx + w/2 - 2.4, 0.25, cz + d/2 - 2.4, mats.trim);
 
-  // outer walls
-  box(w, 3.8, 0.35, cx, 1.9, cz - d/2, mats.wall);
-  addCollider(cx, cz - d/2, w, 0.35);
+  // outer walls with real window slots
+  const northWallZ = cz - d / 2;
+  const southWallZ = cz + d / 2;
+  const westWallX = cx - w / 2;
+  const eastWallX = cx + w / 2;
 
-  box(w, 3.8, 0.35, cx, 1.9, cz + d/2, mats.wall);
-  addCollider(cx, cz + d/2, w, 0.35);
+  const northWindows = windowSlots.filter(ws => ws.side === "north");
+  const southWindows = windowSlots.filter(ws => ws.side === "south");
+  const westWindows = windowSlots.filter(ws => ws.side === "west");
+  const eastWindows = windowSlots.filter(ws => ws.side === "east");
 
-  box(0.35, 3.8, d, cx - w/2, 1.9, cz, mats.wall);
-  addCollider(cx - w/2, cz, 0.35, d);
+  if (northWindows.length === 0) {
+    addWallSegment(cx, northWallZ, w, 0.35);
+  } else {
+    addHorizontalWallWithWindows(cx, northWallZ, w, 0.35, northWindows);
+  }
 
-  box(0.35, 3.8, d, cx + w/2, 1.9, cz, mats.wall);
-  addCollider(cx + w/2, cz, 0.35, d);
+  if (southWindows.length === 0) {
+    addWallSegment(cx, southWallZ, w, 0.35);
+  } else {
+    addHorizontalWallWithWindows(cx, southWallZ, w, 0.35, southWindows);
+  }
+
+  if (westWindows.length === 0) {
+    addWallSegment(westWallX, cz, 0.35, d);
+  } else {
+    addVerticalWallWithWindows(westWallX, cz, d, 0.35, westWindows);
+  }
+
+  if (eastWindows.length === 0) {
+    addWallSegment(eastWallX, cz, 0.35, d);
+  } else {
+    addVerticalWallWithWindows(eastWallX, cz, d, 0.35, eastWindows);
+  }
 }
 
-addRoom(0, 0, 22, 18, "spawn");
-addRoom(24, 0, 20, 16, "east");
-addRoom(0, 22, 18, 18, "basement");
-addRoom(25, 21, 22, 18, "armory");
-addRoom(-24, 0, 20, 18, "library");
-addRoom(-24, 22, 18, 16, "kitchen");
-addRoom(0, 46, 28, 22, "courtyard");
-addRoom(48, 0, 20, 18, "workshop");
-addRoom(48, 24, 18, 18, "tower");
+addRoom(0, 0, 22, 18, "spawn", [
+  { side: "west", z: -4, width: 3.0 },
+  { side: "west", z: 5, width: 3.0 },
+  { side: "north", x: 8, width: 3.0 }
+]);
+addRoom(24, 0, 20, 16, "east", [
+  { side: "north", x: 23, width: 3.0 },
+  { side: "east", z: 0, width: 3.0 }
+]);
+addRoom(0, 22, 18, 18, "basement", [
+  { side: "west", z: 22, width: 3.0 }
+]);
+addRoom(25, 21, 22, 18, "armory", [
+  { side: "south", x: 25, width: 3.0 }
+]);
+addRoom(-24, 0, 20, 18, "library", [
+  { side: "west", z: -4, width: 3.0 },
+  { side: "north", x: -24, width: 3.0 }
+]);
+addRoom(-24, 22, 18, 16, "kitchen", [
+  { side: "west", z: 22, width: 3.0 },
+  { side: "south", x: -24, width: 3.0 }
+]);
+addRoom(0, 46, 28, 22, "courtyard", [
+  { side: "west", z: 46, width: 3.0 },
+  { side: "east", z: 46, width: 3.0 }
+]);
+addRoom(48, 0, 20, 18, "workshop", [
+  { side: "north", x: 48, width: 3.0 }
+]);
+addRoom(48, 24, 18, 18, "tower", [
+  { side: "east", z: 24, width: 3.0 }
+]);
 addCouch(-5, 3, Math.PI / 2); addChair(4, 4, -0.6); addChair(5, 3, 0.4); addRubble(7, -5, 5); addWallTorch(-10.7, 2.4, 0, Math.PI / 2);
 addCouch(21, 4, 0); addChair(28, -3, 1.2); addRubble(29, 5, 8); addWallTorch(24, 2.4, -7.7, 0);
 addRubble(-4, 23, 10); addRubble(5, 18, 6); addWallTorch(-8.7, 2.4, 22, Math.PI / 2);
