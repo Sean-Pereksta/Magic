@@ -200,7 +200,7 @@
       Survive waves of goblins. Board windows, buy doors, purchase wall guns, and keep your ammo stocked.
     </p>
     <p>
-      WASD move · Mouse look · Click shoot · R reload · E interact · Shift sprint
+      WASD move · Mouse look · Click shoot · R reload · E interact/buy/board · Shift sprint · Space jump
     </p>
     <button id="soloBtn">Start Solo</button>
     <button id="twoPlayerBtn">Start 2 Player Split Screen</button>
@@ -314,7 +314,12 @@ const player = {
   hurtCooldown: 0,
   regenDelay: 4.0,
   regenTimer: 0,
-  regenRate: 7.5
+  regenRate: 7.5,
+  onGround: true,
+  jumpVelocity: 7.2,
+  gravity: 18,
+  playerHeight: 1.7,
+  groundY: 1.7
 };
 
 camera.position.copy(player.pos);
@@ -324,7 +329,7 @@ const DEFAULT_CONTROL_MAPPINGS = {
   p1: { inputSource: "keyboardMouse", gamepadIndex: 0, movement: { type: "keyboard", preset: "wasd", keys: { up: "w", down: "s", left: "a", right: "d" } }, look: { type: "mouse", sensitivity: 1.0, invertY: false }, buttons: { shoot: { type: "mouse", button: 0, label: "Left Mouse" }, reload: { type: "keyboard", key: "r", label: "R" }, interact: { type: "keyboard", key: "e", label: "E" }, sprint: { type: "keyboard", key: "shift", label: "Shift" }, jump: { type: "keyboard", key: " ", label: "Space" }, pause: { type: "keyboard", key: "escape", label: "Esc" }, swapWeapon: { type: "keyboard", key: "q", label: "Q" } }, controller: { moveStick: { xAxis: 0, yAxis: 1, deadzone: 0.18 }, lookStick: { xAxis: 2, yAxis: 3, deadzone: 0.15 }, lookSensitivity: 2.4, invertY: false, buttons: { shoot: { type: "button", index: 7, label: "RT / R2" }, reload: { type: "button", index: 2, label: "X / Square" }, interact: { type: "button", index: 0, label: "A / Cross" }, sprint: { type: "button", index: 10, label: "Left Stick Click" }, jump: { type: "button", index: 1, label: "B / Circle" }, pause: { type: "button", index: 9, label: "Start / Menu" }, swapWeapon: { type: "button", index: 5, label: "RB / R1" } } } },
   p2: { inputSource: "controller", gamepadIndex: 1, movement: { type: "keyboard", preset: "arrows", keys: { up: "arrowup", down: "arrowdown", left: "arrowleft", right: "arrowright" } }, look: { type: "mouse", sensitivity: 1.0, invertY: false }, buttons: { shoot: { type: "keyboard", key: "enter", label: "Enter" }, reload: { type: "keyboard", key: ".", label: "." }, interact: { type: "keyboard", key: ",", label: "," }, sprint: { type: "keyboard", key: "/", label: "/" }, jump: { type: "keyboard", key: "right shift", label: "Right Shift" }, pause: { type: "keyboard", key: "backspace", label: "Backspace" }, swapWeapon: { type: "keyboard", key: "m", label: "M" } }, controller: { moveStick: { xAxis: 0, yAxis: 1, deadzone: 0.18 }, lookStick: { xAxis: 2, yAxis: 3, deadzone: 0.15 }, lookSensitivity: 2.4, invertY: false, buttons: { shoot: { type: "button", index: 7, label: "RT / R2" }, reload: { type: "button", index: 2, label: "X / Square" }, interact: { type: "button", index: 0, label: "A / Cross" }, sprint: { type: "button", index: 10, label: "Left Stick Click" }, jump: { type: "button", index: 1, label: "B / Circle" }, pause: { type: "button", index: 9, label: "Start / Menu" }, swapWeapon: { type: "button", index: 5, label: "RB / R1" } } } }
 };
-const CONTROL_ACTIONS=[["shoot","Shoot"],["reload","Reload"],["interact","Interact / Board / Buy"],["sprint","Sprint"],["jump","Jump"],["swapWeapon","Swap Weapon"],["pause","Pause / Menu"]];
+const CONTROL_ACTIONS=[["shoot","Shoot"],["reload","Reload"],["interact","Interact / Buy / Board / Open"],["sprint","Sprint"],["jump","Jump"],["swapWeapon","Swap Weapon"],["pause","Pause / Menu"]];
 function cloneDefaultMappings(){return JSON.parse(JSON.stringify(DEFAULT_CONTROL_MAPPINGS));}
 function mergeControlMapping(base,saved){return {...base,...saved,movement:{...base.movement,...(saved.movement||{}),keys:{...base.movement.keys,...((saved.movement||{}).keys||{})}},look:{...base.look,...(saved.look||{})},buttons:{...base.buttons,...(saved.buttons||{})},controller:{...base.controller,...(saved.controller||{}),moveStick:{...base.controller.moveStick,...((saved.controller||{}).moveStick||{})},lookStick:{...base.controller.lookStick,...((saved.controller||{}).lookStick||{})},buttons:{...base.controller.buttons,...((saved.controller||{}).buttons||{})}}};}
 function loadControlMappings(){try{const raw=localStorage.getItem("goblinZombiesControlMappings");if(!raw) return cloneDefaultMappings();const parsed=JSON.parse(raw),d=cloneDefaultMappings();return {p1:mergeControlMapping(d.p1,parsed.p1||{}),p2:mergeControlMapping(d.p2,parsed.p2||{})};}catch(err){console.warn("Failed to load control mappings. Using defaults.",err);return cloneDefaultMappings();}}
@@ -443,6 +448,8 @@ document.addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
 ========================================================= */
 
 const colliders = [];
+const obstacleColliders = [];
+const DEBUG_OBSTACLE_COLLIDERS = false;
 const playerWindowBlockers = [];
 const interactables = [];
 const roomsUnlocked = {
@@ -460,6 +467,39 @@ const roomsUnlocked = {
   forge: false
 };
 
+function addObstacleDebugBox(c) {
+  if (!DEBUG_OBSTACLE_COLLIDERS) return;
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(c.w, 0.08, c.d),
+    new THREE.MeshBasicMaterial({ color: 0xff00ff, transparent: true, opacity: 0.35 })
+  );
+  mesh.position.set(c.x, 0.05, c.z);
+  scene.add(mesh);
+}
+
+function isObstacleTooCloseToWindowOrDoor(x, z, padding = 1.2) {
+  for (const win of windows || []) {
+    if (enemyDistance2D({ x, z }, { x: win.x, z: win.z }) < padding + 1.5) return true;
+  }
+  for (const door of doors || []) {
+    if (enemyDistance2D({ x, z }, { x: door.x, z: door.z }) < padding + 1.8) return true;
+  }
+  return false;
+}
+
+function addObstacleCollider(x, z, w, d, height = 1.2, label = "obstacle") {
+  obstacleColliders.push({ x, z, w, d, height, label });
+  addObstacleDebugBox(obstacleColliders[obstacleColliders.length - 1]);
+}
+
+function cleanupObstacleCollidersNearEntries() {
+  for (let i = obstacleColliders.length - 1; i >= 0; i--) {
+    const c = obstacleColliders[i];
+    if (isObstacleTooCloseToWindowOrDoor(c.x, c.z, 0.5)) obstacleColliders.splice(i, 1);
+  }
+}
+
+
 function box(w, h, d, x, y, z, mat, cast = true, receive = true) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   mesh.position.set(x, y, z);
@@ -475,6 +515,7 @@ function addTable(x, z) {
   box(0.18, 0.8, 0.18, x + 0.9, 0.4, z - 0.45, mats.trim);
   box(0.18, 0.8, 0.18, x - 0.9, 0.4, z + 0.45, mats.trim);
   box(0.18, 0.8, 0.18, x + 0.9, 0.4, z + 0.45, mats.trim);
+  addObstacleCollider(x, z, 2.35, 1.35, 1.0, "table");
 }
 
 function addShelf(x, z, rotY = 0) {
@@ -492,11 +533,15 @@ function addShelf(x, z, rotY = 0) {
     group.add(book);
   }
   scene.add(group);
+  const shelfW = Math.abs(Math.cos(rotY)) > 0.5 ? 2.9 : 0.55;
+  const shelfD = Math.abs(Math.cos(rotY)) > 0.5 ? 0.55 : 2.9;
+  addObstacleCollider(x, z, shelfW, shelfD, 2.3, "shelf");
 }
 
 function addCrateStack(x, z) {
   box(1, 0.8, 1, x, 0.4, z, mats.trim);
   box(0.9, 0.7, 0.9, x + 0.5, 1.15, z + 0.2, mats.trim);
+  addObstacleCollider(x + 0.2, z + 0.1, 1.55, 1.35, 1.6, "crates");
 }
 function addChair(x, z, rotY = 0) {
   const group = new THREE.Group();
@@ -513,6 +558,7 @@ function addChair(x, z, rotY = 0) {
     group.add(leg);
   });
   scene.add(group);
+  addObstacleCollider(x, z, 0.85, 0.85, 1.1, "chair");
 }
 function addCouch(x, z, rotY = 0) {
   const group = new THREE.Group();
@@ -529,6 +575,9 @@ function addCouch(x, z, rotY = 0) {
   arm2.position.x = 1.2;
   group.add(base, back, arm1, arm2);
   scene.add(group);
+  const couchW = Math.abs(Math.cos(rotY)) > 0.5 ? 2.55 : 1.05;
+  const couchD = Math.abs(Math.cos(rotY)) > 0.5 ? 1.05 : 2.55;
+  addObstacleCollider(x, z, couchW, couchD, 1.15, "couch");
 }
 function addRubble(x, z, count = 8) {
   for (let i = 0; i < count; i++) {
@@ -732,12 +781,16 @@ addRubble(-4, 23, 10); addRubble(5, 18, 6); addWallTorch(-8.7, 2.4, 22, Math.PI 
 addCrateStack(22, 18); addCrateStack(29, 25); addTable(25, 21); addWallTorch(25, 2.4, 29.7, Math.PI);
 addShelf(-30, -5, 0); addShelf(-18, 5, Math.PI); addTable(-24, 0); addChair(-22.5, 1, 0.7);
 addTable(-24, 22); addChair(-25.5, 23, 0.3); addChair(-22.5, 23, -0.3); box(4, 0.8, 0.8, -29, 0.4, 17, mats.metal); box(3, 0.8, 0.8, -19, 0.4, 27, mats.metal);
+addObstacleCollider(-29, 17, 4.1, 0.95, 0.9, "counter");
+addObstacleCollider(-19, 27, 3.1, 0.95, 0.9, "counter");
 box(3, 0.35, 3, 0, 0.2, 46, new THREE.MeshStandardMaterial({ color: 0x555f66 }));
+addObstacleCollider(0, 46, 3.2, 3.2, 0.6, "fountain");
 const fountainWater = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 0.08, 32), new THREE.MeshStandardMaterial({ color: 0x225577, transparent: true, opacity: 0.75 }));
 fountainWater.position.set(0, 0.43, 46); scene.add(fountainWater);
 addCrateStack(44, -4); addCrateStack(51, 5); addTable(48, 0);
 const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.5, 0.8, 24), new THREE.MeshStandardMaterial({ color: 0x252a44, emissive: 0x050818 }));
 pedestal.position.set(48, 0.4, 24); scene.add(pedestal);
+addObstacleCollider(48, 24, 2.8, 2.8, 1.0, "pedestal");
 const pedestalGlow = new THREE.PointLight(0x55ccff, 1.4, 14); pedestalGlow.position.set(48, 2.2, 24); scene.add(pedestalGlow);
 
 // remove doorway blockers so buy doors control passage
@@ -1182,6 +1235,7 @@ addWindow(-8, 46, Math.PI / 2, -17, 46, "courtyard");
 addWindow(8, 46, Math.PI / 2, 17, 46, "courtyard");
 addWindow(48, -8.9, 0, 48, -17, "workshop");
 addWindow(57.9, 24, Math.PI / 2, 66, 24, "tower");
+cleanupObstacleCollidersNearEntries();
 
 /* =========================================================
    GUNS
@@ -2191,6 +2245,14 @@ function wouldCollide(x, z) {
       z - radius < c.z + c.d / 2;
     if (inside) return true;
   }
+  for (const c of obstacleColliders) {
+    const inside =
+      x + radius > c.x - c.w / 2 &&
+      x - radius < c.x + c.w / 2 &&
+      z + radius > c.z - c.d / 2 &&
+      z - radius < c.z + c.d / 2;
+    if (inside) return true;
+  }
   return false;
 }
 
@@ -2234,10 +2296,20 @@ function faceGoblinToward(enemy, targetPosition) {
   enemy.mesh.rotation.y = Math.atan2(dx, dz);
 }
 
+function tryPlayerJump() {
+  if (!player.alive) return;
+  if (player.onGround) {
+    player.vel.y = player.jumpVelocity;
+    player.onGround = false;
+  }
+}
+
 function updatePlayer(dt) {
   const pMap = controlMappings.p1;
   const sprintHeld = isPlayerActionPressed("p1", "sprint");
   const speed = sprintHeld ? player.sprintSpeed : player.speed;
+
+  if (wasPlayerActionJustPressed("p1", "jump")) tryPlayerJump();
 
   const forward = new THREE.Vector3(
     -Math.sin(player.yaw),
@@ -2283,6 +2355,15 @@ function updatePlayer(dt) {
   if (wasPlayerActionJustPressed("p1", "reload")) reload();
   if (wasPlayerActionJustPressed("p1", "interact")) interact();
   if (currentGun.automatic && isPlayerActionPressed("p1", "shoot")) shoot();
+
+  player.vel.y -= player.gravity * dt;
+  player.pos.y += player.vel.y * dt;
+  if (player.pos.y <= player.groundY) {
+    player.pos.y = player.groundY;
+    player.vel.y = 0;
+    player.onGround = true;
+  }
+
   camera.position.copy(player.pos);
   camera.rotation.order = "YXZ";
   camera.rotation.y = player.yaw;
@@ -2548,11 +2629,9 @@ function isEnemyPathBlockedAt(x, z, enemy) {
     return true;
   }
 
-  if (typeof obstacleColliders !== "undefined") {
-    for (const c of obstacleColliders) {
-      const inside = x + radius > c.x - c.w / 2 && x - radius < c.x + c.w / 2 && z + radius > c.z - c.d / 2 && z - radius < c.z + c.d / 2;
-      if (inside) return true;
-    }
+  for (const c of obstacleColliders) {
+    const inside = x + radius > c.x - c.w / 2 && x - radius < c.x + c.w / 2 && z + radius > c.z - c.d / 2 && z - radius < c.z + c.d / 2;
+    if (inside) return true;
   }
 
   return false;
@@ -2828,6 +2907,9 @@ function updateGoblinClimbThroughWindow(enemy, win, dt) {
     enemy.mesh.rotation.x = 0;
     enemy.climbData = null;
     enemy.state = "inside";
+    enemy.path = [];
+    enemy.pathIndex = 0;
+    enemy.pathRefreshTimer = 0;
   }
 }
 
@@ -3077,17 +3159,8 @@ function updateEnemies(dt) {
       }
 
       if (dist > 1.1) {
-        dir.normalize();
-        const step = e.speed * dt;
-        const nx = e.mesh.position.x + dir.x * step;
-        const nz = e.mesh.position.z + dir.z * step;
-        if (!isEnemyPathBlockedAt(nx, nz, e)) {
-          e.mesh.position.x = nx;
-          e.mesh.position.z = nz;
-          moved = true;
-        } else {
-          moved = moveGoblinToward(e, player.pos, dt);
-        }
+        moved = moveGoblinAlongPath(e, player.pos.clone(), dt);
+        if (!moved) moved = moveGoblinToward(e, player.pos, dt);
       } else {
         if (e.attackCooldown <= 0 && player.hurtCooldown <= 0) {
           player.health -= e.damage;
