@@ -395,18 +395,39 @@
               </select>
             </div>
           </div>
+          <div id="playerSelectBanner" class="small-note" style="font-size:18px;color:#06d6a0;font-weight:bold;margin:8px 0;">P1: Zeus</div>
           <div class="god-grid" id="godGrid"></div>
+          <div id="p2SelectWrap" style="margin-top:14px;display:none;">
+            <div class="small-note" style="font-size:16px;color:#8bd3ff;margin-bottom:6px;">Player 2 Character Select</div>
+            <div class="god-grid" id="p2GodGrid" style="max-height:210px;overflow:auto;border:1px solid #2e3d7a;padding:6px;border-radius:8px;background:rgba(12,18,46,.55);"></div>
+          </div>
         </div>
 
         <div class="side-box">
           <div class="side-title">Match Setup</div>
 
           <div class="setting-row">
-            <label>Selected God</label>
-            <div id="selectedGodText" style="font-size:24px;color:#06d6a0;font-weight:bold;">Zeus</div>
+            <label>P1 Selected God</label>
+            <div id="selectedGodP1Text" style="font-size:24px;color:#06d6a0;font-weight:bold;">Zeus</div>
+          </div>
+          <div class="setting-row" id="p2SelectedRow" style="display:none;">
+            <label>P2 Selected God</label>
+            <div id="selectedGodP2Text" style="font-size:24px;color:#8bd3ff;font-weight:bold;">Athena</div>
           </div>
 
           <div id="moveStylePanel" class="move-style"></div>
+
+          <div class="setting-row">
+            <label for="localPlayers">Local Players</label>
+            <select id="localPlayers"><option value="1" selected>1 Player</option><option value="2">2 Players</option></select>
+          </div>
+
+          <div class="setting-row" id="controllerAssignWrap">
+            <label>Controller Assignment</label>
+            <div class="small-note" id="controllerStatus">No controllers detected — use keyboard layouts.</div>
+            <select id="playerInputP1" style="margin-top:6px;"></select>
+            <select id="playerInputP2" style="margin-top:6px;display:none;"></select>
+          </div>
 
           <div class="setting-row">
             <label for="botCount">Number of Bots</label>
@@ -469,6 +490,10 @@
       <h1 class="title">CONTROL SETTINGS</h1>
       <div class="subtitle">Rebind keyboard controls or use a connected controller.</div>
       <div id="gamepadStatus" class="small-note">Controller: Not detected</div>
+      <div class="setting-row">
+        <label for="controlEditPlayer">Editing Controls For</label>
+        <select id="controlEditPlayer"><option value="p1" selected>Player 1</option><option value="p2">Player 2</option></select>
+      </div>
       <div class="control-bind-list" id="controlBindList"></div>
       <div class="setting-row">
         <button id="resetControlsBtn" type="button">RESET TO DEFAULT CONTROLS</button>
@@ -535,61 +560,50 @@ const DEFAULT_GAMEPAD_BINDINGS = {
   down: { type: "axis", axis: 1, dir: 1 }, dodge: { type: "button", button: 4 }, light: { type: "button", button: 2 },
   heavy: { type: "button", button: 3 }, special: { type: "button", button: 1 }, ultimate: { type: "button", button: 5 }
 };
-let controlBindings = { keyboard: { ...DEFAULT_KEYBOARD_BINDINGS }, gamepad: JSON.parse(JSON.stringify(DEFAULT_GAMEPAD_BINDINGS)) };
+const DEFAULT_KEYBOARD_BINDINGS_P2 = { left: "arrowleft", right: "arrowright", up: "arrowup", down: "arrowdown", dodge: "/", light: "1", heavy: "2", special: "3", ultimate: "0" };
+const PLAYER_INPUTS = {
+  p1: { device: "keyboard", gamepadIndex: null, keyboardBindings: { ...DEFAULT_KEYBOARD_BINDINGS }, gamepadBindings: JSON.parse(JSON.stringify(DEFAULT_GAMEPAD_BINDINGS)) },
+  p2: { device: "keyboard", gamepadIndex: null, keyboardBindings: { ...DEFAULT_KEYBOARD_BINDINGS_P2 }, gamepadBindings: JSON.parse(JSON.stringify(DEFAULT_GAMEPAD_BINDINGS)) }
+};
 const CONTROL_SAVE_KEY = "pantheonBrawlControlsV1";
+const CONTROL_SAVE_KEY_V2 = "pantheonBrawlControlsV2";
 let listeningForBinding = null;
-let activeGamepadIndex = null;
 let gamepadButtonsPrev = {};
 const GAMEPAD_AXIS_THRESHOLD = 0.45;
 const downTapState = {};
 const DROP_DOUBLE_TAP_WINDOW = 18;
 const DROP_THROUGH_ACTIVE_FRAMES = 10;
+let editingControlPlayer = "p1";
 
 function deepCopyGamepadDefaults() { return JSON.parse(JSON.stringify(DEFAULT_GAMEPAD_BINDINGS)); }
-function saveControlBindings() { localStorage.setItem(CONTROL_SAVE_KEY, JSON.stringify(controlBindings)); }
+function saveControlBindings() { localStorage.setItem(CONTROL_SAVE_KEY_V2, JSON.stringify(PLAYER_INPUTS)); }
 function loadControlBindings() {
   try {
+    const savedV2 = JSON.parse(localStorage.getItem(CONTROL_SAVE_KEY_V2) || "null");
+    if (savedV2 && savedV2.p1 && savedV2.p2) {
+      Object.assign(PLAYER_INPUTS.p1, savedV2.p1); Object.assign(PLAYER_INPUTS.p2, savedV2.p2);
+      return;
+    }
     const saved = JSON.parse(localStorage.getItem(CONTROL_SAVE_KEY) || "null");
     if (saved && saved.keyboard && saved.gamepad) {
-      controlBindings.keyboard = { ...DEFAULT_KEYBOARD_BINDINGS, ...saved.keyboard };
-      controlBindings.gamepad = { ...deepCopyGamepadDefaults(), ...saved.gamepad };
+      PLAYER_INPUTS.p1.keyboardBindings = { ...DEFAULT_KEYBOARD_BINDINGS, ...saved.keyboard };
+      PLAYER_INPUTS.p1.gamepadBindings = { ...deepCopyGamepadDefaults(), ...saved.gamepad };
     }
-  } catch (err) {
-    controlBindings = { keyboard: { ...DEFAULT_KEYBOARD_BINDINGS }, gamepad: deepCopyGamepadDefaults() };
-  }
+  } catch (err) {}
 }
 function resetControlBindings() {
-  controlBindings = { keyboard: { ...DEFAULT_KEYBOARD_BINDINGS }, gamepad: deepCopyGamepadDefaults() };
-  saveControlBindings();
-  updateControlsText();
+  PLAYER_INPUTS.p1.keyboardBindings = { ...DEFAULT_KEYBOARD_BINDINGS };
+  PLAYER_INPUTS.p2.keyboardBindings = { ...DEFAULT_KEYBOARD_BINDINGS_P2 };
+  PLAYER_INPUTS.p1.gamepadBindings = deepCopyGamepadDefaults();
+  PLAYER_INPUTS.p2.gamepadBindings = deepCopyGamepadDefaults();
+  saveControlBindings(); updateControlsText();
 }
-function getActiveGamepad() {
-  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-  if (activeGamepadIndex !== null && pads[activeGamepadIndex]) return pads[activeGamepadIndex];
-  for (const pad of pads) if (pad) { activeGamepadIndex = pad.index; return pad; }
-  return null;
-}
-function isGamepadActionDown(action) {
-  const pad = getActiveGamepad();
-  if (!pad) return false;
-  const bind = controlBindings.gamepad[action];
-  if (!bind) return false;
-  if (bind.type === "button") return !!pad.buttons[bind.button]?.pressed;
-  if (bind.type === "axis") { const value = pad.axes[bind.axis] || 0; return bind.dir < 0 ? value < -GAMEPAD_AXIS_THRESHOLD : value > GAMEPAD_AXIS_THRESHOLD; }
-  return false;
-}
-function isActionDown(action) {
-  const key = controlBindings.keyboard[action];
-  if (key && keys[key]) return true;
-  return isGamepadActionDown(action);
-}
-function wasActionPressed(action, playerId = "p1") {
-  const lockKey = playerId + "_action_" + action;
-  const down = isActionDown(action);
-  if (down && !pressLocks[lockKey]) { pressLocks[lockKey] = true; return true; }
-  if (!down) pressLocks[lockKey] = false;
-  return false;
-}
+function getConnectedGamepads(){ return (navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : []); }
+function getAssignedGamepad(playerId) { const profile = PLAYER_INPUTS[playerId] || PLAYER_INPUTS.p1; if (profile.gamepadIndex === null || profile.gamepadIndex === undefined) return null; const pads = navigator.getGamepads ? navigator.getGamepads() : []; return pads[profile.gamepadIndex] || null; }
+function isGamepadActionDownForPlayer(playerId, action) { const profile = PLAYER_INPUTS[playerId] || PLAYER_INPUTS.p1; const pad = getAssignedGamepad(playerId); if (!pad) return false; const bind = profile.gamepadBindings[action]; if (!bind) return false; if (bind.type === "button") return !!pad.buttons[bind.button]?.pressed; if (bind.type === "axis") { const value = pad.axes[bind.axis] || 0; return bind.dir < 0 ? value < -GAMEPAD_AXIS_THRESHOLD : value > GAMEPAD_AXIS_THRESHOLD; } return false; }
+function isKeyboardActionDownForPlayer(playerId, action) { const profile = PLAYER_INPUTS[playerId] || PLAYER_INPUTS.p1; const key = profile.keyboardBindings[action]; return !!(key && keys[key]); }
+function isActionDownForPlayer(playerId, action) { const profile = PLAYER_INPUTS[playerId] || PLAYER_INPUTS.p1; if (profile.device === "gamepad") return isGamepadActionDownForPlayer(playerId, action); if (profile.device === "keyboard") return isKeyboardActionDownForPlayer(playerId, action); return isKeyboardActionDownForPlayer(playerId, action) || (playerId === "p1" && localPlayersCount === 1 && isGamepadActionDownForPlayer(playerId, action)); }
+function wasActionPressedForPlayer(playerId, action) { const lockKey = playerId + "_action_" + action; const down = isActionDownForPlayer(playerId, action); if (down && !pressLocks[lockKey]) { pressLocks[lockKey] = true; return true; } if (!down) pressLocks[lockKey] = false; return false; }
 function registerDownTap(p) {
   const id = p.id || "p1";
   if (!downTapState[id]) downTapState[id] = { lastTap: -999, requestFrame: -999 };
@@ -614,16 +628,16 @@ function formatKeyName(key) { if (!key) return "Unbound"; if (key === " ") retur
 function updateControlsText() {
   const el = document.getElementById("controlsSummary");
   if (!el) return;
-  el.innerHTML = `<b>Controls</b><br>Move: ${formatKeyName(controlBindings.keyboard.left)} / ${formatKeyName(controlBindings.keyboard.right)}<br>Jump: ${formatKeyName(controlBindings.keyboard.up)}<br>Drop: ${formatKeyName(controlBindings.keyboard.down)}<br>Dodge: ${formatKeyName(controlBindings.keyboard.dodge)}<br>Light Attack: ${formatKeyName(controlBindings.keyboard.light)}<br>Heavy Attack: ${formatKeyName(controlBindings.keyboard.heavy)}<br>Special: ${formatKeyName(controlBindings.keyboard.special)}<br>Ultimate: ${formatKeyName(controlBindings.keyboard.ultimate)}<br><br>Controller: Auto-detected if plugged in<br><br>First build mode: <b>Pantheon Brawl</b><br>Everyone has <b>3 lives</b>.`;
+  el.innerHTML = `<b>Controls</b><br>Move: ${formatKeyName(PLAYER_INPUTS[editingControlPlayer].keyboardBindings.left)} / ${formatKeyName(PLAYER_INPUTS[editingControlPlayer].keyboardBindings.right)}<br>Jump: ${formatKeyName(PLAYER_INPUTS[editingControlPlayer].keyboardBindings.up)}<br>Drop: ${formatKeyName(PLAYER_INPUTS[editingControlPlayer].keyboardBindings.down)}<br>Dodge: ${formatKeyName(PLAYER_INPUTS[editingControlPlayer].keyboardBindings.dodge)}<br>Light Attack: ${formatKeyName(PLAYER_INPUTS[editingControlPlayer].keyboardBindings.light)}<br>Heavy Attack: ${formatKeyName(PLAYER_INPUTS[editingControlPlayer].keyboardBindings.heavy)}<br>Special: ${formatKeyName(PLAYER_INPUTS[editingControlPlayer].keyboardBindings.special)}<br>Ultimate: ${formatKeyName(PLAYER_INPUTS[editingControlPlayer].keyboardBindings.ultimate)}<br><br>Controller: Auto-detected if plugged in<br><br>First build mode: <b>Pantheon Brawl</b><br>Everyone has <b>3 lives</b>.`;
 }
 function updateGamepadStatus() {
   const el = document.getElementById("gamepadStatus");
   if (!el) return;
-  const pad = getActiveGamepad();
-  el.textContent = pad ? "Controller: " + pad.id : "Controller: Not detected";
+  const pads = getConnectedGamepads();
+  el.textContent = pads.length ? "Controller: " + pads.map(p=>p.id).join(", ") : "Controller: Not detected";
 }
-function assignKeyboardBinding(action, key) { Object.keys(controlBindings.keyboard).forEach(a => { if (a !== action && controlBindings.keyboard[a] === key) controlBindings.keyboard[a] = ""; }); controlBindings.keyboard[action] = key; }
-function assignGamepadBinding(action, bind) { const target = JSON.stringify(bind); Object.keys(controlBindings.gamepad).forEach(a => { if (a !== action && JSON.stringify(controlBindings.gamepad[a]) === target) controlBindings.gamepad[a] = null; }); controlBindings.gamepad[action] = bind; }
+function assignKeyboardBinding(action, key) { Object.keys(PLAYER_INPUTS[editingControlPlayer].keyboardBindings).forEach(a => { if (a !== action && PLAYER_INPUTS[editingControlPlayer].keyboardBindings[a] === key) PLAYER_INPUTS[editingControlPlayer].keyboardBindings[a] = ""; }); PLAYER_INPUTS[editingControlPlayer].keyboardBindings[action] = key; }
+function assignGamepadBinding(action, bind) { const target = JSON.stringify(bind); Object.keys(PLAYER_INPUTS[editingControlPlayer].gamepadBindings).forEach(a => { if (a !== action && JSON.stringify(PLAYER_INPUTS[editingControlPlayer].gamepadBindings[a]) === target) PLAYER_INPUTS[editingControlPlayer].gamepadBindings[a] = null; }); PLAYER_INPUTS[editingControlPlayer].gamepadBindings[action] = bind; }
 function beginRebind(device, action, buttonEl) { listeningForBinding = { device, action }; document.querySelectorAll(".bind-button").forEach(btn => btn.classList.remove("listening")); if (buttonEl) { buttonEl.classList.add("listening"); buttonEl.textContent = "Press input..."; } }
 function finishRebind(value) { if (!listeningForBinding) return; const { device, action } = listeningForBinding; if (device === "keyboard") assignKeyboardBinding(action, value); else assignGamepadBinding(action, value); listeningForBinding = null; saveControlBindings(); renderControlBindList(); }
 function cancelRebind() { listeningForBinding = null; renderControlBindList(); }
@@ -634,15 +648,15 @@ function renderControlBindList() {
   CONTROL_ACTIONS.forEach(action => {
     const row = document.createElement("div"); row.className = "bind-row";
     const label = document.createElement("div"); label.className = "bind-label"; label.textContent = action.label;
-    const keyBtn = document.createElement("button"); keyBtn.className = "bind-button"; keyBtn.textContent = formatKeyName(controlBindings.keyboard[action.id]); keyBtn.onclick = () => beginRebind("keyboard", action.id, keyBtn);
-    const padBtn = document.createElement("button"); padBtn.className = "bind-button"; padBtn.textContent = gamepadBindingToText(controlBindings.gamepad[action.id]); padBtn.onclick = () => beginRebind("gamepad", action.id, padBtn);
+    const keyBtn = document.createElement("button"); keyBtn.className = "bind-button"; keyBtn.textContent = formatKeyName(PLAYER_INPUTS[editingControlPlayer].keyboardBindings[action.id]); keyBtn.onclick = () => beginRebind("keyboard", action.id, keyBtn);
+    const padBtn = document.createElement("button"); padBtn.className = "bind-button"; padBtn.textContent = gamepadBindingToText(PLAYER_INPUTS[editingControlPlayer].gamepadBindings[action.id]); padBtn.onclick = () => beginRebind("gamepad", action.id, padBtn);
     row.appendChild(label); row.appendChild(keyBtn); row.appendChild(padBtn); list.appendChild(row);
   });
   updateControlsText();
 }
 function pollGamepadRebind() {
   if (!listeningForBinding || listeningForBinding.device !== "gamepad") return;
-  const pad = getActiveGamepad();
+  const pad = getAssignedGamepad(editingControlPlayer) || getConnectedGamepads()[0];
   if (!pad) return;
   for (let i = 0; i < pad.buttons.length; i++) if (pad.buttons[i]?.pressed && !gamepadButtonsPrev[i]) { finishRebind({ type: "button", button: i }); return; }
   for (let i = 0; i < pad.axes.length; i++) { const value = pad.axes[i] || 0; if (Math.abs(value) > 0.65) { finishRebind({ type: "axis", axis: i, dir: value < 0 ? -1 : 1 }); return; } }
@@ -664,8 +678,8 @@ window.addEventListener("keydown", e => {
 window.addEventListener("keyup", e => {
   keys[e.key.toLowerCase()] = false;
 });
-window.addEventListener("gamepadconnected", e => { activeGamepadIndex = e.gamepad.index; updateGamepadStatus(); });
-window.addEventListener("gamepaddisconnected", e => { if (activeGamepadIndex === e.gamepad.index) activeGamepadIndex = null; updateGamepadStatus(); });
+window.addEventListener("gamepadconnected", () => { updateGamepadStatus(); refreshControllerAssignmentUI(); });
+window.addEventListener("gamepaddisconnected", e => { ["p1","p2"].forEach(pid=>{ if (PLAYER_INPUTS[pid].gamepadIndex === e.gamepad.index) PLAYER_INPUTS[pid].gamepadIndex = null; }); updateGamepadStatus(); refreshControllerAssignmentUI(); });
 
 const GODS = {
   zeus: {
@@ -1097,6 +1111,9 @@ const MAPS = {
 };
 
 let selectedGod = "zeus";
+let selectedGodP1 = selectedGod || "zeus";
+let selectedGodP2 = "athena";
+let localPlayersCount = 1;
 let players = [];
 let attacks = [];
 let projectiles = [];
@@ -1165,7 +1182,7 @@ function buildGodGrid() {
   GOD_ORDER.forEach(id => {
     const god = GODS[id];
     const card = document.createElement("div");
-    card.className = "god-card" + (selectedGod === id ? " selected" : "");
+    card.className = "god-card" + (selectedGodP1 === id ? " selected" : "");
     card.innerHTML = `
       <div class="god-name" style="color:${god.color}">${god.name}</div>
       <div class="god-pantheon">${god.pantheon} Pantheon</div>
@@ -1174,8 +1191,9 @@ function buildGodGrid() {
       <canvas class="pixel-avatar" width="52" height="52"></canvas>
     `;
     card.onclick = () => {
-      selectedGod = id;
-      document.getElementById("selectedGodText").textContent = god.name;
+      selectedGod = id; selectedGodP1 = id;
+      const p1txt = document.getElementById("selectedGodP1Text"); if (p1txt) p1txt.textContent = god.name;
+      updatePlayerSelectionBanner();
       updateMoveStylePanel();
       buildGodGrid();
     };
@@ -1187,7 +1205,7 @@ function buildGodGrid() {
 }
 
 function updateMoveStylePanel() {
-  const god = GODS[selectedGod];
+  const god = GODS[selectedGodP1];
   const move = god.moveStyle;
   const panel = document.getElementById("moveStylePanel");
   panel.innerHTML = `
@@ -1390,6 +1408,19 @@ updateMoveStylePanel();
 updateMapDescription();
 loadControlBindings();
 updateControlsText();
+buildP2GodGrid();
+setLocalPlayersUI();
+refreshControllerAssignmentUI();
+updatePlayerSelectionBanner();
+
+const localPlayersEl = document.getElementById("localPlayers");
+if (localPlayersEl) localPlayersEl.addEventListener("change", setLocalPlayersUI);
+const p1InputEl = document.getElementById("playerInputP1");
+if (p1InputEl) p1InputEl.addEventListener("change", e => { const v=e.target.value; if (String(v).startsWith("gp:")) { PLAYER_INPUTS.p1.device="gamepad"; PLAYER_INPUTS.p1.gamepadIndex=parseInt(String(v).split(":")[1],10); if (PLAYER_INPUTS.p2.device==="gamepad" && PLAYER_INPUTS.p2.gamepadIndex===PLAYER_INPUTS.p1.gamepadIndex) { PLAYER_INPUTS.p2.device="keyboard"; PLAYER_INPUTS.p2.gamepadIndex=null; } } else { PLAYER_INPUTS.p1.device="keyboard"; PLAYER_INPUTS.p1.gamepadIndex=null; } refreshControllerAssignmentUI(); saveControlBindings(); });
+const p2InputEl = document.getElementById("playerInputP2");
+if (p2InputEl) p2InputEl.addEventListener("change", e => { const v=e.target.value; if (String(v).startsWith("gp:")) { const idx=parseInt(String(v).split(":")[1],10); if (PLAYER_INPUTS.p1.device==="gamepad" && PLAYER_INPUTS.p1.gamepadIndex===idx) { e.target.value="keyboard"; PLAYER_INPUTS.p2.device="keyboard"; PLAYER_INPUTS.p2.gamepadIndex=null; } else { PLAYER_INPUTS.p2.device="gamepad"; PLAYER_INPUTS.p2.gamepadIndex=idx; } } else { PLAYER_INPUTS.p2.device="keyboard"; PLAYER_INPUTS.p2.gamepadIndex=null; } refreshControllerAssignmentUI(); saveControlBindings(); });
+const controlEditPlayerEl = document.getElementById("controlEditPlayer");
+if (controlEditPlayerEl) controlEditPlayerEl.addEventListener("change", e => { editingControlPlayer = e.target.value || "p1"; renderControlBindList(); });
 
 document.getElementById("startBtn").onclick = startGame;
 document.getElementById("fullscreenBtn").onclick = () => {
@@ -1423,8 +1454,25 @@ document.getElementById("returnBtn").onclick = () => {
   gameState = "select";
 };
 
+
+function updatePlayerSelectionBanner(){
+  const banner = document.getElementById("playerSelectBanner");
+  if (!banner) return;
+  const p1 = GODS[selectedGodP1]?.name || "P1"; const p2 = GODS[selectedGodP2]?.name || "P2";
+  banner.textContent = localPlayersCount === 2 ? `P1: ${p1} | P2: ${p2}` : `P1: ${p1}`;
+}
+function buildP2GodGrid(){
+  const grid = document.getElementById("p2GodGrid"); if (!grid) return; grid.innerHTML="";
+  GOD_ORDER.forEach(id=>{ const god=GODS[id]; const card=document.createElement("div"); card.className="god-card"+(selectedGodP2===id?" selected":""); card.innerHTML=`<div class="god-name" style="color:${god.color}">${god.name}</div><div class="god-pantheon">${god.pantheon} Pantheon</div><div class="god-role">${god.role}</div>`; card.onclick=()=>{ selectedGodP2=id; const t=document.getElementById("selectedGodP2Text"); if(t)t.textContent=god.name; updatePlayerSelectionBanner(); buildP2GodGrid(); }; grid.appendChild(card); });
+}
+function refreshControllerAssignmentUI(){ const pads=getConnectedGamepads(); const status=document.getElementById("controllerStatus"); if(status) status.textContent = pads.length?`Detected controllers: ${pads.length}`:"No controllers detected — use keyboard layouts."; ["p1","p2"].forEach(pid=>{ const sel=document.getElementById(pid==="p1"?"playerInputP1":"playerInputP2"); if(!sel) return; sel.innerHTML=""; const k=document.createElement("option"); k.value="keyboard"; k.textContent=pid==="p1"?"Player 1 Input: Keyboard":"Player 2 Input: Keyboard Alt Layout"; sel.appendChild(k); pads.forEach(p=>{ const o=document.createElement("option"); o.value="gp:"+p.index; o.textContent=`${pid==="p1"?"Player 1":"Player 2"} Input: Controller ${p.index}`; sel.appendChild(o); }); const prof=PLAYER_INPUTS[pid]; sel.value=prof.device==="gamepad"&&prof.gamepadIndex!==null?`gp:${prof.gamepadIndex}`:"keyboard"; }); }
+function setLocalPlayersUI(){ const lp=document.getElementById("localPlayers"); localPlayersCount = lp ? parseInt(lp.value,10)||1 : 1; const on=localPlayersCount===2; const p2w=document.getElementById("p2SelectWrap"); if(p2w) p2w.style.display=on?"block":"none"; const p2r=document.getElementById("p2SelectedRow"); if(p2r) p2r.style.display=on?"block":"none"; const p2i=document.getElementById("playerInputP2"); if(p2i) p2i.style.display=on?"block":"none"; updatePlayerSelectionBanner(); }
+
 function startGame() {
   const botCount = parseInt(document.getElementById("botCount").value, 10);
+  const lp = document.getElementById("localPlayers");
+  localPlayersCount = lp ? parseInt(lp.value,10)||1 : 1;
+  const humanCount = localPlayersCount===2?2:1;
   const difficulty = document.getElementById("difficulty").value;
   const selectedMapId = document.getElementById("mapSelect").value;
   currentMap = MAPS[selectedMapId] || MAPS.temple;
@@ -1467,21 +1515,16 @@ function startGame() {
   eclipseTimer = 0;
 
   const humanSpawn = currentMap.spawnPoints[0];
-  players.push(createFighter({
-    id: "p1",
-    godId: selectedGod,
-    x: humanSpawn.x,
-    y: humanSpawn.y,
-    human: true,
-    team: 0,
-    namePrefix: "P1",
-    difficulty
-  }));
+  players.push(createFighter({ id: "p1", godId: selectedGodP1, x: humanSpawn.x, y: humanSpawn.y, human: true, team: 0, namePrefix: "P1", difficulty }));
+  if (humanCount === 2) {
+    const p2Spawn = currentMap.spawnPoints[1] || currentMap.spawnPoints[0];
+    players.push(createFighter({ id: "p2", godId: selectedGodP2, x: p2Spawn.x, y: p2Spawn.y, human: true, team: 1, namePrefix: "P2", difficulty }));
+  }
 
-  const botGods = GOD_ORDER.filter(g => g !== selectedGod);
+  const botGods = GOD_ORDER.filter(g => g !== selectedGodP1 && g !== selectedGodP2);
   for (let i = 0; i < botCount; i++) {
-    const godId = botGods[i % botGods.length];
-    const spawn = currentMap.spawnPoints[(i + 1) % currentMap.spawnPoints.length];
+    const godId = (botGods[i % botGods.length] || GOD_ORDER[i % GOD_ORDER.length]);
+    const spawn = currentMap.spawnPoints[(i + humanCount) % currentMap.spawnPoints.length];
     players.push(createFighter({
       id: "bot" + (i + 1),
       godId,
@@ -1793,20 +1836,21 @@ function updateHuman(p) {
   if (p.dead || p.hitstun > 0 || p.bastetScratchMissStun > 0) return;
 
   let move = 0;
-  if (isActionDown("left")) move -= 1;
-  if (isActionDown("right")) move += 1;
+  const pid = p.id || "p1";
+  if (isActionDownForPlayer(pid, "left")) move -= 1;
+  if (isActionDownForPlayer(pid, "right")) move += 1;
 
   applyMoveInput(p, move);
 
-  if (p.human && wasActionPressed("down", p.id + "_dropTap")) registerDownTap(p);
+  if (p.human && wasActionPressedForPlayer(pid, "down")) registerDownTap(p);
 
-  if (wasActionPressed("up", p.id)) jump(p);
-  if (wasActionPressed("dodge", p.id)) dodge(p);
+  if (wasActionPressedForPlayer(pid, "up")) jump(p);
+  if (wasActionPressedForPlayer(pid, "dodge")) dodge(p);
 
-  if (wasActionPressed("light", p.id)) lightAttack(p);
-  if (wasActionPressed("heavy", p.id)) heavyAttack(p);
-  if (wasActionPressed("special", p.id)) useSpecial(p);
-  if (wasActionPressed("ultimate", p.id)) useUltimate(p);
+  if (wasActionPressedForPlayer(pid, "light")) lightAttack(p);
+  if (wasActionPressedForPlayer(pid, "heavy")) heavyAttack(p);
+  if (wasActionPressedForPlayer(pid, "special")) useSpecial(p);
+  if (wasActionPressedForPlayer(pid, "ultimate")) useUltimate(p);
 }
 
 const pressLocks = {};
@@ -2453,7 +2497,7 @@ Object.entries(ATTACK_DEFS).forEach(([godId, godMoves]) => {
   });
 });
 function cloneMove(base, p, variant, inputType){ const m=JSON.parse(JSON.stringify(base)); m.godId=p.godId; m.inputType=inputType; m.directionVariant=variant; return m;}
-function getAttackVariant(player, inputType){ if(player.human){ if(isActionDown("up")) return "up"; if(isActionDown("down")) return "down"; return "neutral";} if(inputType==="special" && player.ai.specialVariant) return player.ai.specialVariant; return chooseBotAttackVariant(player, player.ai.target||nearestEnemy(player), inputType);}
+function getAttackVariant(player, inputType){ if(player.human){ const pid = player.id || "p1"; if(isActionDownForPlayer(pid,"up")) return "up"; if(isActionDownForPlayer(pid,"down")) return "down"; return "neutral";} if(inputType==="special" && player.ai.specialVariant) return player.ai.specialVariant; return chooseBotAttackVariant(player, player.ai.target||nearestEnemy(player), inputType);}
 function moveToAttackKind(type){ return type; }
 function getMoveProgress(p) {
   if (!p.currentMove || !p.currentMove.totalFrames) return { t:0, phase:"none", phaseT:0 };
@@ -2991,7 +3035,7 @@ function useSpecial(p) {
 
   else if (id === "quetz") {
     const holdingSide =
-      (p.human && (isActionDown("left") || isActionDown("right"))) ||
+      (p.human && (isActionDownForPlayer(p.id||"p1","left") || isActionDownForPlayer(p.id||"p1","right"))) ||
       (!p.human && p.moveVariant === "neutral");
 
     if (p.moveVariant === "up") {
@@ -5215,7 +5259,7 @@ function checkBossModeWin() {
 
 function spawnBossWave() {
   const count = Math.min(2 + Math.floor(bossWave / 2), 5);
-  const availableGods = GOD_ORDER.filter(id => id !== selectedGod);
+  const availableGods = GOD_ORDER.filter(id => id !== selectedGodP1 && id !== selectedGodP2);
 
   for (let i = 0; i < count; i++) {
     const godId = availableGods[(bossWave + i) % availableGods.length];
