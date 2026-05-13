@@ -1901,9 +1901,11 @@ function fireBurst(count) {
 function spawnBullet() {
   const dir = new THREE.Vector3(0, 0, -1);
   dir.applyEuler(camera.rotation);
-  dir.x += (Math.random() - 0.5) * currentGun.spread;
-  dir.y += (Math.random() - 0.5) * currentGun.spread;
-  dir.z += (Math.random() - 0.5) * currentGun.spread;
+  dir.normalize();
+  const spread = currentGun.spread || 0;
+  dir.x += (Math.random() - 0.5) * spread;
+  dir.y += (Math.random() - 0.5) * spread;
+  dir.z += (Math.random() - 0.5) * spread;
   dir.normalize();
 
   const projectileColor = currentGun.projectileColor || 0xffe08a;
@@ -1914,7 +1916,7 @@ function spawnBullet() {
   else projectileGeometry = new THREE.SphereGeometry(projectileSize * (currentGun.magicType === "solar" ? 1.2 : 1), 12, 12);
   const bulletMesh = new THREE.Mesh(projectileGeometry, new THREE.MeshBasicMaterial({ color: projectileColor }));
   bulletMesh.position.copy(camera.position);
-  bulletMesh.position.add(dir.clone().multiplyScalar(0.8));
+  bulletMesh.position.add(dir.clone().multiplyScalar(0.45));
   scene.add(bulletMesh);
 
   bulletMesh.castShadow = false;
@@ -1933,7 +1935,7 @@ function spawnBullet() {
   }
 
   if (PERF.enabled && bullets.length >= PERF.maxBullets) { scene.remove(bullets[0].mesh); if (bullets[0].glow) scene.remove(bullets[0].glow); bullets.shift(); }
-  bullets.push({ mesh: bulletMesh, glow, pos: bulletMesh.position.clone(), vel: dir.multiplyScalar(currentGun.bulletSpeed), damage: currentGun.damage, life: 2.2, drop: currentGun.laser ? 0.25 : 1.25, magicType: currentGun.magicType, projectileColor, chainLightning: currentGun.chainLightning || false, chainChance: currentGun.chainChance || 0, chainRange: currentGun.chainRange || 0, chainDamage: currentGun.chainDamage || 0, chainMaxTargets: currentGun.chainMaxTargets || 0, shardOnHit: currentGun.shardOnHit || false, shardCount: currentGun.shardCount || 0, shardDamage: currentGun.shardDamage || 0, pierce: currentGun.pierce || 0, hitEnemies: new Set(), spawnPos: camera.position.clone(), closeRangeBonus: currentGun.closeRangeBonus || false, closeRangeDistance: currentGun.closeRangeDistance || 0, closeRangeMultiplier: currentGun.closeRangeMultiplier || 1, slowOnHit: currentGun.slowOnHit || false, slowMultiplier: currentGun.slowMultiplier || 1, slowDuration: currentGun.slowDuration || 0, voidMark: currentGun.voidMark || false, voidMarkDuration: currentGun.voidMarkDuration || 0, voidMarkBonusDamage: currentGun.voidMarkBonusDamage || 0, explosionOnHit: currentGun.explosionOnHit || false, explosionRadius: currentGun.explosionRadius || 0, explosionDamage: currentGun.explosionDamage || 0, knockback: currentGun.knockback || false, poisonOnHit: currentGun.poisonOnHit || false, poisonDamage: currentGun.poisonDamage || 0, poisonDuration: currentGun.poisonDuration || 0, poisonTickRate: currentGun.poisonTickRate || 0.5, spreadPoisonOnDeath: currentGun.spreadPoisonOnDeath || false, spreadPoisonRadius: currentGun.spreadPoisonRadius || 0 });
+  bullets.push({ mesh: bulletMesh, glow, pos: bulletMesh.position.clone(), prevPos: bulletMesh.position.clone(), radius: currentGun.projectileSize || HITBOX_TUNING.minBulletRadius, vel: dir.multiplyScalar(currentGun.bulletSpeed), damage: currentGun.damage, life: 2.2, drop: currentGun.laser ? 0.25 : 1.25, magicType: currentGun.magicType, projectileColor, chainLightning: currentGun.chainLightning || false, chainChance: currentGun.chainChance || 0, chainRange: currentGun.chainRange || 0, chainDamage: currentGun.chainDamage || 0, chainMaxTargets: currentGun.chainMaxTargets || 0, shardOnHit: currentGun.shardOnHit || false, shardCount: currentGun.shardCount || 0, shardDamage: currentGun.shardDamage || 0, pierce: currentGun.pierce || 0, hitEnemies: new Set(), spawnPos: camera.position.clone(), closeRangeBonus: currentGun.closeRangeBonus || false, closeRangeDistance: currentGun.closeRangeDistance || 0, closeRangeMultiplier: currentGun.closeRangeMultiplier || 1, slowOnHit: currentGun.slowOnHit || false, slowMultiplier: currentGun.slowMultiplier || 1, slowDuration: currentGun.slowDuration || 0, voidMark: currentGun.voidMark || false, voidMarkDuration: currentGun.voidMarkDuration || 0, voidMarkBonusDamage: currentGun.voidMarkBonusDamage || 0, explosionOnHit: currentGun.explosionOnHit || false, explosionRadius: currentGun.explosionRadius || 0, explosionDamage: currentGun.explosionDamage || 0, knockback: currentGun.knockback || false, poisonOnHit: currentGun.poisonOnHit || false, poisonDamage: currentGun.poisonDamage || 0, poisonDuration: currentGun.poisonDuration || 0, poisonTickRate: currentGun.poisonTickRate || 0.5, spreadPoisonOnDeath: currentGun.spreadPoisonOnDeath || false, spreadPoisonRadius: currentGun.spreadPoisonRadius || 0, usesAimAssistRay: currentGun.bulletSpeed >= 95 || currentGun.laser || currentGun.magicType === "astral" });
 }
 
 function shouldSpawnVisualEffectAt(pos, maxDist = CULL_SETTINGS.particleDistance) { if (!pos) return false; const dx = pos.x - player.pos.x; const dz = pos.z - player.pos.z; return Math.sqrt(dx * dx + dz * dz) <= maxDist; }
@@ -1953,6 +1955,42 @@ function triggerMagicExplosion(pos, radius, damage, knockback=false) { spawnSola
 
 function triggerChainLightning(sourceEnemy, originPos, bullet) { if (!bullet.chainLightning) return; if (Math.random() > bullet.chainChance) return; let chained=0; let current=sourceEnemy; while (chained < bullet.chainMaxTargets) { let best=null; let bestDist=bullet.chainRange; for (const candidate of enemies) { if (candidate===current) continue; if (bullet.hitEnemies && bullet.hitEnemies.has(candidate)) continue; if (candidate.health<=0) continue; const dist = enemyDistance2D(current.mesh.position, candidate.mesh.position); if (dist<bestDist) { best=candidate; bestDist=dist; } } if (!best) break; const from=current.mesh.position.clone(); from.y+=1.1; const to=best.mesh.position.clone(); to.y+=1.1; spawnLightningArc(from,to,0x66ccff); best.health -= bullet.chainDamage; showGoblinHit(best, "body", bullet.chainDamage); if (bullet.hitEnemies) bullet.hitEnemies.add(best); if (best.health <= 0) { const idx = enemies.indexOf(best); if (idx >= 0) killEnemy(idx); } current=best; chained++; }}
 
+function distancePointToSegment(point, a, b) {
+  const ab = b.clone().sub(a);
+  const ap = point.clone().sub(a);
+  const abLenSq = ab.lengthSq();
+  if (abLenSq <= 0.00001) return point.distanceTo(a);
+  let t = ap.dot(ab) / abLenSq;
+  t = Math.max(0, Math.min(1, t));
+  const closest = a.clone().add(ab.multiplyScalar(t));
+  return point.distanceTo(closest);
+}
+function getAimRayHit(maxDistance = 160) {
+  const origin = camera.position.clone();
+  const dir = new THREE.Vector3(0, 0, -1).applyEuler(camera.rotation).normalize();
+  let best = null; let bestDist = maxDistance;
+  for (const e of enemies) { if (!e || e.health <= 0) continue; for (const hb of e.hitboxes) { const center = e.mesh.position.clone().add(hb.offset); const toCenter = center.clone().sub(origin); const forwardDist = toCenter.dot(dir); if (forwardDist < 0 || forwardDist > maxDistance) continue; const closest = origin.clone().add(dir.clone().multiplyScalar(forwardDist)); let radius = hb.radius * 1.12; if (e.state === "tearing_boards" || e.state === "climbing_in") radius *= 1.25; const missDist = center.distanceTo(closest); if (missDist <= radius && forwardDist < bestDist) { bestDist = forwardDist; best = { enemy: e, hitbox: hb, point: closest }; } } }
+  return best;
+}
+function applyBulletDamageToEnemy(e, bestHit, b, hitPos) {
+  if (!e || !bestHit || !b) return false;
+  let damageDone = b.damage * bestHit.multiplier;
+  const enemyTypeData = enemyTypes[e.typeKey];
+  if (enemyTypeData && enemyTypeData.armor) { if (bestHit.name === "body" || bestHit.name === "upperBody") damageDone *= 0.55; if (bestHit.name === "legs") damageDone *= 0.75; if (bestHit.name === "head") damageDone *= 1.15; }
+  if (e.voidStacks && e.voidStacks > 0) damageDone *= 1 + e.voidStacks * 0.04;
+  if (b.closeRangeBonus) { const distFromPlayer = b.spawnPos ? b.spawnPos.distanceTo(hitPos || b.pos) : camera.position.distanceTo(hitPos || b.pos); if (distFromPlayer <= (b.closeRangeDistance || 5.5)) damageDone *= b.closeRangeMultiplier || 1.45; }
+  e.health -= damageDone; showGoblinHit(e, bestHit.name, damageDone);
+  if (b.projectileColor && typeof spawnMagicImpact === "function") spawnMagicImpact((hitPos || b.pos).clone(), b.projectileColor, b.magicType === "rune" ? 8 : 5);
+  if (typeof triggerChainLightning === "function") triggerChainLightning(e, (hitPos || b.pos).clone(), b);
+  if (typeof spawnShardsFromHit === "function") spawnShardsFromHit(b, (hitPos || b.pos).clone(), b.vel ? b.vel.clone() : new THREE.Vector3(0, 0, -1));
+  if (b.slowOnHit) { e.slowTimer = Math.max(e.slowTimer || 0, b.slowDuration || 2); e.slowMultiplier = Math.min(e.slowMultiplier || 1, b.slowMultiplier || 0.55); if (typeof spawnFrostBurst === "function") spawnFrostBurst(e.mesh.position.clone()); }
+  if (b.voidMark) { e.voidMarkTimer = Math.max(e.voidMarkTimer || 0, b.voidMarkDuration || 3); e.voidStacks = Math.min(8, (e.voidStacks || 0) + 1); if (typeof spawnVoidPulse === "function") spawnVoidPulse(e.mesh.position.clone()); }
+  if (b.explosionOnHit && typeof triggerMagicExplosion === "function") triggerMagicExplosion((hitPos || b.pos).clone(), b.explosionRadius || 3, b.explosionDamage || 30, b.knockback);
+  if (b.poisonOnHit) { e.poisonTimer = Math.max(e.poisonTimer || 0, b.poisonDuration || 4); e.poisonTickTimer = b.poisonTickRate || 0.5; e.poisonDamage = b.poisonDamage || 6; e.spreadPoisonOnDeath = b.spreadPoisonOnDeath || false; e.spreadPoisonRadius = b.spreadPoisonRadius || 0; if (typeof spawnPoisonSplash === "function") spawnPoisonSplash(e.mesh.position.clone()); }
+  return e.health <= 0;
+}
+function updateDebugHitboxes(enemy) { if (!DEBUG_HITBOXES || !enemy) return; if (!enemy.debugHitboxMeshes) { enemy.debugHitboxMeshes = enemy.hitboxes.map(hb => { const mesh = new THREE.Mesh(new THREE.SphereGeometry(hb.radius, 12, 8), new THREE.MeshBasicMaterial({ color: hb.name === "head" ? 0xffff00 : hb.name === "legs" ? 0x00aaff : 0xff3333, transparent: true, opacity: 0.22, wireframe: true })); scene.add(mesh); return mesh; }); } for (let i = 0; i < enemy.hitboxes.length; i++) { const hb = enemy.hitboxes[i]; const mesh = enemy.debugHitboxMeshes[i]; mesh.position.copy(enemy.mesh.position).add(hb.offset); mesh.scale.setScalar(1); }}
+
 function reload() {
   if (currentGun.reloading) return;
   if (currentGun.clip >= currentGun.clipSize) return;
@@ -1967,6 +2005,13 @@ function reload() {
 ========================================================= */
 
 const enemies = [];
+const HITBOX_TUNING = {
+  globalRadiusMultiplier: 1.18,
+  windowRadiusMultiplier: 1.35,
+  closeRangeBonusRadius: 0.12,
+  minBulletRadius: 0.06
+};
+const DEBUG_HITBOXES = false;
 let waveInProgress = false;
 let waveSpawnTimer = 0;
 let waveKills = 0;
@@ -2291,24 +2336,10 @@ function spawnEnemy(typeKey = "green") {
     retargetCooldown: 0,
     ignoreWaveKill: false,
     hitboxes: [
-      {
-        name: "head",
-        offset: new THREE.Vector3(0, 1.52 * type.scale, -0.08),
-        radius: 0.48 * type.scale,
-        multiplier: 2.35
-      },
-      {
-        name: "body",
-        offset: new THREE.Vector3(0, 0.92 * type.scale, 0),
-        radius: 0.58 * type.scale,
-        multiplier: 1.0
-      },
-      {
-        name: "legs",
-        offset: new THREE.Vector3(0, 0.38 * type.scale, 0),
-        radius: 0.44 * type.scale,
-        multiplier: 0.7
-      }
+      { name: "head", offset: new THREE.Vector3(0, 1.55 * type.scale, -0.10 * type.scale), radius: 0.56 * type.scale, multiplier: 2.45 },
+      { name: "upperBody", offset: new THREE.Vector3(0, 1.05 * type.scale, 0), radius: 0.62 * type.scale, multiplier: 1.15 },
+      { name: "body", offset: new THREE.Vector3(0, 0.75 * type.scale, 0), radius: 0.66 * type.scale, multiplier: 1.0 },
+      { name: "legs", offset: new THREE.Vector3(0, 0.34 * type.scale, 0), radius: 0.48 * type.scale, multiplier: 0.72 }
     ]
   };
   addGoblinGroundMarker(enemyObj);
@@ -2695,6 +2726,8 @@ function updateBullets(dt) {
   for (let i = bullets.length - 1; i >= 0; i--) {
     const b = bullets[i];
     b.life -= dt;
+    if (!b.prevPos) b.prevPos = b.pos.clone();
+    b.prevPos.copy(b.pos);
     b.vel.y -= b.drop * dt;
     b.pos.add(b.vel.clone().multiplyScalar(dt));
     b.mesh.position.copy(b.pos);
@@ -2708,57 +2741,40 @@ function updateBullets(dt) {
       let bestScore = Infinity;
       for (const hb of e.hitboxes) {
         const center = e.mesh.position.clone().add(hb.offset);
-        const dist = b.pos.distanceTo(center);
-        let radius = hb.radius;
-        if (e.state === "tearing_boards" || e.state === "climbing_in") radius *= 1.28;
+        let radius = hb.radius * HITBOX_TUNING.globalRadiusMultiplier + Math.max(b.radius || 0, HITBOX_TUNING.minBulletRadius);
+        if (b.spawnPos && b.spawnPos.distanceTo(b.pos) < 6) radius += HITBOX_TUNING.closeRangeBonusRadius;
+        if (e.state === "tearing_boards" || e.state === "climbing_in") radius *= HITBOX_TUNING.windowRadiusMultiplier;
+        const dist = distancePointToSegment(center, b.prevPos, b.pos);
         if (dist < radius) {
-          const zonePriority = hb.name === "head" ? -0.35 : hb.name === "body" ? 0 : 0.25;
+          const zonePriority = hb.name === "head" ? -0.45 : hb.name === "upperBody" ? -0.05 : hb.name === "body" ? 0 : 0.22;
           const score = dist / radius + zonePriority;
           if (score < bestScore) { bestScore = score; bestHit = hb; }
         }
       }
       if (bestHit) {
-        let damageDone = b.damage * bestHit.multiplier;
-        if (b.closeRangeBonus) {
-          const distFromPlayer = b.spawnPos ? b.spawnPos.distanceTo(b.pos) : camera.position.distanceTo(b.pos);
-          if (distFromPlayer <= (b.closeRangeDistance || 5.5)) damageDone *= b.closeRangeMultiplier || 1.45;
-        }
-        if (e.voidStacks && e.voidStacks > 0) damageDone *= 1 + e.voidStacks * 0.04;
-        const enemyTypeData = enemyTypes[e.typeKey];
-        if (enemyTypeData && enemyTypeData.armor) {
-          if (bestHit.name === "body") damageDone *= 0.55;
-          if (bestHit.name === "legs") damageDone *= 0.75;
-          if (bestHit.name === "head") damageDone *= 1.15;
-        }
-        e.health -= damageDone;
-        showGoblinHit(e, bestHit.name, damageDone);
-        spawnMagicImpact(b.pos.clone(), b.projectileColor || 0xffaa44, b.magicType === "rune" ? 12 : 7);
-        spawnShardsFromHit(b, b.pos.clone(), b.vel.clone());
-        triggerChainLightning(e, b.pos.clone(), b);
-        if (b.slowOnHit) {
-          e.slowTimer = Math.max(e.slowTimer || 0, b.slowDuration || 2);
-          e.slowMultiplier = Math.min(e.slowMultiplier || 1, b.slowMultiplier || 0.55);
-          spawnFrostBurst(e.mesh.position.clone());
-        }
-        if (b.voidMark) {
-          e.voidMarkTimer = Math.max(e.voidMarkTimer || 0, b.voidMarkDuration || 3);
-          e.voidStacks = Math.min(8, (e.voidStacks || 0) + 1);
-          spawnVoidPulse(e.mesh.position.clone());
-        }
-        if (b.poisonOnHit) {
-          e.poisonTimer = Math.max(e.poisonTimer || 0, b.poisonDuration || 4);
-          e.poisonTickTimer = b.poisonTickRate || 0.5;
-          e.poisonTickRate = b.poisonTickRate || 0.5;
-          e.poisonDamage = b.poisonDamage || 6;
-          e.spreadPoisonOnDeath = b.spreadPoisonOnDeath || false;
-          e.spreadPoisonRadius = b.spreadPoisonRadius || 0;
-          spawnPoisonSplash(e.mesh.position.clone());
-        }
-        if (b.explosionOnHit) triggerMagicExplosion(b.pos.clone(), b.explosionRadius || 3, b.explosionDamage || 30, b.knockback);
-        if (b.hitEnemies) b.hitEnemies.add(e);
+        const died = applyBulletDamageToEnemy(e, bestHit, b, b.pos.clone());
         hit = true;
-        if (e.health <= 0) killEnemy(j);
+        if (b.hitEnemies) b.hitEnemies.add(e);
+        if (died) {
+          const enemyIndex = enemies.indexOf(e);
+          if (enemyIndex >= 0) killEnemy(enemyIndex);
+        }
         break;
+      }
+    }
+
+    if (!hit && b.usesAimAssistRay) {
+      const rayHit = getAimRayHit(140);
+      if (rayHit && (!b.hitEnemies || !b.hitEnemies.has(rayHit.enemy))) {
+        b.pos.copy(rayHit.point);
+        b.mesh.position.copy(rayHit.point);
+        const died = applyBulletDamageToEnemy(rayHit.enemy, rayHit.hitbox, b, rayHit.point.clone());
+        hit = true;
+        if (b.hitEnemies) b.hitEnemies.add(rayHit.enemy);
+        if (died) {
+          const enemyIndex = enemies.indexOf(rayHit.enemy);
+          if (enemyIndex >= 0) killEnemy(enemyIndex);
+        }
       }
     }
 
@@ -2770,6 +2786,7 @@ function updateBullets(dt) {
     }
   }
 }
+
 
 function spawnRock(enemy) {
   if (PERF.enabled && rocks.length >= PERF.maxRocks) return;
@@ -2866,6 +2883,7 @@ function killEnemy(index) {
     if (e.groundMarker.geometry) e.groundMarker.geometry.dispose();
     if (e.groundMarker.material) e.groundMarker.material.dispose();
   }
+  if (e.debugHitboxMeshes) { for (const m of e.debugHitboxMeshes) { scene.remove(m); if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); } }
   if (e.healthBar) {
     scene.remove(e.healthBar);
     e.healthBar.traverse(o => {
@@ -3348,6 +3366,7 @@ function updateEnemies(dt) {
     if (enemyVisible) renderedEnemies++;
     if (e.mesh) e.mesh.visible = enemyVisible;
     if (e.groundMarker) e.groundMarker.visible = enemyVisible;
+    updateDebugHitboxes(e);
     let moved = false;
     if (e.state === "burning_clear") {
       e.burnTimer -= dt;
@@ -3579,13 +3598,15 @@ function updateEnemies(dt) {
       scene.add(e.healthBar);
     }
 
-    if (e.healthBar) {
+    if (e.debugHitboxMeshes) { for (const m of e.debugHitboxMeshes) { scene.remove(m); if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); } }
+  if (e.healthBar) {
       e.healthBar.position.copy(e.mesh.position);
       e.healthBar.position.y += 2.25 * type.scale;
       e.healthBar.visible = enemyDistToPlayer <= CULL_SETTINGS.enemyHealthBarDistance && aimingHealthBars;
       if (e.healthBar.visible) e.healthBar.lookAt(camera.position);
     }
-    if (e.healthBar) {
+    if (e.debugHitboxMeshes) { for (const m of e.debugHitboxMeshes) { scene.remove(m); if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); } }
+  if (e.healthBar) {
       const pct = Math.max(0, Math.min(1, e.health / e.maxHealth));
       const fill = e.healthBar.getObjectByName("healthFill");
       if (fill) { fill.scale.x = pct; fill.position.x = -0.6 * (1 - pct); }
