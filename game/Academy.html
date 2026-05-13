@@ -123,7 +123,34 @@
     padding: 30px;
     border-radius: 12px;
     max-width: 700px;
+    max-height: 90vh;
+    overflow: hidden;
   }
+
+  #controlsPanel {
+    display: none;
+    margin-top: 12px;
+    text-align: left;
+    max-height: 62vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 12px;
+    border: 2px solid rgba(255,255,255,0.35);
+    border-radius: 10px;
+    background: rgba(0,0,0,0.55);
+  }
+
+  #controlsPanel::-webkit-scrollbar { width: 10px; }
+  #controlsPanel::-webkit-scrollbar-track { background: rgba(255,255,255,0.12); border-radius: 10px; }
+  #controlsPanel::-webkit-scrollbar-thumb { background: #78945a; border-radius: 10px; }
+  .controlPlayerCard { border: 1px solid rgba(255,255,255,0.35); border-radius: 10px; padding: 12px; margin: 12px 0; background: rgba(20,25,15,0.82); }
+  .controlRow { display: grid; grid-template-columns: 170px 1fr auto; gap: 8px; align-items: center; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.12); }
+  .controlRow:last-child { border-bottom: none; }
+  .controlLabel { font-weight: bold; color: #d8f0bc; }
+  .controlValue { color: #ffffff; opacity: 0.92; }
+  .controlSmallBtn { padding: 6px 9px; font-size: 13px; border-radius: 6px; }
+  .controlTopActions { position: sticky; top: 0; z-index: 2; background: rgba(0,0,0,0.85); padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.25); }
+  .mappingHint { color: #ffd27a; font-size: 14px; margin-top: 6px; }
 
   button {
     padding: 12px 20px;
@@ -178,22 +205,7 @@
     <button id="soloBtn">Start Solo</button>
     <button id="twoPlayerBtn">Start 2 Player Split Screen</button>
     <button id="controlsBtn">Controls / Controller Mapping</button>
-    <div id="controlsPanel" style="display:none; margin-top: 12px; text-align:left;">
-      <h2>Controller Mapping</h2>
-      <div>
-        <h3>Player 1</h3>
-        <label>Gamepad: <select id="p1GamepadSelect"></select></label>
-        <button onclick="beginMapping(1)">Map Player 1 Controls</button>
-        <div id="p1MappingStatus"></div>
-      </div>
-      <div>
-        <h3>Player 2</h3>
-        <label>Gamepad: <select id="p2GamepadSelect"></select></label>
-        <button onclick="beginMapping(2)">Map Player 2 Controls</button>
-        <div id="p2MappingStatus"></div>
-      </div>
-      <button id="backToMenuBtn">Back</button>
-    </div>
+    <div id="controlsPanel"></div>
   </div>
 </div>
 
@@ -232,7 +244,6 @@ const soloBtn = document.getElementById("soloBtn");
 const twoPlayerBtn = document.getElementById("twoPlayerBtn");
 const controlsBtn = document.getElementById("controlsBtn");
 const controlsPanel = document.getElementById("controlsPanel");
-const backToMenuBtn = document.getElementById("backToMenuBtn");
 
 /* =========================================================
    LIGHTING
@@ -310,72 +321,40 @@ camera.position.copy(player.pos);
 
 
 const DEFAULT_CONTROL_MAPPINGS = {
-  p1: {
-    gamepadIndex: 0,
-    keyboard: { moveForward: "w", moveBackward: "s", moveLeft: "a", moveRight: "d", sprint: "shift", reload: "r", interact: "e", shoot: "mouse0", pause: "escape", jump: " ", crouch: "control", swapWeapon: "q", useEquipment: "g" },
-    gamepad: {
-      moveX: { type: "axis", index: 0, invert: false, deadzone: 0.18 },
-      moveY: { type: "axis", index: 1, invert: false, deadzone: 0.18 },
-      lookX: { type: "axis", index: 2, invert: false, deadzone: 0.15 },
-      lookY: { type: "axis", index: 3, invert: false, deadzone: 0.15 },
-      shoot: { type: "button", index: 7 }, reload: { type: "button", index: 2 }, interact: { type: "button", index: 0 }, sprint: { type: "button", index: 10 }, pause: { type: "button", index: 9 }, jump: { type: "button", index: 1 }, crouch: { type: "button", index: 11 }, swapWeapon: { type: "button", index: 5 }, useEquipment: { type: "button", index: 3 }
-    },
-    lookSensitivity: 2.4,
-    invertLookY: false
-  },
-  p2: {
-    gamepadIndex: 1,
-    keyboard: { moveForward: "arrowup", moveBackward: "arrowdown", moveLeft: "arrowleft", moveRight: "arrowright", sprint: "/", reload: ".", interact: ",", shoot: "mouse0", pause: "escape", jump: "0", crouch: "1", swapWeapon: "2", useEquipment: "3" },
-    gamepad: {
-      moveX: { type: "axis", index: 0, invert: false, deadzone: 0.18 },
-      moveY: { type: "axis", index: 1, invert: false, deadzone: 0.18 },
-      lookX: { type: "axis", index: 2, invert: false, deadzone: 0.15 },
-      lookY: { type: "axis", index: 3, invert: false, deadzone: 0.15 },
-      shoot: { type: "button", index: 7 }, reload: { type: "button", index: 2 }, interact: { type: "button", index: 0 }, sprint: { type: "button", index: 10 }, pause: { type: "button", index: 9 }, jump: { type: "button", index: 1 }, crouch: { type: "button", index: 11 }, swapWeapon: { type: "button", index: 5 }, useEquipment: { type: "button", index: 3 }
-    },
-    lookSensitivity: 2.4,
-    invertLookY: false
-  }
+  p1: { inputSource: "keyboardMouse", gamepadIndex: 0, movement: { type: "keyboard", preset: "wasd", keys: { up: "w", down: "s", left: "a", right: "d" } }, look: { type: "mouse", sensitivity: 1.0, invertY: false }, buttons: { shoot: { type: "mouse", button: 0, label: "Left Mouse" }, reload: { type: "keyboard", key: "r", label: "R" }, interact: { type: "keyboard", key: "e", label: "E" }, sprint: { type: "keyboard", key: "shift", label: "Shift" }, jump: { type: "keyboard", key: " ", label: "Space" }, pause: { type: "keyboard", key: "escape", label: "Esc" }, swapWeapon: { type: "keyboard", key: "q", label: "Q" } }, controller: { moveStick: { xAxis: 0, yAxis: 1, deadzone: 0.18 }, lookStick: { xAxis: 2, yAxis: 3, deadzone: 0.15 }, lookSensitivity: 2.4, invertY: false, buttons: { shoot: { type: "button", index: 7, label: "RT / R2" }, reload: { type: "button", index: 2, label: "X / Square" }, interact: { type: "button", index: 0, label: "A / Cross" }, sprint: { type: "button", index: 10, label: "Left Stick Click" }, jump: { type: "button", index: 1, label: "B / Circle" }, pause: { type: "button", index: 9, label: "Start / Menu" }, swapWeapon: { type: "button", index: 5, label: "RB / R1" } } } },
+  p2: { inputSource: "controller", gamepadIndex: 1, movement: { type: "keyboard", preset: "arrows", keys: { up: "arrowup", down: "arrowdown", left: "arrowleft", right: "arrowright" } }, look: { type: "mouse", sensitivity: 1.0, invertY: false }, buttons: { shoot: { type: "keyboard", key: "enter", label: "Enter" }, reload: { type: "keyboard", key: ".", label: "." }, interact: { type: "keyboard", key: ",", label: "," }, sprint: { type: "keyboard", key: "/", label: "/" }, jump: { type: "keyboard", key: "right shift", label: "Right Shift" }, pause: { type: "keyboard", key: "backspace", label: "Backspace" }, swapWeapon: { type: "keyboard", key: "m", label: "M" } }, controller: { moveStick: { xAxis: 0, yAxis: 1, deadzone: 0.18 }, lookStick: { xAxis: 2, yAxis: 3, deadzone: 0.15 }, lookSensitivity: 2.4, invertY: false, buttons: { shoot: { type: "button", index: 7, label: "RT / R2" }, reload: { type: "button", index: 2, label: "X / Square" }, interact: { type: "button", index: 0, label: "A / Cross" }, sprint: { type: "button", index: 10, label: "Left Stick Click" }, jump: { type: "button", index: 1, label: "B / Circle" }, pause: { type: "button", index: 9, label: "Start / Menu" }, swapWeapon: { type: "button", index: 5, label: "RB / R1" } } } }
 };
-function cloneDefaultMappings() { return JSON.parse(JSON.stringify(DEFAULT_CONTROL_MAPPINGS)); }
-function loadControlMappings() {
-  try {
-    const raw = localStorage.getItem("goblinZombiesControlMappings");
-    if (!raw) return cloneDefaultMappings();
-    const parsed = JSON.parse(raw);
-    const defaults = cloneDefaultMappings();
-    return {
-      ...defaults, ...parsed,
-      p1: { ...defaults.p1, ...(parsed.p1||{}), keyboard: { ...defaults.p1.keyboard, ...((parsed.p1&&parsed.p1.keyboard)||{}) }, gamepad: { ...defaults.p1.gamepad, ...((parsed.p1&&parsed.p1.gamepad)||{}) } },
-      p2: { ...defaults.p2, ...(parsed.p2||{}), keyboard: { ...defaults.p2.keyboard, ...((parsed.p2&&parsed.p2.keyboard)||{}) }, gamepad: { ...defaults.p2.gamepad, ...((parsed.p2&&parsed.p2.gamepad)||{}) } }
-    };
-  } catch (err) { console.warn("Failed to load control mappings. Using defaults.", err); return cloneDefaultMappings(); }
-}
-let controlMappings = loadControlMappings();
-function saveControlMappings() { localStorage.setItem("goblinZombiesControlMappings", JSON.stringify(controlMappings)); }
-let pendingMapping = null;
-const previousGamepadButtons = { p1: {}, p2: {} };
-function updateMappingStatus(playerKey, message){ const el=document.getElementById(`${playerKey}MappingStatus`); if(el) el.textContent=message; }
-function resetControlMappings(){ controlMappings = cloneDefaultMappings(); saveControlMappings(); refreshGamepadSelects(); renderControlsMappingUI(); }
-function getMappedGamepad(playerKey){ const m=controlMappings[playerKey]; if(!navigator.getGamepads) return null; return navigator.getGamepads()[m.gamepadIndex]||null; }
-function readAxisBinding(pad,b){ if(!pad||!b||b.type!=="axis") return 0; let v=pad.axes[b.index]||0; if(Math.abs(v)<(b.deadzone||0.15)) return 0; if(b.invert) v*=-1; return v; }
-function isGamepadActionPressed(playerKey,action){ const pad=getMappedGamepad(playerKey); const b=controlMappings[playerKey].gamepad[action]; if(!pad||!b) return false; if(b.type==="button") return !!pad.buttons[b.index]?.pressed; if(b.type==="axis") return Math.abs(readAxisBinding(pad,b))>(b.deadzone||0.2); return false; }
-function wasGamepadActionJustPressed(playerKey, actionName){ const now=isGamepadActionPressed(playerKey,actionName); const was=previousGamepadButtons[playerKey][actionName]||false; previousGamepadButtons[playerKey][actionName]=now; return now&&!was; }
-function getGamepadMoveVector(playerKey){ const pad=getMappedGamepad(playerKey), map=controlMappings[playerKey].gamepad; return {x: readAxisBinding(pad,map.moveX), y: readAxisBinding(pad,map.moveY)}; }
-function getGamepadLookVector(playerKey){ const pad=getMappedGamepad(playerKey), map=controlMappings[playerKey].gamepad; return {x: readAxisBinding(pad,map.lookX), y: readAxisBinding(pad,map.lookY)}; }
-function beginKeyboardMapping(playerKey, actionName){ pendingMapping={mode:"keyboard",playerKey,actionName}; updateMappingStatus(playerKey,`Press a keyboard key for ${actionName}...`); }
-function beginGamepadButtonMapping(playerKey, actionName){ pendingMapping={mode:"gamepadButton",playerKey,actionName,startedAt:performance.now()}; updateMappingStatus(playerKey,`Press a controller button for ${actionName}...`); }
-function beginGamepadAxisMapping(playerKey, actionName){ pendingMapping={mode:"gamepadAxis",playerKey,actionName,startedAt:performance.now()}; updateMappingStatus(playerKey,`Move the analog stick/axis for ${actionName}...`); }
-function beginMapping(playerNum){ updateMappingStatus(`p${playerNum}`,"Use the mapping buttons below each action."); }
-function refreshGamepadSelects(){ const pads=navigator.getGamepads?navigator.getGamepads():[]; [["p1GamepadSelect","p1"],["p2GamepadSelect","p2"]].forEach(([id,pk])=>{ const sel=document.getElementById(id); if(!sel) return; sel.innerHTML=""; for(let i=0;i<pads.length;i++){ const pad=pads[i]; if(!pad) continue; const o=document.createElement('option'); o.value=i; o.textContent=`Gamepad ${i}: ${pad.id}`; sel.appendChild(o);} if(!sel.children.length){ const o=document.createElement('option'); o.value=controlMappings[pk].gamepadIndex; o.textContent=`Gamepad ${controlMappings[pk].gamepadIndex} (not connected)`; sel.appendChild(o);} sel.value=String(controlMappings[pk].gamepadIndex); sel.onchange=()=>{ controlMappings[pk].gamepadIndex=Number(sel.value); saveControlMappings(); }; }); }
-function renderControlsMappingUI(){ if(!controlsPanel) return; let root=document.getElementById('mappingRowsRoot'); if(!root){ root=document.createElement('div'); root.id='mappingRowsRoot'; controlsPanel.appendChild(root);} const actions=[['moveForward','Move Forward'],['moveBackward','Move Backward'],['moveLeft','Move Left'],['moveRight','Move Right'],['sprint','Sprint'],['lookX','Look X Axis'],['lookY','Look Y Axis'],['shoot','Shoot'],['reload','Reload'],['interact','Interact'],['pause','Pause/Menu'],['jump','Jump'],['crouch','Crouch'],['swapWeapon','Swap Weapon'],['useEquipment','Use Equipment']];
-  root.innerHTML=''; ['p1','p2'].forEach(pk=>{ const sec=document.createElement('div'); sec.style.margin='8px 0'; sec.innerHTML=`<h4>${pk.toUpperCase()}</h4>`; actions.forEach(([action,label])=>{ const row=document.createElement('div'); row.style.margin='4px 0'; const kb=controlMappings[pk].keyboard[action]||'-'; const gp=controlMappings[pk].gamepad[action]; const gpTxt=gp?`${gp.type} ${gp.index}${gp.invert?' (inv)':''}`:'-'; row.innerHTML=`<strong>${label}</strong> | K: ${kb} | G: ${gpTxt} `; const b1=document.createElement('button'); b1.textContent='Map Keyboard'; b1.onclick=()=>beginKeyboardMapping(pk,action); const b2=document.createElement('button'); b2.textContent='Map Gamepad Button'; b2.onclick=()=>beginGamepadButtonMapping(pk,action); const b3=document.createElement('button'); b3.textContent='Map Gamepad Axis'; b3.onclick=()=>beginGamepadAxisMapping(pk,action); row.append(b1,b2,b3); if(gp&&gp.type==='axis'){ const inv=document.createElement('button'); inv.textContent='Invert Axis'; inv.onclick=()=>{ gp.invert=!gp.invert; saveControlMappings(); renderControlsMappingUI(); }; row.appendChild(inv);} sec.appendChild(row); }); const sens=document.createElement('div'); sens.innerHTML=`Look sensitivity: <input type='range' min='0.5' max='6' step='0.1' value='${controlMappings[pk].lookSensitivity}'><span> ${controlMappings[pk].lookSensitivity.toFixed(1)}</span> <label><input type='checkbox' ${controlMappings[pk].invertLookY?'checked':''}> Invert Y</label>`; const slider=sens.querySelector('input[type="range"]'); const span=sens.querySelector('span'); const chk=sens.querySelector('input[type="checkbox"]'); slider.oninput=()=>{ controlMappings[pk].lookSensitivity=Number(slider.value); span.textContent=` ${slider.value}`;}; chk.onchange=()=>{controlMappings[pk].invertLookY=chk.checked;}; sec.appendChild(sens); root.appendChild(sec); });
-  let resetBtn=document.getElementById('resetControlsBtn'); if(!resetBtn){ resetBtn=document.createElement('button'); resetBtn.id='resetControlsBtn'; resetBtn.textContent='Reset Controls to Defaults'; controlsPanel.appendChild(resetBtn);} resetBtn.onclick=resetControlMappings;
-  let saveBtn=document.getElementById('saveControlsBtn'); if(!saveBtn){ saveBtn=document.createElement('button'); saveBtn.id='saveControlsBtn'; saveBtn.textContent='Save Controls'; controlsPanel.appendChild(saveBtn);} saveBtn.onclick=()=>{ saveControlMappings(); alert('Controls saved.'); };
-}
-function updatePendingGamepadMapping(){ if(!pendingMapping) return; if(!['gamepadButton','gamepadAxis'].includes(pendingMapping.mode)) return; const pk=pendingMapping.playerKey; const pad=getMappedGamepad(pk); if(!pad) return; if(performance.now()-pendingMapping.startedAt<300) return; if(pendingMapping.mode==='gamepadButton'){ for(let i=0;i<pad.buttons.length;i++){ if(pad.buttons[i]?.pressed){ controlMappings[pk].gamepad[pendingMapping.actionName]={type:'button',index:i}; updateMappingStatus(pk,`Mapped ${pendingMapping.actionName} to button ${i}`); pendingMapping=null; saveControlMappings(); renderControlsMappingUI(); return; } } } else { for(let i=0;i<pad.axes.length;i++){ const v=pad.axes[i]||0; if(Math.abs(v)>0.5){ controlMappings[pk].gamepad[pendingMapping.actionName]={type:'axis',index:i,invert:v<0,deadzone:0.15}; updateMappingStatus(pk,`Mapped ${pendingMapping.actionName} to axis ${i}`); pendingMapping=null; saveControlMappings(); renderControlsMappingUI(); return; } } } }
-window.addEventListener("gamepadconnected", refreshGamepadSelects);
-window.addEventListener("gamepaddisconnected", refreshGamepadSelects);
+const CONTROL_ACTIONS=[["shoot","Shoot"],["reload","Reload"],["interact","Interact / Board / Buy"],["sprint","Sprint"],["jump","Jump"],["swapWeapon","Swap Weapon"],["pause","Pause / Menu"]];
+function cloneDefaultMappings(){return JSON.parse(JSON.stringify(DEFAULT_CONTROL_MAPPINGS));}
+function mergeControlMapping(base,saved){return {...base,...saved,movement:{...base.movement,...(saved.movement||{}),keys:{...base.movement.keys,...((saved.movement||{}).keys||{})}},look:{...base.look,...(saved.look||{})},buttons:{...base.buttons,...(saved.buttons||{})},controller:{...base.controller,...(saved.controller||{}),moveStick:{...base.controller.moveStick,...((saved.controller||{}).moveStick||{})},lookStick:{...base.controller.lookStick,...((saved.controller||{}).lookStick||{})},buttons:{...base.controller.buttons,...((saved.controller||{}).buttons||{})}}};}
+function loadControlMappings(){try{const raw=localStorage.getItem("goblinZombiesControlMappings");if(!raw) return cloneDefaultMappings();const parsed=JSON.parse(raw),d=cloneDefaultMappings();return {p1:mergeControlMapping(d.p1,parsed.p1||{}),p2:mergeControlMapping(d.p2,parsed.p2||{})};}catch(err){console.warn("Failed to load control mappings. Using defaults.",err);return cloneDefaultMappings();}}
+let controlMappings=loadControlMappings();
+function saveControlMappings(){localStorage.setItem("goblinZombiesControlMappings",JSON.stringify(controlMappings));}
+function resetControlMappings(){controlMappings=cloneDefaultMappings();saveControlMappings();refreshGamepadSelects();renderControlsMappingUI();}
+let pendingMapping=null; const mouseButtons={}; const previousActions={p1:{},p2:{}};
+function setGlobalMappingStatus(t){const el=document.getElementById("globalMappingStatus"); if(el) el.textContent=t;}
+function getMappedGamepad(playerKey){const m=controlMappings[playerKey]; if(!navigator.getGamepads) return null; const pads=navigator.getGamepads(); return pads[m.gamepadIndex]||null;}
+function readAxis(v,d){return Math.abs(v)<d?0:v;}
+function getPlayerMoveInput(playerKey){const map=controlMappings[playerKey]; if(map.inputSource==="controller"){const pad=getMappedGamepad(playerKey); if(!pad) return {x:0,y:0}; const s=map.controller.moveStick; return {x:readAxis(pad.axes[s.xAxis]||0,s.deadzone),y:readAxis(pad.axes[s.yAxis]||0,s.deadzone)};} const k=map.movement.keys; let x=0,y=0; if(keys[k.up]) y-=1; if(keys[k.down]) y+=1; if(keys[k.left]) x-=1; if(keys[k.right]) x+=1; return {x,y};}
+function getPlayerLookInput(playerKey){const map=controlMappings[playerKey]; if(map.inputSource!=="controller") return {x:0,y:0}; const pad=getMappedGamepad(playerKey); if(!pad) return {x:0,y:0}; const s=map.controller.lookStick; return {x:readAxis(pad.axes[s.xAxis]||0,s.deadzone),y:readAxis(pad.axes[s.yAxis]||0,s.deadzone)};}
+function isKeyboardMouseActionPressed(playerKey,action){const b=controlMappings[playerKey].buttons[action]; if(!b) return false; if(b.type==="keyboard") return !!keys[b.key]; if(b.type==="mouse") return !!mouseButtons[b.button]; return false;}
+function isControllerActionPressed(playerKey,action){const pad=getMappedGamepad(playerKey),b=controlMappings[playerKey].controller.buttons[action]; return !!(pad&&b&&pad.buttons[b.index]?.pressed);}
+function isPlayerActionPressed(playerKey,action){return controlMappings[playerKey].inputSource==="controller"?isControllerActionPressed(playerKey,action):isKeyboardMouseActionPressed(playerKey,action);}
+function wasPlayerActionJustPressed(playerKey,action){const now=isPlayerActionPressed(playerKey,action),before=previousActions[playerKey][action]||false; previousActions[playerKey][action]=now; return now&&!before;}
+function beginMapping(playerNumber){if(controlsPanel){controlsPanel.style.display="block";renderControlsMappingUI();} setGlobalMappingStatus(`Choose controls for Player ${playerNumber}.`);}
+function beginSimpleButtonMapping(playerKey,action){const map=controlMappings[playerKey]; pendingMapping={mode:map.inputSource==="controller"?"controllerButton":"keyboardOrMouseButton",playerKey,action,startedAt:performance.now()}; setGlobalMappingStatus(map.inputSource==="controller"?`Press a controller button for ${action}...`:`Press a keyboard key or mouse button for ${action}...`);}
+function beginMovementKeyMapping(playerKey){pendingMapping={mode:"movementKeys",playerKey,step:0,keys:{},order:[["up","Move Forward"],["down","Move Backward"],["left","Move Left"],["right","Move Right"]]}; setGlobalMappingStatus("Press key for Move Forward...");}
+function prettyKey(key){if(!key) return "Unmapped"; if(key===" ") return "Space"; if(key==="shift") return "Shift"; if(key==="escape") return "Esc"; if(key.startsWith("arrow")) return key.replace("arrow","Arrow "); return key.length===1?key.toUpperCase():key;}
+function describeKeyboardMovement(map){const k=map.movement.keys; return `${prettyKey(k.up)} / ${prettyKey(k.down)} / ${prettyKey(k.left)} / ${prettyKey(k.right)}`;}
+function describeActionBinding(playerKey,action,isController){const map=controlMappings[playerKey]; if(isController){const b=map.controller.buttons[action]; return b?(b.label||`Button ${b.index}`):"Unmapped";} const b=map.buttons[action]; if(!b) return "Unmapped"; return b.type==="mouse"?(b.label||`Mouse ${b.button}`):(b.label||prettyKey(b.key));}
+function renderButtonMappingRow(playerKey,action,text,isController){return `<div class="controlRow"><div class="controlLabel">${text}</div><div class="controlValue">${describeActionBinding(playerKey,action,isController)}</div><button class="controlSmallBtn" data-map-button="${playerKey}:${action}">Assign Button</button></div>`;}
+function renderPlayerControlCard(playerKey,label){const map=controlMappings[playerKey],isController=map.inputSource==="controller"; return `<div class="controlPlayerCard"><h3>${label}</h3><div class="controlRow"><div class="controlLabel">Input Source</div><div class="controlValue"><select data-input-source="${playerKey}"><option value="keyboardMouse" ${map.inputSource==="keyboardMouse"?"selected":""}>Keyboard + Mouse</option><option value="controller" ${isController?"selected":""}>Controller</option></select></div><div></div></div><div class="controlRow"><div class="controlLabel">Assigned Controller</div><div class="controlValue"><select id="${playerKey}GamepadSelect" data-gamepad-select="${playerKey}" ${!isController?"disabled":""}></select></div><button class="controlSmallBtn" data-refresh-pads="${playerKey}">Refresh</button></div><div class="controlRow"><div class="controlLabel">Movement</div><div class="controlValue">${isController?"Left Analog Stick":describeKeyboardMovement(map)}</div><button class="controlSmallBtn" data-map-movement="${playerKey}" ${isController?"disabled":""}>Set Keys</button></div><div class="controlRow"><div class="controlLabel">Look / Aim</div><div class="controlValue">${isController?"Right Analog Stick":"Mouse"}<br>Sensitivity: <input data-look-sensitivity="${playerKey}" type="number" min="0.2" max="10" step="0.1" value="${isController?map.controller.lookSensitivity:map.look.sensitivity}" style="width:70px;"><label><input data-invert-look="${playerKey}" type="checkbox" ${(isController?map.controller.invertY:map.look.invertY)?"checked":""}> Invert Y</label></div><div></div></div>${CONTROL_ACTIONS.map(([a,t])=>renderButtonMappingRow(playerKey,a,t,isController)).join("")}</div>`;}
+function bindControlsUIEvents(){document.querySelectorAll('[data-input-source]').forEach(select=>select.onchange=()=>{const pk=select.dataset.inputSource; controlMappings[pk].inputSource=select.value; saveControlMappings(); renderControlsMappingUI();}); document.querySelectorAll('[data-gamepad-select]').forEach(select=>select.onchange=()=>{const pk=select.dataset.gamepadSelect; controlMappings[pk].gamepadIndex=Number(select.value); saveControlMappings();}); document.querySelectorAll('[data-refresh-pads]').forEach(btn=>btn.onclick=refreshGamepadSelects); document.querySelectorAll('[data-look-sensitivity]').forEach(input=>input.onchange=()=>{const pk=input.dataset.lookSensitivity,m=controlMappings[pk],v=Number(input.value); if(m.inputSource==="controller") m.controller.lookSensitivity=v; else m.look.sensitivity=v; saveControlMappings();}); document.querySelectorAll('[data-invert-look]').forEach(input=>input.onchange=()=>{const pk=input.dataset.invertLook,m=controlMappings[pk]; if(m.inputSource==="controller") m.controller.invertY=input.checked; else m.look.invertY=input.checked; saveControlMappings();}); document.querySelectorAll('[data-map-button]').forEach(btn=>btn.onclick=()=>{const [pk,a]=btn.dataset.mapButton.split(':'); beginSimpleButtonMapping(pk,a);}); document.querySelectorAll('[data-map-movement]').forEach(btn=>btn.onclick=()=>beginMovementKeyMapping(btn.dataset.mapMovement));}
+function renderControlsMappingUI(){if(!controlsPanel) return; controlsPanel.innerHTML=`<div class="controlTopActions"><h2 style="margin:0 0 6px;">Controls</h2><p style="margin:0 0 8px; opacity:0.85;">Choose Keyboard + Mouse or Controller for each player. Movement and looking use mouse/sticks. Everything else is just a button.</p><button id="saveControlsBtn" class="controlSmallBtn">Save</button><button id="resetControlsBtn" class="controlSmallBtn">Reset to Defaults</button><button id="closeControlsBtn" class="controlSmallBtn">Back</button><div id="globalMappingStatus" class="mappingHint"></div></div>${renderPlayerControlCard("p1","Player 1")}${renderPlayerControlCard("p2","Player 2")}`; document.getElementById('saveControlsBtn').onclick=()=>{saveControlMappings();setGlobalMappingStatus('Controls saved.');}; document.getElementById('resetControlsBtn').onclick=()=>{resetControlMappings();setGlobalMappingStatus('Controls reset to defaults.');}; document.getElementById('closeControlsBtn').onclick=()=>controlsPanel.style.display='none'; bindControlsUIEvents(); refreshGamepadSelects();}
+function refreshGamepadSelects(){const pads=navigator.getGamepads?navigator.getGamepads():[]; document.querySelectorAll('[data-gamepad-select]').forEach(select=>{const pk=select.dataset.gamepadSelect,current=controlMappings[pk].gamepadIndex; select.innerHTML=''; let found=false; for(let i=0;i<pads.length;i++){const pad=pads[i]; if(!pad) continue; found=true; const o=document.createElement('option'); o.value=i; o.textContent=`Controller ${i+1}: ${pad.id}`; select.appendChild(o);} if(!found){const o=document.createElement('option'); o.value=current; o.textContent='No controller detected'; select.appendChild(o);} select.value=current;});}
+function updatePendingControllerMapping(){if(!pendingMapping||pendingMapping.mode!=="controllerButton") return; if(performance.now()-pendingMapping.startedAt<300) return; const {playerKey,action}=pendingMapping,pad=getMappedGamepad(playerKey); if(!pad) return; for(let i=0;i<pad.buttons.length;i++){if(pad.buttons[i].pressed){controlMappings[playerKey].controller.buttons[action]={type:'button',index:i,label:`Button ${i}`}; pendingMapping=null; saveControlMappings(); renderControlsMappingUI(); setGlobalMappingStatus(`Mapped ${action} to controller button ${i}.`); return;}}}
+window.addEventListener('gamepadconnected',()=>{refreshGamepadSelects();setGlobalMappingStatus('Controller connected.');});
+window.addEventListener('gamepaddisconnected',()=>{refreshGamepadSelects();setGlobalMappingStatus('Controller disconnected.');});
 let pointerLocked = false;
 
 document.addEventListener("pointerlockchange", () => {
@@ -400,13 +379,11 @@ if (twoPlayerBtn) {
 
 if (controlsBtn) {
   controlsBtn.onclick = () => {
-    if (controlsPanel) controlsPanel.style.display = "block";
-  };
-}
-
-if (backToMenuBtn) {
-  backToMenuBtn.onclick = () => {
-    if (controlsPanel) controlsPanel.style.display = "none";
+    if (controlsPanel) {
+      controlsPanel.style.display = "block";
+      renderControlsMappingUI();
+      refreshGamepadSelects();
+    }
   };
 }
 
@@ -431,21 +408,34 @@ document.addEventListener("mousemove", e => {
 const keys = {};
 document.addEventListener("keydown", e => {
   const key = e.key.toLowerCase();
-  if (pendingMapping && pendingMapping.mode === "keyboard") {
-    const { playerKey, actionName } = pendingMapping;
-    controlMappings[playerKey].keyboard[actionName] = key;
-    pendingMapping = null;
-    saveControlMappings();
-    renderControlsMappingUI();
-    updateMappingStatus(playerKey, `Mapped ${actionName} to ${key}`);
-    e.preventDefault();
-    return;
+  if (pendingMapping && pendingMapping.mode === "movementKeys") {
+    const item = pendingMapping.order[pendingMapping.step];
+    pendingMapping.keys[item[0]] = key; pendingMapping.step++;
+    if (pendingMapping.step >= pendingMapping.order.length) {
+      const playerKey = pendingMapping.playerKey;
+      controlMappings[playerKey].movement = { type: "keyboard", preset: "custom", keys: pendingMapping.keys };
+      pendingMapping = null; saveControlMappings(); renderControlsMappingUI(); setGlobalMappingStatus("Movement keys saved.");
+    } else { const next = pendingMapping.order[pendingMapping.step]; setGlobalMappingStatus(`Press key for ${next[1]}...`); }
+    e.preventDefault(); return;
+  }
+  if (pendingMapping && pendingMapping.mode === "keyboardOrMouseButton") {
+    const { playerKey, action } = pendingMapping;
+    controlMappings[playerKey].buttons[action] = { type: "keyboard", key, label: prettyKey(key) };
+    pendingMapping = null; saveControlMappings(); renderControlsMappingUI(); setGlobalMappingStatus(`Mapped ${action} to ${prettyKey(key)}.`);
+    e.preventDefault(); return;
   }
   keys[key] = true;
-  if (key === controlMappings.p1.keyboard.reload) reload();
-  if (key === controlMappings.p1.keyboard.interact) interact();
 });
 
+document.addEventListener("mousedown", e => {
+  mouseButtons[e.button] = true;
+  if (pendingMapping && pendingMapping.mode === "keyboardOrMouseButton") {
+    const { playerKey, action } = pendingMapping;
+    controlMappings[playerKey].buttons[action] = { type: "mouse", button: e.button, label: e.button===0?"Left Mouse":e.button===1?"Middle Mouse":e.button===2?"Right Mouse":`Mouse ${e.button}` };
+    pendingMapping = null; saveControlMappings(); renderControlsMappingUI(); setGlobalMappingStatus(`Mapped ${action} to mouse button ${e.button}.`); e.preventDefault();
+  }
+});
+document.addEventListener("mouseup", e => { mouseButtons[e.button] = false; });
 document.addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
 
 /* =========================================================
@@ -2246,7 +2236,7 @@ function faceGoblinToward(enemy, targetPosition) {
 
 function updatePlayer(dt) {
   const pMap = controlMappings.p1;
-  const sprintHeld = keys[pMap.keyboard.sprint] || isGamepadActionPressed("p1", "sprint");
+  const sprintHeld = isPlayerActionPressed("p1", "sprint");
   const speed = sprintHeld ? player.sprintSpeed : player.speed;
 
   const forward = new THREE.Vector3(
@@ -2263,15 +2253,9 @@ function updatePlayer(dt) {
 
   const move = new THREE.Vector3();
 
-  let moveX = 0;
-  let moveY = 0;
-  if (keys[pMap.keyboard.moveForward]) moveY -= 1;
-  if (keys[pMap.keyboard.moveBackward]) moveY += 1;
-  if (keys[pMap.keyboard.moveLeft]) moveX -= 1;
-  if (keys[pMap.keyboard.moveRight]) moveX += 1;
-  const gpMove = getGamepadMoveVector("p1");
-  moveX += gpMove.x;
-  moveY += gpMove.y;
+  const moveInput = getPlayerMoveInput("p1");
+  const moveX = moveInput.x;
+  const moveY = moveInput.y;
   if (moveY < 0) move.add(forward.clone().multiplyScalar(-moveY));
   if (moveY > 0) move.sub(forward.clone().multiplyScalar(moveY));
   if (moveX > 0) move.add(right.clone().multiplyScalar(moveX));
@@ -2287,18 +2271,18 @@ function updatePlayer(dt) {
   if (!wouldCollide(nx, player.pos.z)) player.pos.x = nx;
   if (!wouldCollide(player.pos.x, nz)) player.pos.z = nz;
 
-  const look = getGamepadLookVector("p1");
-  if (Math.abs(look.x) > 0 || Math.abs(look.y) > 0) {
-    const sensitivity = pMap.lookSensitivity || 2.4;
-    const invertY = pMap.invertLookY ? -1 : 1;
-    player.yaw -= look.x * sensitivity * dt;
-    player.pitch -= look.y * sensitivity * invertY * dt;
+  const lookInput = getPlayerLookInput("p1");
+  if (pMap.inputSource === "controller") {
+    const sensitivity = pMap.controller.lookSensitivity || 2.4;
+    const invertY = pMap.controller.invertY ? -1 : 1;
+    player.yaw -= lookInput.x * sensitivity * dt;
+    player.pitch -= lookInput.y * sensitivity * invertY * dt;
     player.pitch = Math.max(-1.25, Math.min(1.25, player.pitch));
   }
-  if (wasGamepadActionJustPressed("p1", "shoot")) shoot();
-  if (wasGamepadActionJustPressed("p1", "reload")) reload();
-  if (wasGamepadActionJustPressed("p1", "interact")) interact();
-  if (currentGun.automatic && isGamepadActionPressed("p1", "shoot")) shoot();
+  if (wasPlayerActionJustPressed("p1", "shoot")) shoot();
+  if (wasPlayerActionJustPressed("p1", "reload")) reload();
+  if (wasPlayerActionJustPressed("p1", "interact")) interact();
+  if (currentGun.automatic && isPlayerActionPressed("p1", "shoot")) shoot();
   camera.position.copy(player.pos);
   camera.rotation.order = "YXZ";
   camera.rotation.y = player.yaw;
@@ -3342,7 +3326,7 @@ function animate() {
 
   const dt = Math.min(clock.getDelta(), 0.05);
 
-  updatePendingGamepadMapping();
+  updatePendingControllerMapping();
   if (player.alive) {
     updatePlayer(dt);
     updateGun(dt);
