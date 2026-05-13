@@ -1661,6 +1661,39 @@ const enemyTypes = {
     reward: 130,
     scale: 1.05,
     thrower: true
+  },
+  armored: {
+    name: "Armored Goblin",
+    color: 0x6f6f68,
+    health: 420,
+    speed: 1.05,
+    damage: 22,
+    reward: 260,
+    scale: 1.45,
+    thrower: false,
+    armor: true
+  },
+  leaper: {
+    name: "Leaper Goblin",
+    color: 0x8b35ff,
+    health: 95,
+    speed: 3.6,
+    damage: 14,
+    reward: 170,
+    scale: 0.95,
+    thrower: false,
+    leaper: true
+  },
+  spitter: {
+    name: "Acid Spitter",
+    color: 0x75ff3b,
+    health: 140,
+    speed: 1.7,
+    damage: 10,
+    reward: 210,
+    scale: 1.05,
+    thrower: true,
+    acid: true
   }
 };
 
@@ -1755,6 +1788,74 @@ function createGoblinMesh(typeKey) {
   arm2.name = "rightArm";
   group.add(arm2);
 
+
+  if (typeKey === "armored") {
+    const armorMat = new THREE.MeshStandardMaterial({
+      color: 0x888888,
+      metalness: 0.55,
+      roughness: 0.35
+    });
+
+    const chestPlate = new THREE.Mesh(
+      new THREE.BoxGeometry(0.75, 0.55, 0.16),
+      armorMat
+    );
+    chestPlate.position.set(0, 0.92, -0.34);
+    group.add(chestPlate);
+
+    const helmet = new THREE.Mesh(
+      new THREE.SphereGeometry(0.44, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55),
+      armorMat
+    );
+    helmet.position.set(0, 1.58, 0);
+    helmet.rotation.x = Math.PI;
+    group.add(helmet);
+  }
+
+  if (typeKey === "leaper") {
+    const clawMat = new THREE.MeshBasicMaterial({ color: 0xf3e6ff });
+
+    for (const x of [-0.58, 0.58]) {
+      const claw = new THREE.Mesh(
+        new THREE.ConeGeometry(0.06, 0.32, 8),
+        clawMat
+      );
+      claw.position.set(x, 0.68, -0.35);
+      claw.rotation.x = Math.PI / 2;
+      group.add(claw);
+    }
+
+    const backSpike = new THREE.Mesh(
+      new THREE.ConeGeometry(0.12, 0.45, 8),
+      skin
+    );
+    backSpike.position.set(0, 1.15, 0.42);
+    backSpike.rotation.x = -Math.PI / 2;
+    group.add(backSpike);
+  }
+
+  if (typeKey === "spitter") {
+    const acidMat = new THREE.MeshStandardMaterial({
+      color: 0x99ff33,
+      emissive: 0x44aa11,
+      emissiveIntensity: 0.6
+    });
+
+    const throat = new THREE.Mesh(
+      new THREE.SphereGeometry(0.16, 12, 12),
+      acidMat
+    );
+    throat.position.set(0, 1.22, -0.34);
+    group.add(throat);
+
+    const acidSac = new THREE.Mesh(
+      new THREE.SphereGeometry(0.24, 12, 12),
+      acidMat
+    );
+    acidSac.position.set(0, 1.0, 0.36);
+    group.add(acidSac);
+  }
+
   group.scale.setScalar(type.scale);
 
   group.traverse(o => {
@@ -1824,10 +1925,27 @@ function spawnEnemy(typeKey = "green") {
     tearAnim: 0,
     climbTimer: 0,
     hitFlashTimer: 0,
+    leapCooldown: 1.5 + Math.random() * 1.5,
+    leapAnim: 0,
     hitboxes: [
-      { name: "head", offset: new THREE.Vector3(0, 1.45 * type.scale, -0.05), radius: 0.42 * type.scale, multiplier: 1.8 },
-      { name: "body", offset: new THREE.Vector3(0, 0.85 * type.scale, 0), radius: 0.48 * type.scale, multiplier: 1.0 },
-      { name: "legs", offset: new THREE.Vector3(0, 0.35 * type.scale, 0), radius: 0.35 * type.scale, multiplier: 0.75 }
+      {
+        name: "head",
+        offset: new THREE.Vector3(0, 1.52 * type.scale, -0.08),
+        radius: 0.48 * type.scale,
+        multiplier: 2.35
+      },
+      {
+        name: "body",
+        offset: new THREE.Vector3(0, 0.92 * type.scale, 0),
+        radius: 0.58 * type.scale,
+        multiplier: 1.0
+      },
+      {
+        name: "legs",
+        offset: new THREE.Vector3(0, 0.38 * type.scale, 0),
+        radius: 0.44 * type.scale,
+        multiplier: 0.7
+      }
     ]
   };
   addGoblinGroundMarker(enemyObj);
@@ -1855,9 +1973,21 @@ function chooseEnemyType() {
   const w = player.wave;
   const r = Math.random();
 
-  if (w >= 4 && r < 0.12) return "blue";
-  if (w >= 2 && r < 0.32) return "red";
-  if (w >= 3 && r < 0.50) return "yellow";
+  // Very late dangerous enemies
+  if (w >= 10 && r < 0.10) return "armored";
+  if (w >= 9 && r < 0.20) return "spitter";
+  if (w >= 8 && r < 0.32) return "leaper";
+
+  // Mid-late waves
+  if (w >= 7 && r < 0.12) return "armored";
+  if (w >= 6 && r < 0.22) return "spitter";
+  if (w >= 5 && r < 0.34) return "leaper";
+
+  // Existing types
+  if (w >= 4 && r < 0.16) return "blue";
+  if (w >= 3 && r < 0.36) return "yellow";
+  if (w >= 2 && r < 0.58) return "red";
+
   return "green";
 }
 
@@ -2139,17 +2269,49 @@ function updateBullets(dt) {
     for (let j = enemies.length - 1; j >= 0; j--) {
       const e = enemies[j];
       let bestHit = null;
+      let bestScore = Infinity;
+
       for (const hb of e.hitboxes) {
         const center = e.mesh.position.clone().add(hb.offset);
         const dist = b.pos.distanceTo(center);
+
         let radius = hb.radius;
+
         if (e.state === "tearing_boards" || e.state === "climbing_in") {
-          radius *= 1.15;
+          radius *= 1.28;
         }
-        if (dist < radius) { bestHit = hb; break; }
+
+        if (dist < radius) {
+          const zonePriority =
+            hb.name === "head" ? -0.35 :
+            hb.name === "body" ? 0 :
+            0.25;
+
+          const score = dist / radius + zonePriority;
+
+          if (score < bestScore) {
+            bestScore = score;
+            bestHit = hb;
+          }
+        }
       }
       if (bestHit) {
-        const damageDone = b.damage * bestHit.multiplier;
+        let damageDone = b.damage * bestHit.multiplier;
+        const enemyTypeData = enemyTypes[e.typeKey];
+
+        if (enemyTypeData && enemyTypeData.armor) {
+          if (bestHit.name === "body") {
+            damageDone *= 0.55;
+          }
+
+          if (bestHit.name === "legs") {
+            damageDone *= 0.75;
+          }
+
+          if (bestHit.name === "head") {
+            damageDone *= 1.15;
+          }
+        }
         e.health -= damageDone;
         showGoblinHit(e, bestHit.name, damageDone);
         hit = true;
@@ -2188,10 +2350,37 @@ function spawnRock(enemy) {
   });
 }
 
+function spawnAcid(enemy) {
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.2, 12, 12),
+    new THREE.MeshBasicMaterial({ color: 0x99ff33 })
+  );
+
+  mesh.position.copy(enemy.mesh.position);
+  mesh.position.y += 1.45;
+  scene.add(mesh);
+
+  const target = camera.position.clone();
+  const dir = target.sub(mesh.position);
+  const horizontal = new THREE.Vector3(dir.x, 0, dir.z).normalize();
+
+  rocks.push({
+    mesh,
+    pos: mesh.position.clone(),
+    vel: new THREE.Vector3(horizontal.x * 7, 7.2, horizontal.z * 7),
+    life: 4,
+    damage: 18,
+    acid: true
+  });
+}
+
 function updateRocks(dt) {
   for (let i = rocks.length - 1; i >= 0; i--) {
     const r = rocks[i];
     r.life -= dt;
+    if (r.acid) {
+      r.mesh.scale.setScalar(1 + Math.sin(performance.now() * 0.012) * 0.15);
+    }
     r.vel.y -= 12 * dt;
     r.pos.add(r.vel.clone().multiplyScalar(dt));
     r.mesh.position.copy(r.pos);
@@ -2200,6 +2389,9 @@ function updateRocks(dt) {
 
     if (dist < 0.75 && player.hurtCooldown <= 0) {
       player.health -= r.damage;
+      if (r.acid) {
+        player.health -= 4;
+      }
       player.regenTimer = player.regenDelay;
       player.hurtCooldown = 0.5;
       scene.remove(r.mesh);
@@ -2249,9 +2441,19 @@ function killEnemy(index) {
 function showGoblinHit(enemy, hitZone, damage) {
   enemy.hitFlashTimer = 0.12;
   const color = hitZone === "head" ? 0xffff66 : hitZone === "body" ? 0xff5555 : 0xffaa33;
-  const sprite = createDamageSprite(Math.floor(damage), color);
+  const label = hitZone === "head"
+    ? `HEADSHOT ${Math.floor(damage)}`
+    : `${Math.floor(damage)}`;
+  const sprite = createDamageSprite(label, color);
   sprite.position.copy(enemy.mesh.position);
   sprite.position.y += hitZone === "head" ? 2.2 : 1.5;
+  if (hitZone === "head") {
+    sprite.scale.set(2.2, 0.9, 1);
+    const head = enemy.mesh.getObjectByName("head");
+    if (head) {
+      head.rotation.x = -0.35;
+    }
+  }
   scene.add(sprite);
   floatingTexts.push({ sprite, life: 0.65, vel: new THREE.Vector3((Math.random()-0.5)*0.5,1.2,(Math.random()-0.5)*0.5) });
 }
@@ -2657,10 +2859,45 @@ function updateEnemies(dt) {
 
       const dist = dir.length();
 
+      if (type.leaper) {
+        e.leapCooldown -= dt;
+
+        if (e.leapCooldown <= 0 && dist > 2.5 && dist < 9) {
+          const leapDir = player.pos.clone().sub(e.mesh.position);
+          leapDir.y = 0;
+          leapDir.normalize();
+
+          const leapX = e.mesh.position.x + leapDir.x * 2.2;
+          const leapZ = e.mesh.position.z + leapDir.z * 2.2;
+
+          if (!isEnemyPathBlockedAt(leapX, leapZ, e)) {
+            e.mesh.position.x = leapX;
+            e.mesh.position.z = leapZ;
+          }
+          e.mesh.position.y = 0.35;
+
+          e.leapAnim = 0.35;
+          e.leapCooldown = 2.3 + Math.random() * 1.5;
+
+          faceGoblinToward(e, player.pos);
+        }
+
+        if (e.leapAnim > 0) {
+          e.leapAnim -= dt;
+          e.mesh.position.y = Math.max(0, Math.sin((e.leapAnim / 0.35) * Math.PI) * 0.55);
+        } else {
+          e.mesh.position.y = 0;
+        }
+      }
+
       if (type.thrower && dist < 16 && dist > 5) {
         e.throwCooldown -= dt;
         if (e.throwCooldown <= 0) {
-          spawnRock(e);
+          if (type.acid) {
+            spawnAcid(e);
+          } else {
+            spawnRock(e);
+          }
           e.throwCooldown = 3.2 + Math.random() * 2;
         }
       }
