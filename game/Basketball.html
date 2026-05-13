@@ -1145,6 +1145,7 @@ let hadesSoulHands = [];
 let hadesImpactBursts = [];
 let lightningStrikes = [];
 let raSunBursts = [];
+let lokiTeleportVisuals = [];
 let bastetSpiritCats = [];
 let zeusThunderCages = [];
 let anubisWeighingSeals = [];
@@ -2709,6 +2710,7 @@ function releaseSobekGrab(p) {
   target.damage += 5;
   spawnParticles(target.x, target.y, "#f4d35e", 12, 4);
   spawnParticles(target.x, target.y, "#2a9d8f", 10, 3);
+  createAttack({ owner: p, x: target.x, y: target.y + 8, w: 120, h: 68, damage: 0, knock: 0, angle: -0.05, frames: 10, color: "#2a9d8f", label: "sobek_grab_release_splash", visualType: "sobekGrabReleaseSplash" });
   shake = Math.max(shake, 3);
   p.sobekGrabTarget = null;
   p.sobekGrabTimer = 0;
@@ -2732,6 +2734,9 @@ function updateSobekGrab(p) {
   target.vx = 0;
   target.vy = 0;
   target.facing = -dir;
+  if (p.sobekGrabTimer % 8 === 0) {
+    createAttack({ owner: p, x: target.x + dir * 10, y: target.y - 6, w: 66, h: 42, damage: 0, knock: 0, angle: 0, frames: 5, color: "#84dcc6", label: "sobek_grab_hold", visualType: "sobekGrabHold" });
+  }
   if (Math.abs(target.x - p.x) > 220 || Math.abs(target.y - p.y) > 180) {
     clearSobekGrab(p);
     return;
@@ -3140,7 +3145,9 @@ function useSpecial(p) {
       p.vy *= 0.45;
       spawnParticles(p.x - dir * 20, p.y + 4, "#2ec4ff", 14, 5);
       spawnParticles(p.x - dir * 34, p.y + 8, "#b8f7ff", 8, 4);
+      createAttack({owner:p,x:p.x - dir * 4,y:p.y-6,w:76,h:56,damage:0,knock:0,angle:-0.12,frames:8,color:"#f4d35e",label:"horus_falcon_rush_eye_glint",visualType:"horusFalconRush",attachToOwner:true,offsetX:-dir * 4,offsetY:-6});
       createAttack({owner:p,x:p.x + p.facing * 48,y:p.y,w:96,h:54,damage:9,knock:11,angle:-0.18,frames:12,color:"#2ec4ff",label:"horus_rush_dash",visualType:"falconRush",attachToOwner:true,offsetX:p.facing * 48,offsetY:0});
+      createAttack({owner:p,x:p.x + p.facing * 28,y:p.y,w:132,h:68,damage:0,knock:0,angle:-0.14,frames:12,color:"#2ec4ff",label:"horus_falcon_rush_trail",visualType:"horusWingDashTrail",attachToOwner:true,offsetX:p.facing * 28,offsetY:0});
       p.moveVisuals.push({type:"falconDive",frames:12,length:102,thickness:15});
     }
   }
@@ -3184,6 +3191,7 @@ function useSpecial(p) {
       p.invincible = Math.max(p.invincible, 9);
       p.vx = dir * 11.2;
       createAttack({owner:p,x:p.x + p.facing * 30,y:p.y-6,w:108,h:46,damage:0,knock:0,angle:-0.04,frames:12,color:"#2a9d8f",label:"sobek_nile_lunge",visualType:"nileLunge",attachToOwner:true,offsetX:30,offsetY:-6});
+      createAttack({owner:p,x:p.x + p.facing * 36,y:p.y-2,w:124,h:64,damage:0,knock:0,angle:-0.04,frames:12,color:"#2a9d8f",label:"sobek_nile_lunge_water",visualType:"sobekNileLunge",attachToOwner:true,offsetX:36,offsetY:-2});
       p.moveVisuals.push({type:"nileLunge",frames:14,length:98,thickness:16});
     }
   }
@@ -4166,6 +4174,9 @@ function updateFighter(p) {
       spawnParticles(p.x - dir * 30, p.y + 4, "#2ec4ff", 8, 4);
       spawnParticles(p.x - dir * 44, p.y + 10, "#b8f7ff", 4, 3);
     }
+    if (p.horusRushTimer % 3 === 0) {
+      createAttack({ owner:p, x:p.x + dir * 24, y:p.y - 2, w:122, h:62, damage:0, knock:0, angle:Math.atan2(p.vy, Math.max(1, Math.abs(p.vx))) * 0.45, frames:4, color:"#2ec4ff", label:"horus_rush_wing_tick", visualType:"horusWingDashTrail", attachToOwner:true, offsetX:dir * 24, offsetY:-2 });
+    }
     if (p.horusRushTimer <= 0) p.vx *= 0.72;
   }
 
@@ -4460,9 +4471,15 @@ function updateAttacks() {
             p.vy = 0;
             spawnParticles(p.x, p.y, "#f4d35e", 10, 4);
             spawnParticles(p.x, p.y, "#2a9d8f", 12, 4);
+            createAttack({ owner: owner, x: p.x + dir * 10, y: p.y - 6, w: 84, h: 56, damage: 0, knock: 0, angle: 0, frames: 8, color: "#84dcc6", label: "sobek_jaw_snap_grab", visualType: "sobekJawSnapGrab" });
             shake = Math.max(shake, 4);
           }
           return;
+        }
+        if (a.label === "horus_rush_dash") {
+          createAttack({ owner: a.owner, x: p.x, y: p.y - 8, w: 92, h: 56, damage: 0, knock: 0, angle: -0.2, frames: 7, color: "#f4d35e", label: "horus_talon_impact", visualType: "horusTalonImpact" });
+          spawnParticles(p.x, p.y - 6, "#2ec4ff", 10, 4);
+          spawnParticles(p.x, p.y - 8, "#f4d35e", 8, 3);
         }
         if (a.owner.godId === "anubis" && a.visualType === "soulMarkBurst") {
           p.soulMarkTimer = 330;
@@ -4560,7 +4577,9 @@ function updateRaSunBursts() {
     if (b.timer > 0 && b.timer % 6 === 0) {
       spawnParticles(b.x, b.y, "#ffea00", 5, 3);
       spawnParticles(b.x, b.y, "#ff9f1c", 4, 2);
+      if (b.timer < 15) spawnParticles(b.x, b.y, "#ffffff", 3, 2);
     }
+    if (b.timer === 3) createAttack({ owner: b.owner, x: b.x, y: b.y, w: b.radius * 1.85, h: b.radius * 1.85, damage: 0, knock: 0, angle: 0, frames: 4, color: "#fff7d6", label: "ra_sunburst_preflash", visualType: "raChargingSunBurst" });
     if (b.timer <= 0 && !b.exploded) {
       b.exploded = true;
       createAttack({ owner: b.owner, x: b.x, y: b.y, w: b.radius * 2, h: b.radius * 2, damage: 10, knock: 7, angle: -0.35, frames: 8, color: "#ff9f1c", label: "ra_down_k_sun_burst_explosion", visualType: "raSunBurstExplosion" });
@@ -4571,6 +4590,10 @@ function updateRaSunBursts() {
       hitStop = Math.max(hitStop, 3);
     }
     if (b.exploded && b.timer <= -10) raSunBursts.splice(i, 1);
+  }
+  for (let i = lokiTeleportVisuals.length - 1; i >= 0; i--) {
+    lokiTeleportVisuals[i].timer--;
+    if (lokiTeleportVisuals[i].timer <= 0) lokiTeleportVisuals.splice(i, 1);
   }
 }
 
@@ -4593,7 +4616,7 @@ function findPlatformForLokiTeleport(p) {
   return best;
 }
 
-function teleportLokiAcrossPlatform(p, pl) { const margin = 56; const leftX = pl.x + margin; const rightX = pl.x + pl.w - margin; const platformCenter = pl.x + pl.w / 2; let targetX; if (Math.abs(p.x - platformCenter) < pl.w * 0.16) targetX = p.facing >= 0 ? leftX : rightX; else if (p.x < platformCenter) targetX = rightX; else targetX = leftX; const targetY = pl.y - p.h / 2 - 2; spawnParticles(p.x, p.y, "#06d6a0", 30, 8); spawnParticles(p.x, p.y, "#064e3b", 26, 7); p.x = clamp(targetX, pl.x + margin, pl.x + pl.w - margin); p.y = targetY; p.vx = 0; p.vy = -2; p.grounded = true; p.jumps = 2; p.invincible = Math.max(p.invincible, 18); p.attackKind = "loki_platform_teleport"; p.attackFrame = Math.max(p.attackFrame, 24); spawnParticles(p.x, p.y, "#06d6a0", 34, 8); spawnParticles(p.x, p.y, "#caffbf", 18, 5); shake = Math.max(shake, 3); }
+function teleportLokiAcrossPlatform(p, pl) { const margin = 56; const leftX = pl.x + margin; const rightX = pl.x + pl.w - margin; const platformCenter = pl.x + pl.w / 2; const fromX = p.x, fromY = p.y; let targetX; if (Math.abs(p.x - platformCenter) < pl.w * 0.16) targetX = p.facing >= 0 ? leftX : rightX; else if (p.x < platformCenter) targetX = rightX; else targetX = leftX; const targetY = pl.y - p.h / 2 - 2; const dir = Math.sign(targetX - fromX) || getFacingDir(p); const dist = Math.abs(targetX - fromX); createAttack({ owner:p, x: fromX, y: fromY + p.h * 0.36, w: 86, h: 56, damage: 0, knock: 0, angle: 0, frames: 9, color: "#22c55e", label: "loki_tp_vanish", visualType: "lokiTeleportVanish" }); createAttack({ owner:p, x: fromX + dir * dist * 0.5, y: targetY + p.h * 0.35, w: Math.max(100, dist + 40), h: 34, damage: 0, knock: 0, angle: 0, frames: 7, color: "#16a34a", label: "loki_tp_trail", visualType: "lokiTeleportTrail" }); spawnParticles(fromX, fromY, "#06d6a0", 30, 8); spawnParticles(fromX, fromY, "#064e3b", 26, 7); p.x = clamp(targetX, pl.x + margin, pl.x + pl.w - margin); p.y = targetY; p.vx = 0; p.vy = -2; p.grounded = true; p.jumps = 2; p.invincible = Math.max(p.invincible, 18); p.attackKind = "loki_platform_teleport"; p.attackFrame = Math.max(p.attackFrame, 24); createAttack({ owner:p, x: p.x, y: p.y + p.h * 0.36, w: 96, h: 64, damage: 0, knock: 0, angle: 0, frames: 11, color: "#86efac", label: "loki_tp_arrival", visualType: "lokiTeleportArrival" }); lokiTeleportVisuals.push({ x: fromX, y: fromY, targetX: p.x, targetY: p.y, dir, timer: 14, maxTimer: 14 }); if (lokiTeleportVisuals.length > 8) lokiTeleportVisuals.splice(0, lokiTeleportVisuals.length - 8); spawnParticles(p.x, p.y, "#06d6a0", 34, 8); spawnParticles(p.x, p.y, "#caffbf", 18, 5); shake = Math.max(shake, 3); }
 
 function updateProjectiles() {
   for (let i = projectiles.length - 1; i >= 0; i--) {
@@ -5315,6 +5338,7 @@ function drawGame() {
   if (hadesSoulPrisons.length > 0) drawHadesSoulPrisons();
   if (lightningStrikes && lightningStrikes.length > 0) drawLightningStrikes();
   if (raSunBursts && raSunBursts.length > 0) drawRaSunBursts();
+  if (lokiTeleportVisuals && lokiTeleportVisuals.length > 0) drawLokiTeleportVisuals();
   if (
     typeof zeusThunderCages !== "undefined" &&
     Array.isArray(zeusThunderCages) &&
@@ -5550,13 +5574,25 @@ function drawRaSunBursts() {
     const r = screenScale(b.radius * (0.25 + progress * 0.75));
     ctx.save();
     if (!b.exploded) {
-      ctx.globalAlpha = 0.3 + progress * 0.45;
+      const spin = matchTime * 0.08 + progress * 2.2;
+      ctx.globalAlpha = 0.22 + progress * 0.32;
+      ctx.fillStyle = "#f97316";
+      ctx.beginPath(); ctx.arc(sx, sy, r * 0.86, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.45 + progress * 0.32;
       ctx.fillStyle = "#ffea00";
       ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = 0.55;
+      ctx.globalAlpha = 0.52;
       ctx.strokeStyle = "#ff9f1c";
-      ctx.lineWidth = screenScale(4);
-      ctx.beginPath(); ctx.arc(sx, sy, screenScale(b.radius), 0, Math.PI * 2); ctx.stroke();
+      ctx.lineWidth = screenScale(4.2);
+      ctx.beginPath(); ctx.arc(sx, sy, screenScale(b.radius * (0.82 + progress * 0.18)), 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 0.72;
+      ctx.strokeStyle = "rgba(255,255,255,0.9)";
+      ctx.lineWidth = screenScale(2);
+      for (let i = 0; i < 10; i++) { const ang = spin + (Math.PI * 2 * i) / 10; ctx.beginPath(); ctx.moveTo(sx + Math.cos(ang) * r * 0.52, sy + Math.sin(ang) * r * 0.52); ctx.lineTo(sx + Math.cos(ang) * r * 1.22, sy + Math.sin(ang) * r * 1.22); ctx.stroke(); }
+      ctx.globalAlpha = 0.24 + (1 - progress) * 0.35;
+      ctx.strokeStyle = "#ffd166";
+      ctx.lineWidth = screenScale(3.4);
+      ctx.beginPath(); ctx.arc(sx, sy, r * (1.35 + (1 - progress) * 0.28), 0, Math.PI * 2); ctx.stroke();
       ctx.globalAlpha = 0.85;
       ctx.fillStyle = "#ffffff";
       ctx.beginPath(); ctx.arc(sx, sy, Math.max(2, r * 0.22), 0, Math.PI * 2); ctx.fill();
@@ -5569,6 +5605,29 @@ function drawRaSunBursts() {
       ctx.lineWidth = screenScale(5);
       ctx.beginPath(); ctx.arc(sx, sy, screenScale(b.radius * 0.8), 0, Math.PI * 2); ctx.stroke();
     }
+    ctx.restore();
+  });
+}
+function drawLokiTeleportVisuals() {
+  lokiTeleportVisuals.forEach(v => {
+    const t = v.timer / Math.max(1, v.maxTimer);
+    const sx = worldToScreenX(v.x), sy = worldToScreenY(v.y + 12);
+    const tx = worldToScreenX(v.targetX), ty = worldToScreenY(v.targetY + 12);
+    ctx.save();
+    ctx.globalAlpha = 0.4 * t;
+    ctx.strokeStyle = "#22c55e";
+    ctx.lineWidth = screenScale(6 + (1 - t) * 10);
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(tx, ty); ctx.stroke();
+    for (let i = 0; i < 3; i++) {
+      const ox = (i - 1) * screenScale(22) * v.dir;
+      ctx.globalAlpha = (0.22 + i * 0.1) * t;
+      ctx.fillStyle = "#86efac";
+      ctx.fillRect(sx + ox - screenScale(12), sy - screenScale(32), screenScale(24), screenScale(64));
+    }
+    ctx.globalAlpha = 0.55 * t;
+    ctx.strokeStyle = "#bbf7d0";
+    ctx.lineWidth = screenScale(2.2);
+    ctx.beginPath(); ctx.arc(tx, ty + screenScale(18), screenScale(20 + (1 - t) * 34), 0, Math.PI * 2); ctx.stroke();
     ctx.restore();
   });
 }
@@ -6790,6 +6849,61 @@ function drawAttack(a) {
     ctx.strokeStyle = "#ffffff";
     ctx.lineWidth = screenScale(5);
     ctx.beginPath(); ctx.arc(cx, cy, Math.max(w, h) * 0.42, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 1;
+  } else if (type === "raChargingSunBurst") {
+    ctx.globalAlpha = 0.72;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath(); ctx.arc(cx, cy, Math.max(w, h) * 0.14, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.4;
+    ctx.strokeStyle = "#ffd166";
+    ctx.lineWidth = screenScale(4);
+    ctx.beginPath(); ctx.arc(cx, cy, Math.max(w, h) * 0.46, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 1;
+  } else if (type === "lokiTeleportVanish" || type === "lokiTeleportArrival") {
+    const pop = type === "lokiTeleportArrival";
+    ctx.globalAlpha = pop ? 0.55 : 0.45;
+    ctx.strokeStyle = pop ? "#bbf7d0" : "#22c55e";
+    ctx.lineWidth = screenScale(3);
+    ctx.beginPath(); ctx.ellipse(cx, cy + h * 0.22, w * 0.34, h * 0.12, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = "#16a34a";
+    ctx.fillRect(cx - w * 0.24, cy - h * 0.38, w * 0.48, h * 0.76);
+    spark(7, "rgba(134,239,172,.8)");
+    ctx.globalAlpha = 1;
+  } else if (type === "lokiTeleportTrail") {
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = "#22c55e";
+    ctx.fillRect(cx - w * 0.5, cy - h * 0.2, w, h * 0.4);
+    ctx.globalAlpha = 0.68;
+    ctx.strokeStyle = "#bbf7d0";
+    ctx.lineWidth = screenScale(2.6);
+    ctx.beginPath(); ctx.moveTo(cx - w * 0.45, cy); ctx.lineTo(cx + w * 0.5, cy - h * 0.08); ctx.stroke();
+    ctx.globalAlpha = 1;
+  } else if (type === "horusWingDashTrail" || type === "horusFalconRush") {
+    const tilt = (a && a.angle) ? a.angle : 0;
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(tilt);
+    ctx.globalAlpha = type === "horusFalconRush" ? 0.75 : 0.45;
+    ctx.fillStyle = "rgba(46,196,255,0.75)";
+    ctx.beginPath(); ctx.moveTo(-w * 0.45, 0); ctx.quadraticCurveTo(-w * 0.12, -h * 0.55, w * 0.35, -h * 0.08); ctx.quadraticCurveTo(-w * 0.08, -h * 0.06, -w * 0.45, 0); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-w * 0.45, 0); ctx.quadraticCurveTo(-w * 0.12, h * 0.55, w * 0.35, h * 0.08); ctx.quadraticCurveTo(-w * 0.08, h * 0.06, -w * 0.45, 0); ctx.fill();
+    ctx.globalAlpha = 0.78; ctx.fillStyle = "#f4d35e"; ctx.beginPath(); ctx.moveTo(w * 0.18, -h * 0.1); ctx.lineTo(w * 0.52, 0); ctx.lineTo(w * 0.18, h * 0.1); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  } else if (type === "horusTalonImpact") {
+    ctx.globalAlpha = 0.82;
+    ctx.strokeStyle = "#f4d35e";
+    ctx.lineWidth = screenScale(4.2);
+    ctx.beginPath(); ctx.arc(cx, cy, Math.max(w, h) * 0.34, -0.9, 0.92); ctx.stroke();
+    spark(10, "rgba(46,196,255,.95)");
+    ctx.globalAlpha = 1;
+  } else if (type === "sobekNileLunge" || type === "sobekJawSnapGrab" || type === "sobekGrabHold" || type === "sobekGrabReleaseSplash") {
+    ctx.globalAlpha = 0.36;
+    ctx.fillStyle = "#2a9d8f";
+    ctx.beginPath(); ctx.ellipse(cx - dir * w * 0.12, cy + h * 0.2, w * 0.5, h * 0.22, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.75;
+    ctx.strokeStyle = "#84dcc6";
+    ctx.lineWidth = screenScale(2.4);
+    ctx.beginPath(); ctx.moveTo(cx - dir * w * 0.3, cy - h * 0.08); ctx.lineTo(cx + dir * w * 0.32, cy); ctx.lineTo(cx - dir * w * 0.3, cy + h * 0.08); ctx.stroke();
+    if (type !== "sobekNileLunge") { spark(7, "rgba(132,220,198,.9)"); }
     ctx.globalAlpha = 1;
   } else if (["soulRake","graveSweep","soulMarkBurst","tombDrop","weighingHook","anubisSoulHook","anubisSoulChainPull","anubisSoulBindFlash"].includes(type)) {
     ctx.globalAlpha = .35;
