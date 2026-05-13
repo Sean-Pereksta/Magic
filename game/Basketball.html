@@ -2778,7 +2778,12 @@ function createQuetzTempest(owner) {
 function updateQuetzAbilityMechanics() {
   const now = matchTime || 0;
   for (let i = quetzWindDashes.length - 1; i >= 0; i--) { const d = quetzWindDashes[i]; d.timer--; if (!d.owner || d.owner.dead) { quetzWindDashes.splice(i,1); continue; }
-    players.forEach(t=>{ if(t===d.owner||t.dead||t.lives<=0||t.invincible>0) return; const dx=Math.abs(t.x-d.owner.x), dy=Math.abs(t.y-d.owner.y); if(dx<88&&dy<54){ const last=d.hitCd.get(t.id)||-999; if(now-last<14) return; d.hitCd.set(t.id,now); t.damage += 5.2; t.vx += d.dir*8.4; t.vy -= 3.8; t.hitstun=Math.max(t.hitstun||0,11); spawnQuetzImpactBurst(t.x, t.y - 8, 1.1); spawnQuetzFeathers(t.x, t.y - 10, 8, { vy: -1.5 });} });
+    if (d.timer % 3 === 0) {
+      spawnQuetzSerpentTrail(d.owner.x - d.dir * 14, d.owner.y - 8, d.dir, 16, { type: "dash", len: 66 });
+      spawnQuetzGustLine(d.owner.x - d.dir * 34, d.owner.y - 14, d.owner.x + d.dir * 54, d.owner.y + 8, 12, { color: "#67e8f9" });
+      if (Math.random() < 0.7) spawnQuetzFeathers(d.owner.x - d.dir * 8, d.owner.y - 12, 2, { vy: -1.0 });
+    }
+    players.forEach(t=>{ if(t===d.owner||t.dead||t.lives<=0||t.invincible>0) return; const dx=Math.abs(t.x-d.owner.x), dy=Math.abs(t.y-d.owner.y); if(dx<88&&dy<54){ const last=d.hitCd.get(t.id)||-999; if(now-last<14) return; d.hitCd.set(t.id,now); t.damage += 5.2; t.vx += d.dir*8.4; t.vy -= 3.8; t.hitstun=Math.max(t.hitstun||0,11); spawnQuetzImpactBurst(t.x, t.y - 8, 1.1); spawnQuetzFeathers(t.x, t.y - 10, 8, { vy: -1.5 }); createAttack({owner:d.owner,x:t.x + d.dir * 10,y:t.y - 6,w:92,h:58,damage:0,knock:0,angle:0,frames:6,color:"#d4af37",label:"quetz_dash_hit",visualType:"quetzFeatherImpact"});} });
     if (d.timer<=0) quetzWindDashes.splice(i,1);
   }
   for (let i = quetzSkyCurrents.length - 1; i >= 0; i--) { const c = quetzSkyCurrents[i]; c.timer--; if (!c.owner||c.owner.dead) { quetzSkyCurrents.splice(i,1); continue; } c.x = c.owner.x; c.y = c.owner.y + 12;
@@ -3935,6 +3940,9 @@ function updateFighter(p) {
     p.action = "attack";
     if (p.thorHammerSlamTimer > 12) {
       p.attackKind = "thor_hammer_raised";
+      if (p.thorHammerSlamTimer % 3 === 0) {
+        createAttack({owner:p,x:p.x,y:p.y + p.h / 2,w:118,h:28,damage:0,knock:0,angle:0,frames:2,color:"#bfe7ff",label:"thor_slam_windup",visualType:"thorHammerSlamWindup"});
+      }
       if (p.thorHammerSlamTimer % 5 === 0) {
         spawnParticles(p.x, p.y - 55, "#cce3ff", 5, 3);
         spawnParticles(p.x, p.y - 35, "#ffd166", 3, 2);
@@ -3944,6 +3952,8 @@ function updateFighter(p) {
       p.thorHammerSlamDidHit = true;
       p.attackKind = "thor_hammer_slam";
       createAttack({owner:p,x:p.x,y:p.y + p.h / 2,w:230,h:88,damage:22,knock:24,angle:-0.72,frames:8,color:"#cce3ff",label:"thor_down_k_hammer_slam",visualType:"thorHammerSlam"});
+      createAttack({owner:p,x:p.x,y:p.y + p.h / 2,w:260,h:62,damage:0,knock:0,angle:0,frames:9,color:"#d4e8ff",label:"thor_down_k_earthbreaker_impact",visualType:"thorEarthbreakerImpact"});
+      createAttack({owner:p,x:p.x,y:p.y + p.h / 2 + 6,w:280,h:20,damage:0,knock:0,angle:0,frames:10,color:"#c9f0ff",label:"thor_down_k_ground_shockwave",visualType:"thorGroundShockwave"});
       createAttack({owner:p,x:p.x,y:p.y,w:90,h:150,damage:18,knock:21,angle:-1.05,frames:6,color:"#e63946",label:"thor_down_k_center_blast",visualType:"thorHammerCenterBlast"});
       spawnParticles(p.x, p.y + p.h / 2, "#cce3ff", 42, 10);
       spawnParticles(p.x, p.y + p.h / 2, "#e63946", 28, 8);
@@ -3969,7 +3979,7 @@ function updateFighter(p) {
     }
   }
   if (p.godId === "athena") p.athenaGuardBonus = clamp((p.athenaGuardBonus || 0) - 0.05, 0, 30);
-  if (p.athenaCounterTimer > 0) { p.athenaCounterTimer--; p.action = "attack"; p.attackKind = "athena_aegis_counter"; p.attackFrame = Math.max(p.attackFrame, 5); if (p.athenaCounterTimer % 4 === 0) spawnParticles(p.x + getFacingDir(p) * 22, p.y - 8, "#f8f7ff", 4, 2); if (p.athenaCounterTimer <= 0) p.athenaCounterReady = false; }
+  if (p.athenaCounterTimer > 0) { p.athenaCounterTimer--; p.action = "attack"; p.attackKind = "athena_aegis_counter"; p.attackFrame = Math.max(p.attackFrame, 5); if (p.athenaCounterTimer === 25) createAttack({owner:p,x:p.x + getFacingDir(p) * 40,y:p.y - 6,w:90,h:90,damage:0,knock:0,angle:0,frames:5,color:"#f8f7ff",label:"athena_counter_ready",visualType:"athenaOwlShield"}); if (p.athenaCounterTimer % 4 === 0) { spawnParticles(p.x + getFacingDir(p) * 22, p.y - 8, "#f8f7ff", 4, 2); createAttack({owner:p,x:p.x + getFacingDir(p) * 42,y:p.y - 6,w:110,h:96,damage:0,knock:0,angle:0,frames:3,color:"#dbeafe",label:"athena_counter_stance",visualType:"athenaAegisCounterStance"}); } if (p.athenaCounterTimer <= 0) p.athenaCounterReady = false; }
   if (p.invincible > 0) p.invincible--;
   if (p.perfectDodgeTimer > 0) p.perfectDodgeTimer--;
   if (p.thorHeavyArmorTimer > 0) p.thorHeavyArmorTimer--;
@@ -4701,6 +4711,8 @@ function updateProjectiles() {
           if (!overlaps) return;
           latched = true;
           applyHit(t, pr.owner, pr.damage, pr.knock, -1.15, Math.sign(t.x - pr.x) || getFacingDir(pr.owner), pr.color, {x: pr.x, y: pr.y, impactType: "soul"});
+          createAttack({owner:pr.owner,x:t.x,y:t.y - 6,w:72,h:72,damage:0,knock:0,angle:0,frames:6,color:"#c77dff",label:"anubis_bind_flash",visualType:"anubisSoulBindFlash"});
+          createAttack({owner:pr.owner,x:(t.x + pr.owner.x) * 0.5,y:(t.y + pr.owner.y) * 0.5,w:Math.abs(t.x-pr.owner.x)+20,h:30,damage:0,knock:0,angle:0,frames:7,color:"#8ffcff",label:"anubis_chain_pull",visualType:"anubisSoulChainPull"});
           if (pr.owner && !pr.owner.dead) {
             pr.owner.anubisGrapplePullTimer = 16;
             pr.owner.anubisGrapplePullTargetX = pr.x;
@@ -4916,7 +4928,7 @@ function addMeter(p, amount) {
 }
 
 function applyHit(target, source, damage, knock, angle, dir, color, impact = {}) {
-  if (target && target.godId === "athena" && target.athenaCounterReady && !target.athenaCounterUsed && source && source !== target) { target.athenaCounterUsed = true; target.athenaCounterReady = false; target.athenaCounterTimer = 0; const cdir = Math.sign(source.x - target.x) || getFacingDir(target); target.facing = cdir; target.invincible = Math.max(target.invincible || 0, 18); target.attackCooldown = Math.max(target.attackCooldown || 0, 12); target.attackKind = "athena_aegis_counter_bash"; target.attackFrame = Math.max(target.attackFrame || 0, 24); createAttack({owner:target,x:target.x + cdir * 74,y:target.y,w:148,h:82,damage:11,knock:18,angle:-0.18,frames:8,color:"#f8f7ff",label:"athena_aegis_counter_bash",visualType:"athenaAegisCounterBash"}); spawnParticles(target.x + cdir * 35, target.y, "#f8f7ff", 30, 6); spawnParticles(target.x + cdir * 42, target.y, "#71d6ff", 16, 5); shake = Math.max(shake, 8); hitStop = Math.max(hitStop, 5); return; }
+  if (target && target.godId === "athena" && target.athenaCounterReady && !target.athenaCounterUsed && source && source !== target) { target.athenaCounterUsed = true; target.athenaCounterReady = false; target.athenaCounterTimer = 0; const cdir = Math.sign(source.x - target.x) || getFacingDir(target); target.facing = cdir; target.invincible = Math.max(target.invincible || 0, 18); target.attackCooldown = Math.max(target.attackCooldown || 0, 12); target.attackKind = "athena_aegis_counter_bash"; target.attackFrame = Math.max(target.attackFrame || 0, 24); createAttack({owner:target,x:target.x + cdir * 74,y:target.y,w:148,h:82,damage:11,knock:18,angle:-0.18,frames:8,color:"#f8f7ff",label:"athena_aegis_counter_bash",visualType:"athenaAegisCounterBash"}); createAttack({owner:target,x:target.x + cdir * 42,y:target.y - 8,w:164,h:114,damage:0,knock:0,angle:0,frames:7,color:"#f8f7ff",label:"athena_counter_trigger_flash",visualType:"athenaAegisCounterTrigger"}); spawnParticles(target.x + cdir * 35, target.y, "#f8f7ff", 30, 6); spawnParticles(target.x + cdir * 42, target.y, "#71d6ff", 16, 5); shake = Math.max(shake, 8); hitStop = Math.max(hitStop, 7); return; }
   if (target.parryActive) {
     target.parryActive = false;
     target.parryTimer = 0;
@@ -6677,7 +6689,7 @@ function drawAttack(a) {
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
-  } else if (["mjolnirCrush","thunderUpperSwing","hammerLift","earthbreakerSlam","thunderLanding","hammerSweep"].includes(type)) {
+  } else if (["mjolnirCrush","thunderUpperSwing","hammerLift","earthbreakerSlam","thunderLanding","hammerSweep","thorHammerSlamWindup"].includes(type)) {
     ctx.globalAlpha = .32;
     ctx.strokeStyle = "#bfe7ff";
     ctx.lineWidth = screenScale(14);
@@ -6688,6 +6700,27 @@ function drawAttack(a) {
     ctx.fillStyle = "#dbeafe";
     ctx.fillRect(cx - w * .3, cy - h * .18, w * .6, h * .36);
     spark(8, "rgba(191,231,255,.9)");
+    if (type === "thorHammerSlamWindup") {
+      ctx.globalAlpha = 0.5;
+      ctx.strokeStyle = "#60a5fa";
+      ctx.lineWidth = screenScale(3);
+      ctx.beginPath();
+      ctx.ellipse(cx, cy + h * 0.26, w * 0.38, h * 0.15, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  } else if (type === "thorEarthbreakerImpact") {
+    ctx.globalAlpha = 0.75; ctx.fillStyle = "#e0f2fe"; ctx.fillRect(cx - w * 0.48, cy - h * 0.12, w * 0.96, h * 0.24);
+    ctx.strokeStyle = "#93c5fd"; ctx.lineWidth = screenScale(3);
+    for (let i=0;i<6;i++){ const sx = cx + (i-2.5) * w * 0.16; ctx.beginPath(); ctx.moveTo(sx, cy + h * 0.1); ctx.lineTo(sx + (i%2?1:-1) * w * 0.12, cy + h * (0.22 + Math.random() * 0.16)); ctx.stroke(); }
+    spark(14, "rgba(224,242,254,.95)");
+    ctx.globalAlpha = 1;
+  } else if (type === "thorGroundShockwave") {
+    const rr = (1 - t) * w * 0.55 + w * 0.22;
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = "#7dd3fc";
+    ctx.lineWidth = screenScale(5);
+    ctx.beginPath(); ctx.ellipse(cx, cy + h * 0.24, rr, h * 0.14, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 1;
   } else if (["aegisBash","shieldBash","shieldCheck","guardianUpper"].includes(type)) {
     ctx.globalAlpha = .28;
     ctx.fillStyle = "#e0f2fe";
@@ -6758,7 +6791,7 @@ function drawAttack(a) {
     ctx.lineWidth = screenScale(5);
     ctx.beginPath(); ctx.arc(cx, cy, Math.max(w, h) * 0.42, 0, Math.PI * 2); ctx.stroke();
     ctx.globalAlpha = 1;
-  } else if (["soulRake","graveSweep","soulMarkBurst","tombDrop","weighingHook"].includes(type)) {
+  } else if (["soulRake","graveSweep","soulMarkBurst","tombDrop","weighingHook","anubisSoulHook","anubisSoulChainPull","anubisSoulBindFlash"].includes(type)) {
     ctx.globalAlpha = .35;
     ctx.fillStyle = "#3b0764";
     ctx.beginPath();
@@ -6773,6 +6806,36 @@ function drawAttack(a) {
     ctx.globalAlpha = .75;
     ctx.stroke();
     for (let i = 0; i < 3; i++) { ctx.globalAlpha = .28; ctx.fillRect(cx + (Math.random() - .5) * w * .5, cy - h * (.2 + i * .2), screenScale(4), screenScale(10)); }
+    ctx.globalAlpha = 1;
+    if (type === "anubisSoulBindFlash") {
+      ctx.globalAlpha = 0.72;
+      ctx.strokeStyle = "#c77dff";
+      ctx.lineWidth = screenScale(3);
+      ctx.strokeRect(cx - w * 0.24, cy - h * 0.24, w * 0.48, h * 0.48);
+      ctx.globalAlpha = 1;
+    }
+  } else if (type === "quetzSerpentTrail") {
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = "#14b8a6";
+    ctx.lineWidth = screenScale(10);
+    ctx.beginPath(); ctx.moveTo(cx - dir * w * 0.5, cy + h * 0.15); ctx.quadraticCurveTo(cx - dir * w * 0.1, cy - h * 0.4, cx + dir * w * 0.42, cy); ctx.stroke();
+    ctx.strokeStyle = "#d4af37"; ctx.lineWidth = screenScale(2); ctx.stroke();
+    ctx.globalAlpha = 1;
+  } else if (type === "quetzFeatherImpact") {
+    ctx.globalAlpha = 0.65;
+    ctx.strokeStyle = "#d4af37";
+    ctx.lineWidth = screenScale(4);
+    ctx.beginPath(); ctx.arc(cx, cy, Math.max(w, h) * 0.34, -0.7, 0.8); ctx.stroke();
+    spark(10, "rgba(212,175,55,.9)");
+    ctx.globalAlpha = 1;
+  } else if (type === "athenaAegisCounterTrigger" || type === "athenaOwlShield") {
+    ctx.globalAlpha = type === "athenaAegisCounterTrigger" ? 0.7 : 0.45;
+    ctx.fillStyle = "rgba(216,243,255,.45)";
+    ctx.beginPath(); ctx.ellipse(cx + dir * w * 0.08, cy, w * 0.44, h * 0.42, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#d4af37"; ctx.lineWidth = screenScale(3); ctx.stroke();
+    ctx.strokeStyle = "#93c5fd"; ctx.lineWidth = screenScale(2);
+    ctx.beginPath(); ctx.moveTo(cx, cy - h * 0.16); ctx.lineTo(cx + dir * w * 0.1, cy); ctx.lineTo(cx, cy + h * 0.16); ctx.stroke();
+    if (type === "athenaAegisCounterTrigger") { ctx.strokeStyle = "#f8f7ff"; ctx.lineWidth = screenScale(5); ctx.beginPath(); ctx.moveTo(cx + dir * w * 0.22, cy); ctx.lineTo(cx + dir * w * 0.65, cy - h * 0.05); ctx.stroke(); }
     ctx.globalAlpha = 1;
   } else if (type === "afterlifeStep") {
     ctx.globalAlpha = .25 + Math.abs(Math.sin(matchTime / 4)) * .3;
@@ -6936,22 +6999,34 @@ function drawProjectile(pr) {
     const dir = pr.dir || Math.sign(pr.vx) || getFacingDir(pr.owner);
     const ox = worldToScreenX(pr.owner.x + dir * 16);
     const oy = worldToScreenY(pr.owner.y - 10);
-    ctx.strokeStyle = "rgba(182,255,241,.85)";
-    ctx.lineWidth = screenScale(2);
-    for (let t = 0.1; t <= 1; t += 0.1) {
+    ctx.strokeStyle = "rgba(103,232,249,.95)";
+    ctx.lineWidth = screenScale(3);
+    for (let t = 0.08; t <= 1; t += 0.08) {
       const cx = ox + (x - ox) * t;
-      const cy = oy + (y - oy) * t + Math.sin(matchTime / 8 + t * 9) * screenScale(2);
+      const cy = oy + (y - oy) * t + Math.sin(matchTime / 8 + t * 9) * screenScale(2.2);
       ctx.beginPath();
-      ctx.arc(cx, cy, screenScale(2.6), 0, Math.PI * 2);
-      ctx.stroke();
+      ctx.arc(cx, cy, screenScale(2.4), 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = "rgba(199,125,255,.45)";
+      ctx.beginPath(); ctx.arc(cx, cy, screenScale(1.1), 0, Math.PI * 2); ctx.fill();
+    }
+    for (let i = 1; i <= 3; i++) {
+      const tx = x - dir * screenScale(8 * i), ty = y + Math.sin(matchTime * 0.14 + i) * screenScale(3);
+      ctx.fillStyle = "rgba(143,252,255,.28)";
+      ctx.beginPath(); ctx.arc(tx, ty, screenScale(5 - i), 0, Math.PI * 2); ctx.fill();
     }
     ctx.fillStyle = "#8de0d3";
     ctx.beginPath();
-    ctx.moveTo(x - dir * w * .15, y - h * .28);
-    ctx.lineTo(x + dir * w * .45, y - h * .05);
-    ctx.lineTo(x + dir * w * .15, y + h * .2);
+    ctx.moveTo(x - dir * w * .25, y - h * .35);
+    ctx.lineTo(x + dir * w * .42, y - h * .08);
+    ctx.lineTo(x + dir * w * .1, y + h * .3);
     ctx.closePath();
     ctx.fill();
+    ctx.strokeStyle = "#c77dff";
+    ctx.lineWidth = screenScale(2.5);
+    ctx.stroke();
+    ctx.strokeStyle = "#d1faff";
+    ctx.beginPath();
+    ctx.arc(x + dir * w * .22, y - h * .02, h * .24, dir === 1 ? Math.PI * 1.1 : -0.2, dir === 1 ? Math.PI * 0.1 : Math.PI * 0.9, dir !== 1);
     ctx.stroke();
   } else if (pr.type === "hammer") {
     ctx.save();
