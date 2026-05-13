@@ -236,6 +236,7 @@ const camera = new THREE.PerspectiveCamera(
 );
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
@@ -264,6 +265,13 @@ const hemi = new THREE.HemisphereLight(0xdde8ff, 0x2d2418, 0.55);
 scene.add(hemi);
 
 const floatingTexts = [];
+const renderCullables = [];
+const CULL_SETTINGS = { enemyFarDistance: 95, enemyHealthBarDistance: 55, furnitureDistance: 80, outsideDetailDistance: 95, pickupDistance: 65, particleDistance: 75, wallGunDistance: 70, textSpriteDistance: 55, updateInterval: 0.25 };
+const GOBLIN_FACE_FLIP = Math.PI;
+const MAX_FLOATING_EFFECTS = 140;
+let cullUpdateTimer = 0;
+let pathfindsThisFrame = 0;
+const MAX_PATHFINDS_PER_FRAME = 4;
 const moon = new THREE.DirectionalLight(0xbecfff, 0.75);
 moon.position.set(30, 60, -25);
 moon.castShadow = true;
@@ -272,7 +280,7 @@ scene.add(moon);
 function addLamp(x, y, z, color = 0xffc46b, intensity = 1.5) {
   const light = new THREE.PointLight(color, intensity, 18);
   light.position.set(x, y, z);
-  light.castShadow = true;
+  light.castShadow = false;
   scene.add(light);
 
   const bulb = new THREE.Mesh(
@@ -591,6 +599,7 @@ function addShelf(x, z, rotY = 0) {
     group.add(book);
   }
   scene.add(group);
+  registerCullable(group, CULL_SETTINGS.furnitureDistance, "furniture");
   const shelfW = Math.abs(Math.cos(rotY)) > 0.5 ? 2.9 : 0.55;
   const shelfD = Math.abs(Math.cos(rotY)) > 0.5 ? 0.55 : 2.9;
   addObstacleCollider(x, z, shelfW, shelfD, 2.3, "shelf");
@@ -616,6 +625,7 @@ function addChair(x, z, rotY = 0) {
     group.add(leg);
   });
   scene.add(group);
+  registerCullable(group, CULL_SETTINGS.furnitureDistance, "furniture");
   addObstacleCollider(x, z, 0.85, 0.85, 1.1, "chair");
 }
 function addCouch(x, z, rotY = 0) {
@@ -633,6 +643,7 @@ function addCouch(x, z, rotY = 0) {
   arm2.position.x = 1.2;
   group.add(base, back, arm1, arm2);
   scene.add(group);
+  registerCullable(group, CULL_SETTINGS.furnitureDistance, "furniture");
   const couchW = Math.abs(Math.cos(rotY)) > 0.5 ? 2.55 : 1.05;
   const couchD = Math.abs(Math.cos(rotY)) > 0.5 ? 1.05 : 2.55;
   addObstacleCollider(x, z, couchW, couchD, 1.15, "couch");
@@ -646,6 +657,9 @@ function addRubble(x, z, count = 8) {
     rock.position.set(x + (Math.random() - 0.5) * 2.5, 0.08, z + (Math.random() - 0.5) * 2.5);
     rock.rotation.set(Math.random(), Math.random(), Math.random());
     scene.add(rock);
+  rock.castShadow = false;
+  rock.receiveShadow = false;
+  registerCullable(rock, CULL_SETTINGS.outsideDetailDistance, "outside");
   }
 }
 function addWallTorch(x, y, z, rotY = 0) {
@@ -924,6 +938,10 @@ outsideSun.position.set(-35, 70, -30);
 outsideSun.castShadow = true;
 scene.add(outsideSun);
 
+function registerCullable(object, distance = 80, type = "generic") { if (!object) return; renderCullables.push({ object, distance, type }); }
+function distanceToPlayerObject(obj) { if (!obj) return Infinity; const p = obj.position || obj.mesh?.position || obj.group?.position; if (!p) return Infinity; const dx = p.x - player.pos.x; const dz = p.z - player.pos.z; return Math.sqrt(dx * dx + dz * dz); }
+function updateRenderCulling(dt) { cullUpdateTimer -= dt; if (cullUpdateTimer > 0) return; cullUpdateTimer = CULL_SETTINGS.updateInterval; for (const item of renderCullables) { if (!item.object) continue; const dist = distanceToPlayerObject(item.object); item.object.visible = dist <= item.distance; } }
+
 function addDeadTree(x, z, scale = 1) {
   const trunk = new THREE.Mesh(
     new THREE.CylinderGeometry(0.12 * scale, 0.2 * scale, 2.4 * scale, 8),
@@ -932,6 +950,7 @@ function addDeadTree(x, z, scale = 1) {
   trunk.position.set(x, 1.1 * scale, z);
   trunk.rotation.z = (Math.random() - 0.5) * 0.25;
   scene.add(trunk);
+  registerCullable(trunk, CULL_SETTINGS.outsideDetailDistance, "outside");
 
   for (let i = 0; i < 4; i++) {
     const branch = new THREE.Mesh(
@@ -942,6 +961,7 @@ function addDeadTree(x, z, scale = 1) {
     branch.rotation.z = Math.random() * Math.PI;
     branch.rotation.x = Math.random() * Math.PI;
     scene.add(branch);
+    registerCullable(branch, CULL_SETTINGS.outsideDetailDistance, "outside");
   }
 }
 
@@ -954,6 +974,9 @@ function addOutsideRock(x, z, scale = 1) {
   rock.scale.y = 0.55;
   rock.rotation.set(Math.random(), Math.random(), Math.random());
   scene.add(rock);
+  rock.castShadow = false;
+  rock.receiveShadow = false;
+  registerCullable(rock, CULL_SETTINGS.outsideDetailDistance, "outside");
 }
 
 function addGrassPatch(x, z, count = 10) {
@@ -972,7 +995,10 @@ function addGrassPatch(x, z, count = 10) {
     );
 
     blade.rotation.z = (Math.random() - 0.5) * 0.45;
+    blade.castShadow = false;
+    blade.receiveShadow = false;
     scene.add(blade);
+    registerCullable(blade, 45, "grass");
   }
 }
 
@@ -987,6 +1013,7 @@ function addStoneSlab(x, z, scale = 1, rot = 0) {
   slab.receiveShadow = true;
 
   scene.add(slab);
+  registerCullable(slab, CULL_SETTINGS.outsideDetailDistance, "outside");
 }
 
 function addBrokenStoneColumn(x, z, height = 2.2) {
@@ -1005,6 +1032,7 @@ function addBrokenStoneColumn(x, z, height = 2.2) {
   col.castShadow = true;
   col.receiveShadow = true;
   scene.add(col);
+  registerCullable(col, CULL_SETTINGS.outsideDetailDistance, "outside");
 
   const cap = new THREE.Mesh(
     new THREE.BoxGeometry(0.9, 0.22, 0.9),
@@ -1015,6 +1043,7 @@ function addBrokenStoneColumn(x, z, height = 2.2) {
   cap.rotation.y = Math.random() * Math.PI;
   cap.castShadow = true;
   scene.add(cap);
+  registerCullable(cap, CULL_SETTINGS.outsideDetailDistance, "outside");
 }
 
 function addDirtPatch(x, z, w = 3, d = 5, rotY = 0) {
@@ -1031,6 +1060,7 @@ function addDirtPatch(x, z, w = 3, d = 5, rotY = 0) {
   patch.position.set(x, -0.205, z);
 
   scene.add(patch);
+  registerCullable(patch, CULL_SETTINGS.outsideDetailDistance, "outside");
 }
 
 [
@@ -1622,11 +1652,13 @@ function addWallGun(key, x, y, z, rotY) {
     group.add(light);
   }
   scene.add(group);
+  registerCullable(group, CULL_SETTINGS.wallGunDistance, "wallGun");
 
   const sign = createTextSprite(`${data.name}
 $${data.cost}`);
   sign.position.set(x, y + 0.8, z);
   scene.add(sign);
+  registerCullable(sign, CULL_SETTINGS.textSpriteDistance, "sign");
 
   const obj = { type: "wallGun", key, x, z, y, cost: data.cost, name: data.name, mesh: group };
   wallGuns.push(obj);
@@ -1661,10 +1693,12 @@ function addAmmoStation(x, z, key) {
   group.add(lid);
 
   scene.add(group);
+  registerCullable(group, CULL_SETTINGS.wallGunDistance, "manaStation");
 
   const sign = createTextSprite(`Mana\n${guns[key].name}\n$${guns[key].ammoCost}`);
   sign.position.set(x, 2, z);
   scene.add(sign);
+  registerCullable(sign, CULL_SETTINGS.textSpriteDistance, "sign");
 
   const obj = { type: "ammo", key, x, z };
   ammoStations.push(obj);
@@ -1854,23 +1888,37 @@ function spawnBullet() {
   bulletMesh.position.add(dir.clone().multiplyScalar(0.8));
   scene.add(bulletMesh);
 
-  const glow = new THREE.PointLight(projectileColor, 0.55, 3.5);
-  glow.position.copy(bulletMesh.position);
-  scene.add(glow);
+  bulletMesh.castShadow = false;
+  bulletMesh.receiveShadow = false;
+  let glow = null;
+  const shouldUseProjectileLight =
+    currentGun.magicType === "astral" ||
+    currentGun.magicType === "solar" ||
+    currentGun.magicType === "void" ||
+    currentGun.magicType === "storm";
+  if (shouldUseProjectileLight && (currentGun.pellets || 1) <= 2) {
+    glow = new THREE.PointLight(projectileColor, 0.45, 3.0);
+    glow.position.copy(bulletMesh.position);
+    glow.castShadow = false;
+    scene.add(glow);
+  }
 
   bullets.push({ mesh: bulletMesh, glow, pos: bulletMesh.position.clone(), vel: dir.multiplyScalar(currentGun.bulletSpeed), damage: currentGun.damage, life: 2.2, drop: currentGun.laser ? 0.25 : 1.25, magicType: currentGun.magicType, projectileColor, chainLightning: currentGun.chainLightning || false, chainChance: currentGun.chainChance || 0, chainRange: currentGun.chainRange || 0, chainDamage: currentGun.chainDamage || 0, chainMaxTargets: currentGun.chainMaxTargets || 0, shardOnHit: currentGun.shardOnHit || false, shardCount: currentGun.shardCount || 0, shardDamage: currentGun.shardDamage || 0, pierce: currentGun.pierce || 0, hitEnemies: new Set(), spawnPos: camera.position.clone(), closeRangeBonus: currentGun.closeRangeBonus || false, closeRangeDistance: currentGun.closeRangeDistance || 0, closeRangeMultiplier: currentGun.closeRangeMultiplier || 1, slowOnHit: currentGun.slowOnHit || false, slowMultiplier: currentGun.slowMultiplier || 1, slowDuration: currentGun.slowDuration || 0, voidMark: currentGun.voidMark || false, voidMarkDuration: currentGun.voidMarkDuration || 0, voidMarkBonusDamage: currentGun.voidMarkBonusDamage || 0, explosionOnHit: currentGun.explosionOnHit || false, explosionRadius: currentGun.explosionRadius || 0, explosionDamage: currentGun.explosionDamage || 0, knockback: currentGun.knockback || false, poisonOnHit: currentGun.poisonOnHit || false, poisonDamage: currentGun.poisonDamage || 0, poisonDuration: currentGun.poisonDuration || 0, poisonTickRate: currentGun.poisonTickRate || 0.5, spreadPoisonOnDeath: currentGun.spreadPoisonOnDeath || false, spreadPoisonRadius: currentGun.spreadPoisonRadius || 0 });
 }
 
-function spawnLightningArc(from, to, color = 0x66ccff) { const points=[]; const segments=6; for (let i=0;i<=segments;i++){const t=i/segments; points.push(new THREE.Vector3(from.x + (to.x-from.x)*t + (Math.random()-0.5)*0.28, from.y + (to.y-from.y)*t + (Math.random()-0.5)*0.28, from.z + (to.z-from.z)*t + (Math.random()-0.5)*0.28));} const geo=new THREE.BufferGeometry().setFromPoints(points); const mat=new THREE.LineBasicMaterial({color,transparent:true,opacity:0.95}); const line=new THREE.Line(geo,mat); scene.add(line); floatingTexts.push({sprite:line, life:0.12, vel:new THREE.Vector3()}); }
+function shouldSpawnVisualEffectAt(pos, maxDist = CULL_SETTINGS.particleDistance) { if (!pos) return false; const dx = pos.x - player.pos.x; const dz = pos.z - player.pos.z; return Math.sqrt(dx * dx + dz * dz) <= maxDist; }
+function disposeFloatingEffect(effect) { if (!effect || !effect.sprite) return; scene.remove(effect.sprite); if (effect.sprite.geometry) effect.sprite.geometry.dispose(); if (effect.sprite.material) { if (effect.sprite.material.map) effect.sprite.material.map.dispose(); effect.sprite.material.dispose(); } }
+function pushFloatingEffect(effect) { if (floatingTexts.length > MAX_FLOATING_EFFECTS) { const old = floatingTexts.shift(); disposeFloatingEffect(old); } floatingTexts.push(effect); }
+function spawnLightningArc(from, to, color = 0x66ccff) { if (!shouldSpawnVisualEffectAt(from)) return; const points=[]; const segments=6; for (let i=0;i<=segments;i++){const t=i/segments; points.push(new THREE.Vector3(from.x + (to.x-from.x)*t + (Math.random()-0.5)*0.28, from.y + (to.y-from.y)*t + (Math.random()-0.5)*0.28, from.z + (to.z-from.z)*t + (Math.random()-0.5)*0.28));} const geo=new THREE.BufferGeometry().setFromPoints(points); const mat=new THREE.LineBasicMaterial({color,transparent:true,opacity:0.95}); const line=new THREE.Line(geo,mat); line.castShadow = false; line.receiveShadow = false; scene.add(line); pushFloatingEffect({sprite:line, life:0.12, vel:new THREE.Vector3()}); }
 function spawnMuzzleLightning(color = 0x66ccff) { if (!camera) return; const from = camera.position.clone(); const dir = new THREE.Vector3(0, 0, -1).applyEuler(camera.rotation); const to = from.clone().add(dir.multiplyScalar(2.2)); spawnLightningArc(from, to, color); }
 function spawnMagicShard(origin, baseDir, damage, color = 0x9eefff) { const shardMesh = new THREE.Mesh(new THREE.ConeGeometry(0.055,0.35,8), new THREE.MeshBasicMaterial({ color })); shardMesh.position.copy(origin); shardMesh.rotation.x=Math.random()*Math.PI; shardMesh.rotation.y=Math.random()*Math.PI; scene.add(shardMesh); const dir=baseDir.clone(); dir.x += (Math.random()-0.5)*0.55; dir.y += (Math.random()-0.5)*0.22; dir.z += (Math.random()-0.5)*0.55; dir.normalize(); bullets.push({ mesh: shardMesh, pos: shardMesh.position.clone(), vel: dir.multiplyScalar(52), damage, life: 0.65, drop:2.2, magicType:"shard", projectileColor: color, projectileSize: 0.04, pierce:0, shardOnHit:false, chainLightning:false, hitEnemies:new Set() }); }
 function spawnShardsFromHit(bullet, hitPos, incomingVel) { if (!bullet.shardOnHit || bullet.shardCount <= 0) return; const baseDir = incomingVel.clone().normalize(); for (let i=0;i<bullet.shardCount;i++) spawnMagicShard(hitPos.clone(), baseDir, bullet.shardDamage || 8, bullet.magicType === "astral" ? 0xbbffff : 0x9eefff); }
-function spawnMagicImpact(pos, color = 0xffaa44, count = 7) { for (let i=0;i<count;i++) { const spark = new THREE.Mesh(new THREE.SphereGeometry(0.035 + Math.random() * 0.035, 6, 6), new THREE.MeshBasicMaterial({ color })); spark.position.copy(pos); scene.add(spark); floatingTexts.push({ sprite: spark, life: 0.35 + Math.random() * 0.25, vel: new THREE.Vector3((Math.random()-0.5)*2.0,Math.random()*1.8,(Math.random()-0.5)*2.0) }); } }
+function spawnMagicImpact(pos, color = 0xffaa44, count = 7) { if (!shouldSpawnVisualEffectAt(pos)) return; for (let i=0;i<count;i++) { const spark = new THREE.Mesh(new THREE.SphereGeometry(0.035 + Math.random() * 0.035, 6, 6), new THREE.MeshBasicMaterial({ color })); spark.castShadow = false; spark.receiveShadow = false; spark.position.copy(pos); scene.add(spark); pushFloatingEffect({ sprite: spark, life: 0.35 + Math.random() * 0.25, vel: new THREE.Vector3((Math.random()-0.5)*2.0,Math.random()*1.8,(Math.random()-0.5)*2.0) }); } }
 function spawnFrostBurst(pos) { spawnMagicImpact(pos, 0xbbeeff, 10); }
 function spawnVoidPulse(pos) { spawnMagicImpact(pos, 0xb066ff, 8); }
 function spawnPoisonSplash(pos) { spawnMagicImpact(pos, 0xaaff44, 9); }
 function spreadPoisonFromEnemy(source) { const radius = source.spreadPoisonRadius || 4; for (const e of enemies) { if (e === source) continue; if (enemyDistance2D(source.mesh.position, e.mesh.position) <= radius) { e.poisonTimer = Math.max(e.poisonTimer || 0, 2.5); e.poisonTickTimer = 0.5; e.poisonDamage = Math.max(e.poisonDamage || 0, 4); e.spreadPoisonOnDeath = false; spawnPoisonSplash(e.mesh.position.clone()); } } }
-function spawnSolarExplosion(pos, radius) { const ring = new THREE.Mesh(new THREE.RingGeometry(0.2, radius, 32), new THREE.MeshBasicMaterial({color:0xffee88,transparent:true,opacity:0.75,side:THREE.DoubleSide})); ring.position.copy(pos); ring.position.y=0.08; ring.rotation.x=-Math.PI/2; scene.add(ring); floatingTexts.push({sprite:ring,life:0.35,vel:new THREE.Vector3()}); spawnMagicImpact(pos,0xffdd55,24); }
+function spawnSolarExplosion(pos, radius) { if (!shouldSpawnVisualEffectAt(pos, 110)) return; const ring = new THREE.Mesh(new THREE.RingGeometry(0.2, radius, 32), new THREE.MeshBasicMaterial({color:0xffee88,transparent:true,opacity:0.75,side:THREE.DoubleSide})); ring.castShadow = false; ring.receiveShadow = false; ring.position.copy(pos); ring.position.y=0.08; ring.rotation.x=-Math.PI/2; scene.add(ring); pushFloatingEffect({sprite:ring,life:0.35,vel:new THREE.Vector3()}); spawnMagicImpact(pos,0xffdd55,24); }
 function triggerMagicExplosion(pos, radius, damage, knockback=false) { spawnSolarExplosion(pos, radius); for (let i=enemies.length-1;i>=0;i--){const e=enemies[i]; const dist=e.mesh.position.distanceTo(pos); if (dist<=radius){const falloff=1-dist/radius; const dealt=damage*(0.35+falloff*0.65); e.health-=dealt; showGoblinHit(e,"body",dealt); if(knockback){const dir=e.mesh.position.clone().sub(pos); dir.y=0; if(dir.lengthSq()>0.001){dir.normalize(); const nx=e.mesh.position.x+dir.x*(0.8+falloff*1.6); const nz=e.mesh.position.z+dir.z*(0.8+falloff*1.6); if(!isEnemyPathBlockedAt(nx,nz,e)){e.mesh.position.x=nx; e.mesh.position.z=nz;}}} if(e.health<=0) killEnemy(i);} } }
 
 function triggerChainLightning(sourceEnemy, originPos, bullet) { if (!bullet.chainLightning) return; if (Math.random() > bullet.chainChance) return; let chained=0; let current=sourceEnemy; while (chained < bullet.chainMaxTargets) { let best=null; let bestDist=bullet.chainRange; for (const candidate of enemies) { if (candidate===current) continue; if (bullet.hitEnemies && bullet.hitEnemies.has(candidate)) continue; if (candidate.health<=0) continue; const dist = enemyDistance2D(current.mesh.position, candidate.mesh.position); if (dist<bestDist) { best=candidate; bestDist=dist; } } if (!best) break; const from=current.mesh.position.clone(); from.y+=1.1; const to=best.mesh.position.clone(); to.y+=1.1; spawnLightningArc(from,to,0x66ccff); best.health -= bullet.chainDamage; showGoblinHit(best, "body", bullet.chainDamage); if (bullet.hitEnemies) bullet.hitEnemies.add(best); if (best.health <= 0) { const idx = enemies.indexOf(best); if (idx >= 0) killEnemy(idx); } current=best; chained++; }}
@@ -2523,9 +2571,10 @@ function getWindowInsideStandPosition(win) {
   return new THREE.Vector3(win.x + inward.x * 1.85, 0, win.z + inward.z * 1.85);
 }
 function faceGoblinToward(enemy, targetPosition) {
+  if (!enemy || !enemy.mesh || !targetPosition) return;
   const dx = targetPosition.x - enemy.mesh.position.x;
   const dz = targetPosition.z - enemy.mesh.position.z;
-  enemy.mesh.rotation.y = Math.atan2(dx, dz);
+  enemy.mesh.rotation.y = Math.atan2(dx, dz) + GOBLIN_FACE_FLIP;
 }
 
 function tryPlayerJump() {
@@ -2824,7 +2873,7 @@ function showGoblinHit(enemy, hitZone, damage) {
     }
   }
   scene.add(sprite);
-  floatingTexts.push({ sprite, life: 0.65, vel: new THREE.Vector3((Math.random()-0.5)*0.5,1.2,(Math.random()-0.5)*0.5) });
+  pushFloatingEffect({ sprite, life: 0.65, vel: new THREE.Vector3((Math.random()-0.5)*0.5,1.2,(Math.random()-0.5)*0.5) });
 }
 
 function updateFloatingTexts(dt) {
@@ -2834,12 +2883,7 @@ function updateFloatingTexts(dt) {
     if (f.sprite.position) f.sprite.position.add(f.vel.clone().multiplyScalar(dt));
     if (f.sprite.material) f.sprite.material.opacity = Math.max(0, f.life / 0.65);
     if (f.life <= 0) {
-      scene.remove(f.sprite);
-      if (f.sprite.geometry) f.sprite.geometry.dispose();
-      if (f.sprite.material) {
-        if (f.sprite.material.map) f.sprite.material.map.dispose();
-        f.sprite.material.dispose();
-      }
+      disposeFloatingEffect(f);
       floatingTexts.splice(i, 1);
     }
   }
@@ -2972,6 +3016,8 @@ function moveGoblinAlongPath(enemy, target, dt) {
   enemy.pathRefreshTimer -= dt;
   const needsPath = !enemy.path || enemy.path.length === 0 || enemy.pathIndex >= enemy.path.length || enemy.pathRefreshTimer <= 0;
   if (needsPath) {
+    if (pathfindsThisFrame >= MAX_PATHFINDS_PER_FRAME) return moveGoblinToward(enemy, target, dt);
+    pathfindsThisFrame++;
     enemy.path = findEnemyPath(enemy, enemy.mesh.position.clone(), target.clone());
     if (enemy.path && enemy.path.length > 0) enemy.pathFailCount = 0;
     enemy.pathIndex = 0;
@@ -3263,6 +3309,10 @@ function updateEnemies(dt) {
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
     const type = enemyTypes[e.typeKey];
+    const enemyDistToPlayer = enemyDistance2D(e.mesh.position, player.pos);
+    const enemyVisible = enemyDistToPlayer <= CULL_SETTINGS.enemyFarDistance;
+    if (e.mesh) e.mesh.visible = enemyVisible;
+    if (e.groundMarker) e.groundMarker.visible = enemyVisible;
     let moved = false;
     if (e.state === "burning_clear") {
       e.burnTimer -= dt;
@@ -3394,7 +3444,7 @@ function updateEnemies(dt) {
     if (e.state === "inside") {
       const dx = player.pos.x - e.mesh.position.x;
       const dz = player.pos.z - e.mesh.position.z;
-      e.mesh.rotation.y = Math.atan2(dx, dz);
+      faceGoblinToward(e, player.pos);
       const dir = player.pos.clone().sub(e.mesh.position);
       dir.y = 0;
 
@@ -3473,7 +3523,7 @@ function updateEnemies(dt) {
     }
 
     // health bar
-    if (!e.healthBar) {
+    if (!e.healthBar && enemyDistToPlayer <= CULL_SETTINGS.enemyHealthBarDistance) {
       const bg = new THREE.Mesh(
         new THREE.PlaneGeometry(1.25, 0.12),
         new THREE.MeshBasicMaterial({ color: 0x220000, side: THREE.DoubleSide })
@@ -3489,12 +3539,17 @@ function updateEnemies(dt) {
       scene.add(e.healthBar);
     }
 
-    e.healthBar.position.copy(e.mesh.position);
-    e.healthBar.position.y += 2.25 * type.scale;
-    e.healthBar.lookAt(camera.position);
-    const pct = Math.max(0, Math.min(1, e.health / e.maxHealth));
-    const fill = e.healthBar.getObjectByName("healthFill");
-    if (fill) { fill.scale.x = pct; fill.position.x = -0.6 * (1 - pct); }
+    if (e.healthBar) {
+      e.healthBar.position.copy(e.mesh.position);
+      e.healthBar.position.y += 2.25 * type.scale;
+      e.healthBar.visible = enemyDistToPlayer <= CULL_SETTINGS.enemyHealthBarDistance;
+      if (e.healthBar.visible) e.healthBar.lookAt(camera.position);
+    }
+    if (e.healthBar) {
+      const pct = Math.max(0, Math.min(1, e.health / e.maxHealth));
+      const fill = e.healthBar.getObjectByName("healthFill");
+      if (fill) { fill.scale.x = pct; fill.position.x = -0.6 * (1 - pct); }
+    }
   }
 }
 function updateHealthRegen(dt) {
@@ -3540,12 +3595,15 @@ function updatePickups(dt) {
 ========================================================= */
 
 function spawnFireBurst(pos, count = 14) {
+  if (!shouldSpawnVisualEffectAt(pos, 110)) return;
   for (let i = 0; i < count; i++) {
     const spark = new THREE.Mesh(new THREE.SphereGeometry(0.045 + Math.random() * 0.05, 6, 6), new THREE.MeshBasicMaterial({ color: Math.random() < 0.5 ? 0xff6a00 : 0xffdd55 }));
+    spark.castShadow = false;
+    spark.receiveShadow = false;
     spark.position.copy(pos);
     spark.position.y += 0.8 + Math.random() * 0.8;
     scene.add(spark);
-    floatingTexts.push({ sprite: spark, life: 0.45 + Math.random() * 0.35, vel: new THREE.Vector3((Math.random() - 0.5) * 3.2, 1.2 + Math.random() * 2.5, (Math.random() - 0.5) * 3.2) });
+    pushFloatingEffect({ sprite: spark, life: 0.45 + Math.random() * 0.35, vel: new THREE.Vector3((Math.random() - 0.5) * 3.2, 1.2 + Math.random() * 2.5, (Math.random() - 0.5) * 3.2) });
   }
 }
 
@@ -3720,6 +3778,7 @@ function animate() {
   requestAnimationFrame(animate);
 
   const dt = Math.min(clock.getDelta(), 0.05);
+  pathfindsThisFrame = 0;
 
   updatePendingControllerMapping();
   if (player.alive) {
@@ -3737,6 +3796,7 @@ function animate() {
   }
 
   updateHud();
+  updateRenderCulling(dt);
   renderer.render(scene, camera);
 }
 
