@@ -2556,7 +2556,7 @@ function heavyAttack(p) {
   p.attackFrame = Math.max(p.attackFrame, 32);
   p.jumps = Math.max(p.jumps, 1);
 
-  createAttack({ owner: p, x: p.x, y: beamCenterY, w: 78, h: beamHeight, damage: 12.5, knock: 16.5, angle: -1.25, frames: 10, color: "#ffea00", label: "ra_up_k_sunbeam_lift", visualType: "raSunbeamLift" });
+  createAttack({ owner: p, x: p.x, y: beamCenterY, w: 78, h: beamHeight, damage: 12.5, knock: 16.5, angle: -1.25, frames: 10, color: "#ffea00", label: "ra_up_k_sunbeam_lift", visualType: "raDownwardSunBeam" });
 
   spawnParticles(p.x, p.y + p.h / 2, "#ffea00", 30, 8);
   spawnParticles(p.x, beamBottomY, "#ff9f1c", 26, 7);
@@ -4525,7 +4525,7 @@ function updateBastetSpiritCats() {
       const maxSpeed = 6.5 + Math.sin(c.phase) * 1.2, vmag = Math.max(1, Math.hypot(c.vx, c.vy));
       if (vmag > maxSpeed) { c.vx = (c.vx / vmag) * maxSpeed; c.vy = (c.vy / vmag) * maxSpeed; }
       if (d < 34) {
-        createAttack({ owner: c.owner, x: c.x, y: c.y, w: 92, h: 92, damage: 6.5, knock: 7.5, angle: -0.45, frames: 5, color: "#b66dff", label: "bastet_spirit_cat_explosion", visualType: "bastetSpiritCatExplosion" });
+        createAttack({ owner: c.owner, x: c.x, y: c.y, w: 92, h: 92, damage: 6.5, knock: 7.5, angle: -0.45, frames: 5, color: "#b66dff", label: "bastet_spirit_cat_explosion", visualType: "bastetSpiritCatBurst" });
         spawnParticles(c.x, c.y, "#b66dff", 24, 6);
         spawnParticles(c.x, c.y, "#ffd166", 10, 4);
         shake = Math.max(shake, 3);
@@ -5431,34 +5431,67 @@ function drawZeusThunderCages() {
     const sy = worldToScreenY(cage.y);
     const r = screenScale(cage.radius);
     const pulse = 0.75 + Math.sin(matchTime * 0.25) * 0.25;
+    const flicker = 0.65 + Math.sin(matchTime * 1.15 + cage.tick * 0.45) * 0.35;
+    const bars = 8;
 
     ctx.save();
-    ctx.globalAlpha = 0.25 + pulse * 0.18;
+    ctx.globalAlpha = 0.16 + pulse * 0.12;
+    ctx.fillStyle = "#8ecae6";
+    ctx.beginPath();
+    ctx.ellipse(sx, sy + screenScale(2), r * 0.95, r * 0.34, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.35 + pulse * 0.2;
     ctx.strokeStyle = "#ffe66d";
-    ctx.lineWidth = Math.max(2, screenScale(4));
+    ctx.lineWidth = Math.max(2, screenScale(3.5));
     ctx.beginPath();
     ctx.ellipse(sx, sy, r, r * 0.42, 0, 0, Math.PI * 2);
     ctx.stroke();
 
-    ctx.globalAlpha = 0.18;
-    ctx.fillStyle = "#ffe66d";
-    ctx.beginPath();
-    ctx.ellipse(sx, sy, r, r * 0.42, 0, 0, Math.PI * 2);
-    ctx.fill();
+    for (let i = 0; i < bars; i++) {
+      const a = (Math.PI * 2 * i) / bars + matchTime * 0.012;
+      const bx = sx + Math.cos(a) * r * 0.8;
+      const by = sy + Math.sin(a) * r * 0.34;
+      const bh = r * (0.52 + Math.sin(matchTime * 0.14 + i) * 0.06);
+      ctx.globalAlpha = 0.2 + flicker * 0.2;
+      ctx.strokeStyle = "#ffe66d";
+      ctx.lineWidth = Math.max(1, screenScale(5));
+      ctx.beginPath();
+      ctx.moveTo(bx, by - bh * 0.55);
+      ctx.lineTo(bx, by + bh * 0.45);
+      ctx.stroke();
+      ctx.globalAlpha = 0.55 + flicker * 0.35;
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = Math.max(1, screenScale(2));
+      ctx.beginPath();
+      ctx.moveTo(bx, by - bh * 0.4);
+      ctx.lineTo(bx, by + bh * 0.28);
+      ctx.stroke();
+    }
 
-    ctx.globalAlpha = 0.8;
+    ctx.globalAlpha = 0.75;
     ctx.strokeStyle = "#ffffff";
-    for (let i = 0; i < 5; i++) {
-      const a = matchTime * 0.04 + i * Math.PI * 0.4;
-      const x1 = sx + Math.cos(a) * r * 0.55;
-      const y1 = sy + Math.sin(a) * r * 0.24;
-      const x2 = sx + Math.cos(a + 0.4) * r * 0.9;
-      const y2 = sy + Math.sin(a + 0.4) * r * 0.38;
+    ctx.lineWidth = Math.max(1, screenScale(2.2));
+    for (let i = 0; i < 6; i++) {
+      const a = matchTime * 0.05 + i * Math.PI * 0.33;
+      const x1 = sx + Math.cos(a) * r * 0.72;
+      const y1 = sy + Math.sin(a) * r * 0.28;
+      const x2 = sx + Math.cos(a + 0.55) * r * 0.72;
+      const y2 = sy + Math.sin(a + 0.55) * r * 0.28;
+      const jx = (x1 + x2) * 0.5 + Math.sin(matchTime * 0.3 + i) * screenScale(9);
+      const jy = (y1 + y2) * 0.5 - screenScale(8);
       ctx.beginPath();
       ctx.moveTo(x1, y1);
-      ctx.lineTo((x1 + x2) / 2 + Math.sin(matchTime) * 6, (y1 + y2) / 2 - 8);
+      ctx.lineTo(jx, jy);
       ctx.lineTo(x2, y2);
       ctx.stroke();
+    }
+    for (let i = 0; i < 5; i++) {
+      const a = matchTime * 0.09 + i * 1.26;
+      const px = sx + Math.cos(a) * r * 0.45;
+      const py = sy + Math.sin(a) * r * 0.15;
+      ctx.globalAlpha = 0.65;
+      ctx.fillStyle = i % 2 ? "#d9f4ff" : "#ffe66d";
+      ctx.fillRect(px - screenScale(1.5), py - screenScale(1.5), screenScale(3), screenScale(3));
     }
 
     ctx.restore();
@@ -5533,13 +5566,14 @@ function drawBastetSpiritCats() {
     const sx = worldToScreenX(c.x), sy = worldToScreenY(c.y), s = screenScale(c.size || 20);
     const dir = c.vx >= 0 ? 1 : -1, pulse = 0.75 + Math.sin(matchTime * 0.25 + c.phase) * 0.25;
     ctx.save(); ctx.translate(sx, sy); ctx.scale(dir, 1);
-    ctx.globalAlpha = 0.22 * pulse; ctx.fillStyle = "#b66dff"; ctx.beginPath(); ctx.arc(0, 0, s * 1.15, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = 0.78; ctx.fillStyle = "#7b2cbf"; ctx.beginPath(); ctx.ellipse(0, 4, s * 0.55, s * 0.32, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "#b66dff"; ctx.beginPath(); ctx.arc(s * 0.45, -2, s * 0.28, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(s * 0.30, -s * 0.20); ctx.lineTo(s * 0.38, -s * 0.52); ctx.lineTo(s * 0.48, -s * 0.18); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(s * 0.52, -s * 0.18); ctx.lineTo(s * 0.68, -s * 0.48); ctx.lineTo(s * 0.66, -s * 0.10); ctx.fill();
-    ctx.strokeStyle = "#b66dff"; ctx.lineWidth = Math.max(2, s * 0.12); ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(-s * 0.45, 3); ctx.quadraticCurveTo(-s * 0.95, -s * 0.45, -s * 0.40, -s * 0.65); ctx.stroke();
-    ctx.globalAlpha = 0.95; ctx.fillStyle = "#ffd166"; ctx.fillRect(s * 0.47, -s * 0.08, s * 0.08, s * 0.05); ctx.fillRect(s * 0.60, -s * 0.08, s * 0.08, s * 0.05);
+    ctx.globalAlpha = 0.18 + 0.15 * pulse; ctx.fillStyle = "#c77dff"; ctx.beginPath(); ctx.arc(0, 0, s * 1.32, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.78; ctx.fillStyle = "#6a2fb3"; ctx.beginPath(); ctx.ellipse(0, 4, s * 0.55, s * 0.34, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#b66dff"; ctx.beginPath(); ctx.arc(s * 0.42, -2, s * 0.30, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(s * 0.27, -s * 0.2); ctx.lineTo(s * 0.37, -s * 0.56); ctx.lineTo(s * 0.50, -s * 0.12); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(s * 0.52, -s * 0.15); ctx.lineTo(s * 0.68, -s * 0.50); ctx.lineTo(s * 0.65, -s * 0.08); ctx.fill();
+    ctx.globalAlpha = 0.5; ctx.strokeStyle = "#b66dff"; ctx.lineWidth = Math.max(2, s * 0.22); ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(-s * 0.45, 3); ctx.quadraticCurveTo(-s * 1.12, -s * 0.5, -s * 0.2, -s * 0.85); ctx.stroke();
+    ctx.globalAlpha = 0.95; ctx.fillStyle = "#f8f3ff"; ctx.fillRect(s * 0.45, -s * 0.1, s * 0.08, s * 0.06); ctx.fillRect(s * 0.59, -s * 0.1, s * 0.08, s * 0.06);
+    ctx.globalAlpha = 0.45; ctx.strokeStyle = "#ffd166"; ctx.lineWidth = Math.max(1, s * 0.08); ctx.beginPath(); ctx.arc(0, 0, s * (0.95 + 0.2 * pulse), -2.1, 0.95); ctx.stroke();
     ctx.restore();
   });
 }
@@ -6461,7 +6495,7 @@ function drawAttack(a) {
   const cx = x + w * .5;
   const cy = y + h * .5;
   let type = a.visualType || "slashArc";
-  const hadesVisualFallback = {hadesBidentJab:"spearThrust",hadesBoneUpper:"hadesBonePillar",hadesShadeSweep:"graveSweep",hadesBidentCleave:"judgmentCleave",hadesBonePillar:"stormPillar",hadesUnderworldBurst:"duatDetonation",hadesShadowGate:"shadowGate",hadesBoneRise:"hadesBonePillar",hadesSoulPrisonCast:"soulMarkBurst",hadesSoulPrisonTrigger:"soulMarkBurst",hadesUnderworldGate:"hadesShadowGate",hadesSoulWave:"duatDetonation",hadesLordAura:"shadowGate",zeusRisingBoltUppercut:"uppercutSpark",zeusThunderCageSlam:"thunderStomp",raSolarBrandSwipe:"desertBurn",raSolarBrandBurst:"sunBrandBurst",raSunbeamLift:"noonFlare",anubisWeighingSealCast:"soulMarkBurst",anubisWeighingSealTrigger:"soulMarkBurst",quetzRisingFeatherLift:"quetzTempestCrown",quetzFeatherDashSwipe:"quetzFeatherFangSwipe",quetzLowCoilSweep:"quetzCoilSweep",quetzSidewindCleave:"quetzEmeraldWingCleave",quetzSkySerpentLauncher:"quetzTempestCrown",quetzSkyCurrentLift:"quetzTempestCrown",quetzSideWindDash:"quetzEmeraldWingCleave",quetzSerpentDive:"quetzSerpentDive"};
+  const hadesVisualFallback = {hadesBidentJab:"spearThrust",hadesBoneUpper:"hadesBonePillar",hadesShadeSweep:"graveSweep",hadesBidentCleave:"judgmentCleave",hadesBonePillar:"stormPillar",hadesUnderworldBurst:"duatDetonation",hadesShadowGate:"shadowGate",hadesBoneRise:"hadesBonePillar",hadesSoulPrisonCast:"soulMarkBurst",hadesSoulPrisonTrigger:"soulMarkBurst",hadesSoulWave:"duatDetonation",hadesLordAura:"shadowGate",zeusRisingBoltUppercut:"uppercutSpark",zeusThunderCageSlam:"thunderStomp",raSolarBrandSwipe:"desertBurn",raSolarBrandBurst:"sunBrandBurst",anubisWeighingSealCast:"soulMarkBurst",anubisWeighingSealTrigger:"soulMarkBurst",quetzRisingFeatherLift:"quetzTempestCrown",quetzFeatherDashSwipe:"quetzFeatherFangSwipe",quetzLowCoilSweep:"quetzCoilSweep",quetzSidewindCleave:"quetzEmeraldWingCleave",quetzSkySerpentLauncher:"quetzTempestCrown",quetzSkyCurrentLift:"quetzTempestCrown",quetzSideWindDash:"quetzEmeraldWingCleave",quetzSerpentDive:"quetzSerpentDive"};
   const rawType = type;
   type = hadesVisualFallback[type] || type;
   const dir = (a.owner && a.owner.facing) || 1;
@@ -6489,17 +6523,32 @@ function drawAttack(a) {
     }
     ctx.globalAlpha = 1;
   };
-  if (["bastetClawSwipe","bastetQuickClaws","bastetRisingClaw","bastetLowSweep","bastetLowProwlSwipe","bastetPouncingMaul","bastetMoonLauncher","bastetTailTrip","bastetMoonPounce","bastetMoonlitLeap","bastetScratchRebound","bastetLowPounce","bastetSpiritCatExplosion","bastetCharmingGaze"].includes(type)) {
+  if (["raDownwardSunBeam","raSunbeamLift"].includes(rawType)) {
+    const tele = Math.max(0, Math.min(1, a.frames / Math.max(1, a.maxFrames || 10)));
+    ctx.globalAlpha = 0.2 + tele * 0.3; ctx.fillStyle = "rgba(255,140,0,0.55)"; ctx.fillRect(cx - w * 0.35, y, w * 0.7, h);
+    ctx.globalAlpha = 0.45 + tele * 0.25; ctx.fillStyle = "#ffd166"; ctx.fillRect(cx - w * 0.24, y, w * 0.48, h);
+    ctx.globalAlpha = 0.85; ctx.fillStyle = "#ffffff"; ctx.fillRect(cx - w * 0.1, y, w * 0.2, h);
+    for (let i = 0; i < 5; i++) { const bandY = y + ((matchTime * 8 + i * 27) % Math.max(8, h)); ctx.globalAlpha = 0.22; ctx.fillStyle = i % 2 ? "#ffe66d" : "#fff5cc"; ctx.fillRect(cx - w * 0.2, bandY, w * 0.4, screenScale(4)); }
+    ctx.globalAlpha = 0.4 + tele * 0.3; ctx.fillStyle = "#fff8b3"; ctx.beginPath(); ctx.arc(cx, worldToScreenY(a.owner ? a.owner.y + a.owner.h * 0.5 : a.y), w * 0.25, 0, Math.PI * 2); ctx.fill();
+    const impactR = Math.max(w * 0.24, (w * 0.24) + Math.sin(matchTime * 0.6) * screenScale(3));
+    ctx.globalAlpha = 0.58; ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.ellipse(cx, y + h, impactR, impactR * 0.42, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.42; ctx.strokeStyle = "#ff9f1c"; ctx.lineWidth = screenScale(3); ctx.beginPath(); ctx.ellipse(cx, y + h, impactR * 1.6, impactR * 0.55, 0, 0, Math.PI * 2); ctx.stroke();
+    spark(6, "rgba(255,213,102,.9)");
+    ctx.globalAlpha = 1;
+    return;
+  }
+  if (["bastetClawSwipe","bastetQuickClaws","bastetRisingClaw","bastetLowSweep","bastetLowProwlSwipe","bastetPouncingMaul","bastetMoonLauncher","bastetTailTrip","bastetMoonPounce","bastetMoonlitLeap","bastetScratchRebound","bastetLowPounce","bastetSpiritCatExplosion","bastetSpiritCatBurst","bastetCharmingGaze"].includes(type)) {
     const v = (type.includes("Rising") || type.includes("MoonLauncher") || type.includes("Moonlit")) ? "up" : (type.includes("Low") || type.includes("TailTrip") ? "down" : "neutral");
     if (type === "bastetCharmingGaze") {
       ctx.globalAlpha = 0.25; ctx.fillStyle = "#b66dff"; ctx.beginPath(); ctx.moveTo(cx - dir * w * .3, cy); ctx.lineTo(cx + dir * w * .6, cy - h * .35); ctx.lineTo(cx + dir * w * .6, cy + h * .35); ctx.closePath(); ctx.fill();
       ctx.globalAlpha = 0.95; ctx.fillStyle = "#ffd166"; ctx.fillRect(cx + dir * w * .18, cy - h * .12, screenScale(8), screenScale(4)); ctx.fillRect(cx + dir * w * .28, cy - h * .12, screenScale(8), screenScale(4));
-    } else if (type === "bastetSpiritCatExplosion") {
+    } else if (type === "bastetSpiritCatExplosion" || type === "bastetSpiritCatBurst") {
       ctx.globalAlpha = 0.35;
       ctx.fillStyle = "#b66dff";
       ctx.beginPath(); ctx.arc(cx, cy, Math.max(w, h) * 0.35 * pulse, 0, Math.PI * 2); ctx.fill();
-      ctx.fillRect(cx - w * 0.18, cy - h * 0.38, w * 0.12, h * 0.2);
-      ctx.fillRect(cx + w * 0.06, cy - h * 0.38, w * 0.12, h * 0.2);
+      ctx.fillRect(cx - w * 0.2, cy - h * 0.38, w * 0.12, h * 0.2);
+      ctx.fillRect(cx + w * 0.08, cy - h * 0.38, w * 0.12, h * 0.2);
+      ctx.globalAlpha = 0.5; ctx.strokeStyle = "#ffd166"; ctx.lineWidth = screenScale(3); ctx.beginPath(); ctx.arc(cx, cy, Math.max(w, h) * 0.43 * pulse, 0, Math.PI * 2); ctx.stroke();
       ctx.globalAlpha = 0.9;
       ctx.fillStyle = "#ffd166";
       ctx.fillRect(cx - w * 0.08, cy - h * 0.06, w * 0.06, h * 0.04);
@@ -6515,7 +6564,17 @@ function drawAttack(a) {
     return;
   }
 
-  if (["hadesBidentSlash","hadesSoulRake","hadesGraveSweep","hadesBidentThrust","hadesRisingDead","hadesGravebreakerSlam"].includes(rawType)) {
+  if (rawType === "hadesUnderworldGate") {
+    ctx.save();
+    ctx.globalAlpha = 0.55; ctx.fillStyle = "#08040f"; ctx.beginPath(); ctx.ellipse(cx, y + h*0.8, w*0.48, h*0.16, 0, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 0.65; ctx.strokeStyle = "#5b2cff"; ctx.lineWidth = screenScale(5); ctx.beginPath(); ctx.ellipse(cx, y + h*0.8, w*0.5, h*0.18, 0, 0, Math.PI*2); ctx.stroke();
+    ctx.globalAlpha = 0.45; ctx.strokeStyle = "#9dffef"; ctx.lineWidth = screenScale(2); ctx.setLineDash([screenScale(8), screenScale(7)]); ctx.beginPath(); ctx.ellipse(cx, y + h*0.8, w*0.56, h*0.2, 0, 0, Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+    for (let i=0;i<4;i++){ const hx=cx+(i-1.5)*w*0.16; const hy=y+h*0.8; ctx.globalAlpha=0.35; ctx.fillStyle="#9dffef"; ctx.beginPath(); ctx.moveTo(hx,hy); ctx.quadraticCurveTo(hx-w*0.03,hy-h*0.18,hx,hy-h*0.3); ctx.quadraticCurveTo(hx+w*0.03,hy-h*0.18,hx,hy); ctx.fill(); }
+    ctx.globalAlpha = 0.45; ctx.fillStyle = "#1a0f29"; ctx.fillRect(cx - w*0.22, y + h*0.08, w*0.44, h*0.62);
+    ctx.globalAlpha = 0.6; ctx.strokeStyle = "#9dffef"; ctx.lineWidth = screenScale(3); ctx.beginPath(); ctx.moveTo(cx, y + h*0.04); ctx.lineTo(cx, y + h*0.66); ctx.stroke();
+    spark(7, "rgba(157,255,239,.8)");
+    ctx.restore();
+  } else if (["hadesBidentSlash","hadesSoulRake","hadesGraveSweep","hadesBidentThrust","hadesRisingDead","hadesGravebreakerSlam"].includes(rawType)) {
     ctx.save(); ctx.globalAlpha = 0.72;
     if (rawType === "hadesSoulRake" || rawType === "hadesRisingDead") { ctx.strokeStyle = "#9dffef"; ctx.lineWidth = screenScale(4); for (let i=0;i<3;i++){ctx.beginPath();ctx.moveTo(cx - dir*w*0.2 + i*screenScale(7), cy + h*0.2);ctx.lineTo(cx + dir*w*0.15 + i*screenScale(4), cy - h*0.7);ctx.stroke();}}
     else if (rawType === "hadesGraveSweep") { ctx.fillStyle = "rgba(43,19,66,0.45)"; ctx.beginPath(); ctx.ellipse(cx, cy + h*0.25, w*0.55, h*0.2, 0, 0, Math.PI*2); ctx.fill(); ctx.strokeStyle="#9dffef"; ctx.lineWidth=screenScale(2); ctx.beginPath(); ctx.arc(cx-dir*w*0.16, cy+h*0.1, w*0.48, dir===1?-0.05:Math.PI+0.05, dir===1?Math.PI*0.95:Math.PI*2-0.95); ctx.stroke(); }
