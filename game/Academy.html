@@ -254,6 +254,34 @@ const twoPlayerBtn = document.getElementById("twoPlayerBtn");
 const controlsBtn = document.getElementById("controlsBtn");
 const controlsPanel = document.getElementById("controlsPanel");
 
+const PERF = {
+  enabled: true,
+
+  maxEnemiesRendered: 28,
+  maxParticles: 80,
+  maxBullets: 90,
+  maxRocks: 35,
+
+  pathfindBudgetPerFrame: 2,
+  enemyThinkIntervalNear: 0.08,
+  enemyThinkIntervalFar: 0.25,
+
+  disableProjectileLights: true,
+  disableSmallObjectShadows: true,
+  disableGrass: true,
+  reduceOutsideDecor: true,
+  reduceDamageNumbers: true,
+  healthBarsOnlyWhenAiming: true,
+
+  farEnemyUpdateDistance: 85,
+  farEnemyPathRefresh: 1.8,
+  nearEnemyPathRefresh: 0.75,
+
+  renderDistanceFurniture: 65,
+  renderDistanceOutside: 70,
+  renderDistanceSigns: 40
+};
+
 /* =========================================================
    LIGHTING
 ========================================================= */
@@ -266,18 +294,19 @@ scene.add(hemi);
 
 const floatingTexts = [];
 const renderCullables = [];
-const CULL_SETTINGS = { enemyFarDistance: 95, enemyHealthBarDistance: 55, furnitureDistance: 80, outsideDetailDistance: 95, pickupDistance: 65, particleDistance: 75, wallGunDistance: 70, textSpriteDistance: 55, updateInterval: 0.25 };
+const CULL_SETTINGS = { enemyFarDistance: PERF.enabled ? PERF.farEnemyUpdateDistance : 95, enemyHealthBarDistance: 55, furnitureDistance: PERF.enabled ? PERF.renderDistanceFurniture : 80, outsideDetailDistance: PERF.enabled ? PERF.renderDistanceOutside : 95, pickupDistance: 65, particleDistance: 75, wallGunDistance: PERF.enabled ? PERF.renderDistanceSigns : 70, textSpriteDistance: 55, updateInterval: 0.25 };
 const GOBLIN_FACE_FLIP = Math.PI;
-const MAX_FLOATING_EFFECTS = 140;
+const MAX_FLOATING_EFFECTS = PERF.enabled ? PERF.maxParticles : 140;
 let cullUpdateTimer = 0;
 let pathfindsThisFrame = 0;
-const MAX_PATHFINDS_PER_FRAME = 4;
+const MAX_PATHFINDS_PER_FRAME = PERF.enabled ? PERF.pathfindBudgetPerFrame : 4;
 const moon = new THREE.DirectionalLight(0xbecfff, 0.75);
 moon.position.set(30, 60, -25);
 moon.castShadow = true;
 scene.add(moon);
 
 function addLamp(x, y, z, color = 0xffc46b, intensity = 1.5) {
+  if (PERF.enabled && PERF.reduceOutsideDecor && Math.abs(x) + Math.abs(z) > 55 && Math.random() < 0.35) return;
   const light = new THREE.PointLight(color, intensity, 18);
   light.position.set(x, y, z);
   light.castShadow = false;
@@ -1646,7 +1675,7 @@ function addWallGun(key, x, y, z, rotY) {
     group.add(new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 12), new THREE.MeshBasicMaterial({ color: 0xaaff44 }))).position.set(0.54, 0.03, 0.2);
   }
 
-  if (["storm","astral","crystal","scatter","frost","void","solar","plague"].includes(magicType)) {
+  if (["storm","astral","crystal","scatter","frost","void","solar","plague"].includes(magicType) && !(PERF.enabled && PERF.disableProjectileLights)) {
     const light = new THREE.PointLight(data.projectileColor || 0x66ccff, 0.7, 5);
     light.position.set(0, 0.15, 0.35);
     group.add(light);
@@ -1903,6 +1932,7 @@ function spawnBullet() {
     scene.add(glow);
   }
 
+  if (PERF.enabled && bullets.length >= PERF.maxBullets) { scene.remove(bullets[0].mesh); if (bullets[0].glow) scene.remove(bullets[0].glow); bullets.shift(); }
   bullets.push({ mesh: bulletMesh, glow, pos: bulletMesh.position.clone(), vel: dir.multiplyScalar(currentGun.bulletSpeed), damage: currentGun.damage, life: 2.2, drop: currentGun.laser ? 0.25 : 1.25, magicType: currentGun.magicType, projectileColor, chainLightning: currentGun.chainLightning || false, chainChance: currentGun.chainChance || 0, chainRange: currentGun.chainRange || 0, chainDamage: currentGun.chainDamage || 0, chainMaxTargets: currentGun.chainMaxTargets || 0, shardOnHit: currentGun.shardOnHit || false, shardCount: currentGun.shardCount || 0, shardDamage: currentGun.shardDamage || 0, pierce: currentGun.pierce || 0, hitEnemies: new Set(), spawnPos: camera.position.clone(), closeRangeBonus: currentGun.closeRangeBonus || false, closeRangeDistance: currentGun.closeRangeDistance || 0, closeRangeMultiplier: currentGun.closeRangeMultiplier || 1, slowOnHit: currentGun.slowOnHit || false, slowMultiplier: currentGun.slowMultiplier || 1, slowDuration: currentGun.slowDuration || 0, voidMark: currentGun.voidMark || false, voidMarkDuration: currentGun.voidMarkDuration || 0, voidMarkBonusDamage: currentGun.voidMarkBonusDamage || 0, explosionOnHit: currentGun.explosionOnHit || false, explosionRadius: currentGun.explosionRadius || 0, explosionDamage: currentGun.explosionDamage || 0, knockback: currentGun.knockback || false, poisonOnHit: currentGun.poisonOnHit || false, poisonDamage: currentGun.poisonDamage || 0, poisonDuration: currentGun.poisonDuration || 0, poisonTickRate: currentGun.poisonTickRate || 0.5, spreadPoisonOnDeath: currentGun.spreadPoisonOnDeath || false, spreadPoisonRadius: currentGun.spreadPoisonRadius || 0 });
 }
 
@@ -2742,6 +2772,7 @@ function updateBullets(dt) {
 }
 
 function spawnRock(enemy) {
+  if (PERF.enabled && rocks.length >= PERF.maxRocks) return;
   const mesh = new THREE.Mesh(
     new THREE.SphereGeometry(0.18, 10, 10),
     new THREE.MeshStandardMaterial({ color: 0x777066, roughness: 1 })
@@ -2765,6 +2796,7 @@ function spawnRock(enemy) {
 }
 
 function spawnAcid(enemy) {
+  if (PERF.enabled && rocks.length >= PERF.maxRocks) return;
   const mesh = new THREE.Mesh(
     new THREE.SphereGeometry(0.2, 12, 12),
     new THREE.MeshBasicMaterial({ color: 0x99ff33 })
@@ -2862,6 +2894,7 @@ function showGoblinHit(enemy, hitZone, damage) {
   const label = hitZone === "head"
     ? `HEADSHOT ${Math.floor(damage)}`
     : `${Math.floor(damage)}`;
+  if (PERF.enabled && PERF.reduceDamageNumbers && hitZone !== "head" && Math.random() < 0.55) return;
   const sprite = createDamageSprite(label, color);
   sprite.position.copy(enemy.mesh.position);
   sprite.position.y += hitZone === "head" ? 2.2 : 1.5;
@@ -3306,11 +3339,13 @@ function updateEnemyStuckSafety(enemy, dt) {
 }
 
 function updateEnemies(dt) {
+  let renderedEnemies = 0;
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
     const type = enemyTypes[e.typeKey];
     const enemyDistToPlayer = enemyDistance2D(e.mesh.position, player.pos);
-    const enemyVisible = enemyDistToPlayer <= CULL_SETTINGS.enemyFarDistance;
+    const enemyVisible = enemyDistToPlayer <= CULL_SETTINGS.enemyFarDistance && (!PERF.enabled || renderedEnemies < PERF.maxEnemiesRendered);
+    if (enemyVisible) renderedEnemies++;
     if (e.mesh) e.mesh.visible = enemyVisible;
     if (e.groundMarker) e.groundMarker.visible = enemyVisible;
     let moved = false;
@@ -3350,6 +3385,10 @@ function updateEnemies(dt) {
     }
     e.animTime += dt * e.effectiveSpeed * 4;
 
+    const thinkInterval = PERF.enabled ? (enemyDistToPlayer > PERF.farEnemyUpdateDistance ? PERF.enemyThinkIntervalFar : PERF.enemyThinkIntervalNear) : 0;
+    e.thinkTimer = (e.thinkTimer || 0) - dt;
+    const doThink = !PERF.enabled || e.thinkTimer <= 0;
+    if (doThink) e.thinkTimer = thinkInterval;
     e.attackCooldown -= dt;
 
     if (e.targetWindow && !roomsUnlocked[e.targetWindow.roomName]) {
@@ -3396,7 +3435,7 @@ function updateEnemies(dt) {
       const hasArrivedAtWindow = distToTarget <= ARRIVED_AT_WINDOW_DIST;
 
       if (!hasArrivedAtWindow) {
-        moved = moveGoblinAlongPath(e, target, dt);
+        if (doThink) moved = moveGoblinAlongPath(e, target, dt);
         faceGoblinToward(e, new THREE.Vector3(w.x, 0, w.z));
       } else {
         e.mesh.position.x = target.x;
@@ -3494,7 +3533,7 @@ function updateEnemies(dt) {
       }
 
       if (dist > 1.1) {
-        moved = moveGoblinAlongPath(e, player.pos.clone(), dt);
+        if (doThink) moved = moveGoblinAlongPath(e, player.pos.clone(), dt);
         if (!moved) moved = moveGoblinToward(e, player.pos, dt);
       } else {
         if (e.attackCooldown <= 0 && player.hurtCooldown <= 0) {
@@ -3523,7 +3562,8 @@ function updateEnemies(dt) {
     }
 
     // health bar
-    if (!e.healthBar && enemyDistToPlayer <= CULL_SETTINGS.enemyHealthBarDistance) {
+    const aimingHealthBars = !(PERF.enabled && PERF.healthBarsOnlyWhenAiming) || isPlayerActionPressed("p1", "shoot");
+    if (!e.healthBar && enemyDistToPlayer <= CULL_SETTINGS.enemyHealthBarDistance && aimingHealthBars) {
       const bg = new THREE.Mesh(
         new THREE.PlaneGeometry(1.25, 0.12),
         new THREE.MeshBasicMaterial({ color: 0x220000, side: THREE.DoubleSide })
@@ -3542,7 +3582,7 @@ function updateEnemies(dt) {
     if (e.healthBar) {
       e.healthBar.position.copy(e.mesh.position);
       e.healthBar.position.y += 2.25 * type.scale;
-      e.healthBar.visible = enemyDistToPlayer <= CULL_SETTINGS.enemyHealthBarDistance;
+      e.healthBar.visible = enemyDistToPlayer <= CULL_SETTINGS.enemyHealthBarDistance && aimingHealthBars;
       if (e.healthBar.visible) e.healthBar.lookAt(camera.position);
     }
     if (e.healthBar) {
