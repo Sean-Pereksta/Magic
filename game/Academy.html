@@ -1243,90 +1243,126 @@ cleanupObstacleCollidersNearEntries();
 
 const guns = {
   rustyPistol: {
-    name: "Rusty Pistol",
+    name: "Ember Wand",
     cost: 0,
     ammoCost: 150,
-    damage: 22,
-    fireRate: 0.34,
-    bulletSpeed: 75,
-    spread: 0.012,
+    damage: 24,
+    fireRate: 0.32,
+    bulletSpeed: 70,
+    spread: 0.01,
     pellets: 1,
-    clipSize: 10,
-    reserveMax: 80,
-    reloadTime: 1.1,
+    clipSize: 12,
+    reserveMax: 84,
+    reloadTime: 1.05,
     automatic: false,
     burst: 1,
-    color: 0x333333,
-    size: 1
+    color: 0xff6a22,
+    emissive: 0x662000,
+    size: 1,
+    magicType: "ember",
+    projectileColor: 0xffaa44,
+    projectileSize: 0.06
   },
+
   trenchShotgun: {
-    name: "Trench Shotgun",
-    cost: 900,
-    ammoCost: 350,
-    damage: 18,
-    fireRate: 0.9,
-    bulletSpeed: 55,
-    spread: 0.105,
-    pellets: 8,
+    name: "Runeblast Staff",
+    cost: 950,
+    ammoCost: 375,
+    damage: 17,
+    fireRate: 0.88,
+    bulletSpeed: 58,
+    spread: 0.11,
+    pellets: 9,
     clipSize: 6,
-    reserveMax: 48,
+    reserveMax: 54,
     reloadTime: 1.65,
     automatic: false,
     burst: 1,
-    color: 0x55351d,
-    size: 1.25
+    color: 0x6b3a1f,
+    emissive: 0x331100,
+    size: 1.25,
+    magicType: "rune",
+    projectileColor: 0xff55cc,
+    projectileSize: 0.055
   },
+
   burstCarbine: {
-    name: "Burst Carbine",
-    cost: 1400,
+    name: "Crystal Tri-Bolt",
+    cost: 1450,
     ammoCost: 500,
-    damage: 25,
-    fireRate: 0.45,
-    bulletSpeed: 85,
-    spread: 0.025,
+    damage: 26,
+    fireRate: 0.46,
+    bulletSpeed: 88,
+    spread: 0.018,
     pellets: 1,
-    clipSize: 24,
-    reserveMax: 144,
+    clipSize: 27,
+    reserveMax: 162,
     reloadTime: 1.45,
     automatic: false,
     burst: 3,
-    color: 0x1b3755,
-    size: 1.1
+    color: 0x5ddcff,
+    emissive: 0x114477,
+    size: 1.1,
+    magicType: "crystal",
+    projectileColor: 0x9eefff,
+    projectileSize: 0.07,
+    shardOnHit: true,
+    shardCount: 2,
+    shardDamage: 8
   },
+
   autoRifle: {
-    name: "Auto Rifle",
-    cost: 2200,
-    ammoCost: 700,
-    damage: 20,
+    name: "Storm Scepter",
+    cost: 2300,
+    ammoCost: 725,
+    damage: 19,
     fireRate: 0.105,
     bulletSpeed: 95,
-    spread: 0.035,
+    spread: 0.032,
     pellets: 1,
-    clipSize: 36,
-    reserveMax: 216,
+    clipSize: 40,
+    reserveMax: 240,
     reloadTime: 1.9,
     automatic: true,
     burst: 1,
-    color: 0x222222,
-    size: 1.25
+    color: 0x223366,
+    emissive: 0x1133aa,
+    size: 1.25,
+    magicType: "storm",
+    projectileColor: 0x66ccff,
+    projectileSize: 0.052,
+    chainLightning: true,
+    chainChance: 0.28,
+    chainRange: 4.5,
+    chainDamage: 11,
+    chainMaxTargets: 2
   },
+
   laserLance: {
-    name: "Laser Lance",
-    cost: 4200,
-    ammoCost: 1100,
-    damage: 65,
+    name: "Astral Lance",
+    cost: 4400,
+    ammoCost: 1150,
+    damage: 68,
     fireRate: 0.42,
-    bulletSpeed: 130,
+    bulletSpeed: 135,
     spread: 0.002,
     pellets: 1,
     clipSize: 18,
     reserveMax: 90,
-    reloadTime: 2.2,
+    reloadTime: 2.15,
     automatic: false,
     burst: 1,
-    color: 0x22ccff,
+    color: 0x66f3ff,
+    emissive: 0x2288aa,
     laser: true,
-    size: 1.4
+    size: 1.4,
+    magicType: "astral",
+    projectileColor: 0xbbffff,
+    projectileSize: 0.085,
+    pierce: 2,
+    shardOnHit: true,
+    shardCount: 4,
+    shardDamage: 12
   }
 };
 
@@ -1356,49 +1392,38 @@ function addWallGun(key, x, y, z, rotY) {
   mount.position.z = 0.12;
   group.add(mount);
 
-  const bodyMat = new THREE.MeshStandardMaterial({ color: data.color, metalness: 0.45, roughness: 0.35 });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.24, 0.26), bodyMat);
-  body.position.z = 0.2;
-  group.add(body);
-  if (key === "rustyPistol") {
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.55, 10), mats.darkMetal);
-    barrel.rotation.z = Math.PI / 2; barrel.position.set(0.55, 0.02, 0.2); group.add(barrel);
-    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.45, 0.2), mats.darkMetal);
-    grip.position.set(-0.25, -0.28, 0.2); grip.rotation.z = -0.35; group.add(grip);
-  } else if (key === "trenchShotgun") {
-    group.add(new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.18, 0.24), new THREE.MeshStandardMaterial({ color: 0x6f4c2e })));
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 1.4, 12), mats.darkMetal);
-    barrel.rotation.z = Math.PI / 2; barrel.position.set(0.9, 0.03, 0.2); group.add(barrel);
-  } else if (key === "burstCarbine") {
-    body.material = new THREE.MeshStandardMaterial({ color: 0x1c2530, metalness: 0.5, roughness: 0.3 });
-    group.add(new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.35, 0.16), new THREE.MeshStandardMaterial({ color: 0x3a6da3 })));
-    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.46, 0.12), mats.darkMetal); mag.position.set(-0.1, -0.28, 0.2); group.add(mag);
-  } else if (key === "autoRifle") {
-    body.material = new THREE.MeshStandardMaterial({ color: 0x121212, metalness: 0.6, roughness: 0.28 });
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.5, 12), mats.darkMetal);
-    barrel.rotation.z = Math.PI / 2; barrel.position.set(0.95, 0.02, 0.2); group.add(barrel);
-    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.5, 0.12), mats.darkMetal); mag.position.set(-0.1, -0.28, 0.2); mag.rotation.z = 0.22; group.add(mag);
-  } else if (key === "laserLance") {
-    body.material = new THREE.MeshStandardMaterial({ color: 0x0f2732, metalness: 0.7, roughness: 0.2, emissive: 0x113344 });
-    const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.4, 14), new THREE.MeshStandardMaterial({ color: 0x66f3ff, emissive: 0x2288aa }));
-    tube.rotation.z = Math.PI / 2; tube.position.set(0.9, 0.02, 0.2); group.add(tube);
+  const magicType = data.magicType || "ember";
+  const bodyMat = new THREE.MeshStandardMaterial({ color: data.color, metalness: magicType === "storm" || magicType === "astral" ? 0.5 : 0.25, roughness: 0.35, emissive: data.emissive || 0x000000, emissiveIntensity: 0.45 });
+
+  if (magicType === "ember") {
+    const wand = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.06, 1.0, 10), bodyMat); wand.rotation.z = Math.PI / 2; wand.position.set(0, -0.05, 0.2); group.add(wand);
+    group.add(new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 10), new THREE.MeshBasicMaterial({ color: 0xffaa44 }))).position.set(0.48, 0.0, 0.2);
+  } else if (magicType === "rune") {
+    const staff = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.07, 1.35, 12), bodyMat); staff.rotation.z = Math.PI / 2; staff.position.set(0, 0, 0.2); group.add(staff);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.02, 8, 16), new THREE.MeshBasicMaterial({ color: 0xff55cc })); ring.position.set(0.58, 0.02, 0.2); ring.rotation.y = Math.PI/2; group.add(ring);
+  } else if (magicType === "crystal") {
+    for (let i=-1;i<=1;i++) { const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.11), new THREE.MeshBasicMaterial({ color: 0x9eefff })); c.position.set(i*0.16, -0.02 + Math.abs(i)*0.06, 0.2); group.add(c);} 
+  } else if (magicType === "storm") {
+    const scepter = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 1.25, 12), bodyMat); scepter.rotation.z = Math.PI / 2; scepter.position.set(0, 0, 0.2); group.add(scepter);
+    group.add(new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 10), new THREE.MeshBasicMaterial({ color: 0x66ccff }))).position.set(0.55, 0.02, 0.2);
+  } else if (magicType === "astral") {
+    const lance = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.065, 1.5, 14), bodyMat); lance.rotation.z = Math.PI / 2; lance.position.set(0, 0, 0.2); group.add(lance);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.26, 12), new THREE.MeshBasicMaterial({ color: 0xbbffff })); tip.rotation.z = -Math.PI / 2; tip.position.set(0.78, 0, 0.2); group.add(tip);
+  }
+
+  if (magicType === "storm" || magicType === "astral" || magicType === "crystal") {
+    const light = new THREE.PointLight(data.projectileColor || 0x66ccff, 0.7, 5);
+    light.position.set(0, 0.15, 0.35);
+    group.add(light);
   }
   scene.add(group);
 
-  const sign = createTextSprite(`${data.name}\n$${data.cost}`);
+  const sign = createTextSprite(`${data.name}
+$${data.cost}`);
   sign.position.set(x, y + 0.8, z);
   scene.add(sign);
 
-  const obj = {
-    type: "wallGun",
-    key,
-    x,
-    z,
-    y,
-    cost: data.cost,
-    name: data.name,
-    mesh: group
-  };
+  const obj = { type: "wallGun", key, x, z, y, cost: data.cost, name: data.name, mesh: group };
   wallGuns.push(obj);
   interactables.push(obj);
 }
@@ -1427,7 +1452,7 @@ function addAmmoStation(x, z, key) {
 
   scene.add(group);
 
-  const sign = createTextSprite(`Ammo\n${guns[key].name}\n$${guns[key].ammoCost}`);
+  const sign = createTextSprite(`Mana\n${guns[key].name}\n$${guns[key].ammoCost}`);
   sign.position.set(x, 2, z);
   scene.add(sign);
 
@@ -1452,81 +1477,35 @@ let gunView = new THREE.Group();
 camera.add(gunView);
 scene.add(camera);
 
+function addGlowOrb(parent, x, y, z, radius, color) {
+  const orb = new THREE.Mesh(new THREE.SphereGeometry(radius, 16, 16), new THREE.MeshBasicMaterial({ color }));
+  orb.position.set(x, y, z);
+  parent.add(orb);
+  const light = new THREE.PointLight(color, 1.1, 4);
+  light.position.set(x, y, z);
+  parent.add(light);
+  return orb;
+}
+
 function rebuildGunView() {
   camera.remove(gunView);
   gunView = new THREE.Group();
-
   const g = guns[currentGunKey];
-
-  const bodyMat = new THREE.MeshStandardMaterial({
-    color: g.color,
-    metalness: g.laser ? 0.75 : 0.45,
-    roughness: 0.25,
-    emissive: g.laser ? 0x006688 : 0x000000
-  });
-
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(0.45 * g.size, 0.22 * g.size, 1.35 * g.size),
-    bodyMat
-  );
-  body.position.set(0.35, -0.32, -0.85);
-  gunView.add(body);
-
-  const barrel = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.055 * g.size, 0.055 * g.size, 1.15 * g.size, 14),
-    mats.darkMetal
-  );
-  barrel.rotation.x = Math.PI / 2;
-  barrel.position.set(0.35, -0.29, -1.65);
-  gunView.add(barrel);
-
-  const grip = new THREE.Mesh(
-    new THREE.BoxGeometry(0.22, 0.55, 0.22),
-    mats.darkMetal
-  );
-  grip.position.set(0.35, -0.7, -0.55);
-  grip.rotation.x = -0.35;
-  gunView.add(grip);
-
+  const magicType = g.magicType || "ember";
+  const bodyMat = new THREE.MeshStandardMaterial({ color: g.color, metalness: magicType === "storm" || magicType === "astral" ? 0.55 : 0.25, roughness: 0.35, emissive: g.emissive || 0x000000, emissiveIntensity: 0.55 });
+  const grip = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.55, 0.22), mats.darkMetal); grip.position.set(0.35, -0.7, -0.55); grip.rotation.x = -0.35; gunView.add(grip);
+  if (magicType === "ember") { const wand = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.085, 1.2, 10), bodyMat); wand.rotation.x = Math.PI / 2; wand.position.set(0.35, -0.35, -1.0); gunView.add(wand); addGlowOrb(gunView,0.35,-0.32,-1.65,0.11,0xffaa44);} 
+  else if (magicType === "rune") { const staff = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.095, 1.55, 12), bodyMat); staff.rotation.x = Math.PI/2; staff.position.set(0.35,-0.35,-1.05); gunView.add(staff); const ring = new THREE.Mesh(new THREE.TorusGeometry(0.18,0.025,8,18), new THREE.MeshBasicMaterial({ color:0xff55cc })); ring.position.set(0.35,-0.32,-1.78); ring.rotation.x=Math.PI/2; gunView.add(ring); addGlowOrb(gunView,0.35,-0.32,-1.78,0.09,0xff55cc);} 
+  else if (magicType === "crystal") { const frame = new THREE.Mesh(new THREE.BoxGeometry(0.28,0.18,0.75), bodyMat); frame.position.set(0.35,-0.35,-1.0); gunView.add(frame); for(let i=-1;i<=1;i++){ const crystal=new THREE.Mesh(new THREE.OctahedronGeometry(0.11), new THREE.MeshBasicMaterial({ color:0x9eefff })); crystal.position.set(0.35+i*0.13,-0.32,-1.55); gunView.add(crystal);} }
+  else if (magicType === "storm") { const scepter = new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.09,1.45,12), bodyMat); scepter.rotation.x=Math.PI/2; scepter.position.set(0.35,-0.35,-1.05); gunView.add(scepter); addGlowOrb(gunView,0.35,-0.32,-1.72,0.12,0x66ccff); for(const x of [-0.12,0.12]){ const p=new THREE.Mesh(new THREE.CylinderGeometry(0.025,0.025,0.35,8), new THREE.MeshBasicMaterial({color:0x66ccff})); p.position.set(0.35+x,-0.32,-1.72); p.rotation.x=Math.PI/2; gunView.add(p);} }
+  else if (magicType === "astral") { const lance = new THREE.Mesh(new THREE.CylinderGeometry(0.065,0.095,1.8,14), bodyMat); lance.rotation.x=Math.PI/2; lance.position.set(0.35,-0.33,-1.12); gunView.add(lance); const tip = new THREE.Mesh(new THREE.ConeGeometry(0.13,0.45,16), new THREE.MeshBasicMaterial({ color:0xbbffff })); tip.rotation.x=-Math.PI/2; tip.position.set(0.35,-0.33,-2.05); gunView.add(tip); addGlowOrb(gunView,0.35,-0.33,-1.78,0.1,0xbbffff);} 
   const handMat = new THREE.MeshStandardMaterial({ color: 0xc99061, roughness: 0.7 });
-
-  const leftHand = new THREE.Mesh(
-    new THREE.SphereGeometry(0.13, 12, 12),
-    handMat
-  );
-  leftHand.position.set(0.05, -0.44, -1.05);
-  gunView.add(leftHand);
-
-  const rightHand = new THREE.Mesh(
-    new THREE.SphereGeometry(0.13, 12, 12),
-    handMat
-  );
-  rightHand.position.set(0.55, -0.55, -0.55);
-  gunView.add(rightHand);
-
-  const muzzle = new THREE.Mesh(
-    new THREE.SphereGeometry(0.05, 8, 8),
-    mats.muzzle
-  );
-  muzzle.position.set(0.35, -0.29, -2.25);
-  muzzle.name = "muzzle";
-  muzzle.visible = false;
-  gunView.add(muzzle);
-
-  const flash = new THREE.Mesh(
-    new THREE.ConeGeometry(0.18 * g.size, 0.55 * g.size, 16),
-    new THREE.MeshBasicMaterial({
-      color: g.laser ? 0x55ddff : 0xffdd66,
-      transparent: true,
-      opacity: 0.9
-    })
-  );
-  flash.rotation.x = Math.PI / 2;
-  flash.position.set(0.35, -0.29, -2.55);
-  flash.name = "muzzleFlash";
-  flash.visible = false;
-  gunView.add(flash);
-
+  const leftHand = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 12), handMat); leftHand.position.set(0.05, -0.44, -1.05); gunView.add(leftHand);
+  const rightHand = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 12), handMat); rightHand.position.set(0.55, -0.55, -0.55); gunView.add(rightHand);
+  const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), mats.muzzle); muzzle.position.set(0.35, -0.29, -2.25); muzzle.name = "muzzle"; muzzle.visible = false; gunView.add(muzzle);
+  const flash = new THREE.Mesh(new THREE.ConeGeometry(0.18 * g.size, 0.55 * g.size, 16), new THREE.MeshBasicMaterial({ color: g.projectileColor || 0xffdd66, transparent: true, opacity: 0.9 }));
+  if (g.magicType === "rune") flash.scale.set(1.4, 1.4, 1.4);
+  flash.rotation.x = Math.PI / 2; flash.position.set(0.35, -0.29, -2.55); flash.name = "muzzleFlash"; flash.visible = false; gunView.add(flash);
   camera.add(gunView);
 }
 
@@ -1629,6 +1608,9 @@ function fireBurst(count) {
       for (let p = 0; p < currentGun.pellets; p++) {
         spawnBullet();
       }
+      if (currentGun.magicType === "storm") {
+        spawnMuzzleLightning(currentGun.projectileColor || 0x66ccff);
+      }
     }, i * 80);
   }
 }
@@ -1636,30 +1618,31 @@ function fireBurst(count) {
 function spawnBullet() {
   const dir = new THREE.Vector3(0, 0, -1);
   dir.applyEuler(camera.rotation);
-
   dir.x += (Math.random() - 0.5) * currentGun.spread;
   dir.y += (Math.random() - 0.5) * currentGun.spread;
   dir.z += (Math.random() - 0.5) * currentGun.spread;
   dir.normalize();
 
-  const bulletMesh = new THREE.Mesh(
-    new THREE.SphereGeometry(currentGun.laser ? 0.065 : 0.045, 8, 8),
-    new THREE.MeshBasicMaterial({ color: currentGun.laser ? 0x55ddff : 0xffe08a })
-  );
-
+  const projectileColor = currentGun.projectileColor || 0xffe08a;
+  const projectileSize = currentGun.projectileSize || 0.045;
+  const bulletMesh = new THREE.Mesh(new THREE.SphereGeometry(projectileSize, 12, 12), new THREE.MeshBasicMaterial({ color: projectileColor }));
   bulletMesh.position.copy(camera.position);
   bulletMesh.position.add(dir.clone().multiplyScalar(0.8));
   scene.add(bulletMesh);
 
-  bullets.push({
-    mesh: bulletMesh,
-    pos: bulletMesh.position.clone(),
-    vel: dir.multiplyScalar(currentGun.bulletSpeed),
-    damage: currentGun.damage,
-    life: 2.2,
-    drop: currentGun.laser ? 0.4 : 1.5
-  });
+  const glow = new THREE.PointLight(projectileColor, 0.55, 3.5);
+  glow.position.copy(bulletMesh.position);
+  scene.add(glow);
+
+  bullets.push({ mesh: bulletMesh, glow, pos: bulletMesh.position.clone(), vel: dir.multiplyScalar(currentGun.bulletSpeed), damage: currentGun.damage, life: 2.2, drop: currentGun.laser ? 0.25 : 1.25, magicType: currentGun.magicType, projectileColor, chainLightning: currentGun.chainLightning || false, chainChance: currentGun.chainChance || 0, chainRange: currentGun.chainRange || 0, chainDamage: currentGun.chainDamage || 0, chainMaxTargets: currentGun.chainMaxTargets || 0, shardOnHit: currentGun.shardOnHit || false, shardCount: currentGun.shardCount || 0, shardDamage: currentGun.shardDamage || 0, pierce: currentGun.pierce || 0, hitEnemies: new Set() });
 }
+
+function spawnLightningArc(from, to, color = 0x66ccff) { const points=[]; const segments=6; for (let i=0;i<=segments;i++){const t=i/segments; points.push(new THREE.Vector3(from.x + (to.x-from.x)*t + (Math.random()-0.5)*0.28, from.y + (to.y-from.y)*t + (Math.random()-0.5)*0.28, from.z + (to.z-from.z)*t + (Math.random()-0.5)*0.28));} const geo=new THREE.BufferGeometry().setFromPoints(points); const mat=new THREE.LineBasicMaterial({color,transparent:true,opacity:0.95}); const line=new THREE.Line(geo,mat); scene.add(line); floatingTexts.push({sprite:line, life:0.12, vel:new THREE.Vector3()}); }
+function spawnMuzzleLightning(color = 0x66ccff) { if (!camera) return; const from = camera.position.clone(); const dir = new THREE.Vector3(0, 0, -1).applyEuler(camera.rotation); const to = from.clone().add(dir.multiplyScalar(2.2)); spawnLightningArc(from, to, color); }
+function spawnMagicShard(origin, baseDir, damage, color = 0x9eefff) { const shardMesh = new THREE.Mesh(new THREE.ConeGeometry(0.055,0.35,8), new THREE.MeshBasicMaterial({ color })); shardMesh.position.copy(origin); shardMesh.rotation.x=Math.random()*Math.PI; shardMesh.rotation.y=Math.random()*Math.PI; scene.add(shardMesh); const dir=baseDir.clone(); dir.x += (Math.random()-0.5)*0.55; dir.y += (Math.random()-0.5)*0.22; dir.z += (Math.random()-0.5)*0.55; dir.normalize(); bullets.push({ mesh: shardMesh, pos: shardMesh.position.clone(), vel: dir.multiplyScalar(52), damage, life: 0.65, drop:2.2, magicType:"shard", projectileColor: color, projectileSize: 0.04, pierce:0, shardOnHit:false, chainLightning:false, hitEnemies:new Set() }); }
+function spawnShardsFromHit(bullet, hitPos, incomingVel) { if (!bullet.shardOnHit || bullet.shardCount <= 0) return; const baseDir = incomingVel.clone().normalize(); for (let i=0;i<bullet.shardCount;i++) spawnMagicShard(hitPos.clone(), baseDir, bullet.shardDamage || 8, bullet.magicType === "astral" ? 0xbbffff : 0x9eefff); }
+function spawnMagicImpact(pos, color = 0xffaa44, count = 7) { for (let i=0;i<count;i++) { const spark = new THREE.Mesh(new THREE.SphereGeometry(0.035 + Math.random() * 0.035, 6, 6), new THREE.MeshBasicMaterial({ color })); spark.position.copy(pos); scene.add(spark); floatingTexts.push({ sprite: spark, life: 0.35 + Math.random() * 0.25, vel: new THREE.Vector3((Math.random()-0.5)*2.0,Math.random()*1.8,(Math.random()-0.5)*2.0) }); } }
+function triggerChainLightning(sourceEnemy, originPos, bullet) { if (!bullet.chainLightning) return; if (Math.random() > bullet.chainChance) return; let chained=0; let current=sourceEnemy; while (chained < bullet.chainMaxTargets) { let best=null; let bestDist=bullet.chainRange; for (const candidate of enemies) { if (candidate===current) continue; if (bullet.hitEnemies && bullet.hitEnemies.has(candidate)) continue; if (candidate.health<=0) continue; const dist = enemyDistance2D(current.mesh.position, candidate.mesh.position); if (dist<bestDist) { best=candidate; bestDist=dist; } } if (!best) break; const from=current.mesh.position.clone(); from.y+=1.1; const to=best.mesh.position.clone(); to.y+=1.1; spawnLightningArc(from,to,0x66ccff); best.health -= bullet.chainDamage; showGoblinHit(best, "body", bullet.chainDamage); if (bullet.hitEnemies) bullet.hitEnemies.add(best); if (best.health <= 0) { const idx = enemies.indexOf(best); if (idx >= 0) killEnemy(idx); } current=best; chained++; }}
 
 function reload() {
   if (currentGun.reloading) return;
@@ -2384,65 +2367,49 @@ function updateBullets(dt) {
     b.vel.y -= b.drop * dt;
     b.pos.add(b.vel.clone().multiplyScalar(dt));
     b.mesh.position.copy(b.pos);
+    if (b.glow) b.glow.position.copy(b.pos);
 
     let hit = false;
-
     for (let j = enemies.length - 1; j >= 0; j--) {
       const e = enemies[j];
+      if (b.hitEnemies && b.hitEnemies.has(e)) continue;
       let bestHit = null;
       let bestScore = Infinity;
-
       for (const hb of e.hitboxes) {
         const center = e.mesh.position.clone().add(hb.offset);
         const dist = b.pos.distanceTo(center);
-
         let radius = hb.radius;
-
-        if (e.state === "tearing_boards" || e.state === "climbing_in") {
-          radius *= 1.28;
-        }
-
+        if (e.state === "tearing_boards" || e.state === "climbing_in") radius *= 1.28;
         if (dist < radius) {
-          const zonePriority =
-            hb.name === "head" ? -0.35 :
-            hb.name === "body" ? 0 :
-            0.25;
-
+          const zonePriority = hb.name === "head" ? -0.35 : hb.name === "body" ? 0 : 0.25;
           const score = dist / radius + zonePriority;
-
-          if (score < bestScore) {
-            bestScore = score;
-            bestHit = hb;
-          }
+          if (score < bestScore) { bestScore = score; bestHit = hb; }
         }
       }
       if (bestHit) {
         let damageDone = b.damage * bestHit.multiplier;
         const enemyTypeData = enemyTypes[e.typeKey];
-
         if (enemyTypeData && enemyTypeData.armor) {
-          if (bestHit.name === "body") {
-            damageDone *= 0.55;
-          }
-
-          if (bestHit.name === "legs") {
-            damageDone *= 0.75;
-          }
-
-          if (bestHit.name === "head") {
-            damageDone *= 1.15;
-          }
+          if (bestHit.name === "body") damageDone *= 0.55;
+          if (bestHit.name === "legs") damageDone *= 0.75;
+          if (bestHit.name === "head") damageDone *= 1.15;
         }
         e.health -= damageDone;
         showGoblinHit(e, bestHit.name, damageDone);
+        spawnMagicImpact(b.pos.clone(), b.projectileColor || 0xffaa44, b.magicType === "rune" ? 12 : 7);
+        spawnShardsFromHit(b, b.pos.clone(), b.vel.clone());
+        triggerChainLightning(e, b.pos.clone(), b);
+        if (b.hitEnemies) b.hitEnemies.add(e);
         hit = true;
         if (e.health <= 0) killEnemy(j);
         break;
       }
     }
 
+    if (hit && b.pierce > 0) { b.pierce--; hit = false; }
     if (hit || b.life <= 0 || b.pos.y < -2) {
       scene.remove(b.mesh);
+      if (b.glow) scene.remove(b.glow);
       bullets.splice(i, 1);
     }
   }
@@ -2583,12 +2550,15 @@ function updateFloatingTexts(dt) {
   for (let i = floatingTexts.length - 1; i >= 0; i--) {
     const f = floatingTexts[i];
     f.life -= dt;
-    f.sprite.position.add(f.vel.clone().multiplyScalar(dt));
-    f.sprite.material.opacity = Math.max(0, f.life / 0.65);
+    if (f.sprite.position) f.sprite.position.add(f.vel.clone().multiplyScalar(dt));
+    if (f.sprite.material) f.sprite.material.opacity = Math.max(0, f.life / 0.65);
     if (f.life <= 0) {
       scene.remove(f.sprite);
-      if (f.sprite.material.map) f.sprite.material.map.dispose();
-      f.sprite.material.dispose();
+      if (f.sprite.geometry) f.sprite.geometry.dispose();
+      if (f.sprite.material) {
+        if (f.sprite.material.map) f.sprite.material.map.dispose();
+        f.sprite.material.dispose();
+      }
       floatingTexts.splice(i, 1);
     }
   }
@@ -3350,7 +3320,7 @@ function updateHud() {
 
     if (nearest.type === "ammo") {
       if (nearest.key === currentGunKey) {
-        msg = `Press E to buy ammo - $${guns[nearest.key].ammoCost}`;
+        msg = `Press E to buy mana - $${guns[nearest.key].ammoCost}`;
       } else {
         msg = `Ammo station for ${guns[nearest.key].name}`;
       }
@@ -3365,7 +3335,7 @@ function updateHud() {
     Score: ${player.score}<br>
     Wave: ${player.wave}<br>
     Gun: ${currentGun.name}<br>
-    Ammo: ${currentGun.clip}/${currentGun.reserve}${currentGun.reloading ? " — Reloading..." : ""}
+    Mana: ${currentGun.clip}/${currentGun.reserve}${currentGun.reloading ? " — Reloading..." : ""}
   `;
   const hpPct = Math.max(0, Math.min(1, player.health / player.maxHealth));
   playerHealthFill.style.width = `${hpPct * 100}%`;
