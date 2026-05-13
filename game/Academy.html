@@ -453,6 +453,7 @@ document.addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
 ========================================================= */
 
 const colliders = [];
+const playerWindowBlockers = [];
 const interactables = [];
 const roomsUnlocked = {
   spawn: true,
@@ -566,6 +567,18 @@ function addWallTorch(x, y, z, rotY = 0) {
 }
 function addCollider(x, z, w, d) {
   colliders.push({ x, z, w, d });
+}
+
+function addPlayerWindowBlockerForWindow(win) {
+  const isVerticalWindow = Math.abs(Math.sin(win.rotation)) > 0.5;
+  const blocker = {
+    x: win.x,
+    z: win.z,
+    w: isVerticalWindow ? 0.8 : (win.openingWidth || 2.8),
+    d: isVerticalWindow ? (win.openingWidth || 2.8) : 0.8,
+    windowRef: win
+  };
+  playerWindowBlockers.push(blocker);
 }
 
 function addWallSegment(x, z, w, d, mat = mats.wall) {
@@ -1109,6 +1122,7 @@ function addWindow(x, z, rotation, spawnX, spawnZ, roomName = "spawn") {
   interactables.push(win);
   rebuildWindowBoards(win);
   addWindowGlow(win);
+  addPlayerWindowBlockerForWindow(win);
 }
 
 function rebuildWindowBoards(win) {
@@ -1893,8 +1907,12 @@ function spawnEnemy(typeKey = "green") {
     return;
   }
   const win = validWindows[Math.floor(Math.random() * validWindows.length)];
-  const outsideStand = getWindowOutsideStandPosition(win);
-  const insideStand = getWindowInsideStandPosition(win);
+  const baseOutsideStand = getWindowOutsideStandPosition(win);
+  const baseInsideStand = getWindowInsideStandPosition(win);
+  const side = new THREE.Vector3(Math.cos(win.rotation), 0, -Math.sin(win.rotation)).normalize();
+  const standJitter = (Math.random() - 0.5) * 1.2;
+  const outsideStand = baseOutsideStand.clone().add(side.clone().multiplyScalar(standJitter));
+  const insideStand = baseInsideStand.clone().add(side.clone().multiplyScalar(standJitter * 0.45));
   const mesh = createGoblinMesh(typeKey);
   const outsideSpawn = getOutsideWindowSpawn(win);
   mesh.position.copy(outsideSpawn);
@@ -1927,6 +1945,11 @@ function spawnEnemy(typeKey = "green") {
     hitFlashTimer: 0,
     leapCooldown: 1.5 + Math.random() * 1.5,
     leapAnim: 0,
+    lastSafePos: mesh.position.clone(),
+    lastProgressPos: mesh.position.clone(),
+    stuckTimer: 0,
+    pathFailCount: 0,
+    retargetCooldown: 0,
     hitboxes: [
       {
         name: "head",
@@ -1951,16 +1974,44 @@ function spawnEnemy(typeKey = "green") {
   addGoblinGroundMarker(enemyObj);
   enemies.push(enemyObj);
 }
+function isInsideAnyRoomFootprint(x, z, padding = 0.5) {
+  const roomBounds = [
+    { cx: 0, cz: 0, w: 22, d: 18 },
+    { cx: 24, cz: 0, w: 20, d: 16 },
+    { cx: 0, cz: 22, w: 18, d: 18 },
+    { cx: 25, cz: 21, w: 22, d: 18 },
+    { cx: -24, cz: 0, w: 20, d: 18 },
+    { cx: -24, cz: 22, w: 18, d: 16 },
+    { cx: 0, cz: 46, w: 28, d: 22 },
+    { cx: 48, cz: 0, w: 20, d: 18 },
+    { cx: 48, cz: 24, w: 18, d: 18 }
+  ];
+  return roomBounds.some(r => x > r.cx - r.w / 2 - padding && x < r.cx + r.w / 2 + padding && z > r.cz - r.d / 2 - padding && z < r.cz + r.d / 2 + padding);
+}
+function isSafeEnemySpawnPoint(pos, win) {
+  if (!pos) return false;
+  if (isInsideAnyRoomFootprint(pos.x, pos.z, 1.2)) return false;
+  if (isEnemyPathBlockedAt(pos.x, pos.z, {
+    typeKey: "green",
+    targetWindow: win,
+    outsideStand: getWindowOutsideStandPosition(win),
+    state: "walking_to_window"
+  })) return false;
+  const stand = getWindowOutsideStandPosition(win);
+  const distToStand = enemyDistance2D(pos, stand);
+  if (distToStand < 4 || distToStand > 22) return false;
+  return true;
+}
 function getOutsideWindowSpawn(win) {
   const outward = getWindowOutwardVector(win);
   const side = new THREE.Vector3(Math.cos(win.rotation), 0, -Math.sin(win.rotation)).normalize();
-  const spawnDistance = 10 + Math.random() * 5;
-  const sideOffset = (Math.random() - 0.5) * 5;
-  return new THREE.Vector3(
-    win.x + outward.x * spawnDistance + side.x * sideOffset,
-    0,
-    win.z + outward.z * spawnDistance + side.z * sideOffset
-  );
+  for (let attempt = 0; attempt < 18; attempt++) {
+    const spawnDistance = 8 + Math.random() * 9;
+    const sideOffset = (Math.random() - 0.5) * 7;
+    const pos = new THREE.Vector3(win.x + outward.x * spawnDistance + side.x * sideOffset, 0, win.z + outward.z * spawnDistance + side.z * sideOffset);
+    if (isSafeEnemySpawnPoint(pos, win)) return pos;
+  }
+  return new THREE.Vector3(win.x + outward.x * 11, 0, win.z + outward.z * 11);
 }
 
 function startWave() {
@@ -2140,10 +2191,15 @@ function wouldCollide(x, z) {
       x - radius < c.x + c.w / 2 &&
       z + radius > c.z - c.d / 2 &&
       z - radius < c.z + c.d / 2;
-    if (!inside) continue;
-    // Player should never walk through window openings.
-    // Windows are enemy entry points only.
-    return true;
+    if (inside) return true;
+  }
+  for (const c of playerWindowBlockers) {
+    const inside =
+      x + radius > c.x - c.w / 2 &&
+      x - radius < c.x + c.w / 2 &&
+      z + radius > c.z - c.d / 2 &&
+      z - radius < c.z + c.d / 2;
+    if (inside) return true;
   }
   return false;
 }
@@ -2499,7 +2555,7 @@ function isEnemyPathBlockedAt(x, z, enemy) {
   if (enemy && enemy.state === "climbing_in") return false;
   const type = enemyTypes[enemy.typeKey] || enemyTypes.green;
   const radius = 0.42 * (type.scale || 1);
-  const nearAssignedWindow = enemy && enemy.targetWindow && enemy.outsideStand && enemyDistance2D({ x, z }, enemy.outsideStand) < 1.4;
+  const nearAssignedWindow = enemy && enemy.targetWindow && enemy.outsideStand && enemyDistance2D({ x, z }, enemy.outsideStand) < 1.8 && isPointInWindowOpening(x, z, enemy.targetWindow, 0.45);
 
   for (const c of colliders) {
     const inside = x + radius > c.x - c.w / 2 && x - radius < c.x + c.w / 2 && z + radius > c.z - c.d / 2 && z - radius < c.z + c.d / 2;
@@ -2603,10 +2659,18 @@ function moveGoblinAlongPath(enemy, target, dt) {
   const needsPath = !enemy.path || enemy.path.length === 0 || enemy.pathIndex >= enemy.path.length || enemy.pathRefreshTimer <= 0;
   if (needsPath) {
     enemy.path = findEnemyPath(enemy, enemy.mesh.position.clone(), target.clone());
+    if (enemy.path && enemy.path.length > 0) enemy.pathFailCount = 0;
     enemy.pathIndex = 0;
     enemy.pathRefreshTimer = 1.0 + Math.random() * 0.4;
   }
-  if (!enemy.path || enemy.path.length === 0) return moveGoblinToward(enemy, target, dt);
+  if (!enemy.path || enemy.path.length === 0) {
+    enemy.pathFailCount = (enemy.pathFailCount || 0) + 1;
+    if (enemy.state === "walking_to_window" && enemy.targetWindow && enemyDistance2D(enemy.mesh.position, { x: enemy.targetWindow.x, z: enemy.targetWindow.z }) < 2.5) {
+      forceGoblinStartWindowEntry(enemy);
+      return false;
+    }
+    return moveGoblinToward(enemy, target, dt);
+  }
   const point = enemy.path[enemy.pathIndex];
   if (!point) return false;
   if (enemyDistance2D(enemy.mesh.position, point) < 0.35) {
@@ -2649,6 +2713,39 @@ function moveGoblinToward(enemy, target, dt) {
   const finalDir = desired.add(avoid).normalize();
   pos.add(finalDir.multiplyScalar(enemy.speed * dt));
   return true;
+}
+
+function applyEnemySeparation(enemy, dt) {
+  if (!enemy || !enemy.mesh) return;
+  const pos = enemy.mesh.position;
+  const type = enemyTypes[enemy.typeKey] || enemyTypes.green;
+  const myScale = type.scale || 1;
+  const separation = new THREE.Vector3();
+  let count = 0;
+  for (const other of enemies) {
+    if (other === enemy || !other.mesh) continue;
+    const otherType = enemyTypes[other.typeKey] || enemyTypes.green;
+    const desiredDist = 0.8 * myScale + 0.55 * (otherType.scale || 1);
+    const diff = pos.clone().sub(other.mesh.position);
+    diff.y = 0;
+    const dist = diff.length();
+    if (dist > 0.001 && dist < desiredDist) {
+      const strength = (desiredDist - dist) / desiredDist;
+      diff.normalize();
+      separation.add(diff.multiplyScalar(strength));
+      count++;
+    }
+  }
+  if (count > 0) {
+    separation.divideScalar(count);
+    const pushStrength = enemy.state === "tearing_boards" || enemy.state === "climbing_in" ? 0.15 : 1.65;
+    const nx = pos.x + separation.x * pushStrength * dt;
+    const nz = pos.z + separation.z * pushStrength * dt;
+    if (!isEnemyPathBlockedAt(nx, nz, enemy)) {
+      pos.x = nx;
+      pos.z = nz;
+    }
+  }
 }
 
 function animateGoblinWalk(enemy, moving) {
@@ -2754,6 +2851,97 @@ function isEnemyStillOutside(enemy) {
   return enemy.state === "walking_to_window" || enemy.state === "tearing_boards" || enemy.state === "climbing_in";
 }
 
+function forceGoblinStartWindowEntry(enemy) {
+  const w = enemy.targetWindow;
+  if (!w) return;
+  const stand = enemy.outsideStand || getWindowOutsideStandPosition(w);
+  enemy.mesh.position.x = stand.x;
+  enemy.mesh.position.z = stand.z;
+  enemy.mesh.position.y = 0;
+  enemy.path = [];
+  enemy.pathIndex = 0;
+  enemy.pathRefreshTimer = 0;
+  faceGoblinToward(enemy, new THREE.Vector3(w.x, 0, w.z));
+  if (w.boards > 0) {
+    enemy.state = "tearing_boards";
+    enemy.tearAnim = 0.4;
+    w.breakTimer = w.breakTimer || 0;
+  } else {
+    enemy.state = "climbing_in";
+    enemy.climbData = null;
+  }
+}
+
+function retargetEnemyToNearestUnlockedWindow(enemy) {
+  const validWindows = getUnlockedWindows();
+  if (!validWindows.length) return;
+  let best = null;
+  let bestDist = Infinity;
+  for (const win of validWindows) {
+    const stand = getWindowOutsideStandPosition(win);
+    const dist = enemyDistance2D(enemy.mesh.position, stand);
+    if (dist < bestDist) {
+      best = win;
+      bestDist = dist;
+    }
+  }
+  if (!best) return;
+  const side = new THREE.Vector3(Math.cos(best.rotation), 0, -Math.sin(best.rotation)).normalize();
+  const jitter = (Math.random() - 0.5) * 1.2;
+  enemy.targetWindow = best;
+  enemy.outsideStand = getWindowOutsideStandPosition(best).add(side.multiplyScalar(jitter));
+  enemy.insideStand = getWindowInsideStandPosition(best);
+  enemy.path = [];
+  enemy.pathIndex = 0;
+  enemy.pathRefreshTimer = 0;
+  enemy.pathFailCount = 0;
+  enemy.state = "walking_to_window";
+}
+
+function updateEnemyStuckSafety(enemy, dt) {
+  if (!enemy || !enemy.mesh || !enemy.targetWindow) return;
+  if (enemy.state === "tearing_boards" || enemy.state === "climbing_in") {
+    enemy.stuckTimer = 0;
+    enemy.lastProgressPos = enemy.mesh.position.clone();
+    return;
+  }
+  const movedSinceLast = enemyDistance2D(enemy.mesh.position, enemy.lastProgressPos || enemy.mesh.position);
+  if (movedSinceLast > 0.35) {
+    enemy.stuckTimer = 0;
+    enemy.lastProgressPos = enemy.mesh.position.clone();
+    enemy.lastSafePos = enemy.mesh.position.clone();
+    return;
+  }
+  enemy.stuckTimer += dt;
+  if (enemy.stuckTimer < 2.8) return;
+  enemy.stuckTimer = 0;
+  enemy.pathFailCount = (enemy.pathFailCount || 0) + 1;
+  enemy.path = [];
+  enemy.pathIndex = 0;
+  enemy.pathRefreshTimer = 0;
+  if (enemy.state === "walking_to_window") {
+    const w = enemy.targetWindow;
+    const closeToWindow = enemyDistance2D(enemy.mesh.position, { x: w.x, z: w.z }) < 2.4;
+    const closeToStand = enemyDistance2D(enemy.mesh.position, enemy.outsideStand || getWindowOutsideStandPosition(w)) < 1.4;
+    if (closeToWindow || closeToStand) {
+      forceGoblinStartWindowEntry(enemy);
+      return;
+    }
+  }
+  if (enemy.pathFailCount >= 2 && enemy.state === "walking_to_window") {
+    const stand = enemy.outsideStand || getWindowOutsideStandPosition(enemy.targetWindow);
+    enemy.mesh.position.x = stand.x;
+    enemy.mesh.position.z = stand.z;
+    enemy.mesh.position.y = 0;
+    enemy.path = [];
+    enemy.pathIndex = 0;
+    enemy.pathRefreshTimer = 0;
+    forceGoblinStartWindowEntry(enemy);
+    return;
+  }
+  if (enemy.pathFailCount >= 3) retargetEnemyToNearestUnlockedWindow(enemy);
+}
+
 function updateEnemies(dt) {
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
@@ -2783,6 +2971,7 @@ function updateEnemies(dt) {
       e.outsideStand = getWindowOutsideStandPosition(e.targetWindow);
       e.insideStand = getWindowInsideStandPosition(e.targetWindow);
     }
+    updateEnemyStuckSafety(e, dt);
 
     if ((e.state === "walking_to_window" || e.state === "tearing_boards") && e.targetWindow) {
       const inward = getWindowInwardVector(e.targetWindow);
@@ -2826,6 +3015,7 @@ function updateEnemies(dt) {
         }
       }
       animateGoblinWalk(e, moved);
+      applyEnemySeparation(e, dt);
       continue;
     }
     if (e.state === "tearing_boards") {
@@ -2923,6 +3113,7 @@ function updateEnemies(dt) {
           e.attackAnim = 0.35;
         }
       }
+      applyEnemySeparation(e, dt);
     }
     animateGoblinWalk(e, moved);
     animateGoblinAttack(e, dt);
