@@ -1396,6 +1396,139 @@ const guns = {
     chainMaxTargets: 2
   },
 
+  scatterSigil: {
+    name: "Scatter Sigil",
+    cost: 1800,
+    ammoCost: 575,
+    damage: 24,
+    fireRate: 0.95,
+    bulletSpeed: 62,
+    spread: 0.145,
+    pellets: 10,
+    clipSize: 5,
+    reserveMax: 45,
+    reloadTime: 1.75,
+    automatic: false,
+    burst: 1,
+    color: 0xff8844,
+    emissive: 0x662200,
+    size: 1.35,
+    magicType: "scatter",
+    projectileColor: 0xffaa66,
+    projectileSize: 0.065,
+    closeRangeBonus: true,
+    closeRangeDistance: 5.5,
+    closeRangeMultiplier: 1.45,
+    impactBurst: true
+  },
+
+  frostFang: {
+    name: "Frostfang Prism",
+    cost: 2600,
+    ammoCost: 725,
+    damage: 31,
+    fireRate: 0.42,
+    bulletSpeed: 82,
+    spread: 0.018,
+    pellets: 1,
+    clipSize: 14,
+    reserveMax: 98,
+    reloadTime: 1.8,
+    automatic: false,
+    burst: 1,
+    color: 0x99ddff,
+    emissive: 0x225577,
+    size: 1.2,
+    magicType: "frost",
+    projectileColor: 0xbbeeff,
+    projectileSize: 0.075,
+    slowOnHit: true,
+    slowMultiplier: 0.55,
+    slowDuration: 2.2,
+    shardOnHit: true,
+    shardCount: 3,
+    shardDamage: 7
+  },
+
+  voidRepeater: {
+    name: "Void Repeater",
+    cost: 3200,
+    ammoCost: 850,
+    damage: 17,
+    fireRate: 0.085,
+    bulletSpeed: 105,
+    spread: 0.04,
+    pellets: 1,
+    clipSize: 52,
+    reserveMax: 312,
+    reloadTime: 2.05,
+    automatic: true,
+    burst: 1,
+    color: 0x3d225f,
+    emissive: 0x240044,
+    size: 1.25,
+    magicType: "void",
+    projectileColor: 0xb066ff,
+    projectileSize: 0.055,
+    voidMark: true,
+    voidMarkDuration: 3.0,
+    voidMarkBonusDamage: 0.08
+  },
+
+  sunHammer: {
+    name: "Sunhammer Relic",
+    cost: 5200,
+    ammoCost: 1300,
+    damage: 82,
+    fireRate: 0.75,
+    bulletSpeed: 76,
+    spread: 0.006,
+    pellets: 1,
+    clipSize: 9,
+    reserveMax: 54,
+    reloadTime: 2.35,
+    automatic: false,
+    burst: 1,
+    color: 0xffd34d,
+    emissive: 0x775000,
+    size: 1.55,
+    magicType: "solar",
+    projectileColor: 0xffee88,
+    projectileSize: 0.12,
+    explosionOnHit: true,
+    explosionRadius: 3.2,
+    explosionDamage: 42,
+    knockback: true
+  },
+
+  plagueBloom: {
+    name: "Plaguebloom Thorn",
+    cost: 4100,
+    ammoCost: 1050,
+    damage: 28,
+    fireRate: 0.38,
+    bulletSpeed: 72,
+    spread: 0.018,
+    pellets: 1,
+    clipSize: 16,
+    reserveMax: 112,
+    reloadTime: 1.95,
+    automatic: false,
+    burst: 1,
+    color: 0x66aa33,
+    emissive: 0x224400,
+    size: 1.25,
+    magicType: "plague",
+    projectileColor: 0xaaff44,
+    projectileSize: 0.075,
+    poisonOnHit: true,
+    poisonDamage: 6,
+    poisonDuration: 4.0,
+    poisonTickRate: 0.5,
+    spreadPoisonOnDeath: true,
+    spreadPoisonRadius: 4.0
+  },
+
   laserLance: {
     name: "Astral Lance",
     cost: 4400,
@@ -1467,9 +1600,23 @@ function addWallGun(key, x, y, z, rotY) {
   } else if (magicType === "astral") {
     const lance = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.065, 1.5, 14), bodyMat); lance.rotation.z = Math.PI / 2; lance.position.set(0, 0, 0.2); group.add(lance);
     const tip = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.26, 12), new THREE.MeshBasicMaterial({ color: 0xbbffff })); tip.rotation.z = -Math.PI / 2; tip.position.set(0.78, 0, 0.2); group.add(tip);
+  } else if (magicType === "scatter") {
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 1.0, 10), bodyMat); handle.rotation.z = Math.PI / 2; handle.position.set(0, -0.05, 0.2); group.add(handle);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.03, 10, 20), new THREE.MeshBasicMaterial({ color: 0xff8844 })); ring.position.set(0.5, 0.03, 0.2); ring.rotation.y = Math.PI/2; group.add(ring);
+  } else if (magicType === "frost") {
+    const prism = new THREE.Mesh(new THREE.OctahedronGeometry(0.16), new THREE.MeshBasicMaterial({ color: 0xbbeeff })); prism.position.set(0.45, 0.04, 0.2); group.add(prism);
+  } else if (magicType === "void") {
+    group.add(new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 12), new THREE.MeshBasicMaterial({ color: 0xb066ff }))).position.set(0.48, 0.02, 0.2);
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.015, 8, 20), new THREE.MeshBasicMaterial({ color: 0x7a33ff })); halo.position.set(0.48, 0.02, 0.2); halo.rotation.y = Math.PI/2; group.add(halo);
+  } else if (magicType === "solar") {
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 1.1, 10), bodyMat); handle.rotation.z = Math.PI / 2; handle.position.set(0, -0.03, 0.2); group.add(handle);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.18, 0.18), new THREE.MeshBasicMaterial({ color: 0xffd34d })); head.position.set(0.55, 0.05, 0.2); group.add(head);
+  } else if (magicType === "plague") {
+    const thorn = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.06, 1.1, 9), bodyMat); thorn.rotation.z = Math.PI / 2; thorn.position.set(0, -0.02, 0.2); group.add(thorn);
+    group.add(new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 12), new THREE.MeshBasicMaterial({ color: 0xaaff44 }))).position.set(0.54, 0.03, 0.2);
   }
 
-  if (magicType === "storm" || magicType === "astral" || magicType === "crystal") {
+  if (["storm","astral","crystal","scatter","frost","void","solar","plague"].includes(magicType)) {
     const light = new THREE.PointLight(data.projectileColor || 0x66ccff, 0.7, 5);
     light.position.set(0, 0.15, 0.35);
     group.add(light);
@@ -1494,6 +1641,11 @@ addWallGun("burstCarbine", -30, 1.5, 7.5, 0);
 addWallGun("trenchShotgun", -28, 1.5, 28.5, Math.PI);
 addWallGun("autoRifle", 52, 1.5, -7.5, 0);
 addWallGun("laserLance", 52, 1.5, 30.5, Math.PI);
+addWallGun("scatterSigil", 4, 1.5, -7.4, 0);
+addWallGun("frostFang", -30, 1.5, -7.5, 0);
+addWallGun("voidRepeater", 44, 1.5, 7.4, Math.PI);
+addWallGun("sunHammer", 4, 1.5, 55.4, Math.PI);
+addWallGun("plagueBloom", 52, 1.5, 17.4, Math.PI);
 
 const ammoStations = [];
 
@@ -1526,6 +1678,11 @@ addAmmoStation(-19, 5, "burstCarbine");
 addAmmoStation(-19, 26, "trenchShotgun");
 addAmmoStation(44, -5, "autoRifle");
 addAmmoStation(44, 28, "laserLance");
+addAmmoStation(7, -5, "scatterSigil");
+addAmmoStation(-20, -5, "frostFang");
+addAmmoStation(44, 5, "voidRepeater");
+addAmmoStation(5, 51, "sunHammer");
+addAmmoStation(52, 20, "plagueBloom");
 
 /* =========================================================
    FIRST-PERSON GUN MODEL
@@ -1557,6 +1714,11 @@ function rebuildGunView() {
   else if (magicType === "crystal") { const frame = new THREE.Mesh(new THREE.BoxGeometry(0.28,0.18,0.75), bodyMat); frame.position.set(0.35,-0.35,-1.0); gunView.add(frame); for(let i=-1;i<=1;i++){ const crystal=new THREE.Mesh(new THREE.OctahedronGeometry(0.11), new THREE.MeshBasicMaterial({ color:0x9eefff })); crystal.position.set(0.35+i*0.13,-0.32,-1.55); gunView.add(crystal);} }
   else if (magicType === "storm") { const scepter = new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.09,1.45,12), bodyMat); scepter.rotation.x=Math.PI/2; scepter.position.set(0.35,-0.35,-1.05); gunView.add(scepter); addGlowOrb(gunView,0.35,-0.32,-1.72,0.12,0x66ccff); for(const x of [-0.12,0.12]){ const p=new THREE.Mesh(new THREE.CylinderGeometry(0.025,0.025,0.35,8), new THREE.MeshBasicMaterial({color:0x66ccff})); p.position.set(0.35+x,-0.32,-1.72); p.rotation.x=Math.PI/2; gunView.add(p);} }
   else if (magicType === "astral") { const lance = new THREE.Mesh(new THREE.CylinderGeometry(0.065,0.095,1.8,14), bodyMat); lance.rotation.x=Math.PI/2; lance.position.set(0.35,-0.33,-1.12); gunView.add(lance); const tip = new THREE.Mesh(new THREE.ConeGeometry(0.13,0.45,16), new THREE.MeshBasicMaterial({ color:0xbbffff })); tip.rotation.x=-Math.PI/2; tip.position.set(0.35,-0.33,-2.05); gunView.add(tip); addGlowOrb(gunView,0.35,-0.33,-1.78,0.1,0xbbffff);} 
+  else if (magicType === "scatter") { const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 1.05, 12), bodyMat); handle.rotation.x=Math.PI/2; handle.position.set(0.35,-0.38,-1.0); gunView.add(handle); const ring = new THREE.Mesh(new THREE.TorusGeometry(0.24,0.035,10,24), new THREE.MeshBasicMaterial({color:0xff8844})); ring.position.set(0.35,-0.33,-1.62); ring.rotation.x=Math.PI/2; gunView.add(ring); addGlowOrb(gunView,0.35,-0.33,-1.62,0.09,0xffaa66);} 
+  else if (magicType === "frost") { const base = new THREE.Mesh(new THREE.BoxGeometry(0.28,0.2,0.8), bodyMat); base.position.set(0.35,-0.35,-1.0); gunView.add(base); const prism = new THREE.Mesh(new THREE.OctahedronGeometry(0.18), new THREE.MeshBasicMaterial({color:0xbbeeff})); prism.position.set(0.35,-0.32,-1.62); gunView.add(prism);} 
+  else if (magicType === "void") { const frame = new THREE.Mesh(new THREE.BoxGeometry(0.34,0.24,1.1), bodyMat); frame.position.set(0.35,-0.35,-1.1); gunView.add(frame); addGlowOrb(gunView,0.35,-0.32,-1.72,0.13,0xb066ff);} 
+  else if (magicType === "solar") { const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.11,1.3,12), bodyMat); handle.rotation.x=Math.PI/2; handle.position.set(0.35,-0.38,-1.05); gunView.add(handle); const hammerHead = new THREE.Mesh(new THREE.BoxGeometry(0.45,0.28,0.28), new THREE.MeshBasicMaterial({color:0xffd34d})); hammerHead.position.set(0.35,-0.32,-1.72); gunView.add(hammerHead); addGlowOrb(gunView,0.35,-0.32,-1.95,0.12,0xffee88);} 
+  else if (magicType === "plague") { const thorn = new THREE.Mesh(new THREE.CylinderGeometry(0.055,0.095,1.35,9), bodyMat); thorn.rotation.x=Math.PI/2; thorn.position.set(0.35,-0.36,-1.1); gunView.add(thorn); const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.15,12,12), new THREE.MeshBasicMaterial({color:0xaaff44})); bulb.position.set(0.35,-0.32,-1.75); gunView.add(bulb);} 
   const handMat = new THREE.MeshStandardMaterial({ color: 0xc99061, roughness: 0.7 });
   const leftHand = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 12), handMat); leftHand.position.set(0.05, -0.44, -1.05); gunView.add(leftHand);
   const rightHand = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 12), handMat); rightHand.position.set(0.55, -0.55, -0.55); gunView.add(rightHand);
@@ -1683,7 +1845,11 @@ function spawnBullet() {
 
   const projectileColor = currentGun.projectileColor || 0xffe08a;
   const projectileSize = currentGun.projectileSize || 0.045;
-  const bulletMesh = new THREE.Mesh(new THREE.SphereGeometry(projectileSize, 12, 12), new THREE.MeshBasicMaterial({ color: projectileColor }));
+  let projectileGeometry;
+  if (currentGun.magicType === "plague") projectileGeometry = new THREE.ConeGeometry(projectileSize, projectileSize * 4, 8);
+  else if (currentGun.magicType === "frost") projectileGeometry = new THREE.OctahedronGeometry(projectileSize * 1.8);
+  else projectileGeometry = new THREE.SphereGeometry(projectileSize * (currentGun.magicType === "solar" ? 1.2 : 1), 12, 12);
+  const bulletMesh = new THREE.Mesh(projectileGeometry, new THREE.MeshBasicMaterial({ color: projectileColor }));
   bulletMesh.position.copy(camera.position);
   bulletMesh.position.add(dir.clone().multiplyScalar(0.8));
   scene.add(bulletMesh);
@@ -1692,7 +1858,7 @@ function spawnBullet() {
   glow.position.copy(bulletMesh.position);
   scene.add(glow);
 
-  bullets.push({ mesh: bulletMesh, glow, pos: bulletMesh.position.clone(), vel: dir.multiplyScalar(currentGun.bulletSpeed), damage: currentGun.damage, life: 2.2, drop: currentGun.laser ? 0.25 : 1.25, magicType: currentGun.magicType, projectileColor, chainLightning: currentGun.chainLightning || false, chainChance: currentGun.chainChance || 0, chainRange: currentGun.chainRange || 0, chainDamage: currentGun.chainDamage || 0, chainMaxTargets: currentGun.chainMaxTargets || 0, shardOnHit: currentGun.shardOnHit || false, shardCount: currentGun.shardCount || 0, shardDamage: currentGun.shardDamage || 0, pierce: currentGun.pierce || 0, hitEnemies: new Set() });
+  bullets.push({ mesh: bulletMesh, glow, pos: bulletMesh.position.clone(), vel: dir.multiplyScalar(currentGun.bulletSpeed), damage: currentGun.damage, life: 2.2, drop: currentGun.laser ? 0.25 : 1.25, magicType: currentGun.magicType, projectileColor, chainLightning: currentGun.chainLightning || false, chainChance: currentGun.chainChance || 0, chainRange: currentGun.chainRange || 0, chainDamage: currentGun.chainDamage || 0, chainMaxTargets: currentGun.chainMaxTargets || 0, shardOnHit: currentGun.shardOnHit || false, shardCount: currentGun.shardCount || 0, shardDamage: currentGun.shardDamage || 0, pierce: currentGun.pierce || 0, hitEnemies: new Set(), spawnPos: camera.position.clone(), closeRangeBonus: currentGun.closeRangeBonus || false, closeRangeDistance: currentGun.closeRangeDistance || 0, closeRangeMultiplier: currentGun.closeRangeMultiplier || 1, slowOnHit: currentGun.slowOnHit || false, slowMultiplier: currentGun.slowMultiplier || 1, slowDuration: currentGun.slowDuration || 0, voidMark: currentGun.voidMark || false, voidMarkDuration: currentGun.voidMarkDuration || 0, voidMarkBonusDamage: currentGun.voidMarkBonusDamage || 0, explosionOnHit: currentGun.explosionOnHit || false, explosionRadius: currentGun.explosionRadius || 0, explosionDamage: currentGun.explosionDamage || 0, knockback: currentGun.knockback || false, poisonOnHit: currentGun.poisonOnHit || false, poisonDamage: currentGun.poisonDamage || 0, poisonDuration: currentGun.poisonDuration || 0, poisonTickRate: currentGun.poisonTickRate || 0.5, spreadPoisonOnDeath: currentGun.spreadPoisonOnDeath || false, spreadPoisonRadius: currentGun.spreadPoisonRadius || 0 });
 }
 
 function spawnLightningArc(from, to, color = 0x66ccff) { const points=[]; const segments=6; for (let i=0;i<=segments;i++){const t=i/segments; points.push(new THREE.Vector3(from.x + (to.x-from.x)*t + (Math.random()-0.5)*0.28, from.y + (to.y-from.y)*t + (Math.random()-0.5)*0.28, from.z + (to.z-from.z)*t + (Math.random()-0.5)*0.28));} const geo=new THREE.BufferGeometry().setFromPoints(points); const mat=new THREE.LineBasicMaterial({color,transparent:true,opacity:0.95}); const line=new THREE.Line(geo,mat); scene.add(line); floatingTexts.push({sprite:line, life:0.12, vel:new THREE.Vector3()}); }
@@ -1700,6 +1866,13 @@ function spawnMuzzleLightning(color = 0x66ccff) { if (!camera) return; const fro
 function spawnMagicShard(origin, baseDir, damage, color = 0x9eefff) { const shardMesh = new THREE.Mesh(new THREE.ConeGeometry(0.055,0.35,8), new THREE.MeshBasicMaterial({ color })); shardMesh.position.copy(origin); shardMesh.rotation.x=Math.random()*Math.PI; shardMesh.rotation.y=Math.random()*Math.PI; scene.add(shardMesh); const dir=baseDir.clone(); dir.x += (Math.random()-0.5)*0.55; dir.y += (Math.random()-0.5)*0.22; dir.z += (Math.random()-0.5)*0.55; dir.normalize(); bullets.push({ mesh: shardMesh, pos: shardMesh.position.clone(), vel: dir.multiplyScalar(52), damage, life: 0.65, drop:2.2, magicType:"shard", projectileColor: color, projectileSize: 0.04, pierce:0, shardOnHit:false, chainLightning:false, hitEnemies:new Set() }); }
 function spawnShardsFromHit(bullet, hitPos, incomingVel) { if (!bullet.shardOnHit || bullet.shardCount <= 0) return; const baseDir = incomingVel.clone().normalize(); for (let i=0;i<bullet.shardCount;i++) spawnMagicShard(hitPos.clone(), baseDir, bullet.shardDamage || 8, bullet.magicType === "astral" ? 0xbbffff : 0x9eefff); }
 function spawnMagicImpact(pos, color = 0xffaa44, count = 7) { for (let i=0;i<count;i++) { const spark = new THREE.Mesh(new THREE.SphereGeometry(0.035 + Math.random() * 0.035, 6, 6), new THREE.MeshBasicMaterial({ color })); spark.position.copy(pos); scene.add(spark); floatingTexts.push({ sprite: spark, life: 0.35 + Math.random() * 0.25, vel: new THREE.Vector3((Math.random()-0.5)*2.0,Math.random()*1.8,(Math.random()-0.5)*2.0) }); } }
+function spawnFrostBurst(pos) { spawnMagicImpact(pos, 0xbbeeff, 10); }
+function spawnVoidPulse(pos) { spawnMagicImpact(pos, 0xb066ff, 8); }
+function spawnPoisonSplash(pos) { spawnMagicImpact(pos, 0xaaff44, 9); }
+function spreadPoisonFromEnemy(source) { const radius = source.spreadPoisonRadius || 4; for (const e of enemies) { if (e === source) continue; if (enemyDistance2D(source.mesh.position, e.mesh.position) <= radius) { e.poisonTimer = Math.max(e.poisonTimer || 0, 2.5); e.poisonTickTimer = 0.5; e.poisonDamage = Math.max(e.poisonDamage || 0, 4); e.spreadPoisonOnDeath = false; spawnPoisonSplash(e.mesh.position.clone()); } } }
+function spawnSolarExplosion(pos, radius) { const ring = new THREE.Mesh(new THREE.RingGeometry(0.2, radius, 32), new THREE.MeshBasicMaterial({color:0xffee88,transparent:true,opacity:0.75,side:THREE.DoubleSide})); ring.position.copy(pos); ring.position.y=0.08; ring.rotation.x=-Math.PI/2; scene.add(ring); floatingTexts.push({sprite:ring,life:0.35,vel:new THREE.Vector3()}); spawnMagicImpact(pos,0xffdd55,24); }
+function triggerMagicExplosion(pos, radius, damage, knockback=false) { spawnSolarExplosion(pos, radius); for (let i=enemies.length-1;i>=0;i--){const e=enemies[i]; const dist=e.mesh.position.distanceTo(pos); if (dist<=radius){const falloff=1-dist/radius; const dealt=damage*(0.35+falloff*0.65); e.health-=dealt; showGoblinHit(e,"body",dealt); if(knockback){const dir=e.mesh.position.clone().sub(pos); dir.y=0; if(dir.lengthSq()>0.001){dir.normalize(); const nx=e.mesh.position.x+dir.x*(0.8+falloff*1.6); const nz=e.mesh.position.z+dir.z*(0.8+falloff*1.6); if(!isEnemyPathBlockedAt(nx,nz,e)){e.mesh.position.x=nx; e.mesh.position.z=nz;}}} if(e.health<=0) killEnemy(i);} } }
+
 function triggerChainLightning(sourceEnemy, originPos, bullet) { if (!bullet.chainLightning) return; if (Math.random() > bullet.chainChance) return; let chained=0; let current=sourceEnemy; while (chained < bullet.chainMaxTargets) { let best=null; let bestDist=bullet.chainRange; for (const candidate of enemies) { if (candidate===current) continue; if (bullet.hitEnemies && bullet.hitEnemies.has(candidate)) continue; if (candidate.health<=0) continue; const dist = enemyDistance2D(current.mesh.position, candidate.mesh.position); if (dist<bestDist) { best=candidate; bestDist=dist; } } if (!best) break; const from=current.mesh.position.clone(); from.y+=1.1; const to=best.mesh.position.clone(); to.y+=1.1; spawnLightningArc(from,to,0x66ccff); best.health -= bullet.chainDamage; showGoblinHit(best, "body", bullet.chainDamage); if (bullet.hitEnemies) bullet.hitEnemies.add(best); if (best.health <= 0) { const idx = enemies.indexOf(best); if (idx >= 0) killEnemy(idx); } current=best; chained++; }}
 
 function reload() {
@@ -2467,6 +2640,11 @@ function updateBullets(dt) {
       }
       if (bestHit) {
         let damageDone = b.damage * bestHit.multiplier;
+        if (b.closeRangeBonus) {
+          const distFromPlayer = b.spawnPos ? b.spawnPos.distanceTo(b.pos) : camera.position.distanceTo(b.pos);
+          if (distFromPlayer <= (b.closeRangeDistance || 5.5)) damageDone *= b.closeRangeMultiplier || 1.45;
+        }
+        if (e.voidStacks && e.voidStacks > 0) damageDone *= 1 + e.voidStacks * 0.04;
         const enemyTypeData = enemyTypes[e.typeKey];
         if (enemyTypeData && enemyTypeData.armor) {
           if (bestHit.name === "body") damageDone *= 0.55;
@@ -2478,6 +2656,26 @@ function updateBullets(dt) {
         spawnMagicImpact(b.pos.clone(), b.projectileColor || 0xffaa44, b.magicType === "rune" ? 12 : 7);
         spawnShardsFromHit(b, b.pos.clone(), b.vel.clone());
         triggerChainLightning(e, b.pos.clone(), b);
+        if (b.slowOnHit) {
+          e.slowTimer = Math.max(e.slowTimer || 0, b.slowDuration || 2);
+          e.slowMultiplier = Math.min(e.slowMultiplier || 1, b.slowMultiplier || 0.55);
+          spawnFrostBurst(e.mesh.position.clone());
+        }
+        if (b.voidMark) {
+          e.voidMarkTimer = Math.max(e.voidMarkTimer || 0, b.voidMarkDuration || 3);
+          e.voidStacks = Math.min(8, (e.voidStacks || 0) + 1);
+          spawnVoidPulse(e.mesh.position.clone());
+        }
+        if (b.poisonOnHit) {
+          e.poisonTimer = Math.max(e.poisonTimer || 0, b.poisonDuration || 4);
+          e.poisonTickTimer = b.poisonTickRate || 0.5;
+          e.poisonTickRate = b.poisonTickRate || 0.5;
+          e.poisonDamage = b.poisonDamage || 6;
+          e.spreadPoisonOnDeath = b.spreadPoisonOnDeath || false;
+          e.spreadPoisonRadius = b.spreadPoisonRadius || 0;
+          spawnPoisonSplash(e.mesh.position.clone());
+        }
+        if (b.explosionOnHit) triggerMagicExplosion(b.pos.clone(), b.explosionRadius || 3, b.explosionDamage || 30, b.knockback);
         if (b.hitEnemies) b.hitEnemies.add(e);
         hit = true;
         if (e.health <= 0) killEnemy(j);
@@ -2799,7 +2997,7 @@ function moveGoblinAlongPath(enemy, target, dt) {
   const dir = nextPoint.clone().sub(pos); dir.y = 0;
   if (dir.lengthSq() < 0.001) return false;
   dir.normalize();
-  const step = enemy.speed * dt;
+  const step = (enemy.effectiveSpeed || enemy.speed) * dt;
   const nx = pos.x + dir.x * step;
   const nz = pos.z + dir.z * step;
   if (!isEnemyPathBlockedAt(nx, nz, enemy)) {
@@ -2827,7 +3025,7 @@ function moveGoblinToward(enemy, target, dt) {
     }
   }
   const finalDir = desired.add(avoid).normalize();
-  pos.add(finalDir.multiplyScalar(enemy.speed * dt));
+  pos.add(finalDir.multiplyScalar((enemy.effectiveSpeed || enemy.speed) * dt));
   return true;
 }
 
@@ -3074,7 +3272,33 @@ function updateEnemies(dt) {
       if (e.burnTimer <= 0) killEnemy(i);
       continue;
     }
-    e.animTime += dt * e.speed * 4;
+    e.effectiveSpeed = e.speed;
+    if (e.slowTimer > 0) {
+      e.slowTimer -= dt;
+      e.effectiveSpeed = e.speed * (e.slowMultiplier || 0.55);
+      if (e.slowTimer <= 0) e.slowMultiplier = 1;
+    }
+    if (e.voidMarkTimer > 0) {
+      e.voidMarkTimer -= dt;
+      if (e.voidMarkTimer <= 0) e.voidStacks = 0;
+    }
+    if (e.poisonTimer > 0) {
+      e.poisonTimer -= dt;
+      e.poisonTickTimer = (e.poisonTickTimer || 0.5) - dt;
+      if (e.poisonTickTimer <= 0) {
+        e.poisonTickTimer = e.poisonTickRate || 0.5;
+        const tickDmg = e.poisonDamage || 4;
+        e.health -= tickDmg;
+        showGoblinHit(e, "body", tickDmg);
+        spawnPoisonSplash(e.mesh.position.clone());
+        if (e.health <= 0) {
+          if (e.spreadPoisonOnDeath) spreadPoisonFromEnemy(e);
+          killEnemy(i);
+          continue;
+        }
+      }
+    }
+    e.animTime += dt * e.effectiveSpeed * 4;
 
     e.attackCooldown -= dt;
 
