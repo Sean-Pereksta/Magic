@@ -205,6 +205,14 @@
     <button id="soloBtn">Start Solo</button>
     <button id="twoPlayerBtn">Start 2 Player Split Screen</button>
     <button id="controlsBtn">Controls / Controller Mapping</button>
+    <div id="gameSettingsPanel" style="margin-top:14px; padding:10px; border:1px solid rgba(255,255,255,0.35); border-radius:8px; background:rgba(0,0,0,0.35); text-align:left;">
+      <h3>Game Settings</h3>
+      <label>Mouse Sensitivity: <input id="mouseSensitivityInput" type="range" min="0.4" max="3.0" step="0.05"> <span id="mouseSensitivityValue"></span></label>
+      <br><br>
+      <label>Controller Look Sensitivity: <input id="controllerSensitivityInput" type="range" min="0.8" max="6.0" step="0.1"> <span id="controllerSensitivityValue"></span></label>
+      <br><br>
+      <button id="fullscreenBtn">Fullscreen</button>
+    </div>
     <div id="controlsPanel"></div>
   </div>
 </div>
@@ -302,8 +310,8 @@ const player = {
   vel: new THREE.Vector3(),
   yaw: 0,
   pitch: 0,
-  speed: 7,
-  sprintSpeed: 11,
+  speed: 8.6,
+  sprintSpeed: 13.8,
   health: 100,
   maxHealth: 100,
   coins: 500,
@@ -316,8 +324,9 @@ const player = {
   regenTimer: 0,
   regenRate: 7.5,
   onGround: true,
-  jumpVelocity: 7.2,
-  gravity: 18,
+  jumpVelocity: 7.8,
+  gravity: 20,
+  airControl: 0.82,
   playerHeight: 1.7,
   groundY: 1.7
 };
@@ -334,6 +343,25 @@ function cloneDefaultMappings(){return JSON.parse(JSON.stringify(DEFAULT_CONTROL
 function mergeControlMapping(base,saved){return {...base,...saved,movement:{...base.movement,...(saved.movement||{}),keys:{...base.movement.keys,...((saved.movement||{}).keys||{})}},look:{...base.look,...(saved.look||{})},buttons:{...base.buttons,...(saved.buttons||{})},controller:{...base.controller,...(saved.controller||{}),moveStick:{...base.controller.moveStick,...((saved.controller||{}).moveStick||{})},lookStick:{...base.controller.lookStick,...((saved.controller||{}).lookStick||{})},buttons:{...base.controller.buttons,...((saved.controller||{}).buttons||{})}}};}
 function loadControlMappings(){try{const raw=localStorage.getItem("goblinZombiesControlMappings");if(!raw) return cloneDefaultMappings();const parsed=JSON.parse(raw),d=cloneDefaultMappings();return {p1:mergeControlMapping(d.p1,parsed.p1||{}),p2:mergeControlMapping(d.p2,parsed.p2||{})};}catch(err){console.warn("Failed to load control mappings. Using defaults.",err);return cloneDefaultMappings();}}
 let controlMappings=loadControlMappings();
+const DEFAULT_GAME_SETTINGS = {
+  mouseSensitivity: 1.25,
+  controllerLookSensitivity: 2.9,
+  turnSpeedMultiplier: 1.0
+};
+function loadGameSettings() {
+  try {
+    const raw = localStorage.getItem("goblinZombiesGameSettings");
+    if (!raw) return { ...DEFAULT_GAME_SETTINGS };
+    return { ...DEFAULT_GAME_SETTINGS, ...JSON.parse(raw) };
+  } catch (err) {
+    console.warn("Failed to load game settings.", err);
+    return { ...DEFAULT_GAME_SETTINGS };
+  }
+}
+let gameSettings = loadGameSettings();
+function saveGameSettings() {
+  localStorage.setItem("goblinZombiesGameSettings", JSON.stringify(gameSettings));
+}
 function saveControlMappings(){localStorage.setItem("goblinZombiesControlMappings",JSON.stringify(controlMappings));}
 function resetControlMappings(){controlMappings=cloneDefaultMappings();saveControlMappings();refreshGamepadSelects();renderControlsMappingUI();}
 let pendingMapping=null; const mouseButtons={}; const previousActions={p1:{},p2:{}};
@@ -366,6 +394,34 @@ document.addEventListener("pointerlockchange", () => {
   pointerLocked = document.pointerLockElement === renderer.domElement;
 });
 
+function toggleFullscreen() {
+  const root = document.documentElement;
+  if (!document.fullscreenElement) {
+    if (root.requestFullscreen) root.requestFullscreen();
+  } else if (document.exitFullscreen) {
+    document.exitFullscreen();
+  }
+}
+
+function setupGameSettingsUI() {
+  const mouseInput = document.getElementById("mouseSensitivityInput");
+  const mouseValue = document.getElementById("mouseSensitivityValue");
+  const controllerInput = document.getElementById("controllerSensitivityInput");
+  const controllerValue = document.getElementById("controllerSensitivityValue");
+  const fullscreenBtn = document.getElementById("fullscreenBtn");
+  if (mouseInput) {
+    mouseInput.value = gameSettings.mouseSensitivity;
+    mouseValue.textContent = Number(gameSettings.mouseSensitivity).toFixed(2);
+    mouseInput.oninput = () => { gameSettings.mouseSensitivity = Number(mouseInput.value); mouseValue.textContent = gameSettings.mouseSensitivity.toFixed(2); saveGameSettings(); };
+  }
+  if (controllerInput) {
+    controllerInput.value = gameSettings.controllerLookSensitivity;
+    controllerValue.textContent = Number(gameSettings.controllerLookSensitivity).toFixed(1);
+    controllerInput.oninput = () => { gameSettings.controllerLookSensitivity = Number(controllerInput.value); controllerValue.textContent = gameSettings.controllerLookSensitivity.toFixed(1); saveGameSettings(); };
+  }
+  if (fullscreenBtn) fullscreenBtn.onclick = toggleFullscreen;
+}
+
 function startSoloGame() {
   startScreen.style.display = "none";
   renderer.domElement.requestPointerLock();
@@ -394,6 +450,7 @@ if (controlsBtn) {
 
 refreshGamepadSelects();
 renderControlsMappingUI();
+setupGameSettingsUI();
 
 renderer.domElement.addEventListener("click", () => {
   if (!pointerLocked && player.alive) {
@@ -405,8 +462,9 @@ renderer.domElement.addEventListener("click", () => {
 
 document.addEventListener("mousemove", e => {
   if (!pointerLocked || !player.alive) return;
-  player.yaw -= e.movementX * 0.0022;
-  player.pitch -= e.movementY * 0.0022;
+  const sens = gameSettings.mouseSensitivity || 1.25;
+  player.yaw -= e.movementX * 0.0022 * sens;
+  player.pitch -= e.movementY * 0.0022 * sens;
   player.pitch = Math.max(-1.25, Math.min(1.25, player.pitch));
 });
 
@@ -1659,8 +1717,11 @@ function reload() {
 
 const enemies = [];
 let waveInProgress = false;
-let waveSpawnLeft = 0;
 let waveSpawnTimer = 0;
+let waveKills = 0;
+let waveRequiredKills = 0;
+let waveIntermissionTimer = 0;
+let waveEnding = false;
 
 const enemyTypes = {
   green: {
@@ -1953,7 +2014,7 @@ function spawnEnemy(typeKey = "green") {
     pos: mesh.position,
     health: type.health + player.wave * 10,
     maxHealth: type.health + player.wave * 10,
-    speed: type.speed + player.wave * 0.05,
+    speed: type.speed * 1.08 + player.wave * 0.065,
     damage: type.damage,
     reward: type.reward,
     state: "walking_to_window",
@@ -1977,6 +2038,7 @@ function spawnEnemy(typeKey = "green") {
     stuckTimer: 0,
     pathFailCount: 0,
     retargetCooldown: 0,
+    ignoreWaveKill: false,
     hitboxes: [
       {
         name: "head",
@@ -2041,10 +2103,24 @@ function getOutsideWindowSpawn(win) {
   return new THREE.Vector3(win.x + outward.x * 11, 0, win.z + outward.z * 11);
 }
 
+function getWaveRequiredKills(wave) {
+  return 8 + wave * 5;
+}
+
+function getWaveMaxAlive(wave) {
+  return Math.min(10 + Math.floor(wave * 1.5), 34);
+}
+
+function getWaveSpawnInterval(wave) {
+  return Math.max(0.38, 1.15 - wave * 0.045);
+}
+
 function startWave() {
   waveInProgress = true;
-  waveSpawnLeft = 6 + player.wave * 4;
-  waveSpawnTimer = 1;
+  waveEnding = false;
+  waveKills = 0;
+  waveRequiredKills = getWaveRequiredKills(player.wave);
+  waveSpawnTimer = 0.75;
 }
 
 function chooseEnemyType() {
@@ -2328,10 +2404,13 @@ function updatePlayer(dt) {
 
   const lookInput = getPlayerLookInput("p1");
   if (pMap.inputSource === "controller") {
-    const sensitivity = pMap.controller.lookSensitivity || 2.4;
+    const controllerSens =
+      gameSettings.controllerLookSensitivity ||
+      controlMappings?.p1?.controller?.lookSensitivity ||
+      2.9;
     const invertY = pMap.controller.invertY ? -1 : 1;
-    player.yaw -= lookInput.x * sensitivity * dt;
-    player.pitch -= lookInput.y * sensitivity * invertY * dt;
+    player.yaw -= lookInput.x * controllerSens * dt;
+    player.pitch -= lookInput.y * controllerSens * invertY * dt;
     player.pitch = Math.max(-1.25, Math.min(1.25, player.pitch));
   }
   if (wasPlayerActionJustPressed("p1", "shoot")) shoot();
@@ -2514,6 +2593,10 @@ function killEnemy(index) {
       if (o.geometry) o.geometry.dispose();
       if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); }
     });
+  }
+  if (waveInProgress && !waveEnding && !e.ignoreWaveKill) {
+    waveKills++;
+    if (waveKills >= waveRequiredKills) triggerWaveClear();
   }
   scene.remove(e.mesh);
   e.mesh.traverse(o => {
@@ -2983,6 +3066,14 @@ function updateEnemies(dt) {
     const e = enemies[i];
     const type = enemyTypes[e.typeKey];
     let moved = false;
+    if (e.state === "burning_clear") {
+      e.burnTimer -= dt;
+      e.mesh.scale.multiplyScalar(0.985);
+      e.mesh.position.y += dt * 0.25;
+      if (Math.random() < 0.45) spawnFireBurst(e.mesh.position.clone(), 2);
+      if (e.burnTimer <= 0) killEnemy(i);
+      continue;
+    }
     e.animTime += dt * e.speed * 4;
 
     e.attackCooldown -= dt;
@@ -3224,25 +3315,60 @@ function updatePickups(dt) {
    WAVE SYSTEM
 ========================================================= */
 
+function spawnFireBurst(pos, count = 14) {
+  for (let i = 0; i < count; i++) {
+    const spark = new THREE.Mesh(new THREE.SphereGeometry(0.045 + Math.random() * 0.05, 6, 6), new THREE.MeshBasicMaterial({ color: Math.random() < 0.5 ? 0xff6a00 : 0xffdd55 }));
+    spark.position.copy(pos);
+    spark.position.y += 0.8 + Math.random() * 0.8;
+    scene.add(spark);
+    floatingTexts.push({ sprite: spark, life: 0.45 + Math.random() * 0.35, vel: new THREE.Vector3((Math.random() - 0.5) * 3.2, 1.2 + Math.random() * 2.5, (Math.random() - 0.5) * 3.2) });
+  }
+}
+
+function igniteEnemyForWaveClear(enemy) {
+  if (!enemy || !enemy.mesh) return;
+  enemy.mesh.traverse(o => {
+    if (o.isMesh && o.material && o.material.emissive) {
+      o.material.emissive.setHex(0xff3300);
+      o.material.emissiveIntensity = 1.2;
+    }
+  });
+  spawnFireBurst(enemy.mesh.position.clone(), 18);
+}
+
+function triggerWaveClear() {
+  if (waveEnding) return;
+  waveEnding = true;
+  waveInProgress = false;
+  waveIntermissionTimer = 5.0;
+  for (const e of enemies) {
+    e.ignoreWaveKill = true;
+    e.state = "burning_clear";
+    e.burnTimer = 0.65 + Math.random() * 0.45;
+    igniteEnemyForWaveClear(e);
+  }
+}
+
 function updateWave(dt) {
+  if (waveIntermissionTimer > 0) {
+    waveIntermissionTimer -= dt;
+    if (waveIntermissionTimer <= 0) {
+      player.wave++;
+      player.coins += 350 + player.wave * 60;
+      startWave();
+    }
+    return;
+  }
   if (!waveInProgress && enemies.length === 0) {
     startWave();
+    return;
   }
-
-  if (waveInProgress) {
-    waveSpawnTimer -= dt;
-
-    if (waveSpawnTimer <= 0 && waveSpawnLeft > 0) {
-      spawnEnemy(chooseEnemyType());
-      waveSpawnLeft--;
-      waveSpawnTimer = Math.max(0.35, 1.25 - player.wave * 0.04);
-    }
-
-    if (waveSpawnLeft <= 0 && enemies.length === 0) {
-      waveInProgress = false;
-      player.wave++;
-      player.coins += 400 + player.wave * 50;
-    }
+  if (!waveInProgress || waveEnding) return;
+  waveSpawnTimer -= dt;
+  const maxAlive = getWaveMaxAlive(player.wave);
+  if (waveSpawnTimer <= 0 && enemies.length < maxAlive) {
+    spawnEnemy(chooseEnemyType());
+    waveSpawnTimer = getWaveSpawnInterval(player.wave);
   }
 }
 
@@ -3334,6 +3460,8 @@ function updateHud() {
     Coins: $${player.coins}<br>
     Score: ${player.score}<br>
     Wave: ${player.wave}<br>
+    Kills: ${waveKills}/${waveRequiredKills || getWaveRequiredKills(player.wave)}<br>
+    ${waveIntermissionTimer > 0 ? `Next Wave In: ${Math.ceil(waveIntermissionTimer)}<br>` : ""}
     Gun: ${currentGun.name}<br>
     Mana: ${currentGun.clip}/${currentGun.reserve}${currentGun.reloading ? " — Reloading..." : ""}
   `;
