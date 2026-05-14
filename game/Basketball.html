@@ -1300,6 +1300,7 @@ function drawAvatar(c, god, x, y, scale) {
     c.fillRect(x - 14*s, y - 2*s, 4*s, 8*s);
     c.fillRect(x + 10*s, y - 2*s, 4*s, 8*s);
   }
+
   if (god.id === "quetz") {
     c.fillStyle = "#0f766e";
     c.fillRect(x - 9*s, y - 14*s, 18*s, 10*s);
@@ -1357,34 +1358,30 @@ function drawAvatar(c, god, x, y, scale) {
   }
 
   if (god.id === "bastet") {
+    const earTwitch = Math.sin(matchTime * 0.22) * .8;
+    const tailFlick = Math.sin(matchTime * 0.18) * 1.6;
     c.fillStyle = "#050505";
-    c.fillRect(x - 9*s, y - 16*s, 18*s, 13*s);
-    c.fillRect(x - 12*s, y - 23*s, 6*s, 10*s);
-    c.fillRect(x + 6*s, y - 23*s, 6*s, 10*s);
+    c.fillRect(x - 8*s, y - 15*s, 16*s, 12*s);
+    c.fillRect(x - 11*s, y - (23 - earTwitch)*s, 5*s, 10*s);
+    c.fillRect(x + 6*s, y - (23 + earTwitch)*s, 5*s, 10*s);
     c.fillStyle = "#b66dff";
-    c.fillRect(x - 10*s, y - 20*s, 2*s, 5*s);
-    c.fillRect(x + 8*s, y - 20*s, 2*s, 5*s);
-    c.fillStyle = "#ffd166";
-    c.fillRect(x - 6*s, y - 11*s, 4*s, 2*s);
-    c.fillRect(x + 2*s, y - 11*s, 4*s, 2*s);
+    c.fillRect(x - 2*s, y - 11*s, 2*s, 2*s);
+    c.fillRect(x + 2*s, y - 11*s, 2*s, 2*s);
     c.fillStyle = "#d4af37";
-    c.fillRect(x - 2*s, y - 7*s, 4*s, 2*s);
+    c.fillRect(x - 1*s, y - 8*s, 2*s, 2*s);
+    c.fillRect(x - 6*s, y - 2*s, 12*s, 3*s);
+    c.fillStyle = "#ffd166";
+    c.fillRect(x - 10*s, y - 10*s, 4*s, 1*s);
+    c.fillRect(x + 6*s, y - 10*s, 4*s, 1*s);
     c.fillStyle = "#b66dff";
-    c.fillRect(x - 1*s, y - 6*s, 2*s, 2*s);
-    c.fillStyle = "#ffd166";
-    c.fillRect(x - 12*s, y - 7*s, 7*s, 1*s);
-    c.fillRect(x - 12*s, y - 4*s, 7*s, 1*s);
-    c.fillRect(x + 5*s, y - 7*s, 7*s, 1*s);
-    c.fillRect(x + 5*s, y - 4*s, 7*s, 1*s);
-    c.fillStyle = "#d4af37";
-    c.fillRect(x - 7*s, y - 2*s, 14*s, 3*s);
+    c.fillRect(x - 1*s, y - 7*s, 2*s, 1*s);
     c.fillStyle = "#090909";
-    c.fillRect(x - 6*s, y + 1*s, 12*s, 11*s);
+    c.fillRect(x - 5*s, y + 1*s, 10*s, 11*s);
     c.fillStyle = "#b66dff";
-    c.fillRect(x - 4*s, y + 3*s, 8*s, 5*s);
+    c.fillRect(x - 3*s, y + 3*s, 6*s, 4*s);
     c.fillStyle = "#050505";
-    c.fillRect(x + 8*s, y + 5*s, 4*s, 12*s);
-    c.fillRect(x + 12*s, y + 12*s, 6*s, 4*s);
+    c.fillRect(x + 7*s, y + 5*s, 4*s, 12*s);
+    c.fillRect(x + 11*s, y + (11 + tailFlick)*s, 6*s, 4*s);
   }
 }
 
@@ -6187,20 +6184,22 @@ function drawPixelGod(c, p, x, y, s) {
 
   // Legs
   c.fillStyle = g.dark;
+  const isBastet = p.godId === "bastet";
   let legSpread = p.action === "run" ? Math.sin(p.anim * 10) * 7 : 3;
   legSpread += pose.legSpread || 0;
-  const crouch = pose.crouch || 0;
-  const bodyLean = pose.bodyLean || 0;
+  const crouch = (pose.crouch || 0) + (isBastet ? 3 + Math.sin(p.anim * 5) * 1.2 : 0);
+  const bodyLean = (pose.bodyLean || 0) + (isBastet && p.action === "run" ? dir * 3.6 : 0);
+  const legH = isBastet ? 30 : 26;
 
-  c.fillRect(px(x - sc(12 + legSpread)), px(y + sc(12 + bob + crouch)), sc(11), sc(26));
-  c.fillRect(px(x + sc(2 + legSpread)), px(y + sc(12 - bob + crouch)), sc(11), sc(26));
+  c.fillRect(px(x - sc(12 + legSpread)), px(y + sc(12 + bob + crouch)), sc(10), sc(legH));
+  c.fillRect(px(x + sc(2 + legSpread)), px(y + sc(12 - bob + crouch)), sc(10), sc(legH));
 
   // Body
   const isSobek = p.godId === "sobek";
-  const bodyW = Math.max(24, Math.round((isSobek ? 46 : 38) * (pose.squash || 1)));
-  const bodyH = Math.max(28, Math.round(39 * (pose.stretch || 1)));
-  const bodyInnerW = Math.max(20, Math.round(32 * (pose.squash || 1)));
-  const bodyInnerH = Math.max(24, Math.round(34 * (pose.stretch || 1)));
+  const bodyW = Math.max(24, Math.round((isSobek ? 46 : (isBastet ? 32 : 38)) * (pose.squash || 1)));
+  const bodyH = Math.max(28, Math.round((isBastet ? 35 : 39) * (pose.stretch || 1)));
+  const bodyInnerW = Math.max(20, Math.round((isBastet ? 27 : 32) * (pose.squash || 1)));
+  const bodyInnerH = Math.max(24, Math.round((isBastet ? 30 : 34) * (pose.stretch || 1)));
   c.fillStyle = g.dark;
   c.fillRect(px(x - sc(19) + hitLean + bodyLean), px(y - sc(20) + bob + crouch), sc(bodyW), sc(bodyH));
 
@@ -6234,11 +6233,24 @@ function drawPixelGod(c, p, x, y, s) {
     const leapPose = ["bastet_scratch_rebound","bastet_low_pounce","bastet_moonlit_leap"].includes(p.attackKind);
     const reboundPose = p.attackKind === "bastet_rebound_flip";
     const stumblePose = p.attackKind === "bastet_stumble";
+    const tailSway = p.dodgeTimer > 0 || leapPose ? -dir * 8 : Math.sin(p.anim * 4.5) * 5;
     c.fillStyle = "#050505";
+    c.fillRect(px(x + dir * sc(16)), px(y - sc(2) + bob + crouch), sc(8), sc(15));
+    c.fillRect(px(x + dir * sc(22 + tailSway)), px(y + sc(6) + bob + crouch), sc(11), sc(5));
     c.fillRect(px(x + dir * sc(leapPose ? 22 : 18)), px(y - sc(reboundPose ? 7 : 3) + bob + crouch + (stumblePose ? sc(5) : 0)), sc(6), sc(16));
     c.fillRect(px(x + dir * sc(leapPose ? 28 : 24)), px(y + sc(leapPose ? 6 : 8) + bob + crouch + (stumblePose ? sc(4) : 0)), sc(10), sc(5));
     c.fillStyle = "#b66dff";
-    if (p.dodgeTimer > 0 || leapPose || reboundPose) c.fillRect(px(x - sc(24)), px(y + sc(stumblePose ? 28 : 23) + bob + crouch), sc(44), sc(4));
+    if (p.dodgeTimer > 0 || leapPose || reboundPose) {
+      c.globalAlpha = 0.42;
+      c.fillRect(px(x - sc(30)), px(y + sc(stumblePose ? 26 : 21) + bob + crouch), sc(56), sc(5));
+      c.globalAlpha = 1;
+    }
+    if (p.action === "run" && p.grounded && Math.abs(p.vx) > 7) {
+      c.fillStyle = "rgba(212,175,55,0.5)";
+      c.fillRect(px(x - dir * sc(14)), px(y + sc(34 + Math.sin(p.anim * 8) * 2)), sc(7), sc(3));
+      c.fillStyle = "rgba(182,109,255,0.45)";
+      c.fillRect(px(x - dir * sc(22)), px(y + sc(31 + Math.cos(p.anim * 8) * 2)), sc(6), sc(3));
+    }
   }
 
   drawGodWeapon(c, p, x + hitLean + bodyLean, y + bob + crouch, s, dir, pose);
@@ -6410,27 +6422,35 @@ function drawGodHead(c, p, x, y, s, dir, headTilt) {
     c.fillStyle = "#0f332f";
     c.fillRect(px(x - dir * sc(19)), px(y - sc(54)), sc(4), sc(4));
   } else if (id === "bastet") {
+    const isAttacking = p.attackFrame > 0 || p.moveTimer > 0;
+    const earTwitch = Math.sin(matchTime * 0.22) * sc(1.4);
     c.fillStyle = "#050505";
-    c.fillRect(px(x - sc(16)), px(y - sc(56)), sc(32), sc(26));
-    c.fillRect(px(x - sc(20)), px(y - sc(74)), sc(9), sc(18));
-    c.fillRect(px(x + sc(11)), px(y - sc(74)), sc(9), sc(18));
+    c.fillRect(px(x - sc(15)), px(y - sc(56)), sc(30), sc(24));
+    c.fillRect(px(x - sc(14)), px(y - sc(52)), sc(26), sc(20));
+    c.fillRect(px(x - sc(20)), px(y - sc(75) + earTwitch), sc(8), sc(19));
+    c.fillRect(px(x + sc(12)), px(y - sc(75) - earTwitch), sc(8), sc(19));
+    c.fillStyle = "#1a1a1a";
+    c.fillRect(px(x + dir * sc(13)), px(y - sc(48) + (isAttacking ? sc(2) : 0)), sc(17), sc(8));
+    c.fillRect(px(x + dir * sc(26)), px(y - sc(46) + (isAttacking ? sc(2) : 0)), sc(8), sc(5));
     c.fillStyle = "#b66dff";
-    c.fillRect(px(x - sc(17)), px(y - sc(68)), sc(3), sc(8));
-    c.fillRect(px(x + sc(14)), px(y - sc(68)), sc(3), sc(8));
-    c.fillStyle = "#ffd166";
-    c.fillRect(px(x - sc(9)), px(y - sc(46)), sc(6), sc(3));
-    c.fillRect(px(x + sc(3)), px(y - sc(46)), sc(6), sc(3));
+    c.fillRect(px(x - sc(17)), px(y - sc(69) + earTwitch), sc(3), sc(8));
+    c.fillRect(px(x + sc(14)), px(y - sc(69) - earTwitch), sc(3), sc(8));
+    c.fillStyle = Math.sin(matchTime * 0.3) > 0 ? "#ffd166" : "#c084fc";
+    c.fillRect(px(x + dir * sc(4)), px(y - sc(46)), sc(5), sc(4));
+    c.fillRect(px(x + dir * sc(13)), px(y - sc(45)), sc(4), sc(3));
     c.fillStyle = "#d4af37";
-    c.fillRect(px(x - sc(3)), px(y - sc(41)), sc(6), sc(3));
+    c.fillRect(px(x + dir * sc(10)), px(y - sc(41)), sc(3), sc(2));
     c.fillStyle = "#b66dff";
-    c.fillRect(px(x - sc(1)), px(y - sc(39)), sc(2), sc(2));
+    c.fillRect(px(x + dir * sc(11)), px(y - sc(39)), sc(2), sc(2));
     c.fillStyle = "#ffd166";
-    c.fillRect(px(x - sc(20)), px(y - sc(41)), sc(10), sc(1));
-    c.fillRect(px(x - sc(20)), px(y - sc(37)), sc(10), sc(1));
-    c.fillRect(px(x + sc(10)), px(y - sc(41)), sc(10), sc(1));
-    c.fillRect(px(x + sc(10)), px(y - sc(37)), sc(10), sc(1));
+    c.fillRect(px(x - sc(22)), px(y - sc(42)), sc(11), sc(1));
+    c.fillRect(px(x - sc(22)), px(y - sc(38)), sc(9), sc(1));
+    c.fillRect(px(x + sc(11)), px(y - sc(42)), sc(11), sc(1));
+    c.fillRect(px(x + sc(13)), px(y - sc(38)), sc(9), sc(1));
     c.fillStyle = "#d4af37";
-    c.fillRect(px(x - sc(10)), px(y - sc(31)), sc(20), sc(4));
+    c.fillRect(px(x - sc(12)), px(y - sc(31)), sc(24), sc(4));
+    c.fillStyle = "#b66dff";
+    c.fillRect(px(x - sc(2)), px(y - sc(30)), sc(4), sc(3));
   } else {
     c.fillStyle = g.color;
     c.fillRect(px(x - sc(18)), px(y - sc(55)), sc(36), sc(30));
@@ -6499,6 +6519,13 @@ function drawGodWeapon(c, p, x, y, s, dir, pose) {
     c.fillRect(px(x + dir * sc(34) + strike), px(y - sc(10) + raise), sc(18 + reach * .4), sc(8));
     c.fillStyle = "#2a9d8f";
     c.fillRect(px(x - dir * sc(34) - wide), px(y - sc(12) - raise * .2), sc(24), sc(6));
+  } else if (p.godId === "bastet") {
+    c.fillStyle = "#d4af37";
+    c.fillRect(px(x + dir * sc(31) + strike), px(y - sc(12) + raise), sc(10), sc(4));
+    c.fillStyle = "#f8e27f";
+    c.fillRect(px(x + dir * sc(40) + strike), px(y - sc(18) + raise), sc(16 + reach * .3), sc(2));
+    c.fillRect(px(x + dir * sc(40) + strike), px(y - sc(12) + raise), sc(16 + reach * .3), sc(2));
+    c.fillRect(px(x + dir * sc(40) + strike), px(y - sc(6) + raise), sc(16 + reach * .3), sc(2));
   }
   c.restore();
 }
