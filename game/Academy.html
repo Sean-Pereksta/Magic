@@ -2025,6 +2025,10 @@ function createDamageSprite(text, color = 0xffffff) {
 
 const bullets = [];
 const rocks = [];
+const ROCK_DIRECT_HIT_RADIUS = 0.85;
+const ROCK_LANDING_RADIUS = 1.65;
+const ROCK_LANDING_DAMAGE_MULT = 0.85;
+const ROCK_IMPACT_KNOCKBACK = 4.5;
 const pickups = [];
 const bloodParticles = [];
 
@@ -2317,7 +2321,7 @@ const enemyTypes = {
     damage: 18,
     reward: 180,
     scale: 1.75,
-    thrower: false, heavyPush:true, role:"tank", boardDamage:3, armor:0.12, pressureScore:4
+    thrower: false, heavyPush:true, role:"tank", boardDamage:3, armor:0.12, pressureScore:4, specialAbility:"shoulderBash", bashUnlockWave:4, bashDamage:18, bashRangeMin:4, bashRangeMax:10, bashCooldownMin:6, bashCooldownMax:10
   },
   red: {
     name: "Skitter Goblin",
@@ -2337,7 +2341,7 @@ const enemyTypes = {
     damage: 7,
     reward: 130,
     scale: 1.05,
-    thrower: true, role:"window_pressure", boardDamage:2, burnsBoards:true, pressureScore:3
+    thrower: true, role:"window_pressure", boardDamage:2, burnsBoards:true, pressureScore:3, specialAbility:"groundSlamRock", slamUnlockWave:5, slamCooldownMin:5.5, slamCooldownMax:8.5
   },
   armored: {
     name: "Armored Goblin",
@@ -2676,6 +2680,14 @@ function spawnEnemy(typeKey = "green") {
     pathFailCount: 0,
     retargetCooldown: 0,
     ignoreWaveKill: false,
+    specialCooldown: 2 + Math.random() * 4,
+    specialWindup: 0,
+    specialTarget: null,
+    bashCooldown: 2 + Math.random() * 5,
+    bashWindup: 0,
+    bashTimer: 0,
+    bashDir: null,
+    bashRecovery: 0,
     hitboxes: createEnemyHitboxes(typeKey, type)
   };
   const scaled=getScaledEnemyStats(typeKey,player.wave);
@@ -3180,7 +3192,11 @@ function spawnRock(enemy) {
     pos: mesh.position.clone(),
     vel: new THREE.Vector3(horizontal.x * 8, 8, horizontal.z * 8),
     life: 4,
-    damage: 14
+    damage: 14,
+    type: "rock",
+    hasImpacted: false,
+    impactRadius: ROCK_LANDING_RADIUS,
+    directHitRadius: ROCK_DIRECT_HIT_RADIUS
   });
 }
 
@@ -3205,8 +3221,116 @@ function spawnAcid(enemy) {
     vel: new THREE.Vector3(horizontal.x * 7, 7.2, horizontal.z * 7),
     life: 4,
     damage: 18,
-    acid: true, rangedAttack:true, pressureScore:5
+    acid: true,
+    type: "acid",
+    hasImpacted: false,
+    impactRadius: 1.45,
+    directHitRadius: 0.75
   });
+}
+
+function damagePlayerFromProjectileImpact(r, impactX, impactY, impactZ) {
+  if (!player.alive) return false;
+
+  const dx = player.pos.x - impactX;
+  const dz = player.pos.z - impactZ;
+  const horizontalDist = Math.sqrt(dx * dx + dz * dz);
+  const radius = r.impactRadius || ROCK_LANDING_RADIUS;
+
+  if (horizontalDist > radius) return false;
+
+  const falloff = 1 - Math.min(1, horizontalDist / radius);
+  let damage = Math.round((r.damage || 10) * ROCK_LANDING_DAMAGE_MULT * (0.45 + falloff * 0.55));
+  if (r.acid) damage += 4;
+
+  if (player.hurtCooldown <= 0) {
+    player.health -= damage;
+    player.regenTimer = player.regenDelay;
+    player.hurtCooldown = 0.45;
+
+    if (horizontalDist > 0.05 && player.vel) {
+      const nx = dx / horizontalDist;
+      const nz = dz / horizontalDist;
+      const knock = r.acid ? 2.0 : ROCK_IMPACT_KNOCKBACK;
+      player.vel.x += nx * knock;
+      player.vel.z += nz * knock;
+    }
+
+    if (typeof showDamageTint === "function") showDamageTint();
+    return true;
+  }
+
+  return false;
+}
+
+function spawnRockImpactEffect(x, y, z, isAcid = false) {
+  if (typeof spawnBoardSplinters === "function" && !isAcid) {
+    spawnBoardSplinters(x, Math.max(0.15, y), z);
+    return;
+  }
+
+  for (let i = 0; i < 8; i++) {
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.045 + Math.random() * 0.04, 6, 6),
+      new THREE.MeshBasicMaterial({ color: isAcid ? 0x99ff33 : 0x777066, transparent: true, opacity: 0.85 })
+    );
+    mesh.position.set(x + (Math.random() - 0.5) * 0.4, 0.12 + Math.random() * 0.25, z + (Math.random() - 0.5) * 0.4);
+    scene.add(mesh);
+    setTimeout(() => { scene.remove(mesh); if (mesh.geometry) mesh.geometry.dispose(); if (mesh.material) mesh.material.dispose(); }, 350);
+  }
+}
+
+function resolveProjectileImpact(r, index) {
+  if (!r || r.hasImpacted) return;
+  r.hasImpacted = true;
+
+  const x = r.pos.x;
+  const y = Math.max(0, r.pos.y);
+  const z = r.pos.z;
+
+  damagePlayerFromProjectileImpact(r, x, y, z);
+  spawnRockImpactEffect(x, y, z, !!r.acid);
+
+  scene.remove(r.mesh);
+  rocks.splice(index, 1);
+}
+
+function createSlamWarningMarker(x, z, radius = 1.8, duration = 0.85) {
+  const marker = new THREE.Mesh(
+    new THREE.RingGeometry(radius * 0.72, radius, 32),
+    new THREE.MeshBasicMaterial({ color: 0xffaa33, transparent: true, opacity: 0.55, side: THREE.DoubleSide })
+  );
+  marker.rotation.x = -Math.PI / 2;
+  marker.position.set(x, 0.035, z);
+  scene.add(marker);
+  const start = performance.now();
+  function fade() {
+    const t = (performance.now() - start) / (duration * 1000);
+    if (t >= 1) { scene.remove(marker); marker.geometry.dispose(); marker.material.dispose(); return; }
+    marker.material.opacity = 0.55 * (1 - t);
+    marker.scale.setScalar(1 + t * 0.2);
+    requestAnimationFrame(fade);
+  }
+  fade();
+}
+
+function spawnGroundSlamRock(enemy, target) {
+  if (PERF.enabled && rocks.length >= PERF.maxRocks) return;
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 12), new THREE.MeshStandardMaterial({ color: 0x5f5850, roughness: 1 }));
+  mesh.position.copy(enemy.mesh.position);
+  mesh.position.y += 1.8;
+  scene.add(mesh);
+  const start = mesh.position.clone();
+  const end = new THREE.Vector3(target.x, 0, target.z);
+  const dx = end.x - start.x;
+  const dz = end.z - start.z;
+  const dist = Math.sqrt(dx * dx + dz * dz);
+  const flightTime = Math.max(0.65, Math.min(1.15, dist / 13));
+  const gravity = 12;
+  const velX = dx / flightTime;
+  const velZ = dz / flightTime;
+  const velY = (0 - start.y + 0.5 * gravity * flightTime * flightTime) / flightTime;
+  rocks.push({ mesh, pos: start.clone(), vel: new THREE.Vector3(velX, velY, velZ), life: 3, damage: 24, type: "slamRock", heavy: true, hasImpacted: false, impactRadius: 1.95, directHitRadius: 0.95 });
 }
 
 function updateRocks(dt) {
@@ -3220,25 +3344,97 @@ function updateRocks(dt) {
     r.pos.add(r.vel.clone().multiplyScalar(dt));
     r.mesh.position.copy(r.pos);
 
+    const directRadius = r.directHitRadius || 0.75;
     const dist = r.pos.distanceTo(camera.position);
 
-    if (dist < 0.75 && player.hurtCooldown <= 0) {
+    if (dist < directRadius && player.hurtCooldown <= 0) {
       player.health -= r.damage;
       if (r.acid) {
         player.health -= 4;
       }
       player.regenTimer = player.regenDelay;
       player.hurtCooldown = 0.5;
+      spawnRockImpactEffect(r.pos.x, r.pos.y, r.pos.z, !!r.acid);
       scene.remove(r.mesh);
       rocks.splice(i, 1);
       continue;
     }
 
-    if (r.life <= 0 || r.pos.y < 0) {
+    if (r.pos.y <= 0) {
+      resolveProjectileImpact(r, i);
+      continue;
+    }
+
+    if (r.life <= 0) {
       scene.remove(r.mesh);
       rocks.splice(i, 1);
+      continue;
     }
   }
+}
+
+
+function maybeUseRockThrowerSpecial(enemy, dt) {
+  if (!enemy || enemy.dead || enemy.typeKey !== "yellow") return false;
+  if (player.wave < 5) return false;
+  enemy.specialCooldown = Math.max(0, (enemy.specialCooldown || 0) - dt);
+
+  if (enemy.specialWindup > 0) {
+    enemy.specialWindup -= dt;
+    const dx = player.pos.x - enemy.mesh.position.x;
+    const dz = player.pos.z - enemy.mesh.position.z;
+    enemy.mesh.rotation.y = Math.atan2(dx, dz) + (GOBLIN_FACE_FLIP || 0);
+    if (enemy.specialWindup <= 0 && enemy.specialTarget) {
+      spawnGroundSlamRock(enemy, enemy.specialTarget);
+      enemy.specialTarget = null;
+      enemy.specialCooldown = 5.5 + Math.random() * 3;
+    }
+    return true;
+  }
+  if (enemy.specialCooldown > 0) return false;
+  if (!isEnemyInsideHouse(enemy) && !(typeof hasClearEnemyLine === "function" && hasClearEnemyLine(enemy, enemy.mesh.position, new THREE.Vector3(player.pos.x, 0, player.pos.z)))) return false;
+  const dx = player.pos.x - enemy.mesh.position.x;
+  const dz = player.pos.z - enemy.mesh.position.z;
+  const dist = Math.sqrt(dx * dx + dz * dz);
+  if (dist < 8 || dist > 22) return false;
+  enemy.specialTarget = { x: player.pos.x, z: player.pos.z };
+  enemy.specialWindup = 0.85;
+  createSlamWarningMarker(enemy.specialTarget.x, enemy.specialTarget.z, 1.9, 0.85);
+  return true;
+}
+
+function maybeUseBruteBash(enemy, dt) {
+  if (!enemy || enemy.dead || enemy.typeKey !== "blue") return false;
+  if (player.wave < 4 || !isEnemyInsideHouse(enemy)) return false;
+  enemy.bashCooldown = Math.max(0, (enemy.bashCooldown || 0) - dt);
+  if (enemy.bashRecovery > 0) { enemy.bashRecovery -= dt; return true; }
+  if (enemy.bashWindup > 0) {
+    enemy.bashWindup -= dt; enemy.mesh.scale.y = (enemy.baseScaleY || enemy.mesh.scale.y) * 0.9;
+    const dx = player.pos.x - enemy.mesh.position.x; const dz = player.pos.z - enemy.mesh.position.z; const len = Math.sqrt(dx*dx+dz*dz) || 1;
+    enemy.bashDir = { x: dx / len, z: dz / len }; enemy.mesh.rotation.y = Math.atan2(enemy.bashDir.x, enemy.bashDir.z) + (GOBLIN_FACE_FLIP || 0);
+    if (enemy.bashWindup <= 0) { enemy.mesh.scale.y = enemy.baseScaleY || enemy.mesh.scale.y; enemy.bashTimer = 0.45; }
+    return true;
+  }
+  if (enemy.bashTimer > 0) {
+    enemy.bashTimer -= dt;
+    const speed = 10.5;
+    const nextX = enemy.mesh.position.x + enemy.bashDir.x * speed * dt;
+    const nextZ = enemy.mesh.position.z + enemy.bashDir.z * speed * dt;
+    if (typeof canEnemyStandAt === "function" && !canEnemyStandAt(enemy, nextX, nextZ)) { enemy.bashTimer = 0; enemy.bashRecovery = 0.65; enemy.bashCooldown = 6 + Math.random() * 4; return true; }
+    enemy.mesh.position.x = nextX; enemy.mesh.position.z = nextZ;
+    const dx = player.pos.x - enemy.mesh.position.x; const dz = player.pos.z - enemy.mesh.position.z; const dist = Math.sqrt(dx*dx+dz*dz);
+    if (dist < 1.35 && player.hurtCooldown <= 0) {
+      player.health -= 18; player.regenTimer = player.regenDelay; player.hurtCooldown = 0.65;
+      const nx = dx / (dist || 1); const nz = dz / (dist || 1); if (player.vel) { player.vel.x += nx * 8.5; player.vel.z += nz * 8.5; }
+      enemy.bashTimer = 0; enemy.bashRecovery = 0.85; enemy.bashCooldown = 6 + Math.random() * 4;
+    }
+    return true;
+  }
+  if (enemy.bashCooldown > 0) return false;
+  const dx = player.pos.x - enemy.mesh.position.x; const dz = player.pos.z - enemy.mesh.position.z; const dist = Math.sqrt(dx*dx+dz*dz);
+  if (dist < 4 || dist > 10) return false;
+  if (typeof hasClearEnemyLine === "function") { const from = enemy.mesh.position; const to = new THREE.Vector3(player.pos.x, 0, player.pos.z); if (!hasClearEnemyLine(enemy, from, to)) return false; }
+  enemy.baseScaleY = enemy.mesh.scale.y; enemy.bashWindup = 0.45; return true;
 }
 
 /* =========================================================
@@ -3998,6 +4194,8 @@ function updateEnemies(dt) {
       continue;
     }
     if (e.state === "inside") {
+      if (maybeUseRockThrowerSpecial(e, dt)) { animateGoblinWalk(e, moved); continue; }
+      if (maybeUseBruteBash(e, dt)) { animateGoblinWalk(e, moved); continue; }
       const dx = player.pos.x - e.mesh.position.x;
       const dz = player.pos.z - e.mesh.position.z;
       faceGoblinToward(e, player.pos);
