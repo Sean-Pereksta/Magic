@@ -448,6 +448,12 @@
   .compare-card { border:1px solid #e5e7eb; border-radius:9px; padding:10px; background:#fffafa; }
   .compare-card h3 { margin:0 0 8px; color:#7f1d1d; }
   .compare-good { background:#dcfce7; border-left:5px solid #15803d; }
+  .emails-tool-wrap { padding: 10px; }
+  .email-tool-actions { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+  .manual-email-input { width:100%; min-width:260px; padding:7px; border:1px solid #d1d5db; border-radius:6px; font-size:12px; }
+  .email-status-good { background:#dcfce7 !important; color:#166534; font-weight:bold; }
+  .email-status-warning { background:#fef9c3 !important; color:#854d0e; font-weight:bold; }
+  .email-status-bad { background:#fee2e2 !important; color:#991b1b; font-weight:bold; }
   .compare-warning { background:#fef9c3; border-left:5px solid #ca8a04; }
   .compare-bad { background:#fee2e2; border-left:5px solid #b91c1c; }
   .compare-section { margin-top:12px; border:1px solid #e5e7eb; border-radius:9px; overflow:hidden; }
@@ -575,6 +581,7 @@
         <button id="orgViewBtn" class="view-tab active" onclick="setViewMode('org')">Org View</button>
         <button id="usersViewBtn" class="view-tab" onclick="setViewMode('users')">Users View</button>
         <button id="filtersViewBtn" class="view-tab" onclick="setViewMode('filters')">Filters View</button>
+        <button id="emailsViewBtn" class="view-tab" onclick="setViewMode('emails')">Emails</button>
         <button id="compareViewBtn" class="view-tab" onclick="setViewMode('compare')">Compare Files</button>
       </div>
 
@@ -638,6 +645,8 @@ let compareColumns = { first: null, last: null, supervisor: null, email: null };
 let compareResults = null;
 let lastBlueprintLoadSummary = null;
 let safeliteUsersEmails = [];
+let savedPersonEmails = {};
+let pendingEmailAttachments = {};
 
 const possibleFirstNames = [
   "first",
@@ -708,6 +717,10 @@ function normalizeName(value) {
 }
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
+}
+function isLikelyEmail(value) {
+  const text = String(value || "").trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text);
 }
 function parseEmailList(text) {
   return String(text || "")
@@ -1477,7 +1490,19 @@ function selectPersonByName(name) {
 
 function getEmailByName(name) {
   const person = people.find(p => normalizeName(p.name) === normalizeName(name));
-  return person ? person.email || "" : "";
+  if (person && person.email) return person.email || "";
+  return getSavedEmailForName(name);
+}
+
+function getSavedEmailForName(name) {
+  return savedPersonEmails[normalizeName(name)] || "";
+}
+
+function setSavedEmailForName(name, email) {
+  const key = normalizeName(name);
+  const cleaned = String(email || "").trim();
+  if (!key || !cleaned) return;
+  savedPersonEmails[key] = cleaned;
 }
 
 function getExportRows() {
@@ -1549,6 +1574,7 @@ function buildOrgBlueprint() {
     exportedAt: new Date().toISOString(),
     columnsUsed: { first: columns.first, last: columns.last, supervisor: columns.supervisor, email: columns.email },
     safeliteUsersEmails: [...safeliteUsersEmails],
+    savedPersonEmails: { ...savedPersonEmails },
     hierarchy: org.map(director => ({
       directorName: director.name,
       directorKey: normalizeName(director.name),
@@ -1574,7 +1600,7 @@ Missing names: ${missing.length}
 Duplicate matches: ${duplicateMatches.length}`; if (missing.length) message += `
 
 Missing names were not added because they were not found in the current uploaded file.`; alert(message); }
-function rebuildOrgFromBlueprint(blueprint) { const rebuiltOrg = []; const missing = []; const duplicateMatches = []; if (!blueprint || !Array.isArray(blueprint.hierarchy)) { alert("No org blueprint found in the local save."); return; } blueprint.hierarchy.forEach(savedDirector => { const directorPerson = findCurrentPersonFromBlueprint(savedDirector); if (!directorPerson) { missing.push({ level: "Director", name: savedDirector.directorName }); return; } if (rebuiltOrg.some(d => normalizeName(d.name) === normalizeName(directorPerson.name))) duplicateMatches.push({ level: "Director", name: directorPerson.name }); const directorNode = { name: directorPerson.name, managers: [] }; (savedDirector.managers || []).forEach(savedManager => { const managerPerson = findCurrentPersonFromBlueprint(savedManager); if (!managerPerson) { missing.push({ level: "Manager", name: savedManager.managerName, director: savedDirector.directorName }); return; } const managerNode = { name: managerPerson.name, coaches: [] }; (savedManager.coaches || []).forEach(savedCoach => { const coachPerson = findCurrentPersonFromBlueprint(savedCoach); if (!coachPerson) { missing.push({ level: "Coach", name: savedCoach.coachName, director: savedDirector.directorName, manager: savedManager.managerName }); return; } if (managerNode.coaches.some(c => normalizeName(c) === normalizeName(coachPerson.name))) duplicateMatches.push({ level: "Coach", name: coachPerson.name }); else managerNode.coaches.push(coachPerson.name); }); if (directorNode.managers.some(m => normalizeName(m.name) === normalizeName(managerNode.name))) duplicateMatches.push({ level: "Manager", name: managerNode.name }); else directorNode.managers.push(managerNode); }); rebuiltOrg.push(directorNode); }); org = rebuiltOrg; if (Array.isArray(blueprint.safeliteUsersEmails)) safeliteUsersEmails = parseEmailList(blueprint.safeliteUsersEmails.join(", ")); selectedPerson = null; renderAll(); showBlueprintLoadSummary(missing, rebuiltOrg, duplicateMatches); }
+function rebuildOrgFromBlueprint(blueprint) { const rebuiltOrg = []; const missing = []; const duplicateMatches = []; if (!blueprint || !Array.isArray(blueprint.hierarchy)) { alert("No org blueprint found in the local save."); return; } blueprint.hierarchy.forEach(savedDirector => { const directorPerson = findCurrentPersonFromBlueprint(savedDirector); if (!directorPerson) { missing.push({ level: "Director", name: savedDirector.directorName }); return; } if (rebuiltOrg.some(d => normalizeName(d.name) === normalizeName(directorPerson.name))) duplicateMatches.push({ level: "Director", name: directorPerson.name }); const directorNode = { name: directorPerson.name, managers: [] }; (savedDirector.managers || []).forEach(savedManager => { const managerPerson = findCurrentPersonFromBlueprint(savedManager); if (!managerPerson) { missing.push({ level: "Manager", name: savedManager.managerName, director: savedDirector.directorName }); return; } const managerNode = { name: managerPerson.name, coaches: [] }; (savedManager.coaches || []).forEach(savedCoach => { const coachPerson = findCurrentPersonFromBlueprint(savedCoach); if (!coachPerson) { missing.push({ level: "Coach", name: savedCoach.coachName, director: savedDirector.directorName, manager: savedManager.managerName }); return; } if (managerNode.coaches.some(c => normalizeName(c) === normalizeName(coachPerson.name))) duplicateMatches.push({ level: "Coach", name: coachPerson.name }); else managerNode.coaches.push(coachPerson.name); }); if (directorNode.managers.some(m => normalizeName(m.name) === normalizeName(managerNode.name))) duplicateMatches.push({ level: "Manager", name: managerNode.name }); else directorNode.managers.push(managerNode); }); rebuiltOrg.push(directorNode); }); org = rebuiltOrg; if (Array.isArray(blueprint.safeliteUsersEmails)) safeliteUsersEmails = parseEmailList(blueprint.safeliteUsersEmails.join(", ")); if (blueprint.savedPersonEmails && typeof blueprint.savedPersonEmails === "object") Object.entries(blueprint.savedPersonEmails).forEach(([nameKey, email]) => { const cleanKey = normalizeName(nameKey); const cleanEmail = String(email || "").trim(); if (cleanKey && cleanEmail) savedPersonEmails[cleanKey] = cleanEmail; }); selectedPerson = null; renderAll(); showBlueprintLoadSummary(missing, rebuiltOrg, duplicateMatches); }
 function exportOrgBlueprint() { const blueprint = buildOrgBlueprint(); const day = new Date().toISOString().slice(0, 10); downloadBlob(JSON.stringify(blueprint, null, 2), `safelite_org_blueprint_${day}.json`, "application/json;charset=utf-8;"); setStatus("Org blueprint exported"); }
 function blueprintFromImportedRows(rows) { const byDirector = new Map(); const isUsers = rows[0] && Object.prototype.hasOwnProperty.call(rows[0], "Users"); rows.forEach(row => { let director = "", manager = "", coach = "", email = ""; if (isUsers) { const users = String(row["Users"] || "").trim(); if (!users || users === "Safelite") return; const parts = users.split(" --> ").map(x => x.trim()).filter(Boolean); if (parts[0] === "Safelite") parts.shift(); [director, manager, coach] = parts; email = String(row["Studio Email Address"] || "").trim(); } else { director = String(row["Director"] || "").trim(); manager = String(row["Manager"] || "").trim(); coach = String(row["Coach"] || "").trim(); email = String(row["Username / Studio Email Address"] || "").trim(); } if (!director) return; if (!byDirector.has(director)) byDirector.set(director, { directorName: director, directorKey: normalizeName(director), directorEmail: !manager && !coach ? email : "", managers: [] }); const d = byDirector.get(director); if (!manager) return; let m = d.managers.find(x => normalizeName(x.managerName) === normalizeName(manager)); if (!m) { m = { managerName: manager, managerKey: normalizeName(manager), managerEmail: !coach ? email : "", coaches: [] }; d.managers.push(m); } if (!coach) return; if (!m.coaches.some(c => normalizeName(c.coachName) === normalizeName(coach))) m.coaches.push({ coachName: coach, coachKey: normalizeName(coach), coachEmail: email }); }); return { type: "SafeliteOrgBlueprint", version: 1, exportedAt: new Date().toISOString(), columnsUsed: { first: columns.first, last: columns.last, supervisor: columns.supervisor, email: columns.email }, hierarchy: Array.from(byDirector.values()) }; }
 function handleBlueprintImport(event) { const file = event.target.files[0]; if (!file) return; if (!people.length) { alert("Upload and process a people file first."); event.target.value = ""; return; } const ext = file.name.split(".").pop().toLowerCase(); const reader = new FileReader(); reader.onload = function(e) { try { let blueprint; if (ext === "json") { blueprint = JSON.parse(String(e.target.result || "{}")); } else { let rows = []; if (ext === "csv") { const wb = XLSX.read(String(e.target.result), { type: "string" }); rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" }); } else { const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" }); rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" }); } blueprint = blueprintFromImportedRows(rows); } rebuildOrgFromBlueprint(blueprint); setStatus(`Blueprint imported from ${file.name}`); } catch (error) { console.error(error); alert("Unable to import blueprint file."); } finally { event.target.value = ""; } }; if (ext === "json" || ext === "csv") reader.readAsText(file); else reader.readAsArrayBuffer(file); }
@@ -1586,6 +1612,7 @@ function setViewMode(mode) {
   document.getElementById("orgViewBtn").classList.toggle("active", mode === "org");
   document.getElementById("usersViewBtn").classList.toggle("active", mode === "users");
   document.getElementById("filtersViewBtn").classList.toggle("active", mode === "filters");
+  document.getElementById("emailsViewBtn").classList.toggle("active", mode === "emails");
   document.getElementById("compareViewBtn").classList.toggle("active", mode === "compare");
 
   renderOutputTable();
@@ -1609,6 +1636,10 @@ function renderOutputTable() {
 
   if (currentViewMode === "filters") {
     renderFiltersOutputTable();
+    return;
+  }
+  if (currentViewMode === "emails") {
+    renderEmailsView();
     return;
   }
 }
@@ -1661,7 +1692,8 @@ function renderUsersOutputTable() {
 
   getOrgPathRows().forEach(row => {
     const tr = document.createElement("tr");
-    const displayEmail = safeliteEmailSet.has(normalizeEmail(row.email || "")) ? "" : (row.email || "");
+    const rowEmail = getEmailByName(row.personName) || "";
+    const displayEmail = safeliteEmailSet.has(normalizeEmail(rowEmail)) ? "" : rowEmail;
 
     tr.innerHTML = `
       <td class="path-cell">${makeClickablePath(row.path)}</td>
@@ -1697,6 +1729,129 @@ function renderFiltersOutputTable() {
 
     tbody.appendChild(tr);
   });
+}
+
+function getMissingEmailRows() {
+  const safeliteEmailSet = new Set((safeliteUsersEmails || []).map(normalizeEmail));
+  return getOrgPathRows().map(row => {
+    const uploadedOrSavedEmail = getEmailByName(row.personName);
+    const savedEmail = getSavedEmailForName(row.personName);
+    return { ...row, uploadedOrSavedEmail, savedEmail, isGlobalCovered: uploadedOrSavedEmail && safeliteEmailSet.has(normalizeEmail(uploadedOrSavedEmail)) };
+  }).filter(row => !row.isGlobalCovered && !row.uploadedOrSavedEmail);
+}
+
+function getAttachableSavedEmailRows() {
+  const safeliteEmailSet = new Set((safeliteUsersEmails || []).map(normalizeEmail));
+  return getOrgPathRows().map(row => {
+    const person = people.find(p => normalizeName(p.name) === normalizeName(row.personName));
+    const uploadedEmail = person ? String(person.email || "").trim() : "";
+    const savedEmail = getSavedEmailForName(row.personName);
+    return { ...row, uploadedEmail, savedEmail, isGlobalCovered: savedEmail && safeliteEmailSet.has(normalizeEmail(savedEmail)) };
+  }).filter(row => row.savedEmail && !row.uploadedEmail && !row.isGlobalCovered);
+}
+
+function renderAttachableSavedEmailsTable(rows) {
+  if (!rows.length) return `<div class="compare-section"><h3>Saved Emails Ready to Attach</h3><div class="notice">No saved emails are waiting to be attached.</div></div>`;
+  return `<div class="compare-section"><h3>Saved Emails Ready to Attach</h3><div class="notice compare-good">These people have blank emails in the current upload, but a saved email exists for their name. Click Attach Saved Emails to apply them.</div><table><thead><tr><th>User Path</th><th>Saved Email</th><th>Status</th></tr></thead><tbody>${rows.map(row => `<tr><td class="path-cell">${makeClickablePath(row.path)}</td><td>${escapeHTML(row.savedEmail)}</td><td class="email-status-good">Ready to attach</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+function renderMissingEmailsTable(rows) {
+  if (!rows.length) return `<div class="compare-section"><h3>Missing User Emails</h3><div class="notice compare-good">No missing user emails found.</div></div>`;
+  return `<div class="compare-section"><h3>Missing User Emails</h3><table><thead><tr><th>User Path</th><th>Person Name</th><th>Type Email</th><th>Status</th></tr></thead><tbody>${rows.map(row => { const key = normalizeName(row.personName); const savedEmail = getSavedEmailForName(row.personName); return `<tr><td class="path-cell">${makeClickablePath(row.path)}</td><td>${escapeHTML(row.personName)}</td><td><input class="manual-email-input" data-person-name="${escapeHTML(row.personName)}" data-person-key="${escapeHTML(key)}" value="${escapeHTML(savedEmail)}" placeholder="type email..." /></td><td class="email-status-warning">Needs email</td></tr>`; }).join("")}</tbody></table></div>`;
+}
+
+function renderEmailsView() {
+  const tbody = document.querySelector("#outputTable tbody");
+  const header = document.getElementById("outputTableHeader");
+  header.innerHTML = `<th>Emails Tool</th>`;
+  const missingRows = getMissingEmailRows();
+  const attachableRows = getAttachableSavedEmailRows();
+  pendingEmailAttachments = { rows: attachableRows };
+  tbody.innerHTML = `<tr><td><div class="emails-tool-wrap"><div class="notice">Use this tab to fill blank user emails. Saved emails are remembered by person name and can be attached again when that name appears in future uploaded files.</div><div class="email-tool-actions"><button class="green" onclick="saveManualEmails()">Save Typed Emails</button><button class="orange" onclick="attachSavedEmails()">Attach Saved Emails</button><button class="secondary" onclick="exportSavedEmailLibrary()">Export Email Library</button><input type="file" id="emailLibraryImportInput" accept=".json,.xlsx,.xls,.csv" style="display:none;" onchange="handleEmailLibraryImport(event)" /><button class="secondary" onclick="document.getElementById('emailLibraryImportInput').click()">Upload Email Library</button></div><div class="notice">Missing emails: <strong>${missingRows.length}</strong><br>Saved emails ready to attach: <strong>${attachableRows.length}</strong><br>Saved email library size: <strong>${Object.keys(savedPersonEmails || {}).length}</strong></div>${renderAttachableSavedEmailsTable(attachableRows)}${renderMissingEmailsTable(missingRows)}</div></td></tr>`;
+}
+
+function saveManualEmails() {
+  const inputs = Array.from(document.querySelectorAll(".manual-email-input"));
+  let saved = 0;
+  const invalid = [];
+  inputs.forEach(input => {
+    const personName = input.getAttribute("data-person-name") || "";
+    const email = String(input.value || "").trim();
+    if (!email) return;
+    if (!isLikelyEmail(email)) { invalid.push({ personName, email }); return; }
+    setSavedEmailForName(personName, email); saved++;
+  });
+  if (invalid.length) alert(`Some emails do not look valid and were not saved:\n\n${invalid.slice(0, 20).map(item => `${item.personName}: ${item.email}`).join("\n")}`);
+  setStatus(`Saved ${saved} manual emails`);
+  renderOutputTable();
+}
+
+function attachSavedEmails() {
+  const attachableRows = getAttachableSavedEmailRows();
+  if (!attachableRows.length) { alert("No saved emails are ready to attach."); return; }
+  let attached = 0;
+  attachableRows.forEach(row => {
+    const savedEmail = getSavedEmailForName(row.personName);
+    const person = people.find(p => normalizeName(p.name) === normalizeName(row.personName));
+    if (person && savedEmail && !person.email) { person.email = savedEmail; attached++; }
+  });
+  setStatus(`Attached ${attached} saved emails by name`);
+  alert(`Attached ${attached} saved emails by matching saved person names.`);
+  renderAll();
+}
+
+function exportSavedEmailLibrary() {
+  const rows = Object.entries(savedPersonEmails || {}).map(([nameKey, email]) => ({ nameKey, email }));
+  if (!rows.length) { alert("No saved emails to export."); return; }
+  const payload = { type: "SafeliteSavedEmailLibrary", version: 1, exportedAt: new Date().toISOString(), savedPersonEmails };
+  const date = new Date().toISOString().slice(0, 10);
+  downloadBlob(JSON.stringify(payload, null, 2), `safelite_saved_email_library_${date}.json`, "application/json;charset=utf-8;");
+}
+
+function emailLibraryFromRows(rows) {
+  const imported = {};
+  rows.forEach(row => {
+    const keys = Object.keys(row);
+    const nameKeyHeader = keys.find(k => normalizeHeader(k) === "namekey" || normalizeHeader(k) === "name key");
+    const nameHeader = keys.find(k => normalizeHeader(k) === "name" || normalizeHeader(k) === "person name" || normalizeHeader(k) === "users");
+    const emailHeader = keys.find(k => normalizeHeader(k).includes("email") || normalizeHeader(k).includes("studio email"));
+    const rawName = nameKeyHeader ? row[nameKeyHeader] : nameHeader ? row[nameHeader] : "";
+    const rawEmail = emailHeader ? row[emailHeader] : "";
+    const nameKey = normalizeName(rawName);
+    const email = String(rawEmail || "").trim();
+    if (nameKey && email && isLikelyEmail(email)) imported[nameKey] = email;
+  });
+  return imported;
+}
+
+function handleEmailLibraryImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      let imported = {};
+      if (file.name.toLowerCase().endsWith(".json")) {
+        const payload = JSON.parse(e.target.result);
+        if (payload.type === "SafeliteSavedEmailLibrary" && payload.savedPersonEmails) imported = payload.savedPersonEmails;
+        else if (payload.savedPersonEmails) imported = payload.savedPersonEmails;
+        else { alert("This JSON does not look like a saved email library."); return; }
+      } else {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: "array" });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+        imported = emailLibraryFromRows(rows);
+      }
+      let added = 0; let updated = 0;
+      Object.entries(imported || {}).forEach(([nameKey, email]) => { const cleanKey = normalizeName(nameKey); const cleanEmail = String(email || "").trim(); if (!cleanKey || !cleanEmail) return; if (savedPersonEmails[cleanKey]) updated++; else added++; savedPersonEmails[cleanKey] = cleanEmail; });
+      setStatus(`Email library loaded: ${added} added, ${updated} updated`);
+      alert(`Email library loaded.\n\nAdded: ${added}\nUpdated: ${updated}`);
+      renderAll();
+    } catch (error) { console.error(error); alert("Could not import the saved email library."); }
+  };
+  if (file.name.toLowerCase().endsWith(".json")) reader.readAsText(file); else reader.readAsArrayBuffer(file);
+  event.target.value = "";
 }
 
 function clickableName(name) {
@@ -1802,7 +1957,7 @@ function getCurrentViewExportRows() {
 
   if (currentViewMode === "users") {
     const safeliteEmailSet = new Set(safeliteUsersEmails.map(normalizeEmail));
-    return [{ "Users": "Safelite", "Studio Email Address": safeliteUsersEmails.join(", ") }, ...getOrgPathRows().map(row => ({ "Users": row.path, "Studio Email Address": safeliteEmailSet.has(normalizeEmail(row.email || "")) ? "" : (row.email || "") }))];
+    return [{ "Users": "Safelite", "Studio Email Address": safeliteUsersEmails.join(", ") }, ...getOrgPathRows().map(row => { const rowEmail = getEmailByName(row.personName) || ""; return ({ "Users": row.path, "Studio Email Address": safeliteEmailSet.has(normalizeEmail(rowEmail)) ? "" : rowEmail }); })];
   }
 
   if (currentViewMode === "filters") {
@@ -1900,7 +2055,8 @@ function saveLocal() {
     currentViewMode,
     filledReportEmails,
     orgBlueprint: buildOrgBlueprint(),
-    safeliteUsersEmails
+    safeliteUsersEmails,
+    savedPersonEmails
   };
 
   localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
@@ -1933,6 +2089,7 @@ function loadLocal() {
     org = payload.org || [];
     filledReportEmails = payload.filledReportEmails || {};
     safeliteUsersEmails = Array.isArray(payload.safeliteUsersEmails) ? payload.safeliteUsersEmails : [];
+    savedPersonEmails = payload.savedPersonEmails || {};
     currentViewMode = payload.currentViewMode || "org";
 
     if (typeof payload.includeEmail === "boolean") {
@@ -2040,5 +2197,3 @@ renderAll();
 
 </body>
 </html>
-
-
