@@ -1345,24 +1345,28 @@ function drawAvatar(c, god, x, y, scale) {
     c.fillRect(x - 15*s, y + 7*s, 2*s, 2*s);
   }
   if (god.id === "hades") {
-    c.fillStyle = "#171026";
-    c.fillRect(x - 7*s, y - 4*s, 14*s, 17*s);
-    c.fillStyle = "#5b2cff";
-    c.fillRect(x - 9*s, y - 5*s, 18*s, 5*s);
-    c.fillStyle = "#c7b08a";
-    c.fillRect(x - 7*s, y - 13*s, 14*s, 10*s);
+    const eyePulse = 0.75 + Math.sin(matchTime * 0.24) * 0.25;
+    c.fillStyle = "#120a1d";
+    c.fillRect(x - 9*s, y - 4*s, 18*s, 18*s);
+    c.fillStyle = "#2a173f";
+    c.fillRect(x - 8*s, y - 5*s, 16*s, 6*s);
     c.fillStyle = "#090712";
+    c.fillRect(x - 6*s, y - 3*s, 12*s, 6*s);
     c.fillRect(x - 8*s, y - 15*s, 16*s, 4*s);
-    c.fillRect(x - 5*s, y - 4*s, 10*s, 5*s);
     c.fillStyle = "#9dffef";
+    c.globalAlpha = eyePulse;
     c.fillRect(x - 5*s, y - 10*s, 3*s, 2*s);
     c.fillRect(x + 2*s, y - 10*s, 3*s, 2*s);
-    c.fillStyle = "#5b2cff";
-    c.fillRect(x - 7*s, y - 20*s, 3*s, 7*s);
-    c.fillRect(x - 1*s, y - 22*s, 3*s, 9*s);
-    c.fillRect(x + 5*s, y - 20*s, 3*s, 7*s);
+    c.globalAlpha = 1;
+    c.fillStyle = "#4f2a74";
+    c.fillRect(x - 8*s, y - 21*s, 4*s, 8*s);
+    c.fillRect(x - 1*s, y - 23*s, 3*s, 10*s);
+    c.fillRect(x + 5*s, y - 21*s, 4*s, 8*s);
     c.fillStyle = "#9dffef";
     c.fillRect(x - 1*s, y - 19*s, 2*s, 5*s);
+    c.fillStyle = "#ff7a45";
+    c.fillRect(x - 6*s, y + 11*s, 4*s, 2*s);
+    c.fillRect(x + 2*s, y + 11*s, 4*s, 2*s);
     c.fillRect(x + 12*s, y - 18*s, 2*s, 31*s);
     c.fillRect(x + 9*s, y - 18*s, 8*s, 2*s);
     c.fillRect(x + 9*s, y - 22*s, 2*s, 5*s);
@@ -6250,7 +6254,8 @@ function drawPixelGod(c, p, x, y, s) {
   const g = p.god;
   const dir = p.facing;
   const raFloat = p.godId === "ra" ? Math.sin(matchTime * 0.08) * 2.2 : 0;
-  const bob = Math.sin(p.anim * 6) * (p.grounded && p.action === "run" ? 3 : 1) + raFloat;
+  const hadesFloat = p.godId === "hades" ? Math.sin(matchTime * 0.06 + p.anim * 2.2) * 2.8 : 0;
+  const bob = Math.sin(p.anim * 6) * (p.grounded && p.action === "run" ? 3 : 1) + raFloat + hadesFloat;
   const hitLean = p.hitstun > 0 ? -dir * 7 : 0;
   const pose = getPoseForMove(p);
   const atkPose = getAttackPose(p);
@@ -6271,6 +6276,7 @@ function drawPixelGod(c, p, x, y, s) {
   c.fillStyle = g.dark;
   const isBastet = p.godId === "bastet";
   let legSpread = p.action === "run" ? Math.sin(p.anim * 10) * 7 : 3;
+  if (p.godId === "hades") legSpread = p.action === "run" ? Math.sin(p.anim * 6) * 3.2 : 1.6;
   legSpread += pose.legSpread || 0;
   const crouch = (pose.crouch || 0) + (isBastet ? 3 + Math.sin(p.anim * 5) * 1.2 : 0);
   const raRunLean = p.godId === "ra" && p.action === "run" ? dir * 3.8 : 0;
@@ -6291,6 +6297,25 @@ function drawPixelGod(c, p, x, y, s) {
 
   c.fillStyle = g.color;
   c.fillRect(px(x - sc(16) + hitLean + bodyLean), px(y - sc(26) + bob + crouch), sc(bodyInnerW), sc(bodyInnerH));
+  if (p.godId === "hades") {
+    const moveTrail = Math.abs(p.vx) > 2 ? -dir * (8 + Math.min(14, Math.abs(p.vx) * 0.6)) : -dir * 4;
+    const robeSway = Math.sin(matchTime * 0.08 + p.anim * 5) * 3.5;
+    c.fillStyle = "#120a1d";
+    c.fillRect(px(x - sc(26) + hitLean + bodyLean + moveTrail), px(y - sc(8) + bob + crouch), sc(52), sc(41));
+    c.fillStyle = "#251238";
+    c.fillRect(px(x - sc(22) + hitLean + bodyLean + moveTrail * 0.7), px(y - sc(4) + bob + crouch), sc(44), sc(36));
+    c.fillStyle = "#39214f";
+    c.fillRect(px(x - sc(26) + hitLean + bodyLean + moveTrail * 0.5), px(y + sc(23) + bob + crouch), sc(52), sc(9));
+    c.fillStyle = "#9defff";
+    c.fillRect(px(x - sc(20) + hitLean + bodyLean + robeSway), px(y + sc(6) + bob + crouch), sc(3), sc(22));
+    c.fillRect(px(x + sc(17) + hitLean + bodyLean - robeSway), px(y + sc(7) + bob + crouch), sc(3), sc(22));
+    c.fillStyle = "#ff7a45";
+    c.fillRect(px(x - sc(16) + hitLean + bodyLean + moveTrail * 0.3), px(y + sc(28) + bob + crouch), sc(8), sc(3));
+    c.fillRect(px(x + sc(8) + hitLean + bodyLean + moveTrail * 0.3), px(y + sc(28) + bob + crouch), sc(8), sc(3));
+    if (matchTime % 40 < 2) spawnHadesMotionWisps(p, "idle", 1);
+    if (Math.abs(p.vx) > 1.4 && p.grounded && Math.random() < 0.22) spawnHadesMotionWisps(p, "groundDodge", 1);
+    if (p.hitstun > 0 && Math.random() < 0.28) spawnHadesWisps(p.x, p.y - 8, 2, { spread: 24, life: 24, color: ["#9defff", "#b4a2ff", "#9cffcc"] });
+  }
   if (isSobek) {
     c.fillStyle = "#1b5e3a";
     c.fillRect(px(x - dir * sc(38)), px(y - sc(4) + bob + crouch), sc(28), sc(8));
@@ -6322,6 +6347,10 @@ function drawPixelGod(c, p, x, y, s) {
     c.beginPath();
     c.ellipse(px(x), px(y + sc(30) + crouch), auraW, auraH, 0, 0, Math.PI * 2);
     c.fill();
+    if (Math.abs(p.vx) > 1.4) {
+      c.fillStyle = "rgba(21,8,34,0.5)";
+      c.fillRect(px(x - sc(30) - dir * sc(8)), px(y + sc(31) + crouch), sc(60), sc(4));
+    }
   }
   if (p.godId === "bastet") {
     const leapPose = ["bastet_scratch_rebound","bastet_low_pounce","bastet_moonlit_leap"].includes(p.attackKind);
@@ -6502,21 +6531,35 @@ function drawGodHead(c, p, x, y, s, dir, headTilt) {
     c.fillRect(px(x + dir * sc(4)), px(y - sc(45)), sc(5), sc(4));
     c.fillRect(px(x + dir * sc(22)), px(y - sc(41)), sc(5), sc(3));
   } else if (id === "hades") {
-    c.fillStyle = "#120a1d";
+    const attackFlare = (p.attackFrame > 0 || p.moveTimer > 0 || (p.currentMove && p.currentMove.inputType === "special")) ? 1.5 : 1;
+    const eyePulse = 0.76 + 0.24 * Math.sin(matchTime * 0.22);
+    const eyeFlicker = p.hitstun > 0 ? 0.45 + 0.55 * Math.sin(matchTime * 1.2) : 1;
+    c.fillStyle = "#0d0814";
     c.fillRect(px(x - sc(16)), px(y - sc(56)), sc(32), sc(28));
-    c.fillStyle = "#1f1230";
-    c.fillRect(px(x - sc(15)), px(y - sc(53)), sc(30), sc(23));
-    c.fillStyle = "#2e1742";
-    c.fillRect(px(x - sc(20)), px(y - sc(63)), sc(40), sc(10));
-    c.fillRect(px(x - sc(7)), px(y - sc(70)), sc(14), sc(7));
+    c.fillStyle = "#1a1028";
+    c.fillRect(px(x - sc(14)), px(y - sc(52)), sc(28), sc(22));
+    c.fillStyle = "#110817";
+    c.fillRect(px(x - sc(13)), px(y - sc(50)), sc(26), sc(8));
+    c.fillStyle = "#2c1740";
+    c.fillRect(px(x - sc(22)), px(y - sc(64)), sc(44), sc(8));
+    c.fillRect(px(x - sc(6)), px(y - sc(72)), sc(12), sc(7));
+    c.fillRect(px(x - sc(19)), px(y - sc(69)), sc(6), sc(6));
+    c.fillRect(px(x + sc(13)), px(y - sc(69)), sc(6), sc(6));
     c.fillStyle = "#9defff";
-    c.fillRect(px(x - sc(8) + dir * sc(3)), px(y - sc(46)), sc(5), sc(3));
-    c.fillRect(px(x + sc(3) + dir * sc(3)), px(y - sc(46)), sc(5), sc(3));
-    c.fillStyle = "#ff6a3d";
+    c.globalAlpha = eyePulse * eyeFlicker * attackFlare;
+    c.fillRect(px(x - sc(8) + dir * sc(3)), px(y - sc(45)), sc(5), sc(3));
+    c.fillRect(px(x + sc(3) + dir * sc(3)), px(y - sc(45)), sc(5), sc(3));
+    c.globalAlpha = 1;
+    c.fillStyle = "#ff7a45";
     c.fillRect(px(x - sc(2)), px(y - sc(39)), sc(4), sc(2));
     c.fillStyle = "#7df9c7";
-    c.fillRect(px(x - dir * sc(19)), px(y - sc(50)), sc(4), sc(4));
-    c.fillRect(px(x - dir * sc(23)), px(y - sc(46)), sc(3), sc(4));
+    c.fillRect(px(x - dir * sc(21)), px(y - sc(50)), sc(4), sc(4));
+    c.fillRect(px(x - dir * sc(25)), px(y - sc(46)), sc(3), sc(4));
+    c.fillStyle = "rgba(157,239,255,0.45)";
+    for (let i = 0; i < 3; i++) {
+      const smokeDrift = ((matchTime + i * 21) % 48) / 48;
+      c.fillRect(px(x - sc(3) + i * sc(3) - sc(1)), px(y - sc(82) + sc(smokeDrift * 10)), sc(2), sc(2));
+    }
   }
 
   else if (id === "thor") {
@@ -6670,13 +6713,23 @@ function drawGodWeapon(c, p, x, y, s, dir, pose) {
       c.fillRect(px(x + dir * sc(36) + strike), px(y - sc(18) + raise), sc(30 + reach), sc(4));
     }
   } else if (p.godId === "hades") {
+    const attacking = p.attackFrame > 0 || p.moveTimer > 0;
+    const special = p.currentMove && p.currentMove.inputType === "special";
+    const reachBoost = attacking ? 10 : 0;
+    c.fillStyle = "#2f1848";
+    c.fillRect(px(x + dir * sc(29) + strike), px(y - sc(35) + raise), sc(6), sc(58 + reachBoost));
     c.fillStyle = "#4b2a7a";
-    c.fillRect(px(x + dir * sc(29) + strike), px(y - sc(31) + raise), sc(6), sc(52));
+    c.fillRect(px(x + dir * sc(28) + strike), px(y - sc(38) + raise), sc(8), sc(12 + reachBoost * 0.3));
     c.fillStyle = "#9defff";
-    c.fillRect(px(x + dir * sc(24) + strike), px(y - sc(34) + raise), sc(16), sc(4));
-    c.fillRect(px(x + dir * sc(28) + strike), px(y - sc(42) + raise), sc(8), sc(10));
-    c.fillRect(px(x + dir * sc(20) + strike), px(y - sc(38) + raise), sc(5), sc(8));
-    c.fillRect(px(x + dir * sc(39) + strike), px(y - sc(38) + raise), sc(5), sc(8));
+    c.fillRect(px(x + dir * sc(23) + strike), px(y - sc(37) + raise), sc(18 + reach * 0.25), sc(4));
+    c.fillRect(px(x + dir * sc(27) + strike), px(y - sc(47) + raise), sc(10), sc(13 + reachBoost * 0.4));
+    c.fillRect(px(x + dir * sc(19) + strike), px(y - sc(42) + raise), sc(5), sc(9));
+    c.fillRect(px(x + dir * sc(40) + strike), px(y - sc(42) + raise), sc(5), sc(9));
+    if (attacking || special) {
+      c.fillStyle = "rgba(14,8,22,0.65)";
+      c.fillRect(px(x + dir * sc(8) + strike), px(y - sc(33) + raise), sc(22), sc(12));
+      if (special) c.fillRect(px(x + dir * sc(1) + strike), px(y - sc(30) + raise), sc(16), sc(8));
+    }
   } else if (p.godId === "thor") {
     c.fillStyle = "#cce3ff";
     c.fillRect(px(x + dir * sc(33) + strike), px(y - sc(30) + raise), sc(30), sc(24));
