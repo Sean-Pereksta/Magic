@@ -2550,8 +2550,8 @@ const ATTACK_DEFS = {
     heavy:{neutral:{id:"sobek_heavy_n",directionVariant:"neutral",startup:10,active:7,recovery:16,damage:15,knock:15.2,angle:-0.18,hitbox:{x:40,y:-12,w:90,h:46},effects:{visualType:"jawSnap"}},up:{id:"sobek_heavy_u",directionVariant:"up",startup:9,active:7,recovery:16,damage:14,knock:14.6,angle:-1.2,hitbox:{x:16,y:-100,w:86,h:104},effects:{visualType:"waterBurst"}},down:{id:"sobek_heavy_d",directionVariant:"down",startup:9,active:8,recovery:17,damage:15,knock:14.8,angle:-0.86,hitbox:{x:-30,y:16,w:112,h:74},effects:{visualType:"deathRoll"}}}
   },
   bastet: {
-    light: { neutral:{id:"bastet_light_n",godId:"bastet",inputType:"light",directionVariant:"neutral",startup:2,active:5,recovery:6,damage:5.5,knock:5.8,angle:-0.08,hitbox:{x:34,y:-10,w:66,h:34},effects:{visualType:"bastetClawSwipe"}}, up:{id:"bastet_light_u",godId:"bastet",inputType:"light",directionVariant:"up",startup:3,active:6,recovery:8,damage:6.5,knock:7.2,angle:-1.12,hitbox:{x:18,y:-58,w:58,h:64},effects:{visualType:"bastetRisingClaw"},selfImpulse:{x:0,y:-2.4}}, down:{id:"bastet_light_d",godId:"bastet",inputType:"light",directionVariant:"down",startup:3,active:6,recovery:8,damage:5.8,knock:6.6,angle:0.08,hitbox:{x:24,y:22,w:78,h:24},effects:{visualType:"bastetLowSweep"},selfImpulse:{x:2.6,y:0}}},
-    heavy:{neutral:{id:"bastet_heavy_n",godId:"bastet",inputType:"heavy",directionVariant:"neutral",startup:6,active:7,recovery:12,damage:11,knock:12,angle:-0.25,hitbox:{x:42,y:-14,w:92,h:46},effects:{visualType:"bastetPouncingMaul"},selfImpulse:{x:6.5,y:-1.2}},up:{id:"bastet_heavy_u",godId:"bastet",inputType:"heavy",directionVariant:"up",startup:5,active:8,recovery:13,damage:10,knock:12.8,angle:-1.22,hitbox:{x:16,y:-88,w:78,h:96},effects:{visualType:"bastetMoonLauncher"},selfImpulse:{x:0,y:-5.5}},down:{id:"bastet_heavy_d",godId:"bastet",inputType:"heavy",directionVariant:"down",startup:6,active:8,recovery:13,damage:9,knock:10,angle:-0.15,hitbox:{x:-54,y:16,w:150,h:34},effects:{visualType:"bastetTailTrip"},selfImpulse:{x:-1.8,y:0}}}
+    light: { neutral:{id:"bastet_light_n",godId:"bastet",inputType:"light",directionVariant:"neutral",startup:2,active:5,recovery:6,damage:5.5,knock:5.8,angle:-0.08,hitbox:{x:34,y:-10,w:66,h:34},effects:{visualType:"bastetQuickClawSwipe"}}, up:{id:"bastet_light_u",godId:"bastet",inputType:"light",directionVariant:"up",startup:3,active:6,recovery:8,damage:6.5,knock:7.2,angle:-1.12,hitbox:{x:18,y:-58,w:58,h:64},effects:{visualType:"bastetRisingCatScratch"},selfImpulse:{x:0,y:-2.4}}, down:{id:"bastet_light_d",godId:"bastet",inputType:"light",directionVariant:"down",startup:3,active:6,recovery:8,damage:5.8,knock:6.6,angle:0.08,hitbox:{x:24,y:22,w:78,h:24},effects:{visualType:"bastetLowTripSwipe"},selfImpulse:{x:2.6,y:0}}},
+    heavy:{neutral:{id:"bastet_heavy_n",godId:"bastet",inputType:"heavy",directionVariant:"neutral",startup:6,active:7,recovery:12,damage:11,knock:12,angle:-0.25,hitbox:{x:42,y:-14,w:92,h:46},effects:{visualType:"bastetLeapingDoubleClaw"},selfImpulse:{x:6.5,y:-1.2}},up:{id:"bastet_heavy_u",godId:"bastet",inputType:"heavy",directionVariant:"up",startup:5,active:8,recovery:13,damage:10,knock:12.8,angle:-1.22,hitbox:{x:16,y:-88,w:78,h:96},effects:{visualType:"bastetRisingCatScratch"},selfImpulse:{x:0,y:-5.5}},down:{id:"bastet_heavy_d",godId:"bastet",inputType:"heavy",directionVariant:"down",startup:6,active:8,recovery:13,damage:9,knock:10,angle:-0.15,hitbox:{x:-54,y:16,w:150,h:34},effects:{visualType:"bastetTailTripSlam"},selfImpulse:{x:-1.8,y:0}}}
   },
   hades: {
     light: { neutral:{id:"hades_light_n",godId:"hades",inputType:"light",directionVariant:"neutral",startup:2,active:6,recovery:8,damage:5.9,knock:5.8,angle:-0.02,hitbox:{x:40,y:-8,w:84,h:34},effects:{visualType:"hadesBidentSlash"}}, up:{id:"hades_light_u",godId:"hades",inputType:"light",directionVariant:"up",startup:3,active:6,recovery:9,damage:6.8,knock:7.4,angle:-1.2,hitbox:{x:20,y:-78,w:76,h:86},effects:{visualType:"hadesSoulRake"}}, down:{id:"hades_light_d",godId:"hades",inputType:"light",directionVariant:"down",startup:3,active:7,recovery:10,damage:6,knock:6.1,angle:-0.03,hitbox:{x:24,y:24,w:108,h:24},effects:{visualType:"hadesGraveSweep"}}},
@@ -6214,10 +6214,13 @@ function drawPixelGod(c, p, x, y, s) {
   }
   drawGodHead(c, p, x + hitLean + bodyLean, y + bob + crouch, s, dir, pose.headTilt || 0);
 
+  const bastetAttackPoseHandled = drawBastetAttackPose(c, p, x + hitLean + bodyLean, y + bob + crouch, s, dir);
   // Arms
-  c.fillStyle = g.color;
-  c.fillRect(px(x - sc(30) + hitLean + bodyLean + (pose.backArmX || 0)), px(y - sc(16) + bob + crouch + (pose.backArmY || 0)), sc(13), sc(31));
-  c.fillRect(px(x + sc(17) + hitLean + bodyLean + (pose.frontArmX || 0)), px(y - sc(16) + bob + crouch + (pose.frontArmY || 0)), sc(13), sc(31));
+  if (!bastetAttackPoseHandled) {
+    c.fillStyle = g.color;
+    c.fillRect(px(x - sc(30) + hitLean + bodyLean + (pose.backArmX || 0)), px(y - sc(16) + bob + crouch + (pose.backArmY || 0)), sc(13), sc(31));
+    c.fillRect(px(x + sc(17) + hitLean + bodyLean + (pose.frontArmX || 0)), px(y - sc(16) + bob + crouch + (pose.frontArmY || 0)), sc(13), sc(31));
+  }
 
   c.fillStyle = g.accent;
   c.fillRect(px(x + sc(23) + hitLean + bodyLean + (pose.shieldX || 0)), px(y + sc(8) + bob + crouch + (pose.shieldY || 0)), sc(14), sc(10));
@@ -6253,7 +6256,7 @@ function drawPixelGod(c, p, x, y, s) {
     }
   }
 
-  drawGodWeapon(c, p, x + hitLean + bodyLean, y + bob + crouch, s, dir, pose);
+  if (!bastetAttackPoseHandled) drawGodWeapon(c, p, x + hitLean + bodyLean, y + bob + crouch, s, dir, pose);
 }
 
 function drawGodHead(c, p, x, y, s, dir, headTilt) {
@@ -6651,6 +6654,7 @@ function drawActiveMoveVisual(ctx, player) {
 }
 function drawDirectionalSwing(a, owner) {
   if (!a || !owner) return;
+  if (owner.godId === "bastet") return;
   const dir = owner.facing || 1;
   const sx = worldToScreenX(a.x + a.w/2);
   const sy = worldToScreenY(a.y + a.h/2);
@@ -6685,6 +6689,35 @@ function drawBastetClawMarks(x, y, w, h, variant = "neutral") {
     ctx.stroke();
   }
   ctx.restore();
+}
+function drawBastetAttackPose(c, p, x, y, s, dir) {
+  if (p.godId !== "bastet" || !p.currentMove || !(p.currentMove.id || "").startsWith("bastet_")) return false;
+  const phase = getMoveProgress(p).phase || "startup";
+  const moveId = p.currentMove.id;
+  const isUp = moveId.endsWith("_u");
+  const isDown = moveId.endsWith("_d");
+  const isHeavy = moveId.includes("heavy");
+  const reach = phase === "active" ? (isHeavy ? 34 : 24) : 10;
+  const clawCount = phase === "active" ? (isHeavy ? 6 : 3) : 0;
+  c.fillStyle = p.god.color;
+  c.fillRect(Math.round(x + dir * s * 17), Math.round(y - s * (phase === "startup" ? 8 : 16)), Math.round(13 * s), Math.round(31 * s));
+  if (isHeavy && !isDown) c.fillRect(Math.round(x - dir * s * 30), Math.round(y - s * (phase === "startup" ? 8 : 16)), Math.round(13 * s), Math.round(31 * s));
+  if (moveId === "bastet_heavy_d") {
+    c.fillStyle = "#171717";
+    c.fillRect(Math.round(x - dir * s * 56), Math.round(y + s * 14), Math.round(64 * s), Math.round(8 * s));
+    c.fillStyle = "rgba(182,109,255,0.5)";
+    c.fillRect(Math.round(x - dir * s * 58), Math.round(y + s * 18), Math.round(70 * s), Math.round(6 * s));
+    return true;
+  }
+  if (clawCount > 0) for (let i = 0; i < clawCount; i++) {
+    const dy = (i - (clawCount - 1) / 2) * (3.6 * s);
+    const tipY = y + (isUp ? -24 : (isDown ? 15 : 2)) * s + dy;
+    c.strokeStyle = "rgba(182,109,255,0.9)"; c.lineWidth = Math.max(2, Math.round(5 * s)); c.lineCap = "round";
+    c.beginPath(); c.moveTo(x + dir * (27 * s), y - 7 * s + dy); c.lineTo(x + dir * ((27 + reach) * s), tipY); c.stroke();
+    c.strokeStyle = "#fff2cb"; c.lineWidth = Math.max(1, Math.round(2 * s));
+    c.beginPath(); c.moveTo(x + dir * (29 * s), y - 7 * s + dy); c.lineTo(x + dir * ((27 + reach) * s), tipY); c.stroke();
+  }
+  return true;
 }
 
 function drawAttack(a) {
@@ -6737,7 +6770,7 @@ function drawAttack(a) {
     ctx.globalAlpha = 1;
     return;
   }
-  if (["bastetClawSwipe","bastetQuickClaws","bastetRisingClaw","bastetLowSweep","bastetLowProwlSwipe","bastetPouncingMaul","bastetMoonLauncher","bastetTailTrip","bastetMoonPounce","bastetMoonlitLeap","bastetScratchRebound","bastetLowPounce","bastetSpiritCatExplosion","bastetSpiritCatBurst","bastetCharmingGaze"].includes(type)) {
+  if (["bastetClawSwipe","bastetQuickClaws","bastetRisingClaw","bastetLowSweep","bastetLowProwlSwipe","bastetPouncingMaul","bastetMoonLauncher","bastetTailTrip","bastetMoonPounce","bastetMoonlitLeap","bastetScratchRebound","bastetLowPounce","bastetSpiritCatExplosion","bastetSpiritCatBurst","bastetCharmingGaze","bastetQuickClawSwipe","bastetRisingCatScratch","bastetLowTripSwipe","bastetLeapingDoubleClaw","bastetTailTripSlam"].includes(type)) {
     const v = (type.includes("Rising") || type.includes("MoonLauncher") || type.includes("Moonlit")) ? "up" : (type.includes("Low") || type.includes("TailTrip") ? "down" : "neutral");
     if (type === "bastetCharmingGaze") {
       ctx.globalAlpha = 0.25; ctx.fillStyle = "#b66dff"; ctx.beginPath(); ctx.moveTo(cx - dir * w * .3, cy); ctx.lineTo(cx + dir * w * .6, cy - h * .35); ctx.lineTo(cx + dir * w * .6, cy + h * .35); ctx.closePath(); ctx.fill();
@@ -6756,6 +6789,7 @@ function drawAttack(a) {
       spark(8, "rgba(255,209,102,.95)");
     } else {
       drawBastetClawMarks(cx, cy, w, h, v);
+      if (type === "bastetMoonPounce") { ctx.globalAlpha = 0.26; ctx.strokeStyle = "#b66dff"; ctx.lineWidth = screenScale(11); ctx.beginPath(); ctx.moveTo(cx - dir * w * .9, cy + h * .2); ctx.lineTo(cx - dir * w * .25, cy + h * .02); ctx.stroke(); }
       if (type === "bastetScratchRebound") { ctx.globalAlpha = 0.35; ctx.strokeStyle = "#b66dff"; ctx.lineWidth = screenScale(9); ctx.beginPath(); ctx.moveTo(cx - dir * w * .72, cy + h * .22); ctx.lineTo(cx + dir * w * .22, cy - h * .28); ctx.stroke(); spark(7, "rgba(255,209,102,.95)"); }
       if (type === "bastetLowPounce" || type === "bastetLowProwlSwipe") { ctx.globalAlpha = 0.3; ctx.fillStyle = "#b66dff"; ctx.fillRect(cx - w * 0.35, cy + h * 0.05, w * 0.7, h * 0.22); }
       if (type.includes("Pounce") || type.includes("Moonlit")) { ctx.globalAlpha = 0.25; ctx.strokeStyle = "#b66dff"; ctx.lineWidth = screenScale(8); ctx.beginPath(); ctx.moveTo(cx - dir * w * .65, cy + h * .1); ctx.lineTo(cx - dir * w * .05, cy); ctx.stroke(); }
