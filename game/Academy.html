@@ -2068,7 +2068,11 @@ function spawnBullet() {
 }
 
 
-function spawnGoblinBlood(hitX, hitY, hitZ, shotDir = null) {
+function spawnBoneDust(hitX, hitY, hitZ, shotDir = null) { return spawnGoblinBlood(hitX, hitY, hitZ, shotDir, 0xf3f3f3); }
+function spawnRockChips(hitX, hitY, hitZ, shotDir = null) { return spawnGoblinBlood(hitX, hitY, hitZ, shotDir, 0x9a8f84); }
+function spawnShadowSmoke(hitX, hitY, hitZ, shotDir = null) { return spawnGoblinBlood(hitX, hitY, hitZ, shotDir, 0x8b5cff); }
+function spawnEnemyHitParticles(enemy, hitX, hitY, hitZ, shotDir){ if (enemy.typeId === "skeleton") return spawnBoneDust(hitX,hitY,hitZ,shotDir); if (enemy.typeId === "stoneImp") return spawnRockChips(hitX,hitY,hitZ,shotDir); if (enemy.typeId === "shadowStalker") return spawnShadowSmoke(hitX,hitY,hitZ,shotDir); return spawnGoblinBlood(hitX,hitY,hitZ,shotDir); }
+function spawnGoblinBlood(hitX, hitY, hitZ, shotDir = null, tint = null) {
   if (!shouldSpawnVisualEffectAt(new THREE.Vector3(hitX, hitY, hitZ), CULL_SETTINGS.particleDistance)) return;
   while (bloodParticles.length + BLOOD_BURST_COUNT > BLOOD_PARTICLE_LIMIT) {
     const old = bloodParticles.shift();
@@ -2167,7 +2171,7 @@ function applyBulletDamageToEnemy(e, bestHit, b, hitPos) {
   const shotDirection = b?.vel ? b.vel.clone().normalize() : new THREE.Vector3(e.mesh.position.x - player.pos.x, 0, e.mesh.position.z - player.pos.z).normalize();
   e.lastBloodTime = e.lastBloodTime || 0;
   if (performance.now() - e.lastBloodTime > 45) {
-    spawnGoblinBlood(bloodHitPos.x, bloodHitPos.y, bloodHitPos.z, shotDirection);
+    spawnEnemyHitParticles(e, bloodHitPos.x, bloodHitPos.y, bloodHitPos.z, shotDirection);
     e.lastBloodTime = performance.now();
   }
   if (b.projectileColor && typeof spawnMagicImpact === "function") spawnMagicImpact((hitPos || b.pos).clone(), b.projectileColor, b.magicType === "rune" ? 8 : 5);
@@ -2316,7 +2320,33 @@ const enemyTypes = {
   }
 };
 
+const ENEMY_TYPES = {
+  goblin: { name:"Goblin", unlockWave:1, health:70, speed:2.3, damage:8, coinReward:80, bodyRadius:0.55, boardDamage:1, type:"goblin", meshType:"green", scale:1 },
+  warg: { name:"Grave Warg", unlockWave:4, health:95, speed:3.4, damage:9, coinReward:120, bodyRadius:0.62, boardDamage:1, type:"beast" },
+  skeleton: { name:"Bone Stalker", unlockWave:6, health:150, speed:1.9, damage:11, coinReward:165, bodyRadius:0.52, boardDamage:1, type:"undead" },
+  cultist: { name:"Cursed Cultist", unlockWave:8, health:120, speed:1.7, damage:8, coinReward:190, bodyRadius:0.5, boardDamage:1, type:"caster", ranged:true },
+  stoneImp: { name:"Stone Imp", unlockWave:10, health:260, speed:1.15, damage:16, coinReward:240, bodyRadius:0.72, boardDamage:2, type:"demon", armored:true },
+  shadowStalker: { name:"Shadow Stalker", unlockWave:13, health:205, speed:2.7, damage:14, coinReward:290, bodyRadius:0.58, boardDamage:1, type:"shadow", phaseDash:true }
+};
+const ENEMY_UNLOCK_MESSAGES = {
+  warg: "Wave 4: Grave Wargs are hunting.", skeleton: "Wave 6: Bone Stalkers rise.", cultist: "Wave 8: Cursed Cultists approach.", stoneImp: "Wave 10: Stone Imps breach the walls.", shadowStalker: "Wave 13: Shadow Stalkers enter the dark."
+};
+const announcedEnemyTypes = {};
+
+function createEnemyMesh(typeId) {
+  if (typeId === "goblin") return createGoblinMesh("green");
+  const group = new THREE.Group();
+  if (typeId === "warg") { const m=new THREE.MeshStandardMaterial({color:0x3f4348,roughness:0.9}); const body=new THREE.Mesh(new THREE.BoxGeometry(1.2,0.45,0.55),m); body.position.y=0.55; group.add(body); const head=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.35,0.45),m); head.position.set(0,0.62,-0.48); group.add(head); for (const x of [-0.4,0.4]) for (const z of [-0.22,0.22]){const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.08,0.45,6),m); leg.position.set(x,0.2,z); group.add(leg);} const eyeMat=new THREE.MeshStandardMaterial({color:0xff3333,emissive:0xaa0000,emissiveIntensity:0.8}); for (const x of [-0.1,0.1]){const eye=new THREE.Mesh(new THREE.SphereGeometry(0.05,6,6),eyeMat); eye.position.set(x,0.67,-0.72); group.add(eye);} }
+  else if (typeId === "skeleton") { const bone=new THREE.MeshStandardMaterial({color:0xdfdfd8,roughness:0.8}); const spine=new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.08,0.9,6),bone); spine.position.y=0.9; group.add(spine); const skull=new THREE.Mesh(new THREE.SphereGeometry(0.24,8,8),bone); skull.position.y=1.55; group.add(skull); for (const y of [0.95,1.07,1.19]){const rib=new THREE.Mesh(new THREE.BoxGeometry(0.58,0.05,0.08),bone); rib.position.y=y; group.add(rib);} }
+  else if (typeId === "cultist") { const robe=new THREE.MeshStandardMaterial({color:0x20202d,roughness:0.9}); const body=new THREE.Mesh(new THREE.ConeGeometry(0.45,1.35,10),robe); body.position.y=0.72; group.add(body); const hood=new THREE.Mesh(new THREE.SphereGeometry(0.3,10,10),robe); hood.position.y=1.5; group.add(hood); const face=new THREE.Mesh(new THREE.SphereGeometry(0.11,8,8),new THREE.MeshStandardMaterial({color:0x9d6dff,emissive:0x4b1e88,emissiveIntensity:0.9})); face.position.set(0,1.47,-0.18); group.add(face);} 
+  else if (typeId === "stoneImp") { const rock=new THREE.MeshStandardMaterial({color:0x6a6258,roughness:1}); const core=new THREE.Mesh(new THREE.DodecahedronGeometry(0.55,0),rock); core.position.y=0.8; group.add(core); const head=new THREE.Mesh(new THREE.DodecahedronGeometry(0.35,0),rock); head.position.y=1.42; group.add(head); for (const x of [-0.18,0.18]){const horn=new THREE.Mesh(new THREE.ConeGeometry(0.08,0.28,6),new THREE.MeshStandardMaterial({color:0x3f3830})); horn.position.set(x,1.72,-0.02); group.add(horn);} }
+  else if (typeId === "shadowStalker") { const shadow=new THREE.MeshStandardMaterial({color:0x120a1f,transparent:true,opacity:0.72,emissive:0x21083a,emissiveIntensity:0.25}); const body=new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.36,1.8,8),shadow); body.position.y=1.0; group.add(body); for (const x of [-0.07,0.07]){const eye=new THREE.Mesh(new THREE.SphereGeometry(0.05,6,6),new THREE.MeshStandardMaterial({color:0xcc88ff,emissive:0x7a2ac6,emissiveIntensity:0.95})); eye.position.set(x,1.58,-0.16); group.add(eye);} }
+  group.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
+  return group;
+}
+
 function createGoblinMesh(typeKey) {
+
   const type = enemyTypes[typeKey];
   const group = new THREE.Group();
 
@@ -2506,6 +2536,18 @@ function addGoblinGroundMarker(enemy) {
 }
 
 function spawnEnemy(typeKey = "green") {
+  if (ENEMY_TYPES[typeKey]) {
+    const def = ENEMY_TYPES[typeKey];
+    const validWindows = getUnlockedWindows();
+    if (!validWindows.length) return;
+    const win = validWindows[Math.floor(Math.random()*validWindows.length)];
+    const outsideSpawn = getOutsideWindowSpawn(win);
+    if (isInsideAnyRoomFootprint(outsideSpawn.x, outsideSpawn.z, 0.8)) return;
+    const mesh = createEnemyMesh(typeKey);
+    mesh.position.copy(outsideSpawn);
+    scene.add(mesh);
+    const enemyObj = { typeId:typeKey, typeDef:def, typeKey, mesh, pos:mesh.position, health:def.health + Math.floor(player.wave*3), maxHealth:def.health + Math.floor(player.wave*3), speed:def.speed + player.wave*0.03, damage:def.damage, reward:def.coinReward, coinReward:def.coinReward, bodyRadius:def.bodyRadius||0.55, boardDamage:def.boardDamage||1, state:"walking_to_window", windowState:"approaching", targetWindow:win, outsideStand:getWindowOutsideStandPosition(win), insideStand:getWindowInsideStandPosition(win), path:[], pathIndex:0, pathRefreshTimer:0, attackCooldown:0, throwCooldown:2.3, animTime:Math.random()*10, attackAnim:0, tearAnim:0, climbTimer:0, windowAttackTimer:0, isClimbingWindow:false, hitFlashTimer:0, leapCooldown:1.5, leapAnim:0, lungeCooldown:0, dashCooldown:2.4, castCooldown:2.8, lastSafePos:mesh.position.clone(), lastProgressPos:mesh.position.clone(), stuckTimer:0, pathFailCount:0, retargetCooldown:0, ignoreWaveKill:false, hitboxes:[{ name:"head", offset:new THREE.Vector3(0,1.35,0), radius:0.42, multiplier:2.2 },{ name:"body", offset:new THREE.Vector3(0,0.8,0), radius:0.62, multiplier:1.0 }] }; addGoblinGroundMarker(enemyObj); enemies.push(enemyObj); return enemyObj;
+  }
   const validWindows = getUnlockedWindows();
   if (!validWindows.length) {
     console.warn("No unlocked windows available for spawning enemies.");
@@ -2627,28 +2669,30 @@ function startWave() {
   waveKills = 0;
   waveRequiredKills = getWaveRequiredKills(player.wave);
   waveSpawnTimer = 0.75;
+  announceEnemyUnlocksForWave(player.wave);
 }
 
+function announceEnemyUnlocksForWave(wave){
+  for (const [id,def] of Object.entries(ENEMY_TYPES)){
+    if (id === "goblin") continue;
+    if (wave >= def.unlockWave && !announcedEnemyTypes[id]) { centerText.textContent = ENEMY_UNLOCK_MESSAGES[id] || `${def.name}s have appeared!`; announcedEnemyTypes[id]=true; break; }
+  }
+}
+
+function getAvailableEnemyTypesForWave(wave){ return Object.entries(ENEMY_TYPES).filter(([,def])=>wave>=def.unlockWave).map(([id])=>id); }
 function chooseEnemyType() {
-  const w = player.wave;
-  const r = Math.random();
-
-  // Very late dangerous enemies
-  if (w >= 10 && r < 0.10) return "armored";
-  if (w >= 9 && r < 0.20) return "spitter";
-  if (w >= 8 && r < 0.32) return "leaper";
-
-  // Mid-late waves
-  if (w >= 7 && r < 0.12) return "armored";
-  if (w >= 6 && r < 0.22) return "spitter";
-  if (w >= 5 && r < 0.34) return "leaper";
-
-  // Existing types
-  if (w >= 4 && r < 0.16) return "blue";
-  if (w >= 3 && r < 0.36) return "yellow";
-  if (w >= 2 && r < 0.58) return "red";
-
-  return "green";
+  const wave = player.wave;
+  const pool = ["green","green","green","green","goblin","goblin","goblin"];
+  if (wave >= 2) pool.push("red");
+  if (wave >= 3) pool.push("yellow");
+  if (wave >= 4) pool.push("blue","warg","warg");
+  if (wave >= 6) pool.push("skeleton","skeleton");
+  if (wave >= 8) pool.push("cultist");
+  if (wave >= 10) pool.push("stoneImp");
+  if (wave >= 13) pool.push("shadowStalker");
+  if (wave >= 12) pool.push("warg","skeleton","cultist");
+  if (wave >= 16) pool.push("stoneImp","shadowStalker");
+  return pool[Math.floor(Math.random()*pool.length)];
 }
 
 /* =========================================================
@@ -2881,8 +2925,9 @@ function tryPlayerJump() {
 
 function resolvePlayerGoblinCollisions() {
   if (!player.alive) return;
-  const minDist = PLAYER_RADIUS + GOBLIN_BODY_RADIUS;
   for (const goblin of enemies) {
+    const enemyRadius = goblin.bodyRadius || GOBLIN_BODY_RADIUS;
+    const minDist = PLAYER_RADIUS + enemyRadius;
     if (!goblin || goblin.dead || goblin.health <= 0 || !goblin.mesh) continue;
     const dx = player.pos.x - goblin.mesh.position.x;
     const dz = player.pos.z - goblin.mesh.position.z;
@@ -2907,7 +2952,7 @@ function resolveGoblinContactWithPlayer(goblin, dt) {
   if (!player.alive || !goblin || goblin.dead || goblin.health <= 0 || !goblin.mesh) return;
   const dx = player.pos.x - goblin.mesh.position.x;
   const dz = player.pos.z - goblin.mesh.position.z;
-  const minDist = PLAYER_RADIUS + GOBLIN_BODY_RADIUS;
+  const minDist = PLAYER_RADIUS + (goblin.bodyRadius || GOBLIN_BODY_RADIUS);
   const distSq = dx * dx + dz * dz;
   if (distSq <= 0.0001 || distSq >= minDist * minDist || distSq > GOBLIN_COLLISION_MAX_DIST * GOBLIN_COLLISION_MAX_DIST) return;
   const dist = Math.sqrt(distSq);
