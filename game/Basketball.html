@@ -2989,7 +2989,48 @@ function drawHadesVisualsInFrontOfPlayers(ctx) {
   hadesWisps.forEach(w=>{const t=w.life/w.max,sx=worldToScreenX(w.x),sy=worldToScreenY(w.y),r=screenScale(w.size*(0.5+0.5*t));ctx.save();ctx.globalAlpha=0.2+0.65*t;ctx.fillStyle=w.color;ctx.beginPath();ctx.arc(sx,sy,r,0,Math.PI*2);ctx.fill();if(w.tail){ctx.strokeStyle=w.color;ctx.lineWidth=screenScale(1.2);ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(sx-worldToScreenX(w.vx*10)+worldToScreenX(0),sy+screenScale(5));ctx.stroke();}ctx.restore();});
 }
 function createHadesSoulChain(owner) { hadesChains.push({ owner, x: owner.x + getFacingDir(owner) * 26, y: owner.y - 8, vx: getFacingDir(owner) * 14, life: 24, maxDist: 280, traveled: 0, hit:false }); }
-function createHadesGate(owner) { hadesGates.push({ owner, x: owner.x, y: owner.y + 18, timer: 24, radius: 86, hitCd: new Map() }); spawnHadesGateVisual(owner.x, owner.y + 18, 88, 34); spawnHadesShadowRing(owner.x, owner.y + 22, 62, 24); }
+function placeHadesGate(owner, x, y, options = {}) {
+  const gate = {
+    owner,
+    x,
+    y,
+    createdAt: now,
+    timer: options.timer || 480,
+    radius: options.radius || 44,
+    slowCd: new Map()
+  };
+  hadesGates.push(gate);
+  while (hadesGates.length > 2) hadesGates.shift();
+  spawnHadesGateVisual(x, y, 46, 36, { type: "underworldGate" });
+  spawnHadesShadowRing(x, y + 20, 42, 30, { growth: 0.22 });
+  spawnHadesWisps(x, y - 10, 5, { spread: 36, life: 36 });
+  return gate;
+}
+function triggerHadesGateTeleport(p, gate) {
+  if (!p || p.dead || p.godId !== "hades") return;
+  if (p.hadesGateCooldown > 0) return;
+  const pair = hadesGates.find(g => g !== gate && g.owner === p);
+  if (!pair) return;
+  p.hadesGateCooldown = 45;
+  p.hadesGateIntangible = Math.max(p.hadesGateIntangible || 0, 12);
+  p.invincible = Math.max(p.invincible || 0, 12);
+  spawnHadesWisps(gate.x, gate.y - 8, 7, { spread: 44, life: 34 });
+  spawnHadesWisps(pair.x, pair.y - 8, 7, { spread: 44, life: 34 });
+  spawnHadesShadowRing(gate.x, gate.y + 18, 48, 18, { growth: 0.15 });
+  spawnHadesShadowRing(pair.x, pair.y + 18, 48, 18, { growth: 0.15 });
+  p.x = pair.x;
+  p.y = pair.y - 14;
+  p.vx *= 0.75;
+  const foes = players.filter(t => t !== p && !t.dead && t.lives > 0);
+  if (foes.length) {
+    let nearest = foes[0], best = Math.hypot(nearest.x - p.x, nearest.y - p.y);
+    for (let i = 1; i < foes.length; i++) {
+      const d = Math.hypot(foes[i].x - p.x, foes[i].y - p.y);
+      if (d < best) { best = d; nearest = foes[i]; }
+    }
+    p.facing = nearest.x >= p.x ? 1 : -1;
+  }
+}
 function createHadesCursePit(owner) {
   const pitY = owner.grounded ? findPlatformBelowPoint(owner.x, owner.y - 20, 240) - 8 : owner.y + 42;
   hadesCursePits.push({ owner, x: owner.x, y: pitY, radius: 98, timer: 126, tickCd: new Map(), linger: new Map() });
@@ -3003,10 +3044,7 @@ function updateHadesAbilityMechanics() {
     players.forEach(t => { if (c.hit || t === c.owner || t.dead || t.lives <= 0 || t.invincible > 0) return; if (Math.abs(t.x - c.x) < 42 && Math.abs(t.y - c.y) < 34) { c.hit = true; t.damage += 4.5; t.hitstun = Math.max(t.hitstun || 0, 16); const pull = clamp(c.owner.x - t.x, -70, 70); t.vx += pull * 0.18; t.vy += clamp((c.owner.y - t.y) * 0.03, -2.5, 2.5); applyHadesCurse(t, 170, c.owner.id); spawnHadesImpactBurst(t.x, t.y - 16, 1.2, {cursed:true}); spawnHadesSoulHands(t.x, t.y + 10, 2); }});
     if (c.hit || c.life <= 0 || c.traveled >= c.maxDist) hadesChains.splice(i,1);
   }
-  for (let i = hadesGates.length - 1; i >= 0; i--) { const g = hadesGates[i]; g.timer--; if (!g.owner || g.owner.dead) { hadesGates.splice(i,1); continue; } if(g.timer%5===0) spawnHadesWisps(g.x,g.y-8,2,{spread:40});
-    players.forEach(t => { if (t === g.owner || t.dead || t.lives <= 0 || t.invincible > 0) return; const d = Math.hypot(t.x-g.x, t.y-g.y); if (d < g.radius) { const last = g.hitCd.get(t.id) || -999; if (now - last < 14) return; g.hitCd.set(t.id, now); t.damage += 2.8; t.hitstun = Math.max(t.hitstun || 0, 8); t.vx += ((t.x-g.x)/Math.max(1,d))*5.5; t.vy -= 2; spawnHadesImpactBurst(t.x,t.y,0.9); }});
-    if (g.timer <= 0) hadesGates.splice(i,1);
-  }
+  updateHadesGates();
   for (let i = hadesCursePits.length - 1; i >= 0; i--) { const z = hadesCursePits[i]; z.timer--; if (!z.owner || z.owner.dead) { hadesCursePits.splice(i,1); continue; } if(z.timer%8===0){spawnHadesShadowRing(z.x,z.y,z.radius*0.8,18,{growth:0.25});spawnHadesWisps(z.x,z.y-6,2,{spread:z.radius*0.6}); if(Math.random()<0.25)spawnHadesSoulHands(z.x,z.y+8,1,{spread:z.radius*0.7,life:22});}
     players.forEach(t => { if (t === z.owner || t.dead || t.lives <= 0 || t.invincible > 0) return; const inside = Math.hypot(t.x-z.x, t.y-z.y) < z.radius && t.y + t.h / 2 >= z.y - 100;
       if (!inside) return;
@@ -3022,6 +3060,67 @@ function updateHadesAbilityMechanics() {
       if (r.timer === 18 && dist < r.radius + 20 && !r.finalHit.has(t.id)) { r.finalHit.add(t.id); t.damage += 16; const nx=(t.x-r.x)/Math.max(1,dist); t.vx += nx*11; t.vy -= 11; t.hitstun = Math.max(t.hitstun || 0, isHadesCursed(t) ? 28 : 22); spawnHadesImpactBurst(t.x,t.y,1.8,{cursed:isHadesCursed(t)}); }});
     if (r.timer <= 0) hadesRealmFields.splice(i,1);
   }
+}
+function updateHadesGates() {
+  for (let i = hadesGates.length - 1; i >= 0; i--) {
+    const g = hadesGates[i];
+    if (g.seed) {
+      g.timer--;
+      g.x += g.vx;
+      g.y += g.vy;
+      g.vy += 0.25;
+      if (g.timer % 5 === 0) spawnHadesWisps(g.x, g.y, 1, { spread: 10, life: 16, color: ["#9dffef","#ff9a66","#b4a2ff"] });
+      const floorY = findPlatformBelowPoint(g.x, g.y, 120);
+      const grounded = g.y >= floorY;
+      if (grounded || g.timer <= 0) {
+        placeHadesGate(g.owner, g.x, Math.min(g.y, floorY));
+        hadesGates.splice(i, 1);
+      }
+      continue;
+    }
+    g.timer--;
+    if (!g.owner || g.owner.dead || g.owner.lives <= 0 || g.timer <= 0) { hadesGates.splice(i, 1); continue; }
+    if (g.timer % 6 === 0) spawnHadesWisps(g.x, g.y - 12, 2, { spread: 30, life: 24 });
+    if (g.owner && !g.owner.dead && Math.hypot(g.owner.x - g.x, g.owner.y - g.y) < g.radius) triggerHadesGateTeleport(g.owner, g);
+    players.forEach(t => {
+      if (t === g.owner || t.dead || t.lives <= 0) return;
+      const d = Math.hypot(t.x - g.x, t.y - g.y);
+      if (d > g.radius) return;
+      const last = g.slowCd.get(t.id) || -999;
+      if (now - last < 16) return;
+      g.slowCd.set(t.id, now);
+      t.mudSlowTimer = Math.max(t.mudSlowTimer || 0, 35);
+      t.damage += 0.5;
+      applyHadesCurse(t, 90, g.owner ? g.owner.id : null);
+      spawnHadesImpactBurst(t.x, t.y - 10, 0.6, { cursed: true });
+    });
+  }
+}
+function drawHadesGates(ctx) {
+  hadesGates.forEach((g, idx) => {
+    const sx = worldToScreenX(g.x), sy = worldToScreenY(g.y), t = g.timer / 480;
+    const pulse = 0.9 + Math.sin((now + idx * 23) * 0.13) * 0.08;
+    const w = screenScale(22 * pulse), h = screenScale(44 * pulse);
+    ctx.save();
+    ctx.globalAlpha = 0.72 * Math.max(0.3, t);
+    const core = ctx.createLinearGradient(sx, sy - h, sx, sy + h);
+    core.addColorStop(0, "rgba(18, 8, 32, 0.96)");
+    core.addColorStop(1, "rgba(5, 4, 12, 0.92)");
+    ctx.fillStyle = core;
+    ctx.beginPath(); ctx.ellipse(sx, sy - h * 0.12, w, h, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.lineWidth = screenScale(3);
+    ctx.strokeStyle = "rgba(102,255,250,0.95)"; ctx.beginPath(); ctx.ellipse(sx - w * 0.28, sy - h * 0.12, w * 0.25, h * 0.93, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = "rgba(255,132,70,0.95)"; ctx.beginPath(); ctx.ellipse(sx + w * 0.28, sy - h * 0.12, w * 0.25, h * 0.93, 0, 0, Math.PI * 2); ctx.stroke();
+    if (Math.floor((now + idx * 17) / 18) % 3 === 0) {
+      ctx.fillStyle = "rgba(173,255,255,0.5)";
+      ctx.fillRect(sx - screenScale(3), sy - h * 0.3, screenScale(6), screenScale(10));
+    }
+    ctx.globalAlpha = 0.28;
+    ctx.strokeStyle = "#7e4bff";
+    ctx.lineWidth = screenScale(2);
+    ctx.beginPath(); ctx.ellipse(sx, sy + h * 0.9, w * 1.25, h * 0.28, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  });
 }
 
 function useSpecial(p) {
@@ -3231,6 +3330,31 @@ function useSpecial(p) {
     } else {
       const hammer={owner:p,type:"hammer",x:p.x + p.facing * 30,y:p.y - 8,vx:p.facing * 12.5,vy:-2,w:46,h:30,life:86,damage:13,knock:14,gravity:.18,color:"#cce3ff",boomerang:true,spin:0,phase:"out",returnHits:new Set()}; spawnProjectile(hammer); p.thorHammerProjectile=hammer; p.thorHammerRecallReady=true;
     }
+  }
+
+  else if (id === "hades") {
+    if (p.moveVariant === "neutral") {
+      placeHadesGate(p, p.x, p.y + 18);
+      p.attackKind = "hades_underworld_gate";
+      p.attackFrame = Math.max(p.attackFrame, 24);
+      p.vx *= 0.82;
+      return;
+    }
+    if (p.moveVariant === "up") {
+      createHadesSoulChain(p);
+      p.specialCooldown = Math.max(p.specialCooldown, 54);
+      p.attackKind = "hades_soul_chain";
+      p.attackFrame = Math.max(p.attackFrame, 24);
+      return;
+    }
+    const seedVx = dir * 6.2;
+    const seedVy = -1.5;
+    hadesGates.push({ owner:p, x:p.x + dir * 20, y:p.y - 8, seed:true, vx:seedVx, vy:seedVy, timer:45, radius:14 });
+    p.specialCooldown = Math.max(p.specialCooldown, 58);
+    p.attackKind = "hades_gate_seed";
+    p.attackFrame = Math.max(p.attackFrame, 24);
+    p.vx *= 0.7;
+    return;
   }
 
   else if (id === "horus") {
@@ -5564,6 +5688,7 @@ function drawGame() {
 
   projectiles.forEach(drawProjectile);
   drawQuetzVisualsBehindPlayers(ctx);
+  if (hadesGates.length > 0) drawHadesGates(ctx);
   drawHadesVisualsBehindPlayers(ctx);
   if (hadesMotionWisps.length > 0) drawHadesMotionWisps(ctx);
   attacks.forEach(drawAttack);
