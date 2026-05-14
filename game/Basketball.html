@@ -2570,8 +2570,8 @@ const ATTACK_DEFS = {
     heavy:{neutral:{id:"bastet_heavy_n",godId:"bastet",inputType:"heavy",directionVariant:"neutral",startup:6,active:7,recovery:12,damage:11,knock:12,angle:-0.25,hitbox:{x:42,y:-14,w:92,h:46},effects:{visualType:"bastetLeapingDoubleClaw"},selfImpulse:{x:6.5,y:-1.2}},up:{id:"bastet_heavy_u",godId:"bastet",inputType:"heavy",directionVariant:"up",startup:5,active:8,recovery:13,damage:10,knock:12.8,angle:-1.22,hitbox:{x:16,y:-88,w:78,h:96},effects:{visualType:"bastetRisingCatScratch"},selfImpulse:{x:0,y:-5.5}},down:{id:"bastet_heavy_d",godId:"bastet",inputType:"heavy",directionVariant:"down",startup:6,active:8,recovery:13,damage:9,knock:10,angle:-0.15,hitbox:{x:-54,y:16,w:150,h:34},effects:{visualType:"bastetTailTripSlam"},selfImpulse:{x:-1.8,y:0}}}
   },
   hades: {
-    light: { neutral:{id:"hades_light_n",godId:"hades",inputType:"light",directionVariant:"neutral",startup:2,active:6,recovery:8,damage:5.9,knock:5.8,angle:-0.02,hitbox:{x:40,y:-8,w:84,h:34},effects:{visualType:"hadesBidentSlash"}}, up:{id:"hades_light_u",godId:"hades",inputType:"light",directionVariant:"up",startup:3,active:6,recovery:9,damage:6.8,knock:7.4,angle:-1.2,hitbox:{x:20,y:-78,w:76,h:86},effects:{visualType:"hadesSoulRake"}}, down:{id:"hades_light_d",godId:"hades",inputType:"light",directionVariant:"down",startup:3,active:7,recovery:10,damage:6,knock:6.1,angle:-0.03,hitbox:{x:24,y:24,w:108,h:24},effects:{visualType:"hadesGraveSweep"}}},
-    heavy:{neutral:{id:"hades_heavy_n",godId:"hades",inputType:"heavy",directionVariant:"neutral",startup:10,active:8,recovery:16,damage:14.2,knock:15.6,angle:-0.35,hitbox:{x:44,y:-14,w:128,h:58},effects:{visualType:"hadesBidentThrust"},startupArmor:5},up:{id:"hades_heavy_u",godId:"hades",inputType:"heavy",directionVariant:"up",startup:9,active:8,recovery:15,damage:13.2,knock:15.8,angle:-1.28,hitbox:{x:8,y:-116,w:100,h:126},effects:{visualType:"hadesRisingDead"}},down:{id:"hades_heavy_d",godId:"hades",inputType:"heavy",directionVariant:"down",startup:9,active:8,recovery:17,damage:13.4,knock:14.5,angle:-0.82,hitbox:{x:-52,y:18,w:156,h:56},effects:{visualType:"hadesGravebreakerSlam"},startupArmor:4}}
+    light: { neutral:{id:"hades_light_n",godId:"hades",inputType:"light",directionVariant:"neutral",startup:2,active:6,recovery:8,damage:5.9,knock:5.8,angle:-0.02,hitbox:{x:40,y:-8,w:84,h:34},effects:{visualType:"hadesNeutralLightBidentJab"}}, up:{id:"hades_light_u",godId:"hades",inputType:"light",directionVariant:"up",startup:3,active:6,recovery:9,damage:6.8,knock:7.4,angle:-1.2,hitbox:{x:20,y:-78,w:76,h:86},effects:{visualType:"hadesUpSoulHands"}}, down:{id:"hades_light_d",godId:"hades",inputType:"light",directionVariant:"down",startup:3,active:7,recovery:10,damage:6,knock:6.1,angle:-0.03,hitbox:{x:24,y:24,w:108,h:24},effects:{visualType:"hadesDownShadowStab"}}},
+    heavy:{neutral:{id:"hades_heavy_n",godId:"hades",inputType:"heavy",directionVariant:"neutral",startup:10,active:8,recovery:16,damage:14.2,knock:15.6,angle:-0.35,hitbox:{x:44,y:-14,w:128,h:58},effects:{visualType:"hadesNeutralHeavyCleave"},startupArmor:5},up:{id:"hades_heavy_u",godId:"hades",inputType:"heavy",directionVariant:"up",startup:9,active:8,recovery:15,damage:13.2,knock:15.8,angle:-1.28,hitbox:{x:8,y:-116,w:100,h:126},effects:{visualType:"hadesUpSoulHandsHeavy"}},down:{id:"hades_heavy_d",godId:"hades",inputType:"heavy",directionVariant:"down",startup:9,active:8,recovery:17,damage:13.4,knock:14.5,angle:-0.82,hitbox:{x:-52,y:18,w:156,h:56},effects:{visualType:"hadesDownGraveSlam"},startupArmor:4}}
   },
   loki: {
     light: { neutral:{id:"loki_light_n",godId:"loki",inputType:"light",directionVariant:"neutral",startup:1,active:4,recovery:6,damage:5,knock:4.2,angle:-0.03,hitbox:{x:30,y:-10,w:44,h:22},effects:{visualType:"daggerFlurry"}}, up:{id:"loki_light_u",directionVariant:"up",startup:2,active:5,recovery:7,damage:6,knock:7.2,angle:-1.18,hitbox:{x:22,y:-58,w:52,h:60},effects:{visualType:"soulRake"},selfImpulse:{x:0,y:-1.4}}, down:{id:"loki_light_d",directionVariant:"down",startup:1,active:4,recovery:6,damage:5,knock:5.1,angle:-0.01,hitbox:{x:28,y:20,w:62,h:18},effects:{visualType:"graveSweep"}}},
@@ -6331,8 +6331,9 @@ function drawPixelGod(c, p, x, y, s) {
 
   const bastetAttackPoseHandled = drawBastetAttackPose(c, p, x + hitLean + bodyLean, y + bob + crouch, s, dir);
   const raAttackPoseHandled = drawRaAttackPose(c, p, x + hitLean + bodyLean, y + bob + crouch, s, dir, pose);
+  const hadesAttackPoseHandled = drawHadesAttackPose(c, p, x + hitLean + bodyLean, y + bob + crouch, s, dir, pose);
   // Arms
-  if (!bastetAttackPoseHandled && !raAttackPoseHandled) {
+  if (!bastetAttackPoseHandled && !raAttackPoseHandled && !hadesAttackPoseHandled) {
     c.fillStyle = g.color;
     c.fillRect(px(x - sc(30) + hitLean + bodyLean + (pose.backArmX || 0)), px(y - sc(16) + bob + crouch + (pose.backArmY || 0)), sc(13), sc(31));
     c.fillRect(px(x + sc(17) + hitLean + bodyLean + (pose.frontArmX || 0)), px(y - sc(16) + bob + crouch + (pose.frontArmY || 0)), sc(13), sc(31));
@@ -6418,7 +6419,7 @@ function drawPixelGod(c, p, x, y, s) {
     }
   }
 
-  if (!bastetAttackPoseHandled && !raAttackPoseHandled) drawGodWeapon(c, p, x + hitLean + bodyLean, y + bob + crouch, s, dir, pose);
+  if (!bastetAttackPoseHandled && !raAttackPoseHandled && !hadesAttackPoseHandled) drawGodWeapon(c, p, x + hitLean + bodyLean, y + bob + crouch, s, dir, pose);
 }
 
 function drawGodHead(c, p, x, y, s, dir, headTilt) {
@@ -6876,7 +6877,7 @@ function drawActiveMoveVisual(ctx, player) {
 }
 function drawDirectionalSwing(a, owner) {
   if (!a || !owner) return;
-  if (owner.godId === "bastet" || owner.godId === "ra") return;
+  if (owner.godId === "bastet" || owner.godId === "ra" || owner.godId === "hades") return;
   const dir = owner.facing || 1;
   const sx = worldToScreenX(a.x + a.w/2);
   const sy = worldToScreenY(a.y + a.h/2);
@@ -6911,6 +6912,79 @@ function drawBastetClawMarks(x, y, w, h, variant = "neutral") {
     ctx.stroke();
   }
   ctx.restore();
+}
+function drawHadesAttackPose(c, p, x, y, s, dir, pose) {
+  if (p.godId !== "hades" || !p.currentMove || !(p.currentMove.id || "").startsWith("hades_")) return false;
+  const move = p.currentMove;
+  const phase = getMoveProgress(p).phase || "startup";
+  const px = v => Math.round(v);
+  const sc = v => Math.round(v * s);
+  const alpha = phase === "recovery" ? 0.6 : 0.95;
+  c.save();
+  c.globalAlpha = alpha;
+
+  const frontArmX = x + dir * sc(17) + (pose.frontArmX || 0);
+  const frontArmY = y - sc(16) + (pose.frontArmY || 0);
+  c.fillStyle = p.god.color;
+  c.fillRect(px(x - sc(30) + (pose.backArmX || 0)), px(y - sc(16) + (pose.backArmY || 0)), sc(13), sc(31));
+  c.fillRect(px(frontArmX), px(frontArmY), sc(13), sc(31));
+
+  const shaftStartX = frontArmX + dir * sc(6);
+  const shaftStartY = frontArmY + sc(10);
+  const id = move.id || "";
+  const active = phase === "active";
+
+  if (id === "hades_light_n") {
+    const len = sc(active ? 78 : 46);
+    c.strokeStyle = "#6a2fb3"; c.lineWidth = Math.max(2, sc(4));
+    c.beginPath(); c.moveTo(px(shaftStartX), px(shaftStartY)); c.lineTo(px(shaftStartX + dir * len), px(shaftStartY - sc(2))); c.stroke();
+    const tipX = shaftStartX + dir * len;
+    const tipY = shaftStartY - sc(2);
+    c.strokeStyle = "#9dffef"; c.lineWidth = Math.max(2, sc(3));
+    for (const dy of [-5, 0, 5]) { c.beginPath(); c.moveTo(px(tipX), px(tipY + sc(dy))); c.lineTo(px(tipX + dir * sc(14)), px(tipY + sc(dy))); c.stroke(); }
+    c.fillStyle = "rgba(157,255,239,0.8)"; c.fillRect(px(tipX + dir * sc(12)), px(tipY - sc(5)), sc(8), sc(10));
+  } else if (id === "hades_heavy_n") {
+    const ex = x + dir * sc(active ? 58 : 28), ey = y - sc(active ? 14 : 4);
+    c.strokeStyle = "#5e2a91"; c.lineWidth = Math.max(3, sc(7));
+    c.beginPath(); c.moveTo(px(shaftStartX), px(shaftStartY)); c.lineTo(px(ex), px(ey)); c.stroke();
+    c.strokeStyle = "#9dffef"; c.lineWidth = Math.max(2, sc(3));
+    c.beginPath(); c.moveTo(px(ex), px(ey)); c.lineTo(px(ex + dir * sc(14)), px(ey - sc(10))); c.stroke();
+    c.beginPath(); c.moveTo(px(ex), px(ey)); c.lineTo(px(ex + dir * sc(14)), px(ey + sc(2))); c.stroke();
+    c.strokeStyle = "rgba(43,19,66,0.65)"; c.lineWidth = Math.max(4, sc(10));
+    c.beginPath(); c.moveTo(px(shaftStartX - dir * sc(8)), px(shaftStartY + sc(4))); c.lineTo(px(ex - dir * sc(8)), px(ey + sc(8))); c.stroke();
+  } else if (id === "hades_light_u" || id === "hades_heavy_u") {
+    const handCount = id === "hades_heavy_u" ? 4 : 3;
+    const topY = y - sc(id === "hades_heavy_u" ? 108 : 82);
+    c.strokeStyle = "#6a2fb3"; c.lineWidth = Math.max(2, sc(4));
+    c.beginPath(); c.moveTo(px(shaftStartX), px(shaftStartY)); c.lineTo(px(shaftStartX + dir * sc(12)), px(topY)); c.stroke();
+    for (let i = 0; i < handCount; i++) {
+      const hx = x + dir * sc(-8 + i * 10), hy = y + sc(20 - i * 26);
+      c.fillStyle = "rgba(157,255,239,0.48)";
+      c.beginPath(); c.moveTo(px(hx), px(hy)); c.quadraticCurveTo(px(hx - sc(6)), px(hy - sc(12)), px(hx), px(hy - sc(20)));
+      c.quadraticCurveTo(px(hx + sc(6)), px(hy - sc(12)), px(hx), px(hy)); c.fill();
+    }
+  } else if (id === "hades_light_d") {
+    const tipX = x + dir * sc(26), tipY = y + sc(18);
+    c.strokeStyle = "#6a2fb3"; c.lineWidth = Math.max(2, sc(4));
+    c.beginPath(); c.moveTo(px(shaftStartX), px(shaftStartY)); c.lineTo(px(tipX), px(tipY)); c.stroke();
+    c.fillStyle = "rgba(43,19,66,0.68)";
+    c.beginPath(); c.moveTo(px(tipX), px(tipY)); c.lineTo(px(tipX + dir * sc(22)), px(tipY + sc(10))); c.lineTo(px(tipX + dir * sc(22)), px(tipY - sc(10))); c.closePath(); c.fill();
+    c.fillStyle = "rgba(157,255,239,0.6)";
+    c.fillRect(px(tipX + dir * sc(14)), px(tipY - sc(3)), sc(7), sc(6));
+  } else if (id === "hades_heavy_d") {
+    const gx = x + dir * sc(8), gy = y + sc(26);
+    c.strokeStyle = "#5e2a91"; c.lineWidth = Math.max(3, sc(5));
+    c.beginPath(); c.moveTo(px(shaftStartX), px(shaftStartY)); c.lineTo(px(gx), px(gy)); c.stroke();
+    c.strokeStyle = "rgba(35,16,54,0.9)"; c.lineWidth = Math.max(2, sc(3));
+    for (let i=0;i<4;i++){ const off=(i-1.5)*sc(16); c.beginPath(); c.moveTo(px(gx+off),px(gy)); c.lineTo(px(gx+off+dir*sc(20)),px(gy+sc(8))); c.stroke(); }
+    for (let i=0;i<3;i++){ const hx=gx+dir*sc(-12+i*18), hy=gy+sc(4); c.fillStyle=\"rgba(157,255,239,0.45)\"; c.beginPath(); c.moveTo(px(hx),px(hy)); c.quadraticCurveTo(px(hx-sc(5)),px(hy-sc(10)),px(hx),px(hy-sc(16))); c.quadraticCurveTo(px(hx+sc(5)),px(hy-sc(10)),px(hx),px(hy)); c.fill(); }
+  }
+  if (!p.grounded && (id === "hades_light_n" || id === "hades_heavy_n")) {
+    c.strokeStyle = "#9dffef"; c.lineWidth = Math.max(2, sc(3));
+    c.beginPath(); c.moveTo(px(shaftStartX + dir * sc(12)), px(shaftStartY - sc(4))); c.lineTo(px(shaftStartX + dir * sc(56)), px(shaftStartY - sc(32))); c.stroke();
+  }
+  c.restore();
+  return true;
 }
 function drawBastetAttackPose(c, p, x, y, s, dir) {
   if (p.godId !== "bastet" || !p.currentMove || !(p.currentMove.id || "").startsWith("bastet_")) return false;
@@ -7095,11 +7169,13 @@ function drawAttack(a) {
     ctx.globalAlpha = 0.6; ctx.strokeStyle = "#9dffef"; ctx.lineWidth = screenScale(3); ctx.beginPath(); ctx.moveTo(cx, y + h*0.04); ctx.lineTo(cx, y + h*0.66); ctx.stroke();
     spark(7, "rgba(157,255,239,.8)");
     ctx.restore();
-  } else if (["hadesBidentSlash","hadesSoulRake","hadesGraveSweep","hadesBidentThrust","hadesRisingDead","hadesGravebreakerSlam"].includes(rawType)) {
+  } else if (["hadesNeutralLightBidentJab","hadesUpSoulHands","hadesDownShadowStab","hadesNeutralHeavyCleave","hadesUpSoulHandsHeavy","hadesDownGraveSlam"].includes(rawType)) {
     ctx.save(); ctx.globalAlpha = 0.72;
-    if (rawType === "hadesSoulRake" || rawType === "hadesRisingDead") { ctx.strokeStyle = "#9dffef"; ctx.lineWidth = screenScale(4); for (let i=0;i<3;i++){ctx.beginPath();ctx.moveTo(cx - dir*w*0.2 + i*screenScale(7), cy + h*0.2);ctx.lineTo(cx + dir*w*0.15 + i*screenScale(4), cy - h*0.7);ctx.stroke();}}
-    else if (rawType === "hadesGraveSweep") { ctx.fillStyle = "rgba(43,19,66,0.45)"; ctx.beginPath(); ctx.ellipse(cx, cy + h*0.25, w*0.55, h*0.2, 0, 0, Math.PI*2); ctx.fill(); ctx.strokeStyle="#9dffef"; ctx.lineWidth=screenScale(2); ctx.beginPath(); ctx.arc(cx-dir*w*0.16, cy+h*0.1, w*0.48, dir===1?-0.05:Math.PI+0.05, dir===1?Math.PI*0.95:Math.PI*2-0.95); ctx.stroke(); }
-    else { ctx.strokeStyle = "#6a2fb3"; ctx.lineWidth = screenScale(8); ctx.beginPath(); ctx.arc(cx - dir * w * .15, cy, Math.max(w, h) * .52, dir === 1 ? -0.9 : Math.PI + 0.15, dir === 1 ? 0.62 : Math.PI - 1.15); ctx.stroke(); ctx.strokeStyle = "#9dffef"; ctx.lineWidth = screenScale(2.5); ctx.stroke(); }
+    if (rawType === "hadesUpSoulHands" || rawType === "hadesUpSoulHandsHeavy") { ctx.strokeStyle = "#9dffef"; ctx.lineWidth = screenScale(rawType.includes("Heavy")?5:4); for (let i=0;i<(rawType.includes("Heavy")?4:3);i++){const hx=cx-dir*w*0.18+i*screenScale(12), hy=cy+h*0.26-i*h*0.24; ctx.beginPath();ctx.moveTo(hx,hy);ctx.lineTo(hx+dir*w*0.1,hy-h*0.56);ctx.stroke();} }
+    else if (rawType === "hadesDownShadowStab") { ctx.fillStyle = "rgba(43,19,66,0.6)"; ctx.fillRect(cx + dir*w*0.08, cy + h*0.08, w*0.3, h*0.22); ctx.fillStyle = "rgba(157,255,239,0.7)"; ctx.fillRect(cx + dir*w*0.34, cy + h*0.14, w*0.08, h*0.1); }
+    else if (rawType === "hadesDownGraveSlam") { ctx.strokeStyle="rgba(35,16,54,0.9)"; ctx.lineWidth=screenScale(3); for(let i=0;i<5;i++){const ox=(i-2)*w*0.16; ctx.beginPath(); ctx.moveTo(cx+ox,cy+h*0.26); ctx.lineTo(cx+ox+dir*w*0.15,cy+h*0.36); ctx.stroke();} ctx.fillStyle="rgba(157,255,239,0.42)"; for(let i=0;i<3;i++) ctx.fillRect(cx + dir*w*(0.1+i*0.1), cy+h*(0.08-i*0.04), w*0.06, h*0.14); }
+    else if (rawType === "hadesNeutralLightBidentJab") { ctx.strokeStyle="#6a2fb3"; ctx.lineWidth=screenScale(4); ctx.beginPath(); ctx.moveTo(cx-dir*w*0.22,cy); ctx.lineTo(cx+dir*w*0.45,cy); ctx.stroke(); ctx.strokeStyle="#9dffef"; ctx.lineWidth=screenScale(2); for(let i=-1;i<=1;i++){ctx.beginPath();ctx.moveTo(cx+dir*w*0.45,cy+i*h*0.08);ctx.lineTo(cx+dir*w*0.62,cy+i*h*0.08);ctx.stroke();} }
+    else { ctx.strokeStyle = "#5e2a91"; ctx.lineWidth = screenScale(7); ctx.beginPath(); ctx.moveTo(cx-dir*w*0.2, cy+h*0.15); ctx.lineTo(cx+dir*w*0.5, cy-h*0.3); ctx.stroke(); ctx.strokeStyle = "rgba(43,19,66,0.65)"; ctx.lineWidth = screenScale(10); ctx.beginPath(); ctx.moveTo(cx-dir*w*0.3, cy+h*0.25); ctx.lineTo(cx+dir*w*0.35, cy-h*0.18); ctx.stroke(); }
     ctx.restore();
   } else if (["genericSwing","slashArc","jackalClaw","judgmentCleave","daggerFlurry"].includes(type)) {
     drawDirectionalSwing(a, a.owner);
