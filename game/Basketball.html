@@ -6298,6 +6298,10 @@ function drawPixelGod(c, p, x, y, s) {
     c.fillStyle = "#2f7a46";
     c.fillRect(px(x - sc(3)), px(y - sc(28) + bob + crouch), sc(6), sc(4));
   }
+  if (p.godId === "ra") {
+    c.fillStyle = "#274c68";
+    c.fillRect(px(x - sc(5) + hitLean + bodyLean), px(y - sc(31) + bob + crouch), sc(10), sc(7));
+  }
   drawGodHead(c, p, x + hitLean + bodyLean, y + bob + crouch, s, dir, pose.headTilt || 0);
 
   const bastetAttackPoseHandled = drawBastetAttackPose(c, p, x + hitLean + bodyLean, y + bob + crouch, s, dir);
@@ -6354,19 +6358,19 @@ function drawPixelGod(c, p, x, y, s) {
     c.globalAlpha = 0.24 * hurtDim;
     c.fillStyle = "#ff9f1c";
     c.beginPath();
-    c.arc(px(x + hitLean + bodyLean + lagX), px(y - sc(47) + bob + crouch), sc(22 * sunPulse * specialGlow), 0, Math.PI * 2);
+    c.arc(px(x + hitLean + bodyLean + lagX), px(y - sc(72) + bob + crouch), sc(22 * sunPulse * specialGlow), 0, Math.PI * 2);
     c.fill();
     c.globalAlpha = 0.95 * hurtDim;
     c.fillStyle = "#ffde59";
     c.beginPath();
-    c.arc(px(x + hitLean + bodyLean + lagX), px(y - sc(47) + bob + crouch), sc(8.5 * sunPulse * specialGlow), 0, Math.PI * 2);
+    c.arc(px(x + hitLean + bodyLean + lagX), px(y - sc(72) + bob + crouch), sc(8.5 * sunPulse * specialGlow), 0, Math.PI * 2);
     c.fill();
     c.fillStyle = "#ffd166";
     for (let i = 0; i < 8; i++) {
       const ang = i * (Math.PI / 4) + matchTime * 0.02;
       const rx = Math.cos(ang) * sc(13 * sunPulse * specialGlow);
       const ry = Math.sin(ang) * sc(13 * sunPulse * specialGlow);
-      c.fillRect(px(x + hitLean + bodyLean + lagX + rx - sc(1)), px(y - sc(47) + bob + crouch + ry - sc(1)), sc(3), sc(3));
+      c.fillRect(px(x + hitLean + bodyLean + lagX + rx - sc(1)), px(y - sc(72) + bob + crouch + ry - sc(1)), sc(3), sc(3));
     }
     c.restore();
 
