@@ -1251,6 +1251,7 @@ function getUnlockedExteriorWindows() {
 
 const ENEMY_PATH_GRID_SIZE = 1.5;
 const ENEMY_PATH_MAX_SEARCH = 3500;
+const DEBUG_ENEMY_PATHS = false;
 
 function addWindowGlow(win) {
   const glow = new THREE.PointLight(0xffe0aa, 0.35, 5);
@@ -3334,22 +3335,46 @@ function gridToWorld(gx, gz) {
   return new THREE.Vector3(gx * ENEMY_PATH_GRID_SIZE, 0, gz * ENEMY_PATH_GRID_SIZE);
 }
 
+function isEnemyInsideHouse(enemy) {
+  if (!enemy || !enemy.mesh) return false;
+  if (enemy.state === "inside" || enemy.state === "chasing" || enemy.windowState === "inside") return true;
+  if (typeof isPointInsideAnyRoom === "function") {
+    const p = enemy.mesh.position;
+    return isPointInsideAnyRoom(p.x, p.z);
+  }
+  return false;
+}
+
+function canIgnoreWindowBlockerForEnemy(enemy, x, z, win) {
+  if (!enemy || !win) return false;
+  if (isEnemyInsideHouse(enemy)) return false;
+  const validState = enemy.state === "walking_to_window" || enemy.state === "tearing_boards" || enemy.state === "climbing_in" || enemy.state === "approaching_window" || enemy.state === "attacking_window";
+  if (!validState) return false;
+  return enemy.targetWindow === win && isPointInWindowOpening(x, z, win, 0.45);
+}
+
+function getEnemyBlockingColliders() {
+  const all = [];
+  if (Array.isArray(colliders)) all.push(...colliders);
+  if (Array.isArray(obstacleColliders)) all.push(...obstacleColliders);
+  if (Array.isArray(playerWindowBlockers)) all.push(...playerWindowBlockers);
+  if (Array.isArray(closedDoorColliders)) all.push(...closedDoorColliders);
+  return all;
+}
+
 function isEnemyPathBlockedAt(x, z, enemy) {
   if (enemy && enemy.state === "climbing_in") return false;
   const type = enemyTypes[enemy.typeKey] || enemyTypes.green;
   const radius = 0.42 * (type.scale || 1);
-  const nearAssignedWindow = enemy && enemy.targetWindow && enemy.outsideStand && enemyDistance2D({ x, z }, enemy.outsideStand) < 1.8 && isPointInWindowOpening(x, z, enemy.targetWindow, 0.45);
+  const enemyIsInside = isEnemyInsideHouse(enemy);
+  const nearAssignedWindow = !enemyIsInside && enemy && enemy.targetWindow && enemy.outsideStand && enemyDistance2D({ x, z }, enemy.outsideStand) < 1.8 && isPointInWindowOpening(x, z, enemy.targetWindow, 0.45);
 
-  for (const c of colliders) {
+  for (const c of getEnemyBlockingColliders()) {
     const inside = x + radius > c.x - c.w / 2 && x - radius < c.x + c.w / 2 && z + radius > c.z - c.d / 2 && z - radius < c.z + c.d / 2;
     if (!inside) continue;
-    if (nearAssignedWindow && isPointInWindowOpening(x, z, enemy.targetWindow, 0.35)) continue;
+    if (c.isWindowBlocker && nearAssignedWindow && canIgnoreWindowBlockerForEnemy(enemy, x, z, enemy.targetWindow)) continue;
+    if (c.isWindowBlocker && canIgnoreWindowBlockerForEnemy(enemy, x, z, c.windowRef || enemy.targetWindow)) continue;
     return true;
-  }
-
-  for (const c of obstacleColliders) {
-    const inside = x + radius > c.x - c.w / 2 && x - radius < c.x + c.w / 2 && z + radius > c.z - c.d / 2 && z - radius < c.z + c.d / 2;
-    if (inside) return true;
   }
 
   return false;
@@ -3421,6 +3446,11 @@ function findEnemyPath(enemy, startWorld, targetWorld) {
       const neighbor = { gx: current.gx + d.gx, gz: current.gz + d.gz };
       const neighborKey = gridKey(neighbor.gx, neighbor.gz);
       if (closed.has(neighborKey)) continue;
+      if (d.gx !== 0 && d.gz !== 0) {
+        const sideA = gridToWorld(current.gx + d.gx, current.gz);
+        const sideB = gridToWorld(current.gx, current.gz + d.gz);
+        if (isEnemyPathBlockedAt(sideA.x, sideA.z, enemy) || isEnemyPathBlockedAt(sideB.x, sideB.z, enemy)) continue;
+      }
       const world = gridToWorld(neighbor.gx, neighbor.gz);
       if (isEnemyPathBlockedAt(world.x, world.z, enemy)) continue;
       const tentativeG = (gScore.get(currentKey) ?? Infinity) + (d.gx !== 0 && d.gz !== 0 ? 1.4 : 1);
@@ -3496,6 +3526,48 @@ function moveGoblinToward(enemy, target, dt) {
   const finalDir = desired.add(avoid).normalize();
   pos.add(finalDir.multiplyScalar((enemy.effectiveSpeed || enemy.speed) * dt));
   return true;
+}
+
+
+function canEnemyStandAt(enemy, x, z) { return !isEnemyPathBlockedAt(x, z, enemy); }
+function moveEnemyWithCollision(enemy, target, dt) {
+  if (!enemy || !enemy.mesh || !target) return false;
+  const pos = enemy.mesh.position;
+  const dx = target.x - pos.x, dz = target.z - pos.z;
+  const dist = Math.sqrt(dx * dx + dz * dz); if (dist < 0.001) return false;
+  const dirX = dx / dist, dirZ = dz / dist;
+  const step = (enemy.effectiveSpeed || enemy.speed || 2.0) * dt;
+  const nx = pos.x + dirX * step, nz = pos.z + dirZ * step;
+  if (canEnemyStandAt(enemy, nx, nz)) { pos.x = nx; pos.z = nz; enemy.mesh.rotation.y = Math.atan2(dirX, dirZ) + (GOBLIN_FACE_FLIP || 0); return true; }
+  const sx = pos.x + dirX * step; if (canEnemyStandAt(enemy, sx, pos.z)) { pos.x = sx; return true; }
+  const sz = pos.z + dirZ * step; if (canEnemyStandAt(enemy, pos.x, sz)) { pos.z = sz; return true; }
+  enemy.pathRefreshTimer = 0;
+  if (DEBUG_ENEMY_PATHS && isEnemyInsideHouse(enemy)) console.warn("Inside enemy blocked next move", enemy.typeKey, nx, nz);
+  return false;
+}
+function moveEnemyWallSlideFallback(enemy, target, dt) {
+  if (!enemy || !enemy.mesh || !target) return false;
+  const pos = enemy.mesh.position;
+  const dx = target.x - pos.x, dz = target.z - pos.z;
+  const dist = Math.sqrt(dx * dx + dz * dz); if (dist < 0.001) return false;
+  const dirX = dx / dist, dirZ = dz / dist, step = (enemy.effectiveSpeed || enemy.speed || 2.0) * dt;
+  const candidates = [{ x: dirX, z: dirZ }, { x: dirZ, z: -dirX }, { x: -dirZ, z: dirX }, { x: dirX * 0.7 + dirZ * 0.3, z: dirZ * 0.7 - dirX * 0.3 }, { x: dirX * 0.7 - dirZ * 0.3, z: dirZ * 0.7 + dirX * 0.3 }];
+  for (const c of candidates) { const len = Math.sqrt(c.x*c.x+c.z*c.z)||1; const tx=pos.x+(c.x/len)*step, tz=pos.z+(c.z/len)*step; if (canEnemyStandAt(enemy, tx, tz)) { pos.x=tx; pos.z=tz; enemy.mesh.rotation.y = Math.atan2(c.x/len, c.z/len) + (GOBLIN_FACE_FLIP || 0); return true; } }
+  enemy.stuckTimer = (enemy.stuckTimer || 0) + dt; return false;
+}
+function moveInsideEnemyTowardPlayer(enemy, dt) {
+  if (!enemy || !enemy.mesh || !player.alive) return false;
+  const enemyPos = enemy.mesh.position; const target = new THREE.Vector3(player.pos.x, 0, player.pos.z);
+  if (hasClearEnemyLine(enemy, enemyPos, target)) return moveEnemyWithCollision(enemy, target, dt);
+  if (!enemy.path || !enemy.path.length || enemy.pathRefreshTimer <= 0) {
+    if (pathfindsThisFrame < MAX_PATHFINDS_PER_FRAME) { pathfindsThisFrame++; enemy.path = findEnemyPath(enemy, enemyPos.clone(), target); }
+    enemy.pathIndex = 0; enemy.pathRefreshTimer = 0.45 + Math.random() * 0.25;
+  }
+  enemy.pathRefreshTimer -= dt;
+  if (!enemy.path || !enemy.path.length) return moveEnemyWallSlideFallback(enemy, target, dt);
+  const waypoint = enemy.path[enemy.pathIndex] || enemy.path[0]; if (!waypoint) return moveEnemyWallSlideFallback(enemy, target, dt);
+  if (enemyDistance2D({x:enemyPos.x,z:enemyPos.z},{x:waypoint.x,z:waypoint.z}) < 0.55 && enemy.pathIndex < enemy.path.length - 1) enemy.pathIndex++;
+  return moveEnemyWithCollision(enemy, enemy.path[enemy.pathIndex] || waypoint, dt);
 }
 
 function applyEnemySeparation(enemy, dt) {
@@ -3688,6 +3760,50 @@ function retargetEnemyToNearestUnlockedWindow(enemy) {
   enemy.pathRefreshTimer = 0;
   enemy.pathFailCount = 0;
   enemy.state = "walking_to_window";
+}
+
+
+function resolveEnemyWallPenetration(enemy) {
+  if (!enemy || !enemy.mesh || enemy.state === "climbing_in") return;
+  const pos = enemy.mesh.position;
+  const type = enemyTypes[enemy.typeKey] || enemyTypes.green;
+  const radius = 0.42 * (type.scale || 1);
+  const blockers = [];
+  if (Array.isArray(colliders)) blockers.push(...colliders);
+  if (Array.isArray(obstacleColliders)) blockers.push(...obstacleColliders);
+  if (Array.isArray(playerWindowBlockers) && isEnemyInsideHouse(enemy)) blockers.push(...playerWindowBlockers);
+  if (Array.isArray(closedDoorColliders)) blockers.push(...closedDoorColliders);
+  for (const c of blockers) {
+    const minX = c.x - c.w / 2 - radius, maxX = c.x + c.w / 2 + radius, minZ = c.z - c.d / 2 - radius, maxZ = c.z + c.d / 2 + radius;
+    if (pos.x > minX && pos.x < maxX && pos.z > minZ && pos.z < maxZ) {
+      const pushLeft = Math.abs(pos.x - minX), pushRight = Math.abs(maxX - pos.x), pushTop = Math.abs(pos.z - minZ), pushBottom = Math.abs(maxZ - pos.z);
+      const minPush = Math.min(pushLeft, pushRight, pushTop, pushBottom);
+      if (minPush === pushLeft) pos.x = minX; else if (minPush === pushRight) pos.x = maxX; else if (minPush === pushTop) pos.z = minZ; else pos.z = maxZ;
+      enemy.pathRefreshTimer = 0;
+    }
+  }
+}
+
+function recoverStuckInsideEnemy(enemy, dt) {
+  if (!isEnemyInsideHouse(enemy)) return;
+  const pos = enemy.mesh.position; const last = enemy.lastPosForStuck || pos.clone();
+  const moved = enemyDistance2D({ x: pos.x, z: pos.z }, { x: last.x, z: last.z });
+  enemy.stuckCheckTimer = (enemy.stuckCheckTimer || 0) - dt;
+  if (enemy.stuckCheckTimer <= 0) {
+    if (moved < 0.08) { enemy.stuckTimer = (enemy.stuckTimer || 0) + 0.5; enemy.pathRefreshTimer = 0; } else enemy.stuckTimer = 0;
+    enemy.lastPosForStuck = pos.clone(); enemy.stuckCheckTimer = 0.5;
+  }
+  if ((enemy.stuckTimer || 0) > 2.0) { nudgeEnemyToNearestOpenSpot(enemy); enemy.stuckTimer = 0; }
+}
+
+function nudgeEnemyToNearestOpenSpot(enemy) {
+  const pos = enemy.mesh.position;
+  const rings = [0.4, 0.8, 1.2, 1.6];
+  for (const r of rings) for (let i = 0; i < 12; i++) {
+    const a = (Math.PI * 2 * i) / 12; const x = pos.x + Math.cos(a) * r, z = pos.z + Math.sin(a) * r;
+    if (canEnemyStandAt(enemy, x, z)) { pos.x = x; pos.z = z; enemy.pathRefreshTimer = 0; return true; }
+  }
+  return false;
 }
 
 function updateEnemyStuckSafety(enemy, dt) {
@@ -3934,8 +4050,7 @@ function updateEnemies(dt) {
       }
 
       if (dist > 1.1) {
-        if (doThink) moved = moveGoblinAlongPath(e, player.pos.clone(), dt);
-        if (!moved) moved = moveGoblinToward(e, player.pos, dt);
+        if (doThink) moved = moveInsideEnemyTowardPlayer(e, dt);
       } else {
         if (e.attackCooldown <= 0 && player.hurtCooldown <= 0) {
           player.health -= e.damage;
@@ -3947,7 +4062,9 @@ function updateEnemies(dt) {
         }
       }
       applyEnemySeparation(e, dt);
+      resolveEnemyWallPenetration(e);
       resolveGoblinContactWithPlayer(e, dt);
+      recoverStuckInsideEnemy(e, dt);
     }
     animateGoblinWalk(e, moved);
     animateGoblinAttack(e, dt);
