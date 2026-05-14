@@ -3095,8 +3095,12 @@ function useSpecial(p) {
         damage: 4,
         knock: 4,
         color: "#ffea00",
-        aura: true
+        aura: true,
+        raSolar: true,
+        spin: 0,
+        shimmerTick: 0
       });
+      spawnRaSolarSparks(p.x + p.facing * 26, p.y - 24, 10, 1.1);
     }
   }
 
@@ -3877,6 +3881,46 @@ function spawnProjectile(p) {
     p.paceAdjusted = true;
   }
   projectiles.push(p);
+}
+
+function spawnRaSolarSparks(x, y, count, power = 1) {
+  const capped = Math.max(1, Math.min(24, count | 0));
+  spawnParticles(x, y, "#ffea00", Math.min(18, Math.floor(capped * 0.6)), 1.4 + power * 0.9);
+  spawnParticles(x, y, "#ff9f1c", Math.min(14, Math.floor(capped * 0.45)), 1 + power * 0.8);
+  if (power > 0.8) spawnParticles(x, y, "#ffffff", Math.min(8, Math.floor(capped * 0.25)), 1 + power * 0.6);
+}
+function spawnRaImpactRays(x, y, count, radius = 40) {
+  const capped = Math.max(6, Math.min(18, count | 0));
+  for (let i = 0; i < capped; i++) {
+    const ang = (Math.PI * 2 * i) / capped + Math.random() * 0.25;
+    const len = radius * (0.45 + Math.random() * 0.65);
+    createAttack({ owner: null, x: x + Math.cos(ang) * len * 0.3, y: y + Math.sin(ang) * len * 0.3, w: 8 + len * 0.2, h: 8 + len * 0.1, damage: 0, knock: 0, angle: 0, frames: 3, color: "#ffd166", label: "ra_impact_ray", visualType: "raSolarImpactRays" });
+  }
+}
+function drawRaSunDisk(c, x, y, radius, alpha = 1, rotation = 0) {
+  c.save();
+  c.globalAlpha = alpha * 0.26; c.fillStyle = "#ffd166"; c.beginPath(); c.arc(x, y, radius * 1.75, 0, Math.PI * 2); c.fill();
+  c.globalAlpha = alpha * 0.9; c.fillStyle = "#ff9f1c"; c.beginPath(); c.arc(x, y, radius, 0, Math.PI * 2); c.fill();
+  c.globalAlpha = alpha; c.fillStyle = "#fffdf0"; c.beginPath(); c.arc(x, y, radius * 0.55, 0, Math.PI * 2); c.fill();
+  c.globalAlpha = alpha * 0.8; c.strokeStyle = "#ffb703"; c.lineWidth = screenScale(2.5); c.beginPath(); c.arc(x, y, radius * 1.12, 0, Math.PI * 2); c.stroke();
+  c.globalAlpha = alpha * 0.72; c.strokeStyle = "#ffffff"; c.lineWidth = screenScale(2);
+  for (let i = 0; i < 10; i++) { const a = rotation + (Math.PI * 2 * i) / 10; c.beginPath(); c.moveTo(x + Math.cos(a) * radius * 0.65, y + Math.sin(a) * radius * 0.65); c.lineTo(x + Math.cos(a) * radius * 1.45, y + Math.sin(a) * radius * 1.45); c.stroke(); }
+  c.restore();
+}
+function drawRaBeam(c, x1, y1, x2, y2, width, alpha = 1) {
+  c.save();
+  c.globalAlpha = alpha * 0.35; c.strokeStyle = "#ff8c42"; c.lineWidth = width * 1.35; c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
+  c.globalAlpha = alpha * 0.75; c.strokeStyle = "#ffd166"; c.lineWidth = width * 0.82; c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
+  c.globalAlpha = alpha; c.strokeStyle = "#ffffff"; c.lineWidth = width * 0.34; c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
+  c.restore();
+}
+function drawRaGroundSunMarker(c, x, y, radius, alpha = 1) {
+  c.save();
+  c.globalAlpha = alpha * 0.22; c.fillStyle = "#f97316"; c.beginPath(); c.ellipse(x, y, radius * 0.95, radius * 0.34, 0, 0, Math.PI * 2); c.fill();
+  c.globalAlpha = alpha * 0.68; c.strokeStyle = "#ffea00"; c.lineWidth = screenScale(2.8); c.beginPath(); c.ellipse(x, y, radius, radius * 0.4, 0, 0, Math.PI * 2); c.stroke();
+  c.globalAlpha = alpha * 0.8; c.strokeStyle = "#ffffff"; c.lineWidth = screenScale(1.8);
+  for (let i = 0; i < 8; i++) { const a = (Math.PI * 2 * i) / 8; c.beginPath(); c.moveTo(x + Math.cos(a) * radius * 0.2, y + Math.sin(a) * radius * 0.08); c.lineTo(x + Math.cos(a) * radius * 0.88, y + Math.sin(a) * radius * 0.33); c.stroke(); }
+  c.restore();
 }
 
 function addTelegraph(config) {
@@ -4837,6 +4881,9 @@ function updateProjectiles() {
     if (pr.type === "sun") {
       pr.vx *= .98;
       pr.vy *= .98;
+      pr.spin = (pr.spin || 0) + 0.18 * (Math.sign(pr.vx) || pr.dir || 1);
+      pr.shimmerTick = (pr.shimmerTick || 0) + 1;
+      if (pr.shimmerTick % 4 === 0) spawnRaSolarSparks(pr.x - pr.vx * 0.8, pr.y - pr.vy * 0.8, 4, 0.7);
 
       players.forEach(p => {
         if (p === pr.owner || p.dead || p.invincible > 0) return;
@@ -4844,6 +4891,8 @@ function updateProjectiles() {
         if (d < 70 && !pr.hit.has(p.id + "_" + Math.floor(pr.life / 18))) {
           pr.hit.add(p.id + "_" + Math.floor(pr.life / 18));
           applyHit(p, pr.owner, pr.damage, pr.knock, -.35, Math.sign(p.x - pr.x) || 1, pr.color, {x: pr.x, y: pr.y, impactType: "solar"});
+          spawnRaImpactRays(pr.x, pr.y, 10, 54);
+          spawnRaSolarSparks(pr.x, pr.y, 12, 1.15);
         }
       });
     } else if (pr.type === "eyeMark") {
@@ -5728,27 +5777,9 @@ function drawRaSunBursts() {
     ctx.save();
     if (!b.exploded) {
       const spin = matchTime * 0.08 + progress * 2.2;
-      ctx.globalAlpha = 0.22 + progress * 0.32;
-      ctx.fillStyle = "#f97316";
-      ctx.beginPath(); ctx.arc(sx, sy, r * 0.86, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = 0.45 + progress * 0.32;
-      ctx.fillStyle = "#ffea00";
-      ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = 0.52;
-      ctx.strokeStyle = "#ff9f1c";
-      ctx.lineWidth = screenScale(4.2);
-      ctx.beginPath(); ctx.arc(sx, sy, screenScale(b.radius * (0.82 + progress * 0.18)), 0, Math.PI * 2); ctx.stroke();
-      ctx.globalAlpha = 0.72;
-      ctx.strokeStyle = "rgba(255,255,255,0.9)";
-      ctx.lineWidth = screenScale(2);
-      for (let i = 0; i < 10; i++) { const ang = spin + (Math.PI * 2 * i) / 10; ctx.beginPath(); ctx.moveTo(sx + Math.cos(ang) * r * 0.52, sy + Math.sin(ang) * r * 0.52); ctx.lineTo(sx + Math.cos(ang) * r * 1.22, sy + Math.sin(ang) * r * 1.22); ctx.stroke(); }
-      ctx.globalAlpha = 0.24 + (1 - progress) * 0.35;
-      ctx.strokeStyle = "#ffd166";
-      ctx.lineWidth = screenScale(3.4);
-      ctx.beginPath(); ctx.arc(sx, sy, r * (1.35 + (1 - progress) * 0.28), 0, Math.PI * 2); ctx.stroke();
-      ctx.globalAlpha = 0.85;
-      ctx.fillStyle = "#ffffff";
-      ctx.beginPath(); ctx.arc(sx, sy, Math.max(2, r * 0.22), 0, Math.PI * 2); ctx.fill();
+      drawRaGroundSunMarker(ctx, sx, sy, r * 1.15, 0.6 + progress * 0.4);
+      for (let i = 0; i < 10; i++) { const ang = spin + (Math.PI * 2 * i) / 10; ctx.globalAlpha = 0.75; ctx.strokeStyle = i % 2 ? "#ff9f1c" : "#ffffff"; ctx.lineWidth = screenScale(2); ctx.beginPath(); ctx.moveTo(sx + Math.cos(ang) * r * 0.3, sy + Math.sin(ang) * r * 0.12); ctx.lineTo(sx + Math.cos(ang) * r * 1.06, sy + Math.sin(ang) * r * 0.35); ctx.stroke(); }
+      drawRaSunDisk(ctx, sx, sy - r * 0.05, r * 0.34, 0.88, spin);
     } else {
       ctx.globalAlpha = 0.55;
       ctx.fillStyle = "#ff9f1c";
@@ -6949,14 +6980,15 @@ function drawAttack(a) {
   };
   if (["raDownwardSunBeam","raSunbeamLift"].includes(rawType)) {
     const tele = Math.max(0, Math.min(1, a.frames / Math.max(1, a.maxFrames || 10)));
-    ctx.globalAlpha = 0.2 + tele * 0.3; ctx.fillStyle = "rgba(255,140,0,0.55)"; ctx.fillRect(cx - w * 0.35, y, w * 0.7, h);
-    ctx.globalAlpha = 0.45 + tele * 0.25; ctx.fillStyle = "#ffd166"; ctx.fillRect(cx - w * 0.24, y, w * 0.48, h);
-    ctx.globalAlpha = 0.85; ctx.fillStyle = "#ffffff"; ctx.fillRect(cx - w * 0.1, y, w * 0.2, h);
-    for (let i = 0; i < 5; i++) { const bandY = y + ((matchTime * 8 + i * 27) % Math.max(8, h)); ctx.globalAlpha = 0.22; ctx.fillStyle = i % 2 ? "#ffe66d" : "#fff5cc"; ctx.fillRect(cx - w * 0.2, bandY, w * 0.4, screenScale(4)); }
-    ctx.globalAlpha = 0.4 + tele * 0.3; ctx.fillStyle = "#fff8b3"; ctx.beginPath(); ctx.arc(cx, worldToScreenY(a.owner ? a.owner.y + a.owner.h * 0.5 : a.y), w * 0.25, 0, Math.PI * 2); ctx.fill();
-    const impactR = Math.max(w * 0.24, (w * 0.24) + Math.sin(matchTime * 0.6) * screenScale(3));
-    ctx.globalAlpha = 0.58; ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.ellipse(cx, y + h, impactR, impactR * 0.42, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = 0.42; ctx.strokeStyle = "#ff9f1c"; ctx.lineWidth = screenScale(3); ctx.beginPath(); ctx.ellipse(cx, y + h, impactR * 1.6, impactR * 0.55, 0, 0, Math.PI * 2); ctx.stroke();
+    drawRaBeam(ctx, cx, y, cx, y + h, Math.max(screenScale(10), w * 0.3), 0.7 + tele * 0.35);
+    for (let i = 0; i < 6; i++) {
+      const bandY = y + ((matchTime * 10 + i * 23) % Math.max(10, h));
+      ctx.globalAlpha = 0.18; ctx.strokeStyle = i % 2 ? "#ffd166" : "#fff5cc"; ctx.lineWidth = screenScale(2.2);
+      ctx.beginPath(); ctx.moveTo(cx - w * 0.23, bandY); ctx.lineTo(cx + w * 0.23, bandY + Math.sin(matchTime * 0.2 + i) * screenScale(3)); ctx.stroke();
+    }
+    if (a.owner) drawRaBeam(ctx, cx, worldToScreenY(a.owner.y + a.owner.h * 0.45), cx, y, Math.max(screenScale(6), w * 0.14), 0.85);
+    drawRaGroundSunMarker(ctx, cx, y + h, Math.max(screenScale(16), w * 0.45), 0.75);
+    if (a.frames % 3 === 0) spawnRaSolarSparks(a.x + a.w / 2, a.y + a.h, 4, 0.65);
     spark(6, "rgba(255,213,102,.9)");
     ctx.globalAlpha = 1;
     return;
@@ -7197,19 +7229,27 @@ function drawAttack(a) {
     spark(8, "rgba(255,234,0,.85)");
     ctx.globalAlpha = 1;
   } else if (type === "raSunBurstExplosion") {
-    ctx.globalAlpha = 0.55;
-    ctx.fillStyle = "#ff9f1c";
-    ctx.beginPath(); ctx.arc(cx, cy, Math.max(w, h) * 0.48, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = 0.88;
-    ctx.fillStyle = "#ffea00";
-    ctx.beginPath(); ctx.arc(cx, cy, Math.max(w, h) * 0.34, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = 0.95;
-    ctx.fillStyle = "#ffffff";
-    ctx.beginPath(); ctx.arc(cx, cy, Math.max(w, h) * 0.15, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = 0.85;
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = screenScale(5);
-    ctx.beginPath(); ctx.arc(cx, cy, Math.max(w, h) * 0.42, 0, Math.PI * 2); ctx.stroke();
+    const rr = Math.max(w, h) * 0.46;
+    drawRaGroundSunMarker(ctx, cx, cy + h * 0.18, rr * 0.72, 0.6);
+    for (let i = 0; i < 12; i++) {
+      const a0 = (Math.PI * 2 * i) / 12 + matchTime * 0.05;
+      const a1 = a0 + 0.18;
+      ctx.globalAlpha = 0.86; ctx.fillStyle = i % 2 ? "#ff9f1c" : "#ffd166";
+      ctx.beginPath(); ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(a0) * rr, cy + Math.sin(a0) * rr);
+      ctx.lineTo(cx + Math.cos(a1) * rr * 0.68, cy + Math.sin(a1) * rr * 0.68);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.globalAlpha = 0.95; ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(cx, cy, rr * 0.18, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+  } else if (type === "raSolarImpactRays") {
+    const rr = Math.max(w, h) * 0.5;
+    const a0 = matchTime * 0.15;
+    ctx.globalAlpha = 0.88; ctx.fillStyle = "#ffd166";
+    ctx.beginPath(); ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(a0) * rr, cy + Math.sin(a0) * rr);
+    ctx.lineTo(cx + Math.cos(a0 + 0.24) * rr * 0.45, cy + Math.sin(a0 + 0.24) * rr * 0.45);
+    ctx.closePath(); ctx.fill();
     ctx.globalAlpha = 1;
   } else if (type === "raChargingSunBurst") {
     ctx.globalAlpha = 0.72;
@@ -7457,19 +7497,14 @@ function drawProjectile(pr) {
     }
     ctx.globalAlpha = 1;
   } else if (pr.type === "sun") {
-    const pulse = 1 + Math.sin(matchTime / 6 + pr.life * .15) * .18;
-    const coreR = (w * 0.34) * pulse;
-    const ringR = screenScale(36 + Math.sin(matchTime / 5) * 5);
-    const glowR = screenScale(62);
-    ctx.fillStyle = "rgba(255,210,90,.24)";
-    ctx.beginPath(); ctx.arc(x, y, glowR, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = "rgba(255,235,120,.55)";
-    ctx.lineWidth = screenScale(3);
-    ctx.beginPath(); ctx.arc(x, y, ringR, 0, Math.PI * 2); ctx.stroke();
-    ctx.fillStyle = pr.color;
-    ctx.beginPath(); ctx.arc(x, y, coreR, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "rgba(255,245,185,.75)";
-    ctx.beginPath(); ctx.arc(x, y, coreR * .45, 0, Math.PI * 2); ctx.fill();
+    const rot = (pr.spin || 0) + matchTime * 0.03;
+    const pulse = 1 + Math.sin(matchTime / 6 + pr.life * .15) * .12;
+    drawRaSunDisk(ctx, x, y, Math.max(screenScale(8), w * 0.24) * pulse, 0.98, rot);
+    ctx.globalAlpha = 0.22; ctx.strokeStyle = "#ff9f1c"; ctx.lineWidth = screenScale(2);
+    ctx.beginPath(); ctx.moveTo(x - w * 0.62, y); ctx.lineTo(x - w * 1.15, y + Math.sin(matchTime * 0.2 + pr.life) * screenScale(4)); ctx.stroke();
+    ctx.globalAlpha = 0.16; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = screenScale(1.8);
+    ctx.beginPath(); ctx.moveTo(x - w * 0.5, y + screenScale(4)); ctx.lineTo(x - w * 1.02, y + screenScale(6)); ctx.stroke();
+    ctx.globalAlpha = 1;
   } else if (pr.type === "hook") {
     const dir = pr.dir || Math.sign(pr.vx) || getFacingDir(pr.owner);
     const ox = worldToScreenX(pr.owner.x + dir * 16);
