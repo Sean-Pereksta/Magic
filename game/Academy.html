@@ -2366,10 +2366,10 @@ const enemyTypes = {
     leaper: true, role:"ambusher", pressureScore:4
   },
   shieldBearer: { name:"Shield Bearer", color:0x3f4a4f, health:180, speed:1.65, damage:12, reward:180, scale:1.12, unlockWave:9, shieldedFront:true, frontalDamageReduction:0.65, boardDamage:2, armor:0.08, pressureScore:5, role:"defender" },
-  hexWitch: { name:"Hex Witch", color:0xaa44ff, health:130, speed:1.55, damage:9, reward:220, scale:1.05, unlockWave:11, rangedAttack:true, curseAttack:true, pressureScore:6, role:"caster" },
+  hexWitch: { name:"Hex Witch", color:0xaa44ff, health:130, speed:1.55, damage:9, reward:220, scale:1.05, unlockWave:11, rangedAttack:true, curseAttack:true, pressureScore:6, role:"caster", specialAbility:"curseTotem", totemUnlockWave:12, totemCooldownMin:9, totemCooldownMax:14, totemRadius:4.2, totemDuration:8, totemDamagePerSecond:4, totemSlowMult:0.72, totemEnemySpeedBuff:1.12 },
   boneCrawler: { name:"Bone Crawler", color:0xd8d8c0, health:75, speed:3.15, damage:10, reward:145, scale:0.72, unlockWave:13, lowProfile:true, pressureScore:5, role:"low_swarm" },
   ogreBreaker: { name:"Ogre Breaker", color:0x775533, health:700, speed:0.85, damage:28, reward:500, scale:1.75, unlockWave:15, boardDamage:6, armor:0.22, heavyPush:true, miniBoss:true, pressureScore:10, role:"mini_boss" },
-  shadowStalker: { name:"Shadow Stalker", color:0x181020, health:170, speed:2.55, damage:20, reward:280, scale:1.05, unlockWave:18, shadowDash:true, flicker:true, pressureScore:8, role:"assassin" },
+  shadowStalker: { name:"Shadow Stalker", color:0x181020, health:170, speed:2.55, damage:20, reward:280, scale:1.05, unlockWave:18, shadowDash:true, flicker:true, pressureScore:8, role:"assassin", specialAbility:"phaseAmbush", phaseUnlockWave:18, phaseCooldownMin:8, phaseCooldownMax:13, phaseWindup:0.65, phaseStrikeDamage:22, phaseAmbushDistance:3.0 },
   spitter: {
     name: "Acid Spitter",
     color: 0x75ff3b,
@@ -2411,6 +2411,7 @@ const ENEMY_UNLOCK_MESSAGES = {
   warg: "Wave 4: Grave Wargs are hunting.", skeleton: "Wave 6: Bone Stalkers rise.", cultist: "Wave 8: Cursed Cultists approach.", stoneImp: "Wave 10: Stone Imps breach the walls.", shadowStalker: "Wave 13: Shadow Stalkers enter the dark."
 };
 const announcedEnemyTypes = {};
+const curseTotems = [];
 
 function createEnemyMesh(typeId) {
   if (typeId === "goblin") return createGoblinMesh("green");
@@ -2688,6 +2689,13 @@ function spawnEnemy(typeKey = "green") {
     bashTimer: 0,
     bashDir: null,
     bashRecovery: 0,
+    totemCooldown: 4 + Math.random() * 6,
+    totemCastTimer: 0,
+    phaseCooldown: 4 + Math.random() * 6,
+    phaseWindup: 0,
+    phaseStrikeTimer: 0,
+    phaseTarget: null,
+    isPhasing: false,
     hitboxes: createEnemyHitboxes(typeKey, type)
   };
   const scaled=getScaledEnemyStats(typeKey,player.wave);
@@ -3061,7 +3069,9 @@ function updatePlayer(dt) {
   if (moveX < 0) move.sub(right.clone().multiplyScalar(-moveX));
 
   if (move.lengthSq() > 0) {
-    move.normalize().multiplyScalar(speed * dt);
+    let speedMult = 1;
+    if ((player.curseSlowTimer || 0) > 0) { speedMult *= 0.72; player.curseSlowTimer -= dt; }
+    move.normalize().multiplyScalar(speed * speedMult * dt);
   }
 
   const nx = player.pos.x + move.x;
@@ -3118,6 +3128,15 @@ function updateBullets(dt) {
     if (b.glow) b.glow.position.copy(b.pos);
 
     let hit = false;
+    for (let t = curseTotems.length - 1; t >= 0 && !hit; t--) {
+      const totem = curseTotems[t];
+      const dx = b.pos.x - totem.x, dz = b.pos.z - totem.z;
+      if ((dx * dx + dz * dz) <= 0.7 * 0.7 && b.pos.y <= 1.4) {
+        totem.health -= b.damage || 20;
+        if (totem.health <= 0) removeCurseTotemAtIndex(t);
+        hit = true;
+      }
+    }
     for (let j = enemies.length - 1; j >= 0; j--) {
       const e = enemies[j];
       if (b.hitEnemies && b.hitEnemies.has(e)) continue;
@@ -4046,6 +4065,101 @@ function updateEnemyStuckSafety(enemy, dt) {
   if (enemy.pathFailCount >= 3) retargetEnemyToNearestUnlockedWindow(enemy);
 }
 
+function removeCurseTotemAtIndex(index) {
+  const t = curseTotems[index];
+  if (!t) return;
+  scene.remove(t.group);
+  t.group.traverse(obj => {
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) obj.material.dispose();
+  });
+  curseTotems.splice(index, 1);
+}
+function spawnCurseTotem(x, z, owner) {
+  const group = new THREE.Group();
+  group.position.set(x, 0, z);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.36, 0.65, 8), new THREE.MeshStandardMaterial({ color: 0x2a1238, emissive: 0x3a0a55, emissiveIntensity: 0.35, roughness: 0.8 }));
+  base.position.y = 0.32;
+  const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.32, 0), new THREE.MeshBasicMaterial({ color: 0xaa44ff, transparent: true, opacity: 0.85 }));
+  crystal.position.y = 0.9;
+  const ring = new THREE.Mesh(new THREE.RingGeometry(3.7, 4.2, 40), new THREE.MeshBasicMaterial({ color: 0xaa44ff, transparent: true, opacity: 0.22, side: THREE.DoubleSide }));
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.035;
+  group.add(base, crystal, ring);
+  scene.add(group);
+  curseTotems.push({ group, base, crystal, ring, x, z, owner, life: 8, maxLife: 8, radius: 4.2, damagePerSecond: 4, slowMult: 0.72, enemySpeedBuff: 1.12, damageTick: 0, health: 80 });
+}
+function maybeUseHexWitchTotem(enemy, dt) {
+  if (!enemy || enemy.dead || enemy.typeKey !== "hexWitch" || player.wave < 12 || !isEnemyInsideHouse(enemy)) return false;
+  enemy.totemCooldown = Math.max(0, (enemy.totemCooldown || 0) - dt);
+  if (enemy.totemCastTimer > 0) {
+    enemy.totemCastTimer -= dt;
+    const dx = player.pos.x - enemy.mesh.position.x;
+    const dz = player.pos.z - enemy.mesh.position.z;
+    enemy.mesh.rotation.y = Math.atan2(dx, dz) + (GOBLIN_FACE_FLIP || 0);
+    enemy.mesh.traverse(o => { if (o.isMesh && o.material && o.material.emissive) o.material.emissive.setHex(0xaa44ff); });
+    if (enemy.totemCastTimer <= 0) { spawnCurseTotem(enemy.mesh.position.x, enemy.mesh.position.z, enemy); enemy.totemCooldown = 9 + Math.random() * 5; }
+    return true;
+  }
+  if (enemy.totemCooldown > 0) return false;
+  const dx = player.pos.x - enemy.mesh.position.x, dz = player.pos.z - enemy.mesh.position.z;
+  if (Math.sqrt(dx*dx+dz*dz) > 13) return false;
+  enemy.totemCastTimer = 0.75;
+  if (typeof announceThreat === "function") announceThreat("Hex Witch is summoning a Curse Totem!");
+  else centerText.textContent = "Hex Witch is summoning a Curse Totem!";
+  return true;
+}
+function updateCurseTotems(dt) {
+  for (let i = curseTotems.length - 1; i >= 0; i--) {
+    const t = curseTotems[i];
+    t.life -= dt; t.damageTick -= dt;
+    if (t.crystal) { t.crystal.rotation.y += dt * 2.8; t.crystal.position.y = 0.9 + Math.sin(performance.now() * 0.004) * 0.08; }
+    if (t.ring && t.ring.material) t.ring.material.opacity = 0.12 + Math.sin(performance.now() * 0.006) * 0.08;
+    const dx = player.pos.x - t.x, dz = player.pos.z - t.z, dist = Math.sqrt(dx*dx+dz*dz);
+    if (dist <= t.radius && player.alive) {
+      player.curseSlowTimer = Math.max(player.curseSlowTimer || 0, 0.2);
+      if (t.damageTick <= 0 && player.hurtCooldown <= 0) { player.health -= t.damagePerSecond; player.regenTimer = player.regenDelay; player.hurtCooldown = 0.25; t.damageTick = 1.0; if (typeof showDamageTint === "function") showDamageTint(); }
+    }
+    for (const e of enemies) { if (!e || e.dead || !e.mesh) continue; const ex = e.mesh.position.x - t.x, ez = e.mesh.position.z - t.z; if (Math.sqrt(ex*ex+ez*ez) <= t.radius) e.curseEmpoweredTimer = Math.max(e.curseEmpoweredTimer || 0, 0.35); }
+    if (t.life <= 0 || t.health <= 0) removeCurseTotemAtIndex(i);
+  }
+}
+function findShadowAmbushSpot(enemy) {
+  const yaw = player.yaw || 0;
+  const candidates = [{ angle: yaw + Math.PI, dist: 3.0 }, { angle: yaw + Math.PI * 0.75, dist: 3.2 }, { angle: yaw - Math.PI * 0.75, dist: 3.2 }, { angle: yaw + Math.PI * 0.5, dist: 3.5 }, { angle: yaw - Math.PI * 0.5, dist: 3.5 }];
+  for (const c of candidates) { const x = player.pos.x + Math.sin(c.angle) * c.dist, z = player.pos.z + Math.cos(c.angle) * c.dist; if (typeof isPointInsideAnyRoom === "function" && !isPointInsideAnyRoom(x, z)) continue; if (typeof canEnemyStandAt === "function" && !canEnemyStandAt(enemy, x, z)) continue; return { x, z }; }
+  for (let i = 0; i < 16; i++) { const a = (Math.PI * 2 * i) / 16; const x = player.pos.x + Math.cos(a) * 3.4, z = player.pos.z + Math.sin(a) * 3.4; if (typeof isPointInsideAnyRoom === "function" && !isPointInsideAnyRoom(x, z)) continue; if (typeof canEnemyStandAt === "function" && !canEnemyStandAt(enemy, x, z)) continue; return { x, z }; }
+  return null;
+}
+function setEnemyPhasingVisual(enemy, active) { if (!enemy || !enemy.mesh) return; enemy.mesh.traverse(obj => { if (!obj.material) return; obj.material.transparent = !!active; obj.material.opacity = active ? 0.35 : 1; }); }
+function spawnShadowPoof(x, y, z) { for (let i = 0; i < 12; i++) { const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.06 + Math.random() * 0.08, 6, 6), new THREE.MeshBasicMaterial({ color: 0x221133, transparent: true, opacity: 0.75 })); mesh.position.set(x + (Math.random() - 0.5) * 0.7, y + (Math.random() - 0.5) * 0.6, z + (Math.random() - 0.5) * 0.7); scene.add(mesh); const life = 0.45 + Math.random() * 0.25; setTimeout(() => { scene.remove(mesh); if (mesh.geometry) mesh.geometry.dispose(); if (mesh.material) mesh.material.dispose(); }, life * 1000); } }
+function maybeUseShadowPhaseAmbush(enemy, dt) {
+  if (!enemy || enemy.dead || enemy.typeKey !== "shadowStalker" || player.wave < 18 || !isEnemyInsideHouse(enemy)) return false;
+  enemy.phaseCooldown = Math.max(0, (enemy.phaseCooldown || 0) - dt);
+  if (enemy.phaseStrikeTimer > 0) {
+    enemy.phaseStrikeTimer -= dt; const target = new THREE.Vector3(player.pos.x, 0, player.pos.z); const originalSpeed = enemy.effectiveSpeed || enemy.speed; enemy.effectiveSpeed = originalSpeed * 2.2; moveEnemyWithCollision(enemy, target, dt); enemy.effectiveSpeed = originalSpeed;
+    const dx = player.pos.x - enemy.mesh.position.x, dz = player.pos.z - enemy.mesh.position.z;
+    if (Math.sqrt(dx*dx+dz*dz) < 1.25 && player.hurtCooldown <= 0) { let damage = 22; damage *= 1 - (player.specialDamageReduction || 0); player.health -= Math.round(damage); player.regenTimer = player.regenDelay; player.hurtCooldown = 0.6; if (typeof showDamageTint === "function") showDamageTint(); enemy.phaseStrikeTimer = 0; enemy.phaseCooldown = 8 + Math.random() * 5; }
+    return true;
+  }
+  if (enemy.phaseWindup > 0) {
+    enemy.phaseWindup -= dt; enemy.isPhasing = true; setEnemyPhasingVisual(enemy, true);
+    if (enemy.phaseWindup <= 0) {
+      const targetSpot = enemy.phaseTarget || findShadowAmbushSpot(enemy);
+      if (targetSpot) { spawnShadowPoof(enemy.mesh.position.x, enemy.mesh.position.y + 1, enemy.mesh.position.z); enemy.mesh.position.x = targetSpot.x; enemy.mesh.position.z = targetSpot.z; spawnShadowPoof(enemy.mesh.position.x, enemy.mesh.position.y + 1, enemy.mesh.position.z); enemy.phaseStrikeTimer = 0.9; if (typeof announceThreat === "function") announceThreat("Shadow Stalker phased behind you!"); else centerText.textContent = "Shadow Stalker phased behind you!"; }
+      enemy.phaseTarget = null; enemy.isPhasing = false; setEnemyPhasingVisual(enemy, false); enemy.phaseCooldown = 8 + Math.random() * 5;
+    }
+    return true;
+  }
+  if (enemy.phaseCooldown > 0) return false;
+  const dx = player.pos.x - enemy.mesh.position.x, dz = player.pos.z - enemy.mesh.position.z, dist = Math.sqrt(dx*dx+dz*dz);
+  if (dist < 5 || dist > 18) return false;
+  const spot = findShadowAmbushSpot(enemy); if (!spot) return false;
+  enemy.phaseTarget = spot; enemy.phaseWindup = 0.65;
+  if (typeof announceThreat === "function") announceThreat("Shadow Stalker is phasing!"); else centerText.textContent = "Shadow Stalker is phasing!";
+  return true;
+}
+
 function updateEnemies(dt) {
   let renderedEnemies = 0;
   for (let i = enemies.length - 1; i >= 0; i--) {
@@ -4072,6 +4186,7 @@ function updateEnemies(dt) {
       e.effectiveSpeed = e.speed * (e.slowMultiplier || 0.55);
       if (e.slowTimer <= 0) e.slowMultiplier = 1;
     }
+    if ((e.curseEmpoweredTimer || 0) > 0) { e.effectiveSpeed *= 1.12; e.curseEmpoweredTimer -= dt; }
     if (e.voidMarkTimer > 0) {
       e.voidMarkTimer -= dt;
       if (e.voidMarkTimer <= 0) e.voidStacks = 0;
@@ -4196,6 +4311,8 @@ function updateEnemies(dt) {
     if (e.state === "inside") {
       if (maybeUseRockThrowerSpecial(e, dt)) { animateGoblinWalk(e, moved); continue; }
       if (maybeUseBruteBash(e, dt)) { animateGoblinWalk(e, moved); continue; }
+      if (maybeUseHexWitchTotem(e, dt)) { animateGoblinWalk(e, moved); continue; }
+      if (maybeUseShadowPhaseAmbush(e, dt)) { animateGoblinWalk(e, moved); continue; }
       const dx = player.pos.x - e.mesh.position.x;
       const dz = player.pos.z - e.mesh.position.z;
       faceGoblinToward(e, player.pos);
@@ -4561,6 +4678,7 @@ function animate() {
     resolvePlayerGoblinCollisions();
     updateGun(dt);
     updateWave(dt);
+    updateCurseTotems(dt);
     updateEnemies(dt);
     resolvePlayerGoblinCollisions();
     resolvePlayerGoblinCollisions();
