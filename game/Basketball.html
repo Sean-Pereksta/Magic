@@ -3292,8 +3292,10 @@ function useSpecial(p) {
       p.attackFrame = Math.max(p.attackFrame, 24);
       p.invincible = Math.max(p.invincible, 4);
       createAttack({owner:p,x:p.x + dir * 48,y:p.y - 6,w:92,h:58,damage:9,knock:10,angle:-0.32,frames:14,color:"#b66dff",label:"bastet_moon_pounce",visualType:"bastetMoonPounce",attachToOwner:true,offsetX:dir * 48,offsetY:-6});
-      spawnParticles(p.x - dir * 18, p.y + 10, "#b66dff", 18, 5);
-      spawnParticles(p.x - dir * 12, p.y + 16, "#ffd166", 12, 4);
+      spawnParticles(p.x - dir * 18, p.y + 10, "#b66dff", 14, 4.5);
+      spawnParticles(p.x - dir * 12, p.y + 16, "#ffd166", 9, 3.4);
+      spawnBastetPawPrints(p.x - dir * 12, p.y + p.h * 0.42, dir, 5);
+      spawnBastetAfterimage(p, 9, "#b66dff");
       return;
     }
     if (v === "up") {
@@ -3305,8 +3307,9 @@ function useSpecial(p) {
       p.attackFrame = Math.max(p.attackFrame, 28);
       p.invincible = Math.max(p.invincible, 6);
       createAttack({owner:p,x:p.x + dir * 16,y:p.y - 54,w:82,h:104,damage:8,knock:10.5,angle:-1.12,frames:12,color:"#b66dff",label:"bastet_moonlit_leap",visualType:"bastetMoonlitLeap",attachToOwner:true,offsetX:dir * 16,offsetY:-54});
-      spawnParticles(p.x, p.y + 20, "#b66dff", 24, 6);
-      spawnParticles(p.x, p.y + 20, "#ffd166", 12, 4);
+      spawnParticles(p.x, p.y + 20, "#b66dff", 16, 4.2);
+      spawnParticles(p.x, p.y + 20, "#ffd166", 8, 3);
+      spawnBastetAfterimage(p, 8, "#8d5cff");
       return;
     }
     if (v === "down") {
@@ -3958,8 +3961,9 @@ function updateFighter(p) {
     p.attackKind = "bastet_scratch_rebound";
     p.attackFrame = Math.max(p.attackFrame, 6);
     if (p.bastetScratchTimer % 2 === 0) {
-      spawnParticles(p.x - dir * 20, p.y + 5, "#b66dff", 4, 2.2);
-      spawnParticles(p.x - dir * 30, p.y + 10, "#ffd166", 2, 1.5);
+      spawnParticles(p.x - dir * 20, p.y + 5, "#b66dff", 3, 1.8);
+      spawnParticles(p.x - dir * 30, p.y + 10, "#ffd166", 1, 1.2);
+      spawnBastetAfterimage(p, 4, "#9d4edd");
     }
     createAttack({ owner:p, x:p.x + dir * 44, y:p.y - 4, w:86, h:56, damage:8.5, knock:9.8, angle:-0.22, frames:2, color:"#b66dff", label:"bastet_scratch_rebound", visualType:"bastetScratchRebound", attachToOwner:true, offsetX:dir * 44, offsetY:-4, onHitEffect:"bastetScratchBounce" });
     if (p.bastetScratchTimer <= 0 && !p.bastetScratchHit) {
@@ -3967,7 +3971,9 @@ function updateFighter(p) {
       p.attackCooldown = Math.max(p.attackCooldown, 15);
       p.vx *= 0.25;
       p.vy = Math.min(p.vy + 4, 8);
-      spawnParticles(p.x, p.y + p.h / 2, "#ffd166", 8, 2.5);
+      spawnParticles(p.x, p.y + p.h / 2, "#ffd166", 6, 2);
+      spawnParticles(p.x - dir * 12, p.y + p.h / 2 + 4, "#b66dff", 6, 1.8);
+      spawnBastetPawPrints(p.x - dir * 8, p.y + p.h / 2 + 6, dir, 3);
     }
   }
   p.anim += .18;
@@ -4592,7 +4598,8 @@ function updateAttacks() {
         if (a.charm && a.owner && a.owner.godId === "bastet") {
           p.charmTimer = Math.max(p.charmTimer || 0, 130);
           p.confusedTimer = Math.max(p.confusedTimer || 0, 70);
-          spawnParticles(p.x, p.y - 20, "#b66dff", 18, 4);
+          spawnParticles(p.x, p.y - 20, "#b66dff", 8, 2.5);
+          spawnParticles(p.x, p.y - 26, "#ffd166", 4, 1.6);
         }
         if (a.label === "bastet_scratch_rebound" && a.owner && a.owner.godId === "bastet" && !a.owner.bastetScratchHit) {
           const owner = a.owner;
@@ -4627,6 +4634,40 @@ function updateLightningStrikes() {
   }
 }
 
+
+function spawnBastetPawPrints(x, y, dir = 1, count = 4) {
+  const capped = Math.max(1, Math.min(8, count|0));
+  for (let i = 0; i < capped; i++) {
+    const px = x - dir * (8 + i * 7) + (Math.random() - 0.5) * 8;
+    const py = y + (Math.random() - 0.5) * 6;
+    spawnParticles(px, py, i % 2 ? "#ffd166" : "#b66dff", 2, 1.1 + Math.random() * 0.8);
+  }
+}
+
+function spawnBastetAfterimage(p, frames = 8, color = "#b66dff") {
+  if (!p) return;
+  createAttack({ owner:p, x:p.x - p.facing * 6, y:p.y, w:58, h:54, damage:0, knock:0, angle:0, frames:Math.max(3, Math.min(16, frames)), color, label:"bastet_afterimage", visualType:"bastetMoonLauncher", attachToOwner:true, offsetX:-p.facing * 6, offsetY:0 });
+}
+
+function drawBastetCrescentSlash(x, y, dir = 1, scale = 1, alpha = 0.7) {
+  const r = Math.max(8, screenScale(26 * scale));
+  const sx = worldToScreenX(x), sy = worldToScreenY(y);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = "#c77dff";
+  ctx.lineWidth = screenScale(7 * scale);
+  ctx.beginPath();
+  ctx.arc(sx - dir * r * 0.16, sy, r, dir === 1 ? -1.08 : Math.PI + 0.08, dir === 1 ? 0.72 : Math.PI - 0.72);
+  ctx.stroke();
+  ctx.globalAlpha = alpha * 0.9;
+  ctx.strokeStyle = "#ffd166";
+  ctx.lineWidth = screenScale(2.4 * scale);
+  ctx.beginPath();
+  ctx.arc(sx - dir * r * 0.04, sy, r * 0.76, dir === 1 ? -1.05 : Math.PI + 0.1, dir === 1 ? 0.68 : Math.PI - 0.68);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function findSpiritCatTarget(cat) {
   let best = null;
   let bestD = Infinity;
@@ -4651,8 +4692,9 @@ function updateBastetSpiritCats() {
       if (vmag > maxSpeed) { c.vx = (c.vx / vmag) * maxSpeed; c.vy = (c.vy / vmag) * maxSpeed; }
       if (d < 34) {
         createAttack({ owner: c.owner, x: c.x, y: c.y, w: 92, h: 92, damage: 6.5, knock: 7.5, angle: -0.45, frames: 5, color: "#b66dff", label: "bastet_spirit_cat_explosion", visualType: "bastetSpiritCatBurst" });
-        spawnParticles(c.x, c.y, "#b66dff", 24, 6);
-        spawnParticles(c.x, c.y, "#ffd166", 10, 4);
+        spawnParticles(c.x, c.y, "#b66dff", 16, 4.2);
+        spawnParticles(c.x, c.y, "#ffd166", 8, 3.2);
+        spawnBastetPawPrints(c.x, c.y + 10, c.vx >= 0 ? 1 : -1, 4);
         shake = Math.max(shake, 3);
         bastetSpiritCats.splice(i, 1);
         continue;
@@ -4662,7 +4704,7 @@ function updateBastetSpiritCats() {
       c.vx += (ox - c.x) * 0.025; c.vy += (oy - c.y) * 0.025;
     }
     c.x += c.vx; c.y += c.vy; c.vx *= 0.96; c.vy *= 0.96;
-    if (c.life % 6 === 0) spawnParticles(c.x, c.y, "#b66dff", 2, 2);
+    if (c.life % 9 === 0) spawnParticles(c.x, c.y, "#b66dff", 1, 1.5);
     if (c.life <= 0) { spawnParticles(c.x, c.y, "#b66dff", 10, 3); bastetSpiritCats.splice(i, 1); }
   }
 }
@@ -5731,22 +5773,21 @@ function drawLokiTeleportVisuals() {
   });
 }
 
-function drawBastetSpiritCats() {
-  bastetSpiritCats.forEach(c => {
-    const sx = worldToScreenX(c.x), sy = worldToScreenY(c.y), s = screenScale(c.size || 20);
-    const dir = c.vx >= 0 ? 1 : -1, pulse = 0.75 + Math.sin(matchTime * 0.25 + c.phase) * 0.25;
-    ctx.save(); ctx.translate(sx, sy); ctx.scale(dir, 1);
-    ctx.globalAlpha = 0.18 + 0.15 * pulse; ctx.fillStyle = "#c77dff"; ctx.beginPath(); ctx.arc(0, 0, s * 1.32, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = 0.78; ctx.fillStyle = "#6a2fb3"; ctx.beginPath(); ctx.ellipse(0, 4, s * 0.55, s * 0.34, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "#b66dff"; ctx.beginPath(); ctx.arc(s * 0.42, -2, s * 0.30, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(s * 0.27, -s * 0.2); ctx.lineTo(s * 0.37, -s * 0.56); ctx.lineTo(s * 0.50, -s * 0.12); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(s * 0.52, -s * 0.15); ctx.lineTo(s * 0.68, -s * 0.50); ctx.lineTo(s * 0.65, -s * 0.08); ctx.fill();
-    ctx.globalAlpha = 0.5; ctx.strokeStyle = "#b66dff"; ctx.lineWidth = Math.max(2, s * 0.22); ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(-s * 0.45, 3); ctx.quadraticCurveTo(-s * 1.12, -s * 0.5, -s * 0.2, -s * 0.85); ctx.stroke();
-    ctx.globalAlpha = 0.95; ctx.fillStyle = "#f8f3ff"; ctx.fillRect(s * 0.45, -s * 0.1, s * 0.08, s * 0.06); ctx.fillRect(s * 0.59, -s * 0.1, s * 0.08, s * 0.06);
-    ctx.globalAlpha = 0.45; ctx.strokeStyle = "#ffd166"; ctx.lineWidth = Math.max(1, s * 0.08); ctx.beginPath(); ctx.arc(0, 0, s * (0.95 + 0.2 * pulse), -2.1, 0.95); ctx.stroke();
-    ctx.restore();
-  });
+function drawSpiritCat(cat) {
+  const sx = worldToScreenX(cat.x), sy = worldToScreenY(cat.y), s = screenScale(cat.size || 20);
+  const dir = cat.vx >= 0 ? 1 : -1, pulse = 0.75 + Math.sin(matchTime * 0.25 + cat.phase) * 0.25;
+  ctx.save(); ctx.translate(sx, sy); ctx.scale(dir, 1);
+  ctx.globalAlpha = 0.22 + 0.15 * pulse; ctx.fillStyle = "#c77dff"; ctx.beginPath(); ctx.ellipse(-s*0.05, s*0.02, s * 1.1, s * 0.62, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 0.86; ctx.fillStyle = "#6a2fb3"; ctx.beginPath(); ctx.ellipse(-s*0.06, s*0.14, s * 0.62, s * 0.36, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#b66dff"; ctx.beginPath(); ctx.ellipse(s * 0.48, -s * 0.02, s * 0.34, s * 0.28, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(s * 0.3, -s * 0.16); ctx.lineTo(s * 0.40, -s * 0.58); ctx.lineTo(s * 0.53, -s * 0.16); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(s * 0.53, -s * 0.16); ctx.lineTo(s * 0.66, -s * 0.56); ctx.lineTo(s * 0.69, -s * 0.1); ctx.fill();
+  ctx.globalAlpha = 0.62; ctx.strokeStyle = "#b66dff"; ctx.lineWidth = Math.max(2, s * 0.2); ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(-s * 0.58, s*0.12); ctx.quadraticCurveTo(-s * 1.2, -s * 0.45, -s * 0.28, -s * 0.74); ctx.stroke();
+  ctx.globalAlpha = 0.98; ctx.fillStyle = "#f8f3ff"; ctx.fillRect(s * 0.45, -s * 0.08, s * 0.07, s * 0.06); ctx.fillRect(s * 0.58, -s * 0.08, s * 0.07, s * 0.06);
+  ctx.restore();
 }
+
+function drawBastetSpiritCats() { bastetSpiritCats.forEach(drawSpiritCat); }
 
 function drawAnubisCircleUltimate(p) {
   if (!p || !p.anubisUltActive) return;
@@ -6773,8 +6814,13 @@ function drawAttack(a) {
   if (["bastetClawSwipe","bastetQuickClaws","bastetRisingClaw","bastetLowSweep","bastetLowProwlSwipe","bastetPouncingMaul","bastetMoonLauncher","bastetTailTrip","bastetMoonPounce","bastetMoonlitLeap","bastetScratchRebound","bastetLowPounce","bastetSpiritCatExplosion","bastetSpiritCatBurst","bastetCharmingGaze","bastetQuickClawSwipe","bastetRisingCatScratch","bastetLowTripSwipe","bastetLeapingDoubleClaw","bastetTailTripSlam"].includes(type)) {
     const v = (type.includes("Rising") || type.includes("MoonLauncher") || type.includes("Moonlit")) ? "up" : (type.includes("Low") || type.includes("TailTrip") ? "down" : "neutral");
     if (type === "bastetCharmingGaze") {
-      ctx.globalAlpha = 0.25; ctx.fillStyle = "#b66dff"; ctx.beginPath(); ctx.moveTo(cx - dir * w * .3, cy); ctx.lineTo(cx + dir * w * .6, cy - h * .35); ctx.lineTo(cx + dir * w * .6, cy + h * .35); ctx.closePath(); ctx.fill();
-      ctx.globalAlpha = 0.95; ctx.fillStyle = "#ffd166"; ctx.fillRect(cx + dir * w * .18, cy - h * .12, screenScale(8), screenScale(4)); ctx.fillRect(cx + dir * w * .28, cy - h * .12, screenScale(8), screenScale(4));
+      ctx.globalAlpha = 0.2; ctx.fillStyle = "#b66dff"; ctx.beginPath(); ctx.moveTo(cx - dir * w * .2, cy); ctx.lineTo(cx + dir * w * .66, cy - h * .34); ctx.lineTo(cx + dir * w * .66, cy + h * .34); ctx.closePath(); ctx.fill();
+      const eyeX = cx + dir * w * .14, eyeY = cy - h * .08;
+      ctx.globalAlpha = 0.95; ctx.fillStyle = "#ffd166";
+      ctx.beginPath(); ctx.ellipse(eyeX, eyeY, screenScale(9), screenScale(4), 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(eyeX + dir * screenScale(16), eyeY, screenScale(9), screenScale(4), 0, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.6; ctx.strokeStyle = "#c77dff"; ctx.lineWidth = screenScale(2);
+      for (let i = 0; i < 4; i++) { const ox = cx + dir * (w * 0.08 + i * w * 0.13); ctx.beginPath(); ctx.moveTo(ox, cy - h * 0.22); ctx.lineTo(ox + dir * w * 0.12, cy + h * 0.18); ctx.stroke(); }
     } else if (type === "bastetSpiritCatExplosion" || type === "bastetSpiritCatBurst") {
       ctx.globalAlpha = 0.35;
       ctx.fillStyle = "#b66dff";
@@ -6789,10 +6835,12 @@ function drawAttack(a) {
       spark(8, "rgba(255,209,102,.95)");
     } else {
       drawBastetClawMarks(cx, cy, w, h, v);
-      if (type === "bastetMoonPounce") { ctx.globalAlpha = 0.26; ctx.strokeStyle = "#b66dff"; ctx.lineWidth = screenScale(11); ctx.beginPath(); ctx.moveTo(cx - dir * w * .9, cy + h * .2); ctx.lineTo(cx - dir * w * .25, cy + h * .02); ctx.stroke(); }
+      if (type === "bastetMoonPounce") { drawBastetCrescentSlash(a.x - dir * 16, a.y + 6, dir, 1.05, 0.8); ctx.globalAlpha = 0.36; ctx.strokeStyle = "#ffd166"; ctx.lineWidth = screenScale(3); for (let i=0;i<3;i++){ const oy=(i-1)*h*0.14; ctx.beginPath(); ctx.moveTo(cx + dir * w * 0.06, cy - h*0.22 + oy); ctx.lineTo(cx + dir * w * 0.62, cy - h*0.1 + oy); ctx.stroke(); } }
       if (type === "bastetScratchRebound") { ctx.globalAlpha = 0.35; ctx.strokeStyle = "#b66dff"; ctx.lineWidth = screenScale(9); ctx.beginPath(); ctx.moveTo(cx - dir * w * .72, cy + h * .22); ctx.lineTo(cx + dir * w * .22, cy - h * .28); ctx.stroke(); spark(7, "rgba(255,209,102,.95)"); }
       if (type === "bastetLowPounce" || type === "bastetLowProwlSwipe") { ctx.globalAlpha = 0.3; ctx.fillStyle = "#b66dff"; ctx.fillRect(cx - w * 0.35, cy + h * 0.05, w * 0.7, h * 0.22); }
       if (type.includes("Pounce") || type.includes("Moonlit")) { ctx.globalAlpha = 0.25; ctx.strokeStyle = "#b66dff"; ctx.lineWidth = screenScale(8); ctx.beginPath(); ctx.moveTo(cx - dir * w * .65, cy + h * .1); ctx.lineTo(cx - dir * w * .05, cy); ctx.stroke(); }
+      if (type === "bastetMoonlitLeap") { ctx.globalAlpha = 0.22; ctx.fillStyle = "#8d5cff"; ctx.fillRect(cx - w*0.08, y + h*0.15, w*0.16, h*0.85); ctx.globalAlpha = 0.35; ctx.strokeStyle = "#c77dff"; ctx.lineWidth = screenScale(2.2); for (let i=0;i<3;i++){ const lx=cx + (i-1)*w*0.12; ctx.beginPath(); ctx.moveTo(lx, cy + h*0.22); ctx.lineTo(lx + dir*w*0.16, cy - h*0.45); ctx.stroke(); } ctx.globalAlpha = 0.85; ctx.fillStyle = "#ffd166"; ctx.beginPath(); ctx.ellipse(cx + dir*w*0.02, y - h*0.04, screenScale(7), screenScale(4), 0, 0, Math.PI*2); ctx.fill(); }
+      if (type.includes("TailTrip") || type.includes("Low")) { ctx.globalAlpha = 0.2; ctx.fillStyle = "#5a189a"; ctx.fillRect(cx - w*0.42, cy + h*0.18, w*0.84, h*0.18); ctx.globalAlpha = 0.55; ctx.fillStyle = "#ffd166"; for(let i=0;i<3;i++) ctx.fillRect(cx - w*0.18 + i*w*0.18, cy + h*0.28, screenScale(2), screenScale(2)); }
     }
     ctx.globalAlpha = 1;
     return;
