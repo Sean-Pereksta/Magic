@@ -365,7 +365,16 @@ const player = {
   gravity: 20,
   airControl: 0.82,
   playerHeight: 1.7,
-  groundY: 1.7
+  groundY: 1.7,
+  baseSpeed: 8.6,
+  baseSprintSpeed: 13.8,
+  reloadMultiplier: 1,
+  boardingMultiplier: 1,
+  coinMultiplier: 1,
+  staminaMultiplier: 1,
+  staminaRegenMultiplier: 1,
+  specialDamageReduction: 0,
+  perks: { stoneSkin: 0, quickHands: 0, fleetFoot: 0, goblinSense: 0, coinCharm: 0, ironLungs: 0, wardedSoul: 0 }
 };
 
 camera.position.copy(player.pos);
@@ -523,6 +532,19 @@ document.addEventListener("keydown", e => {
     controlMappings[playerKey].buttons[action] = { type: "keyboard", key, label: prettyKey(key) };
     pendingMapping = null; saveControlMappings(); renderControlsMappingUI(); setGlobalMappingStatus(`Mapped ${action} to ${prettyKey(key)}.`);
     e.preventDefault(); return;
+  }
+  if (activeShrineMenu) {
+    if (["1", "2", "3"].includes(key)) {
+      const perkId = activeShrineMenu.upgrades[Number(key) - 1];
+      if (perkId) buyPerk(perkId);
+      e.preventDefault();
+      return;
+    }
+    if (key === "escape") {
+      activeShrineMenu = null;
+      e.preventDefault();
+      return;
+    }
   }
   keys[key] = true;
 });
@@ -1197,6 +1219,23 @@ for (const door of doorConnections) {
 ========================================================= */
 
 const windows = [];
+const WINDOW_SHAKE_DURATION = 0.16;
+const WINDOW_SHAKE_AMOUNT = 0.07;
+const BOARD_SPLINTER_COUNT = 8;
+const GOBLIN_CLIMB_DURATION = 1.1;
+const splinterParticles = [];
+const MAX_SPLINTER_PARTICLES = 80;
+const shrines = [];
+let activeShrineMenu = null;
+const PERK_DEFS = {
+  stoneSkin: { name: "Stone Skin", desc: "Increase max health.", maxLevel: 3, costs: [600, 1200, 2200] },
+  quickHands: { name: "Quick Hands", desc: "Reload and board windows faster.", maxLevel: 3, costs: [500, 1000, 1800] },
+  fleetFoot: { name: "Fleet Foot", desc: "Increase movement and sprint speed.", maxLevel: 3, costs: [700, 1300, 2300] },
+  goblinSense: { name: "Goblin Sense", desc: "Highlights attacked windows and nearby enemies.", maxLevel: 2, costs: [800, 1800] },
+  coinCharm: { name: "Coin Charm", desc: "Earn more coins from kills.", maxLevel: 3, costs: [650, 1400, 2600] },
+  ironLungs: { name: "Iron Lungs", desc: "Sprint longer and recover faster.", maxLevel: 2, costs: [700, 1600] },
+  wardedSoul: { name: "Warded Soul", desc: "Reduces damage taken from special enemies.", maxLevel: 3, costs: [900, 1800, 3000] }
+};
 
 function getUnlockedWindows() {
   return windows.filter(w => {
@@ -1238,7 +1277,11 @@ function addWindow(x, z, rotation, spawnX, spawnZ, roomName = "spawn", isExterio
     boardMeshes: [],
     openingWidth: 2.8,
     openingHeight: 2.45,
-    openingCenterY: 1.55
+    openingCenterY: 1.55,
+    shakeTimer: 0,
+    baseGroupX: 0,
+    baseGroupY: 1.55,
+    baseGroupZ: 0
   };
 
   const frameMat = mats.trim;
@@ -1353,6 +1396,64 @@ function rebuildWindowBoards(win) {
   }
 }
 
+function spawnBoardSplinters(x, y, z) {
+  for (let i = 0; i < BOARD_SPLINTER_COUNT; i++) {
+    if (splinterParticles.length >= MAX_SPLINTER_PARTICLES) {
+      const old = splinterParticles.shift();
+      if (old?.mesh) scene.remove(old.mesh);
+    }
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.04 + Math.random() * 0.08, 0.02 + Math.random() * 0.05, 0.12 + Math.random() * 0.18), new THREE.MeshBasicMaterial({ color: 0x8a5a2b }));
+    mesh.position.set(x, y, z);
+    mesh.rotation.set(Math.random(), Math.random(), Math.random());
+    const vel = new THREE.Vector3((Math.random() - 0.5) * 3, 0.5 + Math.random() * 2, (Math.random() - 0.5) * 3);
+    scene.add(mesh);
+    splinterParticles.push({ mesh, vel, life: 0.55 + Math.random() * 0.35 });
+  }
+}
+
+function updateSplinterParticles(dt) {
+  for (let i = splinterParticles.length - 1; i >= 0; i--) {
+    const p = splinterParticles[i];
+    p.life -= dt;
+    if (p.life <= 0) { scene.remove(p.mesh); splinterParticles.splice(i, 1); continue; }
+    p.vel.y -= 6 * dt;
+    p.mesh.position.addScaledVector(p.vel, dt);
+    p.mesh.rotation.x += dt * 8;
+    p.mesh.rotation.y += dt * 5;
+  }
+}
+
+function updateWindowShake(dt) {
+  for (const win of windows) {
+    const target = win.group;
+    if (!target) continue;
+    if (win.shakeTimer > 0) {
+      win.shakeTimer -= dt;
+      const shake = WINDOW_SHAKE_AMOUNT * Math.max(0, win.shakeTimer / WINDOW_SHAKE_DURATION);
+      target.position.x = win.x + (Math.random() - 0.5) * shake;
+      target.position.y = win.baseGroupY + (Math.random() - 0.5) * shake;
+      target.position.z = win.z + (Math.random() - 0.5) * shake;
+    } else {
+      target.position.set(win.x, win.baseGroupY, win.z);
+    }
+  }
+}
+
+function addShrine(id, room, x, z, upgrades) {
+  const group = new THREE.Group();
+  group.position.set(x, 0, z);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.15, 0.8, 16), mats.trim);
+  base.position.y = 0.4;
+  const orb = new THREE.Mesh(new THREE.SphereGeometry(0.28, 14, 14), new THREE.MeshBasicMaterial({ color: 0x99ddff }));
+  orb.position.y = 1.15;
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.52, 0.04, 8, 32), new THREE.MeshBasicMaterial({ color: 0xc89bff }));
+  ring.position.y = 1.1; ring.rotation.x = Math.PI / 2;
+  const light = new THREE.PointLight(0x88bbff, 0.6, 8); light.position.y = 1.2;
+  group.add(base, orb, ring, light); scene.add(group);
+  const shrine = { type: "shrine", id, room, x, z, upgrades, group, orb, ring, active: true, name: "Shrine of Wards" };
+  shrines.push(shrine); interactables.push(shrine);
+}
+
 addWindow(-4, -8.9, 0, -4, -16, "spawn");
 addWindow(4, -8.9, 0, 4, -16, "spawn");
 addWindow(-26, -8.9, 0, -26, -16, "library");
@@ -1369,6 +1470,8 @@ addWindow(55.9, 18, Math.PI / 2, 63, 18, "workshop");
 addWindow(44, 26.9, 0, 44, 34, "workshop");
 addWindow(55.9, 36, Math.PI / 2, 63, 36, "tower");
 cleanupObstacleCollidersNearEntries();
+addShrine("spawn_shrine", "spawn", -4, 6, ["stoneSkin", "quickHands", "coinCharm"]);
+addShrine("workshop_shrine", "workshop", 47, 17, ["fleetFoot", "ironLungs", "wardedSoul"]);
 
 /* =========================================================
    GUNS
@@ -2084,7 +2187,38 @@ function reload() {
   if (currentGun.reserve <= 0) return;
 
   currentGun.reloading = true;
-  currentGun.reloadTimer = currentGun.reloadTime;
+  currentGun.reloadTimer = currentGun.reloadTime * (player.reloadMultiplier || 1);
+}
+
+function getPerkLevel(id) { return player.perks?.[id] || 0; }
+function applyPerkEffects() {
+  const stone = getPerkLevel("stoneSkin");
+  player.maxHealth = 100 + stone * 25;
+  player.health = Math.min(player.health, player.maxHealth);
+  const fleet = getPerkLevel("fleetFoot");
+  player.speed = player.baseSpeed * (1 + fleet * 0.06);
+  player.sprintSpeed = player.baseSprintSpeed * (1 + fleet * 0.07);
+  const quick = getPerkLevel("quickHands");
+  player.reloadMultiplier = Math.max(0.6, 1 - quick * 0.12);
+  player.boardingMultiplier = Math.max(0.55, 1 - quick * 0.15);
+  const coin = getPerkLevel("coinCharm");
+  player.coinMultiplier = 1 + coin * 0.12;
+  const lungs = getPerkLevel("ironLungs");
+  player.staminaMultiplier = 1 + lungs * 0.25;
+  player.staminaRegenMultiplier = 1 + lungs * 0.25;
+  const ward = getPerkLevel("wardedSoul");
+  player.specialDamageReduction = ward * 0.1;
+}
+function buyPerk(id) {
+  const def = PERK_DEFS[id]; if (!def) return;
+  const current = getPerkLevel(id);
+  if (current >= def.maxLevel) { centerText.textContent = `${def.name} is already maxed`; return; }
+  const cost = def.costs[current];
+  if (player.coins < cost) { centerText.textContent = `Need ${cost} coins`; return; }
+  player.coins -= cost;
+  player.perks[id] = current + 1;
+  applyPerkEffects();
+  centerText.textContent = `${def.name} upgraded to Lv.${player.perks[id]}`;
 }
 
 /* =========================================================
@@ -2401,6 +2535,7 @@ function spawnEnemy(typeKey = "green") {
     damage: type.damage,
     reward: type.reward,
     state: "walking_to_window",
+    windowState: "approaching",
     targetWindow: win,
     outsideStand,
     insideStand,
@@ -2413,6 +2548,8 @@ function spawnEnemy(typeKey = "green") {
     attackAnim: 0,
     tearAnim: 0,
     climbTimer: 0,
+    windowAttackTimer: 0,
+    isClimbingWindow: false,
     hitFlashTimer: 0,
     leapCooldown: 1.5 + Math.random() * 1.5,
     leapAnim: 0,
@@ -2579,10 +2716,14 @@ function interact() {
   if (obj.type === "window") {
     if (obj.boards < obj.maxBoards) {
       obj.boards++;
-      obj.breakTimer = Math.max(0, obj.breakTimer - 0.6);
+      obj.breakTimer = Math.max(0, obj.breakTimer - 0.6 * (1 / (player.boardingMultiplier || 1)));
       rebuildWindowBoards(obj);
       player.coins += 10;
     }
+  }
+  if (obj.type === "shrine") {
+    activeShrineMenu = obj;
+    return;
   }
 
   if (obj.type === "door") {
@@ -3010,8 +3151,9 @@ function updateRocks(dt) {
 
 function killEnemy(index) {
   const e = enemies[index];
-  player.coins += e.reward;
-  player.score += e.reward;
+  const reward = Math.floor(e.reward * (player.coinMultiplier || 1));
+  player.coins += reward;
+  player.score += reward;
   dropPickup(e.mesh.position.x, e.mesh.position.z);
   if (e.groundMarker) {
     scene.remove(e.groundMarker);
@@ -3361,6 +3503,8 @@ function animateGoblinClimb(enemy, dt) {
 }
 
 function updateGoblinClimbThroughWindow(enemy, win, dt) {
+  enemy.isClimbingWindow = true;
+  enemy.windowState = "climbing";
   if (!enemy.climbData) {
     enemy.climbData = {
       duration: 1.15,
@@ -3390,6 +3534,8 @@ function updateGoblinClimbThroughWindow(enemy, win, dt) {
     enemy.mesh.rotation.x = 0;
     enemy.climbData = null;
     enemy.state = "inside";
+    enemy.windowState = "inside";
+    enemy.isClimbingWindow = false;
     enemy.path = [];
     enemy.pathIndex = 0;
     enemy.pathRefreshTimer = 0;
@@ -3413,10 +3559,12 @@ function forceGoblinStartWindowEntry(enemy) {
   faceGoblinToward(enemy, new THREE.Vector3(w.x, 0, w.z));
   if (w.boards > 0) {
     enemy.state = "tearing_boards";
+    enemy.windowState = "tearingBoards";
     enemy.tearAnim = 0.4;
     w.breakTimer = w.breakTimer || 0;
   } else {
     enemy.state = "climbing_in";
+    enemy.windowState = "climbing";
     enemy.climbData = null;
   }
 }
@@ -3602,9 +3750,11 @@ function updateEnemies(dt) {
         const windowBoards = Math.max(0, w.boards || 0);
         if (windowBoards > 0) {
           e.state = "tearing_boards";
+          e.windowState = "tearingBoards";
           e.tearAnim = 0.4;
         } else {
           e.state = "climbing_in";
+          e.windowState = "climbing";
           e.climbData = null;
         }
       }
@@ -3623,11 +3773,12 @@ function updateEnemies(dt) {
       e.tearAnim = 0.4;
       animateGoblinTearing(e, dt);
       shakeWindowBoards(w, 1);
+      w.shakeTimer = WINDOW_SHAKE_DURATION;
       w.breakTimer += dt;
       if (w.breakTimer >= 1.25) {
         w.breakTimer = 0;
-        if (w.boards > 0) { w.boards--; rebuildWindowBoards(w); }
-        if (w.boards <= 0) { e.state = "climbing_in"; e.climbData = null; }
+        if (w.boards > 0) { w.boards--; spawnBoardSplinters(w.x, 1.5, w.z); rebuildWindowBoards(w); }
+        if (w.boards <= 0) { e.state = "climbing_in"; e.windowState = "climbing"; e.climbData = null; }
       }
       continue;
     }
@@ -3693,6 +3844,7 @@ function updateEnemies(dt) {
       } else {
         if (e.attackCooldown <= 0 && player.hurtCooldown <= 0) {
           player.health -= e.damage;
+          if (type.acid || type.thrower) player.health += e.damage * (player.specialDamageReduction || 0);
           player.regenTimer = player.regenDelay;
           player.hurtCooldown = 0.45;
           e.attackCooldown = 0.75;
@@ -3898,6 +4050,7 @@ document.addEventListener("mouseup", () => {
 ========================================================= */
 
 function updateHud() {
+  if (activeShrineMenu && distance2D({ x: player.pos.x, z: player.pos.z }, activeShrineMenu) > 3.2) activeShrineMenu = null;
   const nearest = getNearestInteractable();
   let msg = "";
 
@@ -3931,6 +4084,16 @@ function updateHud() {
         msg = `Press E to buy mana - $${guns[nearest.key].ammoCost}`;
       } else {
         msg = `Ammo station for ${guns[nearest.key].name}`;
+      }
+    }
+    if (nearest.type === "shrine") {
+      msg = "Press E: Shrine of Wards";
+      if (activeShrineMenu === nearest) {
+        msg = `Shrine of Wards\n${nearest.upgrades.map((id, idx) => {
+          const d = PERK_DEFS[id], lv = getPerkLevel(id);
+          const cost = lv >= d.maxLevel ? "MAX" : `${d.costs[lv]} coins`;
+          return `${idx + 1} ${d.name} Lv.${lv} → ${cost}`;
+        }).join("\n")}\nEsc to close`;
       }
     }
   }
@@ -3993,6 +4156,9 @@ function animate() {
     updateBullets(dt);
     updateRocks(dt);
     updateHealthRegen(dt);
+    updateWindowShake(dt);
+    updateSplinterParticles(dt);
+    for (const s of shrines) { if (s.ring) s.ring.rotation.z += dt * 0.9; if (s.orb) s.orb.position.y = 1.15 + Math.sin(performance.now() * 0.004) * 0.07; }
     player.health = Math.max(0, Math.min(player.maxHealth, player.health));
     updatePickups(dt);
     updateBloodParticles(dt);
