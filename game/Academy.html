@@ -2216,14 +2216,12 @@ function getAimRayHit(maxDistance = 160) {
 }
 function applyBulletDamageToEnemy(e, bestHit, b, hitPos) {
   if (!e || !bestHit || !b) return false;
-  let damageDone = b.damage * bestHit.multiplier;
-  const enemyTypeData = enemyTypes[e.typeKey];
-  if (enemyTypeData && enemyTypeData.armor) { if (bestHit.name === "body" || bestHit.name === "upperBody") damageDone *= 0.55; if (bestHit.name === "legs") damageDone *= 0.75; if (bestHit.name === "head") damageDone *= 1.15; }
+  const shotDirection = b?.vel ? b.vel.clone().normalize() : new THREE.Vector3(e.mesh.position.x - player.pos.x, 0, e.mesh.position.z - player.pos.z).normalize();
+  let damageDone = b.damage * bestHit.multiplier * getEnemyDamageMultiplier(e, bestHit.name, shotDirection);
   if (e.voidStacks && e.voidStacks > 0) damageDone *= 1 + e.voidStacks * 0.04;
   if (b.closeRangeBonus) { const distFromPlayer = b.spawnPos ? b.spawnPos.distanceTo(hitPos || b.pos) : camera.position.distanceTo(hitPos || b.pos); if (distFromPlayer <= (b.closeRangeDistance || 5.5)) damageDone *= b.closeRangeMultiplier || 1.45; }
   e.health -= damageDone; showGoblinHit(e, bestHit.name, damageDone);
   const bloodHitPos = hitPos || e.mesh.position.clone().add(new THREE.Vector3(0, 1.1, 0));
-  const shotDirection = b?.vel ? b.vel.clone().normalize() : new THREE.Vector3(e.mesh.position.x - player.pos.x, 0, e.mesh.position.z - player.pos.z).normalize();
   e.lastBloodTime = e.lastBloodTime || 0;
   if (performance.now() - e.lastBloodTime > 45) {
     spawnEnemyHitParticles(e, bloodHitPos.x, bloodHitPos.y, bloodHitPos.z, shotDirection);
@@ -2308,7 +2306,7 @@ const enemyTypes = {
     damage: 8,
     reward: 80,
     scale: 1,
-    thrower: false
+    thrower: false, role:"basic", boardDamage:1, armor:0, weakSpotMultiplier:1.6, pressureScore:1
   },
   blue: {
     name: "Brute Goblin",
@@ -2318,7 +2316,7 @@ const enemyTypes = {
     damage: 18,
     reward: 180,
     scale: 1.75,
-    thrower: false
+    thrower: false, heavyPush:true, role:"tank", boardDamage:3, armor:0.12, pressureScore:4
   },
   red: {
     name: "Skitter Goblin",
@@ -2328,7 +2326,7 @@ const enemyTypes = {
     damage: 6,
     reward: 90,
     scale: 0.72,
-    thrower: false
+    thrower: false, role:"rush", boardDamage:1, pressureScore:2
   },
   yellow: {
     name: "Rock Thrower",
@@ -2338,7 +2336,7 @@ const enemyTypes = {
     damage: 7,
     reward: 130,
     scale: 1.05,
-    thrower: true
+    thrower: true, role:"window_pressure", boardDamage:2, burnsBoards:true, pressureScore:3
   },
   armored: {
     name: "Armored Goblin",
@@ -2349,7 +2347,7 @@ const enemyTypes = {
     reward: 260,
     scale: 1.45,
     thrower: false,
-    armor: true
+    armor:0.28, weakSpotMultiplier:1.8, boardDamage:4, role:"armored_tank", pressureScore:6
   },
   leaper: {
     name: "Leaper Goblin",
@@ -2360,8 +2358,13 @@ const enemyTypes = {
     reward: 170,
     scale: 0.95,
     thrower: false,
-    leaper: true
+    leaper: true, role:"ambusher", pressureScore:4
   },
+  shieldBearer: { name:"Shield Bearer", color:0x3f4a4f, health:180, speed:1.65, damage:12, reward:180, scale:1.12, unlockWave:9, shieldedFront:true, frontalDamageReduction:0.65, boardDamage:2, armor:0.08, pressureScore:5, role:"defender" },
+  hexWitch: { name:"Hex Witch", color:0xaa44ff, health:130, speed:1.55, damage:9, reward:220, scale:1.05, unlockWave:11, rangedAttack:true, curseAttack:true, pressureScore:6, role:"caster" },
+  boneCrawler: { name:"Bone Crawler", color:0xd8d8c0, health:75, speed:3.15, damage:10, reward:145, scale:0.72, unlockWave:13, lowProfile:true, pressureScore:5, role:"low_swarm" },
+  ogreBreaker: { name:"Ogre Breaker", color:0x775533, health:700, speed:0.85, damage:28, reward:500, scale:1.75, unlockWave:15, boardDamage:6, armor:0.22, heavyPush:true, miniBoss:true, pressureScore:10, role:"mini_boss" },
+  shadowStalker: { name:"Shadow Stalker", color:0x181020, health:170, speed:2.55, damage:20, reward:280, scale:1.05, unlockWave:18, shadowDash:true, flicker:true, pressureScore:8, role:"assassin" },
   spitter: {
     name: "Acid Spitter",
     color: 0x75ff3b,
@@ -2371,7 +2374,7 @@ const enemyTypes = {
     reward: 210,
     scale: 1.05,
     thrower: true,
-    acid: true
+    acid: true, rangedAttack:true, pressureScore:5
   }
 };
 
@@ -2383,6 +2386,22 @@ const ENEMY_TYPES = {
   stoneImp: { name:"Stone Imp", unlockWave:10, health:260, speed:1.15, damage:16, coinReward:240, bodyRadius:0.72, boardDamage:2, type:"demon", armored:true },
   shadowStalker: { name:"Shadow Stalker", unlockWave:13, health:205, speed:2.7, damage:14, coinReward:290, bodyRadius:0.58, boardDamage:1, type:"shadow", phaseDash:true }
 };
+
+const ENEMY_RANKS = { normal:{label:"",healthMult:1,speedMult:1,damageMult:1,rewardMult:1,scaleMult:1,colorEmissive:null}, feral:{label:"Feral",healthMult:1.15,speedMult:1.18,damageMult:1.05,rewardMult:1.25,scaleMult:1.03,colorEmissive:0xff4400}, elite:{label:"Elite",healthMult:1.45,speedMult:1.1,damageMult:1.22,rewardMult:1.7,scaleMult:1.08,colorEmissive:0xaa44ff}, ancient:{label:"Ancient",healthMult:2.0,speedMult:1.05,damageMult:1.45,rewardMult:2.5,scaleMult:1.15,colorEmissive:0x00ccff} };
+let threatAnnounceCooldown = 0;
+function announceThreat(text){ if (threatAnnounceCooldown > 0 || !text) return; centerText.textContent = text; threatAnnounceCooldown = 4.0; }
+function getEnemyTierForWave(wave){ if(wave>=25) return 5; if(wave>=18) return 4; if(wave>=12) return 3; if(wave>=7) return 2; if(wave>=4) return 1; return 0; }
+function getScaledEnemyStats(typeKey,wave){ const base=enemyTypes[typeKey]||enemyTypes.green; const tier=getEnemyTierForWave(wave); const healthScale=1+wave*0.075+tier*0.12; const speedScale=1+Math.min(0.45,wave*0.018)+tier*0.025; const damageScale=1+Math.min(0.85,wave*0.035)+tier*0.08; const rewardScale=1+wave*0.035; return {health:Math.round(base.health*healthScale),maxHealth:Math.round(base.health*healthScale),speed:base.speed*speedScale,damage:Math.round(base.damage*damageScale),reward:Math.round((base.reward||base.coinReward||80)*rewardScale),tier}; }
+function chooseEnemyRank(wave){ const r=Math.random(); if(wave>=20&&r<0.07) return "ancient"; if(wave>=14&&r<0.12) return "elite"; if(wave>=8&&r<0.18) return "feral"; return "normal"; }
+function getWaveTheme(wave){ if (wave % 10 === 0) return "boss"; if (wave >= 8 && wave % 7 === 0) return "caster"; if (wave >= 6 && wave % 5 === 0) return "brute"; if (wave >= 9 && wave % 4 === 0) return "swarm"; return "normal"; }
+function getWaveThemeText(wave){ const t=getWaveTheme(wave); if(t==="boss") return "A monstrous force is approaching!"; if(t==="caster") return "Dark casters gather outside!"; if(t==="brute") return "Heavy breakers are coming!"; if(t==="swarm") return "Fast enemies are swarming the windows!"; return ""; }
+function getCurrentEnemyPressure(){ return enemies.reduce((sum,e)=>{ if(!e||e.dead||e.ignoreWaveKill) return sum; const def=enemyTypes[e.typeKey]||enemyTypes.green; return sum+(def.pressureScore||1); },0); }
+function getMaxEnemyPressureForWave(wave){ return 12 + wave * 2.4; }
+function getEnemyBoardAttackInterval(enemy){ const def=enemyTypes[enemy.typeKey]||enemyTypes.green; return Math.max(0.45,1.6-(def.boardDamage||1)*0.18-(enemy.tier||0)*0.06); }
+function createEnemyHitboxes(typeKey,type){ if(typeKey==="boneCrawler") return [{name:"head",offset:new THREE.Vector3(0,0.72,-0.25),radius:0.34,multiplier:2.2},{name:"body",offset:new THREE.Vector3(0,0.42,0),radius:0.55,multiplier:1.0},{name:"legs",offset:new THREE.Vector3(0,0.22,0.1),radius:0.48,multiplier:0.75}]; if(typeKey==="ogreBreaker") return [{name:"head",offset:new THREE.Vector3(0,2.35,-0.15),radius:0.72,multiplier:2.0},{name:"upperBody",offset:new THREE.Vector3(0,1.55,0),radius:0.95,multiplier:1.0},{name:"body",offset:new THREE.Vector3(0,0.95,0),radius:1.05,multiplier:0.9},{name:"legs",offset:new THREE.Vector3(0,0.42,0),radius:0.72,multiplier:0.65}]; return [{name:"head",offset:new THREE.Vector3(0,1.55*type.scale,-0.10*type.scale),radius:0.56*type.scale,multiplier:2.45},{name:"upperBody",offset:new THREE.Vector3(0,1.05*type.scale,0),radius:0.62*type.scale,multiplier:1.15},{name:"body",offset:new THREE.Vector3(0,0.75*type.scale,0),radius:0.66*type.scale,multiplier:1.0},{name:"legs",offset:new THREE.Vector3(0,0.34*type.scale,0),radius:0.48*type.scale,multiplier:0.72}]; }
+function isShotFromEnemyFront(enemy,shotDir){ if(!enemy||!enemy.mesh||!shotDir) return false; const forward=new THREE.Vector3(0,0,-1).applyEuler(enemy.mesh.rotation).normalize(); const incoming=shotDir.clone().normalize().multiplyScalar(-1); return forward.dot(incoming)>0.45; }
+function getEnemyDamageMultiplier(enemy,hitboxName,shotDir){ const def=enemyTypes[enemy.typeKey]||enemyTypes.green; let mult=1; if(def.armor) mult*=(1-def.armor); if(hitboxName==="head") mult*=def.weakSpotMultiplier||1.6; if(def.shieldedFront&&isShotFromEnemyFront(enemy,shotDir)) mult*=(1-(def.frontalDamageReduction||0.6)); if(enemy.empowered) mult*=0.95; return Math.max(0.15,mult); }
+
 const ENEMY_UNLOCK_MESSAGES = {
   warg: "Wave 4: Grave Wargs are hunting.", skeleton: "Wave 6: Bone Stalkers rise.", cultist: "Wave 8: Cursed Cultists approach.", stoneImp: "Wave 10: Stone Imps breach the walls.", shadowStalker: "Wave 13: Shadow Stalkers enter the dark."
 };
@@ -2626,9 +2645,9 @@ function spawnEnemy(typeKey = "green") {
     typeKey,
     mesh,
     pos: mesh.position,
-    health: type.health + player.wave * 10,
-    maxHealth: type.health + player.wave * 10,
-    speed: type.speed * 1.08 + player.wave * 0.065,
+    health: 1,
+    maxHealth: 1,
+    speed: type.speed,
     damage: type.damage,
     reward: type.reward,
     state: "walking_to_window",
@@ -2656,16 +2675,17 @@ function spawnEnemy(typeKey = "green") {
     pathFailCount: 0,
     retargetCooldown: 0,
     ignoreWaveKill: false,
-    hitboxes: [
-      { name: "head", offset: new THREE.Vector3(0, 1.55 * type.scale, -0.10 * type.scale), radius: 0.56 * type.scale, multiplier: 2.45 },
-      { name: "upperBody", offset: new THREE.Vector3(0, 1.05 * type.scale, 0), radius: 0.62 * type.scale, multiplier: 1.15 },
-      { name: "body", offset: new THREE.Vector3(0, 0.75 * type.scale, 0), radius: 0.66 * type.scale, multiplier: 1.0 },
-      { name: "legs", offset: new THREE.Vector3(0, 0.34 * type.scale, 0), radius: 0.48 * type.scale, multiplier: 0.72 }
-    ]
+    hitboxes: createEnemyHitboxes(typeKey, type)
   };
+  const scaled=getScaledEnemyStats(typeKey,player.wave);
+  const rank=ENEMY_RANKS[chooseEnemyRank(player.wave,typeKey)]||ENEMY_RANKS.normal;
+  enemyObj.health=Math.round(scaled.health*rank.healthMult); enemyObj.maxHealth=enemyObj.health; enemyObj.speed=scaled.speed*rank.speedMult; enemyObj.damage=Math.round(scaled.damage*rank.damageMult); enemyObj.reward=Math.round(scaled.reward*rank.rewardMult); enemyObj.tier=scaled.tier; enemyObj.rank=Object.keys(ENEMY_RANKS).find(k=>ENEMY_RANKS[k]===rank)||"normal"; enemyObj.displayName=(rank.label?`${rank.label} `:"")+(type.name||"Enemy"); enemyObj.boardDamage=type.boardDamage||1; mesh.scale.multiplyScalar(rank.scaleMult);
+  if (rank.colorEmissive) mesh.traverse(o=>{ if(o.isMesh && o.material && o.material.emissive){ o.material = o.material.clone(); o.material.emissive.setHex(rank.colorEmissive); o.material.emissiveIntensity=Math.max(o.material.emissiveIntensity||0.08,0.25);} });
   addGoblinGroundMarker(enemyObj);
   enemies.push(enemyObj);
+  if (["spitter","hexWitch","ogreBreaker","shadowStalker"].includes(typeKey)) announceThreat(`${type.name} spotted!`);
 }
+
 function getRoomBounds(room) { return { minX: room.cx-room.w/2, maxX: room.cx+room.w/2, minZ: room.cz-room.d/2, maxZ: room.cz+room.d/2 }; }
 function isInsideAnyRoomFootprint(x, z, padding = 0.5) {
   return Object.values(ROOM_DEFS).some(r => { const b=getRoomBounds(r); return x>b.minX-padding && x<b.maxX+padding && z>b.minZ-padding && z<b.maxZ+padding; });
@@ -2700,13 +2720,9 @@ function getWaveRequiredKills(wave) {
   return 8 + wave * 5;
 }
 
-function getWaveMaxAlive(wave) {
-  return Math.min(10 + Math.floor(wave * 1.5), 34);
-}
+function getWaveMaxAlive(wave) { const base = Math.min(10 + Math.floor(wave * 1.25), 38); if (getWaveTheme(wave) === "boss") return Math.min(base, 26); if (getWaveTheme(wave) === "swarm") return Math.min(base + 6, 42); return base; }
 
-function getWaveSpawnInterval(wave) {
-  return Math.max(0.38, 1.15 - wave * 0.045);
-}
+function getWaveSpawnInterval(wave) { const theme = getWaveTheme(wave); let interval = Math.max(0.42, 1.15 - wave * 0.035); if (theme === "swarm") interval *= 0.72; if (theme === "boss") interval *= 1.25; if (theme === "caster") interval *= 1.05; return Math.max(0.34, interval); }
 
 function startWave() {
   waveInProgress = true;
@@ -2714,7 +2730,7 @@ function startWave() {
   waveKills = 0;
   waveRequiredKills = getWaveRequiredKills(player.wave);
   waveSpawnTimer = 0.75;
-  announceEnemyUnlocksForWave(player.wave);
+  announceEnemyUnlocksForWave(player.wave); const waveText=getWaveThemeText(player.wave); if (waveText) centerText.textContent = waveText;
 }
 
 function announceEnemyUnlocksForWave(wave){
@@ -2725,20 +2741,9 @@ function announceEnemyUnlocksForWave(wave){
 }
 
 function getAvailableEnemyTypesForWave(wave){ return Object.entries(ENEMY_TYPES).filter(([,def])=>wave>=def.unlockWave).map(([id])=>id); }
-function chooseEnemyType() {
-  const wave = player.wave;
-  const pool = ["green","green","green","green","goblin","goblin","goblin"];
-  if (wave >= 2) pool.push("red");
-  if (wave >= 3) pool.push("yellow");
-  if (wave >= 4) pool.push("blue","warg","warg");
-  if (wave >= 6) pool.push("skeleton","skeleton");
-  if (wave >= 8) pool.push("cultist");
-  if (wave >= 10) pool.push("stoneImp");
-  if (wave >= 13) pool.push("shadowStalker");
-  if (wave >= 12) pool.push("warg","skeleton","cultist");
-  if (wave >= 16) pool.push("stoneImp","shadowStalker");
-  return pool[Math.floor(Math.random()*pool.length)];
-}
+function chooseEnemyTypeForWave(wave){ const theme=getWaveTheme(wave); const pool=[]; const add=(k,w)=>{ const def=enemyTypes[k]||ENEMY_TYPES[k]; if(!def||w<=0) return; if(def.unlockWave&&wave<def.unlockWave) return; for(let i=0;i<w;i++) pool.push(k); }; if (wave<=3){add("green",70);add("red",wave>=2?20:0);add("yellow",wave>=3?10:0);} else if (wave<=7){add("green",42);add("red",25);add("yellow",18);add("blue",10);add("leaper",5);} else if (wave<=12){add("green",22);add("red",20);add("yellow",18);add("blue",13);add("leaper",12);add("spitter",10);add("armored",5);add("shieldBearer",6);add("hexWitch",4);} else if (wave<=17){add("green",10);add("red",16);add("yellow",16);add("blue",14);add("leaper",13);add("spitter",13);add("armored",10);add("shieldBearer",9);add("hexWitch",8);add("boneCrawler",10);add("ogreBreaker",wave>=15?3:0);} else {add("green",5);add("red",10);add("yellow",12);add("blue",12);add("leaper",14);add("spitter",14);add("armored",12);add("shieldBearer",12);add("hexWitch",12);add("boneCrawler",12);add("ogreBreaker",5);add("shadowStalker",8);} if(theme==="boss"){add("ogreBreaker",20);add("armored",18);add("shieldBearer",14);add("blue",14);add("hexWitch",8);} if(theme==="caster"){add("spitter",20);add("hexWitch",18);add("shieldBearer",8);add("red",10);} if(theme==="brute"){add("blue",18);add("armored",16);add("ogreBreaker",wave>=15?8:0);add("yellow",12);} if(theme==="swarm"){add("red",20);add("boneCrawler",18);add("leaper",16);add("green",10);} return pool[Math.floor(Math.random()*pool.length)]||"green"; }
+function chooseSpawnEnemyTypeSafely(wave){ const maxPressure=getMaxEnemyPressureForWave(wave); const currentPressure=getCurrentEnemyPressure(); for(let i=0;i<8;i++){ const tk=chooseEnemyTypeForWave(wave); const def=enemyTypes[tk]||enemyTypes.green; if(currentPressure+(def.pressureScore||1)<=maxPressure) return tk;} return wave>=8?"red":"green"; }
+function chooseEnemyType(){ return chooseEnemyTypeForWave(player.wave); }
 
 /* =========================================================
    PICKUPS
@@ -3199,7 +3204,7 @@ function spawnAcid(enemy) {
     vel: new THREE.Vector3(horizontal.x * 7, 7.2, horizontal.z * 7),
     life: 4,
     damage: 18,
-    acid: true
+    acid: true, rangedAttack:true, pressureScore:5
   });
 }
 
@@ -4089,7 +4094,7 @@ function updateWave(dt) {
   waveSpawnTimer -= dt;
   const maxAlive = getWaveMaxAlive(player.wave);
   if (waveSpawnTimer <= 0 && enemies.length < maxAlive) {
-    spawnEnemy(chooseEnemyType());
+    spawnEnemy(chooseSpawnEnemyTypeSafely(player.wave));
     waveSpawnTimer = getWaveSpawnInterval(player.wave);
   }
 }
@@ -4232,6 +4237,7 @@ function animate() {
 
   const dt = Math.min(clock.getDelta(), 0.05);
   pathfindsThisFrame = 0;
+  threatAnnounceCooldown = Math.max(0, threatAnnounceCooldown - dt);
 
   updatePendingControllerMapping();
   if (player.alive) {
