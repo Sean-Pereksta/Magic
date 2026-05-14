@@ -1174,6 +1174,7 @@ let hillZone = null;
 let bossWave = 1;
 let bossKills = 0;
 const DEBUG_HITBOXES = false;
+const DEBUG_BOT_AI = false;
 const GAME_PACE_MULT = 1.15;
 
 function buildGodGrid() {
@@ -1469,6 +1470,57 @@ function buildP2GodGrid(){
 function refreshControllerAssignmentUI(){ const pads=getConnectedGamepads(); const status=document.getElementById("controllerStatus"); if(status) status.textContent = pads.length?`Detected controllers: ${pads.length}`:"No controllers detected — use keyboard layouts."; ["p1","p2"].forEach(pid=>{ const sel=document.getElementById(pid==="p1"?"playerInputP1":"playerInputP2"); if(!sel) return; sel.innerHTML=""; const k=document.createElement("option"); k.value="keyboard"; k.textContent=pid==="p1"?"Player 1 Input: Keyboard":"Player 2 Input: Keyboard Alt Layout"; sel.appendChild(k); pads.forEach(p=>{ const o=document.createElement("option"); o.value="gp:"+p.index; o.textContent=`${pid==="p1"?"Player 1":"Player 2"} Input: Controller ${p.index}`; sel.appendChild(o); }); const prof=PLAYER_INPUTS[pid]; sel.value=prof.device==="gamepad"&&prof.gamepadIndex!==null?`gp:${prof.gamepadIndex}`:"keyboard"; }); }
 function setLocalPlayersUI(){ const lp=document.getElementById("localPlayers"); localPlayersCount = lp ? parseInt(lp.value,10)||1 : 1; const on=localPlayersCount===2; const p2w=document.getElementById("p2SelectWrap"); if(p2w) p2w.style.display=on?"block":"none"; const p2r=document.getElementById("p2SelectedRow"); if(p2r) p2r.style.display=on?"block":"none"; const p2i=document.getElementById("playerInputP2"); if(p2i) p2i.style.display=on?"block":"none"; updatePlayerSelectionBanner(); }
 
+function getPlatformUnderPoint(x, y, maxDrop = 220) {
+  let best = null;
+  let bestDist = Infinity;
+  const margin = 26;
+  (currentMap.platforms || []).forEach(pl => {
+    const withinX = x >= pl.x + margin && x <= pl.x + pl.w - margin;
+    if (!withinX) return;
+    if (pl.y < y) return;
+    const drop = pl.y - y;
+    if (drop > maxDrop) return;
+    if (drop < bestDist) {
+      bestDist = drop;
+      best = pl;
+    }
+  });
+  return best;
+}
+
+function getNearestPlatformByX(x) {
+  let best = null;
+  let bestDist = Infinity;
+  (currentMap.platforms || []).forEach(pl => {
+    const cx = pl.x + pl.w / 2;
+    const d = Math.abs(cx - x);
+    if (d < bestDist) {
+      bestDist = d;
+      best = pl;
+    }
+  });
+  return best;
+}
+
+function getSafeSpawnPoint(spawn, fighterHeight = 78) {
+  const platform = getPlatformUnderPoint(spawn.x, spawn.y) || getNearestPlatformByX(spawn.x);
+  if (!platform) return { x: spawn.x, y: spawn.y };
+  return {
+    x: clamp(spawn.x, platform.x + 45, platform.x + platform.w - 45),
+    y: platform.y - fighterHeight / 2 - 2
+  };
+}
+
+function snapFighterToSafePlatform(p) {
+  const platform = getPlatformUnderPoint(p.x, p.y, 280) || getNearestPlatformByX(p.x);
+  if (!platform) return;
+  p.x = clamp(p.x, platform.x + 45, platform.x + platform.w - 45);
+  p.y = platform.y - p.h / 2 - 2;
+  p.vy = 0;
+  p.grounded = true;
+  p.jumps = 2;
+}
+
 function startGame() {
   const botCount = parseInt(document.getElementById("botCount").value, 10);
   const lp = document.getElementById("localPlayers");
@@ -1515,18 +1567,25 @@ function startGame() {
   ultFlash = 0;
   eclipseTimer = 0;
 
-  const humanSpawn = currentMap.spawnPoints[0];
-  players.push(createFighter({ id: "p1", godId: selectedGodP1, x: humanSpawn.x, y: humanSpawn.y, human: true, team: 0, namePrefix: "P1", difficulty }));
+  const rawHumanSpawn = currentMap.spawnPoints[0];
+  const humanSpawn = getSafeSpawnPoint(rawHumanSpawn, 78);
+  const p1 = createFighter({ id: "p1", godId: selectedGodP1, x: humanSpawn.x, y: humanSpawn.y, human: true, team: 0, namePrefix: "P1", difficulty });
+  snapFighterToSafePlatform(p1);
+  players.push(p1);
   if (humanCount === 2) {
-    const p2Spawn = currentMap.spawnPoints[1] || currentMap.spawnPoints[0];
-    players.push(createFighter({ id: "p2", godId: selectedGodP2, x: p2Spawn.x, y: p2Spawn.y, human: true, team: 1, namePrefix: "P2", difficulty }));
+    const rawP2Spawn = currentMap.spawnPoints[1] || currentMap.spawnPoints[0];
+    const p2Spawn = getSafeSpawnPoint(rawP2Spawn, 78);
+    const p2 = createFighter({ id: "p2", godId: selectedGodP2, x: p2Spawn.x, y: p2Spawn.y, human: true, team: 1, namePrefix: "P2", difficulty });
+    snapFighterToSafePlatform(p2);
+    players.push(p2);
   }
 
   const botGods = GOD_ORDER.filter(g => g !== selectedGodP1 && g !== selectedGodP2);
   for (let i = 0; i < botCount; i++) {
     const godId = (botGods[i % botGods.length] || GOD_ORDER[i % GOD_ORDER.length]);
-    const spawn = currentMap.spawnPoints[(i + humanCount) % currentMap.spawnPoints.length];
-    players.push(createFighter({
+    const rawSpawn = currentMap.spawnPoints[(i + humanCount) % currentMap.spawnPoints.length];
+    const spawn = getSafeSpawnPoint(rawSpawn, 78);
+    const bot = createFighter({
       id: "bot" + (i + 1),
       godId,
       x: spawn.x,
@@ -1535,7 +1594,9 @@ function startGame() {
       team: i + 1,
       namePrefix: "BOT " + (i + 1),
       difficulty
-    }));
+    });
+    snapFighterToSafePlatform(bot);
+    players.push(bot);
   }
 
   setupGameMode();
@@ -1674,7 +1735,17 @@ function createFighter(config) {
       target: null,
       think: 0,
       jumpDesire: 0,
-      attackDesire: 0
+      attackDesire: 0,
+      stuckX: config.x,
+      stuckY: config.y,
+      stuckTimer: 0,
+      lastProgressX: config.x,
+      lastProgressY: config.y,
+      unstuckTimer: 0,
+      platformGoal: null,
+      platformGoalTimer: 0,
+      lastFacingFlipFrame: 0,
+      facingFlipCount: 0
     },
     lastHitBy: null,
     lastHitTimer: 0,
@@ -1897,17 +1968,27 @@ function isBotInRecoveryDanger(p) {
   return false;
 }
 
-function isNearPlatformEdge(p, dir) {
+function getCurrentStandingPlatform(p) {
   const feetY = p.y + p.h / 2;
-  const checkX = p.x + dir * 42;
-  let onPlat = false;
-  (currentMap.platforms || []).forEach(pl => {
-    const withinX = checkX >= pl.x && checkX <= pl.x + pl.w;
-    const closeY = Math.abs(feetY - pl.y) < 42;
-    if (withinX && closeY) onPlat = true;
+  let best = null;
+  let bestDist = Infinity;
+  currentMap.platforms.forEach(pl => {
+    const withinX = p.x >= pl.x - 12 && p.x <= pl.x + pl.w + 12;
+    const closeY = Math.abs(feetY - pl.y) < 16;
+    if (withinX && closeY) {
+      const d = Math.abs(feetY - pl.y);
+      if (d < bestDist) { best = pl; bestDist = d; }
+    }
   });
-  return !onPlat;
+  return best;
 }
+
+function getPlatformForTarget(target) { if (!target) return null; const feetY = target.y + target.h / 2; let best = null; let bestScore = Infinity; currentMap.platforms.forEach(pl => { const centerX = pl.x + pl.w / 2; const dx = Math.abs(centerX - target.x); const dy = Math.abs(pl.y - feetY); const withinOrNearX = target.x >= pl.x - 100 && target.x <= pl.x + pl.w + 100; const score = dx * 0.35 + dy * 1.3 + (withinOrNearX ? 0 : 250); if (score < bestScore) { best = pl; bestScore = score; } }); return best; }
+function chooseBotPlatformGoal(p, target) { const targetPlatform = getPlatformForTarget(target); if (!targetPlatform) return null; const margin = 70; const goalX = clamp(target.x, targetPlatform.x + margin, targetPlatform.x + targetPlatform.w - margin); return { platform: targetPlatform, x: goalX, y: targetPlatform.y - p.h / 2 - 2 }; }
+function isNearPlatformEdge(p, margin = 45) { const pl = getCurrentStandingPlatform(p); if (!pl) return false; return p.x < pl.x + margin || p.x > pl.x + pl.w - margin; }
+function getSafePlatformCenterDirection(p) { const pl = getCurrentStandingPlatform(p); if (!pl) return 0; return Math.sign((pl.x + pl.w / 2) - p.x); }
+function updateBotStuckState(p) { if (!p.ai) return false; const moved = Math.hypot(p.x - (p.ai.lastProgressX ?? p.x), p.y - (p.ai.lastProgressY ?? p.y)); const lowVelocity = Math.abs(p.vx) < 0.45 && Math.abs(p.vy) < 1.2; if (p.ai.lastFacing !== undefined && p.facing !== p.ai.lastFacing) { if (matchTime - (p.ai.lastFacingFlipFrame || 0) < 20) p.ai.facingFlipCount = (p.ai.facingFlipCount || 0) + 1; else p.ai.facingFlipCount = 0; p.ai.lastFacingFlipFrame = matchTime; } p.ai.lastFacing = p.facing; if (moved < 8 && lowVelocity) p.ai.stuckTimer = (p.ai.stuckTimer || 0) + 1; else if (moved > 18) { p.ai.stuckTimer = 0; p.ai.lastProgressX = p.x; p.ai.lastProgressY = p.y; p.ai.facingFlipCount = 0; } return p.ai.stuckTimer > 45 || (p.ai.facingFlipCount || 0) >= 5; }
+function botUnstuckBehavior(p, profile) { if (!p.ai) return false; const target = p.ai.target || nearestEnemy(p); const currentPlatform = getCurrentStandingPlatform(p); const goal = chooseBotPlatformGoal(p, target); p.ai.unstuckTimer = Math.max(p.ai.unstuckTimer || 0, 28); p.ai.platformGoal = goal; if (!goal) { const center = mapCenterX ? mapCenterX() : (currentMap.worldWidth / 2); applyMoveInput(p, Math.sign(center - p.x) || p.facing || 1); if (p.grounded && p.jumps > 0) jump(p); return true; } const dx = goal.x - p.x; const dy = goal.y - p.y; let dir = Math.sign(dx); if (!dir) dir = p.facing || 1; const platformIsSmallOrSide = currentPlatform && (currentPlatform.w < 320 || currentPlatform.x < 180 || currentPlatform.x + currentPlatform.w > currentMap.worldWidth - 180); applyMoveInput(p, dir); if (p.grounded && p.jumps > 0 && (dy < -35 || platformIsSmallOrSide || (p.ai.stuckTimer || 0) > 50)) jump(p); if ((p.ai.stuckTimer || 0) > 65 && matchTime % 24 === 0) { if (["horus", "sobek", "ra", "athena", "anubis", "quetz", "zeus", "thor"].includes(p.godId)) botUseAttack(p, "special", "up"); else if (p.godId === "loki") botUseAttack(p, "special", p.grounded ? "down" : "up"); } if (p.ai.unstuckTimer <= 1) { p.ai.stuckTimer = 0; p.ai.facingFlipCount = 0; p.ai.lastProgressX = p.x; p.ai.lastProgressY = p.y; } return true; }
 
 function botRecoveryBehavior(p, profile) {
   if (!isBotInRecoveryDanger(p)) return false;
@@ -1980,6 +2061,9 @@ function updateBot(p) {
   const dist = Math.hypot(dx, dy);
 
   if (botRecoveryBehavior(p, profile)) return;
+  if (p.ai.unstuckTimer > 0) p.ai.unstuckTimer--;
+  const isStuck = updateBotStuckState(p);
+  if (p.ai.unstuckTimer > 0 || isStuck) { if (botUnstuckBehavior(p, profile)) return; }
 
   let move = 0;
 
@@ -2026,14 +2110,19 @@ function updateBot(p) {
     p.grounded &&
     move !== 0 &&
     profile.platformSkill > 0.65 &&
-    isNearPlatformEdge(p, move)
+    isNearPlatformEdge(p)
   ) {
     const targetClose =
       target &&
       Math.abs(target.x - p.x) < 120 &&
       Math.abs(target.y - p.y) < 80;
 
-    if (!targetClose || Math.random() < profile.platformSkill) {
+    const samePlatform = getCurrentStandingPlatform(p) === getPlatformForTarget(target);
+    if (!samePlatform) {
+      const safeDir = getSafePlatformCenterDirection(p);
+      if (safeDir) move = safeDir;
+      if (p.grounded && p.jumps > 0 && (target.y + target.h / 2) < (p.y + p.h / 2 - 25)) jump(p);
+    } else if (!targetClose || Math.random() < profile.platformSkill) {
       move = 0;
     }
   }
@@ -4265,6 +4354,15 @@ function updateFighter(p) {
   p.y += p.vy;
 
   handlePlatformCollision(p);
+  if (!p.dead && matchTime < 30 && !p.grounded) {
+    const pl = getPlatformUnderPoint(p.x, p.y, 260);
+    if (pl && p.y + p.h / 2 > pl.y - 12 && p.y + p.h / 2 < pl.y + 40) {
+      p.y = pl.y - p.h / 2 - 2;
+      p.vy = 0;
+      p.grounded = true;
+      p.jumps = 2;
+    }
+  }
   if (p.godId === "quetz") {
     if (Math.abs(p.vx) > 4.7 && p.grounded && Math.random() < 0.45) spawnQuetzMotionFeathers(p, 2, "feather");
     if (!p.grounded && Math.abs(p.vx) > 2.2 && Math.random() < 0.5) spawnQuetzMotionFeathers(p, 1, "feather");
@@ -4356,6 +4454,7 @@ function loseLife(p) {
   p.vy = 0;
   p.invincible = 0;
   clearSobekGrab(p);
+  snapFighterToSafePlatform(p);
   players.forEach(o => { if (o && o.godId === "sobek" && o.sobekGrabTarget === p) clearSobekGrab(o); });
 
   spawnParticles(p.x, p.y, p.god.color, 35, 9);
@@ -4372,10 +4471,11 @@ function loseLife(p) {
 
 function respawn(p) {
   const points = currentMap.spawnPoints || MAPS.temple.spawnPoints;
-  const spawn = points[Math.floor(Math.random() * points.length)];
+  const rawSpawn = points[Math.floor(Math.random() * points.length)];
+  const spawn = getSafeSpawnPoint(rawSpawn, p.h || 78);
 
   p.x = spawn.x;
-  p.y = spawn.y - 40;
+  p.y = spawn.y;
   p.vx = 0;
   p.vy = 0;
   p.dead = false;
@@ -4383,6 +4483,7 @@ function respawn(p) {
   p.hitstun = 0;
   p.attackCooldown = 30;
   clearSobekGrab(p);
+  snapFighterToSafePlatform(p);
 }
 
 function updateAttacks() {
@@ -5363,6 +5464,7 @@ function drawGame() {
   if (hadesMotionWisps.length > 0) drawHadesMotionWisps(ctx);
   attacks.forEach(drawAttack);
   players.forEach(drawFighter);
+  if (DEBUG_BOT_AI) drawBotAIDebug();
   drawHadesVisualsInFrontOfPlayers(ctx);
   drawQuetzVisualsInFrontOfPlayers(ctx);
   particles.forEach(drawParticle);
@@ -7186,3 +7288,33 @@ function clamp(v, min, max) {
 </script>
 </body>
 </html>
+
+
+function drawBotAIDebug() {
+  players.forEach(p => {
+    if (!p || p.human || p.dead || !p.ai) return;
+    if (p.ai.platformGoal) {
+      ctx.save();
+      ctx.strokeStyle = "#22d3ee";
+      ctx.lineWidth = screenScale(2);
+      ctx.beginPath();
+      ctx.moveTo(worldToScreenX(p.x), worldToScreenY(p.y - p.h * 0.2));
+      ctx.lineTo(worldToScreenX(p.ai.platformGoal.x), worldToScreenY(p.ai.platformGoal.y));
+      ctx.stroke();
+      ctx.restore();
+    }
+    if ((p.ai.unstuckTimer || 0) > 0) {
+      ctx.save();
+      ctx.fillStyle = "#f97316";
+      ctx.beginPath();
+      ctx.arc(worldToScreenX(p.x), worldToScreenY(p.y - p.h / 2 - 14), screenScale(5), 0, Math.PI * 2);
+      ctx.fill();
+      if ((p.ai.stuckTimer || 0) > 45 || (p.ai.facingFlipCount || 0) >= 5) {
+        ctx.fillStyle = "#fca5a5";
+        ctx.font = `${Math.max(10, Math.floor(screenScale(12)))}px monospace`;
+        ctx.fillText("STUCK", worldToScreenX(p.x) - screenScale(18), worldToScreenY(p.y - p.h / 2 - 24));
+      }
+      ctx.restore();
+    }
+  });
+}
