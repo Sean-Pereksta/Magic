@@ -568,22 +568,51 @@ const colliders = [];
 const obstacleColliders = [];
 const DEBUG_OBSTACLE_COLLIDERS = false;
 const DEBUG_DOOR_OPENINGS = false;
+const DEBUG_MAP_OPENINGS = false;
 const playerWindowBlockers = [];
 const interactables = [];
-const roomsUnlocked = {
-  spawn: true,
-  east: false,
-  basement: false,
-  armory: false,
-  library: false,
-  kitchen: false,
-  courtyard: false,
-  workshop: false,
-  tower: false,
-  chapel: false,
-  crypt: false,
-  forge: false
+const roomsUnlocked = {};
+
+const ROOM_DEFS = {
+  spawn:{name:"spawn",label:"Spawn Room",cx:0,cz:0,w:22,d:18,unlocked:true,style:"spawn"},
+  library:{name:"library",label:"Library",cx:-22,cz:0,w:22,d:18,unlocked:false,style:"library"},
+  east:{name:"east",label:"East Hall",cx:22,cz:0,w:22,d:18,unlocked:false,style:"east"},
+  kitchen:{name:"kitchen",label:"Kitchen",cx:-22,cz:18,w:22,d:18,unlocked:false,style:"kitchen"},
+  basement:{name:"basement",label:"Basement",cx:0,cz:18,w:22,d:18,unlocked:false,style:"basement"},
+  armory:{name:"armory",label:"Armory",cx:22,cz:18,w:22,d:18,unlocked:false,style:"armory"},
+  courtyard:{name:"courtyard",label:"Courtyard",cx:0,cz:36,w:22,d:18,unlocked:false,style:"courtyard"},
+  workshop:{name:"workshop",label:"Workshop",cx:44,cz:18,w:22,d:18,unlocked:false,style:"workshop"},
+  tower:{name:"tower",label:"Tower",cx:44,cz:36,w:22,d:18,unlocked:false,style:"tower"}
 };
+
+const OPENING_DEFS = [
+  {id:"spawn_north_1",type:"window",room:"spawn",side:"north",offset:-5,width:3,exterior:true},
+  {id:"spawn_north_2",type:"window",room:"spawn",side:"north",offset:5,width:3,exterior:true},
+  {id:"library_north_1",type:"window",room:"library",side:"north",offset:-4,width:3,exterior:true},
+  {id:"library_west_1",type:"window",room:"library",side:"west",offset:3,width:3,exterior:true},
+  {id:"east_north_1",type:"window",room:"east",side:"north",offset:4,width:3,exterior:true},
+  {id:"east_east_1",type:"window",room:"east",side:"east",offset:-2,width:3,exterior:true},
+  {id:"kitchen_west_1",type:"window",room:"kitchen",side:"west",offset:0,width:3,exterior:true},
+  {id:"kitchen_south_1",type:"window",room:"kitchen",side:"south",offset:-4,width:3,exterior:true},
+  {id:"armory_south_1",type:"window",room:"armory",side:"south",offset:4,width:3,exterior:true},
+  {id:"courtyard_west_1",type:"window",room:"courtyard",side:"west",offset:0,width:3,exterior:true},
+  {id:"courtyard_south_1",type:"window",room:"courtyard",side:"south",offset:-4,width:3,exterior:true},
+  {id:"courtyard_south_2",type:"window",room:"courtyard",side:"south",offset:4,width:3,exterior:true},
+  {id:"workshop_north_1",type:"window",room:"workshop",side:"north",offset:0,width:3,exterior:true},
+  {id:"workshop_east_1",type:"window",room:"workshop",side:"east",offset:-2,width:3,exterior:true},
+  {id:"tower_east_1",type:"window",room:"tower",side:"east",offset:0,width:3,exterior:true},
+  {id:"tower_south_1",type:"window",room:"tower",side:"south",offset:0,width:3,exterior:true},
+  {id:"spawn_library",type:"door",roomA:"spawn",roomB:"library",sideA:"west",sideB:"east",offset:0,width:4.2,cost:1000,label:"Unlock Library"},
+  {id:"spawn_east",type:"door",roomA:"spawn",roomB:"east",sideA:"east",sideB:"west",offset:0,width:4.2,cost:900,label:"Unlock East Hall"},
+  {id:"spawn_basement",type:"door",roomA:"spawn",roomB:"basement",sideA:"south",sideB:"north",offset:0,width:4.2,cost:1200,label:"Unlock Basement"},
+  {id:"library_kitchen",type:"door",roomA:"library",roomB:"kitchen",sideA:"south",sideB:"north",offset:0,width:4.2,cost:1300,label:"Unlock Kitchen"},
+  {id:"east_armory",type:"door",roomA:"east",roomB:"armory",sideA:"south",sideB:"north",offset:0,width:4.2,cost:1600,label:"Unlock Armory"},
+  {id:"basement_courtyard",type:"door",roomA:"basement",roomB:"courtyard",sideA:"south",sideB:"north",offset:0,width:4.2,cost:1800,label:"Unlock Courtyard"},
+  {id:"basement_armory",type:"door",roomA:"basement",roomB:"armory",sideA:"east",sideB:"west",offset:0,width:4.2,cost:2000,label:"Unlock Armory Wing"},
+  {id:"armory_workshop",type:"door",roomA:"armory",roomB:"workshop",sideA:"east",sideB:"west",offset:0,width:4.2,cost:2200,label:"Unlock Workshop"},
+  {id:"workshop_tower",type:"door",roomA:"workshop",roomB:"tower",sideA:"south",sideB:"north",offset:0,width:4.2,cost:2600,label:"Unlock Tower Room"}
+];
+for (const [name, room] of Object.entries(ROOM_DEFS)) roomsUnlocked[name]=!!room.unlocked;
 
 function addObstacleDebugBox(c) {
   if (!DEBUG_OBSTACLE_COLLIDERS) return;
@@ -827,7 +856,8 @@ function addVerticalWallWithOpenings(x, cz, totalD, wallW, openingsOnSide) {
   }
 }
 
-function addRoom(cx, cz, w, d, name, openings = []) {
+function addRoomFromDef(roomName, openings = []) {
+  const { cx, cz, w, d } = ROOM_DEFS[roomName];
   box(w, 0.25, d, cx, -0.1, cz, mats.floor, false, true);
 
   // ceiling
@@ -876,57 +906,30 @@ function addRoom(cx, cz, w, d, name, openings = []) {
   }
 }
 
-addRoom(0, 0, 22, 18, "spawn", [
-  { side: "west", z: -4, width: 3.0 },
-  { side: "west", z: 5, width: 3.0 },
-  { side: "north", x: 8, width: 3.0 },
-  { type: "door", side: "east", z: 0, width: 5.0 },
-  { type: "door", side: "south", x: 0, width: 5.0 },
-  { type: "door", side: "west", z: 0, width: 5.0 }
-]);
-addRoom(22, 0, 22, 18, "east", [
-  { side: "north", x: 23, width: 3.0 },
-  { side: "east", z: 0, width: 3.0 },
-  { type: "door", side: "west", z: 0, width: 5.0 },
-  { type: "door", side: "south", x: 14, width: 5.0 },
-  { type: "door", side: "east", z: 0, width: 5.0 }
-]);
-addRoom(0, 18, 22, 18, "basement", [
-  { side: "west", z: 22, width: 3.0 },
-  { type: "door", side: "north", x: 0, width: 5.0 },
-  { type: "door", side: "east", z: 16, width: 5.0 },
-  { type: "door", side: "west", z: 11, width: 5.0 },
-  { type: "door", side: "south", x: 0, width: 5.0 }
-]);
-addRoom(22, 18, 22, 18, "armory", [
-  { side: "south", x: 25, width: 3.0 },
-  { type: "door", side: "north", x: 14, width: 5.0 }
-]);
-addRoom(-22, 0, 22, 18, "library", [
-  { side: "west", z: -4, width: 3.0 },
-  { side: "north", x: -24, width: 3.0 },
-  { type: "door", side: "east", z: 0, width: 5.0 },
-  { type: "door", side: "south", x: -24, width: 5.0 }
-]);
-addRoom(-22, 18, 22, 18, "kitchen", [
-  { side: "west", z: 22, width: 3.0 },
-  { side: "south", x: -24, width: 3.0 },
-  { type: "door", side: "north", x: -24, width: 5.0 }
-]);
-addRoom(0, 36, 22, 18, "courtyard", [
-  { side: "west", z: 46, width: 3.0 },
-  { side: "east", z: 46, width: 3.0 },
-  { type: "door", side: "north", x: 0, width: 5.0 }
-]);
-addRoom(44, 18, 22, 18, "workshop", [
-  { side: "north", x: 48, width: 3.0 },
-  { type: "door", side: "west", z: 0, width: 5.0 },
-  { type: "door", side: "south", x: 48, width: 5.0 }
-]);
-addRoom(44, 36, 22, 18, "tower", [
-  { side: "east", z: 24, width: 3.0 },
-  { type: "door", side: "north", x: 48, width: 5.0 }
-]);
+function getWallWorldPosition(roomName, side, offset = 0) {
+  const room = ROOM_DEFS[roomName];
+  const b = getRoomBounds(room);
+  if (side === "north") return { x: room.cx + offset, z: b.minZ, orientation: "horizontal" };
+  if (side === "south") return { x: room.cx + offset, z: b.maxZ, orientation: "horizontal" };
+  if (side === "west") return { x: b.minX, z: room.cz + offset, orientation: "vertical" };
+  if (side === "east") return { x: b.maxX, z: room.cz + offset, orientation: "vertical" };
+  throw new Error(`Unknown side ${side}`);
+}
+const computedOpenings = [];
+for (const o of OPENING_DEFS) {
+  if (o.type === "window") {
+    const p = getWallWorldPosition(o.room, o.side, o.offset || 0);
+    computedOpenings.push({ ...o, ...p });
+  } else {
+    const a = getWallWorldPosition(o.roomA, o.sideA, o.offset || 0);
+    const b = getWallWorldPosition(o.roomB, o.sideB, o.offset || 0);
+    if (Math.abs(a.x - b.x) > 0.05 || Math.abs(a.z - b.z) > 0.05) console.error("Door does not align:", o.id, a, b);
+    computedOpenings.push({ ...o, room: o.roomA, side: o.sideA, x: a.x, z: a.z, orientation: a.orientation, unlocks: o.roomB });
+    computedOpenings.push({ ...o, room: o.roomB, side: o.sideB, x: b.x, z: b.z, orientation: b.orientation, unlocks: o.roomB });
+  }
+}
+function getOpeningsForRoomSide(roomName, side) { return computedOpenings.filter(o => o.room === roomName && o.side === side); }
+for (const roomName of Object.keys(ROOM_DEFS)) addRoomFromDef(roomName, computedOpenings.filter(o => o.room === roomName));
 addCouch(-5, 3, Math.PI / 2); addChair(4, 4, -0.6); addChair(5, 3, 0.4); addRubble(7, -5, 5); addWallTorch(-10.7, 2.4, 0, Math.PI / 2);
 addCouch(21, 4, 0); addChair(28, -3, 1.2); addRubble(29, 5, 8); addWallTorch(24, 2.4, -7.7, 0);
 addRubble(-4, 23, 10); addRubble(5, 18, 6); addWallTorch(-8.7, 2.4, 22, Math.PI / 2);
@@ -945,16 +948,7 @@ pedestal.position.set(48, 0.4, 24); scene.add(pedestal);
 addObstacleCollider(48, 24, 2.8, 2.8, 1.0, "pedestal");
 const pedestalGlow = new THREE.PointLight(0x55ccff, 1.4, 14); pedestalGlow.position.set(48, 2.2, 24); scene.add(pedestalGlow);
 
-const doorConnections = [
-  { id: "spawn_east", roomName: "east", x: 11, z: 0, w: 0.7, d: 5, cost: 900, label: "Unlock East Hall" },
-  { id: "spawn_basement", roomName: "basement", x: 0, z: 9, w: 5, d: 0.7, cost: 1200, label: "Unlock Basement" },
-  { id: "east_armory", roomName: "armory", x: 22, z: 9, w: 5, d: 0.7, cost: 2000, label: "Unlock Armory" },
-  { id: "spawn_library", roomName: "library", x: -11, z: 0, w: 0.7, d: 5, cost: 1000, label: "Unlock Library" },
-  { id: "library_kitchen", roomName: "kitchen", x: -22, z: 9, w: 5, d: 0.7, cost: 1300, label: "Unlock Kitchen" },
-  { id: "basement_courtyard", roomName: "courtyard", x: 0, z: 27, w: 5, d: 0.7, cost: 1800, label: "Unlock Courtyard" },
-  { id: "east_workshop", roomName: "workshop", x: 33, z: 18, w: 0.7, d: 5, cost: 1600, label: "Unlock Workshop" },
-  { id: "workshop_tower", roomName: "tower", x: 44, z: 27, w: 5, d: 0.7, cost: 2600, label: "Unlock Tower Room" }
-];
+const doorConnections = computedOpenings.filter(o => o.type === "door" && o.room === o.roomA).map(o => ({...o}));
 
 addLamp(0, 3.8, 0);
 addLamp(24, 3.8, 0);
@@ -1237,10 +1231,11 @@ const PERK_DEFS = {
   wardedSoul: { name: "Warded Soul", desc: "Reduces damage taken from special enemies.", maxLevel: 3, costs: [900, 1800, 3000] }
 };
 
-function getUnlockedWindows() {
+function getUnlockedExteriorWindows() {
   return windows.filter(w => {
     if (!w.roomName) return false;
-    return roomsUnlocked[w.roomName] === true && w.isExterior !== false;
+    if (roomsUnlocked[w.roomName] !== true || w.isExterior === false) return false;
+    return !isInsideAnyRoomFootprint(w.spawnX, w.spawnZ, 0.1);
   });
 }
 
@@ -1454,21 +1449,22 @@ function addShrine(id, room, x, z, upgrades) {
   shrines.push(shrine); interactables.push(shrine);
 }
 
-addWindow(-4, -8.9, 0, -4, -16, "spawn");
-addWindow(4, -8.9, 0, 4, -16, "spawn");
-addWindow(-26, -8.9, 0, -26, -16, "library");
-addWindow(-33.9, -4, Math.PI / 2, -41, -4, "library");
-addWindow(18, -8.9, 0, 18, -16, "east");
-addWindow(33.9, -4, Math.PI / 2, 41, -4, "east");
-addWindow(-33.9, 14, Math.PI / 2, -41, 14, "kitchen");
-addWindow(-22, 26.9, 0, -22, 34, "kitchen");
-addWindow(22, 26.9, 0, 22, 34, "armory");
-addWindow(-10.9, 36, Math.PI / 2, -18, 36, "courtyard");
-addWindow(0, 44.9, 0, 0, 52, "courtyard");
-addWindow(44, 9.1, 0, 44, 2, "workshop");
-addWindow(55.9, 18, Math.PI / 2, 63, 18, "workshop");
-addWindow(44, 26.9, 0, 44, 34, "workshop");
-addWindow(55.9, 36, Math.PI / 2, 63, 36, "tower");
+function getOutsideSpawnForOpening(o, offset = 7) {
+  if (o.side === "north") return { x: o.x, z: o.z - offset };
+  if (o.side === "south") return { x: o.x, z: o.z + offset };
+  if (o.side === "west") return { x: o.x - offset, z: o.z };
+  if (o.side === "east") return { x: o.x + offset, z: o.z };
+  return { x: o.x, z: o.z };
+}
+for (const o of computedOpenings) {
+  if (o.type !== "window") continue;
+  const rotation = o.orientation === "vertical" ? Math.PI / 2 : 0;
+  const sp = getOutsideSpawnForOpening(o, 8);
+  const win = addWindow(o.x, o.z, rotation, sp.x, sp.z, o.room, true);
+  win.id = o.id;
+  win.side = o.side;
+  win.openingWidth = o.width;
+}
 cleanupObstacleCollidersNearEntries();
 addShrine("spawn_shrine", "spawn", -4, 6, ["stoneSkin", "quickHands", "coinCharm"]);
 addShrine("workshop_shrine", "workshop", 47, 17, ["fleetFoot", "ironLungs", "wardedSoul"]);
@@ -2538,7 +2534,7 @@ function addGoblinGroundMarker(enemy) {
 function spawnEnemy(typeKey = "green") {
   if (ENEMY_TYPES[typeKey]) {
     const def = ENEMY_TYPES[typeKey];
-    const validWindows = getUnlockedWindows();
+    const validWindows = getUnlockedExteriorWindows();
     if (!validWindows.length) return;
     const win = validWindows[Math.floor(Math.random()*validWindows.length)];
     const outsideSpawn = getOutsideWindowSpawn(win);
@@ -2548,7 +2544,7 @@ function spawnEnemy(typeKey = "green") {
     scene.add(mesh);
     const enemyObj = { typeId:typeKey, typeDef:def, typeKey, mesh, pos:mesh.position, health:def.health + Math.floor(player.wave*3), maxHealth:def.health + Math.floor(player.wave*3), speed:def.speed + player.wave*0.03, damage:def.damage, reward:def.coinReward, coinReward:def.coinReward, bodyRadius:def.bodyRadius||0.55, boardDamage:def.boardDamage||1, state:"walking_to_window", windowState:"approaching", targetWindow:win, outsideStand:getWindowOutsideStandPosition(win), insideStand:getWindowInsideStandPosition(win), path:[], pathIndex:0, pathRefreshTimer:0, attackCooldown:0, throwCooldown:2.3, animTime:Math.random()*10, attackAnim:0, tearAnim:0, climbTimer:0, windowAttackTimer:0, isClimbingWindow:false, hitFlashTimer:0, leapCooldown:1.5, leapAnim:0, lungeCooldown:0, dashCooldown:2.4, castCooldown:2.8, lastSafePos:mesh.position.clone(), lastProgressPos:mesh.position.clone(), stuckTimer:0, pathFailCount:0, retargetCooldown:0, ignoreWaveKill:false, hitboxes:[{ name:"head", offset:new THREE.Vector3(0,1.35,0), radius:0.42, multiplier:2.2 },{ name:"body", offset:new THREE.Vector3(0,0.8,0), radius:0.62, multiplier:1.0 }] }; addGoblinGroundMarker(enemyObj); enemies.push(enemyObj); return enemyObj;
   }
-  const validWindows = getUnlockedWindows();
+  const validWindows = getUnlockedExteriorWindows();
   if (!validWindows.length) {
     console.warn("No unlocked windows available for spawning enemies.");
     return;
@@ -2611,19 +2607,9 @@ function spawnEnemy(typeKey = "green") {
   addGoblinGroundMarker(enemyObj);
   enemies.push(enemyObj);
 }
+function getRoomBounds(room) { return { minX: room.cx-room.w/2, maxX: room.cx+room.w/2, minZ: room.cz-room.d/2, maxZ: room.cz+room.d/2 }; }
 function isInsideAnyRoomFootprint(x, z, padding = 0.5) {
-  const roomBounds = [
-    { cx: 0, cz: 0, w: 22, d: 18 },
-    { cx: -22, cz: 0, w: 22, d: 18 },
-    { cx: 22, cz: 0, w: 22, d: 18 },
-    { cx: -22, cz: 18, w: 22, d: 18 },
-    { cx: 0, cz: 18, w: 22, d: 18 },
-    { cx: 22, cz: 18, w: 22, d: 18 },
-    { cx: 0, cz: 36, w: 22, d: 18 },
-    { cx: 44, cz: 18, w: 22, d: 18 },
-    { cx: 44, cz: 36, w: 22, d: 18 }
-  ];
-  return roomBounds.some(r => x > r.cx - r.w / 2 - padding && x < r.cx + r.w / 2 + padding && z > r.cz - r.d / 2 - padding && z < r.cz + r.d / 2 + padding);
+  return Object.values(ROOM_DEFS).some(r => { const b=getRoomBounds(r); return x>b.minX-padding && x<b.maxX+padding && z>b.minZ-padding && z<b.maxZ+padding; });
 }
 function isSafeEnemySpawnPoint(pos, win) {
   if (!pos) return false;
@@ -3615,7 +3601,7 @@ function forceGoblinStartWindowEntry(enemy) {
 }
 
 function retargetEnemyToNearestUnlockedWindow(enemy) {
-  const validWindows = getUnlockedWindows();
+  const validWindows = getUnlockedExteriorWindows();
   if (!validWindows.length) return;
   let best = null;
   let bestDist = Infinity;
@@ -3739,7 +3725,7 @@ function updateEnemies(dt) {
     e.attackCooldown -= dt;
 
     if (e.targetWindow && !roomsUnlocked[e.targetWindow.roomName]) {
-      const validWindows = getUnlockedWindows();
+      const validWindows = getUnlockedExteriorWindows();
       if (validWindows.length) {
         e.targetWindow = validWindows[Math.floor(Math.random() * validWindows.length)];
         e.outsideStand = getWindowOutsideStandPosition(e.targetWindow);
@@ -3752,7 +3738,7 @@ function updateEnemies(dt) {
     }
 
     if (!e.targetWindow || !windows.includes(e.targetWindow)) {
-      const validWindows = getUnlockedWindows();
+      const validWindows = getUnlockedExteriorWindows();
       if (!validWindows.length) continue;
       e.targetWindow = validWindows[Math.floor(Math.random() * validWindows.length)];
       e.outsideStand = getWindowOutsideStandPosition(e.targetWindow);
