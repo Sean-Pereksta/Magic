@@ -1279,9 +1279,21 @@ function drawAvatar(c, god, x, y, scale) {
   }
 
   if (god.id === "ra") {
-    c.fillStyle = "#ffea00";
-    c.fillRect(x - 4*s, y - 18*s, 8*s, 8*s);
-    c.fillRect(x - 2*s, y - 22*s, 4*s, 4*s);
+    const pulse = 1 + Math.sin(matchTime * 0.14) * 0.08;
+    c.fillStyle = "#fff3cf";
+    c.fillRect(x - 7*s, y - 4*s, 14*s, 15*s);
+    c.fillStyle = "#d4af37";
+    c.fillRect(x - 8*s, y - 5*s, 16*s, 3*s);
+    c.fillStyle = "#ff8f1f";
+    c.fillRect(x - 6*s, y + 3*s, 12*s, 3*s);
+    c.fillStyle = "#1b2a3a";
+    c.fillRect(x - 8*s, y - 13*s, 15*s, 10*s);
+    c.fillStyle = "#ffb703";
+    c.fillRect(x + 6*s, y - 10*s, 6*s, 4*s);
+    c.fillRect(x + 10*s, y - 9*s, 3*s, 2*s);
+    c.fillStyle = "#ffdf6b";
+    c.fillRect(x - 4*s, y - (21*pulse)*s, 8*s, 8*s);
+    c.fillRect(x - 2*s, y - (24*pulse)*s, 4*s, 3*s);
   }
 
   if (god.id === "horus") {
@@ -6206,7 +6218,8 @@ function drawStatusIcons(p, x, y, s) {
 function drawPixelGod(c, p, x, y, s) {
   const g = p.god;
   const dir = p.facing;
-  const bob = Math.sin(p.anim * 6) * (p.grounded && p.action === "run" ? 3 : 1);
+  const raFloat = p.godId === "ra" ? Math.sin(matchTime * 0.08) * 2.2 : 0;
+  const bob = Math.sin(p.anim * 6) * (p.grounded && p.action === "run" ? 3 : 1) + raFloat;
   const hitLean = p.hitstun > 0 ? -dir * 7 : 0;
   const pose = getPoseForMove(p);
   const atkPose = getAttackPose(p);
@@ -6229,7 +6242,8 @@ function drawPixelGod(c, p, x, y, s) {
   let legSpread = p.action === "run" ? Math.sin(p.anim * 10) * 7 : 3;
   legSpread += pose.legSpread || 0;
   const crouch = (pose.crouch || 0) + (isBastet ? 3 + Math.sin(p.anim * 5) * 1.2 : 0);
-  const bodyLean = (pose.bodyLean || 0) + (isBastet && p.action === "run" ? dir * 3.6 : 0);
+  const raRunLean = p.godId === "ra" && p.action === "run" ? dir * 3.8 : 0;
+  const bodyLean = (pose.bodyLean || 0) + (isBastet && p.action === "run" ? dir * 3.6 : 0) + raRunLean;
   const legH = isBastet ? 30 : 26;
 
   c.fillRect(px(x - sc(12 + legSpread)), px(y + sc(12 + bob + crouch)), sc(10), sc(legH));
@@ -6297,6 +6311,48 @@ function drawPixelGod(c, p, x, y, s) {
     }
   }
 
+
+  if (p.godId === "ra") {
+    const sunPulse = 1 + Math.sin(matchTime * 0.12) * 0.08;
+    const specialGlow = (p.attackKind && p.attackKind.includes("ra_ultimate")) || (p.currentMove && p.currentMove.inputType === "special") ? 1.28 : 1;
+    const hurtDim = p.hitstun > 0 ? 0.62 + Math.sin(matchTime * 0.7) * 0.08 : 1;
+    const lagX = p.action === "run" ? -dir * sc(3) : -dir * sc(1);
+    c.save();
+    c.globalCompositeOperation = "screen";
+    c.globalAlpha = 0.24 * hurtDim;
+    c.fillStyle = "#ff9f1c";
+    c.beginPath();
+    c.arc(px(x + hitLean + bodyLean + lagX), px(y - sc(47) + bob + crouch), sc(22 * sunPulse * specialGlow), 0, Math.PI * 2);
+    c.fill();
+    c.globalAlpha = 0.95 * hurtDim;
+    c.fillStyle = "#ffde59";
+    c.beginPath();
+    c.arc(px(x + hitLean + bodyLean + lagX), px(y - sc(47) + bob + crouch), sc(8.5 * sunPulse * specialGlow), 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = "#ffd166";
+    for (let i = 0; i < 8; i++) {
+      const ang = i * (Math.PI / 4) + matchTime * 0.02;
+      const rx = Math.cos(ang) * sc(13 * sunPulse * specialGlow);
+      const ry = Math.sin(ang) * sc(13 * sunPulse * specialGlow);
+      c.fillRect(px(x + hitLean + bodyLean + lagX + rx - sc(1)), px(y - sc(47) + bob + crouch + ry - sc(1)), sc(3), sc(3));
+    }
+    c.restore();
+
+    c.fillStyle = "rgba(255,209,102,0.55)";
+    for (let i = 0; i < 3; i++) {
+      const drift = ((matchTime + i * 19) % 70) / 70;
+      const ox = ((i - 1) * 5) + Math.sin((matchTime + i * 23) * 0.07) * 2;
+      c.fillRect(px(x + sc(ox)), px(y + sc(18 + crouch) - sc(drift * 22)), sc(2), sc(2));
+    }
+
+    if (p.action === "run" && p.grounded && Math.abs(p.vx) > 4.8) {
+      c.fillStyle = "rgba(255,184,77,0.65)";
+      c.fillRect(px(x - dir * sc(16)), px(y + sc(33 + Math.sin(p.anim * 8) * 1.5)), sc(8), sc(3));
+      c.fillStyle = "rgba(255,230,128,0.5)";
+      c.fillRect(px(x - dir * sc(9)), px(y + sc(31 + Math.cos(p.anim * 8) * 1.4)), sc(6), sc(3));
+    }
+  }
+
   if (!bastetAttackPoseHandled) drawGodWeapon(c, p, x + hitLean + bodyLean, y + bob + crouch, s, dir, pose);
 }
 
@@ -6337,18 +6393,49 @@ function drawGodHead(c, p, x, y, s, dir, headTilt) {
     c.fillRect(px(x - sc(8) + dir * sc(3)), px(y - sc(43)), sc(5), sc(4));
     c.fillRect(px(x + sc(4) + dir * sc(3)), px(y - sc(43)), sc(5), sc(4));
   } else if (id === "ra") {
-    c.fillStyle = "#d27a1e";
-    c.fillRect(px(x - sc(14)), px(y - sc(55)), sc(28), sc(27));
+    const attacking = p.attackFrame > 0 || p.moveTimer > 0;
+    const strikeTilt = attacking ? -0.14 : 0;
+    const diskPulse = 1 + Math.sin(matchTime * 0.12) * 0.09;
+    const diskAmp = (p.currentMove && p.currentMove.inputType === "special") || (p.attackKind && p.attackKind.includes("ra_ultimate")) ? 1.28 : 1;
+    const hurtDim = p.hitstun > 0 ? 0.58 + Math.sin(matchTime * 0.7) * 0.1 : 1;
+    c.rotate(strikeTilt * dir);
+    c.fillStyle = "#203449";
+    c.beginPath();
+    c.moveTo(px(x - sc(14)), px(y - sc(52)));
+    c.lineTo(px(x + sc(5)), px(y - sc(56)));
+    c.lineTo(px(x + sc(15)), px(y - sc(48)));
+    c.lineTo(px(x + sc(8)), px(y - sc(32)));
+    c.lineTo(px(x - sc(11)), px(y - sc(30)));
+    c.closePath();
+    c.fill();
     c.fillStyle = "#ffb703";
-    c.fillRect(px(x + dir * sc(10)), px(y - sc(48)), sc(18), sc(9));
-    c.fillRect(px(x + dir * sc(22)), px(y - sc(44)), sc(10), sc(5));
-    c.fillStyle = "#fff3a3";
-    c.fillRect(px(x - sc(16)), px(y - sc(62)), sc(32), sc(7));
-    c.fillRect(px(x - sc(5)), px(y - sc(75)), sc(10), sc(13));
-    c.fillStyle = "#ffea00";
-    c.fillRect(px(x - sc(17)), px(y - sc(78)), sc(34), sc(4));
-    c.fillStyle = "#10131f";
-    c.fillRect(px(x + dir * sc(5)), px(y - sc(45)), sc(5), sc(4));
+    c.fillRect(px(x + dir * sc(10)), px(y - sc(47)), sc(17), sc(8));
+    c.fillRect(px(x + dir * sc(23)), px(y - sc(43)), sc(8), sc(4));
+    c.fillStyle = "#f8fafc";
+    c.fillRect(px(x + dir * sc(5)), px(y - sc(46)), sc(5), sc(4));
+    c.fillStyle = "#fb8500";
+    c.fillRect(px(x - sc(17)), px(y - sc(61)), sc(34), sc(6));
+    c.fillStyle = "#ffd166";
+    c.fillRect(px(x - sc(5)), px(y - sc(67)), sc(10), sc(8));
+    c.fillStyle = "#ffb703";
+    c.fillRect(px(x - sc(3)), px(y - sc(74)), sc(6), sc(5));
+    c.fillStyle = "#ffd166";
+    c.globalAlpha = 0.96 * hurtDim;
+    c.beginPath();
+    c.arc(px(x), px(y - sc(79)), sc(8.5 * diskPulse * diskAmp), 0, Math.PI * 2);
+    c.fill();
+    for (let i = 0; i < 8; i++) {
+      const ang = i * (Math.PI / 4) + matchTime * 0.02;
+      const rx = Math.cos(ang) * sc(12.5 * diskPulse * diskAmp);
+      const ry = Math.sin(ang) * sc(12.5 * diskPulse * diskAmp);
+      c.fillRect(px(x + rx - sc(1)), px(y - sc(79) + ry - sc(1)), sc(3), sc(3));
+    }
+    c.globalAlpha = 1;
+    c.fillStyle = Math.sin(matchTime * 0.45) > 0 ? "#fff5c2" : "#ffe082";
+    c.fillRect(px(x + dir * sc(4)), px(y - sc(45)), sc(3), sc(3));
+    c.fillStyle = "#274c68";
+    c.fillRect(px(x - dir * sc(20)), px(y - sc(49)), sc(5), sc(4));
+    c.fillRect(px(x - dir * sc(24)), px(y - sc(46)), sc(4), sc(3));
   } else if (id === "horus") {
     c.fillStyle = "#0b3d5c";
     c.fillRect(px(x - sc(15)), px(y - sc(56)), sc(30), sc(28));
@@ -6524,9 +6611,14 @@ function drawGodWeapon(c, p, x, y, s, dir, pose) {
     c.fillStyle = "#354066";
     c.fillRect(px(x - dir * sc(45) - wide), px(y - sc(19) - raise * .2), sc(18), sc(40));
   } else if (p.godId === "ra") {
-    c.fillStyle = "#ffea00";
-    c.fillRect(px(x + dir * sc(30) + strike), px(y - sc(22) + raise), sc(9), sc(39));
-    c.fillRect(px(x + dir * sc(22) + strike), px(y - sc(33) + raise), sc(25), sc(11));
+    c.fillStyle = "#d4af37";
+    c.fillRect(px(x + dir * sc(30) + strike), px(y - sc(22) + raise), sc(8), sc(40));
+    c.fillStyle = "#fff3bf";
+    c.fillRect(px(x + dir * sc(29) + strike), px(y - sc(31) + raise), sc(10), sc(4));
+    c.fillStyle = "#ff8f1f";
+    c.fillRect(px(x + dir * sc(20) + strike), px(y - sc(34) + raise), sc(26), sc(12));
+    c.fillStyle = "#ffd166";
+    c.fillRect(px(x + dir * sc(48) + strike + reach * .2), px(y - sc(31) + raise), sc(8), sc(6));
   } else if (p.godId === "anubis") {
     c.fillStyle = "#80ffdb";
     c.fillRect(px(x + dir * sc(31) + strike), px(y - sc(10) + raise), sc(25), sc(7));
