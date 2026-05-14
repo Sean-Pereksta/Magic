@@ -455,6 +455,21 @@
   .diff-cell { background:#fee2e2 !important; color:#7f1d1d; font-weight:bold; }
   .match-cell { background:#dcfce7 !important; }
   .partial-cell { background:#fef9c3 !important; }
+  .safelite-email-box,
+  #safeliteEmailBox {
+    width: 100%;
+    min-height: 70px;
+    resize: vertical;
+    padding: 7px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-family: Arial, sans-serif;
+    font-size: 12px;
+  }
+  .safelite-users-row td {
+    background: #fff1f2 !important;
+    border-top: 3px solid #7f1d1d;
+  }
 
 </style>
 </head>
@@ -492,6 +507,9 @@
 
   <button class="green" onclick="saveLocal()">Local Save</button>
   <button class="orange" onclick="loadLocal()">Local Load</button>
+  <button class="green" onclick="exportOrgBlueprint()">Export Org Blueprint</button>
+  <input type="file" id="blueprintImportInput" accept=".json,.xlsx,.xls,.csv" style="display:none;" onchange="handleBlueprintImport(event)" />
+  <button class="orange" onclick="document.getElementById('blueprintImportInput').click()">Upload Org Blueprint</button>
   <button onclick="exportCSV()">Export CSV</button>
   <button onclick="exportExcel()">Export Excel</button>
   <button class="danger" onclick="clearOrg()">Clear Org</button>
@@ -619,6 +637,7 @@ let comparePeople = [];
 let compareColumns = { first: null, last: null, supervisor: null, email: null };
 let compareResults = null;
 let lastBlueprintLoadSummary = null;
+let safeliteUsersEmails = [];
 
 const possibleFirstNames = [
   "first",
@@ -686,6 +705,19 @@ function normalizeName(value) {
     .replace(/\s+/g, " ")
     .replace(/\s*,\s*/g, ", ")
     .toLowerCase();
+}
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+function parseEmailList(text) {
+  return String(text || "")
+    .split(",")
+    .map(email => email.trim())
+    .filter(Boolean)
+    .filter((email, index, arr) => {
+      const key = normalizeEmail(email);
+      return arr.findIndex(e => normalizeEmail(e) === key) === index;
+    });
 }
 
 function titleName(value) {
@@ -1512,30 +1544,41 @@ function getOrgPathRows() {
 
 function buildOrgBlueprint() {
   return {
-    savedAt: new Date().toISOString(),
+    type: "SafeliteOrgBlueprint",
+    version: 1,
+    exportedAt: new Date().toISOString(),
     columnsUsed: { first: columns.first, last: columns.last, supervisor: columns.supervisor, email: columns.email },
+    safeliteUsersEmails: [...safeliteUsersEmails],
     hierarchy: org.map(director => ({
       directorName: director.name,
       directorKey: normalizeName(director.name),
+      directorEmail: getEmailByName(director.name) || "",
       managers: director.managers.map(manager => ({
         managerName: manager.name,
         managerKey: normalizeName(manager.name),
-        coaches: manager.coaches.map(coach => ({ coachName: coach, coachKey: normalizeName(coach) }))
+        managerEmail: getEmailByName(manager.name) || "",
+        coaches: manager.coaches.map(coach => ({ coachName: coach, coachKey: normalizeName(coach), coachEmail: getEmailByName(coach) || "" }))
       }))
     }))
   };
 }
 
-function findCurrentPersonBySavedKey(savedKey, savedName) { const key = normalizeName(savedKey || savedName); let match = people.find(p => p.nameKey === key); if (match) return match; const flippedKey = normalizeName(flipName(savedName)); match = people.find(p => p.nameKey === flippedKey); return match || null; }
-function showBlueprintLoadSummary(missing, rebuiltOrg) { const directorCount = rebuiltOrg.length; const managerCount = rebuiltOrg.reduce((sum, d) => sum + d.managers.length, 0); const coachCount = rebuiltOrg.reduce((sum, d) => sum + d.managers.reduce((mSum, m) => mSum + m.coaches.length, 0), 0); lastBlueprintLoadSummary = { loadedAt: new Date().toISOString(), missing, directorCount, managerCount, coachCount }; let message = `Org blueprint loaded from current file.
+function findCurrentPersonFromBlueprint(savedPerson) { const savedName = savedPerson.name || savedPerson.directorName || savedPerson.managerName || savedPerson.coachName || ""; const savedKey = savedPerson.key || savedPerson.directorKey || savedPerson.managerKey || savedPerson.coachKey || normalizeName(savedName); const savedEmail = normalizeEmail(savedPerson.email || savedPerson.directorEmail || savedPerson.managerEmail || savedPerson.coachEmail || ""); let match = people.find(p => p.nameKey === normalizeName(savedKey)); if (match) return match; match = people.find(p => p.nameKey === normalizeName(savedName)); if (match) return match; match = people.find(p => p.nameKey === normalizeName(flipName(savedName))); if (match) return match; if (savedEmail) { match = people.find(p => normalizeEmail(p.email) === savedEmail); if (match) return match; } return null; }
+function findCurrentPersonBySavedKey(savedKey, savedName) { return findCurrentPersonFromBlueprint({ key: savedKey, name: savedName }); }
+function showBlueprintLoadSummary(missing, rebuiltOrg, duplicateMatches = []) { const directorCount = rebuiltOrg.length; const managerCount = rebuiltOrg.reduce((sum, d) => sum + d.managers.length, 0); const coachCount = rebuiltOrg.reduce((sum, d) => sum + d.managers.reduce((mSum, m) => mSum + m.coaches.length, 0), 0); lastBlueprintLoadSummary = { loadedAt: new Date().toISOString(), missing, directorCount, managerCount, coachCount, duplicateMatches }; let message = `Org blueprint loaded from current file.
 
 Directors loaded: ${directorCount}
 Managers loaded: ${managerCount}
 Coaches loaded: ${coachCount}
-Missing names: ${missing.length}`; if (missing.length) message += `
+Missing names: ${missing.length}
+Duplicate matches: ${duplicateMatches.length}`; if (missing.length) message += `
 
 Missing names were not added because they were not found in the current uploaded file.`; alert(message); }
-function rebuildOrgFromBlueprint(blueprint) { const rebuiltOrg = []; const missing = []; if (!blueprint || !Array.isArray(blueprint.hierarchy)) { alert("No org blueprint found in the local save."); return; } blueprint.hierarchy.forEach(savedDirector => { const directorPerson = findCurrentPersonBySavedKey(savedDirector.directorKey, savedDirector.directorName); if (!directorPerson) { missing.push({ level: "Director", name: savedDirector.directorName }); return; } const directorNode = { name: directorPerson.name, managers: [] }; (savedDirector.managers || []).forEach(savedManager => { const managerPerson = findCurrentPersonBySavedKey(savedManager.managerKey, savedManager.managerName); if (!managerPerson) { missing.push({ level: "Manager", name: savedManager.managerName, director: savedDirector.directorName }); return; } const managerNode = { name: managerPerson.name, coaches: [] }; (savedManager.coaches || []).forEach(savedCoach => { const coachPerson = findCurrentPersonBySavedKey(savedCoach.coachKey, savedCoach.coachName); if (!coachPerson) { missing.push({ level: "Coach", name: savedCoach.coachName, director: savedDirector.directorName, manager: savedManager.managerName }); return; } managerNode.coaches.push(coachPerson.name); }); directorNode.managers.push(managerNode); }); rebuiltOrg.push(directorNode); }); org = rebuiltOrg; selectedPerson = null; renderAll(); showBlueprintLoadSummary(missing, rebuiltOrg); }
+function rebuildOrgFromBlueprint(blueprint) { const rebuiltOrg = []; const missing = []; const duplicateMatches = []; if (!blueprint || !Array.isArray(blueprint.hierarchy)) { alert("No org blueprint found in the local save."); return; } blueprint.hierarchy.forEach(savedDirector => { const directorPerson = findCurrentPersonFromBlueprint(savedDirector); if (!directorPerson) { missing.push({ level: "Director", name: savedDirector.directorName }); return; } if (rebuiltOrg.some(d => normalizeName(d.name) === normalizeName(directorPerson.name))) duplicateMatches.push({ level: "Director", name: directorPerson.name }); const directorNode = { name: directorPerson.name, managers: [] }; (savedDirector.managers || []).forEach(savedManager => { const managerPerson = findCurrentPersonFromBlueprint(savedManager); if (!managerPerson) { missing.push({ level: "Manager", name: savedManager.managerName, director: savedDirector.directorName }); return; } const managerNode = { name: managerPerson.name, coaches: [] }; (savedManager.coaches || []).forEach(savedCoach => { const coachPerson = findCurrentPersonFromBlueprint(savedCoach); if (!coachPerson) { missing.push({ level: "Coach", name: savedCoach.coachName, director: savedDirector.directorName, manager: savedManager.managerName }); return; } if (managerNode.coaches.some(c => normalizeName(c) === normalizeName(coachPerson.name))) duplicateMatches.push({ level: "Coach", name: coachPerson.name }); else managerNode.coaches.push(coachPerson.name); }); if (directorNode.managers.some(m => normalizeName(m.name) === normalizeName(managerNode.name))) duplicateMatches.push({ level: "Manager", name: managerNode.name }); else directorNode.managers.push(managerNode); }); rebuiltOrg.push(directorNode); }); org = rebuiltOrg; if (Array.isArray(blueprint.safeliteUsersEmails)) safeliteUsersEmails = parseEmailList(blueprint.safeliteUsersEmails.join(", ")); selectedPerson = null; renderAll(); showBlueprintLoadSummary(missing, rebuiltOrg, duplicateMatches); }
+function exportOrgBlueprint() { const blueprint = buildOrgBlueprint(); const day = new Date().toISOString().slice(0, 10); downloadBlob(JSON.stringify(blueprint, null, 2), `safelite_org_blueprint_${day}.json`, "application/json;charset=utf-8;"); setStatus("Org blueprint exported"); }
+function blueprintFromImportedRows(rows) { const byDirector = new Map(); const isUsers = rows[0] && Object.prototype.hasOwnProperty.call(rows[0], "Users"); rows.forEach(row => { let director = "", manager = "", coach = "", email = ""; if (isUsers) { const users = String(row["Users"] || "").trim(); if (!users || users === "Safelite") return; const parts = users.split(" --> ").map(x => x.trim()).filter(Boolean); if (parts[0] === "Safelite") parts.shift(); [director, manager, coach] = parts; email = String(row["Studio Email Address"] || "").trim(); } else { director = String(row["Director"] || "").trim(); manager = String(row["Manager"] || "").trim(); coach = String(row["Coach"] || "").trim(); email = String(row["Username / Studio Email Address"] || "").trim(); } if (!director) return; if (!byDirector.has(director)) byDirector.set(director, { directorName: director, directorKey: normalizeName(director), directorEmail: !manager && !coach ? email : "", managers: [] }); const d = byDirector.get(director); if (!manager) return; let m = d.managers.find(x => normalizeName(x.managerName) === normalizeName(manager)); if (!m) { m = { managerName: manager, managerKey: normalizeName(manager), managerEmail: !coach ? email : "", coaches: [] }; d.managers.push(m); } if (!coach) return; if (!m.coaches.some(c => normalizeName(c.coachName) === normalizeName(coach))) m.coaches.push({ coachName: coach, coachKey: normalizeName(coach), coachEmail: email }); }); return { type: "SafeliteOrgBlueprint", version: 1, exportedAt: new Date().toISOString(), columnsUsed: { first: columns.first, last: columns.last, supervisor: columns.supervisor, email: columns.email }, hierarchy: Array.from(byDirector.values()) }; }
+function handleBlueprintImport(event) { const file = event.target.files[0]; if (!file) return; if (!people.length) { alert("Upload and process a people file first."); event.target.value = ""; return; } const ext = file.name.split(".").pop().toLowerCase(); const reader = new FileReader(); reader.onload = function(e) { try { let blueprint; if (ext === "json") { blueprint = JSON.parse(String(e.target.result || "{}")); } else { let rows = []; if (ext === "csv") { const wb = XLSX.read(String(e.target.result), { type: "string" }); rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" }); } else { const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" }); rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" }); } blueprint = blueprintFromImportedRows(rows); } rebuildOrgFromBlueprint(blueprint); setStatus(`Blueprint imported from ${file.name}`); } catch (error) { console.error(error); alert("Unable to import blueprint file."); } finally { event.target.value = ""; } }; if (ext === "json" || ext === "csv") reader.readAsText(file); else reader.readAsArrayBuffer(file); }
+function applySafeliteEmailBox() { const box = document.getElementById("safeliteEmailBox"); safeliteUsersEmails = parseEmailList(box ? box.value : ""); renderOutputTable(); setStatus(`Safelite row updated with ${safeliteUsersEmails.length} emails`); }
 
 function setViewMode(mode) {
   currentViewMode = mode;
@@ -1610,17 +1653,24 @@ function renderUsersOutputTable() {
   `;
 
   tbody.innerHTML = "";
+  const safeliteRow = document.createElement("tr");
+  safeliteRow.className = "safelite-users-row";
+  safeliteRow.innerHTML = `<td class="path-cell"><strong>Safelite</strong></td><td><textarea id="safeliteEmailBox" class="safelite-email-box" placeholder="Paste comma-separated emails here..."></textarea><div class="small">Paste comma-separated emails. These will be removed from duplicate user rows below.</div><button class="mini-btn" onclick="applySafeliteEmailBox()">Apply Safelite Emails</button></td>`;
+  tbody.appendChild(safeliteRow);
+  const safeliteEmailSet = new Set(safeliteUsersEmails.map(normalizeEmail));
 
   getOrgPathRows().forEach(row => {
     const tr = document.createElement("tr");
+    const displayEmail = safeliteEmailSet.has(normalizeEmail(row.email || "")) ? "" : (row.email || "");
 
     tr.innerHTML = `
       <td class="path-cell">${makeClickablePath(row.path)}</td>
-      <td>${escapeHTML(row.email || "")}</td>
+      <td>${escapeHTML(displayEmail)}</td>
     `;
 
     tbody.appendChild(tr);
   });
+  setTimeout(() => { const box = document.getElementById("safeliteEmailBox"); if (box) box.value = safeliteUsersEmails.join(", "); }, 0);
 }
 
 function renderFiltersOutputTable() {
@@ -1751,10 +1801,8 @@ function getCurrentViewExportRows() {
   }
 
   if (currentViewMode === "users") {
-    return getOrgPathRows().map(row => ({
-      "Users": row.path,
-      "Studio Email Address": row.email || ""
-    }));
+    const safeliteEmailSet = new Set(safeliteUsersEmails.map(normalizeEmail));
+    return [{ "Users": "Safelite", "Studio Email Address": safeliteUsersEmails.join(", ") }, ...getOrgPathRows().map(row => ({ "Users": row.path, "Studio Email Address": safeliteEmailSet.has(normalizeEmail(row.email || "")) ? "" : (row.email || "") }))];
   }
 
   if (currentViewMode === "filters") {
@@ -1851,7 +1899,8 @@ function saveLocal() {
     includeEmail: document.getElementById("includeEmailToggle").checked,
     currentViewMode,
     filledReportEmails,
-    orgBlueprint: buildOrgBlueprint()
+    orgBlueprint: buildOrgBlueprint(),
+    safeliteUsersEmails
   };
 
   localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
@@ -1883,6 +1932,7 @@ function loadLocal() {
     columns = payload.columns || columns;
     org = payload.org || [];
     filledReportEmails = payload.filledReportEmails || {};
+    safeliteUsersEmails = Array.isArray(payload.safeliteUsersEmails) ? payload.safeliteUsersEmails : [];
     currentViewMode = payload.currentViewMode || "org";
 
     if (typeof payload.includeEmail === "boolean") {
@@ -1990,6 +2040,5 @@ renderAll();
 
 </body>
 </html>
-
 
 
