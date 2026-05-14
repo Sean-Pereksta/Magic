@@ -2538,8 +2538,8 @@ const ATTACK_DEFS = {
     heavy:{neutral:{id:"athena_heavy_n",godId:"athena",inputType:"heavy",directionVariant:"neutral",startup:6,active:8,recovery:13,damage:12,knock:15,angle:-0.12,hitbox:{x:44,y:-14,w:94,h:58},effects:{visualType:"aegisBash"},selfImpulse:{x:5.2,y:0},startupArmor:9},up:{id:"athena_heavy_u",godId:"athena",inputType:"heavy",directionVariant:"up",startup:5,active:8,recovery:14,damage:11,knock:13,angle:-1.28,hitbox:{x:12,y:-104,w:74,h:112},effects:{visualType:"spearOfOlympus"},selfImpulse:{x:0,y:-12},startupArmor:4},down:{id:"athena_heavy_d",godId:"athena",inputType:"heavy",directionVariant:"down",startup:2,active:24,recovery:16,damage:0,knock:0,angle:-0.4,hitbox:{x:0,y:0,w:40,h:60},effects:{visualType:"athenaAegisCounterStance"},startupArmor:26,isCounter:true}}
   },
   ra: {
-    light: { neutral:{id:"ra_light_n",godId:"ra",inputType:"light",directionVariant:"neutral",startup:3,active:5,recovery:8,damage:6,knock:6.4,angle:-0.08,hitbox:{x:34,y:-8,w:66,h:28},effects:{visualType:"solarStaffTap"}}, up:{id:"ra_light_u",directionVariant:"up",startup:3,active:6,recovery:8,damage:7,knock:7.5,angle:-1.08,hitbox:{x:32,y:-56,w:64,h:58},effects:{visualType:"sunriseArc"}}, down:{id:"ra_light_d",godId:"ra",inputType:"light",directionVariant:"down",startup:3,active:6,recovery:10,damage:5.5,knock:5.2,angle:-0.08,hitbox:{x:34,y:24,w:86,h:24},effects:{visualType:"raSolarBrandSwipe"}}},
-    heavy:{neutral:{id:"ra_heavy_n",directionVariant:"neutral",startup:8,active:7,recovery:14,damage:13,knock:13.8,angle:-0.22,hitbox:{x:44,y:-18,w:98,h:64},effects:{visualType:"solarDiscSmash"}},up:{id:"ra_heavy_u",directionVariant:"up",startup:7,active:7,recovery:15,damage:12,knock:12.7,angle:-1.15,hitbox:{x:8,y:-94,w:90,h:94},effects:{visualType:"noonFlare"}},down:{id:"ra_heavy_d",directionVariant:"down",startup:7,active:7,recovery:16,damage:11,knock:6.2,angle:-0.03,hitbox:{x:32,y:24,w:114,h:20},effects:{visualType:"desertBurn"}}}
+    light: { neutral:{id:"ra_light_n",godId:"ra",inputType:"light",directionVariant:"neutral",startup:3,active:5,recovery:8,damage:6,knock:6.4,angle:-0.08,hitbox:{x:34,y:-8,w:66,h:28},effects:{visualType:"raSolarStaffJab"}}, up:{id:"ra_light_u",directionVariant:"up",startup:3,active:6,recovery:8,damage:7,knock:7.5,angle:-1.08,hitbox:{x:32,y:-56,w:64,h:58},effects:{visualType:"raRisingSolarSpear"}}, down:{id:"ra_light_d",godId:"ra",inputType:"light",directionVariant:"down",startup:3,active:6,recovery:10,damage:5.5,knock:5.2,angle:-0.08,hitbox:{x:34,y:24,w:86,h:24},effects:{visualType:"raLowSolarSweep"}}},
+    heavy:{neutral:{id:"ra_heavy_n",directionVariant:"neutral",startup:8,active:7,recovery:14,damage:13,knock:13.8,angle:-0.22,hitbox:{x:44,y:-18,w:98,h:64},effects:{visualType:"raSunDiskCleave"}},up:{id:"ra_heavy_u",directionVariant:"up",startup:7,active:7,recovery:15,damage:12,knock:12.7,angle:-1.15,hitbox:{x:8,y:-94,w:90,h:94},effects:{visualType:"raRisingSolarSpear"}},down:{id:"ra_heavy_d",directionVariant:"down",startup:7,active:7,recovery:16,damage:11,knock:6.2,angle:-0.03,hitbox:{x:32,y:24,w:114,h:20},effects:{visualType:"raSunburstSlam"}}}
   },
   anubis: {
     light: { neutral:{id:"anubis_light_n",godId:"anubis",inputType:"light",directionVariant:"neutral",startup:3,active:6,recovery:8,damage:6,knock:6.4,angle:-0.08,hitbox:{x:36,y:-12,w:62,h:34},effects:{visualType:"jackalClaw"}}, up:{id:"anubis_light_u",directionVariant:"up",startup:3,active:6,recovery:8,damage:7,knock:7.4,angle:-1.1,hitbox:{x:24,y:-58,w:66,h:60},effects:{visualType:"soulRake"}}, down:{id:"anubis_light_d",directionVariant:"down",startup:3,active:6,recovery:9,damage:6,knock:6.3,angle:-0.03,hitbox:{x:30,y:22,w:76,h:22},effects:{visualType:"graveSweep"}}},
@@ -6270,8 +6270,9 @@ function drawPixelGod(c, p, x, y, s) {
   drawGodHead(c, p, x + hitLean + bodyLean, y + bob + crouch, s, dir, pose.headTilt || 0);
 
   const bastetAttackPoseHandled = drawBastetAttackPose(c, p, x + hitLean + bodyLean, y + bob + crouch, s, dir);
+  const raAttackPoseHandled = drawRaAttackPose(c, p, x + hitLean + bodyLean, y + bob + crouch, s, dir, pose);
   // Arms
-  if (!bastetAttackPoseHandled) {
+  if (!bastetAttackPoseHandled && !raAttackPoseHandled) {
     c.fillStyle = g.color;
     c.fillRect(px(x - sc(30) + hitLean + bodyLean + (pose.backArmX || 0)), px(y - sc(16) + bob + crouch + (pose.backArmY || 0)), sc(13), sc(31));
     c.fillRect(px(x + sc(17) + hitLean + bodyLean + (pose.frontArmX || 0)), px(y - sc(16) + bob + crouch + (pose.frontArmY || 0)), sc(13), sc(31));
@@ -6353,7 +6354,7 @@ function drawPixelGod(c, p, x, y, s) {
     }
   }
 
-  if (!bastetAttackPoseHandled) drawGodWeapon(c, p, x + hitLean + bodyLean, y + bob + crouch, s, dir, pose);
+  if (!bastetAttackPoseHandled && !raAttackPoseHandled) drawGodWeapon(c, p, x + hitLean + bodyLean, y + bob + crouch, s, dir, pose);
 }
 
 function drawGodHead(c, p, x, y, s, dir, headTilt) {
@@ -6787,7 +6788,7 @@ function drawActiveMoveVisual(ctx, player) {
 }
 function drawDirectionalSwing(a, owner) {
   if (!a || !owner) return;
-  if (owner.godId === "bastet") return;
+  if (owner.godId === "bastet" || owner.godId === "ra") return;
   const dir = owner.facing || 1;
   const sx = worldToScreenX(a.x + a.w/2);
   const sy = worldToScreenY(a.y + a.h/2);
@@ -6853,6 +6854,63 @@ function drawBastetAttackPose(c, p, x, y, s, dir) {
   return true;
 }
 
+
+function drawRaAttackPose(c, p, x, y, s, dir, pose) {
+  if (p.godId !== "ra" || !p.currentMove || !(p.currentMove.id || "").startsWith("ra_")) return false;
+  const move = p.currentMove;
+  const phase = getMoveProgress(p).phase || "startup";
+  const px = v => Math.round(v);
+  const sc = v => Math.round(v * s);
+  const alpha = phase === "recovery" ? 0.55 : 0.95;
+  const windup = phase === "startup" ? 1 : 0;
+  const active = phase === "active" ? 1 : 0;
+  c.globalAlpha = alpha;
+  const armX = x + dir * sc(17) + (pose.frontArmX || 0);
+  const armY = y - sc(16) + (pose.frontArmY || 0);
+  c.fillStyle = p.god.color;
+  c.fillRect(px(x - sc(30) + (pose.backArmX || 0)), px(y - sc(16) + (pose.backArmY || 0)), sc(13), sc(31));
+  c.fillRect(px(armX), px(armY), sc(13), sc(31));
+
+  const tip = {x: x + dir * sc(30), y: y - sc(22)};
+  c.strokeStyle = "#d4af37";
+  c.lineWidth = Math.max(2, sc(4));
+  c.beginPath();
+  c.moveTo(px(armX + dir * sc(6)), px(armY + sc(10)));
+  c.lineTo(px(tip.x), px(tip.y));
+  c.stroke();
+
+  const id = move.id || "";
+  if (id === "ra_light_n") {
+    const len = sc(active ? 54 : 34);
+    c.strokeStyle = "#ffd166"; c.lineWidth = Math.max(2, sc(5));
+    c.beginPath(); c.moveTo(px(tip.x), px(tip.y)); c.lineTo(px(tip.x + dir * len), px(tip.y - sc(2))); c.stroke();
+    c.fillStyle = "#ffef9f"; c.fillRect(px(tip.x + dir * len - sc(2)), px(tip.y - sc(4)), sc(5), sc(5));
+  } else if (id === "ra_heavy_n") {
+    c.strokeStyle = "#ffb703"; c.lineWidth = Math.max(3, sc(8));
+    c.beginPath();
+    c.arc(px(tip.x + dir * sc(30)), px(tip.y - sc(4)), sc(active ? 30 : 18), dir===1 ? -0.85 : Math.PI-0.35, dir===1 ? 0.75 : Math.PI+0.35);
+    c.stroke();
+  } else if (id === "ra_light_u" || id === "ra_heavy_u") {
+    const h = sc(id === "ra_heavy_u" ? 104 : 78);
+    c.strokeStyle = "#ffd166"; c.lineWidth = Math.max(3, sc(id === "ra_heavy_u" ? 9 : 7));
+    c.beginPath(); c.moveTo(px(x + dir * sc(8)), px(y - sc(40))); c.lineTo(px(x + dir * sc(8)), px(y - sc(40) - h)); c.stroke();
+  } else if (id === "ra_light_d") {
+    c.strokeStyle = "#ffb703"; c.lineWidth = Math.max(2, sc(5));
+    c.beginPath(); c.moveTo(px(x - dir * sc(6)), px(y + sc(20))); c.lineTo(px(x + dir * sc(86)), px(y + sc(20))); c.stroke();
+  } else if (id === "ra_heavy_d") {
+    const gx = x + dir * sc(18); const gy = y + sc(24);
+    c.strokeStyle = "#ff9f1c"; c.lineWidth = Math.max(2, sc(4));
+    for (let i=0;i<8;i++){ const a = i*Math.PI/4; c.beginPath(); c.moveTo(px(gx),px(gy)); c.lineTo(px(gx+Math.cos(a)*sc(26)),px(gy+Math.sin(a)*sc(16))); c.stroke(); }
+    c.fillStyle = "rgba(255,140,0,0.7)"; c.fillRect(px(gx-sc(12)),px(gy-sc(3)),sc(24),sc(7));
+  }
+  if (!p.grounded && (id === "ra_light_n" || id === "ra_heavy_n")) {
+    c.strokeStyle = "#ffd166"; c.lineWidth = Math.max(2, sc(4));
+    c.beginPath(); c.moveTo(px(tip.x), px(tip.y - sc(2))); c.lineTo(px(tip.x + dir * sc(44)), px(tip.y - sc(28))); c.stroke();
+  }
+  c.globalAlpha = 1;
+  return true;
+}
+
 function drawAttack(a) {
   const x = worldToScreenX(a.x);
   const y = worldToScreenY(a.y);
@@ -6861,7 +6919,7 @@ function drawAttack(a) {
   const cx = x + w * .5;
   const cy = y + h * .5;
   let type = a.visualType || "slashArc";
-  const hadesVisualFallback = {hadesBidentJab:"spearThrust",hadesBoneUpper:"hadesBonePillar",hadesShadeSweep:"graveSweep",hadesBidentCleave:"judgmentCleave",hadesBonePillar:"stormPillar",hadesUnderworldBurst:"duatDetonation",hadesShadowGate:"shadowGate",hadesBoneRise:"hadesBonePillar",hadesSoulPrisonCast:"soulMarkBurst",hadesSoulPrisonTrigger:"soulMarkBurst",hadesSoulWave:"duatDetonation",hadesLordAura:"shadowGate",zeusRisingBoltUppercut:"uppercutSpark",zeusThunderCageSlam:"thunderStomp",raSolarBrandSwipe:"desertBurn",raSolarBrandBurst:"sunBrandBurst",anubisWeighingSealCast:"soulMarkBurst",anubisWeighingSealTrigger:"soulMarkBurst",quetzRisingFeatherLift:"quetzTempestCrown",quetzFeatherDashSwipe:"quetzFeatherFangSwipe",quetzLowCoilSweep:"quetzCoilSweep",quetzSidewindCleave:"quetzEmeraldWingCleave",quetzSkySerpentLauncher:"quetzTempestCrown",quetzSkyCurrentLift:"quetzTempestCrown",quetzSideWindDash:"quetzEmeraldWingCleave",quetzSerpentDive:"quetzSerpentDive"};
+  const hadesVisualFallback = {hadesBidentJab:"spearThrust",hadesBoneUpper:"hadesBonePillar",hadesShadeSweep:"graveSweep",hadesBidentCleave:"judgmentCleave",hadesBonePillar:"stormPillar",hadesUnderworldBurst:"duatDetonation",hadesShadowGate:"shadowGate",hadesBoneRise:"hadesBonePillar",hadesSoulPrisonCast:"soulMarkBurst",hadesSoulPrisonTrigger:"soulMarkBurst",hadesSoulWave:"duatDetonation",hadesLordAura:"shadowGate",zeusRisingBoltUppercut:"uppercutSpark",zeusThunderCageSlam:"thunderStomp",raSolarBrandSwipe:"raLowSolarSweep",raSolarBrandBurst:"sunBrandBurst",anubisWeighingSealCast:"soulMarkBurst",anubisWeighingSealTrigger:"soulMarkBurst",quetzRisingFeatherLift:"quetzTempestCrown",quetzFeatherDashSwipe:"quetzFeatherFangSwipe",quetzLowCoilSweep:"quetzCoilSweep",quetzSidewindCleave:"quetzEmeraldWingCleave",quetzSkySerpentLauncher:"quetzTempestCrown",quetzSkyCurrentLift:"quetzTempestCrown",quetzSideWindDash:"quetzEmeraldWingCleave",quetzSerpentDive:"quetzSerpentDive"};
   const rawType = type;
   type = hadesVisualFallback[type] || type;
   const dir = (a.owner && a.owner.facing) || 1;
