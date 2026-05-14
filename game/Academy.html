@@ -545,6 +545,7 @@ document.addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
 const colliders = [];
 const obstacleColliders = [];
 const DEBUG_OBSTACLE_COLLIDERS = false;
+const DEBUG_DOOR_OPENINGS = false;
 const playerWindowBlockers = [];
 const interactables = [];
 const roomsUnlocked = {
@@ -576,8 +577,8 @@ function isObstacleTooCloseToWindowOrDoor(x, z, padding = 1.2) {
   for (const win of windows || []) {
     if (enemyDistance2D({ x, z }, { x: win.x, z: win.z }) < padding + 1.5) return true;
   }
-  for (const door of doors || []) {
-    if (enemyDistance2D({ x, z }, { x: door.x, z: door.z }) < padding + 1.8) return true;
+  for (const door of doorConnections || []) {
+    if (enemyDistance2D({ x, z }, { x: door.x, z: door.z }) < padding + 2.2) return true;
   }
   return false;
 }
@@ -726,32 +727,37 @@ function addWallSegment(x, z, w, d, mat = mats.wall) {
   addCollider(x, z, w, d);
 }
 
-function addHorizontalWallWithWindows(cx, z, totalW, wallD, windowsOnSide) {
+function addHorizontalWallWithOpenings(cx, z, totalW, wallD, openingsOnSide) {
   const wallLeftEdge = cx - totalW / 2;
   const wallRightEdge = cx + totalW / 2;
 
-  const sorted = windowsOnSide
-    .map(ws => ({
-      x: ws.x,
-      width: ws.width || 3.0,
-      left: ws.x - (ws.width || 3.0) / 2,
-      right: ws.x + (ws.width || 3.0) / 2
+  const sorted = openingsOnSide
+    .map(op => ({
+      ...op,
+      x: op.x,
+      width: op.width || 3.0,
+      left: op.x - (op.width || 3.0) / 2,
+      right: op.x + (op.width || 3.0) / 2
     }))
     .sort((a, b) => a.left - b.left);
 
   let cursor = wallLeftEdge;
 
-  for (const gap of sorted) {
-    const segmentW = gap.left - cursor;
+  for (const opening of sorted) {
+    const segmentW = opening.left - cursor;
 
     if (segmentW > 0.05) {
       addWallSegment(cursor + segmentW / 2, z, segmentW, wallD);
     }
 
-    box(gap.width, 0.85, wallD, gap.x, 0.425, z, mats.wall);
-    box(gap.width, 1.05, wallD, gap.x, 3.275, z, mats.wall);
+    if (opening.type === "window") {
+      box(opening.width, 0.85, wallD, opening.x, 0.425, z, mats.wall);
+      box(opening.width, 1.05, wallD, opening.x, 3.275, z, mats.wall);
+    } else {
+      box(opening.width, 0.55, wallD, opening.x, 3.525, z, mats.wall);
+    }
 
-    cursor = gap.right;
+    cursor = opening.right;
   }
 
   const finalW = wallRightEdge - cursor;
@@ -760,32 +766,37 @@ function addHorizontalWallWithWindows(cx, z, totalW, wallD, windowsOnSide) {
   }
 }
 
-function addVerticalWallWithWindows(x, cz, totalD, wallW, windowsOnSide) {
+function addVerticalWallWithOpenings(x, cz, totalD, wallW, openingsOnSide) {
   const wallTopEdge = cz - totalD / 2;
   const wallBottomEdge = cz + totalD / 2;
 
-  const sorted = windowsOnSide
-    .map(ws => ({
-      z: ws.z,
-      width: ws.width || 3.0,
-      top: ws.z - (ws.width || 3.0) / 2,
-      bottom: ws.z + (ws.width || 3.0) / 2
+  const sorted = openingsOnSide
+    .map(op => ({
+      ...op,
+      z: op.z,
+      width: op.width || 3.0,
+      top: op.z - (op.width || 3.0) / 2,
+      bottom: op.z + (op.width || 3.0) / 2
     }))
     .sort((a, b) => a.top - b.top);
 
   let cursor = wallTopEdge;
 
-  for (const gap of sorted) {
-    const segmentD = gap.top - cursor;
+  for (const opening of sorted) {
+    const segmentD = opening.top - cursor;
 
     if (segmentD > 0.05) {
       addWallSegment(x, cursor + segmentD / 2, wallW, segmentD);
     }
 
-    box(wallW, 0.85, gap.width, x, 0.425, gap.z, mats.wall);
-    box(wallW, 1.05, gap.width, x, 3.275, gap.z, mats.wall);
+    if (opening.type === "window") {
+      box(wallW, 0.85, opening.width, x, 0.425, opening.z, mats.wall);
+      box(wallW, 1.05, opening.width, x, 3.275, opening.z, mats.wall);
+    } else {
+      box(wallW, 0.55, opening.width, x, 3.525, opening.z, mats.wall);
+    }
 
-    cursor = gap.bottom;
+    cursor = opening.bottom;
   }
 
   const finalD = wallBottomEdge - cursor;
@@ -794,7 +805,7 @@ function addVerticalWallWithWindows(x, cz, totalD, wallW, windowsOnSide) {
   }
 }
 
-function addRoom(cx, cz, w, d, name, windowSlots = []) {
+function addRoom(cx, cz, w, d, name, openings = []) {
   box(w, 0.25, d, cx, -0.1, cz, mats.floor, false, true);
 
   // ceiling
@@ -813,68 +824,86 @@ function addRoom(cx, cz, w, d, name, windowSlots = []) {
   const westWallX = cx - w / 2;
   const eastWallX = cx + w / 2;
 
-  const northWindows = windowSlots.filter(ws => ws.side === "north");
-  const southWindows = windowSlots.filter(ws => ws.side === "south");
-  const westWindows = windowSlots.filter(ws => ws.side === "west");
-  const eastWindows = windowSlots.filter(ws => ws.side === "east");
+  const northOpenings = openings.filter(ws => ws.side === "north");
+  const southOpenings = openings.filter(ws => ws.side === "south");
+  const westOpenings = openings.filter(ws => ws.side === "west");
+  const eastOpenings = openings.filter(ws => ws.side === "east");
 
-  if (northWindows.length === 0) {
+  if (northOpenings.length === 0) {
     addWallSegment(cx, northWallZ, w, 0.35);
   } else {
-    addHorizontalWallWithWindows(cx, northWallZ, w, 0.35, northWindows);
+    addHorizontalWallWithOpenings(cx, northWallZ, w, 0.35, northOpenings);
   }
 
-  if (southWindows.length === 0) {
+  if (southOpenings.length === 0) {
     addWallSegment(cx, southWallZ, w, 0.35);
   } else {
-    addHorizontalWallWithWindows(cx, southWallZ, w, 0.35, southWindows);
+    addHorizontalWallWithOpenings(cx, southWallZ, w, 0.35, southOpenings);
   }
 
-  if (westWindows.length === 0) {
+  if (westOpenings.length === 0) {
     addWallSegment(westWallX, cz, 0.35, d);
   } else {
-    addVerticalWallWithWindows(westWallX, cz, d, 0.35, westWindows);
+    addVerticalWallWithOpenings(westWallX, cz, d, 0.35, westOpenings);
   }
 
-  if (eastWindows.length === 0) {
+  if (eastOpenings.length === 0) {
     addWallSegment(eastWallX, cz, 0.35, d);
   } else {
-    addVerticalWallWithWindows(eastWallX, cz, d, 0.35, eastWindows);
+    addVerticalWallWithOpenings(eastWallX, cz, d, 0.35, eastOpenings);
   }
 }
 
 addRoom(0, 0, 22, 18, "spawn", [
   { side: "west", z: -4, width: 3.0 },
   { side: "west", z: 5, width: 3.0 },
-  { side: "north", x: 8, width: 3.0 }
+  { side: "north", x: 8, width: 3.0 },
+  { type: "door", side: "east", z: 0, width: 5.0 },
+  { type: "door", side: "south", x: 0, width: 5.0 },
+  { type: "door", side: "west", z: 0, width: 5.0 }
 ]);
 addRoom(24, 0, 20, 16, "east", [
   { side: "north", x: 23, width: 3.0 },
-  { side: "east", z: 0, width: 3.0 }
+  { side: "east", z: 0, width: 3.0 },
+  { type: "door", side: "west", z: 0, width: 5.0 },
+  { type: "door", side: "south", x: 14, width: 5.0 },
+  { type: "door", side: "east", z: 0, width: 5.0 }
 ]);
 addRoom(0, 22, 18, 18, "basement", [
-  { side: "west", z: 22, width: 3.0 }
+  { side: "west", z: 22, width: 3.0 },
+  { type: "door", side: "north", x: 0, width: 5.0 },
+  { type: "door", side: "east", z: 16, width: 5.0 },
+  { type: "door", side: "west", z: 11, width: 5.0 },
+  { type: "door", side: "south", x: 0, width: 5.0 }
 ]);
 addRoom(25, 21, 22, 18, "armory", [
-  { side: "south", x: 25, width: 3.0 }
+  { side: "south", x: 25, width: 3.0 },
+  { type: "door", side: "north", x: 14, width: 5.0 }
 ]);
 addRoom(-24, 0, 20, 18, "library", [
   { side: "west", z: -4, width: 3.0 },
-  { side: "north", x: -24, width: 3.0 }
+  { side: "north", x: -24, width: 3.0 },
+  { type: "door", side: "east", z: 0, width: 5.0 },
+  { type: "door", side: "south", x: -24, width: 5.0 }
 ]);
 addRoom(-24, 22, 18, 16, "kitchen", [
   { side: "west", z: 22, width: 3.0 },
-  { side: "south", x: -24, width: 3.0 }
+  { side: "south", x: -24, width: 3.0 },
+  { type: "door", side: "north", x: -24, width: 5.0 }
 ]);
 addRoom(0, 46, 28, 22, "courtyard", [
   { side: "west", z: 46, width: 3.0 },
-  { side: "east", z: 46, width: 3.0 }
+  { side: "east", z: 46, width: 3.0 },
+  { type: "door", side: "north", x: 0, width: 5.0 }
 ]);
 addRoom(48, 0, 20, 18, "workshop", [
-  { side: "north", x: 48, width: 3.0 }
+  { side: "north", x: 48, width: 3.0 },
+  { type: "door", side: "west", z: 0, width: 5.0 },
+  { type: "door", side: "south", x: 48, width: 5.0 }
 ]);
 addRoom(48, 24, 18, 18, "tower", [
-  { side: "east", z: 24, width: 3.0 }
+  { side: "east", z: 24, width: 3.0 },
+  { type: "door", side: "north", x: 48, width: 5.0 }
 ]);
 addCouch(-5, 3, Math.PI / 2); addChair(4, 4, -0.6); addChair(5, 3, 0.4); addRubble(7, -5, 5); addWallTorch(-10.7, 2.4, 0, Math.PI / 2);
 addCouch(21, 4, 0); addChair(28, -3, 1.2); addRubble(29, 5, 8); addWallTorch(24, 2.4, -7.7, 0);
@@ -894,29 +923,16 @@ pedestal.position.set(48, 0.4, 24); scene.add(pedestal);
 addObstacleCollider(48, 24, 2.8, 2.8, 1.0, "pedestal");
 const pedestalGlow = new THREE.PointLight(0x55ccff, 1.4, 14); pedestalGlow.position.set(48, 2.2, 24); scene.add(pedestalGlow);
 
-// remove doorway blockers so buy doors control passage
-const doorCutouts = [
-  { x: 11, z: 0, w: 0.8, d: 5.2 }, { x: 0, z: 9, w: 5.2, d: 0.8 }, { x: 14, z: 16, w: 5.2, d: 0.8 },
-  { x: -11, z: 0, w: 0.8, d: 5.2 }, { x: -24, z: 11, w: 5.2, d: 0.8 }, { x: 0, z: 33, w: 5.2, d: 0.8 },
-  { x: 35, z: 0, w: 0.8, d: 5.2 }, { x: 48, z: 12, w: 5.2, d: 0.8 }
+const doorConnections = [
+  { id: "spawn_east", roomName: "east", x: 11, z: 0, w: 0.7, d: 5, cost: 900, label: "Unlock East Hall" },
+  { id: "spawn_basement", roomName: "basement", x: 0, z: 9, w: 5, d: 0.7, cost: 1200, label: "Unlock Basement" },
+  { id: "east_armory", roomName: "armory", x: 14, z: 16, w: 5, d: 0.7, cost: 2000, label: "Unlock Armory" },
+  { id: "spawn_library", roomName: "library", x: -11, z: 0, w: 0.7, d: 5, cost: 1000, label: "Unlock Library" },
+  { id: "library_kitchen", roomName: "kitchen", x: -24, z: 11, w: 5, d: 0.7, cost: 1300, label: "Unlock Kitchen" },
+  { id: "basement_courtyard", roomName: "courtyard", x: 0, z: 33, w: 5, d: 0.7, cost: 1800, label: "Unlock Courtyard" },
+  { id: "east_workshop", roomName: "workshop", x: 35, z: 0, w: 0.7, d: 5, cost: 1600, label: "Unlock Workshop" },
+  { id: "workshop_tower", roomName: "tower", x: 48, z: 12, w: 5, d: 0.7, cost: 2600, label: "Unlock Tower Room" }
 ];
-for (let i = colliders.length - 1; i >= 0; i--) {
-  const c = colliders[i];
-  if (doorCutouts.some(dc => Math.abs(c.x - dc.x) < 0.4 && Math.abs(c.z - dc.z) < 0.4 && c.w >= dc.w - 0.3 && c.d >= dc.d - 0.3)) {
-    colliders.splice(i, 1);
-  }
-}
-
-// remove visual openings by placing dark hallway floors
-box(7, 0.12, 5, 12, -0.03, 0, mats.floor);
-box(5, 0.12, 7, 0, -0.03, 11, mats.floor);
-box(8, 0.12, 6, 14, -0.03, 15, mats.floor);
-
-// hall wall hints
-box(8, 3.8, 0.35, 12, 1.9, -3, mats.wall);
-box(8, 3.8, 0.35, 12, 1.9, 3, mats.wall);
-box(0.35, 3.8, 8, -3, 1.9, 11, mats.wall);
-box(0.35, 3.8, 8, 3, 1.9, 11, mats.wall);
 
 addLamp(0, 3.8, 0);
 addLamp(24, 3.8, 0);
@@ -1169,14 +1185,12 @@ function addBuyDoor(x, z, w, d, roomName, cost, label) {
   addCollider(x, z, w, d);
 }
 
-addBuyDoor(11, 0, 0.7, 5, "east", 900, "Unlock East Hall");
-addBuyDoor(0, 9, 5, 0.7, "basement", 1200, "Unlock Basement");
-addBuyDoor(14, 16, 5, 0.7, "armory", 2000, "Unlock Armory");
-addBuyDoor(-11, 0, 0.7, 5, "library", 1000, "Unlock Library");
-addBuyDoor(-24, 11, 5, 0.7, "kitchen", 1300, "Unlock Kitchen");
-addBuyDoor(0, 33, 5, 0.7, "courtyard", 1800, "Unlock Courtyard");
-addBuyDoor(35, 0, 0.7, 5, "workshop", 1600, "Unlock Workshop");
-addBuyDoor(48, 12, 5, 0.7, "tower", 2600, "Unlock Tower Room");
+for (const door of doorConnections) {
+  addBuyDoor(door.x, door.z, door.w, door.d, door.roomName, door.cost, door.label);
+  if (DEBUG_DOOR_OPENINGS) {
+    box(door.w + 0.2, 3.4, door.d + 0.2, door.x, 1.7, door.z, new THREE.MeshBasicMaterial({ color: 0x33ff66, transparent: true, opacity: 0.25 }));
+  }
+}
 
 /* =========================================================
    WINDOWS AND BOARDING
@@ -1187,7 +1201,7 @@ const windows = [];
 function getUnlockedWindows() {
   return windows.filter(w => {
     if (!w.roomName) return false;
-    return roomsUnlocked[w.roomName] === true;
+    return roomsUnlocked[w.roomName] === true && w.isExterior !== false;
   });
 }
 
@@ -1201,7 +1215,7 @@ function addWindowGlow(win) {
   win.windowGlow = glow;
 }
 
-function addWindow(x, z, rotation, spawnX, spawnZ, roomName = "spawn") {
+function addWindow(x, z, rotation, spawnX, spawnZ, roomName = "spawn", isExterior = true) {
   const frame = new THREE.Group();
   frame.position.set(x, 1.55, z);
   frame.rotation.y = rotation;
@@ -1215,6 +1229,8 @@ function addWindow(x, z, rotation, spawnX, spawnZ, roomName = "spawn") {
     spawnX,
     spawnZ,
     roomName,
+    room: roomName,
+    isExterior,
     boards: 8,
     maxBoards: 8,
     breakTimer: 0,
