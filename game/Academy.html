@@ -1867,6 +1867,16 @@ function createDamageSprite(text, color = 0xffffff) {
 const bullets = [];
 const rocks = [];
 const pickups = [];
+const bloodParticles = [];
+
+const BLOOD_PARTICLE_LIMIT = 90;
+const BLOOD_BURST_COUNT = 8;
+const BLOOD_LIFETIME = 0.45;
+const PLAYER_RADIUS = 0.45;
+const GOBLIN_BODY_RADIUS = 0.62;
+const GOBLIN_PUSH_STRENGTH = 10.5;
+const GOBLIN_CONTACT_DAMAGE_PUSH = 0.08;
+const GOBLIN_COLLISION_MAX_DIST = 3.0;
 
 function shoot() {
   if (!player.alive) return;
@@ -1954,6 +1964,60 @@ function spawnBullet() {
   bullets.push({ mesh: bulletMesh, glow, pos: bulletMesh.position.clone(), prevPos: bulletMesh.position.clone(), radius: currentGun.projectileSize || HITBOX_TUNING.minBulletRadius, vel: dir.multiplyScalar(currentGun.bulletSpeed), damage: currentGun.damage, life: 2.2, drop: currentGun.laser ? 0.25 : 1.25, magicType: currentGun.magicType, projectileColor, chainLightning: currentGun.chainLightning || false, chainChance: currentGun.chainChance || 0, chainRange: currentGun.chainRange || 0, chainDamage: currentGun.chainDamage || 0, chainMaxTargets: currentGun.chainMaxTargets || 0, shardOnHit: currentGun.shardOnHit || false, shardCount: currentGun.shardCount || 0, shardDamage: currentGun.shardDamage || 0, pierce: currentGun.pierce || 0, hitEnemies: new Set(), spawnPos: camera.position.clone(), closeRangeBonus: currentGun.closeRangeBonus || false, closeRangeDistance: currentGun.closeRangeDistance || 0, closeRangeMultiplier: currentGun.closeRangeMultiplier || 1, slowOnHit: currentGun.slowOnHit || false, slowMultiplier: currentGun.slowMultiplier || 1, slowDuration: currentGun.slowDuration || 0, voidMark: currentGun.voidMark || false, voidMarkDuration: currentGun.voidMarkDuration || 0, voidMarkBonusDamage: currentGun.voidMarkBonusDamage || 0, explosionOnHit: currentGun.explosionOnHit || false, explosionRadius: currentGun.explosionRadius || 0, explosionDamage: currentGun.explosionDamage || 0, knockback: currentGun.knockback || false, poisonOnHit: currentGun.poisonOnHit || false, poisonDamage: currentGun.poisonDamage || 0, poisonDuration: currentGun.poisonDuration || 0, poisonTickRate: currentGun.poisonTickRate || 0.5, spreadPoisonOnDeath: currentGun.spreadPoisonOnDeath || false, spreadPoisonRadius: currentGun.spreadPoisonRadius || 0, usesAimAssistRay: currentGun.bulletSpeed >= 95 || currentGun.laser || currentGun.magicType === "astral" });
 }
 
+
+function spawnGoblinBlood(hitX, hitY, hitZ, shotDir = null) {
+  if (!shouldSpawnVisualEffectAt(new THREE.Vector3(hitX, hitY, hitZ), CULL_SETTINGS.particleDistance)) return;
+  while (bloodParticles.length + BLOOD_BURST_COUNT > BLOOD_PARTICLE_LIMIT) {
+    const old = bloodParticles.shift();
+    if (old?.mesh) {
+      scene.remove(old.mesh);
+      if (old.mesh.geometry) old.mesh.geometry.dispose();
+      if (old.mesh.material) old.mesh.material.dispose();
+    }
+  }
+
+  for (let i = 0; i < BLOOD_BURST_COUNT; i++) {
+    const life = BLOOD_LIFETIME + Math.random() * 0.25;
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.045 + Math.random() * 0.035, 6, 6),
+      new THREE.MeshBasicMaterial({ color: Math.random() < 0.5 ? 0x8b0000 : 0x4a0000, transparent: true, opacity: 0.9 })
+    );
+    mesh.position.set(hitX, hitY, hitZ);
+    let vx = (Math.random() - 0.5) * 2.2;
+    let vy = 0.8 + Math.random() * 1.5;
+    let vz = (Math.random() - 0.5) * 2.2;
+    if (shotDir) { vx += shotDir.x * 1.8; vy += Math.max(0.15, shotDir.y * 0.6); vz += shotDir.z * 1.8; }
+    scene.add(mesh);
+    bloodParticles.push({ mesh, vel: new THREE.Vector3(vx, vy, vz), life, maxLife: life });
+  }
+}
+
+function updateBloodParticles(dt) {
+  for (let i = bloodParticles.length - 1; i >= 0; i--) {
+    const p = bloodParticles[i];
+    p.life -= dt;
+    if (p.life <= 0) {
+      scene.remove(p.mesh);
+      if (p.mesh.geometry) p.mesh.geometry.dispose();
+      if (p.mesh.material) p.mesh.material.dispose();
+      bloodParticles.splice(i, 1);
+      continue;
+    }
+    p.vel.y -= 5.5 * dt;
+    p.mesh.position.x += p.vel.x * dt;
+    p.mesh.position.y += p.vel.y * dt;
+    p.mesh.position.z += p.vel.z * dt;
+    const fade = Math.max(0, p.life / p.maxLife);
+    if (p.mesh.material) p.mesh.material.opacity = fade * 0.9;
+    if (p.mesh.position.y < 0.08) {
+      p.mesh.position.y = 0.08;
+      p.vel.y *= -0.15;
+      p.vel.x *= 0.55;
+      p.vel.z *= 0.55;
+    }
+  }
+}
+
 function shouldSpawnVisualEffectAt(pos, maxDist = CULL_SETTINGS.particleDistance) { if (!pos) return false; const dx = pos.x - player.pos.x; const dz = pos.z - player.pos.z; return Math.sqrt(dx * dx + dz * dz) <= maxDist; }
 function disposeFloatingEffect(effect) { if (!effect || !effect.sprite) return; scene.remove(effect.sprite); if (effect.sprite.geometry) effect.sprite.geometry.dispose(); if (effect.sprite.material) { if (effect.sprite.material.map) effect.sprite.material.map.dispose(); effect.sprite.material.dispose(); } }
 function pushFloatingEffect(effect) { if (floatingTexts.length > MAX_FLOATING_EFFECTS) { const old = floatingTexts.shift(); disposeFloatingEffect(old); } floatingTexts.push(effect); }
@@ -1996,6 +2060,13 @@ function applyBulletDamageToEnemy(e, bestHit, b, hitPos) {
   if (e.voidStacks && e.voidStacks > 0) damageDone *= 1 + e.voidStacks * 0.04;
   if (b.closeRangeBonus) { const distFromPlayer = b.spawnPos ? b.spawnPos.distanceTo(hitPos || b.pos) : camera.position.distanceTo(hitPos || b.pos); if (distFromPlayer <= (b.closeRangeDistance || 5.5)) damageDone *= b.closeRangeMultiplier || 1.45; }
   e.health -= damageDone; showGoblinHit(e, bestHit.name, damageDone);
+  const bloodHitPos = hitPos || e.mesh.position.clone().add(new THREE.Vector3(0, 1.1, 0));
+  const shotDirection = b?.vel ? b.vel.clone().normalize() : new THREE.Vector3(e.mesh.position.x - player.pos.x, 0, e.mesh.position.z - player.pos.z).normalize();
+  e.lastBloodTime = e.lastBloodTime || 0;
+  if (performance.now() - e.lastBloodTime > 45) {
+    spawnGoblinBlood(bloodHitPos.x, bloodHitPos.y, bloodHitPos.z, shotDirection);
+    e.lastBloodTime = performance.now();
+  }
   if (b.projectileColor && typeof spawnMagicImpact === "function") spawnMagicImpact((hitPos || b.pos).clone(), b.projectileColor, b.magicType === "rune" ? 8 : 5);
   if (typeof triggerChainLightning === "function") triggerChainLightning(e, (hitPos || b.pos).clone(), b);
   if (typeof spawnShardsFromHit === "function") spawnShardsFromHit(b, (hitPos || b.pos).clone(), b.vel ? b.vel.clone() : new THREE.Vector3(0, 0, -1));
@@ -2666,6 +2737,51 @@ function tryPlayerJump() {
   }
 }
 
+
+function resolvePlayerGoblinCollisions() {
+  if (!player.alive) return;
+  const minDist = PLAYER_RADIUS + GOBLIN_BODY_RADIUS;
+  for (const goblin of enemies) {
+    if (!goblin || goblin.dead || goblin.health <= 0 || !goblin.mesh) continue;
+    const dx = player.pos.x - goblin.mesh.position.x;
+    const dz = player.pos.z - goblin.mesh.position.z;
+    const distSq = dx * dx + dz * dz;
+    if (distSq > GOBLIN_COLLISION_MAX_DIST * GOBLIN_COLLISION_MAX_DIST) continue;
+    if (distSq <= 0.0001) { player.pos.x -= Math.sin(player.yaw) * minDist; player.pos.z -= Math.cos(player.yaw) * minDist; continue; }
+    if (distSq < minDist * minDist) {
+      const dist = Math.sqrt(distSq);
+      const overlap = minDist - dist;
+      const nx = dx / dist;
+      const nz = dz / dist;
+      player.pos.x += nx * overlap;
+      player.pos.z += nz * overlap;
+      const intoGoblin = player.vel.x * -nx + player.vel.z * -nz;
+      if (intoGoblin > 0) { player.vel.x += nx * intoGoblin * 0.65; player.vel.z += nz * intoGoblin * 0.65; }
+      if (wouldCollide(player.pos.x, player.pos.z)) { player.pos.x -= nx * overlap; player.pos.z -= nz * overlap; }
+    }
+  }
+}
+
+function resolveGoblinContactWithPlayer(goblin, dt) {
+  if (!player.alive || !goblin || goblin.dead || goblin.health <= 0 || !goblin.mesh) return;
+  const dx = player.pos.x - goblin.mesh.position.x;
+  const dz = player.pos.z - goblin.mesh.position.z;
+  const minDist = PLAYER_RADIUS + GOBLIN_BODY_RADIUS;
+  const distSq = dx * dx + dz * dz;
+  if (distSq <= 0.0001 || distSq >= minDist * minDist || distSq > GOBLIN_COLLISION_MAX_DIST * GOBLIN_COLLISION_MAX_DIST) return;
+  const dist = Math.sqrt(distSq);
+  const nx = dx / dist;
+  const nz = dz / dist;
+  const overlap = minDist - dist;
+  const push = Math.min(overlap * 1.15, 0.18 + GOBLIN_PUSH_STRENGTH * dt * 0.04);
+  const prevX = player.pos.x, prevZ = player.pos.z;
+  player.pos.x += nx * push;
+  player.pos.z += nz * push;
+  if (wouldCollide(player.pos.x, player.pos.z)) { player.pos.x = prevX; player.pos.z = prevZ; return; }
+  player.vel.x += nx * GOBLIN_CONTACT_DAMAGE_PUSH;
+  player.vel.z += nz * GOBLIN_CONTACT_DAMAGE_PUSH;
+}
+
 function updatePlayer(dt) {
   const pMap = controlMappings.p1;
   const sprintHeld = isPlayerActionPressed("p1", "sprint");
@@ -2729,7 +2845,6 @@ function updatePlayer(dt) {
     player.onGround = true;
   }
 
-  camera.position.copy(player.pos);
   camera.rotation.order = "YXZ";
   camera.rotation.y = player.yaw;
   camera.rotation.x = player.pitch;
@@ -3495,6 +3610,7 @@ function updateEnemies(dt) {
       }
       animateGoblinWalk(e, moved);
       applyEnemySeparation(e, dt);
+      resolveGoblinContactWithPlayer(e, dt);
       continue;
     }
     if (e.state === "tearing_boards") {
@@ -3584,6 +3700,7 @@ function updateEnemies(dt) {
         }
       }
       applyEnemySeparation(e, dt);
+      resolveGoblinContactWithPlayer(e, dt);
     }
     animateGoblinWalk(e, moved);
     animateGoblinAttack(e, dt);
@@ -3866,18 +3983,24 @@ function animate() {
   updatePendingControllerMapping();
   if (player.alive) {
     updatePlayer(dt);
+    resolvePlayerGoblinCollisions();
+    resolvePlayerGoblinCollisions();
     updateGun(dt);
     updateWave(dt);
     updateEnemies(dt);
+    resolvePlayerGoblinCollisions();
+    resolvePlayerGoblinCollisions();
     updateBullets(dt);
     updateRocks(dt);
     updateHealthRegen(dt);
     player.health = Math.max(0, Math.min(player.maxHealth, player.health));
     updatePickups(dt);
+    updateBloodParticles(dt);
     updateFloatingTexts(dt);
     checkGameOver();
   }
 
+  camera.position.copy(player.pos);
   updateHud();
   updateRenderCulling(dt);
   renderer.render(scene, camera);
