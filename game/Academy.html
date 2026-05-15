@@ -1,2199 +1,1901 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<title>Safelite Org Structure Builder</title>
+  <meta charset="UTF-8" />
+  <title>Custom Stack Ranking Builder</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
-<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --blue: #2563eb;
+      --green: #16a34a;
+      --red: #dc2626;
+      --purple: #7c3aed;
+      --border: #d1d5db;
+      --header: #111827;
+      --gold: #facc15;
+    }
 
-<style>
-  * {
-    box-sizing: border-box;
-  }
+    * {
+      box-sizing: border-box;
+    }
 
-  body {
-    margin: 0;
-    font-family: Arial, sans-serif;
-    background: #f9fafb;
-    color: #1f2933;
-  }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
 
-  header {
-    background: linear-gradient(135deg, #7f1d1d, #dc2626);
-    color: white;
-    padding: 18px 24px;
-    box-shadow: 0 3px 10px rgba(0,0,0,.25);
-  }
+    header {
+      background: linear-gradient(135deg, #111827, #2563eb);
+      color: white;
+      padding: 24px;
+      text-align: center;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.25);
+    }
 
-  header h1 {
-    margin: 0;
-    font-size: 25px;
-  }
+    header h1 {
+      margin: 0;
+      font-size: 30px;
+    }
 
-  header p {
-    margin: 6px 0 0;
-    opacity: .92;
-  }
+    header p {
+      margin: 8px 0 0;
+      opacity: 0.95;
+    }
 
-  .toolbar {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    flex-wrap: wrap;
-    padding: 12px 16px;
-    background: white;
-    border-bottom: 1px solid #e5e7eb;
-    box-shadow: 0 2px 6px rgba(0,0,0,.05);
-  }
-
-  input,
-  select,
-  button {
-    font-size: 14px;
-  }
-
-  input[type="file"],
-  input[type="text"],
-  select {
-    padding: 8px;
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    background: white;
-  }
-
-  button {
-    border: none;
-    border-radius: 6px;
-    padding: 9px 12px;
-    cursor: pointer;
-    font-weight: bold;
-    background: #b91c1c;
-    color: white;
-  }
-
-  button:hover {
-    filter: brightness(.92);
-  }
-
-  button.secondary {
-    background: #6b7280;
-  }
-
-  button.green {
-    background: #15803d;
-  }
-
-  button.orange {
-    background: #c2410c;
-  }
-
-  button.danger {
-    background: #991b1b;
-  }
-
-  .primary-add-btn {
-    background: #b91c1c;
-    padding: 8px 11px;
-    font-size: 13px;
-    font-weight: bold;
-  }
-
-  .secondary-add-btn {
-    background: #6b7280;
-    padding: 5px 8px;
-    font-size: 11px;
-  }
-
-  .toggle-label {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-weight: bold;
-    font-size: 13px;
-  }
-
-  #progressWrap {
-    display: none;
-    padding: 8px 16px;
-    background: white;
-    border-bottom: 1px solid #e5e7eb;
-  }
-
-  .progress-top {
-    display: flex;
-    justify-content: space-between;
-    font-size: 12px;
-    font-weight: bold;
-    margin-bottom: 4px;
-  }
-
-  .progress-track {
-    height: 12px;
-    background: #fee2e2;
-    border-radius: 999px;
-    overflow: hidden;
-  }
-
-  #progressBar {
-    height: 100%;
-    width: 0%;
-    background: #dc2626;
-    transition: width .15s;
-  }
-
-  .layout {
-    display: grid;
-    grid-template-columns: 310px 1fr 360px;
-    gap: 14px;
-    padding: 14px;
-    height: calc(100vh - 175px);
-  }
-
-  .panel {
-    background: white;
-    border: 1px solid #e5e7eb;
-    border-radius: 11px;
-    box-shadow: 0 3px 10px rgba(0,0,0,.07);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-  }
-
-  .panel h2 {
-    margin: 0;
-    padding: 12px 14px;
-    background: #fff1f2;
-    border-bottom: 1px solid #e5e7eb;
-    font-size: 16px;
-    color: #7f1d1d;
-  }
-
-  .panel-body {
-    padding: 12px;
-    overflow: auto;
-    min-height: 0;
-  }
-
-  .notice {
-    background: #fff8dc;
-    border: 1px solid #e5d28b;
-    padding: 9px;
-    border-radius: 7px;
-    font-size: 13px;
-    margin-bottom: 10px;
-  }
-
-  .person-list {
-    display: flex;
-    flex-direction: column;
-    gap: 7px;
-  }
-
-  .person-card {
-    padding: 9px;
-    background: #fffafa;
-    border: 1px solid #fecaca;
-    border-radius: 8px;
-    cursor: grab;
-    user-select: none;
-  }
-
-  .person-card:hover {
-    background: #fee2e2;
-    border-color: #ef4444;
-  }
-
-  .person-card.selected {
-    background: #fecaca;
-    border-color: #b91c1c;
-    box-shadow: 0 0 0 2px rgba(185,28,28,.15);
-  }
-
-  .small {
-    font-size: 12px;
-    color: #6b7280;
-    margin-top: 3px;
-  }
-
-  .drop-zone {
-    padding: 12px;
-    border: 2px dashed #fca5a5;
-    background: #fff7f7;
-    color: #7f1d1d;
-    border-radius: 10px;
-    text-align: center;
-    margin-bottom: 12px;
-    font-weight: bold;
-  }
-
-  .drop-zone.drag-over,
-  .drop-target.drag-over {
-    background: #fee2e2 !important;
-    outline: 3px solid #dc2626;
-    outline-offset: -3px;
-  }
-
-  .org-tree {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .director-block {
-    border: 2px solid #7f1d1d;
-    border-radius: 11px;
-    overflow: hidden;
-    background: #fff7f7;
-  }
-
-  .director-header {
-    background: #7f1d1d;
-    color: white;
-    padding: 10px;
-    font-weight: bold;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px;
-    cursor: grab;
-  }
-
-  .manager-block {
-    margin: 10px;
-    border: 1px solid #fca5a5;
-    border-radius: 9px;
-    background: white;
-    overflow: hidden;
-  }
-
-  .manager-header {
-    background: #fee2e2;
-    color: #7f1d1d;
-    padding: 9px;
-    font-weight: bold;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    cursor: grab;
-  }
-
-  .coach-row {
-    margin: 8px 10px;
-    padding: 8px;
-    border: 1px solid #fecaca;
-    background: #fffafa;
-    border-radius: 7px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    cursor: grab;
-  }
-
-  .name-click {
-    cursor: pointer;
-    color: #7f1d1d;
-    font-weight: bold;
-  }
-
-  .name-click:hover {
-    text-decoration: underline;
-  }
-
-  .director-header .name-click {
-    color: white;
-  }
-
-  .mini-btn {
-    padding: 4px 7px;
-    font-size: 11px;
-    border-radius: 4px;
-  }
-
-  .remove-btn {
-    background: #991b1b;
-  }
-
-  .role-actions {
-    display: flex;
-    gap: 5px;
-    flex-wrap: wrap;
-  }
-
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-    background: white;
-  }
-
-  th {
-    background: #7f1d1d;
-    color: white;
-    padding: 8px;
-    border: 1px solid #450a0a;
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    text-align: left;
-  }
-
-  td {
-    padding: 7px;
-    border: 1px solid #e5e7eb;
-    vertical-align: top;
-  }
-
-  tr:nth-child(even) td {
-    background: #fff7f7;
-  }
-
-  .output-preview-wrap {
-    height: 360px;
-    max-height: 45vh;
-    overflow: auto;
-    border: 1px solid #e5e7eb;
-    border-radius: 0 0 8px 8px;
-    background: white;
-  }
-
-  .direct-report {
-    border: 1px solid #fecaca;
-    background: #fffafa;
-    border-radius: 8px;
-    padding: 9px;
-    margin-bottom: 8px;
-    cursor: grab;
-  }
-
-  .direct-report-title {
-    font-weight: bold;
-    margin-bottom: 4px;
-  }
-
-  .mapping-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-
-  .mapping-row label {
-    font-weight: bold;
-    font-size: 13px;
-  }
-
-  .status-pill {
-    background: #fff1f2;
-    border: 1px solid #fecaca;
-    border-radius: 999px;
-    padding: 6px 9px;
-    font-size: 12px;
-    font-weight: bold;
-    color: #7f1d1d;
-  }
-
-  .view-tabs {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-    margin-bottom: 10px;
-  }
-
-  .view-tab {
-    background: #6b7280;
-  }
-
-  .view-tab.active {
-    background: #7f1d1d;
-  }
-
-  .view-actions {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin-bottom: 10px;
-  }
-
-  .path-cell {
-    font-weight: bold;
-    color: #7f1d1d;
-    min-width: 420px;
-    white-space: nowrap;
-  }
-
-  .email-list {
-    font-size: 12px;
-    line-height: 1.45;
-    min-width: 360px;
-  }
-
-  @media (max-width: 1150px) {
-    .layout {
-      grid-template-columns: 1fr;
-      height: auto;
+    .container {
+      max-width: 1750px;
+      margin: 24px auto;
+      padding: 0 18px 40px;
     }
 
     .panel {
-      min-height: 340px;
+      background: var(--card);
+      border-radius: 14px;
+      padding: 18px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+      margin-bottom: 20px;
+      border: 1px solid #e5e7eb;
     }
 
-    .output-preview-wrap {
-      max-height: 420px;
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+      align-items: end;
     }
-  }
 
-  .compare-wrap { padding: 10px; }
-  .compare-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-  .compare-card { border:1px solid #e5e7eb; border-radius:9px; padding:10px; background:#fffafa; }
-  .compare-card h3 { margin:0 0 8px; color:#7f1d1d; }
-  .compare-good { background:#dcfce7; border-left:5px solid #15803d; }
-  .emails-tool-wrap { padding: 10px; }
-  .email-tool-actions { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
-  .manual-email-input { width:100%; min-width:260px; padding:7px; border:1px solid #d1d5db; border-radius:6px; font-size:12px; }
-  .email-status-good { background:#dcfce7 !important; color:#166534; font-weight:bold; }
-  .email-status-warning { background:#fef9c3 !important; color:#854d0e; font-weight:bold; }
-  .email-status-bad { background:#fee2e2 !important; color:#991b1b; font-weight:bold; }
-  .compare-warning { background:#fef9c3; border-left:5px solid #ca8a04; }
-  .compare-bad { background:#fee2e2; border-left:5px solid #b91c1c; }
-  .compare-section { margin-top:12px; border:1px solid #e5e7eb; border-radius:9px; overflow:hidden; }
-  .compare-section h3 { margin:0; padding:9px 10px; background:#fff1f2; color:#7f1d1d; border-bottom:1px solid #e5e7eb; }
-  .diff-cell { background:#fee2e2 !important; color:#7f1d1d; font-weight:bold; }
-  .match-cell { background:#dcfce7 !important; }
-  .partial-cell { background:#fef9c3 !important; }
-  .safelite-email-box,
-  #safeliteEmailBox {
-    width: 100%;
-    min-height: 70px;
-    resize: vertical;
-    padding: 7px;
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    font-family: Arial, sans-serif;
-    font-size: 12px;
-  }
-  .safelite-users-row td {
-    background: #fff1f2 !important;
-    border-top: 3px solid #7f1d1d;
-  }
+    label {
+      display: block;
+      font-weight: bold;
+      margin-bottom: 6px;
+      color: #374151;
+      font-size: 13px;
+    }
 
-</style>
+    input,
+    select,
+    button {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      font-size: 14px;
+      background: white;
+    }
+
+    button {
+      border: none;
+      background: var(--blue);
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.15s;
+    }
+
+    button:hover {
+      filter: brightness(0.95);
+      transform: translateY(-1px);
+    }
+
+    button.secondary {
+      background: #4b5563;
+    }
+
+    button.green {
+      background: var(--green);
+    }
+
+    button.red {
+      background: var(--red);
+    }
+
+    button.purple {
+      background: var(--purple);
+    }
+
+    .status {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+
+    .pill {
+      padding: 8px 12px;
+      background: #eef2ff;
+      color: #1e3a8a;
+      border-radius: 999px;
+      font-weight: bold;
+      font-size: 13px;
+    }
+
+    .pill.good {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: 24px;
+    }
+
+    h3 {
+      margin: 0 0 10px;
+      font-size: 18px;
+    }
+
+    .small-note {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+      margin-bottom: 12px;
+    }
+
+    .checkbox-card {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 12px;
+    }
+
+    .checkbox-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: bold;
+      color: #374151;
+      margin-bottom: 10px;
+    }
+
+    .checkbox-line input {
+      width: auto;
+      transform: scale(1.15);
+    }
+
+    .stat-builder {
+      border: 1px solid #e5e7eb;
+      background: #f9fafb;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+
+    .stat-row {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr 1fr 1fr 0.8fr 0.8fr 0.8fr 1fr 0.7fr;
+      gap: 10px;
+      align-items: end;
+      margin-bottom: 10px;
+    }
+
+    @media (max-width: 1200px) {
+      .stat-row {
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      }
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      max-height: 650px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 1000px;
+      background: white;
+    }
+
+    th {
+      background: var(--header);
+      color: white;
+      text-align: left;
+      padding: 10px;
+      font-size: 13px;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 9px 10px;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    tr:nth-child(even) td {
+      background: #f9fafb;
+    }
+
+    tr.winner td {
+      background: #fef3c7 !important;
+      font-weight: bold;
+    }
+
+    .rank-badge {
+      display: inline-block;
+      min-width: 34px;
+      text-align: center;
+      padding: 4px 7px;
+      border-radius: 999px;
+      background: #e0f2fe;
+      color: #075985;
+      font-weight: bold;
+    }
+
+    .rank-1 {
+      background: var(--gold);
+      color: #713f12;
+    }
+
+    .rank-2 {
+      background: #e5e7eb;
+      color: #374151;
+    }
+
+    .rank-3 {
+      background: #fed7aa;
+      color: #7c2d12;
+    }
+
+    .summary-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+
+    .summary-card {
+      background: #f8fafc;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 14px;
+    }
+
+    .summary-card h3 {
+      margin: 0 0 6px;
+      font-size: 15px;
+      color: #374151;
+    }
+
+    .summary-card .big {
+      font-size: 23px;
+      font-weight: bold;
+      color: var(--blue);
+    }
+
+    .summary-card .sub {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    .formula-box {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 13px;
+      color: #374151;
+      line-height: 1.6;
+    }
+
+    .formula-box code {
+      background: #e5e7eb;
+      padding: 2px 5px;
+      border-radius: 5px;
+    }
+
+    .error {
+      color: var(--red);
+      font-weight: bold;
+      margin-top: 10px;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .export-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .export-row button {
+      width: auto;
+      min-width: 190px;
+    }
+
+    .stat-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .saved-stat {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 10px;
+    }
+
+    .saved-stat strong {
+      color: #111827;
+    }
+
+    .saved-stat span {
+      color: #4b5563;
+      font-size: 13px;
+    }
+
+    .saved-stat button {
+      width: auto;
+      min-width: 90px;
+      padding: 8px 10px;
+    }
+
+    .preview {
+      max-height: 280px;
+      overflow: auto;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+    }
+
+    .preview table {
+      min-width: 800px;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 1000px) {
+      .two-col {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .warning {
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      color: #9a3412;
+      padding: 10px;
+      border-radius: 10px;
+      font-size: 13px;
+      margin-top: 12px;
+      line-height: 1.45;
+    }
+
+    .disabled-box {
+      opacity: 0.45;
+      pointer-events: none;
+    }
+  </style>
 </head>
 
 <body>
+  <header>
+    <h1>Custom Stack Ranking Builder</h1>
+    <p>Upload any CSV, combine columns, define stats, apply minimum filters, and rank reps or teams.</p>
+  </header>
 
-<header>
-  <h1>Safelite Org Structure Builder</h1>
-  <p>Upload Excel, combine Last/First names, build the Director → Manager → Coach structure, save locally, and export Org, Users, or Filters views.</p>
-</header>
+  <div class="container">
 
-<div class="toolbar">
-  <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" />
+    <div class="panel">
+      <h2>1. Upload CSV</h2>
 
-  <div class="mapping-row">
-    <label>First:</label>
-    <select id="firstNameSelect"></select>
+      <div class="grid">
+        <div>
+          <label for="csvFile">CSV File</label>
+          <input type="file" id="csvFile" accept=".csv" />
+        </div>
 
-    <label>Last:</label>
-    <select id="lastNameSelect"></select>
+        <div class="checkbox-card">
+          <div class="checkbox-line">
+            <input type="checkbox" id="useDateFilter" checked onchange="toggleDateControls()" />
+            <span>Use Date Column / Date Range</span>
+          </div>
+          <div class="small-note">
+            If unchecked, the tool ranks all uploaded rows and ignores dates completely.
+          </div>
+        </div>
 
-    <label>Supervisor:</label>
-    <select id="supervisorSelect"></select>
+        <div id="startDateWrap">
+          <label for="startDate">Start Date</label>
+          <input type="date" id="startDate" />
+        </div>
 
-    <label>Username / Studio Email:</label>
-    <select id="emailSelect"></select>
+        <div id="endDateWrap">
+          <label for="endDate">End Date</label>
+          <input type="date" id="endDate" />
+        </div>
+      </div>
 
-    <button onclick="applyColumnMapping()">Apply Mapping</button>
+      <div class="status">
+        <div id="fileStatus" class="pill">No CSV loaded</div>
+        <div id="rowStatus" class="pill">0 rows</div>
+        <div id="columnStatus" class="pill">0 columns</div>
+        <div id="dateModeStatus" class="pill">Date filter enabled</div>
+      </div>
+
+      <div id="errorBox" class="error"></div>
+    </div>
+
+    <div id="mappingPanel" class="panel hidden">
+      <h2>2. Assign Key Columns</h2>
+
+      <div class="small-note">
+        Name is required. Date and Team are optional. If Date is disabled, the full uploaded file is ranked.
+      </div>
+
+      <div class="grid">
+        <div>
+          <label for="nameColumn">Name Column</label>
+          <select id="nameColumn"></select>
+        </div>
+
+        <div class="checkbox-card">
+          <div class="checkbox-line">
+            <input type="checkbox" id="useDateColumn" checked onchange="toggleDateControls()" />
+            <span>Use Date Column</span>
+          </div>
+          <div id="dateColumnWrap">
+            <label for="dateColumn">Date Column</label>
+            <select id="dateColumn"></select>
+          </div>
+        </div>
+
+        <div class="checkbox-card">
+          <div class="checkbox-line">
+            <input type="checkbox" id="useTeamColumn" checked onchange="toggleTeamControls()" />
+            <span>Use Team Column</span>
+          </div>
+          <div id="teamColumnWrap">
+            <label for="teamColumn">Team Column</label>
+            <select id="teamColumn"></select>
+          </div>
+        </div>
+
+        <div id="teamMethodWrap">
+          <label for="teamMethod">Team Ranking Method</label>
+          <select id="teamMethod">
+            <option value="average">Average representative score</option>
+            <option value="sum">Sum representative score</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="margin-top:18px;">
+        <h3>Create Combined Column</h3>
+
+        <div class="small-note">
+          Use this when a name, team, or stat field is split across multiple columns.
+          Example: First Name + Last Name, Manager + Team, Department + Group.
+        </div>
+
+        <div class="grid">
+          <div>
+            <label for="combinedColumnName">New Combined Column Name</label>
+            <input id="combinedColumnName" placeholder="Example: Full Name" />
+          </div>
+
+          <div>
+            <label for="combinedColumnA">First Column</label>
+            <select id="combinedColumnA"></select>
+          </div>
+
+          <div>
+            <label for="combinedColumnB">Second Column</label>
+            <select id="combinedColumnB"></select>
+          </div>
+
+          <div>
+            <label for="combinedSeparator">Separator</label>
+            <input id="combinedSeparator" value=" " placeholder="Example: space, -, /" />
+          </div>
+
+          <div>
+            <label>&nbsp;</label>
+            <button class="green" onclick="addCombinedColumn()">Add Combined Column</button>
+          </div>
+        </div>
+
+        <div id="combinedColumnsList" class="stat-list"></div>
+      </div>
+    </div>
+
+    <div id="statPanel" class="panel hidden">
+      <h2>3. Build Custom Stats</h2>
+
+      <div class="formula-box">
+        <strong>Direct stat:</strong> Use one column as the value. Example: <code>ITAC %</code>, <code>% Available</code>, <code>Wiper Rate</code><br>
+        <strong>Ratio stat:</strong> Divide one column by another. Example: <code>Consumer Appointments / Consumer Opportunities</code><br>
+        <strong>Minimum filter:</strong> Hide reps who do not meet the minimum volume for a selected stat in the chosen timeframe.<br>
+        <strong>Ranking score:</strong> Each stat creates a rank. That rank is multiplied by the weight. Lowest weighted total wins.
+      </div>
+
+      <div class="stat-builder">
+        <div class="stat-row">
+          <div>
+            <label for="statName">Stat Name</label>
+            <input id="statName" placeholder="Example: Consumer Appointment Rate" />
+          </div>
+
+          <div>
+            <label for="statType">Stat Type</label>
+            <select id="statType" onchange="toggleStatType()">
+              <option value="ratio">Ratio: Numerator / Denominator</option>
+              <option value="direct">Direct Value Column</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="numeratorColumn">Numerator / Value</label>
+            <select id="numeratorColumn"></select>
+          </div>
+
+          <div id="denominatorWrap">
+            <label for="denominatorColumn">Denominator</label>
+            <select id="denominatorColumn"></select>
+          </div>
+
+          <div>
+            <label for="direction">Best Direction</label>
+            <select id="direction">
+              <option value="desc">Higher is better</option>
+              <option value="asc">Lower is better</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="weight">Weight</label>
+            <input id="weight" type="number" value="1" step="0.25" min="0" />
+          </div>
+
+          <div>
+            <label for="minRequired">Minimum Required</label>
+            <input id="minRequired" type="number" value="0" step="1" min="0" />
+          </div>
+
+          <div>
+            <label for="minColumnMode">Minimum Based On</label>
+            <select id="minColumnMode">
+              <option value="denominator">Denominator / Opportunities</option>
+              <option value="numerator">Numerator / Appointments</option>
+              <option value="rows">Row Count</option>
+              <option value="none">No Minimum</option>
+            </select>
+          </div>
+
+          <div>
+            <label>&nbsp;</label>
+            <button class="green" onclick="addStat()">Add Stat</button>
+          </div>
+        </div>
+
+        <div class="warning">
+          For ratio stats, the tool combines totals first, then calculates the rate.
+          Example: <strong>SUM(Appointments) / SUM(Opportunities)</strong>, not average of row-level rates.
+        </div>
+
+        <div id="savedStats" class="stat-list"></div>
+      </div>
+    </div>
+
+    <div id="actionPanel" class="panel hidden">
+      <h2>4. Calculate Rankings</h2>
+
+      <div class="grid">
+        <div>
+          <button class="purple" onclick="calculateRankings()">Calculate Rankings</button>
+        </div>
+
+        <div>
+          <button class="secondary" onclick="clearStats()">Clear Custom Stats</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="resultsPanel" class="hidden">
+      <div class="two-col">
+        <div class="panel">
+          <h2>Representative Winners</h2>
+          <div id="repSummary" class="summary-cards"></div>
+
+          <div class="table-wrap">
+            <table id="repTable"></table>
+          </div>
+
+          <div class="export-row">
+            <button class="green" onclick="exportResults('rep')">Export Representative Rankings</button>
+          </div>
+        </div>
+
+        <div id="teamResultsPanel" class="panel">
+          <h2>Team Winners</h2>
+          <div id="teamSummary" class="summary-cards"></div>
+
+          <div class="table-wrap">
+            <table id="teamTable"></table>
+          </div>
+
+          <div class="export-row">
+            <button class="green" onclick="exportResults('team')">Export Team Rankings</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="previewPanel" class="panel hidden">
+      <h2>CSV Preview</h2>
+      <div class="preview">
+        <table id="previewTable"></table>
+      </div>
+    </div>
+
   </div>
 
-  <label class="toggle-label">
-    <input type="checkbox" id="includeEmailToggle" checked onchange="renderAll()" />
-    Include Username/Email Column
-  </label>
-
-  <button class="green" onclick="saveLocal()">Local Save</button>
-  <button class="orange" onclick="loadLocal()">Local Load</button>
-  <button class="green" onclick="exportOrgBlueprint()">Export Org Blueprint</button>
-  <input type="file" id="blueprintImportInput" accept=".json,.xlsx,.xls,.csv" style="display:none;" onchange="handleBlueprintImport(event)" />
-  <button class="orange" onclick="document.getElementById('blueprintImportInput').click()">Upload Org Blueprint</button>
-  <button onclick="exportCSV()">Export CSV</button>
-  <button onclick="exportExcel()">Export Excel</button>
-  <button class="danger" onclick="clearOrg()">Clear Org</button>
-
-  <span id="statusPill" class="status-pill">No file loaded</span>
-</div>
-
-<div id="progressWrap">
-  <div class="progress-top">
-    <span id="progressText">Processing...</span>
-    <span id="progressPercent">0%</span>
-  </div>
-  <div class="progress-track">
-    <div id="progressBar"></div>
-  </div>
-</div>
-
-<div class="layout">
-
-  <section class="panel">
-    <h2>People Search</h2>
-    <div class="panel-body">
-      <input
-        id="searchInput"
-        type="text"
-        placeholder="Search names or usernames..."
-        style="width:100%; margin-bottom:10px;"
-        oninput="renderPeopleList()"
-      />
-
-      <div class="notice">
-        Drag a person into the org builder. Click a person anywhere to show their available direct reports on the right.
-      </div>
-
-      <div id="peopleList" class="person-list"></div>
-    </div>
-  </section>
-
-  <section class="panel">
-    <h2>Org Builder</h2>
-    <div class="panel-body">
-
-      <div
-        id="directorDropZone"
-        class="drop-zone"
-        ondragover="allowDrop(event)"
-        ondragleave="removeDragOver(event)"
-        ondrop="dropAsDirector(event)"
-      >
-        Drop a person here to add them as a Director
-      </div>
-
-      <div class="notice">
-        Drag a name onto a Director to make them a Manager. Drag a name onto a Manager to make them a Coach.
-        Existing Directors, Managers, and Coaches can be dragged to change their placement.
-      </div>
-
-      <div id="orgTree" class="org-tree"></div>
-
-      <h2 style="margin:15px 0 0; border-radius:8px 8px 0 0;">Output Preview</h2>
-
-      <div class="view-tabs">
-        <button id="orgViewBtn" class="view-tab active" onclick="setViewMode('org')">Org View</button>
-        <button id="usersViewBtn" class="view-tab" onclick="setViewMode('users')">Users View</button>
-        <button id="filtersViewBtn" class="view-tab" onclick="setViewMode('filters')">Filters View</button>
-        <button id="emailsViewBtn" class="view-tab" onclick="setViewMode('emails')">Emails</button>
-        <button id="compareViewBtn" class="view-tab" onclick="setViewMode('compare')">Compare Files</button>
-      </div>
-
-      <div class="view-actions">
-        <button class="green" onclick="autoFillCoaches()">Auto Fill Coaches</button>
-        <button class="secondary" onclick="autoFillAllLeaders()">Auto Fill All Leaders</button>
-        <button class="secondary" onclick="clearFilledEmails()">Clear Filled Emails</button>
-      </div>
-
-      <div class="output-preview-wrap">
-        <table id="outputTable">
-          <thead>
-            <tr id="outputTableHeader"></tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-    </div>
-  </section>
-
-  <section class="panel">
-    <h2>Selected Person / Direct Reports</h2>
-    <div class="panel-body">
-      <div id="selectedBox" class="notice">
-        Click a person to show everyone who has that person listed under the Supervisor column.
-      </div>
-
-      <div class="role-actions" style="margin-bottom:10px;">
-        <button class="primary-add-btn" onclick="autoAddAllDirectReports()">Add All Direct Reports Under Selected</button>
-        <button class="secondary-add-btn" onclick="addSelectedAsDirector()">Add Selected as Director</button>
-      </div>
-
-      <div id="directReportsBox"></div>
-    </div>
-  </section>
-
-</div>
-
-<script>
-const STORAGE_KEY = "safeliteOrgStructureBuilder_v7";
-
-let rawRows = [];
-let people = [];
-let selectedPerson = null;
-let draggedItem = null;
-
-let columns = {
-  first: null,
-  last: null,
-  supervisor: null,
-  email: null
-};
-
-let org = [];
-let currentViewMode = "org";
-let filledReportEmails = {};
-let compareRawRows = [];
-let comparePeople = [];
-let compareColumns = { first: null, last: null, supervisor: null, email: null };
-let compareResults = null;
-let lastBlueprintLoadSummary = null;
-let safeliteUsersEmails = [];
-let savedPersonEmails = {};
-let pendingEmailAttachments = {};
-
-const possibleFirstNames = [
-  "first",
-  "firstname",
-  "first name",
-  "given name",
-  "employee first name",
-  "associate first name"
-];
-
-const possibleLastNames = [
-  "last",
-  "lastname",
-  "last name",
-  "surname",
-  "employee last name",
-  "associate last name"
-];
-
-const possibleSupervisorNames = [
-  "supervisor",
-  "supervisor name",
-  "manager",
-  "manager name",
-  "reports to",
-  "leader",
-  "coach",
-  "direct supervisor"
-];
-
-const possibleEmailNames = [
-  "username",
-  "user name",
-  "studio username",
-  "network username",
-  "login",
-  "login id",
-  "user id",
-  "userid",
-  "studio email address",
-  "studio email",
-  "email",
-  "email address",
-  "work email",
-  "business email",
-  "employee email",
-  "associate email",
-  "e-mail",
-  "mail"
-];
-
-document.getElementById("fileInput").addEventListener("change", handleFileUpload);
-
-function normalizeHeader(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[_\-]+/g, " ")
-    .replace(/\s+/g, " ");
-}
-
-function normalizeName(value) {
-  return String(value || "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(/\s*,\s*/g, ", ")
-    .toLowerCase();
-}
-function normalizeEmail(value) {
-  return String(value || "").trim().toLowerCase();
-}
-function isLikelyEmail(value) {
-  const text = String(value || "").trim();
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text);
-}
-function parseEmailList(text) {
-  return String(text || "")
-    .split(",")
-    .map(email => email.trim())
-    .filter(Boolean)
-    .filter((email, index, arr) => {
-      const key = normalizeEmail(email);
-      return arr.findIndex(e => normalizeEmail(e) === key) === index;
-    });
-}
-
-function titleName(value) {
-  return String(value || "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(/\s*,\s*/g, ", ");
-}
-
-function makeDisplayName(first, last) {
-  first = String(first || "").trim();
-  last = String(last || "").trim();
-
-  if (!first && !last) return "";
-  if (!last) return first;
-  if (!first) return last;
-
-  return `${last}, ${first}`;
-}
-
-function showProgress(text, percent) {
-  const wrap = document.getElementById("progressWrap");
-  const bar = document.getElementById("progressBar");
-  const label = document.getElementById("progressText");
-  const pct = document.getElementById("progressPercent");
-
-  wrap.style.display = "block";
-  label.textContent = text;
-  pct.textContent = `${Math.round(percent)}%`;
-  bar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
-}
-
-function hideProgress() {
-  document.getElementById("progressWrap").style.display = "none";
-  document.getElementById("progressBar").style.width = "0%";
-  document.getElementById("progressPercent").textContent = "0%";
-}
-
-function handleFileUpload(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-
-  showProgress("Reading Excel file...", 5);
-
-  const reader = new FileReader();
-
-  reader.onload = function(e) {
-    showProgress("Parsing workbook...", 15);
-
-    setTimeout(() => {
-      try {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: "array" });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-
-        showProgress("Converting sheet to rows...", 30);
-
-        rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-
-        if (!rawRows.length) {
-          hideProgress();
-          alert("No rows found in this file.");
-          return;
-        }
-
-        setupColumnSelectors();
-
-        showProgress("Preparing Last, First names and usernames...", 40);
-
-        processPeopleInChunks(() => {
-          selectedPerson = null;
-          renderAll();
-          showProgress("Complete", 100);
-          setTimeout(hideProgress, 600);
-          setStatus(`${people.length} people loaded from ${file.name}`);
-        });
-
-      } catch (error) {
-        console.error(error);
-        hideProgress();
-        alert("There was an issue reading this file.");
-      }
-    }, 50);
-  };
-
-  reader.readAsArrayBuffer(file);
-}
-
-function setupColumnSelectors() {
-  const headers = Object.keys(rawRows[0] || {});
-
-  columns.first = findBestHeader(headers, possibleFirstNames);
-  columns.last = findBestHeader(headers, possibleLastNames);
-  columns.supervisor = findBestHeader(headers, possibleSupervisorNames);
-  columns.email = findBestHeader(headers, possibleEmailNames);
-
-  fillSelect("firstNameSelect", headers, columns.first);
-  fillSelect("lastNameSelect", headers, columns.last);
-  fillSelect("supervisorSelect", headers, columns.supervisor);
-  fillSelect("emailSelect", headers, columns.email);
-}
-
-function findBestHeader(headers, possibleNames) {
-  for (const header of headers) {
-    const normalized = normalizeHeader(header);
-    if (possibleNames.includes(normalized)) {
-      return header;
-    }
-  }
-
-  for (const header of headers) {
-    const normalized = normalizeHeader(header);
-    if (possibleNames.some(p => normalized.includes(p))) {
-      return header;
-    }
-  }
-
-  return headers[0] || null;
-}
-
-function fillSelect(id, headers, selectedHeader) {
-  const select = document.getElementById(id);
-  select.innerHTML = "";
-
-  headers.forEach(header => {
-    const option = document.createElement("option");
-    option.value = header;
-    option.textContent = header;
-    if (header === selectedHeader) option.selected = true;
-    select.appendChild(option);
-  });
-}
-
-function applyColumnMapping() {
-  if (!rawRows.length) {
-    alert("Upload a file first.");
-    return;
-  }
-
-  columns.first = document.getElementById("firstNameSelect").value;
-  columns.last = document.getElementById("lastNameSelect").value;
-  columns.supervisor = document.getElementById("supervisorSelect").value;
-  columns.email = document.getElementById("emailSelect").value;
-
-  showProgress("Processing names in chunks...", 0);
-
-  processPeopleInChunks(() => {
-    selectedPerson = null;
-    renderAll();
-    showProgress("Complete", 100);
-    setTimeout(hideProgress, 500);
-    setStatus(`${people.length} people mapped`);
-  });
-}
-
-function processPeopleInChunks(doneCallback) {
-  people = [];
-
-  const total = rawRows.length;
-  const chunkSize = 500;
-  let index = 0;
-
-  function processChunk() {
-    const end = Math.min(index + chunkSize, total);
-
-    for (; index < end; index++) {
-      const row = rawRows[index];
-
-      const first = row[columns.first];
-      const last = row[columns.last];
-      const name = makeDisplayName(first, last);
-
-      if (!name) continue;
-
-      people.push({
-        id: `person_${index}`,
-        first: String(first || "").trim(),
-        last: String(last || "").trim(),
-        name,
-        nameKey: normalizeName(name),
-        email: String(row[columns.email] || "").trim(),
-        supervisorRaw: titleName(row[columns.supervisor]),
-        supervisorKey: normalizeName(row[columns.supervisor]),
-        raw: row
-      });
-    }
-
-    const percent = total ? 40 + ((index / total) * 55) : 95;
-    showProgress(`Processing rows ${index.toLocaleString()} of ${total.toLocaleString()}...`, percent);
-
-    if (index < total) {
-      setTimeout(processChunk, 0);
-    } else {
-      people.sort((a, b) => a.name.localeCompare(b.name));
-      doneCallback();
-    }
-  }
-
-  processChunk();
-}
-
-function renderAll() {
-  renderPeopleList();
-  renderSelectedPerson();
-  renderOrg();
-  renderOutputTable();
-}
-
-function renderPeopleList() {
-  const box = document.getElementById("peopleList");
-  const search = normalizeName(document.getElementById("searchInput").value);
-
-  box.innerHTML = "";
-
-  if (!people.length) {
-    box.innerHTML = `<div class="notice">Upload an Excel file to begin.</div>`;
-    return;
-  }
-
-  const filtered = people
-    .filter(p => !search || p.nameKey.includes(search) || normalizeName(p.email).includes(search))
-    .slice(0, 500);
-
-  filtered.forEach(person => {
-    const div = document.createElement("div");
-    div.className = "person-card";
-
-    if (selectedPerson && selectedPerson.nameKey === person.nameKey) {
-      div.classList.add("selected");
-    }
-
-    div.draggable = true;
-
-    div.innerHTML = `
-      <div><strong>${escapeHTML(person.name)}</strong></div>
-      <div class="small">Supervisor: ${escapeHTML(person.supervisorRaw || "—")}</div>
-      <div class="small">Username/Email: ${escapeHTML(person.email || "—")}</div>
-    `;
-
-    div.onclick = () => selectPerson(person);
-    div.ondragstart = () => {
-      draggedItem = {
-        type: "person",
-        name: person.name
-      };
-    };
-
-    box.appendChild(div);
-  });
-
-  if (!filtered.length) {
-    box.innerHTML = `<div class="notice">No matching names found.</div>`;
-  }
-}
-
-function selectPerson(person) {
-  selectedPerson = person;
-  renderPeopleList();
-  renderSelectedPerson();
-}
-
-function renderSelectedPerson() {
-  const selectedBox = document.getElementById("selectedBox");
-  const reportsBox = document.getElementById("directReportsBox");
-
-  if (!selectedPerson) {
-    selectedBox.innerHTML = "Click a person to show everyone who has that person listed under the Supervisor column.";
-    reportsBox.innerHTML = "";
-    return;
-  }
-
-  const allReports = getDirectReports(selectedPerson.name);
-  const reports = allReports.filter(report => !isPersonInOrg(report.name));
-
-  selectedBox.innerHTML = `
-    <strong>Selected:</strong> ${escapeHTML(selectedPerson.name)}<br>
-    <span class="small">Username/Email: ${escapeHTML(selectedPerson.email || getEmailByName(selectedPerson.name) || "—")}</span><br>
-    <span class="small">Direct Reports Found: ${allReports.length}</span><br>
-    <span class="small">Available to Add: ${reports.length}</span>
-  `;
-
-  reportsBox.innerHTML = "";
-
-  if (!reports.length) {
-    reportsBox.innerHTML = `<div class="notice">No available direct reports found. Anyone already in the org table is hidden here.</div>`;
-    return;
-  }
-
-  reports.forEach(report => {
-    const div = document.createElement("div");
-    div.className = "direct-report";
-    div.draggable = true;
-
-    div.ondragstart = () => {
-      draggedItem = {
-        type: "person",
-        name: report.name
-      };
-    };
-
-    div.innerHTML = `
-      <div class="direct-report-title">${escapeHTML(report.name)}</div>
-      <div class="small">Supervisor: ${escapeHTML(report.supervisorRaw || "—")}</div>
-      <div class="small">Username/Email: ${escapeHTML(report.email || "—")}</div>
-      <div class="role-actions" style="margin-top:7px;">
-        <button class="primary-add-btn" onclick="autoAddDirectReport('${jsEscape(report.name)}')">Add Under Selected</button>
-        <button class="secondary-add-btn" onclick="addDirector('${jsEscape(report.name)}')">Add Director</button>
-      </div>
-    `;
-
-    reportsBox.appendChild(div);
-  });
-}
-
-function getDirectReports(supervisorName) {
-  const supervisorKey = normalizeName(supervisorName);
-  const flipped = normalizeName(flipName(supervisorName));
-
-  return people.filter(p => {
-    if (!p.supervisorKey) return false;
-    return p.supervisorKey === supervisorKey || p.supervisorKey === flipped;
-  });
-}
-
-function getAllReportsUnderSupervisor(supervisorName) {
-  const result = [];
-  const visited = new Set();
-
-  function walk(name) {
-    const directReports = getDirectReports(name);
-
-    directReports.forEach(person => {
-      const key = normalizeName(person.name);
-
-      if (visited.has(key)) return;
-
-      visited.add(key);
-      result.push(person);
-
-      walk(person.name);
-    });
-  }
-
-  walk(supervisorName);
-
-  return result;
-}
-
-function getAllReportEmailsForSupervisor(supervisorName) {
-  return getAllReportsUnderSupervisor(supervisorName)
-    .map(person => person.email)
-    .filter(email => email && String(email).trim())
-    .filter((email, index, arr) => arr.indexOf(email) === index);
-}
-
-function getReportEmailsForSupervisor(supervisorName) {
-  return getAllReportEmailsForSupervisor(supervisorName);
-}
-
-function flipName(name) {
-  const text = String(name || "").trim();
-
-  if (text.includes(",")) {
-    const parts = text.split(",");
-    const last = parts[0]?.trim() || "";
-    const first = parts.slice(1).join(",").trim();
-    return `${first} ${last}`.trim();
-  }
-
-  const pieces = text.split(/\s+/);
-  if (pieces.length >= 2) {
-    const first = pieces[0];
-    const last = pieces.slice(1).join(" ");
-    return `${last}, ${first}`;
-  }
-
-  return text;
-}
-
-function isPersonInOrg(name) {
-  const key = normalizeName(name);
-
-  for (const director of org) {
-    if (normalizeName(director.name) === key) return true;
-
-    for (const manager of director.managers) {
-      if (normalizeName(manager.name) === key) return true;
-
-      for (const coach of manager.coaches) {
-        if (normalizeName(coach) === key) return true;
-      }
-    }
-  }
-
-  return false;
-}
-
-function addSelectedAsDirector() {
-  if (!selectedPerson) {
-    alert("Select a person first.");
-    return;
-  }
-
-  addDirector(selectedPerson.name);
-}
-
-function addDirector(name) {
-  name = titleName(name);
-  if (!name) return;
-
-  removePersonFromOrg(name);
-
-  org.push({
-    name,
-    managers: []
-  });
-
-  renderAll();
-}
-
-function addManager(directorName, managerName) {
-  directorName = titleName(directorName);
-  managerName = titleName(managerName);
-
-  if (normalizeName(directorName) === normalizeName(managerName)) {
-    alert("A person cannot report to themselves.");
-    return;
-  }
-
-  removePersonFromOrg(managerName);
-
-  const director = org.find(d => normalizeName(d.name) === normalizeName(directorName));
-  if (!director) return;
-
-  director.managers.push({
-    name: managerName,
-    coaches: []
-  });
-
-  renderAll();
-}
-
-function addCoach(directorName, managerName, coachName) {
-  directorName = titleName(directorName);
-  managerName = titleName(managerName);
-  coachName = titleName(coachName);
-
-  if (
-    normalizeName(coachName) === normalizeName(directorName) ||
-    normalizeName(coachName) === normalizeName(managerName)
-  ) {
-    alert("A person cannot report to themselves.");
-    return;
-  }
-
-  removePersonFromOrg(coachName);
-
-  const director = org.find(d => normalizeName(d.name) === normalizeName(directorName));
-  if (!director) return;
-
-  const manager = director.managers.find(m => normalizeName(m.name) === normalizeName(managerName));
-  if (!manager) return;
-
-  manager.coaches.push(coachName);
-
-  renderAll();
-}
-
-function autoAddDirectReport(reportName) {
-  if (!selectedPerson) return;
-
-  const selectedName = selectedPerson.name;
-
-  const director = org.find(d => normalizeName(d.name) === normalizeName(selectedName));
-  if (director) {
-    addManager(director.name, reportName);
-    return;
-  }
-
-  for (const d of org) {
-    const manager = d.managers.find(m => normalizeName(m.name) === normalizeName(selectedName));
-    if (manager) {
-      addCoach(d.name, manager.name, reportName);
-      return;
-    }
-  }
-
-  alert("Selected person is not currently a Director or Manager. Add them to the org first.");
-}
-
-function autoAddAllDirectReports() {
-  if (!selectedPerson) {
-    alert("Select someone first.");
-    return;
-  }
-
-  const reports = getDirectReports(selectedPerson.name).filter(report => !isPersonInOrg(report.name));
-
-  if (!reports.length) {
-    alert("No available direct reports found.");
-    return;
-  }
-
-  const selectedName = selectedPerson.name;
-  const director = org.find(d => normalizeName(d.name) === normalizeName(selectedName));
-
-  if (director) {
-    reports.forEach(r => {
-      if (normalizeName(r.name) !== normalizeName(selectedName)) {
-        removePersonFromOrg(r.name);
-        director.managers.push({
-          name: r.name,
-          coaches: []
-        });
-      }
-    });
-
-    renderAll();
-    return;
-  }
-
-  for (const d of org) {
-    const manager = d.managers.find(m => normalizeName(m.name) === normalizeName(selectedName));
-    if (manager) {
-      reports.forEach(r => {
-        if (normalizeName(r.name) !== normalizeName(selectedName)) {
-          removePersonFromOrg(r.name);
-          manager.coaches.push(r.name);
+  <script>
+    let rawRows = [];
+    let headers = [];
+    let combinedColumns = [];
+    let customStats = [];
+    let repResults = [];
+    let teamResults = [];
+
+    document.getElementById("csvFile").addEventListener("change", handleFileUpload);
+
+    function handleFileUpload() {
+      clearError();
+
+      const file = document.getElementById("csvFile").files[0];
+      if (!file) return;
+
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: h => String(h || "").trim(),
+        complete: results => {
+          rawRows = results.data.filter(row =>
+            Object.values(row).some(v => String(v || "").trim() !== "")
+          );
+
+          headers = results.meta.fields || [];
+          combinedColumns = [];
+
+          if (!headers.length) {
+            showError("No headers found in the CSV.");
+            return;
+          }
+
+          document.getElementById("fileStatus").textContent = `Loaded: ${file.name}`;
+          document.getElementById("fileStatus").className = "pill good";
+
+          document.getElementById("rowStatus").textContent = `${rawRows.length} rows`;
+          document.getElementById("rowStatus").className = "pill good";
+
+          document.getElementById("columnStatus").textContent = `${headers.length} columns`;
+          document.getElementById("columnStatus").className = "pill good";
+
+          populateColumnDropdowns();
+          autoGuessColumns();
+          renderCombinedColumnsList();
+          renderPreview();
+
+          document.getElementById("mappingPanel").classList.remove("hidden");
+          document.getElementById("statPanel").classList.remove("hidden");
+          document.getElementById("actionPanel").classList.remove("hidden");
+          document.getElementById("previewPanel").classList.remove("hidden");
+
+          toggleDateControls();
+          toggleTeamControls();
+        },
+        error: err => {
+          showError(`Failed to parse CSV: ${err.message}`);
         }
       });
-
-      renderAll();
-      return;
-    }
-  }
-
-  alert("Selected person must already be a Director or Manager before adding all direct reports under them.");
-}
-
-function removePersonFromOrg(name) {
-  const key = normalizeName(name);
-
-  for (let dIndex = org.length - 1; dIndex >= 0; dIndex--) {
-    const director = org[dIndex];
-
-    if (normalizeName(director.name) === key) {
-      org.splice(dIndex, 1);
-      continue;
     }
 
-    for (let mIndex = director.managers.length - 1; mIndex >= 0; mIndex--) {
-      const manager = director.managers[mIndex];
+    function populateColumnDropdowns() {
+      const dropdownIds = [
+        "nameColumn",
+        "dateColumn",
+        "teamColumn",
+        "numeratorColumn",
+        "denominatorColumn",
+        "combinedColumnA",
+        "combinedColumnB"
+      ];
 
-      if (normalizeName(manager.name) === key) {
-        director.managers.splice(mIndex, 1);
-        continue;
+      const allHeaders = getAllAvailableHeaders();
+
+      dropdownIds.forEach(id => {
+        const select = document.getElementById(id);
+        if (!select) return;
+
+        const currentValue = select.value;
+        select.innerHTML = "";
+
+        if (id === "teamColumn") {
+          select.appendChild(new Option("No team column", ""));
+        }
+
+        allHeaders.forEach(header => {
+          select.appendChild(new Option(header, header));
+        });
+
+        if (currentValue && allHeaders.includes(currentValue)) {
+          select.value = currentValue;
+        }
+      });
+    }
+
+    function getAllAvailableHeaders() {
+      const virtualHeaders = combinedColumns.map(c => c.name);
+      return [...headers, ...virtualHeaders];
+    }
+
+    function autoGuessColumns() {
+      const nameGuess = findHeader(["name", "agent", "representative", "rep", "associate", "full name"]);
+      const dateGuess = findHeader(["date", "created date", "day", "week"]);
+      const teamGuess = findHeader(["sheet", "team", "coach", "job coach", "manager", "department"]);
+
+      if (nameGuess) document.getElementById("nameColumn").value = nameGuess;
+
+      if (dateGuess) {
+        document.getElementById("dateColumn").value = dateGuess;
+        document.getElementById("useDateColumn").checked = true;
+        document.getElementById("useDateFilter").checked = true;
+      } else {
+        document.getElementById("useDateColumn").checked = false;
+        document.getElementById("useDateFilter").checked = false;
       }
 
-      manager.coaches = manager.coaches.filter(c => normalizeName(c) !== key);
+      if (teamGuess) {
+        document.getElementById("teamColumn").value = teamGuess;
+        document.getElementById("useTeamColumn").checked = true;
+      } else {
+        document.getElementById("useTeamColumn").checked = false;
+      }
     }
-  }
-}
 
-function renderOrg() {
-  const tree = document.getElementById("orgTree");
-  tree.innerHTML = "";
+    function findHeader(possibleNames) {
+      const lowerHeaders = getAllAvailableHeaders().map(h => ({
+        original: h,
+        lower: h.toLowerCase().trim()
+      }));
 
-  if (!org.length) {
-    tree.innerHTML = `<div class="notice">No Directors added yet. Search or drag names to begin.</div>`;
-    return;
-  }
+      for (const wanted of possibleNames) {
+        const exact = lowerHeaders.find(h => h.lower === wanted);
+        if (exact) return exact.original;
+      }
 
-  org.forEach((director, directorIndex) => {
-    const directorBlock = document.createElement("div");
-    directorBlock.className = "director-block drop-target";
+      for (const wanted of possibleNames) {
+        const partial = lowerHeaders.find(h => h.lower.includes(wanted));
+        if (partial) return partial.original;
+      }
 
-    directorBlock.ondragover = allowDrop;
-    directorBlock.ondragleave = removeDragOver;
-    directorBlock.ondrop = event => {
-      event.preventDefault();
-      event.stopPropagation();
-      removeDragOver(event);
+      return "";
+    }
 
-      if (!draggedItem) return;
+    function toggleDateControls() {
+      const useDateColumn = document.getElementById("useDateColumn")?.checked;
+      const useDateFilter = document.getElementById("useDateFilter")?.checked;
 
-      const draggedName = draggedItem.name;
+      const enabled = !!useDateColumn && !!useDateFilter;
 
-      if (normalizeName(draggedName) === normalizeName(director.name)) {
-        draggedItem = null;
+      const dateColumnWrap = document.getElementById("dateColumnWrap");
+      const startDateWrap = document.getElementById("startDateWrap");
+      const endDateWrap = document.getElementById("endDateWrap");
+      const dateModeStatus = document.getElementById("dateModeStatus");
+
+      if (dateColumnWrap) {
+        dateColumnWrap.classList.toggle("disabled-box", !useDateColumn);
+      }
+
+      if (startDateWrap) {
+        startDateWrap.classList.toggle("disabled-box", !enabled);
+      }
+
+      if (endDateWrap) {
+        endDateWrap.classList.toggle("disabled-box", !enabled);
+      }
+
+      if (dateModeStatus) {
+        if (enabled) {
+          dateModeStatus.textContent = "Date filter enabled";
+          dateModeStatus.className = "pill good";
+        } else {
+          dateModeStatus.textContent = "Date ignored: ranking all rows";
+          dateModeStatus.className = "pill";
+        }
+      }
+
+      const useDateColumnBox = document.getElementById("useDateColumn");
+      const useDateFilterBox = document.getElementById("useDateFilter");
+
+      if (useDateColumnBox && useDateFilterBox) {
+        if (!useDateColumnBox.checked) {
+          useDateFilterBox.checked = false;
+        }
+      }
+    }
+
+    function toggleTeamControls() {
+      const useTeam = document.getElementById("useTeamColumn")?.checked;
+
+      const teamColumnWrap = document.getElementById("teamColumnWrap");
+      const teamMethodWrap = document.getElementById("teamMethodWrap");
+      const teamResultsPanel = document.getElementById("teamResultsPanel");
+
+      if (teamColumnWrap) {
+        teamColumnWrap.classList.toggle("disabled-box", !useTeam);
+      }
+
+      if (teamMethodWrap) {
+        teamMethodWrap.classList.toggle("disabled-box", !useTeam);
+      }
+
+      if (teamResultsPanel) {
+        teamResultsPanel.classList.toggle("hidden", !useTeam);
+      }
+    }
+
+    function addCombinedColumn() {
+      clearError();
+
+      const name = document.getElementById("combinedColumnName").value.trim();
+      const colA = document.getElementById("combinedColumnA").value;
+      const colB = document.getElementById("combinedColumnB").value;
+      const separator = document.getElementById("combinedSeparator").value ?? " ";
+
+      if (!name) {
+        showError("Please enter a name for the combined column.");
         return;
       }
 
-      addManager(director.name, draggedName);
-      draggedItem = null;
-    };
+      if (!colA || !colB) {
+        showError("Please choose two columns to combine.");
+        return;
+      }
 
-    const directorHeader = document.createElement("div");
-    directorHeader.className = "director-header";
-    directorHeader.draggable = true;
+      const alreadyExists = getAllAvailableHeaders()
+        .some(h => h.toLowerCase().trim() === name.toLowerCase().trim());
 
-    directorHeader.ondragstart = event => {
-      event.stopPropagation();
-      draggedItem = {
-        type: "director",
-        name: director.name
-      };
-    };
+      if (alreadyExists) {
+        showError("A column with that name already exists.");
+        return;
+      }
 
-    directorHeader.innerHTML = `
-      <span class="name-click" onclick="selectPersonByName('${jsEscape(director.name)}')">
-        Director: ${escapeHTML(director.name)}
-        <span class="small" style="color:#fee2e2;">Username/Email: ${escapeHTML(getEmailByName(director.name) || "—")}</span>
-      </span>
-      <button class="mini-btn remove-btn" onclick="event.stopPropagation(); removeDirector(${directorIndex})">Remove</button>
-    `;
+      combinedColumns.push({
+        id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()),
+        name,
+        colA,
+        colB,
+        separator
+      });
 
-    directorBlock.appendChild(directorHeader);
+      applyCombinedColumnsToRows();
+      populateColumnDropdowns();
+      renderCombinedColumnsList();
+      renderPreview();
 
-    if (!director.managers.length) {
-      const empty = document.createElement("div");
-      empty.className = "notice";
-      empty.style.margin = "10px";
-      empty.textContent = "No managers yet. Drag someone onto this Director.";
-      directorBlock.appendChild(empty);
+      document.getElementById("combinedColumnName").value = "";
+      document.getElementById("combinedSeparator").value = " ";
     }
 
-    director.managers.forEach((manager, managerIndex) => {
-      const managerBlock = document.createElement("div");
-      managerBlock.className = "manager-block drop-target";
+    function applyCombinedColumnsToRows() {
+      rawRows.forEach(row => {
+        combinedColumns.forEach(c => {
+          const a = cleanText(row[c.colA]);
+          const b = cleanText(row[c.colB]);
 
-      managerBlock.ondragover = allowDrop;
-      managerBlock.ondragleave = removeDragOver;
-      managerBlock.ondrop = event => {
-        event.preventDefault();
-        event.stopPropagation();
-        removeDragOver(event);
+          row[c.name] = [a, b]
+            .filter(x => x !== "")
+            .join(c.separator);
+        });
+      });
+    }
 
-        if (!draggedItem) return;
+    function renderCombinedColumnsList() {
+      const box = document.getElementById("combinedColumnsList");
+      if (!box) return;
 
-        const draggedName = draggedItem.name;
+      if (!combinedColumns.length) {
+        box.innerHTML = `<div class="small-note">No combined columns created yet.</div>`;
+        return;
+      }
 
-        if (
-          normalizeName(draggedName) === normalizeName(director.name) ||
-          normalizeName(draggedName) === normalizeName(manager.name)
-        ) {
-          draggedItem = null;
+      box.innerHTML = combinedColumns.map(c => `
+        <div class="saved-stat">
+          <div>
+            <strong>${escapeHtml(c.name)}</strong><br>
+            <span>${escapeHtml(c.colA)} + ${escapeHtml(c.colB)} using separator "${escapeHtml(c.separator)}"</span>
+          </div>
+          <button class="red" onclick="removeCombinedColumn('${c.id}')">Remove</button>
+        </div>
+      `).join("");
+    }
+
+    function removeCombinedColumn(id) {
+      const removed = combinedColumns.find(c => c.id === id);
+      combinedColumns = combinedColumns.filter(c => c.id !== id);
+
+      if (removed) {
+        rawRows.forEach(row => delete row[removed.name]);
+
+        customStats = customStats.filter(stat =>
+          stat.numeratorColumn !== removed.name &&
+          stat.denominatorColumn !== removed.name
+        );
+
+        ["nameColumn", "dateColumn", "teamColumn"].forEach(id => {
+          const el = document.getElementById(id);
+          if (el && el.value === removed.name) {
+            el.value = "";
+          }
+        });
+      }
+
+      applyCombinedColumnsToRows();
+      populateColumnDropdowns();
+      renderCombinedColumnsList();
+      renderSavedStats();
+      renderPreview();
+    }
+
+    function toggleStatType() {
+      const type = document.getElementById("statType").value;
+      document.getElementById("denominatorWrap").style.display = type === "direct" ? "none" : "block";
+
+      const minMode = document.getElementById("minColumnMode");
+      if (type === "direct" && minMode.value === "denominator") {
+        minMode.value = "rows";
+      }
+    }
+
+    function addStat() {
+      clearError();
+
+      const statName = document.getElementById("statName").value.trim();
+      const statType = document.getElementById("statType").value;
+      const numeratorColumn = document.getElementById("numeratorColumn").value;
+      const denominatorColumn = document.getElementById("denominatorColumn").value;
+      const direction = document.getElementById("direction").value;
+      const weight = Number(document.getElementById("weight").value);
+      const minRequired = Number(document.getElementById("minRequired").value || 0);
+      const minColumnMode = document.getElementById("minColumnMode").value;
+
+      if (!statName) {
+        showError("Please enter a stat name.");
+        return;
+      }
+
+      if (!numeratorColumn) {
+        showError("Please choose a numerator/value column.");
+        return;
+      }
+
+      if (statType === "ratio" && !denominatorColumn) {
+        showError("Please choose a denominator column for ratio stats.");
+        return;
+      }
+
+      if (!Number.isFinite(weight) || weight < 0) {
+        showError("Weight must be a number greater than or equal to 0.");
+        return;
+      }
+
+      if (!Number.isFinite(minRequired) || minRequired < 0) {
+        showError("Minimum required must be a number greater than or equal to 0.");
+        return;
+      }
+
+      customStats.push({
+        id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()),
+        name: statName,
+        type: statType,
+        numeratorColumn,
+        denominatorColumn: statType === "ratio" ? denominatorColumn : "",
+        direction,
+        weight,
+        minRequired,
+        minColumnMode
+      });
+
+      document.getElementById("statName").value = "";
+      document.getElementById("weight").value = "1";
+      document.getElementById("minRequired").value = "0";
+      document.getElementById("minColumnMode").value = "denominator";
+
+      renderSavedStats();
+    }
+
+    function renderSavedStats() {
+      const box = document.getElementById("savedStats");
+
+      if (!customStats.length) {
+        box.innerHTML = `<div class="small-note">No custom stats added yet.</div>`;
+        return;
+      }
+
+      box.innerHTML = customStats.map(stat => {
+        const formula = stat.type === "ratio"
+          ? `${stat.numeratorColumn} / ${stat.denominatorColumn}`
+          : `${stat.numeratorColumn}`;
+
+        const directionText = stat.direction === "desc" ? "Higher is better" : "Lower is better";
+
+        let minText = "No minimum filter";
+
+        if (stat.minColumnMode !== "none" && stat.minRequired > 0) {
+          if (stat.minColumnMode === "denominator") {
+            minText = `Minimum ${stat.minRequired} from denominator/opportunities`;
+          } else if (stat.minColumnMode === "numerator") {
+            minText = `Minimum ${stat.minRequired} from numerator/appointments`;
+          } else if (stat.minColumnMode === "rows") {
+            minText = `Minimum ${stat.minRequired} rows`;
+          }
+        }
+
+        return `
+          <div class="saved-stat">
+            <div>
+              <strong>${escapeHtml(stat.name)}</strong><br>
+              <span>${escapeHtml(formula)} | ${directionText} | Weight: ${stat.weight} | ${escapeHtml(minText)}</span>
+            </div>
+            <button class="red" onclick="removeStat('${stat.id}')">Remove</button>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function removeStat(id) {
+      customStats = customStats.filter(stat => stat.id !== id);
+      renderSavedStats();
+    }
+
+    function clearStats() {
+      customStats = [];
+      renderSavedStats();
+    }
+
+    function calculateRankings() {
+      clearError();
+
+      if (!rawRows.length) {
+        showError("Please upload a CSV first.");
+        return;
+      }
+
+      if (!customStats.length) {
+        showError("Please add at least one custom stat.");
+        return;
+      }
+
+      const nameColumn = document.getElementById("nameColumn").value;
+      const dateColumn = document.getElementById("dateColumn").value;
+      const teamColumn = document.getElementById("teamColumn").value;
+      const useDateColumn = document.getElementById("useDateColumn").checked;
+      const useDateFilter = document.getElementById("useDateFilter").checked;
+      const useTeamColumn = document.getElementById("useTeamColumn").checked;
+
+      if (!nameColumn) {
+        showError("Please assign a name column.");
+        return;
+      }
+
+      let filteredRows = [...rawRows];
+
+      if (useDateColumn && useDateFilter) {
+        if (!dateColumn) {
+          showError("Date filtering is enabled, but no date column is selected.");
           return;
         }
 
-        addCoach(director.name, manager.name, draggedName);
-        draggedItem = null;
-      };
+        const startValue = document.getElementById("startDate").value;
+        const endValue = document.getElementById("endDate").value;
 
-      const managerHeader = document.createElement("div");
-      managerHeader.className = "manager-header";
-      managerHeader.draggable = true;
+        if (!startValue || !endValue) {
+          showError("Date filtering is enabled. Please select both start and end dates.");
+          return;
+        }
 
-      managerHeader.ondragstart = event => {
-        event.stopPropagation();
-        draggedItem = {
-          type: "manager",
-          name: manager.name
-        };
-      };
+        const startDate = parseInputDate(startValue);
+        const endDate = parseInputDate(endValue);
 
-      managerHeader.innerHTML = `
-        <span class="name-click" onclick="selectPersonByName('${jsEscape(manager.name)}')">
-          Manager: ${escapeHTML(manager.name)}
-          <span class="small">Username/Email: ${escapeHTML(getEmailByName(manager.name) || "—")}</span>
-        </span>
-        <button class="mini-btn remove-btn" onclick="event.stopPropagation(); removeManager(${directorIndex}, ${managerIndex})">Remove</button>
-      `;
+        if (!startDate || !endDate || startDate > endDate) {
+          showError("Please choose a valid date range.");
+          return;
+        }
 
-      managerBlock.appendChild(managerHeader);
-
-      if (!manager.coaches.length) {
-        const emptyCoach = document.createElement("div");
-        emptyCoach.className = "small";
-        emptyCoach.style.padding = "8px 10px";
-        emptyCoach.textContent = "No coaches yet. Drag someone onto this Manager.";
-        managerBlock.appendChild(emptyCoach);
+        filteredRows = rawRows.filter(row => {
+          const d = parseFlexibleDate(row[dateColumn]);
+          return d && d >= startDate && d <= endDate;
+        });
       }
 
-      manager.coaches.forEach((coach, coachIndex) => {
-        const coachRow = document.createElement("div");
-        coachRow.className = "coach-row";
-        coachRow.draggable = true;
+      if (!filteredRows.length) {
+        showError("No rows found after applying filters.");
+        return;
+      }
 
-        coachRow.ondragstart = event => {
-          event.stopPropagation();
-          draggedItem = {
-            type: "coach",
-            name: coach
+      repResults = buildRepresentativeResults(
+        filteredRows,
+        nameColumn,
+        useTeamColumn ? teamColumn : ""
+      );
+
+      if (!repResults.length) {
+        showError("No representatives passed the selected minimum filters.");
+        document.getElementById("resultsPanel").classList.add("hidden");
+        return;
+      }
+
+      renderRepresentativeResults(repResults);
+
+      if (useTeamColumn && teamColumn) {
+        teamResults = buildTeamResults(repResults);
+        renderTeamResults(teamResults);
+        document.getElementById("teamResultsPanel").classList.remove("hidden");
+      } else {
+        teamResults = [];
+        document.getElementById("teamResultsPanel").classList.add("hidden");
+      }
+
+      document.getElementById("resultsPanel").classList.remove("hidden");
+    }
+
+    function buildRepresentativeResults(rows, nameColumn, teamColumn) {
+      const byName = {};
+
+      rows.forEach(row => {
+        const name = cleanText(row[nameColumn]);
+        if (!name) return;
+
+        const team = teamColumn ? cleanText(row[teamColumn]) : "";
+
+        if (!byName[name]) {
+          byName[name] = {
+            name,
+            team,
+            rowCount: 0,
+            statPieces: {}
           };
-        };
 
-        coachRow.innerHTML = `
-          <span class="name-click" onclick="selectPersonByName('${jsEscape(coach)}')">
-            Coach: ${escapeHTML(coach)}
-            <span class="small">Username/Email: ${escapeHTML(getEmailByName(coach) || "—")}</span>
-          </span>
-          <button class="mini-btn remove-btn" onclick="event.stopPropagation(); removeCoach(${directorIndex}, ${managerIndex}, ${coachIndex})">Remove</button>
-        `;
+          customStats.forEach(stat => {
+            byName[name].statPieces[stat.id] = {
+              numeratorSum: 0,
+              denominatorSum: 0,
+              directValues: []
+            };
+          });
+        }
 
-        managerBlock.appendChild(coachRow);
-      });
+        const person = byName[name];
+        person.rowCount++;
 
-      directorBlock.appendChild(managerBlock);
-    });
+        if (team && !person.team) {
+          person.team = team;
+        }
 
-    tree.appendChild(directorBlock);
-  });
-}
+        customStats.forEach(stat => {
+          const pieces = person.statPieces[stat.id];
 
-function removeDirector(index) {
-  org.splice(index, 1);
-  renderAll();
-}
-
-function removeManager(directorIndex, managerIndex) {
-  org[directorIndex].managers.splice(managerIndex, 1);
-  renderAll();
-}
-
-function removeCoach(directorIndex, managerIndex, coachIndex) {
-  org[directorIndex].managers[managerIndex].coaches.splice(coachIndex, 1);
-  renderAll();
-}
-
-function clearOrg() {
-  if (!confirm("Clear the current org structure?")) return;
-  org = [];
-  filledReportEmails = {};
-  renderAll();
-}
-
-function selectPersonByName(name) {
-  const person = people.find(p => normalizeName(p.name) === normalizeName(name));
-
-  if (person) {
-    selectPerson(person);
-    return;
-  }
-
-  selectedPerson = {
-    name,
-    nameKey: normalizeName(name),
-    email: "",
-    supervisorRaw: "",
-    supervisorKey: ""
-  };
-
-  renderPeopleList();
-  renderSelectedPerson();
-}
-
-function getEmailByName(name) {
-  const person = people.find(p => normalizeName(p.name) === normalizeName(name));
-  if (person && person.email) return person.email || "";
-  return getSavedEmailForName(name);
-}
-
-function getSavedEmailForName(name) {
-  return savedPersonEmails[normalizeName(name)] || "";
-}
-
-function setSavedEmailForName(name, email) {
-  const key = normalizeName(name);
-  const cleaned = String(email || "").trim();
-  if (!key || !cleaned) return;
-  savedPersonEmails[key] = cleaned;
-}
-
-function getExportRows() {
-  const rows = [];
-
-  org.forEach(director => {
-    rows.push({
-      company: "Safelite",
-      director: director.name,
-      manager: "",
-      coach: "",
-      email: getEmailByName(director.name),
-      personName: director.name,
-      level: "Director"
-    });
-
-    director.managers.forEach(manager => {
-      rows.push({
-        company: "Safelite",
-        director: director.name,
-        manager: manager.name,
-        coach: "",
-        email: getEmailByName(manager.name),
-        personName: manager.name,
-        level: "Manager"
-      });
-
-      manager.coaches.forEach(coach => {
-        rows.push({
-          company: "Safelite",
-          director: director.name,
-          manager: manager.name,
-          coach,
-          email: getEmailByName(coach),
-          personName: coach,
-          level: "Coach"
+          if (stat.type === "ratio") {
+            pieces.numeratorSum += parseNumber(row[stat.numeratorColumn]);
+            pieces.denominatorSum += parseNumber(row[stat.denominatorColumn]);
+          } else {
+            const val = parsePossiblePercent(row[stat.numeratorColumn]);
+            if (val !== null) pieces.directValues.push(val);
+          }
         });
       });
-    });
-  });
 
-  return rows;
-}
+      let people = Object.values(byName).map(person => {
+        const output = {
+          name: person.name,
+          team: person.team || "No Team",
+          rowCount: person.rowCount,
+          totalWeightedRankScore: 0,
+          statValues: {},
+          statRanks: {},
+          weightedRanks: {},
+          statVolumeChecks: {}
+        };
 
-function getOrgPathRows() {
-  return getExportRows().map(row => {
-    let path = "Safelite";
+        customStats.forEach(stat => {
+          const pieces = person.statPieces[stat.id];
 
-    if (row.director) path += ` --> ${row.director}`;
-    if (row.manager) path += ` --> ${row.manager}`;
-    if (row.coach) path += ` --> ${row.coach}`;
+          if (stat.type === "ratio") {
+            output.statValues[stat.id] = safeRate(pieces.numeratorSum, pieces.denominatorSum);
 
-    return {
-      path,
-      personName: row.personName,
-      level: row.level,
-      director: row.director,
-      manager: row.manager,
-      coach: row.coach,
-      email: row.email || ""
-    };
-  });
-}
+            output.statVolumeChecks[stat.id] = {
+              numerator: pieces.numeratorSum,
+              denominator: pieces.denominatorSum,
+              rows: person.rowCount
+            };
+          } else {
+            output.statValues[stat.id] = averageValid(pieces.directValues);
 
-function buildOrgBlueprint() {
-  return {
-    type: "SafeliteOrgBlueprint",
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    columnsUsed: { first: columns.first, last: columns.last, supervisor: columns.supervisor, email: columns.email },
-    safeliteUsersEmails: [...safeliteUsersEmails],
-    savedPersonEmails: { ...savedPersonEmails },
-    hierarchy: org.map(director => ({
-      directorName: director.name,
-      directorKey: normalizeName(director.name),
-      directorEmail: getEmailByName(director.name) || "",
-      managers: director.managers.map(manager => ({
-        managerName: manager.name,
-        managerKey: normalizeName(manager.name),
-        managerEmail: getEmailByName(manager.name) || "",
-        coaches: manager.coaches.map(coach => ({ coachName: coach, coachKey: normalizeName(coach), coachEmail: getEmailByName(coach) || "" }))
-      }))
-    }))
-  };
-}
+            output.statVolumeChecks[stat.id] = {
+              numerator: pieces.directValues.length,
+              denominator: pieces.directValues.length,
+              rows: person.rowCount
+            };
+          }
+        });
 
-function findCurrentPersonFromBlueprint(savedPerson) { const savedName = savedPerson.name || savedPerson.directorName || savedPerson.managerName || savedPerson.coachName || ""; const savedKey = savedPerson.key || savedPerson.directorKey || savedPerson.managerKey || savedPerson.coachKey || normalizeName(savedName); const savedEmail = normalizeEmail(savedPerson.email || savedPerson.directorEmail || savedPerson.managerEmail || savedPerson.coachEmail || ""); let match = people.find(p => p.nameKey === normalizeName(savedKey)); if (match) return match; match = people.find(p => p.nameKey === normalizeName(savedName)); if (match) return match; match = people.find(p => p.nameKey === normalizeName(flipName(savedName))); if (match) return match; if (savedEmail) { match = people.find(p => normalizeEmail(p.email) === savedEmail); if (match) return match; } return null; }
-function findCurrentPersonBySavedKey(savedKey, savedName) { return findCurrentPersonFromBlueprint({ key: savedKey, name: savedName }); }
-function showBlueprintLoadSummary(missing, rebuiltOrg, duplicateMatches = []) { const directorCount = rebuiltOrg.length; const managerCount = rebuiltOrg.reduce((sum, d) => sum + d.managers.length, 0); const coachCount = rebuiltOrg.reduce((sum, d) => sum + d.managers.reduce((mSum, m) => mSum + m.coaches.length, 0), 0); lastBlueprintLoadSummary = { loadedAt: new Date().toISOString(), missing, directorCount, managerCount, coachCount, duplicateMatches }; let message = `Org blueprint loaded from current file.
+        return output;
+      });
 
-Directors loaded: ${directorCount}
-Managers loaded: ${managerCount}
-Coaches loaded: ${coachCount}
-Missing names: ${missing.length}
-Duplicate matches: ${duplicateMatches.length}`; if (missing.length) message += `
+      people = people.filter(person => passesMinimumFilters(person));
 
-Missing names were not added because they were not found in the current uploaded file.`; alert(message); }
-function rebuildOrgFromBlueprint(blueprint) { const rebuiltOrg = []; const missing = []; const duplicateMatches = []; if (!blueprint || !Array.isArray(blueprint.hierarchy)) { alert("No org blueprint found in the local save."); return; } blueprint.hierarchy.forEach(savedDirector => { const directorPerson = findCurrentPersonFromBlueprint(savedDirector); if (!directorPerson) { missing.push({ level: "Director", name: savedDirector.directorName }); return; } if (rebuiltOrg.some(d => normalizeName(d.name) === normalizeName(directorPerson.name))) duplicateMatches.push({ level: "Director", name: directorPerson.name }); const directorNode = { name: directorPerson.name, managers: [] }; (savedDirector.managers || []).forEach(savedManager => { const managerPerson = findCurrentPersonFromBlueprint(savedManager); if (!managerPerson) { missing.push({ level: "Manager", name: savedManager.managerName, director: savedDirector.directorName }); return; } const managerNode = { name: managerPerson.name, coaches: [] }; (savedManager.coaches || []).forEach(savedCoach => { const coachPerson = findCurrentPersonFromBlueprint(savedCoach); if (!coachPerson) { missing.push({ level: "Coach", name: savedCoach.coachName, director: savedDirector.directorName, manager: savedManager.managerName }); return; } if (managerNode.coaches.some(c => normalizeName(c) === normalizeName(coachPerson.name))) duplicateMatches.push({ level: "Coach", name: coachPerson.name }); else managerNode.coaches.push(coachPerson.name); }); if (directorNode.managers.some(m => normalizeName(m.name) === normalizeName(managerNode.name))) duplicateMatches.push({ level: "Manager", name: managerNode.name }); else directorNode.managers.push(managerNode); }); rebuiltOrg.push(directorNode); }); org = rebuiltOrg; if (Array.isArray(blueprint.safeliteUsersEmails)) safeliteUsersEmails = parseEmailList(blueprint.safeliteUsersEmails.join(", ")); if (blueprint.savedPersonEmails && typeof blueprint.savedPersonEmails === "object") Object.entries(blueprint.savedPersonEmails).forEach(([nameKey, email]) => { const cleanKey = normalizeName(nameKey); const cleanEmail = String(email || "").trim(); if (cleanKey && cleanEmail) savedPersonEmails[cleanKey] = cleanEmail; }); selectedPerson = null; renderAll(); showBlueprintLoadSummary(missing, rebuiltOrg, duplicateMatches); }
-function exportOrgBlueprint() { const blueprint = buildOrgBlueprint(); const day = new Date().toISOString().slice(0, 10); downloadBlob(JSON.stringify(blueprint, null, 2), `safelite_org_blueprint_${day}.json`, "application/json;charset=utf-8;"); setStatus("Org blueprint exported"); }
-function blueprintFromImportedRows(rows) { const byDirector = new Map(); const isUsers = rows[0] && Object.prototype.hasOwnProperty.call(rows[0], "Users"); rows.forEach(row => { let director = "", manager = "", coach = "", email = ""; if (isUsers) { const users = String(row["Users"] || "").trim(); if (!users || users === "Safelite") return; const parts = users.split(" --> ").map(x => x.trim()).filter(Boolean); if (parts[0] === "Safelite") parts.shift(); [director, manager, coach] = parts; email = String(row["Studio Email Address"] || "").trim(); } else { director = String(row["Director"] || "").trim(); manager = String(row["Manager"] || "").trim(); coach = String(row["Coach"] || "").trim(); email = String(row["Username / Studio Email Address"] || "").trim(); } if (!director) return; if (!byDirector.has(director)) byDirector.set(director, { directorName: director, directorKey: normalizeName(director), directorEmail: !manager && !coach ? email : "", managers: [] }); const d = byDirector.get(director); if (!manager) return; let m = d.managers.find(x => normalizeName(x.managerName) === normalizeName(manager)); if (!m) { m = { managerName: manager, managerKey: normalizeName(manager), managerEmail: !coach ? email : "", coaches: [] }; d.managers.push(m); } if (!coach) return; if (!m.coaches.some(c => normalizeName(c.coachName) === normalizeName(coach))) m.coaches.push({ coachName: coach, coachKey: normalizeName(coach), coachEmail: email }); }); return { type: "SafeliteOrgBlueprint", version: 1, exportedAt: new Date().toISOString(), columnsUsed: { first: columns.first, last: columns.last, supervisor: columns.supervisor, email: columns.email }, hierarchy: Array.from(byDirector.values()) }; }
-function handleBlueprintImport(event) { const file = event.target.files[0]; if (!file) return; if (!people.length) { alert("Upload and process a people file first."); event.target.value = ""; return; } const ext = file.name.split(".").pop().toLowerCase(); const reader = new FileReader(); reader.onload = function(e) { try { let blueprint; if (ext === "json") { blueprint = JSON.parse(String(e.target.result || "{}")); } else { let rows = []; if (ext === "csv") { const wb = XLSX.read(String(e.target.result), { type: "string" }); rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" }); } else { const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" }); rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" }); } blueprint = blueprintFromImportedRows(rows); } rebuildOrgFromBlueprint(blueprint); setStatus(`Blueprint imported from ${file.name}`); } catch (error) { console.error(error); alert("Unable to import blueprint file."); } finally { event.target.value = ""; } }; if (ext === "json" || ext === "csv") reader.readAsText(file); else reader.readAsArrayBuffer(file); }
-function applySafeliteEmailBox() { const box = document.getElementById("safeliteEmailBox"); safeliteUsersEmails = parseEmailList(box ? box.value : ""); renderOutputTable(); setStatus(`Safelite row updated with ${safeliteUsersEmails.length} emails`); }
+      customStats.forEach(stat => {
+        applyStatRank(people, stat);
+      });
 
-function setViewMode(mode) {
-  currentViewMode = mode;
+      people.forEach(person => {
+        let total = 0;
 
-  document.getElementById("orgViewBtn").classList.toggle("active", mode === "org");
-  document.getElementById("usersViewBtn").classList.toggle("active", mode === "users");
-  document.getElementById("filtersViewBtn").classList.toggle("active", mode === "filters");
-  document.getElementById("emailsViewBtn").classList.toggle("active", mode === "emails");
-  document.getElementById("compareViewBtn").classList.toggle("active", mode === "compare");
+        customStats.forEach(stat => {
+          const rank = person.statRanks[stat.id];
+          const weightedRank = rank * stat.weight;
 
-  renderOutputTable();
-}
+          person.weightedRanks[stat.id] = weightedRank;
+          total += weightedRank;
+        });
 
-function renderOutputTable() {
-  if (currentViewMode === "compare") {
-    renderCompareView();
-    return;
-  }
+        person.totalWeightedRankScore = total;
+      });
 
-  if (currentViewMode === "org") {
-    renderOrgOutputTable();
-    return;
-  }
+      people.sort((a, b) => {
+        if (a.totalWeightedRankScore !== b.totalWeightedRankScore) {
+          return a.totalWeightedRankScore - b.totalWeightedRankScore;
+        }
 
-  if (currentViewMode === "users") {
-    renderUsersOutputTable();
-    return;
-  }
+        return averagePerformanceTieBreaker(b) - averagePerformanceTieBreaker(a);
+      });
 
-  if (currentViewMode === "filters") {
-    renderFiltersOutputTable();
-    return;
-  }
-  if (currentViewMode === "emails") {
-    renderEmailsView();
-    return;
-  }
-}
+      assignOverallRanks(people, "overallRank", "totalWeightedRankScore");
 
-function renderOrgOutputTable() {
-  const tbody = document.querySelector("#outputTable tbody");
-  const header = document.getElementById("outputTableHeader");
-  const includeEmail = document.getElementById("includeEmailToggle").checked;
-
-  header.innerHTML = `
-    <th>Company Name</th>
-    <th>Director</th>
-    <th>Manager</th>
-    <th>Coach</th>
-    ${includeEmail ? "<th>Username / Studio Email Address</th>" : ""}
-  `;
-
-  tbody.innerHTML = "";
-
-  getExportRows().forEach(row => {
-    const tr = document.createElement("tr");
-
-    tr.innerHTML = `
-      <td>${escapeHTML(row.company)}</td>
-      <td>${row.director ? clickableName(row.director) : ""}</td>
-      <td>${row.manager ? clickableName(row.manager) : ""}</td>
-      <td>${row.coach ? clickableName(row.coach) : ""}</td>
-      ${includeEmail ? `<td>${escapeHTML(row.email || "")}</td>` : ""}
-    `;
-
-    tbody.appendChild(tr);
-  });
-}
-
-function renderUsersOutputTable() {
-  const tbody = document.querySelector("#outputTable tbody");
-  const header = document.getElementById("outputTableHeader");
-
-  header.innerHTML = `
-    <th>Users</th>
-    <th>Studio Email Address</th>
-  `;
-
-  tbody.innerHTML = "";
-  const safeliteRow = document.createElement("tr");
-  safeliteRow.className = "safelite-users-row";
-  safeliteRow.innerHTML = `<td class="path-cell"><strong>Safelite</strong></td><td><textarea id="safeliteEmailBox" class="safelite-email-box" placeholder="Paste comma-separated emails here..."></textarea><div class="small">Paste comma-separated emails. These will be removed from duplicate user rows below.</div><button class="mini-btn" onclick="applySafeliteEmailBox()">Apply Safelite Emails</button></td>`;
-  tbody.appendChild(safeliteRow);
-  const safeliteEmailSet = new Set(safeliteUsersEmails.map(normalizeEmail));
-
-  getOrgPathRows().forEach(row => {
-    const tr = document.createElement("tr");
-    const rowEmail = getEmailByName(row.personName) || "";
-    const displayEmail = safeliteEmailSet.has(normalizeEmail(rowEmail)) ? "" : rowEmail;
-
-    tr.innerHTML = `
-      <td class="path-cell">${makeClickablePath(row.path)}</td>
-      <td>${escapeHTML(displayEmail)}</td>
-    `;
-
-    tbody.appendChild(tr);
-  });
-  setTimeout(() => { const box = document.getElementById("safeliteEmailBox"); if (box) box.value = safeliteUsersEmails.join(", "); }, 0);
-}
-
-function renderFiltersOutputTable() {
-  const tbody = document.querySelector("#outputTable tbody");
-  const header = document.getElementById("outputTableHeader");
-
-  header.innerHTML = `
-    <th>Users</th>
-    <th>Studio Email Address</th>
-  `;
-
-  tbody.innerHTML = "";
-
-  getOrgPathRows().forEach(row => {
-    const emails = filledReportEmails[row.personName] || getReportEmailsForSupervisor(row.personName);
-    const formattedEmails = formatFilterEmails(emails);
-
-    const tr = document.createElement("tr");
-
-    tr.innerHTML = `
-      <td class="path-cell">${makeClickablePath(row.path)}</td>
-      <td class="email-list">${formattedEmails}</td>
-    `;
-
-    tbody.appendChild(tr);
-  });
-}
-
-function getMissingEmailRows() {
-  const safeliteEmailSet = new Set((safeliteUsersEmails || []).map(normalizeEmail));
-  return getOrgPathRows().map(row => {
-    const uploadedOrSavedEmail = getEmailByName(row.personName);
-    const savedEmail = getSavedEmailForName(row.personName);
-    return { ...row, uploadedOrSavedEmail, savedEmail, isGlobalCovered: uploadedOrSavedEmail && safeliteEmailSet.has(normalizeEmail(uploadedOrSavedEmail)) };
-  }).filter(row => !row.isGlobalCovered && !row.uploadedOrSavedEmail);
-}
-
-function getAttachableSavedEmailRows() {
-  const safeliteEmailSet = new Set((safeliteUsersEmails || []).map(normalizeEmail));
-  return getOrgPathRows().map(row => {
-    const person = people.find(p => normalizeName(p.name) === normalizeName(row.personName));
-    const uploadedEmail = person ? String(person.email || "").trim() : "";
-    const savedEmail = getSavedEmailForName(row.personName);
-    return { ...row, uploadedEmail, savedEmail, isGlobalCovered: savedEmail && safeliteEmailSet.has(normalizeEmail(savedEmail)) };
-  }).filter(row => row.savedEmail && !row.uploadedEmail && !row.isGlobalCovered);
-}
-
-function renderAttachableSavedEmailsTable(rows) {
-  if (!rows.length) return `<div class="compare-section"><h3>Saved Emails Ready to Attach</h3><div class="notice">No saved emails are waiting to be attached.</div></div>`;
-  return `<div class="compare-section"><h3>Saved Emails Ready to Attach</h3><div class="notice compare-good">These people have blank emails in the current upload, but a saved email exists for their name. Click Attach Saved Emails to apply them.</div><table><thead><tr><th>User Path</th><th>Saved Email</th><th>Status</th></tr></thead><tbody>${rows.map(row => `<tr><td class="path-cell">${makeClickablePath(row.path)}</td><td>${escapeHTML(row.savedEmail)}</td><td class="email-status-good">Ready to attach</td></tr>`).join("")}</tbody></table></div>`;
-}
-
-function renderMissingEmailsTable(rows) {
-  if (!rows.length) return `<div class="compare-section"><h3>Missing User Emails</h3><div class="notice compare-good">No missing user emails found.</div></div>`;
-  return `<div class="compare-section"><h3>Missing User Emails</h3><table><thead><tr><th>User Path</th><th>Person Name</th><th>Type Email</th><th>Status</th></tr></thead><tbody>${rows.map(row => { const key = normalizeName(row.personName); const savedEmail = getSavedEmailForName(row.personName); return `<tr><td class="path-cell">${makeClickablePath(row.path)}</td><td>${escapeHTML(row.personName)}</td><td><input class="manual-email-input" data-person-name="${escapeHTML(row.personName)}" data-person-key="${escapeHTML(key)}" value="${escapeHTML(savedEmail)}" placeholder="type email..." /></td><td class="email-status-warning">Needs email</td></tr>`; }).join("")}</tbody></table></div>`;
-}
-
-function renderEmailsView() {
-  const tbody = document.querySelector("#outputTable tbody");
-  const header = document.getElementById("outputTableHeader");
-  header.innerHTML = `<th>Emails Tool</th>`;
-  const missingRows = getMissingEmailRows();
-  const attachableRows = getAttachableSavedEmailRows();
-  pendingEmailAttachments = { rows: attachableRows };
-  tbody.innerHTML = `<tr><td><div class="emails-tool-wrap"><div class="notice">Use this tab to fill blank user emails. Saved emails are remembered by person name and can be attached again when that name appears in future uploaded files.</div><div class="email-tool-actions"><button class="green" onclick="saveManualEmails()">Save Typed Emails</button><button class="orange" onclick="attachSavedEmails()">Attach Saved Emails</button><button class="secondary" onclick="exportSavedEmailLibrary()">Export Email Library</button><input type="file" id="emailLibraryImportInput" accept=".json,.xlsx,.xls,.csv" style="display:none;" onchange="handleEmailLibraryImport(event)" /><button class="secondary" onclick="document.getElementById('emailLibraryImportInput').click()">Upload Email Library</button></div><div class="notice">Missing emails: <strong>${missingRows.length}</strong><br>Saved emails ready to attach: <strong>${attachableRows.length}</strong><br>Saved email library size: <strong>${Object.keys(savedPersonEmails || {}).length}</strong></div>${renderAttachableSavedEmailsTable(attachableRows)}${renderMissingEmailsTable(missingRows)}</div></td></tr>`;
-}
-
-function saveManualEmails() {
-  const inputs = Array.from(document.querySelectorAll(".manual-email-input"));
-  let saved = 0;
-  const invalid = [];
-  inputs.forEach(input => {
-    const personName = input.getAttribute("data-person-name") || "";
-    const email = String(input.value || "").trim();
-    if (!email) return;
-    if (!isLikelyEmail(email)) { invalid.push({ personName, email }); return; }
-    setSavedEmailForName(personName, email); saved++;
-  });
-  if (invalid.length) alert(`Some emails do not look valid and were not saved:\n\n${invalid.slice(0, 20).map(item => `${item.personName}: ${item.email}`).join("\n")}`);
-  setStatus(`Saved ${saved} manual emails`);
-  renderOutputTable();
-}
-
-function attachSavedEmails() {
-  const attachableRows = getAttachableSavedEmailRows();
-  if (!attachableRows.length) { alert("No saved emails are ready to attach."); return; }
-  let attached = 0;
-  attachableRows.forEach(row => {
-    const savedEmail = getSavedEmailForName(row.personName);
-    const person = people.find(p => normalizeName(p.name) === normalizeName(row.personName));
-    if (person && savedEmail && !person.email) { person.email = savedEmail; attached++; }
-  });
-  setStatus(`Attached ${attached} saved emails by name`);
-  alert(`Attached ${attached} saved emails by matching saved person names.`);
-  renderAll();
-}
-
-function exportSavedEmailLibrary() {
-  const rows = Object.entries(savedPersonEmails || {}).map(([nameKey, email]) => ({ nameKey, email }));
-  if (!rows.length) { alert("No saved emails to export."); return; }
-  const payload = { type: "SafeliteSavedEmailLibrary", version: 1, exportedAt: new Date().toISOString(), savedPersonEmails };
-  const date = new Date().toISOString().slice(0, 10);
-  downloadBlob(JSON.stringify(payload, null, 2), `safelite_saved_email_library_${date}.json`, "application/json;charset=utf-8;");
-}
-
-function emailLibraryFromRows(rows) {
-  const imported = {};
-  rows.forEach(row => {
-    const keys = Object.keys(row);
-    const nameKeyHeader = keys.find(k => normalizeHeader(k) === "namekey" || normalizeHeader(k) === "name key");
-    const nameHeader = keys.find(k => normalizeHeader(k) === "name" || normalizeHeader(k) === "person name" || normalizeHeader(k) === "users");
-    const emailHeader = keys.find(k => normalizeHeader(k).includes("email") || normalizeHeader(k).includes("studio email"));
-    const rawName = nameKeyHeader ? row[nameKeyHeader] : nameHeader ? row[nameHeader] : "";
-    const rawEmail = emailHeader ? row[emailHeader] : "";
-    const nameKey = normalizeName(rawName);
-    const email = String(rawEmail || "").trim();
-    if (nameKey && email && isLikelyEmail(email)) imported[nameKey] = email;
-  });
-  return imported;
-}
-
-function handleEmailLibraryImport(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      let imported = {};
-      if (file.name.toLowerCase().endsWith(".json")) {
-        const payload = JSON.parse(e.target.result);
-        if (payload.type === "SafeliteSavedEmailLibrary" && payload.savedPersonEmails) imported = payload.savedPersonEmails;
-        else if (payload.savedPersonEmails) imported = payload.savedPersonEmails;
-        else { alert("This JSON does not look like a saved email library."); return; }
-      } else {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: "array" });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-        imported = emailLibraryFromRows(rows);
-      }
-      let added = 0; let updated = 0;
-      Object.entries(imported || {}).forEach(([nameKey, email]) => { const cleanKey = normalizeName(nameKey); const cleanEmail = String(email || "").trim(); if (!cleanKey || !cleanEmail) return; if (savedPersonEmails[cleanKey]) updated++; else added++; savedPersonEmails[cleanKey] = cleanEmail; });
-      setStatus(`Email library loaded: ${added} added, ${updated} updated`);
-      alert(`Email library loaded.\n\nAdded: ${added}\nUpdated: ${updated}`);
-      renderAll();
-    } catch (error) { console.error(error); alert("Could not import the saved email library."); }
-  };
-  if (file.name.toLowerCase().endsWith(".json")) reader.readAsText(file); else reader.readAsArrayBuffer(file);
-  event.target.value = "";
-}
-
-function clickableName(name) {
-  return `<span class="name-click" onclick="selectPersonByName('${jsEscape(name)}')">${escapeHTML(name)}</span>`;
-}
-
-function makeClickablePath(path) {
-  return path
-    .split(" --> ")
-    .map(part => {
-      if (part === "Safelite") {
-        return escapeHTML(part);
-      }
-
-      return clickableName(part);
-    })
-    .join(" --> ");
-}
-
-function fillReportsForPerson(personName) {
-  const emails = getReportEmailsForSupervisor(personName);
-  filledReportEmails[personName] = emails;
-
-  if (!emails.length) {
-    alert(`No reporting usernames/emails found for ${personName}.`);
-  }
-
-  renderOutputTable();
-}
-
-function autoFillCoaches() {
-  let filledCount = 0;
-
-  getOrgPathRows().forEach(row => {
-    if (row.level === "Coach") {
-      const emails = getReportEmailsForSupervisor(row.personName);
-      filledReportEmails[row.personName] = emails;
-
-      if (emails.length) {
-        filledCount++;
-      }
+      return people;
     }
-  });
 
-  alert(`Auto-filled reporting usernames/emails for ${filledCount} coach rows.`);
-  renderOutputTable();
-}
+    function passesMinimumFilters(person) {
+      for (const stat of customStats) {
+        if (!stat.minRequired || stat.minRequired <= 0 || stat.minColumnMode === "none") {
+          continue;
+        }
 
-function autoFillAllLeaders() {
-  let filledCount = 0;
+        const checks = person.statVolumeChecks[stat.id];
 
-  getOrgPathRows().forEach(row => {
-    const emails = getReportEmailsForSupervisor(row.personName);
-    filledReportEmails[row.personName] = emails;
+        if (!checks) return false;
 
-    if (emails.length) {
-      filledCount++;
-    }
-  });
+        let actualValue = 0;
 
-  alert(`Auto-filled reporting usernames/emails for ${filledCount} rows.`);
-  renderOutputTable();
-}
+        if (stat.minColumnMode === "denominator") {
+          actualValue = checks.denominator;
+        } else if (stat.minColumnMode === "numerator") {
+          actualValue = checks.numerator;
+        } else if (stat.minColumnMode === "rows") {
+          actualValue = checks.rows;
+        }
 
-function clearFilledEmails() {
-  if (!confirm("Clear all filled reporting username/email lists?")) return;
-
-  filledReportEmails = {};
-  renderOutputTable();
-}
-
-function formatFilterEmails(emails) {
-  if (!emails || !emails.length) {
-    return `Username:`;
-  }
-
-  const quotedEmails = emails
-    .map(email => `"${escapeHTML(email)}"`)
-    .join(", ");
-
-  return `Username: ${quotedEmails}`;
-}
-
-function getCurrentViewExportRows() {
-  if (currentViewMode === "org") {
-    const includeEmail = document.getElementById("includeEmailToggle").checked;
-
-    return getExportRows().map(row => {
-      const output = {
-        "Company Name": row.company,
-        "Director": row.director,
-        "Manager": row.manager,
-        "Coach": row.coach
-      };
-
-      if (includeEmail) {
-        output["Username / Studio Email Address"] = row.email || "";
-      }
-
-      return output;
-    });
-  }
-
-  if (currentViewMode === "users") {
-    const safeliteEmailSet = new Set(safeliteUsersEmails.map(normalizeEmail));
-    return [{ "Users": "Safelite", "Studio Email Address": safeliteUsersEmails.join(", ") }, ...getOrgPathRows().map(row => { const rowEmail = getEmailByName(row.personName) || ""; return ({ "Users": row.path, "Studio Email Address": safeliteEmailSet.has(normalizeEmail(rowEmail)) ? "" : rowEmail }); })];
-  }
-
-  if (currentViewMode === "filters") {
-    return getOrgPathRows().map(row => {
-      const emails = filledReportEmails[row.personName] || getReportEmailsForSupervisor(row.personName);
-
-      return {
-        "Users": row.path,
-        "Studio Email Address": `Username: ${emails.map(email => `"${email}"`).join(", ")}`
-      };
-    });
-  }
-
-  return [];
-}
-
-function getExportFileName(extension) {
-  const label =
-    currentViewMode === "org"
-      ? "org_view"
-      : currentViewMode === "users"
-        ? "users_view"
-        : "filters_view";
-
-  return `safelite_${label}_export.${extension}`;
-}
-
-function exportCSV() {
-  const exportRows = getCurrentViewExportRows();
-
-  if (!exportRows.length) {
-    alert("No rows to export.");
-    return;
-  }
-
-  const headers = Object.keys(exportRows[0]);
-
-  const csvRows = [
-    headers.map(csvEscape).join(","),
-    ...exportRows.map(row => headers.map(header => csvEscape(row[header])).join(","))
-  ];
-
-  downloadBlob(csvRows.join("\n"), getExportFileName("csv"), "text/csv;charset=utf-8;");
-}
-
-function exportExcel() {
-  const exportRows = getCurrentViewExportRows();
-
-  if (!exportRows.length) {
-    alert("No rows to export.");
-    return;
-  }
-
-  const worksheet = XLSX.utils.json_to_sheet(exportRows);
-  const workbook = XLSX.utils.book_new();
-
-  const sheetName =
-    currentViewMode === "org"
-      ? "Org View"
-      : currentViewMode === "users"
-        ? "Users View"
-        : "Filters View";
-
-  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
-
-  if (worksheet["!ref"]) {
-    const range = XLSX.utils.decode_range(worksheet["!ref"]);
-    worksheet["!cols"] = [];
-
-    for (let C = range.s.c; C <= range.e.c; ++C) {
-      let maxWidth = 14;
-
-      for (let R = range.s.r; R <= range.e.r; ++R) {
-        const cell = worksheet[XLSX.utils.encode_cell({ r: R, c: C })];
-        if (cell && cell.v) {
-          maxWidth = Math.max(maxWidth, String(cell.v).length + 2);
+        if (actualValue < stat.minRequired) {
+          return false;
         }
       }
 
-      worksheet["!cols"].push({ wch: Math.min(maxWidth, 100) });
-    }
-  }
-
-  XLSX.writeFile(workbook, getExportFileName("xlsx"));
-}
-
-function saveLocal() {
-  const payload = {
-    savedAt: new Date().toISOString(),
-    rawRows,
-    people,
-    columns,
-    org,
-    includeEmail: document.getElementById("includeEmailToggle").checked,
-    currentViewMode,
-    filledReportEmails,
-    orgBlueprint: buildOrgBlueprint(),
-    safeliteUsersEmails,
-    savedPersonEmails
-  };
-
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  setStatus("Saved locally");
-  alert("Saved locally in this browser.");
-}
-
-function loadLocal() {
-  const text = localStorage.getItem(STORAGE_KEY);
-
-  if (!text) {
-    alert("No local save found.");
-    return;
-  }
-
-  try {
-    const payload = JSON.parse(text);
-    const hasCurrentFileLoaded = rawRows.length > 0 && people.length > 0;
-    const hasBlueprint = payload.orgBlueprint && Array.isArray(payload.orgBlueprint.hierarchy);
-
-    if (hasCurrentFileLoaded && hasBlueprint) {
-      rebuildOrgFromBlueprint(payload.orgBlueprint);
-      setStatus("Loaded org blueprint onto current uploaded file");
-      return;
+      return true;
     }
 
-    rawRows = payload.rawRows || [];
-    people = payload.people || [];
-    columns = payload.columns || columns;
-    org = payload.org || [];
-    filledReportEmails = payload.filledReportEmails || {};
-    safeliteUsersEmails = Array.isArray(payload.safeliteUsersEmails) ? payload.safeliteUsersEmails : [];
-    savedPersonEmails = payload.savedPersonEmails || {};
-    currentViewMode = payload.currentViewMode || "org";
+    function buildTeamResults(people) {
+      const teamMethod = document.getElementById("teamMethod").value;
+      const byTeam = {};
 
-    if (typeof payload.includeEmail === "boolean") {
-      document.getElementById("includeEmailToggle").checked = payload.includeEmail;
+      people.forEach(person => {
+        const team = person.team || "No Team";
+
+        if (!byTeam[team]) {
+          byTeam[team] = {
+            team,
+            memberCount: 0,
+            rowCount: 0,
+            totalWeightedRankScore: 0,
+            statValues: {},
+            statRanks: {},
+            weightedRanks: {},
+            members: []
+          };
+
+          customStats.forEach(stat => {
+            byTeam[team].statValues[stat.id] = [];
+          });
+        }
+
+        const t = byTeam[team];
+
+        t.memberCount++;
+        t.rowCount += person.rowCount;
+        t.totalWeightedRankScore += person.totalWeightedRankScore;
+        t.members.push(person.name);
+
+        customStats.forEach(stat => {
+          const val = person.statValues[stat.id];
+          if (isFiniteNumber(val)) {
+            t.statValues[stat.id].push(val);
+          }
+        });
+      });
+
+      let teams = Object.values(byTeam).map(team => {
+        const output = {
+          team: team.team,
+          memberCount: team.memberCount,
+          rowCount: team.rowCount,
+          members: team.members,
+          totalWeightedRankScore: teamMethod === "average"
+            ? team.totalWeightedRankScore / team.memberCount
+            : team.totalWeightedRankScore,
+          statValues: {},
+          statRanks: {},
+          weightedRanks: {}
+        };
+
+        customStats.forEach(stat => {
+          output.statValues[stat.id] = averageValid(team.statValues[stat.id]);
+        });
+
+        return output;
+      });
+
+      customStats.forEach(stat => {
+        applyStatRank(teams, stat);
+      });
+
+      teams.forEach(team => {
+        let total = 0;
+
+        customStats.forEach(stat => {
+          const rank = team.statRanks[stat.id];
+          const weightedRank = rank * stat.weight;
+
+          team.weightedRanks[stat.id] = weightedRank;
+          total += weightedRank;
+        });
+
+        team.totalWeightedRankScore = total;
+      });
+
+      teams.sort((a, b) => {
+        if (a.totalWeightedRankScore !== b.totalWeightedRankScore) {
+          return a.totalWeightedRankScore - b.totalWeightedRankScore;
+        }
+
+        return averagePerformanceTieBreaker(b) - averagePerformanceTieBreaker(a);
+      });
+
+      assignOverallRanks(teams, "overallRank", "totalWeightedRankScore");
+
+      return teams;
     }
 
-    if (rawRows.length) {
-      setupColumnSelectors();
+    function applyStatRank(items, stat) {
+      const valid = items
+        .filter(item => isFiniteNumber(item.statValues[stat.id]))
+        .sort((a, b) => {
+          const av = a.statValues[stat.id];
+          const bv = b.statValues[stat.id];
 
-      if (columns.first) document.getElementById("firstNameSelect").value = columns.first;
-      if (columns.last) document.getElementById("lastNameSelect").value = columns.last;
-      if (columns.supervisor) document.getElementById("supervisorSelect").value = columns.supervisor;
-      if (columns.email) document.getElementById("emailSelect").value = columns.email;
+          if (stat.direction === "desc") return bv - av;
+          return av - bv;
+        });
+
+      let currentRank = 0;
+      let lastValue = null;
+
+      valid.forEach((item, index) => {
+        const value = item.statValues[stat.id];
+
+        if (lastValue === null || value !== lastValue) {
+          currentRank = index + 1;
+          lastValue = value;
+        }
+
+        item.statRanks[stat.id] = currentRank;
+      });
+
+      const missingRank = items.length + 1;
+
+      items.forEach(item => {
+        if (!isFiniteNumber(item.statValues[stat.id])) {
+          item.statRanks[stat.id] = missingRank;
+        }
+      });
     }
 
-    selectedPerson = null;
-    renderAll();
-    setViewMode(currentViewMode);
+    function renderRepresentativeResults(results) {
+      const table = document.getElementById("repTable");
+      const summary = document.getElementById("repSummary");
 
-    const savedDate = payload.savedAt ? new Date(payload.savedAt).toLocaleString() : "unknown time";
-    setStatus(`Loaded local save from ${savedDate}`);
-  } catch (error) {
-    console.error(error);
-    alert("Local save could not be loaded.");
-  }
-}
+      if (!results.length) {
+        table.innerHTML = `<tr><td>No representative results found.</td></tr>`;
+        summary.innerHTML = "";
+        return;
+      }
 
-function allowDrop(event) {
-  event.preventDefault();
-  event.currentTarget.classList.add("drag-over");
-}
+      const winner = results[0];
 
-function removeDragOver(event) {
-  event.currentTarget.classList.remove("drag-over");
-}
+      summary.innerHTML = `
+        <div class="summary-card">
+          <h3>Overall Rep Winner</h3>
+          <div class="big">${escapeHtml(winner.name)}</div>
+          <div class="sub">Score: ${formatScore(winner.totalWeightedRankScore)}</div>
+        </div>
 
-function dropAsDirector(event) {
-  event.preventDefault();
-  event.currentTarget.classList.remove("drag-over");
+        <div class="summary-card">
+          <h3>Winner's Team</h3>
+          <div class="big">${escapeHtml(winner.team)}</div>
+          <div class="sub">${winner.rowCount} included rows</div>
+        </div>
 
-  if (!draggedItem) return;
+        <div class="summary-card">
+          <h3>Representatives Ranked</h3>
+          <div class="big">${results.length}</div>
+          <div class="sub">After selected filters</div>
+        </div>
+      `;
 
-  addDirector(draggedItem.name);
-  draggedItem = null;
-}
+      const statHeaders = customStats.map(stat => `
+        <th>${escapeHtml(stat.name)} Value</th>
+        <th>${escapeHtml(stat.name)} Volume Used</th>
+        <th>${escapeHtml(stat.name)} Rank</th>
+        <th>${escapeHtml(stat.name)} Weighted Rank</th>
+      `).join("");
 
-function downloadBlob(content, filename, type) {
-  const blob = new Blob([content], { type });
-  const url = URL.createObjectURL(blob);
+      table.innerHTML = `
+        <thead>
+          <tr>
+            <th>Overall Rank</th>
+            <th>Name</th>
+            <th>Team</th>
+            <th>Total Weighted Rank Score</th>
+            <th>Rows</th>
+            ${statHeaders}
+          </tr>
+        </thead>
+        <tbody>
+          ${results.map(person => `
+            <tr class="${person.overallRank === 1 ? "winner" : ""}">
+              <td>${rankBadge(person.overallRank)}</td>
+              <td>${escapeHtml(person.name)}</td>
+              <td>${escapeHtml(person.team)}</td>
+              <td><strong>${formatScore(person.totalWeightedRankScore)}</strong></td>
+              <td>${person.rowCount}</td>
+              ${customStats.map(stat => `
+                <td>${formatValue(person.statValues[stat.id])}</td>
+                <td>${formatVolumeUsed(person, stat)}</td>
+                <td>${rankBadge(person.statRanks[stat.id])}</td>
+                <td>${formatScore(person.weightedRanks[stat.id])}</td>
+              `).join("")}
+            </tr>
+          `).join("")}
+        </tbody>
+      `;
+    }
 
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+    function renderTeamResults(results) {
+      const table = document.getElementById("teamTable");
+      const summary = document.getElementById("teamSummary");
 
-  URL.revokeObjectURL(url);
-}
+      if (!results.length) {
+        table.innerHTML = `<tr><td>No team results found.</td></tr>`;
+        summary.innerHTML = "";
+        return;
+      }
 
-function csvEscape(value) {
-  const text = String(value || "");
+      const winner = results[0];
 
-  if (text.includes(",") || text.includes('"') || text.includes("\n")) {
-    return `"${text.replace(/"/g, '""')}"`;
-  }
+      summary.innerHTML = `
+        <div class="summary-card">
+          <h3>Overall Team Winner</h3>
+          <div class="big">${escapeHtml(winner.team)}</div>
+          <div class="sub">Score: ${formatScore(winner.totalWeightedRankScore)}</div>
+        </div>
 
-  return text;
-}
+        <div class="summary-card">
+          <h3>Team Members</h3>
+          <div class="big">${winner.memberCount}</div>
+          <div class="sub">${winner.rowCount} included rows</div>
+        </div>
 
-function escapeHTML(value) {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
+        <div class="summary-card">
+          <h3>Teams Ranked</h3>
+          <div class="big">${results.length}</div>
+          <div class="sub">Based on reps who passed filters</div>
+        </div>
+      `;
 
-function jsEscape(value) {
-  return String(value || "")
-    .replace(/\\/g, "\\\\")
-    .replace(/'/g, "\\'");
-}
+      const statHeaders = customStats.map(stat => `
+        <th>${escapeHtml(stat.name)} Avg Value</th>
+        <th>${escapeHtml(stat.name)} Team Rank</th>
+        <th>${escapeHtml(stat.name)} Weighted Rank</th>
+      `).join("");
 
+      table.innerHTML = `
+        <thead>
+          <tr>
+            <th>Overall Rank</th>
+            <th>Team</th>
+            <th>Total Weighted Rank Score</th>
+            <th>Members</th>
+            <th>Rows</th>
+            ${statHeaders}
+          </tr>
+        </thead>
+        <tbody>
+          ${results.map(team => `
+            <tr class="${team.overallRank === 1 ? "winner" : ""}">
+              <td>${rankBadge(team.overallRank)}</td>
+              <td>${escapeHtml(team.team)}</td>
+              <td><strong>${formatScore(team.totalWeightedRankScore)}</strong></td>
+              <td>${team.memberCount}</td>
+              <td>${team.rowCount}</td>
+              ${customStats.map(stat => `
+                <td>${formatValue(team.statValues[stat.id])}</td>
+                <td>${rankBadge(team.statRanks[stat.id])}</td>
+                <td>${formatScore(team.weightedRanks[stat.id])}</td>
+              `).join("")}
+            </tr>
+          `).join("")}
+        </tbody>
+      `;
+    }
 
-function renderCompareView() { const header = document.getElementById("outputTableHeader"); const tbody = document.querySelector("#outputTable tbody"); header.innerHTML = `<th>Compare Files</th>`; tbody.innerHTML = `<tr><td><div class="compare-wrap"><div class="notice">Upload a second file to compare its format and names against the currently loaded file.</div>${lastBlueprintLoadSummary ? `<div class="notice compare-warning">Last blueprint load (${new Date(lastBlueprintLoadSummary.loadedAt).toLocaleString()}): Directors ${lastBlueprintLoadSummary.directorCount}, Managers ${lastBlueprintLoadSummary.managerCount}, Coaches ${lastBlueprintLoadSummary.coachCount}, Missing ${lastBlueprintLoadSummary.missing.length}.</div>` : ""}<div class="compare-grid"><div class="compare-card"><h3>Current File</h3><div id="currentFileSummary"></div></div><div class="compare-card"><h3>Comparison File</h3><input type="file" id="compareFileInput" accept=".xlsx,.xls,.csv" /><div id="compareFileSummary" class="small" style="margin-top:8px;">No comparison file loaded.</div></div></div><div id="compareResultsBox" style="margin-top:12px;"></div></div></td></tr>`; renderCurrentFileSummary(); const compareInput = document.getElementById("compareFileInput"); if (compareInput) compareInput.addEventListener("change", handleCompareFileUpload); if (compareResults) renderCompareResults(); }
-function handleCompareFileUpload(event) { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = function(e) { try { const data = new Uint8Array(e.target.result); const workbook = XLSX.read(data, { type: "array" }); const sheetName = workbook.SheetNames[0]; const sheet = workbook.Sheets[sheetName]; compareRawRows = XLSX.utils.sheet_to_json(sheet, { defval: "" }); if (!compareRawRows.length) { alert("No rows found in comparison file."); return; } setupCompareColumns(); processComparePeople(); compareResults = compareFiles(); renderCompareView(); setStatus(`Compared current file to ${file.name}`); } catch (error) { console.error(error); alert("There was an issue reading the comparison file."); } }; reader.readAsArrayBuffer(file); }
-function setupCompareColumns() { const headers = Object.keys(compareRawRows[0] || {}); compareColumns.first = findBestHeader(headers, possibleFirstNames); compareColumns.last = findBestHeader(headers, possibleLastNames); compareColumns.supervisor = findBestHeader(headers, possibleSupervisorNames); compareColumns.email = findBestHeader(headers, possibleEmailNames); }
-function processComparePeople() { comparePeople = []; compareRawRows.forEach((row, index) => { const first = row[compareColumns.first]; const last = row[compareColumns.last]; const name = makeDisplayName(first, last); if (!name) return; comparePeople.push({ id: `compare_person_${index}`, first: String(first || "").trim(), last: String(last || "").trim(), name, nameKey: normalizeName(name), email: String(row[compareColumns.email] || "").trim(), supervisorRaw: titleName(row[compareColumns.supervisor]), supervisorKey: normalizeName(row[compareColumns.supervisor]), raw: row }); }); comparePeople.sort((a, b) => a.name.localeCompare(b.name)); }
-function compareFiles() { const currentHeaders = Object.keys(rawRows[0] || {}); const compareHeaders = Object.keys(compareRawRows[0] || {}); const currentNormalizedHeaders = currentHeaders.map(normalizeHeader); const compareNormalizedHeaders = compareHeaders.map(normalizeHeader); const missingFromCompare = currentHeaders.filter(header => !compareNormalizedHeaders.includes(normalizeHeader(header))); const extraInCompare = compareHeaders.filter(header => !currentNormalizedHeaders.includes(normalizeHeader(header))); const sameHeaderOrder = currentHeaders.length === compareHeaders.length && currentHeaders.every((header, index) => normalizeHeader(header) === normalizeHeader(compareHeaders[index])); const requiredMappings = [{ label: "First Name", current: columns.first, compare: compareColumns.first }, { label: "Last Name", current: columns.last, compare: compareColumns.last }, { label: "Supervisor", current: columns.supervisor, compare: compareColumns.supervisor }, { label: "Username / Email", current: columns.email, compare: compareColumns.email }]; const currentNameKeys = new Set(people.map(p => p.nameKey)); const compareNameKeys = new Set(comparePeople.map(p => p.nameKey)); const matchedNames = people.filter(p => compareNameKeys.has(p.nameKey)); const missingNames = people.filter(p => !compareNameKeys.has(p.nameKey)); const newNames = comparePeople.filter(p => !currentNameKeys.has(p.nameKey)); const supervisorDifferences = []; matchedNames.forEach(currentPerson => { const comparePerson = comparePeople.find(p => p.nameKey === currentPerson.nameKey); if (!comparePerson) return; if (currentPerson.supervisorKey !== comparePerson.supervisorKey) supervisorDifferences.push({ name: currentPerson.name, currentSupervisor: currentPerson.supervisorRaw || "", compareSupervisor: comparePerson.supervisorRaw || "" }); }); return { currentHeaders, compareHeaders, sameHeaderOrder, missingFromCompare, extraInCompare, requiredMappings, currentCount: people.length, compareCount: comparePeople.length, matchedNames, missingNames, newNames, supervisorDifferences }; }
-function renderCurrentFileSummary() { const box = document.getElementById("currentFileSummary"); if (!box) return; if (!rawRows.length) { box.innerHTML = `<div class="notice">No current file loaded.</div>`; return; } box.innerHTML = `<div><strong>Rows:</strong> ${rawRows.length.toLocaleString()}</div><div><strong>People:</strong> ${people.length.toLocaleString()}</div><div><strong>First:</strong> ${escapeHTML(columns.first || "—")}</div><div><strong>Last:</strong> ${escapeHTML(columns.last || "—")}</div><div><strong>Supervisor:</strong> ${escapeHTML(columns.supervisor || "—")}</div><div><strong>Email:</strong> ${escapeHTML(columns.email || "—")}</div>`; }
-function renderCompareResults() { const box = document.getElementById("compareResultsBox"); const summaryBox = document.getElementById("compareFileSummary"); if (!box || !compareResults) return; if (summaryBox) summaryBox.innerHTML = `Rows: ${compareRawRows.length.toLocaleString()}<br>People: ${comparePeople.length.toLocaleString()}<br>First: ${escapeHTML(compareColumns.first || "—")}<br>Last: ${escapeHTML(compareColumns.last || "—")}<br>Supervisor: ${escapeHTML(compareColumns.supervisor || "—")}<br>Email: ${escapeHTML(compareColumns.email || "—")}`; const formatClass = compareResults.missingFromCompare.length === 0 && compareResults.extraInCompare.length === 0 ? "compare-good" : "compare-warning"; const orderText = compareResults.sameHeaderOrder ? "Headers match in the same order." : "Headers do not perfectly match in the same order."; box.innerHTML = `<div class="compare-section"><h3>Format Equivalency Summary</h3><div class="notice ${formatClass}"><strong>${orderText}</strong><br>Missing columns in comparison file: ${compareResults.missingFromCompare.length}<br>Extra columns in comparison file: ${compareResults.extraInCompare.length}</div>${renderRequiredMappingTable()}${renderHeaderComparisonTable()}</div><div class="compare-section"><h3>Name Match Summary</h3><div class="notice ${compareResults.missingNames.length === 0 ? "compare-good" : "compare-warning"}">Current people: ${compareResults.currentCount}<br>Comparison people: ${compareResults.compareCount}<br>Matched names: ${compareResults.matchedNames.length}<br>Missing from comparison file: ${compareResults.missingNames.length}<br>New names in comparison file: ${compareResults.newNames.length}</div>${renderNameDifferenceTable()}</div><div class="compare-section"><h3>Supervisor / Row Relationship Differences</h3><div class="notice ${compareResults.supervisorDifferences.length === 0 ? "compare-good" : "compare-warning"}">Supervisor differences found: ${compareResults.supervisorDifferences.length}</div>${renderSupervisorDifferenceTable()}</div>`; }
-function renderRequiredMappingTable() { return `<table><thead><tr><th>Required Field</th><th>Current File Column</th><th>Comparison File Column</th><th>Status</th></tr></thead><tbody>${compareResults.requiredMappings.map(item => { const same = normalizeHeader(item.current) === normalizeHeader(item.compare); return `<tr><td>${escapeHTML(item.label)}</td><td>${escapeHTML(item.current || "—")}</td><td>${escapeHTML(item.compare || "—")}</td><td class="${same ? "match-cell" : "partial-cell"}">${same ? "Equivalent" : "Different column name / mapping"}</td></tr>`; }).join("")}</tbody></table>`; }
-function renderHeaderComparisonTable() { const max = Math.max(compareResults.currentHeaders.length, compareResults.compareHeaders.length); let rows = ""; for (let i = 0; i < max; i++) { const currentHeader = compareResults.currentHeaders[i] || ""; const compareHeader = compareResults.compareHeaders[i] || ""; const same = normalizeHeader(currentHeader) === normalizeHeader(compareHeader); rows += `<tr><td>${i + 1}</td><td class="${same ? "match-cell" : "diff-cell"}">${escapeHTML(currentHeader || "—")}</td><td class="${same ? "match-cell" : "diff-cell"}">${escapeHTML(compareHeader || "—")}</td><td>${same ? "Same position" : "Different"}</td></tr>`; } return `<table><thead><tr><th>#</th><th>Current Header</th><th>Comparison Header</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`; }
-function renderNameDifferenceTable() { const missing = compareResults.missingNames.slice(0, 150); const added = compareResults.newNames.slice(0, 150); return `<table><thead><tr><th>Difference Type</th><th>Name</th><th>Supervisor</th><th>Email</th></tr></thead><tbody>${missing.map(p => `<tr><td class="diff-cell">Missing from comparison</td><td>${escapeHTML(p.name)}</td><td>${escapeHTML(p.supervisorRaw || "—")}</td><td>${escapeHTML(p.email || "—")}</td></tr>`).join("")}${added.map(p => `<tr><td class="partial-cell">New in comparison</td><td>${escapeHTML(p.name)}</td><td>${escapeHTML(p.supervisorRaw || "—")}</td><td>${escapeHTML(p.email || "—")}</td></tr>`).join("")}</tbody></table>`; }
-function renderSupervisorDifferenceTable() { if (!compareResults.supervisorDifferences.length) return `<div class="notice compare-good">No supervisor differences found for matched names.</div>`; return `<table><thead><tr><th>Name</th><th>Current Supervisor</th><th>Comparison Supervisor</th></tr></thead><tbody>${compareResults.supervisorDifferences.slice(0, 200).map(item => `<tr><td>${escapeHTML(item.name)}</td><td class="diff-cell">${escapeHTML(item.currentSupervisor || "—")}</td><td class="diff-cell">${escapeHTML(item.compareSupervisor || "—")}</td></tr>`).join("")}</tbody></table>`; }
+    function exportResults(type) {
+      const rows = type === "rep" ? repResults : teamResults;
 
-function setStatus(text) {
-  document.getElementById("statusPill").textContent = text;
-}
+      if (!rows.length) {
+        showError(`No ${type} results to export.`);
+        return;
+      }
 
-renderAll();
-</script>
+      let headersOut = [];
 
+      if (type === "rep") {
+        headersOut = ["Overall Rank", "Name", "Team", "Total Weighted Rank Score", "Rows"];
+      } else {
+        headersOut = ["Overall Rank", "Team", "Total Weighted Rank Score", "Members", "Rows"];
+      }
+
+      customStats.forEach(stat => {
+        headersOut.push(`${stat.name} Value`);
+
+        if (type === "rep") {
+          headersOut.push(`${stat.name} Volume Used`);
+        }
+
+        headersOut.push(`${stat.name} Rank`);
+        headersOut.push(`${stat.name} Weighted Rank`);
+      });
+
+      const data = rows.map(item => {
+        let row;
+
+        if (type === "rep") {
+          row = [
+            item.overallRank,
+            item.name,
+            item.team,
+            formatScore(item.totalWeightedRankScore),
+            item.rowCount
+          ];
+        } else {
+          row = [
+            item.overallRank,
+            item.team,
+            formatScore(item.totalWeightedRankScore),
+            item.memberCount,
+            item.rowCount
+          ];
+        }
+
+        customStats.forEach(stat => {
+          row.push(formatValue(item.statValues[stat.id]));
+
+          if (type === "rep") {
+            row.push(formatVolumeUsed(item, stat));
+          }
+
+          row.push(item.statRanks[stat.id]);
+          row.push(formatScore(item.weightedRanks[stat.id]));
+        });
+
+        return row;
+      });
+
+      const csv = Papa.unparse([headersOut, ...data]);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = type === "rep"
+        ? "representative-custom-rankings.csv"
+        : "team-custom-rankings.csv";
+
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      URL.revokeObjectURL(url);
+    }
+
+    function renderPreview() {
+      const table = document.getElementById("previewTable");
+      const previewRows = rawRows.slice(0, 20);
+      const allHeaders = getAllAvailableHeaders();
+
+      table.innerHTML = `
+        <thead>
+          <tr>
+            ${allHeaders.map(h => `<th>${escapeHtml(h)}</th>`).join("")}
+          </tr>
+        </thead>
+        <tbody>
+          ${previewRows.map(row => `
+            <tr>
+              ${allHeaders.map(h => `<td>${escapeHtml(row[h])}</td>`).join("")}
+            </tr>
+          `).join("")}
+        </tbody>
+      `;
+    }
+
+    function assignOverallRanks(items, rankKey, scoreKey) {
+      let lastScore = null;
+      let currentRank = 0;
+
+      items.forEach((item, index) => {
+        if (lastScore === null || item[scoreKey] !== lastScore) {
+          currentRank = index + 1;
+          lastScore = item[scoreKey];
+        }
+
+        item[rankKey] = currentRank;
+      });
+    }
+
+    function averagePerformanceTieBreaker(item) {
+      const values = customStats
+        .map(stat => item.statValues[stat.id])
+        .filter(isFiniteNumber);
+
+      if (!values.length) return -Infinity;
+
+      return values.reduce((a, b) => a + b, 0) / values.length;
+    }
+
+    function parseNumber(value) {
+      if (value === null || value === undefined) return 0;
+
+      let cleaned = String(value)
+        .replace(/,/g, "")
+        .replace(/%/g, "")
+        .replace(/\$/g, "")
+        .trim();
+
+      if (cleaned === "") return 0;
+
+      const n = Number(cleaned);
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    function parsePossiblePercent(value) {
+      if (value === null || value === undefined) return null;
+
+      let raw = String(value).trim();
+
+      if (raw === "") return null;
+
+      const hasPercent = raw.includes("%");
+
+      raw = raw
+        .replace(/,/g, "")
+        .replace(/%/g, "")
+        .replace(/\$/g, "")
+        .trim();
+
+      const n = Number(raw);
+
+      if (!Number.isFinite(n)) return null;
+
+      if (hasPercent) return n / 100;
+
+      if (n > 1 && n <= 100) return n / 100;
+
+      return n;
+    }
+
+    function safeRate(numerator, denominator) {
+      numerator = Number(numerator) || 0;
+      denominator = Number(denominator) || 0;
+
+      if (denominator <= 0) return null;
+      return numerator / denominator;
+    }
+
+    function averageValid(values) {
+      const valid = values.filter(isFiniteNumber);
+      if (!valid.length) return null;
+      return valid.reduce((a, b) => a + b, 0) / valid.length;
+    }
+
+    function formatVolumeUsed(person, stat) {
+      const checks = person.statVolumeChecks?.[stat.id];
+
+      if (!checks) return "N/A";
+
+      if (stat.minColumnMode === "denominator") {
+        return checks.denominator;
+      }
+
+      if (stat.minColumnMode === "numerator") {
+        return checks.numerator;
+      }
+
+      if (stat.minColumnMode === "rows") {
+        return checks.rows;
+      }
+
+      if (stat.type === "ratio") {
+        return `Num: ${checks.numerator} / Den: ${checks.denominator}`;
+      }
+
+      return checks.rows;
+    }
+
+    function isFiniteNumber(value) {
+      return typeof value === "number" && Number.isFinite(value);
+    }
+
+    function cleanText(value) {
+      return String(value || "").trim();
+    }
+
+    function parseInputDate(value) {
+      if (!value) return null;
+
+      const parts = value.split("-");
+      if (parts.length !== 3) return null;
+
+      const year = Number(parts[0]);
+      const month = Number(parts[1]) - 1;
+      const day = Number(parts[2]);
+
+      return new Date(year, month, day);
+    }
+
+    function parseFlexibleDate(value) {
+      if (!value) return null;
+
+      const raw = String(value).trim();
+      if (!raw) return null;
+
+      let match = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if (match) {
+        return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+      }
+
+      match = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+      if (match) {
+        let year = Number(match[3]);
+        if (year < 100) year += 2000;
+        return new Date(year, Number(match[1]) - 1, Number(match[2]));
+      }
+
+      match = raw.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})/);
+      if (match) {
+        let year = Number(match[3]);
+        if (year < 100) year += 2000;
+        return new Date(year, Number(match[1]) - 1, Number(match[2]));
+      }
+
+      const parsed = new Date(raw);
+      if (!isNaN(parsed.getTime())) {
+        return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+      }
+
+      return null;
+    }
+
+    function formatValue(value) {
+      if (!isFiniteNumber(value)) return "N/A";
+
+      if (Math.abs(value) <= 1) {
+        return `${(value * 100).toFixed(2)}%`;
+      }
+
+      return value.toFixed(2);
+    }
+
+    function formatScore(value) {
+      if (!isFiniteNumber(value)) return "N/A";
+      return Number.isInteger(value) ? String(value) : value.toFixed(2);
+    }
+
+    function rankBadge(rank) {
+      let cls = "rank-badge";
+
+      if (rank === 1) cls += " rank-1";
+      else if (rank === 2) cls += " rank-2";
+      else if (rank === 3) cls += " rank-3";
+
+      return `<span class="${cls}">#${rank}</span>`;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function showError(message) {
+      document.getElementById("errorBox").textContent = message;
+    }
+
+    function clearError() {
+      document.getElementById("errorBox").textContent = "";
+    }
+
+    renderSavedStats();
+    renderCombinedColumnsList();
+    toggleStatType();
+    toggleDateControls();
+    toggleTeamControls();
+  </script>
 </body>
 </html>
