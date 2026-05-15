@@ -351,6 +351,22 @@
         <span class="spacer"></span>
         <span class="mono hint" id="scopeHint">—</span>
       </div>
+      <div class="row" style="margin-top:10px">
+        <div class="subTitle" style="margin:0">Settings Save / Load</div>
+        <button id="saveSettingsLocalBtn">Save Settings Locally</button>
+        <button id="loadSettingsLocalBtn">Load Settings Locally</button>
+        <button id="revertDefaultsBtn">Revert to Default Settings</button>
+        <button id="exportSettingsBtn">Export Settings JSON</button>
+        <label>Import Settings JSON <input id="importSettingsFile" type="file" accept=".json"></label>
+        <button id="addDefaultItemsBtn">Add Default Ranking Items</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div class="subTitle" style="margin:0">Sort Rankings By</div>
+        <label><input id="sortEnabledChk" type="checkbox"> Use selected sort instead of default winner sort</label>
+        <label>Sort by <select id="primarySortSel"></select></label>
+        <label>Direction <select id="sortDirectionSel"><option value="bestFirst">Best first</option><option value="worstFirst">Worst first</option><option value="az">A to Z</option><option value="za">Z to A</option></select></label>
+      </div>
+      <div class="hint" id="settingsStatus">—</div>
 
       <details style="margin-top:10px">
         <summary>Data docks (localStorage)</summary>
@@ -576,7 +592,16 @@ let APP_NS = 'myone2';
 })();
 
 const PREF_KEY = `${APP_NS}.allstarreport.v2.prefs`;
+const SETTINGS_STORAGE_KEY = "customStackRankingBuilderSettings";
 const MS_PER_DAY = 86400000;
+const DEFAULT_RANKING_SETTINGS = {
+  pointSettings: { usePointScoring:false, statPoints:{ consumerRate:10,wiperRate:10,cqAvg:10,itacAvg:10 }, attendance:{ enabled:false,column:'',direction:'desc',maxPoints:0 } },
+  departmentMinimums: { departmentColumn:'', retailStat:'', retailMinimum:0, referralStat:'', referralMinimum:0 },
+  correctiveSettings: { column:'', values:['red','corrective red','yes','1','true'], customValue:'', includeInTeamAverages:false },
+  manualTeamAssignments: {},
+  extraAgentNames: [],
+  sortSettings: { enabled:false, primarySort:'overallScore', direction:'bestFirst' }
+};
 
 const els = {
   startDate: document.getElementById('startDate'),
@@ -625,6 +650,16 @@ const els = {
   correctiveCustomValue: document.getElementById('correctiveCustomValue'),
   includeCorrectiveAvg: document.getElementById('includeCorrectiveAvg'),
   minimumExclusions: document.getElementById('minimumExclusions')
+  ,saveSettingsLocalBtn: document.getElementById('saveSettingsLocalBtn')
+  ,loadSettingsLocalBtn: document.getElementById('loadSettingsLocalBtn')
+  ,revertDefaultsBtn: document.getElementById('revertDefaultsBtn')
+  ,exportSettingsBtn: document.getElementById('exportSettingsBtn')
+  ,importSettingsFile: document.getElementById('importSettingsFile')
+  ,addDefaultItemsBtn: document.getElementById('addDefaultItemsBtn')
+  ,settingsStatus: document.getElementById('settingsStatus')
+  ,sortEnabledChk: document.getElementById('sortEnabledChk')
+  ,primarySortSel: document.getElementById('primarySortSel')
+  ,sortDirectionSel: document.getElementById('sortDirectionSel')
 };
 
 let activeTab = 'retail';
@@ -651,6 +686,7 @@ let pointSettings = { usePointScoring:false, statPoints:{ consumerRate:10,wiperR
 let departmentMinimums = { departmentColumn:'', retailStat:'', retailMinimum:0, referralStat:'', referralMinimum:0 };
 let correctiveSettings = { column:'', values:['red','corrective red','yes','1','true'], customValue:'', includeInTeamAverages:false };
 let minimumExclusions = [];
+let sortSettings = { enabled:false, primarySort:'overallScore', direction:'bestFirst' };
 
 function esc(s){
   return String(s ?? '')
@@ -1289,8 +1325,65 @@ function closePointSettingsModal(){ els.pointSettingsModalBackdrop.classList.rem
 function calculateRankPoints(rank, rankedCount, maxPoints){ if(!Number.isFinite(rank)||!Number.isFinite(rankedCount)||rank<1||rankedCount<1) return 0; const p=maxPoints-rank+1; return Math.max(0, Math.min(maxPoints, p)); }
 function renderPointSettingsModal(){ els.pointSettingsModalBody.innerHTML=`<label><input id="usePointScoringChk" type="checkbox" ${pointSettings.usePointScoring?'checked':''}> Use Point Scoring Instead of Weighted Rank Score</label><div class="row" style="margin-top:8px"><label>Consumer points <input id="psConsumer" type="number" value="${pointSettings.statPoints.consumerRate||0}"></label><label>Wiper points <input id="psWiper" type="number" value="${pointSettings.statPoints.wiperRate||0}"></label><label>CQ points <input id="psCQ" type="number" value="${pointSettings.statPoints.cqAvg||0}"></label><label>ITAC points <input id="psITAC" type="number" value="${pointSettings.statPoints.itacAvg||0}"></label></div><div class="row" style="margin-top:8px"><label><input id="attendanceEnabled" type="checkbox" ${pointSettings.attendance.enabled?'checked':''}> Attendance enabled</label><label>Attendance max points <input id="attendanceMax" type="number" value="${pointSettings.attendance.maxPoints||0}"></label></div>`; }
 function savePointSettings(){ pointSettings.usePointScoring=!!document.getElementById('usePointScoringChk')?.checked; pointSettings.statPoints.consumerRate=toNumRaw(document.getElementById('psConsumer')?.value)||0; pointSettings.statPoints.wiperRate=toNumRaw(document.getElementById('psWiper')?.value)||0; pointSettings.statPoints.cqAvg=toNumRaw(document.getElementById('psCQ')?.value)||0; pointSettings.statPoints.itacAvg=toNumRaw(document.getElementById('psITAC')?.value)||0; pointSettings.attendance.enabled=!!document.getElementById('attendanceEnabled')?.checked; pointSettings.attendance.maxPoints=toNumRaw(document.getElementById('attendanceMax')?.value)||0; closePointSettingsModal(); renderAll(); }
+function getDefaultRankingSettings(){ return JSON.parse(JSON.stringify(DEFAULT_RANKING_SETTINGS)); }
+function collectCurrentRankingSettings(){
+  return { pointSettings, departmentMinimums, correctiveSettings, manualTeamAssignments, extraAgentNames, sortSettings };
+}
+function migrateSettings(settings){
+  const merged = { ...getDefaultRankingSettings(), ...(settings||{}) };
+  merged.pointSettings = { ...getDefaultRankingSettings().pointSettings, ...(settings?.pointSettings||{}) };
+  merged.pointSettings.attendance = { ...getDefaultRankingSettings().pointSettings.attendance, ...(settings?.pointSettings?.attendance||{}) };
+  merged.departmentMinimums = { ...getDefaultRankingSettings().departmentMinimums, ...(settings?.departmentMinimums||{}) };
+  merged.correctiveSettings = { ...getDefaultRankingSettings().correctiveSettings, ...(settings?.correctiveSettings||{}) };
+  merged.sortSettings = { ...getDefaultRankingSettings().sortSettings, ...(settings?.sortSettings||{}) };
+  return merged;
+}
+function applyRankingSettings(settings){
+  const m = migrateSettings(settings);
+  pointSettings = m.pointSettings; departmentMinimums = m.departmentMinimums; correctiveSettings = m.correctiveSettings;
+  manualTeamAssignments = m.manualTeamAssignments || {}; extraAgentNames = Array.isArray(m.extraAgentNames) ? m.extraAgentNames : [];
+  sortSettings = m.sortSettings;
+  els.departmentColumnSel.value = departmentMinimums.departmentColumn || '';
+  els.retailMinimumStat.value = departmentMinimums.retailStat || '';
+  els.retailMinimumVal.value = departmentMinimums.retailMinimum || 0;
+  els.referralMinimumStat.value = departmentMinimums.referralStat || '';
+  els.referralMinimumVal.value = departmentMinimums.referralMinimum || 0;
+  els.correctiveColumnSel.value = correctiveSettings.column || '';
+  els.correctiveCustomValue.value = correctiveSettings.customValue || '';
+  els.includeCorrectiveAvg.checked = !!correctiveSettings.includeInTeamAverages;
+  els.sortEnabledChk.checked = !!sortSettings.enabled;
+  els.primarySortSel.value = sortSettings.primarySort || 'overallScore';
+  els.sortDirectionSel.value = sortSettings.direction || 'bestFirst';
+}
+function validateSettingsAgainstHeaders(settings){
+  const headers = new Set(getAllAvailableHeaders());
+  const missing = [];
+  const cols = [settings?.departmentMinimums?.departmentColumn, settings?.departmentMinimums?.retailStat, settings?.departmentMinimums?.referralStat, settings?.correctiveSettings?.column];
+  cols.filter(Boolean).forEach(c=>{ if(!headers.has(c)) missing.push(c); });
+  return missing;
+}
+function saveSettingsLocal(){ localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(collectCurrentRankingSettings())); els.settingsStatus.textContent='Settings saved locally.'; }
+function loadSettingsLocal(){ const raw=localStorage.getItem(SETTINGS_STORAGE_KEY); if(!raw) return; const s=JSON.parse(raw); applyRankingSettings(s); const missing=validateSettingsAgainstHeaders(s); els.settingsStatus.textContent = missing.length ? `Loaded. Missing columns: ${missing.join(', ')}` : 'Loaded settings locally.'; renderAll(); }
+function exportSettingsJson(){ const blob=new Blob([JSON.stringify(collectCurrentRankingSettings(), null, 2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='ranking-settings.json'; a.click(); URL.revokeObjectURL(a.href); }
+function importSettingsJson(file){ if(!file) return; const fr=new FileReader(); fr.onload=()=>{ try{ const s=JSON.parse(String(fr.result||'{}')); applyRankingSettings(s); renderAll(); els.settingsStatus.textContent='Imported settings JSON.'; }catch(e){ els.settingsStatus.textContent='Failed to import settings JSON.'; } }; fr.readAsText(file); }
+function revertToDefaultSettings(){ applyRankingSettings(getDefaultRankingSettings()); els.settingsStatus.textContent='Reverted to default settings.'; renderAll(); }
+function addDefaultRankingItems(){ els.settingsStatus.textContent='Default ranking package is built into this report\'s core metrics (Consumer/Wiper/CQ/ITAC).'; }
 function renderAgentSearchMatches(){ const q=String(els.agentSearchInput.value||'').toLowerCase().trim(); const names=Array.from(new Set([...retailRows.map(r=>r.Name),...referralRows.map(r=>r.Name),...extraAgentNames].filter(Boolean))); const matches=names.filter(n=>!q||n.toLowerCase().includes(q)).slice(0,30); els.agentSearchMatches.innerHTML=matches.map(n=>`<button data-add-agent="${esc(n)}">Add ${esc(n)}</button>`).join('')||'<span class="hint">No matches</span>'; els.agentSearchMatches.querySelectorAll('[data-add-agent]').forEach(b=>b.onclick=()=>addManualAgentToTeam(b.getAttribute('data-add-agent'), els.manualAssignTeam.value)); }
 function renderManualAssignments(){ const items=Object.entries(manualTeamAssignments); els.manualAssignmentsList.innerHTML=items.map(([k,v])=>`<span class="pill">${esc(k)} → ${esc(v)} <button data-rm-agent="${esc(k)}">✕</button></span>`).join('')||'<span class="hint">No manual assignments yet.</span>'; els.manualAssignmentsList.querySelectorAll('[data-rm-agent]').forEach(b=>b.onclick=()=>removeManualAgentAssignment(b.getAttribute('data-rm-agent'))); }
+function sortResults(results, context){
+  if(!sortSettings.enabled) return results;
+  const dir = sortSettings.direction;
+  const mul = dir === 'worstFirst' || dir === 'za' ? -1 : 1;
+  return results.slice().sort((a,b)=>{
+    const key = sortSettings.primarySort || 'overallScore';
+    let av = a[key], bv = b[key];
+    if(key === 'name') { av = String(a.name||''); bv = String(b.name||''); return mul * av.localeCompare(bv); }
+    if(key === 'team') { av = String(a.teamName||a.name||''); bv = String(b.teamName||b.name||''); return mul * av.localeCompare(bv); }
+    av = Number.isFinite(av) ? av : Infinity; bv = Number.isFinite(bv) ? bv : Infinity;
+    if(av !== bv) return (av - bv) * mul;
+    return String(a.name||'').localeCompare(String(b.name||''));
+  });
+}
 
 function buildSectionData(rows, fieldMap, type){
   const { sd, ed } = getWindow();
@@ -1301,7 +1394,7 @@ function buildSectionData(rows, fieldMap, type){
   const correctiveWindow = checklistRows.filter(r => inRange(r.dateServed, sd, ed) && isCorrectiveHit(r));
 
   const teamNames = Array.from(new Set(statRows.map(r => String(r.Team||'').trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
-  const teams = [];
+  let teams = [];
 
   for(const teamName of teamNames){
     const teamRows = statRows.filter(r => String(r.Team||'').trim() === teamName);
@@ -1412,7 +1505,8 @@ function buildSectionData(rows, fieldMap, type){
     }
   }
 
-  teams.sort((a,b)=>{
+  teams = sortResults(teams, { level:'team', type });
+  if(!sortSettings.enabled) teams.sort((a,b)=>{
     const av = a.overallScore, bv = b.overallScore;
     const aBad = !Number.isFinite(av), bBad = !Number.isFinite(bv);
     if(aBad && bBad) return a.name.localeCompare(b.name);
@@ -1466,7 +1560,8 @@ function buildSectionData(rows, fieldMap, type){
         r.overallScore = -r.totalPoints;
       }
     }
-    team.reps.sort((a,b)=>{
+    team.reps = sortResults(team.reps, { level:'rep', type });
+    if(!sortSettings.enabled) team.reps.sort((a,b)=>{
       if(a.hasCorrectiveRed!==b.hasCorrectiveRed) return a.hasCorrectiveRed?1:-1;
       const av = a.overallScore, bv = b.overallScore;
       const aBad = !Number.isFinite(av), bBad = !Number.isFinite(bv);
@@ -1911,6 +2006,7 @@ function fullLoad(){
   const teams=getAvailableTeams(); els.manualAssignTeam.innerHTML=teams.map(t=>`<option>${esc(t)}</option>`).join('');
   const headers=getAllAvailableHeaders(); const opts=['<option value=>(none)</option>'].concat(headers.map(h=>`<option>${esc(h)}</option>`)).join('');
   els.departmentColumnSel.innerHTML=opts; els.retailMinimumStat.innerHTML=opts; els.referralMinimumStat.innerHTML=opts; els.correctiveColumnSel.innerHTML=opts;
+  els.primarySortSel.innerHTML = ['overallScore','totalPoints','attendanceHits','name','team'].map(v=>`<option value="${v}">${v}</option>`).join('');
   renderAgentSearchMatches(); renderManualAssignments();
   savePrefs();
   setActiveTab(activeTab);
@@ -1970,10 +2066,20 @@ loadPrefs();
 populateDockSelects();
 setActiveTab(activeTab);
 fullLoad();
+loadSettingsLocal();
 
 els.openPointSettingsBtn.addEventListener('click', openPointSettingsModal);
 els.closePointSettingsBtn.addEventListener('click', closePointSettingsModal);
 els.savePointSettingsBtn.addEventListener('click', savePointSettings);
+els.saveSettingsLocalBtn.addEventListener('click', saveSettingsLocal);
+els.loadSettingsLocalBtn.addEventListener('click', loadSettingsLocal);
+els.revertDefaultsBtn.addEventListener('click', revertToDefaultSettings);
+els.exportSettingsBtn.addEventListener('click', exportSettingsJson);
+els.addDefaultItemsBtn.addEventListener('click', addDefaultRankingItems);
+els.importSettingsFile.addEventListener('change', (e)=>importSettingsJson(e.target.files?.[0]));
+els.sortEnabledChk.addEventListener('change', ()=>{ sortSettings.enabled=!!els.sortEnabledChk.checked; renderAll(); });
+els.primarySortSel.addEventListener('change', ()=>{ sortSettings.primarySort=els.primarySortSel.value||'overallScore'; renderAll(); });
+els.sortDirectionSel.addEventListener('change', ()=>{ sortSettings.direction=els.sortDirectionSel.value||'bestFirst'; renderAll(); });
 els.agentSearchInput.addEventListener('input', renderAgentSearchMatches);
 els.extraAgentFile.addEventListener('change', async (e)=>{ const f=e.target.files&&e.target.files[0]; if(!f){extraAgentNames=[];return;} const txt=await f.text(); const lines=txt.split(/\r?\n/).filter(Boolean); const headers=(lines[0]||'').split(','); els.extraAgentNameColumn.innerHTML=headers.map(h=>`<option>${esc(h)}</option>`).join(''); const idx=headers.indexOf(els.extraAgentNameColumn.value||headers[0]); extraAgentNames=lines.slice(1).map(l=>l.split(',')[idx]).map(v=>displayNameFromRaw(v)).filter(Boolean); els.extraAgentHint.textContent=`Loaded ${extraAgentNames.length} extra names.`; renderAgentSearchMatches(); });
 els.extraAgentNameColumn.addEventListener('change', ()=>els.extraAgentFile.dispatchEvent(new Event('change')));
