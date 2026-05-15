@@ -409,6 +409,51 @@
       opacity: 0.45;
       pointer-events: none;
     }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(17, 24, 39, 0.55);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+
+    .modal-backdrop.open {
+      display: flex;
+    }
+
+    .modal {
+      background: white;
+      width: min(900px, 95vw);
+      max-height: 85vh;
+      overflow: auto;
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+    }
+
+    .corrective-red-name {
+      color: #dc2626;
+      font-weight: 900;
+      background: #fee2e2;
+      padding: 3px 7px;
+      border-radius: 999px;
+      display: inline-block;
+    }
+
+    .not-eligible-row td {
+      background: #fff1f2 !important;
+    }
+
+    .section-divider-row td {
+      background: #111827 !important;
+      color: white;
+      font-weight: bold;
+      font-size: 14px;
+    }
+
   </style>
 </head>
 
@@ -542,6 +587,24 @@
         <div id="combinedColumnsList" class="stat-list"></div>
       </div>
     </div>
+
+
+    <div id="agentPanel" class="panel hidden">
+      <h2>Agent Search / Manual Team Assignment</h2>
+      <div class="grid">
+        <div><label for="agentAssignTeam">Select Team</label><select id="agentAssignTeam"></select></div>
+        <div><label for="agentSearchInput">Search Representative</label><input id="agentSearchInput" oninput="renderAgentSearchMatches()" placeholder="Search by partial name" /></div>
+        <div><label>&nbsp;</label><button onclick="openPointSettingsModal()">Update Point Totals</button></div>
+      </div>
+      <div id="agentSearchMatches" class="stat-list"></div>
+      <div><h3>Manual Assignments</h3><div id="manualAssignmentsList" class="stat-list"></div></div>
+      <div style="margin-top:10px;"><h3>Upload Missing Agent CSV</h3><div class="grid"><div><label for="missingAgentCsv">Missing Agent CSV</label><input id="missingAgentCsv" type="file" accept=".csv"/></div><div><label for="missingAgentNameColumn">Name Column</label><select id="missingAgentNameColumn"></select></div><div><label>&nbsp;</label><button class="secondary" onclick="applyMissingAgentNames()">Add Missing Names</button></div></div></div>
+      <div style="margin-top:10px;"><h3>Set Minimums</h3><div class="grid"><div><label for="departmentColumn">Department/Type Column</label><select id="departmentColumn"></select></div><div><label for="retailMinStat">Retail Minimum Stat</label><select id="retailMinStat"></select></div><div><label for="retailMinValue">Retail Minimum Value</label><input id="retailMinValue" type="number" value="0"/></div><div><label for="referralMinStat">Referral Minimum Stat</label><select id="referralMinStat"></select></div><div><label for="referralMinValue">Referral Minimum Value</label><input id="referralMinValue" type="number" value="0"/></div></div></div>
+      <div style="margin-top:10px;"><h3>Corrective Red Settings</h3><div class="grid"><div><label for="correctiveColumn">Corrective Red Column</label><select id="correctiveColumn"></select></div><div><label for="correctiveValue">Corrective Red Value</label><select id="correctiveValue"><option>Red</option><option>Corrective Red</option><option>Yes</option><option>1</option><option>True</option></select></div><div><label for="correctiveCustomValue">Custom Value</label><input id="correctiveCustomValue" placeholder="optional custom text"/></div><div class="checkbox-card"><div class="checkbox-line"><input type="checkbox" id="includeCorrectiveInAverages"/><span>Include corrective red reps in team averages</span></div></div></div></div>
+      <div id="minimumExclusionWrap"></div>
+    </div>
+
+    <div id="pointSettingsModal" class="modal-backdrop"><div class="modal"><h3>Point Settings</h3><div class="checkbox-line"><input type="checkbox" id="usePointScoring"/><span>Use Point Scoring Instead of Weighted Rank Score</span></div><div id="pointSettingsRows"></div><div class="export-row"><button class="green" onclick="savePointSettings()">Save</button><button class="secondary" onclick="closePointSettingsModal()">Close</button></div></div></div>
 
     <div id="statPanel" class="panel hidden">
       <h2>3. Build Custom Stats</h2>
@@ -681,8 +744,19 @@
     let customStats = [];
     let repResults = [];
     let teamResults = [];
+    let manualTeamAssignments = {};
+    let extraAgentNames = [];
+    let pointSettings = { usePointScoring: false, statPoints: {}, attendance: { enabled: false, column: "", direction: "desc", maxPoints: 0 } };
+    let departmentMinimums = { departmentColumn: "", retailStat: "", retailMinimum: 0, referralStat: "", referralMinimum: 0 };
+    let correctiveSettings = { column: "", values: ["red","corrective red","yes","1","true"], customValue: "", includeInTeamAverages: false };
+    let minimumExclusions = [];
+    let missingAgentCsvRows = [];
+    let missingAgentCsvHeaders = [];
+
 
     document.getElementById("csvFile").addEventListener("change", handleFileUpload);
+    document.getElementById("missingAgentCsv").addEventListener("change", handleMissingAgentCsvUpload);
+
 
     function handleFileUpload() {
       clearError();
@@ -725,6 +799,8 @@
           document.getElementById("statPanel").classList.remove("hidden");
           document.getElementById("actionPanel").classList.remove("hidden");
           document.getElementById("previewPanel").classList.remove("hidden");
+          document.getElementById("agentPanel").classList.remove("hidden");
+          populateAgentControls();
 
           toggleDateControls();
           toggleTeamControls();
@@ -1234,7 +1310,13 @@
       let people = Object.values(byName).map(person => {
         const output = {
           name: person.name,
-          team: person.team || "No Team",
+          team: getTeamForRep(person.name, person.team),
+          manualAssignedTeam: manualTeamAssignments[normalizeName(person.name)] || "",
+          hasCorrectiveRed: false,
+          eligibilityStatus: "Eligible",
+          totalPoints: 0,
+          attendanceValue: null,
+          attendancePoints: 0,
           rowCount: person.rowCount,
           totalWeightedRankScore: 0,
           statValues: {},
@@ -1269,6 +1351,7 @@
       });
 
       people = people.filter(person => passesMinimumFilters(person));
+      people.forEach(p=>{p.hasCorrectiveRed = rows.some(r=>normalizeName(r[nameColumn])===normalizeName(p.name) && isCorrectiveRedValue(r[correctiveSettings.column])); if(p.hasCorrectiveRed) p.eligibilityStatus="Corrective Red - Not Eligible";});
 
       customStats.forEach(stat => {
         applyStatRank(people, stat);
@@ -1296,7 +1379,7 @@
         return averagePerformanceTieBreaker(b) - averagePerformanceTieBreaker(a);
       });
 
-      assignOverallRanks(people, "overallRank", "totalWeightedRankScore");
+      assignEligibleRanks(people); if (pointSettings.usePointScoring) { applyPointScoring(people); }
 
       return people;
     }
@@ -1419,6 +1502,12 @@
 
       return teams;
     }
+
+
+    function isCorrectiveRedValue(value){ const v=normalizeName(value); const custom=normalizeName(document.getElementById('correctiveCustomValue')?.value||''); const values=[...correctiveSettings.values,custom].filter(Boolean); return values.includes(v); }
+    function splitEligibleAndCorrective(results){ return { eligiblePeople: results.filter(p=>!p.hasCorrectiveRed), correctivePeople: results.filter(p=>p.hasCorrectiveRed)}; }
+    function assignEligibleRanks(results){ const sp=splitEligibleAndCorrective(results); sp.eligiblePeople.sort((a,b)=>a.totalWeightedRankScore-b.totalWeightedRankScore); assignOverallRanks(sp.eligiblePeople,'overallRank','totalWeightedRankScore'); sp.correctivePeople.forEach(p=>p.overallRank='Not Eligible'); results.sort((a,b)=> (a.hasCorrectiveRed===b.hasCorrectiveRed)?(a.totalWeightedRankScore-b.totalWeightedRankScore):(a.hasCorrectiveRed?1:-1)); }
+    function applyPointScoring(people){ customStats.forEach(stat=>{ const ranked=[...people].filter(p=>!p.hasCorrectiveRed).sort((a,b)=>stat.direction==='desc'?b.statValues[stat.id]-a.statValues[stat.id]:a.statValues[stat.id]-b.statValues[stat.id]); ranked.forEach(p=>{ const pts=calculateRankPoints(p.statRanks[stat.id], ranked.length, Number(pointSettings.statPoints[stat.id]||0)); p.statPoints=p.statPoints||{}; p.statPoints[stat.id]=pts; p.totalPoints+=pts;});}); }
 
     function applyStatRank(items, stat) {
       const valid = items
@@ -1882,6 +1971,23 @@
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
     }
+
+
+    function normalizeName(value){ return cleanText(value).toLowerCase(); }
+    function getAvailableTeams(){ const set=new Set(["No Team"]); const teamColumn=document.getElementById("teamColumn").value; rawRows.forEach(r=>{const t=cleanText(r[teamColumn]); if(t) set.add(t);}); Object.values(manualTeamAssignments).forEach(t=>set.add(t)); return [...set]; }
+    function populateAgentControls(){ const teams=getAvailableTeams(); ["agentAssignTeam"].forEach(id=>{ const sel=document.getElementById(id); if(!sel) return; sel.innerHTML=""; teams.forEach(t=>sel.appendChild(new Option(t,t)));}); const hdr=getAllAvailableHeaders(); ["departmentColumn","retailMinStat","referralMinStat","correctiveColumn"].forEach(id=>{const s=document.getElementById(id); if(!s)return; const cv=s.value; s.innerHTML='<option value="">None</option>'; hdr.forEach(h=>s.appendChild(new Option(h,h))); if(hdr.includes(cv)) s.value=cv;}); renderAgentSearchMatches(); renderManualAssignments(); }
+    function renderAgentSearchMatches(){ const q=normalizeName(document.getElementById("agentSearchInput")?.value||""); const box=document.getElementById("agentSearchMatches"); if(!box) return; const nameCol=document.getElementById("nameColumn").value; const names=new Map(); rawRows.forEach(r=>{const n=cleanText(r[nameCol]); if(n) names.set(normalizeName(n),n);}); extraAgentNames.forEach(n=>names.set(normalizeName(n),n)); const matches=[...names.values()].filter(n=>!q||normalizeName(n).includes(q)).slice(0,50); box.innerHTML=matches.map(n=>`<div class="saved-stat"><div><strong>${escapeHtml(n)}</strong></div><button onclick="addManualAgentToTeam('${escapeHtml(n).replace(/'/g,"\'")}', document.getElementById('agentAssignTeam').value)">Add to Selected Team</button></div>`).join("")||'<div class="small-note">No matches.</div>'; }
+    function addManualAgentToTeam(name,team){ if(!name||!team) return; manualTeamAssignments[normalizeName(name)] = team; renderManualAssignments(); }
+    function removeManualAgentAssignment(name){ delete manualTeamAssignments[normalizeName(name)]; renderManualAssignments(); }
+    function renderManualAssignments(){ const box=document.getElementById("manualAssignmentsList"); if(!box) return; const entries=Object.entries(manualTeamAssignments); box.innerHTML=entries.map(([n,t])=>`<div class="saved-stat"><div><strong>${escapeHtml(n)}</strong><br><span>${escapeHtml(t)}</span></div><button class="red" onclick="removeManualAgentAssignment('${escapeHtml(n)}')">Remove</button></div>`).join("")||'<div class="small-note">No manual assignments yet.</div>'; }
+    function getTeamForRep(name, originalTeam){ return manualTeamAssignments[normalizeName(name)] || originalTeam || 'No Team'; }
+    function handleMissingAgentCsvUpload(){ const file=document.getElementById('missingAgentCsv').files[0]; if(!file) return; Papa.parse(file,{header:true,skipEmptyLines:true,complete:res=>{missingAgentCsvRows=res.data||[]; missingAgentCsvHeaders=res.meta.fields||[]; const sel=document.getElementById('missingAgentNameColumn'); sel.innerHTML=''; missingAgentCsvHeaders.forEach(h=>sel.appendChild(new Option(h,h)));}}); }
+    function applyMissingAgentNames(){ const col=document.getElementById('missingAgentNameColumn').value; if(!col) return; const set=new Set(extraAgentNames.map(normalizeName)); missingAgentCsvRows.forEach(r=>{const n=cleanText(r[col]); if(n&&!set.has(normalizeName(n))){extraAgentNames.push(n); set.add(normalizeName(n));}}); renderAgentSearchMatches(); }
+    function openPointSettingsModal(){ renderPointSettingsModal(); document.getElementById('pointSettingsModal').classList.add('open'); }
+    function closePointSettingsModal(){ document.getElementById('pointSettingsModal').classList.remove('open'); }
+    function renderPointSettingsModal(){ document.getElementById('usePointScoring').checked=pointSettings.usePointScoring; const rows=customStats.map(st=>`<div class='grid'><div><label>${escapeHtml(st.name)}</label></div><div><input type='number' id='point_${st.id}' value='${pointSettings.statPoints[st.id]??10}'></div></div>`).join(''); document.getElementById('pointSettingsRows').innerHTML=rows+`<hr/><div class='grid'><div><label><input type='checkbox' id='attendanceEnabled' ${pointSettings.attendance.enabled?'checked':''}/> Attendance Enabled</label></div><div><select id='attendanceColumn'><option value=''>None</option>${getAllAvailableHeaders().map(h=>`<option value='${escapeHtml(h)}' ${pointSettings.attendance.column===h?'selected':''}>${escapeHtml(h)}</option>`).join('')}</select></div><div><select id='attendanceDirection'><option value='desc' ${pointSettings.attendance.direction==='desc'?'selected':''}>Higher is better</option><option value='asc' ${pointSettings.attendance.direction==='asc'?'selected':''}>Lower is better</option></select></div><div><input type='number' id='attendanceMaxPoints' value='${pointSettings.attendance.maxPoints||0}'/></div></div>`; }
+    function savePointSettings(){ pointSettings.usePointScoring=document.getElementById('usePointScoring').checked; customStats.forEach(st=>pointSettings.statPoints[st.id]=Number(document.getElementById(`point_${st.id}`)?.value||0)); pointSettings.attendance.enabled=document.getElementById('attendanceEnabled').checked; pointSettings.attendance.column=document.getElementById('attendanceColumn').value; pointSettings.attendance.direction=document.getElementById('attendanceDirection').value; pointSettings.attendance.maxPoints=Number(document.getElementById('attendanceMaxPoints').value||0); closePointSettingsModal(); }
+    function calculateRankPoints(rank, rankedCount, maxPoints){ if(!rank||rank>rankedCount||maxPoints<=0) return 0; return Math.max(1, maxPoints-rank+1); }
 
     function showError(message) {
       document.getElementById("errorBox").textContent = message;
