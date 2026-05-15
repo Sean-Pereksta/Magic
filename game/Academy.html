@@ -1,2105 +1,1872 @@
-<!DOCTYPE html>
+
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Custom Stack Ranking Builder</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-
-  <style>
-    :root {
-      --bg: #f4f7fb;
-      --card: #ffffff;
-      --text: #1f2937;
-      --muted: #6b7280;
-      --blue: #2563eb;
-      --green: #16a34a;
-      --red: #dc2626;
-      --purple: #7c3aed;
-      --border: #d1d5db;
-      --header: #111827;
-      --gold: #facc15;
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-    }
-
-    header {
-      background: linear-gradient(135deg, #111827, #2563eb);
-      color: white;
-      padding: 24px;
-      text-align: center;
-      box-shadow: 0 3px 10px rgba(0,0,0,0.25);
-    }
-
-    header h1 {
-      margin: 0;
-      font-size: 30px;
-    }
-
-    header p {
-      margin: 8px 0 0;
-      opacity: 0.95;
-    }
-
-    .container {
-      max-width: 1750px;
-      margin: 24px auto;
-      padding: 0 18px 40px;
-    }
-
-    .panel {
-      background: var(--card);
-      border-radius: 14px;
-      padding: 18px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-      margin-bottom: 20px;
-      border: 1px solid #e5e7eb;
-    }
-
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 14px;
-      align-items: end;
-    }
-
-    label {
-      display: block;
-      font-weight: bold;
-      margin-bottom: 6px;
-      color: #374151;
-      font-size: 13px;
-    }
-
-    input,
-    select,
-    button {
-      width: 100%;
-      padding: 10px;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-      font-size: 14px;
-      background: white;
-    }
-
-    button {
-      border: none;
-      background: var(--blue);
-      color: white;
-      font-weight: bold;
-      cursor: pointer;
-      transition: 0.15s;
-    }
-
-    button:hover {
-      filter: brightness(0.95);
-      transform: translateY(-1px);
-    }
-
-    button.secondary {
-      background: #4b5563;
-    }
-
-    button.green {
-      background: var(--green);
-    }
-
-    button.red {
-      background: var(--red);
-    }
-
-    button.purple {
-      background: var(--purple);
-    }
-
-    .status {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      margin-top: 14px;
-    }
-
-    .pill {
-      padding: 8px 12px;
-      background: #eef2ff;
-      color: #1e3a8a;
-      border-radius: 999px;
-      font-weight: bold;
-      font-size: 13px;
-    }
-
-    .pill.good {
-      background: #dcfce7;
-      color: #166534;
-    }
-
-    h2 {
-      margin: 0 0 12px;
-      font-size: 24px;
-    }
-
-    h3 {
-      margin: 0 0 10px;
-      font-size: 18px;
-    }
-
-    .small-note {
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.45;
-      margin-bottom: 12px;
-    }
-
-    .checkbox-card {
-      background: #f9fafb;
-      border: 1px solid #e5e7eb;
-      border-radius: 10px;
-      padding: 12px;
-    }
-
-    .checkbox-line {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-weight: bold;
-      color: #374151;
-      margin-bottom: 10px;
-    }
-
-    .checkbox-line input {
-      width: auto;
-      transform: scale(1.15);
-    }
-
-    .stat-builder {
-      border: 1px solid #e5e7eb;
-      background: #f9fafb;
-      border-radius: 12px;
-      padding: 14px;
-      margin-bottom: 12px;
-    }
-
-    .stat-row {
-      display: grid;
-      grid-template-columns: 1.4fr 1fr 1fr 1fr 0.8fr 0.8fr 0.8fr 1fr 0.7fr;
-      gap: 10px;
-      align-items: end;
-      margin-bottom: 10px;
-    }
-
-    @media (max-width: 1200px) {
-      .stat-row {
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      }
-    }
-
-    .table-wrap {
-      overflow-x: auto;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      max-height: 650px;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      min-width: 1000px;
-      background: white;
-    }
-
-    th {
-      background: var(--header);
-      color: white;
-      text-align: left;
-      padding: 10px;
-      font-size: 13px;
-      position: sticky;
-      top: 0;
-      z-index: 1;
-      white-space: nowrap;
-    }
-
-    td {
-      padding: 9px 10px;
-      border-bottom: 1px solid #e5e7eb;
-      font-size: 13px;
-      white-space: nowrap;
-    }
-
-    tr:nth-child(even) td {
-      background: #f9fafb;
-    }
-
-    tr.winner td {
-      background: #fef3c7 !important;
-      font-weight: bold;
-    }
-
-    .rank-badge {
-      display: inline-block;
-      min-width: 34px;
-      text-align: center;
-      padding: 4px 7px;
-      border-radius: 999px;
-      background: #e0f2fe;
-      color: #075985;
-      font-weight: bold;
-    }
-
-    .rank-1 {
-      background: var(--gold);
-      color: #713f12;
-    }
-
-    .rank-2 {
-      background: #e5e7eb;
-      color: #374151;
-    }
-
-    .rank-3 {
-      background: #fed7aa;
-      color: #7c2d12;
-    }
-
-    .summary-cards {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-      gap: 14px;
-      margin-bottom: 14px;
-    }
-
-    .summary-card {
-      background: #f8fafc;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      padding: 14px;
-    }
-
-    .summary-card h3 {
-      margin: 0 0 6px;
-      font-size: 15px;
-      color: #374151;
-    }
-
-    .summary-card .big {
-      font-size: 23px;
-      font-weight: bold;
-      color: var(--blue);
-    }
-
-    .summary-card .sub {
-      font-size: 13px;
-      color: var(--muted);
-      margin-top: 4px;
-    }
-
-    .formula-box {
-      background: #f9fafb;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      padding: 12px;
-      font-size: 13px;
-      color: #374151;
-      line-height: 1.6;
-    }
-
-    .formula-box code {
-      background: #e5e7eb;
-      padding: 2px 5px;
-      border-radius: 5px;
-    }
-
-    .error {
-      color: var(--red);
-      font-weight: bold;
-      margin-top: 10px;
-    }
-
-    .hidden {
-      display: none;
-    }
-
-    .export-row {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      margin-top: 12px;
-    }
-
-    .export-row button {
-      width: auto;
-      min-width: 190px;
-    }
-
-    .stat-list {
-      display: grid;
-      gap: 10px;
-      margin-top: 12px;
-    }
-
-    .saved-stat {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      align-items: center;
-      background: white;
-      border: 1px solid #e5e7eb;
-      border-radius: 10px;
-      padding: 10px;
-    }
-
-    .saved-stat strong {
-      color: #111827;
-    }
-
-    .saved-stat span {
-      color: #4b5563;
-      font-size: 13px;
-    }
-
-    .saved-stat button {
-      width: auto;
-      min-width: 90px;
-      padding: 8px 10px;
-    }
-
-    .preview {
-      max-height: 280px;
-      overflow: auto;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-    }
-
-    .preview table {
-      min-width: 800px;
-    }
-
-    .two-col {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-    }
-
-    @media (max-width: 1000px) {
-      .two-col {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    .warning {
-      background: #fff7ed;
-      border: 1px solid #fed7aa;
-      color: #9a3412;
-      padding: 10px;
-      border-radius: 10px;
-      font-size: 13px;
-      margin-top: 12px;
-      line-height: 1.45;
-    }
-
-    .disabled-box {
-      opacity: 0.45;
-      pointer-events: none;
-    }
-
-    .modal-backdrop {
-      position: fixed;
-      inset: 0;
-      background: rgba(17, 24, 39, 0.55);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      z-index: 9999;
-    }
-
-    .modal-backdrop.open {
-      display: flex;
-    }
-
-    .modal {
-      background: white;
-      width: min(900px, 95vw);
-      max-height: 85vh;
-      overflow: auto;
-      border-radius: 16px;
-      padding: 20px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.35);
-    }
-
-    .corrective-red-name {
-      color: #dc2626;
-      font-weight: 900;
-      background: #fee2e2;
-      padding: 3px 7px;
-      border-radius: 999px;
-      display: inline-block;
-    }
-
-    .not-eligible-row td {
-      background: #fff1f2 !important;
-    }
-
-    .section-divider-row td {
-      background: #111827 !important;
-      color: white;
-      font-weight: bold;
-      font-size: 14px;
-    }
-
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>All Star Report (Retail + Referral Local Docks)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#f8fafc;
+    --card:#ffffff;
+    --ink:#0f172a;
+    --muted:#64748b;
+    --line:#e2e8f0;
+    --soft:#f1f5f9;
+    --accent:#2563eb;
+    --good:#16a34a;
+    --warn:#f59e0b;
+    --bad:#dc2626;
+    --shadow:0 16px 38px rgba(2,6,23,.08);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+  }
+  .topbar{
+    position:sticky; top:0; z-index:50;
+    background:#fff;
+    border-bottom:1px solid var(--line);
+    padding:14px 16px;
+  }
+  .title{ font-size:22px; font-weight:1000; }
+  .subtitle{ font-size:12px; color:var(--muted); font-weight:900; margin-top:3px; }
+  .wrap{
+    padding:14px;
+    display:grid;
+    gap:14px;
+  }
+  .card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:18px;
+    box-shadow:var(--shadow);
+    padding:14px;
+  }
+  .row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .spacer{ flex:1; }
+  label{
+    display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+    font-size:12px; color:var(--muted); font-weight:900;
+  }
+  input,select,button{ font-size:14px; }
+  input,select{
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:8px 10px;
+    background:#fff;
+    color:var(--ink);
+    outline:none;
+  }
+  button{
+    border:1px solid var(--line);
+    background:#fff;
+    color:var(--ink);
+    padding:8px 12px;
+    border-radius:999px;
+    cursor:pointer;
+    font-weight:1000;
+  }
+  button.primary{
+    background:var(--accent);
+    color:#fff;
+    border-color:var(--accent);
+  }
+  button:hover{ filter:brightness(.98); }
+  details{
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:#fff;
+    padding:10px 12px;
+  }
+  summary{ cursor:pointer; font-weight:1000; }
+  .mono{
+    font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+  }
+  .hint{
+    color:var(--muted);
+    font-size:12px;
+    font-weight:900;
+  }
+  .heroGrid{
+    display:grid;
+    grid-template-columns: 1.2fr .8fr;
+    gap:14px;
+  }
+  @media (max-width:980px){
+    .heroGrid{ grid-template-columns:1fr; }
+  }
+  .statGrid{
+    display:grid;
+    grid-template-columns:repeat(4,minmax(140px,1fr));
+    gap:10px;
+  }
+  @media (max-width:900px){
+    .statGrid{ grid-template-columns:repeat(2,minmax(140px,1fr)); }
+  }
+  .stat{
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:10px;
+    background:linear-gradient(180deg, rgba(37,99,235,.06), rgba(37,99,235,0));
+  }
+  .stat .k{
+    font-size:12px; color:var(--muted); font-weight:900; margin-bottom:6px;
+  }
+  .stat .v{
+    font-size:20px; font-weight:1000;
+  }
+  .chipRow{
+    display:flex; gap:8px; flex-wrap:wrap; align-items:center;
+  }
+  .pill{
+    display:inline-flex; align-items:center; gap:6px;
+    padding:6px 10px;
+    border-radius:999px;
+    border:1px solid var(--line);
+    background:var(--soft);
+    font-size:12px;
+    font-weight:1000;
+  }
+  .pill.good{ background:rgba(22,163,74,.1); color:#166534; border-color:rgba(22,163,74,.25); }
+  .pill.warn{ background:rgba(245,158,11,.12); color:#92400e; border-color:rgba(245,158,11,.28); }
+  .overallBanner{
+    border:1px solid rgba(245,158,11,.35);
+    background:linear-gradient(180deg, rgba(245,158,11,.15), rgba(245,158,11,.04));
+    border-radius:18px;
+    padding:14px;
+  }
+  .overallBanner h2{
+    margin:0 0 6px 0;
+    font-size:20px;
+  }
+  .overallBanner .big{
+    font-size:28px; font-weight:1000;
+  }
+  .medal{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width:28px;
+    height:28px;
+    border-radius:999px;
+    font-size:16px;
+    font-weight:1000;
+    border:1px solid transparent;
+  }
+  .medal.gold{ background:rgba(245,158,11,.16); color:#92400e; border-color:rgba(245,158,11,.35); }
+  .medal.silver{ background:rgba(148,163,184,.16); color:#475569; border-color:rgba(148,163,184,.35); }
+  .medal.bronze{ background:rgba(180,83,9,.14); color:#92400e; border-color:rgba(180,83,9,.35); }
+  .topThree{
+    display:grid;
+    gap:10px;
+  }
+  .winner{
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:#fff;
+    padding:10px 12px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    justify-content:space-between;
+    flex-wrap:wrap;
+  }
+  .winnerMain{
+    display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+  }
+  .tabs{
+    display:flex; gap:8px; flex-wrap:wrap;
+  }
+  .tab{
+    border:1px solid var(--line);
+    background:#fff;
+    color:var(--ink);
+    border-radius:999px;
+    padding:8px 14px;
+    font-size:13px;
+    font-weight:1000;
+    cursor:pointer;
+  }
+  .tab.active{
+    background:rgba(37,99,235,.10);
+    border-color:rgba(37,99,235,.35);
+    box-shadow:0 0 0 2px rgba(37,99,235,.10);
+  }
+  .tabPanel{ display:none; }
+  .tabPanel.active{ display:block; }
+
+  .teamCard{
+    border:1px solid var(--line);
+    border-radius:18px;
+    overflow:hidden;
+    background:#fff;
+  }
+  .teamHead{
+    padding:14px;
+    display:flex;
+    gap:10px;
+    justify-content:space-between;
+    align-items:center;
+    flex-wrap:wrap;
+    background:linear-gradient(180deg, rgba(37,99,235,.08), rgba(37,99,235,0));
+    cursor:pointer;
+  }
+  .teamHead:hover{ filter:brightness(.985); }
+  .teamTitle{
+    display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+  }
+  .teamName{
+    font-size:18px; font-weight:1000;
+  }
+  .teamBody{
+    display:none;
+    padding:14px;
+    border-top:1px solid var(--line);
+    background:#fbfdff;
+  }
+  .teamCard.open .teamBody{ display:block; }
+  .teamMiniStats{
+    display:grid;
+    grid-template-columns:repeat(5,minmax(120px,1fr));
+    gap:10px;
+    margin-bottom:12px;
+  }
+  @media (max-width:920px){
+    .teamMiniStats{ grid-template-columns:repeat(2,minmax(120px,1fr)); }
+  }
+  .miniStat{
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:10px;
+    background:#fff;
+  }
+  .miniStat .k{
+    font-size:11px; font-weight:900; color:var(--muted); margin-bottom:4px;
+  }
+  .miniStat .v{
+    font-size:18px; font-weight:1000;
+  }
+  .subTitle{
+    font-size:14px;
+    font-weight:1000;
+    margin:2px 0 10px 0;
+  }
+  .tblWrap{
+    overflow:auto;
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:#fff;
+  }
+  table{
+    width:100%;
+    min-width:980px;
+    border-collapse:separate;
+    border-spacing:0;
+  }
+  th{
+    position:sticky; top:0;
+    background:#0f172a;
+    color:#e5e7eb;
+    text-align:left;
+    padding:10px;
+    font-size:12px;
+    white-space:nowrap;
+  }
+  td{
+    padding:8px 10px;
+    border-bottom:1px solid var(--line);
+    white-space:nowrap;
+    font-size:13px;
+    vertical-align:top;
+  }
+  tr:hover td{ background:#f8fafc; }
+  .right{ text-align:right; }
+  .goodTxt{ color:#166534; font-weight:1000; }
+  .warnTxt{ color:#92400e; font-weight:1000; }
+  .mutedTxt{ color:var(--muted); font-weight:900; }
+  .sectionHeader{
+    display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;
+    margin-bottom:10px;
+  }
+
+  .uploadZone{
+    border:1px dashed var(--line);
+    border-radius:14px;
+    padding:12px;
+    background:#fff;
+  }
+  .sheetBtnRow{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-top:10px;
+  }
+  .sheetBtn{
+    border:1px solid var(--line);
+    background:#fff;
+    color:var(--ink);
+    border-radius:999px;
+    padding:8px 12px;
+    cursor:pointer;
+    font-weight:1000;
+  }
+  .sheetBtn.active{
+    background:rgba(22,163,74,.10);
+    border-color:rgba(22,163,74,.35);
+    box-shadow:0 0 0 2px rgba(22,163,74,.10);
+  }
+
+</style>
 </head>
-
 <body>
-  <header>
-    <h1>Custom Stack Ranking Builder</h1>
-    <p>Upload any CSV, combine columns, define stats, apply minimum filters, and rank reps or teams.</p>
-  </header>
-
-  <div class="container">
-
-    <div class="panel">
-      <h2>1. Upload CSV</h2>
-
-      <div class="grid">
-        <div>
-          <label for="csvFile">CSV File</label>
-          <input type="file" id="csvFile" accept=".csv" />
-        </div>
-
-        <div class="checkbox-card">
-          <div class="checkbox-line">
-            <input type="checkbox" id="useDateFilter" checked onchange="toggleDateControls()" />
-            <span>Use Date Column / Date Range</span>
-          </div>
-          <div class="small-note">
-            If unchecked, the tool ranks all uploaded rows and ignores dates completely.
-          </div>
-        </div>
-
-        <div id="startDateWrap">
-          <label for="startDate">Start Date</label>
-          <input type="date" id="startDate" />
-        </div>
-
-        <div id="endDateWrap">
-          <label for="endDate">End Date</label>
-          <input type="date" id="endDate" />
-        </div>
-      </div>
-
-      <div class="status">
-        <div id="fileStatus" class="pill">No CSV loaded</div>
-        <div id="rowStatus" class="pill">0 rows</div>
-        <div id="columnStatus" class="pill">0 columns</div>
-        <div id="dateModeStatus" class="pill">Date filter enabled</div>
-      </div>
-
-      <div id="errorBox" class="error"></div>
-    </div>
-
-
-
-    <div class="panel">
-      <h2>Settings Save / Load</h2>
-      <div class="grid">
-        <div><button onclick="saveSettingsLocal()">Save Settings Locally</button></div>
-        <div><button onclick="loadSettingsLocal()">Load Settings Locally</button></div>
-        <div><button class="secondary" onclick="revertToDefaultSettings()">Revert to Default Settings</button></div>
-        <div><button onclick="exportSettingsJson()">Export Settings JSON</button></div>
-        <div><label for="importSettingsFile">Import Settings JSON</label><input id="importSettingsFile" type="file" accept=".json" onchange="importSettingsJson(this.files[0])"/></div>
-      </div>
-      <div id="settingsWarningBox" class="warning hidden"></div>
-    </div>
-
-    <div id="mappingPanel" class="panel hidden">
-      <h2>2. Assign Key Columns</h2>
-
-      <div class="small-note">
-        Name is required. Date and Team are optional. If Date is disabled, the full uploaded file is ranked.
-      </div>
-
-      <div class="grid">
-        <div>
-          <label for="nameColumn">Name Column</label>
-          <select id="nameColumn"></select>
-        </div>
-
-        <div class="checkbox-card">
-          <div class="checkbox-line">
-            <input type="checkbox" id="useDateColumn" checked onchange="toggleDateControls()" />
-            <span>Use Date Column</span>
-          </div>
-          <div id="dateColumnWrap">
-            <label for="dateColumn">Date Column</label>
-            <select id="dateColumn"></select>
-          </div>
-        </div>
-
-        <div class="checkbox-card">
-          <div class="checkbox-line">
-            <input type="checkbox" id="useTeamColumn" checked onchange="toggleTeamControls()" />
-            <span>Use Team Column</span>
-          </div>
-          <div id="teamColumnWrap">
-            <label for="teamColumn">Team Column</label>
-            <select id="teamColumn"></select>
-          </div>
-        </div>
-
-        <div id="teamMethodWrap">
-          <label for="teamMethod">Team Ranking Method</label>
-          <select id="teamMethod">
-            <option value="average">Average representative score</option>
-            <option value="sum">Sum representative score</option>
-          </select>
-        </div>
-      </div>
-
-      <div style="margin-top:18px;">
-        <h3>Create Combined Column</h3>
-
-        <div class="small-note">
-          Use this when a name, team, or stat field is split across multiple columns.
-          Example: First Name + Last Name, Manager + Team, Department + Group.
-        </div>
-
-        <div class="grid">
-          <div>
-            <label for="combinedColumnName">New Combined Column Name</label>
-            <input id="combinedColumnName" placeholder="Example: Full Name" />
-          </div>
-
-          <div>
-            <label for="combinedColumnA">First Column</label>
-            <select id="combinedColumnA"></select>
-          </div>
-
-          <div>
-            <label for="combinedColumnB">Second Column</label>
-            <select id="combinedColumnB"></select>
-          </div>
-
-          <div>
-            <label for="combinedSeparator">Separator</label>
-            <input id="combinedSeparator" value=" " placeholder="Example: space, -, /" />
-          </div>
-
-          <div>
-            <label>&nbsp;</label>
-            <button class="green" onclick="addCombinedColumn()">Add Combined Column</button>
-          </div>
-        </div>
-
-        <div id="combinedColumnsList" class="stat-list"></div>
-      </div>
-    </div>
-
-
-    <div id="agentPanel" class="panel hidden">
-      <h2>Agent Search / Manual Team Assignment</h2>
-      <div class="grid">
-        <div><label for="agentAssignTeam">Select Team</label><select id="agentAssignTeam"></select></div>
-        <div><label for="agentSearchInput">Search Representative</label><input id="agentSearchInput" oninput="renderAgentSearchMatches()" placeholder="Search by partial name" /></div>
-        <div><label>&nbsp;</label><button onclick="openPointSettingsModal()">Update Point Totals</button></div>
-      </div>
-      <div id="agentSearchMatches" class="stat-list"></div>
-      <div><h3>Manual Assignments</h3><div id="manualAssignmentsList" class="stat-list"></div></div>
-      <div style="margin-top:10px;"><h3>Upload Missing Agent CSV</h3><div class="grid"><div><label for="missingAgentCsv">Missing Agent CSV</label><input id="missingAgentCsv" type="file" accept=".csv"/></div><div><label for="missingAgentNameColumn">Name Column</label><select id="missingAgentNameColumn"></select></div><div><label>&nbsp;</label><button class="secondary" onclick="applyMissingAgentNames()">Add Missing Names</button></div></div></div>
-      <div style="margin-top:10px;"><h3>Set Minimums</h3><div class="grid"><div><label for="departmentColumn">Department/Type Column</label><select id="departmentColumn"></select></div><div><label for="retailMinStat">Retail Minimum Stat</label><select id="retailMinStat"></select></div><div><label for="retailMinValue">Retail Minimum Value</label><input id="retailMinValue" type="number" value="0"/></div><div><label for="referralMinStat">Referral Minimum Stat</label><select id="referralMinStat"></select></div><div><label for="referralMinValue">Referral Minimum Value</label><input id="referralMinValue" type="number" value="0"/></div></div></div>
-      <div style="margin-top:10px;"><h3>Corrective Red Settings</h3><div class="grid"><div><label for="correctiveColumn">Corrective Red Column</label><select id="correctiveColumn"></select></div><div><label for="correctiveValue">Corrective Red Value</label><select id="correctiveValue"><option>Red</option><option>Corrective Red</option><option>Yes</option><option>1</option><option>True</option></select></div><div><label for="correctiveCustomValue">Custom Value</label><input id="correctiveCustomValue" placeholder="optional custom text"/></div><div class="checkbox-card"><div class="checkbox-line"><input type="checkbox" id="includeCorrectiveInAverages"/><span>Include corrective red reps in team averages</span></div></div></div></div>
-      <div id="minimumExclusionWrap"></div>
-    </div>
-
-    <div id="statSettingsModal" class="modal-backdrop"><div class="modal"><h3>Edit Stat Settings</h3><div id="statSettingsRows"></div><div class="export-row"><button class="green" onclick="saveStatSettingsFromModal()">Save</button><button class="secondary" onclick="closeStatSettingsModal()">Close</button></div></div></div>
-
-    <div id="pointSettingsModal" class="modal-backdrop"><div class="modal"><h3>Point Settings</h3><div class="checkbox-line"><input type="checkbox" id="usePointScoring"/><span>Use Point Scoring Instead of Weighted Rank Score</span></div><div id="pointSettingsRows"></div><div class="export-row"><button class="green" onclick="savePointSettings()">Save</button><button class="secondary" onclick="closePointSettingsModal()">Close</button></div></div></div>
-
-    <div id="statPanel" class="panel hidden">
-      <h2>3. Build Custom Stats</h2>
-
-      <div class="formula-box">
-        <strong>Direct stat:</strong> Use one column as the value. Example: <code>ITAC %</code>, <code>% Available</code>, <code>Wiper Rate</code><br>
-        <strong>Ratio stat:</strong> Divide one column by another. Example: <code>Consumer Appointments / Consumer Opportunities</code><br>
-        <strong>Minimum filter:</strong> Hide reps who do not meet the minimum volume for a selected stat in the chosen timeframe.<br>
-        <strong>Ranking score:</strong> Each stat creates a rank. That rank is multiplied by the weight. Lowest weighted total wins.
-      </div>
-
-      <div class="stat-builder">
-        <div class="stat-row">
-          <div>
-            <label for="statName">Stat Name</label>
-            <input id="statName" placeholder="Example: Consumer Appointment Rate" />
-          </div>
-
-          <div>
-            <label for="statType">Stat Type</label>
-            <select id="statType" onchange="toggleStatType()">
-              <option value="ratio">Ratio: Numerator / Denominator</option>
-              <option value="direct">Direct Value Column</option>
-            </select>
-          </div>
-
-          <div>
-            <label for="numeratorColumn">Numerator / Value</label>
-            <select id="numeratorColumn"></select>
-          </div>
-
-          <div id="denominatorWrap">
-            <label for="denominatorColumn">Denominator</label>
-            <select id="denominatorColumn"></select>
-          </div>
-
-          <div>
-            <label for="direction">Best Direction</label>
-            <select id="direction">
-              <option value="desc">Higher is better</option>
-              <option value="asc">Lower is better</option>
-            </select>
-          </div>
-
-          <div>
-            <label for="weight">Weight</label>
-            <input id="weight" type="number" value="1" step="0.25" min="0" />
-          </div>
-
-          <div>
-            <label for="minRequired">Minimum Required</label>
-            <input id="minRequired" type="number" value="0" step="1" min="0" />
-          </div>
-
-          <div>
-            <label for="minColumnMode">Minimum Based On</label>
-            <select id="minColumnMode">
-              <option value="denominator">Denominator / Opportunities</option>
-              <option value="numerator">Numerator / Appointments</option>
-              <option value="rows">Row Count</option>
-              <option value="none">No Minimum</option>
-            </select>
-          </div>
-
-          <div>
-            <label>&nbsp;</label>
-            <button class="green" onclick="addStat()">Add Stat</button>
-          </div>
-        </div>
-
-        <div class="warning">
-          For ratio stats, the tool combines totals first, then calculates the rate.
-          Example: <strong>SUM(Appointments) / SUM(Opportunities)</strong>, not average of row-level rates.
-        </div>
-
-        <div class="export-row">
-          <button onclick="openStatSettingsModal()">Edit Stat Settings</button>
-          <button class="secondary" onclick="addDefaultRankingItems()">Add Default Ranking Items</button>
-        </div>
-        <div id="savedStats" class="stat-list"></div>
-      </div>
-
-      <div class="stat-builder">
-        <h3>Calculated Columns / Custom Formulas</h3>
-        <div class="grid">
-          <div><label for="calcName">New calculated column name</label><input id="calcName"/></div>
-          <div><label for="calcType">Calculation type</label><select id="calcType"><option value="divide">Divide</option><option value="add">Add</option><option value="subtract">Subtract</option><option value="multiply">Multiply</option><option value="average">Average</option><option value="sum">Sum</option></select></div>
-          <div><label for="calcColumnA">Column A</label><select id="calcColumnA"></select></div>
-          <div><label for="calcColumnB">Column B</label><select id="calcColumnB"></select></div>
-          <div><label for="calcFormat">Format</label><select id="calcFormat"><option value="number">Number</option><option value="percent">Percent</option></select></div>
-          <div><label>&nbsp;</label><button class="green" onclick="addCalculatedColumn()">Add Calculated Column</button></div>
-        </div>
-        <div id="calculatedColumnsList" class="stat-list"></div>
-      </div>
-    </div>
-
-    <div id="actionPanel" class="panel hidden">
-      <h2>4. Calculate Rankings</h2>
-      <div class="stat-builder">
-        <h3>Sort Rankings By</h3>
-        <div class="grid">
-          <div class="checkbox-card"><div class="checkbox-line"><input type="checkbox" id="sortEnabled"/><span>Use selected sort instead of default winner sort</span></div></div>
-          <div><label for="sortPrimary">Sort by</label><select id="sortPrimary"></select></div>
-          <div><label for="sortDirection">Direction</label><select id="sortDirection"><option value="bestFirst">Best first</option><option value="worstFirst">Worst first</option><option value="az">A to Z</option><option value="za">Z to A</option></select></div>
-        </div>
-      </div>
-
-      <div class="grid">
-        <div>
-          <button class="purple" onclick="calculateRankings()">Calculate Rankings</button>
-        </div>
-
-        <div>
-          <button class="secondary" onclick="clearStats()">Clear Custom Stats</button>
-        </div>
-      </div>
-    </div>
-
-    <div id="resultsPanel" class="hidden">
-      <div class="two-col">
-        <div class="panel">
-          <h2>Representative Winners</h2>
-          <div id="repSummary" class="summary-cards"></div>
-
-          <div class="table-wrap">
-            <table id="repTable"></table>
-          </div>
-
-          <div class="export-row">
-            <button class="green" onclick="exportResults('rep')">Export Representative Rankings</button>
-          </div>
-        </div>
-
-        <div id="teamResultsPanel" class="panel">
-          <h2>Team Winners</h2>
-          <div id="teamSummary" class="summary-cards"></div>
-
-          <div class="table-wrap">
-            <table id="teamTable"></table>
-          </div>
-
-          <div class="export-row">
-            <button class="green" onclick="exportResults('team')">Export Team Rankings</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div id="previewPanel" class="panel hidden">
-      <h2>CSV Preview</h2>
-      <div class="preview">
-        <table id="previewTable"></table>
-      </div>
-    </div>
-
+  <div class="topbar">
+    <div class="title">All Star Report — Retail + Referral Local Docks</div>
+    <div class="subtitle">Attendance counts only toward individual rep standings, not team overall rankings</div>
   </div>
 
-  <script>
-    let rawRows = [];
-    let headers = [];
-    let combinedColumns = [];
-    let customStats = [];
-    let repResults = [];
-    let teamResults = [];
-    let manualTeamAssignments = {};
-    let extraAgentNames = [];
-    let pointSettings = { usePointScoring: false, statPoints: {}, attendance: { enabled: false, column: "", direction: "desc", maxPoints: 0 } };
-    let departmentMinimums = { departmentColumn: "", retailStat: "", retailMinimum: 0, referralStat: "", referralMinimum: 0 };
-    let correctiveSettings = { column: "", values: ["red","corrective red","yes","1","true"], customValue: "", includeInTeamAverages: false };
-    let calculatedColumns = [];
-    const SETTINGS_STORAGE_KEY = "customStackRankingBuilderSettings";
-    let sortSettings = { enabled: false, primarySort: "overallScore", direction: "bestFirst" };
-    const DEFAULT_STAT_DEFINITIONS = [
-      {name:"Consumer Appointment Rate",type:"ratio",numeratorMatches:["Consumer Appointments","ConsumerAppointments","Cash Appointments"],denominatorMatches:["Consumer Opportunities","ConsumerOpportunities","Cash Opportunities"],direction:"desc",weight:1,maxPoints:10},
-      {name:"Insurance Appointment Rate",type:"ratio",numeratorMatches:["Insurance Appointments"],denominatorMatches:["Insurance Opportunities"],direction:"desc",weight:1,maxPoints:10},
-      {name:"Commercial Appointment Rate",type:"ratio",numeratorMatches:["Commercial Appointments"],denominatorMatches:["Commercial Opportunities"],direction:"desc",weight:1,maxPoints:10},
-      {name:"Wiper Rate",type:"ratio",numeratorMatches:["Wiper Count","Wipers Accepted","Wipers Accept"],denominatorMatches:["Wiper Jobs","Wipers Asked"],direction:"desc",weight:1,maxPoints:10}
-    ];
-    let DEFAULT_RANKING_SETTINGS = null;
-    let minimumExclusions = [];
-    let missingAgentCsvRows = [];
-    let missingAgentCsvHeaders = [];
+  <div class="wrap">
+    <div class="card">
+      <div class="row">
+        <label>Start
+          <input id="startDate" type="date">
+        </label>
+        <label>End
+          <input id="endDate" type="date">
+        </label>
+        <button class="primary" id="refreshBtn">Refresh</button>
+        <span class="spacer"></span>
+        <span class="mono hint" id="scopeHint">—</span>
+      </div>
 
-
-    document.getElementById("csvFile").addEventListener("change", handleFileUpload);
-    document.getElementById("missingAgentCsv").addEventListener("change", handleMissingAgentCsvUpload);
-
-
-    function handleFileUpload() {
-      clearError();
-
-      const file = document.getElementById("csvFile").files[0];
-      if (!file) return;
-
-      Papa.parse(file, {
-        header: true,
-        skipEmptyLines: true,
-        transformHeader: h => String(h || "").trim(),
-        complete: results => {
-          rawRows = results.data.filter(row =>
-            Object.values(row).some(v => String(v || "").trim() !== "")
-          );
-
-          headers = results.meta.fields || [];
-          combinedColumns = [];
-
-          if (!headers.length) {
-            showError("No headers found in the CSV.");
-            return;
-          }
-
-          document.getElementById("fileStatus").textContent = `Loaded: ${file.name}`;
-          document.getElementById("fileStatus").className = "pill good";
-
-          document.getElementById("rowStatus").textContent = `${rawRows.length} rows`;
-          document.getElementById("rowStatus").className = "pill good";
-
-          document.getElementById("columnStatus").textContent = `${headers.length} columns`;
-          document.getElementById("columnStatus").className = "pill good";
-
-          populateColumnDropdowns();
-          autoGuessColumns();
-          renderCombinedColumnsList();
-          renderPreview();
-          applyCalculatedColumnsToRows();
-          renderCalculatedColumns();
-          populateSortOptions();
-
-          document.getElementById("mappingPanel").classList.remove("hidden");
-          document.getElementById("statPanel").classList.remove("hidden");
-          document.getElementById("actionPanel").classList.remove("hidden");
-          document.getElementById("previewPanel").classList.remove("hidden");
-          document.getElementById("agentPanel").classList.remove("hidden");
-          populateAgentControls();
-
-          toggleDateControls();
-          toggleTeamControls();
-    renderCalculatedColumns();
-    populateSortOptions();
-    DEFAULT_RANKING_SETTINGS = migrateSettings(collectCurrentRankingSettings());
-        },
-        error: err => {
-          showError(`Failed to parse CSV: ${err.message}`);
-        }
-      }));
-    }
-
-    function populateColumnDropdowns() {
-      const dropdownIds = [
-        "nameColumn",
-        "dateColumn",
-        "teamColumn",
-        "numeratorColumn",
-        "denominatorColumn",
-        "combinedColumnA",
-        "combinedColumnB"
-      ];
-
-      const allHeaders = getAllAvailableHeaders();
-
-      dropdownIds.forEach(id => {
-        const select = document.getElementById(id);
-        if (!select) return;
-
-        const currentValue = select.value;
-        select.innerHTML = "";
-
-        if (id === "teamColumn") {
-          select.appendChild(new Option("No team column", ""));
-        }
-
-        allHeaders.forEach(header => {
-          select.appendChild(new Option(header, header));
-        });
-
-        if (currentValue && allHeaders.includes(currentValue)) {
-          select.value = currentValue;
-        }
-      });
-    }
-
-    function getAllAvailableHeaders() {
-      const virtualHeaders = combinedColumns.map(c => c.name);
-      return [...headers, ...virtualHeaders];
-    }
-
-    function autoGuessColumns() {
-      const nameGuess = findHeader(["name", "agent", "representative", "rep", "associate", "full name"]);
-      const dateGuess = findHeader(["date", "created date", "day", "week"]);
-      const teamGuess = findHeader(["sheet", "team", "coach", "job coach", "manager", "department"]);
-
-      if (nameGuess) document.getElementById("nameColumn").value = nameGuess;
-
-      if (dateGuess) {
-        document.getElementById("dateColumn").value = dateGuess;
-        document.getElementById("useDateColumn").checked = true;
-        document.getElementById("useDateFilter").checked = true;
-      } else {
-        document.getElementById("useDateColumn").checked = false;
-        document.getElementById("useDateFilter").checked = false;
-      }
-
-      if (teamGuess) {
-        document.getElementById("teamColumn").value = teamGuess;
-        document.getElementById("useTeamColumn").checked = true;
-      } else {
-        document.getElementById("useTeamColumn").checked = false;
-      }
-    }
-
-    function findHeader(possibleNames) {
-      const lowerHeaders = getAllAvailableHeaders().map(h => ({
-        original: h,
-        lower: h.toLowerCase().trim()
-      }));
-
-      for (const wanted of possibleNames) {
-        const exact = lowerHeaders.find(h => h.lower === wanted);
-        if (exact) return exact.original;
-      }
-
-      for (const wanted of possibleNames) {
-        const partial = lowerHeaders.find(h => h.lower.includes(wanted));
-        if (partial) return partial.original;
-      }
-
-      return "";
-    }
-
-    function toggleDateControls() {
-      const useDateColumn = document.getElementById("useDateColumn")?.checked;
-      const useDateFilter = document.getElementById("useDateFilter")?.checked;
-
-      const enabled = !!useDateColumn && !!useDateFilter;
-
-      const dateColumnWrap = document.getElementById("dateColumnWrap");
-      const startDateWrap = document.getElementById("startDateWrap");
-      const endDateWrap = document.getElementById("endDateWrap");
-      const dateModeStatus = document.getElementById("dateModeStatus");
-
-      if (dateColumnWrap) {
-        dateColumnWrap.classList.toggle("disabled-box", !useDateColumn);
-      }
-
-      if (startDateWrap) {
-        startDateWrap.classList.toggle("disabled-box", !enabled);
-      }
-
-      if (endDateWrap) {
-        endDateWrap.classList.toggle("disabled-box", !enabled);
-      }
-
-      if (dateModeStatus) {
-        if (enabled) {
-          dateModeStatus.textContent = "Date filter enabled";
-          dateModeStatus.className = "pill good";
-        } else {
-          dateModeStatus.textContent = "Date ignored: ranking all rows";
-          dateModeStatus.className = "pill";
-        }
-      }
-
-      const useDateColumnBox = document.getElementById("useDateColumn");
-      const useDateFilterBox = document.getElementById("useDateFilter");
-
-      if (useDateColumnBox && useDateFilterBox) {
-        if (!useDateColumnBox.checked) {
-          useDateFilterBox.checked = false;
-        }
-      }
-    }
-
-    function toggleTeamControls() {
-      const useTeam = document.getElementById("useTeamColumn")?.checked;
-
-      const teamColumnWrap = document.getElementById("teamColumnWrap");
-      const teamMethodWrap = document.getElementById("teamMethodWrap");
-      const teamResultsPanel = document.getElementById("teamResultsPanel");
-
-      if (teamColumnWrap) {
-        teamColumnWrap.classList.toggle("disabled-box", !useTeam);
-      }
-
-      if (teamMethodWrap) {
-        teamMethodWrap.classList.toggle("disabled-box", !useTeam);
-      }
-
-      if (teamResultsPanel) {
-        teamResultsPanel.classList.toggle("hidden", !useTeam);
-      }
-    }
-
-    function addCombinedColumn() {
-      clearError();
-
-      const name = document.getElementById("combinedColumnName").value.trim();
-      const colA = document.getElementById("combinedColumnA").value;
-      const colB = document.getElementById("combinedColumnB").value;
-      const separator = document.getElementById("combinedSeparator").value ?? " ";
-
-      if (!name) {
-        showError("Please enter a name for the combined column.");
-        return;
-      }
-
-      if (!colA || !colB) {
-        showError("Please choose two columns to combine.");
-        return;
-      }
-
-      const alreadyExists = getAllAvailableHeaders()
-        .some(h => h.toLowerCase().trim() === name.toLowerCase().trim());
-
-      if (alreadyExists) {
-        showError("A column with that name already exists.");
-        return;
-      }
-
-      combinedColumns.push({
-        id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()),
-        name,
-        colA,
-        colB,
-        separator
-      });
-
-      applyCombinedColumnsToRows();
-      populateColumnDropdowns();
-      renderCombinedColumnsList();
-      renderPreview();
-          applyCalculatedColumnsToRows();
-          renderCalculatedColumns();
-          populateSortOptions();
-
-      document.getElementById("combinedColumnName").value = "";
-      document.getElementById("combinedSeparator").value = " ";
-    }
-
-    function applyCombinedColumnsToRows() {
-      rawRows.forEach(row => {
-        combinedColumns.forEach(c => {
-          const a = cleanText(row[c.colA]);
-          const b = cleanText(row[c.colB]);
-
-          row[c.name] = [a, b]
-            .filter(x => x !== "")
-            .join(c.separator);
-        });
-      });
-    }
-
-    function renderCombinedColumnsList() {
-      const box = document.getElementById("combinedColumnsList");
-      if (!box) return;
-
-      if (!combinedColumns.length) {
-        box.innerHTML = `<div class="small-note">No combined columns created yet.</div>`;
-        return;
-      }
-
-      box.innerHTML = combinedColumns.map(c => `
-        <div class="saved-stat">
-          <div>
-            <strong>${escapeHtml(c.name)}</strong><br>
-            <span>${escapeHtml(c.colA)} + ${escapeHtml(c.colB)} using separator "${escapeHtml(c.separator)}"</span>
-          </div>
-          <button class="red" onclick="removeCombinedColumn('${c.id}')">Remove</button>
+      <details style="margin-top:10px">
+        <summary>Data docks (localStorage)</summary>
+        <div class="row" style="margin-top:10px">
+          <label>Retail dock
+            <select id="retailDockSel" style="min-width:320px"></select>
+          </label>
+          <label>Referral dock
+            <select id="referralDockSel" style="min-width:320px"></select>
+          </label>
+          <label>QA dock
+            <select id="qaDockSel" style="min-width:320px"></select>
+          </label>
+          <label>Checklist dock
+            <select id="checkDockSel" style="min-width:320px"></select>
+          </label>
+          <button id="loadDocksBtn">Load docks</button>
         </div>
-      `).join("");
+        <div class="row" style="margin-top:10px">
+          <span class="mono hint" id="dockHint">—</span>
+        </div>
+      </details>
+      <div class="uploadZone" style="margin-top:12px">
+        <div class="sectionHeader">
+          <div class="subTitle">Compliment Calls Upload (Optional)</div>
+          <div class="chipRow">
+            <span class="pill">Works for Retail and Referral</span>
+            <span class="pill warn">Compliments are applied to individual rep standings only (not team rankings)</span>
+          </div>
+        </div>
+        <div class="row">
+          <input id="complimentFile" type="file" accept=".xlsx,.xls,.xlsm,.csv" />
+          <span class="mono hint" id="complimentFileHint">No compliment file loaded.</span>
+        </div>
+        <div class="sheetBtnRow" id="complimentSheetBtns"></div>
+        <div class="row" style="margin-top:10px">
+          <span class="mono hint" id="complimentHint">Expected headers (A:N): ID, Start time, Completion time, Email, Name, CSR/SSR Name (This is the person being complimented), Director, CSR Team/Coach, Date of Call, Referral/Claim/WO/Chat Number (Only one type is needed), Taken By (This is the person reporting the compliment), Compliment, Date Letter Completed, Coord Initial</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="heroGrid">
+      <div class="card">
+        <div class="sectionHeader">
+          <div class="subTitle">Top Overall Team (Current Tab)</div>
+        </div>
+        <div id="overallWinner" class="overallBanner">
+          <div class="mutedTxt">No data yet.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="sectionHeader">
+          <div class="subTitle">Summary</div>
+        </div>
+        <div class="statGrid">
+          <div class="stat">
+            <div class="k">Retail Teams</div>
+            <div class="v" id="sumRetail">—</div>
+          </div>
+          <div class="stat">
+            <div class="k">Referral Teams</div>
+            <div class="v" id="sumReferral">—</div>
+          </div>
+          <div class="stat">
+            <div class="k">Retail Attendance Hits</div>
+            <div class="v" id="sumRetailAttendance">—</div>
+          </div>
+          <div class="stat">
+            <div class="k">Referral Attendance Hits</div>
+            <div class="v" id="sumReferralAttendance">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sectionHeader">
+        <div class="subTitle">Team Sections</div>
+        <div class="tabs">
+          <button class="tab active" data-tab="retail">Retail Teams</button>
+          <button class="tab" data-tab="referral">Referral Teams</button>
+        </div>
+      </div>
+
+      <div class="tabPanel active" id="panel-retail">
+        <div class="sectionHeader">
+          <div class="subTitle">Retail Team Rankings</div>
+          <div class="chipRow">
+            <span class="pill">Retail overall = Consumer + Wipers + CQ ranks</span>
+            <span class="pill warn">Attendance displayed, not used in team score</span>
+          </div>
+        </div>
+        <div class="tblWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Overall</th>
+                <th>Team</th>
+                <th class="right">Consumer Rank</th>
+                <th class="right">Wiper Rank</th>
+                <th class="right">CQ Rank</th>
+                <th class="right">Rank Total</th>
+                <th class="right">Compliments</th>
+                <th class="right">Overall Score</th>
+                <th class="right">Consumer Rate</th>
+                <th class="right">Wiper Rate</th>
+                <th class="right">CQ Avg</th>
+                <th class="right">Attendance Hits</th>
+                <th class="right">Active Reps</th>
+              </tr>
+            </thead>
+            <tbody id="retailRankBody"></tbody>
+          </table>
+        </div>
+        <div id="retailCards" style="margin-top:14px; display:grid; gap:14px;"></div>
+      </div>
+
+      <div class="tabPanel" id="panel-referral">
+        <div class="sectionHeader">
+          <div class="subTitle">Referral Team Rankings</div>
+          <div class="chipRow">
+            <span class="pill">Referral overall = Wipers + CQ + ITAC ranks</span>
+            <span class="pill warn">Attendance displayed, not used in team score</span>
+          </div>
+        </div>
+        <div class="tblWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Overall</th>
+                <th>Team</th>
+                <th class="right">Wiper Rank</th>
+                <th class="right">CQ Rank</th>
+                <th class="right">ITAC Rank</th>
+                <th class="right">Rank Total</th>
+                <th class="right">Compliments</th>
+                <th class="right">Overall Score</th>
+                <th class="right">Wiper Rate</th>
+                <th class="right">CQ Avg</th>
+                <th class="right">ITAC %</th>
+                <th class="right">Attendance Hits</th>
+                <th class="right">Active Reps</th>
+              </tr>
+            </thead>
+            <tbody id="referralRankBody"></tbody>
+          </table>
+        </div>
+        <div id="referralCards" style="margin-top:14px; display:grid; gap:14px;"></div>
+      </div>
+    </div>
+
+    <div class="card" id="winnersSummaryCard">
+      <div class="sectionHeader">
+        <div class="subTitle">Winners Summary</div>
+        <div class="chipRow">
+          <span class="pill">Top team</span>
+          <span class="pill">Top performer per team</span>
+          <span class="pill good">Overall top representative</span>
+        </div>
+      </div>
+      <div id="winnersSummaryBody">
+        <div class="mutedTxt">No winner data yet.</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+let APP_NS = 'myone2';
+(function autodetectNs(){
+  const counts = new Map();
+  for(let i=0;i<localStorage.length;i++){
+    const k = localStorage.key(i);
+    if(!k) continue;
+    const m = k.match(/^(.*)\.dock\.(retail|referral|qa|coaching|checklist)$/i);
+    if(!m) continue;
+    const ns = m[1];
+    counts.set(ns, (counts.get(ns)||0)+1);
+  }
+  let best=null, bestN=0;
+  for(const [ns,n] of counts.entries()){
+    if(n>bestN){ best=ns; bestN=n; }
+  }
+  if(best) APP_NS = best;
+})();
+
+const PREF_KEY = `${APP_NS}.allstarreport.v2.prefs`;
+const MS_PER_DAY = 86400000;
+
+const els = {
+  startDate: document.getElementById('startDate'),
+  endDate: document.getElementById('endDate'),
+  refreshBtn: document.getElementById('refreshBtn'),
+  retailDockSel: document.getElementById('retailDockSel'),
+  referralDockSel: document.getElementById('referralDockSel'),
+  qaDockSel: document.getElementById('qaDockSel'),
+  checkDockSel: document.getElementById('checkDockSel'),
+  loadDocksBtn: document.getElementById('loadDocksBtn'),
+  complimentFile: document.getElementById('complimentFile'),
+  complimentFileHint: document.getElementById('complimentFileHint'),
+  complimentSheetBtns: document.getElementById('complimentSheetBtns'),
+  complimentHint: document.getElementById('complimentHint'),
+  dockHint: document.getElementById('dockHint'),
+  scopeHint: document.getElementById('scopeHint'),
+  overallWinner: document.getElementById('overallWinner'),
+  sumRetail: document.getElementById('sumRetail'),
+  sumReferral: document.getElementById('sumReferral'),
+  sumRetailAttendance: document.getElementById('sumRetailAttendance'),
+  sumReferralAttendance: document.getElementById('sumReferralAttendance'),
+  retailRankBody: document.getElementById('retailRankBody'),
+  referralRankBody: document.getElementById('referralRankBody'),
+  retailCards: document.getElementById('retailCards'),
+  referralCards: document.getElementById('referralCards'),
+  winnersSummaryBody: document.getElementById('winnersSummaryBody')
+};
+
+let activeTab = 'retail';
+
+let retailDockKey = '';
+let referralDockKey = '';
+let qaDockKey = '';
+let checkDockKey = '';
+
+let retailRows = [];
+let referralRows = [];
+let qaRows = [];
+let checklistRows = [];
+let complimentWorkbook = null;
+let complimentSheetName = '';
+let complimentRows = [];
+
+let retailFieldMap = null;
+let referralFieldMap = null;
+
+function esc(s){
+  return String(s ?? '')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+function clamp01(x){ return Math.max(0, Math.min(1, x)); }
+function mean(nums){
+  const a = (nums||[]).filter(n=>Number.isFinite(n));
+  if(!a.length) return NaN;
+  return a.reduce((s,n)=>s+n,0) / a.length;
+}
+function toNumRaw(v){
+  if(v===undefined || v===null || v==='') return NaN;
+  const n = parseFloat(String(v).replace(/,/g,'').replace(/%/g,'').trim());
+  return Number.isFinite(n) ? n : NaN;
+}
+function normHdr(s){
+  return String(s ?? '')
+    .trim().toLowerCase()
+    .replace(/\s+/g,' ')
+    .replace(/[^a-z0-9% \\-_]/g,'')
+    .replace(/[-_]/g,'')
+    .replace(/\s/g,'');
+}
+function parseDate(val){
+  if(val===null || val===undefined || val==='') return null;
+  if(val instanceof Date) return isNaN(val) ? null : val;
+
+  const asLocalDateOnly = (d) => {
+    if(!(d instanceof Date) || isNaN(d)) return null;
+    return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  };
+
+  if(typeof val === 'number' && Number.isFinite(val)){
+    if(val > 1e11){
+      const d = new Date(val);
+      return isNaN(d) ? null : d;
     }
-
-    function removeCombinedColumn(id) {
-      const removed = combinedColumns.find(c => c.id === id);
-      combinedColumns = combinedColumns.filter(c => c.id !== id);
-
-      if (removed) {
-        rawRows.forEach(row => delete row[removed.name]);
-
-        customStats = customStats.filter(stat =>
-          stat.numeratorColumn !== removed.name &&
-          stat.denominatorColumn !== removed.name
-        );
-
-        ["nameColumn", "dateColumn", "teamColumn"].forEach(id => {
-          const el = document.getElementById(id);
-          if (el && el.value === removed.name) {
-            el.value = "";
-          }
-        });
-      }
-
-      applyCombinedColumnsToRows();
-      populateColumnDropdowns();
-      renderCombinedColumnsList();
-      renderSavedStats();
-      renderPreview();
-          applyCalculatedColumnsToRows();
-          renderCalculatedColumns();
-          populateSortOptions();
+    if(val > 0 && val < 100000){
+      const base = Date.UTC(1899,11,30);
+      const tmp = new Date(base + (val * MS_PER_DAY));
+      return asLocalDateOnly(tmp);
     }
+    return null;
+  }
 
-    function toggleStatType() {
-      const type = document.getElementById("statType").value;
-      document.getElementById("denominatorWrap").style.display = type === "direct" ? "none" : "block";
+  const s = String(val).trim();
+  if(!s) return null;
+  if(/^[+-]?\d+(\.\d+)?$/.test(s)) return parseDate(parseFloat(s));
 
-      const minMode = document.getElementById("minColumnMode");
-      if (type === "direct" && minMode.value === "denominator") {
-        minMode.value = "rows";
-      }
+  const isoDateOnly = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(isoDateOnly){
+    return new Date(+isoDateOnly[1], +isoDateOnly[2]-1, +isoDateOnly[3]);
+  }
+
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:[,\s]+(\d{1,2})(?::(\d{2}))(?::(\d{2}))?\s*(AM|PM|am|pm)?)?$/);
+  if(m){
+    const mo = parseInt(m[1],10), da = parseInt(m[2],10);
+    let yr = parseInt(m[3],10);
+    if(m[3].length===2) yr = (yr <= 69 ? 2000 + yr : 1900 + yr);
+    let hh = m[4] ? parseInt(m[4],10) : 0;
+    const mi = m[5] ? parseInt(m[5],10) : 0;
+    const ss = m[6] ? parseInt(m[6],10) : 0;
+    const ap = m[7] ? m[7].toUpperCase() : '';
+    if(ap==='PM' && hh<12) hh += 12;
+    if(ap==='AM' && hh===12) hh = 0;
+    return new Date(yr, mo-1, da, hh, mi, ss);
+  }
+
+  if(/^\d{4}-\d{2}-\d{2}[T\s]/.test(s) && /([zZ]|[+\-]\d{2}:?\d{2})$/.test(s)){
+    const tmp = new Date(s);
+    return asLocalDateOnly(tmp) || (isNaN(tmp) ? null : tmp);
+  }
+
+  const d = new Date(s);
+  return isNaN(d) ? null : d;
+}
+function ymd(d){
+  if(!(d instanceof Date) || isNaN(d)) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function mmddyy(d){
+  if(!(d instanceof Date) || isNaN(d)) return '';
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  const y = d.getFullYear();
+  return `${m}/${day}/${y}`;
+}
+function personKey(name){
+  let s = String(name||'').trim().toLowerCase();
+  s = s.replace(/\./g,'').replace(/\s+/g,' ');
+  if(!s) return '';
+  if(s.includes(',')){
+    const parts = s.split(',');
+    const last = (parts[0]||'').trim();
+    const rest = (parts[1]||'').trim();
+    const first = (rest.split(/\s+/)[0]||'').trim();
+    if(first && last) s = `${first} ${last}`;
+    else s = s.replace(/,/g,' ');
+  }
+  const toks = s.split(/\s+/).filter(Boolean);
+  if(toks.length >= 2) return `${toks[0]} ${toks[toks.length-1]}`;
+  return toks[0] || '';
+}
+function displayNameFromRaw(name){
+  let s = String(name||'').trim().replace(/\s+/g,' ');
+  if(!s) return '';
+  if(s.includes(',')){
+    const parts = s.split(',');
+    const last = (parts[0]||'').trim();
+    const rest = (parts[1]||'').trim();
+    const first = (rest.split(/\s+/)[0]||'').trim();
+    if(first && last) s = `${first} ${last}`;
+    else s = s.replace(/,/g,' ');
+  }
+  s = s.replace(/[^\w\s'-]/g,' ').replace(/\s+/g,' ').trim();
+  const toks = s.split(/\s+/).filter(Boolean);
+  if(!toks.length) return '';
+  if(toks.length===1) return toks[0];
+  return `${toks[0]} ${toks[toks.length-1]}`;
+}
+function fmtPct1(frac){
+  return Number.isFinite(frac) ? `${(frac*100).toFixed(1)}%` : '—';
+}
+function normalizePct(v){
+  if(v===null || v===undefined || v==='') return NaN;
+  if(typeof v === 'number' && Number.isFinite(v)){
+    if(v <= 1) return clamp01(v);
+    return clamp01(v/100);
+  }
+  const s = String(v).trim();
+  if(!s) return NaN;
+  const hasPct = s.includes('%');
+  const n = toNumRaw(s);
+  if(!Number.isFinite(n)) return NaN;
+  if(hasPct) return clamp01(n/100);
+  if(n <= 1) return clamp01(n);
+  return clamp01(n/100);
+}
+function medalHtml(i){
+  if(i===0) return `<span class="medal gold">🥇</span>`;
+  if(i===1) return `<span class="medal silver">🥈</span>`;
+  if(i===2) return `<span class="medal bronze">🥉</span>`;
+  return `<span class="medal" style="background:#f8fafc;border-color:#e2e8f0;color:#64748b">${i+1}</span>`;
+}
+function rankMapDescending(items, key){
+  const arr = items.slice().sort((a,b)=>{
+    const av = a[key], bv = b[key];
+    const aBad = !Number.isFinite(av), bBad = !Number.isFinite(bv);
+    if(aBad && bBad) return String(a.name||'').localeCompare(String(b.name||''));
+    if(aBad) return 1;
+    if(bBad) return -1;
+    if(bv !== av) return bv - av;
+    return String(a.name||'').localeCompare(String(b.name||''));
+  });
+  const out = new Map();
+  let prev = null, rank = 0;
+  for(let i=0;i<arr.length;i++){
+    const v = arr[i][key];
+    if(prev === null || v !== prev) rank = i + 1;
+    out.set(arr[i].name, rank);
+    prev = v;
+  }
+  return out;
+}
+function rankMapAscending(items, key){
+  const arr = items.slice().sort((a,b)=>{
+    const av = a[key], bv = b[key];
+    const aBad = !Number.isFinite(av), bBad = !Number.isFinite(bv);
+    if(aBad && bBad) return String(a.name||'').localeCompare(String(b.name||''));
+    if(aBad) return 1;
+    if(bBad) return -1;
+    if(av !== bv) return av - bv;
+    return String(a.name||'').localeCompare(String(b.name||''));
+  });
+  const out = new Map();
+  let prev = null, rank = 0;
+  for(let i=0;i<arr.length;i++){
+    const v = arr[i][key];
+    if(prev === null || v !== prev) rank = i + 1;
+    out.set(arr[i].name, rank);
+    prev = v;
+  }
+  return out;
+}
+function sumField(rows, field){
+  if(!field) return 0;
+  let s = 0;
+  for(const r of rows){
+    const n = toNumRaw(r[field]);
+    if(Number.isFinite(n)) s += n;
+  }
+  return s;
+}
+function pickField(allKeys, patterns){
+  for(const re of patterns){
+    const hit = allKeys.find(k => re.test(k));
+    if(hit) return hit;
+  }
+  return null;
+}
+function pickFieldFromRow(row, candidates){
+  const map = {};
+  for(const k of Object.keys(row||{})) map[normHdr(k)] = k;
+  for(const cand of candidates){
+    const real = map[cand];
+    if(real !== undefined) return row[real];
+  }
+  return undefined;
+}
+
+function findFieldName(keys, patterns){
+  const normalized = new Map(keys.map(k => [normHdr(k), k]));
+  for(const pat of patterns){
+    for(const [nk, real] of normalized.entries()){
+      if(pat.test(nk)) return real;
     }
+  }
+  return null;
+}
+function rowsFromSheet(ws){
+  if(!ws) return [];
+  const rows = XLSX.utils.sheet_to_json(ws, { defval:'', raw:false });
+  return Array.isArray(rows) ? rows : [];
+}
+function looksLikeComplimentRow(obj){
+  if(!obj || typeof obj !== 'object') return false;
+  const nk = Object.keys(obj).map(normHdr);
+  const hasName = nk.some(k => k.startsWith('csrssrname')) || nk.includes('csrname') || nk.includes('ssrname');
+  const hasDate = nk.some(k => k.startsWith('dateofcall')) || nk.includes('datecall') || nk.includes('calldate');
+  return hasName && hasDate;
+}
+function canonicalizeComplimentRows(rows){
+  if(!Array.isArray(rows) || !rows.length) return [];
+  const keys = Array.from(new Set(rows.flatMap(r => Object.keys(r||{}))));
+  const nameField = findFieldName(keys, [/^csrssrname/, /^csrname$/, /^ssrname$/, /^csrssr$/]);
+  const teamField = findFieldName(keys, [/^csrteamcoach$/, /^teamcoach$/, /^csrteam$/, /^coach$/, /^team$/]);
+  const dateField = findFieldName(keys, [/^dateofcall/, /^calldate$/, /^datecall$/]);
+  const directorField = findFieldName(keys, [/^director$/]);
+  const refNumField = findFieldName(keys, [/^referralclaimwochatnumber$/, /^referralclaimwochat#$/, /^referralclaimwochat$/, /^referralnumber$/, /^claimnumber$/, /^wonumber$/, /^chatnumber$/]);
+  const takenByField = findFieldName(keys, [/^takenby$/]);
+  const complimentField = findFieldName(keys, [/^compliment$/]);
+  const letterDateField = findFieldName(keys, [/^datelettercompleted$/]);
+  const coordField = findFieldName(keys, [/^coordinitial$/, /^coordinitials$/]);
 
-    function addStat() {
-      clearError();
+  const out = [];
+  for(const r of rows){
+    if(!looksLikeComplimentRow(r)) continue;
+    const name = displayNameFromRaw(nameField ? r[nameField] : '');
+    const repKey = personKey(name || (nameField ? r[nameField] : ''));
+    const team = String(teamField ? (r[teamField] ?? '') : '').trim();
+    const callDate = parseDate(dateField ? r[dateField] : null);
+    if(!repKey || !callDate) continue;
+    out.push({
+      raw: r,
+      rep: name || String(nameField ? r[nameField] : '').trim(),
+      repKey,
+      team,
+      callDate,
+      director: String(directorField ? (r[directorField] ?? '') : '').trim(),
+      caseNumber: String(refNumField ? (r[refNumField] ?? '') : '').trim(),
+      takenBy: String(takenByField ? (r[takenByField] ?? '') : '').trim(),
+      compliment: String(complimentField ? (r[complimentField] ?? '') : '').trim(),
+      dateLetterCompleted: String(letterDateField ? (r[letterDateField] ?? '') : '').trim(),
+      coordInitial: String(coordField ? (r[coordField] ?? '') : '').trim()
+    });
+  }
+  return out;
+}
+function renderComplimentSheetButtons(){
+  const names = complimentWorkbook?.SheetNames || [];
+  els.complimentSheetBtns.innerHTML = names.map(sn => `<button class="sheetBtn ${sn===complimentSheetName ? 'active' : ''}" data-compliment-sheet="${esc(sn)}">${esc(sn)}</button>`).join('');
+  els.complimentSheetBtns.querySelectorAll('[data-compliment-sheet]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      complimentSheetName = btn.getAttribute('data-compliment-sheet') || '';
+      loadComplimentSheet();
+      renderComplimentSheetButtons();
+      renderAll();
+      savePrefs();
+    });
+  });
+}
+function loadComplimentSheet(){
+  if(!complimentWorkbook || !complimentSheetName || !complimentWorkbook.Sheets?.[complimentSheetName]){
+    complimentRows = [];
+    els.complimentHint.textContent = 'No compliment sheet selected.';
+    return;
+  }
+  const rows = rowsFromSheet(complimentWorkbook.Sheets[complimentSheetName]);
+  complimentRows = canonicalizeComplimentRows(rows);
+  els.complimentHint.textContent = `${complimentSheetName} loaded • ${complimentRows.length} compliment rows found after header matching`;
+}
+function loadDockObjByKey(key){
+  if(!key) return null;
+  const raw = localStorage.getItem(key);
+  if(!raw) return null;
+  try{
+    const json = LZString.decompressFromUTF16(raw);
+    if(json) return JSON.parse(json);
+  }catch(e){}
+  try{ return JSON.parse(raw); }catch(e){}
+  return null;
+}
+function aoaToRows(aoa){
+  if(!Array.isArray(aoa) || aoa.length < 2) return [];
+  const header = aoa[0].map(h => String(h ?? '').trim());
+  const out = [];
+  for(let r=1;r<aoa.length;r++){
+    const row = aoa[r];
+    if(!row) continue;
+    const obj = {};
+    let any = false;
+    for(let c=0;c<header.length;c++){
+      const k = header[c];
+      if(!k) continue;
+      const v = row[c];
+      if(v !== null && v !== undefined && String(v).trim() !== '') any = true;
+      obj[k] = v;
+    }
+    if(any) out.push(obj);
+  }
+  return out;
+}
+function extractRowArrays(root, sheetNameFallback){
+  const found = [];
+  const seen = new Set();
 
-      const statName = document.getElementById("statName").value.trim();
-      const statType = document.getElementById("statType").value;
-      const numeratorColumn = document.getElementById("numeratorColumn").value;
-      const denominatorColumn = document.getElementById("denominatorColumn").value;
-      const direction = document.getElementById("direction").value;
-      const weight = Number(document.getElementById("weight").value);
-      const minRequired = Number(document.getElementById("minRequired").value || 0);
-      const minColumnMode = document.getElementById("minColumnMode").value;
+  function pushArray(arr, sheetName){
+    if(!Array.isArray(arr) || !arr.length) return;
+    const id = `${sheetName}|${arr.length}|${typeof arr[0]}`;
+    if(seen.has(id)) return;
+    seen.add(id);
 
-      if (!statName) {
-        showError("Please enter a stat name.");
-        return;
-      }
+    if(arr[0] && typeof arr[0] === 'object' && !Array.isArray(arr[0])){
+      found.push({ rows: arr, sheetName });
+      return;
+    }
+    if(Array.isArray(arr[0])){
+      const rows = aoaToRows(arr);
+      if(rows.length) found.push({ rows, sheetName });
+    }
+  }
 
-      if (!numeratorColumn) {
-        showError("Please choose a numerator/value column.");
-        return;
-      }
+  function walk(node, sheetName){
+    if(node === null || node === undefined) return;
+    if(Array.isArray(node)){
+      pushArray(node, sheetName ?? sheetNameFallback ?? '');
+      return;
+    }
+    if(typeof node !== 'object') return;
 
-      if (statType === "ratio" && !denominatorColumn) {
-        showError("Please choose a denominator column for ratio stats.");
-        return;
-      }
+    if(Array.isArray(node.rows)) pushArray(node.rows, sheetName ?? sheetNameFallback ?? '');
+    if(Array.isArray(node.data)) pushArray(node.data, sheetName ?? sheetNameFallback ?? '');
+    if(Array.isArray(node.table)) pushArray(node.table, sheetName ?? sheetNameFallback ?? '');
 
-      if (!Number.isFinite(weight) || weight < 0) {
-        showError("Weight must be a number greater than or equal to 0.");
-        return;
-      }
+    if(node.sheets && typeof node.sheets === 'object' && !Array.isArray(node.sheets)){
+      for(const [sn, sv] of Object.entries(node.sheets)) walk(sv, sn);
+    }
+    for(const [k,v] of Object.entries(node)){
+      if(k === 'meta' || k === 'sheets') continue;
+      walk(v, sheetName);
+    }
+  }
 
-      if (!Number.isFinite(minRequired) || minRequired < 0) {
-        showError("Minimum required must be a number greater than or equal to 0.");
-        return;
-      }
+  walk(root, sheetNameFallback);
+  return found;
+}
+function findDockCandidates(kind){
+  const out = [];
+  const needle = `.dock.${String(kind).toLowerCase()}`;
+  for(let i=0;i<localStorage.length;i++){
+    const k = localStorage.key(i);
+    if(k && k.toLowerCase().includes(needle)) out.push(k);
+  }
+  out.sort((a,b)=>a.localeCompare(b));
+  return out;
+}
+function findQADockCandidates(){
+  const preferred = [];
+  const fallback = [];
+  for(let i=0;i<localStorage.length;i++){
+    const k = localStorage.key(i);
+    if(!k) continue;
+    const lk = k.toLowerCase();
+    if(!lk.includes('.dock.')) continue;
+    if(lk.includes('.dock.qa')) preferred.push(k);
+    else if(lk.includes('qa') && (lk.includes('quality') || lk.includes('monitor') || lk.includes('score'))) fallback.push(k);
+  }
+  return Array.from(new Set([...preferred, ...fallback])).sort((a,b)=>a.localeCompare(b));
+}
 
-      customStats.push(normalizeStatConfig({
-        id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()),
-        name: statName,
-        type: statType,
-        numeratorColumn,
-        denominatorColumn: statType === "ratio" ? denominatorColumn : "",
-        direction,
-        weight,
-        minRequired,
-        minColumnMode
+function pickBestKey(kind){
+  const preferred = `${APP_NS}.dock.${kind}`;
+  if(localStorage.getItem(preferred)) return preferred;
+  const cands = kind === 'qa' ? findQADockCandidates() : findDockCandidates(kind);
+  return cands[0] || preferred || '';
+}
+function populateDockSelects(){
+  const retailCands = Array.from(new Set([pickBestKey('retail'), ...findDockCandidates('retail')].filter(Boolean)));
+  els.retailDockSel.innerHTML = retailCands.map(k=>`<option value="${esc(k)}">${esc(k)}</option>`).join('');
+  retailDockKey = retailDockKey || pickBestKey('retail');
+  if(retailCands.includes(retailDockKey)) els.retailDockSel.value = retailDockKey;
+  else if(retailCands.length){ retailDockKey = retailCands[0]; els.retailDockSel.value = retailDockKey; }
+
+  const referralCands = Array.from(new Set([pickBestKey('referral'), ...findDockCandidates('referral')].filter(Boolean)));
+  els.referralDockSel.innerHTML = referralCands.map(k=>`<option value="${esc(k)}">${esc(k)}</option>`).join('');
+  referralDockKey = referralDockKey || pickBestKey('referral');
+  if(referralCands.includes(referralDockKey)) els.referralDockSel.value = referralDockKey;
+  else if(referralCands.length){ referralDockKey = referralCands[0]; els.referralDockSel.value = referralDockKey; }
+
+  const qaCands = Array.from(new Set([pickBestKey('qa'), ...findQADockCandidates()].filter(Boolean)));
+  els.qaDockSel.innerHTML = qaCands.map(k=>`<option value="${esc(k)}">${esc(k)}</option>`).join('');
+  qaDockKey = qaDockKey || pickBestKey('qa');
+  if(qaCands.includes(qaDockKey)) els.qaDockSel.value = qaDockKey;
+  else if(qaCands.length){ qaDockKey = qaCands[0]; els.qaDockSel.value = qaDockKey; }
+
+  const checkCands = Array.from(new Set([pickBestKey('checklist'), ...findDockCandidates('checklist')].filter(Boolean)));
+  els.checkDockSel.innerHTML = checkCands.map(k=>`<option value="${esc(k)}">${esc(k)}</option>`).join('');
+  checkDockKey = checkDockKey || pickBestKey('checklist');
+  if(checkCands.includes(checkDockKey)) els.checkDockSel.value = checkDockKey;
+  else if(checkCands.length){ checkDockKey = checkCands[0]; els.checkDockSel.value = checkDockKey; }
+
+
+
+  els.dockHint.textContent = `APP_NS: ${APP_NS}`;
+}
+
+function looksLikeStatRow(obj){
+  if(!obj || typeof obj !== 'object') return false;
+  const nk = Object.keys(obj).map(normHdr);
+  const hasName = nk.includes('name') || nk.includes('associate') || nk.includes('agentname');
+  const hasDate = nk.includes('date') || nk.includes('week');
+  const hasSheet = nk.includes('sheet') || nk.includes('team') || nk.includes('coach');
+  return hasName && hasDate && hasSheet;
+}
+function canonicalizeStatRows(dockObj){
+  if(!dockObj) return [];
+  const arrays = extractRowArrays(dockObj, '');
+  const out = [];
+  for(const pack of arrays){
+    for(const r of pack.rows){
+      if(!looksLikeStatRow(r)) continue;
+      const nameRaw = pickFieldFromRow(r, ['name','associate','agentname']);
+      const dateRaw = pickFieldFromRow(r, ['date','week']);
+      const teamRaw = pickFieldFromRow(r, ['sheet','team','coach']);
+      const name = String(nameRaw ?? '').trim();
+      const d = parseDate(dateRaw);
+      const team = String(teamRaw ?? pack.sheetName ?? '').trim();
+      if(!name || !d || !team) continue;
+      const low = name.toLowerCase();
+      if(/^(total|totals|team totals?|summary)$/.test(low) || low.startsWith('totals -') || low.startsWith('total -')) continue;
+      out.push({
+        ...r,
+        Name: name,
+        Team: team,
+        _d: d,
+        repKey: personKey(name)
       });
+    }
+  }
+  return out;
+}
+function buildFieldMap(sampleRows){
+  const keys = Array.from(new Set(sampleRows.flatMap(r=>Object.keys(r||{}))));
+  const map = {};
+  map.consumerApps = pickField(keys, [/^Consumer[_\s-]*Appointments?$/i, /consumer.*appointments?/i]);
+  map.consumerOpps = pickField(keys, [/^Consumer[_\s-]*Opportunit/i, /consumer.*opportunit/i]);
+  map.wiperCount = pickField(keys, [/^Wiper[_\s-]*Count$/i, /wiper.*count/i]);
+  map.wiperJobs = pickField(keys, [/^Wiper[_\s-]*Jobs$/i, /wiper.*jobs?/i]);
+  map.wipersAccept = pickField(keys, [/wipers?[_\s-]*accept/i, /wipers? accept/i]);
+  map.wipersAsked = pickField(keys, [/wipers?[_\s-]*asked/i, /wipers? asked/i]);
+  map.acw = pickField(keys, [/^ACW$/i, /avg.*acw/i, /average.*acw/i, /%.*acw/i, /acw.*%/i]);
+  map.itac = pickField(keys, [/^ITAC$/i, /^ITAC%$/i, /^ITACPercent$/i, /itac/i]);
+  return map;
+}
+function looksLikeQARow(obj){
+  if(!obj || typeof obj !== 'object') return false;
+  const nk = Object.keys(obj).map(normHdr);
+  const hasRep = nk.some(k => /^(agentname|agent|csr|associate|rep|name)$/.test(k));
+  const hasScore = nk.some(k => /^(score%|scorepct|score|qascore|qa%)$/.test(k));
+  const hasDate = nk.some(k => /^(interactionstarttime|interactionstart|starttime|interactiontime|date|scoreddate)$/.test(k));
+  return hasRep && hasScore && hasDate;
+}
+function canonicalizeQA(dockObj){
+  if(!dockObj) return [];
+  const arrays = extractRowArrays(dockObj, '');
+  const out = [];
+  for(const pack of arrays){
+    for(const r of pack.rows){
+      if(!looksLikeQARow(r)) continue;
+      const repRaw = pickFieldFromRow(r, ['agentname','agent','csr','associate','rep','name']);
+      const scoreRaw = pickFieldFromRow(r, ['score%','scorepct','score','qascore','qa%']);
+      const dateRaw = pickFieldFromRow(r, ['interactionstarttime','interactionstart','starttime','interactiontime','scoreddate','date']);
+      const teamRaw = pickFieldFromRow(r, ['team','sheet','dock','group']);
+      const rep = displayNameFromRaw(repRaw);
+      const repKey = personKey(rep || repRaw);
+      const score = normalizePct(scoreRaw);
+      const d = parseDate(dateRaw);
+      if(!rep || !repKey || !Number.isFinite(score) || !d) continue;
+      out.push({
+        ...r,
+        rep,
+        repKey,
+        score,
+        startDate:d,
+        team:String(teamRaw ?? pack.sheetName ?? '').trim()
+      });
+    }
+  }
+  return out;
+}
+function looksLikeChecklistRow(obj){
+  if(!obj || typeof obj !== 'object') return false;
+  const nk = Object.keys(obj).map(normHdr);
+  const hasRep = nk.includes('associatename') || nk.includes('associate') || nk.includes('name') || nk.includes('rep') || nk.includes('agentname') || nk.includes('agent');
+  const hasIncident = nk.includes('incident') || nk.includes('incidenttype') || nk.includes('incidentcategory');
+  const hasIncidentDate = nk.includes('incidentdate') || nk.includes('date') || nk.includes('dt') || nk.includes('day');
+  const hasCorrective = nk.includes('corrective') || nk.includes('correctivetype') || nk.includes('correctiveaction') || nk.includes('discipline') || nk.includes('status');
+  const hasDateServed = nk.includes('dateserved') || nk.includes('serveddate') || nk.includes('correctivedateserved') || nk.includes('correctivedate') || nk.includes('datecorrectiveserved');
+  return hasRep && ((hasIncident && hasIncidentDate) || (hasCorrective && hasDateServed));
+}
+function canonicalizeChecklistRows(dockObj){
+  if(!dockObj) return [];
+  const arrays = extractRowArrays(dockObj, '');
+  const out = [];
+  for(const pack of arrays){
+    for(const r of pack.rows){
+      if(!looksLikeChecklistRow(r)) continue;
+      const repRaw = pickFieldFromRow(r, ['associatename','associate','name','rep','agentname','agent']);
+      const incidentRaw = pickFieldFromRow(r, ['incident','incidenttype','incidentcategory','type']);
+      const dateRaw = pickFieldFromRow(r, ['incidentdate','date','dt','day']);
+      const actionRaw = pickFieldFromRow(r, ['actiontaken','action','resolution']);
+      const dateServedRaw = pickFieldFromRow(r, ['dateserved','serveddate','correctivedateserved','correctivedate','datecorrectiveserved']);
+      const correctiveRaw = pickFieldFromRow(r, ['corrective','correctivetype','correctiveaction','discipline','status']);
+      const teamRaw = pickFieldFromRow(r, ['team','sheet','coach','jobcoach','coachassigned']);
+      const rep = displayNameFromRaw(repRaw || '');
+      const repKey = personKey(rep || repRaw);
+      const incidentDate = parseDate(dateRaw);
+      const dateServed = parseDate(dateServedRaw);
+      const incident = String(incidentRaw ?? '').trim();
+      const corrective = String(correctiveRaw ?? '').trim();
+      const hasAttendanceFields = incidentDate && incident;
+      const hasCorrectiveFields = dateServed && corrective;
+      if(!rep || !repKey) continue;
+      if(!hasAttendanceFields && !hasCorrectiveFields) continue;
+      out.push({
+        ...r,
+        rep,
+        repKey,
+        date: incidentDate,
+        dateServed,
+        incident,
+        actionTaken:String(actionRaw ?? '').trim(),
+        corrective,
+        teamHint:String(teamRaw ?? '').trim()
+      });
+    }
+  }
+  return out;
+}
 
-      document.getElementById("statName").value = "";
-      document.getElementById("weight").value = "1";
-      document.getElementById("minRequired").value = "0";
-      document.getElementById("minColumnMode").value = "denominator";
 
-      renderSavedStats();
+
+function loadRetail(){
+  retailDockKey = els.retailDockSel.value || retailDockKey || pickBestKey('retail');
+  const obj = loadDockObjByKey(retailDockKey);
+  retailRows = canonicalizeStatRows(obj);
+  retailFieldMap = buildFieldMap(retailRows);
+}
+function loadReferral(){
+  referralDockKey = els.referralDockSel.value || referralDockKey || pickBestKey('referral');
+  const obj = loadDockObjByKey(referralDockKey);
+  referralRows = canonicalizeStatRows(obj);
+  referralFieldMap = buildFieldMap(referralRows);
+}
+function loadQA(){
+  qaDockKey = els.qaDockSel.value || qaDockKey || pickBestKey('qa');
+  const obj = loadDockObjByKey(qaDockKey);
+  qaRows = canonicalizeQA(obj);
+}
+function loadChecklist(){
+  checkDockKey = els.checkDockSel.value || checkDockKey || pickBestKey('checklist');
+  const obj = loadDockObjByKey(checkDockKey);
+  checklistRows = canonicalizeChecklistRows(obj);
+}
+function initDates(){
+  const dates = [
+    ...retailRows.map(r=>r._d),
+    ...referralRows.map(r=>r._d),
+    ...qaRows.map(r=>r.startDate),
+    ...checklistRows.map(r=>r.date),
+    ...checklistRows.map(r=>r.dateServed),
+    ...complimentRows.map(r=>r.callDate)
+  ].filter(d => d instanceof Date && !isNaN(d));
+  const today = new Date();
+  const end = dates.length ? new Date(Math.max(...dates.map(d=>d.getTime()))) : today;
+  const start = new Date(end.getTime() - (29 * MS_PER_DAY));
+  if(!els.endDate.value) els.endDate.value = ymd(end);
+  if(!els.startDate.value) els.startDate.value = ymd(start);
+}
+function getWindow(){
+  const sd = parseDate(els.startDate.value);
+  const ed = parseDate(els.endDate.value);
+  if(!(sd instanceof Date) || isNaN(sd) || !(ed instanceof Date) || isNaN(ed)) return { sd:null, ed:null };
+  return sd <= ed ? { sd, ed } : { sd:ed, ed:sd };
+}
+function inRange(d, sd, ed){
+  return d instanceof Date && !isNaN(d) && sd && ed && d >= sd && d <= ed;
+}
+function isAttendanceHit(item){
+  const inc = String(item.incident || '').toLowerCase();
+  const act = String(item.actionTaken || '').toLowerCase();
+  return (inc.includes('absent') || inc.includes('tardy')) && act.includes('addressed');
+}
+function isCorrectiveHit(item){
+  const corrective = String(item.corrective || '').trim();
+  return /\b(verbal|written|final)\b/i.test(corrective);
+}
+
+function buildSectionData(rows, fieldMap, type){
+  const { sd, ed } = getWindow();
+  const statRows = rows.filter(r => inRange(r._d, sd, ed));
+  const qaWindow = qaRows.filter(r => inRange(r.startDate, sd, ed));
+  const checklistWindow = checklistRows.filter(r => inRange(r.date, sd, ed));
+  const complimentWindow = complimentRows.filter(r => inRange(r.callDate, sd, ed));
+  const correctiveWindow = checklistRows.filter(r => inRange(r.dateServed, sd, ed) && isCorrectiveHit(r));
+
+  const teamNames = Array.from(new Set(statRows.map(r => String(r.Team||'').trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+  const teams = [];
+
+  for(const teamName of teamNames){
+    const teamRows = statRows.filter(r => String(r.Team||'').trim() === teamName);
+    const repKeySet = new Set(teamRows.map(r=>r.repKey).filter(Boolean));
+    const qaTeamRows = qaWindow.filter(r => repKeySet.has(r.repKey) || String(r.team||'').trim() === teamName);
+    const checklistTeamRows = checklistWindow.filter(r => repKeySet.has(r.repKey) || String(r.teamHint||'').trim() === teamName);
+    const complimentTeamRows = complimentWindow.filter(r => repKeySet.has(r.repKey) || String(r.team||'').trim() === teamName);
+    const correctiveTeamRows = correctiveWindow.filter(r => repKeySet.has(r.repKey) || String(r.teamHint||'').trim() === teamName);
+
+    const consumerApps = sumField(teamRows, fieldMap.consumerApps);
+    const consumerOpps = sumField(teamRows, fieldMap.consumerOpps);
+    const wiperCount = sumField(teamRows, fieldMap.wiperCount);
+    const wiperJobs = sumField(teamRows, fieldMap.wiperJobs);
+    const wipersAccept = sumField(teamRows, fieldMap.wipersAccept);
+    const wipersAsked = sumField(teamRows, fieldMap.wipersAsked);
+
+    const consumerRate = consumerOpps > 0 ? consumerApps / consumerOpps : NaN;
+    const wiperRate = type === 'retail'
+      ? (wiperJobs > 0 ? wiperCount / wiperJobs : NaN)
+      : (wipersAsked > 0 ? wipersAccept / wipersAsked : NaN);
+
+    const cqAvg = mean(qaTeamRows.map(r => r.score));
+    const attendanceHits = checklistTeamRows.filter(isAttendanceHit).length;
+    const complimentCount = complimentTeamRows.length;
+    const itacAvg = mean(teamRows.map(r => normalizePct(r[fieldMap.itac])));
+
+    const reps = Array.from(new Set(teamRows.map(r=>r.Name).filter(Boolean))).sort((a,b)=>a.localeCompare(b)).map(repName=>{
+      const repKey = personKey(repName);
+      const repRows = teamRows.filter(r => r.repKey === repKey);
+      const repQaRows = qaTeamRows.filter(r => r.repKey === repKey);
+      const repChecklist = checklistTeamRows.filter(r => r.repKey === repKey);
+      const repCompliments = complimentTeamRows.filter(r => r.repKey === repKey);
+      const repCorrectives = correctiveTeamRows.filter(r => r.repKey === repKey);
+      const correctiveCount = repCorrectives.length;
+      const correctivePenalty = correctiveCount * 10;
+
+      const repConsumerApps = sumField(repRows, fieldMap.consumerApps);
+      const repConsumerOpps = sumField(repRows, fieldMap.consumerOpps);
+      const repConsumerRate = repConsumerOpps > 0 ? repConsumerApps / repConsumerOpps : NaN;
+
+      const repWiperCount = sumField(repRows, fieldMap.wiperCount);
+      const repWiperJobs = sumField(repRows, fieldMap.wiperJobs);
+      const repWipersAccept = sumField(repRows, fieldMap.wipersAccept);
+      const repWipersAsked = sumField(repRows, fieldMap.wipersAsked);
+      const repWiperRate = type === 'retail'
+        ? (repWiperJobs > 0 ? repWiperCount / repWiperJobs : NaN)
+        : (repWipersAsked > 0 ? repWipersAccept / repWipersAsked : NaN);
+
+      const repCQ = mean(repQaRows.map(r => r.score));
+      const repAttendance = repChecklist.filter(isAttendanceHit).length;
+      const repACW = mean(repRows.map(r => normalizePct(r[fieldMap.acw])));
+      const repITAC = mean(repRows.map(r => normalizePct(r[fieldMap.itac])));
+
+      return {
+        name: repName,
+        consumerRate: repConsumerRate,
+        wiperRate: repWiperRate,
+        cqAvg: repCQ,
+        attendanceHits: repAttendance,
+        acwAvg: repACW,
+        itacAvg: repITAC,
+        complimentCount: repCompliments.length,
+        correctiveCount,
+        correctivePenalty
+      };
+    });
+
+    teams.push({
+      name: teamName,
+      type,
+      activeRepCount: repKeySet.size,
+      consumerRate,
+      wiperRate,
+      cqAvg,
+      attendanceHits,
+      complimentCount,
+      itacAvg,
+      reps
+    });
+  }
+
+  if(type === 'retail'){
+    const consumerRank = rankMapDescending(teams, 'consumerRate');
+    const wiperRank = rankMapDescending(teams, 'wiperRate');
+    const cqRank = rankMapDescending(teams, 'cqAvg');
+    for(const t of teams){
+      t.consumerRank = consumerRank.get(t.name) || null;
+      t.wiperRank = wiperRank.get(t.name) || null;
+      t.cqRank = cqRank.get(t.name) || null;
+      t.rankTotal = [t.consumerRank, t.wiperRank, t.cqRank].filter(Number.isFinite).reduce((s,n)=>s+n,0);
+      t.overallScore = t.rankTotal;
+    }
+  } else {
+    const wiperRank = rankMapDescending(teams, 'wiperRate');
+    const cqRank = rankMapDescending(teams, 'cqAvg');
+    const itacRank = rankMapDescending(teams, 'itacAvg');
+    for(const t of teams){
+      t.wiperRank = wiperRank.get(t.name) || null;
+      t.cqRank = cqRank.get(t.name) || null;
+      t.itacRank = itacRank.get(t.name) || null;
+      t.rankTotal = [t.wiperRank, t.cqRank, t.itacRank].filter(Number.isFinite).reduce((s,n)=>s+n,0);
+      t.overallScore = t.rankTotal;
+    }
+  }
+
+  teams.sort((a,b)=>{
+    const av = a.overallScore, bv = b.overallScore;
+    const aBad = !Number.isFinite(av), bBad = !Number.isFinite(bv);
+    if(aBad && bBad) return a.name.localeCompare(b.name);
+    if(aBad) return 1;
+    if(bBad) return -1;
+    if(av !== bv) return av - bv;
+    return a.name.localeCompare(b.name);
+  });
+  teams.forEach((t,i)=>t.overallRank = i+1);
+
+  for(const team of teams){
+    if(type === 'retail'){
+      const consumerRank = rankMapDescending(team.reps, 'consumerRate');
+      const wiperRank = rankMapDescending(team.reps, 'wiperRate');
+      const cqRank = rankMapDescending(team.reps, 'cqAvg');
+      const attendanceRank = rankMapAscending(team.reps, 'attendanceHits');
+      for(const r of team.reps){
+        r.consumerRank = consumerRank.get(r.name) || null;
+        r.wiperRank = wiperRank.get(r.name) || null;
+        r.cqRank = cqRank.get(r.name) || null;
+        r.attendanceRank = attendanceRank.get(r.name) || null;
+        r.rankTotal = [r.consumerRank, r.wiperRank, r.cqRank, r.attendanceRank].filter(Number.isFinite).reduce((s,n)=>s+n,0);
+        r.overallScore = r.rankTotal + (r.correctivePenalty || 0) - (r.complimentCount * 2);
+      }
+    } else {
+      const wiperRank = rankMapDescending(team.reps, 'wiperRate');
+      const cqRank = rankMapDescending(team.reps, 'cqAvg');
+      const attendanceRank = rankMapAscending(team.reps, 'attendanceHits');
+      const acwRank = rankMapAscending(team.reps, 'acwAvg');
+      const itacRank = rankMapDescending(team.reps, 'itacAvg');
+      for(const r of team.reps){
+        r.wiperRank = wiperRank.get(r.name) || null;
+        r.cqRank = cqRank.get(r.name) || null;
+        r.attendanceRank = attendanceRank.get(r.name) || null;
+        r.acwRank = acwRank.get(r.name) || null;
+        r.itacRank = itacRank.get(r.name) || null;
+        r.rankTotal = [r.wiperRank, r.cqRank, r.attendanceRank, r.itacRank].filter(Number.isFinite).reduce((s,n)=>s+n,0);
+        r.overallScore = r.rankTotal + (r.correctivePenalty || 0) - (r.complimentCount * 2);
+      }
     }
 
-    function renderSavedStats() {
-      const box = document.getElementById("savedStats");
+    team.reps.sort((a,b)=>{
+      const av = a.overallScore, bv = b.overallScore;
+      const aBad = !Number.isFinite(av), bBad = !Number.isFinite(bv);
+      if(aBad && bBad) return a.name.localeCompare(b.name);
+      if(aBad) return 1;
+      if(bBad) return -1;
+      if(av !== bv) return av - bv;
+      return a.name.localeCompare(b.name);
+    });
+  }
 
-      if (!customStats.length) {
-        box.innerHTML = `<div class="small-note">No custom stats added yet.</div>`;
-        return;
-      }
+  return teams;
+}
 
-      box.innerHTML = customStats.map(stat => {
-        const formula = stat.type === "ratio"
-          ? `${stat.numeratorColumn} / ${stat.denominatorColumn}`
-          : `${stat.numeratorColumn}`;
+function getTopRepFromTeam(team){
+  if(!team || !Array.isArray(team.reps) || !team.reps.length) return null;
 
-        const directionText = stat.direction === "desc" ? "Higher is better" : "Lower is better";
+  const topRep = team.reps[0];
 
-        let minText = "No minimum filter";
+  return {
+    section: team.type,
+    teamName: team.name,
+    teamRank: team.overallRank,
+    teamScore: team.overallScore,
+    repName: topRep.name,
+    repScore: topRep.overallScore,
+    consumerRate: topRep.consumerRate,
+    wiperRate: topRep.wiperRate,
+    cqAvg: topRep.cqAvg,
+    acwAvg: topRep.acwAvg,
+    itacAvg: topRep.itacAvg,
+    attendanceHits: topRep.attendanceHits || 0,
+    complimentCount: topRep.complimentCount || 0,
+    correctiveCount: topRep.correctiveCount || 0
+  };
+}
 
-        if (stat.minColumnMode !== "none" && stat.minRequired > 0) {
-          if (stat.minColumnMode === "denominator") {
-            minText = `Minimum ${stat.minRequired} from denominator/opportunities`;
-          } else if (stat.minColumnMode === "numerator") {
-            minText = `Minimum ${stat.minRequired} from numerator/appointments`;
-          } else if (stat.minColumnMode === "rows") {
-            minText = `Minimum ${stat.minRequired} rows`;
-          }
-        }
-
-        return `
-          <div class="saved-stat">
+function topThreeHtml(team){
+  const top = team.reps.slice(0,3);
+  if(!top.length) return `<div class="mutedTxt">No reps in window.</div>`;
+  return `
+    <div class="topThree">
+      ${top.map((r, i)=>`
+        <div class="winner">
+          <div class="winnerMain">
+            ${medalHtml(i)}
             <div>
-              <strong>${escapeHtml(stat.name)}</strong><br>
-              <span>${escapeHtml(formula)} | ${directionText} | Weight: ${stat.weight} | ${escapeHtml(minText)}</span>
+              <div style="font-weight:1000">${esc(r.name)}</div>
+              <div class="hint">Overall score ${esc(String(r.overallScore))}</div>
             </div>
-            <button class="red" onclick="removeStat('${stat.id}')">Remove</button>
           </div>
-        `;
-      }).join("");
-    }
-
-    function removeStat(id) {
-      customStats = customStats.filter(stat => stat.id !== id);
-      renderSavedStats();
-    }
-
-    function clearStats() {
-      customStats = [];
-      renderSavedStats();
-    }
-
-    function calculateRankings() {
-      clearError();
-
-      if (!rawRows.length) {
-        showError("Please upload a CSV first.");
-        return;
-      }
-
-      if (!customStats.length) {
-        showError("Please add at least one custom stat.");
-        return;
-      }
-
-      const nameColumn = document.getElementById("nameColumn").value;
-      const dateColumn = document.getElementById("dateColumn").value;
-      const teamColumn = document.getElementById("teamColumn").value;
-      const useDateColumn = document.getElementById("useDateColumn").checked;
-      const useDateFilter = document.getElementById("useDateFilter").checked;
-      const useTeamColumn = document.getElementById("useTeamColumn").checked;
-
-      if (!nameColumn) {
-        showError("Please assign a name column.");
-        return;
-      }
-
-      let filteredRows = [...rawRows];
-
-      if (useDateColumn && useDateFilter) {
-        if (!dateColumn) {
-          showError("Date filtering is enabled, but no date column is selected.");
-          return;
-        }
-
-        const startValue = document.getElementById("startDate").value;
-        const endValue = document.getElementById("endDate").value;
-
-        if (!startValue || !endValue) {
-          showError("Date filtering is enabled. Please select both start and end dates.");
-          return;
-        }
-
-        const startDate = parseInputDate(startValue);
-        const endDate = parseInputDate(endValue);
-
-        if (!startDate || !endDate || startDate > endDate) {
-          showError("Please choose a valid date range.");
-          return;
-        }
-
-        filteredRows = rawRows.filter(row => {
-          const d = parseFlexibleDate(row[dateColumn]);
-          return d && d >= startDate && d <= endDate;
-        });
-      }
-
-      if (!filteredRows.length) {
-        showError("No rows found after applying filters.");
-        return;
-      }
-
-      repResults = buildRepresentativeResults(
-        filteredRows,
-        nameColumn,
-        useTeamColumn ? teamColumn : ""
-      );
-
-      if (!repResults.length) {
-        showError("No representatives passed the selected minimum filters.");
-        document.getElementById("resultsPanel").classList.add("hidden");
-        return;
-      }
-
-      renderRepresentativeResults(repResults);
-
-      if (useTeamColumn && teamColumn) {
-        teamResults = buildTeamResults(repResults);
-        renderTeamResults(teamResults);
-        document.getElementById("teamResultsPanel").classList.remove("hidden");
-      } else {
-        teamResults = [];
-        document.getElementById("teamResultsPanel").classList.add("hidden");
-      }
-
-      document.getElementById("resultsPanel").classList.remove("hidden");
-    }
-
-    function buildRepresentativeResults(rows, nameColumn, teamColumn) {
-      const byName = {};
-
-      rows.forEach(row => {
-        const name = cleanText(row[nameColumn]);
-        if (!name) return;
-
-        const team = teamColumn ? cleanText(row[teamColumn]) : "";
-
-        if (!byName[name]) {
-          byName[name] = {
-            name,
-            team,
-            rowCount: 0,
-            statPieces: {}
-          };
-
-          customStats.forEach(stat => {
-            byName[name].statPieces[stat.id] = {
-              numeratorSum: 0,
-              denominatorSum: 0,
-              directValues: []
-            };
-          });
-        }
-
-        const person = byName[name];
-        person.rowCount++;
-
-        if (team && !person.team) {
-          person.team = team;
-        }
-
-        customStats.forEach(stat => {
-          const pieces = person.statPieces[stat.id];
-
-          if (stat.type === "ratio") {
-            pieces.numeratorSum += parseNumber(row[stat.numeratorColumn]);
-            pieces.denominatorSum += parseNumber(row[stat.denominatorColumn]);
-          } else {
-            const val = parsePossiblePercent(row[stat.numeratorColumn]);
-            if (val !== null) pieces.directValues.push(val);
-          }
-        });
-      });
-
-      let people = Object.values(byName).map(person => {
-        const output = {
-          name: person.name,
-          team: getTeamForRep(person.name, person.team),
-          manualAssignedTeam: manualTeamAssignments[normalizeName(person.name)] || "",
-          hasCorrectiveRed: false,
-          eligibilityStatus: "Eligible",
-          totalPoints: 0,
-          attendanceValue: null,
-          attendancePoints: 0,
-          rowCount: person.rowCount,
-          totalWeightedRankScore: 0,
-          statValues: {},
-          statRanks: {},
-          weightedRanks: {},
-          statVolumeChecks: {}
-        };
-
-        customStats.forEach(stat => {
-          const pieces = person.statPieces[stat.id];
-
-          if (stat.type === "ratio") {
-            output.statValues[stat.id] = safeRate(pieces.numeratorSum, pieces.denominatorSum);
-
-            output.statVolumeChecks[stat.id] = {
-              numerator: pieces.numeratorSum,
-              denominator: pieces.denominatorSum,
-              rows: person.rowCount
-            };
-          } else {
-            output.statValues[stat.id] = averageValid(pieces.directValues);
-
-            output.statVolumeChecks[stat.id] = {
-              numerator: pieces.directValues.length,
-              denominator: pieces.directValues.length,
-              rows: person.rowCount
-            };
-          }
-        });
-
-        return output;
-      });
-
-      people = people.filter(person => passesMinimumFilters(person));
-      people.forEach(p=>{p.hasCorrectiveRed = rows.some(r=>normalizeName(r[nameColumn])===normalizeName(p.name) && isCorrectiveRedValue(r[correctiveSettings.column])); if(p.hasCorrectiveRed) p.eligibilityStatus="Corrective Red - Not Eligible";});
-
-      customStats.forEach(stat => {
-        applyStatRank(people, stat);
-      });
-
-      people.forEach(person => {
-        let total = 0;
-
-        customStats.forEach(stat => {
-          const rank = person.statRanks[stat.id];
-          const weightedRank = rank * stat.weight;
-
-          person.weightedRanks[stat.id] = weightedRank;
-          total += weightedRank;
-        });
-
-        person.totalWeightedRankScore = total;
-      });
-
-      people.sort((a, b) => {
-        if (a.totalWeightedRankScore !== b.totalWeightedRankScore) {
-          return a.totalWeightedRankScore - b.totalWeightedRankScore;
-        }
-
-        return averagePerformanceTieBreaker(b) - averagePerformanceTieBreaker(a);
-      });
-
-      assignEligibleRanks(people); if (pointSettings.usePointScoring) { applyPointScoring(people); }
-
-      return people;
-    }
-
-    function passesMinimumFilters(person) {
-      for (const stat of customStats) {
-        if (!stat.minRequired || stat.minRequired <= 0 || stat.minColumnMode === "none") {
-          continue;
-        }
-
-        const checks = person.statVolumeChecks[stat.id];
-
-        if (!checks) return false;
-
-        let actualValue = 0;
-
-        if (stat.minColumnMode === "denominator") {
-          actualValue = checks.denominator;
-        } else if (stat.minColumnMode === "numerator") {
-          actualValue = checks.numerator;
-        } else if (stat.minColumnMode === "rows") {
-          actualValue = checks.rows;
-        }
-
-        if (actualValue < stat.minRequired) {
-          return false;
-        }
-      }
-
-      return true;
-    }
-
-    function buildTeamResults(people) {
-      const teamMethod = document.getElementById("teamMethod").value;
-      const byTeam = {};
-
-      people.forEach(person => {
-        const team = person.team || "No Team";
-
-        if (!byTeam[team]) {
-          byTeam[team] = {
-            team,
-            memberCount: 0,
-            rowCount: 0,
-            totalWeightedRankScore: 0,
-            statValues: {},
-            statRanks: {},
-            weightedRanks: {},
-            members: []
-          };
-
-          customStats.forEach(stat => {
-            byTeam[team].statValues[stat.id] = [];
-          });
-        }
-
-        const t = byTeam[team];
-
-        t.memberCount++;
-        t.rowCount += person.rowCount;
-        t.totalWeightedRankScore += person.totalWeightedRankScore;
-        t.members.push(person.name);
-
-        customStats.forEach(stat => {
-          const val = person.statValues[stat.id];
-          if (isFiniteNumber(val)) {
-            t.statValues[stat.id].push(val);
-          }
-        });
-      });
-
-      let teams = Object.values(byTeam).map(team => {
-        const output = {
-          team: team.team,
-          memberCount: team.memberCount,
-          rowCount: team.rowCount,
-          members: team.members,
-          totalWeightedRankScore: teamMethod === "average"
-            ? team.totalWeightedRankScore / team.memberCount
-            : team.totalWeightedRankScore,
-          statValues: {},
-          statRanks: {},
-          weightedRanks: {}
-        };
-
-        customStats.forEach(stat => {
-          output.statValues[stat.id] = averageValid(team.statValues[stat.id]);
-        });
-
-        return output;
-      });
-
-      customStats.forEach(stat => {
-        applyStatRank(teams, stat);
-      });
-
-      teams.forEach(team => {
-        let total = 0;
-
-        customStats.forEach(stat => {
-          const rank = team.statRanks[stat.id];
-          const weightedRank = rank * stat.weight;
-
-          team.weightedRanks[stat.id] = weightedRank;
-          total += weightedRank;
-        });
-
-        team.totalWeightedRankScore = total;
-      });
-
-      teams.sort((a, b) => {
-        if (a.totalWeightedRankScore !== b.totalWeightedRankScore) {
-          return a.totalWeightedRankScore - b.totalWeightedRankScore;
-        }
-
-        return averagePerformanceTieBreaker(b) - averagePerformanceTieBreaker(a);
-      });
-
-      assignOverallRanks(teams, "overallRank", "totalWeightedRankScore");
-
-      return teams;
-    }
-
-
-    function isCorrectiveRedValue(value){ const v=normalizeName(value); const custom=normalizeName(document.getElementById('correctiveCustomValue')?.value||''); const values=[...correctiveSettings.values,custom].filter(Boolean); return values.includes(v); }
-    function splitEligibleAndCorrective(results){ return { eligiblePeople: results.filter(p=>!p.hasCorrectiveRed), correctivePeople: results.filter(p=>p.hasCorrectiveRed)}; }
-    function assignEligibleRanks(results){ const sp=splitEligibleAndCorrective(results); sp.eligiblePeople.sort((a,b)=>a.totalWeightedRankScore-b.totalWeightedRankScore); assignOverallRanks(sp.eligiblePeople,'overallRank','totalWeightedRankScore'); sp.correctivePeople.forEach(p=>p.overallRank='Not Eligible'); results.sort((a,b)=> (a.hasCorrectiveRed===b.hasCorrectiveRed)?(a.totalWeightedRankScore-b.totalWeightedRankScore):(a.hasCorrectiveRed?1:-1)); }
-    function applyPointScoring(people){ customStats.forEach(stat=>{ const ranked=[...people].filter(p=>!p.hasCorrectiveRed).sort((a,b)=>stat.direction==='desc'?b.statValues[stat.id]-a.statValues[stat.id]:a.statValues[stat.id]-b.statValues[stat.id]); ranked.forEach(p=>{ const pts=calculateRankPoints(p.statRanks[stat.id], ranked.length, Number(pointSettings.statPoints[stat.id]||0)); p.statPoints=p.statPoints||{}; p.statPoints[stat.id]=pts; p.totalPoints+=pts;});}); }
-
-    function applyStatRank(items, stat) {
-      const valid = items
-        .filter(item => isFiniteNumber(item.statValues[stat.id]))
-        .sort((a, b) => {
-          const av = a.statValues[stat.id];
-          const bv = b.statValues[stat.id];
-
-          if (stat.direction === "desc") return bv - av;
-          return av - bv;
-        });
-
-      let currentRank = 0;
-      let lastValue = null;
-
-      valid.forEach((item, index) => {
-        const value = item.statValues[stat.id];
-
-        if (lastValue === null || value !== lastValue) {
-          currentRank = index + 1;
-          lastValue = value;
-        }
-
-        item.statRanks[stat.id] = currentRank;
-      });
-
-      const missingRank = items.length + 1;
-
-      items.forEach(item => {
-        if (!isFiniteNumber(item.statValues[stat.id])) {
-          item.statRanks[stat.id] = missingRank;
-        }
-      });
-    }
-
-    function renderRepresentativeResults(results) {
-      const table = document.getElementById("repTable");
-      const summary = document.getElementById("repSummary");
-
-      if (!results.length) {
-        table.innerHTML = `<tr><td>No representative results found.</td></tr>`;
-        summary.innerHTML = "";
-        return;
-      }
-
-      const winner = results[0];
-
-      summary.innerHTML = `
-        <div class="summary-card">
-          <h3>Overall Rep Winner</h3>
-          <div class="big">${escapeHtml(winner.name)}</div>
-          <div class="sub">Score: ${formatScore(winner.totalWeightedRankScore)}</div>
+          <div class="chipRow">
+            ${team.type === 'retail' ? `<span class="pill">Consumer ${fmtPct1(r.consumerRate)}</span>` : ``}
+            <span class="pill">Wipers ${fmtPct1(r.wiperRate)}</span>
+            <span class="pill">CQ ${fmtPct1(r.cqAvg)}</span>
+            <span class="pill ${r.attendanceHits>0 ? 'warn' : 'good'}">Attendance ${r.attendanceHits}</span>
+            <span class="pill">Compliments ${r.complimentCount || 0}</span>
+            <span class="pill ${r.correctiveCount>0 ? 'warn' : ''}">Correctives ${r.correctiveCount || 0}</span>
+            ${team.type === 'referral' ? `<span class="pill">ACW ${fmtPct1(r.acwAvg)}</span><span class="pill">ITAC ${fmtPct1(r.itacAvg)}</span>` : ``}
+          </div>
         </div>
+      `).join('')}
+    </div>
+  `;
+}
 
-        <div class="summary-card">
-          <h3>Winner's Team</h3>
-          <div class="big">${escapeHtml(winner.team)}</div>
-          <div class="sub">${winner.rowCount} included rows</div>
+function renderOverallWinner(sectionTeams){
+  if(!sectionTeams.length){
+    els.overallWinner.innerHTML = `<div class="mutedTxt">No data in the selected window for this tab.</div>`;
+    return;
+  }
+  const t = sectionTeams[0];
+  els.overallWinner.innerHTML = `
+    <h2>Top Overall ${esc(t.type === 'retail' ? 'Retail' : 'Referral')} Team</h2>
+    <div class="big">${medalHtml(0)} ${esc(t.name)}</div>
+    <div class="chipRow" style="margin-top:10px">
+      ${t.type === 'retail' ? `<span class="pill">Consumer <strong>${fmtPct1(t.consumerRate)}</strong></span>` : ``}
+      <span class="pill">Wipers <strong>${fmtPct1(t.wiperRate)}</strong></span>
+      <span class="pill">CQ <strong>${fmtPct1(t.cqAvg)}</strong></span>
+      <span class="pill">Rank total <strong>${esc(String(t.rankTotal ?? '—'))}</strong></span>
+      <span class="pill">Compliments <strong>${t.complimentCount || 0}</strong></span>
+      <span class="pill">Overall score <strong>${esc(String(t.overallScore))}</strong></span>
+      ${t.type === 'referral' ? `<span class="pill">ITAC <strong>${fmtPct1(t.itacAvg)}</strong></span>` : ``}
+      <span class="pill warn">Attendance shown only, not in team rank</span>
+      <span class="pill">Attendance hits <strong>${t.attendanceHits}</strong></span>
+      <span class="pill">Active reps <strong>${t.activeRepCount}</strong></span>
+    </div>
+  `;
+}
+
+function renderWinnersSummary(retailTeams, referralTeams){
+  const allTeams = [
+    ...(Array.isArray(retailTeams) ? retailTeams : []),
+    ...(Array.isArray(referralTeams) ? referralTeams : [])
+  ];
+
+  if(!allTeams.length){
+    els.winnersSummaryBody.innerHTML = `<div class="mutedTxt">No winner data in the selected window.</div>`;
+    return;
+  }
+
+  const validTeams = allTeams.filter(t => Number.isFinite(t.overallScore));
+  const topTeam = validTeams.length ? validTeams.slice().sort((a,b)=>{
+    if(a.overallScore !== b.overallScore) return a.overallScore - b.overallScore;
+    return String(a.name || '').localeCompare(String(b.name || ''));
+  })[0] : null;
+
+  const teamWinners = allTeams
+    .map(getTopRepFromTeam)
+    .filter(Boolean)
+    .filter(w => Number.isFinite(w.repScore))
+    .sort((a,b)=>{
+      if(a.repScore !== b.repScore) return a.repScore - b.repScore;
+      return String(a.repName || '').localeCompare(String(b.repName || ''));
+    });
+
+  const overallRep = teamWinners[0] || null;
+  const sectionLabel = (type) => type === 'retail' ? 'Retail' : 'Referral';
+
+  els.winnersSummaryBody.innerHTML = `
+    <div class="overallBanner">
+      <h2>Overall Winners</h2>
+      <div class="statGrid" style="margin-top:10px">
+        <div class="stat">
+          <div class="k">Top Team</div>
+          <div class="v">${topTeam ? esc(topTeam.name) : '—'}</div>
+          <div class="hint">
+            ${topTeam ? `${sectionLabel(topTeam.type)} • Score ${esc(String(topTeam.overallScore))}` : 'No team winner'}
+          </div>
         </div>
-
-        <div class="summary-card">
-          <h3>Representatives Ranked</h3>
-          <div class="big">${results.length}</div>
-          <div class="sub">After selected filters</div>
+        <div class="stat">
+          <div class="k">Overall Top Representative</div>
+          <div class="v">${overallRep ? esc(overallRep.repName) : '—'}</div>
+          <div class="hint">
+            ${overallRep ? `${esc(overallRep.teamName)} • ${sectionLabel(overallRep.section)} • Score ${esc(String(overallRep.repScore))}` : 'No rep winner'}
+          </div>
         </div>
-      `;
+        <div class="stat">
+          <div class="k">Retail Top Team</div>
+          <div class="v">${retailTeams?.[0] ? esc(retailTeams[0].name) : '—'}</div>
+          <div class="hint">${retailTeams?.[0] ? `Score ${esc(String(retailTeams[0].overallScore))}` : 'No retail data'}</div>
+        </div>
+        <div class="stat">
+          <div class="k">Referral Top Team</div>
+          <div class="v">${referralTeams?.[0] ? esc(referralTeams[0].name) : '—'}</div>
+          <div class="hint">${referralTeams?.[0] ? `Score ${esc(String(referralTeams[0].overallScore))}` : 'No referral data'}</div>
+        </div>
+      </div>
+    </div>
 
-      const statHeaders = customStats.map(stat => `
-        <th>${escapeHtml(stat.name)} Value</th>
-        <th>${escapeHtml(stat.name)} Volume Used</th>
-        <th>${escapeHtml(stat.name)} Rank</th>
-        <th>${escapeHtml(stat.name)} Weighted Rank</th>
-      `).join("");
-
-      table.innerHTML = `
+    <div class="subTitle" style="margin-top:14px">Top Performer Per Team</div>
+    <div class="tblWrap">
+      <table>
         <thead>
           <tr>
-            <th>Overall Rank</th>
-            <th>Name</th>
+            <th>Winner Rank</th>
+            <th>Representative</th>
             <th>Team</th>
-            <th>Total Weighted Rank Score</th>
-            <th>Rows</th>
-            ${statHeaders}
+            <th>Section</th>
+            <th class="right">Rep Score</th>
+            <th class="right">Team Rank</th>
+            <th class="right">Team Score</th>
+            <th class="right">Consumer</th>
+            <th class="right">Wipers</th>
+            <th class="right">CQ</th>
+            <th class="right">ACW</th>
+            <th class="right">ITAC</th>
+            <th class="right">Attendance</th>
+            <th class="right">Compliments</th>
+            <th class="right">Correctives</th>
           </tr>
         </thead>
         <tbody>
-          ${results.map(person => `
-            <tr class="${person.overallRank === 1 ? "winner" : ""}">
-              <td>${rankBadge(person.overallRank)}</td>
-              <td>${escapeHtml(person.name)}</td>
-              <td>${escapeHtml(person.team)}</td>
-              <td><strong>${formatScore(person.totalWeightedRankScore)}</strong></td>
-              <td>${person.rowCount}</td>
-              ${customStats.map(stat => `
-                <td>${formatValue(person.statValues[stat.id])}</td>
-                <td>${formatVolumeUsed(person, stat)}</td>
-                <td>${rankBadge(person.statRanks[stat.id])}</td>
-                <td>${formatScore(person.weightedRanks[stat.id])}</td>
-              `).join("")}
-            </tr>
-          `).join("")}
-        </tbody>
-      `;
-    }
-
-    function renderTeamResults(results) {
-      const table = document.getElementById("teamTable");
-      const summary = document.getElementById("teamSummary");
-
-      if (!results.length) {
-        table.innerHTML = `<tr><td>No team results found.</td></tr>`;
-        summary.innerHTML = "";
-        return;
-      }
-
-      const winner = results[0];
-
-      summary.innerHTML = `
-        <div class="summary-card">
-          <h3>Overall Team Winner</h3>
-          <div class="big">${escapeHtml(winner.team)}</div>
-          <div class="sub">Score: ${formatScore(winner.totalWeightedRankScore)}</div>
-        </div>
-
-        <div class="summary-card">
-          <h3>Team Members</h3>
-          <div class="big">${winner.memberCount}</div>
-          <div class="sub">${winner.rowCount} included rows</div>
-        </div>
-
-        <div class="summary-card">
-          <h3>Teams Ranked</h3>
-          <div class="big">${results.length}</div>
-          <div class="sub">Based on reps who passed filters</div>
-        </div>
-      `;
-
-      const statHeaders = customStats.map(stat => `
-        <th>${escapeHtml(stat.name)} Avg Value</th>
-        <th>${escapeHtml(stat.name)} Team Rank</th>
-        <th>${escapeHtml(stat.name)} Weighted Rank</th>
-      `).join("");
-
-      table.innerHTML = `
-        <thead>
-          <tr>
-            <th>Overall Rank</th>
-            <th>Team</th>
-            <th>Total Weighted Rank Score</th>
-            <th>Members</th>
-            <th>Rows</th>
-            ${statHeaders}
-          </tr>
-        </thead>
-        <tbody>
-          ${results.map(team => `
-            <tr class="${team.overallRank === 1 ? "winner" : ""}">
-              <td>${rankBadge(team.overallRank)}</td>
-              <td>${escapeHtml(team.team)}</td>
-              <td><strong>${formatScore(team.totalWeightedRankScore)}</strong></td>
-              <td>${team.memberCount}</td>
-              <td>${team.rowCount}</td>
-              ${customStats.map(stat => `
-                <td>${formatValue(team.statValues[stat.id])}</td>
-                <td>${rankBadge(team.statRanks[stat.id])}</td>
-                <td>${formatScore(team.weightedRanks[stat.id])}</td>
-              `).join("")}
-            </tr>
-          `).join("")}
-        </tbody>
-      `;
-    }
-
-    function exportResults(type) {
-      const rows = type === "rep" ? repResults : teamResults;
-
-      if (!rows.length) {
-        showError(`No ${type} results to export.`);
-        return;
-      }
-
-      let headersOut = [];
-
-      if (type === "rep") {
-        headersOut = ["Overall Rank", "Name", "Team", "Total Weighted Rank Score", "Rows"];
-      } else {
-        headersOut = ["Overall Rank", "Team", "Total Weighted Rank Score", "Members", "Rows"];
-      }
-
-      customStats.forEach(stat => {
-        headersOut.push(`${stat.name} Value`);
-
-        if (type === "rep") {
-          headersOut.push(`${stat.name} Volume Used`);
-        }
-
-        headersOut.push(`${stat.name} Rank`);
-        headersOut.push(`${stat.name} Weighted Rank`);
-      });
-
-      const data = rows.map(item => {
-        let row;
-
-        if (type === "rep") {
-          row = [
-            item.overallRank,
-            item.name,
-            item.team,
-            formatScore(item.totalWeightedRankScore),
-            item.rowCount
-          ];
-        } else {
-          row = [
-            item.overallRank,
-            item.team,
-            formatScore(item.totalWeightedRankScore),
-            item.memberCount,
-            item.rowCount
-          ];
-        }
-
-        customStats.forEach(stat => {
-          row.push(formatValue(item.statValues[stat.id]));
-
-          if (type === "rep") {
-            row.push(formatVolumeUsed(item, stat));
-          }
-
-          row.push(item.statRanks[stat.id]);
-          row.push(formatScore(item.weightedRanks[stat.id]));
-        });
-
-        return row;
-      });
-
-      const csv = Papa.unparse([headersOut, ...data]);
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = type === "rep"
-        ? "representative-custom-rankings.csv"
-        : "team-custom-rankings.csv";
-
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-
-      URL.revokeObjectURL(url);
-    }
-
-    function renderPreview() {
-      const table = document.getElementById("previewTable");
-      const previewRows = rawRows.slice(0, 20);
-      const allHeaders = getAllAvailableHeaders();
-
-      table.innerHTML = `
-        <thead>
-          <tr>
-            ${allHeaders.map(h => `<th>${escapeHtml(h)}</th>`).join("")}
-          </tr>
-        </thead>
-        <tbody>
-          ${previewRows.map(row => `
+          ${teamWinners.map((w,i)=>`
             <tr>
-              ${allHeaders.map(h => `<td>${escapeHtml(row[h])}</td>`).join("")}
+              <td>${medalHtml(i)}</td>
+              <td><strong>${esc(w.repName)}</strong></td>
+              <td>${esc(w.teamName)}</td>
+              <td>${sectionLabel(w.section)}</td>
+              <td class="right"><strong>${esc(String(w.repScore))}</strong></td>
+              <td class="right">${esc(String(w.teamRank ?? '—'))}</td>
+              <td class="right">${esc(String(w.teamScore ?? '—'))}</td>
+              <td class="right">${fmtPct1(w.consumerRate)}</td>
+              <td class="right">${fmtPct1(w.wiperRate)}</td>
+              <td class="right">${fmtPct1(w.cqAvg)}</td>
+              <td class="right">${fmtPct1(w.acwAvg)}</td>
+              <td class="right">${fmtPct1(w.itacAvg)}</td>
+              <td class="right ${w.attendanceHits > 0 ? 'warnTxt' : 'goodTxt'}">${w.attendanceHits}</td>
+              <td class="right">${w.complimentCount}</td>
+              <td class="right ${w.correctiveCount > 0 ? 'warnTxt' : 'goodTxt'}">${w.correctiveCount}</td>
             </tr>
-          `).join("")}
+          `).join('') || `<tr><td colspan="15" class="mutedTxt">No team winners found.</td></tr>`}
         </tbody>
-      `;
-    }
+      </table>
+    </div>
+  `;
+}
 
-    function assignOverallRanks(items, rankKey, scoreKey) {
-      let lastScore = null;
-      let currentRank = 0;
+function renderRetailTable(teams){
+  els.retailRankBody.innerHTML = teams.map((t,i)=>`
+    <tr>
+      <td>${medalHtml(i)}</td>
+      <td><button data-open-team="${esc(t.name)}" data-section="retail" style="all:unset;cursor:pointer;color:#2563eb;font-weight:1000;text-decoration:underline">${esc(t.name)}</button></td>
+      <td class="right">${esc(String(t.consumerRank ?? '—'))}</td>
+      <td class="right">${esc(String(t.wiperRank ?? '—'))}</td>
+      <td class="right">${esc(String(t.cqRank ?? '—'))}</td>
+      <td class="right">${esc(String(t.rankTotal ?? '—'))}</td>
+      <td class="right" style="font-weight:1000">${t.complimentCount || 0}</td>
+      <td class="right"><strong>${esc(String(t.overallScore))}</strong></td>
+      <td class="right">${fmtPct1(t.consumerRate)}</td>
+      <td class="right">${fmtPct1(t.wiperRate)}</td>
+      <td class="right">${fmtPct1(t.cqAvg)}</td>
+      <td class="right ${t.attendanceHits>0 ? 'warnTxt' : 'goodTxt'}">${t.attendanceHits}</td>
+      <td class="right">${t.activeRepCount}</td>
+    </tr>
+  `).join('') || `<tr><td colspan="13" class="mutedTxt">No retail data.</td></tr>`;
+}
+function renderReferralTable(teams){
+  els.referralRankBody.innerHTML = teams.map((t,i)=>`
+    <tr>
+      <td>${medalHtml(i)}</td>
+      <td><button data-open-team="${esc(t.name)}" data-section="referral" style="all:unset;cursor:pointer;color:#2563eb;font-weight:1000;text-decoration:underline">${esc(t.name)}</button></td>
+      <td class="right">${esc(String(t.wiperRank ?? '—'))}</td>
+      <td class="right">${esc(String(t.cqRank ?? '—'))}</td>
+      <td class="right">${esc(String(t.itacRank ?? '—'))}</td>
+      <td class="right">${esc(String(t.rankTotal ?? '—'))}</td>
+      <td class="right" style="font-weight:1000">${t.complimentCount || 0}</td>
+      <td class="right"><strong>${esc(String(t.overallScore))}</strong></td>
+      <td class="right">${fmtPct1(t.wiperRate)}</td>
+      <td class="right">${fmtPct1(t.cqAvg)}</td>
+      <td class="right">${fmtPct1(t.itacAvg)}</td>
+      <td class="right ${t.attendanceHits>0 ? 'warnTxt' : 'goodTxt'}">${t.attendanceHits}</td>
+      <td class="right">${t.activeRepCount}</td>
+    </tr>
+  `).join('') || `<tr><td colspan="11" class="mutedTxt">No referral data.</td></tr>`;
+}
 
-      items.forEach((item, index) => {
-        if (lastScore === null || item[scoreKey] !== lastScore) {
-          currentRank = index + 1;
-          lastScore = item[scoreKey];
-        }
+function renderTeamCards(teams, mountEl, section){
+  mountEl.innerHTML = teams.map((t,i)=>`
+    <div class="teamCard ${i===0 ? 'open' : ''}" data-team="${esc(t.name)}" data-section="${esc(section)}">
+      <div class="teamHead">
+        <div class="teamTitle">
+          ${medalHtml(i)}
+          <div>
+            <div class="teamName">${esc(t.name)}</div>
+            <div class="hint">${esc(t.type === 'retail' ? 'Retail Team' : 'Referral Team')} • Overall score ${esc(String(t.overallScore))}</div>
+          </div>
+        </div>
+        <div class="chipRow">
+          ${t.type === 'retail' ? `<span class="pill">Consumer ${fmtPct1(t.consumerRate)}</span>` : ``}
+          <span class="pill">Wipers ${fmtPct1(t.wiperRate)}</span>
+          <span class="pill">CQ ${fmtPct1(t.cqAvg)}</span>
+          ${t.type === 'referral' ? `<span class="pill">ITAC ${fmtPct1(t.itacAvg)}</span>` : ``}
+          <span class="pill">Compliments ${t.complimentCount || 0}</span>
+          <span class="pill warn">Attendance ${t.attendanceHits}</span>
+          <span class="pill">Active reps ${t.activeRepCount}</span>
+        </div>
+      </div>
+      <div class="teamBody">
+        <div class="teamMiniStats">
+          ${t.type === 'retail' ? `
+          <div class="miniStat">
+            <div class="k">Consumer Rank</div>
+            <div class="v">${esc(String(t.consumerRank ?? '—'))}</div>
+          </div>` : ``}
+          <div class="miniStat">
+            <div class="k">Wiper Rank</div>
+            <div class="v">${esc(String(t.wiperRank ?? '—'))}</div>
+          </div>
+          <div class="miniStat">
+            <div class="k">CQ Rank</div>
+            <div class="v">${esc(String(t.cqRank ?? '—'))}</div>
+          </div>
+          ${t.type === 'referral' ? `
+          <div class="miniStat">
+            <div class="k">ITAC Rank</div>
+            <div class="v">${esc(String(t.itacRank ?? '—'))}</div>
+          </div>` : ``}
+          <div class="miniStat">
+            <div class="k">Compliments</div>
+            <div class="v">${t.complimentCount || 0}</div>
+          </div>
+          <div class="miniStat">
+            <div class="k">Attendance Hits</div>
+            <div class="v ${t.attendanceHits>0 ? 'warnTxt' : 'goodTxt'}">${t.attendanceHits}</div>
+          </div>
+          <div class="miniStat">
+            <div class="k">Overall Rank</div>
+            <div class="v">${esc(String(t.overallRank))}</div>
+          </div>
+        </div>
 
-        item[rankKey] = currentRank;
-      });
-    }
+        <div class="subTitle">Top 3 Performers</div>
+        ${topThreeHtml(t)}
 
-    function averagePerformanceTieBreaker(item) {
-      const values = customStats
-        .map(stat => item.statValues[stat.id])
-        .filter(isFiniteNumber);
+        <div class="subTitle" style="margin-top:14px">Full Team Breakdown</div>
+        <div class="tblWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Overall</th>
+                <th>Rep</th>
+                ${t.type === 'retail' ? `<th class="right">Consumer Rank</th>` : ``}
+                <th class="right">Wiper Rank</th>
+                <th class="right">CQ Rank</th>
+                <th class="right">Attendance Rank</th>
+                ${t.type === 'referral' ? `<th class="right">ACW Rank</th><th class="right">ITAC Rank</th>` : ``}
+                <th class="right">Rank Total</th>
+                <th class="right">Compliments</th>
+                <th class="right">Correctives</th>
+                <th class="right">Corrective Penalty</th>
+                <th class="right">Overall Score</th>
+                ${t.type === 'retail' ? `<th class="right">Consumer Rate</th>` : ``}
+                <th class="right">Wiper Rate</th>
+                <th class="right">CQ Avg</th>
+                <th class="right">Attendance Hits</th>
+                ${t.type === 'referral' ? `<th class="right">ACW Avg</th><th class="right">ITAC %</th>` : ``}
+              </tr>
+            </thead>
+            <tbody>
+              ${t.reps.map((r, idx)=>`
+                <tr>
+                  <td>${medalHtml(idx)}</td>
+                  <td>${esc(r.name)}</td>
+                  ${t.type === 'retail' ? `<td class="right">${esc(String(r.consumerRank ?? '—'))}</td>` : ``}
+                  <td class="right">${esc(String(r.wiperRank ?? '—'))}</td>
+                  <td class="right">${esc(String(r.cqRank ?? '—'))}</td>
+                  <td class="right">${esc(String(r.attendanceRank ?? '—'))}</td>
+                  ${t.type === 'referral' ? `<td class="right">${esc(String(r.acwRank ?? '—'))}</td><td class="right">${esc(String(r.itacRank ?? '—'))}</td>` : ``}
+                  <td class="right">${esc(String(r.rankTotal ?? '—'))}</td>
+                  <td class="right" style="font-weight:1000">${r.complimentCount || 0}</td>
+                  <td class="right ${r.correctiveCount>0 ? 'warnTxt' : 'goodTxt'}">${r.correctiveCount || 0}</td>
+                  <td class="right ${r.correctivePenalty>0 ? 'warnTxt' : 'goodTxt'}">${r.correctivePenalty>0 ? '+' + r.correctivePenalty : '0'}</td>
+                  <td class="right"><strong>${esc(String(r.overallScore))}</strong></td>
+                  ${t.type === 'retail' ? `<td class="right">${fmtPct1(r.consumerRate)}</td>` : ``}
+                  <td class="right">${fmtPct1(r.wiperRate)}</td>
+                  <td class="right">${fmtPct1(r.cqAvg)}</td>
+                  <td class="right ${r.attendanceHits>0 ? 'warnTxt' : 'goodTxt'}">${r.attendanceHits}</td>
+                  ${t.type === 'referral' ? `<td class="right">${fmtPct1(r.acwAvg)}</td><td class="right">${fmtPct1(r.itacAvg)}</td>` : ``}
+                </tr>
+              `).join('') || `<tr><td colspan="12" class="mutedTxt">No reps in window.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `).join('');
 
-      if (!values.length) return -Infinity;
+  mountEl.querySelectorAll('.teamHead').forEach(head=>{
+    head.addEventListener('click', ()=>{
+      head.parentElement.classList.toggle('open');
+    });
+  });
+}
 
-      return values.reduce((a, b) => a + b, 0) / values.length;
-    }
-
-    function parseNumber(value) {
-      if (value === null || value === undefined) return 0;
-
-      let cleaned = String(value)
-        .replace(/,/g, "")
-        .replace(/%/g, "")
-        .replace(/\$/g, "")
-        .trim();
-
-      if (cleaned === "") return 0;
-
-      const n = Number(cleaned);
-      return Number.isFinite(n) ? n : 0;
-    }
-
-    function parsePossiblePercent(value) {
-      if (value === null || value === undefined) return null;
-
-      let raw = String(value).trim();
-
-      if (raw === "") return null;
-
-      const hasPercent = raw.includes("%");
-
-      raw = raw
-        .replace(/,/g, "")
-        .replace(/%/g, "")
-        .replace(/\$/g, "")
-        .trim();
-
-      const n = Number(raw);
-
-      if (!Number.isFinite(n)) return null;
-
-      if (hasPercent) return n / 100;
-
-      if (n > 1 && n <= 100) return n / 100;
-
-      return n;
-    }
-
-    function safeRate(numerator, denominator) {
-      numerator = Number(numerator) || 0;
-      denominator = Number(denominator) || 0;
-
-      if (denominator <= 0) return null;
-      return numerator / denominator;
-    }
-
-    function averageValid(values) {
-      const valid = values.filter(isFiniteNumber);
-      if (!valid.length) return null;
-      return valid.reduce((a, b) => a + b, 0) / valid.length;
-    }
-
-    function formatVolumeUsed(person, stat) {
-      const checks = person.statVolumeChecks?.[stat.id];
-
-      if (!checks) return "N/A";
-
-      if (stat.minColumnMode === "denominator") {
-        return checks.denominator;
+function bindOpenTeamLinks(){
+  document.querySelectorAll('[data-open-team]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const teamName = btn.getAttribute('data-open-team');
+      const section = btn.getAttribute('data-section');
+      setActiveTab(section);
+      const card = document.querySelector(`.teamCard[data-team="${CSS.escape(teamName)}"][data-section="${CSS.escape(section)}"]`);
+      if(card){
+        card.classList.add('open');
+        card.scrollIntoView({ behavior:'smooth', block:'start' });
       }
+    });
+  });
+}
 
-      if (stat.minColumnMode === "numerator") {
-        return checks.numerator;
-      }
+function setActiveTab(tab){
+  activeTab = tab;
+  document.querySelectorAll('.tab').forEach(t=> t.classList.toggle('active', t.getAttribute('data-tab') === tab));
+  document.querySelectorAll('.tabPanel').forEach(p=> p.classList.toggle('active', p.id === `panel-${tab}`));
+}
 
-      if (stat.minColumnMode === "rows") {
-        return checks.rows;
-      }
+function renderAll(){
+  const retailTeams = buildSectionData(retailRows, retailFieldMap || {}, 'retail');
+  const referralTeams = buildSectionData(referralRows, referralFieldMap || {}, 'referral');
 
-      if (stat.type === "ratio") {
-        return `Num: ${checks.numerator} / Den: ${checks.denominator}`;
-      }
+  els.sumRetail.textContent = String(retailTeams.length);
+  els.sumReferral.textContent = String(referralTeams.length);
+  els.sumRetailAttendance.textContent = String(retailTeams.reduce((s,t)=>s+(t.attendanceHits||0),0));
+  els.sumReferralAttendance.textContent = String(referralTeams.reduce((s,t)=>s+(t.attendanceHits||0),0));
 
-      return checks.rows;
+  renderRetailTable(retailTeams);
+  renderReferralTable(referralTeams);
+  renderTeamCards(retailTeams, els.retailCards, 'retail');
+  renderTeamCards(referralTeams, els.referralCards, 'referral');
+
+  renderOverallWinner(activeTab === 'retail' ? retailTeams : referralTeams);
+  renderWinnersSummary(retailTeams, referralTeams);
+  bindOpenTeamLinks();
+
+  const { sd, ed } = getWindow();
+  els.scopeHint.textContent = `${mmddyy(sd)} → ${mmddyy(ed)} • Retail ${retailTeams.length} • Referral ${referralTeams.length}`;
+}
+
+function savePrefs(){
+  try{
+    localStorage.setItem(PREF_KEY, JSON.stringify({
+      retailDockKey,
+      referralDockKey,
+      qaDockKey,
+      checkDockKey,
+      complimentSheetName,
+      startDate: els.startDate.value || '',
+      endDate: els.endDate.value || '',
+      activeTab
+    }));
+  }catch(e){}
+}
+function loadPrefs(){
+  try{
+    const raw = localStorage.getItem(PREF_KEY);
+    if(!raw) return;
+    const p = JSON.parse(raw);
+    if(typeof p.retailDockKey === 'string') retailDockKey = p.retailDockKey;
+    if(typeof p.referralDockKey === 'string') referralDockKey = p.referralDockKey;
+    if(typeof p.qaDockKey === 'string') qaDockKey = p.qaDockKey;
+    if(typeof p.checkDockKey === 'string') checkDockKey = p.checkDockKey;
+    if(typeof p.complimentSheetName === 'string') complimentSheetName = p.complimentSheetName;
+    if(typeof p.startDate === 'string') els.startDate.value = p.startDate;
+    if(typeof p.endDate === 'string') els.endDate.value = p.endDate;
+    if(typeof p.activeTab === 'string') activeTab = p.activeTab;
+  }catch(e){}
+}
+
+function fullLoad(){
+  retailDockKey = els.retailDockSel.value || retailDockKey || pickBestKey('retail');
+  referralDockKey = els.referralDockSel.value || referralDockKey || pickBestKey('referral');
+  qaDockKey = els.qaDockSel.value || qaDockKey || pickBestKey('qa');
+  checkDockKey = els.checkDockSel.value || checkDockKey || pickBestKey('checklist');
+
+  loadRetail();
+  loadReferral();
+  loadQA();
+  loadChecklist();
+  const correctiveChecklistCount = checklistRows.filter(isCorrectiveHit).length;
+  els.dockHint.textContent = `Retail rows: ${retailRows.length} • Referral rows: ${referralRows.length} • QA rows: ${qaRows.length} • Checklist rows: ${checklistRows.length} • Corrective hits in checklist: ${correctiveChecklistCount}`;
+  initDates();
+  savePrefs();
+  setActiveTab(activeTab);
+  renderAll();
+}
+
+document.querySelectorAll('.tab').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    setActiveTab(btn.getAttribute('data-tab'));
+    savePrefs();
+    renderAll();
+  });
+});
+
+els.complimentFile.addEventListener('change', async (e)=>{
+  const file = e.target.files && e.target.files[0];
+  if(!file){
+    complimentWorkbook = null;
+    complimentSheetName = '';
+    complimentRows = [];
+    els.complimentFileHint.textContent = 'No compliment file loaded.';
+    els.complimentSheetBtns.innerHTML = '';
+    els.complimentHint.textContent = 'Expected headers (A:N): ID, Start time, Completion time, Email, Name, CSR/SSR Name (This is the person being complimented), Director, CSR Team/Coach, Date of Call, Referral/Claim/WO/Chat Number (Only one type is needed), Taken By (This is the person reporting the compliment), Compliment, Date Letter Completed, Coord Initial';
+    renderAll();
+    return;
+  }
+  try{
+    const buf = await file.arrayBuffer();
+    complimentWorkbook = XLSX.read(buf, { type:'array' });
+    els.complimentFileHint.textContent = `${file.name} loaded • ${complimentWorkbook.SheetNames.length} sheet(s)`;
+    if(!complimentWorkbook.SheetNames.includes(complimentSheetName)){
+      complimentSheetName = complimentWorkbook.SheetNames[0] || '';
     }
+    loadComplimentSheet();
+    renderComplimentSheetButtons();
+    initDates();
+    savePrefs();
+    renderAll();
+  }catch(err){
+    console.error(err);
+    complimentWorkbook = null;
+    complimentSheetName = '';
+    complimentRows = [];
+    els.complimentFileHint.textContent = 'Could not read compliment workbook.';
+    els.complimentSheetBtns.innerHTML = '';
+    els.complimentHint.textContent = 'Upload failed. Please try another Excel file.';
+    renderAll();
+  }
+});
 
-    function isFiniteNumber(value) {
-      return typeof value === "number" && Number.isFinite(value);
-    }
+populateDockSelects();
+loadPrefs();
+populateDockSelects();
+setActiveTab(activeTab);
+fullLoad();
 
-    function cleanText(value) {
-      return String(value || "").trim();
-    }
-
-    function parseInputDate(value) {
-      if (!value) return null;
-
-      const parts = value.split("-");
-      if (parts.length !== 3) return null;
-
-      const year = Number(parts[0]);
-      const month = Number(parts[1]) - 1;
-      const day = Number(parts[2]);
-
-      return new Date(year, month, day);
-    }
-
-    function parseFlexibleDate(value) {
-      if (!value) return null;
-
-      const raw = String(value).trim();
-      if (!raw) return null;
-
-      let match = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-      if (match) {
-        return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-      }
-
-      match = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
-      if (match) {
-        let year = Number(match[3]);
-        if (year < 100) year += 2000;
-        return new Date(year, Number(match[1]) - 1, Number(match[2]));
-      }
-
-      match = raw.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})/);
-      if (match) {
-        let year = Number(match[3]);
-        if (year < 100) year += 2000;
-        return new Date(year, Number(match[1]) - 1, Number(match[2]));
-      }
-
-      const parsed = new Date(raw);
-      if (!isNaN(parsed.getTime())) {
-        return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
-      }
-
-      return null;
-    }
-
-    function formatValue(value) {
-      if (!isFiniteNumber(value)) return "N/A";
-
-      if (Math.abs(value) <= 1) {
-        return `${(value * 100).toFixed(2)}%`;
-      }
-
-      return value.toFixed(2);
-    }
-
-    function formatScore(value) {
-      if (!isFiniteNumber(value)) return "N/A";
-      return Number.isInteger(value) ? String(value) : value.toFixed(2);
-    }
-
-    function rankBadge(rank) {
-      let cls = "rank-badge";
-
-      if (rank === 1) cls += " rank-1";
-      else if (rank === 2) cls += " rank-2";
-      else if (rank === 3) cls += " rank-3";
-
-      return `<span class="${cls}">#${rank}</span>`;
-    }
-
-    function escapeHtml(value) {
-      return String(value ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-    }
-
-
-    function normalizeName(value){ return cleanText(value).toLowerCase(); }
-    function getAvailableTeams(){ const set=new Set(["No Team"]); const teamColumn=document.getElementById("teamColumn").value; rawRows.forEach(r=>{const t=cleanText(r[teamColumn]); if(t) set.add(t);}); Object.values(manualTeamAssignments).forEach(t=>set.add(t)); return [...set]; }
-    function populateAgentControls(){ const teams=getAvailableTeams(); ["agentAssignTeam"].forEach(id=>{ const sel=document.getElementById(id); if(!sel) return; sel.innerHTML=""; teams.forEach(t=>sel.appendChild(new Option(t,t)));}); const hdr=getAllAvailableHeaders(); ["departmentColumn","retailMinStat","referralMinStat","correctiveColumn"].forEach(id=>{const s=document.getElementById(id); if(!s)return; const cv=s.value; s.innerHTML='<option value="">None</option>'; hdr.forEach(h=>s.appendChild(new Option(h,h))); if(hdr.includes(cv)) s.value=cv;}); renderAgentSearchMatches(); renderManualAssignments(); }
-    function renderAgentSearchMatches(){ const q=normalizeName(document.getElementById("agentSearchInput")?.value||""); const box=document.getElementById("agentSearchMatches"); if(!box) return; const nameCol=document.getElementById("nameColumn").value; const names=new Map(); rawRows.forEach(r=>{const n=cleanText(r[nameCol]); if(n) names.set(normalizeName(n),n);}); extraAgentNames.forEach(n=>names.set(normalizeName(n),n)); const matches=[...names.values()].filter(n=>!q||normalizeName(n).includes(q)).slice(0,50); box.innerHTML=matches.map(n=>`<div class="saved-stat"><div><strong>${escapeHtml(n)}</strong></div><button onclick="addManualAgentToTeam('${escapeHtml(n).replace(/'/g,"\'")}', document.getElementById('agentAssignTeam').value)">Add to Selected Team</button></div>`).join("")||'<div class="small-note">No matches.</div>'; }
-    function addManualAgentToTeam(name,team){ if(!name||!team) return; manualTeamAssignments[normalizeName(name)] = team; renderManualAssignments(); }
-    function removeManualAgentAssignment(name){ delete manualTeamAssignments[normalizeName(name)]; renderManualAssignments(); }
-    function renderManualAssignments(){ const box=document.getElementById("manualAssignmentsList"); if(!box) return; const entries=Object.entries(manualTeamAssignments); box.innerHTML=entries.map(([n,t])=>`<div class="saved-stat"><div><strong>${escapeHtml(n)}</strong><br><span>${escapeHtml(t)}</span></div><button class="red" onclick="removeManualAgentAssignment('${escapeHtml(n)}')">Remove</button></div>`).join("")||'<div class="small-note">No manual assignments yet.</div>'; }
-    function getTeamForRep(name, originalTeam){ return manualTeamAssignments[normalizeName(name)] || originalTeam || 'No Team'; }
-    function handleMissingAgentCsvUpload(){ const file=document.getElementById('missingAgentCsv').files[0]; if(!file) return; Papa.parse(file,{header:true,skipEmptyLines:true,complete:res=>{missingAgentCsvRows=res.data||[]; missingAgentCsvHeaders=res.meta.fields||[]; const sel=document.getElementById('missingAgentNameColumn'); sel.innerHTML=''; missingAgentCsvHeaders.forEach(h=>sel.appendChild(new Option(h,h)));}}); }
-    function applyMissingAgentNames(){ const col=document.getElementById('missingAgentNameColumn').value; if(!col) return; const set=new Set(extraAgentNames.map(normalizeName)); missingAgentCsvRows.forEach(r=>{const n=cleanText(r[col]); if(n&&!set.has(normalizeName(n))){extraAgentNames.push(n); set.add(normalizeName(n));}}); renderAgentSearchMatches(); }
-    function openPointSettingsModal(){ renderPointSettingsModal(); document.getElementById('pointSettingsModal').classList.add('open'); }
-    function closePointSettingsModal(){ document.getElementById('pointSettingsModal').classList.remove('open'); }
-    function renderPointSettingsModal(){ document.getElementById('usePointScoring').checked=pointSettings.usePointScoring; const rows=customStats.map(st=>`<div class='grid'><div><label>${escapeHtml(st.name)}</label></div><div><input type='number' id='point_${st.id}' value='${pointSettings.statPoints[st.id]??10}'></div></div>`).join(''); document.getElementById('pointSettingsRows').innerHTML=rows+`<hr/><div class='grid'><div><label><input type='checkbox' id='attendanceEnabled' ${pointSettings.attendance.enabled?'checked':''}/> Attendance Enabled</label></div><div><select id='attendanceColumn'><option value=''>None</option>${getAllAvailableHeaders().map(h=>`<option value='${escapeHtml(h)}' ${pointSettings.attendance.column===h?'selected':''}>${escapeHtml(h)}</option>`).join('')}</select></div><div><select id='attendanceDirection'><option value='desc' ${pointSettings.attendance.direction==='desc'?'selected':''}>Higher is better</option><option value='asc' ${pointSettings.attendance.direction==='asc'?'selected':''}>Lower is better</option></select></div><div><input type='number' id='attendanceMaxPoints' value='${pointSettings.attendance.maxPoints||0}'/></div></div>`; }
-    function savePointSettings(){ pointSettings.usePointScoring=document.getElementById('usePointScoring').checked; customStats.forEach(st=>pointSettings.statPoints[st.id]=Number(document.getElementById(`point_${st.id}`)?.value||0)); pointSettings.attendance.enabled=document.getElementById('attendanceEnabled').checked; pointSettings.attendance.column=document.getElementById('attendanceColumn').value; pointSettings.attendance.direction=document.getElementById('attendanceDirection').value; pointSettings.attendance.maxPoints=Number(document.getElementById('attendanceMaxPoints').value||0); closePointSettingsModal(); }
-    function calculateRankPoints(rank, rankedCount, maxPoints){ if(!rank||rank>rankedCount||maxPoints<=0) return 0; return Math.max(1, maxPoints-rank+1); }
-
-    
-    function normalizeStatConfig(stat){ const st={...stat}; st.display=st.display!==false; st.includeInRank=st.includeInRank!==false; st.includeInPoints=st.includeInPoints!==false; st.allowSort=st.allowSort!==false; st.maxPoints=Number(st.maxPoints ?? pointSettings.statPoints[st.id] ?? 10); st.type=st.type||"direct"; st.minColumnMode=st.minColumnMode||"none"; st.calculationId=st.calculationId||""; return st; }
-    function migrateCustomStats(stats){ return (stats||[]).map(normalizeStatConfig); }
-    function getDefaultRankingSettings(){ return JSON.parse(JSON.stringify(DEFAULT_RANKING_SETTINGS || collectCurrentRankingSettings())); }
-    function collectCurrentRankingSettings(){ return {useDateFilter:document.getElementById('useDateFilter').checked,useDateColumn:document.getElementById('useDateColumn').checked,useTeamColumn:document.getElementById('useTeamColumn').checked,teamMethod:document.getElementById('teamMethod').value,keyColumns:{nameColumn:document.getElementById('nameColumn').value,dateColumn:document.getElementById('dateColumn').value,teamColumn:document.getElementById('teamColumn').value},manualTeamAssignments,extraAgentNames,customStats,calculatedColumns,pointSettings,departmentMinimums,correctiveSettings,sortSettings}; }
-    function migrateSettings(settings){ const merged={...getDefaultRankingSettings(), ...(settings||{})}; merged.customStats=migrateCustomStats(merged.customStats); return merged; }
-    function applyRankingSettings(settings){ const s=migrateSettings(settings); document.getElementById('useDateFilter').checked=!!s.useDateFilter; document.getElementById('useDateColumn').checked=!!s.useDateColumn; document.getElementById('useTeamColumn').checked=!!s.useTeamColumn; document.getElementById('teamMethod').value=s.teamMethod||'average'; const k=s.keyColumns||{}; ['nameColumn','dateColumn','teamColumn'].forEach(id=>{if(k[id]) document.getElementById(id).value=k[id];}); manualTeamAssignments=s.manualTeamAssignments||{}; extraAgentNames=s.extraAgentNames||[]; customStats=s.customStats||[]; calculatedColumns=s.calculatedColumns||[]; pointSettings=s.pointSettings||pointSettings; departmentMinimums=s.departmentMinimums||departmentMinimums; correctiveSettings=s.correctiveSettings||correctiveSettings; sortSettings=s.sortSettings||sortSettings; applyCalculatedColumnsToRows(); populateColumnDropdowns(); renderSavedStats(); renderCalculatedColumns(); renderPointSettingsModal(); renderStatSettingsModal(); populateSortOptions(); toggleDateControls(); toggleTeamControls();
-    renderCalculatedColumns();
-    populateSortOptions();
-    DEFAULT_RANKING_SETTINGS = migrateSettings(collectCurrentRankingSettings()); }
-    function revertToDefaultSettings(){ applyRankingSettings(getDefaultRankingSettings()); addDefaultRankingItems(); }
-    function saveSettingsLocal(){ localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(collectCurrentRankingSettings())); }
-    function loadSettingsLocal(){ const raw=localStorage.getItem(SETTINGS_STORAGE_KEY); if(!raw) return; const s=JSON.parse(raw); applyRankingSettings(s); validateSettingsAgainstHeaders(s); }
-    function exportSettingsJson(){ const blob=new Blob([JSON.stringify(collectCurrentRankingSettings(),null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='ranking-settings.json'; a.click(); }
-    function importSettingsJson(file){ if(!file) return; const r=new FileReader(); r.onload=()=>{applyRankingSettings(JSON.parse(r.result));}; r.readAsText(file); }
-    function validateSettingsAgainstHeaders(settings){ const all=getAllAvailableHeaders(); const missing=[]; (settings.customStats||[]).forEach(st=>{['numeratorColumn','denominatorColumn'].forEach(k=>{if(st[k] && !all.includes(st[k])) missing.push(`${st.name}: ${st[k]}`);});}); const box=document.getElementById('settingsWarningBox'); if(missing.length){ box.classList.remove('hidden'); box.textContent='Missing columns in current CSV: '+missing.join(', ');} else {box.classList.add('hidden'); box.textContent='';} }
-    function getRankStats(){ return customStats.filter(s=>normalizeStatConfig(s).includeInRank); }
-    function getPointStats(){ return customStats.filter(s=>normalizeStatConfig(s).includeInPoints); }
-    function getDisplayStats(){ return customStats.filter(s=>normalizeStatConfig(s).display); }
-    function populateSortOptions(){ const sel=document.getElementById('sortPrimary'); if(!sel) return; const prev=sel.value; const opts=[['overallScore','Overall score / total points'],['attendancePoints','Attendance points'],['rowCount','Row count'],['name','Name'],['team','Team']]; customStats.filter(s=>normalizeStatConfig(s).allowSort).forEach(s=>opts.push([`stat:${s.id}`,s.name])); sel.innerHTML=opts.map(o=>`<option value="${o[0]}">${escapeHtml(o[1])}</option>`).join(''); sel.value=prev||sortSettings.primarySort; }
-    function addCalculatedColumn(){ const name=document.getElementById('calcName').value.trim(); const type=document.getElementById('calcType').value; const a=document.getElementById('calcColumnA').value; const b=document.getElementById('calcColumnB').value; if(!name||!a) return showError('Calculated column needs name and columns.'); calculatedColumns.push({id:crypto.randomUUID?crypto.randomUUID():String(Date.now()),name,type,columns:[a,b].filter(Boolean),format:document.getElementById('calcFormat').value}); applyCalculatedColumnsToRows(); renderCalculatedColumns(); populateColumnDropdowns(); }
-    function calculateFormulaValue(row,c){ const vals=(c.columns||[]).map(h=>parseNumber(row[h])); if(c.type==='divide') return safeRate(vals[0],vals[1]); if(c.type==='add') return (vals[0]||0)+(vals[1]||0); if(c.type==='subtract') return (vals[0]||0)-(vals[1]||0); if(c.type==='multiply') return (vals[0]||0)*(vals[1]||0); if(c.type==='average') return averageValid(vals); return vals.reduce((a,b)=>a+(b||0),0); }
-    function applyCalculatedColumnsToRows(){ rawRows.forEach(r=>calculatedColumns.forEach(c=>r[c.name]=calculateFormulaValue(r,c))); }
-    function renderCalculatedColumns(){ const box=document.getElementById('calculatedColumnsList'); if(!box) return; box.innerHTML=(calculatedColumns||[]).map(c=>`<div class='saved-stat'><div><strong>${escapeHtml(c.name)}</strong><br><span>${escapeHtml(c.type)}: ${escapeHtml((c.columns||[]).join(' , '))}</span></div><button class='red' onclick="removeCalculatedColumn('${c.id}')">Remove</button></div>`).join('')||'<div class="small-note">No calculated columns yet.</div>'; ['calcColumnA','calcColumnB'].forEach(id=>{ const s=document.getElementById(id); if(!s) return; const cv=s.value; s.innerHTML=getAllAvailableHeaders().map(h=>`<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`).join(''); if(cv) s.value=cv;}); }
-    function removeCalculatedColumn(id){ const c=calculatedColumns.find(x=>x.id===id); calculatedColumns=calculatedColumns.filter(x=>x.id!==id); if(c){ rawRows.forEach(r=>delete r[c.name]); customStats=customStats.filter(st=>st.numeratorColumn!==c.name && st.denominatorColumn!==c.name);} renderCalculatedColumns(); renderSavedStats(); populateColumnDropdowns(); }
-    function openStatSettingsModal(){ renderStatSettingsModal(); document.getElementById('statSettingsModal').classList.add('open'); }
-    function closeStatSettingsModal(){ document.getElementById('statSettingsModal').classList.remove('open'); }
-    function renderStatSettingsModal(){ const b=document.getElementById('statSettingsRows'); if(!b) return; b.innerHTML=customStats.map(st=>{st=normalizeStatConfig(st); return `<div class='grid'><div><input id='sm_name_${st.id}' value='${escapeHtml(st.name)}'/></div><div><label><input type='checkbox' id='sm_show_${st.id}' ${st.display?'checked':''}/> Show</label></div><div><label><input type='checkbox' id='sm_rank_${st.id}' ${st.includeInRank?'checked':''}/> Rank</label></div><div><label><input type='checkbox' id='sm_pts_${st.id}' ${st.includeInPoints?'checked':''}/> Points</label></div><div><label><input type='checkbox' id='sm_sort_${st.id}' ${st.allowSort?'checked':''}/> Sort Option</label></div><div><input type='number' id='sm_weight_${st.id}' value='${st.weight}'/></div><div><input type='number' id='sm_max_${st.id}' value='${st.maxPoints}'/></div></div>`; }).join(''); }
-    function saveStatSettingsFromModal(){ customStats=customStats.map(st=>{ const n=normalizeStatConfig(st); n.name=document.getElementById(`sm_name_${st.id}`).value; n.display=document.getElementById(`sm_show_${st.id}`).checked; n.includeInRank=document.getElementById(`sm_rank_${st.id}`).checked; n.includeInPoints=document.getElementById(`sm_pts_${st.id}`).checked; n.allowSort=document.getElementById(`sm_sort_${st.id}`).checked; n.weight=Number(document.getElementById(`sm_weight_${st.id}`).value||0); n.maxPoints=Number(document.getElementById(`sm_max_${st.id}`).value||0); pointSettings.statPoints[st.id]=n.maxPoints; return n;}); closeStatSettingsModal(); renderSavedStats(); populateSortOptions(); }
-    function findBestHeaderMatch(names){ return findHeader(names||[]); }
-    function addDefaultRankingItems(){ const added=[], skipped=[]; DEFAULT_STAT_DEFINITIONS.forEach(d=>{ if(customStats.some(s=>s.name===d.name)) return skipped.push(d.name); const num=findBestHeaderMatch(d.numeratorMatches); const den=d.type==='ratio'?findBestHeaderMatch(d.denominatorMatches):''; if(!num || (d.type==='ratio'&&!den)) return skipped.push(d.name); const id=crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random()); customStats.push(normalizeStatConfig({id,name:d.name,type:d.type,numeratorColumn:num,denominatorColumn:den,direction:d.direction,weight:d.weight,minRequired:0,minColumnMode:'none',maxPoints:d.maxPoints})); pointSettings.statPoints[id]=d.maxPoints; added.push(d.name);}); renderSavedStats(); renderPointSettingsModal(); const box=document.getElementById('settingsWarningBox'); box.classList.remove('hidden'); box.textContent=`Default items added: ${added.join(', ')||'none'} | Skipped: ${skipped.join(', ')||'none'}`; }
-    function sortResults(results){ if(!sortSettings.enabled) return results; const key=sortSettings.primarySort; results.sort((a,b)=>{ let av,bv; if(key.startsWith('stat:')){ const id=key.split(':')[1]; av=a.statValues[id]; bv=b.statValues[id]; } else if(key==='name'){ av=a.name; bv=b.name; } else if(key==='team'){ av=a.team; bv=b.team; } else if(key==='rowCount'){ av=a.rowCount; bv=b.rowCount; } else { av=pointSettings.usePointScoring?a.totalPoints:a.totalWeightedRankScore; bv=pointSettings.usePointScoring?b.totalPoints:b.totalWeightedRankScore; } if(typeof av==='string'){ return sortSettings.direction==='za'?String(bv).localeCompare(String(av)):String(av).localeCompare(String(bv)); } return sortSettings.direction==='worstFirst'?bv-av:av-bv; }); return results; }
-function showError(message) {
-      document.getElementById("errorBox").textContent = message;
-    }
-
-    function clearError() {
-      document.getElementById("errorBox").textContent = "";
-    }
-
-    renderSavedStats();
-    renderCombinedColumnsList();
-    toggleStatType();
-    toggleDateControls();
-    toggleTeamControls();
-    renderCalculatedColumns();
-    populateSortOptions();
-    DEFAULT_RANKING_SETTINGS = migrateSettings(collectCurrentRankingSettings());
-  </script>
+els.refreshBtn.addEventListener('click', ()=>{
+  savePrefs();
+  renderAll();
+});
+els.loadDocksBtn.addEventListener('click', ()=>{
+  fullLoad();
+});
+els.startDate.addEventListener('change', ()=>{ savePrefs(); renderAll(); });
+els.endDate.addEventListener('change', ()=>{ savePrefs(); renderAll(); });
+els.retailDockSel.addEventListener('change', ()=>{ retailDockKey = els.retailDockSel.value; savePrefs(); });
+els.referralDockSel.addEventListener('change', ()=>{ referralDockKey = els.referralDockSel.value; savePrefs(); });
+els.qaDockSel.addEventListener('change', ()=>{ qaDockKey = els.qaDockSel.value; savePrefs(); });
+els.checkDockSel.addEventListener('change', ()=>{ checkDockKey = els.checkDockSel.value; savePrefs(); });
+</script>
 </body>
 </html>
