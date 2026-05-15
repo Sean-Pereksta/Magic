@@ -479,9 +479,12 @@
   <div class="battleControls">
     <h3>Controls</h3>
     <div class="small">
-      <span class="kbd">WASD</span> Move commander<br>
-      <span class="kbd">Mouse</span> Turn camera / player<br>
-      <span class="kbd">Space</span> Spear thrust<br>
+      <span class="kbd">W</span> Move Forward<br>
+      <span class="kbd">S</span> Move Backward<br>
+      <span class="kbd">A/D</span> Turn<br>
+      <span class="kbd">Shift</span> Run<br>
+      <span class="kbd">Space</span> Spear Thrust<br>
+      <span class="kbd">Mouse</span> Optional Camera / Turn Assist<br>
       <span class="kbd">1</span> Hold Position<br>
       <span class="kbd">2</span> Follow Me<br>
       <span class="kbd">3</span> Cycle Formation<br>
@@ -2113,37 +2116,107 @@ function createBattleGround(theme) {
 }
 
 function createPlayerCommander() {
-  let commanderGeometry;
-
-  if (typeof THREE.CapsuleGeometry === "function") {
-    commanderGeometry = new THREE.CapsuleGeometry(0.45, 1.1, 4, 8);
-  } else {
-    commanderGeometry = new THREE.BoxGeometry(0.8, 1.8, 0.8);
-  }
-
-  const body = new THREE.Mesh(
-    commanderGeometry,
-    new THREE.MeshLambertMaterial({ color: 0x06d6a0 })
-  );
-
-  body.position.set(0, 1, 30);
+  const body = createCommanderModel();
+  body.position.set(0, 0, 30);
   scene.add(body);
-
-  const spear = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.04, 0.04, 3.2, 8),
-    new THREE.MeshLambertMaterial({ color: 0xeeeecc })
-  );
-
-  spear.rotation.x = Math.PI / 2;
-  spear.position.set(0.45, 0.35, -1.4);
-  body.add(spear);
 
   player3 = {
     mesh: body,
-    spear,
     hp: 100,
-    yaw: Math.PI
+    yaw: Math.PI,
+    walkTime: 0,
+    isMoving: false,
+    isRunning: false,
+    isThrusting: false,
+    thrustTimer: 0,
+    thrustHitDone: false
   };
+}
+
+function createCommanderModel() {
+  const group = new THREE.Group();
+  const armorMat = new THREE.MeshLambertMaterial({ color: 0x1d8d8e });
+  const steelMat = new THREE.MeshLambertMaterial({ color: 0x8f97a0 });
+  const skinMat = new THREE.MeshLambertMaterial({ color: 0xd9a777 });
+  const bootMat = new THREE.MeshLambertMaterial({ color: 0x4a2f1f });
+  const capeMat = new THREE.MeshLambertMaterial({ color: 0x1f4d6d, side: THREE.DoubleSide });
+  const woodMat = new THREE.MeshLambertMaterial({ color: 0x7a4f2a });
+  const tipMat = new THREE.MeshLambertMaterial({ color: 0xc9d0d6 });
+
+  const body = new THREE.Group();
+  body.position.y = 1.25;
+  group.add(body);
+
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.95, 1.1, 0.55), armorMat);
+  torso.position.y = 1.7;
+  body.add(torso);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 12), skinMat);
+  head.position.y = 2.55;
+  body.add(head);
+  const helmet = new THREE.Mesh(new THREE.CylinderGeometry(0.31, 0.33, 0.35, 12), steelMat);
+  helmet.position.y = 2.72;
+  body.add(helmet);
+  const cape = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 1.45), capeMat);
+  cape.position.set(0, 1.55, 0.36);
+  cape.rotation.x = 0.22;
+  body.add(cape);
+
+  const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.9, 0.27), armorMat);
+  leftLeg.position.set(-0.2, 0.75, 0);
+  body.add(leftLeg);
+  const rightLeg = leftLeg.clone();
+  rightLeg.position.x = 0.2;
+  body.add(rightLeg);
+  const leftBoot = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.22, 0.45), bootMat);
+  leftBoot.position.set(0, -0.52, -0.02);
+  leftLeg.add(leftBoot);
+  const rightBoot = leftBoot.clone();
+  rightLeg.add(rightBoot);
+
+  const leftShoulder = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 10), steelMat);
+  leftShoulder.position.set(-0.56, 2.04, 0);
+  body.add(leftShoulder);
+  const rightShoulder = leftShoulder.clone();
+  rightShoulder.position.x = 0.56;
+  body.add(rightShoulder);
+
+  const leftArm = new THREE.Group();
+  leftArm.position.set(-0.5, 1.95, -0.05);
+  const leftArmMesh = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.8, 0.22), armorMat);
+  leftArmMesh.position.y = -0.4;
+  leftArm.add(leftArmMesh);
+  const leftHand = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 8), skinMat);
+  leftHand.position.y = -0.86;
+  leftArm.add(leftHand);
+  body.add(leftArm);
+
+  const rightArm = leftArm.clone();
+  rightArm.position.x = 0.5;
+  body.add(rightArm);
+
+  const spearGroup = new THREE.Group();
+  spearGroup.position.set(0.3, 1.8, -0.2);
+  spearGroup.rotation.x = Math.PI / 2;
+  const spearShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 3.2, 8), woodMat);
+  spearShaft.position.z = -1.25;
+  spearGroup.add(spearShaft);
+  const spearTip = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.35, 8), tipMat);
+  spearTip.position.z = -2.98;
+  spearTip.rotation.x = Math.PI;
+  spearGroup.add(spearTip);
+  body.add(spearGroup);
+
+  const thrustTrail = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.06, 0.22, 1.2, 10, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xbdeaff, transparent: true, opacity: 0.5, side: THREE.DoubleSide })
+  );
+  thrustTrail.rotation.x = Math.PI / 2;
+  thrustTrail.position.z = -2.6;
+  thrustTrail.visible = false;
+  spearGroup.add(thrustTrail);
+
+  group.userData = { leftLeg, rightLeg, leftArm, rightArm, spearGroup, spearShaft, spearTip, cape, body, thrustTrail, spearBaseZ: spearGroup.position.z };
+  return group;
 }
 
 /* =========================================================
@@ -2399,82 +2472,123 @@ function updateBattle(dt) {
 function updatePlayer(dt) {
   player3.yaw -= mouseDX;
   mouseDX = 0;
-
-  const speed = keys.ShiftLeft ? 8 : 5.2;
-
+  const WALK_SPEED = 6;
+  const RUN_SPEED = 10;
+  const TURN_SPEED = 2.8;
+  const running = !!(keys.ShiftLeft || keys.ShiftRight);
+  const moveSpeed = running ? RUN_SPEED : WALK_SPEED;
   const forward = new THREE.Vector3(Math.sin(player3.yaw), 0, Math.cos(player3.yaw));
-  const right = new THREE.Vector3(Math.cos(player3.yaw), 0, -Math.sin(player3.yaw));
 
-  let move = new THREE.Vector3();
+  if (keys.KeyA) player3.yaw += TURN_SPEED * dt;
+  if (keys.KeyD) player3.yaw -= TURN_SPEED * dt;
+  if (keys.KeyW) player3.mesh.position.addScaledVector(forward, moveSpeed * dt);
+  if (keys.KeyS) player3.mesh.position.addScaledVector(forward, -moveSpeed * dt);
 
-  if (keys.KeyW) move.add(forward);
-  if (keys.KeyS) move.sub(forward);
-  if (keys.KeyD) move.add(right);
-  if (keys.KeyA) move.sub(right);
-
-  if (move.lengthSq() > 0) {
-    move.normalize().multiplyScalar(speed * dt);
-    player3.mesh.position.add(move);
-  }
+  player3.isMoving = !!(keys.KeyW || keys.KeyS);
+  player3.isRunning = player3.isMoving && running;
 
   player3.mesh.position.x = clamp(player3.mesh.position.x, -105, 105);
   player3.mesh.position.z = clamp(player3.mesh.position.z, -105, 105);
-
   player3.mesh.rotation.y = player3.yaw;
+  animateCommander(dt);
+  checkPlayerSpearHit();
+  updateBattleCamera(dt);
+}
 
-  camera.position.copy(player3.mesh.position).add(
-    new THREE.Vector3(
-      -Math.sin(player3.yaw) * 7,
-      4.2,
-      -Math.cos(player3.yaw) * 7
-    )
-  );
+function updateBattleCamera(dt) {
+  const forward = new THREE.Vector3(Math.sin(player3.yaw), 0, Math.cos(player3.yaw)).normalize();
+  const cameraTarget = player3.mesh.position.clone().addScaledVector(forward, -8).add(new THREE.Vector3(0, 5, 0));
+  camera.position.lerp(cameraTarget, 1 - Math.pow(0.001, dt));
+  const lookAt = player3.mesh.position.clone().addScaledVector(forward, 6).add(new THREE.Vector3(0, 1.8, 0));
+  camera.lookAt(lookAt);
+}
 
-  camera.lookAt(
-    player3.mesh.position.clone().add(
-      new THREE.Vector3(Math.sin(player3.yaw) * 5, 1.2, Math.cos(player3.yaw) * 5)
-    )
-  );
+function startSpearThrust() {
+  if (attackCooldown > 0 || player3.isThrusting) return;
+  player3.isThrusting = true;
+  player3.thrustTimer = 0;
+  player3.thrustHitDone = false;
+  attackCooldown = 0.65;
+}
 
-  if (keys.Space && attackCooldown <= 0) {
-    spearAttack();
-    attackCooldown = 0.65;
+function animateCommander(dt) {
+  const rig = player3.mesh.userData;
+  if (!rig) return;
+  const idle = performance.now() * 0.001;
+  const strideRate = player3.isRunning ? 13 : 8;
+  if (player3.isMoving) player3.walkTime += dt * strideRate;
+  const stride = Math.sin(player3.walkTime);
+  const legAmp = player3.isMoving ? (player3.isRunning ? 0.75 : 0.55) : 0.08;
+  const armAmp = player3.isMoving ? (player3.isRunning ? 0.55 : 0.28) : 0.05;
+  rig.leftLeg.rotation.x = stride * legAmp;
+  rig.rightLeg.rotation.x = -stride * legAmp;
+  rig.leftArm.rotation.x = -stride * armAmp - 0.2;
+  rig.rightArm.rotation.x = stride * armAmp - 1.15;
+  rig.body.position.y = 1.25 + (player3.isMoving ? Math.abs(Math.sin(player3.walkTime)) * (player3.isRunning ? 0.12 : 0.07) : Math.sin(idle * 1.8) * 0.03);
+  rig.body.rotation.x = player3.isRunning ? -0.08 : 0;
+  rig.cape.rotation.x = 0.22 + Math.sin(idle * 5 + player3.walkTime) * (player3.isMoving ? 0.15 : 0.05);
+  rig.spearGroup.position.z = rig.spearBaseZ + Math.sin(idle * 4) * 0.03;
+  rig.thrustTrail.visible = false;
+
+  if (player3.isThrusting) {
+    player3.thrustTimer += dt;
+    const t = player3.thrustTimer / 0.32;
+    const thrustAmount = t < 0.45 ? t / 0.45 : 1 - ((t - 0.45) / 0.55);
+    const clamped = clamp(thrustAmount, 0, 1);
+    rig.spearGroup.position.z = rig.spearBaseZ - clamped * 1.8;
+    rig.rightArm.rotation.x = -1.2 - clamped * 0.6;
+    rig.body.rotation.x = -clamped * 0.08 - (player3.isRunning ? 0.08 : 0);
+    rig.thrustTrail.visible = clamped > 0.2;
+    rig.thrustTrail.material.opacity = 0.5 * clamped;
+    if (t >= 1) player3.isThrusting = false;
   }
 }
 
-function spearAttack() {
-  showToast("Spear thrust!");
+function flashTroop(troop, color) {
+  troop.mesh.traverse(obj => {
+    if (!obj.material || !obj.material.color) return;
+    obj.userData.originalColor = obj.userData.originalColor || obj.material.color.getHex();
+    obj.material.color.setHex(color);
+    obj.userData.flashTimer = 0.12;
+  });
+}
 
-  const fwd = new THREE.Vector3(Math.sin(player3.yaw), 0, Math.cos(player3.yaw));
-  let hit = false;
-
-  for (const t of battleTroops.filter(x => x.team === "enemy" && x.hp > 0)) {
-    const to = t.mesh.position.clone().sub(player3.mesh.position);
-    const d = to.length();
-
-    to.y = 0;
-    to.normalize();
-
-    if (d < 3.0 && to.dot(fwd) > 0.58) {
-      damageTroop(t, 38);
-      hit = true;
+function checkPlayerSpearHit() {
+  if (!player3.isThrusting || player3.thrustHitDone) return;
+  if (player3.thrustTimer < 0.08 || player3.thrustTimer > 0.22) return;
+  const origin = player3.mesh.position.clone(); origin.y = 1.1;
+  const forward = new THREE.Vector3(Math.sin(player3.yaw), 0, Math.cos(player3.yaw)).normalize();
+  for (const enemy of battleTroops) {
+    if (enemy.team !== "enemy" || enemy.hp <= 0) continue;
+    const toEnemy = enemy.mesh.position.clone().sub(origin); toEnemy.y = 0;
+    const forwardDist = toEnemy.dot(forward);
+    if (forwardDist < 0.4 || forwardDist > 3.2) continue;
+    const sideDist = toEnemy.sub(forward.clone().multiplyScalar(forwardDist)).length();
+    if (sideDist <= 0.85 + enemy.radius) {
+      enemy.hp -= 45;
+      enemy.attackCd += 0.25;
+      flashTroop(enemy, 0xff3333);
+      const knock = enemy.mesh.position.clone().sub(player3.mesh.position).setY(0).normalize();
+      enemy.mesh.position.addScaledVector(knock, 0.45);
+      showHitSpark(enemy.mesh.position.clone().add(new THREE.Vector3(0, 1.1, 0)));
+      if (enemy.hp <= 0) { enemy.hp = 0; enemy.mesh.visible = false; if (enemy.label) enemy.label.style.display = "none"; }
+      player3.thrustHitDone = true;
       break;
     }
-  }
-
-  player3.spear.scale.set(1, 1, 1.35);
-
-  setTimeout(() => {
-    if (player3) player3.spear.scale.set(1, 1, 1);
-  }, 120);
-
-  if (hit) {
-    showToast("Spear hit!");
   }
 }
 
 function updateTroops(dt) {
   for (const t of battleTroops) {
+    t.mesh.traverse(obj => {
+      if (obj.userData.flashTimer) {
+        obj.userData.flashTimer -= dt;
+        if (obj.userData.flashTimer <= 0 && obj.userData.originalColor) {
+          obj.material.color.setHex(obj.userData.originalColor);
+          obj.userData.flashTimer = 0;
+        }
+      }
+    });
     if (t.hp <= 0) continue;
 
     t.attackCd -= dt;
@@ -2622,6 +2736,13 @@ function fireArrow(t, target) {
 
 function updateProjectiles(dt) {
   for (const p of projectiles) {
+    if (p.userData && p.userData.kind === "spark") {
+      p.userData.life -= dt;
+      p.scale.setScalar(1 + (1 - p.userData.life / p.userData.maxLife) * 2.5);
+      p.material.opacity = clamp(p.userData.life / p.userData.maxLife, 0, 1);
+      p.material.transparent = true;
+      continue;
+    }
     p.mesh.position.add(p.dir.clone().multiplyScalar(24 * dt));
     p.life -= dt;
 
@@ -2640,7 +2761,11 @@ function updateProjectiles(dt) {
   }
 
   projectiles = projectiles.filter(p => {
-    if (p.life <= 0) {
+    if ((p.userData && p.userData.kind === "spark" && p.userData.life <= 0) || (!p.userData && p.life <= 0)) {
+      scene.remove(p.mesh || p);
+      return false;
+    }
+    if (!p.userData && p.life <= 0) {
       scene.remove(p.mesh);
       return false;
     }
@@ -2652,10 +2777,24 @@ function updateProjectiles(dt) {
 function damageTroop(t, amount) {
   const actual = Math.max(2, amount - (t.def.armor || 0) * 0.35);
   t.hp -= actual;
+  flashTroop(t, 0xff5e5e);
 
   if (t.hp <= 0) {
     t.hp = 0;
   }
+}
+
+function showHitSpark(pos) {
+  const spark = new THREE.Mesh(
+    new THREE.SphereGeometry(0.16, 8, 8),
+    new THREE.MeshBasicMaterial({ color: 0xfff1a8 })
+  );
+  spark.position.copy(pos);
+  spark.userData.life = 0.18;
+  spark.userData.maxLife = 0.18;
+  spark.userData.kind = "spark";
+  scene.add(spark);
+  projectiles.push(spark);
 }
 
 function updateLabels() {
@@ -2713,6 +2852,7 @@ function checkBattleEnd() {
 
 function onKeyDown(e) {
   keys[e.code] = true;
+  if (e.code === "Space") startSpearThrust();
 
   if (e.code === "Digit1") {
     command = "Hold Position";
