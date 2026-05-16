@@ -449,41 +449,12 @@
     text-shadow: 0 2px 4px #000;
     transform: translate(-50%, -50%);
   }
-
-#launchScreen {
-  background: radial-gradient(circle at 30% 20%, rgba(255, 209, 102, 0.12), transparent 35%), radial-gradient(circle at 75% 65%, rgba(90, 169, 255, 0.12), transparent 38%), linear-gradient(180deg, #111827, #05080d);
-  display:flex;align-items:center;justify-content:center;
-}
-.launchMenuBox { width:min(560px,92vw);padding:28px;border-radius:24px;background:rgba(18,27,43,0.94);border:1px solid rgba(255,255,255,0.16);box-shadow:0 24px 80px rgba(0,0,0,0.6);text-align:center; }
-.launchMenuBox h1 { margin:0 0 8px;color:var(--gold);font-size:34px; }
-.accountRow { display:flex;gap:8px;margin:12px 0; }
-.accountRow input,.accountRow select { flex:1;padding:9px 10px;border-radius:10px;border:1px solid rgba(255,255,255,0.18);background:#0c1320;color:#fff; }
-#miniMapCanvas{position:absolute;left:15px;bottom:58px;width:190px;height:135px;z-index:5;background:rgba(5,8,13,0.75);border:1px solid rgba(255,255,255,0.18);border-radius:10px;}
-
 </style>
 </head>
 
 <body>
 
-<div id="launchScreen" class="screen active">
-  <div class="launchMenuBox">
-    <h1>⚔ Kingdoms at War</h1>
-    <p>Create or load a local campaign account.</p>
-    <div class="accountRow">
-      <input id="accountNameInput" placeholder="Account name..." />
-      <button onclick="createAccountFromMenu()" class="success">Create New Account</button>
-    </div>
-    <div class="accountRow">
-      <select id="accountSelect"></select>
-      <button onclick="loadSelectedAccount()" class="blue">Load Account</button>
-      <button onclick="deleteSelectedAccount()" class="danger">Delete</button>
-    </div>
-    <button id="continueAccountBtn" onclick="continueLastAccount()" class="warn">Continue Last Account</button>
-    <div id="accountMenuMessage" class="small"></div>
-  </div>
-</div>
-
-<div id="worldScreen" class="screen">
+<div id="worldScreen" class="screen active">
   <canvas id="mapCanvas"></canvas>
 
   <div class="topbar">
@@ -495,9 +466,8 @@
     <div class="stat">Daily Wages: <b id="wagesText">0</b></div>
     <div class="stat">Army Size: <b id="armyText">0/75</b></div>
     <div class="stat">Castles: <b id="castleText">0</b></div>
-    <div class="stat">Account: <b id="accountText">None</b></div>
     <button onclick="saveGame()">Save</button>
-    <button onclick="showLaunchScreen()">Accounts</button>
+    <button onclick="loadGame()">Load</button>
     <button onclick="openInventoryPanel()">Inventory</button>
     <button onclick="openTroopUpgradePanel()" class="success">Upgrades</button>
     <button onclick="openDiplomacyPanel()" class="blue">Diplomacy</button>
@@ -543,8 +513,6 @@
     </div>
   </div>
 
-  <canvas id="miniMapCanvas"></canvas>
-
   <div class="hint">
     Click terrain to travel. Click another force to march toward it. When close, interaction options appear.
     Bandits periodically spawn and give only one option: battle.
@@ -589,13 +557,6 @@ let canvas;
 let ctx;
 let W;
 let H;
-const WORLD_WIDTH = 4200;
-const WORLD_HEIGHT = 3000;
-const ACCOUNT_LIST_KEY = "kingdomsAtWarAccounts";
-const LAST_ACCOUNT_KEY = "kingdomsAtWarLastAccount";
-const PLAYER_MAP_SPEED = 85;
-let currentAccountName = null;
-let mapCamera = { x: 0, y: 0, zoom: 1 };
 let lastTime = 0;
 let worldPaused = false;
 let selected = null;
@@ -1146,22 +1107,6 @@ const state = {
    MAP TERRAIN DATA
 ========================================================= */
 
-
-const factionTemplates = [
-{id:"veyr",name:"Kingdom of Veyr",color:"#2f80c9",personality:"honorable",region:{x:700,y:700,radius:650}},
-{id:"sun",name:"Sun Marches",color:"#e2b63f",personality:"mercantile",region:{x:3300,y:650,radius:650}},
-{id:"stone",name:"Stonehold Clans",color:"#999999",personality:"aggressive",region:{x:850,y:2350,radius:650}},
-{id:"river",name:"River Duchies",color:"#3d7fa8",personality:"honorable",region:{x:3300,y:2250,radius:650}}
-];
-const expandedSettlementTemplates = [
-{id:"castle_veyrhold",type:"castle",name:"Veyrhold",faction:"veyr",x:620,y:560,recruits:{veyrSpearGuard:4,veyrFootman:3}}, {id:"village_bluebrook",type:"village",name:"Bluebrook",faction:"veyr",x:430,y:780,recruits:{veyrLevy:8,veyrMilitia:4}}, {id:"village_oakmere",type:"village",name:"Oakmere",faction:"veyr",x:820,y:840,recruits:{veyrLevy:7,veyrWoodsman:4}}, {id:"castle_frostgate",type:"castle",name:"Frostgate",faction:"veyr",x:1030,y:470,recruits:{veyrSpearGuard:5,veyrLongbowman:3}}, {id:"village_westford",type:"village",name:"Westford",faction:"veyr",x:1120,y:760,recruits:{veyrLevy:8,veyrMilitia:3}},
-{id:"castle_sunspire",type:"castle",name:"Sunspire",faction:"sun",x:3350,y:520,recruits:{sunShieldGuard:4,sunMarksman:3}}, {id:"village_goldfield",type:"village",name:"Goldfield",faction:"sun",x:3090,y:760,recruits:{sunLevy:8,sunSkirmisher:4}}, {id:"village_drywell",type:"village",name:"Drywell",faction:"sun",x:3620,y:810,recruits:{sunLevy:7,sunSlingman:4}}, {id:"castle_redmesa",type:"castle",name:"Red Mesa",faction:"sun",x:3800,y:430,recruits:{sunDuelist:4,sunLancer:2}}, {id:"village_sandford",type:"village",name:"Sandford",faction:"sun",x:3920,y:720,recruits:{sunLevy:7,sunRider:2}},
-{id:"castle_stonehelm",type:"castle",name:"Stonehelm",faction:"stone",x:760,y:2320,recruits:{ironPikeman:4,ironAxeman:4}}, {id:"village_ironpine",type:"village",name:"Ironpine",faction:"stone",x:520,y:2540,recruits:{ironRecruit:8,ironSpear:4}}, {id:"village_greyford",type:"village",name:"Greyford",faction:"stone",x:1040,y:2600,recruits:{ironRecruit:7,ironHunter:3}}, {id:"castle_blackcrag",type:"castle",name:"Blackcrag",faction:"stone",x:1180,y:2180,recruits:{ironCleaver:4,ironCrossbowman:3}}, {id:"village_highpasture",type:"village",name:"High Pasture",faction:"stone",x:860,y:2050,recruits:{ironRecruit:7,ironSpear:3}},
-{id:"castle_rivermark",type:"castle",name:"Rivermark",faction:"river",x:3220,y:2320,recruits:{veyrFootman:4,veyrLongbowman:3}}, {id:"village_reedbank",type:"village",name:"Reedbank",faction:"river",x:2960,y:2500,recruits:{veyrLevy:8,veyrWoodsman:4}}, {id:"village_millcross",type:"village",name:"Millcross",faction:"river",x:3520,y:2520,recruits:{veyrLevy:7,veyrMilitia:3}}, {id:"castle_deepwater",type:"castle",name:"Deepwater",faction:"river",x:3750,y:2200,recruits:{veyrSpearGuard:4,veyrLongbowman:3}}, {id:"village_greenwharf",type:"village",name:"Greenwharf",faction:"river",x:3910,y:2480,recruits:{veyrLevy:7,veyrWoodsman:3}},
-{id:"castle_crownwatch",type:"castle",name:"Crownwatch",faction:"neutral",x:2100,y:1450,recruits:{farmhand:5,spearman:3}}, {id:"village_crossroads",type:"village",name:"Crossroads",faction:"neutral",x:1960,y:1630,recruits:{farmhand:8,spearman:3}}, {id:"village_oldmarket",type:"village",name:"Oldmarket",faction:"neutral",x:2260,y:1260,recruits:{farmhand:7,archer:3}}
-];
-const roadTemplates=[["castle_veyrhold","village_bluebrook","village_oakmere","castle_frostgate"],["castle_sunspire","village_goldfield","village_drywell","castle_redmesa"],["castle_stonehelm","village_ironpine","village_greyford","castle_blackcrag"],["castle_rivermark","village_reedbank","village_millcross","castle_deepwater"],["castle_veyrhold","castle_crownwatch","castle_sunspire"],["castle_stonehelm","castle_crownwatch","castle_rivermark"],["village_crossroads","village_oldmarket","castle_crownwatch"]];
-
 const mapTerrain = {
   forests: [
     { x: 135, y: 180, r: 105 },
@@ -1254,10 +1199,164 @@ function makeWorld() {
     morale: 60
   };
 
-  state.factions = factionTemplates.map(f => ({...f, relation:0,status:"Peace",strength:1,trust:0,fear:0,tributeDemand:0,lastWarDay:null,lastPeaceDay:null,alliance:false,trade:false,grievances:[]}));
-  state.factions.push({id:"bandit",name:"Bandit Clans",color:"#7c2d12",relation:-100,status:"War",bandit:true,grievances:["Bandits cannot be negotiated with."]});
-  state.settlements = deepClone(expandedSettlementTemplates);
-  spawnInitialWorldParties();
+  state.factions = [
+    {
+      id: "veyr",
+      name: "Kingdom of Veyr",
+      color: "#3b82f6",
+      relation: 0,
+      status: "Peace",
+      personality: "honorable",
+      strength: 1,
+      trust: 0,
+      fear: 0,
+      tributeDemand: 0,
+      lastWarDay: null,
+      lastPeaceDay: null,
+      alliance: false,
+      trade: false,
+      grievances: []
+    },
+    {
+      id: "iron",
+      name: "Iron Marches",
+      color: "#ef4444",
+      relation: 0,
+      status: "Peace",
+      personality: "aggressive",
+      strength: 1,
+      trust: 0,
+      fear: 0,
+      tributeDemand: 0,
+      lastWarDay: null,
+      lastPeaceDay: null,
+      alliance: false,
+      trade: false,
+      grievances: []
+    },
+    {
+      id: "sun",
+      name: "Sun Coast League",
+      color: "#f59e0b",
+      relation: 0,
+      status: "Peace",
+      personality: "mercantile",
+      strength: 1,
+      trust: 0,
+      fear: 0,
+      tributeDemand: 0,
+      lastWarDay: null,
+      lastPeaceDay: null,
+      alliance: false,
+      trade: false,
+      grievances: []
+    },
+    {
+      id: "bandit",
+      name: "Bandit Clans",
+      color: "#7c2d12",
+      relation: -100,
+      status: "War",
+      bandit: true,
+      grievances: ["Bandits cannot be negotiated with."]
+    }
+  ];
+
+  state.settlements = [
+    {
+      id: "green",
+      type: "village",
+      name: "Green Hollow",
+      x: 230,
+      y: 450,
+      faction: "veyr",
+      recruits: { veyrLevy: 8, veyrMilitia: 4, veyrWoodsman: 3 }
+    },
+    {
+      id: "mill",
+      type: "village",
+      name: "Millford",
+      x: 350,
+      y: 575,
+      faction: "veyr",
+      recruits: { veyrLevy: 7, veyrMilitia: 5, veyrSpearGuard: 2, veyrWoodsman: 3 }
+    },
+    {
+      id: "east",
+      type: "castle",
+      name: "Eastwatch Keep",
+      x: 480,
+      y: 425,
+      faction: "veyr",
+      recruits: { veyrSpearGuard: 4, veyrFootman: 4, veyrSergeant: 2, veyrLongbowman: 3, veyrPage: 2, veyrSquire: 1 }
+    },
+    {
+      id: "red",
+      type: "village",
+      name: "Redfield",
+      x: 670,
+      y: 250,
+      faction: "iron",
+      recruits: { ironRecruit: 8, ironAxeman: 4, ironSpear: 4, ironHunter: 2 }
+    },
+    {
+      id: "anvil",
+      type: "castle",
+      name: "Anvil Hold",
+      x: 790,
+      y: 315,
+      faction: "iron",
+      recruits: { ironAxeman: 4, ironCleaver: 2, ironPikeman: 4, ironCrossbowman: 3, ironRaider: 2, ironKnight: 1 }
+    },
+    {
+      id: "salt",
+      type: "village",
+      name: "Saltmere",
+      x: 800,
+      y: 585,
+      faction: "sun",
+      recruits: { sunLevy: 8, sunSkirmisher: 4, sunSlingman: 4, sunRider: 1 }
+    },
+    {
+      id: "coast",
+      type: "castle",
+      name: "Coastspire Castle",
+      x: 1010,
+      y: 510,
+      faction: "sun",
+      recruits: { sunDuelist: 4, sunJavelineer: 3, sunShieldGuard: 3, sunMarksman: 3, sunLancer: 2, sunGildedCavalry: 1 }
+    }
+  ];
+
+  state.armies = [
+    makeFactionArmy("Veyr Patrol", "veyr", 520, 330, {
+      spearman: 10,
+      archer: 6,
+      swordsman: 5
+    }),
+    makeFactionArmy("Iron Warband", "iron", 880, 250, {
+      spearman: 12,
+      archer: 5,
+      shieldman: 4,
+      swordsman: 4
+    }),
+    makeFactionArmy("Sun Coast Riders", "sun", 940, 620, {
+      spearman: 8,
+      archer: 7,
+      cavalry: 3,
+      swordsman: 3
+    }),
+    makeFactionArmy("Iron Scouts", "iron", 650, 470, {
+      farmhand: 8,
+      spearman: 7,
+      archer: 3
+    }),
+    makeBanditArmy("Forest Bandits", 185, 210, {
+      farmhand: 10,
+      archer: 4,
+      spearman: 3
+    })
+  ];
 
   state.log = [];
   log("You set out with a small band. The kingdoms watch you, but none yet call you enemy.");
@@ -1555,22 +1654,6 @@ function offerTribute(factionId) { const f = faction(factionId); if (!f || f.ban
 function requestAlliance(factionId) { const f = faction(factionId); if (!f || f.bandit) return; const playerStrength = getPlayerRealmStrength(); let requiredRelation = 55; if (f.personality === "honorable") requiredRelation = 45; if (f.personality === "aggressive") requiredRelation = 65; if (f.status === "War") { log(`${f.name} will not discuss alliance while at war.`); return; } f.grievances = f.grievances || []; if (f.relation >= requiredRelation && playerStrength >= getFactionStrength(factionId) * 0.65) { f.alliance = true; f.status = "Ally"; f.relation = Math.max(f.relation, 60); f.grievances.push(`Alliance formed on Day ${state.day}.`); log(`${f.name} accepted your alliance.`); } else { f.relation -= 2; log(`${f.name} refused alliance. Improve relations or strength first.`); } openDiplomacyPanel(); }
 function requestTrade(factionId) { const f = faction(factionId); if (!f || f.bandit) return; if (f.status === "War") { log(`${f.name} will not trade during war.`); return; } f.grievances = f.grievances || []; if (f.relation >= 10 || f.personality === "mercantile") { f.trade = true; f.relation = clamp(f.relation + 4, -100, 100); f.grievances.push(`Trade pact signed on Day ${state.day}.`); log(`Trade pact established with ${f.name}. You will gain occasional gold.`); } else { log(`${f.name} does not trust you enough for trade.`); } openDiplomacyPanel(); }
 
-
-function deepClone(v){ return typeof structuredClone === "function" ? structuredClone(v) : JSON.parse(JSON.stringify(v)); }
-function normalizeAccountName(name){ return String(name||"").trim().replace(/\s+/g," ").slice(0,32);}
-function getAccountList(){ try{return JSON.parse(localStorage.getItem(ACCOUNT_LIST_KEY)||"[]");}catch{return [];} }
-function saveAccountList(accounts){ localStorage.setItem(ACCOUNT_LIST_KEY, JSON.stringify(accounts)); }
-function accountExists(name){ return getAccountList().some(a=>a.toLowerCase()===name.toLowerCase()); }
-function getAccountSaveKey(accountName=currentAccountName){ return `kingdomsAtWarSave_${accountName}`; }
-function setAccountMessage(msg){ const box=$("accountMenuMessage"); if(box) box.textContent=msg||""; }
-function refreshAccountMenu(){ const select=$("accountSelect"); const accounts=getAccountList(); if(select){ select.innerHTML=""; if(!accounts.length){ const opt=document.createElement("option"); opt.value=""; opt.textContent="No accounts yet"; select.appendChild(opt);} else { accounts.forEach(name=>{ const opt=document.createElement("option"); opt.value=name; opt.textContent=name; select.appendChild(opt);});}} const last=localStorage.getItem(LAST_ACCOUNT_KEY); const btn=$("continueAccountBtn"); if(btn){ const ok=!!(last&&accountExists(last)); btn.style.display=ok?"inline-block":"none"; btn.textContent=ok?`Continue ${last}`:"Continue Last Account"; }}
-function showLaunchScreen(){ $("launchScreen")?.classList.add("active"); $("worldScreen")?.classList.remove("active"); $("battleScreen")?.classList.remove("active"); refreshAccountMenu(); }
-function showWorldScreen(){ $("launchScreen")?.classList.remove("active"); $("worldScreen")?.classList.add("active"); $("battleScreen")?.classList.remove("active"); updateMapCamera(); renderUI(); drawWorld(); }
-function createAccountFromMenu(){ const input=$("accountNameInput"); const name=normalizeAccountName(input?.value); if(!name) return setAccountMessage("Enter an account name first."); if(accountExists(name)) return setAccountMessage("That account already exists. Choose another name or load it."); const accounts=getAccountList(); accounts.push(name); saveAccountList(accounts); currentAccountName=name; localStorage.setItem(LAST_ACCOUNT_KEY,name); newGame(true); saveGame(); showWorldScreen(); }
-function loadSelectedAccount(){ const name=normalizeAccountName($("accountSelect")?.value); if(!name||!accountExists(name)) return setAccountMessage("Choose an account to load."); currentAccountName=name; localStorage.setItem(LAST_ACCOUNT_KEY,name); const loaded=loadGame(true); if(!loaded){ setAccountMessage("No save found for this account. Starting a new campaign."); newGame(true); saveGame(); } showWorldScreen(); }
-function continueLastAccount(){ const last=localStorage.getItem(LAST_ACCOUNT_KEY); if(!last||!accountExists(last)){ setAccountMessage("No previous account found."); return refreshAccountMenu(); } currentAccountName=last; const loaded=loadGame(true); if(!loaded){ newGame(true); saveGame(); } showWorldScreen(); }
-function deleteSelectedAccount(){ const name=normalizeAccountName($("accountSelect")?.value); if(!name||!accountExists(name)) return setAccountMessage("Choose an account to delete."); if(!confirm(`Delete local account "${name}"? This cannot be undone.`)) return; saveAccountList(getAccountList().filter(a=>a.toLowerCase()!==name.toLowerCase())); localStorage.removeItem(getAccountSaveKey(name)); if(localStorage.getItem(LAST_ACCOUNT_KEY)===name) localStorage.removeItem(LAST_ACCOUNT_KEY); if(currentAccountName===name) currentAccountName=null; refreshAccountMenu(); setAccountMessage(`Deleted ${name}.`);}
-
 /* =========================================================
    INIT
 ========================================================= */
@@ -1581,8 +1664,7 @@ function initWorld() {
 
   resize();
   seedMapDecor();
-  refreshAccountMenu();
-  showLaunchScreen();
+  makeWorld();
   ensurePlayerXp();
   ensureSettlementEconomy();
 
@@ -1605,7 +1687,8 @@ function mapClick(e) {
   if (worldPaused) return;
 
   const rect = canvas.getBoundingClientRect();
-  const {x,y} = screenToWorld(e.clientX, e.clientY);
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
 
   const hit = findHit(x, y);
 
@@ -1658,7 +1741,6 @@ function loop(t) {
     updateWorld(dt);
   }
 
-  updateMapCamera(dt || 1/60);
   drawWorld();
   requestAnimationFrame(loop);
 }
@@ -1752,8 +1834,8 @@ function movePoint(obj, target, speed, dt) {
   obj.x += (dx / d) * speed * terrainMod * dt;
   obj.y += (dy / d) * speed * terrainMod * dt;
 
-  obj.x = clamp(obj.x, 20, WORLD_WIDTH - 20);
-  obj.y = clamp(obj.y, 20, WORLD_HEIGHT - 20);
+  obj.x = clamp(obj.x, 20, W - 390);
+  obj.y = clamp(obj.y, 85, H - 25);
 }
 
 function nextDay() {
@@ -1997,15 +2079,6 @@ function dailyWarCheck() {
   }
 }
 
-
-function isFarFromSettlements(x,y,minDist=240){ return state.settlements.every(s=>Math.hypot(s.x-x,s.y-y)>=minDist); }
-function randomPointInRegion(region){ const a=Math.random()*Math.PI*2,r=Math.random()*region.radius*0.75; return {x:clamp(region.x+Math.cos(a)*r,20,WORLD_WIDTH-20),y:clamp(region.y+Math.sin(a)*r,20,WORLD_HEIGHT-20)}; }
-function createFactionPatrol(f){ const p=randomPointInRegion(f.region); return makeFactionArmy(`${f.name} Patrol`, f.id, p.x,p.y,{spearman:8+randInt(0,4),archer:4+randInt(0,3),swordsman:3+randInt(0,3)});}
-function createBanditParty(){ let p={x:rand(120,WORLD_WIDTH-120),y:rand(120,WORLD_HEIGHT-120)}; for(let i=0;i<30 && !isFarFromSettlements(p.x,p.y);i++) p={x:rand(120,WORLD_WIDTH-120),y:rand(120,WORLD_HEIGHT-120)}; return makeBanditArmy(`Bandit Raiders`, p.x,p.y,{farmhand:8+randInt(0,5),spearman:3+randInt(0,3),archer:2+randInt(0,2)});}
-function spawnInitialWorldParties(){ state.armies=[]; factionTemplates.forEach(f=>{ for(let i=0;i<3;i++) state.armies.push(createFactionPatrol(f));}); for(let i=0;i<6;i++) state.armies.push(createBanditParty()); }
-function updateMapCamera(dt=1/60){ const p=state.player; if(!p) return; mapCamera.x += (p.x-mapCamera.x)*clamp(dt*5,0,1); mapCamera.y += (p.y-mapCamera.y)*clamp(dt*5,0,1); const halfW=W/(2*mapCamera.zoom),halfH=H/(2*mapCamera.zoom); mapCamera.x=clamp(mapCamera.x,halfW,WORLD_WIDTH-halfW); mapCamera.y=clamp(mapCamera.y,halfH,WORLD_HEIGHT-halfH);}
-function screenToWorld(clientX,clientY){ const rect=canvas.getBoundingClientRect(); const sx=clientX-rect.left, sy=clientY-rect.top; return {x:clamp(mapCamera.x+(sx-W/2)/mapCamera.zoom,0,WORLD_WIDTH), y:clamp(mapCamera.y+(sy-H/2)/mapCamera.zoom,0,WORLD_HEIGHT)};}
-
 function spawnBanditsIfDue() {
   const liveBandits = state.armies.filter(a => a.bandit).length;
 
@@ -2050,12 +2123,8 @@ function drawWorld() {
   bg.addColorStop(1, "#1b2c29");
 
   ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+  ctx.fillRect(0, 0, W, H);
 
-  ctx.save();
-  ctx.translate(W/2,H/2);
-  ctx.scale(mapCamera.zoom,mapCamera.zoom);
-  ctx.translate(-mapCamera.x,-mapCamera.y);
   drawTerrain();
 
   for (const s of state.settlements) {
@@ -2067,7 +2136,6 @@ function drawWorld() {
   }
 
   drawPlayer();
-  ctx.restore();
 }
 
 function drawTerrain() {
@@ -2199,12 +2267,15 @@ function drawRoads() {
   ctx.strokeStyle = "rgba(216,194,127,0.75)";
   ctx.lineWidth = 9;
   ctx.lineCap = "round";
-  const byId=Object.fromEntries(state.settlements.map(s=>[s.id,s]));
-  for(const road of roadTemplates){
-    ctx.beginPath();
-    road.forEach((id,i)=>{const n=byId[id]; if(!n) return; if(i===0) ctx.moveTo(n.x,n.y); else ctx.lineTo(n.x,n.y);});
-    ctx.stroke();
-  }
+
+  ctx.beginPath();
+  ctx.moveTo(215, 450);
+  ctx.lineTo(350, 575);
+  ctx.lineTo(480, 425);
+  ctx.lineTo(670, 250);
+  ctx.lineTo(790, 315);
+  ctx.lineTo(1010, 510);
+  ctx.stroke();
 
   ctx.strokeStyle = "rgba(80,55,25,0.32)";
   ctx.lineWidth = 2;
@@ -2381,7 +2452,6 @@ function renderUI() {
   $("wagesText").textContent = calculateArmyWages(state.player.army);
   $("armyText").textContent = `${armyCount(state.player.army)}/${state.armyMax}`;
   $("castleText").textContent = state.player.castles.length;
-  if ($("accountText")) $("accountText").textContent = currentAccountName || "None";
 
   $("armyBreakdown").innerHTML =
     Object.entries(state.player.army)
@@ -3049,20 +3119,16 @@ function claimCastle(s) {
 ========================================================= */
 
 function saveGame() {
-  if (!currentAccountName) { setAccountMessage("Create or load an account before saving."); showLaunchScreen(); return; }
-  const data = { ...state, mapCamera, WORLD_WIDTH, WORLD_HEIGHT };
-  localStorage.setItem(getAccountSaveKey(), JSON.stringify(data));
-  localStorage.setItem(LAST_ACCOUNT_KEY, currentAccountName);
-  log(`Saved campaign for ${currentAccountName}.`);
+  localStorage.setItem("kingdomsAtWarSave", JSON.stringify(state));
+  log("Game saved locally.");
 }
 
-function loadGame(silent = false) {
-  if (!currentAccountName) { if (!silent) alert("Create or load an account first."); return false; }
-  const raw = localStorage.getItem(getAccountSaveKey());
+function loadGame() {
+  const raw = localStorage.getItem("kingdomsAtWarSave");
 
   if (!raw) {
-    if (!silent) log("No local save found.");
-    return false;
+    log("No local save found.");
+    return;
   }
 
   const loaded = JSON.parse(raw);
@@ -3072,17 +3138,13 @@ function loadGame(silent = false) {
   ensureInventory();
   ensureSettlementEconomy();
 
-  if (loaded.mapCamera) mapCamera = loaded.mapCamera;
-  if (!state.settlements || state.settlements.length < 10) state.settlements = deepClone(expandedSettlementTemplates);
-  if (!silent) log(`Loaded campaign for ${currentAccountName}.`);
+  log("Game loaded.");
   renderUI();
-  return true;
 }
 
-function newGame(silent = false) {
-  if (!silent && !confirm("Start a new campaign? Current unsaved progress will be lost.")) return;
+function newGame() {
+  if (!confirm("Start a new game?")) return;
   makeWorld();
-  mapCamera = { x: state.player.x, y: state.player.y, zoom: 1 };
   ensurePlayerXp();
   ensureInventory();
   ensureSettlementEconomy();
