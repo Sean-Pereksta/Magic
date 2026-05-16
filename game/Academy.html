@@ -4196,7 +4196,7 @@ function createCommanderModel() {
   const tipMat = new THREE.MeshLambertMaterial({ color: 0xc9d0d6 });
 
   const body = new THREE.Group();
-  body.position.y = 1.25;
+  body.position.y = 0.05;
   group.add(body);
 
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.95, 1.1, 0.55), armorMat);
@@ -4802,7 +4802,7 @@ function updatePlayer(dt) {
   player3.mesh.position.x = clamp(player3.mesh.position.x, -105, 105);
   player3.mesh.position.z = clamp(player3.mesh.position.z, -105, 105);
   if (player3 && player3.mesh) {
-    player3.mesh.position.y = 0;
+    player3.mesh.position.y = getBattlefieldHeightAt(player3.mesh.position.x, player3.mesh.position.z);
   }
   player3.mesh.rotation.y = player3.yaw;
   animateCommander(dt);
@@ -4839,7 +4839,7 @@ function animateCommander(dt) {
   rig.rightLeg.rotation.x = -stride * legAmp;
   rig.leftArm.rotation.x = -stride * armAmp - 0.2;
   rig.rightArm.rotation.x = stride * armAmp - 1.15;
-  rig.body.position.y = 1.25 + (player3.isMoving ? Math.abs(Math.sin(player3.walkTime)) * (player3.isRunning ? 0.12 : 0.07) : Math.sin(idle * 1.8) * 0.03);
+  rig.body.position.y = 0.05 + (player3.isMoving ? Math.abs(Math.sin(player3.walkTime)) * (player3.isRunning ? 0.12 : 0.07) : Math.sin(idle * 1.8) * 0.03);
   rig.body.rotation.x = player3.isRunning ? -0.08 : 0;
   rig.cape.rotation.x = 0.22 + Math.sin(idle * 5 + player3.walkTime) * (player3.isMoving ? 0.15 : 0.05);
   rig.spearGroup.position.z = rig.spearBaseZ + Math.sin(idle * 4) * 0.03;
@@ -5274,7 +5274,7 @@ function updateAttackAnimations(dt){for(const t of battleTroops){ if(!t.attackAn
 function playShieldBlockAnimation(troop){if(!troop.shieldMesh)return; troop.shieldAnim={active:true,time:0,duration:0.22};}
 function updateShieldAnimations(dt){for(const troop of battleTroops){if(!troop.shieldAnim?.active||!troop.shieldMesh)continue; troop.shieldAnim.time+=dt; const t=troop.shieldAnim.time/troop.shieldAnim.duration; const punch=Math.sin(Math.min(1,t)*Math.PI)*0.18; troop.shieldMesh.position.z=troop.shieldRestPosition.z-punch; if(t>=1){troop.shieldMesh.position.copy(troop.shieldRestPosition); troop.shieldAnim.active=false;}}}
 function createArrowMesh(color = 0xd6b06a) { const group = new THREE.Group(); const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.75, 8), new THREE.MeshStandardMaterial({ color })); shaft.rotation.x = Math.PI / 2; group.add(shaft); const head = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.18, 8), new THREE.MeshStandardMaterial({ color: 0xdddddd })); head.position.z = 0.45; head.rotation.x = Math.PI / 2; group.add(head); return group; }
-function getBattlefieldHeightAt() { return 0; }
+function getBattlefieldHeightAt(x, z) { return 0; }
 function getQuadraticBezierPoint(start, control, end, t) { const p0 = start.clone().multiplyScalar((1 - t) * (1 - t)); const p1 = control.clone().multiplyScalar(2 * (1 - t) * t); const p2 = end.clone().multiplyScalar(t * t); return p0.add(p1).add(p2); }
 function fireArrow(attacker, target) { if (!attacker || !target || target.dead) return; const start = getCombatPosition(attacker).clone().add(new THREE.Vector3(0, 1.45, 0)); const end = getCombatPosition(target).clone().add(new THREE.Vector3(0, 1.15, 0)); const mesh = createArrowMesh(attacker.def?.classLine === "crossbow" ? 0xb8b8b8 : 0xd6b06a); mesh.position.copy(start); scene.add(mesh); const dir = end.clone().sub(start).normalize(); projectiles.push({ mesh, attacker, target, pos: start.clone(), vel: dir.multiplyScalar(attacker.def?.projectileSpeed || 24), damage: attacker.def?.damage || attacker.damage || 14, life: 2.8, radius: 0.35 }); }
 function isProjectileFromFront(troop, projectile) { const troopForward = new THREE.Vector3(0, 0, -1).applyQuaternion(troop.mesh.quaternion).normalize(); const incomingDir = projectile.end.clone().sub(projectile.start).normalize(); const towardProjectile = incomingDir.clone().multiplyScalar(-1); return troopForward.dot(towardProjectile) > 0.35; }
