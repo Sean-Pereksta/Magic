@@ -2625,6 +2625,76 @@
     return null;
   }
 
+
+  function initBattleStats(){
+    return { enemyKills:{}, totalEnemyKills:0, goldEarned:0, itemsFound:[], friendlyKilled:0, friendlyWounded:0 };
+  }
+
+  function recordEnemyKill(unitKey){
+    const b = state.battle;
+    if(!b || !unitKey) return;
+    if(!b.battleStats) b.battleStats = initBattleStats();
+    b.battleStats.enemyKills[unitKey] = (b.battleStats.enemyKills[unitKey]||0) + 1;
+    b.battleStats.totalEnemyKills += 1;
+  }
+
+  function troopTierGoldRoll(tier){
+    if(tier<=0) return randi(4,8);
+    if(tier===1) return randi(8,14);
+    if(tier===2) return randi(14,24);
+    if(tier===3) return randi(24,40);
+    return randi(40,70);
+  }
+
+  function battleLootBonusFactor(){
+    return Math.max(0, (state.player?.modifiers?.lootBonus||0) + (state.player?.lootBonus||0));
+  }
+
+  function generateBattleLoot(enemyKills, defeatedArmy, defeatedArmyKind){
+    const items = [];
+    const totalKills = Object.values(enemyKills||{}).reduce((a,b)=>a+b,0);
+    const lootBonus = battleLootBonusFactor();
+    const isBandit = /bandit|camp|raider|looter/.test(defeatedArmyKind||'');
+    const isLord = /lord|king|army|patrol/.test(defeatedArmyKind||'');
+    const isCastle = /castle|siege/.test(defeatedArmyKind||'');
+    const equipmentPool = ['weapon_axe','weapon_spear','weapon_bow','weapon_crossbow','weapon_pike','armor_leather','armor_chain','armor_scale','armor_plate'];
+    const banditPool = ['weapon_axe','weapon_spear','weapon_bow','armor_leather'];
+    for(const [unitKey,kills] of Object.entries(enemyKills||{})){
+      const def = UNIT_DB[unitKey]||{tier:0};
+      const tier = clamp(def.tier||0,0,5);
+      const baseChance = 0.16 + tier*0.08 + Math.min(0.30, kills*0.03) + lootBonus*0.01;
+      const kindBonus = isBandit ? 0.08 : (isLord ? 0.16 : (isCastle ? 0.22 : 0.10));
+      const rolls = Math.max(1, Math.floor(kills/(tier>=2?2:3)));
+      for(let i=0;i<rolls;i++){
+        if(Math.random() < Math.min(0.90, baseChance + kindBonus)){
+          const pool = isBandit ? banditPool : equipmentPool;
+          items.push(pool[randi(0,pool.length-1)]);
+        }
+      }
+    }
+    if(totalKills>=6 && Math.random() < (0.24 + lootBonus*0.008)){
+      items.push(equipmentPool[randi(0,equipmentPool.length-1)]);
+    }
+    return items;
+  }
+
+  function buildBattleRewards(b, defeatedArmy, defeatedArmyKind, xpGain){
+    const stats = b.battleStats || initBattleStats();
+    const size = defeatedArmy?.size || stats.totalEnemyKills || 10;
+    const isBandit = /bandit|camp|raider|looter/.test(defeatedArmyKind||'');
+    const goldFavor = isBandit ? 1.12 : 1.0;
+    let killGold = 0;
+    for(const [unitKey,count] of Object.entries(stats.enemyKills||{})){
+      const tier = clamp((UNIT_DB[unitKey]?.tier)||0,0,5);
+      for(let i=0;i<count;i++) killGold += troopTierGoldRoll(tier);
+    }
+    killGold = Math.round(killGold * goldFavor);
+    const spoilsBonus = randi(4,12) + Math.floor(size * rand(0.55,1.15));
+    const gold = killGold + spoilsBonus;
+    const items = generateBattleLoot(stats.enemyKills||{}, defeatedArmy, defeatedArmyKind);
+    return { gold, food:0, items, taken:false, xp:xpGain, reason:'Battle Spoils', friendlyKilled:stats.friendlyKilled||0, friendlyWounded:stats.friendlyWounded||0, enemiesDefeated:stats.totalEnemyKills||0, battleRewardsClaimed:false };
+  }
+
   // =========================
   // Loot panel
   // =========================
@@ -2636,12 +2706,15 @@
 
   function collectLoot(loot){
     const p = state.player;
-    if(!loot || loot.taken) return;
+    if(!loot || loot.taken || loot.battleRewardsClaimed) return;
     p.gold += loot.gold;
     p.food += loot.food;
     if(loot.xp) addXP(loot.xp);
     for(const id of loot.items) p.inventory[id] = (p.inventory[id]||0) + 1;
     loot.taken = true;
+    loot.battleRewardsClaimed = true;
+    const itemCount = (loot.items||[]).length;
+    worldLog(`Victory! You earned ${loot.gold} gold and recovered ${itemCount} item${itemCount===1?'':'s'}.`);
   }
 
   function returnToMapFromBattle(){
@@ -2661,14 +2734,16 @@
 
   function renderLootPanel(loot){
     ui.panelLoot.innerHTML = `
-      <h2>Loot</h2>
-      <div class="small">${loot.reason || 'Victory!'} Collect loot, then return to the map.</div>
+      <h2>Battle Spoils</h2>
+      <div class="small">${loot.reason || 'Victory!'} Claim your rewards, then continue.</div>
       <div class="hr"></div>
 
       <div class="row">
-        <div class="chip">💰 +<b>${loot.gold}</b></div>
-        <div class="chip">🍖 +<b>${loot.food}</b></div>
+        <div class="chip">💰 +<b>${loot.gold}</b> Gold</div>
         ${loot.xp ? `<div class="chip">⭐ +<b>${loot.xp}</b> XP</div>` : ``}
+        <div class="chip">☠️ Enemies defeated: <b>${loot.enemiesDefeated||0}</b></div>
+        <div class="chip">🛡️ Friendly losses: <b>${loot.friendlyKilled||0}</b></div>
+        <div class="chip">🩹 Friendly wounded: <b>${loot.friendlyWounded||0}</b></div>
       </div>
 
       <div class="hr"></div>
@@ -2684,20 +2759,23 @@
 
       <div class="hr"></div>
       <div class="row">
-        <button class="btn" id="takeAll">Take All</button>
-        <button class="btn" id="continue">Continue</button>
+        <button class="btn" id="takeAll">Take All and Continue</button>
+        <button class="btn" id="openInventory">Open Inventory</button>
       </div>
     `;
 
     ui.panelLoot.querySelector('#takeAll').onclick = () => {
       collectLoot(loot);
-      toast('Loot collected!');
+      toast('Rewards collected!');
       syncHUD();
-      ui.panelLoot.querySelector('#takeAll').disabled = true;
+      returnToMapFromBattle();
     };
 
-    ui.panelLoot.querySelector('#continue').onclick = () => {
-      returnToMapFromBattle();
+    ui.panelLoot.querySelector('#openInventory').onclick = () => {
+      collectLoot(loot);
+      togglePanel('inventory');
+      renderInventoryPanel();
+      syncHUD();
     };
   }
 
@@ -3965,6 +4043,8 @@
       shake: 0,
       lootPending: null,
       killCountThisBattle: 0,
+      battleStats: initBattleStats(),
+      battleRewardsClaimed: false,
       formations: {
         all:{ mode:'loose' },
         inf:{ mode:'shieldwall' },
@@ -4165,7 +4245,7 @@
             spawnCombatBurst(e.x, e.y, pr.team);
             spawnBloodSpray(e.x,e.y, wasAlive&&!e.alive ? 1.2 : 0.7);
             if(wasAlive && !e.alive) spawnBloodAt(e.x, e.y);
-            if(wasAlive && !e.alive) b.killCountThisBattle++;
+            if(wasAlive && !e.alive){ b.killCountThisBattle++; recordEnemyKill(e.unitKey); }
             pr.ttl = 0;
             break;
           }
@@ -4264,7 +4344,7 @@
                 spawnCombatBurst(t.x, t.y, u.team);
                 spawnBloodSpray(t.x,t.y, wasAlive&&!t.alive ? 1.3 : 0.65);
                 if(wasAlive && !t.alive) spawnBloodAt(t.x, t.y);
-                if(wasAlive && !t.alive && u.team==='ally') b.killCountThisBattle++;
+                if(wasAlive && !t.alive && u.team==='ally'){ b.killCountThisBattle++; recordEnemyKill(t.unitKey); }
               }
             }
           }
@@ -4441,6 +4521,10 @@
     for(const su of survivors){ const gain = 12 + Math.floor((b.enemies.filter(e=>!e.alive).length)/6); const old=su.rank||0; su.xp=(su.xp||0)+gain; su.rank = Math.max(su.rank||0, unitRankByXp(su.xp)); if(su.rank>old) toast(`🏅 ${UNIT_DB[su.baseUnit].name} promoted to ${unitRankName(su.rank)}`); }
     p.armyUnits = survivors;
     p.woundedUnits.push(...woundedAdds);
+    if(b.battleStats){
+      b.battleStats.friendlyKilled = b.allies.filter(u=>u._isPlayerArmy && u.diedThisBattle).length;
+      b.battleStats.friendlyWounded = woundedAdds.length;
+    }
   }
 
   function victoryFlow(){
@@ -4485,19 +4569,7 @@
       p.renown += renownGain;
       p.lastBattleResultDay = state.map.day;
       p.lastBattleResultType = 'field_win';
-      const lootGold = randi(18, 55) + Math.floor(size * 1.25);
-      const lootFood = randi(5, 15);
-
-      const items = [];
-      const rolls = (size>=16) ? 2 : 1;
-      for(let i=0;i<rolls;i++){
-        if(Math.random() < (0.30 + size*0.006)){
-          const pool = ['weapon_axe','weapon_spear','weapon_bow','weapon_crossbow','weapon_pike','armor_leather','armor_chain','armor_scale','armor_plate'];
-          items.push(pool[randi(0,pool.length-1)]);
-        }
-      }
-
-      b.lootPending = { gold:lootGold, food:lootFood, items, taken:false, xp: xpGain, reason:'Field victory!' };
+      b.lootPending = buildBattleRewards(b, party, party?.kind||'field', xpGain);
       openLootPanel(b.lootPending);
       syncHUD();
       return;
@@ -4535,15 +4607,7 @@
       }
 
       p.renown += 12; p.influence += (p.faction?5:1); p.lastBattleResultDay = state.map.day; p.lastBattleResultType = 'siege_win';
-      const lootGold = randi(95, 190) + 55;
-      const lootFood = randi(20, 45);
-      const items = [];
-      const pool = ['weapon_axe','weapon_spear','weapon_bow','weapon_crossbow','weapon_pike','armor_leather','armor_chain','armor_scale','armor_plate'];
-      const rolls = 3 + (Math.random()<0.45 ? 1 : 0);
-      for(let i=0;i<rolls;i++){
-        if(Math.random()<0.72) items.push(pool[randi(0,pool.length-1)]);
-      }
-      b.lootPending = { gold:lootGold, food:lootFood, items, taken:false, xp: xpGain+25, reason:'Siege victory!' };
+      b.lootPending = buildBattleRewards(b, castle, 'castle', xpGain+25);
       openLootPanel(b.lootPending);
       syncHUD();
       return;
@@ -4566,14 +4630,7 @@
     finalizePlayerArmyFromBattle();
 
     p.renown += 6; if(p.faction && castle.factionId===p.faction) p.influence += 3; p.lastBattleResultDay = state.map.day; p.lastBattleResultType = 'siege_win';
-    const lootGold = randi(20, 60);
-    const lootFood = randi(8, 18);
-    const items = [];
-    if(Math.random()<0.40){
-      items.push(['weapon_spear','weapon_axe','weapon_bow','armor_leather','weapon_crossbow'][randi(0,4)]);
-    }
-
-    b.lootPending = { gold:lootGold, food:lootFood, items, taken:false, xp: xpGain, reason:'Defense victory!' };
+    b.lootPending = buildBattleRewards(b, invader, invader?.kind||'defense', xpGain);
     openLootPanel(b.lootPending);
     syncHUD();
   }
