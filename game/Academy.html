@@ -3384,7 +3384,7 @@ function saveControlsForSession(session) { if (session) localStorage.setItem(con
 function loadControlsForSession(session) { if (!session) return; const defaults = sourceIsGamepad(session) ? defaultGamepadControls : defaultKeyboardControls; try { const raw = JSON.parse(localStorage.getItem(controlsStorageKey(session)) || "null"); session.controls = { ...defaults, ...(raw || {}) }; } catch { session.controls = { ...defaults }; } }
 function resetControlsForSession(session) { if (session) session.controls = { ...(sourceIsGamepad(session) ? defaultGamepadControls : defaultKeyboardControls) }; }
 function rebindSessionAction(sessionId, action) { const session = getSplitSession(sessionId); if (!session) return; const v = prompt(`Bind ${action}`, session.controls?.[action] || ""); if (v) { session.controls[action] = v; openSessionControlsPanel(sessionId); } }
-function openSessionControlsPanel(sessionId) { const session = getSplitSession(sessionId); if (!session) return; if (!session.controls) loadControlsForSession(session); const rows = Object.keys(session.controls).map(a => `<tr><td>${a}</td><td>${session.controls[a]}</td><td><button onclick="rebindSessionAction('${session.id}','${a}')">Rebind</button></td></tr>`).join(""); $("modal").classList.add("active"); $("modalBox").innerHTML = `<h2>${session.label} Controls</h2><table class="table"><tr><th>Action</th><th>Current binding</th><th></th></tr>${rows}</table><div class="row"><button class="warn" onclick="resetControlsForSession(getSplitSession('${session.id}'));openSessionControlsPanel('${session.id}')">Restore Defaults</button><button class="success" onclick="saveControlsForSession(getSplitSession('${session.id}'));closeModal()">Save Mapping</button><button onclick="closeModal()">Close</button></div>`; }
+function openSessionControlsPanel(sessionId) { const session = getSplitSession(sessionId); if (!session) return; if (!session.controls) loadControlsForSession(session); const rows = Object.keys(session.controls).map(a => `<tr><td>${a}</td><td>${session.controls[a]}</td><td><button onclick="rebindSessionAction('${session.id}','${a}')">Rebind</button></td></tr>`).join(""); openSessionModal(session, `<h2>${session.label} Controls</h2><table class="table"><tr><th>Action</th><th>Current binding</th><th></th></tr>${rows}</table><div class="row"><button class="warn" onclick="resetControlsForSession(getSplitSession('${session.id}'));openSessionControlsPanel('${session.id}')">Restore Defaults</button><button class="success" onclick="saveControlsForSession(getSplitSession('${session.id}'));closeSessionModal(getSplitSession('${session.id}'))">Save Mapping</button><button onclick="closeSessionModal(getSplitSession('${session.id}'))">Close</button></div>`); }
 
 function getSplitSession(playerId) {
   return gameMode.sessions.find(s => s.id === playerId);
@@ -3618,7 +3618,7 @@ function startSplitScreenFromMenu() {
   });
   const validation = validateSplitScreenSetup();
   if (!validation.valid) return setSplitScreenMessage(validation.message);
-  buildSharedWorldFromSessions();
+  if (!loadSharedWorldForSessions()) buildSharedWorldFromSessions();
   createSplitScreenLayout();
   showWorldScreen();
   setSplitScreenMessage("Split-screen world started.");
@@ -3684,12 +3684,15 @@ function findSharedHit(x, y) {
   for (const a of sharedWorld.roamingArmies || []) if (Math.hypot(x - a.x, y - a.y) < 20) return { kind: "army", id: a.id, x: a.x, y: a.y, data: a, name: a.name };
   return null;
 }
+function getSessionBattleKey(sessionId) { return `session:${sessionId}`; }
+function getSharedPvpKey() { return "pvp:shared"; }
+function isSessionInAnyBattle(session) { return !!battleInstances[getSessionBattleKey(session?.id)] || !!(battleInstances[getSharedPvpKey()] && battleInstances[getSharedPvpKey()].ownerPlayerIds?.includes(session?.id)); }
 function updateSplitHud(session) {
   const hud = $(`splitHud-${session.id}`);
   if (!hud) return;
   const sessionState = session.state || state;
   const gamepadDisconnected = sourceIsGamepad(session) && !getAssignedGamepad(session);
-  hud.innerHTML = `<b>${session.label}</b><span>${session.accountName}</span><span>Gold ${sessionState.gold}</span><span>Food ${sessionState.player.food}</span><span>Morale ${Math.round(sessionState.player.morale || 0)}</span><span>Army ${armyCount(sessionState.player.army)}</span><span>Mode ${session.mode}</span>${gamepadDisconnected ? `<span style="color:#ffb3b3;">Gamepad disconnected.</span>` : ""}<button onclick="openSessionMenu('${session.id}')">Menu</button><button onclick="openSessionControlsPanel('${session.id}')">Controls</button><button onclick="saveSessionGame('${session.id}')">Save</button>`;
+  hud.innerHTML = `<b>${session.label}</b><span>${session.accountName}</span><span>Gold ${sessionState.gold}</span><span>Food ${sessionState.player.food}</span><span>Morale ${Math.round(sessionState.player.morale || 0)}</span><span>Army ${armyCount(sessionState.player.army)}</span><span>Mode ${session.mode}</span>${gamepadDisconnected ? `<span style="color:#ffb3b3;">Gamepad disconnected.</span>` : ""}<button onclick="openSessionMainMenu('${session.id}')">Menu</button><button onclick="openSessionControlsPanel('${session.id}')">Controls</button><button onclick="saveSessionGame('${session.id}')">Save</button>`;
   const info = $(`selectedInfo-${session.id}`);
   const actions = $(`selectedActions-${session.id}`);
   if (!info || !actions) return;
@@ -3698,15 +3701,16 @@ function updateSplitHud(session) {
   info.textContent = session.selected.name || session.selected.kind;
   if (session.selected.kind === "player" && session.selected.id !== session.id) {
     const travel = document.createElement("button");
-    travel.textContent = `Travel Toward ${session.selected.id === "p1" ? "Player 1" : "Player 2"}`;
+    const otherLabel = session.selected.id === "p1" ? "Player 1" : "Player 2";
+    travel.textContent = `Travel Toward ${otherLabel}`;
     travel.onclick = () => { const me = getSharedPlayerParty(session); me.targetX = session.selected.x; me.targetY = session.selected.y; };
     actions.appendChild(travel);
     const me = getSharedPlayerParty(session);
     const other = getSharedPlayerParty({ id: session.selected.id });
     if (me && other && Math.hypot(me.x - other.x, me.y - other.y) < 55) {
       const challenge = document.createElement("button");
-      challenge.textContent = `Challenge ${session.selected.id === "p1" ? "Player 1" : "Player 2"}`;
-      challenge.onclick = () => alert("Split-screen battles will be added in Request 4.");
+      challenge.textContent = `Challenge ${otherLabel}`;
+      challenge.onclick = () => requestPvpChallenge(session.id, session.selected.id);
       actions.appendChild(challenge);
     }
   } else if (session.selected.kind === "army") {
@@ -3722,9 +3726,9 @@ function getBattleHudForSession(sessionId) {
   return pane ? pane.querySelector(`#battleHud-${sessionId}`) : null;
 }
 function createBattleInstanceForSession(session, enemyArmy, options = {}) {
-  if (!gameMode.splitScreen || !session || !enemyArmy || battleInstances[session.id]) return null;
+  if (!gameMode.splitScreen || !session || !enemyArmy || isSessionInAnyBattle(session)) return null;
   const instance = { id: `battle-${session.id}-${Date.now()}`, type: options.type || "field", ownerPlayerIds: [session.id], sessionId: session.id, scene: null, camera: null, renderer: null, container: null, clock: null, troops: [], projectiles: [], labels: [], floatingTexts: [], playerActor: null, encounterArmy: enemyArmy, battleEnemyArmy: enemyArmy, biome: options.biome || battleBiome || "grassland", battleType: options.battleType || "field", command: "Hold Position", formation: "Line", selectedGroup: "All", resultPending: false };
-  battleInstances[session.id] = instance;
+  battleInstances[getSessionBattleKey(session.id)] = instance;
   session.mode = "battle";
   mountBattleRendererForSession(session, instance);
   return instance;
@@ -3753,9 +3757,22 @@ function cleanupBattleInstance(instance) { withBattleInstanceContext(instance, (
 function returnSessionToWorld(session) { session.mode = "world"; createSplitScreenLayout(); updateSplitHud(session); }
 function writeBattleSurvivorsToSession(session, instance) { const survivors = {}; withBattleInstanceContext(instance, () => { for (const t of battleTroops) if (t.hp > 0 && t.team === "friendly") survivors[t.type] = (survivors[t.type] || 0) + 1; }); session.state.player.army = survivors; }
 function resolvePvEBattleRewards(session, instance, result) { if (result?.victory) { const reward = 60 + armyCount(instance.encounterArmy?.army || {}) * 6; session.state.gold += reward; if (instance.encounterArmy?.id) sharedWorld.roamingArmies = (sharedWorld.roamingArmies || []).filter(a => a.id !== instance.encounterArmy.id); } saveSessionGame(session.id); }
-function endBattleInstance(instance, result) { const session = getSplitSession(instance.sessionId); if (!session) return; writeBattleSurvivorsToSession(session, instance); resolvePvEBattleRewards(session, instance, result || {}); cleanupBattleInstance(instance); delete battleInstances[session.id]; returnSessionToWorld(session); }
-function openSessionMenu(id) { const s = getSplitSession(id); if (!s) return; s.menuOpen = true; openSessionControlsPanel(id); }
-function saveSessionGame(id) { const s = getSplitSession(id); if (s?.accountName) localStorage.setItem(getAccountSaveKey(s.accountName), JSON.stringify(s.state || state)); }
+function endBattleInstance(instance, result) { const session = getSplitSession(instance.sessionId); if (!session) return; writeBattleSurvivorsToSession(session, instance); resolvePvEBattleRewards(session, instance, result || {}); cleanupBattleInstance(instance); delete battleInstances[getSessionBattleKey(session.id)]; returnSessionToWorld(session); autosaveSplitScreenAfterMajorEvent("pve_battle_end"); }
+function openSessionModal(session, html) { if (!session) return; session.menuOpen = true; const pane = getPaneForSession(session); if (!gameMode.splitScreen || !pane) { $("modal").classList.add("active"); $("modalBox").innerHTML = html; return; } let overlay = pane.querySelector(".sessionModalOverlay"); if (!overlay) { overlay = document.createElement("div"); overlay.className = "sessionModalOverlay"; overlay.style.cssText = "position:absolute;inset:0;z-index:20;background:rgba(5,8,14,.76);display:flex;align-items:center;justify-content:center;padding:10px;"; pane.appendChild(overlay); } overlay.innerHTML = `<div style="width:min(560px,95%);max-height:92%;overflow:auto;padding:10px;border-radius:12px;border:1px solid rgba(255,255,255,.2);background:rgba(9,16,28,.95)">${html}</div>`; }
+function closeSessionModal(session) { if (!session) return; session.menuOpen = false; const pane = getPaneForSession(session); pane?.querySelector(".sessionModalOverlay")?.remove(); closeModal(); }
+function openSessionMainMenu(id) { const s = getSplitSession(id); if (!s) return; openSessionModal(s, `<h2>${s.label} Menu</h2><div class="row"><button onclick="openSessionInventory('${s.id}')">Inventory</button><button onclick="openSessionArmyPanel('${s.id}')">Army</button><button onclick="openSessionUpgradePanel('${s.id}')">Upgrades</button><button onclick="openSessionDiplomacyPanel('${s.id}')">Diplomacy</button><button onclick="openSessionControlsPanel('${s.id}')">Controls</button></div><div class="row"><button class="success" onclick="saveSessionGame('${s.id}')">Save</button><button class="blue" onclick="saveBothSplitScreenAccounts()">Save Both</button><button onclick="closeSessionModal(getSplitSession('${s.id}'))">Close</button></div>`); }
+function openSessionInventory(id) { const s = getSplitSession(id); if (!s) return; const inv = Object.entries(s.state?.player?.inventory || {}).map(([k,v]) => `<li>${k} x${v}</li>`).join("") || "<li>Empty</li>"; openSessionModal(s, `<h3>${s.label} Inventory</h3><ul>${inv}</ul><button onclick="openSessionMainMenu('${s.id}')">Back</button>`); }
+function openSessionArmyPanel(id) { const s = getSplitSession(id); if (!s) return; const rows = Object.entries(s.state?.player?.army || {}).map(([k,v]) => `<li>${k}: ${v}</li>`).join("") || "<li>No units</li>"; openSessionModal(s, `<h3>${s.label} Army</h3><ul>${rows}</ul><button onclick="openSessionMainMenu('${s.id}')">Back</button>`); }
+function openSessionUpgradePanel(id) { const s = getSplitSession(id); if (!s) return; openSessionModal(s, `<h3>${s.label} Upgrades</h3><p>Open upgrades in single-player panel for detailed management.</p><button onclick="openSessionMainMenu('${s.id}')">Back</button>`); }
+function openSessionDiplomacyPanel(id) { const s = getSplitSession(id); if (!s) return; openSessionModal(s, `<h3>${s.label} Diplomacy</h3><p>Faction relations are shared in this world.</p><button onclick="openSessionMainMenu('${s.id}')">Back</button>`); }
+function saveSessionGame(id) { const s = getSplitSession(id); if (s?.accountName) localStorage.setItem(getAccountSaveKey(s.accountName), JSON.stringify(s.state || state)); autosaveSplitScreenAfterMajorEvent("manual_save"); }
+function getSharedWorldSaveKey() { const p1 = getSplitSession("p1")?.accountName || ""; const p2 = getSplitSession("p2")?.accountName || ""; return `kaw_shared_world_${p1}_${p2}`; }
+function saveSharedWorld() { try { localStorage.setItem(getSharedWorldSaveKey(), JSON.stringify(sharedWorld)); return true; } catch (err) { console.warn("Shared world save failed", err); setSplitScreenMessage("Warning: shared world save failed."); return false; } }
+function loadSharedWorldForSessions() { const p1 = getSplitSession("p1")?.accountName || ""; const p2 = getSplitSession("p2")?.accountName || ""; const direct = `kaw_shared_world_${p1}_${p2}`; const reverse = `kaw_shared_world_${p2}_${p1}`; const raw = localStorage.getItem(direct) || localStorage.getItem(reverse); if (!raw) return false; try { sharedWorld = JSON.parse(raw); return true; } catch { return false; } }
+function saveBothSplitScreenAccounts() { gameMode.sessions.forEach(s => saveSessionGame(s.id)); saveSharedWorld(); }
+function autosaveSplitScreenAfterMajorEvent(reason) { if (!gameMode.splitScreen) return; saveSharedWorld(); }
+function requestPvpChallenge(challengerId, targetId) { const challenger = getSplitSession(challengerId), target = getSplitSession(targetId); if (!challenger || !target || isSessionInAnyBattle(challenger) || isSessionInAnyBattle(target)) return; openSessionModal(target, `<h3>${challenger.label} challenges you to battle.</h3><div class="row"><button class="success" onclick="acceptPvpChallenge('${challengerId}','${targetId}')">Accept</button><button class="warn" onclick="closeSessionModal(getSplitSession('${targetId}'))">Decline</button></div>`); }
+function acceptPvpChallenge(p1Id, p2Id) { const s1 = getSplitSession(p1Id), s2 = getSplitSession(p2Id); closeSessionModal(s1); closeSessionModal(s2); const instance = { id: `pvp-${Date.now()}`, type: "pvp", ownerPlayerIds: [p1Id,p2Id], scene: null, rendererByPlayer: {}, cameraByPlayer: {}, containerByPlayer: {}, troops: [], projectiles: [], labels: [], floatingTexts: [], playerActors: {}, commandByPlayer: { [p1Id]:"hold", [p2Id]:"hold" }, formationByPlayer: { [p1Id]:"line", [p2Id]:"line" }, selectedGroupByPlayer: { [p1Id]:"all", [p2Id]:"all" }, resultPending:false }; battleInstances[getSharedPvpKey()] = instance; [s1,s2].forEach(s => { s.mode = "battle"; mountBattleRendererForSession(s, { id: instance.id, sessionId: s.id, type: "pvp", encounterArmy: { army: getSplitSession(s.id === p1Id ? p2Id : p1Id).state?.player?.army || {} }, biome: battleBiome || "grassland", battleType: "field" }); }); autosaveSplitScreenAfterMajorEvent("pvp_battle_start"); }
 
 function showLaunchScreen() {
   controllerMenuOpen = false;
