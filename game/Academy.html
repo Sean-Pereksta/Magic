@@ -3200,7 +3200,8 @@ const battleState = {
   reinforcementInterval: 4,
   reinforcementBatchSize: 5,
   battleStarted: false,
-  battleEnded: false
+  battleEnded: false,
+  startGraceTimer: 2.0
 };
 
 /* =========================================================
@@ -3270,6 +3271,7 @@ function setupBattle() {
   battleState.enemyReinforcementWaveTimer = 0;
   battleState.battleStarted = true;
   battleState.battleEnded = false;
+  battleState.startGraceTimer = 2.0;
   command = "Hold Position";
   formation = "Line";
   selectedTroopGroupIndex = 0;
@@ -3326,12 +3328,12 @@ function spawnFieldArmies() { spawnInitialBattleTroops(); assignFormationSlots()
 function shuffleArray(arr) { const out = arr.slice(); for (let i = out.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [out[i], out[j]] = [out[j], out[i]]; } return out; }
 function buildArmyQueue(armyObj, team) { const queue = []; for (const [type, count] of Object.entries(armyObj || {})) { for (let i = 0; i < count; i++) queue.push({ type, team }); } return shuffleArray(queue); }
 function getReinforcementSpawnPosition(team) { const baseZ = team === "friendly" ? 38 : -38; const spreadX = rand(-18, 18); const spreadZ = rand(-3, 3); return new THREE.Vector3(spreadX, 0, baseZ + spreadZ); }
-function getActiveTroopCount(team) { return battleTroops.filter(t => t.team === team && t.hp > 0).length; }
+function getActiveTroopCount(team) { return battleTroops.filter(t => t.team === team && !t.dead && t.hp > 0).length; }
 function addTroopToBattle(troop) { if (!troop) return; battleTroops.push(troop); }
 function spawnReinforcements(team, maxCount) { const queue = team === "friendly" ? battleState.friendlyQueue : battleState.enemyQueue; let spawned = 0; while (queue.length && spawned < maxCount && getActiveTroopCount(team) < battleState.activeLimitPerSide) { const entry = queue.shift(); const spawnPos = getReinforcementSpawnPosition(team); addTroopToBattle(makeTroop(entry.type, team, spawnPos)); spawned++; } if (spawned > 0) log(`${team === "friendly" ? "Your" : "Enemy"} reinforcements arrived: ${spawned} troops.`); }
 function spawnInitialBattleTroops() { spawnReinforcements("friendly", battleState.activeLimitPerSide); spawnReinforcements("enemy", battleState.activeLimitPerSide); }
-function sideHasNoForcesLeft(team) { const queue = team === "friendly" ? battleState.friendlyQueue : battleState.enemyQueue; return getActiveTroopCount(team) <= 0 && queue.length <= 0; }
-function updateReinforcements(dt) { if (battleState.battleEnded || !battleState.battleStarted) return; battleState.friendlyReinforcementWaveTimer += dt; battleState.enemyReinforcementWaveTimer += dt; if (battleState.friendlyReinforcementWaveTimer >= battleState.reinforcementInterval) { battleState.friendlyReinforcementWaveTimer = 0; if (getActiveTroopCount("friendly") < battleState.activeLimitPerSide) spawnReinforcements("friendly", battleState.reinforcementBatchSize); } if (battleState.enemyReinforcementWaveTimer >= battleState.reinforcementInterval) { battleState.enemyReinforcementWaveTimer = 0; if (getActiveTroopCount("enemy") < battleState.activeLimitPerSide) spawnReinforcements("enemy", battleState.reinforcementBatchSize); } }
+function sideHasNoForcesLeft(team) { const queue = team === "friendly" ? battleState.friendlyQueue : battleState.enemyQueue; return getActiveTroopCount(team) <= 0 && (!queue || queue.length <= 0); }
+function updateReinforcements(dt) { if (battleState.battleEnded || !battleState.battleStarted) return; if (getActiveTroopCount("friendly") <= 0 && battleState.friendlyQueue.length > 0) spawnReinforcements("friendly", battleState.reinforcementBatchSize); if (getActiveTroopCount("enemy") <= 0 && battleState.enemyQueue.length > 0) spawnReinforcements("enemy", battleState.reinforcementBatchSize); battleState.friendlyReinforcementWaveTimer += dt; battleState.enemyReinforcementWaveTimer += dt; if (battleState.friendlyReinforcementWaveTimer >= battleState.reinforcementInterval) { battleState.friendlyReinforcementWaveTimer = 0; if (getActiveTroopCount("friendly") < battleState.activeLimitPerSide) spawnReinforcements("friendly", battleState.reinforcementBatchSize); } if (battleState.enemyReinforcementWaveTimer >= battleState.reinforcementInterval) { battleState.enemyReinforcementWaveTimer = 0; if (getActiveTroopCount("enemy") < battleState.activeLimitPerSide) spawnReinforcements("enemy", battleState.reinforcementBatchSize); } }
 function placeDefenderArchersOnWalls() { const wallSpots = [new THREE.Vector3(-20, 3.9, -16), new THREE.Vector3(-10, 3.9, -16), new THREE.Vector3(10, 3.9, -16), new THREE.Vector3(20, 3.9, -16), new THREE.Vector3(-24, 5.8, -52), new THREE.Vector3(24, 5.8, -52)]; let i = 0; for (const troop of battleTroops) { if (troop.team !== "enemy") continue; if (troop.type !== "archer" && troop.type !== "crossbow") continue; if (i >= wallSpots.length) break; troop.mesh.position.copy(wallSpots[i]); troop.slot.copy(wallSpots[i]); groundBattleEntity(troop); troop.onWall = true; troop.command = "Hold Position"; i++; } }
 function damageSiegeGate(amount) { if (!siegeGate || siegeGateHp <= 0) return; siegeGateHp = Math.max(0, siegeGateHp - amount); siegeGate.userData.hp = siegeGateHp; showDamageNumber(siegeGate.position.clone().add(new THREE.Vector3(0, 2, 0)), amount); if (siegeGateHp <= 0) { siegeGate.visible = false; siegeGate.userData.blocksMovement = false; siegeObjectives.gateDestroyed = true; showToast("Gate breached!"); log("Gate breached! Your troops smashed open the castle gate."); } }
 function checkPlayerSpearHitGate() { if (!battleType.startsWith("siege") || !siegeGate || siegeGateHp <= 0) return false; if (!player3.isThrusting || player3.thrustHitDone) return false; if (player3.thrustTimer < 0.08 || player3.thrustTimer > 0.22) return false; const origin = player3.mesh.position.clone(); const forward = new THREE.Vector3(Math.sin(player3.yaw), 0, Math.cos(player3.yaw)).normalize(); const toGate = siegeGate.position.clone().sub(origin); toGate.y = 0; const forwardDist = toGate.dot(forward); const sideDist = toGate.sub(forward.clone().multiplyScalar(forwardDist)).length(); if (forwardDist > 0.5 && forwardDist < 3.5 && sideDist < 4.8) { damageSiegeGate(30); player3.thrustHitDone = true; return true; } return false; }
@@ -4063,7 +4065,8 @@ function updateBattle(dt) {
   updateBattleTopStatus();
   updateBattleHud();
   updateSiegeCapture(dt);
-  checkBattleEnd();
+  if (battleState.startGraceTimer > 0) battleState.startGraceTimer -= dt;
+  checkBattleEndConditions();
 }
 
 function updatePlayer(dt) {
@@ -4231,18 +4234,19 @@ function updateTroops(dt) {
     let desired = t.slot.clone();
     const leash = t.team === "friendly" ? 9 : 999;
 
-    if (nearestDistance < t.def.range + (nearest.player ? 1.2 : 0.6)) {
+    const attackDistance = getMeleeHitDistance(t, nearest);
+    if (nearestDistance <= attackDistance) {
       desired = t.mesh.position.clone();
       attackTarget(t, nearest);
     } else if (t.team === "enemy") {
-      if (t.def.role === "archer" && nearestDistance < t.def.range) {
+      if ((t.def.role === "archer" || t.def.classLine === "crossbow") && nearestDistance < (t.def.preferredRange || t.def.range || 14)) {
         desired = t.mesh.position.clone();
       } else {
         desired = nearest.mesh.position.clone();
       }
     } else if (nearestDistance < 5.5 && troopCommand === "Hold Position") {
       desired = t.mesh.position.clone();
-      attackTarget(t, nearest);
+      if (nearestDistance <= attackDistance) attackTarget(t, nearest);
     } else if (nearestDistance < 6.5 && troopCommand === "Follow Me") {
       desired = nearest.mesh.position.clone();
     } else if (troopCommand === "Charge") {
@@ -4326,11 +4330,55 @@ function moveTroop(t, target, dt) {
   pos.add(dir.multiplyScalar(t.currentSpeed * dt));
 }
 
+
+function getCombatPosition(unit) {
+  if (!unit) return new THREE.Vector3();
+  if (unit.mesh) return unit.mesh.position;
+  if (unit.group) return unit.group.position;
+  return unit.position || new THREE.Vector3();
+}
+function getCombatRadius(unit) {
+  if (!unit) return 0.5;
+  return unit.radius || unit.def?.radius || 0.55;
+}
+function getMeleeHitDistance(attacker, target) {
+  const attackerRange = attacker?.def?.range || 1.2;
+  return attackerRange + getCombatRadius(attacker) + getCombatRadius(target) + 0.35;
+}
+function calculateTroopDamage(attacker, target) {
+  let damage = attacker?.def?.damage || attacker?.damage || 10;
+  const armor = target?.def?.armor || target?.armor || 0;
+  damage = Math.max(1, damage - armor * 0.35);
+  if (attacker?.def?.role === "cavalry" && attacker.chargeTime > 0.35) damage *= attacker.def?.chargeBonus || 1.5;
+  return Math.round(damage);
+}
+function applyTroopDamage(attacker, target, amount) {
+  if (!target || target.dead || target.hp <= 0) return;
+  target.hp -= amount;
+  showDamageNumber(getCombatPosition(target).clone().add(new THREE.Vector3(0, 1.8, 0)), amount);
+  updateTroopLabelHp && updateTroopLabelHp(target);
+  if (target.hp <= 0) killTroop(target, attacker);
+}
+function getAttackCooldown(t) {
+  if (t.def?.role === "archer") return 1.3;
+  if (t.def?.classLine === "crossbow") return 1.8;
+  if (t.def?.role === "cavalry") return 1.0;
+  return 0.85;
+}
+
 function attackTarget(t, target) {
+  if (!target || target.dead || target.hp <= 0) return;
   if (t.attackCd > 0 || t.attackAnim?.active) return;
+  const isRanged = t.def.role === "archer" || t.def.classLine === "archer" || t.def.classLine === "crossbow";
   triggerTroopAttackAnimation(t);
+  if (isRanged) {
+    fireArrow(t, target);
+    t.attackCd = getAttackCooldown(t);
+    return;
+  }
   if (t.def.hasShield && maybeStartShieldBash(t,target)) return;
   startAttackAnimation(t, target);
+  t.attackCd = getAttackCooldown(t);
 }
 const defaultWeaponAnimations = {
   sword: {
@@ -4505,50 +4553,20 @@ function applyTroopTraitModifiers(attacker,defender,baseDamage,context={}){
 }
 function resetWeaponPose(troop, resetShield=true){if(troop.weaponMesh&&troop.weaponRestPosition&&troop.weaponRestRotation){troop.weaponMesh.position.copy(troop.weaponRestPosition);troop.weaponMesh.rotation.copy(troop.weaponRestRotation);} if(resetShield&&troop.shieldMesh&&troop.shieldRestPosition) troop.shieldMesh.position.copy(troop.shieldRestPosition);}
 function maybeStartShieldBash(attacker,target){if((!attacker.def.hasShield&&!attacker.shieldMesh)||Math.random()>0.12)return false; attacker.attackAnim={active:true,phase:"windup",time:0,totalTime:0,profile:{attackStyle:"shield_bash",windupTime:0.12,strikeTime:0.12,recoverTime:0.28},target,hasAppliedDamage:false,spawnedTrail:false}; attacker.attackCd=0.52; return true;}
-function startAttackAnimation(attacker,target){if(!attacker||!target||attacker.attackAnim?.active)return; const profile=getWeaponAnimationForTroop(attacker); attacker.attackAnim={active:true,phase:"windup",time:0,totalTime:0,profile,target,hasAppliedDamage:false,spawnedTrail:false}; attacker.attackCd=profile.windupTime+profile.strikeTime+profile.recoverTime;}
+function startAttackAnimation(attacker,target){if(!attacker||!target||attacker.attackAnim?.active)return; const profile=getWeaponAnimationForTroop(attacker); const windupTime=profile.windupTime||0.18; const strikeTime=profile.strikeTime||0.12; const recoverTime=profile.recoverTime||0.24; attacker.attackAnim={active:true,target,timer:0,hitDone:false,windupTime,strikeTime,recoverTime,totalTime:windupTime+strikeTime+recoverTime,profile}; }
 function spawnWeaponTrail(troop,color=0xffffff){const trail=new THREE.Mesh(new THREE.TorusGeometry(0.55,0.015,6,18,Math.PI*0.75),new THREE.MeshBasicMaterial({color,transparent:true,opacity:0.45})); trail.position.copy(troop.mesh.position); trail.position.y+=1.2; trail.rotation.y=troop.mesh.rotation.y; scene.add(trail); setTimeout(()=>scene.remove(trail),180);}
 function animateWeaponPhase(troop,profile,phase,t){const w=troop.weaponMesh, rp=troop.weaponRestPosition, rr=troop.weaponRestRotation; if(!w||!rp||!rr)return; t=clamp(t,0,1); resetWeaponPose(troop,false); const style=profile.attackStyle; if(style==="slash"||style==="diagonal_slash"||style==="overhead_heavy"){const mult=style==="overhead_heavy"?1.35:style==="diagonal_slash"?1.1:1; if(phase==="windup"){w.rotation.y=rr.y-0.7*t*mult; w.rotation.z=rr.z-0.5*t*mult;} if(phase==="strike"){const e=style==="overhead_heavy"?easeInCubic(t):easeOutCubic(t); w.rotation.y=rr.y+(-0.7+1.8*e)*mult; w.position.x=rp.x+0.18*e;} if(phase==="recover"){w.rotation.y=lerp(rr.y+1.0*mult,rr.y,easeOutCubic(t)); w.position.x=lerp(rp.x+0.08,rp.x,t);} } else if(style==="thrust"||style==="long_thrust"||style==="couched_lance"){const dist=profile.thrustDistance||(style==="long_thrust"?0.8:0.5); if(phase==="windup")w.position.z=rp.z+0.2*t; if(phase==="strike")w.position.z=rp.z-dist*easeOutCubic(t); if(phase==="recover")w.position.z=lerp(rp.z-dist,rp.z,easeOutCubic(t)); if(style==="couched_lance")w.rotation.x=rr.x+0.5;} else if(style==="bow_draw"){const draw=profile.drawDistance||0.45; if(phase==="windup")w.position.z=rp.z+draw*t*0.2; if(phase==="recover")w.position.z=lerp(rp.z+draw*0.2,rp.z,t);} else if(style==="shield_bash"&&troop.shieldMesh){const s=troop.shieldMesh, rest=troop.shieldRestPosition; if(phase==="windup")s.position.z=rest.z+0.1*t; if(phase==="strike")s.position.z=rest.z-0.35*easeOutCubic(t); if(phase==="recover")s.position.z=lerp(rest.z-0.35,rest.z,easeOutCubic(t));}}
 function applyCombatModifiers(attacker,target,damage){const attackAngleMultiplier=getAttackAngleMultiplier(attacker,target); let out=Math.max(1,damage-Math.floor((target.armor||target.def.armor||0)*0.25)); out=Math.floor(out*attackAngleMultiplier); out=applyAntiCavalryBonus(attacker,target,out); const context={attackDistance:attacker.mesh.position.distanceTo(target.mesh.position),attackAngleMultiplier,chargeSpeedRatio:(attacker.currentSpeed||0)/Math.max(0.01,attacker.def.moveSpeed||attacker.def.speed||1),defenderHolding:["Hold Position","Formation"].includes(target.command),isForest:battleBiome==="forest",isSiege:battleType?.startsWith("siege")}; out=applyTroopTraitModifiers(attacker,target,out,context); if((hasTrait(attacker,"highCharge")||attacker.def.role==="cavalry")&&attacker.chargeTime>1.2){out=Math.floor(out*(attacker.def.chargeBonus||1.6)); showFloatingText(target.mesh.position,"Charge!","#fff0aa");} if(hasTrait(attacker,"weakSustainedMelee")&&attacker.chargeTime<0.4) out=Math.floor(out*0.82); return out;}
 function resolveAnimatedMeleeHit(attacker,target){if(!attacker||!target||target.dead||target.hp<=0)return; const distance=attacker.mesh.position.distanceTo(target.mesh.position); if(distance>getWeaponReach(attacker)){showFloatingText(attacker.mesh.position,"whiff","#cccccc"); return;} let damage=attacker.damage||attacker.def.damage||1; if(attacker.attackAnim?.profile?.attackStyle==="shield_bash") damage=Math.max(1,Math.floor(damage*0.35)); damage=applyCombatModifiers(attacker,target,damage); damageTroop(target,damage,attacker.mesh.position); if(attacker.attackAnim?.profile?.attackStyle==="shield_bash") showFloatingText(target.mesh.position,"Bash!","#d8e6ff"); showFloatingText(target.mesh.position,`-${damage}`,"#ffdddd");}
-function updateTroopAttackAnimation(troop,dt){const anim=troop.attackAnim; if(!anim?.active)return; const p=anim.profile||defaultWeaponAnimations.sword; anim.time+=dt; const w=p.windupTime,s=p.strikeTime,r=p.recoverTime; if(anim.time<=w){anim.phase="windup"; animateWeaponPhase(troop,p,"windup",anim.time/Math.max(0.001,w));} else if(anim.time<=w+s){anim.phase="strike"; const st=(anim.time-w)/Math.max(0.001,s); animateWeaponPhase(troop,p,"strike",st); if(!anim.spawnedTrail&&["slash","diagonal_slash","overhead_heavy"].includes(p.attackStyle)){anim.spawnedTrail=true; spawnWeaponTrail(troop,p.attackStyle==="overhead_heavy"?0xffd166:0xffffff);} if(!anim.hasAppliedDamage&&st>=0.45){anim.hasAppliedDamage=true; if(targetIsPlayer(anim.target)) player3.hp-=Math.max(3,troop.damage-8); else if(p.attackStyle==="bow_draw") fireArrow(troop,anim.target); else resolveAnimatedMeleeHit(troop,anim.target);} } else if(anim.time<=w+s+r){anim.phase="recover"; animateWeaponPhase(troop,p,"recover",(anim.time-w-s)/Math.max(0.001,r));} else {resetWeaponPose(troop); troop.attackAnim={active:false,phase:"idle",time:0,totalTime:0,profile:p,target:null,hasAppliedDamage:false,spawnedTrail:false};}}
+function updateTroopAttackAnimation(troop,dt){const anim=troop.attackAnim; if(!anim?.active)return; const p=anim.profile||defaultWeaponAnimations.sword; anim.time+=dt; const w=p.windupTime,s=p.strikeTime,r=p.recoverTime; if(anim.time<=w){anim.phase="windup"; animateWeaponPhase(troop,p,"windup",anim.time/Math.max(0.001,w));} else if(anim.time<=w+s){anim.phase="strike"; const st=(anim.time-w)/Math.max(0.001,s); animateWeaponPhase(troop,p,"strike",st); if(!anim.spawnedTrail&&["slash","diagonal_slash","overhead_heavy"].includes(p.attackStyle)){anim.spawnedTrail=true; spawnWeaponTrail(troop,p.attackStyle==="overhead_heavy"?0xffd166:0xffffff);} if(!anim.hasAppliedDamage&&st>=0.45){anim.hasAppliedDamage=true; if(targetIsPlayer(anim.target)) player3.hp-=Math.max(3,troop.damage-8); } } else if(anim.time<=w+s+r){anim.phase="recover"; animateWeaponPhase(troop,p,"recover",(anim.time-w-s)/Math.max(0.001,r));} else {resetWeaponPose(troop); troop.attackAnim={active:false,phase:"idle",time:0,totalTime:0,profile:p,target:null,hasAppliedDamage:false,spawnedTrail:false};}}
 function targetIsPlayer(target){return !!target?.player;}
-function updateAttackAnimations(dt){for(const troop of battleTroops) if(troop.attackAnim?.active) updateTroopAttackAnimation(troop,dt);}
+function updateAttackAnimations(dt){for(const t of battleTroops){ if(!t.attackAnim||!t.attackAnim.active) continue; updateTroopAttackAnimation(t,dt); const anim=t.attackAnim; if(!anim||!anim.active) continue; anim.timer+=dt; const strikeMoment=anim.windupTime||0.18; if(!anim.hitDone&&anim.timer>=strikeMoment){ anim.hitDone=true; const target=anim.target; if(target&&!target.dead&&target.hp>0){ const dist=getCombatPosition(t).distanceTo(getCombatPosition(target)); if(dist<=getMeleeHitDistance(t,target)) applyTroopDamage(t,target,calculateTroopDamage(t,target)); } } if(anim.timer>=anim.totalTime){ anim.active=false; t.attackAnim=null; resetWeaponPose(t); } }}
 function playShieldBlockAnimation(troop){if(!troop.shieldMesh)return; troop.shieldAnim={active:true,time:0,duration:0.22};}
 function updateShieldAnimations(dt){for(const troop of battleTroops){if(!troop.shieldAnim?.active||!troop.shieldMesh)continue; troop.shieldAnim.time+=dt; const t=troop.shieldAnim.time/troop.shieldAnim.duration; const punch=Math.sin(Math.min(1,t)*Math.PI)*0.18; troop.shieldMesh.position.z=troop.shieldRestPosition.z-punch; if(t>=1){troop.shieldMesh.position.copy(troop.shieldRestPosition); troop.shieldAnim.active=false;}}}
-function createArrowMesh(team) {
-  const group = new THREE.Group();
-  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.7, 6), new THREE.MeshLambertMaterial({ color: 0x5b3518 }));
-  shaft.rotation.x = Math.PI / 2;
-  group.add(shaft);
-  const head = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.18, 8), new THREE.MeshLambertMaterial({ color: 0xcccccc }));
-  head.position.z = -0.42;
-  head.rotation.x = -Math.PI / 2;
-  group.add(head);
-  return group;
-}
+function createArrowMesh(color = 0xd6b06a) { const group = new THREE.Group(); const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.75, 8), new THREE.MeshStandardMaterial({ color })); shaft.rotation.x = Math.PI / 2; group.add(shaft); const head = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.18, 8), new THREE.MeshStandardMaterial({ color: 0xdddddd })); head.position.z = 0.45; head.rotation.x = Math.PI / 2; group.add(head); return group; }
 function getBattlefieldHeightAt() { return 0; }
 function getQuadraticBezierPoint(start, control, end, t) { const p0 = start.clone().multiplyScalar((1 - t) * (1 - t)); const p1 = control.clone().multiplyScalar(2 * (1 - t) * t); const p2 = end.clone().multiplyScalar(t * t); return p0.add(p1).add(p2); }
-function fireArrow(attacker, target) {
-  if (!attacker || !target || target.dead || target.hp <= 0) return;
-  const start = attacker.mesh.position.clone();
-  start.y += attacker.type === "cavalry" ? 2.0 : 1.5;
-  const targetPos = target.mesh.position.clone();
-  targetPos.y += target.type === "cavalry" ? 1.7 : 1.0;
-  const distance = start.distanceTo(targetPos);
-  const baseErrorRadius = Math.max(0.5, distance * 0.045);
-  const accuracyBonus = attacker.onWall ? 0.75 : 1;
-  const errorRadius = Math.max(0.25, baseErrorRadius * accuracyBonus);
-  const end = targetPos.clone();
-  end.x += rand(-errorRadius, errorRadius);
-  end.z += rand(-errorRadius, errorRadius);
-  end.y = getBattlefieldHeightAt(end.x, end.z) + 0.8;
-  const control = start.clone().lerp(end, 0.5);
-  control.y += Math.max(4, distance * 0.22);
-  const arrow = createArrowMesh(attacker.team);
-  arrow.position.copy(start);
-  scene.add(arrow);
-  projectiles.push({ mesh: arrow, team: attacker.team, attacker, target, start, control, end, t: 0, speed: Math.max(0.65, 1.4 - distance * 0.01), damage: attacker.damage || attacker.def.damage, radius: 0.85, landed: false });
-}
+function fireArrow(attacker, target) { if (!attacker || !target || target.dead) return; const start = getCombatPosition(attacker).clone().add(new THREE.Vector3(0, 1.45, 0)); const end = getCombatPosition(target).clone().add(new THREE.Vector3(0, 1.15, 0)); const mesh = createArrowMesh(attacker.def?.classLine === "crossbow" ? 0xb8b8b8 : 0xd6b06a); mesh.position.copy(start); scene.add(mesh); const dir = end.clone().sub(start).normalize(); projectiles.push({ mesh, attacker, target, pos: start.clone(), vel: dir.multiplyScalar(attacker.def?.projectileSpeed || 24), damage: attacker.def?.damage || attacker.damage || 14, life: 2.8, radius: 0.35 }); }
 function isProjectileFromFront(troop, projectile) { const troopForward = new THREE.Vector3(0, 0, -1).applyQuaternion(troop.mesh.quaternion).normalize(); const incomingDir = projectile.end.clone().sub(projectile.start).normalize(); const towardProjectile = incomingDir.clone().multiplyScalar(-1); return troopForward.dot(towardProjectile) > 0.35; }
 function spawnArrowMissEffect(pos) { showFloatingText(pos, "miss", "#cccccc"); }
 function spawnShieldBlockEffect(troop) { const pos = troop.mesh.position.clone().add(new THREE.Vector3(0, 1.5, -0.45).applyQuaternion(troop.mesh.quaternion)); showHitSpark(pos); }
@@ -4570,22 +4588,7 @@ function resolveArrowLanding(projectile) {
   for (const troop of enemies) { const dist = troop.mesh.position.distanceTo(projectile.end); if (dist < closestDist) { closest = troop; closestDist = dist; } }
   if (closest && closestDist <= projectile.radius) applyArrowDamage(projectile, closest); else spawnArrowMissEffect(projectile.end);
 }
-function updateProjectiles(dt) {
-  for (let i = projectiles.length - 1; i >= 0; i--) {
-    const p = projectiles[i];
-    p.t += dt * p.speed;
-    const oldPos = p.mesh.position.clone();
-    const newPos = getQuadraticBezierPoint(p.start, p.control, p.end, Math.min(1, p.t));
-    p.mesh.position.copy(newPos);
-    const dir = newPos.clone().sub(oldPos);
-    if (dir.lengthSq() > 0) p.mesh.lookAt(newPos.clone().add(dir.normalize()));
-    if (p.t >= 1) {
-      resolveArrowLanding(p);
-      scene.remove(p.mesh);
-      projectiles.splice(i, 1);
-    }
-  }
-}
+function updateProjectiles(dt) { for (let i = projectiles.length - 1; i >= 0; i--) { const p = projectiles[i]; if (!p || !p.mesh) { projectiles.splice(i, 1); continue; } p.life -= dt; if (p.life <= 0 || !p.target || p.target.dead || p.target.hp <= 0) { scene.remove(p.mesh); projectiles.splice(i, 1); continue; } const targetPos = getCombatPosition(p.target).clone().add(new THREE.Vector3(0, 1.1, 0)); const toTarget = targetPos.clone().sub(p.mesh.position); const dist = toTarget.length(); if (dist < (p.radius + getCombatRadius(p.target) + 0.35)) { applyTroopDamage(p.attacker, p.target, Math.round(p.damage)); scene.remove(p.mesh); projectiles.splice(i, 1); continue; } const desiredVel = toTarget.normalize().multiplyScalar(p.vel.length()); p.vel.lerp(desiredVel, 0.04); p.mesh.position.add(p.vel.clone().multiplyScalar(dt)); const lookTarget = p.mesh.position.clone().add(p.vel); p.mesh.lookAt(lookTarget); }}
 
 function damageTroop(t, amount, sourcePos = null) {
   if (!t || t.hp <= 0) return;
@@ -4600,7 +4603,7 @@ function damageTroop(t, amount, sourcePos = null) {
   }
   if (t.hp <= 0) killTroop(t);
 }
-function killTroop(t) { t.hp = 0; if (t.label) t.label.style.display = "none"; t.mesh.rotation.z = Math.random() < 0.5 ? 1.45 : -1.45; t.mesh.position.y = 0.15; setTimeout(() => { if (t.mesh) t.mesh.visible = false; }, 700); }
+function killTroop(t) { if (!t || t.dead) return; t.dead = true; t.hp = 0; if (t.label) t.label.style.display = "none"; if (t.mesh) { t.mesh.rotation.z = Math.random() < 0.5 ? 1.45 : -1.45; t.mesh.position.y = 0.15; setTimeout(() => { if (t.mesh) t.mesh.visible = false; }, 700); } }
 function showDamageNumber(pos, amount) { const el = document.createElement("div"); el.className = "damageNumber"; el.textContent = `-${Math.round(amount)}`; document.body.appendChild(el); floatingTexts.push({ el, pos: pos.clone(), life: 0.8, maxLife: 0.8, yRise: 0 }); }
 function showFloatingText(pos, text, color = "#ffdddd") { const el = document.createElement("div"); el.className = "damageNumber"; el.textContent = text; el.style.color = color; document.body.appendChild(el); const p = pos.clone(); p.y += 1.2; floatingTexts.push({ el, pos: p, life: 0.75, maxLife: 0.75, yRise: 0 }); }
 function updateFloatingTexts(dt) { for (let i = floatingTexts.length - 1; i >= 0; i--) { const f = floatingTexts[i]; f.life -= dt; f.yRise += dt * 1.5; const p = f.pos.clone(); p.y += 2.2 + f.yRise; p.project(camera); f.el.style.left = `${(p.x * 0.5 + 0.5) * window.innerWidth}px`; f.el.style.top = `${(-p.y * 0.5 + 0.5) * window.innerHeight}px`; f.el.style.opacity = String(clamp(f.life / f.maxLife, 0, 1)); if (f.life <= 0) { f.el.remove(); floatingTexts.splice(i, 1); } } }
@@ -4644,17 +4647,15 @@ function showToast(msg) {
   toastTimer = 1.6;
 }
 
-function checkBattleEnd() {
-  const friendlyAlive = !sideHasNoForcesLeft("friendly");
-  const enemyAlive = !sideHasNoForcesLeft("enemy");
-
-  if (!enemyAlive) {
-    battleState.battleEnded = true;
-    finishBattle(true);
-  } else if (!friendlyAlive || player3.hp <= 0) {
-    battleState.battleEnded = true;
-    finishBattle(false);
-  }
+function checkBattleEndConditions() {
+  if (!battleState || battleState.battleEnded) return;
+  if (!battleState.battleStarted) return;
+  if (battleState.startGraceTimer > 0) return;
+  const friendlyDone = sideHasNoForcesLeft("friendly");
+  const enemyDone = sideHasNoForcesLeft("enemy");
+  if (enemyDone && !friendlyDone) finishBattle(true, "elimination");
+  else if (friendlyDone && !enemyDone) finishBattle(false, "elimination");
+  else if (friendlyDone && enemyDone) { const playerAlive = player3 && player3.hp > 0; finishBattle(playerAlive, "mutual_elimination"); }
 }
 
 /* =========================================================
