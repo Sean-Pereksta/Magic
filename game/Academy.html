@@ -460,6 +460,7 @@
     <div class="stat">Castles: <b id="castleText">0</b></div>
     <button onclick="saveGame()">Save</button>
     <button onclick="loadGame()">Load</button>
+    <button onclick="openTroopUpgradePanel()" class="success">Upgrades</button>
     <button onclick="openDiplomacyPanel()" class="blue">Diplomacy</button>
     <button onclick="newGame()" class="danger">New</button>
   </div>
@@ -654,6 +655,23 @@ const recruitPools = {
   castle: ["swordsman", "shieldman", "heavySpear", "crossbow", "cavalry"]
 };
 
+const troopUpgradePaths = {
+  farmhand: [
+    { to: "spearman", gold: 18, xp: 2 },
+    { to: "archer", gold: 20, xp: 2 }
+  ],
+  spearman: [
+    { to: "heavySpear", gold: 35, xp: 3 },
+    { to: "swordsman", gold: 40, xp: 4 }
+  ],
+  archer: [
+    { to: "crossbow", gold: 45, xp: 4 }
+  ],
+  swordsman: [
+    { to: "shieldman", gold: 50, xp: 5 }
+  ]
+};
+
 /* =========================================================
    WORLD STATE
 ========================================================= */
@@ -677,6 +695,16 @@ const state = {
       spearman: 8,
       archer: 4,
       farmhand: 5
+    },
+    xp: {
+      farmhand: 0,
+      spearman: 0,
+      archer: 0,
+      swordsman: 0,
+      shieldman: 0,
+      crossbow: 0,
+      cavalry: 0,
+      heavySpear: 0
     }
   },
   factions: [],
@@ -991,6 +1019,23 @@ function addTroops(army, type, n) {
   if (army[type] <= 0) delete army[type];
 }
 
+function ensurePlayerXp() {
+  if (!state.player.xp) state.player.xp = {};
+  for (const type of Object.keys(troopDefs)) {
+    if (typeof state.player.xp[type] !== "number") state.player.xp[type] = 0;
+  }
+}
+
+function awardBattleXp(victory = true) {
+  ensurePlayerXp();
+  const base = victory ? 3 : 1;
+  for (const [type, count] of Object.entries(state.player.army || {})) {
+    const xpGain = Math.max(1, Math.floor(count / 4)) * base;
+    state.player.xp[type] += xpGain;
+  }
+  log("Your surviving troops gained battle experience.");
+}
+
 function armyPower(army) {
   let total = 0;
 
@@ -1156,6 +1201,7 @@ function initWorld() {
   resize();
   seedMapDecor();
   makeWorld();
+  ensurePlayerXp();
 
   window.addEventListener("resize", resize);
   canvas.addEventListener("click", mapClick);
@@ -1926,16 +1972,112 @@ function closeEncounter() {
 }
 
 function openArmyPanel() {
+  ensurePlayerXp();
+  const xpRows = Object.keys(troopDefs).map(type => {
+    const upgrades = (troopUpgradePaths[type] || [])
+      .map(path => `${troopDefs[path.to]?.name || path.to} (${path.gold}g/${path.xp} XP)`)
+      .join("<br>") || "-";
+
+    return `
+      <tr>
+        <td>${troopDefs[type]?.name || type}</td>
+        <td>${state.player.army[type] || 0}</td>
+        <td>${state.player.xp[type] || 0}</td>
+        <td>${upgrades}</td>
+      </tr>
+    `;
+  }).join("");
+
   openModal(`
     <h2>Your Army</h2>
     <div class="card">
       ${armyHtml(state.player.army)}
     </div>
+    <h3>Troop Experience</h3>
+    <table class="table">
+      <tr><th>Troop</th><th>Count</th><th>XP</th><th>Can Upgrade To</th></tr>
+      ${xpRows}
+    </table>
     <p class="small">
       Formations in battle currently support frontline troops, archers in the backline, and cavalry on flanks.
     </p>
     <button onclick="closeModal()">Close</button>
   `);
+}
+
+function openTroopUpgradePanel() {
+  ensurePlayerXp();
+
+  const rows = Object.entries(troopUpgradePaths).map(([from, paths]) => {
+    const count = state.player.army[from] || 0;
+    const xp = state.player.xp[from] || 0;
+    const fromName = troopDefs[from]?.name || from;
+
+    const buttons = paths.map(path => {
+      const toName = troopDefs[path.to]?.name || path.to;
+      const canUpgrade = count > 0 && state.gold >= path.gold && xp >= path.xp;
+      return `
+        <div class="card">
+          <div><b>${toName}</b></div>
+          <div class="small">${path.gold}g, ${path.xp} XP</div>
+          <div class="row">
+            <button class="${canUpgrade ? "success" : ""}" ${canUpgrade ? "" : "disabled"} onclick="upgradeOneTroop('${from}', '${path.to}')">Upgrade 1</button>
+            <button ${canUpgrade ? "" : "disabled"} onclick="upgradeMaxTroops('${from}', '${path.to}')">Upgrade Max</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    return `
+      <div class="card">
+        <h3>${fromName}</h3>
+        <div class="small">Available: <b>${count}</b><br>XP: <b>${xp}</b></div>
+        <div class="grid">${buttons}</div>
+      </div>
+    `;
+  }).join("");
+
+  openModal(`
+    <h2>Troop Upgrades</h2>
+    <p class="small">Upgrade surviving troops using gold and troop experience. Experience is earned after battles.</p>
+    <div class="grid">${rows}</div>
+    <div class="row"><button onclick="closeModal()">Close</button></div>
+  `);
+}
+
+function upgradeOneTroop(from, to) {
+  ensurePlayerXp();
+  const path = (troopUpgradePaths[from] || []).find(p => p.to === to);
+  if (!path) return;
+  if ((state.player.army[from] || 0) <= 0) return log(`No ${troopDefs[from].name} available to upgrade.`);
+  if (state.gold < path.gold) return log(`Not enough gold to upgrade ${troopDefs[from].name}.`);
+  if ((state.player.xp[from] || 0) < path.xp) return log(`Not enough ${troopDefs[from].name} experience.`);
+
+  state.gold -= path.gold;
+  state.player.xp[from] -= path.xp;
+  addTroops(state.player.army, from, -1);
+  addTroops(state.player.army, to, 1);
+  log(`Upgraded 1 ${troopDefs[from].name} into ${troopDefs[to].name}.`);
+  renderUI();
+  openTroopUpgradePanel();
+}
+
+function upgradeMaxTroops(from, to) {
+  ensurePlayerXp();
+  const path = (troopUpgradePaths[from] || []).find(p => p.to === to);
+  if (!path) return;
+  let upgraded = 0;
+  while ((state.player.army[from] || 0) > 0 && state.gold >= path.gold && (state.player.xp[from] || 0) >= path.xp) {
+    state.gold -= path.gold;
+    state.player.xp[from] -= path.xp;
+    addTroops(state.player.army, from, -1);
+    addTroops(state.player.army, to, 1);
+    upgraded++;
+  }
+  if (upgraded > 0) log(`Upgraded ${upgraded} ${troopDefs[from].name} into ${troopDefs[to].name}.`);
+  else log("No troops could be upgraded.");
+  renderUI();
+  openTroopUpgradePanel();
 }
 
 function restOneDay() {
@@ -2132,6 +2274,7 @@ function loadGame() {
   const loaded = JSON.parse(raw);
 
   Object.assign(state, loaded);
+  ensurePlayerXp();
 
   log("Game loaded.");
   renderUI();
@@ -2140,6 +2283,7 @@ function loadGame() {
 function newGame() {
   if (!confirm("Start a new game?")) return;
   makeWorld();
+  ensurePlayerXp();
   renderUI();
 }
 
@@ -3273,8 +3417,10 @@ function resolveBattleResults(victory, reason = "defeat") {
         log(`You defeated ${encounterArmy.name} and gained ${reward} gold.`);
       }
     }
+    if (armyCount(state.player.army) > 0) awardBattleXp(true);
   } else {
     log(`You lost the battle against ${encounterArmy.name}.`);
+    if (armyCount(state.player.army) > 0) awardBattleXp(false);
   }
 
   encounterArmy = null;
