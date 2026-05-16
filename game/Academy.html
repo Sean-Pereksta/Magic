@@ -514,14 +514,16 @@
   <div id="battleToast" class="centerToast"></div>
 
   <div id="battleTopStatus" class="battleTopStatus">
-    Command: <b id="commandText">Hold Position</b> | Formation: <b id="formationText">Line</b>
+    Group: <b id="selectedGroupText">All</b> |
+    Command: <b id="commandText">Hold Position</b> |
+    Formation: <b id="formationText">Line</b>
   </div>
 
   <div id="miniBattleHud" class="miniBattleHud">
     <span>HP</span>
     <div class="miniHpBar"><div id="hpFill" class="miniHpFill"></div></div>
   </div>
-  <div class="miniControls">W/S Move • A/D Turn • Shift Run • Space Spear • 1 Hold / Double-Tap Formation • 2 Follow • 3 Cycle Formation • 4 Charge</div>
+  <div class="miniControls">W/S Move • A/D Turn • Shift Run • Space Spear • Q/E Select Group • 1 Hold / Double-Tap Formation • 2 Follow • 3 Formation • 4 Charge</div>
 </div>
 
 <div id="modal" class="modal">
@@ -1953,6 +1955,11 @@ let mouseDX = 0;
 let command = "Hold Position";
 let formation = "Line";
 let formations = ["Line", "Square", "Wedge", "Loose", "Shield Wall"];
+const troopGroups = ["All", "Infantry", "Archers", "Cavalry"];
+let selectedTroopGroupIndex = 0;
+let selectedTroopGroup = "All";
+const groupFormations = { All: "Line", Infantry: "Line", Archers: "Loose", Cavalry: "Wedge" };
+const troopAnimationProfiles = { farmhand:{strideSpeed:7.8,strideAmount:0.42,bobAmount:0.055,attackDuration:0.38,weaponLag:0.18}, spearman:{strideSpeed:7.2,strideAmount:0.34,bobAmount:0.04,attackDuration:0.34,weaponLag:0.1}, heavySpear:{strideSpeed:5.8,strideAmount:0.28,bobAmount:0.025,attackDuration:0.48,weaponLag:0.22}, swordsman:{strideSpeed:7.6,strideAmount:0.38,bobAmount:0.045,attackDuration:0.34,weaponLag:0.12}, shieldman:{strideSpeed:5.9,strideAmount:0.25,bobAmount:0.025,attackDuration:0.40,weaponLag:0.16}, archer:{strideSpeed:8.0,strideAmount:0.36,bobAmount:0.04,attackDuration:0.42,weaponLag:0.08}, crossbow:{strideSpeed:6.4,strideAmount:0.3,bobAmount:0.035,attackDuration:0.46,weaponLag:0.1}, cavalry:{strideSpeed:12.0,strideAmount:0.5,bobAmount:0.08,attackDuration:0.36,weaponLag:0.18} };
 let lastHoldPressTime = 0;
 const HOLD_DOUBLE_TAP_MS = 350;
 let floatingTexts = [];
@@ -2015,6 +2022,8 @@ function setupBattle() {
   projectiles = [];
   command = "Hold Position";
   formation = "Line";
+  selectedTroopGroupIndex = 0;
+  selectedTroopGroup = "All";
   updateBattleTopStatus();
 
   spawnArmy(state.player.army, "friendly", new THREE.Vector3(0, 0, 22));
@@ -2289,7 +2298,13 @@ function makeTroop(type, team, pos) {
     isAttacking: false,
     attackAnimTimer: 0,
     rangedRecoilTimer: 0,
-    lastDamageTaken: 0
+    lastDamageTaken: 0,
+    group: team === "friendly" ? getTroopCategory(type) : "Enemy",
+    command: team === "friendly" ? command : "Enemy",
+    formation: team === "friendly" ? (groupFormations[getTroopCategory(type)] || formation) : "Enemy",
+    isRunning: false,
+    currentTarget: null,
+    selectionRing: group.userData.parts ? group.userData.parts.selectionRing : null
   };
 }
 function createTroopModel(type, team) {
@@ -2318,9 +2333,21 @@ function createTroopModel(type, team) {
   if (type === "crossbow") { weapon = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.2), wood); weaponGroup.add(weapon); }
   if (type !== "farmhand") { helmet = new THREE.Mesh(new THREE.SphereGeometry(type === "heavySpear" ? 0.28 : 0.24, 8, 8), metal); helmet.position.copy(head.position).setY(head.position.y + 0.05); group.add(helmet); }
   if (type === "cavalry") { horse = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.7, 1.9), new THREE.MeshLambertMaterial({ color: 0x5b341c })); horse.position.y = 0.45; group.add(horse); weapon.scale.z = 1.7; }
-  group.userData.parts = { body, head, leftArm, rightArm, leftLeg, rightLeg, weaponGroup, weapon, shield, helmet, armor: body, horse };
+  const selectionRing = new THREE.Mesh(new THREE.RingGeometry(0.65, 0.78, 24), new THREE.MeshBasicMaterial({ color: 0x9fffe0, transparent: true, opacity: 0.65, side: THREE.DoubleSide })); selectionRing.rotation.x = -Math.PI / 2; selectionRing.position.y = 0.04; selectionRing.visible = false; group.add(selectionRing);
+  group.userData.parts = { body, head, leftArm, rightArm, leftLeg, rightLeg, weaponGroup, weapon, shield, helmet, armor: body, horse, selectionRing };
   return group;
 }
+
+
+function getTroopCategory(type) { if (type === "archer" || type === "crossbow") return "Archers"; if (type === "cavalry") return "Cavalry"; return "Infantry"; }
+function isTroopInSelectedGroup(troop) { if (!troop || troop.team !== "friendly") return false; if (selectedTroopGroup === "All") return true; return getTroopCategory(troop.type) === selectedTroopGroup; }
+function cycleSelectedTroopGroup(dir) { selectedTroopGroupIndex += dir; if (selectedTroopGroupIndex < 0) selectedTroopGroupIndex = troopGroups.length - 1; if (selectedTroopGroupIndex >= troopGroups.length) selectedTroopGroupIndex = 0; selectedTroopGroup = troopGroups[selectedTroopGroupIndex]; formation = groupFormations[selectedTroopGroup] || "Line"; showToast(`Selected Group: ${selectedTroopGroup}`); updateBattleTopStatus(); }
+function applyCommandToSelectedGroup(newCommand) { command = newCommand; for (const troop of battleTroops) { if (isTroopInSelectedGroup(troop)) troop.command = newCommand; } assignFormationSlots(); showToast(`${selectedTroopGroup}: ${newCommand}`); updateBattleTopStatus(); }
+function cycleFormationForSelectedGroup() { const current = groupFormations[selectedTroopGroup] || "Line"; const idx = formations.indexOf(current); const next = formations[(idx + 1) % formations.length]; groupFormations[selectedTroopGroup] = next; formation = next; for (const troop of battleTroops) { if (isTroopInSelectedGroup(troop) || selectedTroopGroup === "All") troop.formation = next; } assignFormationSlots(); showToast(`${selectedTroopGroup} Formation: ${next}`); updateBattleTopStatus(); }
+function easeOutBack(x) { const c1 = 1.70158; const c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); }
+function easeInOutSine(x) { return -(Math.cos(Math.PI * x) - 1) / 2; }
+function faceTroopToward(troop, targetPos, dt) { if (!troop || !targetPos) return; const dx = targetPos.x - troop.mesh.position.x; const dz = targetPos.z - troop.mesh.position.z; if (Math.abs(dx) + Math.abs(dz) < 0.001) return; const desiredYaw = Math.atan2(dx, dz); let diff = desiredYaw - troop.mesh.rotation.y; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); troop.mesh.rotation.y += diff * Math.min(1, dt * 8); }
+function updateSelectedGroupVisuals(dt) { for (const troop of battleTroops) { if (!troop.selectionRing) continue; troop.selectionRing.visible = troop.team === "friendly" && troop.hp > 0 && isTroopInSelectedGroup(troop); if (troop.selectionRing.visible) troop.selectionRing.rotation.z += 0.8 * dt; } }
 
 function spawnArmy(army, team, base) {
   let i = 0;
@@ -2491,6 +2518,7 @@ function updateBattle(dt) {
 
   updateTroops(dt);
   updateProjectiles(dt);
+  updateSelectedGroupVisuals(dt);
   updateTroopLabels();
   updateFloatingTexts(dt);
   updateBattleTopStatus();
@@ -2622,6 +2650,7 @@ function updateTroops(dt) {
     t.isMoving = false;
 
     t.attackCd -= dt;
+    const troopCommand = t.team === "friendly" ? t.command : "Enemy";
 
     const enemies = battleTroops.filter(e => e.team !== t.team && e.hp > 0);
 
@@ -2659,24 +2688,30 @@ function updateTroops(dt) {
       } else {
         desired = nearest.mesh.position.clone();
       }
-    } else if (nearestDistance < 5.5 && command === "Hold Position") {
+    } else if (nearestDistance < 5.5 && troopCommand === "Hold Position") {
       desired = t.mesh.position.clone();
       attackTarget(t, nearest);
-    } else if (nearestDistance < 6.5 && command === "Follow Me") {
+    } else if (nearestDistance < 6.5 && troopCommand === "Follow Me") {
       desired = nearest.mesh.position.clone();
-    } else if (command === "Charge") {
+    } else if (troopCommand === "Charge") {
       desired = nearest.mesh.position.clone();
     }
 
     if (
       t.team === "friendly" &&
       t.mesh.position.distanceTo(t.slot) > leash &&
-      command === "Hold Position"
+      troopCommand === "Hold Position"
     ) {
       desired = t.slot.clone();
     }
 
+    const before = t.mesh.position.clone();
     moveTroop(t, desired, dt);
+    const movedDistance = before.distanceTo(t.mesh.position);
+    t.isMoving = movedDistance > 0.01;
+    t.isRunning = troopCommand === "Charge";
+    t.currentTarget = nearest || null;
+    faceTroopToward(t, desired, dt);
     animateTroop(t, dt);
   }
 }
@@ -2736,7 +2771,8 @@ function attackTarget(t, target) {
 }
 
 function fireArrow(t, target) {
-  const start = t.mesh.position.clone().add(new THREE.Vector3(0, 1.45, 0));
+  const tip = t.mesh.localToWorld(new THREE.Vector3(0.35, t.type === "cavalry" ? 1.6 : 1.35, -0.7));
+  const start = tip.clone();
   const end = target.mesh.position.clone().add(new THREE.Vector3(0, 1, 0));
   const dir = end.sub(start).normalize();
 
@@ -2848,10 +2884,9 @@ function updateTroopLabels() {
 function updateBattleHud() {
   $("hpFill").style.width = clamp(player3.hp, 0, 100) + "%";
 }
-function updateBattleTopStatus() { const c = $("commandText"); const f = $("formationText"); if (c) c.textContent = command; if (f) f.textContent = formation; }
-function cycleFormation() { const idx = formations.indexOf(formation); formation = formations[(idx + 1) % formations.length]; assignFormationSlots(); }
-function triggerTroopAttackAnimation(troop) { troop.attackAnimTimer = troop.type === "heavySpear" ? 0.42 : 0.32; troop.isAttacking = true; if (troop.type === "archer" || troop.type === "crossbow") troop.rangedRecoilTimer = 0.25; }
-function animateTroop(troop, dt) { if (!troop.mesh || troop.hp <= 0) return; troop.animTime += dt; const p = troop.mesh.userData.parts || {}; troop.mesh.position.y = Math.sin(troop.animTime * 3) * 0.025 + (troop.type === "cavalry" ? 0 : 0); if (troop.isMoving) { const stride = Math.sin(troop.animTime * 9); if (p.leftLeg) p.leftLeg.rotation.x = stride * 0.45; if (p.rightLeg) p.rightLeg.rotation.x = -stride * 0.45; if (p.leftArm) p.leftArm.rotation.x = -stride * 0.25; if (p.rightArm) p.rightArm.rotation.x = stride * 0.25; } else { if (p.leftLeg) p.leftLeg.rotation.x *= 0.85; if (p.rightLeg) p.rightLeg.rotation.x *= 0.85; if (p.leftArm) p.leftArm.rotation.x *= 0.85; if (p.rightArm) p.rightArm.rotation.x *= 0.85; } if (troop.attackAnimTimer > 0) { const total = troop.type === "heavySpear" ? 0.42 : 0.32; troop.attackAnimTimer -= dt; const swing = Math.sin((1 - troop.attackAnimTimer / total) * Math.PI); if (p.weaponGroup) { p.weaponGroup.rotation.x = -swing * 1.1; p.weaponGroup.position.z = -0.1 - swing * 0.35; } if (p.rightArm) p.rightArm.rotation.x = -0.7 - swing * 0.9; } else troop.isAttacking = false; }
+function updateBattleTopStatus() { const g = $("selectedGroupText"); const c = $("commandText"); const f = $("formationText"); const selectedFormation = groupFormations[selectedTroopGroup] || formation; if (g) g.textContent = selectedTroopGroup; if (c) c.textContent = command; if (f) f.textContent = selectedFormation; }
+function triggerTroopAttackAnimation(troop) { troop.attackAnimDuration = (troopAnimationProfiles[troop.type] || troopAnimationProfiles.spearman).attackDuration; troop.attackAnimTimer = troop.attackAnimDuration; troop.isAttacking = true; if (troop.type === "archer" || troop.type === "crossbow") troop.rangedRecoilTimer = 0.25; }
+function animateTroop(troop, dt) { if (!troop.mesh || troop.hp <= 0) return; troop.animTime += dt; const p = troop.mesh.userData.parts || {}; const profile = troopAnimationProfiles[troop.type] || troopAnimationProfiles.spearman; const stride = Math.sin(troop.animTime * profile.strideSpeed); const moveAmp = troop.isMoving ? profile.strideAmount * (troop.isRunning ? 1.25 : 1) : 0.08; if (p.leftLeg) p.leftLeg.rotation.x = stride * moveAmp; if (p.rightLeg) p.rightLeg.rotation.x = -stride * moveAmp; if (p.leftArm) p.leftArm.rotation.x = -stride * 0.25; if (p.rightArm) p.rightArm.rotation.x = stride * 0.25; if (p.body) { p.body.position.y = (troop.type === "cavalry" ? 1.4 : 1.25) + Math.abs(stride) * profile.bobAmount; p.body.rotation.x = troop.isRunning ? -0.12 : Math.sin(troop.animTime * 2.4) * 0.03; } if (troop.attackAnimTimer > 0) { troop.attackAnimTimer -= dt; const pNorm = clamp(1 - troop.attackAnimTimer / troop.attackAnimDuration, 0, 1); const anticipation = pNorm < 0.25 ? pNorm / 0.25 : 0; const strike = pNorm >= 0.25 && pNorm < 0.55 ? (pNorm - 0.25) / 0.30 : 0; const recovery = pNorm >= 0.55 ? (pNorm - 0.55) / 0.45 : 0; const strikePower = easeOutBack(strike) - easeInOutSine(recovery) * 0.5; if (p.weaponGroup) { p.weaponGroup.rotation.x = -0.2 - strikePower * 0.8; p.weaponGroup.position.z = -0.1 - strikePower * 0.3; } if (troop.type === "spearman" || troop.type === "heavySpear") { if (p.weaponGroup) p.weaponGroup.position.z = -strikePower * 0.75; } if (troop.type === "swordsman" && p.weaponGroup) { p.weaponGroup.rotation.y = -0.8 + strikePower * 1.8; } if (troop.type === "shieldman" && p.shield) { p.shield.position.z = -0.25 - strikePower * 0.35; } if (troop.type === "archer" && p.rightArm) { p.rightArm.position.z = anticipation * 0.35; } if (troop.type === "crossbow" && p.weaponGroup) { p.weaponGroup.rotation.x = -0.2 - anticipation * 0.25 + strikePower * 0.35; } } else troop.isAttacking = false; if (troop.type === "cavalry" && p.horse) { const gallop = Math.sin(troop.animTime * 13); p.horse.position.y = 0.45 + Math.abs(gallop) * 0.08; if (p.weaponGroup && troop.command === "Charge") { p.weaponGroup.rotation.x = -0.85; p.weaponGroup.position.z = -0.45; } } }
 
 function showToast(msg) {
   const el = $("battleToast");
@@ -2878,31 +2913,12 @@ function checkBattleEnd() {
 function onKeyDown(e) {
   keys[e.code] = true;
   if (e.code === "Space") startSpearThrust();
-
-  if (e.code === "Digit1") {
-    const now = performance.now();
-    if (now - lastHoldPressTime < HOLD_DOUBLE_TAP_MS) {
-      cycleFormation();
-      showToast(`Formation: ${formation}`);
-    } else {
-      command = "Hold Position";
-      assignFormationSlots();
-      showToast("Command: Hold Position");
-    }
-    lastHoldPressTime = now;
-  }
-
-  if (e.code === "Digit2") {
-    command = "Follow Me";
-    assignFormationSlots();
-    showToast("Command: Follow Me");
-  }
-
-  if (e.code === "Digit3") {
-    cycleFormation();
-    showToast(`Formation: ${formation}`);
-  }
-  if (e.code === "Digit4") { command = "Charge"; showToast("Command: Charge!"); }
+  if (e.code === "KeyQ") { e.preventDefault(); cycleSelectedTroopGroup(-1); }
+  if (e.code === "KeyE") { e.preventDefault(); cycleSelectedTroopGroup(1); }
+  if (e.code === "Digit1") { const now = performance.now(); if (now - lastHoldPressTime < HOLD_DOUBLE_TAP_MS) cycleFormationForSelectedGroup(); else applyCommandToSelectedGroup("Hold Position"); lastHoldPressTime = now; }
+  if (e.code === "Digit2") applyCommandToSelectedGroup("Follow Me");
+  if (e.code === "Digit3") cycleFormationForSelectedGroup();
+  if (e.code === "Digit4") applyCommandToSelectedGroup("Charge");
 }
 
 function onKeyUp(e) {
