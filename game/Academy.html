@@ -85,8 +85,46 @@
     display: block;
   }
 
-  #worldScreen {
-    display: block;
+  #launchScreen {
+    background:
+      radial-gradient(circle at 30% 20%, rgba(255, 209, 102, 0.12), transparent 35%),
+      radial-gradient(circle at 75% 65%, rgba(90, 169, 255, 0.12), transparent 38%),
+      linear-gradient(180deg, #111827, #05080d);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .launchMenuBox {
+    width: min(560px, 92vw);
+    padding: 28px;
+    border-radius: 24px;
+    background: rgba(18, 27, 43, 0.94);
+    border: 1px solid rgba(255,255,255,0.16);
+    box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+    text-align: center;
+  }
+
+  .launchMenuBox h1 {
+    margin: 0 0 8px;
+    color: var(--gold);
+    font-size: 34px;
+  }
+
+  .accountRow {
+    display: flex;
+    gap: 8px;
+    margin: 12px 0;
+  }
+
+  .accountRow input,
+  .accountRow select {
+    flex: 1;
+    padding: 9px 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: #0c1320;
+    color: white;
   }
 
   #mapCanvas {
@@ -454,7 +492,29 @@
 
 <body>
 
-<div id="worldScreen" class="screen active">
+<div id="launchScreen" class="screen active">
+  <div class="launchMenuBox">
+    <h1>⚔ Kingdoms at War</h1>
+    <p>Create or load a local campaign account.</p>
+
+    <div class="accountRow">
+      <input id="accountNameInput" placeholder="Account name..." />
+      <button onclick="createAccountFromMenu()" class="success">Create New Account</button>
+    </div>
+
+    <div class="accountRow">
+      <select id="accountSelect"></select>
+      <button onclick="loadSelectedAccount()" class="blue">Load Account</button>
+      <button onclick="deleteSelectedAccount()" class="danger">Delete</button>
+    </div>
+
+    <button id="continueAccountBtn" onclick="continueLastAccount()" class="warn">Continue Last Account</button>
+
+    <div id="accountMenuMessage" class="small"></div>
+  </div>
+</div>
+
+<div id="worldScreen" class="screen">
   <canvas id="mapCanvas"></canvas>
 
   <div class="topbar">
@@ -466,8 +526,9 @@
     <div class="stat">Daily Wages: <b id="wagesText">0</b></div>
     <div class="stat">Army Size: <b id="armyText">0/75</b></div>
     <div class="stat">Castles: <b id="castleText">0</b></div>
+    <div class="stat">Account: <b id="accountText">None</b></div>
     <button onclick="saveGame()">Save</button>
-    <button onclick="loadGame()">Load</button>
+    <button onclick="showLaunchScreen()">Accounts</button>
     <button onclick="openInventoryPanel()">Inventory</button>
     <button onclick="openTroopUpgradePanel()" class="success">Upgrades</button>
     <button onclick="openDiplomacyPanel()" class="blue">Diplomacy</button>
@@ -1672,6 +1733,9 @@ function initWorld() {
   canvas.addEventListener("click", mapClick);
 
   requestAnimationFrame(loop);
+
+  refreshAccountMenu();
+  showLaunchScreen();
 }
 
 function resize() {
@@ -1743,6 +1807,7 @@ function loop(t) {
 
   drawWorld();
   requestAnimationFrame(loop);
+
 }
 
 function updateWorld(dt) {
@@ -2452,6 +2517,9 @@ function renderUI() {
   $("wagesText").textContent = calculateArmyWages(state.player.army);
   $("armyText").textContent = `${armyCount(state.player.army)}/${state.armyMax}`;
   $("castleText").textContent = state.player.castles.length;
+  if ($("accountText")) {
+    $("accountText").textContent = currentAccountName || "None";
+  }
 
   $("armyBreakdown").innerHTML =
     Object.entries(state.player.army)
@@ -3118,32 +3186,236 @@ function claimCastle(s) {
    SAVE / LOAD
 ========================================================= */
 
-function saveGame() {
-  localStorage.setItem("kingdomsAtWarSave", JSON.stringify(state));
-  log("Game saved locally.");
+const ACCOUNT_LIST_KEY = "kingdomsAtWarAccounts";
+const LAST_ACCOUNT_KEY = "kingdomsAtWarLastAccount";
+
+let currentAccountName = null;
+
+function getAccountSaveKey(accountName = currentAccountName) {
+  return `kingdomsAtWarSave_${accountName}`;
 }
 
-function loadGame() {
-  const raw = localStorage.getItem("kingdomsAtWarSave");
+function normalizeAccountName(name) {
+  return String(name || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 32);
+}
 
-  if (!raw) {
-    log("No local save found.");
+function getAccountList() {
+  try {
+    return JSON.parse(localStorage.getItem(ACCOUNT_LIST_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveAccountList(accounts) {
+  localStorage.setItem(ACCOUNT_LIST_KEY, JSON.stringify(accounts));
+}
+
+function accountExists(name) {
+  return getAccountList().some(a => a.toLowerCase() === name.toLowerCase());
+}
+
+function refreshAccountMenu() {
+  const select = $("accountSelect");
+  const accounts = getAccountList();
+
+  if (select) {
+    select.innerHTML = "";
+
+    if (!accounts.length) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "No accounts yet";
+      select.appendChild(opt);
+    } else {
+      accounts.forEach(name => {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        select.appendChild(opt);
+      });
+    }
+  }
+
+  const last = localStorage.getItem(LAST_ACCOUNT_KEY);
+  const continueBtn = $("continueAccountBtn");
+
+  if (continueBtn) {
+    continueBtn.style.display = last && accountExists(last) ? "inline-block" : "none";
+    continueBtn.textContent = last && accountExists(last)
+      ? `Continue ${last}`
+      : "Continue Last Account";
+  }
+}
+
+function setAccountMessage(msg) {
+  const box = $("accountMenuMessage");
+  if (box) box.textContent = msg || "";
+}
+
+function createAccountFromMenu() {
+  const input = $("accountNameInput");
+  const name = normalizeAccountName(input?.value);
+
+  if (!name) {
+    setAccountMessage("Enter an account name first.");
     return;
   }
 
-  const loaded = JSON.parse(raw);
+  if (accountExists(name)) {
+    setAccountMessage("That account already exists. Choose another name or load it.");
+    return;
+  }
 
-  Object.assign(state, loaded);
-  ensurePlayerXp();
-  ensureInventory();
-  ensureSettlementEconomy();
+  const accounts = getAccountList();
+  accounts.push(name);
+  saveAccountList(accounts);
 
-  log("Game loaded.");
-  renderUI();
+  currentAccountName = name;
+  localStorage.setItem(LAST_ACCOUNT_KEY, name);
+
+  newGame(true);
+  saveGame();
+
+  showWorldScreen();
 }
 
-function newGame() {
-  if (!confirm("Start a new game?")) return;
+function loadSelectedAccount() {
+  const select = $("accountSelect");
+  const name = normalizeAccountName(select?.value);
+
+  if (!name || !accountExists(name)) {
+    setAccountMessage("Choose an account to load.");
+    return;
+  }
+
+  currentAccountName = name;
+  localStorage.setItem(LAST_ACCOUNT_KEY, name);
+
+  const loaded = loadGame(true);
+
+  if (!loaded) {
+    setAccountMessage("No save found for this account. Starting a new campaign.");
+    newGame(true);
+    saveGame();
+  }
+
+  showWorldScreen();
+}
+
+function continueLastAccount() {
+  const last = localStorage.getItem(LAST_ACCOUNT_KEY);
+
+  if (!last || !accountExists(last)) {
+    setAccountMessage("No previous account found.");
+    refreshAccountMenu();
+    return;
+  }
+
+  currentAccountName = last;
+
+  const loaded = loadGame(true);
+
+  if (!loaded) {
+    newGame(true);
+    saveGame();
+  }
+
+  showWorldScreen();
+}
+
+function deleteSelectedAccount() {
+  const select = $("accountSelect");
+  const name = normalizeAccountName(select?.value);
+
+  if (!name || !accountExists(name)) {
+    setAccountMessage("Choose an account to delete.");
+    return;
+  }
+
+  if (!confirm(`Delete local account "${name}"? This cannot be undone.`)) return;
+
+  const accounts = getAccountList().filter(a => a.toLowerCase() !== name.toLowerCase());
+  saveAccountList(accounts);
+
+  localStorage.removeItem(getAccountSaveKey(name));
+
+  if (localStorage.getItem(LAST_ACCOUNT_KEY) === name) {
+    localStorage.removeItem(LAST_ACCOUNT_KEY);
+  }
+
+  if (currentAccountName === name) {
+    currentAccountName = null;
+  }
+
+  refreshAccountMenu();
+  setAccountMessage(`Deleted ${name}.`);
+}
+
+function showLaunchScreen() {
+  $("launchScreen")?.classList.add("active");
+  $("worldScreen")?.classList.remove("active");
+  $("battleScreen")?.classList.remove("active");
+  refreshAccountMenu();
+}
+
+function showWorldScreen() {
+  $("launchScreen")?.classList.remove("active");
+  $("worldScreen")?.classList.add("active");
+  $("battleScreen")?.classList.remove("active");
+
+  renderUI();
+  drawMap();
+}
+
+function saveGame() {
+  if (!currentAccountName) {
+    setAccountMessage("Create or load an account before saving.");
+    showLaunchScreen();
+    return;
+  }
+
+  localStorage.setItem(getAccountSaveKey(), JSON.stringify(state));
+  localStorage.setItem(LAST_ACCOUNT_KEY, currentAccountName);
+
+  log(`Saved campaign for ${currentAccountName}.`);
+}
+
+function loadGame(silent = false) {
+  if (!currentAccountName) {
+    if (!silent) alert("Create or load an account first.");
+    return false;
+  }
+
+  const raw = localStorage.getItem(getAccountSaveKey());
+
+  if (!raw) return false;
+
+  try {
+    const loaded = JSON.parse(raw);
+
+    Object.assign(state, loaded);
+    ensurePlayerXp();
+    ensureInventory();
+    ensureSettlementEconomy();
+
+    renderUI();
+    drawMap();
+
+    if (!silent) log(`Loaded campaign for ${currentAccountName}.`);
+    return true;
+  } catch (err) {
+    console.error("Load failed:", err);
+    if (!silent) alert("Save file could not be loaded.");
+    return false;
+  }
+}
+
+function newGame(silent = false) {
+  if (!silent && !confirm("Start a new campaign? Current unsaved progress will be lost.")) return;
   makeWorld();
   ensurePlayerXp();
   ensureInventory();
