@@ -3314,6 +3314,13 @@ function createSiegeApproachTerrain() { siegeLadderPoints = [ { position:new THR
 function createCourtyardObjective() { siegeCaptureZone = new THREE.Mesh(new THREE.RingGeometry(5,5.8,36), new THREE.MeshBasicMaterial({ color:0xffd166, transparent:true, opacity:0.42, side:THREE.DoubleSide })); siegeCaptureZone.rotation.x = -Math.PI/2; siegeCaptureZone.position.set(0,0.06,-38); createSiegeObject(siegeCaptureZone,{ kind:"courtyardZone", blocksMovement:false }); siegeKeepZone = new THREE.Mesh(new THREE.RingGeometry(3.2,4.1,36), new THREE.MeshBasicMaterial({ color:0x9bdeac, transparent:true, opacity:0.45, side:THREE.DoubleSide })); siegeKeepZone.rotation.x = -Math.PI/2; siegeKeepZone.position.set(0,0.07,-50); createSiegeObject(siegeKeepZone,{ kind:"keepZone", blocksMovement:false }); }
 function addSiegeWall(x, y, z, w, h, d, mat) { const wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); wall.position.set(x, y, z); return createSiegeObject(wall, { kind: "wall", blocksMovement: true }); }
 function addSiegeTower(x, z, mat) { const tower = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.6, 6.5, 12), mat); tower.position.set(x, 3.25, z); return createSiegeObject(tower, { kind: "tower", blocksMovement: true }); }
+function groundBattleEntity(entityOrMesh) {
+  const mesh = entityOrMesh?.mesh || entityOrMesh?.group || entityOrMesh;
+  if (!mesh) return;
+  mesh.position.y = 0;
+  if (entityOrMesh?.mesh) entityOrMesh.mesh.position.y = 0;
+  if (entityOrMesh?.group) entityOrMesh.group.position.y = 0;
+}
 function spawnSiegeArmies() { spawnInitialBattleTroops(); placeDefenderArchersOnWalls(); assignFormationSlots(); }
 function spawnFieldArmies() { spawnInitialBattleTroops(); assignFormationSlots(); }
 function shuffleArray(arr) { const out = arr.slice(); for (let i = out.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [out[i], out[j]] = [out[j], out[i]]; } return out; }
@@ -3325,7 +3332,7 @@ function spawnReinforcements(team, maxCount) { const queue = team === "friendly"
 function spawnInitialBattleTroops() { spawnReinforcements("friendly", battleState.activeLimitPerSide); spawnReinforcements("enemy", battleState.activeLimitPerSide); }
 function sideHasNoForcesLeft(team) { const queue = team === "friendly" ? battleState.friendlyQueue : battleState.enemyQueue; return getActiveTroopCount(team) <= 0 && queue.length <= 0; }
 function updateReinforcements(dt) { if (battleState.battleEnded || !battleState.battleStarted) return; battleState.friendlyReinforcementWaveTimer += dt; battleState.enemyReinforcementWaveTimer += dt; if (battleState.friendlyReinforcementWaveTimer >= battleState.reinforcementInterval) { battleState.friendlyReinforcementWaveTimer = 0; if (getActiveTroopCount("friendly") < battleState.activeLimitPerSide) spawnReinforcements("friendly", battleState.reinforcementBatchSize); } if (battleState.enemyReinforcementWaveTimer >= battleState.reinforcementInterval) { battleState.enemyReinforcementWaveTimer = 0; if (getActiveTroopCount("enemy") < battleState.activeLimitPerSide) spawnReinforcements("enemy", battleState.reinforcementBatchSize); } }
-function placeDefenderArchersOnWalls() { const wallSpots = [new THREE.Vector3(-20, 3.9, -16), new THREE.Vector3(-10, 3.9, -16), new THREE.Vector3(10, 3.9, -16), new THREE.Vector3(20, 3.9, -16), new THREE.Vector3(-24, 5.8, -52), new THREE.Vector3(24, 5.8, -52)]; let i = 0; for (const troop of battleTroops) { if (troop.team !== "enemy") continue; if (troop.type !== "archer" && troop.type !== "crossbow") continue; if (i >= wallSpots.length) break; troop.mesh.position.copy(wallSpots[i]); troop.slot.copy(wallSpots[i]); troop.onWall = true; troop.command = "Hold Position"; i++; } }
+function placeDefenderArchersOnWalls() { const wallSpots = [new THREE.Vector3(-20, 3.9, -16), new THREE.Vector3(-10, 3.9, -16), new THREE.Vector3(10, 3.9, -16), new THREE.Vector3(20, 3.9, -16), new THREE.Vector3(-24, 5.8, -52), new THREE.Vector3(24, 5.8, -52)]; let i = 0; for (const troop of battleTroops) { if (troop.team !== "enemy") continue; if (troop.type !== "archer" && troop.type !== "crossbow") continue; if (i >= wallSpots.length) break; troop.mesh.position.copy(wallSpots[i]); troop.slot.copy(wallSpots[i]); groundBattleEntity(troop); troop.onWall = true; troop.command = "Hold Position"; i++; } }
 function damageSiegeGate(amount) { if (!siegeGate || siegeGateHp <= 0) return; siegeGateHp = Math.max(0, siegeGateHp - amount); siegeGate.userData.hp = siegeGateHp; showDamageNumber(siegeGate.position.clone().add(new THREE.Vector3(0, 2, 0)), amount); if (siegeGateHp <= 0) { siegeGate.visible = false; siegeGate.userData.blocksMovement = false; siegeObjectives.gateDestroyed = true; showToast("Gate breached!"); log("Gate breached! Your troops smashed open the castle gate."); } }
 function checkPlayerSpearHitGate() { if (!battleType.startsWith("siege") || !siegeGate || siegeGateHp <= 0) return false; if (!player3.isThrusting || player3.thrustHitDone) return false; if (player3.thrustTimer < 0.08 || player3.thrustTimer > 0.22) return false; const origin = player3.mesh.position.clone(); const forward = new THREE.Vector3(Math.sin(player3.yaw), 0, Math.cos(player3.yaw)).normalize(); const toGate = siegeGate.position.clone().sub(origin); toGate.y = 0; const forwardDist = toGate.dot(forward); const sideDist = toGate.sub(forward.clone().multiplyScalar(forwardDist)).length(); if (forwardDist > 0.5 && forwardDist < 3.5 && sideDist < 4.8) { damageSiegeGate(30); player3.thrustHitDone = true; return true; } return false; }
 function isBlockedBySiegeObject(pos, radius = 0.5) { if (!battleType.startsWith("siege")) return false; for (const obj of siegeObjects) { if (!obj.visible || !obj.userData.blocksMovement) continue; const box = new THREE.Box3().setFromObject(obj); box.expandByScalar(radius); if (box.containsPoint(pos)) return true; } return false; }
@@ -3449,11 +3456,13 @@ function createBattleGround(theme) {
 function createPlayerCommander() {
   const body = createCommanderModel();
   body.position.set(0, 0, 30);
+  body.scale.setScalar(0.92);
   scene.add(body);
 
   player3 = {
     mesh: body,
     hp: 100,
+    radius: 0.58,
     yaw: Math.PI,
     walkTime: 0,
     isMoving: false,
@@ -3462,6 +3471,7 @@ function createPlayerCommander() {
     thrustTimer: 0,
     thrustHitDone: false
   };
+  groundBattleEntity(player3);
 }
 
 
@@ -3575,6 +3585,7 @@ function makeTroop(type, team, pos) {
   const group = createTroopModel(type, team, tier);
 
   group.position.copy(pos);
+  groundBattleEntity(group);
   scene.add(group);
 
   const label = document.createElement("div");
@@ -4077,6 +4088,9 @@ function updatePlayer(dt) {
 
   player3.mesh.position.x = clamp(player3.mesh.position.x, -105, 105);
   player3.mesh.position.z = clamp(player3.mesh.position.z, -105, 105);
+  if (player3 && player3.mesh) {
+    player3.mesh.position.y = 0;
+  }
   player3.mesh.rotation.y = player3.yaw;
   animateCommander(dt);
   checkPlayerSpearHit();
@@ -4191,6 +4205,7 @@ function updateTroops(dt) {
       enemies.push({
         mesh: player3.mesh,
         hp: player3.hp,
+        radius: player3.radius || 0.58,
         player: true
       });
     }
