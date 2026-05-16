@@ -432,6 +432,12 @@
     width: 100%;
     background: #22c55e;
   }
+  .pillRow{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;border:1px solid rgba(255,255,255,0.2)}
+  .armyCard{padding:10px;border:1px solid rgba(255,255,255,0.12);border-radius:10px;background:rgba(255,255,255,0.03)}
+  .armyGridCompact{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;max-height:52vh;overflow:auto;padding-right:4px}
+  .upgradeBranch{border:1px solid rgba(255,255,255,0.14);border-radius:10px;padding:10px;margin-bottom:10px;background:rgba(255,255,255,0.03)}
+  .previewBox{border:1px dashed rgba(255,255,255,0.25);border-radius:8px;padding:8px;margin-top:8px;background:rgba(0,0,0,0.18)}
 
   .damageNumber {
     position: absolute;
@@ -2620,40 +2626,65 @@ function closeEncounter() {
 
 function openArmyPanel() {
   ensurePlayerXp();
-  const xpRows = Object.keys(troopDefs).map(type => {
-    const upgrades = (troopUpgradePaths[type] || [])
-      .map(path => `${troopDefs[path.to]?.name || path.to} (${path.gold}g/${path.xp} XP)`)
-      .join("<br>") || "-";
-
-    return `
-      <tr>
-        <td>${troopDefs[type]?.name || type}</td>
-        <td>${state.player.army[type] || 0}</td>
-        <td>${state.player.xp[type] || 0}</td>
-        <td>${upgrades}</td>
-      </tr>
-    `;
-  }).join("");
+  const cultureColors = { veyr:"#4ea0ff", iron:"#d65a52", sun:"#f0c451", common:"#9aa0a6", bandit:"#8f5b3c", mercenary:"#a76cff" };
+  const friendly = v => (v || "").replaceAll("_"," ").replace(/\b\w/g,m=>m.toUpperCase());
+  const roleLabel = def => `${friendly(def.battleRole || def.role)} / ${friendly(def.classLine || "line")}`;
+  const strengthLabel = def => def.tier >= 5 ? "Elite" : def.tier >= 4 ? "High" : def.tier >= 3 ? "Medium" : "Low";
+  const traitLabel = t => friendly({brace_bonus:"brace", shield_wall:"shield wall", long_reach:"long reach"}[t] || t);
+  const troopList = Object.entries(state.player.army).filter(([,n])=>n>0).map(([type, count]) => ({ type, count, def: troopDefs[type] || {}, xp: state.player.xp[type] || 0 }));
+  const roleTotals = { infantry:0, archer:0, cavalry:0, support:0 };
+  const cultureTotals = {};
+  troopList.forEach(t => { roleTotals[t.def.role] = (roleTotals[t.def.role] || 0) + t.count; cultureTotals[t.def.culture || "common"] = (cultureTotals[t.def.culture || "common"] || 0) + t.count; });
+  const filters = [
+    ["all","All"],["infantry","Infantry"],["archer","Archers"],["cavalry","Cavalry"],["support","Support"],
+    ["veyr","Veyr"],["iron","Iron"],["sun","Sun"],["common","Bandit/Common"],["tierLow","Tier 1–2"],["tierHigh","Tier 3+"],["elite","Elite"]
+  ];
+  const cards = troopList.map(t => `
+    <div class="armyCard" data-role="${t.def.role||""}" data-culture="${t.def.culture||"common"}" data-tier="${t.def.tier||1}">
+      <div><b>${t.def.name || t.type}</b></div>
+      <div class="small">Culture: ${friendly(t.def.culture || "common")}<br>Tier: ${t.def.tier || 1}<br>Role: ${roleLabel(t.def)}<br>Count: ${t.count}<br>XP: ${t.xp}<br>Strength: ${strengthLabel(t.def)}<br>Traits: ${(t.def.specialTraits||[]).map(traitLabel).join(", ") || "None"}</div>
+      <div class="pillRow">
+        <span class="pill" style="border-color:${cultureColors[t.def.culture||'common']};color:${cultureColors[t.def.culture||'common']}">[${friendly(t.def.culture||"common")}]</span>
+        <span class="pill">[Tier ${t.def.tier||1}]</span>
+        <span class="pill">[${friendly(t.def.classLine||t.def.role||"line")}]</span>
+        ${((t.def.specialTraits||[])[0]) ? `<span class="pill">[${traitLabel(t.def.specialTraits[0])}]</span>` : ""}
+      </div>
+    </div>`).join("");
 
   openModal(`
     <h2>Your Army</h2>
-    <div class="card">
-      ${armyHtml(state.player.army)}
+    <div class="card small">
+      <b>Commander Breakdown</b><br>
+      Infantry: ${roleTotals.infantry || 0} • Archers: ${roleTotals.archer || 0} • Cavalry: ${roleTotals.cavalry || 0} • Support: ${roleTotals.support || 0}<br>
+      Cultures:
+      Veyr: ${cultureTotals.veyr || 0} • Iron: ${cultureTotals.iron || 0} • Sun: ${cultureTotals.sun || 0} • Common: ${cultureTotals.common || 0}
     </div>
-    <h3>Troop Experience</h3>
-    <table class="table">
-      <tr><th>Troop</th><th>Count</th><th>XP</th><th>Can Upgrade To</th></tr>
-      ${xpRows}
-    </table>
+    <details open><summary><b>Filters</b></summary>
+      <div class="pillRow">${filters.map(f=>`<button onclick="setArmyFilter('${f[0]}')">${f[1]}</button>`).join("")}</div>
+    </details>
+    <details open><summary><b>Troop Cards</b></summary>
+      <div class="armyGridCompact" id="armyCardGrid">${cards || `<div class="small">No troops.</div>`}</div>
+    </details>
     <p class="small">
       Formations in battle currently support frontline troops, archers in the backline, and cavalry on flanks.
     </p>
     <button onclick="closeModal()">Close</button>
   `);
+  window.currentArmyFilter = "all";
+  window.setArmyFilter = (filter) => {
+    window.currentArmyFilter = filter;
+    document.querySelectorAll("#armyCardGrid .armyCard").forEach(card => {
+      const role = card.dataset.role, culture = card.dataset.culture, tier = Number(card.dataset.tier || "1");
+      const show = filter === "all" || filter === role || filter === culture || (filter === "tierLow" && tier <= 2) || (filter === "tierHigh" && tier >= 3) || (filter === "elite" && tier >= 5) || (filter === "common" && (culture === "common" || culture === "bandit"));
+      card.style.display = show ? "" : "none";
+    });
+  };
 }
 
 function openTroopUpgradePanel() {
   ensurePlayerXp();
+  const friendly = v => (v || "").replaceAll("_"," ").replace(/\b\w/g,m=>m.toUpperCase());
+  const traitLabel = t => friendly({brace_bonus:"brace", shield_wall:"shield wall", long_reach:"long reach"}[t] || t);
 
   const rows = Object.entries(troopUpgradePaths).map(([from, paths]) => {
     const count = state.player.army[from] || 0;
@@ -2666,15 +2697,26 @@ function openTroopUpgradePanel() {
       const toName = troopDefs[path.to]?.name || path.to;
       const toDef = troopDefs[path.to] || {};
       const canUpgrade = count > 0 && state.gold >= path.gold && xp >= path.xp;
+      const compareId = `${from}_${path.to}`;
       return `
-        <div class="card">
+        <div class="upgradeBranch">
           <div><b>${toName}</b></div>
           <div class="small">
             Cost: ${path.gold}g • XP: ${path.xp}<br>
-            Tier: ${toDef.tier || "-"} • Role: ${toDef.role || "-"} • Culture: ${toDef.culture || "-"}
+            Tier: ${toDef.tier || "-"} • Role: ${friendly(toDef.battleRole || toDef.role || "-")} • Culture: ${friendly(toDef.culture || "-")}<br>
+            Traits: ${(toDef.specialTraits||[]).map(traitLabel).join(", ") || "None"}
+          </div>
+          <div class="previewBox small" id="preview_${compareId}">
+            HP: ${troopDefs[from]?.hp || 0} → ${toDef.hp || 0}<br>
+            Damage: ${troopDefs[from]?.damage || 0} → ${toDef.damage || 0}<br>
+            Armor: ${troopDefs[from]?.armor || 0} → ${toDef.armor || 0}<br>
+            Speed: ${troopDefs[from]?.moveSpeed || troopDefs[from]?.speed || 0} → ${toDef.moveSpeed || toDef.speed || 0}<br>
+            Role Change: ${friendly(troopDefs[from]?.battleRole || troopDefs[from]?.role || "-")} → ${friendly(toDef.battleRole || toDef.role || "-")}<br>
+            New Traits: ${(toDef.specialTraits || []).filter(t => !(troopDefs[from]?.specialTraits || []).includes(t)).map(traitLabel).join(", ") || "None"}
           </div>
           <div class="row">
             <button class="${canUpgrade ? "success" : ""}" ${canUpgrade ? "" : "disabled"} onclick="upgradeOneTroop('${from}', '${path.to}')">Upgrade 1</button>
+            <button class="${canUpgrade ? "success" : ""}" ${canUpgrade ? "" : "disabled"} onclick="upgradeTroopsAmount('${from}', '${path.to}', 5)">Upgrade 5</button>
             <button ${canUpgrade ? "" : "disabled"} onclick="upgradeMaxTroops('${from}', '${path.to}')">Upgrade Max</button>
           </div>
         </div>
@@ -2689,7 +2731,7 @@ function openTroopUpgradePanel() {
           Current count: <b>${count}</b><br>
           Current XP: <b>${xp}</b><br>
           Tier: <b>${tier.name}</b><br>
-          Role: <b>${troopDefs[from]?.role || "-"}</b> • Culture: <b>${troopDefs[from]?.culture || "-"}</b><br>
+          Role: <b>${friendly(troopDefs[from]?.battleRole || troopDefs[from]?.role || "-")}</b> • Culture: <b>${friendly(troopDefs[from]?.culture || "-")}</b><br>
           ${nextTier ? `Next Tier: ${nextTier.name} at ${nextTier.minXp} XP` : "Max Tier"}<br>
           Available upgrade paths: <b>${paths.length}</b>
         </div>
@@ -2707,6 +2749,26 @@ function openTroopUpgradePanel() {
     <div class="grid">${rows}</div>
     <div class="row"><button onclick="closeModal()">Close</button></div>
   `);
+}
+
+function upgradeTroopsAmount(from, to, amount) {
+  ensurePlayerXp();
+  const path = (troopUpgradePaths[from] || []).find(p => p.to === to);
+  if (!path) return;
+  let upgraded = 0;
+  while (upgraded < amount && (state.player.army[from] || 0) > 0 && state.gold >= path.gold && (state.player.xp[from] || 0) >= path.xp) {
+    state.gold -= path.gold;
+    state.player.xp[from] -= path.xp;
+    addTroops(state.player.army, from, -1);
+    addTroops(state.player.army, to, 1);
+    upgraded++;
+  }
+  if (upgraded > 0) {
+    state.player.xp[to] = (state.player.xp[to] || 0) + upgraded;
+    log(`Upgraded ${upgraded} ${troopDefs[from].name} into ${troopDefs[to].name}.`);
+  } else log("No troops could be upgraded.");
+  renderUI();
+  openTroopUpgradePanel();
 }
 
 function openInventoryPanel() {
