@@ -308,54 +308,66 @@
     inset: 0;
   }
 
-  .battleHud {
+  .battleTopStatus {
+    position: absolute;
+    left: 50%;
+    top: 10px;
+    transform: translateX(-50%);
+    z-index: 8;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(5, 8, 13, 0.62);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: white;
+    font-size: 13px;
+    font-weight: 700;
+    pointer-events: none;
+  }
+
+  .miniBattleHud {
     position: absolute;
     left: 12px;
     top: 10px;
-    z-index: 5;
-    min-width: 330px;
-    padding: 12px;
-    background: rgba(7, 11, 18, 0.84);
-    border: 1px solid rgba(255,255,255,0.15);
-    border-radius: 16px;
+    z-index: 8;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: rgba(5, 8, 13, 0.62);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 999px;
+    color: white;
+    font-size: 12px;
+    font-weight: 800;
   }
 
-  .battleHud h3,
-  .battleControls h3 {
-    margin: 0 0 8px;
-    color: var(--gold);
-  }
-
-  .bar {
-    height: 12px;
-    background: #30384d;
+  .miniHpBar {
+    width: 130px;
+    height: 8px;
+    background: rgba(255,255,255,0.18);
     border-radius: 999px;
     overflow: hidden;
-    margin: 4px 0 8px;
   }
 
-  .barFill {
+  .miniHpFill {
     height: 100%;
     width: 100%;
     background: linear-gradient(90deg, #06d6a0, #94e27f);
   }
 
-  .battleInfo {
-    font-size: 13px;
-    color: #dce6f5;
-    line-height: 1.55;
-  }
-
-  .battleControls {
+  .miniControls {
     position: absolute;
     right: 12px;
-    top: 10px;
-    z-index: 5;
-    width: 300px;
-    padding: 12px;
-    background: rgba(7, 11, 18, 0.84);
-    border: 1px solid rgba(255,255,255,0.15);
-    border-radius: 16px;
+    bottom: 10px;
+    z-index: 8;
+    max-width: 540px;
+    padding: 6px 10px;
+    background: rgba(5, 8, 13, 0.55);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 999px;
+    color: rgba(255,255,255,0.88);
+    font-size: 12px;
+    pointer-events: none;
   }
 
   .kbd {
@@ -388,13 +400,48 @@
     display: block;
   }
 
-  .label {
+  .troopLabel {
     position: absolute;
     pointer-events: none;
+    transform: translate(-50%, -100%);
+    font-size: 10px;
     color: white;
-    text-shadow: 0 2px 5px #000;
-    font-size: 11px;
-    font-weight: 900;
+    text-align: center;
+    text-shadow: 0 1px 3px #000;
+    z-index: 7;
+  }
+
+  .troopName {
+    font-weight: 800;
+    margin-bottom: 2px;
+    white-space: nowrap;
+  }
+
+  .troopHpOuter {
+    width: 38px;
+    height: 5px;
+    background: rgba(0,0,0,0.75);
+    border: 1px solid rgba(255,255,255,0.35);
+    border-radius: 999px;
+    overflow: hidden;
+    margin: 0 auto;
+  }
+
+  .troopHpInner {
+    height: 100%;
+    width: 100%;
+    background: #22c55e;
+  }
+
+  .damageNumber {
+    position: absolute;
+    z-index: 9;
+    pointer-events: none;
+    color: #ff4d4d;
+    font-weight: 950;
+    font-size: 16px;
+    text-shadow: 0 2px 4px #000;
+    transform: translate(-50%, -50%);
   }
 </style>
 </head>
@@ -466,31 +513,15 @@
 
   <div id="battleToast" class="centerToast"></div>
 
-  <div class="battleHud">
-    <h3>Battle Command</h3>
-    <div>Commander HP</div>
-    <div class="bar"><div id="hpFill" class="barFill"></div></div>
-    <div id="battleStats" class="battleInfo"></div>
-    <div class="row">
-      <button onclick="retreatBattle()" class="danger">Retreat</button>
-    </div>
+  <div id="battleTopStatus" class="battleTopStatus">
+    Command: <b id="commandText">Hold Position</b> | Formation: <b id="formationText">Line</b>
   </div>
 
-  <div class="battleControls">
-    <h3>Controls</h3>
-    <div class="small">
-      <span class="kbd">W</span> Move Forward<br>
-      <span class="kbd">S</span> Move Backward<br>
-      <span class="kbd">A/D</span> Turn<br>
-      <span class="kbd">Shift</span> Run<br>
-      <span class="kbd">Space</span> Spear Thrust<br>
-      <span class="kbd">Mouse</span> Optional Camera / Turn Assist<br>
-      <span class="kbd">1</span> Hold Position<br>
-      <span class="kbd">2</span> Follow Me<br>
-      <span class="kbd">3</span> Cycle Formation<br>
-      <span class="kbd">Shift</span> Sprint
-    </div>
+  <div id="miniBattleHud" class="miniBattleHud">
+    <span>HP</span>
+    <div class="miniHpBar"><div id="hpFill" class="miniHpFill"></div></div>
   </div>
+  <div class="miniControls">W/S Move • A/D Turn • Shift Run • Space Spear • 1 Hold / Double-Tap Formation • 2 Follow • 3 Cycle Formation • 4 Charge</div>
 </div>
 
 <div id="modal" class="modal">
@@ -1922,6 +1953,9 @@ let mouseDX = 0;
 let command = "Hold Position";
 let formation = "Line";
 let formations = ["Line", "Square", "Wedge", "Loose", "Shield Wall"];
+let lastHoldPressTime = 0;
+const HOLD_DOUBLE_TAP_MS = 350;
+let floatingTexts = [];
 let battleRunning = false;
 let battleEnemyArmy = null;
 let attackCooldown = 0;
@@ -1951,6 +1985,8 @@ function setupBattle() {
 
   labels.forEach(l => l.remove());
   labels = [];
+  floatingTexts.forEach(f => f.el.remove());
+  floatingTexts = [];
 
   scene = new THREE.Scene();
 
@@ -1979,6 +2015,7 @@ function setupBattle() {
   projectiles = [];
   command = "Hold Position";
   formation = "Line";
+  updateBattleTopStatus();
 
   spawnArmy(state.player.army, "friendly", new THREE.Vector3(0, 0, 22));
   spawnArmy(battleEnemyArmy.army, "enemy", new THREE.Vector3(0, 0, -34));
@@ -2225,59 +2262,14 @@ function createCommanderModel() {
 
 function makeTroop(type, team, pos) {
   const def = troopDefs[type];
-
-  const group = new THREE.Group();
-
-  const body = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.36, 0.42, 1.45, 10),
-    new THREE.MeshLambertMaterial({ color: def.color })
-  );
-  body.position.y = 0.8;
-  group.add(body);
-
-  const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.28, 10, 10),
-    new THREE.MeshLambertMaterial({ color: 0xe8c39e })
-  );
-  head.position.y = 1.75;
-  group.add(head);
-
-  if (def.role === "backline") {
-    const bow = new THREE.Mesh(
-      new THREE.TorusGeometry(0.45, 0.03, 6, 12, Math.PI),
-      new THREE.MeshLambertMaterial({ color: 0x3d2b1f })
-    );
-    bow.position.set(0.45, 1.1, 0);
-    bow.rotation.z = Math.PI / 2;
-    group.add(bow);
-  } else {
-    const weaponLength = type === "spearman" || type === "heavySpear" ? 2.5 : 1.25;
-
-    const weapon = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.035, 0.035, weaponLength, 8),
-      new THREE.MeshLambertMaterial({ color: 0xd7d0b0 })
-    );
-    weapon.rotation.x = Math.PI / 2;
-    weapon.position.set(0.45, 1.05, -weaponLength / 3);
-    group.add(weapon);
-  }
-
-  if (type === "cavalry") {
-    const horse = new THREE.Mesh(
-      new THREE.BoxGeometry(1.1, 0.7, 1.8),
-      new THREE.MeshLambertMaterial({ color: 0x5b341c })
-    );
-    horse.position.y = 0.45;
-    group.add(horse);
-    body.position.y = 1.25;
-    head.position.y = 2.2;
-  }
+  const group = createTroopModel(type, team);
 
   group.position.copy(pos);
   scene.add(group);
 
   const label = document.createElement("div");
-  label.className = "label";
+  label.className = "troopLabel";
+  label.innerHTML = `<div class="troopName">${def.name}</div><div class="troopHpOuter"><div class="troopHpInner"></div></div>`;
   document.body.appendChild(label);
   labels.push(label);
 
@@ -2291,8 +2283,43 @@ function makeTroop(type, team, pos) {
     slot: pos.clone(),
     attackCd: rand(0, 1),
     radius: type === "cavalry" ? 0.72 : 0.46,
-    label
+    label,
+    animTime: rand(0, 10),
+    isMoving: false,
+    isAttacking: false,
+    attackAnimTimer: 0,
+    rangedRecoilTimer: 0,
+    lastDamageTaken: 0
   };
+}
+function createTroopModel(type, team) {
+  const group = new THREE.Group();
+  const teamAccent = team === "friendly" ? 0x4fd1c5 : 0xd15a4f;
+  const armorColor = team === "friendly" ? 0x5a78b8 : 0x7a4d4d;
+  const skin = new THREE.MeshLambertMaterial({ color: 0xe8c39e });
+  const armor = new THREE.MeshLambertMaterial({ color: armorColor });
+  const cloth = new THREE.MeshLambertMaterial({ color: troopDefs[type].color });
+  const metal = new THREE.MeshLambertMaterial({ color: 0xb8b8be });
+  const wood = new THREE.MeshLambertMaterial({ color: 0x6f4b2d });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.9, 0.35), cloth); body.position.y = type === "cavalry" ? 1.4 : 1.25; group.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 8), skin); head.position.y = body.position.y + 0.7; group.add(head);
+  const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.7, 0.2), armor); leftLeg.position.set(-0.16, type === "cavalry" ? 0.95 : 0.45, 0);
+  const rightLeg = leftLeg.clone(); rightLeg.position.x = 0.16; group.add(leftLeg, rightLeg);
+  const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.65, 0.18), armor); leftArm.position.set(-0.4, body.position.y + 0.05, 0);
+  const rightArm = leftArm.clone(); rightArm.position.x = 0.4; group.add(leftArm, rightArm);
+  const weaponGroup = new THREE.Group(); weaponGroup.position.set(0.35, body.position.y, -0.1); group.add(weaponGroup);
+  let weapon = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.3, 6), wood);
+  weapon.rotation.x = Math.PI / 2; weapon.position.z = -0.5; weaponGroup.add(weapon);
+  let shield = null, helmet = null, horse = null;
+  if (type === "spearman" || type === "heavySpear") { weapon.scale.z = type === "heavySpear" ? 1.8 : 1.5; }
+  if (type === "swordsman") { weapon = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.7, 0.12), metal); weapon.position.set(0, -0.1, -0.55); weaponGroup.add(weapon); }
+  if (type === "shieldman" || type === "swordsman" || type === "spearman") { shield = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.1, 16), new THREE.MeshLambertMaterial({ color: teamAccent })); shield.rotation.z = Math.PI / 2; shield.position.set(-0.48, body.position.y - 0.1, 0.05); group.add(shield); }
+  if (type === "archer") { weapon = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.03, 6, 12, Math.PI), wood); weapon.rotation.z = Math.PI / 2; weaponGroup.add(weapon); }
+  if (type === "crossbow") { weapon = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.2), wood); weaponGroup.add(weapon); }
+  if (type !== "farmhand") { helmet = new THREE.Mesh(new THREE.SphereGeometry(type === "heavySpear" ? 0.28 : 0.24, 8, 8), metal); helmet.position.copy(head.position).setY(head.position.y + 0.05); group.add(helmet); }
+  if (type === "cavalry") { horse = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.7, 1.9), new THREE.MeshLambertMaterial({ color: 0x5b341c })); horse.position.y = 0.45; group.add(horse); weapon.scale.z = 1.7; }
+  group.userData.parts = { body, head, leftArm, rightArm, leftLeg, rightLeg, weaponGroup, weapon, shield, helmet, armor: body, horse };
+  return group;
 }
 
 function spawnArmy(army, team, base) {
@@ -2464,7 +2491,9 @@ function updateBattle(dt) {
 
   updateTroops(dt);
   updateProjectiles(dt);
-  updateLabels();
+  updateTroopLabels();
+  updateFloatingTexts(dt);
+  updateBattleTopStatus();
   updateBattleHud();
   checkBattleEnd();
 }
@@ -2590,6 +2619,7 @@ function updateTroops(dt) {
       }
     });
     if (t.hp <= 0) continue;
+    t.isMoving = false;
 
     t.attackCd -= dt;
 
@@ -2634,6 +2664,8 @@ function updateTroops(dt) {
       attackTarget(t, nearest);
     } else if (nearestDistance < 6.5 && command === "Follow Me") {
       desired = nearest.mesh.position.clone();
+    } else if (command === "Charge") {
+      desired = nearest.mesh.position.clone();
     }
 
     if (
@@ -2645,17 +2677,8 @@ function updateTroops(dt) {
     }
 
     moveTroop(t, desired, dt);
+    animateTroop(t, dt);
   }
-
-  battleTroops = battleTroops.filter(t => {
-    if (t.hp <= 0) {
-      scene.remove(t.mesh);
-      t.label.remove();
-      return false;
-    }
-
-    return true;
-  });
 }
 
 function moveTroop(t, target, dt) {
@@ -2665,6 +2688,7 @@ function moveTroop(t, target, dt) {
   dir.y = 0;
 
   if (dir.lengthSq() < 0.08) return;
+  t.isMoving = true;
 
   dir.normalize();
 
@@ -2695,6 +2719,7 @@ function moveTroop(t, target, dt) {
 
 function attackTarget(t, target) {
   if (t.attackCd > 0) return;
+  triggerTroopAttackAnimation(t);
 
   t.attackCd = t.def.role === "backline" ? 1.65 : 1.05;
 
@@ -2748,7 +2773,8 @@ function updateProjectiles(dt) {
 
     for (const t of battleTroops) {
       if (t.team !== p.team && t.hp > 0 && t.mesh.position.distanceTo(p.mesh.position) < 0.8) {
-        damageTroop(t, p.damage);
+        damageTroop(t, p.damage, p.mesh.position);
+        showHitSpark(t.mesh.position.clone().add(new THREE.Vector3(0, 1.2, 0)));
         p.life = 0;
         break;
       }
@@ -2774,15 +2800,22 @@ function updateProjectiles(dt) {
   });
 }
 
-function damageTroop(t, amount) {
+function damageTroop(t, amount, sourcePos = null) {
+  if (!t || t.hp <= 0) return;
   const actual = Math.max(2, amount - (t.def.armor || 0) * 0.35);
-  t.hp -= actual;
+  t.hp = Math.max(0, t.hp - actual);
+  const hitPos = t.mesh.position.clone(); hitPos.y += t.type === "cavalry" ? 2.2 : 1.5;
+  showDamageNumber(hitPos, actual);
   flashTroop(t, 0xff5e5e);
-
-  if (t.hp <= 0) {
-    t.hp = 0;
+  if (sourcePos) {
+    const knock = t.mesh.position.clone().sub(sourcePos).setY(0);
+    if (knock.lengthSq() > 0.001) t.mesh.position.addScaledVector(knock.normalize(), 0.18);
   }
+  if (t.hp <= 0) killTroop(t);
 }
+function killTroop(t) { t.hp = 0; if (t.label) t.label.style.display = "none"; t.mesh.rotation.z = Math.random() < 0.5 ? 1.45 : -1.45; t.mesh.position.y = 0.15; setTimeout(() => { if (t.mesh) t.mesh.visible = false; }, 700); }
+function showDamageNumber(pos, amount) { const el = document.createElement("div"); el.className = "damageNumber"; el.textContent = `-${Math.round(amount)}`; document.body.appendChild(el); floatingTexts.push({ el, pos: pos.clone(), life: 0.8, maxLife: 0.8, yRise: 0 }); }
+function updateFloatingTexts(dt) { for (let i = floatingTexts.length - 1; i >= 0; i--) { const f = floatingTexts[i]; f.life -= dt; f.yRise += dt * 1.5; const p = f.pos.clone(); p.y += 2.2 + f.yRise; p.project(camera); f.el.style.left = `${(p.x * 0.5 + 0.5) * window.innerWidth}px`; f.el.style.top = `${(-p.y * 0.5 + 0.5) * window.innerHeight}px`; f.el.style.opacity = String(clamp(f.life / f.maxLife, 0, 1)); if (f.life <= 0) { f.el.remove(); floatingTexts.splice(i, 1); } } }
 
 function showHitSpark(pos) {
   const spark = new THREE.Mesh(
@@ -2797,36 +2830,28 @@ function showHitSpark(pos) {
   projectiles.push(spark);
 }
 
-function updateLabels() {
+function updateTroopLabels() {
   for (const t of battleTroops) {
-    const vector = t.mesh.position.clone();
-    vector.y += 2.1;
-    vector.project(camera);
-
-    const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
-    const y = (-vector.y * 0.5 + 0.5) * window.innerHeight;
-
-    t.label.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px)`;
-    t.label.style.color = t.team === "friendly" ? "#a7f3d0" : "#fecaca";
-    t.label.textContent = `${t.def.name.split(" ")[0]} ${Math.ceil(t.hp)}`;
+    if (!t.label) continue;
+    if (t.hp <= 0 || !t.mesh.visible) { t.label.style.display = "none"; continue; }
+    t.label.style.display = "block";
+    const vector = t.mesh.position.clone(); vector.y += t.type === "cavalry" ? 3.2 : 2.4; vector.project(camera);
+    t.label.style.left = `${(vector.x * 0.5 + 0.5) * window.innerWidth}px`;
+    t.label.style.top = `${(-vector.y * 0.5 + 0.5) * window.innerHeight}px`;
+    const fill = t.label.querySelector(".troopHpInner");
+    if (fill) { const pct = clamp(t.hp / t.maxHp, 0, 1); fill.style.width = `${pct * 100}%`; fill.style.background = pct > 0.55 ? "#22c55e" : pct > 0.25 ? "#facc15" : "#ef4444"; }
+    const nameEl = t.label.querySelector(".troopName");
+    if (nameEl) nameEl.style.display = camera.position.distanceTo(t.mesh.position) < 42 ? "block" : "none";
   }
 }
 
 function updateBattleHud() {
-  const friendly = battleTroops.filter(t => t.team === "friendly").length;
-  const enemy = battleTroops.filter(t => t.team === "enemy").length;
-
   $("hpFill").style.width = clamp(player3.hp, 0, 100) + "%";
-
-  $("battleStats").innerHTML = `
-    Command: <b>${command}</b><br>
-    Formation: <b>${formation}</b><br>
-    Friendly: <b>${friendly}</b><br>
-    Enemy: <b>${enemy}</b><br>
-    Terrain: <b>${getBattleTheme(battleBiome).name}</b><br>
-    Tip: archers stay behind infantry; cavalry slots to the flanks.
-  `;
 }
+function updateBattleTopStatus() { const c = $("commandText"); const f = $("formationText"); if (c) c.textContent = command; if (f) f.textContent = formation; }
+function cycleFormation() { const idx = formations.indexOf(formation); formation = formations[(idx + 1) % formations.length]; assignFormationSlots(); }
+function triggerTroopAttackAnimation(troop) { troop.attackAnimTimer = troop.type === "heavySpear" ? 0.42 : 0.32; troop.isAttacking = true; if (troop.type === "archer" || troop.type === "crossbow") troop.rangedRecoilTimer = 0.25; }
+function animateTroop(troop, dt) { if (!troop.mesh || troop.hp <= 0) return; troop.animTime += dt; const p = troop.mesh.userData.parts || {}; troop.mesh.position.y = Math.sin(troop.animTime * 3) * 0.025 + (troop.type === "cavalry" ? 0 : 0); if (troop.isMoving) { const stride = Math.sin(troop.animTime * 9); if (p.leftLeg) p.leftLeg.rotation.x = stride * 0.45; if (p.rightLeg) p.rightLeg.rotation.x = -stride * 0.45; if (p.leftArm) p.leftArm.rotation.x = -stride * 0.25; if (p.rightArm) p.rightArm.rotation.x = stride * 0.25; } else { if (p.leftLeg) p.leftLeg.rotation.x *= 0.85; if (p.rightLeg) p.rightLeg.rotation.x *= 0.85; if (p.leftArm) p.leftArm.rotation.x *= 0.85; if (p.rightArm) p.rightArm.rotation.x *= 0.85; } if (troop.attackAnimTimer > 0) { const total = troop.type === "heavySpear" ? 0.42 : 0.32; troop.attackAnimTimer -= dt; const swing = Math.sin((1 - troop.attackAnimTimer / total) * Math.PI); if (p.weaponGroup) { p.weaponGroup.rotation.x = -swing * 1.1; p.weaponGroup.position.z = -0.1 - swing * 0.35; } if (p.rightArm) p.rightArm.rotation.x = -0.7 - swing * 0.9; } else troop.isAttacking = false; }
 
 function showToast(msg) {
   const el = $("battleToast");
@@ -2855,9 +2880,16 @@ function onKeyDown(e) {
   if (e.code === "Space") startSpearThrust();
 
   if (e.code === "Digit1") {
-    command = "Hold Position";
-    assignFormationSlots();
-    showToast("Command: Hold Position");
+    const now = performance.now();
+    if (now - lastHoldPressTime < HOLD_DOUBLE_TAP_MS) {
+      cycleFormation();
+      showToast(`Formation: ${formation}`);
+    } else {
+      command = "Hold Position";
+      assignFormationSlots();
+      showToast("Command: Hold Position");
+    }
+    lastHoldPressTime = now;
   }
 
   if (e.code === "Digit2") {
@@ -2867,11 +2899,10 @@ function onKeyDown(e) {
   }
 
   if (e.code === "Digit3") {
-    const idx = formations.indexOf(formation);
-    formation = formations[(idx + 1) % formations.length];
-    assignFormationSlots();
+    cycleFormation();
     showToast(`Formation: ${formation}`);
   }
+  if (e.code === "Digit4") { command = "Charge"; showToast("Command: Charge!"); }
 }
 
 function onKeyUp(e) {
@@ -2958,6 +2989,8 @@ function returnToWorldAfterBattle(victory) {
 
   labels.forEach(l => l.remove());
   labels = [];
+  floatingTexts.forEach(f => f.el.remove());
+  floatingTexts = [];
 
   worldPaused = false;
 
