@@ -126,6 +126,15 @@
     background: #0c1320;
     color: white;
   }
+  .launchModeToggle { margin: 14px 0 8px; display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: 700; }
+  .splitSetup { margin-top: 14px; text-align: left; }
+  .splitPanels { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .splitPanel { padding: 10px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.14); background: rgba(9,16,28,0.65); }
+  .splitPanel h3 { margin: 0 0 8px; color: #ffd166; font-size: 16px; }
+  .splitPanel .accountRow { margin: 8px 0; }
+  .splitControlsPlaceholder { width: 100%; }
+  #startSplitScreenBtn { width: 100%; margin-top: 12px; font-size: 18px; padding: 12px; }
+  #splitScreenMessage { margin-top: 10px; min-height: 18px; }
 
   #mapCanvas {
     position: absolute;
@@ -517,20 +526,42 @@
     <h1>⚔ Kingdoms at War</h1>
     <p>Create or load a local campaign account.</p>
 
-    <div class="accountRow">
-      <input id="accountNameInput" placeholder="Account name..." />
-      <button onclick="createAccountFromMenu()" class="success">Create New Account</button>
+    <div class="launchModeToggle">
+      <label><input id="splitScreenToggle" type="checkbox" onchange="toggleSplitScreenMode()" /> Split Screen Mode</label>
     </div>
-
-    <div class="accountRow">
-      <select id="accountSelect"></select>
-      <button onclick="loadSelectedAccount()" class="blue">Load Account</button>
-      <button onclick="deleteSelectedAccount()" class="danger">Delete</button>
+    <div id="singlePlayerMenu">
+      <div class="accountRow">
+        <input id="accountNameInput" placeholder="Account name..." />
+        <button onclick="createAccountFromMenu()" class="success">Create New Account</button>
+      </div>
+      <div class="accountRow">
+        <select id="accountSelect"></select>
+        <button onclick="loadSelectedAccount()" class="blue">Load Account</button>
+        <button onclick="deleteSelectedAccount()" class="danger">Delete</button>
+      </div>
+      <button id="continueAccountBtn" onclick="continueLastAccount()" class="warn">Continue Last Account</button>
+      <div id="accountMenuMessage" class="small"></div>
     </div>
-
-    <button id="continueAccountBtn" onclick="continueLastAccount()" class="warn">Continue Last Account</button>
-
-    <div id="accountMenuMessage" class="small"></div>
+    <div id="splitSetupMenu" class="splitSetup" style="display:none;">
+      <div class="splitPanels">
+        <div class="splitPanel">
+          <h3>Player 1 Account</h3>
+          <div class="accountRow"><select id="splitAccountSelectP1"></select><button onclick="selectSplitScreenAccount('p1')" class="blue">Load Account</button></div>
+          <div class="accountRow"><input id="splitAccountNameInputP1" placeholder="New account name..." /><button onclick="createSplitScreenAccount('p1')" class="success">Create</button></div>
+          <div class="accountRow"><select id="splitInputSourceP1"><option value="">Select Input Source</option><option value="Keyboard/Mouse">Keyboard/Mouse</option><option value="Gamepad 1">Gamepad 1</option><option value="Gamepad 2">Gamepad 2</option><option value="Gamepad 3">Gamepad 3</option><option value="Gamepad 4">Gamepad 4</option></select></div>
+          <button class="splitControlsPlaceholder">Controls Mapping (Coming Soon)</button>
+        </div>
+        <div class="splitPanel">
+          <h3>Player 2 Account</h3>
+          <div class="accountRow"><select id="splitAccountSelectP2"></select><button onclick="selectSplitScreenAccount('p2')" class="blue">Load Account</button></div>
+          <div class="accountRow"><input id="splitAccountNameInputP2" placeholder="New account name..." /><button onclick="createSplitScreenAccount('p2')" class="success">Create</button></div>
+          <div class="accountRow"><select id="splitInputSourceP2"><option value="">Select Input Source</option><option value="Keyboard/Mouse">Keyboard/Mouse</option><option value="Gamepad 1">Gamepad 1</option><option value="Gamepad 2">Gamepad 2</option><option value="Gamepad 3">Gamepad 3</option><option value="Gamepad 4">Gamepad 4</option></select></div>
+          <button class="splitControlsPlaceholder">Controls Mapping (Coming Soon)</button>
+        </div>
+      </div>
+      <button id="startSplitScreenBtn" onclick="startSplitScreenFromMenu()" class="warn">Start Split Screen</button>
+      <div id="splitScreenMessage" class="small"></div>
+    </div>
   </div>
 </div>
 
@@ -3234,6 +3265,10 @@ const ACCOUNT_LIST_KEY = "kingdomsAtWarAccounts";
 const LAST_ACCOUNT_KEY = "kingdomsAtWarLastAccount";
 
 let currentAccountName = null;
+const gameMode = {
+  splitScreen: false,
+  sessions: []
+};
 
 function getAccountSaveKey(accountName = currentAccountName) {
   return `kingdomsAtWarSave_${accountName}`;
@@ -3260,6 +3295,56 @@ function saveAccountList(accounts) {
 
 function accountExists(name) {
   return getAccountList().some(a => a.toLowerCase() === name.toLowerCase());
+}
+
+function makeSplitSession(playerId, label) {
+  return { id: playerId, label, accountName: "", state: null, inputSource: "", controls: null, mode: "world", selected: null, encounterArmy: null, battleInstanceId: null, worldCamera: { x: 0, y: 0, zoom: 1 }, cursor: { x: 0, y: 0 }, keys: {}, menuOpen: false };
+}
+
+function getSplitSession(playerId) {
+  return gameMode.sessions.find(s => s.id === playerId);
+}
+
+function setSplitScreenMessage(msg) {
+  const box = $("splitScreenMessage");
+  if (box) box.textContent = msg || "";
+}
+
+function refreshSplitScreenAccountDropdowns() {
+  const accounts = getAccountList();
+  ["P1", "P2"].forEach(suffix => {
+    const select = $(`splitAccountSelect${suffix}`);
+    if (!select) return;
+    select.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = accounts.length ? "Select account" : "No accounts yet";
+    select.appendChild(placeholder);
+    accounts.forEach(name => {
+      const opt = document.createElement("option");
+      opt.value = name;
+      opt.textContent = name;
+      select.appendChild(opt);
+    });
+  });
+}
+
+function toggleSplitScreenMode() {
+  gameMode.splitScreen = !!$("splitScreenToggle")?.checked;
+  $("singlePlayerMenu").style.display = gameMode.splitScreen ? "none" : "block";
+  $("splitSetupMenu").style.display = gameMode.splitScreen ? "block" : "none";
+  setAccountMessage("");
+  setSplitScreenMessage("");
+  if (gameMode.splitScreen) refreshSplitScreenAccountDropdowns();
+}
+
+function validateSplitScreenSetup() {
+  const p1 = getSplitSession("p1");
+  const p2 = getSplitSession("p2");
+  if (!p1?.accountName || !p2?.accountName || !p1?.inputSource || !p2?.inputSource) return { valid: false, message: "Both players need an assigned account and input source." };
+  if (p1.accountName.toLowerCase() === p2.accountName.toLowerCase()) return { valid: false, message: "Player 2 must use a different account than Player 1." };
+  if (p1.inputSource === p2.inputSource) return { valid: false, message: "Player 2 must use a different input than Player 1." };
+  return { valid: true, message: "Split-screen setup ready." };
 }
 
 function refreshAccountMenu() {
@@ -3293,6 +3378,7 @@ function refreshAccountMenu() {
       ? `Continue ${last}`
       : "Continue Last Account";
   }
+  refreshSplitScreenAccountDropdowns();
 }
 
 function setAccountMessage(msg) {
@@ -3399,12 +3485,65 @@ function deleteSelectedAccount() {
   setAccountMessage(`Deleted ${name}.`);
 }
 
+function createSplitScreenAccount(playerId) {
+  const suffix = playerId === "p1" ? "P1" : "P2";
+  const input = $(`splitAccountNameInput${suffix}`);
+  const name = normalizeAccountName(input?.value);
+  if (!name) return setSplitScreenMessage("Both players need an assigned account and input source.");
+  if (accountExists(name)) return setSplitScreenMessage("That account already exists. Choose another name or load it.");
+  const accounts = getAccountList();
+  accounts.push(name);
+  saveAccountList(accounts);
+  const previous = currentAccountName;
+  currentAccountName = name;
+  newGame(true);
+  saveGame();
+  currentAccountName = previous;
+  input.value = "";
+  refreshAccountMenu();
+  setSplitScreenMessage(`${playerId.toUpperCase()} created account ${name}.`);
+}
+
+function selectSplitScreenAccount(playerId) {
+  const suffix = playerId === "p1" ? "P1" : "P2";
+  const select = $(`splitAccountSelect${suffix}`);
+  const name = normalizeAccountName(select?.value);
+  if (!name || !accountExists(name)) return setSplitScreenMessage("Both players need an assigned account and input source.");
+  const session = getSplitSession(playerId);
+  if (!session) return;
+  session.accountName = name;
+  session.inputSource = $(`splitInputSource${suffix}`)?.value || "";
+  setSplitScreenMessage(`${session.label} selected ${name}.`);
+}
+
+function startSplitScreenFromMenu() {
+  gameMode.sessions = [makeSplitSession("p1", "Player 1"), makeSplitSession("p2", "Player 2")];
+  ["p1", "p2"].forEach(id => {
+    const suffix = id === "p1" ? "P1" : "P2";
+    const session = getSplitSession(id);
+    session.accountName = normalizeAccountName($(`splitAccountSelect${suffix}`)?.value);
+    session.inputSource = $(`splitInputSource${suffix}`)?.value || "";
+    if (session.accountName && accountExists(session.accountName)) {
+      const raw = localStorage.getItem(getAccountSaveKey(session.accountName));
+      if (raw) {
+        try { session.state = JSON.parse(raw); } catch (err) { console.error("[SplitScreen] load parse failed:", err); }
+      }
+    }
+  });
+  const validation = validateSplitScreenSetup();
+  if (!validation.valid) return setSplitScreenMessage(validation.message);
+  setSplitScreenMessage("Split-screen sessions prepared. World rendering arrives in Request 2.");
+  console.log("[SplitScreen] sessions prepared:", gameMode.sessions);
+}
+
 function showLaunchScreen() {
   controllerMenuOpen = false;
   $("launchScreen")?.classList.add("active");
   $("worldScreen")?.classList.remove("active");
   $("battleScreen")?.classList.remove("active");
+  if (!gameMode.sessions.length) gameMode.sessions = [makeSplitSession("p1", "Player 1"), makeSplitSession("p2", "Player 2")];
   refreshAccountMenu();
+  toggleSplitScreenMode();
 }
 
 function showWorldScreen() {
