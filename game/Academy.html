@@ -460,6 +460,7 @@
     <div class="stat">Castles: <b id="castleText">0</b></div>
     <button onclick="saveGame()">Save</button>
     <button onclick="loadGame()">Load</button>
+    <button onclick="openDiplomacyPanel()" class="blue">Diplomacy</button>
     <button onclick="newGame()" class="danger">New</button>
   </div>
 
@@ -780,21 +781,51 @@ function makeWorld() {
       name: "Kingdom of Veyr",
       color: "#3b82f6",
       relation: 0,
-      status: "Peace"
+      status: "Peace",
+      personality: "honorable",
+      strength: 1,
+      trust: 0,
+      fear: 0,
+      tributeDemand: 0,
+      lastWarDay: null,
+      lastPeaceDay: null,
+      alliance: false,
+      trade: false,
+      grievances: []
     },
     {
       id: "iron",
       name: "Iron Marches",
       color: "#ef4444",
       relation: 0,
-      status: "Peace"
+      status: "Peace",
+      personality: "aggressive",
+      strength: 1,
+      trust: 0,
+      fear: 0,
+      tributeDemand: 0,
+      lastWarDay: null,
+      lastPeaceDay: null,
+      alliance: false,
+      trade: false,
+      grievances: []
     },
     {
       id: "sun",
       name: "Sun Coast League",
       color: "#f59e0b",
       relation: 0,
-      status: "Peace"
+      status: "Peace",
+      personality: "mercantile",
+      strength: 1,
+      trust: 0,
+      fear: 0,
+      tributeDemand: 0,
+      lastWarDay: null,
+      lastPeaceDay: null,
+      alliance: false,
+      trade: false,
+      grievances: []
     },
     {
       id: "bandit",
@@ -802,7 +833,8 @@ function makeWorld() {
       color: "#7c2d12",
       relation: -100,
       status: "War",
-      bandit: true
+      bandit: true,
+      grievances: ["Bandits cannot be negotiated with."]
     }
   ];
 
@@ -954,6 +986,49 @@ function addTroops(army, type, n) {
   if (army[type] <= 0) delete army[type];
 }
 
+function armyPower(army) {
+  let total = 0;
+
+  for (const [type, count] of Object.entries(army || {})) {
+    const def = troopDefs[type];
+    if (!def) continue;
+
+    total += count * (
+      def.hp / 20 +
+      def.damage * 1.3 +
+      def.armor * 0.8 +
+      def.speed * 2
+    );
+  }
+
+  return Math.round(total);
+}
+
+function getPlayerRealmStrength() {
+  const troopStrength = armyPower(state.player.army);
+  const castleStrength = state.player.castles.length * 120;
+  const goldStrength = Math.floor(state.gold / 10);
+  return troopStrength + castleStrength + goldStrength;
+}
+
+function getFactionStrength(factionId) {
+  const factionArmies = state.armies.filter(a => a.faction === factionId);
+  const armyStrength = factionArmies.reduce((sum, a) => sum + armyPower(a.army), 0);
+  const settlementStrength = state.settlements.filter(s => s.faction === factionId).length * 80;
+  return armyStrength + settlementStrength;
+}
+
+function relationLabel(value) {
+  if (value >= 75) return "Devoted Ally";
+  if (value >= 50) return "Ally";
+  if (value >= 25) return "Friendly";
+  if (value >= 10) return "Cordial";
+  if (value > -10) return "Neutral";
+  if (value > -30) return "Wary";
+  if (value > -50) return "Hostile";
+  return "At War";
+}
+
 function relationStatus(f) {
   if (f.relation >= 50) return "Ally";
   if (f.relation >= 10) return "Friendly";
@@ -964,8 +1039,82 @@ function relationStatus(f) {
 
 function updateFactionStatuses() {
   state.factions.forEach(f => {
+    if (f.bandit) {
+      f.status = "War";
+      return;
+    }
+    if (f.alliance && f.status !== "War") {
+      f.status = "Ally";
+      return;
+    }
     f.status = relationStatus(f);
   });
+}
+
+function openDiplomacyPanel() {
+  updateFactionStatuses();
+
+  const rows = state.factions.map(f => renderDiplomacyFactionCard(f)).join("");
+
+  openModal(`
+    <h2>Faction Diplomacy</h2>
+    <p class="small">
+      Manage wars, alliances, tribute, and reputation. Bandits cannot be negotiated with.
+    </p>
+    <div class="grid">
+      ${rows}
+    </div>
+    <div class="row">
+      <button onclick="closeModal()">Close</button>
+    </div>
+  `);
+}
+
+function renderDiplomacyFactionCard(f) {
+  const playerStrength = getPlayerRealmStrength();
+  const factionStrength = getFactionStrength(f.id);
+  const balance = playerStrength - factionStrength;
+  const grievances = (f.grievances || []).slice(-4).map(g => `<li>${g}</li>`).join("");
+
+  if (f.bandit) {
+    return `
+      <div class="card">
+        <h3 style="color:${f.color}">${f.name}</h3>
+        <div class="small">
+          <b>Status:</b> War<br>
+          <b>Relation:</b> -100<br>
+          <b>Note:</b> Bandits cannot be negotiated with.
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="card">
+      <h3 style="color:${f.color}">${f.name}</h3>
+      <div class="small">
+        <b>Status:</b> ${f.status}<br>
+        <b>Relation:</b> ${f.relation} (${relationLabel(f.relation)})<br>
+        <b>Personality:</b> ${f.personality || "balanced"}<br>
+        <b>Your Strength:</b> ${playerStrength}<br>
+        <b>Their Strength:</b> ${factionStrength}<br>
+        <b>Balance:</b> ${balance >= 0 ? "+" : ""}${balance}<br>
+        <b>Alliance:</b> ${f.alliance ? "Yes" : "No"}<br>
+        <b>Trade:</b> ${f.trade ? "Yes" : "No"}
+      </div>
+      <div class="small" style="margin-top:8px;">
+        <b>Recent Grievances / History:</b>
+        <ul>${grievances || "<li>No major history yet.</li>"}</ul>
+      </div>
+      <div class="row">
+        <button class="danger" onclick="declareWar('${f.id}')">Declare War</button>
+        <button onclick="requestPeace('${f.id}')">Request Peace</button>
+        <button class="warn" onclick="offerTribute('${f.id}')">Offer Tribute</button>
+        <button class="success" onclick="requestAlliance('${f.id}')">Request Alliance</button>
+        <button class="blue" onclick="requestTrade('${f.id}')">Trade Pact</button>
+      </div>
+    </div>
+  `;
 }
 
 function log(msg) {
@@ -984,6 +1133,12 @@ function labelBiome(b) {
     water: "Lakeside"
   }[b] || b;
 }
+
+function declareWar(factionId) { const f = faction(factionId); if (!f || f.bandit) return; f.relation = Math.min(f.relation, -60); f.status = "War"; f.alliance = false; f.trade = false; f.lastWarDay = state.day; f.grievances = f.grievances || []; f.grievances.push(`You declared war on Day ${state.day}.`); log(`You declared war on ${f.name}.`); openDiplomacyPanel(); }
+function requestPeace(factionId) { const f = faction(factionId); if (!f || f.bandit) return; const playerStrength = getPlayerRealmStrength(); const enemyStrength = getFactionStrength(factionId); const strengthAdvantage = playerStrength - enemyStrength; let chance = 20; chance += Math.floor(f.relation / 3); chance += strengthAdvantage > 0 ? 25 : -15; chance += state.gold > 300 ? 10 : 0; if (f.personality === "aggressive") chance -= 10; if (f.personality === "honorable" && f.relation > -40) chance += 10; if (f.personality === "mercantile" && state.gold > 500) chance += 10; chance = clamp(chance, 5, 85); f.grievances = f.grievances || []; if (Math.random() * 100 < chance) { f.status = "Peace"; f.relation = Math.max(f.relation, -5); f.lastPeaceDay = state.day; f.grievances.push(`Peace accepted on Day ${state.day}.`); log(`${f.name} accepted peace.`); } else { const demand = Math.max(100, Math.floor(enemyStrength / 4)); f.tributeDemand = demand; f.grievances.push(`Rejected peace on Day ${state.day}; demanded ${demand} gold.`); log(`${f.name} rejected peace and demands ${demand} gold.`); } openDiplomacyPanel(); }
+function offerTribute(factionId) { const f = faction(factionId); if (!f || f.bandit) return; const amount = f.tributeDemand || 150; if (state.gold < amount) { log(`You need ${amount} gold to satisfy ${f.name}'s tribute demand.`); return; } state.gold -= amount; f.relation = clamp(f.relation + Math.ceil(amount / 20), -100, 100); f.tributeDemand = 0; f.grievances = f.grievances || []; f.grievances.push(`You paid ${amount} gold tribute on Day ${state.day}.`); if (f.status === "War" && f.relation > -20) { f.status = "Peace"; f.lastPeaceDay = state.day; log(`${f.name} accepted tribute and agreed to peace.`); } else { log(`${f.name} accepted ${amount} gold tribute.`); } renderUI(); openDiplomacyPanel(); }
+function requestAlliance(factionId) { const f = faction(factionId); if (!f || f.bandit) return; const playerStrength = getPlayerRealmStrength(); let requiredRelation = 55; if (f.personality === "honorable") requiredRelation = 45; if (f.personality === "aggressive") requiredRelation = 65; if (f.status === "War") { log(`${f.name} will not discuss alliance while at war.`); return; } f.grievances = f.grievances || []; if (f.relation >= requiredRelation && playerStrength >= getFactionStrength(factionId) * 0.65) { f.alliance = true; f.status = "Ally"; f.relation = Math.max(f.relation, 60); f.grievances.push(`Alliance formed on Day ${state.day}.`); log(`${f.name} accepted your alliance.`); } else { f.relation -= 2; log(`${f.name} refused alliance. Improve relations or strength first.`); } openDiplomacyPanel(); }
+function requestTrade(factionId) { const f = faction(factionId); if (!f || f.bandit) return; if (f.status === "War") { log(`${f.name} will not trade during war.`); return; } f.grievances = f.grievances || []; if (f.relation >= 10 || f.personality === "mercantile") { f.trade = true; f.relation = clamp(f.relation + 4, -100, 100); f.grievances.push(`Trade pact signed on Day ${state.day}.`); log(`Trade pact established with ${f.name}. You will gain occasional gold.`); } else { log(`${f.name} does not trust you enough for trade.`); } openDiplomacyPanel(); }
 
 /* =========================================================
    INIT
@@ -1178,6 +1333,7 @@ function nextDay() {
   }
 
   regenerateRecruits();
+  dailyDiplomacyUpdate();
   dailyWarCheck();
   spawnBanditsIfDue();
 }
@@ -1191,21 +1347,52 @@ function regenerateRecruits() {
   }
 }
 
+function dailyDiplomacyUpdate() {
+  for (const f of state.factions) {
+    if (f.bandit) continue;
+
+    if (f.trade && f.status !== "War") {
+      if (Math.random() < 0.45) {
+        const income = 15 + Math.floor(Math.random() * 25);
+        state.gold += income;
+        log(`Trade with ${f.name} earned ${income} gold.`);
+      }
+    }
+
+    if (f.alliance && f.status !== "War") f.relation = clamp(f.relation + 1, -100, 100);
+    if (f.status === "War") f.relation = clamp(f.relation - 1, -100, 100);
+  }
+}
+
 function dailyWarCheck() {
   updateFactionStatuses();
 
   if (state.player.castles.length >= 3) {
     for (const f of state.factions) {
-      if (f.bandit) continue;
+      if (f.bandit || f.status === "War") continue;
 
-      if (f.status === "Peace" || f.status === "Friendly") {
-        const chance = 0.02 + state.player.castles.length * 0.005;
+      let chance = 0.02 + state.player.castles.length * 0.005;
+      if (f.alliance) chance *= 0.05;
+      if (f.trade) chance *= 0.35;
+      if (f.personality === "aggressive") chance *= 1.75;
+      if (f.personality === "honorable" && f.relation >= 0) chance *= 0.35;
+      if (f.relation < -20) chance *= 2;
 
-        if (Math.random() < chance) {
-          f.relation = -55;
-          f.status = "War";
-          log(`${f.name} declares war on your rising realm.`);
-        }
+      const playerStrength = getPlayerRealmStrength();
+      const factionStrength = getFactionStrength(f.id);
+      if (playerStrength > factionStrength * 1.5) {
+        chance *= f.relation < -10 ? 1.35 : 0.75;
+      }
+
+      if (Math.random() < chance) {
+        f.relation = Math.min(f.relation, -55);
+        f.status = "War";
+        f.alliance = false;
+        f.trade = false;
+        f.lastWarDay = state.day;
+        f.grievances = f.grievances || [];
+        f.grievances.push(`Declared war on Day ${state.day} due to rising tensions.`);
+        log(`${f.name} declares war on your rising realm.`);
       }
     }
   }
