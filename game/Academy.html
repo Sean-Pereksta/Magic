@@ -763,19 +763,39 @@ const troopUpgradePaths = {
   ]
 };
 
-const itemDefs = {
-  rustySword: { id: "rustySword", name: "Rusty Sword", type: "weapon", value: 20, damageBonus: 1, rarity: "common" },
-  ironSword: { id: "ironSword", name: "Iron Sword", type: "weapon", value: 85, damageBonus: 4, rarity: "uncommon" },
-  mailArmor: { id: "mailArmor", name: "Mail Armor", type: "armor", value: 140, armorBonus: 4, hpBonus: 10, rarity: "uncommon" },
-  warHorse: { id: "warHorse", name: "War Horse", type: "horse", value: 250, speedBonus: 1.5, cavalryBonus: 0.15, rarity: "rare" },
-  nobleBanner: { id: "nobleBanner", name: "Noble Banner", type: "banner", value: 300, moraleBonus: 8, renownBonus: 0.1, rarity: "rare" }
-};
+const rarityColors = { common: "#ddd", uncommon: "#9ee493", rare: "#8ec5ff", epic: "#d8a7ff", legendary: "#ffd166" };
+const rarityOrder = { common: 1, uncommon: 2, rare: 3, epic: 4, legendary: 5 };
 
-const lootTables = {
-  bandits: [{ item: "rustySword", chance: 0.25 }, { item: "ironSword", chance: 0.06 }, { goldMin: 15, goldMax: 80, chance: 1 }],
-  factionArmy: [{ item: "ironSword", chance: 0.14 }, { item: "mailArmor", chance: 0.08 }, { item: "warHorse", chance: 0.03 }, { goldMin: 80, goldMax: 260, chance: 1 }],
-  castleGarrison: [{ item: "mailArmor", chance: 0.15 }, { item: "warHorse", chance: 0.05 }, { item: "nobleBanner", chance: 0.03 }, { goldMin: 200, goldMax: 700, chance: 1 }]
-};
+const itemDefs = {
+  rustySword:{id:"rustySword",name:"Rusty Sword",type:"weapon",value:20,rarity:"common",damageBonus:1,visual:{weaponShape:"sword",weaponColor:0x8a6f45,weaponLength:0.82,weaponWidth:0.07,hiltColor:0x4b2c16}},
+  ironSword:{id:"ironSword",name:"Iron Sword",type:"weapon",value:90,rarity:"uncommon",damageBonus:4,visual:{weaponShape:"sword",weaponColor:0xcfd3d6,weaponLength:0.95,weaponWidth:0.08,hiltColor:0x5b3518}},
+  knightLongsword:{id:"knightLongsword",name:"Knight Longsword",type:"weapon",value:220,rarity:"rare",damageBonus:8,moraleBonus:2,visual:{weaponShape:"longsword",weaponColor:0xe6edf2,weaponLength:1.2,weaponWidth:0.09,hiltColor:0xb88a33}},
+  nobleGreatsword:{id:"nobleGreatsword",name:"Noble Greatsword",type:"weapon",value:420,rarity:"epic",damageBonus:13,armorPierce:3,visual:{weaponShape:"greatsword",weaponColor:0xf2f7ff,weaponLength:1.55,weaponWidth:0.12,hiltColor:0xffd166}},
+  huntingBow:{id:"huntingBow",name:"Hunting Bow",type:"weapon",value:70,rarity:"common",archerDamageBonus:2,archerAccuracyBonus:0.03,visual:{weaponShape:"bow",weaponColor:0x7a4a21,weaponLength:1.1,hiltColor:0x3b2412}},
+  warBow:{id:"warBow",name:"War Bow",type:"weapon",value:210,rarity:"rare",archerDamageBonus:6,archerAccuracyBonus:0.08,visual:{weaponShape:"bow",weaponColor:0x4f2f15,weaponLength:1.35,hiltColor:0xd6b36a}},
+  boarSpear:{id:"boarSpear",name:"Boar Spear",type:"weapon",value:85,rarity:"common",spearmanDamageBonus:3,antiCavalryBonus:0.2,visual:{weaponShape:"spear",weaponColor:0x6b4423,weaponLength:1.55,weaponWidth:0.05,hiltColor:0xc0c0c0}},
+  pikeOfTheMarches:{id:"pikeOfTheMarches",name:"Pike of the Marches",type:"weapon",value:260,rarity:"rare",spearmanDamageBonus:7,antiCavalryBonus:0.45,visual:{weaponShape:"pike",weaponColor:0x5b3518,weaponLength:2.1,weaponWidth:0.055,hiltColor:0xe6edf2}},
+  cavalryLance:{id:"cavalryLance",name:"Cavalry Lance",type:"weapon",value:230,rarity:"rare",cavalryDamageBonus:6,chargeBonus:0.35,visual:{weaponShape:"lance",weaponColor:0x6b4423,weaponLength:1.9,weaponWidth:0.055,hiltColor:0xf2f7ff}},
+  paddedGambeson:{id:"paddedGambeson",name:"Padded Gambeson",type:"armor",value:60,rarity:"common",armorBonus:2,hpBonus:6,visual:{armorColor:0x6b5f45,armorTrimColor:0x2f2618,armorBulk:0.05,chestPlate:false,shoulderPads:false}},
+  leatherArmor:{id:"leatherArmor",name:"Leather Armor",type:"armor",value:100,rarity:"common",armorBonus:3,hpBonus:8,speedBonus:0.1,visual:{armorColor:0x5b3518,armorTrimColor:0x241208,armorBulk:0.08,chestPlate:false,shoulderPads:true}},
+  mailHauberk:{id:"mailHauberk",name:"Mail Hauberk",type:"armor",value:230,rarity:"uncommon",armorBonus:6,hpBonus:14,speedBonus:-0.05,visual:{armorColor:0xaeb6bd,armorTrimColor:0x555f66,armorBulk:0.12,chestPlate:true,shoulderPads:true}},
+  brigandineCoat:{id:"brigandineCoat",name:"Brigandine Coat",type:"armor",value:370,rarity:"rare",armorBonus:9,hpBonus:20,speedBonus:-0.08,visual:{armorColor:0x7b1e1e,armorTrimColor:0xd1b46c,armorBulk:0.16,chestPlate:true,shoulderPads:true}},
+  lordPlateArmor:{id:"lordPlateArmor",name:"Lord's Plate Armor",type:"armor",value:720,rarity:"epic",armorBonus:15,hpBonus:32,speedBonus:-0.15,moraleBonus:5,visual:{armorColor:0xd9e1e8,armorTrimColor:0xffd166,armorBulk:0.24,chestPlate:true,shoulderPads:true,capeColor:0x123d2f}},
+  leatherCap:{id:"leatherCap",name:"Leather Cap",type:"helmet",value:35,rarity:"common",armorBonus:1,visual:{helmetShape:"cap",helmetColor:0x4b2c16}},
+  nasalHelmet:{id:"nasalHelmet",name:"Nasal Helmet",type:"helmet",value:120,rarity:"uncommon",armorBonus:3,hpBonus:4,visual:{helmetShape:"nasal",helmetColor:0xbfc7ce}},
+  crestedHelmet:{id:"crestedHelmet",name:"Crested Helmet",type:"helmet",value:260,rarity:"rare",armorBonus:5,moraleBonus:2,visual:{helmetShape:"crested",helmetColor:0xd9e1e8,helmetCrestColor:0xffd166}},
+  crownedWarHelm:{id:"crownedWarHelm",name:"Crowned War Helm",type:"helmet",value:560,rarity:"epic",armorBonus:8,moraleBonus:6,visual:{helmetShape:"crowned",helmetColor:0xe6edf2,helmetCrestColor:0xfff1a8}},
+  crackedRoundShield:{id:"crackedRoundShield",name:"Cracked Round Shield",type:"shield",value:45,rarity:"common",shieldBlockBonus:0.08,shieldReductionBonus:0.1,visual:{shieldShape:"round",shieldColor:0x6b4423,shieldTrimColor:0x2a1a0d,shieldSize:0.75,shieldEmblem:"none"}},
+  kiteShield:{id:"kiteShield",name:"Kite Shield",type:"shield",value:150,rarity:"uncommon",shieldBlockBonus:0.15,shieldReductionBonus:0.18,visual:{shieldShape:"kite",shieldColor:0x123d2f,shieldTrimColor:0xd6b36a,shieldSize:0.95,shieldEmblem:"stripe"}},
+  towerShield:{id:"towerShield",name:"Tower Shield",type:"shield",value:310,rarity:"rare",shieldBlockBonus:0.24,shieldReductionBonus:0.28,moveSpeedPenalty:-0.15,visual:{shieldShape:"tower",shieldColor:0x2f3d46,shieldTrimColor:0xbfc7ce,shieldSize:1.15,shieldEmblem:"cross"}},
+  royalGuardShield:{id:"royalGuardShield",name:"Royal Guard Shield",type:"shield",value:620,rarity:"epic",shieldBlockBonus:0.32,shieldReductionBonus:0.35,moraleBonus:4,visual:{shieldShape:"kite",shieldColor:0x5c1a1a,shieldTrimColor:0xffd166,shieldSize:1.05,shieldEmblem:"crown"}},
+  packHorse:{id:"packHorse",name:"Pack Horse",type:"horse",value:110,rarity:"common",foodStorageBonus:20,visual:{horseColor:0x6b4423,horseSaddleColor:0x3b2412}},courser:{id:"courser",name:"Courser",type:"horse",value:260,rarity:"uncommon",cavalrySpeedBonus:0.35,campaignSpeedBonus:0.15,visual:{horseColor:0x8a6a45,horseSaddleColor:0x241208}},warHorse:{id:"warHorse",name:"War Horse",type:"horse",value:480,rarity:"rare",cavalrySpeedBonus:0.55,cavalryChargeBonus:0.25,visual:{horseColor:0x2b1d14,horseArmorColor:0xaeb6bd,horseSaddleColor:0x7b1e1e}},bardedCharger:{id:"bardedCharger",name:"Barded Charger",type:"horse",value:900,rarity:"epic",cavalrySpeedBonus:0.4,cavalryChargeBonus:0.55,cavalryArmorBonus:5,moraleBonus:4,visual:{horseColor:0x1f1f1f,horseArmorColor:0xd9e1e8,horseSaddleColor:0xffd166}},
+  villageBanner:{id:"villageBanner",name:"Village Banner",type:"banner",value:80,rarity:"common",moraleBonus:2,visual:{bannerColor:0x6b8e23,bannerTrimColor:0xe6d6a8,bannerSymbol:"wheat"}},wolfBanner:{id:"wolfBanner",name:"Wolf Banner",type:"banner",value:240,rarity:"rare",moraleBonus:5,infantryDamageBonus:2,visual:{bannerColor:0x2f3d46,bannerTrimColor:0xcfd3d6,bannerSymbol:"wolf"}},sunBanner:{id:"sunBanner",name:"Sun Banner",type:"banner",value:360,rarity:"rare",moraleBonus:7,archerAccuracyBonus:0.04,visual:{bannerColor:0xffd166,bannerTrimColor:0x5c1a1a,bannerSymbol:"sun"}},kingsStandard:{id:"kingsStandard",name:"King's Standard",type:"banner",value:850,rarity:"epic",moraleBonus:12,renownBonus:0.15,infantryDamageBonus:2,cavalryChargeBonus:0.15,visual:{bannerColor:0x123d2f,bannerTrimColor:0xfff1a8,bannerSymbol:"crown"}},
+  luckyCharm:{id:"luckyCharm",name:"Lucky Charm",type:"trinket",value:90,rarity:"common",lootBonus:0.05},commandersRing:{id:"commandersRing",name:"Commander's Ring",type:"trinket",value:320,rarity:"rare",moraleBonus:4,wageReduction:0.05},oldBattleMap:{id:"oldBattleMap",name:"Old Battle Map",type:"trinket",value:260,rarity:"rare",tacticsBonus:0.08,reinforcementSpeedBonus:0.08},relicOfVictory:{id:"relicOfVictory",name:"Relic of Victory",type:"trinket",value:950,rarity:"legendary",moraleBonus:15,lootBonus:0.15,renownBonus:0.25},
+  grainSack:{id:"grainSack",name:"Grain Sack",type:"supply",value:20,rarity:"common",foodAmount:10},medicalKit:{id:"medicalKit",name:"Field Medical Kit",type:"supply",value:110,rarity:"uncommon",woundedRecoveryBonus:0.12},blacksmithTools:{id:"blacksmithTools",name:"Blacksmith Tools",type:"supply",value:180,rarity:"rare",upgradeDiscount:0.08}
+}
+;
+const lootTables = { bandits:[{item:"rustySword",chance:0.25},{item:"huntingBow",chance:0.12},{item:"boarSpear",chance:0.10},{item:"crackedRoundShield",chance:0.14},{item:"leatherCap",chance:0.18},{item:"paddedGambeson",chance:0.12},{item:"luckyCharm",chance:0.03},{item:"grainSack",chance:0.25},{goldMin:15,goldMax:90,chance:1}], villageMilitia:[{item:"rustySword",chance:0.16},{item:"boarSpear",chance:0.16},{item:"huntingBow",chance:0.08},{item:"crackedRoundShield",chance:0.12},{item:"paddedGambeson",chance:0.14},{item:"villageBanner",chance:0.03},{goldMin:25,goldMax:120,chance:1}], factionArmy:[{item:"ironSword",chance:0.14},{item:"knightLongsword",chance:0.06},{item:"warBow",chance:0.06},{item:"pikeOfTheMarches",chance:0.05},{item:"cavalryLance",chance:0.05},{item:"mailHauberk",chance:0.10},{item:"brigandineCoat",chance:0.04},{item:"nasalHelmet",chance:0.08},{item:"crestedHelmet",chance:0.03},{item:"kiteShield",chance:0.08},{item:"towerShield",chance:0.04},{item:"courser",chance:0.03},{item:"warHorse",chance:0.015},{item:"wolfBanner",chance:0.02},{item:"sunBanner",chance:0.015},{item:"commandersRing",chance:0.01},{goldMin:90,goldMax:320,chance:1}], castleGarrison:[{item:"knightLongsword",chance:0.09},{item:"nobleGreatsword",chance:0.025},{item:"warBow",chance:0.08},{item:"pikeOfTheMarches",chance:0.07},{item:"cavalryLance",chance:0.07},{item:"mailHauberk",chance:0.14},{item:"brigandineCoat",chance:0.08},{item:"lordPlateArmor",chance:0.018},{item:"crestedHelmet",chance:0.06},{item:"crownedWarHelm",chance:0.015},{item:"towerShield",chance:0.07},{item:"royalGuardShield",chance:0.018},{item:"warHorse",chance:0.04},{item:"bardedCharger",chance:0.012},{item:"kingsStandard",chance:0.015},{item:"oldBattleMap",chance:0.025},{item:"blacksmithTools",chance:0.035},{item:"relicOfVictory",chance:0.005},{goldMin:220,goldMax:850,chance:1}]};
 
 /* =========================================================
    WORLD STATE
@@ -813,7 +833,7 @@ const state = {
       heavySpear: 0
     },
     inventory: [],
-    equipment: { weapon: null, armor: null, horse: null, banner: null }
+    equipment: { weapon:null, armor:null, helmet:null, shield:null, horse:null, banner:null, trinket:null }
   },
   factions: [],
   settlements: [],
@@ -1137,25 +1157,19 @@ function ensurePlayerXp() {
 
 function ensureInventory() {
   if (!state.player.inventory) state.player.inventory = [];
-  if (!state.player.equipment) state.player.equipment = { weapon: null, armor: null, horse: null, banner: null };
+  if (!state.player.equipment) state.player.equipment = { weapon:null, armor:null, helmet:null, shield:null, horse:null, banner:null, trinket:null };
+  const requiredSlots=["weapon","armor","helmet","shield","horse","banner","trinket"];
+  for (const slot of requiredSlots) if (!(slot in state.player.equipment)) state.player.equipment[slot]=null;
 }
 
 function getArmyEquipmentBonuses() {
   ensureInventory();
-  const bonuses = { damageBonus: 0, armorBonus: 0, hpBonus: 0, speedBonus: 0, moraleBonus: 0, cavalryBonus: 0 };
-  for (const equipped of Object.values(state.player.equipment)) {
-    if (!equipped) continue;
-    const def = itemDefs[equipped.id];
-    if (!def) continue;
-    bonuses.damageBonus += def.damageBonus || 0;
-    bonuses.armorBonus += def.armorBonus || 0;
-    bonuses.hpBonus += def.hpBonus || 0;
-    bonuses.speedBonus += def.speedBonus || 0;
-    bonuses.moraleBonus += def.moraleBonus || 0;
-    bonuses.cavalryBonus += def.cavalryBonus || 0;
-  }
+  const bonuses = {damageBonus:0,armorBonus:0,hpBonus:0,speedBonus:0,moraleBonus:0,archerDamageBonus:0,archerAccuracyBonus:0,spearmanDamageBonus:0,antiCavalryBonus:0,cavalryDamageBonus:0,cavalrySpeedBonus:0,cavalryChargeBonus:0,cavalryArmorBonus:0,infantryDamageBonus:0,shieldBlockBonus:0,shieldReductionBonus:0,campaignSpeedBonus:0,foodStorageBonus:0,lootBonus:0,renownBonus:0,wageReduction:0,tacticsBonus:0,reinforcementSpeedBonus:0,visuals:{weapon:null,armor:null,helmet:null,shield:null,horse:null,banner:null}};
+  for (const equipped of Object.values(state.player.equipment||{})) { if (!equipped) continue; const def=itemDefs[equipped.id]; if (!def) continue; for (const k of Object.keys(bonuses)) if (typeof bonuses[k]==="number" && typeof def[k]==="number") bonuses[k]+=def[k]; if (def.visual && bonuses.visuals[def.type]!==undefined) bonuses.visuals[def.type]=def.visual; }
   return bonuses;
 }
+function getItemStatText(def){const parts=[];["damageBonus","armorBonus","hpBonus","moraleBonus"].forEach(k=>def[k]&&parts.push(`${k.replace("Bonus","").replace(/([A-Z])/g," $1").replace(/^./,c=>c.toUpperCase())} +${k.includes("Accuracy")||k.includes("Reduction")||k.includes("Block")||k.includes("Bonus")&&def[k]<1?Math.round(def[k]*100)+"%":def[k]}`)); if(def.lootBonus)parts.push(`Loot +${Math.round(def.lootBonus*100)}%`); if(def.wageReduction)parts.push(`Wages -${Math.round(def.wageReduction*100)}%`); return parts.join(", ")||"No direct stat bonus."; }
+function useSupplyItem(uid){ensureInventory(); const i=state.player.inventory.findIndex(x=>x.uid===uid); if(i<0)return; const item=state.player.inventory[i],def=itemDefs[item.id]; if(!def||def.type!=="supply")return; if(def.foodAmount){state.player.food=(state.player.food||0)+def.foodAmount;log(`Used ${def.name}. Gained ${def.foodAmount} food.`);}else{log(`${def.name} cannot be used directly yet.`);return;} state.player.inventory.splice(i,1); renderUI(); openInventoryPanel(); }
 
 function generateBattleLoot(enemyType, victory = true) {
   ensureInventory();
@@ -1175,9 +1189,12 @@ function generateBattleLoot(enemyType, victory = true) {
 }
 
 function generateShopInventory(locationType) {
-  if (locationType === "village") return ["rustySword", "ironSword"];
-  if (locationType === "castle") return ["ironSword", "mailArmor", "warHorse", "nobleBanner"];
-  return ["rustySword"];
+  const village=["grainSack","rustySword","huntingBow","boarSpear","crackedRoundShield","leatherCap","paddedGambeson","packHorse"];
+  const castle=["ironSword","knightLongsword","warBow","pikeOfTheMarches","cavalryLance","mailHauberk","brigandineCoat","nasalHelmet","crestedHelmet","kiteShield","towerShield","courser","warHorse","wolfBanner","sunBanner","commandersRing","oldBattleMap","blacksmithTools"];
+  const rare=["nobleGreatsword","lordPlateArmor","crownedWarHelm","royalGuardShield","bardedCharger","kingsStandard","relicOfVictory"];
+  const pool=(locationType==="castle"?castle:village).filter(()=>Math.random()>0.35);
+  if (locationType==="castle" && Math.random()<0.45) pool.push(rare[Math.floor(Math.random()*rare.length)]);
+  return [...new Set(pool)].slice(0,12);
 }
 
 const veteranTiers = [
@@ -2362,17 +2379,9 @@ function openInventoryPanel() {
   ensureInventory();
   const eq = state.player.equipment;
   const eqName = item => item ? (itemDefs[item.id]?.name || item.id) : "None";
-  const rows = state.player.inventory.map(item => {
-    const def = itemDefs[item.id];
-    if (!def) return "";
-    return `<tr><td>${def.name}</td><td>${def.type}</td><td>${def.value}</td><td><button onclick="equipItem('${item.uid}')">Equip</button> <button class="danger" onclick="sellItem('${item.uid}')">Sell</button></td></tr>`;
-  }).join("");
-  openModal(`
-    <h2>Inventory</h2>
-    <p><b>Equipped</b><br>Weapon: ${eqName(eq.weapon)}<br>Armor: ${eqName(eq.armor)}<br>Horse: ${eqName(eq.horse)}<br>Banner: ${eqName(eq.banner)}</p>
-    <table class="table"><tr><th>Item</th><th>Type</th><th>Value</th><th>Actions</th></tr>${rows || `<tr><td colspan="4">No items</td></tr>`}</table>
-    <button onclick="closeModal()">Close</button>
-  `);
+  const inv=[...state.player.inventory].sort((a,b)=>{const da=itemDefs[a.id],db=itemDefs[b.id]; const ae=Object.values(eq).some(x=>x?.uid===a.uid),be=Object.values(eq).some(x=>x?.uid===b.uid); if(ae!==be) return be-ae; const rr=(rarityOrder[db?.rarity||"common"]||1)-(rarityOrder[da?.rarity||"common"]||1); if(rr) return rr; const tr=(da?.type||"").localeCompare(db?.type||""); if(tr) return tr; return (db?.value||0)-(da?.value||0);});
+  const rows = inv.map(item => { const def = itemDefs[item.id]; if (!def) return ""; const rarity=(def.rarity||"common"); const action=def.type==="supply"?`<button onclick="useSupplyItem('${item.uid}')">Use</button>`:`<button onclick="equipItem('${item.uid}')">Equip</button>`; return `<tr><td style="color:${rarityColors[rarity]||"#ddd"}">[${rarity[0].toUpperCase()+rarity.slice(1)}] ${def.name}<br><span class="small">${getItemStatText(def)}</span></td><td>${def.type}</td><td>${def.value}</td><td>${action} <button class="danger" onclick="sellItem('${item.uid}')">Sell</button></td></tr>`; }).join("");
+  openModal(`<h2>Inventory</h2><p><b>Equipped</b><br>Weapon: ${eqName(eq.weapon)}<br>Armor: ${eqName(eq.armor)}<br>Helmet: ${eqName(eq.helmet)}<br>Shield: ${eqName(eq.shield)}<br>Horse: ${eqName(eq.horse)}<br>Banner: ${eqName(eq.banner)}<br>Trinket: ${eqName(eq.trinket)}</p><table class="table"><tr><th>Item</th><th>Type</th><th>Value</th><th>Actions</th></tr>${rows || `<tr><td colspan="4">No items</td></tr>`}</table><button onclick="closeModal()">Close</button>`);
 }
 
 function equipItem(uid) {
@@ -3138,10 +3147,18 @@ function makeTroop(type, team, pos) {
   let tier = veteranTiers[0];
   if (team === "friendly") tier = getVeteranTierForType(type);
   const equipBonus = team === "friendly" ? getArmyEquipmentBonuses() : null;
+  let troopAccuracyBonus=0, antiCavalryBonus=0, chargeBonus=0, shieldBlockChance=0, shieldDamageReduction=0, moveSpeed=def.speed;
   const hp = def.hp + tier.hpBonus + (equipBonus?.hpBonus || 0);
   let damage = def.damage + tier.damageBonus + (equipBonus?.damageBonus || 0);
-  const armor = def.armor + tier.armorBonus + (equipBonus?.armorBonus || 0);
-  if (team === "friendly" && def.role === "cavalry" && equipBonus?.cavalryBonus) damage = Math.floor(damage * (1 + equipBonus.cavalryBonus));
+  let armor = def.armor + tier.armorBonus + (equipBonus?.armorBonus || 0);
+  if (team === "friendly") {
+    if (def.role === "archer") { damage += equipBonus?.archerDamageBonus || 0; troopAccuracyBonus += equipBonus?.archerAccuracyBonus || 0; }
+    if (type.includes("spear") || def.role === "spearman") { damage += equipBonus?.spearmanDamageBonus || 0; antiCavalryBonus += equipBonus?.antiCavalryBonus || 0; }
+    if (def.role === "cavalry") { damage += equipBonus?.cavalryDamageBonus || 0; armor += equipBonus?.cavalryArmorBonus || 0; moveSpeed += equipBonus?.cavalrySpeedBonus || 0; chargeBonus += equipBonus?.cavalryChargeBonus || 0; }
+    if (def.role === "infantry") damage += equipBonus?.infantryDamageBonus || 0;
+    if (def.hasShield || equipBonus?.visuals?.shield) { shieldBlockChance += equipBonus?.shieldBlockBonus || 0; shieldDamageReduction += equipBonus?.shieldReductionBonus || 0; }
+    if (!battleState.bannerCarrierAssigned) { battleState.bannerCarrierAssigned = true; }
+  }
   const group = createTroopModel(type, team, tier);
 
   group.position.copy(pos);
