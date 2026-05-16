@@ -1264,7 +1264,7 @@ function makeWorld() {
       x: 230,
       y: 450,
       faction: "veyr",
-      recruits: { farmhand: 8, spearman: 5, archer: 3 }
+      recruits: { veyrLevy: 8, veyrMilitia: 4, veyrWoodsman: 3 }
     },
     {
       id: "mill",
@@ -1273,7 +1273,7 @@ function makeWorld() {
       x: 350,
       y: 575,
       faction: "veyr",
-      recruits: { farmhand: 7, spearman: 4, archer: 4 }
+      recruits: { veyrLevy: 7, veyrMilitia: 5, veyrSpearGuard: 2, veyrWoodsman: 3 }
     },
     {
       id: "east",
@@ -1282,7 +1282,7 @@ function makeWorld() {
       x: 480,
       y: 425,
       faction: "veyr",
-      recruits: { swordsman: 4, shieldman: 3, heavySpear: 3, crossbow: 2, cavalry: 1 }
+      recruits: { veyrSpearGuard: 4, veyrFootman: 4, veyrSergeant: 2, veyrLongbowman: 3, veyrPage: 2, veyrSquire: 1 }
     },
     {
       id: "red",
@@ -1291,7 +1291,7 @@ function makeWorld() {
       x: 670,
       y: 250,
       faction: "iron",
-      recruits: { farmhand: 8, spearman: 6, archer: 3 }
+      recruits: { ironRecruit: 8, ironAxeman: 4, ironSpear: 4, ironHunter: 2 }
     },
     {
       id: "anvil",
@@ -1300,7 +1300,7 @@ function makeWorld() {
       x: 790,
       y: 315,
       faction: "iron",
-      recruits: { swordsman: 5, shieldman: 4, heavySpear: 2, crossbow: 3, cavalry: 1 }
+      recruits: { ironAxeman: 4, ironCleaver: 2, ironPikeman: 4, ironCrossbowman: 3, ironRaider: 2, ironKnight: 1 }
     },
     {
       id: "salt",
@@ -1309,7 +1309,7 @@ function makeWorld() {
       x: 800,
       y: 585,
       faction: "sun",
-      recruits: { farmhand: 9, spearman: 3, archer: 5 }
+      recruits: { sunLevy: 8, sunSkirmisher: 4, sunSlingman: 4, sunRider: 1 }
     },
     {
       id: "coast",
@@ -1318,7 +1318,7 @@ function makeWorld() {
       x: 1010,
       y: 510,
       faction: "sun",
-      recruits: { swordsman: 4, shieldman: 2, heavySpear: 4, crossbow: 3, cavalry: 2 }
+      recruits: { sunDuelist: 4, sunJavelineer: 3, sunShieldGuard: 3, sunMarksman: 3, sunLancer: 2, sunGildedCavalry: 1 }
     }
   ];
 
@@ -1835,6 +1835,7 @@ function movePoint(obj, target, speed, dt) {
 function nextDay() {
   state.day++;
   updateDailyEconomy();
+  if (state.day % 7 === 0) refreshSettlementRecruits();
   dailyDiplomacyUpdate();
   dailyWarCheck();
   spawnBanditsIfDue();
@@ -1859,6 +1860,57 @@ function ensureSettlementEconomy() {
 
   state.player.food = state.player.food ?? 50;
   state.player.morale = state.player.morale ?? 60;
+}
+
+const legacyRecruitToRegional = {
+  veyr: {
+    village: { farmhand: "veyrLevy", spearman: "veyrMilitia", archer: "veyrWoodsman" },
+    castle: { swordsman: "veyrFootman", shieldman: "veyrSpearGuard", heavySpear: "veyrSpearGuard", crossbow: "veyrLongbowman", cavalry: "veyrSquire" }
+  },
+  iron: {
+    village: { farmhand: "ironRecruit", spearman: "ironSpear", archer: "ironHunter" },
+    castle: { swordsman: "ironAxeman", shieldman: "ironCleaver", heavySpear: "ironPikeman", crossbow: "ironCrossbowman", cavalry: "ironKnight" }
+  },
+  sun: {
+    village: { farmhand: "sunLevy", spearman: "sunSkirmisher", archer: "sunSlingman" },
+    castle: { swordsman: "sunDuelist", shieldman: "sunShieldGuard", heavySpear: "sunJavelineer", crossbow: "sunMarksman", cavalry: "sunLancer" }
+  }
+};
+
+const settlementCultureMeta = {
+  veyr: { culture: "Veyr", style: "Disciplined infantry and knights" },
+  iron: { culture: "Iron Marches", style: "Heavy damage, pikes, and crossbows" },
+  sun: { culture: "Sun Coast", style: "Skirmishers, fast cavalry, and agile infantry" }
+};
+
+function getSettlementRecruitMap(loc) {
+  return legacyRecruitToRegional[loc.faction]?.[loc.type] || {};
+}
+
+function getNormalizedSettlementRecruits(loc) {
+  const normalized = {};
+  const mapping = getSettlementRecruitMap(loc);
+  for (const [type, count] of Object.entries(loc.recruits || {})) {
+    const mappedType = mapping[type] || type;
+    normalized[mappedType] = (normalized[mappedType] || 0) + count;
+  }
+  return normalized;
+}
+
+function refreshSettlementRecruits() {
+  const baseRefresh = { veyr: 2, iron: 2, sun: 3 };
+  for (const loc of state.settlements || []) {
+    if (loc.type !== "village" && loc.type !== "castle") continue;
+    const recruits = getNormalizedSettlementRecruits(loc);
+    const keys = Object.keys(recruits);
+    if (!keys.length) continue;
+    const steps = (baseRefresh[loc.faction] || 2) + (loc.type === "castle" ? 1 : 0);
+    for (let i = 0; i < steps; i++) {
+      const t = keys[Math.floor(Math.random() * keys.length)];
+      recruits[t] = (recruits[t] || 0) + 1;
+    }
+    loc.recruits = recruits;
+  }
 }
 
 function getTroopWage(type) {
@@ -2426,6 +2478,18 @@ function renderSelected() {
   if (selected.kind === "settlement") {
     const s = selected.data;
     const f = faction(s.faction);
+    const recruitMeta = settlementCultureMeta[s.faction] || { culture: "Mixed", style: "Varied local militia" };
+    const recruitList = Object.entries(getNormalizedSettlementRecruits(s))
+      .map(([t, n]) => {
+        const def = troopDefs[t];
+        if (!def) {
+          console.warn(`[Recruitment] Missing troopDefs for type "${t}" in settlement ${s.name}.`);
+          return "";
+        }
+        return `<span class="pill">${def.name}: ${n}</span>`;
+      })
+      .filter(Boolean)
+      .join("");
     const near = distance2D(state.player, s) < 46;
 
     info.innerHTML = `
@@ -2434,6 +2498,9 @@ function renderSelected() {
       Owner: ${f ? f.name : "You"}<br>
       Status: ${f ? f.status : "Player Realm"}<br>
       Terrain: ${labelBiome(getBiomeAt(s.x, s.y))}<br><br>
+      Regional Culture: ${recruitMeta.culture}<br>
+      Recruitment Style: ${recruitMeta.style}<br><br>
+      Recruits: ${recruitList || "None available"}<br><br>
       Recruit Pool: ${s.recruitPool ?? 0}<br>
       Prosperity: ${Math.floor(s.prosperity ?? 0)}<br>
       Food Stock: ${Math.floor(s.foodStock ?? 0)}
@@ -2444,16 +2511,18 @@ function renderSelected() {
       return;
     }
 
-    if (s.type === "village") {
+    if (s.type === "village" || s.type === "castle") {
       const recruitBtn = document.createElement("button");
-      recruitBtn.textContent = "Recruit Troops";
+      recruitBtn.textContent = s.type === "castle" ? "Recruit Garrison" : "Recruit Troops";
       recruitBtn.onclick = () => recruitFromVillage(s.id);
       actions.appendChild(recruitBtn);
 
-      const foodBtn = document.createElement("button");
-      foodBtn.textContent = "Buy Food";
-      foodBtn.onclick = () => buyFoodFromVillage(s.id);
-      actions.appendChild(foodBtn);
+      if (s.type === "village") {
+        const foodBtn = document.createElement("button");
+        foodBtn.textContent = "Buy Food";
+        foodBtn.onclick = () => buyFoodFromVillage(s.id);
+        actions.appendChild(foodBtn);
+      }
     }
 
     if (s.type === "castle" && s.faction === "player") {
@@ -2765,19 +2834,29 @@ function restOneDay() {
 
 function recruitFromVillage(locationId) {
   const loc = getLocationById(locationId);
-  if (!loc || loc.type !== "village") return;
+  if (!loc || (loc.type !== "village" && loc.type !== "castle")) return;
 
-  const count = Math.min(loc.recruitPool, 5);
+  const recruits = getNormalizedSettlementRecruits(loc);
+  const recruitEntries = Object.entries(recruits).filter(([, n]) => n > 0);
+  if (!recruitEntries.length) return log(`${loc.name} has no recruits available.`);
+
+  const selectedType = recruitEntries.sort((a, b) => b[1] - a[1])[0][0];
+  if (!troopDefs[selectedType]) {
+    console.warn(`[Recruitment] Missing troopDefs for recruit type "${selectedType}" at ${loc.name}.`);
+    return log(`${loc.name} cannot recruit that troop type right now.`);
+  }
+
+  const count = Math.min(recruits[selectedType], 5);
   const cost = count * 12;
-
-  if (count <= 0) return log(`${loc.name} has no recruits available.`);
   if (state.gold < cost) return log(`Recruiting requires ${cost} gold.`);
 
   state.gold -= cost;
-  loc.recruitPool -= count;
-  state.player.army.farmhand = (state.player.army.farmhand || 0) + count;
+  recruits[selectedType] -= count;
+  if (recruits[selectedType] <= 0) delete recruits[selectedType];
+  loc.recruits = recruits;
+  state.player.army[selectedType] = (state.player.army[selectedType] || 0) + count;
 
-  log(`Recruited ${count} peasants from ${loc.name}.`);
+  log(`Recruited ${count} ${troopDefs[selectedType].name} from ${loc.name}.`);
   renderUI();
 }
 
