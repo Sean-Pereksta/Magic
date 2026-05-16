@@ -143,6 +143,13 @@
     height: 100vh;
     background: #203b31;
   }
+  #splitRoot { position:absolute; inset:0; display:none; width:100%; height:100%; z-index:3; background:#071018; }
+  #splitRoot.active { display:flex; }
+  .playerPane { position:relative; width:50%; height:100%; overflow:hidden; border-right:2px solid rgba(255,255,255,0.25); }
+  .playerPane:last-child { border-right:none; border-left:2px solid rgba(255,255,255,0.25); }
+  .splitMapCanvas { position:absolute; inset:0; width:100%; height:100%; background:#203b31; }
+  .splitHud { position:absolute; left:8px; right:8px; top:8px; z-index:5; padding:7px 9px; border-radius:10px; font-size:11px; background:rgba(7,12,20,0.82); border:1px solid rgba(255,255,255,0.15); display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .splitSelectCard { position:absolute; left:8px; right:8px; bottom:8px; z-index:5; padding:8px; border-radius:10px; background:rgba(7,12,20,0.85); border:1px solid rgba(255,255,255,0.15); font-size:12px; max-height:40%; overflow:auto; }
 
   .topbar {
     position: absolute;
@@ -567,6 +574,10 @@
 
 <div id="worldScreen" class="screen">
   <canvas id="mapCanvas"></canvas>
+  <div id="splitRoot" class="screen">
+    <div id="playerPane-p1" class="playerPane"></div>
+    <div id="playerPane-p2" class="playerPane"></div>
+  </div>
   <div id="controllerCursor">✦</div>
 
   <div class="topbar">
@@ -675,6 +686,7 @@ let H;
 let lastTime = 0;
 let worldPaused = false;
 let selected = null;
+let sharedWorld = null;
 let encounterArmy = null;
 let battleBiome = "grassland";
 let battleType = "field";
@@ -1876,14 +1888,44 @@ function loop(t) {
   const dt = Math.min(0.05, (t - lastTime) / 1000 || 0);
   lastTime = t;
 
-  if (!worldPaused) {
-    updateWorld(dt);
-  }
-
-  drawWorld();
+  if (!worldPaused) gameMode.splitScreen ? updateSplitWorld(dt) : updateWorld(dt);
+  if (gameMode.splitScreen) gameMode.sessions.forEach(renderSplitWorldForSession);
+  else drawWorld();
   requestAnimationFrame(loop);
 
 }
+
+function updateSplitWorld(dt) {
+  if (!sharedWorld) return;
+  for (const session of gameMode.sessions) {
+    const p = getSharedPlayerParty(session);
+    if (!p) continue;
+    movePoint(p, { x: p.targetX, y: p.targetY }, state.player.speed || 62, dt);
+    session.worldCamera.x = p.x;
+    session.worldCamera.y = p.y;
+    updateSplitHud(session);
+  }
+}
+
+function renderSplitWorldForSession(session) {
+  const c = getCanvasForSession(session);
+  if (!c || !sharedWorld) return;
+  c.width = c.clientWidth;
+  c.height = c.clientHeight;
+  const cctx = c.getContext("2d");
+  const cam = session.worldCamera;
+  cctx.fillStyle = "#1b2c29";
+  cctx.fillRect(0, 0, c.width, c.height);
+  cctx.save();
+  cctx.translate(c.width / 2 - cam.x, c.height / 2 - cam.y);
+  for (const s of sharedWorld.locations || []) drawSettlementWithCtx(cctx, s);
+  for (const a of sharedWorld.roamingArmies || []) drawArmyWithCtx(cctx, a);
+  Object.entries(sharedWorld.players || {}).forEach(([id, p]) => drawSplitPlayer(cctx, p, id, session.id));
+  cctx.restore();
+}
+function drawSettlementWithCtx(cctx, s) { cctx.fillStyle = s.type === "castle" ? "#8d99ae" : "#457b9d"; cctx.beginPath(); cctx.arc(s.x, s.y, s.type === "castle" ? 12 : 9, 0, Math.PI * 2); cctx.fill(); }
+function drawArmyWithCtx(cctx, a) { cctx.fillStyle = a.bandit ? "#7c2d12" : "#ced4da"; cctx.beginPath(); cctx.moveTo(a.x, a.y - 10); cctx.lineTo(a.x + 10, a.y + 8); cctx.lineTo(a.x - 10, a.y + 8); cctx.closePath(); cctx.fill(); }
+function drawSplitPlayer(cctx, p, id) { cctx.fillStyle = p.color; cctx.beginPath(); cctx.arc(p.x, p.y, 11, 0, Math.PI * 2); cctx.fill(); cctx.fillStyle = "#fff"; cctx.font = "10px Segoe UI"; cctx.fillText(id.toUpperCase(), p.x - 7, p.y - 14); }
 
 function updateWorld(dt) {
   updatePlayerTargetEntity();
@@ -3532,9 +3574,103 @@ function startSplitScreenFromMenu() {
   });
   const validation = validateSplitScreenSetup();
   if (!validation.valid) return setSplitScreenMessage(validation.message);
-  setSplitScreenMessage("Split-screen sessions prepared. World rendering arrives in Request 2.");
-  console.log("[SplitScreen] sessions prepared:", gameMode.sessions);
+  buildSharedWorldFromSessions();
+  createSplitScreenLayout();
+  showWorldScreen();
+  setSplitScreenMessage("Split-screen world started.");
 }
+
+function buildSharedWorldFromSessions() {
+  const p1 = getSplitSession("p1");
+  const p2 = getSplitSession("p2");
+  const base = p1?.state || state;
+  sharedWorld = {
+    terrain: JSON.parse(JSON.stringify(mapTerrain || {})),
+    decor: [],
+    locations: (base.settlements || []).map(s => ({ ...s })),
+    roamingArmies: (base.armies || []).map(a => ({ ...a, army: { ...(a.army || {}) } })),
+    factions: Object.fromEntries((base.factions || []).map(f => [f.id, { ...f }])),
+    day: base.day || 1,
+    worldSeed: base.worldSeed || null,
+    players: {
+      p1: { x: base.player?.x || 0, y: base.player?.y || 0, targetX: base.player?.x || 0, targetY: base.player?.y || 0, accountName: p1?.accountName || "", color: "#5aa9ff" },
+      p2: { x: 0, y: 0, targetX: 0, targetY: 0, accountName: p2?.accountName || "", color: "#ef476f" }
+    }
+  };
+  const p2State = p2?.state;
+  if (p2State?.player?.x != null && p2State?.player?.y != null) {
+    sharedWorld.players.p2.x = p2State.player.x; sharedWorld.players.p2.y = p2State.player.y;
+  } else {
+    sharedWorld.players.p2.x = sharedWorld.players.p1.x + 28; sharedWorld.players.p2.y = sharedWorld.players.p1.y + 18;
+  }
+  sharedWorld.players.p2.targetX = sharedWorld.players.p2.x; sharedWorld.players.p2.targetY = sharedWorld.players.p2.y;
+}
+function getPaneForSession(session) { return $(`playerPane-${session.id}`); }
+function getCanvasForSession(session) { return $(`mapCanvas-${session.id}`); }
+function getSharedPlayerParty(session) { return sharedWorld?.players?.[session.id] || null; }
+function createSplitScreenLayout() {
+  for (const session of gameMode.sessions) {
+    const pane = getPaneForSession(session);
+    pane.innerHTML = `
+      <canvas id="mapCanvas-${session.id}" class="splitMapCanvas"></canvas>
+      <div class="splitHud" id="splitHud-${session.id}"></div>
+      <div class="splitSelectCard"><div id="selectedInfo-${session.id}" class="small">Click a target.</div><div id="selectedActions-${session.id}" class="row"></div></div>
+    `;
+    const c = getCanvasForSession(session);
+    c.addEventListener("click", e => handleSplitPaneClick(session, e));
+  }
+}
+function handleSplitPaneClick(session, e) {
+  const c = getCanvasForSession(session); const rect = c.getBoundingClientRect();
+  const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+  const cam = session.worldCamera, party = getSharedPlayerParty(session);
+  const worldX = cam.x + (sx - c.width / 2), worldY = cam.y + (sy - c.height / 2);
+  const hit = findSharedHit(worldX, worldY);
+  if (hit) {
+    session.selected = hit;
+    if (hit.kind === "player" && hit.id !== session.id) { party.targetX = hit.x; party.targetY = hit.y; }
+    else if (hit.kind === "army" || hit.kind === "location") { party.targetX = hit.x; party.targetY = hit.y; }
+  } else { party.targetX = worldX; party.targetY = worldY; session.selected = null; }
+  updateSplitHud(session);
+}
+function findSharedHit(x, y) {
+  for (const [id, p] of Object.entries(sharedWorld.players || {})) if (Math.hypot(x - p.x, y - p.y) < 18) return { kind: "player", id, x: p.x, y: p.y, name: id === "p1" ? "Player 1" : "Player 2" };
+  for (const s of sharedWorld.locations || []) if (Math.hypot(x - s.x, y - s.y) < 24) return { kind: "location", id: s.id, x: s.x, y: s.y, data: s, name: s.name };
+  for (const a of sharedWorld.roamingArmies || []) if (Math.hypot(x - a.x, y - a.y) < 20) return { kind: "army", id: a.id, x: a.x, y: a.y, data: a, name: a.name };
+  return null;
+}
+function updateSplitHud(session) {
+  const hud = $(`splitHud-${session.id}`);
+  if (!hud) return;
+  const sessionState = session.state || state;
+  hud.innerHTML = `<b>${session.label}</b><span>${session.accountName}</span><span>Gold ${sessionState.gold}</span><span>Food ${sessionState.player.food}</span><span>Morale ${Math.round(sessionState.player.morale || 0)}</span><span>Army ${armyCount(sessionState.player.army)}</span><span>Mode ${session.mode}</span><button onclick="showLaunchScreen()">Menu</button><button onclick="saveSessionGame('${session.id}')">Save</button>`;
+  const info = $(`selectedInfo-${session.id}`);
+  const actions = $(`selectedActions-${session.id}`);
+  if (!info || !actions) return;
+  actions.innerHTML = "";
+  if (!session.selected) return info.textContent = "Click villages, castles, roaming armies, bandits, or the other player.";
+  info.textContent = session.selected.name || session.selected.kind;
+  if (session.selected.kind === "player" && session.selected.id !== session.id) {
+    const travel = document.createElement("button");
+    travel.textContent = `Travel Toward ${session.selected.id === "p1" ? "Player 1" : "Player 2"}`;
+    travel.onclick = () => { const me = getSharedPlayerParty(session); me.targetX = session.selected.x; me.targetY = session.selected.y; };
+    actions.appendChild(travel);
+    const me = getSharedPlayerParty(session);
+    const other = getSharedPlayerParty({ id: session.selected.id });
+    if (me && other && Math.hypot(me.x - other.x, me.y - other.y) < 55) {
+      const challenge = document.createElement("button");
+      challenge.textContent = `Challenge ${session.selected.id === "p1" ? "Player 1" : "Player 2"}`;
+      challenge.onclick = () => alert("Split-screen battles will be added in Request 4.");
+      actions.appendChild(challenge);
+    }
+  } else if (session.selected.kind === "army") {
+    const battle = document.createElement("button");
+    battle.textContent = "Battle";
+    battle.onclick = () => alert("Split-screen battles will be added in Request 4.");
+    actions.appendChild(battle);
+  }
+}
+function saveSessionGame(id) { const s = getSplitSession(id); if (s?.accountName) localStorage.setItem(getAccountSaveKey(s.accountName), JSON.stringify(s.state || state)); }
 
 function showLaunchScreen() {
   controllerMenuOpen = false;
@@ -3550,7 +3686,18 @@ function showWorldScreen() {
   $("launchScreen")?.classList.remove("active");
   $("worldScreen")?.classList.add("active");
   $("battleScreen")?.classList.remove("active");
-
+  const splitRoot = $("splitRoot");
+  const topbar = document.querySelector("#worldScreen .topbar");
+  const rightPanel = document.querySelector("#worldScreen .rightPanel");
+  if (gameMode.splitScreen) {
+    splitRoot?.classList.add("active");
+    if (topbar) topbar.style.display = "none";
+    if (rightPanel) rightPanel.style.display = "none";
+  } else {
+    splitRoot?.classList.remove("active");
+    if (topbar) topbar.style.display = "";
+    if (rightPanel) rightPanel.style.display = "";
+  }
   renderUI();
   drawMap();
 }
