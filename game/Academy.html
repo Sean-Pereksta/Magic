@@ -487,6 +487,26 @@
     text-shadow: 0 2px 4px #000;
     transform: translate(-50%, -50%);
   }
+
+  #controllerCursor {
+    position: absolute;
+    z-index: 12;
+    width: 28px;
+    height: 28px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    transform: translate(-50%, -50%);
+    color: #ffd166;
+    font-size: 28px;
+    text-shadow: 0 2px 6px #000;
+    pointer-events: none;
+  }
+  .controllerMenuTabHeader { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.12); }
+  .controllerMenuTab { padding: 5px 9px; border-radius: 999px; background: rgba(255,255,255,0.08); color: var(--muted); font-size: 12px; font-weight: 800; }
+  .controllerMenuTab.active { background: #ffd166; color: #10141d; }
+  .controlModeOption { display: block; margin: 8px 0; }
+
 </style>
 </head>
 
@@ -516,6 +536,7 @@
 
 <div id="worldScreen" class="screen">
   <canvas id="mapCanvas"></canvas>
+  <div id="controllerCursor">✦</div>
 
   <div class="topbar">
     <div class="brand">⚔ Kingdoms at War</div>
@@ -527,11 +548,13 @@
     <div class="stat">Army Size: <b id="armyText">0/75</b></div>
     <div class="stat">Castles: <b id="castleText">0</b></div>
     <div class="stat">Account: <b id="accountText">None</b></div>
+    <div class="stat">Input: <b id="inputModeText">Keyboard / Mouse</b></div>
     <button onclick="saveGame()">Save</button>
     <button onclick="showLaunchScreen()">Accounts</button>
     <button onclick="openInventoryPanel()">Inventory</button>
     <button onclick="openTroopUpgradePanel()" class="success">Upgrades</button>
     <button onclick="openDiplomacyPanel()" class="blue">Diplomacy</button>
+    <button onclick="openControlsPanel()">Controls</button>
     <button onclick="newGame()" class="danger">New</button>
   </div>
 
@@ -628,6 +651,22 @@ let siegeTargetSettlement = null;
 let siegeCaptureProgress = 0;
 let siegeGateHp = 300;
 let siegeGateMaxHp = 300;
+
+
+const INPUT_MODE_KEY = "kingdomsAtWarInputMode";
+const CONTROLLER_MAPPING_KEY = "kingdomsAtWarControllerMapping";
+const INPUT_MODES = { keyboardMouse: "keyboardMouse", controller: "controller" };
+let activeInputMode = localStorage.getItem(INPUT_MODE_KEY) || INPUT_MODES.keyboardMouse;
+let controllerState = { connected:false,index:null,id:"",lastButtons:{},currentButtons:{},axes:[],cursorActive:false };
+const DEFAULT_CONTROLLER_MAPPING = { select:0,swing:1,openMenus:3,cycleGroupLeft:4,cycleGroupRight:5,menuTabLeft:4,menuTabRight:5,commandHold:12,commandFollow:13,commandFormation:14,commandCharge:15,moveX:0,moveY:1,turnX:2,turnY:3,run:10,back:8,pause:9 };
+let controllerMapping = loadControllerMapping();
+let controllerCursor = { x: window.innerWidth / 2, y: window.innerHeight / 2, speed: 620 };
+let pendingControllerMapping = null;
+const selectableBattleGroups = ["all", "infantry", "archer", "cavalry"];
+const controllerActionLabels = { select:"A / Select on Map", swing:"B / Swing Attack", openMenus:"Y / Open Menus", cycleGroupLeft:"LB / Previous Army Group", cycleGroupRight:"RB / Next Army Group", menuTabLeft:"LB / Previous Menu Tab", menuTabRight:"RB / Next Menu Tab", commandHold:"D-pad Up / Command 1 Hold", commandFollow:"D-pad Down / Command 2 Follow", commandFormation:"D-pad Left / Command 3 Formation", commandCharge:"D-pad Right / Command 4 Charge", moveX:"Left Stick X / Movement X", moveY:"Left Stick Y / Movement Y", turnX:"Right Stick X / Turning", turnY:"Right Stick Y / Optional Look Y", run:"Run", back:"Back", pause:"Pause" };
+const controllerMenuTabs = [{id:"army",label:"Army",open:()=>openArmyPanel?.()},{id:"inventory",label:"Inventory",open:()=>openInventoryPanel?.()},{id:"upgrades",label:"Upgrades",open:()=>openTroopUpgradePanel?.()},{id:"diplomacy",label:"Diplomacy",open:()=>openDiplomacyPanel?.()},{id:"controls",label:"Controls",open:()=>openControlsPanel()},{id:"accounts",label:"Accounts",open:()=>showLaunchScreen?.()}];
+let activeControllerMenuTabIndex = 0;
+let controllerMenuOpen = false;
 
 /* =========================================================
    TROOPS
@@ -1715,6 +1754,35 @@ function offerTribute(factionId) { const f = faction(factionId); if (!f || f.ban
 function requestAlliance(factionId) { const f = faction(factionId); if (!f || f.bandit) return; const playerStrength = getPlayerRealmStrength(); let requiredRelation = 55; if (f.personality === "honorable") requiredRelation = 45; if (f.personality === "aggressive") requiredRelation = 65; if (f.status === "War") { log(`${f.name} will not discuss alliance while at war.`); return; } f.grievances = f.grievances || []; if (f.relation >= requiredRelation && playerStrength >= getFactionStrength(factionId) * 0.65) { f.alliance = true; f.status = "Ally"; f.relation = Math.max(f.relation, 60); f.grievances.push(`Alliance formed on Day ${state.day}.`); log(`${f.name} accepted your alliance.`); } else { f.relation -= 2; log(`${f.name} refused alliance. Improve relations or strength first.`); } openDiplomacyPanel(); }
 function requestTrade(factionId) { const f = faction(factionId); if (!f || f.bandit) return; if (f.status === "War") { log(`${f.name} will not trade during war.`); return; } f.grievances = f.grievances || []; if (f.relation >= 10 || f.personality === "mercantile") { f.trade = true; f.relation = clamp(f.relation + 4, -100, 100); f.grievances.push(`Trade pact signed on Day ${state.day}.`); log(`Trade pact established with ${f.name}. You will gain occasional gold.`); } else { log(`${f.name} does not trust you enough for trade.`); } openDiplomacyPanel(); }
 
+
+function loadControllerMapping(){try{const saved=JSON.parse(localStorage.getItem(CONTROLLER_MAPPING_KEY)||"null"); return saved?{...DEFAULT_CONTROLLER_MAPPING,...saved}:{...DEFAULT_CONTROLLER_MAPPING};}catch{return{...DEFAULT_CONTROLLER_MAPPING};}}
+function saveControllerMapping(){localStorage.setItem(CONTROLLER_MAPPING_KEY,JSON.stringify(controllerMapping));}
+function resetControllerMappingToDefault(){controllerMapping={...DEFAULT_CONTROLLER_MAPPING};saveControllerMapping();renderControllerMappingScreen();}
+function setActiveInputMode(mode){activeInputMode=mode===INPUT_MODES.controller?INPUT_MODES.controller:INPUT_MODES.keyboardMouse;localStorage.setItem(INPUT_MODE_KEY,activeInputMode);updateControllerStatusUI();updateControllerCursorVisibility();}
+window.addEventListener("gamepadconnected",e=>{controllerState.connected=true;controllerState.index=e.gamepad.index;controllerState.id=e.gamepad.id||"Controller";showToast?.(`Controller connected: ${controllerState.id}`);updateControllerStatusUI();});
+window.addEventListener("gamepaddisconnected",e=>{if(controllerState.index===e.gamepad.index){controllerState.connected=false;controllerState.index=null;controllerState.id="";controllerState.currentButtons={};controllerState.lastButtons={};controllerState.axes=[];showToast?.("Controller disconnected");updateControllerStatusUI();}});
+function getActiveGamepad(){const pads=navigator.getGamepads?navigator.getGamepads():[]; if(controllerState.index!==null&&pads[controllerState.index]) return pads[controllerState.index]; for(const pad of pads){if(pad){controllerState.connected=true;controllerState.index=pad.index;controllerState.id=pad.id||"Controller";return pad;}} return null;}
+function pollController(){const pad=getActiveGamepad(); if(!pad) return null; controllerState.lastButtons=controllerState.currentButtons;controllerState.currentButtons={};controllerState.axes=Array.from(pad.axes||[]); pad.buttons.forEach((btn,index)=>controllerState.currentButtons[index]={pressed:!!btn.pressed,value:btn.value||0}); return pad;}
+function controllerButtonPressed(buttonIndex){return !!controllerState.currentButtons[buttonIndex]?.pressed&&!controllerState.lastButtons[buttonIndex]?.pressed;}
+function getControllerAxis(axisIndex,deadzone=0.18){const raw=controllerState.axes[axisIndex]||0; return Math.abs(raw)<deadzone?0:raw;}
+function handleControllerMapSelect(x,y){const el=document.elementFromPoint(x,y); if(el&&el!==$("mapCanvas")&&el.closest("button, select, input, .card, .modalBox")){const c=el.closest("button"); if(c){c.click();return;}} handleMapWorldSelection(x,y);}
+function cycleSelectedGroup(direction=1){cycleSelectedTroopGroup(direction); const key=(selectedTroopGroup||"all").toLowerCase(); const label=key==="all"?"All":key.charAt(0).toUpperCase()+key.slice(1); if($("selectedGroupText")) $("selectedGroupText").textContent=label;}
+function issueBattleCommandFromInput(n){if(n===1)applyCommandToSelectedGroup("Hold Position"); if(n===2)applyCommandToSelectedGroup("Follow Me"); if(n===3)cycleFormationForSelectedGroup(); if(n===4)applyCommandToSelectedGroup("Charge");}
+function updateControllerMapCursor(dt){if(activeInputMode!==INPUT_MODES.controller||!$("worldScreen")?.classList.contains("active")) return; const el=$("controllerCursor"); if(!el)return; const lx=getControllerAxis(controllerMapping.moveX),ly=getControllerAxis(controllerMapping.moveY); controllerCursor.x=clamp(controllerCursor.x+lx*controllerCursor.speed*dt,8,window.innerWidth-8); controllerCursor.y=clamp(controllerCursor.y+ly*controllerCursor.speed*dt,8,window.innerHeight-8); el.style.left=`${controllerCursor.x}px`; el.style.top=`${controllerCursor.y}px`; if(controllerButtonPressed(controllerMapping.select)) handleControllerMapSelect(controllerCursor.x,controllerCursor.y);}
+function updateControllerBattleInput(dt){if(activeInputMode!==INPUT_MODES.controller||!$("battleScreen")?.classList.contains("active")||!player3?.mesh)return; const lx=getControllerAxis(controllerMapping.moveX),ly=getControllerAxis(controllerMapping.moveY),rx=getControllerAxis(controllerMapping.turnX); const running=controllerState.currentButtons[controllerMapping.run]?.pressed; const keyForward=-ly; if(Math.abs(keyForward)>0.06){const forward=new THREE.Vector3(Math.sin(player3.yaw),0,Math.cos(player3.yaw));player3.mesh.position.addScaledVector(forward,(running?10:6)*keyForward*dt);} player3.yaw-=rx*2.8*dt; if(controllerButtonPressed(controllerMapping.swing)) startSpearThrust?.(); if(controllerButtonPressed(controllerMapping.commandHold))issueBattleCommandFromInput(1); if(controllerButtonPressed(controllerMapping.commandFollow))issueBattleCommandFromInput(2); if(controllerButtonPressed(controllerMapping.commandFormation))issueBattleCommandFromInput(3); if(controllerButtonPressed(controllerMapping.commandCharge))issueBattleCommandFromInput(4); if(controllerButtonPressed(controllerMapping.cycleGroupLeft))cycleSelectedGroup(-1); if(controllerButtonPressed(controllerMapping.cycleGroupRight))cycleSelectedGroup(1); if(controllerButtonPressed(controllerMapping.openMenus))openControllerQuickMenu();}
+function updateControllerMapMenuInput(){if(activeInputMode!==INPUT_MODES.controller||!$("worldScreen")?.classList.contains("active")) return; if(controllerButtonPressed(controllerMapping.openMenus)) openControllerQuickMenu(); if(controllerMenuOpen&&controllerButtonPressed(controllerMapping.menuTabLeft)) cycleControllerMenuTab(-1); if(controllerMenuOpen&&controllerButtonPressed(controllerMapping.menuTabRight)) cycleControllerMenuTab(1);}
+function updateControllerCursorVisibility(){const el=$("controllerCursor"); if(el) el.style.display=(activeInputMode===INPUT_MODES.controller&&$("worldScreen")?.classList.contains("active"))?"flex":"none";}
+function openControllerQuickMenu(){if($("battleScreen")?.classList.contains("active")){openControlsPanel();return;} if(!$("worldScreen")?.classList.contains("active"))return; controllerMenuOpen=true; activeControllerMenuTabIndex=clamp(activeControllerMenuTabIndex,0,controllerMenuTabs.length-1); openActiveControllerMenuTab();}
+function openActiveControllerMenuTab(){const tab=controllerMenuTabs[activeControllerMenuTabIndex]; if(!tab)return; tab.open(); renderControllerMenuTabHeader();}
+function cycleControllerMenuTab(d){if(!controllerMenuOpen)return; activeControllerMenuTabIndex=(activeControllerMenuTabIndex+d+controllerMenuTabs.length)%controllerMenuTabs.length; openActiveControllerMenuTab();}
+function renderControllerMenuTabHeader(){const modalBox=$("modalBox"); if(!modalBox||!controllerMenuOpen)return; $("controllerMenuTabHeader")?.remove(); const h=document.createElement("div"); h.id="controllerMenuTabHeader"; h.className="controllerMenuTabHeader"; h.innerHTML=controllerMenuTabs.map((t,i)=>`<span class="controllerMenuTab ${i===activeControllerMenuTabIndex?"active":""}">${t.label}</span>`).join(""); modalBox.prepend(h);}
+function controllerMappingRowsHtml(){return Object.keys(controllerActionLabels).map(a=>{const v=controllerMapping[a];const isAxis=["moveX","moveY","turnX","turnY"].includes(a);return `<tr><td>${controllerActionLabels[a]}</td><td>${isAxis?`Axis ${v}`:`Button ${v}`}</td><td><button onclick="listenForControllerMapping('${a}', ${isAxis})">Listen</button></td></tr>`;}).join("");}
+function renderControllerMappingScreen(){const box=$("controllerMappingBox"); if(!box)return; box.innerHTML=`<div class="card"><h3>Controller Mapping</h3><div class="small">Click Listen and press a button or move a stick.</div><table class="table"><thead><tr><th>Action</th><th>Current</th><th>Assign</th></tr></thead><tbody>${controllerMappingRowsHtml()}</tbody></table></div>`;}
+function listenForControllerMapping(action,isAxis){pendingControllerMapping={action,isAxis,startedAt:performance.now()}; const box=$("controllerStatusText"); if(box) box.textContent=isAxis?`Move a stick to assign ${controllerActionLabels[action]}...`:`Press a button to assign ${controllerActionLabels[action]}...`;}
+function updatePendingControllerMapping(){if(!pendingControllerMapping)return; const pad=getActiveGamepad(); if(!pad)return; if(performance.now()-pendingControllerMapping.startedAt<250)return; if(pendingControllerMapping.isAxis){for(let i=0;i<pad.axes.length;i++){if(Math.abs(pad.axes[i])>0.65){controllerMapping[pendingControllerMapping.action]=i;pendingControllerMapping=null;saveControllerMapping();renderControllerMappingScreen();updateControllerStatusUI();return;}}}else{for(let i=0;i<pad.buttons.length;i++){if(pad.buttons[i].pressed){controllerMapping[pendingControllerMapping.action]=i;pendingControllerMapping=null;saveControllerMapping();renderControllerMappingScreen();updateControllerStatusUI();return;}}}}
+function updateControllerStatusUI(){const s=$("controllerStatusText"); if(s) s.textContent=controllerState.connected?`Connected: ${controllerState.id}`:"No controller detected. Plug in a controller and press a button."; const t=$("inputModeText"); if(t) t.textContent=activeInputMode===INPUT_MODES.controller?"Controller":"Keyboard / Mouse";}
+function openControlsPanel(){const c=activeInputMode===INPUT_MODES.controller?"checked":"",k=activeInputMode===INPUT_MODES.keyboardMouse?"checked":""; $("modal").classList.add("active"); $("modalBox").innerHTML=`<h2>Controls</h2><div class="card"><h3>Input Mode</h3><label class="controlModeOption"><input type="radio" name="inputMode" value="keyboardMouse" ${k} onchange="setActiveInputMode('keyboardMouse'); renderControllerMappingScreen();" /> Keyboard / Mouse</label><label class="controlModeOption"><input type="radio" name="inputMode" value="controller" ${c} onchange="setActiveInputMode('controller'); renderControllerMappingScreen();" /> Controller</label><div id="controllerStatusText" class="small"></div></div><div id="controllerMappingBox"></div><div class="row"><button onclick="resetControllerMappingToDefault()" class="warn">Reset Controller Defaults</button><button onclick="saveControllerMapping()" class="success">Save Controller Mapping</button><button onclick="closeModal()">Close</button></div>`; renderControllerMappingScreen();updateControllerStatusUI();}
+function updateControllerInput(dt){if(activeInputMode!==INPUT_MODES.controller){updateControllerCursorVisibility();return;} updatePendingControllerMapping(); if($("worldScreen")?.classList.contains("active")){updateControllerMapCursor(dt);updateControllerMapMenuInput();} if($("battleScreen")?.classList.contains("active"))updateControllerBattleInput(dt); updateControllerCursorVisibility();}
 /* =========================================================
    INIT
 ========================================================= */
@@ -1747,35 +1815,9 @@ function resize() {
    MAP CLICK / INTERACTION
 ========================================================= */
 
-function mapClick(e) {
-  if (worldPaused) return;
+function mapClick(e) { if (worldPaused) return; const rect = canvas.getBoundingClientRect(); const x = e.clientX - rect.left; const y = e.clientY - rect.top; handleMapWorldSelection(x, y); }
 
-  const rect = canvas.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const y = e.clientY - rect.top;
-
-  const hit = findHit(x, y);
-
-  if (hit) {
-    selected = hit;
-    const d = hit.data;
-
-    state.player.target = { x: d.x, y: d.y };
-    state.player.targetEntity = {
-      kind: hit.kind,
-      id: d.id
-    };
-
-    log(`Marching toward ${d.name}.`);
-    renderUI();
-    return;
-  }
-
-  state.player.target = { x, y };
-  state.player.targetEntity = null;
-  selected = null;
-  renderUI();
-}
+function handleMapWorldSelection(worldX, worldY) { const hit = findHit(worldX, worldY); if (hit) { selected = hit; const d = hit.data; state.player.target = { x: d.x, y: d.y }; state.player.targetEntity = { kind: hit.kind, id: d.id }; log(`Marching toward ${d.name}.`); renderUI(); return; } state.player.target = { x: worldX, y: worldY }; state.player.targetEntity = null; selected = null; renderUI(); }
 
 function findHit(x, y) {
   for (const s of state.settlements) {
@@ -1798,6 +1840,8 @@ function findHit(x, y) {
 ========================================================= */
 
 function loop(t) {
+  pollController();
+  updateControllerInput(Math.min(0.05, (t - lastTime) / 1000 || 0));
   const dt = Math.min(0.05, (t - lastTime) / 1000 || 0);
   lastTime = t;
 
@@ -3356,6 +3400,7 @@ function deleteSelectedAccount() {
 }
 
 function showLaunchScreen() {
+  controllerMenuOpen = false;
   $("launchScreen")?.classList.add("active");
   $("worldScreen")?.classList.remove("active");
   $("battleScreen")?.classList.remove("active");
@@ -4302,6 +4347,8 @@ function updateSiegeCapture(dt) {
 ========================================================= */
 
 function animateBattle() {
+  pollController();
+  updatePendingControllerMapping();
   if (!battleRunning) return;
 
   const dt = Math.min(0.04, clock.getDelta());
