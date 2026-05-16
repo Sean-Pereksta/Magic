@@ -456,7 +456,9 @@
     <div class="stat">Day: <b id="dayText">1</b></div>
     <div class="stat">Gold: <b id="goldText">500</b></div>
     <div class="stat">Food: <b id="foodText">15</b></div>
-    <div class="stat">Army: <b id="armyText">0/75</b></div>
+    <div class="stat">Morale: <b id="moraleText">60</b></div>
+    <div class="stat">Daily Wages: <b id="wagesText">0</b></div>
+    <div class="stat">Army Size: <b id="armyText">0/75</b></div>
     <div class="stat">Castles: <b id="castleText">0</b></div>
     <button onclick="saveGame()">Save</button>
     <button onclick="loadGame()">Load</button>
@@ -783,7 +785,7 @@ const state = {
   day: 1,
   timeOfDay: 0,
   gold: 500,
-  food: 15,
+  food: 50,
   armyMax: 75,
   nextBanditSpawn: 3,
   player: {
@@ -799,6 +801,7 @@ const state = {
       archer: 4,
       farmhand: 5
     },
+    morale: 60,
     xp: {
       farmhand: 0,
       spearman: 0,
@@ -895,7 +898,7 @@ function makeWorld() {
   state.day = 1;
   state.timeOfDay = 0;
   state.gold = 500;
-  state.food = 15;
+  state.food = 50;
   state.armyMax = 75;
   state.nextBanditSpawn = 3;
   state.player = {
@@ -910,7 +913,8 @@ function makeWorld() {
       spearman: 8,
       archer: 4,
       farmhand: 5
-    }
+    },
+    morale: 60
   };
 
   state.factions = [
@@ -1381,6 +1385,7 @@ function initWorld() {
   seedMapDecor();
   makeWorld();
   ensurePlayerXp();
+  ensureSettlementEconomy();
 
   window.addEventListener("resize", resize);
   canvas.addEventListener("click", mapClick);
@@ -1554,32 +1559,140 @@ function movePoint(obj, target, speed, dt) {
 
 function nextDay() {
   state.day++;
-
-  const foodCost = Math.ceil(armyCount(state.player.army) / 18);
-  state.food = Math.max(0, state.food - foodCost);
-
-  if (state.food === 0) {
-    log("Your army is out of food. Future morale systems should punish this.");
-  }
-
-  regenerateRecruits();
+  updateDailyEconomy();
   dailyDiplomacyUpdate();
   dailyWarCheck();
   spawnBanditsIfDue();
 }
 
-function regenerateRecruits() {
-  for (const s of state.settlements) {
-    for (const type of recruitPools[s.type]) {
-      const cap = s.type === "castle" ? 6 : 10;
-      s.recruits[type] = Math.min(cap, (s.recruits[type] || 0) + (Math.random() < 0.45 ? 1 : 0));
-    }
-    const shopBtn = document.createElement("button");
-    shopBtn.textContent = "Shop";
-    shopBtn.className = "blue";
-    shopBtn.onclick = () => openShopPanel(s.id);
-    actions.appendChild(shopBtn);
+function getLocationById(locationId) {
+  return state.settlements.find(x => x.id === locationId);
+}
+
+function ensureSettlementEconomy() {
+  for (const loc of state.settlements || []) {
+    if (loc.type !== "village" && loc.type !== "castle") continue;
+
+    if (loc.prosperity == null) loc.prosperity = loc.type === "castle" ? 65 : 50;
+    if (loc.foodStock == null) loc.foodStock = loc.type === "castle" ? 250 : 100;
+    if (loc.recruitPool == null) loc.recruitPool = loc.type === "castle" ? 4 : 8;
+    if (loc.taxIncome == null) loc.taxIncome = loc.type === "castle" ? 90 : 25;
+    if (loc.raided == null) loc.raided = false;
+    if (loc.type === "castle" && !loc.garrison) loc.garrison = {};
+    if (loc.lastEconomyUpdateDay == null) loc.lastEconomyUpdateDay = state.day || 0;
   }
+
+  state.player.food = state.player.food ?? 50;
+  state.player.morale = state.player.morale ?? 60;
+}
+
+function getTroopWage(type) {
+  const def = troopDefs[type];
+  if (!def) return 1;
+
+  if (def.role === "cavalry") return 8;
+  if (def.role === "archer") return 4;
+  if (def.armor >= 10) return 6;
+
+  return 3;
+}
+
+function calculateArmyWages(army) {
+  let total = 0;
+  for (const [type, count] of Object.entries(army || {})) total += getTroopWage(type) * count;
+  return total;
+}
+
+function calculateFoodConsumption(army) {
+  let count = 0;
+  for (const n of Object.values(army || {})) count += n;
+  return Math.max(1, Math.ceil(count / 8));
+}
+
+function consumeArmyFood() {
+  const foodNeeded = calculateFoodConsumption(state.player.army);
+  if (state.player.food >= foodNeeded) state.player.food -= foodNeeded;
+  else {
+    state.player.food = 0;
+    state.player.morale = Math.max(0, state.player.morale - 12);
+    log(`Your army is starving. Morale dropped.`);
+  }
+}
+
+function payArmyWages() {
+  const wages = calculateArmyWages(state.player.army);
+  if (state.gold >= wages) {
+    state.gold -= wages;
+    log(`Paid ${wages} gold in army wages.`);
+  } else {
+    const missing = wages - state.gold;
+    state.gold = 0;
+    state.player.morale = Math.max(0, (state.player.morale || 50) - 10);
+    log(`Could not fully pay wages. Missing ${missing} gold. Morale dropped.`);
+  }
+}
+
+function checkDesertionFromLowMorale() {
+  if ((state.player.morale || 50) > 15) return;
+  if (Math.random() > 0.35) return;
+
+  const types = Object.keys(state.player.army || {}).filter(t => state.player.army[t] > 0);
+  if (!types.length) return;
+
+  const type = types[randInt(0, types.length - 1)];
+  state.player.army[type]--;
+  if (state.player.army[type] <= 0) delete state.player.army[type];
+
+  log(`A ${troopDefs[type].name} deserted due to low morale.`);
+}
+
+function updateArmyFoodAndWages() {
+  consumeArmyFood();
+  payArmyWages();
+  checkDesertionFromLowMorale();
+}
+
+function updateCastleGarrisonFood(castle) {
+  if (!castle.garrison) return;
+  const foodNeeded = calculateFoodConsumption(castle.garrison);
+  if (castle.foodStock >= foodNeeded) castle.foodStock -= foodNeeded;
+  else {
+    castle.foodStock = 0;
+    castle.prosperity = Math.max(5, castle.prosperity - 1);
+    log(`${castle.name}'s garrison is short on food.`);
+  }
+}
+
+function updateDailyEconomy() {
+  ensureSettlementEconomy();
+
+  for (const loc of state.settlements || []) {
+    if (loc.type !== "village" && loc.type !== "castle") continue;
+    if (loc.lastEconomyUpdateDay === state.day) continue;
+
+    const prosperityMult = Math.max(0.25, loc.prosperity / 50);
+
+    if (!loc.raided) {
+      loc.foodStock += Math.floor((loc.type === "village" ? 12 : 7) * prosperityMult);
+      loc.recruitPool += Math.random() < 0.45 ? 1 : 0;
+      loc.prosperity += 0.2;
+    } else {
+      loc.foodStock = Math.max(0, loc.foodStock - 8);
+      loc.prosperity = Math.max(5, loc.prosperity - 1);
+    }
+
+    if (loc.type === "castle") updateCastleGarrisonFood(loc);
+
+    if (loc.faction === "player") {
+      const income = Math.floor(loc.taxIncome * prosperityMult);
+      state.gold += income;
+      log(`${loc.name} paid ${income} gold in taxes.`);
+    }
+
+    loc.lastEconomyUpdateDay = state.day;
+  }
+
+  updateArmyFoodAndWages();
 }
 
 function dailyDiplomacyUpdate() {
@@ -2001,7 +2114,9 @@ function drawPlayer() {
 function renderUI() {
   $("dayText").textContent = state.day;
   $("goldText").textContent = state.gold;
-  $("foodText").textContent = state.food;
+  $("foodText").textContent = state.player.food;
+  $("moraleText").textContent = Math.round(state.player.morale || 0);
+  $("wagesText").textContent = calculateArmyWages(state.player.army);
   $("armyText").textContent = `${armyCount(state.player.army)}/${state.armyMax}`;
   $("castleText").textContent = state.player.castles.length;
 
@@ -2044,8 +2159,9 @@ function renderSelected() {
       Owner: ${f ? f.name : "You"}<br>
       Status: ${f ? f.status : "Player Realm"}<br>
       Terrain: ${labelBiome(getBiomeAt(s.x, s.y))}<br><br>
-      Available recruits:<br>
-      ${Object.entries(s.recruits).map(([t, n]) => `${troopDefs[t].name}: ${n}`).join("<br>")}
+      Recruit Pool: ${s.recruitPool ?? 0}<br>
+      Prosperity: ${Math.floor(s.prosperity ?? 0)}<br>
+      Food Stock: ${Math.floor(s.foodStock ?? 0)}
     `;
 
     if (!near) {
@@ -2053,20 +2169,23 @@ function renderSelected() {
       return;
     }
 
-    for (const type of recruitPools[s.type]) {
-      const n = s.recruits[type] || 0;
-      const def = troopDefs[type];
+    if (s.type === "village") {
+      const recruitBtn = document.createElement("button");
+      recruitBtn.textContent = "Recruit Troops";
+      recruitBtn.onclick = () => recruitFromVillage(s.id);
+      actions.appendChild(recruitBtn);
 
-      const btn = document.createElement("button");
-      btn.textContent = `Recruit ${def.name} (${def.cost}g)`;
-      btn.disabled =
-        n <= 0 ||
-        state.gold < def.cost ||
-        armyCount(state.player.army) >= state.armyMax ||
-        (f && f.status === "War");
+      const foodBtn = document.createElement("button");
+      foodBtn.textContent = "Buy Food";
+      foodBtn.onclick = () => buyFoodFromVillage(s.id);
+      actions.appendChild(foodBtn);
+    }
 
-      btn.onclick = () => recruit(s, type);
-      actions.appendChild(btn);
+    if (s.type === "castle" && s.faction === "player") {
+      const garrisonBtn = document.createElement("button");
+      garrisonBtn.textContent = "Manage Garrison";
+      garrisonBtn.onclick = () => openGarrisonPanel(s.id);
+      actions.appendChild(garrisonBtn);
     }
 
     if (s.type === "castle" && s.faction !== "player") {
@@ -2370,20 +2489,59 @@ function restOneDay() {
   log("You rested one day.");
 }
 
-function recruit(s, type) {
-  const def = troopDefs[type];
+function recruitFromVillage(locationId) {
+  const loc = getLocationById(locationId);
+  if (!loc || loc.type !== "village") return;
 
-  if ((s.recruits[type] || 0) <= 0) return;
-  if (state.gold < def.cost) return;
-  if (armyCount(state.player.army) >= state.armyMax) return;
+  const count = Math.min(loc.recruitPool, 5);
+  const cost = count * 12;
 
-  state.gold -= def.cost;
-  s.recruits[type]--;
-  addTroops(state.player.army, type, 1);
+  if (count <= 0) return log(`${loc.name} has no recruits available.`);
+  if (state.gold < cost) return log(`Recruiting requires ${cost} gold.`);
 
-  log(`Recruited 1 ${def.name} from ${s.name}.`);
+  state.gold -= cost;
+  loc.recruitPool -= count;
+  state.player.army.farmhand = (state.player.army.farmhand || 0) + count;
+
+  log(`Recruited ${count} peasants from ${loc.name}.`);
   renderUI();
 }
+
+function buyFoodFromVillage(locationId) {
+  const loc = getLocationById(locationId);
+  if (!loc || loc.type !== "village") return;
+
+  const amount = Math.min(20, loc.foodStock);
+  const cost = amount * 2;
+
+  if (amount <= 0) return log(`${loc.name} has no food to sell.`);
+  if (state.gold < cost) return log(`Buying food requires ${cost} gold.`);
+
+  state.gold -= cost;
+  state.player.food += amount;
+  loc.foodStock -= amount;
+
+  log(`Bought ${amount} food from ${loc.name}.`);
+  renderUI();
+}
+
+function openGarrisonPanel(locationId) {
+  const castle = getLocationById(locationId);
+  if (!castle || castle.type !== "castle" || castle.faction !== "player") return;
+  ensureSettlementEconomy();
+  const rows = Object.keys(troopDefs).map(type => `
+    <tr>
+      <td>${troopDefs[type].name}</td>
+      <td>${state.player.army[type] || 0}</td>
+      <td>${castle.garrison[type] || 0}</td>
+      <td><button onclick="transferTroopsToGarrison('${locationId}','${type}',1)">→ Garrison</button></td>
+      <td><button onclick="transferTroopsFromGarrison('${locationId}','${type}',1)">← Army</button></td>
+    </tr>`).join("");
+  openModal(`<h2>${castle.name} Garrison</h2><table class="table"><tr><th>Troop</th><th>Army</th><th>Garrison</th><th colspan="2">Transfer</th></tr>${rows}</table><div class="row"><button onclick="closeModal()">Close</button></div>`);
+}
+
+function transferTroopsToGarrison(locationId, type, count) { const castle = getLocationById(locationId); if (!castle || castle.type !== "castle" || castle.faction !== "player") return; count = Math.min(count, state.player.army[type] || 0); if (count <= 0) return; state.player.army[type] -= count; if (state.player.army[type] <= 0) delete state.player.army[type]; castle.garrison[type] = (castle.garrison[type] || 0) + count; log(`Moved ${count} ${troopDefs[type].name} to ${castle.name}'s garrison.`); renderUI(); openGarrisonPanel(locationId); }
+function transferTroopsFromGarrison(locationId, type, count) { const castle = getLocationById(locationId); if (!castle || castle.type !== "castle" || castle.faction !== "player") return; count = Math.min(count, castle.garrison[type] || 0); if (count <= 0) return; castle.garrison[type] -= count; if (castle.garrison[type] <= 0) delete castle.garrison[type]; state.player.army[type] = (state.player.army[type] || 0) + count; log(`Moved ${count} ${troopDefs[type].name} from ${castle.name} to your army.`); renderUI(); openGarrisonPanel(locationId); }
 
 /* =========================================================
    ENCOUNTERS
@@ -2534,7 +2692,8 @@ function claimCastle(s) {
   }
 
   s.faction = "player";
-  state.player.castles.push(s.id);
+  if (!state.player.castles.includes(s.id)) state.player.castles.push(s.id);
+  ensureSettlementEconomy();
 
   log(`You captured ${s.name}. Other kingdoms now take you more seriously.`);
 }
@@ -2561,6 +2720,7 @@ function loadGame() {
   Object.assign(state, loaded);
   ensurePlayerXp();
   ensureInventory();
+  ensureSettlementEconomy();
 
   log("Game loaded.");
   renderUI();
@@ -2571,6 +2731,7 @@ function newGame() {
   makeWorld();
   ensurePlayerXp();
   ensureInventory();
+  ensureSettlementEconomy();
   renderUI();
 }
 
@@ -3802,7 +3963,7 @@ function resolveBattleResults(victory, reason = "defeat") {
       }
 
       const reward = 60 + armyCount(encounterArmy.army) * 6;
-      state.food += Math.floor(armyCount(encounterArmy.army) / 4);
+      state.player.food += Math.floor(armyCount(encounterArmy.army) / 4);
 
       const enemyType = encounterArmy.bandit ? "bandits" : "factionArmy";
       const loot = generateBattleLoot(enemyType, victory);
