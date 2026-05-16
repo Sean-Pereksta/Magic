@@ -3578,37 +3578,148 @@ function addVeteranVisuals(group, tier, team) {
     group.add(cape);
   }
 }
+function createTroopBody(profile) {
+  const bodyGroup = new THREE.Group();
+  const bodyWidth = 0.42 + profile.armorBulk * 0.3;
+  const bodyDepth = 0.28 + profile.armorBulk * 0.2;
+  const bodyHeight = 0.82 + profile.bodyScale * 0.16;
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(bodyWidth, bodyHeight, bodyDepth), profile.materials.cloth);
+  torso.position.y = profile.mountOffset + 1.15;
+  bodyGroup.add(torso);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.2 + profile.armorBulk * 0.04, 8, 8), profile.materials.skin);
+  head.position.y = torso.position.y + 0.65;
+  bodyGroup.add(head);
+  const legW = 0.14 + profile.armorBulk * 0.03;
+  const leg = new THREE.Mesh(new THREE.BoxGeometry(legW, 0.7, legW), profile.materials.armor);
+  const leftLeg = leg.clone(); leftLeg.position.set(-0.13, profile.mountOffset + 0.42, 0);
+  const rightLeg = leg.clone(); rightLeg.position.set(0.13, profile.mountOffset + 0.42, 0);
+  bodyGroup.add(leftLeg, rightLeg);
+  const armW = 0.14 + profile.armorBulk * 0.04;
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(armW, 0.58, armW), profile.materials.armor);
+  const leftArm = arm.clone(); leftArm.position.set(-(bodyWidth * 0.62), torso.position.y + 0.03, 0);
+  const rightArm = arm.clone(); rightArm.position.set((bodyWidth * 0.62), torso.position.y + 0.03, 0);
+  bodyGroup.add(leftArm, rightArm);
+  return { group: bodyGroup, body: torso, head, leftArm, rightArm, leftLeg, rightLeg };
+}
+function createTroopHelmet(profile, headY) {
+  if (profile.helmetType === "none") return null;
+  const y = headY + 0.03;
+  let mesh = new THREE.Mesh(new THREE.SphereGeometry(0.22 + profile.armorBulk * 0.06, 10, 8), profile.materials.armor);
+  if (profile.helmetType === "nasal" || profile.helmetType === "closed") mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.24, 0.24, 10), profile.materials.armor);
+  if (profile.helmetType === "cap" || profile.helmetType === "open") mesh = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), profile.materials.armor);
+  if (profile.helmetType === "kettle") mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.26, 0.2, 10), profile.materials.armor);
+  if (profile.helmetType === "horned") mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.22, 0.26, 8), profile.materials.armor);
+  mesh.position.y = y;
+  if (profile.helmetType === "horned") {
+    const hornL = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.2, 6), profile.materials.trim);
+    hornL.position.set(-0.16, y + 0.08, 0); hornL.rotation.z = -0.7;
+    const hornR = hornL.clone(); hornR.position.x = 0.16; hornR.rotation.z = 0.7;
+    const g = new THREE.Group(); g.add(mesh, hornL, hornR); return g;
+  }
+  if (profile.helmetType === "plumed" || profile.helmetType === "crested") {
+    const plume = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.24, 0.06), profile.materials.trim);
+    plume.position.set(0, y + 0.18, 0);
+    const g = new THREE.Group(); g.add(mesh, plume); return g;
+  }
+  return mesh;
+}
+function createTroopArmor(profile, bodyY) {
+  const g = new THREE.Group();
+  const cuirass = new THREE.Mesh(new THREE.BoxGeometry(0.48 + profile.armorBulk * 0.28, 0.55, 0.3 + profile.armorBulk * 0.12), profile.materials.armor);
+  cuirass.position.y = bodyY + 0.05;
+  g.add(cuirass);
+  const shoulderL = new THREE.Mesh(new THREE.BoxGeometry(0.16 + profile.armorBulk * 0.1, 0.12, 0.16), profile.materials.armor);
+  shoulderL.position.set(-0.29, bodyY + 0.3, 0);
+  const shoulderR = shoulderL.clone(); shoulderR.position.x = 0.29;
+  g.add(shoulderL, shoulderR);
+  const tabard = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.42, 0.05), profile.materials.cloth);
+  tabard.position.set(0, bodyY - 0.16, -0.12);
+  g.add(tabard);
+  return g;
+}
+function createTroopShield(profile) {
+  if (profile.shieldType === "none") return null;
+  let shield = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.08, 14), profile.materials.trim);
+  if (profile.shieldType === "kite") shield = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.34, 0.1, 14), profile.materials.trim);
+  if (profile.shieldType === "tower") shield = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.78, 0.1), profile.materials.trim);
+  shield.rotation.z = Math.PI / 2;
+  return shield;
+}
+function createTroopWeapon(profile) {
+  const g = new THREE.Group();
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 1.1, 6), profile.materials.wood);
+  shaft.rotation.x = Math.PI / 2; shaft.position.z = -0.45; g.add(shaft);
+  const w = profile.weaponType;
+  if (w.includes("pike")) shaft.scale.z = 2.4;
+  else if (w.includes("spear") || w.includes("lance")) shaft.scale.z = 1.85;
+  if (w.includes("sword") || w === "axe" || w === "mace" || w === "hammer" || w === "dagger" || w === "curved_sword") {
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.08, w === "dagger" ? 0.4 : 0.78, 0.1), profile.materials.armor);
+    blade.position.set(0, -0.08, -0.52); g.add(blade); shaft.visible = false;
+  } else if (w.includes("bow")) {
+    const bow = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.03, 6, 12, Math.PI), profile.materials.wood);
+    bow.rotation.z = Math.PI / 2; g.add(bow); shaft.visible = false;
+  } else if (w === "crossbow") {
+    const cross = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.2), profile.materials.wood);
+    const prod = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.05, 0.46), profile.materials.trim);
+    prod.position.z = -0.08; g.add(cross, prod); shaft.visible = false;
+  } else if (w === "banner") {
+    const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.32), profile.materials.cloth);
+    flag.position.set(0.24, 0.46, -0.6); g.add(flag); shaft.scale.z = 2.2;
+  }
+  return { weaponGroup: g, weapon: g };
+}
+function createTroopCape(profile, bodyY) { if (!profile.cape) return null; const cape = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.75, 0.05), profile.materials.cloth); cape.position.set(0, bodyY - 0.05, 0.2); return cape; }
+function createHorseMesh(profile) {
+  if (!profile.isCavalry) return null;
+  const horse = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.72, 1.95), profile.materials.horse); body.position.y = 0.46; horse.add(body);
+  const neck = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.55, 0.48), profile.materials.horse); neck.position.set(0, 0.72, -0.95); horse.add(neck);
+  if (profile.horseArmor) { const barding = new THREE.Mesh(new THREE.BoxGeometry(1.32, 0.52, 1.88), profile.materials.armor); barding.position.y = 0.55; horse.add(barding); }
+  return horse;
+}
+function applyFactionCloth(mesh, profile) { if (!mesh || !mesh.material) return; mesh.material = profile.materials.cloth; }
 function createTroopModel(type, team, tier = veteranTiers[0]) {
   const group = new THREE.Group();
-  const teamAccent = team === "friendly" ? 0x4fd1c5 : 0xd15a4f;
-  const armorColor = team === "friendly" ? 0x5a78b8 : 0x7a4d4d;
-  const skin = new THREE.MeshLambertMaterial({ color: 0xe8c39e });
-  const armor = new THREE.MeshLambertMaterial({ color: armorColor });
-  const cloth = new THREE.MeshLambertMaterial({ color: troopDefs[type].color });
-  const metal = new THREE.MeshLambertMaterial({ color: 0xb8b8be });
-  const wood = new THREE.MeshLambertMaterial({ color: 0x6f4b2d });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.9, 0.35), cloth); body.position.y = type === "cavalry" ? 1.4 : 1.25; group.add(body);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 8), skin); head.position.y = body.position.y + 0.7; group.add(head);
-  const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.7, 0.2), armor); leftLeg.position.set(-0.16, type === "cavalry" ? 0.95 : 0.45, 0);
-  const rightLeg = leftLeg.clone(); rightLeg.position.x = 0.16; group.add(leftLeg, rightLeg);
-  const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.65, 0.18), armor); leftArm.position.set(-0.4, body.position.y + 0.05, 0);
-  const rightArm = leftArm.clone(); rightArm.position.x = 0.4; group.add(leftArm, rightArm);
-  const weaponGroup = new THREE.Group(); weaponGroup.position.set(0.35, body.position.y, -0.1); group.add(weaponGroup);
-  let weapon = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.3, 6), wood);
-  weapon.rotation.x = Math.PI / 2; weapon.position.z = -0.5; weaponGroup.add(weapon);
-  let shield = null, helmet = null, horse = null;
-  if (type === "spearman" || type === "heavySpear") { weapon.scale.z = type === "heavySpear" ? 1.8 : 1.5; }
-  if (type === "swordsman") { weapon = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.7, 0.12), metal); weapon.position.set(0, -0.1, -0.55); weaponGroup.add(weapon); }
-  if (type === "shieldman" || type === "swordsman" || type === "spearman") { shield = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.1, 16), new THREE.MeshLambertMaterial({ color: teamAccent })); shield.rotation.z = Math.PI / 2; shield.position.set(-0.48, body.position.y - 0.1, 0.05); group.add(shield); }
-  if (type === "archer") { weapon = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.03, 6, 12, Math.PI), wood); weapon.rotation.z = Math.PI / 2; weaponGroup.add(weapon); }
-  if (type === "crossbow") { weapon = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.2), wood); weaponGroup.add(weapon); }
-  if (type !== "farmhand") { helmet = new THREE.Mesh(new THREE.SphereGeometry(type === "heavySpear" ? 0.28 : 0.24, 8, 8), metal); helmet.position.copy(head.position).setY(head.position.y + 0.05); group.add(helmet); }
-  if (type === "cavalry") { horse = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.7, 1.9), new THREE.MeshLambertMaterial({ color: 0x5b341c })); horse.position.y = 0.45; group.add(horse); weapon.scale.z = 1.7; }
+  const profile = getTroopVisualProfile(type);
+  profile.isCavalry = troopDefs[type]?.role === "cavalry";
+  profile.mountOffset = profile.isCavalry ? 0.26 : 0;
+  const skinColor = 0xe8c39e;
+  profile.materials = {
+    skin: new THREE.MeshLambertMaterial({ color: skinColor }),
+    cloth: new THREE.MeshLambertMaterial({ color: profile.clothColor }),
+    armor: new THREE.MeshLambertMaterial({ color: profile.armorColor }),
+    trim: new THREE.MeshLambertMaterial({ color: profile.trimColor }),
+    wood: new THREE.MeshLambertMaterial({ color: 0x6f4b2d }),
+    horse: new THREE.MeshLambertMaterial({ color: 0x5b341c })
+  };
+  const horse = createHorseMesh(profile); if (horse) group.add(horse);
+  const bodyParts = createTroopBody(profile); group.add(bodyParts.group);
+  const armor = createTroopArmor(profile, bodyParts.body.position.y); group.add(armor);
+  applyFactionCloth(bodyParts.body, profile);
+  const helmet = createTroopHelmet(profile, bodyParts.head.position.y); if (helmet) group.add(helmet);
+  const cape = createTroopCape(profile, bodyParts.body.position.y); if (cape) group.add(cape);
+  const { weaponGroup, weapon } = createTroopWeapon(profile); weaponGroup.position.set(0.34, bodyParts.body.position.y, -0.08); group.add(weaponGroup);
+  const shield = createTroopShield(profile);
+  if (shield) { shield.position.set(-0.44, bodyParts.body.position.y - 0.08, 0.04); group.add(shield); }
+  if (profile.weaponType === "crossbow" && profile.shieldType === "tower") {
+    const pavise = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.7, 0.08), profile.materials.trim); pavise.position.set(0, bodyParts.body.position.y - 0.05, 0.34); group.add(pavise);
+  }
+  if (profile.bannerBack) {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.4, 5), profile.materials.wood);
+    pole.position.set(0.18, bodyParts.body.position.y + 0.5, 0.18); group.add(pole);
+    const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.45, 0.28), profile.materials.cloth);
+    flag.position.set(0.4, bodyParts.body.position.y + 0.78, 0.18); group.add(flag);
+  }
+  if (profile.weaponType === "hammer") {
+    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.26, 0.16), profile.materials.wood);
+    pack.position.set(-0.24, bodyParts.body.position.y + 0.05, 0.22); group.add(pack);
+  }
   const selectionRing = new THREE.Mesh(new THREE.RingGeometry(0.65, 0.78, 24), new THREE.MeshBasicMaterial({ color: 0x9fffe0, transparent: true, opacity: 0.65, side: THREE.DoubleSide })); selectionRing.rotation.x = -Math.PI / 2; selectionRing.position.y = 0.04; selectionRing.visible = false; group.add(selectionRing);
   if (team === "friendly") addVeteranVisuals(group, tier, team);
-  group.userData.parts = { body, head, leftArm, rightArm, leftLeg, rightLeg, weaponGroup, weapon, shield, helmet, armor: body, horse, selectionRing };
+  group.userData.parts = { body: bodyParts.body, head: bodyParts.head, leftArm: bodyParts.leftArm, rightArm: bodyParts.rightArm, leftLeg: bodyParts.leftLeg, rightLeg: bodyParts.rightLeg, weaponGroup, weapon, shield, helmet, armor, horse, selectionRing };
   return group;
 }
+
 
 
 function getTroopCulture(type) { return troopDefs[type]?.culture || "common"; }
