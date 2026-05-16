@@ -564,22 +564,40 @@ let siegeGateMaxHp = 300;
 const troopDefs = {
   farmhand: {
     name: "Farmhand",
-    role: "frontline",
+    role: "infantry",
     hp: 65,
     damage: 10,
     range: 1.15,
     speed: 3.4,
+    moveSpeed: 3.4,
+    turnSpeed: 2.8,
+    acceleration: 4.6,
+    formationSpacing: 1.3,
+    flankVulnerability: 1.2,
+    frontDefenseBonus: 1.0,
+    chargeBonus: 1.0,
+    antiCavalryBonus: 1.0,
+    preferredRange: 1.15,
     armor: 0,
     cost: 10,
     color: 0xb58b58
   },
   spearman: {
     name: "Spearman",
-    role: "frontline",
+    role: "infantry",
     hp: 100,
     damage: 22,
     range: 2.25,
     speed: 3.25,
+    moveSpeed: 3.0,
+    turnSpeed: 1.6,
+    acceleration: 4.0,
+    formationSpacing: 1.25,
+    flankVulnerability: 1.4,
+    frontDefenseBonus: 0.8,
+    chargeBonus: 1.0,
+    antiCavalryBonus: 1.8,
+    preferredRange: 1.8,
     armor: 8,
     cost: 20,
     color: 0x6ab7ff,
@@ -589,11 +607,20 @@ const troopDefs = {
   },
   swordsman: {
     name: "Swordsman",
-    role: "frontline",
+    role: "infantry",
     hp: 120,
     damage: 28,
     range: 1.35,
     speed: 3.45,
+    moveSpeed: 3.4,
+    turnSpeed: 3.2,
+    acceleration: 5.0,
+    formationSpacing: 1.2,
+    flankVulnerability: 1.05,
+    frontDefenseBonus: 0.95,
+    chargeBonus: 1.0,
+    antiCavalryBonus: 1.1,
+    preferredRange: 1.35,
     armor: 14,
     cost: 32,
     color: 0x9bdc70,
@@ -603,11 +630,20 @@ const troopDefs = {
   },
   shieldman: {
     name: "Shield Infantry",
-    role: "frontline",
+    role: "infantry",
     hp: 150,
     damage: 18,
     range: 1.2,
     speed: 2.75,
+    moveSpeed: 2.5,
+    turnSpeed: 2.0,
+    acceleration: 3.2,
+    formationSpacing: 1.15,
+    flankVulnerability: 1.2,
+    frontDefenseBonus: 0.75,
+    chargeBonus: 1.0,
+    antiCavalryBonus: 1.25,
+    preferredRange: 1.2,
     armor: 22,
     cost: 38,
     color: 0x8c9cb8,
@@ -617,33 +653,60 @@ const troopDefs = {
   },
   archer: {
     name: "Archer",
-    role: "backline",
+    role: "archer",
     hp: 70,
     damage: 16,
     range: 26,
     speed: 3.05,
+    moveSpeed: 3.2,
+    turnSpeed: 2.8,
+    acceleration: 4.8,
+    formationSpacing: 1.5,
+    flankVulnerability: 1.5,
+    frontDefenseBonus: 1.1,
+    chargeBonus: 1.0,
+    antiCavalryBonus: 1.0,
+    preferredRange: 16,
     armor: 3,
     cost: 25,
     color: 0xf2c14e
   },
   crossbow: {
     name: "Crossbowman",
-    role: "backline",
+    role: "archer",
     hp: 80,
     damage: 24,
     range: 28,
     speed: 2.65,
+    moveSpeed: 2.9,
+    turnSpeed: 2.4,
+    acceleration: 3.8,
+    formationSpacing: 1.6,
+    flankVulnerability: 1.45,
+    frontDefenseBonus: 1.05,
+    chargeBonus: 1.0,
+    antiCavalryBonus: 1.0,
+    preferredRange: 17,
     armor: 6,
     cost: 42,
     color: 0xff9f1c
   },
   cavalry: {
     name: "Cavalry",
-    role: "flanker",
+    role: "cavalry",
     hp: 135,
     damage: 34,
     range: 1.7,
     speed: 5.6,
+    moveSpeed: 6.0,
+    turnSpeed: 2.1,
+    acceleration: 7.0,
+    formationSpacing: 1.85,
+    flankVulnerability: 1.15,
+    frontDefenseBonus: 1.0,
+    chargeBonus: 2.2,
+    antiCavalryBonus: 1.0,
+    preferredRange: 1.9,
     armor: 15,
     cost: 65,
     color: 0xda70d6,
@@ -653,11 +716,20 @@ const troopDefs = {
   },
   heavySpear: {
     name: "Heavy Spearman",
-    role: "frontline",
+    role: "infantry",
     hp: 130,
     damage: 27,
     range: 2.35,
     speed: 2.85,
+    moveSpeed: 2.5,
+    turnSpeed: 2.0,
+    acceleration: 3.3,
+    formationSpacing: 1.2,
+    flankVulnerability: 1.2,
+    frontDefenseBonus: 0.75,
+    chargeBonus: 1.0,
+    antiCavalryBonus: 1.6,
+    preferredRange: 2.1,
     armor: 16,
     cost: 45,
     color: 0x80ced7
@@ -2802,6 +2874,9 @@ function makeTroop(type, team, pos) {
     command: team === "friendly" ? command : "Enemy",
     formation: team === "friendly" ? (groupFormations[getTroopCategory(type)] || formation) : "Enemy",
     isRunning: false,
+    currentSpeed: 0,
+    chargeTime: 0,
+    turnSpeed: def.turnSpeed || 2.5,
     currentTarget: null,
     selectionRing: group.userData.parts ? group.userData.parts.selectionRing : null
   };
@@ -2866,7 +2941,10 @@ function applyCommandToSelectedGroup(newCommand) { command = newCommand; for (co
 function cycleFormationForSelectedGroup() { const current = groupFormations[selectedTroopGroup] || "Line"; const idx = formations.indexOf(current); const next = formations[(idx + 1) % formations.length]; groupFormations[selectedTroopGroup] = next; formation = next; for (const troop of battleTroops) { if (isTroopInSelectedGroup(troop) || selectedTroopGroup === "All") troop.formation = next; } assignFormationSlots(); showToast(`${selectedTroopGroup} Formation: ${next}`); updateBattleTopStatus(); }
 function easeOutBack(x) { const c1 = 1.70158; const c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); }
 function easeInOutSine(x) { return -(Math.cos(Math.PI * x) - 1) / 2; }
-function faceTroopToward(troop, targetPos, dt) { if (!troop || !targetPos) return; const dx = targetPos.x - troop.mesh.position.x; const dz = targetPos.z - troop.mesh.position.z; if (Math.abs(dx) + Math.abs(dz) < 0.001) return; const desiredYaw = Math.atan2(dx, dz); let diff = desiredYaw - troop.mesh.rotation.y; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); troop.mesh.rotation.y += diff * Math.min(1, dt * 8); }
+function rotateTroopToward(troop, targetPos, dt) { if (!troop || !targetPos) return; const pos = troop.mesh.position; const dx = targetPos.x - pos.x; const dz = targetPos.z - pos.z; if (Math.abs(dx) < 0.001 && Math.abs(dz) < 0.001) return; const desiredAngle = Math.atan2(dx, dz); const currentAngle = troop.mesh.rotation.y; let diff = desiredAngle - currentAngle; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); const maxTurn = (troop.turnSpeed || troop.def.turnSpeed || 2.5) * dt; troop.mesh.rotation.y += Math.max(-maxTurn, Math.min(maxTurn, diff)); }
+function getFacingMoveMultiplier(troop, targetPos) { const pos = troop.mesh.position; const desiredAngle = Math.atan2(targetPos.x - pos.x, targetPos.z - pos.z); const currentAngle = troop.mesh.rotation.y; let diff = desiredAngle - currentAngle; diff = Math.abs(Math.atan2(Math.sin(diff), Math.cos(diff))); if (diff < 0.4) return 1; if (diff < 1.2) return 0.65; return 0.25; }
+function getAttackAngleMultiplier(attacker, target) { const targetForward = new THREE.Vector3(0, 0, 1).applyQuaternion(target.mesh.quaternion).normalize(); const dirToAttacker = attacker.mesh.position.clone().sub(target.mesh.position).normalize(); const dot = targetForward.dot(dirToAttacker); if (dot > 0.45) return target.def.frontDefenseBonus || 1; if (dot < -0.45) return target.def.flankVulnerability || 1.25; return Math.max(1.1, (target.def.flankVulnerability || 1.2) * 0.85); }
+function applyAntiCavalryBonus(attacker, target, damage) { if (target.def.role === "infantry" && target.def.antiCavalryBonus && attacker.def.role === "cavalry") { const angleMult = getAttackAngleMultiplier(attacker, target); if (angleMult <= 0.9) { const counterDamage = Math.floor(target.damage * target.def.antiCavalryBonus); damageTroop(attacker, counterDamage, target.mesh.position); showFloatingText(attacker.mesh.position, `Spear! -${counterDamage}`, "#d5f5ff"); } } return damage; }
 function updateSelectedGroupVisuals(dt) { for (const troop of battleTroops) { if (!troop.selectionRing) continue; troop.selectionRing.visible = troop.team === "friendly" && troop.hp > 0 && isTroopInSelectedGroup(troop); if (troop.selectionRing.visible) troop.selectionRing.rotation.z += 0.8 * dt; } }
 
 function spawnArmy(army, team, base) {
@@ -2910,9 +2988,9 @@ function getFriendlyAnchor() {
 }
 
 function assignTeamFormation(list, anchor, dir) {
-  const front = list.filter(t => t.def.role === "frontline");
-  const back = list.filter(t => t.def.role === "backline");
-  const flank = list.filter(t => t.def.role === "flanker");
+  const front = list.filter(t => t.def.role === "infantry");
+  const back = list.filter(t => t.def.role === "archer");
+  const flank = list.filter(t => t.def.role === "cavalry");
 
   if (formation === "Shield Wall") {
     front.sort((a, b) => (b.type === "shieldman") - (a.type === "shieldman"));
@@ -2927,7 +3005,7 @@ function assignTeamFormation(list, anchor, dir) {
 
       t.slot = anchor.clone().add(
         new THREE.Vector3(
-          (col - (cols - 1) / 2) * spacing,
+          (col - (cols - 1) / 2) * spacing * (t.def.formationSpacing || 1),
           0,
           (zOff + row * 1.35) * dir
         )
@@ -3208,7 +3286,7 @@ function updateTroops(dt) {
       desired = t.mesh.position.clone();
       attackTarget(t, nearest);
     } else if (t.team === "enemy") {
-      if (t.def.role === "backline" && nearestDistance < t.def.range) {
+      if (t.def.role === "archer" && nearestDistance < t.def.range) {
         desired = t.mesh.position.clone();
       } else {
         desired = nearest.mesh.position.clone();
@@ -3231,13 +3309,19 @@ function updateTroops(dt) {
     }
 
     const before = t.mesh.position.clone();
+    if (t.def.role === "archer") {
+      if (nearestDistance < 8) desired = t.mesh.position.clone().add(t.mesh.position.clone().sub(nearest.mesh.position).setY(0).normalize().multiplyScalar(6));
+      else if (nearestDistance <= (t.def.preferredRange || 14)) desired = t.mesh.position.clone();
+    }
     moveTroop(t, desired, dt);
     if (isBlockedBySiegeObject(t.mesh.position, t.radius || 0.5)) t.mesh.position.copy(before);
     const movedDistance = before.distanceTo(t.mesh.position);
     t.isMoving = movedDistance > 0.01;
     t.isRunning = troopCommand === "Charge";
     t.currentTarget = nearest || null;
-    faceTroopToward(t, desired, dt);
+    rotateTroopToward(t, desired, dt);
+    if (t.def.role === "cavalry" && t.currentSpeed > (t.def.moveSpeed || t.def.speed || 5) * 0.8 && getFacingMoveMultiplier(t, desired) > 0.9) t.chargeTime += dt;
+    else t.chargeTime = Math.max(0, t.chargeTime - dt * 1.5);
     animateTroop(t, dt);
   }
 }
@@ -3273,25 +3357,31 @@ function moveTroop(t, target, dt) {
 
   dir.add(separation).normalize();
 
-  pos.add(dir.multiplyScalar(t.def.speed * dt));
-
-  t.mesh.rotation.y = Math.atan2(dir.x, dir.z);
+  const facingMult = getFacingMoveMultiplier(t, target);
+  const maxSpeed = t.def.moveSpeed || t.def.speed || 3;
+  const accel = t.def.acceleration || 4;
+  const targetSpeed = maxSpeed * facingMult;
+  t.currentSpeed += (targetSpeed - t.currentSpeed) * Math.min(1, accel * dt);
+  pos.add(dir.multiplyScalar(t.currentSpeed * dt));
 }
 
 function attackTarget(t, target) {
   if (t.attackCd > 0) return;
   triggerTroopAttackAnimation(t);
 
-  t.attackCd = t.def.role === "backline" ? 1.65 : 1.05;
+  t.attackCd = t.def.role === "archer" ? 1.65 : 1.05;
 
-  if (t.def.role === "backline") {
+  if (t.def.role === "archer") {
     fireArrow(t, target);
   } else {
     if (target.player) {
       player3.hp -= Math.max(3, t.damage - 8);
       showToast("You were hit!");
     } else {
-      const damage = Math.max(1, t.damage - Math.floor((target.armor || target.def.armor || 0) * 0.25));
+      let damage = Math.max(1, t.damage - Math.floor((target.armor || target.def.armor || 0) * 0.25));
+      damage = Math.floor(damage * getAttackAngleMultiplier(t, target));
+      damage = applyAntiCavalryBonus(t, target, damage);
+      if (t.def.role === "cavalry" && t.chargeTime > 1.5) { damage = Math.floor(damage * (t.def.chargeBonus || 1.8)); showFloatingText(target.mesh.position, "Charge!", "#fff0aa"); }
       damageTroop(target, damage);
     }
   }
