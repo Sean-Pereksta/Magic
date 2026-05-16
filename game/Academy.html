@@ -582,7 +582,10 @@ const troopDefs = {
     speed: 3.25,
     armor: 8,
     cost: 20,
-    color: 0x6ab7ff
+    color: 0x6ab7ff,
+    hasShield: true,
+    shieldBlockChance: 0.3,
+    shieldDamageReduction: 0.4
   },
   swordsman: {
     name: "Swordsman",
@@ -593,7 +596,10 @@ const troopDefs = {
     speed: 3.45,
     armor: 14,
     cost: 32,
-    color: 0x9bdc70
+    color: 0x9bdc70,
+    hasShield: true,
+    shieldBlockChance: 0.45,
+    shieldDamageReduction: 0.65
   },
   shieldman: {
     name: "Shield Infantry",
@@ -604,7 +610,10 @@ const troopDefs = {
     speed: 2.75,
     armor: 22,
     cost: 38,
-    color: 0x8c9cb8
+    color: 0x8c9cb8,
+    hasShield: true,
+    shieldBlockChance: 0.6,
+    shieldDamageReduction: 0.72
   },
   archer: {
     name: "Archer",
@@ -637,7 +646,10 @@ const troopDefs = {
     speed: 5.6,
     armor: 15,
     cost: 65,
-    color: 0xda70d6
+    color: 0xda70d6,
+    hasShield: true,
+    shieldBlockChance: 0.25,
+    shieldDamageReduction: 0.35
   },
   heavySpear: {
     name: "Heavy Spearman",
@@ -3268,70 +3280,75 @@ function attackTarget(t, target) {
   }
 }
 
-function fireArrow(t, target) {
-  const tip = t.mesh.localToWorld(new THREE.Vector3(0.35, t.type === "cavalry" ? 1.6 : 1.35, -0.7));
-  const start = tip.clone();
-  const end = target.mesh.position.clone().add(new THREE.Vector3(0, 1, 0));
-  const dir = end.sub(start).normalize();
-
-  const mesh = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.035, 0.035, 0.75, 6),
-    new THREE.MeshBasicMaterial({ color: 0x2b1a08 })
-  );
-
-  mesh.position.copy(start);
-  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
-
-  scene.add(mesh);
-
-  projectiles.push({
-    mesh,
-    dir,
-    team: t.team,
-    damage: t.damage,
-    life: 2.2
-  });
+function createArrowMesh(team) {
+  const group = new THREE.Group();
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.7, 6), new THREE.MeshLambertMaterial({ color: 0x5b3518 }));
+  shaft.rotation.x = Math.PI / 2;
+  group.add(shaft);
+  const head = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.18, 8), new THREE.MeshLambertMaterial({ color: 0xcccccc }));
+  head.position.z = -0.42;
+  head.rotation.x = -Math.PI / 2;
+  group.add(head);
+  return group;
 }
-
+function getBattlefieldHeightAt() { return 0; }
+function getQuadraticBezierPoint(start, control, end, t) { const p0 = start.clone().multiplyScalar((1 - t) * (1 - t)); const p1 = control.clone().multiplyScalar(2 * (1 - t) * t); const p2 = end.clone().multiplyScalar(t * t); return p0.add(p1).add(p2); }
+function fireArrow(attacker, target) {
+  if (!attacker || !target || target.dead || target.hp <= 0) return;
+  const start = attacker.mesh.position.clone();
+  start.y += attacker.type === "cavalry" ? 2.0 : 1.5;
+  const targetPos = target.mesh.position.clone();
+  targetPos.y += target.type === "cavalry" ? 1.7 : 1.0;
+  const distance = start.distanceTo(targetPos);
+  const baseErrorRadius = Math.max(0.5, distance * 0.045);
+  const errorRadius = Math.max(0.35, baseErrorRadius);
+  const end = targetPos.clone();
+  end.x += rand(-errorRadius, errorRadius);
+  end.z += rand(-errorRadius, errorRadius);
+  end.y = getBattlefieldHeightAt(end.x, end.z) + 0.8;
+  const control = start.clone().lerp(end, 0.5);
+  control.y += Math.max(4, distance * 0.22);
+  const arrow = createArrowMesh(attacker.team);
+  arrow.position.copy(start);
+  scene.add(arrow);
+  projectiles.push({ mesh: arrow, team: attacker.team, attacker, target, start, control, end, t: 0, speed: Math.max(0.65, 1.4 - distance * 0.01), damage: attacker.damage || attacker.def.damage, radius: 0.85, landed: false });
+}
+function isProjectileFromFront(troop, projectile) { const troopForward = new THREE.Vector3(0, 0, -1).applyQuaternion(troop.mesh.quaternion).normalize(); const incomingDir = projectile.end.clone().sub(projectile.start).normalize(); const towardProjectile = incomingDir.clone().multiplyScalar(-1); return troopForward.dot(towardProjectile) > 0.35; }
+function spawnArrowMissEffect(pos) { showFloatingText(pos, "miss", "#cccccc"); }
+function spawnShieldBlockEffect(troop) { const pos = troop.mesh.position.clone().add(new THREE.Vector3(0, 1.5, -0.45).applyQuaternion(troop.mesh.quaternion)); showHitSpark(pos); }
+function applyArrowDamage(projectile, target) {
+  let damage = projectile.damage;
+  const shielded = target.def.hasShield && isProjectileFromFront(target, projectile);
+  if (shielded) {
+    const chance = target.def.shieldBlockChance || 0.35;
+    if (Math.random() < chance) { spawnShieldBlockEffect(target); showFloatingText(target.mesh.position, "Blocked", "#d8e6ff"); return; }
+    damage = Math.max(1, Math.floor(damage * (1 - (target.def.shieldDamageReduction || 0.5))));
+  }
+  damage = Math.max(1, damage - Math.floor((target.armor || target.def.armor || 0) * 0.15));
+  damageTroop(target, damage, projectile.attacker?.mesh?.position || projectile.start);
+  showFloatingText(target.mesh.position, `-${damage}`, "#ffdddd");
+}
+function resolveArrowLanding(projectile) {
+  const enemies = battleTroops.filter(t => t.team !== projectile.team && !t.dead && t.hp > 0);
+  let closest = null, closestDist = Infinity;
+  for (const troop of enemies) { const dist = troop.mesh.position.distanceTo(projectile.end); if (dist < closestDist) { closest = troop; closestDist = dist; } }
+  if (closest && closestDist <= projectile.radius) applyArrowDamage(projectile, closest); else spawnArrowMissEffect(projectile.end);
+}
 function updateProjectiles(dt) {
-  for (const p of projectiles) {
-    if (p.userData && p.userData.kind === "spark") {
-      p.userData.life -= dt;
-      p.scale.setScalar(1 + (1 - p.userData.life / p.userData.maxLife) * 2.5);
-      p.material.opacity = clamp(p.userData.life / p.userData.maxLife, 0, 1);
-      p.material.transparent = true;
-      continue;
-    }
-    p.mesh.position.add(p.dir.clone().multiplyScalar(24 * dt));
-    p.life -= dt;
-
-    for (const t of battleTroops) {
-      if (t.team !== p.team && t.hp > 0 && t.mesh.position.distanceTo(p.mesh.position) < 0.8) {
-        damageTroop(t, p.damage, p.mesh.position);
-        showHitSpark(t.mesh.position.clone().add(new THREE.Vector3(0, 1.2, 0)));
-        p.life = 0;
-        break;
-      }
-    }
-
-    if (p.team === "enemy" && player3.mesh.position.distanceTo(p.mesh.position) < 0.9) {
-      player3.hp -= p.damage;
-      p.life = 0;
+  for (let i = projectiles.length - 1; i >= 0; i--) {
+    const p = projectiles[i];
+    p.t += dt * p.speed;
+    const oldPos = p.mesh.position.clone();
+    const newPos = getQuadraticBezierPoint(p.start, p.control, p.end, Math.min(1, p.t));
+    p.mesh.position.copy(newPos);
+    const dir = newPos.clone().sub(oldPos);
+    if (dir.lengthSq() > 0) p.mesh.lookAt(newPos.clone().add(dir.normalize()));
+    if (p.t >= 1) {
+      resolveArrowLanding(p);
+      scene.remove(p.mesh);
+      projectiles.splice(i, 1);
     }
   }
-
-  projectiles = projectiles.filter(p => {
-    if ((p.userData && p.userData.kind === "spark" && p.userData.life <= 0) || (!p.userData && p.life <= 0)) {
-      scene.remove(p.mesh || p);
-      return false;
-    }
-    if (!p.userData && p.life <= 0) {
-      scene.remove(p.mesh);
-      return false;
-    }
-
-    return true;
-  });
 }
 
 function damageTroop(t, amount, sourcePos = null) {
@@ -3349,6 +3366,7 @@ function damageTroop(t, amount, sourcePos = null) {
 }
 function killTroop(t) { t.hp = 0; if (t.label) t.label.style.display = "none"; t.mesh.rotation.z = Math.random() < 0.5 ? 1.45 : -1.45; t.mesh.position.y = 0.15; setTimeout(() => { if (t.mesh) t.mesh.visible = false; }, 700); }
 function showDamageNumber(pos, amount) { const el = document.createElement("div"); el.className = "damageNumber"; el.textContent = `-${Math.round(amount)}`; document.body.appendChild(el); floatingTexts.push({ el, pos: pos.clone(), life: 0.8, maxLife: 0.8, yRise: 0 }); }
+function showFloatingText(pos, text, color = "#ffdddd") { const el = document.createElement("div"); el.className = "damageNumber"; el.textContent = text; el.style.color = color; document.body.appendChild(el); const p = pos.clone(); p.y += 1.2; floatingTexts.push({ el, pos: p, life: 0.75, maxLife: 0.75, yRise: 0 }); }
 function updateFloatingTexts(dt) { for (let i = floatingTexts.length - 1; i >= 0; i--) { const f = floatingTexts[i]; f.life -= dt; f.yRise += dt * 1.5; const p = f.pos.clone(); p.y += 2.2 + f.yRise; p.project(camera); f.el.style.left = `${(p.x * 0.5 + 0.5) * window.innerWidth}px`; f.el.style.top = `${(-p.y * 0.5 + 0.5) * window.innerHeight}px`; f.el.style.opacity = String(clamp(f.life / f.maxLife, 0, 1)); if (f.life <= 0) { f.el.remove(); floatingTexts.splice(i, 1); } } }
 
 function showHitSpark(pos) {
@@ -3357,11 +3375,8 @@ function showHitSpark(pos) {
     new THREE.MeshBasicMaterial({ color: 0xfff1a8 })
   );
   spark.position.copy(pos);
-  spark.userData.life = 0.18;
-  spark.userData.maxLife = 0.18;
-  spark.userData.kind = "spark";
   scene.add(spark);
-  projectiles.push(spark);
+  setTimeout(() => scene.remove(spark), 180);
 }
 
 function updateTroopLabels() {
