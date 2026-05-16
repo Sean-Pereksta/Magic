@@ -507,6 +507,15 @@
   .controllerMenuTab.active { background: #ffd166; color: #10141d; }
   .controlModeOption { display: block; margin: 8px 0; }
 
+  .splitRoot { position:absolute; inset:0; display:none; z-index:3; }
+  .splitRoot.active { display:flex; }
+  .playerPane { position:relative; width:50%; height:100%; overflow:hidden; border-right:1px solid rgba(255,255,255,0.2); background:#0d1726; }
+  .playerPane:last-child { border-right:none; }
+  .splitHud { position:absolute; top:8px; left:8px; right:8px; z-index:5; background:rgba(0,0,0,0.45); padding:8px; border-radius:10px; font-size:12px; }
+  .splitMapCanvas { position:absolute; inset:0; width:100%; height:100%; }
+  .launchSplitToggle { margin: 10px 0 14px; display:flex; justify-content:center; gap:8px; align-items:center; }
+  .splitPlayerSection { margin-top: 10px; padding: 10px; border:1px solid rgba(255,255,255,0.12); border-radius:10px; text-align:left; }
+
 </style>
 </head>
 
@@ -517,18 +526,44 @@
     <h1>⚔ Kingdoms at War</h1>
     <p>Create or load a local campaign account.</p>
 
-    <div class="accountRow">
-      <input id="accountNameInput" placeholder="Account name..." />
-      <button onclick="createAccountFromMenu()" class="success">Create New Account</button>
+    <div class="launchSplitToggle">
+      <label><input id="splitScreenToggle" type="checkbox" onchange="toggleSplitLaunchUI()"/> Split Screen Mode</label>
+    </div>
+
+    <div class="splitPlayerSection" id="launchP1Section">
+      <h3>Player 1</h3>
+      <div class="accountRow">
+        <input id="accountNameInput" placeholder="Account name..." />
+        <button onclick="createAccountFromMenu()" class="success">Create New Account</button>
+      </div>
+      <div class="accountRow">
+        <select id="accountSelect"></select>
+        <button onclick="loadSelectedAccount()" class="blue">Load Account</button>
+        <button onclick="deleteSelectedAccount()" class="danger">Delete</button>
+      </div>
+      <div class="accountRow">
+        <select id="p1InputSource"><option>Keyboard/Mouse</option><option>Gamepad 1</option><option>Gamepad 2</option><option>Gamepad 3</option><option>Gamepad 4</option></select>
+        <button onclick="openControlsPanelForLaunch('p1')">Controls</button>
+      </div>
+    </div>
+
+    <div class="splitPlayerSection" id="launchP2Section" style="display:none;">
+      <h3>Player 2</h3>
+      <div class="accountRow">
+        <select id="p2AccountSelect"></select>
+        <button onclick="loadSelectedAccountP2()" class="blue">Load Account</button>
+      </div>
+      <div class="accountRow">
+        <select id="p2InputSource"><option value="">Select input...</option><option>Keyboard/Mouse</option><option>Gamepad 1</option><option>Gamepad 2</option><option>Gamepad 3</option><option>Gamepad 4</option></select>
+        <button onclick="openControlsPanelForLaunch('p2')">Controls</button>
+      </div>
+      <div class="small" id="p2SelectedAccount">Selected account: None</div>
     </div>
 
     <div class="accountRow">
-      <select id="accountSelect"></select>
-      <button onclick="loadSelectedAccount()" class="blue">Load Account</button>
-      <button onclick="deleteSelectedAccount()" class="danger">Delete</button>
+      <button id="continueAccountBtn" onclick="continueLastAccount()" class="warn">Continue Last Account</button>
+      <button id="startSplitBtn" onclick="startSplitScreenMode()" class="success" style="display:none;">Start Split Screen</button>
     </div>
-
-    <button id="continueAccountBtn" onclick="continueLastAccount()" class="warn">Continue Last Account</button>
 
     <div id="accountMenuMessage" class="small"></div>
   </div>
@@ -603,6 +638,17 @@
   </div>
 </div>
 
+<div id="splitRoot" class="splitRoot">
+  <div id="playerPane-p1" class="playerPane">
+    <canvas id="mapCanvas-p1" class="splitMapCanvas"></canvas>
+    <div class="splitHud"><b>Player 1</b> • <span id="splitAccount-p1">None</span> • Mode: <span id="splitMode-p1">World</span></div>
+  </div>
+  <div id="playerPane-p2" class="playerPane">
+    <canvas id="mapCanvas-p2" class="splitMapCanvas"></canvas>
+    <div class="splitHud"><b>Player 2</b> • <span id="splitAccount-p2">None</span> • Mode: <span id="splitMode-p2">World</span></div>
+  </div>
+</div>
+
 <div id="battleScreen" class="screen">
   <div id="threeContainer"></div>
 
@@ -667,6 +713,22 @@ const controllerActionLabels = { select:"A / Select on Map", swing:"B / Swing At
 const controllerMenuTabs = [{id:"army",label:"Army",open:()=>openArmyPanel?.()},{id:"inventory",label:"Inventory",open:()=>openInventoryPanel?.()},{id:"upgrades",label:"Upgrades",open:()=>openTroopUpgradePanel?.()},{id:"diplomacy",label:"Diplomacy",open:()=>openDiplomacyPanel?.()},{id:"controls",label:"Controls",open:()=>openControlsPanel()},{id:"accounts",label:"Accounts",open:()=>showLaunchScreen?.()}];
 let activeControllerMenuTabIndex = 0;
 let controllerMenuOpen = false;
+
+const gameMode = { splitScreen:false, sessions:[] };
+let sharedWorld = null;
+function buildSession(id,label){return {id,label,accountName:null,state:null,inputSource:id==='p1'?'Keyboard/Mouse':'',controls:{},viewport:null,mode:'world',selected:null,encounterArmy:null,battleInstanceId:null,worldCamera:{x:0,y:0,zoom:1},cursor:{x:0,y:0},keys:{},menuOpen:false,uiRefs:{}};}
+function getSession(playerId){return gameMode.sessions.find(s=>s.id===playerId)||null;}
+function activeSessions(){return gameMode.sessions.filter(Boolean);}
+function getSessionState(session){return session?.state||null;}
+function setSessionMessage(session,message){if(session?.id){const box=$('accountMenuMessage'); if(box) box.textContent=`${session.label}: ${message}`;}}
+function loadSessionAccount(session,accountName){ if(!session||!accountName)return false; const raw=localStorage.getItem(getAccountSaveKey(accountName)); session.accountName=accountName; session.state=raw?JSON.parse(raw):structuredClone(state); return true; }
+function saveSession(session){ if(!session?.accountName||!session.state)return; localStorage.setItem(getAccountSaveKey(session.accountName),JSON.stringify(session.state)); }
+function toggleSplitLaunchUI(){ const on=$('splitScreenToggle')?.checked; $('launchP2Section').style.display=on?'block':'none'; $('startSplitBtn').style.display=on?'inline-block':'none'; $('continueAccountBtn').style.display=on?'none':'inline-block'; if(on) refreshP2AccountSelect(); }
+function refreshP2AccountSelect(){ const p2=$('p2AccountSelect'); const accounts=getAccountList(); p2.innerHTML=''; accounts.forEach(a=>{const o=document.createElement('option'); o.value=a; o.textContent=a; p2.appendChild(o);}); }
+function loadSelectedAccountP2(){ const name=$('p2AccountSelect')?.value; if(!name){setAccountMessage('Assign both players before launching split screen.');return;} $('p2SelectedAccount').textContent=`Selected account: ${name}`; }
+function openControlsPanelForLaunch(pid){ openControlsPanel(); setAccountMessage(`${pid==='p1'?'Player 1':'Player 2'} controls can be customized after launch as well.`); }
+function validateSplitSetup(){ const p1=currentAccountName; const p2=$('p2AccountSelect')?.value; const i1=$('p1InputSource')?.value; const i2=$('p2InputSource')?.value; if(!p1||!p2||!i1||!i2){return 'Assign both players before launching split screen.';} if(p1===p2){return 'Player 2 must use a different account than Player 1.';} if(i1===i2){return 'Player 2 must use a different input than Player 1.';} if(i1==='Keyboard/Mouse'&&i2==='Keyboard/Mouse'){return 'Player 2 must use a different input than Player 1.';} return ''; }
+
 
 /* =========================================================
    TROOPS
@@ -1803,12 +1865,35 @@ function initWorld() {
   requestAnimationFrame(loop);
 
   refreshAccountMenu();
+  refreshP2AccountSelect();
   showLaunchScreen();
 }
 
 function resize() {
   W = canvas.width = window.innerWidth;
   H = canvas.height = window.innerHeight;
+}
+
+
+function startSplitScreenMode(){
+  const issue=validateSplitSetup();
+  if(issue){ setAccountMessage(issue); return; }
+  gameMode.splitScreen=true;
+  const s1=buildSession('p1','Player 1');
+  const s2=buildSession('p2','Player 2');
+  s1.inputSource=$('p1InputSource').value;
+  s2.inputSource=$('p2InputSource').value;
+  loadSessionAccount(s1,currentAccountName);
+  loadSessionAccount(s2,$('p2AccountSelect').value);
+  gameMode.sessions=[s1,s2];
+  sharedWorld={terrain:s1.state.terrain,decor:s1.state.decor,locations:s1.state.settlements,roamingArmies:s1.state.armies,factions:s1.state.factions,day:s1.state.day,worldSeed:s1.state.worldSeed||Date.now(),players:{p1:{x:s1.state.player.x,y:s1.state.player.y,targetX:s1.state.player.target?.x||s1.state.player.x,targetY:s1.state.player.target?.y||s1.state.player.y,accountName:s1.accountName,faction:'player1'},p2:{x:s2.state.player.x,y:s2.state.player.y,targetX:s2.state.player.target?.x||s2.state.player.x,targetY:s2.state.player.target?.y||s2.state.player.y,accountName:s2.accountName,faction:'player2'}}};
+  $('splitAccount-p1').textContent=s1.accountName;
+  $('splitAccount-p2').textContent=s2.accountName;
+  $('launchScreen').classList.remove('active');
+  $('worldScreen').classList.add('active');
+  $('splitRoot').classList.add('active');
+  $('mapCanvas').style.display='none';
+  setAccountMessage('Split-screen started. PvE/PvP battle instances use existing single battle flow until fully migrated.');
 }
 
 /* =========================================================
@@ -3417,6 +3502,11 @@ function showWorldScreen() {
 }
 
 function saveGame() {
+  if (gameMode.splitScreen && gameMode.sessions.length===2){
+    gameMode.sessions.forEach(saveSession);
+    const key=`kaw_shared_world_${gameMode.sessions[0].accountName}_${gameMode.sessions[1].accountName}`;
+    localStorage.setItem(key, JSON.stringify(sharedWorld));
+  }
   if (!currentAccountName) {
     setAccountMessage("Create or load an account before saving.");
     showLaunchScreen();
