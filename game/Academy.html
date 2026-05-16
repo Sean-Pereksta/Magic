@@ -556,14 +556,14 @@
           <div class="accountRow"><select id="splitAccountSelectP1"></select><button onclick="selectSplitScreenAccount('p1')" class="blue">Load Account</button></div>
           <div class="accountRow"><input id="splitAccountNameInputP1" placeholder="New account name..." /><button onclick="createSplitScreenAccount('p1')" class="success">Create</button></div>
           <div class="accountRow"><select id="splitInputSourceP1"><option value="">Select Input Source</option><option value="Keyboard/Mouse">Keyboard/Mouse</option><option value="Gamepad 1">Gamepad 1</option><option value="Gamepad 2">Gamepad 2</option><option value="Gamepad 3">Gamepad 3</option><option value="Gamepad 4">Gamepad 4</option></select></div>
-          <button class="splitControlsPlaceholder">Controls Mapping (Coming Soon)</button>
+          <button class="splitControlsPlaceholder" onclick="openSessionControlsPanel('p1')">Controls</button>
         </div>
         <div class="splitPanel">
           <h3>Player 2 Account</h3>
           <div class="accountRow"><select id="splitAccountSelectP2"></select><button onclick="selectSplitScreenAccount('p2')" class="blue">Load Account</button></div>
           <div class="accountRow"><input id="splitAccountNameInputP2" placeholder="New account name..." /><button onclick="createSplitScreenAccount('p2')" class="success">Create</button></div>
           <div class="accountRow"><select id="splitInputSourceP2"><option value="">Select Input Source</option><option value="Keyboard/Mouse">Keyboard/Mouse</option><option value="Gamepad 1">Gamepad 1</option><option value="Gamepad 2">Gamepad 2</option><option value="Gamepad 3">Gamepad 3</option><option value="Gamepad 4">Gamepad 4</option></select></div>
-          <button class="splitControlsPlaceholder">Controls Mapping (Coming Soon)</button>
+          <button class="splitControlsPlaceholder" onclick="openSessionControlsPanel('p2')">Controls</button>
         </div>
       </div>
       <button id="startSplitScreenBtn" onclick="startSplitScreenFromMenu()" class="warn">Start Split Screen</button>
@@ -1843,6 +1843,7 @@ function initWorld() {
   window.addEventListener("resize", resize);
   canvas.addEventListener("click", mapClick);
 
+  initializeInputManager();
   requestAnimationFrame(loop);
 
   refreshAccountMenu();
@@ -1897,9 +1898,24 @@ function loop(t) {
 
 function updateSplitWorld(dt) {
   if (!sharedWorld) return;
+  updateInputManager();
   for (const session of gameMode.sessions) {
     const p = getSharedPlayerParty(session);
     if (!p) continue;
+    if (!session.menuOpen) {
+      const move = getMoveVector(session);
+      if (sourceIsGamepad(session) && (Math.abs(move.x) > 0.04 || Math.abs(move.y) > 0.04)) {
+        session.cursor.x = clamp((session.cursor.x || p.x) + move.x * 360 * dt, session.worldCamera.x - 460, session.worldCamera.x + 460);
+        session.cursor.y = clamp((session.cursor.y || p.y) + move.y * 360 * dt, session.worldCamera.y - 320, session.worldCamera.y + 320);
+        p.targetX = session.cursor.x;
+        p.targetY = session.cursor.y;
+      }
+      if (wasActionPressed(session, "confirm") && sourceIsGamepad(session)) {
+        const hit = findSharedHit(session.cursor.x || p.x, session.cursor.y || p.y);
+        if (hit) session.selected = hit;
+      }
+      if (wasActionPressed(session, "openMenu")) session.menuOpen = true;
+    }
     movePoint(p, { x: p.targetX, y: p.targetY }, state.player.speed || 62, dt);
     session.worldCamera.x = p.x;
     session.worldCamera.y = p.y;
@@ -3342,6 +3358,24 @@ function accountExists(name) {
 function makeSplitSession(playerId, label) {
   return { id: playerId, label, accountName: "", state: null, inputSource: "", controls: null, mode: "world", selected: null, encounterArmy: null, battleInstanceId: null, worldCamera: { x: 0, y: 0, zoom: 1 }, cursor: { x: 0, y: 0 }, keys: {}, menuOpen: false };
 }
+const defaultKeyboardControls = { moveForward: "KeyW", moveBack: "KeyS", turnLeft: "KeyA", turnRight: "KeyD", run: "ShiftLeft", attack: "Space", groupPrev: "KeyQ", groupNext: "KeyE", commandHold: "Digit1", commandFollow: "Digit2", commandFormation: "Digit3", commandCharge: "Digit4", openMenu: "KeyY", confirm: "Enter", back: "Escape" };
+const defaultGamepadControls = { moveAxisX: "leftStickX", moveAxisY: "leftStickY", turnAxisX: "rightStickX", confirm: "button0", attack: "button1", openMenu: "button3", back: "button1", commandHold: "dpadUp", commandFollow: "dpadRight", commandFormation: "dpadDown", commandCharge: "dpadLeft", groupPrev: "button4", groupNext: "button5", menu: "button9" };
+const inputManager = { keyboardDown: {}, keyboardPressed: {}, gamepadPrevious: {}, gamepadCurrent: {}, deadzone: 0.18 };
+function initializeInputManager() { inputManager.keyboardDown = {}; inputManager.keyboardPressed = {}; inputManager.gamepadPrevious = {}; inputManager.gamepadCurrent = {}; }
+function sourceIsGamepad(session) { return String(session?.inputSource || "").startsWith("Gamepad"); }
+function controlsStorageKey(session) { return `kaw_controls_${session?.accountName || "guest"}_${session?.id || "single"}`; }
+function getAssignedGamepad(session) { const m = String(session?.inputSource || "").match(/Gamepad\s+(\d+)/i); if (!m || !navigator.getGamepads) return null; return navigator.getGamepads()[Math.max(0, Number(m[1]) - 1)] || null; }
+function updateInputManager() { inputManager.keyboardPressed = {}; inputManager.gamepadPrevious = JSON.parse(JSON.stringify(inputManager.gamepadCurrent)); inputManager.gamepadCurrent = {}; }
+function getInputSnapshot(session) { const snap = { down: {}, pressed: {}, axes: { leftX: 0, leftY: 0, rightX: 0, rightY: 0 }, disconnected: false }; if (!sourceIsGamepad(session)) { snap.down = inputManager.keyboardDown; snap.pressed = inputManager.keyboardPressed; return snap; } const pad = getAssignedGamepad(session); if (!pad) { snap.disconnected = true; return snap; } const prev = inputManager.gamepadPrevious[pad.index] || {}; const cur = {}; (pad.buttons || []).forEach((b, i) => cur[`button${i}`] = !!b.pressed); cur.dpadUp = !!pad.buttons?.[12]?.pressed; cur.dpadRight = !!pad.buttons?.[15]?.pressed; cur.dpadDown = !!pad.buttons?.[13]?.pressed; cur.dpadLeft = !!pad.buttons?.[14]?.pressed; snap.down = cur; Object.keys(cur).forEach(k => snap.pressed[k] = cur[k] && !prev[k]); inputManager.gamepadCurrent[pad.index] = cur; const ax = pad.axes || []; snap.axes.leftX = Math.abs(ax[0] || 0) < inputManager.deadzone ? 0 : (ax[0] || 0); snap.axes.leftY = Math.abs(ax[1] || 0) < inputManager.deadzone ? 0 : (ax[1] || 0); snap.axes.rightX = Math.abs(ax[2] || 0) < inputManager.deadzone ? 0 : (ax[2] || 0); snap.axes.rightY = Math.abs(ax[3] || 0) < inputManager.deadzone ? 0 : (ax[3] || 0); return snap; }
+function isActionDown(session, action) { const mapping = session?.controls || (sourceIsGamepad(session) ? defaultGamepadControls : defaultKeyboardControls); const key = mapping[action]; if (!key) return false; return !!getInputSnapshot(session).down[key]; }
+function wasActionPressed(session, action) { const mapping = session?.controls || (sourceIsGamepad(session) ? defaultGamepadControls : defaultKeyboardControls); const key = mapping[action]; if (!key) return false; return !!getInputSnapshot(session).pressed[key]; }
+function getMoveVector(session) { const mapping = session?.controls || defaultKeyboardControls; const snap = getInputSnapshot(session); if (sourceIsGamepad(session)) return { x: snap.axes.leftX, y: -snap.axes.leftY }; return { x: (inputManager.keyboardDown[mapping.turnRight] ? 1 : 0) - (inputManager.keyboardDown[mapping.turnLeft] ? 1 : 0), y: (inputManager.keyboardDown[mapping.moveForward] ? 1 : 0) - (inputManager.keyboardDown[mapping.moveBack] ? 1 : 0) }; }
+function getTurnVector(session) { const snap = getInputSnapshot(session); return sourceIsGamepad(session) ? { x: snap.axes.rightX, y: snap.axes.rightY } : { x: 0, y: 0 }; }
+function saveControlsForSession(session) { if (session) localStorage.setItem(controlsStorageKey(session), JSON.stringify(session.controls || {})); }
+function loadControlsForSession(session) { if (!session) return; const defaults = sourceIsGamepad(session) ? defaultGamepadControls : defaultKeyboardControls; try { const raw = JSON.parse(localStorage.getItem(controlsStorageKey(session)) || "null"); session.controls = { ...defaults, ...(raw || {}) }; } catch { session.controls = { ...defaults }; } }
+function resetControlsForSession(session) { if (session) session.controls = { ...(sourceIsGamepad(session) ? defaultGamepadControls : defaultKeyboardControls) }; }
+function rebindSessionAction(sessionId, action) { const session = getSplitSession(sessionId); if (!session) return; const v = prompt(`Bind ${action}`, session.controls?.[action] || ""); if (v) { session.controls[action] = v; openSessionControlsPanel(sessionId); } }
+function openSessionControlsPanel(sessionId) { const session = getSplitSession(sessionId); if (!session) return; if (!session.controls) loadControlsForSession(session); const rows = Object.keys(session.controls).map(a => `<tr><td>${a}</td><td>${session.controls[a]}</td><td><button onclick="rebindSessionAction('${session.id}','${a}')">Rebind</button></td></tr>`).join(""); $("modal").classList.add("active"); $("modalBox").innerHTML = `<h2>${session.label} Controls</h2><table class="table"><tr><th>Action</th><th>Current binding</th><th></th></tr>${rows}</table><div class="row"><button class="warn" onclick="resetControlsForSession(getSplitSession('${session.id}'));openSessionControlsPanel('${session.id}')">Restore Defaults</button><button class="success" onclick="saveControlsForSession(getSplitSession('${session.id}'));closeModal()">Save Mapping</button><button onclick="closeModal()">Close</button></div>`; }
 
 function getSplitSession(playerId) {
   return gameMode.sessions.find(s => s.id === playerId);
@@ -3565,6 +3599,7 @@ function startSplitScreenFromMenu() {
     const session = getSplitSession(id);
     session.accountName = normalizeAccountName($(`splitAccountSelect${suffix}`)?.value);
     session.inputSource = $(`splitInputSource${suffix}`)?.value || "";
+    loadControlsForSession(session);
     if (session.accountName && accountExists(session.accountName)) {
       const raw = localStorage.getItem(getAccountSaveKey(session.accountName));
       if (raw) {
@@ -3643,7 +3678,8 @@ function updateSplitHud(session) {
   const hud = $(`splitHud-${session.id}`);
   if (!hud) return;
   const sessionState = session.state || state;
-  hud.innerHTML = `<b>${session.label}</b><span>${session.accountName}</span><span>Gold ${sessionState.gold}</span><span>Food ${sessionState.player.food}</span><span>Morale ${Math.round(sessionState.player.morale || 0)}</span><span>Army ${armyCount(sessionState.player.army)}</span><span>Mode ${session.mode}</span><button onclick="showLaunchScreen()">Menu</button><button onclick="saveSessionGame('${session.id}')">Save</button>`;
+  const gamepadDisconnected = sourceIsGamepad(session) && !getAssignedGamepad(session);
+  hud.innerHTML = `<b>${session.label}</b><span>${session.accountName}</span><span>Gold ${sessionState.gold}</span><span>Food ${sessionState.player.food}</span><span>Morale ${Math.round(sessionState.player.morale || 0)}</span><span>Army ${armyCount(sessionState.player.army)}</span><span>Mode ${session.mode}</span>${gamepadDisconnected ? `<span style="color:#ffb3b3;">Gamepad disconnected.</span>` : ""}<button onclick="openSessionMenu('${session.id}')">Menu</button><button onclick="openSessionControlsPanel('${session.id}')">Controls</button><button onclick="saveSessionGame('${session.id}')">Save</button>`;
   const info = $(`selectedInfo-${session.id}`);
   const actions = $(`selectedActions-${session.id}`);
   if (!info || !actions) return;
@@ -3670,6 +3706,7 @@ function updateSplitHud(session) {
     actions.appendChild(battle);
   }
 }
+function openSessionMenu(id) { const s = getSplitSession(id); if (!s) return; s.menuOpen = true; openSessionControlsPanel(id); }
 function saveSessionGame(id) { const s = getSplitSession(id); if (s?.accountName) localStorage.setItem(getAccountSaveKey(s.accountName), JSON.stringify(s.state || state)); }
 
 function showLaunchScreen() {
@@ -5269,6 +5306,8 @@ function checkBattleEndConditions() {
 
 function onKeyDown(e) {
   keys[e.code] = true;
+  inputManager.keyboardDown[e.code] = true;
+  inputManager.keyboardPressed[e.code] = true;
   if (e.code === "Space") startSpearThrust();
   if (e.code === "KeyQ") { e.preventDefault(); cycleSelectedTroopGroup(-1); }
   if (e.code === "KeyE") { e.preventDefault(); cycleSelectedTroopGroup(1); }
@@ -5280,6 +5319,7 @@ function onKeyDown(e) {
 
 function onKeyUp(e) {
   keys[e.code] = false;
+  inputManager.keyboardDown[e.code] = false;
 }
 
 function onMouseMove(e) {
