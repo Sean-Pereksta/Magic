@@ -1890,7 +1890,15 @@ function loop(t) {
   lastTime = t;
 
   if (!worldPaused) gameMode.splitScreen ? updateSplitWorld(dt) : updateWorld(dt);
-  if (gameMode.splitScreen) gameMode.sessions.forEach(renderSplitWorldForSession);
+  if (gameMode.splitScreen) gameMode.sessions.filter(s => s.mode !== "battle").forEach(renderSplitWorldForSession);
+  if (gameMode.splitScreen) {
+    for (const bi of Object.values(battleInstances)) {
+      const dtBattle = Math.min(0.04, bi.clock?.getDelta?.() || dt);
+      updateBattleInstance(bi, dtBattle);
+      renderBattleInstance(bi);
+      if (battleState.battleEnded && !bi.resultPending) { bi.resultPending = true; endBattleInstance(bi, { victory: !!(player3 && player3.hp > 0) }); }
+    }
+  }
   else drawWorld();
   requestAnimationFrame(loop);
 
@@ -1900,6 +1908,7 @@ function updateSplitWorld(dt) {
   if (!sharedWorld) return;
   updateInputManager();
   for (const session of gameMode.sessions) {
+    if (session.mode === "battle") continue;
     const p = getSharedPlayerParty(session);
     if (!p) continue;
     if (!session.menuOpen) {
@@ -3645,6 +3654,7 @@ function getCanvasForSession(session) { return $(`mapCanvas-${session.id}`); }
 function getSharedPlayerParty(session) { return sharedWorld?.players?.[session.id] || null; }
 function createSplitScreenLayout() {
   for (const session of gameMode.sessions) {
+    if (session.mode === "battle") continue;
     const pane = getPaneForSession(session);
     pane.innerHTML = `
       <canvas id="mapCanvas-${session.id}" class="splitMapCanvas"></canvas>
@@ -3702,10 +3712,48 @@ function updateSplitHud(session) {
   } else if (session.selected.kind === "army") {
     const battle = document.createElement("button");
     battle.textContent = "Battle";
-    battle.onclick = () => alert("Split-screen battles will be added in Request 4.");
+    battle.onclick = () => createBattleInstanceForSession(session, session.selected?.data || null, { battleType: "field" });
     actions.appendChild(battle);
   }
 }
+
+function getBattleHudForSession(sessionId) {
+  const pane = $(`playerPane-${sessionId}`);
+  return pane ? pane.querySelector(`#battleHud-${sessionId}`) : null;
+}
+function createBattleInstanceForSession(session, enemyArmy, options = {}) {
+  if (!gameMode.splitScreen || !session || !enemyArmy || battleInstances[session.id]) return null;
+  const instance = { id: `battle-${session.id}-${Date.now()}`, type: options.type || "field", ownerPlayerIds: [session.id], sessionId: session.id, scene: null, camera: null, renderer: null, container: null, clock: null, troops: [], projectiles: [], labels: [], floatingTexts: [], playerActor: null, encounterArmy: enemyArmy, battleEnemyArmy: enemyArmy, biome: options.biome || battleBiome || "grassland", battleType: options.battleType || "field", command: "Hold Position", formation: "Line", selectedGroup: "All", resultPending: false };
+  battleInstances[session.id] = instance;
+  session.mode = "battle";
+  mountBattleRendererForSession(session, instance);
+  return instance;
+}
+function mountBattleRendererForSession(session, battleInstance) {
+  const pane = getPaneForSession(session); if (!pane) return returnSessionToWorld(session);
+  pane.innerHTML = `<div class="splitBattleWrap"><div id="battleContainer-${session.id}" class="splitBattleContainer"></div><div class="splitHud" id="battleHud-${session.id}"></div></div>`;
+  const container = pane.querySelector(`#battleContainer-${session.id}`);
+  battleInstance.container = container;
+  const saved = suppressBattleAutoLoop; suppressBattleAutoLoop = true;
+  const old = encounterArmy; encounterArmy = battleInstance.encounterArmy;
+  try { setupBattle(); } catch (err) { console.error(err); returnSessionToWorld(session); }
+  encounterArmy = old; suppressBattleAutoLoop = saved;
+  battleInstance.scene = scene; battleInstance.camera = camera; battleInstance.renderer = renderer; battleInstance.clock = clock;
+  battleInstance.troops = battleTroops; battleInstance.projectiles = projectiles; battleInstance.labels = labels; battleInstance.floatingTexts = floatingTexts; battleInstance.playerActor = player3;
+  if (container && renderer?.domElement) { container.innerHTML = ""; container.appendChild(renderer.domElement); renderer.setSize(container.clientWidth || 400, container.clientHeight || 260); }
+}
+function withBattleInstanceContext(instance, fn) {
+  const snap = { scene, camera, renderer, clock, battleTroops, projectiles, labels, floatingTexts, player3, battleEnemyArmy, encounterArmy };
+  scene = instance.scene; camera = instance.camera; renderer = instance.renderer; clock = instance.clock; battleTroops = instance.troops; projectiles = instance.projectiles; labels = instance.labels; floatingTexts = instance.floatingTexts; player3 = instance.playerActor; battleEnemyArmy = instance.battleEnemyArmy; encounterArmy = instance.encounterArmy;
+  try { fn(); } finally { scene = snap.scene; camera = snap.camera; renderer = snap.renderer; clock = snap.clock; battleTroops = snap.battleTroops; projectiles = snap.projectiles; labels = snap.labels; floatingTexts = snap.floatingTexts; player3 = snap.player3; battleEnemyArmy = snap.battleEnemyArmy; encounterArmy = snap.encounterArmy; }
+}
+function updateBattleInstance(instance, dt) { withBattleInstanceContext(instance, () => updateBattle(dt)); }
+function renderBattleInstance(instance) { withBattleInstanceContext(instance, () => renderer && renderer.render(scene, camera)); }
+function cleanupBattleInstance(instance) { withBattleInstanceContext(instance, () => { labels.forEach(l=>l.remove()); floatingTexts.forEach(f=>f.el?.remove()); renderer?.dispose(); }); }
+function returnSessionToWorld(session) { session.mode = "world"; createSplitScreenLayout(); updateSplitHud(session); }
+function writeBattleSurvivorsToSession(session, instance) { const survivors = {}; withBattleInstanceContext(instance, () => { for (const t of battleTroops) if (t.hp > 0 && t.team === "friendly") survivors[t.type] = (survivors[t.type] || 0) + 1; }); session.state.player.army = survivors; }
+function resolvePvEBattleRewards(session, instance, result) { if (result?.victory) { const reward = 60 + armyCount(instance.encounterArmy?.army || {}) * 6; session.state.gold += reward; if (instance.encounterArmy?.id) sharedWorld.roamingArmies = (sharedWorld.roamingArmies || []).filter(a => a.id !== instance.encounterArmy.id); } saveSessionGame(session.id); }
+function endBattleInstance(instance, result) { const session = getSplitSession(instance.sessionId); if (!session) return; writeBattleSurvivorsToSession(session, instance); resolvePvEBattleRewards(session, instance, result || {}); cleanupBattleInstance(instance); delete battleInstances[session.id]; returnSessionToWorld(session); }
 function openSessionMenu(id) { const s = getSplitSession(id); if (!s) return; s.menuOpen = true; openSessionControlsPanel(id); }
 function saveSessionGame(id) { const s = getSplitSession(id); if (s?.accountName) localStorage.setItem(getAccountSaveKey(s.accountName), JSON.stringify(s.state || state)); }
 
@@ -3827,6 +3875,9 @@ let siegeCaptureZone = null;
 let siegeKeepZone = null;
 let siegeLadderPoints = [];
 let siegeObjectives = { gateDestroyed:false, courtyardCaptured:false, keepCaptured:false };
+const battleInstances = {};
+let suppressBattleAutoLoop = false;
+
 const battleState = {
   activeLimitPerSide: 50,
   friendlyQueue: [],
@@ -3937,7 +3988,7 @@ function setupBattle() {
   };
 
   showToast(`Battle begins on ${theme.name}!`);
-  animateBattle();
+  if (!suppressBattleAutoLoop) animateBattle();
 }
 
 function clearBattlefieldProps() { siegeObjects.forEach(o => { if (o && o.mesh) scene.remove(o.mesh); else if (o) scene.remove(o); }); siegeObjects = []; siegeGate = null; siegeCaptureZone = null; siegeKeepZone = null; siegeLadderPoints = []; siegeCaptureProgress = 0; siegeObjectives = { gateDestroyed:false, courtyardCaptured:false, keepCaptured:false }; }
