@@ -518,7 +518,9 @@
   <div id="battleTopStatus" class="battleTopStatus">
     Group: <b id="selectedGroupText">All</b> |
     Command: <b id="commandText">Hold Position</b> |
-    Formation: <b id="formationText">Line</b><span id="siegeStatusText"></span>
+    Formation: <b id="formationText">Line</b> |
+    Your Army: <b id="friendlyArmyStatus">0 active / 0 reserve</b> |
+    Enemy Army: <b id="enemyArmyStatus">0 active / 0 reserve</b><span id="siegeStatusText"></span>
   </div>
 
   <div id="miniBattleHud" class="miniBattleHud">
@@ -2380,6 +2382,21 @@ let toastTimer = 0;
 let siegeObjects = [];
 let siegeGate = null;
 let siegeCaptureZone = null;
+const battleState = {
+  activeLimitPerSide: 50,
+  friendlyQueue: [],
+  enemyQueue: [],
+  friendlyActive: 0,
+  enemyActive: 0,
+  friendlySpawnPoint: null,
+  enemySpawnPoint: null,
+  friendlyReinforcementWaveTimer: 0,
+  enemyReinforcementWaveTimer: 0,
+  reinforcementInterval: 4,
+  reinforcementBatchSize: 5,
+  battleStarted: false,
+  battleEnded: false
+};
 
 /* =========================================================
    BATTLE SETUP
@@ -2436,19 +2453,22 @@ function setupBattle() {
 
   battleTroops = [];
   projectiles = [];
+  battleState.friendlyQueue = buildArmyQueue(state.player.army, "friendly");
+  battleState.enemyQueue = buildArmyQueue((battleEnemyArmy && battleEnemyArmy.army) || {}, "enemy");
+  battleState.friendlyActive = 0;
+  battleState.enemyActive = 0;
+  battleState.friendlyReinforcementWaveTimer = 0;
+  battleState.enemyReinforcementWaveTimer = 0;
+  battleState.battleStarted = true;
+  battleState.battleEnded = false;
   command = "Hold Position";
   formation = "Line";
   selectedTroopGroupIndex = 0;
   selectedTroopGroup = "All";
   updateBattleTopStatus();
 
-  if (battleType === "siege") {
-    spawnSiegeArmies();
-  } else {
-    spawnArmy(state.player.army, "friendly", new THREE.Vector3(0, 0, 22));
-    spawnArmy(battleEnemyArmy.army, "enemy", new THREE.Vector3(0, 0, -34));
-    assignFormationSlots();
-  }
+  if (battleType === "siege") spawnSiegeArmies();
+  else spawnFieldArmies();
 
   keys = {};
   mouseDX = 0;
@@ -2473,7 +2493,17 @@ function createSiegeBattlefield(theme) { createBattleGround(theme); siegeObjects
 function addSiegeWall(x, y, z, w, h, d, mat) { const wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); wall.position.set(x, y, z); wall.userData = { kind: "wall", blocksMovement: true }; scene.add(wall); siegeObjects.push(wall); return wall; }
 function addSiegeTower(x, z, mat) { const tower = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.6, 6.5, 12), mat); tower.position.set(x, 3.25, z); tower.userData = { kind: "tower", blocksMovement: true }; scene.add(tower); siegeObjects.push(tower); return tower; }
 function addSiegeDecor() { const ladderMat = new THREE.MeshLambertMaterial({ color: 0x8b5a2b }); for (const [x, z] of [[-18, -18], [18, -18], [-24, -35], [24, -35]]) { const ladder = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.22, 8), ladderMat); ladder.position.set(x, 1.4, z); ladder.rotation.x = -0.55; ladder.userData = { kind: "ladder", assaultPath: true }; scene.add(ladder); } }
-function spawnSiegeArmies() { spawnArmy(state.player.army, "friendly", new THREE.Vector3(0, 0, 36)); spawnArmy(battleEnemyArmy.army, "enemy", new THREE.Vector3(0, 0, -38)); placeDefenderArchersOnWalls(); assignFormationSlots(); }
+function spawnSiegeArmies() { spawnInitialBattleTroops(); placeDefenderArchersOnWalls(); assignFormationSlots(); }
+function spawnFieldArmies() { spawnInitialBattleTroops(); assignFormationSlots(); }
+function shuffleArray(arr) { const out = arr.slice(); for (let i = out.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [out[i], out[j]] = [out[j], out[i]]; } return out; }
+function buildArmyQueue(armyObj, team) { const queue = []; for (const [type, count] of Object.entries(armyObj || {})) { for (let i = 0; i < count; i++) queue.push({ type, team }); } return shuffleArray(queue); }
+function getReinforcementSpawnPosition(team) { const baseZ = team === "friendly" ? 38 : -38; const spreadX = rand(-18, 18); const spreadZ = rand(-3, 3); return new THREE.Vector3(spreadX, 0, baseZ + spreadZ); }
+function getActiveTroopCount(team) { return battleTroops.filter(t => t.team === team && t.hp > 0).length; }
+function addTroopToBattle(troop) { if (!troop) return; battleTroops.push(troop); }
+function spawnReinforcements(team, maxCount) { const queue = team === "friendly" ? battleState.friendlyQueue : battleState.enemyQueue; let spawned = 0; while (queue.length && spawned < maxCount && getActiveTroopCount(team) < battleState.activeLimitPerSide) { const entry = queue.shift(); const spawnPos = getReinforcementSpawnPosition(team); addTroopToBattle(makeTroop(entry.type, team, spawnPos)); spawned++; } if (spawned > 0) log(`${team === "friendly" ? "Your" : "Enemy"} reinforcements arrived: ${spawned} troops.`); }
+function spawnInitialBattleTroops() { spawnReinforcements("friendly", battleState.activeLimitPerSide); spawnReinforcements("enemy", battleState.activeLimitPerSide); }
+function sideHasNoForcesLeft(team) { const queue = team === "friendly" ? battleState.friendlyQueue : battleState.enemyQueue; return getActiveTroopCount(team) <= 0 && queue.length <= 0; }
+function updateReinforcements(dt) { if (battleState.battleEnded || !battleState.battleStarted) return; battleState.friendlyReinforcementWaveTimer += dt; battleState.enemyReinforcementWaveTimer += dt; if (battleState.friendlyReinforcementWaveTimer >= battleState.reinforcementInterval) { battleState.friendlyReinforcementWaveTimer = 0; if (getActiveTroopCount("friendly") < battleState.activeLimitPerSide) spawnReinforcements("friendly", battleState.reinforcementBatchSize); } if (battleState.enemyReinforcementWaveTimer >= battleState.reinforcementInterval) { battleState.enemyReinforcementWaveTimer = 0; if (getActiveTroopCount("enemy") < battleState.activeLimitPerSide) spawnReinforcements("enemy", battleState.reinforcementBatchSize); } }
 function placeDefenderArchersOnWalls() { const wallSpots = [new THREE.Vector3(-20, 3.9, -16), new THREE.Vector3(-10, 3.9, -16), new THREE.Vector3(10, 3.9, -16), new THREE.Vector3(20, 3.9, -16), new THREE.Vector3(-24, 5.8, -52), new THREE.Vector3(24, 5.8, -52)]; let i = 0; for (const troop of battleTroops) { if (troop.team !== "enemy") continue; if (troop.type !== "archer" && troop.type !== "crossbow") continue; if (i >= wallSpots.length) break; troop.mesh.position.copy(wallSpots[i]); troop.slot.copy(wallSpots[i]); troop.onWall = true; troop.command = "Hold Position"; i++; } }
 function damageSiegeGate(amount) { if (!siegeGate || siegeGateHp <= 0) return; siegeGateHp = Math.max(0, siegeGateHp - amount); siegeGate.userData.hp = siegeGateHp; showDamageNumber(siegeGate.position.clone().add(new THREE.Vector3(0, 2, 0)), amount); if (siegeGateHp <= 0) { siegeGate.visible = false; siegeGate.userData.blocksMovement = false; showToast("The gate has been broken!"); log("Your troops smashed open the castle gate."); } }
 function checkPlayerSpearHitGate() { if (battleType !== "siege" || !siegeGate || siegeGateHp <= 0) return false; if (!player3.isThrusting || player3.thrustHitDone) return false; if (player3.thrustTimer < 0.08 || player3.thrustTimer > 0.22) return false; const origin = player3.mesh.position.clone(); const forward = new THREE.Vector3(Math.sin(player3.yaw), 0, Math.cos(player3.yaw)).normalize(); const toGate = siegeGate.position.clone().sub(origin); toGate.y = 0; const forwardDist = toGate.dot(forward); const sideDist = toGate.sub(forward.clone().multiplyScalar(forwardDist)).length(); if (forwardDist > 0.5 && forwardDist < 3.5 && sideDist < 4.8) { damageSiegeGate(30); player3.thrustHitDone = true; return true; } return false; }
@@ -2978,6 +3008,7 @@ function updateBattle(dt) {
   }
 
   updateTroops(dt);
+  updateReinforcements(dt);
   updateProjectiles(dt);
   updateSelectedGroupVisuals(dt);
   updateTroopLabels();
@@ -3351,7 +3382,7 @@ function updateTroopLabels() {
 function updateBattleHud() {
   $("hpFill").style.width = clamp(player3.hp, 0, 100) + "%";
 }
-function updateBattleTopStatus() { const g = $("selectedGroupText"); const c = $("commandText"); const f = $("formationText"); const selectedFormation = groupFormations[selectedTroopGroup] || formation; if (g) g.textContent = selectedTroopGroup; if (c) c.textContent = command; if (f) f.textContent = selectedFormation; updateSiegeStatusText(); }
+function updateBattleTopStatus() { const g = $("selectedGroupText"); const c = $("commandText"); const f = $("formationText"); const friendly = $("friendlyArmyStatus"); const enemy = $("enemyArmyStatus"); const selectedFormation = groupFormations[selectedTroopGroup] || formation; const friendlyActive = getActiveTroopCount("friendly"); const enemyActive = getActiveTroopCount("enemy"); const friendlyReserve = battleState.friendlyQueue.length; const enemyReserve = battleState.enemyQueue.length; battleState.friendlyActive = friendlyActive; battleState.enemyActive = enemyActive; if (g) g.textContent = selectedTroopGroup; if (c) c.textContent = command; if (f) f.textContent = selectedFormation; if (friendly) friendly.textContent = `${friendlyActive} active / ${friendlyReserve} reserve`; if (enemy) enemy.textContent = `${enemyActive} active / ${enemyReserve} reserve`; updateSiegeStatusText(); }
 function triggerTroopAttackAnimation(troop) { troop.attackAnimDuration = (troopAnimationProfiles[troop.type] || troopAnimationProfiles.spearman).attackDuration; troop.attackAnimTimer = troop.attackAnimDuration; troop.isAttacking = true; if (troop.type === "archer" || troop.type === "crossbow") troop.rangedRecoilTimer = 0.25; }
 function animateTroop(troop, dt) { if (!troop.mesh || troop.hp <= 0) return; troop.animTime += dt; const p = troop.mesh.userData.parts || {}; const profile = troopAnimationProfiles[troop.type] || troopAnimationProfiles.spearman; const stride = Math.sin(troop.animTime * profile.strideSpeed); const moveAmp = troop.isMoving ? profile.strideAmount * (troop.isRunning ? 1.25 : 1) : 0.08; if (p.leftLeg) p.leftLeg.rotation.x = stride * moveAmp; if (p.rightLeg) p.rightLeg.rotation.x = -stride * moveAmp; if (p.leftArm) p.leftArm.rotation.x = -stride * 0.25; if (p.rightArm) p.rightArm.rotation.x = stride * 0.25; if (p.body) { p.body.position.y = (troop.type === "cavalry" ? 1.4 : 1.25) + Math.abs(stride) * profile.bobAmount; p.body.rotation.x = troop.isRunning ? -0.12 : Math.sin(troop.animTime * 2.4) * 0.03; } if (troop.attackAnimTimer > 0) { troop.attackAnimTimer -= dt; const pNorm = clamp(1 - troop.attackAnimTimer / troop.attackAnimDuration, 0, 1); const anticipation = pNorm < 0.25 ? pNorm / 0.25 : 0; const strike = pNorm >= 0.25 && pNorm < 0.55 ? (pNorm - 0.25) / 0.30 : 0; const recovery = pNorm >= 0.55 ? (pNorm - 0.55) / 0.45 : 0; const strikePower = easeOutBack(strike) - easeInOutSine(recovery) * 0.5; if (p.weaponGroup) { p.weaponGroup.rotation.x = -0.2 - strikePower * 0.8; p.weaponGroup.position.z = -0.1 - strikePower * 0.3; } if (troop.type === "spearman" || troop.type === "heavySpear") { if (p.weaponGroup) p.weaponGroup.position.z = -strikePower * 0.75; } if (troop.type === "swordsman" && p.weaponGroup) { p.weaponGroup.rotation.y = -0.8 + strikePower * 1.8; } if (troop.type === "shieldman" && p.shield) { p.shield.position.z = -0.25 - strikePower * 0.35; } if (troop.type === "archer" && p.rightArm) { p.rightArm.position.z = anticipation * 0.35; } if (troop.type === "crossbow" && p.weaponGroup) { p.weaponGroup.rotation.x = -0.2 - anticipation * 0.25 + strikePower * 0.35; } } else troop.isAttacking = false; if (troop.type === "cavalry" && p.horse) { const gallop = Math.sin(troop.animTime * 13); p.horse.position.y = 0.45 + Math.abs(gallop) * 0.08; if (p.weaponGroup && troop.command === "Charge") { p.weaponGroup.rotation.x = -0.85; p.weaponGroup.position.z = -0.45; } } }
 
@@ -3363,12 +3394,14 @@ function showToast(msg) {
 }
 
 function checkBattleEnd() {
-  const friendlyAlive = battleTroops.some(t => t.team === "friendly" && t.hp > 0);
-  const enemyAlive = battleTroops.some(t => t.team === "enemy" && t.hp > 0);
+  const friendlyAlive = !sideHasNoForcesLeft("friendly");
+  const enemyAlive = !sideHasNoForcesLeft("enemy");
 
   if (!enemyAlive) {
+    battleState.battleEnded = true;
     finishBattle(true);
   } else if (!friendlyAlive || player3.hp <= 0) {
+    battleState.battleEnded = true;
     finishBattle(false);
   }
 }
