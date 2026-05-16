@@ -4,6 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Kingdoms at War - 2D World Map + 3D Battlefield</title>
+<!-- If Chrome shows file:// origin warnings, run this game through a local server:
+     python -m http.server 8000
+     then open http://localhost:8000/MountBlade.html -->
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
@@ -3801,7 +3804,23 @@ function showWorldScreen() {
     if (rightPanel) rightPanel.style.display = "";
   }
   renderUI();
-  drawMap();
+  refreshWorldMap();
+}
+
+function refreshWorldMap() {
+  if (typeof drawWorld === "function") {
+    drawWorld();
+    return;
+  }
+
+  if (typeof renderSplitWorldForSession === "function" && gameMode?.splitScreen) {
+    gameMode.sessions
+      .filter(s => s.mode !== "battle")
+      .forEach(renderSplitWorldForSession);
+    return;
+  }
+
+  console.warn("No world map renderer found: expected drawWorld() or split renderers.");
 }
 
 function saveGame() {
@@ -3836,7 +3855,7 @@ function loadGame(silent = false) {
     ensureSettlementEconomy();
 
     renderUI();
-    drawMap();
+    refreshWorldMap();
 
     if (!silent) log(`Loaded campaign for ${currentAccountName}.`);
     return true;
@@ -5066,7 +5085,17 @@ function applyTroopDamage(attacker, target, amount) {
   if (!target || target.dead || target.hp <= 0) return;
   target.hp -= amount;
   showDamageNumber(getCombatPosition(target).clone().add(new THREE.Vector3(0, 1.8, 0)), amount);
-  updateTroopLabelHp && updateTroopLabelHp(target);
+  if (typeof updateTroopLabelHp === "function") {
+    updateTroopLabelHp(target);
+  } else if (target.label) {
+    const maxHp = target.maxHp || target.def?.hp || 1;
+    const pct = Math.max(0, Math.min(1, target.hp / maxHp));
+    const hpInner = target.label.querySelector(".troopHpInner");
+    if (hpInner) {
+      hpInner.style.width = `${pct * 100}%`;
+      hpInner.style.background = pct > 0.55 ? "#22c55e" : pct > 0.25 ? "#facc15" : "#ef4444";
+    }
+  }
   if (target.hp <= 0) killTroop(target, attacker);
 }
 function getAttackCooldown(t) {
@@ -5341,6 +5370,18 @@ function updateTroopLabels() {
     const nameEl = t.label.querySelector(".troopName");
     if (nameEl) nameEl.style.display = camera.position.distanceTo(t.mesh.position) < 42 ? "block" : "none";
   }
+}
+
+function updateTroopLabelHp(t) {
+  if (!t || !t.label) return;
+  const maxHp = t.maxHp || t.def?.hp || 1;
+  const pct = Math.max(0, Math.min(1, t.hp / maxHp));
+  const hpInner = t.label.querySelector(".troopHpInner");
+  if (hpInner) {
+    hpInner.style.width = `${pct * 100}%`;
+    hpInner.style.background = pct > 0.55 ? "#22c55e" : pct > 0.25 ? "#facc15" : "#ef4444";
+  }
+  if (t.hp <= 0) t.label.style.display = "none";
 }
 
 function updateBattleHud() {
