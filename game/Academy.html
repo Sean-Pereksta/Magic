@@ -1026,14 +1026,43 @@ function ensurePlayerXp() {
   }
 }
 
+const veteranTiers = [
+  { name: "Green", minXp: 0, hpBonus: 0, damageBonus: 0, armorBonus: 0 },
+  { name: "Trained", minXp: 5, hpBonus: 5, damageBonus: 2, armorBonus: 1 },
+  { name: "Veteran", minXp: 15, hpBonus: 12, damageBonus: 5, armorBonus: 3 },
+  { name: "Elite", minXp: 35, hpBonus: 22, damageBonus: 9, armorBonus: 6 }
+];
+
+function getVeteranTierForType(type) {
+  ensurePlayerXp();
+  const xp = state.player.xp[type] || 0;
+  let tier = veteranTiers[0];
+  for (const t of veteranTiers) {
+    if (xp >= t.minXp) tier = t;
+  }
+  return tier;
+}
+
+function getNextVeteranTier(type) {
+  ensurePlayerXp();
+  const xp = state.player.xp[type] || 0;
+  return veteranTiers.find(t => t.minXp > xp) || null;
+}
+
 function awardBattleXp(victory = true) {
   ensurePlayerXp();
   const base = victory ? 3 : 1;
+  const summaries = [];
   for (const [type, count] of Object.entries(state.player.army || {})) {
     const xpGain = Math.max(1, Math.floor(count / 4)) * base;
     state.player.xp[type] += xpGain;
+    summaries.push(`${troopDefs[type].name} +${xpGain} XP`);
   }
-  log("Your surviving troops gained battle experience.");
+  if (summaries.length) {
+    log(`Battle XP gained: ${summaries.join(", ")}.`);
+  } else {
+    log("Battle XP gained: none.");
+  }
 }
 
 function armyPower(army) {
@@ -2011,6 +2040,8 @@ function openTroopUpgradePanel() {
   const rows = Object.entries(troopUpgradePaths).map(([from, paths]) => {
     const count = state.player.army[from] || 0;
     const xp = state.player.xp[from] || 0;
+    const tier = getVeteranTierForType(from);
+    const nextTier = getNextVeteranTier(from);
     const fromName = troopDefs[from]?.name || from;
 
     const buttons = paths.map(path => {
@@ -2031,7 +2062,15 @@ function openTroopUpgradePanel() {
     return `
       <div class="card">
         <h3>${fromName}</h3>
-        <div class="small">Available: <b>${count}</b><br>XP: <b>${xp}</b></div>
+        <div class="small">
+          Available: <b>${count}</b><br>
+          XP: <b>${xp}</b><br>
+          Tier: <b>${tier.name}</b><br>
+          ${nextTier ? `Next Tier: ${nextTier.name} at ${nextTier.minXp} XP` : "Max Tier"}
+        </div>
+        <div class="row" style="margin:8px 0 4px;">
+          <button class="blue" onclick="trainTroopType('${from}')">Train +2 XP</button>
+        </div>
         <div class="grid">${buttons}</div>
       </div>
     `;
@@ -2057,6 +2096,8 @@ function upgradeOneTroop(from, to) {
   state.player.xp[from] -= path.xp;
   addTroops(state.player.army, from, -1);
   addTroops(state.player.army, to, 1);
+  const transferXp = 1;
+  state.player.xp[to] = (state.player.xp[to] || 0) + transferXp;
   log(`Upgraded 1 ${troopDefs[from].name} into ${troopDefs[to].name}.`);
   renderUI();
   openTroopUpgradePanel();
@@ -2074,8 +2115,28 @@ function upgradeMaxTroops(from, to) {
     addTroops(state.player.army, to, 1);
     upgraded++;
   }
+  if (upgraded > 0) state.player.xp[to] = (state.player.xp[to] || 0) + upgraded;
   if (upgraded > 0) log(`Upgraded ${upgraded} ${troopDefs[from].name} into ${troopDefs[to].name}.`);
   else log("No troops could be upgraded.");
+  renderUI();
+  openTroopUpgradePanel();
+}
+
+function trainTroopType(type) {
+  ensurePlayerXp();
+  const count = state.player.army[type] || 0;
+  if (count <= 0) {
+    log(`You have no ${troopDefs[type].name} to train.`);
+    return;
+  }
+  const cost = Math.max(40, count * 8);
+  if (state.gold < cost) {
+    log(`Training ${troopDefs[type].name} requires ${cost} gold.`);
+    return;
+  }
+  state.gold -= cost;
+  state.player.xp[type] += 2;
+  log(`You trained your ${troopDefs[type].name}. They gained +2 XP.`);
   renderUI();
   openTroopUpgradePanel();
 }
@@ -2641,23 +2702,32 @@ function createCommanderModel() {
 
 function makeTroop(type, team, pos) {
   const def = troopDefs[type];
-  const group = createTroopModel(type, team);
+  let tier = veteranTiers[0];
+  if (team === "friendly") tier = getVeteranTierForType(type);
+  const hp = def.hp + tier.hpBonus;
+  const damage = def.damage + tier.damageBonus;
+  const armor = def.armor + tier.armorBonus;
+  const group = createTroopModel(type, team, tier);
 
   group.position.copy(pos);
   scene.add(group);
 
   const label = document.createElement("div");
   label.className = "troopLabel";
-  label.innerHTML = `<div class="troopName">${def.name}</div><div class="troopHpOuter"><div class="troopHpInner"></div></div>`;
+  const labelName = team === "friendly" && tier.name !== "Green" ? `${tier.name} ${def.name}` : def.name;
+  label.innerHTML = `<div class="troopName">${labelName}</div><div class="troopHpOuter"><div class="troopHpInner"></div></div>`;
   document.body.appendChild(label);
   labels.push(label);
 
   return {
     type,
     def,
+    tier,
     team,
-    hp: def.hp,
-    maxHp: def.hp,
+    hp,
+    maxHp: hp,
+    damage,
+    armor,
     mesh: group,
     slot: pos.clone(),
     attackCd: rand(0, 1),
@@ -2677,7 +2747,27 @@ function makeTroop(type, team, pos) {
     selectionRing: group.userData.parts ? group.userData.parts.selectionRing : null
   };
 }
-function createTroopModel(type, team) {
+function addVeteranVisuals(group, tier, team) {
+  if (!tier || tier.name === "Green") return;
+  const color = tier.name === "Trained" ? 0xc0c0c0 : tier.name === "Veteran" ? 0xffd166 : 0xfff1a8;
+  const marker = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.08), new THREE.MeshLambertMaterial({ color }));
+  marker.position.set(0, 1.62, -0.42);
+  group.add(marker);
+  if (tier.name === "Veteran" || tier.name === "Elite") {
+    const crest = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.35, 0.08), new THREE.MeshLambertMaterial({ color }));
+    crest.position.set(0, 2.18, 0);
+    group.add(crest);
+  }
+  if (tier.name === "Elite") {
+    const cape = new THREE.Mesh(
+      new THREE.BoxGeometry(0.65, 0.9, 0.06),
+      new THREE.MeshLambertMaterial({ color: team === "friendly" ? 0x123d2f : 0x3d1212 })
+    );
+    cape.position.set(0, 1.2, 0.45);
+    group.add(cape);
+  }
+}
+function createTroopModel(type, team, tier = veteranTiers[0]) {
   const group = new THREE.Group();
   const teamAccent = team === "friendly" ? 0x4fd1c5 : 0xd15a4f;
   const armorColor = team === "friendly" ? 0x5a78b8 : 0x7a4d4d;
@@ -2704,6 +2794,7 @@ function createTroopModel(type, team) {
   if (type !== "farmhand") { helmet = new THREE.Mesh(new THREE.SphereGeometry(type === "heavySpear" ? 0.28 : 0.24, 8, 8), metal); helmet.position.copy(head.position).setY(head.position.y + 0.05); group.add(helmet); }
   if (type === "cavalry") { horse = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.7, 1.9), new THREE.MeshLambertMaterial({ color: 0x5b341c })); horse.position.y = 0.45; group.add(horse); weapon.scale.z = 1.7; }
   const selectionRing = new THREE.Mesh(new THREE.RingGeometry(0.65, 0.78, 24), new THREE.MeshBasicMaterial({ color: 0x9fffe0, transparent: true, opacity: 0.65, side: THREE.DoubleSide })); selectionRing.rotation.x = -Math.PI / 2; selectionRing.position.y = 0.04; selectionRing.visible = false; group.add(selectionRing);
+  if (team === "friendly") addVeteranVisuals(group, tier, team);
   group.userData.parts = { body, head, leftArm, rightArm, leftLeg, rightLeg, weaponGroup, weapon, shield, helmet, armor: body, horse, selectionRing };
   return group;
 }
@@ -3137,10 +3228,11 @@ function attackTarget(t, target) {
     fireArrow(t, target);
   } else {
     if (target.player) {
-      player3.hp -= Math.max(3, t.def.damage - 8);
+      player3.hp -= Math.max(3, t.damage - 8);
       showToast("You were hit!");
     } else {
-      damageTroop(target, t.def.damage);
+      const damage = Math.max(1, t.damage - Math.floor((target.armor || target.def.armor || 0) * 0.25));
+      damageTroop(target, damage);
     }
   }
 }
@@ -3165,7 +3257,7 @@ function fireArrow(t, target) {
     mesh,
     dir,
     team: t.team,
-    damage: t.def.damage,
+    damage: t.damage,
     life: 2.2
   });
 }
@@ -3213,7 +3305,7 @@ function updateProjectiles(dt) {
 
 function damageTroop(t, amount, sourcePos = null) {
   if (!t || t.hp <= 0) return;
-  const actual = Math.max(2, amount - (t.def.armor || 0) * 0.35);
+  const actual = Math.max(2, amount - (t.armor || t.def.armor || 0) * 0.35);
   t.hp = Math.max(0, t.hp - actual);
   const hitPos = t.mesh.position.clone(); hitPos.y += t.type === "cavalry" ? 2.2 : 1.5;
   showDamageNumber(hitPos, actual);
