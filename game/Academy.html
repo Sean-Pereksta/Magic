@@ -460,6 +460,7 @@
     <div class="stat">Castles: <b id="castleText">0</b></div>
     <button onclick="saveGame()">Save</button>
     <button onclick="loadGame()">Load</button>
+    <button onclick="openInventoryPanel()">Inventory</button>
     <button onclick="openTroopUpgradePanel()" class="success">Upgrades</button>
     <button onclick="openDiplomacyPanel()" class="blue">Diplomacy</button>
     <button onclick="newGame()" class="danger">New</button>
@@ -541,6 +542,8 @@ const $ = id => document.getElementById(id);
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const distance2D = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const randInt = (a, b) => Math.floor(rand(a, b + 1));
+const makeUid = () => `item_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
 
 let canvas;
 let ctx;
@@ -758,6 +761,20 @@ const troopUpgradePaths = {
   ]
 };
 
+const itemDefs = {
+  rustySword: { id: "rustySword", name: "Rusty Sword", type: "weapon", value: 20, damageBonus: 1, rarity: "common" },
+  ironSword: { id: "ironSword", name: "Iron Sword", type: "weapon", value: 85, damageBonus: 4, rarity: "uncommon" },
+  mailArmor: { id: "mailArmor", name: "Mail Armor", type: "armor", value: 140, armorBonus: 4, hpBonus: 10, rarity: "uncommon" },
+  warHorse: { id: "warHorse", name: "War Horse", type: "horse", value: 250, speedBonus: 1.5, cavalryBonus: 0.15, rarity: "rare" },
+  nobleBanner: { id: "nobleBanner", name: "Noble Banner", type: "banner", value: 300, moraleBonus: 8, renownBonus: 0.1, rarity: "rare" }
+};
+
+const lootTables = {
+  bandits: [{ item: "rustySword", chance: 0.25 }, { item: "ironSword", chance: 0.06 }, { goldMin: 15, goldMax: 80, chance: 1 }],
+  factionArmy: [{ item: "ironSword", chance: 0.14 }, { item: "mailArmor", chance: 0.08 }, { item: "warHorse", chance: 0.03 }, { goldMin: 80, goldMax: 260, chance: 1 }],
+  castleGarrison: [{ item: "mailArmor", chance: 0.15 }, { item: "warHorse", chance: 0.05 }, { item: "nobleBanner", chance: 0.03 }, { goldMin: 200, goldMax: 700, chance: 1 }]
+};
+
 /* =========================================================
    WORLD STATE
 ========================================================= */
@@ -791,7 +808,9 @@ const state = {
       crossbow: 0,
       cavalry: 0,
       heavySpear: 0
-    }
+    },
+    inventory: [],
+    equipment: { weapon: null, armor: null, horse: null, banner: null }
   },
   factions: [],
   settlements: [],
@@ -1110,6 +1129,51 @@ function ensurePlayerXp() {
   for (const type of Object.keys(troopDefs)) {
     if (typeof state.player.xp[type] !== "number") state.player.xp[type] = 0;
   }
+}
+
+function ensureInventory() {
+  if (!state.player.inventory) state.player.inventory = [];
+  if (!state.player.equipment) state.player.equipment = { weapon: null, armor: null, horse: null, banner: null };
+}
+
+function getArmyEquipmentBonuses() {
+  ensureInventory();
+  const bonuses = { damageBonus: 0, armorBonus: 0, hpBonus: 0, speedBonus: 0, moraleBonus: 0, cavalryBonus: 0 };
+  for (const equipped of Object.values(state.player.equipment)) {
+    if (!equipped) continue;
+    const def = itemDefs[equipped.id];
+    if (!def) continue;
+    bonuses.damageBonus += def.damageBonus || 0;
+    bonuses.armorBonus += def.armorBonus || 0;
+    bonuses.hpBonus += def.hpBonus || 0;
+    bonuses.speedBonus += def.speedBonus || 0;
+    bonuses.moraleBonus += def.moraleBonus || 0;
+    bonuses.cavalryBonus += def.cavalryBonus || 0;
+  }
+  return bonuses;
+}
+
+function generateBattleLoot(enemyType, victory = true) {
+  ensureInventory();
+  if (!victory) return { gold: 0, items: [] };
+  const table = lootTables[enemyType] || lootTables.bandits;
+  const foundItems = [];
+  let gold = 0;
+  for (const entry of table) {
+    if (Math.random() <= entry.chance) {
+      if (entry.item) foundItems.push(entry.item);
+      if (entry.goldMin != null) gold += randInt(entry.goldMin, entry.goldMax);
+    }
+  }
+  state.gold += gold;
+  for (const itemId of foundItems) state.player.inventory.push({ id: itemId, uid: makeUid(), acquiredDay: state.day || 0 });
+  return { gold, items: foundItems };
+}
+
+function generateShopInventory(locationType) {
+  if (locationType === "village") return ["rustySword", "ironSword"];
+  if (locationType === "castle") return ["ironSword", "mailArmor", "warHorse", "nobleBanner"];
+  return ["rustySword"];
 }
 
 const veteranTiers = [
@@ -1510,6 +1574,11 @@ function regenerateRecruits() {
       const cap = s.type === "castle" ? 6 : 10;
       s.recruits[type] = Math.min(cap, (s.recruits[type] || 0) + (Math.random() < 0.45 ? 1 : 0));
     }
+    const shopBtn = document.createElement("button");
+    shopBtn.textContent = "Shop";
+    shopBtn.className = "blue";
+    shopBtn.onclick = () => openShopPanel(s.id);
+    actions.appendChild(shopBtn);
   }
 }
 
@@ -2170,6 +2239,75 @@ function openTroopUpgradePanel() {
   `);
 }
 
+function openInventoryPanel() {
+  ensureInventory();
+  const eq = state.player.equipment;
+  const eqName = item => item ? (itemDefs[item.id]?.name || item.id) : "None";
+  const rows = state.player.inventory.map(item => {
+    const def = itemDefs[item.id];
+    if (!def) return "";
+    return `<tr><td>${def.name}</td><td>${def.type}</td><td>${def.value}</td><td><button onclick="equipItem('${item.uid}')">Equip</button> <button class="danger" onclick="sellItem('${item.uid}')">Sell</button></td></tr>`;
+  }).join("");
+  openModal(`
+    <h2>Inventory</h2>
+    <p><b>Equipped</b><br>Weapon: ${eqName(eq.weapon)}<br>Armor: ${eqName(eq.armor)}<br>Horse: ${eqName(eq.horse)}<br>Banner: ${eqName(eq.banner)}</p>
+    <table class="table"><tr><th>Item</th><th>Type</th><th>Value</th><th>Actions</th></tr>${rows || `<tr><td colspan="4">No items</td></tr>`}</table>
+    <button onclick="closeModal()">Close</button>
+  `);
+}
+
+function equipItem(uid) {
+  ensureInventory();
+  const item = state.player.inventory.find(i => i.uid === uid);
+  if (!item) return;
+  const def = itemDefs[item.id];
+  if (!def) return;
+  state.player.equipment[def.type] = item;
+  log(`Equipped ${def.name}.`);
+  renderUI();
+  openInventoryPanel();
+}
+
+function sellItem(uid) {
+  ensureInventory();
+  const index = state.player.inventory.findIndex(i => i.uid === uid);
+  if (index < 0) return;
+  const item = state.player.inventory[index];
+  const def = itemDefs[item.id];
+  if (!def) return;
+  state.gold += Math.floor(def.value * 0.6);
+  state.player.inventory.splice(index, 1);
+  for (const slot of Object.keys(state.player.equipment)) if (state.player.equipment[slot]?.uid === uid) state.player.equipment[slot] = null;
+  log(`Sold ${def.name}.`);
+  renderUI();
+  openInventoryPanel();
+}
+
+function openShopPanel(locationId) {
+  const s = state.settlements.find(x => x.id === locationId);
+  if (!s) return;
+  const ids = generateShopInventory(s.type);
+  const rows = ids.map(id => {
+    const def = itemDefs[id];
+    if (!def) return "";
+    return `<tr><td>${def.name}</td><td>${def.type}</td><td>${def.value}</td><td><button onclick="buyShopItem('${id}')">Buy</button></td></tr>`;
+  }).join("");
+  openModal(`<h2>${s.name} Shop</h2><table class="table"><tr><th>Item</th><th>Type</th><th>Price</th><th>Action</th></tr>${rows}</table><button onclick="closeModal()">Close</button>`);
+}
+
+function buyShopItem(itemId) {
+  ensureInventory();
+  const def = itemDefs[itemId];
+  if (!def) return;
+  const price = def.value;
+  if (state.gold < price) return log(`You need ${price} gold to buy ${def.name}.`);
+  state.gold -= price;
+  state.player.inventory.push({ id: itemId, uid: makeUid(), acquiredDay: state.day || 0 });
+  log(`Bought ${def.name}.`);
+  renderUI();
+  openInventoryPanel();
+}
+
 function upgradeOneTroop(from, to) {
   ensurePlayerXp();
   const path = (troopUpgradePaths[from] || []).find(p => p.to === to);
@@ -2422,6 +2560,7 @@ function loadGame() {
 
   Object.assign(state, loaded);
   ensurePlayerXp();
+  ensureInventory();
 
   log("Game loaded.");
   renderUI();
@@ -2431,6 +2570,7 @@ function newGame() {
   if (!confirm("Start a new game?")) return;
   makeWorld();
   ensurePlayerXp();
+  ensureInventory();
   renderUI();
 }
 
@@ -2461,6 +2601,7 @@ const HOLD_DOUBLE_TAP_MS = 350;
 let floatingTexts = [];
 let battleRunning = false;
 let battleEnemyArmy = null;
+let lastBattleLoot = { gold: 0, items: [] };
 let attackCooldown = 0;
 let toastTimer = 0;
 let siegeObjects = [];
@@ -2835,9 +2976,11 @@ function makeTroop(type, team, pos) {
   const def = troopDefs[type];
   let tier = veteranTiers[0];
   if (team === "friendly") tier = getVeteranTierForType(type);
-  const hp = def.hp + tier.hpBonus;
-  const damage = def.damage + tier.damageBonus;
-  const armor = def.armor + tier.armorBonus;
+  const equipBonus = team === "friendly" ? getArmyEquipmentBonuses() : null;
+  const hp = def.hp + tier.hpBonus + (equipBonus?.hpBonus || 0);
+  let damage = def.damage + tier.damageBonus + (equipBonus?.damageBonus || 0);
+  const armor = def.armor + tier.armorBonus + (equipBonus?.armorBonus || 0);
+  if (team === "friendly" && def.role === "cavalry" && equipBonus?.cavalryBonus) damage = Math.floor(damage * (1 + equipBonus.cavalryBonus));
   const group = createTroopModel(type, team, tier);
 
   group.position.copy(pos);
@@ -3596,6 +3739,9 @@ function finishBattle(victory, reason = "defeat") {
     battleEnemyArmy.army = enemySurvivors;
   }
 
+  const lootHtml = victory
+    ? `<div class="card"><h3>Loot</h3><p>Gold: ${lastBattleLoot.gold || 0}</p><p>Items:<br>${(lastBattleLoot.items || []).length ? lastBattleLoot.items.map(id => `- ${itemDefs[id]?.name || id}`).join("<br>") : "None"}</p></div>`
+    : "";
   const result = `
     <h2>${victory ? "Victory!" : "Defeat!"}</h2>
     <div class="grid">
@@ -3607,6 +3753,7 @@ function finishBattle(victory, reason = "defeat") {
         <h3>Enemy Survivors</h3>
         ${armyHtml(enemySurvivors)}
       </div>
+      ${lootHtml}
     </div>
     <p class="small">Returning to the world map.</p>
     <button onclick="returnToWorldAfterBattle(${victory}, '${reason}')">Continue</button>
@@ -3639,6 +3786,7 @@ function returnToWorldAfterBattle(victory, reason = "defeat") {
 function resolveBattleResults(victory, reason = "defeat") {
   if (!encounterArmy) return;
 
+  lastBattleLoot = { gold: 0, items: [] };
   if (victory) {
     if (encounterArmy.castleTarget) {
       claimCastle(encounterArmy.castleTarget);
@@ -3654,16 +3802,22 @@ function resolveBattleResults(victory, reason = "defeat") {
       }
 
       const reward = 60 + armyCount(encounterArmy.army) * 6;
-      state.gold += reward;
       state.food += Math.floor(armyCount(encounterArmy.army) / 4);
 
+      const enemyType = encounterArmy.bandit ? "bandits" : "factionArmy";
+      const loot = generateBattleLoot(enemyType, victory);
+      lastBattleLoot = loot;
       removeEncounterArmy();
 
-      if (encounterArmy.bandit) {
-        log(`You defeated the bandits and recovered ${reward} gold.`);
-      } else {
-        log(`You defeated ${encounterArmy.name} and gained ${reward} gold.`);
-      }
+      state.gold += reward;
+      if (encounterArmy.bandit) log(`You defeated the bandits and recovered ${reward} gold.`);
+      else log(`You defeated ${encounterArmy.name} and gained ${reward} gold.`);
+      log(`Loot gained: ${loot.gold} gold${loot.items.length ? ", " + loot.items.map(id => itemDefs[id].name).join(", ") : ""}.`);
+    }
+    if (encounterArmy.castleTarget) {
+      const loot = generateBattleLoot("castleGarrison", victory);
+      lastBattleLoot = loot;
+      log(`Loot gained: ${loot.gold} gold${loot.items.length ? ", " + loot.items.map(id => itemDefs[id].name).join(", ") : ""}.`);
     }
     if (armyCount(state.player.army) > 0) awardBattleXp(true);
   } else {
