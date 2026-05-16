@@ -2190,7 +2190,7 @@ function attackCastle(s) {
   }
 
   battleBiome = getBiomeAt(s.x, s.y);
-  battleType = "siege";
+  battleType = "siege_attack";
   siegeTargetSettlement = s;
 
   const defenders = createCastleGarrison(s);
@@ -2394,6 +2394,9 @@ let toastTimer = 0;
 let siegeObjects = [];
 let siegeGate = null;
 let siegeCaptureZone = null;
+let siegeKeepZone = null;
+let siegeLadderPoints = [];
+let siegeObjectives = { gateDestroyed:false, courtyardCaptured:false, keepCaptured:false };
 const battleState = {
   activeLimitPerSide: 50,
   friendlyQueue: [],
@@ -2424,8 +2427,12 @@ function beginBattle() {
 
   worldPaused = true;
   battleEnemyArmy = encounterArmy;
-  battleType = battleEnemyArmy && battleEnemyArmy.siege ? "siege" : "field";
-  siegeTargetSettlement = battleType === "siege" ? battleEnemyArmy.castleTarget : null;
+  battleType = "field";
+  if (battleEnemyArmy && battleEnemyArmy.siege) {
+    battleType = battleEnemyArmy.team === "enemy" ? "siege_attack" : "siege_defense";
+  }
+  siegeTargetSettlement = battleType.startsWith("siege") ? battleEnemyArmy.castleTarget : null;
+  battleState.battleType = battleType;
 
   setupBattle();
 }
@@ -2459,7 +2466,7 @@ function setupBattle() {
   sun.position.set(35, 55, 20);
   scene.add(sun);
 
-  if (battleType === "siege") createSiegeBattlefield(theme);
+  if (battleType.startsWith("siege")) generateSiegeBattlefield(battleType === "siege_attack" ? "enemy" : "friendly", theme);
   else createBattleGround(theme);
   createPlayerCommander();
 
@@ -2479,7 +2486,7 @@ function setupBattle() {
   selectedTroopGroup = "All";
   updateBattleTopStatus();
 
-  if (battleType === "siege") spawnSiegeArmies();
+  if (battleType.startsWith("siege")) spawnSiegeArmies();
   else spawnFieldArmies();
 
   keys = {};
@@ -2501,10 +2508,17 @@ function setupBattle() {
   animateBattle();
 }
 
-function createSiegeBattlefield(theme) { createBattleGround(theme); siegeObjects = []; siegeGateHp = siegeGateMaxHp; siegeCaptureProgress = 0; const wallMat = new THREE.MeshLambertMaterial({ color: 0x66676b }); const towerMat = new THREE.MeshLambertMaterial({ color: 0x55565a }); const gateMat = new THREE.MeshLambertMaterial({ color: 0x5a351f }); addSiegeWall(0, 1.8, -52, 48, 3.6, 2.2, wallMat); addSiegeWall(-25, 1.8, -34, 3.6, 3.6, 38, wallMat); addSiegeWall(25, 1.8, -34, 3.6, 3.6, 38, wallMat); addSiegeWall(-15, 1.8, -15, 20, 3.6, 2.2, wallMat); addSiegeWall(15, 1.8, -15, 20, 3.6, 2.2, wallMat); addSiegeTower(-25, -15, towerMat); addSiegeTower(25, -15, towerMat); addSiegeTower(-25, -52, towerMat); addSiegeTower(25, -52, towerMat); siegeGate = new THREE.Mesh(new THREE.BoxGeometry(8, 4.2, 1.2), gateMat); siegeGate.position.set(0, 2.1, -15); siegeGate.userData = { kind: "gate", hp: siegeGateHp, maxHp: siegeGateMaxHp, blocksMovement: true }; scene.add(siegeGate); siegeObjects.push(siegeGate); siegeCaptureZone = new THREE.Mesh(new THREE.RingGeometry(4.8, 5.4, 36), new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.55, side: THREE.DoubleSide })); siegeCaptureZone.rotation.x = -Math.PI / 2; siegeCaptureZone.position.set(0, 0.06, -41); scene.add(siegeCaptureZone); addSiegeDecor(); }
-function addSiegeWall(x, y, z, w, h, d, mat) { const wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); wall.position.set(x, y, z); wall.userData = { kind: "wall", blocksMovement: true }; scene.add(wall); siegeObjects.push(wall); return wall; }
-function addSiegeTower(x, z, mat) { const tower = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.6, 6.5, 12), mat); tower.position.set(x, 3.25, z); tower.userData = { kind: "tower", blocksMovement: true }; scene.add(tower); siegeObjects.push(tower); return tower; }
-function addSiegeDecor() { const ladderMat = new THREE.MeshLambertMaterial({ color: 0x8b5a2b }); for (const [x, z] of [[-18, -18], [18, -18], [-24, -35], [24, -35]]) { const ladder = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.22, 8), ladderMat); ladder.position.set(x, 1.4, z); ladder.rotation.x = -0.55; ladder.userData = { kind: "ladder", assaultPath: true }; scene.add(ladder); } }
+function clearBattlefieldProps() { siegeObjects.forEach(o => { if (o && o.mesh) scene.remove(o.mesh); else if (o) scene.remove(o); }); siegeObjects = []; siegeGate = null; siegeCaptureZone = null; siegeKeepZone = null; siegeLadderPoints = []; siegeCaptureProgress = 0; siegeObjectives = { gateDestroyed:false, courtyardCaptured:false, keepCaptured:false }; }
+function generateSiegeBattlefield(castleOwnerTeam, theme) { createBattleGround(theme); clearBattlefieldProps(); createCastleWalls(castleOwnerTeam); createCastleGate(castleOwnerTeam); createCastleTowers(castleOwnerTeam); createWallWalkways(); createSiegeApproachTerrain(); createCourtyardObjective(); }
+function createSiegeObject(mesh, data = {}) { mesh.userData = { ...mesh.userData, ...data }; scene.add(mesh); siegeObjects.push(mesh); return mesh; }
+function createCastleWalls() { const wallMat = new THREE.MeshLambertMaterial({ color: 0x66676b }); addSiegeWall(0, 1.8, -52, 52, 3.6, 2.2, wallMat); addSiegeWall(-27, 1.8, -34, 3.6, 3.6, 38, wallMat); addSiegeWall(27, 1.8, -34, 3.6, 3.6, 38, wallMat); addSiegeWall(-17, 1.8, -20, 18, 3.6, 2.2, wallMat); addSiegeWall(17, 1.8, -20, 18, 3.6, 2.2, wallMat); }
+function createCastleGate(team) { const gate = { id:"mainGate", type:"gate", team, hp:800, maxHp:800, position:new THREE.Vector3(0,2,-20), width:7, open:false, mesh:null }; siegeGateHp = gate.hp; siegeGateMaxHp = gate.maxHp; const gateMat = new THREE.MeshLambertMaterial({ color: 0x5a351f }); gate.mesh = new THREE.Mesh(new THREE.BoxGeometry(7,4.2,1.2), gateMat); gate.mesh.position.copy(gate.position); createSiegeObject(gate.mesh, { kind:"gate", hp:gate.hp, maxHp:gate.maxHp, blocksMovement:true, gateRef:gate }); siegeGate = gate.mesh; }
+function createCastleTowers() { const mat = new THREE.MeshLambertMaterial({ color: 0x55565a }); addSiegeTower(-27, -20, mat); addSiegeTower(27, -20, mat); }
+function createWallWalkways() { const mat = new THREE.MeshLambertMaterial({ color: 0x7a7d82 }); for (const x of [-20,-10,0,10,20]) { const w = new THREE.Mesh(new THREE.BoxGeometry(6,0.4,2.6), mat); w.position.set(x,3.9,-20); createSiegeObject(w, { kind:"walkway", blocksMovement:false }); } }
+function createSiegeApproachTerrain() { siegeLadderPoints = [ { position:new THREE.Vector3(-12,0,-21), occupied:false }, { position:new THREE.Vector3(12,0,-21), occupied:false } ]; const ladderMat = new THREE.MeshLambertMaterial({ color: 0x8b5a2b }); for (const lp of siegeLadderPoints) { const ladder = new THREE.Mesh(new THREE.BoxGeometry(1.1,0.22,8), ladderMat); ladder.position.set(lp.position.x, 1.4, lp.position.z+0.6); ladder.rotation.x = -0.55; createSiegeObject(ladder, { kind:"ladder", assaultPath:true, blocksMovement:false, ladderPoint:lp }); } }
+function createCourtyardObjective() { siegeCaptureZone = new THREE.Mesh(new THREE.RingGeometry(5,5.8,36), new THREE.MeshBasicMaterial({ color:0xffd166, transparent:true, opacity:0.42, side:THREE.DoubleSide })); siegeCaptureZone.rotation.x = -Math.PI/2; siegeCaptureZone.position.set(0,0.06,-38); createSiegeObject(siegeCaptureZone,{ kind:"courtyardZone", blocksMovement:false }); siegeKeepZone = new THREE.Mesh(new THREE.RingGeometry(3.2,4.1,36), new THREE.MeshBasicMaterial({ color:0x9bdeac, transparent:true, opacity:0.45, side:THREE.DoubleSide })); siegeKeepZone.rotation.x = -Math.PI/2; siegeKeepZone.position.set(0,0.07,-50); createSiegeObject(siegeKeepZone,{ kind:"keepZone", blocksMovement:false }); }
+function addSiegeWall(x, y, z, w, h, d, mat) { const wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); wall.position.set(x, y, z); return createSiegeObject(wall, { kind: "wall", blocksMovement: true }); }
+function addSiegeTower(x, z, mat) { const tower = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.6, 6.5, 12), mat); tower.position.set(x, 3.25, z); return createSiegeObject(tower, { kind: "tower", blocksMovement: true }); }
 function spawnSiegeArmies() { spawnInitialBattleTroops(); placeDefenderArchersOnWalls(); assignFormationSlots(); }
 function spawnFieldArmies() { spawnInitialBattleTroops(); assignFormationSlots(); }
 function shuffleArray(arr) { const out = arr.slice(); for (let i = out.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [out[i], out[j]] = [out[j], out[i]]; } return out; }
@@ -2517,11 +2531,14 @@ function spawnInitialBattleTroops() { spawnReinforcements("friendly", battleStat
 function sideHasNoForcesLeft(team) { const queue = team === "friendly" ? battleState.friendlyQueue : battleState.enemyQueue; return getActiveTroopCount(team) <= 0 && queue.length <= 0; }
 function updateReinforcements(dt) { if (battleState.battleEnded || !battleState.battleStarted) return; battleState.friendlyReinforcementWaveTimer += dt; battleState.enemyReinforcementWaveTimer += dt; if (battleState.friendlyReinforcementWaveTimer >= battleState.reinforcementInterval) { battleState.friendlyReinforcementWaveTimer = 0; if (getActiveTroopCount("friendly") < battleState.activeLimitPerSide) spawnReinforcements("friendly", battleState.reinforcementBatchSize); } if (battleState.enemyReinforcementWaveTimer >= battleState.reinforcementInterval) { battleState.enemyReinforcementWaveTimer = 0; if (getActiveTroopCount("enemy") < battleState.activeLimitPerSide) spawnReinforcements("enemy", battleState.reinforcementBatchSize); } }
 function placeDefenderArchersOnWalls() { const wallSpots = [new THREE.Vector3(-20, 3.9, -16), new THREE.Vector3(-10, 3.9, -16), new THREE.Vector3(10, 3.9, -16), new THREE.Vector3(20, 3.9, -16), new THREE.Vector3(-24, 5.8, -52), new THREE.Vector3(24, 5.8, -52)]; let i = 0; for (const troop of battleTroops) { if (troop.team !== "enemy") continue; if (troop.type !== "archer" && troop.type !== "crossbow") continue; if (i >= wallSpots.length) break; troop.mesh.position.copy(wallSpots[i]); troop.slot.copy(wallSpots[i]); troop.onWall = true; troop.command = "Hold Position"; i++; } }
-function damageSiegeGate(amount) { if (!siegeGate || siegeGateHp <= 0) return; siegeGateHp = Math.max(0, siegeGateHp - amount); siegeGate.userData.hp = siegeGateHp; showDamageNumber(siegeGate.position.clone().add(new THREE.Vector3(0, 2, 0)), amount); if (siegeGateHp <= 0) { siegeGate.visible = false; siegeGate.userData.blocksMovement = false; showToast("The gate has been broken!"); log("Your troops smashed open the castle gate."); } }
-function checkPlayerSpearHitGate() { if (battleType !== "siege" || !siegeGate || siegeGateHp <= 0) return false; if (!player3.isThrusting || player3.thrustHitDone) return false; if (player3.thrustTimer < 0.08 || player3.thrustTimer > 0.22) return false; const origin = player3.mesh.position.clone(); const forward = new THREE.Vector3(Math.sin(player3.yaw), 0, Math.cos(player3.yaw)).normalize(); const toGate = siegeGate.position.clone().sub(origin); toGate.y = 0; const forwardDist = toGate.dot(forward); const sideDist = toGate.sub(forward.clone().multiplyScalar(forwardDist)).length(); if (forwardDist > 0.5 && forwardDist < 3.5 && sideDist < 4.8) { damageSiegeGate(30); player3.thrustHitDone = true; return true; } return false; }
-function isBlockedBySiegeObject(pos, radius = 0.5) { if (battleType !== "siege") return false; for (const obj of siegeObjects) { if (!obj.visible || !obj.userData.blocksMovement) continue; const box = new THREE.Box3().setFromObject(obj); box.expandByScalar(radius); if (box.containsPoint(pos)) return true; } return false; }
-function updateSiegeCapture(dt) { if (battleType !== "siege" || !siegeCaptureZone) return; const center = siegeCaptureZone.position; const friendlyInside = battleTroops.filter(t => t.team === "friendly" && t.hp > 0 && t.mesh.position.distanceTo(center) < 6).length; const enemyInside = battleTroops.filter(t => t.team === "enemy" && t.hp > 0 && t.mesh.position.distanceTo(center) < 7).length; if (friendlyInside > 0 && enemyInside === 0) siegeCaptureProgress += dt * friendlyInside * 10; else if (enemyInside > 0) siegeCaptureProgress = Math.max(0, siegeCaptureProgress - dt * 8); else siegeCaptureProgress = Math.max(0, siegeCaptureProgress - dt * 2); siegeCaptureProgress = clamp(siegeCaptureProgress, 0, 100); if (siegeCaptureProgress >= 100) finishBattle(true, "capture"); }
-function updateSiegeStatusText() { const el = $("siegeStatusText"); if (!el) return; if (battleType !== "siege") { el.textContent = ""; return; } el.textContent = ` | Gate: ${siegeGateHp}/${siegeGateMaxHp} | Capture: ${Math.floor(siegeCaptureProgress)}%`; }
+function damageSiegeGate(amount) { if (!siegeGate || siegeGateHp <= 0) return; siegeGateHp = Math.max(0, siegeGateHp - amount); siegeGate.userData.hp = siegeGateHp; showDamageNumber(siegeGate.position.clone().add(new THREE.Vector3(0, 2, 0)), amount); if (siegeGateHp <= 0) { siegeGate.visible = false; siegeGate.userData.blocksMovement = false; siegeObjectives.gateDestroyed = true; showToast("Gate breached!"); log("Gate breached! Your troops smashed open the castle gate."); } }
+function checkPlayerSpearHitGate() { if (!battleType.startsWith("siege") || !siegeGate || siegeGateHp <= 0) return false; if (!player3.isThrusting || player3.thrustHitDone) return false; if (player3.thrustTimer < 0.08 || player3.thrustTimer > 0.22) return false; const origin = player3.mesh.position.clone(); const forward = new THREE.Vector3(Math.sin(player3.yaw), 0, Math.cos(player3.yaw)).normalize(); const toGate = siegeGate.position.clone().sub(origin); toGate.y = 0; const forwardDist = toGate.dot(forward); const sideDist = toGate.sub(forward.clone().multiplyScalar(forwardDist)).length(); if (forwardDist > 0.5 && forwardDist < 3.5 && sideDist < 4.8) { damageSiegeGate(30); player3.thrustHitDone = true; return true; } return false; }
+function isBlockedBySiegeObject(pos, radius = 0.5) { if (!battleType.startsWith("siege")) return false; for (const obj of siegeObjects) { if (!obj.visible || !obj.userData.blocksMovement) continue; const box = new THREE.Box3().setFromObject(obj); box.expandByScalar(radius); if (box.containsPoint(pos)) return true; } return false; }
+function isTroopInsideZone(troop, zone) { return troop.group ? troop.group.position.distanceTo(zone.position) < zone.radius : troop.mesh.position.distanceTo(zone.position) < zone.radius; }
+function updateCaptureZones(dt) { updateCourtyardCapture(dt); updateKeepCapture(dt); }
+function updateCourtyardCapture(dt) { if (!battleType.startsWith("siege") || !siegeCaptureZone || siegeObjectives.courtyardCaptured) return; const zone = { position:siegeCaptureZone.position, radius:6.2 }; const friendlyInside = battleTroops.filter(t => t.team === "friendly" && t.hp > 0 && isTroopInsideZone(t, zone)).length; const enemyInside = battleTroops.filter(t => t.team === "enemy" && t.hp > 0 && isTroopInsideZone(t, zone)).length; if (friendlyInside > 0 && enemyInside === 0) siegeCaptureProgress += dt * (8 + friendlyInside * 2); else if (enemyInside > 0) siegeCaptureProgress = Math.max(0, siegeCaptureProgress - dt * 8); siegeCaptureProgress = clamp(siegeCaptureProgress,0,100); if (siegeCaptureProgress >= 100) { siegeObjectives.courtyardCaptured = true; showToast("Courtyard captured! Push to the keep!"); log("Courtyard captured! Push to the keep!"); } }
+function updateKeepCapture(dt) { if (!battleType.startsWith("siege") || !siegeKeepZone || !siegeObjectives.courtyardCaptured || siegeObjectives.keepCaptured) return; const zone = { position:siegeKeepZone.position, radius:4.3 }; const friendlyInside = battleTroops.filter(t => t.team === "friendly" && t.hp > 0 && isTroopInsideZone(t, zone)).length; const enemyInside = battleTroops.filter(t => t.team === "enemy" && t.hp > 0 && isTroopInsideZone(t, zone)).length; if (friendlyInside > 0 && enemyInside === 0) { siegeObjectives.keepCaptured = true; finishBattle(true, "capture"); } }
+function updateSiegeStatusText() { const el = $("siegeStatusText"); if (!el) return; if (!battleType.startsWith("siege")) { el.textContent = ""; return; } const court = siegeObjectives.courtyardCaptured ? "Captured" : `${Math.floor(siegeCaptureProgress)}%`; const keep = siegeObjectives.keepCaptured ? "Captured" : "Not Captured"; const gateText = siegeObjectives.gateDestroyed ? "Breached" : `${siegeGateHp}/${siegeGateMaxHp}`; el.textContent = ` | Siege Progress: Gate ${gateText} | Courtyard ${court} | Keep ${keep}`; }
 
 function getBattleTheme(biome) {
   const themes = {
@@ -3301,7 +3318,8 @@ function fireArrow(attacker, target) {
   targetPos.y += target.type === "cavalry" ? 1.7 : 1.0;
   const distance = start.distanceTo(targetPos);
   const baseErrorRadius = Math.max(0.5, distance * 0.045);
-  const errorRadius = Math.max(0.35, baseErrorRadius);
+  const accuracyBonus = attacker.onWall ? 0.75 : 1;
+  const errorRadius = Math.max(0.25, baseErrorRadius * accuracyBonus);
   const end = targetPos.clone();
   end.x += rand(-errorRadius, errorRadius);
   end.z += rand(-errorRadius, errorRadius);
@@ -3566,11 +3584,14 @@ function resolveBattleResults(victory, reason = "defeat") {
   encounterArmy = null;
   battleEnemyArmy = null;
   battleType = "field";
+  battleState.battleType = "field";
   siegeTargetSettlement = null;
   siegeCaptureProgress = 0;
   siegeGate = null;
   siegeCaptureZone = null;
+  siegeKeepZone = null;
   siegeObjects = [];
+  siegeObjectives = { gateDestroyed:false, courtyardCaptured:false, keepCaptured:false };
   selected = null;
   renderUI();
 }
