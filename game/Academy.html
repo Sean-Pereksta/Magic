@@ -283,6 +283,7 @@ const TURN_SPEED = 3.0;
 const FIREBALL_COOLDOWN = 5;
 const PICKUP_COUNT = 5;
 const PICKUP_RESPAWN_DELAY = 3.5;
+const GOOSE_HIT_COOLDOWN = 0.42;
 
 const abilityNames = [
   "Bonk Bolt",
@@ -1262,6 +1263,18 @@ function castFireball(w) {
   });
 }
 
+function killGoose(goose, source = "") {
+  if (!goose || goose.dead) return;
+  goose.dead = true;
+  goose.life = 0;
+  if (goose.mesh) scene.remove(goose.mesh);
+  featherBurst(goose.x, goose.z);
+  for (let i = 0; i < 6; i++) {
+    spawnParticle(goose.x + rand(-0.4, 0.4), rand(0.3, 1.1), goose.z + rand(-0.4, 0.4), 0xffffff, rand(0.06, 0.18), rand(0.15, 0.4));
+  }
+  if (source) spawnPopText(goose.x, goose.z, "HONKED!", 0xffffff);
+}
+
 function castBonkBolt(w) {
   const f = forwardVector(w);
 
@@ -1708,7 +1721,7 @@ function castVaporBeam(w) {
     beamGroup.add(ribbon);
   }
 
-  beamGroup.position.set(w.x, 1.75, w.z);
+  beamGroup.position.set(w.x + f.x * (length * 0.5), 1.75, w.z + f.z * (length * 0.5));
   beamGroup.rotation.y = w.angle;
   scene.add(beamGroup);
 
@@ -1746,6 +1759,17 @@ function castVaporBeam(w) {
       knockWizard(target, f.x, f.z, 19);
       spawnPopText(target.x, target.z, "VAPOR!", 0xffffaa);
     }
+  }
+
+  for (const g of geese) {
+    if (g.dead) continue;
+    const relX = g.x - w.x;
+    const relZ = g.z - w.z;
+    const forwardDist = relX * f.x + relZ * f.z;
+    if (forwardDist < 0 || forwardDist > length) continue;
+    const sideX = relX - f.x * forwardDist;
+    const sideZ = relZ - f.z * forwardDist;
+    if (Math.hypot(sideX, sideZ) < 1.45) killGoose(g, "beam");
   }
 }
 
@@ -1786,6 +1810,18 @@ function createProjectile(o) {
     }
   } else {
     mesh = new THREE.Mesh(new THREE.SphereGeometry(o.radius, 20, 14), mat);
+    if (o.type === "fireball") {
+      const core = new THREE.Mesh(
+        new THREE.SphereGeometry(o.radius * 0.45, 14, 10),
+        new THREE.MeshStandardMaterial({ color: 0xfff6d6, emissive: 0xffffff, emissiveIntensity: 1.6 })
+      );
+      mesh.add(core);
+      const shell = new THREE.Mesh(
+        new THREE.SphereGeometry(o.radius * 1.35, 16, 12),
+        new THREE.MeshStandardMaterial({ color: 0xff9d33, emissive: 0xff6a1f, transparent: true, opacity: 0.35 })
+      );
+      mesh.add(shell);
+    }
   }
 
   mesh.position.set(o.x, o.y, o.z);
@@ -1797,12 +1833,21 @@ function createProjectile(o) {
     mesh,
     hitSet: new Set(),
     spin: rand(0, 100),
-    trailTimer: 0
+    trailTimer: 0,
+    lingerTrail: o.type === "fireball" ? 0.018 : 0
   });
 }
 
 function updateProjectiles(dt) {
   for (const p of projectiles) {
+    if (p.type === "hatTornado" && p.hitCooldowns) {
+      for (const [wizard, timeLeft] of p.hitCooldowns) {
+        const next = timeLeft - dt;
+        if (next <= 0) p.hitCooldowns.delete(wizard);
+        else p.hitCooldowns.set(wizard, next);
+      }
+    }
+
     p.life -= dt;
     p.trailTimer -= dt;
 
@@ -1843,13 +1888,21 @@ function updateProjectiles(dt) {
     }
 
     if (p.trailTimer <= 0) {
-      p.trailTimer = 0.035;
+      p.trailTimer = p.type === "fireball" ? 0.018 : 0.035;
       const color = p.trailColor || p.color || 0xffffff;
-      spawnParticle(p.x, p.y || 1.2, p.z, color, rand(0.08, 0.22), rand(0.18, 0.36));
+      const isFire = p.type === "fireball";
+      spawnParticle(p.x, p.y || 1.2, p.z, color, isFire ? rand(0.1, 0.28) : rand(0.08, 0.22), isFire ? rand(0.26, 0.6) : rand(0.18, 0.36));
+      if (isFire) {
+        const backSpeed = Math.hypot(p.vx, p.vz) || 1;
+        const bx = -p.vx / backSpeed;
+        const bz = -p.vz / backSpeed;
+        spawnParticle(p.x + bx * rand(0.35, 1.1), (p.y || 1.2) + rand(-0.15, 0.2), p.z + bz * rand(0.35, 1.1), 0xff6a1f, rand(0.08, 0.2), rand(0.35, 0.7));
+      }
     }
 
     projectileArenaBounce(p);
     projectileObstacleCollision(p);
+    projectileGooseCollision(p);
     projectileWizardCollision(p);
   }
 
@@ -2004,8 +2057,15 @@ function projectileWizardCollision(p) {
       }
 
       if (p.type === "hatTornado") {
-        knockWizard(w, p.vx, p.vz, 12);
-        w.effect.slapSpin = 0.5;
+        if (!p.hitCooldowns) p.hitCooldowns = new Map();
+        const cd = p.hitCooldowns.get(w) || 0;
+        if (cd <= 0) {
+          p.hitCooldowns.set(w, 0.42);
+          applyDamage(w, 1, `${p.owner.name}'s Hat Tornado`);
+          knockWizard(w, p.vx, p.vz, 28);
+          w.effect.slapSpin = 1.35;
+          spawnPopText(w.x, w.z, "TORNADO!", 0xd3b2ff);
+        }
       }
 
       if (p.type === "bowling") {
@@ -2018,10 +2078,29 @@ function projectileWizardCollision(p) {
   }
 }
 
+function projectileGooseCollision(p) {
+  for (const g of geese) {
+    if (g.dead) continue;
+    if (distancePoint(p.x, p.z, g.x, g.z) >= p.radius + 0.8) continue;
+
+    if (p.type === "fireball" || p.type === "bonk" || p.type === "bowling" || p.type === "ink" || p.type === "jelly" || p.type === "bubble" || p.type === "reverse") {
+      killGoose(g, p.type);
+      if (p.type === "fireball") fireExplosion(g.x, g.z);
+      if (p.type !== "bowling") killProjectile(p);
+      return;
+    }
+  }
+}
+
 function killProjectile(p) {
   if (p.dead) return;
   p.dead = true;
   if (p.mesh) scene.remove(p.mesh);
+  if (p.type === "fireball") {
+    for (let i = 0; i < 14; i++) {
+      spawnParticle(p.x + rand(-0.7, 0.7), rand(0.8, 2.2), p.z + rand(-0.7, 0.7), i % 2 ? 0xfff2b3 : 0xff6a1f, rand(0.12, 0.3), rand(0.25, 0.6));
+    }
+  }
 }
 
 /* ============================================================
@@ -2199,13 +2278,7 @@ function updateGeese(dt) {
     g.life -= dt;
     g.cooldown = Math.max(0, g.cooldown - dt);
 
-    let target = null;
-    for (const w of wizards) {
-      if (!w.alive || w === g.owner) continue;
-      if (!target || distancePoint(g.x, g.z, w.x, w.z) < distancePoint(g.x, g.z, target.x, target.z)) {
-        target = w;
-      }
-    }
+    let target = acquireGooseTarget(g);
 
     if (target) {
       const a = angleToPoint(g.x, g.z, target.x, target.z);
@@ -2214,13 +2287,24 @@ function updateGeese(dt) {
       g.mesh.rotation.y = a;
 
       if (distancePoint(g.x, g.z, target.x, target.z) < 1.65 && g.cooldown <= 0) {
-        g.cooldown = 0.65;
+        g.cooldown = GOOSE_HIT_COOLDOWN;
         g.hitsLeft--;
 
         applyDamage(target, 1, `${g.owner.name}'s Goose`);
         knockWizard(target, target.x - g.x, target.z - g.z, 15);
         spawnPopText(target.x, target.z, "HONK!", 0xffffff);
         featherBurst(target.x, target.z);
+        const awayX = g.x - target.x;
+        const awayZ = g.z - target.z;
+        const len = Math.hypot(awayX, awayZ) || 1;
+        g.vx = (awayX / len) * rand(11, 16);
+        g.vz = (awayZ / len) * rand(11, 16);
+        const nextTarget = acquireGooseTarget(g);
+        if (nextTarget) {
+          const aa = angleToPoint(g.x, g.z, nextTarget.x, nextTarget.z);
+          g.vx += Math.sin(aa) * 8;
+          g.vz += Math.cos(aa) * 8;
+        }
 
         if (g.hitsLeft <= 0) g.life = 0;
       }
@@ -2244,11 +2328,50 @@ function updateGeese(dt) {
   }
 
   for (let i = geese.length - 1; i >= 0; i--) {
-    if (geese[i].life <= 0) {
-      scene.remove(geese[i].mesh);
+    if (geese[i].life <= 0 || geese[i].dead) {
+      if (geese[i].mesh) scene.remove(geese[i].mesh);
       geese.splice(i, 1);
     }
   }
+}
+
+function hasLineOfSight(x1, z1, x2, z2) {
+  const blocks = [...obstacles, ...temporary.filter(t => t.kind === "mushroomWall").map(t => ({ x: t.x, z: t.z, radius: t.radius }))];
+  for (const b of blocks) {
+    const t = closestPointOnSegment(b.x, b.z, x1, z1, x2, z2);
+    if (distancePoint(t.x, t.z, b.x, b.z) < b.radius + 0.4) return false;
+  }
+  return true;
+}
+
+function closestPointOnSegment(px, pz, ax, az, bx, bz) {
+  const abx = bx - ax;
+  const abz = bz - az;
+  const t = clamp(((px - ax) * abx + (pz - az) * abz) / ((abx * abx + abz * abz) || 1), 0, 1);
+  return { x: ax + abx * t, z: az + abz * t };
+}
+
+function acquireGooseTarget(g) {
+  let target = null;
+  let best = Infinity;
+  for (const w of wizards) {
+    if (!w.alive || w === g.owner) continue;
+    const d = distancePoint(g.x, g.z, w.x, w.z);
+    if (d < best && hasLineOfSight(g.x, g.z, w.x, w.z)) {
+      target = w;
+      best = d;
+    }
+  }
+  if (target) return target;
+  for (const w of wizards) {
+    if (!w.alive || w === g.owner) continue;
+    const d = distancePoint(g.x, g.z, w.x, w.z);
+    if (d < best) {
+      target = w;
+      best = d;
+    }
+  }
+  return target;
 }
 
 /* ============================================================
