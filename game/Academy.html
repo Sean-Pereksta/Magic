@@ -212,7 +212,7 @@
     <h1>Goofy Wizard Arena 3D</h1>
     <p>
       Third-person wizard chaos. Grab floating mystery blocks, throw ridiculous spells,
-      bounce enemies into trees, blind them with squid ink, and vaporize anyone who takes 10 damage.
+      bounce enemies into trees, blind them with squid ink, and vaporize anyone who takes 5 damage.
       Last wizard standing wins.
     </p>
 
@@ -285,6 +285,8 @@ const caveCollisionPadding = 0.9;
 let caveFogVolume = null;
 let running = false;
 let gameOver = false;
+let screenShakeAmount = 0;
+let screenShakeTimer = 0;
 
 const keys = {};
 const wizards = [];
@@ -299,13 +301,13 @@ let pickupSpawnCooldown = 0;
 
 const ARENA_R = 65;
 const MAX_WIZARDS = 6;
-const MAX_DAMAGE = 10;
-const PLAYER_SPEED = 19;
+const MAX_DAMAGE = 5;
+const PLAYER_SPEED = 21;
 const TURN_SPEED = 3.0;
-const FIREBALL_COOLDOWN = 3;
-const PICKUP_COUNT = 3;
-const PICKUP_RESPAWN_DELAY = 5.8;
-const GOOSE_HIT_COOLDOWN = 0.42;
+const FIREBALL_COOLDOWN = 2.15;
+const PICKUP_COUNT = 6;
+const PICKUP_RESPAWN_DELAY = 3.1;
+const GOOSE_HIT_COOLDOWN = 0.3;
 
 const abilityNames = [
   "Bonk Bolt",
@@ -842,12 +844,27 @@ function updateWizardMesh(w, dt) {
   } else {
     w.group.rotation.z = 0;
   }
+  if (w.invulnerableTimer > 0) {
+    const flash = 0.5 + Math.sin(performance.now() * 0.03) * 0.5;
+    w.group.traverse(part => {
+      if (part.material && part.material.emissive) part.material.emissiveIntensity = 0.25 + flash * 0.8;
+    });
+  } else {
+    w.group.traverse(part => {
+      if (part.material && part.material.emissive) part.material.emissiveIntensity = 0.35;
+    });
+  }
 }
 
 function applyDamage(w, amount, sourceName) {
   if (!w.alive || w.invulnerableTimer>0) return;
 
   w.damage += amount;
+  spawnDamageNumber(w.x, 2.8, w.z, amount);
+  if (amount >= 3) {
+    addScreenShake(0.32 + amount * 0.08, 0.12);
+    createImpactBurst(w.x, 1.2, w.z, 0xff6b6b, 1.2 + amount * 0.2);
+  }
 
   for (let i = 0; i < 16; i++) {
     spawnParticle(w.x, 2.0, w.z, 0xff5555, rand(0.16, 0.35), rand(0.35, 0.7));
@@ -873,9 +890,9 @@ function vaporizeWizard(w, sourceName) {
   showMessage(`${w.name} was vaporized${sourceName ? " by " + sourceName : ""}!`);
   if (GAME_SETTINGS.mode === 'stock' || (GAME_SETTINGS.mode==='survival' && w.human)) {
     w.stocks = Math.max(0, w.stocks - 1);
-    if (w.stocks > 0) { w.respawnTimer = 2.4; }
+    if (w.stocks > 0) { w.respawnTimer = 1.8; }
   } else if (GAME_SETTINGS.mode==='survival' && !w.human) {
-    w.respawnTimer = 2.1;
+    w.respawnTimer = 1.6;
   }
 }
 
@@ -906,6 +923,12 @@ function knockWizard(w, dx, dz, force) {
   w.vx += dx / len * force;
   w.vz += dz / len * force;
 }
+
+function spawnDamageNumber(x, y, z, amount) { spawnPopText(x, z, `-${amount}`, amount >= 3 ? 0xff5353 : 0xffb347); }
+function addScreenShake(amount, duration) { screenShakeAmount = Math.max(screenShakeAmount, amount); screenShakeTimer = Math.max(screenShakeTimer, duration); }
+function createImpactBurst(x, y, z, color, size) { for (let i = 0; i < Math.floor(14 + size * 6); i++) spawnParticle(x + rand(-size*0.4,size*0.4), y + rand(0, size*0.6), z + rand(-size*0.4,size*0.4), color, rand(0.1,0.25)*size, rand(0.2,0.6)); }
+function createShockwaveRing(x, z, color, radius) { const ring = createGroundRing(x, z, radius, color, 0.78); temporary.push({ kind:'fxRing', mesh:ring, life:0.3, grow:radius*7 }); }
+function createAbilityTrail(projectile, dt) { projectile.trailTimer -= dt; }
 
 /* ============================================================
    PLAYER / BOT MOVEMENT
@@ -992,8 +1015,8 @@ function updateHuman(w, dt) {
   }
 }
 
-function chooseBotTarget(bot){ let best=null,bestScore=-1e9; for(const t of wizards){ if(t===bot||!t.alive) continue; let score=100-distance2D(bot,t)+t.damage*18; if(t.damage>=7) score+=120; if(t.human) score+=GAME_SETTINGS.mode==='survival'?150:25; if(GAME_SETTINGS.mode==='king'&&isWizardInHill(t)) score+=180; if((t.score||0)>(bot.score||0)) score+=60; if(score>bestScore){bestScore=score;best=t;} } return best; }
-function choosePracticalPickup(bot,target){ if(bot.ability) return null; const td=target?distance2D(bot,target):99; if(target&&target.damage>=7&&td<22) return null; let best=null,bd=1e9; for(const p of pickups){ const d=distancePoint(bot.x,bot.z,p.x,p.z); if(d<bd){bd=d;best=p;} } return best&&bd<18?best:null; }
+function chooseBotTarget(bot){ let best=null,bestScore=-1e9; for(const t of wizards){ if(t===bot||!t.alive) continue; let score=100-distance2D(bot,t)+t.damage*18; if(t.damage>=4) score+=120; if(t.human) score+=GAME_SETTINGS.mode==='survival'?150:25; if(GAME_SETTINGS.mode==='king'&&isWizardInHill(t)) score+=180; if((t.score||0)>(bot.score||0)) score+=60; if(score>bestScore){bestScore=score;best=t;} } return best; }
+function choosePracticalPickup(bot,target){ if(bot.ability) return null; const td=target?distance2D(bot,target):99; if(target&&target.damage>=4&&td<22) return null; let best=null,bd=1e9; for(const p of pickups){ const d=distancePoint(bot.x,bot.z,p.x,p.z); if(d<bd){bd=d;best=p;} } return best&&bd<18?best:null; }
 function updateBot(w, dt) {
   if (w.effect.stunned > 0) return;
   const enemies = wizards.filter(x => x !== w && x.alive);
@@ -1240,7 +1263,7 @@ function updatePickups(dt) {
   pickupSpawnCooldown -= dt;
   if (pickupSpawnCooldown <= 0) {
     spawnPickup();
-    pickupSpawnCooldown = PICKUP_RESPAWN_DELAY + rand(0.4, 1.8);
+    pickupSpawnCooldown = PICKUP_RESPAWN_DELAY + rand(0.2, 0.9);
   }
 }
 
@@ -1309,7 +1332,7 @@ function castFireball(w) {
     vx: f.x * 30,
     vz: f.z * 30,
     radius: 0.62,
-    damage: 1,
+    damage: 2,
     knock: 9,
     life: 2.4,
     bounce: 0,
@@ -1904,7 +1927,7 @@ function updateProjectiles(dt) {
     }
 
     p.life -= dt;
-    p.trailTimer -= dt;
+    createAbilityTrail(p, dt);
 
     if (p.life <= 0) {
       if (p.type === "glue") createGluePuddle(p.x, p.z);
@@ -2479,6 +2502,13 @@ function updateThirdPersonCamera(cam, w, dt, viewportMode = "single") {
 }
 
 function renderScene() {
+  if (screenShakeTimer > 0) {
+    const jx = (Math.random() * 2 - 1) * screenShakeAmount;
+    const jz = (Math.random() * 2 - 1) * screenShakeAmount;
+    for (const c of [camera1, camera2, spectatorCamera]) if (c) c.position.add(new THREE.Vector3(jx, 0, jz));
+    screenShakeTimer = Math.max(0, screenShakeTimer - 0.016);
+    screenShakeAmount *= 0.9;
+  }
   renderer.setScissorTest(false);
   renderer.clear();
 
@@ -2964,7 +2994,7 @@ function isWizardInHill(w){ if(!isKingHillActive()) return false; return distanc
 function getKingLeader(){ return [...wizards].sort((a,b)=>b.score-a.score)[0]; }
 function createStunStars(w,duration=2.5){ const g=new THREE.Group(); for(let i=0;i<3;i++){ const s=new THREE.Mesh(new THREE.SphereGeometry(0.16,8,6), new THREE.MeshStandardMaterial({color:0xffff66, emissive:0xffcc33})); s.position.set(Math.cos(i*2.09)*0.7,3.7,Math.sin(i*2.09)*0.7); g.add(s);} scene.add(g); temporary.push({kind:'stunStars',mesh:g,follow:w,life:duration,spin:5,yOffset:0}); spawnPopText(w.x,w.z,'STUNNED!',0xffff66);}
 function updateModes(dt){ matchTime += dt; survivalLevel = Math.floor(matchTime/30)+1;
- for(const w of wizards){ if(!w.alive && w.respawnTimer>0){ w.respawnTimer-=dt; if(w.respawnTimer<=0 && (GAME_SETTINGS.mode!=='stock' || w.stocks>0)){ const sp=randomArenaPoint(8); w.x=sp.x; w.z=sp.z; w.damage=0; w.alive=true; w.group.visible=true; w.label.name.style.display='block'; w.label.bar.style.display='block'; w.invulnerableTimer=1.5; }} w.invulnerableTimer=Math.max(0,w.invulnerableTimer-dt);}
+ for(const w of wizards){ if(!w.alive && w.respawnTimer>0){ w.respawnTimer-=dt; if(w.respawnTimer<=0 && (GAME_SETTINGS.mode!=='stock' || w.stocks>0)){ const sp=randomArenaPoint(8); w.x=sp.x; w.z=sp.z; w.damage=0; w.alive=true; w.group.visible=true; w.label.name.style.display='block'; w.label.bar.style.display='block'; w.invulnerableTimer=1.1; }} w.invulnerableTimer=Math.max(0,w.invulnerableTimer-dt);}
  if(GAME_SETTINGS.mode==='king'){ const inside=wizards.filter(w=>w.alive&&isWizardInHill(w)); if(hillZone.ring){ const c=inside.length===1?inside[0].color:inside.length>1?0xffffff:0x88eeff; hillZone.ring.material.color.setHex(c); hillZone.ring.material.emissive.setHex(c);} for(const w of inside){ w.score += (inside.length===1?KING_POINTS_PER_SECOND:KING_CONTESTED_POINTS_PER_SECOND)*dt; } }
  if(GAME_SETTINGS.mode==='survival') survivalScore += SURVIVAL_TIME_POINTS_PER_SECOND*dt; }
 
