@@ -268,8 +268,13 @@ const KING_POINTS_PER_SECOND = 70, KING_CONTESTED_POINTS_PER_SECOND = 25, KING_K
 const SURVIVAL_TIME_POINTS_PER_SECOND = 15, SURVIVAL_KILL_BONUS = 1200, SURVIVAL_PICKUP_BONUS = 100;
 let matchTime = 0, survivalScore = 0, survivalLevel = 1;
 let hillZone = { x:0,z:0,radius:7,topY:4.5,baseRadius:18,topRadius:7,pointsPerSecond:KING_POINTS_PER_SECOND,contestedPointsPerSecond:KING_CONTESTED_POINTS_PER_SECOND,mesh:null,ring:null };
-const tiltPlane={x:24,z:4,width:24,depth:18,baseY:1.2,tiltX:0,tiltZ:0,targetTiltX:0,targetTiltZ:0,timer:2,state:"idle",mesh:null,warn:null};
-const geysers=[{x:-32,z:20,radius:3.2,timer:2,state:"idle",mesh:null,column:null},{x:-39,z:7,radius:3.2,timer:5,state:"idle",mesh:null,column:null},{x:-26,z:-6,radius:3.2,timer:8,state:"idle",mesh:null,column:null}];
+const GEYSER_WARNING_TIME = 1.3;
+const GEYSER_ERUPTION_TIME = 0.95;
+const GEYSER_COOLDOWN_TIME = 5.4;
+const GEYSER_VERTICAL_FORCE = 31;
+const GEYSER_HORIZONTAL_FORCE = 18;
+const tiltPlane={x:26,z:6,width:36,depth:34,baseY:1.35,tiltX:0,tiltZ:0,targetTiltX:0,targetTiltZ:0,timer:3.6,state:"settled",mesh:null,warn:null,detail:null,debris:[],lastDownhill:{x:0,z:0}};
+const geysers=[{x:-32,z:20,radius:3.4,timer:2.4,state:"dormant",mesh:null,column:null,ring:null,vent:null,lastBlasted:new WeakSet()},{x:-39,z:7,radius:3.4,timer:5.2,state:"dormant",mesh:null,column:null,ring:null,vent:null,lastBlasted:new WeakSet()},{x:-26,z:-6,radius:3.4,timer:8.1,state:"dormant",mesh:null,column:null,ring:null,vent:null,lastBlasted:new WeakSet()}];
 const caveTunnels=[];
 const caveOpenings=[
   {id:"northCave",x:2,z:-52,angle:Math.PI},
@@ -1072,10 +1077,11 @@ function applyPhysics(w, dt) {
   if (w.y <= groundY){
     w.y = groundY; w.vy = Math.max(0,w.vy); w.grounded=true; w.airborne=false;
     applySlopeSliding(w,dt);
-    if (isOnTiltPlane(w.x,w.z)){ w.vx += Math.sin(tiltPlane.tiltZ)*38*dt; w.vz -= Math.sin(tiltPlane.tiltX)*38*dt; }
+    applyTiltPlaneSliding(w,dt);
   } else { w.grounded=false; w.airborne=true; }
 
   let friction = w.grounded?0.88:0.96;
+  if (w.grounded && isOnTiltPlane(w.x,w.z)) friction = 0.91;
   if (w.effect.jelly > 0) friction = 0.975;
   if (w.effect.bubble > 0) friction = 0.992;
 
@@ -2923,10 +2929,28 @@ function getRegionBumpHeight(x,z){ const mushroom=Math.max(0,2.2-Math.hypot(x+24
 function getBaseGroundHeight(x,z){ return getRegionBumpHeight(x,z); }
 function getTerrainHeight(x,z){ return Math.max(getBaseGroundHeight(x,z),getHillGroundHeight(x,z)); }
 function isOnTiltPlane(x,z){ return Math.abs(x-tiltPlane.x)<tiltPlane.width/2 && Math.abs(z-tiltPlane.z)<tiltPlane.depth/2; }
-function getTiltPlaneHeight(x,z){ if(!isOnTiltPlane(x,z)) return null; const lx=x-tiltPlane.x,lz=z-tiltPlane.z; return tiltPlane.baseY + Math.sin(tiltPlane.tiltZ)*lx - Math.sin(tiltPlane.tiltX)*lz; }
+function getTiltPlaneHeight(x,z){ if(!isOnTiltPlane(x,z)) return null; const lx=x-tiltPlane.x,lz=z-tiltPlane.z; return tiltPlane.baseY + Math.tan(tiltPlane.tiltZ)*lx - Math.tan(tiltPlane.tiltX)*lz; }
+function getTiltPlaneNormal(){ const nx=-Math.tan(tiltPlane.tiltZ), nz=Math.tan(tiltPlane.tiltX); return new THREE.Vector3(nx,1,nz).normalize(); }
 function getEffectiveGroundHeight(x,z){ const th=getTerrainHeight(x,z); const ph=getTiltPlaneHeight(x,z); return ph===null?th:Math.max(th,ph); }
 function getTerrainNormalApprox(x,z){ const e=0.5; const hL=getEffectiveGroundHeight(x-e,z),hR=getEffectiveGroundHeight(x+e,z),hD=getEffectiveGroundHeight(x,z-e),hU=getEffectiveGroundHeight(x,z+e); return {slopeX:(hL-hR)/(2*e),slopeZ:(hD-hU)/(2*e)}; }
 function applySlopeSliding(w,dt){ if(!isKingHillActive()) return; const s=getTerrainNormalApprox(w.x,w.z); w.vx += s.slopeX*10*dt; w.vz += s.slopeZ*10*dt; }
+function applyTiltPlaneSliding(w,dt){
+  if(!w.grounded || !isOnTiltPlane(w.x,w.z)) return;
+  const normal=getTiltPlaneNormal();
+  const downhill=new THREE.Vector3(-normal.x,0,-normal.z);
+  const mag=Math.hypot(downhill.x,downhill.z);
+  if(mag<0.0001) return;
+  downhill.multiplyScalar(1/mag);
+  const tiltStrength=clamp(Math.hypot(Math.tan(tiltPlane.tiltX),Math.tan(tiltPlane.tiltZ)),0,0.25);
+  const slopePush=(3.2 + tiltStrength*36) * dt;
+  w.vx += downhill.x * slopePush;
+  w.vz += downhill.z * slopePush;
+  const along=w.vx*downhill.x + w.vz*downhill.z;
+  if(along>0){
+    w.vx += downhill.x * tiltStrength * 8.5 * dt;
+    w.vz += downhill.z * tiltStrength * 8.5 * dt;
+  }
+}
 
 function buildHillZone(){
   if(!isKingHillActive()) return;
@@ -2969,10 +2993,18 @@ function checkWin() {
 
 
 function buildSkyAtmosphere(){ const sky=new THREE.Mesh(new THREE.SphereGeometry(220,40,28),new THREE.MeshBasicMaterial({color:0x4a3e86,side:THREE.BackSide})); scene.add(sky); for(let i=0;i<24;i++){const c=new THREE.Mesh(new THREE.SphereGeometry(rand(2.5,4.8),10,8),new THREE.MeshStandardMaterial({color:0xdccfff,transparent:true,opacity:0.28})); c.position.set(rand(-90,90),rand(28,60),rand(-90,90)); scene.add(c);} }
-function buildRegionSetPieces(){ const p=new THREE.Mesh(new THREE.BoxGeometry(tiltPlane.width,0.9,tiltPlane.depth),new THREE.MeshStandardMaterial({color:0x6f6a7a,emissive:0x1d1638})); p.position.set(tiltPlane.x,tiltPlane.baseY,tiltPlane.z); scene.add(p); tiltPlane.mesh=p; for(const g of geysers){ const hole=new THREE.Mesh(new THREE.CylinderGeometry(g.radius,g.radius,0.35,24),new THREE.MeshStandardMaterial({color:0x3b4652,emissive:0x18384e})); hole.position.set(g.x,getEffectiveGroundHeight(g.x,g.z)+0.06,g.z); scene.add(hole); g.mesh=hole; const col=new THREE.Mesh(new THREE.CylinderGeometry(g.radius*0.4,g.radius*0.7,8,16),new THREE.MeshStandardMaterial({color:0x8beeff,emissive:0x2b9fff,transparent:true,opacity:0.0})); col.position.set(g.x,hole.position.y+4,g.z); scene.add(col); g.column=col;} buildCaveNetwork(); }
-function updateTiltPlane(dt){ if(!tiltPlane.mesh) return; tiltPlane.timer-=dt; if(tiltPlane.timer<=0){ if(tiltPlane.state==='idle'){ tiltPlane.state='tilt'; tiltPlane.targetTiltX=rand(-0.35,0.35); tiltPlane.targetTiltZ=rand(-0.35,0.35); tiltPlane.timer=3.4; } else { tiltPlane.state='idle'; tiltPlane.targetTiltX=0; tiltPlane.targetTiltZ=0; tiltPlane.timer=2.6; } } tiltPlane.tiltX += (tiltPlane.targetTiltX-tiltPlane.tiltX)*dt*2.5; tiltPlane.tiltZ += (tiltPlane.targetTiltZ-tiltPlane.tiltZ)*dt*2.5; tiltPlane.mesh.rotation.x=tiltPlane.tiltX; tiltPlane.mesh.rotation.z=tiltPlane.tiltZ; }
-function updateGeysers(dt){ for(const g of geysers){ g.timer-=dt; if(g.state==='idle'&&g.timer<=0){g.state='warning';g.timer=1.2;} else if(g.state==='warning'&&g.timer<=0){g.state='blast';g.timer=0.8;} else if(g.state==='blast'){ affectGeyserPlayers(g,dt); if(g.timer<=0){g.state='cooldown';g.timer=rand(4,8);} } else if(g.state==='cooldown'&&g.timer<=0){g.state='idle';g.timer=rand(2,5);} if(g.column) g.column.material.opacity=(g.state==='blast'?0.68:g.state==='warning'?0.2:0.0);} }
-function affectGeyserPlayers(g,dt){ for(const w of wizards){ if(!w.alive) continue; const dx=w.x-g.x,dz=w.z-g.z,d=Math.hypot(dx,dz); if(d<g.radius){ const nx=dx/(d||1),nz=dz/(d||1); w.vy=Math.max(w.vy,28); w.vx += nx*42*dt + rand(-8,8)*dt; w.vz += nz*42*dt + rand(-8,8)*dt; w.effect.stunned=Math.max(w.effect.stunned,0.35); } } }
+function buildTiltPlaneRegion(){
+  const p=new THREE.Mesh(new THREE.BoxGeometry(tiltPlane.width,1.1,tiltPlane.depth),new THREE.MeshStandardMaterial({color:0x746f7f,emissive:0x211b39,roughness:0.85}));
+  p.position.set(tiltPlane.x,tiltPlane.baseY-0.5,tiltPlane.z); scene.add(p); tiltPlane.mesh=p;
+  const seam=new THREE.Mesh(new THREE.PlaneGeometry(tiltPlane.width*0.94,tiltPlane.depth*0.94),new THREE.MeshStandardMaterial({color:0x6d6477,emissive:0x32205f,transparent:true,opacity:0.55}));
+  seam.rotation.x=-Math.PI/2; seam.position.set(tiltPlane.x,tiltPlane.baseY+0.08,tiltPlane.z); scene.add(seam); tiltPlane.detail=seam;
+  const warn=createGroundRing(tiltPlane.x,tiltPlane.z,Math.min(tiltPlane.width,tiltPlane.depth)*0.38,0xffb86a,0.58); warn.position.y=tiltPlane.baseY+0.12; tiltPlane.warn=warn;
+  for(let i=0;i<12;i++){ const rock=new THREE.Mesh(new THREE.DodecahedronGeometry(rand(0.16,0.36),0),new THREE.MeshStandardMaterial({color:0x8d8897,roughness:0.95})); rock.position.set(tiltPlane.x+rand(-tiltPlane.width*0.4,tiltPlane.width*0.4),tiltPlane.baseY+0.2,tiltPlane.z+rand(-tiltPlane.depth*0.4,tiltPlane.depth*0.4)); scene.add(rock); tiltPlane.debris.push(rock); }
+}
+function buildRegionSetPieces(){ buildTiltPlaneRegion(); for(const g of geysers){ const hole=new THREE.Mesh(new THREE.CylinderGeometry(g.radius,g.radius,0.35,24),new THREE.MeshStandardMaterial({color:0x3f4d57,emissive:0x172434})); hole.position.set(g.x,getEffectiveGroundHeight(g.x,g.z)+0.06,g.z); scene.add(hole); g.mesh=hole; const vent=new THREE.Mesh(new THREE.RingGeometry(g.radius*0.65,g.radius*1.05,28),new THREE.MeshStandardMaterial({color:0x4a4f5d,emissive:0x1f2b3b,side:THREE.DoubleSide})); vent.rotation.x=-Math.PI/2; vent.position.set(g.x,hole.position.y+0.03,g.z); scene.add(vent); g.vent=vent; const col=new THREE.Mesh(new THREE.CylinderGeometry(g.radius*0.28,g.radius*0.72,10,18),new THREE.MeshStandardMaterial({color:0x9fefff,emissive:0x45beff,transparent:true,opacity:0.0})); col.position.set(g.x,hole.position.y+5,g.z); scene.add(col); g.column=col; const ring=createGroundRing(g.x,g.z,g.radius*0.96,0x99ffff,0.15); ring.position.y=hole.position.y+0.09; g.ring=ring;} buildCaveNetwork(); }
+function updateTiltPlane(dt){ if(!tiltPlane.mesh) return; const MAX_TILT=0.12; tiltPlane.timer-=dt; if(tiltPlane.timer<=0){ if(tiltPlane.state==='settled'){ tiltPlane.state='transition'; tiltPlane.targetTiltX=rand(-MAX_TILT,MAX_TILT); tiltPlane.targetTiltZ=rand(-MAX_TILT,MAX_TILT); tiltPlane.timer=5.2; } else { tiltPlane.state='settled'; tiltPlane.targetTiltX=rand(-0.025,0.025); tiltPlane.targetTiltZ=rand(-0.025,0.025); tiltPlane.timer=3.4; } } tiltPlane.tiltX += (tiltPlane.targetTiltX-tiltPlane.tiltX)*dt*0.9; tiltPlane.tiltZ += (tiltPlane.targetTiltZ-tiltPlane.tiltZ)*dt*0.9; tiltPlane.mesh.rotation.x=tiltPlane.tiltX; tiltPlane.mesh.rotation.z=tiltPlane.tiltZ; if(tiltPlane.detail){ tiltPlane.detail.rotation.x=-Math.PI/2 + tiltPlane.tiltX; tiltPlane.detail.rotation.z=tiltPlane.tiltZ; } const downhill={x:Math.sin(tiltPlane.tiltZ),z:-Math.sin(tiltPlane.tiltX)}; tiltPlane.lastDownhill=downhill; if(tiltPlane.warn){ const glow=Math.hypot(tiltPlane.targetTiltX-tiltPlane.tiltX,tiltPlane.targetTiltZ-tiltPlane.tiltZ); tiltPlane.warn.material.opacity=0.16+clamp(glow*2.8,0,0.45); tiltPlane.warn.position.set(tiltPlane.x+downhill.x*6,tiltPlane.baseY+0.14,tiltPlane.z+downhill.z*6); } for(const rock of tiltPlane.debris){ rock.position.x += downhill.x*dt*rand(0.25,0.7); rock.position.z += downhill.z*dt*rand(0.25,0.7); rock.position.y=tiltPlane.baseY+0.22+Math.sin(performance.now()*0.002+rock.id)*0.03; } }
+function updateGeysers(dt){ for(const g of geysers){ g.timer-=dt; if(g.state==='dormant'&&g.timer<=0){g.state='warning';g.timer=GEYSER_WARNING_TIME; g.lastBlasted=new WeakSet();} else if(g.state==='warning'&&g.timer<=0){g.state='eruption';g.timer=GEYSER_ERUPTION_TIME;} else if(g.state==='eruption'){ affectGeyserPlayers(g,dt); if(g.timer<=0){g.state='cooldown';g.timer=GEYSER_COOLDOWN_TIME+rand(0,1.8);} } else if(g.state==='cooldown'&&g.timer<=0){g.state='dormant';g.timer=rand(2.2,4.8);} const warningPulse=(g.state==='warning')?(1-g.timer/GEYSER_WARNING_TIME):0; if(g.column){ g.column.material.opacity=(g.state==='eruption'?0.84:g.state==='warning'?0.26:0.0); g.column.scale.set(1,g.state==='eruption'?1.25+Math.sin(performance.now()*0.05)*0.12:0.25+warningPulse*0.3,1);} if(g.ring){ g.ring.material.opacity = g.state==='warning' ? 0.28 + warningPulse*0.35 : g.state==='eruption' ? 0.5 : 0.12; } if(g.state==='warning'&&Math.random()<0.35) spawnParticle(g.x+rand(-g.radius*0.6,g.radius*0.6),g.mesh.position.y+rand(0.1,0.9),g.z+rand(-g.radius*0.6,g.radius*0.6),0xc7f8ff,rand(0.1,0.22),rand(0.18,0.5)); if(g.state==='eruption'){ for(let i=0;i<3;i++) spawnParticle(g.x+rand(-g.radius*0.4,g.radius*0.4),g.mesh.position.y+rand(0.2,1.5),g.z+rand(-g.radius*0.4,g.radius*0.4),i%2?0xa8f2ff:0xffffff,rand(0.12,0.32),rand(0.28,0.85)); if(Math.random()<0.4) spawnParticle(g.x,g.mesh.position.y+0.12,g.z,0x9be7ff,rand(0.55,0.95),0.3);} } }
+function affectGeyserPlayers(g,dt){ for(const w of wizards){ if(!w.alive) continue; const dx=w.x-g.x,dz=w.z-g.z,d=Math.hypot(dx,dz); if(d<g.radius){ const edge=d/g.radius; const centerBoost=1-clamp(edge,0,1); const nx=dx/(d||1),nz=dz/(d||1); const horizontal=GEYSER_HORIZONTAL_FORCE*(0.3+edge*0.9); const vertical=GEYSER_VERTICAL_FORCE*(0.72+centerBoost*0.85); if(!g.lastBlasted.has(w)){ w.vy=Math.max(w.vy,vertical); w.vx += nx*horizontal + rand(-2.2,2.2); w.vz += nz*horizontal + rand(-2.2,2.2); w.effect.stunned=Math.max(w.effect.stunned,0.55); w.effect.slapSpin=Math.max(w.effect.slapSpin,0.65); g.lastBlasted.add(w); for(let i=0;i<14;i++) spawnParticle(w.x,Math.max(w.y, g.mesh.position.y+0.2),w.z,i%2?0xd3f8ff:0xffffff,rand(0.08,0.2),rand(0.18,0.5)); } else { w.vy=Math.max(w.vy,vertical*0.6*dt + w.vy); } } } }
 
 function animate() {
   if (!running) return;
