@@ -267,7 +267,10 @@ const GAME_SETTINGS = { mode: "stock", stockCount: 3, kingScoreTarget: 10000, en
 const KING_POINTS_PER_SECOND = 70, KING_CONTESTED_POINTS_PER_SECOND = 25, KING_KILL_BONUS = 1500;
 const SURVIVAL_TIME_POINTS_PER_SECOND = 15, SURVIVAL_KILL_BONUS = 1200, SURVIVAL_PICKUP_BONUS = 100;
 let matchTime = 0, survivalScore = 0, survivalLevel = 1;
-let hillZone = { x:0,z:0,radius:7,pointsPerSecond:KING_POINTS_PER_SECOND,contestedMultiplier:0.4,mesh:null,ring:null };
+let hillZone = { x:0,z:0,radius:7,topY:4.5,baseRadius:18,topRadius:7,pointsPerSecond:KING_POINTS_PER_SECOND,contestedPointsPerSecond:KING_CONTESTED_POINTS_PER_SECOND,mesh:null,ring:null };
+const tiltPlane={x:24,z:4,width:24,depth:18,baseY:1.2,tiltX:0,tiltZ:0,targetTiltX:0,targetTiltZ:0,timer:2,state:"idle",mesh:null,warn:null};
+const geysers=[{x:-32,z:20,radius:3.2,timer:2,state:"idle",mesh:null,column:null},{x:-39,z:7,radius:3.2,timer:5,state:"idle",mesh:null,column:null},{x:-26,z:-6,radius:3.2,timer:8,state:"idle",mesh:null,column:null}];
+const caveTunnels=[{id:"northCave",x:0,z:-52,exitId:"eastCave",mesh:null},{id:"eastCave",x:52,z:14,exitId:"southCave",mesh:null},{id:"southCave",x:-20,z:54,exitId:"northCave",mesh:null}];
 let running = false;
 let gameOver = false;
 
@@ -282,12 +285,12 @@ const geese = [];
 const labels = [];
 let pickupSpawnCooldown = 0;
 
-const ARENA_R = 55;
+const ARENA_R = 65;
 const MAX_WIZARDS = 6;
 const MAX_DAMAGE = 10;
 const PLAYER_SPEED = 19;
 const TURN_SPEED = 3.0;
-const FIREBALL_COOLDOWN = 5;
+const FIREBALL_COOLDOWN = 3;
 const PICKUP_COUNT = 3;
 const PICKUP_RESPAWN_DELAY = 5.8;
 const GOOSE_HIT_COOLDOWN = 0.42;
@@ -390,8 +393,8 @@ function startGame(selectedMode) {
 
 function initThree() {
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0b0b18);
-  scene.fog = new THREE.Fog(0x0b0b18, 55, 105);
+  scene.background = new THREE.Color(0x3d2d68);
+  scene.fog = new THREE.Fog(0x231c45, 70, 145);
 
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -404,10 +407,10 @@ function initThree() {
   spectatorCamera.position.set(0, ARENA_R + 13, ARENA_R + 18);
   spectatorCamera.lookAt(0, 0, 0);
 
-  const hemi = new THREE.HemisphereLight(0xc3e7ff, 0x40205b, 1.4);
+  const hemi = new THREE.HemisphereLight(0xceb8ff, 0x2c2141, 1.25);
   scene.add(hemi);
 
-  const sun = new THREE.DirectionalLight(0xffffff, 1.8);
+  const sun = new THREE.DirectionalLight(0xffd7b0, 1.45);
   sun.position.set(25, 55, 25);
   sun.castShadow = true;
   sun.shadow.mapSize.width = 2048;
@@ -443,8 +446,10 @@ function resize() {
 function setupWorld() {
   buildArenaGround();
   buildArenaBarrier();
+  buildSkyAtmosphere();
   buildTerrainDetails();
   buildObstacles();
+  buildRegionSetPieces();
 }
 
 function buildArenaGround() {
@@ -597,7 +602,7 @@ function createTree(x, z, r) {
     group.add(leaf);
   }
 
-  group.position.set(x, 0, z);
+  group.position.set(x, getEffectiveGroundHeight(x,z), z);
   scene.add(group);
 
   obstacles.push({
@@ -618,7 +623,7 @@ function createStone(x, z, r) {
 
   const stone = new THREE.Mesh(geo, mat);
   stone.scale.set(1.2, 0.82, 1.0);
-  stone.position.set(x, r * 0.7, z);
+  stone.position.set(x, getEffectiveGroundHeight(x,z)+r*0.7, z);
   stone.rotation.set(rand(0, 1), rand(0, 6), rand(0, 1));
   stone.castShadow = true;
   stone.receiveShadow = true;
@@ -734,7 +739,7 @@ function createWizard(name, color, spawnAngle, human, controls) {
   const z = Math.sin(spawnAngle) * spawnR;
   const angle = Math.atan2(-x, -z);
 
-  group.position.set(x, 0, z);
+  group.position.set(x, getEffectiveGroundHeight(x,z), z);
   group.rotation.y = angle;
   scene.add(group);
 
@@ -749,6 +754,11 @@ function createWizard(name, color, spawnAngle, human, controls) {
     color,
     x,
     z,
+    y: getEffectiveGroundHeight(x,z),
+    vy: 0,
+    grounded: true,
+    airborne: false,
+    caveCooldown:0,
     vx: 0,
     vz: 0,
     angle,
@@ -802,7 +812,7 @@ function createHealthLabel(name) {
 }
 
 function updateWizardMesh(w, dt) {
-  w.group.position.set(w.x, 0, w.z);
+  w.group.position.set(w.x, w.y, w.z);
   w.group.rotation.y = w.angle;
 
   w.bob += dt * 8;
@@ -812,7 +822,7 @@ function updateWizardMesh(w, dt) {
   if (w.effect.bubble > 0) scale = 1.08 + Math.sin(performance.now() * 0.016) * 0.08;
   w.group.scale.set(scale, scale, scale);
 
-  w.group.position.y = bounce;
+  w.group.position.y = w.y + bounce;
 
   if (w.effect.jelly > 0) {
     w.group.rotation.z = Math.sin(performance.now() * 0.024) * 0.22;
@@ -1047,10 +1057,19 @@ function applyPhysics(w, dt) {
     }
   }
 
+  w.vy -= 28*dt;
   w.x += w.vx * dt;
   w.z += w.vz * dt;
+  w.y += w.vy * dt;
 
-  let friction = 0.88;
+  const groundY = getEffectiveGroundHeight(w.x,w.z);
+  if (w.y <= groundY){
+    w.y = groundY; w.vy = Math.max(0,w.vy); w.grounded=true; w.airborne=false;
+    applySlopeSliding(w,dt);
+    if (isOnTiltPlane(w.x,w.z)){ w.vx += Math.sin(tiltPlane.tiltZ)*38*dt; w.vz -= Math.sin(tiltPlane.tiltX)*38*dt; }
+  } else { w.grounded=false; w.airborne=true; }
+
+  let friction = w.grounded?0.88:0.96;
   if (w.effect.jelly > 0) friction = 0.975;
   if (w.effect.bubble > 0) friction = 0.992;
 
@@ -1182,7 +1201,7 @@ function spawnPickup() {
   );
   group.add(knot);
 
-  group.position.set(p.x, 1.45, p.z);
+  group.position.set(p.x, getEffectiveGroundHeight(p.x,p.z)+1.45, p.z);
   scene.add(group);
 
   pickups.push({
@@ -1198,7 +1217,7 @@ function updatePickups(dt) {
     p.spin += dt * 3.2;
     p.group.rotation.y = p.spin;
     p.group.rotation.x = Math.sin(p.spin) * 0.12;
-    p.group.position.y = 1.45 + Math.sin(performance.now() * 0.005 + p.spin) * 0.2;
+    p.group.position.y = getEffectiveGroundHeight(p.x,p.z) + 1.45 + Math.sin(performance.now() * 0.005 + p.spin) * 0.2;
   }
 
   if (pickups.length >= PICKUP_COUNT) {
@@ -1273,10 +1292,10 @@ function castFireball(w) {
     type: "fireball",
     x: w.x + f.x * 1.8,
     z: w.z + f.z * 1.8,
-    y: 1.65,
+    y: w.y + 1.65,
     vx: f.x * 30,
     vz: f.z * 30,
-    radius: 0.42,
+    radius: 0.62,
     damage: 1,
     knock: 9,
     life: 2.4,
@@ -1306,7 +1325,7 @@ function castBonkBolt(w) {
     type: "bonk",
     x: w.x + f.x * 1.9,
     z: w.z + f.z * 1.9,
-    y: 1.55,
+    y: w.y + 1.55,
     vx: f.x * 40,
     vz: f.z * 40,
     radius: 0.68,
@@ -1327,7 +1346,7 @@ function castGlue(w) {
     type: "glue",
     x: w.x + f.x * 1.8,
     z: w.z + f.z * 1.8,
-    y: 1.4,
+    y: w.y + 1.4,
     vx: f.x * 22,
     vz: f.z * 22,
     radius: 0.58,
@@ -1348,7 +1367,7 @@ function castLavaLob(w, charge = 0) {
     owner: w,
     type: "lava",
     x: w.x + f.x * 1.4,
-    y: 1.4,
+    y: w.y + 1.4,
     z: w.z + f.z * 1.4,
     vx: f.x * speed,
     vy: 8 + power * 10,
@@ -1378,7 +1397,7 @@ function castSquidInk(w) {
     mesh: squid,
     x: squid.position.x,
     z: squid.position.z,
-    y: 1.6,
+    y: w.y + 1.6,
     vx: f.x * 28,
     vz: f.z * 28,
     radius: 0.65,
@@ -1399,7 +1418,7 @@ function castBubble(w) {
     type: "bubble",
     x: w.x + f.x * 1.8,
     z: w.z + f.z * 1.8,
-    y: 1.55,
+    y: w.y + 1.55,
     vx: f.x * 22,
     vz: f.z * 22,
     radius: 0.82,
@@ -1421,7 +1440,7 @@ function castReverse(w) {
     type: "reverse",
     x: w.x + f.x * 1.8,
     z: w.z + f.z * 1.8,
-    y: 1.5,
+    y: w.y + 1.5,
     vx: f.x * 28,
     vz: f.z * 28,
     radius: 0.48,
@@ -1576,7 +1595,7 @@ function castJellyLegs(w) {
     type: "jelly",
     x: w.x + f.x * 1.8,
     z: w.z + f.z * 1.8,
-    y: 1.5,
+    y: w.y + 1.5,
     vx: f.x * 27,
     vz: f.z * 27,
     radius: 0.52,
@@ -2774,7 +2793,7 @@ function createGiantSlap(x, z, angle) {
   hand.rotation.y = angle;
   group.add(hand);
 
-  group.position.set(x, 0, z);
+  group.position.set(x, getEffectiveGroundHeight(x,z), z);
   scene.add(group);
 
   temporary.push({
@@ -2882,6 +2901,16 @@ function createMushroomMesh(scale = 1) {
 }
 
 
+
+function getHillHeight(x,z){ const dx=x-hillZone.x,dz=z-hillZone.z,d=Math.hypot(dx,dz); if(d>hillZone.baseRadius) return 0; if(d<hillZone.topRadius) return hillZone.topY; const t=1-((d-hillZone.topRadius)/(hillZone.baseRadius-hillZone.topRadius)); const smooth=t*t*(3-2*t); return smooth*hillZone.topY; }
+function getRegionBumpHeight(x,z){ const mushroom=Math.max(0,2.2-Math.hypot(x+24,z+28))*0.45; return mushroom; }
+function getTerrainHeight(x,z){ return Math.max(getHillHeight(x,z),getRegionBumpHeight(x,z)); }
+function isOnTiltPlane(x,z){ return Math.abs(x-tiltPlane.x)<tiltPlane.width/2 && Math.abs(z-tiltPlane.z)<tiltPlane.depth/2; }
+function getTiltPlaneHeight(x,z){ if(!isOnTiltPlane(x,z)) return null; const lx=x-tiltPlane.x,lz=z-tiltPlane.z; return tiltPlane.baseY + Math.sin(tiltPlane.tiltZ)*lx - Math.sin(tiltPlane.tiltX)*lz; }
+function getEffectiveGroundHeight(x,z){ const th=getTerrainHeight(x,z); const ph=getTiltPlaneHeight(x,z); return ph===null?th:Math.max(th,ph); }
+function getTerrainNormalApprox(x,z){ const e=0.5; const hL=getEffectiveGroundHeight(x-e,z),hR=getEffectiveGroundHeight(x+e,z),hD=getEffectiveGroundHeight(x,z-e),hU=getEffectiveGroundHeight(x,z+e); return {slopeX:(hL-hR)/(2*e),slopeZ:(hD-hU)/(2*e)}; }
+function applySlopeSliding(w,dt){ const s=getTerrainNormalApprox(w.x,w.z); w.vx += s.slopeX*10*dt; w.vz += s.slopeZ*10*dt; }
+
 function buildHillZone(){
   hillZone.mesh = new THREE.Mesh(new THREE.CylinderGeometry(10.5,12,4.5,48), new THREE.MeshStandardMaterial({color:0x4a7c44,roughness:0.9}));
   hillZone.mesh.position.set(hillZone.x,2.2,hillZone.z); scene.add(hillZone.mesh);
@@ -2918,13 +2947,24 @@ function checkWin() {
   }
 }
 
+
+function buildSkyAtmosphere(){ const sky=new THREE.Mesh(new THREE.SphereGeometry(220,40,28),new THREE.MeshBasicMaterial({color:0x4a3e86,side:THREE.BackSide})); scene.add(sky); for(let i=0;i<24;i++){const c=new THREE.Mesh(new THREE.SphereGeometry(rand(2.5,4.8),10,8),new THREE.MeshStandardMaterial({color:0xdccfff,transparent:true,opacity:0.28})); c.position.set(rand(-90,90),rand(28,60),rand(-90,90)); scene.add(c);} }
+function buildRegionSetPieces(){ const p=new THREE.Mesh(new THREE.BoxGeometry(tiltPlane.width,0.9,tiltPlane.depth),new THREE.MeshStandardMaterial({color:0x6f6a7a,emissive:0x1d1638})); p.position.set(tiltPlane.x,tiltPlane.baseY,tiltPlane.z); scene.add(p); tiltPlane.mesh=p; for(const g of geysers){ const hole=new THREE.Mesh(new THREE.CylinderGeometry(g.radius,g.radius,0.35,24),new THREE.MeshStandardMaterial({color:0x3b4652,emissive:0x18384e})); hole.position.set(g.x,getEffectiveGroundHeight(g.x,g.z)+0.06,g.z); scene.add(hole); g.mesh=hole; const col=new THREE.Mesh(new THREE.CylinderGeometry(g.radius*0.4,g.radius*0.7,8,16),new THREE.MeshStandardMaterial({color:0x8beeff,emissive:0x2b9fff,transparent:true,opacity:0.0})); col.position.set(g.x,hole.position.y+4,g.z); scene.add(col); g.column=col;} for(const c of caveTunnels){ const m=new THREE.Mesh(new THREE.TorusGeometry(1.8,0.65,12,22),new THREE.MeshStandardMaterial({color:0x251535,emissive:0x7b42c7})); m.rotation.x=Math.PI/2; m.position.set(c.x,getEffectiveGroundHeight(c.x,c.z)+0.75,c.z); scene.add(m); c.mesh=m;} }
+function updateTiltPlane(dt){ if(!tiltPlane.mesh) return; tiltPlane.timer-=dt; if(tiltPlane.timer<=0){ if(tiltPlane.state==='idle'){ tiltPlane.state='tilt'; tiltPlane.targetTiltX=rand(-0.35,0.35); tiltPlane.targetTiltZ=rand(-0.35,0.35); tiltPlane.timer=3.4; } else { tiltPlane.state='idle'; tiltPlane.targetTiltX=0; tiltPlane.targetTiltZ=0; tiltPlane.timer=2.6; } } tiltPlane.tiltX += (tiltPlane.targetTiltX-tiltPlane.tiltX)*dt*2.5; tiltPlane.tiltZ += (tiltPlane.targetTiltZ-tiltPlane.tiltZ)*dt*2.5; tiltPlane.mesh.rotation.x=tiltPlane.tiltX; tiltPlane.mesh.rotation.z=tiltPlane.tiltZ; }
+function updateGeysers(dt){ for(const g of geysers){ g.timer-=dt; if(g.state==='idle'&&g.timer<=0){g.state='warning';g.timer=1.2;} else if(g.state==='warning'&&g.timer<=0){g.state='blast';g.timer=0.8;} else if(g.state==='blast'){ affectGeyserPlayers(g,dt); if(g.timer<=0){g.state='cooldown';g.timer=rand(4,8);} } else if(g.state==='cooldown'&&g.timer<=0){g.state='idle';g.timer=rand(2,5);} if(g.column) g.column.material.opacity=(g.state==='blast'?0.68:g.state==='warning'?0.2:0.0);} }
+function affectGeyserPlayers(g,dt){ for(const w of wizards){ if(!w.alive) continue; const dx=w.x-g.x,dz=w.z-g.z,d=Math.hypot(dx,dz); if(d<g.radius){ const nx=dx/(d||1),nz=dz/(d||1); w.vy=Math.max(w.vy,28); w.vx += nx*42*dt + rand(-8,8)*dt; w.vz += nz*42*dt + rand(-8,8)*dt; w.effect.stunned=Math.max(w.effect.stunned,0.35); } } }
+function updateCaveTunnels(dt){ for(const w of wizards){ if(!w.alive) continue; w.caveCooldown=Math.max(0,w.caveCooldown-dt); if(w.caveCooldown>0) continue; for(const cave of caveTunnels){ if(distancePoint(w.x,w.z,cave.x,cave.z)<2.6){ const exit=caveTunnels.find(c=>c.id===cave.exitId); if(!exit) break; w.x=exit.x+rand(-2,2); w.z=exit.z+rand(-2,2); w.y=getEffectiveGroundHeight(w.x,w.z); w.vx*=0.25; w.vz*=0.25; w.vy=0; w.caveCooldown=2.5; spawnPopText(w.x,w.z,'WHOOSH!',0xb48cff); break;} } } }
+
 function animate() {
   if (!running) return;
 
   const dt = Math.min(clock.getDelta(), 0.033);
   updateModes(dt);
 
+  updateGeysers(dt);
+  updateTiltPlane(dt);
   updateWizards(dt);
+  updateCaveTunnels(dt);
   updatePickups(dt);
   updateProjectiles(dt);
   updateTemporary(dt);
