@@ -388,7 +388,7 @@ function startGame(selectedMode) {
 
   initThree();
   setupWorld();
-  if (GAME_SETTINGS.mode === 'king') buildHillZone();
+  if (isKingHillActive()) buildHillZone();
   setupWizards();
   spawnStartingPickups();
 
@@ -2439,31 +2439,36 @@ function updateCameras(dt) {
   }
 
   const p1 = wizards[0];
-  if (p1 && p1.alive) followThirdPerson(camera1, p1, dt);
+  if (p1 && p1.alive) updateThirdPersonCamera(camera1, p1, dt, mode === "two" ? "split" : "single");
 
   if (mode === "two") {
     const p2 = wizards[1];
-    if (p2 && p2.alive) followThirdPerson(camera2, p2, dt);
+    if (p2 && p2.alive) updateThirdPersonCamera(camera2, p2, dt, "split");
   }
 }
 
-function followThirdPerson(cam, w, dt) {
+function updateThirdPersonCamera(cam, w, dt, viewportMode = "single") {
   const f = forwardVector(w);
-
-  const caveCamY = isInsideCave(w.x, w.z) ? 2.8 : 6.2;
+  const insideCave = isInsideCave(w.x, w.z);
+  const yFollow = w.y + (insideCave ? 2.6 : 4.8);
+  const verticalFloor = getEffectiveGroundHeight(w.x, w.z) + (insideCave ? 2.1 : 3.4);
+  const caveCamY = Math.max(yFollow, verticalFloor);
+  const backDistance = insideCave ? 6.2 : (viewportMode === "split" ? 9.2 : 10.2);
   const desired = new THREE.Vector3(
-    w.x - f.x * 10,
+    w.x - f.x * backDistance,
     caveCamY,
-    w.z - f.z * 10
+    w.z - f.z * backDistance
   );
 
+  const wizardHeadY = w.y + (insideCave ? 1.8 : 2.3);
   const look = new THREE.Vector3(
-    w.x + f.x * 8,
-    2.2,
-    w.z + f.z * 8
+    w.x + f.x * (insideCave ? 4.8 : 7.2),
+    wizardHeadY,
+    w.z + f.z * (insideCave ? 4.8 : 7.2)
   );
 
-  cam.position.lerp(desired, 1 - Math.pow(0.001, dt));
+  const lerpT = 1 - Math.pow(insideCave ? 0.0003 : 0.001, dt);
+  cam.position.lerp(desired, lerpT);
   cam.lookAt(look);
 }
 
@@ -2912,21 +2917,26 @@ function createMushroomMesh(scale = 1) {
 
 
 
-function getHillHeight(x,z){ const dx=x-hillZone.x,dz=z-hillZone.z,d=Math.hypot(dx,dz); if(d>hillZone.baseRadius) return 0; if(d<hillZone.topRadius) return hillZone.topY; const t=1-((d-hillZone.topRadius)/(hillZone.baseRadius-hillZone.topRadius)); const smooth=t*t*(3-2*t); return smooth*hillZone.topY; }
+function isKingHillActive(){ return GAME_SETTINGS.mode === 'king'; }
+function getHillGroundHeight(x,z){ if(!isKingHillActive()) return 0; const dx=x-hillZone.x,dz=z-hillZone.z,d=Math.hypot(dx,dz); if(d>hillZone.baseRadius) return 0; if(d<hillZone.topRadius) return hillZone.topY; const t=1-((d-hillZone.topRadius)/(hillZone.baseRadius-hillZone.topRadius)); const smooth=t*t*(3-2*t); return smooth*hillZone.topY; }
 function getRegionBumpHeight(x,z){ const mushroom=Math.max(0,2.2-Math.hypot(x+24,z+28))*0.45; return mushroom; }
-function getTerrainHeight(x,z){ return Math.max(getHillHeight(x,z),getRegionBumpHeight(x,z)); }
+function getBaseGroundHeight(x,z){ return getRegionBumpHeight(x,z); }
+function getTerrainHeight(x,z){ return Math.max(getBaseGroundHeight(x,z),getHillGroundHeight(x,z)); }
 function isOnTiltPlane(x,z){ return Math.abs(x-tiltPlane.x)<tiltPlane.width/2 && Math.abs(z-tiltPlane.z)<tiltPlane.depth/2; }
 function getTiltPlaneHeight(x,z){ if(!isOnTiltPlane(x,z)) return null; const lx=x-tiltPlane.x,lz=z-tiltPlane.z; return tiltPlane.baseY + Math.sin(tiltPlane.tiltZ)*lx - Math.sin(tiltPlane.tiltX)*lz; }
 function getEffectiveGroundHeight(x,z){ const th=getTerrainHeight(x,z); const ph=getTiltPlaneHeight(x,z); return ph===null?th:Math.max(th,ph); }
 function getTerrainNormalApprox(x,z){ const e=0.5; const hL=getEffectiveGroundHeight(x-e,z),hR=getEffectiveGroundHeight(x+e,z),hD=getEffectiveGroundHeight(x,z-e),hU=getEffectiveGroundHeight(x,z+e); return {slopeX:(hL-hR)/(2*e),slopeZ:(hD-hU)/(2*e)}; }
-function applySlopeSliding(w,dt){ const s=getTerrainNormalApprox(w.x,w.z); w.vx += s.slopeX*10*dt; w.vz += s.slopeZ*10*dt; }
+function applySlopeSliding(w,dt){ if(!isKingHillActive()) return; const s=getTerrainNormalApprox(w.x,w.z); w.vx += s.slopeX*10*dt; w.vz += s.slopeZ*10*dt; }
 
 function buildHillZone(){
+  if(!isKingHillActive()) return;
+  if(hillZone.mesh){ scene.remove(hillZone.mesh); hillZone.mesh=null; }
+  if(hillZone.ring){ scene.remove(hillZone.ring); hillZone.ring=null; }
   hillZone.mesh = new THREE.Mesh(new THREE.CylinderGeometry(10.5,12,4.5,48), new THREE.MeshStandardMaterial({color:0x4a7c44,roughness:0.9}));
   hillZone.mesh.position.set(hillZone.x,2.2,hillZone.z); scene.add(hillZone.mesh);
   hillZone.ring = createGroundRing(hillZone.x,hillZone.z,hillZone.radius,0x88eeff,0.9); hillZone.ring.position.y=4.55;
 }
-function isWizardInHill(w){ return distancePoint(w.x,w.z,hillZone.x,hillZone.z)<=hillZone.radius; }
+function isWizardInHill(w){ if(!isKingHillActive()) return false; return distancePoint(w.x,w.z,hillZone.x,hillZone.z)<=hillZone.radius; }
 function getKingLeader(){ return [...wizards].sort((a,b)=>b.score-a.score)[0]; }
 function createStunStars(w,duration=2.5){ const g=new THREE.Group(); for(let i=0;i<3;i++){ const s=new THREE.Mesh(new THREE.SphereGeometry(0.16,8,6), new THREE.MeshStandardMaterial({color:0xffff66, emissive:0xffcc33})); s.position.set(Math.cos(i*2.09)*0.7,3.7,Math.sin(i*2.09)*0.7); g.add(s);} scene.add(g); temporary.push({kind:'stunStars',mesh:g,follow:w,life:duration,spin:5,yOffset:0}); spawnPopText(w.x,w.z,'STUNNED!',0xffff66);}
 function updateModes(dt){ matchTime += dt; survivalLevel = Math.floor(matchTime/30)+1;
