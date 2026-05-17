@@ -1959,6 +1959,36 @@ function loop(t) {
 
 }
 
+
+function resizeSplitCanvasToPane(canvas) {
+  if (!canvas) return false;
+
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const nextW = Math.max(1, Math.floor(rect.width * dpr));
+  const nextH = Math.max(1, Math.floor(rect.height * dpr));
+
+  if (canvas.width !== nextW || canvas.height !== nextH) {
+    canvas.width = nextW;
+    canvas.height = nextH;
+  }
+
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  canvas._cssWidth = rect.width;
+  canvas._cssHeight = rect.height;
+
+  return rect.width > 0 && rect.height > 0;
+}
+
+function getSplitViewSize(canvas) {
+  return {
+    w: canvas?._cssWidth || canvas.clientWidth || canvas.width || 1,
+    h: canvas?._cssHeight || canvas.clientHeight || canvas.height || 1
+  };
+}
+
 function updateSplitWorld(dt) {
   if (!sharedWorld) return;
   updateInputManager();
@@ -1985,27 +2015,105 @@ function updateSplitWorld(dt) {
     session.worldCamera.y = p.y;
     updateSplitHud(session);
   }
+  updateSharedBanditBehavior(dt);
 }
 
 function renderSplitWorldForSession(session) {
   const c = getCanvasForSession(session);
   if (!c || !sharedWorld) return;
-  c.width = c.clientWidth;
-  c.height = c.clientHeight;
+
+  if (!resizeSplitCanvasToPane(c)) return;
+
   const cctx = c.getContext("2d");
-  const cam = session.worldCamera;
-  cctx.fillStyle = "#1b2c29";
-  cctx.fillRect(0, 0, c.width, c.height);
+  const view = getSplitViewSize(c);
+  const cam = session.worldCamera || { x: 0, y: 0 };
+
+  cctx.clearRect(0, 0, view.w, view.h);
+
+  const bg = cctx.createLinearGradient(0, 0, view.w, view.h);
+  bg.addColorStop(0, "#244837");
+  bg.addColorStop(0.55, "#24405b");
+  bg.addColorStop(1, "#1b2c29");
+  cctx.fillStyle = bg;
+  cctx.fillRect(0, 0, view.w, view.h);
+
   cctx.save();
-  cctx.translate(c.width / 2 - cam.x, c.height / 2 - cam.y);
+  cctx.translate(view.w / 2 - cam.x, view.h / 2 - cam.y);
+
+  drawSplitTerrain(cctx, sharedWorld.terrain || mapTerrain);
+
   for (const s of sharedWorld.locations || []) drawSettlementWithCtx(cctx, s);
   for (const a of sharedWorld.roamingArmies || []) drawArmyWithCtx(cctx, a);
+
   Object.entries(sharedWorld.players || {}).forEach(([id, p]) => drawSplitPlayer(cctx, p, id, session.id));
+  drawSplitPlayerTarget(cctx, session);
   cctx.restore();
 }
 function drawSettlementWithCtx(cctx, s) { cctx.fillStyle = s.type === "castle" ? "#8d99ae" : "#457b9d"; cctx.beginPath(); cctx.arc(s.x, s.y, s.type === "castle" ? 12 : 9, 0, Math.PI * 2); cctx.fill(); }
-function drawArmyWithCtx(cctx, a) { cctx.fillStyle = a.bandit ? "#7c2d12" : "#ced4da"; cctx.beginPath(); cctx.moveTo(a.x, a.y - 10); cctx.lineTo(a.x + 10, a.y + 8); cctx.lineTo(a.x - 10, a.y + 8); cctx.closePath(); cctx.fill(); }
+function drawArmyWithCtx(cctx, a) {
+  let color = "#ced4da";
+  if (a.bandit || a.kind === "bandit" || a.faction === "bandit") color = a.mode === "fleeing" ? "#f97316" : "#7c2d12";
+  cctx.fillStyle = color;
+  cctx.beginPath();
+  cctx.moveTo(a.x, a.y - 10);
+  cctx.lineTo(a.x + 10, a.y + 8);
+  cctx.lineTo(a.x - 10, a.y + 8);
+  cctx.closePath();
+  cctx.fill();
+
+  cctx.fillStyle = "#fff";
+  cctx.font = "10px Segoe UI";
+  cctx.textAlign = "center";
+  cctx.fillText(`${a.name || "Army"} (${armyCount(a.army || {})})`, a.x, a.y - 15);
+  if (a.mode === "fleeing") { cctx.fillStyle = "#ffd166"; cctx.fillText("Fleeing", a.x, a.y + 22); }
+  else if (a.mode === "hunting") { cctx.fillStyle = "#ffb3b3"; cctx.fillText("Hunting", a.x, a.y + 22); }
+  cctx.textAlign = "left";
+}
+function roundRectForCtx(cctx, x, y, w, h, r) {
+  const radius = Math.min(r, w / 2, h / 2);
+  cctx.beginPath();
+  cctx.moveTo(x + radius, y);
+  cctx.lineTo(x + w - radius, y);
+  cctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+  cctx.lineTo(x + w, y + h - radius);
+  cctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+  cctx.lineTo(x + radius, y + h);
+  cctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+  cctx.lineTo(x, y + radius);
+  cctx.quadraticCurveTo(x, y, x + radius, y);
+  cctx.closePath();
+}
+function isForestAtForTerrain(x, y, terrain) { return (terrain.forests || []).some(f => Math.hypot(x - f.x, y - f.y) < f.r); }
+function drawRoadsWithCtx(cctx) {
+  const roads = [[{ x: 90, y: 520 }, { x: 245, y: 455 }, { x: 420, y: 410 }, { x: 620, y: 340 }, { x: 835, y: 300 }, { x: 1080, y: 265 }],[{ x: 300, y: 180 }, { x: 430, y: 285 }, { x: 620, y: 340 }, { x: 780, y: 460 }, { x: 1010, y: 575 }],[{ x: 165, y: 165 }, { x: 270, y: 265 }, { x: 420, y: 410 }]];
+  cctx.save(); cctx.lineCap = "round"; cctx.lineJoin = "round";
+  for (const road of roads) { if (!road.length) continue; cctx.strokeStyle = "rgba(75,55,29,0.38)"; cctx.lineWidth = 13; cctx.beginPath(); cctx.moveTo(road[0].x, road[0].y); for (let i = 1; i < road.length; i++) cctx.lineTo(road[i].x, road[i].y); cctx.stroke(); cctx.strokeStyle = "rgba(216,194,127,0.78)"; cctx.lineWidth = 7; cctx.beginPath(); cctx.moveTo(road[0].x, road[0].y); for (let i = 1; i < road.length; i++) cctx.lineTo(road[i].x, road[i].y); cctx.stroke(); }
+  cctx.restore();
+}
+function drawSplitTerrain(cctx, terrain) { if (!terrain) return; cctx.save(); for (const d of terrain.drylands || []) { const grd = cctx.createRadialGradient(d.x + d.w / 2,d.y + d.h / 2,10,d.x + d.w / 2,d.y + d.h / 2,Math.max(d.w, d.h)); grd.addColorStop(0, "rgba(203,169,95,0.58)"); grd.addColorStop(1, "rgba(203,169,95,0.05)"); cctx.fillStyle = grd; roundRectForCtx(cctx, d.x, d.y, d.w, d.h, 55); cctx.fill(); } for (const f of terrain.forests || []) { const grd = cctx.createRadialGradient(f.x, f.y, 10, f.x, f.y, f.r); grd.addColorStop(0, "rgba(14,77,45,0.82)"); grd.addColorStop(1, "rgba(14,77,45,0.08)"); cctx.fillStyle = grd; cctx.beginPath(); cctx.arc(f.x, f.y, f.r, 0, Math.PI * 2); cctx.fill(); } cctx.lineCap = "round"; for (const river of terrain.rivers || []) { if (!river.length) continue; cctx.strokeStyle = "rgba(79,165,210,0.75)"; cctx.lineWidth = 24; cctx.beginPath(); cctx.moveTo(river[0].x, river[0].y); for (let i = 1; i < river.length; i++) cctx.lineTo(river[i].x, river[i].y); cctx.stroke(); cctx.strokeStyle = "rgba(210,240,255,0.35)"; cctx.lineWidth = 5; cctx.stroke(); } for (const lake of terrain.lakes || []) { cctx.fillStyle = "rgba(53,135,181,0.78)"; cctx.beginPath(); cctx.ellipse(lake.x, lake.y, lake.r * 1.25, lake.r * 0.75, -0.25, 0, Math.PI * 2); cctx.fill(); cctx.strokeStyle = "rgba(220,245,255,0.35)"; cctx.lineWidth = 2; cctx.stroke(); } drawRoadsWithCtx(cctx); for (const g of terrain.grassTufts || []) { cctx.strokeStyle = "rgba(165,220,128,0.23)"; cctx.lineWidth = 1; cctx.beginPath(); cctx.moveTo(g.x, g.y); cctx.lineTo(g.x + g.s * 0.7, g.y - g.s); cctx.moveTo(g.x + 3, g.y + 1); cctx.lineTo(g.x + 3 - g.s * 0.6, g.y - g.s * 0.8); cctx.stroke(); } for (const tree of terrain.trees || []) { if (!isForestAtForTerrain(tree.x, tree.y, terrain)) continue; cctx.fillStyle = "rgba(12,46,28,0.92)"; cctx.beginPath(); cctx.arc(tree.x, tree.y, tree.r, 0, Math.PI * 2); cctx.fill(); cctx.fillStyle = "rgba(32,112,55,0.72)"; cctx.beginPath(); cctx.arc(tree.x - 2, tree.y - 2, tree.r * 0.65, 0, Math.PI * 2); cctx.fill(); } for (const m of terrain.mountains || []) { cctx.fillStyle = "rgba(85,90,96,0.45)"; roundRectForCtx(cctx, m.x, m.y, m.w, m.h, 24); cctx.fill(); } for (const r of terrain.rocks || []) { cctx.fillStyle = "rgba(95,100,105,0.88)"; cctx.beginPath(); cctx.moveTo(r.x, r.y - r.r); cctx.lineTo(r.x + r.r * 1.1, r.y + r.r); cctx.lineTo(r.x - r.r * 1.2, r.y + r.r * 0.8); cctx.closePath(); cctx.fill(); cctx.strokeStyle = "rgba(235,235,235,0.25)"; cctx.stroke(); } cctx.restore(); }
+function drawSplitPlayerTarget(cctx, session) { const p = getSharedPlayerParty(session); if (!p) return; const hasTarget = Math.hypot((p.targetX ?? p.x) - p.x, (p.targetY ?? p.y) - p.y) > 4; if (!hasTarget) return; cctx.save(); cctx.strokeStyle = "rgba(153,246,228,0.85)"; cctx.setLineDash([8, 7]); cctx.lineWidth = 2; cctx.beginPath(); cctx.moveTo(p.x, p.y); cctx.lineTo(p.targetX, p.targetY); cctx.stroke(); cctx.setLineDash([]); cctx.fillStyle = "rgba(153,246,228,0.95)"; cctx.beginPath(); cctx.arc(p.targetX, p.targetY, 5, 0, Math.PI * 2); cctx.fill(); cctx.restore(); }
+function updateSharedBanditBehavior(dt) { if (!sharedWorld) return; const players = Object.entries(sharedWorld.players || {}).map(([id, p]) => ({ id, player: p, count: armyCount(getSplitSession(id)?.state?.player?.army || {}) })).filter(x => x.player); for (const army of sharedWorld.roamingArmies || []) { if (!army.bandit && army.kind !== "bandit" && army.faction !== "bandit") continue; let nearest = null, nearestDist = Infinity; for (const p of players) { const d = Math.hypot(army.x - p.player.x, army.y - p.player.y); if (d < nearestDist) { nearest = p; nearestDist = d; } } if (!nearest) continue; if (nearestDist < 210) { const behavior = getBanditBehaviorTarget(army, nearest.player, nearest.count); if (behavior) { army.target = behavior.target; army.mode = behavior.mode; army._moveSpeed = behavior.speed; } else if (!army.target || distance2D(army, army.target) < 8) { army.target = { x: rand(80, Math.max(260, W - 390)), y: rand(100, H - 90) }; army.mode = "raiding"; army._moveSpeed = 44; } } else if (!army.target || distance2D(army, army.target) < 8) { army.target = { x: rand(80, Math.max(260, W - 390)), y: rand(100, H - 90) }; army.mode = "raiding"; army._moveSpeed = 44; } movePoint(army, army.target, army._moveSpeed || 44, dt); } }
 function drawSplitPlayer(cctx, p, id) { cctx.fillStyle = p.color; cctx.beginPath(); cctx.arc(p.x, p.y, 11, 0, Math.PI * 2); cctx.fill(); cctx.fillStyle = "#fff"; cctx.font = "10px Segoe UI"; cctx.fillText(id.toUpperCase(), p.x - 7, p.y - 14); }
+
+function getPartyArmyCountForWorldPlayer(playerObj, fallbackState = state) {
+  if (!playerObj) return 0;
+  if (playerObj.army) return armyCount(playerObj.army);
+  const session = gameMode?.sessions?.find(s => sharedWorld?.players?.[s.id] === playerObj);
+  if (session?.state?.player?.army) return armyCount(session.state.player.army);
+  return armyCount(fallbackState?.player?.army || {});
+}
+function getBanditBehaviorTarget(banditArmy, playerObj, playerArmyCount) {
+  const banditCount = armyCount(banditArmy.army || {});
+  const diff = banditCount - playerArmyCount;
+  if (diff >= 5) return { mode: "hunting", target: { x: playerObj.x, y: playerObj.y }, speed: 48 };
+  if (diff <= -5) {
+    const dx = banditArmy.x - playerObj.x, dy = banditArmy.y - playerObj.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const fleeDistance = 180;
+    return { mode: "fleeing", target: { x: clamp(banditArmy.x + (dx / d) * fleeDistance, 30, Math.max(40, W - 390)), y: clamp(banditArmy.y + (dy / d) * fleeDistance, 85, Math.max(95, H - 25)) }, speed: 58 };
+  }
+  return null;
+}
 
 function updateWorld(dt) {
   updatePlayerTargetEntity();
@@ -2023,9 +2131,18 @@ function updateWorld(dt) {
     const f = faction(a.faction);
     const hostile = a.bandit || f.status === "War" || f.status === "Hostile";
 
-    if (a.bandit && distance2D(a, state.player) < 165) {
-      a.target = { x: state.player.x, y: state.player.y };
-      a.mode = "hunting";
+    if (a.bandit && distance2D(a, state.player) < 190) {
+      const playerCount = armyCount(state.player.army || {});
+      const behavior = getBanditBehaviorTarget(a, state.player, playerCount);
+      if (behavior) {
+        a.target = behavior.target;
+        a.mode = behavior.mode;
+        a._moveSpeed = behavior.speed;
+      } else if (!a.target || distance2D(a, a.target) < 8) {
+        a.target = { x: rand(80, Math.max(260, W - 390)), y: rand(100, H - 90) };
+        a.mode = "raiding";
+        a._moveSpeed = 44;
+      }
     } else if (hostile && distance2D(a, state.player) < 190) {
       a.target = { x: state.player.x, y: state.player.y };
       a.mode = "chase";
@@ -2037,7 +2154,7 @@ function updateWorld(dt) {
       a.mode = a.bandit ? "raiding" : "patrol";
     }
 
-    movePoint(a, a.target, a.bandit ? 44 : hostile ? 50 : 37, dt);
+    movePoint(a, a.target, a._moveSpeed || (a.bandit ? 44 : hostile ? 50 : 37), dt);
 
     if (distance2D(a, state.player) < 22) {
       triggerEncounter(a);
@@ -3781,19 +3898,38 @@ function createSplitScreenLayout() {
     `;
     const c = getCanvasForSession(session);
     c.addEventListener("click", e => handleSplitPaneClick(session, e));
+    const party = getSharedPlayerParty(session);
+    if (!session.worldCamera) session.worldCamera = { x: party?.x || 0, y: party?.y || 0 };
+    else {
+      session.worldCamera.x = party?.x || session.worldCamera.x || 0;
+      session.worldCamera.y = party?.y || session.worldCamera.y || 0;
+    }
   }
+  applySplitScreenWorldUiState();
 }
 function handleSplitPaneClick(session, e) {
-  const c = getCanvasForSession(session); const rect = c.getBoundingClientRect();
-  const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
-  const cam = session.worldCamera, party = getSharedPlayerParty(session);
-  const worldX = cam.x + (sx - c.width / 2), worldY = cam.y + (sy - c.height / 2);
+  const c = getCanvasForSession(session);
+  if (!c) return;
+  resizeSplitCanvasToPane(c);
+  const rect = c.getBoundingClientRect();
+  const sx = e.clientX - rect.left;
+  const sy = e.clientY - rect.top;
+  const view = getSplitViewSize(c);
+  const cam = session.worldCamera || { x: 0, y: 0 };
+  const party = getSharedPlayerParty(session);
+  if (!party) return;
+  const worldX = cam.x + (sx - view.w / 2);
+  const worldY = cam.y + (sy - view.h / 2);
   const hit = findSharedHit(worldX, worldY);
   if (hit) {
     session.selected = hit;
     if (hit.kind === "player" && hit.id !== session.id) { party.targetX = hit.x; party.targetY = hit.y; }
     else if (hit.kind === "army" || hit.kind === "location") { party.targetX = hit.x; party.targetY = hit.y; }
-  } else { party.targetX = worldX; party.targetY = worldY; session.selected = null; }
+  } else {
+    party.targetX = worldX;
+    party.targetY = worldY;
+    session.selected = null;
+  }
   updateSplitHud(session);
 }
 function findSharedHit(x, y) {
@@ -3894,6 +4030,8 @@ function acceptPvpChallenge(p1Id, p2Id) { const s1 = getSplitSession(p1Id), s2 =
 
 function showLaunchScreen() {
   controllerMenuOpen = false;
+  gameMode.splitScreen = false;
+  applySplitScreenWorldUiState();
   $("launchScreen")?.classList.add("active");
   $("worldScreen")?.classList.remove("active");
   $("battleScreen")?.classList.remove("active");
@@ -3902,24 +4040,25 @@ function showLaunchScreen() {
   toggleSplitScreenMode();
 }
 
+function applySplitScreenWorldUiState() {
+  const splitActive = !!gameMode.splitScreen;
+  $("splitRoot")?.classList.toggle("active", splitActive);
+  const normalCanvas = $("mapCanvas");
+  if (normalCanvas) normalCanvas.style.display = splitActive ? "none" : "block";
+  document.querySelector(".topbar")?.style.setProperty("display", splitActive ? "none" : "flex");
+  document.querySelector(".rightPanel")?.style.setProperty("display", splitActive ? "none" : "block");
+  document.querySelector(".legend")?.style.setProperty("display", splitActive ? "none" : "block");
+  document.querySelector(".hint")?.style.setProperty("display", splitActive ? "none" : "block");
+}
+
 function showWorldScreen() {
   $("launchScreen")?.classList.remove("active");
   $("worldScreen")?.classList.add("active");
   $("battleScreen")?.classList.remove("active");
-  const splitRoot = $("splitRoot");
-  const topbar = document.querySelector("#worldScreen .topbar");
-  const rightPanel = document.querySelector("#worldScreen .rightPanel");
-  if (gameMode.splitScreen) {
-    splitRoot?.classList.add("active");
-    if (topbar) topbar.style.display = "none";
-    if (rightPanel) rightPanel.style.display = "none";
-  } else {
-    splitRoot?.classList.remove("active");
-    if (topbar) topbar.style.display = "";
-    if (rightPanel) rightPanel.style.display = "";
-  }
+  applySplitScreenWorldUiState();
   renderUI();
   refreshWorldMap();
+  applySplitScreenWorldUiState();
 }
 
 function refreshWorldMap() {
