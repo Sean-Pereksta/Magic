@@ -188,6 +188,11 @@
   .stat b {
     color: white;
   }
+  .stat b.statWarn { color: #ff6b6b; }
+  .stat b.statCaution { color: #ffd166; }
+  #dayPanel { margin-bottom: 8px; padding: 8px; border-radius: 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); }
+  #campaignDayToast { position:absolute; right:390px; top:86px; z-index:7; min-width:260px; max-width:360px; background:rgba(8,13,22,0.92); border:1px solid rgba(255,255,255,0.16); border-left:4px solid #ffd166; border-radius:12px; padding:10px 12px; color:#e7efff; box-shadow:0 12px 30px rgba(0,0,0,0.35); opacity:0; transform:translateY(-6px); pointer-events:none; transition:opacity .22s ease, transform .22s ease; }
+  #campaignDayToast.show { opacity:1; transform:translateY(0); }
 
   .rightPanel {
     position: absolute;
@@ -585,7 +590,7 @@
 
   <div class="topbar">
     <div class="brand">⚔ Kingdoms at War</div>
-    <div class="stat">Day: <b id="dayText">1</b></div>
+    <div class="stat">Day <b id="dayText">1</b></div>
     <div class="stat">Gold: <b id="goldText">500</b></div>
     <div class="stat">Food: <b id="foodText">15</b></div>
     <div class="stat">Morale: <b id="moraleText">60</b></div>
@@ -594,6 +599,7 @@
     <div class="stat">Castles: <b id="castleText">0</b></div>
     <div class="stat">Account: <b id="accountText">None</b></div>
     <div class="stat">Input: <b id="inputModeText">Keyboard / Mouse</b></div>
+    <button onclick="restOneDay()" class="success">Rest / Next Day</button>
     <button onclick="saveGame()">Save</button>
     <button onclick="showLaunchScreen()">Accounts</button>
     <button onclick="openInventoryPanel()">Inventory</button>
@@ -616,6 +622,7 @@
   <div class="rightPanel">
     <div class="card">
       <h3>Commander</h3>
+      <div id="dayPanel" class="small"></div>
       <div id="armyBreakdown" class="small"></div>
       <div class="row">
         <button onclick="openArmyPanel()">View Army</button>
@@ -646,6 +653,7 @@
     Click terrain to travel. Click another force to march toward it. When close, interaction options appear.
     Bandits periodically spawn and give only one option: battle.
   </div>
+  <div id="campaignDayToast" class="small"></div>
 </div>
 
 <div id="battleScreen" class="screen">
@@ -1271,6 +1279,7 @@ const state = {
       farmhand: 5
     },
     morale: 60,
+    wounded: {},
     xp: {
       farmhand: 0,
       spearman: 0,
@@ -1383,7 +1392,8 @@ function makeWorld() {
       archer: 4,
       farmhand: 5
     },
-    morale: 60
+    morale: 60,
+    wounded: {}
   };
 
   state.factions = [
@@ -2091,12 +2101,7 @@ function movePoint(obj, target, speed, dt) {
 }
 
 function nextDay() {
-  state.day++;
-  updateDailyEconomy();
-  if (state.day % 7 === 0) refreshSettlementRecruits();
-  dailyDiplomacyUpdate();
-  dailyWarCheck();
-  spawnBanditsIfDue();
+  advanceCampaignDays(1, "rest");
 }
 
 function getLocationById(locationId) {
@@ -2202,19 +2207,23 @@ function consumeArmyFood() {
     state.player.morale = Math.max(0, state.player.morale - 12);
     log(`Your army is starving. Morale dropped.`);
   }
+  return foodNeeded;
 }
 
 function payArmyWages() {
   const wages = calculateArmyWages(state.player.army);
+  let paid = wages;
   if (state.gold >= wages) {
     state.gold -= wages;
     log(`Paid ${wages} gold in army wages.`);
   } else {
     const missing = wages - state.gold;
+    paid = Math.max(0, state.gold);
     state.gold = 0;
     state.player.morale = Math.max(0, (state.player.morale || 50) - 10);
     log(`Could not fully pay wages. Missing ${missing} gold. Morale dropped.`);
   }
+  return { wages, paid };
 }
 
 function checkDesertionFromLowMorale() {
@@ -2232,9 +2241,27 @@ function checkDesertionFromLowMorale() {
 }
 
 function updateArmyFoodAndWages() {
-  consumeArmyFood();
-  payArmyWages();
+  const foodConsumed = consumeArmyFood();
+  const wageInfo = payArmyWages();
   checkDesertionFromLowMorale();
+  return { foodConsumed, ...wageInfo };
+}
+function recoverWoundedTroops() {
+  const wounded = state.player.wounded || {};
+  const recoveryRate = 0.2;
+  let recovered = 0;
+  for (const [type, count] of Object.entries(wounded)) {
+    if (count <= 0) continue;
+    const healed = Math.max(0, Math.min(count, Math.ceil(count * recoveryRate)));
+    if (!healed) continue;
+    wounded[type] = count - healed;
+    if (wounded[type] <= 0) delete wounded[type];
+    state.player.army[type] = (state.player.army[type] || 0) + healed;
+    recovered += healed;
+  }
+  state.player.wounded = wounded;
+  if (recovered > 0) log(`${recovered} wounded troops recovered.`);
+  return recovered;
 }
 
 function updateCastleGarrisonFood(castle) {
@@ -2277,7 +2304,7 @@ function updateDailyEconomy() {
     loc.lastEconomyUpdateDay = state.day;
   }
 
-  updateArmyFoodAndWages();
+  return updateArmyFoodAndWages();
 }
 
 function dailyDiplomacyUpdate() {
@@ -2359,7 +2386,39 @@ function spawnBanditsIfDue() {
   state.armies.push(makeBanditArmy(`Bandit Raiders ${state.day}`, pos.x, pos.y, army));
   state.nextBanditSpawn = state.day + 2 + Math.floor(Math.random() * 3);
 
+  log("Bandit activity increased near the roads.");
   log("A bandit force has appeared near the roads. Bandits cannot be negotiated with.");
+  return true;
+}
+function showCampaignDayToast(lines) {
+  const el = $("campaignDayToast");
+  if (!el) return;
+  el.innerHTML = lines.map(x => `<div>${x}</div>`).join("");
+  el.classList.add("show");
+  clearTimeout(showCampaignDayToast.timer);
+  showCampaignDayToast.timer = setTimeout(() => el.classList.remove("show"), 2400);
+}
+function advanceCampaignDays(days = 1, reason = "rest") {
+  const totalDays = Math.max(1, Math.floor(days));
+  for (let i = 0; i < totalDays; i++) {
+    state.day++;
+    log(`Day ${state.day} begins.`);
+    const economyResult = updateDailyEconomy() || {};
+    if (state.day % 7 === 0) refreshSettlementRecruits();
+    const recovered = recoverWoundedTroops();
+    dailyDiplomacyUpdate();
+    dailyWarCheck();
+    const banditsSpawned = !!spawnBanditsIfDue();
+    log(`Your army consumed ${economyResult.foodConsumed || 0} food.`);
+    const lines = [
+      `Day ${state.day} begins.`,
+      `Paid ${economyResult.paid || 0} gold in wages.`,
+      `Consumed ${economyResult.foodConsumed || 0} food.`,
+      `${recovered} wounded troops recovered.`
+    ];
+    if (reason === "rest") showCampaignDayToast(lines);
+    if (banditsSpawned) log("Scouts report increased danger on nearby roads.");
+  }
 }
 
 /* =========================================================
@@ -2697,13 +2756,23 @@ function drawPlayer() {
 ========================================================= */
 
 function renderUI() {
+  state.day = state.day || 1;
+  state.player.wounded = state.player.wounded || {};
+  const woundedCount = armyCount(state.player.wounded);
+  const foodPerDay = calculateFoodConsumption(state.player.army);
+  const wagesPerDay = calculateArmyWages(state.player.army);
   $("dayText").textContent = state.day;
   $("goldText").textContent = state.gold;
   $("foodText").textContent = state.player.food;
   $("moraleText").textContent = Math.round(state.player.morale || 0);
-  $("wagesText").textContent = calculateArmyWages(state.player.army);
+  $("wagesText").textContent = wagesPerDay;
   $("armyText").textContent = `${armyCount(state.player.army)}/${state.armyMax}`;
   $("castleText").textContent = state.player.castles.length;
+  $("goldText").className = state.gold < wagesPerDay ? "statWarn" : "";
+  $("foodText").className = state.player.food <= 0 ? "statWarn" : "";
+  $("wagesText").className = state.gold < wagesPerDay ? "statWarn" : "";
+  $("armyText").className = woundedCount > 0 ? "statCaution" : "";
+  $("dayPanel").innerHTML = `Day ${state.day} — Morning<br>Next wage payment: daily<br>Food consumed per day: ${foodPerDay}<br>Wounded recovering: ${woundedCount}`;
   if ($("accountText")) {
     $("accountText").textContent = currentAccountName || "None";
   }
@@ -3148,8 +3217,9 @@ function trainTroopType(type) {
 }
 
 function restOneDay() {
-  nextDay();
+  advanceCampaignDays(1, "rest");
   log("You rested one day.");
+  renderUI();
 }
 
 function recruitFromVillage(locationId) {
@@ -3895,6 +3965,9 @@ function loadGame(silent = false) {
     const loaded = JSON.parse(raw);
 
     Object.assign(state, loaded);
+    state.day = state.day || 1;
+    state.player = state.player || {};
+    state.player.wounded = state.player.wounded || {};
     ensurePlayerXp();
     ensureInventory();
     ensureSettlementEconomy();
