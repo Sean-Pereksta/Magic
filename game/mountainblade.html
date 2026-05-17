@@ -389,7 +389,8 @@
   const SAVE_VERSION = 12;
   const DAY_LEN = 180;
   const DAY_TICK = 1;
-  const WOUNDED_CHANCE = 0.78;        // ↑ more likely wounded than dead
+  const BASE_WOUNDED_CHANCE = 0.45;
+  const MAX_WOUNDED_CHANCE = 0.75;
   const VILLAGE_REGEN_INTERVAL = 10;  // seconds per regen tick
   const VILLAGE_REGEN_CHANCE = 0.85;  // per tick, attempt regen
   const ARCHER_WALL_DMG = 1.25;       // defenders behind wall
@@ -814,8 +815,7 @@
       restedToday: false,
 
       // wounded queue
-      woundedUnits: [],
-      woundedHealClock: 0,
+      wounded: [],
 
       inventory: {
         weapon_sword: 1,
@@ -883,6 +883,65 @@
     });
     p.squads = p.squads||[];
   }
+  function ensureWoundedSystem(p){
+    if(!p) return;
+    if(Array.isArray(p.woundedUnits) && !Array.isArray(p.wounded)){
+      const stacks = {};
+      for(const unitKey of p.woundedUnits){
+        stacks[unitKey] = (stacks[unitKey]||0) + 1;
+      }
+      p.wounded = Object.entries(stacks).map(([type,count])=>({ type, count, recoverDay:(state.map?.day||1)+randi(2,5) }));
+    }
+    p.wounded = Array.isArray(p.wounded) ? p.wounded : [];
+    p.wounded = p.wounded.filter(w=>w && w.type && (w.count||0)>0).map(w=>({ type:w.type, count:Math.max(1, Math.floor(w.count||0)), recoverDay:Math.max(1, Math.floor(w.recoverDay||((state.map?.day||1)+2))) }));
+    delete p.woundedUnits;
+    delete p.woundedHealClock;
+  }
+
+  function woundedCount(p){
+    ensureWoundedSystem(p);
+    return p.wounded.reduce((n,w)=>n+(w.count||0),0);
+  }
+
+  function addWoundedTroops(p, unitKey, count){
+    ensureWoundedSystem(p);
+    const stack = p.wounded.find(w=>w.type===unitKey);
+    const recoverDay = (state.map?.day||1)+randi(2,5);
+    if(stack){ stack.count += count; stack.recoverDay = Math.max(stack.recoverDay, recoverDay); }
+    else p.wounded.push({ type:unitKey, count, recoverDay });
+  }
+
+  function currentWoundedChance(p){
+    let chance = BASE_WOUNDED_CHANCE;
+    const fieldMedics = (p.armyUnits||[]).filter(u=>{
+      const k=unitBaseKey(u);
+      const d=UNIT_DB[k];
+      return k==='fieldMedic' || /medic|healer/i.test(d?.name||'');
+    }).length;
+    chance += fieldMedics * 0.03;
+    if((p.inventory?.healer_kit||0) > 0) chance += 0.08;
+    chance += (p.casualtyReductionBonus||0);
+    return clamp(chance, BASE_WOUNDED_CHANCE, MAX_WOUNDED_CHANCE);
+  }
+
+  function processWoundedRecovery(){
+    const p = state.player;
+    ensureWoundedSystem(p);
+    const recovered=[];
+    p.wounded = p.wounded.filter(w=>{
+      if(w.recoverDay <= (state.map?.day||1)){
+        for(let i=0;i<w.count;i++) p.armyUnits.push(makeUnitInstance(w.type));
+        recovered.push(w);
+        return false;
+      }
+      return true;
+    });
+    for(const w of recovered){
+      const name = UNIT_DB[w.type]?.name || w.type;
+      toast(`${w.count} ${name}${w.count===1?'':'s'} recovered and returned to your army.`);
+    }
+  }
+
   function ensureSettlementSystems(s){
     s.contracts = s.contracts||[];
     if(s.kind==='castle') s.storage = s.storage || { gold:0, food:0, goods:{} };
@@ -1386,11 +1445,13 @@
   // Save/load
   // =========================
   function serialize(){
+    ensureWoundedSystem(state.player);
     return { version: SAVE_VERSION, map: state.map, player: state.player, diplomacy: state.diplomacy };
   }
 
   function save(){
     try{
+      ensureWoundedSystem(state.player);
       localStorage.setItem(SAVE_KEY, JSON.stringify(serialize()));
       toast('Saved ✅');
     }catch(e){
@@ -1440,6 +1501,7 @@
       ensureFactionState();
       ensureFactionDiplomacy();
       normalizeArmyUnits(state.player);
+      ensureWoundedSystem(state.player);
       const fmap={red:'knights',blue:'nords',green:'nomads'};
       if(state.player.faction && fmap[state.player.faction]) state.player.faction=fmap[state.player.faction];
       state.player.restedToday = state.player.restedToday || false;
@@ -1515,6 +1577,7 @@
     state.map = makeMap();
     state.player = makeNewPlayer();
     normalizeArmyUnits(state.player);
+    ensureWoundedSystem(state.player);
     state.diplomacy = makeNewDiplomacy();
     state.mode='map';
     state.battle=null;
@@ -1661,6 +1724,7 @@
 
   function renderArmyPanel(){
     const p = state.player;
+    ensureWoundedSystem(p);
     const counts = countUnitsArray(p.armyUnits);
     const keys = Object.keys(counts).sort((a,b)=>{
       const A=UNIT_DB[a], B=UNIT_DB[b];
@@ -1697,7 +1761,7 @@
     const focusedRows = focusedUpgradeKey ? (upgradeRowsByFrom[focusedUpgradeKey]||[]) : [];
 
     const wCounts = {};
-    for(const u of p.woundedUnits){ wCounts[u] = (wCounts[u]||0)+1; }
+    for(const w of p.wounded){ wCounts[w.type] = (wCounts[w.type]||0)+(w.count||0); }
     const wKeys = Object.keys(wCounts);
     let armyW=0, vassalW=0;
     for(const u of p.armyUnits) armyW += troopWage(unitBaseKey(u));
@@ -1706,13 +1770,13 @@
     ui.panelArmy.innerHTML = `
       <h2>Army & Upgrades</h2>
       <div class="small">
-        Bigger armies move slower. Fallen allied troops have a <b>${Math.round(WOUNDED_CHANCE*100)}%</b> chance to be <b>wounded</b> instead of killed.
+        Bigger armies move slower. Fallen allied troops have a <b>${Math.round(currentWoundedChance(p)*100)}%</b> chance to be <b>wounded</b> instead of killed.
       </div>
       <div class="hr"></div>
 
       <div class="row">
-        <div class="chip">👥 Total <b>${armySize(p)}</b></div>
-        <div class="chip">🤕 Wounded <b>${p.woundedUnits.length}</b></div>
+        <div class="chip">👥 Active <b>${armySize(p)}</b>/75</div>
+        <div class="chip">🤕 Recovering <b>${woundedCount(p)}</b></div>
         <div class="chip">🏃 Map Speed <b>${mapSpeedFor(p).toFixed(2)}</b></div>
         <div class="chip">🛡 Vassals <b>${(p.vassals||[]).length}</b></div>
         <div class="chip">💸 Daily Wages <b>${armyW.toFixed(1)}</b> + vassals <b>${vassalW.toFixed(1)}</b></div>
@@ -1739,7 +1803,7 @@
         ${wKeys.length ? wKeys.map(k=>{
           const d = UNIT_DB[k];
           return `<div class="item">
-            <div class="meta"><b>${d.name}</b><div class="tag">Wounded stack</div></div>
+            <div class="meta"><b>${d.name}</b><div class="tag">Recovers in ${Math.max(0, ((p.wounded.find(x=>x.type===k)?.recoverDay||state.map.day)-state.map.day))} day(s)</div></div>
             <div class="mono">x${wCounts[k]}</div>
           </div>`;
         }).join('') : `<div class="small">None.</div>`}
@@ -2745,6 +2809,9 @@
         <div class="chip">🛡️ Friendly losses: <b>${loot.friendlyKilled||0}</b></div>
         <div class="chip">🩹 Friendly wounded: <b>${loot.friendlyWounded||0}</b></div>
       </div>
+      <div class="small" style="margin-top:8px;">
+        You lost <b>${loot.friendlyKilled||0}</b> troops. <b>${loot.friendlyWounded||0}</b> were wounded and will recover over the next few days.
+      </div>
 
       <div class="hr"></div>
       <h2 style="margin-top:0">Items</h2>
@@ -2785,6 +2852,7 @@
   function syncHUD(){
     const p = state.player;
     if(!p) return;
+    ensureWoundedSystem(p);
     ui.gold.textContent = Math.floor(p.gold);
     ui.food.textContent = Math.floor(p.food);
     ui.army.textContent = armySize(p);
@@ -2792,7 +2860,8 @@
     ui.hpMax.textContent = playerMaxHp(p);
     ui.lvl.textContent = p.level;
     ui.xp.textContent = `${Math.floor(p.xp)}/${p.xpToNext}`;
-    ui.wounded.textContent = p.woundedUnits.length;
+    ensureWoundedSystem(p);
+    ui.wounded.textContent = woundedCount(p);
     ui.day.textContent = state.map?.day || 1;
     ui.dayPct.textContent = `${Math.floor(((state.map?.time||0)/DAY_LEN)*100)}%`;
     ui.morale.textContent = Math.round(p.morale||0);
@@ -3082,6 +3151,7 @@
       state.map.time -= DAY_LEN;
       state.map.day += 1;
       onNewDay();
+      processWoundedRecovery();
       for(const pp of (state.map.parties||[])){ if(pp.leader?.grudge) pp.leader.grudge.vsPlayer = Math.max(0,(pp.leader.grudge.vsPlayer||0)-3); }
       if((state.map.day||1)%5===0) runDiplomacyTurn();
     }
@@ -3094,19 +3164,8 @@
     const maxHp = playerMaxHp(p);
     p.hp = Math.min(maxHp, p.hp + 6.5 * dt);
 
-    // wounded recovery (one returns every ~8s)
-    p.woundedHealClock += dt;
-    const recoverInterval = p._perkFieldMedic ? 6.8 : 8.0;
-    if(p.woundedHealClock >= recoverInterval && p.woundedUnits.length>0){
-      p.woundedHealClock = 0;
-      if(p.armyUnits.length<70){
-        const unitKey = p.woundedUnits.shift();
-        p.armyUnits.push(makeUnitInstance(unitKey));
-        toast(`🤕 Wounded returned: ${UNIT_DB[unitKey].name}`);
-      } else {
-        p.woundedHealClock = 6.5;
-      }
-    }
+    // wounded recovery
+    processWoundedRecovery();
 
     // village volunteer regen
     for(const s of state.map.settlements){
@@ -4508,22 +4567,24 @@
     const p = state.player;
 
     const survivors = [];
-    const woundedAdds = [];
+    const woundedAdds = {};
+    const woundChance = currentWoundedChance(p);
 
     for(const u of b.allies){
       if(!u._isPlayerArmy) continue;
       if(u.alive) survivors.push({ ...(b.playerArmySnapshot.find(x=>x.id===u.unitId) || makeUnitInstance(u.unitKey)), baseUnit:u.unitKey, xp:(u.xp||0), rank:clamp(u.rank||0,0,2), squadId:u.squadId||null, name:(b.playerArmySnapshot.find(x=>x.id===u.unitId)?.name || null) });
       else if(u.diedThisBattle){
-        if(Math.random()<WOUNDED_CHANCE) woundedAdds.push(u.unitKey);
+        if(Math.random()<woundChance) woundedAdds[u.unitKey] = (woundedAdds[u.unitKey]||0)+1;
       }
     }
 
     for(const su of survivors){ const gain = 12 + Math.floor((b.enemies.filter(e=>!e.alive).length)/6); const old=su.rank||0; su.xp=(su.xp||0)+gain; su.rank = Math.max(su.rank||0, unitRankByXp(su.xp)); if(su.rank>old) toast(`🏅 ${UNIT_DB[su.baseUnit].name} promoted to ${unitRankName(su.rank)}`); }
     p.armyUnits = survivors;
-    p.woundedUnits.push(...woundedAdds);
+    let totalWounded = 0;
+    for(const [unitKey,count] of Object.entries(woundedAdds)){ addWoundedTroops(p, unitKey, count); totalWounded += count; }
     if(b.battleStats){
       b.battleStats.friendlyKilled = b.allies.filter(u=>u._isPlayerArmy && u.diedThisBattle).length;
-      b.battleStats.friendlyWounded = woundedAdds.length;
+      b.battleStats.friendlyWounded = totalWounded;
     }
   }
 
@@ -5274,6 +5335,8 @@
     state.map = makeMap();
     state.player = makeNewPlayer();
     normalizeArmyUnits(state.player);
+    ensureWoundedSystem(state.player);
+      ensureWoundedSystem(state.player);
     state.diplomacy = makeNewDiplomacy();
     state.battle = null;
     closeAllPanels();
