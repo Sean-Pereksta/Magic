@@ -925,10 +925,17 @@ function knockWizard(w, dx, dz, force) {
 }
 
 function spawnDamageNumber(x, y, z, amount) { spawnPopText(x, z, `-${amount}`, amount >= 3 ? 0xff5353 : 0xffb347); }
-function addScreenShake(amount, duration) { screenShakeAmount = Math.max(screenShakeAmount, amount); screenShakeTimer = Math.max(screenShakeTimer, duration); }
-function createImpactBurst(x, y, z, color, size) { for (let i = 0; i < Math.floor(14 + size * 6); i++) spawnParticle(x + rand(-size*0.4,size*0.4), y + rand(0, size*0.6), z + rand(-size*0.4,size*0.4), color, rand(0.1,0.25)*size, rand(0.2,0.6)); }
-function createShockwaveRing(x, z, color, radius) { const ring = createGroundRing(x, z, radius, color, 0.78); temporary.push({ kind:'fxRing', mesh:ring, life:0.3, grow:radius*7 }); }
-function createAbilityTrail(projectile, dt) { projectile.trailTimer -= dt; }
+function addScreenShake(amount = 0.25, duration = 0.2) { screenShakeAmount = Math.max(screenShakeAmount, amount); screenShakeTimer = Math.max(screenShakeTimer, duration); }
+function createImpactBurst(x, y, z, color, size = 1) { for (let i = 0; i < Math.floor(14 + size * 6); i++) spawnParticle(x + rand(-size*0.4,size*0.4), y + rand(0, size*0.6), z + rand(-size*0.4,size*0.4), color, rand(0.1,0.25)*size, rand(0.2,0.6)); }
+function createShockwaveRing(x, z, color, radius = 3, life = 0.45) { const ring = createGroundRing(x, z, radius, color, 0.78); temporary.push({ kind:'fxRing', mesh:ring, life, grow:radius*4 }); }
+function createFloatingText3D(x, y, z, text, color = 0xffffff) { spawnPopText(x, z, text, color); }
+function createGroundCrackEffect(x, z, color = 0xff5500) {
+  const crack = new THREE.Mesh(new THREE.RingGeometry(0.5, 2.2, 24, 1), new THREE.MeshStandardMaterial({ color, emissive: color, transparent: true, opacity: 0.5, side: THREE.DoubleSide }));
+  crack.rotation.x = -Math.PI / 2; crack.position.set(x, 0.06, z); scene.add(crack);
+  temporary.push({ kind:'groundCrack', mesh: crack, life: 0.55, spin: rand(-1.2, 1.2) });
+}
+function createMagicSparkles(x, y, z, color, count = 20) { for (let i = 0; i < count; i++) spawnParticle(x + rand(-0.8,0.8), y + rand(-0.25,0.75), z + rand(-0.8,0.8), color, rand(0.06,0.18), rand(0.2,0.65)); }
+function createSpellTrail(projectile, dt) { projectile.trailTimer -= dt; }
 
 /* ============================================================
    PLAYER / BOT MOVEMENT
@@ -1752,7 +1759,7 @@ function castVaporBeam(w) {
   const f = forwardVector(w);
   const length = 30;
 
-  const chargeRing = createGroundRing(w.x, w.z, 2.2, 0xffffaa, 0.9);
+  const chargeRing = createGroundRing(w.x, w.z, 2.2, 0xffffaa, 0.9); createShockwaveRing(w.x, w.z, 0xffffaa, 2.4, 0.25);
   temporary.push({
     mesh: chargeRing,
     life: 0.22,
@@ -1835,7 +1842,7 @@ function castVaporBeam(w) {
     if (sideDist < 1.65) {
       applyDamage(target, 5, `${w.name}'s Vapor Beam`);
       knockWizard(target, f.x, f.z, 19);
-      spawnPopText(target.x, target.z, "VAPOR!", 0xffffaa);
+      createFloatingText3D(target.x, 2.8, target.z, "VAPOR!", 0xffffaa); addScreenShake(0.3,0.15);
     }
   }
 
@@ -1927,7 +1934,7 @@ function updateProjectiles(dt) {
     }
 
     p.life -= dt;
-    createAbilityTrail(p, dt);
+    createSpellTrail(p, dt);
 
     if (p.life <= 0) {
       if (p.type === "glue") createGluePuddle(p.x, p.z);
@@ -1971,11 +1978,15 @@ function updateProjectiles(dt) {
       const isFire = p.type === "fireball";
       spawnParticle(p.x, p.y || 1.2, p.z, color, isFire ? rand(0.1, 0.28) : rand(0.08, 0.22), isFire ? rand(0.26, 0.6) : rand(0.18, 0.36));
       if (isFire) {
-        const backSpeed = Math.hypot(p.vx, p.vz) || 1;
-        const bx = -p.vx / backSpeed;
-        const bz = -p.vz / backSpeed;
-        spawnParticle(p.x + bx * rand(0.35, 1.1), (p.y || 1.2) + rand(-0.15, 0.2), p.z + bz * rand(0.35, 1.1), 0xff6a1f, rand(0.08, 0.2), rand(0.35, 0.7));
-      }
+        createMagicSparkles(p.x, p.y || 1.2, p.z, 0xff8f33, 3);
+        spawnParticle(p.x, (p.y || 1.2) - 0.1, p.z, 0x666666, rand(0.1,0.2), rand(0.3,0.55));
+      } else if (p.type === "bonk") createMagicSparkles(p.x, p.y || 1.2, p.z, Math.random()<0.5?0xfff25c:0xa45cff, 3);
+      else if (p.type === "glue") createMagicSparkles(p.x, p.y || 1.2, p.z, 0x66ff66, 2);
+      else if (p.type === "lava") createMagicSparkles(p.x, p.y || 1.2, p.z, 0xff6a1f, 3);
+      else if (p.type === "ink") createMagicSparkles(p.x, p.y || 1.2, p.z, Math.random()<0.5?0x111111:0x7f3fd1, 2);
+      else if (p.type === "bubble") createMagicSparkles(p.x, p.y || 1.2, p.z, 0xdffcff, 2);
+      else if (p.type === "bowling") { createMagicSparkles(p.x, p.y || 1.2, p.z, 0x4f65ff, 2); spawnParticle(p.x, 0.3, p.z, 0x9f8c72, rand(0.08,0.15), rand(0.2,0.4)); }
+      else if (p.type === "jelly") createMagicSparkles(p.x, p.y || 1.2, p.z, 0xff86ed, 2);
     }
 
     projectileArenaBounce(p);
@@ -2010,6 +2021,7 @@ function projectileArenaBounce(p) {
 
       spawnPopText(p.x, p.z, "BOING!", 0xfff25c);
       bounceBurst(p.x, p.z, p.color || 0xffffff);
+      createImpactBurst(p.x, p.y || 0.7, p.z, p.color || 0xffffff, 0.9);
     } else {
       killProjectile(p);
     }
@@ -2044,6 +2056,7 @@ function projectileObstacleCollision(p) {
         spawnPopText(p.x, p.z, "BONK!", 0xfff25c);
         bounceBurst(p.x, p.z, p.color || 0xffffff);
       } else {
+        createImpactBurst(p.x, p.y || 0.8, p.z, p.color || 0xffffff, 1.1); createShockwaveRing(p.x, p.z, p.color || 0xffffff, 2.2, 0.32);
         killProjectile(p);
       }
       return;
@@ -2062,6 +2075,7 @@ function projectileObstacleCollision(p) {
         p.vz -= 2 * dot * nz;
         p.bounce--;
       } else {
+        createImpactBurst(p.x, p.y || 0.8, p.z, p.color || 0xffffff, 1.1); createShockwaveRing(p.x, p.z, p.color || 0xffffff, 2.2, 0.32);
         killProjectile(p);
       }
       return;
@@ -2072,6 +2086,9 @@ function projectileObstacleCollision(p) {
 function splatProjectile(p, x, z) {
   if (p.type === "glue") createGluePuddle(x, z);
   if (p.type === "lava") createLavaPuddle(x, z, p.owner);
+  createImpactBurst(x, p.y || 0.6, z, p.color || 0xffffff, 1.15);
+  if (p.type === "lava") addScreenShake(0.34, 0.2);
+  createShockwaveRing(x, z, p.color || 0xffffff, 2.4, 0.35);
   killProjectile(p);
 }
 
@@ -2088,8 +2105,8 @@ function projectileWizardCollision(p) {
       knockWizard(w, p.vx, p.vz, p.knock || 8);
 
       if (p.type === "bonk") {
-        spawnPopText(w.x, w.z, "BONK!", 0xfff25c);
-        w.effect.slapSpin = 0.8;
+        createFloatingText3D(w.x, 2.8, w.z, "BONK!", 0xfff25c); addScreenShake(0.3,0.16);
+        w.effect.slapSpin = 0.8; createImpactBurst(w.x,1.5,w.z,0xa45cff,1.2);
         killProjectile(p);
       }
 
@@ -2110,14 +2127,14 @@ function projectileWizardCollision(p) {
       if (p.type === "ink") {
         w.effect.ink = 5;
         inkSplat(w.x, w.z);
-        spawnPopText(w.x, w.z, "INKED!", 0x111111);
+        createFloatingText3D(w.x, 2.8, w.z, "INKED!", 0x111111);
         killProjectile(p);
       }
 
       if (p.type === "bubble") {
         w.effect.bubble = 4.2;
         createBubbleShell(w);
-        spawnPopText(w.x, w.z, "BUBBLE!", 0xaaf6ff);
+        createFloatingText3D(w.x, 2.8, w.z, "BUBBLED!", 0xaaf6ff);
         killProjectile(p);
       }
 
@@ -2148,8 +2165,8 @@ function projectileWizardCollision(p) {
       }
 
       if (p.type === "bowling") {
-        spawnPopText(w.x, w.z, "STRIKE!", 0x9cabff);
-        if (p.hitSet.size >= 3) killProjectile(p);
+        createFloatingText3D(w.x, 2.8, w.z, "HONK!", 0x9cabff); addScreenShake(0.32,0.18);
+        createImpactBurst(w.x,1.3,w.z,0x4f65ff,1.25); if (p.hitSet.size >= 3) killProjectile(p);
       }
 
       return;
@@ -2238,7 +2255,7 @@ function updateTemporary(dt) {
           obj.damageTick -= dt;
           if (obj.damageTick <= 0) {
             obj.damageTick = 0.55;
-            applyDamage(w, 1, `${obj.ownerName}'s Lava`);
+            applyDamage(w, 1, `${obj.ownerName}'s Lava`); createFloatingText3D(w.x, 2.6, w.z, "BURN!", 0xff7a22);
           }
         }
       }
@@ -2260,11 +2277,11 @@ function updateTemporary(dt) {
             knockWizard(w, w.x - obj.x, w.z - obj.z, 52);
             w.effect.stunned = 2.5; createStunStars(w,2.5);
             w.effect.bubble = 0.7;
-            spawnPopText(w.x, w.z, "SQUASH!", 0xaaaaaa);
+            createFloatingText3D(w.x,2.9,w.z,"HONK!",0xaaaaaa);
           }
         }
 
-        dustBurst(obj.x, obj.z);
+        dustBurst(obj.x, obj.z); createGroundCrackEffect(obj.x, obj.z, 0x777777); addScreenShake(0.4,0.24);
       }
     }
 
