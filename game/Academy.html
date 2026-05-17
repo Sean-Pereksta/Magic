@@ -270,7 +270,14 @@ let matchTime = 0, survivalScore = 0, survivalLevel = 1;
 let hillZone = { x:0,z:0,radius:7,topY:4.5,baseRadius:18,topRadius:7,pointsPerSecond:KING_POINTS_PER_SECOND,contestedPointsPerSecond:KING_CONTESTED_POINTS_PER_SECOND,mesh:null,ring:null };
 const tiltPlane={x:24,z:4,width:24,depth:18,baseY:1.2,tiltX:0,tiltZ:0,targetTiltX:0,targetTiltZ:0,timer:2,state:"idle",mesh:null,warn:null};
 const geysers=[{x:-32,z:20,radius:3.2,timer:2,state:"idle",mesh:null,column:null},{x:-39,z:7,radius:3.2,timer:5,state:"idle",mesh:null,column:null},{x:-26,z:-6,radius:3.2,timer:8,state:"idle",mesh:null,column:null}];
-const caveTunnels=[{id:"northCave",x:0,z:-52,exitId:"eastCave",mesh:null},{id:"eastCave",x:52,z:14,exitId:"southCave",mesh:null},{id:"southCave",x:-20,z:54,exitId:"northCave",mesh:null}];
+const caveTunnels=[];
+const caveOpenings=[
+  {id:"northCave",x:2,z:-52,angle:Math.PI},
+  {id:"eastCave",x:52,z:16,angle:-Math.PI/2},
+  {id:"southCave",x:-20,z:54,angle:0}
+];
+const caveCollisionPadding = 0.9;
+let caveFogVolume = null;
 let running = false;
 let gameOver = false;
 
@@ -758,7 +765,6 @@ function createWizard(name, color, spawnAngle, human, controls) {
     vy: 0,
     grounded: true,
     airborne: false,
-    caveCooldown:0,
     vx: 0,
     vz: 0,
     angle,
@@ -1078,6 +1084,7 @@ function applyPhysics(w, dt) {
 
   keepInArena(w);
   collideWithObstacles(w);
+  collideWithCaveWalls(w);
   collideWithWizards(w);
 }
 
@@ -1944,6 +1951,7 @@ function updateProjectiles(dt) {
 
     projectileArenaBounce(p);
     projectileObstacleCollision(p);
+    if (projectileCaveCollision(p)) continue;
     projectileGooseCollision(p);
     projectileWizardCollision(p);
   }
@@ -2379,6 +2387,7 @@ function updateGeese(dt) {
 
 function hasLineOfSight(x1, z1, x2, z2) {
   const blocks = [...obstacles, ...temporary.filter(t => t.kind === "mushroomWall").map(t => ({ x: t.x, z: t.z, radius: t.radius }))];
+  for(const s of caveTunnels){ blocks.push({x:(s.start.x+s.end.x)/2,z:(s.start.z+s.end.z)/2,radius:Math.max(1.8,s.width*0.18)}); }
   for (const b of blocks) {
     const t = closestPointOnSegment(b.x, b.z, x1, z1, x2, z2);
     if (distancePoint(t.x, t.z, b.x, b.z) < b.radius + 0.4) return false;
@@ -2441,9 +2450,10 @@ function updateCameras(dt) {
 function followThirdPerson(cam, w, dt) {
   const f = forwardVector(w);
 
+  const caveCamY = isInsideCave(w.x, w.z) ? 2.8 : 6.2;
   const desired = new THREE.Vector3(
     w.x - f.x * 10,
-    6.2,
+    caveCamY,
     w.z - f.z * 10
   );
 
@@ -2949,11 +2959,10 @@ function checkWin() {
 
 
 function buildSkyAtmosphere(){ const sky=new THREE.Mesh(new THREE.SphereGeometry(220,40,28),new THREE.MeshBasicMaterial({color:0x4a3e86,side:THREE.BackSide})); scene.add(sky); for(let i=0;i<24;i++){const c=new THREE.Mesh(new THREE.SphereGeometry(rand(2.5,4.8),10,8),new THREE.MeshStandardMaterial({color:0xdccfff,transparent:true,opacity:0.28})); c.position.set(rand(-90,90),rand(28,60),rand(-90,90)); scene.add(c);} }
-function buildRegionSetPieces(){ const p=new THREE.Mesh(new THREE.BoxGeometry(tiltPlane.width,0.9,tiltPlane.depth),new THREE.MeshStandardMaterial({color:0x6f6a7a,emissive:0x1d1638})); p.position.set(tiltPlane.x,tiltPlane.baseY,tiltPlane.z); scene.add(p); tiltPlane.mesh=p; for(const g of geysers){ const hole=new THREE.Mesh(new THREE.CylinderGeometry(g.radius,g.radius,0.35,24),new THREE.MeshStandardMaterial({color:0x3b4652,emissive:0x18384e})); hole.position.set(g.x,getEffectiveGroundHeight(g.x,g.z)+0.06,g.z); scene.add(hole); g.mesh=hole; const col=new THREE.Mesh(new THREE.CylinderGeometry(g.radius*0.4,g.radius*0.7,8,16),new THREE.MeshStandardMaterial({color:0x8beeff,emissive:0x2b9fff,transparent:true,opacity:0.0})); col.position.set(g.x,hole.position.y+4,g.z); scene.add(col); g.column=col;} for(const c of caveTunnels){ const m=new THREE.Mesh(new THREE.TorusGeometry(1.8,0.65,12,22),new THREE.MeshStandardMaterial({color:0x251535,emissive:0x7b42c7})); m.rotation.x=Math.PI/2; m.position.set(c.x,getEffectiveGroundHeight(c.x,c.z)+0.75,c.z); scene.add(m); c.mesh=m;} }
+function buildRegionSetPieces(){ const p=new THREE.Mesh(new THREE.BoxGeometry(tiltPlane.width,0.9,tiltPlane.depth),new THREE.MeshStandardMaterial({color:0x6f6a7a,emissive:0x1d1638})); p.position.set(tiltPlane.x,tiltPlane.baseY,tiltPlane.z); scene.add(p); tiltPlane.mesh=p; for(const g of geysers){ const hole=new THREE.Mesh(new THREE.CylinderGeometry(g.radius,g.radius,0.35,24),new THREE.MeshStandardMaterial({color:0x3b4652,emissive:0x18384e})); hole.position.set(g.x,getEffectiveGroundHeight(g.x,g.z)+0.06,g.z); scene.add(hole); g.mesh=hole; const col=new THREE.Mesh(new THREE.CylinderGeometry(g.radius*0.4,g.radius*0.7,8,16),new THREE.MeshStandardMaterial({color:0x8beeff,emissive:0x2b9fff,transparent:true,opacity:0.0})); col.position.set(g.x,hole.position.y+4,g.z); scene.add(col); g.column=col;} buildCaveNetwork(); }
 function updateTiltPlane(dt){ if(!tiltPlane.mesh) return; tiltPlane.timer-=dt; if(tiltPlane.timer<=0){ if(tiltPlane.state==='idle'){ tiltPlane.state='tilt'; tiltPlane.targetTiltX=rand(-0.35,0.35); tiltPlane.targetTiltZ=rand(-0.35,0.35); tiltPlane.timer=3.4; } else { tiltPlane.state='idle'; tiltPlane.targetTiltX=0; tiltPlane.targetTiltZ=0; tiltPlane.timer=2.6; } } tiltPlane.tiltX += (tiltPlane.targetTiltX-tiltPlane.tiltX)*dt*2.5; tiltPlane.tiltZ += (tiltPlane.targetTiltZ-tiltPlane.tiltZ)*dt*2.5; tiltPlane.mesh.rotation.x=tiltPlane.tiltX; tiltPlane.mesh.rotation.z=tiltPlane.tiltZ; }
 function updateGeysers(dt){ for(const g of geysers){ g.timer-=dt; if(g.state==='idle'&&g.timer<=0){g.state='warning';g.timer=1.2;} else if(g.state==='warning'&&g.timer<=0){g.state='blast';g.timer=0.8;} else if(g.state==='blast'){ affectGeyserPlayers(g,dt); if(g.timer<=0){g.state='cooldown';g.timer=rand(4,8);} } else if(g.state==='cooldown'&&g.timer<=0){g.state='idle';g.timer=rand(2,5);} if(g.column) g.column.material.opacity=(g.state==='blast'?0.68:g.state==='warning'?0.2:0.0);} }
 function affectGeyserPlayers(g,dt){ for(const w of wizards){ if(!w.alive) continue; const dx=w.x-g.x,dz=w.z-g.z,d=Math.hypot(dx,dz); if(d<g.radius){ const nx=dx/(d||1),nz=dz/(d||1); w.vy=Math.max(w.vy,28); w.vx += nx*42*dt + rand(-8,8)*dt; w.vz += nz*42*dt + rand(-8,8)*dt; w.effect.stunned=Math.max(w.effect.stunned,0.35); } } }
-function updateCaveTunnels(dt){ for(const w of wizards){ if(!w.alive) continue; w.caveCooldown=Math.max(0,w.caveCooldown-dt); if(w.caveCooldown>0) continue; for(const cave of caveTunnels){ if(distancePoint(w.x,w.z,cave.x,cave.z)<2.6){ const exit=caveTunnels.find(c=>c.id===cave.exitId); if(!exit) break; w.x=exit.x+rand(-2,2); w.z=exit.z+rand(-2,2); w.y=getEffectiveGroundHeight(w.x,w.z); w.vx*=0.25; w.vz*=0.25; w.vy=0; w.caveCooldown=2.5; spawnPopText(w.x,w.z,'WHOOSH!',0xb48cff); break;} } } }
 
 function animate() {
   if (!running) return;
@@ -2964,7 +2973,6 @@ function animate() {
   updateGeysers(dt);
   updateTiltPlane(dt);
   updateWizards(dt);
-  updateCaveTunnels(dt);
   updatePickups(dt);
   updateProjectiles(dt);
   updateTemporary(dt);
@@ -2987,6 +2995,63 @@ function animate() {
    UTILS
    ============================================================ */
 
+
+function createCaveEntrance(x, z, angle) {
+  const mouth = new THREE.Group();
+  const baseY = getEffectiveGroundHeight(x, z);
+  const rockMat = new THREE.MeshStandardMaterial({ color:0x2f2d37, roughness:0.96, metalness:0.05 });
+  for(let i=0;i<9;i++){
+    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(rand(0.9,1.8),0), rockMat);
+    const spread = rand(2.4,4.8);
+    const side = (i%2===0?1:-1);
+    rock.position.set(x + Math.sin(angle + side*1.25)*spread + rand(-0.6,0.6), baseY + rand(0.6,2.8), z + Math.cos(angle + side*1.25)*spread + rand(-0.6,0.6));
+    rock.scale.set(rand(0.9,1.6), rand(0.8,1.6), rand(0.9,1.6));
+    rock.castShadow = true;
+    mouth.add(rock);
+  }
+  scene.add(mouth);
+}
+function createCaveTunnelSegment(start, end, width=5.6){
+  const dx=end.x-start.x,dz=end.z-start.z,len=Math.hypot(dx,dz)||1;
+  const nx=-dz/len,nz=dx/len,half=width/2;
+  const midX=(start.x+end.x)/2,midZ=(start.z+end.z)/2;
+  const y=-2.3;
+  const seg={start:{x:start.x,z:start.z},end:{x:end.x,z:end.z},width,floorY:y};
+  caveTunnels.push(seg);
+
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(len,0.5,width-0.4), new THREE.MeshStandardMaterial({color:0x171722,roughness:0.95,emissive:0x05050f}));
+  floor.position.set(midX,y,midZ); floor.rotation.y=Math.atan2(dx,dz); scene.add(floor);
+
+  for(const side of [-1,1]){
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(len,3.2,1.1), new THREE.MeshStandardMaterial({color:0x252733,roughness:0.98}));
+    wall.position.set(midX + nx*(half+0.3)*side, y+1.5, midZ + nz*(half+0.3)*side);
+    wall.rotation.y=Math.atan2(dx,dz); scene.add(wall);
+  }
+  const ceiling = new THREE.Mesh(new THREE.CylinderGeometry(width*0.54,width*0.54,len,16,1,true,0,Math.PI), new THREE.MeshStandardMaterial({color:0x1f2030,roughness:0.95,side:THREE.DoubleSide}));
+  ceiling.rotation.z=Math.PI/2; ceiling.rotation.y=Math.atan2(dx,dz)+Math.PI/2;
+  ceiling.position.set(midX,y+3.1,midZ); scene.add(ceiling);
+
+  for(let i=0;i<Math.max(2,Math.floor(len/8));i++){
+    const t=(i+0.5)/Math.max(2,Math.floor(len/8));
+    const px=start.x+dx*t+rand(-0.6,0.6), pz=start.z+dz*t+rand(-0.6,0.6);
+    const glow = new THREE.Mesh(new THREE.OctahedronGeometry(rand(0.16,0.32),0), new THREE.MeshStandardMaterial({color:0x89ffd8,emissive:0x2f9f9f,emissiveIntensity:1.2}));
+    glow.position.set(px,y+0.55,pz); scene.add(glow);
+    const lamp = new THREE.PointLight([0x66aaff,0x8a66ff,0x66ffaa][Math.floor(rand(0,3))],0.5,10,2.2);
+    lamp.position.set(px,y+1.4,pz); scene.add(lamp);
+  }
+}
+function buildCaveNetwork(){
+  for(const c of caveOpenings) createCaveEntrance(c.x,c.z,c.angle);
+  createCaveTunnelSegment({x:2,z:-52},{x:20,z:-20},6.5);
+  createCaveTunnelSegment({x:20,z:-20},{x:52,z:16},6.5);
+  createCaveTunnelSegment({x:20,z:-20},{x:-6,z:14},6.0);
+  createCaveTunnelSegment({x:-6,z:14},{x:-20,z:54},6.3);
+  caveFogVolume = new THREE.Mesh(new THREE.BoxGeometry(90,8,120), new THREE.MeshBasicMaterial({color:0x151028,transparent:true,opacity:0.11,depthWrite:false}));
+  caveFogVolume.position.set(12,-0.5,4); scene.add(caveFogVolume);
+}
+function isInsideCave(x,z){ return caveTunnels.some(s=>{ const cp=closestPointOnSegment(x,z,s.start.x,s.start.z,s.end.x,s.end.z); return distancePoint(x,z,cp.x,cp.z)<=s.width*0.42; }); }
+function collideWithCaveWalls(w){ for(const s of caveTunnels){ const cp=closestPointOnSegment(w.x,w.z,s.start.x,s.start.z,s.end.x,s.end.z); const d=distancePoint(w.x,w.z,cp.x,cp.z); const r=s.width*0.5-caveCollisionPadding; if(d>r&&d<r+w.radius+0.8){ const nx=(w.x-cp.x)/(d||1),nz=(w.z-cp.z)/(d||1),push=(r+w.radius)-d; w.x += nx*push; w.z += nz*push; const dot=w.vx*nx+w.vz*nz; if(dot>0){ w.vx -= dot*nx*1.3; w.vz -= dot*nz*1.3; } } if(isInsideCave(w.x,w.z)&&w.y>s.floorY+0.15) w.y=Math.max(s.floorY,w.y-0.45); }}
+function projectileCaveCollision(p){ for(const s of caveTunnels){ const cp=closestPointOnSegment(p.x,p.z,s.start.x,s.start.z,s.end.x,s.end.z); const d=distancePoint(p.x,p.z,cp.x,cp.z); const r=s.width*0.5-caveCollisionPadding; if(d>r){ const nx=(p.x-cp.x)/(d||1),nz=(p.z-cp.z)/(d||1); if(p.bounce>0){ const dot=p.vx*nx+p.vz*nz; p.vx -= 2*dot*nx; p.vz -= 2*dot*nz; p.bounce--; } else killProjectile(p); return true; } } return false; }
 function isDown(list) {
   return list && list.some(code => keys[code]);
 }
