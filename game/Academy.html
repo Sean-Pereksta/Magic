@@ -216,10 +216,12 @@
       Last wizard standing wins.
     </p>
 
-    <div class="buttons">
-      <button onclick="startGame('one')">1 Player vs 5 Bots</button>
-      <button onclick="startGame('two')">2 Players + 4 Bots</button>
-      <button onclick="startGame('bots')">6 Bot Chaos</button>
+    <div class="buttons" style="align-items:center;">
+      <label>Mode <select id="modeSelect"><option value="stock">Stock Count</option><option value="king">King of the Hill</option><option value="survival">Survival</option></select></label>
+      <label>Players <select id="playerModeSelect"><option value="one">1 Player</option><option value="two">2 Players</option><option value="bots">Bots Only</option></select></label>
+      <label>Enemies/Bots <input id="enemyCountInput" type="number" min="1" max="5" value="5" style="width:70px"></label>
+      <label>Stocks <input id="stockCountInput" type="number" min="1" max="9" value="3" style="width:70px"></label>
+      <button onclick="startGameFromMenu()">Start Match</button>
     </div>
 
     <p class="note">
@@ -261,6 +263,11 @@ const crosshair2 = document.getElementById("crosshair2");
 let scene, renderer, clock;
 let camera1, camera2, spectatorCamera;
 let mode = "one";
+const GAME_SETTINGS = { mode: "stock", stockCount: 3, kingScoreTarget: 10000, enemyWizardCount: 5 };
+const KING_POINTS_PER_SECOND = 70, KING_CONTESTED_POINTS_PER_SECOND = 25, KING_KILL_BONUS = 1500;
+const SURVIVAL_TIME_POINTS_PER_SECOND = 15, SURVIVAL_KILL_BONUS = 1200, SURVIVAL_PICKUP_BONUS = 100;
+let matchTime = 0, survivalScore = 0, survivalLevel = 1;
+let hillZone = { x:0,z:0,radius:7,pointsPerSecond:KING_POINTS_PER_SECOND,contestedMultiplier:0.4,mesh:null,ring:null };
 let running = false;
 let gameOver = false;
 
@@ -281,8 +288,8 @@ const MAX_DAMAGE = 10;
 const PLAYER_SPEED = 19;
 const TURN_SPEED = 3.0;
 const FIREBALL_COOLDOWN = 5;
-const PICKUP_COUNT = 5;
-const PICKUP_RESPAWN_DELAY = 3.5;
+const PICKUP_COUNT = 3;
+const PICKUP_RESPAWN_DELAY = 5.8;
 const GOOSE_HIT_COOLDOWN = 0.42;
 
 const abilityNames = [
@@ -351,6 +358,14 @@ window.addEventListener("resize", resize);
    STARTUP
    ============================================================ */
 
+function startGameFromMenu(){
+  GAME_SETTINGS.mode = document.getElementById('modeSelect').value;
+  mode = document.getElementById('playerModeSelect').value;
+  GAME_SETTINGS.stockCount = Math.max(1, Number(document.getElementById('stockCountInput').value)||3);
+  GAME_SETTINGS.enemyWizardCount = Math.max(1, Number(document.getElementById('enemyCountInput').value)||5);
+  startGame(mode);
+}
+
 function startGame(selectedMode) {
   mode = selectedMode;
   menu.style.display = "none";
@@ -363,6 +378,7 @@ function startGame(selectedMode) {
 
   initThree();
   setupWorld();
+  if (GAME_SETTINGS.mode === 'king') buildHillZone();
   setupWizards();
   spawnStartingPickups();
 
@@ -641,8 +657,9 @@ function setupWizards() {
   };
 
   const humans = mode === "two" ? 2 : mode === "one" ? 1 : 0;
+  const desiredTotal = mode === 'bots' ? clamp(GAME_SETTINGS.enemyWizardCount,2,6) : Math.min(MAX_WIZARDS, humans + GAME_SETTINGS.enemyWizardCount);
 
-  for (let i = 0; i < MAX_WIZARDS; i++) {
+  for (let i = 0; i < desiredTotal; i++) {
     const a = Math.PI * 2 * i / MAX_WIZARDS;
     const isHuman = i < humans;
     const name = isHuman
@@ -737,6 +754,11 @@ function createWizard(name, color, spawnAngle, human, controls) {
     angle,
     radius: 1.05,
     damage: 0,
+    stocks: GAME_SETTINGS.stockCount,
+    respawnTimer: 0,
+    invulnerableTimer: 0,
+    score: 0,
+    kills: 0,
     alive: true,
     ability: randomAbility(),
     fireCooldown: 0,
@@ -802,7 +824,7 @@ function updateWizardMesh(w, dt) {
 }
 
 function applyDamage(w, amount, sourceName) {
-  if (!w.alive) return;
+  if (!w.alive || w.invulnerableTimer>0) return;
 
   w.damage += amount;
 
@@ -817,6 +839,8 @@ function applyDamage(w, amount, sourceName) {
 
 function vaporizeWizard(w, sourceName) {
   if (!w.alive) return;
+  const killer = wizards.find(x => sourceName && sourceName.includes(x.name));
+  if (killer && killer!==w) { killer.kills++; if (GAME_SETTINGS.mode==='king') killer.score += KING_KILL_BONUS; if (GAME_SETTINGS.mode==='survival' && killer.human) survivalScore += SURVIVAL_KILL_BONUS; }
 
   w.alive = false;
   w.group.visible = false;
@@ -826,7 +850,14 @@ function vaporizeWizard(w, sourceName) {
   createVaporCloud(w.x, w.z);
 
   showMessage(`${w.name} was vaporized${sourceName ? " by " + sourceName : ""}!`);
+  if (GAME_SETTINGS.mode === 'stock' || (GAME_SETTINGS.mode==='survival' && w.human)) {
+    w.stocks = Math.max(0, w.stocks - 1);
+    if (w.stocks > 0) { w.respawnTimer = 2.4; }
+  } else if (GAME_SETTINGS.mode==='survival' && !w.human) {
+    w.respawnTimer = 2.1;
+  }
 }
+
 
 function createVaporCloud(x, z) {
   for (let i = 0; i < 70; i++) {
@@ -879,6 +910,7 @@ function updateWizards(dt) {
 }
 
 function updateHuman(w, dt) {
+  if (w.effect.stunned > 0) return;
   const c = w.controls;
 
   let forward = isDown(c.forward);
@@ -939,14 +971,15 @@ function updateHuman(w, dt) {
   }
 }
 
+function chooseBotTarget(bot){ let best=null,bestScore=-1e9; for(const t of wizards){ if(t===bot||!t.alive) continue; let score=100-distance2D(bot,t)+t.damage*18; if(t.damage>=7) score+=120; if(t.human) score+=GAME_SETTINGS.mode==='survival'?150:25; if(GAME_SETTINGS.mode==='king'&&isWizardInHill(t)) score+=180; if((t.score||0)>(bot.score||0)) score+=60; if(score>bestScore){bestScore=score;best=t;} } return best; }
+function choosePracticalPickup(bot,target){ if(bot.ability) return null; const td=target?distance2D(bot,target):99; if(target&&target.damage>=7&&td<22) return null; let best=null,bd=1e9; for(const p of pickups){ const d=distancePoint(bot.x,bot.z,p.x,p.z); if(d<bd){bd=d;best=p;} } return best&&bd<18?best:null; }
 function updateBot(w, dt) {
+  if (w.effect.stunned > 0) return;
   const enemies = wizards.filter(x => x !== w && x.alive);
   if (!enemies.length) return;
 
-  let target = enemies[0];
-  for (const e of enemies) {
-    if (distance2D(w, e) < distance2D(w, target)) target = e;
-  }
+  let target = chooseBotTarget(w) || enemies[0];
+  if (GAME_SETTINGS.mode==='king'){ const leader=getKingLeader(); if(leader&&leader!==w&&leader.alive) target=leader; }
 
   w.ai.think -= dt;
   w.ai.cast -= dt;
@@ -954,26 +987,16 @@ function updateBot(w, dt) {
   if (w.ai.think <= 0) {
     w.ai.think = rand(0.18, 0.55);
 
-    let nearestPickup = null;
-    if (!w.ability) {
-      for (const p of pickups) {
-        if (!nearestPickup || distancePoint(w.x, w.z, p.x, p.z) < distancePoint(w.x, w.z, nearestPickup.x, nearestPickup.z)) {
-          nearestPickup = p;
-        }
-      }
-    }
-
-    if (nearestPickup) {
-      w.ai.desiredAngle = angleToPoint(w.x, w.z, nearestPickup.x, nearestPickup.z);
-    } else {
-      w.ai.desiredAngle = angleToPoint(w.x, w.z, target.x, target.z) + rand(-0.32, 0.32);
-    }
+    const nearestPickup = choosePracticalPickup(w,target);
+    if (GAME_SETTINGS.mode==='king' && !isWizardInHill(w) && (!w.ability || Math.random()<0.65)) w.ai.desiredAngle = angleToPoint(w.x,w.z,hillZone.x,hillZone.z);
+    else if (nearestPickup) w.ai.desiredAngle = angleToPoint(w.x, w.z, nearestPickup.x, nearestPickup.z);
+    else w.ai.desiredAngle = angleToPoint(w.x, w.z, target.x, target.z) + rand(-0.2, 0.2);
   }
 
   const diff = normalizeAngle(w.ai.desiredAngle - w.angle);
   w.angle += clamp(diff, -TURN_SPEED * 0.8 * dt, TURN_SPEED * 0.8 * dt);
 
-  let speed = PLAYER_SPEED * 0.85;
+  let speed = PLAYER_SPEED * (GAME_SETTINGS.mode==='survival' ? (0.9 + survivalLevel*0.05) : 1.0);
   if (w.effect.glue > 0) speed *= 0.42;
   if (w.effect.bubble > 0) speed *= 0.24;
   if (w.effect.jelly > 0) speed *= 1.12;
@@ -992,10 +1015,10 @@ function updateBot(w, dt) {
   if (w.ability && w.ai.cast <= 0 && d < 27 && Math.abs(diff) < 0.75) {
     const charge = w.ability === "Lava Lob" ? rand(0.45, 1.25) : 0;
     castAbility(w, charge);
-    w.ai.cast = rand(1.1, 2.7);
+    w.ai.cast = rand(0.7, 1.8);
   }
 
-  if (w.fireCooldown <= 0 && d < 24 && Math.abs(diff) < 0.42 && Math.random() < 0.025) {
+  if (w.fireCooldown <= 0 && d < 26 && Math.abs(diff) < 0.55 && Math.random() < (GAME_SETTINGS.mode==='survival'?0.06:0.045)) {
     castFireball(w);
   }
 }
@@ -1203,7 +1226,7 @@ function pickupCheck(w) {
         spawnParticle(p.x, 1.5, p.z, 0xffe45c, rand(0.14, 0.4), rand(0.25, 0.65));
       }
 
-      if (w.human) showMessage(`${w.name} picked up ${abilityEmoji[w.ability]} ${w.ability}!`, 1200);
+      if (w.human) { showMessage(`${w.name} picked up ${abilityEmoji[w.ability]} ${w.ability}!`, 1200); if (GAME_SETTINGS.mode==='survival') survivalScore += SURVIVAL_PICKUP_BONUS; }
       return;
     }
   }
@@ -1284,8 +1307,8 @@ function castBonkBolt(w) {
     x: w.x + f.x * 1.9,
     z: w.z + f.z * 1.9,
     y: 1.55,
-    vx: f.x * 31,
-    vz: f.z * 31,
+    vx: f.x * 40,
+    vz: f.z * 40,
     radius: 0.68,
     damage: 2,
     knock: 34,
@@ -1533,8 +1556,8 @@ function castHatTornado(w) {
     x: group.position.x,
     z: group.position.z,
     y: 1,
-    vx: f.x * 11,
-    vz: f.z * 11,
+    vx: f.x * 18,
+    vz: f.z * 18,
     radius: 2.7,
     damage: 0,
     knock: 10,
@@ -1691,7 +1714,7 @@ function castVaporBeam(w) {
       emissive: 0xffffbb
     })
   );
-  core.rotation.z = Math.PI / 2;
+  core.rotation.x = Math.PI / 2;
   core.position.set(0, 0, length / 2);
   beamGroup.add(core);
 
@@ -1704,7 +1727,7 @@ function castVaporBeam(w) {
       opacity: 0.35
     })
   );
-  glow.rotation.z = Math.PI / 2;
+  glow.rotation.x = Math.PI / 2;
   glow.position.set(0, 0, length / 2);
   beamGroup.add(glow);
 
@@ -1716,13 +1739,13 @@ function castVaporBeam(w) {
         emissive: [0xff4444,0xffaa33,0xffff55,0x55ff55,0x55aaff,0xaa55ff,0xffffff][i]
       })
     );
-    ribbon.rotation.z = Math.PI / 2;
+    ribbon.rotation.x = Math.PI / 2;
     ribbon.position.set(Math.cos(i) * 0.45, Math.sin(i) * 0.45, length / 2);
     beamGroup.add(ribbon);
   }
 
   beamGroup.position.set(w.x + f.x * (length * 0.5), 1.75, w.z + f.z * (length * 0.5));
-  beamGroup.rotation.y = w.angle;
+  beamGroup.lookAt(w.x + f.x * length, 1.75, w.z + f.z * length);
   scene.add(beamGroup);
 
   temporary.push({
@@ -2177,9 +2200,9 @@ function updateTemporary(dt) {
           if (!w.alive || w === obj.owner) continue;
           const d = distancePoint(w.x, w.z, obj.x, obj.z);
           if (d < 3.4) {
-            applyDamage(w, 3, `${obj.owner.name}'s Anvil`);
-            knockWizard(w, w.x - obj.x, w.z - obj.z, 35);
-            w.effect.stunned = 0.9;
+            applyDamage(w, 5, `${obj.owner.name}'s Anvil`);
+            knockWizard(w, w.x - obj.x, w.z - obj.z, 52);
+            w.effect.stunned = 2.5; createStunStars(w,2.5);
             w.effect.bubble = 0.7;
             spawnPopText(w.x, w.z, "SQUASH!", 0xaaaaaa);
           }
@@ -2282,8 +2305,8 @@ function updateGeese(dt) {
 
     if (target) {
       const a = angleToPoint(g.x, g.z, target.x, target.z);
-      g.vx += Math.sin(a) * 24 * dt;
-      g.vz += Math.cos(a) * 24 * dt;
+      g.vx += Math.sin(a) * 28 * dt;
+      g.vz += Math.cos(a) * 28 * dt;
       g.mesh.rotation.y = a;
 
       if (distancePoint(g.x, g.z, target.x, target.z) < 1.65 && g.cooldown <= 0) {
@@ -2478,17 +2501,12 @@ function updateHud() {
   const humans = wizards.filter(w => w.human);
 
   for (const w of humans) {
-    const card = document.createElement("div");
-    card.className = "hud-card";
-    const fire = w.fireCooldown <= 0 ? "ready" : w.fireCooldown.toFixed(1) + "s";
-    card.innerHTML = `
-      <strong>${w.name}</strong>
-      ${w.ability ? abilityEmoji[w.ability] + " " + w.ability : "No ability"}<br>
-      🔥 ${fire}
-    `;
-    tinyHud.appendChild(card);
+    const card = document.createElement('div'); card.className='hud-card'; const fire=w.fireCooldown<=0?'ready':w.fireCooldown.toFixed(1)+'s';
+    const modeLine = GAME_SETTINGS.mode==='stock' ? `Stocks: ${'♥ '.repeat(w.stocks)}<br>Damage: ${w.damage}/${MAX_DAMAGE}` : GAME_SETTINGS.mode==='king' ? `Score: ${Math.floor(w.score)}/${GAME_SETTINGS.kingScoreTarget}<br>Hill: ${isWizardInHill(w)?'Holding':'Outside'}` : `Score: ${Math.floor(survivalScore)}<br>Time: ${Math.floor(matchTime/60)}:${String(Math.floor(matchTime%60)).padStart(2,'0')}<br>Kills: ${w.kills}`;
+    card.innerHTML=`<strong>${w.name} (${GAME_SETTINGS.mode})</strong>${modeLine}<br>${w.ability ? abilityEmoji[w.ability]+' '+w.ability:'No ability'}<br>🔥 ${fire}`; tinyHud.appendChild(card);
   }
 
+  const board=document.createElement('div'); board.className='hud-card'; board.innerHTML='<strong>Scoreboard</strong>'+wizards.map(w=>`${w.name}: ${GAME_SETTINGS.mode==='king'?Math.floor(w.score):'Dmg '+w.damage+' / S '+w.stocks}`).join('<br>'); tinyHud.appendChild(board);
   if (!humans.length) {
     const alive = wizards.filter(w => w.alive).length;
     const card = document.createElement("div");
@@ -2863,10 +2881,27 @@ function createMushroomMesh(scale = 1) {
   return group;
 }
 
+
+function buildHillZone(){
+  hillZone.mesh = new THREE.Mesh(new THREE.CylinderGeometry(10.5,12,4.5,48), new THREE.MeshStandardMaterial({color:0x4a7c44,roughness:0.9}));
+  hillZone.mesh.position.set(hillZone.x,2.2,hillZone.z); scene.add(hillZone.mesh);
+  hillZone.ring = createGroundRing(hillZone.x,hillZone.z,hillZone.radius,0x88eeff,0.9); hillZone.ring.position.y=4.55;
+}
+function isWizardInHill(w){ return distancePoint(w.x,w.z,hillZone.x,hillZone.z)<=hillZone.radius; }
+function getKingLeader(){ return [...wizards].sort((a,b)=>b.score-a.score)[0]; }
+function createStunStars(w,duration=2.5){ const g=new THREE.Group(); for(let i=0;i<3;i++){ const s=new THREE.Mesh(new THREE.SphereGeometry(0.16,8,6), new THREE.MeshStandardMaterial({color:0xffff66, emissive:0xffcc33})); s.position.set(Math.cos(i*2.09)*0.7,3.7,Math.sin(i*2.09)*0.7); g.add(s);} scene.add(g); temporary.push({kind:'stunStars',mesh:g,follow:w,life:duration,spin:5,yOffset:0}); spawnPopText(w.x,w.z,'STUNNED!',0xffff66);}
+function updateModes(dt){ matchTime += dt; survivalLevel = Math.floor(matchTime/30)+1;
+ for(const w of wizards){ if(!w.alive && w.respawnTimer>0){ w.respawnTimer-=dt; if(w.respawnTimer<=0 && (GAME_SETTINGS.mode!=='stock' || w.stocks>0)){ const sp=randomArenaPoint(8); w.x=sp.x; w.z=sp.z; w.damage=0; w.alive=true; w.group.visible=true; w.label.name.style.display='block'; w.label.bar.style.display='block'; w.invulnerableTimer=1.5; }} w.invulnerableTimer=Math.max(0,w.invulnerableTimer-dt);}
+ if(GAME_SETTINGS.mode==='king'){ const inside=wizards.filter(w=>w.alive&&isWizardInHill(w)); if(hillZone.ring){ const c=inside.length===1?inside[0].color:inside.length>1?0xffffff:0x88eeff; hillZone.ring.material.color.setHex(c); hillZone.ring.material.emissive.setHex(c);} for(const w of inside){ w.score += (inside.length===1?KING_POINTS_PER_SECOND:KING_CONTESTED_POINTS_PER_SECOND)*dt; } }
+ if(GAME_SETTINGS.mode==='survival') survivalScore += SURVIVAL_TIME_POINTS_PER_SECOND*dt; }
+
 /* ============================================================
    WIN / MAIN LOOP
    ============================================================ */
 
+function checkKingWin(){ for(const w of wizards){ if(w.score>=GAME_SETTINGS.kingScoreTarget){ gameOver=true; showMessage(`${w.name} wins King of the Hill!`,999999);} } }
+function checkStockWin(){ const active=wizards.filter(w=>w.alive||w.respawnTimer>0||w.stocks>0); if(active.length===1){ gameOver=true; showMessage(`${active[0].name} wins Stock Count!`,999999);} }
+function checkSurvivalWin(){ const humans=wizards.filter(w=>w.human); if(humans.length && humans.every(h=>!h.alive&&h.stocks<=0&&h.respawnTimer<=0)){ gameOver=true; showMessage(`Survival Over! Final Score: ${Math.floor(survivalScore)} | Time: ${Math.floor(matchTime/60)}:${String(Math.floor(matchTime%60)).padStart(2,'0')}`,999999);} }
 function checkWin() {
   if (gameOver) return;
 
@@ -2887,6 +2922,7 @@ function animate() {
   if (!running) return;
 
   const dt = Math.min(clock.getDelta(), 0.033);
+  updateModes(dt);
 
   updateWizards(dt);
   updatePickups(dt);
@@ -2897,6 +2933,9 @@ function animate() {
   updateCameras(dt);
   updateHud();
   updateLabels();
+  if (GAME_SETTINGS.mode==='king') checkKingWin();
+  else if (GAME_SETTINGS.mode==='stock') checkStockWin();
+  else checkSurvivalWin();
   checkWin();
 
   renderScene();
