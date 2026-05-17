@@ -1865,7 +1865,13 @@ function controllerButtonPressed(buttonIndex){return !!controllerState.currentBu
 function getControllerAxis(axisIndex,deadzone=0.18){const raw=controllerState.axes[axisIndex]||0; return Math.abs(raw)<deadzone?0:raw;}
 function handleControllerMapSelect(x,y){const el=document.elementFromPoint(x,y); if(el&&el!==$("mapCanvas")&&el.closest("button, select, input, .card, .modalBox")){const c=el.closest("button"); if(c){c.click();return;}} handleMapWorldSelection(x,y);}
 function cycleSelectedGroup(direction=1){cycleSelectedTroopGroup(direction); const key=(selectedTroopGroup||"all").toLowerCase(); const label=key==="all"?"All":key.charAt(0).toUpperCase()+key.slice(1); if($("selectedGroupText")) $("selectedGroupText").textContent=label;}
-function issueBattleCommandFromInput(n){if(n===1)applyCommandToSelectedGroup("Hold Position"); if(n===2)applyCommandToSelectedGroup("Follow Me"); if(n===3)cycleFormationForSelectedGroup(); if(n===4)applyCommandToSelectedGroup("Charge");}
+function issueBattleCommandFromInput(n){
+  const now = performance.now(); const doubleTap = now - (lastCommandTap[n] || 0) < HOLD_DOUBLE_TAP_MS; lastCommandTap[n] = now;
+  if(n===1){ applyCommandToSelectedGroup("Hold Position"); if(doubleTap){ groupFormations[selectedTroopGroup] = "Shield Wall"; cycleFormationForSelectedGroup(); showToast("Defensive posture"); } }
+  if(n===2){ applyCommandToSelectedGroup("Follow Me"); if(doubleTap){ assignFormationSlots(); showToast("Regroup on commander"); } }
+  if(n===3){ if(doubleTap){ for(const troop of battleTroops){ if(isTroopInSelectedGroup(troop)) troop.formationLocked = !troop.formationLocked; } showToast("Formation Locked"); } else cycleFormationForSelectedGroup(); }
+  if(n===4){ if(doubleTap){ applyCommandToSelectedGroup("Formation"); showToast("Controlled Advance"); } else applyCommandToSelectedGroup("Charge"); }
+}
 function updateControllerMapCursor(dt){if(activeInputMode!==INPUT_MODES.controller||!$("worldScreen")?.classList.contains("active")) return; const el=$("controllerCursor"); if(!el)return; const lx=getControllerAxis(controllerMapping.moveX),ly=getControllerAxis(controllerMapping.moveY); controllerCursor.x=clamp(controllerCursor.x+lx*controllerCursor.speed*dt,8,window.innerWidth-8); controllerCursor.y=clamp(controllerCursor.y+ly*controllerCursor.speed*dt,8,window.innerHeight-8); el.style.left=`${controllerCursor.x}px`; el.style.top=`${controllerCursor.y}px`; if(controllerButtonPressed(controllerMapping.select)) handleControllerMapSelect(controllerCursor.x,controllerCursor.y);}
 function updateControllerBattleInput(dt){if(activeInputMode!==INPUT_MODES.controller||!$("battleScreen")?.classList.contains("active")||!player3?.mesh)return; const lx=getControllerAxis(controllerMapping.moveX),ly=getControllerAxis(controllerMapping.moveY),rx=getControllerAxis(controllerMapping.turnX); const running=controllerState.currentButtons[controllerMapping.run]?.pressed; const keyForward=-ly; if(Math.abs(keyForward)>0.06){const forward=new THREE.Vector3(Math.sin(player3.yaw),0,Math.cos(player3.yaw));player3.mesh.position.addScaledVector(forward,(running?10:6)*keyForward*dt);} player3.yaw-=rx*2.8*dt; if(controllerButtonPressed(controllerMapping.swing)) startSpearThrust?.(); if(controllerButtonPressed(controllerMapping.commandHold))issueBattleCommandFromInput(1); if(controllerButtonPressed(controllerMapping.commandFollow))issueBattleCommandFromInput(2); if(controllerButtonPressed(controllerMapping.commandFormation))issueBattleCommandFromInput(3); if(controllerButtonPressed(controllerMapping.commandCharge))issueBattleCommandFromInput(4); if(controllerButtonPressed(controllerMapping.cycleGroupLeft))cycleSelectedGroup(-1); if(controllerButtonPressed(controllerMapping.cycleGroupRight))cycleSelectedGroup(1); if(controllerButtonPressed(controllerMapping.openMenus))openControllerQuickMenu();}
 function updateControllerMapMenuInput(){if(activeInputMode!==INPUT_MODES.controller||!$("worldScreen")?.classList.contains("active")) return; if(controllerButtonPressed(controllerMapping.openMenus)) openControllerQuickMenu(); if(controllerMenuOpen&&controllerButtonPressed(controllerMapping.menuTabLeft)) cycleControllerMenuTab(-1); if(controllerMenuOpen&&controllerButtonPressed(controllerMapping.menuTabRight)) cycleControllerMenuTab(1);}
@@ -4149,6 +4155,16 @@ let mouseDX = 0;
 let command = "Hold Position";
 let formation = "Line";
 let formations = ["Line", "Square", "Wedge", "Loose", "Shield Wall"];
+const TACTICAL_MODES = { FREE:"free", FORMATION:"formation", FLANKING:"flanking", SKIRMISHING:"skirmishing", BRACING:"bracing", CHARGING:"charging", ROUTING:"routing", RALLYING:"rallying" };
+const FORMATION_TYPES = { LINE:"line", SHIELD_WALL:"shieldWall", LOOSE:"loose", WEDGE:"wedge", CIRCLE:"circle", SPEAR_BRACE:"spearBrace" };
+const AI_BATTLE_PLANS = { BARBARIAN_SWARM:"barbarianSwarm", KINGDOM_BALANCED:"kingdomBalanced", BANDIT_SKIRMISH:"banditSkirmish", CAVALRY_RAID:"cavalryRaid", DEFENSIVE_HOLD:"defensiveHold" };
+const battleFormations = {
+  infantry: { type: FORMATION_TYPES.LINE, anchor: { x: 0, z: 0 }, facing: 0, state: "loose" },
+  archer: { type: FORMATION_TYPES.LOOSE, anchor: { x: 0, z: 0 }, facing: 0, state: "loose" },
+  cavalry: { type: FORMATION_TYPES.WEDGE, anchor: { x: 0, z: 0 }, facing: 0, state: "loose" }
+};
+let enemyBattlePlan = AI_BATTLE_PLANS.KINGDOM_BALANCED;
+let lastCommandTap = { 1:0, 2:0, 3:0, 4:0 };
 const troopGroups = ["All", "Infantry", "Archers", "Cavalry"];
 let selectedTroopGroupIndex = 0;
 let selectedTroopGroup = "All";
@@ -4618,7 +4634,22 @@ function makeTroop(type, team, pos) {
     shieldRestRotation: group.userData.parts && group.userData.parts.shield ? group.userData.parts.shield.rotation.clone() : null,
     weaponShape: (team === "friendly" ? getArmyEquipmentBonuses()?.visuals?.weapon?.weaponShape : null) || def.weaponShape || (def.role === "archer" ? "bow" : def.role === "cavalry" ? "lance" : def.role === "spearman" ? "spear" : "sword"),
     shieldAnim: {active:false,time:0,duration:0.22},
-    attackAnim: {active:false,phase:"idle",time:0,totalTime:0,profile:null,target:null,hasAppliedDamage:false,spawnedTrail:false}
+    attackAnim: {active:false,phase:"idle",time:0,totalTime:0,profile:null,target:null,hasAppliedDamage:false,spawnedTrail:false},
+    tacticalMode: "free",
+    formationSlot: null,
+    formationState: "loose",
+    currentThreat: null,
+    preferredAttackAngle: "front",
+    moraleState: "steady",
+    localMorale: 100,
+    lastFormationDistance: 0,
+    isBraced: false,
+    braceTimer: 0,
+    isFlanked: false,
+    isRouting: false,
+    rallyTimer: 0,
+    commandState: "normal",
+    formationLocked: false
   };
 }
 
@@ -4959,6 +4990,12 @@ function assignTeamFormation(list, anchor, dir) {
 
     placeLine(back, -7, 1.65);
   }
+  const currentFormationType = formation === "Shield Wall" ? FORMATION_TYPES.SHIELD_WALL : formation === "Wedge" ? FORMATION_TYPES.WEDGE : formation === "Loose" ? FORMATION_TYPES.LOOSE : formation === "Square" ? FORMATION_TYPES.CIRCLE : FORMATION_TYPES.LINE;
+  for (const t of list) {
+    t.formationSlot = t.slot;
+    t.formationType = currentFormationType;
+    t.tacticalMode = t.command === "Charge" ? TACTICAL_MODES.CHARGING : TACTICAL_MODES.FORMATION;
+  }
 }
 function updateSiegeCapture(dt) {
   if (!battleRunning || battleState.battleEnded) return;
@@ -5182,12 +5219,13 @@ function updateTroops(dt) {
       }
     });
     if (t.hp <= 0) continue;
+    t.tacticalMode = t.tacticalMode || TACTICAL_MODES.FREE;
     t.isMoving = false;
 
     t.attackCd -= dt;
     const troopCommand = t.team === "friendly" ? t.command : "Enemy";
 
-    const enemies = battleTroops.filter(e => e.team !== t.team && e.hp > 0);
+    const enemies = getEnemyUnitsFor(t);
 
     const behaviorTag=getRoleBehaviorTag(t);
     if (t.team === "enemy" && player3.hp > 0) {
@@ -5218,6 +5256,17 @@ function updateTroops(dt) {
     }
 
     let desired = t.slot.clone();
+    updateMoraleState(t, dt);
+    if (t.isRouting) {
+      updateRoutingBehavior(t, dt);
+      animateTroop(t, dt);
+      continue;
+    }
+    if (t.formationSlot && t.tacticalMode === TACTICAL_MODES.FORMATION && troopCommand !== "Charge") {
+      updateFormationUnitBehavior(t, dt);
+      animateTroop(t, dt);
+      continue;
+    }
     const leash = t.team === "friendly" ? 9 : 999;
 
     const attackDistance = getMeleeHitDistance(t, nearest);
@@ -5228,7 +5277,8 @@ function updateTroops(dt) {
       if ((t.def.role === "archer" || t.def.classLine === "crossbow") && nearestDistance < (t.def.preferredRange || t.def.range || 14)) {
         desired = t.mesh.position.clone();
       } else {
-        desired = nearest.mesh.position.clone();
+        const ang = getBestAttackAngleForUnit(t, nearest, enemies, getAllyUnitsFor(t));
+        desired = getTacticalPathTarget(t, nearest, ang);
       }
     } else if (nearestDistance < 5.5 && troopCommand === "Hold Position") {
       desired = t.mesh.position.clone();
@@ -5236,7 +5286,9 @@ function updateTroops(dt) {
     } else if (nearestDistance < 6.5 && troopCommand === "Follow Me") {
       desired = nearest.mesh.position.clone();
     } else if (troopCommand === "Charge") {
-      desired = nearest.mesh.position.clone();
+      t.tacticalMode = TACTICAL_MODES.CHARGING;
+      const ang = getBestAttackAngleForUnit(t, nearest, enemies, getAllyUnitsFor(t));
+      desired = getTacticalPathTarget(t, nearest, ang);
     }
     if (behaviorTag==="line_holder" && ["Hold Position","Formation"].includes(troopCommand)) desired=t.slot.clone();
     if (behaviorTag==="charger" && troopCommand==="Charge" && nearestDistance<4.8) desired=t.mesh.position.clone().add(t.mesh.position.clone().sub(nearest.mesh.position).setY(0).normalize().multiplyScalar(2.2));
@@ -5314,6 +5366,47 @@ function moveTroop(t, target, dt) {
   const targetSpeed = maxSpeed * facingMult;
   t.currentSpeed += (targetSpeed - t.currentSpeed) * Math.min(1, accel * dt);
   pos.add(dir.multiplyScalar(t.currentSpeed * dt));
+}
+
+function getEnemyUnitsFor(unit) { return battleTroops.filter(e => e.team !== unit.team && e.hp > 0); }
+function getAllyUnitsFor(unit) { return battleTroops.filter(e => e.team === unit.team && e.hp > 0 && e !== unit); }
+function getNearestUnit(unit, list) { let best=null, d=Infinity; for (const it of list) { const n = unit.mesh.position.distanceTo(it.mesh.position); if (n<d) { d=n; best=it; } } return best; }
+function getPreferredEngageDistance(unit) { return Math.max(1.2, unit.def?.preferredRange || unit.def?.range || 1.4); }
+function isInAttackRange(unit, target) { return unit.mesh.position.distanceTo(target.mesh.position) <= getMeleeHitDistance(unit, target); }
+function countUnitsNearAngle(target, nearbyUnits, angleType, radius = 4) { if (angleType !== "front") return 0; return nearbyUnits.filter(u => u !== target && u.mesh.position.distanceTo(target.mesh.position) <= radius).length; }
+function isFacingTarget(target, unit) { return getAttackAngleMultiplier(unit, target) <= 0.95; }
+function getAttackPositionByAngle(unit, target, angleType) {
+  const desiredDistance = getPreferredEngageDistance(unit), facing = target.mesh.rotation?.y || 0;
+  let offset = 0; if (angleType === "flank") offset = Math.random() < 0.5 ? Math.PI / 2 : -Math.PI / 2; if (angleType === "rear") offset = Math.PI;
+  if (angleType === "range") { const d = unit.mesh.position.clone().sub(target.mesh.position); d.y = 0; d.normalize(); return target.mesh.position.clone().addScaledVector(d, desiredDistance); }
+  const a = facing + offset; return new THREE.Vector3(target.mesh.position.x - Math.sin(a) * desiredDistance, 0, target.mesh.position.z - Math.cos(a) * desiredDistance);
+}
+function getTacticalPathTarget(unit, target, angleType) {
+  const finalPos = getAttackPositionByAngle(unit, target, angleType);
+  if (angleType === "front" || angleType === "range") return finalPos;
+  const d = finalPos.clone().sub(unit.mesh.position); d.y = 0; const dist = d.length() || 1; const sideStep = angleType === "rear" ? 8 : 5;
+  return finalPos.clone().add(new THREE.Vector3(-(d.z / dist) * sideStep, 0, (d.x / dist) * sideStep));
+}
+function getBestAttackAngleForUnit(unit, target, nearbyEnemies, nearbyAllies) {
+  const role = unit.role || unit.def?.role || "infantry"; if (!target) return "front";
+  if (unit.tacticalMode === TACTICAL_MODES.FORMATION && unit.formationSlot) return "front";
+  if (role === "cavalry") return (target.isBraced || (target.def?.role === "infantry" && hasTrait(target, "brace_bonus"))) ? "rear" : "flank";
+  if (role === "archer") return "range";
+  if (role === "infantry") { if (countUnitsNearAngle(target, nearbyAllies, "front", 4) >= 3) return "flank"; if (target.def?.hasShield && isFacingTarget(target, unit)) return "flank"; }
+  return "front";
+}
+function updateMoraleState(unit, dt) {
+  let morale = unit.localMorale ?? 100; if (unit.hp < unit.maxHp * 0.35) morale -= 10 * dt; if (unit.isFlanked) morale -= 8 * dt;
+  if (getEnemyUnitsFor(unit).filter(e => e.mesh.position.distanceTo(unit.mesh.position) < 3.4).length >= 3) morale -= 12 * dt;
+  morale = clamp(morale, 0, 100); unit.localMorale = morale; unit.moraleState = morale > 70 ? "steady" : morale > 45 ? "shaken" : morale > 20 ? "faltering" : "routing"; unit.isRouting = unit.moraleState === "routing";
+}
+function updateRoutingBehavior(unit, dt) { const nearest = getNearestUnit(unit, getEnemyUnitsFor(unit)); if (!nearest) return; const v = unit.mesh.position.clone().sub(nearest.mesh.position).setY(0).normalize(); moveTroop(unit, unit.mesh.position.clone().add(v.multiplyScalar(8)), dt); unit.rallyTimer += dt; if (unit.rallyTimer > 6) { unit.localMorale = 45; unit.isRouting = false; unit.rallyTimer = 0; } }
+function updateFormationUnitBehavior(unit, dt) {
+  const slot = unit.formationSlot || unit.slot; if (!slot) return;
+  unit.lastFormationDistance = unit.mesh.position.distanceTo(slot);
+  if (unit.lastFormationDistance > 0.35) moveTroop(unit, slot.clone ? slot.clone() : new THREE.Vector3(slot.x, 0, slot.z), dt);
+  rotateTroopToward(unit, slot, dt);
+  const enemyInRange = getEnemyUnitsFor(unit).find(e => isInAttackRange(unit, e)); if (enemyInRange) attackTarget(unit, enemyInRange);
 }
 
 
@@ -5677,10 +5770,10 @@ function onKeyDown(e) {
   if (e.code === "Space") startSpearThrust();
   if (e.code === "KeyQ") { e.preventDefault(); cycleSelectedTroopGroup(-1); }
   if (e.code === "KeyE") { e.preventDefault(); cycleSelectedTroopGroup(1); }
-  if (e.code === "Digit1") { const now = performance.now(); if (now - lastHoldPressTime < HOLD_DOUBLE_TAP_MS) cycleFormationForSelectedGroup(); else applyCommandToSelectedGroup("Hold Position"); lastHoldPressTime = now; }
-  if (e.code === "Digit2") applyCommandToSelectedGroup("Follow Me");
-  if (e.code === "Digit3") cycleFormationForSelectedGroup();
-  if (e.code === "Digit4") applyCommandToSelectedGroup("Charge");
+  if (e.code === "Digit1") issueBattleCommandFromInput(1);
+  if (e.code === "Digit2") issueBattleCommandFromInput(2);
+  if (e.code === "Digit3") issueBattleCommandFromInput(3);
+  if (e.code === "Digit4") issueBattleCommandFromInput(4);
 }
 
 function onKeyUp(e) {
