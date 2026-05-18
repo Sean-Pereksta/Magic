@@ -354,6 +354,7 @@ const obstacles = [];
 const temporary = [];
 const particles = [];
 const geese = [];
+const magnetTraps = [];
 const labels = [];
 const castleColliders = [];
 const castleDamageables = [];
@@ -368,6 +369,9 @@ const FIREBALL_COOLDOWN = 2.15;
 const PICKUP_COUNT = 6;
 const PICKUP_RESPAWN_DELAY = 3.1;
 const GOOSE_HIT_COOLDOWN = 0.3;
+const MAGNET_BEARD_TRAP_LIFE = 6.0;
+const MAGNET_BEARD_TRAP_RADIUS = 13;
+const MAGNET_BEARD_TRAP_PULL = 22;
 
 const abilityNames = [
   "Bonk Bolt",
@@ -1317,29 +1321,6 @@ function getBotHillApproachPoint(bot) {
 }
 
 function applyPhysics(w, dt) {
-  if (w.effect.magnet > 0) {
-    for (const other of wizards) {
-      if (other === w || !other.alive) continue;
-      const d = distance2D(w, other);
-      if (d < 11) {
-        const a = angleToPoint(other.x, other.z, w.x, w.z);
-        other.vx += Math.sin(a) * 11 * dt;
-        other.vz += Math.cos(a) * 11 * dt;
-      }
-    }
-
-    for (const p of pickups) {
-      const d = distancePoint(w.x, w.z, p.x, p.z);
-      if (d < 15) {
-        const a = angleToPoint(p.x, p.z, w.x, w.z);
-        p.x += Math.sin(a) * dt * 7;
-        p.z += Math.cos(a) * dt * 7;
-        p.group.position.x = p.x;
-        p.group.position.z = p.z;
-      }
-    }
-  }
-
   w.vy -= 28*dt;
   w.x += w.vx * dt;
   w.z += w.vz * dt;
@@ -1772,36 +1753,55 @@ function castSlapGust(w) {
 }
 
 function castMagnetBeard(w) {
-  w.effect.magnet = 7.5;
+  const f = forwardVector(w);
+  const x = w.x + f.x * 2.4;
+  const z = w.z + f.z * 2.4;
+  const y = getEffectiveGroundHeight(x, z);
+
+  const group = new THREE.Group();
+
+  const beardMat = new THREE.MeshStandardMaterial({
+    color: 0xffc15c,
+    emissive: 0x7a3500,
+    roughness: 0.45
+  });
 
   const beard = new THREE.Mesh(
-    new THREE.TorusKnotGeometry(1.15, 0.18, 64, 10),
+    new THREE.TorusKnotGeometry(1.15, 0.22, 64, 10),
+    beardMat
+  );
+  beard.position.y = 0.9;
+  beard.scale.set(1.2, 0.7, 1.2);
+  group.add(beard);
+
+  const magnetCore = new THREE.Mesh(
+    new THREE.SphereGeometry(0.45, 16, 12),
     new THREE.MeshStandardMaterial({
-      color: 0xffc15c,
-      emissive: 0x7a3500
+      color: 0xfff2a0,
+      emissive: 0xffaa22
     })
   );
+  magnetCore.position.y = 1.1;
+  group.add(magnetCore);
 
-  beard.position.set(w.x, 2.2, w.z);
-  scene.add(beard);
+  group.position.set(x, y, z);
+  scene.add(group);
 
-  temporary.push({
-    mesh: beard,
-    life: 7.5,
-    follow: w,
-    spin: 3,
-    yOffset: 2.2
+  const ring = createGroundRing(x, z, MAGNET_BEARD_TRAP_RADIUS, 0xffc15c, 0.45);
+
+  magnetTraps.push({
+    owner: w,
+    x,
+    z,
+    y,
+    life: MAGNET_BEARD_TRAP_LIFE,
+    radius: MAGNET_BEARD_TRAP_RADIUS,
+    pull: MAGNET_BEARD_TRAP_PULL,
+    group,
+    ring
   });
 
-  const ring = createGroundRing(w.x, w.z, 8, 0xffc15c, 0.55);
-  temporary.push({
-    mesh: ring,
-    life: 7.5,
-    follow: w,
-    spin: 1,
-    yOffset: 0.07
-  });
-  createMagnetOrbitObjects(w, 7.5);
+  spawnPopText(x, z, "MAGNET BEARD!", 0xffc15c);
 }
 
 function castGooseSwarm(w) {
@@ -2537,6 +2537,63 @@ function killProjectile(p) {
 /* ============================================================
    AREA EFFECTS / TEMP OBJECTS
    ============================================================ */
+
+function updateMagnetTraps(dt) {
+  for (let i = magnetTraps.length - 1; i >= 0; i--) {
+    const trap = magnetTraps[i];
+    trap.life -= dt;
+
+    if (trap.group) {
+      trap.group.rotation.y += dt * 4.0;
+      trap.group.position.y = trap.y + Math.sin(performance.now() * 0.008) * 0.12;
+    }
+
+    if (trap.ring) {
+      trap.ring.material.opacity = 0.28 + Math.sin(performance.now() * 0.012) * 0.12;
+      trap.ring.scale.setScalar(0.96 + Math.sin(performance.now() * 0.01) * 0.04);
+    }
+
+    for (const target of wizards) {
+      if (!target.alive || target === trap.owner) continue;
+
+      if (trap.owner.team && target.team && trap.owner.team === target.team) continue;
+
+      const d = distancePoint(target.x, target.z, trap.x, trap.z);
+      if (d > trap.radius || d < 0.1) continue;
+
+      const strength = (1 - d / trap.radius) * trap.pull;
+      const dx = trap.x - target.x;
+      const dz = trap.z - target.z;
+      const len = Math.hypot(dx, dz) || 1;
+
+      target.vx += (dx / len) * strength * dt;
+      target.vz += (dz / len) * strength * dt;
+
+      if (d < 2.1) {
+        target.effect.jelly = Math.max(target.effect.jelly || 0, 0.25);
+      }
+    }
+
+    for (const p of pickups) {
+      const d = distancePoint(p.x, p.z, trap.x, trap.z);
+      if (d > trap.radius) continue;
+
+      const dx = trap.x - p.x;
+      const dz = trap.z - p.z;
+      const len = Math.hypot(dx, dz) || 1;
+      p.x += (dx / len) * dt * 5.5;
+      p.z += (dz / len) * dt * 5.5;
+      p.group.position.x = p.x;
+      p.group.position.z = p.z;
+    }
+
+    if (trap.life <= 0) {
+      if (trap.group) scene.remove(trap.group);
+      if (trap.ring) scene.remove(trap.ring);
+      magnetTraps.splice(i, 1);
+    }
+  }
+}
 
 function updateTemporary(dt) {
   for (const obj of temporary) {
@@ -3979,6 +4036,12 @@ function cleanupMatch() {
   screenShakeTimer = 0;
   messageBox.style.display = "none";
 
+  for (const trap of magnetTraps) {
+    if (trap.group) scene.remove(trap.group);
+    if (trap.ring) scene.remove(trap.ring);
+  }
+  magnetTraps.length = 0;
+
   for (const w of wizards) {
     hideTelegraph(w);
     if (w.label) {
@@ -4079,6 +4142,7 @@ function animate() {
   updateAbilityTelegraphs(dt);
   updatePickups(dt);
   updateProjectiles(dt);
+  updateMagnetTraps(dt);
   updateTemporary(dt);
   updateGeese(dt);
   updateParticles(dt);
