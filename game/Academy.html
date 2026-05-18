@@ -86,15 +86,17 @@
     display: none;
     gap: 8px;
     pointer-events: none;
+    flex-wrap: wrap;
+    max-width: 96vw;
   }
 
   .hud-card {
-    min-width: 132px;
-    padding: 7px 9px;
+    min-width: 112px;
+    padding: 6px 8px;
     border-radius: 10px;
     border: 1px solid rgba(255,255,255,0.3);
     background: rgba(0,0,0,0.52);
-    font-size: 12px;
+    font-size: 11px;
     line-height: 1.25;
   }
 
@@ -219,7 +221,7 @@
     <div class="buttons" style="align-items:center;">
       <label>Mode <select id="modeSelect"><option value="stock">Stock Count</option><option value="king">King of the Hill</option><option value="survival">Survival</option></select></label>
       <label>Players <select id="playerModeSelect"><option value="one">1 Player</option><option value="two">2 Players</option><option value="bots">Bots Only</option></select></label>
-      <label>Enemies/Bots <input id="enemyCountInput" type="number" min="1" max="5" value="5" style="width:70px"></label>
+      <label>Enemies/Bots <input id="enemyCountInput" type="number" min="1" max="11" value="5" style="width:70px"></label>
       <label>Stocks <input id="stockCountInput" type="number" min="1" max="9" value="3" style="width:70px"></label>
       <button onclick="startGameFromMenu()">Start Match</button>
     </div>
@@ -292,7 +294,7 @@ const labels = [];
 let pickupSpawnCooldown = 0;
 
 const ARENA_R = 65;
-const MAX_WIZARDS = 6;
+const MAX_WIZARDS = 12;
 const MAX_DAMAGE = 5;
 const PLAYER_SPEED = 21;
 const TURN_SPEED = 3.0;
@@ -339,7 +341,13 @@ const wizardColors = [
   0xffe45c,
   0x69ff7b,
   0xcd7dff,
-  0xff9a3d
+  0xff9a3d,
+  0x5cffc8,
+  0xff5cd6,
+  0xb6ff4d,
+  0x7d8cff,
+  0xffc14d,
+  0xffffff
 ];
 
 const botNames = [
@@ -348,7 +356,13 @@ const botNames = [
   "Bot Squib",
   "Bot Honkstaff",
   "Bot Grumblewand",
-  "Bot Balthazar"
+  "Bot Balthazar",
+  "Bot Picklewand",
+  "Bot Moonmuffin",
+  "Bot Zapnap",
+  "Bot Crumblecloak",
+  "Bot Fizzywig",
+  "Bot Lava Larry"
 ];
 
 window.addEventListener("keydown", e => {
@@ -371,7 +385,7 @@ function startGameFromMenu(){
   GAME_SETTINGS.mode = document.getElementById('modeSelect').value;
   mode = document.getElementById('playerModeSelect').value;
   GAME_SETTINGS.stockCount = Math.max(1, Number(document.getElementById('stockCountInput').value)||3);
-  GAME_SETTINGS.enemyWizardCount = Math.max(1, Number(document.getElementById('enemyCountInput').value)||5);
+  GAME_SETTINGS.enemyWizardCount = clamp(Number(document.getElementById('enemyCountInput').value)||5, 1, MAX_WIZARDS - 1);
   startGame(mode);
 }
 
@@ -663,10 +677,12 @@ function setupWizards() {
   };
 
   const humans = mode === "two" ? 2 : mode === "one" ? 1 : 0;
-  const desiredTotal = mode === 'bots' ? clamp(GAME_SETTINGS.enemyWizardCount,2,6) : Math.min(MAX_WIZARDS, humans + GAME_SETTINGS.enemyWizardCount);
+  const desiredTotal = mode === 'bots'
+    ? clamp(GAME_SETTINGS.enemyWizardCount, 2, MAX_WIZARDS)
+    : Math.min(MAX_WIZARDS, humans + GAME_SETTINGS.enemyWizardCount);
 
   for (let i = 0; i < desiredTotal; i++) {
-    const a = Math.PI * 2 * i / MAX_WIZARDS;
+    const a = Math.PI * 2 * i / desiredTotal;
     const isHuman = i < humans;
     const name = isHuman
       ? `Player ${i + 1}`
@@ -791,7 +807,8 @@ function createWizard(name, color, spawnAngle, human, controls) {
       cast: rand(1.4, 3.3),
       desiredAngle: angle,
       wobble: rand(0, 100)
-    }
+    },
+    telegraph: { group: null, kind: null }
   };
 }
 
@@ -875,6 +892,10 @@ function vaporizeWizard(w, sourceName) {
   createVaporCloud(w.x, w.z);
 
   showMessage(`${w.name} was vaporized${sourceName ? " by " + sourceName : ""}!`);
+  if (GAME_SETTINGS.mode === 'king') {
+    w.respawnTimer = 1.8;
+    return;
+  }
   if (GAME_SETTINGS.mode === 'stock' || (GAME_SETTINGS.mode==='survival' && w.human)) {
     w.stocks = Math.max(0, w.stocks - 1);
     if (w.stocks > 0) { w.respawnTimer = 1.8; }
@@ -944,6 +965,100 @@ function updateWizards(dt) {
     applyPhysics(w, dt);
     pickupCheck(w);
     updateWizardMesh(w, dt);
+  }
+}
+
+function hideTelegraph(w) {
+  if (!w || !w.telegraph || !w.telegraph.group) return;
+  scene.remove(w.telegraph.group);
+  w.telegraph.group = null;
+  w.telegraph.kind = null;
+}
+
+function estimateLavaLandingPoint(w, charge = 0) {
+  const f = forwardVector(w);
+  const power = 0.35 + clamp(charge / 1.6, 0, 1) * 0.65;
+  const speed = 16 + power * 22;
+  const vy = 10 + power * 12;
+  const gravity = 24;
+  const t = clamp((vy + Math.sqrt(vy * vy + 2 * gravity * Math.max(0.01, w.y + 2.0))) / gravity, 0.15, 2.8);
+  return { x: w.x + f.x * (2.0 + speed * t), z: w.z + f.z * (2.0 + speed * t), t, speed, vy };
+}
+
+function showLavaTelegraph(w, charge = 0) {
+  if (!w.telegraph.group || w.telegraph.kind !== 'lava') {
+    hideTelegraph(w);
+    const group = new THREE.Group();
+    const arc = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xff8f3d, transparent: true, opacity: 0.85 }));
+    const ring = createGroundRing(w.x, w.z, 2.1, 0xff5f1f, 0.35);
+    ring.position.y = 0.08;
+    group.add(arc);
+    group.add(ring);
+    group.userData.arc = arc;
+    group.userData.ring = ring;
+    scene.add(group);
+    w.telegraph.group = group;
+    w.telegraph.kind = 'lava';
+  }
+  const landing = estimateLavaLandingPoint(w, charge);
+  const points = [];
+  const f = forwardVector(w);
+  const segments = 20;
+  for (let i = 0; i <= segments; i++) {
+    const t = landing.t * (i / segments);
+    points.push(new THREE.Vector3(
+      w.x + f.x * (2.0 + landing.speed * t),
+      Math.max(0.15, w.y + 2.0 + landing.vy * t - 0.5 * 24 * t * t),
+      w.z + f.z * (2.0 + landing.speed * t)
+    ));
+  }
+  w.telegraph.group.userData.arc.geometry.setFromPoints(points);
+  const ring = w.telegraph.group.userData.ring;
+  ring.position.set(landing.x, 0.08, landing.z);
+  const pulse = 0.78 + Math.sin(performance.now() * 0.011) * 0.14;
+  ring.scale.setScalar(0.92 + clamp(charge / 1.6, 0, 1) * 1.15);
+  ring.material.opacity = 0.22 + pulse * 0.28;
+}
+
+function showGlueTelegraph(w) {
+  if (!w.telegraph.group || w.telegraph.kind !== 'glue') {
+    hideTelegraph(w);
+    const group = new THREE.Group();
+    const lane = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.8, 27.5),
+      new THREE.MeshStandardMaterial({ color: 0x66ff66, emissive: 0x2d7f2d, transparent: true, opacity: 0.22, side: THREE.DoubleSide })
+    );
+    lane.rotation.x = -Math.PI / 2;
+    const splash = createGroundRing(w.x, w.z, 2.3, 0x66ff66, 0.3);
+    splash.position.y = 0.08;
+    group.add(lane);
+    group.add(splash);
+    group.userData.lane = lane;
+    group.userData.splash = splash;
+    scene.add(group);
+    w.telegraph.group = group;
+    w.telegraph.kind = 'glue';
+  }
+  const f = forwardVector(w);
+  const range = 27.5;
+  const midX = w.x + f.x * (range * 0.5 + 1.6);
+  const midZ = w.z + f.z * (range * 0.5 + 1.6);
+  const endX = w.x + f.x * (range + 1.6);
+  const endZ = w.z + f.z * (range + 1.6);
+  const lane = w.telegraph.group.userData.lane;
+  lane.position.set(midX, 0.09, midZ);
+  lane.rotation.y = w.angle;
+  const splash = w.telegraph.group.userData.splash;
+  splash.position.set(endX, 0.08, endZ);
+  splash.material.opacity = 0.2 + (0.07 * (0.5 + Math.sin(performance.now() * 0.009) * 0.5));
+}
+
+function updateAbilityTelegraphs(dt) {
+  for (const w of wizards) {
+    if (!w.alive || !w.human || !w.ability) { hideTelegraph(w); continue; }
+    if (w.ability === "Lava Lob" && isDown(w.controls.ability)) showLavaTelegraph(w, w.lavaCharge || 0);
+    else if (w.ability === "Wizard Glue Glob") showGlueTelegraph(w);
+    else hideTelegraph(w);
   }
 }
 
@@ -1026,9 +1141,16 @@ function updateBot(w, dt) {
     w.ai.think = rand(0.18, 0.55);
 
     const nearestPickup = choosePracticalPickup(w,target);
-    if (GAME_SETTINGS.mode==='king' && !isWizardInHill(w) && (!w.ability || Math.random()<0.65)) w.ai.desiredAngle = angleToPoint(w.x,w.z,hillZone.x,hillZone.z);
+    if (GAME_SETTINGS.mode==='king' && !isWizardInHill(w) && (!w.ability || Math.random()<0.65)) {
+      const hillPoint = getBotHillApproachPoint(w);
+      w.ai.desiredAngle = angleToPoint(w.x,w.z,hillPoint.x,hillPoint.z);
+    }
     else if (nearestPickup) w.ai.desiredAngle = angleToPoint(w.x, w.z, nearestPickup.x, nearestPickup.z);
-    else w.ai.desiredAngle = angleToPoint(w.x, w.z, target.x, target.z) + rand(-0.2, 0.2);
+    else {
+      const botIndex = wizards.indexOf(w);
+      const orbitOffset = ((botIndex % 6) - 2.5) * 0.32;
+      w.ai.desiredAngle = angleToPoint(w.x, w.z, target.x, target.z) + orbitOffset + rand(-0.16, 0.16);
+    }
   }
 
   const diff = normalizeAngle(w.ai.desiredAngle - w.angle);
@@ -1049,6 +1171,9 @@ function updateBot(w, dt) {
     w.vx -= f.x * speed * dt * 2.2;
     w.vz -= f.z * speed * dt * 2.2;
   }
+  const spacing = getBotSpacingVector(w);
+  w.vx += spacing.x * speed * dt * 2.2;
+  w.vz += spacing.z * speed * dt * 2.2;
 
   if (w.ability && w.ai.cast <= 0 && d < 27 && Math.abs(diff) < 0.75) {
     const charge = w.ability === "Lava Lob" ? rand(0.45, 1.25) : 0;
@@ -1059,6 +1184,25 @@ function updateBot(w, dt) {
   if (w.fireCooldown <= 0 && d < 26 && Math.abs(diff) < 0.55 && Math.random() < (GAME_SETTINGS.mode==='survival'?0.06:0.045)) {
     castFireball(w);
   }
+}
+function getBotSpacingVector(bot) {
+  let sx = 0, sz = 0;
+  for (const other of wizards) {
+    if (other === bot || !other.alive) continue;
+    const d = distance2D(bot, other);
+    if (d > 0 && d < 7.5) {
+      const strength = (7.5 - d) / 7.5;
+      sx += ((bot.x - other.x) / d) * strength;
+      sz += ((bot.z - other.z) / d) * strength;
+    }
+  }
+  return { x: sx, z: sz };
+}
+function getBotHillApproachPoint(bot) {
+  const i = wizards.indexOf(bot);
+  const a = i * 2.399963 + matchTime * 0.08;
+  const r = hillZone.radius * rand(0.35, 0.9);
+  return { x: hillZone.x + Math.cos(a) * r, z: hillZone.z + Math.sin(a) * r };
 }
 
 function applyPhysics(w, dt) {
@@ -1286,6 +1430,7 @@ function pickupCheck(w) {
 
 function castAbility(w, charge = 0) {
   if (!w.alive || !w.ability) return;
+  hideTelegraph(w);
 
   const ability = w.ability;
   w.ability = null;
@@ -2686,11 +2831,11 @@ function updateHud() {
 
   for (const w of humans) {
     const card = document.createElement('div'); card.className='hud-card'; const fire=w.fireCooldown<=0?'ready':w.fireCooldown.toFixed(1)+'s';
-    const modeLine = GAME_SETTINGS.mode==='stock' ? `Stocks: ${'♥ '.repeat(w.stocks)}<br>Damage: ${w.damage}/${MAX_DAMAGE}` : GAME_SETTINGS.mode==='king' ? `Score: ${Math.floor(w.score)}/${GAME_SETTINGS.kingScoreTarget}<br>Hill: ${isWizardInHill(w)?'Holding':'Outside'}` : `Score: ${Math.floor(survivalScore)}<br>Time: ${Math.floor(matchTime/60)}:${String(Math.floor(matchTime%60)).padStart(2,'0')}<br>Kills: ${w.kills}`;
+    const modeLine = GAME_SETTINGS.mode==='stock' ? `Stocks: ${'♥ '.repeat(w.stocks)}<br>Damage: ${w.damage}/${MAX_DAMAGE}` : GAME_SETTINGS.mode==='king' ? `Score: ${Math.floor(w.score)} / ${GAME_SETTINGS.kingScoreTarget}<br>Kills: ${w.kills}` : `Score: ${Math.floor(survivalScore)}<br>Time: ${Math.floor(matchTime/60)}:${String(Math.floor(matchTime%60)).padStart(2,'0')}<br>Kills: ${w.kills}`;
     card.innerHTML=`<strong>${w.name} (${GAME_SETTINGS.mode})</strong>${modeLine}<br>${w.ability ? abilityEmoji[w.ability]+' '+w.ability:'No ability'}<br>🔥 ${fire}`; tinyHud.appendChild(card);
   }
 
-  const board=document.createElement('div'); board.className='hud-card'; board.innerHTML='<strong>Scoreboard</strong>'+wizards.map(w=>`${w.name}: ${GAME_SETTINGS.mode==='king'?Math.floor(w.score):'Dmg '+w.damage+' / S '+w.stocks}`).join('<br>'); tinyHud.appendChild(board);
+  const board=document.createElement('div'); board.className='hud-card'; board.innerHTML='<strong>Scoreboard</strong>'+wizards.map(w=>`${w.name}: ${GAME_SETTINGS.mode==='king'?'Score '+Math.floor(w.score)+' / K '+w.kills:'Dmg '+w.damage+' / S '+w.stocks}`).join('<br>'); tinyHud.appendChild(board);
   if (!humans.length) {
     const alive = wizards.filter(w => w.alive).length;
     const card = document.createElement("div");
@@ -3166,6 +3311,7 @@ function animate() {
   updateGeysers(dt);
   updateTiltPlane(dt);
   updateWizards(dt);
+  updateAbilityTelegraphs(dt);
   updatePickups(dt);
   updateProjectiles(dt);
   updateTemporary(dt);
