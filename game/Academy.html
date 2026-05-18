@@ -372,6 +372,11 @@ const GOOSE_HIT_COOLDOWN = 0.3;
 const MAGNET_BEARD_TRAP_LIFE = 6.0;
 const MAGNET_BEARD_TRAP_RADIUS = 13;
 const MAGNET_BEARD_TRAP_PULL = 22;
+const FISH_SLAP_RANGE = 8.5;
+const FISH_SLAP_CONE = 1.25;
+const FISH_SLAP_DAMAGE = 2;
+const FISH_SLAP_KNOCKBACK = 34;
+const FISH_SLAP_UPWARD = 17;
 
 const abilityNames = [
   "Bonk Bolt",
@@ -386,7 +391,8 @@ const abilityNames = [
   "Toadstool Wall",
   "Arcane Bowling Ball",
   "Anvil Drop",
-  "Vapor Beam"
+  "Vapor Beam",
+  "Fish Slap"
 ];
 
 const abilityEmoji = {
@@ -402,7 +408,8 @@ const abilityEmoji = {
   "Toadstool Wall": "🍄",
   "Arcane Bowling Ball": "🎳",
   "Anvil Drop": "⚒️",
-  "Vapor Beam": "🌈"
+  "Vapor Beam": "🌈",
+  "Fish Slap": "🐟"
 };
 
 const wizardColors = [
@@ -1544,6 +1551,7 @@ function castAbility(w, charge = 0) {
     case "Arcane Bowling Ball": castBowlingBall(w); break;
     case "Anvil Drop": castAnvilDrop(w); break;
     case "Vapor Beam": castVaporBeam(w); break;
+    case "Fish Slap": castFishSlap(w); break;
   }
 }
 
@@ -1749,6 +1757,100 @@ function castSlapGust(w) {
       target.effect.slapSpin = 1.2;
       spawnPopText(target.x, target.z, "SLAP!", 0xffffff);
     }
+  }
+}
+
+function castFishSlap(w) {
+  const f = forwardVector(w);
+
+  createFishSlapVisual(w);
+
+  for (const target of wizards) {
+    if (target === w || !target.alive) continue;
+
+    if (w.team && target.team && w.team === target.team) continue;
+
+    const dx = target.x - w.x;
+    const dz = target.z - w.z;
+    const d = Math.hypot(dx, dz);
+
+    if (d > FISH_SLAP_RANGE + target.radius) continue;
+
+    const targetAngle = Math.atan2(dx, dz);
+    const diff = Math.abs(normalizeAngle(targetAngle - w.angle));
+
+    if (diff <= FISH_SLAP_CONE * 0.5) {
+      applyDamage(target, FISH_SLAP_DAMAGE, w.name + "'s Fish Slap");
+
+      const len = d || 1;
+      const awayX = dx / len;
+      const awayZ = dz / len;
+
+      target.vx += awayX * FISH_SLAP_KNOCKBACK;
+      target.vz += awayZ * FISH_SLAP_KNOCKBACK;
+      target.vy = Math.max(target.vy || 0, FISH_SLAP_UPWARD);
+      target.airborne = true;
+      target.grounded = false;
+
+      target.effect.slapSpin = Math.max(target.effect.slapSpin || 0, 1.15);
+
+      spawnPopText(target.x, target.z, "FISH SLAP!", 0x8eeaff);
+      createImpactBurst(target.x, target.y + 1.2, target.z, 0x8eeaff, 1.4);
+      addScreenShake(0.35, 0.16);
+    }
+  }
+}
+
+function createFishSlapVisual(w) {
+  const group = new THREE.Group();
+
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: 0x60c8ff,
+    emissive: 0x0b4065,
+    roughness: 0.45
+  });
+
+  const fishBody = new THREE.Mesh(new THREE.SphereGeometry(1.0, 18, 12), bodyMat);
+  fishBody.scale.set(2.4, 0.65, 0.75);
+  group.add(fishBody);
+
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.75, 1.1, 3), bodyMat);
+  tail.rotation.z = Math.PI / 2;
+  tail.position.x = -2.0;
+  group.add(tail);
+
+  const eye = new THREE.Mesh(
+    new THREE.SphereGeometry(0.13, 8, 6),
+    new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff })
+  );
+  eye.position.set(0.9, 0.42, 0.45);
+  group.add(eye);
+
+  const f = forwardVector(w);
+  group.position.set(w.x + f.x * 3.2, w.y + 1.9, w.z + f.z * 3.2);
+  group.rotation.y = w.angle + Math.PI / 2;
+  group.scale.setScalar(1.0);
+
+  scene.add(group);
+
+  temporary.push({
+    mesh: group,
+    life: 0.32,
+    spin: 8,
+    follow: null,
+    fishSlap: true
+  });
+
+  // Wet splash particles
+  for (let i = 0; i < 22; i++) {
+    spawnParticle(
+      group.position.x + rand(-0.8, 0.8),
+      group.position.y + rand(-0.4, 0.4),
+      group.position.z + rand(-0.8, 0.8),
+      i % 2 ? 0x8eeaff : 0xffffff,
+      rand(0.08, 0.22),
+      rand(0.2, 0.55)
+    );
   }
 }
 
