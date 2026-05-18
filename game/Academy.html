@@ -1071,7 +1071,8 @@ function startGame(selectedMode) {
 
   clock = new THREE.Clock();
   running = true;
-  showMessage("Grab blocks. Cast nonsense. Last wizard standing wins.");
+  if (GAME_SETTINGS.mode === "castle") showCastleRoundRoleMessage();
+  else showMessage("Grab blocks. Cast nonsense. Last wizard standing wins.");
   animate();
 }
 
@@ -4148,8 +4149,12 @@ function buildHudCardHtml(w) {
   else if (GAME_SETTINGS.mode === "kills") modeLine = `Kills: ${w.kills || 0} / ${GAME_SETTINGS.killTarget}<br>Damage: ${Math.floor(w.damage)} / ${MAX_DAMAGE}`;
   else if (GAME_SETTINGS.mode === "crown") modeLine = `Crown: ${Math.floor(w.score)} / ${GAME_SETTINGS.crownScoreTarget}<br>Kills: ${w.kills}${crownState.carrier === w ? "<br>👑 CROWN CARRIER" : ""}`;
   else if (GAME_SETTINGS.mode === "castle") {
-    const teamStocks = w.team === "attackers" ? castleState.attackerStocks : castleState.defenderStocks;
-    modeLine = `Team: ${w.team === "attackers" ? "Attackers" : "Defenders"}<br>Team Stocks: ${teamStocks}<br>Rounds: A ${castleState.attackerRoundWins} - D ${castleState.defenderRoundWins}`;
+    modeLine = `
+      Team: ${w.team === "attackers" ? "Attackers" : "Defenders"}<br>
+      Attacker Stocks: ${castleState.attackerStocks}<br>
+      Defender Stocks: ${castleState.defenderStocks}<br>
+      Rounds: A ${castleState.attackerRoundWins} - D ${castleState.defenderRoundWins}
+    `;
   } else if (GAME_SETTINGS.mode === "survival") {
     modeLine = `Survival: ${Math.floor(survivalScore)}<br>Time: ${formatMatchTime(matchTime)}<br>Kills: ${w.kills}`;
   }
@@ -4869,28 +4874,82 @@ function updateCastleHpBar(bar, health, maxHealth, hidden) {
   bar.lookAt(spectatorCamera ? spectatorCamera.position : camera1.position);
 }
 
-function assignCastleTeams() {
+function getCastleTeamForHumanPlayer(playerIndex) {
+  const oddRound = castleState.roundNumber % 2 === 1;
+
+  if (playerIndex === 0) {
+    return oddRound ? "attackers" : "defenders";
+  }
+
+  if (playerIndex === 1) {
+    return oddRound ? "defenders" : "attackers";
+  }
+
+  return null;
+}
+
+function reassignCastleTeamsForCurrentRound() {
   castleState.attackers = [];
   castleState.defenders = [];
+
   for (let i = 0; i < wizards.length; i++) {
     const w = wizards[i];
-    if (mode === "two" && i === 0) w.team = "attackers";
-    else if (mode === "two" && i === 1) w.team = "defenders";
-    else if (mode === "one" && i === 0) w.team = "attackers";
-    else w.team = castleState.attackers.length <= castleState.defenders.length ? "attackers" : "defenders";
-    if (w.team === "attackers") castleState.attackers.push(w); else castleState.defenders.push(w);
+
+    if (mode === "two" && i < 2) {
+      w.team = getCastleTeamForHumanPlayer(i);
+    } else if (mode === "one" && i === 0) {
+      w.team = "attackers";
+    } else {
+      w.team = castleState.attackers.length <= castleState.defenders.length
+        ? "attackers"
+        : "defenders";
+    }
+
+    if (w.team === "attackers") castleState.attackers.push(w);
+    else castleState.defenders.push(w);
   }
-  castleState.attackerStocks = GAME_SETTINGS.castleTeamStocks;
-  castleState.defenderStocks = GAME_SETTINGS.castleTeamStocks;
+}
+
+function resetCastleTeamStocksForRound() {
+  const attackerStocks = Math.max(1, Math.floor(GAME_SETTINGS.castleTeamStocks));
+  const defenderStocks = Math.max(1, Math.ceil(attackerStocks * 0.7));
+
+  castleState.attackerStocks = attackerStocks;
+  castleState.defenderStocks = defenderStocks;
+}
+
+function showCastleRoundRoleMessage() {
+  if (GAME_SETTINGS.mode !== "castle") return;
+
+  const p1 = wizards[0];
+  const p2 = wizards[1];
+
+  if (mode === "two" && p1 && p2) {
+    showMessage(
+      `Round ${castleState.roundNumber}: Player 1 is ${p1.team === "attackers" ? "ATTACKING" : "DEFENDING"} • Player 2 is ${p2.team === "attackers" ? "ATTACKING" : "DEFENDING"}`,
+      3200
+    );
+  } else {
+    showMessage(
+      `Round ${castleState.roundNumber}: Attackers have ${castleState.attackerStocks} stocks • Defenders have ${castleState.defenderStocks} stocks`,
+      2600
+    );
+  }
+}
+
+function assignCastleTeams() {
+  castleState.roundNumber = 1;
   castleState.attackerRoundWins = 0;
   castleState.defenderRoundWins = 0;
-  castleState.roundNumber = 1;
+  reassignCastleTeamsForCurrentRound();
+  resetCastleTeamStocksForRound();
   castleState.towerHealth = GAME_SETTINGS.castleTowerHealth;
   castleState.towerMaxHealth = GAME_SETTINGS.castleTowerHealth;
   castleState.active = true;
   castleState.roundOver = false;
   for (const w of wizards) placeWizardAtCastleSpawn(w, true);
   applyTeamColors();
+  showCastleRoundRoleMessage();
 }
 
 function placeWizardAtCastleSpawn(w, fresh = false) {
@@ -4944,8 +5003,8 @@ function getBestCastleWizard(team) { return wizards.filter(w => w.team === team)
 function resetCastleRound() {
   castleState.roundNumber++;
   castleState.roundOver = false;
-  castleState.attackerStocks = GAME_SETTINGS.castleTeamStocks;
-  castleState.defenderStocks = GAME_SETTINGS.castleTeamStocks;
+  reassignCastleTeamsForCurrentRound();
+  resetCastleTeamStocksForRound();
   castleState.towerHealth = GAME_SETTINGS.castleTowerHealth;
   castleState.towerMaxHealth = GAME_SETTINGS.castleTowerHealth;
   for (const gate of castleState.gates) { gate.health = gate.maxHealth; gate.destroyed = false; gate.mesh.visible = true; }
@@ -4954,7 +5013,8 @@ function resetCastleRound() {
     placeWizardAtCastleSpawn(w, false);
     if (w.label) showWizardLabels(w);
   }
-  showMessage(`Round ${castleState.roundNumber}: Attackers ${castleState.attackerRoundWins} - Defenders ${castleState.defenderRoundWins}`, 2200);
+  applyTeamColors();
+  showCastleRoundRoleMessage();
 }
 
 function canCastleRespawn(w) {
