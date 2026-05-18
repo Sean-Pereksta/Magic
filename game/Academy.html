@@ -134,7 +134,7 @@
     left: 50%;
     top: 14px;
     transform: translateX(-50%);
-    z-index: 70;
+    z-index: 170;
     display: none;
     padding: 9px 18px;
     border-radius: 999px;
@@ -258,6 +258,72 @@
   .summary-table th { color: #fff08c; background: rgba(255, 227, 106, 0.12); }
   .summary-winner-row { background: rgba(255, 227, 106, 0.18); color: #fff08c; font-weight: 900; }
   .summary-small { color: #bfb8ff; font-size: 13px; }
+
+  #controlsConfigModal {
+    position: fixed;
+    inset: 0;
+    z-index: 140;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.72);
+    padding: 18px;
+  }
+
+  .controls-config-card {
+    width: min(900px, 94vw);
+    max-height: 90vh;
+    overflow: auto;
+    padding: 26px;
+    border-radius: 26px;
+    background: rgba(18, 12, 48, 0.97);
+    border: 4px solid #ffe36a;
+    box-shadow: 0 0 70px rgba(255, 227, 106, 0.28);
+  }
+
+  .controls-config-card h2,
+  .controls-config-card h3 {
+    color: #fff08c;
+    text-shadow: 2px 2px 0 #6f2bbd;
+  }
+
+  .player-config-section {
+    margin: 16px 0;
+    padding: 14px;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,0.22);
+    background: rgba(0,0,0,0.22);
+  }
+
+  .player-config-section label {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    font-weight: 900;
+    color: #ded9ff;
+  }
+
+  .binding-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 8px 0;
+    padding: 8px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.07);
+  }
+
+  .binding-row span {
+    font-weight: 900;
+    color: #fff08c;
+  }
+
+  .binding-row b {
+    color: #ded9ff;
+  }
+
 </style>
 </head>
 <body>
@@ -281,14 +347,53 @@
       <label>Castle Tower Health <input id="castleTowerHealthInput" type="number" min="10" max="100" value="35" style="width:70px"></label>
       <label>Kills to Win <input id="killTargetInput" type="number" min="1" max="50" value="10" style="width:70px"></label>
       <button onclick="startGameFromMenu()">Start Match</button>
+      <button onclick="openControlsConfig()">Controls / Controllers</button>
     </div>
 
     <p class="note">
       <b>P1:</b> W/S forward-back, A/D turn, Q ability, R swap, E fireball. Arrow keys also work.<br>
       <b>P2:</b> I/K forward-back, J/L turn, O ability, Y swap, U fireball.<br>
+      <b>Controller default:</b> Left analog stick moves/turns, RT fires Fireball, LT casts Special, X/Square swaps abilities.<br>
+      Use <b>Controls / Controllers</b> to assign controllers or remap keyboard/controller bindings per player.<br>
       In 2P mode, the screen splits so each player gets their own third-person camera.<br>
       <b>First to 10 Kills:</b> everyone respawns, and the first wizard to reach the kill target wins.<br>
       <b>Crown Control:</b> hold the glowing crown to score. <b>Castle Defense:</b> attackers break gates and tower while defenders protect shared stocks.
+    </p>
+  </div>
+</div>
+
+
+<div id="controlsConfigModal">
+  <div class="controls-config-card">
+    <h2>Controls / Controller Setup</h2>
+
+    <div id="gamepadStatusList"></div>
+
+    <div class="player-config-section" id="player1Config">
+      <h3>Player 1 Controls</h3>
+      <label>Input Device
+        <select id="p1InputDevice"></select>
+      </label>
+      <div id="p1BindingList"></div>
+    </div>
+
+    <div class="player-config-section" id="player2Config">
+      <h3>Player 2 Controls</h3>
+      <label>Input Device
+        <select id="p2InputDevice"></select>
+      </label>
+      <div id="p2BindingList"></div>
+    </div>
+
+    <div class="buttons">
+      <button onclick="saveControlsConfig()">Save Controls</button>
+      <button onclick="resetControlsToDefault()">Reset Defaults</button>
+      <button onclick="closeControlsConfig()">Close</button>
+    </div>
+
+    <p class="note">
+      Controller defaults: Left analog stick moves/turns, RT fires Fireball, LT casts Special.
+      Keyboard controls can still be mapped per player.
     </p>
   </div>
 </div>
@@ -373,6 +478,68 @@ let screenShakeAmount = 0;
 let screenShakeTimer = 0;
 
 const keys = {};
+
+const inputState = {
+  gamepads: [],
+  listeningForBind: null,
+  bindingPollActive: false
+};
+
+const DEFAULT_CONTROL_CONFIG = {
+  player1: {
+    deviceType: "keyboard",
+    gamepadIndex: null,
+    keyboard: {
+      forward: ["KeyW", "ArrowUp"],
+      back: ["KeyS", "ArrowDown"],
+      left: ["KeyA", "ArrowLeft"],
+      right: ["KeyD", "ArrowRight"],
+      fire: ["KeyE"],
+      ability: ["KeyQ"],
+      swap: ["KeyR"]
+    },
+    gamepad: {
+      moveX: { type: "axis", index: 0 },
+      moveY: { type: "axis", index: 1 },
+      fire: { type: "button", index: 7 },
+      ability: { type: "button", index: 6 },
+      swap: { type: "button", index: 2 }
+    }
+  },
+  player2: {
+    deviceType: "keyboard",
+    gamepadIndex: null,
+    keyboard: {
+      forward: ["KeyI"],
+      back: ["KeyK"],
+      left: ["KeyJ"],
+      right: ["KeyL"],
+      fire: ["KeyU"],
+      ability: ["KeyO"],
+      swap: ["KeyY"]
+    },
+    gamepad: {
+      moveX: { type: "axis", index: 0 },
+      moveY: { type: "axis", index: 1 },
+      fire: { type: "button", index: 7 },
+      ability: { type: "button", index: 6 },
+      swap: { type: "button", index: 2 }
+    }
+  }
+};
+
+let controlConfig = JSON.parse(JSON.stringify(DEFAULT_CONTROL_CONFIG));
+
+const CONTROL_ACTIONS = [
+  { key: "forward", label: "Forward" },
+  { key: "back", label: "Back" },
+  { key: "left", label: "Turn Left" },
+  { key: "right", label: "Turn Right" },
+  { key: "fire", label: "Fireball" },
+  { key: "ability", label: "Special Ability" },
+  { key: "swap", label: "Swap Ability" }
+];
+
 const wizards = [];
 const projectiles = [];
 const pickups = [];
@@ -503,6 +670,15 @@ const botNames = [
 ];
 
 window.addEventListener("keydown", e => {
+  if (inputState.listeningForBind?.type === "keyboard") {
+    const bind = inputState.listeningForBind;
+    controlConfig[bind.playerKey].keyboard[bind.actionKey] = [e.code];
+    inputState.listeningForBind = null;
+    renderControlsConfig();
+    e.preventDefault();
+    return;
+  }
+
   keys[e.code] = true;
   e.preventDefault();
 });
@@ -513,6 +689,345 @@ window.addEventListener("keyup", e => {
 });
 
 window.addEventListener("resize", resize);
+
+window.addEventListener("gamepadconnected", e => {
+  console.log("Gamepad connected:", e.gamepad);
+  refreshGamepadList();
+});
+
+window.addEventListener("gamepaddisconnected", e => {
+  console.log("Gamepad disconnected:", e.gamepad);
+  refreshGamepadList();
+});
+
+loadControlsConfig();
+
+
+function loadControlsConfig() {
+  try {
+    const saved = localStorage.getItem("goofyWizardControlsConfig");
+    if (saved) {
+      controlConfig = mergeControlConfig(
+        JSON.parse(JSON.stringify(DEFAULT_CONTROL_CONFIG)),
+        JSON.parse(saved)
+      );
+    }
+  } catch (err) {
+    console.warn("Could not load controls config:", err);
+    controlConfig = JSON.parse(JSON.stringify(DEFAULT_CONTROL_CONFIG));
+  }
+}
+
+function mergeControlConfig(base, saved) {
+  for (const playerKey of ["player1", "player2"]) {
+    if (!saved[playerKey]) continue;
+    base[playerKey] = {
+      ...base[playerKey],
+      ...saved[playerKey],
+      keyboard: {
+        ...base[playerKey].keyboard,
+        ...(saved[playerKey].keyboard || {})
+      },
+      gamepad: {
+        ...base[playerKey].gamepad,
+        ...(saved[playerKey].gamepad || {})
+      }
+    };
+  }
+  return base;
+}
+
+function saveControlsConfig() {
+  localStorage.setItem("goofyWizardControlsConfig", JSON.stringify(controlConfig));
+  closeControlsConfig();
+  showMessage("Controls saved!", 1000);
+}
+
+function resetControlsToDefault() {
+  controlConfig = JSON.parse(JSON.stringify(DEFAULT_CONTROL_CONFIG));
+  localStorage.removeItem("goofyWizardControlsConfig");
+  renderControlsConfig();
+  showMessage("Controls reset to defaults.", 1000);
+}
+
+function openControlsConfig() {
+  const modal = document.getElementById("controlsConfigModal");
+  if (!modal) return;
+  modal.style.display = "flex";
+  renderControlsConfig();
+}
+
+function closeControlsConfig() {
+  const modal = document.getElementById("controlsConfigModal");
+  if (!modal) return;
+  modal.style.display = "none";
+  inputState.listeningForBind = null;
+  inputState.bindingPollActive = false;
+}
+
+function getConnectedGamepads() {
+  return Array.from(navigator.getGamepads ? navigator.getGamepads() : [])
+    .filter(Boolean);
+}
+
+function refreshGamepadList() {
+  inputState.gamepads = getConnectedGamepads();
+
+  const status = document.getElementById("gamepadStatusList");
+  if (status) {
+    status.innerHTML = inputState.gamepads.length
+      ? inputState.gamepads.map(g => `<div class="note">🎮 Controller ${g.index}: ${escapeHtml(g.id)}</div>`).join("")
+      : `<div class="note">No controllers detected. Connect one and press a button.</div>`;
+  }
+
+  populateDeviceSelects();
+}
+
+function populateDeviceSelects() {
+  const p1 = document.getElementById("p1InputDevice");
+  const p2 = document.getElementById("p2InputDevice");
+  if (!p1 || !p2) return;
+
+  const connectedByIndex = new Map(getConnectedGamepads().map(gp => [gp.index, gp]));
+  const options = [`<option value="keyboard">Keyboard</option>`];
+
+  for (let i = 0; i < 4; i++) {
+    const gp = connectedByIndex.get(i);
+    const label = gp
+      ? `Controller ${i}: ${escapeHtml(gp.id.slice(0, 32))}`
+      : `Controller ${i}`;
+    options.push(`<option value="gamepad:${i}">${label}</option>`);
+  }
+
+  p1.innerHTML = options.join("");
+  p2.innerHTML = options.join("");
+
+  p1.value = controlConfig.player1.deviceType === "gamepad"
+    ? `gamepad:${controlConfig.player1.gamepadIndex}`
+    : "keyboard";
+
+  p2.value = controlConfig.player2.deviceType === "gamepad"
+    ? `gamepad:${controlConfig.player2.gamepadIndex}`
+    : "keyboard";
+
+  p1.onchange = () => setPlayerDevice("player1", p1.value);
+  p2.onchange = () => setPlayerDevice("player2", p2.value);
+}
+
+function setPlayerDevice(playerKey, value) {
+  if (value === "keyboard") {
+    controlConfig[playerKey].deviceType = "keyboard";
+    controlConfig[playerKey].gamepadIndex = null;
+  } else {
+    const index = Number(value.split(":")[1]);
+    controlConfig[playerKey].deviceType = "gamepad";
+    controlConfig[playerKey].gamepadIndex = index;
+  }
+
+  preventDuplicateControllerAssignment(playerKey);
+  renderControlsConfig();
+}
+
+function preventDuplicateControllerAssignment(changedPlayer) {
+  const otherPlayer = changedPlayer === "player1" ? "player2" : "player1";
+  const changed = controlConfig[changedPlayer];
+  const other = controlConfig[otherPlayer];
+
+  if (
+    changed.deviceType === "gamepad" &&
+    other.deviceType === "gamepad" &&
+    changed.gamepadIndex === other.gamepadIndex
+  ) {
+    other.deviceType = "keyboard";
+    other.gamepadIndex = null;
+    showMessage("That controller was already assigned, so the other player was moved back to keyboard.", 1800);
+  }
+}
+
+function renderControlsConfig() {
+  refreshGamepadList();
+
+  renderPlayerBindings("player1", "p1BindingList");
+  renderPlayerBindings("player2", "p2BindingList");
+}
+
+function renderPlayerBindings(playerKey, containerId) {
+  const box = document.getElementById(containerId);
+  if (!box) return;
+
+  const cfg = controlConfig[playerKey];
+
+  if (cfg.deviceType === "gamepad") {
+    box.innerHTML = `
+      <div class="binding-row">
+        <span>Move / Turn</span>
+        <b>Left Analog Stick</b>
+      </div>
+      ${CONTROL_ACTIONS
+        .filter(a => !["forward", "back", "left", "right"].includes(a.key))
+        .map(action => `
+          <div class="binding-row">
+            <span>${action.label}</span>
+            <button onclick="listenForGamepadBind('${playerKey}', '${action.key}')">
+              ${formatGamepadBinding(cfg.gamepad[action.key])}
+            </button>
+          </div>
+        `).join("")}
+    `;
+    return;
+  }
+
+  box.innerHTML = CONTROL_ACTIONS.map(action => `
+    <div class="binding-row">
+      <span>${action.label}</span>
+      <button onclick="listenForKeyboardBind('${playerKey}', '${action.key}')">
+        ${formatKeyboardBinding(cfg.keyboard[action.key])}
+      </button>
+    </div>
+  `).join("");
+}
+
+function formatKeyboardBinding(value) {
+  if (!value || !value.length) return "Unbound";
+  return value.join(" / ").replaceAll("Key", "");
+}
+
+function formatGamepadBinding(binding) {
+  if (!binding) return "Unbound";
+  if (binding.type === "button") return `Button ${binding.index}`;
+  if (binding.type === "axis") return `Axis ${binding.index}`;
+  return "Unbound";
+}
+
+function listenForKeyboardBind(playerKey, actionKey) {
+  inputState.listeningForBind = {
+    playerKey,
+    actionKey,
+    type: "keyboard"
+  };
+
+  showMessage(`Press a key for ${actionKey}...`, 1500);
+}
+
+function listenForGamepadBind(playerKey, actionKey) {
+  inputState.listeningForBind = {
+    playerKey,
+    actionKey,
+    type: "gamepad"
+  };
+
+  showMessage(`Press a controller button for ${actionKey}...`, 1800);
+  startGamepadBindingPoll();
+}
+
+function startGamepadBindingPoll() {
+  if (inputState.bindingPollActive) return;
+  inputState.bindingPollActive = true;
+
+  const poll = () => {
+    updateGamepadBindingCapture();
+    if (inputState.listeningForBind?.type === "gamepad") {
+      requestAnimationFrame(poll);
+    } else {
+      inputState.bindingPollActive = false;
+    }
+  };
+
+  requestAnimationFrame(poll);
+}
+
+function updateGamepadBindingCapture() {
+  const bind = inputState.listeningForBind;
+  if (!bind || bind.type !== "gamepad") return;
+
+  const cfg = controlConfig[bind.playerKey];
+  const gp = navigator.getGamepads?.()[cfg.gamepadIndex];
+  if (!gp) return;
+
+  for (let i = 0; i < gp.buttons.length; i++) {
+    if (gp.buttons[i].pressed) {
+      cfg.gamepad[bind.actionKey] = { type: "button", index: i };
+      inputState.listeningForBind = null;
+      renderControlsConfig();
+      showMessage(`${bind.actionKey} bound to Button ${i}`, 1000);
+      return;
+    }
+  }
+}
+
+function validateControlAssignments() {
+  const selectedMode = document.getElementById('playerModeSelect').value;
+
+  if (selectedMode !== "two") return true;
+
+  const p1 = controlConfig.player1;
+  const p2 = controlConfig.player2;
+
+  if (
+    p1.deviceType === "gamepad" &&
+    p2.deviceType === "gamepad" &&
+    p1.gamepadIndex === p2.gamepadIndex
+  ) {
+    showMessage("Player 1 and Player 2 cannot use the same controller.", 2200);
+    openControlsConfig();
+    return false;
+  }
+
+  return true;
+}
+
+function getPlayerConfigForWizard(w) {
+  if (!w.human) return null;
+  return w.name === "Player 2" ? controlConfig.player2 : controlConfig.player1;
+}
+
+function getGamepadForConfig(cfg) {
+  if (!cfg || cfg.deviceType !== "gamepad") return null;
+  return navigator.getGamepads?.()[cfg.gamepadIndex] || null;
+}
+
+function isKeyboardActionDown(cfg, action) {
+  return isDown(cfg.keyboard[action]);
+}
+
+function isGamepadButtonDown(cfg, action) {
+  const gp = getGamepadForConfig(cfg);
+  const binding = cfg?.gamepad?.[action];
+  if (!gp || !binding || binding.type !== "button") return false;
+
+  const button = gp.buttons[binding.index];
+  if (!button) return false;
+
+  return button.pressed || button.value > 0.45;
+}
+
+function getAnalogMove(cfg) {
+  const gp = getGamepadForConfig(cfg);
+  if (!gp) return { x: 0, y: 0 };
+
+  const moveXBinding = cfg.gamepad.moveX || { type: "axis", index: 0 };
+  const moveYBinding = cfg.gamepad.moveY || { type: "axis", index: 1 };
+
+  let x = gp.axes[moveXBinding.index] || 0;
+  let y = gp.axes[moveYBinding.index] || 0;
+
+  const deadzone = 0.18;
+  if (Math.abs(x) < deadzone) x = 0;
+  if (Math.abs(y) < deadzone) y = 0;
+
+  return { x, y };
+}
+
+function getActionDown(w, action) {
+  const cfg = getPlayerConfigForWizard(w);
+  if (!cfg) return false;
+
+  if (cfg.deviceType === "gamepad") {
+    return isGamepadButtonDown(cfg, action);
+  }
+
+  return isKeyboardActionDown(cfg, action);
+}
 
 /* ============================================================
    STARTUP
@@ -527,6 +1042,7 @@ function startGameFromMenu(){
   GAME_SETTINGS.castleTeamStocks = Math.max(4, Number(document.getElementById('castleStockInput').value) || 18);
   GAME_SETTINGS.castleTowerHealth = Math.max(10, Number(document.getElementById('castleTowerHealthInput').value) || 35);
   GAME_SETTINGS.enemyWizardCount = clamp(Number(document.getElementById('enemyCountInput').value)||5, 1, MAX_WIZARDS - 1);
+  if (!validateControlAssignments()) return;
   startGame(mode);
 }
 
@@ -806,26 +1322,6 @@ function createStone(x, z, r) {
    ============================================================ */
 
 function setupWizards() {
-  const p1Controls = {
-    forward: ["KeyW", "ArrowUp"],
-    back: ["KeyS", "ArrowDown"],
-    left: ["KeyA", "ArrowLeft"],
-    right: ["KeyD", "ArrowRight"],
-    ability: ["KeyQ"],
-    swap: ["KeyR"],
-    fire: ["KeyE"]
-  };
-
-  const p2Controls = {
-    forward: ["KeyI"],
-    back: ["KeyK"],
-    left: ["KeyJ"],
-    right: ["KeyL"],
-    ability: ["KeyO"],
-    swap: ["KeyY"],
-    fire: ["KeyU"]
-  };
-
   const humans = mode === "two" ? 2 : mode === "one" ? 1 : 0;
   const desiredTotal = mode === 'bots'
     ? clamp(GAME_SETTINGS.enemyWizardCount, 2, MAX_WIZARDS)
@@ -838,7 +1334,7 @@ function setupWizards() {
       ? `Player ${i + 1}`
       : botNames[i % botNames.length];
 
-    const controls = i === 0 ? p1Controls : i === 1 ? p2Controls : null;
+    const controls = i === 0 ? controlConfig.player1 : i === 1 ? controlConfig.player2 : null;
 
     const wizard = createWizard(name, wizardColors[i], a, isHuman, controls);
     wizards.push(wizard);
@@ -1277,7 +1773,7 @@ function showGlueTelegraph(w) {
 function updateAbilityTelegraphs(dt) {
   for (const w of wizards) {
     if (!w.alive || !w.human || !w.ability) { hideTelegraph(w); continue; }
-    if (w.ability === "Lava Lob" && isDown(w.controls.ability)) showLavaTelegraph(w, w.lavaCharge || 0);
+    if (w.ability === "Lava Lob" && getActionDown(w, "ability")) showLavaTelegraph(w, w.lavaCharge || 0);
     else if (w.ability === "Wizard Glue Glob") showGlueTelegraph(w);
     else hideTelegraph(w);
   }
@@ -1285,23 +1781,49 @@ function updateAbilityTelegraphs(dt) {
 
 function updateHuman(w, dt) {
   if (w.effect.stunned > 0) return;
-  const c = w.controls;
+  const cfg = getPlayerConfigForWizard(w);
+  if (!cfg) return;
 
-  let forward = isDown(c.forward);
-  let back = isDown(c.back);
-  let left = isDown(c.left);
-  let right = isDown(c.right);
+  let moveX = 0;
+  let moveY = 0;
+
+  let forward = false;
+  let back = false;
+  let left = false;
+  let right = false;
+
+  if (cfg.deviceType === "gamepad") {
+    const analog = getAnalogMove(cfg);
+    moveX = analog.x;
+    moveY = analog.y;
+
+    forward = moveY < -0.25;
+    back = moveY > 0.25;
+    left = moveX < -0.25;
+    right = moveX > 0.25;
+  } else {
+    forward = isKeyboardActionDown(cfg, "forward");
+    back = isKeyboardActionDown(cfg, "back");
+    left = isKeyboardActionDown(cfg, "left");
+    right = isKeyboardActionDown(cfg, "right");
+  }
 
   if (w.effect.reverse > 0) {
     [forward, back] = [back, forward];
     [left, right] = [right, left];
+    moveX *= -1;
+    moveY *= -1;
   }
 
   let turn = TURN_SPEED;
   if (w.effect.jelly > 0) turn *= 0.65;
 
-  if (left) w.angle += turn * dt;
-  if (right) w.angle -= turn * dt;
+  if (cfg.deviceType === "gamepad") {
+    w.angle -= moveX * turn * dt;
+  } else {
+    if (left) w.angle += turn * dt;
+    if (right) w.angle -= turn * dt;
+  }
 
   let speed = PLAYER_SPEED;
   if (w.effect.glue > 0) speed *= 0.42;
@@ -1310,18 +1832,22 @@ function updateHuman(w, dt) {
   if (GAME_SETTINGS.mode === "crown" && crownState.carrier === w) speed *= CROWN_CARRIER_SPEED_MULT;
 
   const f = forwardVector(w);
+  let throttle = 0;
 
-  if (forward) {
-    w.vx += f.x * speed * dt * 5.2;
-    w.vz += f.z * speed * dt * 5.2;
+  if (cfg.deviceType === "gamepad") {
+    throttle = -moveY;
+  } else {
+    if (forward) throttle += 1;
+    if (back) throttle -= 0.58;
   }
 
-  if (back) {
-    w.vx -= f.x * speed * dt * 3.0;
-    w.vz -= f.z * speed * dt * 3.0;
+  if (throttle !== 0) {
+    const accelMult = throttle > 0 ? 5.2 : 3.0;
+    w.vx += f.x * speed * dt * accelMult * throttle;
+    w.vz += f.z * speed * dt * accelMult * throttle;
   }
 
-  const abilityHeld = isDown(c.ability);
+  const abilityHeld = getActionDown(w, "ability");
   if (w.ability === "Lava Lob") {
     if (abilityHeld && !w.castPressed) w.lavaCharge = 0;
     if (abilityHeld) w.lavaCharge = Math.min(1.6, (w.lavaCharge || 0) + dt);
@@ -1336,7 +1862,8 @@ function updateHuman(w, dt) {
     w.castPressed = false;
   }
 
-  if (c.swap && isDown(c.swap)) {
+  const swapHeld = getActionDown(w, "swap");
+  if (swapHeld) {
     if (!w.swapPressed) {
       swapWizardAbilities(w);
       w.swapPressed = true;
@@ -1345,7 +1872,8 @@ function updateHuman(w, dt) {
     w.swapPressed = false;
   }
 
-  if (isDown(c.fire)) {
+  const fireHeld = getActionDown(w, "fire");
+  if (fireHeld) {
     if (!w.firePressed) {
       castFireball(w);
       w.firePressed = true;
@@ -4847,6 +5375,7 @@ function animate() {
   if (!running) return;
 
   const dt = Math.min(clock.getDelta(), 0.033);
+  updateGamepadBindingCapture();
   updateModes(dt);
 
   updateGeysers(dt);
