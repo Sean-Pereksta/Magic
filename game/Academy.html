@@ -453,6 +453,40 @@ const wizardColors = [
   0xffffff
 ];
 
+const TEAM_COLORS = {
+  attackers: {
+    main: 0xff4f3d,
+    trim: 0xffc04d,
+    emissive: 0x551000,
+    label: "#ff8b7d"
+  },
+  defenders: {
+    main: 0x3d8cff,
+    trim: 0xffdf6a,
+    emissive: 0x082c66,
+    label: "#86c8ff"
+  },
+  neutral: {
+    main: 0xcd7dff,
+    trim: 0xffffff,
+    emissive: 0x241049,
+    label: "#ffffff"
+  }
+};
+
+const PROJECTILE_HEIGHT_TUNING = {
+  chestHeight: 1.65,
+  headHeight: 3.35,
+  footHeight: 0.15,
+  groundFollowGravity: 7.5,
+  groundFollowDamping: 0.88,
+  maxDownwardSpeed: 12,
+  minAboveGround: 0.55,
+  verticalHitPadding: 0.35,
+  verticalSplashPadding: 1.4,
+  castChestOffset: 1.85
+};
+
 const botNames = [
   "Bot Noodlebeard",
   "Bot Fizzlepop",
@@ -909,6 +943,13 @@ function createWizard(name, color, spawnAngle, human, controls) {
     firePressed: false,
     swapPressed: false,
     label,
+    materials: {
+      robe: robeMat,
+      hat: robeMat,
+      trim: null,
+      gem: gem.material
+    },
+    team: null,
     bob: rand(0, 100),
     effect: {
       glue: 0,
@@ -1194,7 +1235,7 @@ function showLavaTelegraph(w, charge = 0) {
   }
   w.telegraph.group.userData.arc.geometry.setFromPoints(points);
   const ring = w.telegraph.group.userData.ring;
-  ring.position.set(landing.x, 0.08, landing.z);
+  ring.position.set(landing.x, getEffectiveGroundHeight(landing.x, landing.z) + 0.08, landing.z);
   const pulse = 0.78 + Math.sin(performance.now() * 0.011) * 0.14;
   ring.scale.setScalar(0.92 + clamp(charge / 1.6, 0, 1) * 1.15);
   ring.material.opacity = 0.22 + pulse * 0.28;
@@ -1226,10 +1267,10 @@ function showGlueTelegraph(w) {
   const endX = w.x + f.x * (range + 1.6);
   const endZ = w.z + f.z * (range + 1.6);
   const lane = w.telegraph.group.userData.lane;
-  lane.position.set(midX, 0.09, midZ);
+  lane.position.set(midX, getEffectiveGroundHeight(midX, midZ) + 0.09, midZ);
   lane.rotation.y = w.angle;
   const splash = w.telegraph.group.userData.splash;
-  splash.position.set(endX, 0.08, endZ);
+  splash.position.set(endX, getEffectiveGroundHeight(endX, endZ) + 0.08, endZ);
   splash.material.opacity = 0.2 + (0.07 * (0.5 + Math.sin(performance.now() * 0.009) * 0.5));
 }
 
@@ -1649,6 +1690,55 @@ function castAbility(w, charge = 0) {
   }
 }
 
+function shouldUseTeamColors() {
+  return GAME_SETTINGS.mode === "castle";
+}
+
+function applyTeamColors() {
+  if (!shouldUseTeamColors()) return;
+  for (const w of wizards) applyWizardTeamColor(w);
+}
+
+function applyWizardTeamColor(w) {
+  if (!w) return;
+
+  const teamKey = w.team || "neutral";
+  const colors = TEAM_COLORS[teamKey] || TEAM_COLORS.neutral;
+
+  if (w.materials?.robe) {
+    w.materials.robe.color.setHex(colors.main);
+    if (w.materials.robe.emissive) {
+      w.materials.robe.emissive.setHex(colors.emissive);
+      w.materials.robe.emissiveIntensity = 0.18;
+    }
+  }
+
+  if (w.materials?.gem) {
+    w.materials.gem.color.setHex(colors.trim);
+    if (w.materials.gem.emissive) {
+      w.materials.gem.emissive.setHex(colors.trim);
+      w.materials.gem.emissiveIntensity = 0.8;
+    }
+  }
+
+  if (w.label?.name) w.label.name.style.color = colors.label;
+  if (w.label?.name2) w.label.name2.style.color = colors.label;
+}
+
+function getForwardGroundDrop(w, distance = 12) {
+  const f = forwardVector(w);
+  const aheadX = w.x + f.x * distance;
+  const aheadZ = w.z + f.z * distance;
+  const hereGround = getWizardGroundHeight(w);
+  const aheadGround = getEffectiveGroundHeight(aheadX, aheadZ);
+  return hereGround - aheadGround;
+}
+
+function getDownhillInitialVy(w, distance = 14) {
+  const drop = getForwardGroundDrop(w, distance);
+  return drop > 2.5 ? -Math.min(5.5, drop * 0.45) : 0;
+}
+
 function castFireball(w) {
   if (!w.alive || w.fireCooldown > 0) return;
 
@@ -1661,11 +1751,14 @@ function castFireball(w) {
     type: "fireball",
     x: w.x + f.x * 2.4,
     z: w.z + f.z * 2.4,
-    y: w.y + 1.75,
+    y: w.y + PROJECTILE_HEIGHT_TUNING.castChestOffset,
     vx: f.x * 36,
     vz: f.z * 36,
-    vy: 0,
+    vy: getDownhillInitialVy(w, 14),
     gravity: 0,
+    heightMode: "groundFollow",
+    verticalRadius: 0.75,
+    minGroundOffset: 1.35,
     radius: 0.62,
     damage: 2,
     knock: 11,
@@ -1698,9 +1791,14 @@ function castBonkBolt(w) {
     type: "bonk",
     x: w.x + f.x * 1.9,
     z: w.z + f.z * 1.9,
-    y: w.y + 1.55,
+    y: w.y + PROJECTILE_HEIGHT_TUNING.castChestOffset,
     vx: f.x * 40,
     vz: f.z * 40,
+    vy: getDownhillInitialVy(w, 14),
+    gravity: 0,
+    heightMode: "groundFollow",
+    verticalRadius: 0.8,
+    minGroundOffset: 1.35,
     radius: 0.68,
     damage: 2,
     knock: 34,
@@ -1719,9 +1817,14 @@ function castGlue(w) {
     type: "glue",
     x: w.x + f.x * 1.8,
     z: w.z + f.z * 1.8,
-    y: w.y + 1.4,
+    y: w.y + PROJECTILE_HEIGHT_TUNING.castChestOffset,
     vx: f.x * 22,
     vz: f.z * 22,
+    vy: getDownhillInitialVy(w, 12),
+    gravity: 0,
+    heightMode: "groundFollow",
+    verticalRadius: 0.75,
+    minGroundOffset: 1.25,
     radius: 0.58,
     damage: 0,
     knock: 0,
@@ -1747,6 +1850,10 @@ function castLavaLob(w, charge = 0) {
     vy: 10 + power * 12,
     vz: f.z * speed,
     gravity: 24,
+    heightMode: "lob",
+    explodeOnGround: true,
+    minGroundOffset: 0.25,
+    verticalRadius: 0.75,
     radius: 0.55,
     color: 0xff5f1f,
     trailColor: 0xffb347,
@@ -1772,11 +1879,14 @@ function castSquidInk(w) {
     mesh: squid,
     x: squid.position.x,
     z: squid.position.z,
-    y: w.y + 1.6,
+    y: w.y + PROJECTILE_HEIGHT_TUNING.castChestOffset,
     vx: f.x * 28,
     vz: f.z * 28,
-    vy: 0,
+    vy: getDownhillInitialVy(w, 12),
     gravity: 0,
+    heightMode: "groundFollow",
+    verticalRadius: 0.75,
+    minGroundOffset: 1.25,
     radius: 0.75,
     damage: 0,
     knock: 6,
@@ -1795,9 +1905,14 @@ function castBubble(w) {
     type: "bubble",
     x: w.x + f.x * 1.8,
     z: w.z + f.z * 1.8,
-    y: w.y + 1.55,
+    y: w.y + PROJECTILE_HEIGHT_TUNING.castChestOffset,
     vx: f.x * 22,
     vz: f.z * 22,
+    vy: getDownhillInitialVy(w, 12),
+    gravity: 0,
+    heightMode: "groundFollow",
+    verticalRadius: 1.0,
+    minGroundOffset: 1.45,
     radius: 0.82,
     damage: 0,
     knock: 16,
@@ -1817,9 +1932,14 @@ function castReverse(w) {
     type: "reverse",
     x: w.x + f.x * 1.8,
     z: w.z + f.z * 1.8,
-    y: w.y + 1.5,
+    y: w.y + PROJECTILE_HEIGHT_TUNING.castChestOffset,
     vx: f.x * 28,
     vz: f.z * 28,
+    vy: getDownhillInitialVy(w, 12),
+    gravity: 0,
+    heightMode: "groundFollow",
+    verticalRadius: 0.7,
+    minGroundOffset: 1.25,
     radius: 0.48,
     damage: 0,
     knock: 5,
@@ -2066,7 +2186,7 @@ function castHatTornado(w) {
     mesh: group,
     x: group.position.x,
     z: group.position.z,
-    y: 1,
+    y: getEffectiveGroundHeight(group.position.x, group.position.z) + 1.0,
     vx: f.x * 18,
     vz: f.z * 18,
     radius: 2.7,
@@ -2074,7 +2194,10 @@ function castHatTornado(w) {
     knock: 10,
     life: 5.5,
     bounce: 4,
-    spin: 14
+    spin: 14,
+    heightMode: "ground",
+    minGroundOffset: 1.0,
+    verticalRadius: 2.2
   });
   createHatTornadoAura(group);
 }
@@ -2087,9 +2210,14 @@ function castJellyLegs(w) {
     type: "jelly",
     x: w.x + f.x * 1.8,
     z: w.z + f.z * 1.8,
-    y: w.y + 1.5,
+    y: w.y + PROJECTILE_HEIGHT_TUNING.castChestOffset,
     vx: f.x * 27,
     vz: f.z * 27,
+    vy: getDownhillInitialVy(w, 12),
+    gravity: 0,
+    heightMode: "groundFollow",
+    verticalRadius: 0.75,
+    minGroundOffset: 1.25,
     radius: 0.52,
     damage: 0,
     knock: 6,
@@ -2145,7 +2273,7 @@ function castBowlingBall(w) {
     type: "bowling",
     x: w.x + f.x * 2.0,
     z: w.z + f.z * 2.0,
-    y: 0.9,
+    y: getEffectiveGroundHeight(w.x + f.x * 2.0, w.z + f.z * 2.0) + 0.9,
     vx: f.x * 20,
     vz: f.z * 20,
     radius: 1.08,
@@ -2154,7 +2282,10 @@ function castBowlingBall(w) {
     life: 6,
     bounce: 5,
     color: 0x4f65ff,
-    trailColor: 0x9cabff
+    trailColor: 0x9cabff,
+    heightMode: "ground",
+    minGroundOffset: 0.9,
+    verticalRadius: 1.05
   });
   addBowlingRunes(ball.mesh);
 }
@@ -2336,40 +2467,56 @@ function castVaporBeam(w) {
    ============================================================ */
 
 function createProjectile(o) {
-  if (o.mesh) {
-    if (!o.mesh.parent) scene.add(o.mesh);
-    o.mesh.position.set(o.x, o.y || 1.2, o.z);
-    projectiles.push({
-      ...o,
-      hitSet: new Set(),
-      spin: o.spin ?? rand(0, 100),
-      trailTimer: 0,
-      lingerTrail: o.type === "fireball" ? 0.018 : 0,
-      age: 0,
-      spawnGrace: o.spawnGrace ?? 0.16,
-      minTravelDistance: o.minTravelDistance ?? 2.4,
-      spawnX: o.x,
-      spawnY: o.y,
-      spawnZ: o.z,
-      hasArmed: false
-    });
+  const groundY = getEffectiveGroundHeight(o.x || 0, o.z || 0);
+  const heightMode = o.heightMode || ((o.gravity || 0) > 0 ? "lob" : "groundFollow");
+  const base = {
+    ...o,
+    x: o.x || 0,
+    y: o.y ?? groundY + PROJECTILE_HEIGHT_TUNING.castChestOffset,
+    z: o.z || 0,
+    vx: o.vx || 0,
+    vy: o.vy || 0,
+    vz: o.vz || 0,
+    gravity: o.gravity ?? 0,
+    heightMode,
+    verticalRadius: o.verticalRadius || o.radius || 0.7,
+    minGroundOffset: o.minGroundOffset || PROJECTILE_HEIGHT_TUNING.minAboveGround,
+    groundFollow: o.groundFollow !== false,
+    hitSet: new Set(),
+    spin: o.spin ?? rand(0, 100),
+    trailTimer: 0,
+    lingerTrail: o.type === "fireball" ? 0.018 : 0,
+    age: 0,
+    spawnGrace: o.spawnGrace ?? 0.16,
+    minTravelDistance: o.minTravelDistance ?? 2.4,
+    spawnX: o.x || 0,
+    spawnY: o.y ?? groundY + PROJECTILE_HEIGHT_TUNING.castChestOffset,
+    spawnZ: o.z || 0,
+    hasArmed: false,
+    hitGround: false
+  };
+
+  if (base.mesh) {
+    if (!base.mesh.parent) scene.add(base.mesh);
+    base.mesh.position.set(base.x, base.y, base.z);
+    projectiles.push(base);
     return projectiles[projectiles.length - 1];
   }
 
   let mat;
 
-  if (o.transparent) {
+  if (base.transparent) {
     mat = new THREE.MeshStandardMaterial({
-      color: o.color,
-      emissive: o.color,
+      color: base.color,
+      emissive: base.color,
       transparent: true,
       opacity: 0.45,
       roughness: 0.1
     });
   } else {
     mat = new THREE.MeshStandardMaterial({
-      color: o.color,
-      emissive: o.color,
+      color: base.color,
+      emissive: base.color,
       emissiveIntensity: 0.35,
       roughness: 0.28
     });
@@ -2377,8 +2524,8 @@ function createProjectile(o) {
 
   let mesh;
 
-  if (o.type === "bowling") {
-    mesh = new THREE.Mesh(new THREE.SphereGeometry(o.radius, 24, 16), mat);
+  if (base.type === "bowling") {
+    mesh = new THREE.Mesh(new THREE.SphereGeometry(base.radius, 24, 16), mat);
 
     const holeMat = new THREE.MeshStandardMaterial({ color: 0x111122 });
     for (let i = 0; i < 3; i++) {
@@ -2387,49 +2534,111 @@ function createProjectile(o) {
       mesh.add(hole);
     }
   } else {
-    mesh = new THREE.Mesh(new THREE.SphereGeometry(o.radius, 20, 14), mat);
-    if (o.type === "fireball") {
+    mesh = new THREE.Mesh(new THREE.SphereGeometry(base.radius, 20, 14), mat);
+    if (base.type === "fireball") {
       const core = new THREE.Mesh(
-        new THREE.SphereGeometry(o.radius * 0.45, 14, 10),
+        new THREE.SphereGeometry(base.radius * 0.45, 14, 10),
         new THREE.MeshStandardMaterial({ color: 0xfff6d6, emissive: 0xffffff, emissiveIntensity: 1.6 })
       );
       mesh.add(core);
       const shell = new THREE.Mesh(
-        new THREE.SphereGeometry(o.radius * 1.35, 16, 12),
+        new THREE.SphereGeometry(base.radius * 1.35, 16, 12),
         new THREE.MeshStandardMaterial({ color: 0xff9d33, emissive: 0xff6a1f, transparent: true, opacity: 0.35 })
       );
       mesh.add(shell);
     }
   }
 
-  mesh.position.set(o.x, o.y, o.z);
+  mesh.position.set(base.x, base.y, base.z);
   mesh.castShadow = true;
   scene.add(mesh);
 
-  projectiles.push({
-    ...o,
-    mesh,
-    hitSet: new Set(),
-    spin: rand(0, 100),
-    trailTimer: 0,
-    lingerTrail: o.type === "fireball" ? 0.018 : 0,
-    age: 0,
-    spawnGrace: o.spawnGrace ?? 0.16,
-    minTravelDistance: o.minTravelDistance ?? 2.4,
-    spawnX: o.x,
-    spawnY: o.y,
-    spawnZ: o.z,
-    hasArmed: false
-  });
+  base.mesh = mesh;
+  projectiles.push(base);
   return projectiles[projectiles.length - 1];
+}
+
+function updateProjectileHeight(p, dt) {
+  if (!p) return;
+
+  const groundY = getEffectiveGroundHeight(p.x, p.z);
+
+  if (p.heightMode === "ground") {
+    p.y = groundY + (p.minGroundOffset || 0.5);
+    p.vy = 0;
+    return;
+  }
+
+  if (p.heightMode === "lob") {
+    p.vy = (p.vy || 0) - (p.gravity || 24) * dt;
+    p.y += p.vy * dt;
+
+    if (p.y <= groundY + (p.minGroundOffset || 0.25)) {
+      p.y = groundY + (p.minGroundOffset || 0.25);
+      p.hitGround = true;
+    }
+
+    return;
+  }
+
+  const desiredY = groundY + PROJECTILE_HEIGHT_TUNING.chestHeight;
+  const diff = desiredY - p.y;
+  const accel = diff * PROJECTILE_HEIGHT_TUNING.groundFollowGravity;
+
+  p.vy = (p.vy || 0) + accel * dt;
+  p.vy *= Math.pow(PROJECTILE_HEIGHT_TUNING.groundFollowDamping, dt * 60);
+  p.vy = clamp(
+    p.vy,
+    -PROJECTILE_HEIGHT_TUNING.maxDownwardSpeed,
+    PROJECTILE_HEIGHT_TUNING.maxDownwardSpeed * 0.75
+  );
+
+  p.y += p.vy * dt;
+
+  const minY = groundY + (p.minGroundOffset || PROJECTILE_HEIGHT_TUNING.minAboveGround);
+  if (p.y < minY) {
+    p.y = minY;
+    p.vy = Math.max(0, p.vy || 0);
+  }
+}
+
+function projectileCanHitWizardVertically(p, target) {
+  if (!p || !target) return false;
+
+  const targetGroundY = getWizardGroundHeight(target);
+  const targetMinY = targetGroundY + PROJECTILE_HEIGHT_TUNING.footHeight;
+  const targetMaxY = targetGroundY + PROJECTILE_HEIGHT_TUNING.headHeight;
+  const pMinY = (p.y || 0) - (p.verticalRadius || p.radius || 0.7) - PROJECTILE_HEIGHT_TUNING.verticalHitPadding;
+  const pMaxY = (p.y || 0) + (p.verticalRadius || p.radius || 0.7) + PROJECTILE_HEIGHT_TUNING.verticalHitPadding;
+
+  return pMaxY >= targetMinY && pMinY <= targetMaxY;
+}
+
+function splashCanAffectWizard(centerY, target, extraPadding = 0) {
+  const targetGroundY = getWizardGroundHeight(target);
+  const targetMinY = targetGroundY;
+  const targetMaxY = targetGroundY + PROJECTILE_HEIGHT_TUNING.headHeight;
+
+  return centerY + PROJECTILE_HEIGHT_TUNING.verticalSplashPadding + extraPadding >= targetMinY &&
+         centerY - PROJECTILE_HEIGHT_TUNING.verticalSplashPadding - extraPadding <= targetMaxY;
+}
+
+function projectileHitsVerticalObject(p, obj) {
+  const groundY = obj.y ?? getEffectiveGroundHeight(obj.x, obj.z);
+  const objMinY = groundY;
+  const objMaxY = groundY + (obj.hitHeight || obj.height || 5);
+  const pY = p.y ?? groundY + 2;
+  const pRadius = p.verticalRadius || p.radius || 0.7;
+
+  return pY + pRadius >= objMinY && pY - pRadius <= objMaxY;
 }
 
 function shouldProjectileHitGround(p) {
   if (!p.hasArmed) return false;
   const groundY = getEffectiveGroundHeight(p.x, p.z);
 
-  if (p.type === "lava") return p.y <= groundY + p.radius * 0.45;
-  if (p.type === "glue") return p.y <= groundY + p.radius * 0.35;
+  if (p.heightMode === "lob") return !!p.hitGround;
+  if (p.type === "glue" && p.heightMode !== "groundFollow") return p.y <= groundY + p.radius * 0.35;
   return false;
 }
 
@@ -2500,13 +2709,18 @@ function updateProjectiles(dt) {
         continue;
       }
 
-      p.vy = (p.vy || 0) - (p.gravity || 0) * dt;
       p.x += p.vx * dt;
-      p.y += (p.vy || 0) * dt;
       p.z += p.vz * dt;
+      updateProjectileHeight(p, dt);
+
+      if (p.heightMode === "lob" && p.hitGround) {
+        triggerProjectileImpact(p, p.x, p.y || 1, p.z, null, "ground");
+        if (p.dead || p._removed) projectiles.splice(i, 1);
+        continue;
+      }
 
       if (p.mesh) {
-        p.mesh.position.set(p.x, p.y || 1.2, p.z);
+        p.mesh.position.set(p.x, p.y, p.z);
         if (p.type === "bowling") {
           p.mesh.rotation.x += dt * 10;
         } else if (p.type === "hatTornado") {
@@ -2515,7 +2729,7 @@ function updateProjectiles(dt) {
           p.mesh.rotation.x += dt * 9;
           p.mesh.rotation.y += dt * 8;
         } else {
-          p.mesh.position.y = (p.y || 1.2) + (p.gravity ? 0 : Math.sin(performance.now() * 0.01 + p.spin) * 0.08);
+          p.mesh.position.y = p.y + (p.heightMode === "groundFollow" ? Math.sin(performance.now() * 0.01 + p.spin) * 0.08 : 0);
         }
       }
       createSpellTrail(p, dt);
@@ -2654,7 +2868,9 @@ function projectileWizardCollision(p) {
     if (w === p.owner && p.type !== "hatTornado") continue;
 
     const d = distancePoint(p.x, p.z, w.x, w.z);
-    if (d < p.radius + w.radius) {
+    const horizontalHit = d < (p.radius || 0.6) + (w.radius || 1.05);
+    const verticalHit = p.heightMode === "ground" || projectileCanHitWizardVertically(p, w);
+    if (horizontalHit && verticalHit) {
       p.hitSet.add(w);
 
       if (p.type === "ink") {
@@ -2668,13 +2884,13 @@ function projectileWizardCollision(p) {
       knockWizard(w, p.vx, p.vz, p.knock || 8);
 
       if (p.type === "bonk") {
-        createBonkHitEffect(w.x, 1.5, w.z); addScreenShake(0.3,0.16);
-        w.effect.slapSpin = 0.8; createImpactBurst(w.x,1.5,w.z,0xa45cff,1.2);
+        createBonkHitEffect(w.x, getWizardGroundHeight(w) + 1.5, w.z); addScreenShake(0.3,0.16);
+        w.effect.slapSpin = 0.8; createImpactBurst(w.x,getWizardGroundHeight(w)+1.5,w.z,0xa45cff,1.2);
         killProjectile(p);
       }
 
       if (p.type === "fireball") {
-        triggerProjectileImpact(p, w.x, 1.2, w.z, w, "wizard");
+        triggerProjectileImpact(p, w.x, getWizardGroundHeight(w) + 1.2, w.z, w, "wizard");
       }
 
       if (p.type === "glue") {
@@ -2688,7 +2904,7 @@ function projectileWizardCollision(p) {
       if (p.type === "bubble") {
         w.effect.bubble = 4.2;
         createBubbleShell(w);
-        triggerProjectileImpact(p, w.x, 1.5, w.z, w, "wizard");
+        triggerProjectileImpact(p, w.x, getWizardGroundHeight(w) + 1.5, w.z, w, "wizard");
         attachBubbleAura(w, 4.2);
       }
 
@@ -2702,7 +2918,7 @@ function projectileWizardCollision(p) {
       if (p.type === "jelly") {
         w.effect.jelly = 5.5;
         createJellyWobble(w); attachJellyWobbleEffect(w, 5.5);
-        triggerProjectileImpact(p, w.x, 1.3, w.z, w, "wizard");
+        triggerProjectileImpact(p, w.x, getWizardGroundHeight(w) + 1.3, w.z, w, "wizard");
       }
 
       if (p.type === "hatTornado") {
@@ -2714,12 +2930,12 @@ function projectileWizardCollision(p) {
           knockWizard(w, p.vx, p.vz, 28);
           w.vy = Math.max(w.vy, 6.5);
           w.effect.slapSpin = 1.35;
-          createTornadoHitEffect(w.x, 1.5, w.z);
+          createTornadoHitEffect(w.x, getWizardGroundHeight(w) + 1.5, w.z);
         }
       }
 
       if (p.type === "bowling") {
-        createBowlingImpact(w.x, 1.3, w.z, true); if (p.hitSet.size >= 3) killProjectile(p);
+        createBowlingImpact(w.x, getWizardGroundHeight(w) + 1.3, w.z, true); if (p.hitSet.size >= 3) killProjectile(p);
       }
 
       return;
@@ -2879,7 +3095,7 @@ function updateTemporary(dt) {
       }
       for (const w of wizards) {
         if (!w.alive) continue;
-        if (distancePoint(w.x, w.z, obj.x, obj.z) < obj.radius + w.radius) {
+        if (distancePoint(w.x, w.z, obj.x, obj.z) < obj.radius + w.radius && splashCanAffectWizard(obj.y || getEffectiveGroundHeight(obj.x, obj.z), w, 0.5)) {
           obj.damageTick -= dt;
           if (obj.damageTick <= 0) {
             obj.damageTick = 0.55;
@@ -2893,14 +3109,15 @@ function updateTemporary(dt) {
       obj.mesh.position.y += obj.vy * dt;
       obj.vy -= 28 * dt;
 
-      if (!obj.hit && obj.mesh.position.y <= 0.8) {
+      const groundY = getEffectiveGroundHeight(obj.x, obj.z);
+      if (!obj.hit && obj.mesh.position.y <= groundY + 0.8) {
         obj.hit = true;
-        obj.mesh.position.y = 0.8;
+        obj.mesh.position.y = groundY + 0.8;
 
         for (const w of wizards) {
           if (!w.alive || w === obj.owner) continue;
           const d = distancePoint(w.x, w.z, obj.x, obj.z);
-          if (d < 3.4) {
+          if (d < 3.4 && splashCanAffectWizard(groundY + 0.8, w, 1.3)) {
             applyDamage(w, 5, `${obj.owner.name}'s Anvil`);
             knockWizard(w, w.x - obj.x, w.z - obj.z, 52);
             w.effect.stunned = 2.5; createStunStars(w,2.5);
@@ -2975,11 +3192,12 @@ function createLavaPuddle(x, z, owner) {
   });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.rotation.x = -Math.PI / 2;
-  mesh.position.set(x, 0.08, z);
+  mesh.position.set(x, getEffectiveGroundHeight(x, z) + 0.08, z);
   scene.add(mesh);
   temporary.push({
     kind: "lavaPuddle",
     mesh, x, z,
+    y: getEffectiveGroundHeight(x, z),
     radius: 3.1,
     ownerName: owner ? owner.name : "Lava",
     damageTick: 0.2,
@@ -3125,7 +3343,7 @@ function createGroundRing(x, z, r, color, opacity = 0.8) {
   });
   const ring = new THREE.Mesh(geo, mat);
   ring.rotation.x = Math.PI / 2;
-  ring.position.set(x, 0.09, z);
+  ring.position.set(x, getEffectiveGroundHeight(x, z) + 0.09, z);
   scene.add(ring);
   return ring;
 }
@@ -3844,7 +4062,28 @@ function isOnTiltPlane(x,z){ return Math.abs(x-tiltPlane.x)<tiltPlane.width/2 &&
 function getTiltPlaneHeight(x,z){ if(!isOnTiltPlane(x,z)) return null; const lx=x-tiltPlane.x,lz=z-tiltPlane.z; return tiltPlane.baseY + Math.tan(tiltPlane.tiltZ)*lx - Math.tan(tiltPlane.tiltX)*lz; }
 function getTiltPlaneNormal(){ const nx=-Math.tan(tiltPlane.tiltZ), nz=Math.tan(tiltPlane.tiltX); return new THREE.Vector3(nx,1,nz).normalize(); }
 function getEffectiveGroundHeight(x,z){ const th=getTerrainHeight(x,z); const ph=getTiltPlaneHeight(x,z); return ph===null?th:Math.max(th,ph); }
-function getWizardGroundHeight(w){ const base=getEffectiveGroundHeight(w.x,w.z); if(GAME_SETTINGS.mode!=='castle' || w.team!=='defenders') return base; for(const wall of castleState.walls){ if(circleRectOverlap(w.x,w.z,w.radius,wall.x,wall.z,wall.width+2.6,wall.depth+2.6).hit && w.y>wall.height-1.4){ return Math.max(base, wall.height+0.45); } } return base; }
+function getCastlePlatformHeightAt(x, z) {
+  if (GAME_SETTINGS.mode !== "castle") return null;
+
+  for (const wall of castleState.walls || []) {
+    const platformY = wall.platformY ?? (wall.platform ? wall.height : null);
+    if (platformY === null) continue;
+
+    const insideX = Math.abs(x - wall.x) <= wall.width / 2;
+    const insideZ = Math.abs(z - wall.z) <= wall.depth / 2;
+    if (insideX && insideZ) return platformY;
+  }
+
+  return null;
+}
+function getWizardGroundHeight(w){
+  const base = getEffectiveGroundHeight(w.x,w.z);
+  if (GAME_SETTINGS.mode === "castle") {
+    const platformY = getCastlePlatformHeightAt(w.x, w.z);
+    if (platformY !== null && w.y >= platformY - 1.2) return Math.max(base, platformY);
+  }
+  return base;
+}
 function getTerrainNormalApprox(x,z){ const e=0.5; const hL=getEffectiveGroundHeight(x-e,z),hR=getEffectiveGroundHeight(x+e,z),hD=getEffectiveGroundHeight(x,z-e),hU=getEffectiveGroundHeight(x,z+e); return {slopeX:(hL-hR)/(2*e),slopeZ:(hD-hU)/(2*e)}; }
 function applySlopeSliding(w,dt){ if(!isKingHillActive()) return; const s=getTerrainNormalApprox(w.x,w.z); w.vx += s.slopeX*10*dt; w.vz += s.slopeZ*10*dt; }
 function applyTiltPlaneSliding(w,dt){
@@ -3998,7 +4237,9 @@ function createCastleWall(x, z, width, depth, height) {
 
 function createWallPlatform(x, z, width, depth, y) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, 0.45, depth), new THREE.MeshStandardMaterial({ color: 0x6f727b, roughness: 0.85 }));
-  mesh.position.set(x, y, z); mesh.receiveShadow = true; scene.add(mesh); return mesh;
+  mesh.position.set(x, y, z); mesh.receiveShadow = true; scene.add(mesh);
+  castleState.walls.push({ kind: "castlePlatform", x, z, width, depth, height: y, platform: true, platformY: y, mesh, blocksAttackers: false, blocksDefenders: false });
+  return mesh;
 }
 
 function createCastleGate(x, z, width, depth) {
@@ -4121,6 +4362,7 @@ function assignCastleTeams() {
   castleState.active = true;
   castleState.roundOver = false;
   for (const w of wizards) placeWizardAtCastleSpawn(w, true);
+  applyTeamColors();
 }
 
 function placeWizardAtCastleSpawn(w, fresh = false) {
@@ -4239,9 +4481,7 @@ function projectileHitsCastleCrystal(p) {
   const dz = p.z - tower.z;
   const horizontalDist = Math.hypot(dx, dz);
 
-  const towerY = tower.y ?? getEffectiveGroundHeight(tower.x, tower.z);
-  const projectileY = p.y ?? towerY + 2;
-  const withinHeight = projectileY >= towerY - 0.5 && projectileY <= towerY + (tower.hitHeight || 5.5);
+  const withinHeight = projectileHitsVerticalObject(p, { ...tower, y: tower.y ?? getEffectiveGroundHeight(tower.x, tower.z), hitHeight: tower.hitHeight || 6.5 });
 
   return horizontalDist <= (tower.radius || 4.2) + (p.radius || 0.8) + 0.8 && withinHeight;
 }
@@ -4251,7 +4491,7 @@ function checkProjectileCastleHit(p) {
   const amount = getCastleProjectileDamage(p);
   for (const gate of castleState.gates) {
     if (gate.destroyed) continue;
-    if (circleRectOverlap(p.x, p.z, p.radius || 0.6, gate.x, gate.z, gate.width, gate.depth).hit) { damageCastleGate(gate, amount, p.owner); return true; }
+    if (circleRectOverlap(p.x, p.z, p.radius || 0.6, gate.x, gate.z, gate.width, gate.depth).hit && projectileHitsVerticalObject(p, { ...gate, y: getEffectiveGroundHeight(gate.x, gate.z), hitHeight: 7 })) { damageCastleGate(gate, amount, p.owner); return true; }
   }
   if (castleState.tower && p.owner.team === "attackers" && projectileHitsCastleCrystal(p)) {
     damageCastleTower(amount, p.owner); return true;
