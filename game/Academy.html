@@ -262,8 +262,8 @@
     </div>
 
     <p class="note">
-      <b>P1:</b> W/S forward-back, A/D turn, Q ability, E fireball. Arrow keys also work.<br>
-      <b>P2:</b> I/K forward-back, J/L turn, O ability, U fireball.<br>
+      <b>P1:</b> W/S forward-back, A/D turn, Q ability, R swap, E fireball. Arrow keys also work.<br>
+      <b>P2:</b> I/K forward-back, J/L turn, O ability, Y swap, U fireball.<br>
       In 2P mode, the screen splits so each player gets their own third-person camera.<br>
       <b>First to 10 Kills:</b> everyone respawns, and the first wizard to reach the kill target wins.<br>
       <b>Crown Control:</b> hold the glowing crown to score. <b>Castle Defense:</b> attackers break gates and tower while defenders protect shared stocks.
@@ -750,6 +750,7 @@ function setupWizards() {
     left: ["KeyA", "ArrowLeft"],
     right: ["KeyD", "ArrowRight"],
     ability: ["KeyQ"],
+    swap: ["KeyR"],
     fire: ["KeyE"]
   };
 
@@ -759,6 +760,7 @@ function setupWizards() {
     left: ["KeyJ"],
     right: ["KeyL"],
     ability: ["KeyO"],
+    swap: ["KeyY"],
     fire: ["KeyU"]
   };
 
@@ -873,9 +875,11 @@ function createWizard(name, color, spawnAngle, human, controls) {
     kills: 0,
     alive: true,
     ability: randomAbility(),
+    queuedAbility: null,
     fireCooldown: 0,
     castPressed: false,
     firePressed: false,
+    swapPressed: false,
     label,
     bob: rand(0, 100),
     effect: {
@@ -1234,6 +1238,15 @@ function updateHuman(w, dt) {
     w.castPressed = false;
   }
 
+  if (c.swap && isDown(c.swap)) {
+    if (!w.swapPressed) {
+      swapWizardAbilities(w);
+      w.swapPressed = true;
+    }
+  } else {
+    w.swapPressed = false;
+  }
+
   if (isDown(c.fire)) {
     if (!w.firePressed) {
       castFireball(w);
@@ -1244,8 +1257,21 @@ function updateHuman(w, dt) {
   }
 }
 
+function swapWizardAbilities(w) {
+  if (!w.ability && !w.queuedAbility) return;
+  if (!w.ability && w.queuedAbility) {
+    w.ability = w.queuedAbility;
+    w.queuedAbility = null;
+  } else {
+    const temp = w.ability;
+    w.ability = w.queuedAbility;
+    w.queuedAbility = temp;
+  }
+  if (w.human) showMessage(`${w.name} swapped abilities!`, 800);
+}
+
 function chooseBotTarget(bot){ let best=null,bestScore=-1e9; for(const t of wizards){ if(t===bot||!t.alive) continue; let score=100-distance2D(bot,t)+t.damage*18; if(t.damage>=4) score+=120; if(t.human) score+=GAME_SETTINGS.mode==='survival'?150:25; if(GAME_SETTINGS.mode==='king'&&isWizardInHill(t)) score+=180; if((t.score||0)>(bot.score||0)) score+=60; if(score>bestScore){bestScore=score;best=t;} } return best; }
-function choosePracticalPickup(bot,target){ if(bot.ability) return null; const td=target?distance2D(bot,target):99; if(target&&target.damage>=4&&td<22) return null; let best=null,bd=1e9; for(const p of pickups){ const d=distancePoint(bot.x,bot.z,p.x,p.z); if(d<bd){bd=d;best=p;} } return best&&bd<18?best:null; }
+function choosePracticalPickup(bot,target){ if(bot.ability && bot.queuedAbility) return null; const td=target?distance2D(bot,target):99; if(target&&target.damage>=4&&td<22) return null; let best=null,bd=1e9; for(const p of pickups){ const d=distancePoint(bot.x,bot.z,p.x,p.z); if(d<bd){bd=d;best=p;} } return best&&bd<18?best:null; }
 function updateBot(w, dt) {
   if (w.effect.stunned > 0) return;
   if (GAME_SETTINGS.mode === "castle") { updateCastleBot(w, dt); return; }
@@ -1505,12 +1531,18 @@ function updatePickups(dt) {
 }
 
 function pickupCheck(w) {
-  if (w.ability) return;
+  if (w.ability && w.queuedAbility) return;
 
   for (let i = pickups.length - 1; i >= 0; i--) {
     const p = pickups[i];
     if (distancePoint(w.x, w.z, p.x, p.z) < 2.2) {
-      w.ability = randomAbility();
+      const newAbility = randomAbility();
+      const prepared = !w.ability;
+      if (prepared) {
+        w.ability = newAbility;
+      } else if (!w.queuedAbility) {
+        w.queuedAbility = newAbility;
+      }
       scene.remove(p.group);
       pickups.splice(i, 1);
 
@@ -1518,7 +1550,11 @@ function pickupCheck(w) {
         spawnParticle(p.x, 1.5, p.z, 0xffe45c, rand(0.14, 0.4), rand(0.25, 0.65));
       }
 
-      if (w.human) { showMessage(`${w.name} picked up ${abilityEmoji[w.ability]} ${w.ability}!`, 1200); if (GAME_SETTINGS.mode==='survival') survivalScore += SURVIVAL_PICKUP_BONUS; }
+      if (w.human) {
+        if (prepared) showMessage(`${w.name} prepared ${abilityEmoji[newAbility]} ${newAbility}!`, 1200);
+        else showMessage(`${w.name} queued ${abilityEmoji[newAbility]} ${newAbility}!`, 1200);
+        if (GAME_SETTINGS.mode==='survival') survivalScore += SURVIVAL_PICKUP_BONUS;
+      }
       return;
     }
   }
@@ -1533,7 +1569,8 @@ function castAbility(w, charge = 0) {
   hideTelegraph(w);
 
   const ability = w.ability;
-  w.ability = null;
+  w.ability = w.queuedAbility || null;
+  w.queuedAbility = null;
 
   createCastBurst(w, ability);
 
@@ -3141,7 +3178,9 @@ function updateHud() {
       modeLine = `Team: ${w.team === 'attackers' ? 'Attackers' : 'Defenders'}<br>Team Stocks: ${teamStocks}<br>Rounds: A ${castleState.attackerRoundWins} - D ${castleState.defenderRoundWins}<br>Tower: ${Math.ceil(castleState.tower?.health || 0)} / ${castleState.towerMaxHealth}<br>Kills: ${w.kills}`;
     }
     else modeLine = `Score: ${Math.floor(survivalScore)}<br>Time: ${formatMatchTime(matchTime)}<br>Kills: ${w.kills}`;
-    card.innerHTML=`<strong>${w.name} (${getModeLabel()})</strong>${modeLine}<br>${w.ability ? abilityEmoji[w.ability]+' '+w.ability:'No ability'}<br>🔥 ${fire}`; tinyHud.appendChild(card);
+    const preparedText = w.ability ? `${abilityEmoji[w.ability] || ""} ${w.ability}` : "None";
+    const queuedText = w.queuedAbility ? `${abilityEmoji[w.queuedAbility] || ""} ${w.queuedAbility}` : "Empty";
+    card.innerHTML=`<strong>${w.name} (${getModeLabel()})</strong>${modeLine}<br>Ability: ${preparedText}<br>Queue: ${queuedText}<br>🔥 ${fire}`; tinyHud.appendChild(card);
   }
 
   const board=document.createElement('div');
