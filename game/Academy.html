@@ -1763,9 +1763,8 @@ function castSquidInk(w) {
   const f = forwardVector(w);
 
   const squid = createSquidMesh();
-  squid.position.set(w.x + f.x * 1.8, 1.6, w.z + f.z * 1.8);
+  squid.position.set(w.x + f.x * 1.8, w.y + 1.6, w.z + f.z * 1.8);
   squid.rotation.y = w.angle;
-  scene.add(squid);
 
   createProjectile({
     owner: w,
@@ -1776,11 +1775,15 @@ function castSquidInk(w) {
     y: w.y + 1.6,
     vx: f.x * 28,
     vz: f.z * 28,
-    radius: 0.65,
+    vy: 0,
+    gravity: 0,
+    radius: 0.75,
     damage: 0,
     knock: 6,
     life: 2.5,
-    bounce: 0
+    bounce: 0,
+    spawnGrace: 0.12,
+    minTravelDistance: 2.0
   });
 }
 
@@ -2334,6 +2337,8 @@ function castVaporBeam(w) {
 
 function createProjectile(o) {
   if (o.mesh) {
+    if (!o.mesh.parent) scene.add(o.mesh);
+    o.mesh.position.set(o.x, o.y || 1.2, o.z);
     projectiles.push({
       ...o,
       hitSet: new Set(),
@@ -2468,80 +2473,98 @@ function triggerProjectileImpact(p, x, y, z, target = null, reason = "impact") {
 }
 
 function updateProjectiles(dt) {
-  for (const p of projectiles) {
-    if (p.type === "hatTornado" && p.hitCooldowns) {
-      for (const [wizard, timeLeft] of p.hitCooldowns) {
-        const next = timeLeft - dt;
-        if (next <= 0) p.hitCooldowns.delete(wizard);
-        else p.hitCooldowns.set(wizard, next);
-      }
-    }
-
-    p.life -= dt;
-    p.age += dt;
-
-    if (p.life <= 0) {
-      if (p.type === "fireball") triggerProjectileImpact(p, p.x, p.y || 1.2, p.z, null, "lifetime");
-      killProjectile(p);
-      continue;
-    }
-
-    p.vy = (p.vy || 0) - (p.gravity || 0) * dt;
-    p.x += p.vx * dt;
-    p.y += (p.vy || 0) * dt;
-    p.z += p.vz * dt;
-
-    if (p.mesh) {
-      p.mesh.position.set(p.x, p.y || 1.2, p.z);
-      if (p.type === "bowling") {
-        p.mesh.rotation.x += dt * 10;
-      } else if (p.type === "hatTornado") {
-        p.mesh.rotation.y += dt * p.spin;
-      } else if (p.type === "ink") {
-        p.mesh.rotation.x += dt * 9;
-        p.mesh.rotation.y += dt * 8;
-      } else {
-        p.mesh.position.y = (p.y || 1.2) + (p.gravity ? 0 : Math.sin(performance.now() * 0.01 + p.spin) * 0.08);
-      }
-    }
-    createSpellTrail(p, dt);
-    const traveled = Math.hypot(p.x - p.spawnX, p.z - p.spawnZ);
-    if (p.age >= p.spawnGrace && traveled >= p.minTravelDistance) p.hasArmed = true;
-
-    if (p.trailTimer <= 0) {
-      p.trailTimer = p.type === "fireball" ? 0.018 : 0.035;
-      const color = p.trailColor || p.color || 0xffffff;
-      const isFire = p.type === "fireball";
-      spawnParticle(p.x, p.y || 1.2, p.z, color, isFire ? rand(0.1, 0.28) : rand(0.08, 0.22), isFire ? rand(0.26, 0.6) : rand(0.18, 0.36));
-      if (isFire) {
-        createMagicSparkles(p.x, p.y || 1.2, p.z, 0xff8f33, 3);
-        spawnParticle(p.x, (p.y || 1.2) - 0.1, p.z, 0x666666, rand(0.1,0.2), rand(0.3,0.55));
-      } else if (p.type === "bonk") createMagicSparkles(p.x, p.y || 1.2, p.z, Math.random()<0.5?0xfff25c:0xa45cff, 3);
-      else if (p.type === "glue") createMagicSparkles(p.x, p.y || 1.2, p.z, 0x66ff66, 2);
-      else if (p.type === "lava") createMagicSparkles(p.x, p.y || 1.2, p.z, 0xff6a1f, 3);
-      else if (p.type === "ink") createMagicSparkles(p.x, p.y || 1.2, p.z, Math.random()<0.5?0x111111:0x7f3fd1, 2);
-      else if (p.type === "bubble") createMagicSparkles(p.x, p.y || 1.2, p.z, 0xdffcff, 2);
-      else if (p.type === "bowling") { createMagicSparkles(p.x, p.y || 1.2, p.z, 0x4f65ff, 2); spawnParticle(p.x, 0.3, p.z, 0x9f8c72, rand(0.08,0.15), rand(0.2,0.4)); }
-      else if (p.type === "jelly") createMagicSparkles(p.x, p.y || 1.2, p.z, 0xff86ed, 2);
-    }
-    if (GAME_SETTINGS.mode === "castle" && checkProjectileCastleHit(p)) {
-      killProjectile(p);
-      continue;
-    }
-
-    if (shouldProjectileHitGround(p)) {
-      triggerProjectileImpact(p, p.x, p.y || 1, p.z, null, "ground");
-      continue;
-    }
-
-    projectileArenaBounce(p);
-    projectileObstacleCollision(p);
-    projectileGooseCollision(p);
-    projectileWizardCollision(p);
-  }
-
   for (let i = projectiles.length - 1; i >= 0; i--) {
-    if (projectiles[i].dead) projectiles.splice(i, 1);
+    const p = projectiles[i];
+
+    if (!p || p._removed || p.dead) {
+      projectiles.splice(i, 1);
+      continue;
+    }
+
+    try {
+      if (p.type === "hatTornado" && p.hitCooldowns) {
+        for (const [wizard, timeLeft] of p.hitCooldowns) {
+          const next = timeLeft - dt;
+          if (next <= 0) p.hitCooldowns.delete(wizard);
+          else p.hitCooldowns.set(wizard, next);
+        }
+      }
+
+      p.life -= dt;
+      p.age += dt;
+
+      if (p.life <= 0) {
+        if (p.type === "fireball") triggerProjectileImpact(p, p.x, p.y || 1.2, p.z, null, "lifetime");
+        else safelyRemoveProjectile(p);
+        projectiles.splice(i, 1);
+        continue;
+      }
+
+      p.vy = (p.vy || 0) - (p.gravity || 0) * dt;
+      p.x += p.vx * dt;
+      p.y += (p.vy || 0) * dt;
+      p.z += p.vz * dt;
+
+      if (p.mesh) {
+        p.mesh.position.set(p.x, p.y || 1.2, p.z);
+        if (p.type === "bowling") {
+          p.mesh.rotation.x += dt * 10;
+        } else if (p.type === "hatTornado") {
+          p.mesh.rotation.y += dt * p.spin;
+        } else if (p.type === "ink") {
+          p.mesh.rotation.x += dt * 9;
+          p.mesh.rotation.y += dt * 8;
+        } else {
+          p.mesh.position.y = (p.y || 1.2) + (p.gravity ? 0 : Math.sin(performance.now() * 0.01 + p.spin) * 0.08);
+        }
+      }
+      createSpellTrail(p, dt);
+      const traveled = Math.hypot(p.x - p.spawnX, p.z - p.spawnZ);
+      if (p.age >= p.spawnGrace && traveled >= p.minTravelDistance) p.hasArmed = true;
+
+      if (p.trailTimer <= 0) {
+        p.trailTimer = p.type === "fireball" ? 0.018 : 0.035;
+        const color = p.trailColor || p.color || 0xffffff;
+        const isFire = p.type === "fireball";
+        spawnParticle(p.x, p.y || 1.2, p.z, color, isFire ? rand(0.1, 0.28) : rand(0.08, 0.22), isFire ? rand(0.26, 0.6) : rand(0.18, 0.36));
+        if (isFire) {
+          createMagicSparkles(p.x, p.y || 1.2, p.z, 0xff8f33, 3);
+          spawnParticle(p.x, (p.y || 1.2) - 0.1, p.z, 0x666666, rand(0.1,0.2), rand(0.3,0.55));
+        } else if (p.type === "bonk") createMagicSparkles(p.x, p.y || 1.2, p.z, Math.random()<0.5?0xfff25c:0xa45cff, 3);
+        else if (p.type === "glue") createMagicSparkles(p.x, p.y || 1.2, p.z, 0x66ff66, 2);
+        else if (p.type === "lava") createMagicSparkles(p.x, p.y || 1.2, p.z, 0xff6a1f, 3);
+        else if (p.type === "ink") createMagicSparkles(p.x, p.y || 1.2, p.z, Math.random()<0.5?0x111111:0x7f3fd1, 2);
+        else if (p.type === "bubble") createMagicSparkles(p.x, p.y || 1.2, p.z, 0xdffcff, 2);
+        else if (p.type === "bowling") { createMagicSparkles(p.x, p.y || 1.2, p.z, 0x4f65ff, 2); spawnParticle(p.x, 0.3, p.z, 0x9f8c72, rand(0.08,0.15), rand(0.2,0.4)); }
+        else if (p.type === "jelly") createMagicSparkles(p.x, p.y || 1.2, p.z, 0xff86ed, 2);
+      }
+
+      if (GAME_SETTINGS.mode === "castle" && checkProjectileCastleHit(p)) {
+        safelyRemoveProjectile(p);
+        projectiles.splice(i, 1);
+        continue;
+      }
+
+      if (shouldProjectileHitGround(p)) {
+        triggerProjectileImpact(p, p.x, p.y || 1, p.z, null, "ground");
+        if (p.dead || p._removed) projectiles.splice(i, 1);
+        continue;
+      }
+
+      projectileArenaBounce(p);
+      if (p.dead || p._removed) { projectiles.splice(i, 1); continue; }
+      projectileObstacleCollision(p);
+      if (p.dead || p._removed) { projectiles.splice(i, 1); continue; }
+      projectileGooseCollision(p);
+      if (p.dead || p._removed) { projectiles.splice(i, 1); continue; }
+      projectileWizardCollision(p);
+      if (p.dead || p._removed) { projectiles.splice(i, 1); continue; }
+    } catch (err) {
+      console.error("Projectile update failed:", err, p);
+      safelyRemoveProjectile(p);
+      projectiles.splice(i, 1);
+      continue;
+    }
   }
 }
 
@@ -2634,6 +2657,12 @@ function projectileWizardCollision(p) {
     if (d < p.radius + w.radius) {
       p.hitSet.add(w);
 
+      if (p.type === "ink") {
+        applySquidInkHit(w, p.owner);
+        safelyRemoveProjectile(p);
+        return;
+      }
+
       if (p.damage > 0) applyDamage(w, p.damage, p.owner.name);
 
       knockWizard(w, p.vx, p.vz, p.knock || 8);
@@ -2654,12 +2683,6 @@ function projectileWizardCollision(p) {
       }
       if (p.type === "lava") {
         triggerProjectileImpact(p, p.x, p.y || 1.2, p.z, w, "wizard");
-      }
-
-      if (p.type === "ink") {
-        w.effect.ink = 5;
-        triggerProjectileImpact(p, w.x, 1.5, w.z, w, "wizard");
-        if (w.human) pulseInkOverlay(w.playerIndex || 0);
       }
 
       if (p.type === "bubble") {
@@ -2719,10 +2742,25 @@ function projectileGooseCollision(p) {
   }
 }
 
-function killProjectile(p) {
-  if (p.dead) return;
+function safelyRemoveProjectile(p) {
+  if (!p || p._removed) return;
+  p._removed = true;
   p.dead = true;
-  if (p.mesh) scene.remove(p.mesh);
+
+  if (p.mesh) {
+    scene.remove(p.mesh);
+  } else if (p.group) {
+    scene.remove(p.group);
+  }
+
+  if (p.light) {
+    scene.remove(p.light);
+  }
+}
+
+function killProjectile(p) {
+  if (!p || p._removed) return;
+  safelyRemoveProjectile(p);
   if (p.type === "fireball") {
     for (let i = 0; i < 14; i++) {
       spawnParticle(p.x + rand(-0.7, 0.7), rand(0.8, 2.2), p.z + rand(-0.7, 0.7), i % 2 ? 0xfff2b3 : 0xff6a1f, rand(0.12, 0.3), rand(0.25, 0.6));
@@ -2967,8 +3005,96 @@ function createFireballImpact(x, y, z) {
 }
 function createBonkBounceEffect(x, y, z) { createShockwaveRing(x, z, 0xfff25c, 2.2, 0.3); createFloatingText3D(x, y + 0.9, z, "BOING!", 0xfff25c); }
 function createBonkHitEffect(x, y, z) { createImpactBurst(x, y, z, 0xa45cff, 1.55); createImpactBurst(x, y, z, 0xfff25c, 1.15); createFloatingText3D(x, y + 1.2, z, "BONK!", 0xfff25c); }
-function createInkSplash(x, y, z) { inkSplat(x, z); createImpactBurst(x, y, z, 0x111111, 1.7); createFloatingText3D(x, y + 1.1, z, "INKED!", 0x222222); }
-function pulseInkOverlay(playerIndex) { inkOverlay.style.animation = "inkPulse 0.45s ease 2"; setTimeout(()=>inkOverlay.style.animation="",900); }
+function createInkSplash(x, y, z) {
+  for (let i = 0; i < 28; i++) {
+    spawnParticle(
+      x + rand(-0.7, 0.7),
+      y + rand(-0.4, 0.6),
+      z + rand(-0.7, 0.7),
+      0x050505,
+      rand(0.08, 0.22),
+      rand(0.25, 0.7)
+    );
+  }
+
+  const splat = new THREE.Mesh(
+    new THREE.CircleGeometry(2.0, 24),
+    new THREE.MeshStandardMaterial({
+      color: 0x050505,
+      emissive: 0x000000,
+      transparent: true,
+      opacity: 0.65,
+      side: THREE.DoubleSide
+    })
+  );
+  splat.rotation.x = -Math.PI / 2;
+  splat.position.set(x, getEffectiveGroundHeight(x, z) + 0.07, z);
+  scene.add(splat);
+
+  temporary.push({
+    mesh: splat,
+    life: 1.5,
+    fade: true
+  });
+}
+
+function getHumanIndex(w) {
+  return wizards.filter(x => x.human).indexOf(w);
+}
+
+function showInkOverlayForWizard(w, duration = 5.0) {
+  if (!w || !w.human) return;
+
+  const index = getHumanIndex(w);
+  let overlay = null;
+
+  if (mode === "two") {
+    overlay = index === 1 ? ink2 : ink1;
+  } else {
+    overlay = ink1;
+  }
+
+  if (!overlay) return;
+
+  overlay.style.display = "block";
+  overlay.dataset.inkUntil = String(performance.now() + duration * 1000);
+}
+
+function updateInkOverlays() {
+  const now = performance.now();
+
+  for (const overlay of [ink1, ink2]) {
+    if (!overlay) continue;
+
+    const until = Number(overlay.dataset.inkUntil || 0);
+    overlay.style.display = until > now ? "block" : "none";
+  }
+
+  if (mode !== "two" && ink2) {
+    ink2.style.display = "none";
+  }
+}
+
+function applySquidInkHit(target, owner) {
+  if (!target || !target.alive || !owner) return;
+
+  target.effect.ink = Math.max(target.effect.ink || 0, 5.0);
+  target.effect.stunned = Math.max(target.effect.stunned || 0, 0.15);
+
+  knockWizard(target, target.x - owner.x, target.z - owner.z, 6);
+
+  spawnPopText(target.x, target.z, "INKED!", 0x111111);
+  createInkSplash(target.x, target.y + 1.4, target.z);
+
+  if (target.human) {
+    showInkOverlayForWizard(target, 5.0);
+  }
+}
+
+function pulseInkOverlay(playerIndex) {
+  const humans = wizards.filter(x => x.human);
+  showInkOverlayForWizard(humans[playerIndex] || humans[0], 5.0);
+}
 function createBubblePop(x, y, z) { createShockwaveRing(x, z, 0xdffcff, 2.6, 0.35); createFloatingText3D(x, y + 1.1, z, Math.random()<0.5?"POP!":"BUBBLED!", 0xaaf6ff); }
 function attachBubbleAura(wizard, duration) { wizard.effect.bubbleAura = Math.max(wizard.effect.bubbleAura || 0, duration); }
 function createMagnetOrbitObjects(wizard, duration) { wizard.effect.magnetOrbit = Math.max(wizard.effect.magnetOrbit || 0, duration); }
@@ -3341,22 +3467,19 @@ function updateHud() {
   const p2 = wizards[1];
 
   if (mode === "one") {
-    ink1.style.display = p1 && p1.alive && p1.effect.ink > 0 ? "block" : "none";
     ink1.style.clipPath = "none";
-    ink2.style.display = "none";
   }
 
   if (mode === "two") {
-    ink1.style.display = p1 && p1.alive && p1.effect.ink > 0 ? "block" : "none";
     ink1.style.clipPath = "inset(0 50% 0 0)";
-
-    ink2.style.display = p2 && p2.alive && p2.effect.ink > 0 ? "block" : "none";
     ink2.style.clipPath = "inset(0 0 0 50%)";
   }
 
   if (mode === "bots") {
     ink1.style.display = "none";
     ink2.style.display = "none";
+  } else {
+    updateInkOverlays();
   }
 }
 
@@ -3896,15 +4019,55 @@ function createCastleGate(x, z, width, depth) {
 }
 
 function createCastleTower(x, z) {
+  const y = getEffectiveGroundHeight(x, z);
   const group = new THREE.Group();
-  const stone = new THREE.MeshStandardMaterial({ color: 0x777b85, roughness: 0.9 });
-  const tower = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 4.3, 12, 18), stone);
-  tower.position.y = 6; tower.castShadow = true; tower.receiveShadow = true; group.add(tower);
-  const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(1.25), new THREE.MeshStandardMaterial({ color: 0xff4444, emissive: 0x8a0000 }));
-  crystal.position.y = 13.2; group.add(crystal);
-  group.position.set(x, 0, z); scene.add(group);
-  const obj = { kind: "castleTower", x, z, radius: 4, health: GAME_SETTINGS.castleTowerHealth, maxHealth: GAME_SETTINGS.castleTowerHealth, mesh: group, hpBar: createCastleHpBar(x, 14.8, z, 8, 0xff4444) };
-  castleDamageables.push(obj); return obj;
+
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(4.3, 4.8, 1.0, 24),
+    new THREE.MeshStandardMaterial({ color: 0x777b86, roughness: 0.85 })
+  );
+  base.position.y = 0.5;
+  base.castShadow = true;
+  base.receiveShadow = true;
+  group.add(base);
+
+  const crystal = new THREE.Mesh(
+    new THREE.OctahedronGeometry(2.5, 1),
+    new THREE.MeshStandardMaterial({
+      color: 0x66f7ff,
+      emissive: 0x1688aa,
+      roughness: 0.25,
+      metalness: 0.15,
+      transparent: true,
+      opacity: 0.92
+    })
+  );
+  crystal.position.y = 3.0;
+  crystal.castShadow = true;
+  group.add(crystal);
+
+  const ring = createGroundRing(x, z, 5.1, 0x66f7ff, 0.55);
+  ring.position.y = y + 0.09;
+
+  group.position.set(x, y, z);
+  scene.add(group);
+
+  const obj = {
+    kind: "castleCrystal",
+    x,
+    z,
+    y,
+    radius: 4.2,
+    hitHeight: 5.5,
+    health: GAME_SETTINGS.castleTowerHealth,
+    maxHealth: GAME_SETTINGS.castleTowerHealth,
+    mesh: group,
+    crystal,
+    ring,
+    hpBar: createCastleHpBar(x, y + 6.0, z, 8, 0x66f7ff)
+  };
+  castleDamageables.push(obj);
+  return obj;
 }
 
 function createCastleBanner(x, z, teamColor) {
@@ -3923,7 +4086,10 @@ function createCastleHpBar(x, y, z, width, color) {
 
 function updateCastleHealthBars() {
   for (const gate of castleState.gates) updateCastleHpBar(gate.hpBar, gate.health, gate.maxHealth, gate.destroyed);
-  if (castleState.tower) updateCastleHpBar(castleState.tower.hpBar, castleState.tower.health, castleState.tower.maxHealth, false);
+  if (castleState.tower) {
+    if (castleState.tower.hpBar) castleState.tower.hpBar.position.set(castleState.tower.x, castleState.tower.y + 6.0, castleState.tower.z);
+    updateCastleHpBar(castleState.tower.hpBar, castleState.tower.health, castleState.tower.maxHealth, false);
+  }
 }
 function updateCastleHpBar(bar, health, maxHealth, hidden) {
   if (!bar || !bar.userData.fill) return;
@@ -3976,6 +4142,13 @@ function getCastleSpawnPoint(w) {
 function updateCastleMode(dt) {
   if (GAME_SETTINGS.mode !== "castle") return;
   updateCastleHealthBars();
+  if (castleState.tower?.crystal) {
+    castleState.tower.crystal.rotation.y += dt * 1.8;
+    castleState.tower.crystal.position.y = 3.0 + Math.sin(performance.now() * 0.004) * 0.25;
+  }
+  if (castleState.tower?.ring) {
+    castleState.tower.ring.material.opacity = 0.38 + Math.sin(performance.now() * 0.006) * 0.14;
+  }
   if (castleState.roundOver && !gameOver) {
     castleState.roundResetTimer -= dt;
     if (castleState.roundResetTimer <= 0) resetCastleRound();
@@ -4058,6 +4231,21 @@ function isCastleBlockedPoint(x, z, r) {
   return castleState.tower && distancePoint(x, z, castleState.tower.x, castleState.tower.z) < r + castleState.tower.radius + 1;
 }
 
+function projectileHitsCastleCrystal(p) {
+  const tower = castleState.tower;
+  if (!tower || !p) return false;
+
+  const dx = p.x - tower.x;
+  const dz = p.z - tower.z;
+  const horizontalDist = Math.hypot(dx, dz);
+
+  const towerY = tower.y ?? getEffectiveGroundHeight(tower.x, tower.z);
+  const projectileY = p.y ?? towerY + 2;
+  const withinHeight = projectileY >= towerY - 0.5 && projectileY <= towerY + (tower.hitHeight || 5.5);
+
+  return horizontalDist <= (tower.radius || 4.2) + (p.radius || 0.8) + 0.8 && withinHeight;
+}
+
 function checkProjectileCastleHit(p) {
   if (!p.owner || !p.hasArmed || castleState.roundOver) return false;
   const amount = getCastleProjectileDamage(p);
@@ -4065,7 +4253,7 @@ function checkProjectileCastleHit(p) {
     if (gate.destroyed) continue;
     if (circleRectOverlap(p.x, p.z, p.radius || 0.6, gate.x, gate.z, gate.width, gate.depth).hit) { damageCastleGate(gate, amount, p.owner); return true; }
   }
-  if (castleState.tower && p.owner.team === "attackers" && distancePoint(p.x, p.z, castleState.tower.x, castleState.tower.z) < (p.radius || 0.6) + castleState.tower.radius) {
+  if (castleState.tower && p.owner.team === "attackers" && projectileHitsCastleCrystal(p)) {
     damageCastleTower(amount, p.owner); return true;
   }
   return false;
@@ -4078,7 +4266,7 @@ function damageCastleGate(gate, amount, source) {
 }
 function damageCastleTower(amount, source) {
   if (!castleState.tower || castleState.roundOver) return;
-  castleState.tower.health = Math.max(0, castleState.tower.health - amount); castleState.towerHealth = castleState.tower.health; createImpactBurst(castleState.tower.x, 3.0, castleState.tower.z, 0xff4444, 1.4); updateCastleHealthBars();
+  castleState.tower.health = Math.max(0, castleState.tower.health - amount); castleState.towerHealth = castleState.tower.health; createImpactBurst(castleState.tower.x, castleState.tower.y + 3.0, castleState.tower.z, 0xff4444, 1.4); updateCastleHealthBars();
   if (castleState.tower.health <= 0) finishCastleRound("attackers", "The tower was destroyed!");
 }
 
