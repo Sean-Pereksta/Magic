@@ -1290,6 +1290,8 @@ function createTree(x, z, r) {
     x,
     z,
     radius: r * 1.05,
+    bottomY: 0,
+    topY: 5.8,
     mesh: group
   });
 }
@@ -1314,6 +1316,8 @@ function createStone(x, z, r) {
     x,
     z,
     radius: r * 1.15,
+    bottomY: 0,
+    topY: r * 1.7,
     mesh: stone
   });
 }
@@ -2025,6 +2029,8 @@ function keepInArena(w) {
 
 function collideWithObstacles(w) {
   for (const o of obstacles) {
+    if (!wizardVerticallyOverlapsObstacle(w, o)) continue;
+
     const dx = w.x - o.x;
     const dz = w.z - o.z;
     const d = Math.hypot(dx, dz);
@@ -2048,6 +2054,7 @@ function collideWithObstacles(w) {
 
   for (const obj of temporary) {
     if (obj.kind !== "mushroomWall") continue;
+    if (!wizardVerticallyOverlapsObstacle(w, obj)) continue;
 
     const d = distancePoint(w.x, w.z, obj.x, obj.z);
     const minD = w.radius + obj.radius;
@@ -2059,6 +2066,16 @@ function collideWithObstacles(w) {
       knockWizard(w, nx, nz, 2.5);
     }
   }
+}
+
+function wizardVerticallyOverlapsObstacle(w, o) {
+  const wizardBottom = w.y;
+  const wizardTop = w.y + 3.6;
+
+  const obstacleBottom = o.bottomY ?? 0;
+  const obstacleTop = o.topY ?? 4;
+
+  return wizardTop > obstacleBottom && wizardBottom < obstacleTop;
 }
 
 function collideWithWizards(w) {
@@ -2782,6 +2799,8 @@ function castToadstoolWall(w) {
       x,
       z,
       radius: 1.05,
+      bottomY: 0,
+      topY: 2.4,
       life: 7.5,
       grow: true,
       maxScale: mushroomScale,
@@ -4611,10 +4630,31 @@ function getCastlePlatformHeightAt(x, z) {
 }
 function getWizardGroundHeight(w){
   const base = getEffectiveGroundHeight(w.x,w.z);
-  if (GAME_SETTINGS.mode === "castle") {
-    const platformY = getCastlePlatformHeightAt(w.x, w.z);
-    if (platformY !== null && w.y >= platformY - 1.2) return Math.max(base, platformY);
+  if (GAME_SETTINGS.mode !== "castle") return base;
+
+  for (const wall of castleState.walls) {
+    if (wall.kind !== "castleWall") continue;
+
+    const onWallFootprint = circleRectOverlap(
+      w.x,
+      w.z,
+      w.radius,
+      wall.x,
+      wall.z,
+      wall.width + 2.6,
+      wall.depth + 2.6
+    ).hit;
+
+    if (!onWallFootprint) continue;
+
+    const wallTopY = wall.height + 0.45;
+
+    // If the wizard is already above the wall top, let them land on it.
+    if (w.y >= wall.height - 0.4 || (w.vy <= 0 && w.y > wall.height - 1.0)) {
+      return Math.max(base, wallTopY);
+    }
   }
+
   return base;
 }
 function getTerrainNormalApprox(x,z){ const e=0.5; const hL=getEffectiveGroundHeight(x-e,z),hR=getEffectiveGroundHeight(x+e,z),hD=getEffectiveGroundHeight(x,z-e),hU=getEffectiveGroundHeight(x,z+e); return {slopeX:(hL-hR)/(2*e),slopeZ:(hD-hU)/(2*e)}; }
@@ -4755,7 +4795,7 @@ function createCastleWall(x, z, width, depth, height) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), mat);
   mesh.position.set(x, height / 2, z);
   mesh.castShadow = true; mesh.receiveShadow = true; scene.add(mesh);
-  const wall = { kind: "castleWall", x, z, width, depth, height, mesh, blocksAttackers: true, blocksDefenders: true };
+  const wall = { kind: "castleWall", x, z, width, depth, height, bottomY: 0, topY: height, mesh, blocksAttackers: true, blocksDefenders: true };
   castleState.walls.push(wall); castleColliders.push(wall);
   const alongX = width >= depth;
   const count = Math.max(2, Math.floor((alongX ? width : depth) / 4));
@@ -4788,7 +4828,7 @@ function createCastleGate(x, z, width, depth) {
     strip.position.y = y; group.add(strip);
   }
   group.position.set(x, 0.2, z); scene.add(group);
-  const gate = { kind: "castleGate", x, z, width, depth, health: 8, maxHealth: 8, destroyed: false, mesh: group, hpBar: createCastleHpBar(x, 5.9, z, width, 0xffcc66) };
+  const gate = { kind: "castleGate", x, z, width, depth, bottomY: 0, topY: 5.5, health: 8, maxHealth: 8, destroyed: false, mesh: group, hpBar: createCastleHpBar(x, 5.9, z, width, 0xffcc66) };
   castleState.gates.push(gate); castleColliders.push(gate); castleDamageables.push(gate); return gate;
 }
 
@@ -5029,6 +5069,7 @@ function collideWithCastle(w) {
   for (const c of castleColliders) {
     if (c.kind === "castleGate" && c.destroyed) continue;
     if (c.kind === "castleWall" && w.team === "defenders" && w.y > c.height - 0.7) continue;
+    if (!wizardVerticallyOverlapsCollider(w, c)) continue;
     const overlap = circleRectOverlap(w.x, w.z, w.radius, c.x, c.z, c.width, c.depth);
     if (!overlap.hit) continue;
     w.x += overlap.nx * overlap.push;
@@ -5036,6 +5077,29 @@ function collideWithCastle(w) {
     const dot = w.vx * overlap.nx + w.vz * overlap.nz;
     if (dot < 0) { w.vx -= dot * overlap.nx * 1.4; w.vz -= dot * overlap.nz * 1.4; }
   }
+}
+
+function wizardVerticallyOverlapsCollider(w, collider) {
+  const wizardBottom = w.y;
+  const wizardTop = w.y + 3.6;
+
+  const colliderBottom = collider.bottomY ?? 0;
+  const colliderTop = collider.topY ?? collider.height ?? 4;
+
+  return wizardTop > colliderBottom && wizardBottom < colliderTop;
+}
+
+function projectileVerticallyOverlapsCollider(p, collider) {
+  const projectileY = p.y ?? 1.2;
+  const projectileRadius = p.radius ?? 0.5;
+
+  const projectileBottom = projectileY - projectileRadius;
+  const projectileTop = projectileY + projectileRadius;
+
+  const colliderBottom = collider.bottomY ?? 0;
+  const colliderTop = collider.topY ?? collider.height ?? 4;
+
+  return projectileTop > colliderBottom && projectileBottom < colliderTop;
 }
 
 function circleRectOverlap(cx, cz, cr, rx, rz, rw, rd) {
@@ -5079,7 +5143,13 @@ function checkProjectileCastleHit(p) {
   const amount = getCastleProjectileDamage(p);
   for (const gate of castleState.gates) {
     if (gate.destroyed) continue;
+    if (!projectileVerticallyOverlapsCollider(p, gate)) continue;
     if (circleRectOverlap(p.x, p.z, p.radius || 0.6, gate.x, gate.z, gate.width, gate.depth).hit && projectileHitsVerticalObject(p, { ...gate, y: getEffectiveGroundHeight(gate.x, gate.z), hitHeight: 7 })) { damageCastleGate(gate, amount, p.owner); return true; }
+  }
+  for (const wall of castleState.walls) {
+    if (wall.kind !== "castleWall") continue;
+    if (!projectileVerticallyOverlapsCollider(p, wall)) continue;
+    if (circleRectOverlap(p.x, p.z, p.radius || 0.6, wall.x, wall.z, wall.width, wall.depth).hit) return true;
   }
   if (castleState.tower && p.owner.team === "attackers" && projectileHitsCastleCrystal(p)) {
     damageCastleTower(amount, p.owner); return true;
