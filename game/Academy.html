@@ -90,6 +90,28 @@
     max-width: 96vw;
   }
 
+  .splitHud {
+    position: fixed;
+    top: 10px;
+    z-index: 52;
+    display: none;
+    gap: 8px;
+    pointer-events: none;
+    flex-wrap: wrap;
+    max-width: 48vw;
+  }
+
+  .splitHudLeft {
+    left: 10px;
+    justify-content: flex-start;
+  }
+
+  .splitHudRight {
+    right: 10px;
+    justify-content: flex-end;
+    text-align: right;
+  }
+
   .hud-card {
     min-width: 112px;
     padding: 6px 8px;
@@ -285,6 +307,8 @@
 
 <canvas id="game"></canvas>
 <div id="tinyHud"></div>
+<div id="hudP1" class="splitHud splitHudLeft"></div>
+<div id="hudP2" class="splitHud splitHudRight"></div>
 <div id="message"></div>
 <button id="restart" onclick="location.reload()">Restart</button>
 <div id="splitLine"></div>
@@ -303,6 +327,8 @@
 const canvas = document.getElementById("game");
 const menu = document.getElementById("menu");
 const tinyHud = document.getElementById("tinyHud");
+const hudP1 = document.getElementById("hudP1");
+const hudP2 = document.getElementById("hudP2");
 const messageBox = document.getElementById("message");
 const restartBtn = document.getElementById("restart");
 const splitLine = document.getElementById("splitLine");
@@ -476,7 +502,9 @@ function startGame(selectedMode) {
   summaryScreen.style.display = "none";
   gameOver = false;
   restartBtn.style.display = "block";
-  tinyHud.style.display = "flex";
+  tinyHud.style.display = mode === "two" ? "none" : "flex";
+  hudP1.style.display = mode === "two" ? "flex" : "none";
+  hudP2.style.display = mode === "two" ? "flex" : "none";
 
   splitLine.style.display = mode === "two" ? "block" : "none";
   crosshair1.style.display = mode === "bots" ? "none" : "block";
@@ -902,20 +930,50 @@ function createWizard(name, color, spawnAngle, human, controls) {
   };
 }
 
-function createHealthLabel(name) {
+function createLabelDom(name) {
   const nameDiv = document.createElement("div");
   nameDiv.className = "nameLabel";
   nameDiv.textContent = name;
+  nameDiv.style.display = "none";
   document.body.appendChild(nameDiv);
 
   const bar = document.createElement("div");
   bar.className = "healthBar";
   const fill = document.createElement("div");
   fill.className = "healthFill";
+  bar.style.display = "none";
   bar.appendChild(fill);
   document.body.appendChild(bar);
 
   return { name: nameDiv, bar, fill };
+}
+
+function createHealthLabel(name) {
+  const primary = createLabelDom(name);
+  const secondary = createLabelDom(name);
+
+  return {
+    name: primary.name,
+    bar: primary.bar,
+    fill: primary.fill,
+    name2: secondary.name,
+    bar2: secondary.bar,
+    fill2: secondary.fill
+  };
+}
+
+function hideWizardLabels(w) {
+  if (!w.label) return;
+  for (const el of [w.label.name, w.label.bar, w.label.name2, w.label.bar2]) {
+    if (el) el.style.display = "none";
+  }
+}
+
+function showWizardLabels(w) {
+  if (!w.label) return;
+  for (const el of [w.label.name, w.label.bar, w.label.name2, w.label.bar2]) {
+    if (el) el.style.display = "block";
+  }
 }
 
 function updateWizardMesh(w, dt) {
@@ -976,8 +1034,7 @@ function vaporizeWizard(w, sourceName) {
 
   w.alive = false;
   w.group.visible = false;
-  w.label.name.style.display = "none";
-  w.label.bar.style.display = "none";
+  hideWizardLabels(w);
 
   createVaporCloud(w.x, w.z);
 
@@ -3132,75 +3189,152 @@ function renderScene() {
   }
 }
 
+function getViewportForCamera(which) {
+  if (mode === "two") {
+    if (which === 1) return { x: 0, y: 0, w: window.innerWidth / 2, h: window.innerHeight };
+    if (which === 2) return { x: window.innerWidth / 2, y: 0, w: window.innerWidth / 2, h: window.innerHeight };
+  }
+  return { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight };
+}
+
+function projectWorldToViewport(obj, camera, viewport) {
+  const vector = new THREE.Vector3(obj.x, obj.y + 3.7, obj.z);
+  vector.project(camera);
+
+  if (vector.z < -1 || vector.z > 1) return null;
+
+  return {
+    x: viewport.x + (vector.x * 0.5 + 0.5) * viewport.w,
+    y: viewport.y + (-vector.y * 0.5 + 0.5) * viewport.h
+  };
+}
+
+function positionLabelSet(w, camera, viewport, suffix = "") {
+  const nameEl = suffix === "2" ? w.label.name2 : w.label.name;
+  const barEl = suffix === "2" ? w.label.bar2 : w.label.bar;
+  const fillEl = suffix === "2" ? w.label.fill2 : w.label.fill;
+
+  if (!nameEl || !barEl || !fillEl) return;
+
+  if (!w.alive) {
+    nameEl.style.display = "none";
+    barEl.style.display = "none";
+    return;
+  }
+
+  const pos = projectWorldToViewport(w, camera, viewport);
+
+  if (!pos) {
+    nameEl.style.display = "none";
+    barEl.style.display = "none";
+    return;
+  }
+
+  nameEl.style.display = "block";
+  barEl.style.display = "block";
+
+  nameEl.style.left = `${pos.x}px`;
+  nameEl.style.top = `${pos.y - 18}px`;
+
+  barEl.style.left = `${pos.x}px`;
+  barEl.style.top = `${pos.y - 5}px`;
+
+  const hpPct = clamp(1 - (w.damage / MAX_DAMAGE), 0, 1) * 100;
+  fillEl.style.width = `${hpPct}%`;
+}
+
 function updateLabels() {
-  const cam = mode === "bots" ? spectatorCamera : camera1;
+  if (mode === "two") {
+    const leftViewport = getViewportForCamera(1);
+    const rightViewport = getViewportForCamera(2);
 
-  for (const w of wizards) {
-    if (!w.alive) {
-      w.label.name.style.display = "none";
-      w.label.bar.style.display = "none";
-      continue;
+    for (const w of wizards) {
+      positionLabelSet(w, camera1, leftViewport, "");
+      positionLabelSet(w, camera2, rightViewport, "2");
     }
+    return;
+  }
 
-    w.label.name.style.display = "block";
-    w.label.bar.style.display = "block";
+  const cam = mode === "bots" ? spectatorCamera : camera1;
+  const viewport = getViewportForCamera(1);
+  for (const w of wizards) {
+    positionLabelSet(w, cam, viewport, "");
 
-    const p = new THREE.Vector3(w.x, 4.3, w.z);
-    p.project(cam);
-
-    const sx = (p.x * 0.5 + 0.5) * window.innerWidth;
-    const sy = (-p.y * 0.5 + 0.5) * window.innerHeight;
-
-    w.label.name.style.left = sx + "px";
-    w.label.name.style.top = (sy - 14) + "px";
-    w.label.bar.style.left = sx + "px";
-    w.label.bar.style.top = sy + "px";
-
-    const hp = clamp(1 - w.damage / MAX_DAMAGE, 0, 1);
-    w.label.fill.style.width = (hp * 100) + "%";
+    if (w.label.name2) w.label.name2.style.display = "none";
+    if (w.label.bar2) w.label.bar2.style.display = "none";
   }
 }
 
+function buildHudCardHtml(w) {
+  const abilityText = w.ability ? `${abilityEmoji[w.ability] || ""} ${w.ability}` : "None";
+  const queueText = w.queuedAbility ? `${abilityEmoji[w.queuedAbility] || ""} ${w.queuedAbility}` : "Empty";
+  const fire = w.fireCooldown <= 0 ? "ready" : `${w.fireCooldown.toFixed(1)}s`;
+
+  let modeLine = "";
+  if (GAME_SETTINGS.mode === "stock") modeLine = `Stocks: ${"♥ ".repeat(w.stocks)}<br>Damage: ${Math.floor(w.damage)} / ${MAX_DAMAGE}`;
+  else if (GAME_SETTINGS.mode === "king") modeLine = `Hill: ${Math.floor(w.score)} / ${GAME_SETTINGS.kingScoreTarget}<br>Kills: ${w.kills}`;
+  else if (GAME_SETTINGS.mode === "kills") modeLine = `Kills: ${w.kills || 0} / ${GAME_SETTINGS.killTarget}<br>Damage: ${Math.floor(w.damage)} / ${MAX_DAMAGE}`;
+  else if (GAME_SETTINGS.mode === "crown") modeLine = `Crown: ${Math.floor(w.score)} / ${GAME_SETTINGS.crownScoreTarget}<br>Kills: ${w.kills}${crownState.carrier === w ? "<br>👑 CROWN CARRIER" : ""}`;
+  else if (GAME_SETTINGS.mode === "castle") {
+    const teamStocks = w.team === "attackers" ? castleState.attackerStocks : castleState.defenderStocks;
+    modeLine = `Team: ${w.team === "attackers" ? "Attackers" : "Defenders"}<br>Team Stocks: ${teamStocks}<br>Rounds: A ${castleState.attackerRoundWins} - D ${castleState.defenderRoundWins}`;
+  } else if (GAME_SETTINGS.mode === "survival") {
+    modeLine = `Survival: ${Math.floor(survivalScore)}<br>Time: ${formatMatchTime(matchTime)}<br>Kills: ${w.kills}`;
+  }
+
+  return `
+    <div class="hud-card">
+      <strong>${escapeHtml(w.name)} (${escapeHtml(getModeLabel())})</strong>
+      ${modeLine}<br>
+      Ability: ${escapeHtml(abilityText)}<br>
+      Queue: ${escapeHtml(queueText)}<br>
+      🔥 ${escapeHtml(fire)}
+    </div>
+  `;
+}
+
 function updateHud() {
-  tinyHud.innerHTML = "";
+  if (mode === "two") {
+    const p1 = wizards.find(w => w.human && w.name === "Player 1") || wizards[0];
+    const p2 = wizards.find(w => w.human && w.name === "Player 2") || wizards[1];
 
-  const humans = wizards.filter(w => w.human);
-
-  for (const w of humans) {
-    const card = document.createElement('div'); card.className='hud-card'; const fire=w.fireCooldown<=0?'ready':w.fireCooldown.toFixed(1)+'s';
-    let modeLine;
-    if (GAME_SETTINGS.mode === 'stock') modeLine = `Stocks: ${'♥ '.repeat(w.stocks)}<br>Damage: ${w.damage}/${MAX_DAMAGE}`;
-    else if (GAME_SETTINGS.mode === 'king') modeLine = `Score: ${Math.floor(w.score)} / ${GAME_SETTINGS.kingScoreTarget}<br>Kills: ${w.kills}`;
-    else if (GAME_SETTINGS.mode === 'kills') modeLine = `Kills: ${w.kills || 0}/${GAME_SETTINGS.killTarget}<br>Damage: ${w.damage}/${MAX_DAMAGE}`;
-    else if (GAME_SETTINGS.mode === 'crown') modeLine = `Crown Score: ${Math.floor(w.score)} / ${GAME_SETTINGS.crownScoreTarget}<br>Kills: ${w.kills}${crownState.carrier === w ? "<br>👑 CROWN CARRIER" : ""}`;
-    else if (GAME_SETTINGS.mode === 'castle') {
-      const teamStocks = w.team === 'attackers' ? castleState.attackerStocks : castleState.defenderStocks;
-      modeLine = `Team: ${w.team === 'attackers' ? 'Attackers' : 'Defenders'}<br>Team Stocks: ${teamStocks}<br>Rounds: A ${castleState.attackerRoundWins} - D ${castleState.defenderRoundWins}<br>Tower: ${Math.ceil(castleState.tower?.health || 0)} / ${castleState.towerMaxHealth}<br>Kills: ${w.kills}`;
-    }
-    else modeLine = `Score: ${Math.floor(survivalScore)}<br>Time: ${formatMatchTime(matchTime)}<br>Kills: ${w.kills}`;
-    const preparedText = w.ability ? `${abilityEmoji[w.ability] || ""} ${w.ability}` : "None";
-    const queuedText = w.queuedAbility ? `${abilityEmoji[w.queuedAbility] || ""} ${w.queuedAbility}` : "Empty";
-    card.innerHTML=`<strong>${w.name} (${getModeLabel()})</strong>${modeLine}<br>Ability: ${preparedText}<br>Queue: ${queuedText}<br>🔥 ${fire}`; tinyHud.appendChild(card);
-  }
-
-  const board=document.createElement('div');
-  board.className='hud-card';
-  let boardLines;
-  if (GAME_SETTINGS.mode === 'castle') {
-    const gateLine = castleState.gates.map((g, i) => `G${i + 1}: ${g.destroyed ? 'OPEN' : Math.ceil(g.health) + '/' + g.maxHealth}`).join(' • ');
-    boardLines = [`Attackers Stocks: ${castleState.attackerStocks}`, `Defenders Stocks: ${castleState.defenderStocks}`, `Tower: ${Math.ceil(castleState.tower?.health || 0)}/${castleState.towerMaxHealth}`, `Rounds A ${castleState.attackerRoundWins} - D ${castleState.defenderRoundWins}`, gateLine].concat(wizards.map(w => `${w.name} (${w.team === 'attackers' ? 'A' : 'D'}): K ${w.kills}`));
-  } else if (GAME_SETTINGS.mode === 'crown') {
-    boardLines = wizards.map(w => `${crownState.carrier === w ? '👑 ' : ''}${w.name}: Score ${Math.floor(w.score)} / K ${w.kills}`);
+    tinyHud.innerHTML = "";
+    hudP1.innerHTML = p1 ? buildHudCardHtml(p1) : "";
+    hudP2.innerHTML = p2 ? buildHudCardHtml(p2) : "";
   } else {
-    boardLines = wizards.map(w=>`${w.name}: ${GAME_SETTINGS.mode==='king'?'Score '+Math.floor(w.score)+' / K '+w.kills:GAME_SETTINGS.mode==='kills'?'Kills '+(w.kills||0)+'/'+GAME_SETTINGS.killTarget:'Dmg '+w.damage+' / S '+w.stocks}`);
-  }
-  board.innerHTML='<strong>Scoreboard</strong>'+boardLines.join('<br>'); tinyHud.appendChild(board);
-  if (!humans.length) {
-    const alive = wizards.filter(w => w.alive).length;
-    const card = document.createElement("div");
-    card.className = "hud-card";
-    card.innerHTML = `<strong>Bot Chaos</strong>${alive} alive`;
-    tinyHud.appendChild(card);
+    hudP1.innerHTML = "";
+    hudP2.innerHTML = "";
+    tinyHud.innerHTML = "";
+
+    const humans = wizards.filter(w => w.human);
+
+    for (const w of humans) {
+      const card = document.createElement("div");
+      card.className = "hud-card";
+      card.innerHTML = buildHudCardHtml(w);
+      tinyHud.appendChild(card.firstElementChild);
+    }
+
+    const board = document.createElement("div");
+    board.className = "hud-card";
+    let boardLines;
+    if (GAME_SETTINGS.mode === "castle") {
+      const gateLine = castleState.gates.map((g, i) => `G${i + 1}: ${g.destroyed ? "OPEN" : Math.ceil(g.health) + "/" + g.maxHealth}`).join(" • ");
+      boardLines = [`Attackers Stocks: ${castleState.attackerStocks}`, `Defenders Stocks: ${castleState.defenderStocks}`, `Tower: ${Math.ceil(castleState.tower?.health || 0)}/${castleState.towerMaxHealth}`, `Rounds A ${castleState.attackerRoundWins} - D ${castleState.defenderRoundWins}`, gateLine].concat(wizards.map(w => `${w.name} (${w.team === "attackers" ? "A" : "D"}): K ${w.kills}`));
+    } else if (GAME_SETTINGS.mode === "crown") {
+      boardLines = wizards.map(w => `${crownState.carrier === w ? "👑 " : ""}${w.name}: Score ${Math.floor(w.score)} / K ${w.kills}`);
+    } else {
+      boardLines = wizards.map(w => `${w.name}: ${GAME_SETTINGS.mode === "king" ? "Score " + Math.floor(w.score) + " / K " + w.kills : GAME_SETTINGS.mode === "kills" ? "Kills " + (w.kills || 0) + "/" + GAME_SETTINGS.killTarget : "Dmg " + w.damage + " / S " + w.stocks}`);
+    }
+    board.innerHTML = "<strong>Scoreboard</strong>" + boardLines.join("<br>");
+    tinyHud.appendChild(board);
+    if (!humans.length) {
+      const alive = wizards.filter(w => w.alive).length;
+      const card = document.createElement("div");
+      card.className = "hud-card";
+      card.innerHTML = `<strong>Bot Chaos</strong>${alive} alive`;
+      tinyHud.appendChild(card);
+    }
   }
 
   const p1 = wizards[0];
@@ -3875,7 +4009,7 @@ function resetCastleRound() {
   if (castleState.tower) { castleState.tower.health = castleState.tower.maxHealth; castleState.tower.mesh.visible = true; }
   for (const w of wizards) {
     placeWizardAtCastleSpawn(w, false);
-    if (w.label) { w.label.name.style.display = "block"; w.label.bar.style.display = "block"; }
+    if (w.label) showWizardLabels(w);
   }
   showMessage(`Round ${castleState.roundNumber}: Attackers ${castleState.attackerRoundWins} - Defenders ${castleState.defenderRoundWins}`, 2200);
 }
@@ -4010,7 +4144,7 @@ function maybeCastBotAbilityAtTarget(w, target) { if (!w.ability || !target || w
 
 
 function updateModes(dt){ matchTime += dt; survivalLevel = Math.floor(matchTime/30)+1;
- for(const w of wizards){ if(!w.alive && w.respawnTimer>0){ w.respawnTimer-=dt; const canRespawn = GAME_SETTINGS.mode==='king' || GAME_SETTINGS.mode==='kills' || GAME_SETTINGS.mode==='crown' || GAME_SETTINGS.mode==='survival' || canCastleRespawn(w) || (GAME_SETTINGS.mode==='stock' && w.stocks>0); if(w.respawnTimer<=0 && canRespawn){ const sp=GAME_SETTINGS.mode==='castle'?getCastleSpawnPoint(w):randomArenaPoint(8); w.x=sp.x; w.z=sp.z; w.y=sp.y ?? getEffectiveGroundHeight(w.x,w.z); w.vx=0; w.vz=0; w.vy=0; w.damage=0; w.alive=true; w.group.visible=true; w.label.name.style.display='block'; w.label.bar.style.display='block'; w.invulnerableTimer=1.1; }} w.invulnerableTimer=Math.max(0,w.invulnerableTimer-dt);}
+ for(const w of wizards){ if(!w.alive && w.respawnTimer>0){ w.respawnTimer-=dt; const canRespawn = GAME_SETTINGS.mode==='king' || GAME_SETTINGS.mode==='kills' || GAME_SETTINGS.mode==='crown' || GAME_SETTINGS.mode==='survival' || canCastleRespawn(w) || (GAME_SETTINGS.mode==='stock' && w.stocks>0); if(w.respawnTimer<=0 && canRespawn){ const sp=GAME_SETTINGS.mode==='castle'?getCastleSpawnPoint(w):randomArenaPoint(8); w.x=sp.x; w.z=sp.z; w.y=sp.y ?? getEffectiveGroundHeight(w.x,w.z); w.vx=0; w.vz=0; w.vy=0; w.damage=0; w.alive=true; w.group.visible=true; showWizardLabels(w); w.invulnerableTimer=1.1; }} w.invulnerableTimer=Math.max(0,w.invulnerableTimer-dt);}
  if(GAME_SETTINGS.mode==='king'){ const inside=wizards.filter(w=>w.alive&&isWizardInHill(w)); if(hillZone.ring){ const c=inside.length===1?inside[0].color:inside.length>1?0xffffff:0x88eeff; hillZone.ring.material.color.setHex(c); hillZone.ring.material.emissive.setHex(c);} for(const w of inside){ w.score += (inside.length===1?KING_POINTS_PER_SECOND:KING_CONTESTED_POINTS_PER_SECOND)*dt; } }
  if(GAME_SETTINGS.mode==='crown') updateCrownMode(dt);
  if(GAME_SETTINGS.mode==='castle') updateCastleMode(dt);
@@ -4030,6 +4164,8 @@ function endMatch({ winner = null, title = "Match Over", subtitle = "" } = {}) {
 
   messageBox.style.display = "none";
   tinyHud.style.display = "none";
+  hudP1.style.display = "none";
+  hudP2.style.display = "none";
   restartBtn.style.display = "none";
   crosshair1.style.display = "none";
   crosshair2.style.display = "none";
@@ -4153,6 +4289,8 @@ function returnToMainMenu() {
   menu.style.display = "flex";
   restartBtn.style.display = "none";
   tinyHud.style.display = "none";
+  hudP1.style.display = "none";
+  hudP2.style.display = "none";
   crosshair1.style.display = "none";
   crosshair2.style.display = "none";
   splitLine.style.display = "none";
@@ -4176,6 +4314,11 @@ function cleanupMatch() {
   screenShakeAmount = 0;
   screenShakeTimer = 0;
   messageBox.style.display = "none";
+  tinyHud.style.display = "none";
+  hudP1.style.display = "none";
+  hudP2.style.display = "none";
+  hudP1.innerHTML = "";
+  hudP2.innerHTML = "";
 
   for (const trap of magnetTraps) {
     if (trap.group) scene.remove(trap.group);
@@ -4186,8 +4329,9 @@ function cleanupMatch() {
   for (const w of wizards) {
     hideTelegraph(w);
     if (w.label) {
-      if (w.label.name) w.label.name.remove();
-      if (w.label.bar) w.label.bar.remove();
+      for (const el of [w.label.name, w.label.bar, w.label.name2, w.label.bar2]) {
+        if (el) el.remove();
+      }
     }
   }
 
