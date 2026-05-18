@@ -250,10 +250,13 @@
     </p>
 
     <div class="buttons" style="align-items:center;">
-      <label>Mode <select id="modeSelect"><option value="stock">Stock Count</option><option value="king">King of the Hill</option><option value="survival">Survival</option><option value="kills">First to 10 Kills</option></select></label>
+      <label>Mode <select id="modeSelect"><option value="stock">Stock Count</option><option value="king">King of the Hill</option><option value="survival">Survival</option><option value="kills">First to 10 Kills</option><option value="crown">Crown Control</option><option value="castle">Castle Defense</option></select></label>
       <label>Players <select id="playerModeSelect"><option value="one">1 Player</option><option value="two">2 Players</option><option value="bots">Bots Only</option></select></label>
       <label>Enemies/Bots <input id="enemyCountInput" type="number" min="1" max="11" value="5" style="width:70px"></label>
       <label>Stocks <input id="stockCountInput" type="number" min="1" max="9" value="3" style="width:70px"></label>
+      <label>Crown Score Target <input id="crownScoreInput" type="number" min="500" max="50000" value="5000" style="width:82px"></label>
+      <label>Castle Team Stocks <input id="castleStockInput" type="number" min="4" max="60" value="18" style="width:70px"></label>
+      <label>Castle Tower Health <input id="castleTowerHealthInput" type="number" min="10" max="100" value="35" style="width:70px"></label>
       <label>Kills to Win <input id="killTargetInput" type="number" min="1" max="50" value="10" style="width:70px"></label>
       <button onclick="startGameFromMenu()">Start Match</button>
     </div>
@@ -262,7 +265,8 @@
       <b>P1:</b> W/S forward-back, A/D turn, Q ability, E fireball. Arrow keys also work.<br>
       <b>P2:</b> I/K forward-back, J/L turn, O ability, U fireball.<br>
       In 2P mode, the screen splits so each player gets their own third-person camera.<br>
-      <b>First to 10 Kills:</b> everyone respawns, and the first wizard to reach the kill target wins.
+      <b>First to 10 Kills:</b> everyone respawns, and the first wizard to reach the kill target wins.<br>
+      <b>Crown Control:</b> hold the glowing crown to score. <b>Castle Defense:</b> attackers break gates and tower while defenders protect shared stocks.
     </p>
   </div>
 </div>
@@ -314,11 +318,22 @@ const summaryStats = document.getElementById("summaryStats");
 let scene, renderer, clock;
 let camera1, camera2, spectatorCamera;
 let mode = "one";
-const GAME_SETTINGS = { mode: "stock", stockCount: 3, kingScoreTarget: 10000, enemyWizardCount: 5, killTarget: 10 };
+const GAME_SETTINGS = { mode: "stock", stockCount: 3, kingScoreTarget: 10000, crownScoreTarget: 5000, castleRoundsToWin: 2, castleTeamStocks: 18, castleTowerHealth: 35, enemyWizardCount: 5, killTarget: 10 };
 const KING_POINTS_PER_SECOND = 70, KING_CONTESTED_POINTS_PER_SECOND = 25, KING_KILL_BONUS = 1500;
 const SURVIVAL_TIME_POINTS_PER_SECOND = 15, SURVIVAL_KILL_BONUS = 1200, SURVIVAL_PICKUP_BONUS = 100;
+const CROWN_POINTS_PER_SECOND = 80;
+const CROWN_KILL_BONUS = 600;
+const CROWN_CARRIER_SPEED_MULT = 0.9;
 let matchTime = 0, survivalScore = 0, survivalLevel = 1;
 let hillZone = { x:0,z:0,radius:7,topY:4.5,baseRadius:18,topRadius:7,pointsPerSecond:KING_POINTS_PER_SECOND,contestedPointsPerSecond:KING_CONTESTED_POINTS_PER_SECOND,mesh:null,ring:null };
+let crownState = { carrier: null, x: 0, z: 0, mesh: null, ring: null, pickupRadius: 2.4, dropped: true };
+let castleState = {
+  attackers: [], defenders: [], attackerStocks: 18, defenderStocks: 18,
+  attackerRoundWins: 0, defenderRoundWins: 0, roundNumber: 1,
+  tower: null, towerHealth: 35, towerMaxHealth: 35,
+  walls: [], gates: [], defenderWallPosts: [], active: false,
+  roundOver: false, roundResetTimer: 0
+};
 const GEYSER_WARNING_TIME = 1.3;
 const GEYSER_ERUPTION_TIME = 0.95;
 const GEYSER_COOLDOWN_TIME = 5.4;
@@ -340,6 +355,8 @@ const temporary = [];
 const particles = [];
 const geese = [];
 const labels = [];
+const castleColliders = [];
+const castleDamageables = [];
 let pickupSpawnCooldown = 0;
 
 const ARENA_R = 65;
@@ -435,6 +452,9 @@ function startGameFromMenu(){
   mode = document.getElementById('playerModeSelect').value;
   GAME_SETTINGS.stockCount = Math.max(1, Number(document.getElementById('stockCountInput').value)||3);
   GAME_SETTINGS.killTarget = Math.max(1, Number(document.getElementById('killTargetInput').value) || 10);
+  GAME_SETTINGS.crownScoreTarget = Math.max(500, Number(document.getElementById('crownScoreInput').value) || 5000);
+  GAME_SETTINGS.castleTeamStocks = Math.max(4, Number(document.getElementById('castleStockInput').value) || 18);
+  GAME_SETTINGS.castleTowerHealth = Math.max(10, Number(document.getElementById('castleTowerHealthInput').value) || 35);
   GAME_SETTINGS.enemyWizardCount = clamp(Number(document.getElementById('enemyCountInput').value)||5, 1, MAX_WIZARDS - 1);
   startGame(mode);
 }
@@ -453,8 +473,11 @@ function startGame(selectedMode) {
 
   initThree();
   setupWorld();
+  if (GAME_SETTINGS.mode === "castle") buildCastleArena();
   if (isKingHillActive()) buildHillZone();
   setupWizards();
+  if (GAME_SETTINGS.mode === "castle") assignCastleTeams();
+  if (GAME_SETTINGS.mode === "crown") buildCrown();
   spawnStartingPickups();
 
   clock = new THREE.Clock();
@@ -943,6 +966,35 @@ function vaporizeWizard(w, sourceName) {
 
   createVaporCloud(w.x, w.z);
 
+  if (GAME_SETTINGS.mode === "crown" && crownState.carrier === w) {
+    crownState.carrier = null;
+    crownState.dropped = true;
+    crownState.x = w.x;
+    crownState.z = w.z;
+    if (killer && killer !== w) {
+      killer.score += CROWN_KILL_BONUS;
+      spawnPopText(killer.x, killer.z, `+${CROWN_KILL_BONUS}`, 0xffd84a);
+    }
+    showMessage(`${w.name} dropped the crown!`, 1200);
+  }
+
+  if (GAME_SETTINGS.mode === "castle") {
+    if (w.team === "attackers") castleState.attackerStocks = Math.max(0, castleState.attackerStocks - 1);
+    else if (w.team === "defenders") castleState.defenderStocks = Math.max(0, castleState.defenderStocks - 1);
+
+    if (w.team === "attackers" && castleState.attackerStocks <= 0) {
+      finishCastleRound("defenders", "Attackers ran out of stocks!");
+      return;
+    }
+
+    if (!castleState.roundOver) {
+      const teamStocks = w.team === "attackers" ? castleState.attackerStocks : castleState.defenderStocks;
+      if (teamStocks > 0) w.respawnTimer = 2.0;
+    }
+    showMessage(`${w.name} was vaporized${sourceName ? " by " + sourceName : ""}!`);
+    return;
+  }
+
   showMessage(`${w.name} was vaporized${sourceName ? " by " + sourceName : ""}!`);
   if (GAME_SETTINGS.mode === 'kills') {
     w.respawnTimer = 1.5;
@@ -1142,6 +1194,7 @@ function updateHuman(w, dt) {
   if (w.effect.glue > 0) speed *= 0.42;
   if (w.effect.bubble > 0) speed *= 0.24;
   if (w.effect.jelly > 0) speed *= 1.12;
+  if (GAME_SETTINGS.mode === "crown" && crownState.carrier === w) speed *= CROWN_CARRIER_SPEED_MULT;
 
   const f = forwardVector(w);
 
@@ -1184,6 +1237,7 @@ function chooseBotTarget(bot){ let best=null,bestScore=-1e9; for(const t of wiza
 function choosePracticalPickup(bot,target){ if(bot.ability) return null; const td=target?distance2D(bot,target):99; if(target&&target.damage>=4&&td<22) return null; let best=null,bd=1e9; for(const p of pickups){ const d=distancePoint(bot.x,bot.z,p.x,p.z); if(d<bd){bd=d;best=p;} } return best&&bd<18?best:null; }
 function updateBot(w, dt) {
   if (w.effect.stunned > 0) return;
+  if (GAME_SETTINGS.mode === "castle") { updateCastleBot(w, dt); return; }
   const enemies = wizards.filter(x => x !== w && x.alive);
   if (!enemies.length) return;
 
@@ -1213,6 +1267,7 @@ function updateBot(w, dt) {
   w.angle += clamp(diff, -TURN_SPEED * 0.8 * dt, TURN_SPEED * 0.8 * dt);
 
   let speed = PLAYER_SPEED * (GAME_SETTINGS.mode==='survival' ? (0.9 + survivalLevel*0.05) : 1.0);
+  if (GAME_SETTINGS.mode === 'crown' && crownState.carrier === w) speed *= CROWN_CARRIER_SPEED_MULT;
   if (w.effect.glue > 0) speed *= 0.42;
   if (w.effect.bubble > 0) speed *= 0.24;
   if (w.effect.jelly > 0) speed *= 1.12;
@@ -1290,7 +1345,7 @@ function applyPhysics(w, dt) {
   w.z += w.vz * dt;
   w.y += w.vy * dt;
 
-  const groundY = getEffectiveGroundHeight(w.x,w.z);
+  const groundY = getWizardGroundHeight(w);
   if (w.y <= groundY){
     w.y = groundY; w.vy = Math.max(0,w.vy); w.grounded=true; w.airborne=false;
     applySlopeSliding(w,dt);
@@ -1307,6 +1362,7 @@ function applyPhysics(w, dt) {
 
   keepInArena(w);
   collideWithObstacles(w);
+  collideWithCastle(w);
   collideWithWizards(w);
 }
 
@@ -1697,6 +1753,7 @@ function castSlapGust(w) {
 
   for (const target of wizards) {
     if (target === w || !target.alive) continue;
+    if (GAME_SETTINGS.mode === "castle" && target.team && target.team === w.team) continue;
 
     const dx = target.x - w.x;
     const dz = target.z - w.z;
@@ -2027,6 +2084,7 @@ function castVaporBeam(w) {
 
   for (const target of wizards) {
     if (target === w || !target.alive) continue;
+    if (GAME_SETTINGS.mode === "castle" && target.team && target.team === w.team) continue;
 
     const relX = target.x - w.x;
     const relZ = target.z - w.z;
@@ -2041,6 +2099,23 @@ function castVaporBeam(w) {
       applyDamage(target, 5, `${w.name}'s Vapor Beam`);
       knockWizard(target, f.x, f.z, 19);
       createVaporHitEffect(target.x, 1.8, target.z);
+    }
+  }
+
+  if (GAME_SETTINGS.mode === "castle" && w.team === "attackers" && castleState.tower) {
+    const relX = castleState.tower.x - w.x;
+    const relZ = castleState.tower.z - w.z;
+    const forwardDist = relX * f.x + relZ * f.z;
+    const sideDist = Math.hypot(relX - f.x * forwardDist, relZ - f.z * forwardDist);
+    if (forwardDist >= 0 && forwardDist <= length && sideDist < castleState.tower.radius + 1.45) damageCastleTower(2, w);
+  }
+  for (const gate of castleState.gates || []) {
+    if (GAME_SETTINGS.mode === "castle" && !gate.destroyed) {
+      const relX = gate.x - w.x;
+      const relZ = gate.z - w.z;
+      const forwardDist = relX * f.x + relZ * f.z;
+      const sideDist = Math.hypot(relX - f.x * forwardDist, relZ - f.z * forwardDist);
+      if (forwardDist >= 0 && forwardDist <= length && sideDist < Math.max(gate.width, gate.depth) * 0.5 + 0.8) damageCastleGate(gate, 2, w);
     }
   }
 
@@ -2253,6 +2328,11 @@ function updateProjectiles(dt) {
       else if (p.type === "bowling") { createMagicSparkles(p.x, p.y || 1.2, p.z, 0x4f65ff, 2); spawnParticle(p.x, 0.3, p.z, 0x9f8c72, rand(0.08,0.15), rand(0.2,0.4)); }
       else if (p.type === "jelly") createMagicSparkles(p.x, p.y || 1.2, p.z, 0xff86ed, 2);
     }
+    if (GAME_SETTINGS.mode === "castle" && checkProjectileCastleHit(p)) {
+      killProjectile(p);
+      continue;
+    }
+
     if (shouldProjectileHitGround(p)) {
       triggerProjectileImpact(p, p.x, p.y || 1, p.z, null, "ground");
       continue;
@@ -2350,6 +2430,7 @@ function projectileWizardCollision(p) {
   if (!p.hasArmed) return;
   for (const w of wizards) {
     if (!w.alive || p.hitSet.has(w)) continue;
+    if (GAME_SETTINGS.mode === "castle" && p.owner && w.team && p.owner.team === w.team) continue;
     if (w === p.owner && p.age < 0.5) continue;
     if (w === p.owner && p.type !== "hatTornado") continue;
 
@@ -2537,6 +2618,10 @@ function updateTemporary(dt) {
           }
         }
 
+        if (GAME_SETTINGS.mode === "castle") {
+          const pseudo = { type: "anvil", owner: obj.owner, x: obj.x, z: obj.z, radius: 3.4, hasArmed: true };
+          checkProjectileCastleHit(pseudo);
+        }
         dustBurst(obj.x, obj.z); createGroundCrackEffect(obj.x, obj.z, 0x777777); addScreenShake(0.4,0.24);
         createAnvilImpact(obj.x, 0.8, obj.z);
       }
@@ -2891,11 +2976,27 @@ function updateHud() {
     if (GAME_SETTINGS.mode === 'stock') modeLine = `Stocks: ${'♥ '.repeat(w.stocks)}<br>Damage: ${w.damage}/${MAX_DAMAGE}`;
     else if (GAME_SETTINGS.mode === 'king') modeLine = `Score: ${Math.floor(w.score)} / ${GAME_SETTINGS.kingScoreTarget}<br>Kills: ${w.kills}`;
     else if (GAME_SETTINGS.mode === 'kills') modeLine = `Kills: ${w.kills || 0}/${GAME_SETTINGS.killTarget}<br>Damage: ${w.damage}/${MAX_DAMAGE}`;
+    else if (GAME_SETTINGS.mode === 'crown') modeLine = `Crown Score: ${Math.floor(w.score)} / ${GAME_SETTINGS.crownScoreTarget}<br>Kills: ${w.kills}${crownState.carrier === w ? "<br>👑 CROWN CARRIER" : ""}`;
+    else if (GAME_SETTINGS.mode === 'castle') {
+      const teamStocks = w.team === 'attackers' ? castleState.attackerStocks : castleState.defenderStocks;
+      modeLine = `Team: ${w.team === 'attackers' ? 'Attackers' : 'Defenders'}<br>Team Stocks: ${teamStocks}<br>Rounds: A ${castleState.attackerRoundWins} - D ${castleState.defenderRoundWins}<br>Tower: ${Math.ceil(castleState.tower?.health || 0)} / ${castleState.towerMaxHealth}<br>Kills: ${w.kills}`;
+    }
     else modeLine = `Score: ${Math.floor(survivalScore)}<br>Time: ${formatMatchTime(matchTime)}<br>Kills: ${w.kills}`;
     card.innerHTML=`<strong>${w.name} (${getModeLabel()})</strong>${modeLine}<br>${w.ability ? abilityEmoji[w.ability]+' '+w.ability:'No ability'}<br>🔥 ${fire}`; tinyHud.appendChild(card);
   }
 
-  const board=document.createElement('div'); board.className='hud-card'; board.innerHTML='<strong>Scoreboard</strong>'+wizards.map(w=>`${w.name}: ${GAME_SETTINGS.mode==='king'?'Score '+Math.floor(w.score)+' / K '+w.kills:GAME_SETTINGS.mode==='kills'?'Kills '+(w.kills||0)+'/'+GAME_SETTINGS.killTarget:'Dmg '+w.damage+' / S '+w.stocks}`).join('<br>'); tinyHud.appendChild(board);
+  const board=document.createElement('div');
+  board.className='hud-card';
+  let boardLines;
+  if (GAME_SETTINGS.mode === 'castle') {
+    const gateLine = castleState.gates.map((g, i) => `G${i + 1}: ${g.destroyed ? 'OPEN' : Math.ceil(g.health) + '/' + g.maxHealth}`).join(' • ');
+    boardLines = [`Attackers Stocks: ${castleState.attackerStocks}`, `Defenders Stocks: ${castleState.defenderStocks}`, `Tower: ${Math.ceil(castleState.tower?.health || 0)}/${castleState.towerMaxHealth}`, `Rounds A ${castleState.attackerRoundWins} - D ${castleState.defenderRoundWins}`, gateLine].concat(wizards.map(w => `${w.name} (${w.team === 'attackers' ? 'A' : 'D'}): K ${w.kills}`));
+  } else if (GAME_SETTINGS.mode === 'crown') {
+    boardLines = wizards.map(w => `${crownState.carrier === w ? '👑 ' : ''}${w.name}: Score ${Math.floor(w.score)} / K ${w.kills}`);
+  } else {
+    boardLines = wizards.map(w=>`${w.name}: ${GAME_SETTINGS.mode==='king'?'Score '+Math.floor(w.score)+' / K '+w.kills:GAME_SETTINGS.mode==='kills'?'Kills '+(w.kills||0)+'/'+GAME_SETTINGS.killTarget:'Dmg '+w.damage+' / S '+w.stocks}`);
+  }
+  board.innerHTML='<strong>Scoreboard</strong>'+boardLines.join('<br>'); tinyHud.appendChild(board);
   if (!humans.length) {
     const alive = wizards.filter(w => w.alive).length;
     const card = document.createElement("div");
@@ -3288,6 +3389,7 @@ function isOnTiltPlane(x,z){ return Math.abs(x-tiltPlane.x)<tiltPlane.width/2 &&
 function getTiltPlaneHeight(x,z){ if(!isOnTiltPlane(x,z)) return null; const lx=x-tiltPlane.x,lz=z-tiltPlane.z; return tiltPlane.baseY + Math.tan(tiltPlane.tiltZ)*lx - Math.tan(tiltPlane.tiltX)*lz; }
 function getTiltPlaneNormal(){ const nx=-Math.tan(tiltPlane.tiltZ), nz=Math.tan(tiltPlane.tiltX); return new THREE.Vector3(nx,1,nz).normalize(); }
 function getEffectiveGroundHeight(x,z){ const th=getTerrainHeight(x,z); const ph=getTiltPlaneHeight(x,z); return ph===null?th:Math.max(th,ph); }
+function getWizardGroundHeight(w){ const base=getEffectiveGroundHeight(w.x,w.z); if(GAME_SETTINGS.mode!=='castle' || w.team!=='defenders') return base; for(const wall of castleState.walls){ if(circleRectOverlap(w.x,w.z,w.radius,wall.x,wall.z,wall.width+2.6,wall.depth+2.6).hit && w.y>wall.height-1.4){ return Math.max(base, wall.height+0.45); } } return base; }
 function getTerrainNormalApprox(x,z){ const e=0.5; const hL=getEffectiveGroundHeight(x-e,z),hR=getEffectiveGroundHeight(x+e,z),hD=getEffectiveGroundHeight(x,z-e),hU=getEffectiveGroundHeight(x,z+e); return {slopeX:(hL-hR)/(2*e),slopeZ:(hD-hU)/(2*e)}; }
 function applySlopeSliding(w,dt){ if(!isKingHillActive()) return; const s=getTerrainNormalApprox(w.x,w.z); w.vx += s.slopeX*10*dt; w.vz += s.slopeZ*10*dt; }
 function applyTiltPlaneSliding(w,dt){
@@ -3319,9 +3421,401 @@ function buildHillZone(){
 function isWizardInHill(w){ if(!isKingHillActive()) return false; return distancePoint(w.x,w.z,hillZone.x,hillZone.z)<=hillZone.radius; }
 function getKingLeader(){ return [...wizards].sort((a,b)=>b.score-a.score)[0]; }
 function createStunStars(w,duration=2.5){ const g=new THREE.Group(); for(let i=0;i<3;i++){ const s=new THREE.Mesh(new THREE.SphereGeometry(0.16,8,6), new THREE.MeshStandardMaterial({color:0xffff66, emissive:0xffcc33})); s.position.set(Math.cos(i*2.09)*0.7,3.7,Math.sin(i*2.09)*0.7); g.add(s);} scene.add(g); temporary.push({kind:'stunStars',mesh:g,follow:w,life:duration,spin:5,yOffset:0}); spawnPopText(w.x,w.z,'STUNNED!',0xffff66);}
+
+/* ============================================================
+   CROWN CONTROL / CASTLE DEFENSE MODES
+   ============================================================ */
+
+function buildCrown() {
+  if (crownState.mesh) scene.remove(crownState.mesh);
+  if (crownState.ring) scene.remove(crownState.ring);
+  const p = randomArenaPoint(8);
+  crownState.x = p.x;
+  crownState.z = p.z;
+  crownState.carrier = null;
+  crownState.dropped = true;
+
+  const group = new THREE.Group();
+  const goldMat = new THREE.MeshStandardMaterial({ color: 0xffd84a, emissive: 0x8a5c00, roughness: 0.35, metalness: 0.4 });
+  const base = new THREE.Mesh(new THREE.TorusGeometry(0.65, 0.12, 10, 32), goldMat);
+  base.rotation.x = Math.PI / 2;
+  group.add(base);
+  for (let i = 0; i < 6; i++) {
+    const a = i * Math.PI * 2 / 6;
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.55, 8), goldMat);
+    spike.position.set(Math.cos(a) * 0.52, 0.38, Math.sin(a) * 0.52);
+    group.add(spike);
+  }
+  group.position.set(crownState.x, getEffectiveGroundHeight(crownState.x, crownState.z) + 1.3, crownState.z);
+  scene.add(group);
+  crownState.mesh = group;
+  crownState.ring = createGroundRing(crownState.x, crownState.z, 2.4, 0xffd84a, 0.65);
+}
+
+function updateCrownMode(dt) {
+  if (GAME_SETTINGS.mode !== "crown" || !crownState.mesh || gameOver) return;
+  if (crownState.carrier && crownState.carrier.alive) {
+    const w = crownState.carrier;
+    w.score += CROWN_POINTS_PER_SECOND * dt;
+    crownState.x = w.x;
+    crownState.z = w.z;
+    crownState.mesh.position.set(w.x, w.y + 4.05, w.z);
+    crownState.mesh.rotation.y += dt * 2.8;
+    if (crownState.ring) {
+      crownState.ring.position.set(w.x, getEffectiveGroundHeight(w.x, w.z) + 0.08, w.z);
+      crownState.ring.material.color.setHex(w.color || 0xffd84a);
+      crownState.ring.material.emissive.setHex(0xffd84a);
+    }
+    if (w.score >= GAME_SETTINGS.crownScoreTarget) {
+      endMatch({ winner: w, title: `${w.name} wins Crown Control!`, subtitle: `${w.name} held the crown long enough to reach ${GAME_SETTINGS.crownScoreTarget} points.` });
+    }
+    return;
+  }
+
+  crownState.carrier = null;
+  crownState.dropped = true;
+  crownState.mesh.position.set(crownState.x, getEffectiveGroundHeight(crownState.x, crownState.z) + 1.25 + Math.sin(performance.now() * 0.006) * 0.18, crownState.z);
+  crownState.mesh.rotation.y += dt * 2.2;
+  if (crownState.ring) crownState.ring.position.set(crownState.x, getEffectiveGroundHeight(crownState.x, crownState.z) + 0.08, crownState.z);
+  for (const w of wizards) {
+    if (!w.alive) continue;
+    if (distancePoint(w.x, w.z, crownState.x, crownState.z) <= crownState.pickupRadius) {
+      crownState.carrier = w;
+      crownState.dropped = false;
+      spawnPopText(w.x, w.z, "CROWNED!", 0xffd84a);
+      showMessage(`${w.name} has the crown!`, 1100);
+      break;
+    }
+  }
+}
+
+function buildCastleArena() {
+  castleColliders.length = 0;
+  castleDamageables.length = 0;
+  castleState.walls.length = 0;
+  castleState.gates.length = 0;
+  castleState.defenderWallPosts.length = 0;
+
+  createCastleWall(0, -42, 42, 2.4, 7);
+  createCastleWall(-21, -26, 2.4, 32, 7);
+  createCastleWall(21, -26, 2.4, 32, 7);
+  createCastleWall(-15, -10, 12, 2.4, 7);
+  createCastleWall(0, -10, 8, 2.4, 7);
+  createCastleWall(15, -10, 12, 2.4, 7);
+
+  createWallPlatform(0, -42, 42, 4.8, 7.25);
+  createWallPlatform(-21, -26, 4.8, 32, 7.25);
+  createWallPlatform(21, -26, 4.8, 32, 7.25);
+  createWallPlatform(-15, -10, 12, 4.8, 7.25);
+  createWallPlatform(0, -10, 8, 4.8, 7.25);
+  createWallPlatform(15, -10, 12, 4.8, 7.25);
+
+  createCastleGate(-7.5, -10, 5.2, 2.6);
+  createCastleGate(7.5, -10, 5.2, 2.6);
+  castleState.tower = createCastleTower(0, -34);
+
+  for (const x of [-17, -7, 7, 17, -21, 21, 0]) {
+    castleState.defenderWallPosts.push({ x, z: x === -21 || x === 21 ? -24 + rand(-10, 7) : -10, y: 7.65 });
+  }
+  createCastleBanner(-18, -7.8, 0xff4444);
+  createCastleBanner(18, -7.8, 0xff4444);
+  createCastleBanner(-18, -40, 0x4488ff);
+  createCastleBanner(18, -40, 0xffd84a);
+}
+
+function createCastleWall(x, z, width, depth, height) {
+  const mat = new THREE.MeshStandardMaterial({ color: 0x8a8d96, roughness: 0.9 });
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), mat);
+  mesh.position.set(x, height / 2, z);
+  mesh.castShadow = true; mesh.receiveShadow = true; scene.add(mesh);
+  const wall = { kind: "castleWall", x, z, width, depth, height, mesh, blocksAttackers: true, blocksDefenders: true };
+  castleState.walls.push(wall); castleColliders.push(wall);
+  const alongX = width >= depth;
+  const count = Math.max(2, Math.floor((alongX ? width : depth) / 4));
+  for (let i = 0; i < count; i++) {
+    const t = count === 1 ? 0 : (i / (count - 1) - 0.5);
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(alongX ? 1.2 : width, 0.8, alongX ? depth : 1.2), mat);
+    cap.position.set(x + (alongX ? t * width * 0.9 : 0), height + 0.4, z + (alongX ? 0 : t * depth * 0.9));
+    cap.castShadow = true; scene.add(cap);
+  }
+  return wall;
+}
+
+function createWallPlatform(x, z, width, depth, y) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, 0.45, depth), new THREE.MeshStandardMaterial({ color: 0x6f727b, roughness: 0.85 }));
+  mesh.position.set(x, y, z); mesh.receiveShadow = true; scene.add(mesh); return mesh;
+}
+
+function createCastleGate(x, z, width, depth) {
+  const group = new THREE.Group();
+  const wood = new THREE.MeshStandardMaterial({ color: 0x6b3f1f, roughness: 0.75 });
+  const metal = new THREE.MeshStandardMaterial({ color: 0x2d2d35, metalness: 0.35, roughness: 0.35 });
+  for (let i = 0; i < 4; i++) {
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.55, 5.0, 0.45), wood);
+    bar.position.x = (i - 1.5) * (width / 4.2); group.add(bar);
+  }
+  for (let y of [1.5, 3.2]) {
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(width, 0.32, 0.55), metal);
+    strip.position.y = y; group.add(strip);
+  }
+  group.position.set(x, 0.2, z); scene.add(group);
+  const gate = { kind: "castleGate", x, z, width, depth, health: 8, maxHealth: 8, destroyed: false, mesh: group, hpBar: createCastleHpBar(x, 5.9, z, width, 0xffcc66) };
+  castleState.gates.push(gate); castleColliders.push(gate); castleDamageables.push(gate); return gate;
+}
+
+function createCastleTower(x, z) {
+  const group = new THREE.Group();
+  const stone = new THREE.MeshStandardMaterial({ color: 0x777b85, roughness: 0.9 });
+  const tower = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 4.3, 12, 18), stone);
+  tower.position.y = 6; tower.castShadow = true; tower.receiveShadow = true; group.add(tower);
+  const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(1.25), new THREE.MeshStandardMaterial({ color: 0xff4444, emissive: 0x8a0000 }));
+  crystal.position.y = 13.2; group.add(crystal);
+  group.position.set(x, 0, z); scene.add(group);
+  const obj = { kind: "castleTower", x, z, radius: 4, health: GAME_SETTINGS.castleTowerHealth, maxHealth: GAME_SETTINGS.castleTowerHealth, mesh: group, hpBar: createCastleHpBar(x, 14.8, z, 8, 0xff4444) };
+  castleDamageables.push(obj); return obj;
+}
+
+function createCastleBanner(x, z, teamColor) {
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 6, 8), new THREE.MeshStandardMaterial({ color: 0x2b2119 }));
+  pole.position.set(x, 3.2, z); scene.add(pole);
+  const flag = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.4), new THREE.MeshStandardMaterial({ color: teamColor, side: THREE.DoubleSide }));
+  flag.position.set(x + 0.95, 4.6, z); scene.add(flag);
+}
+
+function createCastleHpBar(x, y, z, width, color) {
+  const group = new THREE.Group();
+  const back = new THREE.Mesh(new THREE.BoxGeometry(width, 0.25, 0.15), new THREE.MeshBasicMaterial({ color: 0x220000 }));
+  const fill = new THREE.Mesh(new THREE.BoxGeometry(width, 0.28, 0.18), new THREE.MeshBasicMaterial({ color }));
+  fill.position.z = 0.02; group.add(back); group.add(fill); group.position.set(x, y, z); scene.add(group); group.userData.fill = fill; group.userData.width = width; return group;
+}
+
+function updateCastleHealthBars() {
+  for (const gate of castleState.gates) updateCastleHpBar(gate.hpBar, gate.health, gate.maxHealth, gate.destroyed);
+  if (castleState.tower) updateCastleHpBar(castleState.tower.hpBar, castleState.tower.health, castleState.tower.maxHealth, false);
+}
+function updateCastleHpBar(bar, health, maxHealth, hidden) {
+  if (!bar || !bar.userData.fill) return;
+  bar.visible = !hidden;
+  const pct = clamp(health / Math.max(1, maxHealth), 0, 1);
+  bar.userData.fill.scale.x = pct;
+  bar.userData.fill.position.x = -(bar.userData.width * (1 - pct)) / 2;
+  bar.lookAt(spectatorCamera ? spectatorCamera.position : camera1.position);
+}
+
+function assignCastleTeams() {
+  castleState.attackers = [];
+  castleState.defenders = [];
+  for (let i = 0; i < wizards.length; i++) {
+    const w = wizards[i];
+    if (mode === "two" && i === 0) w.team = "attackers";
+    else if (mode === "two" && i === 1) w.team = "defenders";
+    else if (mode === "one" && i === 0) w.team = "attackers";
+    else w.team = castleState.attackers.length <= castleState.defenders.length ? "attackers" : "defenders";
+    if (w.team === "attackers") castleState.attackers.push(w); else castleState.defenders.push(w);
+  }
+  castleState.attackerStocks = GAME_SETTINGS.castleTeamStocks;
+  castleState.defenderStocks = GAME_SETTINGS.castleTeamStocks;
+  castleState.attackerRoundWins = 0;
+  castleState.defenderRoundWins = 0;
+  castleState.roundNumber = 1;
+  castleState.towerHealth = GAME_SETTINGS.castleTowerHealth;
+  castleState.towerMaxHealth = GAME_SETTINGS.castleTowerHealth;
+  castleState.active = true;
+  castleState.roundOver = false;
+  for (const w of wizards) placeWizardAtCastleSpawn(w, true);
+}
+
+function placeWizardAtCastleSpawn(w, fresh = false) {
+  const sp = getCastleSpawnPoint(w);
+  w.x = sp.x; w.z = sp.z; w.y = sp.y ?? getEffectiveGroundHeight(sp.x, sp.z);
+  w.vx = 0; w.vz = 0; w.vy = 0; w.damage = 0; w.alive = true; w.group.visible = true;
+  w.angle = w.team === "attackers" ? Math.PI : 0;
+  w.group.position.set(w.x, w.y, w.z); w.group.rotation.y = w.angle;
+  w.invulnerableTimer = fresh ? 1.5 : 1.1;
+}
+
+function getCastleSpawnPoint(w) {
+  if (w.team === "attackers") return { x: rand(-18, 18), z: rand(26, 44), y: 0 };
+  const posts = castleState.defenderWallPosts;
+  if (posts.length && Math.random() < 0.65) return { ...posts[Math.floor(Math.random() * posts.length)] };
+  return { x: rand(-14, 14), z: rand(-36, -22), y: 0 };
+}
+
+function updateCastleMode(dt) {
+  if (GAME_SETTINGS.mode !== "castle") return;
+  updateCastleHealthBars();
+  if (castleState.roundOver && !gameOver) {
+    castleState.roundResetTimer -= dt;
+    if (castleState.roundResetTimer <= 0) resetCastleRound();
+  }
+}
+
+function finishCastleRound(winningTeam, reason) {
+  if (castleState.roundOver || gameOver) return;
+  castleState.roundOver = true;
+  castleState.roundResetTimer = 4.0;
+  if (winningTeam === "attackers") castleState.attackerRoundWins++; else castleState.defenderRoundWins++;
+  showMessage(`${winningTeam === "attackers" ? "Attackers" : "Defenders"} win the round! ${reason}`, 3500);
+  if (castleState.attackerRoundWins >= GAME_SETTINGS.castleRoundsToWin) {
+    endMatch({ winner: getBestCastleWizard("attackers"), title: "Attackers win Castle Defense!", subtitle: `Attackers took the castle ${castleState.attackerRoundWins}-${castleState.defenderRoundWins}.` }); return;
+  }
+  if (castleState.defenderRoundWins >= GAME_SETTINGS.castleRoundsToWin) {
+    endMatch({ winner: getBestCastleWizard("defenders"), title: "Defenders hold the castle!", subtitle: `Defenders held the tower ${castleState.defenderRoundWins}-${castleState.attackerRoundWins}.` }); return;
+  }
+}
+
+function getBestCastleWizard(team) { return wizards.filter(w => w.team === team).sort((a, b) => (b.kills || 0) - (a.kills || 0))[0] || null; }
+
+function resetCastleRound() {
+  castleState.roundNumber++;
+  castleState.roundOver = false;
+  castleState.attackerStocks = GAME_SETTINGS.castleTeamStocks;
+  castleState.defenderStocks = GAME_SETTINGS.castleTeamStocks;
+  castleState.towerHealth = GAME_SETTINGS.castleTowerHealth;
+  castleState.towerMaxHealth = GAME_SETTINGS.castleTowerHealth;
+  for (const gate of castleState.gates) { gate.health = gate.maxHealth; gate.destroyed = false; gate.mesh.visible = true; }
+  if (castleState.tower) { castleState.tower.health = castleState.tower.maxHealth; castleState.tower.mesh.visible = true; }
+  for (const w of wizards) {
+    placeWizardAtCastleSpawn(w, false);
+    if (w.label) { w.label.name.style.display = "block"; w.label.bar.style.display = "block"; }
+  }
+  showMessage(`Round ${castleState.roundNumber}: Attackers ${castleState.attackerRoundWins} - Defenders ${castleState.defenderRoundWins}`, 2200);
+}
+
+function canCastleRespawn(w) {
+  if (GAME_SETTINGS.mode !== "castle" || castleState.roundOver) return false;
+  if (w.team === "attackers") return castleState.attackerStocks > 0;
+  if (w.team === "defenders") return castleState.defenderStocks > 0;
+  return false;
+}
+
+function collideWithCastle(w) {
+  if (GAME_SETTINGS.mode !== "castle") return;
+  for (const c of castleColliders) {
+    if (c.kind === "castleGate" && c.destroyed) continue;
+    if (c.kind === "castleWall" && w.team === "defenders" && w.y > c.height - 0.7) continue;
+    const overlap = circleRectOverlap(w.x, w.z, w.radius, c.x, c.z, c.width, c.depth);
+    if (!overlap.hit) continue;
+    w.x += overlap.nx * overlap.push;
+    w.z += overlap.nz * overlap.push;
+    const dot = w.vx * overlap.nx + w.vz * overlap.nz;
+    if (dot < 0) { w.vx -= dot * overlap.nx * 1.4; w.vz -= dot * overlap.nz * 1.4; }
+  }
+}
+
+function circleRectOverlap(cx, cz, cr, rx, rz, rw, rd) {
+  const nearestX = clamp(cx, rx - rw / 2, rx + rw / 2);
+  const nearestZ = clamp(cz, rz - rd / 2, rz + rd / 2);
+  const dx = cx - nearestX, dz = cz - nearestZ;
+  const dist = Math.hypot(dx, dz);
+  if (dist > cr) return { hit: false };
+  if (dist > 0.0001) return { hit: true, nx: dx / dist, nz: dz / dist, push: cr - dist + 0.01 };
+  const left = Math.abs(cx - (rx - rw / 2)), right = Math.abs((rx + rw / 2) - cx), top = Math.abs(cz - (rz - rd / 2)), bottom = Math.abs((rz + rd / 2) - cz);
+  const m = Math.min(left, right, top, bottom);
+  if (m === left) return { hit: true, nx: -1, nz: 0, push: cr + left };
+  if (m === right) return { hit: true, nx: 1, nz: 0, push: cr + right };
+  if (m === top) return { hit: true, nx: 0, nz: -1, push: cr + top };
+  return { hit: true, nx: 0, nz: 1, push: cr + bottom };
+}
+
+function isCastleBlockedPoint(x, z, r) {
+  for (const c of castleColliders) {
+    if (c.kind === "castleGate" && c.destroyed) continue;
+    if (circleRectOverlap(x, z, r, c.x, c.z, c.width, c.depth).hit) return true;
+  }
+  return castleState.tower && distancePoint(x, z, castleState.tower.x, castleState.tower.z) < r + castleState.tower.radius + 1;
+}
+
+function checkProjectileCastleHit(p) {
+  if (!p.owner || !p.hasArmed || castleState.roundOver) return false;
+  const amount = getCastleProjectileDamage(p);
+  for (const gate of castleState.gates) {
+    if (gate.destroyed) continue;
+    if (circleRectOverlap(p.x, p.z, p.radius || 0.6, gate.x, gate.z, gate.width, gate.depth).hit) { damageCastleGate(gate, amount, p.owner); return true; }
+  }
+  if (castleState.tower && p.owner.team === "attackers" && distancePoint(p.x, p.z, castleState.tower.x, castleState.tower.z) < (p.radius || 0.6) + castleState.tower.radius) {
+    damageCastleTower(amount, p.owner); return true;
+  }
+  return false;
+}
+function getCastleProjectileDamage(p) { if (p.type === "fireball") return 1; if (p.type === "bonk") return 2; if (p.type === "lava") return 3; if (p.type === "anvil") return 4; if (p.type === "beam") return 2; return 1; }
+function damageCastleGate(gate, amount, source) {
+  if (gate.destroyed) return;
+  gate.health -= amount; createImpactBurst(gate.x, 2.2, gate.z, 0xffcc66, 1.1); updateCastleHealthBars();
+  if (gate.health <= 0) { gate.health = 0; gate.destroyed = true; gate.mesh.visible = false; createShockwaveRing(gate.x, gate.z, 0xffcc66, 4.5, 0.7); showMessage("A castle gate has been broken!", 1400); }
+}
+function damageCastleTower(amount, source) {
+  if (!castleState.tower || castleState.roundOver) return;
+  castleState.tower.health = Math.max(0, castleState.tower.health - amount); castleState.towerHealth = castleState.tower.health; createImpactBurst(castleState.tower.x, 3.0, castleState.tower.z, 0xff4444, 1.4); updateCastleHealthBars();
+  if (castleState.tower.health <= 0) finishCastleRound("attackers", "The tower was destroyed!");
+}
+
+function updateCastleBot(w, dt) { if (!w.alive || castleState.roundOver) return; if (w.team === "attackers") updateCastleAttackerBot(w, dt); else updateCastleDefenderBot(w, dt); }
+function updateCastleAttackerBot(w, dt) {
+  const nearestDefender = getNearestEnemyWizard(w, "defenders");
+  const openGate = castleState.gates.find(g => g.destroyed);
+  const nearestClosedGate = getNearestCastleGate(w, false);
+  let targetPoint = null;
+  if (nearestDefender && distance2D(w, nearestDefender) < 10) targetPoint = nearestDefender;
+  else if (!openGate && nearestClosedGate) targetPoint = nearestClosedGate;
+  else if (openGate && !isInsideCastleCourtyard(w)) targetPoint = openGate;
+  else targetPoint = castleState.tower;
+  steerBotTowardPoint(w, targetPoint, dt);
+  if (nearestClosedGate && distancePoint(w.x, w.z, nearestClosedGate.x, nearestClosedGate.z) < 24 && w.fireCooldown <= 0) { aimBotAtPoint(w, nearestClosedGate.x, nearestClosedGate.z); castFireball(w); }
+  if (castleState.tower && isInsideCastleCourtyard(w) && distancePoint(w.x, w.z, castleState.tower.x, castleState.tower.z) < 24 && w.fireCooldown <= 0) { aimBotAtPoint(w, castleState.tower.x, castleState.tower.z); castFireball(w); }
+  if (nearestDefender && distance2D(w, nearestDefender) < 20) maybeCastBotAbilityAtTarget(w, nearestDefender);
+}
+function updateCastleDefenderBot(w, dt) {
+  const nearestAttacker = getNearestEnemyWizard(w, "attackers"); if (!nearestAttacker) return;
+  if (!w.ai.castleRole) { w.ai.castleRole = Math.random() < 0.45 ? "jumper" : "wall"; w.ai.jumpDownTimer = rand(2.5, 8.0); }
+  const gateBroken = castleState.gates.some(g => g.destroyed);
+  const attackerNearGate = isAttackerNearAnyGate();
+  if (isOnCastleWall(w)) {
+    aimBotAtPoint(w, nearestAttacker.x, nearestAttacker.z);
+    if (w.fireCooldown <= 0 && distance2D(w, nearestAttacker) < 32) castFireball(w);
+    w.ai.jumpDownTimer -= dt;
+    if (w.ai.castleRole === "jumper" && (attackerNearGate || gateBroken || w.ai.jumpDownTimer <= 0)) { defenderJumpDown(w); w.ai.castleRole = "courtyard"; }
+    return;
+  }
+  let target = nearestAttacker;
+  if (gateBroken) {
+    const attackersInside = castleState.attackers.filter(a => a.alive && isInsideCastleCourtyard(a));
+    if (attackersInside.length) target = attackersInside.sort((a, b) => distance2D(w, a) - distance2D(w, b))[0];
+  }
+  steerBotTowardPoint(w, target, dt);
+  if (distance2D(w, target) < 24 && w.fireCooldown <= 0) { aimBotAtPoint(w, target.x, target.z); castFireball(w); }
+  maybeCastBotAbilityAtTarget(w, target);
+}
+function defenderJumpDown(w) {
+  const frontGate = castleState.gates[Math.floor(Math.random() * castleState.gates.length)];
+  const tx = frontGate ? frontGate.x + rand(-5, 5) : rand(-12, 12), tz = -4 + rand(-3, 3);
+  const a = angleToPoint(w.x, w.z, tx, tz); w.angle = a; w.vx += Math.sin(a) * 14; w.vz += Math.cos(a) * 14; w.vy = 8; spawnPopText(w.x, w.z, "DEFENDER DROP!", 0x88ccff);
+}
+function getNearestEnemyWizard(w, enemyTeam) { return wizards.filter(x => x.alive && x.team === enemyTeam).sort((a, b) => distance2D(w, a) - distance2D(w, b))[0] || null; }
+function getNearestCastleGate(w, wantDestroyed) { return castleState.gates.filter(g => !!g.destroyed === !!wantDestroyed).sort((a, b) => distancePoint(w.x, w.z, a.x, a.z) - distancePoint(w.x, w.z, b.x, b.z))[0] || null; }
+function isInsideCastleCourtyard(w) { return w.x > -20 && w.x < 20 && w.z < -11 && w.z > -42; }
+function isOnCastleWall(w) { return w.y > 6.4 && castleState.walls.some(c => circleRectOverlap(w.x, w.z, w.radius, c.x, c.z, c.width + 2.8, c.depth + 2.8).hit); }
+function isAttackerNearAnyGate() { return castleState.attackers.some(a => a.alive && castleState.gates.some(g => distancePoint(a.x, a.z, g.x, g.z) < 12)); }
+function steerBotTowardPoint(w, targetPoint, dt) {
+  if (!targetPoint) return;
+  w.ai.think -= dt; w.ai.cast -= dt;
+  const targetAngle = angleToPoint(w.x, w.z, targetPoint.x, targetPoint.z);
+  const diff = normalizeAngle(targetAngle - w.angle);
+  w.angle += clamp(diff, -TURN_SPEED * 0.9 * dt, TURN_SPEED * 0.9 * dt);
+  let speed = PLAYER_SPEED; if (w.effect.glue > 0) speed *= 0.42; if (w.effect.bubble > 0) speed *= 0.24; if (w.effect.jelly > 0) speed *= 1.12;
+  const f = forwardVector(w); const d = distancePoint(w.x, w.z, targetPoint.x, targetPoint.z);
+  if (d > 5) { w.vx += f.x * speed * dt * 4.0; w.vz += f.z * speed * dt * 4.0; }
+  const spacing = getBotSpacingVector(w); w.vx += spacing.x * speed * dt * 1.5; w.vz += spacing.z * speed * dt * 1.5;
+}
+function aimBotAtPoint(w, x, z) { w.angle = angleToPoint(w.x, w.z, x, z); }
+function maybeCastBotAbilityAtTarget(w, target) { if (!w.ability || !target || w.ai.cast > 0) return; if (distance2D(w, target) < 24) { castAbility(w, w.ability === "Lava Lob" ? rand(0.45, 1.25) : 0); w.ai.cast = rand(1.0, 2.2); } }
+
+
 function updateModes(dt){ matchTime += dt; survivalLevel = Math.floor(matchTime/30)+1;
- for(const w of wizards){ if(!w.alive && w.respawnTimer>0){ w.respawnTimer-=dt; const canRespawn = GAME_SETTINGS.mode==='king' || GAME_SETTINGS.mode==='kills' || GAME_SETTINGS.mode==='survival' || (GAME_SETTINGS.mode==='stock' && w.stocks>0); if(w.respawnTimer<=0 && canRespawn){ const sp=randomArenaPoint(8); w.x=sp.x; w.z=sp.z; w.y=getEffectiveGroundHeight(w.x,w.z); w.vx=0; w.vz=0; w.vy=0; w.damage=0; w.alive=true; w.group.visible=true; w.label.name.style.display='block'; w.label.bar.style.display='block'; w.invulnerableTimer=1.1; }} w.invulnerableTimer=Math.max(0,w.invulnerableTimer-dt);}
+ for(const w of wizards){ if(!w.alive && w.respawnTimer>0){ w.respawnTimer-=dt; const canRespawn = GAME_SETTINGS.mode==='king' || GAME_SETTINGS.mode==='kills' || GAME_SETTINGS.mode==='crown' || GAME_SETTINGS.mode==='survival' || canCastleRespawn(w) || (GAME_SETTINGS.mode==='stock' && w.stocks>0); if(w.respawnTimer<=0 && canRespawn){ const sp=GAME_SETTINGS.mode==='castle'?getCastleSpawnPoint(w):randomArenaPoint(8); w.x=sp.x; w.z=sp.z; w.y=sp.y ?? getEffectiveGroundHeight(w.x,w.z); w.vx=0; w.vz=0; w.vy=0; w.damage=0; w.alive=true; w.group.visible=true; w.label.name.style.display='block'; w.label.bar.style.display='block'; w.invulnerableTimer=1.1; }} w.invulnerableTimer=Math.max(0,w.invulnerableTimer-dt);}
  if(GAME_SETTINGS.mode==='king'){ const inside=wizards.filter(w=>w.alive&&isWizardInHill(w)); if(hillZone.ring){ const c=inside.length===1?inside[0].color:inside.length>1?0xffffff:0x88eeff; hillZone.ring.material.color.setHex(c); hillZone.ring.material.emissive.setHex(c);} for(const w of inside){ w.score += (inside.length===1?KING_POINTS_PER_SECOND:KING_CONTESTED_POINTS_PER_SECOND)*dt; } }
+ if(GAME_SETTINGS.mode==='crown') updateCrownMode(dt);
+ if(GAME_SETTINGS.mode==='castle') updateCastleMode(dt);
  if(GAME_SETTINGS.mode==='survival') survivalScore += SURVIVAL_TIME_POINTS_PER_SECOND*dt; }
 
 /* ============================================================
@@ -3370,6 +3864,7 @@ function buildSummaryHtml(winner) {
       <thead>
         <tr>
           <th>Wizard</th>
+          <th>Team</th>
           <th>Kills</th>
           <th>Hill / Score</th>
           <th>Stocks</th>
@@ -3385,6 +3880,7 @@ function buildSummaryHtml(winner) {
     html += `
       <tr class="${isWinner ? 'summary-winner-row' : ''}">
         <td>${isWinner ? '🏆 ' : ''}${escapeHtml(w.name)}</td>
+        <td>${GAME_SETTINGS.mode === "castle" ? (w.team === "attackers" ? "Attackers" : "Defenders") : "—"}</td>
         <td>${Math.floor(w.kills || 0)}</td>
         <td>${Math.floor(w.score || 0)}</td>
         <td>${Math.floor(w.stocks || 0)}</td>
@@ -3406,6 +3902,23 @@ function buildSummaryHtml(winner) {
       </div>
     `;
   }
+  if (GAME_SETTINGS.mode === "crown") {
+    html += `
+      <div class="summary-small">
+        Winning Crown Score: <b>${Math.floor(winner?.score || 0)}</b> • Target: <b>${GAME_SETTINGS.crownScoreTarget}</b> • Time: <b>${formatMatchTime(matchTime)}</b>
+      </div>
+    `;
+  }
+  if (GAME_SETTINGS.mode === "castle") {
+    const winningTeam = castleState.attackerRoundWins > castleState.defenderRoundWins ? "Attackers" : "Defenders";
+    html += `
+      <div class="summary-small">
+        Winning Team: <b>${winningTeam}</b> • Rounds: <b>A ${castleState.attackerRoundWins} - D ${castleState.defenderRoundWins}</b> •
+        Attacker Stocks: <b>${castleState.attackerStocks}</b> • Defender Stocks: <b>${castleState.defenderStocks}</b> •
+        Tower Health: <b>${Math.ceil(castleState.tower?.health || 0)} / ${castleState.towerMaxHealth}</b>
+      </div>
+    `;
+  }
 
   return html;
 }
@@ -3415,6 +3928,8 @@ function getModeLabel() {
   if (GAME_SETTINGS.mode === "stock") return "Stock Battle";
   if (GAME_SETTINGS.mode === "survival") return "Survival";
   if (GAME_SETTINGS.mode === "kills") return `First to ${GAME_SETTINGS.killTarget} Kills`;
+  if (GAME_SETTINGS.mode === "crown") return "Crown Control";
+  if (GAME_SETTINGS.mode === "castle") return "Castle Defense";
   return GAME_SETTINGS.mode;
 }
 
@@ -3480,6 +3995,18 @@ function cleanupMatch() {
   particles.length = 0;
   geese.length = 0;
   labels.length = 0;
+  castleColliders.length = 0;
+  castleDamageables.length = 0;
+  castleState.attackers.length = 0;
+  castleState.defenders.length = 0;
+  castleState.walls.length = 0;
+  castleState.gates.length = 0;
+  castleState.defenderWallPosts.length = 0;
+  castleState.tower = null;
+  castleState.active = false;
+  crownState.carrier = null;
+  crownState.mesh = null;
+  crownState.ring = null;
 
   if (scene) {
     while (scene.children.length > 0) {
@@ -3562,7 +4089,6 @@ function animate() {
   else if (GAME_SETTINGS.mode==='stock') checkStockWin();
   else if (GAME_SETTINGS.mode==='survival') checkSurvivalWin();
   else if (GAME_SETTINGS.mode==='kills') checkKillsWin();
-  else checkWin();
 
   renderScene();
 
@@ -3606,6 +4132,8 @@ function isBlockedPoint(x, z, r) {
   for (const w of wizards) {
     if (w.alive && distancePoint(x, z, w.x, w.z) < r + w.radius + 2) return true;
   }
+
+  if (GAME_SETTINGS.mode === "castle" && isCastleBlockedPoint(x, z, r)) return true;
 
   return false;
 }
