@@ -340,6 +340,12 @@
     <div class="buttons" style="align-items:center;">
       <label>Mode <select id="modeSelect"><option value="stock">Stock Count</option><option value="king">King of the Hill</option><option value="survival">Survival</option><option value="kills">First to 10 Kills</option><option value="crown">Crown Control</option><option value="castle">Castle Defense</option></select></label>
       <label>Players <select id="playerModeSelect"><option value="one">1 Player</option><option value="two">2 Players</option><option value="bots">Bots Only</option></select></label>
+      <label>P1 Class
+        <select id="p1ClassSelect"></select>
+      </label>
+      <label>P2 Class
+        <select id="p2ClassSelect"></select>
+      </label>
       <label>Enemies/Bots <input id="enemyCountInput" type="number" min="1" max="11" value="5" style="width:70px"></label>
       <label>Stocks <input id="stockCountInput" type="number" min="1" max="9" value="3" style="width:70px"></label>
       <label>Crown Score Target <input id="crownScoreInput" type="number" min="500" max="50000" value="5000" style="width:82px"></label>
@@ -360,6 +366,7 @@
       <b>First to 10 Kills:</b> everyone respawns, and the first wizard to reach the kill target wins.<br>
       <b>Crown Control:</b> hold the glowing crown to score. <b>Castle Defense:</b> attackers break gates and tower while defenders protect shared stocks.
     </p>
+    <div id="classPreview" class="note"></div>
   </div>
 </div>
 
@@ -451,12 +458,88 @@ let scene, renderer, clock;
 let camera1, camera2, spectatorCamera;
 let mode = "one";
 const GAME_SETTINGS = { mode: "stock", stockCount: 3, kingScoreTarget: 10000, crownScoreTarget: 5000, castleRoundsToWin: 2, castleTeamStocks: 18, castleTowerHealth: 35, enemyWizardCount: 5, killTarget: 10 };
+const WIZARD_CLASSES = {
+  blast: {
+    id: "blast",
+    displayName: "Blast Mage",
+    description: "Explosive damage specialist. Faster fireballs and bigger blasts, but easier to vaporize.",
+    themeColor: 0xff4d2e,
+    trimColor: 0xffd166,
+    speedMultiplier: 1.0,
+    maxDamage: 4,
+    fireCooldownMultiplier: 0.72,
+    dashCooldown: 2.4,
+    ultimateName: "Meteor Meltdown",
+    ultimateDescription: "Calls down a cluster of exploding meteors in front of you.",
+    abilityBias: ["Lava Lob", "Bonk Bolt", "Arcane Bowling Ball"]
+  },
+  trickster: {
+    id: "trickster",
+    displayName: "Trickster",
+    description: "Fast, slippery, and annoying. Better dash and stronger disruption.",
+    themeColor: 0x7d5cff,
+    trimColor: 0x66fff2,
+    speedMultiplier: 1.18,
+    maxDamage: 5,
+    fireCooldownMultiplier: 1.0,
+    dashCooldown: 1.45,
+    ultimateName: "Mirror Mischief",
+    ultimateDescription: "Blinks away and spawns confusing illusion copies.",
+    abilityBias: ["Squid Ink", "Jelly Legs", "Bouncy Bubble"]
+  },
+  bulwark: {
+    id: "bulwark",
+    displayName: "Bulwark",
+    description: "Slow but hard to move. Can survive more damage and protect space.",
+    themeColor: 0x4f8cff,
+    trimColor: 0xd9f4ff,
+    speedMultiplier: 0.86,
+    maxDamage: 7,
+    fireCooldownMultiplier: 1.08,
+    dashCooldown: 3.4,
+    ultimateName: "Castle of One",
+    ultimateDescription: "Creates a temporary magic shield dome and shockwave.",
+    abilityBias: ["Toadstool Wall", "Bouncy Bubble", "Magnet Beard"]
+  },
+  storm: {
+    id: "storm",
+    displayName: "Stormcaller",
+    description: "Mobile ranged mage with lightning-like shots and vertical control.",
+    themeColor: 0xf7ff4d,
+    trimColor: 0x80eaff,
+    speedMultiplier: 1.08,
+    maxDamage: 5,
+    fireCooldownMultiplier: 0.9,
+    dashCooldown: 1.95,
+    ultimateName: "Thunder Spiral",
+    ultimateDescription: "Creates a spinning storm that zaps and launches enemies.",
+    abilityBias: ["Vapor Beam", "Bonk Bolt", "Hat Tornado"]
+  },
+  goose: {
+    id: "goose",
+    displayName: "Necro-Goose Summoner",
+    description: "Summons chaos birds and minions. Weaker direct duelist, stronger swarm control.",
+    themeColor: 0x61ff7a,
+    trimColor: 0xffffff,
+    speedMultiplier: 0.98,
+    maxDamage: 5,
+    fireCooldownMultiplier: 1.05,
+    dashCooldown: 2.2,
+    ultimateName: "Goosepocalypse",
+    ultimateDescription: "Summons a cursed flock of angry geese around nearby enemies.",
+    abilityBias: ["Goose Swarm", "Magnet Beard", "Squid Ink"]
+  }
+};
 const KING_POINTS_PER_SECOND = 70, KING_CONTESTED_POINTS_PER_SECOND = 25, KING_KILL_BONUS = 1500;
 const SURVIVAL_TIME_POINTS_PER_SECOND = 15, SURVIVAL_KILL_BONUS = 1200, SURVIVAL_PICKUP_BONUS = 100;
 const CROWN_POINTS_PER_SECOND = 80;
 const CROWN_KILL_BONUS = 600;
 const CROWN_CARRIER_SPEED_MULT = 0.9;
 let matchTime = 0, survivalScore = 0, survivalLevel = 1;
+let selectedClasses = {
+  player1: "blast",
+  player2: "trickster"
+};
 let hillZone = { x:0,z:0,radius:7,topY:4.5,baseRadius:18,topRadius:7,pointsPerSecond:KING_POINTS_PER_SECOND,contestedPointsPerSecond:KING_CONTESTED_POINTS_PER_SECOND,mesh:null,ring:null };
 let crownState = { carrier: null, x: 0, z: 0, mesh: null, ring: null, pickupRadius: 2.4, dropped: true };
 let castleState = {
@@ -729,6 +812,7 @@ window.addEventListener("mousemove", e => {
 });
 
 loadControlsConfig();
+populateClassSelectors();
 
 
 function loadControlsConfig() {
@@ -744,6 +828,49 @@ function loadControlsConfig() {
     console.warn("Could not load controls config:", err);
     controlConfig = JSON.parse(JSON.stringify(DEFAULT_CONTROL_CONFIG));
   }
+}
+
+function populateClassSelectors() {
+  const p1 = document.getElementById("p1ClassSelect");
+  const p2 = document.getElementById("p2ClassSelect");
+  if (!p1 || !p2) return;
+
+  const options = Object.values(WIZARD_CLASSES)
+    .map(c => `<option value="${c.id}">${c.displayName}</option>`)
+    .join("");
+
+  p1.innerHTML = options;
+  p2.innerHTML = options;
+
+  p1.value = selectedClasses.player1;
+  p2.value = selectedClasses.player2;
+
+  p1.onchange = () => {
+    selectedClasses.player1 = p1.value;
+    updateClassPreview();
+  };
+
+  p2.onchange = () => {
+    selectedClasses.player2 = p2.value;
+    updateClassPreview();
+  };
+
+  updateClassPreview();
+}
+
+function updateClassPreview() {
+  const box = document.getElementById("classPreview");
+  if (!box) return;
+
+  const c1 = WIZARD_CLASSES[selectedClasses.player1];
+  const c2 = WIZARD_CLASSES[selectedClasses.player2];
+
+  box.innerHTML = `
+    <b>P1 ${c1.displayName}:</b> ${c1.description}<br>
+    <b>Ultimate:</b> ${c1.ultimateName} — ${c1.ultimateDescription}<br><br>
+    <b>P2 ${c2.displayName}:</b> ${c2.description}<br>
+    <b>Ultimate:</b> ${c2.ultimateName} — ${c2.ultimateDescription}
+  `;
 }
 
 function mergeControlConfig(base, saved) {
@@ -1107,6 +1234,8 @@ function startGameFromMenu(){
   GAME_SETTINGS.castleTeamStocks = Math.max(4, Number(document.getElementById('castleStockInput').value) || 18);
   GAME_SETTINGS.castleTowerHealth = Math.max(10, Number(document.getElementById('castleTowerHealthInput').value) || 35);
   GAME_SETTINGS.enemyWizardCount = clamp(Number(document.getElementById('enemyCountInput').value)||5, 1, MAX_WIZARDS - 1);
+  selectedClasses.player1 = document.getElementById("p1ClassSelect")?.value || "blast";
+  selectedClasses.player2 = document.getElementById("p2ClassSelect")?.value || "trickster";
   if (!validateControlAssignments()) return;
   startGame(mode);
 }
