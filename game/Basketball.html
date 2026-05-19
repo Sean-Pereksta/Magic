@@ -2032,22 +2032,7 @@ function updateBot(w, dt) {
 
   const f = forwardVector(w);
   const d = distance2D(w, target);
-  const targetAimY = (target.y ?? getEffectiveGroundHeight(target.x, target.z)) + 2.0;
-  const shooterAimY = (w.y ?? getEffectiveGroundHeight(w.x, w.z)) + PROJECTILE_HEIGHT_TUNING.castChestOffset;
-  const horizontalDist = Math.max(1, distance2D(w, target));
-  const desiredPitch = clamp(
-    Math.atan2(targetAimY - shooterAimY, horizontalDist),
-    AIM_PITCH_MIN,
-    AIM_PITCH_MAX
-  );
-  w.aimPitch += clamp(
-    desiredPitch - (w.aimPitch || 0),
-    -1.8 * dt,
-    1.8 * dt
-  );
-  if (Math.random() < 0.03) {
-    w.aimPitch = clamp(w.aimPitch + rand(-0.04, 0.04), AIM_PITCH_MIN, AIM_PITCH_MAX);
-  }
+  aimWizardAtTargetHeight(w, target, dt, true);
 
   if (d > 8 || !w.ability) {
     w.vx += f.x * speed * dt * 4.1;
@@ -2082,6 +2067,22 @@ function getBotSpacingVector(bot) {
     }
   }
   return { x: sx, z: sz };
+}
+function aimWizardAtTargetHeight(w, target, dt, wobble = true) {
+  if (!w || !target) return;
+  const targetY = (target.y ?? getEffectiveGroundHeight(target.x, target.z)) + 2.0;
+  const shooterY = (w.y ?? getEffectiveGroundHeight(w.x, w.z)) + PROJECTILE_HEIGHT_TUNING.castChestOffset;
+  const horizontalDist = Math.max(1, distancePoint(w.x, w.z, target.x, target.z));
+
+  let desiredPitch = Math.atan2(targetY - shooterY, horizontalDist);
+  if (wobble) desiredPitch += rand(-0.025, 0.025);
+  desiredPitch = clamp(desiredPitch, AIM_PITCH_MIN, AIM_PITCH_MAX);
+
+  w.aimPitch += clamp(
+    desiredPitch - (w.aimPitch || 0),
+    -1.8 * dt,
+    1.8 * dt
+  );
 }
 function getBotHillApproachPoint(bot) {
   const i = wizards.indexOf(bot);
@@ -4147,7 +4148,14 @@ function acquireGooseTarget(g) {
   for (const w of wizards) {
     if (!w.alive || w === g.owner) continue;
     const d = distancePoint(g.x, g.z, w.x, w.z);
-    if (d < best && hasLineOfSight(g.x, g.z, w.x, w.z)) {
+    if (d < best && hasLineOfSight(
+      g.x,
+      g.z,
+      w.x,
+      w.z,
+      (g.y ?? getEffectiveGroundHeight(g.x, g.z)) + PROJECTILE_HEIGHT_TUNING.castChestOffset,
+      (w.y ?? getEffectiveGroundHeight(w.x, w.z)) + 2.0
+    )) {
       target = w;
       best = d;
     }
@@ -5358,6 +5366,8 @@ function updateCastleAttackerBot(w, dt) {
   else if (openGate && !isInsideCastleCourtyard(w)) targetPoint = openGate;
   else targetPoint = castleState.tower;
   steerBotTowardPoint(w, targetPoint, dt);
+  if (nearestDefender) aimWizardAtTargetHeight(w, nearestDefender, dt, true);
+  else if (targetPoint) aimWizardAtTargetHeight(w, targetPoint, dt, true);
   if (nearestClosedGate && distancePoint(w.x, w.z, nearestClosedGate.x, nearestClosedGate.z) < 24 && w.fireCooldown <= 0) { aimBotAtPoint(w, nearestClosedGate.x, nearestClosedGate.z); castFireball(w); }
   if (castleState.tower && isInsideCastleCourtyard(w) && distancePoint(w.x, w.z, castleState.tower.x, castleState.tower.z) < 24 && w.fireCooldown <= 0) { aimBotAtPoint(w, castleState.tower.x, castleState.tower.z); castFireball(w); }
   if (nearestDefender && distance2D(w, nearestDefender) < 20) maybeCastBotAbilityAtTarget(w, nearestDefender);
@@ -5369,6 +5379,7 @@ function updateCastleDefenderBot(w, dt) {
   const attackerNearGate = isAttackerNearAnyGate();
   if (isOnCastleWall(w)) {
     aimBotAtPoint(w, nearestAttacker.x, nearestAttacker.z);
+    aimWizardAtTargetHeight(w, nearestAttacker, dt, true);
     if (w.fireCooldown <= 0 && distance2D(w, nearestAttacker) < 32) castFireball(w);
     w.ai.jumpDownTimer -= dt;
     if (w.ai.castleRole === "jumper" && (attackerNearGate || gateBroken || w.ai.jumpDownTimer <= 0)) { defenderJumpDown(w); w.ai.castleRole = "courtyard"; }
@@ -5380,6 +5391,7 @@ function updateCastleDefenderBot(w, dt) {
     if (attackersInside.length) target = attackersInside.sort((a, b) => distance2D(w, a) - distance2D(w, b))[0];
   }
   steerBotTowardPoint(w, target, dt);
+  aimWizardAtTargetHeight(w, target, dt, true);
   if (distance2D(w, target) < 24 && w.fireCooldown <= 0) { aimBotAtPoint(w, target.x, target.z); castFireball(w); }
   maybeCastBotAbilityAtTarget(w, target);
 }
