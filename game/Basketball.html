@@ -351,9 +351,9 @@
     </div>
 
     <p class="note">
-      <b>P1:</b> Mouse aims/turns. W/S forward-back. A/D sidestep. E fireball. Q special. R swap.<br>
+      <b>P1:</b> Mouse aims/turns up, down, left, and right. W/S forward-back. A/D sidestep. E fireball. Q special. R swap.<br>
       <b>P2:</b> I/K forward-back, J/L turn, O ability, Y swap, U fireball.<br>
-      <b>Controller default:</b> Left analog stick moves, right analog stick aims, RT fires Fireball, LT casts Special, X/Square swaps abilities.<br>
+      <b>Controller default:</b> Left analog stick moves, right analog stick aims up/down/left/right, RT fires Fireball, LT casts Special, X/Square swaps abilities.<br>
       Use <b>Controls / Controllers</b> to assign controllers or remap keyboard/controller bindings per player.<br>
       <b>2P mode requires one player on controller or both players on separate controllers.</b><br>
       In 2P mode, the screen splits so each player gets their own third-person camera.<br>
@@ -393,7 +393,7 @@
     </div>
 
     <p class="note">
-      Controller defaults: Left analog stick moves, right analog stick aims, RT fires Fireball, LT casts Special.
+      Controller defaults: Left analog stick moves, right analog stick aims up/down/left/right, RT fires Fireball, LT casts Special.
       Keyboard controls can still be mapped per player.
     </p>
   </div>
@@ -1888,8 +1888,15 @@ function updateHuman(w, dt) {
 
   if (cfg.deviceType === "gamepad") {
     const aim = getAnalogAim(cfg);
-    if (Math.hypot(aim.x, aim.y) > 0) {
+    const aimMag = Math.hypot(aim.x, aim.y);
+
+    if (aimMag > 0.22) {
       w.angle = Math.atan2(aim.x, aim.y);
+      w.aimPitch = clamp(
+        -aim.y * AIM_PITCH_MAX,
+        AIM_PITCH_MIN,
+        AIM_PITCH_MAX
+      );
     }
   } else if (w.name === "Player 1") {
     w.angle -= inputState.mouseLookDelta * mouseLookSensitivity;
@@ -1914,13 +1921,17 @@ function updateHuman(w, dt) {
   if (cfg.deviceType === "gamepad") {
     moveDirX += f.x * (-moveY);
     moveDirZ += f.z * (-moveY);
-    moveDirX += r.x * moveX;
-    moveDirZ += r.z * moveX;
+
+    // Flip sidestep direction.
+    moveDirX -= r.x * moveX;
+    moveDirZ -= r.z * moveX;
   } else {
     if (forward) { moveDirX += f.x; moveDirZ += f.z; }
     if (back) { moveDirX -= f.x; moveDirZ -= f.z; }
-    if (right) { moveDirX += r.x; moveDirZ += r.z; }
-    if (left) { moveDirX -= r.x; moveDirZ -= r.z; }
+
+    // Flip A/D direction.
+    if (right) { moveDirX -= r.x; moveDirZ -= r.z; }
+    if (left) { moveDirX += r.x; moveDirZ += r.z; }
   }
 
   const moveLen = Math.hypot(moveDirX, moveDirZ);
@@ -4113,21 +4124,37 @@ function updateCameras(dt) {
 }
 
 function updateThirdPersonCamera(cam, w, dt, viewportMode = "single") {
-  const f = forwardVector(w);
-  const yFollow = w.y + 4.8;
-  const verticalFloor = getEffectiveGroundHeight(w.x, w.z) + 3.5;
-  const camY = Math.max(yFollow, verticalFloor);
+  const aim = getAimVector(w);
+  const flat = forwardVector(w);
+
   const backDistance = viewportMode === "split" ? 9.2 : 10.4;
-  const desired = new THREE.Vector3(
-    w.x - f.x * backDistance,
-    camY,
-    w.z - f.z * backDistance
+  const baseHeight = viewportMode === "split" ? 4.3 : 4.8;
+
+  const groundY = getEffectiveGroundHeight(w.x, w.z);
+  const verticalFloor = groundY + 2.4;
+
+  // Camera rises/falls slightly opposite the aim pitch so looking up feels like
+  // the camera is tilting up behind the wizard instead of staying flat.
+  const pitch = clamp(w.aimPitch || 0, AIM_PITCH_MIN, AIM_PITCH_MAX);
+  const cameraPitchLift = -Math.sin(pitch) * 4.2;
+
+  const desiredY = Math.max(
+    verticalFloor,
+    w.y + baseHeight + cameraPitchLift
   );
 
+  const desired = new THREE.Vector3(
+    w.x - flat.x * backDistance,
+    desiredY,
+    w.z - flat.z * backDistance
+  );
+
+  // Look target uses full 3D aim vector, not just horizontal forward.
+  const lookDistance = 11.5;
   const look = new THREE.Vector3(
-    w.x + f.x * 7.3,
-    w.y + 2.25,
-    w.z + f.z * 7.3
+    w.x + aim.x * lookDistance,
+    w.y + 2.1 + aim.y * lookDistance,
+    w.z + aim.z * lookDistance
   );
 
   const lerpT = 1 - Math.pow(0.001, dt);
