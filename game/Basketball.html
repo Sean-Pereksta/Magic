@@ -326,6 +326,51 @@
     color: #ded9ff;
   }
 
+  .modalOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 145;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.72);
+    padding: 18px;
+  }
+
+  .modalCard {
+    width: min(920px, 94vw);
+    max-height: 88vh;
+    overflow: auto;
+    padding: 26px;
+    border-radius: 26px;
+    background: rgba(18, 12, 48, 0.97);
+    border: 4px solid #ffe36a;
+    box-shadow: 0 0 70px rgba(255, 227, 106, 0.28);
+    color: white;
+  }
+
+  .modalCard h2,
+  .modalCard h3 {
+    color: #fff08c;
+    text-shadow: 2px 2px 0 #6f2bbd;
+  }
+
+  .compact-menu-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 14px;
+    margin: 18px 0;
+  }
+
+  .compact-menu-row label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 900;
+    color: #ded9ff;
+  }
+
 </style>
 </head>
 <body>
@@ -339,7 +384,7 @@
       Last wizard standing wins.
     </p>
 
-    <div class="buttons" style="align-items:center;">
+    <div class="compact-menu-row">
       <label>Mode <select id="modeSelect"><option value="stock">Stock Count</option><option value="king">King of the Hill</option><option value="survival">Survival</option><option value="kills">First to 10 Kills</option><option value="crown">Crown Control</option><option value="castle">Castle Defense</option></select></label>
       <label>Players <select id="playerModeSelect"><option value="one">1 Player</option><option value="two">2 Players</option><option value="bots">Bots Only</option></select></label>
       <label>P1 Class
@@ -348,28 +393,61 @@
       <label>P2 Class
         <select id="p2ClassSelect"></select>
       </label>
+    </div>
+
+    <div class="buttons">
+      <button onclick="startGameFromMenu()">Start Match</button>
+      <button onclick="openControlsConfig()">Controls / Controllers</button>
+      <button onclick="openAdditionalSettings()">Additional Settings</button>
+      <button onclick="openClassBreakdown()">Class Breakdown</button>
+    </div>
+
+    <p class="note">
+      Pick a mode, choose classes, then start the match. Use Additional Settings for match rules and Class Breakdown for class details.
+    </p>
+  </div>
+</div>
+
+<div id="additionalSettingsModal" class="modalOverlay">
+  <div class="modalCard">
+    <h2>Additional Settings</h2>
+    <div class="compact-menu-row">
       <label>Enemies/Bots <input id="enemyCountInput" type="number" min="1" max="11" value="5" style="width:70px"></label>
       <label>Stocks <input id="stockCountInput" type="number" min="1" max="9" value="3" style="width:70px"></label>
       <label>Crown Score Target <input id="crownScoreInput" type="number" min="500" max="50000" value="5000" style="width:82px"></label>
       <label>Castle Team Stocks <input id="castleStockInput" type="number" min="4" max="60" value="18" style="width:70px"></label>
       <label>Castle Tower Health <input id="castleTowerHealthInput" type="number" min="10" max="100" value="35" style="width:70px"></label>
       <label>Kills to Win <input id="killTargetInput" type="number" min="1" max="50" value="10" style="width:70px"></label>
-      <button onclick="startGameFromMenu()">Start Match</button>
-      <button onclick="openControlsConfig()">Controls / Controllers</button>
     </div>
-
+    <h3>Controls</h3>
     <p class="note">
       <b>P1:</b> Mouse aims/turns up, down, left, and right. W/S forward-back. A/D sidestep. E fireball. Q special. R swap. Space dash. F ultimate.<br>
       <b>P2:</b> I/K forward-back, J/L turn, O ability, Y swap, U fireball, H ultimate.<br>
-      <b>Controller default:</b> Left analog stick moves, right analog stick aims up/down/left/right, RT fires Fireball, LT casts Special, X/Square swaps abilities, A/Cross dashes, Y/Triangle ultimate.<br>
-      Use <b>Controls / Controllers</b> to assign controllers or remap keyboard/controller bindings per player.<br>
-      <b>2P mode requires one player on controller or both players on separate controllers.</b><br>
-      In 2P mode, the screen splits so each player gets their own third-person camera.<br>
-      <b>First to 10 Kills:</b> everyone respawns, and the first wizard to reach the kill target wins.<br>
-      <b>Crown Control:</b> hold the glowing crown to score. <b>Castle Defense:</b> attackers break gates and tower while defenders protect shared stocks.
+      <b>Controller:</b> Left stick moves, right stick aims, RT fires, LT special, X/Square swaps, A/Cross dashes, Y/Triangle ultimate.<br>
+      <b>2P:</b> Requires one player on controller or both players on separate controllers.
     </p>
+    <h3>Mode Notes</h3>
+    <p class="note">
+      <b>Stock Count:</b> survive until everyone else is out of stocks.<br>
+      <b>King of the Hill:</b> hold the glowing hill zone to score.<br>
+      <b>First to 10 Kills:</b> everyone respawns; first to the kill target wins.<br>
+      <b>Crown Control:</b> hold the crown to score.<br>
+      <b>Castle Defense:</b> attackers break gates and the crystal while defenders protect shared stocks.
+    </p>
+    <div class="buttons">
+      <button onclick="closeAdditionalSettings()">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="classBreakdownModal" class="modalOverlay">
+  <div class="modalCard">
+    <h2>Class Breakdown</h2>
     <div id="classPreview" class="note"></div>
     <div id="classLegend" class="note"></div>
+    <div class="buttons">
+      <button onclick="closeClassBreakdown()">Close</button>
+    </div>
   </div>
 </div>
 
@@ -902,7 +980,7 @@ function updateClassPreview() {
   const legend = document.getElementById("classLegend");
   if (legend) legend.innerHTML = Object.values(WIZARD_CLASSES).map(c => `
     <div style="margin:8px 0;padding:8px 10px;border:1px solid rgba(255,255,255,0.14);border-radius:10px;background:rgba(255,255,255,0.04);">
-      <b>${c.displayName}</b> <span style="color:#c8c2ff;">(${c.name})</span><br>
+      <b>${c.displayName}</b> <span style="color:#c8c2ff;">(${c.id})</span><br>
       <b>Role:</b> ${c.description}<br>
       <b>Ultimate:</b> ${c.ultimateName}<br>
       <b>Strength:</b> ${CLASS_LEGEND_INFO[c.id]?.strength || "Versatile control"}<br>
@@ -961,6 +1039,27 @@ function closeControlsConfig() {
   modal.style.display = "none";
   inputState.listeningForBind = null;
   inputState.bindingPollActive = false;
+}
+
+function openAdditionalSettings() {
+  const modal = document.getElementById("additionalSettingsModal");
+  if (modal) modal.style.display = "flex";
+}
+
+function closeAdditionalSettings() {
+  const modal = document.getElementById("additionalSettingsModal");
+  if (modal) modal.style.display = "none";
+}
+
+function openClassBreakdown() {
+  updateClassPreview();
+  const modal = document.getElementById("classBreakdownModal");
+  if (modal) modal.style.display = "flex";
+}
+
+function closeClassBreakdown() {
+  const modal = document.getElementById("classBreakdownModal");
+  if (modal) modal.style.display = "none";
 }
 
 function getConnectedGamepads() {
@@ -1271,12 +1370,12 @@ function getActionDown(w, action) {
 function startGameFromMenu(){
   GAME_SETTINGS.mode = document.getElementById('modeSelect').value;
   mode = document.getElementById('playerModeSelect').value;
-  GAME_SETTINGS.stockCount = Math.max(1, Number(document.getElementById('stockCountInput').value)||3);
-  GAME_SETTINGS.killTarget = Math.max(1, Number(document.getElementById('killTargetInput').value) || 10);
-  GAME_SETTINGS.crownScoreTarget = Math.max(500, Number(document.getElementById('crownScoreInput').value) || 5000);
-  GAME_SETTINGS.castleTeamStocks = Math.max(4, Number(document.getElementById('castleStockInput').value) || 18);
-  GAME_SETTINGS.castleTowerHealth = Math.max(10, Number(document.getElementById('castleTowerHealthInput').value) || 35);
-  GAME_SETTINGS.enemyWizardCount = clamp(Number(document.getElementById('enemyCountInput').value)||5, 1, MAX_WIZARDS - 1);
+  GAME_SETTINGS.stockCount = Math.max(1, Number(document.getElementById('stockCountInput')?.value)||3);
+  GAME_SETTINGS.killTarget = Math.max(1, Number(document.getElementById('killTargetInput')?.value) || 10);
+  GAME_SETTINGS.crownScoreTarget = Math.max(500, Number(document.getElementById('crownScoreInput')?.value) || 5000);
+  GAME_SETTINGS.castleTeamStocks = Math.max(4, Number(document.getElementById('castleStockInput')?.value) || 18);
+  GAME_SETTINGS.castleTowerHealth = Math.max(10, Number(document.getElementById('castleTowerHealthInput')?.value) || 35);
+  GAME_SETTINGS.enemyWizardCount = clamp(Number(document.getElementById('enemyCountInput')?.value)||5, 1, MAX_WIZARDS - 1);
   selectedClasses.player1 = document.getElementById("p1ClassSelect")?.value || "blast";
   selectedClasses.player2 = document.getElementById("p2ClassSelect")?.value || "trickster";
   if (!validateControlAssignments()) return;
@@ -4897,7 +4996,7 @@ function buildHudCardHtml(w) {
   return `
     <div class="hud-card">
       <strong>${escapeHtml(w.name)}</strong><br>
-      Class: ${escapeHtml(w.classDef?.name || "Wizard")}<br>
+      Class: ${escapeHtml(w.classDef?.displayName || "Wizard")}<br>
       HP: ${Math.floor(w.damage)} / ${(w.maxDamage || MAX_DAMAGE)} damage<br>
       Ability: ${escapeHtml(abilityText)}<br>
       Queued: ${escapeHtml(queueText)}<br>
@@ -4977,13 +5076,13 @@ function updateHud() {
    ============================================================ */
 
 function spawnParticle(x, y, z, color, size, life) {
+  const safeColor = color ?? 0xffffff;
+
   const mesh = new THREE.Mesh(
     new THREE.SphereGeometry(size, 8, 6),
     new THREE.MeshStandardMaterial({
-      color: robeColor,
-    classId: classKey,
-    classDef,
-      emissive: color,
+      color: safeColor,
+      emissive: safeColor,
       transparent: true,
       opacity: 0.9
     })
@@ -6345,31 +6444,41 @@ function affectGeyserPlayers(g,dt){ for(const w of wizards){ if(!w.alive) contin
 function animate() {
   if (!running) return;
 
-  const dt = Math.min(clock.getDelta(), 0.033);
-  updateGamepadBindingCapture();
-  updateModes(dt);
+  try {
+    const dt = Math.min(clock.getDelta(), 0.033);
+    updateGamepadBindingCapture();
+    updateModes(dt);
 
-  updateGeysers(dt);
-  updateTiltPlane(dt);
-  updateWizards(dt);
-  inputState.mouseLookDelta = 0;
-  inputState.mousePitchDelta = 0;
-  updateAbilityTelegraphs(dt);
-  updatePickups(dt);
-  updateProjectiles(dt);
-  updateMagnetTraps(dt);
-  updateTemporary(dt);
-  updateGeese(dt);
-  updateParticles(dt);
-  updateCameras(dt);
-  updateHud();
-  updateLabels();
-  if (GAME_SETTINGS.mode==='king') checkKingWin();
-  else if (GAME_SETTINGS.mode==='stock') checkStockWin();
-  else if (GAME_SETTINGS.mode==='survival') checkSurvivalWin();
-  else if (GAME_SETTINGS.mode==='kills') checkKillsWin();
+    updateGeysers(dt);
+    updateTiltPlane(dt);
+    updateWizards(dt);
+    inputState.mouseLookDelta = 0;
+    inputState.mousePitchDelta = 0;
+    updateAbilityTelegraphs(dt);
+    updatePickups(dt);
+    updateProjectiles(dt);
+    updateMagnetTraps(dt);
+    updateTemporary(dt);
+    updateGeese(dt);
+    updateParticles(dt);
+    updateCameras(dt);
+    updateHud();
+    updateLabels();
 
-  renderScene();
+    if (GAME_SETTINGS.mode === "king") checkKingWin();
+    else if (GAME_SETTINGS.mode === "stock") checkStockWin();
+    else if (GAME_SETTINGS.mode === "survival") checkSurvivalWin();
+    else if (GAME_SETTINGS.mode === "kills") checkKillsWin();
+
+    renderScene();
+  } catch (err) {
+    console.error("Game loop crashed:", err);
+    showMessage("Game error: " + (err?.message || err), 5000);
+    running = false;
+    menu.style.display = "flex";
+    restartBtn.style.display = "block";
+    return;
+  }
 
   if (running) requestAnimationFrame(animate);
 }
