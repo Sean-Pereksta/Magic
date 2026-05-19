@@ -873,6 +873,11 @@ function updateClassPreview() {
   `;
 }
 
+function randomClassId() {
+  const ids = Object.keys(WIZARD_CLASSES);
+  return ids[Math.floor(Math.random() * ids.length)];
+}
+
 function mergeControlConfig(base, saved) {
   for (const playerKey of ["player1", "player2"]) {
     if (!saved[playerKey]) continue;
@@ -1535,18 +1540,27 @@ function setupWizards() {
 
     const controls = i === 0 ? controlConfig.player1 : i === 1 ? controlConfig.player2 : null;
 
-    const wizard = createWizard(name, wizardColors[i], a, isHuman, controls);
+    const classId = isHuman
+      ? (i === 0 ? selectedClasses.player1 : selectedClasses.player2)
+      : randomClassId();
+
+    const wizard = createWizard(name, wizardColors[i], a, isHuman, controls, classId);
     wizards.push(wizard);
   }
 }
 
-function createWizard(name, color, spawnAngle, human, controls) {
+function createWizard(name, color, spawnAngle, human, controls, classId = null) {
+  const classKey = classId || randomClassId();
+  const classDef = WIZARD_CLASSES[classKey] || WIZARD_CLASSES.blast;
+  const robeColor = classDef.themeColor || color;
+  const trimColor = classDef.trimColor || 0xffffff;
   const group = new THREE.Group();
 
-  const robeMat = new THREE.MeshStandardMaterial({ color, roughness: 0.55 });
+  const robeMat = new THREE.MeshStandardMaterial({ color: robeColor, roughness: 0.55 });
   const skinMat = new THREE.MeshStandardMaterial({ color: 0xffd2a0, roughness: 0.85 });
   const darkMat = new THREE.MeshStandardMaterial({ color: 0x21142f, roughness: 0.7 });
   const wandMat = new THREE.MeshStandardMaterial({ color: 0x5a351c, roughness: 0.7 });
+  const trimMat = new THREE.MeshStandardMaterial({ color: trimColor, roughness: 0.38, emissive: trimColor, emissiveIntensity: 0.25 });
 
   const robeGeo = new THREE.ConeGeometry(0.95, 2.25, 18);
   const robe = new THREE.Mesh(robeGeo, robeMat);
@@ -1570,7 +1584,7 @@ function createWizard(name, color, spawnAngle, human, controls) {
   hat.castShadow = true;
   group.add(hat);
 
-  const brim = new THREE.Mesh(new THREE.TorusGeometry(0.64, 0.09, 8, 28), robeMat);
+  const brim = new THREE.Mesh(new THREE.TorusGeometry(0.64, 0.09, 8, 28), trimMat);
   brim.rotation.x = Math.PI / 2;
   brim.position.y = 2.80;
   brim.castShadow = true;
@@ -1591,10 +1605,41 @@ function createWizard(name, color, spawnAngle, human, controls) {
 
   const gem = new THREE.Mesh(
     new THREE.SphereGeometry(0.13, 10, 8),
-    new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffaa })
+    new THREE.MeshStandardMaterial({ color: trimColor, emissive: trimColor, emissiveIntensity: 0.75 })
   );
   gem.position.set(1.02, 2.19, 0.66);
   group.add(gem);
+
+  const classTrimRing = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.055, 8, 24), trimMat);
+  classTrimRing.rotation.x = Math.PI / 2;
+  classTrimRing.position.y = 1.62;
+  classTrimRing.castShadow = true;
+  group.add(classTrimRing);
+
+  if (classKey === "blast") {
+    const sparkGeo = new THREE.SphereGeometry(0.08, 8, 8);
+    const sparkMat = new THREE.MeshStandardMaterial({ color: 0xff7a1f, emissive: 0xff4d2e, emissiveIntensity: 0.85 });
+    for (const side of [-1, 1]) {
+      const spark = new THREE.Mesh(sparkGeo, sparkMat);
+      spark.position.set(side * 0.72, 2.02, 0.24);
+      group.add(spark);
+    }
+  } else if (classKey === "bulwark") {
+    const belt = new THREE.Mesh(new THREE.TorusGeometry(0.73, 0.11, 10, 26), trimMat);
+    belt.rotation.x = Math.PI / 2;
+    belt.position.y = 1.25;
+    belt.castShadow = true;
+    group.add(belt);
+  } else if (classKey === "goose") {
+    const featherGeo = new THREE.SphereGeometry(0.06, 8, 8);
+    const featherMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
+    for (const side of [-1, 1]) {
+      const feather = new THREE.Mesh(featherGeo, featherMat);
+      feather.position.set(side * 0.64, 1.95, 0.22);
+      group.add(feather);
+    }
+  }
+
 
   const spawnR = ARENA_R * 0.75;
   const x = Math.cos(spawnAngle) * spawnR;
@@ -1613,7 +1658,9 @@ function createWizard(name, color, spawnAngle, human, controls) {
     human,
     controls,
     group,
-    color,
+    color: robeColor,
+    classId: classKey,
+    classDef,
     x,
     z,
     y: getEffectiveGroundHeight(x,z),
@@ -1626,6 +1673,12 @@ function createWizard(name, color, spawnAngle, human, controls) {
     aimPitch: 0,
     radius: 1.05,
     damage: 0,
+    maxDamage: classDef.maxDamage || MAX_DAMAGE,
+    speedMultiplier: classDef.speedMultiplier || 1,
+    fireCooldownMultiplier: classDef.fireCooldownMultiplier || 1,
+    dashCooldownMax: classDef.dashCooldown || 2.2,
+    dashCooldown: 0,
+    dashPressed: false,
     stocks: GAME_SETTINGS.stockCount,
     respawnTimer: 0,
     invulnerableTimer: 0,
@@ -1638,11 +1691,17 @@ function createWizard(name, color, spawnAngle, human, controls) {
     castPressed: false,
     firePressed: false,
     swapPressed: false,
+    ultimate: {
+      charge: 0,
+      ready: false,
+      active: false,
+      activeTimer: 0
+    },
     label,
     materials: {
       robe: robeMat,
       hat: robeMat,
-      trim: null,
+      trim: trimMat,
       gem: gem.material
     },
     team: null,
@@ -1759,7 +1818,7 @@ function applyDamage(w, amount, sourceName) {
     spawnParticle(w.x, 2.0, w.z, 0xff5555, rand(0.16, 0.35), rand(0.35, 0.7));
   }
 
-  if (w.damage >= MAX_DAMAGE) {
+  if (w.damage >= (w.maxDamage || MAX_DAMAGE)) {
     vaporizeWizard(w, sourceName);
   }
 }
@@ -2036,7 +2095,7 @@ function updateHuman(w, dt) {
     );
   }
 
-  let speed = PLAYER_SPEED;
+  let speed = PLAYER_SPEED * (w.speedMultiplier || 1);
   if (w.effect.glue > 0) speed *= 0.42;
   if (w.effect.bubble > 0) speed *= 0.24;
   if (w.effect.jelly > 0) speed *= 1.12;
@@ -2153,7 +2212,7 @@ function updateBot(w, dt) {
   const diff = normalizeAngle(w.ai.desiredAngle - w.angle);
   w.angle += clamp(diff, -TURN_SPEED * 0.8 * dt, TURN_SPEED * 0.8 * dt);
 
-  let speed = PLAYER_SPEED * (GAME_SETTINGS.mode==='survival' ? (0.9 + survivalLevel*0.05) : 1.0);
+  let speed = PLAYER_SPEED * (w.speedMultiplier || 1) * (GAME_SETTINGS.mode==='survival' ? (0.9 + survivalLevel*0.05) : 1.0);
   if (GAME_SETTINGS.mode === 'crown' && crownState.carrier === w) speed *= CROWN_CARRIER_SPEED_MULT;
   if (w.effect.glue > 0) speed *= 0.42;
   if (w.effect.bubble > 0) speed *= 0.24;
@@ -2524,7 +2583,7 @@ function getDownhillInitialVy(w, distance = 14) {
 function castFireball(w) {
   if (!w.alive || w.fireCooldown > 0) return;
 
-  w.fireCooldown = FIREBALL_COOLDOWN;
+  w.fireCooldown = FIREBALL_COOLDOWN * (w.fireCooldownMultiplier || 1);
 
   const aim = getAimVector(w);
 
@@ -4151,7 +4210,9 @@ function createVaporHitEffect(x, y, z) { createFloatingText3D(x, y + 1.2, z, "VA
 function createGroundRing(x, z, r, color, opacity = 0.8) {
   const geo = new THREE.TorusGeometry(r, 0.08, 8, 64);
   const mat = new THREE.MeshStandardMaterial({
-    color,
+    color: robeColor,
+    classId: classKey,
+    classDef,
     emissive: color,
     transparent: true,
     opacity
@@ -4447,7 +4508,8 @@ function positionLabelSet(w, camera, viewport, suffix = "") {
   barEl.style.left = `${pos.x}px`;
   barEl.style.top = `${pos.y - 5}px`;
 
-  const hpPct = clamp(1 - (w.damage / MAX_DAMAGE), 0, 1) * 100;
+  const maxD = w.maxDamage || MAX_DAMAGE;
+  const hpPct = clamp(1 - w.damage / maxD, 0, 1) * 100;
   fillEl.style.width = `${hpPct}%`;
 }
 
@@ -4479,9 +4541,9 @@ function buildHudCardHtml(w) {
   const fire = w.fireCooldown <= 0 ? "ready" : `${w.fireCooldown.toFixed(1)}s`;
 
   let modeLine = "";
-  if (GAME_SETTINGS.mode === "stock") modeLine = `Stocks: ${"♥ ".repeat(w.stocks)}<br>Damage: ${Math.floor(w.damage)} / ${MAX_DAMAGE}`;
+  if (GAME_SETTINGS.mode === "stock") modeLine = `Stocks: ${"♥ ".repeat(w.stocks)}<br>Damage: ${Math.floor(w.damage)} / ${(w.maxDamage || MAX_DAMAGE)}`;
   else if (GAME_SETTINGS.mode === "king") modeLine = `Hill: ${Math.floor(w.score)} / ${GAME_SETTINGS.kingScoreTarget}<br>Kills: ${w.kills}`;
-  else if (GAME_SETTINGS.mode === "kills") modeLine = `Kills: ${w.kills || 0} / ${GAME_SETTINGS.killTarget}<br>Damage: ${Math.floor(w.damage)} / ${MAX_DAMAGE}`;
+  else if (GAME_SETTINGS.mode === "kills") modeLine = `Kills: ${w.kills || 0} / ${GAME_SETTINGS.killTarget}<br>Damage: ${Math.floor(w.damage)} / ${(w.maxDamage || MAX_DAMAGE)}`;
   else if (GAME_SETTINGS.mode === "crown") modeLine = `Crown: ${Math.floor(w.score)} / ${GAME_SETTINGS.crownScoreTarget}<br>Kills: ${w.kills}${crownState.carrier === w ? "<br>👑 CROWN CARRIER" : ""}`;
   else if (GAME_SETTINGS.mode === "castle") {
     modeLine = `
@@ -4577,7 +4639,9 @@ function spawnParticle(x, y, z, color, size, life) {
   const mesh = new THREE.Mesh(
     new THREE.SphereGeometry(size, 8, 6),
     new THREE.MeshStandardMaterial({
-      color,
+      color: robeColor,
+    classId: classKey,
+    classDef,
       emissive: color,
       transparent: true,
       opacity: 0.9
@@ -5582,7 +5646,7 @@ function steerBotTowardPoint(w, targetPoint, dt) {
   const targetAngle = angleToPoint(w.x, w.z, targetPoint.x, targetPoint.z);
   const diff = normalizeAngle(targetAngle - w.angle);
   w.angle += clamp(diff, -TURN_SPEED * 0.9 * dt, TURN_SPEED * 0.9 * dt);
-  let speed = PLAYER_SPEED; if (w.effect.glue > 0) speed *= 0.42; if (w.effect.bubble > 0) speed *= 0.24; if (w.effect.jelly > 0) speed *= 1.12;
+  let speed = PLAYER_SPEED * (w.speedMultiplier || 1); if (w.effect.glue > 0) speed *= 0.42; if (w.effect.bubble > 0) speed *= 0.24; if (w.effect.jelly > 0) speed *= 1.12;
   const f = forwardVector(w); const d = distancePoint(w.x, w.z, targetPoint.x, targetPoint.z);
   if (d > 5) { w.vx += f.x * speed * dt * 4.0; w.vz += f.z * speed * dt * 4.0; }
   const spacing = getBotSpacingVector(w); w.vx += spacing.x * speed * dt * 1.5; w.vz += spacing.z * speed * dt * 1.5;
@@ -5666,7 +5730,7 @@ function buildSummaryHtml(winner) {
         <td>${Math.floor(w.kills || 0)}</td>
         <td>${Math.floor(w.score || 0)}</td>
         <td>${Math.floor(w.stocks || 0)}</td>
-        <td>${Math.floor(w.damage || 0)} / ${MAX_DAMAGE}</td>
+        <td>${Math.floor(w.damage || 0)} / ${(w.maxDamage || MAX_DAMAGE)}</td>
         <td>${w.alive ? 'Alive' : 'Vaporized'}</td>
       </tr>
     `;
