@@ -1,4 +1,1065 @@
-"] || keys["arrowright"]) move.x += 1;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Chris Runner - Endless 3D Chase</title>
+<style>
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: #05070d;
+    font-family: Arial, sans-serif;
+  }
+
+  #hud {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 10;
+    color: white;
+    background: rgba(0,0,0,0.58);
+    border: 1px solid rgba(255,255,255,0.2);
+    padding: 12px 16px;
+    border-radius: 12px;
+    width: 330px;
+    box-shadow: 0 0 18px rgba(0,0,0,0.5);
+  }
+
+  #hud h1 {
+    margin: 0 0 8px;
+    font-size: 20px;
+  }
+
+  .barWrap {
+    width: 100%;
+    height: 18px;
+    background: #222;
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 6px 0 10px;
+    border: 1px solid #555;
+  }
+
+  #energyBar {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #11d17f, #b6ff2d);
+  }
+
+  #message {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.72);
+    color: white;
+    z-index: 20;
+    text-align: center;
+  }
+
+  #messageBox {
+    background: #121827;
+    padding: 30px 42px;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,0.2);
+    max-width: 600px;
+  }
+
+  button {
+    margin-top: 15px;
+    padding: 10px 18px;
+    border: none;
+    border-radius: 10px;
+    background: #23a6ff;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+  }
+
+  #crosshair {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    margin-left: -3px;
+    margin-top: -3px;
+    background: rgba(255,255,255,0.6);
+    border-radius: 50%;
+    z-index: 5;
+  }
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <h1>Chris Runner</h1>
+
+  <div>Energy</div>
+  <div class="barWrap"><div id="energyBar"></div></div>
+
+  <div id="scoreText" style="font-size:18px;font-weight:bold;">Yards: 0</div>
+  <div id="highScoreText" style="font-size:15px;color:#facc15;">High Score: 0</div>
+  <div id="speedTierText">Speed Level: 0</div>
+  <div id="pickupText">Pickups: 0</div>
+  <div id="enemyText">Chasers: 0</div>
+  <div id="dogText">Dogs: Locked until 1000 yards</div>
+  <div id="torchText">Torches: Locked until 500 yards</div>
+  <div id="hideText">Visibility: Seen</div>
+
+  <div style="font-size:12px;opacity:.8;margin-top:8px;">
+    Move: WASD / Arrows · Sprint: Shift · Dodge: Space
+  </div>
+</div>
+
+<div id="crosshair"></div>
+
+<div id="message">
+  <div id="messageBox">
+    <h2>Chris got caught!</h2>
+    <p id="finalScore"></p>
+    <button onclick="location.reload()">Restart</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+
+<script>
+/* ============================================================
+   OPTIMIZED CHRIS RUNNER
+   Features:
+   - Endless generated track
+   - Energy, sprint, dodge
+   - Local saved high score
+   - Starry white sky background with bright guiding star
+   - Tall grass hiding
+   - Chasers with pathfinding
+   - Torch enemies after 500 yards
+   - Animated fire patches
+   - Dogs after 1000 yards
+   - Grid-based obstacles with at least two open lanes
+   - Taller brown tree-like obstacles
+   - Cleanup behind player to reduce lag
+============================================================ */
+
+let scene, camera, renderer, clock;
+let player, playerRig;
+let keys = {};
+
+let worldChunks = [];
+let walls = [];
+let pickups = [];
+let enemies = [];
+let dogs = [];
+let grassPatches = [];
+let torches = [];
+let fireZones = [];
+
+let gameOver = false;
+let distance = 0;
+let pickupCount = 0;
+let energy = 100;
+
+let highScore = Number(localStorage.getItem("chrisRunnerHighScore") || 0);
+
+let currentSpeedTier = 0;
+let playerBaseSpeed = 13;
+let playerBaseSprintSpeed = 20;
+let enemyBaseSpeedBonus = 0;
+let playerHiddenInGrass = false;
+
+let frameCount = 0;
+
+const WORLD_WIDTH = 44;
+const CHUNK_LENGTH = 42;
+const CHUNK_COUNT_AHEAD = 9;
+const WALL_GRID_SIZE = 4;
+const PLAYER_RADIUS = 1.0;
+
+const START_Z = 0;
+let furthestChunkZ = 0;
+
+const CLEANUP_BEHIND_DISTANCE = 70;
+const HARD_BACK_LIMIT = 34;
+const PATHFIND_DISTANCE = 90;
+const MAX_ENEMIES = 12;
+const MAX_DOGS = 5;
+
+init();
+animate();
+
+/* ============================================================
+   SETUP
+============================================================ */
+
+function init() {
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xf8fbff);
+  scene.fog = new THREE.Fog(0xf8fbff, 70, 210);
+
+  camera = new THREE.PerspectiveCamera(
+    70,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    650
+  );
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+  document.body.appendChild(renderer.domElement);
+
+  clock = new THREE.Clock();
+
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x9ec58b, 1.45);
+  scene.add(hemi);
+
+  const sun = new THREE.DirectionalLight(0xffffff, 2.1);
+  sun.position.set(30, 55, -30);
+  sun.castShadow = true;
+  sun.shadow.mapSize.width = 1024;
+  sun.shadow.mapSize.height = 1024;
+  sun.shadow.camera.left = -90;
+  sun.shadow.camera.right = 90;
+  sun.shadow.camera.top = 90;
+  sun.shadow.camera.bottom = -90;
+  scene.add(sun);
+
+  createPlayer();
+  createStarryBackground();
+
+  for (let i = 0; i < CHUNK_COUNT_AHEAD; i++) {
+    generateChunk(i * CHUNK_LENGTH);
+  }
+
+  furthestChunkZ = (CHUNK_COUNT_AHEAD - 1) * CHUNK_LENGTH;
+
+  window.addEventListener("keydown", e => {
+    keys[e.key.toLowerCase()] = true;
+  });
+
+  window.addEventListener("keyup", e => {
+    keys[e.key.toLowerCase()] = false;
+  });
+
+  window.addEventListener("resize", onResize);
+}
+
+/* ============================================================
+   STARRY BACKGROUND
+============================================================ */
+
+function createStarryBackground() {
+  const starGroup = new THREE.Group();
+  starGroup.name = "starryBackground";
+
+  const starMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const goldStarMat = new THREE.MeshBasicMaterial({ color: 0xfff3b0 });
+  const blueStarMat = new THREE.MeshBasicMaterial({ color: 0xd9ecff });
+
+  for (let i = 0; i < 190; i++) {
+    const size = rand(0.035, 0.13);
+
+    const matRoll = Math.random();
+    let mat = starMat;
+    if (matRoll > 0.86) mat = goldStarMat;
+    if (matRoll < 0.12) mat = blueStarMat;
+
+    const star = new THREE.Mesh(
+      new THREE.SphereGeometry(size, 6, 6),
+      mat
+    );
+
+    star.position.set(
+      rand(-105, 105),
+      rand(26, 88),
+      rand(20, 245)
+    );
+
+    star.userData = {
+      baseScale: rand(0.85, 1.55),
+      twinkleSpeed: rand(0.7, 2.2),
+      phase: Math.random() * Math.PI * 2
+    };
+
+    starGroup.add(star);
+  }
+
+  const brightStar = new THREE.Group();
+  brightStar.name = "brightGuidingStar";
+
+  const core = new THREE.Mesh(
+    new THREE.SphereGeometry(1.15, 18, 18),
+    new THREE.MeshBasicMaterial({ color: 0xffffff })
+  );
+  brightStar.add(core);
+
+  const glow1 = new THREE.Mesh(
+    new THREE.SphereGeometry(2.7, 18, 18),
+    new THREE.MeshBasicMaterial({
+      color: 0xfff7c2,
+      transparent: true,
+      opacity: 0.38
+    })
+  );
+  brightStar.add(glow1);
+
+  const glow2 = new THREE.Mesh(
+    new THREE.SphereGeometry(5.0, 18, 18),
+    new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.16
+    })
+  );
+  brightStar.add(glow2);
+
+  const rayMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.8,
+    side: THREE.DoubleSide
+  });
+
+  const verticalRay = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.35, 10.5),
+    rayMat
+  );
+  brightStar.add(verticalRay);
+
+  const horizontalRay = new THREE.Mesh(
+    new THREE.PlaneGeometry(10.5, 0.35),
+    rayMat
+  );
+  brightStar.add(horizontalRay);
+
+  const diagonalRay1 = new THREE.Mesh(
+    new THREE.PlaneGeometry(7.5, 0.22),
+    rayMat
+  );
+  diagonalRay1.rotation.z = Math.PI / 4;
+  brightStar.add(diagonalRay1);
+
+  const diagonalRay2 = new THREE.Mesh(
+    new THREE.PlaneGeometry(7.5, 0.22),
+    rayMat
+  );
+  diagonalRay2.rotation.z = -Math.PI / 4;
+  brightStar.add(diagonalRay2);
+
+  brightStar.position.set(0, 58, 110);
+  brightStar.userData = {
+    phase: 0
+  };
+
+  starGroup.add(brightStar);
+  scene.add(starGroup);
+}
+
+function updateStarryBackground(dt) {
+  const starGroup = scene.getObjectByName("starryBackground");
+  if (!starGroup) return;
+
+  starGroup.position.z = player.rig.position.z - 18;
+
+  for (const obj of starGroup.children) {
+    if (obj.name === "brightGuidingStar") {
+      obj.userData.phase += dt;
+
+      const pulse = 1 + Math.sin(obj.userData.phase * 2.8) * 0.09;
+      obj.scale.setScalar(pulse);
+      obj.rotation.z += dt * 0.11;
+      continue;
+    }
+
+    if (!obj.userData || obj.userData.baseScale === undefined) continue;
+
+    if (frameCount % 2 === 0) {
+      const twinkle =
+        obj.userData.baseScale +
+        Math.sin(performance.now() * 0.001 * obj.userData.twinkleSpeed + obj.userData.phase) * 0.25;
+
+      obj.scale.setScalar(Math.max(0.45, twinkle));
+    }
+  }
+}
+
+/* ============================================================
+   PLAYER
+============================================================ */
+
+function createPlayer() {
+  playerRig = new THREE.Group();
+  playerRig.position.set(0, 0, START_Z);
+
+  const skin = new THREE.MeshStandardMaterial({ color: 0x8a4c2a, roughness: 0.65 });
+  const jersey = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.4 });
+  const shorts = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.45 });
+  const shoeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
+  const beardMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+
+  player = {
+    rig: playerRig,
+    velocity: new THREE.Vector3(),
+    speed: playerBaseSpeed,
+    sprintSpeed: playerBaseSprintSpeed,
+    dodgeCooldown: 0,
+    animTime: 0,
+    burnCooldown: 0,
+    parts: {}
+  };
+
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(1.35, 2.2, 0.75), jersey);
+  torso.position.y = 3.05;
+  torso.castShadow = true;
+  playerRig.add(torso);
+  player.parts.torso = torso;
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.58, 20, 20), skin);
+  head.position.y = 4.58;
+  head.scale.set(0.92, 1.04, 0.9);
+  head.castShadow = true;
+  playerRig.add(head);
+  player.parts.head = head;
+
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.6, 18, 8), beardMat);
+  hair.position.set(0, 4.82, -0.03);
+  hair.scale.set(0.92, 0.38, 0.85);
+  hair.castShadow = true;
+  playerRig.add(hair);
+
+  const beard = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.18, 0.08), beardMat);
+  beard.position.set(0, 4.28, 0.49);
+  playerRig.add(beard);
+
+  const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+  const leftEye = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 6), eyeMat);
+  leftEye.position.set(-0.18, 4.62, 0.51);
+  playerRig.add(leftEye);
+
+  const rightEye = leftEye.clone();
+  rightEye.position.x = 0.18;
+  playerRig.add(rightEye);
+
+  makeLimb("leftArm", -0.95, 3.45, 0, skin, 0.34, 1.35);
+  makeLimb("rightArm", 0.95, 3.45, 0, skin, 0.34, 1.35);
+  makeLimb("leftLeg", -0.38, 1.85, 0, shorts, 0.42, 1.55);
+  makeLimb("rightLeg", 0.38, 1.85, 0, shorts, 0.42, 1.55);
+
+  const leftShoe = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.25, 0.82), shoeMat);
+  leftShoe.position.set(-0.38, 0.45, 0.17);
+  leftShoe.castShadow = true;
+  playerRig.add(leftShoe);
+  player.parts.leftShoe = leftShoe;
+
+  const rightShoe = leftShoe.clone();
+  rightShoe.position.x = 0.38;
+  playerRig.add(rightShoe);
+  player.parts.rightShoe = rightShoe;
+
+  scene.add(playerRig);
+}
+
+function makeLimb(name, x, y, z, mat, width, height) {
+  const limb = new THREE.Group();
+  limb.position.set(x, y, z);
+
+  const mesh = new THREE.Mesh(
+    new THREE.CapsuleGeometry(width / 2, height, 6, 10),
+    mat
+  );
+
+  mesh.castShadow = true;
+  limb.add(mesh);
+
+  playerRig.add(limb);
+  player.parts[name] = limb;
+}
+
+/* ============================================================
+   ENEMIES
+============================================================ */
+
+function createEnemy(x, z) {
+  const rig = new THREE.Group();
+  rig.position.set(x, 0, z);
+
+  const skin = new THREE.MeshStandardMaterial({ color: 0xf0c9a2, roughness: 0.65 });
+  const hoodie = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.5 });
+  const pants = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.7 });
+  const hair = new THREE.MeshStandardMaterial({ color: 0x6b3e1f, roughness: 0.8 });
+  const fireMat = new THREE.MeshStandardMaterial({
+    color: 0xff7a18,
+    emissive: 0xff3c00,
+    emissiveIntensity: 1.1
+  });
+
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(1.55, 2.35, 0.9), hoodie);
+  torso.position.y = 3.05;
+  torso.castShadow = true;
+  rig.add(torso);
+
+  const hood = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.13, 8, 18), hoodie);
+  hood.position.set(0, 4.45, -0.05);
+  hood.rotation.x = Math.PI / 2;
+  rig.add(hood);
+
+  const hoodPoint = new THREE.Mesh(
+    new THREE.ConeGeometry(0.48, 1.0, 14),
+    hoodie
+  );
+  hoodPoint.position.set(0, 5.05, -0.22);
+  hoodPoint.rotation.x = -0.34;
+  hoodPoint.scale.set(0.85, 1.25, 0.85);
+  hoodPoint.castShadow = true;
+  rig.add(hoodPoint);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.58, 18, 18), skin);
+  head.position.y = 4.55;
+  head.castShadow = true;
+  rig.add(head);
+
+  const beard = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.22, 0.1), hair);
+  beard.position.set(0, 4.22, 0.5);
+  rig.add(beard);
+
+  const hairTop = new THREE.Mesh(new THREE.SphereGeometry(0.58, 16, 8), hair);
+  hairTop.position.y = 4.85;
+  hairTop.scale.set(0.95, 0.38, 0.85);
+  rig.add(hairTop);
+
+  const leftArm = new THREE.Group();
+  leftArm.position.set(-1.0, 3.4, 0);
+
+  const leftArmMesh = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.18, 1.45, 6, 10),
+    hoodie
+  );
+  leftArmMesh.castShadow = true;
+  leftArm.add(leftArmMesh);
+  rig.add(leftArm);
+
+  const rightArm = leftArm.clone();
+  rightArm.position.x = 1.0;
+  rig.add(rightArm);
+
+  const leftLeg = new THREE.Group();
+  leftLeg.position.set(-0.42, 1.8, 0);
+
+  const leftLegMesh = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.22, 1.6, 6, 10),
+    pants
+  );
+  leftLegMesh.castShadow = true;
+  leftLeg.add(leftLegMesh);
+  rig.add(leftLeg);
+
+  const rightLeg = leftLeg.clone();
+  rightLeg.position.x = 0.42;
+  rig.add(rightLeg);
+
+  const canHaveTorch = distance >= 500 && Math.random() < 0.38;
+  let handTorch = null;
+
+  if (canHaveTorch) {
+    handTorch = new THREE.Group();
+
+    const stick = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.05, 0.07, 0.9, 6),
+      new THREE.MeshStandardMaterial({ color: 0x5b3211, roughness: 0.75 })
+    );
+    stick.rotation.z = 0.2;
+    handTorch.add(stick);
+
+    const flame = new THREE.Mesh(
+      new THREE.ConeGeometry(0.18, 0.45, 8),
+      fireMat
+    );
+    flame.position.y = 0.55;
+    handTorch.add(flame);
+
+    handTorch.position.set(1.18, 3.25, 0.15);
+    rig.add(handTorch);
+  }
+
+  scene.add(rig);
+
+  return {
+    type: "enemy",
+    rig,
+    velocity: new THREE.Vector3(),
+    speed: 8 + enemyBaseSpeedBonus + Math.random() * 2.5,
+    animTime: Math.random() * 10,
+    pathTimer: rand(0.4, 1.2),
+    path: [],
+    wanderDir: null,
+    wanderTimer: 0,
+    hasTorch: canHaveTorch,
+    torchCooldown: rand(2.5, 5.0),
+    handTorch,
+    parts: {
+      leftArm,
+      rightArm,
+      leftLeg,
+      rightLeg
+    }
+  };
+}
+
+function createDog(x, z) {
+  const rig = new THREE.Group();
+  rig.position.set(x, 0, z);
+
+  const furMat = new THREE.MeshStandardMaterial({ color: 0x3b2f2f, roughness: 0.9 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x1f1717, roughness: 0.9 });
+  const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffe08a });
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.8, 2.7), furMat);
+  body.position.y = 1.15;
+  body.castShadow = true;
+  rig.add(body);
+
+  const chest = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.7, 0.8), darkMat);
+  chest.position.set(0, 1.18, 1.25);
+  chest.castShadow = true;
+  rig.add(chest);
+
+  const head = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.85, 1.1), furMat);
+  head.position.set(0, 1.5, 1.95);
+  head.castShadow = true;
+  rig.add(head);
+
+  const snout = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.38, 0.55), darkMat);
+  snout.position.set(0, 1.37, 2.58);
+  snout.castShadow = true;
+  rig.add(snout);
+
+  const leftEye = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 6), eyeMat);
+  leftEye.position.set(-0.25, 1.63, 2.53);
+  rig.add(leftEye);
+
+  const rightEye = leftEye.clone();
+  rightEye.position.x = 0.25;
+  rig.add(rightEye);
+
+  const earMat = new THREE.MeshStandardMaterial({ color: 0x221818, roughness: 0.9 });
+
+  const leftEar = new THREE.Mesh(new THREE.ConeGeometry(0.23, 0.7, 6), earMat);
+  leftEar.position.set(-0.42, 2.03, 1.82);
+  leftEar.rotation.z = 0.25;
+  leftEar.castShadow = true;
+  rig.add(leftEar);
+
+  const rightEar = leftEar.clone();
+  rightEar.position.x = 0.42;
+  rightEar.rotation.z = -0.25;
+  rig.add(rightEar);
+
+  const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 1.1, 6), darkMat);
+  tail.position.set(0, 1.45, -1.75);
+  tail.rotation.x = -0.9;
+  tail.castShadow = true;
+  rig.add(tail);
+
+  const legs = [];
+  const legPositions = [
+    [-0.62, 0.55, 0.85],
+    [0.62, 0.55, 0.85],
+    [-0.62, 0.55, -0.85],
+    [0.62, 0.55, -0.85]
+  ];
+
+  for (const lp of legPositions) {
+    const leg = new THREE.Group();
+    leg.position.set(lp[0], lp[1], lp[2]);
+
+    const mesh = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.13, 0.75, 5, 8),
+      darkMat
+    );
+    mesh.castShadow = true;
+    leg.add(mesh);
+    rig.add(leg);
+    legs.push(leg);
+  }
+
+  scene.add(rig);
+
+  return {
+    type: "dog",
+    rig,
+    speed: 14 + enemyBaseSpeedBonus + Math.random() * 2.2,
+    turnRate: 2.1,
+    heading: Math.random() * Math.PI * 2,
+    animTime: Math.random() * 5,
+    wanderDir: null,
+    wanderTimer: 0,
+    legs
+  };
+}
+
+/* ============================================================
+   WORLD GENERATION
+============================================================ */
+
+function generateChunk(zStart) {
+  const chunk = new THREE.Group();
+  chunk.userData.zStart = zStart;
+
+  const groundMat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color().setHSL(0.31 + Math.random() * 0.03, 0.45, 0.27),
+    roughness: 0.9
+  });
+
+  const ground = new THREE.Mesh(
+    new THREE.BoxGeometry(WORLD_WIDTH, 0.45, CHUNK_LENGTH),
+    groundMat
+  );
+
+  ground.position.set(0, -0.23, zStart + CHUNK_LENGTH / 2);
+  ground.receiveShadow = true;
+  chunk.add(ground);
+
+  addRoadLines(chunk, zStart);
+  addGridWallsWithGuaranteedPaths(chunk, zStart);
+  addPickups(chunk, zStart);
+  addGrassPatches(chunk, zStart);
+
+  if (zStart > 20 && enemies.length < MAX_ENEMIES) {
+    const desiredEnemyCount = 1 + Math.floor(distance / 230);
+    const availableSlots = MAX_ENEMIES - enemies.length;
+    const spawnCount = Math.min(desiredEnemyCount, 4, availableSlots);
+
+    for (let i = 0; i < spawnCount; i++) {
+      const ex = rand(-WORLD_WIDTH / 2 + 4, WORLD_WIDTH / 2 - 4);
+      const ez = zStart + rand(5, CHUNK_LENGTH - 8);
+      enemies.push(createEnemy(ex, ez));
+    }
+  }
+
+  if (distance >= 1000 && zStart > 1000 && dogs.length < MAX_DOGS) {
+    const desiredDogCount = 1 + Math.floor((distance - 1000) / 500);
+    const availableDogSlots = MAX_DOGS - dogs.length;
+    const spawnDogCount = Math.min(desiredDogCount, 2, availableDogSlots);
+
+    for (let i = 0; i < spawnDogCount; i++) {
+      const dx = rand(-WORLD_WIDTH / 2 + 4, WORLD_WIDTH / 2 - 4);
+      const dz = zStart + rand(8, CHUNK_LENGTH - 8);
+      dogs.push(createDog(dx, dz));
+    }
+  }
+
+  scene.add(chunk);
+  worldChunks.push(chunk);
+}
+
+function addRoadLines(chunk, zStart) {
+  const lineMat = new THREE.MeshStandardMaterial({
+    color: 0xe8f0ff,
+    emissive: 0x111827,
+    roughness: 0.35
+  });
+
+  for (let z = zStart + 5; z < zStart + CHUNK_LENGTH; z += 10) {
+    const line = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.04, 4.5), lineMat);
+    line.position.set(0, 0.05, z);
+    chunk.add(line);
+  }
+
+  const edgeMat = new THREE.MeshStandardMaterial({
+    color: 0x334155,
+    roughness: 0.8
+  });
+
+  const left = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.08, CHUNK_LENGTH), edgeMat);
+  left.position.set(-WORLD_WIDTH / 2 + 1.5, 0.04, zStart + CHUNK_LENGTH / 2);
+  chunk.add(left);
+
+  const right = left.clone();
+  right.position.x = WORLD_WIDTH / 2 - 1.5;
+  chunk.add(right);
+}
+
+function addGridWallsWithGuaranteedPaths(chunk, zStart) {
+  const wallMats = [
+    new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.85 }),
+    new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.85 }),
+    new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.85 })
+  ];
+
+  const laneXs = [-18, -12, -6, 0, 6, 12, 18];
+  const rowZs = [];
+
+  for (let z = zStart + 7; z < zStart + CHUNK_LENGTH - 5; z += 7) {
+    rowZs.push(z);
+  }
+
+  const openLaneA = Math.floor(Math.random() * laneXs.length);
+  let openLaneB = Math.floor(Math.random() * laneXs.length);
+
+  while (openLaneB === openLaneA) {
+    openLaneB = Math.floor(Math.random() * laneXs.length);
+  }
+
+  for (let r = 0; r < rowZs.length; r++) {
+    for (let c = 0; c < laneXs.length; c++) {
+      if (c === openLaneA || c === openLaneB) continue;
+
+      const blockChance = distance > 600 ? 0.46 : 0.36;
+      if (Math.random() > blockChance) continue;
+
+      const w = 4.4;
+      const d = 3.5;
+      const h = rand(2.3, 5.7);
+
+      const wall = new THREE.Mesh(
+        new THREE.BoxGeometry(w, h, d),
+        wallMats[Math.floor(Math.random() * wallMats.length)]
+      );
+
+      wall.position.set(laneXs[c], h / 2, rowZs[r]);
+      wall.castShadow = h > 4.2;
+      wall.receiveShadow = true;
+
+      wall.userData = {
+        type: "wall",
+        radiusX: w / 2,
+        radiusZ: d / 2
+      };
+
+      chunk.add(wall);
+      walls.push(wall);
+    }
+  }
+
+  addTallTreeBlocks(chunk, zStart, openLaneA, openLaneB, laneXs);
+}
+
+/* Taller brown blocks, now tree-like obstacles */
+function addTallTreeBlocks(chunk, zStart, openLaneA, openLaneB, laneXs) {
+  const trunkMat = new THREE.MeshStandardMaterial({
+    color: 0x6b3f1d,
+    roughness: 0.92
+  });
+
+  const barkDarkMat = new THREE.MeshStandardMaterial({
+    color: 0x3d2412,
+    roughness: 0.95
+  });
+
+  const leafMat = new THREE.MeshStandardMaterial({
+    color: 0x1f7a35,
+    roughness: 0.85
+  });
+
+  const darkLeafMat = new THREE.MeshStandardMaterial({
+    color: 0x14532d,
+    roughness: 0.85
+  });
+
+  for (let i = 0; i < 4; i++) {
+    const c = Math.floor(Math.random() * laneXs.length);
+    if (c === openLaneA || c === openLaneB) continue;
+
+    const tree = new THREE.Group();
+
+    const trunkHeight = rand(5.5, 8.5);
+    const trunkRadius = rand(0.45, 0.75);
+
+    const trunk = new THREE.Mesh(
+      new THREE.CylinderGeometry(trunkRadius * 0.8, trunkRadius, trunkHeight, 7),
+      Math.random() > 0.5 ? trunkMat : barkDarkMat
+    );
+    trunk.position.y = trunkHeight / 2;
+    trunk.castShadow = true;
+    trunk.receiveShadow = true;
+    tree.add(trunk);
+
+    const topStyle = Math.random();
+
+    if (topStyle < 0.55) {
+      const leaves1 = new THREE.Mesh(
+        new THREE.ConeGeometry(rand(1.7, 2.3), rand(2.4, 3.2), 8),
+        leafMat
+      );
+      leaves1.position.y = trunkHeight + 1.1;
+      leaves1.castShadow = false;
+      tree.add(leaves1);
+
+      const leaves2 = new THREE.Mesh(
+        new THREE.ConeGeometry(rand(1.3, 1.9), rand(2.0, 2.8), 8),
+        darkLeafMat
+      );
+      leaves2.position.y = trunkHeight + 2.35;
+      leaves2.castShadow = false;
+      tree.add(leaves2);
+    } else {
+      const crown = new THREE.Mesh(
+        new THREE.SphereGeometry(rand(1.4, 2.0), 10, 8),
+        Math.random() > 0.5 ? leafMat : darkLeafMat
+      );
+      crown.position.y = trunkHeight + 1.1;
+      crown.scale.y = rand(0.9, 1.3);
+      crown.castShadow = false;
+      tree.add(crown);
+    }
+
+    tree.position.set(
+      laneXs[c] + rand(-1.0, 1.0),
+      0,
+      zStart + rand(4, CHUNK_LENGTH - 4)
+    );
+
+    tree.userData = {
+      type: "wall",
+      radiusX: trunkRadius + 0.75,
+      radiusZ: trunkRadius + 0.75
+    };
+
+    chunk.add(tree);
+    walls.push(tree);
+  }
+}
+
+function addPickups(chunk, zStart) {
+  const amount = 3 + Math.floor(Math.random() * 3);
+
+  for (let i = 0; i < amount; i++) {
+    const group = new THREE.Group();
+
+    const orb = new THREE.Mesh(
+      new THREE.SphereGeometry(0.55, 14, 14),
+      new THREE.MeshStandardMaterial({
+        color: 0x22ff99,
+        emissive: 0x0c9d5c,
+        emissiveIntensity: 1.2,
+        roughness: 0.2
+      })
+    );
+
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(0.82, 0.07, 8, 20),
+      new THREE.MeshStandardMaterial({
+        color: 0xfacc15,
+        emissive: 0xd97706,
+        emissiveIntensity: 0.9
+      })
+    );
+
+    group.add(orb);
+    group.add(ring);
+
+    const x = rand(-WORLD_WIDTH / 2 + 4, WORLD_WIDTH / 2 - 4);
+    const z = zStart + rand(5, CHUNK_LENGTH - 5);
+
+    group.position.set(x, 1.2, z);
+    group.userData = {
+      type: "pickup",
+      pulse: Math.random() * 10
+    };
+
+    chunk.add(group);
+    pickups.push(group);
+  }
+}
+
+function addGrassPatches(chunk, zStart) {
+  if (Math.random() > 0.28) return;
+
+  const patch = new THREE.Group();
+
+  const width = rand(8, 13);
+  const depth = rand(8, 14);
+
+  const baseMat = new THREE.MeshStandardMaterial({
+    color: 0x14532d,
+    roughness: 0.95,
+    transparent: true,
+    opacity: 0.68
+  });
+
+  const base = new THREE.Mesh(
+    new THREE.BoxGeometry(width, 0.25, depth),
+    baseMat
+  );
+
+  base.position.y = 0.08;
+  base.receiveShadow = true;
+  patch.add(base);
+
+  const bladeMat = new THREE.MeshStandardMaterial({
+    color: 0x22c55e,
+    roughness: 0.9,
+    transparent: true,
+    opacity: 0.92
+  });
+
+  const darkBladeMat = new THREE.MeshStandardMaterial({
+    color: 0x166534,
+    roughness: 0.9,
+    transparent: true,
+    opacity: 0.95
+  });
+
+  const bladeCount = 18;
+
+  for (let i = 0; i < bladeCount; i++) {
+    const bladeHeight = rand(3.0, 4.8);
+
+    const blade = new THREE.Mesh(
+      new THREE.ConeGeometry(rand(0.25, 0.45), bladeHeight, 5),
+      Math.random() > 0.45 ? bladeMat : darkBladeMat
+    );
+
+    blade.position.set(
+      rand(-width / 2, width / 2),
+      bladeHeight / 2,
+      rand(-depth / 2, depth / 2)
+    );
+
+    blade.rotation.x = rand(-0.35, 0.35);
+    blade.rotation.z = rand(-0.35, 0.35);
+    blade.castShadow = false;
+    blade.receiveShadow = false;
+
+    patch.add(blade);
+  }
+
+  const x = rand(
+    -WORLD_WIDTH / 2 + width / 2 + 2,
+    WORLD_WIDTH / 2 - width / 2 - 2
+  );
+
+  const z = zStart + rand(8, CHUNK_LENGTH - 8);
+
+  patch.position.set(x, 0, z);
+
+  patch.userData = {
+    type: "grass",
+    width,
+    depth,
+    pulse: Math.random() * 10
+  };
+
+  chunk.add(patch);
+  grassPatches.push(patch);
+}
+
+/* ============================================================
+   PLAYER MOVEMENT
+============================================================ */
+
+function updatePlayer(dt) {
+  const move = new THREE.Vector3();
+
+  if (keys["w"] || keys["arrowup"]) move.z += 1;
+  if (keys["s"] || keys["arrowdown"]) move.z -= 1;
+  if (keys["d"] || keys["arrowleft"]) move.x -= 1;
+  if (keys["a"] || keys["arrowright"]) move.x += 1;
 
   const sprinting = keys["shift"] && energy > 0;
   let speed = sprinting ? player.sprintSpeed : player.speed;
@@ -1014,146 +2075,6 @@ function onResize() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
-
-
-/* ============================================================
-   BIOMES + DESERT STALKERS (runtime wrappers)
-============================================================ */
-
-const BIOMES = {
-  forest: { groundColor: 0x2f7d32, treeType: "forest", rockType: "forest", grassType: "forest", decorationDensity: 1.0 },
-  snow: { groundColor: 0xe8f5ff, treeType: "pine", rockType: "snow", grassType: "snow", decorationDensity: 0.9 },
-  desert: { groundColor: 0xd9b46f, treeType: "palm", rockType: "desert", grassType: "desert", decorationDensity: 0.7 }
-};
-
-let desertStalkers = [];
-
-function getBiomeForZ(z) {
-  const tier = Math.floor(z / 1000);
-  if (tier === 0) return "forest";
-  if (tier === 1) return "snow";
-  if (tier === 2) return "desert";
-  const cycle = tier % 3;
-  if (cycle === 0) return "forest";
-  if (cycle === 1) return "snow";
-  return "desert";
-}
-function getBiomeConfig(biome) { return BIOMES[biome] || BIOMES.forest; }
-
-function createDesertStalkerRig() {
-  const rig = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.55, 1.5, 4, 8), new THREE.MeshStandardMaterial({ color: 0xcaa56c }));
-  body.position.y = 1.5;
-  const hood = new THREE.Mesh(new THREE.SphereGeometry(0.45, 10, 10), new THREE.MeshStandardMaterial({ color: 0x2d261d }));
-  hood.position.set(0, 2.6, 0);
-  const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffcc33 });
-  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), eyeMat);
-  const eyeR = eyeL.clone();
-  eyeL.position.set(-0.12, 2.55, 0.35); eyeR.position.set(0.12, 2.55, 0.35);
-  const warn = new THREE.Mesh(new THREE.ConeGeometry(0.25, 2.8, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0xff5a1f, transparent: true, opacity: 0.6 }));
-  warn.rotation.x = Math.PI / 2; warn.position.set(0, 0.02, 1.6); warn.visible = false;
-  rig.add(body, hood, eyeL, eyeR, warn);
-  return { rig, parts: { torso: body, head: hood }, warning: warn };
-}
-
-function spawnDesertStalker(x, z) {
-  const made = createDesertStalkerRig();
-  made.rig.position.set(x, 0, z);
-  scene.add(made.rig);
-  const base = Math.max(8, (enemyBaseSpeedBonus || 0) + 9);
-  desertStalkers.push({ type: "desertStalker", rig: made.rig, parts: made.parts, warning: made.warning, speed: base * 0.85, dashSpeed: base * 2.1, dashCooldown: rand(2.8, 4.8), dashWindup: 0, dashTime: 0, dashDir: new THREE.Vector3(0,0,1), pathTimer: 0, path: [], animTime: 0 });
-}
-
-function updateDesertStalkers(dt) {
-  for (const s of desertStalkers) {
-    const d = flatDistance(s.rig.position, player.rig.position);
-    if (playerHiddenInGrass) {
-      updateEnemyWander(s, dt);
-      s.warning.visible = false;
-      continue;
-    }
-    s.dashCooldown -= dt;
-    if (s.dashWindup > 0) {
-      s.dashWindup -= dt;
-      s.warning.visible = true;
-      const dir = new THREE.Vector3().subVectors(player.rig.position, s.rig.position); dir.y = 0;
-      if (dir.lengthSq() > 0.01) { dir.normalize(); s.dashDir.copy(dir); s.rig.rotation.y = Math.atan2(dir.x, dir.z); }
-      if (s.dashWindup <= 0) { s.dashTime = 0.45; s.warning.visible = false; s.dashCooldown = rand(3.5, 6.0); }
-    } else if (s.dashTime > 0) {
-      s.dashTime -= dt;
-      const old = s.rig.position.clone();
-      s.rig.position.addScaledVector(s.dashDir, s.dashSpeed * dt);
-      s.rig.position.x = clamp(s.rig.position.x, -WORLD_WIDTH/2 + 2, WORLD_WIDTH/2 - 2);
-      if (collidesWithWall(s.rig.position, 0.9)) { s.rig.position.copy(old); s.dashTime = 0; s.pathTimer = 0; }
-      animateRunner(s, dt, true, true);
-    } else {
-      if (s.dashCooldown <= 0 && d < 16) { s.dashWindup = 0.55; }
-      chaseWithPathfinding(s, dt, s.speed, 0.9);
-    }
-    if (d < 1.7) endGame("Chris got caught by a Desert Stalker!");
-  }
-  desertStalkers = desertStalkers.filter(s => {
-    const keep = s.rig.position.z > player.rig.position.z - CLEANUP_BEHIND_DISTANCE;
-    if (!keep) scene.remove(s.rig);
-    return keep;
-  });
-}
-
-if (typeof generateChunk === 'function') {
-  const oldGenerateChunk = generateChunk;
-  generateChunk = function(zStart) {
-    const biome = getBiomeForZ(zStart);
-    const cfg = getBiomeConfig(biome);
-    oldGenerateChunk(zStart);
-    const chunk = worldChunks[worldChunks.length - 1];
-    if (chunk && chunk.userData && chunk.userData.zStart === zStart) {
-      chunk.userData.biome = biome;
-      chunk.traverse(obj => {
-        if (obj.isMesh && obj.geometry && obj.geometry.type === 'PlaneGeometry' && Math.abs(obj.rotation.x + Math.PI / 2) < 0.01) {
-          obj.material = obj.material.clone();
-          obj.material.color.setHex(cfg.groundColor);
-        }
-      });
-    }
-    if (zStart >= 2000 && biome === 'desert' && desertStalkers.length < 4 && Math.random() < (zStart >= 3000 ? 0.55 : 0.45)) {
-      spawnDesertStalker(rand(-WORLD_WIDTH * 0.35, WORLD_WIDTH * 0.35), zStart + rand(20, CHUNK_LENGTH - 12));
-    }
-  }
-}
-
-const oldManageWorld = manageWorld;
-manageWorld = function() {
-  oldManageWorld();
-  desertStalkers = desertStalkers.filter(s => {
-    const keep = s.rig.position.z > player.rig.position.z - CLEANUP_BEHIND_DISTANCE;
-    if (!keep) scene.remove(s.rig);
-    return keep;
-  });
-};
-
-const oldUpdateHUD = updateHUD;
-updateHUD = function() {
-  oldUpdateHUD();
-  let el = document.getElementById('desertStalkerText');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'desertStalkerText';
-    const hud = document.getElementById('hud') || document.body;
-    hud.appendChild(el);
-  }
-  el.textContent = distance >= 2000 ? ('Desert Stalkers: ' + desertStalkers.length) : 'Desert Stalkers: Locked until 2000 yards';
-};
-
-const oldAnimate = animate;
-animate = function() {
-  oldAnimate();
-};
-
-const oldUpdateDogs = updateDogs;
-updateDogs = function(dt) {
-  oldUpdateDogs(dt);
-  updateDesertStalkers(dt);
-};
 </script>
 
 </body>
