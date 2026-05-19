@@ -3468,21 +3468,24 @@ function projectileArenaBounce(p) {
 function projectileObstacleCollision(p) {
   if (!p.hasArmed) return;
   for (const o of obstacles) {
-    const { bottomY, topY } = getObstacleVerticalRange(o);
-    const projectileY = p.y ?? getEffectiveGroundHeight(p.x, p.z) + (p.minGroundOffset || 0.5);
-    const projectileRadius = p.verticalRadius || p.radius || 0.7;
-    if (!overlapsVerticalRange(projectileY, projectileRadius, bottomY, topY)) continue;
+    const dx = p.x - o.x;
+    const dz = p.z - o.z;
+    const d = Math.hypot(dx, dz);
+    const hitRadius = (p.radius || 0.35) + (o.radius || 1);
+    if (d >= hitRadius) continue;
 
-    const d = distancePoint(p.x, p.z, o.x, o.z);
-    if (d < p.radius + o.radius) {
+    const vertical = getObstacleVerticalRange(o);
+    if (!overlapsVerticalRange(p.y, p.radius || 0.35, vertical.bottomY, vertical.topY)) continue;
+
+    if (d < hitRadius) {
       if (p.type === "glue" || p.type === "lava") {
         triggerProjectileImpact(p, p.x, p.y || 1, p.z, null, "obstacle");
       } else if (p.bounce > 0) {
         const nx = (p.x - o.x) / (d || 1);
         const nz = (p.z - o.z) / (d || 1);
 
-        p.x = o.x + nx * (p.radius + o.radius);
-        p.z = o.z + nz * (p.radius + o.radius);
+        p.x = o.x + nx * hitRadius;
+        p.z = o.z + nz * hitRadius;
 
         const dot = p.vx * nx + p.vz * nz;
         p.vx -= 2 * dot * nx;
