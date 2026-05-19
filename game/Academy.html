@@ -1014,6 +1014,146 @@ function onResize() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
+
+
+/* ============================================================
+   BIOMES + DESERT STALKERS (runtime wrappers)
+============================================================ */
+
+const BIOMES = {
+  forest: { groundColor: 0x2f7d32, treeType: "forest", rockType: "forest", grassType: "forest", decorationDensity: 1.0 },
+  snow: { groundColor: 0xe8f5ff, treeType: "pine", rockType: "snow", grassType: "snow", decorationDensity: 0.9 },
+  desert: { groundColor: 0xd9b46f, treeType: "palm", rockType: "desert", grassType: "desert", decorationDensity: 0.7 }
+};
+
+let desertStalkers = [];
+
+function getBiomeForZ(z) {
+  const tier = Math.floor(z / 1000);
+  if (tier === 0) return "forest";
+  if (tier === 1) return "snow";
+  if (tier === 2) return "desert";
+  const cycle = tier % 3;
+  if (cycle === 0) return "forest";
+  if (cycle === 1) return "snow";
+  return "desert";
+}
+function getBiomeConfig(biome) { return BIOMES[biome] || BIOMES.forest; }
+
+function createDesertStalkerRig() {
+  const rig = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.55, 1.5, 4, 8), new THREE.MeshStandardMaterial({ color: 0xcaa56c }));
+  body.position.y = 1.5;
+  const hood = new THREE.Mesh(new THREE.SphereGeometry(0.45, 10, 10), new THREE.MeshStandardMaterial({ color: 0x2d261d }));
+  hood.position.set(0, 2.6, 0);
+  const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffcc33 });
+  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), eyeMat);
+  const eyeR = eyeL.clone();
+  eyeL.position.set(-0.12, 2.55, 0.35); eyeR.position.set(0.12, 2.55, 0.35);
+  const warn = new THREE.Mesh(new THREE.ConeGeometry(0.25, 2.8, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0xff5a1f, transparent: true, opacity: 0.6 }));
+  warn.rotation.x = Math.PI / 2; warn.position.set(0, 0.02, 1.6); warn.visible = false;
+  rig.add(body, hood, eyeL, eyeR, warn);
+  return { rig, parts: { torso: body, head: hood }, warning: warn };
+}
+
+function spawnDesertStalker(x, z) {
+  const made = createDesertStalkerRig();
+  made.rig.position.set(x, 0, z);
+  scene.add(made.rig);
+  const base = Math.max(8, (enemyBaseSpeedBonus || 0) + 9);
+  desertStalkers.push({ type: "desertStalker", rig: made.rig, parts: made.parts, warning: made.warning, speed: base * 0.85, dashSpeed: base * 2.1, dashCooldown: rand(2.8, 4.8), dashWindup: 0, dashTime: 0, dashDir: new THREE.Vector3(0,0,1), pathTimer: 0, path: [], animTime: 0 });
+}
+
+function updateDesertStalkers(dt) {
+  for (const s of desertStalkers) {
+    const d = flatDistance(s.rig.position, player.rig.position);
+    if (playerHiddenInGrass) {
+      updateEnemyWander(s, dt);
+      s.warning.visible = false;
+      continue;
+    }
+    s.dashCooldown -= dt;
+    if (s.dashWindup > 0) {
+      s.dashWindup -= dt;
+      s.warning.visible = true;
+      const dir = new THREE.Vector3().subVectors(player.rig.position, s.rig.position); dir.y = 0;
+      if (dir.lengthSq() > 0.01) { dir.normalize(); s.dashDir.copy(dir); s.rig.rotation.y = Math.atan2(dir.x, dir.z); }
+      if (s.dashWindup <= 0) { s.dashTime = 0.45; s.warning.visible = false; s.dashCooldown = rand(3.5, 6.0); }
+    } else if (s.dashTime > 0) {
+      s.dashTime -= dt;
+      const old = s.rig.position.clone();
+      s.rig.position.addScaledVector(s.dashDir, s.dashSpeed * dt);
+      s.rig.position.x = clamp(s.rig.position.x, -WORLD_WIDTH/2 + 2, WORLD_WIDTH/2 - 2);
+      if (collidesWithWall(s.rig.position, 0.9)) { s.rig.position.copy(old); s.dashTime = 0; s.pathTimer = 0; }
+      animateRunner(s, dt, true, true);
+    } else {
+      if (s.dashCooldown <= 0 && d < 16) { s.dashWindup = 0.55; }
+      chaseWithPathfinding(s, dt, s.speed, 0.9);
+    }
+    if (d < 1.7) endGame("Chris got caught by a Desert Stalker!");
+  }
+  desertStalkers = desertStalkers.filter(s => {
+    const keep = s.rig.position.z > player.rig.position.z - CLEANUP_BEHIND_DISTANCE;
+    if (!keep) scene.remove(s.rig);
+    return keep;
+  });
+}
+
+if (typeof generateChunk === 'function') {
+  const oldGenerateChunk = generateChunk;
+  generateChunk = function(zStart) {
+    const biome = getBiomeForZ(zStart);
+    const cfg = getBiomeConfig(biome);
+    oldGenerateChunk(zStart);
+    const chunk = worldChunks[worldChunks.length - 1];
+    if (chunk && chunk.userData && chunk.userData.zStart === zStart) {
+      chunk.userData.biome = biome;
+      chunk.traverse(obj => {
+        if (obj.isMesh && obj.geometry && obj.geometry.type === 'PlaneGeometry' && Math.abs(obj.rotation.x + Math.PI / 2) < 0.01) {
+          obj.material = obj.material.clone();
+          obj.material.color.setHex(cfg.groundColor);
+        }
+      });
+    }
+    if (zStart >= 2000 && biome === 'desert' && desertStalkers.length < 4 && Math.random() < (zStart >= 3000 ? 0.55 : 0.45)) {
+      spawnDesertStalker(rand(-WORLD_WIDTH * 0.35, WORLD_WIDTH * 0.35), zStart + rand(20, CHUNK_LENGTH - 12));
+    }
+  }
+}
+
+const oldManageWorld = manageWorld;
+manageWorld = function() {
+  oldManageWorld();
+  desertStalkers = desertStalkers.filter(s => {
+    const keep = s.rig.position.z > player.rig.position.z - CLEANUP_BEHIND_DISTANCE;
+    if (!keep) scene.remove(s.rig);
+    return keep;
+  });
+};
+
+const oldUpdateHUD = updateHUD;
+updateHUD = function() {
+  oldUpdateHUD();
+  let el = document.getElementById('desertStalkerText');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'desertStalkerText';
+    const hud = document.getElementById('hud') || document.body;
+    hud.appendChild(el);
+  }
+  el.textContent = distance >= 2000 ? ('Desert Stalkers: ' + desertStalkers.length) : 'Desert Stalkers: Locked until 2000 yards';
+};
+
+const oldAnimate = animate;
+animate = function() {
+  oldAnimate();
+};
+
+const oldUpdateDogs = updateDogs;
+updateDogs = function(dt) {
+  oldUpdateDogs(dt);
+  updateDesertStalkers(dt);
+};
 </script>
 
 </body>
