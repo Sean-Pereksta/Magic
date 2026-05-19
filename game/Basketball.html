@@ -357,9 +357,9 @@
     </div>
 
     <p class="note">
-      <b>P1:</b> Mouse aims/turns up, down, left, and right. W/S forward-back. A/D sidestep. E fireball. Q special. R swap.<br>
+      <b>P1:</b> Mouse aims/turns up, down, left, and right. W/S forward-back. A/D sidestep. E fireball. Q special. R swap. Space dash.<br>
       <b>P2:</b> I/K forward-back, J/L turn, O ability, Y swap, U fireball.<br>
-      <b>Controller default:</b> Left analog stick moves, right analog stick aims up/down/left/right, RT fires Fireball, LT casts Special, X/Square swaps abilities.<br>
+      <b>Controller default:</b> Left analog stick moves, right analog stick aims up/down/left/right, RT fires Fireball, LT casts Special, X/Square swaps abilities, A/Cross dashes.<br>
       Use <b>Controls / Controllers</b> to assign controllers or remap keyboard/controller bindings per player.<br>
       <b>2P mode requires one player on controller or both players on separate controllers.</b><br>
       In 2P mode, the screen splits so each player gets their own third-person camera.<br>
@@ -588,7 +588,8 @@ const DEFAULT_CONTROL_CONFIG = {
       right: ["KeyD", "ArrowRight"],
       fire: ["KeyE"],
       ability: ["KeyQ"],
-      swap: ["KeyR"]
+      swap: ["KeyR"],
+      dash: ["Space"]
     },
     gamepad: {
       moveX: { type: "axis", index: 0 },
@@ -597,7 +598,8 @@ const DEFAULT_CONTROL_CONFIG = {
       aimY: { type: "axis", index: 3 },
       fire: { type: "button", index: 7 },
       ability: { type: "button", index: 6 },
-      swap: { type: "button", index: 2 }
+      swap: { type: "button", index: 2 },
+      dash: { type: "button", index: 0 }
     }
   },
   player2: {
@@ -610,7 +612,8 @@ const DEFAULT_CONTROL_CONFIG = {
       right: ["KeyL"],
       fire: ["KeyU"],
       ability: ["KeyO"],
-      swap: ["KeyY"]
+      swap: ["KeyY"],
+      dash: ["ShiftRight", "Numpad0"]
     },
     gamepad: {
       moveX: { type: "axis", index: 0 },
@@ -619,7 +622,8 @@ const DEFAULT_CONTROL_CONFIG = {
       aimY: { type: "axis", index: 3 },
       fire: { type: "button", index: 7 },
       ability: { type: "button", index: 6 },
-      swap: { type: "button", index: 2 }
+      swap: { type: "button", index: 2 },
+      dash: { type: "button", index: 0 }
     }
   }
 };
@@ -633,7 +637,8 @@ const CONTROL_ACTIONS = [
   { key: "right", label: "Strafe Right" },
   { key: "fire", label: "Fireball" },
   { key: "ability", label: "Special Ability" },
-  { key: "swap", label: "Swap Ability" }
+  { key: "swap", label: "Swap Ability" },
+  { key: "dash", label: "Dash" }
 ];
 
 const wizards = [];
@@ -1679,6 +1684,7 @@ function createWizard(name, color, spawnAngle, human, controls, classId = null) 
     dashCooldownMax: classDef.dashCooldown || 2.2,
     dashCooldown: 0,
     dashPressed: false,
+    dashTrailTimer: 0,
     stocks: GAME_SETTINGS.stockCount,
     respawnTimer: 0,
     invulnerableTimer: 0,
@@ -1919,6 +1925,47 @@ function createGroundCrackEffect(x, z, color = 0xff5500) {
   temporary.push({ kind:'groundCrack', mesh: crack, life: 0.55, spin: rand(-1.2, 1.2) });
 }
 function createMagicSparkles(x, y, z, color, count = 20) { for (let i = 0; i < count; i++) spawnParticle(x + rand(-0.8,0.8), y + rand(-0.25,0.75), z + rand(-0.8,0.8), color, rand(0.06,0.18), rand(0.2,0.65)); }
+function createDashBurst(x, y, z, color = 0xffffff) {
+  for (let i = 0; i < 22; i++) {
+    spawnParticle(
+      x + rand(-0.5, 0.5),
+      y + rand(-0.4, 0.4),
+      z + rand(-0.5, 0.5),
+      color,
+      rand(0.08, 0.2),
+      rand(0.15, 0.45)
+    );
+  }
+  addScreenShake(0.12, 0.08);
+}
+
+function performDash(w, moveDirX = 0, moveDirZ = 0) {
+  if (!w.alive) return;
+  if ((w.dashCooldown || 0) > 0) return;
+
+  let dx = moveDirX;
+  let dz = moveDirZ;
+
+  const len = Math.hypot(dx, dz);
+  if (len > 0.1) {
+    dx /= len;
+    dz /= len;
+  } else {
+    const f = forwardVector(w);
+    dx = f.x;
+    dz = f.z;
+  }
+
+  const dashPower = w.classId === "trickster" ? 34 : w.classId === "bulwark" ? 22 : 28;
+
+  w.vx += dx * dashPower;
+  w.vz += dz * dashPower;
+  w.invulnerableTimer = Math.max(w.invulnerableTimer || 0, 0.18);
+  w.dashCooldown = w.dashCooldownMax || 2.2;
+  w.dashTrailTimer = 0.28;
+
+  createDashBurst(w.x, w.y + 1.2, w.z, w.classDef?.trimColor || 0xffffff);
+}
 function createSpellTrail(projectile, dt) { projectile.trailTimer -= dt; }
 
 /* ============================================================
@@ -1930,6 +1977,8 @@ function updateWizards(dt) {
     if (!w.alive) continue;
 
     w.fireCooldown = Math.max(0, w.fireCooldown - dt);
+    w.dashCooldown = Math.max(0, (w.dashCooldown || 0) - dt);
+    w.dashTrailTimer = Math.max(0, (w.dashTrailTimer || 0) - dt);
 
     for (const k of Object.keys(w.effect)) {
       w.effect[k] = Math.max(0, w.effect[k] - dt);
@@ -2130,6 +2179,12 @@ function updateHuman(w, dt) {
     w.vz += moveDirZ * speed * dt * 5.2;
   }
 
+  const dashDown = getActionDown(w, "dash");
+  if (dashDown && !w.dashPressed) {
+    performDash(w, moveDirX, moveDirZ);
+  }
+  w.dashPressed = dashDown;
+
   const abilityHeld = getActionDown(w, "ability");
   if (w.ability === "Lava Lob") {
     if (abilityHeld && !w.castPressed) w.lavaCharge = 0;
@@ -2232,6 +2287,11 @@ function updateBot(w, dt) {
   const spacing = getBotSpacingVector(w);
   w.vx += spacing.x * speed * dt * 2.2;
   w.vz += spacing.z * speed * dt * 2.2;
+
+  if ((w.dashCooldown || 0) <= 0 && Math.random() < 0.006) {
+    const fDash = forwardVector(w);
+    performDash(w, fDash.x, fDash.z);
+  }
 
   if (w.ability && w.ai.cast <= 0 && d < 27 && Math.abs(diff) < 0.75) {
     const charge = w.ability === "Lava Lob" ? rand(0.45, 1.25) : 0;
