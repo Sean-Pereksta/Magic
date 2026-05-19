@@ -3245,6 +3245,19 @@ function updateProjectileHeight(p, dt) {
   }
 }
 
+function overlapsVerticalRange(y, radiusOrPadding, bottomY, topY) {
+  const pad = radiusOrPadding || 0;
+  return y + pad >= bottomY && y - pad <= topY;
+}
+
+function getObstacleVerticalRange(ob) {
+  const baseY = getEffectiveGroundHeight(ob.x, ob.z);
+  return {
+    bottomY: baseY + (ob.bottomY ?? 0),
+    topY: baseY + (ob.topY ?? 999)
+  };
+}
+
 function projectileCanHitWizardVertically(p, target) {
   if (!p || !target) return false;
 
@@ -3455,6 +3468,11 @@ function projectileArenaBounce(p) {
 function projectileObstacleCollision(p) {
   if (!p.hasArmed) return;
   for (const o of obstacles) {
+    const { bottomY, topY } = getObstacleVerticalRange(o);
+    const projectileY = p.y ?? getEffectiveGroundHeight(p.x, p.z) + (p.minGroundOffset || 0.5);
+    const projectileRadius = p.verticalRadius || p.radius || 0.7;
+    if (!overlapsVerticalRange(projectileY, projectileRadius, bottomY, topY)) continue;
+
     const d = distancePoint(p.x, p.z, o.x, o.z);
     if (d < p.radius + o.radius) {
       if (p.type === "glue" || p.type === "lava") {
