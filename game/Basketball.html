@@ -353,7 +353,7 @@
     <p class="note">
       <b>P1:</b> Mouse aims/turns. W/S forward-back. A/D sidestep. E fireball. Q special. R swap.<br>
       <b>P2:</b> I/K forward-back, J/L turn, O ability, Y swap, U fireball.<br>
-      <b>Controller default:</b> Left analog stick moves/turns, RT fires Fireball, LT casts Special, X/Square swaps abilities.<br>
+      <b>Controller default:</b> Left analog stick moves, right analog stick aims, RT fires Fireball, LT casts Special, X/Square swaps abilities.<br>
       Use <b>Controls / Controllers</b> to assign controllers or remap keyboard/controller bindings per player.<br>
       <b>2P requires a controller for at least one player.</b><br>
       In 2P mode, the screen splits so each player gets their own third-person camera.<br>
@@ -393,7 +393,7 @@
     </div>
 
     <p class="note">
-      Controller defaults: Left analog stick moves/turns, RT fires Fireball, LT casts Special.
+      Controller defaults: Left analog stick moves, right analog stick aims, RT fires Fireball, LT casts Special.
       Keyboard controls can still be mapped per player.
     </p>
   </div>
@@ -506,6 +506,8 @@ const DEFAULT_CONTROL_CONFIG = {
     gamepad: {
       moveX: { type: "axis", index: 0 },
       moveY: { type: "axis", index: 1 },
+      aimX: { type: "axis", index: 2 },
+      aimY: { type: "axis", index: 3 },
       fire: { type: "button", index: 7 },
       ability: { type: "button", index: 6 },
       swap: { type: "button", index: 2 }
@@ -526,6 +528,8 @@ const DEFAULT_CONTROL_CONFIG = {
     gamepad: {
       moveX: { type: "axis", index: 0 },
       moveY: { type: "axis", index: 1 },
+      aimX: { type: "axis", index: 2 },
+      aimY: { type: "axis", index: 3 },
       fire: { type: "button", index: 7 },
       ability: { type: "button", index: 6 },
       swap: { type: "button", index: 2 }
@@ -1031,6 +1035,24 @@ function getAnalogMove(cfg) {
   let y = gp.axes[moveYBinding.index] || 0;
 
   const deadzone = 0.18;
+  if (Math.abs(x) < deadzone) x = 0;
+  if (Math.abs(y) < deadzone) y = 0;
+
+  return { x, y };
+}
+
+
+function getAnalogAim(cfg) {
+  const gp = getGamepadForConfig(cfg);
+  if (!gp) return { x: 0, y: 0 };
+
+  const aimXBinding = cfg.gamepad.aimX || { type: "axis", index: 2 };
+  const aimYBinding = cfg.gamepad.aimY || { type: "axis", index: 3 };
+
+  let x = gp.axes[aimXBinding.index] || 0;
+  let y = gp.axes[aimYBinding.index] || 0;
+
+  const deadzone = 0.22;
   if (Math.abs(x) < deadzone) x = 0;
   if (Math.abs(y) < deadzone) y = 0;
 
@@ -1839,7 +1861,12 @@ function updateHuman(w, dt) {
     moveY *= -1;
   }
 
-  if (cfg.deviceType !== "gamepad" && w.name === "Player 1") {
+  if (cfg.deviceType === "gamepad") {
+    const aim = getAnalogAim(cfg);
+    if (Math.hypot(aim.x, aim.y) > 0) {
+      w.angle = Math.atan2(aim.x, aim.y);
+    }
+  } else if (w.name === "Player 1") {
     w.angle -= inputState.mouseLookDelta * mouseLookSensitivity;
   }
 
