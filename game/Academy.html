@@ -106,6 +106,7 @@
   <div id="enemyText">Chasers: 0</div>
   <div id="dogText">Dogs: Locked until 1000 yards</div>
   <div id="desertStalkerText">Desert Stalkers: Locked until 2000 yards</div>
+  <div id="policeText">Police: Locked until 3000 yards</div>
   <div id="torchText">Torches: Locked until 500 yards</div>
   <div id="hideText">Visibility: Seen</div>
 
@@ -154,6 +155,8 @@ let pickups = [];
 let enemies = [];
 let dogs = [];
 let desertStalkers = [];
+let policeOfficers = [];
+let policeBullets = [];
 let grassPatches = [];
 let torches = [];
 let fireZones = [];
@@ -188,6 +191,12 @@ const PATHFIND_DISTANCE = 90;
 const MAX_ENEMIES = 12;
 const MAX_DOGS = 5;
 const MAX_DESERT_STALKERS = 4;
+const MAX_POLICE = 5;
+const POLICE_SPAWN_START = 3000;
+const POLICE_RANGE = 46;
+const POLICE_CHASE_TIME = 2.2;
+const POLICE_AIM_TIME = 2.4;
+const POLICE_BULLET_SPEED = 72;
 
 const BIOMES = {
   forest: {
@@ -216,6 +225,15 @@ const BIOMES = {
     grassType: "desert",
     enemyTypeModifier: "desertStalker",
     decorationDensity: 0.7
+  },
+  city: {
+    groundColor: 0x1f2937,
+    fogColor: 0xdbeafe,
+    treeType: "city",
+    rockType: "city",
+    grassType: "city",
+    enemyTypeModifier: "police",
+    decorationDensity: 0.9
   }
 };
 
@@ -643,6 +661,23 @@ function createEnemy(x, z) {
   };
 }
 
+function createPoliceOfficer(x, z) {
+  const rig = new THREE.Group(); rig.position.set(x, 0, z);
+  const skin = new THREE.MeshStandardMaterial({ color: 0xf1c27d, roughness: 0.65 }); const uniform = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.45 }); const blue = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.4 }); const black = new THREE.MeshStandardMaterial({ color: 0x020617, roughness: 0.6 }); const gold = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35, metalness: 0.2 });
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(1.45, 2.2, 0.75), uniform); torso.position.y = 3.05; torso.castShadow = true; rig.add(torso);
+  const badge = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.38, 0.04), gold); badge.position.set(0.38, 3.45, 0.4); rig.add(badge);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.55, 18, 18), skin); head.position.y = 4.55; head.castShadow = true; rig.add(head);
+  const hatBase = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.18, 18), blue); hatBase.position.y = 5.05; rig.add(hatBase);
+  const hatTop = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.58, 0.35, 18), blue); hatTop.position.y = 5.28; rig.add(hatTop);
+  const leftArm = new THREE.Group(); leftArm.position.set(-0.95, 3.45, 0); const leftArmMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 1.35, 6, 10), uniform); leftArmMesh.castShadow = true; leftArm.add(leftArmMesh); rig.add(leftArm);
+  const rightArm = leftArm.clone(); rightArm.position.x = 0.95; rig.add(rightArm);
+  const leftLeg = new THREE.Group(); leftLeg.position.set(-0.4, 1.8, 0); const leftLegMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 1.55, 6, 10), black); leftLegMesh.castShadow = true; leftLeg.add(leftLegMesh); rig.add(leftLeg);
+  const rightLeg = leftLeg.clone(); rightLeg.position.x = 0.4; rig.add(rightLeg);
+  const gun = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.18, 0.75), black); gun.position.set(1.15, 3.35, 0.55); gun.castShadow = true; rig.add(gun);
+  const laser = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 1), new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.0, depthWrite: false })); laser.position.y = 3.4; laser.visible = false; scene.add(laser); scene.add(rig);
+  return { type: "police", rig, speed: 10.5 + enemyBaseSpeedBonus, state: "chase", stateTimer: POLICE_CHASE_TIME, aimTimer: 0, target: null, laser, pathTimer: rand(0.3, 0.9), path: [], animTime: Math.random() * 5, wanderDir: null, wanderTimer: 0, parts: { leftArm, rightArm, leftLeg, rightLeg } };
+}
+
 function createDog(x, z) {
   const rig = new THREE.Group();
   rig.position.set(x, 0, z);
@@ -741,13 +776,17 @@ function createDog(x, z) {
 
 function getBiomeForZ(z) {
   const tier = Math.floor(z / 1000);
+
   if (tier === 0) return "forest";
   if (tier === 1) return "snow";
   if (tier === 2) return "desert";
-  const cycle = tier % 3;
+  if (tier === 3) return "city";
+
+  const cycle = tier % 4;
   if (cycle === 0) return "forest";
   if (cycle === 1) return "snow";
-  return "desert";
+  if (cycle === 2) return "desert";
+  return "city";
 }
 
 function getBiomeConfig(biome) {
@@ -769,8 +808,28 @@ function createCactus() { const g = new THREE.Group(); const mat = new THREE.Mes
 function createForestRock(){ const r=new THREE.Mesh(new THREE.SphereGeometry(1.2,9,8),new THREE.MeshStandardMaterial({color:0x64748b,roughness:0.92})); r.scale.y=0.6; return r; }
 function createSnowRock(){ const g=new THREE.Group(); const b=createForestRock(); b.material=new THREE.MeshStandardMaterial({color:0x4b5563,roughness:0.95}); g.add(b); const cap=new THREE.Mesh(new THREE.SphereGeometry(0.95,8,7),new THREE.MeshStandardMaterial({color:0xf8fcff,roughness:0.98})); cap.position.y=0.55; cap.scale.y=0.5; g.add(cap); return g; }
 function createDesertRock(){ const g=new THREE.Group(); const m=new THREE.MeshStandardMaterial({color:0xc98d54,roughness:0.93}); for(let i=0;i<2;i++){const r=new THREE.Mesh(new THREE.BoxGeometry(1.2,0.8,1.1),m); r.position.set(i*0.7-0.35,0.35+i*0.1,0); g.add(r);} return g; }
-function createBiomeTree(biome){ return biome==="snow"?createPineTree():biome==="desert"?createPalmTree():createForestTree(); }
-function createBiomeRock(biome){ return biome==="snow"?createSnowRock():biome==="desert"?createDesertRock():createForestRock(); }
+function createParkedCar(color = 0x2563eb) {
+  const g = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.45, metalness: 0.15 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.55 });
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x93c5fd, roughness: 0.2, metalness: 0.1, transparent: true, opacity: 0.75 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.05, 5.2), bodyMat); body.position.y = 0.75; body.castShadow = true; body.receiveShadow = true; g.add(body);
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.35, 0.9, 2.4), glassMat); cabin.position.set(0, 1.55, -0.25); cabin.castShadow = true; g.add(cabin);
+  const wheelGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.35, 14);
+  const wheelPositions = [[-1.85, 0.45, 1.65],[1.85, 0.45, 1.65],[-1.85, 0.45, -1.65],[1.85, 0.45, -1.65]];
+  for (const wp of wheelPositions) { const wheel = new THREE.Mesh(wheelGeo, darkMat); wheel.position.set(wp[0], wp[1], wp[2]); wheel.rotation.z = Math.PI / 2; wheel.castShadow = true; g.add(wheel); }
+  const headlightMat = new THREE.MeshStandardMaterial({ color: 0xfff7aa, emissive: 0xfff7aa, emissiveIntensity: 0.6 });
+  const lightL = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.2, 0.08), headlightMat); lightL.position.set(-0.75, 0.95, 2.65); g.add(lightL);
+  const lightR = lightL.clone(); lightR.position.x = 0.75; g.add(lightR);
+  g.userData = { type: "wall", radiusX: 2.1, radiusZ: 2.9 };
+  return g;
+}
+function createCrashedCar() { const colors = [0xef4444, 0xf97316, 0x22c55e, 0x3b82f6, 0xeab308, 0x64748b]; const car = createParkedCar(colors[Math.floor(Math.random() * colors.length)]); car.rotation.y = rand(-0.55, 0.55); car.scale.set(rand(0.9, 1.08), rand(0.8, 1.0), rand(0.9, 1.08)); const smoke = new THREE.Mesh(new THREE.SphereGeometry(0.7, 8, 6), new THREE.MeshStandardMaterial({ color: 0x374151, transparent: true, opacity: 0.5, roughness: 1 })); smoke.position.set(rand(-0.7, 0.7), 2.5, rand(-1.2, 1.2)); car.add(smoke); return car; }
+function createTrafficBarrier() { const g = new THREE.Group(); const mat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.55 }); const white = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45 }); const base = new THREE.Mesh(new THREE.BoxGeometry(4.5, 1.2, 0.7), mat); base.position.y = 0.65; base.castShadow = true; base.receiveShadow = true; g.add(base); for (let i = -1; i <= 1; i += 2) { const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.25, 0.75), white); stripe.position.set(i * 1.1, 0.66, 0.03); stripe.rotation.z = 0.35; g.add(stripe); } g.userData = { type: "wall", radiusX: 2.4, radiusZ: 0.7 }; return g; }
+function createStreetLight() { const g = new THREE.Group(); const poleMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.45, metalness: 0.3 }); const lampMat = new THREE.MeshStandardMaterial({ color: 0xfef3c7, emissive: 0xfacc15, emissiveIntensity: 0.9 }); const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 6, 10), poleMat); pole.position.y = 3; pole.castShadow = true; g.add(pole); const arm = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.14, 0.14), poleMat); arm.position.set(0.75, 5.8, 0); g.add(arm); const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 8), lampMat); lamp.position.set(1.6, 5.75, 0); g.add(lamp); g.userData = { type: "wall", radiusX: 0.7, radiusZ: 0.7 }; return g; }
+function createCitySign() { const g = new THREE.Group(); const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 3.5, 8), new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.6 })); pole.position.y = 1.75; g.add(pole); const sign = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.0, 0.12), new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.4 })); sign.position.y = 3.3; g.add(sign); g.userData = { type: "wall", radiusX: 0.7, radiusZ: 0.7 }; return g; }
+function createBiomeTree(biome) { if (biome === "snow") return createPineTree(); if (biome === "desert") return createPalmTree(); if (biome === "city") { const roll = Math.random(); if (roll < 0.35) return createStreetLight(); if (roll < 0.65) return createCitySign(); return createParkedCar(); } return createForestTree(); }
+function createBiomeRock(biome) { if (biome === "snow") return createSnowRock(); if (biome === "desert") return createDesertRock(); if (biome === "city") { const roll = Math.random(); if (roll < 0.5) return createTrafficBarrier(); return createCrashedCar(); } return createForestRock(); }
 
 
 function generateChunk(zStart) {
@@ -826,11 +885,23 @@ function generateChunk(zStart) {
     }
   }
 
+
+  if (zStart >= POLICE_SPAWN_START && biome === "city" && policeOfficers.length < MAX_POLICE) {
+    const desiredPoliceCount = 1 + Math.floor((distance - POLICE_SPAWN_START) / 600);
+    const availablePoliceSlots = MAX_POLICE - policeOfficers.length;
+    const spawnPoliceCount = Math.min(desiredPoliceCount, 2, availablePoliceSlots);
+    for (let i = 0; i < spawnPoliceCount; i++) {
+      const px = rand(-WORLD_WIDTH / 2 + 4, WORLD_WIDTH / 2 - 4);
+      const pz = zStart + rand(8, CHUNK_LENGTH - 8);
+      if (!collidesWithWall(new THREE.Vector3(px, 0, pz), 1.3)) policeOfficers.push(createPoliceOfficer(px, pz));
+    }
+  }
   scene.add(chunk);
   worldChunks.push(chunk);
 }
 
 function addRoadLines(chunk, zStart, biome) {
+  if (biome === "city") { addCityRoadLines(chunk, zStart); return; }
   const lineMat = new THREE.MeshStandardMaterial({
     color: 0xe8f0ff,
     emissive: 0x111827,
@@ -856,6 +927,8 @@ function addRoadLines(chunk, zStart, biome) {
   right.position.x = WORLD_WIDTH / 2 - 1.5;
   chunk.add(right);
 }
+
+function addCityRoadLines(chunk, zStart) { const yellowMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, emissive: 0x5a3b00, emissiveIntensity: 0.15, roughness: 0.4 }); const whiteMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.35 }); for (let z = zStart + 4; z < zStart + CHUNK_LENGTH; z += 9) { const dashA = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.05, 4.4), yellowMat); dashA.position.set(-0.35, 0.06, z); chunk.add(dashA); const dashB = dashA.clone(); dashB.position.x = 0.35; chunk.add(dashB); } const leftShoulder = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.05, CHUNK_LENGTH), whiteMat); leftShoulder.position.set(-WORLD_WIDTH / 2 + 4.5, 0.065, zStart + CHUNK_LENGTH / 2); chunk.add(leftShoulder); const rightShoulder = leftShoulder.clone(); rightShoulder.position.x = WORLD_WIDTH / 2 - 4.5; chunk.add(rightShoulder); const sidewalkMat = new THREE.MeshStandardMaterial({ color: 0x6b7280, roughness: 0.8 }); const leftSidewalk = new THREE.Mesh(new THREE.BoxGeometry(4, 0.12, CHUNK_LENGTH), sidewalkMat); leftSidewalk.position.set(-WORLD_WIDTH / 2 + 2, 0.03, zStart + CHUNK_LENGTH / 2); leftSidewalk.receiveShadow = true; chunk.add(leftSidewalk); const rightSidewalk = leftSidewalk.clone(); rightSidewalk.position.x = WORLD_WIDTH / 2 - 2; chunk.add(rightSidewalk); }
 
 function addGridWallsWithGuaranteedPaths(chunk, zStart, biome) {
   const wallMats = [
@@ -889,20 +962,22 @@ function addGridWallsWithGuaranteedPaths(chunk, zStart, biome) {
       const d = 3.5;
       const h = rand(2.3, 5.7);
 
-      const wall = new THREE.Mesh(
-        new THREE.BoxGeometry(w, h, d),
-        wallMats[Math.floor(Math.random() * wallMats.length)]
-      );
+      let wall;
 
-      wall.position.set(laneXs[c], h / 2, rowZs[r]);
-      wall.castShadow = h > 4.2;
-      wall.receiveShadow = true;
-
-      wall.userData = {
-        type: "wall",
-        radiusX: w / 2,
-        radiusZ: d / 2
-      };
+      if (biome === "city") {
+        const roll = Math.random();
+        if (roll < 0.55) wall = createParkedCar([0xef4444, 0x2563eb, 0xfacc15, 0x22c55e, 0x64748b][Math.floor(Math.random() * 5)]);
+        else if (roll < 0.8) wall = createCrashedCar();
+        else wall = createTrafficBarrier();
+        wall.position.set(laneXs[c], 0, rowZs[r]);
+        wall.rotation.y += Math.random() < 0.5 ? Math.PI / 2 : 0;
+      } else {
+        wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMats[Math.floor(Math.random() * wallMats.length)]);
+        wall.position.set(laneXs[c], h / 2, rowZs[r]);
+        wall.castShadow = h > 4.2;
+        wall.receiveShadow = true;
+        wall.userData = { type: "wall", radiusX: w / 2, radiusZ: d / 2 };
+      }
 
       chunk.add(wall);
       walls.push(wall);
@@ -1228,6 +1303,15 @@ function createDesertStalkerRig() { const rig = new THREE.Group(); const body = 
 function spawnDesertStalker(x, z) { const made = createDesertStalkerRig(); made.rig.position.set(x, 0, z); return { type: "desertStalker", rig: made.rig, speed: (12 + enemyBaseSpeedBonus) * 0.85, dashSpeed: (12 + enemyBaseSpeedBonus) * 2.1, dashCooldown: rand(3.5, 6), dashWindup: 0, dashTime: 0, dashDir: new THREE.Vector3(0, 0, 1), pathTimer: 0, path: [], animTime: 0, parts: {}, warningMesh: made.warn, wanderDir: null, wanderTimer: 0 }; }
 function updateDesertStalkerDash(s, dt) { s.dashCooldown -= dt; if (s.dashWindup > 0) { s.dashWindup -= dt; s.warningMesh.material.opacity = 0.75; s.rig.rotation.y = Math.atan2(s.dashDir.x, s.dashDir.z); if (s.dashWindup <= 0) { s.dashTime = 0.45; s.warningMesh.material.opacity = 0; } return; } if (s.dashTime > 0) { s.dashTime -= dt; const old = s.rig.position.clone(); s.rig.position.addScaledVector(s.dashDir, s.dashSpeed * dt); s.rig.position.x = clamp(s.rig.position.x, -WORLD_WIDTH / 2 + 2, WORLD_WIDTH / 2 - 2); if (collidesWithWall(s.rig.position, 0.9)) { s.rig.position.copy(old); s.dashTime = 0; s.pathTimer = 0; } return; } if (s.dashCooldown <= 0 && flatDistance(s.rig.position, player.rig.position) < 18) { s.dashDir = new THREE.Vector3().subVectors(player.rig.position, s.rig.position); s.dashDir.y = 0; s.dashDir.normalize(); s.dashWindup = 0.55; s.dashCooldown = rand(3.5, 6); } }
 function updateDesertStalkers(dt) { for (const s of desertStalkers) { const dist = s.rig.position.distanceTo(player.rig.position); if (playerHiddenInGrass) { updateEnemyWander(s, dt); s.warningMesh.material.opacity = 0; } else { updateDesertStalkerDash(s, dt); if (s.dashWindup <= 0 && s.dashTime <= 0) chaseWithPathfinding(s, dt, s.speed, 0.9); } if (!playerHiddenInGrass && dist < 1.7) endGame("Chris got caught by a Desert Stalker!"); } desertStalkers = desertStalkers.filter(s => { const keep = s.rig.position.z > player.rig.position.z - CLEANUP_BEHIND_DISTANCE; if (!keep) scene.remove(s.rig); return keep; }); }
+
+function hasLineOfSightClear(from, to, maxRange = POLICE_RANGE) { const flatFrom = new THREE.Vector3(from.x, 0, from.z); const flatTo = new THREE.Vector3(to.x, 0, to.z); const dir = new THREE.Vector3().subVectors(flatTo, flatFrom); const dist = dir.length(); if (dist > maxRange) return false; if (dist < 0.01) return true; dir.normalize(); const step = 1.1; const checks = Math.floor(dist / step); for (let i = 1; i < checks; i++) { const test = flatFrom.clone().addScaledVector(dir, i * step); if (collidesWithWall(test, 0.45)) return false; } return true; }
+function getNearestShootableRunner(pos) { const candidates = Array.isArray(players) && players.length ? players.filter(p => !p.eliminated && !p.isChaser) : [player].filter(Boolean); if (candidates.length === 0) return null; let best = null; let bestDist = Infinity; for (const p of candidates) { const d = flatDistance(pos, p.rig.position); if (d < bestDist) { best = p; bestDist = d; } } return best; }
+function updatePoliceLaserVisual(police, target) { if (!police.laser || !target) return; const start = police.rig.position.clone(); start.y = 3.45; const end = target.rig.position.clone(); end.y = 3.15; const dir = new THREE.Vector3().subVectors(end, start); const dist = Math.min(dir.length(), POLICE_RANGE); if (dist <= 0.1) { police.laser.visible = false; return; } dir.normalize(); const mid = start.clone().addScaledVector(dir, dist / 2); police.laser.position.copy(mid); police.laser.scale.set(1, 1, dist); police.laser.lookAt(end); const blinkProgress = clamp(police.aimTimer / POLICE_AIM_TIME, 0, 1); const blinkSpeed = 3 + blinkProgress * 18; const blink = Math.sin(performance.now() * 0.001 * blinkSpeed) > 0 ? 1 : 0.15; police.laser.material.opacity = 0.15 + blink * 0.75; police.laser.visible = true; }
+function firePoliceBullet(police, target) { if (!target || target.eliminated) return; const start = police.rig.position.clone(); start.y = 3.45; const aim = target.rig.position.clone(); aim.y = 3.1; const dir = new THREE.Vector3().subVectors(aim, start); const dist = dir.length(); if (dist > POLICE_RANGE) return; if (!hasLineOfSightClear(start, aim, POLICE_RANGE)) return; dir.normalize(); const bulletGroup = new THREE.Group(); bulletGroup.position.copy(start); const bullet = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), new THREE.MeshStandardMaterial({ color: 0xfff7aa, emissive: 0xffd000, emissiveIntensity: 1.8 })); bulletGroup.add(bullet); const trail = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.8, 8), new THREE.MeshBasicMaterial({ color: 0xff3b30, transparent: true, opacity: 0.75 })); trail.rotation.x = Math.PI / 2; trail.position.z = -0.75; bulletGroup.add(trail); bulletGroup.lookAt(aim); scene.add(bulletGroup); policeBullets.push({ group: bulletGroup, dir, life: 0.8, shooter: police }); }
+function updatePoliceOfficers(dt) { for (const police of policeOfficers) { const target = getNearestShootableRunner(police.rig.position); police.target = target; if (!target || target.eliminated) { police.laser.visible = false; updateEnemyWander(police, dt); continue; } const dist = flatDistance(police.rig.position, target.rig.position); const clearShot = hasLineOfSightClear(police.rig.position, target.rig.position, POLICE_RANGE); if (police.state === "chase") { police.laser.visible = false; const prevPlayer = player; player = target; chaseWithPathfinding(police, dt, police.speed, 0.95); player = prevPlayer; police.stateTimer -= dt; if (police.stateTimer <= 0 && dist <= POLICE_RANGE && clearShot) { police.state = "aim"; police.aimTimer = 0; police.velocity = new THREE.Vector3(); } } else if (police.state === "aim") { const dir = new THREE.Vector3().subVectors(target.rig.position, police.rig.position); dir.y = 0; if (dir.lengthSq() > 0.01) { dir.normalize(); police.rig.rotation.y = Math.atan2(dir.x, dir.z); } police.aimTimer += dt; if (!clearShot || dist > POLICE_RANGE) { police.laser.visible = false; police.state = "chase"; police.stateTimer = POLICE_CHASE_TIME; police.aimTimer = 0; continue; } updatePoliceLaserVisual(police, target); if (police.aimTimer >= POLICE_AIM_TIME) { firePoliceBullet(police, target); police.laser.visible = false; police.state = "chase"; police.stateTimer = POLICE_CHASE_TIME + rand(0.3, 1.2); police.aimTimer = 0; } animateRunner(police, dt, false, true); } if (dist < 1.7) endGame("Chris got caught by a police officer!"); } policeOfficers = policeOfficers.filter(p => { const keep = p.rig.position.z > player.rig.position.z - CLEANUP_BEHIND_DISTANCE; if (!keep) { if (p.laser) scene.remove(p.laser); scene.remove(p.rig); } return keep; }); }
+function spawnBulletSpark(pos) { const sparkGroup = new THREE.Group(); sparkGroup.position.copy(pos); const mat = new THREE.MeshBasicMaterial({ color: 0xfff7aa, transparent: true, opacity: 0.9 }); for (let i = 0; i < 8; i++) { const spark = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 6), mat); const angle = Math.random() * Math.PI * 2; spark.position.set(Math.cos(angle) * rand(0.1, 0.7), rand(-0.1, 0.6), Math.sin(angle) * rand(0.1, 0.7)); sparkGroup.add(spark); } sparkGroup.userData.life = 0.22; scene.add(sparkGroup); if (!window.tempEffects) window.tempEffects = []; window.tempEffects.push(sparkGroup); }
+function updatePoliceBullets(dt) { for (let i = policeBullets.length - 1; i >= 0; i--) { const b = policeBullets[i]; b.life -= dt; b.group.position.addScaledVector(b.dir, POLICE_BULLET_SPEED * dt); if (collidesWithWall(b.group.position, 0.25)) { spawnBulletSpark(b.group.position); scene.remove(b.group); policeBullets.splice(i, 1); continue; } const candidates = Array.isArray(players) && players.length ? players.filter(p => !p.eliminated && !p.isChaser) : [player].filter(Boolean); for (const p of candidates) { if (flatDistance(b.group.position, p.rig.position) < 1.15) { endGame("Chris got shot by a police officer!"); spawnBulletSpark(b.group.position); scene.remove(b.group); policeBullets.splice(i, 1); break; } } if (b.life <= 0) { scene.remove(b.group); policeBullets.splice(i, 1); } } }
+function updateTempEffects(dt) { if (!window.tempEffects) return; for (let i = window.tempEffects.length - 1; i >= 0; i--) { const fx = window.tempEffects[i]; fx.userData.life -= dt; fx.scale.multiplyScalar(1 + dt * 4); for (const child of fx.children) if (child.material) child.material.opacity = clamp(fx.userData.life / 0.22, 0, 1); if (fx.userData.life <= 0) { scene.remove(fx); window.tempEffects.splice(i, 1); } } }
 
 function updateEnemies(dt) {
   playerHiddenInGrass = isPlayerInGrass();
@@ -1999,6 +2083,9 @@ function updateHUD() {
   document.getElementById("desertStalkerText").textContent =
     distance >= 2000 ? "Desert Stalkers: " + desertStalkers.length : "Desert Stalkers: Locked until 2000 yards";
 
+  const policeText = document.getElementById("policeText");
+  if (policeText) policeText.textContent = distance < 3000 ? "Police: Locked until 3000 yards" : "Police: " + policeOfficers.length + " active";
+
   document.getElementById("torchText").textContent =
     distance >= 500
       ? "Torches: Active"
@@ -2056,9 +2143,12 @@ function animate() {
   updateEnemies(dt);
   updateDogs(dt);
   updateDesertStalkers(dt);
+  updatePoliceOfficers(dt);
   updateTorches(dt);
+  updatePoliceBullets(dt);
   updateFireZones(dt);
   updatePickups(dt);
+  updateTempEffects(dt);
   updateCamera(dt);
   updateStarryBackground(dt);
   manageWorld();
