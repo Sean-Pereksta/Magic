@@ -745,8 +745,6 @@ const magnetTraps = [];
 const labels = [];
 const castleColliders = [];
 const castleDamageables = [];
-const castleLadders = [];
-const castlePlatforms = [];
 let pickupSpawnCooldown = 0;
 
 const ARENA_R = 65;
@@ -2636,7 +2634,6 @@ function getBotHillApproachPoint(bot) {
 }
 
 function applyPhysics(w, dt) {
-  applyCastleLadderMovement(w, dt);
   w.vy -= 28*dt;
   w.x += w.vx * dt;
   w.z += w.vz * dt;
@@ -2664,18 +2661,7 @@ function applyPhysics(w, dt) {
 }
 
 function applyCastleLadderMovement(w, dt) {
-  if (GAME_SETTINGS.mode !== "castle" || !w.alive) return;
-  const ladder = castleLadders.find(l =>
-    Math.abs(w.x - l.x) <= l.width * 0.5 &&
-    Math.abs(w.z - l.z) <= l.depth * 0.5 &&
-    w.y >= l.bottomY - 0.5 && w.y <= l.topY + 1.1
-  );
-  if (!ladder) return;
-  const wantsClimb = (w.human && (getActionDown(w, "forward") || getActionDown(w, "dash"))) || (!w.human && Math.random() < 0.85);
-  if (!wantsClimb) return;
-  w.vy = Math.max(w.vy, ladder.climbSpeed * 0.6);
-  w.y = Math.min(ladder.topY + 0.2, w.y + ladder.climbSpeed * dt);
-  if (w.y >= ladder.targetY - 0.2) w.y = Math.max(w.y, ladder.targetY);
+  return false;
 }
 
 function keepInArena(w) {
@@ -5448,47 +5434,11 @@ function getTerrainHeight(x,z){ return Math.max(getBaseGroundHeight(x,z),getHill
 function isOnTiltPlane(x,z){ return Math.abs(x-tiltPlane.x)<tiltPlane.width/2 && Math.abs(z-tiltPlane.z)<tiltPlane.depth/2; }
 function getTiltPlaneHeight(x,z){ if(!isOnTiltPlane(x,z)) return null; const lx=x-tiltPlane.x,lz=z-tiltPlane.z; return tiltPlane.baseY + Math.tan(tiltPlane.tiltZ)*lx - Math.tan(tiltPlane.tiltX)*lz; }
 function getTiltPlaneNormal(){ const nx=-Math.tan(tiltPlane.tiltZ), nz=Math.tan(tiltPlane.tiltX); return new THREE.Vector3(nx,1,nz).normalize(); }
-function getEffectiveGroundHeight(x,z){ const th=getTerrainHeight(x,z); const ph=getTiltPlaneHeight(x,z); const ch=getCastlePlatformHeightAt(x,z); return Math.max(ph===null?th:Math.max(th,ph), ch ?? -999); }
+function getEffectiveGroundHeight(x,z){ const th=getTerrainHeight(x,z); const ph=getTiltPlaneHeight(x,z); return ph===null?th:Math.max(th,ph); }
 function getCastlePlatformHeightAt(x, z) {
-  if (GAME_SETTINGS.mode !== "castle") return null;
-  let best = null;
-  for (const platform of castlePlatforms) {
-    const insideX = Math.abs(x - platform.x) <= platform.width / 2;
-    const insideZ = Math.abs(z - platform.z) <= platform.depth / 2;
-    if (!insideX || !insideZ) continue;
-    best = best == null ? platform.y : Math.max(best, platform.y);
-  }
-  return best;
+  return null;
 }
-function getWizardGroundHeight(w){
-  const base = getEffectiveGroundHeight(w.x,w.z);
-  if (GAME_SETTINGS.mode !== "castle") return base;
-
-  for (const wall of castleState.walls) {
-    if (wall.kind !== "castleWall") continue;
-
-    const onWallFootprint = circleRectOverlap(
-      w.x,
-      w.z,
-      w.radius,
-      wall.x,
-      wall.z,
-      wall.width + 2.6,
-      wall.depth + 2.6
-    ).hit;
-
-    if (!onWallFootprint) continue;
-
-    const wallTopY = wall.height + 0.45;
-
-    // If the wizard is already above the wall top, let them land on it.
-    if (w.y >= wall.height - 0.4 || (w.vy <= 0 && w.y > wall.height - 1.0)) {
-      return Math.max(base, wallTopY);
-    }
-  }
-
-  return base;
-}
+function getWizardGroundHeight(w){ return getEffectiveGroundHeight(w.x,w.z); }
 function getTerrainNormalApprox(x,z){ const e=0.5; const hL=getEffectiveGroundHeight(x-e,z),hR=getEffectiveGroundHeight(x+e,z),hD=getEffectiveGroundHeight(x,z-e),hU=getEffectiveGroundHeight(x,z+e); return {slopeX:(hL-hR)/(2*e),slopeZ:(hD-hU)/(2*e)}; }
 function applySlopeSliding(w,dt){ if(!isKingHillActive()) return; const s=getTerrainNormalApprox(w.x,w.z); w.vx += s.slopeX*10*dt; w.vz += s.slopeZ*10*dt; }
 function applyTiltPlaneSliding(w,dt){
@@ -5592,53 +5542,29 @@ function updateCrownMode(dt) {
 function buildCastleArena() {
   castleColliders.length = 0;
   castleDamageables.length = 0;
-  castleLadders.length = 0;
-  castlePlatforms.length = 0;
   castleState.walls.length = 0;
   castleState.gates.length = 0;
   castleState.defenderWallPosts.length = 0;
 
-  createCastleWall(0, -42, 42, 2.6, 7);
-  createCastleWall(-21, -26, 2.4, 32, 7);
-  createCastleWall(21, -26, 2.4, 32, 7);
-  createCastleWall(-15, -10, 12, 2.4, 7);
-  createCastleWall(0, -10, 8, 2.4, 7);
-  createCastleWall(15, -10, 12, 2.4, 7);
-
-  createWallPlatform(0, -42, 42, 4.8, 6.0);
-  createWallPlatform(-21, -26, 4.8, 32, 7.25);
-  createWallPlatform(21, -26, 4.8, 32, 7.25);
-  createWallPlatform(-15, -10, 12, 4.8, 7.25);
-  createWallPlatform(0, -10, 8, 4.8, 7.25);
-  createWallPlatform(15, -10, 12, 4.8, 7.25);
-  createWallPlatform(0, -28, 12, 5.2, 6.0);
-  createWallPlatform(0, -18, 12, 5.2, 6.0);
+  createCastleWall(0, -42, 42, 3.4, 7);
+  createCastleWall(-21, -26, 3.4, 32, 7);
+  createCastleWall(21, -26, 3.4, 32, 7);
+  createCastleWall(-15, -10, 12, 3.4, 7);
+  createCastleWall(0, -10, 8, 3.4, 7);
+  createCastleWall(15, -10, 12, 3.4, 7);
 
   createCastleGate(-7.5, -10, 5.2, 2.6);
   createCastleGate(7.5, -10, 5.2, 2.6);
   createCastleGate(0, -10, 4.2, 2.8);
   castleState.tower = createCastleTower(0, -34);
-  createCastleWatchTower(-21, -10.5, 7.4, 3.2);
-  createCastleWatchTower(21, -10.5, 7.4, 3.2);
-  createCastleWatchTower(-21, -42, 7.4, 3.2);
-  createCastleWatchTower(21, -42, 7.4, 3.2);
-  createCastleWatchTower(-21, -26, 7.2, 3.0);
-  createCastleWatchTower(21, -26, 7.2, 3.0);
-  createCastleLadder(-12.5, -8.8, 1.8, 2.0, 0, 7.1, 6, 7.2);
-  createCastleLadder(12.5, -8.8, 1.8, 2.0, 0, 7.1, 6, 7.2);
-  createCastleLadder(-23.2, -20, 1.8, 2.0, 0, 7.1, 6, 7.2);
-  createCastleLadder(23.2, -20, 1.8, 2.0, 0, 7.1, 6, 7.2);
-  createCastleLadder(0, -43.8, 2.0, 1.6, 0, 6.0, 6, 6.0);
 
-  for (const x of [-17, -7, 7, 17, -21, 21, 0]) {
-    castleState.defenderWallPosts.push({ x, z: x === -21 || x === 21 ? -24 + rand(-10, 7) : -10, y: 7.65 });
-  }
   createCastleBanner(-18, -7.8, 0xff4444);
   createCastleBanner(18, -7.8, 0xff4444);
   createCastleBanner(-18, -40, 0x4488ff);
   createCastleBanner(18, -40, 0xffd84a);
   createCastleTorch(-15, -9.3); createCastleTorch(15, -9.3);
   createCastleTorch(-20, -25); createCastleTorch(20, -25);
+  addScatteredCastleParapets();
 }
 
 function createCastleWall(x, z, width, depth, height) {
@@ -5659,41 +5585,36 @@ function createCastleWall(x, z, width, depth, height) {
   return wall;
 }
 
-function createWallPlatform(x, z, width, depth, y) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, 0.45, depth), new THREE.MeshStandardMaterial({ color: 0x6f727b, roughness: 0.85 }));
-  mesh.position.set(x, y, z); mesh.receiveShadow = true; scene.add(mesh);
-  castlePlatforms.push({ x, z, width, depth, y: y + 0.24 });
-  castleState.walls.push({ kind: "castlePlatform", x, z, width, depth, height: y, platform: true, platformY: y, mesh, blocksAttackers: false, blocksDefenders: false });
-  return mesh;
+function createCastleParapetBlock(x, z, width, depth, height = 1.1, y = 4.7) {
+  const geo = new THREE.BoxGeometry(width, height, depth);
+  const mat = new THREE.MeshStandardMaterial({ color: 0x8b8792, roughness: 0.95 });
+  const block = new THREE.Mesh(geo, mat);
+  const baseY = getEffectiveGroundHeight(x, z);
+  block.position.set(x, baseY + y, z);
+  block.castShadow = true;
+  block.receiveShadow = true;
+  scene.add(block);
+  castleColliders.push({
+    kind: "castleParapet", x, z, width, depth,
+    bottomY: baseY + y - height / 2,
+    topY: baseY + y + height / 2,
+    blocksAttackers: true, blocksDefenders: true, blocksPlayers: true
+  });
+  return block;
 }
 
-function createCastleWatchTower(x, z, height = 7, radius = 3.2) {
-  const group = new THREE.Group();
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius + 0.3, height - 1.8, 12), new THREE.MeshStandardMaterial({ color: 0x828793, roughness: 0.88 }));
-  base.position.y = (height - 1.8) * 0.5; base.castShadow = true; base.receiveShadow = true; group.add(base);
-  const top = new THREE.Mesh(new THREE.CylinderGeometry(radius + 0.5, radius + 0.5, 0.8, 14), new THREE.MeshStandardMaterial({ color: 0x9ca2ae, roughness: 0.78 }));
-  top.position.y = height - 0.5; top.castShadow = true; group.add(top);
-  group.position.set(x, getEffectiveGroundHeight(x, z), z);
-  scene.add(group);
-  createWallPlatform(x, z, radius * 1.9, radius * 1.9, group.position.y + height - 0.2);
-  createCastleBanner(x, z + radius + 0.8, 0xff9f58);
-  castleColliders.push({ kind: "towerBase", x, z, radius: radius - 0.55, bottomY: 0, topY: height - 1.2, blocksAttackers: true, blocksDefenders: true, blocksPlayers: true });
-  return group;
-}
-
-function createCastleLadder(x, z, width, depth, bottomY, topY, climbSpeed = 6, targetY = 5.8) {
-  const railMat = new THREE.MeshStandardMaterial({ color: 0x4e3122, roughness: 0.82 });
-  const rungMat = new THREE.MeshStandardMaterial({ color: 0x73543e, roughness: 0.84 });
-  const rail1 = new THREE.Mesh(new THREE.BoxGeometry(0.18, topY - bottomY, 0.18), railMat);
-  const rail2 = rail1.clone();
-  rail1.position.set(x - width * 0.26, (topY + bottomY) * 0.5, z);
-  rail2.position.set(x + width * 0.26, (topY + bottomY) * 0.5, z);
-  scene.add(rail1); scene.add(rail2);
-  for (let y = bottomY + 0.5; y < topY; y += 0.7) {
-    const rung = new THREE.Mesh(new THREE.BoxGeometry(width * 0.64, 0.1, 0.16), rungMat);
-    rung.position.set(x, y, z); scene.add(rung);
+function addScatteredCastleParapets() {
+  const y = 4.7, blockW = 2.2, blockD = 1.0, blockH = 1.1;
+  const frontZ = -10, backZ = -42, leftX = -21, rightX = 21;
+  const frontParapetXs = [-24, -18, -11, 10, 17, 23];
+  const backParapetXs = [-20, -12, 0, 14, 22];
+  const sideParapetZs = [-50, -44, -38];
+  for (const x of frontParapetXs) createCastleParapetBlock(x, frontZ, blockW, blockD, blockH, y);
+  for (const x of backParapetXs) createCastleParapetBlock(x, backZ, blockW, blockD, blockH, y);
+  for (const z of sideParapetZs) {
+    createCastleParapetBlock(leftX, z, blockD, blockW, blockH, y);
+    createCastleParapetBlock(rightX, z, blockD, blockW, blockH, y);
   }
-  castleLadders.push({ x, z, width, depth, bottomY, topY, climbSpeed, targetY });
 }
 
 function createCastleTorch(x, z) {
@@ -5903,8 +5824,6 @@ function placeWizardAtCastleSpawn(w, fresh = false) {
 
 function getCastleSpawnPoint(w) {
   if (w.team === "attackers") return { x: rand(-18, 18), z: rand(26, 44), y: 0 };
-  const posts = castleState.defenderWallPosts;
-  if (posts.length && Math.random() < 0.65) return { ...posts[Math.floor(Math.random() * posts.length)] };
   return { x: rand(-14, 14), z: rand(-36, -22), y: 0 };
 }
 
@@ -5976,7 +5895,6 @@ function collideWithCastle(w) {
   if (GAME_SETTINGS.mode !== "castle") return;
   for (const c of castleColliders) {
     if (c.kind === "castleGate" && c.destroyed) continue;
-    if (c.kind === "castleWall" && w.team === "defenders" && w.y > c.height - 0.7) continue;
     if (c.radius != null) {
       const dx = w.x - c.x;
       const dz = w.z - c.z;
