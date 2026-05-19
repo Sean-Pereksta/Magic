@@ -5067,6 +5067,18 @@ function createCastleTower(x, z) {
     ring,
     hpBar: createCastleHpBar(x, y + 6.0, z, 8, 0x66f7ff)
   };
+  const towerCollider = {
+    kind: "castleCrystalBlocker",
+    x,
+    z,
+    radius: 4.0,
+    bottomY: 0,
+    topY: 6.5,
+    blocksAttackers: true,
+    blocksDefenders: true,
+    blocksPlayers: true
+  };
+  castleColliders.push(towerCollider);
   castleDamageables.push(obj);
   return obj;
 }
@@ -5256,6 +5268,20 @@ function collideWithCastle(w) {
   for (const c of castleColliders) {
     if (c.kind === "castleGate" && c.destroyed) continue;
     if (c.kind === "castleWall" && w.team === "defenders" && w.y > c.height - 0.7) continue;
+    if (c.radius != null) {
+      const dx = w.x - c.x;
+      const dz = w.z - c.z;
+      const d = Math.hypot(dx, dz) || 0.001;
+      const minD = w.radius + c.radius;
+      if (d < minD && overlapsVerticalRange(w.y + 1.1, 1.2, c.bottomY ?? 0, c.topY ?? 999)) {
+        const push = minD - d + 0.01;
+        w.x += (dx / d) * push;
+        w.z += (dz / d) * push;
+        w.vx *= 0.25;
+        w.vz *= 0.25;
+      }
+      continue;
+    }
     if (!wizardVerticallyOverlapsCollider(w, c)) continue;
     const overlap = circleRectOverlap(w.x, w.z, w.radius, c.x, c.z, c.width, c.depth);
     if (!overlap.hit) continue;
@@ -5307,6 +5333,10 @@ function circleRectOverlap(cx, cz, cr, rx, rz, rw, rd) {
 function isCastleBlockedPoint(x, z, r) {
   for (const c of castleColliders) {
     if (c.kind === "castleGate" && c.destroyed) continue;
+    if (c.radius != null) {
+      if (distancePoint(x, z, c.x, c.z) < r + c.radius) return true;
+      continue;
+    }
     if (circleRectOverlap(x, z, r, c.x, c.z, c.width, c.depth).hit) return true;
   }
   return castleState.tower && distancePoint(x, z, castleState.tower.x, castleState.tower.z) < r + castleState.tower.radius + 1;
