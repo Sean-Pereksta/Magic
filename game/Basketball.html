@@ -2032,6 +2032,22 @@ function updateBot(w, dt) {
 
   const f = forwardVector(w);
   const d = distance2D(w, target);
+  const targetAimY = (target.y ?? getEffectiveGroundHeight(target.x, target.z)) + 2.0;
+  const shooterAimY = (w.y ?? getEffectiveGroundHeight(w.x, w.z)) + PROJECTILE_HEIGHT_TUNING.castChestOffset;
+  const horizontalDist = Math.max(1, distance2D(w, target));
+  const desiredPitch = clamp(
+    Math.atan2(targetAimY - shooterAimY, horizontalDist),
+    AIM_PITCH_MIN,
+    AIM_PITCH_MAX
+  );
+  w.aimPitch += clamp(
+    desiredPitch - (w.aimPitch || 0),
+    -1.8 * dt,
+    1.8 * dt
+  );
+  if (Math.random() < 0.03) {
+    w.aimPitch = clamp(w.aimPitch + rand(-0.04, 0.04), AIM_PITCH_MIN, AIM_PITCH_MAX);
+  }
 
   if (d > 8 || !w.ability) {
     w.vx += f.x * speed * dt * 4.1;
@@ -4083,13 +4099,39 @@ function updateGeese(dt) {
   }
 }
 
-function hasLineOfSight(x1, z1, x2, z2) {
-  const blocks = [...obstacles, ...temporary.filter(t => t.kind === "mushroomWall").map(t => ({ x: t.x, z: t.z, radius: t.radius }))];
+function hasLineOfSight(x1, z1, x2, z2, y1 = 2.0, y2 = 2.0) {
+  const blocks = [
+    ...obstacles,
+    ...temporary
+      .filter(t => t.kind === "mushroomWall")
+      .map(t => ({
+        x: t.x,
+        z: t.z,
+        radius: t.radius,
+        bottomY: 0,
+        topY: 4.2
+      }))
+  ];
   for (const b of blocks) {
-    const t = closestPointOnSegment(b.x, b.z, x1, z1, x2, z2);
-    if (distancePoint(t.x, t.z, b.x, b.z) < b.radius + 0.4) return false;
+    const t = closestPointOnSegmentWithT(b.x, b.z, x1, z1, x2, z2);
+    if (distancePoint(t.x, t.z, b.x, b.z) >= (b.radius || 1) + 0.4) continue;
+
+    const shotY = y1 + (y2 - y1) * t.t;
+    const vertical = getObstacleVerticalRange(b);
+
+    if (overlapsVerticalRange(shotY, 0.35, vertical.bottomY, vertical.topY)) {
+      return false;
+    }
   }
   return true;
+}
+
+function closestPointOnSegmentWithT(px, pz, ax, az, bx, bz) {
+  const abx = bx - ax;
+  const abz = bz - az;
+  const denom = (abx * abx + abz * abz) || 1;
+  const t = clamp(((px - ax) * abx + (pz - az) * abz) / denom, 0, 1);
+  return { x: ax + abx * t, z: az + abz * t, t };
 }
 
 function closestPointOnSegment(px, pz, ax, az, bx, bz) {
