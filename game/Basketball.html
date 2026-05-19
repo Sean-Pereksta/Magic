@@ -5358,19 +5358,31 @@ function projectileHitsCastleCrystal(p) {
 function checkProjectileCastleHit(p) {
   if (!p.owner || !p.hasArmed || castleState.roundOver) return false;
   const amount = getCastleProjectileDamage(p);
-  for (const gate of castleState.gates) {
-    if (gate.destroyed) continue;
-    if (!projectileVerticallyOverlapsCollider(p, gate)) continue;
-    if (circleRectOverlap(p.x, p.z, p.radius || 0.6, gate.x, gate.z, gate.width, gate.depth).hit && projectileHitsVerticalObject(p, { ...gate, y: getEffectiveGroundHeight(gate.x, gate.z), hitHeight: 7 })) { damageCastleGate(gate, amount, p.owner); return true; }
+
+  for (const target of castleDamageables) {
+    if (!target) continue;
+    if (target.kind === "castleGate") {
+      if (target.destroyed) continue;
+      if (!projectileVerticallyOverlapsCollider(p, target)) continue;
+      if (!circleRectOverlap(p.x, p.z, p.radius || 0.6, target.x, target.z, target.width, target.depth).hit) continue;
+      if (!projectileHitsVerticalObject(p, { ...target, y: getEffectiveGroundHeight(target.x, target.z), hitHeight: 7 })) continue;
+      damageCastleGate(target, amount, p.owner);
+      return true;
+    }
+
+    if (target.kind === "castleCrystal" && p.owner.team === "attackers") {
+      if (!projectileHitsCastleCrystal(p)) continue;
+      damageCastleTower(amount, p.owner);
+      return true;
+    }
   }
-  for (const wall of castleState.walls) {
-    if (wall.kind !== "castleWall") continue;
-    if (!projectileVerticallyOverlapsCollider(p, wall)) continue;
-    if (circleRectOverlap(p.x, p.z, p.radius || 0.6, wall.x, wall.z, wall.width, wall.depth).hit) return true;
+
+  for (const collider of castleColliders) {
+    if (collider.kind !== "castleWall") continue;
+    if (!projectileVerticallyOverlapsCollider(p, collider)) continue;
+    if (circleRectOverlap(p.x, p.z, p.radius || 0.6, collider.x, collider.z, collider.width, collider.depth).hit) return true;
   }
-  if (castleState.tower && p.owner.team === "attackers" && projectileHitsCastleCrystal(p)) {
-    damageCastleTower(amount, p.owner); return true;
-  }
+
   return false;
 }
 function getCastleProjectileDamage(p) { if (p.type === "fireball") return 1; if (p.type === "bonk") return 2; if (p.type === "lava") return 3; if (p.type === "anvil") return 4; if (p.type === "beam") return 2; return 1; }
