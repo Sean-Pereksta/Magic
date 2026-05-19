@@ -105,6 +105,7 @@
   <div id="pickupText">Pickups: 0</div>
   <div id="enemyText">Chasers: 0</div>
   <div id="dogText">Dogs: Locked until 1000 yards</div>
+  <div id="desertStalkerText">Desert Stalkers: Locked until 2000 yards</div>
   <div id="torchText">Torches: Locked until 500 yards</div>
   <div id="hideText">Visibility: Seen</div>
 
@@ -152,6 +153,7 @@ let walls = [];
 let pickups = [];
 let enemies = [];
 let dogs = [];
+let desertStalkers = [];
 let grassPatches = [];
 let torches = [];
 let fireZones = [];
@@ -185,6 +187,37 @@ const HARD_BACK_LIMIT = 34;
 const PATHFIND_DISTANCE = 90;
 const MAX_ENEMIES = 12;
 const MAX_DOGS = 5;
+const MAX_DESERT_STALKERS = 4;
+
+const BIOMES = {
+  forest: {
+    groundColor: 0x2f7d32,
+    fogColor: 0xf2f8ff,
+    treeType: "forest",
+    rockType: "forest",
+    grassType: "forest",
+    enemyTypeModifier: "normal",
+    decorationDensity: 1
+  },
+  snow: {
+    groundColor: 0xddeeff,
+    fogColor: 0xeaf4ff,
+    treeType: "pine",
+    rockType: "snow",
+    grassType: "snow",
+    enemyTypeModifier: "normal",
+    decorationDensity: 0.85
+  },
+  desert: {
+    groundColor: 0xd9b46f,
+    fogColor: 0xf6e9c8,
+    treeType: "palm",
+    rockType: "desert",
+    grassType: "desert",
+    enemyTypeModifier: "desertStalker",
+    decorationDensity: 0.7
+  }
+};
 
 init();
 animate();
@@ -706,28 +739,57 @@ function createDog(x, z) {
    WORLD GENERATION
 ============================================================ */
 
+function getBiomeForZ(z) {
+  const tier = Math.floor(z / 1000);
+  if (tier === 0) return "forest";
+  if (tier === 1) return "snow";
+  if (tier === 2) return "desert";
+  const cycle = tier % 3;
+  if (cycle === 0) return "forest";
+  if (cycle === 1) return "snow";
+  return "desert";
+}
+
+function getBiomeConfig(biome) {
+  return BIOMES[biome] || BIOMES.forest;
+}
+
+function createBiomeGround(width, length, biome) {
+  const cfg = getBiomeConfig(biome);
+  return new THREE.Mesh(
+    new THREE.BoxGeometry(width, 0.45, length),
+    new THREE.MeshStandardMaterial({ color: cfg.groundColor, roughness: 0.9 })
+  );
+}
+
+function createForestTree() { const g = new THREE.Group(); const t = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.6, 6.5, 7), new THREE.MeshStandardMaterial({color:0x6b3f1d, roughness:0.9})); t.position.y=3.25; g.add(t); const c = new THREE.Mesh(new THREE.SphereGeometry(1.9,10,8), new THREE.MeshStandardMaterial({color:0x1f7a35, roughness:0.85})); c.position.y=7.3; g.add(c); return g; }
+function createPineTree() { const g = new THREE.Group(); const t = new THREE.Mesh(new THREE.CylinderGeometry(0.25,0.35,8.3,7), new THREE.MeshStandardMaterial({color:0x5a341a, roughness:0.95})); t.position.y=4.15; g.add(t); for (let i=0;i<3;i++){ const cone = new THREE.Mesh(new THREE.ConeGeometry(1.5-i*0.3,3.1,8), new THREE.MeshStandardMaterial({color:0x1d4d2f,roughness:0.86})); cone.position.y=5.6+i*1.5; g.add(cone); const snow = new THREE.Mesh(new THREE.ConeGeometry(0.6-i*0.15,0.9,8), new THREE.MeshStandardMaterial({color:0xf7fbff,roughness:0.95})); snow.position.y=6.6+i*1.5; g.add(snow);} return g; }
+function createPalmTree() { const g = new THREE.Group(); const t = new THREE.Mesh(new THREE.CylinderGeometry(0.28,0.45,6.8,7), new THREE.MeshStandardMaterial({color:0x9a6b3e, roughness:0.9})); t.position.set(0.3,3.4,0); t.rotation.z=-0.15; g.add(t); for (let i=0;i<6;i++){const leaf=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.08,2.2),new THREE.MeshStandardMaterial({color:0x2f8a4f,roughness:0.8})); leaf.position.set(0.55,6.8,0); leaf.rotation.y=(Math.PI*2/6)*i; leaf.rotation.x=-0.25; g.add(leaf);} return g; }
+function createCactus() { const g = new THREE.Group(); const mat = new THREE.MeshStandardMaterial({color:0x3f8f4a,roughness:0.88}); const b = new THREE.Mesh(new THREE.CylinderGeometry(0.4,0.45,4.4,8), mat); b.position.y=2.2; g.add(b); const a = new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.24,2.0,8), mat); a.position.set(0.52,2.8,0); a.rotation.z=-1.2; g.add(a); return g; }
+function createForestRock(){ const r=new THREE.Mesh(new THREE.SphereGeometry(1.2,9,8),new THREE.MeshStandardMaterial({color:0x64748b,roughness:0.92})); r.scale.y=0.6; return r; }
+function createSnowRock(){ const g=new THREE.Group(); const b=createForestRock(); b.material=new THREE.MeshStandardMaterial({color:0x4b5563,roughness:0.95}); g.add(b); const cap=new THREE.Mesh(new THREE.SphereGeometry(0.95,8,7),new THREE.MeshStandardMaterial({color:0xf8fcff,roughness:0.98})); cap.position.y=0.55; cap.scale.y=0.5; g.add(cap); return g; }
+function createDesertRock(){ const g=new THREE.Group(); const m=new THREE.MeshStandardMaterial({color:0xc98d54,roughness:0.93}); for(let i=0;i<2;i++){const r=new THREE.Mesh(new THREE.BoxGeometry(1.2,0.8,1.1),m); r.position.set(i*0.7-0.35,0.35+i*0.1,0); g.add(r);} return g; }
+function createBiomeTree(biome){ return biome==="snow"?createPineTree():biome==="desert"?createPalmTree():createForestTree(); }
+function createBiomeRock(biome){ return biome==="snow"?createSnowRock():biome==="desert"?createDesertRock():createForestRock(); }
+
+
 function generateChunk(zStart) {
   const chunk = new THREE.Group();
   chunk.userData.zStart = zStart;
+  const biome = getBiomeForZ(zStart);
+  const biomeConfig = getBiomeConfig(biome);
+  chunk.userData.biome = biome;
 
-  const groundMat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color().setHSL(0.31 + Math.random() * 0.03, 0.45, 0.27),
-    roughness: 0.9
-  });
-
-  const ground = new THREE.Mesh(
-    new THREE.BoxGeometry(WORLD_WIDTH, 0.45, CHUNK_LENGTH),
-    groundMat
-  );
+  const ground = createBiomeGround(WORLD_WIDTH, CHUNK_LENGTH, biome);
 
   ground.position.set(0, -0.23, zStart + CHUNK_LENGTH / 2);
   ground.receiveShadow = true;
   chunk.add(ground);
 
-  addRoadLines(chunk, zStart);
-  addGridWallsWithGuaranteedPaths(chunk, zStart);
+  addRoadLines(chunk, zStart, biome);
+  addGridWallsWithGuaranteedPaths(chunk, zStart, biome);
   addPickups(chunk, zStart);
-  addGrassPatches(chunk, zStart);
+  addGrassPatches(chunk, zStart, biome);
 
   if (zStart > 20 && enemies.length < MAX_ENEMIES) {
     const desiredEnemyCount = 1 + Math.floor(distance / 230);
@@ -753,11 +815,22 @@ function generateChunk(zStart) {
     }
   }
 
+  if (zStart >= 2000 && biome === "desert" && desertStalkers.length < MAX_DESERT_STALKERS) {
+    const chance = zStart >= 3000 ? 0.6 : 0.45;
+    if (Math.random() < chance) {
+      const sx = rand(-WORLD_WIDTH / 2 + 4, WORLD_WIDTH / 2 - 4);
+      const sz = zStart + rand(8, CHUNK_LENGTH - 8);
+      if (!collidesWithWall(new THREE.Vector3(sx, 0, sz), 1.3)) {
+        desertStalkers.push(spawnDesertStalker(sx, sz));
+      }
+    }
+  }
+
   scene.add(chunk);
   worldChunks.push(chunk);
 }
 
-function addRoadLines(chunk, zStart) {
+function addRoadLines(chunk, zStart, biome) {
   const lineMat = new THREE.MeshStandardMaterial({
     color: 0xe8f0ff,
     emissive: 0x111827,
@@ -784,7 +857,7 @@ function addRoadLines(chunk, zStart) {
   chunk.add(right);
 }
 
-function addGridWallsWithGuaranteedPaths(chunk, zStart) {
+function addGridWallsWithGuaranteedPaths(chunk, zStart, biome) {
   const wallMats = [
     new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.85 }),
     new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.85 }),
@@ -836,77 +909,17 @@ function addGridWallsWithGuaranteedPaths(chunk, zStart) {
     }
   }
 
-  addTallTreeBlocks(chunk, zStart, openLaneA, openLaneB, laneXs);
+  addTallTreeBlocks(chunk, zStart, openLaneA, openLaneB, laneXs, biome);
 }
 
 /* Taller brown blocks, now tree-like obstacles */
-function addTallTreeBlocks(chunk, zStart, openLaneA, openLaneB, laneXs) {
-  const trunkMat = new THREE.MeshStandardMaterial({
-    color: 0x6b3f1d,
-    roughness: 0.92
-  });
-
-  const barkDarkMat = new THREE.MeshStandardMaterial({
-    color: 0x3d2412,
-    roughness: 0.95
-  });
-
-  const leafMat = new THREE.MeshStandardMaterial({
-    color: 0x1f7a35,
-    roughness: 0.85
-  });
-
-  const darkLeafMat = new THREE.MeshStandardMaterial({
-    color: 0x14532d,
-    roughness: 0.85
-  });
-
+function addTallTreeBlocks(chunk, zStart, openLaneA, openLaneB, laneXs, biome) {
   for (let i = 0; i < 4; i++) {
     const c = Math.floor(Math.random() * laneXs.length);
     if (c === openLaneA || c === openLaneB) continue;
 
-    const tree = new THREE.Group();
-
-    const trunkHeight = rand(5.5, 8.5);
-    const trunkRadius = rand(0.45, 0.75);
-
-    const trunk = new THREE.Mesh(
-      new THREE.CylinderGeometry(trunkRadius * 0.8, trunkRadius, trunkHeight, 7),
-      Math.random() > 0.5 ? trunkMat : barkDarkMat
-    );
-    trunk.position.y = trunkHeight / 2;
-    trunk.castShadow = true;
-    trunk.receiveShadow = true;
-    tree.add(trunk);
-
-    const topStyle = Math.random();
-
-    if (topStyle < 0.55) {
-      const leaves1 = new THREE.Mesh(
-        new THREE.ConeGeometry(rand(1.7, 2.3), rand(2.4, 3.2), 8),
-        leafMat
-      );
-      leaves1.position.y = trunkHeight + 1.1;
-      leaves1.castShadow = false;
-      tree.add(leaves1);
-
-      const leaves2 = new THREE.Mesh(
-        new THREE.ConeGeometry(rand(1.3, 1.9), rand(2.0, 2.8), 8),
-        darkLeafMat
-      );
-      leaves2.position.y = trunkHeight + 2.35;
-      leaves2.castShadow = false;
-      tree.add(leaves2);
-    } else {
-      const crown = new THREE.Mesh(
-        new THREE.SphereGeometry(rand(1.4, 2.0), 10, 8),
-        Math.random() > 0.5 ? leafMat : darkLeafMat
-      );
-      crown.position.y = trunkHeight + 1.1;
-      crown.scale.y = rand(0.9, 1.3);
-      crown.castShadow = false;
-      tree.add(crown);
-    }
+    const tree = biome === "desert" && Math.random() < 0.35 ? createCactus() : createBiomeTree(biome);
+    const trunkRadius = biome === "desert" ? 0.6 : 0.7;
 
     tree.position.set(
       laneXs[c] + rand(-1.0, 1.0),
@@ -967,16 +980,17 @@ function addPickups(chunk, zStart) {
   }
 }
 
-function addGrassPatches(chunk, zStart) {
-  if (Math.random() > 0.28) return;
+function addGrassPatches(chunk, zStart, biome) {
+  const skipChance = biome === "desert" ? 0.5 : biome === "snow" ? 0.35 : 0.28;
+  if (Math.random() > skipChance) return;
 
   const patch = new THREE.Group();
 
-  const width = rand(8, 13);
-  const depth = rand(8, 14);
+  const width = biome === "desert" ? rand(10, 15) : rand(8, 13);
+  const depth = biome === "desert" ? rand(10, 15) : rand(8, 14);
 
   const baseMat = new THREE.MeshStandardMaterial({
-    color: 0x14532d,
+    color: biome === "snow" ? 0xc7dff3 : biome === "desert" ? 0x8a6a3f : 0x14532d,
     roughness: 0.95,
     transparent: true,
     opacity: 0.68
@@ -992,20 +1006,20 @@ function addGrassPatches(chunk, zStart) {
   patch.add(base);
 
   const bladeMat = new THREE.MeshStandardMaterial({
-    color: 0x22c55e,
+    color: biome === "snow" ? 0xe8f6ff : biome === "desert" ? 0x9ab06a : 0x22c55e,
     roughness: 0.9,
     transparent: true,
     opacity: 0.92
   });
 
   const darkBladeMat = new THREE.MeshStandardMaterial({
-    color: 0x166534,
+    color: biome === "snow" ? 0xb5d4e8 : biome === "desert" ? 0x6e8a4f : 0x166534,
     roughness: 0.9,
     transparent: true,
     opacity: 0.95
   });
 
-  const bladeCount = 18;
+  const bladeCount = biome === "desert" ? 10 : 18;
 
   for (let i = 0; i < bladeCount; i++) {
     const bladeHeight = rand(3.0, 4.8);
@@ -1209,6 +1223,11 @@ function animateDog(dog, dt, moving) {
 /* ============================================================
    ENEMY AI, DOGS, HIDING, TORCHES
 ============================================================ */
+
+function createDesertStalkerRig() { const rig = new THREE.Group(); const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.55, 1.7, 5, 8), new THREE.MeshStandardMaterial({ color: 0xcaa46e, roughness: 0.82 })); body.position.y = 1.7; rig.add(body); const hood = new THREE.Mesh(new THREE.SphereGeometry(0.55, 10, 8), new THREE.MeshStandardMaterial({ color: 0x2f2418, roughness: 0.9 })); hood.position.set(0, 2.9, 0.1); rig.add(hood); const warn = new THREE.Mesh(new THREE.ConeGeometry(0.45, 4.8, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0xff6a00, transparent: true, opacity: 0.0, side: THREE.DoubleSide })); warn.rotation.x = -Math.PI / 2; warn.position.y = 0.08; warn.scale.set(0.35, 1, 1); rig.add(warn); scene.add(rig); return { rig, warn }; }
+function spawnDesertStalker(x, z) { const made = createDesertStalkerRig(); made.rig.position.set(x, 0, z); return { type: "desertStalker", rig: made.rig, speed: (12 + enemyBaseSpeedBonus) * 0.85, dashSpeed: (12 + enemyBaseSpeedBonus) * 2.1, dashCooldown: rand(3.5, 6), dashWindup: 0, dashTime: 0, dashDir: new THREE.Vector3(0, 0, 1), pathTimer: 0, path: [], animTime: 0, parts: {}, warningMesh: made.warn, wanderDir: null, wanderTimer: 0 }; }
+function updateDesertStalkerDash(s, dt) { s.dashCooldown -= dt; if (s.dashWindup > 0) { s.dashWindup -= dt; s.warningMesh.material.opacity = 0.75; s.rig.rotation.y = Math.atan2(s.dashDir.x, s.dashDir.z); if (s.dashWindup <= 0) { s.dashTime = 0.45; s.warningMesh.material.opacity = 0; } return; } if (s.dashTime > 0) { s.dashTime -= dt; const old = s.rig.position.clone(); s.rig.position.addScaledVector(s.dashDir, s.dashSpeed * dt); s.rig.position.x = clamp(s.rig.position.x, -WORLD_WIDTH / 2 + 2, WORLD_WIDTH / 2 - 2); if (collidesWithWall(s.rig.position, 0.9)) { s.rig.position.copy(old); s.dashTime = 0; s.pathTimer = 0; } return; } if (s.dashCooldown <= 0 && flatDistance(s.rig.position, player.rig.position) < 18) { s.dashDir = new THREE.Vector3().subVectors(player.rig.position, s.rig.position); s.dashDir.y = 0; s.dashDir.normalize(); s.dashWindup = 0.55; s.dashCooldown = rand(3.5, 6); } }
+function updateDesertStalkers(dt) { for (const s of desertStalkers) { const dist = s.rig.position.distanceTo(player.rig.position); if (playerHiddenInGrass) { updateEnemyWander(s, dt); s.warningMesh.material.opacity = 0; } else { updateDesertStalkerDash(s, dt); if (s.dashWindup <= 0 && s.dashTime <= 0) chaseWithPathfinding(s, dt, s.speed, 0.9); } if (!playerHiddenInGrass && dist < 1.7) endGame("Chris got caught by a Desert Stalker!"); } desertStalkers = desertStalkers.filter(s => { const keep = s.rig.position.z > player.rig.position.z - CLEANUP_BEHIND_DISTANCE; if (!keep) scene.remove(s.rig); return keep; }); }
 
 function updateEnemies(dt) {
   playerHiddenInGrass = isPlayerInGrass();
@@ -1883,6 +1902,10 @@ function updateSpeedScaling() {
   dogs.forEach(dog => {
     dog.speed += 0.9;
   });
+  desertStalkers.forEach(s => {
+    s.speed += 0.7;
+    s.dashSpeed += 1.2;
+  });
 }
 
 function updateCamera(dt) {
@@ -1931,6 +1954,11 @@ function manageWorld() {
     if (!keep) scene.remove(f.group);
     return keep;
   });
+  desertStalkers = desertStalkers.filter(s => {
+    const keep = s.rig.position.z > player.rig.position.z - CLEANUP_BEHIND_DISTANCE;
+    if (!keep) scene.remove(s.rig);
+    return keep;
+  });
 }
 
 /* ============================================================
@@ -1968,6 +1996,8 @@ function updateHUD() {
 
   document.getElementById("dogText").textContent =
     distance >= 1000 ? "Dogs: " + dogs.length : "Dogs: Locked until 1000 yards";
+  document.getElementById("desertStalkerText").textContent =
+    distance >= 2000 ? "Desert Stalkers: " + desertStalkers.length : "Desert Stalkers: Locked until 2000 yards";
 
   document.getElementById("torchText").textContent =
     distance >= 500
@@ -2025,6 +2055,7 @@ function animate() {
   updateSpeedScaling();
   updateEnemies(dt);
   updateDogs(dt);
+  updateDesertStalkers(dt);
   updateTorches(dt);
   updateFireZones(dt);
   updatePickups(dt);
