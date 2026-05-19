@@ -355,7 +355,7 @@
       <b>P2:</b> I/K forward-back, J/L turn, O ability, Y swap, U fireball.<br>
       <b>Controller default:</b> Left analog stick moves, right analog stick aims, RT fires Fireball, LT casts Special, X/Square swaps abilities.<br>
       Use <b>Controls / Controllers</b> to assign controllers or remap keyboard/controller bindings per player.<br>
-      <b>2P requires a controller for at least one player.</b><br>
+      <b>2P mode requires one player on controller or both players on separate controllers.</b><br>
       In 2P mode, the screen splits so each player gets their own third-person camera.<br>
       <b>First to 10 Kills:</b> everyone respawns, and the first wizard to reach the kill target wins.<br>
       <b>Crown Control:</b> hold the glowing crown to score. <b>Castle Defense:</b> attackers break gates and tower while defenders protect shared stocks.
@@ -985,6 +985,25 @@ function validateControlAssignments() {
 
   const p1 = controlConfig.player1;
   const p2 = controlConfig.player2;
+  const gamepads = navigator.getGamepads?.() || [];
+
+  if (p1.deviceType === "keyboard" && p2.deviceType === "keyboard") {
+    showMessage("2 Player mode requires at least one controller. Assign Player 2 to a controller.", 2600);
+    openControlsConfig();
+    return false;
+  }
+
+  if (p1.deviceType === "gamepad" && !gamepads[p1.gamepadIndex]) {
+    showMessage("Player 1's assigned controller is not connected.", 2400);
+    openControlsConfig();
+    return false;
+  }
+
+  if (p2.deviceType === "gamepad" && !gamepads[p2.gamepadIndex]) {
+    showMessage("Player 2's assigned controller is not connected.", 2400);
+    openControlsConfig();
+    return false;
+  }
 
   if (
     p1.deviceType === "gamepad" &&
