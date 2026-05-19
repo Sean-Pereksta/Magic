@@ -2257,6 +2257,12 @@ function updateHuman(w, dt) {
   } else {
     w.firePressed = false;
   }
+
+  const ultDown = getActionDown(w, "ultimate");
+  if (ultDown && !w.ultimatePressed) {
+    tryActivateUltimate(w);
+  }
+  w.ultimatePressed = ultDown;
 }
 
 function swapWizardAbilities(w) {
@@ -2273,6 +2279,7 @@ function swapWizardAbilities(w) {
 }
 
 function chooseBotTarget(bot){ let best=null,bestScore=-1e9; for(const t of wizards){ if(t===bot||!t.alive) continue; let score=100-distance2D(bot,t)+t.damage*18; if(t.damage>=4) score+=120; if(t.human) score+=GAME_SETTINGS.mode==='survival'?150:25; if(GAME_SETTINGS.mode==='king'&&isWizardInHill(t)) score+=180; if((t.score||0)>(bot.score||0)) score+=60; if(score>bestScore){bestScore=score;best=t;} } return best; }
+function chooseIllusionTarget(bot){ let best=null,bd=1e9; for(const obj of temporary){ if(obj.kind!=="illusion"||obj.life<=0||obj.owner===bot) continue; const d=distancePoint(bot.x,bot.z,obj.x,obj.z); if(d<bd){bd=d;best=obj;} } return best&&Math.random()<0.35?best:null; }
 function choosePracticalPickup(bot,target){ if(bot.ability && bot.queuedAbility) return null; const td=target?distance2D(bot,target):99; if(target&&target.damage>=4&&td<22) return null; let best=null,bd=1e9; for(const p of pickups){ const d=distancePoint(bot.x,bot.z,p.x,p.z); if(d<bd){bd=d;best=p;} } return best&&bd<18?best:null; }
 function updateBot(w, dt) {
   if (w.effect.stunned > 0) return;
@@ -2280,7 +2287,7 @@ function updateBot(w, dt) {
   const enemies = wizards.filter(x => x !== w && x.alive);
   if (!enemies.length) return;
 
-  let target = chooseBotTarget(w) || enemies[0];
+  let target = chooseIllusionTarget(w) || chooseBotTarget(w) || enemies[0];
   if (GAME_SETTINGS.mode==='king'){ const leader=getKingLeader(); if(leader&&leader!==w&&leader.alive) target=leader; }
 
   w.ai.think -= dt;
@@ -2340,6 +2347,119 @@ function updateBot(w, dt) {
   if (w.fireCooldown <= 0 && d < 26 && Math.abs(diff) < 0.55 && Math.random() < (GAME_SETTINGS.mode==='survival'?0.06:0.045)) {
     castFireball(w);
   }
+
+  if (w.ultimate?.ready && Math.random() < 0.01) {
+    tryActivateUltimate(w);
+  }
+}
+
+function tryActivateUltimate(w) {
+  if (!w || !w.alive || !w.ultimate?.ready) return;
+  w.ultimate.ready = false;
+  w.ultimate.charge = 0;
+
+  const id = w.classId;
+  if (id === "blast") activateMeteorMeltdown(w);
+  else if (id === "trickster") activateMirrorMischief(w);
+  else if (id === "bulwark") activateCastleOfOne(w);
+  else if (id === "storm") activateThunderSpiral(w);
+  else if (id === "goose") activateGoosepocalypse(w);
+
+  showMessage(`${w.name} used ${w.classDef.ultimateName}!`, 1400);
+}
+
+function activateMeteorMeltdown(w) {
+  const aim = getAimVector(w);
+  const n = Math.floor(rand(6, 10));
+  for (let i = 0; i < n; i++) {
+    const dist = rand(10, 24);
+    const spread = rand(-6, 6);
+    const tx = w.x + aim.x * dist + aim.z * spread;
+    const tz = w.z + aim.z * dist - aim.x * spread;
+    spawnMeteor(w, tx, tz, i * 0.08 + rand(0, 0.25));
+  }
+  createShockwaveRing(w.x, w.z, w.classDef?.themeColor || 0xff6a1f, 4.2, 0.6);
+  createMagicSparkles(w.x, w.y + 1.8, w.z, w.classDef?.trimColor || 0xffd66b, 35);
+  addScreenShake(0.5, 0.3);
+}
+
+function spawnMeteor(owner, x, z, delay = 0) {
+  const mesh = new THREE.Mesh(
+    new THREE.DodecahedronGeometry(rand(0.6, 1.0), 0),
+    new THREE.MeshStandardMaterial({ color: 0xff7a2f, emissive: 0x7a2200, roughness: 0.55 })
+  );
+  mesh.position.set(x, 28, z);
+  scene.add(mesh);
+  temporary.push({ kind: "meteor", owner, mesh, x, z, y: 28, vy: -30, delay, life: 2.4, radius: 4.2, damage: 3 });
+}
+
+function activateMirrorMischief(w) {
+  const right = rightVector(w);
+  const backward = forwardVector(w);
+  const direction = Math.random() < 0.5 ? 1 : -1;
+  w.x += right.x * 6.5 * direction - backward.x * 2.2;
+  w.z += right.z * 6.5 * direction - backward.z * 2.2;
+  keepInArena(w);
+  w.invulnerableTimer = Math.max(w.invulnerableTimer || 0, 0.8);
+  createInkSplash(w.x, w.y + 1.2, w.z);
+  createMagicSparkles(w.x, w.y + 1.2, w.z, w.classDef?.trimColor || 0x7a39ff, 28);
+  for (let i = 0; i < 3; i++) {
+    const ang = i * (Math.PI * 2 / 3) + rand(-0.25, 0.25);
+    spawnIllusion(w, w.x + Math.cos(ang) * rand(2.3, 4.5), w.z + Math.sin(ang) * rand(2.3, 4.5));
+  }
+  addScreenShake(0.3, 0.18);
+}
+
+function spawnIllusion(owner, x, z) {
+  const mesh = owner.group.clone(true);
+  mesh.traverse(part => {
+    if (part.material) {
+      part.material = part.material.clone();
+      part.material.transparent = true;
+      part.material.opacity = 0.35;
+      if (part.material.emissive) part.material.emissive.setHex(owner.classDef?.trimColor || 0x9f7dff);
+    }
+  });
+  mesh.position.set(x, getEffectiveGroundHeight(x, z), z);
+  scene.add(mesh);
+  temporary.push({ kind: "illusion", owner, mesh, x, z, y: mesh.position.y, life: 5 });
+}
+
+function activateCastleOfOne(w) {
+  const geo = new THREE.SphereGeometry(8, 24, 18);
+  const mat = new THREE.MeshStandardMaterial({ color: w.classDef?.themeColor || 0x4aa7ff, emissive: w.classDef?.trimColor || 0x9fd8ff, transparent: true, opacity: 0.2, side: THREE.DoubleSide });
+  const dome = new THREE.Mesh(geo, mat);
+  dome.position.set(w.x, getEffectiveGroundHeight(w.x, w.z) + 3.5, w.z);
+  scene.add(dome);
+  temporary.push({ kind: "shieldDome", owner: w, mesh: dome, x: w.x, z: w.z, y: dome.position.y, radius: 8, life: 5, shocked: new WeakSet() });
+  for (const enemy of wizards) {
+    if (!enemy.alive || enemy === w) continue;
+    const d = distancePoint(enemy.x, enemy.z, w.x, w.z);
+    if (d <= 9.5) knockWizard(enemy, enemy.x - w.x, enemy.z - w.z, 24);
+  }
+  addScreenShake(0.45, 0.22);
+}
+
+function activateThunderSpiral(w) {
+  const ring = createGroundRing(w.x, w.z, 9, w.classDef?.trimColor || 0x93d8ff, 0.42);
+  temporary.push({ kind: "thunderSpiral", owner: w, mesh: ring, x: w.x, z: w.z, y: ring.position.y, radius: 9, life: 5, tickTimer: 0.15 });
+  addScreenShake(0.35, 0.24);
+}
+
+function activateGoosepocalypse(w) {
+  const enemies = wizards.filter(e => e.alive && e !== w);
+  const total = Math.floor(rand(10, 15));
+  for (let i = 0; i < total; i++) {
+    const target = enemies.length ? enemies[i % enemies.length] : null;
+    const baseX = target ? target.x : w.x;
+    const baseZ = target ? target.z : w.z;
+    const g = createGooseMesh();
+    g.position.set(baseX + rand(-2.8, 2.8), 0.2, baseZ + rand(-2.8, 2.8));
+    scene.add(g);
+    geese.push({ owner: w, mesh: g, x: g.position.x, z: g.position.z, vx: rand(-2, 2), vz: rand(-2, 2), life: 8, cooldown: 0, hitsLeft: 4 });
+  }
+  createMagicSparkles(w.x, w.y + 1.6, w.z, 0xffffff, 36);
+  addScreenShake(0.4, 0.25);
 }
 function getBotSpacingVector(bot) {
   let sx = 0, sz = 0;
@@ -3770,6 +3890,18 @@ function projectileArenaBounce(p) {
 
 function projectileObstacleCollision(p) {
   if (!p.hasArmed) return;
+  for (const obj of temporary) {
+    if (obj.kind !== "shieldDome" || !obj.owner?.alive) continue;
+    if (p.owner === obj.owner) continue;
+    if (obj.owner.team && p.owner?.team && obj.owner.team === p.owner.team) continue;
+    const d = distancePoint(p.x, p.z, obj.x, obj.z);
+    const withinBand = d <= obj.radius + (p.radius || 0.35) && Math.abs((p.y || 1.2) - obj.y) <= obj.radius;
+    if (!withinBand) continue;
+    createImpactBurst(p.x, p.y || 1.2, p.z, obj.owner.classDef?.trimColor || 0xaad9ff, 1.1);
+    createMagicSparkles(p.x, p.y || 1.2, p.z, obj.owner.classDef?.trimColor || 0xaad9ff, 10);
+    killProjectile(p);
+    return;
+  }
   for (const o of obstacles) {
     const dx = p.x - o.x;
     const dz = p.z - o.z;
@@ -4104,6 +4236,69 @@ function updateTemporary(dt) {
         }
         dustBurst(obj.x, obj.z); createGroundCrackEffect(obj.x, obj.z, 0x777777); addScreenShake(0.4,0.24);
         createAnvilImpact(obj.x, 0.8, obj.z);
+      }
+    }
+
+    if (obj.kind === "meteor") {
+      if (obj.delay > 0) {
+        obj.delay -= dt;
+      } else {
+        obj.mesh.position.y += obj.vy * dt;
+        obj.vy -= 36 * dt;
+        const gy = getEffectiveGroundHeight(obj.x, obj.z) + 0.35;
+        if (obj.mesh.position.y <= gy) {
+          obj.mesh.position.y = gy;
+          createShockwaveRing(obj.x, obj.z, obj.owner.classDef?.themeColor || 0xff7a2f, obj.radius * 0.8, 0.44);
+          createImpactBurst(obj.x, gy + 0.8, obj.z, obj.owner.classDef?.trimColor || 0xffd66b, 1.8);
+          addScreenShake(0.26, 0.14);
+          for (const w of wizards) {
+            if (!w.alive || w === obj.owner) continue;
+            if (obj.owner.team && w.team && obj.owner.team === w.team) continue;
+            const d = distancePoint(w.x, w.z, obj.x, obj.z);
+            if (d <= obj.radius) {
+              applyDamage(w, obj.damage, `${obj.owner.name}'s Meteor`);
+              knockWizard(w, w.x - obj.x, w.z - obj.z, 24);
+            }
+          }
+          obj.dead = true;
+        }
+      }
+    }
+
+    if (obj.kind === "illusion") {
+      obj.mesh.position.y = getEffectiveGroundHeight(obj.x, obj.z);
+      if (Math.random() < 0.22) createMagicSparkles(obj.x, obj.mesh.position.y + 1.8, obj.z, obj.owner.classDef?.trimColor || 0x8f76ff, 1);
+    }
+
+    if (obj.kind === "shieldDome") {
+      if (!obj.owner.alive) obj.life = 0;
+      obj.x = obj.owner.x;
+      obj.z = obj.owner.z;
+      obj.mesh.position.set(obj.x, getEffectiveGroundHeight(obj.x, obj.z) + 3.5, obj.z);
+      const pulse = 0.17 + Math.sin(performance.now() * 0.012) * 0.06;
+      obj.mesh.material.opacity = pulse;
+    }
+
+    if (obj.kind === "thunderSpiral") {
+      if (!obj.owner.alive) obj.life = 0;
+      obj.x = obj.owner.x;
+      obj.z = obj.owner.z;
+      obj.mesh.position.set(obj.x, getEffectiveGroundHeight(obj.x, obj.z) + 0.12, obj.z);
+      obj.mesh.rotation.z += dt * 2.2;
+      obj.tickTimer -= dt;
+      if (obj.tickTimer <= 0) {
+        obj.tickTimer = 0.7;
+        for (const enemy of wizards) {
+          if (!enemy.alive || enemy === obj.owner) continue;
+          if (obj.owner.team && enemy.team && obj.owner.team === enemy.team) continue;
+          const d = distancePoint(enemy.x, enemy.z, obj.x, obj.z);
+          if (d <= obj.radius) {
+            applyDamage(enemy, 1, `${obj.owner.name}'s Thunder Spiral`);
+            enemy.vy += 9;
+            knockWizard(enemy, enemy.x - obj.x, enemy.z - obj.z, 16);
+            createImpactBurst(enemy.x, enemy.y + 1.4, enemy.z, 0x9ad9ff, 1.0);
+          }
+        }
       }
     }
 
