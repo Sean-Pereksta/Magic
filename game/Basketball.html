@@ -351,10 +351,11 @@
     </div>
 
     <p class="note">
-      <b>P1:</b> W/S forward-back, A/D turn, Q ability, R swap, E fireball. Arrow keys also work.<br>
+      <b>P1:</b> Mouse aims/turns. W/S forward-back. A/D sidestep. E fireball. Q special. R swap.<br>
       <b>P2:</b> I/K forward-back, J/L turn, O ability, Y swap, U fireball.<br>
       <b>Controller default:</b> Left analog stick moves/turns, RT fires Fireball, LT casts Special, X/Square swaps abilities.<br>
       Use <b>Controls / Controllers</b> to assign controllers or remap keyboard/controller bindings per player.<br>
+      <b>2P requires a controller for at least one player.</b><br>
       In 2P mode, the screen splits so each player gets their own third-person camera.<br>
       <b>First to 10 Kills:</b> everyone respawns, and the first wizard to reach the kill target wins.<br>
       <b>Crown Control:</b> hold the glowing crown to score. <b>Castle Defense:</b> attackers break gates and tower while defenders protect shared stocks.
@@ -482,8 +483,12 @@ const keys = {};
 const inputState = {
   gamepads: [],
   listeningForBind: null,
-  bindingPollActive: false
+  bindingPollActive: false,
+  pointerLocked: false,
+  mouseLookDelta: 0
 };
+
+const mouseLookSensitivity = 0.0025;
 
 const DEFAULT_CONTROL_CONFIG = {
   player1: {
@@ -533,8 +538,8 @@ let controlConfig = JSON.parse(JSON.stringify(DEFAULT_CONTROL_CONFIG));
 const CONTROL_ACTIONS = [
   { key: "forward", label: "Forward" },
   { key: "back", label: "Back" },
-  { key: "left", label: "Turn Left" },
-  { key: "right", label: "Turn Right" },
+  { key: "left", label: "Strafe Left" },
+  { key: "right", label: "Strafe Right" },
   { key: "fire", label: "Fireball" },
   { key: "ability", label: "Special Ability" },
   { key: "swap", label: "Swap Ability" }
@@ -698,6 +703,20 @@ window.addEventListener("gamepadconnected", e => {
 window.addEventListener("gamepaddisconnected", e => {
   console.log("Gamepad disconnected:", e.gamepad);
   refreshGamepadList();
+});
+
+canvas.addEventListener("click", () => {
+  if (!running || document.pointerLockElement === canvas) return;
+  canvas.requestPointerLock?.();
+});
+
+document.addEventListener("pointerlockchange", () => {
+  inputState.pointerLocked = document.pointerLockElement === canvas;
+});
+
+window.addEventListener("mousemove", e => {
+  if (!inputState.pointerLocked) return;
+  inputState.mouseLookDelta += e.movementX;
 });
 
 loadControlsConfig();
@@ -1826,8 +1845,12 @@ function updateHuman(w, dt) {
   if (cfg.deviceType === "gamepad") {
     w.angle -= moveX * turn * dt;
   } else {
-    if (left) w.angle += turn * dt;
-    if (right) w.angle -= turn * dt;
+    if (w.name === "Player 1") {
+      w.angle -= inputState.mouseLookDelta * mouseLookSensitivity;
+    } else {
+      if (left) w.angle += turn * dt;
+      if (right) w.angle -= turn * dt;
+    }
   }
 
   let speed = PLAYER_SPEED;
@@ -1850,6 +1873,14 @@ function updateHuman(w, dt) {
     const accelMult = throttle > 0 ? 5.2 : 3.0;
     w.vx += f.x * speed * dt * accelMult * throttle;
     w.vz += f.z * speed * dt * accelMult * throttle;
+  }
+
+  let strafe = 0;
+  if (left) strafe -= 1;
+  if (right) strafe += 1;
+  if (strafe !== 0) {
+    w.vx += f.z * speed * dt * 3.5 * strafe;
+    w.vz -= f.x * speed * dt * 3.5 * strafe;
   }
 
   const abilityHeld = getActionDown(w, "ability");
@@ -5511,6 +5542,7 @@ function animate() {
   updateGeysers(dt);
   updateTiltPlane(dt);
   updateWizards(dt);
+  inputState.mouseLookDelta = 0;
   updateAbilityTelegraphs(dt);
   updatePickups(dt);
   updateProjectiles(dt);
