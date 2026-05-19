@@ -215,6 +215,8 @@ const PLAYER_FALL_BEHIND_DISTANCE = 42;
 const PLAYER_SAFE_RESPAWN_AHEAD = 28;
 const TWO_PLAYER_CAMERA_MIN_DISTANCE = 30;
 const TWO_PLAYER_CAMERA_MAX_DISTANCE = 80;
+const CHASER_PLAYER_RESPAWN_AHEAD = 100;
+const CONTROLLED_CHASER_FALL_BEHIND_DISTANCE = 55;
 
 const START_Z = 0;
 let furthestChunkZ = 0;
@@ -1276,7 +1278,7 @@ function checkFireDamage(dt) {
   const targets = gameMode === 2 ? getActiveRunners() : [player];
   for (const p of targets) for (const fire of fireZones) {
     const d = flatDistance(p.rig.position, fire.group.position);
-    if (d < fire.radius) { p.energy -= 34 * dt; if (p.energy <= 0) endGame("Chris ran out of energy in the fire!"); }
+    if (d < fire.radius) { p.energy -= 34 * dt; if (p.energy <= 0) handlePlayerCaught(p, "Player " + p.id + " ran out of energy in the fire!"); }
   }
 }
 
@@ -1349,45 +1351,78 @@ function animateDog(dog, dt, moving) {
 function createDesertStalkerRig() { const rig = new THREE.Group(); const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.55, 1.7, 5, 8), new THREE.MeshStandardMaterial({ color: 0xcaa46e, roughness: 0.82 })); body.position.y = 1.7; rig.add(body); const hood = new THREE.Mesh(new THREE.SphereGeometry(0.55, 10, 8), new THREE.MeshStandardMaterial({ color: 0x2f2418, roughness: 0.9 })); hood.position.set(0, 2.9, 0.1); rig.add(hood); const warn = new THREE.Mesh(new THREE.ConeGeometry(0.45, 4.8, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0xff6a00, transparent: true, opacity: 0.0, side: THREE.DoubleSide })); warn.rotation.x = -Math.PI / 2; warn.position.y = 0.08; warn.scale.set(0.35, 1, 1); rig.add(warn); scene.add(rig); return { rig, warn }; }
 function spawnDesertStalker(x, z) { const made = createDesertStalkerRig(); made.rig.position.set(x, 0, z); return { type: "desertStalker", rig: made.rig, speed: (12 + enemyBaseSpeedBonus) * 0.85, dashSpeed: (12 + enemyBaseSpeedBonus) * 2.1, dashCooldown: rand(3.5, 6), dashWindup: 0, dashTime: 0, dashDir: new THREE.Vector3(0, 0, 1), pathTimer: 0, path: [], animTime: 0, parts: {}, warningMesh: made.warn, wanderDir: null, wanderTimer: 0 }; }
 function updateDesertStalkerDash(s, dt) { s.dashCooldown -= dt; if (s.dashWindup > 0) { s.dashWindup -= dt; s.warningMesh.material.opacity = 0.75; s.rig.rotation.y = Math.atan2(s.dashDir.x, s.dashDir.z); if (s.dashWindup <= 0) { s.dashTime = 0.45; s.warningMesh.material.opacity = 0; } return; } if (s.dashTime > 0) { s.dashTime -= dt; const old = s.rig.position.clone(); s.rig.position.addScaledVector(s.dashDir, s.dashSpeed * dt); s.rig.position.x = clamp(s.rig.position.x, -WORLD_WIDTH / 2 + 2, WORLD_WIDTH / 2 - 2); if (collidesWithWall(s.rig.position, 0.9)) { s.rig.position.copy(old); s.dashTime = 0; s.pathTimer = 0; } return; } if (s.dashCooldown <= 0 && flatDistance(s.rig.position, player.rig.position) < 18) { s.dashDir = new THREE.Vector3().subVectors(player.rig.position, s.rig.position); s.dashDir.y = 0; s.dashDir.normalize(); s.dashWindup = 0.55; s.dashCooldown = rand(3.5, 6); } }
-function updateDesertStalkers(dt) { for (const s of desertStalkers) { const dist = s.rig.position.distanceTo(player.rig.position); if (playerHiddenInGrass) { updateEnemyWander(s, dt); s.warningMesh.material.opacity = 0; } else { updateDesertStalkerDash(s, dt); if (s.dashWindup <= 0 && s.dashTime <= 0) chaseWithPathfinding(s, dt, s.speed, 0.9); } if (!playerHiddenInGrass && dist < 1.7) endGame("Chris got caught by a Desert Stalker!"); } desertStalkers = desertStalkers.filter(s => { const keep = s.rig.position.z > player.rig.position.z - CLEANUP_BEHIND_DISTANCE; if (!keep) scene.remove(s.rig); return keep; }); }
-
-function hasLineOfSightClear(from, to, maxRange = POLICE_RANGE) { const flatFrom = new THREE.Vector3(from.x, 0, from.z); const flatTo = new THREE.Vector3(to.x, 0, to.z); const dir = new THREE.Vector3().subVectors(flatTo, flatFrom); const dist = dir.length(); if (dist > maxRange) return false; if (dist < 0.01) return true; dir.normalize(); const step = 1.1; const checks = Math.floor(dist / step); for (let i = 1; i < checks; i++) { const test = flatFrom.clone().addScaledVector(dir, i * step); if (collidesWithWall(test, 0.45)) return false; } return true; }
-function getNearestShootableRunner(pos) { const candidates = Array.isArray(players) && players.length ? players.filter(p => !p.eliminated && !p.isChaser) : [player].filter(Boolean); if (candidates.length === 0) return null; let best = null; let bestDist = Infinity; for (const p of candidates) { const d = flatDistance(pos, p.rig.position); if (d < bestDist) { best = p; bestDist = d; } } return best; }
-function updatePoliceLaserVisual(police, target) { if (!police.laser || !target) return; const start = police.rig.position.clone(); start.y = 3.45; const end = target.rig.position.clone(); end.y = 3.15; const dir = new THREE.Vector3().subVectors(end, start); const dist = Math.min(dir.length(), POLICE_RANGE); if (dist <= 0.1) { police.laser.visible = false; return; } dir.normalize(); const mid = start.clone().addScaledVector(dir, dist / 2); police.laser.position.copy(mid); police.laser.scale.set(1, 1, dist); police.laser.lookAt(end); const blinkProgress = clamp(police.aimTimer / POLICE_AIM_TIME, 0, 1); const blinkSpeed = 3 + blinkProgress * 18; const blink = Math.sin(performance.now() * 0.001 * blinkSpeed) > 0 ? 1 : 0.15; police.laser.material.opacity = 0.15 + blink * 0.75; police.laser.visible = true; }
-function firePoliceBullet(police, target) { if (!target || target.eliminated) return; const start = police.rig.position.clone(); start.y = 3.45; const aim = target.rig.position.clone(); aim.y = 3.1; const dir = new THREE.Vector3().subVectors(aim, start); const dist = dir.length(); if (dist > POLICE_RANGE) return; if (!hasLineOfSightClear(start, aim, POLICE_RANGE)) return; dir.normalize(); const bulletGroup = new THREE.Group(); bulletGroup.position.copy(start); const bullet = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), new THREE.MeshStandardMaterial({ color: 0xfff7aa, emissive: 0xffd000, emissiveIntensity: 1.8 })); bulletGroup.add(bullet); const trail = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.8, 8), new THREE.MeshBasicMaterial({ color: 0xff3b30, transparent: true, opacity: 0.75 })); trail.rotation.x = Math.PI / 2; trail.position.z = -0.75; bulletGroup.add(trail); bulletGroup.lookAt(aim); scene.add(bulletGroup); policeBullets.push({ group: bulletGroup, dir, life: 0.8, shooter: police }); }
-function updatePoliceOfficers(dt) { for (const police of policeOfficers) { const target = getNearestShootableRunner(police.rig.position); police.target = target; if (!target || target.eliminated) { police.laser.visible = false; updateEnemyWander(police, dt); continue; } const dist = flatDistance(police.rig.position, target.rig.position); const clearShot = hasLineOfSightClear(police.rig.position, target.rig.position, POLICE_RANGE); if (police.state === "chase") { police.laser.visible = false; const prevPlayer = player; player = target; chaseWithPathfinding(police, dt, police.speed, 0.95); player = prevPlayer; police.stateTimer -= dt; if (police.stateTimer <= 0 && dist <= POLICE_RANGE && clearShot) { police.state = "aim"; police.aimTimer = 0; police.velocity = new THREE.Vector3(); } } else if (police.state === "aim") { const dir = new THREE.Vector3().subVectors(target.rig.position, police.rig.position); dir.y = 0; if (dir.lengthSq() > 0.01) { dir.normalize(); police.rig.rotation.y = Math.atan2(dir.x, dir.z); } police.aimTimer += dt; if (!clearShot || dist > POLICE_RANGE) { police.laser.visible = false; police.state = "chase"; police.stateTimer = POLICE_CHASE_TIME; police.aimTimer = 0; continue; } updatePoliceLaserVisual(police, target); if (police.aimTimer >= POLICE_AIM_TIME) { firePoliceBullet(police, target); police.laser.visible = false; police.state = "chase"; police.stateTimer = POLICE_CHASE_TIME + rand(0.3, 1.2); police.aimTimer = 0; } animateRunner(police, dt, false, true); } if (dist < 1.7) endGame("Chris got caught by a police officer!"); } policeOfficers = policeOfficers.filter(p => { const keep = p.rig.position.z > player.rig.position.z - CLEANUP_BEHIND_DISTANCE; if (!keep) { if (p.laser) scene.remove(p.laser); scene.remove(p.rig); } return keep; }); }
-function spawnBulletSpark(pos) { const sparkGroup = new THREE.Group(); sparkGroup.position.copy(pos); const mat = new THREE.MeshBasicMaterial({ color: 0xfff7aa, transparent: true, opacity: 0.9 }); for (let i = 0; i < 8; i++) { const spark = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 6), mat); const angle = Math.random() * Math.PI * 2; spark.position.set(Math.cos(angle) * rand(0.1, 0.7), rand(-0.1, 0.6), Math.sin(angle) * rand(0.1, 0.7)); sparkGroup.add(spark); } sparkGroup.userData.life = 0.22; scene.add(sparkGroup); if (!window.tempEffects) window.tempEffects = []; window.tempEffects.push(sparkGroup); }
-function updatePoliceBullets(dt) { for (let i = policeBullets.length - 1; i >= 0; i--) { const b = policeBullets[i]; b.life -= dt; b.group.position.addScaledVector(b.dir, POLICE_BULLET_SPEED * dt); if (collidesWithWall(b.group.position, 0.25)) { spawnBulletSpark(b.group.position); scene.remove(b.group); policeBullets.splice(i, 1); continue; } const candidates = Array.isArray(players) && players.length ? players.filter(p => !p.eliminated && !p.isChaser) : [player].filter(Boolean); for (const p of candidates) { if (flatDistance(b.group.position, p.rig.position) < 1.15) { endGame("Chris got shot by a police officer!"); spawnBulletSpark(b.group.position); scene.remove(b.group); policeBullets.splice(i, 1); break; } } if (b.life <= 0) { scene.remove(b.group); policeBullets.splice(i, 1); } } }
-function updateTempEffects(dt) { if (!window.tempEffects) return; for (let i = window.tempEffects.length - 1; i >= 0; i--) { const fx = window.tempEffects[i]; fx.userData.life -= dt; fx.scale.multiplyScalar(1 + dt * 4); for (const child of fx.children) if (child.material) child.material.opacity = clamp(fx.userData.life / 0.22, 0, 1); if (fx.userData.life <= 0) { scene.remove(fx); window.tempEffects.splice(i, 1); } } }
-
 function updateEnemies(dt) {
   playerHiddenInGrass = isPlayerInGrass();
 
   for (const enemy of enemies) {
-    const distToPlayer = enemy.rig.position.distanceTo(player.rig.position);
+    const target = getNearestActiveRunner(enemy.rig.position);
+    if (!target) continue;
+
+    const distToTarget = enemy.rig.position.distanceTo(target.rig.position);
 
     if (playerHiddenInGrass) {
       updateEnemyWander(enemy, dt);
     } else {
+      const prevPlayer = player;
+      player = target;
       chaseWithPathfinding(enemy, dt, enemy.speed, 0.95);
+      player = prevPlayer;
       updateEnemyTorch(enemy, dt);
     }
 
-    if (!playerHiddenInGrass && distToPlayer < 1.8) {
-      endGame("Chris got caught by a chaser!");
+    if (!playerHiddenInGrass && distToTarget < 1.8) {
+      handlePlayerCaught(target, "Player " + target.id + " got caught by a chaser!");
     }
   }
 
+  const cleanupLeader = getLeaderRunner() || player;
   enemies = enemies.filter(e => {
-    const keep = e.rig.position.z > player.rig.position.z - CLEANUP_BEHIND_DISTANCE;
+    const keep = e.rig.position.z > cleanupLeader.rig.position.z - CLEANUP_BEHIND_DISTANCE;
     if (!keep) scene.remove(e.rig);
+    return keep;
+  });
+}
+function updateDesertStalkers(dt) {
+  for (const s of desertStalkers) {
+    const target = getNearestActiveRunner(s.rig.position);
+    if (!target) continue;
+
+    const dist = s.rig.position.distanceTo(target.rig.position);
+    const prevPlayer = player;
+    player = target;
+
+    if (playerHiddenInGrass) {
+      updateEnemyWander(s, dt);
+      s.warningMesh.material.opacity = 0;
+    } else {
+      updateDesertStalkerDash(s, dt);
+      if (s.dashWindup <= 0 && s.dashTime <= 0) chaseWithPathfinding(s, dt, s.speed, 0.9);
+    }
+
+    player = prevPlayer;
+
+    if (!playerHiddenInGrass && dist < 1.7) {
+      handlePlayerCaught(target, "Player " + target.id + " got caught by a Desert Stalker!");
+    }
+  }
+
+  const cleanupLeader = getLeaderRunner() || player;
+  desertStalkers = desertStalkers.filter(s => {
+    const keep = s.rig.position.z > cleanupLeader.rig.position.z - CLEANUP_BEHIND_DISTANCE;
+    if (!keep) scene.remove(s.rig);
     return keep;
   });
 }
 
 function updateDogs(dt) {
   for (const dog of dogs) {
-    const distToPlayer = dog.rig.position.distanceTo(player.rig.position);
+    const target = getNearestActiveRunner(dog.rig.position);
+    if (!target) continue;
+
+    const distToTarget = dog.rig.position.distanceTo(target.rig.position);
+
+    const prevPlayer = player;
+    player = target;
 
     if (playerHiddenInGrass) {
       updateDogWander(dog, dt);
@@ -1395,13 +1430,16 @@ function updateDogs(dt) {
       updateDogChase(dog, dt);
     }
 
-    if (!playerHiddenInGrass && distToPlayer < 1.55) {
-      endGame("Chris got caught by a dog!");
+    player = prevPlayer;
+
+    if (!playerHiddenInGrass && distToTarget < 1.55) {
+      handlePlayerCaught(target, "Player " + target.id + " got caught by a dog!");
     }
   }
 
+  const cleanupLeader = getLeaderRunner() || player;
   dogs = dogs.filter(d => {
-    const keep = d.rig.position.z > player.rig.position.z - CLEANUP_BEHIND_DISTANCE;
+    const keep = d.rig.position.z > cleanupLeader.rig.position.z - CLEANUP_BEHIND_DISTANCE;
     if (!keep) scene.remove(d.rig);
     return keep;
   });
@@ -2167,7 +2205,7 @@ function updateHUD() {
       p2.id = "p2Text";
       document.getElementById("hud").appendChild(p2);
     }
-    const s = p => p.eliminated ? "Caught" : (p.isChaser ? "Chaser" : "Running");
+    const s = p => p.isChaser ? "Chaser" : (p.eliminated ? "Caught" : "Running");
     p2.textContent = `P1: ${s(players[0])} | P2: ${s(players[1])} | P2 Energy: ${Math.floor(players[1].energy)}`;
   }
 }
@@ -2216,6 +2254,9 @@ function animate() {
   if (gameMode === 2 && players[1]) {
     updatePlayerActor(players[1], dt, { forwardA: "i", backA: "k", leftA: "l", rightA: "j", sprint: "u", dodge: "o" });
   }
+  updateControlledChaserRespawns();
+  updatePlayerArrows();
+
   activeRunnerPlayers = getActiveRunners();
   if (players[0]) energy = players[0].energy;
   updateSpeedScaling();
@@ -2281,8 +2322,114 @@ function getPlayerDisplayRig(p) {
 }
 function updatePlayer(dt) { updatePlayerActor(player, dt, { forwardA: "w", forwardB: "arrowup", backA: "s", backB: "arrowdown", leftA: "d", leftB: "arrowleft", rightA: "a", rightB: "arrowright", sprint: "shift", dodge: " " }); }
 function getActiveRunners() { return players.filter(p => !p.eliminated && !p.isChaser); }
-function getLeadRunner() { const runners = getActiveRunners(); return runners.sort((a,b)=>b.rig.position.z-a.rig.position.z)[0] || player; }
+function getLeaderRunner() {
+  const runners = getActiveRunners();
+  if (!runners.length) return null;
+  return runners.reduce((best, p) => p.rig.position.z > best.rig.position.z ? p : best, runners[0]);
+}
+function getLeadRunner() { return getLeaderRunner() || player; }
 function getNearestActiveRunner(pos) { const runners = getActiveRunners(); let best = null; let bestDist = Infinity; for (const r of runners) { const d = flatDistance(pos, r.rig.position); if (d < bestDist) { best = r; bestDist = d; } } return best || player; }
+function findSafeSpawnNearZ(targetZ, preferredX = 0) {
+  for (let tries = 0; tries < 40; tries++) {
+    const x = clamp(preferredX + rand(-14, 14), -WORLD_WIDTH / 2 + 3, WORLD_WIDTH / 2 - 3);
+    const z = targetZ + rand(-8, 12);
+    const pos = new THREE.Vector3(x, 0, z);
+    if (!collidesWithWall(pos, PLAYER_RADIUS + 0.4)) return pos;
+  }
+
+  for (let tries = 0; tries < 40; tries++) {
+    const x = rand(-WORLD_WIDTH / 2 + 4, WORLD_WIDTH / 2 - 4);
+    const z = targetZ + rand(-12, 16);
+    const pos = new THREE.Vector3(x, 0, z);
+    if (!collidesWithWall(pos, PLAYER_RADIUS + 0.4)) return pos;
+  }
+
+  return new THREE.Vector3(0, 0, targetZ);
+}
+function convertPlayerToControlledChaser(p, reason) {
+  if (!p || p.isChaser) return;
+
+  const oldPos = p.rig.position.clone();
+
+  p.isChaser = true;
+  p.eliminated = false;
+  p.energy = 100;
+
+  if (p.rig) p.rig.visible = false;
+
+  const chaser = createEnemy(oldPos.x, oldPos.z);
+  chaser.speed = 8 + enemyBaseSpeedBonus + 1.5;
+  chaser.sprintSpeed = chaser.speed;
+  chaser.dodgeCooldown = 0;
+  chaser.burnCooldown = 0;
+  chaser.velocity = new THREE.Vector3();
+  chaser.isControlledChaser = true;
+  chaser.ownerPlayerId = p.id;
+
+  p.controlledChaser = chaser;
+
+  if (p.arrow) {
+    p.arrow.visible = true;
+    p.arrow.position.set(chaser.rig.position.x, 6.6, chaser.rig.position.z);
+  }
+
+  const runnersLeft = getActiveRunners();
+  if (runnersLeft.length === 0) {
+    endGame((reason || "Both players got caught!") + " Both players are now chasers!");
+  }
+}
+function handlePlayerCaught(p, reason) {
+  if (!p || p.isChaser || p.eliminated || gameOver) return;
+
+  if (gameMode !== 2) {
+    endGame(reason || "Chris got caught!");
+    return;
+  }
+
+  convertPlayerToControlledChaser(p, reason);
+
+  if (getActiveRunners().length <= 0) {
+    endGame("Both players got caught!");
+  }
+}
+function updateControlledChaserRespawns() {
+  if (gameMode !== 2) return;
+
+  const leader = getLeaderRunner();
+  if (!leader) return;
+
+  for (const p of players) {
+    if (!p || !p.isChaser || !p.controlledChaser) continue;
+
+    const chaserRig = p.controlledChaser.rig;
+    const tooFarBehind = leader.rig.position.z - chaserRig.position.z > CONTROLLED_CHASER_FALL_BEHIND_DISTANCE;
+
+    if (tooFarBehind) {
+      const safe = findSafeSpawnNearZ(
+        leader.rig.position.z + CHASER_PLAYER_RESPAWN_AHEAD,
+        leader.rig.position.x
+      );
+
+      chaserRig.position.copy(safe);
+      if (p.controlledChaser.velocity) p.controlledChaser.velocity.set(0, 0, 0);
+    }
+  }
+}
+function updatePlayerArrows() {
+  for (const p of players) {
+    if (!p || !p.arrow) continue;
+
+    const rig = getPlayerDisplayRig(p);
+    if (!rig) {
+      p.arrow.visible = false;
+      continue;
+    }
+
+    p.arrow.visible = true;
+    p.arrow.position.set(rig.position.x, 6.8, rig.position.z);
+    p.arrow.rotation.y += 0.06;
+  }
+}
 function startGame(mode) {
   gameMode = mode; gameStarted = true; document.getElementById("menuOverlay").style.display = "none";
   const p1 = createPlayer(1, mode === 2 ? -2.8 : 0, START_Z); const p2 = mode === 2 ? createPlayer(2, 2.8, START_Z) : null;
