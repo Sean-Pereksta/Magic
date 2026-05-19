@@ -485,10 +485,14 @@ const inputState = {
   listeningForBind: null,
   bindingPollActive: false,
   pointerLocked: false,
-  mouseLookDelta: 0
+  mouseLookDelta: 0,
+  mousePitchDelta: 0
 };
 
 const mouseLookSensitivity = 0.0025;
+const mousePitchSensitivity = 0.0018;
+const AIM_PITCH_MIN = -0.45;
+const AIM_PITCH_MAX = 0.45;
 
 const DEFAULT_CONTROL_CONFIG = {
   player1: {
@@ -721,6 +725,7 @@ document.addEventListener("pointerlockchange", () => {
 window.addEventListener("mousemove", e => {
   if (!inputState.pointerLocked) return;
   inputState.mouseLookDelta += e.movementX;
+  inputState.mousePitchDelta += e.movementY;
 });
 
 loadControlsConfig();
@@ -1489,6 +1494,7 @@ function createWizard(name, color, spawnAngle, human, controls) {
     vx: 0,
     vz: 0,
     angle,
+    aimPitch: 0,
     radius: 1.05,
     damage: 0,
     stocks: GAME_SETTINGS.stockCount,
@@ -1887,6 +1893,11 @@ function updateHuman(w, dt) {
     }
   } else if (w.name === "Player 1") {
     w.angle -= inputState.mouseLookDelta * mouseLookSensitivity;
+    w.aimPitch = clamp(
+      (w.aimPitch || 0) - inputState.mousePitchDelta * mousePitchSensitivity,
+      AIM_PITCH_MIN,
+      AIM_PITCH_MAX
+    );
   }
 
   let speed = PLAYER_SPEED;
@@ -2358,17 +2369,17 @@ function castFireball(w) {
 
   w.fireCooldown = FIREBALL_COOLDOWN;
 
-  const f = forwardVector(w);
+  const aim = getAimVector(w);
 
   createProjectile({
     owner: w,
     type: "fireball",
-    x: w.x + f.x * 2.4,
-    z: w.z + f.z * 2.4,
+    x: w.x + aim.x * 2.4,
+    z: w.z + aim.z * 2.4,
     y: w.y + PROJECTILE_HEIGHT_TUNING.castChestOffset,
-    vx: f.x * 36,
-    vz: f.z * 36,
-    vy: 0,
+    vx: aim.x * 36,
+    vz: aim.z * 36,
+    vy: aim.y * 36,
     gravity: 0,
     heightMode: "straight",
     verticalRadius: 0.75,
@@ -3420,6 +3431,7 @@ function projectileArenaBounce(p) {
       p.vz -= 2 * dot * nz;
       p.vx *= 0.92;
       p.vz *= 0.92;
+      if (typeof p.vy === "number") p.vy *= 0.92;
       p.bounce--;
 
       spawnPopText(p.x, p.z, "BOING!", 0xfff25c);
@@ -3448,6 +3460,7 @@ function projectileObstacleCollision(p) {
         p.vz -= 2 * dot * nz;
         p.vx *= 0.9;
         p.vz *= 0.9;
+        if (typeof p.vy === "number") p.vy *= 0.9;
         p.bounce--;
 
         spawnPopText(p.x, p.z, "BONK!", 0xfff25c);
@@ -3470,6 +3483,9 @@ function projectileObstacleCollision(p) {
         const dot = p.vx * nx + p.vz * nz;
         p.vx -= 2 * dot * nx;
         p.vz -= 2 * dot * nz;
+        p.vx *= 0.9;
+        p.vz *= 0.9;
+        if (typeof p.vy === "number") p.vy *= 0.9;
         p.bounce--;
       } else {
         createShockwaveRing(p.x, p.z, p.color || 0xffffff, 2.2, 0.32);
@@ -5068,7 +5084,7 @@ function assignCastleTeams() {
 function placeWizardAtCastleSpawn(w, fresh = false) {
   const sp = getCastleSpawnPoint(w);
   w.x = sp.x; w.z = sp.z; w.y = sp.y ?? getEffectiveGroundHeight(sp.x, sp.z);
-  w.vx = 0; w.vz = 0; w.vy = 0; w.damage = 0; w.alive = true; w.group.visible = true;
+  w.vx = 0; w.vz = 0; w.vy = 0; w.aimPitch = 0; w.damage = 0; w.alive = true; w.group.visible = true;
   w.angle = w.team === "attackers" ? Math.PI : 0;
   w.group.position.set(w.x, w.y, w.z); w.group.rotation.y = w.angle;
   w.invulnerableTimer = fresh ? 1.5 : 1.1;
@@ -5303,7 +5319,7 @@ function maybeCastBotAbilityAtTarget(w, target) { if (!w.ability || !target || w
 
 
 function updateModes(dt){ matchTime += dt; survivalLevel = Math.floor(matchTime/30)+1;
- for(const w of wizards){ if(!w.alive && w.respawnTimer>0){ w.respawnTimer-=dt; const canRespawn = GAME_SETTINGS.mode==='king' || GAME_SETTINGS.mode==='kills' || GAME_SETTINGS.mode==='crown' || GAME_SETTINGS.mode==='survival' || canCastleRespawn(w) || (GAME_SETTINGS.mode==='stock' && w.stocks>0); if(w.respawnTimer<=0 && canRespawn){ const sp=GAME_SETTINGS.mode==='castle'?getCastleSpawnPoint(w):randomArenaPoint(8); w.x=sp.x; w.z=sp.z; w.y=sp.y ?? getEffectiveGroundHeight(w.x,w.z); w.vx=0; w.vz=0; w.vy=0; w.damage=0; w.alive=true; w.group.visible=true; showWizardLabels(w); w.invulnerableTimer=1.1; }} w.invulnerableTimer=Math.max(0,w.invulnerableTimer-dt);}
+ for(const w of wizards){ if(!w.alive && w.respawnTimer>0){ w.respawnTimer-=dt; const canRespawn = GAME_SETTINGS.mode==='king' || GAME_SETTINGS.mode==='kills' || GAME_SETTINGS.mode==='crown' || GAME_SETTINGS.mode==='survival' || canCastleRespawn(w) || (GAME_SETTINGS.mode==='stock' && w.stocks>0); if(w.respawnTimer<=0 && canRespawn){ const sp=GAME_SETTINGS.mode==='castle'?getCastleSpawnPoint(w):randomArenaPoint(8); w.x=sp.x; w.z=sp.z; w.y=sp.y ?? getEffectiveGroundHeight(w.x,w.z); w.vx=0; w.vz=0; w.vy=0; w.aimPitch=0; w.damage=0; w.alive=true; w.group.visible=true; showWizardLabels(w); w.invulnerableTimer=1.1; }} w.invulnerableTimer=Math.max(0,w.invulnerableTimer-dt);}
  if(GAME_SETTINGS.mode==='king'){ const inside=wizards.filter(w=>w.alive&&isWizardInHill(w)); if(hillZone.ring){ const c=inside.length===1?inside[0].color:inside.length>1?0xffffff:0x88eeff; hillZone.ring.material.color.setHex(c); hillZone.ring.material.emissive.setHex(c);} for(const w of inside){ w.score += (inside.length===1?KING_POINTS_PER_SECOND:KING_CONTESTED_POINTS_PER_SECOND)*dt; } }
  if(GAME_SETTINGS.mode==='crown') updateCrownMode(dt);
  if(GAME_SETTINGS.mode==='castle') updateCastleMode(dt);
@@ -5585,6 +5601,7 @@ function animate() {
   updateTiltPlane(dt);
   updateWizards(dt);
   inputState.mouseLookDelta = 0;
+  inputState.mousePitchDelta = 0;
   updateAbilityTelegraphs(dt);
   updatePickups(dt);
   updateProjectiles(dt);
@@ -5618,6 +5635,16 @@ function forwardVector(w) {
   return {
     x: Math.sin(w.angle),
     z: Math.cos(w.angle)
+  };
+}
+
+function getAimVector(w) {
+  const pitch = clamp(w?.aimPitch || 0, AIM_PITCH_MIN, AIM_PITCH_MAX);
+  const horizontalScale = Math.cos(pitch);
+  return {
+    x: Math.sin(w.angle) * horizontalScale,
+    y: Math.sin(pitch),
+    z: Math.cos(w.angle) * horizontalScale
   };
 }
 
